@@ -30,6 +30,29 @@ fn (mut g Gen) set_file_module(file ast.File) {
 	g.cur_module = if file.mod != '' { file.mod.replace('.', '_') } else { 'main' }
 }
 
+fn (mut g Gen) set_file_cursor_module(fc ast.FileCursor) {
+	g.cur_file_name = fc.name()
+	g.cur_import_modules.clear()
+	imports := fc.imports()
+	for i in 0 .. imports.len() {
+		stmt := imports.at(i)
+		if stmt.kind() != .stmt_import {
+			continue
+		}
+		imp := stmt.import_stmt()
+		mod_name := if imp.name.contains('.') { imp.name.all_after_last('.') } else { imp.name }
+		if imp.alias != '' {
+			g.cur_import_modules[imp.alias] = mod_name
+		}
+		if !imp.is_aliased && mod_name != '' {
+			g.cur_import_modules[mod_name] = mod_name
+		}
+	}
+	g.cur_module = flat_file_module_name(fc)
+	g.is_module_ident_cache.clear()
+	g.resolved_module_names.clear()
+}
+
 fn (mut g Gen) restore_file_module_context(file_name string, module_name string, import_modules map[string]string) {
 	g.cur_file_name = file_name
 	g.cur_module = module_name
@@ -162,7 +185,10 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			g.gen_assign_stmt(node)
 		}
 		ast.ExprStmt {
-			if !expr_has_valid_data(node.expr) {
+			if node.expr is ast.IfExpr {
+				g.write_indent()
+				if_expr := node.expr as ast.IfExpr
+				g.gen_if_expr_stmt(&if_expr)
 				return
 			}
 			if node.expr is ast.UnsafeExpr {
@@ -189,10 +215,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					return
 				}
 			}
-			if node.expr is ast.IfExpr {
-				g.write_indent()
-				if_expr := node.expr as ast.IfExpr
-				g.gen_if_expr_stmt(&if_expr)
+			if !expr_has_valid_data(node.expr) {
 				return
 			}
 			g.write_indent()
@@ -294,13 +317,17 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					expr_type = g.get_call_return_type(expr.lhs, expr.args) or { expr_type }
 				}
 				value_type := option_value_type(g.cur_fn_ret_type)
-				if expr is ast.Ident && expr.name == 'err' && (g.get_local_var_c_type(expr.name) or {
-					'IError'
-				}) in ['IError', 'builtin__IError'] {
-					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
-					g.expr(expr)
-					g.sb.writeln(' };')
-					return
+				if expr is ast.Ident {
+					err_ident := expr as ast.Ident
+					if err_ident.name == 'err' {
+						err_type := g.get_local_var_c_type(err_ident.name) or { 'IError' }
+						if err_type in ['IError', 'builtin__IError'] {
+							g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
+							g.expr(expr)
+							g.sb.writeln(' };')
+							return
+						}
+					}
 				}
 				if expr_type == 'IError' {
 					if value_type != '' && value_type != 'void' {
@@ -399,13 +426,17 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				}
 				// `return err` propagates the error from the or-block. A user local
 				// named `err` can still be a concrete error value and must be wrapped.
-				if expr is ast.Ident && expr.name == 'err' && (g.get_local_var_c_type(expr.name) or {
-					'IError'
-				}) in ['IError', 'builtin__IError'] {
-					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
-					g.expr(expr)
-					g.sb.writeln(' };')
-					return
+				if expr is ast.Ident {
+					err_ident := expr as ast.Ident
+					if err_ident.name == 'err' {
+						err_type := g.get_local_var_c_type(err_ident.name) or { 'IError' }
+						if err_type in ['IError', 'builtin__IError'] {
+							g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
+							g.expr(expr)
+							g.sb.writeln(' };')
+							return
+						}
+					}
 				}
 				value_type := g.result_value_c_type(g.cur_fn_ret_type)
 				if value_type in g.tuple_aliases && node.exprs.len > 1 {
@@ -837,6 +868,37 @@ fn (mut g Gen) gen_comptime_for_methods(node ast.ForStmt, for_in ast.ForInStmt, 
 // receiver type matches either the struct V-name or its C-mangled name.
 fn (mut g Gen) collect_method_fndecls(struct_v_name string, struct_c_name string) []ast.FnDecl {
 	mut out := []ast.FnDecl{}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_fn_decl {
+					continue
+				}
+				decl := stmt.fn_decl_signature()
+				if !decl.is_method {
+					continue
+				}
+				if decl.receiver.typ is ast.EmptyExpr {
+					continue
+				}
+				receiver_v_name := decl.receiver.typ.name()
+				if receiver_v_name == struct_v_name || receiver_v_name == struct_c_name
+					|| short_type_name(struct_c_name) == receiver_v_name {
+					out << decl
+					continue
+				}
+				receiver_c_name := g.expr_type_to_c(decl.receiver.typ).trim_space().trim_right('*')
+				if receiver_c_name == struct_c_name {
+					out << decl
+				}
+			}
+		}
+		return out
+	}
 	for file in g.files {
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl {
@@ -906,6 +968,27 @@ fn (mut g Gen) gen_return_mut_param_value(expr ast.Expr) bool {
 }
 
 fn (mut g Gen) comptime_field_attribute_strings(struct_name string, field types.Field) []string {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			stmts := g.flat.file_cursor(i).stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_struct_decl {
+					continue
+				}
+				decl := stmt.struct_decl()
+				if decl.name != struct_name && !struct_name.ends_with('__${decl.name}') {
+					continue
+				}
+				for ast_field in decl.fields {
+					if ast_field.name == field.name {
+						return comptime_attribute_strings(ast_field.attributes)
+					}
+				}
+			}
+		}
+		return comptime_attribute_strings(field.attributes)
+	}
 	for file in g.files {
 		for stmt in file.stmts {
 			if stmt is ast.StructDecl {

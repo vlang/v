@@ -299,10 +299,21 @@ fn (mut g Gen) gen_map_index_assign_fallback(lhs ast.IndexExpr, rhs ast.Expr) bo
 	}
 	if key_type == '' || value_type == '' {
 		mut map_c_type := lhs_c_type
+		if local_type := g.local_var_c_type_for_expr(lhs.lhs) {
+			local_map_type := local_type.trim_space()
+			if local_map_type != '' && local_map_type != 'int' {
+				map_c_type = local_map_type
+			}
+		}
 		if lhs.lhs is ast.SelectorExpr {
 			mut selector_type := g.selector_storage_field_type(lhs.lhs).trim_space()
 			if selector_type == '' {
 				selector_type = g.selector_field_type(lhs.lhs).trim_space()
+			}
+			if selector_type == '' || selector_type == 'int' {
+				if plain_selector_type := g.plain_local_selector_type(lhs.lhs) {
+					selector_type = plain_selector_type.trim_space()
+				}
 			}
 			if selector_type != '' {
 				map_c_type = selector_type
@@ -708,6 +719,11 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			name = '_v_array'
 		}
 		decl_c_name := c_local_name(name)
+		if rhs is ast.IndexExpr {
+			if g.gen_decl_assign_from_local_index(name, storage_prefix, decl_c_name, rhs) {
+				return
+			}
+		}
 		// Keep fixed-size arrays as C arrays in local declarations.
 		if rhs is ast.ArrayInitExpr {
 			array_init := rhs as ast.ArrayInitExpr
@@ -1292,7 +1308,26 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		if name != '' && rhs is ast.PrefixExpr && rhs.op == .amp && rhs.expr is ast.SelectorExpr {
 			prefix_rhs := rhs as ast.PrefixExpr
 			sel := prefix_rhs.expr as ast.SelectorExpr
-			if sel.lhs is ast.CastExpr {
+			if sel.lhs is ast.CallExpr {
+				call_expr := sel.lhs as ast.CallExpr
+				if call_expr.args.len == 1 && g.call_or_cast_lhs_is_type(call_expr.lhs) {
+					target_type := g.expr_type_to_c(call_expr.lhs)
+					if target_type != '' && target_type != 'int' {
+						mut field_type := typ.trim_right('*')
+						if field_type == 'voidptr' {
+							field_type = 'void*'
+						}
+						if field_type == '' || field_type == 'void' {
+							field_type = 'void*'
+						}
+						g.sb.write_string('${field_type} ${decl_c_name} = ((${target_type}*)(')
+						g.expr(call_expr.args[0])
+						g.sb.writeln('))->${escape_c_keyword(sel.rhs.name)};')
+						g.remember_runtime_local_type(name, field_type)
+						return
+					}
+				}
+			} else if sel.lhs is ast.CastExpr {
 				cast_expr := sel.lhs as ast.CastExpr
 				target_type := g.expr_type_to_c(cast_expr.typ)
 				if target_type != '' && target_type != 'int' {
@@ -1663,6 +1698,11 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		if g.gen_overloaded_compound_assign(lhs, rhs, node.op) {
 			return
 		}
+		if lhs is ast.SelectorExpr {
+			if g.gen_plain_selector_assign(lhs, rhs, node.op) {
+				return
+			}
+		}
 		mut lhs_needs_deref := false
 		// Only dereference for plain assignment, not compound assignments (+=, -=, etc.)
 		// For compound assignments on pointers (ptr += x), we want pointer arithmetic.
@@ -1832,6 +1872,77 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		}
 		g.sb.writeln(';')
 	}
+}
+
+fn (mut g Gen) gen_plain_selector_assign(lhs ast.SelectorExpr, rhs ast.Expr, op token.Token) bool {
+	if op != .assign || lhs.rhs.name == 'data' {
+		return false
+	}
+	local_type := g.local_var_c_type_for_expr(lhs.lhs) or { return false }
+	lhs_struct := strip_pointer_type_name(local_type)
+	if lhs_struct == '' {
+		return false
+	}
+	field_type := g.lookup_struct_field_type_by_name(lhs_struct, lhs.rhs.name) or { return false }
+	if field_type.starts_with('Array_fixed_') || field_type.starts_with('_option_')
+		|| field_type.starts_with('_result_') || field_type in g.sum_type_variants
+		|| g.is_interface_type(field_type.trim_right('*')) {
+		return false
+	}
+	g.write_indent()
+	g.gen_selector_lvalue(lhs, local_type, lhs_struct)
+	g.sb.write_string(' = ')
+	g.expr(rhs)
+	g.sb.writeln(';')
+	return true
+}
+
+fn (mut g Gen) gen_selector_lvalue(sel ast.SelectorExpr, local_type string, lhs_struct string) {
+	mut use_ptr := g.selector_use_ptr(sel.lhs)
+	if sel.lhs is ast.Ident && sel.lhs.name in g.cur_fn_mut_params {
+		use_ptr = true
+	} else {
+		use_ptr = local_type.ends_with('*') || local_type == 'chan'
+	}
+	owner := g.embedded_owner_for(lhs_struct, sel.rhs.name)
+	field_name := escape_c_keyword(sel.rhs.name)
+	selector := if use_ptr { '->' } else { '.' }
+	g.expr(sel.lhs)
+	if owner != '' {
+		g.sb.write_string('${selector}${escape_c_keyword(owner)}.${field_name}')
+	} else {
+		g.sb.write_string('${selector}${field_name}')
+	}
+}
+
+fn (mut g Gen) gen_decl_assign_from_local_index(name string, storage_prefix string, decl_c_name string, rhs ast.IndexExpr) bool {
+	if name == '' || rhs.expr is ast.RangeExpr || rhs.lhs !is ast.Ident {
+		return false
+	}
+	lhs_ident := rhs.lhs as ast.Ident
+	local_type := g.get_local_var_c_type(lhs_ident.name) or { return false }
+	local_c_type := local_type.trim_space()
+	if local_c_type == '' || local_c_type.ends_with('*') {
+		return false
+	}
+	elem_type := g.array_alias_elem_type_from_c_type(local_c_type)
+	if elem_type == '' || elem_type == 'array' || elem_type == 'void' {
+		return false
+	}
+	g.write_indent()
+	g.sb.write_string('${storage_prefix}${elem_type} ${decl_c_name} = ')
+	if local_c_type.starts_with('Array_fixed_') {
+		g.expr(rhs.lhs)
+		g.sb.write_string('[')
+	} else {
+		g.sb.write_string('((${elem_type}*)')
+		g.expr(rhs.lhs)
+		g.sb.write_string('.data)[')
+	}
+	g.gen_index_expr_value(rhs.expr)
+	g.sb.writeln('];')
+	g.remember_runtime_local_type(name, elem_type)
+	return true
 }
 
 // resolve_struct_field_fn_return looks up a field by name in a struct type,

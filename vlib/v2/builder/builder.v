@@ -48,14 +48,9 @@ mut:
 	used_vh_for_parse                     bool
 	used_import_vh_for_parse              bool
 	used_virtual_vh_for_parse             bool
-	flat_roundtrip_enabled                bool // V2_FLAT_ROUNDTRIP=1: legacy comparison mode; route parses through streaming + to_files().
-	flat_check_enabled                    bool // Default on: stream parse/type-check through FlatAst. V2_LEGACY_AST=1 disables it unless V2_CHECK_FLAT=1 is set.
-	markused_flat_enabled                 bool // Default on: route markused through mark_used_flat.
-	flat_ssa_enabled                      bool // Default on: route SSA codegen through build_all_from_flat on the post-transform b.flat.
-	// flat caches the FlatAst representation of b.files. When
-	// flat_check_enabled is set, parse_batch streams directly into
-	// flat_builder so b.flat is built incrementally during parsing rather
-	// than via a redundant flatten_files() pass afterwards.
+	// flat is the canonical parse output. parse_batch streams directly into
+	// flat_builder so b.flat is built incrementally during parsing rather than
+	// via a redundant flatten_files() pass afterwards.
 	flat         ast.FlatAst
 	flat_builder ast.FlatBuilder
 	// flat_builder_inited tracks whether flat_builder has been seeded with
@@ -65,23 +60,18 @@ mut:
 	// native_flat_pipeline_enabled means the transform phase produced a
 	// post-transform FlatAst and intentionally did not materialize b.files.
 	native_flat_pipeline_enabled bool
-	// Source AST snapshot used only for an isolated macOS tiny candidate graph.
-	// The normal hosted graph is still built from b.files and remains the fallback.
+	// Source snapshot used only for an isolated macOS tiny candidate graph.
+	// The normal hosted graph is still built separately and remains the fallback.
 	macos_tiny_candidate_source_files []ast.File
+	macos_tiny_candidate_source_flat  ast.FlatAst
 }
 
 pub fn new_builder(prefs &pref.Preferences) &Builder {
-	legacy_ast_enabled := os.getenv('V2_LEGACY_AST') != ''
-	flat_default_enabled := !legacy_ast_enabled
 	unsafe {
 		return &Builder{
 			pref:                   prefs
 			used_fn_keys:           map[string]bool{}
 			cached_called_fn_names: map[string]bool{}
-			flat_roundtrip_enabled: os.getenv('V2_FLAT_ROUNDTRIP') != ''
-			flat_check_enabled:     flat_default_enabled || os.getenv('V2_CHECK_FLAT') != ''
-			markused_flat_enabled:  flat_default_enabled || os.getenv('V2_MARKUSED_FLAT') != ''
-			flat_ssa_enabled:       flat_default_enabled || os.getenv('V2_FLAT_SSA') != ''
 		}
 	}
 }
@@ -116,22 +106,13 @@ fn (b &Builder) should_skip_markused_for_self_build() bool {
 	return b.pref.backend == .cleanc && b.is_cmd_v2_self_build()
 }
 
-fn (b &Builder) should_use_legacy_ast_for_self_build() bool {
-	return b.pref.backend == .cleanc && b.is_cmd_v2_self_build() && os.getenv('V2_CHECK_FLAT') == ''
-		&& os.getenv('V2_MARKUSED_FLAT') == '' && os.getenv('V2_FLAT_SSA') == ''
-		&& os.getenv('V2_NATIVE_FLAT') == ''
-}
-
 fn (b &Builder) should_build_ssa_from_flat() bool {
-	return b.flat.files.len > 0 && b.flat_ssa_enabled && b.markused_flat_enabled
-		&& b.flat_check_enabled
+	return b.flat.files.len > 0
 }
 
 fn (b &Builder) should_keep_flat_for_codegen() bool {
-	flat_ssa_codegen := b.flat_ssa_enabled && b.markused_flat_enabled && b.flat_check_enabled
 	return match b.pref.backend {
-		.c { flat_ssa_codegen }
-		.x64, .arm64 { flat_ssa_codegen || b.native_flat_pipeline_enabled }
+		.cleanc, .c, .x64, .arm64 { true }
 		else { false }
 	}
 }
@@ -230,38 +211,26 @@ pub fn (mut b Builder) build(files []string) {
 	if b.try_self_build_fast_relink() {
 		return
 	}
-	if b.should_use_legacy_ast_for_self_build() {
-		b.flat_check_enabled = false
-		b.markused_flat_enabled = false
-		b.flat_ssa_enabled = false
-	}
 	mut sw := time.new_stopwatch()
 	print_rss('start')
 	$if parallel ? {
-		if b.flat_roundtrip_enabled && !b.pref.no_parallel {
-			eprintln('warning: V2_FLAT_ROUNDTRIP=1 only routes through the serial parser; pass --no-parallel to exercise it')
-		}
-		b.files = if b.pref.no_parallel {
+		if b.pref.no_parallel {
 			b.parse_files(files)
 		} else {
 			b.parse_files_parallel(files)
 		}
 	} $else {
-		b.files = b.parse_files(files)
+		b.parse_files(files)
 	}
+	b.files = []ast.File{}
 	parse_time := sw.elapsed()
 	print_time('Scan & Parse', parse_time)
 	print_rss('after parse')
-	if b.flat_check_enabled {
-		// FlatBuilder is the canonical parse output; both parse paths stream
-		// into it. parse_files / parse_files_parallel return [] in flat
-		// mode, so b.flat is the live source of truth from here on. The
-		// rehydration to legacy []ast.File is deferred until the transformer
-		// (the first consumer that still needs it) actually starts —
-		// keeping ~120MB of legacy AST out of memory during the type check
-		// phase, which is the current memory peak.
-		b.flat = b.flat_builder.flat
-	}
+	// FlatBuilder is the canonical parse output; both parse paths stream into
+	// it. parse_files / parse_files_parallel return [] in flat mode, so b.flat
+	// is the live source of truth from here on. The rehydration to legacy
+	// []ast.File is deferred until a compatibility consumer actually needs it.
+	b.flat = b.flat_builder.flat
 	b.update_parse_summary_counts()
 	print_parse_summary(b.parsed_full_files_n, b.parsed_vh_files_n, b.entry_v_lines_n,
 		b.parsed_v_lines_n, b.pref.stats, b.pref.print_parsed_files, b.parsed_full_files,
@@ -296,58 +265,38 @@ pub fn (mut b Builder) build(files []string) {
 	sequential_transform := b.pref.no_parallel_transform || b.pref.ownership
 	use_native_flat_pipeline := b.should_use_native_flat_pipeline()
 	b.native_flat_pipeline_enabled = use_native_flat_pipeline
-	use_flat_markused := (b.markused_flat_enabled && b.flat_check_enabled)
-		|| use_native_flat_pipeline
-	// Both paths can now consume flat directly: sequential streams via
-	// transform_files_from_flat, parallel streams per-worker via
-	// to_files_range. No up-front full rehydration needed in either case.
+	// Both paths can now consume flat directly: sequential and parallel
+	// transform materialize only the per-file compatibility shape needed by
+	// remaining legacy transformer helpers.
 	//
 	// Flat markused routes transform through flat-output wedges. Backends that
 	// can consume flat codegen use the direct flat-output path and drop the
 	// transformed []ast.File result; legacy backends keep the compatibility
 	// wedge that returns both flat and files.
-	mut flat_populated_by_transform := false
 	transform_flat_only := b.should_keep_flat_for_codegen()
 	if sequential_transform {
-		if use_native_flat_pipeline && !b.flat_check_enabled {
-			b.flat = trans.transform_files_to_flat_direct(b.files)
+		if transform_flat_only {
+			b.flat = trans.transform_flat_to_flat_direct(&b.flat, b.files)
 			b.files = []ast.File{}
-			flat_populated_by_transform = true
-		} else if use_flat_markused {
-			if transform_flat_only {
-				b.flat = trans.transform_flat_to_flat_direct(&b.flat, b.files)
-				b.files = []ast.File{}
-			} else {
-				new_flat, files_out := trans.transform_files_to_flat(&b.flat, b.files)
-				b.flat = new_flat
-				b.files = files_out
-			}
-			flat_populated_by_transform = true
-		} else if b.flat_check_enabled {
-			b.files = trans.transform_files_from_flat(&b.flat, b.files)
 		} else {
-			b.files = trans.transform_files(b.files)
+			new_flat, files_out := trans.transform_files_to_flat_via_driver(&b.flat, b.files)
+			b.flat = new_flat
+			b.files = files_out
 		}
 	} else {
-		if use_native_flat_pipeline && !b.flat_check_enabled {
-			b.flat = trans.transform_files_to_flat_direct(b.files)
-			b.files = []ast.File{}
-			flat_populated_by_transform = true
-		} else if use_flat_markused {
-			if transform_flat_only {
-				b.flat = trans.transform_flat_to_flat_direct(&b.flat, b.files)
-				b.files = []ast.File{}
-			} else {
-				new_flat, files_out := b.transform_files_parallel_to_flat(mut trans)
-				b.flat = new_flat
-				b.files = files_out
-			}
-			flat_populated_by_transform = true
-		} else if b.flat_check_enabled {
-			b.files = b.transform_files_parallel_from_flat(mut trans)
-		} else {
-			b.files = b.transform_files_parallel(mut trans)
-		}
+		// Parallel transform fans the per-file work across worker threads via
+		// the driver, then flattens. The sequential transform_flat_to_flat_direct
+		// is ~3x slower here because it cannot parallelize the per-file loop, and
+		// the flat AST has no thread-safe merge primitive to let workers append
+		// to one builder concurrently. For flat-codegen backends we still drop
+		// b.files immediately so codegen stays flat-only (the legacy files are
+		// live only transiently during the parallel transform). The memory-
+		// critical arm64 self-host runs --no-parallel, so it takes the sequential
+		// branch above and keeps the allocation-minimal flat-direct path.
+		new_flat, files_out := b.transform_files_parallel_to_flat_via_driver(mut trans,
+			!transform_flat_only)
+		b.flat = new_flat
+		b.files = files_out
 	}
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)
@@ -359,39 +308,22 @@ pub fn (mut b Builder) build(files []string) {
 		b.used_fn_keys = map[string]bool{}
 	} else {
 		mark_used_start := sw.elapsed()
-		// Flat markused consumes the post-transform FlatAst. Legacy comparison
-		// mode (`V2_LEGACY_AST=1`) can still reach the AST walker unless one of
-		// the flat env flags explicitly re-enables this path.
-		//
-		// The transformer mutates b.files but does not write back into b.flat.
-		// Both sequential and parallel paths now populate b.flat as part of
-		// their *_to_flat wedge, so the separate flatten_files() pass is gone.
-		// The branch below remains as a defensive fallback for any future code
-		// path that reaches markused without setting flat_populated_by_transform.
-		if use_flat_markused && !flat_populated_by_transform {
-			b.flat = ast.flatten_files(b.files)
-		}
+		// Flat markused consumes the post-transform FlatAst. Both sequential
+		// and parallel paths populate b.flat as part of their *_to_flat wedge,
+		// so the separate flatten_files() pass is gone.
 		if b.uses_minimal_x64_runtime_roots() {
 			opts := markused.MarkUsedOptions{
 				minimal_runtime_roots: true
 			}
-			b.used_fn_keys = if use_flat_markused {
-				markused.mark_used_flat_with_options(&b.flat, b.env, opts)
-			} else {
-				markused.mark_used_with_options(b.files, b.env, opts)
-			}
+			b.used_fn_keys = markused.mark_used_flat_with_options(&b.flat, b.env, opts)
 		} else {
-			b.used_fn_keys = if use_flat_markused {
-				markused.mark_used_flat(&b.flat, b.env)
-			} else {
-				markused.mark_used(b.files, b.env)
-			}
+			b.used_fn_keys = markused.mark_used_flat(&b.flat, b.env)
 		}
 		mark_used_time := time.Duration(sw.elapsed() - mark_used_start)
 		print_time('Mark Used', mark_used_time)
 		print_rss('after markused')
 	}
-	if b.flat_check_enabled && !b.should_keep_flat_for_codegen() {
+	if !b.should_keep_flat_for_codegen() {
 		b.flat = ast.FlatAst{}
 	}
 
@@ -864,14 +796,28 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, emit_files [
 			}
 		}
 	}
-	mut gen_files := []ast.File{cap: b.files.len}
-	for file in b.files {
-		if restrict_to_cache_modules && ast_file_module_name(file) !in type_module_names {
-			continue
-		}
-		gen_files << file
+	// Cache-bundle generation restricts emission to a fixed set of type
+	// modules. The legacy gen achieves this by filtering its input `gen_files`;
+	// the flat gen drives every pass off `flat.files`, so for a restricted
+	// bundle in flat mode we hand it a FlatAst scoped to the bundle's type
+	// modules (sharing b.flat's arena). The main translation unit
+	// (`restrict_to_cache_modules == false`) uses the full b.flat.
+	scope_flat_bundle := restrict_to_cache_modules && b.flat.files.len > 0
+	scoped_flat := if scope_flat_bundle {
+		b.flat_scoped_to_modules(type_module_names)
+	} else {
+		ast.FlatAst{}
 	}
-	if cached_init_calls.len > 0 && b.used_vh_for_parse {
+	mut gen_files := []ast.File{cap: b.files.len}
+	if !scope_flat_bundle {
+		for file in b.files {
+			if restrict_to_cache_modules && ast_file_module_name(file) !in type_module_names {
+				continue
+			}
+			gen_files << file
+		}
+	}
+	if !scope_flat_bundle && cached_init_calls.len > 0 && b.used_vh_for_parse {
 		mut has_vh_files := false
 		for file in gen_files {
 			if file.name.ends_with('.vh') {
@@ -887,7 +833,13 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, emit_files [
 			}
 		}
 	}
-	mut gen := cleanc.Gen.new_with_env_and_pref(gen_files, b.env, b.pref)
+	mut gen := if scope_flat_bundle {
+		cleanc.Gen.new_with_env_pref_and_flat(&scoped_flat, b.env, b.pref)
+	} else if b.flat.files.len > 0 {
+		cleanc.Gen.new_with_env_pref_and_flat(&b.flat, b.env, b.pref)
+	} else {
+		cleanc.Gen.new_with_env_and_pref(gen_files, b.env, b.pref)
+	}
 	if modules.len > 0 {
 		gen.set_emit_modules(modules)
 	}
@@ -1026,20 +978,37 @@ fn (b &Builder) expand_type_modules_with_imports(modules []string) []string {
 			type_modules[module_name] = true
 		}
 	}
+	use_flat := b.uses_flat_module_enumeration()
 	mut changed := true
 	for changed {
 		changed = false
-		for file in b.files {
-			if ast_file_module_name(file) !in type_modules {
-				continue
-			}
-			for import_stmt in file.imports {
-				import_module := import_module_name(import_stmt.name)
-				if import_module == '' || import_module in type_modules {
+		if use_flat {
+			for i in 0 .. b.flat.files.len {
+				if b.flat_file_module_name(i) !in type_modules {
 					continue
 				}
-				type_modules[import_module] = true
-				changed = true
+				for import_stmt in b.flat.read_file_imports(b.flat.files[i]) {
+					import_module := import_module_name(import_stmt.name)
+					if import_module == '' || import_module in type_modules {
+						continue
+					}
+					type_modules[import_module] = true
+					changed = true
+				}
+			}
+		} else {
+			for file in b.files {
+				if ast_file_module_name(file) !in type_modules {
+					continue
+				}
+				for import_stmt in file.imports {
+					import_module := import_module_name(import_stmt.name)
+					if import_module == '' || import_module in type_modules {
+						continue
+					}
+					type_modules[import_module] = true
+					changed = true
+				}
 			}
 		}
 	}
@@ -1055,18 +1024,36 @@ fn (b &Builder) has_external_cache_module_name_collision(module_names []string) 
 	}
 	mut vlib_modules := map[string]bool{}
 	mut external_modules := map[string]bool{}
-	for file in b.files {
-		if file.name == '' || file.name.ends_with('.vh') {
-			continue
+	if b.uses_flat_module_enumeration() {
+		for i in 0 .. b.flat.files.len {
+			name := b.flat.file_name(b.flat.files[i])
+			if name == '' || name.ends_with('.vh') {
+				continue
+			}
+			module_name := b.flat_file_module_name(i)
+			if module_name !in module_set {
+				continue
+			}
+			if b.is_vlib_source_file(name) {
+				vlib_modules[module_name] = true
+			} else {
+				external_modules[module_name] = true
+			}
 		}
-		module_name := ast_file_module_name(file)
-		if module_name !in module_set {
-			continue
-		}
-		if b.is_vlib_source_file(file.name) {
-			vlib_modules[module_name] = true
-		} else {
-			external_modules[module_name] = true
+	} else {
+		for file in b.files {
+			if file.name == '' || file.name.ends_with('.vh') {
+				continue
+			}
+			module_name := ast_file_module_name(file)
+			if module_name !in module_set {
+				continue
+			}
+			if b.is_vlib_source_file(file.name) {
+				vlib_modules[module_name] = true
+			} else {
+				external_modules[module_name] = true
+			}
 		}
 	}
 	for module_name, _ in external_modules {
@@ -1997,7 +1984,58 @@ fn (mut b Builder) ensure_cached_virtual_module_object(cache_dir string, groups 
 	return obj_path
 }
 
+// flat_file_module_name returns the normalized module name of the i-th flat
+// file, mirroring `ast_file_module_name` for the flat-AST path: the raw module
+// string with `.` replaced by `_`, defaulting to `main`. Used by the cleanc
+// cached-core enumeration helpers when `b.files` has been dropped in favour of
+// the post-transform FlatAst.
+fn (b &Builder) flat_file_module_name(i int) string {
+	mod := b.flat.string_at(b.flat.files[i].mod_idx)
+	if mod == '' {
+		return 'main'
+	}
+	return mod.replace('.', '_')
+}
+
+// uses_flat_module_enumeration reports whether module/file enumeration must run
+// against `b.flat` instead of `b.files`. In flat-codegen mode the transformer
+// drops `b.files` after producing the post-transform FlatAst, so the cleanc
+// cache helpers source their module/file metadata from the flat cursors.
+fn (b &Builder) uses_flat_module_enumeration() bool {
+	return b.files.len == 0 && b.flat.files.len > 0
+}
+
+// flat_scoped_to_modules returns a FlatAst whose file list is restricted to the
+// given module set, reusing b.flat's node/edge/string arena (the arrays are
+// shared, not deep-copied). The cleanc gen drives every emission pass off
+// `flat.files`, so a restricted file list makes the whole gen see exactly the
+// bundle's type-module files — matching the legacy gen, which filtered its input
+// `gen_files` to `type_module_names`. This lets restricted cache bundles run on
+// the flat gen with no per-file legacy rehydrate.
+fn (b &Builder) flat_scoped_to_modules(module_names map[string]bool) ast.FlatAst {
+	mut files := []ast.FlatFile{cap: b.flat.files.len}
+	for i in 0 .. b.flat.files.len {
+		if b.flat_file_module_name(i) in module_names {
+			files << b.flat.files[i]
+		}
+	}
+	return ast.FlatAst{
+		files:   files
+		nodes:   b.flat.nodes
+		edges:   b.flat.edges
+		strings: b.flat.strings
+	}
+}
+
 fn (b &Builder) has_module(module_name string) bool {
+	if b.uses_flat_module_enumeration() {
+		for i in 0 .. b.flat.files.len {
+			if b.flat_file_module_name(i) == module_name {
+				return true
+			}
+		}
+		return false
+	}
 	for file in b.files {
 		if ast_file_module_name(file) == module_name {
 			return true
@@ -2012,12 +2050,22 @@ fn (b &Builder) collect_modules_excluding(excluded []string) []string {
 		excluded_set[module_name] = true
 	}
 	mut modules_set := map[string]bool{}
-	for file in b.files {
-		module_name := ast_file_module_name(file)
-		if module_name in excluded_set {
-			continue
+	if b.uses_flat_module_enumeration() {
+		for i in 0 .. b.flat.files.len {
+			module_name := b.flat_file_module_name(i)
+			if module_name in excluded_set {
+				continue
+			}
+			modules_set[module_name] = true
 		}
-		modules_set[module_name] = true
+	} else {
+		for file in b.files {
+			module_name := ast_file_module_name(file)
+			if module_name in excluded_set {
+				continue
+			}
+			modules_set[module_name] = true
+		}
 	}
 	mut modules := modules_set.keys()
 	modules.sort()
@@ -2031,18 +2079,36 @@ fn (b &Builder) user_entry_module_names() []string {
 		entry_files[os.norm_path(os.abs_path(file))] = true
 	}
 	mut modules_set := map[string]bool{}
-	for file in b.files {
-		if file.name == '' || file.name.ends_with('.vh') {
-			continue
+	if b.uses_flat_module_enumeration() {
+		for i in 0 .. b.flat.files.len {
+			name := b.flat.file_name(b.flat.files[i])
+			if name == '' || name.ends_with('.vh') {
+				continue
+			}
+			norm_name := os.norm_path(name)
+			abs_name := os.norm_path(os.abs_path(name))
+			if norm_name !in entry_files && abs_name !in entry_files {
+				continue
+			}
+			module_name := b.flat_file_module_name(i)
+			if module_name.len > 0 {
+				modules_set[module_name] = true
+			}
 		}
-		norm_name := os.norm_path(file.name)
-		abs_name := os.norm_path(os.abs_path(file.name))
-		if norm_name !in entry_files && abs_name !in entry_files {
-			continue
-		}
-		module_name := ast_file_module_name(file)
-		if module_name.len > 0 {
-			modules_set[module_name] = true
+	} else {
+		for file in b.files {
+			if file.name == '' || file.name.ends_with('.vh') {
+				continue
+			}
+			norm_name := os.norm_path(file.name)
+			abs_name := os.norm_path(os.abs_path(file.name))
+			if norm_name !in entry_files && abs_name !in entry_files {
+				continue
+			}
+			module_name := ast_file_module_name(file)
+			if module_name.len > 0 {
+				modules_set[module_name] = true
+			}
 		}
 	}
 	mut modules := modules_set.keys()
@@ -2165,14 +2231,15 @@ fn native_external_object_file(output_binary string, target_os string) string {
 
 fn (mut b Builder) prepare_macos_tiny_candidate_source_files() {
 	b.macos_tiny_candidate_source_files = []ast.File{}
+	b.macos_tiny_candidate_source_flat = ast.FlatAst{}
 	if !b.uses_macos_x64_tiny_object(.x64) {
 		return
 	}
-	b.macos_tiny_candidate_source_files = if b.flat_check_enabled && b.flat.files.len > 0 {
-		b.flat.to_files()
-	} else {
-		b.files.clone()
+	if b.flat.files.len > 0 {
+		b.macos_tiny_candidate_source_flat = b.flat
+		return
 	}
+	b.macos_tiny_candidate_source_files = b.files.clone()
 }
 
 fn is_macos_native_target(target_os string) bool {
@@ -3199,17 +3266,29 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 }
 
 fn (mut b Builder) build_macos_tiny_candidate_mir(arch pref.Arch, target_os string) mir.Module {
-	if b.macos_tiny_candidate_source_files.len == 0 {
+	if b.macos_tiny_candidate_source_flat.files.len == 0
+		&& b.macos_tiny_candidate_source_files.len == 0 {
 		eprintln('internal error: macOS tiny candidate graph was not prepared')
 		exit(1)
 	}
 	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
 	trans.set_file_set(b.file_set)
 	trans.enable_macos_tiny_candidate_graph()
-	candidate_files := trans.transform_files(b.macos_tiny_candidate_source_files)
 	opts := markused.MarkUsedOptions{
 		minimal_runtime_roots: true
 	}
+	if b.macos_tiny_candidate_source_flat.files.len > 0 {
+		candidate_flat :=
+			trans.transform_flat_to_flat_direct(&b.macos_tiny_candidate_source_flat, [])
+		candidate_used_fn_keys := markused.mark_used_flat_with_options(&candidate_flat, b.env, opts)
+		old_flat := b.flat
+		b.flat = candidate_flat
+		candidate_mir := b.build_native_mir_from_files([], arch, target_os, true,
+			candidate_used_fn_keys, macos_tiny_candidate_graph_label)
+		b.flat = old_flat
+		return candidate_mir
+	}
+	candidate_files := trans.transform_files(b.macos_tiny_candidate_source_files)
 	candidate_used_fn_keys := markused.mark_used_with_options(candidate_files, b.env, opts)
 	return b.build_native_mir_from_files(candidate_files, arch, target_os, true,
 		candidate_used_fn_keys, macos_tiny_candidate_graph_label)
@@ -3446,26 +3525,14 @@ fn (mut b Builder) update_parse_summary_counts() {
 	mut parsed_vh_files_n := 0
 	mut parsed_full_files := []string{}
 	mut parsed_vh_files := []string{}
-	if b.flat_check_enabled {
-		for ff in b.flat.files {
-			name := b.flat.file_name(ff)
-			if name.ends_with('.vh') {
-				parsed_vh_files_n++
-				parsed_vh_files << name
-			} else {
-				parsed_full_files_n++
-				parsed_full_files << name
-			}
-		}
-	} else {
-		for file in b.files {
-			if file.name.ends_with('.vh') {
-				parsed_vh_files_n++
-				parsed_vh_files << file.name
-			} else {
-				parsed_full_files_n++
-				parsed_full_files << file.name
-			}
+	for ff in b.flat.files {
+		name := b.flat.file_name(ff)
+		if name.ends_with('.vh') {
+			parsed_vh_files_n++
+			parsed_vh_files << name
+		} else {
+			parsed_full_files_n++
+			parsed_full_files << name
 		}
 	}
 	b.parsed_full_files_n = parsed_full_files_n
@@ -3484,8 +3551,7 @@ fn (mut b Builder) update_parse_summary_counts() {
 fn (b &Builder) print_flat_ast_summary() {
 	legacy_stats := ast.legacy_ast_stats(b.files)
 	legacy_nodes := ast.count_legacy_nodes(b.files)
-	flat := if b.flat_check_enabled { b.flat } else { ast.flatten_files(b.files) }
-	flat_stats := flat.stats()
+	flat_stats := b.flat.stats()
 	mut mem_delta_pct := f64(0)
 	if legacy_stats.bytes_estimate > 0 {
 		mem_delta_pct = (f64(legacy_stats.bytes_estimate) - f64(flat_stats.bytes_estimate)) * 100.0 / f64(legacy_stats.bytes_estimate)
@@ -3501,7 +3567,7 @@ fn (b &Builder) print_flat_ast_summary() {
 	println(' * AST memory est: legacy=${legacy_stats.bytes_estimate}B, flat=${flat_stats.bytes_estimate}B (${mem_delta_pct:.2f}% reduction)')
 	println(' * AST allocs:     legacy=${legacy_stats.allocs}, flat=${flat_allocs} (${alloc_delta_pct:.2f}% reduction)')
 	if os.getenv('V2_FLAT_HIST') != '' {
-		hist := flat.count_nodes_by_kind()
+		hist := b.flat.count_nodes_by_kind()
 		mut keys := hist.keys()
 		keys.sort_with_compare(fn [hist] (a &string, b &string) int {
 			return hist[*b] - hist[*a]
@@ -3534,23 +3600,13 @@ fn count_v_lines_for_paths(paths []string) int {
 fn (b &Builder) count_parsed_v_lines() int {
 	mut parsed_paths := []string{}
 	mut seen_files := map[string]bool{}
-	if b.flat_check_enabled {
-		for ff in b.flat.files {
-			name := b.flat.file_name(ff)
-			if name in seen_files {
-				continue
-			}
-			seen_files[name] = true
-			parsed_paths << name
+	for ff in b.flat.files {
+		name := b.flat.file_name(ff)
+		if name in seen_files {
+			continue
 		}
-	} else {
-		for file in b.files {
-			if file.name in seen_files {
-				continue
-			}
-			seen_files[file.name] = true
-			parsed_paths << file.name
-		}
+		seen_files[name] = true
+		parsed_paths << name
 	}
 	return count_v_lines_for_paths(parsed_paths)
 }

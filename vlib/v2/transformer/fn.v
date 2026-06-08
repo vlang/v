@@ -2183,8 +2183,34 @@ fn (mut t Transformer) transform_fn_decl_parts_to_flat(decl ast.FnDecl, mut out 
 // leaf-encodes. Future sessions fork the body work into direct-emit paths
 // inside the `_to_flat` seam without touching this legacy helper or its
 // non-flat callers.
-fn (mut t Transformer) transform_fn_decl_parts(decl ast.FnDecl) ([]ast.Attribute, []ast.Stmt) {
-	// Skip uninstantiated generic functions: their bodies were never type-checked
+struct FnBodyTransformCtx {
+mut:
+	live_fn_detected                    bool
+	scope_fn_name                       string
+	fn_scope_key                        string
+	has_return_type                     bool
+	fn_return_type                      types.Type
+	old_scope                           &types.Scope = unsafe { nil }
+	old_fn_root_scope                   &types.Scope = unsafe { nil }
+	old_local_decl_types                map[string]types.Type
+	old_fn_ret_type_name                string
+	old_fn_returns_option               bool
+	old_fn_returns_result               bool
+	old_fn_name_str                     string
+	old_fn_recv_prefix                  string
+	old_fn_recv_param                   string
+	old_fn_recv_is_ptr                  bool
+	old_monomorphized_bindings          map[string]types.Type
+	old_fn_generic_params               []string
+	old_local_fn_pointer_return_types   map[string]types.Type
+	old_local_receiver_generic_bindings map[string]map[string]types.Type
+	old_generic_var_type_params         map[string]string
+	old_smartcast_stack                 []SmartcastContext
+	old_smartcast_expr_counts           map[string]int
+}
+
+fn (mut t Transformer) enter_fn_body_transform(decl ast.FnDecl) ?FnBodyTransformCtx {
+	mut ctx := FnBodyTransformCtx{}
 	// and they will never be called, so emit an empty body.
 	if has_non_lifetime_generic_params(decl.typ.generic_params) {
 		mut has_generic_types := decl.is_static || decl.name in t.env.generic_types
@@ -2201,7 +2227,7 @@ fn (mut t Transformer) transform_fn_decl_parts(decl ast.FnDecl) ([]ast.Attribute
 		// Generic function values (`handler[T]`) are specialized later by cgen, not
 		// through the normal checked call path, so keep their bodies for that pass.
 		if !has_generic_types && decl.name !in t.generic_fn_value_names {
-			return decl.attributes, []ast.Stmt{}
+			return none
 		}
 	}
 
@@ -2211,13 +2237,12 @@ fn (mut t Transformer) transform_fn_decl_parts(decl ast.FnDecl) ([]ast.Attribute
 		if attr.comptime_cond !is ast.EmptyExpr {
 			if !t.eval_comptime_cond(attr.comptime_cond) {
 				t.elided_fns[decl.name] = true
-				return decl.attributes, []ast.Stmt{}
+				return none
 			}
 		}
 	}
 
 	// Detect @[live] functions for hot code reloading
-	mut live_fn_detected := false
 	if t.pref != unsafe { nil }
 		&& (t.pref.backend == .arm64 || t.pref.backend == .x64 || t.pref.backend == .cleanc) {
 		if decl.attributes.has('live') {
@@ -2241,21 +2266,21 @@ fn (mut t Transformer) transform_fn_decl_parts(decl ast.FnDecl) ([]ast.Attribute
 			if t.cur_file_name.len > 0 {
 				t.live_source_file = t.cur_file_name
 			}
-			live_fn_detected = true
+			ctx.live_fn_detected = true
 		}
 	}
-
 	// Save current scope and fn_root_scope
-	old_scope := t.scope
-	old_fn_root_scope := t.fn_root_scope
+	ctx.old_scope = t.scope
+	ctx.old_fn_root_scope = t.fn_root_scope
 
 	// Get the function's scope from the environment (populated by checker)
 	// This contains parameter types, receiver type, and local variables
 	// For methods, include receiver type in the key (e.g., "SortedMap__set").
 	// The key must match how the checker generates it (using resolved/base type).
 	scope_fn_name, fn_scope_key := t.fn_scope_names_for_decl(decl)
+	ctx.fn_scope_key = fn_scope_key
 	fn_generic_params := generic_param_names(decl.typ.generic_params)
-	mut old_local_decl_types := t.local_decl_types.move()
+	ctx.old_local_decl_types = t.local_decl_types.move()
 	t.local_decl_types = map[string]types.Type{}
 	if fn_scope := t.cached_fn_scopes[fn_scope_key] {
 		t.scope = types.new_scope(fn_scope)
@@ -2293,9 +2318,9 @@ fn (mut t Transformer) transform_fn_decl_parts(decl ast.FnDecl) ([]ast.Attribute
 
 	// Set current function return type for sum type wrapping in returns
 	// and enum shorthand resolution
-	old_fn_ret_type_name := t.cur_fn_ret_type_name
-	old_fn_returns_option := t.cur_fn_returns_option
-	old_fn_returns_result := t.cur_fn_returns_result
+	ctx.old_fn_ret_type_name = t.cur_fn_ret_type_name
+	ctx.old_fn_returns_option = t.cur_fn_returns_option
+	ctx.old_fn_returns_result = t.cur_fn_returns_result
 	t.cur_fn_returns_option = false
 	t.cur_fn_returns_result = false
 	if decl.typ.return_type is ast.Type {
@@ -2349,11 +2374,11 @@ fn (mut t Transformer) transform_fn_decl_parts(decl ast.FnDecl) ([]ast.Attribute
 	// must not affect variable 'a' in another function).
 	t.array_elem_type_overrides = map[string]string{}
 	t.interface_concrete_types = map[string]string{}
-	old_fn_name_str := t.cur_fn_name_str
-	old_fn_recv_prefix := t.cur_fn_recv_prefix
-	old_fn_recv_param := t.cur_fn_recv_param
-	old_fn_recv_is_ptr := t.cur_fn_recv_is_ptr
-	mut old_monomorphized_bindings := t.cur_monomorphized_fn_bindings.move()
+	ctx.old_fn_name_str = t.cur_fn_name_str
+	ctx.old_fn_recv_prefix = t.cur_fn_recv_prefix
+	ctx.old_fn_recv_param = t.cur_fn_recv_param
+	ctx.old_fn_recv_is_ptr = t.cur_fn_recv_is_ptr
+	ctx.old_monomorphized_bindings = t.cur_monomorphized_fn_bindings.move()
 	t.cur_fn_name_str = decl.name
 	t.cur_monomorphized_fn_bindings = t.lookup_monomorphized_fn_bindings(t.cur_module, decl.name) or {
 		map[string]types.Type{}
@@ -2377,10 +2402,10 @@ fn (mut t Transformer) transform_fn_decl_parts(decl ast.FnDecl) ([]ast.Attribute
 		t.cur_fn_recv_param = ''
 		t.cur_fn_recv_is_ptr = false
 	}
-	old_fn_generic_params := t.cur_fn_generic_params
-	mut old_local_fn_pointer_return_types := t.local_fn_pointer_return_types.move()
-	mut old_local_receiver_generic_bindings := t.local_receiver_generic_bindings.move()
-	mut old_generic_var_type_params := t.generic_var_type_params.move()
+	ctx.old_fn_generic_params = t.cur_fn_generic_params
+	ctx.old_local_fn_pointer_return_types = t.local_fn_pointer_return_types.move()
+	ctx.old_local_receiver_generic_bindings = t.local_receiver_generic_bindings.move()
+	ctx.old_generic_var_type_params = t.generic_var_type_params.move()
 	t.cur_fn_generic_params = fn_generic_params
 	t.local_fn_pointer_return_types = map[string]types.Type{}
 	t.local_receiver_generic_bindings = map[string]map[string]types.Type{}
@@ -2395,45 +2420,47 @@ fn (mut t Transformer) transform_fn_decl_parts(decl ast.FnDecl) ([]ast.Attribute
 			}
 		}
 	}
-	old_smartcast_stack := t.smartcast_stack
-	mut old_smartcast_expr_counts := t.smartcast_expr_counts.move()
+	ctx.old_smartcast_stack = t.smartcast_stack
+	ctx.old_smartcast_expr_counts = t.smartcast_expr_counts.move()
 	t.smartcast_stack = []SmartcastContext{cap: 4}
 	t.smartcast_expr_counts = map[string]int{}
-	transformed_stmts := t.transform_stmts(decl.stmts)
-	t.smartcast_stack = old_smartcast_stack
-	t.smartcast_expr_counts = old_smartcast_expr_counts.move()
-	t.cur_fn_generic_params = old_fn_generic_params
-	t.local_fn_pointer_return_types = old_local_fn_pointer_return_types.move()
-	t.local_receiver_generic_bindings = old_local_receiver_generic_bindings.move()
-	t.generic_var_type_params = old_generic_var_type_params.move()
-	t.cur_fn_name_str = old_fn_name_str
-	t.cur_fn_recv_prefix = old_fn_recv_prefix
-	t.cur_fn_recv_param = old_fn_recv_param
-	t.cur_fn_recv_is_ptr = old_fn_recv_is_ptr
-	t.cur_monomorphized_fn_bindings = old_monomorphized_bindings.move()
-	t.cur_fn_ret_type_name = old_fn_ret_type_name
-	t.cur_fn_returns_option = old_fn_returns_option
-	t.cur_fn_returns_result = old_fn_returns_result
-
-	// Lower defer statements: collect defers, remove them from body,
-	// inject defer body before every return and at end of function
-	has_return_type := decl.typ.return_type !is ast.EmptyExpr
-	fn_return_type := t.get_fn_return_type(scope_fn_name) or {
+	ctx.has_return_type = decl.typ.return_type !is ast.EmptyExpr
+	ctx.fn_return_type = t.get_fn_return_type(scope_fn_name) or {
 		t.get_fn_return_type(fn_scope_key) or { types.Type(types.void_) }
 	}
-	final_stmts := t.lower_defer_stmts(transformed_stmts, has_return_type, fn_return_type)
+	return ctx
+}
+
+fn (mut t Transformer) restore_fn_body_transform_state(mut ctx FnBodyTransformCtx) {
+	t.smartcast_stack = ctx.old_smartcast_stack
+	t.smartcast_expr_counts = ctx.old_smartcast_expr_counts.move()
+	t.cur_fn_generic_params = ctx.old_fn_generic_params
+	t.local_fn_pointer_return_types = ctx.old_local_fn_pointer_return_types.move()
+	t.local_receiver_generic_bindings = ctx.old_local_receiver_generic_bindings.move()
+	t.generic_var_type_params = ctx.old_generic_var_type_params.move()
+	t.cur_fn_name_str = ctx.old_fn_name_str
+	t.cur_fn_recv_prefix = ctx.old_fn_recv_prefix
+	t.cur_fn_recv_param = ctx.old_fn_recv_param
+	t.cur_fn_recv_is_ptr = ctx.old_fn_recv_is_ptr
+	t.cur_monomorphized_fn_bindings = ctx.old_monomorphized_bindings.move()
+	t.cur_fn_ret_type_name = ctx.old_fn_ret_type_name
+	t.cur_fn_returns_option = ctx.old_fn_returns_option
+	t.cur_fn_returns_result = ctx.old_fn_returns_result
+}
+
+fn (mut t Transformer) finish_fn_body_transform(decl ast.FnDecl, mut ctx FnBodyTransformCtx) []ast.Attribute {
 	if t.fn_root_scope != unsafe { nil } {
-		t.cached_fn_scopes[fn_scope_key] = t.fn_root_scope
+		t.cached_fn_scopes[ctx.fn_scope_key] = t.fn_root_scope
 	}
-	t.local_decl_types = old_local_decl_types.move()
+	t.local_decl_types = ctx.old_local_decl_types.move()
 
 	// Restore previous scope and fn_root_scope
-	t.scope = old_scope
-	t.fn_root_scope = old_fn_root_scope
+	t.scope = ctx.old_scope
+	t.fn_root_scope = ctx.old_fn_root_scope
 
 	// For @[live] functions, force @[noinline] so the function gets its own
 	// symbol in the binary (required for -hot-fn extraction).
-	if live_fn_detected && !decl.attributes.has('noinline') {
+	if ctx.live_fn_detected && !decl.attributes.has('noinline') {
 		mut new_attrs := []ast.Attribute{cap: decl.attributes.len + 1}
 		new_attrs << ast.Attribute{
 			value: ast.Expr(ast.Ident{
@@ -2443,10 +2470,19 @@ fn (mut t Transformer) transform_fn_decl_parts(decl ast.FnDecl) ([]ast.Attribute
 		for a in decl.attributes {
 			new_attrs << a
 		}
-		return new_attrs, final_stmts
+		return new_attrs
 	}
 
-	return decl.attributes, final_stmts
+	return decl.attributes
+}
+
+fn (mut t Transformer) transform_fn_decl_parts(decl ast.FnDecl) ([]ast.Attribute, []ast.Stmt) {
+	mut ctx := t.enter_fn_body_transform(decl) or { return decl.attributes, []ast.Stmt{} }
+	transformed_stmts := t.transform_stmts(decl.stmts)
+	t.restore_fn_body_transform_state(mut ctx)
+	final_stmts := t.lower_defer_stmts(transformed_stmts, ctx.has_return_type, ctx.fn_return_type)
+	attrs := t.finish_fn_body_transform(decl, mut ctx)
+	return attrs, final_stmts
 }
 
 fn has_non_lifetime_generic_params(params []ast.Expr) bool {
@@ -3940,6 +3976,23 @@ fn (t &Transformer) drop_method_receiver_from_call_info(lhs ast.Expr, info CallF
 	return trimmed
 }
 
+fn call_info_without_first_param(info CallFnInfo) CallFnInfo {
+	mut trimmed := info
+	if trimmed.param_types.len > 0 {
+		trimmed.param_types = trimmed.param_types[1..].clone()
+	}
+	if trimmed.param_names.len > 0 {
+		trimmed.param_names = trimmed.param_names[1..].clone()
+	}
+	if trimmed.generic_param_names_by_param.len > 0 {
+		trimmed.generic_param_names_by_param = trimmed.generic_param_names_by_param[1..].clone()
+	}
+	if trimmed.generic_param_indexes_by_param.len > 0 {
+		trimmed.generic_param_indexes_by_param = trimmed.generic_param_indexes_by_param[1..].clone()
+	}
+	return trimmed
+}
+
 fn method_receiver_type_matches_resolved_name(type_name string, resolved_recv string) bool {
 	mut lhs := type_name.trim_space()
 	mut rhs := resolved_recv.trim_space()
@@ -4805,23 +4858,78 @@ fn (mut t Transformer) transform_promoted_embedded_method_call(sel ast.SelectorE
 			rhs: sel.rhs
 			pos: sel.pos
 		})
-		call_args := t.lower_missing_call_args(embedded_lhs, raw_args)
+		mut seeded_bindings := t.generic_bindings_for_struct_field(recv_type, field_name) or {
+			t.generic_bindings_for_struct_field(recv_type, base_field_name) or {
+				map[string]types.Type{}
+			}
+		}
+		mut call_args := t.lower_missing_call_args(embedded_lhs, raw_args)
 		fn_info := t.generic_aware_call_fn_info(embedded_lhs, resolved)
+		mut promoted_info := CallFnInfo{}
+		mut has_promoted_info := false
+		if call_args_have_field_init(call_args) {
+			if decl_info := t.generic_call_info_for_decl(resolved) {
+				promoted_info = call_info_without_first_param(decl_info)
+				if promoted_info.param_types.len > 0 {
+					call_args = t.lower_field_init_call_args(call_args, promoted_info.param_names,
+						promoted_info.param_types)
+					has_promoted_info = true
+				}
+			}
+		}
+		if call_args_have_field_init(call_args) {
+			if decl := t.generic_fn_decl_for_call_info(resolved) {
+				if decl.typ.params.len > 0 {
+					generic_params := decl_generic_param_names(decl)
+					if param_type := t.type_from_param_type_expr(decl.typ.params[0].typ,
+						generic_params)
+					{
+						concrete_param_type := substitute_type(param_type, seeded_bindings)
+						promoted_info = CallFnInfo{
+							param_types: [concrete_param_type]
+							param_names: ['']
+						}
+						call_args = t.lower_field_init_call_args(call_args,
+							promoted_info.param_names, promoted_info.param_types)
+						has_promoted_info = true
+					}
+				}
+			}
+		}
 		mut transformed_call_args := []ast.Expr{cap: call_args.len}
 		for i, arg in call_args {
-			transformed_call_args << t.transform_call_arg_with_sumtype_check(arg, fn_info, i)
+			if has_promoted_info {
+				transformed_call_args << t.transform_call_arg_with_sumtype_check(arg,
+					promoted_info, i)
+			} else {
+				transformed_call_args << t.transform_call_arg_with_sumtype_check(arg, fn_info, i)
+			}
 		}
 		transformed_call_args = t.lower_variadic_args(embedded_lhs, transformed_call_args)
 		mut args := []ast.Expr{cap: transformed_call_args.len + 1}
 		args << embedded_receiver
 		args << transformed_call_args
 		mut call_name := resolved
-		mut seeded_bindings := t.generic_bindings_for_struct_field(recv_type, field_name) or {
-			t.generic_bindings_for_struct_field(recv_type, base_field_name) or {
-				map[string]types.Type{}
+		if has_promoted_info {
+			if arg_bindings := t.generic_bindings_from_call_args(promoted_info, call_args) {
+				for name, typ in arg_bindings {
+					if name !in seeded_bindings {
+						seeded_bindings[name] = typ
+					}
+				}
 			}
-		}
-		if info := fn_info {
+			if seeded := t.generic_method_call_name_from_bindings(call_name, seeded_bindings) {
+				call_name = seeded
+			} else if receiver_inferred := t.receiver_generic_method_call_name(call_name,
+				embedded_receiver, promoted_info, call_args)
+			{
+				call_name = receiver_inferred
+			} else if inferred := t.inferred_generic_call_name(call_name, promoted_info, call_args) {
+				if !generic_name_contains_placeholder_suffix(inferred) {
+					call_name = inferred
+				}
+			}
+		} else if info := fn_info {
 			if arg_bindings := t.generic_bindings_from_call_args(info, call_args) {
 				for name, typ in arg_bindings {
 					if name !in seeded_bindings {

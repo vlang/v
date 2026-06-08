@@ -103,6 +103,41 @@ fn test_fn_decl_flags_and_body() {
 	assert ret.kind() == .stmt_return
 }
 
+fn test_fn_decl_signature_from_cursor() {
+	flat := build_minimal_file()
+	fn_cur := flat.file_cursor(0).stmts().at(1)
+	decl := fn_cur.fn_decl_signature()
+	assert decl.name == 'add'
+	assert !decl.is_method
+	assert decl.stmts.len == 0
+	assert decl.typ.params.len == 2
+	assert decl.typ.params[0].name == 'a'
+	assert decl.typ.params[0].typ is Ident
+	assert (decl.typ.params[0].typ as Ident).name == 'int'
+	assert decl.typ.params[1].name == 'b'
+	assert decl.typ.return_type is Ident
+	assert (decl.typ.return_type as Ident).name == 'int'
+}
+
+fn test_fn_decl_from_cursor_reads_body() {
+	flat := build_minimal_file()
+	fn_cur := flat.file_cursor(0).stmts().at(1)
+	decl := fn_cur.fn_decl()
+	assert decl.name == 'add'
+	assert decl.stmts.len == 1
+	assert decl.stmts[0] is ReturnStmt
+}
+
+fn test_stmt_and_expr_escape_hatches_from_cursor() {
+	flat := build_minimal_file()
+	ret_cur := flat.file_cursor(0).stmts().at(1).list_at(3).at(0)
+	ret_stmt := ret_cur.stmt()
+	assert ret_stmt is ReturnStmt
+	infix_expr := ret_cur.edge(0).expr()
+	assert infix_expr is InfixExpr
+	assert (infix_expr as InfixExpr).op == .plus
+}
+
 fn test_return_stmt_exprs_via_edges() {
 	flat := build_minimal_file()
 	fc := flat.file_cursor(0)
@@ -131,6 +166,165 @@ fn test_invalid_cursor_sentinels() {
 	assert !bogus_edge.is_valid()
 	empty_list := fc.root().list_at(99)
 	assert empty_list.len() == 0
+}
+
+fn test_type_expr_from_cursor_reads_signature_types() {
+	mut b := new_flat_builder()
+	src := File{
+		name:  'inline_type_expr.v'
+		mod:   'foo'
+		stmts: [
+			Stmt(ModuleStmt{
+				name: 'foo'
+			}),
+			Stmt(FnDecl{
+				name: 'use_box'
+				typ:  FnType{
+					params:      [
+						Parameter{
+							name: 'items'
+							typ:  Expr(Type(ArrayType{
+								elem_type: Expr(GenericArgs{
+									lhs:  Expr(Ident{
+										name: 'Box'
+									})
+									args: [
+										Expr(Ident{
+											name: 'int'
+										}),
+									]
+								})
+							}))
+						},
+					]
+					return_type: Expr(Type(OptionType{
+						base_type: Expr(Ident{
+							name: 'string'
+						})
+					}))
+				}
+			}),
+		]
+	}
+	b.append_file(src)
+	fn_cur := b.flat.file_cursor(0).stmts().at(1)
+	fn_type := fn_cur.edge(1)
+	params := fn_type.list_at(1)
+	param_typ := params.at(0).edge(0).type_expr()
+	assert param_typ is Type
+	array_typ := param_typ as Type
+	assert array_typ is ArrayType
+	array_expr := array_typ as ArrayType
+	assert array_expr.elem_type is GenericArgs
+	generic := array_expr.elem_type as GenericArgs
+	assert generic.lhs is Ident
+	assert (generic.lhs as Ident).name == 'Box'
+	assert generic.args.len == 1
+	assert generic.args[0] is Ident
+	assert (generic.args[0] as Ident).name == 'int'
+	return_typ := fn_type.edge(2).type_expr()
+	assert return_typ is Type
+	option_typ := return_typ as Type
+	assert option_typ is OptionType
+	option_expr := option_typ as OptionType
+	assert option_expr.base_type is Ident
+	assert (option_expr.base_type as Ident).name == 'string'
+}
+
+fn test_decl_readers_from_cursor() {
+	mut b := new_flat_builder()
+	src := File{
+		name:  'inline_decl_readers.v'
+		mod:   'foo'
+		stmts: [
+			Stmt(ModuleStmt{
+				name: 'foo'
+			}),
+			Stmt(ConstDecl{
+				fields: [
+					FieldInit{
+						name:  'answer'
+						value: Expr(BasicLiteral{
+							kind:  .number
+							value: '42'
+						})
+					},
+				]
+			}),
+			Stmt(EnumDecl{
+				name:       'Mode'
+				attributes: [
+					Attribute{
+						name: 'flag'
+					},
+				]
+				fields:     [
+					FieldDecl{
+						name:  'read'
+						value: Expr(BasicLiteral{
+							kind:  .number
+							value: '1'
+						})
+					},
+				]
+			}),
+			Stmt(StructDecl{
+				name:       'Person'
+				attributes: [
+					Attribute{
+						name: 'heap'
+					},
+				]
+				fields:     [
+					FieldDecl{
+						name:       'name'
+						typ:        Expr(Ident{
+							name: 'string'
+						})
+						value:      Expr(StringLiteral{
+							value: 'unknown'
+						})
+						attributes: [
+							Attribute{
+								name:  'json'
+								value: Expr(StringLiteral{
+									value: 'full_name'
+								})
+							},
+						]
+						is_public:  true
+					},
+				]
+			}),
+		]
+	}
+	b.append_file(src)
+	stmts := b.flat.file_cursor(0).stmts()
+	const_decl := stmts.at(1).const_decl()
+	assert const_decl.fields.len == 1
+	assert const_decl.fields[0].name == 'answer'
+	assert const_decl.fields[0].value is BasicLiteral
+	assert (const_decl.fields[0].value as BasicLiteral).value == '42'
+	enum_decl := stmts.at(2).enum_decl(true)
+	assert enum_decl.name == 'Mode'
+	assert enum_decl.attributes.has('flag')
+	assert enum_decl.fields.len == 1
+	assert enum_decl.fields[0].value is BasicLiteral
+	assert (enum_decl.fields[0].value as BasicLiteral).value == '1'
+	struct_decl := stmts.at(3).struct_decl()
+	assert struct_decl.name == 'Person'
+	assert struct_decl.attributes.has('heap')
+	assert struct_decl.fields.len == 1
+	assert struct_decl.fields[0].name == 'name'
+	assert struct_decl.fields[0].is_public
+	assert struct_decl.fields[0].typ is Ident
+	assert (struct_decl.fields[0].typ as Ident).name == 'string'
+	assert struct_decl.fields[0].value is StringLiteral
+	assert (struct_decl.fields[0].value as StringLiteral).value == 'unknown'
+	assert struct_decl.fields[0].attributes.len == 1
+	assert struct_decl.fields[0].attributes[0].name == 'json'
+	assert struct_decl.fields[0].attributes[0].value is StringLiteral
+	assert (struct_decl.fields[0].attributes[0].value as StringLiteral).value == 'full_name'
 }
 
 // count_unique_kinds_via_cursor walks the whole graph rooted at fc through

@@ -260,10 +260,16 @@ fn (t &Transformer) lookup_imported_var_type(name string) ?types.Type {
 	if name == '' || name.contains('__') || t.cur_module == '' {
 		return none
 	}
-	imported_scopes := t.cached_imported_module_scopes[t.cur_module] or { return none }
+	// The imported-module scope list is precomputed once in cache_env_maps
+	// (build_cached_imported_module_scopes); see the field comment in
+	// transformer.v. Iterate only the imports rather than rescanning and
+	// sorting the whole module symbol table on every lookup. The "found in
+	// exactly one import" / ambiguity semantics are order-independent, so the
+	// dropped per-call sort does not change the result.
+	scopes := t.cached_imported_module_scopes[t.cur_module] or { return none }
 	mut found_type := types.Type(types.void_)
 	mut found := false
-	for module_scope in imported_scopes {
+	for module_scope in scopes {
 		typ := module_scope.lookup_var_type(name) or { continue }
 		if found {
 			return none
@@ -3474,6 +3480,35 @@ fn (t &Transformer) get_receiver_type_name(typ ast.Expr) string {
 			return t.get_receiver_type_name(typ.name)
 		}
 	}
+	return ''
+}
+
+fn (t &Transformer) get_receiver_type_name_cursor(typ ast.Cursor) string {
+	if !typ.is_valid() {
+		return ''
+	}
+	match typ.kind() {
+		.expr_ident {
+			return typ.name()
+		}
+		.expr_prefix {
+			op := unsafe { token.Token(int(typ.aux())) }
+			if op == .amp {
+				return t.get_receiver_type_name_cursor(typ.edge(0))
+			}
+		}
+		.expr_modifier, .typ_pointer, .typ_generic {
+			return t.get_receiver_type_name_cursor(typ.edge(0))
+		}
+		.expr_selector {
+			rhs := typ.edge(1)
+			if rhs.is_valid() {
+				return rhs.name()
+			}
+		}
+		else {}
+	}
+
 	return ''
 }
 

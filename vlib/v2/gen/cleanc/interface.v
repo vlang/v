@@ -202,6 +202,47 @@ fn (mut g Gen) collect_interface_wrapper_specs() {
 	}
 	for iface_name in iface_names {
 		methods := g.interface_methods[iface_name]
+		if g.has_flat() {
+			for i in 0 .. g.flat.files.len {
+				fc := g.flat.file_cursor(i)
+				g.set_file_cursor_module(fc)
+				stmts := fc.stmts()
+				for j in 0 .. stmts.len() {
+					stmt := stmts.at(j)
+					if stmt.kind() != .stmt_struct_decl {
+						continue
+					}
+					decl := stmt.struct_decl()
+					if decl.language != .v {
+						continue
+					}
+					concrete_type := g.get_struct_name(decl)
+					if concrete_type == '' || g.is_interface_type(concrete_type) {
+						continue
+					}
+					for method in methods {
+						direct_name := '${concrete_type}__${method.name}'
+						if direct_name in g.fn_param_is_ptr || direct_name in g.fn_return_types {
+							continue
+						}
+						resolved := g.resolve_embedded_method_info(concrete_type, method.name) or {
+							continue
+						}
+						wrapper_name := interface_wrapper_name(iface_name, concrete_type,
+							method.name)
+						if wrapper_name in g.interface_wrapper_specs {
+							continue
+						}
+						g.interface_wrapper_specs[wrapper_name] = InterfaceWrapperSpec{
+							fn_name:       resolved.fn_name
+							concrete_type: concrete_type
+							method:        method
+						}
+					}
+				}
+			}
+			continue
+		}
 		for file in g.files {
 			g.set_file_module(file)
 			for stmt in file.stmts {
@@ -454,7 +495,7 @@ fn is_ierror_c_type(c_type string) bool {
 	if typ.starts_with('struct ') {
 		typ = typ['struct '.len..].trim_space()
 	}
-	return typ in ['IError', 'builtin__IError']
+	return is_ierror_interface_name(typ)
 }
 
 fn ierror_type_label_for_base(base string) string {
@@ -517,6 +558,34 @@ fn (mut g Gen) collect_ierror_wrapper_bases() {
 		g.ierror_wrapper_bases[base] = true
 	}
 	saved_module := g.cur_module
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() == .stmt_struct_decl {
+					decl := stmt.struct_decl()
+					if decl.language == .v && decl.embedded.len > 0 {
+						base := g.get_struct_name(decl)
+						if g.struct_c_type_embeds_error(base) {
+							g.ierror_wrapper_bases[base] = true
+						}
+					}
+				} else if stmt.kind() == .stmt_const_decl {
+					const_decl := stmt.const_decl()
+					for field in const_decl.fields {
+						if base := g.ierror_const_wrapper_base(field.value) {
+							g.ierror_wrapper_bases[base] = true
+						}
+					}
+				}
+			}
+		}
+		g.cur_module = saved_module
+		return
+	}
 	for file in g.files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
@@ -597,7 +666,12 @@ fn (g &Gen) should_emit_ierror_wrappers() bool {
 }
 
 fn (g &Gen) has_emitted_ierror_body() bool {
-	return 'IError' in g.emitted_interface_bodies || 'builtin__IError' in g.emitted_interface_bodies
+	for name, _ in g.emitted_interface_bodies {
+		if is_ierror_interface_name(name) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) emit_ierror_wrapper_decls() {
@@ -675,6 +749,28 @@ fn (mut g Gen) emit_fn_decl_by_c_name(fn_name string) {
 		g.cur_import_modules = saved_import_modules.clone()
 		g.is_module_ident_cache.clear()
 		g.resolved_module_names.clear()
+	}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			if (g.emit_modules.len > 0 || g.emit_files.len > 0) && !g.should_emit_current_file() {
+				continue
+			}
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_fn_decl {
+					continue
+				}
+				decl := stmt.fn_decl()
+				if g.get_fn_name(decl) == fn_name {
+					g.gen_fn_decl_with_name(decl, fn_name)
+					return
+				}
+			}
+		}
+		return
 	}
 	for file in g.files {
 		g.set_file_module(file)

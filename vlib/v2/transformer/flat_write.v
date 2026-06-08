@@ -112,7 +112,7 @@ import v2.types
 //     `transform_fn_decl_parts` directly, so the `ast.FnDecl` wrapper
 //     struct that session 3 built and then decomposed is never allocated.
 //     First real (if modest) memory saving in the flat-write port: one
-//     FnDecl struct per fn under V2_MARKUSED_FLAT-style flat-output paths.
+//     FnDecl struct per fn under flat-output paths.
 //
 //   Session 5 (2026-05-26): ParenExpr expr direct-emit + harness fixture.
 //     The ParenExpr arm in `transform_expr_to_flat` direct-emits via a
@@ -1687,55 +1687,77 @@ import v2.types
 // ----- Per-file flat-write entry point -----
 
 // transform_file_index_to_flat is the per-file entry point for the multi-
-// session port. It rehydrates a single file from `input_flat`, mirrors
+// session port. It reads one file from `input_flat` through cursors, mirrors
 // `transform_file`'s prologue, and emits each top-level stmt through the
-// `transform_stmt_to_flat` seam. Returns the FlatNodeId of the appended
-// file root, or `ast.invalid_flat_node_id` for an empty / missing source
-// file.
+// `transform_stmt_to_flat` seam. Returns the FlatNodeId of the appended file
+// root, or `ast.invalid_flat_node_id` for an empty / missing source file.
 //
-// As of phase 3 the loop bypasses `transform_stmts` at the file level —
-// top-level stmt variants don't trigger any of `transform_stmts`'
-// multi-stmt expansions (AssignStmt / ExprStmt / ForStmt / AssertStmt
-// expansions all live in function bodies, not at file scope) so per-stmt
-// transform via the seam is equivalent. A defensive `t.pending_stmts`
-// drain catches any leak from constructs that have not been audited yet.
+// The file-level loop uses the flat stmt-list driver rather than dispatching
+// each stmt directly. Top-level comptime `$if` blocks can expand to multiple
+// declarations, and codegen expects those declarations to live directly under
+// the file root.
 //
 // Callers must invoke `pre_pass_from_flat(input_flat)` before the per-file
 // loop and `post_pass(mut collected_files)` after, mirroring the wedge. The
 // per-file API does not run those passes itself so future phases can
 // interleave file emissions with pre/post bookkeeping without re-running it.
 pub fn (mut t Transformer) transform_file_index_to_flat(input_flat &ast.FlatAst, fi int, mut out ast.FlatBuilder) ast.FlatNodeId {
-	src_arr := input_flat.to_files_range(fi, fi + 1)
-	if src_arr.len == 0 {
+	return t.transform_flat_file_index_to_flat(input_flat, fi, []ast.Stmt{}, mut out)
+}
+
+// transform_file_index_with_extra_to_flat is the pub entry the parallel
+// flat-direct transform uses: it forwards the monomorphize-generated `extra`
+// stmts for file `fi` (from prepare_flat_for_transform) into the cursor-native
+// per-file transform. The plain `transform_file_index_to_flat` above passes no
+// extras (sequential generic-free callers).
+pub fn (mut t Transformer) transform_file_index_with_extra_to_flat(input_flat &ast.FlatAst, fi int, extra_stmts []ast.Stmt, mut out ast.FlatBuilder) ast.FlatNodeId {
+	return t.transform_flat_file_index_to_flat(input_flat, fi, extra_stmts, mut out)
+}
+
+fn (mut t Transformer) transform_flat_file_index_to_flat(input_flat &ast.FlatAst, fi int, extra_stmts []ast.Stmt, mut out ast.FlatBuilder) ast.FlatNodeId {
+	if fi < 0 || fi >= input_flat.files.len {
 		return ast.invalid_flat_node_id
 	}
-	return t.transform_file_to_flat(src_arr[0], mut out)
+	fc := input_flat.file_cursor(fi)
+	imports := input_flat.read_file_imports(input_flat.files[fi])
+	t.cur_file_name = fc.name()
+	t.cur_module = fc.mod()
+	t.cur_import_aliases = import_aliases_for_generic_collect(imports)
+	if scope := t.get_module_scope(t.cur_module) {
+		t.scope = scope
+	} else {
+		t.scope = unsafe { nil }
+	}
+	stmt_ids := t.transform_cursor_stmts_to_flat_direct(fc.stmts(), extra_stmts, mut out)
+	return out.append_file_with_stmt_ids(ast.File{
+		name:           fc.name()
+		mod:            fc.mod()
+		selector_names: fc.selector_names()
+		attributes:     fc.attrs().attributes()
+		imports:        imports
+	}, stmt_ids)
 }
 
 // transform_file_to_flat transforms one legacy file and appends the transformed
 // tree directly to `out`. It is the AST-input counterpart to
-// `transform_file_index_to_flat`, used by the native low-memory pipeline after
-// whole-program generic preparation has produced the concrete file list.
+// `transform_file_index_to_flat`, used by flat-output pipelines after
+// whole-program generic preparation has produced concrete appended stmts.
 pub fn (mut t Transformer) transform_file_to_flat(file ast.File, mut out ast.FlatBuilder) ast.FlatNodeId {
 	// Mirror transform_file's per-file prologue. transform_stmt and the
 	// rewrite sites read these fields to resolve cross-stmt references.
 	t.cur_file_name = file.name
 	t.cur_module = file.mod
+	t.cur_import_aliases = import_aliases_for_generic_collect(file.imports)
 	if scope := t.get_module_scope(file.mod) {
 		t.scope = scope
 	} else {
 		t.scope = unsafe { nil }
 	}
-	mut stmt_ids := []ast.FlatNodeId{cap: file.stmts.len}
-	for stmt in file.stmts {
-		// Defensive pending_stmts drain. Inner transform_stmts (called by
-		// transform_fn_decl etc.) drains its own pending_stmts before
-		// returning; the appender catches any leak from a top-level
-		// construct that hasn't been audited and hoists them ahead of the
-		// just-emitted stmt, matching the ordering invariant of
-		// transform_stmts' `append_transformed_stmt` path.
-		t.append_transformed_stmt_to_flat(mut stmt_ids, stmt, mut out)
-	}
+	// Top-level comptime `$if` blocks can expand to multiple declarations
+	// (for example platform-specific worker structs/functions). Use the same
+	// stmt-list driver as function bodies so selected branch stmts are spliced
+	// into the file root instead of being hidden inside a top-level BlockStmt.
+	stmt_ids := t.transform_stmts_to_flat_direct(file.stmts, mut out)
 	return out.append_file_with_stmt_ids(file, stmt_ids)
 }
 
@@ -1793,102 +1815,200 @@ pub fn (mut t Transformer) transform_stmts_to_flat_direct(stmts []ast.Stmt, mut 
 		map[string]int{}
 	}
 	for stmt in stmts {
-		if t.smartcast_stack.len < block_smartcast_depth {
-			t.smartcast_stack = block_smartcast_stack.clone()
-			t.smartcast_expr_counts = block_smartcast_counts.clone()
-		} else if t.smartcast_stack.len > block_smartcast_depth {
-			t.truncate_smartcasts(block_smartcast_depth)
-		}
-		if stmt is ast.AssignStmt {
-			assign_stmt := stmt as ast.AssignStmt
-			if t.try_expand_comptime_if_assign_to_flat(assign_stmt, mut ids, mut out) {
-				continue
-			}
-			t.track_interface_assign_to_flat(assign_stmt)
-			if t.try_expand_interface_cast_assign_to_flat(assign_stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_sincos_assign_to_flat(assign_stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_or_expr_assign_stmts_to_flat(&assign_stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_tuple_if_assign_stmts_to_flat(assign_stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_tuple_call_assign_to_flat(assign_stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_if_guard_assign_stmts_to_flat(assign_stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_if_expr_assign_stmts_to_flat(assign_stmt, mut ids, mut out) {
-				continue
-			}
-		}
-		if stmt is ast.ExprStmt {
-			if t.try_expand_comptime_if_stmt_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-		}
-		if stmt is ast.ExprStmt {
-			if t.try_expand_or_expr_stmt_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_if_guard_stmt_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-		}
-		if stmt is ast.ExprStmt {
-			if t.try_emit_flag_enum_set_clear_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-		}
-		if stmt is ast.ReturnStmt {
-			if t.try_expand_return_match_expr_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_or_expr_return_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_return_if_expr_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-		}
-		if stmt is ast.ExprStmt {
-			if stmt.expr is ast.LockExpr {
-				t.expand_lock_expr_to_flat(stmt.expr, mut ids, mut out)
-				continue
-			}
-			if t.try_emit_map_index_push_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_emit_map_index_postfix_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_emit_selector_postfix_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-		}
-		if stmt is ast.ForStmt {
-			if t.try_expand_for_in_map_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-		}
-		if stmt is ast.AssertStmt {
-			t.expand_assert_stmt_to_flat(stmt, mut ids, mut out)
-			continue
-		}
-		t.append_transformed_stmt_to_flat(mut ids, stmt, mut out)
+		t.restore_flat_stmt_list_smartcast_context(block_smartcast_depth, block_smartcast_stack,
+			block_smartcast_counts)
+		t.transform_stmt_list_item_to_flat(stmt, mut ids, mut out)
 	}
+	t.restore_flat_stmt_list_smartcast_context(block_smartcast_depth, block_smartcast_stack,
+		block_smartcast_counts)
+	return ids
+}
+
+pub fn (mut t Transformer) transform_cursor_stmts_to_flat_direct(stmts ast.CursorList, extra_stmts []ast.Stmt, mut out ast.FlatBuilder) []ast.FlatNodeId {
+	mut ids := []ast.FlatNodeId{cap: stmts.len() + extra_stmts.len}
+	block_smartcast_depth := t.smartcast_stack.len
+	has_smartcast_state := block_smartcast_depth > 0
+	block_smartcast_stack := if has_smartcast_state {
+		t.smartcast_stack.clone()
+	} else {
+		[]SmartcastContext{}
+	}
+	block_smartcast_counts := if has_smartcast_state {
+		t.smartcast_expr_counts.clone()
+	} else {
+		map[string]int{}
+	}
+	for i in 0 .. stmts.len() {
+		t.restore_flat_stmt_list_smartcast_context(block_smartcast_depth, block_smartcast_stack,
+			block_smartcast_counts)
+		t.transform_stmt_list_item_cursor_to_flat(stmts.at(i), mut ids, mut out)
+	}
+	for stmt in extra_stmts {
+		t.restore_flat_stmt_list_smartcast_context(block_smartcast_depth, block_smartcast_stack,
+			block_smartcast_counts)
+		t.transform_stmt_list_item_to_flat(stmt, mut ids, mut out)
+	}
+	t.restore_flat_stmt_list_smartcast_context(block_smartcast_depth, block_smartcast_stack,
+		block_smartcast_counts)
+	return ids
+}
+
+fn (mut t Transformer) restore_flat_stmt_list_smartcast_context(block_smartcast_depth int, block_smartcast_stack []SmartcastContext, block_smartcast_counts map[string]int) {
 	if t.smartcast_stack.len < block_smartcast_depth {
 		t.smartcast_stack = block_smartcast_stack.clone()
 		t.smartcast_expr_counts = block_smartcast_counts.clone()
 	} else if t.smartcast_stack.len > block_smartcast_depth {
 		t.truncate_smartcasts(block_smartcast_depth)
 	}
-	return ids
+}
+
+fn (mut t Transformer) transform_stmt_list_item_to_flat(stmt ast.Stmt, mut ids []ast.FlatNodeId, mut out ast.FlatBuilder) {
+	if stmt is ast.AssignStmt {
+		assign_stmt := stmt as ast.AssignStmt
+		if t.try_expand_comptime_if_assign_to_flat(assign_stmt, mut ids, mut out) {
+			return
+		}
+		t.track_interface_assign_to_flat(assign_stmt)
+		if t.try_expand_interface_cast_assign_to_flat(assign_stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_sincos_assign_to_flat(assign_stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_or_expr_assign_stmts_to_flat(&assign_stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_tuple_if_assign_stmts_to_flat(assign_stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_tuple_call_assign_to_flat(assign_stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_if_guard_assign_stmts_to_flat(assign_stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_if_expr_assign_stmts_to_flat(assign_stmt, mut ids, mut out) {
+			return
+		}
+	}
+	if stmt is ast.ExprStmt {
+		if t.try_expand_comptime_if_stmt_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+	}
+	if stmt is ast.ExprStmt {
+		if t.try_expand_or_expr_stmt_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_if_guard_stmt_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+	}
+	if stmt is ast.ExprStmt {
+		if t.try_emit_flag_enum_set_clear_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+	}
+	if stmt is ast.ReturnStmt {
+		if t.try_expand_return_match_expr_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_or_expr_return_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_return_if_expr_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+	}
+	if stmt is ast.ExprStmt {
+		if stmt.expr is ast.LockExpr {
+			t.expand_lock_expr_to_flat(stmt.expr, mut ids, mut out)
+			return
+		}
+		if t.try_emit_map_index_push_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_emit_map_index_postfix_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_emit_selector_postfix_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+	}
+	if stmt is ast.ForStmt {
+		if t.try_expand_for_in_map_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+	}
+	if stmt is ast.AssertStmt {
+		t.expand_assert_stmt_to_flat(stmt, mut ids, mut out)
+		return
+	}
+	t.append_transformed_stmt_to_flat(mut ids, stmt, mut out)
+}
+
+// transform_stmt_list_item_cursor_to_flat is the cursor-input mirror of
+// `transform_stmt_list_item_to_flat`. It dispatches on the top-level statement's
+// FlatNodeKind so converted arms can be handled without routing through the
+// legacy guard chain, and unconverted kinds fall back to the proven decode path
+// in one line. This is the seam that lets the transform become cursor-native one
+// statement kind at a time (eliminating the whole-subtree `.stmt()` decode at
+// the `transform_cursor_stmts_to_flat_direct` loop).
+//
+// First converted set: the true-passthrough top-level kinds that carry no
+// `try_expand_*` guard and that `transform_stmt_to_flat` emits verbatim
+// (flat_write.v:3890). They are routed through `append_transformed_stmt_to_flat`
+// exactly as the fallback would after its guards fail to match — bit-equal, just
+// skipping the (always-false for these kinds) guard checks. They still decode via
+// `c.stmt()` for now (dropping that decode needs a flat-to-flat subtree copy and
+// is a later stage); the value here is the dispatcher that subsequent stages
+// (const/global, then the FnDecl body — the real decode win) extend arm by arm.
+fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut ids []ast.FlatNodeId, mut out ast.FlatBuilder) {
+	match c.kind() {
+		.stmt_import, .stmt_module, .stmt_directive, .stmt_empty, .stmt_enum_decl,
+		.stmt_interface_decl, .stmt_type_decl, .stmt_asm, .stmt_flow_control {
+			t.append_transformed_stmt_to_flat(mut ids, c.stmt(), mut out)
+		}
+		.stmt_const_decl {
+			id := t.transform_const_decl_cursor_to_flat(c, mut out)
+			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+		}
+		.stmt_global_decl {
+			id := t.transform_global_decl_cursor_to_flat(c, mut out)
+			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+		}
+		.stmt_fn_decl {
+			// Stream the body cursor-native when it has no defers (defer
+			// lowering needs the whole body, so those take the legacy
+			// whole-decl decode path).
+			if flat_body_has_defer(c.list_at(3)) {
+				t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
+			} else {
+				id := t.transform_fn_decl_streaming_to_flat(c, mut out)
+				t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+			}
+		}
+		.stmt_for {
+			// Stream plain `for` loops (cond / classic / bare) cursor-native:
+			// the body — the large, potentially deeply-nested part — streams
+			// instead of decoding the whole loop to legacy AST. for-in loops
+			// (init is a ForInStmt) keep the whole-decl decode path: their
+			// lowering (range/array/string/map/untyped) is the monolithic
+			// `transform_for_stmt` for-in branch + the `try_expand_for_in_map`
+			// guard. The init-kind check mirrors `transform_for_stmt`'s own
+			// `stmt.init is ast.ForInStmt` branch exactly.
+			init_c := c.edge(0)
+			if init_c.is_valid() && init_c.kind() == .stmt_for_in {
+				t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
+			} else {
+				id := t.transform_for_stmt_streaming_to_flat(c, mut out)
+				t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+			}
+		}
+		else {
+			t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
+		}
+	}
 }
 
 // append_transformed_stmt_to_flat is the flat-builder mirror of
@@ -1907,6 +2027,15 @@ pub fn (mut t Transformer) transform_stmts_to_flat_direct(stmts []ast.Stmt, mut 
 // top-level loop (replacing the previous push/pop/restore pattern).
 pub fn (mut t Transformer) append_transformed_stmt_to_flat(mut ids []ast.FlatNodeId, stmt ast.Stmt, mut out ast.FlatBuilder) {
 	id := t.transform_stmt_to_flat(stmt, mut out)
+	t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+}
+
+// append_transformed_stmt_id_to_flat hoists any `t.pending_stmts` produced
+// while building `id` ahead of it (matching the appender's ordering invariant),
+// then pushes `id`. Shared by `append_transformed_stmt_to_flat` and the
+// cursor-native stmt arms (transform_stmt_list_item_cursor_to_flat) so both
+// drain pending side effects identically.
+fn (mut t Transformer) append_transformed_stmt_id_to_flat(mut ids []ast.FlatNodeId, id ast.FlatNodeId, mut out ast.FlatBuilder) {
 	if t.pending_stmts.len > 0 {
 		pending := t.pending_stmts.clone()
 		t.pending_stmts.clear()
@@ -1915,6 +2044,174 @@ pub fn (mut t Transformer) append_transformed_stmt_to_flat(mut ids []ast.FlatNod
 		}
 	}
 	ids << id
+}
+
+// transform_const_decl_cursor_to_flat is the cursor-input mirror of the
+// `ast.ConstDecl` arm of `transform_stmt_to_flat` (flat_write.v). It reads the
+// const decl's is_public flag and field-init list straight from the cursor —
+// the ConstDecl wrapper + FieldInit structure are never decoded to legacy — and
+// transforms each field value via the existing `transform_expr_to_flat`. Emit
+// order matches the flat-output arm exactly (per-field value+field_init, then
+// the fields aux_list, then the stmt).
+fn (mut t Transformer) transform_const_decl_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
+	fields := c.list_at(0)
+	mut field_ids := []ast.FlatNodeId{cap: fields.len()}
+	for i in 0 .. fields.len() {
+		fc := fields.at(i)
+		value_id := t.transform_expr_to_flat(fc.edge(0).expr(), mut out)
+		field_ids << out.emit_field_init_by_id(fc.name(), value_id)
+	}
+	fields_list_id := out.emit_aux_list_from_ids(field_ids)
+	return out.emit_const_decl_by_ids(c.flag(ast.flag_is_public), fields_list_id)
+}
+
+// transform_global_decl_cursor_to_flat is the cursor-input mirror of the
+// `ast.GlobalDecl` arm of `transform_stmt_to_flat`. It reads the decl
+// attributes, field-decl list, and per-field metadata/flags from the cursor and
+// transforms each field's typ + value via `transform_expr_to_flat`. Emit order
+// matches the flat-output arm (decl attrs, then per-field typ/value/attrs/
+// field_decl, then the fields aux_list, then the stmt).
+fn (mut t Transformer) transform_global_decl_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
+	decl_attrs_id := out.emit_attribute_list(c.list_at(0).attributes())
+	fields := c.list_at(1)
+	mut field_ids := []ast.FlatNodeId{cap: fields.len()}
+	for i in 0 .. fields.len() {
+		fc := fields.at(i)
+		typ_id := t.transform_expr_to_flat(fc.edge(0).expr(), mut out)
+		value_id := t.transform_expr_to_flat(fc.edge(1).expr(), mut out)
+		field_attrs_id := out.emit_attribute_list(fc.list_at(2).attributes())
+		field := ast.FieldDecl{
+			name:                fc.name()
+			is_public:           fc.flag(ast.flag_is_public)
+			is_mut:              fc.flag(ast.flag_is_mut)
+			is_module_mut:       fc.flag(ast.flag_field_is_module_mut)
+			is_interface_method: fc.flag(ast.flag_field_is_interface_method)
+		}
+		field_ids << out.emit_field_decl_by_ids(field, typ_id, value_id, field_attrs_id)
+	}
+	fields_list_id := out.emit_aux_list_from_ids(field_ids)
+	return out.emit_global_decl_by_ids(c.flag(ast.flag_is_public), decl_attrs_id, fields_list_id)
+}
+
+// emit_fn_decl_flat assembles a stmt_fn_decl flat node from the immutable
+// header of `decl` plus the already-transformed (and flat-emitted) attribute
+// list and body stmt ids. Shared by the legacy `ast.FnDecl` arm of
+// transform_stmt_to_flat and the cursor-native streaming path so both encode
+// the FnDecl identically.
+fn (mut t Transformer) emit_fn_decl_flat(decl ast.FnDecl, attrs []ast.Attribute, stmt_ids []ast.FlatNodeId, mut out ast.FlatBuilder) ast.FlatNodeId {
+	receiver := if decl.is_method {
+		decl.receiver
+	} else {
+		ast.Parameter{
+			typ: ast.empty_expr
+		}
+	}
+	receiver_id := out.emit_parameter(receiver)
+	typ_id := out.emit_type(ast.Type(decl.typ))
+	attrs_id := out.emit_attribute_list(attrs)
+	stmts_list_id := out.emit_aux_list_from_ids(stmt_ids)
+	return out.emit_fn_decl_by_ids(decl.name, decl.is_public, decl.is_method, decl.is_static,
+		decl.language, decl.pos, receiver_id, typ_id, attrs_id, stmts_list_id)
+}
+
+// flat_subtree_has_defer reports whether the cursor or any of its descendants
+// is a `stmt_defer` node. Used to detect function-body defers without decoding
+// the body. Conservative by construction: it also flags defers nested inside
+// closures (which lower_defer_stmts would not lower), but over-detection only
+// costs a fall-back to the whole-body decode path, never correctness.
+fn flat_subtree_has_defer(c ast.Cursor) bool {
+	if !c.is_valid() {
+		return false
+	}
+	if c.kind() == .stmt_defer {
+		return true
+	}
+	for i in 0 .. c.edge_count() {
+		if flat_subtree_has_defer(c.edge(i)) {
+			return true
+		}
+	}
+	return false
+}
+
+// flat_body_has_defer reports whether any statement in a function body (a
+// stmt CursorList) contains a defer anywhere in its subtree.
+fn flat_body_has_defer(body ast.CursorList) bool {
+	for i in 0 .. body.len() {
+		if flat_subtree_has_defer(body.at(i)) {
+			return true
+		}
+	}
+	return false
+}
+
+// transform_fn_decl_streaming_to_flat is the cursor-native FnDecl path: it reads
+// the signature from the cursor (c.fn_decl_signature, body-less — no whole-decl
+// decode), runs the shared transform prologue (enter_fn_body_transform), streams
+// the body straight from the cursor's stmt list (c.list_at(3)) via the cursor
+// body driver — so the body is decoded one statement at a time instead of the
+// whole function at once — then runs the shared epilogue and emits the FnDecl.
+// The caller guarantees the body has no defers (defer lowering needs the whole
+// body, so defer functions take the legacy whole-decl path).
+fn (mut t Transformer) transform_fn_decl_streaming_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
+	lowered := t.fn_decl_with_implicit_veb_context_param(c.fn_decl_signature())
+	mut ctx := t.enter_fn_body_transform(lowered) or {
+		// Uninstantiated-generic skip / comptime-elided: empty body.
+		return t.emit_fn_decl_flat(lowered, lowered.attributes, []ast.FlatNodeId{}, mut out)
+	}
+	body_ids := t.transform_cursor_stmts_to_flat_direct(c.list_at(3), [], mut out)
+	t.restore_fn_body_transform_state(mut ctx)
+	attrs := t.finish_fn_body_transform(lowered, mut ctx)
+	return t.emit_fn_decl_flat(lowered, attrs, body_ids, mut out)
+}
+
+// transform_for_stmt_streaming_to_flat is the cursor-native counterpart to
+// `transform_stmt_to_flat`'s ForStmt arm for plain (non-for-in) loops. It
+// mirrors `transform_for_stmt`'s clean tail (for.v, the path taken when
+// `stmt.init` is NOT a ForInStmt): open a loop scope, push smartcasts derived
+// from `is` checks in the condition for the body, transform the body, pop the
+// smartcasts, then transform init/cond/post and close the scope. The one
+// difference is the body is STREAMED from the cursor
+// (`transform_cursor_stmts_to_flat_direct`) instead of decoded to `[]ast.Stmt`
+// and re-emitted — so a `for` loop's body (and any loops nested inside it,
+// recursively) never materialises as legacy AST.
+//
+// The body is transformed FIRST, preserving the legacy transform order so the
+// synthetic-position counter advances identically; the for-node's edges are
+// still assembled as [init, cond, post, body...], so the structural signature
+// and generated C are bit-identical to the decode path (arena order differs but
+// is irrelevant — both consumers follow edges, not node-id order).
+//
+// Precondition (the dispatcher checks it): `c.edge(0)` is not a stmt_for_in.
+// for-in lowering stays on the whole-decl decode path.
+fn (mut t Transformer) transform_for_stmt_streaming_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
+	// Open a child scope for loop variables (transform_for_stmt:562).
+	t.open_scope()
+	cond := c.edge(1).expr()
+	// `for x is Type { ... }`: push smartcast contexts from `is` terms in the
+	// (untransformed) condition for the body, exactly like transform_for_stmt.
+	mut loop_smartcasts := []SmartcastContext{}
+	for term in t.flatten_and_terms_unwrapped(cond) {
+		if term is ast.InfixExpr {
+			if ctx := t.smartcast_context_from_condition_term(term) {
+				loop_smartcasts << ctx
+			}
+		}
+	}
+	for ctx in loop_smartcasts {
+		t.push_smartcast_full(ctx.expr, ctx.variant, ctx.variant_full, ctx.sumtype)
+	}
+	body_ids := t.transform_cursor_stmts_to_flat_direct(c.for_body_list(), [], mut out)
+	for _ in loop_smartcasts {
+		t.pop_smartcast()
+	}
+	// init/cond/post transform after the body (matches the struct-literal field
+	// evaluation order in transform_for_stmt:701-706: init, cond, post).
+	init_id := out.emit_stmt(t.transform_stmt(c.edge(0).stmt()))
+	cond_id := out.emit_expr(t.transform_expr(cond))
+	post_id := out.emit_stmt(t.transform_stmt(c.edge(2).stmt()))
+	t.close_scope()
+	return out.emit_for_stmt_by_ids(init_id, cond_id, post_id, body_ids)
 }
 
 // expand_assert_stmt_to_flat is the flat-direct mirror of `expand_assert_stmt`
@@ -4298,20 +4595,7 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 			// helper.
 			lowered_stmt := t.fn_decl_with_implicit_veb_context_param(stmt)
 			attrs, stmt_ids := t.transform_fn_decl_parts_to_flat(lowered_stmt, mut out)
-			receiver := if lowered_stmt.is_method {
-				lowered_stmt.receiver
-			} else {
-				ast.Parameter{
-					typ: ast.empty_expr
-				}
-			}
-			receiver_id := out.emit_parameter(receiver)
-			typ_id := out.emit_type(ast.Type(lowered_stmt.typ))
-			attrs_id := out.emit_attribute_list(attrs)
-			stmts_list_id := out.emit_aux_list_from_ids(stmt_ids)
-			return out.emit_fn_decl_by_ids(lowered_stmt.name, lowered_stmt.is_public,
-				lowered_stmt.is_method, lowered_stmt.is_static, lowered_stmt.language,
-				lowered_stmt.pos, receiver_id, typ_id, attrs_id, stmts_list_id)
+			return t.emit_fn_decl_flat(lowered_stmt, attrs, stmt_ids, mut out)
 		}
 		else {
 			// Unreachable in practice — the `[]ast.Attribute` variant is

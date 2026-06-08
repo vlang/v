@@ -6,12 +6,9 @@ import v2.ast
 import v2.pref
 
 fn parse_files_for_parse_test(mut b Builder, paths []string) []ast.File {
-	files := b.parse_files(paths)
-	if b.flat_check_enabled {
-		b.flat = b.flat_builder.flat
-		return b.flat.to_files()
-	}
-	return files
+	b.parse_files(paths)
+	b.flat = b.flat_builder.flat
+	return b.flat.to_files()
 }
 
 fn test_parse_files_keeps_single_file_inputs_isolated() {

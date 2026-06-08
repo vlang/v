@@ -4286,16 +4286,8 @@ fn (mut b Builder) register_fn_signatures(file ast.File) {
 
 // register_fn_signatures_from_flat is the flat-cursor counterpart of
 // `register_fn_signatures`. Walks one file's top-level stmts via FileCursor
-// and rehydrates only `.stmt_fn_decl` nodes — and only via
-// `decode_fn_decl_signature` which returns an FnDecl with `stmts = []`.
-//
-// The body skip is the major saving over the legacy walker: `register_fn_sig`
-// only reads decl.name, decl.typ, decl.is_method, decl.is_static,
-// decl.receiver, decl.language, decl.attributes — NEVER decl.stmts. So the
-// per-fn decode in this phase costs the signature (params + return type) and
-// nothing more. Fn bodies dominate file decode time so this is the largest
-// per-stmt savings of any SSA phase port. Same `decode_fn_decl_signature`
-// trick that s165's `explicit_str_method_fn_names_from_flat` already validated.
+// and reads `.stmt_fn_decl` signatures directly from cursor edges. Fn bodies
+// are never materialized in this phase.
 fn (mut b Builder) register_fn_signatures_from_flat(file_cursor ast.FileCursor) {
 	stmts := file_cursor.stmts()
 	for si in 0 .. stmts.len() {
@@ -4675,10 +4667,8 @@ pub fn (mut b Builder) build_fn_bodies(file ast.File) {
 
 // build_fn_bodies_from_flat is the flat-cursor counterpart of `build_fn_bodies`.
 // Walks one file's top-level stmts via FileCursor; only `.stmt_fn_decl` nodes
-// are touched. Each fn body is built via `build_fn_from_flat(c)`, which uses
-// `decode_fn_decl_signature` (no body decode) and walks body stmts directly
-// via cursors. No `flat.decode_stmt` rehydration of the FnDecl body remains —
-// this is the s185 wiring step that drops the last per-decl body decode.
+// are touched. Filtering and body building read the FnDecl cursor directly, and
+// body stmts are walked via cursors.
 pub fn (mut b Builder) build_fn_bodies_from_flat(file_cursor ast.FileCursor) {
 	file_name := file_cursor.name()
 	b.selective_import_fn_names =
@@ -4689,21 +4679,21 @@ pub fn (mut b Builder) build_fn_bodies_from_flat(file_cursor ast.FileCursor) {
 		if c.kind() != .stmt_fn_decl {
 			continue
 		}
-		decl := c.flat.decode_fn_decl_signature(c.id)
 		body := c.list_at(3)
-		if decl.language == .c && body.len() == 0 {
+		language := unsafe { ast.Language(int(c.aux())) }
+		if language == .c && body.len() == 0 {
 			continue
 		}
-		if decl.typ.generic_params.len > 0 {
+		if c.edge(1).list_at(0).len() > 0 {
 			continue
 		}
 		if b.hot_fn.len > 0 {
-			mangled := b.mangle_fn_name(decl)
+			mangled := b.mangle_fn_name_from_flat(c)
 			if mangled != b.hot_fn {
 				continue
 			}
 		}
-		if !b.should_build_fn(file_name, decl) {
+		if !b.should_build_fn_from_flat(file_name, c) {
 			continue
 		}
 		b.build_fn_from_flat(c)
@@ -4750,6 +4740,41 @@ pub fn (mut b Builder) should_build_fn(file_name string, decl ast.FnDecl) bool {
 	}
 	// Check markused reachability
 	key := markused.decl_key(b.cur_module, decl, b.env)
+	return key in b.used_fn_keys
+}
+
+fn (mut b Builder) should_build_fn_from_flat(file_name string, c ast.Cursor) bool {
+	if b.should_skip_module_file(file_name) {
+		return false
+	}
+	if b.used_fn_keys.len == 0 {
+		return true
+	}
+	name := c.name()
+	if name == 'main' {
+		return true
+	}
+	if name.starts_with('__v_init_consts_') || name == 'init' || name == 'deinit' {
+		if b.minimal_runtime_roots {
+			key := markused.decl_key_from_cursor(b.cur_module, c, b.env)
+			return key in b.used_fn_keys
+		}
+		return true
+	}
+	if !b.minimal_runtime_roots
+		&& b.cur_module in ['builtin', 'strings', 'strconv', 'bits', 'sha256', 'binary'] {
+		return true
+	}
+	if file_name.ends_with('.vh') {
+		return true
+	}
+	if c.flag(ast.flag_is_method) {
+		mangled := b.mangle_fn_name_from_flat(c)
+		if !b.minimal_runtime_roots && (mangled.contains('__Array_') || mangled.contains('__Map_')) {
+			return true
+		}
+	}
+	key := markused.decl_key_from_cursor(b.cur_module, c, b.env)
 	return key in b.used_fn_keys
 }
 
@@ -4914,11 +4939,9 @@ pub fn (mut b Builder) build_fn(decl ast.FnDecl) {
 }
 
 // build_fn_from_flat is the flat-cursor counterpart of `build_fn`. Takes a
-// `.stmt_fn_decl` cursor directly: signature comes from
-// `decode_fn_decl_signature(c.id)` (no body decode), and the body stmts are
-// walked via `c.list_at(3)` + `build_stmts_from_flat`. No `[]ast.Stmt`
-// rehydration of the body. Mirrors `build_fn` line-for-line for the
-// signature/params setup; the only divergence is the body source.
+// `.stmt_fn_decl` cursor directly: signature fields come from cursor edges, and
+// body stmts are walked via `c.list_at(3)` + `build_stmts_from_flat`. No
+// `[]ast.Stmt` rehydration of the body remains.
 pub fn (mut b Builder) build_fn_from_flat(c ast.Cursor) {
 	// s244: read the FnDecl signature straight from the cursor — no decode.
 	// FnDecl flat: name in name_id, language in aux, is_method/is_static flags;
@@ -8010,11 +8033,7 @@ fn (mut b Builder) build_expr_from_flat(c ast.Cursor) ValueID {
 			return b.build_string_inter_from_flat(c)
 		}
 		.expr_match {
-			match_expr := c.flat.decode_expr(c.id)
-			if match_expr is ast.MatchExpr {
-				return b.build_match_expr(match_expr)
-			}
-			return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+			return b.build_match_expr_from_flat(c)
 		}
 		.expr_or {
 			return b.build_or_from_flat(c)
@@ -8861,6 +8880,26 @@ fn (mut b Builder) build_sumtype_variant_compare_expr(sum_val ValueID, variant_e
 	return b.mod.add_instr(cmp_op, b.cur_block, bool_type, [tag_val, expected])
 }
 
+fn (mut b Builder) build_sumtype_variant_compare_expr_from_flat(sum_val ValueID, variant_expr ast.Cursor, op token.Token) ?ValueID {
+	if op !in [.eq, .ne] || !b.valid_value_id(sum_val) {
+		return none
+	}
+	sum_type := b.mod.values[sum_val].typ
+	if !b.ssa_type_is_sumtype(sum_type) {
+		return none
+	}
+	info := b.match_sumtype_branch_info_from_flat(sum_type, variant_expr) or { return none }
+	sum_info := b.mod.type_store.types[sum_type]
+	i64_t := b.mod.type_store.get_int(64)
+	tag_type := if sum_info.fields.len > 0 { sum_info.fields[0] } else { i64_t }
+	tag_idx := b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+	tag_val := b.mod.add_instr(.extractvalue, b.cur_block, tag_type, [sum_val, tag_idx])
+	expected := b.mod.get_or_add_const(tag_type, info.tag.str())
+	bool_type := b.mod.type_store.get_int(1)
+	cmp_op := if op == .eq { OpCode.eq } else { OpCode.ne }
+	return b.mod.add_instr(cmp_op, b.cur_block, bool_type, [tag_val, expected])
+}
+
 // build_infix_from_flat (s211) mirrors `build_infix` cursor-natively.
 // InfixExpr flat encoding (`flat.v:1956`) is
 // `(.expr_infix, pos, -1, -1, u16(op), 0, [edge0=lhs, edge1=rhs])`.
@@ -8929,13 +8968,11 @@ fn (mut b Builder) build_infix_from_flat(c ast.Cursor) ValueID {
 	}
 
 	lhs := b.build_expr_from_flat(lhs_c)
-	rhs_expr := rhs_c.flat.decode_expr(rhs_c.id)
-	if tag_cmp := b.build_sumtype_variant_compare_expr(lhs, rhs_expr, op) {
+	if tag_cmp := b.build_sumtype_variant_compare_expr_from_flat(lhs, rhs_c, op) {
 		return tag_cmp
 	}
 	rhs := b.build_expr_from_flat(rhs_c)
-	lhs_expr := lhs_c.flat.decode_expr(lhs_c.id)
-	if tag_cmp := b.build_sumtype_variant_compare_expr(rhs, lhs_expr, op) {
+	if tag_cmp := b.build_sumtype_variant_compare_expr_from_flat(rhs, lhs_c, op) {
 		return tag_cmp
 	}
 	result_type := b.expr_type_from_flat(c)
@@ -9764,9 +9801,8 @@ fn (b &Builder) array_literal_flat_value_type_can_infer_elem(c ast.Cursor, val V
 		return false
 	}
 	if c.kind() == .expr_basic_literal {
-		expr := c.flat.decode_expr(c.id)
-		if expr is ast.BasicLiteral && expr.kind == .number
-			&& !ssa_number_literal_is_float(expr.value) {
+		kind := unsafe { token.Token(int(c.aux())) }
+		if kind == .number && !ssa_number_literal_is_float(c.name()) {
 			return false
 		}
 	}
@@ -10235,20 +10271,7 @@ fn (mut b Builder) build_call_or_cast_from_flat(c ast.Cursor) ValueID {
 		name := lhs_c.name()
 		fn_name := b.resolve_call_name_ident_from_flat(lhs_c)
 		if fn_name in b.fn_index && !is_builtin_cast_type_name(name) && !b.known_type_name(name) {
-			lhs_expr := ast.Expr(ast.Ident{
-				name: name
-				pos:  lhs_c.pos()
-			})
-			args := if expr_c.kind() == .expr_empty {
-				[]ast.Expr{}
-			} else {
-				[expr_c.flat.decode_expr(expr_c.id)]
-			}
-			return b.build_call_resolved(fn_name, ast.CallExpr{
-				lhs:  lhs_expr
-				args: args
-				pos:  c.pos()
-			})
+			return b.build_call_resolved_from_flat(fn_name, c)
 		}
 	}
 	if lhs_c.kind() == .expr_selector {
@@ -10256,32 +10279,12 @@ fn (mut b Builder) build_call_or_cast_from_flat(c ast.Cursor) ValueID {
 		if mod_name := b.selector_module_name_from_flat(lhs_c) {
 			if (mod_name == 'C' || fn_name in b.fn_index)
 				&& !b.call_or_cast_selector_should_remain_cast_from_flat(lhs_c, fn_name) {
-				lhs_expr := lhs_c.flat.decode_expr(lhs_c.id)
-				args := if expr_c.kind() == .expr_empty {
-					[]ast.Expr{}
-				} else {
-					[expr_c.flat.decode_expr(expr_c.id)]
-				}
-				return b.build_call_resolved(fn_name, ast.CallExpr{
-					lhs:  lhs_expr
-					args: args
-					pos:  c.pos()
-				})
+				return b.build_call_resolved_from_flat(fn_name, c)
 			}
 		}
 		if fn_name in b.fn_index
 			&& !b.call_or_cast_selector_should_remain_cast_from_flat(lhs_c, fn_name) {
-			lhs_expr := lhs_c.flat.decode_expr(lhs_c.id)
-			args := if expr_c.kind() == .expr_empty {
-				[]ast.Expr{}
-			} else {
-				[expr_c.flat.decode_expr(expr_c.id)]
-			}
-			return b.build_call_resolved(fn_name, ast.CallExpr{
-				lhs:  lhs_expr
-				args: args
-				pos:  c.pos()
-			})
+			return b.build_call_resolved_from_flat(fn_name, c)
 		}
 	}
 	target_type := b.ast_type_to_ssa_from_flat(lhs_c)
@@ -12412,7 +12415,11 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 		''
 	}
 	n_edges := c.edge_count()
-	n_args := n_edges - 1
+	n_args := if c.kind() == .expr_call_or_cast && c.edge(1).kind() == .expr_empty {
+		0
+	} else {
+		n_edges - 1
+	}
 	mut fn_name := fn_name_in
 	mut module_call_name := ''
 	mut is_static_method_call := false
@@ -12489,8 +12496,8 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 				}
 				// Build arguments (no receiver - this is a field access, not a method call)
 				mut fnptr_args := []ValueID{}
-				for i in 1 .. n_edges {
-					arg_c := c.edge(i)
+				for arg_i in 0 .. n_args {
+					arg_c := c.edge(1 + arg_i)
 					if arg_c.kind() == .expr_modifier
 						&& unsafe { token.Token(int(arg_c.aux())) } == .key_mut {
 						addr := b.build_addr_from_flat(arg_c.edge(0))
@@ -12581,8 +12588,8 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 			args << receiver
 		}
 	}
-	for i in 1 .. n_edges {
-		arg_c := c.edge(i)
+	for arg_i in 0 .. n_args {
+		arg_c := c.edge(1 + arg_i)
 		// For mut arguments, pass the address (pointer) instead of the value.
 		if arg_c.kind() == .expr_modifier && unsafe { token.Token(int(arg_c.aux())) } == .key_mut {
 			inner_c := arg_c.edge(0)
@@ -15522,6 +15529,61 @@ fn match_bool_branch_cond_expr(conds []ast.Expr, match_value bool) ast.Expr {
 	return branch_cond
 }
 
+fn match_expr_bool_literal_from_flat(c ast.Cursor) ?bool {
+	match c.kind() {
+		.expr_basic_literal {
+			kind := unsafe { token.Token(int(c.aux())) }
+			if kind == .key_true {
+				return true
+			}
+			if kind == .key_false {
+				return false
+			}
+		}
+		.expr_keyword {
+			tok := unsafe { token.Token(int(c.aux())) }
+			if tok == .key_true {
+				return true
+			}
+			if tok == .key_false {
+				return false
+			}
+		}
+		.expr_paren {
+			return match_expr_bool_literal_from_flat(c.edge(0))
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (mut b Builder) build_bool_match_branch_cond_from_flat(conds ast.CursorList, match_value bool) ValueID {
+	bool_type := b.mod.type_store.get_int(1)
+	mut branch_cond := ValueID(0)
+	for i in 0 .. conds.len() {
+		mut single_cond := b.build_expr_from_flat(conds.at(i))
+		if !match_value {
+			single_type := if b.valid_value_id(single_cond) {
+				b.mod.values[single_cond].typ
+			} else {
+				bool_type
+			}
+			zero := b.mod.get_or_add_const(single_type, '0')
+			single_cond = b.mod.add_instr(.eq, b.cur_block, bool_type, [single_cond, zero])
+		}
+		if branch_cond == 0 {
+			branch_cond = single_cond
+		} else {
+			branch_cond = b.mod.add_instr(.or_, b.cur_block, bool_type, [branch_cond, single_cond])
+		}
+	}
+	if branch_cond == 0 {
+		return b.mod.get_or_add_const(bool_type, '0')
+	}
+	return branch_cond
+}
+
 fn (mut b Builder) build_match_branch_value(branch ast.MatchBranch) ValueID {
 	if branch.stmts.len == 0 {
 		return 0
@@ -15534,6 +15596,22 @@ fn (mut b Builder) build_match_branch_value(branch ast.MatchBranch) ValueID {
 		return b.build_expr(last.expr)
 	}
 	b.build_stmt(last)
+	return 0
+}
+
+fn (mut b Builder) build_match_branch_value_from_flat(branch ast.Cursor) ValueID {
+	stmts := branch.list_at(1)
+	if stmts.len() == 0 {
+		return 0
+	}
+	for i := 0; i < stmts.len() - 1; i++ {
+		b.build_stmt_from_flat(stmts.at(i))
+	}
+	last := stmts.at(stmts.len() - 1)
+	if last.kind() == .stmt_expr {
+		return b.build_expr_from_flat(last.edge(0))
+	}
+	b.build_stmt_from_flat(last)
 	return 0
 }
 
@@ -15642,6 +15720,76 @@ fn (mut b Builder) build_bool_match_expr(expr ast.MatchExpr, match_value bool) V
 	return b.mod.add_instr(.phi, merge_block, phi_type, phi_operands)
 }
 
+fn (mut b Builder) build_bool_match_expr_from_flat(c ast.Cursor, match_value bool) ValueID {
+	if c.edge_count() <= 1 {
+		return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+	}
+
+	i64_t := b.mod.type_store.get_int(64)
+	result_type := b.expr_type_from_flat(c)
+	merge_block := b.mod.add_block(b.cur_func, 'matchx_merge')
+	mut incoming := []MatchExprIncoming{}
+	saved_local_smartcasts := b.local_smartcasts.clone()
+	mut reached_else := false
+
+	for i in 1 .. c.edge_count() {
+		branch := c.edge(i)
+		conds := branch.list_at(0)
+		b.local_smartcasts = saved_local_smartcasts.clone()
+		if conds.len() == 0 {
+			value := b.build_match_branch_value_from_flat(branch)
+			end_block := b.cur_block
+			if !b.block_has_terminator(b.cur_block) {
+				b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+				b.add_edge(b.cur_block, merge_block)
+				incoming << MatchExprIncoming{
+					value: value
+					block: end_block
+				}
+			}
+			reached_else = true
+			break
+		}
+
+		cond_val := b.build_bool_match_branch_cond_from_flat(conds, match_value)
+		then_block := b.mod.add_block(b.cur_func, 'matchx_branch')
+		next_block := b.mod.add_block(b.cur_func, 'matchx_next')
+		b.mod.add_instr(.br, b.cur_block, 0,
+			[cond_val, b.mod.blocks[then_block].val_id, b.mod.blocks[next_block].val_id])
+		b.add_edge(b.cur_block, then_block)
+		b.add_edge(b.cur_block, next_block)
+
+		b.cur_block = then_block
+		if match_value && conds.len() == 1 {
+			b.apply_local_smartcasts(b.smartcast_variant_type_ids_from_condition_from_flat(conds.at(0)))
+		}
+		value := b.build_match_branch_value_from_flat(branch)
+		end_block := b.cur_block
+		if !b.block_has_terminator(b.cur_block) {
+			b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+			b.add_edge(b.cur_block, merge_block)
+			incoming << MatchExprIncoming{
+				value: value
+				block: end_block
+			}
+		}
+		b.cur_block = next_block
+	}
+
+	b.local_smartcasts = saved_local_smartcasts.clone()
+	if !reached_else && !b.block_has_terminator(b.cur_block) {
+		end_block := b.cur_block
+		b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+		b.add_edge(b.cur_block, merge_block)
+		incoming << MatchExprIncoming{
+			value: 0
+			block: end_block
+		}
+	}
+
+	return b.build_match_phi(merge_block, incoming, result_type, i64_t)
+}
+
 fn (mut b Builder) build_match_phi(merge_block BlockID, incoming []MatchExprIncoming, result_type TypeID, i64_t TypeID) ValueID {
 	b.cur_block = merge_block
 	if b.mod.blocks[merge_block].preds.len == 0 {
@@ -15704,6 +15852,51 @@ fn sumtype_variant_candidate_names(expr ast.Expr) []string {
 	}
 }
 
+fn sumtype_variant_candidate_names_from_flat(expr ast.Cursor) []string {
+	match expr.kind() {
+		.expr_paren {
+			return sumtype_variant_candidate_names_from_flat(expr.edge(0))
+		}
+		.expr_ident {
+			name := expr.name()
+			if name == '' {
+				return []string{}
+			}
+			return [name]
+		}
+		.expr_selector {
+			rhs := expr.edge(1)
+			rhs_name := if rhs.kind() == .expr_ident { rhs.name() } else { '' }
+			if rhs_name == '' {
+				return []string{}
+			}
+			mut names := []string{}
+			lhs := expr.edge(0)
+			if lhs.kind() == .expr_ident {
+				lhs_name := lhs.name()
+				if lhs_name != '' {
+					names << '${lhs_name}__${rhs_name}'
+					names << '${lhs_name}.${rhs_name}'
+				}
+			}
+			names << rhs_name
+			return names
+		}
+		.expr_init {
+			return sumtype_variant_candidate_names_from_flat(expr.edge(0))
+		}
+		.expr_call_or_cast {
+			return sumtype_variant_candidate_names_from_flat(expr.edge(0))
+		}
+		.expr_cast {
+			return sumtype_variant_candidate_names_from_flat(expr.edge(0))
+		}
+		else {
+			return []string{}
+		}
+	}
+}
+
 fn (mut b Builder) sumtype_variant_type_for_name(sumtype_type TypeID, candidate string) ?TypeID {
 	if candidate == '' || b.env == unsafe { nil } {
 		return none
@@ -15749,6 +15942,21 @@ fn (mut b Builder) sumtype_variant_type_for_expr(sumtype_type TypeID, expr ast.E
 	return none
 }
 
+fn (mut b Builder) sumtype_variant_type_for_expr_from_flat(sumtype_type TypeID, expr ast.Cursor) ?TypeID {
+	for candidate in sumtype_variant_candidate_names_from_flat(expr) {
+		if variant_type := b.sumtype_variant_type_for_name(sumtype_type, candidate) {
+			return variant_type
+		}
+	}
+	variant_type := b.smartcast_rhs_variant_type_id_from_flat(expr, true)
+	if b.valid_type_id(variant_type) {
+		if _ := b.sumtype_variant_tag(sumtype_type, variant_type) {
+			return variant_type
+		}
+	}
+	return none
+}
+
 fn (mut b Builder) match_sumtype_branch_info(sumtype_type TypeID, cond ast.Expr) ?MatchSumtypeBranchInfo {
 	if cond is ast.ParenExpr {
 		return b.match_sumtype_branch_info(sumtype_type, cond.expr)
@@ -15764,10 +15972,34 @@ fn (mut b Builder) match_sumtype_branch_info(sumtype_type TypeID, cond ast.Expr)
 	}
 }
 
+fn (mut b Builder) match_sumtype_branch_info_from_flat(sumtype_type TypeID, cond ast.Cursor) ?MatchSumtypeBranchInfo {
+	if cond.kind() == .expr_paren {
+		return b.match_sumtype_branch_info_from_flat(sumtype_type, cond.edge(0))
+	}
+	variant_type := b.sumtype_variant_type_for_expr_from_flat(sumtype_type, cond) or { return none }
+	if !b.valid_type_id(variant_type) || variant_type == sumtype_type {
+		return none
+	}
+	tag := b.sumtype_variant_tag(sumtype_type, variant_type) or { return none }
+	return MatchSumtypeBranchInfo{
+		tag:          tag
+		variant_type: variant_type
+	}
+}
+
 fn (mut b Builder) match_sumtype_branch_infos(sumtype_type TypeID, conds []ast.Expr) []MatchSumtypeBranchInfo {
 	mut infos := []MatchSumtypeBranchInfo{}
 	for cond in conds {
 		info := b.match_sumtype_branch_info(sumtype_type, cond) or { continue }
+		infos << info
+	}
+	return infos
+}
+
+fn (mut b Builder) match_sumtype_branch_infos_from_flat(sumtype_type TypeID, conds ast.CursorList) []MatchSumtypeBranchInfo {
+	mut infos := []MatchSumtypeBranchInfo{}
+	for i in 0 .. conds.len() {
+		info := b.match_sumtype_branch_info_from_flat(sumtype_type, conds.at(i)) or { continue }
 		infos << info
 	}
 	return infos
@@ -15797,6 +16029,16 @@ fn (mut b Builder) apply_sumtype_match_smartcast(subject ast.Expr, infos []Match
 		return
 	}
 	expr_name := b.smartcast_expr_name(subject)
+	if expr_name != '' {
+		b.local_smartcasts[expr_name] = infos[0].variant_type
+	}
+}
+
+fn (mut b Builder) apply_sumtype_match_smartcast_from_flat(subject ast.Cursor, infos []MatchSumtypeBranchInfo) {
+	if infos.len != 1 {
+		return
+	}
+	expr_name := b.smartcast_expr_name_from_flat(subject)
 	if expr_name != '' {
 		b.local_smartcasts[expr_name] = infos[0].variant_type
 	}
@@ -15872,6 +16114,79 @@ fn (mut b Builder) build_sumtype_match_expr(expr ast.MatchExpr, subject ValueID,
 	return b.build_match_phi(merge_block, incoming, result_type, i64_t)
 }
 
+fn (mut b Builder) build_sumtype_match_expr_from_flat(c ast.Cursor, subject ValueID, subject_type TypeID) ValueID {
+	if c.edge_count() <= 1 {
+		return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+	}
+	i64_t := b.mod.type_store.get_int(64)
+	result_type := b.expr_type_from_flat(c)
+	type_info := b.mod.type_store.types[subject_type]
+	tag_type := if type_info.fields.len > 0 { type_info.fields[0] } else { i64_t }
+	tag_idx := b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+	tag_val := b.mod.add_instr(.extractvalue, b.cur_block, tag_type, [subject, tag_idx])
+	merge_block := b.mod.add_block(b.cur_func, 'matchx_merge')
+	mut incoming := []MatchExprIncoming{}
+	saved_local_smartcasts := b.local_smartcasts.clone()
+	mut reached_else := false
+	subject_c := c.edge(0)
+
+	for i in 1 .. c.edge_count() {
+		branch := c.edge(i)
+		conds := branch.list_at(0)
+		b.local_smartcasts = saved_local_smartcasts.clone()
+		if conds.len() == 0 {
+			value := b.build_match_branch_value_from_flat(branch)
+			end_block := b.cur_block
+			if !b.block_has_terminator(b.cur_block) {
+				b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+				b.add_edge(b.cur_block, merge_block)
+				incoming << MatchExprIncoming{
+					value: value
+					block: end_block
+				}
+			}
+			reached_else = true
+			break
+		}
+
+		infos := b.match_sumtype_branch_infos_from_flat(subject_type, conds)
+		cond_val := b.build_sumtype_match_condition(tag_val, infos)
+		then_block := b.mod.add_block(b.cur_func, 'matchx_branch')
+		next_block := b.mod.add_block(b.cur_func, 'matchx_next')
+		b.mod.add_instr(.br, b.cur_block, 0,
+			[cond_val, b.mod.blocks[then_block].val_id, b.mod.blocks[next_block].val_id])
+		b.add_edge(b.cur_block, then_block)
+		b.add_edge(b.cur_block, next_block)
+
+		b.cur_block = then_block
+		b.apply_sumtype_match_smartcast_from_flat(subject_c, infos)
+		value := b.build_match_branch_value_from_flat(branch)
+		end_block := b.cur_block
+		if !b.block_has_terminator(b.cur_block) {
+			b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+			b.add_edge(b.cur_block, merge_block)
+			incoming << MatchExprIncoming{
+				value: value
+				block: end_block
+			}
+		}
+		b.cur_block = next_block
+	}
+
+	b.local_smartcasts = saved_local_smartcasts.clone()
+	if !reached_else && !b.block_has_terminator(b.cur_block) {
+		end_block := b.cur_block
+		b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+		b.add_edge(b.cur_block, merge_block)
+		incoming << MatchExprIncoming{
+			value: 0
+			block: end_block
+		}
+	}
+
+	return b.build_match_phi(merge_block, incoming, result_type, i64_t)
+}
+
 fn (mut b Builder) build_match_expr(expr ast.MatchExpr) ValueID {
 	if match_value := match_expr_bool_literal(expr.expr) {
 		return b.build_bool_match_expr(expr, match_value)
@@ -15881,6 +16196,21 @@ fn (mut b Builder) build_match_expr(expr ast.MatchExpr) ValueID {
 		subject_type := b.mod.values[subject].typ
 		if b.ssa_type_is_sumtype(subject_type) {
 			return b.build_sumtype_match_expr(expr, subject, subject_type)
+		}
+	}
+	return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+}
+
+fn (mut b Builder) build_match_expr_from_flat(c ast.Cursor) ValueID {
+	subject_c := c.edge(0)
+	if match_value := match_expr_bool_literal_from_flat(subject_c) {
+		return b.build_bool_match_expr_from_flat(c, match_value)
+	}
+	subject := b.build_expr_from_flat(subject_c)
+	if b.valid_value_id(subject) {
+		subject_type := b.mod.values[subject].typ
+		if b.ssa_type_is_sumtype(subject_type) {
+			return b.build_sumtype_match_expr_from_flat(c, subject, subject_type)
 		}
 	}
 	return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')

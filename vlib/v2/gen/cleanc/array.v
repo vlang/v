@@ -725,6 +725,11 @@ fn (mut g Gen) infer_array_elem_type_from_expr(arr_expr ast.Expr) string {
 		ast.AsCastExpr {
 			return g.infer_array_elem_type_from_expr(arr_expr.expr)
 		}
+		ast.IndexExpr {
+			if arr_expr.expr is ast.RangeExpr {
+				return g.infer_array_elem_type_from_expr(arr_expr.lhs)
+			}
+		}
 		ast.SelectorExpr {
 			field_type := g.selector_array_value_type(arr_expr)
 			if field_type != '' {

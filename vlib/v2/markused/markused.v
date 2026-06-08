@@ -155,6 +155,15 @@ pub fn decl_key(module_name string, decl ast.FnDecl, env &types.Environment) str
 	return '${mod_name}|f|${decl.name}'
 }
 
+// decl_key_from_cursor computes the stable markused key for a flat FnDecl cursor.
+pub fn decl_key_from_cursor(module_name string, c ast.Cursor, env &types.Environment) string {
+	decl := c.fn_decl_signature()
+	if decl.name == '' {
+		return ''
+	}
+	return decl_key(module_name, decl, env)
+}
+
 fn new_walker(files []ast.File, env &types.Environment, opts MarkUsedOptions) Walker {
 	return Walker{
 		files:                          files
@@ -881,10 +890,7 @@ fn (mut w Walker) collect_defs_from_flat(flat &ast.FlatAst) {
 			c := stmts_list.at(i)
 			match c.kind() {
 				.stmt_fn_decl {
-					// Signature-only decode skips read_stmt_list(body_id),
-					// which dominates collect_defs time when the body is
-					// large. The cursor walk reads the body directly later.
-					fn_decl := flat.decode_fn_decl_signature(c.id)
+					fn_decl := c.fn_decl_signature()
 					if fn_decl.name == '' {
 						continue
 					}
@@ -903,8 +909,7 @@ fn (mut w Walker) collect_defs_from_flat(flat &ast.FlatAst) {
 				}
 				.stmt_struct_decl, .stmt_enum_decl, .stmt_interface_decl, .stmt_type_decl,
 				.stmt_global_decl {
-					stmt := flat.decode_stmt(c.id)
-					w.collect_def_stmt(stmt, mod_name, file_name, c.id)
+					w.collect_def_cursor(c, mod_name)
 				}
 				else {}
 			}
@@ -1069,6 +1074,30 @@ fn (mut w Walker) collect_def_stmt(stmt ast.Stmt, mod_name string, file_name str
 			w.fns << info
 			idx := w.fns.len - 1
 			w.index_fn(idx, info)
+		}
+		else {}
+	}
+}
+
+fn (mut w Walker) collect_def_cursor(c ast.Cursor, mod_name string) {
+	if !c.is_valid() {
+		return
+	}
+	match c.kind() {
+		.stmt_struct_decl {
+			w.add_type_name(mod_name, c.name())
+			w.add_struct_field_receivers_cursor(mod_name, c)
+			w.add_struct_embedded_receivers_cursor(mod_name, c)
+			w.add_struct_fn_fields_cursor(mod_name, c)
+		}
+		.stmt_enum_decl, .stmt_type_decl {
+			w.add_type_name(mod_name, c.name())
+		}
+		.stmt_interface_decl {
+			w.add_interface_decl_cursor(mod_name, c)
+		}
+		.stmt_global_decl {
+			w.add_global_interface_names_cursor(mod_name, c)
 		}
 		else {}
 	}
@@ -1659,6 +1688,38 @@ fn (w &Walker) cursor_has_fn_value_type(c ast.Cursor) bool {
 	return false
 }
 
+fn (w &Walker) type_expr_is_fn_value_cursor(c ast.Cursor, mod_name string) bool {
+	if !c.is_valid() {
+		return false
+	}
+	if w.cursor_has_fn_value_type(c) {
+		return true
+	}
+	match c.kind() {
+		.expr_ident {
+			return w.type_name_is_fn_value(c.name(), mod_name)
+		}
+		.expr_selector {
+			lhs_c := c.edge(0)
+			rhs_c := c.edge(1)
+			if lhs_c.is_valid() && lhs_c.kind() == .expr_ident && rhs_c.is_valid() {
+				real_mod := w.module_alias_to_real[lhs_c.name()] or { lhs_c.name() }
+				return w.type_name_is_fn_value(rhs_c.name(), real_mod)
+					|| w.type_name_is_fn_value('${real_mod}__${rhs_c.name()}', real_mod)
+			}
+		}
+		.expr_prefix, .expr_modifier, .typ_pointer, .typ_generic {
+			return w.type_expr_is_fn_value_cursor(c.edge(0), mod_name)
+		}
+		.typ_fn {
+			return true
+		}
+		else {}
+	}
+
+	return false
+}
+
 fn add_receiver_name_candidates(mut out []string, mod_name string, raw_name string) {
 	name := sanitize_receiver_name(raw_name)
 	if name == '' {
@@ -1797,7 +1858,8 @@ fn type_expr_receiver_candidates_cursor(c ast.Cursor, mod_name string) []string 
 				add_unique_string(mut out, '${lhs_c.name()}__${rhs_c.name()}')
 			}
 		}
-		.expr_prefix, .expr_modifier, .typ_pointer, .typ_generic {
+		.expr_prefix, .expr_modifier, .expr_generic_args, .expr_generic_arg_or_index, .typ_pointer,
+		.typ_generic {
 			return type_expr_receiver_candidates_cursor(c.edge(0), mod_name)
 		}
 		.expr_ident {
@@ -1806,7 +1868,58 @@ fn type_expr_receiver_candidates_cursor(c ast.Cursor, mod_name string) []string 
 		else {}
 	}
 
+	name := receiver_type_expr_name_cursor(c)
+	if name != '' {
+		add_receiver_name_candidates(mut out, mod_name, name)
+	}
 	return out
+}
+
+fn receiver_type_expr_name_cursor(c ast.Cursor) string {
+	if !c.is_valid() {
+		return ''
+	}
+	match c.kind() {
+		.expr_ident {
+			return c.name()
+		}
+		.expr_selector {
+			rhs := c.edge(1)
+			if rhs.is_valid() {
+				return rhs.name()
+			}
+		}
+		.expr_prefix, .expr_modifier, .expr_generic_args, .expr_generic_arg_or_index, .typ_pointer,
+		.typ_generic {
+			return receiver_type_expr_name_cursor(c.edge(0))
+		}
+		.typ_array {
+			elem_name := receiver_type_expr_name_cursor(c.edge(0))
+			if elem_name != '' {
+				return 'Array_${elem_name}'
+			}
+		}
+		.typ_array_fixed {
+			elem_name := receiver_type_expr_name_cursor(c.edge(1))
+			len_name := receiver_fixed_array_len_name_cursor(c.edge(0))
+			if elem_name != '' && len_name != '' {
+				return 'Array_fixed_${elem_name}_${len_name}'
+			}
+		}
+		else {}
+	}
+
+	return ''
+}
+
+fn receiver_fixed_array_len_name_cursor(c ast.Cursor) string {
+	if !c.is_valid() {
+		return ''
+	}
+	if c.kind() == .expr_basic_literal || c.kind() == .expr_ident {
+		return c.name()
+	}
+	return c.name()
 }
 
 fn receiver_names_from_decl(mod_name string, decl ast.FnDecl, env &types.Environment) []string {
@@ -2028,6 +2141,54 @@ fn (mut w Walker) add_interface_decl(mod_name string, decl ast.InterfaceDecl) {
 	}
 }
 
+fn (mut w Walker) add_interface_decl_cursor(mod_name string, decl ast.Cursor) {
+	w.add_interface_name(mod_name, decl.name())
+	mut method_names := []string{}
+	fields := decl.list_at(3)
+	for i in 0 .. fields.len() {
+		field := fields.at(i)
+		typ := field.edge(0)
+		if field.flag(ast.flag_field_is_interface_method) && typ.is_valid() && typ.kind() == .typ_fn {
+			add_unique_fn_name(mut method_names, field.name())
+			add_unique_fn_name(mut method_names, normalize_method_name(field.name()))
+		}
+	}
+	mut embedded_names := []string{}
+	embedded := decl.list_at(2)
+	for i in 0 .. embedded.len() {
+		for embedded_name in type_expr_receiver_candidates_cursor(embedded.at(i), mod_name) {
+			add_unique_string(mut embedded_names, embedded_name)
+		}
+	}
+	mut iface_names := []string{}
+	add_unique_string(mut iface_names, decl.name())
+	add_unique_string(mut iface_names, maybe_trim_module_prefix(mod_name, decl.name()))
+	if mod_name != '' && mod_name != 'main' {
+		trimmed := maybe_trim_module_prefix(mod_name, decl.name())
+		add_unique_string(mut iface_names, '${mod_name}__${trimmed}')
+	}
+	for iface_name in iface_names {
+		if method_names.len > 0 {
+			if iface_name in w.interface_method_names {
+				mut existing := w.interface_method_names[iface_name]
+				for method_name in method_names {
+					add_unique_fn_name(mut existing, method_name)
+				}
+				w.interface_method_names[iface_name] = existing
+			} else {
+				w.interface_method_names[iface_name] = method_names.clone()
+			}
+		}
+		if embedded_names.len > 0 {
+			mut existing := w.interface_embedded_names[iface_name] or { []string{} }
+			for embedded_name in embedded_names {
+				add_unique_string(mut existing, embedded_name)
+			}
+			w.interface_embedded_names[iface_name] = existing
+		}
+	}
+}
+
 fn (mut w Walker) add_struct_field_receivers(mod_name string, decl ast.StructDecl) {
 	mut struct_names := []string{}
 	add_receiver_name_candidates(mut struct_names, mod_name, decl.name)
@@ -2038,6 +2199,27 @@ fn (mut w Walker) add_struct_field_receivers(mod_name string, decl ast.StructDec
 		}
 		for struct_name in struct_names {
 			key := '${struct_name}:${field.name}'
+			mut existing := w.struct_field_receivers[key] or { []string{} }
+			for receiver in field_receivers {
+				add_unique_string(mut existing, receiver)
+			}
+			w.struct_field_receivers[key] = existing
+		}
+	}
+}
+
+fn (mut w Walker) add_struct_field_receivers_cursor(mod_name string, decl ast.Cursor) {
+	mut struct_names := []string{}
+	add_receiver_name_candidates(mut struct_names, mod_name, decl.name())
+	fields := decl.list_at(4)
+	for i in 0 .. fields.len() {
+		field := fields.at(i)
+		field_receivers := type_expr_receiver_candidates_cursor(field.edge(0), mod_name)
+		if field_receivers.len == 0 {
+			continue
+		}
+		for struct_name in struct_names {
+			key := '${struct_name}:${field.name()}'
 			mut existing := w.struct_field_receivers[key] or { []string{} }
 			for receiver in field_receivers {
 				add_unique_string(mut existing, receiver)
@@ -2068,6 +2250,28 @@ fn (mut w Walker) add_struct_embedded_receivers(mod_name string, decl ast.Struct
 	}
 }
 
+fn (mut w Walker) add_struct_embedded_receivers_cursor(mod_name string, decl ast.Cursor) {
+	embedded := decl.list_at(2)
+	if embedded.len() == 0 {
+		return
+	}
+	mut struct_names := []string{}
+	add_receiver_name_candidates(mut struct_names, mod_name, decl.name())
+	for i in 0 .. embedded.len() {
+		embedded_receivers := type_expr_receiver_candidates_cursor(embedded.at(i), mod_name)
+		if embedded_receivers.len == 0 {
+			continue
+		}
+		for struct_name in struct_names {
+			mut existing := w.struct_embedded_receivers[struct_name] or { []string{} }
+			for receiver in embedded_receivers {
+				add_unique_string(mut existing, receiver)
+			}
+			w.struct_embedded_receivers[struct_name] = existing
+		}
+	}
+}
+
 fn (mut w Walker) add_struct_fn_fields(mod_name string, decl ast.StructDecl) {
 	mut struct_names := []string{}
 	add_receiver_name_candidates(mut struct_names, mod_name, decl.name)
@@ -2077,6 +2281,21 @@ fn (mut w Walker) add_struct_fn_fields(mod_name string, decl ast.StructDecl) {
 		}
 		for struct_name in struct_names {
 			w.struct_fn_fields['${struct_name}:${field.name}'] = true
+		}
+	}
+}
+
+fn (mut w Walker) add_struct_fn_fields_cursor(mod_name string, decl ast.Cursor) {
+	mut struct_names := []string{}
+	add_receiver_name_candidates(mut struct_names, mod_name, decl.name())
+	fields := decl.list_at(4)
+	for i in 0 .. fields.len() {
+		field := fields.at(i)
+		if !w.type_expr_is_fn_value_cursor(field.edge(0), mod_name) {
+			continue
+		}
+		for struct_name in struct_names {
+			w.struct_fn_fields['${struct_name}:${field.name()}'] = true
 		}
 	}
 }
@@ -2114,6 +2333,21 @@ fn (mut w Walker) add_global_interface_names(mod_name string, decl ast.GlobalDec
 		w.global_interface_names[field.name] = iface_name
 		if mod_name != '' && mod_name != 'main' && mod_name != 'builtin' {
 			w.global_interface_names['${mod_name}__${field.name}'] = iface_name
+		}
+	}
+}
+
+fn (mut w Walker) add_global_interface_names_cursor(mod_name string, decl ast.Cursor) {
+	fields := decl.list_at(1)
+	for i in 0 .. fields.len() {
+		field := fields.at(i)
+		iface_name := w.interface_name_from_cursor(field.edge(0), mod_name)
+		if iface_name == '' {
+			continue
+		}
+		w.global_interface_names[field.name()] = iface_name
+		if mod_name != '' && mod_name != 'main' && mod_name != 'builtin' {
+			w.global_interface_names['${mod_name}__${field.name()}'] = iface_name
 		}
 	}
 }

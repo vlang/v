@@ -2563,6 +2563,11 @@ fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
 	if !transformer_string_has_valid_data(expr.rhs.name) {
 		return none
 	}
+	if smartcast_type := t.smartcast_type_for_expr(expr.lhs) {
+		if field_typ := t.field_type_from_receiver_type(smartcast_type, expr.rhs.name) {
+			return field_typ
+		}
+	}
 	if expr.lhs is ast.Ident {
 		lhs_name := expr.lhs.name
 		if !transformer_string_has_valid_data(lhs_name) {

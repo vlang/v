@@ -385,6 +385,28 @@ fn (t &Transformer) amp_type_cast_expr(expr ast.Expr) ?ast.Expr {
 				pos:      expr.pos
 			}
 		}
+		ast.SelectorExpr {
+			if expr.lhs !is ast.CallOrCastExpr {
+				return none
+			}
+			cast_lhs := expr.lhs as ast.CallOrCastExpr
+			if !t.call_or_cast_lhs_is_type(cast_lhs.lhs) {
+				return none
+			}
+			return ast.SelectorExpr{
+				lhs: ast.CastExpr{
+					typ:  ast.PrefixExpr{
+						op:   .amp
+						expr: cast_lhs.lhs
+						pos:  cast_lhs.pos
+					}
+					expr: cast_lhs.expr
+					pos:  cast_lhs.pos
+				}
+				rhs: expr.rhs
+				pos: expr.pos
+			}
+		}
 		else {
 			return none
 		}
@@ -489,33 +511,7 @@ fn (mut t Transformer) transform_index_expr(expr ast.IndexExpr) ast.Expr {
 			mut stmts := []ast.Stmt{}
 
 			// Map arg: map__get expects a pointer to the map.
-			mut map_arg := ast.Expr(ast.empty_expr)
-			lhs_val := t.transform_expr(expr.lhs)
-			if t.is_pointer_type(map_expr_typ) {
-				map_arg = lhs_val
-			} else if t.can_take_address_expr(lhs_val) {
-				map_arg = ast.Expr(ast.PrefixExpr{
-					op:   .amp
-					expr: lhs_val
-				})
-			} else {
-				map_tmp := t.gen_temp_name()
-				map_ident := t.typed_temp_ident(map_tmp, map_expr_typ)
-				mut map_lhs := []ast.Expr{cap: 1}
-				map_lhs << ast.Expr(map_ident)
-				mut map_rhs := []ast.Expr{cap: 1}
-				map_rhs << lhs_val
-				stmts << ast.Stmt(ast.AssignStmt{
-					op:  .decl_assign
-					lhs: map_lhs
-					rhs: map_rhs
-					pos: map_ident.pos
-				})
-				map_arg = ast.Expr(ast.PrefixExpr{
-					op:   .amp
-					expr: map_ident
-				})
-			}
+			map_arg := t.map_expr_to_runtime_ptr(expr.lhs, map_expr_typ, map_type)
 
 			// Key temp (so we can take its address safely for the duration of the whole expression).
 			key_tmp := t.gen_temp_name()
@@ -1542,21 +1538,30 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 								} else {
 									variant_name
 								}
-								transformed_lhs := t.transform_tag_check_lhs(lhs_infix.lhs)
+								transformed_lhs := t.transform_tag_check_lhs_for_sumtype(lhs_infix.lhs,
+									sumtype_name)
 								// Push smartcast for body and inner condition
 								smartcast_stack_before := t.smartcast_stack.clone()
 								smartcast_counts_before := t.smartcast_expr_counts.clone()
 								t.push_smartcast_full(smartcast_expr, qualified_variant,
 									qualified_variant_full, sumtype_name)
+								condition_smartcast_stack := t.smartcast_stack.clone()
+								condition_smartcast_counts := t.smartcast_expr_counts.clone()
 								// Check if inner condition (rest) is also an is-check
 								mut inner_cond_lowered := false
 								mut inner_tag_check := ast.Expr(ast.BasicLiteral{
 									kind:  token.Token.number
 									value: '0'
 								})
-								if cond.rhs is ast.InfixExpr
-									&& (cond.rhs as ast.InfixExpr).op in [.key_is, .eq] {
-									orig_inner := cond.rhs as ast.InfixExpr
+								inner_rhs_expr := smartcast_lhs_expr(cond.rhs)
+								if inner_rhs_expr is ast.InfixExpr
+									&& (inner_rhs_expr as ast.InfixExpr).op in [.key_is, .eq] {
+									orig_inner := inner_rhs_expr as ast.InfixExpr
+									mut inner_smartcast_pushed := false
+									if inner_ctx := t.smartcast_context_from_is_check(orig_inner) {
+										t.push_smartcast_ctx(inner_ctx)
+										inner_smartcast_pushed = true
+									}
 									mut inner_vname := ''
 									mut inner_vmodule := ''
 									if orig_inner.rhs is ast.Ident {
@@ -1589,23 +1594,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 													break
 												}
 											}
-											if inner_tag >= 0 {
-												// Transform inner LHS with outer smartcast
-												inner_expr_str := t.expr_to_string(orig_inner.lhs)
-												transformed_inner_lhs := if ctx := t.find_smartcast_for_expr(inner_expr_str) {
-													t.apply_smartcast_direct_ctx(orig_inner.lhs, ctx)
-												} else {
-													t.transform_expr(orig_inner.lhs)
-												}
-												inner_tag_check = ast.Expr(ast.InfixExpr{
-													op:  token.Token.eq
-													lhs: t.synth_selector(transformed_inner_lhs,
-														'_tag', types.Type(types.int_))
-													rhs: ast.BasicLiteral{
-														kind:  token.Token.number
-														value: '${inner_tag}'
-													}
-												})
+											if inner_tag >= 0 && !inner_smartcast_pushed {
 												// Push inner smartcast for body
 												inner_qv := if inner_vmodule != '' {
 													'${inner_vmodule}__${inner_vname}'
@@ -1624,7 +1613,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 												inner_se := t.expr_to_string(orig_inner.lhs)
 												t.push_smartcast_full(inner_se, inner_qv,
 													inner_qvf, inner_stype)
-												inner_cond_lowered = true
+												inner_smartcast_pushed = true
 											}
 										}
 									}
@@ -1636,6 +1625,8 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 								// nested if, while the outer smartcast is active.
 								saved_rest_pending := t.pending_stmts
 								t.pending_stmts = []ast.Stmt{}
+								t.smartcast_stack = condition_smartcast_stack.clone()
+								t.smartcast_expr_counts = condition_smartcast_counts.clone()
 								transformed_rest := if inner_cond_lowered {
 									inner_tag_check
 								} else {
@@ -1776,7 +1767,7 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 		if cond.op in [.key_is, .eq] && t.smartcast_context_from_is_check(cond) != none {
 			if ctx := t.smartcast_context_from_is_check(cond) {
 				if tag_value := t.smartcast_context_tag_value(ctx) {
-					transformed_lhs := t.transform_tag_check_lhs(cond.lhs)
+					transformed_lhs := t.transform_tag_check_lhs_for_sumtype(cond.lhs, ctx.sumtype)
 
 					t.push_smartcast_ctx(ctx)
 					transformed_stmts := t.transform_stmts(expr.stmts)
@@ -1875,7 +1866,8 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 							variant_name
 						}
 
-						transformed_lhs := t.transform_tag_check_lhs(cond.lhs)
+						transformed_lhs := t.transform_tag_check_lhs_for_sumtype(cond.lhs,
+							sumtype_name)
 
 						// Push smart cast context for transforming body (supports nested smartcasts)
 						t.push_smartcast_full(smartcast_expr, qualified_variant,
@@ -2357,7 +2349,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 					}
 				}
 				if tag_value >= 0 {
-					transformed_lhs := t.transform_expr(expr.lhs)
+					transformed_lhs := t.transform_tag_check_lhs_for_sumtype(expr.lhs, sumtype_name)
 					cmp_op := if expr.op in [.key_is, .eq] {
 						token.Token.eq
 					} else {
@@ -2538,18 +2530,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 						pos: expr.pos
 					}
 				}
-				mut map_ptr := ast.Expr(ast.empty_expr)
-				rhs_trans := t.transform_expr(expr.rhs)
-				if rhs_type is types.Pointer {
-					map_ptr = rhs_trans
-				} else if t.can_take_address_expr(rhs_trans) {
-					map_ptr = ast.Expr(ast.PrefixExpr{
-						op:   .amp
-						expr: rhs_trans
-					})
-				} else {
-					map_ptr = t.addr_of_expr_with_temp(expr.rhs, map_typ)
-				}
+				map_ptr := t.map_expr_to_runtime_ptr(expr.rhs, rhs_type, map_typ)
 				// For the key, declare a temp variable in the same scope as the
 				// map__exists call so the pointer stays valid during the call.
 				// Using addr_of_expr_with_temp would nest the temp inside a

@@ -1181,8 +1181,8 @@ fn test_flat_parity_for_in_map() {
 // --- parity: check_files vs check_flat upstream ---
 //
 // The flat-input checker (Checker.check_flat) is the next migration row in
-// the parse → check → transform → markused → SSA chain. Today it's
-// opt-in via V2_CHECK_FLAT=1. This family asserts that the env produced
+// the parse → check → transform → markused → SSA chain. This family asserts
+// that the env produced
 // by check_flat is shape-compatible with the env from check_files — by
 // running an identical transform over each and comparing signatures of
 // the result.
@@ -1391,8 +1391,8 @@ fn test_check_flat_parity_for_in_map() {
 // transform_files_to_flat is the API wedge for the future
 // "transformer writes directly into a FlatBuilder" port. Today it
 // composes transform_files_from_flat with a boundary flatten_files();
-// callers that only need flat output (the V2_MARKUSED_FLAT path in the
-// builder) route through here and will get the eventual peak-memory win
+// callers that only need flat output route through here and will get the
+// eventual peak-memory win
 // without further changes.
 //
 // This row pins the contract: the FlatAst returned by

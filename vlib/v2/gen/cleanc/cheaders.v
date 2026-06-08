@@ -739,6 +739,20 @@ fn (mut g Gen) emit_collected_c_directives() {
 	if g.target_os_name() == 'cross' {
 		cross_source_paths = g.collect_cross_directives_from_original_sources(mut seen)
 	}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			file_name := fc.name()
+			if file_name in cross_source_paths {
+				continue
+			}
+			g.set_file_cursor_module(fc)
+			emit_implementation_directives := g.should_emit_current_file()
+			g.collect_directives_from_cursor_stmts(fc.stmts(), file_name,
+				emit_implementation_directives, mut seen)
+		}
+		return
+	}
 	for file in g.files {
 		if file.name in cross_source_paths {
 			continue
@@ -757,6 +771,24 @@ fn (mut g Gen) collect_cross_directives_from_original_sources(mut seen map[strin
 	mut parsed_paths := map[string]bool{}
 	mut file_set := token.FileSet.new()
 	mut par := parser.Parser.new(g.pref)
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			source_path := fc.name()
+			if source_path == '' || source_path in parsed_paths || !os.exists(source_path) {
+				continue
+			}
+			parsed_paths[source_path] = true
+			source_files := par.parse_files([source_path], mut file_set)
+			for source_file in source_files {
+				g.set_file_module(source_file)
+				emit_implementation_directives := g.should_emit_current_file()
+				g.collect_directives_from_stmts(source_file.stmts, source_file.name,
+					emit_implementation_directives, mut seen)
+			}
+		}
+		return parsed_paths
+	}
 	for file in g.files {
 		source_path := file.name
 		if source_path == '' || source_path in parsed_paths || !os.exists(source_path) {
@@ -777,6 +809,62 @@ fn (mut g Gen) collect_cross_directives_from_original_sources(mut seen map[strin
 fn (mut g Gen) collect_directives_from_stmts(stmts []ast.Stmt, file_name string, emit_implementation_directives bool, mut seen map[string]bool) {
 	g.collect_directives_from_stmts_with_ct_cond(stmts, file_name, emit_implementation_directives,
 		'', mut seen)
+}
+
+fn (mut g Gen) collect_directives_from_cursor_stmts(stmts ast.CursorList, file_name string, emit_implementation_directives bool, mut seen map[string]bool) {
+	g.collect_directives_from_cursor_stmts_with_ct_cond(stmts, file_name,
+		emit_implementation_directives, '', mut seen)
+}
+
+fn (mut g Gen) collect_directives_from_cursor_stmts_with_ct_cond(stmts ast.CursorList, file_name string, emit_implementation_directives bool, outer_ct_cond string, mut seen map[string]bool) {
+	g.collect_directives_from_cursor_stmts_with_ct_cond_and_seen_guard(stmts, file_name,
+		emit_implementation_directives, outer_ct_cond, '', mut seen)
+}
+
+fn (mut g Gen) collect_directives_from_cursor_stmts_with_ct_cond_and_seen_guard(stmts ast.CursorList, file_name string, emit_implementation_directives bool, outer_ct_cond string, active_seen_guard string, mut seen map[string]bool) {
+	if outer_ct_cond != '' && g.target_os_name() == 'cross' {
+		if guard := g.cross_directive_guard(outer_ct_cond) {
+			if guard == '0' {
+				return
+			}
+			if guard != '' {
+				g.sb.writeln('#if ${guard}')
+				g.collect_directives_from_cursor_stmts_with_ct_cond_and_seen_guard(stmts,
+					file_name, emit_implementation_directives, '', combine_ct_conditions(active_seen_guard,
+					guard), mut seen)
+				g.sb.writeln('#endif')
+				return
+			}
+		}
+	}
+	for i in 0 .. stmts.len() {
+		stmt := stmts.at(i)
+		match stmt.kind() {
+			.stmt_directive {
+				g.emit_directive_with_outer_ct_cond_and_seen_guard(directive_from_cursor(stmt),
+					file_name, emit_implementation_directives, outer_ct_cond, active_seen_guard, mut
+					seen)
+			}
+			.stmt_expr {
+				g.collect_directives_from_expr_with_ct_cond_and_seen_guard(stmt.edge(0).expr(),
+					file_name, emit_implementation_directives, outer_ct_cond, active_seen_guard, mut
+					seen)
+			}
+			else {}
+		}
+	}
+}
+
+fn directive_from_cursor(c ast.Cursor) ast.Directive {
+	if !c.is_valid() || c.kind() != .stmt_directive {
+		return ast.Directive{}
+	}
+	ct_cond := if c.edge_count() > 0 { c.edge(0).name() } else { '' }
+	return ast.Directive{
+		name:    c.name()
+		value:   c.extra_str()
+		ct_cond: ct_cond
+	}
 }
 
 fn (mut g Gen) collect_directives_from_stmts_with_ct_cond(stmts []ast.Stmt, file_name string, emit_implementation_directives bool, outer_ct_cond string, mut seen map[string]bool) {
@@ -1453,6 +1541,9 @@ fn (mut g Gen) emit_runtime_aliases() {
 	mut option_names := g.option_aliases.keys()
 	option_names.sort()
 	for name in option_names {
+		if g.should_skip_shadowed_option_result_alias(name) {
+			continue
+		}
 		val_type := option_value_type(name)
 		g.emit_option_result_forward_decl(name, val_type)
 	}
@@ -1462,6 +1553,9 @@ fn (mut g Gen) emit_runtime_aliases() {
 	mut result_names := g.result_aliases.keys()
 	result_names.sort()
 	for name in result_names {
+		if g.should_skip_shadowed_option_result_alias(name) {
+			continue
+		}
 		val_type := g.result_value_type(name)
 		g.emit_option_result_forward_decl(name, val_type)
 	}
@@ -1662,6 +1756,20 @@ fn (mut g Gen) gen_enum_from_string_helper(node ast.EnumDecl) {
 }
 
 fn (mut g Gen) emit_enum_from_string_helpers() {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() == .stmt_enum_decl {
+					g.gen_enum_from_string_helper(stmt.enum_decl(true))
+				}
+			}
+		}
+		return
+	}
 	for file in g.files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
@@ -1748,6 +1856,35 @@ fn (mut g Gen) enum_decl_field_int_value(enum_name string, field_name string) ?s
 	} else {
 		g.cur_module
 	}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			if module_name != '' && flat_file_module_name(fc) != module_name {
+				continue
+			}
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_enum_decl || stmt.name() != short_name {
+					continue
+				}
+				decl := stmt.enum_decl(true)
+				mut next_value := 0
+				for field in decl.fields {
+					if field.value !is ast.EmptyExpr {
+						if value := g.enum_field_value_int_expr(field.value) {
+							next_value = value.int()
+						}
+					}
+					if field.name == field_name {
+						return '${next_value}'
+					}
+					next_value++
+				}
+			}
+		}
+		return none
+	}
 	for file in g.files {
 		if module_name != '' && file.mod != module_name {
 			continue
@@ -1828,8 +1965,7 @@ fn (mut g Gen) emit_map_str_functions() {
 			continue
 		}
 		// Parse key and value types from Map_K_V name
-		without_prefix := name.all_after('Map_')
-		key_type, value_type := g.parse_map_kv_types(without_prefix)
+		key_type, value_type := g.map_alias_key_value_types(name)
 		if key_type == '' || value_type == '' {
 			continue
 		}
@@ -2002,8 +2138,7 @@ fn (mut g Gen) emit_map_eq_functions() {
 		if 'alias_${name}' !in g.emitted_types {
 			continue
 		}
-		without_prefix := name.all_after('Map_')
-		key_type, value_type := g.parse_map_kv_types(without_prefix)
+		key_type, value_type := g.map_alias_key_value_types(name)
 		if key_type == '' || value_type == '' {
 			g.sb.writeln('')
 			g.sb.writeln('bool ${name}_map_eq(${name} a, ${name} b) { return map_map_eq(a, b); }')
@@ -2146,22 +2281,45 @@ fn (mut g Gen) lookup_struct_type_by_c_name(c_name string) types.Struct {
 		}
 	}
 	// Try all module scopes from files
-	for file in g.files {
-		file_mod := file.mod
-		if tried[file_mod] {
-			continue
-		}
-		tried[file_mod] = true
-		if mut scope := g.env_scope(file_mod) {
-			if obj := scope.lookup_parent(struct_name, 0) {
-				typ := obj.typ()
-				if typ is types.Alias {
-					g.struct_type_lookup_miss[cache_key] = true
-					return types.Struct{}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			file_mod := flat_file_module_name(g.flat.file_cursor(i))
+			if tried[file_mod] {
+				continue
+			}
+			tried[file_mod] = true
+			if mut scope := g.env_scope(file_mod) {
+				if obj := scope.lookup_parent(struct_name, 0) {
+					typ := obj.typ()
+					if typ is types.Alias {
+						g.struct_type_lookup_miss[cache_key] = true
+						return types.Struct{}
+					}
+					if typ is types.Struct {
+						g.struct_type_lookup_cache[cache_key] = typ
+						return typ
+					}
 				}
-				if typ is types.Struct {
-					g.struct_type_lookup_cache[cache_key] = typ
-					return typ
+			}
+		}
+	} else {
+		for file in g.files {
+			file_mod := file.mod
+			if tried[file_mod] {
+				continue
+			}
+			tried[file_mod] = true
+			if mut scope := g.env_scope(file_mod) {
+				if obj := scope.lookup_parent(struct_name, 0) {
+					typ := obj.typ()
+					if typ is types.Alias {
+						g.struct_type_lookup_miss[cache_key] = true
+						return types.Struct{}
+					}
+					if typ is types.Struct {
+						g.struct_type_lookup_cache[cache_key] = typ
+						return typ
+					}
 				}
 			}
 		}
@@ -2218,6 +2376,16 @@ fn (mut g Gen) emit_struct_field_eq(s types.Struct, va string, vb string) {
 	}
 }
 
+fn (mut g Gen) map_alias_key_value_types(name string) (string, string) {
+	if info := g.ensure_map_type_info(name) {
+		if info.key_c_type != '' && info.value_c_type != '' {
+			return info.key_c_type, info.value_c_type
+		}
+	}
+	without_prefix := name.all_after('Map_')
+	return g.parse_map_kv_types(without_prefix)
+}
+
 // parse_map_kv_types parses key and value types from a "key_value" string.
 fn (g &Gen) parse_map_kv_types(kv_str string) (string, string) {
 	// Try simple primitive types first (they're unambiguous since they don't
@@ -2261,6 +2429,10 @@ fn (g &Gen) parse_map_kv_types(kv_str string) (string, string) {
 }
 
 fn (g &Gen) is_known_map_key_type(key string, simple_types []string) bool {
+	if key.starts_with('Array_fixed_') {
+		_, arr_len := g.parse_fixed_array_type(key)
+		return arr_len > 0
+	}
 	return key in g.map_aliases || key in g.array_aliases || key in g.emitted_types
 		|| 'body_${key}' in g.emitted_types || 'alias_${key}' in g.emitted_types
 		|| 'enum_${key}' in g.emitted_types || key in simple_types

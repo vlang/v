@@ -120,7 +120,7 @@ fn (r &FlatReader) read_file(ff FlatFile) File {
 
 // read_file_imports rehydrates only the static `imports` list of a file
 // without materializing the full File. Consumers that still need to walk
-// comptime-conditional imports can combine this with read_file_stmts.
+// comptime-conditional imports should walk FileCursor.stmts() directly.
 pub fn (flat &FlatAst) read_file_imports(ff FlatFile) []ImportStmt {
 	r := FlatReader{
 		flat: unsafe { flat }
@@ -139,23 +139,6 @@ pub fn (flat &FlatAst) read_file_imports(ff FlatFile) []ImportStmt {
 		}
 	}
 	return imports
-}
-
-// read_file_stmts rehydrates only the top-level statements of a file.
-// Used by consumers that walk file.stmts for comptime-conditional imports
-// or other top-level analysis without needing attrs/imports/selector_names.
-pub fn (flat &FlatAst) read_file_stmts(ff FlatFile) []Stmt {
-	r := FlatReader{
-		flat: unsafe { flat }
-	}
-	n := r.node(ff.file_id)
-	stmts_id := r.edge(n, 2)
-	mut stmts := []Stmt{}
-	stmt_children := r.list_children(stmts_id)
-	for cid in stmt_children {
-		stmts << r.read_stmt(cid)
-	}
-	return stmts
 }
 
 // decode_stmt rehydrates a single legacy ast.Stmt from a FlatNodeId. Useful

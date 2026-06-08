@@ -80,8 +80,21 @@ fn (mut c Checker) lifetime_validate_files(files []ast.File) {
 
 fn (mut c Checker) lifetime_validate_files_from_flat(flat &ast.FlatAst) {
 	for ff in flat.files {
-		for stmt in flat.read_file_stmts(ff) {
-			c.lifetime_validate_stmt(stmt)
+		stmts := ast.Cursor{
+			flat: unsafe { flat }
+			id:   ff.file_id
+		}.list_at(2)
+		for i in 0 .. stmts.len() {
+			stmt := stmts.at(i)
+			match stmt.kind() {
+				.stmt_fn_decl {
+					c.lifetime_validate_fn_decl_cursor(stmt)
+				}
+				.stmt_struct_decl {
+					c.lifetime_validate_struct_decl_cursor(stmt)
+				}
+				else {}
+			}
 		}
 	}
 }
@@ -178,6 +191,76 @@ fn (mut c Checker) lifetime_validate_fn_decl(decl ast.FnDecl) {
 	}
 }
 
+fn (mut c Checker) lifetime_validate_fn_decl_cursor(decl ast.Cursor) {
+	typ := decl.edge(1)
+	declared := c.lifetime_collect_declared_cursor(typ.list_at(0), 'fn `${decl.name()}`')
+	mut input_lifetimes := map[string]bool{}
+	mut receiver_has_ref := false
+	mut elision_synth_seq := 0
+
+	if decl.flag(ast.flag_is_method) {
+		receiver := decl.edge(0)
+		receiver_typ := receiver.edge(0)
+		used := lifetime_collect_used_in_type_cursor(receiver_typ)
+		for name in used {
+			c.lifetime_assert_declared(name, declared, receiver.pos(), 'fn `${decl.name()}`')
+			input_lifetimes[name] = true
+			receiver_has_ref = true
+		}
+		recv_elided := lifetime_count_elided_slots_cursor(receiver_typ)
+		for _ in 0 .. recv_elided {
+			synth := '\$self_${elision_synth_seq}'
+			elision_synth_seq++
+			input_lifetimes[synth] = true
+			receiver_has_ref = true
+		}
+	}
+
+	params := typ.list_at(1)
+	for i in 0 .. params.len() {
+		param := params.at(i)
+		param_typ := param.edge(0)
+		used := lifetime_collect_used_in_type_cursor(param_typ)
+		for name in used {
+			c.lifetime_assert_declared(name, declared, param.pos(), 'fn `${decl.name()}`')
+			input_lifetimes[name] = true
+		}
+		elided := lifetime_count_elided_slots_cursor(param_typ)
+		for _ in 0 .. elided {
+			synth := '\$elided_${elision_synth_seq}'
+			elision_synth_seq++
+			input_lifetimes[synth] = true
+		}
+	}
+
+	return_typ := typ.edge(2)
+	if return_typ.is_valid() && return_typ.kind() != .expr_empty {
+		used := lifetime_collect_used_in_type_cursor(return_typ)
+		for name in used {
+			c.lifetime_assert_declared(name, declared, decl.pos(), 'fn `${decl.name()}`')
+		}
+		return_ref_used := lifetime_collect_reference_lifetimes_in_type_cursor(return_typ)
+		for name in return_ref_used {
+			if name !in input_lifetimes {
+				c.lifetime_error_return_unbound(name, decl.name(), decl.pos())
+			}
+		}
+		if declared.len == 0 {
+			return
+		}
+		ret_elided := lifetime_count_elided_slots_cursor(return_typ)
+		if ret_elided > 0 {
+			if receiver_has_ref {
+			} else if input_lifetimes.len == 1 {
+			} else if input_lifetimes.len == 0 {
+				c.lifetime_error_elision_no_input(decl.name(), decl.pos())
+			} else {
+				c.lifetime_error_elision_ambiguous(decl.name(), decl.pos(), input_lifetimes)
+			}
+		}
+	}
+}
+
 // lifetime_validate_struct_decl checks lifetimes in struct field types.
 // A struct may declare lifetimes in its generic-param list; every lifetime
 // referenced from a field type must be declared there.
@@ -187,6 +270,18 @@ fn (mut c Checker) lifetime_validate_struct_decl(decl ast.StructDecl) {
 		used := lifetime_collect_used_in_type(field.typ)
 		for name in used {
 			c.lifetime_assert_declared(name, declared, decl.pos, 'struct `${decl.name}`')
+		}
+	}
+}
+
+fn (mut c Checker) lifetime_validate_struct_decl_cursor(decl ast.Cursor) {
+	declared := c.lifetime_collect_declared_cursor(decl.list_at(3), 'struct `${decl.name()}`')
+	fields := decl.list_at(4)
+	for i in 0 .. fields.len() {
+		field := fields.at(i)
+		used := lifetime_collect_used_in_type_cursor(field.edge(0))
+		for name in used {
+			c.lifetime_assert_declared(name, declared, decl.pos(), 'struct `${decl.name()}`')
 		}
 	}
 }
@@ -203,6 +298,21 @@ fn (mut c Checker) lifetime_collect_declared(params []ast.Expr, ctx_label string
 				c.lifetime_error_duplicate(le.name, ctx_label, le.pos)
 			}
 			declared[le.name] = true
+		}
+	}
+	return declared
+}
+
+fn (mut c Checker) lifetime_collect_declared_cursor(params ast.CursorList, ctx_label string) map[string]bool {
+	mut declared := map[string]bool{}
+	for i in 0 .. params.len() {
+		gp := params.at(i)
+		if gp.kind() == .expr_lifetime {
+			name := gp.name()
+			if name in declared {
+				c.lifetime_error_duplicate(name, ctx_label, gp.pos())
+			}
+			declared[name] = true
 		}
 	}
 	return declared
@@ -310,9 +420,29 @@ fn lifetime_collect_used_in_type(expr ast.Expr) []string {
 	return names
 }
 
+fn lifetime_collect_used_in_type_cursor(expr ast.Cursor) []string {
+	mut out := map[string]bool{}
+	lifetime_walk_type_cursor(expr, mut out, 0)
+	mut names := []string{}
+	for name, _ in out {
+		names << name
+	}
+	return names
+}
+
 fn lifetime_collect_reference_lifetimes_in_type(expr ast.Expr) []string {
 	mut out := map[string]bool{}
 	lifetime_walk_reference_type(expr, mut out, 0)
+	mut names := []string{}
+	for name, _ in out {
+		names << name
+	}
+	return names
+}
+
+fn lifetime_collect_reference_lifetimes_in_type_cursor(expr ast.Cursor) []string {
+	mut out := map[string]bool{}
+	lifetime_walk_reference_type_cursor(expr, mut out, 0)
 	mut names := []string{}
 	for name, _ in out {
 		names << name
@@ -345,6 +475,59 @@ fn lifetime_walk_type(expr ast.Expr, mut out map[string]bool, depth int) {
 	}
 }
 
+fn lifetime_walk_type_cursor(expr ast.Cursor, mut out map[string]bool, depth int) {
+	if depth > 32 || !expr.is_valid() {
+		return
+	}
+	match expr.kind() {
+		.expr_lifetime {
+			out[expr.name()] = true
+		}
+		.expr_generic_arg_or_index {
+			lifetime_walk_type_cursor(expr.edge(0), mut out, depth + 1)
+			lifetime_walk_type_cursor(expr.edge(1), mut out, depth + 1)
+		}
+		.typ_pointer {
+			lifetime := expr.name()
+			if lifetime.len > 0 && lifetime != '_' {
+				out[lifetime] = true
+			}
+			lifetime_walk_type_cursor(expr.edge(0), mut out, depth + 1)
+		}
+		.typ_array {
+			lifetime_walk_type_cursor(expr.edge(0), mut out, depth + 1)
+		}
+		.typ_array_fixed {
+			lifetime_walk_type_cursor(expr.edge(1), mut out, depth + 1)
+		}
+		.typ_map {
+			lifetime_walk_type_cursor(expr.edge(0), mut out, depth + 1)
+			lifetime_walk_type_cursor(expr.edge(1), mut out, depth + 1)
+		}
+		.typ_option, .typ_result, .typ_thread {
+			lifetime_walk_type_cursor(expr.edge(0), mut out, depth + 1)
+		}
+		.typ_tuple {
+			for i in 0 .. expr.edge_count() {
+				lifetime_walk_type_cursor(expr.edge(i), mut out, depth + 1)
+			}
+		}
+		.typ_generic {
+			for i in 1 .. expr.edge_count() {
+				lifetime_walk_type_cursor(expr.edge(i), mut out, depth + 1)
+			}
+		}
+		.typ_fn {
+			params := expr.list_at(1)
+			for i in 0 .. params.len() {
+				lifetime_walk_type_cursor(params.at(i).edge(0), mut out, depth + 1)
+			}
+			lifetime_walk_type_cursor(expr.edge(2), mut out, depth + 1)
+		}
+		else {}
+	}
+}
+
 fn lifetime_walk_reference_type(expr ast.Expr, mut out map[string]bool, depth int) {
 	if depth > 32 {
 		return
@@ -362,6 +545,56 @@ fn lifetime_walk_reference_type(expr ast.Expr, mut out map[string]bool, depth in
 	}
 }
 
+fn lifetime_walk_reference_type_cursor(expr ast.Cursor, mut out map[string]bool, depth int) {
+	if depth > 32 || !expr.is_valid() {
+		return
+	}
+	match expr.kind() {
+		.expr_generic_arg_or_index {
+			lifetime_walk_reference_type_cursor(expr.edge(0), mut out, depth + 1)
+			lifetime_walk_reference_type_cursor(expr.edge(1), mut out, depth + 1)
+		}
+		.typ_pointer {
+			lifetime := expr.name()
+			if lifetime.len > 0 && lifetime != '_' {
+				out[lifetime] = true
+			}
+			lifetime_walk_reference_type_cursor(expr.edge(0), mut out, depth + 1)
+		}
+		.typ_array {
+			lifetime_walk_reference_type_cursor(expr.edge(0), mut out, depth + 1)
+		}
+		.typ_array_fixed {
+			lifetime_walk_reference_type_cursor(expr.edge(1), mut out, depth + 1)
+		}
+		.typ_map {
+			lifetime_walk_reference_type_cursor(expr.edge(0), mut out, depth + 1)
+			lifetime_walk_reference_type_cursor(expr.edge(1), mut out, depth + 1)
+		}
+		.typ_option, .typ_result, .typ_thread {
+			lifetime_walk_reference_type_cursor(expr.edge(0), mut out, depth + 1)
+		}
+		.typ_tuple {
+			for i in 0 .. expr.edge_count() {
+				lifetime_walk_reference_type_cursor(expr.edge(i), mut out, depth + 1)
+			}
+		}
+		.typ_generic {
+			for i in 1 .. expr.edge_count() {
+				lifetime_walk_reference_type_cursor(expr.edge(i), mut out, depth + 1)
+			}
+		}
+		.typ_fn {
+			params := expr.list_at(1)
+			for i in 0 .. params.len() {
+				lifetime_walk_reference_type_cursor(params.at(i).edge(0), mut out, depth + 1)
+			}
+			lifetime_walk_reference_type_cursor(expr.edge(2), mut out, depth + 1)
+		}
+		else {}
+	}
+}
+
 // lifetime_count_elided_slots returns the number of reference slots in a
 // type that lack an explicit named lifetime. Both bare `&T` (no `^`) and
 // the anonymous lifetime form `&^_ T` count. Used by elision rules to
@@ -372,12 +605,57 @@ fn lifetime_count_elided_slots(expr ast.Expr) int {
 	return counter[0]
 }
 
+fn lifetime_count_elided_slots_cursor(expr ast.Cursor) int {
+	mut counter := [0]
+	lifetime_walk_count_cursor(expr, mut counter, 0)
+	return counter[0]
+}
+
 fn lifetime_walk_count(expr ast.Expr, mut counter []int, depth int) {
 	if depth > 32 {
 		return
 	}
 	if expr is ast.Type {
 		lifetime_walk_count_inner(expr, mut counter, depth)
+	}
+}
+
+fn lifetime_walk_count_cursor(expr ast.Cursor, mut counter []int, depth int) {
+	if depth > 32 || !expr.is_valid() {
+		return
+	}
+	match expr.kind() {
+		.typ_pointer {
+			lifetime := expr.name()
+			if lifetime.len == 0 || lifetime == '_' {
+				counter[0]++
+			}
+			lifetime_walk_count_cursor(expr.edge(0), mut counter, depth + 1)
+		}
+		.typ_array {
+			lifetime_walk_count_cursor(expr.edge(0), mut counter, depth + 1)
+		}
+		.typ_array_fixed {
+			lifetime_walk_count_cursor(expr.edge(1), mut counter, depth + 1)
+		}
+		.typ_map {
+			lifetime_walk_count_cursor(expr.edge(0), mut counter, depth + 1)
+			lifetime_walk_count_cursor(expr.edge(1), mut counter, depth + 1)
+		}
+		.typ_option, .typ_result, .typ_thread {
+			lifetime_walk_count_cursor(expr.edge(0), mut counter, depth + 1)
+		}
+		.typ_tuple {
+			for i in 0 .. expr.edge_count() {
+				lifetime_walk_count_cursor(expr.edge(i), mut counter, depth + 1)
+			}
+		}
+		.typ_generic {
+			for i in 1 .. expr.edge_count() {
+				lifetime_walk_count_cursor(expr.edge(i), mut counter, depth + 1)
+			}
+		}
+		else {}
 	}
 }
 

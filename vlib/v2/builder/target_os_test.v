@@ -18,63 +18,39 @@ fn write_test_file(path string) {
 }
 
 fn parse_test_files(mut b Builder, paths []string) []ast.File {
-	files := b.parse_files(paths)
-	if b.flat_check_enabled {
-		b.flat = b.flat_builder.flat
-		return b.flat.to_files()
-	}
-	return files
+	b.parse_files(paths)
+	b.flat = b.flat_builder.flat
+	return b.flat.to_files()
 }
 
 fn parse_test_builder_files(mut b Builder, paths []string) {
 	b.files = b.parse_files(paths)
-	if b.flat_check_enabled {
-		b.flat = b.flat_builder.flat
-	}
+	b.flat = b.flat_builder.flat
 }
 
 fn transform_test_builder_files(mut b Builder, mut trans transformer.Transformer) {
-	if b.markused_flat_enabled && b.flat_check_enabled {
-		new_flat, files_out := trans.transform_files_to_flat(&b.flat, b.files)
-		b.flat = new_flat
-		b.files = files_out
-		return
-	}
-	if b.flat_check_enabled {
-		b.files = trans.transform_files_from_flat(&b.flat, b.files)
-		b.flat = ast.flatten_files(b.files)
-		return
-	}
-	b.files = trans.transform_files(b.files)
+	new_flat, files_out := trans.transform_files_to_flat(&b.flat, b.files)
+	b.flat = new_flat
+	b.files = files_out
 }
 
 fn mark_used_windows_x64_test(mut b Builder) map[string]bool {
 	opts := markused.MarkUsedOptions{
 		minimal_runtime_roots: true
 	}
-	if b.markused_flat_enabled && b.flat_check_enabled {
-		return markused.mark_used_flat_with_options(&b.flat, b.env, opts)
-	}
-	return markused.mark_used_with_options(b.files, b.env, opts)
+	return markused.mark_used_flat_with_options(&b.flat, b.env, opts)
 }
 
 fn build_test_ssa(mut b Builder, mut ssa_builder ssa.Builder) {
-	if b.flat_check_enabled {
-		ssa_builder.build_all_from_flat(&b.flat)
-		return
-	}
-	ssa_builder.build_all(b.files)
+	ssa_builder.build_all_from_flat(&b.flat)
 }
 
-fn test_ssa_c_backend_keeps_flat_for_codegen() {
+fn test_flat_codegen_backends_keep_flat_for_codegen() {
 	mut prefs := pref.Preferences{
 		backend: .c
 	}
 	mut b := Builder{
-		pref:                  &prefs
-		flat_check_enabled:    true
-		markused_flat_enabled: true
-		flat_ssa_enabled:      true
+		pref: &prefs
 	}
 
 	assert b.should_keep_flat_for_codegen()
@@ -84,7 +60,7 @@ fn test_ssa_c_backend_keeps_flat_for_codegen() {
 	assert b.should_build_ssa_from_flat()
 
 	prefs.backend = .cleanc
-	assert !b.should_keep_flat_for_codegen()
+	assert b.should_keep_flat_for_codegen()
 	prefs.backend = .v
 	assert !b.should_keep_flat_for_codegen()
 	prefs.backend = .x64
@@ -116,13 +92,10 @@ fn test_gen_ssa_c_consumes_flat_codegen_input() {
 		output_file: output_path
 	}
 	mut b := Builder{
-		pref:                  &prefs
-		files:                 files
-		env:                   types.Environment.new()
-		flat:                  ast.flatten_files(files)
-		flat_check_enabled:    true
-		markused_flat_enabled: true
-		flat_ssa_enabled:      true
+		pref:  &prefs
+		files: files
+		env:   types.Environment.new()
+		flat:  ast.flatten_files(files)
 	}
 
 	b.gen_ssa_c()
@@ -662,14 +635,14 @@ fn test_windows_x64_minimal_runtime_map_string_generates_referenced_wyhash_stub_
 }
 
 fn test_windows_x64_minimal_runtime_map_string_generates_referenced_wyhash_stub_flat() {
-	res := build_windows_x64_sample_configured(windows_x64_map_string_wyhash_source(), false, true,
-		true, true)
+	res :=
+		build_windows_x64_sample_configured(windows_x64_map_string_wyhash_source(), false, true, true)
 	assert_windows_x64_map_string_wyhash_resolved(res)
 }
 
 fn test_windows_x64_minimal_runtime_map_string_generates_referenced_wyhash_stub_native_builder_path() {
 	res := build_windows_x64_sample_configured(windows_x64_map_string_wyhash_source(), false, true,
-		false, false)
+		false)
 	assert_windows_x64_map_string_wyhash_resolved(res)
 }
 
@@ -1080,13 +1053,13 @@ fn assert_no_windows_large_runtime_module_retention(built_functions []string) {
 }
 
 fn build_windows_x64_sample(source string, link bool, optimize bool) WindowsX64BuildResult {
-	return build_windows_x64_sample_configured(source, link, optimize, true, false)
+	return build_windows_x64_sample_configured(source, link, optimize, true)
 }
 
-fn build_windows_x64_sample_configured(source string, link bool, optimize bool, no_parallel bool, use_flat bool) WindowsX64BuildResult {
+fn build_windows_x64_sample_configured(source string, link bool, optimize bool, no_parallel bool) WindowsX64BuildResult {
 	return build_windows_x64_sample_with_files_configured({
 		'main.v': source
-	}, link, optimize, no_parallel, use_flat)
+	}, link, optimize, no_parallel)
 }
 
 fn build_windows_x64_markused_sample(source string) map[string]bool {
@@ -1181,12 +1154,12 @@ fn windows_x64_markused_key_contains(used map[string]bool, needle string) bool {
 }
 
 fn build_windows_x64_sample_with_files(sources map[string]string, link bool, optimize bool) WindowsX64BuildResult {
-	return build_windows_x64_sample_with_files_configured(sources, link, optimize, true, false)
+	return build_windows_x64_sample_with_files_configured(sources, link, optimize, true)
 }
 
-fn build_windows_x64_sample_with_files_configured(sources map[string]string, link bool, optimize bool, no_parallel bool, use_flat bool) WindowsX64BuildResult {
+fn build_windows_x64_sample_with_files_configured(sources map[string]string, link bool, optimize bool, no_parallel bool) WindowsX64BuildResult {
 	tmp_dir := os.join_path(os.temp_dir(),
-		'v2_builder_windows_x64_sample_${os.getpid()}_${sources.len}_${link}_${optimize}_${no_parallel}_${use_flat}')
+		'v2_builder_windows_x64_sample_${os.getpid()}_${sources.len}_${link}_${optimize}_${no_parallel}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	defer {
@@ -1213,7 +1186,6 @@ fn build_windows_x64_sample_with_files_configured(sources map[string]string, lin
 	prefs.no_optimize = !optimize
 
 	mut b := new_builder(&prefs)
-	b.flat_check_enabled = use_flat
 	b.user_files = [main_path]
 	parse_test_builder_files(mut b, [main_path])
 	b.env = types.Environment.new()

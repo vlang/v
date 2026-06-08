@@ -6,8 +6,8 @@
 // Bit-equality pin for s185: `build_fn_from_flat` (the s185 wiring step)
 // must build the same SSA bodies as the legacy `build_fn`. This is the
 // first session where `build_fn_bodies_from_flat` no longer decodes the
-// FnDecl body — instead `decode_fn_decl_signature` returns a body-less
-// FnDecl and `build_fn_from_flat` walks the body stmts directly via
+// FnDecl body — instead `Cursor.fn_decl_signature()` returns a body-less
+// FnDecl, and `build_fn_from_flat` walks the body stmts directly via
 // `c.list_at(3)` cursors. Pin covers plain fn / fn with params / extern
 // (body_len==0) / multi-body fn branches.
 module ssa

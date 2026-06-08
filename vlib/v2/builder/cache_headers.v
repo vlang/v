@@ -368,14 +368,30 @@ fn (b &Builder) module_source_files(modules []string) []string {
 
 fn (b &Builder) source_files_for_module_name(module_name string) []string {
 	mut files_set := map[string]bool{}
-	for file in b.files {
-		if ast_file_module_name(file) != module_name {
-			continue
+	if b.uses_flat_module_enumeration() {
+		// In flat mode b.files is dropped; source the actual parsed file
+		// paths from the flat cursors. This is required for external (non-vlib)
+		// modules whose location the disk-scan fallback below cannot resolve.
+		for i in 0 .. b.flat.files.len {
+			if b.flat_file_module_name(i) != module_name {
+				continue
+			}
+			name := b.flat.file_name(b.flat.files[i])
+			if name == '' || name.ends_with('.vh') {
+				continue
+			}
+			files_set[name] = true
 		}
-		if file.name == '' || file.name.ends_with('.vh') {
-			continue
+	} else {
+		for file in b.files {
+			if ast_file_module_name(file) != module_name {
+				continue
+			}
+			if file.name == '' || file.name.ends_with('.vh') {
+				continue
+			}
+			files_set[file.name] = true
 		}
-		files_set[file.name] = true
 	}
 	if files_set.len == 0 {
 		module_path := b.module_name_to_path(module_name)
@@ -461,6 +477,81 @@ fn sanitize_cache_part(name string) string {
 		return 'unnamed'
 	}
 	return res
+}
+
+fn sanitize_staged_c_source(source string) string {
+	return sanitize_channel_semaphore_waits(source)
+}
+
+fn sanitize_cached_main_c_source(source string) string {
+	return sanitize_c_typedef_names(sanitize_channel_semaphore_waits(source))
+}
+
+fn sanitize_cached_object_c_source(source string) string {
+	mut sanitized := sanitize_c_typedef_names(source)
+	sanitized = guard_cached_stdatomic_compat_includes(sanitized)
+	return sanitized
+}
+
+fn sanitize_channel_semaphore_waits(source string) string {
+	lines := source.split_into_lines()
+	mut out := []string{cap: lines.len}
+	prefix := 'sync__Semaphore__wait('
+	for line in lines {
+		mut fixed := line
+		if idx := fixed.index(prefix) {
+			arg_start := idx + prefix.len
+			if arg_start < fixed.len && fixed[arg_start] != `&` {
+				arg_end := fixed.index_after(')', arg_start) or { -1 }
+				if arg_end > arg_start {
+					arg := fixed[arg_start..arg_end]
+					if arg.contains('->writesem') || arg.contains('->readsem') {
+						fixed = fixed[..arg_start] + '&' + fixed[arg_start..]
+					}
+				}
+			}
+		}
+		out << fixed
+	}
+	return out.join('\n')
+}
+
+fn sanitize_c_typedef_names(source string) string {
+	mut out := source
+	for name in ['atomic_uintptr_t', 'pthread_rwlockattr_t', 'pthread_condattr_t'] {
+		out = out.replace('struct ${name}', name)
+	}
+	return out
+}
+
+fn guard_cached_stdatomic_compat_includes(source string) string {
+	if !source.contains('/thirdparty/stdatomic/nix/atomic.h') {
+		return source
+	}
+	lines := source.split_into_lines()
+	mut out := []string{cap: lines.len + 8}
+	for line in lines {
+		trimmed := line.trim_space()
+		if trimmed == '#include <stdatomic.h>' {
+			out << '#ifndef __TINYC__'
+			out << line
+			out << '#endif'
+			continue
+		}
+		if trimmed.starts_with('#include ')
+			&& trimmed.contains('/thirdparty/stdatomic/nix/atomic.h') {
+			out << '#if defined(__TINYC__) && defined(__APPLE__) && defined(__aarch64__)'
+			out << '#define extern static'
+			out << '#endif'
+			out << line
+			out << '#if defined(__TINYC__) && defined(__APPLE__) && defined(__aarch64__)'
+			out << '#undef extern'
+			out << '#endif'
+			continue
+		}
+		out << line
+	}
+	return out.join('\n')
 }
 
 fn virtual_header_name(name string) string {
@@ -560,21 +651,64 @@ fn ast_file_declares_executable_main(file ast.File) bool {
 	return false
 }
 
+// flat_file_declares_executable_main is the flat-cursor analogue of
+// `ast_file_declares_executable_main`: it scans a file's top-level statement
+// cursors for a non-method, non-static, `.v`-language `fn main`. All four
+// conditions must match the legacy predicate so virtual main-module grouping
+// stays bit-identical to the `b.files` path.
+fn flat_file_declares_executable_main(fc ast.FileCursor) bool {
+	stmts := fc.stmts()
+	for j in 0 .. stmts.len() {
+		c := stmts.at(j)
+		if c.kind() != .stmt_fn_decl {
+			continue
+		}
+		if c.flag(ast.flag_is_method) || c.flag(ast.flag_is_static) {
+			continue
+		}
+		if unsafe { ast.Language(int(c.aux())) } != .v {
+			continue
+		}
+		if c.name() == 'main' {
+			return true
+		}
+	}
+	return false
+}
+
 fn (b &Builder) collect_virtual_main_modules() []CachedVirtualModule {
 	mut grouped := map[string][]string{}
 	mut groups_with_main := map[string]bool{}
-	for file in b.files {
-		if file.name == '' || file.name.ends_with('.vh') || ast_file_module_name(file) != 'main' {
-			continue
+	if b.uses_flat_module_enumeration() {
+		for i in 0 .. b.flat.files.len {
+			fc := b.flat.file_cursor(i)
+			name := fc.name()
+			if name == '' || name.ends_with('.vh') || b.flat_file_module_name(i) != 'main' {
+				continue
+			}
+			group := b.virtual_main_group_for_path(name) or { continue }
+			if flat_file_declares_executable_main(fc) {
+				groups_with_main[group] = true
+				continue
+			}
+			mut files := grouped[group] or { []string{} }
+			files << name
+			grouped[group] = files
 		}
-		group := b.virtual_main_group_for_path(file.name) or { continue }
-		if ast_file_declares_executable_main(file) {
-			groups_with_main[group] = true
-			continue
+	} else {
+		for file in b.files {
+			if file.name == '' || file.name.ends_with('.vh') || ast_file_module_name(file) != 'main' {
+				continue
+			}
+			group := b.virtual_main_group_for_path(file.name) or { continue }
+			if ast_file_declares_executable_main(file) {
+				groups_with_main[group] = true
+				continue
+			}
+			mut files := grouped[group] or { []string{} }
+			files << file.name
+			grouped[group] = files
 		}
-		mut files := grouped[group] or { []string{} }
-		files << file.name
-		grouped[group] = files
 	}
 	for group, _ in groups_with_main {
 		grouped.delete(group)
@@ -1455,21 +1589,44 @@ fn (b &Builder) import_modules_for_cached_modules(module_names []string) []Cache
 	mut import_set := map[string]bool{}
 	mut imports := []CachedImportModule{}
 	allow_pkgconfig_imports := !b.pref.is_cross_target()
-	for file in b.files {
-		for import_stmt in active_file_imports_with_options(file, b.pref.user_defines,
-			b.pref.explicit_user_defines, b.pref.source_filter_target_os(), allow_pkgconfig_imports) {
-			module_name := import_stmt.name.all_after_last('.')
-			if module_name !in module_set {
-				continue
+	if b.uses_flat_module_enumeration() {
+		for i in 0 .. b.flat.files.len {
+			for import_stmt in active_file_imports_from_flat_with_options(&b.flat, b.flat.files[i],
+				b.pref.user_defines, b.pref.explicit_user_defines,
+				b.pref.source_filter_target_os(), allow_pkgconfig_imports) {
+				module_name := import_stmt.name.all_after_last('.')
+				if module_name !in module_set {
+					continue
+				}
+				key := '${import_stmt.name}:${module_name}'
+				if key in import_set {
+					continue
+				}
+				import_set[key] = true
+				imports << CachedImportModule{
+					import_path: import_stmt.name
+					module_name: module_name
+				}
 			}
-			key := '${import_stmt.name}:${module_name}'
-			if key in import_set {
-				continue
-			}
-			import_set[key] = true
-			imports << CachedImportModule{
-				import_path: import_stmt.name
-				module_name: module_name
+		}
+	} else {
+		for file in b.files {
+			for import_stmt in active_file_imports_with_options(file, b.pref.user_defines,
+				b.pref.explicit_user_defines, b.pref.source_filter_target_os(),
+				allow_pkgconfig_imports) {
+				module_name := import_stmt.name.all_after_last('.')
+				if module_name !in module_set {
+					continue
+				}
+				key := '${import_stmt.name}:${module_name}'
+				if key in import_set {
+					continue
+				}
+				import_set[key] = true
+				imports << CachedImportModule{
+					import_path: import_stmt.name
+					module_name: module_name
+				}
 			}
 		}
 	}

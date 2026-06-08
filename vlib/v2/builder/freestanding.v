@@ -41,9 +41,12 @@ fn (b &Builder) validate_freestanding_cleanc_contract() bool {
 	}
 	scan_ctx := freestanding_scan_context(b.pref, target_os)
 	allow_pkgconfig_imports := !b.pref.is_cross_target()
-	for file in b.freestanding_diagnostic_files() {
-		for imported in active_file_imports_with_options(file, b.pref.user_defines,
-			b.pref.explicit_user_defines, target_os, allow_pkgconfig_imports) {
+	for i, ff in b.flat.files {
+		if !b.should_scan_freestanding_diagnostic_file(b.flat.file_name(ff)) {
+			continue
+		}
+		for imported in active_file_imports_from_flat_with_options(&b.flat, ff,
+			b.pref.user_defines, b.pref.explicit_user_defines, target_os, allow_pkgconfig_imports) {
 			if msg := freestanding_restricted_import_diagnostic(imported.name) {
 				if !seen[msg] {
 					diagnostics << msg
@@ -51,7 +54,8 @@ fn (b &Builder) validate_freestanding_cleanc_contract() bool {
 				}
 			}
 		}
-		call_name := freestanding_restricted_call_in_stmts(file.stmts, scan_ctx)
+		call_name := freestanding_restricted_call_in_cursor_stmts(b.flat.file_cursor(i).stmts(),
+			scan_ctx)
 		if call_name != '' {
 			msg := freestanding_restricted_call_diagnostic(call_name)
 			if !seen[msg] {
@@ -68,27 +72,6 @@ fn (b &Builder) validate_freestanding_cleanc_contract() bool {
 		return false
 	}
 	return true
-}
-
-fn (b &Builder) freestanding_diagnostic_files() []ast.File {
-	if b.flat_check_enabled {
-		mut files := []ast.File{}
-		for i, ff in b.flat.files {
-			if !b.should_scan_freestanding_diagnostic_file(b.flat.file_name(ff)) {
-				continue
-			}
-			files << b.flat.to_files_range(i, i + 1)
-		}
-		return files
-	}
-	mut files := []ast.File{}
-	for file in b.files {
-		if !b.should_scan_freestanding_diagnostic_file(file.name) {
-			continue
-		}
-		files << file
-	}
-	return files
 }
 
 fn (b &Builder) should_scan_freestanding_diagnostic_file(file_name string) bool {
@@ -195,6 +178,17 @@ fn freestanding_attributes_are_inactive(attributes []ast.Attribute, ctx Freestan
 
 fn freestanding_restricted_call_in_stmts(stmts []ast.Stmt, ctx FreestandingScanContext) string {
 	for stmt in stmts {
+		call_name := freestanding_restricted_call_in_stmt(stmt, ctx)
+		if call_name != '' {
+			return call_name
+		}
+	}
+	return ''
+}
+
+fn freestanding_restricted_call_in_cursor_stmts(stmts ast.CursorList, ctx FreestandingScanContext) string {
+	for i in 0 .. stmts.len() {
+		stmt := stmts.at(i).stmt()
 		call_name := freestanding_restricted_call_in_stmt(stmt, ctx)
 		if call_name != '' {
 			return call_name

@@ -1664,9 +1664,8 @@ pub fn (mut c Checker) get_module_scope(module_name string, parent &Scope) &Scop
 }
 
 // check_flat is the Phase 2 consumer entry point: accepts a FlatAst directly
-// rather than []ast.File. Every step reads from the FlatAst; legacy
-// []ast.File is only materialized for the ownership pass, which still
-// drives off the recursive AST.
+// rather than []ast.File. Top-level passes walk the FlatAst and decode only
+// the legacy nodes they still need internally.
 pub fn (mut c Checker) check_flat(flat &ast.FlatAst) {
 	c.register_selector_names_from_flat(flat)
 	c.preregister_all_scopes_from_flat(flat)
@@ -1703,10 +1702,7 @@ fn (mut c Checker) register_selector_names_from_flat(flat &ast.FlatAst) {
 }
 
 // register_imported_symbols_from_flat mirrors register_imported_symbols but
-// pulls each file's mod + imports + top stmts via the FlatAst readers.
-// Still rehydrates the top stmts so comptime-conditional imports can be
-// evaluated; that walk is contained but unavoidable without a flat
-// comptime-cond evaluator.
+// pulls each file's mod + imports through the FlatAst readers.
 fn (mut c Checker) register_imported_symbols_from_flat(flat &ast.FlatAst) {
 	builtin_scope := c.get_module_scope('builtin', universe)
 	for ff in flat.files {
@@ -1741,7 +1737,7 @@ fn (mut c Checker) register_imported_symbols_from_flat(flat &ast.FlatAst) {
 // currently evaluates true.
 fn (mut c Checker) active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatFile) []ast.ImportStmt {
 	// s258: walk the file's top-level statement cursors instead of decoding the
-	// entire file via `read_file_stmts`. This runs per file (preregister_scopes +
+	// entire file via top-level statement decoding. This runs per file (preregister_scopes +
 	// register_imported_symbols), so the full legacy-AST decode was pure churn;
 	// the cursor walk only decodes the tiny comptime `$if` conditions. Mirrors the
 	// builder's s253 cursor-native import collection. Removes a legacy-AST decode
@@ -1899,23 +1895,17 @@ fn (mut c Checker) preregister_types_from_flat(flat &ast.FlatAst, ff ast.FlatFil
 		}
 	}
 	c.scope = mod_scope
-	// s259: skip decoding fn_decls — their bodies are the bulk of the file and
-	// preregister_type_stmt no-ops FnDecl anyway. Decode + dispatch the rest.
 	decls := ast.Cursor{
 		flat: unsafe { flat }
 		id:   ff.file_id
 	}.list_at(2)
 	for di in 0 .. decls.len() {
-		dc := decls.at(di)
-		if dc.kind() == .stmt_fn_decl {
-			continue
-		}
-		c.preregister_type_stmt(flat.decode_stmt(dc.id))
+		c.preregister_decl_stmt_from_flat(decls.at(di), true, false)
 	}
 }
 
 // preregister_all_fn_signatures_from_flat mirrors preregister_all_fn_signatures
-// but reads each file's mod + top-level stmts directly from the FlatAst.
+// but walks each file's top-level stmt cursors directly from the FlatAst.
 fn (mut c Checker) preregister_all_fn_signatures_from_flat(flat &ast.FlatAst) {
 	for ff in flat.files {
 		c.preregister_fn_signatures_from_flat(flat, ff)
@@ -1941,24 +1931,145 @@ fn (mut c Checker) preregister_fn_signatures_from_flat(flat &ast.FlatAst, ff ast
 		flat: unsafe { flat }
 		id:   ff.file_id
 	}.list_at(2)
-	for di in 0 .. decls.len() {
-		dc := decls.at(di)
-		if dc.kind() == .stmt_fn_decl {
-			decl := flat.decode_fn_decl_signature(dc.id)
-			prev_flat := c.pending_fn_body_flat
-			prev_flat_id := c.pending_fn_body_flat_id
-			c.pending_fn_body_flat = unsafe { flat }
-			c.pending_fn_body_flat_id = dc.id
-			c.preregister_fn_signature_stmt(ast.Stmt(decl))
-			c.pending_fn_body_flat = prev_flat
-			c.pending_fn_body_flat_id = prev_flat_id
-			continue
-		}
-		if dc.kind() == .stmt_expr {
-			c.preregister_fn_signature_stmt(flat.decode_stmt(dc.id))
-		}
+	for i in 0 .. decls.len() {
+		c.preregister_decl_stmt_from_flat(decls.at(i), false, true)
 	}
 	c.collect_fn_signatures_only = prev_collect
+}
+
+fn (mut c Checker) module_storage_predecl_type_from_flat_field(field_c ast.Cursor) Type {
+	typ_c := field_c.edge(0)
+	if typ_c.is_valid() && typ_c.kind() != .expr_empty {
+		typ_expr := typ_c.type_expr()
+		if typ := c.module_storage_predecl_type_expr(typ_expr) {
+			return typ
+		}
+		return c.type_expr(typ_expr)
+	}
+	value_c := field_c.edge(1)
+	match value_c.kind() {
+		.expr_basic_literal, .expr_string {
+			return c.expr(value_c.attribute_expr())
+		}
+		else {}
+	}
+
+	return Type(int_)
+}
+
+fn (mut c Checker) preregister_module_storage_decl_from_flat(stmt_c ast.Cursor) {
+	decl := stmt_c.global_decl(false)
+	fields := stmt_c.list_at(1)
+	for i in 0 .. fields.len() {
+		field := fields.at(i)
+		field_decl := field.field_decl(false)
+		field_type := c.module_storage_predecl_type_from_flat_field(field)
+		obj := module_storage_object(c.cur_file_module, decl, field_decl, field_type)
+		c.scope.insert(field_decl.name, obj)
+	}
+}
+
+fn (mut c Checker) check_global_decl_from_flat(stmt_c ast.Cursor) {
+	decl := stmt_c.global_decl(false)
+	fields := stmt_c.list_at(1)
+	for i in 0 .. fields.len() {
+		field := fields.at(i)
+		field_decl := field.field_decl(false)
+		field_typ := field.edge(0).type_expr()
+		field_type := if field_typ !is ast.EmptyExpr {
+			c.type_expr(field_typ)
+		} else {
+			value_c := field.edge(1)
+			c.expr(value_c.expr())
+		}
+		obj := module_storage_object(c.cur_file_module, decl, field_decl, field_type)
+		c.scope.insert_or_update(field_decl.name, obj)
+	}
+}
+
+fn (mut c Checker) preregister_decl_stmt_from_flat(stmt_c ast.Cursor, want_types bool, want_fns bool) {
+	match stmt_c.kind() {
+		.stmt_const_decl {
+			if want_types {
+				c.decl(ast.Stmt(stmt_c.const_decl()))
+			}
+		}
+		.stmt_enum_decl {
+			if want_types {
+				c.decl(ast.Stmt(stmt_c.enum_decl(false)))
+			}
+		}
+		.stmt_fn_decl {
+			if want_fns {
+				decl := stmt_c.fn_decl_signature()
+				prev_flat := c.pending_fn_body_flat
+				prev_flat_id := c.pending_fn_body_flat_id
+				c.pending_fn_body_flat = stmt_c.flat
+				c.pending_fn_body_flat_id = stmt_c.id
+				c.preregister_fn_signature_stmt(ast.Stmt(decl))
+				c.pending_fn_body_flat = prev_flat
+				c.pending_fn_body_flat_id = prev_flat_id
+			}
+		}
+		.stmt_global_decl {
+			if want_types {
+				c.preregister_module_storage_decl_from_flat(stmt_c)
+			}
+		}
+		.stmt_interface_decl {
+			if want_types {
+				c.decl(ast.Stmt(stmt_c.interface_decl()))
+			}
+		}
+		.stmt_struct_decl {
+			if want_types {
+				c.decl(ast.Stmt(stmt_c.struct_decl()))
+			}
+		}
+		.stmt_type_decl {
+			if want_types {
+				c.decl(ast.Stmt(stmt_c.type_decl()))
+			}
+		}
+		.stmt_expr {
+			c.preregister_active_comptime_decl_stmt_from_flat(stmt_c, want_types, want_fns)
+		}
+		else {}
+	}
+}
+
+fn (mut c Checker) preregister_active_comptime_decl_stmt_from_flat(stmt_c ast.Cursor, want_types bool, want_fns bool) {
+	if stmt_c.kind() != .stmt_expr {
+		return
+	}
+	inner := stmt_c.edge(0)
+	if inner.kind() != .expr_comptime {
+		return
+	}
+	if_c := inner.edge(0)
+	if if_c.kind() != .expr_if {
+		return
+	}
+	c.preregister_active_if_decl_stmts_from_flat(if_c, want_types, want_fns)
+}
+
+fn (mut c Checker) preregister_active_if_decl_stmts_from_flat(if_c ast.Cursor, want_types bool, want_fns bool) {
+	if c.eval_comptime_cond_cursor(if_c.edge(0)) {
+		for i in 2 .. if_c.edge_count() {
+			c.preregister_decl_stmt_from_flat(if_c.edge(i), want_types, want_fns)
+		}
+		return
+	}
+	else_c := if_c.edge(1)
+	if else_c.kind() == .expr_if {
+		if else_c.edge(0).kind() == .expr_empty {
+			for i in 2 .. else_c.edge_count() {
+				c.preregister_decl_stmt_from_flat(else_c.edge(i), want_types, want_fns)
+			}
+		} else {
+			c.preregister_active_if_decl_stmts_from_flat(else_c, want_types, want_fns)
+		}
+	}
 }
 
 // check_file_from_flat mirrors check_file but pulls mod + stmts straight
@@ -1980,35 +2091,26 @@ pub fn (mut c Checker) check_file_from_flat(flat &ast.FlatAst, ff ast.FlatFile) 
 		}
 	}
 	c.scope = mod_scope
-	// s259: don't decode fn_decls here. Their bodies are checked via
-	// pending_fn_bodies (queued by the signature pass, run by
-	// process_pending_fn_bodies); in both loops below FnDecl is a no-op (the first
-	// `continue`s, c.stmt has no FnDecl arm). read_file_stmts decoded every fn body
-	// a SECOND time (after the sig pass already decoded+queued them) — pure churn.
 	decls := ast.Cursor{
 		flat: unsafe { flat }
 		id:   ff.file_id
 	}.list_at(2)
-	mut stmts := []ast.Stmt{cap: decls.len()}
 	for di in 0 .. decls.len() {
 		dc := decls.at(di)
-		if dc.kind() == .stmt_fn_decl {
-			continue
-		}
-		stmts << flat.decode_stmt(dc.id)
-	}
-	for stmt in stmts {
-		match stmt {
-			ast.ConstDecl, ast.EnumDecl, ast.InterfaceDecl, ast.StructDecl, ast.TypeDecl {
-				continue
+		match dc.kind() {
+			.stmt_const_decl, .stmt_directive, .stmt_empty, .stmt_enum_decl, .stmt_fn_decl,
+			.stmt_import, .stmt_interface_decl, .stmt_module, .stmt_struct_decl, .stmt_type_decl,
+			.stmt_attributes {
+				// Declarations/imports/modules were handled by preregistration, and
+				// c.stmt has no extra work for them.
+			}
+			.stmt_global_decl {
+				c.check_global_decl_from_flat(dc)
 			}
 			else {
-				c.decl(stmt)
+				c.stmt(dc.stmt())
 			}
 		}
-	}
-	for stmt in stmts {
-		c.stmt(stmt)
 	}
 	if c.pref.verbose {
 		check_time := sw.elapsed()
@@ -2031,8 +2133,8 @@ fn (mut c Checker) check_struct_field_defaults_from_flat(flat &ast.FlatAst) {
 		}
 		c.scope = mod_scope
 		c.cur_file_module = mod
-		// s259: decode only struct decls instead of read_file_stmts (whole file,
-		// incl. every fn body). Kind-filter first, decode the matched node only.
+		// Walk struct fields directly from the flat decl; only the field type/value
+		// expressions that actually need checking are materialized.
 		decls := ast.Cursor{
 			flat: unsafe { flat }
 			id:   ff.file_id
@@ -2042,20 +2144,22 @@ fn (mut c Checker) check_struct_field_defaults_from_flat(flat &ast.FlatAst) {
 			if dc.kind() != .stmt_struct_decl {
 				continue
 			}
-			stmt := flat.decode_stmt(dc.id)
-			if stmt is ast.StructDecl {
-				for field in stmt.fields {
-					if field.value !is ast.EmptyExpr {
-						field_typ := c.type_expr(field.typ)
-						prev_expected := c.expected_type
-						c.expected_type = to_optional_type(field_typ)
-						c.expr(field.value)
-						$if ownership ? {
-							c.ownership_consume_expr(field.value, field.value.pos(), 'struct field')
-						}
-						c.expected_type = prev_expected
-					}
+			fields := dc.list_at(4)
+			for fi in 0 .. fields.len() {
+				field := fields.at(fi)
+				value_c := field.edge(1)
+				if !value_c.is_valid() || value_c.kind() == .expr_empty {
+					continue
 				}
+				field_typ := c.type_expr(field.edge(0).type_expr())
+				field_value := value_c.expr()
+				prev_expected := c.expected_type
+				c.expected_type = to_optional_type(field_typ)
+				c.expr(field_value)
+				$if ownership ? {
+					c.ownership_consume_expr(field_value, field_value.pos(), 'struct field')
+				}
+				c.expected_type = prev_expected
 			}
 		}
 	}
@@ -2076,7 +2180,8 @@ fn (mut c Checker) check_enum_field_values_from_flat(flat &ast.FlatAst) {
 		}
 		c.scope = mod_scope
 		c.cur_file_module = mod
-		// s259: decode only enum decls instead of read_file_stmts (whole file).
+		// Walk enum fields directly from the flat decl; only non-empty value
+		// expressions are materialized.
 		decls := ast.Cursor{
 			flat: unsafe { flat }
 			id:   ff.file_id
@@ -2086,12 +2191,12 @@ fn (mut c Checker) check_enum_field_values_from_flat(flat &ast.FlatAst) {
 			if dc.kind() != .stmt_enum_decl {
 				continue
 			}
-			stmt := flat.decode_stmt(dc.id)
-			if stmt is ast.EnumDecl {
-				for field in stmt.fields {
-					if field.value !is ast.EmptyExpr {
-						c.expr(field.value)
-					}
+			fields := dc.list_at(2)
+			for fi in 0 .. fields.len() {
+				field := fields.at(fi)
+				value_c := field.edge(1)
+				if value_c.is_valid() && value_c.kind() != .expr_empty {
+					c.expr(value_c.expr())
 				}
 			}
 		}
@@ -2577,6 +2682,9 @@ fn (mut c Checker) check_types(exp_type Type, got_type Type) bool {
 	}
 	exp_name := exp_type.name()
 	got_name := got_type.name()
+	if exp_name != '' && exp_name == got_name {
+		return true
+	}
 	if exp_name == 'int' && (got_name == 'Duration' || got_name == 'time__Duration') {
 		return true
 	}
@@ -5061,9 +5169,12 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 	if !has_decl_generic_params || c.env.cur_generic_types.len > 0 {
 		mut decl := signature_decl
 		if pending.flat != unsafe { nil } && pending.flat_decl_id >= 0 {
-			stmt := pending.flat.decode_stmt(pending.flat_decl_id)
-			if stmt is ast.FnDecl {
-				decl = stmt
+			flat_decl := ast.Cursor{
+				flat: pending.flat
+				id:   pending.flat_decl_id
+			}.fn_decl()
+			if flat_decl.name != '' {
+				decl = flat_decl
 			}
 		}
 		prev_scope := c.scope
@@ -7436,6 +7547,17 @@ fn (mut c Checker) ident(ident ast.Ident) Object {
 			})
 		}
 
+		if ident.name in ['error', 'error_posix', 'error_with_code', 'error_win32'] {
+			ierror_type := c.lookup_type_by_name('IError') or {
+				Type(Interface{
+					name: 'IError'
+				})
+			}
+			return Type(FnType{
+				return_type: ierror_type
+			})
+		}
+
 		// typeof, sizeof, isreftype used as identifiers (e.g. typeof[T]())
 		// are builtin keywords handled by the parser, transformer, and backend.
 		// Return a FnType returning a struct with .name (string) field so that
@@ -7627,6 +7749,9 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 					}
 					if c.pref.verbose {
 						mod_scope.print(true)
+					}
+					$if dbg_sel ? {
+						eprintln('DBG_SEL lhs.name.len=${expr.lhs.name.len} lhs=[${expr.lhs.name}] rhs.name.len=${expr.rhs.name.len} rhs=[${expr.rhs.name}] modname.len=${lhs_obj.name.len} modname=[${lhs_obj.name}]')
 					}
 					c.error_with_pos('missing ${expr.lhs.name}.${expr.rhs.name}', expr.pos)
 					return Type(void_)
@@ -8058,6 +8183,15 @@ fn (c &Checker) struct_implements_name(st Struct, target string) bool {
 fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 	// Strip @ prefix used to escape V keywords in field/method names (e.g., @type → type)
 	name := if raw_name.len > 0 && raw_name[0] == `@` { raw_name[1..] } else { raw_name }
+	$if dbg_sel ? {
+		if name == 'write_string' {
+			mut direct_ok := false
+			if _ := c.lookup_method_direct(t, name) {
+				direct_ok = true
+			}
+			eprintln('FFM t.name=[${t.name()}] name=[${name}] em=${c.expecting_method} direct=${direct_ok}')
+		}
+	}
 	if c.expecting_method {
 		if method := c.lookup_method_direct(t, name) {
 			return c.specialize_method_type_for_receiver(method, t, name)
@@ -8535,7 +8669,18 @@ fn (c &Checker) lookup_method_direct(t Type, name string) ?Type {
 		return fn_with_return_type(empty_fn_type(), Type(string_))
 	}
 	if method := intrinsic_container_method_type(base_type, name) {
+		$if dbg_sel ? {
+			if name == 'write_string' {
+				eprintln('LMD_INTRINSIC_RET t.name=[${t.name()}] base=[${base_type.name()}]')
+			}
+		}
 		return method
+	}
+	$if dbg_sel ? {
+		if name == 'write_string' {
+			tns := method_lookup_type_names(t)
+			eprintln('LMD_LOOP t.name=[${t.name()}] base=[${base_type.name()}] tns.len=${tns.len} tns=${tns}')
+		}
 	}
 	for type_name in method_lookup_type_names(t) {
 		if method := c.lookup_method_for_type_name(type_name, name) {
@@ -8894,6 +9039,21 @@ fn method_lookup_string_is_valid(s string) bool {
 }
 
 fn (c &Checker) lookup_method_for_type_name(type_name string, method_name string) ?Type {
+	$if dbg_sel ? {
+		if method_name == 'write_string' {
+			mut dbg_present := false
+			mut dbg_names := []string{}
+			rlock c.env.methods {
+				if type_name in c.env.methods {
+					dbg_present = true
+					for m in c.env.methods[type_name] {
+						dbg_names << m.name
+					}
+				}
+			}
+			eprintln('LMFTN type=[${type_name}] valid=${method_lookup_string_is_valid(type_name)} present=${dbg_present} count=${dbg_names.len} names=${dbg_names}')
+		}
+	}
 	if !method_lookup_string_is_valid(type_name) {
 		return none
 	}
@@ -8941,6 +9101,9 @@ fn (mut c Checker) error_message(msg string, kind errors.Kind, pos token.Positio
 
 @[noreturn]
 fn (mut c Checker) error_with_pos(msg string, pos token.Pos) {
+	$if dbg_sel ? {
+		eprintln('ERR_WP msg.len=${msg.len} msg=[${msg}]')
+	}
 	if !pos.is_valid() {
 		// Handle expressions without position info - use current file if available
 		eprintln('error: ${msg} (no position info)')

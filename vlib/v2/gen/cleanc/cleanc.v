@@ -14,6 +14,7 @@ import time
 pub struct Gen {
 mut:
 	files                   []ast.File
+	flat                    &ast.FlatAst       = unsafe { nil }
 	env                     &types.Environment = unsafe { nil }
 	pref                    &pref.Preferences  = unsafe { nil }
 	sb                      strings.Builder
@@ -146,7 +147,6 @@ mut:
 	runtime_const_targets                 map[string]bool   // module-scoped consts initialized in __v_init_consts_*
 	used_fn_keys                          map[string]bool
 	force_emit_fn_names                   map[string]bool   // function C names that must be emitted regardless of mark_used
-	weak_fn_names                         map[string]bool   // function C names emitted as weak cross-cache specializations
 	export_fn_names                       map[string]string // V-qualified name → export name (from @[export:] attribute)
 	called_fn_names                       map[string]bool
 	declared_fn_names                     map[string]bool // C function names that have a prototype/body head emitted
@@ -425,6 +425,12 @@ pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pr
 	return g
 }
 
+pub fn Gen.new_with_env_pref_and_flat(flat &ast.FlatAst, env &types.Environment, p &pref.Preferences) &Gen {
+	mut g := new_gen_with_env_and_pref_impl(env, p)
+	g.flat = unsafe { flat }
+	return g
+}
+
 fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &Gen {
 	return &Gen{
 		files:                             []ast.File{}
@@ -496,7 +502,6 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		const_c_names:                         map[string]string{}
 		used_fn_keys:                          map[string]bool{}
 		force_emit_fn_names:                   map[string]bool{}
-		weak_fn_names:                         map[string]bool{}
 		called_fn_names:                       map[string]bool{}
 		declared_fn_names:                     map[string]bool{}
 		should_emit_fn_decl_cache:             map[string]bool{}
@@ -511,6 +516,10 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		typedef_c_types:                       map[string]bool{}
 		blocked_fn_keys:                       map[string]bool{}
 	}
+}
+
+fn (g &Gen) has_flat() bool {
+	return g.flat != unsafe { nil } && g.flat.files.len > 0
 }
 
 fn (mut g Gen) gen_file(file ast.File) {
@@ -593,6 +602,57 @@ fn (mut g Gen) gen_file_range(file ast.File, fn_stmt_indices []int, emit_globals
 	}
 }
 
+fn (mut g Gen) gen_file_cursor(fc ast.FileCursor) {
+	g.set_file_cursor_module(fc)
+	file_name := g.cur_file_name
+	file_module := g.cur_module
+	file_import_modules := g.cur_import_modules.clone()
+	stmts := fc.stmts()
+	mut global_indices := []int{}
+	mut fn_indices := []int{}
+	for i in 0 .. stmts.len() {
+		stmt := stmts.at(i)
+		match stmt.kind() {
+			.stmt_global_decl {
+				global_indices << i
+			}
+			.stmt_fn_decl {
+				fn_indices << i
+			}
+			else {}
+		}
+	}
+	for gi in global_indices {
+		g.gen_global_decl(stmts.at(gi).global_decl(true))
+	}
+	for fi in fn_indices {
+		g.restore_file_module_context(file_name, file_module, file_import_modules)
+		fn_decl := stmts.at(fi).fn_decl()
+		g.gen_fn_decl_ptr(&fn_decl)
+	}
+}
+
+fn (mut g Gen) gen_file_cursor_range(fc ast.FileCursor, fn_stmt_indices []int, emit_globals bool) {
+	g.set_file_cursor_module(fc)
+	file_name := g.cur_file_name
+	file_module := g.cur_module
+	file_import_modules := g.cur_import_modules.clone()
+	stmts := fc.stmts()
+	if emit_globals {
+		for i in 0 .. stmts.len() {
+			stmt := stmts.at(i)
+			if stmt.kind() == .stmt_global_decl {
+				g.gen_global_decl(stmt.global_decl(true))
+			}
+		}
+	}
+	for fi in fn_stmt_indices {
+		g.restore_file_module_context(file_name, file_module, file_import_modules)
+		fn_decl := stmts.at(fi).fn_decl()
+		g.gen_fn_decl_ptr(&fn_decl)
+	}
+}
+
 // set_emit_modules limits code emission to the provided module names.
 // Type declarations and forward declarations are still emitted for all modules.
 pub fn (mut g Gen) set_emit_modules(modules []string) {
@@ -631,6 +691,32 @@ fn (mut g Gen) collect_source_module_names() {
 	// Index `import mod { sym }` selective imports per file so imported_symbol_c_type is an O(1)
 	// lookup instead of rescanning all files' imports/symbols (it was the hottest codegen fn).
 	mut imp_idx := map[string]string{}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.source_module_names[flat_file_module_name(fc)] = true
+			imports := fc.imports()
+			for j in 0 .. imports.len() {
+				import_stmt := imports.at(j).import_stmt()
+				if import_stmt.symbols.len == 0 {
+					continue
+				}
+				mod_name := import_stmt.name.all_after_last('.').replace('.', '_')
+				for symbol in import_stmt.symbols {
+					sn := symbol.name()
+					if sn == '' {
+						continue
+					}
+					key := '${fc.name()}\x01${sn}'
+					if key !in imp_idx { // first occurrence wins, matching the original scan order
+						imp_idx[key] = mod_name
+					}
+				}
+			}
+		}
+		g.imported_symbols_index = imp_idx.move()
+		return
+	}
 	for file in g.files {
 		g.source_module_names[file_module_name(file)] = true
 		for import_stmt in file.imports {
@@ -657,6 +743,29 @@ fn (mut g Gen) collect_emit_file_indexes() {
 	g.emit_file_modules = map[string]bool{}
 	g.declared_type_names_in_emit_files = map[string]bool{}
 	if g.emit_files.len == 0 {
+		return
+	}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			file_name := fc.name()
+			if !(os.norm_path(file_name) in g.emit_files
+				|| os.norm_path(os.abs_path(file_name)) in g.emit_files) {
+				continue
+			}
+			module_name := flat_file_module_name(fc)
+			g.emit_file_modules[module_name] = true
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				match stmt.kind() {
+					.stmt_struct_decl, .stmt_enum_decl, .stmt_interface_decl, .stmt_type_decl {
+						g.record_emit_file_type_name(stmt.name(), module_name)
+					}
+					else {}
+				}
+			}
+		}
 		return
 	}
 	for file in g.files {
@@ -686,6 +795,14 @@ fn (mut g Gen) collect_emit_file_indexes() {
 	}
 }
 
+fn flat_file_module_name(fc ast.FileCursor) string {
+	mod_name := fc.mod()
+	if mod_name != '' {
+		return mod_name.replace('.', '_')
+	}
+	return 'main'
+}
+
 fn (mut g Gen) record_emit_file_type_name(decl_name string, module_name string) {
 	if decl_name == '' {
 		return
@@ -706,19 +823,44 @@ fn (mut g Gen) collect_force_emit_sort_fns() {
 	old_module := g.cur_module
 	old_import_modules := g.cur_import_modules.clone()
 	mut changed := false
-	for file in g.files {
-		g.set_file_module(file)
-		if g.cur_module != 'main' {
-			continue
-		}
-		for stmt in file.stmts {
-			if stmt is ast.FnDecl && stmt.name.starts_with('__sort_cmp_') {
-				fn_name := g.get_fn_name(stmt)
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			if g.cur_module != 'main' {
+				continue
+			}
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_fn_decl || !stmt.name().starts_with('__sort_cmp_') {
+					continue
+				}
+				decl := stmt.fn_decl_signature()
+				fn_name := g.get_fn_name(decl)
 				if fn_name != '' {
 					if fn_name !in g.force_emit_fn_names {
 						changed = true
 					}
 					g.force_emit_fn_names[fn_name] = true
+				}
+			}
+		}
+	} else {
+		for file in g.files {
+			g.set_file_module(file)
+			if g.cur_module != 'main' {
+				continue
+			}
+			for stmt in file.stmts {
+				if stmt is ast.FnDecl && stmt.name.starts_with('__sort_cmp_') {
+					fn_name := g.get_fn_name(stmt)
+					if fn_name != '' {
+						if fn_name !in g.force_emit_fn_names {
+							changed = true
+						}
+						g.force_emit_fn_names[fn_name] = true
+					}
 				}
 			}
 		}
@@ -1034,6 +1176,8 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.generic_struct_bindings['stdatomic__AtomicVal'] = {
 		'T': types.Type(types.int_)
 	}
+	g.discover_direct_generic_call_specs()
+	g.discover_nested_generic_specs()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.discover_generic_specs')
 	g.collect_force_emit_sort_fns()
@@ -1055,85 +1199,12 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 		'setup.register_builder_methods')
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup')
 
-	// Pre-collect all global variable names so they can be module-qualified
-	for file in g.files {
-		g.set_file_module(file)
-		for stmt in file.stmts {
-			if !stmt_has_valid_data(stmt) {
-				continue
-			}
-			if stmt is ast.GlobalDecl {
-				for field in stmt.fields {
-					storage_name := module_storage_field_c_name(g.cur_module, stmt, field)
-					qualified_name := module_storage_c_name(g.cur_module, if field.name.starts_with('C.') {
-						field.name.all_after('C.')
-					} else {
-						field.name
-					})
-					if module_storage_field_is_c_extern(stmt, field) {
-						g.c_extern_module_storage[qualified_name] = storage_name
-					} else {
-						g.module_storage_vars[storage_name] = g.cur_module
-					}
-					if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
-						g.global_var_modules[field.name] = g.cur_module
-					}
-				}
-			}
-		}
-	}
+	g.collect_global_storage_names()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'collect globals')
 
 	// Pass 1: Forward declarations for all structs/unions/sumtypes/interfaces (needed for mutual references)
-	for file in g.files {
-		g.set_file_module(file)
-		for stmt in file.stmts {
-			if !stmt_has_valid_data(stmt) {
-				continue
-			}
-			if stmt is ast.StructDecl {
-				if stmt.language == .c {
-					continue
-				}
-				name := g.get_struct_name(stmt)
-				if name in g.emitted_types {
-					continue
-				}
-				g.emitted_types[name] = true
-				keyword := if stmt.is_union { 'union' } else { 'struct' }
-				g.sb.writeln('typedef ${keyword} ${name} ${name};')
-				// Also emit forward declarations for additional generic instances
-				if stmt.generic_params.len > 0 {
-					instances := g.generic_struct_instances[name]
-					for inst in instances {
-						if inst.c_name == name {
-							continue
-						}
-						if inst.c_name !in g.emitted_types {
-							g.emitted_types[inst.c_name] = true
-							g.sb.writeln('typedef ${keyword} ${inst.c_name} ${inst.c_name};')
-						}
-					}
-				}
-			} else if stmt is ast.TypeDecl {
-				if stmt.variants.len > 0 {
-					// Sum type needs forward struct declaration
-					name := g.get_type_decl_name(stmt)
-					if name !in g.emitted_types {
-						g.emitted_types[name] = true
-						g.sb.writeln('typedef struct ${name} ${name};')
-					}
-				}
-			} else if stmt is ast.InterfaceDecl {
-				name := g.get_interface_name(stmt)
-				if name !in g.emitted_types {
-					g.emitted_types[name] = true
-					g.sb.writeln('typedef struct ${name} ${name};')
-				}
-			}
-		}
-	}
+	g.emit_pass1_forward_decls()
 	g.sb.writeln('')
 	g.emit_runtime_aliases()
 	g.sb.writeln('')
@@ -1143,68 +1214,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	// Pass 2: Emit type declarations in dependency-safe buckets.
 	// Emit enums first, then type aliases/sum types.
 	// Interface bodies are emitted later, after structs/tuple aliases are available.
-	for file in g.files {
-		g.set_file_module(file)
-		for stmt in file.stmts {
-			if !stmt_has_valid_data(stmt) {
-				continue
-			}
-			if stmt is ast.EnumDecl {
-				g.gen_enum_decl(stmt)
-			}
-		}
-	}
-	// Pre-scan type aliases and interfaces so tuple aliases used in function-pointer
-	// typedefs (for example `fn () (int, int)`) are registered before we emit them.
-	for file in g.files {
-		g.set_file_module(file)
-		for stmt in file.stmts {
-			if !stmt_has_valid_data(stmt) {
-				continue
-			}
-			if stmt is ast.TypeDecl {
-				if stmt.base_type !is ast.EmptyExpr {
-					_ = g.expr_type_to_c(stmt.base_type)
-				}
-			} else if stmt is ast.InterfaceDecl {
-				for field in stmt.fields {
-					_ = g.interface_method_info(field)
-				}
-			}
-		}
-	}
-	g.emit_tuple_aliases()
-	if g.tuple_aliases.len > 0 {
-		g.sb.writeln('')
-	}
-	for file in g.files {
-		g.set_file_module(file)
-		for stmt in file.stmts {
-			if !stmt_has_valid_data(stmt) {
-				continue
-			}
-			if stmt is ast.TypeDecl && stmt.variants.len == 0 && stmt.base_type !is ast.EmptyExpr
-				&& !type_decl_base_is_fn_type(stmt) {
-				g.gen_type_alias(stmt)
-			}
-		}
-	}
-	for file in g.files {
-		g.set_file_module(file)
-		for stmt in file.stmts {
-			if !stmt_has_valid_data(stmt) {
-				continue
-			}
-			if stmt is ast.TypeDecl {
-				if stmt.variants.len == 0 && stmt.base_type !is ast.EmptyExpr
-					&& type_decl_base_is_fn_type(stmt) {
-					g.gen_type_alias(stmt)
-				} else if stmt.variants.len > 0 {
-					g.gen_sum_type_decl(stmt)
-				}
-			}
-		}
-	}
+	g.emit_pass2_type_decls()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 2 type declarations')
 
@@ -1216,41 +1226,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 
 	// Pass 3: Full struct definitions (use named struct/union to match forward decls)
 	// Collect all struct decls, then emit in dependency order
-	mut all_structs := []StructDeclInfo{}
-	mut all_interfaces := []InterfaceDeclInfo{}
-	for file in g.files {
-		g.set_file_module(file)
-		for stmt in file.stmts {
-			if !stmt_has_valid_data(stmt) {
-				continue
-			}
-			if stmt is ast.StructDecl {
-				if stmt.language == .c {
-					continue
-				}
-				all_structs << StructDeclInfo{
-					decl:      stmt
-					mod:       g.cur_module
-					file_name: file.name
-				}
-			} else if stmt is ast.InterfaceDecl {
-				for field in stmt.fields {
-					_ = g.interface_method_info(field)
-				}
-				iface_c_name := if g.cur_module != '' && g.cur_module != 'builtin' {
-					'${g.cur_module}__${stmt.name}'
-				} else {
-					stmt.name
-				}
-				g.interface_decls[iface_c_name] = stmt
-				all_interfaces << InterfaceDeclInfo{
-					decl:      stmt
-					mod:       g.cur_module
-					file_name: file.name
-				}
-			}
-		}
-	}
+	all_structs, all_interfaces := g.collect_struct_and_interface_infos()
 	// Emit structs with only primitive/resolved fields first, then the rest.
 	// Interleave option/result wrapper emission as soon as their payload types are complete.
 	// Also emit fixed array typedefs as soon as their element types are defined.
@@ -1296,9 +1272,6 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 		'pass 3.1 fixed arrays')
 
 	// Pass 3.25: Tuple aliases (multiple-return lowering support)
-	if 'body_array' !in g.emitted_types {
-		eprintln('WARNING: body_array not emitted before pass 3.25 tuples')
-	}
 	g.emit_tuple_aliases()
 	if g.tuple_aliases.len > 0 {
 		g.sb.writeln('')
@@ -1416,104 +1389,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.emit_forward_typedefs_for_signature_types()
 
 	// Pass 4: Function forward declarations
-	for fi, file in g.files {
-		g.set_file_module(file)
-		for stmt in file.stmts {
-			if !stmt_has_valid_data(stmt) {
-				continue
-			}
-			if stmt is ast.FnDecl {
-				decl := stmt as ast.FnDecl
-				if !g.should_emit_fn_decl_cached(g.cur_module, decl) {
-					continue
-				}
-				if decl.language == .js {
-					continue
-				}
-				if decl.language == .c && decl.stmts.len == 0 {
-					// C extern declarations — their prototypes come from #include/#insert headers.
-					continue
-				}
-				if g.should_skip_backend_generic_fn(decl) {
-					continue
-				}
-				// Generic functions: emit as macros for known simple functions
-				if g.generic_fn_param_names(decl).len > 0 {
-					gfn_name := g.get_fn_name(decl)
-					specs := g.generic_fn_specializations_for_emit_scope(decl)
-					if specs.len > 0 {
-						prev_generic_types := g.active_generic_types.clone()
-						for spec in specs {
-							g.active_generic_types = spec.generic_types.clone()
-							g.record_fn_owner_for_current_file(spec.name, fi)
-							g.gen_fn_head_with_name(decl, spec.name)
-							g.sb.writeln(';')
-						}
-						g.active_generic_types = prev_generic_types.clone()
-					} else {
-						if gfn_name != '' {
-							g.emit_generic_fn_macro(gfn_name, decl)
-						}
-					}
-					continue
-				}
-				recv_gp := receiver_generic_param_names(decl)
-				if recv_gp.len > 0 {
-					all_bindings := g.get_all_receiver_generic_bindings(decl)
-					if all_bindings.len > 0 {
-						prev_generic_types := g.active_generic_types.clone()
-						for bindings in all_bindings {
-							g.active_generic_types = bindings.clone()
-							gfn_name := g.get_fn_name(decl)
-							if gfn_name != '' {
-								g.record_fn_owner_for_current_file(gfn_name, fi)
-								g.gen_fn_head_with_name(decl, gfn_name)
-								g.sb.writeln(';')
-							}
-						}
-						g.active_generic_types = prev_generic_types.clone()
-						continue
-					} else if bindings := g.get_receiver_generic_bindings(decl) {
-						prev_generic_types := g.active_generic_types.clone()
-						g.active_generic_types = bindings.clone()
-						gfn_name := g.get_fn_name(decl)
-						if gfn_name != '' {
-							g.record_fn_owner_for_current_file(gfn_name, fi)
-							g.gen_fn_head_with_name(decl, gfn_name)
-							g.sb.writeln(';')
-						}
-						g.active_generic_types = prev_generic_types.clone()
-						continue
-					}
-				}
-				fn_name := g.get_fn_name(decl)
-				if fn_name == '' {
-					continue
-				}
-				fn_key := 'fn_${fn_name}'
-				if g.should_skip_plain_v_fallback_fn(fn_key) {
-					continue
-				}
-				if fn_name == 'main' {
-					g.has_main = true
-				}
-				if decl.name.starts_with('test_') && !decl.is_method && decl.typ.params.len == 0 {
-					g.test_fn_names << fn_name
-				}
-				// Record first emittable file index for each function (for parallel dedup).
-				// File-filtered cache builds still emit prototypes for all files, but pass 5
-				// can only emit bodies for files admitted by should_emit_current_file().
-				g.record_fn_owner_for_current_file(fn_name, fi)
-				if g.env != unsafe { nil } {
-					if fn_scope := g.env.get_fn_scope(g.cur_module, fn_name) {
-						g.cur_fn_scope = fn_scope
-					}
-				}
-				g.gen_fn_head_with_name(decl, fn_name)
-				g.sb.writeln(';')
-			}
-		}
-	}
+	g.emit_pass4_fn_forward_decls()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 4 fn forward declarations')
 
@@ -1537,6 +1413,515 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	// Pass 4.5: Emit constants after function forward declarations so const
 	// initializers can reference functions by name (for example function-pointer
 	// tables).
+	g.emit_pass45_const_decls()
+	g.sb.writeln('')
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'pass 4.5 const declarations')
+
+	// Emit deferred Objective-C .m includes now that all types are defined.
+	g.emit_deferred_m_includes()
+}
+
+fn (mut g Gen) collect_global_storage_names() {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_global_decl {
+					continue
+				}
+				g.collect_global_storage_names_from_decl(stmt.global_decl(false))
+			}
+		}
+		return
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) {
+				continue
+			}
+			if stmt is ast.GlobalDecl {
+				g.collect_global_storage_names_from_decl(stmt)
+			}
+		}
+	}
+}
+
+fn (mut g Gen) collect_global_storage_names_from_decl(decl ast.GlobalDecl) {
+	for field in decl.fields {
+		storage_name := module_storage_field_c_name(g.cur_module, decl, field)
+		qualified_name := module_storage_c_name(g.cur_module, if field.name.starts_with('C.') {
+			field.name.all_after('C.')
+		} else {
+			field.name
+		})
+		if module_storage_field_is_c_extern(decl, field) {
+			g.c_extern_module_storage[qualified_name] = storage_name
+		} else {
+			g.module_storage_vars[storage_name] = g.cur_module
+		}
+		if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
+			g.global_var_modules[field.name] = g.cur_module
+		}
+	}
+}
+
+fn (mut g Gen) emit_pass1_forward_decls() {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				match stmt.kind() {
+					.stmt_struct_decl {
+						decl := stmt.struct_decl()
+						if decl.language == .c {
+							continue
+						}
+						g.emit_struct_forward_decl(decl)
+					}
+					.stmt_type_decl {
+						decl := stmt.type_decl()
+						if decl.variants.len > 0 {
+							g.emit_sum_type_forward_decl(decl)
+						}
+					}
+					.stmt_interface_decl {
+						g.emit_interface_forward_decl(stmt.interface_decl())
+					}
+					else {}
+				}
+			}
+		}
+		return
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) {
+				continue
+			}
+			if stmt is ast.StructDecl {
+				if stmt.language == .c {
+					continue
+				}
+				g.emit_struct_forward_decl(stmt)
+			} else if stmt is ast.TypeDecl {
+				if stmt.variants.len > 0 {
+					g.emit_sum_type_forward_decl(stmt)
+				}
+			} else if stmt is ast.InterfaceDecl {
+				g.emit_interface_forward_decl(stmt)
+			}
+		}
+	}
+}
+
+fn (mut g Gen) emit_struct_forward_decl(decl ast.StructDecl) {
+	name := g.get_struct_name(decl)
+	if decl.generic_params.len > 0 && name !in g.generic_struct_bindings
+		&& name !in g.generic_struct_instances {
+		return
+	}
+	if name in g.emitted_types {
+		return
+	}
+	g.emitted_types[name] = true
+	keyword := if decl.is_union { 'union' } else { 'struct' }
+	g.sb.writeln('typedef ${keyword} ${name} ${name};')
+	if decl.generic_params.len > 0 {
+		instances := g.generic_struct_instances[name]
+		for inst in instances {
+			if inst.c_name == name {
+				continue
+			}
+			if inst.c_name !in g.emitted_types {
+				g.emitted_types[inst.c_name] = true
+				g.sb.writeln('typedef ${keyword} ${inst.c_name} ${inst.c_name};')
+			}
+		}
+	}
+}
+
+fn (mut g Gen) emit_sum_type_forward_decl(decl ast.TypeDecl) {
+	name := g.get_type_decl_name(decl)
+	if name !in g.emitted_types {
+		g.emitted_types[name] = true
+		g.sb.writeln('typedef struct ${name} ${name};')
+	}
+}
+
+fn (mut g Gen) emit_interface_forward_decl(decl ast.InterfaceDecl) {
+	name := g.get_interface_name(decl)
+	if name !in g.emitted_types {
+		g.emitted_types[name] = true
+		g.sb.writeln('typedef struct ${name} ${name};')
+	}
+}
+
+fn (mut g Gen) emit_pass2_type_decls() {
+	if g.has_flat() {
+		g.emit_pass2_type_decls_flat()
+		return
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) {
+				continue
+			}
+			if stmt is ast.EnumDecl {
+				g.gen_enum_decl(stmt)
+			}
+		}
+	}
+	g.prescan_type_aliases_and_interfaces()
+	g.emit_tuple_aliases()
+	if g.tuple_aliases.len > 0 {
+		g.sb.writeln('')
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) {
+				continue
+			}
+			if stmt is ast.TypeDecl && stmt.variants.len == 0 && stmt.base_type !is ast.EmptyExpr
+				&& !type_decl_base_is_fn_type(stmt) {
+				g.gen_type_alias(stmt)
+			}
+		}
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) {
+				continue
+			}
+			if stmt is ast.TypeDecl {
+				if stmt.variants.len == 0 && stmt.base_type !is ast.EmptyExpr
+					&& type_decl_base_is_fn_type(stmt) {
+					g.gen_type_alias(stmt)
+				} else if stmt.variants.len > 0 {
+					g.gen_sum_type_decl(stmt)
+				}
+			}
+		}
+	}
+}
+
+fn (mut g Gen) emit_pass2_type_decls_flat() {
+	for i in 0 .. g.flat.files.len {
+		fc := g.flat.file_cursor(i)
+		g.set_file_cursor_module(fc)
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			stmt := stmts.at(j)
+			if stmt.kind() == .stmt_enum_decl {
+				g.gen_enum_decl(stmt.enum_decl(true))
+			}
+		}
+	}
+	g.prescan_type_aliases_and_interfaces()
+	g.emit_tuple_aliases()
+	if g.tuple_aliases.len > 0 {
+		g.sb.writeln('')
+	}
+	for i in 0 .. g.flat.files.len {
+		fc := g.flat.file_cursor(i)
+		g.set_file_cursor_module(fc)
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			stmt := stmts.at(j)
+			if stmt.kind() != .stmt_type_decl {
+				continue
+			}
+			decl := stmt.type_decl()
+			if decl.variants.len == 0 && decl.base_type !is ast.EmptyExpr
+				&& !type_decl_base_is_fn_type(decl) {
+				g.gen_type_alias(decl)
+			}
+		}
+	}
+	for i in 0 .. g.flat.files.len {
+		fc := g.flat.file_cursor(i)
+		g.set_file_cursor_module(fc)
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			stmt := stmts.at(j)
+			if stmt.kind() != .stmt_type_decl {
+				continue
+			}
+			decl := stmt.type_decl()
+			if decl.variants.len == 0 && decl.base_type !is ast.EmptyExpr
+				&& type_decl_base_is_fn_type(decl) {
+				g.gen_type_alias(decl)
+			} else if decl.variants.len > 0 {
+				g.gen_sum_type_decl(decl)
+			}
+		}
+	}
+}
+
+fn (mut g Gen) prescan_type_aliases_and_interfaces() {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				match stmt.kind() {
+					.stmt_type_decl {
+						decl := stmt.type_decl()
+						if decl.base_type !is ast.EmptyExpr {
+							_ = g.expr_type_to_c(decl.base_type)
+						}
+					}
+					.stmt_interface_decl {
+						decl := stmt.interface_decl()
+						for field in decl.fields {
+							_ = g.interface_method_info(field)
+						}
+					}
+					else {}
+				}
+			}
+		}
+		return
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) {
+				continue
+			}
+			if stmt is ast.TypeDecl {
+				if stmt.base_type !is ast.EmptyExpr {
+					_ = g.expr_type_to_c(stmt.base_type)
+				}
+			} else if stmt is ast.InterfaceDecl {
+				for field in stmt.fields {
+					_ = g.interface_method_info(field)
+				}
+			}
+		}
+	}
+}
+
+fn (mut g Gen) collect_struct_and_interface_infos() ([]StructDeclInfo, []InterfaceDeclInfo) {
+	mut all_structs := []StructDeclInfo{}
+	mut all_interfaces := []InterfaceDeclInfo{}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				match stmt.kind() {
+					.stmt_struct_decl {
+						decl := stmt.struct_decl()
+						if decl.language == .c {
+							continue
+						}
+						all_structs << StructDeclInfo{
+							decl:      decl
+							mod:       g.cur_module
+							file_name: fc.name()
+						}
+					}
+					.stmt_interface_decl {
+						decl := stmt.interface_decl()
+						g.collect_interface_decl_info(decl, fc.name(), mut all_interfaces)
+					}
+					else {}
+				}
+			}
+		}
+		return all_structs, all_interfaces
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) {
+				continue
+			}
+			if stmt is ast.StructDecl {
+				if stmt.language == .c {
+					continue
+				}
+				all_structs << StructDeclInfo{
+					decl:      stmt
+					mod:       g.cur_module
+					file_name: file.name
+				}
+			} else if stmt is ast.InterfaceDecl {
+				g.collect_interface_decl_info(stmt, file.name, mut all_interfaces)
+			}
+		}
+	}
+	return all_structs, all_interfaces
+}
+
+fn (mut g Gen) collect_interface_decl_info(decl ast.InterfaceDecl, file_name string, mut all_interfaces []InterfaceDeclInfo) {
+	for field in decl.fields {
+		_ = g.interface_method_info(field)
+	}
+	iface_c_name := if g.cur_module != '' && g.cur_module != 'builtin' {
+		'${g.cur_module}__${decl.name}'
+	} else {
+		decl.name
+	}
+	g.interface_decls[iface_c_name] = decl
+	all_interfaces << InterfaceDeclInfo{
+		decl:      decl
+		mod:       g.cur_module
+		file_name: file_name
+	}
+}
+
+fn (mut g Gen) emit_pass4_fn_forward_decls() {
+	if g.has_flat() {
+		for fi in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(fi)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_fn_decl {
+					continue
+				}
+				g.emit_fn_forward_decl_for_decl(stmt.fn_decl_signature(), stmt.list_at(3).len(), fi)
+			}
+		}
+		return
+	}
+	for fi, file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) {
+				continue
+			}
+			if stmt is ast.FnDecl {
+				decl := stmt as ast.FnDecl
+				g.emit_fn_forward_decl_for_decl(decl, decl.stmts.len, fi)
+			}
+		}
+	}
+}
+
+fn (mut g Gen) emit_fn_forward_decl_for_decl(decl ast.FnDecl, body_len int, file_idx int) {
+	if !g.should_emit_fn_decl_cached(g.cur_module, decl) {
+		return
+	}
+	if decl.language == .js {
+		return
+	}
+	if decl.language == .c && body_len == 0 {
+		// C extern declarations — their prototypes come from #include/#insert headers.
+		return
+	}
+	if g.should_skip_backend_generic_fn(decl) {
+		return
+	}
+	if g.generic_fn_param_names(decl).len > 0 {
+		gfn_name := g.get_fn_name(decl)
+		specs := g.generic_fn_specializations_for_emit_scope(decl)
+		if specs.len > 0 {
+			prev_generic_types := g.active_generic_types.clone()
+			for spec in specs {
+				g.active_generic_types = spec.generic_types.clone()
+				g.record_fn_owner_for_current_file(spec.name, file_idx)
+				g.gen_fn_head_with_name(decl, spec.name)
+				g.sb.writeln(';')
+			}
+			g.active_generic_types = prev_generic_types.clone()
+		} else {
+			if gfn_name != '' && generic_fn_has_macro_fallback(decl) {
+				g.emit_generic_fn_macro(gfn_name, decl)
+			}
+		}
+		return
+	}
+	recv_gp := receiver_generic_param_names(decl)
+	if recv_gp.len > 0 {
+		all_bindings := g.get_all_receiver_generic_bindings(decl)
+		if all_bindings.len > 0 {
+			prev_generic_types := g.active_generic_types.clone()
+			for bindings in all_bindings {
+				g.active_generic_types = bindings.clone()
+				gfn_name := g.get_fn_name(decl)
+				if gfn_name != '' {
+					g.record_fn_owner_for_current_file(gfn_name, file_idx)
+					g.gen_fn_head_with_name(decl, gfn_name)
+					g.sb.writeln(';')
+				}
+			}
+			g.active_generic_types = prev_generic_types.clone()
+			return
+		} else if bindings := g.get_receiver_generic_bindings(decl) {
+			prev_generic_types := g.active_generic_types.clone()
+			g.active_generic_types = bindings.clone()
+			gfn_name := g.get_fn_name(decl)
+			if gfn_name != '' {
+				g.record_fn_owner_for_current_file(gfn_name, file_idx)
+				g.gen_fn_head_with_name(decl, gfn_name)
+				g.sb.writeln(';')
+			}
+			g.active_generic_types = prev_generic_types.clone()
+			return
+		}
+		return
+	}
+	fn_name := g.get_fn_name(decl)
+	if fn_name == '' {
+		return
+	}
+	fn_key := 'fn_${fn_name}'
+	if g.should_skip_plain_v_fallback_fn(fn_key) {
+		return
+	}
+	if fn_name == 'main' {
+		g.has_main = true
+	}
+	if decl.name.starts_with('test_') && !decl.is_method && decl.typ.params.len == 0 {
+		g.test_fn_names << fn_name
+	}
+	g.record_fn_owner_for_current_file(fn_name, file_idx)
+	if g.env != unsafe { nil } {
+		if fn_scope := g.env.get_fn_scope(g.cur_module, fn_name) {
+			g.cur_fn_scope = fn_scope
+		}
+	}
+	g.gen_fn_head_with_name(decl, fn_name)
+	g.sb.writeln(';')
+}
+
+fn (mut g Gen) emit_pass45_const_decls() {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			if !g.should_emit_current_file() {
+				continue
+			}
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() == .stmt_const_decl {
+					g.gen_const_decl(stmt.const_decl())
+				}
+			}
+		}
+		return
+	}
 	for file in g.files {
 		g.set_file_module(file)
 		if !g.should_emit_current_file() {
@@ -1551,12 +1936,6 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 			}
 		}
 	}
-	g.sb.writeln('')
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
-		'pass 4.5 const declarations')
-
-	// Emit deferred Objective-C .m includes now that all types are defined.
-	g.emit_deferred_m_includes()
 }
 
 fn (mut g Gen) record_fn_owner_for_current_file(fn_name string, file_idx int) {
@@ -1571,6 +1950,38 @@ fn (mut g Gen) record_fn_owner_for_current_file(fn_name string, file_idx int) {
 
 fn (mut g Gen) collect_c_file_fn_keys() {
 	g.c_file_fn_keys = map[string]bool{}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			if !fc.name().ends_with('.c.v') {
+				continue
+			}
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_fn_decl {
+					continue
+				}
+				decl := stmt.fn_decl_signature()
+				if decl.language == .js {
+					continue
+				}
+				if decl.language == .c && stmt.list_at(3).len() == 0 {
+					continue
+				}
+				if decl.typ.generic_params.len > 0 {
+					continue
+				}
+				fn_name := g.get_fn_name(decl)
+				if fn_name == '' {
+					continue
+				}
+				g.c_file_fn_keys['fn_${fn_name}'] = true
+			}
+		}
+		return
+	}
 	for file in g.files {
 		if !file.name.ends_with('.c.v') {
 			continue
@@ -1744,21 +2155,22 @@ fn (mut g Gen) gen_pass5() {
 	g.struct_field_lookup_cache = map[string]string{}
 	g.struct_field_lookup_miss = map[string]bool{}
 	g.collect_force_emit_str_fns()
-	for file in g.files {
-		g.set_file_module(file)
-		if !g.should_emit_current_file() {
-			g.gen_file_extern_consts(file)
+	g.emit_pass5_extern_consts_for_non_emit_files()
+	g.emit_pass5_extern_globals()
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			if g.should_emit_current_file() {
+				g.gen_file_cursor(fc)
+			}
 		}
-	}
-	// Pre-pass: emit extern forward declarations for all globals across all modules
-	for file in g.files {
-		g.set_file_module(file)
-		g.gen_file_extern_globals(file)
-	}
-	for file in g.files {
-		g.set_file_module(file)
-		if g.should_emit_current_file() {
-			g.gen_file(file)
+	} else {
+		for file in g.files {
+			g.set_file_module(file)
+			if g.should_emit_current_file() {
+				g.gen_file(file)
+			}
 		}
 	}
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
@@ -1776,19 +2188,14 @@ pub fn (mut g Gen) gen_pass5_pre() []int {
 	g.struct_field_lookup_cache = map[string]string{}
 	g.struct_field_lookup_miss = map[string]bool{}
 	g.collect_force_emit_str_fns()
-	for file in g.files {
-		g.set_file_module(file)
-		if !g.should_emit_current_file() {
-			g.gen_file_extern_consts(file)
-		}
-	}
-	for file in g.files {
-		g.set_file_module(file)
-		g.gen_file_extern_globals(file)
-	}
+	g.emit_pass5_extern_consts_for_non_emit_files()
+	g.emit_pass5_extern_globals()
 	// Collect emittable file indices. Also build global_owner_file: assign each
 	// global to the first file that declares it so parallel workers can avoid
 	// emitting duplicate definitions.
+	if g.has_flat() {
+		return g.collect_pass5_emit_indices_flat()
+	}
 	mut emit_indices := []int{cap: g.files.len}
 	for fi, file in g.files {
 		g.set_file_module(file)
@@ -1807,6 +2214,85 @@ pub fn (mut g Gen) gen_pass5_pre() []int {
 							g.global_owner_file[gname] = fi
 						}
 					}
+				}
+			}
+		}
+	}
+	return emit_indices
+}
+
+fn (mut g Gen) emit_pass5_extern_consts_for_non_emit_files() {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			if g.should_emit_current_file() {
+				continue
+			}
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() == .stmt_const_decl {
+					g.gen_const_decl_extern(stmt.const_decl())
+				}
+			}
+		}
+		return
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		if !g.should_emit_current_file() {
+			g.gen_file_extern_consts(file)
+		}
+	}
+}
+
+fn (mut g Gen) emit_pass5_extern_globals() {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() == .stmt_global_decl {
+					g.gen_global_decl_extern(stmt.global_decl(true))
+				}
+			}
+		}
+		return
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		g.gen_file_extern_globals(file)
+	}
+}
+
+fn (mut g Gen) collect_pass5_emit_indices_flat() []int {
+	mut emit_indices := []int{cap: g.flat.files.len}
+	for fi in 0 .. g.flat.files.len {
+		fc := g.flat.file_cursor(fi)
+		g.set_file_cursor_module(fc)
+		if !g.should_emit_current_file() {
+			continue
+		}
+		emit_indices << fi
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			stmt := stmts.at(j)
+			if stmt.kind() != .stmt_global_decl {
+				continue
+			}
+			decl := stmt.global_decl(false)
+			for field in decl.fields {
+				gname := if g.cur_module != '' && g.cur_module != 'main'
+					&& g.cur_module != 'builtin' {
+					'${g.cur_module}__${field.name}'
+				} else {
+					field.name
+				}
+				if gname !in g.global_owner_file {
+					g.global_owner_file[gname] = fi
 				}
 			}
 		}
@@ -1840,6 +2326,58 @@ fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
 	old_module := g.cur_module
 	old_import_modules := g.cur_import_modules.clone()
 	mut emitted_file_fns := map[string]bool{}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			if !g.should_emit_current_file() {
+				continue
+			}
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() == .stmt_fn_decl && stmt.name().starts_with('__sort_cmp_') {
+					decl := stmt.fn_decl_signature()
+					fn_name := g.get_fn_name(decl)
+					if fn_name != '' {
+						emitted_file_fns[fn_name] = true
+					}
+				}
+			}
+		}
+		mut emitted := map[string]bool{}
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			if fc.name().ends_with('.vh') {
+				continue
+			}
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_fn_decl || !stmt.name().starts_with('__sort_cmp_') {
+					continue
+				}
+				decl := stmt.fn_decl()
+				fn_name := g.get_fn_name(decl)
+				if fn_name == '' || fn_name !in g.force_emit_fn_names || fn_name in emitted {
+					continue
+				}
+				if fn_name in emitted_file_fns {
+					continue
+				}
+				if 'fn_${fn_name}' in g.fn_owner_file {
+					continue
+				}
+				g.gen_fn_decl(decl)
+				emitted[fn_name] = true
+			}
+		}
+		g.cur_file_name = old_file
+		g.cur_module = old_module
+		g.cur_import_modules = old_import_modules.clone()
+		return
+	}
 	for file in g.files {
 		g.set_file_module(file)
 		if !g.should_emit_current_file() {
@@ -1857,7 +2395,7 @@ fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
 	mut emitted := map[string]bool{}
 	for file in g.files {
 		g.set_file_module(file)
-		if g.should_emit_current_file() || file.name.ends_with('.vh') {
+		if file.name.ends_with('.vh') {
 			continue
 		}
 		for stmt in file.stmts {
@@ -1887,223 +2425,6 @@ fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
 	g.cur_file_name = old_file
 	g.cur_module = old_module
 	g.cur_import_modules = old_import_modules.clone()
-}
-
-fn (mut g Gen) emit_weak_generic_specializations_from_non_emit_files() {
-}
-
-fn (mut g Gen) scan_weak_generic_specializations_from_non_emit_files(root_called_names map[string]bool, required_names map[string]bool, mut needed_names map[string]bool, mut required_names_mut map[string]bool, mut scanned map[string]bool) {
-	for file in g.files {
-		g.set_file_module(file)
-		if g.should_emit_current_file() || file.name.ends_with('.vh') {
-			continue
-		}
-		for stmt in file.stmts {
-			if !stmt_has_valid_data(stmt) || stmt !is ast.FnDecl {
-				continue
-			}
-			decl := stmt as ast.FnDecl
-			if g.generic_fn_param_names(decl).len > 0 {
-				g.scan_weak_generic_fn_specializations(&decl, root_called_names, required_names, mut
-					needed_names, mut required_names_mut, mut scanned)
-			}
-			if receiver_generic_param_names(decl).len > 0 {
-				g.scan_weak_receiver_generic_method_specializations(&decl, mut needed_names, mut
-					required_names_mut, mut scanned)
-			}
-		}
-	}
-}
-
-fn (mut g Gen) scan_weak_generic_fn_specializations(node &ast.FnDecl, root_called_names map[string]bool, required_names map[string]bool, mut needed_names map[string]bool, mut required_names_mut map[string]bool, mut scanned map[string]bool) {
-	$if trace_weak ? {
-		t_before := g.process_rss_mb()
-		specs_before_len := needed_names.len
-		mut scan_count := 0
-		for spec in g.weak_generic_fn_specializations_for_names(node, needed_names,
-			root_called_names, required_names) {
-			scan_key := '${g.cur_module}.${node.name}:${spec.name}'
-			if scan_key in scanned {
-				continue
-			}
-			scanned[scan_key] = true
-			scan_count++
-			g.scan_weak_specialization_body(node, spec.name, spec.generic_types, mut needed_names, mut
-				required_names_mut)
-		}
-		t_after := g.process_rss_mb()
-		if t_after - t_before > 50 || scan_count > 5 {
-			eprintln('[weak]   scan_fn ${g.cur_module}.${node.name} new_scans=${scan_count} rss_mb=${t_before}->${t_after} needed=${specs_before_len}->${needed_names.len}')
-		}
-	} $else {
-		for spec in g.weak_generic_fn_specializations_for_names(node, needed_names,
-			root_called_names, required_names) {
-			scan_key := '${g.cur_module}.${node.name}:${spec.name}'
-			if scan_key in scanned {
-				continue
-			}
-			scanned[scan_key] = true
-			g.scan_weak_specialization_body(node, spec.name, spec.generic_types, mut needed_names, mut
-				required_names_mut)
-		}
-	}
-}
-
-fn (mut g Gen) scan_weak_receiver_generic_method_specializations(node &ast.FnDecl, mut needed_names map[string]bool, mut required_names map[string]bool, mut scanned map[string]bool) {
-	instances := g.get_all_receiver_generic_instances(*node)
-	if instances.len > 0 {
-		for inst in instances {
-			fn_name := receiver_generic_fn_name_from_instance(node, inst)
-			if fn_name == '' || fn_name !in needed_names {
-				continue
-			}
-			scan_key := '${g.cur_module}.${node.name}:${fn_name}'
-			if scan_key in scanned {
-				continue
-			}
-			scanned[scan_key] = true
-			g.scan_weak_specialization_body(node, fn_name, inst.bindings, mut needed_names, mut
-				required_names)
-		}
-		return
-	}
-	mut bindings_list := []map[string]types.Type{}
-	if bindings := g.get_receiver_generic_bindings(*node) {
-		bindings_list << bindings
-	}
-	for bindings in bindings_list {
-		mut prev_generic_types := g.active_generic_types.move()
-		g.active_generic_types = bindings.clone()
-		fn_name := g.get_fn_name(*node)
-		g.active_generic_types = prev_generic_types.move()
-		if fn_name == '' || fn_name !in needed_names {
-			continue
-		}
-		scan_key := '${g.cur_module}.${node.name}:${fn_name}'
-		if scan_key in scanned {
-			continue
-		}
-		scanned[scan_key] = true
-		g.scan_weak_specialization_body(node, fn_name, bindings, mut needed_names, mut
-			required_names)
-	}
-}
-
-fn receiver_generic_fn_name_from_instance(node &ast.FnDecl, inst GenericStructInstance) string {
-	name := sanitize_fn_ident(node.name)
-	if inst.c_name == '' || name == '' {
-		return ''
-	}
-	return '${inst.c_name}__${name}'
-}
-
-fn (mut g Gen) scan_weak_specialization_body(node &ast.FnDecl, fn_name string, generic_types map[string]types.Type, mut needed_names map[string]bool, mut required_names map[string]bool) {
-	late_before_count := g.late_generic_spec_count()
-	prev_fn_name := g.cur_fn_name
-	prev_fn_c_name := g.cur_fn_c_name
-	prev_fn_scope := g.cur_fn_scope
-	mut prev_active_generic_types := g.active_generic_types.clone()
-	mut prev_runtime_local_types := g.runtime_local_types.clone()
-	mut prev_runtime_decl_types := g.runtime_decl_types.clone()
-	mut prev_not_local_var_cache := g.not_local_var_cache.clone()
-	mut prev_is_module_ident_cache := g.is_module_ident_cache.clone()
-	mut prev_resolved_module_names := g.resolved_module_names.clone()
-	mut prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
-	prev_collect_generic_scan_calls := g.collect_generic_scan_calls
-	mut prev_generic_scan_called_names := g.generic_scan_called_names.clone()
-	scope_fn_name := if node.is_method {
-		v_type_name := g.receiver_type_to_scope_name(node.receiver.typ)
-		if v_type_name != '' {
-			'${v_type_name}__${node.name}'
-		} else {
-			node.name
-		}
-	} else {
-		node.name
-	}
-	g.cur_fn_name = node.name
-	g.cur_fn_c_name = fn_name
-	g.cur_fn_scope = unsafe { nil }
-	if g.env != unsafe { nil } {
-		if fn_scope := g.env.get_fn_scope(g.cur_module, scope_fn_name) {
-			g.cur_fn_scope = fn_scope
-		}
-	}
-	g.active_generic_types = generic_types.clone()
-	g.runtime_local_types = map[string]string{}
-	g.runtime_decl_types = map[string]string{}
-	g.not_local_var_cache = map[string]bool{}
-	g.is_module_ident_cache = map[string]bool{}
-	g.resolved_module_names = map[string]string{}
-	g.cur_fn_generic_params = map[string]string{}
-	g.collect_generic_scan_calls = true
-	g.generic_scan_called_names = map[string]bool{}
-	g.seed_fn_scan_runtime_types(*node, fn_name)
-	g.scan_fn_body_for_generic_types(*node, fn_name)
-	for name, _ in g.generic_scan_called_names {
-		needed_names[name] = true
-		required_names[name] = true
-	}
-	g.cur_fn_name = prev_fn_name
-	g.cur_fn_c_name = prev_fn_c_name
-	g.cur_fn_scope = prev_fn_scope
-	g.active_generic_types = prev_active_generic_types.move()
-	g.runtime_local_types = prev_runtime_local_types.move()
-	g.runtime_decl_types = prev_runtime_decl_types.move()
-	g.not_local_var_cache = prev_not_local_var_cache.move()
-	g.is_module_ident_cache = prev_is_module_ident_cache.move()
-	g.resolved_module_names = prev_resolved_module_names.move()
-	g.cur_fn_generic_params = prev_cur_fn_generic_params.move()
-	g.collect_generic_scan_calls = prev_collect_generic_scan_calls
-	g.generic_scan_called_names = prev_generic_scan_called_names.move()
-	if g.late_generic_spec_count() != late_before_count {
-		g.add_late_weak_generic_names(mut needed_names)
-	}
-}
-
-fn (g &Gen) add_called_weak_generic_names(mut needed_names map[string]bool, mut required_names map[string]bool) {
-	for name, _ in g.called_fn_names {
-		needed_names[name] = true
-		required_names[name] = true
-	}
-}
-
-fn (mut g Gen) add_late_weak_generic_names(mut needed_names map[string]bool) {
-	for name, _ in g.late_weak_generic_name_set() {
-		needed_names[name] = true
-	}
-}
-
-fn (mut g Gen) late_weak_generic_name_set() map[string]bool {
-	old_file := g.cur_file_name
-	old_module := g.cur_module
-	mut old_import_modules := g.cur_import_modules.clone()
-	mut old_active_generic_types := g.active_generic_types.clone()
-	mut names := map[string]bool{}
-	g.build_generic_spec_index()
-	for file in g.files {
-		g.set_file_module(file)
-		if g.should_emit_current_file() || file.name.ends_with('.vh') {
-			continue
-		}
-		for stmt in file.stmts {
-			if !stmt_has_valid_data(stmt) || stmt !is ast.FnDecl {
-				continue
-			}
-			decl := stmt as ast.FnDecl
-			if g.generic_fn_param_names(decl).len == 0 {
-				continue
-			}
-			for spec in g.late_generic_fn_specializations(decl) {
-				names[spec.name] = true
-			}
-		}
-	}
-	g.active_generic_types = old_active_generic_types.move()
-	g.cur_file_name = old_file
-	g.cur_module = old_module
-	g.cur_import_modules = old_import_modules.move()
-	return names
 }
 
 fn (mut g Gen) late_generic_fn_specializations(node ast.FnDecl) []GenericFnSpecialization {
@@ -2159,98 +2480,6 @@ fn (mut g Gen) late_generic_fn_specializations(node ast.FnDecl) []GenericFnSpeci
 	return specs
 }
 
-fn (mut g Gen) emit_weak_generic_specialization_decls(needed_names map[string]bool, root_called_names map[string]bool, required_names map[string]bool, mut emitted map[string]bool) {
-	for file in g.files {
-		g.set_file_module(file)
-		if g.should_emit_current_file() || file.name.ends_with('.vh') {
-			continue
-		}
-		for stmt in file.stmts {
-			if !stmt_has_valid_data(stmt) || stmt !is ast.FnDecl {
-				continue
-			}
-			decl := stmt as ast.FnDecl
-			if g.generic_fn_param_names(decl).len > 0 {
-				g.emit_weak_generic_fn_specializations(&decl, false, needed_names,
-					root_called_names, required_names, mut emitted)
-			}
-			if receiver_generic_param_names(decl).len > 0 {
-				g.emit_weak_receiver_generic_method_specializations(&decl, false, needed_names, mut
-					emitted)
-			}
-		}
-	}
-}
-
-fn (mut g Gen) emit_weak_generic_specialization_bodies(needed_names map[string]bool, root_called_names map[string]bool, required_names map[string]bool, mut emitted map[string]bool) {
-	for file in g.files {
-		g.set_file_module(file)
-		if g.should_emit_current_file() || file.name.ends_with('.vh') {
-			continue
-		}
-		for stmt in file.stmts {
-			if !stmt_has_valid_data(stmt) || stmt !is ast.FnDecl {
-				continue
-			}
-			decl := stmt as ast.FnDecl
-			if g.generic_fn_param_names(decl).len > 0 {
-				g.emit_weak_generic_fn_specializations(&decl, true, needed_names,
-					root_called_names, required_names, mut emitted)
-			}
-			if receiver_generic_param_names(decl).len > 0 {
-				g.emit_weak_receiver_generic_method_specializations(&decl, true, needed_names, mut
-					emitted)
-			}
-		}
-	}
-}
-
-fn (mut g Gen) weak_generic_fn_specializations_for_names(node &ast.FnDecl, needed_names map[string]bool, root_called_names map[string]bool, required_names map[string]bool) []GenericFnSpecialization {
-	mut prev_generic_types := g.active_generic_types.clone()
-	mut specs := g.direct_generic_fn_specializations(*node)
-	needed_name_keys := needed_names.keys()
-	if needed_names.len > 0 {
-		mut seen := map[string]bool{}
-		for spec in specs {
-			seen[spec.name] = true
-		}
-		generic_params := g.generic_fn_param_names(*node)
-		if generic_params.len > 0 {
-			mut prev_generic_types2 := g.active_generic_types.move()
-			g.active_generic_types = map[string]types.Type{}
-			base_name := g.get_fn_name(*node)
-			g.active_generic_types = prev_generic_types2.move()
-			prefix := '${base_name}_T_'
-			for called_name in needed_name_keys {
-				if !called_name.starts_with(prefix) || called_name in seen {
-					continue
-				}
-				generic_types := g.generic_types_from_specialized_fn_name(*node, called_name) or {
-					continue
-				}
-				seen[called_name] = true
-				specs << GenericFnSpecialization{
-					name:          called_name
-					generic_types: generic_types.clone()
-				}
-			}
-		}
-	}
-	mut filtered := []GenericFnSpecialization{}
-	for spec in specs {
-		if spec.name !in needed_names {
-			continue
-		}
-		if g.emit_files.len > 0 && spec.name !in root_called_names && spec.name !in required_names
-			&& !g.weak_generic_specialization_belongs_to_emit_files(spec.generic_types) {
-			continue
-		}
-		filtered << spec
-	}
-	g.active_generic_types = prev_generic_types.move()
-	return filtered
-}
-
 fn (mut g Gen) generic_types_from_specialized_fn_name(node ast.FnDecl, fn_name string) ?map[string]types.Type {
 	generic_params := g.generic_fn_param_names(node)
 	if generic_params.len == 0 {
@@ -2279,32 +2508,6 @@ fn (mut g Gen) generic_types_from_specialized_fn_name(node ast.FnDecl, fn_name s
 		return none
 	}
 	return generic_types
-}
-
-// process_rss_mb returns the current process's resident set size in
-// megabytes, or 0 if it can't be determined. Used by the `trace_weak`
-// diagnostics to track peak memory across codegen passes. Linux reads
-// `/proc/self/statm`; macOS shells out to `ps`; other platforms return 0.
-fn (g &Gen) process_rss_mb() i64 {
-	$if linux {
-		data := os.read_file('/proc/self/statm') or { return 0 }
-		parts := data.split(' ')
-		if parts.len < 2 {
-			return 0
-		}
-		pages := parts[1].i64()
-		raw_page_size := i64(C.sysconf(C._SC_PAGESIZE))
-		page_size := if raw_page_size > 0 { raw_page_size } else { i64(4096) }
-		return (pages * page_size) / (1024 * 1024)
-	}
-	$if macos {
-		out := os.execute('ps -o rss= -p ${os.getpid()}')
-		if out.exit_code != 0 {
-			return 0
-		}
-		return out.output.trim_space().i64() / 1024
-	}
-	return 0
 }
 
 fn (mut g Gen) split_specialization_suffix(suffix string, parts int) ?[]string {
@@ -2339,77 +2542,6 @@ fn (mut g Gen) split_specialization_suffix(suffix string, parts int) ?[]string {
 	return none
 }
 
-fn (mut g Gen) emit_weak_generic_fn_specializations(node &ast.FnDecl, emit_body bool, needed_names map[string]bool, root_called_names map[string]bool, required_names map[string]bool, mut emitted map[string]bool) {
-	mut prev_generic_types := g.active_generic_types.move()
-	specs := g.weak_generic_fn_specializations_for_names(node, needed_names, root_called_names,
-		required_names)
-	$if trace_weak ? {
-		if emit_body && specs.len > 5 {
-			eprintln('[weak]     fn=${node.name} specs=${specs.len}')
-		}
-	}
-	for spec in specs {
-		if spec.name in emitted {
-			continue
-		}
-		g.active_generic_types = spec.generic_types.clone()
-		$if trace_weak ? {
-			before := g.sb.len
-			if emit_body {
-				eprintln('[weak]       SPEC begin ${spec.name} sb=${g.sb.len}')
-				g.gen_weak_fn_decl_with_name_ptr(node, spec.name)
-				emitted[spec.name] = true
-				delta := g.sb.len - before
-				if delta > 100_000 {
-					eprintln('[weak]       SPEC ${spec.name} grew sb by ${delta}')
-				}
-			} else {
-				g.gen_weak_fn_decl_head_with_name_ptr(node, spec.name)
-			}
-		} $else {
-			if emit_body {
-				g.gen_weak_fn_decl_with_name_ptr(node, spec.name)
-				emitted[spec.name] = true
-			} else {
-				g.gen_weak_fn_decl_head_with_name_ptr(node, spec.name)
-			}
-		}
-	}
-	g.active_generic_types = prev_generic_types.move()
-}
-
-fn (mut g Gen) emit_weak_receiver_generic_method_specializations(node &ast.FnDecl, emit_body bool, needed_names map[string]bool, mut emitted map[string]bool) {
-	mut prev_generic_types := g.active_generic_types.move()
-	instances := g.get_all_receiver_generic_instances(*node)
-	if instances.len > 0 {
-		for inst in instances {
-			fn_name := receiver_generic_fn_name_from_instance(node, inst)
-			if fn_name == '' || fn_name !in needed_names || fn_name in emitted {
-				continue
-			}
-			g.active_generic_types = inst.bindings.clone()
-			if emit_body {
-				g.gen_weak_fn_decl_with_name_ptr(node, fn_name)
-				emitted[fn_name] = true
-			} else {
-				g.gen_weak_fn_decl_head_with_name_ptr(node, fn_name)
-			}
-		}
-	} else if bindings := g.get_receiver_generic_bindings(*node) {
-		g.active_generic_types = bindings.clone()
-		fn_name := g.get_fn_name(*node)
-		if fn_name != '' && fn_name in needed_names && fn_name !in emitted {
-			if emit_body {
-				g.gen_weak_fn_decl_with_name_ptr(node, fn_name)
-				emitted[fn_name] = true
-			} else {
-				g.gen_weak_fn_decl_head_with_name_ptr(node, fn_name)
-			}
-		}
-	}
-	g.active_generic_types = prev_generic_types.move()
-}
-
 // Pass5WorkItem is one unit of parallel Pass 5 work. A small file is one item
 // covering the whole file (fn_indices empty => use gen_file). A large file is
 // split into several items, each owning a contiguous slice of the file's FnDecl
@@ -2431,12 +2563,55 @@ const pass5_split_threshold = 100_000
 // pass5_file_fn_indices returns the statement indices of `file_idx`'s top-level FnDecls.
 fn (g &Gen) pass5_file_fn_indices(file_idx int) []int {
 	mut out := []int{}
+	if g.has_flat() {
+		if file_idx < 0 || file_idx >= g.flat.files.len {
+			return out
+		}
+		stmts := g.flat.file_cursor(file_idx).stmts()
+		for i in 0 .. stmts.len() {
+			if stmts.at(i).kind() == .stmt_fn_decl {
+				out << i
+			}
+		}
+		return out
+	}
 	for i, stmt in g.files[file_idx].stmts {
 		if stmt is ast.FnDecl {
 			out << i
 		}
 	}
 	return out
+}
+
+fn (g &Gen) pass5_stmt_cost(file_idx int, stmt_idx int) int {
+	if g.has_flat() {
+		if file_idx < 0 || file_idx >= g.flat.files.len {
+			return 1
+		}
+		stmts := g.flat.file_cursor(file_idx).stmts()
+		if stmt_idx < 0 || stmt_idx >= stmts.len() {
+			return 1
+		}
+		return cleanc_stmt_codegen_cost(stmts.at(stmt_idx).stmt())
+	}
+	if file_idx < 0 || file_idx >= g.files.len || stmt_idx < 0
+		|| stmt_idx >= g.files[file_idx].stmts.len {
+		return 1
+	}
+	return cleanc_stmt_codegen_cost(g.files[file_idx].stmts[stmt_idx])
+}
+
+fn (g &Gen) pass5_file_name(file_idx int) string {
+	if g.has_flat() {
+		if file_idx < 0 || file_idx >= g.flat.files.len {
+			return ''
+		}
+		return g.flat.file_cursor(file_idx).name()
+	}
+	if file_idx < 0 || file_idx >= g.files.len {
+		return ''
+	}
+	return g.files[file_idx].name
 }
 
 // build_pass5_work_items turns the emittable file indices into balanced work
@@ -2469,7 +2644,7 @@ pub fn (g &Gen) build_pass5_work_items(emit_indices []int) []Pass5WorkItem {
 		mut slice_cost := 0
 		mut first_slice := true
 		for k, idx in fn_indices {
-			fn_cost := cleanc_stmt_codegen_cost(g.files[fi].stmts[idx])
+			fn_cost := g.pass5_stmt_cost(fi, idx)
 			slice_cost += fn_cost
 			is_last := k == fn_indices.len - 1
 			if slice_cost >= pass5_split_threshold || is_last {
@@ -2494,30 +2669,16 @@ pub fn (mut g Gen) gen_pass5_work_items(items []Pass5WorkItem) {
 	stats_enabled := g.cgen_stats_enabled()
 	for item in items {
 		if !stats_enabled {
-			if item.fn_indices.len == 0 {
-				g.gen_file(g.files[item.file_idx])
-			} else {
-				g.explicit_slice_active = true
-				g.explicit_slice_file = item.file_idx
-				g.gen_file_range(g.files[item.file_idx], item.fn_indices, item.emit_globals)
-				g.explicit_slice_active = false
-			}
+			g.gen_pass5_work_item(item)
 			continue
 		}
 		mut sw := time.new_stopwatch()
-		if item.fn_indices.len == 0 {
-			g.gen_file(g.files[item.file_idx])
-		} else {
-			g.explicit_slice_active = true
-			g.explicit_slice_file = item.file_idx
-			g.gen_file_range(g.files[item.file_idx], item.fn_indices, item.emit_globals)
-			g.explicit_slice_active = false
-		}
+		g.gen_pass5_work_item(item)
 		elapsed_ms := sw.elapsed().milliseconds()
 		if elapsed_ms > 0 {
 			suffix := if item.fn_indices.len == 0 { '' } else { ' [${item.fn_indices.len}fns]' }
 			g.pass5_file_times << Pass5FileTime{
-				file:      g.files[item.file_idx].name + suffix
+				file:      g.pass5_file_name(item.file_idx) + suffix
 				ms:        elapsed_ms
 				cost:      item.cost
 				worker_id: g.pass5_worker_id
@@ -2526,25 +2687,54 @@ pub fn (mut g Gen) gen_pass5_work_items(items []Pass5WorkItem) {
 	}
 }
 
+fn (mut g Gen) gen_pass5_work_item(item Pass5WorkItem) {
+	if item.fn_indices.len == 0 {
+		if g.has_flat() {
+			g.gen_file_cursor(g.flat.file_cursor(item.file_idx))
+		} else {
+			g.gen_file(g.files[item.file_idx])
+		}
+		return
+	}
+	g.explicit_slice_active = true
+	g.explicit_slice_file = item.file_idx
+	if g.has_flat() {
+		g.gen_file_cursor_range(g.flat.file_cursor(item.file_idx), item.fn_indices,
+			item.emit_globals)
+	} else {
+		g.gen_file_range(g.files[item.file_idx], item.fn_indices, item.emit_globals)
+	}
+	g.explicit_slice_active = false
+}
+
 // gen_pass5_files generates function bodies for a range of file indices.
 // Used by parallel dispatch — each worker calls this with its assigned chunk.
 pub fn (mut g Gen) gen_pass5_files(file_indices []int) {
 	stats_enabled := g.cgen_stats_enabled()
 	for fi in file_indices {
+		file_name := g.pass5_file_name(fi)
 		if stats_enabled {
 			mut sw := time.new_stopwatch()
-			g.gen_file(g.files[fi])
+			if g.has_flat() {
+				g.gen_file_cursor(g.flat.file_cursor(fi))
+			} else {
+				g.gen_file(g.files[fi])
+			}
 			elapsed_ms := sw.elapsed().milliseconds()
 			if elapsed_ms > 0 {
 				g.pass5_file_times << Pass5FileTime{
-					file:      g.files[fi].name
+					file:      file_name
 					ms:        elapsed_ms
 					cost:      g.pass5_file_cost(fi)
 					worker_id: g.pass5_worker_id
 				}
 			}
 		} else {
-			g.gen_file(g.files[fi])
+			if g.has_flat() {
+				g.gen_file_cursor(g.flat.file_cursor(fi))
+			} else {
+				g.gen_file(g.files[fi])
+			}
 		}
 	}
 }
@@ -2564,6 +2754,17 @@ pub fn (g &Gen) print_pass5_file_times(limit int) {
 
 // pass5_file_cost estimates relative codegen work for balancing parallel chunks.
 pub fn (g &Gen) pass5_file_cost(file_idx int) int {
+	if g.has_flat() {
+		if file_idx < 0 || file_idx >= g.flat.files.len {
+			return 1
+		}
+		mut cost := 1
+		stmts := g.flat.file_cursor(file_idx).stmts()
+		for i in 0 .. stmts.len() {
+			cost += cleanc_stmt_codegen_cost(stmts.at(i).stmt())
+		}
+		return cost
+	}
 	if file_idx < 0 || file_idx >= g.files.len {
 		return 1
 	}
@@ -2790,6 +2991,7 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 	}
 	return &Gen{
 		files:                  g.files
+		flat:                   unsafe { g.flat }
 		env:                    unsafe { g.env }
 		pref:                   unsafe { g.pref }
 		imported_symbols_index: g.imported_symbols_index.clone()
@@ -2844,7 +3046,6 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		cached_init_calls:                     g.cached_init_calls.clone()
 		used_fn_keys:                          g.used_fn_keys.clone()
 		force_emit_fn_names:                   g.force_emit_fn_names.clone()
-		weak_fn_names:                         g.weak_fn_names.clone()
 		export_fn_names:                       g.export_fn_names.clone()
 		called_fn_names:                       g.called_fn_names.clone()
 		declared_fn_names:                     g.declared_fn_names.clone()
@@ -2961,8 +3162,25 @@ fn (g &Gen) has_live_reload_functions() bool {
 	if g.pref != unsafe { nil } && g.pref.is_shared_lib {
 		return false
 	}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			if g.cursor_stmts_have_live_reload_function(g.flat.file_cursor(i).stmts()) {
+				return true
+			}
+		}
+		return false
+	}
 	for file in g.files {
 		if g.stmts_have_live_reload_function(file.stmts) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &Gen) cursor_stmts_have_live_reload_function(stmts ast.CursorList) bool {
+	for i in 0 .. stmts.len() {
+		if g.stmt_has_live_reload_function(stmts.at(i).stmt()) {
 			return true
 		}
 	}
@@ -4093,6 +4311,9 @@ fn strip_expr_wrappers(expr ast.Expr) ast.Expr {
 			strip_expr_wrappers(expr.expr)
 		}
 		ast.CastExpr {
+			strip_expr_wrappers(expr.expr)
+		}
+		ast.AsCastExpr {
 			strip_expr_wrappers(expr.expr)
 		}
 		else {

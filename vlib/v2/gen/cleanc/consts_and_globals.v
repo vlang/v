@@ -191,60 +191,130 @@ fn (g &Gen) const_initializer_needs_runtime(expr ast.Expr) bool {
 fn (mut g Gen) collect_runtime_const_targets() {
 	g.runtime_const_targets = map[string]bool{}
 	mut module_consts := map[string]map[string]bool{}
-	for file in g.files {
-		mut const_names := if file.mod in module_consts {
-			module_consts[file.mod].clone()
-		} else {
-			map[string]bool{}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			module_name := flat_file_module_name(fc)
+			mut const_names := if module_name in module_consts {
+				module_consts[module_name].clone()
+			} else {
+				map[string]bool{}
+			}
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_const_decl {
+					continue
+				}
+				const_decl := stmt.const_decl()
+				for field in const_decl.fields {
+					if field.name != '' && !field.name.starts_with('C.') {
+						const_names[field.name] = true
+					}
+				}
+			}
+			module_consts[module_name] = const_names.clone()
 		}
-		for stmt in file.stmts {
-			if stmt !is ast.ConstDecl {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			const_names := if g.cur_module in module_consts {
+				module_consts[g.cur_module].clone()
+			} else {
+				map[string]bool{}
+			}
+			if const_names.len == 0 {
 				continue
 			}
-			const_decl := stmt as ast.ConstDecl
-			for field in const_decl.fields {
-				if field.name != '' && !field.name.starts_with('C.') {
-					const_names[field.name] = true
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_fn_decl || !stmt.name().starts_with('__v_init_consts_') {
+					continue
+				}
+				body := stmt.list_at(3)
+				for k in 0 .. body.len() {
+					body_stmt := body.at(k)
+					if body_stmt.kind() != .stmt_assign {
+						continue
+					}
+					assign_stmt := body_stmt.stmt()
+					if assign_stmt !is ast.AssignStmt {
+						continue
+					}
+					assign := assign_stmt as ast.AssignStmt
+					if assign.lhs.len != 1 {
+						continue
+					}
+					lhs_expr := assign.lhs[0]
+					if lhs_expr !is ast.Ident {
+						continue
+					}
+					lhs_ident := lhs_expr as ast.Ident
+					if lhs_ident.name !in const_names {
+						continue
+					}
+					g.runtime_const_targets[runtime_const_target_key(g.cur_module, lhs_ident.name)] = true
 				}
 			}
 		}
-		module_consts[file.mod] = const_names.clone()
-	}
-	for file in g.files {
-		g.set_file_module(file)
-		const_names := if g.cur_module in module_consts {
-			module_consts[g.cur_module].clone()
-		} else {
-			map[string]bool{}
+	} else {
+		for file in g.files {
+			mut const_names := if file.mod in module_consts {
+				module_consts[file.mod].clone()
+			} else {
+				map[string]bool{}
+			}
+			for stmt in file.stmts {
+				if stmt !is ast.ConstDecl {
+					continue
+				}
+				const_decl := stmt as ast.ConstDecl
+				for field in const_decl.fields {
+					if field.name != '' && !field.name.starts_with('C.') {
+						const_names[field.name] = true
+					}
+				}
+			}
+			module_consts[file.mod] = const_names.clone()
 		}
-		if const_names.len == 0 {
-			continue
-		}
-		for stmt in file.stmts {
-			if stmt !is ast.FnDecl {
+		for file in g.files {
+			g.set_file_module(file)
+			const_names := if g.cur_module in module_consts {
+				module_consts[g.cur_module].clone()
+			} else {
+				map[string]bool{}
+			}
+			if const_names.len == 0 {
 				continue
 			}
-			fn_decl := stmt as ast.FnDecl
-			if !fn_decl.name.starts_with('__v_init_consts_') {
-				continue
-			}
-			for body_stmt in fn_decl.stmts {
-				if body_stmt !is ast.AssignStmt {
+			for stmt in file.stmts {
+				if stmt !is ast.FnDecl {
 					continue
 				}
-				assign_stmt := body_stmt as ast.AssignStmt
-				if assign_stmt.lhs.len != 1 {
+				fn_decl := stmt as ast.FnDecl
+				if !fn_decl.name.starts_with('__v_init_consts_') {
 					continue
 				}
-				lhs_expr := assign_stmt.lhs[0]
-				if lhs_expr !is ast.Ident {
-					continue
+				for body_stmt in fn_decl.stmts {
+					if body_stmt !is ast.AssignStmt {
+						continue
+					}
+					assign_stmt := body_stmt as ast.AssignStmt
+					if assign_stmt.lhs.len != 1 {
+						continue
+					}
+					lhs_expr := assign_stmt.lhs[0]
+					if lhs_expr !is ast.Ident {
+						continue
+					}
+					lhs_ident := lhs_expr as ast.Ident
+					if lhs_ident.name !in const_names {
+						continue
+					}
+
+					g.runtime_const_targets[runtime_const_target_key(g.cur_module, lhs_ident.name)] = true
 				}
-				lhs_ident := lhs_expr as ast.Ident
-				if lhs_ident.name !in const_names {
-					continue
-				}
-				g.runtime_const_targets[runtime_const_target_key(g.cur_module, lhs_ident.name)] = true
 			}
 		}
 	}
@@ -255,6 +325,28 @@ fn (g &Gen) is_runtime_const_target(field_name string) bool {
 }
 
 fn (mut g Gen) lookup_const_expr(mod string, name string) ?ast.Expr {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			if flat_file_module_name(fc) != mod {
+				continue
+			}
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_const_decl {
+					continue
+				}
+				const_decl := stmt.const_decl()
+				for field in const_decl.fields {
+					if field.name == name {
+						return field.value
+					}
+				}
+			}
+		}
+		return none
+	}
 	for file in g.files {
 		if file.mod != mod {
 			continue
@@ -275,6 +367,27 @@ fn (mut g Gen) lookup_const_expr(mod string, name string) ?ast.Expr {
 }
 
 fn (mut g Gen) lookup_generated_const_expr(generated_name string) ?ast.Expr {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			module_name := flat_file_module_name(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_const_decl {
+					continue
+				}
+				const_decl := stmt.const_decl()
+				for field in const_decl.fields {
+					name := generated_decl_name_for_module(module_name, field.name) or { continue }
+					if name == generated_name {
+						return field.value
+					}
+				}
+			}
+		}
+		return none
+	}
 	for file in g.files {
 		for stmt in file.stmts {
 			if stmt !is ast.ConstDecl {

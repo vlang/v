@@ -7,13 +7,14 @@
 // directly and must produce the same `t.env` mutations as `propagate_types`.
 // Also pins `apply_post_pass_tail_from_flat` against `apply_post_pass_tail`.
 //
-// The flat path decodes one top-level stmt at a time and reuses the legacy
-// stmt/expression propagation walkers. Behavior should match legacy provided
-// flattening preserves the bits propagate_types reads (pos.id, stmt/expr shape).
+// The flat path walks stmt/expression cursors directly. Behavior should match
+// legacy provided flattening preserves the bits propagate_types reads
+// (pos.id, stmt/expr shape).
 module transformer
 
 import v2.ast
 import v2.pref as vpref
+import v2.token
 import v2.types
 
 fn create_propagate_test_transformer(backend vpref.Backend) &Transformer {
@@ -54,6 +55,102 @@ fn make_propagate_test_files() []ast.File {
 	]
 }
 
+fn propagate_test_pos(id int) token.Pos {
+	return token.Pos{
+		offset: id
+		id:     id
+	}
+}
+
+fn make_propagate_expr_test_files() []ast.File {
+	arr_ident := ast.Expr(ast.Ident{
+		name: 'arr'
+		pos:  propagate_test_pos(1)
+	})
+	arr_len := ast.Expr(ast.SelectorExpr{
+		lhs: arr_ident
+		rhs: ast.Ident{
+			name: 'len'
+			pos:  propagate_test_pos(2)
+		}
+		pos: propagate_test_pos(3)
+	})
+	literal := ast.Expr(ast.BasicLiteral{
+		kind:  .number
+		value: '7'
+		pos:   propagate_test_pos(6)
+	})
+	clone_call := ast.Expr(ast.CallExpr{
+		lhs:  ast.Expr(ast.Ident{
+			name: 'string__clone'
+			pos:  propagate_test_pos(7)
+		})
+		args: [
+			ast.Expr(ast.StringLiteral{
+				kind:  .v
+				value: 'x'
+				pos:   propagate_test_pos(8)
+			}),
+		]
+		pos:  propagate_test_pos(9)
+	})
+	return [
+		ast.File{
+			name:  'expr.v'
+			mod:   'main'
+			stmts: [
+				ast.Stmt(ast.ModuleStmt{
+					name: 'main'
+				}),
+				ast.Stmt(ast.AssignStmt{
+					op:  .decl_assign
+					lhs: [
+						ast.Expr(ast.Ident{
+							name: 'n'
+							pos:  propagate_test_pos(4)
+						}),
+					]
+					rhs: [
+						arr_len,
+					]
+				}),
+				ast.Stmt(ast.AssignStmt{
+					op:  .decl_assign
+					lhs: [
+						ast.Expr(ast.Ident{
+							name: 'm'
+							pos:  propagate_test_pos(5)
+						}),
+					]
+					rhs: [
+						literal,
+					]
+				}),
+				ast.Stmt(ast.AssignStmt{
+					op:  .decl_assign
+					lhs: [
+						ast.Expr(ast.Ident{
+							name: 's'
+							pos:  propagate_test_pos(10)
+						}),
+					]
+					rhs: [
+						clone_call,
+					]
+				}),
+			]
+		},
+	]
+}
+
+fn seed_propagate_expr_scope(mut t Transformer) {
+	mut main_scope := types.new_scope(unsafe { nil })
+	main_scope.insert('arr', types.Type(types.Array{
+		elem_type: types.Type(types.int_)
+	}))
+	t.cached_scopes['main'] = main_scope
+}
+
 // Calling propagate_types_from_flat on an empty flat must not crash and
 // must produce no env mutations.
 fn test_propagate_types_from_flat_empty_flat_is_noop() {
@@ -81,6 +178,26 @@ fn test_propagate_types_from_flat_matches_legacy_for_simple_files() {
 	assert t_legacy.env.expr_type_count() == t_flat.env.expr_type_count()
 	// cur_module is set to the last visited file's mod on both paths.
 	assert t_legacy.cur_module == t_flat.cur_module
+}
+
+fn test_propagate_types_from_flat_matches_legacy_for_expression_shapes() {
+	files := make_propagate_expr_test_files()
+	flat := ast.flatten_files(files)
+
+	mut t_legacy := create_propagate_test_transformer(.cleanc)
+	mut t_flat := create_propagate_test_transformer(.cleanc)
+	seed_propagate_expr_scope(mut t_legacy)
+	seed_propagate_expr_scope(mut t_flat)
+
+	t_legacy.propagate_types(files)
+	t_flat.propagate_types_from_flat(&flat)
+
+	assert t_legacy.env.expr_type_count() == t_flat.env.expr_type_count()
+	for id in [3, 4, 5, 6, 8, 9, 10] {
+		legacy_type := t_legacy.env.get_expr_type(id) or { panic('missing legacy type ${id}') }
+		flat_type := t_flat.env.get_expr_type(id) or { panic('missing flat type ${id}') }
+		assert legacy_type.name() == flat_type.name()
+	}
 }
 
 // apply_post_pass_tail_from_flat must match apply_post_pass_tail for the
