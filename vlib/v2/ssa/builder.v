@@ -12457,6 +12457,14 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 		}
 	}
 
+	if ssa_is_string_str_fn_name(fn_name) && n_args == 1 {
+		arg_c := c.edge(1)
+		arg_type := b.expr_type_from_flat(arg_c)
+		if b.is_string_struct_type(arg_type) {
+			return b.build_expr_from_flat(arg_c)
+		}
+	}
+
 	mut ret_type := b.expr_type_from_flat(c)
 	if fn_name in b.fn_index {
 		fn_idx := b.fn_index[fn_name]
