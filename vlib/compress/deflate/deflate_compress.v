@@ -1,5 +1,7 @@
 module deflate
 
+import hash.huffman
+
 const deflate_hash_bits = 15
 const deflate_hash_size = 1 << deflate_hash_bits
 const deflate_max_chain = 64
@@ -8,36 +10,12 @@ const deflate_max_match = 258
 const deflate_window = 32768
 
 // fixed_litlen_encode returns (reversed_codes, code_lengths) for fixed Huffman lit/len.
+// The LSB-first (bit-reversed) codes come straight from the shared canonical
+// builder, since the encoder writes bits LSB-first.
 fn fixed_litlen_encode() ([]u32, []int) {
 	lens := fixed_litlen_lengths()
-	mut max_bits := 0
-	for l in lens {
-		if l > max_bits {
-			max_bits = l
-		}
-	}
-	mut bl_count := []int{len: max_bits + 1}
-	for l in lens {
-		if l > 0 {
-			bl_count[l]++
-		}
-	}
-	mut next_code := []u32{len: max_bits + 1}
-	mut c := u32(0)
-	for bits in 1 .. max_bits + 1 {
-		c = (c + u32(bl_count[bits - 1])) << 1
-		next_code[bits] = c
-	}
-	mut codes := []u32{len: 288}
-	for sym in 0 .. 288 {
-		l := lens[sym]
-		if l == 0 {
-			continue
-		}
-		codes[sym] = bit_reverse(next_code[l], l)
-		next_code[l]++
-	}
-	return codes, lens
+	t := huffman.build(lengths: lens, max_bits: 9, bit_order: .lsb_first) or { panic(err) }
+	return t.codes, lens
 }
 
 // fixed_dist_encode returns (reversed_codes, code_lengths) for fixed Huffman distance.
