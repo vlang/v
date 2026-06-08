@@ -816,6 +816,12 @@ fn should_skip(relpath string) bool {
 			eprintln('> skipping ${relpath} on windows')
 			return true
 		}
+		$if tinyc {
+			if relpath.ends_with('boehm_keepalive_c_union_tag.vv') {
+				eprintln('> skipping ${relpath} on windows-tcc, since deep GC scope pins (and thus their keepalive helpers) are intentionally not emitted there: the bundled Windows tcc libgc archive lacks GC_remove_roots()')
+				return true
+			}
+		}
 		$if !msvc {
 			if relpath.contains('_msvc_windows.vv') {
 				eprintln('> skipping ${relpath} on !msvc')
