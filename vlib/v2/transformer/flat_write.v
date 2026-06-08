@@ -1959,7 +1959,7 @@ fn (mut t Transformer) transform_stmt_list_item_to_flat(stmt ast.Stmt, mut ids [
 fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut ids []ast.FlatNodeId, mut out ast.FlatBuilder) {
 	match c.kind() {
 		.stmt_import, .stmt_module, .stmt_directive, .stmt_empty, .stmt_enum_decl,
-		.stmt_interface_decl, .stmt_type_decl, .stmt_asm, .stmt_flow_control {
+		.stmt_interface_decl, .stmt_type_decl, .stmt_asm, .stmt_flow_control, .stmt_attributes {
 			id := out.copy_subtree_from(c.flat, c.id)
 			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
 		}
@@ -1999,7 +1999,7 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 		}
 		.stmt_expr {
 			if t.expr_stmt_cursor_needs_legacy_expand(c) {
-				t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
+				t.transform_stmt_list_item_to_flat(expr_stmt_from_cursor(c), mut ids, mut out)
 			} else {
 				id := t.transform_expr_stmt_cursor_to_flat(c, mut out)
 				t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
@@ -2007,7 +2007,7 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 		}
 		.stmt_return {
 			if t.return_stmt_cursor_needs_legacy_expand(c) {
-				t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
+				t.transform_stmt_list_item_to_flat(return_stmt_from_cursor(c), mut ids, mut out)
 			} else {
 				id := t.transform_return_stmt_cursor_to_flat(c, mut out)
 				t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
@@ -2021,7 +2021,7 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 			// lowering needs the whole body, so those take the legacy
 			// whole-decl decode path).
 			if flat_body_has_defer(c.list_at(3)) {
-				t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
+				t.transform_stmt_list_item_to_flat(c.fn_decl(), mut ids, mut out)
 			} else {
 				id := t.transform_fn_decl_streaming_to_flat(c, mut out)
 				t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
@@ -2045,7 +2045,7 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 			}
 		}
 		else {
-			t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
+			panic('unexpected flat statement kind: ${c.kind()}')
 		}
 	}
 }
@@ -2165,11 +2165,11 @@ fn (mut t Transformer) transform_comptime_stmt_cursor_to_flat(c ast.Cursor, mut 
 		for_id := out.emit_for_stmt_by_ids(init_id, cond_id, post_id, stmt_ids)
 		return out.emit_comptime_stmt_by_id(for_id)
 	}
-	return t.transform_stmt_to_flat(inner.stmt(), mut out)
+	return t.transform_stmt_cursor_to_flat(inner, mut out)
 }
 
 fn (mut t Transformer) transform_label_stmt_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
-	inner_id := t.transform_stmt_to_flat(c.edge(0).stmt(), mut out)
+	inner_id := t.transform_stmt_cursor_to_flat(c.edge(0), mut out)
 	return out.emit_label_stmt_by_id(c.name(), inner_id)
 }
 
@@ -2215,8 +2215,30 @@ fn for_stmt_from_cursor(c ast.Cursor) ast.ForStmt {
 	}
 }
 
+fn expr_stmt_from_cursor(c ast.Cursor) ast.ExprStmt {
+	return ast.ExprStmt{
+		expr: c.edge(0).expr()
+	}
+}
+
+fn return_stmt_from_cursor(c ast.Cursor) ast.ReturnStmt {
+	mut exprs := []ast.Expr{cap: c.edge_count()}
+	for i in 0 .. c.edge_count() {
+		exprs << c.edge(i).expr()
+	}
+	return ast.ReturnStmt{
+		exprs: exprs
+	}
+}
+
 fn (mut t Transformer) transform_expr_stmt_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
+	is_direct_if := c.edge(0).kind() == .expr_if
+	saved_skip := t.skip_if_value_lowering
+	if is_direct_if {
+		t.skip_if_value_lowering = true
+	}
 	expr_id := t.transform_expr_to_flat(c.edge(0).expr(), mut out)
+	t.skip_if_value_lowering = saved_skip
 	return out.emit_expr_stmt_by_id(expr_id)
 }
 
@@ -2284,6 +2306,71 @@ fn (t &Transformer) cursor_subtree_has_or_expr(c ast.Cursor) bool {
 		}
 	}
 	return false
+}
+
+fn (mut t Transformer) transform_stmt_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
+	if !c.is_valid() {
+		return out.emit_stmt(ast.empty_stmt)
+	}
+	match c.kind() {
+		.stmt_import, .stmt_module, .stmt_directive, .stmt_empty, .stmt_enum_decl,
+		.stmt_interface_decl, .stmt_type_decl, .stmt_asm, .stmt_flow_control, .stmt_attributes {
+			return out.copy_subtree_from(c.flat, c.id)
+		}
+		.stmt_const_decl {
+			return t.transform_const_decl_cursor_to_flat(c, mut out)
+		}
+		.stmt_block {
+			return t.transform_block_stmt_cursor_to_flat(c, mut out)
+		}
+		.stmt_defer {
+			return t.transform_defer_stmt_cursor_to_flat(c, mut out)
+		}
+		.stmt_label {
+			return t.transform_label_stmt_cursor_to_flat(c, mut out)
+		}
+		.stmt_global_decl {
+			return t.transform_global_decl_cursor_to_flat(c, mut out)
+		}
+		.stmt_struct_decl {
+			return out.emit_stmt(t.transform_struct_decl(c.struct_decl()))
+		}
+		.stmt_assert {
+			expr_id := t.transform_expr_to_flat(c.edge(0).expr(), mut out)
+			return out.emit_assert_stmt_by_id(expr_id)
+		}
+		.stmt_assign {
+			return t.transform_stmt_to_flat(assign_stmt_from_cursor(c), mut out)
+		}
+		.stmt_comptime {
+			return t.transform_comptime_stmt_cursor_to_flat(c, mut out)
+		}
+		.stmt_expr {
+			return t.transform_expr_stmt_cursor_to_flat(c, mut out)
+		}
+		.stmt_return {
+			return t.transform_return_stmt_cursor_to_flat(c, mut out)
+		}
+		.stmt_for_in {
+			return t.transform_stmt_to_flat(for_in_stmt_from_cursor(c), mut out)
+		}
+		.stmt_fn_decl {
+			if flat_body_has_defer(c.list_at(3)) {
+				return t.transform_stmt_to_flat(c.fn_decl(), mut out)
+			}
+			return t.transform_fn_decl_streaming_to_flat(c, mut out)
+		}
+		.stmt_for {
+			init_c := c.edge(0)
+			if init_c.is_valid() && init_c.kind() == .stmt_for_in {
+				return t.transform_stmt_to_flat(for_stmt_from_cursor(c), mut out)
+			}
+			return t.transform_for_stmt_streaming_to_flat(c, mut out)
+		}
+		else {
+			panic('unexpected flat statement kind: ${c.kind()}')
+		}
+	}
 }
 
 // emit_fn_decl_flat assembles a stmt_fn_decl flat node from the immutable
@@ -2400,9 +2487,9 @@ fn (mut t Transformer) transform_for_stmt_streaming_to_flat(c ast.Cursor, mut ou
 	}
 	// init/cond/post transform after the body (matches the struct-literal field
 	// evaluation order in transform_for_stmt:701-706: init, cond, post).
-	init_id := t.transform_stmt_to_flat(c.edge(0).stmt(), mut out)
+	init_id := t.transform_stmt_cursor_to_flat(c.edge(0), mut out)
 	cond_id := t.transform_expr_to_flat(cond, mut out)
-	post_id := t.transform_stmt_to_flat(c.edge(2).stmt(), mut out)
+	post_id := t.transform_stmt_cursor_to_flat(c.edge(2), mut out)
 	t.close_scope()
 	return out.emit_for_stmt_by_ids(init_id, cond_id, post_id, body_ids)
 }
