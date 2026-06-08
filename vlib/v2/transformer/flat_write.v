@@ -1986,6 +1986,9 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 		.stmt_assert {
 			t.expand_assert_stmt_cursor_to_flat(c, mut ids, mut out)
 		}
+		.stmt_assign {
+			t.transform_stmt_list_item_to_flat(assign_stmt_from_cursor(c), mut ids, mut out)
+		}
 		.stmt_comptime {
 			id := t.transform_comptime_stmt_cursor_to_flat(c, mut out)
 			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
@@ -2168,6 +2171,24 @@ fn (mut t Transformer) expand_assert_stmt_cursor_to_flat(c ast.Cursor, mut ids [
 		expr:  c.edge(0).expr()
 		extra: c.edge(1).expr()
 	}, mut ids, mut out)
+}
+
+fn assign_stmt_from_cursor(c ast.Cursor) ast.AssignStmt {
+	lhs_len := c.extra_int()
+	mut lhs := []ast.Expr{cap: lhs_len}
+	for i in 0 .. lhs_len {
+		lhs << c.edge(i).expr()
+	}
+	mut rhs := []ast.Expr{cap: c.edge_count() - lhs_len}
+	for i in lhs_len .. c.edge_count() {
+		rhs << c.edge(i).expr()
+	}
+	return ast.AssignStmt{
+		op:  unsafe { token.Token(int(c.aux())) }
+		lhs: lhs
+		rhs: rhs
+		pos: c.pos()
+	}
 }
 
 fn (mut t Transformer) transform_expr_stmt_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
