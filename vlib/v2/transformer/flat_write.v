@@ -1971,6 +1971,10 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 			id := t.transform_block_stmt_cursor_to_flat(c, mut out)
 			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
 		}
+		.stmt_defer {
+			id := t.transform_defer_stmt_cursor_to_flat(c, mut out)
+			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+		}
 		.stmt_label {
 			id := t.transform_label_stmt_cursor_to_flat(c, mut out)
 			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
@@ -2121,6 +2125,20 @@ fn (mut t Transformer) transform_block_stmt_cursor_to_flat(c ast.Cursor, mut out
 	}
 	stmt_ids := t.transform_cursor_stmts_to_flat_direct(body, [], mut out)
 	return out.emit_block_stmt_by_ids(stmt_ids)
+}
+
+fn (mut t Transformer) transform_defer_stmt_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
+	body := ast.CursorList{
+		flat:      c.flat
+		parent_id: c.id
+	}
+	mode := if c.flag(ast.flag_defer_func) {
+		ast.DeferMode.function
+	} else {
+		ast.DeferMode.scoped
+	}
+	stmt_ids := t.transform_cursor_stmts_to_flat_direct(body, [], mut out)
+	return out.emit_defer_stmt_by_ids(mode, stmt_ids)
 }
 
 fn (mut t Transformer) transform_label_stmt_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
