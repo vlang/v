@@ -156,7 +156,7 @@ fn (mut g Gen) collect_generic_struct_bindings_flat() {
 					}
 				}
 				.stmt_fn_decl {
-					decl := stmt.fn_decl()
+					decl := stmt.fn_decl_signature()
 					if decl.receiver.typ !is ast.EmptyExpr {
 						g.scan_expr_for_generic_types(decl.receiver.typ)
 					}
@@ -166,7 +166,9 @@ fn (mut g Gen) collect_generic_struct_bindings_flat() {
 					if decl.typ.return_type !is ast.EmptyExpr {
 						g.scan_expr_for_generic_types(decl.typ.return_type)
 					}
-					g.scan_fn_body_for_generic_types_with_clean_locals(decl, '')
+					if stmt.list_at(3).len() > 0 {
+						g.scan_fn_body_cursor_for_generic_types_with_clean_locals(stmt, decl, '')
+					}
 				}
 				else {}
 			}
@@ -315,7 +317,7 @@ fn (mut g Gen) scan_receiver_generic_struct_bindings_flat() {
 			if stmt.kind() != .stmt_fn_decl {
 				continue
 			}
-			decl := stmt.fn_decl()
+			decl := stmt.fn_decl_signature()
 			recv_params := receiver_generic_param_names(decl)
 			if recv_params.len == 0 {
 				continue
@@ -333,7 +335,7 @@ fn (mut g Gen) scan_receiver_generic_struct_bindings_flat() {
 			prev_generic_types := g.active_generic_types.clone()
 			for bindings in binding_sets {
 				g.active_generic_types = bindings.clone()
-				g.scan_fn_body_for_generic_types_with_clean_locals(decl, '')
+				g.scan_fn_body_cursor_for_generic_types_with_clean_locals(stmt, decl, '')
 			}
 			g.active_generic_types = prev_generic_types.clone()
 		}
@@ -564,6 +566,34 @@ fn (mut g Gen) scan_fn_body_for_generic_types_with_clean_locals(node ast.FnDecl,
 	g.cur_fn_c_name = prev_fn_c_name
 }
 
+fn (mut g Gen) scan_fn_body_cursor_for_generic_types_with_clean_locals(stmt ast.Cursor, decl ast.FnDecl, spec_name string) {
+	prev_runtime_local_types := g.runtime_local_types.clone()
+	prev_runtime_decl_types := g.runtime_decl_types.clone()
+	prev_not_local_var_cache := g.not_local_var_cache.clone()
+	prev_is_module_ident_cache := g.is_module_ident_cache.clone()
+	prev_resolved_module_names := g.resolved_module_names.clone()
+	prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
+	prev_fn_name := g.cur_fn_name
+	prev_fn_c_name := g.cur_fn_c_name
+	g.runtime_local_types = map[string]string{}
+	g.runtime_decl_types = map[string]string{}
+	g.not_local_var_cache = map[string]bool{}
+	g.is_module_ident_cache = map[string]bool{}
+	g.resolved_module_names = map[string]string{}
+	g.cur_fn_generic_params = map[string]string{}
+	g.cur_fn_name = ''
+	g.cur_fn_c_name = ''
+	g.scan_fn_body_cursor_for_generic_types(stmt, decl, spec_name)
+	g.runtime_local_types = prev_runtime_local_types.clone()
+	g.runtime_decl_types = prev_runtime_decl_types.clone()
+	g.not_local_var_cache = prev_not_local_var_cache.clone()
+	g.is_module_ident_cache = prev_is_module_ident_cache.clone()
+	g.resolved_module_names = prev_resolved_module_names.clone()
+	g.cur_fn_generic_params = prev_cur_fn_generic_params.clone()
+	g.cur_fn_name = prev_fn_name
+	g.cur_fn_c_name = prev_fn_c_name
+}
+
 fn clone_tuple_aliases(src map[string][]string) map[string][]string {
 	mut out := map[string][]string{}
 	for key, values in src {
@@ -761,6 +791,7 @@ fn (mut g Gen) scan_expr_for_generic_types(e ast.Expr) {
 		ast.Ident {
 			if e.name.contains('_T_') || e.name.ends_with('_T') {
 				g.scan_generic_fn_value_for_specs(e)
+				g.record_generic_struct_bindings_from_specialized_name(e.name)
 			}
 		}
 		ast.Type {
@@ -929,6 +960,62 @@ fn (mut g Gen) scan_expr_for_generic_types(e ast.Expr) {
 	}
 }
 
+fn (mut g Gen) record_generic_struct_bindings_from_specialized_name(raw_name string) {
+	if !raw_name.contains('_T_') {
+		return
+	}
+	struct_c_name := raw_name.all_before('_T_')
+	if struct_c_name == '' {
+		return
+	}
+	runtime_param_names := g.generic_struct_runtime_param_names(struct_c_name, struct_c_name)
+	if runtime_param_names.len == 0 {
+		return
+	}
+	arg_tokens := generic_call_embedded_type_arg_names_from_name(raw_name, runtime_param_names.len)
+	if arg_tokens.len != runtime_param_names.len {
+		return
+	}
+	mut bindings := map[string]types.Type{}
+	mut param_c_names := []string{cap: arg_tokens.len}
+	for i, param_name in runtime_param_names {
+		concrete_c_name := generic_token_to_c_type(arg_tokens[i])
+		if concrete_c_name == '' {
+			return
+		}
+		concrete_type := g.concrete_type_from_call_arg_c_name(concrete_c_name) or { return }
+		if type_contains_generic_placeholder(concrete_type)
+			|| !g.generic_concrete_type_is_runtime_specializable(concrete_type) {
+			return
+		}
+		bindings[param_name] = concrete_type
+		param_c_names << mangle_alias_component(concrete_c_name)
+	}
+	if bindings.len != runtime_param_names.len
+		|| !g.generic_specialization_belongs_to_emit_modules(bindings) {
+		return
+	}
+	params_key := param_c_names.join('_')
+	bindings_key := g.generic_struct_bindings_key(runtime_param_names, bindings)
+	mut instances := g.generic_struct_instances[struct_c_name]
+	for inst in instances {
+		if inst.c_name == raw_name
+			|| g.generic_struct_instance_matches(inst, params_key, bindings_key, runtime_param_names)
+			|| g.generic_struct_instance_bindings_match(inst, bindings, runtime_param_names) {
+			return
+		}
+	}
+	instances << GenericStructInstance{
+		params_key: params_key
+		bindings:   bindings.clone()
+		c_name:     raw_name
+	}
+	g.generic_struct_instances[struct_c_name] = instances
+	if struct_c_name !in g.generic_struct_bindings {
+		g.generic_struct_bindings[struct_c_name] = bindings.clone()
+	}
+}
+
 fn (mut g Gen) generic_call_decl_from_lhs(lhs ast.Expr) ?ast.FnDecl {
 	mut call_name := match lhs {
 		ast.Ident {
@@ -969,7 +1056,7 @@ fn (mut g Gen) generic_call_decl_from_lhs(lhs ast.Expr) ?ast.FnDecl {
 				}
 				stmt := stmts.at(info.stmt_idx)
 				if stmt.kind() == .stmt_fn_decl {
-					return stmt.fn_decl()
+					return stmt.fn_decl_signature()
 				}
 			} else if info.file_idx >= 0 && info.file_idx < g.files.len {
 				file := g.files[info.file_idx]
@@ -1004,7 +1091,7 @@ fn (mut g Gen) generic_call_decl_from_lhs(lhs ast.Expr) ?ast.FnDecl {
 				if stmt.kind() != .stmt_fn_decl || stmt.name() != call_name {
 					continue
 				}
-				decl := stmt.fn_decl()
+				decl := stmt.fn_decl_signature()
 				if g.generic_fn_param_names(decl).len > 0 {
 					return decl
 				}
@@ -1055,6 +1142,30 @@ fn generic_call_short_name(lhs ast.Expr) string {
 		}
 		ast.GenericArgs {
 			generic_call_short_name(lhs.lhs)
+		}
+		else {
+			''
+		}
+	}
+
+	if name.contains('_T_') {
+		name = name.all_before('_T_')
+	} else if name.ends_with('_T') {
+		name = name[..name.len - 2]
+	}
+	return name
+}
+
+fn generic_call_short_name_cursor(lhs ast.Cursor) string {
+	mut name := match lhs.kind() {
+		.expr_ident {
+			lhs.name()
+		}
+		.expr_selector {
+			lhs.edge(1).name()
+		}
+		.expr_generic_arg_or_index, .expr_generic_args {
+			generic_call_short_name_cursor(lhs.edge(0))
 		}
 		else {
 			''
@@ -1703,6 +1814,43 @@ fn (mut g Gen) scan_fn_body_for_generic_types(node ast.FnDecl, spec_name string)
 	g.scan_stmts_for_generic_types(node.stmts)
 }
 
+fn (mut g Gen) scan_fn_body_cursor_for_generic_types(stmt ast.Cursor, decl ast.FnDecl, spec_name string) {
+	prev_cur_fn_ret_type := g.cur_fn_ret_type
+	if ret_type := g.scan_fn_return_c_type(decl, spec_name) {
+		g.cur_fn_ret_type = ret_type
+	}
+	defer {
+		g.cur_fn_ret_type = prev_cur_fn_ret_type
+	}
+	body := stmt.list_at(3)
+	if decl.pos.id <= 0 {
+		if !g.cursor_stmts_may_need_generic_scan(body) {
+			return
+		}
+		g.scan_cursor_stmts_for_generic_types(body)
+		return
+	}
+	fn_key := decl.pos.id.str()
+	bindings_key := if spec_name.len > 0 {
+		spec_name
+	} else {
+		generic_body_scan_bindings_key(g.active_generic_types)
+	}
+	mode_key := if g.generic_call_spec_scan_only { 'calls' } else { 'all' }
+	cache_key := '${g.cur_module}:${fn_key}:${bindings_key}:${mode_key}'
+	if cache_key in g.generic_body_scan_cache {
+		if !g.collect_generic_scan_calls {
+			return
+		}
+	} else {
+		g.generic_body_scan_cache[cache_key] = true
+	}
+	if !g.cursor_stmts_may_need_generic_scan(body) {
+		return
+	}
+	g.scan_cursor_stmts_for_generic_types(body)
+}
+
 fn (mut g Gen) scan_fn_return_c_type(node ast.FnDecl, spec_name string) ?string {
 	if spec_name != '' {
 		if ret := g.fn_return_types[spec_name] {
@@ -1768,6 +1916,360 @@ fn (g &Gen) stmts_may_need_generic_scan(stmts []ast.Stmt) bool {
 			else {}
 		}
 	}
+	return false
+}
+
+fn (g &Gen) cursor_stmts_may_need_generic_scan(stmts ast.CursorList) bool {
+	for i in 0 .. stmts.len() {
+		if g.cursor_stmt_may_need_generic_scan(stmts.at(i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &Gen) cursor_stmt_may_need_generic_scan(stmt ast.Cursor) bool {
+	if !stmt.is_valid() {
+		return false
+	}
+	match stmt.kind() {
+		.stmt_assign {
+			lhs_len := stmt.extra_int()
+			for i in 0 .. lhs_len {
+				if g.cursor_expr_may_need_generic_scan(stmt.edge(i)) {
+					return true
+				}
+			}
+			for i in lhs_len .. stmt.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(stmt.edge(i)) {
+					return true
+				}
+			}
+		}
+		.stmt_return {
+			for i in 0 .. stmt.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(stmt.edge(i)) {
+					return true
+				}
+			}
+		}
+		.stmt_expr {
+			return g.cursor_expr_may_need_generic_scan(stmt.edge(0))
+		}
+		.stmt_comptime {
+			return g.cursor_stmt_may_need_generic_scan(stmt.edge(0))
+		}
+		.stmt_for {
+			init := stmt.edge(0)
+			if init.kind() == .stmt_for_in && g.cursor_stmt_may_need_generic_scan(init) {
+				return true
+			}
+			if g.cursor_expr_may_need_generic_scan(stmt.edge(1)) {
+				return true
+			}
+			return g.cursor_stmts_may_need_generic_scan(stmt.for_body_list())
+		}
+		.stmt_for_in {
+			return g.cursor_expr_may_need_generic_scan(stmt.edge(0))
+				|| g.cursor_expr_may_need_generic_scan(stmt.edge(1))
+				|| g.cursor_expr_may_need_generic_scan(stmt.edge(2))
+		}
+		.stmt_block, .stmt_defer {
+			for i in 0 .. stmt.edge_count() {
+				if g.cursor_stmt_may_need_generic_scan(stmt.edge(i)) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (g &Gen) cursor_call_lhs_may_need_generic_scan(lhs ast.Cursor) bool {
+	call_name := generic_call_short_name_cursor(lhs)
+	if call_name != '' {
+		for candidate in generic_call_decl_candidates(call_name) {
+			if candidate in g.generic_fn_decl_index {
+				return true
+			}
+		}
+	}
+	return g.cursor_expr_may_need_generic_scan(lhs)
+}
+
+fn (g &Gen) cursor_expr_may_need_generic_scan(expr ast.Cursor) bool {
+	if !expr.is_valid() {
+		return false
+	}
+	match expr.kind() {
+		.expr_ident {
+			name := expr.name()
+			return name.contains('_T_') || name.ends_with('_T')
+		}
+		.typ_anon_struct, .typ_array_fixed, .typ_array, .typ_channel, .typ_fn, .typ_generic,
+		.typ_map, .typ_option, .typ_pointer, .typ_result, .typ_thread, .typ_tuple {
+			return g.type_cursor_may_need_generic_scan(expr)
+		}
+		.expr_generic_arg_or_index, .expr_generic_args, .expr_tuple {
+			return true
+		}
+		.expr_call {
+			if g.cursor_call_lhs_may_need_generic_scan(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_call_or_cast {
+			return g.cursor_call_lhs_may_need_generic_scan(expr.edge(0))
+				|| g.cursor_expr_may_need_generic_scan(expr.edge(1))
+		}
+		.expr_infix {
+			return g.cursor_expr_may_need_generic_scan(expr.edge(0))
+				|| g.cursor_expr_may_need_generic_scan(expr.edge(1))
+		}
+		.expr_postfix, .expr_prefix, .expr_paren, .expr_modifier, .expr_lambda, .expr_comptime {
+			return g.cursor_expr_may_need_generic_scan(expr.edge(0))
+		}
+		.expr_assoc {
+			if g.type_cursor_may_need_generic_scan(expr.edge(0))
+				|| g.cursor_expr_may_need_generic_scan(expr.edge(1)) {
+				return true
+			}
+			for i in 2 .. expr.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i).edge(0)) {
+					return true
+				}
+			}
+		}
+		.expr_if_guard {
+			return g.cursor_stmt_may_need_generic_scan(expr.edge(0))
+		}
+		.expr_or {
+			if g.cursor_expr_may_need_generic_scan(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if g.cursor_stmt_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_unsafe {
+			for i in 0 .. expr.edge_count() {
+				if g.cursor_stmt_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_lock {
+			packed := u32(expr.extra_int())
+			lock_len := int(packed & 0xFFFF)
+			rlock_len := int((packed >> 16) & 0xFFFF)
+			for i in 0 .. (lock_len + rlock_len) {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+			for i in (lock_len + rlock_len) .. expr.edge_count() {
+				if g.cursor_stmt_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_if {
+			if g.cursor_expr_may_need_generic_scan(expr.edge(0)) {
+				return true
+			}
+			for i in 2 .. expr.edge_count() {
+				if g.cursor_stmt_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+			return g.cursor_expr_may_need_generic_scan(expr.edge(1))
+		}
+		.expr_match {
+			if g.cursor_expr_may_need_generic_scan(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				branch := expr.edge(i)
+				conds := branch.list_at(0)
+				for ci in 0 .. conds.len() {
+					if g.cursor_expr_may_need_generic_scan(conds.at(ci)) {
+						return true
+					}
+				}
+				if g.cursor_stmts_may_need_generic_scan(branch.list_at(1)) {
+					return true
+				}
+			}
+		}
+		.expr_select {
+			if g.cursor_stmt_may_need_generic_scan(expr.edge(0))
+				|| g.cursor_expr_may_need_generic_scan(expr.edge(1)) {
+				return true
+			}
+			for i in 2 .. expr.edge_count() {
+				if g.cursor_stmt_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_string_inter {
+			inters := expr.list_at(1)
+			for i in 0 .. inters.len() {
+				inter := inters.at(i)
+				if g.cursor_expr_may_need_generic_scan(inter.edge(0))
+					|| g.cursor_expr_may_need_generic_scan(inter.edge(1)) {
+					return true
+				}
+			}
+		}
+		.expr_init {
+			if g.type_cursor_may_need_generic_scan(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i).edge(0)) {
+					return true
+				}
+			}
+		}
+		.expr_array_init {
+			if g.type_cursor_may_need_generic_scan(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_map_init {
+			if g.type_cursor_may_need_generic_scan(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_index, .expr_cast, .expr_as_cast, .expr_range {
+			for i in 0 .. expr.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_keyword_operator {
+			for i in 0 .. expr.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_fn_literal {
+			captured_len := expr.extra_int()
+			for i in 0 .. captured_len {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(1 + i)) {
+					return true
+				}
+			}
+			for i in (1 + captured_len) .. expr.edge_count() {
+				if g.cursor_stmt_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_sql, .expr_selector {
+			return g.cursor_expr_may_need_generic_scan(expr.edge(0))
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (g &Gen) type_cursor_may_need_generic_scan(typ ast.Cursor) bool {
+	if !typ.is_valid() {
+		return false
+	}
+	match typ.kind() {
+		.typ_generic, .expr_generic_arg_or_index, .expr_generic_args {
+			return true
+		}
+		.expr_ident {
+			name := typ.name()
+			return name.contains('_T_') || name.ends_with('_T')
+		}
+		.expr_modifier, .expr_prefix, .expr_paren {
+			return g.type_cursor_may_need_generic_scan(typ.edge(0))
+		}
+		.typ_anon_struct {
+			generic_params := typ.list_at(0)
+			for i in 0 .. generic_params.len() {
+				if g.cursor_expr_may_need_generic_scan(generic_params.at(i)) {
+					return true
+				}
+			}
+			embedded := typ.list_at(1)
+			for i in 0 .. embedded.len() {
+				if g.cursor_expr_may_need_generic_scan(embedded.at(i)) {
+					return true
+				}
+			}
+			fields := typ.list_at(2)
+			for i in 0 .. fields.len() {
+				field := fields.at(i)
+				if g.cursor_expr_may_need_generic_scan(field.edge(0))
+					|| g.cursor_expr_may_need_generic_scan(field.edge(1)) {
+					return true
+				}
+			}
+		}
+		.typ_array_fixed {
+			return g.type_cursor_may_need_generic_scan(typ.edge(0))
+				|| g.type_cursor_may_need_generic_scan(typ.edge(1))
+		}
+		.typ_array, .typ_channel, .typ_option, .typ_pointer, .typ_result, .typ_thread {
+			return g.type_cursor_may_need_generic_scan(typ.edge(0))
+		}
+		.typ_fn {
+			generic_params := typ.list_at(0)
+			for i in 0 .. generic_params.len() {
+				if g.cursor_expr_may_need_generic_scan(generic_params.at(i)) {
+					return true
+				}
+			}
+			params := typ.list_at(1)
+			for i in 0 .. params.len() {
+				if g.cursor_expr_may_need_generic_scan(params.at(i).edge(0)) {
+					return true
+				}
+			}
+			return g.type_cursor_may_need_generic_scan(typ.edge(2))
+		}
+		.typ_map {
+			return g.type_cursor_may_need_generic_scan(typ.edge(0))
+				|| g.type_cursor_may_need_generic_scan(typ.edge(1))
+		}
+		.typ_tuple {
+			for i in 0 .. typ.edge_count() {
+				if g.type_cursor_may_need_generic_scan(typ.edge(i)) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
 	return false
 }
 
@@ -2105,6 +2607,145 @@ fn (mut g Gen) scan_stmts_for_generic_types(stmts []ast.Stmt) {
 	}
 }
 
+fn (mut g Gen) scan_cursor_stmts_for_generic_types(stmts ast.CursorList) {
+	for i in 0 .. stmts.len() {
+		g.scan_cursor_stmt_for_generic_types(stmts.at(i))
+	}
+}
+
+fn (mut g Gen) scan_cursor_stmt_for_generic_types(stmt ast.Cursor) {
+	if !stmt.is_valid() {
+		return
+	}
+	match stmt.kind() {
+		.stmt_assign {
+			lhs_len := stmt.extra_int()
+			for i in lhs_len .. stmt.edge_count() {
+				g.scan_expr_cursor_for_generic_types(stmt.edge(i))
+			}
+			for i in 0 .. lhs_len {
+				rhs_idx := lhs_len + i
+				if rhs_idx >= stmt.edge_count() {
+					continue
+				}
+				lhs := stmt.edge(i).expr()
+				rhs := stmt.edge(rhs_idx).expr()
+				lhs_name := generic_wrapped_ident_name(lhs)
+				if lhs_name == '' {
+					continue
+				}
+
+				mut rhs_type := g.get_expr_type(rhs).trim_space()
+				if generic_scan_type_is_unresolved(rhs_type) {
+					if raw := g.get_raw_type(rhs) {
+						rhs_type = g.types_type_to_c(raw).trim_space()
+					}
+				}
+				if generic_scan_type_is_unresolved(rhs_type) {
+					rhs_type = (g.get_local_var_c_type(lhs_name) or { '' }).trim_space()
+				}
+				if generic_scan_type_is_unresolved(rhs_type) && rhs is ast.ArrayInitExpr {
+					array_init := rhs as ast.ArrayInitExpr
+					rhs_type = g.expr_type_to_c(array_init.typ).trim_space()
+				}
+				if !generic_scan_type_is_unresolved(rhs_type) {
+					g.remember_runtime_local_type(lhs_name, rhs_type)
+				} else if rhs is ast.ArrayInitExpr {
+					g.remember_runtime_current_local_type(lhs_name, 'array')
+				}
+			}
+		}
+		.stmt_return {
+			for i in 0 .. stmt.edge_count() {
+				g.scan_expr_cursor_for_generic_types(stmt.edge(i))
+			}
+		}
+		.stmt_expr {
+			g.scan_expr_cursor_for_generic_types(stmt.edge(0))
+		}
+		.stmt_comptime {
+			inner := stmt.edge(0)
+			if inner.kind() == .stmt_for && g.scan_comptime_for_cursor_for_generic_types(inner) {
+				return
+			}
+			if inner.kind() == .stmt_expr {
+				expr := inner.edge(0)
+				if expr.kind() == .expr_comptime && expr.edge(0).kind() == .expr_if {
+					g.scan_comptime_if_cursor_for_generic_types(expr.edge(0))
+					return
+				}
+			}
+			g.scan_cursor_stmt_for_generic_types(inner)
+		}
+		.stmt_for {
+			g.scan_cursor_stmts_for_generic_types(stmt.for_body_list())
+		}
+		.stmt_block, .stmt_defer {
+			for i in 0 .. stmt.edge_count() {
+				g.scan_cursor_stmt_for_generic_types(stmt.edge(i))
+			}
+		}
+		else {}
+	}
+}
+
+fn (mut g Gen) scan_expr_cursor_for_generic_types(expr ast.Cursor) {
+	if !expr.is_valid() || !g.cursor_expr_may_need_generic_scan(expr) {
+		return
+	}
+	if expr.kind() == .expr_comptime && expr.edge(0).kind() == .expr_if {
+		g.scan_comptime_if_cursor_for_generic_types(expr.edge(0))
+		return
+	}
+	decoded := expr.expr()
+	g.scan_expr_for_generic_types(decoded)
+	g.scan_expr_stmts_for_generic_types(decoded)
+}
+
+fn (mut g Gen) scan_comptime_for_cursor_for_generic_types(node ast.Cursor) bool {
+	if node.kind() != .stmt_for {
+		return false
+	}
+	for_in := node.edge(0)
+	if for_in.kind() != .stmt_for_in {
+		return false
+	}
+	iter := for_in.edge(2)
+	if iter.kind() != .expr_selector || iter.edge(1).name() != 'fields' {
+		return false
+	}
+	type_name := iter.edge(0).name()
+	concrete := g.active_generic_types[type_name] or { return false }
+	if concrete !is types.Struct {
+		return false
+	}
+	struct_type := g.comptime_for_struct_type(concrete, concrete as types.Struct)
+	prev_field_var := g.comptime_field_var
+	prev_field_name := g.comptime_field_name
+	prev_field_type := g.comptime_field_type
+	prev_field_raw_type := g.comptime_field_raw_type
+	prev_field_attrs := g.comptime_field_attrs
+	prev_field_idx := g.comptime_field_idx
+	defer {
+		g.comptime_field_var = prev_field_var
+		g.comptime_field_name = prev_field_name
+		g.comptime_field_type = prev_field_type
+		g.comptime_field_raw_type = prev_field_raw_type
+		g.comptime_field_attrs = prev_field_attrs
+		g.comptime_field_idx = prev_field_idx
+	}
+	g.comptime_field_var = for_in.edge(1).name()
+	for i, field in struct_type.fields {
+		g.comptime_field_name = field.name
+		g.comptime_field_type = g.types_type_to_c(field.typ)
+		g.comptime_field_raw_type = field.typ
+		g.comptime_field_attrs = g.comptime_field_attribute_strings(struct_type.name, field)
+		g.comptime_field_idx = i
+		g.scan_cursor_stmts_for_generic_types(node.for_body_list())
+	}
+	return true
+}
+
 // scan_expr_stmts_for_generic_types recurses into IfExpr/MatchExpr/ComptimeExpr bodies.
 fn (mut g Gen) scan_expr_stmts_for_generic_types(e ast.Expr) {
 	if e is ast.IfExpr {
@@ -2141,6 +2782,34 @@ fn (mut g Gen) scan_expr_stmts_for_generic_types(e ast.Expr) {
 		g.scan_stmts_for_generic_types(e.stmts)
 	} else if e is ast.UnsafeExpr {
 		g.scan_stmts_for_generic_types(e.stmts)
+	}
+}
+
+fn (mut g Gen) scan_comptime_if_cursor_for_generic_types(node ast.Cursor) {
+	if node.kind() != .expr_if {
+		return
+	}
+	if g.eval_comptime_cond(node.edge(0).expr()) {
+		g.scan_if_expr_cursor_body_for_generic_types(node)
+		return
+	}
+	else_expr := node.edge(1)
+	if else_expr.kind() == .expr_if {
+		if else_expr.edge(0).kind() == .expr_empty {
+			g.scan_if_expr_cursor_body_for_generic_types(else_expr)
+		} else {
+			g.scan_comptime_if_cursor_for_generic_types(else_expr)
+		}
+		return
+	}
+	if else_expr.is_valid() && else_expr.kind() != .expr_empty {
+		g.scan_expr_cursor_for_generic_types(else_expr)
+	}
+}
+
+fn (mut g Gen) scan_if_expr_cursor_body_for_generic_types(node ast.Cursor) {
+	for i in 2 .. node.edge_count() {
+		g.scan_cursor_stmt_for_generic_types(node.edge(i))
 	}
 }
 
@@ -2634,11 +3303,17 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	if body_key in g.emitted_types || body_key in g.pending_late_body_keys {
 		return
 	}
+	if (name.contains('_T_') || name.contains('__T_'))
+		&& g.struct_has_unresolved_generic_value_dependency(node, name) {
+		g.emit_late_concrete_struct_decl(node, name)
+		return
+	}
 	// For generic structs with active bindings, verify that all field types
 	// are already emitted. This prevents the last-resort pass from emitting
 	// a generic struct body before its concrete field types are defined.
 	if real_generic_params.len > 0 && g.active_generic_types.len > 0 {
-		if !g.struct_fields_resolved(node) {
+		if !g.struct_fields_resolved(node)
+			|| g.struct_has_unresolved_generic_value_dependency(node, name) {
 			return
 		}
 	}
@@ -2647,7 +3322,7 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	// Try to get the resolved struct type from the Environment
 	env_struct := g.lookup_struct_type(node.name)
 	for field in node.fields {
-		field_type := g.qualify_owner_local_field_type(name, g.expr_type_to_c(field.typ))
+		field_type := g.struct_field_type_for_emit(name, field)
 		if field_type.starts_with('Array_') {
 			g.emit_array_alias_decl(field_type)
 		}
@@ -2757,7 +3432,10 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	// Regular fields
 	mut has_shared_fields := false
 	for field in node.fields {
-		field_lookup_type := g.qualify_owner_local_field_type(name, g.expr_type_to_c(field.typ))
+		mut field_lookup_type := g.struct_field_type_for_emit(name, field)
+		if fn_field_type := g.struct_fn_field_lookup_type_for_emit(field) {
+			field_lookup_type = fn_field_type
+		}
 		field_v_name := if node.is_union && field_lookup_type.contains('__')
 			&& (field.name == '' || field.name.contains('__')
 			|| field.name == field_lookup_type
@@ -2799,13 +3477,9 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 		}
 		if field.typ is ast.Type {
 			if field.typ is ast.FnType {
-				if fn_type_has_generic_placeholder(field.typ) {
-					g.sb.writeln('\tvoid* ${field_name};')
-					continue
+				if decl := g.struct_fn_field_decl_for_emit(field, field_name) {
+					g.sb.writeln('\t${decl};')
 				}
-				g.sb.write_string('\t')
-				g.gen_fn_type_param_decl(field.typ as ast.FnType, field_name)
-				g.sb.writeln(';')
 				continue
 			}
 		}
@@ -2880,7 +3554,8 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 			// Set active generic types to this instantiation's bindings
 			prev_active := g.active_generic_types.clone()
 			g.active_generic_types = inst.bindings.clone()
-			if !g.struct_fields_resolved(node) {
+			if !g.struct_fields_resolved(node)
+				|| g.struct_has_unresolved_generic_value_dependency(node, inst.c_name) {
 				g.active_generic_types = prev_active.clone()
 				g.emit_late_generic_struct(name, inst)
 				continue
@@ -2894,7 +3569,7 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 			g.sb.writeln('typedef struct ${inst.c_name} ${inst.c_name};')
 			mut seen_field_typedef := map[string]bool{}
 			for field in node.fields {
-				ft := g.expr_type_to_c(field.typ)
+				ft := g.struct_field_type_for_emit(inst.c_name, field)
 				fbase := ft.trim_right('*')
 				if ft.starts_with('Array_') {
 					g.emit_array_alias_decl(ft)
@@ -2910,8 +3585,15 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 			}
 			g.sb.writeln('${keyword} ${inst.c_name} {')
 			for field in node.fields {
-				field_type := g.expr_type_to_c(field.typ)
+				field_type := g.struct_field_type_for_emit(inst.c_name, field)
 				field_name := if field.name.len > 0 { field.name } else { 'value' }
+				if decl := g.struct_fn_field_decl_for_emit(field, field_name) {
+					g.sb.writeln('\t${decl};')
+					g.struct_field_types['${inst.c_name}.${field_name}'] = g.struct_fn_field_lookup_type_for_emit(field) or {
+						'void*'
+					}
+					continue
+				}
 				g.sb.writeln('\t${field_type} ${field_name};')
 				// Register field types for this instantiation
 				g.struct_field_types['${inst.c_name}.${field_name}'] = field_type
@@ -2933,6 +3615,259 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 			g.active_generic_types = prev_active.clone()
 		}
 	}
+}
+
+fn (mut g Gen) emit_late_concrete_struct_decl(node ast.StructDecl, name string) {
+	body_key := 'body_${name}'
+	if body_key in g.emitted_types || body_key in g.pending_late_body_keys {
+		return
+	}
+	g.pending_late_body_keys[body_key] = true
+	keyword := if node.is_union { 'union' } else { 'struct' }
+	mut field_types := []string{cap: node.fields.len}
+	for field in node.fields {
+		field_type := g.struct_field_type_for_emit(name, field)
+		field_types << field_type
+		g.emit_late_generic_struct_dependency_for_type(field_type)
+	}
+	mut def := strings.new_builder(256)
+	def.writeln('typedef ${keyword} ${name} ${name};')
+	mut seen_field_typedef := map[string]bool{}
+	for field_type in field_types {
+		fbase := field_type.trim_right('*')
+		if fbase != name && fbase.contains('_T_') && !fbase.starts_with('Array_')
+			&& !fbase.starts_with('Map_') && fbase !in seen_field_typedef {
+			seen_field_typedef[fbase] = true
+			def.writeln('typedef struct ${fbase} ${fbase};')
+		}
+	}
+	def.writeln('${keyword} ${name} {')
+	for i, field in node.fields {
+		field_type := if i < field_types.len {
+			field_types[i]
+		} else {
+			g.struct_field_type_for_emit(name, field)
+		}
+		field_name := if field.name.len > 0 { escape_c_keyword(field.name) } else { 'value' }
+		if decl := g.struct_fn_field_decl_for_emit(field, field_name) {
+			def.writeln('\t${decl};')
+			g.struct_field_types['${name}.${field.name}'] = g.struct_fn_field_lookup_type_for_emit(field) or {
+				'void*'
+			}
+			continue
+		}
+		def.writeln('\t${field_type} ${field_name};')
+		g.struct_field_types['${name}.${field.name}'] = field_type
+	}
+	if node.fields.len == 0 {
+		def.writeln('\tu8 _dummy;')
+	}
+	def.writeln('};')
+	label := '${name}{}'
+	def.writeln('#define ${name}__str(v) ((string){.str = "${label}", .len = ${label.len}, .is_lit = 1})')
+	def.writeln('#define ${name}_str(v) ${name}__str(v)')
+	def.writeln('')
+	g.late_struct_defs << def.str()
+}
+
+fn (mut g Gen) struct_has_unresolved_generic_value_dependency(node ast.StructDecl, owner_name string) bool {
+	for field in node.fields {
+		if g.is_pointer_type(field.typ) {
+			continue
+		}
+		field_type := g.struct_field_type_for_emit(owner_name, field)
+		if g.generic_struct_value_dependency_unresolved(field_type) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) struct_fn_field_decl_for_emit(field ast.FieldDecl, field_name string) ?string {
+	if field.typ is ast.Type {
+		if field.typ is ast.FnType {
+			fn_type := field.typ as ast.FnType
+			if g.fn_type_has_unresolved_generic_placeholder(fn_type) {
+				return 'void* ${field_name}'
+			}
+			decl := c_fn_pointer_type_with_name(g.fn_type_c_type(fn_type), field_name)
+			if decl != '' {
+				return decl
+			}
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) struct_fn_field_lookup_type_for_emit(field ast.FieldDecl) ?string {
+	if field.typ is ast.Type {
+		if field.typ is ast.FnType {
+			fn_type := field.typ as ast.FnType
+			if g.fn_type_has_unresolved_generic_placeholder(fn_type) {
+				return 'void*'
+			}
+			return g.fn_type_c_type(fn_type)
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) fn_type_has_unresolved_generic_placeholder(fn_type ast.FnType) bool {
+	for param in fn_type.params {
+		if g.expr_has_unresolved_generic_placeholder(param.typ) {
+			return true
+		}
+	}
+	if fn_type.return_type !is ast.EmptyExpr {
+		return g.expr_has_unresolved_generic_placeholder(fn_type.return_type)
+	}
+	return false
+}
+
+fn (mut g Gen) expr_has_unresolved_generic_placeholder(expr ast.Expr) bool {
+	match expr {
+		ast.Ident {
+			return is_generic_placeholder_type_name(expr.name)
+				&& expr.name !in g.active_generic_types
+		}
+		ast.PrefixExpr {
+			return g.expr_has_unresolved_generic_placeholder(expr.expr)
+		}
+		ast.ModifierExpr {
+			return g.expr_has_unresolved_generic_placeholder(expr.expr)
+		}
+		ast.GenericArgOrIndexExpr {
+			return g.expr_has_unresolved_generic_placeholder(expr.lhs)
+				|| g.expr_has_unresolved_generic_placeholder(expr.expr)
+		}
+		ast.GenericArgs {
+			if g.expr_has_unresolved_generic_placeholder(expr.lhs) {
+				return true
+			}
+			for arg in expr.args {
+				if g.expr_has_unresolved_generic_placeholder(arg) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.Type {
+			match expr {
+				ast.ArrayType {
+					return g.expr_has_unresolved_generic_placeholder(expr.elem_type)
+				}
+				ast.ArrayFixedType {
+					return g.expr_has_unresolved_generic_placeholder(expr.elem_type)
+						|| g.expr_has_unresolved_generic_placeholder(expr.len)
+				}
+				ast.MapType {
+					return g.expr_has_unresolved_generic_placeholder(expr.key_type)
+						|| g.expr_has_unresolved_generic_placeholder(expr.value_type)
+				}
+				ast.OptionType {
+					return g.expr_has_unresolved_generic_placeholder(expr.base_type)
+				}
+				ast.ResultType {
+					return g.expr_has_unresolved_generic_placeholder(expr.base_type)
+				}
+				ast.PointerType {
+					return g.expr_has_unresolved_generic_placeholder(expr.base_type)
+				}
+				ast.GenericType {
+					if g.expr_has_unresolved_generic_placeholder(expr.name) {
+						return true
+					}
+					for param in expr.params {
+						if g.expr_has_unresolved_generic_placeholder(param) {
+							return true
+						}
+					}
+				}
+				ast.FnType {
+					return g.fn_type_has_unresolved_generic_placeholder(expr)
+				}
+				else {}
+			}
+
+			return false
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut g Gen) struct_field_type_for_emit(owner_name string, field ast.FieldDecl) string {
+	first := g.qualify_owner_local_field_type(owner_name, g.expr_type_to_c(field.typ))
+	second := g.qualify_owner_local_field_type(owner_name, g.expr_type_to_c(field.typ))
+	if second != '' && second != first {
+		return g.canonical_generic_struct_type_for_emit(second)
+	}
+	return g.canonical_generic_struct_type_for_emit(first)
+}
+
+fn (mut g Gen) canonical_generic_struct_type_for_emit(type_name string) string {
+	mut base := type_name.trim_space()
+	mut suffix := ''
+	for base.ends_with('*') {
+		base = base[..base.len - 1].trim_space()
+		suffix += '*'
+	}
+	if base == '' || !base.contains('__T_') {
+		return type_name
+	}
+	canonical := g.canonical_generic_struct_c_name_for_emit(base)
+	if canonical == base {
+		return type_name
+	}
+	return canonical + suffix
+}
+
+fn (mut g Gen) canonical_generic_struct_c_name_for_emit(c_name string) string {
+	if c_name == '' || g.generic_struct_c_name_known_for_emit(c_name) {
+		return c_name
+	}
+	if !c_name.contains('__T_') {
+		return c_name
+	}
+	alt := c_name.replace('__T_', '_T_')
+	if alt != c_name && g.generic_struct_c_name_known_for_emit(alt) {
+		return alt
+	}
+	return c_name
+}
+
+fn (mut g Gen) generic_struct_c_name_known_for_emit(c_name string) bool {
+	if c_name == '' {
+		return false
+	}
+	if c_name in g.emitted_types || 'body_${c_name}' in g.emitted_types
+		|| 'body_${c_name}' in g.pending_late_body_keys {
+		return true
+	}
+	for _, instances in g.generic_struct_instances {
+		for inst in instances {
+			if inst.c_name == c_name {
+				return true
+			}
+		}
+	}
+	if _ := g.find_struct_node_by_c_name(c_name) {
+		return true
+	}
+	return false
+}
+
+fn (mut g Gen) generic_struct_value_dependency_unresolved(type_name string) bool {
+	mut base := g.canonical_generic_struct_type_for_emit(type_name).trim_space()
+	for base.ends_with('*') {
+		base = base[..base.len - 1].trim_space()
+	}
+	if base == '' || !base.contains('_T_') || base.starts_with('Array_') || base.starts_with('Map_')
+		|| base.starts_with('_option_') || base.starts_with('_result_') {
+		return false
+	}
+	return 'body_${base}' !in g.emitted_types
 }
 
 fn (mut g Gen) gen_sum_type_decl(node ast.TypeDecl) {
@@ -4126,6 +5061,9 @@ fn (mut g Gen) is_fn_pointer_alias_type(type_name string) bool {
 	if type_name == '' {
 		return false
 	}
+	if type_name.contains('(*)') {
+		return true
+	}
 	if raw_type := g.lookup_type_by_c_name(type_name) {
 		if raw_type is types.Alias && raw_type.base_type is types.FnType {
 			return true
@@ -4687,6 +5625,9 @@ fn (mut g Gen) init_field_expected_type(type_name string, env_struct types.Struc
 	if expected_field_type != '' {
 		return expected_field_type
 	}
+	if generic_field_type := g.generic_instance_field_type_for_init(type_name, field_name) {
+		return generic_field_type
+	}
 	for field in env_struct.fields {
 		if field.name == field_name {
 			return g.types_type_to_c(field.typ)
@@ -4705,6 +5646,39 @@ fn (mut g Gen) init_field_expected_type(type_name string, env_struct types.Struc
 		}
 	}
 	return ''
+}
+
+fn (mut g Gen) generic_instance_field_type_for_init(type_name string, field_name string) ?string {
+	if type_name == '' || field_name == '' {
+		return none
+	}
+	old_module := g.cur_module
+	old_file := g.cur_file_name
+	prev_active := g.active_generic_types.clone()
+	defer {
+		g.cur_module = old_module
+		g.cur_file_name = old_file
+		g.active_generic_types = prev_active.clone()
+	}
+	for struct_base, instances in g.generic_struct_instances {
+		for inst in instances {
+			if inst.c_name != type_name {
+				continue
+			}
+			node := g.find_generic_struct_node(struct_base) or { return none }
+			g.active_generic_types = inst.bindings.clone()
+			for field in node.fields {
+				if field.name != field_name {
+					continue
+				}
+				if fn_field_type := g.struct_fn_field_lookup_type_for_emit(field) {
+					return fn_field_type
+				}
+				return g.struct_field_type_for_emit(inst.c_name, field)
+			}
+		}
+	}
+	return none
 }
 
 fn (mut g Gen) gen_channel_init_expr(node ast.InitExpr) bool {

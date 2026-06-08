@@ -2733,39 +2733,6 @@ fn flat_file_struct_decls_with_extra(flat &ast.FlatAst, extra_stmts map[int][]as
 	return decls
 }
 
-fn flat_file_fn_decls_with_extra(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt, fi int) []ast.FnDecl {
-	if fi < 0 || fi >= flat.files.len {
-		return []ast.FnDecl{}
-	}
-	stmt_cursors := flat.file_cursor(fi).stmts()
-	extra := extra_stmts[fi] or { []ast.Stmt{} }
-	mut decls := []ast.FnDecl{cap: stmt_cursors.len() + extra.len}
-	for i in 0 .. stmt_cursors.len() {
-		stmt_c := stmt_cursors.at(i)
-		if stmt_c.kind() != .stmt_fn_decl {
-			continue
-		}
-		decls << stmt_c.fn_decl()
-	}
-	for stmt in extra {
-		if stmt is ast.FnDecl {
-			decls << stmt
-		}
-	}
-	return decls
-}
-
-fn flat_file_stmts_with_extra(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt, fi int) []ast.Stmt {
-	if fi < 0 || fi >= flat.files.len {
-		return []ast.Stmt{}
-	}
-	stmt_cursors := flat.file_cursor(fi).stmts()
-	extra := extra_stmts[fi] or { []ast.Stmt{} }
-	mut stmts := stmt_cursors.stmts()
-	stmts << extra
-	return stmts
-}
-
 fn append_flat_extra_stmts(mut extra_stmts map[int][]ast.Stmt, fi int, stmts []ast.Stmt) {
 	if stmts.len == 0 {
 		return
@@ -2982,7 +2949,7 @@ fn (mut t Transformer) collect_generic_call_specs_in_for_stmt_cursor(stmt ast.Cu
 	t.collect_generic_call_specs_in_expr_cursor(stmt.edge(1))
 	t.collect_generic_call_specs_in_stmt_cursor(stmt.edge(2))
 	old_local_decl_types := t.local_decl_types.clone()
-	t.seed_generic_scan_for_in_var_types(for_in.stmt() as ast.ForInStmt)
+	t.seed_generic_scan_for_in_var_types_cursor(for_in)
 	for i in 3 .. stmt.edge_count() {
 		t.collect_generic_call_specs_in_stmt_cursor(stmt.edge(i))
 	}
@@ -2999,6 +2966,18 @@ fn (mut t Transformer) collect_generic_call_specs_in_for_stmt(stmt ast.ForStmt, 
 	t.seed_generic_scan_for_in_var_types(for_in)
 	t.collect_generic_call_specs_in_stmts(stmt.stmts)
 	t.local_decl_types = old_local_decl_types.clone()
+}
+
+fn (mut t Transformer) seed_generic_scan_for_in_var_types_cursor(for_in ast.Cursor) {
+	iter_type := t.for_in_iter_expr_type(for_in.edge(2).expr()) or { return }
+	value_name := t.get_var_name(for_in.edge(1).expr())
+	if value_name != '' && value_name != '_' {
+		t.remember_local_decl_type(value_name, t.for_in_value_type(iter_type))
+	}
+	key_name := t.get_var_name(for_in.edge(0).expr())
+	if key_name != '' && key_name != '_' {
+		t.remember_local_decl_type(key_name, t.for_in_key_type_for_generic_scan(iter_type))
+	}
 }
 
 fn (mut t Transformer) seed_generic_scan_for_in_var_types(for_in ast.ForInStmt) {

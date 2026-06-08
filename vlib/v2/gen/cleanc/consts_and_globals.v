@@ -238,23 +238,17 @@ fn (mut g Gen) collect_runtime_const_targets() {
 					if body_stmt.kind() != .stmt_assign {
 						continue
 					}
-					assign_stmt := body_stmt.stmt()
-					if assign_stmt !is ast.AssignStmt {
+					if body_stmt.extra_int() != 1 {
 						continue
 					}
-					assign := assign_stmt as ast.AssignStmt
-					if assign.lhs.len != 1 {
+					lhs := body_stmt.edge(0)
+					if lhs.kind() != .expr_ident {
 						continue
 					}
-					lhs_expr := assign.lhs[0]
-					if lhs_expr !is ast.Ident {
+					if lhs.name() !in const_names {
 						continue
 					}
-					lhs_ident := lhs_expr as ast.Ident
-					if lhs_ident.name !in const_names {
-						continue
-					}
-					g.runtime_const_targets[runtime_const_target_key(g.cur_module, lhs_ident.name)] = true
+					g.runtime_const_targets[runtime_const_target_key(g.cur_module, lhs.name())] = true
 				}
 			}
 		}

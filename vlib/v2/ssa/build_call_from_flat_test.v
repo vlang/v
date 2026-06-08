@@ -169,3 +169,123 @@ fn test_build_call_from_flat_matches_legacy() {
 	assert mod_legacy.instrs.len == mod_flat.instrs.len
 	assert mod_legacy.values.len == mod_flat.values.len
 }
+
+fn call_test_ident(name string) ast.Expr {
+	return ast.Expr(ast.Ident{
+		name: name
+	})
+}
+
+fn call_test_param(name string, typ ast.Expr) ast.Parameter {
+	return ast.Parameter{
+		name: name
+		typ:  typ
+	}
+}
+
+fn make_same_module_c_shadow_fixture() []ast.File {
+	int_type := call_test_ident('int')
+	return [
+		ast.File{
+			name:  'foo.v'
+			mod:   'foo'
+			stmts: [
+				ast.Stmt(ast.ModuleStmt{
+					name: 'foo'
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:     'callee'
+					language: .c
+					typ:      ast.FnType{
+						params:      [
+							call_test_param('x', int_type),
+						]
+						return_type: int_type
+					}
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'callee'
+					typ:   ast.FnType{
+						params:      [
+							call_test_param('x', int_type),
+						]
+						return_type: int_type
+					}
+					stmts: [
+						ast.Stmt(ast.ReturnStmt{
+							exprs: [
+								call_test_ident('x'),
+							]
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'caller'
+					typ:   ast.FnType{
+						return_type: int_type
+					}
+					stmts: [
+						ast.Stmt(ast.ReturnStmt{
+							exprs: [
+								ast.Expr(ast.CallExpr{
+									lhs:  call_test_ident('callee')
+									args: [
+										ast.Expr(ast.BasicLiteral{
+											kind:  .number
+											value: '1'
+										}),
+									]
+								}),
+							]
+						}),
+					]
+				}),
+			]
+		},
+	]
+}
+
+fn call_test_func_value_ids(b &Builder, name string) []ValueID {
+	idx := b.fn_index[name] or {
+		assert false, 'missing SSA function ${name}'
+		return []ValueID{}
+	}
+	func := b.mod.funcs[idx]
+	mut ids := []ValueID{}
+	for block_id in func.blocks {
+		for value_id in b.mod.blocks[block_id].instrs {
+			ids << value_id
+		}
+	}
+	return ids
+}
+
+fn call_test_callees(b &Builder, name string) []string {
+	mut callees := []string{}
+	for value_id in call_test_func_value_ids(b, name) {
+		value := b.mod.values[value_id]
+		if value.kind != .instruction {
+			continue
+		}
+		instr := b.mod.instrs[value.index]
+		if instr.op != .call || instr.operands.len == 0 {
+			continue
+		}
+		callee_id := instr.operands[0]
+		if callee_id > 0 && callee_id < b.mod.values.len {
+			callees << b.mod.values[callee_id].name
+		}
+	}
+	return callees
+}
+
+fn test_build_all_from_flat_prefers_same_module_fn_over_bare_c_symbol() {
+	files := make_same_module_c_shadow_fixture()
+	flat := ast.flatten_files(files)
+	env := types.Environment.new()
+	mut mod := Module.new('same_module_c_shadow')
+	mut b := Builder.new_with_env(mod, env)
+	b.build_all_from_flat(&flat)
+
+	assert call_test_callees(b, 'foo__caller') == ['foo__callee']
+}

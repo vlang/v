@@ -3129,20 +3129,10 @@ fn (mut t Transformer) transform_files_from_flat_no_post_pass(flat &ast.FlatAst,
 	return result
 }
 
-// transform_files_to_flat is the transformer's flat-output entry point.
-//
-// Today it wraps transform_files_from_flat + ast.flatten_files: the
-// internal pipeline still produces []ast.File and the conversion happens
-// at the boundary. Externally this exposes the API shape the future
-// "transformer writes directly into a FlatBuilder" port will keep — so
-// callers can switch to this entry now and get the eventual peak-memory
-// win without further changes.
-//
-// Callers that only need flat output should
-// route through here. The returned []ast.File is kept alive only for the
-// downstream consumers that still need legacy (SSA builder). Once the
-// SSA builder consumes flat as well, this entry point will drop the
-// legacy []ast.File entirely and the peak-memory win materializes.
+// transform_files_to_flat is the legacy-compatible flat-output entry point.
+// It wraps transform_files_from_flat + ast.flatten_files and returns both the
+// FlatAst and transformed files for callers that still need []ast.File. Flat
+// codegen paths should use transform_flat_to_flat_direct instead.
 pub fn (mut t Transformer) transform_files_to_flat(flat &ast.FlatAst, files []ast.File) (ast.FlatAst, []ast.File) {
 	result := t.transform_files_from_flat(flat, files)
 	return ast.flatten_files(result), result
@@ -3175,12 +3165,9 @@ pub fn (mut t Transformer) transform_files_to_flat(flat &ast.FlatAst, files []as
 // strings at small indices). Compare via per-file `subtree_signature` of
 // the stmts list (file root edge 2) to assert structural parity.
 //
-// Memory: zero saving over `transform_files_to_flat` while the SSA
-// builder still consumes the returned `[]ast.File` (the alloc lives until
-// SSA migration). Value: once SSA migrates to flat, this entry can drop
-// the `[]ast.File` return and the post-transform `[]ast.File` allocation
-// disappears — first measurable peak-memory win. Until then this is the
-// migration scaffolding, pinned by per-file subtree parity tests.
+// Memory: this avoids the legacy post_pass + flatten_files boundary but still
+// returns []ast.File for compatibility consumers. Flat-codegen backends bypass
+// this with transform_flat_to_flat_direct or the parallel flat-direct path.
 pub fn (mut t Transformer) transform_files_to_flat_via_driver(flat &ast.FlatAst, files []ast.File) (ast.FlatAst, []ast.File) {
 	timing := os.getenv('V2_TTIME') != ''
 	mut sw := time.new_stopwatch()

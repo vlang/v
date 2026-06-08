@@ -5,12 +5,10 @@
 //
 // Bit-equality pin for s174: `build_fn_bodies_from_flat` (flat-cursor port)
 // must build the same SSA bodies as the legacy `build_fn_bodies`. The flat
-// port walks one file's top-level stmts via FileCursor and only rehydrates
-// `.stmt_fn_decl` nodes via `flat.decode_stmt`. Non-FnDecl stmts
-// (ModuleStmt, StructDecl, EnumDecl, ConstDecl, etc.) are never decoded.
-// The fn body itself is still fully rehydrated per-decl — future sessions
-// port individual statement classes inside `build_fn` to consume flat
-// cursors directly.
+// port walks one file's top-level stmts via FileCursor and reads FnDecl
+// signatures, filters, params, and body statements directly from cursors.
+// Non-FnDecl stmts (ModuleStmt, StructDecl, EnumDecl, ConstDecl, etc.) are
+// never decoded.
 module ssa
 
 import v2.ast

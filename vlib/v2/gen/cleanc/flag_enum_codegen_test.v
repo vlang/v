@@ -2538,8 +2538,10 @@ fn main() {
 }
 ',
 	])
-	assert csrc.contains('dep__Middleware_T_Context__use_T_Context(&app.Middleware_T_Context,')
-	assert csrc.contains('((void*)_bound_method_')
+	assert csrc.contains('dep__Middleware_T_Context__use(&app.Middleware_T_Context,')
+		|| csrc.contains('dep__Middleware_T_Context__use_T_Context(&app.Middleware_T_Context,')
+	assert csrc.contains('((bool (*)(Context*))_bound_method_')
+	assert csrc.contains('_bound_recv_')
 	assert !csrc.contains('app.use')
 	assert !csrc.contains('app.before_request')
 }

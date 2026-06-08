@@ -672,6 +672,16 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 			w.walk_expr_cursor(lhs_c, mod_name)
 			for i in 1 .. c.edge_count() {
 				arg_c := c.edge(i)
+				if arg_c.is_valid() && arg_c.kind() == .aux_field_init {
+					value_c := arg_c.edge(0)
+					if value_c.is_valid() && value_c.kind() == .expr_selector
+						&& value_c.edge(0).kind() != .expr_empty {
+						w.mark_selector_fn_value_cursor_with_fallback(value_c, mod_name, true)
+					}
+					w.mark_fn_value_expr_cursor(value_c, mod_name)
+					w.walk_expr_cursor(value_c, mod_name)
+					continue
+				}
 				w.mark_fn_value_expr_cursor(arg_c, mod_name)
 				w.walk_expr_cursor(arg_c, mod_name)
 			}
@@ -4531,6 +4541,13 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 				&& !w.is_cast_type_name(expr.name) {
 				w.mark_fn_name(expr.name, mod_name)
 			}
+		}
+		ast.FieldInit {
+			if expr.value is ast.SelectorExpr && expr.value.lhs !is ast.EmptyExpr {
+				w.mark_selector_fn_value_with_fallback(expr.value, mod_name, true)
+			}
+			w.mark_fn_value_expr(expr.value, mod_name)
+			w.walk_expr(expr.value, mod_name)
 		}
 		ast.IfExpr {
 			w.walk_expr(expr.cond, mod_name)

@@ -165,3 +165,46 @@ fn test_append_flat_empty_source_is_noop() {
 	assert dst.flat.edges.len == pre_edges
 	assert dst.flat.files.len == pre_files
 }
+
+fn test_copy_subtree_from_preserves_stmt_shape_and_strings() {
+	mut src := new_flat_builder()
+	imp_id := src.emit_stmt(Stmt(ImportStmt{
+		name:       'os'
+		alias:      'myos'
+		is_aliased: true
+	}))
+	dir_id := src.emit_stmt(Stmt(Directive{
+		name:  'flag'
+		value: '-lm'
+	}))
+	for_id := src.emit_stmt(make_for_with_idents(['alpha', 'beta']))
+
+	mut dst := seeded_dst()
+	copied_imp := dst.copy_subtree_from(&src.flat, imp_id)
+	copied_dir := dst.copy_subtree_from(&src.flat, dir_id)
+	copied_for := dst.copy_subtree_from(&src.flat, for_id)
+
+	assert dst.flat.subtree_signature(copied_for) == src.flat.subtree_signature(for_id)
+
+	merged_imp := Cursor{
+		flat: &dst.flat
+		id:   copied_imp
+	}.stmt() as ImportStmt
+	assert merged_imp.name == 'os'
+	assert merged_imp.alias == 'myos'
+	assert merged_imp.is_aliased
+
+	merged_dir := Cursor{
+		flat: &dst.flat
+		id:   copied_dir
+	}.stmt() as Directive
+	assert merged_dir.name == 'flag'
+	assert merged_dir.value == '-lm'
+}
+
+fn test_copy_subtree_from_invalid_root_returns_invalid() {
+	mut src := new_flat_builder()
+	mut dst := new_flat_builder()
+	assert dst.copy_subtree_from(&src.flat, -1) == invalid_flat_node_id
+	assert dst.copy_subtree_from(&src.flat, 100) == invalid_flat_node_id
+}
