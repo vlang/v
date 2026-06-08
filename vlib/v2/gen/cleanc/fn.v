@@ -8814,6 +8814,42 @@ fn (mut g Gen) memdup_addr_arg_type(expr ast.Expr) string {
 	return typ
 }
 
+fn (mut g Gen) c_type_is_fn_pointer_value(type_name string) bool {
+	name := type_name.trim_space()
+	if name == '' || name == 'int' {
+		return false
+	}
+	if g.c_type_is_fn_pointer_alias(name) {
+		return true
+	}
+	if raw_type := g.lookup_type_by_c_name(name) {
+		if _ := extract_fn_type(raw_type) {
+			return true
+		}
+	}
+	if raw_type := g.lookup_type_by_c_name_const(name) {
+		if _ := extract_fn_type(raw_type) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) selector_has_fn_pointer_value_type(sel ast.SelectorExpr) bool {
+	if global_type := g.global_var_type_for_selector(sel) {
+		if g.c_type_is_fn_pointer_value(global_type) {
+			return true
+		}
+	}
+	sel_expr := ast.Expr(sel)
+	if raw_type := g.get_raw_type(sel_expr) {
+		if _ := extract_fn_type(raw_type) {
+			return true
+		}
+	}
+	return g.c_type_is_fn_pointer_value(g.get_expr_type(sel_expr))
+}
+
 fn (mut g Gen) selector_is_known_fn_value(sel ast.SelectorExpr) bool {
 	lhs := sel.lhs
 	if lhs !is ast.Ident || sel.rhs.name == '' {
@@ -8828,7 +8864,10 @@ fn (mut g Gen) selector_is_known_fn_value(sel ast.SelectorExpr) bool {
 	}
 	c_mod_name := g.resolve_module_name(mod_name).replace('.', '_')
 	c_name := '${c_mod_name}__${sel.rhs.name}'
-	return c_name in g.fn_return_types || c_name in g.fn_param_is_ptr
+	if c_name in g.fn_return_types || c_name in g.fn_param_is_ptr {
+		return true
+	}
+	return g.selector_has_fn_pointer_value_type(sel)
 }
 
 fn (mut g Gen) gen_sort_fnsortcb_arg(fn_name string, idx int, base_arg ast.Expr, expected_param_type string) bool {

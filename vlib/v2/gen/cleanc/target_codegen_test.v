@@ -1272,6 +1272,218 @@ fn main() {
 	assert !src.contains('(FnSortCB)oth__compare_items')
 }
 
+fn test_sort_with_compare_module_global_callback_casts_to_fnsortcb() {
+	other_file := os.join_path(os.temp_dir(),
+		'v2_cleanc_target_codegen_sort_other_global_callback_${os.getpid()}.v')
+	os.write_file(other_file, '
+module other
+
+pub struct Item {
+pub:
+	value int
+}
+
+pub type ItemCallback = fn (&Item, &Item) int
+
+pub __global callback ItemCallback
+	') or {
+		panic(err)
+	}
+	defer {
+		os.rm(other_file) or {}
+	}
+	src := generated_c_for_target_program_with_extra_files('sort_module_global_callback_fnsortcb_cast', '
+module main
+
+import other
+
+type FnSortCB = fn (voidptr, voidptr) int
+
+fn array__sort_with_compare(mut items []other.Item, callback FnSortCB)
+
+fn main() {
+	mut items := [other.Item{value: 2}, other.Item{value: 1}]
+	array__sort_with_compare(mut items, other.callback)
+}
+	',
+		'linux', [], false, false, [other_file])
+	assert src.contains('array__sort_with_compare(&items, (FnSortCB)other__callback);')
+	assert !src.contains('array__sort_with_compare(&items, other__callback);')
+}
+
+fn test_sort_with_compare_import_alias_global_callback_casts_to_real_module_fnsortcb() {
+	other_file := os.join_path(os.temp_dir(),
+		'v2_cleanc_target_codegen_sort_other_alias_global_callback_${os.getpid()}.v')
+	os.write_file(other_file, '
+module other
+
+pub struct Item {
+pub:
+	value int
+}
+
+pub type ItemCallback = fn (&Item, &Item) int
+
+pub __global callback ItemCallback
+	') or {
+		panic(err)
+	}
+	defer {
+		os.rm(other_file) or {}
+	}
+	src := generated_c_for_target_program_with_extra_files('sort_import_alias_global_callback_fnsortcb_cast', '
+module main
+
+import other as oth
+
+type FnSortCB = fn (voidptr, voidptr) int
+
+fn array__sort_with_compare(mut items []oth.Item, callback FnSortCB)
+
+fn main() {
+	mut items := [oth.Item{value: 2}, oth.Item{value: 1}]
+	array__sort_with_compare(mut items, oth.callback)
+}
+	',
+		'linux', [], false, false, [other_file])
+	assert src.contains('array__sort_with_compare(&items, (FnSortCB)other__callback);')
+	assert !src.contains('array__sort_with_compare(&items, other__callback);')
+	assert !src.contains('(FnSortCB)oth__callback')
+}
+
+fn test_sort_with_compare_module_const_callback_casts_to_fnsortcb() {
+	other_file := os.join_path(os.temp_dir(),
+		'v2_cleanc_target_codegen_sort_other_const_callback_${os.getpid()}.v')
+	os.write_file(other_file, '
+module other
+
+pub struct Item {
+pub:
+	value int
+}
+
+pub type ItemCallback = fn (&Item, &Item) int
+
+pub fn compare_items(a &Item, b &Item) int {
+	return a.value - b.value
+}
+
+pub const callback = ItemCallback(compare_items)
+	') or {
+		panic(err)
+	}
+	defer {
+		os.rm(other_file) or {}
+	}
+	src := generated_c_for_target_program_with_extra_files('sort_module_const_callback_fnsortcb_cast', '
+module main
+
+import other
+
+type FnSortCB = fn (voidptr, voidptr) int
+
+fn array__sort_with_compare(mut items []other.Item, callback FnSortCB)
+
+fn main() {
+	mut items := [other.Item{value: 2}, other.Item{value: 1}]
+	array__sort_with_compare(mut items, other.callback)
+}
+	',
+		'linux', [], false, false, [other_file])
+	assert src.contains('array__sort_with_compare(&items, (FnSortCB)other__callback);')
+	assert !src.contains('array__sort_with_compare(&items, other__callback);')
+}
+
+fn test_sort_with_compare_module_global_non_fn_value_is_not_cast_to_fnsortcb() {
+	other_file := os.join_path(os.temp_dir(),
+		'v2_cleanc_target_codegen_sort_other_global_non_fn_${os.getpid()}.v')
+	os.write_file(other_file, '
+module other
+
+pub struct Item {
+pub:
+	value int
+}
+
+pub __global callback int
+	') or {
+		panic(err)
+	}
+	defer {
+		os.rm(other_file) or {}
+	}
+	src := generated_c_for_target_program_with_extra_files('sort_module_global_non_fn_no_fnsortcb_cast', '
+module main
+
+import other
+
+type FnSortCB = fn (voidptr, voidptr) int
+
+fn array__sort_with_compare(mut items []other.Item, callback FnSortCB)
+
+fn main() {
+	mut items := [other.Item{value: 2}, other.Item{value: 1}]
+	array__sort_with_compare(mut items, other.callback)
+}
+	',
+		'linux', [], false, false, [other_file])
+	assert src.contains('array__sort_with_compare(&items, other__callback);')
+	assert !src.contains('(FnSortCB)other__callback')
+}
+
+fn test_sort_with_compare_local_selector_shadowing_module_is_not_cast_to_fnsortcb() {
+	other_file := os.join_path(os.temp_dir(),
+		'v2_cleanc_target_codegen_sort_other_shadowed_module_${os.getpid()}.v')
+	os.write_file(other_file, '
+module other
+
+pub struct Item {
+pub:
+	value int
+}
+
+pub type ItemCallback = fn (&Item, &Item) int
+
+pub __global callback ItemCallback
+	') or {
+		panic(err)
+	}
+	defer {
+		os.rm(other_file) or {}
+	}
+	src := generated_c_for_target_program_with_extra_files('sort_local_selector_shadowed_module_no_fnsortcb_cast', '
+module main
+
+import other
+
+type FnSortCB = fn (voidptr, voidptr) int
+
+type ItemCallback = fn (&other.Item, &other.Item) int
+
+struct Holder {
+	callback ItemCallback
+}
+
+fn array__sort_with_compare(mut items []other.Item, callback FnSortCB)
+
+fn compare_items(a &other.Item, b &other.Item) int {
+	return a.value - b.value
+}
+
+fn main() {
+	mut items := [other.Item{value: 2}, other.Item{value: 1}]
+	other := Holder{
+		callback: compare_items
+	}
+	array__sort_with_compare(mut items, other.callback)
+}
+	',
+		'linux', [], false, false, [other_file])
+	assert src.contains('array__sort_with_compare(&items, other.callback);')
+	assert !src.contains('array__sort_with_compare(&items, (FnSortCB)other.callback);')
+	assert !src.contains('(FnSortCB)other__callback')
+}
+
 fn test_sort_with_compare_selector_field_callback_is_not_cast_to_fnsortcb() {
 	src := generated_c_for_target_program('sort_selector_field_callback_no_fnsortcb_cast', '
 type FnSortCB = fn (voidptr, voidptr) int
