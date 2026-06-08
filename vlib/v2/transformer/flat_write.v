@@ -2201,9 +2201,9 @@ fn (mut t Transformer) transform_for_stmt_streaming_to_flat(c ast.Cursor, mut ou
 	}
 	// init/cond/post transform after the body (matches the struct-literal field
 	// evaluation order in transform_for_stmt:701-706: init, cond, post).
-	init_id := out.emit_stmt(t.transform_stmt(c.edge(0).stmt()))
-	cond_id := out.emit_expr(t.transform_expr(cond))
-	post_id := out.emit_stmt(t.transform_stmt(c.edge(2).stmt()))
+	init_id := t.transform_stmt_to_flat(c.edge(0).stmt(), mut out)
+	cond_id := t.transform_expr_to_flat(cond, mut out)
+	post_id := t.transform_stmt_to_flat(c.edge(2).stmt(), mut out)
 	t.close_scope()
 	return out.emit_for_stmt_by_ids(init_id, cond_id, post_id, body_ids)
 }
@@ -2586,7 +2586,7 @@ pub fn (mut t Transformer) try_expand_or_expr_stmt_to_flat(stmt ast.ExprStmt, mu
 //     site as the outer `pending_stmts` drain).
 //   - Tuple destructuring branch (a, b := call()?): build temp ident +
 //     decl_assign + per-arg selector assigns, all direct-emit.
-//   - Otherwise: build final AssignStmt via `transform_stmt` (so map
+//   - Otherwise: build final AssignStmt via `transform_stmt_to_flat` (so map
 //     index lowering / string compound assignment fire), direct-emit
 //     prefix_stmts then the final transformed assign.
 //
@@ -2681,7 +2681,7 @@ pub fn (mut t Transformer) try_expand_or_expr_assign_stmts_to_flat(stmt &ast.Ass
 	for ps in prefix_stmts {
 		ids << out.emit_stmt(ps)
 	}
-	ids << out.emit_stmt(t.transform_stmt(final_assign))
+	ids << t.transform_stmt_to_flat(final_assign, mut out)
 	return true
 }
 
