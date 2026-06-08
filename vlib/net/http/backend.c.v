@@ -21,10 +21,12 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 		eprint(req_headers)
 		eprintln('')
 	}
-	// Advertise ALPN `h2` (with an `http/1.1` fallback) only when HTTP/2 is
-	// requested, so existing callers see no change on the wire. The HTTP/2 read
-	// path now feeds the same streaming callbacks and honors the stop limits,
-	// so they no longer force HTTP/1.1.
+	// Advertise ALPN `h2` (with an `http/1.1` fallback) when HTTP/2 is enabled.
+	// This is the default for https requests, so ordinary get()/fetch() calls
+	// advertise ALPN and use HTTP/2 when the server selects it; callers can opt
+	// out with `enable_http2: false`. The HTTP/2 read path feeds the same
+	// streaming callbacks and honors the stop limits, so they do not force
+	// HTTP/1.1.
 	alpn := if req.enable_http2 { ['h2', 'http/1.1'] } else { []string{} }
 	for {
 		mut ssl_conn := ssl.new_ssl_conn(
