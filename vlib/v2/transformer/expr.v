@@ -385,6 +385,28 @@ fn (t &Transformer) amp_type_cast_expr(expr ast.Expr) ?ast.Expr {
 				pos:      expr.pos
 			}
 		}
+		ast.SelectorExpr {
+			if expr.lhs !is ast.CallOrCastExpr {
+				return none
+			}
+			cast_lhs := expr.lhs as ast.CallOrCastExpr
+			if !t.call_or_cast_lhs_is_type(cast_lhs.lhs) {
+				return none
+			}
+			return ast.SelectorExpr{
+				lhs: ast.CastExpr{
+					typ:  ast.PrefixExpr{
+						op:   .amp
+						expr: cast_lhs.lhs
+						pos:  cast_lhs.pos
+					}
+					expr: cast_lhs.expr
+					pos:  cast_lhs.pos
+				}
+				rhs: expr.rhs
+				pos: expr.pos
+			}
+		}
 		else {
 			return none
 		}

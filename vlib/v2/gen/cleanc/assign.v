@@ -1297,39 +1297,18 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		}
 		if typ.ends_with('**') && rhs is ast.PrefixExpr && rhs.op == .amp {
 			prefix_rhs := rhs as ast.PrefixExpr
-			if prefix_rhs.expr !is ast.SelectorExpr {
-				g.sb.write_string('${typ} ${decl_c_name} = ((${typ})(')
-				g.expr(prefix_rhs.expr)
-				g.sb.writeln('));')
-				if name != '' {
-					g.remember_runtime_local_type(name, typ)
-				}
-				return
+			g.sb.write_string('${typ} ${decl_c_name} = ((${typ})(')
+			g.expr(prefix_rhs.expr)
+			g.sb.writeln('));')
+			if name != '' {
+				g.remember_runtime_local_type(name, typ)
 			}
+			return
 		}
 		if name != '' && rhs is ast.PrefixExpr && rhs.op == .amp && rhs.expr is ast.SelectorExpr {
 			prefix_rhs := rhs as ast.PrefixExpr
 			sel := prefix_rhs.expr as ast.SelectorExpr
-			if sel.lhs is ast.CallOrCastExpr {
-				cast_expr := sel.lhs as ast.CallOrCastExpr
-				if g.call_or_cast_lhs_is_type(cast_expr.lhs) {
-					target_type := g.expr_type_to_c(cast_expr.lhs)
-					if target_type != '' && target_type != 'int' {
-						mut field_type := typ.trim_right('*')
-						if field_type == 'voidptr' {
-							field_type = 'void*'
-						}
-						if field_type == '' || field_type == 'void' {
-							field_type = 'void*'
-						}
-						g.sb.write_string('${field_type} ${decl_c_name} = ((${target_type}*)(')
-						g.expr(cast_expr.expr)
-						g.sb.writeln('))->${escape_c_keyword(sel.rhs.name)};')
-						g.remember_runtime_local_type(name, field_type)
-						return
-					}
-				}
-			} else if sel.lhs is ast.CallExpr {
+			if sel.lhs is ast.CallExpr {
 				call_expr := sel.lhs as ast.CallExpr
 				if call_expr.args.len == 1 && g.call_or_cast_lhs_is_type(call_expr.lhs) {
 					target_type := g.expr_type_to_c(call_expr.lhs)
