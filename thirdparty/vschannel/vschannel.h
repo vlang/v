@@ -32,6 +32,17 @@ void vschannel_set_alpn(TlsContext *tls_ctx, const char *wire, INT len);
 INT vschannel_get_alpn(TlsContext *tls_ctx, char *out, INT out_cap);
 INT vschannel_alpn_probe(TlsContext *tls_ctx, INT iport, LPWSTR host, char *out, INT out_cap);
 
+// vschannel_request_on_open runs a one-shot HTTP/1.1 request over an already
+// open connection (the HTTP/1.1 fallback when `h2` was not negotiated).
+INT vschannel_request_on_open(TlsContext *tls_ctx, CHAR *req, DWORD req_len, CHAR **out, vschannel_allocator afn);
+
+// Streaming transport for the HTTP/2 driver: open the connection and keep it
+// open, then move raw application bytes across it. See vschannel.c.
+INT vschannel_h2_connect(TlsContext *tls_ctx, INT iport, LPWSTR host);
+INT vschannel_write(TlsContext *tls_ctx, const char *buf, INT len);
+INT vschannel_read(TlsContext *tls_ctx, char *buf, INT cap);
+void vschannel_h2_close(TlsContext *tls_ctx);
+
 static void vschannel_init(TlsContext *tls_ctx, BOOL validate_server_certificate);
 
 static void vschannel_cleanup(TlsContext *tls_ctx);

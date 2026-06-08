@@ -86,6 +86,25 @@ struct TlsContext {
 	// when the server selected none.
 	char                   negotiated_alpn[256];
 	unsigned long          negotiated_alpn_len;
+	// Streaming transport state, used by the keep-the-connection-open path
+	// (vschannel_h2_connect / vschannel_write / vschannel_read) that backs the
+	// HTTP/2 driver. The one-shot request() path does not touch these.
+	SecPkgContext_StreamSizes stream_sizes;     // cached TLS record sizes
+	BOOL                   stream_sizes_valid;
+	// Ciphertext staging buffer: bytes recv()'d from the socket that have not yet
+	// been decrypted into a full record (SEC_E_INCOMPLETE_MESSAGE) plus any
+	// trailing SECBUFFER_EXTRA from the last DecryptMessage.
+	unsigned char         *recv_buf;
+	unsigned long          recv_buf_cap;
+	unsigned long          recv_buf_len;
+	// Decrypted plaintext carryover: a single DecryptMessage can yield more
+	// application bytes than the caller's read buffer can hold, so the remainder
+	// is stashed here and drained on the next vschannel_read().
+	unsigned char         *plain_buf;
+	unsigned long          plain_buf_cap;
+	unsigned long          plain_buf_len;       // valid decrypted bytes
+	unsigned long          plain_buf_off;       // bytes already returned to caller
+	BOOL                   stream_eof;          // close_notify / context expired seen
 };
 
 TlsContext new_tls_context() {
@@ -98,7 +117,16 @@ TlsContext new_tls_context() {
 		.context_initialized   = FALSE,
 		.p_pemote_cert_context = NULL,
 		.alpn_wire_len         = 0,
-		.negotiated_alpn_len   = 0
+		.negotiated_alpn_len   = 0,
+		.stream_sizes_valid    = FALSE,
+		.recv_buf              = NULL,
+		.recv_buf_cap          = 0,
+		.recv_buf_len          = 0,
+		.plain_buf             = NULL,
+		.plain_buf_cap         = 0,
+		.plain_buf_len         = 0,
+		.plain_buf_off         = 0,
+		.stream_eof            = FALSE
 	};
 };
 
@@ -195,6 +223,23 @@ void vschannel_cleanup(TlsContext *tls_ctx) {
 		CertCloseStore(tls_ctx->cert_store, 0);
 		tls_ctx->cert_store = NULL;
 	}
+
+	// Free streaming-transport buffers.
+	if(tls_ctx->recv_buf) {
+		LocalFree(tls_ctx->recv_buf);
+		tls_ctx->recv_buf = NULL;
+	}
+	tls_ctx->recv_buf_cap = 0;
+	tls_ctx->recv_buf_len = 0;
+	if(tls_ctx->plain_buf) {
+		LocalFree(tls_ctx->plain_buf);
+		tls_ctx->plain_buf = NULL;
+	}
+	tls_ctx->plain_buf_cap = 0;
+	tls_ctx->plain_buf_len = 0;
+	tls_ctx->plain_buf_off = 0;
+	tls_ctx->stream_sizes_valid = FALSE;
+	tls_ctx->stream_eof = FALSE;
 }
 
 void vschannel_init(TlsContext *tls_ctx, BOOL validate_server_certificate) {
@@ -308,6 +353,34 @@ INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_le
 	return resp_length;
 }
 
+// vschannel_request_on_open runs a one-shot HTTP/1.1 request over a connection
+// that vschannel_h2_connect() already opened and handshaked, then closes it.
+// It is the HTTP/1.1 fallback used when a server, asked for ALPN `h2`, does not
+// select it: rather than reconnect, we reuse the open connection. Returns the
+// response length (see request()).
+INT vschannel_request_on_open(TlsContext *tls_ctx, CHAR *req, DWORD req_len, CHAR **out, vschannel_allocator afn) {
+	SECURITY_STATUS Status;
+	INT resp_length = 0;
+
+	Status = https_make_request(tls_ctx, req, req_len, out, &resp_length, afn);
+	if(Status) {
+		vschannel_set_last_error(tls_ctx, Status);
+		vschannel_cleanup(tls_ctx);
+		return resp_length;
+	}
+
+	Status = disconnect_from_server(tls_ctx);
+	if(Status) {
+		vschannel_set_last_error(tls_ctx, Status);
+		vschannel_cleanup(tls_ctx);
+		return resp_length;
+	}
+	tls_ctx->context_initialized = FALSE;
+	tls_ctx->socket = INVALID_SOCKET;
+
+	return resp_length;
+}
+
 // vschannel_alpn_probe connects to host:iport, performs the TLS handshake while
 // advertising whatever ALPN list was configured via vschannel_set_alpn(),
 // captures the protocol the server selected into `out` (up to out_cap bytes),
@@ -343,6 +416,339 @@ INT vschannel_alpn_probe(TlsContext *tls_ctx, INT iport, LPWSTR host, char *out,
 	tls_ctx->socket = INVALID_SOCKET;
 
 	return vschannel_get_alpn(tls_ctx, out, out_cap);
+}
+
+// ---------------------------------------------------------------------------
+// Streaming transport (keep the TLS connection open and exchange raw bytes).
+//
+// request() above is a one-shot: connect, handshake, send the whole HTTP/1.1
+// request, read the whole response, disconnect. An HTTP/2 driver instead needs
+// a long-lived, byte-oriented transport. The functions below expose exactly
+// that: vschannel_h2_connect() opens the connection (handshake + cert check)
+// and leaves it open, vschannel_write()/vschannel_read() move application bytes
+// across it, and vschannel_h2_close() shuts it down. They reuse the same SSPI
+// primitives as request()/https_make_request(), but keep the encrypt/decrypt
+// state on the TlsContext so reads can span calls.
+// ---------------------------------------------------------------------------
+
+// vschannel_ensure_stream_state caches the negotiated TLS record sizes and
+// allocates the ciphertext/plaintext working buffers, once per connection.
+static SECURITY_STATUS vschannel_ensure_stream_state(TlsContext *tls_ctx) {
+	if(tls_ctx->stream_sizes_valid) {
+		return SEC_E_OK;
+	}
+	SECURITY_STATUS scRet = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context,
+			SECPKG_ATTR_STREAM_SIZES, &tls_ctx->stream_sizes);
+	if(scRet != SEC_E_OK) {
+		return scRet;
+	}
+	// One full wire record: header + max plaintext + trailer. recv() never needs
+	// more than this buffered to complete a single record; trailing bytes of the
+	// next record are carried as SECBUFFER_EXTRA.
+	tls_ctx->recv_buf_cap = tls_ctx->stream_sizes.cbHeader
+			+ tls_ctx->stream_sizes.cbMaximumMessage + tls_ctx->stream_sizes.cbTrailer;
+	tls_ctx->recv_buf = (unsigned char *)LocalAlloc(LPTR, tls_ctx->recv_buf_cap);
+	// One record decrypts to at most cbMaximumMessage plaintext bytes.
+	tls_ctx->plain_buf_cap = tls_ctx->stream_sizes.cbMaximumMessage;
+	tls_ctx->plain_buf = (unsigned char *)LocalAlloc(LPTR, tls_ctx->plain_buf_cap);
+	if(tls_ctx->recv_buf == NULL || tls_ctx->plain_buf == NULL) {
+		return SEC_E_INTERNAL_ERROR;
+	}
+	tls_ctx->recv_buf_len = 0;
+	tls_ctx->plain_buf_len = 0;
+	tls_ctx->plain_buf_off = 0;
+	tls_ctx->stream_sizes_valid = TRUE;
+	return SEC_E_OK;
+}
+
+// vschannel_h2_connect connects to host:iport, performs the TLS handshake while
+// advertising whatever ALPN list was set via vschannel_set_alpn(), validates the
+// server certificate (when enabled), and leaves the connection open for
+// vschannel_write()/vschannel_read(). Returns 0 on success, non-zero on failure
+// (see vschannel_last_error). The negotiated protocol is available afterwards
+// via vschannel_get_alpn().
+INT vschannel_h2_connect(TlsContext *tls_ctx, INT iport, LPWSTR host) {
+	SecBuffer       ExtraData;
+	SECURITY_STATUS Status;
+
+	protocol = SP_PROT_TLS1_2_CLIENT;
+	port_number = iport;
+	vschannel_clear_last_error(tls_ctx);
+
+	if(connect_to_server(tls_ctx, host, port_number)) {
+		vschannel_cleanup(tls_ctx);
+		return -1;
+	}
+
+	Status = perform_client_handshake(tls_ctx, host, &ExtraData);
+	if(Status) {
+		vschannel_set_last_error(tls_ctx, Status);
+		vschannel_cleanup(tls_ctx);
+		return -1;
+	}
+	tls_ctx->context_initialized = TRUE;
+
+	vschannel_capture_alpn(tls_ctx);
+
+	if(tls_ctx->validate_server_certificate) {
+		Status = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context,
+				SECPKG_ATTR_REMOTE_CERT_CONTEXT, (PVOID)&tls_ctx->p_pemote_cert_context);
+		if(Status != SEC_E_OK) {
+			vschannel_set_last_error(tls_ctx, Status);
+			vschannel_cleanup(tls_ctx);
+			return -1;
+		}
+		Status = verify_server_certificate(tls_ctx->p_pemote_cert_context, host, 0);
+		if(Status) {
+			vschannel_set_last_error(tls_ctx, Status);
+			vschannel_cleanup(tls_ctx);
+			return -1;
+		}
+		CertFreeCertificateContext(tls_ctx->p_pemote_cert_context);
+		tls_ctx->p_pemote_cert_context = NULL;
+	}
+
+	Status = vschannel_ensure_stream_state(tls_ctx);
+	if(Status != SEC_E_OK) {
+		vschannel_set_last_error(tls_ctx, Status);
+		vschannel_cleanup(tls_ctx);
+		return -1;
+	}
+
+	return 0;
+}
+
+// vschannel_write encrypts and sends `len` application bytes over the open
+// connection, chunked to the negotiated maximum record size. Returns the number
+// of bytes consumed (== len) on success, or -1 on error.
+INT vschannel_write(TlsContext *tls_ctx, const char *buf, INT len) {
+	SecBufferDesc Message;
+	SecBuffer     Buffers[4];
+	SECURITY_STATUS scRet;
+	PBYTE  io;
+	DWORD  io_cap;
+	DWORD  off;
+	INT    cbData;
+
+	if(len <= 0) {
+		return 0;
+	}
+	if(vschannel_ensure_stream_state(tls_ctx) != SEC_E_OK) {
+		return -1;
+	}
+
+	io_cap = tls_ctx->stream_sizes.cbHeader + tls_ctx->stream_sizes.cbMaximumMessage
+			+ tls_ctx->stream_sizes.cbTrailer;
+	io = (PBYTE)LocalAlloc(LPTR, io_cap);
+	if(io == NULL) {
+		vschannel_set_last_error(tls_ctx, SEC_E_INTERNAL_ERROR);
+		return -1;
+	}
+
+	off = 0;
+	while(off < (DWORD)len) {
+		DWORD chunk = (DWORD)len - off;
+		if(chunk > tls_ctx->stream_sizes.cbMaximumMessage) {
+			chunk = tls_ctx->stream_sizes.cbMaximumMessage;
+		}
+		memcpy(io + tls_ctx->stream_sizes.cbHeader, buf + off, chunk);
+
+		Buffers[0].pvBuffer   = io;
+		Buffers[0].cbBuffer   = tls_ctx->stream_sizes.cbHeader;
+		Buffers[0].BufferType = SECBUFFER_STREAM_HEADER;
+		Buffers[1].pvBuffer   = io + tls_ctx->stream_sizes.cbHeader;
+		Buffers[1].cbBuffer   = chunk;
+		Buffers[1].BufferType = SECBUFFER_DATA;
+		Buffers[2].pvBuffer   = io + tls_ctx->stream_sizes.cbHeader + chunk;
+		Buffers[2].cbBuffer   = tls_ctx->stream_sizes.cbTrailer;
+		Buffers[2].BufferType = SECBUFFER_STREAM_TRAILER;
+		Buffers[3].BufferType = SECBUFFER_EMPTY;
+
+		Message.ulVersion = SECBUFFER_VERSION;
+		Message.cBuffers  = 4;
+		Message.pBuffers  = Buffers;
+
+		scRet = tls_ctx->sspi->EncryptMessage(&tls_ctx->h_context, 0, &Message, 0);
+		if(FAILED(scRet)) {
+			vschannel_set_last_error(tls_ctx, scRet);
+			LocalFree(io);
+			return -1;
+		}
+
+		DWORD to_send = Buffers[0].cbBuffer + Buffers[1].cbBuffer + Buffers[2].cbBuffer;
+		DWORD sent = 0;
+		while(sent < to_send) {
+			cbData = send(tls_ctx->socket, (char*)io + sent, (int)(to_send - sent), 0);
+			if(cbData == SOCKET_ERROR || cbData == 0) {
+				vschannel_set_last_error(tls_ctx, WSAGetLastError());
+				LocalFree(io);
+				return -1;
+			}
+			sent += (DWORD)cbData;
+		}
+		off += chunk;
+	}
+
+	LocalFree(io);
+	return len;
+}
+
+// vschannel_read returns up to `cap` decrypted application bytes from the open
+// connection. It returns the number of bytes written into `buf` (> 0), 0 at
+// end of stream (close_notify / context expired / peer closed the socket), or
+// -1 on error. Leftover decrypted plaintext that did not fit in `buf`, and
+// ciphertext that did not yet form a complete record, are carried on the
+// TlsContext across calls.
+INT vschannel_read(TlsContext *tls_ctx, char *buf, INT cap) {
+	SecBufferDesc Message;
+	SecBuffer     Buffers[4];
+	SecBuffer     ExtraBuffer;
+	SecBuffer    *pDataBuffer;
+	SecBuffer    *pExtraBuffer;
+	SECURITY_STATUS scRet;
+	INT cbData;
+	int i;
+
+	if(cap <= 0) {
+		return 0;
+	}
+	if(vschannel_ensure_stream_state(tls_ctx) != SEC_E_OK) {
+		return -1;
+	}
+
+	// 1. Serve leftover decrypted plaintext from a previous record first.
+	if(tls_ctx->plain_buf_off < tls_ctx->plain_buf_len) {
+		DWORD avail = tls_ctx->plain_buf_len - tls_ctx->plain_buf_off;
+		DWORD n = avail < (DWORD)cap ? avail : (DWORD)cap;
+		memcpy(buf, tls_ctx->plain_buf + tls_ctx->plain_buf_off, n);
+		tls_ctx->plain_buf_off += n;
+		return (INT)n;
+	}
+
+	if(tls_ctx->stream_eof) {
+		return 0;
+	}
+
+	for(;;) {
+		// Try to decrypt whatever ciphertext we have buffered.
+		if(tls_ctx->recv_buf_len > 0) {
+			Buffers[0].pvBuffer   = tls_ctx->recv_buf;
+			Buffers[0].cbBuffer   = tls_ctx->recv_buf_len;
+			Buffers[0].BufferType = SECBUFFER_DATA;
+			Buffers[1].BufferType = SECBUFFER_EMPTY;
+			Buffers[2].BufferType = SECBUFFER_EMPTY;
+			Buffers[3].BufferType = SECBUFFER_EMPTY;
+
+			Message.ulVersion = SECBUFFER_VERSION;
+			Message.cBuffers  = 4;
+			Message.pBuffers  = Buffers;
+
+			scRet = tls_ctx->sspi->DecryptMessage(&tls_ctx->h_context, &Message, 0, NULL);
+
+			if(scRet == SEC_E_OK || scRet == SEC_I_RENEGOTIATE || scRet == SEC_I_CONTEXT_EXPIRED) {
+				pDataBuffer  = NULL;
+				pExtraBuffer = NULL;
+				for(i = 1; i < 4; i++) {
+					if(pDataBuffer == NULL && Buffers[i].BufferType == SECBUFFER_DATA) {
+						pDataBuffer = &Buffers[i];
+					}
+					if(pExtraBuffer == NULL && Buffers[i].BufferType == SECBUFFER_EXTRA) {
+						pExtraBuffer = &Buffers[i];
+					}
+				}
+
+				// Copy out decrypted application data: as much as fits in the
+				// caller's buffer, the rest into the plaintext carryover. Both
+				// reads happen before the SECBUFFER_EXTRA move below, since the
+				// data buffer points inside recv_buf.
+				INT produced = 0;
+				if(pDataBuffer && pDataBuffer->cbBuffer > 0) {
+					DWORD data_len = pDataBuffer->cbBuffer;
+					DWORD n = data_len < (DWORD)cap ? data_len : (DWORD)cap;
+					memcpy(buf, pDataBuffer->pvBuffer, n);
+					produced = (INT)n;
+					DWORD rest = data_len - n;
+					if(rest > 0) {
+						memcpy(tls_ctx->plain_buf, (unsigned char*)pDataBuffer->pvBuffer + n, rest);
+						tls_ctx->plain_buf_len = rest;
+						tls_ctx->plain_buf_off = 0;
+					}
+				}
+
+				// Carry trailing ciphertext (start of the next record) to the
+				// front of recv_buf for the next decrypt.
+				if(pExtraBuffer) {
+					MoveMemory(tls_ctx->recv_buf, pExtraBuffer->pvBuffer, pExtraBuffer->cbBuffer);
+					tls_ctx->recv_buf_len = pExtraBuffer->cbBuffer;
+				} else {
+					tls_ctx->recv_buf_len = 0;
+				}
+
+				if(scRet == SEC_I_RENEGOTIATE) {
+					// The server requested a new handshake. Run it, then carry any
+					// extra data it left behind and keep reading.
+					SECURITY_STATUS rh = client_handshake_loop(tls_ctx, FALSE, &ExtraBuffer);
+					if(rh != SEC_E_OK) {
+						vschannel_set_last_error(tls_ctx, rh);
+						return -1;
+					}
+					if(ExtraBuffer.pvBuffer) {
+						MoveMemory(tls_ctx->recv_buf, ExtraBuffer.pvBuffer, ExtraBuffer.cbBuffer);
+						tls_ctx->recv_buf_len = ExtraBuffer.cbBuffer;
+					}
+				} else if(scRet == SEC_I_CONTEXT_EXPIRED) {
+					// Graceful close_notify from the server.
+					tls_ctx->stream_eof = TRUE;
+					if(produced > 0) {
+						return produced;
+					}
+					return 0;
+				}
+
+				if(produced > 0) {
+					return produced;
+				}
+				// A record with no application data (e.g. a session ticket or a
+				// renegotiation). Keep going.
+				continue;
+			} else if(scRet == SEC_E_INCOMPLETE_MESSAGE) {
+				// Need more bytes to complete the current record: fall through to
+				// recv() more ciphertext.
+			} else {
+				vschannel_set_last_error(tls_ctx, scRet);
+				return -1;
+			}
+		}
+
+		// Receive more ciphertext.
+		if(tls_ctx->recv_buf_len >= tls_ctx->recv_buf_cap) {
+			// Should not happen: a single record fits in recv_buf_cap.
+			vschannel_set_last_error(tls_ctx, SEC_E_INTERNAL_ERROR);
+			return -1;
+		}
+		cbData = recv(tls_ctx->socket, (char*)tls_ctx->recv_buf + tls_ctx->recv_buf_len,
+				(int)(tls_ctx->recv_buf_cap - tls_ctx->recv_buf_len), 0);
+		if(cbData == SOCKET_ERROR) {
+			vschannel_set_last_error(tls_ctx, WSAGetLastError());
+			return -1;
+		}
+		if(cbData == 0) {
+			// Peer closed the socket. Any buffered bytes are an incomplete record.
+			tls_ctx->stream_eof = TRUE;
+			return 0;
+		}
+		tls_ctx->recv_buf_len += (DWORD)cbData;
+	}
+}
+
+// vschannel_h2_close sends a close_notify alert and tears down the connection.
+void vschannel_h2_close(TlsContext *tls_ctx) {
+	if(tls_ctx->context_initialized) {
+		disconnect_from_server(tls_ctx);
+		tls_ctx->context_initialized = FALSE;
+		tls_ctx->socket = INVALID_SOCKET;
+	}
+	vschannel_cleanup(tls_ctx);
 }
 
 
