@@ -939,8 +939,14 @@ fn (mut g Gen) collect_runtime_aliases() {
 			for j in 0 .. stmts.len() {
 				stmt := stmts.at(j)
 				match stmt.kind() {
-					.stmt_struct_decl, .stmt_interface_decl, .stmt_type_decl, .stmt_fn_decl,
-					.stmt_global_decl {
+					.stmt_fn_decl {
+						// Type aliases live only in the signature (receiver /
+						// param / return types); decode the body-less signature
+						// so cleanc's type-alias collection never rehydrates a fn
+						// body on the default build path.
+						g.collect_decl_type_aliases_from_stmt(ast.Stmt(stmt.fn_decl_signature()))
+					}
+					.stmt_struct_decl, .stmt_interface_decl, .stmt_type_decl, .stmt_global_decl {
 						g.collect_decl_type_aliases_from_stmt(stmt.stmt())
 					}
 					else {}
