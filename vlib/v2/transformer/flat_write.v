@@ -1971,6 +1971,14 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 			id := t.transform_global_decl_cursor_to_flat(c, mut out)
 			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
 		}
+		.stmt_return {
+			if t.return_stmt_cursor_needs_legacy_expand(c) {
+				t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
+			} else {
+				id := t.transform_return_stmt_cursor_to_flat(c, mut out)
+				t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+			}
+		}
 		.stmt_fn_decl {
 			// Stream the body cursor-native when it has no defers (defer
 			// lowering needs the whole body, so those take the legacy
@@ -2085,6 +2093,60 @@ fn (mut t Transformer) transform_global_decl_cursor_to_flat(c ast.Cursor, mut ou
 	}
 	fields_list_id := out.emit_aux_list_from_ids(field_ids)
 	return out.emit_global_decl_by_ids(c.flag(ast.flag_is_public), decl_attrs_id, fields_list_id)
+}
+
+fn (mut t Transformer) transform_return_stmt_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
+	mut exprs := []ast.Expr{cap: c.edge_count()}
+	for i in 0 .. c.edge_count() {
+		exprs << c.edge(i).expr()
+	}
+	transformed_exprs := t.transform_return_stmt_parts(ast.ReturnStmt{
+		exprs: exprs
+	})
+	mut expr_ids := []ast.FlatNodeId{cap: transformed_exprs.len}
+	for e in transformed_exprs {
+		expr_ids << out.emit_expr(e)
+	}
+	return out.emit_return_stmt_by_ids(expr_ids)
+}
+
+fn (t &Transformer) return_stmt_cursor_needs_legacy_expand(c ast.Cursor) bool {
+	if c.edge_count() == 1 {
+		expr := c.edge(0)
+		if expr.kind() == .expr_match {
+			return true
+		}
+		if expr.kind() == .expr_if && !expr_cursor_is_empty(expr.edge(1)) {
+			return true
+		}
+	}
+	for i in 0 .. c.edge_count() {
+		if t.cursor_subtree_has_or_expr(c.edge(i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) cursor_subtree_has_or_expr(c ast.Cursor) bool {
+	if !c.is_valid() {
+		return false
+	}
+	if c.kind() == .expr_or {
+		return true
+	}
+	if c.kind() == .expr_postfix {
+		op := unsafe { token.Token(int(c.aux())) }
+		if op in [.not, .question] {
+			return true
+		}
+	}
+	for i in 0 .. c.edge_count() {
+		if t.cursor_subtree_has_or_expr(c.edge(i)) {
+			return true
+		}
+	}
+	return false
 }
 
 // emit_fn_decl_flat assembles a stmt_fn_decl flat node from the immutable
