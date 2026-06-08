@@ -94,6 +94,25 @@ fn test_huffman_known_vector() {
 	assert dec.bytestr() == 'www.example.com'
 }
 
+fn test_huffman_codes_rebuilt_from_lengths() {
+	// The HPACK table now ships only the bit lengths; the canonical codes are
+	// rebuilt at startup via hash.huffman. Pin a few known codes from RFC 7541
+	// Appendix B so a bad rebuild (or a future builder change) is caught.
+	assert h2_huffman_table.codes.len == 257
+	assert h2_huffman_table.lengths.len == 257
+	// symbol 0 (NUL): 0x1ff8 / 13 bits
+	assert h2_huffman_table.codes[0] == 0x1ff8
+	assert h2_huffman_table.lengths[0] == 13
+	// '0' (0x30): 0x0 / 5 bits, '1': 0x1 / 5 bits, 'a' (0x61): 0x3 / 5 bits
+	assert h2_huffman_table.codes[0x30] == 0x0
+	assert h2_huffman_table.lengths[0x30] == 5
+	assert h2_huffman_table.codes[0x31] == 0x1
+	assert h2_huffman_table.codes[0x61] == 0x3
+	// EOS (256): 0x3fffffff / 30 bits
+	assert h2_huffman_table.codes[256] == 0x3fffffff
+	assert h2_huffman_table.lengths[256] == 30
+}
+
 fn test_huffman_rejects_padding_not_all_ones() {
 	// Valid encoding of "0" is 5 bits (00000); pad the rest of the byte with
 	// zeros instead of ones -> invalid per RFC 7541 Section 5.2.
