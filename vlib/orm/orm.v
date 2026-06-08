@@ -298,6 +298,8 @@ struct TenantFilterScopeState {
 	current_tenant     Primitive
 }
 
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub struct TenantFilterConfig {
 pub:
 	enabled    bool   = true
@@ -343,17 +345,23 @@ mut:
 }
 
 // configure_tenant_filter configures the global ORM tenant filter behavior.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn configure_tenant_filter(config TenantFilterConfig) {
 	tenant_filter_state.enabled = config.enabled
 	tenant_filter_state.field_name = normalize_tenant_filter_field_name(config.field_name)
 }
 
 // set_tenant_filter_enabled enables or disables global tenant filtering.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn set_tenant_filter_enabled(enabled bool) {
 	tenant_filter_state.enabled = enabled
 }
 
 // set_current_tenant_id sets the current tenant id used by global tenant filtering.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn set_current_tenant_id(tenant_id Primitive) {
 	if tenant_id is Null {
 		clear_current_tenant_id()
@@ -364,12 +372,16 @@ pub fn set_current_tenant_id(tenant_id Primitive) {
 }
 
 // clear_current_tenant_id clears the current tenant id used by global tenant filtering.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn clear_current_tenant_id() {
 	tenant_filter_state.has_current_tenant = false
 	tenant_filter_state.current_tenant = null_primitive
 }
 
 // with_tenant executes `callback` with a temporary tenant id and enabled tenant filtering.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn with_tenant[T](tenant_id Primitive, callback fn () !T) !T {
 	saved := tenant_filter_scope_snapshot()
 	tenant_filter_state.enabled = true
@@ -382,6 +394,8 @@ pub fn with_tenant[T](tenant_id Primitive, callback fn () !T) !T {
 }
 
 // with_tenant_value executes `callback` with a temporary tenant id and enabled tenant filtering.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn with_tenant_value[T](tenant_id Primitive, callback fn () T) T {
 	saved := tenant_filter_scope_snapshot()
 	tenant_filter_state.enabled = true
@@ -394,6 +408,8 @@ pub fn with_tenant_value[T](tenant_id Primitive, callback fn () T) T {
 }
 
 // without_tenant_filter executes `callback` with tenant filtering temporarily disabled.
+@[deprecated: 'use `orm.DB.unscoped()` for per-instance scope bypass']
+@[deprecated_after: '2027-06-08']
 pub fn without_tenant_filter[T](callback fn () !T) !T {
 	saved := tenant_filter_scope_snapshot()
 	tenant_filter_state.enabled = false
@@ -404,6 +420,8 @@ pub fn without_tenant_filter[T](callback fn () !T) !T {
 }
 
 // without_tenant_filter_value executes `callback` with tenant filtering temporarily disabled.
+@[deprecated: 'use `orm.DB.unscoped()` for per-instance scope bypass']
+@[deprecated_after: '2027-06-08']
 pub fn without_tenant_filter_value[T](callback fn () T) T {
 	saved := tenant_filter_scope_snapshot()
 	tenant_filter_state.enabled = false
@@ -414,6 +432,8 @@ pub fn without_tenant_filter_value[T](callback fn () T) T {
 }
 
 // apply_tenant_filter appends the configured tenant filter condition to `where`.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn apply_tenant_filter(table Table, where QueryData) QueryData {
 	if !tenant_filter_state.enabled || !tenant_filter_state.has_current_tenant {
 		return where
