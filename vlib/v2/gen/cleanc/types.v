@@ -728,6 +728,33 @@ fn (mut g Gen) infer_map_type_info_from_alias_name(map_name string) ?MapTypeInfo
 		return none
 	}
 	rest := map_name['Map_'.len..]
+	if rest.starts_with('Array_fixed_') {
+		mut best_key := ''
+		mut best_value := ''
+		for i := 1; i < rest.len; i++ {
+			if rest[i] != `_` {
+				continue
+			}
+			key := rest[..i]
+			value := rest[i + 1..]
+			if value == '' {
+				continue
+			}
+			_, arr_len := g.parse_fixed_array_type(key)
+			if arr_len > 0 {
+				best_key = key
+				best_value = value
+			}
+		}
+		if best_key != '' {
+			info := MapTypeInfo{
+				key_c_type:   best_key
+				value_c_type: unmangle_alias_component_to_c(best_value)
+			}
+			g.collected_map_types[map_name] = info
+			return info
+		}
+	}
 	mut key_types := map_key_type_candidates()
 	for _, info in g.collected_map_types {
 		if info.key_c_type != '' && info.key_c_type !in key_types {

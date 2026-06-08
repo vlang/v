@@ -3519,87 +3519,6 @@ fn (g &Gen) generic_specialization_belongs_to_emit_modules(generic_types map[str
 	return true
 }
 
-fn (g &Gen) weak_generic_specialization_belongs_to_emit_files(generic_types map[string]types.Type) bool {
-	if g.emit_files.len == 0 {
-		return true
-	}
-	for _, concrete0 in generic_types {
-		concrete := normalize_generic_concrete_type(concrete0)
-		c_name := g.types_type_to_c(concrete).trim_space()
-		if c_name != '' && !g.weak_generic_concrete_c_name_belongs_to_emit_files(c_name) {
-			return false
-		}
-	}
-	return true
-}
-
-fn (g &Gen) weak_generic_concrete_c_name_belongs_to_emit_files(raw_name string) bool {
-	mut name := raw_name.trim_space()
-	if name == '' {
-		return true
-	}
-	for name.ends_with('*') {
-		name = name[..name.len - 1].trim_space()
-	}
-	if name.starts_with('struct ') {
-		name = name['struct '.len..].trim_space()
-	}
-	if name == '' || name in primitive_types
-		|| name in ['string', 'array', 'map', 'chan', 'None__', 'IError']
-		|| is_generic_placeholder_type_name(name) {
-		return true
-	}
-	if name.starts_with('Array_fixed_') {
-		rest := name['Array_fixed_'.len..]
-		last_underscore := rest.last_index_u8(`_`)
-		if last_underscore < 0 {
-			return true
-		}
-		return g.weak_generic_concrete_c_name_belongs_to_emit_files(unmangle_alias_component_to_c(rest[..last_underscore]))
-	}
-	if name.starts_with('Array_') {
-		return g.weak_generic_concrete_c_name_belongs_to_emit_files(unmangle_alias_component_to_c(name['Array_'.len..]))
-	}
-	if name.starts_with('Map_') {
-		rest := name['Map_'.len..]
-		key, value := g.parse_map_kv_types(rest)
-		if key == '' || value == '' {
-			return g.weak_generic_concrete_c_name_belongs_to_emit_files(unmangle_alias_component_to_c(rest))
-		}
-		return
-			g.weak_generic_concrete_c_name_belongs_to_emit_files(unmangle_alias_component_to_c(key))
-			&& g.weak_generic_concrete_c_name_belongs_to_emit_files(unmangle_alias_component_to_c(value))
-	}
-	if name.starts_with('Tuple_') {
-		for part in name['Tuple_'.len..].split('_') {
-			if part != ''
-				&& !g.weak_generic_concrete_c_name_belongs_to_emit_files(unmangle_alias_component_to_c(part)) {
-				return false
-			}
-		}
-		return true
-	}
-	if name.starts_with('_option_') {
-		return g.weak_generic_concrete_c_name_belongs_to_emit_files(unmangle_alias_component_to_c(name['_option_'.len..]))
-	}
-	if name.starts_with('_result_') {
-		return g.weak_generic_concrete_c_name_belongs_to_emit_files(unmangle_alias_component_to_c(name['_result_'.len..]))
-	}
-	prefixes := g.module_prefixes_in_c_name(name)
-	if prefixes.len > 0 {
-		for prefix in prefixes {
-			if prefix != 'builtin' && !g.module_has_emit_file(prefix) {
-				return false
-			}
-		}
-		return true
-	}
-	if name in g.c_struct_types || name in g.typedef_c_types || is_known_external_c_type_name(name) {
-		return true
-	}
-	return g.unqualified_type_name_declared_in_emit_files(name)
-}
-
 fn (g &Gen) module_has_emit_file(module_name string) bool {
 	if module_name in g.emit_file_modules {
 		return true
@@ -5965,10 +5884,7 @@ fn (mut g Gen) gen_fn_decl_ptr(node &ast.FnDecl) {
 			for bi in all_bindings {
 				g.active_generic_types = bi.clone()
 				fn_name := g.get_fn_name(*node)
-				recv_c_name := g.decl_expr_type_to_c(node.receiver.typ).trim_right('*')
-				body_key := 'body_${recv_c_name}'
-				if fn_name != ''
-					&& (body_key in g.emitted_types || body_key in g.pending_late_body_keys) {
+				if fn_name != '' {
 					g.gen_fn_decl_with_name_ptr(node, fn_name)
 				}
 			}
@@ -5978,10 +5894,7 @@ fn (mut g Gen) gen_fn_decl_ptr(node &ast.FnDecl) {
 			prev_generic_types := g.active_generic_types.clone()
 			g.active_generic_types = bindings.clone()
 			fn_name := g.get_fn_name(*node)
-			recv_c_name := g.decl_expr_type_to_c(node.receiver.typ).trim_right('*')
-			body_key := 'body_${recv_c_name}'
-			if fn_name != ''
-				&& (body_key in g.emitted_types || body_key in g.pending_late_body_keys) {
+			if fn_name != '' {
 				g.gen_fn_decl_with_name_ptr(node, fn_name)
 			}
 			g.active_generic_types = prev_generic_types.clone()
@@ -6018,23 +5931,6 @@ fn (mut g Gen) gen_fn_decl_ptr(node &ast.FnDecl) {
 
 fn (mut g Gen) gen_fn_decl_with_name(node ast.FnDecl, fn_name string) {
 	g.gen_fn_decl_with_name_ptr(&node, fn_name)
-}
-
-fn (mut g Gen) gen_weak_fn_decl_with_name_ptr(node &ast.FnDecl, fn_name string) {
-	already_weak := fn_name in g.weak_fn_names
-	g.weak_fn_names[fn_name] = true
-	g.gen_fn_decl_with_name_ptr(node, fn_name)
-	if !already_weak {
-		g.weak_fn_names.delete(fn_name)
-	}
-}
-
-fn (mut g Gen) gen_weak_fn_decl_head_with_name_ptr(node &ast.FnDecl, fn_name string) {
-	if fn_name == '' || fn_name in g.declared_fn_names {
-		return
-	}
-	g.gen_fn_head_with_name_ptr(node, fn_name)
-	g.sb.writeln(';')
 }
 
 fn (g &Gen) called_specialized_name_for_base(base string) ?string {
@@ -6277,9 +6173,6 @@ fn (mut g Gen) gen_fn_decl_with_name_ptr(node &ast.FnDecl, fn_name string) {
 	if is_live_fn {
 		g.gen_fn_head_live_ptr(node, fn_name)
 	} else {
-		if fn_name in g.weak_fn_names {
-			g.sb.write_string('__attribute__((weak)) ')
-		}
 		g.gen_fn_head_with_name_ptr(node, fn_name)
 	}
 	g.sb.writeln(' {')
@@ -9274,6 +9167,17 @@ fn (mut g Gen) resolve_call_name(lhs ast.Expr, _arg_count int) string {
 						}
 					}
 				}
+				if method_name == 'bytestr' && lhs.lhs is ast.CallExpr {
+					recv_call := lhs.lhs as ast.CallExpr
+					if recv_call.lhs is ast.Ident
+						&& recv_call.lhs.name in ['array__slice', 'array__slice_ni', 'builtin__array__slice', 'builtin__array__slice_ni']
+						&& recv_call.args.len > 0 {
+						elem_type := g.infer_array_elem_type_from_expr(recv_call.args[0])
+						if elem_type == 'u8' || elem_type == 'byte' {
+							return 'Array_u8__bytestr'
+						}
+					}
+				}
 				mut base_type := g.method_receiver_base_type(lhs.lhs)
 				if base_type == '' {
 					base_type = g.get_expr_type(lhs.lhs).trim_space().trim_right('*')
@@ -10801,6 +10705,32 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 		g.call_expr(lhs.lhs, args)
 		return
 	}
+	if args.len == 0 && lhs is ast.SelectorExpr && lhs.rhs.name == 'bytestr' {
+		recv := lhs.lhs
+		if recv is ast.IndexExpr && recv.expr is ast.RangeExpr {
+			g.sb.write_string('Array_u8__bytestr(')
+			g.expr(recv)
+			g.sb.write_string(')')
+			return
+		}
+		if recv is ast.CallExpr && recv.lhs is ast.Ident {
+			call_lhs := recv.lhs as ast.Ident
+			if call_lhs.name in ['array__slice', 'array__slice_ni', 'builtin__array__slice',
+				'builtin__array__slice_ni'] {
+				g.sb.write_string('Array_u8__bytestr(')
+				g.expr(recv)
+				g.sb.write_string(')')
+				return
+			}
+		}
+		elem_type := g.infer_array_elem_type_from_expr(recv).trim_right('*')
+		if elem_type == 'u8' || elem_type == 'byte' {
+			g.sb.write_string('Array_u8__bytestr(')
+			g.expr(recv)
+			g.sb.write_string(')')
+			return
+		}
+	}
 	for i in 0 .. args.len {
 		if args[i] is ast.SelectorExpr {
 			arg_sel := args[i] as ast.SelectorExpr
@@ -11549,6 +11479,12 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 			if specialized in g.fn_param_is_ptr || specialized in g.fn_return_types {
 				name = specialized
 			}
+		}
+	}
+	if lhs is ast.SelectorExpr && sanitize_fn_ident(lhs.rhs.name) == 'bytestr' && call_args.len > 0 {
+		elem_type := g.infer_array_elem_type_from_expr(call_args[0]).trim_right('*')
+		if elem_type == 'u8' || elem_type == 'byte' {
+			name = 'Array_u8__bytestr'
 		}
 	}
 	if name.contains('_T_') && !name.contains('__') {

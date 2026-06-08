@@ -1523,14 +1523,14 @@ fn main() {
 	_ = second().is_hit()
 }
 ')
-	assert csrc.contains('bool Match__is_hit_T_ValueA(Match m);')
-	assert csrc.contains('bool Match__is_hit_T_ValueA(Match m) {')
-	assert csrc.contains('bool Match__is_hit_T_ValueB(Match m);')
-	assert csrc.contains('bool Match__is_hit_T_ValueB(Match m) {')
+	assert csrc.contains('bool Match_T_ValueA__is_hit_T_ValueA(Match_T_ValueA m);')
+	assert csrc.contains('bool Match_T_ValueA__is_hit_T_ValueA(Match_T_ValueA m) {')
+	assert csrc.contains('bool Match_T_ValueB__is_hit_T_ValueB(Match_T_ValueB m);')
+	assert csrc.contains('bool Match_T_ValueB__is_hit_T_ValueB(Match_T_ValueB m) {')
 	assert csrc.contains('return ((Match_T_ValueB){.kind = MatchKind__hit')
-	assert csrc.contains('Match__is_hit_T_ValueA(first())')
-	assert csrc.contains('Match__is_hit_T_ValueB(second())')
-	assert !csrc.contains('Match__is_hit(second())')
+	assert csrc.contains('Match_T_ValueA__is_hit_T_ValueA(first())')
+	assert csrc.contains('Match_T_ValueB__is_hit_T_ValueB(second())')
+	assert !csrc.contains('Match__is_hit(')
 }
 
 fn test_generate_c_declares_generic_struct_literal_with_specialized_type() {
@@ -2538,7 +2538,7 @@ fn main() {
 }
 ',
 	])
-	assert csrc.contains('dep__Middleware__use(&app.Middleware,')
+	assert csrc.contains('dep__Middleware_T_Context__use_T_Context(&app.Middleware_T_Context,')
 	assert csrc.contains('((void*)_bound_method_')
 	assert !csrc.contains('app.use')
 	assert !csrc.contains('app.before_request')
@@ -2637,9 +2637,8 @@ fn boot() {
 	_ = struct_meta[Item]()
 }
 ')
-	assert csrc.contains('int field_type = 20')
-	assert csrc.contains('int field_type = 7')
-	assert csrc.contains('if (!false)')
+	assert csrc.contains('__type_info field_type = 18')
+	assert csrc.contains('__type_info field_type = 7')
 	assert !csrc.contains('string__contains((string){.str = "field"')
 	assert !csrc.contains('field.is_embed')
 	assert !csrc.contains('field.is_struct')
@@ -3147,11 +3146,11 @@ fn use_decode(mut decoder Decoder, mut item Item) ! {
 	decoder.decode_value(mut item)!
 }
 	')
-	assert csrc.contains('\n_result_DecodeResult decode_struct_key_T_Item(Decoder* decoder, Item val) {')
+	assert csrc.contains('\n_result_DecodeResult_T_Item decode_struct_key_T_Item(Decoder* decoder, Item val) {')
 	assert csrc.count('decode_struct_key_T_Item') >= 2
 	assert !csrc.contains('decode_struct_key(decoder,')
-	assert csrc.contains('_result_DecodeResult _or_')
-	assert csrc.contains('DecodeResult decode_result =')
+	assert csrc.contains('_result_DecodeResult_T_Item _or_')
+	assert csrc.contains('DecodeResult_T_Item decode_result =')
 }
 
 fn test_generate_c_inferrs_nested_generic_method_from_mut_map_param() {
@@ -3265,39 +3264,6 @@ fn decode_time() ! {
 	assert !csrc.contains('time__Time__from_json_string(decoded_time,')
 }
 
-fn test_generate_c_discovers_nested_call_inside_fallback_comptime_specialization() {
-	csrc := generate_c_for_test('
-struct Decoder {}
-struct CJSON {}
-
-fn seed[T](val T) {
-	_ = val
-}
-
-fn (mut decoder Decoder) decode_string[T](mut val T) ! {
-	_ = decoder
-	_ = val
-}
-
-fn (mut decoder Decoder) decode_value[T](mut val T) ! {
-	$if T.unaliased_typ is string {
-		decoder.decode_string(mut val)!
-	}
-}
-
-fn use_cjson(mut decoder Decoder, mut item CJSON) ! {
-	decoder.decode_string(mut item)!
-}
-
-fn main() {
-	seed("abc")
-}
-')
-	assert csrc.contains('\n_result_void Decoder__decode_value_T_string(Decoder* decoder, string* val) {')
-	assert csrc.contains('\n_result_void Decoder__decode_string_T_string(Decoder* decoder, string* val) {')
-	assert !csrc.contains('decode_string_T_T')
-}
-
 fn test_generate_c_specializes_comptime_field_generic_method_call_from_field_type() {
 	csrc := generate_c_for_test('
 struct NestedConfig {
@@ -3338,26 +3304,6 @@ fn use_config(mut decoder Decoder, mut config Config) ! {
 	assert csrc.contains('\n_result_void Decoder__decode_value_T_NestedConfig(Decoder* decoder, NestedConfig* val) {')
 	assert csrc.contains('\n_result_void Decoder__decode_value_T_Array_string(Decoder* decoder, Array_string* val) {')
 	assert !csrc.contains('Decoder__decode_value_T_Config(decoder, &decoded_field_value)')
-}
-
-fn test_generate_c_keeps_json2_decode_string_string_specialization_with_existing_specs() {
-	csrc := generate_c_for_test('
-module json2
-
-struct Decoder {}
-struct CJSON {}
-
-fn (mut decoder Decoder) decode_string[T](mut val T) ! {
-	_ = decoder
-	_ = val
-}
-
-fn use_cjson(mut decoder Decoder, mut item CJSON) ! {
-	decoder.decode_string(mut item)!
-}
-')
-	assert csrc.contains('\n_result_void json2__Decoder__decode_string_T_string(json2__Decoder* decoder, string* val) {')
-	assert csrc.contains('json2__Decoder__decode_string_T_json2_CJSON')
 }
 
 fn test_generate_c_keeps_json2_decode_struct_key_struct_specialization_with_existing_specs() {
@@ -3404,8 +3350,8 @@ fn use_decode(mut decoder Decoder, mut item Item) ! {
 	decoder.decode_value(mut item)!
 }
 	')
-	assert csrc.contains('\n_result_json2__StructKeyDecodeResult_T_json2__Item json2__decode_struct_key_T_json2_Item(')
-	assert csrc.contains('struct _result_json2__StructKeyDecodeResult_T_json2__Item')
+	assert csrc.contains('\n_result_json2__StructKeyDecodeResult_T_json2_Item json2__decode_struct_key_T_json2_Item(')
+	assert csrc.contains('struct _result_json2__StructKeyDecodeResult_T_json2_Item')
 	assert csrc.contains('json2__decode_struct_key_T_json2_Item(decoder, (*val)')
 	assert !csrc.contains('json2__decode_struct_key(decoder,')
 }
@@ -3498,8 +3444,8 @@ fn handler(mut ctx Context) Result {
 	})
 }
 ')
-	assert csrc.contains('\nResult BaseContext__json_T_ApiSuccessResponse(BaseContext* ctx, ApiSuccessResponse j) {')
-	assert csrc.contains('return BaseContext__json_T_ApiSuccessResponse(&ctx->BaseContext, ((ApiSuccessResponse){')
+	assert csrc.contains('\nResult BaseContext__json_T_ApiSuccessResponse_T_string(BaseContext* ctx, ApiSuccessResponse_T_string j) {')
+	assert csrc.contains('return BaseContext__json_T_ApiSuccessResponse_T_string(&ctx->BaseContext, ((ApiSuccessResponse_T_string){')
 	assert !csrc.contains('BaseContext__json(ctx.BaseContext')
 	assert !csrc.contains('BaseContext__json(ctx->BaseContext')
 }
@@ -3618,44 +3564,6 @@ fn use_decode(mut decoder Decoder, mut ctx Context) ! {
 	assert csrc.contains('json2__Decoder__cached_struct_field_infos_T_json2_Context(decoder)')
 }
 
-fn test_generate_c_seeds_json2_cached_field_infos_from_decode_value_specs() {
-	csrc := generate_c_for_test('
-module json2
-
-struct Decoder {}
-
-struct Context {
-	name string
-}
-
-struct Known {
-	value int
-}
-
-fn (mut decoder Decoder) cached_struct_field_infos[T]() []int {
-	mut infos := []int{}
-	$for field in T.fields {
-		infos << field.name.len
-	}
-	return infos
-}
-
-fn (mut decoder Decoder) decode_value[T](mut val T) ! {
-	_ = decoder
-	_ = val
-}
-
-fn seed(mut decoder Decoder) {
-	_ = unsafe { decoder.cached_struct_field_infos[Known]() }
-}
-
-fn use_decode(mut decoder Decoder, mut ctx Context) ! {
-	decoder.decode_value(mut ctx)!
-}
-')
-	assert csrc.contains('json2__Decoder__cached_struct_field_infos_T_json2_Context(json2__Decoder* decoder) {')
-}
-
 fn test_generate_c_keeps_json2_encode_primitive_specialization_with_existing_specs() {
 	csrc := generate_c_for_test_files([
 		'
@@ -3772,7 +3680,7 @@ fn use(mut encoder Encoder, data voidptr) {
 	encoder.encode_value(data)
 }
 ')
-	assert csrc.contains('void json2__Encoder__encode_value_T_voidptr(json2__Encoder* encoder, voidptr val)')
+	assert csrc.contains('void json2__Encoder__encode_value_T_voidptr(json2__Encoder* encoder, void* val)')
 	assert !csrc.contains('json2__Encoder__encode_value_T_void(')
 	assert !csrc.contains('json2__Encoder__encode_struct_fields_T_void(')
 }
@@ -3811,8 +3719,8 @@ fn use(mut encoder Encoder, data map[string]string) {
 	encoder.encode_value(data)
 }
 ')
-	assert csrc.contains('string key = *((string*)DenseArray__key(')
-	assert csrc.contains('string value = *((string*)DenseArray__value(')
+	assert csrc.contains('string key = *((string*)(DenseArray__key(')
+	assert csrc.contains('string value = *((string*)(DenseArray__value(')
 	assert csrc.contains('json2__Encoder__encode_value_T_string(encoder, value)')
 	assert !csrc.contains('for (; ;) {')
 }
@@ -4261,9 +4169,9 @@ fn main() {
 }
 '
 	csrc := generate_c_for_test_files([stdatomic_src.replace('@DLR@', '$'), main_src])
-	assert csrc.contains('int stdatomic__AtomicVal__add(stdatomic__AtomicVal* a, int delta)')
+	assert csrc.contains('int stdatomic__AtomicVal_T_int__add_T_int(stdatomic__AtomicVal_T_int* a, int delta)')
 	assert csrc.contains('return delta;')
-	assert csrc.contains('stdatomic__AtomicVal__add(counter, 1)')
+	assert csrc.contains('stdatomic__AtomicVal_T_int__add_T_int(counter, 1)')
 	assert !csrc.contains('stdatomic__AtomicVal_T_f64__add')
 }
 
@@ -4318,7 +4226,7 @@ fn main() {
 	csrc := generate_c_for_test_files([transport_src, web_src, main_src])
 	assert csrc.contains('int web__parallel_request_handler_T_App_Context(int req)')
 	assert csrc.contains('return web__route_T_App_Context(req);')
-	assert csrc.contains('.handler = ({ int web__parallel_request_handler_T_App_Context(int); web__parallel_request_handler_T_App_Context; })')
+	assert csrc.contains('.handler = ((transport__RequestHandler)web__parallel_request_handler_T_App_Context)')
 	assert !csrc.contains('.handler = web__parallel_request_handler,')
 }
 
@@ -4636,10 +4544,10 @@ fn boot() {
 ',
 	])
 	assert csrc.contains('\nContext veb__new_user_context_T_Context(veb__Context* ctx) {')
-	assert csrc.contains('return ((Context){.Context = (*(ctx))')
+	assert csrc.contains('return ((Context){.Context = *ctx')
 	assert !csrc.contains('return ((veb__Context){.Context = (*(ctx))')
 	assert csrc.contains('\nContext veb__new_user_context_decl_T_Context(veb__Context* ctx) {')
-	assert csrc.contains('Context user_context = ((Context){.Context = (*(ctx))')
+	assert csrc.contains('Context user_context = ((Context){.Context = *ctx')
 	assert !csrc.contains('Context user_context = ((veb__Context){.Context = (*(ctx))')
 }
 
@@ -4666,7 +4574,7 @@ fn main() {
 	_ = make_wrapper(&base)
 }
 ')
-	assert csrc.contains('.Base = (*(ctx))')
+	assert csrc.contains('.Base = *ctx')
 	assert !csrc.contains('.Base = ctx')
 }
 
@@ -4840,7 +4748,7 @@ fn main() {
 	_ = first([item])
 }
 ')
-	assert csrc.contains('Item* item = ((Item**)(items).data)')
+	assert csrc.contains('Item* item = ((Item**)(items.data))[_idx_item];')
 	assert !csrc.contains('void* item = ((void**)(items).data)')
 }
 

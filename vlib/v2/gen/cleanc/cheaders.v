@@ -2429,6 +2429,10 @@ fn (g &Gen) parse_map_kv_types(kv_str string) (string, string) {
 }
 
 fn (g &Gen) is_known_map_key_type(key string, simple_types []string) bool {
+	if key.starts_with('Array_fixed_') {
+		_, arr_len := g.parse_fixed_array_type(key)
+		return arr_len > 0
+	}
 	return key in g.map_aliases || key in g.array_aliases || key in g.emitted_types
 		|| 'body_${key}' in g.emitted_types || 'alias_${key}' in g.emitted_types
 		|| 'enum_${key}' in g.emitted_types || key in simple_types

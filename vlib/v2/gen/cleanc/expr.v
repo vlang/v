@@ -422,13 +422,24 @@ fn vector_elem_type_for_name(type_name string) string {
 	return ''
 }
 
-fn (mut g Gen) raw_concrete_type_for_interface_value(type_name string, value_expr ast.Expr) string {
+fn (mut g Gen) interface_target_cast_inner_expr(type_name string, value_expr ast.Expr) ?ast.Expr {
 	if value_expr is ast.CastExpr
 		&& g.expr_type_to_c(value_expr.typ) in [type_name, 'builtin__${type_name}'] {
-		return g.raw_concrete_type_for_interface_value(type_name, value_expr.expr)
+		return value_expr.expr
+	}
+	if value_expr is ast.CallOrCastExpr && g.call_or_cast_lhs_is_type(value_expr.lhs)
+		&& g.expr_type_to_c(value_expr.lhs) in [type_name, 'builtin__${type_name}'] {
+		return value_expr.expr
 	}
 	if value_expr is ast.ParenExpr {
-		return g.raw_concrete_type_for_interface_value(type_name, value_expr.expr)
+		return value_expr.expr
+	}
+	return none
+}
+
+fn (mut g Gen) raw_concrete_type_for_interface_value(type_name string, value_expr ast.Expr) string {
+	if inner := g.interface_target_cast_inner_expr(type_name, value_expr) {
+		return g.raw_concrete_type_for_interface_value(type_name, inner)
 	}
 	mut concrete_type := g.get_expr_type(value_expr)
 	if value_expr is ast.PrefixExpr && value_expr.op == .amp && value_expr.expr is ast.Ident {
@@ -671,12 +682,17 @@ fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
 	if !g.is_interface_type(type_name) {
 		return false
 	}
-	if is_nil_like_expr(value_expr) || is_none_like_expr(value_expr) {
+	mut cast_value_expr := value_expr
+	for {
+		inner := g.interface_target_cast_inner_expr(type_name, cast_value_expr) or { break }
+		cast_value_expr = inner
+	}
+	if is_nil_like_expr(cast_value_expr) || is_none_like_expr(cast_value_expr) {
 		g.sb.write_string('((${type_name}){0})')
 		return true
 	}
 	// Get the concrete type name
-	mut concrete_type := g.concrete_type_for_interface_value(type_name, value_expr)
+	mut concrete_type := g.concrete_type_for_interface_value(type_name, cast_value_expr)
 	if concrete_type == '' || concrete_type == 'int' {
 		return false
 	}
@@ -698,16 +714,17 @@ fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
 	// requires runtime dispatch: check _type_id to find the concrete type,
 	// then construct the target interface from it.
 	if g.is_interface_type(base_concrete) {
-		return g.gen_iface_to_iface_cast(base_concrete, type_name, value_expr)
+		return g.gen_iface_to_iface_cast(base_concrete, type_name, cast_value_expr)
 	}
 	// Generate: (InterfaceType){._object = (void*)&expr, .method = ConcreteType__method, ...}
 	// For rvalue expressions (function calls, struct init, etc.), store in a temp
 	// to allow taking the address, and reuse the temp for data field pointers.
 	// When concrete_type is a pointer and the value_expr is a deref (*ptr),
 	// unwrap the deref: for _object we want the pointer, for data fields we use ->.
-	mut effective_value := value_expr
-	if concrete_type.ends_with('*') && value_expr is ast.PrefixExpr && value_expr.op == .mul {
-		effective_value = value_expr.expr
+	mut effective_value := cast_value_expr
+	if concrete_type.ends_with('*') && cast_value_expr is ast.PrefixExpr
+		&& cast_value_expr.op == .mul {
+		effective_value = cast_value_expr.expr
 	}
 	if type_name in ['IError', 'builtin__IError'] {
 		if g.gen_ierror_from_concrete_expr(effective_value, concrete_type) {
@@ -2963,6 +2980,31 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if lhs_expr is ast.Ident {
 				if lhs_name == 'C' {
 					g.sb.write_string(rhs_name)
+					return
+				}
+			}
+			if rhs_name == 'bytestr' {
+				if lhs_expr is ast.IndexExpr && lhs_expr.expr is ast.RangeExpr {
+					g.sb.write_string('Array_u8__bytestr(')
+					g.expr(lhs_expr)
+					g.sb.write_string(')')
+					return
+				}
+				if lhs_expr is ast.CallExpr && lhs_expr.lhs is ast.Ident {
+					call_lhs := lhs_expr.lhs as ast.Ident
+					if call_lhs.name in ['array__slice', 'array__slice_ni', 'builtin__array__slice',
+						'builtin__array__slice_ni'] {
+						g.sb.write_string('Array_u8__bytestr(')
+						g.expr(lhs_expr)
+						g.sb.write_string(')')
+						return
+					}
+				}
+				elem_type := g.infer_array_elem_type_from_expr(lhs_expr).trim_right('*')
+				if elem_type == 'u8' || elem_type == 'byte' {
+					g.sb.write_string('Array_u8__bytestr(')
+					g.expr(lhs_expr)
+					g.sb.write_string(')')
 					return
 				}
 			}
