@@ -2013,6 +2013,9 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 				t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
 			}
 		}
+		.stmt_for_in {
+			t.transform_stmt_list_item_to_flat(for_in_stmt_from_cursor(c), mut ids, mut out)
+		}
 		.stmt_fn_decl {
 			// Stream the body cursor-native when it has no defers (defer
 			// lowering needs the whole body, so those take the legacy
@@ -2035,7 +2038,7 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 			// `stmt.init is ast.ForInStmt` branch exactly.
 			init_c := c.edge(0)
 			if init_c.is_valid() && init_c.kind() == .stmt_for_in {
-				t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
+				t.transform_stmt_list_item_to_flat(for_stmt_from_cursor(c), mut ids, mut out)
 			} else {
 				id := t.transform_for_stmt_streaming_to_flat(c, mut out)
 				t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
@@ -2192,6 +2195,23 @@ fn assign_stmt_from_cursor(c ast.Cursor) ast.AssignStmt {
 		lhs: lhs
 		rhs: rhs
 		pos: c.pos()
+	}
+}
+
+fn for_in_stmt_from_cursor(c ast.Cursor) ast.ForInStmt {
+	return ast.ForInStmt{
+		key:   c.edge(0).expr()
+		value: c.edge(1).expr()
+		expr:  c.edge(2).expr()
+	}
+}
+
+fn for_stmt_from_cursor(c ast.Cursor) ast.ForStmt {
+	return ast.ForStmt{
+		init:  c.edge(0).stmt()
+		cond:  c.edge(1).expr()
+		post:  c.edge(2).stmt()
+		stmts: c.for_body_list().stmts()
 	}
 }
 
