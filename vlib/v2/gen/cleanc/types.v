@@ -1044,10 +1044,10 @@ fn (mut g Gen) collect_runtime_aliases() {
 						// param / return types); decode the body-less signature
 						// so cleanc's type-alias collection never rehydrates a fn
 						// body on the default build path.
-						g.collect_decl_type_aliases_from_stmt(ast.Stmt(stmt.fn_decl_signature()))
+						g.collect_decl_type_aliases_from_stmt_cursor(stmt)
 					}
 					.stmt_struct_decl, .stmt_interface_decl, .stmt_type_decl, .stmt_global_decl {
-						g.collect_decl_type_aliases_from_stmt(stmt.stmt())
+						g.collect_decl_type_aliases_from_stmt_cursor(stmt)
 					}
 					else {}
 				}
@@ -1159,6 +1159,27 @@ fn (mut g Gen) collect_aliases_from_type(t types.Type) {
 		}
 		types.Pointer {
 			g.collect_aliases_from_type(t.base_type)
+		}
+		else {}
+	}
+}
+
+fn (mut g Gen) collect_decl_type_aliases_from_stmt_cursor(stmt ast.Cursor) {
+	match stmt.kind() {
+		.stmt_struct_decl {
+			g.collect_decl_type_aliases_from_stmt(ast.Stmt(stmt.struct_decl()))
+		}
+		.stmt_interface_decl {
+			g.collect_decl_type_aliases_from_stmt(ast.Stmt(stmt.interface_decl()))
+		}
+		.stmt_type_decl {
+			g.collect_decl_type_aliases_from_stmt(ast.Stmt(stmt.type_decl()))
+		}
+		.stmt_fn_decl {
+			g.collect_decl_type_aliases_from_stmt(ast.Stmt(stmt.fn_decl_signature()))
+		}
+		.stmt_global_decl {
+			g.collect_decl_type_aliases_from_stmt(ast.Stmt(stmt.global_decl(false)))
 		}
 		else {}
 	}

@@ -3346,7 +3346,7 @@ fn (g &Gen) cursor_stmt_has_live_reload_function(stmt ast.Cursor) bool {
 			return decl.attributes.has('live') && decl.name != 'main'
 		}
 		.stmt_expr {
-			return g.stmt_has_live_reload_function(stmt.stmt())
+			return g.expr_cursor_has_live_reload_function(stmt.edge(0))
 		}
 		else {
 			return false
@@ -3373,12 +3373,46 @@ fn (g &Gen) stmt_has_live_reload_function(stmt ast.Stmt) bool {
 	return false
 }
 
+fn (g &Gen) expr_cursor_has_live_reload_function(expr ast.Cursor) bool {
+	if expr.kind() == .expr_comptime {
+		inner := expr.edge(0)
+		if inner.kind() == .expr_if {
+			return g.active_comptime_if_cursor_has_live_reload_function(inner)
+		}
+		return g.expr_cursor_has_live_reload_function(inner)
+	}
+	return false
+}
+
 fn (g &Gen) expr_has_live_reload_function(expr ast.Expr) bool {
 	if expr is ast.ComptimeExpr {
 		if expr.expr is ast.IfExpr {
 			return g.active_comptime_if_has_live_reload_function(expr.expr)
 		}
 		return g.expr_has_live_reload_function(expr.expr)
+	}
+	return false
+}
+
+fn (g &Gen) if_expr_cursor_body_has_live_reload_function(node ast.Cursor) bool {
+	for i in 2 .. node.edge_count() {
+		if g.cursor_stmt_has_live_reload_function(node.edge(i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &Gen) active_comptime_if_cursor_has_live_reload_function(node ast.Cursor) bool {
+	if g.eval_comptime_cond(node.edge(0).expr()) {
+		return g.if_expr_cursor_body_has_live_reload_function(node)
+	}
+	else_expr := node.edge(1)
+	if else_expr.kind() == .expr_if {
+		if else_expr.edge(0).kind() == .expr_empty {
+			return g.if_expr_cursor_body_has_live_reload_function(else_expr)
+		}
+		return g.active_comptime_if_cursor_has_live_reload_function(else_expr)
 	}
 	return false
 }
