@@ -472,6 +472,42 @@ pub fn (mut b FlatBuilder) append_flat(src &FlatAst) int {
 	return node_offset
 }
 
+// copy_subtree_from copies the subtree rooted at `root` from `src` into this
+// builder, re-interning strings and rebuilding child edges recursively.
+pub fn (mut b FlatBuilder) copy_subtree_from(src &FlatAst, root FlatNodeId) FlatNodeId {
+	if root < 0 || root >= src.nodes.len {
+		return invalid_flat_node_id
+	}
+	n := src.nodes[root]
+	mut edges := []FlatEdge{cap: n.edge_count}
+	for i in 0 .. n.edge_count {
+		child := src.child_at(root, i)
+		copied_child := if child >= 0 {
+			b.copy_subtree_from(src, child)
+		} else {
+			child
+		}
+		edges << FlatEdge{
+			child_id: copied_child
+		}
+	}
+	name_id := b.copy_string_id_from(src, n.name_id)
+	extra := if n.extra >= 0
+		&& (n.kind == .file || n.kind == .stmt_directive || n.kind == .stmt_import) {
+		b.copy_string_id_from(src, n.extra)
+	} else {
+		n.extra
+	}
+	return b.emit(n.kind, n.pos, name_id, extra, n.aux, n.flags, edges)
+}
+
+fn (mut b FlatBuilder) copy_string_id_from(src &FlatAst, id int) int {
+	if id < 0 || id >= src.strings.len {
+		return id
+	}
+	return b.intern(src.strings[id])
+}
+
 // emit_stmt is the public wrapper around the legacy stmt-to-flat conversion.
 // Future sessions of the transformer-writes-flat port reach for this when a
 // stmt variant still falls back to legacy emission; the long-term goal is for

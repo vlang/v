@@ -1629,17 +1629,15 @@ import v2.types
 //     continue to pass.
 //
 // Phase 5: post-pass port.
-//   `post_pass` (runtime const init injection, helper functions, str/clone
-//   generation, ...) still mutates `[]ast.File`. Port it to either emit
-//   directly into the builder or run as a separate flat-write pass after
-//   `transform_file_index_to_flat` is complete for all files.
+//   The active flat-direct paths run post_pass_to_flat and the post-pass tail
+//   without materialising a transformed []ast.File. Compatibility entry points
+//   still maintain legacy files for the `.v`/eval backends.
 //
-// Phase 6: drop legacy materialisation.
-//   `transform_files_to_flat`'s second return value (`[]ast.File`) is the
-//   last consumer keeping legacy AST alive. Once the SSA builder consumes
-//   flat directly, the return shape changes to `ast.FlatAst` only and the
-//   boundary `flatten_files()` inside the wedge is removed. This is where
-//   the peak-memory win from project_v2_flat_migration.md materialises.
+// Phase 6: drop compatibility materialisation.
+//   `transform_files_to_flat` and `_via_driver` still return []ast.File for
+//   legacy consumers. Flat-codegen backends use transform_flat_to_flat_direct
+//   or the parallel flat-direct path and keep the transformed program in
+//   FlatAst only.
 //
 // ----- Rewrite Site Inventory (55 sites, audited 2026-05-26) -----
 //
@@ -1955,19 +1953,15 @@ fn (mut t Transformer) transform_stmt_list_item_to_flat(stmt ast.Stmt, mut ids [
 // statement kind at a time (eliminating the whole-subtree `.stmt()` decode at
 // the `transform_cursor_stmts_to_flat_direct` loop).
 //
-// First converted set: the true-passthrough top-level kinds that carry no
-// `try_expand_*` guard and that `transform_stmt_to_flat` emits verbatim
-// (flat_write.v:3890). They are routed through `append_transformed_stmt_to_flat`
-// exactly as the fallback would after its guards fail to match — bit-equal, just
-// skipping the (always-false for these kinds) guard checks. They still decode via
-// `c.stmt()` for now (dropping that decode needs a flat-to-flat subtree copy and
-// is a later stage); the value here is the dispatcher that subsequent stages
-// (const/global, then the FnDecl body — the real decode win) extend arm by arm.
+// First converted set: true-passthrough top-level kinds that carry no
+// `try_expand_*` guard and that `transform_stmt_to_flat` emits verbatim. Those
+// copy their flat subtrees directly, so they do not route through `c.stmt()`.
 fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut ids []ast.FlatNodeId, mut out ast.FlatBuilder) {
 	match c.kind() {
 		.stmt_import, .stmt_module, .stmt_directive, .stmt_empty, .stmt_enum_decl,
 		.stmt_interface_decl, .stmt_type_decl, .stmt_asm, .stmt_flow_control {
-			t.append_transformed_stmt_to_flat(mut ids, c.stmt(), mut out)
+			id := out.copy_subtree_from(c.flat, c.id)
+			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
 		}
 		.stmt_const_decl {
 			id := t.transform_const_decl_cursor_to_flat(c, mut out)

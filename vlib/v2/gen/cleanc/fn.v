@@ -464,7 +464,7 @@ fn (mut g Gen) collect_fn_signatures() {
 				if stmt.kind() != .stmt_fn_decl {
 					continue
 				}
-				g.collect_fn_signature_from_decl(stmt.fn_decl(), stmt.list_at(3).len())
+				g.collect_fn_signature_from_cursor(stmt)
 			}
 		}
 		return
@@ -483,6 +483,30 @@ fn (mut g Gen) collect_fn_signatures() {
 			}
 		}
 	}
+}
+
+fn (mut g Gen) collect_fn_signature_from_cursor(stmt ast.Cursor) {
+	decl := stmt.fn_decl_signature()
+	body_len := stmt.list_at(3).len()
+	if g.fn_signature_collection_needs_body(decl) {
+		g.collect_fn_signature_from_decl(stmt.fn_decl(), body_len)
+		return
+	}
+	g.collect_fn_signature_from_decl(decl, body_len)
+}
+
+fn (mut g Gen) fn_signature_collection_needs_body(decl ast.FnDecl) bool {
+	if !g.should_emit_fn_decl_cached(g.cur_module, decl) {
+		return false
+	}
+	if decl.language == .js || g.should_skip_backend_generic_fn(decl) {
+		return false
+	}
+	if g.generic_fn_param_names(decl).len > 0 || receiver_generic_param_names(decl).len > 0 {
+		return true
+	}
+	return decl.typ.return_type !is ast.EmptyExpr
+		&& expr_has_generic_placeholder(decl.typ.return_type)
 }
 
 fn (mut g Gen) collect_fn_signature_from_decl(decl ast.FnDecl, body_len int) {
@@ -504,7 +528,7 @@ fn (mut g Gen) collect_fn_signature_from_decl(decl ast.FnDecl, body_len int) {
 		prev_runtime_decl_types := g.runtime_decl_types.clone()
 		prev_not_local_var_cache := g.not_local_var_cache.clone()
 		prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
-		for spec in g.generic_fn_specializations_for_emit_scope(decl) {
+		for spec in g.generic_fn_specializations_for_emit_scope_with_receiver_bindings(decl) {
 			g.active_generic_types = spec.generic_types.clone()
 			g.cur_fn_name = decl.name
 			g.cur_fn_c_name = spec.name
@@ -1216,7 +1240,8 @@ fn (mut g Gen) build_generic_fn_decl_index() {
 					continue
 				}
 				decl := stmt.fn_decl_signature()
-				if g.generic_fn_param_names(decl).len == 0 {
+				if g.generic_fn_param_names(decl).len == 0
+					&& receiver_generic_param_names(decl).len == 0 {
 					continue
 				}
 				info := GenericFnDeclInfo{
@@ -1248,7 +1273,8 @@ fn (mut g Gen) build_generic_fn_decl_index() {
 				continue
 			}
 			if stmt is ast.FnDecl {
-				if g.generic_fn_param_names(stmt).len == 0 {
+				if g.generic_fn_param_names(stmt).len == 0
+					&& receiver_generic_param_names(stmt).len == 0 {
 					continue
 				}
 				info := GenericFnDeclInfo{
@@ -2031,9 +2057,9 @@ fn (mut g Gen) find_generic_fn_decl_for_requirements(call_name string) ?ast.FnDe
 				if stmt.kind() != .stmt_fn_decl || stmt.name() != short_name {
 					continue
 				}
-				decl := stmt.fn_decl()
+				decl := stmt.fn_decl_signature()
 				if g.generic_fn_param_names(decl).len > 0 {
-					return decl
+					return stmt.fn_decl()
 				}
 			}
 		}
@@ -3224,6 +3250,46 @@ fn (mut g Gen) generic_fn_specializations_for_emit_scope(node ast.FnDecl) []Gene
 		}
 	}
 	return specs
+}
+
+fn (mut g Gen) generic_fn_specializations_for_emit_scope_with_receiver_bindings(node ast.FnDecl) []GenericFnSpecialization {
+	specs := g.generic_fn_specializations_for_emit_scope(node)
+	recv_params := receiver_generic_param_names(node)
+	if recv_params.len == 0 {
+		return specs
+	}
+	mut receiver_bindings := g.get_all_receiver_generic_bindings(node)
+	if receiver_bindings.len == 0 {
+		if bindings := g.get_receiver_generic_bindings(node) {
+			receiver_bindings << bindings
+		}
+	}
+	if receiver_bindings.len == 0 {
+		return specs
+	}
+	mut out := []GenericFnSpecialization{}
+	mut seen := map[string]bool{}
+	for spec in specs {
+		for bindings in receiver_bindings {
+			mut generic_types := bindings.clone()
+			for param_name, concrete in spec.generic_types {
+				generic_types[param_name] = concrete
+			}
+			name := g.specialized_fn_name(node, generic_types)
+			if name == '' || name in seen {
+				continue
+			}
+			seen[name] = true
+			out << GenericFnSpecialization{
+				name:          name
+				generic_types: generic_types.clone()
+			}
+		}
+	}
+	if out.len == 0 {
+		return specs
+	}
+	return out
 }
 
 fn (mut g Gen) generic_fn_specializations_with_fallback(node ast.FnDecl, include_fallback bool) []GenericFnSpecialization {
@@ -4676,9 +4742,9 @@ fn (mut g Gen) find_generic_fn_decl_by_spec_key(key string) ?ast.FnDecl {
 				if stmt.kind() != .stmt_fn_decl || stmt.name() != short_name {
 					continue
 				}
-				decl := stmt.fn_decl()
+				decl := stmt.fn_decl_signature()
 				if g.generic_fn_param_names(decl).len > 0 {
-					return decl
+					return stmt.fn_decl()
 				}
 			}
 		}
@@ -4939,7 +5005,7 @@ fn (mut g Gen) ensure_specialized_call_signature(name string) {
 	if name == '' || !name.contains('_T_') || name in g.fn_param_is_ptr || name in g.fn_return_types {
 		return
 	}
-	base_name := name.all_before('_T_')
+	base_name := specialized_fn_decl_base_name(name)
 	decl := g.find_generic_fn_decl_by_base_name(base_name) or { return }
 	generic_types := g.generic_types_from_specialized_fn_name(decl, name) or {
 		g.register_fn_signature(decl, name)
@@ -4949,6 +5015,34 @@ fn (mut g Gen) ensure_specialized_call_signature(name string) {
 	g.active_generic_types = generic_types.clone()
 	g.register_fn_signature(decl, name)
 	g.active_generic_types = prev_generic_types.clone()
+}
+
+fn (g &Gen) receiver_only_specialized_call_name(name string) ?string {
+	if name == '' {
+		return none
+	}
+	base_name := generic_call_base_name_for_specialization(name)
+	if base_name == '' || base_name == name {
+		return none
+	}
+	if base_name in g.fn_param_types || base_name in g.fn_return_types
+		|| base_name in g.fn_param_is_ptr {
+		return base_name
+	}
+	return none
+}
+
+fn specialized_fn_decl_base_name(name string) string {
+	base_name := generic_call_base_name_for_specialization(name)
+	if base_name == '' || !base_name.contains('_T_') {
+		return base_name
+	}
+	method_sep := base_name.last_index('__') or { return base_name.all_before('_T_') }
+	receiver_name := base_name[..method_sep]
+	if !receiver_name.contains('_T_') {
+		return base_name
+	}
+	return receiver_name.all_before('_T_') + base_name[method_sep..]
 }
 
 fn (mut g Gen) record_late_single_generic_call_spec_from_c_type(fn_name string, param_name string, c_type string) {
@@ -5207,7 +5301,7 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 		}
 	}
 	if name.ends_with('_T') {
-		base_name := if name.contains('_T_') { name.all_before('_T_') } else { name[..name.len - 2] }
+		base_name := generic_call_base_name_for_specialization(name)
 		if base_name != '' {
 			mut has_arg_bindings := false
 			if generic_decl := g.find_generic_fn_decl_by_base_name(base_name) {
@@ -5464,17 +5558,19 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 			return candidate
 		}
 	}
-	mut generic_base_name := if name.contains('_T_') {
-		name.all_before('_T_')
-	} else if name.ends_with('_T') {
-		name[..name.len - 2]
-	} else {
-		name
-	}
+	mut generic_base_name := generic_call_base_name_for_specialization(name)
 	if qualified_name := g.qualified_generic_fn_base_name(generic_base_name) {
 		generic_base_name = qualified_name
 	}
-	decl := g.find_generic_fn_decl_by_base_name(generic_base_name) or { return none }
+	decl := g.find_generic_fn_decl_by_base_name(generic_base_name) or {
+		if generic_base_name.contains('__') {
+			g.find_generic_fn_decl_by_base_name(generic_base_name.all_after_last('__')) or {
+				return none
+			}
+		} else {
+			return none
+		}
+	}
 	generic_params := g.generic_fn_param_names(decl)
 	if generic_params.len == 0 || g.env == unsafe { nil } {
 		return none
@@ -5649,6 +5745,7 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 		}
 	}
 	mut bindings := map[string]types.Type{}
+	mut receiver_bindings := map[string]types.Type{}
 	if decl.is_method && call_args.len > 0 && expr_has_generic_placeholder(decl.receiver.typ) {
 		recv_arg := if call_args[0] is ast.ModifierExpr {
 			(call_args[0] as ast.ModifierExpr).expr
@@ -5658,7 +5755,8 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 		if expr_has_valid_data(recv_arg) {
 			if concrete := g.concrete_type_from_generic_call_arg(recv_arg) {
 				g.infer_generic_type_bindings_from_param(decl.receiver.typ,
-					g.concrete_type_with_active_generics(concrete), generic_params, mut bindings)
+					g.concrete_type_with_active_generics(concrete),
+					receiver_generic_param_names(decl), mut receiver_bindings)
 			}
 		}
 	}
@@ -5764,7 +5862,11 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 			return alt_candidate
 		}
 	}
-	candidate := g.specialized_fn_name(decl, bindings)
+	mut combined_bindings := receiver_bindings.clone()
+	for param_name, concrete in bindings {
+		combined_bindings[param_name] = concrete
+	}
+	candidate := g.specialized_fn_name(decl, combined_bindings)
 	g.ensure_specialized_call_signature(candidate)
 	if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
 		return candidate
@@ -5775,6 +5877,21 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 		}
 	}
 	return candidate
+}
+
+fn (mut g Gen) specialize_direct_method_call_name(name string, receiver ast.Expr, args []ast.Expr) string {
+	if name == '' {
+		return name
+	}
+	mut call_args := []ast.Expr{cap: args.len + 1}
+	call_args << receiver
+	call_args << args
+	if specialized_name := g.try_specialize_generic_call_name(name, call_args) {
+		if g.generic_specialization_should_replace_call_name(name, specialized_name) {
+			return specialized_name
+		}
+	}
+	return name
 }
 
 // register_builder_methods ensures strings__Builder methods are known to
@@ -5863,7 +5980,7 @@ fn (mut g Gen) gen_fn_decl_ptr(node &ast.FnDecl) {
 			return
 		}
 		prev_generic_types := g.active_generic_types.clone()
-		specs := g.generic_fn_specializations_for_emit_scope(*node)
+		specs := g.generic_fn_specializations_for_emit_scope_with_receiver_bindings(*node)
 		for spec in specs {
 			g.active_generic_types = spec.generic_types.clone()
 			g.gen_fn_decl_with_name_ptr(node, spec.name)
@@ -10393,6 +10510,25 @@ fn explicit_generic_call_name(base_name string, tokens []string) string {
 	return '${name}_T_${tokens.join('_')}'
 }
 
+fn generic_call_base_name_for_specialization(name string) string {
+	if name == '' {
+		return ''
+	}
+	if name.ends_with('_T') {
+		return name[..name.len - 2]
+	}
+	if !name.contains('_T_') {
+		return name
+	}
+	method_sep := name.last_index('__') or { return name.all_before('_T_') }
+	method_start := method_sep + 2
+	method_part := name[method_start..]
+	if idx := method_part.index('_T_') {
+		return name[..method_start + idx]
+	}
+	return name
+}
+
 fn (mut g Gen) explicit_generic_base_call_name(base_lhs ast.Expr, args []ast.Expr) ?string {
 	match base_lhs {
 		ast.Ident {
@@ -10820,6 +10956,8 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 			method_name := lhs.rhs.name
 			if concrete_method := g.resolve_method_on_concrete_type(base_receiver, method_name) {
 				mut method_fn := concrete_method
+				call_args2 := g.interface_call_args_without_object(lhs.lhs, args)
+				method_fn = g.specialize_direct_method_call_name(method_fn, lhs.lhs, call_args2)
 				g.mark_called_fn_name(method_fn)
 				receiver_as_ptr := g.fn_param_wants_pointer(method_fn, 0)
 				g.sb.write_string('${method_fn}(')
@@ -10836,7 +10974,6 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 				} else {
 					g.expr(lhs.lhs)
 				}
-				call_args2 := g.interface_call_args_without_object(lhs.lhs, args)
 				for i in 0 .. call_args2.len {
 					g.sb.write_string(', ')
 					g.gen_call_arg(method_fn, i + 1, call_args2[i])
@@ -11519,6 +11656,9 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	}
 	if name.contains('_T_') {
 		g.ensure_specialized_call_signature(name)
+		if receiver_only_name := g.receiver_only_specialized_call_name(name) {
+			name = receiver_only_name
+		}
 	}
 	if name.contains('_T_') && name !in g.fn_return_types && name !in g.fn_param_is_ptr {
 		base_name := name.all_before('_T_')
@@ -11576,6 +11716,9 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	}
 	if name.contains('_T_') {
 		g.ensure_specialized_call_signature(name)
+		if receiver_only_name := g.receiver_only_specialized_call_name(name) {
+			name = receiver_only_name
+		}
 	}
 	if call_args_have_field_init(call_args) {
 		call_args = g.lower_field_init_call_args_for_codegen(name, call_args)

@@ -1410,7 +1410,7 @@ fn (g &Gen) option_result_payload_is_unbound_generic_struct(val_type string) boo
 	}
 	typ := g.lookup_type_by_c_name_const(base) or { return false }
 	if typ is types.Struct {
-		return typ.generic_params.len > 0
+		return runtime_generic_param_names(typ.generic_params).len > 0
 	}
 	return false
 }
@@ -5463,6 +5463,10 @@ fn (mut g Gen) emit_late_generic_struct(base_name string, inst GenericStructInst
 	prev_active := g.active_generic_types.clone()
 	g.active_generic_types = inst.bindings.clone()
 	mut def := strings.new_builder(256)
+	for field in struct_node.fields {
+		field_type := g.struct_field_type_for_emit(inst.c_name, field)
+		g.emit_late_generic_struct_dependency_for_type(field_type)
+	}
 	// Emit typedef forward declarations so self-referential pointer fields
 	// (e.g. linked-list `next` pointers) and other generic-instance field
 	// types can be resolved without `struct` tag inside the body.
@@ -5472,7 +5476,7 @@ fn (mut g Gen) emit_late_generic_struct(base_name string, inst GenericStructInst
 	def.writeln('typedef ${keyword} ${inst.c_name} ${inst.c_name};')
 	mut seen_field_typedef := map[string]bool{}
 	for field in struct_node.fields {
-		ft := g.qualify_owner_local_field_type(inst.c_name, g.expr_type_to_c(field.typ))
+		ft := g.struct_field_type_for_emit(inst.c_name, field)
 		fbase := ft.trim_right('*')
 		if fbase != inst.c_name && fbase.contains('_T_') && !fbase.starts_with('Array_')
 			&& !fbase.starts_with('Map_') && fbase !in seen_field_typedef {
@@ -5482,8 +5486,15 @@ fn (mut g Gen) emit_late_generic_struct(base_name string, inst GenericStructInst
 	}
 	def.writeln('${keyword} ${inst.c_name} {')
 	for field in struct_node.fields {
-		field_type := g.qualify_owner_local_field_type(inst.c_name, g.expr_type_to_c(field.typ))
+		field_type := g.struct_field_type_for_emit(inst.c_name, field)
 		field_name := if field.name.len > 0 { field.name } else { 'value' }
+		if decl := g.struct_fn_field_decl_for_emit(field, field_name) {
+			def.writeln('\t${decl};')
+			g.struct_field_types['${inst.c_name}.${field_name}'] = g.struct_fn_field_lookup_type_for_emit(field) or {
+				'void*'
+			}
+			continue
+		}
 		def.writeln('\t${field_type} ${field_name};')
 		g.struct_field_types['${inst.c_name}.${field_name}'] = field_type
 	}
@@ -5500,6 +5511,75 @@ fn (mut g Gen) emit_late_generic_struct(base_name string, inst GenericStructInst
 	def.writeln('')
 	g.active_generic_types = prev_active.clone()
 	g.late_struct_defs << def.str()
+}
+
+fn (mut g Gen) emit_late_generic_struct_dependency_for_type(type_name string) {
+	mut base := g.canonical_generic_struct_type_for_emit(type_name).trim_space()
+	for base.ends_with('*') {
+		base = base[..base.len - 1].trim_space()
+	}
+	if base == '' || !base.contains('_T_') || base.starts_with('Array_') || base.starts_with('Map_')
+		|| base.starts_with('_option_') || base.starts_with('_result_') {
+		return
+	}
+	body_key := 'body_${base}'
+	if body_key in g.emitted_types || body_key in g.pending_late_body_keys {
+		return
+	}
+	for struct_base, instances in g.generic_struct_instances {
+		for dep in instances {
+			if dep.c_name == base {
+				g.emit_late_generic_struct(struct_base, dep)
+				return
+			}
+		}
+	}
+	g.emit_late_concrete_struct_dependency_by_c_name(base)
+}
+
+fn (mut g Gen) emit_late_concrete_struct_dependency_by_c_name(c_name string) {
+	body_key := 'body_${c_name}'
+	if body_key in g.emitted_types || body_key in g.pending_late_body_keys {
+		return
+	}
+	node := g.find_struct_node_by_c_name(c_name) or { return }
+	g.emit_late_concrete_struct_decl(node, c_name)
+}
+
+fn (mut g Gen) find_struct_node_by_c_name(c_name string) ?ast.StructDecl {
+	prev_module := g.cur_module
+	prev_file_name := g.cur_file_name
+	defer {
+		g.cur_module = prev_module
+		g.cur_file_name = prev_file_name
+	}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_struct_decl {
+					continue
+				}
+				decl := stmt.struct_decl()
+				if g.get_struct_name(decl) == c_name {
+					return decl
+				}
+			}
+		}
+		return none
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if stmt is ast.StructDecl && g.get_struct_name(stmt) == c_name {
+				return stmt
+			}
+		}
+	}
+	return none
 }
 
 // find_generic_struct_node finds the AST StructDecl for a given C struct name.

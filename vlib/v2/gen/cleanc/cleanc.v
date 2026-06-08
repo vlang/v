@@ -1525,7 +1525,12 @@ fn (mut g Gen) emit_pass1_forward_decls() {
 
 fn (mut g Gen) emit_struct_forward_decl(decl ast.StructDecl) {
 	name := g.get_struct_name(decl)
-	if decl.generic_params.len > 0 && name !in g.generic_struct_bindings
+	runtime_generic_params := if decl.generic_params.len > 0 {
+		g.generic_struct_runtime_param_names(name, name)
+	} else {
+		[]string{}
+	}
+	if runtime_generic_params.len > 0 && name !in g.generic_struct_bindings
 		&& name !in g.generic_struct_instances {
 		return
 	}
@@ -1833,7 +1838,7 @@ fn (mut g Gen) emit_fn_forward_decl_for_decl(decl ast.FnDecl, body_len int, file
 	}
 	if g.generic_fn_param_names(decl).len > 0 {
 		gfn_name := g.get_fn_name(decl)
-		specs := g.generic_fn_specializations_for_emit_scope(decl)
+		specs := g.generic_fn_specializations_for_emit_scope_with_receiver_bindings(decl)
 		if specs.len > 0 {
 			prev_generic_types := g.active_generic_types.clone()
 			for spec in specs {
@@ -2490,10 +2495,18 @@ fn (mut g Gen) generic_types_from_specialized_fn_name(node ast.FnDecl, fn_name s
 	base_name := g.get_fn_name(node)
 	g.active_generic_types = prev_generic_types.move()
 	prefix := '${base_name}_T_'
-	if !fn_name.starts_with(prefix) {
-		return none
+	mut suffix := ''
+	if fn_name.starts_with(prefix) {
+		suffix = fn_name[prefix.len..]
+	} else {
+		specialized_base := generic_call_base_name_for_specialization(fn_name)
+		specialized_prefix := '${specialized_base}_T_'
+		if specialized_fn_decl_base_name(fn_name) != base_name
+			|| !fn_name.starts_with(specialized_prefix) {
+			return none
+		}
+		suffix = fn_name[specialized_prefix.len..]
 	}
-	suffix := fn_name[prefix.len..]
 	tokens := g.split_specialization_suffix(suffix, generic_params.len) or { return none }
 	mut generic_types := map[string]types.Type{}
 	for i, param_name in generic_params {
@@ -2592,7 +2605,7 @@ fn (g &Gen) pass5_stmt_cost(file_idx int, stmt_idx int) int {
 		if stmt_idx < 0 || stmt_idx >= stmts.len() {
 			return 1
 		}
-		return cleanc_stmt_codegen_cost(stmts.at(stmt_idx).stmt())
+		return cleanc_stmt_cursor_codegen_cost(stmts.at(stmt_idx))
 	}
 	if file_idx < 0 || file_idx >= g.files.len || stmt_idx < 0
 		|| stmt_idx >= g.files[file_idx].stmts.len {
@@ -2761,7 +2774,7 @@ pub fn (g &Gen) pass5_file_cost(file_idx int) int {
 		mut cost := 1
 		stmts := g.flat.file_cursor(file_idx).stmts()
 		for i in 0 .. stmts.len() {
-			cost += cleanc_stmt_codegen_cost(stmts.at(i).stmt())
+			cost += cleanc_stmt_cursor_codegen_cost(stmts.at(i))
 		}
 		return cost
 	}
@@ -2781,6 +2794,86 @@ fn cleanc_stmts_codegen_cost(stmts []ast.Stmt) int {
 		cost += cleanc_stmt_codegen_cost(stmt)
 	}
 	return cost
+}
+
+fn cleanc_cursor_stmts_codegen_cost(stmts ast.CursorList) int {
+	mut cost := 0
+	for i in 0 .. stmts.len() {
+		cost += cleanc_stmt_cursor_codegen_cost(stmts.at(i))
+	}
+	return cost
+}
+
+fn cleanc_cursor_children_expr_codegen_cost(c ast.Cursor, start int) int {
+	mut cost := 0
+	for i in start .. c.edge_count() {
+		cost += cleanc_expr_cursor_codegen_cost(c.edge(i))
+	}
+	return cost
+}
+
+fn cleanc_cursor_children_stmt_codegen_cost(c ast.Cursor, start int) int {
+	mut cost := 0
+	for i in start .. c.edge_count() {
+		cost += cleanc_stmt_cursor_codegen_cost(c.edge(i))
+	}
+	return cost
+}
+
+fn cleanc_stmt_cursor_codegen_cost(stmt ast.Cursor) int {
+	if !stmt.is_valid() {
+		return 1
+	}
+	match stmt.kind() {
+		.stmt_fn_decl {
+			return 50 + cleanc_cursor_stmts_codegen_cost(stmt.list_at(3))
+		}
+		.stmt_assign {
+			return 12 + cleanc_cursor_children_expr_codegen_cost(stmt, 0)
+		}
+		.stmt_expr {
+			return 4 + cleanc_expr_cursor_codegen_cost(stmt.edge(0))
+		}
+		.stmt_return {
+			return 8 + cleanc_cursor_children_expr_codegen_cost(stmt, 0)
+		}
+		.stmt_for {
+			return 30 + cleanc_stmt_cursor_codegen_cost(stmt.edge(0)) +
+				cleanc_expr_cursor_codegen_cost(stmt.edge(1)) +
+				cleanc_stmt_cursor_codegen_cost(stmt.edge(2)) +
+				cleanc_cursor_children_stmt_codegen_cost(stmt, 3)
+		}
+		.stmt_for_in {
+			return 30 + cleanc_cursor_children_expr_codegen_cost(stmt, 0)
+		}
+		.stmt_block {
+			return 4 + cleanc_cursor_children_stmt_codegen_cost(stmt, 0)
+		}
+		.stmt_defer {
+			return 10 + cleanc_cursor_children_stmt_codegen_cost(stmt, 0)
+		}
+		.stmt_const_decl {
+			return 8 + cleanc_expr_cursor_codegen_cost(stmt.edge(0))
+		}
+		.stmt_global_decl {
+			return 20 + stmt.list_at(1).len() * 8
+		}
+		.stmt_struct_decl {
+			return 8 + stmt.list_at(4).len()
+		}
+		.stmt_interface_decl {
+			return 8 + stmt.list_at(3).len()
+		}
+		.stmt_type_decl {
+			return 8 + stmt.list_at(3).len()
+		}
+		.stmt_comptime, .stmt_label {
+			return 4 + cleanc_stmt_cursor_codegen_cost(stmt.edge(0))
+		}
+		else {
+			return 1
+		}
+	}
 }
 
 fn cleanc_stmt_codegen_cost(stmt ast.Stmt) int {
@@ -2848,6 +2941,65 @@ fn cleanc_stmt_codegen_cost(stmt ast.Stmt) int {
 		}
 		else {
 			return 1
+		}
+	}
+}
+
+fn cleanc_expr_cursor_codegen_cost(expr ast.Cursor) int {
+	if !expr.is_valid() {
+		return 1
+	}
+	match expr.kind() {
+		.aux_list {
+			return cleanc_cursor_children_expr_codegen_cost(expr, 0)
+		}
+		.aux_field_init {
+			return 4 + cleanc_expr_cursor_codegen_cost(expr.edge(0))
+		}
+		.expr_call {
+			return 18 + cleanc_cursor_children_expr_codegen_cost(expr, 0)
+		}
+		.expr_call_or_cast {
+			return 14 + cleanc_cursor_children_expr_codegen_cost(expr, 0)
+		}
+		.expr_init {
+			return 10 + cleanc_cursor_children_expr_codegen_cost(expr, 0)
+		}
+		.expr_array_init {
+			return 6 + cleanc_cursor_children_expr_codegen_cost(expr, 0)
+		}
+		.expr_map_init {
+			return 10 + cleanc_cursor_children_expr_codegen_cost(expr, 0)
+		}
+		.expr_if {
+			return 18 + cleanc_cursor_children_expr_codegen_cost(expr, 0)
+		}
+		.expr_match {
+			return 20 + cleanc_cursor_children_expr_codegen_cost(expr, 0)
+		}
+		.expr_infix {
+			return 6 + cleanc_cursor_children_expr_codegen_cost(expr, 0)
+		}
+		.expr_prefix, .expr_postfix, .expr_selector, .expr_keyword_operator, .expr_range {
+			return 4 + cleanc_cursor_children_expr_codegen_cost(expr, 0)
+		}
+		.expr_index, .expr_cast, .expr_as_cast, .expr_tuple {
+			return 6 + cleanc_cursor_children_expr_codegen_cost(expr, 0)
+		}
+		.expr_paren, .expr_modifier {
+			return cleanc_cursor_children_expr_codegen_cost(expr, 0)
+		}
+		.expr_or, .expr_unsafe {
+			return 12 + cleanc_cursor_children_expr_codegen_cost(expr, 0)
+		}
+		.expr_lock, .expr_fn_literal, .expr_lambda, .expr_sql {
+			return 20 + cleanc_cursor_children_expr_codegen_cost(expr, 0)
+		}
+		.expr_comptime {
+			return 8 + cleanc_cursor_children_expr_codegen_cost(expr, 0)
+		}
+		else {
+			return 1 + cleanc_cursor_children_expr_codegen_cost(expr, 0)
 		}
 	}
 }
@@ -3180,11 +3332,26 @@ fn (g &Gen) has_live_reload_functions() bool {
 
 fn (g &Gen) cursor_stmts_have_live_reload_function(stmts ast.CursorList) bool {
 	for i in 0 .. stmts.len() {
-		if g.stmt_has_live_reload_function(stmts.at(i).stmt()) {
+		if g.cursor_stmt_has_live_reload_function(stmts.at(i)) {
 			return true
 		}
 	}
 	return false
+}
+
+fn (g &Gen) cursor_stmt_has_live_reload_function(stmt ast.Cursor) bool {
+	match stmt.kind() {
+		.stmt_fn_decl {
+			decl := stmt.fn_decl_signature()
+			return decl.attributes.has('live') && decl.name != 'main'
+		}
+		.stmt_expr {
+			return g.stmt_has_live_reload_function(stmt.stmt())
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (g &Gen) stmts_have_live_reload_function(stmts []ast.Stmt) bool {

@@ -251,6 +251,7 @@ fn (mut g Gen) gen_bound_method_value_expr(node ast.SelectorExpr, expected_c_typ
 	if lhs_base != recv_base && short_type_name(lhs_base) != short_type_name(recv_base) {
 		return false
 	}
+	g.mark_called_fn_name(method_name)
 	callback_param_types := method_params[1..]
 	mut ret_type := g.fn_return_types[method_name] or { 'void' }
 	if ret_type == '' {
@@ -288,7 +289,12 @@ fn (mut g Gen) gen_bound_method_value_expr(node ast.SelectorExpr, expected_c_typ
 	g.anon_fn_defs << def.str()
 	g.sb.write_string('(({ ${recv_store} = ')
 	if receiver_type.ends_with('*') {
-		g.expr(node.lhs)
+		if lhs_type.ends_with('*') {
+			g.expr(node.lhs)
+		} else {
+			g.sb.write_u8(`&`)
+			g.expr(node.lhs)
+		}
 	} else {
 		if lhs_type.ends_with('*') {
 			g.sb.write_string('(*')

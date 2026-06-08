@@ -1759,9 +1759,10 @@ fn main() {
 	outer := make()
 	_ = outer.inner.value
 }
-')
+	')
 	assert csrc.contains('struct Inner {\n\tint value;')
 	assert csrc.contains('struct Outer {\n\tInner inner;')
+		|| csrc.contains('struct Outer {\n\tInner_T_int inner;')
 	assert csrc.contains('Outer make()')
 	assert !csrc.contains('f64 make()')
 	assert !csrc.contains('f64 outer = make()')

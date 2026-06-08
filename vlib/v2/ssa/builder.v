@@ -496,10 +496,8 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 // and only rehydrate the decls each phase actually consumes — non-decl stmts
 // (ModuleStmt, ImportStmt, attributes, etc.) are never decoded.
 //
-// Phase 4 (`build_fn_bodies`) is still a rehydrate-then-call per-file wrapper:
-// once a flat-native variant of that phase exists, the per-file rehydration
-// below disappears and the post-transform `[]ast.File` allocation in the
-// `_via_driver` wedges can be dropped.
+// Phase 4 also consumes cursors directly: function signatures are read from
+// `.stmt_fn_decl` nodes and function bodies are lowered from body stmt cursors.
 pub fn (mut b Builder) build_all_from_flat(flat &ast.FlatAst) {
 	// Register builtin globals needed by all backends
 	i32_t := b.mod.type_store.get_int(32)
@@ -608,12 +606,8 @@ pub fn (mut b Builder) build_all_from_flat(flat &ast.FlatAst) {
 		b.generate_fd_macro_stubs()
 	}
 
-	// Phase 4: Build function bodies. Per-FileCursor walk that rehydrates
-	// only `.stmt_fn_decl` nodes via `flat.decode_stmt`. Non-FnDecl stmts are
-	// never decoded. The fn body itself is still rehydrated per-decl —
-	// future sessions port individual statement classes inside `build_fn` to
-	// consume flat cursors directly. This is the only remaining per-decl
-	// rehydration in the SSA builder.
+	// Phase 4: build function bodies from `.stmt_fn_decl` cursors. Signatures,
+	// filters, params, and body statements all stay on the flat path.
 	if !b.skip_fn_bodies {
 		for fi in 0 .. flat.files.len {
 			fc := flat.file_cursor(fi)
@@ -9776,6 +9770,15 @@ fn (mut b Builder) array_bound_or_zero(val ValueID, int_type TypeID) ValueID {
 	}
 	if b.mod.values[val].typ == int_type {
 		return val
+	}
+	if b.mod.values[val].kind == .constant && b.mod.values[val].typ > 0
+		&& int(b.mod.values[val].typ) < b.mod.type_store.types.len
+		&& int(int_type) < b.mod.type_store.types.len {
+		src := b.mod.type_store.types[b.mod.values[val].typ]
+		dst := b.mod.type_store.types[int_type]
+		if src.kind == .int_t && dst.kind == .int_t {
+			return b.mod.get_or_add_const(int_type, b.mod.values[val].name)
+		}
 	}
 	return b.build_cast_value_to_type(val, int_type)
 }

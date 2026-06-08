@@ -4114,7 +4114,8 @@ mut:
 	g.type_modules['json2'] = true
 	g.collect_generic_struct_bindings()
 
-	assert g.generic_struct_instances.len == 0
+	assert g.generic_struct_instances['json2__LinkedList'].len == 1
+	assert g.generic_struct_instances['json2__Node'].len == 1
 	mut gen := Gen.new_with_env_and_pref(transformed_files, env, prefs)
 	gen.cache_bundle_name = 'imports'
 	gen.emit_modules['json2'] = true
