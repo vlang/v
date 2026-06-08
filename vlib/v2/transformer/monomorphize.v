@@ -2733,39 +2733,6 @@ fn flat_file_struct_decls_with_extra(flat &ast.FlatAst, extra_stmts map[int][]as
 	return decls
 }
 
-fn flat_file_fn_decls_with_extra(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt, fi int) []ast.FnDecl {
-	if fi < 0 || fi >= flat.files.len {
-		return []ast.FnDecl{}
-	}
-	stmt_cursors := flat.file_cursor(fi).stmts()
-	extra := extra_stmts[fi] or { []ast.Stmt{} }
-	mut decls := []ast.FnDecl{cap: stmt_cursors.len() + extra.len}
-	for i in 0 .. stmt_cursors.len() {
-		stmt_c := stmt_cursors.at(i)
-		if stmt_c.kind() != .stmt_fn_decl {
-			continue
-		}
-		decls << stmt_c.fn_decl()
-	}
-	for stmt in extra {
-		if stmt is ast.FnDecl {
-			decls << stmt
-		}
-	}
-	return decls
-}
-
-fn flat_file_stmts_with_extra(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt, fi int) []ast.Stmt {
-	if fi < 0 || fi >= flat.files.len {
-		return []ast.Stmt{}
-	}
-	stmt_cursors := flat.file_cursor(fi).stmts()
-	extra := extra_stmts[fi] or { []ast.Stmt{} }
-	mut stmts := stmt_cursors.stmts()
-	stmts << extra
-	return stmts
-}
-
 fn append_flat_extra_stmts(mut extra_stmts map[int][]ast.Stmt, fi int, stmts []ast.Stmt) {
 	if stmts.len == 0 {
 		return
