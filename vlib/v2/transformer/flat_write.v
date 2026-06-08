@@ -1705,6 +1705,15 @@ pub fn (mut t Transformer) transform_file_index_to_flat(input_flat &ast.FlatAst,
 	return t.transform_flat_file_index_to_flat(input_flat, fi, []ast.Stmt{}, mut out)
 }
 
+// transform_file_index_with_extra_to_flat is the pub entry the parallel
+// flat-direct transform uses: it forwards the monomorphize-generated `extra`
+// stmts for file `fi` (from prepare_flat_for_transform) into the cursor-native
+// per-file transform. The plain `transform_file_index_to_flat` above passes no
+// extras (sequential generic-free callers).
+pub fn (mut t Transformer) transform_file_index_with_extra_to_flat(input_flat &ast.FlatAst, fi int, extra_stmts []ast.Stmt, mut out ast.FlatBuilder) ast.FlatNodeId {
+	return t.transform_flat_file_index_to_flat(input_flat, fi, extra_stmts, mut out)
+}
+
 fn (mut t Transformer) transform_flat_file_index_to_flat(input_flat &ast.FlatAst, fi int, extra_stmts []ast.Stmt, mut out ast.FlatBuilder) ast.FlatNodeId {
 	if fi < 0 || fi >= input_flat.files.len {
 		return ast.invalid_flat_node_id
