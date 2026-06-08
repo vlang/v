@@ -1174,23 +1174,36 @@ fn (t &Transformer) generic_call_concrete_return_type(expr ast.Expr) ?types.Type
 }
 
 fn (t &Transformer) append_method_lookup_type_name(mut names []string, raw_name string) {
-	if raw_name.len == 0 || !transformer_string_has_valid_data(raw_name) {
+	normalized := normalized_method_lookup_type_name(raw_name)
+	if normalized == '' {
 		return
 	}
-	mut normalized := raw_name.replace('.', '__')
+	names << normalized
+	dunder := last_double_underscore(normalized)
+	if dunder >= 0 {
+		short_name := normalized[dunder + 2..]
+		if short_name != '' && short_name != normalized {
+			names << short_name
+		}
+	}
+}
+
+fn normalized_method_lookup_type_name(raw_name string) string {
+	if raw_name.len == 0 || !transformer_string_has_valid_data(raw_name) {
+		return ''
+	}
+	mut normalized := if raw_name.index_u8(`.`) >= 0 {
+		raw_name.replace('.', '__')
+	} else {
+		raw_name
+	}
 	if normalized.starts_with('&') {
 		normalized = normalized[1..]
 	}
 	if normalized.ends_with('*') {
 		normalized = normalized[..normalized.len - 1]
 	}
-	if normalized == '' {
-		return
-	}
-	names << normalized
-	if normalized.contains('__') {
-		names << normalized.all_after_last('__')
-	}
+	return normalized
 }
 
 fn transformer_string_has_valid_data(s string) bool {
@@ -1417,13 +1430,26 @@ fn (t &Transformer) lookup_method_exists(type_names []string, method_name string
 }
 
 fn (t &Transformer) type_has_cached_method(typ types.Type, method_name string) bool {
-	mut lookup_names := []string{}
-	t.append_method_lookup_type_name(mut lookup_names, typ.name())
+	if t.type_name_has_cached_method(typ.name(), method_name) {
+		return true
+	}
 	base_type := t.unwrap_alias_and_pointer_type(typ)
-	t.append_method_lookup_type_name(mut lookup_names, base_type.name())
-	for name in lookup_names {
-		if _ := t.lookup_method_cached(name, method_name) {
-			return true
+	return t.type_name_has_cached_method(base_type.name(), method_name)
+}
+
+fn (t &Transformer) type_name_has_cached_method(raw_name string, method_name string) bool {
+	normalized := normalized_method_lookup_type_name(raw_name)
+	if normalized == '' {
+		return false
+	}
+	if _ := t.lookup_method_cached(normalized, method_name) {
+		return true
+	}
+	dunder := last_double_underscore(normalized)
+	if dunder >= 0 {
+		short_name := normalized[dunder + 2..]
+		if short_name != '' && short_name != normalized {
+			return t.lookup_method_cached(short_name, method_name) != none
 		}
 	}
 	return false
@@ -1433,15 +1459,24 @@ fn (t &Transformer) receiver_has_cached_method(receiver ast.Expr, method_name st
 	if typ := t.get_expr_type(receiver) {
 		return t.type_has_cached_method(typ, method_name)
 	}
-	mut lookup_names := []string{}
 	if receiver is ast.SelectorExpr {
 		selector_type_name := t.get_selector_type_name(receiver)
+		if t.type_name_has_cached_method(selector_type_name, method_name) {
+			return true
+		}
+		mut lookup_names := []string{}
 		t.append_method_lookup_type_name(mut lookup_names, selector_type_name)
+		return t.lookup_method_exists(lookup_names, method_name)
 	} else if receiver is ast.Ident {
 		var_type_name := t.get_var_type_name(receiver.name)
+		if t.type_name_has_cached_method(var_type_name, method_name) {
+			return true
+		}
+		mut lookup_names := []string{}
 		t.append_method_lookup_type_name(mut lookup_names, var_type_name)
+		return t.lookup_method_exists(lookup_names, method_name)
 	}
-	return t.lookup_method_exists(lookup_names, method_name)
+	return false
 }
 
 fn (t &Transformer) smartcast_source_has_cached_method(ctx SmartcastContext, method_name string) bool {
@@ -1450,6 +1485,9 @@ fn (t &Transformer) smartcast_source_has_cached_method(ctx SmartcastContext, met
 	}
 	if typ := t.c_name_to_type(ctx.sumtype) {
 		return t.type_has_cached_method(typ, method_name)
+	}
+	if t.type_name_has_cached_method(ctx.sumtype, method_name) {
+		return true
 	}
 	mut lookup_names := []string{}
 	t.append_method_lookup_type_name(mut lookup_names, ctx.sumtype)
@@ -4343,8 +4381,9 @@ fn (t &Transformer) resolve_explicit_cast_method_name(receiver_type_name string,
 	if t.lookup_method_cached(receiver_type_name, method_name) != none {
 		return '${receiver_type_name}__${method_name}'
 	}
-	if receiver_type_name.contains('__') {
-		short_name := receiver_type_name.all_after_last('__')
+	dunder := last_double_underscore(receiver_type_name)
+	if dunder >= 0 {
+		short_name := receiver_type_name[dunder + 2..]
 		if t.lookup_method_cached(short_name, method_name) != none {
 			return '${short_name}__${method_name}'
 		}
@@ -4368,22 +4407,21 @@ fn (t &Transformer) exact_method_owner_name(raw_name string, method_name string)
 	if raw_name == '' {
 		return none
 	}
-	mut normalized := raw_name.replace('.', '__')
-	if normalized.starts_with('&') {
-		normalized = normalized[1..]
-	}
-	if normalized.ends_with('*') {
-		normalized = normalized[..normalized.len - 1]
-	}
+	normalized := normalized_method_lookup_type_name(raw_name)
 	if normalized == '' {
 		return none
 	}
 	if t.lookup_method_cached(normalized, method_name) != none {
 		return normalized
 	}
-	if !normalized.contains('__') && t.cur_module != '' && t.cur_module != 'main'
+	if last_double_underscore(normalized) < 0 && t.cur_module != '' && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
-		qualified := '${t.cur_module.replace('.', '__')}__${normalized}'
+		qualified_mod := if t.cur_module.index_u8(`.`) >= 0 {
+			t.cur_module.replace('.', '__')
+		} else {
+			t.cur_module
+		}
+		qualified := '${qualified_mod}__${normalized}'
 		if t.lookup_method_cached(qualified, method_name) != none {
 			return qualified
 		}
@@ -4534,13 +4572,11 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 	} else if c_prefix == 'string' && type_name != 'string' && 'string' !in lookup_names {
 		lookup_names << 'string'
 	}
-	if method_name.contains('_T_') || method_name.ends_with('_T') {
-		base_method_name := generic_base_name_without_specialization(method_name)
-		if base_method_name != method_name {
-			for name in lookup_names {
-				if t.lookup_method_cached(name, base_method_name) != none {
-					return '${c_prefix}__${method_name}'
-				}
+	base_method_name := generic_base_name_without_specialization(method_name)
+	if base_method_name != method_name {
+		for name in lookup_names {
+			if t.lookup_method_cached(name, base_method_name) != none {
+				return '${c_prefix}__${method_name}'
 			}
 		}
 	}
@@ -4691,10 +4727,12 @@ fn (t &Transformer) specific_array_method_c_name(receiver ast.Expr, method_name 
 			if c_name == '' {
 				return none
 			}
-			for lookup_name in [base_type.name(), c_name] {
-				if t.lookup_method_cached(lookup_name, method_name) != none {
-					return '${c_name}__${method_name}'
-				}
+			base_name := base_type.name()
+			if t.lookup_method_cached(base_name, method_name) != none {
+				return '${c_name}__${method_name}'
+			}
+			if c_name != base_name && t.lookup_method_cached(c_name, method_name) != none {
+				return '${c_name}__${method_name}'
 			}
 		}
 		else {}

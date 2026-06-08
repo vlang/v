@@ -121,12 +121,15 @@ mut:
 	live_source_file string
 	// Cached scope/method/fn_scope snapshots for lock-free parallel access.
 	// Populated once in pre_pass from the shared Environment fields.
-	cached_scopes               map[string]&types.Scope
-	cached_methods              map[string][]&types.Fn
-	cached_method_keys          []string
-	cached_fn_scopes            map[string]&types.Scope
-	cached_fn_type_index        map[string]types.Type
-	cached_fn_return_type_index map[string]types.Type
+	cached_scopes                 map[string]&types.Scope
+	cached_scope_keys             []string
+	cached_methods                map[string][]&types.Fn
+	cached_method_keys            []string
+	cached_fn_scopes              map[string]&types.Scope
+	cached_fn_type_index          map[string]types.Type
+	cached_fn_return_type_index   map[string]types.Type
+	cached_imported_module_scopes map[string][]&types.Scope
+	cached_struct_field_types     map[string]types.Type
 	// cached_method_base_index maps type_name -> generic-base method name ->
 	// FnType, precomputed once from cached_methods. lookup_method_cached used to
 	// linearly scan every method of a type and recompute its base name (via
@@ -394,12 +397,15 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		comptime_vmodroot:                  t.comptime_vmodroot
 		file_set:                           unsafe { t.file_set }
 		cached_scopes:                      t.cached_scopes.clone()
-		cached_methods:                     t.cached_methods.clone()
-		cached_fn_type_index:               t.cached_fn_type_index.clone()
-		cached_fn_return_type_index:        t.cached_fn_return_type_index.clone()
-		cached_method_base_index:           t.cached_method_base_index.clone()
-		cached_method_keys_by_short:        t.cached_method_keys_by_short.clone()
-		cached_method_keys:                 t.cached_method_keys.clone()
+		cached_scope_keys:                  t.cached_scope_keys
+		cached_methods:                     t.cached_methods
+		cached_fn_type_index:               t.cached_fn_type_index
+		cached_fn_return_type_index:        t.cached_fn_return_type_index
+		cached_imported_module_scopes:      t.cached_imported_module_scopes
+		cached_struct_field_types:          t.cached_struct_field_types
+		cached_method_base_index:           t.cached_method_base_index
+		cached_method_keys_by_short:        t.cached_method_keys_by_short
+		cached_method_keys:                 t.cached_method_keys
 		cached_fn_scopes:                   t.cached_fn_scopes.clone()
 		synth_types:                        t.synth_types.clone()
 		synth_pos_counter:                  t.synth_pos_counter - (worker_idx * 100_000)
@@ -1584,9 +1590,12 @@ pub fn (mut t Transformer) pre_pass_from_flat(flat &ast.FlatAst) {
 // for lock-free access during parallel file transformation.
 fn (mut t Transformer) cache_env_maps() {
 	t.cached_scopes = t.env.snapshot_scopes()
+	t.cached_scope_keys = t.cached_scopes.keys()
 	t.cached_methods = t.env.snapshot_methods()
 	t.cached_method_keys = t.cached_methods.keys()
 	t.cached_fn_scopes = t.env.snapshot_fn_scopes()
+	t.build_cached_imported_module_scopes()
+	t.build_cached_struct_field_type_index()
 	t.build_cached_fn_type_index()
 	t.build_cached_method_base_index()
 	mut by_short := map[string][]string{}
@@ -1596,10 +1605,95 @@ fn (mut t Transformer) cache_env_maps() {
 	t.cached_method_keys_by_short = by_short.move()
 }
 
+fn (mut t Transformer) build_cached_imported_module_scopes() {
+	mut by_module := map[string][]&types.Scope{}
+	for module_name in t.cached_scope_keys {
+		scope := t.cached_scopes[module_name] or { continue }
+		mut imported_scopes := []&types.Scope{}
+		for key, obj in scope.objects {
+			if obj !is types.Module {
+				continue
+			}
+			module_obj := obj as types.Module
+			import_name := if module_obj.name != '' { module_obj.name } else { key }
+			if import_name == '' || import_name == module_name || import_name == 'C' {
+				continue
+			}
+			mut module_scope := module_obj.scope
+			if module_scope == unsafe { nil } {
+				module_scope = t.cached_scopes[import_name] or { continue }
+			}
+			imported_scopes << module_scope
+		}
+		by_module[module_name] = imported_scopes
+	}
+	t.cached_imported_module_scopes = by_module.move()
+}
+
+fn (mut t Transformer) build_cached_struct_field_type_index() {
+	mut index := map[string]types.Type{}
+	for module_name in t.cached_scope_keys {
+		scope := t.cached_scopes[module_name] or { continue }
+		for obj_name, obj in scope.objects {
+			typ := transformer_object_type(obj) or { continue }
+			if typ is types.Struct {
+				add_struct_field_type_index_entries(mut index, module_name, obj_name, typ)
+			}
+		}
+	}
+	t.cached_struct_field_types = index.move()
+}
+
+fn add_struct_field_type_index_entries(mut index map[string]types.Type, module_name string, obj_name string, st types.Struct) {
+	mut names := []string{cap: 4}
+	if obj_name != '' {
+		names << obj_name
+	}
+	if st.name != '' && st.name !in names {
+		names << st.name
+	}
+	if module_name != '' && obj_name != '' && !obj_name.contains('__') {
+		qualified := '${module_name}__${obj_name}'
+		if qualified !in names {
+			names << qualified
+		}
+	}
+	for field in st.fields {
+		if field.name == '' || !transformer_string_has_valid_data(field.name) {
+			continue
+		}
+		for name in names {
+			key := struct_field_generic_decl_key(name, field.name)
+			if key !in index {
+				index[key] = field.typ
+			}
+		}
+		if module_name != '' && obj_name != '' {
+			module_key := struct_field_lookup_cache_key(module_name, obj_name, field.name)
+			if module_key !in index {
+				index[module_key] = field.typ
+			}
+		}
+		if module_name != '' && st.name.contains('__') {
+			short_name := st.name.all_after_last('__')
+			if short_name != '' {
+				module_key := struct_field_lookup_cache_key(module_name, short_name, field.name)
+				if module_key !in index {
+					index[module_key] = field.typ
+				}
+			}
+		}
+	}
+}
+
+fn struct_field_lookup_cache_key(module_name string, struct_name string, field_name string) string {
+	return '${module_name}#${struct_name}.${field_name}'
+}
+
 fn (mut t Transformer) build_cached_fn_type_index() {
 	mut fn_index := map[string]types.Type{}
 	mut ret_index := map[string]types.Type{}
-	for module_name in t.cached_scopes.keys() {
+	for module_name in t.cached_scope_keys {
 		scope := t.cached_scopes[module_name] or { continue }
 		for fn_name, obj in scope.objects {
 			if obj is types.Fn {

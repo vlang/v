@@ -5164,22 +5164,11 @@ fn (g &Gen) imported_symbol_c_type(name string) ?string {
 		}
 		symbol_name = name[prefix.len..]
 	}
-	for file in g.files {
-		if file.name != g.cur_file_name {
-			continue
+	if mod_name := g.imported_symbols_index['${g.cur_file_name}\x01${symbol_name}'] {
+		if mod_name == '' || mod_name == g.cur_module {
+			return none
 		}
-		for import_stmt in file.imports {
-			for symbol in import_stmt.symbols {
-				if symbol.name() != symbol_name {
-					continue
-				}
-				mod_name := import_stmt.name.all_after_last('.').replace('.', '_')
-				if mod_name == '' || mod_name == g.cur_module {
-					return none
-				}
-				return '${mod_name}__${symbol_name}'
-			}
-		}
+		return '${mod_name}__${symbol_name}'
 	}
 	return none
 }

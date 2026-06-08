@@ -136,6 +136,9 @@ mut:
 	emit_file_modules                 map[string]bool
 	declared_type_names_in_emit_files map[string]bool
 	source_module_names               map[string]bool
+	imported_symbols_index            map[string]string // "file_name\x01symbol_name" -> importing module (built once from g.files)
+	v_method_return_index             map[string]string // method short name -> unique V return type (or v_method_ret_ambiguous)
+	ierror_base_index                 map[string]string // base -> qualified concrete base from the smallest `*__base__msg` fn (built once)
 
 	const_exprs                           map[string]string // const name → C expression string (for inlining)
 	const_types                           map[string]string // const name → C type string
@@ -190,6 +193,14 @@ mut:
 	cached_vhash               string          // cached git short hash for @VHASH/@VCURRENTHASH
 	pass5_worker_id            int
 	pass5_file_times           []Pass5FileTime
+	// When a large file is split across workers, only the worker that owns its
+	// globals takes file-level dedup ownership; the others block the file's fns.
+	// During its assigned slice a non-owning worker sets these so gen_fn_decl can
+	// bypass blocked_fn_keys for fns owned by exactly explicit_slice_file (the slice
+	// it is explicitly responsible for) without unblocking anything reached from
+	// another file. See gen_file_range / explicit_slice_emit_allows.
+	explicit_slice_active bool
+	explicit_slice_file   int
 }
 
 struct Pass5FileTime {
@@ -467,6 +478,9 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		emit_modules:                          map[string]bool{}
 		type_modules:                          map[string]bool{}
 		source_module_names:                   map[string]bool{}
+		imported_symbols_index:                map[string]string{}
+		v_method_return_index:                 map[string]string{}
+		ierror_base_index:                     map[string]string{}
 		exported_const_seen:                   map[string]bool{}
 		exported_const_symbols:                []ExportedConstSymbol{}
 		emitted_interface_bodies:              map[string]bool{}
@@ -534,6 +548,51 @@ fn (mut g Gen) gen_file(file ast.File) {
 	}
 }
 
+// gen_file_range emits only the FnDecls at the given statement indices of `file`
+// (and, when emit_globals is set, the file's GlobalDecls). Parallel Pass 5 uses
+// this to split a single large file's functions across several workers so one
+// huge file (e.g. ssa/builder.v) cannot pin the whole parallel phase. Each
+// function is still emitted by exactly one worker (the index ranges partition
+// the file's FnDecls), and only the first range emits globals. Globals are
+// forward-declared for every file in gen_pass5_pre (gen_file_extern_globals),
+// so the single definition's position within the merged output is irrelevant.
+// explicit_slice_emit_allows reports whether a fn that is in blocked_fn_keys may
+// still be emitted because the worker is currently emitting its explicit FnDecl
+// slice of the file that owns this fn. The bypass is scoped to the slice's own
+// file (explicit_slice_file) so it restores exactly the fns the slice would have
+// emitted under file-level ownership and nothing transitively reached from another
+// file (which remains blocked and is emitted by its own owning worker).
+fn (g &Gen) explicit_slice_emit_allows(fn_key string) bool {
+	if !g.explicit_slice_active {
+		return false
+	}
+	if owner := g.fn_owner_file[fn_key] {
+		return owner == g.explicit_slice_file
+	}
+	return false
+}
+
+fn (mut g Gen) gen_file_range(file ast.File, fn_stmt_indices []int, emit_globals bool) {
+	g.set_file_module(file)
+	file_name := g.cur_file_name
+	file_module := g.cur_module
+	file_import_modules := g.cur_import_modules.clone()
+	if emit_globals {
+		for i in 0 .. file.stmts.len {
+			stmt_ptr := &file.stmts[i]
+			if (*stmt_ptr) is ast.GlobalDecl {
+				g.gen_global_decl((*stmt_ptr) as ast.GlobalDecl)
+			}
+		}
+	}
+	for fi in fn_stmt_indices {
+		g.restore_file_module_context(file_name, file_module, file_import_modules)
+		stmt_ptr := &file.stmts[fi]
+		fn_decl := (*stmt_ptr) as ast.FnDecl
+		g.gen_fn_decl_ptr(&fn_decl)
+	}
+}
+
 // set_emit_modules limits code emission to the provided module names.
 // Type declarations and forward declarations are still emitted for all modules.
 pub fn (mut g Gen) set_emit_modules(modules []string) {
@@ -569,9 +628,29 @@ pub fn (mut g Gen) set_emit_files(files []string) {
 
 fn (mut g Gen) collect_source_module_names() {
 	g.source_module_names = map[string]bool{}
+	// Index `import mod { sym }` selective imports per file so imported_symbol_c_type is an O(1)
+	// lookup instead of rescanning all files' imports/symbols (it was the hottest codegen fn).
+	mut imp_idx := map[string]string{}
 	for file in g.files {
 		g.source_module_names[file_module_name(file)] = true
+		for import_stmt in file.imports {
+			if import_stmt.symbols.len == 0 {
+				continue
+			}
+			mod_name := import_stmt.name.all_after_last('.').replace('.', '_')
+			for symbol in import_stmt.symbols {
+				sn := symbol.name()
+				if sn == '' {
+					continue
+				}
+				key := '${file.name}\x01${sn}'
+				if key !in imp_idx { // first occurrence wins, matching the original scan order
+					imp_idx[key] = mod_name
+				}
+			}
+		}
 	}
+	g.imported_symbols_index = imp_idx.move()
 }
 
 fn (mut g Gen) collect_emit_file_indexes() {
@@ -961,6 +1040,8 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.force_emit_sort_fns')
 	g.collect_fn_signatures_to_fixed_point()
+	g.build_v_method_return_index()
+	g.build_ierror_base_index()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.fn_signatures')
 	g.collect_c_file_fn_keys()
@@ -2329,6 +2410,122 @@ fn (mut g Gen) emit_weak_receiver_generic_method_specializations(node &ast.FnDec
 	g.active_generic_types = prev_generic_types.move()
 }
 
+// Pass5WorkItem is one unit of parallel Pass 5 work. A small file is one item
+// covering the whole file (fn_indices empty => use gen_file). A large file is
+// split into several items, each owning a contiguous slice of the file's FnDecl
+// statement indices; only the first slice (emit_globals) emits the file globals.
+pub struct Pass5WorkItem {
+pub:
+	file_idx     int
+	fn_indices   []int // empty => emit the whole file (gen_file)
+	emit_globals bool
+	cost         int
+}
+
+// pass5_split_threshold is the per-item codegen-cost ceiling. Files costing more
+// than this are split into sub-file items so no single file pins a worker. The
+// largest single self-host files (ssa/builder.v ~545k, transformer.v ~446k,
+// gen/cleanc/fn.v ~386k) otherwise serialize the whole parallel phase.
+const pass5_split_threshold = 100_000
+
+// pass5_file_fn_indices returns the statement indices of `file_idx`'s top-level FnDecls.
+fn (g &Gen) pass5_file_fn_indices(file_idx int) []int {
+	mut out := []int{}
+	for i, stmt in g.files[file_idx].stmts {
+		if stmt is ast.FnDecl {
+			out << i
+		}
+	}
+	return out
+}
+
+// build_pass5_work_items turns the emittable file indices into balanced work
+// items, splitting any file whose codegen cost exceeds pass5_split_threshold
+// into contiguous FnDecl-index slices.
+pub fn (g &Gen) build_pass5_work_items(emit_indices []int) []Pass5WorkItem {
+	mut items := []Pass5WorkItem{cap: emit_indices.len}
+	for fi in emit_indices {
+		file_cost := g.pass5_file_cost(fi)
+		if file_cost <= pass5_split_threshold {
+			items << Pass5WorkItem{
+				file_idx:     fi
+				emit_globals: true
+				cost:         file_cost
+			}
+			continue
+		}
+		fn_indices := g.pass5_file_fn_indices(fi)
+		if fn_indices.len <= 1 {
+			// Nothing to split — a single (giant) function or no functions.
+			items << Pass5WorkItem{
+				file_idx:     fi
+				emit_globals: true
+				cost:         file_cost
+			}
+			continue
+		}
+		// Greedily pack contiguous functions into slices of ~pass5_split_threshold cost.
+		mut slice_start := 0
+		mut slice_cost := 0
+		mut first_slice := true
+		for k, idx in fn_indices {
+			fn_cost := cleanc_stmt_codegen_cost(g.files[fi].stmts[idx])
+			slice_cost += fn_cost
+			is_last := k == fn_indices.len - 1
+			if slice_cost >= pass5_split_threshold || is_last {
+				items << Pass5WorkItem{
+					file_idx:     fi
+					fn_indices:   fn_indices[slice_start..k + 1]
+					emit_globals: first_slice
+					cost:         slice_cost
+				}
+				first_slice = false
+				slice_start = k + 1
+				slice_cost = 0
+			}
+		}
+	}
+	return items
+}
+
+// gen_pass5_work_items emits each assigned work item. Whole-file items go through
+// gen_file; split items emit only their FnDecl slice via gen_file_range.
+pub fn (mut g Gen) gen_pass5_work_items(items []Pass5WorkItem) {
+	stats_enabled := g.cgen_stats_enabled()
+	for item in items {
+		if !stats_enabled {
+			if item.fn_indices.len == 0 {
+				g.gen_file(g.files[item.file_idx])
+			} else {
+				g.explicit_slice_active = true
+				g.explicit_slice_file = item.file_idx
+				g.gen_file_range(g.files[item.file_idx], item.fn_indices, item.emit_globals)
+				g.explicit_slice_active = false
+			}
+			continue
+		}
+		mut sw := time.new_stopwatch()
+		if item.fn_indices.len == 0 {
+			g.gen_file(g.files[item.file_idx])
+		} else {
+			g.explicit_slice_active = true
+			g.explicit_slice_file = item.file_idx
+			g.gen_file_range(g.files[item.file_idx], item.fn_indices, item.emit_globals)
+			g.explicit_slice_active = false
+		}
+		elapsed_ms := sw.elapsed().milliseconds()
+		if elapsed_ms > 0 {
+			suffix := if item.fn_indices.len == 0 { '' } else { ' [${item.fn_indices.len}fns]' }
+			g.pass5_file_times << Pass5FileTime{
+				file:      g.files[item.file_idx].name + suffix
+				ms:        elapsed_ms
+				cost:      item.cost
+				worker_id: g.pass5_worker_id
+			}
+		}
+	}
+}
+
 // gen_pass5_files generates function bodies for a range of file indices.
 // Used by parallel dispatch — each worker calls this with its assigned chunk.
 pub fn (mut g Gen) gen_pass5_files(file_indices []int) {
@@ -2592,10 +2789,14 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		}
 	}
 	return &Gen{
-		files: g.files
-		env:   unsafe { g.env }
-		pref:  unsafe { g.pref }
-		sb:    strings.new_builder(64_000)
+		files:                  g.files
+		env:                    unsafe { g.env }
+		pref:                   unsafe { g.pref }
+		imported_symbols_index: g.imported_symbols_index.clone()
+		v_method_return_index:  g.v_method_return_index.clone()
+		ierror_base_index:      g.ierror_base_index.clone()
+		fn_owner_file:          g.fn_owner_file.clone()
+		sb:                     strings.new_builder(64_000)
 		// Read-only lookup maps — clone to avoid COW data races
 		fn_param_is_ptr:                       g.fn_param_is_ptr.clone()
 		fn_param_types:                        g.fn_param_types.clone()

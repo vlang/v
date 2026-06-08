@@ -729,7 +729,8 @@ fn (mut g Gen) register_fn_signature(node ast.FnDecl, fn_name string) {
 		'void'
 	}
 	ret_type = normalize_signature_type_name(ret_type, 'void')
-	if ret_type == 'int' {
+	if ret_type == 'int' && node.typ.return_type !is ast.EmptyExpr
+		&& expr_has_generic_placeholder(node.typ.return_type) {
 		inferred := g.infer_vector_return_type_from_stmts(node.stmts)
 		if inferred != '' {
 			ret_type = inferred
@@ -5787,7 +5788,7 @@ fn (mut g Gen) gen_fn_decl_with_name_ptr(node &ast.FnDecl, fn_name string) {
 		return
 	}
 	fn_key := 'fn_${fn_name}'
-	if fn_key in g.blocked_fn_keys {
+	if fn_key in g.blocked_fn_keys && !g.explicit_slice_emit_allows(fn_key) {
 		return
 	}
 	if g.should_skip_plain_v_fallback_fn(fn_key) {
@@ -9169,10 +9170,47 @@ fn (g &Gen) knows_fn_signature(fn_name string) bool {
 		|| g.has_specialized_fn_base(fn_name)
 }
 
+// v_method_ret_ambiguous marks an index entry whose method short-name maps to >1 distinct V
+// return type (the original scan returned none for that case). A control char can't be a real type.
+const v_method_ret_ambiguous = '\x02'
+
+// build_v_method_return_index indexes v_fn_return_types by method short-name (all_after_last('__')),
+// replacing the per-call scan in unique_v_method_return_type. v_fn_return_types is final after
+// collect_fn_signatures_to_fixed_point, so this is built once there.
+fn (mut g Gen) build_v_method_return_index() {
+	mut idx := map[string]string{}
+	for fn_name, ret in g.v_fn_return_types {
+		m := fn_name.all_after_last('__')
+		if m == '' {
+			continue
+		}
+		if existing := idx[m] {
+			if existing != ret && existing != v_method_ret_ambiguous {
+				idx[m] = v_method_ret_ambiguous
+			}
+		} else {
+			idx[m] = ret
+		}
+	}
+	g.v_method_return_index = idx.move()
+}
+
 fn (g &Gen) unique_v_method_return_type(method_name string) ?string {
 	if method_name == '' {
 		return none
 	}
+	// Fast path: index lookup. The scan matched fn_name == method_name OR
+	// fn_name.ends_with('__${method_name}') (ends_with('___...') is subsumed), which for a
+	// method without '__' is exactly all_after_last('__') == method_name.
+	if !method_name.contains('__') {
+		if ret := g.v_method_return_index[method_name] {
+			if ret != '' && ret != v_method_ret_ambiguous {
+				return ret
+			}
+		}
+		return none
+	}
+	// Rare fallback for method names containing '__'.
 	mut found_name := ''
 	mut found_ret := ''
 	for fn_name, ret in g.v_fn_return_types {
@@ -9266,13 +9304,26 @@ fn (mut g Gen) resolve_specialized_receiver_method(receiver_type string, method_
 	if g.specialized_fn_bases.len > 0 && receiver_type !in g.specialized_fn_bases {
 		return none
 	}
-	key := specialized_receiver_method_key(receiver_type, method_name)
-	if key in g.specialized_receiver_method_ambiguous || key in g.specialized_receiver_method_miss {
+	// Fast path: consult the incremental (base|method -> specialized fn) index that
+	// remember_specialized_fn_base maintains on every registration. It replaces a per-key
+	// linear scan over the whole fn_return_types + fn_param_is_ptr tables and, unlike a
+	// once-built snapshot, stays correct when a second specialization is registered after the
+	// first lookup (which turns a previously unambiguous (base, method) ambiguous). The scan it
+	// replaces matched `candidate.starts_with('${receiver_type}_T_') &&
+	// candidate.ends_with('__${method_name}')`, which for a base receiver_type (no `_T_`) and a
+	// simple method (no `__`) is exactly (all_before('_T_') == base) && (all_after_last('__') ==
+	// method) — i.e. the same keys remember_specialized_receiver_method records.
+	if !receiver_type.contains('_T_') && !method_name.contains('__') {
+		key := specialized_receiver_method_key(receiver_type, method_name)
+		if key in g.specialized_receiver_method_ambiguous {
+			return none
+		}
+		if found := g.specialized_receiver_methods[key] {
+			return found
+		}
 		return none
 	}
-	if found := g.specialized_receiver_methods[key] {
-		return found
-	}
+	// Rare fallback: receiver_type/method contains the `_T_`/`__` separator the index keys on.
 	prefix := '${receiver_type}_T_'
 	suffix := '__${method_name}'
 	mut found := ''
@@ -9293,10 +9344,8 @@ fn (mut g Gen) resolve_specialized_receiver_method(receiver_type string, method_
 		}
 	}
 	if found != '' {
-		g.specialized_receiver_methods[key] = found
 		return found
 	}
-	g.specialized_receiver_method_miss[key] = true
 	return none
 }
 

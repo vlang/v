@@ -28,7 +28,16 @@ fn (t &Transformer) get_synth_type(pos token.Pos) ?types.Type {
 fn (t &Transformer) lookup_method_cached(type_name string, method_name string) ?types.FnType {
 	// O(1) via the precomputed base-name index (built in build_cached_method_base_index).
 	// Equivalent to the old linear scan: match by generic base name, first FnType wins.
+	if typ := t.cached_method_base_index['${type_name}#${method_name}'] {
+		if typ is types.FnType {
+			return typ
+		}
+		return none
+	}
 	base_method_name := generic_base_name_without_specialization(method_name)
+	if base_method_name == method_name {
+		return none
+	}
 	typ := t.cached_method_base_index['${type_name}#${base_method_name}'] or { return none }
 	if typ is types.FnType {
 		return typ
@@ -251,25 +260,10 @@ fn (t &Transformer) lookup_imported_var_type(name string) ?types.Type {
 	if name == '' || name.contains('__') || t.cur_module == '' {
 		return none
 	}
-	current_scope := t.get_module_scope(t.cur_module) or { return none }
-	mut keys := current_scope.objects.keys()
-	keys.sort()
+	imported_scopes := t.cached_imported_module_scopes[t.cur_module] or { return none }
 	mut found_type := types.Type(types.void_)
 	mut found := false
-	for key in keys {
-		obj := current_scope.objects[key] or { continue }
-		if obj !is types.Module {
-			continue
-		}
-		module_obj := obj as types.Module
-		module_name := if module_obj.name != '' { module_obj.name } else { key }
-		if module_name == '' || module_name == t.cur_module || module_name == 'C' {
-			continue
-		}
-		mut module_scope := module_obj.scope
-		if module_scope == unsafe { nil } {
-			module_scope = t.get_module_scope(module_name) or { continue }
-		}
+	for module_scope in imported_scopes {
 		typ := module_scope.lookup_var_type(name) or { continue }
 		if found {
 			return none
