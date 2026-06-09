@@ -1,5 +1,7 @@
 module deflate
 
+import hash.huffman
+
 // vfmt off
 // RFC 1951 length/distance decode tables
 const length_bases = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59,
@@ -39,7 +41,7 @@ struct HuffTree {
 	max_bits int
 }
 
-fn build_huff_tree(lengths []int) HuffTree {
+fn build_huff_tree(lengths []int) !HuffTree {
 	mut max_bits := 0
 	for l in lengths {
 		if l > max_bits {
@@ -52,36 +54,12 @@ fn build_huff_tree(lengths []int) HuffTree {
 			max_bits: 0
 		}
 	}
-	mut bl_count := []int{len: max_bits + 1}
-	for l in lengths {
-		if l > 0 {
-			bl_count[l]++
-		}
-	}
-	mut next_code := []u32{len: max_bits + 1}
-	mut c := u32(0)
-	for bits in 1 .. max_bits + 1 {
-		c = (c + u32(bl_count[bits - 1])) << 1
-		next_code[bits] = c
-	}
-	table_size := 1 << max_bits
-	mut table := []u32{len: table_size, init: 0xffff_ffff}
-	for sym in 0 .. lengths.len {
-		l := lengths[sym]
-		if l == 0 {
-			continue
-		}
-		code := next_code[l]
-		next_code[l]++
-		// Reverse code for LSB-first bit reader
-		rev := bit_reverse(code, l)
-		step := 1 << l
-		mut idx := int(rev)
-		for idx < table_size {
-			table[idx] = (u32(sym) << 5) | u32(l)
-			idx += step
-		}
-	}
+	// Build the flat LSB-first lookup table the decode loop expects directly
+	// from the lengths via the shared canonical builder: entry = (symbol << 5) |
+	// length, 0xFFFF_FFFF for invalid. flat_table() allocates no intermediate
+	// codes array, so this matches the hand-rolled loop's cost. Over-subscribed
+	// lengths now surface as an error instead of a silently corrupt table.
+	table := huffman.flat_table(lengths: lengths, max_bits: max_bits, bit_order: .lsb_first)!
 	return HuffTree{
 		table:    table
 		max_bits: max_bits
@@ -192,8 +170,8 @@ fn inflate_with_consumed(data []u8) !InflateResult {
 		buf: data
 	}
 	mut out := []u8{}
-	fixed_ll := build_huff_tree(fixed_litlen_lengths())
-	fixed_d := build_huff_tree([]int{len: 32, init: 5})
+	fixed_ll := build_huff_tree(fixed_litlen_lengths())!
+	fixed_d := build_huff_tree([]int{len: 32, init: 5})!
 	for {
 		bfinal := r.read_bits(1)!
 		btype := r.read_bits(2)!
@@ -220,7 +198,7 @@ fn inflate_with_consumed(data []u8) !InflateResult {
 				for i in 0 .. hclen {
 					cl_lens[cl_order[i]] = int(r.read_bits(3)!)
 				}
-				cl_tree := build_huff_tree(cl_lens)
+				cl_tree := build_huff_tree(cl_lens)!
 				mut all_lens := []int{}
 				for all_lens.len < hlit + hdist {
 					sym := r.huff_decode(cl_tree)!
@@ -249,8 +227,8 @@ fn inflate_with_consumed(data []u8) !InflateResult {
 						return error('inflate: bad code length symbol')
 					}
 				}
-				ll_tree := build_huff_tree(all_lens[..hlit])
-				d_tree := build_huff_tree(all_lens[hlit..])
+				ll_tree := build_huff_tree(all_lens[..hlit])!
+				d_tree := build_huff_tree(all_lens[hlit..])!
 				inflate_block(mut r, mut out, ll_tree, d_tree)!
 			}
 			else {
@@ -284,8 +262,8 @@ fn inflate_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !Inflate
 	mut out := []u8{}
 	mut state := InflateStreamState{}
 	mut aborted := false
-	fixed_ll := build_huff_tree(fixed_litlen_lengths())
-	fixed_d := build_huff_tree([]int{len: 32, init: 5})
+	fixed_ll := build_huff_tree(fixed_litlen_lengths())!
+	fixed_d := build_huff_tree([]int{len: 32, init: 5})!
 	for {
 		bfinal := r.read_bits(1)!
 		btype := r.read_bits(2)!
@@ -318,7 +296,7 @@ fn inflate_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !Inflate
 				for i in 0 .. hclen {
 					cl_lens[cl_order[i]] = int(r.read_bits(3)!)
 				}
-				cl_tree := build_huff_tree(cl_lens)
+				cl_tree := build_huff_tree(cl_lens)!
 				mut all_lens := []int{}
 				for all_lens.len < hlit + hdist {
 					sym := r.huff_decode(cl_tree)!
@@ -347,8 +325,8 @@ fn inflate_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !Inflate
 						return error('inflate: bad code length symbol')
 					}
 				}
-				ll_tree := build_huff_tree(all_lens[..hlit])
-				d_tree := build_huff_tree(all_lens[hlit..])
+				ll_tree := build_huff_tree(all_lens[..hlit])!
+				d_tree := build_huff_tree(all_lens[hlit..])!
 				if !inflate_block_stream(mut r, mut out, ll_tree, d_tree, cb, userdata, mut state)! {
 					aborted = true
 				}
