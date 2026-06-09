@@ -104,6 +104,11 @@ struct TlsContext {
 	unsigned long          plain_buf_cap;
 	unsigned long          plain_buf_len;       // valid decrypted bytes
 	unsigned long          plain_buf_off;       // bytes already returned to caller
+	// Reusable encryption buffer for vschannel_write(): one full record
+	// (header + max message + trailer). Cached so the HTTP/2 driver's many small
+	// writes do not LocalAlloc/LocalFree on every call.
+	unsigned char         *send_buf;
+	unsigned long          send_buf_cap;
 	BOOL                   stream_eof;          // close_notify / context expired seen
 };
 
@@ -126,6 +131,8 @@ TlsContext new_tls_context() {
 		.plain_buf_cap         = 0,
 		.plain_buf_len         = 0,
 		.plain_buf_off         = 0,
+		.send_buf              = NULL,
+		.send_buf_cap          = 0,
 		.stream_eof            = FALSE
 	};
 };
@@ -238,6 +245,11 @@ void vschannel_cleanup(TlsContext *tls_ctx) {
 	tls_ctx->plain_buf_cap = 0;
 	tls_ctx->plain_buf_len = 0;
 	tls_ctx->plain_buf_off = 0;
+	if(tls_ctx->send_buf) {
+		LocalFree(tls_ctx->send_buf);
+		tls_ctx->send_buf = NULL;
+	}
+	tls_ctx->send_buf_cap = 0;
 	tls_ctx->stream_sizes_valid = FALSE;
 	tls_ctx->stream_eof = FALSE;
 }
@@ -451,7 +463,10 @@ static SECURITY_STATUS vschannel_ensure_stream_state(TlsContext *tls_ctx) {
 	// One record decrypts to at most cbMaximumMessage plaintext bytes.
 	tls_ctx->plain_buf_cap = tls_ctx->stream_sizes.cbMaximumMessage;
 	tls_ctx->plain_buf = (unsigned char *)LocalAlloc(LPTR, tls_ctx->plain_buf_cap);
-	if(tls_ctx->recv_buf == NULL || tls_ctx->plain_buf == NULL) {
+	// Reusable send buffer: one full outgoing record.
+	tls_ctx->send_buf_cap = tls_ctx->recv_buf_cap;
+	tls_ctx->send_buf = (unsigned char *)LocalAlloc(LPTR, tls_ctx->send_buf_cap);
+	if(tls_ctx->recv_buf == NULL || tls_ctx->plain_buf == NULL || tls_ctx->send_buf == NULL) {
 		return SEC_E_INTERNAL_ERROR;
 	}
 	tls_ctx->recv_buf_len = 0;
@@ -515,6 +530,30 @@ INT vschannel_h2_connect(TlsContext *tls_ctx, INT iport, LPWSTR host) {
 		return -1;
 	}
 
+	// The final handshake flight often arrives in the same TCP segment as the
+	// server's first application record (for HTTP/2, the SETTINGS frame), which
+	// the handshake hands back as SECBUFFER_EXTRA. Those bytes are already off
+	// the socket, so they must be carried into the read buffer; otherwise the
+	// first vschannel_read() would skip them and H2Conn would desync. Grow the
+	// staging buffer if the bundled data exceeds one record.
+	if(ExtraData.pvBuffer != NULL) {
+		if(ExtraData.cbBuffer > 0) {
+			if(ExtraData.cbBuffer > tls_ctx->recv_buf_cap) {
+				unsigned char *grown = (unsigned char *)LocalAlloc(LPTR, ExtraData.cbBuffer);
+				if(grown != NULL) {
+					LocalFree(tls_ctx->recv_buf);
+					tls_ctx->recv_buf = grown;
+					tls_ctx->recv_buf_cap = ExtraData.cbBuffer;
+				}
+			}
+			if(ExtraData.cbBuffer <= tls_ctx->recv_buf_cap) {
+				MoveMemory(tls_ctx->recv_buf, ExtraData.pvBuffer, ExtraData.cbBuffer);
+				tls_ctx->recv_buf_len = ExtraData.cbBuffer;
+			}
+		}
+		LocalFree(ExtraData.pvBuffer);
+	}
+
 	return 0;
 }
 
@@ -526,7 +565,6 @@ INT vschannel_write(TlsContext *tls_ctx, const char *buf, INT len) {
 	SecBuffer     Buffers[4];
 	SECURITY_STATUS scRet;
 	PBYTE  io;
-	DWORD  io_cap;
 	DWORD  off;
 	INT    cbData;
 
@@ -537,13 +575,9 @@ INT vschannel_write(TlsContext *tls_ctx, const char *buf, INT len) {
 		return -1;
 	}
 
-	io_cap = tls_ctx->stream_sizes.cbHeader + tls_ctx->stream_sizes.cbMaximumMessage
-			+ tls_ctx->stream_sizes.cbTrailer;
-	io = (PBYTE)LocalAlloc(LPTR, io_cap);
-	if(io == NULL) {
-		vschannel_set_last_error(tls_ctx, SEC_E_INTERNAL_ERROR);
-		return -1;
-	}
+	// Reuse the per-context send buffer (one full record) rather than allocating
+	// on every write; the HTTP/2 driver issues many small writes per request.
+	io = (PBYTE)tls_ctx->send_buf;
 
 	off = 0;
 	while(off < (DWORD)len) {
@@ -571,7 +605,6 @@ INT vschannel_write(TlsContext *tls_ctx, const char *buf, INT len) {
 		scRet = tls_ctx->sspi->EncryptMessage(&tls_ctx->h_context, 0, &Message, 0);
 		if(FAILED(scRet)) {
 			vschannel_set_last_error(tls_ctx, scRet);
-			LocalFree(io);
 			return -1;
 		}
 
@@ -581,7 +614,6 @@ INT vschannel_write(TlsContext *tls_ctx, const char *buf, INT len) {
 			cbData = send(tls_ctx->socket, (char*)io + sent, (int)(to_send - sent), 0);
 			if(cbData == SOCKET_ERROR || cbData == 0) {
 				vschannel_set_last_error(tls_ctx, WSAGetLastError());
-				LocalFree(io);
 				return -1;
 			}
 			sent += (DWORD)cbData;
@@ -589,7 +621,6 @@ INT vschannel_write(TlsContext *tls_ctx, const char *buf, INT len) {
 		off += chunk;
 	}
 
-	LocalFree(io);
 	return len;
 }
 
@@ -693,8 +724,11 @@ INT vschannel_read(TlsContext *tls_ctx, char *buf, INT cap) {
 						return -1;
 					}
 					if(ExtraBuffer.pvBuffer) {
-						MoveMemory(tls_ctx->recv_buf, ExtraBuffer.pvBuffer, ExtraBuffer.cbBuffer);
-						tls_ctx->recv_buf_len = ExtraBuffer.cbBuffer;
+						if(ExtraBuffer.cbBuffer <= tls_ctx->recv_buf_cap) {
+							MoveMemory(tls_ctx->recv_buf, ExtraBuffer.pvBuffer, ExtraBuffer.cbBuffer);
+							tls_ctx->recv_buf_len = ExtraBuffer.cbBuffer;
+						}
+						LocalFree(ExtraBuffer.pvBuffer);
 					}
 				} else if(scRet == SEC_I_CONTEXT_EXPIRED) {
 					// Graceful close_notify from the server.
