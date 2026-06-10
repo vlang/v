@@ -54,6 +54,22 @@ fn (g &Gen) result_value_c_type(result_type string) string {
 	return g.option_result_payload_c_type(g.result_value_type(result_type))
 }
 
+fn (g &Gen) c_type_is_fn_pointer_alias(type_name string) bool {
+	name := type_name.trim_space()
+	if name == '' {
+		return false
+	}
+	if name in g.fn_type_aliases {
+		return true
+	}
+	if raw_type := g.lookup_type_by_c_name_const(name) {
+		if raw_type is types.Alias && raw_type.base_type is types.FnType {
+			return true
+		}
+	}
+	return false
+}
+
 fn option_value_type(option_type string) string {
 	if !option_type.starts_with('_option_') {
 		return ''

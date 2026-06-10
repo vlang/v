@@ -8814,6 +8814,106 @@ fn (mut g Gen) memdup_addr_arg_type(expr ast.Expr) string {
 	return typ
 }
 
+fn (mut g Gen) c_type_is_fn_pointer_value(type_name string) bool {
+	name := type_name.trim_space()
+	if name == '' || name == 'int' {
+		return false
+	}
+	if g.c_type_is_fn_pointer_alias(name) {
+		return true
+	}
+	if raw_type := g.lookup_type_by_c_name(name) {
+		if _ := extract_fn_type(raw_type) {
+			return true
+		}
+	}
+	if raw_type := g.lookup_type_by_c_name_const(name) {
+		if _ := extract_fn_type(raw_type) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) selector_has_fn_pointer_value_type(sel ast.SelectorExpr) bool {
+	if global_type := g.global_var_type_for_selector(sel) {
+		if g.c_type_is_fn_pointer_value(global_type) {
+			return true
+		}
+	}
+	sel_expr := ast.Expr(sel)
+	if raw_type := g.get_raw_type(sel_expr) {
+		if _ := extract_fn_type(raw_type) {
+			return true
+		}
+	}
+	return g.c_type_is_fn_pointer_value(g.get_expr_type(sel_expr))
+}
+
+fn (mut g Gen) selector_is_known_fn_value(sel ast.SelectorExpr) bool {
+	lhs := sel.lhs
+	if lhs !is ast.Ident || sel.rhs.name == '' {
+		return false
+	}
+	mod_name := (lhs as ast.Ident).name
+	if mod_name == '' {
+		return false
+	}
+	if !g.is_module_ident(mod_name) {
+		return false
+	}
+	c_mod_name := g.resolve_module_name(mod_name).replace('.', '_')
+	c_name := '${c_mod_name}__${sel.rhs.name}'
+	if c_name in g.fn_return_types || c_name in g.fn_param_is_ptr {
+		return true
+	}
+	return g.selector_has_fn_pointer_value_type(sel)
+}
+
+fn (mut g Gen) gen_sort_fnsortcb_arg(fn_name string, idx int, base_arg ast.Expr, expected_param_type string) bool {
+	if idx != 1 || fn_name !in ['array__sort_with_compare', 'array__sorted_with_compare'] {
+		return false
+	}
+	mut expected_sort_param_type := expected_param_type.trim_space()
+	// Unregistered generated builtin sort helpers still expect FnSortCB; custom
+	// same-name functions are declared and keep their real parameter type gate.
+	if expected_sort_param_type == '' && fn_name !in g.fn_param_types {
+		expected_sort_param_type = 'FnSortCB'
+	}
+	if expected_sort_param_type != 'FnSortCB' {
+		return false
+	}
+	comparator := match base_arg {
+		ast.ParenExpr {
+			base_arg.expr
+		}
+		else {
+			base_arg
+		}
+	}
+
+	match comparator {
+		ast.Ident {
+			if comparator.name == '' || comparator.name == 'nil' {
+				return false
+			}
+		}
+		ast.FnLiteral {}
+		ast.SelectorExpr {
+			if !g.selector_is_known_fn_value(comparator) {
+				return false
+			}
+		}
+		else {
+			return false
+		}
+	}
+
+	g.sb.write_string('(FnSortCB)')
+	g.expr(comparator)
+	return true
+}
+
 fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 	base_arg := if arg is ast.ModifierExpr { arg.expr } else { arg }
 	map_runtime_name := canonical_map_runtime_fn_name(fn_name)
@@ -8916,6 +9016,9 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 			g.sb.write_string('&${key_code}')
 			return
 		}
+	}
+	if g.gen_sort_fnsortcb_arg(fn_name, idx, base_arg, expected_param_type) {
+		return
 	}
 	if expected_param_type != '' && g.gen_auto_deref_value_param_arg(expected_param_type, base_arg) {
 		return
@@ -11843,6 +11946,9 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 		// Handle C.puts, C.putchar etc.
 		if lhs.lhs is ast.Ident && lhs.lhs.name == 'C' {
 			name = lhs.rhs.name
+			if name == 'gettid' && args.len == 0 && g.should_emit_linux_gettid_compat() {
+				name = 'v_cleanc_gettid'
+			}
 			// With prealloc, free() is redefined as a no-op macro.
 			// C.free calls in prealloc_vcleanup need the real free via _v_cfree.
 			if name == 'free' && g.pref != unsafe { nil } && g.pref.prealloc {

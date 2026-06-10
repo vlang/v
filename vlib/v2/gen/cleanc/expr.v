@@ -962,6 +962,63 @@ fn (mut g Gen) fn_type_alias_name_for_base_expr(base ast.Expr) ?string {
 	return none
 }
 
+fn (mut g Gen) exact_fn_type_alias_cast_target_name(typ ast.Expr) ?string {
+	mut candidates := []string{}
+	base_name := typ.name()
+	if base_name != '' && !base_name.contains('.') && g.cur_module != '' && g.cur_module != 'main'
+		&& g.cur_module != 'builtin' && !base_name.contains('__') {
+		candidates << '${g.cur_module}__${base_name}'
+	}
+	base_c := g.expr_type_to_c(typ).trim_space()
+	if base_c != '' {
+		candidates << base_c
+		if base_c.ends_with('*') && !param_type_is_pointer_expr(typ) {
+			candidates << base_c[..base_c.len - 1].trim_space()
+		}
+	}
+	if base_name != '' {
+		if base_name.contains('.') {
+			candidates << base_name.replace('.', '__')
+		} else {
+			candidates << base_name
+		}
+	}
+	for candidate in candidates {
+		if g.c_type_is_fn_pointer_alias(candidate) {
+			return candidate
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) local_non_fn_alias_homonym_cast_target_name(typ ast.Expr, type_name string) ?string {
+	name := type_name.trim_space()
+	mut fn_alias_type := ''
+	if g.c_type_is_fn_pointer_alias(name) {
+		fn_alias_type = name
+	} else if name.len > 1 && name.ends_with('*') {
+		base_type := name[..name.len - 1].trim_space()
+		if g.c_type_is_fn_pointer_alias(base_type) {
+			fn_alias_type = base_type
+		}
+	}
+	if fn_alias_type == '' {
+		return none
+	}
+	base_name := typ.name()
+	if base_name == '' || base_name.contains('.') || base_name.contains('__') {
+		return none
+	}
+	if g.cur_module == '' || g.cur_module == 'main' || g.cur_module == 'builtin' {
+		return none
+	}
+	local_type := '${g.cur_module}__${base_name}'
+	if !g.is_type_name(local_type) || g.c_type_is_fn_pointer_alias(local_type) {
+		return none
+	}
+	return local_type
+}
+
 fn (mut g Gen) fn_type_alias_name_from_generic_name(name string) ?string {
 	mut base_name := name
 	if name.ends_with('_T') {
@@ -1108,7 +1165,7 @@ fn (mut g Gen) gen_call_or_cast_expr(node ast.CallOrCastExpr) {
 		return
 	}
 	if g.call_or_cast_lhs_is_type(node.lhs) {
-		g.gen_type_cast_expr(g.expr_type_to_c(node.lhs), node.expr)
+		g.gen_type_cast_expr(g.cast_target_type_to_c(node.lhs), node.expr)
 		return
 	}
 	g.call_expr(node.lhs, [node.expr])
@@ -3904,6 +3961,26 @@ fn (mut g Gen) expr_is_explicit_value_of_type(expr ast.Expr, type_name string) b
 	}
 }
 
+fn (mut g Gen) cast_target_type_to_c(typ ast.Expr) string {
+	mut type_name := g.expr_type_to_c(typ)
+	if !param_type_is_pointer_expr(typ) {
+		if local_type := g.local_non_fn_alias_homonym_cast_target_name(typ, type_name) {
+			type_name = local_type
+		} else if alias_name := g.exact_fn_type_alias_cast_target_name(typ) {
+			type_name = g.local_non_fn_alias_homonym_cast_target_name(typ, alias_name) or {
+				alias_name
+			}
+		}
+	}
+	if type_name.ends_with('*') && !param_type_is_pointer_expr(typ) {
+		base_type := type_name[..type_name.len - 1].trim_space()
+		if g.c_type_is_fn_pointer_alias(base_type) {
+			type_name = base_type
+		}
+	}
+	return type_name
+}
+
 fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
 	expr_type := g.get_expr_type(expr)
 	if type_name.starts_with('_option_') && is_none_like_expr(expr) {
@@ -6615,6 +6692,9 @@ fn (g &Gen) cast_target_is_aggregate_value(type_name string) bool {
 		|| g.is_enum_type(name) {
 		return false
 	}
+	if g.c_type_is_fn_pointer_alias(name) {
+		return false
+	}
 	return name !in ['void', 'void*', 'voidptr', 'char*', 'charptr', 'byteptr']
 }
 
@@ -6632,7 +6712,7 @@ fn same_aggregate_cast_type(expr_type string, type_name string) bool {
 }
 
 fn (mut g Gen) gen_cast_expr(node ast.CastExpr) {
-	mut type_name := g.expr_type_to_c(node.typ)
+	mut type_name := g.cast_target_type_to_c(node.typ)
 	if resolved_type := g.resolved_sum_data_cast_type(node) {
 		type_name = resolved_type
 	}
