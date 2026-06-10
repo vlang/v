@@ -2574,6 +2574,9 @@ fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
 			return none
 		}
 		if lhs_type := t.lookup_var_type(lhs_name) {
+			if field_typ := t.field_type_from_receiver_type(lhs_type, expr.rhs.name) {
+				return field_typ
+			}
 			base_type := lhs_type.base_type()
 			if base_type is types.Struct {
 				if field_typ := t.lookup_struct_field_type(base_type.name, expr.rhs.name) {

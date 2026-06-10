@@ -484,6 +484,19 @@ pub fn (l CursorList) attributes() []Attribute {
 	return out
 }
 
+// import_stmts reads every stmt_import in a cursor list.
+pub fn (l CursorList) import_stmts() []ImportStmt {
+	mut out := []ImportStmt{cap: l.len()}
+	for i in 0 .. l.len() {
+		imp := l.at(i)
+		if !imp.is_valid() || imp.kind() != .stmt_import {
+			continue
+		}
+		out << imp.import_stmt()
+	}
+	return out
+}
+
 // field_init reads an aux_field_init cursor. Field values are still legacy
 // expression consumers today, so this materializes only the value expression,
 // not the parent declaration.

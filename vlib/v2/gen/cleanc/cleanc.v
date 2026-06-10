@@ -2320,9 +2320,6 @@ pub fn (mut g Gen) gen_pass5_post() {
 	}
 }
 
-fn (mut g Gen) emit_late_called_generic_specializations() {
-}
-
 fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
 	if g.emit_files.len == 0 || g.force_emit_fn_names.len == 0 {
 		return
@@ -3405,7 +3402,7 @@ fn (g &Gen) if_expr_cursor_body_has_live_reload_function(node ast.Cursor) bool {
 }
 
 fn (g &Gen) active_comptime_if_cursor_has_live_reload_function(node ast.Cursor) bool {
-	if g.eval_comptime_cond(node.edge(0).expr()) {
+	if g.eval_comptime_cond_cursor(node.edge(0)) {
 		return g.if_expr_cursor_body_has_live_reload_function(node)
 	}
 	else_expr := node.edge(1)

@@ -118,7 +118,7 @@ fn prepared_flat_file_for_parallel_transform(flat &ast.FlatAst, flat_extra_stmts
 		mod:            fc.mod()
 		selector_names: fc.selector_names()
 		attributes:     fc.attrs().attributes()
-		imports:        flat.read_file_imports(flat.files[fi])
+		imports:        fc.imports().import_stmts()
 		stmts:          stmts
 	}
 }
@@ -414,14 +414,6 @@ fn (mut b Builder) transform_files_parallel_to_flat_via_driver(mut trans transfo
 	// `generated_fn_module_from_flat` (s164) walk `builder.flat` directly.
 	generated_parts := trans.generated_fns_parts_from_flat(&builder.flat)
 	trans.post_pass_to_flat(mut builder, generated_parts)
-	if !keep_files {
-		// Same tail as `transform_flat_to_flat_direct`: the flat already
-		// received the file-mutating post-pass via `post_pass_to_flat`, so the
-		// legacy `post_pass_files_with_generated_parts` is redundant. Run the
-		// type-propagation tail against the flat and let `result` be freed.
-		trans.apply_post_pass_tail_from_flat(&builder.flat)
-		return builder.flat, []ast.File{}
-	}
 	trans.post_pass_files_with_generated_parts(mut result, generated_parts)
 	// The compatibility files now receive the same file-mutating post-pass
 	// edits as the flat output, so run the non-file tail on those files for

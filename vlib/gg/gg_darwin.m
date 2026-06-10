@@ -80,10 +80,21 @@ void gg_macos_set_window_resizable(void *window_ptr, bool resizable) {
 	[window setStyleMask:style];
 }
 
+// When non-zero, every string is drawn in a monospace font regardless of the
+// per-call cfg.mono flag. Lets an app switch the whole UI to a fixed-width font
+// so text widths can be computed as char_count * advance (no CoreText layout).
+// Default 0 => behaviour unchanged for every other gg app.
+int g_gg_force_mono = 0;
+void gg_set_force_mono(int on) { g_gg_force_mono = on; }
+
 void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
 	NSFont* font = [NSFont userFontOfSize:cfg.size];
 	// # NSFont*    font = [NSFont fontWithName:@"Roboto Mono" size:cfg.size];
-	if (cfg.mono) {
+	if (g_gg_force_mono) {
+		// Global monospace mode: requested size minus 1, kept in sync with the
+		// app-side width metric (see fuse_text_width / mono_char_advance).
+		font = [NSFont fontWithName:@"Menlo" size:cfg.size - 1];
+	} else if (cfg.mono) {
 		// # font = [NSFont fontWithName:@"Roboto Mono" size:cfg.size];
 		font = [NSFont fontWithName:@"Menlo" size:cfg.size - 5];
 	}

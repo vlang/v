@@ -3140,6 +3140,22 @@ fn (g &Gen) get_expr_type_from_env(e ast.Expr) ?string {
 	return none
 }
 
+fn (g &Gen) get_expr_cursor_type_from_env(e ast.Cursor) ?string {
+	if g.env == unsafe { nil } || !e.is_valid() {
+		return none
+	}
+	pos := e.pos()
+	if pos.id != 0 {
+		if typ := g.env.get_expr_type(pos.id) {
+			if typ is types.Alias {
+				return none
+			}
+			return g.types_type_to_c(typ)
+		}
+	}
+	return none
+}
+
 // get_env_c_type retrieves the C type string for an expression from the Environment
 // without filtering aliases.  This is safe for selector field types where the alias
 // (e.g. strings__Builder, ssa__TypeID) is the correct type for the field.
@@ -3410,6 +3426,11 @@ fn (mut g Gen) builtin_string_field_lhs_type(lhs ast.Expr, field_name string) st
 
 fn is_float_like_c_type_name(typ string) bool {
 	return typ in ['f32', 'f64', 'float_literal']
+}
+
+fn is_numeric_literal_c_type_name(typ string) bool {
+	return typ in ['int', 'int_literal', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
+		'usize', 'isize', 'byte', 'rune', 'f32', 'f64', 'float_literal']
 }
 
 fn promote_numeric_c_types(lhs string, rhs string) string {
@@ -3713,7 +3734,17 @@ fn (mut g Gen) get_expr_type_from_env_checked(node ast.Expr, t string) ?string {
 	if checked := g.get_expr_type_from_env_call_checked(node) {
 		return checked
 	}
-	if t == 'bool' && node is ast.BasicLiteral && node.kind == .number {
+	if node is ast.BasicLiteral && node.kind == .number {
+		if t == 'bool' {
+			return 'int'
+		}
+		if is_numeric_literal_c_type_name(t) {
+			return t
+		}
+		numeric_type := g.infer_numeric_expr_type(node)
+		if numeric_type != '' {
+			return numeric_type
+		}
 		return 'int'
 	}
 	match node {

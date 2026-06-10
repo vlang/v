@@ -4669,7 +4669,7 @@ pub fn (mut b Builder) build_fn_bodies(file ast.File) {
 pub fn (mut b Builder) build_fn_bodies_from_flat(file_cursor ast.FileCursor) {
 	file_name := file_cursor.name()
 	b.selective_import_fn_names =
-		selective_import_fn_names_from_imports(file_cursor.flat.read_file_imports(file_cursor.flat_file()))
+		selective_import_fn_names_from_imports(file_cursor.imports().import_stmts())
 	stmts := file_cursor.stmts()
 	for si in 0 .. stmts.len() {
 		c := stmts.at(si)

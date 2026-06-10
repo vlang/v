@@ -982,7 +982,7 @@ fn (b &Builder) expand_type_modules_with_imports(modules []string) []string {
 				if b.flat_file_module_name(i) !in type_modules {
 					continue
 				}
-				for import_stmt in b.flat.read_file_imports(b.flat.files[i]) {
+				for import_stmt in b.flat.file_cursor(i).imports().import_stmts() {
 					import_module := import_module_name(import_stmt.name)
 					if import_module == '' || import_module in type_modules {
 						continue

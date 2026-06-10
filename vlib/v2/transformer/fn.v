@@ -6402,10 +6402,17 @@ fn (t &Transformer) is_flag_enum_receiver(receiver ast.Expr, inferred string) bo
 }
 
 // is_cast_type_name checks if a name is a type name that appears in casts (not a function)
-fn (t &Transformer) is_cast_type_name(name string) bool {
-	// Built-in primitive types
+fn is_builtin_primitive_cast_name(name string) bool {
 	if name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'bool',
 		'byte', 'char', 'rune', 'usize', 'isize', 'string', 'byteptr', 'charptr', 'voidptr'] {
+		return true
+	}
+	return false
+}
+
+// is_cast_type_name checks if a name is a type name that appears in casts (not a function)
+fn (t &Transformer) is_cast_type_name(name string) bool {
+	if is_builtin_primitive_cast_name(name) {
 		return true
 	}
 	// Type names start with uppercase in V
@@ -6442,9 +6449,7 @@ fn (t &Transformer) call_or_cast_lhs_is_type(lhs ast.Expr) bool {
 		}
 		ast.Ident {
 			// Built-in primitive types are always casts, never function calls.
-			if lhs.name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
-				'f64', 'bool', 'byte', 'char', 'rune', 'usize', 'isize', 'string', 'byteptr',
-				'charptr', 'voidptr'] {
+			if is_builtin_primitive_cast_name(lhs.name) {
 				return true
 			}
 			// Prefer functions when names clash (even if uppercase).
@@ -6485,6 +6490,63 @@ fn (t &Transformer) call_or_cast_lhs_is_type(lhs ast.Expr) bool {
 		}
 		ast.PrefixExpr {
 			return t.call_or_cast_lhs_is_type(lhs.expr)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (t &Transformer) call_or_cast_lhs_is_type_cursor(lhs ast.Cursor) bool {
+	if !lhs.is_valid() {
+		return false
+	}
+	match lhs.kind() {
+		.typ_anon_struct, .typ_array_fixed, .typ_array, .typ_channel, .typ_fn, .typ_generic,
+		.typ_map, .typ_nil, .typ_none, .typ_option, .typ_pointer, .typ_result, .typ_thread,
+		.typ_tuple {
+			return true
+		}
+		.expr_ident {
+			name := lhs.name()
+			if is_builtin_primitive_cast_name(name) {
+				return true
+			}
+			if _ := t.get_fn_return_type(name) {
+				return false
+			}
+			if _ := t.lookup_type(name) {
+				return true
+			}
+			return t.is_cast_type_name(name)
+		}
+		.expr_selector {
+			base := lhs.edge(0)
+			if base.kind() != .expr_ident {
+				return false
+			}
+			mod := base.name()
+			typ_name := selector_rhs_name_cursor(lhs)
+			if typ_name == '' {
+				return false
+			}
+			if mod == 'C' {
+				return is_c_type_name_for_cast(typ_name)
+			}
+			qualified := '${mod}__${typ_name}'
+			if _ := t.get_fn_return_type(qualified) {
+				return false
+			}
+			if resolved_mod := t.resolve_module_name(mod) {
+				resolved_qualified := '${resolved_mod.replace('.', '__')}__${typ_name}'
+				if _ := t.get_fn_return_type(resolved_qualified) {
+					return false
+				}
+			}
+			return t.lookup_type(qualified) != none
+		}
+		.expr_paren, .expr_modifier, .expr_prefix {
+			return t.call_or_cast_lhs_is_type_cursor(lhs.edge(0))
 		}
 		else {
 			return false
