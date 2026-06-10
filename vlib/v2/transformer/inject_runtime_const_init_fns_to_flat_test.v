@@ -102,6 +102,50 @@ fn test_inject_runtime_const_init_fns_to_flat_signature_matches_legacy() {
 	assert ref_sig == sub_sig
 }
 
+fn test_inject_runtime_const_init_fns_legacy_path_decodes_cursor_backed_inits() {
+	mut source_builder := ast.new_flat_builder()
+	source_builder.append_file(ast.File{
+		name:  'mymod.v'
+		mod:   'mymod'
+		stmts: [
+			ast.Stmt(ast.ModuleStmt{
+				name: 'mymod'
+			}),
+			ast.Stmt(ast.ConstDecl{
+				fields: [
+					ast.FieldInit{
+						name:  'answer'
+						value: ast.Expr(ast.CallExpr{
+							lhs: ast.Expr(ast.Ident{
+								name: 'make_value'
+							})
+						})
+					},
+				]
+			}),
+		]
+	})
+	field := source_builder.flat.file_cursor(0).stmts().at(1).list_at(0).at(0)
+	mut t := create_runtime_init_fns_to_flat_test_transformer()
+	t.runtime_const_inits_by_mod['mymod'] = [
+		RuntimeConstInit{
+			name:        'mymod__answer'
+			expr_cursor: field.edge(0)
+		},
+	]
+	mut files := [make_mymod_file()]
+	t.inject_runtime_const_init_fns(mut files)
+	assert files[0].stmts.len == 2
+	fn_decl := files[0].stmts[1] as ast.FnDecl
+	assert fn_decl.name == '__v_init_consts_mymod'
+	assert fn_decl.stmts.len == 1
+	assign := fn_decl.stmts[0] as ast.AssignStmt
+	assert assign.rhs.len == 1
+	call := assign.rhs[0] as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'make_value'
+}
+
 fn test_inject_runtime_const_init_fns_to_flat_no_matching_file_is_noop() {
 	// runtime_const_modules names 'mymod' but no file has that mod — the
 	// inner loop never finds a match, so the splice is a no-op.
