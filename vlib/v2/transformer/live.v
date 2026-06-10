@@ -5,6 +5,7 @@ module transformer
 
 import os
 import v2.ast
+import v2.token
 
 // LiveReloadParts is the pure-computation bundle produced by `live_reload_parts`.
 pub struct LiveReloadParts {
@@ -83,18 +84,12 @@ pub fn (mut t Transformer) inject_live_reload_parts_from_flat(flat &ast.FlatAst)
 // inject_live_reload_to_flat is the FlatBuilder-side splice counterpart to
 // the legacy `inject_live_reload(mut []ast.File)`. Locates the main file
 // via `inject_live_reload_parts_from_flat`, cursor-prescans each non-main
-// function, and materializes only main() plus bodies that may actually need
-// live rewriting, then uses the FlatBuilder primitives to splice the result back:
+// function, rewrites matching bodies from cursors, then uses the FlatBuilder
+// primitives to splice the result back:
 //   - `replace_fn_body_stmts(old_fn_id, new_body_ids)` for each rewritten FnDecl
 //   - `replace_file_stmt(file_idx, stmt_idx, new_fn_id)` to rewire the file
 //   - `prepend_file_stmts(file_idx, c_decl_ids + global_decl_ids)` for the
 //     file-level C-extern + GlobalDecl prepend
-//
-// Hybrid cursor/decode approach: the per-stmt call-rewriting logic
-// (`rewrite_live_call_in_stmt_b`) stays legacy — porting the recursive
-// CallExpr/Ident/SelectorExpr walk to cursors is a much bigger lift and
-// outside the scope of `inject_live_reload`'s purpose. Only the matching
-// FnDecl bodies are decoded; signatures and file splices stay on the flat path.
 //
 // Bit-equal w.r.t. `signature()` to running legacy
 // `inject_live_reload(mut files)` followed by `ast.flatten_files(files)`.
@@ -123,34 +118,29 @@ pub fn (mut t Transformer) inject_live_reload_to_flat(mut out ast.FlatBuilder) {
 		if !is_main && !t.fn_body_may_need_live_rewrite_from_flat(stmt_cursor.list_at(3)) {
 			continue
 		}
-		decl := stmt_cursor.fn_decl()
-		mut new_body := []ast.Stmt{}
+		body_stmts := stmt_cursor.list_at(3)
+		mut new_body_ids := []ast.FlatNodeId{}
 		mut had_change := false
 		if is_main {
+			new_body_ids = []ast.FlatNodeId{cap: parts.preamble.len + body_stmts.len()}
 			for ps in parts.preamble {
-				new_body << ps
+				new_body_ids << out.emit_stmt(ps)
 			}
-			live_stmts, _ := t.inject_live_into_stmts(decl.stmts, parts.check_stmts)
-			for fs in live_stmts {
-				new_body << fs
-			}
+			live_ids, _ :=
+				t.inject_live_into_cursor_stmts_to_flat(body_stmts, parts.check_stmts, mut out)
+			new_body_ids << live_ids
 			had_change = true
 		} else {
-			live_stmts, fn_changed := t.inject_live_into_stmts(decl.stmts, parts.check_stmts)
+			live_ids, fn_changed := t.inject_live_into_cursor_stmts_to_flat(body_stmts,
+				parts.check_stmts, mut out)
 			if !fn_changed {
 				continue
 			}
-			for fs in live_stmts {
-				new_body << fs
-			}
+			new_body_ids = live_ids.clone()
 			had_change = true
 		}
 		if !had_change {
 			continue
-		}
-		mut new_body_ids := []ast.FlatNodeId{cap: new_body.len}
-		for ns in new_body {
-			new_body_ids << out.emit_stmt(ns)
 		}
 		old_fn_id := stmt_cursor.id
 		new_fn_id := out.replace_fn_body_stmts(old_fn_id, new_body_ids)
@@ -170,6 +160,130 @@ pub fn (mut t Transformer) inject_live_reload_to_flat(mut out ast.FlatBuilder) {
 		prepended_ids << out.emit_stmt(gd)
 	}
 	out.prepend_file_stmts(file_idx, prepended_ids)
+}
+
+fn (t &Transformer) inject_live_into_cursor_stmts_to_flat(stmts ast.CursorList, check_stmts []ast.Stmt, mut out ast.FlatBuilder) ([]ast.FlatNodeId, bool) {
+	mut result := []ast.FlatNodeId{cap: stmts.len()}
+	mut any_changed := false
+	for i in 0 .. stmts.len() {
+		stmt := stmts.at(i)
+		if stmt.kind() == .stmt_for {
+			any_changed = true
+			mut new_body_ids := []ast.FlatNodeId{cap: check_stmts.len + stmt.for_body_list().len()}
+			for cs in check_stmts {
+				new_body_ids << out.emit_stmt(cs)
+			}
+			body := stmt.for_body_list()
+			for bi in 0 .. body.len() {
+				body_stmt_id, _ := t.rewrite_live_call_in_stmt_cursor_to_flat(body.at(bi), mut out)
+				new_body_ids << body_stmt_id
+			}
+			init_id := out.copy_subtree_from(stmt.edge(0).flat, stmt.edge(0).id)
+			cond_id := out.copy_subtree_from(stmt.edge(1).flat, stmt.edge(1).id)
+			post_id := out.copy_subtree_from(stmt.edge(2).flat, stmt.edge(2).id)
+			result << out.emit_for_stmt_by_ids(init_id, cond_id, post_id, new_body_ids)
+			continue
+		}
+		new_stmt_id, changed := t.rewrite_live_call_in_stmt_cursor_to_flat(stmt, mut out)
+		if changed {
+			any_changed = true
+		}
+		result << new_stmt_id
+	}
+	return result, any_changed
+}
+
+fn (t &Transformer) rewrite_live_call_in_stmt_cursor_to_flat(stmt ast.Cursor, mut out ast.FlatBuilder) (ast.FlatNodeId, bool) {
+	match stmt.kind() {
+		.stmt_expr {
+			new_expr_id, changed :=
+				t.rewrite_live_call_in_expr_cursor_to_flat(stmt.edge(0), mut out)
+			if changed {
+				return out.emit_expr_stmt_by_id(new_expr_id), true
+			}
+		}
+		.stmt_assign {
+			lhs_len := stmt.extra_int()
+			mut rhs_ids := []ast.FlatNodeId{cap: stmt.edge_count() - lhs_len}
+			mut any_changed := false
+			for i in lhs_len .. stmt.edge_count() {
+				rhs_id, changed := t.rewrite_live_call_in_expr_cursor_to_flat(stmt.edge(i), mut out)
+				rhs_ids << rhs_id
+				if changed {
+					any_changed = true
+				}
+			}
+			if any_changed {
+				mut lhs_ids := []ast.FlatNodeId{cap: lhs_len}
+				for i in 0 .. lhs_len {
+					lhs := stmt.edge(i)
+					lhs_ids << out.copy_subtree_from(lhs.flat, lhs.id)
+				}
+				op := unsafe { token.Token(int(stmt.aux())) }
+				return out.emit_assign_stmt_by_ids(op, lhs_ids, rhs_ids, token.Pos{}), true
+			}
+		}
+		else {}
+	}
+
+	return out.copy_subtree_from(stmt.flat, stmt.id), false
+}
+
+fn (t &Transformer) rewrite_live_call_in_expr_cursor_to_flat(expr ast.Cursor, mut out ast.FlatBuilder) (ast.FlatNodeId, bool) {
+	match expr.kind() {
+		.expr_call {
+			lhs := expr.edge(0)
+			if lhs.kind() == .expr_ident {
+				for lf in t.live_fns {
+					if !lf.is_method && lhs.name() == lf.decl_name {
+						arg_ids := transform_mut_arg_cursors_to_flat(expr, mut out)
+						lhs_id := out.emit_ident_by_name('__live_${lf.mangled_name}', token.Pos{})
+						return out.emit_call_expr_by_ids(lhs_id, arg_ids, token.Pos{}), true
+					}
+				}
+			}
+			if lhs.kind() == .expr_selector {
+				for lf in t.live_fns {
+					if lf.is_method && lhs.edge(1).name() == lf.decl_name {
+						receiver := lhs.edge(0)
+						receiver_id := out.copy_subtree_from(receiver.flat, receiver.id)
+						receiver_arg_id :=
+							out.emit_prefix_expr_by_id(.amp, receiver_id, token.Pos{})
+						mut arg_ids := []ast.FlatNodeId{cap: expr.edge_count()}
+						arg_ids << receiver_arg_id
+						arg_ids << transform_mut_arg_cursors_to_flat(expr, mut out)
+						lhs_id := out.emit_ident_by_name('__live_${lf.mangled_name}', token.Pos{})
+						return out.emit_call_expr_by_ids(lhs_id, arg_ids, token.Pos{}), true
+					}
+				}
+			}
+		}
+		.expr_ident {
+			for lf in t.live_fns {
+				if !lf.is_method && expr.name() == lf.decl_name {
+					return out.emit_ident_by_name('__live_${lf.mangled_name}', token.Pos{}), true
+				}
+			}
+		}
+		else {}
+	}
+
+	return out.copy_subtree_from(expr.flat, expr.id), false
+}
+
+fn transform_mut_arg_cursors_to_flat(call ast.Cursor, mut out ast.FlatBuilder) []ast.FlatNodeId {
+	args_cap := if call.edge_count() > 1 { call.edge_count() - 1 } else { 0 }
+	mut arg_ids := []ast.FlatNodeId{cap: args_cap}
+	for i in 1 .. call.edge_count() {
+		arg := call.edge(i)
+		if arg.kind() == .expr_modifier && unsafe { token.Token(int(arg.aux())) } == .key_mut {
+			inner := arg.edge(0)
+			arg_ids << out.copy_subtree_from(inner.flat, inner.id)
+			continue
+		}
+		arg_ids << out.copy_subtree_from(arg.flat, arg.id)
+	}
+	return arg_ids
 }
 
 fn (t &Transformer) fn_body_may_need_live_rewrite_from_flat(stmts ast.CursorList) bool {

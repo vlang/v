@@ -204,10 +204,25 @@ fn (mut g Gen) emit_array_interface_repeat_helpers() {
 	}
 }
 
-fn (mut g Gen) emit_missing_array_contains_fallbacks() {
-	mut fn_names := g.fn_param_types.keys()
+struct ArrayContainsFallbackSpec {
+	fn_name   string
+	arr_type  string
+	elem_type string
+}
+
+fn (g &Gen) missing_array_contains_fallback_specs() []ArrayContainsFallbackSpec {
+	mut fn_name_set := map[string]bool{}
+	for fn_name in g.fn_param_types.keys() {
+		fn_name_set[fn_name] = true
+	}
+	for fn_name in g.called_fn_names.keys() {
+		if fn_name.starts_with('Array_') && fn_name.ends_with('_contains') {
+			fn_name_set[fn_name] = true
+		}
+	}
+	mut fn_names := fn_name_set.keys()
 	fn_names.sort()
-	mut emitted_any := false
+	mut specs := []ArrayContainsFallbackSpec{}
 	for fn_name in fn_names {
 		if !fn_name.starts_with('Array_') || !fn_name.ends_with('_contains') {
 			continue
@@ -219,46 +234,82 @@ fn (mut g Gen) emit_missing_array_contains_fallbacks() {
 		if fn_key in g.emitted_types {
 			continue
 		}
-		if g.fn_return_types[fn_name] or { '' } != 'bool' {
-			continue
+		has_signature := fn_name in g.fn_param_types
+		if has_signature {
+			if g.fn_return_types[fn_name] or { '' } != 'bool' {
+				continue
+			}
 		}
 		param_types := g.fn_param_types[fn_name] or { []string{} }
-		if param_types.len != 2 {
+		mut arr_type := ''
+		mut elem_type := ''
+		if param_types.len == 2 {
+			arr_type = param_types[0]
+			elem_type = param_types[1]
+		} else if fn_name.starts_with('Array_') && fn_name.ends_with('_contains') {
+			elem_type = fn_name['Array_'.len..fn_name.len - '_contains'.len]
+			arr_type = 'Array_${elem_type}'
+		} else {
 			continue
 		}
-		arr_type := param_types[0]
-		elem_type := param_types[1]
 		if arr_type.len == 0 || elem_type.len == 0 {
+			continue
+		}
+		specs << ArrayContainsFallbackSpec{
+			fn_name:   fn_name
+			arr_type:  arr_type
+			elem_type: elem_type
+		}
+	}
+	return specs
+}
+
+fn (mut g Gen) emit_missing_array_contains_fallback_decls() {
+	specs := g.missing_array_contains_fallback_specs()
+	if specs.len == 0 {
+		return
+	}
+	for spec in specs {
+		g.sb.writeln('bool ${spec.fn_name}(${spec.arr_type} a, ${spec.elem_type} v);')
+	}
+	g.sb.writeln('')
+}
+
+fn (mut g Gen) emit_missing_array_contains_fallbacks() {
+	mut emitted_any := false
+	for spec in g.missing_array_contains_fallback_specs() {
+		fn_key := 'fn_${spec.fn_name}'
+		if fn_key in g.emitted_types {
 			continue
 		}
 		g.emitted_types[fn_key] = true
 		g.sb.writeln('')
 		if g.is_freestanding_target() && g.pref != unsafe { nil } && g.pref.skip_builtin {
-			g.sb.writeln('_Static_assert(0, "${freestanding_missing_heap_runtime_message}: ${fn_name}");')
+			g.sb.writeln('_Static_assert(0, "${freestanding_missing_heap_runtime_message}: ${spec.fn_name}");')
 			emitted_any = true
 			continue
 		}
 		// Fixed arrays are C arrays (e.g., voidptr[20]), not structs — use direct indexing.
-		is_fixed := arr_type.starts_with('Array_fixed_')
+		is_fixed := spec.arr_type.starts_with('Array_fixed_')
 		if is_fixed {
-			_, fixed_len := g.parse_fixed_array_type(arr_type)
-			g.sb.writeln('__attribute__((weak)) bool ${fn_name}(${arr_type} a, ${elem_type} v) {')
+			_, fixed_len := g.parse_fixed_array_type(spec.arr_type)
+			g.sb.writeln('__attribute__((weak)) bool ${spec.fn_name}(${spec.arr_type} a, ${spec.elem_type} v) {')
 			g.sb.writeln('\tfor (int i = 0; i < ${fixed_len}; i++) {')
-			if elem_type == 'string' {
+			if spec.elem_type == 'string' {
 				g.sb.writeln('\t\tif (string__eq(a[i], v)) {')
 			} else {
-				g.sb.writeln('\t\tif (memcmp(&a[i], &v, sizeof(${elem_type})) == 0) {')
+				g.sb.writeln('\t\tif (memcmp(&a[i], &v, sizeof(${spec.elem_type})) == 0) {')
 			}
 		} else {
-			g.sb.writeln('__attribute__((weak)) bool ${fn_name}(${arr_type} a, ${elem_type} v) {')
+			g.sb.writeln('__attribute__((weak)) bool ${spec.fn_name}(${spec.arr_type} a, ${spec.elem_type} v) {')
 			g.sb.writeln('\tfor (int i = 0; (i < a.len); i += 1) {')
-			if elem_type == 'string' {
+			if spec.elem_type == 'string' {
 				g.sb.writeln('\t\tif (string__eq(*((string*)(array__get(a, i))), v)) {')
 			} else {
 				left_cmp := '_cmp_l_${g.tmp_counter}'
 				right_cmp := '_cmp_r_${g.tmp_counter + 1}'
 				g.tmp_counter += 2
-				g.sb.writeln('\t\tif (({ ${elem_type} ${left_cmp} = *((${elem_type}*)(array__get(a, i))); ${elem_type} ${right_cmp} = v; memcmp(&${left_cmp}, &${right_cmp}, sizeof(${elem_type})) == 0; })) {')
+				g.sb.writeln('\t\tif (({ ${spec.elem_type} ${left_cmp} = *((${spec.elem_type}*)(array__get(a, i))); ${spec.elem_type} ${right_cmp} = v; memcmp(&${left_cmp}, &${right_cmp}, sizeof(${spec.elem_type})) == 0; })) {')
 			}
 		}
 		g.sb.writeln('\t\t\treturn true;')

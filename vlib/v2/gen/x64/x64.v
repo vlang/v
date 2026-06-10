@@ -2986,8 +2986,12 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 	mut sorted := []&Interval{}
 	for _, i in intervals {
 		sorted << i
+		mut j := sorted.len - 1
+		for j > 0 && sorted[j - 1].start > sorted[j].start {
+			sorted[j - 1], sorted[j] = sorted[j], sorted[j - 1]
+			j--
+		}
 	}
-	sorted.sort(a.start < b.start)
 
 	mut active := []&Interval{}
 	// Use callee-saved registers: RBX(3), R12(12), R13(13), R14(14), R15(15)

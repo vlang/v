@@ -1,6 +1,55 @@
 #include <vschannel.h>
 #include <sspi.h>
 
+// ALPN (RFC 7301) compatibility shim. Older toolchain headers (notably the
+// ones bundled with tcc) predate the SChannel ALPN additions, so the structs,
+// enums and constants below are missing there. Define them ourselves when the
+// SDK headers did not. SECPKG_ATTR_APPLICATION_PROTOCOL guards the schannel.h
+// types; SECBUFFER_APPLICATION_PROTOCOLS guards the sspi.h buffer constant.
+#ifndef ANYSIZE_ARRAY
+#define ANYSIZE_ARRAY 1
+#endif
+
+#ifndef SECPKG_ATTR_APPLICATION_PROTOCOL
+#define SECPKG_ATTR_APPLICATION_PROTOCOL 35
+
+typedef enum _SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT {
+	SecApplicationProtocolNegotiationExt_None,
+	SecApplicationProtocolNegotiationExt_NPN,
+	SecApplicationProtocolNegotiationExt_ALPN
+} SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT, *PSEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT;
+
+typedef struct _SEC_APPLICATION_PROTOCOL_LIST {
+	SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT ProtoNegoExt;
+	unsigned short ProtocolListSize;
+	unsigned char ProtocolList[ANYSIZE_ARRAY];
+} SEC_APPLICATION_PROTOCOL_LIST, *PSEC_APPLICATION_PROTOCOL_LIST;
+
+typedef struct _SEC_APPLICATION_PROTOCOLS {
+	unsigned long ProtocolListsSize;
+	SEC_APPLICATION_PROTOCOL_LIST ProtocolLists[ANYSIZE_ARRAY];
+} SEC_APPLICATION_PROTOCOLS, *PSEC_APPLICATION_PROTOCOLS;
+
+typedef enum _SEC_APPLICATION_PROTOCOL_NEGOTIATION_STATUS {
+	SecApplicationProtocolNegotiationStatus_None,
+	SecApplicationProtocolNegotiationStatus_Success,
+	SecApplicationProtocolNegotiationStatus_SelectedClientOnly
+} SEC_APPLICATION_PROTOCOL_NEGOTIATION_STATUS, *PSEC_APPLICATION_PROTOCOL_NEGOTIATION_STATUS;
+
+#define MAX_PROTOCOL_ID_SIZE 0xff
+
+typedef struct _SecPkgContext_ApplicationProtocol {
+	SEC_APPLICATION_PROTOCOL_NEGOTIATION_STATUS ProtoNegoStatus;
+	SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT ProtoNegoExt;
+	unsigned char ProtocolIdSize;
+	unsigned char ProtocolId[MAX_PROTOCOL_ID_SIZE];
+} SecPkgContext_ApplicationProtocol, *PSecPkgContext_ApplicationProtocol;
+#endif // SECPKG_ATTR_APPLICATION_PROTOCOL
+
+#ifndef SECBUFFER_APPLICATION_PROTOCOLS
+#define SECBUFFER_APPLICATION_PROTOCOLS 18
+#endif
+
 // Proxy
 WCHAR *  psz_proxy_server  = L"proxy";
 INT     i_proxy_port      = 80;
@@ -28,6 +77,15 @@ struct TlsContext {
 	BOOL                   validate_server_certificate;
 	BOOL                   creds_initialized;
 	BOOL                   context_initialized;
+	// ALPN protocol list to advertise, in the standard ALPN wire format (each
+	// name 1-byte length-prefixed), e.g. "\x02h2\x08http/1.1". alpn_wire_len == 0
+	// means "do not advertise ALPN".
+	unsigned char          alpn_wire[256];
+	unsigned long          alpn_wire_len;
+	// Negotiated application protocol name (e.g. "h2"); negotiated_alpn_len == 0
+	// when the server selected none.
+	char                   negotiated_alpn[256];
+	unsigned long          negotiated_alpn_len;
 };
 
 TlsContext new_tls_context() {
@@ -38,9 +96,62 @@ TlsContext new_tls_context() {
 		.validate_server_certificate = TRUE,
 		.creds_initialized     = FALSE,
 		.context_initialized   = FALSE,
-		.p_pemote_cert_context = NULL
+		.p_pemote_cert_context = NULL,
+		.alpn_wire_len         = 0,
+		.negotiated_alpn_len   = 0
 	};
 };
+
+// vschannel_set_alpn configures the ALPN protocol list to advertise during the
+// next handshake. `wire` is the standard ALPN wire format (each protocol name
+// preceded by a 1-byte length), e.g. "\x02h2\x08http/1.1". Passing len == 0
+// disables ALPN advertisement.
+void vschannel_set_alpn(TlsContext *tls_ctx, const char *wire, INT len) {
+	if (len < 0) {
+		len = 0;
+	}
+	if (len > (INT)sizeof(tls_ctx->alpn_wire)) {
+		len = (INT)sizeof(tls_ctx->alpn_wire);
+	}
+	if (len > 0) {
+		memcpy(tls_ctx->alpn_wire, wire, (size_t)len);
+	}
+	tls_ctx->alpn_wire_len = (unsigned long)len;
+}
+
+// vschannel_get_alpn copies the protocol the server selected via ALPN (e.g.
+// "h2") into `out` and returns its length, or 0 if none was negotiated.
+INT vschannel_get_alpn(TlsContext *tls_ctx, char *out, INT out_cap) {
+	unsigned long n = tls_ctx->negotiated_alpn_len;
+	if (out_cap < 0) {
+		out_cap = 0;
+	}
+	if (n > (unsigned long)out_cap) {
+		n = (unsigned long)out_cap;
+	}
+	if (n > 0) {
+		memcpy(out, tls_ctx->negotiated_alpn, (size_t)n);
+	}
+	return (INT)n;
+}
+
+// vschannel_capture_alpn queries the negotiated ALPN protocol from a completed
+// handshake and stores it on the context for vschannel_get_alpn().
+static void vschannel_capture_alpn(TlsContext *tls_ctx) {
+	SecPkgContext_ApplicationProtocol appproto;
+	SECURITY_STATUS st;
+
+	tls_ctx->negotiated_alpn_len = 0;
+	st = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context,
+			SECPKG_ATTR_APPLICATION_PROTOCOL, &appproto);
+	if (st == SEC_E_OK
+			&& appproto.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success
+			&& appproto.ProtocolIdSize > 0
+			&& appproto.ProtocolIdSize <= sizeof(tls_ctx->negotiated_alpn)) {
+		memcpy(tls_ctx->negotiated_alpn, appproto.ProtocolId, appproto.ProtocolIdSize);
+		tls_ctx->negotiated_alpn_len = appproto.ProtocolIdSize;
+	}
+}
 
 static void vschannel_clear_last_error(TlsContext *tls_ctx) {
 	tls_ctx->last_error_code = 0;
@@ -136,6 +247,9 @@ INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_le
 	}
 	tls_ctx->context_initialized = TRUE;
 
+	// Record the ALPN protocol the server selected (if any).
+	vschannel_capture_alpn(tls_ctx);
+
 	if(tls_ctx->validate_server_certificate) {
 		// Authenticate server's credentials.
 
@@ -192,6 +306,43 @@ INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_le
 	tls_ctx->socket = INVALID_SOCKET;
 
 	return resp_length;
+}
+
+// vschannel_alpn_probe connects to host:iport, performs the TLS handshake while
+// advertising whatever ALPN list was configured via vschannel_set_alpn(),
+// captures the protocol the server selected into `out` (up to out_cap bytes),
+// and disconnects without sending an application request. Returns the
+// negotiated protocol length (0 = handshake succeeded but no protocol selected),
+// or -1 on connect/handshake failure (see vschannel_last_error). Intended for
+// tests and capability checks, since request() only speaks HTTP/1.1.
+INT vschannel_alpn_probe(TlsContext *tls_ctx, INT iport, LPWSTR host, char *out, INT out_cap) {
+	SecBuffer       ExtraData;
+	SECURITY_STATUS Status;
+
+	protocol = SP_PROT_TLS1_2_CLIENT;
+	port_number = iport;
+	vschannel_clear_last_error(tls_ctx);
+
+	if(connect_to_server(tls_ctx, host, port_number)) {
+		vschannel_cleanup(tls_ctx);
+		return -1;
+	}
+
+	Status = perform_client_handshake(tls_ctx, host, &ExtraData);
+	if(Status) {
+		vschannel_set_last_error(tls_ctx, Status);
+		vschannel_cleanup(tls_ctx);
+		return -1;
+	}
+	tls_ctx->context_initialized = TRUE;
+
+	vschannel_capture_alpn(tls_ctx);
+
+	disconnect_from_server(tls_ctx);
+	tls_ctx->context_initialized = FALSE;
+	tls_ctx->socket = INVALID_SOCKET;
+
+	return vschannel_get_alpn(tls_ctx, out, out_cap);
 }
 
 
@@ -454,6 +605,38 @@ static SECURITY_STATUS perform_client_handshake(TlsContext *tls_ctx, WCHAR *host
 				  ISC_REQ_STREAM;
 
 	//
+	//  Optionally advertise ALPN protocols in the ClientHello. SChannel takes
+	//  this as a SECBUFFER_APPLICATION_PROTOCOLS input buffer holding a
+	//  SEC_APPLICATION_PROTOCOLS record. The backing store is a 4-byte-aligned
+	//  unsigned long array so the struct cast is well aligned on every compiler.
+	//
+	SecBuffer      InBuffers[1];
+	SecBufferDesc  InBuffer;
+	SecBufferDesc *pInput = NULL;
+	unsigned long  alpn_store[80]; // 320 bytes; alpn_wire is at most 256
+	if (tls_ctx->alpn_wire_len > 0) {
+		SEC_APPLICATION_PROTOCOLS     *protos = (SEC_APPLICATION_PROTOCOLS *)alpn_store;
+		SEC_APPLICATION_PROTOCOL_LIST *list   = &protos->ProtocolLists[0];
+		unsigned long wlen = tls_ctx->alpn_wire_len;
+
+		list->ProtoNegoExt     = SecApplicationProtocolNegotiationExt_ALPN;
+		list->ProtocolListSize = (unsigned short)wlen;
+		memcpy(list->ProtocolList, tls_ctx->alpn_wire, (size_t)wlen);
+		protos->ProtocolListsSize =
+			(unsigned long)(FIELD_OFFSET(SEC_APPLICATION_PROTOCOL_LIST, ProtocolList) + wlen);
+
+		InBuffers[0].pvBuffer   = protos;
+		InBuffers[0].cbBuffer   =
+			(unsigned long)(FIELD_OFFSET(SEC_APPLICATION_PROTOCOLS, ProtocolLists) + protos->ProtocolListsSize);
+		InBuffers[0].BufferType = SECBUFFER_APPLICATION_PROTOCOLS;
+
+		InBuffer.cBuffers  = 1;
+		InBuffer.pBuffers  = InBuffers;
+		InBuffer.ulVersion = SECBUFFER_VERSION;
+		pInput = &InBuffer;
+	}
+
+	//
 	//  Initiate a ClientHello message and generate a token.
 	//
 
@@ -472,7 +655,7 @@ static SECURITY_STATUS perform_client_handshake(TlsContext *tls_ctx, WCHAR *host
 					dwSSPIFlags,
 					0,
 					SECURITY_NATIVE_DREP,
-					NULL,
+					pInput,
 					0,
 					&tls_ctx->h_context,
 					&OutBuffer,

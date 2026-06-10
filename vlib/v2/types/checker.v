@@ -57,12 +57,25 @@ pub mut:
 }
 
 pub fn Environment.new() &Environment {
-	return &Environment{
+	return Environment.new_with_capacity(0, 0)
+}
+
+// Environment.new_with_capacity returns a new checker environment with the hot
+// expression metadata maps pre-sized for large flat-AST builds.
+pub fn Environment.new_with_capacity(expr_types_cap int, selector_names_cap int) &Environment {
+	mut env := &Environment{
 		expr_types:     map[int]Type{}
 		selector_names: map[int]string{}
 		c_scope:        new_scope(unsafe { nil })
 		c_scope_mu:     sync.new_mutex()
 	}
+	if expr_types_cap > 0 {
+		env.expr_types.reserve(u32(expr_types_cap))
+	}
+	if selector_names_cap > 0 {
+		env.selector_names.reserve(u32(selector_names_cap))
+	}
+	return env
 }
 
 // set_expr_type stores the computed type for an expression by its unique ID.
@@ -1742,11 +1755,11 @@ fn (mut c Checker) active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatF
 	// the cursor walk only decodes the tiny comptime `$if` conditions. Mirrors the
 	// builder's s253 cursor-native import collection. Removes a legacy-AST decode
 	// site (toward dropping the old AST) and cuts flat-path memory.
-	mut imports := flat.read_file_imports(ff)
 	file_node := ast.Cursor{
 		flat: unsafe { flat }
 		id:   ff.file_id
 	}
+	mut imports := file_node.list_at(1).import_stmts()
 	c.collect_active_imports_from_stmts_cursor(file_node.list_at(2), mut imports)
 	return imports
 }
@@ -1947,14 +1960,94 @@ fn (mut c Checker) module_storage_predecl_type_from_flat_field(field_c ast.Curso
 		return c.type_expr(typ_expr)
 	}
 	value_c := field_c.edge(1)
-	match value_c.kind() {
-		.expr_basic_literal, .expr_string {
-			return c.expr(value_c.attribute_expr())
+	if typ := c.literal_expr_type_from_cursor(value_c) {
+		return typ
+	}
+	if value_c.kind() in [.expr_basic_literal, .expr_string] {
+		return c.expr(value_c.attribute_expr())
+	}
+
+	return Type(int_)
+}
+
+fn (c &Checker) literal_expr_type_from_cursor(expr ast.Cursor) ?Type {
+	if !expr.is_valid() {
+		return none
+	}
+	match expr.kind() {
+		.expr_basic_literal {
+			kind := unsafe { token.Token(int(expr.aux())) }
+			match kind {
+				.char {
+					return Type(rune_)
+				}
+				.key_false, .key_true {
+					return bool_
+				}
+				.number {
+					if expr.name().contains('.') {
+						return float_literal_
+					}
+					return int_literal_
+				}
+				else {
+					return none
+				}
+			}
+		}
+		.expr_string {
+			kind := unsafe { ast.StringLiteralKind(int(expr.aux())) }
+			if kind == .c {
+				return charptr_
+			}
+			return Type(string_)
+		}
+		.expr_paren, .expr_modifier {
+			return c.literal_expr_type_from_cursor(expr.edge(0))
 		}
 		else {}
 	}
 
-	return Type(int_)
+	return none
+}
+
+fn (mut c Checker) register_literal_expr_type_from_cursor(expr ast.Cursor) ?Type {
+	typ := c.literal_expr_type_from_cursor(expr) or { return none }
+	pos := expr.pos()
+	if pos.id > 0 {
+		c.env.set_expr_type(pos.id, typ)
+	}
+	return typ
+}
+
+fn match_branch_from_flat_cursor(c ast.Cursor) ast.MatchBranch {
+	conds := c.list_at(0)
+	mut cond := []ast.Expr{cap: conds.len()}
+	for i in 0 .. conds.len() {
+		cond << conds.at(i).expr()
+	}
+	stmt_list := c.list_at(1)
+	mut stmts := []ast.Stmt{cap: stmt_list.len()}
+	for i in 0 .. stmt_list.len() {
+		stmts << stmt_list.at(i).stmt()
+	}
+	return ast.MatchBranch{
+		cond:  cond
+		stmts: stmts
+		pos:   c.pos()
+	}
+}
+
+fn match_expr_from_flat_cursor(c ast.Cursor) ast.MatchExpr {
+	mut branches := []ast.MatchBranch{cap: c.edge_count() - 1}
+	for i in 1 .. c.edge_count() {
+		branches << match_branch_from_flat_cursor(c.edge(i))
+	}
+	return ast.MatchExpr{
+		expr:     c.edge(0).expr()
+		branches: branches
+		pos:      c.pos()
+	}
 }
 
 fn (mut c Checker) preregister_module_storage_decl_from_flat(stmt_c ast.Cursor) {
@@ -1980,10 +2073,42 @@ fn (mut c Checker) check_global_decl_from_flat(stmt_c ast.Cursor) {
 			c.type_expr(field_typ)
 		} else {
 			value_c := field.edge(1)
-			c.expr(value_c.expr())
+			if typ := c.register_literal_expr_type_from_cursor(value_c) {
+				typ
+			} else {
+				c.expr(value_c.expr())
+			}
 		}
 		obj := module_storage_object(c.cur_file_module, decl, field_decl, field_type)
 		c.scope.insert_or_update(field_decl.name, obj)
+	}
+}
+
+fn (mut c Checker) check_expr_stmt_from_flat(stmt_c ast.Cursor) {
+	expr_c := stmt_c.edge(0)
+	if expr_c.kind() == .expr_match {
+		c.match_expr(match_expr_from_flat_cursor(expr_c), false)
+		return
+	}
+	if _ := c.register_literal_expr_type_from_cursor(expr_c) {
+		return
+	}
+	c.expr(expr_c.expr())
+}
+
+fn (mut c Checker) check_assert_stmt_from_flat(stmt_c ast.Cursor) {
+	expr_c := stmt_c.edge(0)
+	if _ := c.register_literal_expr_type_from_cursor(expr_c) {
+		// Literal-only asserts do not need legacy expression materialization.
+	} else {
+		c.expr(expr_c.expr())
+	}
+	extra := stmt_c.edge(1)
+	if extra.is_valid() && extra.kind() != .expr_empty {
+		if _ := c.register_literal_expr_type_from_cursor(extra) {
+			return
+		}
+		c.expr(extra.expr())
 	}
 }
 
@@ -2107,6 +2232,12 @@ pub fn (mut c Checker) check_file_from_flat(flat &ast.FlatAst, ff ast.FlatFile) 
 			.stmt_global_decl {
 				c.check_global_decl_from_flat(dc)
 			}
+			.stmt_expr {
+				c.check_expr_stmt_from_flat(dc)
+			}
+			.stmt_assert {
+				c.check_assert_stmt_from_flat(dc)
+			}
 			else {
 				c.stmt(dc.stmt())
 			}
@@ -2152,9 +2283,13 @@ fn (mut c Checker) check_struct_field_defaults_from_flat(flat &ast.FlatAst) {
 					continue
 				}
 				field_typ := c.type_expr(field.edge(0).type_expr())
-				field_value := value_c.expr()
 				prev_expected := c.expected_type
 				c.expected_type = to_optional_type(field_typ)
+				if _ := c.register_literal_expr_type_from_cursor(value_c) {
+					c.expected_type = prev_expected
+					continue
+				}
+				field_value := value_c.expr()
 				c.expr(field_value)
 				$if ownership ? {
 					c.ownership_consume_expr(field_value, field_value.pos(), 'struct field')
@@ -2196,6 +2331,9 @@ fn (mut c Checker) check_enum_field_values_from_flat(flat &ast.FlatAst) {
 				field := fields.at(fi)
 				value_c := field.edge(1)
 				if value_c.is_valid() && value_c.kind() != .expr_empty {
+					if _ := c.register_literal_expr_type_from_cursor(value_c) {
+						continue
+					}
 					c.expr(value_c.expr())
 				}
 			}
@@ -5164,7 +5302,9 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 			// Skip checking generic functions that are never instantiated.
 			return false
 		}
-		c.env.cur_generic_types << generic_types
+		for generic_type_map in generic_types {
+			c.env.cur_generic_types << generic_type_map
+		}
 	}
 	if !has_decl_generic_params || c.env.cur_generic_types.len > 0 {
 		mut decl := signature_decl
@@ -5238,7 +5378,7 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 		c.scope = prev_scope
 		c.cur_file_module = prev_module
 	}
-	c.env.cur_generic_types = []
+	c.env.cur_generic_types = []map[string]Type{}
 	return true
 }
 
@@ -7481,7 +7621,7 @@ fn (mut c Checker) fn_type_with_insert_params(fn_type ast.FnType, attributes FnT
 		// scope: c.scope
 	}
 	if generic_params.len > 0 {
-		c.generic_params = []
+		c.generic_params = []string{}
 	}
 	// c.close_scope()
 	return typ

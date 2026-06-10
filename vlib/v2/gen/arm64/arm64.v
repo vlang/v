@@ -977,12 +977,14 @@ pub fn (mut g Gen) gen_func(func_idx int) {
 				continue
 			}
 			if vv.name.contains('cleanc__Gen__expr') {
-				eprintln('ARM64 FUNCREF val=${i} name=${vv.name} typ=${vv.typ}')
+				vv_typ := vv.typ.str()
+				eprintln('ARM64 FUNCREF val=${i} name=${vv.name} typ=${vv_typ}')
 			}
 		}
 		for f in g.mod.funcs {
 			if f.name.contains('cleanc__Gen__expr') {
-				eprintln('ARM64 FUNCDECL id=${f.id} name=${f.name} typ=${f.typ} params=${f.params}')
+				f_typ := f.typ.str()
+				eprintln('ARM64 FUNCDECL id=${f.id} name=${f.name} typ=${f_typ} params_len=${f.params.len}')
 			}
 		}
 		eprintln('ARM64 FUNCREFS fn=${func_name} end')
@@ -1094,13 +1096,13 @@ pub fn (mut g Gen) gen_func(func_idx int) {
 			if val.uses.len == 0 {
 				if opcode == .bitcast && instr.operands.len == 0 {
 					if trace_skip_dead {
-						eprintln('ARM64 SKIP_DEAD fn=${func_name} val=${val_id} op=bitcast ops=${instr.operands} uses_len=${val.uses.len} uses=${val.uses}')
+						eprintln('ARM64 SKIP_DEAD fn=${func_name} val=${val_id} op=bitcast ops_len=${instr.operands.len} uses_len=${val.uses.len}')
 					}
 					continue
 				}
 				if opcode == .assign {
 					if trace_skip_dead {
-						eprintln('ARM64 SKIP_DEAD fn=${func_name} val=${val_id} op=assign ops=${instr.operands} uses_len=${val.uses.len} uses=${val.uses}')
+						eprintln('ARM64 SKIP_DEAD fn=${func_name} val=${val_id} op=assign ops_len=${instr.operands.len} uses_len=${val.uses.len}')
 					}
 					continue
 				}
@@ -1270,7 +1272,7 @@ pub fn (mut g Gen) gen_func(func_idx int) {
 					typ_kind = '${typ.kind}'
 					typ_size = g.type_size(vv.typ)
 					if typ.kind == .struct_t {
-						typ_desc = 'fields=${typ.field_names} ftypes=${typ.fields}'
+						typ_desc = 'fields_len=${typ.field_names.len} ftypes_len=${typ.fields.len}'
 					} else if typ.kind == .ptr_t {
 						typ_desc = 'elem=${typ.elem_type}'
 					}
@@ -1279,9 +1281,9 @@ pub fn (mut g Gen) gen_func(func_idx int) {
 					instr := g.mod.instrs[vv.index]
 					op = '${g.selected_opcode(instr)}'
 					blk = instr.block
-					operands = '${instr.operands}'
+					operands = 'len=${instr.operands.len}'
 				}
-				uses = '${vv.uses}'
+				uses = 'len=${vv.uses.len}'
 			}
 			eprintln('ARM64 STACKMAP ${func_name} val=${vid} off=${off} kind=${kind} blk=${blk} op=${op} ops=${operands} uses=${uses} typ=${typ_id}/${typ_kind} size=${typ_size} tdesc=`${typ_desc}` name=`${name}`')
 		}
@@ -1294,7 +1296,7 @@ pub fn (mut g Gen) gen_func(func_idx int) {
 				vv := g.mod.values[vid]
 				if vv.kind == .instruction {
 					instr := g.mod.instrs[vv.index]
-					alloca_ops = '${instr.operands}'
+					alloca_ops = 'len=${instr.operands.len}'
 					if vv.typ > 0 && vv.typ < g.mod.type_store.types.len {
 						typ := g.mod.type_store.types[vv.typ]
 						if typ.kind == .ptr_t && typ.elem_type > 0
@@ -1315,7 +1317,7 @@ pub fn (mut g Gen) gen_func(func_idx int) {
 		eprintln('ARM64 BLOCKS ${func_name} begin')
 		for bi, blk_id in func_blocks {
 			blk := g.mod.blocks[blk_id]
-			eprintln('ARM64 BLOCK ${func_name} order=${bi} id=${blk_id} val=${blk.val_id} preds=${blk.preds} succs=${blk.succs} instrs=${blk.instrs}')
+			eprintln('ARM64 BLOCK ${func_name} order=${bi} id=${blk_id} val=${blk.val_id} preds_len=${blk.preds.len} succs_len=${blk.succs.len} instrs_len=${blk.instrs.len}')
 			for val_id in blk.instrs {
 				if val_id <= 0 || val_id >= g.mod.values.len {
 					continue
@@ -1326,7 +1328,7 @@ pub fn (mut g Gen) gen_func(func_idx int) {
 				if val.kind == .instruction {
 					instr := g.mod.instrs[val.index]
 					op = '${g.selected_opcode(instr)}'
-					operands = '${instr.operands}'
+					operands = 'len=${instr.operands.len}'
 				}
 				mut callee_info := ''
 				if val.kind == .instruction {
@@ -1342,7 +1344,7 @@ pub fn (mut g Gen) gen_func(func_idx int) {
 						}
 					}
 				}
-				eprintln('ARM64 BLOCK INSTR ${func_name} blk=${blk_id} val=${val_id} kind=${val.kind} op=${op} ops=${operands} uses=${val.uses}${callee_info}')
+				eprintln('ARM64 BLOCK INSTR ${func_name} blk=${blk_id} val=${val_id} kind=${val.kind} op=${op} ops=${operands} uses_len=${val.uses.len}${callee_info}')
 			}
 		}
 		eprintln('ARM64 BLOCKS ${func_name} end')
@@ -1581,7 +1583,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 	trace_val := g.env_trace_val.len > 0
 		&& (g.env_trace_val == '*' || g.cur_func_name == g.env_trace_val)
 	if trace_val {
-		eprintln('ARM64 VAL fn=${g.cur_func_name} val=${val_id} opi=${int(op)} off=${g.macho.text_data.len - g.curr_offset} ops=${instr_operands}')
+		eprintln('ARM64 VAL fn=${g.cur_func_name} val=${val_id} opi=${int(op)} off=${g.macho.text_data.len - g.curr_offset} ops_len=${instr_operands.len}')
 	}
 	trace_instr := g.env_trace_instr.len > 0
 		&& (g.env_trace_instr == '*' || g.cur_func_name == g.env_trace_instr)
@@ -1596,7 +1598,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			width = typ.width
 			is_unsigned = typ.is_unsigned
 		}
-		eprintln('ARM64 INSTR fn=${g.cur_func_name} val=${val_id} op=${op} orig=${instr.op} typ=${typ_id} kind=${kind} width=${width} unsigned=${is_unsigned} ops=${instr_operands}')
+		eprintln('ARM64 INSTR fn=${g.cur_func_name} val=${val_id} op=${op} orig=${instr.op} typ=${typ_id} kind=${kind} width=${width} unsigned=${is_unsigned} ops_len=${instr_operands.len}')
 	}
 	if op == .store && g.try_emit_simple_scalar_store(instr_idx) {
 		return
@@ -9521,7 +9523,7 @@ fn (mut g Gen) allocate_registers(func_idx int) {
 
 	g.used_regs.sort()
 	if trace_ra {
-		eprintln('REGALLOC fn=${func_name} intervals=${iv_val_ids.len} calls=${call_indices.len} allocated=${g.reg_map.len} used_regs=${g.used_regs} total_instrs=${total_instrs}')
+		eprintln('REGALLOC fn=${func_name} intervals=${iv_val_ids.len} calls=${call_indices.len} allocated=${g.reg_map.len} used_regs_len=${g.used_regs.len} total_instrs=${total_instrs}')
 		for val_id, reg in g.reg_map {
 			if mut iv := intervals[val_id] {
 				eprintln('  val=${val_id} -> x${reg} [${iv.start},${iv.end}] has_call=${iv.has_call}')

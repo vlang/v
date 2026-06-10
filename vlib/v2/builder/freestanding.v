@@ -5,6 +5,7 @@ module builder
 
 import v2.ast
 import v2.pref
+import v2.token
 
 fn (b &Builder) validate_freestanding_cleanc_contract() bool {
 	if b.pref == unsafe { nil } || !b.pref.is_freestanding() {
@@ -176,6 +177,50 @@ fn freestanding_attributes_are_inactive(attributes []ast.Attribute, ctx Freestan
 	return false
 }
 
+fn freestanding_channel_scan_options(ctx FreestandingScanContext) ChannelScanOptions {
+	return ChannelScanOptions{
+		user_defines:          ctx.user_defines
+		explicit_user_defines: ctx.explicit_defines
+		target_os:             ctx.target_os
+		allow_pkgconfig:       true
+		filter_comptime:       true
+	}
+}
+
+fn freestanding_cursor_attributes_are_inactive(attributes ast.CursorList, ctx FreestandingScanContext) bool {
+	options := freestanding_channel_scan_options(ctx)
+	for i in 0 .. attributes.len() {
+		attr := attributes.at(i)
+		if !attr.is_valid() || attr.kind() != .aux_attribute {
+			continue
+		}
+		cond := attr.edge(1)
+		if cond.is_valid() && cond.kind() != .expr_empty
+			&& !flat_comptime_cond_matches(cond, options) {
+			return true
+		}
+	}
+	return false
+}
+
+fn freestanding_cursor_attributes_has(attributes ast.CursorList, name string) bool {
+	for i in 0 .. attributes.len() {
+		attr := attributes.at(i)
+		if !attr.is_valid() || attr.kind() != .aux_attribute {
+			continue
+		}
+		if attr.name() == name {
+			return true
+		}
+		value := attr.edge(0)
+		if attr.name() == '' && value.is_valid() && value.kind() == .expr_ident
+			&& value.name() == name {
+			return true
+		}
+	}
+	return false
+}
+
 fn freestanding_restricted_call_in_stmts(stmts []ast.Stmt, ctx FreestandingScanContext) string {
 	for stmt in stmts {
 		call_name := freestanding_restricted_call_in_stmt(stmt, ctx)
@@ -188,8 +233,118 @@ fn freestanding_restricted_call_in_stmts(stmts []ast.Stmt, ctx FreestandingScanC
 
 fn freestanding_restricted_call_in_cursor_stmts(stmts ast.CursorList, ctx FreestandingScanContext) string {
 	for i in 0 .. stmts.len() {
-		stmt := stmts.at(i).stmt()
-		call_name := freestanding_restricted_call_in_stmt(stmt, ctx)
+		call_name := freestanding_restricted_call_in_cursor_stmt(stmts.at(i), ctx)
+		if call_name != '' {
+			return call_name
+		}
+	}
+	return ''
+}
+
+fn freestanding_restricted_call_in_cursor_stmt(stmt ast.Cursor, ctx FreestandingScanContext) string {
+	if !stmt.is_valid() {
+		return ''
+	}
+	return match stmt.kind() {
+		.stmt_assert {
+			expr_call :=
+				freestanding_restricted_call_in_cursor_edges(stmt, 0, stmt.edge_count(), ctx)
+			if expr_call != '' {
+				expr_call
+			} else {
+				'assert'
+			}
+		}
+		.stmt_assign {
+			freestanding_restricted_call_in_cursor_edges(stmt, 0, stmt.edge_count(), ctx)
+		}
+		.stmt_block, .stmt_defer {
+			freestanding_restricted_call_in_cursor_stmt_edges(stmt, 0, stmt.edge_count(), ctx)
+		}
+		.stmt_comptime {
+			freestanding_restricted_call_in_cursor_stmt(stmt.edge(0), ctx)
+		}
+		.stmt_const_decl {
+			freestanding_restricted_call_in_cursor_field_inits(stmt.list_at(0), ctx)
+		}
+		.stmt_expr {
+			freestanding_restricted_call_in_cursor_expr(stmt.edge(0), ctx)
+		}
+		.stmt_fn_decl {
+			attributes := stmt.list_at(2)
+			if freestanding_cursor_attributes_are_inactive(attributes, ctx) {
+				''
+			} else if freestanding_cursor_attributes_has(attributes, 'live') {
+				'live'
+			} else {
+				freestanding_restricted_call_in_cursor_stmts(stmt.list_at(3), ctx)
+			}
+		}
+		.stmt_for_in {
+			freestanding_restricted_call_in_cursor_edges(stmt, 0, stmt.edge_count(), ctx)
+		}
+		.stmt_for {
+			init_call := freestanding_restricted_call_in_cursor_stmt(stmt.edge(0), ctx)
+			if init_call != '' {
+				init_call
+			} else {
+				cond_call := freestanding_restricted_call_in_cursor_expr(stmt.edge(1), ctx)
+				if cond_call != '' {
+					cond_call
+				} else {
+					post_call := freestanding_restricted_call_in_cursor_stmt(stmt.edge(2), ctx)
+					if post_call != '' {
+						post_call
+					} else {
+						freestanding_restricted_call_in_cursor_stmts(stmt.for_body_list(), ctx)
+					}
+				}
+			}
+		}
+		.stmt_global_decl {
+			freestanding_restricted_call_in_cursor_field_decls(stmt.list_at(1), ctx)
+		}
+		.stmt_interface_decl {
+			freestanding_restricted_call_in_cursor_field_decls(stmt.list_at(3), ctx)
+		}
+		.stmt_label {
+			freestanding_restricted_call_in_cursor_stmt(stmt.edge(0), ctx)
+		}
+		.stmt_return {
+			freestanding_restricted_call_in_cursor_edges(stmt, 0, stmt.edge_count(), ctx)
+		}
+		.stmt_struct_decl {
+			freestanding_restricted_call_in_cursor_field_decls(stmt.list_at(4), ctx)
+		}
+		else {
+			''
+		}
+	}
+}
+
+fn freestanding_restricted_call_in_cursor_stmt_edges(stmt ast.Cursor, start int, end int, ctx FreestandingScanContext) string {
+	for i in start .. end {
+		call_name := freestanding_restricted_call_in_cursor_stmt(stmt.edge(i), ctx)
+		if call_name != '' {
+			return call_name
+		}
+	}
+	return ''
+}
+
+fn freestanding_restricted_call_in_cursor_edges(expr_parent ast.Cursor, start int, end int, ctx FreestandingScanContext) string {
+	for i in start .. end {
+		call_name := freestanding_restricted_call_in_cursor_expr(expr_parent.edge(i), ctx)
+		if call_name != '' {
+			return call_name
+		}
+	}
+	return ''
+}
+
+fn freestanding_restricted_call_in_cursor_expr_list(exprs ast.CursorList, ctx FreestandingScanContext) string {
+	for i in 0 .. exprs.len() {
+		call_name := freestanding_restricted_call_in_cursor_expr(exprs.at(i), ctx)
 		if call_name != '' {
 			return call_name
 		}
@@ -291,11 +446,36 @@ fn freestanding_restricted_call_in_exprs(exprs []ast.Expr, ctx FreestandingScanC
 	return ''
 }
 
+fn freestanding_restricted_call_in_cursor_field_inits(fields ast.CursorList, ctx FreestandingScanContext) string {
+	for i in 0 .. fields.len() {
+		call_name := freestanding_restricted_call_in_cursor_expr(fields.at(i).edge(0), ctx)
+		if call_name != '' {
+			return call_name
+		}
+	}
+	return ''
+}
+
 fn freestanding_restricted_call_in_field_inits(fields []ast.FieldInit, ctx FreestandingScanContext) string {
 	for field in fields {
 		call_name := freestanding_restricted_call_in_expr(field.value, ctx)
 		if call_name != '' {
 			return call_name
+		}
+	}
+	return ''
+}
+
+fn freestanding_restricted_call_in_cursor_field_decls(fields ast.CursorList, ctx FreestandingScanContext) string {
+	for i in 0 .. fields.len() {
+		field := fields.at(i)
+		typ_call := freestanding_restricted_call_in_cursor_expr(field.edge(0), ctx)
+		if typ_call != '' {
+			return typ_call
+		}
+		value_call := freestanding_restricted_call_in_cursor_expr(field.edge(1), ctx)
+		if value_call != '' {
+			return value_call
 		}
 	}
 	return ''
@@ -310,6 +490,268 @@ fn freestanding_restricted_call_in_field_decls(fields []ast.FieldDecl, ctx Frees
 		value_call := freestanding_restricted_call_in_expr(field.value, ctx)
 		if value_call != '' {
 			return value_call
+		}
+	}
+	return ''
+}
+
+fn freestanding_restricted_call_in_cursor_expr(expr ast.Cursor, ctx FreestandingScanContext) string {
+	if !expr.is_valid() {
+		return ''
+	}
+	return match expr.kind() {
+		.expr_array_init {
+			meta_call := freestanding_restricted_call_in_cursor_edges(expr, 0, 5, ctx)
+			if meta_call != '' {
+				meta_call
+			} else {
+				freestanding_restricted_call_in_cursor_edges(expr, 5, expr.edge_count(), ctx)
+			}
+		}
+		.expr_as_cast {
+			freestanding_restricted_call_in_cursor_expr(expr.edge(0), ctx)
+		}
+		.expr_cast {
+			freestanding_restricted_call_in_cursor_expr(expr.edge(1), ctx)
+		}
+		.expr_assoc {
+			base_call := freestanding_restricted_call_in_cursor_expr(expr.edge(1), ctx)
+			if base_call != '' {
+				base_call
+			} else {
+				freestanding_restricted_call_in_cursor_field_inits(ast.CursorList{
+					flat:      expr.flat
+					parent_id: expr.id
+					offset:    2
+				}, ctx)
+			}
+		}
+		.expr_call {
+			call_name := freestanding_restricted_builtin_call_name_cursor(expr.edge(0), ctx)
+			if call_name != '' {
+				call_name
+			} else {
+				lhs_call := freestanding_restricted_call_in_cursor_expr(expr.edge(0), ctx)
+				if lhs_call != '' {
+					lhs_call
+				} else {
+					freestanding_restricted_call_in_cursor_edges(expr, 1, expr.edge_count(), ctx)
+				}
+			}
+		}
+		.expr_call_or_cast {
+			call_name := freestanding_restricted_builtin_call_name_cursor(expr.edge(0), ctx)
+			if call_name != '' {
+				call_name
+			} else {
+				lhs_call := freestanding_restricted_call_in_cursor_expr(expr.edge(0), ctx)
+				if lhs_call != '' {
+					lhs_call
+				} else {
+					freestanding_restricted_call_in_cursor_expr(expr.edge(1), ctx)
+				}
+			}
+		}
+		.expr_comptime {
+			freestanding_restricted_call_in_cursor_comptime_expr(expr, ctx)
+		}
+		.expr_fn_literal {
+			captured_len := expr.extra_int()
+			capture_call :=
+				freestanding_restricted_call_in_cursor_edges(expr, 1, 1 + captured_len, ctx)
+			if capture_call != '' {
+				capture_call
+			} else {
+				freestanding_restricted_call_in_cursor_stmt_edges(expr, 1 + captured_len,
+					expr.edge_count(), ctx)
+			}
+		}
+		.expr_generic_arg_or_index, .expr_index, .expr_infix {
+			lhs_call := freestanding_restricted_call_in_cursor_expr(expr.edge(0), ctx)
+			if lhs_call != '' {
+				lhs_call
+			} else {
+				freestanding_restricted_call_in_cursor_expr(expr.edge(1), ctx)
+			}
+		}
+		.expr_generic_args {
+			lhs_call := freestanding_restricted_call_in_cursor_expr(expr.edge(0), ctx)
+			if lhs_call != '' {
+				lhs_call
+			} else {
+				freestanding_restricted_call_in_cursor_edges(expr, 1, expr.edge_count(), ctx)
+			}
+		}
+		.expr_if {
+			cond_call := freestanding_restricted_call_in_cursor_expr(expr.edge(0), ctx)
+			if cond_call != '' {
+				cond_call
+			} else {
+				stmts_call := freestanding_restricted_call_in_cursor_stmt_edges(expr, 2,
+					expr.edge_count(), ctx)
+				if stmts_call != '' {
+					stmts_call
+				} else {
+					freestanding_restricted_call_in_cursor_expr(expr.edge(1), ctx)
+				}
+			}
+		}
+		.expr_if_guard {
+			freestanding_restricted_call_in_cursor_stmt(expr.edge(0), ctx)
+		}
+		.expr_init {
+			typ_call := freestanding_restricted_call_in_cursor_expr(expr.edge(0), ctx)
+			if typ_call != '' {
+				typ_call
+			} else {
+				freestanding_restricted_call_in_cursor_field_inits(ast.CursorList{
+					flat:      expr.flat
+					parent_id: expr.id
+					offset:    1
+				}, ctx)
+			}
+		}
+		.expr_keyword_operator {
+			op := unsafe { token.Token(int(expr.aux())) }
+			if op in [.key_go, .key_spawn] {
+				op.str()
+			} else {
+				freestanding_restricted_call_in_cursor_edges(expr, 0, expr.edge_count(), ctx)
+			}
+		}
+		.expr_lambda, .expr_paren, .expr_postfix, .expr_prefix, .expr_selector {
+			freestanding_restricted_call_in_cursor_expr(expr.edge(0), ctx)
+		}
+		.expr_lock {
+			'lock'
+		}
+		.expr_map_init {
+			keys_len := expr.extra_int()
+			key_call := freestanding_restricted_call_in_cursor_edges(expr, 1, 1 + keys_len, ctx)
+			if key_call != '' {
+				key_call
+			} else {
+				freestanding_restricted_call_in_cursor_edges(expr, 1 + keys_len, expr.edge_count(),
+					ctx)
+			}
+		}
+		.expr_match {
+			expr_call := freestanding_restricted_call_in_cursor_expr(expr.edge(0), ctx)
+			if expr_call != '' {
+				expr_call
+			} else {
+				freestanding_restricted_call_in_cursor_match_branch_edges(expr, 1,
+					expr.edge_count(), ctx)
+			}
+		}
+		.expr_modifier {
+			kind := unsafe { token.Token(int(expr.aux())) }
+			if kind == .key_shared {
+				'shared'
+			} else {
+				freestanding_restricted_call_in_cursor_expr(expr.edge(0), ctx)
+			}
+		}
+		.expr_or {
+			expr_call := freestanding_restricted_call_in_cursor_expr(expr.edge(0), ctx)
+			if expr_call != '' {
+				expr_call
+			} else {
+				freestanding_restricted_call_in_cursor_stmt_edges(expr, 1, expr.edge_count(), ctx)
+			}
+		}
+		.expr_range {
+			start_call := freestanding_restricted_call_in_cursor_expr(expr.edge(0), ctx)
+			if start_call != '' {
+				start_call
+			} else {
+				freestanding_restricted_call_in_cursor_expr(expr.edge(1), ctx)
+			}
+		}
+		.expr_select {
+			stmt_call := freestanding_restricted_call_in_cursor_stmt(expr.edge(0), ctx)
+			if stmt_call != '' {
+				stmt_call
+			} else {
+				freestanding_restricted_call_in_cursor_stmt_edges(expr, 2, expr.edge_count(), ctx)
+			}
+		}
+		.expr_string_inter {
+			freestanding_restricted_call_in_cursor_string_inters(expr.list_at(1), ctx)
+		}
+		.expr_tuple {
+			freestanding_restricted_call_in_cursor_edges(expr, 0, expr.edge_count(), ctx)
+		}
+		.expr_unsafe {
+			freestanding_restricted_call_in_cursor_stmt_edges(expr, 0, expr.edge_count(), ctx)
+		}
+		.aux_field_init {
+			freestanding_restricted_call_in_cursor_expr(expr.edge(0), ctx)
+		}
+		else {
+			''
+		}
+	}
+}
+
+fn freestanding_restricted_call_in_cursor_comptime_expr(expr ast.Cursor, ctx FreestandingScanContext) string {
+	inner := expr.edge(0)
+	if inner.is_valid() && inner.kind() == .expr_if {
+		return freestanding_restricted_call_in_cursor_active_comptime_if(inner, ctx)
+	}
+	return freestanding_restricted_call_in_cursor_expr(inner, ctx)
+}
+
+fn freestanding_restricted_call_in_cursor_active_comptime_if(node ast.Cursor, ctx FreestandingScanContext) string {
+	options := freestanding_channel_scan_options(ctx)
+	if flat_comptime_cond_matches(node.edge(0), options) {
+		return freestanding_restricted_call_in_cursor_stmt_edges(node, 2, node.edge_count(), ctx)
+	}
+	else_expr := node.edge(1)
+	if else_expr.is_valid() && else_expr.kind() == .expr_if {
+		if else_expr.edge(0).is_valid() && else_expr.edge(0).kind() == .expr_empty {
+			return freestanding_restricted_call_in_cursor_stmt_edges(else_expr, 2,
+				else_expr.edge_count(), ctx)
+		}
+		return freestanding_restricted_call_in_cursor_active_comptime_if(else_expr, ctx)
+	}
+	return ''
+}
+
+fn freestanding_restricted_call_in_cursor_match_branch_edges(expr ast.Cursor, start int, end int, ctx FreestandingScanContext) string {
+	for i in start .. end {
+		call_name := freestanding_restricted_call_in_cursor_match_branch(expr.edge(i), ctx)
+		if call_name != '' {
+			return call_name
+		}
+	}
+	return ''
+}
+
+fn freestanding_restricted_call_in_cursor_match_branch(branch ast.Cursor, ctx FreestandingScanContext) string {
+	if !branch.is_valid() || branch.kind() != .aux_match_branch {
+		return ''
+	}
+	cond_call := freestanding_restricted_call_in_cursor_expr_list(branch.list_at(0), ctx)
+	if cond_call != '' {
+		return cond_call
+	}
+	return freestanding_restricted_call_in_cursor_stmts(branch.list_at(1), ctx)
+}
+
+fn freestanding_restricted_call_in_cursor_string_inters(inters ast.CursorList, ctx FreestandingScanContext) string {
+	for i in 0 .. inters.len() {
+		inter := inters.at(i)
+		if !inter.is_valid() || inter.kind() != .aux_string_inter {
+			continue
+		}
+		expr_call := freestanding_restricted_call_in_cursor_expr(inter.edge(0), ctx)
+		if expr_call != '' {
+			return expr_call
+		}
+		format_call := freestanding_restricted_call_in_cursor_expr(inter.edge(1), ctx)
+		if format_call != '' {
+			return format_call
 		}
 	}
 	return ''
@@ -576,6 +1018,13 @@ fn freestanding_restricted_call_in_string_inters(inters []ast.StringInter, ctx F
 fn freestanding_restricted_builtin_call_name(lhs ast.Expr, ctx FreestandingScanContext) string {
 	if lhs is ast.Ident {
 		return freestanding_output_builtin_call_name(lhs.name, ctx)
+	}
+	return ''
+}
+
+fn freestanding_restricted_builtin_call_name_cursor(lhs ast.Cursor, ctx FreestandingScanContext) string {
+	if lhs.is_valid() && lhs.kind() == .expr_ident {
+		return freestanding_output_builtin_call_name(lhs.name(), ctx)
 	}
 	return ''
 }

@@ -130,6 +130,10 @@ mut:
 	struct_type_lookup_miss           map[string]bool
 	struct_decl_info_cache            map[string]StructDeclInfo
 	struct_decl_info_miss             map[string]bool
+	flat_struct_decl_exact            map[string]FlatStructDeclInfo
+	flat_struct_decl_short_by_mod     map[string]FlatStructDeclInfo
+	flat_struct_decl_short            map[string]FlatStructDeclInfo
+	flat_struct_decl_indexed          bool
 	alias_base_lookup_cache           map[string]string
 	alias_base_lookup_miss            map[string]bool
 	declared_type_names_all           map[string]bool
@@ -149,6 +153,8 @@ mut:
 	force_emit_fn_names                   map[string]bool   // function C names that must be emitted regardless of mark_used
 	export_fn_names                       map[string]string // V-qualified name → export name (from @[export:] attribute)
 	called_fn_names                       map[string]bool
+	called_specialized_names              map[string]string // base generic C name -> called specialized C name
+	called_specialized_names_indexed      bool
 	declared_fn_names                     map[string]bool // C function names that have a prototype/body head emitted
 	should_emit_fn_decl_cache             map[string]bool
 	generic_body_scan_cache               map[string]bool
@@ -161,6 +167,7 @@ mut:
 	specialized_receiver_methods          map[string]string                  // receiver|method -> single matching specialized method
 	specialized_receiver_method_ambiguous map[string]bool                    // receiver|method keys with multiple matches
 	specialized_receiver_method_miss      map[string]bool                    // receiver|method keys with no matching specialized method
+	specialized_receiver_method_indexed   bool                               // true after existing signature maps have been indexed
 	late_generic_specs                    map[string][]map[string]types.Type // additional comptime-discovered specs
 	anon_fn_defs                          []string        // lifted anonymous function definitions
 	late_struct_defs                      []string        // struct definitions discovered during pass 5 codegen
@@ -249,6 +256,13 @@ struct ExportedConstSymbol {
 
 struct StructDeclInfo {
 	decl      ast.StructDecl
+	mod       string
+	file_name string
+}
+
+struct FlatStructDeclInfo {
+	file_idx  int
+	stmt_idx  int
 	mod       string
 	file_name string
 }
@@ -456,6 +470,10 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		struct_type_lookup_miss:           map[string]bool{}
 		struct_decl_info_cache:            map[string]StructDeclInfo{}
 		struct_decl_info_miss:             map[string]bool{}
+		flat_struct_decl_exact:            map[string]FlatStructDeclInfo{}
+		flat_struct_decl_short_by_mod:     map[string]FlatStructDeclInfo{}
+		flat_struct_decl_short:            map[string]FlatStructDeclInfo{}
+		flat_struct_decl_indexed:          false
 		alias_base_lookup_cache:           map[string]string{}
 		alias_base_lookup_miss:            map[string]bool{}
 		declared_type_names_all:           map[string]bool{}
@@ -503,6 +521,8 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		used_fn_keys:                          map[string]bool{}
 		force_emit_fn_names:                   map[string]bool{}
 		called_fn_names:                       map[string]bool{}
+		called_specialized_names:              map[string]string{}
+		called_specialized_names_indexed:      false
 		declared_fn_names:                     map[string]bool{}
 		should_emit_fn_decl_cache:             map[string]bool{}
 		generic_body_scan_cache:               map[string]bool{}
@@ -512,6 +532,7 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		specialized_receiver_methods:          map[string]string{}
 		specialized_receiver_method_ambiguous: map[string]bool{}
 		specialized_receiver_method_miss:      map[string]bool{}
+		specialized_receiver_method_indexed:   false
 		c_struct_types:                        map[string]bool{}
 		typedef_c_types:                       map[string]bool{}
 		blocked_fn_keys:                       map[string]bool{}
@@ -1120,10 +1141,12 @@ fn (g &Gen) print_cgen_step_time(stats_enabled bool, scope string, step string, 
 
 fn (g &Gen) mark_cgen_step(stats_enabled bool, scope string, mut sw time.StopWatch, stage_start time.Duration, step string) time.Duration {
 	if !stats_enabled {
+		g.print_cgen_mem(step)
 		return stage_start
 	}
 	now := sw.elapsed()
 	g.print_cgen_step_time(true, scope, step, time.Duration(now - stage_start))
+	g.print_cgen_mem(step)
 	return now
 }
 
@@ -1150,7 +1173,6 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.collect_typedef_c_types()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.typedef_c_types')
-	g.build_generic_fn_decl_index()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.generic_fn_decl_index')
 	if g.has_generic_setup_snapshot {
@@ -1176,8 +1198,6 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.generic_struct_bindings['stdatomic__AtomicVal'] = {
 		'T': types.Type(types.int_)
 	}
-	g.discover_direct_generic_call_specs()
-	g.discover_nested_generic_specs()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.discover_generic_specs')
 	g.collect_force_emit_sort_fns()
@@ -1403,6 +1423,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.emit_interface_method_wrapper_decls()
 	g.emit_interface_clone_decls()
 	g.emit_array_interface_repeat_decls()
+	g.emit_missing_array_contains_fallback_decls()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 4 helper declarations')
 
@@ -2159,6 +2180,8 @@ fn (mut g Gen) gen_pass5() {
 	g.selector_field_type_miss = map[string]bool{}
 	g.struct_field_lookup_cache = map[string]string{}
 	g.struct_field_lookup_miss = map[string]bool{}
+	g.ensure_flat_struct_decl_index()
+	g.ensure_called_specialized_name_index()
 	g.collect_force_emit_str_fns()
 	g.emit_pass5_extern_consts_for_non_emit_files()
 	g.emit_pass5_extern_globals()
@@ -2192,6 +2215,8 @@ pub fn (mut g Gen) gen_pass5_pre() []int {
 	g.selector_field_type_miss = map[string]bool{}
 	g.struct_field_lookup_cache = map[string]string{}
 	g.struct_field_lookup_miss = map[string]bool{}
+	g.ensure_flat_struct_decl_index()
+	g.ensure_called_specialized_name_index()
 	g.collect_force_emit_str_fns()
 	g.emit_pass5_extern_consts_for_non_emit_files()
 	g.emit_pass5_extern_globals()
@@ -2318,9 +2343,6 @@ pub fn (mut g Gen) gen_pass5_post() {
 		g.emit_map_str_functions()
 		g.emit_map_eq_functions()
 	}
-}
-
-fn (mut g Gen) emit_late_called_generic_specializations() {
 }
 
 fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
@@ -2758,7 +2780,13 @@ pub fn (g &Gen) print_pass5_file_times(limit int) {
 		return
 	}
 	mut times := g.pass5_file_times.clone()
-	times.sort(a.ms > b.ms)
+	for i := 1; i < times.len; i++ {
+		mut j := i
+		for j > 0 && times[j - 1].ms < times[j].ms {
+			times[j - 1], times[j] = times[j], times[j - 1]
+			j--
+		}
+	}
 	stats_scope := g.cgen_stats_scope_label()
 	n := if times.len < limit { times.len } else { limit }
 	for item in times[..n] {
@@ -3201,6 +3229,8 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		force_emit_fn_names:                   g.force_emit_fn_names.clone()
 		export_fn_names:                       g.export_fn_names.clone()
 		called_fn_names:                       g.called_fn_names.clone()
+		called_specialized_names:              g.called_specialized_names.clone()
+		called_specialized_names_indexed:      g.called_specialized_names_indexed
 		declared_fn_names:                     g.declared_fn_names.clone()
 		should_emit_fn_decl_cache:             g.should_emit_fn_decl_cache.clone()
 		generic_body_scan_cache:               g.generic_body_scan_cache.clone()
@@ -3211,6 +3241,7 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		specialized_receiver_methods:          g.specialized_receiver_methods.clone()
 		specialized_receiver_method_ambiguous: g.specialized_receiver_method_ambiguous.clone()
 		specialized_receiver_method_miss:      g.specialized_receiver_method_miss.clone()
+		specialized_receiver_method_indexed:   g.specialized_receiver_method_indexed
 		late_generic_specs:                    g.late_generic_specs.clone()
 		generic_scan_called_names:             map[string]bool{}
 		generic_struct_bindings:               g.generic_struct_bindings.clone()
@@ -3220,38 +3251,42 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		// Per-worker mutable state (starts fresh).
 		// Each worker gets a unique tmp_counter offset to avoid name collisions
 		// for generated trampolines (_bound_method_N, _bound_recv_N, etc.).
-		tmp_counter:                 (worker_id + 1) * 100_000
-		pass5_worker_id:             worker_id
-		emitted_types:               worker_emitted
-		blocked_fn_keys:             blocked_fn_keys
-		runtime_local_types:         map[string]string{}
-		runtime_decl_types:          map[string]string{}
-		runtime_fn_pointer_types:    map[string]types.Type{}
-		cur_fn_returned_idents:      map[string]bool{}
-		active_generic_types:        map[string]types.Type{}
-		cur_fn_generic_params:       map[string]string{}
-		cur_fn_scope_miss_key:       ''
-		cur_import_modules:          map[string]string{}
-		is_module_ident_cache:       map[string]bool{}
-		not_local_var_cache:         map[string]bool{}
-		resolved_module_names:       map[string]string{}
-		cur_fn_mut_params:           map[string]bool{}
-		cached_env_scopes:           map[string]voidptr{}
-		selector_field_type_cache:   map[string]string{}
-		selector_field_type_miss:    map[string]bool{}
-		struct_field_lookup_cache:   map[string]string{}
-		struct_field_lookup_miss:    map[string]bool{}
-		struct_type_lookup_cache:    map[string]types.Struct{}
-		struct_type_lookup_miss:     map[string]bool{}
-		struct_decl_info_cache:      map[string]StructDeclInfo{}
-		struct_decl_info_miss:       map[string]bool{}
-		alias_base_lookup_cache:     map[string]string{}
-		alias_base_lookup_miss:      map[string]bool{}
-		needed_interface_wrappers:   map[string]bool{}
-		needed_ierror_wrapper_bases: map[string]bool{}
-		spawned_fns:                 map[string]bool{}
-		exported_const_seen:         map[string]bool{}
-		exported_const_symbols:      []ExportedConstSymbol{}
+		tmp_counter:                   (worker_id + 1) * 100_000
+		pass5_worker_id:               worker_id
+		emitted_types:                 worker_emitted
+		blocked_fn_keys:               blocked_fn_keys
+		runtime_local_types:           map[string]string{}
+		runtime_decl_types:            map[string]string{}
+		runtime_fn_pointer_types:      map[string]types.Type{}
+		cur_fn_returned_idents:        map[string]bool{}
+		active_generic_types:          map[string]types.Type{}
+		cur_fn_generic_params:         map[string]string{}
+		cur_fn_scope_miss_key:         ''
+		cur_import_modules:            map[string]string{}
+		is_module_ident_cache:         map[string]bool{}
+		not_local_var_cache:           map[string]bool{}
+		resolved_module_names:         map[string]string{}
+		cur_fn_mut_params:             map[string]bool{}
+		cached_env_scopes:             map[string]voidptr{}
+		selector_field_type_cache:     map[string]string{}
+		selector_field_type_miss:      map[string]bool{}
+		struct_field_lookup_cache:     map[string]string{}
+		struct_field_lookup_miss:      map[string]bool{}
+		struct_type_lookup_cache:      map[string]types.Struct{}
+		struct_type_lookup_miss:       map[string]bool{}
+		struct_decl_info_cache:        map[string]StructDeclInfo{}
+		struct_decl_info_miss:         map[string]bool{}
+		flat_struct_decl_exact:        g.flat_struct_decl_exact
+		flat_struct_decl_short_by_mod: g.flat_struct_decl_short_by_mod
+		flat_struct_decl_short:        g.flat_struct_decl_short
+		flat_struct_decl_indexed:      g.flat_struct_decl_indexed
+		alias_base_lookup_cache:       map[string]string{}
+		alias_base_lookup_miss:        map[string]bool{}
+		needed_interface_wrappers:     map[string]bool{}
+		needed_ierror_wrapper_bases:   map[string]bool{}
+		spawned_fns:                   map[string]bool{}
+		exported_const_seen:           map[string]bool{}
+		exported_const_symbols:        []ExportedConstSymbol{}
 	}
 }
 
@@ -3282,6 +3317,9 @@ pub fn (mut g Gen) merge_pass5_worker(w &Gen) {
 	}
 	for k, v in w.called_fn_names {
 		g.called_fn_names[k] = v
+		if v {
+			g.remember_called_specialized_name(k)
+		}
 	}
 	// Merge emitted_types so post-pass dedup (e.g. array_contains fallbacks) works
 	for k, v in w.emitted_types {
@@ -3405,7 +3443,7 @@ fn (g &Gen) if_expr_cursor_body_has_live_reload_function(node ast.Cursor) bool {
 }
 
 fn (g &Gen) active_comptime_if_cursor_has_live_reload_function(node ast.Cursor) bool {
-	if g.eval_comptime_cond(node.edge(0).expr()) {
+	if g.eval_comptime_cond_cursor(node.edge(0)) {
 		return g.if_expr_cursor_body_has_live_reload_function(node)
 	}
 	else_expr := node.edge(1)

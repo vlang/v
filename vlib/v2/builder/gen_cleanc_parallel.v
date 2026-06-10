@@ -103,7 +103,13 @@ fn (mut b Builder) gen_cleanc_parallel(mut gen cleanc.Gen) {
 			chunk_costs << 0
 		}
 		mut sorted_items := work_items.clone()
-		sorted_items.sort(a.cost > b.cost)
+		for i := 1; i < sorted_items.len; i++ {
+			mut j := i
+			for j > 0 && sorted_items[j - 1].cost < sorted_items[j].cost {
+				sorted_items[j - 1], sorted_items[j] = sorted_items[j], sorted_items[j - 1]
+				j--
+			}
+		}
 		for item in sorted_items {
 			mut target := 0
 			for ci := 1; ci < chunk_idx; ci++ {

@@ -787,7 +787,10 @@ fn active_file_imports_from_flat_with_options(flat &ast.FlatAst, ff ast.FlatFile
 	// chained-access bug. Cursor reads are plain int-array lookups, so the walk is
 	// cheap and arm64-safe; only the tiny comptime-condition sub-exprs are decoded
 	// (reusing the exact legacy evaluator) so semantics match the AST path.
-	mut imports := flat.read_file_imports(ff)
+	mut imports := ast.Cursor{
+		flat: unsafe { flat }
+		id:   ff.file_id
+	}.list_at(1).import_stmts()
 	options := ChannelScanOptions{
 		user_defines:          user_defines
 		explicit_user_defines: explicit_user_defines

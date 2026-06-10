@@ -265,34 +265,18 @@ pub fn (mut b Builder) build(files []string) {
 	sequential_transform := b.pref.no_parallel_transform || b.pref.ownership
 	use_native_flat_pipeline := b.should_use_native_flat_pipeline()
 	b.native_flat_pipeline_enabled = use_native_flat_pipeline
-	// Both paths can now consume flat directly: sequential and parallel
-	// transform materialize only the per-file compatibility shape needed by
-	// remaining legacy transformer helpers.
-	//
-	// Flat markused routes transform through flat-output wedges. Backends that
-	// can consume flat codegen use the direct flat-output path and drop the
-	// transformed []ast.File result; legacy backends keep the compatibility
-	// wedge that returns both flat and files.
-	transform_flat_only := b.should_keep_flat_for_codegen()
+	// The transform is flat-only for every backend: both the sequential and
+	// the parallel path emit cursor-native into a FlatBuilder and never
+	// materialize a transformed []ast.File. The legacy backends that still
+	// consume []ast.File (.v/eval) rehydrate once from the transformed flat
+	// at the codegen boundary below instead of dragging a compatibility
+	// path through the transform.
 	if sequential_transform {
-		if transform_flat_only {
-			b.flat = trans.transform_flat_to_flat_direct(&b.flat, b.files)
-			b.files = []ast.File{}
-		} else {
-			new_flat, files_out := trans.transform_files_to_flat_via_driver(&b.flat, b.files)
-			b.flat = new_flat
-			b.files = files_out
-		}
+		b.flat = trans.transform_flat_to_flat_direct(&b.flat, b.files)
 	} else {
-		// Parallel transform fans the per-file work across worker threads via
-		// the driver. Flat-codegen backends use worker-local FlatBuilders merged
-		// by append_flat and keep b.files empty; legacy consumers request the
-		// compatibility []ast.File result.
-		new_flat, files_out := b.transform_files_parallel_to_flat_via_driver(mut trans,
-			!transform_flat_only)
-		b.flat = new_flat
-		b.files = files_out
+		b.flat = b.transform_files_parallel_flat_direct(mut trans)
 	}
+	b.files = []ast.File{}
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)
 	print_rss('after transform')
@@ -319,6 +303,11 @@ pub fn (mut b Builder) build(files []string) {
 		print_rss('after markused')
 	}
 	if !b.should_keep_flat_for_codegen() {
+		// .v/eval still consume legacy []ast.File: rehydrate once from the
+		// transformed flat at the backend boundary, then drop the flat.
+		if (b.pref.backend == .v && !b.pref.skip_genv) || b.pref.backend == .eval {
+			b.files = b.flat.to_files()
+		}
 		b.flat = ast.FlatAst{}
 	}
 
@@ -982,7 +971,7 @@ fn (b &Builder) expand_type_modules_with_imports(modules []string) []string {
 				if b.flat_file_module_name(i) !in type_modules {
 					continue
 				}
-				for import_stmt in b.flat.read_file_imports(b.flat.files[i]) {
+				for import_stmt in b.flat.file_cursor(i).imports().import_stmts() {
 					import_module := import_module_name(import_stmt.name)
 					if import_module == '' || import_module in type_modules {
 						continue
@@ -3203,7 +3192,7 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 		for func in mod.funcs {
 			if func.name == dump_fn_name {
 				eprintln('=== POST-OPT SSA DUMP: ${func.name} ===')
-				eprintln('  params: ${func.params}')
+				eprintln('  params_len: ${func.params.len}')
 				for pi, pid in func.params {
 					pval := mod.values[pid]
 					eprintln('  param[${pi}]: v${pid} kind=${pval.kind} name=`${pval.name}` typ=${pval.typ}')

@@ -202,7 +202,13 @@ fn (w MachOTinyObjectWriter) text_symbol_ranges() []MachOTextRange {
 			syms << sym
 		}
 	}
-	syms.sort(a.value < b.value)
+	for i := 1; i < syms.len; i++ {
+		mut j := i
+		for j > 0 && syms[j - 1].value > syms[j].value {
+			syms[j - 1], syms[j] = syms[j], syms[j - 1]
+			j--
+		}
+	}
 	mut ranges := []MachOTextRange{}
 	for i, sym in syms {
 		mut end := u64(w.macho.text_data.len)

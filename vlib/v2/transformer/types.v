@@ -1208,6 +1208,25 @@ fn (t &Transformer) field_type_from_receiver_type(receiver_type types.Type, fiel
 		}
 		break
 	}
+	if field_name == 'flags' {
+		base := t.unwrap_alias_and_pointer_type(cur)
+		match base {
+			types.Struct {
+				if base.name in ['array', 'builtin__array'] {
+					return t.lookup_type('ArrayFlags')
+				}
+			}
+			types.Array {
+				return t.lookup_type('ArrayFlags')
+			}
+			else {}
+		}
+
+		c_name := t.type_to_c_name(base)
+		if c_name.starts_with('Array_') || c_name in ['array', 'builtin__array'] {
+			return t.lookup_type('ArrayFlags')
+		}
+	}
 	if cur is types.Struct {
 		if field_typ := t.lookup_struct_field_generic_decl_type(cur.name, field_name) {
 			return field_typ

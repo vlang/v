@@ -6,6 +6,7 @@ module cleanc
 
 import v2.ast
 import v2.pref as vpref
+import v2.token
 import v2.types
 import strings
 import os
@@ -74,6 +75,9 @@ fn is_nil_like_expr(expr ast.Expr) bool {
 		ast.CallOrCastExpr {
 			// CallOrCastExpr can be a type cast wrapping 0
 			return is_nil_like_expr(expr.expr)
+		}
+		ast.Type {
+			return expr is ast.NilType
 		}
 		ast.UnsafeExpr {
 			if expr.stmts.len == 0 {
@@ -958,6 +962,63 @@ fn (mut g Gen) fn_type_alias_name_for_base_expr(base ast.Expr) ?string {
 	return none
 }
 
+fn (mut g Gen) exact_fn_type_alias_cast_target_name(typ ast.Expr) ?string {
+	mut candidates := []string{}
+	base_name := typ.name()
+	if base_name != '' && !base_name.contains('.') && g.cur_module != '' && g.cur_module != 'main'
+		&& g.cur_module != 'builtin' && !base_name.contains('__') {
+		candidates << '${g.cur_module}__${base_name}'
+	}
+	base_c := g.expr_type_to_c(typ).trim_space()
+	if base_c != '' {
+		candidates << base_c
+		if base_c.ends_with('*') && !param_type_is_pointer_expr(typ) {
+			candidates << base_c[..base_c.len - 1].trim_space()
+		}
+	}
+	if base_name != '' {
+		if base_name.contains('.') {
+			candidates << base_name.replace('.', '__')
+		} else {
+			candidates << base_name
+		}
+	}
+	for candidate in candidates {
+		if g.c_type_is_fn_pointer_alias(candidate) {
+			return candidate
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) local_non_fn_alias_homonym_cast_target_name(typ ast.Expr, type_name string) ?string {
+	name := type_name.trim_space()
+	mut fn_alias_type := ''
+	if g.c_type_is_fn_pointer_alias(name) {
+		fn_alias_type = name
+	} else if name.len > 1 && name.ends_with('*') {
+		base_type := name[..name.len - 1].trim_space()
+		if g.c_type_is_fn_pointer_alias(base_type) {
+			fn_alias_type = base_type
+		}
+	}
+	if fn_alias_type == '' {
+		return none
+	}
+	base_name := typ.name()
+	if base_name == '' || base_name.contains('.') || base_name.contains('__') {
+		return none
+	}
+	if g.cur_module == '' || g.cur_module == 'main' || g.cur_module == 'builtin' {
+		return none
+	}
+	local_type := '${g.cur_module}__${base_name}'
+	if !g.is_type_name(local_type) || g.c_type_is_fn_pointer_alias(local_type) {
+		return none
+	}
+	return local_type
+}
+
 fn (mut g Gen) fn_type_alias_name_from_generic_name(name string) ?string {
 	mut base_name := name
 	if name.ends_with('_T') {
@@ -967,7 +1028,7 @@ fn (mut g Gen) fn_type_alias_name_from_generic_name(name string) ?string {
 	} else {
 		return none
 	}
-	if g.find_generic_fn_decl_by_base_name(base_name) != none {
+	if g.has_generic_fn_decl_by_base_name(base_name) {
 		return none
 	}
 	return g.fn_type_alias_name_for_base_expr(ast.Ident{
@@ -1104,7 +1165,7 @@ fn (mut g Gen) gen_call_or_cast_expr(node ast.CallOrCastExpr) {
 		return
 	}
 	if g.call_or_cast_lhs_is_type(node.lhs) {
-		g.gen_type_cast_expr(g.expr_type_to_c(node.lhs), node.expr)
+		g.gen_type_cast_expr(g.cast_target_type_to_c(node.lhs), node.expr)
 		return
 	}
 	g.call_expr(node.lhs, [node.expr])
@@ -1196,11 +1257,11 @@ fn (mut g Gen) gen_channel_receive_expr(node ast.PrefixExpr) bool {
 		elem_type = 'void*'
 	}
 	g.force_emit_fn_names['sync__Channel__try_pop_priv'] = true
-	g.called_fn_names['sync__Channel__try_pop_priv'] = true
+	g.mark_called_fn_name('sync__Channel__try_pop_priv')
 	g.tmp_counter++
 	if expr_type.starts_with('_option_') {
 		g.force_emit_fn_names['error'] = true
-		g.called_fn_names['error'] = true
+		g.mark_called_fn_name('error')
 		opt_tmp := '_chopt_${g.tmp_counter}'
 		val_tmp := '_chval_${g.tmp_counter}'
 		g.sb.write_string('({ ${expr_type} ${opt_tmp} = (${expr_type}){ .state = 2, .err = error((string){.str = "channel closed", .len = sizeof("channel closed") - 1, .is_lit = 1}) }; ${elem_type} ${val_tmp} = ${zero_value_for_type(elem_type)}; if (sync__Channel__try_pop_priv((sync__Channel*)')
@@ -1260,6 +1321,21 @@ fn (mut g Gen) gen_unwrapped_payload_expr(expr ast.Expr, wrapper_type string, pa
 fn (g &Gen) should_use_known_enum_field(enum_name string, field_name string) bool {
 	return enum_name != '' && !is_generic_placeholder_c_type_name(enum_name)
 		&& g.enum_has_field(enum_name, field_name)
+}
+
+fn (mut g Gen) gen_enum_shorthand_for_type(expr ast.Expr, expected_type string) bool {
+	enum_name := expected_type.trim_space().trim_right('*')
+	if enum_name == '' || enum_name == 'int' || is_generic_placeholder_c_type_name(enum_name)
+		|| !g.is_enum_type(enum_name) {
+		return false
+	}
+	if expr is ast.SelectorExpr {
+		if expr.lhs is ast.EmptyExpr && g.enum_has_field(enum_name, expr.rhs.name) {
+			g.sb.write_string(g.enum_member_c_name(enum_name, expr.rhs.name))
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) enum_type_from_expr(expr ast.Expr, fallback string) string {
@@ -1367,7 +1443,7 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 			elem_type = 'bool'
 		}
 		g.force_emit_fn_names['sync__Channel__try_push_priv'] = true
-		g.called_fn_names['sync__Channel__try_push_priv'] = true
+		g.mark_called_fn_name('sync__Channel__try_push_priv')
 		g.sb.write_string('sync__Channel__try_push_priv((sync__Channel*)')
 		g.expr(node.lhs)
 		g.sb.write_string(', &(${elem_type}[]){')
@@ -2518,6 +2594,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// &T(x) in unsafe contexts is used as a pointer cast in V stdlib code.
 			// Emit it as (T*)(x) so `*unsafe { &T(p) }` becomes `*((T*)p)`.
 			if node.op == .amp {
+				if is_nil_like_expr(node.expr) {
+					g.sb.write_string('NULL')
+					return
+				}
 				if node.expr is ast.CastExpr {
 					cast_expr := node.expr as ast.CastExpr
 					expr_type := g.get_expr_type(cast_expr.expr)
@@ -3535,7 +3615,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			panic('bug in v2 compiler: LockExpr should have been lowered in v2.transformer')
 		}
 		ast.Type {
-			g.sb.write_string('/* [TODO] Type */ 0')
+			if node is ast.NilType {
+				g.sb.write_string('NULL')
+			} else {
+				g.sb.write_string('/* [TODO] Type */ 0')
+			}
 		}
 		ast.AssocExpr {
 			panic('bug in v2 compiler: AssocExpr should have been lowered in v2.transformer')
@@ -3800,7 +3884,7 @@ fn (mut g Gen) try_emit_generic_fn_value(expr ast.Expr) bool {
 		g.sb.write_string(name)
 		return true
 	}
-	if _ := g.find_generic_fn_decl_by_base_name(name) {
+	if g.has_generic_fn_decl_by_base_name(name) {
 		g.sb.write_string(name)
 		return true
 	}
@@ -3875,6 +3959,26 @@ fn (mut g Gen) expr_is_explicit_value_of_type(expr ast.Expr, type_name string) b
 			return false
 		}
 	}
+}
+
+fn (mut g Gen) cast_target_type_to_c(typ ast.Expr) string {
+	mut type_name := g.expr_type_to_c(typ)
+	if !param_type_is_pointer_expr(typ) {
+		if local_type := g.local_non_fn_alias_homonym_cast_target_name(typ, type_name) {
+			type_name = local_type
+		} else if alias_name := g.exact_fn_type_alias_cast_target_name(typ) {
+			type_name = g.local_non_fn_alias_homonym_cast_target_name(typ, alias_name) or {
+				alias_name
+			}
+		}
+	}
+	if type_name.ends_with('*') && !param_type_is_pointer_expr(typ) {
+		base_type := type_name[..type_name.len - 1].trim_space()
+		if g.c_type_is_fn_pointer_alias(base_type) {
+			type_name = base_type
+		}
+	}
+	return type_name
 }
 
 fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
@@ -5433,6 +5537,80 @@ fn (g &Gen) eval_comptime_cond(cond ast.Expr) bool {
 	return false
 }
 
+fn (g &Gen) eval_comptime_cond_cursor(cond ast.Cursor) bool {
+	if !cond.is_valid() {
+		return false
+	}
+	match cond.kind() {
+		.expr_ident {
+			return g.eval_comptime_flag(cond.name())
+		}
+		.expr_comptime, .expr_paren {
+			return g.eval_comptime_cond_cursor(cond.edge(0))
+		}
+		.expr_prefix {
+			if unsafe { token.Token(int(cond.aux())) } == .not {
+				return !g.eval_comptime_cond_cursor(cond.edge(0))
+			}
+		}
+		.expr_infix {
+			op := unsafe { token.Token(int(cond.aux())) }
+			if op == .and {
+				return g.eval_comptime_cond_cursor(cond.edge(0))
+					&& g.eval_comptime_cond_cursor(cond.edge(1))
+			}
+			if op == .logical_or {
+				return g.eval_comptime_cond_cursor(cond.edge(0))
+					|| g.eval_comptime_cond_cursor(cond.edge(1))
+			}
+			if op == .key_is || op == .not_is {
+				lhs := cond.edge(0)
+				rhs := cond.edge(1)
+				if lhs.kind() == .expr_selector && lhs.edge(0).kind() == .expr_ident
+					&& lhs.edge(0).name() == g.comptime_method_var
+					&& lhs.edge(1).name() == 'return_type' {
+					result := g.ast_expr_type_matches_cursor(g.comptime_method_return_type, rhs)
+					return if op == .key_is { result } else { !result }
+				}
+				resolved := g.resolve_comptime_is_lhs_cursor(lhs)
+				if resolved.matched {
+					result := g.comptime_type_matches_cursor(resolved.typ, rhs)
+					return if op == .key_is { result } else { !result }
+				}
+			}
+			if op == .eq || op == .ne {
+				lhs := cond.edge(0)
+				rhs := cond.edge(1)
+				if lhs.kind() == .expr_selector && lhs.edge(0).kind() == .expr_ident {
+					lhs_name := lhs.edge(0).name()
+					field_name := lhs.edge(1).name()
+					if lhs_name == g.comptime_field_var && field_name == 'name'
+						&& (rhs.kind() == .expr_basic_literal || rhs.kind() == .expr_string) {
+						rhs_name := strip_literal_quotes(rhs.name())
+						matched := g.comptime_field_name == rhs_name
+						return if op == .eq { matched } else { !matched }
+					}
+					if lhs_name == g.comptime_method_var && field_name == 'name'
+						&& (rhs.kind() == .expr_basic_literal || rhs.kind() == .expr_string) {
+						rhs_name := strip_literal_quotes(rhs.name())
+						matched := g.comptime_method_name == rhs_name
+						return if op == .eq { matched } else { !matched }
+					}
+				}
+			}
+		}
+		.expr_postfix {
+			if unsafe { token.Token(int(cond.aux())) } == .question
+				&& cond.edge(0).kind() == .expr_ident {
+				return vpref.comptime_optional_flag_value(g.pref, cond.edge(0).name())
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
 struct ComptimeResolvedType {
 	matched bool
 	typ     types.Type = types.Struct{}
@@ -5488,6 +5666,48 @@ fn (g &Gen) resolve_comptime_is_lhs(lhs ast.Expr) ComptimeResolvedType {
 	return ComptimeResolvedType{}
 }
 
+fn (g &Gen) resolve_comptime_is_lhs_cursor(lhs ast.Cursor) ComptimeResolvedType {
+	if !lhs.is_valid() {
+		return ComptimeResolvedType{}
+	}
+	if lhs.kind() == .expr_ident {
+		if concrete := g.active_generic_types[lhs.name()] {
+			return ComptimeResolvedType{
+				matched: true
+				typ:     concrete
+			}
+		}
+	}
+	if lhs.kind() == .expr_selector && lhs.edge(0).kind() == .expr_ident {
+		lhs_name := lhs.edge(0).name()
+		rhs_name := lhs.edge(1).name()
+		if concrete := g.active_generic_types[lhs_name] {
+			if rhs_name == 'unaliased_typ' {
+				return ComptimeResolvedType{
+					matched: true
+					typ:     comptime_unalias_type(concrete)
+				}
+			}
+			return ComptimeResolvedType{
+				matched: true
+				typ:     concrete
+			}
+		}
+		if lhs_name == g.comptime_field_var && (rhs_name == 'typ' || rhs_name == 'unaliased_typ') {
+			field_type := g.comptime_field_raw_type
+			return ComptimeResolvedType{
+				matched: true
+				typ:     if rhs_name == 'unaliased_typ' {
+					comptime_unalias_type(field_type)
+				} else {
+					field_type
+				}
+			}
+		}
+	}
+	return ComptimeResolvedType{}
+}
+
 // ast_expr_type_matches compares two AST type expressions by their normalized name.
 // Used for `$if method.return_type is X` where both sides are ast.Exprs.
 fn (g &Gen) ast_expr_type_matches(lhs ast.Expr, rhs ast.Expr) bool {
@@ -5514,6 +5734,27 @@ fn (g &Gen) ast_expr_type_matches(lhs ast.Expr, rhs ast.Expr) bool {
 	return false
 }
 
+fn (g &Gen) ast_expr_type_matches_cursor(lhs ast.Expr, rhs ast.Cursor) bool {
+	lhs_name := ast_type_expr_name(lhs)
+	rhs_name := cursor_type_expr_name(rhs)
+	if lhs_name == '' || rhs_name == '' {
+		return false
+	}
+	if lhs_name == rhs_name {
+		return true
+	}
+	if lhs_name.ends_with('.' + rhs_name) || rhs_name.ends_with('.' + lhs_name) {
+		return true
+	}
+	if (lhs_name == 'byte' && rhs_name == 'u8') || (lhs_name == 'u8' && rhs_name == 'byte') {
+		return true
+	}
+	if (lhs_name == 'int' && rhs_name == 'i32') || (lhs_name == 'i32' && rhs_name == 'int') {
+		return true
+	}
+	return false
+}
+
 // ast_type_expr_name extracts a normalized name from an AST type expression.
 fn ast_type_expr_name(e ast.Expr) string {
 	if e is ast.Ident {
@@ -5530,6 +5771,33 @@ fn ast_type_expr_name(e ast.Expr) string {
 		return 'void'
 	}
 	return ''
+}
+
+fn cursor_type_expr_name(e ast.Cursor) string {
+	if !e.is_valid() {
+		return ''
+	}
+	match e.kind() {
+		.expr_ident {
+			return e.name()
+		}
+		.expr_selector {
+			lhs_name := cursor_type_expr_name(e.edge(0))
+			if lhs_name == '' {
+				return e.edge(1).name()
+			}
+			return lhs_name + '.' + e.edge(1).name()
+		}
+		.expr_empty {
+			return 'void'
+		}
+		.expr_comptime {
+			return cursor_type_expr_name(e.edge(0))
+		}
+		else {
+			return ''
+		}
+	}
 }
 
 // comptime_unalias_type strips Alias layers from a type.
@@ -5567,6 +5835,48 @@ fn (g &Gen) comptime_type_matches(typ types.Type, rhs ast.Expr) bool {
 		return false
 	}
 	return false
+}
+
+fn (g &Gen) comptime_type_matches_cursor(typ types.Type, rhs ast.Cursor) bool {
+	if !rhs.is_valid() {
+		return false
+	}
+	match rhs.kind() {
+		.expr_ident {
+			return g.comptime_matches_type_name(typ, rhs.name())
+		}
+		.expr_selector {
+			return g.comptime_matches_selector_type_cursor(typ, rhs)
+		}
+		.expr_comptime {
+			inner := rhs.edge(0)
+			if inner.kind() == .expr_ident {
+				return g.comptime_matches_keyword(typ, inner.name())
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (g &Gen) comptime_matches_selector_type_cursor(typ types.Type, selector ast.Cursor) bool {
+	if selector.kind() != .expr_selector || selector.edge(0).kind() != .expr_ident {
+		return false
+	}
+	mod_name := selector.edge(0).name()
+	type_name := selector.edge(1).name()
+	dot_name := '${mod_name}.${type_name}'
+	c_name := '${mod_name}__${type_name}'
+	resolved_name := typ.name()
+	if resolved_name == dot_name || resolved_name == c_name {
+		return true
+	}
+	resolved_c_name := g.types_type_to_c(typ)
+	if mod_name == g.cur_module && (resolved_name == type_name || resolved_c_name == type_name) {
+		return true
+	}
+	return resolved_c_name == c_name
 }
 
 fn (g &Gen) comptime_matches_selector_type_name(typ types.Type, selector ast.SelectorExpr) bool {
@@ -6382,6 +6692,9 @@ fn (g &Gen) cast_target_is_aggregate_value(type_name string) bool {
 		|| g.is_enum_type(name) {
 		return false
 	}
+	if g.c_type_is_fn_pointer_alias(name) {
+		return false
+	}
 	return name !in ['void', 'void*', 'voidptr', 'char*', 'charptr', 'byteptr']
 }
 
@@ -6399,7 +6712,7 @@ fn same_aggregate_cast_type(expr_type string, type_name string) bool {
 }
 
 fn (mut g Gen) gen_cast_expr(node ast.CastExpr) {
-	mut type_name := g.expr_type_to_c(node.typ)
+	mut type_name := g.cast_target_type_to_c(node.typ)
 	if resolved_type := g.resolved_sum_data_cast_type(node) {
 		type_name = resolved_type
 	}

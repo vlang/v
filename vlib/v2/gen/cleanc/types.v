@@ -54,6 +54,22 @@ fn (g &Gen) result_value_c_type(result_type string) string {
 	return g.option_result_payload_c_type(g.result_value_type(result_type))
 }
 
+fn (g &Gen) c_type_is_fn_pointer_alias(type_name string) bool {
+	name := type_name.trim_space()
+	if name == '' {
+		return false
+	}
+	if name in g.fn_type_aliases {
+		return true
+	}
+	if raw_type := g.lookup_type_by_c_name_const(name) {
+		if raw_type is types.Alias && raw_type.base_type is types.FnType {
+			return true
+		}
+	}
+	return false
+}
+
 fn option_value_type(option_type string) string {
 	if !option_type.starts_with('_option_') {
 		return ''
@@ -2551,6 +2567,20 @@ fn embedded_owner_field_name(type_name string) string {
 	return base
 }
 
+fn flat_struct_decl_c_name(module_name string, decl_name string) string {
+	if decl_name.contains('__') {
+		return decl_name
+	}
+	if module_name != '' && module_name != 'main' && module_name != 'builtin' {
+		return '${module_name}__${decl_name}'
+	}
+	return decl_name
+}
+
+fn flat_struct_short_key(module_name string, short_name string) string {
+	return '${module_name}\x01${short_name}'
+}
+
 fn (mut g Gen) lookup_embedded_field_info_in_struct(st types.Struct, field_name string) ?EmbeddedFieldLookupInfo {
 	for embedded in st.embedded {
 		embedded_c_type := g.types_type_to_c(embedded)
@@ -2579,37 +2609,86 @@ fn (mut g Gen) lookup_embedded_field_info_in_struct(st types.Struct, field_name 
 	return none
 }
 
-fn (mut g Gen) find_struct_decl_info_in_flat(c_name string, saved_module string, current_module_only bool, exact bool) ?StructDeclInfo {
-	for i in 0 .. g.flat.files.len {
-		fc := g.flat.file_cursor(i)
-		g.set_file_cursor_module(fc)
-		if current_module_only && g.cur_module != saved_module {
-			continue
-		}
+fn (mut g Gen) ensure_flat_struct_decl_index() {
+	if g.flat_struct_decl_indexed || !g.has_flat() {
+		return
+	}
+	g.flat_struct_decl_exact = map[string]FlatStructDeclInfo{}
+	g.flat_struct_decl_short_by_mod = map[string]FlatStructDeclInfo{}
+	g.flat_struct_decl_short = map[string]FlatStructDeclInfo{}
+	for file_idx in 0 .. g.flat.files.len {
+		fc := g.flat.file_cursor(file_idx)
+		module_name := flat_file_module_name(fc)
+		file_name := fc.name()
 		stmts := fc.stmts()
-		for j in 0 .. stmts.len() {
-			stmt := stmts.at(j)
+		for stmt_idx in 0 .. stmts.len() {
+			stmt := stmts.at(stmt_idx)
 			if stmt.kind() != .stmt_struct_decl {
 				continue
 			}
-			decl := stmt.struct_decl()
-			if decl.language != .v {
+			language := unsafe { ast.Language(int(stmt.aux())) }
+			if language != .v {
 				continue
 			}
-			struct_name := g.get_struct_name(decl)
-			matches := if exact {
-				struct_name == c_name
-			} else {
-				short_type_name(struct_name) == c_name
+			decl_name := stmt.name()
+			c_name := flat_struct_decl_c_name(module_name, decl_name)
+			short_name := short_type_name(c_name)
+			info := FlatStructDeclInfo{
+				file_idx:  file_idx
+				stmt_idx:  stmt_idx
+				mod:       module_name
+				file_name: file_name
 			}
-			if matches {
-				return StructDeclInfo{
-					decl:      decl
-					mod:       g.cur_module
-					file_name: fc.name()
-				}
+			if c_name !in g.flat_struct_decl_exact {
+				g.flat_struct_decl_exact[c_name] = info
+			}
+			mod_key := flat_struct_short_key(module_name, short_name)
+			if mod_key !in g.flat_struct_decl_short_by_mod {
+				g.flat_struct_decl_short_by_mod[mod_key] = info
+			}
+			if short_name !in g.flat_struct_decl_short {
+				g.flat_struct_decl_short[short_name] = info
 			}
 		}
+	}
+	g.flat_struct_decl_indexed = true
+}
+
+fn (g &Gen) struct_decl_info_from_flat_info(info FlatStructDeclInfo) ?StructDeclInfo {
+	if !g.has_flat() || info.file_idx < 0 || info.file_idx >= g.flat.files.len {
+		return none
+	}
+	stmts := g.flat.file_cursor(info.file_idx).stmts()
+	if info.stmt_idx < 0 || info.stmt_idx >= stmts.len() {
+		return none
+	}
+	stmt := stmts.at(info.stmt_idx)
+	if stmt.kind() != .stmt_struct_decl {
+		return none
+	}
+	return StructDeclInfo{
+		decl:      stmt.struct_decl()
+		mod:       info.mod
+		file_name: info.file_name
+	}
+}
+
+fn (mut g Gen) find_struct_decl_info_in_flat(c_name string, saved_module string, current_module_only bool, exact bool) ?StructDeclInfo {
+	g.ensure_flat_struct_decl_index()
+	if exact {
+		if info := g.flat_struct_decl_exact[c_name] {
+			return g.struct_decl_info_from_flat_info(info)
+		}
+		return none
+	}
+	if current_module_only {
+		if info := g.flat_struct_decl_short_by_mod[flat_struct_short_key(saved_module, c_name)] {
+			return g.struct_decl_info_from_flat_info(info)
+		}
+		return none
+	}
+	if info := g.flat_struct_decl_short[c_name] {
+		return g.struct_decl_info_from_flat_info(info)
 	}
 	return none
 }
@@ -3140,6 +3219,22 @@ fn (g &Gen) get_expr_type_from_env(e ast.Expr) ?string {
 	return none
 }
 
+fn (g &Gen) get_expr_cursor_type_from_env(e ast.Cursor) ?string {
+	if g.env == unsafe { nil } || !e.is_valid() {
+		return none
+	}
+	pos := e.pos()
+	if pos.id != 0 {
+		if typ := g.env.get_expr_type(pos.id) {
+			if typ is types.Alias {
+				return none
+			}
+			return g.types_type_to_c(typ)
+		}
+	}
+	return none
+}
+
 // get_env_c_type retrieves the C type string for an expression from the Environment
 // without filtering aliases.  This is safe for selector field types where the alias
 // (e.g. strings__Builder, ssa__TypeID) is the correct type for the field.
@@ -3410,6 +3505,11 @@ fn (mut g Gen) builtin_string_field_lhs_type(lhs ast.Expr, field_name string) st
 
 fn is_float_like_c_type_name(typ string) bool {
 	return typ in ['f32', 'f64', 'float_literal']
+}
+
+fn is_numeric_literal_c_type_name(typ string) bool {
+	return typ in ['int', 'int_literal', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
+		'usize', 'isize', 'byte', 'rune', 'f32', 'f64', 'float_literal']
 }
 
 fn promote_numeric_c_types(lhs string, rhs string) string {
@@ -3713,7 +3813,17 @@ fn (mut g Gen) get_expr_type_from_env_checked(node ast.Expr, t string) ?string {
 	if checked := g.get_expr_type_from_env_call_checked(node) {
 		return checked
 	}
-	if t == 'bool' && node is ast.BasicLiteral && node.kind == .number {
+	if node is ast.BasicLiteral && node.kind == .number {
+		if t == 'bool' {
+			return 'int'
+		}
+		if is_numeric_literal_c_type_name(t) {
+			return t
+		}
+		numeric_type := g.infer_numeric_expr_type(node)
+		if numeric_type != '' {
+			return numeric_type
+		}
 		return 'int'
 	}
 	match node {
@@ -5575,20 +5685,8 @@ fn (mut g Gen) find_struct_node_by_c_name(c_name string) ?ast.StructDecl {
 		g.cur_file_name = prev_file_name
 	}
 	if g.has_flat() {
-		for i in 0 .. g.flat.files.len {
-			fc := g.flat.file_cursor(i)
-			g.set_file_cursor_module(fc)
-			stmts := fc.stmts()
-			for j in 0 .. stmts.len() {
-				stmt := stmts.at(j)
-				if stmt.kind() != .stmt_struct_decl {
-					continue
-				}
-				decl := stmt.struct_decl()
-				if g.get_struct_name(decl) == c_name {
-					return decl
-				}
-			}
+		if info := g.find_struct_decl_info_by_c_name(c_name) {
+			return info.decl
 		}
 		return none
 	}
@@ -5606,22 +5704,9 @@ fn (mut g Gen) find_struct_node_by_c_name(c_name string) ?ast.StructDecl {
 // find_generic_struct_node finds the AST StructDecl for a given C struct name.
 fn (mut g Gen) find_generic_struct_node(c_name string) ?ast.StructDecl {
 	if g.has_flat() {
-		for i in 0 .. g.flat.files.len {
-			fc := g.flat.file_cursor(i)
-			g.set_file_cursor_module(fc)
-			stmts := fc.stmts()
-			for j in 0 .. stmts.len() {
-				stmt := stmts.at(j)
-				if stmt.kind() != .stmt_struct_decl {
-					continue
-				}
-				decl := stmt.struct_decl()
-				if decl.generic_params.len > 0 {
-					name := g.get_struct_name(decl)
-					if name == c_name {
-						return decl
-					}
-				}
+		if info := g.find_struct_decl_info_by_c_name(c_name) {
+			if info.decl.generic_params.len > 0 {
+				return info.decl
 			}
 		}
 		return none

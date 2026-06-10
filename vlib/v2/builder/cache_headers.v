@@ -1630,7 +1630,13 @@ fn (b &Builder) import_modules_for_cached_modules(module_names []string) []Cache
 			}
 		}
 	}
-	imports.sort(a.import_path < b.import_path)
+	for i := 1; i < imports.len; i++ {
+		mut j := i
+		for j > 0 && imports[j - 1].import_path > imports[j].import_path {
+			imports[j - 1], imports[j] = imports[j], imports[j - 1]
+			j--
+		}
+	}
 	return imports
 }
 

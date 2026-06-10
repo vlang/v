@@ -372,6 +372,21 @@ pub fn new_flat_builder_with_capacity(nodes_cap int, edges_cap int, strings_cap 
 	}
 }
 
+// take_flat moves the built flat graph out and releases transient builder-only
+// indexes. The returned FlatAst keeps owning its arena arrays.
+pub fn (mut b FlatBuilder) take_flat() FlatAst {
+	flat := b.flat
+	unsafe {
+		b.string_ids.free()
+	}
+	b.flat = FlatAst{}
+	b.string_ids = map[string]int{}
+	b.empty_list_id = invalid_flat_node_id
+	b.empty_expr_id = invalid_flat_node_id
+	b.empty_stmt_id = invalid_flat_node_id
+	return flat
+}
+
 // append_file converts one legacy File into flat nodes and registers it as a
 // root. Designed for streaming use: the caller can drop the legacy `file`
 // immediately after this returns, capping peak memory at ~one file's legacy
@@ -404,6 +419,41 @@ pub fn (mut b FlatBuilder) append_file_with_stmt_ids(file File, stmt_ids []FlatN
 		name_idx:       b.intern(file.name)
 		mod_idx:        b.intern(file.mod)
 		selector_names: file.selector_names
+	}
+	return file_id
+}
+
+// append_file_with_flat_attrs_and_stmt_ids registers a file root whose
+// attributes and stmt list were already emitted into this builder. Imports are
+// still accepted as legacy values because import handling is not transformed.
+pub fn (mut b FlatBuilder) append_file_with_flat_attrs_and_stmt_ids(name string, mod string, selector_names map[int]string, attrs_id FlatNodeId, imports []ImportStmt, stmt_ids []FlatNodeId) FlatNodeId {
+	mut edges := []FlatEdge{}
+	edges = b.push_edge(edges, attrs_id)
+	edges = b.push_edge(edges, b.make_list_imports(imports))
+	edges = b.push_edge(edges, b.make_list_from_stmt_ids(stmt_ids))
+	file_id := b.emit(.file, token.Pos{}, b.intern(name), b.intern(mod), 0, 0, edges)
+	b.flat.files << FlatFile{
+		file_id:        file_id
+		name_idx:       b.intern(name)
+		mod_idx:        b.intern(mod)
+		selector_names: selector_names
+	}
+	return file_id
+}
+
+// append_file_with_flat_lists_and_stmt_ids registers a file root whose
+// attributes, imports, and stmt list were already emitted into this builder.
+pub fn (mut b FlatBuilder) append_file_with_flat_lists_and_stmt_ids(name string, mod string, selector_names map[int]string, attrs_id FlatNodeId, imports_id FlatNodeId, stmt_ids []FlatNodeId) FlatNodeId {
+	mut edges := []FlatEdge{}
+	edges = b.push_edge(edges, attrs_id)
+	edges = b.push_edge(edges, imports_id)
+	edges = b.push_edge(edges, b.make_list_from_stmt_ids(stmt_ids))
+	file_id := b.emit(.file, token.Pos{}, b.intern(name), b.intern(mod), 0, 0, edges)
+	b.flat.files << FlatFile{
+		file_id:        file_id
+		name_idx:       b.intern(name)
+		mod_idx:        b.intern(mod)
+		selector_names: selector_names
 	}
 	return file_id
 }
@@ -1017,6 +1067,28 @@ pub fn (mut b FlatBuilder) emit_for_stmt_by_ids(init_id FlatNodeId, cond_id Flat
 	return b.emit_simple(.stmt_for, token.Pos{}, edges)
 }
 
+// emit_for_in_stmt_by_ids emits a stmt_for_in node from already-flat key,
+// value, and iterable expression FlatNodeIds. Mirrors add_stmt(ForInStmt).
+pub fn (mut b FlatBuilder) emit_for_in_stmt_by_ids(key_id FlatNodeId, value_id FlatNodeId, expr_id FlatNodeId) FlatNodeId {
+	return b.emit_simple(.stmt_for_in, token.Pos{}, [
+		FlatEdge{
+			child_id: key_id
+		},
+		FlatEdge{
+			child_id: value_id
+		},
+		FlatEdge{
+			child_id: expr_id
+		},
+	])
+}
+
+// emit_flow_control_stmt emits a stmt_flow_control node. Mirrors
+// add_stmt(FlowControlStmt): label in name_id, op in aux, no edges.
+pub fn (mut b FlatBuilder) emit_flow_control_stmt(op token.Token, label string) FlatNodeId {
+	return b.emit(.stmt_flow_control, token.Pos{}, b.intern(label), -1, u16(int(op)), 0, [])
+}
+
 // emit_map_init_expr_by_ids emits an expr_map_init node from already-flat
 // type FlatNodeId and parallel slices of key/value expression FlatNodeIds
 // (with `key_ids.len == val_ids.len`). Mirrors the add_expr(MapInitExpr)
@@ -1101,6 +1173,19 @@ pub fn (mut b FlatBuilder) emit_infix_expr_by_ids(op token.Token, lhs_id FlatNod
 	])
 }
 
+// emit_keyword_operator_by_ids emits an expr_keyword_operator node from
+// already-flat operand expression FlatNodeIds. Mirrors add_expr(KeywordOperator)
+// exactly: aux1=-1, aux2=-1, meta=u16(op), edges = exprs.
+pub fn (mut b FlatBuilder) emit_keyword_operator_by_ids(op token.Token, expr_ids []FlatNodeId, pos token.Pos) FlatNodeId {
+	mut edges := []FlatEdge{cap: expr_ids.len}
+	for id in expr_ids {
+		edges << FlatEdge{
+			child_id: id
+		}
+	}
+	return b.emit(.expr_keyword_operator, pos, -1, -1, u16(int(op)), 0, edges)
+}
+
 // emit_array_init_expr_by_ids emits an expr_array_init node from already-flat
 // type/init/cap/len/update expression FlatNodeIds and a slice of already-flat
 // element expression FlatNodeIds. Mirrors the add_expr(ArrayInitExpr)
@@ -1131,6 +1216,16 @@ pub fn (mut b FlatBuilder) emit_array_init_expr_by_ids(typ_id FlatNodeId, init_i
 		}
 	}
 	return b.emit_simple(.expr_array_init, pos, edges)
+}
+
+// emit_array_type_by_elem_id emits a typ_array node from an already-flat
+// element type expression FlatNodeId. Mirrors add_type(ArrayType).
+pub fn (mut b FlatBuilder) emit_array_type_by_elem_id(elem_type_id FlatNodeId) FlatNodeId {
+	return b.emit_simple(.typ_array, token.Pos{}, [
+		FlatEdge{
+			child_id: elem_type_id
+		},
+	])
 }
 
 // emit_assign_stmt_by_ids emits a stmt_assign node from already-flat
@@ -1543,7 +1638,9 @@ fn (mut b FlatBuilder) emit_simple(kind FlatNodeKind, pos token.Pos, edges []Fla
 }
 
 fn (mut b FlatBuilder) push_edge(edges []FlatEdge, child FlatNodeId) []FlatEdge {
-	mut updated := edges.clone()
+	// Append-and-reassign pattern (callers always do `edges = b.push_edge(edges, ...)`),
+	// so skipping the defensive clone is safe and avoids one copy per edge.
+	mut updated := unsafe { edges }
 	updated << FlatEdge{
 		child_id: child
 	}

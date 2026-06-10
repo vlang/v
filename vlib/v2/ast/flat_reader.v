@@ -118,29 +118,6 @@ fn (r &FlatReader) read_file(ff FlatFile) File {
 	}
 }
 
-// read_file_imports rehydrates only the static `imports` list of a file
-// without materializing the full File. Consumers that still need to walk
-// comptime-conditional imports should walk FileCursor.stmts() directly.
-pub fn (flat &FlatAst) read_file_imports(ff FlatFile) []ImportStmt {
-	r := FlatReader{
-		flat: unsafe { flat }
-	}
-	n := r.node(ff.file_id)
-	imports_id := r.edge(n, 1)
-	mut imports := []ImportStmt{}
-	import_children := r.list_children(imports_id)
-	for cid in import_children {
-		c := Cursor{
-			flat: r.flat
-			id:   cid
-		}
-		if c.kind() == .stmt_import {
-			imports << c.import_stmt()
-		}
-	}
-	return imports
-}
-
 // decode_stmt rehydrates a single legacy ast.Stmt from a FlatNodeId. Useful
 // for cursor-driven consumers that walk the flat graph via Cursor and only
 // need to materialize a typed Stmt for the specific decls they hand to

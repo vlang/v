@@ -69,6 +69,7 @@ pub fn (mut g Gen) add_called_fn_names(names []string) {
 fn (mut g Gen) mark_called_fn_name(name string) {
 	if name.len > 0 {
 		g.called_fn_names[name] = true
+		g.remember_called_specialized_name(name)
 	}
 }
 
@@ -489,7 +490,7 @@ fn (mut g Gen) collect_fn_signature_from_cursor(stmt ast.Cursor) {
 	decl := stmt.fn_decl_signature()
 	body_len := stmt.list_at(3).len()
 	if body_len > 0 && g.fn_signature_collection_needs_body(decl) {
-		g.collect_fn_signature_from_decl(stmt.fn_decl(), body_len)
+		g.collect_fn_signature_from_body_source(decl, body_len, stmt, true)
 		return
 	}
 	g.collect_fn_signature_from_decl(decl, body_len)
@@ -510,6 +511,18 @@ fn (mut g Gen) fn_signature_collection_needs_body(decl ast.FnDecl) bool {
 }
 
 fn (mut g Gen) collect_fn_signature_from_decl(decl ast.FnDecl, body_len int) {
+	g.collect_fn_signature_from_body_source(decl, body_len, ast.Cursor{}, false)
+}
+
+fn (mut g Gen) scan_fn_body_for_generic_types_from_source(decl ast.FnDecl, body_cursor ast.Cursor, use_cursor bool, spec_name string) {
+	if use_cursor {
+		g.scan_fn_body_cursor_for_generic_types(body_cursor, decl, spec_name)
+	} else {
+		g.scan_fn_body_for_generic_types(decl, spec_name)
+	}
+}
+
+fn (mut g Gen) collect_fn_signature_from_body_source(decl ast.FnDecl, body_len int, body_cursor ast.Cursor, use_cursor bool) {
 	if !g.should_emit_fn_decl_cached(g.cur_module, decl) {
 		return
 	}
@@ -555,7 +568,7 @@ fn (mut g Gen) collect_fn_signature_from_decl(decl ast.FnDecl, body_len int) {
 			// Function-pointer fields can reference another generic function value before that
 			// function's signature is collected (veb.run_new assigns parallel_request_handler[A, X]).
 			g.seed_fn_scan_runtime_types(decl, spec.name)
-			g.scan_fn_body_for_generic_types(decl, spec.name)
+			g.scan_fn_body_for_generic_types_from_source(decl, body_cursor, use_cursor, spec.name)
 			g.register_fn_signature(decl, spec.name)
 		}
 		g.active_generic_types = prev_generic_types.clone()
@@ -609,7 +622,7 @@ fn (mut g Gen) collect_fn_signature_from_decl(decl ast.FnDecl, body_len int) {
 					}
 					g.seed_fn_scan_runtime_types(decl, gfn)
 					g.generic_call_spec_scan_only = true
-					g.scan_fn_body_for_generic_types(decl, gfn)
+					g.scan_fn_body_for_generic_types_from_source(decl, body_cursor, use_cursor, gfn)
 					g.generic_call_spec_scan_only = prev_generic_call_spec_scan_only
 					g.register_fn_signature(decl, gfn)
 				}
@@ -661,7 +674,7 @@ fn (mut g Gen) collect_fn_signature_from_decl(decl ast.FnDecl, body_len int) {
 				}
 				g.seed_fn_scan_runtime_types(decl, gfn)
 				g.generic_call_spec_scan_only = true
-				g.scan_fn_body_for_generic_types(decl, gfn)
+				g.scan_fn_body_for_generic_types_from_source(decl, body_cursor, use_cursor, gfn)
 				g.generic_call_spec_scan_only = prev_generic_call_spec_scan_only
 				g.register_fn_signature(decl, gfn)
 			}
@@ -876,6 +889,19 @@ fn specialized_receiver_method_key(receiver_type string, method_name string) str
 	return '${receiver_type}|${method_name}'
 }
 
+fn (mut g Gen) ensure_specialized_receiver_method_index() {
+	if g.specialized_receiver_method_indexed {
+		return
+	}
+	for fn_name, _ in g.fn_return_types {
+		g.remember_specialized_fn_base(fn_name)
+	}
+	for fn_name, _ in g.fn_param_is_ptr {
+		g.remember_specialized_fn_base(fn_name)
+	}
+	g.specialized_receiver_method_indexed = true
+}
+
 fn (mut g Gen) needs_implicit_veb_ctx_param(node &ast.FnDecl, fn_name string) bool {
 	if node.receiver.name == 'ctx' {
 		return false
@@ -1006,8 +1032,7 @@ fn (g &Gen) generic_fn_param_names(node ast.FnDecl) []string {
 }
 
 fn (g &Gen) should_skip_backend_generic_fn(node ast.FnDecl) bool {
-	_ = node
-	return false
+	return g.generic_fn_param_names(node).len > 0 || receiver_generic_param_names(node).len > 0
 }
 
 // receiver_generic_param_names collects generic placeholder names from a
@@ -1483,6 +1508,113 @@ fn expr_has_comptime_stmt(expr ast.Expr) bool {
 	return false
 }
 
+fn fn_cursor_has_comptime_stmt(decl ast.Cursor) bool {
+	return stmt_cursor_list_has_comptime_stmt(decl.list_at(3))
+}
+
+fn stmt_cursor_list_has_comptime_stmt(stmts ast.CursorList) bool {
+	for i in 0 .. stmts.len() {
+		if stmt_cursor_has_comptime_stmt(stmts.at(i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn stmt_cursor_has_comptime_stmt(stmt ast.Cursor) bool {
+	if !stmt.is_valid() {
+		return false
+	}
+	match stmt.kind() {
+		.stmt_comptime {
+			return true
+		}
+		.stmt_block, .stmt_defer {
+			for i in 0 .. stmt.edge_count() {
+				if stmt_cursor_has_comptime_stmt(stmt.edge(i)) {
+					return true
+				}
+			}
+		}
+		.stmt_for {
+			return stmt_cursor_list_has_comptime_stmt(stmt.for_body_list())
+		}
+		.stmt_expr {
+			return expr_cursor_has_comptime_stmt(stmt.edge(0))
+		}
+		.stmt_assign {
+			lhs_len := stmt.extra_int()
+			for i in lhs_len .. stmt.edge_count() {
+				if expr_cursor_has_comptime_stmt(stmt.edge(i)) {
+					return true
+				}
+			}
+		}
+		.stmt_return {
+			for i in 0 .. stmt.edge_count() {
+				if expr_cursor_has_comptime_stmt(stmt.edge(i)) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn expr_cursor_has_comptime_stmt(expr ast.Cursor) bool {
+	if !expr.is_valid() {
+		return false
+	}
+	match expr.kind() {
+		.expr_comptime {
+			return true
+		}
+		.expr_if {
+			if expr_cursor_has_comptime_stmt(expr.edge(0)) {
+				return true
+			}
+			for i in 2 .. expr.edge_count() {
+				if stmt_cursor_has_comptime_stmt(expr.edge(i)) {
+					return true
+				}
+			}
+			return expr_cursor_has_comptime_stmt(expr.edge(1))
+		}
+		.expr_match {
+			if expr_cursor_has_comptime_stmt(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				branch := expr.edge(i)
+				conds := branch.list_at(0)
+				for ci in 0 .. conds.len() {
+					if expr_cursor_has_comptime_stmt(conds.at(ci)) {
+						return true
+					}
+				}
+				if stmt_cursor_list_has_comptime_stmt(branch.list_at(1)) {
+					return true
+				}
+			}
+		}
+		.expr_or {
+			if expr_cursor_has_comptime_stmt(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if stmt_cursor_has_comptime_stmt(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
 fn (mut g Gen) fn_body_has_generic_call(decl ast.FnDecl) bool {
 	for stmt in decl.stmts {
 		if g.stmt_has_generic_call(stmt) {
@@ -1655,6 +1787,182 @@ fn (mut g Gen) expr_has_generic_call(expr ast.Expr) bool {
 		ast.UnsafeExpr {
 			for sub in expr.stmts {
 				if g.stmt_has_generic_call(sub) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (mut g Gen) fn_cursor_body_has_generic_call(decl ast.Cursor) bool {
+	body := decl.list_at(3)
+	for i in 0 .. body.len() {
+		if g.stmt_cursor_has_generic_call(body.at(i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) stmt_cursor_has_generic_call(stmt ast.Cursor) bool {
+	if !stmt.is_valid() {
+		return false
+	}
+	match stmt.kind() {
+		.stmt_assign {
+			lhs_len := stmt.extra_int()
+			for i in 0 .. lhs_len {
+				if g.expr_cursor_has_generic_call(stmt.edge(i)) {
+					return true
+				}
+			}
+			for i in lhs_len .. stmt.edge_count() {
+				if g.expr_cursor_has_generic_call(stmt.edge(i)) {
+					return true
+				}
+			}
+		}
+		.stmt_block, .stmt_defer {
+			for i in 0 .. stmt.edge_count() {
+				if g.stmt_cursor_has_generic_call(stmt.edge(i)) {
+					return true
+				}
+			}
+		}
+		.stmt_comptime {
+			return g.stmt_cursor_has_generic_call(stmt.edge(0))
+		}
+		.stmt_expr {
+			return g.expr_cursor_has_generic_call(stmt.edge(0))
+		}
+		.stmt_for {
+			if g.stmt_cursor_has_generic_call(stmt.edge(0)) {
+				return true
+			}
+			if g.expr_cursor_has_generic_call(stmt.edge(1)) {
+				return true
+			}
+			if g.stmt_cursor_has_generic_call(stmt.edge(2)) {
+				return true
+			}
+			body := stmt.for_body_list()
+			for i in 0 .. body.len() {
+				if g.stmt_cursor_has_generic_call(body.at(i)) {
+					return true
+				}
+			}
+		}
+		.stmt_return {
+			for i in 0 .. stmt.edge_count() {
+				if g.expr_cursor_has_generic_call(stmt.edge(i)) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (mut g Gen) call_cursor_lhs_is_generic_call(lhs ast.Cursor) bool {
+	call_name := generic_call_short_name_cursor(lhs)
+	if call_name == '' {
+		return false
+	}
+	if g.generic_fn_decl_index.len == 0 {
+		if _ := g.generic_call_decl_from_lhs_cursor(lhs) {
+			return true
+		}
+		return false
+	}
+	for candidate in generic_call_decl_candidates(call_name) {
+		if candidate in g.generic_fn_decl_index {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) expr_cursor_has_generic_call(expr ast.Cursor) bool {
+	if !expr.is_valid() {
+		return false
+	}
+	match expr.kind() {
+		.expr_call {
+			if g.call_cursor_lhs_is_generic_call(expr.edge(0)) {
+				return true
+			}
+			if g.expr_cursor_has_generic_call(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if g.expr_cursor_has_generic_call(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_call_or_cast, .expr_generic_arg_or_index, .expr_index, .expr_infix {
+			return g.expr_cursor_has_generic_call(expr.edge(0))
+				|| g.expr_cursor_has_generic_call(expr.edge(1))
+		}
+		.expr_comptime, .expr_modifier, .expr_paren, .expr_prefix, .expr_selector {
+			return g.expr_cursor_has_generic_call(expr.edge(0))
+		}
+		.expr_generic_args, .expr_tuple {
+			for i in 0 .. expr.edge_count() {
+				if g.expr_cursor_has_generic_call(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_if {
+			if g.expr_cursor_has_generic_call(expr.edge(0)) {
+				return true
+			}
+			for i in 2 .. expr.edge_count() {
+				if g.stmt_cursor_has_generic_call(expr.edge(i)) {
+					return true
+				}
+			}
+			return g.expr_cursor_has_generic_call(expr.edge(1))
+		}
+		.expr_match {
+			if g.expr_cursor_has_generic_call(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				branch := expr.edge(i)
+				conds := branch.list_at(0)
+				for ci in 0 .. conds.len() {
+					if g.expr_cursor_has_generic_call(conds.at(ci)) {
+						return true
+					}
+				}
+				stmts := branch.list_at(1)
+				for si in 0 .. stmts.len() {
+					if g.stmt_cursor_has_generic_call(stmts.at(si)) {
+						return true
+					}
+				}
+			}
+		}
+		.expr_or {
+			if g.expr_cursor_has_generic_call(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if g.stmt_cursor_has_generic_call(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_unsafe {
+			for i in 0 .. expr.edge_count() {
+				if g.stmt_cursor_has_generic_call(expr.edge(i)) {
 					return true
 				}
 			}
@@ -2652,6 +2960,23 @@ fn generic_wrapped_ident_name(expr ast.Expr) string {
 	return ''
 }
 
+fn generic_wrapped_ident_name_cursor(expr ast.Cursor) string {
+	if !expr.is_valid() {
+		return ''
+	}
+	match expr.kind() {
+		.expr_ident {
+			return expr.name()
+		}
+		.expr_modifier, .expr_paren {
+			return generic_wrapped_ident_name_cursor(expr.edge(0))
+		}
+		else {}
+	}
+
+	return ''
+}
+
 fn generic_expr_is_generic_value(expr ast.Expr, value_names map[string]bool, container_names map[string]bool) bool {
 	match expr {
 		ast.Ident {
@@ -2948,7 +3273,12 @@ fn (mut g Gen) discover_nested_generic_specs_for_cursor(stmt ast.Cursor, mut sca
 	if stmt.list_at(3).len() == 0 {
 		return
 	}
-	g.discover_nested_generic_specs_for_decl(stmt.fn_decl(), mut scanned_specs)
+	specs := if fn_cursor_has_comptime_stmt(stmt) || g.fn_cursor_body_has_generic_call(stmt) {
+		g.generic_fn_specializations(decl)
+	} else {
+		g.direct_generic_fn_specializations(decl)
+	}
+	g.discover_nested_generic_specs_from_body_source(decl, stmt, true, specs, mut scanned_specs)
 }
 
 fn (mut g Gen) discover_nested_generic_specs_for_decl(decl ast.FnDecl, mut scanned_specs map[string]bool) {
@@ -2963,6 +3293,11 @@ fn (mut g Gen) discover_nested_generic_specs_for_decl(decl ast.FnDecl, mut scann
 	} else {
 		g.direct_generic_fn_specializations(decl)
 	}
+	g.discover_nested_generic_specs_from_body_source(decl, ast.Cursor{}, false, specs, mut
+		scanned_specs)
+}
+
+fn (mut g Gen) discover_nested_generic_specs_from_body_source(decl ast.FnDecl, body_cursor ast.Cursor, use_cursor bool, specs []GenericFnSpecialization, mut scanned_specs map[string]bool) {
 	if specs.len == 0 {
 		return
 	}
@@ -3006,7 +3341,7 @@ fn (mut g Gen) discover_nested_generic_specs_for_decl(decl ast.FnDecl, mut scann
 		g.resolved_module_names = map[string]string{}
 		g.cur_fn_generic_params = map[string]string{}
 		g.seed_fn_scan_runtime_types(decl, spec.name)
-		g.scan_fn_body_for_generic_types(decl, spec.name)
+		g.scan_fn_body_for_generic_types_from_source(decl, body_cursor, use_cursor, spec.name)
 	}
 	g.cur_fn_name = prev_fn_name
 	g.cur_fn_c_name = prev_fn_c_name
@@ -3064,7 +3399,7 @@ fn (mut g Gen) discover_direct_generic_call_specs_for_cursor(stmt ast.Cursor) {
 	if stmt.list_at(3).len() == 0 {
 		return
 	}
-	g.discover_direct_generic_call_specs_for_decl(stmt.fn_decl())
+	g.discover_direct_generic_call_specs_from_body_source(decl, stmt, true)
 }
 
 fn (mut g Gen) discover_direct_generic_call_specs_for_decl(decl ast.FnDecl) {
@@ -3074,6 +3409,10 @@ fn (mut g Gen) discover_direct_generic_call_specs_for_decl(decl ast.FnDecl) {
 	if g.generic_fn_param_names(decl).len != 0 {
 		return
 	}
+	g.discover_direct_generic_call_specs_from_body_source(decl, ast.Cursor{}, false)
+}
+
+fn (mut g Gen) discover_direct_generic_call_specs_from_body_source(decl ast.FnDecl, body_cursor ast.Cursor, use_cursor bool) {
 	prev_fn_name := g.cur_fn_name
 	prev_fn_c_name := g.cur_fn_c_name
 	prev_fn_scope := g.cur_fn_scope
@@ -3108,7 +3447,7 @@ fn (mut g Gen) discover_direct_generic_call_specs_for_decl(decl ast.FnDecl) {
 	g.resolved_module_names = map[string]string{}
 	g.cur_fn_generic_params = map[string]string{}
 	g.seed_fn_scan_runtime_types(decl, g.cur_fn_c_name)
-	g.scan_fn_body_for_generic_types(decl, 'direct')
+	g.scan_fn_body_for_generic_types_from_source(decl, body_cursor, use_cursor, 'direct')
 	g.cur_fn_name = prev_fn_name
 	g.cur_fn_c_name = prev_fn_c_name
 	g.cur_fn_scope = prev_fn_scope
@@ -4668,6 +5007,29 @@ fn (g &Gen) qualify_local_call_name(name string) string {
 	return name
 }
 
+fn (g &Gen) has_generic_fn_decl_by_base_name(name string) bool {
+	lookup_name := g.qualified_generic_fn_base_name(name) or { name }
+	info := g.generic_fn_decl_index[lookup_name] or { return false }
+	if g.has_flat() {
+		if info.file_idx < 0 || info.file_idx >= g.flat.files.len {
+			return false
+		}
+		stmts := g.flat.file_cursor(info.file_idx).stmts()
+		if info.stmt_idx < 0 || info.stmt_idx >= stmts.len() {
+			return false
+		}
+		return stmts.at(info.stmt_idx).kind() == .stmt_fn_decl
+	}
+	if info.file_idx < 0 || info.file_idx >= g.files.len {
+		return false
+	}
+	file := g.files[info.file_idx]
+	if info.stmt_idx < 0 || info.stmt_idx >= file.stmts.len {
+		return false
+	}
+	return file.stmts[info.stmt_idx] is ast.FnDecl
+}
+
 fn (mut g Gen) find_generic_fn_decl_by_base_name(name string) ?ast.FnDecl {
 	lookup_name := g.qualified_generic_fn_base_name(name) or { name }
 	info := g.generic_fn_decl_index[lookup_name] or { return none }
@@ -5506,7 +5868,7 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 	if !name.contains('__') {
 		qualified := g.qualify_local_call_name(name)
 		if qualified != name && (qualified in g.fn_param_is_ptr || qualified in g.fn_return_types)
-			&& g.find_generic_fn_decl_by_base_name(qualified) == none {
+			&& !g.has_generic_fn_decl_by_base_name(qualified) {
 			return none
 		}
 	}
@@ -6078,8 +6440,36 @@ fn (mut g Gen) gen_fn_decl_with_name(node ast.FnDecl, fn_name string) {
 	g.gen_fn_decl_with_name_ptr(&node, fn_name)
 }
 
+fn (mut g Gen) remember_called_specialized_name(name string) {
+	if name == '' || !name.contains('_T_') {
+		return
+	}
+	base := name.all_before('_T_')
+	if base == '' || base in g.called_specialized_names {
+		return
+	}
+	g.called_specialized_names[base] = name
+}
+
+fn (mut g Gen) ensure_called_specialized_name_index() {
+	if g.called_specialized_names_indexed {
+		return
+	}
+	g.called_specialized_names = map[string]string{}
+	for name, _ in g.called_fn_names {
+		g.remember_called_specialized_name(name)
+	}
+	g.called_specialized_names_indexed = true
+}
+
 fn (g &Gen) called_specialized_name_for_base(base string) ?string {
 	if base.contains('_T_') {
+		return none
+	}
+	if g.called_specialized_names_indexed {
+		if name := g.called_specialized_names[base] {
+			return name
+		}
 		return none
 	}
 	prefix := '${base}_T_'
@@ -6712,9 +7102,6 @@ fn (mut g Gen) gen_fn_head_with_name_ptr(node &ast.FnDecl, fn_name string) {
 		c_ret = 'int'
 	}
 	sig_param_types := g.fn_param_types[fn_name] or { []string{} }
-	for sig_type in g.fn_head_signature_type_names(node, fn_name, ret, sig_param_types) {
-		g.emit_forward_typedef_for_signature_type(sig_type)
-	}
 
 	// main takes argc/argv
 	if is_program_main {
@@ -6805,70 +7192,6 @@ fn (mut g Gen) gen_fn_head_with_name_ptr(node &ast.FnDecl, fn_name string) {
 		sig_idx++
 	}
 	g.sb.write_string(')')
-}
-
-fn (mut g Gen) fn_head_signature_type_names(node &ast.FnDecl, fn_name string, ret string, sig_param_types []string) []string {
-	mut sig_types := []string{}
-	sig_types << ret
-	mut sig_idx := 0
-	if node.is_method && node.receiver.name != '' {
-		receiver_type := if sig_idx < sig_param_types.len {
-			normalize_signature_type_name(sig_param_types[sig_idx], 'void*')
-		} else if node.receiver.is_mut {
-			rt := normalize_signature_type_name(g.decl_expr_type_to_c(node.receiver.typ), 'void*')
-			if rt.ends_with('*') {
-				rt
-			} else {
-				rt + '*'
-			}
-		} else {
-			normalize_signature_type_name(g.decl_expr_type_to_c(node.receiver.typ), 'void*')
-		}
-		sig_types << receiver_type
-		sig_idx++
-	}
-	if g.needs_implicit_veb_ctx_param(node, fn_name) {
-		sig_types << g.implicit_veb_ctx_c_type()
-		sig_idx++
-	}
-	for param in node.typ.params {
-		if param.typ is ast.Type {
-			if param.typ is ast.FnType {
-				fn_type := param.typ as ast.FnType
-				if fn_type.return_type !is ast.EmptyExpr {
-					sig_types << normalize_signature_type_name(g.expr_type_to_c(fn_type.return_type),
-						'void')
-				}
-				for fn_param in fn_type.params {
-					mut param_type := normalize_signature_type_name(g.expr_type_to_c(fn_param.typ),
-						'int')
-					if fn_param.is_mut && !param_type.ends_with('*') {
-						param_type += '*'
-					}
-					sig_types << param_type
-				}
-				sig_idx++
-				continue
-			}
-		}
-		t := if sig_idx < sig_param_types.len {
-			normalize_signature_type_name(sig_param_types[sig_idx], 'int')
-		} else if param.is_mut {
-			pt := normalize_signature_type_name(g.expr_type_to_c(param.typ), 'int')
-			if pt.ends_with('*') {
-				pt
-			} else {
-				pt + '*'
-			}
-		} else {
-			normalize_signature_type_name(g.expr_type_to_c(param.typ), 'int')
-		}
-		if !t.contains('(*)') {
-			sig_types << t
-		}
-		sig_idx++
-	}
-	return sig_types
 }
 
 fn c_fn_pointer_type_with_name(fn_type string, name string) string {
@@ -7504,7 +7827,7 @@ fn (g &Gen) is_simple_addressable(expr ast.Expr) bool {
 fn (mut g Gen) gen_addr_of_expr(arg ast.Expr, typ string) {
 	base_arg := if arg is ast.ModifierExpr { arg.expr } else { arg }
 	// nil is a null pointer — emit NULL directly, never wrap in compound literal
-	if base_arg is ast.Ident && base_arg.name == 'nil' {
+	if is_nil_like_expr(base_arg) {
 		g.sb.write_string('NULL')
 		return
 	}
@@ -8491,6 +8814,106 @@ fn (mut g Gen) memdup_addr_arg_type(expr ast.Expr) string {
 	return typ
 }
 
+fn (mut g Gen) c_type_is_fn_pointer_value(type_name string) bool {
+	name := type_name.trim_space()
+	if name == '' || name == 'int' {
+		return false
+	}
+	if g.c_type_is_fn_pointer_alias(name) {
+		return true
+	}
+	if raw_type := g.lookup_type_by_c_name(name) {
+		if _ := extract_fn_type(raw_type) {
+			return true
+		}
+	}
+	if raw_type := g.lookup_type_by_c_name_const(name) {
+		if _ := extract_fn_type(raw_type) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) selector_has_fn_pointer_value_type(sel ast.SelectorExpr) bool {
+	if global_type := g.global_var_type_for_selector(sel) {
+		if g.c_type_is_fn_pointer_value(global_type) {
+			return true
+		}
+	}
+	sel_expr := ast.Expr(sel)
+	if raw_type := g.get_raw_type(sel_expr) {
+		if _ := extract_fn_type(raw_type) {
+			return true
+		}
+	}
+	return g.c_type_is_fn_pointer_value(g.get_expr_type(sel_expr))
+}
+
+fn (mut g Gen) selector_is_known_fn_value(sel ast.SelectorExpr) bool {
+	lhs := sel.lhs
+	if lhs !is ast.Ident || sel.rhs.name == '' {
+		return false
+	}
+	mod_name := (lhs as ast.Ident).name
+	if mod_name == '' {
+		return false
+	}
+	if !g.is_module_ident(mod_name) {
+		return false
+	}
+	c_mod_name := g.resolve_module_name(mod_name).replace('.', '_')
+	c_name := '${c_mod_name}__${sel.rhs.name}'
+	if c_name in g.fn_return_types || c_name in g.fn_param_is_ptr {
+		return true
+	}
+	return g.selector_has_fn_pointer_value_type(sel)
+}
+
+fn (mut g Gen) gen_sort_fnsortcb_arg(fn_name string, idx int, base_arg ast.Expr, expected_param_type string) bool {
+	if idx != 1 || fn_name !in ['array__sort_with_compare', 'array__sorted_with_compare'] {
+		return false
+	}
+	mut expected_sort_param_type := expected_param_type.trim_space()
+	// Unregistered generated builtin sort helpers still expect FnSortCB; custom
+	// same-name functions are declared and keep their real parameter type gate.
+	if expected_sort_param_type == '' && fn_name !in g.fn_param_types {
+		expected_sort_param_type = 'FnSortCB'
+	}
+	if expected_sort_param_type != 'FnSortCB' {
+		return false
+	}
+	comparator := match base_arg {
+		ast.ParenExpr {
+			base_arg.expr
+		}
+		else {
+			base_arg
+		}
+	}
+
+	match comparator {
+		ast.Ident {
+			if comparator.name == '' || comparator.name == 'nil' {
+				return false
+			}
+		}
+		ast.FnLiteral {}
+		ast.SelectorExpr {
+			if !g.selector_is_known_fn_value(comparator) {
+				return false
+			}
+		}
+		else {
+			return false
+		}
+	}
+
+	g.sb.write_string('(FnSortCB)')
+	g.expr(comparator)
+	return true
+}
+
 fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 	base_arg := if arg is ast.ModifierExpr { arg.expr } else { arg }
 	map_runtime_name := canonical_map_runtime_fn_name(fn_name)
@@ -8594,6 +9017,9 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 			return
 		}
 	}
+	if g.gen_sort_fnsortcb_arg(fn_name, idx, base_arg, expected_param_type) {
+		return
+	}
 	if expected_param_type != '' && g.gen_auto_deref_value_param_arg(expected_param_type, base_arg) {
 		return
 	}
@@ -8643,17 +9069,19 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 			return
 		}
 	}
-	// nil is always a valid pointer value (NULL) — never wrap it
-	if (base_arg is ast.Ident && base_arg.name == 'nil') || base_arg is ast.Type {
+	// nil is always a valid pointer value (NULL) — never wrap it. A literal
+	// `0` (possibly cast-wrapped) is nil-like only for pointer parameters;
+	// for value parameters it must stay a plain `0`.
+	if is_nil_like_expr(base_arg) {
+		if (base_arg is ast.Ident && base_arg.name == 'nil') || base_arg is ast.Type {
+			g.sb.write_string('NULL')
+			return
+		}
 		if ptr_params := g.fn_param_is_ptr[fn_name] {
 			if idx < ptr_params.len && ptr_params[idx] {
 				g.sb.write_string('NULL')
 				return
 			}
-		}
-		if base_arg is ast.Ident && base_arg.name == 'nil' {
-			g.sb.write_string('NULL')
-			return
 		}
 	}
 	if fn_name == 'new_map_init_noscan_value' && idx in [7, 8] {
@@ -9422,8 +9850,7 @@ fn (mut g Gen) resolved_qualified_selector_method_name(method_name string) ?stri
 		method_name
 	}
 	if base_name in g.fn_return_types || base_name in g.fn_param_is_ptr
-		|| g.has_specialized_fn_base(base_name)
-		|| g.find_generic_fn_decl_by_base_name(base_name) != none {
+		|| g.has_specialized_fn_base(base_name) || g.has_generic_fn_decl_by_base_name(base_name) {
 		return method_name
 	}
 	for candidate in generic_call_decl_candidates(base_name) {
@@ -9468,7 +9895,7 @@ fn (mut g Gen) resolve_selector_module_call_name(lhs ast.SelectorExpr) ?string {
 	name := '${mod_name}__${sanitize_fn_ident(lhs.rhs.name)}'
 	if g.is_module_ident(lhs_ident.name) || name in g.fn_return_types || name in g.fn_param_is_ptr
 		|| g.is_module_local_fn(name) || g.has_specialized_fn_base(name)
-		|| g.find_generic_fn_decl_by_base_name(name) != none {
+		|| g.has_generic_fn_decl_by_base_name(name) {
 		return name
 	}
 	return none
@@ -9676,7 +10103,7 @@ fn (mut g Gen) get_call_return_type(lhs ast.Expr, call_args []ast.Expr) ?string 
 		if c_name.contains('_T_') && c_name !in g.fn_return_types && c_name !in g.fn_param_is_ptr {
 			base_name := c_name.all_before('_T_')
 			if (base_name in g.fn_return_types || base_name in g.fn_param_is_ptr)
-				&& g.find_generic_fn_decl_by_base_name(base_name) == none {
+				&& !g.has_generic_fn_decl_by_base_name(base_name) {
 				c_name = base_name
 			}
 		}
@@ -9915,13 +10342,13 @@ fn (mut g Gen) resolve_method_on_concrete_type(receiver_type string, method_name
 			return module_candidate
 		}
 	}
-	if g.specialized_fn_bases.len == 0 || clean_type in g.specialized_fn_bases {
+	g.ensure_specialized_receiver_method_index()
+	if clean_type in g.specialized_fn_bases {
 		if specialized := g.resolve_specialized_receiver_method(clean_type, sanitized) {
 			return specialized
 		}
 	}
-	if short_name != '' && short_name != clean_type
-		&& (g.specialized_fn_bases.len == 0 || short_name in g.specialized_fn_bases) {
+	if short_name != '' && short_name != clean_type && short_name in g.specialized_fn_bases {
 		if specialized := g.resolve_specialized_receiver_method(short_name, sanitized) {
 			return specialized
 		}
@@ -9958,17 +10385,18 @@ fn (mut g Gen) resolve_specialized_receiver_method(receiver_type string, method_
 	// simple method (no `__`) is exactly (all_before('_T_') == base) && (all_after_last('__') ==
 	// method) — i.e. the same keys remember_specialized_receiver_method records.
 	if !receiver_type.contains('_T_') && !method_name.contains('__') {
+		g.ensure_specialized_receiver_method_index()
 		key := specialized_receiver_method_key(receiver_type, method_name)
+		if key in g.specialized_receiver_method_miss {
+			return none
+		}
 		if key in g.specialized_receiver_method_ambiguous {
 			return none
 		}
 		if found := g.specialized_receiver_methods[key] {
 			return found
 		}
-		if g.specialized_receiver_methods.len == 0
-			&& g.specialized_receiver_method_ambiguous.len == 0 {
-			return g.scan_specialized_receiver_method(receiver_type, method_name)
-		}
+		g.specialized_receiver_method_miss[key] = true
 		return none
 	}
 	// Rare fallback: receiver_type/method contains the `_T_`/`__` separator the index keys on.
@@ -10474,7 +10902,7 @@ fn (mut g Gen) gen_json_decode_call(lhs ast.Expr, args []ast.Expr) bool {
 	raw_tmp := '_json_decode_raw_${tmp_id}'
 	res_tmp := '_json_decode_res_${tmp_id}'
 	ptr_tmp := '_json_decode_ptr_${tmp_id}'
-	g.called_fn_names['json__decode'] = true
+	g.mark_called_fn_name('json__decode')
 	g.sb.write_string('({ _result_voidptr ${raw_tmp} = json__decode(NULL, ')
 	g.gen_call_arg('json__decode', 1, args[1])
 	g.sb.write_string('); ${result_type} ${res_tmp} = (${result_type}){ .is_error = ${raw_tmp}.is_error, .err = ${raw_tmp}.err }; if (!${raw_tmp}.is_error) { void* ${ptr_tmp} = (*(void**)(((u8*)(&${raw_tmp}.err)) + sizeof(IError))); if (${ptr_tmp} != NULL) { _result_ok(${ptr_tmp}, (_result*)&${res_tmp}, sizeof(${target_type})); } } ${res_tmp}; })')
@@ -11518,6 +11946,9 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 		// Handle C.puts, C.putchar etc.
 		if lhs.lhs is ast.Ident && lhs.lhs.name == 'C' {
 			name = lhs.rhs.name
+			if name == 'gettid' && args.len == 0 && g.should_emit_linux_gettid_compat() {
+				name = 'v_cleanc_gettid'
+			}
 			// With prealloc, free() is redefined as a no-op macro.
 			// C.free calls in prealloc_vcleanup need the real free via _v_cfree.
 			if name == 'free' && g.pref != unsafe { nil } && g.pref.prealloc {
@@ -11691,7 +12122,7 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	if name.contains('_T_') && name !in g.fn_return_types && name !in g.fn_param_is_ptr {
 		base_name := name.all_before('_T_')
 		if (base_name in g.fn_return_types || base_name in g.fn_param_is_ptr)
-			&& g.find_generic_fn_decl_by_base_name(base_name) == none {
+			&& !g.has_generic_fn_decl_by_base_name(base_name) {
 			name = base_name
 		}
 	}

@@ -27,6 +27,16 @@ pub struct Transformer {
 mut:
 	pref &pref.Preferences = unsafe { nil }
 	env  &types.Environment
+	// flat_fb_counts tracks how often each cursor-transform arm falls back to
+	// a legacy decode, keyed by arm name. Dumped via V2_FLAT_FB_STATS to
+	// prioritize the remaining flat-native migration work.
+	flat_fb_counts map[string]int
+	// pending_flat_stmt_ids queues already-emitted flat stmt ids that
+	// cursor-native arms hoist ahead of the statement being transformed —
+	// the flat-side twin of `pending_stmts`. Hoisting arms must first flush
+	// `pending_stmts` into this queue so the combined drain keeps the legacy
+	// chronological order.
+	pending_flat_stmt_ids []ast.FlatNodeId
 	// Current scope for type lookups (walks up scope chain)
 	scope &types.Scope = unsafe { nil }
 	// Function root scope for registering transformer-created temp variables
@@ -310,8 +320,9 @@ fn builder_write_string_stmt(sb_ref ast.Expr, s ast.Expr) ast.Stmt {
 }
 
 struct RuntimeConstInit {
-	name string
-	expr ast.Expr
+	name        string
+	expr        ast.Expr
+	expr_cursor ast.Cursor
 }
 
 struct SortComparatorInfo {
@@ -698,7 +709,11 @@ fn (mut t Transformer) embed_file_init_parts(expr ast.ComptimeExpr, args []ast.E
 		return none
 	}
 	raw_path := embed_file_string_arg(args[0]) or { return none }
-	rpath, apath := t.resolve_embed_file_paths(raw_path, expr.pos)
+	return t.embed_file_init_parts_from_raw(raw_path, expr.pos)
+}
+
+fn (mut t Transformer) embed_file_init_parts_from_raw(raw_path string, pos token.Pos) (string, string, []u8) {
+	rpath, apath := t.resolve_embed_file_paths(raw_path, pos)
 	file_bytes := os.read_bytes(apath) or { panic('embed_file: failed to read `${apath}`: ${err}') }
 	t.needed_embed_file_helper = true
 	return rpath, apath, file_bytes
@@ -3131,8 +3146,14 @@ fn (mut t Transformer) transform_files_from_flat_no_post_pass(flat &ast.FlatAst,
 
 // transform_files_to_flat is the legacy-compatible flat-output entry point.
 // It wraps transform_files_from_flat + ast.flatten_files and returns both the
-// FlatAst and transformed files for callers that still need []ast.File. Flat
-// codegen paths should use transform_flat_to_flat_direct instead.
+// FlatAst and transformed files for callers that still need []ast.File.
+//
+// NO PRODUCTION CALLERS remain: the builder uses transform_flat_to_flat_direct
+// (sequential) / transform_files_parallel_flat_direct (parallel) for every
+// backend, and .v/eval rehydrate via flat.to_files() at the codegen boundary.
+// Kept only as the legacy parity reference for the flat-diff test suite; delete
+// together with the remaining decode-fallback arms once the cursor-native
+// transform is complete.
 pub fn (mut t Transformer) transform_files_to_flat(flat &ast.FlatAst, files []ast.File) (ast.FlatAst, []ast.File) {
 	result := t.transform_files_from_flat(flat, files)
 	return ast.flatten_files(result), result
@@ -3166,8 +3187,11 @@ pub fn (mut t Transformer) transform_files_to_flat(flat &ast.FlatAst, files []as
 // the stmts list (file root edge 2) to assert structural parity.
 //
 // Memory: this avoids the legacy post_pass + flatten_files boundary but still
-// returns []ast.File for compatibility consumers. Flat-codegen backends bypass
-// this with transform_flat_to_flat_direct or the parallel flat-direct path.
+// returns []ast.File for compatibility consumers.
+//
+// NO PRODUCTION CALLERS remain (every backend transforms flat-direct; .v/eval
+// rehydrate at the codegen boundary). Kept only as the legacy parity reference
+// for tests; delete once the cursor-native transform is complete.
 pub fn (mut t Transformer) transform_files_to_flat_via_driver(flat &ast.FlatAst, files []ast.File) (ast.FlatAst, []ast.File) {
 	timing := os.getenv('V2_TTIME') != ''
 	mut sw := time.new_stopwatch()
@@ -3302,7 +3326,35 @@ pub fn (mut t Transformer) transform_flat_to_flat_direct(flat &ast.FlatAst, file
 	if timing {
 		eprintln('  [ttime] flat input direct post_pass: ${sw.elapsed().milliseconds()}ms')
 	}
+	t.dump_flat_fallback_stats()
 	return builder.flat
+}
+
+// count_flat_fallback records one legacy-decode fallback hit for a cursor
+// transform arm. Used to prioritize the remaining flat-native migration.
+@[inline]
+fn (mut t Transformer) count_flat_fallback(key string) {
+	t.flat_fb_counts[key]++
+}
+
+// dump_flat_fallback_stats prints the per-arm legacy-decode fallback counts
+// recorded during the transform, gated on V2_FLAT_FB_STATS.
+fn (t &Transformer) dump_flat_fallback_stats() {
+	if os.getenv('V2_FLAT_FB_STATS') == '' {
+		return
+	}
+	mut keys := t.flat_fb_counts.keys()
+	keys.sort_with_compare(fn [t] (a &string, b &string) int {
+		return t.flat_fb_counts[*b] - t.flat_fb_counts[*a]
+	})
+	mut total := 0
+	for k in keys {
+		total += t.flat_fb_counts[k]
+	}
+	eprintln('[flat-fb] total legacy-decode fallbacks: ${total}')
+	for k in keys {
+		eprintln('[flat-fb]   ${t.flat_fb_counts[k]:8} ${k}')
+	}
 }
 
 fn new_transform_output_flat_builder(files []ast.File) ast.FlatBuilder {
@@ -3353,7 +3405,7 @@ fn flat_file_for_transform(flat &ast.FlatAst, fi int, extra_stmts []ast.Stmt) ?a
 		mod:            fc.mod()
 		selector_names: fc.selector_names()
 		attributes:     fc.attrs().attributes()
-		imports:        flat.read_file_imports(flat.files[fi])
+		imports:        fc.imports().import_stmts()
 		stmts:          stmts
 	}
 }
@@ -3623,6 +3675,27 @@ fn (mut t Transformer) record_runtime_const_init(mod string, name string, expr a
 	inits << RuntimeConstInit{
 		name: name
 		expr: expr
+	}
+	t.runtime_const_inits_by_mod[mod] = inits
+}
+
+fn (mut t Transformer) record_runtime_const_init_cursor(mod string, name string, expr ast.Cursor) {
+	if name == '' {
+		return
+	}
+	known_key := runtime_const_known_key(mod, name)
+	t.runtime_const_storage_known[known_key] = true
+	if known_key in t.runtime_const_known {
+		return
+	}
+	t.runtime_const_known[known_key] = true
+	if mod !in t.runtime_const_inits_by_mod {
+		t.runtime_const_modules << mod
+	}
+	mut inits := t.runtime_const_inits_by_mod[mod] or { []RuntimeConstInit{} }
+	inits << RuntimeConstInit{
+		name:        name
+		expr_cursor: expr
 	}
 	t.runtime_const_inits_by_mod[mod] = inits
 }
@@ -4017,8 +4090,7 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 					if !t.needs_runtime_const_init_cursor(value_c, is_native) {
 						continue
 					}
-					field_value := value_c.expr()
-					t.record_runtime_const_init(mod, field_name, field_value)
+					t.record_runtime_const_init_cursor(mod, field_name, value_c)
 				}
 			}
 			if ck == .stmt_global_decl {
@@ -4036,8 +4108,7 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 					if !t.needs_runtime_global_init_cursor(value_c) {
 						continue
 					}
-					field_value := value_c.expr()
-					t.record_runtime_const_init(mod, field_name, field_value)
+					t.record_runtime_const_init_cursor(mod, field_name, value_c)
 				}
 			}
 		}
@@ -4072,8 +4143,7 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 					if !t.expr_depends_on_runtime_const_cursor(mod, value_c) {
 						continue
 					}
-					field_value := value_c.expr()
-					t.record_runtime_const_init(mod, field_name, field_value)
+					t.record_runtime_const_init_cursor(mod, field_name, value_c)
 					changed = true
 				}
 			}
@@ -4456,6 +4526,13 @@ fn (t &Transformer) contains_call_expr_cursor(expr ast.Cursor) bool {
 	return t.contains_call_expr_cursor_depth(0, expr)
 }
 
+fn (t &Transformer) runtime_const_init_contains_call(item RuntimeConstInit) bool {
+	if item.expr_cursor.is_valid() {
+		return t.contains_call_expr_cursor(item.expr_cursor)
+	}
+	return t.contains_call_expr(item.expr)
+}
+
 fn (t &Transformer) contains_call_expr_cursor_depth(depth int, expr ast.Cursor) bool {
 	if depth > max_runtime_const_dep_expr_depth || !expr.is_valid() {
 		return false
@@ -4539,6 +4616,9 @@ fn (mut t Transformer) transform_expr_in_module(mod string, expr ast.Expr) ast.E
 fn (mut t Transformer) runtime_const_init_fn_stmt(mod string, fn_name string, inits []RuntimeConstInit) ast.Stmt {
 	mut stmts := []ast.Stmt{cap: inits.len}
 	for item in inits {
+		if item.expr_cursor.is_valid() {
+			continue
+		}
 		saved_pending := t.pending_stmts
 		t.pending_stmts = []ast.Stmt{}
 		old_skip_if := t.skip_if_value_lowering
@@ -4565,8 +4645,58 @@ fn (mut t Transformer) runtime_const_init_fn_stmt(mod string, fn_name string, in
 	})
 }
 
+fn (mut t Transformer) runtime_const_init_fn_stmt_to_flat(mod string, fn_name string, inits []RuntimeConstInit, mut out ast.FlatBuilder) ast.FlatNodeId {
+	mut stmt_ids := []ast.FlatNodeId{cap: inits.len}
+	old_module := t.cur_module
+	old_scope := t.scope
+	t.cur_module = mod
+	if scope := t.get_module_scope(mod) {
+		t.scope = scope
+	} else {
+		t.scope = unsafe { nil }
+	}
+	defer {
+		t.cur_module = old_module
+		t.scope = old_scope
+	}
+	for item in inits {
+		saved_pending := t.pending_stmts
+		t.pending_stmts = []ast.Stmt{}
+		old_skip_if := t.skip_if_value_lowering
+		t.skip_if_value_lowering = true
+		rhs_id := if item.expr_cursor.is_valid() {
+			t.transform_expr_cursor_to_flat(item.expr_cursor, mut out)
+		} else {
+			transformed_expr := t.transform_expr(item.expr)
+			out.emit_expr(transformed_expr)
+		}
+		t.skip_if_value_lowering = old_skip_if
+		generated_pending := t.pending_stmts
+		t.pending_stmts = saved_pending
+		for pending_stmt in generated_pending {
+			stmt_ids << out.emit_stmt(pending_stmt)
+		}
+		lhs_id := out.emit_ident_by_name(item.name, token.Pos{})
+		stmt_ids << out.emit_assign_stmt_by_ids(.assign, [lhs_id], [rhs_id], token.Pos{})
+	}
+	receiver_id := out.emit_parameter(ast.Parameter{})
+	typ_id := out.emit_type(ast.Type(ast.FnType{}))
+	attrs_id := out.emit_aux_list_from_ids([])
+	stmts_id := out.emit_aux_list_from_ids(stmt_ids)
+	return out.emit_fn_decl_by_ids(fn_name, false, false, false, .v, token.Pos{}, receiver_id,
+		typ_id, attrs_id, stmts_id)
+}
+
 fn (t &Transformer) collect_ident_names_in_expr(mut names map[string]bool, expr ast.Expr) {
 	t.collect_ident_names_in_expr_depth(0, mut names, expr)
+}
+
+fn (t &Transformer) collect_ident_names_in_runtime_const_init(mut names map[string]bool, item RuntimeConstInit) {
+	if item.expr_cursor.is_valid() {
+		t.collect_ident_names_in_expr_cursor_depth(0, mut names, item.expr_cursor)
+		return
+	}
+	t.collect_ident_names_in_expr(mut names, item.expr)
 }
 
 fn (t &Transformer) collect_ident_names_in_expr_depth(depth int, mut names map[string]bool, expr ast.Expr) {
@@ -4655,6 +4785,71 @@ fn (t &Transformer) collect_ident_names_in_expr_depth(depth int, mut names map[s
 	}
 }
 
+fn (t &Transformer) collect_ident_names_in_expr_cursor_depth(depth int, mut names map[string]bool, expr ast.Cursor) {
+	if depth > max_runtime_const_dep_expr_depth || !expr.is_valid() {
+		return
+	}
+	match expr.kind() {
+		.expr_ident {
+			if expr.name() != '' {
+				names[expr.name()] = true
+			}
+		}
+		.expr_selector {
+			t.collect_ident_names_in_expr_cursor_depth(depth + 1, mut names, expr.edge(0))
+		}
+		.expr_infix, .expr_index, .expr_call_or_cast {
+			t.collect_ident_names_in_expr_cursor_depth(depth + 1, mut names, expr.edge(0))
+			t.collect_ident_names_in_expr_cursor_depth(depth + 1, mut names, expr.edge(1))
+		}
+		.expr_paren, .expr_prefix, .expr_postfix, .expr_modifier, .expr_cast, .expr_as_cast {
+			t.collect_ident_names_in_expr_cursor_depth(depth + 1, mut names, expr.edge(0))
+		}
+		.expr_call {
+			for i in 0 .. expr.edge_count() {
+				t.collect_ident_names_in_expr_cursor_depth(depth + 1, mut names, expr.edge(i))
+			}
+		}
+		.expr_if {
+			t.collect_ident_names_in_expr_cursor_depth(depth + 1, mut names, expr.edge(0))
+			t.collect_ident_names_in_expr_cursor_depth(depth + 1, mut names, expr.edge(1))
+			for i in 2 .. expr.edge_count() {
+				stmt := expr.edge(i)
+				if stmt.kind() == .stmt_expr {
+					t.collect_ident_names_in_expr_cursor_depth(depth + 1, mut names, stmt.edge(0))
+				}
+			}
+		}
+		.expr_array_init {
+			for i in 5 .. expr.edge_count() {
+				t.collect_ident_names_in_expr_cursor_depth(depth + 1, mut names, expr.edge(i))
+			}
+			for i in [1, 3, 2] {
+				child := expr.edge(i)
+				if !expr_cursor_is_empty(child) {
+					t.collect_ident_names_in_expr_cursor_depth(depth + 1, mut names, child)
+				}
+			}
+		}
+		.expr_init {
+			for i in 1 .. expr.edge_count() {
+				t.collect_ident_names_in_expr_cursor_depth(depth + 1, mut names,
+					expr.edge(i).edge(0))
+			}
+		}
+		.expr_map_init {
+			keys_len := expr.extra_int()
+			for i in 0 .. keys_len {
+				t.collect_ident_names_in_expr_cursor_depth(depth + 1, mut names, expr.edge(1 + i))
+			}
+			for i in (1 + keys_len) .. expr.edge_count() {
+				t.collect_ident_names_in_expr_cursor_depth(depth + 1, mut names, expr.edge(i))
+			}
+		}
+		else {}
+	}
+}
+
 fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []RuntimeConstInit {
 	if inits.len < 2 {
 		return inits
@@ -4671,7 +4866,7 @@ fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []Runtim
 	mut dependents := map[int][]int{}
 	for i, item in inits {
 		mut ident_names := map[string]bool{}
-		t.collect_ident_names_in_expr(mut ident_names, item.expr)
+		t.collect_ident_names_in_runtime_const_init(mut ident_names, item)
 		for dep_name, _ in ident_names {
 			if dep_name == item.name {
 				continue
@@ -4708,8 +4903,8 @@ fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []Runtim
 		for pos := 1; pos < ready.len; pos++ {
 			a := ready[pos]
 			b := ready[best_pos]
-			a_has_call := t.contains_call_expr(inits[a].expr)
-			b_has_call := t.contains_call_expr(inits[b].expr)
+			a_has_call := t.runtime_const_init_contains_call(inits[a])
+			b_has_call := t.runtime_const_init_contains_call(inits[b])
 			if a_has_call != b_has_call {
 				if !a_has_call && b_has_call {
 					best_pos = pos
@@ -4805,17 +5000,9 @@ pub fn (mut t Transformer) runtime_const_init_fn_stmts_parts() map[string]ast.St
 
 // inject_runtime_const_init_fns_to_flat is the FlatBuilder-side splice
 // counterpart to `inject_runtime_const_init_fns` (legacy `[]ast.File`
-// mutator). For each `(mod, fn_stmt)` pair produced by
-// `runtime_const_init_fn_stmts_parts`, scans `out.flat.files` for the
-// FIRST file whose module matches `mod`, emits the `fn_stmt` via
-// `out.emit_stmt`, then folds the resulting id into the file root via
-// `out.append_file_stmts(file_idx, [stmt_id])` (s150's seed primitive).
-//
-// Map iteration order: `runtime_const_init_fn_stmts_parts` walks
-// `t.runtime_const_modules` (a slice) and inserts each entry into the
-// returned `map[string]ast.Stmt` in walk order, so V's
-// insertion-preserving map iteration produces identical (mod, fn_stmt)
-// sequences in both the legacy and flat splice paths.
+// mutator). It walks `runtime_const_modules` directly, emits each init
+// function from flat cursors when available, then folds the resulting id into
+// the first file whose module matches `mod`.
 //
 // Closes the 6-step post_pass port arc: every file-mutating step in
 // legacy `post_pass` now has a flat-aware `_to_flat` variant. Sibling to
@@ -4823,7 +5010,14 @@ pub fn (mut t Transformer) runtime_const_init_fn_stmts_parts() map[string]ast.St
 // append fn_stmt" shape; s151 routes through `builtin_idx` instead of
 // scanning by mod string).
 pub fn (mut t Transformer) inject_runtime_const_init_fns_to_flat(mut out ast.FlatBuilder) {
-	for mod, fn_stmt in t.runtime_const_init_fn_stmts_parts() {
+	for mod in t.runtime_const_modules {
+		inits := t.runtime_const_inits_by_mod[mod] or { []RuntimeConstInit{} }
+		if inits.len == 0 {
+			continue
+		}
+		fn_name := runtime_const_init_base_name(mod)
+		t.runtime_const_init_fn_name[mod] = fn_name
+		ordered_inits := t.order_runtime_const_inits(inits)
 		mut file_idx := -1
 		for i in 0 .. out.flat.files.len {
 			if out.flat.string_at(out.flat.files[i].mod_idx) == mod {
@@ -4834,7 +5028,7 @@ pub fn (mut t Transformer) inject_runtime_const_init_fns_to_flat(mut out ast.Fla
 		if file_idx < 0 {
 			continue
 		}
-		stmt_id := out.emit_stmt(fn_stmt)
+		stmt_id := t.runtime_const_init_fn_stmt_to_flat(mod, fn_name, ordered_inits, mut out)
 		out.append_file_stmts(file_idx, [stmt_id])
 	}
 }
@@ -11968,7 +12162,13 @@ fn (mut t Transformer) append_active_defers(mut out []ast.Stmt, active_defers []
 	mut all_defers := []LoweredDefer{cap: active_defers.len + function_defers.len}
 	all_defers << active_defers
 	all_defers << function_defers
-	all_defers.sort(a.seq > b.seq)
+	for i := 1; i < all_defers.len; i++ {
+		mut j := i
+		for j > 0 && all_defers[j - 1].seq < all_defers[j].seq {
+			all_defers[j - 1], all_defers[j] = all_defers[j], all_defers[j - 1]
+			j--
+		}
+	}
 	for defer_entry in all_defers {
 		t.append_defer_body(mut out, defer_entry)
 	}

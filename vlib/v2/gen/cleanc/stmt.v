@@ -64,40 +64,47 @@ fn (mut g Gen) restore_file_module_context(file_name string, module_name string,
 fn (mut g Gen) gen_stmts(stmts []ast.Stmt) {
 	saved_file_name := g.cur_file_name
 	saved_module := g.cur_module
-	saved_import_modules := g.cur_import_modules.clone()
+	mut saved_import_modules := g.cur_import_modules.clone()
 	for i in 0 .. stmts.len {
-		g.cur_file_name = saved_file_name
-		g.cur_module = saved_module
-		g.cur_import_modules = saved_import_modules.clone()
-		g.is_module_ident_cache.clear()
-		g.resolved_module_names.clear()
 		g.gen_stmt(stmts[i])
+		// A ModuleStmt (or a spliced generated-fn body) can switch the module
+		// context mid-list; restore the source context so the following
+		// statements resolve against the original module. The cheap dirty
+		// check keeps the hot path free of per-statement map clones.
+		if g.cur_module != saved_module || g.cur_file_name != saved_file_name
+			|| g.cur_import_modules.len != saved_import_modules.len {
+			g.cur_file_name = saved_file_name
+			g.cur_module = saved_module
+			g.cur_import_modules = saved_import_modules.clone()
+			g.is_module_ident_cache.clear()
+			g.resolved_module_names.clear()
+		}
 	}
 	g.cur_file_name = saved_file_name
 	g.cur_module = saved_module
-	g.cur_import_modules = saved_import_modules.clone()
+	g.cur_import_modules = saved_import_modules.move()
 	g.is_module_ident_cache.clear()
 	g.resolved_module_names.clear()
 }
 
 fn (mut g Gen) gen_scoped_stmts(stmts []ast.Stmt) {
-	saved_runtime_local_types := g.runtime_local_types.clone()
-	saved_runtime_decl_types := g.runtime_decl_types.clone()
-	saved_not_local_var_cache := g.not_local_var_cache.clone()
+	mut saved_runtime_local_types := g.runtime_local_types.clone()
+	mut saved_runtime_decl_types := g.runtime_decl_types.clone()
+	mut saved_not_local_var_cache := g.not_local_var_cache.clone()
 	g.gen_stmts(stmts)
-	g.runtime_local_types = saved_runtime_local_types.clone()
-	g.runtime_decl_types = saved_runtime_decl_types.clone()
-	g.not_local_var_cache = saved_not_local_var_cache.clone()
+	g.runtime_local_types = saved_runtime_local_types.move()
+	g.runtime_decl_types = saved_runtime_decl_types.move()
+	g.not_local_var_cache = saved_not_local_var_cache.move()
 }
 
 fn (mut g Gen) gen_scoped_expr_stmts(expr ast.Expr) {
-	saved_runtime_local_types := g.runtime_local_types.clone()
-	saved_runtime_decl_types := g.runtime_decl_types.clone()
-	saved_not_local_var_cache := g.not_local_var_cache.clone()
+	mut saved_runtime_local_types := g.runtime_local_types.clone()
+	mut saved_runtime_decl_types := g.runtime_decl_types.clone()
+	mut saved_not_local_var_cache := g.not_local_var_cache.clone()
 	g.gen_stmts_from_expr(expr)
-	g.runtime_local_types = saved_runtime_local_types.clone()
-	g.runtime_decl_types = saved_runtime_decl_types.clone()
-	g.not_local_var_cache = saved_not_local_var_cache.clone()
+	g.runtime_local_types = saved_runtime_local_types.move()
+	g.runtime_decl_types = saved_runtime_decl_types.move()
+	g.not_local_var_cache = saved_not_local_var_cache.move()
 }
 
 fn tuple_field_types_need_stmt_expr(field_types []string) bool {
@@ -643,7 +650,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 		}
 		ast.LabelStmt {
 			g.write_indent()
-			g.sb.writeln('${node.name}:')
+			g.sb.writeln('${node.name}:;')
 			if node.stmt !is ast.EmptyStmt {
 				g.gen_stmt(node.stmt)
 			}
