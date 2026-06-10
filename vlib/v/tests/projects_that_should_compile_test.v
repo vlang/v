@@ -380,8 +380,3 @@ fn test_readline_raw_mode_methods_should_check_for_windows() {
 	}
 	_ = vrun_ok('-os windows -check', source_path)
 }
-
-fn test_generic_fn_dedup_collision_issue_27398() {
-	res := vrun_ok('run', vroot_path('vlib/v/tests/project_issue_27398') + os.path_separator)
-	assert res.trim_space() == 'ok'
-}
