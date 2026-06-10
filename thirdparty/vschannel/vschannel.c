@@ -272,74 +272,87 @@ void vschannel_init(TlsContext *tls_ctx, BOOL validate_server_certificate) {
 	tls_ctx->creds_initialized = TRUE;
 }
 
-INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_len, CHAR **out, vschannel_allocator afn)
-{
-	SecBuffer  ExtraData;
+// vschannel_open_and_handshake performs the connection setup shared by
+// request(), vschannel_alpn_probe() and vschannel_h2_connect(): connect to
+// host:iport, run the TLS handshake (advertising any configured ALPN), record
+// the negotiated protocol, and — when verify_cert is set — validate the server
+// certificate. On success the connection is left open (context_initialized) and,
+// when pExtraData is non-NULL, it receives any application bytes the handshake
+// bundled with its final flight (the caller then owns pExtraData->pvBuffer and
+// must LocalFree it). On failure it records the error, frees any bundled extra,
+// tears the connection down, and returns a non-zero SECURITY_STATUS. A connect
+// failure already set last_error via connect_to_server.
+static SECURITY_STATUS vschannel_open_and_handshake(TlsContext *tls_ctx, INT iport, LPWSTR host, BOOL verify_cert, SecBuffer *pExtraData) {
+	SecBuffer       local_extra;
+	SecBuffer      *extra = pExtraData ? pExtraData : &local_extra;
 	SECURITY_STATUS Status;
 
-	INT i;
-	INT iOption;
-	PCHAR pszOption;
-
-	INT resp_length = 0;
+	extra->pvBuffer = NULL;
+	extra->cbBuffer = 0;
 
 	protocol = SP_PROT_TLS1_2_CLIENT;
-
 	port_number = iport;
 	vschannel_clear_last_error(tls_ctx);
 
-	// Connect to server.
 	if(connect_to_server(tls_ctx, host, port_number)) {
 		vschannel_cleanup(tls_ctx);
-		return resp_length;
+		return SEC_E_INTERNAL_ERROR;
 	}
 
-	// Perform handshake
-	Status = perform_client_handshake(tls_ctx, host, &ExtraData);
-	if(Status) {
+	Status = perform_client_handshake(tls_ctx, host, extra);
+	if(Status != SEC_E_OK) {
 		vschannel_set_last_error(tls_ctx, Status);
-		wprintf(L"Error performing handshake\n");
-		vschannel_cleanup(tls_ctx);
-		return resp_length;
+		goto fail;
 	}
 	tls_ctx->context_initialized = TRUE;
 
 	// Record the ALPN protocol the server selected (if any).
 	vschannel_capture_alpn(tls_ctx);
 
-	if(tls_ctx->validate_server_certificate) {
-		// Authenticate server's credentials.
-
-		// Get server's certificate.
+	if(verify_cert) {
+		// Get and validate the server's certificate.
 		Status = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context,
-												 SECPKG_ATTR_REMOTE_CERT_CONTEXT,
-												 (PVOID)&tls_ctx->p_pemote_cert_context);
+				SECPKG_ATTR_REMOTE_CERT_CONTEXT, (PVOID)&tls_ctx->p_pemote_cert_context);
 		if(Status != SEC_E_OK) {
 			vschannel_set_last_error(tls_ctx, Status);
-			wprintf(L"Error 0x%x querying remote certificate\n", Status);
-			vschannel_cleanup(tls_ctx);
-			return resp_length;
+			goto fail;
 		}
-
-		// Attempt to validate server certificate.
-		Status = verify_server_certificate(tls_ctx->p_pemote_cert_context, host,0);
-		if(Status) {
+		Status = verify_server_certificate(tls_ctx->p_pemote_cert_context, host, 0);
+		if(Status != SEC_E_OK) {
+			// Could not authenticate the server (possible MITM): abort.
 			vschannel_set_last_error(tls_ctx, Status);
-			// The server certificate did not validate correctly. At this
-			// point, we cannot tell if we are connecting to the correct
-			// server, or if we are connecting to a "man in the middle"
-			// attack server.
-
-			// It is therefore best if we abort the connection.
-
-			wprintf(L"Error 0x%x authenticating server credentials!\n", Status);
-			vschannel_cleanup(tls_ctx);
-			return resp_length;
+			goto fail;
 		}
-
-		// Free the server certificate context.
 		CertFreeCertificateContext(tls_ctx->p_pemote_cert_context);
 		tls_ctx->p_pemote_cert_context = NULL;
+	}
+
+	// If the caller does not want the bundled application data, drop it.
+	if(pExtraData == NULL && local_extra.pvBuffer != NULL) {
+		LocalFree(local_extra.pvBuffer);
+	}
+	return SEC_E_OK;
+
+fail:
+	if(extra->pvBuffer != NULL) {
+		LocalFree(extra->pvBuffer);
+		extra->pvBuffer = NULL;
+	}
+	vschannel_cleanup(tls_ctx);
+	return Status;
+}
+
+INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_len, CHAR **out, vschannel_allocator afn)
+{
+	SECURITY_STATUS Status;
+	INT resp_length = 0;
+
+	// Connect + handshake (+ cert validation when enabled). request() does not
+	// consume handshake-bundled application data (HTTP/1.1 servers do not send
+	// before the request), so pass NULL to have it dropped.
+	if(vschannel_open_and_handshake(tls_ctx, iport, host,
+			tls_ctx->validate_server_certificate, NULL) != SEC_E_OK) {
+		return resp_length;
 	}
 
 	// Request from server
@@ -401,27 +414,10 @@ INT vschannel_request_on_open(TlsContext *tls_ctx, CHAR *req, DWORD req_len, CHA
 // or -1 on connect/handshake failure (see vschannel_last_error). Intended for
 // tests and capability checks, since request() only speaks HTTP/1.1.
 INT vschannel_alpn_probe(TlsContext *tls_ctx, INT iport, LPWSTR host, char *out, INT out_cap) {
-	SecBuffer       ExtraData;
-	SECURITY_STATUS Status;
-
-	protocol = SP_PROT_TLS1_2_CLIENT;
-	port_number = iport;
-	vschannel_clear_last_error(tls_ctx);
-
-	if(connect_to_server(tls_ctx, host, port_number)) {
-		vschannel_cleanup(tls_ctx);
+	// Probe only: handshake (no cert validation, no application data) then close.
+	if(vschannel_open_and_handshake(tls_ctx, iport, host, FALSE, NULL) != SEC_E_OK) {
 		return -1;
 	}
-
-	Status = perform_client_handshake(tls_ctx, host, &ExtraData);
-	if(Status) {
-		vschannel_set_last_error(tls_ctx, Status);
-		vschannel_cleanup(tls_ctx);
-		return -1;
-	}
-	tls_ctx->context_initialized = TRUE;
-
-	vschannel_capture_alpn(tls_ctx);
 
 	disconnect_from_server(tls_ctx);
 	tls_ctx->context_initialized = FALSE;
@@ -486,46 +482,20 @@ INT vschannel_h2_connect(TlsContext *tls_ctx, INT iport, LPWSTR host) {
 	SecBuffer       ExtraData;
 	SECURITY_STATUS Status;
 
-	protocol = SP_PROT_TLS1_2_CLIENT;
-	port_number = iport;
-	vschannel_clear_last_error(tls_ctx);
-
-	if(connect_to_server(tls_ctx, host, port_number)) {
-		vschannel_cleanup(tls_ctx);
+	// Connect + handshake + cert validation (when enabled). Unlike the one-shot
+	// paths, keep the handshake-bundled application data: for HTTP/2 it is the
+	// server's first record (SETTINGS), needed below.
+	if(vschannel_open_and_handshake(tls_ctx, iport, host,
+			tls_ctx->validate_server_certificate, &ExtraData) != SEC_E_OK) {
 		return -1;
-	}
-
-	Status = perform_client_handshake(tls_ctx, host, &ExtraData);
-	if(Status) {
-		vschannel_set_last_error(tls_ctx, Status);
-		vschannel_cleanup(tls_ctx);
-		return -1;
-	}
-	tls_ctx->context_initialized = TRUE;
-
-	vschannel_capture_alpn(tls_ctx);
-
-	if(tls_ctx->validate_server_certificate) {
-		Status = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context,
-				SECPKG_ATTR_REMOTE_CERT_CONTEXT, (PVOID)&tls_ctx->p_pemote_cert_context);
-		if(Status != SEC_E_OK) {
-			vschannel_set_last_error(tls_ctx, Status);
-			vschannel_cleanup(tls_ctx);
-			return -1;
-		}
-		Status = verify_server_certificate(tls_ctx->p_pemote_cert_context, host, 0);
-		if(Status) {
-			vschannel_set_last_error(tls_ctx, Status);
-			vschannel_cleanup(tls_ctx);
-			return -1;
-		}
-		CertFreeCertificateContext(tls_ctx->p_pemote_cert_context);
-		tls_ctx->p_pemote_cert_context = NULL;
 	}
 
 	Status = vschannel_ensure_stream_state(tls_ctx);
 	if(Status != SEC_E_OK) {
 		vschannel_set_last_error(tls_ctx, Status);
+		if(ExtraData.pvBuffer != NULL) {
+			LocalFree(ExtraData.pvBuffer);
+		}
 		vschannel_cleanup(tls_ctx);
 		return -1;
 	}
