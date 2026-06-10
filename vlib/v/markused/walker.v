@@ -510,7 +510,7 @@ fn (mut w Walker) record_used_fn_generic_types(fkey string, concrete_types []ast
 fn (w &Walker) fn_generic_types_key(fkey string, concrete_types []ast.Type) string {
 	mut parts := []string{cap: concrete_types.len}
 	for typ in concrete_types {
-		parts << typ.str()
+		parts << u32(typ).str()
 	}
 	return '${fkey}:${parts.join('|')}'
 }
