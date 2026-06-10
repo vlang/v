@@ -74,6 +74,16 @@ fn (t &Transformer) type_from_param_type_expr(expr ast.Expr, generic_params []st
 	return none
 }
 
+fn fixed_array_len_from_type_expr(expr ast.Expr) int {
+	if expr is ast.BasicLiteral {
+		return expr.value.int()
+	}
+	if expr is ast.Ident {
+		return expr.name.int()
+	}
+	return 0
+}
+
 fn (t &Transformer) generic_aware_type_from_param_type_expr(expr ast.Expr, generic_params []string) ?types.Type {
 	if expr is ast.Ident {
 		if expr.name in generic_params {
@@ -105,7 +115,7 @@ fn (t &Transformer) generic_aware_type_from_param_type_expr(expr ast.Expr, gener
 					return none
 				}
 				return types.Type(types.ArrayFixed{
-					len:       expr.len.str().int()
+					len:       fixed_array_len_from_type_expr(expr.len)
 					elem_type: elem
 				})
 			}

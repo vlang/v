@@ -1778,6 +1778,10 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			g.sb.writeln(';')
 			return
 		}
+		if node.op == .assign && g.gen_enum_shorthand_for_type(rhs, assign_lhs_type) {
+			g.sb.writeln(';')
+			return
+		}
 		// When RHS is an array method (first/last/pop/pop_left), the call emission
 		// in fn.v already wraps with (*(elem_type*)call(...)). Skip the outer
 		// assign-level cast to avoid double dereference.
@@ -1892,7 +1896,9 @@ fn (mut g Gen) gen_plain_selector_assign(lhs ast.SelectorExpr, rhs ast.Expr, op 
 	g.write_indent()
 	g.gen_selector_lvalue(lhs, local_type, lhs_struct)
 	g.sb.write_string(' = ')
-	g.expr(rhs)
+	if !g.gen_enum_shorthand_for_type(rhs, field_type) {
+		g.expr(rhs)
+	}
 	g.sb.writeln(';')
 	return true
 }

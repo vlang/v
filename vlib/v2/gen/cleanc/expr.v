@@ -76,6 +76,9 @@ fn is_nil_like_expr(expr ast.Expr) bool {
 			// CallOrCastExpr can be a type cast wrapping 0
 			return is_nil_like_expr(expr.expr)
 		}
+		ast.Type {
+			return expr is ast.NilType
+		}
 		ast.UnsafeExpr {
 			if expr.stmts.len == 0 {
 				return false
@@ -1197,11 +1200,11 @@ fn (mut g Gen) gen_channel_receive_expr(node ast.PrefixExpr) bool {
 		elem_type = 'void*'
 	}
 	g.force_emit_fn_names['sync__Channel__try_pop_priv'] = true
-	g.called_fn_names['sync__Channel__try_pop_priv'] = true
+	g.mark_called_fn_name('sync__Channel__try_pop_priv')
 	g.tmp_counter++
 	if expr_type.starts_with('_option_') {
 		g.force_emit_fn_names['error'] = true
-		g.called_fn_names['error'] = true
+		g.mark_called_fn_name('error')
 		opt_tmp := '_chopt_${g.tmp_counter}'
 		val_tmp := '_chval_${g.tmp_counter}'
 		g.sb.write_string('({ ${expr_type} ${opt_tmp} = (${expr_type}){ .state = 2, .err = error((string){.str = "channel closed", .len = sizeof("channel closed") - 1, .is_lit = 1}) }; ${elem_type} ${val_tmp} = ${zero_value_for_type(elem_type)}; if (sync__Channel__try_pop_priv((sync__Channel*)')
@@ -1261,6 +1264,21 @@ fn (mut g Gen) gen_unwrapped_payload_expr(expr ast.Expr, wrapper_type string, pa
 fn (g &Gen) should_use_known_enum_field(enum_name string, field_name string) bool {
 	return enum_name != '' && !is_generic_placeholder_c_type_name(enum_name)
 		&& g.enum_has_field(enum_name, field_name)
+}
+
+fn (mut g Gen) gen_enum_shorthand_for_type(expr ast.Expr, expected_type string) bool {
+	enum_name := expected_type.trim_space().trim_right('*')
+	if enum_name == '' || enum_name == 'int' || is_generic_placeholder_c_type_name(enum_name)
+		|| !g.is_enum_type(enum_name) {
+		return false
+	}
+	if expr is ast.SelectorExpr {
+		if expr.lhs is ast.EmptyExpr && g.enum_has_field(enum_name, expr.rhs.name) {
+			g.sb.write_string(g.enum_member_c_name(enum_name, expr.rhs.name))
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) enum_type_from_expr(expr ast.Expr, fallback string) string {
@@ -1368,7 +1386,7 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 			elem_type = 'bool'
 		}
 		g.force_emit_fn_names['sync__Channel__try_push_priv'] = true
-		g.called_fn_names['sync__Channel__try_push_priv'] = true
+		g.mark_called_fn_name('sync__Channel__try_push_priv')
 		g.sb.write_string('sync__Channel__try_push_priv((sync__Channel*)')
 		g.expr(node.lhs)
 		g.sb.write_string(', &(${elem_type}[]){')
@@ -2519,6 +2537,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// &T(x) in unsafe contexts is used as a pointer cast in V stdlib code.
 			// Emit it as (T*)(x) so `*unsafe { &T(p) }` becomes `*((T*)p)`.
 			if node.op == .amp {
+				if is_nil_like_expr(node.expr) {
+					g.sb.write_string('NULL')
+					return
+				}
 				if node.expr is ast.CastExpr {
 					cast_expr := node.expr as ast.CastExpr
 					expr_type := g.get_expr_type(cast_expr.expr)
@@ -3536,7 +3558,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			panic('bug in v2 compiler: LockExpr should have been lowered in v2.transformer')
 		}
 		ast.Type {
-			g.sb.write_string('/* [TODO] Type */ 0')
+			if node is ast.NilType {
+				g.sb.write_string('NULL')
+			} else {
+				g.sb.write_string('/* [TODO] Type */ 0')
+			}
 		}
 		ast.AssocExpr {
 			panic('bug in v2 compiler: AssocExpr should have been lowered in v2.transformer')

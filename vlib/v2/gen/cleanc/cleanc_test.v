@@ -920,6 +920,9 @@ fn test_fn_head_emits_forward_typedef_for_concrete_generic_receiver() {
 	}
 	fn_name := 'printer__CounterWriter_T_string__count'
 	g.fn_param_types[fn_name] = ['printer__CounterWriter_T_string']
+	// Forward typedefs for concrete generic signature types are emitted by the
+	// centralized signature pass (not inline by each fn head).
+	g.emit_forward_typedefs_for_signature_types()
 	g.gen_fn_head_with_name(count_method, fn_name)
 	g.sb.writeln(';')
 	csrc := g.sb.str()

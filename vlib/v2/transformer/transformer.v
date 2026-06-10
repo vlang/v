@@ -27,6 +27,16 @@ pub struct Transformer {
 mut:
 	pref &pref.Preferences = unsafe { nil }
 	env  &types.Environment
+	// flat_fb_counts tracks how often each cursor-transform arm falls back to
+	// a legacy decode, keyed by arm name. Dumped via V2_FLAT_FB_STATS to
+	// prioritize the remaining flat-native migration work.
+	flat_fb_counts map[string]int
+	// pending_flat_stmt_ids queues already-emitted flat stmt ids that
+	// cursor-native arms hoist ahead of the statement being transformed —
+	// the flat-side twin of `pending_stmts`. Hoisting arms must first flush
+	// `pending_stmts` into this queue so the combined drain keeps the legacy
+	// chronological order.
+	pending_flat_stmt_ids []ast.FlatNodeId
 	// Current scope for type lookups (walks up scope chain)
 	scope &types.Scope = unsafe { nil }
 	// Function root scope for registering transformer-created temp variables
@@ -3136,8 +3146,14 @@ fn (mut t Transformer) transform_files_from_flat_no_post_pass(flat &ast.FlatAst,
 
 // transform_files_to_flat is the legacy-compatible flat-output entry point.
 // It wraps transform_files_from_flat + ast.flatten_files and returns both the
-// FlatAst and transformed files for callers that still need []ast.File. Flat
-// codegen paths should use transform_flat_to_flat_direct instead.
+// FlatAst and transformed files for callers that still need []ast.File.
+//
+// NO PRODUCTION CALLERS remain: the builder uses transform_flat_to_flat_direct
+// (sequential) / transform_files_parallel_flat_direct (parallel) for every
+// backend, and .v/eval rehydrate via flat.to_files() at the codegen boundary.
+// Kept only as the legacy parity reference for the flat-diff test suite; delete
+// together with the remaining decode-fallback arms once the cursor-native
+// transform is complete.
 pub fn (mut t Transformer) transform_files_to_flat(flat &ast.FlatAst, files []ast.File) (ast.FlatAst, []ast.File) {
 	result := t.transform_files_from_flat(flat, files)
 	return ast.flatten_files(result), result
@@ -3171,8 +3187,11 @@ pub fn (mut t Transformer) transform_files_to_flat(flat &ast.FlatAst, files []as
 // the stmts list (file root edge 2) to assert structural parity.
 //
 // Memory: this avoids the legacy post_pass + flatten_files boundary but still
-// returns []ast.File for compatibility consumers. Flat-codegen backends bypass
-// this with transform_flat_to_flat_direct or the parallel flat-direct path.
+// returns []ast.File for compatibility consumers.
+//
+// NO PRODUCTION CALLERS remain (every backend transforms flat-direct; .v/eval
+// rehydrate at the codegen boundary). Kept only as the legacy parity reference
+// for tests; delete once the cursor-native transform is complete.
 pub fn (mut t Transformer) transform_files_to_flat_via_driver(flat &ast.FlatAst, files []ast.File) (ast.FlatAst, []ast.File) {
 	timing := os.getenv('V2_TTIME') != ''
 	mut sw := time.new_stopwatch()
@@ -3307,7 +3326,35 @@ pub fn (mut t Transformer) transform_flat_to_flat_direct(flat &ast.FlatAst, file
 	if timing {
 		eprintln('  [ttime] flat input direct post_pass: ${sw.elapsed().milliseconds()}ms')
 	}
+	t.dump_flat_fallback_stats()
 	return builder.flat
+}
+
+// count_flat_fallback records one legacy-decode fallback hit for a cursor
+// transform arm. Used to prioritize the remaining flat-native migration.
+@[inline]
+fn (mut t Transformer) count_flat_fallback(key string) {
+	t.flat_fb_counts[key]++
+}
+
+// dump_flat_fallback_stats prints the per-arm legacy-decode fallback counts
+// recorded during the transform, gated on V2_FLAT_FB_STATS.
+fn (t &Transformer) dump_flat_fallback_stats() {
+	if os.getenv('V2_FLAT_FB_STATS') == '' {
+		return
+	}
+	mut keys := t.flat_fb_counts.keys()
+	keys.sort_with_compare(fn [t] (a &string, b &string) int {
+		return t.flat_fb_counts[*b] - t.flat_fb_counts[*a]
+	})
+	mut total := 0
+	for k in keys {
+		total += t.flat_fb_counts[k]
+	}
+	eprintln('[flat-fb] total legacy-decode fallbacks: ${total}')
+	for k in keys {
+		eprintln('[flat-fb]   ${t.flat_fb_counts[k]:8} ${k}')
+	}
 }
 
 fn new_transform_output_flat_builder(files []ast.File) ast.FlatBuilder {
@@ -12115,7 +12162,13 @@ fn (mut t Transformer) append_active_defers(mut out []ast.Stmt, active_defers []
 	mut all_defers := []LoweredDefer{cap: active_defers.len + function_defers.len}
 	all_defers << active_defers
 	all_defers << function_defers
-	all_defers.sort(a.seq > b.seq)
+	for i := 1; i < all_defers.len; i++ {
+		mut j := i
+		for j > 0 && all_defers[j - 1].seq < all_defers[j].seq {
+			all_defers[j - 1], all_defers[j] = all_defers[j], all_defers[j - 1]
+			j--
+		}
+	}
 	for defer_entry in all_defers {
 		t.append_defer_body(mut out, defer_entry)
 	}

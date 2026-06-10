@@ -69,6 +69,7 @@ pub fn (mut g Gen) add_called_fn_names(names []string) {
 fn (mut g Gen) mark_called_fn_name(name string) {
 	if name.len > 0 {
 		g.called_fn_names[name] = true
+		g.remember_called_specialized_name(name)
 	}
 }
 
@@ -888,6 +889,19 @@ fn specialized_receiver_method_key(receiver_type string, method_name string) str
 	return '${receiver_type}|${method_name}'
 }
 
+fn (mut g Gen) ensure_specialized_receiver_method_index() {
+	if g.specialized_receiver_method_indexed {
+		return
+	}
+	for fn_name, _ in g.fn_return_types {
+		g.remember_specialized_fn_base(fn_name)
+	}
+	for fn_name, _ in g.fn_param_is_ptr {
+		g.remember_specialized_fn_base(fn_name)
+	}
+	g.specialized_receiver_method_indexed = true
+}
+
 fn (mut g Gen) needs_implicit_veb_ctx_param(node &ast.FnDecl, fn_name string) bool {
 	if node.receiver.name == 'ctx' {
 		return false
@@ -1018,8 +1032,7 @@ fn (g &Gen) generic_fn_param_names(node ast.FnDecl) []string {
 }
 
 fn (g &Gen) should_skip_backend_generic_fn(node ast.FnDecl) bool {
-	_ = node
-	return false
+	return g.generic_fn_param_names(node).len > 0 || receiver_generic_param_names(node).len > 0
 }
 
 // receiver_generic_param_names collects generic placeholder names from a
@@ -6427,8 +6440,36 @@ fn (mut g Gen) gen_fn_decl_with_name(node ast.FnDecl, fn_name string) {
 	g.gen_fn_decl_with_name_ptr(&node, fn_name)
 }
 
+fn (mut g Gen) remember_called_specialized_name(name string) {
+	if name == '' || !name.contains('_T_') {
+		return
+	}
+	base := name.all_before('_T_')
+	if base == '' || base in g.called_specialized_names {
+		return
+	}
+	g.called_specialized_names[base] = name
+}
+
+fn (mut g Gen) ensure_called_specialized_name_index() {
+	if g.called_specialized_names_indexed {
+		return
+	}
+	g.called_specialized_names = map[string]string{}
+	for name, _ in g.called_fn_names {
+		g.remember_called_specialized_name(name)
+	}
+	g.called_specialized_names_indexed = true
+}
+
 fn (g &Gen) called_specialized_name_for_base(base string) ?string {
 	if base.contains('_T_') {
+		return none
+	}
+	if g.called_specialized_names_indexed {
+		if name := g.called_specialized_names[base] {
+			return name
+		}
 		return none
 	}
 	prefix := '${base}_T_'
@@ -7061,9 +7102,6 @@ fn (mut g Gen) gen_fn_head_with_name_ptr(node &ast.FnDecl, fn_name string) {
 		c_ret = 'int'
 	}
 	sig_param_types := g.fn_param_types[fn_name] or { []string{} }
-	for sig_type in g.fn_head_signature_type_names(node, fn_name, ret, sig_param_types) {
-		g.emit_forward_typedef_for_signature_type(sig_type)
-	}
 
 	// main takes argc/argv
 	if is_program_main {
@@ -7154,70 +7192,6 @@ fn (mut g Gen) gen_fn_head_with_name_ptr(node &ast.FnDecl, fn_name string) {
 		sig_idx++
 	}
 	g.sb.write_string(')')
-}
-
-fn (mut g Gen) fn_head_signature_type_names(node &ast.FnDecl, fn_name string, ret string, sig_param_types []string) []string {
-	mut sig_types := []string{}
-	sig_types << ret
-	mut sig_idx := 0
-	if node.is_method && node.receiver.name != '' {
-		receiver_type := if sig_idx < sig_param_types.len {
-			normalize_signature_type_name(sig_param_types[sig_idx], 'void*')
-		} else if node.receiver.is_mut {
-			rt := normalize_signature_type_name(g.decl_expr_type_to_c(node.receiver.typ), 'void*')
-			if rt.ends_with('*') {
-				rt
-			} else {
-				rt + '*'
-			}
-		} else {
-			normalize_signature_type_name(g.decl_expr_type_to_c(node.receiver.typ), 'void*')
-		}
-		sig_types << receiver_type
-		sig_idx++
-	}
-	if g.needs_implicit_veb_ctx_param(node, fn_name) {
-		sig_types << g.implicit_veb_ctx_c_type()
-		sig_idx++
-	}
-	for param in node.typ.params {
-		if param.typ is ast.Type {
-			if param.typ is ast.FnType {
-				fn_type := param.typ as ast.FnType
-				if fn_type.return_type !is ast.EmptyExpr {
-					sig_types << normalize_signature_type_name(g.expr_type_to_c(fn_type.return_type),
-						'void')
-				}
-				for fn_param in fn_type.params {
-					mut param_type := normalize_signature_type_name(g.expr_type_to_c(fn_param.typ),
-						'int')
-					if fn_param.is_mut && !param_type.ends_with('*') {
-						param_type += '*'
-					}
-					sig_types << param_type
-				}
-				sig_idx++
-				continue
-			}
-		}
-		t := if sig_idx < sig_param_types.len {
-			normalize_signature_type_name(sig_param_types[sig_idx], 'int')
-		} else if param.is_mut {
-			pt := normalize_signature_type_name(g.expr_type_to_c(param.typ), 'int')
-			if pt.ends_with('*') {
-				pt
-			} else {
-				pt + '*'
-			}
-		} else {
-			normalize_signature_type_name(g.expr_type_to_c(param.typ), 'int')
-		}
-		if !t.contains('(*)') {
-			sig_types << t
-		}
-		sig_idx++
-	}
-	return sig_types
 }
 
 fn c_fn_pointer_type_with_name(fn_type string, name string) string {
@@ -7853,7 +7827,7 @@ fn (g &Gen) is_simple_addressable(expr ast.Expr) bool {
 fn (mut g Gen) gen_addr_of_expr(arg ast.Expr, typ string) {
 	base_arg := if arg is ast.ModifierExpr { arg.expr } else { arg }
 	// nil is a null pointer — emit NULL directly, never wrap in compound literal
-	if base_arg is ast.Ident && base_arg.name == 'nil' {
+	if is_nil_like_expr(base_arg) {
 		g.sb.write_string('NULL')
 		return
 	}
@@ -8992,17 +8966,19 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 			return
 		}
 	}
-	// nil is always a valid pointer value (NULL) — never wrap it
-	if (base_arg is ast.Ident && base_arg.name == 'nil') || base_arg is ast.Type {
+	// nil is always a valid pointer value (NULL) — never wrap it. A literal
+	// `0` (possibly cast-wrapped) is nil-like only for pointer parameters;
+	// for value parameters it must stay a plain `0`.
+	if is_nil_like_expr(base_arg) {
+		if (base_arg is ast.Ident && base_arg.name == 'nil') || base_arg is ast.Type {
+			g.sb.write_string('NULL')
+			return
+		}
 		if ptr_params := g.fn_param_is_ptr[fn_name] {
 			if idx < ptr_params.len && ptr_params[idx] {
 				g.sb.write_string('NULL')
 				return
 			}
-		}
-		if base_arg is ast.Ident && base_arg.name == 'nil' {
-			g.sb.write_string('NULL')
-			return
 		}
 	}
 	if fn_name == 'new_map_init_noscan_value' && idx in [7, 8] {
@@ -10263,13 +10239,13 @@ fn (mut g Gen) resolve_method_on_concrete_type(receiver_type string, method_name
 			return module_candidate
 		}
 	}
-	if g.specialized_fn_bases.len == 0 || clean_type in g.specialized_fn_bases {
+	g.ensure_specialized_receiver_method_index()
+	if clean_type in g.specialized_fn_bases {
 		if specialized := g.resolve_specialized_receiver_method(clean_type, sanitized) {
 			return specialized
 		}
 	}
-	if short_name != '' && short_name != clean_type
-		&& (g.specialized_fn_bases.len == 0 || short_name in g.specialized_fn_bases) {
+	if short_name != '' && short_name != clean_type && short_name in g.specialized_fn_bases {
 		if specialized := g.resolve_specialized_receiver_method(short_name, sanitized) {
 			return specialized
 		}
@@ -10306,17 +10282,18 @@ fn (mut g Gen) resolve_specialized_receiver_method(receiver_type string, method_
 	// simple method (no `__`) is exactly (all_before('_T_') == base) && (all_after_last('__') ==
 	// method) — i.e. the same keys remember_specialized_receiver_method records.
 	if !receiver_type.contains('_T_') && !method_name.contains('__') {
+		g.ensure_specialized_receiver_method_index()
 		key := specialized_receiver_method_key(receiver_type, method_name)
+		if key in g.specialized_receiver_method_miss {
+			return none
+		}
 		if key in g.specialized_receiver_method_ambiguous {
 			return none
 		}
 		if found := g.specialized_receiver_methods[key] {
 			return found
 		}
-		if g.specialized_receiver_methods.len == 0
-			&& g.specialized_receiver_method_ambiguous.len == 0 {
-			return g.scan_specialized_receiver_method(receiver_type, method_name)
-		}
+		g.specialized_receiver_method_miss[key] = true
 		return none
 	}
 	// Rare fallback: receiver_type/method contains the `_T_`/`__` separator the index keys on.
@@ -10822,7 +10799,7 @@ fn (mut g Gen) gen_json_decode_call(lhs ast.Expr, args []ast.Expr) bool {
 	raw_tmp := '_json_decode_raw_${tmp_id}'
 	res_tmp := '_json_decode_res_${tmp_id}'
 	ptr_tmp := '_json_decode_ptr_${tmp_id}'
-	g.called_fn_names['json__decode'] = true
+	g.mark_called_fn_name('json__decode')
 	g.sb.write_string('({ _result_voidptr ${raw_tmp} = json__decode(NULL, ')
 	g.gen_call_arg('json__decode', 1, args[1])
 	g.sb.write_string('); ${result_type} ${res_tmp} = (${result_type}){ .is_error = ${raw_tmp}.is_error, .err = ${raw_tmp}.err }; if (!${raw_tmp}.is_error) { void* ${ptr_tmp} = (*(void**)(((u8*)(&${raw_tmp}.err)) + sizeof(IError))); if (${ptr_tmp} != NULL) { _result_ok(${ptr_tmp}, (_result*)&${res_tmp}, sizeof(${target_type})); } } ${res_tmp}; })')

@@ -57,12 +57,25 @@ pub mut:
 }
 
 pub fn Environment.new() &Environment {
-	return &Environment{
+	return Environment.new_with_capacity(0, 0)
+}
+
+// Environment.new_with_capacity returns a new checker environment with the hot
+// expression metadata maps pre-sized for large flat-AST builds.
+pub fn Environment.new_with_capacity(expr_types_cap int, selector_names_cap int) &Environment {
+	mut env := &Environment{
 		expr_types:     map[int]Type{}
 		selector_names: map[int]string{}
 		c_scope:        new_scope(unsafe { nil })
 		c_scope_mu:     sync.new_mutex()
 	}
+	if expr_types_cap > 0 {
+		env.expr_types.reserve(u32(expr_types_cap))
+	}
+	if selector_names_cap > 0 {
+		env.selector_names.reserve(u32(selector_names_cap))
+	}
+	return env
 }
 
 // set_expr_type stores the computed type for an expression by its unique ID.
@@ -5289,7 +5302,9 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 			// Skip checking generic functions that are never instantiated.
 			return false
 		}
-		c.env.cur_generic_types << generic_types
+		for generic_type_map in generic_types {
+			c.env.cur_generic_types << generic_type_map
+		}
 	}
 	if !has_decl_generic_params || c.env.cur_generic_types.len > 0 {
 		mut decl := signature_decl
@@ -5363,7 +5378,7 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 		c.scope = prev_scope
 		c.cur_file_module = prev_module
 	}
-	c.env.cur_generic_types = []
+	c.env.cur_generic_types = []map[string]Type{}
 	return true
 }
 
@@ -7606,7 +7621,7 @@ fn (mut c Checker) fn_type_with_insert_params(fn_type ast.FnType, attributes FnT
 		// scope: c.scope
 	}
 	if generic_params.len > 0 {
-		c.generic_params = []
+		c.generic_params = []string{}
 	}
 	// c.close_scope()
 	return typ

@@ -372,6 +372,21 @@ pub fn new_flat_builder_with_capacity(nodes_cap int, edges_cap int, strings_cap 
 	}
 }
 
+// take_flat moves the built flat graph out and releases transient builder-only
+// indexes. The returned FlatAst keeps owning its arena arrays.
+pub fn (mut b FlatBuilder) take_flat() FlatAst {
+	flat := b.flat
+	unsafe {
+		b.string_ids.free()
+	}
+	b.flat = FlatAst{}
+	b.string_ids = map[string]int{}
+	b.empty_list_id = invalid_flat_node_id
+	b.empty_expr_id = invalid_flat_node_id
+	b.empty_stmt_id = invalid_flat_node_id
+	return flat
+}
+
 // append_file converts one legacy File into flat nodes and registers it as a
 // root. Designed for streaming use: the caller can drop the legacy `file`
 // immediately after this returns, capping peak memory at ~one file's legacy
@@ -1623,7 +1638,9 @@ fn (mut b FlatBuilder) emit_simple(kind FlatNodeKind, pos token.Pos, edges []Fla
 }
 
 fn (mut b FlatBuilder) push_edge(edges []FlatEdge, child FlatNodeId) []FlatEdge {
-	mut updated := edges.clone()
+	// Append-and-reassign pattern (callers always do `edges = b.push_edge(edges, ...)`),
+	// so skipping the defensive clone is safe and avoids one copy per edge.
+	mut updated := unsafe { edges }
 	updated << FlatEdge{
 		child_id: child
 	}

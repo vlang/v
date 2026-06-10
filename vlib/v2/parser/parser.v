@@ -796,42 +796,6 @@ fn (mut p Parser) complete_simple_stmt(expr ast.Expr, expecting_semi bool) ast.S
 
 fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 	// p.log('EXPR: ${p.tok} - ${p.line}')
-	// Self-hosted ARM64 builds can conflate `&` with backtick char tokens,
-	// so disambiguate the two from the source byte before token matching.
-	start_offset := p.pos.offset - p.file.base
-	start_char := if start_offset >= 0 && start_offset < p.scanner.src.len {
-		p.scanner.src[start_offset]
-	} else {
-		`\0`
-	}
-	if start_char == `\`` {
-		char_pos := p.pos
-		char_value := p.lit()
-		return p.finish_expr(ast.Expr(ast.BasicLiteral{
-			kind:  .char
-			value: char_value
-			pos:   char_pos
-		}), min_bp)
-	}
-	if start_char == `&` && p.tok.str() == '&' {
-		prefix_pos := p.pos
-		p.next()
-		mut prefix_rhs := ast.empty_expr
-		if p.tok == .name {
-			prefix_rhs = p.ident_or_named_type()
-			if p.tok == .lcbr && p.can_parse_init_expr(prefix_rhs) {
-				prefix_rhs = p.assoc_or_init_expr(prefix_rhs)
-			}
-			prefix_rhs = p.finish_expr(prefix_rhs, .highest)
-		} else {
-			prefix_rhs = p.expr(.highest)
-		}
-		return p.finish_expr(ast.Expr(ast.PrefixExpr{
-			pos:  prefix_pos
-			op:   .amp
-			expr: prefix_rhs
-		}), min_bp)
-	}
 	if p.tok == .xor {
 		lifetime_pos := p.pos
 		p.next()

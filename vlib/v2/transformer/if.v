@@ -1307,6 +1307,40 @@ fn (t &Transformer) can_eval_comptime_cond(cond ast.Expr) bool {
 	}
 }
 
+fn (t &Transformer) can_eval_comptime_cond_cursor(cond ast.Cursor) bool {
+	if !cond.is_valid() {
+		return false
+	}
+	match cond.kind() {
+		.expr_ident {
+			return true
+		}
+		.expr_comptime, .expr_paren {
+			return t.can_eval_comptime_cond_cursor(cond.edge(0))
+		}
+		.expr_call, .expr_call_or_cast {
+			return transformer_pkgconfig_call_name_cursor(cond) != none
+		}
+		.expr_prefix {
+			return t.can_eval_comptime_cond_cursor(cond.edge(0))
+		}
+		.expr_infix {
+			op := unsafe { token.Token(int(cond.aux())) }
+			if op == .key_is || op == .not_is {
+				return false
+			}
+			return t.can_eval_comptime_cond_cursor(cond.edge(0))
+				&& t.can_eval_comptime_cond_cursor(cond.edge(1))
+		}
+		.expr_postfix {
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
 // transform_comptime_if_bodies recursively transforms the body stmts of each
 // branch in a comptime $if, without evaluating the condition. This is used when
 // the condition can't be evaluated at transform time (e.g., generic type checks).

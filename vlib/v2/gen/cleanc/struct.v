@@ -7686,7 +7686,7 @@ fn (mut g Gen) gen_channel_init_expr(node ast.InitExpr) bool {
 		elem_c_type = 'void*'
 	}
 	g.force_emit_fn_names['sync__new_channel_st'] = true
-	g.called_fn_names['sync__new_channel_st'] = true
+	g.mark_called_fn_name('sync__new_channel_st')
 	g.sb.write_string('sync__new_channel_st(')
 	mut wrote_cap := false
 	for field in node.fields {

@@ -1443,6 +1443,33 @@ fn (mut g Gen) emit_tinyc_arm_cpu_relax_fallback() {
 	g.sb.writeln('#endif')
 }
 
+fn (mut g Gen) emit_stdatomic_compat_include() {
+	if g.pref == unsafe { nil } || g.pref.vroot.len == 0 {
+		return
+	}
+	dir_name := if g.target_os_name() == 'windows' { 'win' } else { 'nix' }
+	header_path := os.join_path(g.pref.vroot, 'thirdparty', 'stdatomic', dir_name, 'atomic.h')
+	if !os.exists(header_path) {
+		return
+	}
+	include_path := header_path.replace('\\', '/')
+	// The `extern -> static` hack only matters for tcc on Apple arm64; keep
+	// the __APPLE__ guard out of non-macos target preambles (they are
+	// asserted apple-free by target_codegen_test).
+	apple_target := g.target_os_name() == 'macos'
+	if apple_target {
+		g.sb.writeln('#if defined(__TINYC__) && defined(__APPLE__) && defined(__aarch64__)')
+		g.sb.writeln('#define extern static')
+		g.sb.writeln('#endif')
+	}
+	g.sb.writeln('#include "${include_path}"')
+	if apple_target {
+		g.sb.writeln('#if defined(__TINYC__) && defined(__APPLE__) && defined(__aarch64__)')
+		g.sb.writeln('#undef extern')
+		g.sb.writeln('#endif')
+	}
+}
+
 fn (mut g Gen) emit_v_architecture_macros() {
 	g.sb.writeln('#if defined(__x86_64__) || defined(_M_AMD64)')
 	g.sb.writeln('#define __V_amd64 1')
@@ -1547,6 +1574,7 @@ fn (mut g Gen) emit_target_rwmutex() {
 fn (mut g Gen) write_preamble() {
 	minimal_preamble := g.use_minimal_preamble()
 	g.sb.write_string(g.preamble_includes(minimal_preamble))
+	g.emit_stdatomic_compat_include()
 	g.emit_v_architecture_macros()
 	g.emit_v_commit_hash_fallback()
 	g.emit_collected_c_directives()
