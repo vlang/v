@@ -195,10 +195,30 @@ pub fn (db DB) drop(table orm.Table) ! {
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
-// execute runs a raw SQL query and returns result rows as driver-agnostic orm.Row values.
+// execute runs a raw SQL query and returns result rows as driver-agnostic orm.Row values,
+// with column names populated from the result metadata.
 pub fn (db DB) execute(query string) ![]orm.Row {
-	rows := db.exec(query)!
-	return rows.map(orm.Row{ vals: it.vals })
+	mut guard := db.acquire_connection_guard()!
+	defer {
+		guard.release()
+	}
+	if C.mysql_query(guard.conn, query.str) != 0 {
+		throw_mysql_error_for_conn(guard.conn)!
+	}
+
+	result := C.mysql_store_result(guard.conn)
+	if result == unsafe { nil } {
+		return []orm.Row{}
+	} else {
+		res := Result{result}
+		fields := res.fields()
+		mut names := []string{}
+		for f in fields {
+			names << f.name
+		}
+		rows := res.rows()
+		return rows.map(orm.Row{ vals: it.vals, names: names })
+	}
 }
 
 // orm_begin starts a transaction for ORM helpers.

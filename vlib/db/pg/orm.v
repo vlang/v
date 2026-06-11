@@ -79,17 +79,26 @@ pub fn (c &Conn) drop(table orm.Table) ! {
 	c.exec(query)!
 }
 
-// execute runs a raw SQL query and returns result rows as driver-agnostic orm.Row values.
+// execute runs a raw SQL query and returns result rows as driver-agnostic orm.Row values,
+// with column names populated from the result metadata.
 pub fn (c &Conn) execute(query string) ![]orm.Row {
-	rows := c.exec(query)!
+	res := c.exec_result(query)!
+
+	// Build column name array indexed by position.
+	mut sorted_names := []string{len: res.cols.len}
+	for name, idx in res.cols {
+		sorted_names[idx] = name
+	}
+
 	mut orm_rows := []orm.Row{}
-	for r in rows {
+	for r in res.rows {
 		mut vals := []string{}
 		for i in 0 .. r.vals.len {
 			vals << r.val(i)
 		}
 		orm_rows << orm.Row{
-			vals: vals
+			vals:  vals
+			names: sorted_names
 		}
 	}
 	return orm_rows
