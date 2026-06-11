@@ -881,10 +881,10 @@ fn use(m Match[Item]) bool {
 	}
 	return false
 }
-')
+	')
 	assert csrc.contains('typedef struct _option_sample__Item _option_sample__Item;')
 	assert csrc.contains('struct _option_sample__Item')
-	assert csrc.contains('_option_sample__Item sample__Match__inner')
+	assert csrc.contains('_option_sample__Item sample__Match_T_sample_Item__inner_T_sample_Item')
 }
 
 fn test_generate_c_expands_lifetime_generic_option_field_if_guard() {
@@ -1514,9 +1514,9 @@ pub fn Standard.new[W](wtr W) Standard[W] {
 pub fn (mut s Standard[W]) write(buf []u8) !int {
 	return s.wtr.write(buf)
 }
-',
+	',
 	])
-	assert csrc.contains('_result_int printer__CounterWriter__write')
+	assert csrc.contains('_result_int printer__CounterWriter_T_core_BufferWriter__write_T_core_BufferWriter')
 	assert csrc.contains('core__BufferWriter__write(&w->wtr, buf)')
 	assert csrc.contains('int n = (*(int*)')
 	assert !csrc.contains('int n = ;')
@@ -1705,10 +1705,12 @@ fn demo() {
 	_ := build(PlainWriter{})
 }
 	')
-	dep_pos := csrc.index('struct CounterWriter_T_NoColor {') or {
+	dep_pos := csrc.index('struct CounterWriter_T_NoColor_T_PlainWriter {') or {
 		panic('missing concrete nested generic struct body')
 	}
-	user_pos := csrc.index('struct JSON {') or { panic('missing generic user struct body') }
+	user_pos := csrc.index('struct JSON_T_PlainWriter {') or {
+		panic('missing generic user struct body')
+	}
 	assert dep_pos < user_pos
 }
 
@@ -1757,9 +1759,10 @@ fn main() {
 	outer := make()
 	_ = outer.inner.value
 }
-')
+	')
 	assert csrc.contains('struct Inner {\n\tint value;')
 	assert csrc.contains('struct Outer {\n\tInner inner;')
+		|| csrc.contains('struct Outer {\n\tInner_T_int inner;')
 	assert csrc.contains('Outer make()')
 	assert !csrc.contains('f64 make()')
 	assert !csrc.contains('f64 outer = make()')
@@ -1828,7 +1831,7 @@ fn make() !Primitive {
 	return Primitive(true)
 }
 ')
-	assert csrc.contains('Primitive _val = ((Primitive){._tag = 1,._data._bool')
+	assert csrc.contains('Primitive _val = ((Primitive){._tag = 1, ._data._bool')
 	assert !csrc.contains('Primitive _val = ((Primitive){._tag = 2,._data._Array_Primitive')
 }
 

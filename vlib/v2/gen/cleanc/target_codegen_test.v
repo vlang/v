@@ -255,6 +255,67 @@ fn generated_c_for_target_program_with_defines(name string, source string, targe
 		user_defines, freestanding, skip_builtin, [])
 }
 
+fn generated_c_for_trace_calls_import_with_defines(name string, user_defines []string) string {
+	source := 'module main
+
+import v.trace_calls
+
+pub struct C.FILE {}
+
+pub struct C.timespec {
+pub mut:
+	tv_sec  i64
+	tv_nsec i64
+}
+
+__global C.stderr &C.FILE
+
+pub const C.CLOCK_MONOTONIC int
+
+fn C.fprintf(fstream &C.FILE, const_format &char, opt ...voidptr) i32
+fn C.fflush(fstream &C.FILE) i32
+fn C.clock_gettime(i32, &C.timespec) i32
+fn C.pthread_self() usize
+
+fn main() {
+	trace_calls.on_call("probe")
+}
+'
+	trace_calls_file := os.join_path(os.getwd(), 'vlib', 'v', 'trace_calls', 'tracing_calls.c.v')
+	return generated_c_for_target_program_with_extra_files(name, source, 'linux', user_defines,
+		false, false, [trace_calls_file])
+}
+
+fn generated_c_for_target_program_with_extra_files(name string, source string, target_os string, user_defines []string, freestanding bool, skip_builtin bool, extra_files []string) string {
+	tmp_file := os.join_path(os.temp_dir(), 'v2_cleanc_target_codegen_${name}_${os.getpid()}.v')
+	os.write_file(tmp_file, source) or { panic(err) }
+	defer {
+		os.rm(tmp_file) or {}
+	}
+	prefs := &vpref.Preferences{
+		backend:               .cleanc
+		target_os:             target_os
+		freestanding:          freestanding
+		skip_builtin:          skip_builtin
+		user_defines:          user_defines
+		explicit_user_defines: user_defines.clone()
+		no_parallel:           true
+	}
+	mut paths := [tmp_file]
+	paths << extra_files
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files(paths, mut file_set)
+	env := types.Environment.new()
+	mut checker := types.Checker.new(prefs, file_set, env)
+	checker.check_files(files)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
+	trans.set_file_set(file_set)
+	transformed_files := trans.transform_files(files)
+	mut gen := Gen.new_with_env_and_pref(transformed_files, env, prefs)
+	return gen.gen()
+}
+
 fn generated_c_for_target_program_with_hooks(name string, source string, hooks []string) string {
 	return generated_c_for_target_program_with_defines_and_hooks(name, source, 'linux',
 		freestanding_hook_defines(hooks), true, true, hooks)
@@ -390,6 +451,19 @@ fn assert_no_os_runtime_headers(csrc string) {
 	] {
 		assert !csrc.contains(marker), marker
 	}
+}
+
+fn assert_c_marker_before(csrc string, before string, after string) {
+	before_idx := csrc.index(before) or { panic('missing marker: ${before}') }
+	after_idx := csrc.index(after) or { panic('missing marker: ${after}') }
+	assert before_idx < after_idx
+}
+
+fn assert_no_gettid_compat(csrc string) {
+	assert !csrc.contains('_GNU_SOURCE')
+	assert !csrc.contains('SYS_gettid')
+	assert !csrc.contains('v_cleanc_gettid')
+	assert !csrc.contains('#define gettid')
 }
 
 fn test_eval_comptime_flag_uses_target_os_preference() {
@@ -906,6 +980,930 @@ fn test_preamble_specializes_apple_includes_by_target() {
 	assert full_cross_src.contains('#if defined(_WIN32)\n#include <windows.h>\n#else\n#include <unistd.h>')
 	assert full_cross_src.contains('#include <pthread.h>\n#include <sys/time.h>')
 	assert full_cross_src.contains('extern char** environ;\n#endif')
+}
+
+fn test_linux_preamble_declares_v_owned_gettid_helper_before_c_calls() {
+	src := full_preamble_for_target('linux', [])
+	assert src.contains(linux_gettid_feature_define)
+	assert src.contains('#include <unistd.h>')
+	assert src.contains(linux_gettid_helper)
+	assert !src.contains('#define gettid')
+	assert_c_marker_before(src, '#define _GNU_SOURCE', '#include <stdio.h>')
+	assert_c_marker_before(src, '#include <unistd.h>', '#include <sys/syscall.h>')
+	assert_c_marker_before(src, '#include <sys/syscall.h>',
+		'static inline uint32_t v_cleanc_gettid(void)')
+}
+
+fn test_linux_minimal_preamble_declares_v_owned_gettid_helper() {
+	src := preamble_for_target('linux', [])
+	assert src.contains(linux_gettid_feature_define)
+	assert src.contains('#include <unistd.h>')
+	assert src.contains(linux_gettid_helper)
+	assert !src.contains('#define gettid')
+	assert_c_marker_before(src, '#define _GNU_SOURCE', '#include <stdio.h>')
+	assert_c_marker_before(src, '#include <unistd.h>', '#include <sys/syscall.h>')
+	assert_c_marker_before(src, '#include <sys/syscall.h>',
+		'static inline uint32_t v_cleanc_gettid(void)')
+}
+
+fn test_gettid_linux_compat_does_not_leak_to_non_linux_targets() {
+	for target in ['windows', 'macos', 'cross', 'freebsd', 'android', 'termux'] {
+		minimal_src := preamble_for_target(target, [])
+		full_src := full_preamble_for_target(target, [])
+		assert_no_gettid_compat(minimal_src)
+		assert_no_gettid_compat(full_src)
+	}
+
+	freestanding_src := full_preamble_for_options('linux', [], true, false)
+	assert_no_gettid_compat(freestanding_src)
+	assert_no_os_runtime_headers(freestanding_src)
+}
+
+fn test_gettid_linux_compat_respects_no_gettid_and_musl_defines() {
+	for define in ['no_gettid', 'musl'] {
+		assert_no_gettid_compat(preamble_for_target('linux', [define]))
+		assert_no_gettid_compat(full_preamble_for_target('linux', [define]))
+	}
+}
+
+fn test_generated_linux_gettid_call_has_compat_preamble() {
+	source := 'module main
+
+fn C.gettid() u32
+
+fn thread_id() u32 {
+	return C.gettid()
+}
+
+fn main() {
+	_ = thread_id()
+}
+'
+	src := generated_c_for_target_program_with_options('linux_gettid_call', source, 'linux', false,
+		false)
+	assert src.contains(linux_gettid_feature_define)
+	assert src.contains(linux_gettid_helper)
+	assert !src.contains('#define gettid')
+	assert src.contains('return v_cleanc_gettid();')
+	assert !src.contains('return gettid();')
+	assert_c_marker_before(src, '#define _GNU_SOURCE', '#include <stdio.h>')
+	assert_c_marker_before(src, 'static inline uint32_t v_cleanc_gettid(void)',
+		'return v_cleanc_gettid();')
+}
+
+fn test_generated_musl_optional_gettid_branch_is_not_selected() {
+	source := 'module main
+
+fn C.gettid() u32
+
+fn thread_id() u32 {
+	$if linux && !musl ? {
+		return C.gettid()
+	} $else {
+		return 0
+	}
+}
+
+fn main() {
+	_ = thread_id()
+}
+'
+	src := generated_c_for_target_program_with_defines('linux_musl_gettid_branch', source, 'linux', [
+		'musl',
+	], false, false)
+	assert_no_gettid_compat(src)
+	assert !src.contains('return gettid();')
+	assert src.contains('return 0;')
+}
+
+fn test_generated_no_gettid_optional_branch_does_not_emit_compat() {
+	source := 'module main
+
+fn C.gettid() u32
+
+fn thread_id() u32 {
+	$if no_gettid ? {
+		return 0
+	} $else $if linux && !musl ? {
+		return C.gettid()
+	} $else {
+		return 1
+	}
+}
+
+fn main() {
+	_ = thread_id()
+}
+'
+	src := generated_c_for_target_program_with_defines('linux_no_gettid_branch', source, 'linux', [
+		'no_gettid',
+	], false, false)
+	assert_no_gettid_compat(src)
+	assert !src.contains('return gettid();')
+	assert src.contains('return 0;')
+}
+
+fn test_trace_calls_import_respects_no_gettid_and_musl() {
+	for define in ['no_gettid', 'musl'] {
+		src := generated_c_for_trace_calls_import_with_defines('trace_calls_${define}_import', [
+			define,
+		])
+		assert_no_gettid_compat(src)
+		assert !src.contains('gettid(')
+		assert src.contains('pthread_self()')
+	}
+}
+
+fn test_label_followed_by_result_or_temp_emits_null_statement() {
+	src := generated_c_for_target_program('label_before_result_or_temp', '
+fn maybe_label_value() !string {
+	return "ok"
+}
+
+fn main() {
+	start_no_time:
+	value := maybe_label_value() or { return }
+	_ = value
+}
+')
+	assert src.contains('start_no_time:;')
+	assert src.contains('_result_string _or_t')
+	assert !src.contains('start_no_time:\n\t_result_string _or_t')
+}
+
+fn test_generated_sort_comparator_casts_named_fn_to_fnsortcb() {
+	src := generated_c_for_target_program('sort_generated_comparator_fnsortcb_cast', '
+struct RepIndex {
+	idx int
+}
+
+fn main() {
+	mut idxs := [RepIndex{idx: 2}, RepIndex{idx: 1}]
+	idxs.sort(a.idx < b.idx)
+}
+')
+	assert src.contains('int __sort_cmp_RepIndex_by_idx_asc(RepIndex* a, RepIndex* b);')
+	assert src.contains('array__sort_with_compare(idxs, (FnSortCB)__sort_cmp_RepIndex_by_idx_asc);')
+	assert !src.contains('array__sort_with_compare(idxs, __sort_cmp_RepIndex_by_idx_asc);')
+}
+
+fn test_sort_with_compare_named_comparator_casts_to_fnsortcb() {
+	src := generated_c_for_target_program('sort_named_comparator_fnsortcb_cast', '
+type FnSortCB = fn (voidptr, voidptr) int
+
+struct Item {
+	value int
+}
+
+fn array__sort_with_compare(mut items []Item, callback FnSortCB)
+
+fn compare_items(a &Item, b &Item) int {
+	return a.value - b.value
+}
+
+fn main() {
+	mut items := [Item{value: 2}, Item{value: 1}]
+	array__sort_with_compare(mut items, compare_items)
+}
+')
+	assert src.contains('array__sort_with_compare(&items, (FnSortCB)compare_items);')
+	assert !src.contains('array__sort_with_compare(&items, compare_items);')
+}
+
+fn test_sort_with_compare_same_name_non_fnsortcb_callback_is_not_cast_to_fnsortcb() {
+	src := generated_c_for_target_program('sort_same_name_non_fnsortcb_callback_no_cast', '
+struct Item {
+	value int
+}
+
+type ItemCallback = fn (&Item, &Item) int
+
+fn array__sort_with_compare(mut items []Item, callback ItemCallback)
+
+fn compare_items(a &Item, b &Item) int {
+	return a.value - b.value
+}
+
+fn main() {
+	mut items := [Item{value: 2}, Item{value: 1}]
+	array__sort_with_compare(mut items, compare_items)
+}
+')
+	assert src.contains('array__sort_with_compare(&items, compare_items);')
+	assert !src.contains('(FnSortCB)compare_items')
+}
+
+fn test_sort_with_compare_module_qualified_comparator_casts_to_fnsortcb() {
+	other_file := os.join_path(os.temp_dir(),
+		'v2_cleanc_target_codegen_sort_other_${os.getpid()}.v')
+	os.write_file(other_file, '
+module other
+
+pub struct Item {
+pub:
+	value int
+}
+
+pub fn compare_items(a &Item, b &Item) int {
+	return a.value - b.value
+}
+	') or {
+		panic(err)
+	}
+	defer {
+		os.rm(other_file) or {}
+	}
+	src := generated_c_for_target_program_with_extra_files('sort_module_qualified_comparator_fnsortcb_cast', '
+module main
+
+import other
+
+type FnSortCB = fn (voidptr, voidptr) int
+
+fn array__sort_with_compare(mut items []other.Item, callback FnSortCB)
+
+fn main() {
+	mut items := [other.Item{value: 2}, other.Item{value: 1}]
+	array__sort_with_compare(mut items, other.compare_items)
+}
+	',
+		'linux', [], false, false, [other_file])
+	assert src.contains('array__sort_with_compare(&items, (FnSortCB)other__compare_items);')
+	assert !src.contains('array__sort_with_compare(&items, other__compare_items);')
+}
+
+fn test_sort_with_compare_import_alias_comparator_casts_to_real_module_fnsortcb() {
+	other_file := os.join_path(os.temp_dir(),
+		'v2_cleanc_target_codegen_sort_other_alias_${os.getpid()}.v')
+	os.write_file(other_file, '
+module other
+
+pub struct Item {
+pub:
+	value int
+}
+
+pub fn compare_items(a &Item, b &Item) int {
+	return a.value - b.value
+}
+	') or {
+		panic(err)
+	}
+	defer {
+		os.rm(other_file) or {}
+	}
+	src := generated_c_for_target_program_with_extra_files('sort_import_alias_comparator_fnsortcb_cast', '
+module main
+
+import other as oth
+
+type FnSortCB = fn (voidptr, voidptr) int
+
+fn array__sort_with_compare(mut items []oth.Item, callback FnSortCB)
+
+fn main() {
+	mut items := [oth.Item{value: 2}, oth.Item{value: 1}]
+	array__sort_with_compare(mut items, oth.compare_items)
+}
+	',
+		'linux', [], false, false, [other_file])
+	assert src.contains('array__sort_with_compare(&items, (FnSortCB)other__compare_items);')
+	assert !src.contains('array__sort_with_compare(&items, other__compare_items);')
+	assert !src.contains('(FnSortCB)oth__compare_items')
+}
+
+fn test_sort_with_compare_module_global_callback_casts_to_fnsortcb() {
+	other_file := os.join_path(os.temp_dir(),
+		'v2_cleanc_target_codegen_sort_other_global_callback_${os.getpid()}.v')
+	os.write_file(other_file, '
+module other
+
+pub struct Item {
+pub:
+	value int
+}
+
+pub type ItemCallback = fn (&Item, &Item) int
+
+pub __global callback ItemCallback
+	') or {
+		panic(err)
+	}
+	defer {
+		os.rm(other_file) or {}
+	}
+	src := generated_c_for_target_program_with_extra_files('sort_module_global_callback_fnsortcb_cast', '
+module main
+
+import other
+
+type FnSortCB = fn (voidptr, voidptr) int
+
+fn array__sort_with_compare(mut items []other.Item, callback FnSortCB)
+
+fn main() {
+	mut items := [other.Item{value: 2}, other.Item{value: 1}]
+	array__sort_with_compare(mut items, other.callback)
+}
+	',
+		'linux', [], false, false, [other_file])
+	assert src.contains('array__sort_with_compare(&items, (FnSortCB)other__callback);')
+	assert !src.contains('array__sort_with_compare(&items, other__callback);')
+}
+
+fn test_sort_with_compare_import_alias_global_callback_casts_to_real_module_fnsortcb() {
+	other_file := os.join_path(os.temp_dir(),
+		'v2_cleanc_target_codegen_sort_other_alias_global_callback_${os.getpid()}.v')
+	os.write_file(other_file, '
+module other
+
+pub struct Item {
+pub:
+	value int
+}
+
+pub type ItemCallback = fn (&Item, &Item) int
+
+pub __global callback ItemCallback
+	') or {
+		panic(err)
+	}
+	defer {
+		os.rm(other_file) or {}
+	}
+	src := generated_c_for_target_program_with_extra_files('sort_import_alias_global_callback_fnsortcb_cast', '
+module main
+
+import other as oth
+
+type FnSortCB = fn (voidptr, voidptr) int
+
+fn array__sort_with_compare(mut items []oth.Item, callback FnSortCB)
+
+fn main() {
+	mut items := [oth.Item{value: 2}, oth.Item{value: 1}]
+	array__sort_with_compare(mut items, oth.callback)
+}
+	',
+		'linux', [], false, false, [other_file])
+	assert src.contains('array__sort_with_compare(&items, (FnSortCB)other__callback);')
+	assert !src.contains('array__sort_with_compare(&items, other__callback);')
+	assert !src.contains('(FnSortCB)oth__callback')
+}
+
+fn test_sort_with_compare_module_const_callback_casts_to_fnsortcb() {
+	other_file := os.join_path(os.temp_dir(),
+		'v2_cleanc_target_codegen_sort_other_const_callback_${os.getpid()}.v')
+	os.write_file(other_file, '
+module other
+
+pub struct Item {
+pub:
+	value int
+}
+
+pub type ItemCallback = fn (&Item, &Item) int
+
+pub fn compare_items(a &Item, b &Item) int {
+	return a.value - b.value
+}
+
+pub const callback = ItemCallback(compare_items)
+	') or {
+		panic(err)
+	}
+	defer {
+		os.rm(other_file) or {}
+	}
+	src := generated_c_for_target_program_with_extra_files('sort_module_const_callback_fnsortcb_cast', '
+module main
+
+import other
+
+type FnSortCB = fn (voidptr, voidptr) int
+
+fn array__sort_with_compare(mut items []other.Item, callback FnSortCB)
+
+fn main() {
+	mut items := [other.Item{value: 2}, other.Item{value: 1}]
+	array__sort_with_compare(mut items, other.callback)
+}
+	',
+		'linux', [], false, false, [other_file])
+	assert src.contains('array__sort_with_compare(&items, (FnSortCB)other__callback);')
+	assert !src.contains('array__sort_with_compare(&items, other__callback);')
+}
+
+fn test_sort_with_compare_module_global_non_fn_value_is_not_cast_to_fnsortcb() {
+	other_file := os.join_path(os.temp_dir(),
+		'v2_cleanc_target_codegen_sort_other_global_non_fn_${os.getpid()}.v')
+	os.write_file(other_file, '
+module other
+
+pub struct Item {
+pub:
+	value int
+}
+
+pub __global callback int
+	') or {
+		panic(err)
+	}
+	defer {
+		os.rm(other_file) or {}
+	}
+	src := generated_c_for_target_program_with_extra_files('sort_module_global_non_fn_no_fnsortcb_cast', '
+module main
+
+import other
+
+type FnSortCB = fn (voidptr, voidptr) int
+
+fn array__sort_with_compare(mut items []other.Item, callback FnSortCB)
+
+fn main() {
+	mut items := [other.Item{value: 2}, other.Item{value: 1}]
+	array__sort_with_compare(mut items, other.callback)
+}
+	',
+		'linux', [], false, false, [other_file])
+	assert src.contains('array__sort_with_compare(&items, other__callback);')
+	assert !src.contains('(FnSortCB)other__callback')
+}
+
+fn test_sort_with_compare_local_selector_shadowing_module_is_not_cast_to_fnsortcb() {
+	other_file := os.join_path(os.temp_dir(),
+		'v2_cleanc_target_codegen_sort_other_shadowed_module_${os.getpid()}.v')
+	os.write_file(other_file, '
+module other
+
+pub struct Item {
+pub:
+	value int
+}
+
+pub type ItemCallback = fn (&Item, &Item) int
+
+pub __global callback ItemCallback
+	') or {
+		panic(err)
+	}
+	defer {
+		os.rm(other_file) or {}
+	}
+	src := generated_c_for_target_program_with_extra_files('sort_local_selector_shadowed_module_no_fnsortcb_cast', '
+module main
+
+import other
+
+type FnSortCB = fn (voidptr, voidptr) int
+
+type ItemCallback = fn (&other.Item, &other.Item) int
+
+struct Holder {
+	callback ItemCallback
+}
+
+fn array__sort_with_compare(mut items []other.Item, callback FnSortCB)
+
+fn compare_items(a &other.Item, b &other.Item) int {
+	return a.value - b.value
+}
+
+fn main() {
+	mut items := [other.Item{value: 2}, other.Item{value: 1}]
+	other := Holder{
+		callback: compare_items
+	}
+	array__sort_with_compare(mut items, other.callback)
+}
+	',
+		'linux', [], false, false, [other_file])
+	assert src.contains('array__sort_with_compare(&items, other.callback);')
+	assert !src.contains('array__sort_with_compare(&items, (FnSortCB)other.callback);')
+	assert !src.contains('(FnSortCB)other__callback')
+}
+
+fn test_sort_with_compare_selector_field_callback_is_not_cast_to_fnsortcb() {
+	src := generated_c_for_target_program('sort_selector_field_callback_no_fnsortcb_cast', '
+type FnSortCB = fn (voidptr, voidptr) int
+
+struct Item {
+	value int
+}
+
+type ItemCallback = fn (&Item, &Item) int
+
+struct Holder {
+	callback ItemCallback
+}
+
+fn array__sort_with_compare(mut items []Item, callback FnSortCB)
+
+fn compare_items(a &Item, b &Item) int {
+	return a.value - b.value
+}
+
+fn main() {
+	mut items := [Item{value: 2}, Item{value: 1}]
+	holder := Holder{
+		callback: compare_items
+	}
+	array__sort_with_compare(mut items, holder.callback)
+}
+')
+	assert src.contains('array__sort_with_compare(&items, holder.callback);')
+	assert !src.contains('array__sort_with_compare(&items, (FnSortCB)holder.callback);')
+	assert !src.contains('(FnSortCB)holder__callback')
+}
+
+fn test_sorted_with_compare_named_comparator_casts_to_fnsortcb() {
+	src := generated_c_for_target_program('sorted_named_comparator_fnsortcb_cast', '
+type FnSortCB = fn (voidptr, voidptr) int
+
+struct Item {
+	value int
+}
+
+fn array__sorted_with_compare(items []Item, callback FnSortCB) []Item
+
+fn compare_items(a &Item, b &Item) int {
+	return a.value - b.value
+}
+
+fn main() {
+	items := [Item{value: 2}, Item{value: 1}]
+	sorted := array__sorted_with_compare(items, compare_items)
+	_ = sorted
+}
+')
+	assert src.contains('array__sorted_with_compare(items, (FnSortCB)compare_items);')
+	assert !src.contains('array__sorted_with_compare(items, compare_items);')
+}
+
+fn test_string_sort_helpers_cast_named_comparators_to_fnsortcb() {
+	src := generated_c_for_target_program('string_sort_helpers_fnsortcb_cast', '
+type FnSortCB = fn (voidptr, voidptr) int
+
+fn array__sort_with_compare(mut words []string, callback FnSortCB)
+
+fn compare_lower_strings(a &string, b &string) int {
+	return 0
+}
+
+fn compare_strings_by_len(a &string, b &string) int {
+	return 0
+}
+
+fn (mut words []string) sort_ignore_case() {
+	array__sort_with_compare(mut words, compare_lower_strings)
+}
+
+fn (mut words []string) sort_by_len() {
+	array__sort_with_compare(mut words, compare_strings_by_len)
+}
+
+fn main() {
+	mut words := ["Beta", "alpha", "z"]
+	words.sort_ignore_case()
+	words.sort_by_len()
+}
+')
+	assert src.contains('Array_string__sort_ignore_case(&words);')
+	assert src.contains('Array_string__sort_by_len(&words);')
+	assert src.contains('array__sort_with_compare(words, (FnSortCB)compare_lower_strings);')
+	assert src.contains('array__sort_with_compare(words, (FnSortCB)compare_strings_by_len);')
+	assert !src.contains('array__sort_with_compare(words, compare_lower_strings);')
+	assert !src.contains('array__sort_with_compare(words, compare_strings_by_len);')
+}
+
+fn test_sort_with_compare_capturing_fn_literal_casts_statement_expr_to_fnsortcb() {
+	src := generated_c_for_target_program('sort_capturing_fn_literal_fnsortcb_cast', '
+type FnSortCB = fn (voidptr, voidptr) int
+
+struct Item {
+	value int
+}
+
+fn array__sort_with_compare(mut items []Item, callback FnSortCB)
+
+fn main() {
+	bias := 1
+	mut items := [Item{value: 2}, Item{value: 1}]
+	array__sort_with_compare(mut items, fn [bias] (a &Item, b &Item) int {
+		return bias + a.value - b.value
+	})
+}
+')
+	assert src.contains('array__sort_with_compare(&items, (FnSortCB)({')
+	assert src.contains('_anon_fn_')
+	assert src.contains('_capture_0 = bias;')
+	assert !src.contains('array__sort_with_compare(&items, ({')
+}
+
+fn test_sorted_with_compare_fn_literal_casts_to_fnsortcb() {
+	src := generated_c_for_target_program('sorted_fn_literal_fnsortcb_cast', '
+type FnSortCB = fn (voidptr, voidptr) int
+
+struct Item {
+	value int
+}
+
+fn array__sorted_with_compare(items []Item, callback FnSortCB) []Item
+
+fn main() {
+	items := [Item{value: 2}, Item{value: 1}]
+	sorted := array__sorted_with_compare(items, fn (a &Item, b &Item) int {
+		return a.value - b.value
+	})
+	_ = sorted
+}
+')
+	assert src.contains('array__sorted_with_compare(items, (FnSortCB)_anon_fn_')
+	assert !src.contains('array__sorted_with_compare(items, _anon_fn_')
+}
+
+fn test_sort_with_compare_nil_callback_is_not_cast_to_fnsortcb() {
+	src := generated_c_for_target_program('sort_nil_callback_no_fnsortcb_cast', '
+type FnSortCB = fn (voidptr, voidptr) int
+
+struct Item {
+	value int
+}
+
+fn array__sort_with_compare(mut items []Item, callback FnSortCB)
+
+fn main() {
+	mut items := [Item{value: 2}, Item{value: 1}]
+	array__sort_with_compare(mut items, nil)
+}
+')
+	assert src.contains('array__sort_with_compare(&items, NULL);')
+	assert !src.contains('(FnSortCB)nil')
+	assert !src.contains('array__sort_with_compare(&items, (FnSortCB)')
+}
+
+fn test_non_sort_callback_arg_is_not_cast_to_fnsortcb() {
+	src := generated_c_for_target_program('non_sort_callback_no_fnsortcb_cast', '
+struct Item {
+	value int
+}
+
+type ItemCallback = fn (&Item, &Item) int
+
+fn compare_items(a &Item, b &Item) int {
+	return a.value - b.value
+}
+
+fn use_callback(callback ItemCallback) {
+	_ = callback
+}
+
+fn main() {
+	use_callback(compare_items)
+}
+')
+	assert src.contains('use_callback(compare_items);')
+	assert !src.contains('(FnSortCB)compare_items')
+}
+
+fn test_non_sort_fn_literal_callback_arg_is_not_cast_to_fnsortcb() {
+	src := generated_c_for_target_program('non_sort_fn_literal_callback_no_fnsortcb_cast', '
+struct Item {
+	value int
+}
+
+type ItemCallback = fn (&Item, &Item) int
+
+fn use_callback(callback ItemCallback) {
+	_ = callback
+}
+
+fn main() {
+	bias := 1
+	use_callback(fn [bias] (a &Item, b &Item) int {
+		return bias + a.value - b.value
+	})
+}
+')
+	assert src.contains('use_callback(({')
+	assert src.contains('_anon_fn_')
+	assert src.contains('_capture_0 = bias;')
+	assert !src.contains('(FnSortCB)')
+	assert !src.contains('use_callback((FnSortCB)')
+}
+
+fn test_fn_pointer_alias_cast_from_voidptr_uses_alias_value_cast() {
+	src := generated_c_for_target_program('fn_pointer_alias_voidptr_cast', '
+module os
+
+type Signal = int
+type SignalHandler = fn (Signal)
+
+fn handler_from_ptr(prev_handler voidptr) !SignalHandler {
+	return SignalHandler(prev_handler)
+}
+')
+	assert src.contains('_result_os__SignalHandler os__handler_from_ptr(void* prev_handler)')
+	assert src.contains('os__SignalHandler _val = ((os__SignalHandler)(prev_handler));')
+	assert !src.contains('os__SignalHandler _val = ((os__SignalHandler*)(prev_handler));')
+}
+
+fn test_option_fn_pointer_alias_cast_from_voidptr_uses_alias_value_cast() {
+	src := generated_c_for_target_program('option_fn_pointer_alias_voidptr_cast', '
+module os
+
+type Signal = int
+type SignalHandler = fn (Signal)
+
+fn handler_from_ptr(prev_handler voidptr) ?SignalHandler {
+	return SignalHandler(prev_handler)
+}
+')
+	assert src.contains('_option_os__SignalHandler os__handler_from_ptr(void* prev_handler)')
+	assert src.contains('os__SignalHandler _val = ((os__SignalHandler)(prev_handler));')
+	assert !src.contains('os__SignalHandler _val = ((os__SignalHandler*)(prev_handler));')
+}
+
+fn test_explicit_pointer_to_fn_pointer_alias_cast_preserves_star() {
+	src := generated_c_for_target_program('fn_pointer_alias_explicit_pointer_cast', '
+module os
+
+type Signal = int
+type SignalHandler = fn (Signal)
+
+fn handler_ptr_from_ptr(prev_handler voidptr) &SignalHandler {
+	return &SignalHandler(prev_handler)
+}
+')
+	assert src.contains('os__SignalHandler* os__handler_ptr_from_ptr(void* prev_handler)')
+	assert src.contains('return ((os__SignalHandler*)(prev_handler));')
+	assert !src.contains('return ((os__SignalHandler)(prev_handler));')
+}
+
+fn test_result_pointer_to_fn_pointer_alias_cast_preserves_payload_pointer() {
+	src := generated_c_for_target_program('result_fn_pointer_alias_explicit_pointer_cast', '
+module os
+
+type Signal = int
+type SignalHandler = fn (Signal)
+
+fn handler_ptr_from_ptr(prev_handler voidptr) !&SignalHandler {
+	return &SignalHandler(prev_handler)
+}
+')
+	assert src.contains('_result_os__SignalHandlerptr os__handler_ptr_from_ptr(void* prev_handler)')
+	assert src.contains('os__SignalHandler* _val = ((os__SignalHandler*)(prev_handler));')
+	assert !src.contains('os__SignalHandler _val = ((os__SignalHandler)(prev_handler));')
+}
+
+fn test_option_pointer_to_fn_pointer_alias_cast_preserves_payload_pointer() {
+	src := generated_c_for_target_program('option_fn_pointer_alias_explicit_pointer_cast', '
+module os
+
+type Signal = int
+type SignalHandler = fn (Signal)
+
+fn handler_ptr_from_ptr(prev_handler voidptr) ?&SignalHandler {
+	return &SignalHandler(prev_handler)
+}
+')
+	assert src.contains('_option_os__SignalHandlerptr os__handler_ptr_from_ptr(void* prev_handler)')
+	assert src.contains('os__SignalHandler* _val = ((os__SignalHandler*)(prev_handler));')
+	assert !src.contains('os__SignalHandler _val = ((os__SignalHandler)(prev_handler));')
+}
+
+fn test_non_fn_pointer_result_payload_keeps_pointer_cast() {
+	src := generated_c_for_target_program('non_fn_pointer_result_payload', '
+module os
+
+struct Payload {
+	value int
+}
+
+fn payload_from_ptr(raw voidptr) !&Payload {
+	return &Payload(raw)
+}
+')
+	assert src.contains('_result_os__Payloadptr os__payload_from_ptr(void* raw)')
+	assert src.contains('os__Payload* _val = ((os__Payload*)(raw));')
+	assert !src.contains('os__Payload _val = ((os__Payload)(raw));')
+}
+
+fn test_fn_pointer_alias_helper_has_no_suffix_fallback() {
+	g := Gen{
+		fn_type_aliases: {
+			'os__SignalHandler': true
+		}
+	}
+	assert g.c_type_is_fn_pointer_alias('os__SignalHandler')
+	assert !g.c_type_is_fn_pointer_alias('other__SignalHandler')
+	assert !g.c_type_is_fn_pointer_alias('os__SignalHandlerptr')
+	assert !g.c_type_is_fn_pointer_alias('os__HandlerFn')
+	assert g.result_value_type('_result_os__SignalHandlerptr') == 'os__SignalHandler*'
+	assert g.result_value_type('_result_os__Payloadptr') == 'os__Payload*'
+}
+
+fn test_inter_module_non_fn_alias_cast_is_not_remapped_to_fn_alias_homonym() {
+	foo_file := os.join_path(os.temp_dir(),
+		'v2_cleanc_target_codegen_signalhandler_foo_${os.getpid()}.v')
+	bar_file := os.join_path(os.temp_dir(),
+		'v2_cleanc_target_codegen_signalhandler_bar_${os.getpid()}.v')
+	os.write_file(foo_file, '
+module foo
+
+pub type SignalHandler = fn (int)
+	') or { panic(err) }
+	os.write_file(bar_file, '
+module bar
+
+pub type SignalHandler = int
+	') or { panic(err) }
+	defer {
+		os.rm(foo_file) or {}
+		os.rm(bar_file) or {}
+	}
+	src := generated_c_for_target_program_with_extra_files('inter_module_signalhandler_alias_collision', '
+module main
+
+import bar
+import foo
+
+fn keep_foo(handler foo.SignalHandler) {
+	_ = handler
+}
+
+fn cast_bar() bar.SignalHandler {
+	return bar.SignalHandler(1)
+}
+	',
+		'linux', [], false, false, [foo_file, bar_file])
+	assert src.contains('typedef void (*foo__SignalHandler)(int);')
+	assert src.contains('typedef int bar__SignalHandler;')
+	assert src.contains('return ((bar__SignalHandler)(1));')
+	assert !src.contains('return ((foo__SignalHandler)(1));')
+	assert !src.contains('return ((os__SignalHandler)(1));')
+}
+
+fn test_module_local_non_fn_alias_cast_prefers_local_alias_over_main_fn_alias_homonym() {
+	bar_file := os.join_path(os.temp_dir(),
+		'v2_cleanc_target_codegen_signalhandler_local_bar_${os.getpid()}.v')
+	os.write_file(bar_file, '
+module bar
+
+pub type SignalHandler = int
+
+pub fn cast_local() SignalHandler {
+	return SignalHandler(1)
+}
+	') or {
+		panic(err)
+	}
+	defer {
+		os.rm(bar_file) or {}
+	}
+	src := generated_c_for_target_program_with_extra_files('module_local_signalhandler_alias_collision', '
+module main
+
+type SignalHandler = fn (int)
+
+fn main() {
+}
+	',
+		'linux', [], false, false, [bar_file])
+	assert src.contains('typedef void (*SignalHandler)(int);')
+	assert src.contains('typedef int bar__SignalHandler;')
+	assert src.contains('return ((bar__SignalHandler)(1));')
+	assert !src.contains('return ((SignalHandler)(1));')
+	assert !src.contains('return ((foo__SignalHandler)(1));')
+}
+
+fn test_optional_sumtype_field_initializer_wraps_cast_value_as_option() {
+	src := generated_c_for_target_program('optional_sumtype_field_initializer', '
+type Type = Bool | Int
+
+struct Bool {}
+struct Int {}
+
+struct FnType {
+	return_type ?Type
+}
+
+fn make_fn_type() FnType {
+	return FnType{
+		return_type: Type(Bool{})
+	}
+}
+
+fn main() {
+	_ = make_fn_type()
+}
+')
+	assert src.contains('struct FnType {\n\t_option_Type return_type;\n};')
+	assert src.contains('.return_type = ({ _option_Type _opt = (_option_Type){ .state = 2 }; Type _val = ((Type){')
+	assert src.contains('_option_ok(&_val, (_option*)&_opt, sizeof(_val)); _opt; })')
+	assert !src.contains('.return_type = ((Type){')
+	assert !src.contains('.return_type = ((main__Type){')
 }
 
 fn test_freestanding_minimal_preamble_avoids_implicit_os_runtime_headers() {

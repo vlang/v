@@ -1089,6 +1089,12 @@ fn (mut g Gen) struct_init_field_value(sfield ast.StructInitField) {
 	if !cloned {
 		inside_cast_in_heap := g.inside_cast_in_heap
 		g.inside_cast_in_heap = 0 // prevent use of pointers in child structs
+		// A field value's option-ness is governed by the field's own type, not by an
+		// outer `&Struct{...}` -> interface conversion. Without resetting this, an
+		// option field initialized from an option value gets wrongly unwrapped while
+		// `inside_interface_cast` is still set from the surrounding cast.
+		inside_interface_cast := g.inside_interface_cast
+		g.inside_interface_cast = false
 
 		field_unwrap_typ := g.unwrap_generic(sfield.typ)
 		field_unwrap_sym := g.table.final_sym(field_unwrap_typ)
@@ -1151,6 +1157,7 @@ fn (mut g Gen) struct_init_field_value(sfield ast.StructInitField) {
 			g.struct_init_field_default(field_unwrap_typ, sfield, field_unwrap_sym)
 		}
 		g.inside_cast_in_heap = inside_cast_in_heap // restore value for further struct inits
+		g.inside_interface_cast = inside_interface_cast
 	}
 }
 

@@ -84,6 +84,36 @@ fn (t &Transformer) lookup_struct_field_type(struct_name string, field_name stri
 	if dunder >= 0 {
 		mod = struct_name[..dunder]
 		sname = struct_name[dunder + 2..]
+		if field_type := t.cached_struct_field_types[struct_field_lookup_cache_key(mod, sname,
+			field_name)]
+		{
+			return field_type
+		}
+		if field_type := t.cached_struct_field_types[struct_field_generic_decl_key(struct_name,
+			field_name)]
+		{
+			return field_type
+		}
+	} else if dot := struct_name.last_index('.') {
+		mod = struct_name[..dot]
+		sname = struct_name[dot + 1..]
+		if field_type := t.cached_struct_field_types[struct_field_lookup_cache_key(mod, sname,
+			field_name)]
+		{
+			return field_type
+		}
+		dot_name := struct_name.replace('.', '__')
+		if field_type := t.cached_struct_field_types[struct_field_generic_decl_key(dot_name,
+			field_name)]
+		{
+			return field_type
+		}
+	} else if t.cur_module != '' {
+		if field_type := t.cached_struct_field_types[struct_field_lookup_cache_key(t.cur_module,
+			sname, field_name)]
+		{
+			return field_type
+		}
 	}
 	// Try module scope first if qualified
 	if mod != '' {
@@ -115,8 +145,7 @@ fn (t &Transformer) lookup_struct_field_type(struct_name string, field_name stri
 		}
 	}
 	// Fallback: scan all scopes
-	scope_keys := t.cached_scopes.keys()
-	for sk in scope_keys {
+	for sk in t.cached_scope_keys {
 		scope := t.cached_scopes[sk] or { continue }
 		if obj := scope.objects[struct_name] {
 			if typ := transformer_object_type(obj) {
@@ -146,26 +175,80 @@ fn (t &Transformer) lookup_struct_field_generic_decl_type(struct_name string, fi
 	if struct_name == '' || field_name == '' {
 		return none
 	}
-	for candidate in struct_field_lookup_candidates(struct_name) {
-		if field_type := t.struct_field_generic_decl_types[struct_field_generic_decl_key(candidate,
-			field_name)]
-		{
-			return field_type
+	if field_type := t.struct_field_generic_decl_type_for_candidate(struct_name, field_name) {
+		return field_type
+	}
+	if struct_name.contains('__') {
+		short_name := struct_name.all_after_last('__')
+		if short_name != '' && short_name != struct_name {
+			if field_type := t.struct_field_generic_decl_type_for_candidate(short_name, field_name) {
+				return field_type
+			}
+		}
+	}
+	if struct_name.index_u8(`.`) >= 0 {
+		dot_name := struct_name.replace('.', '__')
+		if dot_name != struct_name {
+			if field_type := t.struct_field_generic_decl_type_for_candidate(dot_name, field_name) {
+				return field_type
+			}
+		}
+		short_name := struct_name.all_after_last('.')
+		if short_name != '' && short_name != struct_name && short_name != dot_name {
+			if field_type := t.struct_field_generic_decl_type_for_candidate(short_name, field_name) {
+				return field_type
+			}
 		}
 	}
 	return none
+}
+
+fn (t &Transformer) struct_field_generic_decl_type_for_candidate(struct_name string, field_name string) ?types.Type {
+	key := struct_field_generic_decl_key(struct_name, field_name)
+	field_type := t.struct_field_generic_decl_types[key] or { return none }
+	return field_type
 }
 
 fn (t &Transformer) lookup_struct_field_generic_decl_bindings(struct_name string, field_name string) ?map[string]types.Type {
 	if struct_name == '' || field_name == '' {
 		return none
 	}
-	for candidate in struct_field_lookup_candidates(struct_name) {
-		if bindings := t.struct_field_generic_decl_bindings[struct_field_generic_decl_key(candidate,
-			field_name)]
-		{
-			return bindings.clone()
+	if bindings := t.struct_field_generic_decl_bindings_for_candidate(struct_name, field_name) {
+		return bindings
+	}
+	if struct_name.contains('__') {
+		short_name := struct_name.all_after_last('__')
+		if short_name != '' && short_name != struct_name {
+			if bindings := t.struct_field_generic_decl_bindings_for_candidate(short_name,
+				field_name)
+			{
+				return bindings
+			}
 		}
+	}
+	if struct_name.index_u8(`.`) >= 0 {
+		dot_name := struct_name.replace('.', '__')
+		if dot_name != struct_name {
+			if bindings := t.struct_field_generic_decl_bindings_for_candidate(dot_name, field_name) {
+				return bindings
+			}
+		}
+		short_name := struct_name.all_after_last('.')
+		if short_name != '' && short_name != struct_name && short_name != dot_name {
+			if bindings := t.struct_field_generic_decl_bindings_for_candidate(short_name,
+				field_name)
+			{
+				return bindings
+			}
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) struct_field_generic_decl_bindings_for_candidate(struct_name string, field_name string) ?map[string]types.Type {
+	key := struct_field_generic_decl_key(struct_name, field_name)
+	if bindings := t.struct_field_generic_decl_bindings[key] {
+		return bindings.clone()
 	}
 	return none
 }
@@ -2480,12 +2563,20 @@ fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
 	if !transformer_string_has_valid_data(expr.rhs.name) {
 		return none
 	}
+	if smartcast_type := t.smartcast_type_for_expr(expr.lhs) {
+		if field_typ := t.field_type_from_receiver_type(smartcast_type, expr.rhs.name) {
+			return field_typ
+		}
+	}
 	if expr.lhs is ast.Ident {
 		lhs_name := expr.lhs.name
 		if !transformer_string_has_valid_data(lhs_name) {
 			return none
 		}
 		if lhs_type := t.lookup_var_type(lhs_name) {
+			if field_typ := t.field_type_from_receiver_type(lhs_type, expr.rhs.name) {
+				return field_typ
+			}
 			base_type := lhs_type.base_type()
 			if base_type is types.Struct {
 				if field_typ := t.lookup_struct_field_type(base_type.name, expr.rhs.name) {

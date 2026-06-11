@@ -11,7 +11,7 @@ import v2.types
 // a rehydrated []ast.File.
 //
 // The collect_defs phase reads each file's imports and top-level stmts via
-// FlatAst.read_file_imports / read_file_stmts, so the per-file File struct
+// FlatAst.read_file_imports / FileCursor.stmts, so the per-file File struct
 // (with its attribute/import/stmt slices and selector_names map) is never
 // materialized. Function bodies are still decoded as legacy ast.Stmt and
 // stored in FnInfo for walk_collected — that phase is the next slice to

@@ -74,6 +74,12 @@ $if dynamic_boehm ? {
 						// The bundled tcc libgc archive is built for glibc and
 						// references __data_start/data_start, which musl does
 						// not provide. Alpine installs musl-compatible libgc.
+						$if tinyc {
+							// Prefer the shared library when present: Alpine's
+							// static libgc archive can leave weak data segment
+							// probes unresolved under tcc.
+							#flag $when_first_existing("/usr/lib/libgc.so", "/usr/local/lib/libgc.so", "/lib/libgc.so")
+						}
 						#flag -lgc
 					} $else {
 						#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a

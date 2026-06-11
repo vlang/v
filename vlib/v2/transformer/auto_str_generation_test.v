@@ -172,6 +172,14 @@ fn auto_str_collect_stmt_call_names(stmt ast.Stmt, mut names []string) {
 		ast.ExprStmt {
 			auto_str_collect_expr_call_names(stmt.expr, mut names)
 		}
+		ast.ForStmt {
+			auto_str_collect_stmt_call_names(stmt.init, mut names)
+			auto_str_collect_expr_call_names(stmt.cond, mut names)
+			auto_str_collect_stmt_call_names(stmt.post, mut names)
+			for nested in stmt.stmts {
+				auto_str_collect_stmt_call_names(nested, mut names)
+			}
+		}
 		ast.ReturnStmt {
 			for expr in stmt.exprs {
 				auto_str_collect_expr_call_names(expr, mut names)
@@ -243,6 +251,22 @@ fn auto_str_fn_call_names(files []ast.File, fn_name string) []string {
 		auto_str_collect_stmt_call_names(stmt, mut names)
 	}
 	return names
+}
+
+fn test_array_str_generation_uses_helper_name_for_elem_type_when_metadata_is_stale() {
+	env := types.Environment.new()
+	mut trans := Transformer.new_with_pref(env, &vpref.Preferences{})
+	stmt := trans.generate_array_str_fn('Array_int_str', 'ast__KeywordOperator__str')
+	if stmt is ast.FnDecl {
+		mut calls := []string{}
+		for body_stmt in stmt.stmts {
+			auto_str_collect_stmt_call_names(body_stmt, mut calls)
+		}
+		assert 'int__str' in calls, calls.str()
+		assert 'ast__KeywordOperator__str__str' !in calls, calls.str()
+		return
+	}
+	assert false, 'expected generated Array_int_str function'
 }
 
 fn auto_str_collect_stmt_selector_names(stmt ast.Stmt, mut names []string) {

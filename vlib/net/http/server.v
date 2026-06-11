@@ -50,6 +50,7 @@ pub mut:
 	cert                   string
 	cert_key               string
 	in_memory_verification bool
+	enable_http2           bool // opt in to HTTP/2 on the TLS listener: advertises ALPN `h2, http/1.1`. Clients that select `h2` are served by the HTTP/2 driver; clients that select `http/1.1` (or send no ALPN) keep the existing HTTP/1.1 path.
 
 	on_running fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .running state.
 	on_stopped fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .stopped state.

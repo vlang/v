@@ -390,6 +390,10 @@ fn (l PeLinker) build_runtime_text() PeRuntimeText {
 		rt.symbols['_errno'] = runtime_base + u32(rt.bytes.len)
 		pe_emit_runtime_errno(mut rt)
 	}
+	if l.uses_undefined_symbol('malloc') {
+		rt.symbols['malloc'] = runtime_base + u32(rt.bytes.len)
+		pe_emit_runtime_malloc(mut rt)
+	}
 	if l.uses_undefined_symbol('calloc') {
 		rt.symbols['calloc'] = runtime_base + u32(rt.bytes.len)
 		pe_emit_runtime_calloc(mut rt)
@@ -1424,6 +1428,33 @@ fn pe_emit_runtime_calloc(mut rt PeRuntimeText) {
 	pe_patch_rel8(mut rt.bytes, no_heap, fail_with_frame)
 	pe_patch_rel8(mut rt.bytes, size_overflow, fail_with_frame)
 	pe_patch_rel8(mut rt.bytes, alloc_failed, fail_with_frame)
+}
+
+fn pe_emit_runtime_malloc(mut rt PeRuntimeText) {
+	rt.bytes << [u8(0x48), 0x83, 0xec, 0x28] // sub rsp, 40
+	rt.bytes << [u8(0x48), 0x89, 0x4c, 0x24, 0x20] // mov [rsp+32], rcx
+	pe_emit_runtime_call_import(mut rt, 'GetProcessHeap')
+	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	no_heap := pe_emit_jcc8(mut rt.bytes, 0x74) // je
+	rt.bytes << [u8(0x48), 0x89, 0xc1] // mov rcx, rax
+	rt.bytes << [u8(0x31), 0xd2] // xor edx, edx
+	rt.bytes << [u8(0x4c), 0x8b, 0x44, 0x24, 0x20] // mov r8, [rsp+32]
+	rt.bytes << [u8(0x49), 0x83, 0xc0, 0x18] // add r8, 24
+	size_overflow := pe_emit_jcc8(mut rt.bytes, 0x72) // jc
+	pe_emit_runtime_call_import(mut rt, 'HeapAlloc')
+	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	alloc_failed := pe_emit_jcc8(mut rt.bytes, 0x74) // je
+	pe_emit_runtime_align_heap_allocated_data(mut rt)
+	rt.bytes << [u8(0x4c), 0x89, 0xd8] // mov rax, r11
+	rt.bytes << [u8(0x48), 0x83, 0xc4, 0x28] // add rsp, 40
+	rt.bytes << u8(0xc3) // ret
+	fail := rt.bytes.len
+	rt.bytes << [u8(0x31), 0xc0] // xor eax, eax
+	rt.bytes << [u8(0x48), 0x83, 0xc4, 0x28] // add rsp, 40
+	rt.bytes << u8(0xc3) // ret
+	pe_patch_rel8(mut rt.bytes, no_heap, fail)
+	pe_patch_rel8(mut rt.bytes, size_overflow, fail)
+	pe_patch_rel8(mut rt.bytes, alloc_failed, fail)
 }
 
 fn pe_emit_runtime_free(mut rt PeRuntimeText) {

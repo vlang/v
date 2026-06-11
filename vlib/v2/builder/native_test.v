@@ -152,7 +152,6 @@ fn test_macos_tiny_candidate_source_snapshot_uses_flat_when_enabled() {
 		},
 	]
 	mut tiny_builder := new_builder(&prefs)
-	tiny_builder.flat_check_enabled = true
 	tiny_builder.files = [
 		ast.File{
 			mod:  'stale'
@@ -161,9 +160,10 @@ fn test_macos_tiny_candidate_source_snapshot_uses_flat_when_enabled() {
 	]
 	tiny_builder.flat = ast.flatten_files(source_files)
 	tiny_builder.prepare_macos_tiny_candidate_source_files()
-	assert tiny_builder.macos_tiny_candidate_source_files.len == source_files.len
-	assert tiny_builder.macos_tiny_candidate_source_files[0].name == 'flat_main.v'
-	assert tiny_builder.macos_tiny_candidate_source_files[0].mod == 'main'
+	assert tiny_builder.macos_tiny_candidate_source_files.len == 0
+	assert tiny_builder.macos_tiny_candidate_source_flat.files.len == source_files.len
+	assert tiny_builder.macos_tiny_candidate_source_flat.file_name(tiny_builder.macos_tiny_candidate_source_flat.files[0]) == 'flat_main.v'
+	assert tiny_builder.macos_tiny_candidate_source_flat.string_at(tiny_builder.macos_tiny_candidate_source_flat.files[0].mod_idx) == 'main'
 }
 
 fn test_macos_tiny_candidate_native_mir_build_policy_is_sequential_only_for_candidate() {

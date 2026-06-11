@@ -6138,6 +6138,38 @@ fn test_addr_of_prefix_temp_materializes_selector_from_call_result() {
 	assert (addr_expr.expr as ast.Ident).name == (tmp_decl.lhs[0] as ast.Ident).name
 }
 
+fn test_transform_addr_of_call_or_cast_selector_lowers_to_pointer_cast_selector() {
+	mut t := create_test_transformer()
+	result := t.transform_expr(ast.Expr(ast.PrefixExpr{
+		op:   .amp
+		expr: ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.CallOrCastExpr{
+				lhs:  ast.Expr(ast.Ident{
+					name: 'int'
+				})
+				expr: ast.Expr(ast.Ident{
+					name: 'raw'
+				})
+			})
+			rhs: ast.Ident{
+				name: 'field'
+			}
+		})
+	}))
+	assert result is ast.SelectorExpr, 'expected SelectorExpr, got ${result.type_name()}'
+	selector := result as ast.SelectorExpr
+	assert selector.lhs is ast.CastExpr, 'selector lhs was not reduced: ${selector.lhs.type_name()}'
+	cast := selector.lhs as ast.CastExpr
+	assert cast.typ is ast.PrefixExpr
+	cast_typ := cast.typ as ast.PrefixExpr
+	assert cast_typ.op == .amp
+	assert cast_typ.expr is ast.Ident
+	assert (cast_typ.expr as ast.Ident).name == 'int'
+	assert cast.expr is ast.Ident
+	assert (cast.expr as ast.Ident).name == 'raw'
+	assert selector.rhs.name == 'field'
+}
+
 fn test_transform_map_index_assign_with_or_rhs_lowers_to_map_set() {
 	files := transform_code_for_test('
 fn maybe_int() ?int {

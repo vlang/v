@@ -21,7 +21,7 @@ fn (mut g Gen) try_gen_orm_create_call(c_name string, call_args []ast.Expr) bool
 	g.write_orm_table_fields_array_c_expr(call_args[2])
 	g.sb.write_string(')')
 	if c_name != '' {
-		g.called_fn_names[c_name] = true
+		g.mark_called_fn_name(c_name)
 	}
 	return true
 }

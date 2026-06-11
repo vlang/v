@@ -489,6 +489,27 @@ fn test_pe_linker_adds_runtime_kernel32_import_patches_only_when_needed() {
 	assert 'WriteFile' !in names
 }
 
+fn test_pe_linker_adds_malloc_heap_imports_without_crt() {
+	mut obj := CoffObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xc3]
+	obj.add_symbol('main', 5, true, 1)
+	malloc_sym := obj.add_undefined('malloc')
+	obj.add_text_reloc(1, malloc_sym, coff_image_rel_amd64_rel32)
+
+	mut linker := PeLinker.new(obj)
+	image := linker.image() or { panic(err) }
+	names := pe_test_import_names(image)
+	dll_names := pe_test_import_dll_names(image)
+
+	assert names == ['ExitProcess', 'GetProcessHeap', 'HeapAlloc']
+	assert dll_names == ['kernel32.dll']
+	assert pe_test_iat_size(image) == u32((names.len + 1) * 8)
+	assert 'HeapFree' !in names
+	assert 'HeapReAlloc' !in names
+	assert 'ucrtbase.dll' !in dll_names
+	assert 'msvcrt.dll' !in dll_names
+}
+
 fn test_pe_linker_adds_shell32_imports_only_for_windows_arguments_globals() {
 	obj := sample_pe_arguments_coff_object(false)
 	mut linker := PeLinker.new(obj)
@@ -883,6 +904,185 @@ fn test_pe_linker_resolves_errno_with_internal_runtime_data_slot() {
 	assert slot_target < data_rva + data_raw_size
 	slot_off := pe_test_rva_to_file_off(image, slot_target)
 	assert pe_test_u32(image, slot_off) == 0
+}
+
+fn test_pe_linker_resolves_malloc_with_internal_nonzeroing_heap_thunk() {
+	mut obj := CoffObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xc3]
+	obj.add_symbol('main', 5, true, 1)
+	malloc_sym := obj.add_undefined('malloc')
+	obj.add_text_reloc(1, malloc_sym, coff_image_rel_amd64_rel32)
+
+	mut linker := PeLinker.new(obj)
+	image := linker.image() or { panic(err) }
+	names := pe_test_import_names(image)
+	dll_names := pe_test_import_dll_names(image)
+	assert names == ['ExitProcess', 'GetProcessHeap', 'HeapAlloc']
+	assert dll_names == ['kernel32.dll']
+
+	text_off := pe_test_section_header(image, '.text')
+	text_rva := pe_test_u32(image, text_off + 12)
+	text_raw := int(pe_test_u32(image, text_off + 20))
+	text_raw_size := int(pe_test_u32(image, text_off + 16))
+	entry_stub_len := linker.entry_stub_size()
+	runtime_start_rva := text_rva + u32(entry_stub_len + obj.text_data.len)
+
+	mut first_import_thunk_file_off := -1
+	for off in text_raw + entry_stub_len + obj.text_data.len .. text_raw + text_raw_size - 1 {
+		if image[off] == 0xff && image[off + 1] == 0x25 {
+			first_import_thunk_file_off = off
+			break
+		}
+	}
+	assert first_import_thunk_file_off > 0
+	first_import_thunk_rva := text_rva + u32(first_import_thunk_file_off - text_raw)
+
+	malloc_target := pe_test_text_rel32_target(image, text_rva, text_raw, entry_stub_len + 1)
+	assert malloc_target >= runtime_start_rva
+	assert malloc_target < first_import_thunk_rva
+
+	malloc_off := pe_test_rva_to_file_off(image, malloc_target)
+	assert malloc_off > 0
+	mut has_shadow_space_frame := false
+	mut has_size_saved_from_rcx := false
+	mut has_heap_zero_memory_flag := false
+	mut has_plain_heap_flags := false
+	mut has_rdx_alignment_dependency := false
+	mut has_aligned_allocation_padding := false
+	mut has_aligned_cookie_store := false
+	mut has_aligned_return_pointer := false
+	runtime_scan_end := first_import_thunk_file_off
+	for off in malloc_off .. runtime_scan_end - 4 {
+		if image[off..off + 4] == [u8(0x48), 0x83, 0xec, 0x28] {
+			has_shadow_space_frame = true
+		}
+		if image[off..off + 5] == [u8(0x48), 0x89, 0x4c, 0x24, 0x20] {
+			has_size_saved_from_rcx = true
+		}
+		if image[off..off + 5] == [u8(0xba), 0x08, 0, 0, 0] {
+			has_heap_zero_memory_flag = true
+		}
+		if image[off..off + 2] == [u8(0x31), 0xd2] {
+			has_plain_heap_flags = true
+		}
+		if image[off..off + 4] == [u8(0x48), 0x83, 0xfa, 0x10] {
+			has_rdx_alignment_dependency = true
+		}
+		if image[off..off + 4] == [u8(0x49), 0x83, 0xc0, 0x18] {
+			has_aligned_allocation_padding = true
+		}
+		if image[off..off + 3] == [u8(0x4c), 0x89, 0xd8] {
+			has_aligned_return_pointer = true
+		}
+	}
+	for off in malloc_off .. runtime_scan_end - 14 {
+		if image[off..off + 15] == [
+			u8(0x49),
+			0x89,
+			0xc3,
+			0x49,
+			0x83,
+			0xc3,
+			0x17,
+			0x49,
+			0x83,
+			0xe3,
+			0xf0,
+			0x49,
+			0x89,
+			0x43,
+			0xf8,
+		] {
+			has_aligned_cookie_store = true
+		}
+	}
+	assert has_shadow_space_frame
+	assert has_size_saved_from_rcx
+	assert !has_heap_zero_memory_flag
+	assert has_plain_heap_flags
+	assert !has_rdx_alignment_dependency
+	assert has_aligned_allocation_padding
+	assert has_aligned_cookie_store
+	assert has_aligned_return_pointer
+}
+
+fn test_pe_linker_resolves_malloc_and_free_with_compatible_heap_cookie() {
+	mut obj := CoffObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xe8, 0, 0, 0, 0, 0xc3]
+	obj.add_symbol('main', 10, true, 1)
+	malloc_sym := obj.add_undefined('malloc')
+	free_sym := obj.add_undefined('free')
+	obj.add_text_reloc(1, malloc_sym, coff_image_rel_amd64_rel32)
+	obj.add_text_reloc(6, free_sym, coff_image_rel_amd64_rel32)
+
+	mut linker := PeLinker.new(obj)
+	image := linker.image() or { panic(err) }
+	names := pe_test_import_names(image)
+	dll_names := pe_test_import_dll_names(image)
+	assert names == ['ExitProcess', 'GetProcessHeap', 'HeapAlloc', 'HeapFree']
+	assert dll_names == ['kernel32.dll']
+	assert 'HeapReAlloc' !in names
+	assert 'ucrtbase.dll' !in dll_names
+	assert 'msvcrt.dll' !in dll_names
+
+	text_off := pe_test_section_header(image, '.text')
+	text_rva := pe_test_u32(image, text_off + 12)
+	text_raw := int(pe_test_u32(image, text_off + 20))
+	text_raw_size := int(pe_test_u32(image, text_off + 16))
+	entry_stub_len := linker.entry_stub_size()
+	runtime_start_rva := text_rva + u32(entry_stub_len + obj.text_data.len)
+
+	mut first_import_thunk_file_off := -1
+	for off in text_raw + entry_stub_len + obj.text_data.len .. text_raw + text_raw_size - 1 {
+		if image[off] == 0xff && image[off + 1] == 0x25 {
+			first_import_thunk_file_off = off
+			break
+		}
+	}
+	assert first_import_thunk_file_off > 0
+	first_import_thunk_rva := text_rva + u32(first_import_thunk_file_off - text_raw)
+
+	malloc_target := pe_test_text_rel32_target(image, text_rva, text_raw, entry_stub_len + 1)
+	free_target := pe_test_text_rel32_target(image, text_rva, text_raw, entry_stub_len + 6)
+	assert malloc_target >= runtime_start_rva
+	assert malloc_target < first_import_thunk_rva
+	assert free_target >= runtime_start_rva
+	assert free_target < first_import_thunk_rva
+
+	malloc_off := pe_test_rva_to_file_off(image, malloc_target)
+	free_off := pe_test_rva_to_file_off(image, free_target)
+	assert malloc_off > 0
+	assert free_off > 0
+	mut malloc_stores_raw_cookie := false
+	for off in malloc_off .. first_import_thunk_file_off - 14 {
+		if image[off..off + 15] == [
+			u8(0x49),
+			0x89,
+			0xc3,
+			0x49,
+			0x83,
+			0xc3,
+			0x17,
+			0x49,
+			0x83,
+			0xe3,
+			0xf0,
+			0x49,
+			0x89,
+			0x43,
+			0xf8,
+		] {
+			malloc_stores_raw_cookie = true
+		}
+	}
+	assert malloc_stores_raw_cookie
+	mut free_reads_raw_cookie := false
+	for off in free_off .. first_import_thunk_file_off - 3 {
+		if image[off..off + 4] == [u8(0x48), 0x8b, 0x41, 0xf8] {
+			free_reads_raw_cookie = true
+		}
+	}
+	assert free_reads_raw_cookie
 }
 
 fn test_pe_linker_resolves_calloc_with_internal_zeroed_heap_thunk() {

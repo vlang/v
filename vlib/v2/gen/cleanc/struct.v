@@ -5,8 +5,10 @@
 module cleanc
 
 import runtime
+import strings
 import time
 import v2.ast
+import v2.token
 import v2.types
 
 const max_generic_struct_scan_jobs = 4
@@ -39,16 +41,37 @@ fn (mut g Gen) has_explicit_str_method_for_c_type(c_type_name string) bool {
 	old_file := g.cur_file_name
 	old_module := g.cur_module
 	old_import_modules := g.cur_import_modules.clone()
-	for file in g.files {
-		g.set_file_module(file)
-		for stmt in file.stmts {
-			if stmt is ast.FnDecl {
-				if stmt.is_method && stmt.name == 'str'
-					&& g.method_decl_c_name_for_module(g.cur_module, stmt) == '${c_type_name}__str' {
-					g.cur_file_name = old_file
-					g.cur_module = old_module
-					g.cur_import_modules = old_import_modules.clone()
-					return true
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() == .stmt_fn_decl && stmt.name() == 'str' {
+					decl := stmt.fn_decl_signature()
+					if decl.is_method
+						&& g.method_decl_c_name_for_module(g.cur_module, decl) == '${c_type_name}__str' {
+						g.cur_file_name = old_file
+						g.cur_module = old_module
+						g.cur_import_modules = old_import_modules.clone()
+						return true
+					}
+				}
+			}
+		}
+	} else {
+		for file in g.files {
+			g.set_file_module(file)
+			for stmt in file.stmts {
+				if stmt is ast.FnDecl {
+					if stmt.is_method && stmt.name == 'str'
+						&& g.method_decl_c_name_for_module(g.cur_module, stmt) == '${c_type_name}__str' {
+						g.cur_file_name = old_file
+						g.cur_module = old_module
+						g.cur_import_modules = old_import_modules.clone()
+						return true
+					}
 				}
 			}
 		}
@@ -96,17 +119,62 @@ fn (mut g Gen) collect_generic_struct_bindings() {
 		g.cur_fn_name = prev_fn_name
 		g.cur_fn_c_name = prev_fn_c_name
 	}
-	if !g.collect_generic_struct_bindings_file_scan_parallel() {
+	if g.has_flat() {
+		g.collect_generic_struct_bindings_flat()
+	} else if !g.collect_generic_struct_bindings_file_scan_parallel() {
 		g.collect_generic_struct_bindings_file_scan(g.files)
 	}
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.generic_struct_bindings.file_scan')
-	g.propagate_generic_struct_bindings_for_files(g.files)
+	if g.has_flat() {
+		g.propagate_generic_struct_bindings_flat()
+	} else {
+		g.propagate_generic_struct_bindings_for_files(g.files)
+	}
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.generic_struct_bindings.propagate')
-	g.scan_receiver_generic_struct_bindings_for_files(g.files)
+	if g.has_flat() {
+		g.scan_receiver_generic_struct_bindings_flat()
+	} else {
+		g.scan_receiver_generic_struct_bindings_for_files(g.files)
+	}
 	_ = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.generic_struct_bindings.receiver_scan')
+}
+
+fn (mut g Gen) collect_generic_struct_bindings_flat() {
+	for i in 0 .. g.flat.files.len {
+		fc := g.flat.file_cursor(i)
+		g.set_file_cursor_module(fc)
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			stmt := stmts.at(j)
+			match stmt.kind() {
+				.stmt_struct_decl {
+					decl := stmt.struct_decl()
+					for field in decl.fields {
+						g.scan_expr_for_generic_types(field.typ)
+					}
+				}
+				.stmt_fn_decl {
+					decl := stmt.fn_decl_signature()
+					if decl.receiver.typ !is ast.EmptyExpr {
+						g.scan_expr_for_generic_types(decl.receiver.typ)
+					}
+					for param in decl.typ.params {
+						g.scan_expr_for_generic_types(param.typ)
+					}
+					if decl.typ.return_type !is ast.EmptyExpr {
+						g.scan_expr_for_generic_types(decl.typ.return_type)
+					}
+					if stmt.list_at(3).len() > 0 {
+						g.scan_fn_body_cursor_for_generic_types_with_clean_locals(stmt, decl, '')
+					}
+				}
+				else {}
+			}
+		}
+	}
 }
 
 fn (mut g Gen) collect_generic_struct_bindings_file_scan(files []ast.File) {
@@ -177,11 +245,40 @@ fn (mut g Gen) propagate_generic_struct_bindings_for_files(files []ast.File) {
 	}
 }
 
+fn (mut g Gen) propagate_generic_struct_bindings_flat() {
+	for i in 0 .. g.flat.files.len {
+		fc := g.flat.file_cursor(i)
+		g.set_file_cursor_module(fc)
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			stmt := stmts.at(j)
+			if stmt.kind() != .stmt_struct_decl {
+				continue
+			}
+			decl := stmt.struct_decl()
+			if decl.generic_params.len == 0 {
+				continue
+			}
+			struct_c_name := g.get_struct_name(decl)
+			if struct_c_name !in g.generic_struct_bindings {
+				continue
+			}
+			instances := g.generic_struct_instances[struct_c_name]
+			for inst in instances {
+				for field in decl.fields {
+					g.propagate_generic_bindings(field.typ, inst.bindings)
+				}
+			}
+		}
+	}
+}
+
 fn (mut g Gen) scan_receiver_generic_struct_bindings_for_files(files []ast.File) {
 	// Generic receiver methods can contain explicit calls like
 	// `helper[T](...)` even when the receiver itself is emitted with v2's
 	// fallback placeholder type. Rescan those bodies with concrete receiver
-	// bindings, or with the same f64 fallback used by placeholder C types.
+	// bindings. Uninstantiated receiver-generic methods should not invent
+	// concrete helper calls from unrelated generic bindings.
 	for file in files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
@@ -198,11 +295,7 @@ fn (mut g Gen) scan_receiver_generic_struct_bindings_for_files(files []ast.File)
 					binding_sets << bindings
 				}
 				if binding_sets.len == 0 {
-					mut fallback := map[string]types.Type{}
-					for param_name in recv_params {
-						fallback[param_name] = types.Type(types.f64_)
-					}
-					binding_sets << fallback
+					continue
 				}
 				prev_generic_types := g.active_generic_types.clone()
 				for bindings in binding_sets {
@@ -211,6 +304,41 @@ fn (mut g Gen) scan_receiver_generic_struct_bindings_for_files(files []ast.File)
 				}
 				g.active_generic_types = prev_generic_types.clone()
 			}
+		}
+	}
+}
+
+fn (mut g Gen) scan_receiver_generic_struct_bindings_flat() {
+	for i in 0 .. g.flat.files.len {
+		fc := g.flat.file_cursor(i)
+		g.set_file_cursor_module(fc)
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			stmt := stmts.at(j)
+			if stmt.kind() != .stmt_fn_decl {
+				continue
+			}
+			decl := stmt.fn_decl_signature()
+			recv_params := receiver_generic_param_names(decl)
+			if recv_params.len == 0 {
+				continue
+			}
+			mut binding_sets := []map[string]types.Type{}
+			all_bindings := g.get_all_receiver_generic_bindings(decl)
+			if all_bindings.len > 0 {
+				binding_sets << all_bindings
+			} else if bindings := g.get_receiver_generic_bindings(decl) {
+				binding_sets << bindings
+			}
+			if binding_sets.len == 0 {
+				continue
+			}
+			prev_generic_types := g.active_generic_types.clone()
+			for bindings in binding_sets {
+				g.active_generic_types = bindings.clone()
+				g.scan_fn_body_cursor_for_generic_types_with_clean_locals(stmt, decl, '')
+			}
+			g.active_generic_types = prev_generic_types.clone()
 		}
 	}
 }
@@ -345,8 +473,15 @@ fn (mut g Gen) merge_generic_struct_scan_worker(w &Gen) {
 
 fn (mut g Gen) merge_generic_struct_scan_instance(struct_c_name string, inst GenericStructInstance) {
 	mut instances := g.generic_struct_instances[struct_c_name]
+	struct_base := if struct_c_name.contains('__') {
+		struct_c_name.all_after_last('__')
+	} else {
+		struct_c_name
+	}
+	param_names := g.generic_struct_runtime_param_names(struct_base, struct_c_name)
+	bindings_key := g.generic_struct_bindings_key(param_names, inst.bindings)
 	for existing in instances {
-		if existing.params_key == inst.params_key {
+		if g.generic_struct_instance_matches(existing, inst.params_key, bindings_key, param_names) {
 			return
 		}
 	}
@@ -422,6 +557,34 @@ fn (mut g Gen) scan_fn_body_for_generic_types_with_clean_locals(node ast.FnDecl,
 	g.cur_fn_name = ''
 	g.cur_fn_c_name = ''
 	g.scan_fn_body_for_generic_types(node, spec_name)
+	g.runtime_local_types = prev_runtime_local_types.clone()
+	g.runtime_decl_types = prev_runtime_decl_types.clone()
+	g.not_local_var_cache = prev_not_local_var_cache.clone()
+	g.is_module_ident_cache = prev_is_module_ident_cache.clone()
+	g.resolved_module_names = prev_resolved_module_names.clone()
+	g.cur_fn_generic_params = prev_cur_fn_generic_params.clone()
+	g.cur_fn_name = prev_fn_name
+	g.cur_fn_c_name = prev_fn_c_name
+}
+
+fn (mut g Gen) scan_fn_body_cursor_for_generic_types_with_clean_locals(stmt ast.Cursor, decl ast.FnDecl, spec_name string) {
+	prev_runtime_local_types := g.runtime_local_types.clone()
+	prev_runtime_decl_types := g.runtime_decl_types.clone()
+	prev_not_local_var_cache := g.not_local_var_cache.clone()
+	prev_is_module_ident_cache := g.is_module_ident_cache.clone()
+	prev_resolved_module_names := g.resolved_module_names.clone()
+	prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
+	prev_fn_name := g.cur_fn_name
+	prev_fn_c_name := g.cur_fn_c_name
+	g.runtime_local_types = map[string]string{}
+	g.runtime_decl_types = map[string]string{}
+	g.not_local_var_cache = map[string]bool{}
+	g.is_module_ident_cache = map[string]bool{}
+	g.resolved_module_names = map[string]string{}
+	g.cur_fn_generic_params = map[string]string{}
+	g.cur_fn_name = ''
+	g.cur_fn_c_name = ''
+	g.scan_fn_body_cursor_for_generic_types(stmt, decl, spec_name)
 	g.runtime_local_types = prev_runtime_local_types.clone()
 	g.runtime_decl_types = prev_runtime_decl_types.clone()
 	g.not_local_var_cache = prev_not_local_var_cache.clone()
@@ -629,6 +792,7 @@ fn (mut g Gen) scan_expr_for_generic_types(e ast.Expr) {
 		ast.Ident {
 			if e.name.contains('_T_') || e.name.ends_with('_T') {
 				g.scan_generic_fn_value_for_specs(e)
+				g.record_generic_struct_bindings_from_specialized_name(e.name)
 			}
 		}
 		ast.Type {
@@ -797,6 +961,62 @@ fn (mut g Gen) scan_expr_for_generic_types(e ast.Expr) {
 	}
 }
 
+fn (mut g Gen) record_generic_struct_bindings_from_specialized_name(raw_name string) {
+	if !raw_name.contains('_T_') {
+		return
+	}
+	struct_c_name := raw_name.all_before('_T_')
+	if struct_c_name == '' {
+		return
+	}
+	runtime_param_names := g.generic_struct_runtime_param_names(struct_c_name, struct_c_name)
+	if runtime_param_names.len == 0 {
+		return
+	}
+	arg_tokens := generic_call_embedded_type_arg_names_from_name(raw_name, runtime_param_names.len)
+	if arg_tokens.len != runtime_param_names.len {
+		return
+	}
+	mut bindings := map[string]types.Type{}
+	mut param_c_names := []string{cap: arg_tokens.len}
+	for i, param_name in runtime_param_names {
+		concrete_c_name := generic_token_to_c_type(arg_tokens[i])
+		if concrete_c_name == '' {
+			return
+		}
+		concrete_type := g.concrete_type_from_call_arg_c_name(concrete_c_name) or { return }
+		if type_contains_generic_placeholder(concrete_type)
+			|| !g.generic_concrete_type_is_runtime_specializable(concrete_type) {
+			return
+		}
+		bindings[param_name] = concrete_type
+		param_c_names << mangle_alias_component(concrete_c_name)
+	}
+	if bindings.len != runtime_param_names.len
+		|| !g.generic_specialization_belongs_to_emit_modules(bindings) {
+		return
+	}
+	params_key := param_c_names.join('_')
+	bindings_key := g.generic_struct_bindings_key(runtime_param_names, bindings)
+	mut instances := g.generic_struct_instances[struct_c_name]
+	for inst in instances {
+		if inst.c_name == raw_name
+			|| g.generic_struct_instance_matches(inst, params_key, bindings_key, runtime_param_names)
+			|| g.generic_struct_instance_bindings_match(inst, bindings, runtime_param_names) {
+			return
+		}
+	}
+	instances << GenericStructInstance{
+		params_key: params_key
+		bindings:   bindings.clone()
+		c_name:     raw_name
+	}
+	g.generic_struct_instances[struct_c_name] = instances
+	if struct_c_name !in g.generic_struct_bindings {
+		g.generic_struct_bindings[struct_c_name] = bindings.clone()
+	}
+}
+
 fn (mut g Gen) generic_call_decl_from_lhs(lhs ast.Expr) ?ast.FnDecl {
 	mut call_name := match lhs {
 		ast.Ident {
@@ -827,7 +1047,19 @@ fn (mut g Gen) generic_call_decl_from_lhs(lhs ast.Expr) ?ast.FnDecl {
 	}
 	for candidate in generic_call_decl_candidates(call_name) {
 		if info := g.generic_fn_decl_index[candidate] {
-			if info.file_idx >= 0 && info.file_idx < g.files.len {
+			if g.has_flat() {
+				if info.file_idx < 0 || info.file_idx >= g.flat.files.len {
+					continue
+				}
+				stmts := g.flat.file_cursor(info.file_idx).stmts()
+				if info.stmt_idx < 0 || info.stmt_idx >= stmts.len() {
+					continue
+				}
+				stmt := stmts.at(info.stmt_idx)
+				if stmt.kind() == .stmt_fn_decl {
+					return stmt.fn_decl_signature()
+				}
+			} else if info.file_idx >= 0 && info.file_idx < g.files.len {
 				file := g.files[info.file_idx]
 				if info.stmt_idx >= 0 && info.stmt_idx < file.stmts.len {
 					stmt := file.stmts[info.stmt_idx]
@@ -849,6 +1081,96 @@ fn (mut g Gen) generic_call_decl_from_lhs(lhs ast.Expr) ?ast.FnDecl {
 		g.cur_module = prev_module
 		g.cur_file_name = prev_file_name
 		g.active_generic_types = prev_active_generic_types.clone()
+	}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_fn_decl || stmt.name() != call_name {
+					continue
+				}
+				decl := stmt.fn_decl_signature()
+				if g.generic_fn_param_names(decl).len > 0 {
+					return decl
+				}
+			}
+		}
+		return none
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == call_name
+				&& g.generic_fn_param_names(stmt).len > 0 {
+				return stmt
+			}
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) generic_call_decl_from_lhs_cursor(lhs ast.Cursor) ?ast.FnDecl {
+	mut call_name := generic_call_short_name_cursor(lhs)
+	if call_name == '' {
+		return none
+	}
+	for candidate in generic_call_decl_candidates(call_name) {
+		if info := g.generic_fn_decl_index[candidate] {
+			if g.has_flat() {
+				if info.file_idx < 0 || info.file_idx >= g.flat.files.len {
+					continue
+				}
+				stmts := g.flat.file_cursor(info.file_idx).stmts()
+				if info.stmt_idx < 0 || info.stmt_idx >= stmts.len() {
+					continue
+				}
+				stmt := stmts.at(info.stmt_idx)
+				if stmt.kind() == .stmt_fn_decl {
+					return stmt.fn_decl_signature()
+				}
+			} else if info.file_idx >= 0 && info.file_idx < g.files.len {
+				file := g.files[info.file_idx]
+				if info.stmt_idx >= 0 && info.stmt_idx < file.stmts.len {
+					stmt := file.stmts[info.stmt_idx]
+					if stmt is ast.FnDecl {
+						return stmt
+					}
+				}
+			}
+		}
+	}
+	if g.generic_fn_decl_index.len > 0 {
+		return none
+	}
+	prev_module := g.cur_module
+	prev_file_name := g.cur_file_name
+	prev_active_generic_types := g.active_generic_types.clone()
+	g.active_generic_types = map[string]types.Type{}
+	defer {
+		g.cur_module = prev_module
+		g.cur_file_name = prev_file_name
+		g.active_generic_types = prev_active_generic_types.clone()
+	}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_fn_decl || stmt.name() != call_name {
+					continue
+				}
+				decl := stmt.fn_decl_signature()
+				if g.generic_fn_param_names(decl).len > 0 {
+					return decl
+				}
+			}
+		}
+		return none
 	}
 	for file in g.files {
 		g.set_file_module(file)
@@ -907,6 +1229,67 @@ fn generic_call_short_name(lhs ast.Expr) string {
 	return name
 }
 
+fn generic_call_short_name_cursor(lhs ast.Cursor) string {
+	mut name := match lhs.kind() {
+		.expr_ident {
+			lhs.name()
+		}
+		.expr_selector {
+			lhs.edge(1).name()
+		}
+		.expr_generic_arg_or_index, .expr_generic_args {
+			generic_call_short_name_cursor(lhs.edge(0))
+		}
+		else {
+			''
+		}
+	}
+
+	if name.contains('_T_') {
+		name = name.all_before('_T_')
+	} else if name.ends_with('_T') {
+		name = name[..name.len - 2]
+	}
+	return name
+}
+
+fn generic_call_raw_name(lhs ast.Expr) string {
+	return match lhs {
+		ast.Ident {
+			lhs.name
+		}
+		ast.SelectorExpr {
+			lhs.rhs.name
+		}
+		ast.GenericArgOrIndexExpr {
+			generic_call_raw_name(lhs.lhs)
+		}
+		ast.GenericArgs {
+			generic_call_raw_name(lhs.lhs)
+		}
+		else {
+			''
+		}
+	}
+}
+
+fn generic_call_raw_name_cursor(lhs ast.Cursor) string {
+	return match lhs.kind() {
+		.expr_ident {
+			lhs.name()
+		}
+		.expr_selector {
+			lhs.edge(1).name()
+		}
+		.expr_generic_arg_or_index, .expr_generic_args {
+			generic_call_raw_name_cursor(lhs.edge(0))
+		}
+		else {
+			''
+		}
+	}
+}
+
 fn generic_call_type_args(lhs ast.Expr) []ast.Expr {
 	return match lhs {
 		ast.GenericArgOrIndexExpr {
@@ -921,6 +1304,32 @@ fn generic_call_type_args(lhs ast.Expr) []ast.Expr {
 		}
 		else {
 			[]ast.Expr{}
+		}
+	}
+}
+
+fn generic_call_type_args_cursor(lhs ast.Cursor) []ast.Expr {
+	match lhs.kind() {
+		.expr_generic_arg_or_index {
+			arg := lhs.edge(1)
+			if arg.kind() == .expr_lifetime {
+				return []ast.Expr{}
+			}
+			return [arg.type_expr()]
+		}
+		.expr_generic_args {
+			mut args := []ast.Expr{cap: lhs.edge_count() - 1}
+			for i in 1 .. lhs.edge_count() {
+				arg := lhs.edge(i)
+				if arg.kind() == .expr_lifetime {
+					continue
+				}
+				args << arg.type_expr()
+			}
+			return args
+		}
+		else {
+			return []ast.Expr{}
 		}
 	}
 }
@@ -968,6 +1377,11 @@ fn generic_call_embedded_type_arg_names(lhs ast.Expr, expected_count int) []stri
 	return generic_call_embedded_type_arg_names_from_name(raw_name, expected_count)
 }
 
+fn generic_call_embedded_type_arg_names_cursor(lhs ast.Cursor, expected_count int) []string {
+	raw_name := generic_call_raw_name_cursor(lhs)
+	return generic_call_embedded_type_arg_names_from_name(raw_name, expected_count)
+}
+
 fn (g &Gen) active_generic_bindings_matching_embedded_args(embedded_args []string, generic_params []string) ?map[string]types.Type {
 	if embedded_args.len != generic_params.len || g.active_generic_types.len == 0 {
 		return none
@@ -979,8 +1393,8 @@ fn (g &Gen) active_generic_bindings_matching_embedded_args(embedded_args []strin
 			g.active_generic_types[arg_name] or { return none }
 		} else {
 			active := g.active_generic_types[param_name] or { return none }
-			token := g.generic_specialization_token_from_type(active)
-			if !generic_token_matches_short_name(token, arg_name) {
+			spec_token := g.generic_specialization_token_from_type(active)
+			if !generic_token_matches_short_name(spec_token, arg_name) {
 				return none
 			}
 			active
@@ -1021,6 +1435,11 @@ fn (g &Gen) active_generic_bindings_matching_embedded_suffix(lhs ast.Expr, gener
 	return g.active_generic_bindings_matching_embedded_args(embedded_args, generic_params)
 }
 
+fn (g &Gen) active_generic_bindings_matching_embedded_suffix_cursor(lhs ast.Cursor, generic_params []string) ?map[string]types.Type {
+	embedded_args := generic_call_embedded_type_arg_names_cursor(lhs, generic_params.len)
+	return g.active_generic_bindings_matching_embedded_args(embedded_args, generic_params)
+}
+
 fn (g &Gen) active_generic_bindings_matching_name_suffix(name string, generic_params []string) ?map[string]types.Type {
 	embedded_args := generic_call_embedded_type_arg_names_from_name(name, generic_params.len)
 	return g.active_generic_bindings_matching_embedded_args(embedded_args, generic_params)
@@ -1028,6 +1447,30 @@ fn (g &Gen) active_generic_bindings_matching_name_suffix(name string, generic_pa
 
 fn (mut g Gen) bind_embedded_generic_type_args(lhs ast.Expr, generic_params []string, mut bindings map[string]types.Type) bool {
 	embedded_args := generic_call_embedded_type_arg_names(lhs, generic_params.len)
+	if embedded_args.len == 0 {
+		return true
+	}
+	if embedded_args.len != generic_params.len {
+		return bindings.len == generic_params.len
+	}
+	for i, param_name in generic_params {
+		if param_name in bindings {
+			continue
+		}
+		arg_name := embedded_args[i]
+		if is_generic_placeholder_type_name(arg_name) {
+			concrete := g.active_generic_types[arg_name] or { return false }
+			bindings[param_name] = concrete
+			continue
+		}
+		concrete := g.concrete_type_from_c_name(arg_name) or { return false }
+		bindings[param_name] = concrete
+	}
+	return true
+}
+
+fn (mut g Gen) bind_embedded_generic_type_args_cursor(lhs ast.Cursor, generic_params []string, mut bindings map[string]types.Type) bool {
+	embedded_args := generic_call_embedded_type_arg_names_cursor(lhs, generic_params.len)
 	if embedded_args.len == 0 {
 		return true
 	}
@@ -1127,6 +1570,136 @@ fn (mut g Gen) concrete_type_from_generic_call_arg(arg ast.Expr) ?types.Type {
 	return g.concrete_type_from_call_arg_c_name(c_name)
 }
 
+fn (mut g Gen) concrete_type_from_generic_call_arg_cursor(arg ast.Cursor) ?types.Type {
+	base_arg := generic_call_base_arg_cursor(arg)
+	if is_comptime_field_metadata_expr_cursor(base_arg, g.comptime_field_var) {
+		return none
+	}
+	if base_arg.kind() == .expr_selector && is_comptime_selector_rhs_name(base_arg.edge(1).name())
+		&& type_has_valid_data(g.comptime_field_raw_type) {
+		return g.comptime_field_raw_type
+	}
+	if active_concrete := g.active_generic_concrete_from_arg_cursor(base_arg) {
+		return active_concrete
+	}
+	if base_arg.kind() == .expr_ident {
+		if placeholder := g.cur_fn_generic_params[base_arg.name()] {
+			if placeholder !in g.active_generic_types {
+				return none
+			}
+		}
+	}
+	mut c_name := ''
+	match base_arg.kind() {
+		.expr_init {
+			c_name = g.expr_type_to_c(base_arg.edge(0).type_expr()).trim_space()
+		}
+		.expr_cast {
+			c_name = g.expr_type_to_c(base_arg.edge(0).type_expr()).trim_space()
+		}
+		.expr_as_cast {
+			c_name = g.expr_type_to_c(base_arg.edge(1).type_expr()).trim_space()
+		}
+		else {}
+	}
+
+	if (c_name == '' || c_name == 'int' || c_name == 'array' || c_name == 'map')
+		&& base_arg.kind() == .expr_selector {
+		c_name = g.selector_declared_field_type_cursor_for_generic_scan(base_arg).trim_space()
+	}
+
+	mut found_local_arg_type := false
+	if c_name == '' || c_name == 'int' {
+		if base_arg.kind() == .expr_ident {
+			c_name = (g.get_local_var_c_type(base_arg.name()) or { '' }).trim_space()
+			found_local_arg_type = c_name != ''
+		}
+	}
+	if !found_local_arg_type && (c_name == '' || c_name == 'int') {
+		c_name = g.generic_scan_expr_cursor_c_type(base_arg).trim_space()
+	}
+	if !found_local_arg_type && (c_name == '' || c_name == 'int') {
+		if raw := g.raw_type_from_generic_call_arg_cursor(base_arg) {
+			return raw
+		}
+	}
+	if c_name == '' || c_name == 'int' {
+		return none
+	}
+	if concrete := g.active_generic_types[c_name] {
+		return concrete
+	}
+	return g.concrete_type_from_call_arg_c_name(c_name)
+}
+
+fn generic_call_base_arg_cursor(arg ast.Cursor) ast.Cursor {
+	if arg.kind() == .expr_modifier {
+		return arg.edge(0)
+	}
+	return arg
+}
+
+fn (mut g Gen) active_generic_concrete_from_arg_cursor(arg ast.Cursor) ?types.Type {
+	if g.active_generic_types.len == 0 {
+		return none
+	}
+	if arg.kind() == .expr_prefix && unsafe { token.Token(int(arg.aux())) } == .amp {
+		if concrete := g.active_generic_concrete_from_arg_cursor(arg.edge(0)) {
+			return types.Type(types.Pointer{
+				base_type: concrete
+			})
+		}
+	}
+	if arg.kind() == .expr_ident {
+		if param_name := g.cur_fn_generic_params[arg.name()] {
+			if concrete := g.active_generic_types[param_name] {
+				return normalize_generic_concrete_type(concrete)
+			}
+		}
+	}
+	raw := g.raw_type_from_generic_call_arg_cursor(arg) or { return none }
+	concrete := g.concrete_type_with_active_generics(raw)
+	if type_contains_generic_placeholder(concrete) || concrete.name() == raw.name() {
+		return none
+	}
+	return normalize_generic_concrete_type(concrete)
+}
+
+fn (mut g Gen) raw_type_from_generic_call_arg_cursor(arg ast.Cursor) ?types.Type {
+	if g.env == unsafe { nil } || !arg.is_valid() {
+		return none
+	}
+	if arg.kind() == .expr_ident {
+		if cached := g.is_module_ident_cache[arg.name()] {
+			if cached {
+				return none
+			}
+		}
+		if local_type := g.runtime_local_types[arg.name()] {
+			if resolved := g.resolve_c_type_to_raw(local_type) {
+				return resolved
+			}
+		}
+		if mut fn_scope := g.ensure_cur_fn_scope() {
+			if obj := fn_scope.lookup_parent(arg.name(), 0) {
+				if obj is types.Module {
+					return none
+				}
+				return obj.typ()
+			}
+		}
+	}
+	pos := arg.pos()
+	if pos.is_valid() {
+		if typ := g.env.get_expr_type(pos.id) {
+			if type_has_valid_data(typ) {
+				return typ
+			}
+		}
+	}
+	return none
+}
+
 fn is_comptime_field_metadata_expr(expr ast.Expr, field_var string) bool {
 	if field_var == '' {
 		return false
@@ -1138,6 +1711,20 @@ fn is_comptime_field_metadata_expr(expr ast.Expr, field_var string) bool {
 		return true
 	}
 	return false
+}
+
+fn is_comptime_field_metadata_expr_cursor(expr ast.Cursor, field_var string) bool {
+	if field_var == '' {
+		return false
+	}
+	base_expr := generic_call_base_arg_cursor(expr)
+	if base_expr.kind() != .expr_selector {
+		return false
+	}
+	lhs := base_expr.edge(0)
+	rhs := base_expr.edge(1)
+	return lhs.kind() == .expr_ident && lhs.name() == field_var
+		&& !is_comptime_selector_rhs_name(rhs.name())
 }
 
 fn (mut g Gen) record_late_generic_call_spec_for_key(key string, bindings map[string]types.Type) {
@@ -1183,13 +1770,23 @@ fn (mut g Gen) record_late_generic_call_spec(key string, bindings map[string]typ
 }
 
 fn (mut g Gen) record_generic_scan_call_name(lhs ast.Expr, arg_count int, generic_params []string, bindings map[string]types.Type) {
+	base_name := g.resolve_call_name(lhs, arg_count)
+	g.record_generic_scan_call_base_name(base_name, generic_params, bindings)
+}
+
+fn (mut g Gen) record_generic_scan_call_name_cursor(lhs ast.Cursor, arg_count int, generic_params []string, bindings map[string]types.Type) {
+	base_name := g.resolve_call_name_cursor_for_generic_scan(lhs, arg_count)
+	g.record_generic_scan_call_base_name(base_name, generic_params, bindings)
+}
+
+fn (mut g Gen) record_generic_scan_call_base_name(name string, generic_params []string, bindings map[string]types.Type) {
 	if !g.collect_generic_scan_calls {
 		return
 	}
 	if generic_params.len == 0 || bindings.len != generic_params.len {
 		return
 	}
-	mut base_name := g.resolve_call_name(lhs, arg_count)
+	mut base_name := name
 	if base_name == '' {
 		return
 	}
@@ -1208,8 +1805,442 @@ fn (mut g Gen) record_generic_scan_call_name(lhs ast.Expr, arg_count int, generi
 		suffixes << g.generic_specialization_token_from_type(concrete)
 	}
 	if suffixes.len == generic_params.len {
-		g.generic_scan_called_names['${base_name}_T_${suffixes.join('_')}'] = true
+		specialized_name := '${base_name}_T_${suffixes.join('_')}'
+		g.generic_scan_called_names[specialized_name] = true
+		if !base_name.contains('__') && g.cur_module != '' && g.cur_module != 'main'
+			&& g.cur_module != 'builtin' {
+			g.generic_scan_called_names['${g.cur_module}__${specialized_name}'] = true
+		}
 	}
+}
+
+fn (mut g Gen) resolve_call_name_cursor_for_generic_scan(lhs ast.Cursor, arg_count int) string {
+	mut name := ''
+	match lhs.kind() {
+		.expr_generic_arg_or_index, .expr_generic_args {
+			return g.resolve_call_name_cursor_for_generic_scan(lhs.edge(0), arg_count)
+		}
+		.expr_ident {
+			name = sanitize_fn_ident(lhs.name())
+		}
+		.expr_selector {
+			lhs_expr := lhs.edge(0)
+			method_name := sanitize_fn_ident(lhs.edge(1).name())
+			if lhs_expr.kind() == .expr_ident && lhs_expr.name() == 'C' {
+				return method_name
+			}
+			if lhs_expr.kind() == .expr_ident && (g.is_type_name(lhs_expr.name())
+				|| g.selector_lhs_is_static_type_ident(lhs_expr.name())) {
+				return '${g.get_qualified_name(lhs_expr.name())}__${method_name}'
+			}
+			if mod_call_name := g.resolve_selector_module_call_name_cursor(lhs) {
+				name = mod_call_name
+			} else if qualified_method_name := g.resolved_qualified_selector_method_name(method_name) {
+				name = qualified_method_name
+			} else {
+				mut base_type := g.method_receiver_base_type_cursor_for_generic_scan(lhs_expr)
+				if base_type == '' {
+					base_type =
+						g.generic_scan_expr_cursor_c_type(lhs_expr).trim_space().trim_right('*')
+				}
+				name = '${base_type}__${method_name}'
+				if receiver_type := g.get_receiver_expr_type_for_method_cursor(lhs_expr) {
+					if concrete_method := g.resolve_method_on_concrete_type(receiver_type,
+						method_name)
+					{
+						name = concrete_method
+					}
+				}
+				if name !in g.fn_return_types && name !in g.fn_param_is_ptr {
+					if raw_type := g.raw_type_from_generic_call_arg_cursor(lhs_expr) {
+						raw_c_type := strip_pointer_type_name(g.types_type_to_c(raw_type))
+						if raw_c_type != '' && raw_c_type != base_type {
+							if raw_method := g.resolve_method_on_concrete_type(raw_c_type,
+								method_name)
+							{
+								name = raw_method
+							}
+						}
+					}
+					if name !in g.fn_return_types && name !in g.fn_param_is_ptr {
+						if alias_base := g.alias_base_c_type(base_type) {
+							alias_name := '${alias_base}__${method_name}'
+							if alias_name in g.fn_return_types || alias_name in g.fn_param_is_ptr {
+								name = alias_name
+							}
+						}
+					}
+					if name !in g.fn_return_types && name !in g.fn_param_is_ptr {
+						if map_method := g.map_runtime_method_name_cursor(lhs_expr, method_name) {
+							name = map_method
+						}
+					}
+				}
+			}
+		}
+		else {}
+	}
+
+	if name == 'builtin__new_array_from_c_array_noscan' {
+		name = 'new_array_from_c_array'
+	}
+	if name == 'builtin__array_push_noscan' {
+		name = 'array__push'
+	}
+	if name == 'panic' {
+		name = 'v_panic'
+	}
+	if name == 'voidptr__vbytes' {
+		name = 'void__vbytes'
+	}
+	if name == 'int__bytestr' {
+		name = 'Array_u8__bytestr'
+	}
+	if name.ends_with('__bytes') && name !in g.fn_return_types && name !in g.fn_param_is_ptr {
+		if 'string__bytes' in g.fn_return_types || 'string__bytes' in g.fn_param_is_ptr {
+			name = 'string__bytes'
+		}
+	}
+	if is_c_runtime_function(name) {
+		return name
+	}
+	if name != '' && g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
+		&& !name.contains('__') {
+		qualified := '${g.cur_module}__${name}'
+		if qualified in g.fn_return_types || qualified in g.fn_param_is_ptr {
+			return qualified
+		}
+		if name in g.fn_return_types || name in g.fn_param_is_ptr {
+			return name
+		}
+		return qualified
+	}
+	return name
+}
+
+fn (mut g Gen) resolve_selector_module_call_name_cursor(lhs ast.Cursor) ?string {
+	if lhs.kind() != .expr_selector {
+		return none
+	}
+	lhs_ident := lhs.edge(0)
+	if lhs_ident.kind() != .expr_ident || lhs_ident.name() == 'C' {
+		return none
+	}
+	if _ := g.get_local_var_c_type(lhs_ident.name()) {
+		return none
+	}
+	mod_name := g.resolve_module_name(lhs_ident.name())
+	name := '${mod_name}__${sanitize_fn_ident(lhs.edge(1).name())}'
+	if g.is_module_ident(lhs_ident.name()) || name in g.fn_return_types || name in g.fn_param_is_ptr
+		|| g.is_module_local_fn(name) || g.has_specialized_fn_base(name)
+		|| g.has_generic_fn_decl_by_base_name(name) {
+		return name
+	}
+	return none
+}
+
+fn (mut g Gen) direct_known_c_type_for_expr_cursor(expr ast.Cursor) string {
+	if !expr.is_valid() {
+		return ''
+	}
+	match expr.kind() {
+		.expr_paren, .expr_modifier {
+			return g.direct_known_c_type_for_expr_cursor(expr.edge(0))
+		}
+		.expr_prefix {
+			if unsafe { token.Token(int(expr.aux())) } == .mul {
+				ptr_type := g.direct_known_c_type_for_expr_cursor(expr.edge(0))
+				if ptr_type != '' {
+					return strip_one_pointer_type_name(ptr_type)
+				}
+			}
+		}
+		.expr_cast {
+			return g.expr_type_to_c(expr.edge(0).type_expr())
+		}
+		.expr_as_cast {
+			return g.expr_type_to_c(expr.edge(1).type_expr())
+		}
+		.expr_ident {
+			name := expr.name()
+			if local_type := g.get_local_var_c_type(name) {
+				return local_type
+			}
+			if const_type := g.const_types[name] {
+				return const_type
+			}
+			if global_type := g.global_var_types[name] {
+				return global_type
+			}
+			if g.cur_module != '' {
+				qualified := '${g.cur_module}__${name}'
+				if const_type := g.const_types[qualified] {
+					return const_type
+				}
+				if global_type := g.global_var_types[qualified] {
+					return global_type
+				}
+			}
+		}
+		else {}
+	}
+
+	return ''
+}
+
+fn (mut g Gen) selector_struct_name_cursor_for_generic_scan(expr ast.Cursor) string {
+	direct_type := g.direct_known_c_type_for_expr_cursor(expr)
+	if direct_type != '' {
+		base := strip_pointer_type_name(direct_type)
+		if base != '' && base != 'int' && base !in ['void', 'void*', 'voidptr'] {
+			return base
+		}
+	}
+	if expr.kind() == .expr_ident {
+		if local_type := g.get_local_var_c_type(expr.name()) {
+			base := strip_pointer_type_name(local_type)
+			if base != '' && base != 'int' && base !in ['void', 'void*', 'voidptr'] {
+				return base
+			}
+		}
+	}
+	if raw_type := g.raw_type_from_generic_call_arg_cursor(expr) {
+		if !type_has_valid_data(raw_type) {
+			return g.generic_scan_expr_cursor_c_type(expr).trim_right('*')
+		}
+		match raw_type {
+			types.Pointer {
+				if raw_type.base_type is types.Struct {
+					return raw_type.base_type.name
+				}
+				if raw_type.base_type is types.Alias {
+					return raw_type.base_type.name
+				}
+			}
+			types.Struct {
+				return raw_type.name
+			}
+			types.Alias {
+				return raw_type.name
+			}
+			else {}
+		}
+	}
+	return g.generic_scan_expr_cursor_c_type(expr).trim_right('*')
+}
+
+fn (mut g Gen) selector_declared_field_type_cursor_for_generic_scan(sel ast.Cursor) string {
+	if sel.kind() != .expr_selector {
+		return ''
+	}
+	rhs := sel.edge(1).name()
+	if rhs == '' {
+		return ''
+	}
+	lhs_expr := sel.edge(0)
+	lhs_struct_name := g.selector_struct_name_cursor_for_generic_scan(lhs_expr)
+	if lhs_struct_name != '' {
+		if g.active_generic_types.len > 0 || lhs_struct_name in g.generic_struct_bindings
+			|| lhs_struct_name in g.generic_struct_instances || lhs_struct_name.contains('_T_') {
+			if field_type := g.lookup_struct_field_type_by_name(lhs_struct_name, rhs) {
+				return field_type
+			}
+		}
+		if field_type := g.lookup_struct_decl_field_type_by_name(lhs_struct_name, rhs) {
+			return field_type
+		}
+		if field_type := g.lookup_struct_field_type_by_name(lhs_struct_name, rhs) {
+			return field_type
+		}
+	}
+	lhs_expr_type := g.generic_scan_expr_cursor_c_type(lhs_expr)
+	if lhs_expr_type != '' && lhs_expr_type != 'int' {
+		if field_type := g.lookup_struct_field_type_by_name(lhs_expr_type, rhs) {
+			return field_type
+		}
+	}
+	mut raw_resolved := ''
+	if lhs_raw := g.raw_type_from_generic_call_arg_cursor(lhs_expr) {
+		if field_type := selector_struct_field_type_from_type(lhs_raw, rhs) {
+			resolved := g.types_type_to_c(field_type)
+			if resolved != '' && resolved !in ['int', 'array'] {
+				return resolved
+			}
+			raw_resolved = resolved
+		}
+	}
+	return raw_resolved
+}
+
+fn (mut g Gen) method_receiver_base_type_cursor_for_generic_scan(expr ast.Cursor) string {
+	mut base_expr := expr
+	for base_expr.is_valid() && base_expr.kind() in [.expr_paren, .expr_modifier] {
+		base_expr = base_expr.edge(0)
+	}
+	if !base_expr.is_valid() {
+		return ''
+	}
+	if base_expr.kind() == .expr_prefix
+		&& unsafe { token.Token(int(base_expr.aux())) } in [.amp, .mul] {
+		return g.method_receiver_base_type_cursor_for_generic_scan(base_expr.edge(0))
+	}
+	direct_type := g.direct_known_c_type_for_expr_cursor(base_expr)
+	if direct_type != '' && direct_type != 'int' {
+		base := strip_pointer_type_name(direct_type)
+		if base != '' && base != 'int' && base !in ['void', 'void*', 'voidptr'] {
+			return base
+		}
+	}
+	if base_expr.kind() == .expr_init {
+		init_type := g.expr_type_to_c(base_expr.edge(0).type_expr())
+		if init_type != '' && init_type != 'int' {
+			return init_type
+		}
+	}
+	if base_expr.kind() == .expr_ident {
+		if local_type := g.get_local_var_c_type(base_expr.name()) {
+			base := strip_pointer_type_name(local_type)
+			if base != '' && base != 'int' {
+				return base
+			}
+		}
+	}
+	if base_expr.kind() == .expr_selector {
+		lhs_struct_name := g.selector_struct_name_cursor_for_generic_scan(base_expr.edge(0))
+		if lhs_struct_name != '' {
+			if declared_field_type := g.lookup_struct_field_type_by_name(lhs_struct_name,
+				base_expr.edge(1).name())
+			{
+				base := strip_pointer_type_name(declared_field_type)
+				if base != '' && base != 'int' && base !in ['void', 'void*', 'voidptr'] {
+					return base
+				}
+			}
+		}
+		field_type := g.selector_declared_field_type_cursor_for_generic_scan(base_expr)
+		if field_type != '' && field_type != 'int' {
+			base := strip_pointer_type_name(field_type)
+			if base in ['voidptr', 'void*'] {
+				return 'void'
+			}
+			return base
+		}
+	}
+	if raw_type := g.raw_type_from_generic_call_arg_cursor(base_expr) {
+		match raw_type {
+			types.Pointer {
+				return g.types_type_to_c(raw_type.base_type)
+			}
+			else {
+				raw_c_type := g.types_type_to_c(raw_type)
+				if raw_c_type != 'void' {
+					return raw_c_type
+				}
+			}
+		}
+	}
+	mut receiver_type := g.generic_scan_expr_cursor_c_type(base_expr)
+	if receiver_type.ends_with('*') {
+		receiver_type = receiver_type[..receiver_type.len - 1]
+	}
+	if receiver_type in ['voidptr', 'void*'] {
+		return 'void'
+	}
+	return receiver_type
+}
+
+fn (mut g Gen) get_receiver_expr_type_for_method_cursor(expr ast.Cursor) ?string {
+	mut base_expr := expr
+	for base_expr.is_valid() && base_expr.kind() in [.expr_paren, .expr_modifier] {
+		base_expr = base_expr.edge(0)
+	}
+	if !base_expr.is_valid() {
+		return none
+	}
+	if base_expr.kind() == .expr_prefix
+		&& unsafe { token.Token(int(base_expr.aux())) } in [.amp, .mul] {
+		if receiver_type := g.get_receiver_expr_type_for_method_cursor(base_expr.edge(0)) {
+			return receiver_type
+		}
+	}
+	if active_concrete := g.active_generic_concrete_from_arg_cursor(base_expr) {
+		active_type := g.types_type_to_c(active_concrete).trim_space()
+		if active_type != '' && active_type != 'int' && active_type != 'void' {
+			return active_type.trim_right('*')
+		}
+	}
+	if base_expr.kind() == .expr_ident {
+		local_type := (g.get_local_var_c_type(base_expr.name()) or { '' }).trim_space()
+		if local_type != '' && local_type != 'int' && local_type != 'void' {
+			return local_type.trim_right('*')
+		}
+	}
+	mut receiver_type := g.generic_scan_expr_cursor_c_type(base_expr).trim_space()
+	if base_expr.kind() == .expr_selector {
+		declared_type :=
+			g.selector_declared_field_type_cursor_for_generic_scan(base_expr).trim_space()
+		declared_base := strip_pointer_type_name(declared_type)
+		receiver_base := strip_pointer_type_name(receiver_type)
+		if declared_type != '' && declared_type != 'int' && declared_type != 'void'
+			&& (receiver_type == '' || receiver_type == 'int'
+			|| (declared_type.contains('_T_') && (!receiver_type.contains('_T_')
+			|| declared_base != receiver_base))) {
+			receiver_type = declared_type
+		}
+	}
+	if (receiver_type == '' || receiver_type == 'int') && base_expr.kind() == .expr_ident {
+		receiver_type = (g.get_local_var_c_type(base_expr.name()) or { '' }).trim_space()
+	}
+	if receiver_type == '' || receiver_type == 'int' {
+		if raw := g.raw_type_from_generic_call_arg_cursor(base_expr) {
+			receiver_type = g.types_type_to_c(raw).trim_space()
+		}
+	}
+	if receiver_type.ends_with('*') {
+		receiver_type = receiver_type[..receiver_type.len - 1]
+	}
+	if receiver_type == '' || receiver_type == 'int' {
+		return none
+	}
+	return receiver_type
+}
+
+fn (mut g Gen) selector_receiver_is_map_cursor(receiver ast.Cursor) bool {
+	if raw_type := g.raw_type_from_generic_call_arg_cursor(receiver) {
+		match raw_type {
+			types.Map {
+				return true
+			}
+			types.Pointer {
+				match raw_type.base_type {
+					types.Map {
+						return true
+					}
+					types.Alias {
+						return raw_type.base_type.base_type is types.Map
+					}
+					else {}
+				}
+			}
+			types.Alias {
+				return raw_type.base_type is types.Map
+			}
+			else {}
+		}
+	}
+	base_type := g.method_receiver_base_type_cursor_for_generic_scan(receiver)
+	if c_type_is_map_value(base_type) {
+		return true
+	}
+	expr_type := g.generic_scan_expr_cursor_c_type(receiver)
+	return c_type_is_map_value(expr_type)
+}
+
+fn (mut g Gen) map_runtime_method_name_cursor(receiver ast.Cursor, method_name string) ?string {
+	if method_name !in ['clone', 'keys', 'values'] || !g.selector_receiver_is_map_cursor(receiver) {
+		return none
+	}
+	return 'map__${method_name}'
 }
 
 fn normalize_duplicate_qualified_method_prefix(name string) string {
@@ -1330,7 +2361,21 @@ fn (mut g Gen) scan_call_for_generic_fn_specs(call ast.CallExpr) {
 	}
 	if type_args.len == 0 && bindings.len != generic_params.len
 		&& !g.bind_embedded_generic_type_args(call.lhs, generic_params, mut bindings) {
-		return
+		raw_name := generic_call_raw_name(call.lhs)
+		if !g.generic_call_name_has_placeholder_suffix(raw_name) {
+			if specialized_name := g.try_specialize_generic_call_name(raw_name, call.args) {
+				g.record_called_specialized_generic_name(specialized_name)
+			}
+			return
+		}
+		return_bindings := g.infer_generic_bindings_from_current_return(decl, generic_params) or {
+			return
+		}
+		for param_name, concrete in return_bindings {
+			if param_name !in bindings {
+				bindings[param_name] = concrete
+			}
+		}
 	}
 	if bindings.len != generic_params.len {
 		return
@@ -1351,6 +2396,128 @@ fn (mut g Gen) scan_call_for_generic_fn_specs(call ast.CallExpr) {
 		g.record_late_generic_call_spec(key, bindings)
 	}
 	g.record_generic_scan_call_name(call.lhs, call.args.len, generic_params, bindings)
+}
+
+fn generic_fn_value_base_cursor(expr ast.Cursor) ast.Cursor {
+	if expr.kind() in [.expr_generic_args, .expr_generic_arg_or_index] {
+		return expr.edge(0)
+	}
+	return ast.Cursor{}
+}
+
+fn (mut g Gen) scan_generic_struct_bindings_cursor(expr ast.Cursor) {
+	if g.generic_call_spec_scan_only {
+		return
+	}
+	match expr.kind() {
+		.expr_generic_arg_or_index {
+			base_name := g.expr_type_to_c(expr.edge(0).type_expr())
+			arg := expr.edge(1)
+			arg_name := arg.name()
+			struct_base := if base_name.contains('__') {
+				base_name.all_after_last('__')
+			} else {
+				base_name
+			}
+			if is_generic_placeholder_type_name(arg_name) {
+				if concrete := g.active_generic_types[arg_name] {
+					g.record_generic_struct_bindings(struct_base, base_name, [
+						ast.Expr(ast.Ident{
+							name: g.types_type_to_c(concrete)
+						}),
+					])
+				}
+			} else {
+				g.record_generic_struct_bindings(struct_base, base_name, [
+					arg.type_expr(),
+				])
+			}
+		}
+		.expr_generic_args {
+			args := generic_call_type_args_cursor(expr)
+			if args.len == 0 {
+				return
+			}
+			base_name := g.expr_type_to_c(expr.edge(0).type_expr())
+			struct_base := if base_name.contains('__') {
+				base_name.all_after_last('__')
+			} else {
+				base_name
+			}
+			mut concrete_args := []ast.Expr{cap: args.len}
+			mut all_concrete := true
+			for arg in args {
+				arg_name := arg.name()
+				if is_generic_placeholder_type_name(arg_name) {
+					if concrete := g.active_generic_types[arg_name] {
+						concrete_args << ast.Expr(ast.Ident{
+							name: g.types_type_to_c(concrete)
+						})
+					} else {
+						all_concrete = false
+						break
+					}
+				} else {
+					concrete_args << arg
+				}
+			}
+			if all_concrete {
+				g.record_generic_struct_bindings(struct_base, base_name, concrete_args)
+			}
+		}
+		else {}
+	}
+}
+
+fn (mut g Gen) scan_generic_fn_value_cursor_for_specs(expr ast.Cursor) {
+	decl := g.generic_call_decl_from_lhs_cursor(expr) or { return }
+	generic_params := g.generic_fn_param_names(decl)
+	if generic_params.len == 0 {
+		return
+	}
+	mut bindings := map[string]types.Type{}
+	type_args := generic_call_type_args_cursor(expr)
+	mut has_unresolved_explicit_type_arg := false
+	for i, param_name in generic_params {
+		if i >= type_args.len {
+			break
+		}
+		concrete := g.generic_type_arg_concrete_type(type_args[i]) or {
+			has_unresolved_explicit_type_arg = true
+			continue
+		}
+		bindings[param_name] = concrete
+	}
+	if has_unresolved_explicit_type_arg {
+		return
+	}
+	for param_name in generic_params {
+		if param_name in bindings {
+			continue
+		}
+		if concrete := g.active_generic_types[param_name] {
+			bindings[param_name] = concrete
+		}
+	}
+	if type_args.len == 0 && bindings.len != generic_params.len
+		&& !g.bind_embedded_generic_type_args_cursor(expr, generic_params, mut bindings) {
+		return
+	}
+	if bindings.len != generic_params.len {
+		return
+	}
+	for _, concrete in bindings {
+		if !g.generic_concrete_type_is_runtime_specializable(concrete) {
+			return
+		}
+	}
+	short_name := generic_call_short_name_cursor(expr)
+	if short_name == '' {
+		return
+	}
+	g.record_late_generic_call_spec(short_name, bindings)
+	g.record_generic_scan_call_name_cursor(generic_fn_value_base_cursor(expr), 0, generic_params,
+		bindings)
 }
 
 fn (mut g Gen) scan_generic_fn_value_for_specs(expr ast.Expr) {
@@ -1467,6 +2634,13 @@ fn generic_body_scan_bindings_key(bindings map[string]types.Type) string {
 }
 
 fn (mut g Gen) scan_fn_body_for_generic_types(node ast.FnDecl, spec_name string) {
+	prev_cur_fn_ret_type := g.cur_fn_ret_type
+	if ret_type := g.scan_fn_return_c_type(node, spec_name) {
+		g.cur_fn_ret_type = ret_type
+	}
+	defer {
+		g.cur_fn_ret_type = prev_cur_fn_ret_type
+	}
 	if node.pos.id <= 0 {
 		if !g.stmts_may_need_generic_scan(node.stmts) {
 			return
@@ -1493,6 +2667,55 @@ fn (mut g Gen) scan_fn_body_for_generic_types(node ast.FnDecl, spec_name string)
 		return
 	}
 	g.scan_stmts_for_generic_types(node.stmts)
+}
+
+fn (mut g Gen) scan_fn_body_cursor_for_generic_types(stmt ast.Cursor, decl ast.FnDecl, spec_name string) {
+	prev_cur_fn_ret_type := g.cur_fn_ret_type
+	if ret_type := g.scan_fn_return_c_type(decl, spec_name) {
+		g.cur_fn_ret_type = ret_type
+	}
+	defer {
+		g.cur_fn_ret_type = prev_cur_fn_ret_type
+	}
+	body := stmt.list_at(3)
+	if decl.pos.id <= 0 {
+		if !g.cursor_stmts_may_need_generic_scan(body) {
+			return
+		}
+		g.scan_cursor_stmts_for_generic_types(body)
+		return
+	}
+	fn_key := decl.pos.id.str()
+	bindings_key := if spec_name.len > 0 {
+		spec_name
+	} else {
+		generic_body_scan_bindings_key(g.active_generic_types)
+	}
+	mode_key := if g.generic_call_spec_scan_only { 'calls' } else { 'all' }
+	cache_key := '${g.cur_module}:${fn_key}:${bindings_key}:${mode_key}'
+	if cache_key in g.generic_body_scan_cache {
+		if !g.collect_generic_scan_calls {
+			return
+		}
+	} else {
+		g.generic_body_scan_cache[cache_key] = true
+	}
+	if !g.cursor_stmts_may_need_generic_scan(body) {
+		return
+	}
+	g.scan_cursor_stmts_for_generic_types(body)
+}
+
+fn (mut g Gen) scan_fn_return_c_type(node ast.FnDecl, spec_name string) ?string {
+	if spec_name != '' {
+		if ret := g.fn_return_types[spec_name] {
+			return normalize_signature_type_name(ret, 'void')
+		}
+	}
+	if node.typ.return_type !is ast.EmptyExpr {
+		return normalize_signature_type_name(g.expr_type_to_c(node.typ.return_type), 'void')
+	}
+	return 'void'
 }
 
 fn (g &Gen) stmts_may_need_generic_scan(stmts []ast.Stmt) bool {
@@ -1548,6 +2771,360 @@ fn (g &Gen) stmts_may_need_generic_scan(stmts []ast.Stmt) bool {
 			else {}
 		}
 	}
+	return false
+}
+
+fn (g &Gen) cursor_stmts_may_need_generic_scan(stmts ast.CursorList) bool {
+	for i in 0 .. stmts.len() {
+		if g.cursor_stmt_may_need_generic_scan(stmts.at(i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &Gen) cursor_stmt_may_need_generic_scan(stmt ast.Cursor) bool {
+	if !stmt.is_valid() {
+		return false
+	}
+	match stmt.kind() {
+		.stmt_assign {
+			lhs_len := stmt.extra_int()
+			for i in 0 .. lhs_len {
+				if g.cursor_expr_may_need_generic_scan(stmt.edge(i)) {
+					return true
+				}
+			}
+			for i in lhs_len .. stmt.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(stmt.edge(i)) {
+					return true
+				}
+			}
+		}
+		.stmt_return {
+			for i in 0 .. stmt.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(stmt.edge(i)) {
+					return true
+				}
+			}
+		}
+		.stmt_expr {
+			return g.cursor_expr_may_need_generic_scan(stmt.edge(0))
+		}
+		.stmt_comptime {
+			return g.cursor_stmt_may_need_generic_scan(stmt.edge(0))
+		}
+		.stmt_for {
+			init := stmt.edge(0)
+			if init.kind() == .stmt_for_in && g.cursor_stmt_may_need_generic_scan(init) {
+				return true
+			}
+			if g.cursor_expr_may_need_generic_scan(stmt.edge(1)) {
+				return true
+			}
+			return g.cursor_stmts_may_need_generic_scan(stmt.for_body_list())
+		}
+		.stmt_for_in {
+			return g.cursor_expr_may_need_generic_scan(stmt.edge(0))
+				|| g.cursor_expr_may_need_generic_scan(stmt.edge(1))
+				|| g.cursor_expr_may_need_generic_scan(stmt.edge(2))
+		}
+		.stmt_block, .stmt_defer {
+			for i in 0 .. stmt.edge_count() {
+				if g.cursor_stmt_may_need_generic_scan(stmt.edge(i)) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (g &Gen) cursor_call_lhs_may_need_generic_scan(lhs ast.Cursor) bool {
+	call_name := generic_call_short_name_cursor(lhs)
+	if call_name != '' {
+		for candidate in generic_call_decl_candidates(call_name) {
+			if candidate in g.generic_fn_decl_index {
+				return true
+			}
+		}
+	}
+	return g.cursor_expr_may_need_generic_scan(lhs)
+}
+
+fn (g &Gen) cursor_expr_may_need_generic_scan(expr ast.Cursor) bool {
+	if !expr.is_valid() {
+		return false
+	}
+	match expr.kind() {
+		.expr_ident {
+			name := expr.name()
+			return name.contains('_T_') || name.ends_with('_T')
+		}
+		.typ_anon_struct, .typ_array_fixed, .typ_array, .typ_channel, .typ_fn, .typ_generic,
+		.typ_map, .typ_option, .typ_pointer, .typ_result, .typ_thread, .typ_tuple {
+			return g.type_cursor_may_need_generic_scan(expr)
+		}
+		.expr_generic_arg_or_index, .expr_generic_args, .expr_tuple {
+			return true
+		}
+		.expr_call {
+			if g.cursor_call_lhs_may_need_generic_scan(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_call_or_cast {
+			return g.cursor_call_lhs_may_need_generic_scan(expr.edge(0))
+				|| g.cursor_expr_may_need_generic_scan(expr.edge(1))
+		}
+		.expr_infix {
+			return g.cursor_expr_may_need_generic_scan(expr.edge(0))
+				|| g.cursor_expr_may_need_generic_scan(expr.edge(1))
+		}
+		.expr_postfix, .expr_prefix, .expr_paren, .expr_modifier, .expr_lambda, .expr_comptime {
+			return g.cursor_expr_may_need_generic_scan(expr.edge(0))
+		}
+		.expr_assoc {
+			if g.type_cursor_may_need_generic_scan(expr.edge(0))
+				|| g.cursor_expr_may_need_generic_scan(expr.edge(1)) {
+				return true
+			}
+			for i in 2 .. expr.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i).edge(0)) {
+					return true
+				}
+			}
+		}
+		.expr_if_guard {
+			return g.cursor_stmt_may_need_generic_scan(expr.edge(0))
+		}
+		.expr_or {
+			if g.cursor_expr_may_need_generic_scan(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if g.cursor_stmt_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_unsafe {
+			for i in 0 .. expr.edge_count() {
+				if g.cursor_stmt_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_lock {
+			packed := u32(expr.extra_int())
+			lock_len := int(packed & 0xFFFF)
+			rlock_len := int((packed >> 16) & 0xFFFF)
+			for i in 0 .. (lock_len + rlock_len) {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+			for i in (lock_len + rlock_len) .. expr.edge_count() {
+				if g.cursor_stmt_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_if {
+			if g.cursor_expr_may_need_generic_scan(expr.edge(0)) {
+				return true
+			}
+			for i in 2 .. expr.edge_count() {
+				if g.cursor_stmt_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+			return g.cursor_expr_may_need_generic_scan(expr.edge(1))
+		}
+		.expr_match {
+			if g.cursor_expr_may_need_generic_scan(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				branch := expr.edge(i)
+				conds := branch.list_at(0)
+				for ci in 0 .. conds.len() {
+					if g.cursor_expr_may_need_generic_scan(conds.at(ci)) {
+						return true
+					}
+				}
+				if g.cursor_stmts_may_need_generic_scan(branch.list_at(1)) {
+					return true
+				}
+			}
+		}
+		.expr_select {
+			if g.cursor_stmt_may_need_generic_scan(expr.edge(0))
+				|| g.cursor_expr_may_need_generic_scan(expr.edge(1)) {
+				return true
+			}
+			for i in 2 .. expr.edge_count() {
+				if g.cursor_stmt_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_string_inter {
+			inters := expr.list_at(1)
+			for i in 0 .. inters.len() {
+				inter := inters.at(i)
+				if g.cursor_expr_may_need_generic_scan(inter.edge(0))
+					|| g.cursor_expr_may_need_generic_scan(inter.edge(1)) {
+					return true
+				}
+			}
+		}
+		.expr_init {
+			if g.type_cursor_may_need_generic_scan(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i).edge(0)) {
+					return true
+				}
+			}
+		}
+		.expr_array_init {
+			if g.type_cursor_may_need_generic_scan(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_map_init {
+			if g.type_cursor_may_need_generic_scan(expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_index, .expr_cast, .expr_as_cast, .expr_range {
+			for i in 0 .. expr.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_keyword_operator {
+			for i in 0 .. expr.edge_count() {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_fn_literal {
+			captured_len := expr.extra_int()
+			for i in 0 .. captured_len {
+				if g.cursor_expr_may_need_generic_scan(expr.edge(1 + i)) {
+					return true
+				}
+			}
+			for i in (1 + captured_len) .. expr.edge_count() {
+				if g.cursor_stmt_may_need_generic_scan(expr.edge(i)) {
+					return true
+				}
+			}
+		}
+		.expr_sql, .expr_selector {
+			return g.cursor_expr_may_need_generic_scan(expr.edge(0))
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (g &Gen) type_cursor_may_need_generic_scan(typ ast.Cursor) bool {
+	if !typ.is_valid() {
+		return false
+	}
+	match typ.kind() {
+		.typ_generic, .expr_generic_arg_or_index, .expr_generic_args {
+			return true
+		}
+		.expr_ident {
+			name := typ.name()
+			return name.contains('_T_') || name.ends_with('_T')
+		}
+		.expr_modifier, .expr_prefix, .expr_paren {
+			return g.type_cursor_may_need_generic_scan(typ.edge(0))
+		}
+		.typ_anon_struct {
+			generic_params := typ.list_at(0)
+			for i in 0 .. generic_params.len() {
+				if g.cursor_expr_may_need_generic_scan(generic_params.at(i)) {
+					return true
+				}
+			}
+			embedded := typ.list_at(1)
+			for i in 0 .. embedded.len() {
+				if g.cursor_expr_may_need_generic_scan(embedded.at(i)) {
+					return true
+				}
+			}
+			fields := typ.list_at(2)
+			for i in 0 .. fields.len() {
+				field := fields.at(i)
+				if g.cursor_expr_may_need_generic_scan(field.edge(0))
+					|| g.cursor_expr_may_need_generic_scan(field.edge(1)) {
+					return true
+				}
+			}
+		}
+		.typ_array_fixed {
+			return g.type_cursor_may_need_generic_scan(typ.edge(0))
+				|| g.type_cursor_may_need_generic_scan(typ.edge(1))
+		}
+		.typ_array, .typ_channel, .typ_option, .typ_pointer, .typ_result, .typ_thread {
+			return g.type_cursor_may_need_generic_scan(typ.edge(0))
+		}
+		.typ_fn {
+			generic_params := typ.list_at(0)
+			for i in 0 .. generic_params.len() {
+				if g.cursor_expr_may_need_generic_scan(generic_params.at(i)) {
+					return true
+				}
+			}
+			params := typ.list_at(1)
+			for i in 0 .. params.len() {
+				if g.cursor_expr_may_need_generic_scan(params.at(i).edge(0)) {
+					return true
+				}
+			}
+			return g.type_cursor_may_need_generic_scan(typ.edge(2))
+		}
+		.typ_map {
+			return g.type_cursor_may_need_generic_scan(typ.edge(0))
+				|| g.type_cursor_may_need_generic_scan(typ.edge(1))
+		}
+		.typ_tuple {
+			for i in 0 .. typ.edge_count() {
+				if g.type_cursor_may_need_generic_scan(typ.edge(i)) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
 	return false
 }
 
@@ -1885,11 +3462,1181 @@ fn (mut g Gen) scan_stmts_for_generic_types(stmts []ast.Stmt) {
 	}
 }
 
+fn (mut g Gen) scan_cursor_stmts_for_generic_types(stmts ast.CursorList) {
+	for i in 0 .. stmts.len() {
+		g.scan_cursor_stmt_for_generic_types(stmts.at(i))
+	}
+}
+
+fn (mut g Gen) scan_cursor_stmt_for_generic_types(stmt ast.Cursor) {
+	if !stmt.is_valid() {
+		return
+	}
+	match stmt.kind() {
+		.stmt_assign {
+			lhs_len := stmt.extra_int()
+			for i in lhs_len .. stmt.edge_count() {
+				g.scan_expr_cursor_for_generic_types(stmt.edge(i))
+			}
+			for i in 0 .. lhs_len {
+				rhs_idx := lhs_len + i
+				if rhs_idx >= stmt.edge_count() {
+					continue
+				}
+				g.remember_assign_cursor_runtime_local_type(stmt.edge(i), stmt.edge(rhs_idx))
+			}
+		}
+		.stmt_return {
+			for i in 0 .. stmt.edge_count() {
+				g.scan_expr_cursor_for_generic_types(stmt.edge(i))
+			}
+		}
+		.stmt_expr {
+			g.scan_expr_cursor_for_generic_types(stmt.edge(0))
+		}
+		.stmt_comptime {
+			inner := stmt.edge(0)
+			if inner.kind() == .stmt_for && g.scan_comptime_for_cursor_for_generic_types(inner) {
+				return
+			}
+			if inner.kind() == .stmt_expr {
+				expr := inner.edge(0)
+				if expr.kind() == .expr_comptime && expr.edge(0).kind() == .expr_if {
+					g.scan_comptime_if_cursor_for_generic_types(expr.edge(0))
+					return
+				}
+			}
+			g.scan_cursor_stmt_for_generic_types(inner)
+		}
+		.stmt_for {
+			g.scan_cursor_stmts_for_generic_types(stmt.for_body_list())
+		}
+		.stmt_block, .stmt_defer {
+			for i in 0 .. stmt.edge_count() {
+				g.scan_cursor_stmt_for_generic_types(stmt.edge(i))
+			}
+		}
+		else {}
+	}
+}
+
+fn generic_call_cursor_arg_count(call ast.Cursor) int {
+	return if call.edge_count() > 1 { call.edge_count() - 1 } else { 0 }
+}
+
+fn generic_call_cursor_arg(call ast.Cursor, idx int) ast.Cursor {
+	edge_idx := idx + 1
+	if idx < 0 || edge_idx >= call.edge_count() {
+		return ast.Cursor{}
+	}
+	return call.edge(edge_idx)
+}
+
+fn sum_payload_ident_name_from_cursor(expr ast.Cursor) ?string {
+	if !expr.is_valid() {
+		return none
+	}
+	match expr.kind() {
+		.expr_ident {
+			return expr.name()
+		}
+		.expr_as_cast, .expr_modifier, .expr_paren {
+			return sum_payload_ident_name_from_cursor(expr.edge(0))
+		}
+		.expr_cast {
+			return sum_payload_ident_name_from_cursor(expr.edge(1))
+		}
+		.expr_prefix {
+			if unsafe { token.Token(int(expr.aux())) } == .mul {
+				return sum_payload_ident_name_from_cursor(expr.edge(0))
+			}
+		}
+		.expr_selector {
+			lhs := expr.edge(0)
+			rhs := expr.edge(1)
+			if lhs.kind() == .expr_selector && lhs.edge(1).name() == '_data' {
+				return sum_payload_ident_name_from_cursor(lhs.edge(0))
+			}
+			if rhs.name() == '_data' {
+				return sum_payload_ident_name_from_cursor(lhs)
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (mut g Gen) resolve_sum_payload_arg_type_name_cursor(arg ast.Cursor, candidate_type string) string {
+	mut type_name := candidate_type.trim_space()
+	if type_name == '' || type_name == 'int' {
+		return type_name
+	}
+	ident_name := sum_payload_ident_name_from_cursor(arg) or { return type_name }
+	decl_type :=
+		(g.get_local_var_c_type(ident_name) or { return type_name }).trim_space().trim_right('*')
+	if decl_type == '' || type_name == decl_type || type_name == decl_type + '*' {
+		return type_name
+	}
+	mut ptr_suffix := ''
+	for type_name.ends_with('*') {
+		ptr_suffix += '*'
+		type_name = type_name[..type_name.len - 1].trim_space()
+	}
+	variants := g.get_sum_type_variants_for(decl_type)
+	if variants.len == 0 {
+		return type_name + ptr_suffix
+	}
+	mut variant_field := g.sum_type_variant_field_name(decl_type, type_name)
+	if variant_field !in variants {
+		for variant in variants {
+			if sum_type_variant_matches(variant, type_name) {
+				variant_field = variant
+				break
+			}
+		}
+	}
+	if variant_field !in variants {
+		return type_name + ptr_suffix
+	}
+	payload_type := g.sum_type_variant_payload_type(decl_type, type_name, variant_field)
+	if payload_type == '' {
+		return type_name + ptr_suffix
+	}
+	return payload_type + ptr_suffix
+}
+
+fn (mut g Gen) get_comptime_selector_type_cursor(node ast.Cursor) string {
+	if node.kind() != .expr_selector {
+		return ''
+	}
+	lhs := node.edge(0)
+	rhs_name := node.edge(1).name()
+	if is_comptime_selector_rhs_name(rhs_name) {
+		return g.comptime_field_type
+	}
+	if lhs.kind() == .expr_ident && lhs.name() == g.comptime_field_var {
+		match rhs_name {
+			'name' {
+				return 'string'
+			}
+			'typ', 'unaliased_typ' {
+				return 'int'
+			}
+			'attrs' {
+				return 'Array_string'
+			}
+			'is_pub', 'is_mut', 'is_embed', 'is_shared', 'is_atomic', 'is_option', 'is_array',
+			'is_map', 'is_chan', 'is_enum', 'is_struct', 'is_alias' {
+				return 'bool'
+			}
+			else {}
+		}
+	}
+	if lhs.kind() == .expr_selector && lhs.edge(0).kind() == .expr_ident
+		&& lhs.edge(0).name() == g.comptime_field_var && lhs.edge(1).name() == 'name' {
+		match rhs_name {
+			'str' {
+				return 'char*'
+			}
+			'len' {
+				return 'int'
+			}
+			else {}
+		}
+	}
+	return ''
+}
+
+fn (mut g Gen) generic_specialization_arg_type_name_cursor(arg ast.Cursor) string {
+	mut base_arg := generic_call_base_arg_cursor(arg)
+	for base_arg.is_valid() && base_arg.kind() == .expr_paren {
+		base_arg = base_arg.edge(0)
+	}
+	if !base_arg.is_valid() {
+		return ''
+	}
+	if base_arg.kind() == .expr_prefix && unsafe { token.Token(int(base_arg.aux())) } == .amp {
+		inner_type_name := g.generic_specialization_arg_type_name_cursor(base_arg.edge(0))
+		if inner_type_name != '' && inner_type_name != 'int' {
+			return inner_type_name.trim_right('*') + '*'
+		}
+	}
+	mut arg_type_name := ''
+	if base_arg.kind() == .expr_selector {
+		rhs := base_arg.edge(1)
+		if is_comptime_selector_rhs_name(rhs.name()) {
+			comptime_type := g.get_comptime_selector_type_cursor(base_arg).trim_space()
+			if comptime_type != '' && comptime_type != 'int' {
+				return comptime_type
+			}
+		}
+		arg_type_name =
+			g.selector_declared_field_type_cursor_for_generic_scan(base_arg).trim_space()
+		if arg_type_name == '' || arg_type_name == 'array' {
+			arg_type_name = g.generic_scan_expr_cursor_c_type(base_arg).trim_space()
+		}
+		lhs := base_arg.edge(0)
+		if lhs.kind() == .expr_ident {
+			if placeholder := g.cur_fn_generic_params[lhs.name()] {
+				if concrete := g.active_generic_types[placeholder] {
+					mut struct_type := g.resolve_type_to_struct(concrete)
+					if struct_type.fields.len == 0 {
+						struct_c_name := g.types_type_to_c(concrete).trim_space().trim_right('*')
+						struct_type = g.lookup_struct_type_by_c_name(struct_c_name)
+					}
+					for field in struct_type.fields {
+						if field.name == rhs.name() {
+							arg_type_name = g.types_type_to_c(field.typ)
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+	if arg_type_name == '' {
+		if active_concrete := g.active_generic_concrete_from_arg_cursor(base_arg) {
+			arg_type_name = g.generic_specialization_token_from_type(active_concrete)
+		}
+	}
+	if arg_type_name == '' && base_arg.kind() == .expr_init {
+		arg_type_name = g.expr_type_to_c(base_arg.edge(0).type_expr()).trim_space()
+	}
+	if arg_type_name == '' && base_arg.kind() == .expr_cast {
+		arg_type_name = g.expr_type_to_c(base_arg.edge(0).type_expr()).trim_space()
+	}
+	if arg_type_name == '' || arg_type_name == 'int' {
+		arg_type_name = g.generic_scan_expr_cursor_c_type(base_arg).trim_space()
+	}
+	if (arg_type_name == '' || arg_type_name == 'int') && base_arg.kind() == .expr_ident {
+		arg_type_name = (g.get_local_var_c_type(base_arg.name()) or { '' }).trim_space()
+	}
+	if arg_type_name == '' || arg_type_name == 'int' {
+		if raw := g.raw_type_from_generic_call_arg_cursor(base_arg) {
+			arg_type_name = g.types_type_to_c(raw).trim_space()
+		}
+	}
+	return if arg_type_name.trim_space() == 'void*' {
+		'voidptr'
+	} else {
+		g.resolve_sum_payload_arg_type_name_cursor(base_arg, arg_type_name).trim_space()
+	}
+}
+
+fn (mut g Gen) generic_call_has_concrete_arg_bindings_cursor(decl ast.FnDecl, call ast.Cursor, generic_params []string) bool {
+	if generic_params.len == 0 || g.env == unsafe { nil } {
+		return false
+	}
+	arg_count := generic_call_cursor_arg_count(call)
+	mut bindings := map[string]types.Type{}
+	if decl.is_method && arg_count > 0 && expr_has_generic_placeholder(decl.receiver.typ) {
+		recv_arg := generic_call_base_arg_cursor(generic_call_cursor_arg(call, 0))
+		if recv_arg.is_valid() {
+			if concrete := g.concrete_type_from_generic_call_arg_cursor(recv_arg) {
+				g.infer_generic_type_bindings_from_param(decl.receiver.typ,
+					g.concrete_type_with_active_generics(concrete), generic_params, mut bindings)
+			}
+		}
+	}
+	arg_offset := if decl.is_method && arg_count == decl.typ.params.len + 1 { 1 } else { 0 }
+	for i, param in decl.typ.params {
+		arg_idx := i + arg_offset
+		if arg_idx >= arg_count || !expr_has_generic_placeholder(param.typ) {
+			continue
+		}
+		arg := generic_call_base_arg_cursor(generic_call_cursor_arg(call, arg_idx))
+		if !arg.is_valid() {
+			continue
+		}
+		concrete := g.concrete_type_from_generic_call_arg_cursor(arg) or { continue }
+		g.infer_generic_type_bindings_from_param(param.typ, g.concrete_type_for_generic_param(param,
+			concrete), generic_params, mut bindings)
+	}
+	for param_name in generic_params {
+		concrete := bindings[param_name] or { return false }
+		if !g.generic_concrete_type_is_runtime_specializable(concrete) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut g Gen) try_specialize_generic_call_name_cursor(name string, call ast.Cursor) ?string {
+	if name == '' {
+		return none
+	}
+	if candidate := g.same_receiver_specialized_method_name(name) {
+		return candidate
+	}
+	if name == 'copy' {
+		return none
+	}
+	arg_count := generic_call_cursor_arg_count(call)
+	is_struct_field_should_encode :=
+		name in ['struct_field_should_encode_T', 'json2__struct_field_should_encode_T', 'struct_field_should_encode', 'json2__struct_field_should_encode']
+		|| name.starts_with('struct_field_should_encode_T_')
+		|| name.starts_with('json2__struct_field_should_encode_T_')
+	if is_struct_field_should_encode && arg_count > 1 {
+		arg_type_name :=
+			g.generic_specialization_arg_type_name_cursor(generic_call_cursor_arg(call, 1))
+		if arg_type_name != '' {
+			g.record_late_single_generic_call_spec_from_c_type('struct_field_should_encode', 'T',
+				arg_type_name)
+			spec_token := generic_specialization_token_from_c_type_name(arg_type_name)
+			for base_name in [g.qualify_local_call_name('struct_field_should_encode'),
+				'json2__struct_field_should_encode', 'struct_field_should_encode'] {
+				if candidate := g.find_specialized_call_name(base_name, spec_token) {
+					return candidate
+				}
+				g.ensure_specialized_call_signature('${base_name}_T_${spec_token}')
+				if candidate := g.find_specialized_call_name(base_name, spec_token) {
+					return candidate
+				}
+			}
+		}
+	}
+	is_encode_struct_field_value :=
+		name in ['Encoder__encode_struct_field_value_T', 'json2__Encoder__encode_struct_field_value_T', 'Encoder__encode_struct_field_value', 'json2__Encoder__encode_struct_field_value']
+		|| name.starts_with('Encoder__encode_struct_field_value_T_')
+		|| name.starts_with('json2__Encoder__encode_struct_field_value_T_')
+	if is_encode_struct_field_value && arg_count > 1 {
+		arg_type_name :=
+			g.generic_specialization_arg_type_name_cursor(generic_call_cursor_arg(call, 1))
+		if arg_type_name != '' {
+			g.record_late_single_generic_call_spec_from_c_type('encode_struct_field_value', 'T',
+				arg_type_name)
+			spec_token := generic_specialization_token_from_c_type_name(arg_type_name)
+			for base_name in [
+				g.qualify_local_call_name('Encoder__encode_struct_field_value'),
+				'json2__Encoder__encode_struct_field_value',
+				'Encoder__encode_struct_field_value',
+			] {
+				if candidate := g.find_specialized_call_name(base_name, spec_token) {
+					return candidate
+				}
+				g.ensure_specialized_call_signature('${base_name}_T_${spec_token}')
+				if candidate := g.find_specialized_call_name(base_name, spec_token) {
+					return candidate
+				}
+			}
+		}
+	}
+	if name.ends_with('_T') {
+		base_name := generic_call_base_name_for_specialization(name)
+		if base_name != '' {
+			mut has_arg_bindings := false
+			if generic_decl := g.find_generic_fn_decl_by_base_name(base_name) {
+				has_arg_bindings = g.generic_call_has_concrete_arg_bindings_cursor(generic_decl,
+					call, g.generic_fn_param_names(generic_decl))
+			}
+			cur_fn_specialized_name := if g.cur_fn_c_name != '' {
+				g.cur_fn_c_name
+			} else {
+				g.cur_fn_name
+			}
+			if cur_fn_specialized_name.contains('_T_') && !has_arg_bindings {
+				suffix := cur_fn_specialized_name.all_after('_T_')
+				if suffix != '' {
+					candidate := '${base_name}_T_${suffix}'
+					g.ensure_specialized_call_signature(candidate)
+					if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
+						return candidate
+					}
+					if !base_name.contains('__') {
+						qualified := g.qualify_local_call_name(candidate)
+						g.ensure_specialized_call_signature(qualified)
+						if qualified != candidate
+							&& (qualified in g.fn_param_is_ptr || qualified in g.fn_return_types) {
+							return qualified
+						}
+					}
+				}
+			}
+			if g.active_generic_types.len > 0 && !has_arg_bindings {
+				if concrete := g.active_generic_types['T'] {
+					spec_token := g.generic_specialization_token_from_type(concrete)
+					candidate := '${base_name}_T_${spec_token}'
+					g.ensure_specialized_call_signature(candidate)
+					if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
+						return candidate
+					}
+					if !base_name.contains('__') {
+						qualified := g.qualify_local_call_name(candidate)
+						g.ensure_specialized_call_signature(qualified)
+						if qualified != candidate
+							&& (qualified in g.fn_param_is_ptr || qualified in g.fn_return_types) {
+							return qualified
+						}
+					}
+				}
+			}
+			if g.active_generic_types.len == 0 {
+				if candidate := g.find_specialized_call_name(g.qualify_local_call_name(base_name),
+					'f64')
+				{
+					return candidate
+				}
+				if candidate := g.find_specialized_call_name(base_name, 'f64') {
+					return candidate
+				}
+			}
+		}
+	}
+	if name in ['decode_value_T', 'json2__decode_value_T'] && arg_count > 1 {
+		arg_type_name :=
+			g.generic_specialization_arg_type_name_cursor(generic_call_cursor_arg(call, 1)).trim_space().trim_right('*')
+		if arg_type_name != '' && arg_type_name != 'int' {
+			if candidate := g.find_specialized_call_name(g.qualify_local_call_name('decode_value'),
+				sanitize_generic_token_part(arg_type_name))
+			{
+				return candidate
+			}
+		}
+	}
+	if name in ['Encoder__encode_value_T', 'json2__Encoder__encode_value_T', 'Encoder__encode_value', 'json2__Encoder__encode_value']
+		&& arg_count > 1 {
+		arg_type_name :=
+			g.generic_specialization_arg_type_name_cursor(generic_call_cursor_arg(call, 1)).trim_space().trim_right('*')
+		if arg_type_name != '' && arg_type_name != 'int' {
+			if candidate := g.find_specialized_call_name('json2__Encoder__encode_value',
+				sanitize_generic_token_part(arg_type_name))
+			{
+				return candidate
+			}
+		}
+	}
+	if g.active_generic_types.len > 0 && name.contains('_T_') {
+		base_name := name.all_before('_T_')
+		mut parts := name.all_after('_T_').split('_')
+		mut c_parts := parts.clone()
+		mut changed := false
+		for i, part in parts {
+			if concrete := g.active_generic_types[part] {
+				parts[i] = g.generic_specialization_token_from_type(concrete)
+				c_type := g.types_type_to_c(concrete).trim_space().trim_right('*')
+				c_parts[i] = if c_type == '' {
+					parts[i]
+				} else {
+					sanitize_generic_token_part(c_type)
+				}
+				changed = true
+			}
+		}
+		if changed {
+			candidate := '${base_name}_T_${parts.join('_')}'
+			if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
+				return candidate
+			}
+			g.ensure_specialized_call_signature(candidate)
+			if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
+				return candidate
+			}
+			if !base_name.contains('__') {
+				qualified := g.qualify_local_call_name(candidate)
+				if qualified != candidate
+					&& (qualified in g.fn_param_is_ptr || qualified in g.fn_return_types) {
+					return qualified
+				}
+				g.ensure_specialized_call_signature(qualified)
+				if qualified != candidate
+					&& (qualified in g.fn_param_is_ptr || qualified in g.fn_return_types) {
+					return qualified
+				}
+			}
+			c_candidate := '${base_name}_T_${c_parts.join('_')}'
+			if c_candidate != candidate
+				&& (c_candidate in g.fn_param_is_ptr || c_candidate in g.fn_return_types) {
+				return c_candidate
+			}
+			if c_candidate != candidate {
+				g.ensure_specialized_call_signature(c_candidate)
+				if c_candidate in g.fn_param_is_ptr || c_candidate in g.fn_return_types {
+					return c_candidate
+				}
+			}
+			if c_candidate != candidate && !base_name.contains('__') {
+				qualified := g.qualify_local_call_name(c_candidate)
+				if qualified != c_candidate
+					&& (qualified in g.fn_param_is_ptr || qualified in g.fn_return_types) {
+					return qualified
+				}
+				g.ensure_specialized_call_signature(qualified)
+				if qualified != c_candidate
+					&& (qualified in g.fn_param_is_ptr || qualified in g.fn_return_types) {
+					return qualified
+				}
+			}
+		}
+	}
+	if g.active_generic_types.len > 0 {
+		mut parts := name.split('_')
+		mut changed := false
+		for i, part in parts {
+			if concrete := g.active_generic_types[part] {
+				parts[i] = 'T_${g.generic_specialization_token_from_type(concrete)}'
+				changed = true
+			}
+		}
+		if changed {
+			candidate := parts.join('_')
+			if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
+				return candidate
+			}
+		}
+	}
+	if !name.contains('__') {
+		qualified := g.qualify_local_call_name(name)
+		if qualified != name && (qualified in g.fn_param_is_ptr || qualified in g.fn_return_types)
+			&& !g.has_generic_fn_decl_by_base_name(qualified) {
+			return none
+		}
+	}
+	mut skip_arg0_specialization := false
+	arg0_lookup_name := if name.contains('_T_') {
+		name.all_before('_T_')
+	} else if name.ends_with('_T') {
+		name[..name.len - 2]
+	} else {
+		name
+	}
+	if generic_decl := g.find_generic_fn_decl_by_base_name(arg0_lookup_name) {
+		skip_arg0_specialization = generic_decl.is_method || generic_decl.typ.params.len == 0
+			|| !expr_has_generic_placeholder(generic_decl.typ.params[0].typ)
+	}
+	if arg_count > 0 && !skip_arg0_specialization {
+		mut arg_type_name :=
+			g.generic_specialization_arg_type_name_cursor(generic_call_cursor_arg(call, 0))
+		if arg_type_name != '' && arg_type_name != 'int' && arg_type_name.trim_space() != 'void*' {
+			arg_type_name = g.resolve_sum_payload_arg_type_name_cursor(generic_call_cursor_arg(call, 0),
+				arg_type_name)
+		}
+		arg_type_name = if arg_type_name.trim_space() == 'void*' {
+			'voidptr'
+		} else {
+			arg_type_name.trim_right('*')
+		}
+		if arg_type_name != '' && arg_type_name != 'int' {
+			mut candidate_types := [arg_type_name]
+			if !arg_type_name.contains('__') && g.cur_module != '' && g.cur_module != 'main'
+				&& g.cur_module != 'builtin' {
+				candidate_types << '${g.cur_module}__${arg_type_name}'
+				if arg_type_name.starts_with('Array_') && arg_type_name.len > 'Array_'.len {
+					elem_type_name := arg_type_name['Array_'.len..]
+					if !elem_type_name.contains('__') {
+						candidate_types << 'Array_${g.cur_module}__${elem_type_name}'
+					}
+				}
+			}
+			for concrete_type_name in candidate_types {
+				if candidate := g.find_specialized_call_name(name,
+					sanitize_generic_token_part(concrete_type_name))
+				{
+					return candidate
+				}
+			}
+		}
+	}
+	if name in ['decode_value', 'json2__decode_value'] && g.cur_fn_ret_type.starts_with('_result_') {
+		result_base := g.cur_fn_ret_type['_result_'.len..]
+		if candidate := g.find_specialized_call_name(g.qualify_local_call_name('decode_value'),
+			sanitize_generic_token_part(result_base))
+		{
+			return candidate
+		}
+	}
+	mut generic_base_name := generic_call_base_name_for_specialization(name)
+	if qualified_name := g.qualified_generic_fn_base_name(generic_base_name) {
+		generic_base_name = qualified_name
+	}
+	decl := g.find_generic_fn_decl_by_base_name(generic_base_name) or {
+		if generic_base_name.contains('__') {
+			g.find_generic_fn_decl_by_base_name(generic_base_name.all_after_last('__')) or {
+				return none
+			}
+		} else {
+			return none
+		}
+	}
+	generic_params := g.generic_fn_param_names(decl)
+	if generic_params.len == 0 || g.env == unsafe { nil } {
+		return none
+	}
+	if name.contains('_T_') {
+		if active_bindings := g.active_generic_bindings_matching_name_suffix(name, generic_params) {
+			mut suffixes := []string{cap: generic_params.len}
+			for param_name in generic_params {
+				concrete := active_bindings[param_name] or { return none }
+				suffixes << g.generic_specialization_token_from_type(concrete)
+			}
+			candidate := '${generic_base_name}_T_${suffixes.join('_')}'
+			g.ensure_specialized_call_signature(candidate)
+			if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
+				return candidate
+			}
+			specialized_candidate := g.specialized_fn_name(decl, active_bindings)
+			if specialized_candidate != candidate {
+				g.ensure_specialized_call_signature(specialized_candidate)
+				if specialized_candidate in g.fn_param_is_ptr
+					|| specialized_candidate in g.fn_return_types {
+					return specialized_candidate
+				}
+			}
+		}
+	}
+	has_arg_bindings := g.generic_call_has_concrete_arg_bindings_cursor(decl, call, generic_params)
+	cur_fn_specialized_name := if g.cur_fn_c_name != '' { g.cur_fn_c_name } else { g.cur_fn_name }
+	if cur_fn_specialized_name.contains('_T_') && !has_arg_bindings {
+		suffix := cur_fn_specialized_name.all_after('_T_')
+		if suffix != '' {
+			candidate := '${generic_base_name}_T_${suffix}'
+			if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
+				return candidate
+			}
+			if !generic_base_name.contains('__') {
+				qualified := g.qualify_local_call_name(candidate)
+				if qualified != candidate
+					&& (qualified in g.fn_param_is_ptr || qualified in g.fn_return_types) {
+					return qualified
+				}
+			}
+		}
+	}
+	if g.active_generic_types.len > 0 && !has_arg_bindings {
+		mut active_bindings := map[string]types.Type{}
+		mut suffixes := []string{}
+		for param_name in generic_params {
+			concrete := g.active_generic_types[param_name] or { break }
+			active_bindings[param_name] = concrete
+			suffixes << g.generic_specialization_token_from_type(concrete)
+		}
+		if active_bindings.len == generic_params.len {
+			candidate := g.specialized_fn_name(decl, active_bindings)
+			g.ensure_specialized_call_signature(candidate)
+			if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
+				return candidate
+			}
+			alt_candidate := '${generic_base_name}_T_${suffixes.join('_')}'
+			g.ensure_specialized_call_signature(alt_candidate)
+			if alt_candidate in g.fn_param_is_ptr || alt_candidate in g.fn_return_types {
+				return alt_candidate
+			}
+		}
+	}
+	if g.generic_call_name_has_placeholder_suffix(name) {
+		if return_bindings := g.infer_generic_bindings_from_current_return(decl, generic_params) {
+			g.record_late_generic_call_spec(generic_base_name, return_bindings)
+			candidate := g.specialized_fn_name(decl, return_bindings)
+			g.ensure_specialized_call_signature(candidate)
+			if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
+				return candidate
+			}
+			mut suffixes := []string{cap: generic_params.len}
+			for param_name in generic_params {
+				concrete := return_bindings[param_name] or { return none }
+				suffixes << g.generic_specialization_token_from_type(concrete)
+			}
+			alt_candidate := '${generic_base_name}_T_${suffixes.join('_')}'
+			g.ensure_specialized_call_signature(alt_candidate)
+			if alt_candidate in g.fn_param_is_ptr || alt_candidate in g.fn_return_types {
+				return alt_candidate
+			}
+		}
+	}
+	if generic_params.len == 1 {
+		param_name := generic_params[0]
+		arg_offset := if decl.is_method && arg_count == decl.typ.params.len + 1 { 1 } else { 0 }
+		for i, param in decl.typ.params {
+			arg_idx := i + arg_offset
+			if arg_idx >= arg_count || !expr_has_generic_placeholder(param.typ) {
+				continue
+			}
+			direct_placeholder := direct_generic_placeholder_name(param.typ)
+			if direct_placeholder != param_name {
+				continue
+			}
+			base_arg := generic_call_base_arg_cursor(generic_call_cursor_arg(call, arg_idx))
+			mut arg_type_name := g.generic_specialization_arg_type_name_cursor(base_arg)
+			if base_arg.kind() == .expr_init {
+				arg_type_name = g.expr_type_to_c(base_arg.edge(0).type_expr()).trim_space()
+			}
+			if arg_type_name != '' && arg_type_name != 'int'
+				&& arg_type_name.trim_space() != 'void*' {
+				arg_type_name = g.resolve_sum_payload_arg_type_name_cursor(base_arg, arg_type_name)
+			}
+			arg_type_name = if arg_type_name.trim_space() == 'void*' {
+				'voidptr'
+			} else {
+				arg_type_name.trim_space()
+			}
+			if arg_type_name == '' || arg_type_name == 'int' {
+				continue
+			}
+			is_direct_array_param := param.typ is ast.Type && param.typ is ast.ArrayType
+			mut candidate_types := [arg_type_name]
+			if !arg_type_name.contains('__') && g.cur_module != '' && g.cur_module != 'main'
+				&& g.cur_module != 'builtin' {
+				candidate_types << '${g.cur_module}__${arg_type_name}'
+				if is_direct_array_param && arg_type_name.starts_with('Array_')
+					&& arg_type_name.len > 'Array_'.len {
+					elem_type_name := arg_type_name['Array_'.len..]
+					if !elem_type_name.contains('__') {
+						candidate_types << 'Array_${g.cur_module}__${elem_type_name}'
+					}
+				}
+			}
+			for concrete_type_name in candidate_types {
+				spec_token := generic_specialization_token_for_direct_param(param.typ,
+					concrete_type_name)
+				if candidate := g.find_specialized_call_name(name, spec_token) {
+					return candidate
+				}
+				if !is_direct_array_param {
+					continue
+				}
+				candidate_name := '${name}_T_${spec_token}'
+				g.ensure_specialized_call_signature(candidate_name)
+				if candidate := g.find_specialized_call_name(name, spec_token) {
+					return candidate
+				}
+				if !name.contains('__') {
+					qualified := g.qualify_local_call_name(candidate_name)
+					g.ensure_specialized_call_signature(qualified)
+					if candidate := g.find_specialized_call_name(name, spec_token) {
+						return candidate
+					}
+				}
+			}
+		}
+	}
+	mut bindings := map[string]types.Type{}
+	mut receiver_bindings := map[string]types.Type{}
+	if decl.is_method && arg_count > 0 && expr_has_generic_placeholder(decl.receiver.typ) {
+		recv_arg := generic_call_base_arg_cursor(generic_call_cursor_arg(call, 0))
+		if recv_arg.is_valid() {
+			if concrete := g.concrete_type_from_generic_call_arg_cursor(recv_arg) {
+				g.infer_generic_type_bindings_from_param(decl.receiver.typ,
+					g.concrete_type_with_active_generics(concrete),
+					receiver_generic_param_names(decl), mut receiver_bindings)
+			}
+		}
+	}
+	arg_offset := if decl.is_method && arg_count == decl.typ.params.len + 1 { 1 } else { 0 }
+	for i, param in decl.typ.params {
+		arg_idx := i + arg_offset
+		if arg_idx >= arg_count || !expr_has_generic_placeholder(param.typ) {
+			continue
+		}
+		arg := generic_call_base_arg_cursor(generic_call_cursor_arg(call, arg_idx))
+		if !arg.is_valid() {
+			continue
+		}
+		concrete := g.concrete_type_from_generic_call_arg_cursor(arg) or { continue }
+		g.infer_generic_type_bindings_from_param(param.typ, g.concrete_type_for_generic_param(param,
+			concrete), generic_params, mut bindings)
+	}
+	if bindings.len != generic_params.len {
+		return none
+	}
+	for _, concrete in bindings {
+		if type_contains_generic_placeholder(concrete) {
+			return none
+		}
+	}
+	g.record_late_generic_call_spec(generic_base_name, bindings)
+	mut suffixes := []string{}
+	for param_name in generic_params {
+		if concrete := bindings[param_name] {
+			suffixes << g.generic_specialization_token_from_type(concrete)
+		}
+	}
+	if suffixes.len > 0 {
+		lookup_name := generic_base_name
+		if candidate := g.find_specialized_call_name(lookup_name, suffixes.join('_')) {
+			return candidate
+		}
+		suffix := suffixes.join('_')
+		alt_candidate := '${lookup_name}_T_${suffix}'
+		g.ensure_specialized_call_signature(alt_candidate)
+		if alt_candidate in g.fn_param_is_ptr || alt_candidate in g.fn_return_types {
+			return alt_candidate
+		}
+	}
+	mut combined_bindings := receiver_bindings.clone()
+	for param_name, concrete in bindings {
+		combined_bindings[param_name] = concrete
+	}
+	candidate := g.specialized_fn_name(decl, combined_bindings)
+	g.ensure_specialized_call_signature(candidate)
+	if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
+		return candidate
+	}
+	if candidate.contains('__') {
+		if known_candidate := g.find_known_qualified_fn_name(candidate.all_after_last('__')) {
+			return known_candidate
+		}
+	}
+	return candidate
+}
+
+fn (mut g Gen) scan_call_cursor_for_generic_fn_specs(call ast.Cursor) {
+	lhs := call.edge(0)
+	decl := g.generic_call_decl_from_lhs_cursor(lhs) or { return }
+	generic_params := g.generic_fn_param_names(decl)
+	if generic_params.len == 0 {
+		return
+	}
+	mut bindings := map[string]types.Type{}
+	mut metadata_params := map[string]bool{}
+	type_args := generic_call_type_args_cursor(lhs)
+	mut has_unresolved_explicit_type_arg := false
+	for i, param_name in generic_params {
+		if i >= type_args.len {
+			break
+		}
+		concrete := g.generic_type_arg_concrete_type(type_args[i]) or {
+			has_unresolved_explicit_type_arg = true
+			continue
+		}
+		bindings[param_name] = concrete
+	}
+	if has_unresolved_explicit_type_arg {
+		return
+	}
+	if type_args.len == 0 {
+		if active_bindings := g.active_generic_bindings_matching_embedded_suffix_cursor(lhs,
+			generic_params)
+		{
+			for param_name, concrete in active_bindings {
+				bindings[param_name] = concrete
+			}
+		}
+	}
+	if type_args.len == 0 && g.active_generic_types.len == 0
+		&& !g.bind_embedded_generic_type_args_cursor(lhs, generic_params, mut bindings) {
+		return
+	}
+	arg_count := if call.edge_count() > 1 { call.edge_count() - 1 } else { 0 }
+	arg_offset := if decl.is_method && arg_count == decl.typ.params.len + 1 { 1 } else { 0 }
+	for i, param in decl.typ.params {
+		arg_idx := i + arg_offset
+		if arg_idx >= arg_count || !expr_has_generic_placeholder(param.typ) {
+			continue
+		}
+		arg := call.edge(1 + arg_idx)
+		if is_comptime_field_metadata_expr_cursor(arg, g.comptime_field_var) {
+			mut seen := map[string]bool{}
+			mut names := []string{}
+			collect_generic_placeholder_names_from_expr(param.typ, mut seen, mut names)
+			for name in names {
+				metadata_params[name] = true
+			}
+			continue
+		}
+		concrete := g.concrete_type_from_generic_call_arg_cursor(arg) or { continue }
+		g.infer_generic_type_bindings_from_param(param.typ, g.concrete_type_for_generic_param(param,
+			concrete), generic_params, mut bindings)
+	}
+	for param_name in generic_params {
+		if param_name in bindings {
+			continue
+		}
+		if param_name in metadata_params {
+			continue
+		}
+		if concrete := g.active_generic_types[param_name] {
+			bindings[param_name] = concrete
+		}
+	}
+	if type_args.len == 0 && bindings.len != generic_params.len
+		&& !g.bind_embedded_generic_type_args_cursor(lhs, generic_params, mut bindings) {
+		raw_name := generic_call_raw_name_cursor(lhs)
+		if !g.generic_call_name_has_placeholder_suffix(raw_name) {
+			if specialized_name := g.try_specialize_generic_call_name_cursor(raw_name, call) {
+				g.record_called_specialized_generic_name(specialized_name)
+			}
+			return
+		}
+		return_bindings := g.infer_generic_bindings_from_current_return(decl, generic_params) or {
+			return
+		}
+		for param_name, concrete in return_bindings {
+			if param_name !in bindings {
+				bindings[param_name] = concrete
+			}
+		}
+	}
+	if bindings.len != generic_params.len {
+		return
+	}
+	for _, concrete in bindings {
+		if !g.generic_concrete_type_is_runtime_specializable(concrete) {
+			return
+		}
+	}
+	short_name := generic_call_short_name_cursor(lhs)
+	if short_name == '' {
+		return
+	}
+	g.record_late_generic_call_spec(short_name, bindings)
+	g.record_generic_scan_call_name_cursor(lhs, arg_count, generic_params, bindings)
+}
+
+fn (mut g Gen) scan_type_cursor_for_generic_types(expr ast.Cursor) {
+	if !expr.is_valid() || !g.type_cursor_may_need_generic_scan(expr) {
+		return
+	}
+	g.scan_expr_for_generic_types(expr.type_expr())
+}
+
+fn (mut g Gen) scan_if_expr_cursor_for_generic_types(expr ast.Cursor) {
+	g.scan_expr_cursor_for_generic_types(expr.edge(0))
+	narrow_name, narrow_type := g.generic_scan_narrowing_from_cond_cursor(expr.edge(0))
+	mut prev_runtime_local_types := g.runtime_local_types.clone()
+	if narrow_name != '' && narrow_type != '' {
+		g.remember_runtime_local_type(narrow_name, narrow_type)
+	}
+	for i in 2 .. expr.edge_count() {
+		g.scan_cursor_stmt_for_generic_types(expr.edge(i))
+	}
+	g.runtime_local_types = prev_runtime_local_types.move()
+	else_expr := expr.edge(1)
+	if else_expr.is_valid() && else_expr.kind() != .expr_empty {
+		g.scan_expr_cursor_for_generic_types(else_expr)
+	}
+}
+
+fn (mut g Gen) scan_match_expr_cursor_for_generic_types(expr ast.Cursor) {
+	g.scan_expr_cursor_for_generic_types(expr.edge(0))
+	for i in 1 .. expr.edge_count() {
+		branch := expr.edge(i)
+		conds := branch.list_at(0)
+		for ci in 0 .. conds.len() {
+			g.scan_expr_cursor_for_generic_types(conds.at(ci))
+		}
+		g.scan_cursor_stmts_for_generic_types(branch.list_at(1))
+	}
+}
+
+fn (mut g Gen) scan_tuple_expr_cursor_for_generic_types(expr ast.Cursor) {
+	mut elem_types := []string{cap: expr.edge_count()}
+	for i in 0 .. expr.edge_count() {
+		elem := expr.edge(i)
+		g.scan_expr_cursor_for_generic_types(elem)
+		mut elem_type := g.generic_scan_expr_cursor_c_type(elem)
+		if elem_type == '' || elem_type == 'int' {
+			if raw := g.get_expr_cursor_type_from_env(elem) {
+				elem_type = raw
+			}
+		}
+		if elem_type == '' {
+			elem_type = 'int'
+		}
+		elem_types << elem_type
+	}
+	g.register_tuple_alias(elem_types)
+}
+
+fn (mut g Gen) scan_expr_cursor_for_generic_types(expr ast.Cursor) {
+	if !expr.is_valid() || !g.cursor_expr_may_need_generic_scan(expr) {
+		return
+	}
+	if expr.kind() == .expr_comptime && expr.edge(0).kind() == .expr_if {
+		g.scan_comptime_if_cursor_for_generic_types(expr.edge(0))
+		return
+	}
+	match expr.kind() {
+		.expr_ident {
+			name := expr.name()
+			if name.contains('_T_') || name.ends_with('_T') {
+				g.scan_generic_fn_value_for_specs(ast.Expr(ast.Ident{
+					name: name
+					pos:  expr.pos()
+				}))
+				g.record_generic_struct_bindings_from_specialized_name(name)
+			}
+		}
+		.typ_anon_struct, .typ_array_fixed, .typ_array, .typ_channel, .typ_fn, .typ_generic,
+		.typ_map, .typ_option, .typ_pointer, .typ_result, .typ_thread, .typ_tuple {
+			g.scan_type_cursor_for_generic_types(expr)
+		}
+		.expr_generic_arg_or_index, .expr_generic_args {
+			g.scan_generic_fn_value_cursor_for_specs(expr)
+			g.scan_generic_struct_bindings_cursor(expr)
+			for arg in generic_call_type_args_cursor(expr) {
+				g.scan_expr_for_generic_types(arg)
+			}
+		}
+		.expr_call {
+			g.scan_expr_cursor_for_generic_types(expr.edge(0))
+			for i in 1 .. expr.edge_count() {
+				g.scan_expr_cursor_for_generic_types(expr.edge(i))
+			}
+			g.scan_call_cursor_for_generic_fn_specs(expr)
+		}
+		.expr_call_or_cast {
+			g.scan_expr_cursor_for_generic_types(expr.edge(0))
+			g.scan_expr_cursor_for_generic_types(expr.edge(1))
+		}
+		.expr_infix {
+			g.scan_expr_cursor_for_generic_types(expr.edge(0))
+			g.scan_expr_cursor_for_generic_types(expr.edge(1))
+			op := unsafe { token.Token(int(expr.aux())) }
+			if op == .left_shift {
+				g.remember_array_append_lhs_type_for_generic_scan_cursor(expr.edge(0), expr.edge(1))
+			}
+		}
+		.expr_postfix, .expr_prefix, .expr_paren, .expr_modifier, .expr_lambda, .expr_sql,
+		.expr_selector, .expr_comptime {
+			g.scan_expr_cursor_for_generic_types(expr.edge(0))
+		}
+		.expr_assoc {
+			g.scan_type_cursor_for_generic_types(expr.edge(0))
+			g.scan_expr_cursor_for_generic_types(expr.edge(1))
+			for i in 2 .. expr.edge_count() {
+				g.scan_expr_cursor_for_generic_types(expr.edge(i).edge(0))
+			}
+		}
+		.expr_if_guard {
+			g.scan_cursor_stmt_for_generic_types(expr.edge(0))
+		}
+		.expr_or {
+			g.scan_expr_cursor_for_generic_types(expr.edge(0))
+			for i in 1 .. expr.edge_count() {
+				g.scan_cursor_stmt_for_generic_types(expr.edge(i))
+			}
+		}
+		.expr_unsafe {
+			for i in 0 .. expr.edge_count() {
+				g.scan_cursor_stmt_for_generic_types(expr.edge(i))
+			}
+		}
+		.expr_lock {
+			packed := u32(expr.extra_int())
+			lock_len := int(packed & 0xFFFF)
+			rlock_len := int((packed >> 16) & 0xFFFF)
+			for i in 0 .. (lock_len + rlock_len) {
+				g.scan_expr_cursor_for_generic_types(expr.edge(i))
+			}
+			for i in (lock_len + rlock_len) .. expr.edge_count() {
+				g.scan_cursor_stmt_for_generic_types(expr.edge(i))
+			}
+		}
+		.expr_if {
+			g.scan_if_expr_cursor_for_generic_types(expr)
+		}
+		.expr_match {
+			g.scan_match_expr_cursor_for_generic_types(expr)
+		}
+		.expr_select {
+			g.scan_cursor_stmt_for_generic_types(expr.edge(0))
+			g.scan_expr_cursor_for_generic_types(expr.edge(1))
+			for i in 2 .. expr.edge_count() {
+				g.scan_cursor_stmt_for_generic_types(expr.edge(i))
+			}
+		}
+		.expr_string_inter {
+			inters := expr.list_at(1)
+			for i in 0 .. inters.len() {
+				inter := inters.at(i)
+				g.scan_expr_cursor_for_generic_types(inter.edge(0))
+				g.scan_expr_cursor_for_generic_types(inter.edge(1))
+			}
+		}
+		.expr_init {
+			g.scan_type_cursor_for_generic_types(expr.edge(0))
+			for i in 1 .. expr.edge_count() {
+				g.scan_expr_cursor_for_generic_types(expr.edge(i).edge(0))
+			}
+		}
+		.expr_array_init {
+			g.scan_type_cursor_for_generic_types(expr.edge(0))
+			for i in 1 .. expr.edge_count() {
+				g.scan_expr_cursor_for_generic_types(expr.edge(i))
+			}
+		}
+		.expr_map_init {
+			g.scan_type_cursor_for_generic_types(expr.edge(0))
+			for i in 1 .. expr.edge_count() {
+				g.scan_expr_cursor_for_generic_types(expr.edge(i))
+			}
+		}
+		.expr_index, .expr_cast, .expr_as_cast, .expr_range, .expr_keyword_operator {
+			for i in 0 .. expr.edge_count() {
+				g.scan_expr_cursor_for_generic_types(expr.edge(i))
+			}
+		}
+		.expr_fn_literal {
+			captured_len := expr.extra_int()
+			for i in 0 .. captured_len {
+				g.scan_expr_cursor_for_generic_types(expr.edge(1 + i))
+			}
+			for i in (1 + captured_len) .. expr.edge_count() {
+				g.scan_cursor_stmt_for_generic_types(expr.edge(i))
+			}
+		}
+		.expr_tuple {
+			g.scan_tuple_expr_cursor_for_generic_types(expr)
+		}
+		else {}
+	}
+}
+
+fn (mut g Gen) scan_comptime_for_cursor_for_generic_types(node ast.Cursor) bool {
+	if node.kind() != .stmt_for {
+		return false
+	}
+	for_in := node.edge(0)
+	if for_in.kind() != .stmt_for_in {
+		return false
+	}
+	iter := for_in.edge(2)
+	if iter.kind() != .expr_selector || iter.edge(1).name() != 'fields' {
+		return false
+	}
+	type_name := iter.edge(0).name()
+	concrete := g.active_generic_types[type_name] or { return false }
+	if concrete !is types.Struct {
+		return false
+	}
+	struct_type := g.comptime_for_struct_type(concrete, concrete as types.Struct)
+	prev_field_var := g.comptime_field_var
+	prev_field_name := g.comptime_field_name
+	prev_field_type := g.comptime_field_type
+	prev_field_raw_type := g.comptime_field_raw_type
+	prev_field_attrs := g.comptime_field_attrs
+	prev_field_idx := g.comptime_field_idx
+	defer {
+		g.comptime_field_var = prev_field_var
+		g.comptime_field_name = prev_field_name
+		g.comptime_field_type = prev_field_type
+		g.comptime_field_raw_type = prev_field_raw_type
+		g.comptime_field_attrs = prev_field_attrs
+		g.comptime_field_idx = prev_field_idx
+	}
+	g.comptime_field_var = for_in.edge(1).name()
+	for i, field in struct_type.fields {
+		g.comptime_field_name = field.name
+		g.comptime_field_type = g.types_type_to_c(field.typ)
+		g.comptime_field_raw_type = field.typ
+		g.comptime_field_attrs = g.comptime_field_attribute_strings(struct_type.name, field)
+		g.comptime_field_idx = i
+		g.scan_cursor_stmts_for_generic_types(node.for_body_list())
+	}
+	return true
+}
+
 // scan_expr_stmts_for_generic_types recurses into IfExpr/MatchExpr/ComptimeExpr bodies.
 fn (mut g Gen) scan_expr_stmts_for_generic_types(e ast.Expr) {
 	if e is ast.IfExpr {
 		g.scan_expr_for_generic_types(e.cond)
+		narrow_name, narrow_type := g.generic_scan_narrowing_from_cond(e.cond)
+		mut prev_runtime_local_types := g.runtime_local_types.clone()
+		if narrow_name != '' && narrow_type != '' {
+			g.remember_runtime_local_type(narrow_name, narrow_type)
+		}
 		g.scan_stmts_for_generic_types(e.stmts)
+		g.runtime_local_types = prev_runtime_local_types.move()
 		if e.else_expr !is ast.EmptyExpr {
 			g.scan_expr_for_generic_types(e.else_expr)
 			g.scan_expr_stmts_for_generic_types(e.else_expr)
@@ -1916,6 +4663,68 @@ fn (mut g Gen) scan_expr_stmts_for_generic_types(e ast.Expr) {
 	} else if e is ast.UnsafeExpr {
 		g.scan_stmts_for_generic_types(e.stmts)
 	}
+}
+
+fn (mut g Gen) scan_comptime_if_cursor_for_generic_types(node ast.Cursor) {
+	if node.kind() != .expr_if {
+		return
+	}
+	if g.eval_comptime_cond_cursor(node.edge(0)) {
+		g.scan_if_expr_cursor_body_for_generic_types(node)
+		return
+	}
+	else_expr := node.edge(1)
+	if else_expr.kind() == .expr_if {
+		if else_expr.edge(0).kind() == .expr_empty {
+			g.scan_if_expr_cursor_body_for_generic_types(else_expr)
+		} else {
+			g.scan_comptime_if_cursor_for_generic_types(else_expr)
+		}
+		return
+	}
+	if else_expr.is_valid() && else_expr.kind() != .expr_empty {
+		g.scan_expr_cursor_for_generic_types(else_expr)
+	}
+}
+
+fn (mut g Gen) scan_if_expr_cursor_body_for_generic_types(node ast.Cursor) {
+	for i in 2 .. node.edge_count() {
+		g.scan_cursor_stmt_for_generic_types(node.edge(i))
+	}
+}
+
+fn (mut g Gen) generic_scan_narrowing_from_cond(cond ast.Expr) (string, string) {
+	if cond is ast.InfixExpr && cond.op == .key_is {
+		name := cond.lhs.name()
+		if name == '' {
+			return '', ''
+		}
+		c_type := g.expr_type_to_c(cond.rhs).trim_space()
+		if c_type == '' || c_type == 'int' {
+			return '', ''
+		}
+		return name, c_type
+	}
+	return '', ''
+}
+
+fn (mut g Gen) generic_scan_narrowing_from_cond_cursor(cond ast.Cursor) (string, string) {
+	if !cond.is_valid() || cond.kind() != .expr_infix {
+		return '', ''
+	}
+	op := unsafe { token.Token(int(cond.aux())) }
+	if op != .key_is {
+		return '', ''
+	}
+	name := generic_wrapped_ident_name_cursor(cond.edge(0))
+	if name == '' {
+		return '', ''
+	}
+	c_type := g.expr_type_to_c(cond.edge(1).type_expr()).trim_space()
+	if c_type == '' || c_type == 'int' {
+		return '', ''
+	}
+	return name, c_type
 }
 
 fn generic_scan_type_is_unresolved(typ string) bool {
@@ -1947,6 +4756,72 @@ fn (mut g Gen) generic_scan_expr_c_type(expr ast.Expr) string {
 	return typ
 }
 
+fn (mut g Gen) generic_scan_expr_cursor_c_type(expr ast.Cursor) string {
+	mut base_expr := expr
+	for base_expr.is_valid() && base_expr.kind() in [.expr_modifier, .expr_paren] {
+		base_expr = base_expr.edge(0)
+	}
+	if !base_expr.is_valid() {
+		return ''
+	}
+	match base_expr.kind() {
+		.expr_string, .expr_string_inter {
+			return 'string'
+		}
+		.expr_ident {
+			if local_type := g.get_local_var_c_type(base_expr.name()) {
+				return local_type.trim_space()
+			}
+		}
+		.expr_array_init {
+			array_type := g.expr_type_to_c(base_expr.edge(0).type_expr()).trim_space()
+			if !generic_scan_type_is_unresolved(array_type) {
+				return array_type
+			}
+		}
+		.expr_cast {
+			cast_type := g.expr_type_to_c(base_expr.edge(0).type_expr()).trim_space()
+			if !generic_scan_type_is_unresolved(cast_type) {
+				return cast_type
+			}
+		}
+		.expr_as_cast {
+			cast_type := g.expr_type_to_c(base_expr.edge(1).type_expr()).trim_space()
+			if !generic_scan_type_is_unresolved(cast_type) {
+				return cast_type
+			}
+		}
+		else {}
+	}
+
+	if typ := g.get_expr_cursor_type_from_env(base_expr) {
+		return typ.trim_space()
+	}
+	return ''
+}
+
+fn (mut g Gen) remember_assign_cursor_runtime_local_type(lhs ast.Cursor, rhs ast.Cursor) {
+	if !rhs.is_valid() {
+		return
+	}
+	lhs_name := generic_wrapped_ident_name_cursor(lhs)
+	if lhs_name == '' {
+		return
+	}
+	mut rhs_type := g.generic_scan_expr_cursor_c_type(rhs).trim_space()
+	if generic_scan_type_is_unresolved(rhs_type) {
+		rhs_type = (g.get_local_var_c_type(lhs_name) or { '' }).trim_space()
+	}
+	if generic_scan_type_is_unresolved(rhs_type) && rhs.kind() == .expr_array_init {
+		rhs_type = g.expr_type_to_c(rhs.edge(0).type_expr()).trim_space()
+	}
+	if !generic_scan_type_is_unresolved(rhs_type) {
+		g.remember_runtime_local_type(lhs_name, rhs_type)
+	} else if rhs.kind() == .expr_array_init {
+		g.remember_runtime_current_local_type(lhs_name, 'array')
+	}
+}
+
 fn (mut g Gen) remember_array_append_lhs_type_for_generic_scan(lhs ast.Expr, rhs ast.Expr) {
 	lhs_name := generic_wrapped_ident_name(lhs)
 	if lhs_name == '' {
@@ -1957,6 +4832,22 @@ fn (mut g Gen) remember_array_append_lhs_type_for_generic_scan(lhs ast.Expr, rhs
 		return
 	}
 	elem_type := g.generic_scan_expr_c_type(rhs).trim_space().trim_right('*')
+	if generic_scan_type_is_unresolved(elem_type) {
+		return
+	}
+	g.remember_runtime_local_type(lhs_name, 'Array_' + mangle_alias_component(elem_type))
+}
+
+fn (mut g Gen) remember_array_append_lhs_type_for_generic_scan_cursor(lhs ast.Cursor, rhs ast.Cursor) {
+	lhs_name := generic_wrapped_ident_name_cursor(lhs)
+	if lhs_name == '' {
+		return
+	}
+	lhs_type := g.generic_scan_expr_cursor_c_type(lhs).trim_space().trim_right('*')
+	if lhs_type != 'array' && !lhs_type.starts_with('Array_') {
+		return
+	}
+	elem_type := g.generic_scan_expr_cursor_c_type(rhs).trim_space().trim_right('*')
 	if generic_scan_type_is_unresolved(elem_type) {
 		return
 	}
@@ -2079,6 +4970,9 @@ fn (mut g Gen) emit_ready_option_result_structs() bool {
 	mut option_names := g.option_aliases.keys()
 	option_names.sort()
 	for name in option_names {
+		if g.should_skip_shadowed_option_result_alias(name) {
+			continue
+		}
 		if name in g.emitted_option_structs {
 			continue
 		}
@@ -2095,6 +4989,9 @@ fn (mut g Gen) emit_ready_option_result_structs() bool {
 	mut result_names := g.result_aliases.keys()
 	result_names.sort()
 	for name in result_names {
+		if g.should_skip_shadowed_option_result_alias(name) {
+			continue
+		}
 		if name in g.emitted_result_structs {
 			continue
 		}
@@ -2121,9 +5018,7 @@ fn (mut g Gen) struct_fields_resolved(node ast.StructDecl) bool {
 	prev_active_generic_types := g.active_generic_types.clone()
 	mut set_generic_context := false
 	if real_generic_params.len > 0 && g.active_generic_types.len == 0 {
-		bindings := g.generic_bindings_for_struct_decl(node, real_generic_params) or {
-			return false
-		}
+		bindings := g.generic_bindings_for_struct_decl(node) or { return false }
 		g.active_generic_types = bindings.clone()
 		set_generic_context = true
 	}
@@ -2192,7 +5087,7 @@ fn (mut g Gen) struct_fields_resolved(node ast.StructDecl) bool {
 				base_name = g.qualify_owner_local_field_type(owner_name, base_name)
 				if base_name != '' && base_name != 'void'
 					&& !g.option_result_payload_invalid(base_name) {
-					wrapper_name := '_option_' + mangle_alias_component(base_name)
+					wrapper_name := '_option_' + g.option_result_payload_alias_component(base_name)
 					if wrapper_name !in g.emitted_option_structs {
 						return false
 					}
@@ -2207,7 +5102,7 @@ fn (mut g Gen) struct_fields_resolved(node ast.StructDecl) bool {
 				base_name = g.qualify_owner_local_field_type(owner_name, base_name)
 				if base_name != '' && base_name != 'void'
 					&& !g.option_result_payload_invalid(base_name) {
-					wrapper_name := '_result_' + mangle_alias_component(base_name)
+					wrapper_name := '_result_' + g.option_result_payload_alias_component(base_name)
 					if wrapper_name !in g.emitted_result_structs {
 						return false
 					}
@@ -2303,7 +5198,7 @@ fn (mut g Gen) struct_field_fixed_array_elem_resolved(elem_type ast.Expr) bool {
 		|| 'alias_${elem_name}' in g.emitted_types
 }
 
-fn (mut g Gen) generic_bindings_for_struct_decl(node ast.StructDecl, real_generic_params []string) ?map[string]types.Type {
+fn (mut g Gen) generic_bindings_for_struct_decl(node ast.StructDecl) ?map[string]types.Type {
 	struct_c_name := g.get_struct_name(node)
 	if bindings := g.generic_struct_bindings[struct_c_name] {
 		return bindings.clone()
@@ -2313,7 +5208,7 @@ fn (mut g Gen) generic_bindings_for_struct_decl(node ast.StructDecl, real_generi
 			return instances[0].bindings.clone()
 		}
 	}
-	return g.fallback_generic_bindings_for_names(real_generic_params)
+	return none
 }
 
 fn (mut g Gen) get_struct_name(node ast.StructDecl) string {
@@ -2373,14 +5268,12 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	if node.language == .c {
 		return
 	}
-	// Generic structs are emitted using concrete bindings recorded from
-	// GenericType instantiations, falling back to the first binding in env.
+	// Generic structs are emitted only from concrete bindings recorded from
+	// GenericType instantiations.
 	prev_generic_types := g.active_generic_types.clone()
 	real_generic_params := generic_param_names(node.generic_params)
 	if real_generic_params.len > 0 {
-		g.active_generic_types = g.generic_bindings_for_struct_decl(node, real_generic_params) or {
-			return
-		}
+		g.active_generic_types = g.generic_bindings_for_struct_decl(node) or { return }
 	}
 	defer {
 		g.active_generic_types = prev_generic_types.clone()
@@ -2391,11 +5284,17 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	if body_key in g.emitted_types || body_key in g.pending_late_body_keys {
 		return
 	}
+	if (name.contains('_T_') || name.contains('__T_'))
+		&& g.struct_has_unresolved_generic_value_dependency(node, name) {
+		g.emit_late_concrete_struct_decl(node, name)
+		return
+	}
 	// For generic structs with active bindings, verify that all field types
 	// are already emitted. This prevents the last-resort pass from emitting
 	// a generic struct body before its concrete field types are defined.
 	if real_generic_params.len > 0 && g.active_generic_types.len > 0 {
-		if !g.struct_fields_resolved(node) {
+		if !g.struct_fields_resolved(node)
+			|| g.struct_has_unresolved_generic_value_dependency(node, name) {
 			return
 		}
 	}
@@ -2404,7 +5303,7 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	// Try to get the resolved struct type from the Environment
 	env_struct := g.lookup_struct_type(node.name)
 	for field in node.fields {
-		field_type := g.qualify_owner_local_field_type(name, g.expr_type_to_c(field.typ))
+		field_type := g.struct_field_type_for_emit(name, field)
 		if field_type.starts_with('Array_') {
 			g.emit_array_alias_decl(field_type)
 		}
@@ -2514,7 +5413,10 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	// Regular fields
 	mut has_shared_fields := false
 	for field in node.fields {
-		field_lookup_type := g.qualify_owner_local_field_type(name, g.expr_type_to_c(field.typ))
+		mut field_lookup_type := g.struct_field_type_for_emit(name, field)
+		if fn_field_type := g.struct_fn_field_lookup_type_for_emit(field) {
+			field_lookup_type = fn_field_type
+		}
 		field_v_name := if node.is_union && field_lookup_type.contains('__')
 			&& (field.name == '' || field.name.contains('__')
 			|| field.name == field_lookup_type
@@ -2556,13 +5458,9 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 		}
 		if field.typ is ast.Type {
 			if field.typ is ast.FnType {
-				if fn_type_has_generic_placeholder(field.typ) {
-					g.sb.writeln('\tvoid* ${field_name};')
-					continue
+				if decl := g.struct_fn_field_decl_for_emit(field, field_name) {
+					g.sb.writeln('\t${decl};')
 				}
-				g.sb.write_string('\t')
-				g.gen_fn_type_param_decl(field.typ as ast.FnType, field_name)
-				g.sb.writeln(';')
 				continue
 			}
 		}
@@ -2637,7 +5535,8 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 			// Set active generic types to this instantiation's bindings
 			prev_active := g.active_generic_types.clone()
 			g.active_generic_types = inst.bindings.clone()
-			if !g.struct_fields_resolved(node) {
+			if !g.struct_fields_resolved(node)
+				|| g.struct_has_unresolved_generic_value_dependency(node, inst.c_name) {
 				g.active_generic_types = prev_active.clone()
 				g.emit_late_generic_struct(name, inst)
 				continue
@@ -2651,7 +5550,7 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 			g.sb.writeln('typedef struct ${inst.c_name} ${inst.c_name};')
 			mut seen_field_typedef := map[string]bool{}
 			for field in node.fields {
-				ft := g.expr_type_to_c(field.typ)
+				ft := g.struct_field_type_for_emit(inst.c_name, field)
 				fbase := ft.trim_right('*')
 				if ft.starts_with('Array_') {
 					g.emit_array_alias_decl(ft)
@@ -2667,8 +5566,15 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 			}
 			g.sb.writeln('${keyword} ${inst.c_name} {')
 			for field in node.fields {
-				field_type := g.expr_type_to_c(field.typ)
+				field_type := g.struct_field_type_for_emit(inst.c_name, field)
 				field_name := if field.name.len > 0 { field.name } else { 'value' }
+				if decl := g.struct_fn_field_decl_for_emit(field, field_name) {
+					g.sb.writeln('\t${decl};')
+					g.struct_field_types['${inst.c_name}.${field_name}'] = g.struct_fn_field_lookup_type_for_emit(field) or {
+						'void*'
+					}
+					continue
+				}
 				g.sb.writeln('\t${field_type} ${field_name};')
 				// Register field types for this instantiation
 				g.struct_field_types['${inst.c_name}.${field_name}'] = field_type
@@ -2690,6 +5596,259 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 			g.active_generic_types = prev_active.clone()
 		}
 	}
+}
+
+fn (mut g Gen) emit_late_concrete_struct_decl(node ast.StructDecl, name string) {
+	body_key := 'body_${name}'
+	if body_key in g.emitted_types || body_key in g.pending_late_body_keys {
+		return
+	}
+	g.pending_late_body_keys[body_key] = true
+	keyword := if node.is_union { 'union' } else { 'struct' }
+	mut field_types := []string{cap: node.fields.len}
+	for field in node.fields {
+		field_type := g.struct_field_type_for_emit(name, field)
+		field_types << field_type
+		g.emit_late_generic_struct_dependency_for_type(field_type)
+	}
+	mut def := strings.new_builder(256)
+	def.writeln('typedef ${keyword} ${name} ${name};')
+	mut seen_field_typedef := map[string]bool{}
+	for field_type in field_types {
+		fbase := field_type.trim_right('*')
+		if fbase != name && fbase.contains('_T_') && !fbase.starts_with('Array_')
+			&& !fbase.starts_with('Map_') && fbase !in seen_field_typedef {
+			seen_field_typedef[fbase] = true
+			def.writeln('typedef struct ${fbase} ${fbase};')
+		}
+	}
+	def.writeln('${keyword} ${name} {')
+	for i, field in node.fields {
+		field_type := if i < field_types.len {
+			field_types[i]
+		} else {
+			g.struct_field_type_for_emit(name, field)
+		}
+		field_name := if field.name.len > 0 { escape_c_keyword(field.name) } else { 'value' }
+		if decl := g.struct_fn_field_decl_for_emit(field, field_name) {
+			def.writeln('\t${decl};')
+			g.struct_field_types['${name}.${field.name}'] = g.struct_fn_field_lookup_type_for_emit(field) or {
+				'void*'
+			}
+			continue
+		}
+		def.writeln('\t${field_type} ${field_name};')
+		g.struct_field_types['${name}.${field.name}'] = field_type
+	}
+	if node.fields.len == 0 {
+		def.writeln('\tu8 _dummy;')
+	}
+	def.writeln('};')
+	label := '${name}{}'
+	def.writeln('#define ${name}__str(v) ((string){.str = "${label}", .len = ${label.len}, .is_lit = 1})')
+	def.writeln('#define ${name}_str(v) ${name}__str(v)')
+	def.writeln('')
+	g.late_struct_defs << def.str()
+}
+
+fn (mut g Gen) struct_has_unresolved_generic_value_dependency(node ast.StructDecl, owner_name string) bool {
+	for field in node.fields {
+		if g.is_pointer_type(field.typ) {
+			continue
+		}
+		field_type := g.struct_field_type_for_emit(owner_name, field)
+		if g.generic_struct_value_dependency_unresolved(field_type) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) struct_fn_field_decl_for_emit(field ast.FieldDecl, field_name string) ?string {
+	if field.typ is ast.Type {
+		if field.typ is ast.FnType {
+			fn_type := field.typ as ast.FnType
+			if g.fn_type_has_unresolved_generic_placeholder(fn_type) {
+				return 'void* ${field_name}'
+			}
+			decl := c_fn_pointer_type_with_name(g.fn_type_c_type(fn_type), field_name)
+			if decl != '' {
+				return decl
+			}
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) struct_fn_field_lookup_type_for_emit(field ast.FieldDecl) ?string {
+	if field.typ is ast.Type {
+		if field.typ is ast.FnType {
+			fn_type := field.typ as ast.FnType
+			if g.fn_type_has_unresolved_generic_placeholder(fn_type) {
+				return 'void*'
+			}
+			return g.fn_type_c_type(fn_type)
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) fn_type_has_unresolved_generic_placeholder(fn_type ast.FnType) bool {
+	for param in fn_type.params {
+		if g.expr_has_unresolved_generic_placeholder(param.typ) {
+			return true
+		}
+	}
+	if fn_type.return_type !is ast.EmptyExpr {
+		return g.expr_has_unresolved_generic_placeholder(fn_type.return_type)
+	}
+	return false
+}
+
+fn (mut g Gen) expr_has_unresolved_generic_placeholder(expr ast.Expr) bool {
+	match expr {
+		ast.Ident {
+			return is_generic_placeholder_type_name(expr.name)
+				&& expr.name !in g.active_generic_types
+		}
+		ast.PrefixExpr {
+			return g.expr_has_unresolved_generic_placeholder(expr.expr)
+		}
+		ast.ModifierExpr {
+			return g.expr_has_unresolved_generic_placeholder(expr.expr)
+		}
+		ast.GenericArgOrIndexExpr {
+			return g.expr_has_unresolved_generic_placeholder(expr.lhs)
+				|| g.expr_has_unresolved_generic_placeholder(expr.expr)
+		}
+		ast.GenericArgs {
+			if g.expr_has_unresolved_generic_placeholder(expr.lhs) {
+				return true
+			}
+			for arg in expr.args {
+				if g.expr_has_unresolved_generic_placeholder(arg) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.Type {
+			match expr {
+				ast.ArrayType {
+					return g.expr_has_unresolved_generic_placeholder(expr.elem_type)
+				}
+				ast.ArrayFixedType {
+					return g.expr_has_unresolved_generic_placeholder(expr.elem_type)
+						|| g.expr_has_unresolved_generic_placeholder(expr.len)
+				}
+				ast.MapType {
+					return g.expr_has_unresolved_generic_placeholder(expr.key_type)
+						|| g.expr_has_unresolved_generic_placeholder(expr.value_type)
+				}
+				ast.OptionType {
+					return g.expr_has_unresolved_generic_placeholder(expr.base_type)
+				}
+				ast.ResultType {
+					return g.expr_has_unresolved_generic_placeholder(expr.base_type)
+				}
+				ast.PointerType {
+					return g.expr_has_unresolved_generic_placeholder(expr.base_type)
+				}
+				ast.GenericType {
+					if g.expr_has_unresolved_generic_placeholder(expr.name) {
+						return true
+					}
+					for param in expr.params {
+						if g.expr_has_unresolved_generic_placeholder(param) {
+							return true
+						}
+					}
+				}
+				ast.FnType {
+					return g.fn_type_has_unresolved_generic_placeholder(expr)
+				}
+				else {}
+			}
+
+			return false
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut g Gen) struct_field_type_for_emit(owner_name string, field ast.FieldDecl) string {
+	first := g.qualify_owner_local_field_type(owner_name, g.expr_type_to_c(field.typ))
+	second := g.qualify_owner_local_field_type(owner_name, g.expr_type_to_c(field.typ))
+	if second != '' && second != first {
+		return g.canonical_generic_struct_type_for_emit(second)
+	}
+	return g.canonical_generic_struct_type_for_emit(first)
+}
+
+fn (mut g Gen) canonical_generic_struct_type_for_emit(type_name string) string {
+	mut base := type_name.trim_space()
+	mut suffix := ''
+	for base.ends_with('*') {
+		base = base[..base.len - 1].trim_space()
+		suffix += '*'
+	}
+	if base == '' || !base.contains('__T_') {
+		return type_name
+	}
+	canonical := g.canonical_generic_struct_c_name_for_emit(base)
+	if canonical == base {
+		return type_name
+	}
+	return canonical + suffix
+}
+
+fn (mut g Gen) canonical_generic_struct_c_name_for_emit(c_name string) string {
+	if c_name == '' || g.generic_struct_c_name_known_for_emit(c_name) {
+		return c_name
+	}
+	if !c_name.contains('__T_') {
+		return c_name
+	}
+	alt := c_name.replace('__T_', '_T_')
+	if alt != c_name && g.generic_struct_c_name_known_for_emit(alt) {
+		return alt
+	}
+	return c_name
+}
+
+fn (mut g Gen) generic_struct_c_name_known_for_emit(c_name string) bool {
+	if c_name == '' {
+		return false
+	}
+	if c_name in g.emitted_types || 'body_${c_name}' in g.emitted_types
+		|| 'body_${c_name}' in g.pending_late_body_keys {
+		return true
+	}
+	for _, instances in g.generic_struct_instances {
+		for inst in instances {
+			if inst.c_name == c_name {
+				return true
+			}
+		}
+	}
+	if _ := g.find_struct_node_by_c_name(c_name) {
+		return true
+	}
+	return false
+}
+
+fn (mut g Gen) generic_struct_value_dependency_unresolved(type_name string) bool {
+	mut base := g.canonical_generic_struct_type_for_emit(type_name).trim_space()
+	for base.ends_with('*') {
+		base = base[..base.len - 1].trim_space()
+	}
+	if base == '' || !base.contains('_T_') || base.starts_with('Array_') || base.starts_with('Map_')
+		|| base.starts_with('_option_') || base.starts_with('_result_') {
+		return false
+	}
+	return 'body_${base}' !in g.emitted_types
 }
 
 fn (mut g Gen) gen_sum_type_decl(node ast.TypeDecl) {
@@ -2973,7 +6132,7 @@ fn (mut g Gen) gen_sum_type_wrap(type_name string, field_name string, tag int, i
 			g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')
 			g.expr(inner_expr)
 			g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
-		} else if g.expr_yields_struct_value(expr) {
+		} else if g.sum_payload_expr_needs_temp(expr, resolved_type) {
 			// Inner expr is a struct value (e.g. another sum type wrap or InitExpr).
 			// memdup expects a pointer, so route through a temporary.
 			g.tmp_counter++
@@ -2996,6 +6155,28 @@ fn (mut g Gen) gen_sum_type_wrap(type_name string, field_name string, tag int, i
 		g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
 	}
 	g.sb.write_string('})')
+}
+
+fn (mut g Gen) sum_payload_expr_needs_temp(expr ast.Expr, resolved_type string) bool {
+	unwrapped := strip_expr_wrappers(expr)
+	return g.expr_yields_struct_value(expr) || g.expr_type_matches_value_type(expr, resolved_type)
+		|| unwrapped is ast.SelectorExpr || unwrapped is ast.CallExpr
+		|| g.sum_payload_expr_code_needs_temp(expr, resolved_type)
+}
+
+fn (mut g Gen) sum_payload_expr_code_needs_temp(expr ast.Expr, resolved_type string) bool {
+	if resolved_type == '' || resolved_type.ends_with('*') || resolved_type in primitive_types {
+		return false
+	}
+	saved_sb := g.sb
+	g.sb = strings.new_builder(256)
+	g.expr(expr)
+	code := g.sb.str().trim_space()
+	g.sb = saved_sb
+	if code == '' || code.starts_with('&') {
+		return false
+	}
+	return code.contains(')->') || code.contains(').')
 }
 
 fn (g &Gen) resolve_sum_payload_storage_type(sum_type_name string, variant_field string, inner_type string) string {
@@ -3861,6 +7042,9 @@ fn (mut g Gen) is_fn_pointer_alias_type(type_name string) bool {
 	if type_name == '' {
 		return false
 	}
+	if type_name.contains('(*)') {
+		return true
+	}
 	if raw_type := g.lookup_type_by_c_name(type_name) {
 		if raw_type is types.Alias && raw_type.base_type is types.FnType {
 			return true
@@ -4194,7 +7378,7 @@ fn (mut g Gen) gen_none_literal_for_type(type_name string) bool {
 		g.sb.write_string('(${trimmed}){ .state = 2 }')
 		return true
 	}
-	if trimmed in ['IError', 'builtin__IError'] {
+	if is_ierror_interface_name(trimmed) {
 		g.sb.write_string('none__')
 		return true
 	}
@@ -4422,6 +7606,9 @@ fn (mut g Gen) init_field_expected_type(type_name string, env_struct types.Struc
 	if expected_field_type != '' {
 		return expected_field_type
 	}
+	if generic_field_type := g.generic_instance_field_type_for_init(type_name, field_name) {
+		return generic_field_type
+	}
 	for field in env_struct.fields {
 		if field.name == field_name {
 			return g.types_type_to_c(field.typ)
@@ -4440,6 +7627,39 @@ fn (mut g Gen) init_field_expected_type(type_name string, env_struct types.Struc
 		}
 	}
 	return ''
+}
+
+fn (mut g Gen) generic_instance_field_type_for_init(type_name string, field_name string) ?string {
+	if type_name == '' || field_name == '' {
+		return none
+	}
+	old_module := g.cur_module
+	old_file := g.cur_file_name
+	prev_active := g.active_generic_types.clone()
+	defer {
+		g.cur_module = old_module
+		g.cur_file_name = old_file
+		g.active_generic_types = prev_active.clone()
+	}
+	for struct_base, instances in g.generic_struct_instances {
+		for inst in instances {
+			if inst.c_name != type_name {
+				continue
+			}
+			node := g.find_generic_struct_node(struct_base) or { return none }
+			g.active_generic_types = inst.bindings.clone()
+			for field in node.fields {
+				if field.name != field_name {
+					continue
+				}
+				if fn_field_type := g.struct_fn_field_lookup_type_for_emit(field) {
+					return fn_field_type
+				}
+				return g.struct_field_type_for_emit(inst.c_name, field)
+			}
+		}
+	}
+	return none
 }
 
 fn (mut g Gen) gen_channel_init_expr(node ast.InitExpr) bool {
@@ -4466,7 +7686,7 @@ fn (mut g Gen) gen_channel_init_expr(node ast.InitExpr) bool {
 		elem_c_type = 'void*'
 	}
 	g.force_emit_fn_names['sync__new_channel_st'] = true
-	g.called_fn_names['sync__new_channel_st'] = true
+	g.mark_called_fn_name('sync__new_channel_st')
 	g.sb.write_string('sync__new_channel_st(')
 	mut wrote_cap := false
 	for field in node.fields {
@@ -4531,27 +7751,36 @@ fn (mut g Gen) known_unqualified_struct_literal_type(type_name string) string {
 	if 'alias_${type_name}' in g.emitted_types {
 		return type_name
 	}
-	mut matches := []string{}
+	mut matched := ''
+	mut match_count := 0
 	suffix := '__${type_name}'
-	for key in g.emitted_types.keys() {
+	for key, _ in g.emitted_types {
 		if key.starts_with('body_') || key.starts_with('alias_') {
 			prefix_len := if key.starts_with('body_') { 'body_'.len } else { 'alias_'.len }
 			candidate := key[prefix_len..]
 			if candidate.ends_with(suffix) {
-				matches << candidate
+				matched = candidate
+				match_count++
+				if match_count > 1 {
+					return g.qualify_module_local_type_name(type_name)
+				}
 			}
 		}
 	}
-	for key in g.pending_late_body_keys.keys() {
+	for key, _ in g.pending_late_body_keys {
 		if key.starts_with('body_') {
 			candidate := key['body_'.len..]
 			if candidate.ends_with(suffix) {
-				matches << candidate
+				matched = candidate
+				match_count++
+				if match_count > 1 {
+					return g.qualify_module_local_type_name(type_name)
+				}
 			}
 		}
 	}
-	if matches.len == 1 {
-		return matches[0]
+	if match_count == 1 {
+		return matched
 	}
 	return g.qualify_module_local_type_name(type_name)
 }
@@ -4656,10 +7885,77 @@ fn init_expr_can_use_expected_type(node ast.InitExpr, type_name string, expected
 		|| (type_base != '' && short_type_name(expected_base) == short_type_name(type_base))
 }
 
+fn generic_init_type_base_matches(resolved_type string, base_name string) bool {
+	if resolved_type == '' || base_name == '' {
+		return false
+	}
+	resolved_base := if resolved_type.contains('_T_') {
+		resolved_type.all_before('_T_')
+	} else {
+		resolved_type
+	}
+	return resolved_base == base_name
+		|| short_type_name(resolved_base) == short_type_name(base_name)
+}
+
+fn (mut g Gen) canonical_init_generic_type_name(typ ast.Expr, type_name string) string {
+	if type_name == '' || !type_name.contains('_T_') {
+		return type_name
+	}
+	match typ {
+		ast.GenericArgOrIndexExpr {
+			base_name := g.generic_type_lhs_to_c(typ.lhs)
+			if generic_init_type_base_matches(type_name, base_name) {
+				return g.resolve_generic_struct_c_name(base_name, [typ.expr])
+			}
+		}
+		ast.GenericArgs {
+			base_name := g.generic_type_lhs_to_c(typ.lhs)
+			if generic_init_type_base_matches(type_name, base_name) {
+				return g.resolve_generic_struct_c_name(base_name, typ.args)
+			}
+		}
+		ast.Type {
+			if typ is ast.GenericType {
+				base_name := g.generic_type_lhs_to_c(typ.name)
+				if generic_init_type_base_matches(type_name, base_name) {
+					return g.resolve_generic_struct_c_name(base_name, typ.params)
+				}
+			}
+		}
+		else {}
+	}
+
+	return type_name
+}
+
+fn (mut g Gen) canonical_recorded_generic_type_name(type_name string) string {
+	if type_name == '' || !type_name.contains('_T_') {
+		return type_name
+	}
+	base_name := type_name.all_before('_T_')
+	params_key := type_name.all_after('_T_')
+	mut instances := g.generic_struct_instances[base_name]
+	if instances.len == 0 && base_name.contains('__') {
+		instances = g.generic_struct_instances[base_name.all_after_last('__')]
+	} else if instances.len == 0 && !base_name.contains('__') && g.cur_module != ''
+		&& g.cur_module != 'main' && g.cur_module != 'builtin' {
+		instances = g.generic_struct_instances['${g.cur_module}__${base_name}']
+	}
+	for inst in instances {
+		if inst.params_key == params_key {
+			return inst.c_name
+		}
+	}
+	return type_name
+}
+
 fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 	expected_type := g.expected_init_expr_type
 	g.expected_init_expr_type = ''
 	mut type_name := g.expr_type_to_c(node.typ)
+	type_name = g.canonical_init_generic_type_name(node.typ, type_name)
+	type_name = g.canonical_recorded_generic_type_name(type_name)
 	if node.typ is ast.Ident {
 		if g.type_expr_has_metadata(node.typ) {
 			// Position metadata is authoritative for synthesized type expressions.
@@ -4761,7 +8057,7 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 					g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')
 					g.expr(inner_expr)
 					g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
-				} else if g.expr_yields_struct_value(field.value) {
+				} else if g.sum_payload_expr_needs_temp(field.value, resolved_type) {
 					g.tmp_counter++
 					tmp_name := '_st${g.tmp_counter}'
 					g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')

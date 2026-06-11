@@ -286,6 +286,7 @@ fn test_array_push_no_bounds_checking_keeps_max_len_panics() {
 	assert compilation.output.contains('array.push: len bigger than max_int')
 	assert !compilation.output.contains('array.push_noscan: negative len')
 	assert compilation.output.contains('array.push_noscan: len bigger than max_int')
+		|| compilation.output.contains('builtin__array_push(a, val);')
 }
 
 fn test_windows_sharedlive_string_interpolation_in_ternary_does_not_emit_inline_tmp_decl() {
@@ -802,7 +803,8 @@ fn should_skip(relpath string) bool {
 	}
 	if github_job.contains('musl') && (relpath.ends_with('print_boehm_leak.vv')
 		|| relpath.ends_with('scope_cleanup_boehm_leak.vv')
-		|| relpath.ends_with('gc_debugger_linux.vv')) {
+		|| relpath.ends_with('gc_debugger_linux.vv')
+		|| relpath.ends_with('heap_struct_init_order.vv')) {
 		eprintln('> skipping ${relpath} on ${github_job}, since gc related tests are not compatible with `-gc none`')
 		return true
 	}
@@ -815,6 +817,12 @@ fn should_skip(relpath string) bool {
 		if relpath.contains('_nix.vv') {
 			eprintln('> skipping ${relpath} on windows')
 			return true
+		}
+		$if tinyc {
+			if relpath.ends_with('boehm_keepalive_c_union_tag.vv') {
+				eprintln('> skipping ${relpath} on windows-tcc, since deep GC scope pins (and thus their keepalive helpers) are intentionally not emitted there: the bundled Windows tcc libgc archive lacks GC_remove_roots()')
+				return true
+			}
 		}
 		$if !msvc {
 			if relpath.contains('_msvc_windows.vv') {

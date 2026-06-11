@@ -75,3 +75,68 @@ fn test_server_tls_round_trip() {
 	assert resp.status_code == 200
 	assert resp.body == 'tls hello /hello'
 }
+
+fn test_server_tls_h2_negotiation() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	$if windows && !no_vschannel ? {
+		// On Windows the default HTTP client uses SChannel, which does not yet
+		// advertise ALPN, so it cannot negotiate HTTP/2. Skip here; the path is
+		// covered with `-d no_vschannel` (which uses the mbedtls client).
+		eprintln('skipping: SChannel client has no ALPN/HTTP2 support yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		enable_http2:           true
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	defer {
+		srv.close()
+	}
+	time.sleep(50 * time.millisecond)
+
+	// Client opts into HTTP/2; server must select `h2` via ALPN and serve the
+	// request through its HTTP/2 driver.
+	resp := http.fetch(
+		url:          'https://127.0.0.1:${port}/h2'
+		enable_http2: true
+		validate:     false
+	) or {
+		assert false, 'h2 fetch failed: ${err}'
+		return
+	}
+	assert resp.version() == .v2_0
+	assert resp.status_code == 200
+	assert resp.body == 'tls hello /h2'
+
+	// With HTTP/2 disabled on the client, the server must keep speaking
+	// HTTP/1.1 to the same listener. (enable_http2 defaults to true since
+	// vlang/v#27384, so it must be opted out of explicitly here.)
+	resp_h1 := http.fetch(
+		url:          'https://127.0.0.1:${port}/h1'
+		enable_http2: false
+		validate:     false
+	) or {
+		assert false, 'h1 fetch failed: ${err}'
+		return
+	}
+	assert resp_h1.version() == .v1_1
+	assert resp_h1.status_code == 200
+}

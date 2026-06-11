@@ -332,9 +332,8 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 					field_is_mut = field.is_mut
 				}
 				g.write(field.name)
-				if field.is_interface_method && field.typ is ast.Type
-					&& (field.typ as ast.Type) is ast.FnType {
-					g.fn_type((field.typ as ast.Type) as ast.FnType)
+				if field.is_interface_method && field.typ is ast.Type && field.typ is ast.FnType {
+					g.fn_type(field.typ as ast.FnType)
 				} else {
 					g.write(' ')
 					g.expr(field.typ)

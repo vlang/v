@@ -293,7 +293,13 @@ fn (l ElfTinyLinker) ultra_hello_world_main_shape_matches(data_range ElfDataRang
 			relocs << reloc
 		}
 	}
-	relocs.sort(a.offset < b.offset)
+	for i := 1; i < relocs.len; i++ {
+		mut j := i
+		for j > 0 && relocs[j - 1].offset > relocs[j].offset {
+			relocs[j - 1], relocs[j] = relocs[j], relocs[j - 1]
+			j--
+		}
+	}
 	if relocs.len != 2 {
 		return false
 	}
@@ -1056,7 +1062,13 @@ fn (l ElfTinyLinker) text_symbol_ranges() []ElfTextRange {
 			syms << sym
 		}
 	}
-	syms.sort(a.value < b.value)
+	for i := 1; i < syms.len; i++ {
+		mut j := i
+		for j > 0 && syms[j - 1].value > syms[j].value {
+			syms[j - 1], syms[j] = syms[j], syms[j - 1]
+			j--
+		}
+	}
 	mut ranges := []ElfTextRange{}
 	for i, sym in syms {
 		mut end := u64(l.elf.text_data.len)

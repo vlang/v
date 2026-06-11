@@ -372,6 +372,21 @@ pub fn new_flat_builder_with_capacity(nodes_cap int, edges_cap int, strings_cap 
 	}
 }
 
+// take_flat moves the built flat graph out and releases transient builder-only
+// indexes. The returned FlatAst keeps owning its arena arrays.
+pub fn (mut b FlatBuilder) take_flat() FlatAst {
+	flat := b.flat
+	unsafe {
+		b.string_ids.free()
+	}
+	b.flat = FlatAst{}
+	b.string_ids = map[string]int{}
+	b.empty_list_id = invalid_flat_node_id
+	b.empty_expr_id = invalid_flat_node_id
+	b.empty_stmt_id = invalid_flat_node_id
+	return flat
+}
+
 // append_file converts one legacy File into flat nodes and registers it as a
 // root. Designed for streaming use: the caller can drop the legacy `file`
 // immediately after this returns, capping peak memory at ~one file's legacy
@@ -395,9 +410,9 @@ pub fn (mut b FlatBuilder) append_file(file File) FlatNodeId {
 // bit-equal to `add_file`'s output.
 pub fn (mut b FlatBuilder) append_file_with_stmt_ids(file File, stmt_ids []FlatNodeId) FlatNodeId {
 	mut edges := []FlatEdge{}
-	b.push_edge(mut edges, b.make_list_attribute(file.attributes))
-	b.push_edge(mut edges, b.make_list_imports(file.imports))
-	b.push_edge(mut edges, b.make_list_from_stmt_ids(stmt_ids))
+	edges = b.push_edge(edges, b.make_list_attribute(file.attributes))
+	edges = b.push_edge(edges, b.make_list_imports(file.imports))
+	edges = b.push_edge(edges, b.make_list_from_stmt_ids(stmt_ids))
 	file_id := b.emit(.file, token.Pos{}, b.intern(file.name), b.intern(file.mod), 0, 0, edges)
 	b.flat.files << FlatFile{
 		file_id:        file_id
@@ -406,6 +421,141 @@ pub fn (mut b FlatBuilder) append_file_with_stmt_ids(file File, stmt_ids []FlatN
 		selector_names: file.selector_names
 	}
 	return file_id
+}
+
+// append_file_with_flat_attrs_and_stmt_ids registers a file root whose
+// attributes and stmt list were already emitted into this builder. Imports are
+// still accepted as legacy values because import handling is not transformed.
+pub fn (mut b FlatBuilder) append_file_with_flat_attrs_and_stmt_ids(name string, mod string, selector_names map[int]string, attrs_id FlatNodeId, imports []ImportStmt, stmt_ids []FlatNodeId) FlatNodeId {
+	mut edges := []FlatEdge{}
+	edges = b.push_edge(edges, attrs_id)
+	edges = b.push_edge(edges, b.make_list_imports(imports))
+	edges = b.push_edge(edges, b.make_list_from_stmt_ids(stmt_ids))
+	file_id := b.emit(.file, token.Pos{}, b.intern(name), b.intern(mod), 0, 0, edges)
+	b.flat.files << FlatFile{
+		file_id:        file_id
+		name_idx:       b.intern(name)
+		mod_idx:        b.intern(mod)
+		selector_names: selector_names
+	}
+	return file_id
+}
+
+// append_file_with_flat_lists_and_stmt_ids registers a file root whose
+// attributes, imports, and stmt list were already emitted into this builder.
+pub fn (mut b FlatBuilder) append_file_with_flat_lists_and_stmt_ids(name string, mod string, selector_names map[int]string, attrs_id FlatNodeId, imports_id FlatNodeId, stmt_ids []FlatNodeId) FlatNodeId {
+	mut edges := []FlatEdge{}
+	edges = b.push_edge(edges, attrs_id)
+	edges = b.push_edge(edges, imports_id)
+	edges = b.push_edge(edges, b.make_list_from_stmt_ids(stmt_ids))
+	file_id := b.emit(.file, token.Pos{}, b.intern(name), b.intern(mod), 0, 0, edges)
+	b.flat.files << FlatFile{
+		file_id:        file_id
+		name_idx:       b.intern(name)
+		mod_idx:        b.intern(mod)
+		selector_names: selector_names
+	}
+	return file_id
+}
+
+// append_flat copies an entire `src` FlatAst (nodes, edges, strings, file roots)
+// into this builder, relocating every node id / edge target and re-interning
+// every string so the merged result is structurally identical to `src` decoded
+// standalone. Returns the node-id offset applied to all of `src`'s nodes (a src
+// node id `x` maps to merged id `x + offset`).
+//
+// This is the merge primitive behind the flat parallel transform: each worker
+// emits into its own FlatBuilder, then the main thread concatenates the
+// workers' outputs via append_flat (replacing the legacy per-worker `ast.File`
+// rehydrate-then-flatten). Relocation rules — verified against the canonical
+// decoder (flat_reader.v):
+//   - edge.child_id  : + node_offset (invalid_flat_node_id stays invalid)
+//   - node.first_edge: + edge_offset
+//   - node.name_id   : re-interned via the string remap (-1 stays -1)
+//   - node.extra     : re-interned ONLY for the three kinds that store a string
+//                      id there (file mod, stmt_directive value, stmt_import
+//                      alias); every other kind packs ints/counts/flags/list-
+//                      boundaries in extra (lhs_len, cap_len, keys_len, width/
+//                      precision, aux_int value, ...) → copied verbatim
+//                      (relocation-invariant)
+//   - node.aux / pos : copied verbatim (aux is a token/sub-kind enum; pos.id is
+//                      globally unique across the merged inputs, and
+//                      selector_names is keyed by pos.id so it needs no remap)
+//   - file.file_id   : + node_offset; name_idx/mod_idx re-interned;
+//                      selector_names copied (cloned for ownership)
+pub fn (mut b FlatBuilder) append_flat(src &FlatAst) int {
+	node_offset := b.flat.nodes.len
+	edge_offset := b.flat.edges.len
+	// Remap src string ids -> dst string ids (dedups into b's intern table).
+	mut string_remap := []int{len: src.strings.len}
+	for i, s in src.strings {
+		string_remap[i] = b.intern(s)
+	}
+	// Relocate + append edges.
+	b.flat.edges.grow_cap(src.edges.len)
+	for e in src.edges {
+		child := if e.child_id >= 0 { e.child_id + node_offset } else { e.child_id }
+		b.flat.edges << FlatEdge{
+			child_id: child
+		}
+	}
+	// Relocate + append nodes.
+	b.flat.nodes.grow_cap(src.nodes.len)
+	for n in src.nodes {
+		mut nn := n
+		nn.name_id = if n.name_id >= 0 { string_remap[n.name_id] } else { n.name_id }
+		if n.extra >= 0 && (n.kind == .file || n.kind == .stmt_directive || n.kind == .stmt_import) {
+			nn.extra = string_remap[n.extra]
+		}
+		nn.first_edge = n.first_edge + edge_offset
+		b.flat.nodes << nn
+	}
+	// Relocate + append file roots.
+	for ff in src.files {
+		b.flat.files << FlatFile{
+			file_id:        ff.file_id + node_offset
+			name_idx:       if ff.name_idx >= 0 { string_remap[ff.name_idx] } else { ff.name_idx }
+			mod_idx:        if ff.mod_idx >= 0 { string_remap[ff.mod_idx] } else { ff.mod_idx }
+			selector_names: ff.selector_names.clone()
+		}
+	}
+	return node_offset
+}
+
+// copy_subtree_from copies the subtree rooted at `root` from `src` into this
+// builder, re-interning strings and rebuilding child edges recursively.
+pub fn (mut b FlatBuilder) copy_subtree_from(src &FlatAst, root FlatNodeId) FlatNodeId {
+	if root < 0 || root >= src.nodes.len {
+		return invalid_flat_node_id
+	}
+	n := src.nodes[root]
+	mut edges := []FlatEdge{cap: n.edge_count}
+	for i in 0 .. n.edge_count {
+		child := src.child_at(root, i)
+		copied_child := if child >= 0 {
+			b.copy_subtree_from(src, child)
+		} else {
+			child
+		}
+		edges << FlatEdge{
+			child_id: copied_child
+		}
+	}
+	name_id := b.copy_string_id_from(src, n.name_id)
+	extra := if n.extra >= 0
+		&& (n.kind == .file || n.kind == .stmt_directive || n.kind == .stmt_import) {
+		b.copy_string_id_from(src, n.extra)
+	} else {
+		n.extra
+	}
+	return b.emit(n.kind, n.pos, name_id, extra, n.aux, n.flags, edges)
+}
+
+fn (mut b FlatBuilder) copy_string_id_from(src &FlatAst, id int) int {
+	if id < 0 || id >= src.strings.len {
+		return id
+	}
+	return b.intern(src.strings[id])
 }
 
 // emit_stmt is the public wrapper around the legacy stmt-to-flat conversion.
@@ -464,9 +614,9 @@ pub fn (mut b FlatBuilder) append_file_stmts(file_idx int, extra_stmt_ids []Flat
 	}
 	new_stmts_list_id := b.make_list_from_stmt_ids(stmt_ids)
 	mut edges := []FlatEdge{cap: 3}
-	b.push_edge(mut edges, old_attrs_list_id)
-	b.push_edge(mut edges, old_imports_list_id)
-	b.push_edge(mut edges, new_stmts_list_id)
+	edges = b.push_edge(edges, old_attrs_list_id)
+	edges = b.push_edge(edges, old_imports_list_id)
+	edges = b.push_edge(edges, new_stmts_list_id)
 	new_file_id := b.emit(.file, token.Pos{}, name_idx, mod_idx, 0, 0, edges)
 	b.flat.files[file_idx] = FlatFile{
 		file_id:        new_file_id
@@ -516,9 +666,9 @@ pub fn (mut b FlatBuilder) prepend_file_stmts(file_idx int, prepended_stmt_ids [
 	}
 	new_stmts_list_id := b.make_list_from_stmt_ids(stmt_ids)
 	mut edges := []FlatEdge{cap: 3}
-	b.push_edge(mut edges, old_attrs_list_id)
-	b.push_edge(mut edges, old_imports_list_id)
-	b.push_edge(mut edges, new_stmts_list_id)
+	edges = b.push_edge(edges, old_attrs_list_id)
+	edges = b.push_edge(edges, old_imports_list_id)
+	edges = b.push_edge(edges, new_stmts_list_id)
 	new_file_id := b.emit(.file, token.Pos{}, name_idx, mod_idx, 0, 0, edges)
 	b.flat.files[file_idx] = FlatFile{
 		file_id:        new_file_id
@@ -574,9 +724,9 @@ pub fn (mut b FlatBuilder) replace_file_stmt(file_idx int, stmt_idx int, new_stm
 	}
 	new_stmts_list_id := b.make_list_from_stmt_ids(stmt_ids)
 	mut edges := []FlatEdge{cap: 3}
-	b.push_edge(mut edges, old_attrs_list_id)
-	b.push_edge(mut edges, old_imports_list_id)
-	b.push_edge(mut edges, new_stmts_list_id)
+	edges = b.push_edge(edges, old_attrs_list_id)
+	edges = b.push_edge(edges, old_imports_list_id)
+	edges = b.push_edge(edges, new_stmts_list_id)
 	name_idx := b.flat.files[file_idx].name_idx
 	mod_idx := b.flat.files[file_idx].mod_idx
 	new_file_id := b.emit(.file, token.Pos{}, name_idx, mod_idx, 0, 0, edges)
@@ -636,10 +786,10 @@ pub fn (mut b FlatBuilder) prepend_to_fn_body(fn_decl_id FlatNodeId, extra_stmt_
 	}
 	new_stmts_list_id := b.make_list_from_stmt_ids(stmt_ids)
 	mut edges := []FlatEdge{cap: 4}
-	b.push_edge(mut edges, old_receiver_id)
-	b.push_edge(mut edges, old_typ_id)
-	b.push_edge(mut edges, old_attrs_id)
-	b.push_edge(mut edges, new_stmts_list_id)
+	edges = b.push_edge(edges, old_receiver_id)
+	edges = b.push_edge(edges, old_typ_id)
+	edges = b.push_edge(edges, old_attrs_id)
+	edges = b.push_edge(edges, new_stmts_list_id)
 	return b.emit(.stmt_fn_decl, old_node.pos, old_node.name_id, old_node.extra, old_node.aux,
 		old_node.flags, edges)
 }
@@ -721,10 +871,10 @@ pub fn (mut b FlatBuilder) replace_fn_body_stmts(fn_decl_id FlatNodeId, new_body
 	old_attrs_id := b.flat.child_at(fn_decl_id, 2)
 	new_stmts_list_id := b.make_list_from_stmt_ids(new_body_stmt_ids)
 	mut edges := []FlatEdge{cap: 4}
-	b.push_edge(mut edges, old_receiver_id)
-	b.push_edge(mut edges, old_typ_id)
-	b.push_edge(mut edges, old_attrs_id)
-	b.push_edge(mut edges, new_stmts_list_id)
+	edges = b.push_edge(edges, old_receiver_id)
+	edges = b.push_edge(edges, old_typ_id)
+	edges = b.push_edge(edges, old_attrs_id)
+	edges = b.push_edge(edges, new_stmts_list_id)
 	return b.emit(.stmt_fn_decl, old_node.pos, old_node.name_id, old_node.extra, old_node.aux,
 		old_node.flags, edges)
 }
@@ -754,7 +904,7 @@ pub fn (mut b FlatBuilder) emit_aux_list_from_ids(ids []FlatNodeId) FlatNodeId {
 	}
 	mut edges := []FlatEdge{cap: ids.len}
 	for id in ids {
-		b.push_edge(mut edges, id)
+		edges = b.push_edge(edges, id)
 	}
 	return b.emit_simple(.aux_list, token.Pos{}, edges)
 }
@@ -765,9 +915,9 @@ pub fn (mut b FlatBuilder) emit_aux_list_from_ids(ids []FlatNodeId) FlatNodeId {
 // have been emitted directly. Mirrors the add_field_decl encoding exactly.
 pub fn (mut b FlatBuilder) emit_field_decl_by_ids(field FieldDecl, typ_id FlatNodeId, value_id FlatNodeId, attrs_id FlatNodeId) FlatNodeId {
 	mut edges := []FlatEdge{cap: 3}
-	b.push_edge(mut edges, typ_id)
-	b.push_edge(mut edges, value_id)
-	b.push_edge(mut edges, attrs_id)
+	edges = b.push_edge(edges, typ_id)
+	edges = b.push_edge(edges, value_id)
+	edges = b.push_edge(edges, attrs_id)
 	return b.emit(.aux_field_decl, token.Pos{}, b.intern(field.name), -1, 0,
 		field_decl_flags(field), edges)
 }
@@ -917,6 +1067,28 @@ pub fn (mut b FlatBuilder) emit_for_stmt_by_ids(init_id FlatNodeId, cond_id Flat
 	return b.emit_simple(.stmt_for, token.Pos{}, edges)
 }
 
+// emit_for_in_stmt_by_ids emits a stmt_for_in node from already-flat key,
+// value, and iterable expression FlatNodeIds. Mirrors add_stmt(ForInStmt).
+pub fn (mut b FlatBuilder) emit_for_in_stmt_by_ids(key_id FlatNodeId, value_id FlatNodeId, expr_id FlatNodeId) FlatNodeId {
+	return b.emit_simple(.stmt_for_in, token.Pos{}, [
+		FlatEdge{
+			child_id: key_id
+		},
+		FlatEdge{
+			child_id: value_id
+		},
+		FlatEdge{
+			child_id: expr_id
+		},
+	])
+}
+
+// emit_flow_control_stmt emits a stmt_flow_control node. Mirrors
+// add_stmt(FlowControlStmt): label in name_id, op in aux, no edges.
+pub fn (mut b FlatBuilder) emit_flow_control_stmt(op token.Token, label string) FlatNodeId {
+	return b.emit(.stmt_flow_control, token.Pos{}, b.intern(label), -1, u16(int(op)), 0, [])
+}
+
 // emit_map_init_expr_by_ids emits an expr_map_init node from already-flat
 // type FlatNodeId and parallel slices of key/value expression FlatNodeIds
 // (with `key_ids.len == val_ids.len`). Mirrors the add_expr(MapInitExpr)
@@ -1001,6 +1173,19 @@ pub fn (mut b FlatBuilder) emit_infix_expr_by_ids(op token.Token, lhs_id FlatNod
 	])
 }
 
+// emit_keyword_operator_by_ids emits an expr_keyword_operator node from
+// already-flat operand expression FlatNodeIds. Mirrors add_expr(KeywordOperator)
+// exactly: aux1=-1, aux2=-1, meta=u16(op), edges = exprs.
+pub fn (mut b FlatBuilder) emit_keyword_operator_by_ids(op token.Token, expr_ids []FlatNodeId, pos token.Pos) FlatNodeId {
+	mut edges := []FlatEdge{cap: expr_ids.len}
+	for id in expr_ids {
+		edges << FlatEdge{
+			child_id: id
+		}
+	}
+	return b.emit(.expr_keyword_operator, pos, -1, -1, u16(int(op)), 0, edges)
+}
+
 // emit_array_init_expr_by_ids emits an expr_array_init node from already-flat
 // type/init/cap/len/update expression FlatNodeIds and a slice of already-flat
 // element expression FlatNodeIds. Mirrors the add_expr(ArrayInitExpr)
@@ -1031,6 +1216,16 @@ pub fn (mut b FlatBuilder) emit_array_init_expr_by_ids(typ_id FlatNodeId, init_i
 		}
 	}
 	return b.emit_simple(.expr_array_init, pos, edges)
+}
+
+// emit_array_type_by_elem_id emits a typ_array node from an already-flat
+// element type expression FlatNodeId. Mirrors add_type(ArrayType).
+pub fn (mut b FlatBuilder) emit_array_type_by_elem_id(elem_type_id FlatNodeId) FlatNodeId {
+	return b.emit_simple(.typ_array, token.Pos{}, [
+		FlatEdge{
+			child_id: elem_type_id
+		},
+	])
 }
 
 // emit_assign_stmt_by_ids emits a stmt_assign node from already-flat
@@ -1340,10 +1535,10 @@ pub fn (mut b FlatBuilder) emit_fn_literal_by_ids(typ_id FlatNodeId, captured_va
 // resolved_fmt interns into name.
 pub fn (mut b FlatBuilder) emit_string_inter_by_ids(format StringInterFormat, width int, precision int, expr_id FlatNodeId, format_expr_id FlatNodeId, resolved_fmt string) FlatNodeId {
 	mut edges := []FlatEdge{cap: 4}
-	b.push_edge(mut edges, expr_id)
-	b.push_edge(mut edges, format_expr_id)
-	b.push_edge(mut edges, b.emit_int(width))
-	b.push_edge(mut edges, b.emit_int(precision))
+	edges = b.push_edge(edges, expr_id)
+	edges = b.push_edge(edges, format_expr_id)
+	edges = b.push_edge(edges, b.emit_int(width))
+	edges = b.push_edge(edges, b.emit_int(precision))
 	return b.emit(.aux_string_inter, token.Pos{}, b.intern(resolved_fmt), -1, u16(int(format)), 0,
 		edges)
 }
@@ -1355,8 +1550,8 @@ pub fn (mut b FlatBuilder) emit_string_inter_by_ids(format StringInterFormat, wi
 // supplied FlatNodeIds via the standard aux_list shape).
 pub fn (mut b FlatBuilder) emit_string_inter_literal_by_ids(kind StringLiteralKind, values []string, inter_ids []FlatNodeId, pos token.Pos) FlatNodeId {
 	mut edges := []FlatEdge{cap: 2}
-	b.push_edge(mut edges, b.make_list_strings(values))
-	b.push_edge(mut edges, b.emit_aux_list_from_ids(inter_ids))
+	edges = b.push_edge(edges, b.make_list_strings(values))
+	edges = b.push_edge(edges, b.emit_aux_list_from_ids(inter_ids))
 	return b.emit(.expr_string_inter, pos, -1, -1, u16(int(kind)), 0, edges)
 }
 
@@ -1398,7 +1593,7 @@ fn (mut b FlatBuilder) make_list_from_stmt_ids(stmt_ids []FlatNodeId) FlatNodeId
 	}
 	mut edges := []FlatEdge{cap: stmt_ids.len}
 	for id in stmt_ids {
-		b.push_edge(mut edges, id)
+		edges = b.push_edge(edges, id)
 	}
 	return b.emit_simple(.aux_list, token.Pos{}, edges)
 }
@@ -1442,22 +1637,26 @@ fn (mut b FlatBuilder) emit_simple(kind FlatNodeKind, pos token.Pos, edges []Fla
 	return b.emit(kind, pos, -1, -1, 0, 0, edges)
 }
 
-fn (mut b FlatBuilder) push_edge(mut edges []FlatEdge, child FlatNodeId) {
-	edges << FlatEdge{
+fn (mut b FlatBuilder) push_edge(edges []FlatEdge, child FlatNodeId) []FlatEdge {
+	// Append-and-reassign pattern (callers always do `edges = b.push_edge(edges, ...)`),
+	// so skipping the defensive clone is safe and avoids one copy per edge.
+	mut updated := unsafe { edges }
+	updated << FlatEdge{
 		child_id: child
 	}
+	return updated
 }
 
-fn (mut b FlatBuilder) push_expr(mut edges []FlatEdge, expr Expr) {
-	b.push_edge(mut edges, b.add_expr(expr))
+fn (mut b FlatBuilder) push_expr(edges []FlatEdge, expr Expr) []FlatEdge {
+	return b.push_edge(edges, b.add_expr(expr))
 }
 
-fn (mut b FlatBuilder) push_stmt(mut edges []FlatEdge, stmt Stmt) {
-	b.push_edge(mut edges, b.add_stmt(stmt))
+fn (mut b FlatBuilder) push_stmt(edges []FlatEdge, stmt Stmt) []FlatEdge {
+	return b.push_edge(edges, b.add_stmt(stmt))
 }
 
-fn (mut b FlatBuilder) push_type(mut edges []FlatEdge, typ Type) {
-	b.push_edge(mut edges, b.add_type(typ))
+fn (mut b FlatBuilder) push_type(edges []FlatEdge, typ Type) []FlatEdge {
+	return b.push_edge(edges, b.add_type(typ))
 }
 
 // get_empty_list returns a shared aux_list node id used as a canonical
@@ -1477,7 +1676,7 @@ fn (mut b FlatBuilder) make_list_expr(items []Expr) FlatNodeId {
 	}
 	mut edges := []FlatEdge{cap: items.len}
 	for it in items {
-		b.push_expr(mut edges, it)
+		edges = b.push_expr(edges, it)
 	}
 	return b.emit_simple(.aux_list, token.Pos{}, edges)
 }
@@ -1488,7 +1687,7 @@ fn (mut b FlatBuilder) make_list_stmt(items []Stmt) FlatNodeId {
 	}
 	mut edges := []FlatEdge{cap: items.len}
 	for it in items {
-		b.push_stmt(mut edges, it)
+		edges = b.push_stmt(edges, it)
 	}
 	return b.emit_simple(.aux_list, token.Pos{}, edges)
 }
@@ -1499,7 +1698,7 @@ fn (mut b FlatBuilder) make_list_attribute(items []Attribute) FlatNodeId {
 	}
 	mut edges := []FlatEdge{cap: items.len}
 	for it in items {
-		b.push_edge(mut edges, b.add_attribute(it))
+		edges = b.push_edge(edges, b.add_attribute(it))
 	}
 	return b.emit_simple(.aux_list, token.Pos{}, edges)
 }
@@ -1510,7 +1709,7 @@ fn (mut b FlatBuilder) make_list_field_init(items []FieldInit) FlatNodeId {
 	}
 	mut edges := []FlatEdge{cap: items.len}
 	for it in items {
-		b.push_edge(mut edges, b.add_field_init(it))
+		edges = b.push_edge(edges, b.add_field_init(it))
 	}
 	return b.emit_simple(.aux_list, token.Pos{}, edges)
 }
@@ -1521,7 +1720,7 @@ fn (mut b FlatBuilder) make_list_field_decl(items []FieldDecl) FlatNodeId {
 	}
 	mut edges := []FlatEdge{cap: items.len}
 	for it in items {
-		b.push_edge(mut edges, b.add_field_decl(it))
+		edges = b.push_edge(edges, b.add_field_decl(it))
 	}
 	return b.emit_simple(.aux_list, token.Pos{}, edges)
 }
@@ -1532,7 +1731,7 @@ fn (mut b FlatBuilder) make_list_parameter(items []Parameter) FlatNodeId {
 	}
 	mut edges := []FlatEdge{cap: items.len}
 	for it in items {
-		b.push_edge(mut edges, b.add_parameter(it))
+		edges = b.push_edge(edges, b.add_parameter(it))
 	}
 	return b.emit_simple(.aux_list, token.Pos{}, edges)
 }
@@ -1543,7 +1742,7 @@ fn (mut b FlatBuilder) make_list_match_branch(items []MatchBranch) FlatNodeId {
 	}
 	mut edges := []FlatEdge{cap: items.len}
 	for it in items {
-		b.push_edge(mut edges, b.add_match_branch(it))
+		edges = b.push_edge(edges, b.add_match_branch(it))
 	}
 	return b.emit_simple(.aux_list, token.Pos{}, edges)
 }
@@ -1554,7 +1753,7 @@ fn (mut b FlatBuilder) make_list_string_inter(items []StringInter) FlatNodeId {
 	}
 	mut edges := []FlatEdge{cap: items.len}
 	for it in items {
-		b.push_edge(mut edges, b.add_string_inter(it))
+		edges = b.push_edge(edges, b.add_string_inter(it))
 	}
 	return b.emit_simple(.aux_list, token.Pos{}, edges)
 }
@@ -1566,7 +1765,7 @@ fn (mut b FlatBuilder) make_list_strings(items []string) FlatNodeId {
 	mut edges := []FlatEdge{cap: items.len}
 	for s in items {
 		id := b.emit(.aux_string, token.Pos{}, b.intern(s), -1, 0, 0, []FlatEdge{})
-		b.push_edge(mut edges, id)
+		edges = b.push_edge(edges, id)
 	}
 	return b.emit_simple(.aux_list, token.Pos{}, edges)
 }
@@ -1581,7 +1780,7 @@ fn (mut b FlatBuilder) make_list_imports(items []ImportStmt) FlatNodeId {
 	}
 	mut edges := []FlatEdge{cap: items.len}
 	for it in items {
-		b.push_edge(mut edges, b.add_stmt(Stmt(it)))
+		edges = b.push_edge(edges, b.add_stmt(Stmt(it)))
 	}
 	return b.emit_simple(.aux_list, token.Pos{}, edges)
 }
@@ -1589,9 +1788,9 @@ fn (mut b FlatBuilder) make_list_imports(items []ImportStmt) FlatNodeId {
 // add_file emits the file root and returns its FlatNodeId.
 fn (mut b FlatBuilder) add_file(file File) FlatNodeId {
 	mut edges := []FlatEdge{}
-	b.push_edge(mut edges, b.make_list_attribute(file.attributes))
-	b.push_edge(mut edges, b.make_list_imports(file.imports))
-	b.push_edge(mut edges, b.make_list_stmt(file.stmts))
+	edges = b.push_edge(edges, b.make_list_attribute(file.attributes))
+	edges = b.push_edge(edges, b.make_list_imports(file.imports))
+	edges = b.push_edge(edges, b.make_list_stmt(file.stmts))
 	return b.emit(.file, token.Pos{}, b.intern(file.name), b.intern(file.mod), 0, 0, edges)
 }
 
@@ -1609,24 +1808,24 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 		}
 		AssertStmt {
 			mut edges := []FlatEdge{}
-			b.push_expr(mut edges, stmt.expr)
-			b.push_expr(mut edges, stmt.extra)
+			edges = b.push_expr(edges, stmt.expr)
+			edges = b.push_expr(edges, stmt.extra)
 			return b.emit_simple(.stmt_assert, token.Pos{}, edges)
 		}
 		AssignStmt {
 			mut edges := []FlatEdge{cap: stmt.lhs.len + stmt.rhs.len}
 			for e in stmt.lhs {
-				b.push_expr(mut edges, e)
+				edges = b.push_expr(edges, e)
 			}
 			for e in stmt.rhs {
-				b.push_expr(mut edges, e)
+				edges = b.push_expr(edges, e)
 			}
 			return b.emit(.stmt_assign, stmt.pos, -1, stmt.lhs.len, u16(int(stmt.op)), 0, edges)
 		}
 		BlockStmt {
 			mut edges := []FlatEdge{cap: stmt.stmts.len}
 			for s in stmt.stmts {
-				b.push_stmt(mut edges, s)
+				edges = b.push_stmt(edges, s)
 			}
 			return b.emit_simple(.stmt_block, token.Pos{}, edges)
 		}
@@ -1655,7 +1854,7 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 			}
 			mut edges := []FlatEdge{cap: stmt.stmts.len}
 			for s in stmt.stmts {
-				b.push_stmt(mut edges, s)
+				edges = b.push_stmt(edges, s)
 			}
 			return b.emit_simple_with_flags(.stmt_defer, token.Pos{}, flags, edges)
 		}
@@ -1665,7 +1864,7 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 			if stmt.ct_cond.len > 0 {
 				id := b.emit(.aux_string, token.Pos{}, b.intern(stmt.ct_cond), -1, 0, 0,
 					[]FlatEdge{})
-				b.push_edge(mut edges, id)
+				edges = b.push_edge(edges, id)
 			}
 			return b.emit(.stmt_directive, token.Pos{}, b.intern(stmt.name), b.intern(stmt.value),
 				0, 0, edges)
@@ -1685,9 +1884,9 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 				flags |= flag_is_public
 			}
 			mut edges := []FlatEdge{}
-			b.push_expr(mut edges, stmt.as_type)
-			b.push_edge(mut edges, b.make_list_attribute(stmt.attributes))
-			b.push_edge(mut edges, b.make_list_field_decl(stmt.fields))
+			edges = b.push_expr(edges, stmt.as_type)
+			edges = b.push_edge(edges, b.make_list_attribute(stmt.attributes))
+			edges = b.push_edge(edges, b.make_list_field_decl(stmt.fields))
 			return b.emit_simple_with_flags_name(.stmt_enum_decl, token.Pos{}, flags,
 				b.intern(stmt.name), edges)
 		}
@@ -1715,7 +1914,7 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 			}
 			mut edges := []FlatEdge{}
 			if stmt.is_method {
-				b.push_edge(mut edges, b.add_parameter(stmt.receiver))
+				edges = b.push_edge(edges, b.add_parameter(stmt.receiver))
 			} else {
 				// s251: a non-method FnDecl keeps the parser's zero `ast.Parameter{}`
 				// receiver, whose `typ` is a zero-valued Expr (invalid sum-type tag,
@@ -1724,30 +1923,30 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 				// first arm (ArrayInitExpr) and derefs the null payload. The receiver
 				// edge is only read for methods, so emit a clean empty receiver
 				// (typ = empty_expr, a valid EmptyExpr) for non-methods.
-				b.push_edge(mut edges, b.add_parameter(Parameter{
+				edges = b.push_edge(edges, b.add_parameter(Parameter{
 					typ: empty_expr
 				}))
 			}
-			b.push_edge(mut edges, b.add_type(Type(stmt.typ)))
-			b.push_edge(mut edges, b.make_list_attribute(stmt.attributes))
-			b.push_edge(mut edges, b.make_list_stmt(stmt.stmts))
+			edges = b.push_edge(edges, b.add_type(Type(stmt.typ)))
+			edges = b.push_edge(edges, b.make_list_attribute(stmt.attributes))
+			edges = b.push_edge(edges, b.make_list_stmt(stmt.stmts))
 			return b.emit(.stmt_fn_decl, stmt.pos, b.intern(stmt.name), -1,
 				u16(int(stmt.language)), flags, edges)
 		}
 		ForInStmt {
 			mut edges := []FlatEdge{cap: 3}
-			b.push_expr(mut edges, stmt.key)
-			b.push_expr(mut edges, stmt.value)
-			b.push_expr(mut edges, stmt.expr)
+			edges = b.push_expr(edges, stmt.key)
+			edges = b.push_expr(edges, stmt.value)
+			edges = b.push_expr(edges, stmt.expr)
 			return b.emit_simple(.stmt_for_in, token.Pos{}, edges)
 		}
 		ForStmt {
 			mut edges := []FlatEdge{cap: 3 + stmt.stmts.len}
-			b.push_stmt(mut edges, stmt.init)
-			b.push_expr(mut edges, stmt.cond)
-			b.push_stmt(mut edges, stmt.post)
+			edges = b.push_stmt(edges, stmt.init)
+			edges = b.push_expr(edges, stmt.cond)
+			edges = b.push_stmt(edges, stmt.post)
 			for s in stmt.stmts {
-				b.push_stmt(mut edges, s)
+				edges = b.push_stmt(edges, s)
 			}
 			return b.emit_simple(.stmt_for, token.Pos{}, edges)
 		}
@@ -1757,8 +1956,8 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 				flags |= flag_is_public
 			}
 			mut edges := []FlatEdge{}
-			b.push_edge(mut edges, b.make_list_attribute(stmt.attributes))
-			b.push_edge(mut edges, b.make_list_field_decl(stmt.fields))
+			edges = b.push_edge(edges, b.make_list_attribute(stmt.attributes))
+			edges = b.push_edge(edges, b.make_list_field_decl(stmt.fields))
 			return b.emit_simple_with_flags(.stmt_global_decl, token.Pos{}, flags, edges)
 		}
 		ImportStmt {
@@ -1768,7 +1967,7 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 			}
 			mut edges := []FlatEdge{cap: stmt.symbols.len}
 			for sym in stmt.symbols {
-				b.push_expr(mut edges, sym)
+				edges = b.push_expr(edges, sym)
 			}
 			return b.emit(.stmt_import, token.Pos{}, b.intern(stmt.name), b.intern(stmt.alias), 0,
 				flags, edges)
@@ -1779,10 +1978,10 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 				flags |= flag_is_public
 			}
 			mut edges := []FlatEdge{cap: 4}
-			b.push_edge(mut edges, b.make_list_attribute(stmt.attributes))
-			b.push_edge(mut edges, b.make_list_expr(stmt.generic_params))
-			b.push_edge(mut edges, b.make_list_expr(stmt.embedded))
-			b.push_edge(mut edges, b.make_list_field_decl(stmt.fields))
+			edges = b.push_edge(edges, b.make_list_attribute(stmt.attributes))
+			edges = b.push_edge(edges, b.make_list_expr(stmt.generic_params))
+			edges = b.push_edge(edges, b.make_list_expr(stmt.embedded))
+			edges = b.push_edge(edges, b.make_list_field_decl(stmt.fields))
 			return b.emit_simple_with_flags_name(.stmt_interface_decl, token.Pos{}, flags,
 				b.intern(stmt.name), edges)
 		}
@@ -1799,7 +1998,7 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 		ReturnStmt {
 			mut edges := []FlatEdge{cap: stmt.exprs.len}
 			for e in stmt.exprs {
-				b.push_expr(mut edges, e)
+				edges = b.push_expr(edges, e)
 			}
 			return b.emit_simple(.stmt_return, token.Pos{}, edges)
 		}
@@ -1812,11 +2011,11 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 				flags |= flag_is_union
 			}
 			mut edges := []FlatEdge{cap: 5}
-			b.push_edge(mut edges, b.make_list_attribute(stmt.attributes))
-			b.push_edge(mut edges, b.make_list_expr(stmt.implements))
-			b.push_edge(mut edges, b.make_list_expr(stmt.embedded))
-			b.push_edge(mut edges, b.make_list_expr(stmt.generic_params))
-			b.push_edge(mut edges, b.make_list_field_decl(stmt.fields))
+			edges = b.push_edge(edges, b.make_list_attribute(stmt.attributes))
+			edges = b.push_edge(edges, b.make_list_expr(stmt.implements))
+			edges = b.push_edge(edges, b.make_list_expr(stmt.embedded))
+			edges = b.push_edge(edges, b.make_list_expr(stmt.generic_params))
+			edges = b.push_edge(edges, b.make_list_field_decl(stmt.fields))
 			return b.emit(.stmt_struct_decl, stmt.pos, b.intern(stmt.name), -1,
 				u16(int(stmt.language)), flags, edges)
 		}
@@ -1826,10 +2025,10 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 				flags |= flag_is_public
 			}
 			mut edges := []FlatEdge{cap: 4}
-			b.push_expr(mut edges, stmt.base_type)
-			b.push_edge(mut edges, b.make_list_attribute([]Attribute{}))
-			b.push_edge(mut edges, b.make_list_expr(stmt.generic_params))
-			b.push_edge(mut edges, b.make_list_expr(stmt.variants))
+			edges = b.push_expr(edges, stmt.base_type)
+			edges = b.push_edge(edges, b.make_list_attribute([]Attribute{}))
+			edges = b.push_edge(edges, b.make_list_expr(stmt.generic_params))
+			edges = b.push_edge(edges, b.make_list_expr(stmt.variants))
 			return b.emit(.stmt_type_decl, token.Pos{}, b.intern(stmt.name), -1,
 				u16(int(stmt.language)), flags, edges)
 		}
@@ -1851,6 +2050,12 @@ fn (mut b FlatBuilder) emit_simple_with_flags_name(kind FlatNodeKind, pos token.
 }
 
 fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
+	if expr_is_zero_value(expr) {
+		if b.empty_expr_id == invalid_flat_node_id {
+			b.empty_expr_id = b.emit(.expr_empty, token.Pos{}, -1, 0, 0, 0, []FlatEdge{})
+		}
+		return b.empty_expr_id
+	}
 	match expr {
 		Type {
 			return b.add_type(expr)
@@ -1864,28 +2069,28 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 	match expr {
 		ArrayInitExpr {
 			mut edges := []FlatEdge{cap: 5 + expr.exprs.len}
-			b.push_expr(mut edges, expr.typ)
-			b.push_expr(mut edges, expr.init)
-			b.push_expr(mut edges, expr.cap)
-			b.push_expr(mut edges, expr.len)
-			b.push_expr(mut edges, expr.update_expr)
+			edges = b.push_expr(edges, expr.typ)
+			edges = b.push_expr(edges, expr.init)
+			edges = b.push_expr(edges, expr.cap)
+			edges = b.push_expr(edges, expr.len)
+			edges = b.push_expr(edges, expr.update_expr)
 			for e in expr.exprs {
-				b.push_expr(mut edges, e)
+				edges = b.push_expr(edges, e)
 			}
 			return b.emit_simple(.expr_array_init, expr.pos, edges)
 		}
 		AsCastExpr {
 			mut edges := []FlatEdge{cap: 2}
-			b.push_expr(mut edges, expr.expr)
-			b.push_expr(mut edges, expr.typ)
+			edges = b.push_expr(edges, expr.expr)
+			edges = b.push_expr(edges, expr.typ)
 			return b.emit_simple(.expr_as_cast, expr.pos, edges)
 		}
 		AssocExpr {
 			mut edges := []FlatEdge{cap: 2 + expr.fields.len}
-			b.push_expr(mut edges, expr.typ)
-			b.push_expr(mut edges, expr.expr)
+			edges = b.push_expr(edges, expr.typ)
+			edges = b.push_expr(edges, expr.expr)
 			for f in expr.fields {
-				b.push_edge(mut edges, b.add_field_init(f))
+				edges = b.push_edge(edges, b.add_field_init(f))
 			}
 			return b.emit_simple(.expr_assoc, expr.pos, edges)
 		}
@@ -1895,22 +2100,22 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 		}
 		CallExpr {
 			mut edges := []FlatEdge{cap: 1 + expr.args.len}
-			b.push_expr(mut edges, expr.lhs)
+			edges = b.push_expr(edges, expr.lhs)
 			for a in expr.args {
-				b.push_expr(mut edges, a)
+				edges = b.push_expr(edges, a)
 			}
 			return b.emit_simple(.expr_call, expr.pos, edges)
 		}
 		CallOrCastExpr {
 			mut edges := []FlatEdge{cap: 2}
-			b.push_expr(mut edges, expr.lhs)
-			b.push_expr(mut edges, expr.expr)
+			edges = b.push_expr(edges, expr.lhs)
+			edges = b.push_expr(edges, expr.expr)
 			return b.emit_simple(.expr_call_or_cast, expr.pos, edges)
 		}
 		CastExpr {
 			mut edges := []FlatEdge{cap: 2}
-			b.push_expr(mut edges, expr.typ)
-			b.push_expr(mut edges, expr.expr)
+			edges = b.push_expr(edges, expr.typ)
+			edges = b.push_expr(edges, expr.expr)
 			return b.emit_simple(.expr_cast, expr.pos, edges)
 		}
 		ComptimeExpr {
@@ -1933,12 +2138,12 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 		}
 		FnLiteral {
 			mut edges := []FlatEdge{}
-			b.push_edge(mut edges, b.add_type(Type(expr.typ)))
+			edges = b.push_edge(edges, b.add_type(Type(expr.typ)))
 			for cv in expr.captured_vars {
-				b.push_expr(mut edges, cv)
+				edges = b.push_expr(edges, cv)
 			}
 			for s in expr.stmts {
-				b.push_stmt(mut edges, s)
+				edges = b.push_stmt(edges, s)
 			}
 			// extra stores captured_vars.len so the boundary between captured
 			// vars and stmts is recoverable.
@@ -1946,15 +2151,15 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 		}
 		GenericArgOrIndexExpr {
 			mut edges := []FlatEdge{cap: 2}
-			b.push_expr(mut edges, expr.lhs)
-			b.push_expr(mut edges, expr.expr)
+			edges = b.push_expr(edges, expr.lhs)
+			edges = b.push_expr(edges, expr.expr)
 			return b.emit_simple(.expr_generic_arg_or_index, expr.pos, edges)
 		}
 		GenericArgs {
 			mut edges := []FlatEdge{cap: 1 + expr.args.len}
-			b.push_expr(mut edges, expr.lhs)
+			edges = b.push_expr(edges, expr.lhs)
 			for a in expr.args {
-				b.push_expr(mut edges, a)
+				edges = b.push_expr(edges, a)
 			}
 			return b.emit_simple(.expr_generic_args, expr.pos, edges)
 		}
@@ -1963,10 +2168,10 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 		}
 		IfExpr {
 			mut edges := []FlatEdge{cap: 2 + expr.stmts.len}
-			b.push_expr(mut edges, expr.cond)
-			b.push_expr(mut edges, expr.else_expr)
+			edges = b.push_expr(edges, expr.cond)
+			edges = b.push_expr(edges, expr.else_expr)
 			for s in expr.stmts {
-				b.push_stmt(mut edges, s)
+				edges = b.push_stmt(edges, s)
 			}
 			return b.emit_simple(.expr_if, expr.pos, edges)
 		}
@@ -1983,21 +2188,21 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 				flags |= flag_is_gated
 			}
 			mut edges := []FlatEdge{cap: 2}
-			b.push_expr(mut edges, expr.lhs)
-			b.push_expr(mut edges, expr.expr)
+			edges = b.push_expr(edges, expr.lhs)
+			edges = b.push_expr(edges, expr.expr)
 			return b.emit(.expr_index, expr.pos, -1, -1, 0, flags, edges)
 		}
 		InfixExpr {
 			mut edges := []FlatEdge{cap: 2}
-			b.push_expr(mut edges, expr.lhs)
-			b.push_expr(mut edges, expr.rhs)
+			edges = b.push_expr(edges, expr.lhs)
+			edges = b.push_expr(edges, expr.rhs)
 			return b.emit(.expr_infix, expr.pos, -1, -1, u16(int(expr.op)), 0, edges)
 		}
 		InitExpr {
 			mut edges := []FlatEdge{cap: 1 + expr.fields.len}
-			b.push_expr(mut edges, expr.typ)
+			edges = b.push_expr(edges, expr.typ)
 			for f in expr.fields {
-				b.push_edge(mut edges, b.add_field_init(f))
+				edges = b.push_edge(edges, b.add_field_init(f))
 			}
 			return b.emit_simple(.expr_init, expr.pos, edges)
 		}
@@ -2007,15 +2212,15 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 		KeywordOperator {
 			mut edges := []FlatEdge{cap: expr.exprs.len}
 			for e in expr.exprs {
-				b.push_expr(mut edges, e)
+				edges = b.push_expr(edges, e)
 			}
 			return b.emit(.expr_keyword_operator, expr.pos, -1, -1, u16(int(expr.op)), 0, edges)
 		}
 		LambdaExpr {
 			mut edges := []FlatEdge{cap: 1 + expr.args.len}
-			b.push_expr(mut edges, expr.expr)
+			edges = b.push_expr(edges, expr.expr)
 			for a in expr.args {
-				b.push_expr(mut edges, Expr(a))
+				edges = b.push_expr(edges, Expr(a))
 			}
 			return b.emit_simple(.expr_lambda, expr.pos, edges)
 		}
@@ -2025,13 +2230,13 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 		LockExpr {
 			mut edges := []FlatEdge{cap: expr.lock_exprs.len + expr.rlock_exprs.len + expr.stmts.len}
 			for e in expr.lock_exprs {
-				b.push_expr(mut edges, e)
+				edges = b.push_expr(edges, e)
 			}
 			for e in expr.rlock_exprs {
-				b.push_expr(mut edges, e)
+				edges = b.push_expr(edges, e)
 			}
 			for s in expr.stmts {
-				b.push_stmt(mut edges, s)
+				edges = b.push_stmt(edges, s)
 			}
 			// Pack (lock.len, rlock.len) into extra; stmts.len = edge_count - lock - rlock.
 			lock_len := u32(expr.lock_exprs.len) & 0xFFFF
@@ -2041,33 +2246,33 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 		}
 		MapInitExpr {
 			mut edges := []FlatEdge{cap: 1 + expr.keys.len + expr.vals.len}
-			b.push_expr(mut edges, expr.typ)
+			edges = b.push_expr(edges, expr.typ)
 			for k in expr.keys {
-				b.push_expr(mut edges, k)
+				edges = b.push_expr(edges, k)
 			}
 			for v in expr.vals {
-				b.push_expr(mut edges, v)
+				edges = b.push_expr(edges, v)
 			}
 			return b.emit(.expr_map_init, expr.pos, -1, expr.keys.len, 0, 0, edges)
 		}
 		MatchExpr {
 			mut edges := []FlatEdge{cap: 1 + expr.branches.len}
-			b.push_expr(mut edges, expr.expr)
+			edges = b.push_expr(edges, expr.expr)
 			for br in expr.branches {
-				b.push_edge(mut edges, b.add_match_branch(br))
+				edges = b.push_edge(edges, b.add_match_branch(br))
 			}
 			return b.emit_simple(.expr_match, expr.pos, edges)
 		}
 		ModifierExpr {
 			mut edges := []FlatEdge{cap: 1}
-			b.push_expr(mut edges, expr.expr)
+			edges = b.push_expr(edges, expr.expr)
 			return b.emit(.expr_modifier, expr.pos, -1, -1, u16(int(expr.kind)), 0, edges)
 		}
 		OrExpr {
 			mut edges := []FlatEdge{cap: 1 + expr.stmts.len}
-			b.push_expr(mut edges, expr.expr)
+			edges = b.push_expr(edges, expr.expr)
 			for s in expr.stmts {
-				b.push_stmt(mut edges, s)
+				edges = b.push_stmt(edges, s)
 			}
 			return b.emit_simple(.expr_or, expr.pos, edges)
 		}
@@ -2094,23 +2299,23 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 		}
 		RangeExpr {
 			mut edges := []FlatEdge{cap: 2}
-			b.push_expr(mut edges, expr.start)
-			b.push_expr(mut edges, expr.end)
+			edges = b.push_expr(edges, expr.start)
+			edges = b.push_expr(edges, expr.end)
 			return b.emit(.expr_range, expr.pos, -1, -1, u16(int(expr.op)), 0, edges)
 		}
 		SelectExpr {
 			mut edges := []FlatEdge{cap: 2 + expr.stmts.len}
-			b.push_stmt(mut edges, expr.stmt)
-			b.push_expr(mut edges, expr.next)
+			edges = b.push_stmt(edges, expr.stmt)
+			edges = b.push_expr(edges, expr.next)
 			for s in expr.stmts {
-				b.push_stmt(mut edges, s)
+				edges = b.push_stmt(edges, s)
 			}
 			return b.emit_simple(.expr_select, expr.pos, edges)
 		}
 		SelectorExpr {
 			mut edges := []FlatEdge{cap: 2}
-			b.push_expr(mut edges, expr.lhs)
-			b.push_expr(mut edges, Expr(expr.rhs))
+			edges = b.push_expr(edges, expr.lhs)
+			edges = b.push_expr(edges, Expr(expr.rhs))
 			return b.emit_simple(.expr_selector, expr.pos, edges)
 		}
 		SqlExpr {
@@ -2129,8 +2334,8 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 		}
 		StringInterLiteral {
 			mut edges := []FlatEdge{cap: 2}
-			b.push_edge(mut edges, b.make_list_strings(expr.values))
-			b.push_edge(mut edges, b.make_list_string_inter(expr.inters))
+			edges = b.push_edge(edges, b.make_list_strings(expr.values))
+			edges = b.push_edge(edges, b.make_list_string_inter(expr.inters))
 			return b.emit(.expr_string_inter, expr.pos, -1, -1, u16(int(expr.kind)), 0, edges)
 		}
 		StringLiteral {
@@ -2140,14 +2345,14 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 		Tuple {
 			mut edges := []FlatEdge{cap: expr.exprs.len}
 			for e in expr.exprs {
-				b.push_expr(mut edges, e)
+				edges = b.push_expr(edges, e)
 			}
 			return b.emit_simple(.expr_tuple, expr.pos, edges)
 		}
 		UnsafeExpr {
 			mut edges := []FlatEdge{cap: expr.stmts.len}
 			for s in expr.stmts {
-				b.push_stmt(mut edges, s)
+				edges = b.push_stmt(edges, s)
 			}
 			return b.emit_simple(.expr_unsafe, expr.pos, edges)
 		}
@@ -2158,51 +2363,58 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 	}
 }
 
+@[inline]
+fn expr_is_zero_value(expr Expr) bool {
+	tag_word := unsafe { (&u64(&expr))[0] }
+	data_word := unsafe { (&u64(&expr))[1] }
+	return tag_word == 0 && data_word == 0
+}
+
 fn (mut b FlatBuilder) add_type(typ Type) FlatNodeId {
 	match typ {
 		AnonStructType {
 			mut edges := []FlatEdge{cap: 3}
-			b.push_edge(mut edges, b.make_list_expr(typ.generic_params))
-			b.push_edge(mut edges, b.make_list_expr(typ.embedded))
-			b.push_edge(mut edges, b.make_list_field_decl(typ.fields))
+			edges = b.push_edge(edges, b.make_list_expr(typ.generic_params))
+			edges = b.push_edge(edges, b.make_list_expr(typ.embedded))
+			edges = b.push_edge(edges, b.make_list_field_decl(typ.fields))
 			return b.emit_simple(.typ_anon_struct, token.Pos{}, edges)
 		}
 		ArrayFixedType {
 			mut edges := []FlatEdge{cap: 2}
-			b.push_expr(mut edges, typ.len)
-			b.push_expr(mut edges, typ.elem_type)
+			edges = b.push_expr(edges, typ.len)
+			edges = b.push_expr(edges, typ.elem_type)
 			return b.emit_simple(.typ_array_fixed, token.Pos{}, edges)
 		}
 		ArrayType {
 			mut edges := []FlatEdge{cap: 1}
-			b.push_expr(mut edges, typ.elem_type)
+			edges = b.push_expr(edges, typ.elem_type)
 			return b.emit_simple(.typ_array, token.Pos{}, edges)
 		}
 		ChannelType {
 			mut edges := []FlatEdge{cap: 2}
-			b.push_expr(mut edges, typ.cap)
-			b.push_expr(mut edges, typ.elem_type)
+			edges = b.push_expr(edges, typ.cap)
+			edges = b.push_expr(edges, typ.elem_type)
 			return b.emit_simple(.typ_channel, token.Pos{}, edges)
 		}
 		FnType {
 			mut edges := []FlatEdge{cap: 3}
-			b.push_edge(mut edges, b.make_list_expr(typ.generic_params))
-			b.push_edge(mut edges, b.make_list_parameter(typ.params))
-			b.push_expr(mut edges, typ.return_type)
+			edges = b.push_edge(edges, b.make_list_expr(typ.generic_params))
+			edges = b.push_edge(edges, b.make_list_parameter(typ.params))
+			edges = b.push_expr(edges, typ.return_type)
 			return b.emit_simple(.typ_fn, token.Pos{}, edges)
 		}
 		GenericType {
 			mut edges := []FlatEdge{cap: 1 + typ.params.len}
-			b.push_expr(mut edges, typ.name)
+			edges = b.push_expr(edges, typ.name)
 			for p in typ.params {
-				b.push_expr(mut edges, p)
+				edges = b.push_expr(edges, p)
 			}
 			return b.emit_simple(.typ_generic, token.Pos{}, edges)
 		}
 		MapType {
 			mut edges := []FlatEdge{cap: 2}
-			b.push_expr(mut edges, typ.key_type)
-			b.push_expr(mut edges, typ.value_type)
+			edges = b.push_expr(edges, typ.key_type)
+			edges = b.push_expr(edges, typ.value_type)
 			return b.emit_simple(.typ_map, token.Pos{}, edges)
 		}
 		NilType {
@@ -2213,28 +2425,28 @@ fn (mut b FlatBuilder) add_type(typ Type) FlatNodeId {
 		}
 		OptionType {
 			mut edges := []FlatEdge{cap: 1}
-			b.push_expr(mut edges, typ.base_type)
+			edges = b.push_expr(edges, typ.base_type)
 			return b.emit_simple(.typ_option, token.Pos{}, edges)
 		}
 		PointerType {
 			mut edges := []FlatEdge{cap: 1}
-			b.push_expr(mut edges, typ.base_type)
+			edges = b.push_expr(edges, typ.base_type)
 			return b.emit(.typ_pointer, token.Pos{}, b.intern(typ.lifetime), -1, 0, 0, edges)
 		}
 		ResultType {
 			mut edges := []FlatEdge{cap: 1}
-			b.push_expr(mut edges, typ.base_type)
+			edges = b.push_expr(edges, typ.base_type)
 			return b.emit_simple(.typ_result, token.Pos{}, edges)
 		}
 		ThreadType {
 			mut edges := []FlatEdge{cap: 1}
-			b.push_expr(mut edges, typ.elem_type)
+			edges = b.push_expr(edges, typ.elem_type)
 			return b.emit_simple(.typ_thread, token.Pos{}, edges)
 		}
 		TupleType {
 			mut edges := []FlatEdge{cap: typ.types.len}
 			for t in typ.types {
-				b.push_expr(mut edges, t)
+				edges = b.push_expr(edges, t)
 			}
 			return b.emit_simple(.typ_tuple, token.Pos{}, edges)
 		}
@@ -2243,14 +2455,14 @@ fn (mut b FlatBuilder) add_type(typ Type) FlatNodeId {
 
 fn (mut b FlatBuilder) add_attribute(attr Attribute) FlatNodeId {
 	mut edges := []FlatEdge{cap: 2}
-	b.push_expr(mut edges, attr.value)
-	b.push_expr(mut edges, attr.comptime_cond)
+	edges = b.push_expr(edges, attr.value)
+	edges = b.push_expr(edges, attr.comptime_cond)
 	return b.emit(.aux_attribute, token.Pos{}, b.intern(attr.name), -1, 0, 0, edges)
 }
 
 fn (mut b FlatBuilder) add_field_init(field FieldInit) FlatNodeId {
 	mut edges := []FlatEdge{cap: 1}
-	b.push_expr(mut edges, field.value)
+	edges = b.push_expr(edges, field.value)
 	return b.emit(.aux_field_init, token.Pos{}, b.intern(field.name), -1, 0, 0, edges)
 }
 
@@ -2273,9 +2485,9 @@ fn field_decl_flags(field FieldDecl) u8 {
 
 fn (mut b FlatBuilder) add_field_decl(field FieldDecl) FlatNodeId {
 	mut edges := []FlatEdge{cap: 3}
-	b.push_expr(mut edges, field.typ)
-	b.push_expr(mut edges, field.value)
-	b.push_edge(mut edges, b.make_list_attribute(field.attributes))
+	edges = b.push_expr(edges, field.typ)
+	edges = b.push_expr(edges, field.value)
+	edges = b.push_edge(edges, b.make_list_attribute(field.attributes))
 	return b.emit(.aux_field_decl, token.Pos{}, b.intern(field.name), -1, 0,
 		field_decl_flags(field), edges)
 }
@@ -2286,23 +2498,23 @@ fn (mut b FlatBuilder) add_parameter(param Parameter) FlatNodeId {
 		flags |= flag_is_mut
 	}
 	mut edges := []FlatEdge{cap: 1}
-	b.push_expr(mut edges, param.typ)
+	edges = b.push_expr(edges, param.typ)
 	return b.emit(.aux_parameter, param.pos, b.intern(param.name), -1, 0, flags, edges)
 }
 
 fn (mut b FlatBuilder) add_match_branch(branch MatchBranch) FlatNodeId {
 	mut edges := []FlatEdge{cap: 2}
-	b.push_edge(mut edges, b.make_list_expr(branch.cond))
-	b.push_edge(mut edges, b.make_list_stmt(branch.stmts))
+	edges = b.push_edge(edges, b.make_list_expr(branch.cond))
+	edges = b.push_edge(edges, b.make_list_stmt(branch.stmts))
 	return b.emit_simple(.aux_match_branch, branch.pos, edges)
 }
 
 fn (mut b FlatBuilder) add_string_inter(inter StringInter) FlatNodeId {
 	mut edges := []FlatEdge{cap: 4}
-	b.push_expr(mut edges, inter.expr)
-	b.push_expr(mut edges, inter.format_expr)
-	b.push_edge(mut edges, b.emit_int(inter.width))
-	b.push_edge(mut edges, b.emit_int(inter.precision))
+	edges = b.push_expr(edges, inter.expr)
+	edges = b.push_expr(edges, inter.format_expr)
+	edges = b.push_edge(edges, b.emit_int(inter.width))
+	edges = b.push_edge(edges, b.emit_int(inter.precision))
 	return b.emit(.aux_string_inter, token.Pos{}, b.intern(inter.resolved_fmt), -1,
 		u16(int(inter.format)), 0, edges)
 }

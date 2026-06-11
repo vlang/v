@@ -6,8 +6,8 @@
 // Bit-equality pin for s172: `register_fn_signatures_from_flat` (flat-cursor
 // port) must register the same fn signatures (fn_index, mod.funcs) as the
 // legacy `register_fn_signatures`. The flat port walks one file's top-level
-// stmts via FileCursor and only rehydrates `.stmt_fn_decl` nodes — via
-// `decode_fn_decl_signature` which returns FnDecl with `stmts = []`. Fn
+// stmts via FileCursor and only reads `.stmt_fn_decl` signatures via
+// `Cursor.fn_decl_signature()` which returns FnDecl with `stmts = []`. Fn
 // bodies are never decoded — the largest per-stmt savings of any SSA
 // phase port.
 module ssa

@@ -1,3 +1,4 @@
+// vtest vflags: -gc boehm
 const issue_27329_kind_false = 0
 const issue_27329_kind_true = 1
 const issue_27329_kind_len = 2

@@ -3993,6 +3993,7 @@ fn test_x64_linux_hanoi_example_strict_tiny_no_libc() {
 	$if linux {
 		result := run_x64_host_file_redirected_tiny('hanoi_example_strict_tiny_no_libc',
 			x64_examples_dir(), 'hanoi.v')
+		assert !result.build_output.contains('builtin__malloc_noscan'), '${x64_host_result_context(result)}\nhanoi tiny build kept malloc_noscan fallback:\n${result.build_output}'
 		assert_x64_linux_no_libc_binary(result, x64_hanoi_example_stdout())
 		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes +
 			linux_tiny_string_plus_arena_metadata_bytes)
@@ -4004,6 +4005,7 @@ fn test_x64_linux_hanoi_example_auto_tiny_no_libc() {
 	$if linux {
 		result := run_x64_host_file_redirected_auto('hanoi_example_auto_tiny_no_libc',
 			x64_examples_dir(), 'hanoi.v')
+		assert !result.build_output.contains('builtin__malloc_noscan'), '${x64_host_result_context(result)}\nhanoi tiny build kept malloc_noscan fallback:\n${result.build_output}'
 		assert_x64_linux_no_libc_binary(result, x64_hanoi_example_stdout())
 		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes +
 			linux_tiny_string_plus_arena_metadata_bytes)

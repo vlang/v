@@ -129,12 +129,12 @@ pub fn compress(data []u8, format CompressParams) ![]u8 {
 	return match format.format {
 		.zlib { compress_zlib(data) }
 		.gzip { compress_gzip(data) }
-		.raw_deflate { deflate_compress_fixed(data) }
+		.raw_deflate { deflate_compress_fixed(data)! }
 	}
 }
 
 pub fn compress_zlib(data []u8) ![]u8 {
-	payload := deflate_compress_fixed(data)
+	payload := deflate_compress_fixed(data)!
 	cksum := adler32.sum(data)
 	mut out := []u8{cap: 2 + payload.len + 4}
 	out << u8(0x78) // CMF: CM=8 deflate, CINFO=7 (32K window)
@@ -146,7 +146,7 @@ pub fn compress_zlib(data []u8) ![]u8 {
 
 // compress_gzip compresses data into a gzip stream (RFC 1952).
 pub fn compress_gzip(data []u8) ![]u8 {
-	payload := deflate_compress_fixed(data)
+	payload := deflate_compress_fixed(data)!
 	mut out := []u8{cap: 10 + payload.len + 8}
 	// 10-byte gzip header: ID1 ID2 CM FLG MTIME(4) XFL OS
 	out << [u8(0x1f), 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff]
@@ -158,7 +158,7 @@ pub fn compress_gzip(data []u8) ![]u8 {
 
 // compress_raw compresses data to a raw RFC 1951 DEFLATE stream.
 pub fn compress_raw(data []u8) ![]u8 {
-	return deflate_compress_fixed(data)
+	return deflate_compress_fixed(data)!
 }
 
 // decompress decompresses a zlib (RFC 1950), gzip (RFC 1952), or raw DEFLATE (RFC 1951) stream.
