@@ -7171,13 +7171,13 @@ fn (mut t Transformer) try_transform_map_index_push(stmt ast.ExprStmt) ?ast.Stmt
 	if infix.op != .left_shift {
 		return none
 	}
-	if infix.lhs !is ast.IndexExpr {
-		return none
-	}
-	index_expr := infix.lhs as ast.IndexExpr
+	index_expr := t.index_expr_from_or_target(infix.lhs) or { return none }
 	// Check if the indexed expression is a map with array value type
 	map_expr_typ := t.map_index_lhs_type(index_expr.lhs) or { return none }
 	map_type := t.unwrap_map_type(map_expr_typ) or { return none }
+	if t.is_pointer_type(map_type.value_type) {
+		return none
+	}
 	// Map values can be aliases of arrays (for example strings.Builder).
 	val_type := t.unwrap_alias_and_pointer_type(map_type.value_type)
 	if val_type !is types.Array {
