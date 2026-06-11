@@ -174,8 +174,12 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	} $else {
 		$if linux && !freestanding {
 			$if !glibc {
-				eprintln('backtrace_symbols is missing => printing backtraces is not available.')
-				eprintln('Some libc implementations like musl simply do not provide it.')
+				$if tinyc {
+					C.tcc_backtrace(c'Backtrace')
+				} $else {
+					eprintln('backtrace_symbols is missing => printing backtraces is not available.')
+					eprintln('Some libc implementations like musl simply do not provide it.')
+				}
 				return false
 			} $else {
 				current_executable_name := backtrace_current_executable_name()
