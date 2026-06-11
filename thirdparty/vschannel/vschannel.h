@@ -28,6 +28,9 @@ TlsContext new_tls_context();
 
 // ALPN (RFC 7301) support. `wire` is the standard ALPN wire format: each
 // protocol name preceded by a 1-byte length, e.g. "\x02h2\x08http/1.1".
+// vschannel_alpn_supported reports whether this Windows version's SChannel
+// can advertise ALPN at all (Windows 8.1+).
+INT vschannel_alpn_supported();
 void vschannel_set_alpn(TlsContext *tls_ctx, const char *wire, INT len);
 INT vschannel_get_alpn(TlsContext *tls_ctx, char *out, INT out_cap);
 INT vschannel_alpn_probe(TlsContext *tls_ctx, INT iport, LPWSTR host, char *out, INT out_cap);

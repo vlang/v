@@ -17,6 +17,7 @@ fn C.new_tls_context() C.TlsContext
 fn C.vschannel_use_tls12_client_protocol()
 fn C.vschannel_init(tls_ctx &C.TlsContext, validate_server_certificate C.BOOL)
 fn C.vschannel_last_error(tls_ctx &C.TlsContext) int
+fn C.vschannel_alpn_supported() int
 
 // vschannel_request_on_open mirrors C.request (declared in builtin/cfns.c.v) but
 // runs over an already-open connection. See thirdparty/vschannel/vschannel.c.
@@ -26,8 +27,10 @@ fn vschannel_ssl_do(req &Request, port int, method Method, host_name string, pat
 	// When HTTP/2 is enabled (the default for https), advertise ALPN `h2` and,
 	// if the server selects it, speak HTTP/2. Otherwise fall back to HTTP/1.1
 	// over the same connection (see vschannel_h2_do). When HTTP/2 is opted out
-	// of, use the original one-shot HTTP/1.1 path with no ALPN.
-	if req.enable_http2 {
+	// of — or this Windows version's SChannel predates client-side ALPN
+	// (pre-8.1), where injecting the ALPN buffer can fail the handshake
+	// outright — use the original one-shot HTTP/1.1 path with no ALPN.
+	if req.enable_http2 && C.vschannel_alpn_supported() != 0 {
 		return vschannel_h2_do(req, port, method, host_name, path, data, header)!
 	}
 	return vschannel_h1_do(req, port, method, host_name, path, data, header)!

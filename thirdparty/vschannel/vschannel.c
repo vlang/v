@@ -137,6 +137,35 @@ TlsContext new_tls_context() {
 	};
 };
 
+// vschannel_alpn_supported reports whether this Windows version's SChannel
+// supports client-side ALPN, which was introduced in Windows 8.1 / Server
+// 2012 R2 (version 6.3). On older versions, passing a
+// SECBUFFER_APPLICATION_PROTOCOLS input buffer into the handshake can fail it
+// outright, so callers should skip ALPN (and HTTP/2) entirely there. Uses
+// RtlGetVersion because GetVersionEx lies on manifest-less binaries from
+// Windows 8.1 onwards.
+INT vschannel_alpn_supported() {
+	static INT cached = -1;
+	if (cached < 0) {
+		typedef LONG (WINAPI *RtlGetVersionFn)(OSVERSIONINFOW *);
+		OSVERSIONINFOW vi;
+		RtlGetVersionFn get_version = (RtlGetVersionFn)GetProcAddress(
+				GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
+		INT supported = 0;
+		if (get_version != NULL) {
+			ZeroMemory(&vi, sizeof(vi));
+			vi.dwOSVersionInfoSize = sizeof(vi);
+			if (get_version(&vi) == 0
+					&& (vi.dwMajorVersion > 6
+						|| (vi.dwMajorVersion == 6 && vi.dwMinorVersion >= 3))) {
+				supported = 1;
+			}
+		}
+		cached = supported;
+	}
+	return cached;
+}
+
 // vschannel_set_alpn configures the ALPN protocol list to advertise during the
 // next handshake. `wire` is the standard ALPN wire format (each protocol name
 // preceded by a 1-byte length), e.g. "\x02h2\x08http/1.1". Passing len == 0
