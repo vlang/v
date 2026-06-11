@@ -1423,7 +1423,6 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.emit_interface_method_wrapper_decls()
 	g.emit_interface_clone_decls()
 	g.emit_array_interface_repeat_decls()
-	g.emit_missing_array_contains_fallback_decls()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 4 helper declarations')
 
@@ -2102,7 +2101,9 @@ pub fn (mut g Gen) gen_finalize() string {
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'finalize test main')
 
-	g.emit_missing_array_contains_fallbacks()
+	array_contains_specs := g.missing_array_contains_fallback_specs()
+	late_array_contains_decls := array_contains_fallback_decls(array_contains_specs)
+	g.emit_array_contains_fallbacks(array_contains_specs)
 	g.emit_missing_runtime_fallbacks()
 	g.emit_cached_module_init_function()
 	g.emit_exported_const_symbols()
@@ -2121,41 +2122,50 @@ pub fn (mut g Gen) gen_finalize() string {
 	}
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'finalize late str macros')
-	if g.anon_fn_defs.len > 0 || g.spawn_wrapper_defs.len > 0 || g.trampoline_defs.len > 0
-		|| g.late_struct_defs.len > 0 || g.pending_late_body_keys.len > 0 {
+	has_late_defs := g.anon_fn_defs.len > 0 || g.spawn_wrapper_defs.len > 0
+		|| g.trampoline_defs.len > 0 || g.late_struct_defs.len > 0
+		|| g.pending_late_body_keys.len > 0
+	if late_array_contains_decls.len > 0 || has_late_defs {
 		full := g.sb.str()
 		stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 			'finalize snapshot')
-		mut out_sb := strings.new_builder(full.len + 4096)
+		mut out_sb := strings.new_builder(full.len + late_array_contains_decls.len + 4096)
 		unsafe { out_sb.write_ptr(full.str, g.pass5_start_pos) }
-		// Late-discovered generic struct definitions (discovered during setup/pass 4 codegen)
-		for def in g.late_struct_defs {
-			out_sb.write_string(def)
-		}
-		// Mark pending late body keys as emitted now that they're in the output.
-		for key, _ in g.pending_late_body_keys {
-			g.emitted_types[key] = true
-		}
-		g.pending_late_body_keys = map[string]bool{}
-		// Emit any option/result wrappers that were deferred because their payload
-		// types were only in late_struct_defs. Temporarily swap sb with out_sb.
-		g.sb = out_sb
-		g.emit_option_result_structs()
-		out_sb = g.sb
-		g.sb = strings.new_builder(0)
-		mut seen_spawn_defs := map[string]bool{}
-		for def in g.spawn_wrapper_defs {
-			if def in seen_spawn_defs {
-				continue
+		if has_late_defs {
+			// Late-discovered generic struct definitions (discovered during setup/pass 4 codegen)
+			for def in g.late_struct_defs {
+				out_sb.write_string(def)
 			}
-			seen_spawn_defs[def] = true
-			out_sb.write_string(def)
+			// Mark pending late body keys as emitted now that they're in the output.
+			for key, _ in g.pending_late_body_keys {
+				g.emitted_types[key] = true
+			}
+			g.pending_late_body_keys = map[string]bool{}
+			// Emit any option/result wrappers that were deferred because their payload
+			// types were only in late_struct_defs. Temporarily swap sb with out_sb.
+			g.sb = out_sb
+			g.emit_option_result_structs()
+			out_sb = g.sb
+			g.sb = strings.new_builder(0)
 		}
-		for def in g.anon_fn_defs {
-			out_sb.write_string(def)
+		if late_array_contains_decls.len > 0 {
+			out_sb.write_string(late_array_contains_decls)
 		}
-		for def in g.trampoline_defs {
-			out_sb.write_string(def)
+		if has_late_defs {
+			mut seen_spawn_defs := map[string]bool{}
+			for def in g.spawn_wrapper_defs {
+				if def in seen_spawn_defs {
+					continue
+				}
+				seen_spawn_defs[def] = true
+				out_sb.write_string(def)
+			}
+			for def in g.anon_fn_defs {
+				out_sb.write_string(def)
+			}
+			for def in g.trampoline_defs {
+				out_sb.write_string(def)
+			}
 		}
 		if g.pass5_start_pos < full.len {
 			unsafe { out_sb.write_ptr(full.str + g.pass5_start_pos, full.len - g.pass5_start_pos) }

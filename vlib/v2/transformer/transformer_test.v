@@ -6005,6 +6005,124 @@ fn test_transform_map_index_push_lowers_to_map_get_and_set() {
 	assert map_call.args.len == 3
 }
 
+fn test_transform_map_index_push_generic_arg_or_index_lowers_to_map_get_and_set() {
+	mut t := create_transformer_with_vars({
+		'lists': types.Type(types.Map{
+			key_type:   types.int_
+			value_type: types.Type(types.Array{
+				elem_type: types.int_
+			})
+		})
+	})
+
+	result := t.try_transform_map_index_push(ast.ExprStmt{
+		expr: ast.InfixExpr{
+			op:  .left_shift
+			lhs: ast.GenericArgOrIndexExpr{
+				lhs:  ast.Ident{
+					name: 'lists'
+				}
+				expr: ast.BasicLiteral{
+					kind:  .number
+					value: '2'
+				}
+			}
+			rhs: ast.BasicLiteral{
+				kind:  .number
+				value: '1'
+			}
+		}
+	}) or {
+		assert false, 'expected ambiguous map index push to be transformed'
+		return
+	}
+
+	assert result is ast.ExprStmt
+	expr_stmt := result as ast.ExprStmt
+	assert expr_stmt.expr is ast.CallExpr
+	mut call_names := []string{}
+	collect_call_names_from_expr(expr_stmt.expr, mut call_names)
+	assert 'map__get_and_set' in call_names
+}
+
+fn test_transform_map_index_push_generic_args_lowers_to_map_get_and_set() {
+	mut t := create_transformer_with_vars({
+		'lists': types.Type(types.Map{
+			key_type:   types.int_
+			value_type: types.Type(types.Array{
+				elem_type: types.int_
+			})
+		})
+	})
+
+	result := t.try_transform_map_index_push(ast.ExprStmt{
+		expr: ast.InfixExpr{
+			op:  .left_shift
+			lhs: ast.GenericArgs{
+				lhs:  ast.Ident{
+					name: 'lists'
+				}
+				args: [
+					ast.Expr(ast.BasicLiteral{
+						kind:  .number
+						value: '2'
+					}),
+				]
+			}
+			rhs: ast.BasicLiteral{
+				kind:  .number
+				value: '1'
+			}
+		}
+	}) or {
+		assert false, 'expected generic-args map index push to be transformed'
+		return
+	}
+
+	assert result is ast.ExprStmt
+	expr_stmt := result as ast.ExprStmt
+	assert expr_stmt.expr is ast.CallExpr
+	mut call_names := []string{}
+	collect_call_names_from_expr(expr_stmt.expr, mut call_names)
+	assert 'map__get_and_set' in call_names
+}
+
+fn test_transform_map_index_push_refuses_pointer_map_value() {
+	array_int_type := types.Type(types.Array{
+		elem_type: types.int_
+	})
+	mut t := create_transformer_with_vars({
+		'lists': types.Type(types.Map{
+			key_type:   types.int_
+			value_type: types.Type(types.Pointer{
+				base_type: array_int_type
+			})
+		})
+	})
+
+	if _ := t.try_transform_map_index_push(ast.ExprStmt{
+		expr: ast.InfixExpr{
+			op:  .left_shift
+			lhs: ast.IndexExpr{
+				lhs:  ast.Ident{
+					name: 'lists'
+				}
+				expr: ast.BasicLiteral{
+					kind:  .number
+					value: '2'
+				}
+			}
+			rhs: ast.BasicLiteral{
+				kind:  .number
+				value: '1'
+			}
+		}
+	})
+	{
+		assert false, 'expected pointer map value push not to be transformed'
+	}
+}
+
 fn test_transform_map_index_selector_postfix_lowers_to_map_get_and_set() {
 	fn_type := types.Type(types.Struct{
 		name:   'Fn'

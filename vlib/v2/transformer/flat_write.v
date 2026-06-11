@@ -2120,6 +2120,13 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 				t.count_flat_fallback('stmt_expr')
 				t.transform_stmt_list_item_to_flat(expr_stmt_from_cursor(c), mut ids, mut out)
 			} else {
+				expr := c.edge(0)
+				if expr.kind() == .expr_infix
+					&& unsafe { token.Token(int(expr.aux())) } == .left_shift {
+					if t.try_emit_map_index_push_to_flat(expr_stmt_from_cursor(c), mut ids, mut out) {
+						return
+					}
+				}
 				id := t.transform_expr_stmt_cursor_to_flat(c, mut out)
 				t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
 			}

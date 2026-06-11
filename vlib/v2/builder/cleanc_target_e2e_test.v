@@ -373,6 +373,133 @@ fn assert_no_obvious_hosted_headers(c_source string) {
 	}
 }
 
+fn c_source_line_matches(c_source string, idx int, line string) bool {
+	end_idx := idx + line.len
+	return (idx == 0 || c_source[idx - 1] == `\n`)
+		&& (end_idx == c_source.len || c_source[end_idx] == `\n`)
+}
+
+fn c_source_find_complete_line(c_source string, line string) ?int {
+	mut search_from := 0
+	for {
+		idx := c_source.index_after(line, search_from) or { return none }
+		if c_source_line_matches(c_source, idx, line) {
+			return idx
+		}
+		search_from = idx + 1
+	}
+	return none
+}
+
+fn c_source_count_complete_lines(c_source string, line string) int {
+	mut count := 0
+	mut search_from := 0
+	for {
+		idx := c_source.index_after(line, search_from) or { break }
+		if c_source_line_matches(c_source, idx, line) {
+			count++
+		}
+		search_from = idx + 1
+	}
+	return count
+}
+
+fn c_source_find_line_prefix(c_source string, prefix string) ?int {
+	mut search_from := 0
+	for {
+		idx := c_source.index_after(prefix, search_from) or { return none }
+		if idx == 0 || c_source[idx - 1] == `\n` {
+			return idx
+		}
+		search_from = idx + 1
+	}
+	return none
+}
+
+fn c_source_find_line_prefix_after(c_source string, prefix string, start int) ?int {
+	mut search_from := start
+	for {
+		idx := c_source.index_after(prefix, search_from) or { return none }
+		if idx == 0 || c_source[idx - 1] == `\n` {
+			return idx
+		}
+		search_from = idx + 1
+	}
+	return none
+}
+
+fn assert_array_contains_fallback_decl_order(c_source string, fn_name string, prototype string) {
+	prototype_count := c_source_count_complete_lines(c_source, prototype)
+	assert prototype_count == 1, 'expected exactly one complete-line fallback prototype `${prototype}`, found ${prototype_count}'
+	proto_idx := c_source_find_complete_line(c_source, prototype) or {
+		assert false, 'missing array contains fallback prototype `${prototype}`'
+		return
+	}
+	symbol := '${fn_name}('
+	first_symbol_idx := c_source.index(symbol) or {
+		assert false, 'missing array contains fallback symbol `${symbol}`'
+		return
+	}
+	assert first_symbol_idx == proto_idx + 'bool '.len, '`${fn_name}` appears before its fallback prototype'
+
+	first_use_idx := c_source.index_after(symbol, proto_idx + prototype.len) or {
+		assert false, 'missing array contains fallback use `${symbol}` after prototype'
+		return
+	}
+	assert proto_idx < first_use_idx, '`${fn_name}` fallback prototype must precede first use'
+	body_prefix := 'bool ${fn_name}('
+	if body_idx := c_source_find_line_prefix_after(c_source, body_prefix, proto_idx + prototype.len) {
+		assert first_use_idx < body_idx, '`${fn_name}` first use should occur before generated body'
+	}
+	weak_body := '__attribute__((weak)) bool ${fn_name}('
+	if weak_idx := c_source_find_line_prefix(c_source, weak_body) {
+		assert first_use_idx < weak_idx, '`${fn_name}` first use should occur before fallback weak body'
+		assert proto_idx < weak_idx, '`${fn_name}` fallback prototype must precede weak body'
+	}
+}
+
+fn test_cleanc_cli_array_contains_fallback_decls_precede_pass5_uses() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_cleanc_array_contains_fallback_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	v2_binary := build_v2_for_target_e2e(tmp_dir)
+	res := run_v2_to_c_project_files(v2_binary, tmp_dir, 'array_contains_fallback', [], {
+		'ssa/ids.v':     'module ssa
+
+pub type ValueID = int
+pub type BlockID = int
+'
+		'types/types.v': 'module types
+
+pub type Type = int
+'
+		'main.v':        'module main
+
+import ssa
+import types
+
+fn main() {
+	values := [ssa.ValueID(1)]
+	blocks := [ssa.BlockID(2)]
+	type_ids := [types.Type(3)]
+	assert values.contains(ssa.ValueID(1))
+	assert blocks.contains(ssa.BlockID(2))
+	assert type_ids.contains(types.Type(3))
+}
+'
+	}, 'main.v')
+	assert_cli_success(res)
+	assert_array_contains_fallback_decl_order(res.c_source, 'Array_ssa__ValueID_contains',
+		'bool Array_ssa__ValueID_contains(Array_ssa__ValueID a, ssa__ValueID v);')
+	assert_array_contains_fallback_decl_order(res.c_source, 'Array_ssa__BlockID_contains',
+		'bool Array_ssa__BlockID_contains(Array_ssa__BlockID a, ssa__BlockID v);')
+	assert_array_contains_fallback_decl_order(res.c_source, 'Array_types__Type_contains',
+		'bool Array_types__Type_contains(Array_types__Type a, types__Type v);')
+}
+
 fn test_cleanc_cli_generated_c_target_matrix() {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_cleanc_target_e2e_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
@@ -1233,6 +1360,9 @@ fn main() {
 	')
 	assert_generated_c_heap_runtime_static_assert_contains(map_value_array_append_missing_runtime_res,
 		'map__get_and_set')
+	assert map_value_array_append_missing_runtime_res.c_source.contains('__new_array_with_default_noscan(0, 0, sizeof(int), NULL)'), map_value_array_append_missing_runtime_res.c_source
+	assert !map_value_array_append_missing_runtime_res.c_source.contains('map__get(&m'), map_value_array_append_missing_runtime_res.c_source
+	assert !map_value_array_append_missing_runtime_res.c_source.contains('map__get(&(m)'), map_value_array_append_missing_runtime_res.c_source
 
 	array_clone_missing_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_array_clone_missing_runtime', [
