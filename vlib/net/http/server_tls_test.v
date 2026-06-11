@@ -81,13 +81,6 @@ fn test_server_tls_h2_negotiation() {
 		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
 		return
 	}
-	$if windows && !no_vschannel ? {
-		// On Windows the default HTTP client uses SChannel, which does not yet
-		// advertise ALPN, so it cannot negotiate HTTP/2. Skip here; the path is
-		// covered with `-d no_vschannel` (which uses the mbedtls client).
-		eprintln('skipping: SChannel client has no ALPN/HTTP2 support yet')
-		return
-	}
 	port := pick_port() or {
 		assert false, 'pick_port: ${err}'
 		return
