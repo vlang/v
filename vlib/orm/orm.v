@@ -76,6 +76,13 @@ pub type Primitive = Null
 
 pub struct Null {}
 
+// Row represents a single result row from a raw SQL exec query.
+pub struct Row {
+pub mut:
+	vals  []string
+	names []string // column names; populated by drivers that provide them
+}
+
 pub enum OperationKind {
 	neq         // !=
 	eq          // ==
@@ -328,6 +335,7 @@ mut:
 	create(table Table, fields []TableField) !
 	drop(table Table) !
 	last_id() int
+	execute(query string) ![]Row
 }
 
 // TransactionalConnection extends Connection with transaction primitives.
