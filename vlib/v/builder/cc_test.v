@@ -57,6 +57,30 @@ fn test_c_output_suggests_missing_sokol_shader_symbol_ignores_regular_c_errors()
 	assert c_output_suggests_missing_sokol_shader_symbol(c_output) == ''
 }
 
+fn test_c_output_suggests_missing_c_function_with_clang_style_output() {
+	c_output := "/tmp/v_501/main.tmp.c:4111:2: error: call to undeclared function 'bad_fn'; ISO C99 and later do not support implicit function declarations"
+	known_c_functions := {
+		'bad_fn': 'C.bad_fn'
+	}
+	assert c_output_suggests_missing_c_function(c_output, known_c_functions) == 'C.bad_fn'
+}
+
+fn test_c_output_suggests_missing_c_function_with_tcc_style_output() {
+	c_output := "/tmp/v_501/main.tmp.c:4111: warning: implicit declaration of function 'bad_fn'"
+	known_c_functions := {
+		'bad_fn': 'C.bad_fn'
+	}
+	assert c_output_suggests_missing_c_function(c_output, known_c_functions) == 'C.bad_fn'
+}
+
+fn test_c_output_suggests_missing_c_function_ignores_unknown_symbols() {
+	c_output := "/tmp/v_501/main.tmp.c:4111:2: error: call to undeclared function 'bad_fn'"
+	known_c_functions := {
+		'other_fn': 'C.other_fn'
+	}
+	assert c_output_suggests_missing_c_function(c_output, known_c_functions) == ''
+}
+
 fn test_macos_compile_args_do_not_force_version_min_by_default() {
 	compile_args := macos_compile_args(['-os', 'macos', '-cc', 'clang', hello_world_example()])
 	assert macos_version_min_flags(compile_args) == []string{}
