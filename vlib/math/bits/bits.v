@@ -134,7 +134,6 @@ fn trailing_zeros_64_default(x u64) int {
 	return int(de_bruijn64tab[int((x & -x) * de_bruijn64 >> (64 - 6))])
 }
 
-// --- OnesCount ---
 // ones_count_8 returns the number of one bits ("population count") in x.
 @[inline]
 pub fn ones_count_8(x u8) int {
@@ -175,6 +174,7 @@ pub fn ones_count_64(x u64) int {
 	return ones_count_64_default(x)
 }
 
+@[inline]
 fn ones_count_64_default(x u64) int {
 	// Implementation: Parallel summing of adjacent bits.
 	// See "Hacker's Delight", Chap. 5: Counting Bits.
@@ -209,7 +209,6 @@ const n16 = u16(16)
 const n32 = u32(32)
 const n64 = u64(64)
 
-// --- RotateLeft ---
 // rotate_left_8 returns the value of x rotated left by (k mod 8) bits.
 // To rotate x right by k bits, call rotate_left_8(x, -k).
 //
@@ -250,7 +249,6 @@ pub fn rotate_left_64(x u64, k int) u64 {
 	return (x << s) | (x >> (n64 - s))
 }
 
-// --- Reverse ---
 // reverse_8 returns the value of x with its bits in reversed order.
 @[direct_array_access; inline]
 pub fn reverse_8(x u8) u8 {
@@ -281,7 +279,6 @@ pub fn reverse_64(x u64) u64 {
 	return reverse_bytes_64(y)
 }
 
-// --- ReverseBytes ---
 // reverse_bytes_16 returns the value of x with its bytes in reversed order.
 //
 // This function's execution time does not depend on the inputs.
@@ -309,7 +306,6 @@ pub fn reverse_bytes_64(x u64) u64 {
 	return (y >> 32) | (y << 32)
 }
 
-// --- Len ---
 // len_8 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
 @[direct_array_access]
 pub fn len_8(x u8) int {
@@ -364,10 +360,6 @@ pub fn len_64(x u64) int {
 	return n + int(len_8_tab[int(y)])
 }
 
-// --- Add with carry ---
-// Add returns the sum with carry of x, y and carry: sum = x + y + carry.
-// The carry input must be 0 or 1; otherwise the behavior is undefined.
-// The carryOut output is guaranteed to be 0 or 1.
 // add_32 returns the sum with carry of x, y and carry: sum = x + y + carry.
 // The carry input must be 0 or 1; otherwise the behavior is undefined.
 // The carryOut output is guaranteed to be 0 or 1.
@@ -394,10 +386,6 @@ pub fn add_64(x u64, y u64, carry u64) (u64, u64) {
 	return sum, carry_out
 }
 
-// --- Subtract with borrow ---
-// Sub returns the difference of x, y and borrow: diff = x - y - borrow.
-// The borrow input must be 0 or 1; otherwise the behavior is undefined.
-// The borrowOut output is guaranteed to be 0 or 1.
 // sub_32 returns the difference of x, y and borrow, diff = x - y - borrow.
 // The borrow input must be 0 or 1; otherwise the behavior is undefined.
 // The borrowOut output is guaranteed to be 0 or 1.
@@ -425,13 +413,11 @@ pub fn sub_64(x u64, y u64, borrow u64) (u64, u64) {
 	return diff, borrow_out
 }
 
-// --- Full-width multiply ---
-
 @[markused]
 pub const two32 = u64(0x100000000)
 const mask32 = two32 - 1
 const overflow_error = 'Overflow Error'
-const divide_error = 'Divide Error'
+const divide_error = 'Divide by Zero Error'
 
 // mul_32 returns the 64-bit product of x and y: (hi, lo) = x * y
 // with the product bits' upper half returned in hi and the lower
@@ -508,7 +494,6 @@ fn mul_add_64_default(x u64, y u64, z u64) (u64, u64) {
 	return hi, lo
 }
 
-// --- Full-width divide ---
 // div_32 returns the quotient and remainder of (hi, lo) divided by y:
 // quo = (hi, lo)/y, rem = (hi, lo)%y with the dividend bits' upper
 // half in parameter hi and the lower half in parameter lo.
@@ -519,7 +504,10 @@ pub fn div_32(hi u32, lo u32, y u32) (u32, u32) {
 }
 
 fn div_32_default(hi u32, lo u32, y u32) (u32, u32) {
-	if y != 0 && y <= hi {
+	if y == 0 {
+		panic(divide_error)
+	}
+	if y <= hi {
 		panic(overflow_error)
 	}
 	z := (u64(hi) << 32) | u64(lo)
@@ -531,7 +519,8 @@ fn div_32_default(hi u32, lo u32, y u32) (u32, u32) {
 // div_64 returns the quotient and remainder of (hi, lo) divided by y:
 // quo = (hi, lo)/y, rem = (hi, lo)%y with the dividend bits' upper
 // half in parameter hi and the lower half in parameter lo.
-// div_64 panics for y == 0 (division by zero) or y <= hi (quotient overflow).
+// div_64 panics for y == 0 (division by zero).
+// Also panics for y <= hi (quotient overflow).
 @[inline]
 pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	return div_64_default(hi, lo, y1)
@@ -540,7 +529,7 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 fn div_64_default(hi u64, lo u64, y1 u64) (u64, u64) {
 	mut y := y1
 	if y == 0 {
-		panic(overflow_error)
+		panic(divide_error)
 	}
 	if y <= hi {
 		panic(overflow_error)
@@ -599,13 +588,18 @@ fn div_64_default(hi u64, lo u64, y1 u64) (u64, u64) {
 // rem_32 returns the remainder of (hi, lo) divided by y. Rem32 panics
 // for y == 0 (division by zero) but, unlike Div32, it doesn't panic
 // on a quotient overflow.
+@[inline]
 pub fn rem_32(hi u32, lo u32, y u32) u32 {
+	if y == 0 {
+		panic(divide_error)
+	}
 	return u32(((u64(hi) << 32) | u64(lo)) % u64(y))
 }
 
 // rem_64 returns the remainder of (hi, lo) divided by y. Rem64 panics
 // for y == 0 (division by zero) but, unlike div_64, it doesn't panic
 // on a quotient overflow.
+@[inline]
 pub fn rem_64(hi u64, lo u64, y u64) u64 {
 	// We scale down hi so that hi < y, then use div_64 to compute the
 	// rem with the guarantee that it won't panic on quotient overflow.
@@ -613,6 +607,9 @@ pub fn rem_64(hi u64, lo u64, y u64) u64 {
 	// hi ≡ hi%y    (mod y)
 	// we have
 	// hi<<64 + lo ≡ (hi%y)<<64 + lo    (mod y)
+	if y == 0 {
+		panic(divide_error)
+	}
 	_, rem := div_64(hi % y, lo, y)
 	return rem
 }
