@@ -775,7 +775,10 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			// The framing is satisfied even when expected_size == 0: on a
 			// keep-alive connection the server sends nothing further, so waiting
 			// for EOF here would stall until the read timeout.
-			framed_complete = true
+			// A response carrying MORE body bytes than its declared
+			// Content-Length is malformed: the stream position is no longer
+			// trustworthy, so such a connection must never be reused.
+			framed_complete = body_so_far == expected_size
 			break
 		}
 		if req.stop_receiving_limit > 0 && new_len > req.stop_receiving_limit {
