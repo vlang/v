@@ -12,10 +12,25 @@ For generating the libgc amalgamation, the following commands were used:
     ./configure --enable-threads=pthreads \
         --enable-static \
         --enable-shared=no \
-        --enable-thread-local-alloc=no \
+        --enable-thread-local-alloc=yes \
         --enable-parallel-mark \
         --enable-single-obj-compilation \
         --enable-gc-debug
+
+NOTE (cx fork, P0 / cx-private #14): the bundled amalgamation was originally
+generated with `--enable-thread-local-alloc=no`. We flip it to `yes` so the
+Linux / `-prod` gc.o path matches the prebuilt macOS libgc
+(thirdparty/tcc/lib/libgc.a, the archive the macOS `cx` build links), which is
+already built with TLA on. Rather than regenerate the whole amalgamation, the
+flip is applied directly in gc.c by changing the autoheader config line
+`/* #undef THREAD_LOCAL_ALLOC */` to `#define THREAD_LOCAL_ALLOC 1` (the TLA
+source is already present in the amalgamation, guarded by `#ifdef
+THREAD_LOCAL_ALLOC`). Parallel-mark stays enabled at compile time but is pinned
+to a single marker at runtime on macOS via `GC_set_markers_count(1)` (emitted
+before `GC_INIT()` by the V cgen main template, vlib/v/gen/c/cmain.v). Together
+these ease MARK-bound multi-thread contention; neither removes the fundamental
+`GC_allocate_ml` alloc-lock serialization, so alloc-heavy `[?map [par]]` still
+anti-scales — see bench/parallel-alloc/README.md and P0-ACCEPTANCE.md.
         
     ../../../cmd/tools/amalgamate -o ../gc.c \
         -b atomic_ops.h \

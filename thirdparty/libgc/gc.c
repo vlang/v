@@ -365,7 +365,17 @@
 /* #undef SUNOS53_SHARED_LIB */
 
 /* Define to enable thread-local allocation optimization. */
-/* #undef THREAD_LOCAL_ALLOC */
+/* cx fork (P0, cx-private #14): thread-local-alloc batches the global
+   GC_allocate_ml acquisition to ~1 per heap block, easing alloc-lock
+   contention on the multi-thread interpreter path. The prebuilt macOS
+   libgc (thirdparty/tcc/lib/libgc.a, which the macOS cx build actually
+   links) is already configured with TLA on; this flip brings the bundled
+   amalgamation (Linux / -prod gc.o path) into line with it. The TLA
+   implementation is present in this amalgamation (guarded by
+   `#ifdef THREAD_LOCAL_ALLOC` below — e.g. the thread_local_alloc.c body
+   ~L13715), so defining the macro activates real code, exactly as
+   `./configure --enable-thread-local-alloc=yes` would. */
+#define THREAD_LOCAL_ALLOC 1
 
 /* Use Unicode (W) variant of Win32 API instead of ASCII (A) one. */
 /* #undef UNICODE */
