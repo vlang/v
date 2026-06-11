@@ -1,0 +1,877 @@
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+module http
+
+import sync
+import time
+
+// This file implements a multiplexed HTTP/2 client connection: one connection
+// carries many concurrent request streams. A background reader thread (the
+// only reader of the transport, and the sole owner of the HPACK decoder and
+// read buffer) demuxes incoming frames to per-stream state; request threads
+// wait on their stream's condition variable. It complements the synchronous
+// single-stream H2Conn in h2_conn.v, which remains for the one-shot paths.
+//
+// Locking protocol — a thread holds at most one of {smu, fmu, wmu} at a time,
+// with a single exception: wmu → smu is allowed (smu sections take no other
+// locks). A stream's own mu is never held while taking a connection lock.
+//   wmu      transport writes, the HPACK encoder, stream-id allocation +
+//            registration + HEADERS send (one atomic critical section), and
+//            the lazy connection preface.
+//   fmu/fcv  flow control: the connection send window, every stream's send
+//            window, and the peer's initial-window/max-frame mirrors. fcv is
+//            broadcast whenever a window can grow and when the connection
+//            dies, so blocked senders always wake.
+//   smu      connection state: the stream map, refcount, active stream count,
+//            goaway/closed/shutting_down, and the peer max-streams mirror.
+
+// h2_err_retryable_code tags stream errors where the request provably never
+// reached server processing (GOAWAY-unprocessed, connection closed before the
+// request was sent, admission refused), so it is safe to retry on a fresh
+// connection even for non-idempotent methods.
+pub const h2_err_retryable_code = -20012
+
+// h2_retryable_error builds an error carrying h2_err_retryable_code.
+fn h2_retryable_error(reason string) IError {
+	return error_with_code('h2: ${reason}', h2_err_retryable_code)
+}
+
+// H2MuxStream is the client-side state of one in-flight request stream.
+@[heap]
+struct H2MuxStream {
+mut:
+	id u32
+	// --- response state, guarded by mu, signaled via cv ---
+	mu           &sync.Mutex = unsafe { nil }
+	cv           &sync.Cond  = unsafe { nil }
+	status       int
+	resp_headers []H2HeaderField
+	headers_done bool
+	chunks       [][]u8 // DATA payloads appended by the reader, drained by the requester
+	body_rcvd    u64    // cumulative DATA bytes received
+	ended        bool   // END_STREAM, RST, or connection death
+	err          string // non-empty: the stream failed
+	retryable    bool   // the failure is safe to retry on a fresh connection
+	sent_headers bool   // the request HEADERS reached the transport
+	// --- send state, guarded by the connection's fmu ---
+	send_window i64
+}
+
+fn new_h2_mux_stream() &H2MuxStream {
+	mu := sync.new_mutex()
+	return &H2MuxStream{
+		mu: mu
+		cv: sync.new_cond(mu)
+	}
+}
+
+// fail marks the stream failed and wakes its requester.
+fn (mut s H2MuxStream) fail(msg string, retryable bool) {
+	s.mu.lock()
+	if !s.ended {
+		s.err = msg
+		s.retryable = retryable
+		s.ended = true
+		s.cv.signal()
+	}
+	s.mu.unlock()
+}
+
+// H2MuxConn is a multiplexed client-side HTTP/2 connection, safe for
+// concurrent requests from multiple threads.
+@[heap]
+pub struct H2MuxConn {
+mut:
+	transport H2Transport
+	// close_transport, when set, is called exactly once during teardown, after
+	// the reader thread has exited and the last reference is dropped.
+	close_transport fn () = unsafe { nil }
+	// --- guarded by wmu ---
+	wmu            &sync.Mutex = sync.new_mutex()
+	encoder        H2HpackEncoder
+	next_stream_id u32 = 1
+	handshaked     bool
+	// --- guarded by fmu, fcv signals growth/death ---
+	fmu                 &sync.Mutex = unsafe { nil }
+	fcv                 &sync.Cond  = unsafe { nil }
+	send_window         i64         = i64(h2_default_initial_window)
+	peer_initial_window i64         = i64(h2_default_initial_window)
+	peer_max_frame      u32         = h2_default_max_frame_size
+	fmu_dead            bool // mirror of `closed` for blocked senders
+	// --- guarded by smu ---
+	smu              &sync.Mutex = sync.new_mutex()
+	streams          map[u32]&H2MuxStream
+	refs             int = 1 // the owner's (pool's) reference; +1 per in-flight request
+	active_streams   int
+	max_streams      u32 = 100 // our own cap on concurrent streams
+	peer_max_streams u32 = max_u32
+	goaway           bool
+	goaway_last      u32
+	closed           bool // the reader has exited; only the reader sets this
+	shutting_down    bool
+	conn_err         string
+	idle_since       time.Time
+	// --- reader-thread private (no locks) ---
+	decoder H2HpackDecoder
+	rbuf    []u8
+}
+
+// new_h2_mux_conn creates a multiplexed connection over `transport` and starts
+// its background reader. The connection preface is sent lazily with the first
+// request. `close_transport` (optional) is called once at final teardown.
+pub fn new_h2_mux_conn(transport H2Transport, close_transport fn ()) &H2MuxConn {
+	fmu := sync.new_mutex()
+	mut c := &H2MuxConn{
+		transport:       transport
+		close_transport: close_transport
+		fmu:             fmu
+		fcv:             sync.new_cond(fmu)
+		idle_since:      time.now()
+	}
+	spawn c.read_loop()
+	return c
+}
+
+// can_take_new_request reports whether a new request may be admitted on this
+// connection right now (it may still be refused later under smu).
+pub fn (mut c H2MuxConn) can_take_new_request() bool {
+	c.smu.lock()
+	defer {
+		c.smu.unlock()
+	}
+	limit := if c.peer_max_streams < c.max_streams { c.peer_max_streams } else { c.max_streams }
+	return !c.closed && !c.goaway && !c.shutting_down && u32(c.active_streams) < limit
+}
+
+// shutdown_when_idle asks the connection to retire: no new requests are
+// admitted, and once no requests are in flight and the owner's reference is
+// released, the transport is closed.
+pub fn (mut c H2MuxConn) shutdown_when_idle() {
+	c.smu.lock()
+	c.shutting_down = true
+	c.smu.unlock()
+}
+
+// release drops the owner's reference. The connection tears its transport
+// down once the reader has exited and all references are gone.
+pub fn (mut c H2MuxConn) release() {
+	c.drop_ref()
+}
+
+fn (mut c H2MuxConn) drop_ref() {
+	c.smu.lock()
+	c.refs--
+	do_teardown := c.refs <= 0 && c.closed
+	c.smu.unlock()
+	if do_teardown {
+		if c.close_transport != unsafe { nil } {
+			c.close_transport()
+		}
+	}
+}
+
+// --- request side -----------------------------------------------------------
+
+// do sends one request over the connection, concurrently with other streams,
+// and returns its response. Errors carrying h2_err_retryable_code are safe to
+// retry on a fresh connection.
+pub fn (mut c H2MuxConn) do(req H2ClientRequest) !H2ClientResponse {
+	// Admission.
+	c.smu.lock()
+	if c.closed {
+		reason := if c.conn_err != '' { c.conn_err } else { 'connection is closed' }
+		c.smu.unlock()
+		return h2_retryable_error(reason)
+	}
+	if c.goaway || c.shutting_down {
+		c.smu.unlock()
+		return h2_retryable_error('connection is shutting down')
+	}
+	limit := if c.peer_max_streams < c.max_streams { c.peer_max_streams } else { c.max_streams }
+	if u32(c.active_streams) >= limit {
+		c.smu.unlock()
+		return h2_retryable_error('connection is at its concurrent stream limit')
+	}
+	c.refs++
+	c.active_streams++
+	c.smu.unlock()
+
+	mut s := new_h2_mux_stream()
+	resp := c.do_on_stream(mut s, req) or {
+		c.finish_stream(mut s)
+		return err
+	}
+	c.finish_stream(mut s)
+	return resp
+}
+
+// finish_stream removes the stream from the connection and releases the
+// request's reference (possibly triggering teardown).
+fn (mut c H2MuxConn) finish_stream(mut s H2MuxStream) {
+	c.smu.lock()
+	c.streams.delete(s.id)
+	c.active_streams--
+	c.idle_since = time.now()
+	c.smu.unlock()
+	c.drop_ref()
+}
+
+fn (mut c H2MuxConn) do_on_stream(mut s H2MuxStream, req H2ClientRequest) !H2ClientResponse {
+	mut fields := [
+		H2HeaderField{':method', req.method},
+		H2HeaderField{':scheme', req.scheme},
+		H2HeaderField{':authority', req.authority},
+		H2HeaderField{':path', req.path},
+	]
+	for h in req.headers {
+		fields << h
+	}
+	has_body := req.body.len > 0
+
+	// Stream-id allocation, registration, HPACK encoding and the HEADERS(+
+	// CONTINUATION) send form one wmu critical section: ids must hit the wire
+	// in increasing order, header blocks must be contiguous, and the stream
+	// must be registered before its first byte is sent so the reader can
+	// always deliver the response.
+	c.wmu.lock()
+	c.handshake_locked() or {
+		c.wmu.unlock()
+		return h2_retryable_error('connection handshake failed: ${err.msg()}')
+	}
+	s.id = c.next_stream_id
+	c.next_stream_id += 2
+	c.smu.lock() // wmu -> smu is the one permitted lock nesting
+	c.streams[s.id] = s
+	c.smu.unlock()
+	block := c.encoder.encode(fields)
+	c.send_header_block_locked(s.id, block, !has_body) or {
+		c.wmu.unlock()
+		c.note_write_failure()
+		// The HEADERS may have partially hit the wire; not safe to blind-retry
+		// unless the transport wrote nothing, which we cannot distinguish here.
+		return error('h2: failed to send request headers: ${err.msg()}')
+	}
+	c.wmu.unlock()
+	s.mu.lock()
+	s.sent_headers = true
+	s.mu.unlock()
+
+	// Initial stream send window (see the registration/SETTINGS-delta note:
+	// any orders of this store and a concurrent delta produce the same value).
+	c.fmu.lock()
+	s.send_window = c.peer_initial_window
+	c.fmu.unlock()
+
+	if has_body {
+		c.send_body_on_stream(mut s, req.body)!
+	}
+	return c.wait_response(mut s, req)
+}
+
+// handshake_locked sends the connection preface and our SETTINGS once.
+// Callers must hold wmu.
+fn (mut c H2MuxConn) handshake_locked() ! {
+	if c.handshaked {
+		return
+	}
+	mut buf := h2_client_preface.bytes()
+	buf << H2Frame(H2SettingsFrame{
+		settings: [
+			H2Setting{h2_settings_enable_push, 0},
+			H2Setting{h2_settings_initial_window_size, h2_default_initial_window},
+			H2Setting{h2_settings_max_frame_size, h2_default_max_frame_size},
+		]
+	}).encode()
+	c.write_all_locked(buf)!
+	c.handshaked = true
+}
+
+// send_header_block_locked writes a header block as HEADERS(+CONTINUATION)
+// frames. Callers must hold wmu.
+fn (mut c H2MuxConn) send_header_block_locked(stream_id u32, block []u8, end_stream bool) ! {
+	c.fmu.lock()
+	max := int(c.peer_max_frame)
+	c.fmu.unlock()
+	if block.len <= max {
+		c.write_all_locked(H2Frame(H2HeadersFrame{
+			stream_id:   stream_id
+			fragment:    block
+			end_headers: true
+			end_stream:  end_stream
+		}).encode())!
+		return
+	}
+	c.write_all_locked(H2Frame(H2HeadersFrame{
+		stream_id:   stream_id
+		fragment:    block[..max]
+		end_headers: false
+		end_stream:  end_stream
+	}).encode())!
+	mut off := max
+	for off < block.len {
+		mut next := off + max
+		if next > block.len {
+			next = block.len
+		}
+		c.write_all_locked(H2Frame(H2ContinuationFrame{
+			stream_id:   stream_id
+			fragment:    block[off..next]
+			end_headers: next == block.len
+		}).encode())!
+		off = next
+	}
+}
+
+// send_body_on_stream writes the request body as DATA frames, bounded by both
+// the connection and stream send windows.
+fn (mut c H2MuxConn) send_body_on_stream(mut s H2MuxStream, body []u8) ! {
+	mut off := 0
+	for off < body.len {
+		// Reserve a window-bounded chunk under fmu (waiting for WINDOW_UPDATE
+		// room when both windows are exhausted), then write it under wmu.
+		c.fmu.lock()
+		for !c.fmu_dead && (c.send_window <= 0 || s.send_window <= 0) {
+			c.fcv.wait()
+		}
+		if c.fmu_dead {
+			c.fmu.unlock()
+			return error('h2: connection closed while sending the request body')
+		}
+		mut chunk := body.len - off
+		if chunk > int(c.peer_max_frame) {
+			chunk = int(c.peer_max_frame)
+		}
+		if i64(chunk) > c.send_window {
+			chunk = int(c.send_window)
+		}
+		if i64(chunk) > s.send_window {
+			chunk = int(s.send_window)
+		}
+		c.send_window -= i64(chunk)
+		s.send_window -= i64(chunk)
+		c.fmu.unlock()
+
+		next := off + chunk
+		c.wmu.lock()
+		c.write_all_locked(H2Frame(H2DataFrame{
+			stream_id:  s.id
+			data:       body[off..next]
+			end_stream: next == body.len
+		}).encode()) or {
+			c.wmu.unlock()
+			c.note_write_failure()
+			return error('h2: failed to send request body: ${err.msg()}')
+		}
+		c.wmu.unlock()
+		off = next
+	}
+}
+
+// wait_response drains the stream until it ends, honoring the request's
+// streaming callback and stop limits. Callbacks run on the requester's thread.
+fn (mut c H2MuxConn) wait_response(mut s H2MuxStream, req H2ClientRequest) !H2ClientResponse {
+	mut resp := H2ClientResponse{}
+	mut body_expected := u64(0)
+	mut got_headers := false
+	mut body_so_far := u64(0)
+	mut cancelled := false
+	s.mu.lock()
+	for {
+		// Drain everything currently buffered.
+		if !got_headers && s.headers_done {
+			resp.status = s.status
+			for f in s.resp_headers {
+				resp.headers << f
+				if f.name == 'content-length' {
+					body_expected = f.value.u64()
+				}
+			}
+			got_headers = true
+		}
+		mut drained := u64(0)
+		for s.chunks.len > 0 {
+			chunk := s.chunks[0]
+			s.chunks.delete(0)
+			body_so_far += u64(chunk.len)
+			drained += u64(chunk.len)
+			if req.stop_copying_limit < 0
+				|| i64(body_so_far) - i64(chunk.len) < req.stop_copying_limit {
+				if req.stop_copying_limit >= 0 && i64(body_so_far) > req.stop_copying_limit {
+					remaining := req.stop_copying_limit - (i64(body_so_far) - i64(chunk.len))
+					if remaining > 0 {
+						resp.body << chunk[..int(remaining)]
+					}
+				} else {
+					resp.body << chunk
+				}
+			}
+			if req.on_data != unsafe { nil } {
+				// Run the user callback outside the stream lock so it can
+				// block without stalling the reader's delivery.
+				s.mu.unlock()
+				req.on_data(chunk, body_so_far, body_expected, resp.status)!
+				s.mu.lock()
+			}
+			if req.stop_receiving_limit >= 0 && i64(body_so_far) >= req.stop_receiving_limit {
+				cancelled = true
+				break
+			}
+		}
+		ended := s.ended
+		serr := s.err
+		retryable := s.retryable
+		if cancelled {
+			s.mu.unlock()
+			// The connection-level window must still be credited for the bytes
+			// this round consumed, or the connection's receive window shrinks
+			// permanently for every other stream.
+			if drained > 0 {
+				c.send_conn_window_update(u32(drained)) or {}
+			}
+			c.cancel_stream(mut s)
+			if !got_headers {
+				return error('h2: stream cancelled before a response arrived')
+			}
+			return resp
+		}
+		if drained > 0 {
+			// Replenish flow control for what was just consumed, outside s.mu.
+			s.mu.unlock()
+			c.send_window_updates(s.id, u32(drained)) or {}
+			s.mu.lock()
+			// New chunks may have arrived while unlocked; loop and re-drain.
+			if s.chunks.len > 0 || (s.ended && !ended) {
+				continue
+			}
+		}
+		if ended {
+			s.mu.unlock()
+			if serr != '' {
+				if retryable {
+					return h2_retryable_error(serr)
+				}
+				return error('h2: ${serr}')
+			}
+			if !got_headers {
+				return error('h2: stream closed without a response')
+			}
+			return resp
+		}
+		s.cv.wait()
+	}
+	return resp
+}
+
+// cancel_stream aborts a stream early (stop_receiving_limit): RST_STREAM is
+// sent and the stream is deregistered immediately, so any in-flight late DATA
+// for it is handled by the reader's unknown-stream backstop (connection-level
+// WINDOW_UPDATE), keeping the connection fully usable for other streams.
+fn (mut c H2MuxConn) cancel_stream(mut s H2MuxStream) {
+	c.wmu.lock()
+	c.write_all_locked(H2Frame(H2RstStreamFrame{
+		stream_id:  s.id
+		error_code: u32(H2ErrorCode.cancel)
+	}).encode()) or {}
+	c.wmu.unlock()
+	c.smu.lock()
+	c.streams.delete(s.id)
+	c.smu.unlock()
+}
+
+// send_conn_window_update replenishes only the connection-level receive
+// window (used when the stream itself is being cancelled).
+fn (mut c H2MuxConn) send_conn_window_update(n u32) ! {
+	if n == 0 {
+		return
+	}
+	buf := H2Frame(H2WindowUpdateFrame{
+		stream_id:             0
+		window_size_increment: n
+	}).encode()
+	c.wmu.lock()
+	c.write_all_locked(buf) or {
+		c.wmu.unlock()
+		c.note_write_failure()
+		return err
+	}
+	c.wmu.unlock()
+}
+
+// send_window_updates replenishes both the connection and stream receive
+// windows after the requester consumed `n` body bytes.
+fn (mut c H2MuxConn) send_window_updates(stream_id u32, n u32) ! {
+	if n == 0 {
+		return
+	}
+	mut buf := H2Frame(H2WindowUpdateFrame{
+		stream_id:             0
+		window_size_increment: n
+	}).encode()
+	buf << H2Frame(H2WindowUpdateFrame{
+		stream_id:             stream_id
+		window_size_increment: n
+	}).encode()
+	c.wmu.lock()
+	c.write_all_locked(buf) or {
+		c.wmu.unlock()
+		c.note_write_failure()
+		return err
+	}
+	c.wmu.unlock()
+}
+
+// write_all_locked writes all of `data` to the transport. Callers hold wmu.
+fn (mut c H2MuxConn) write_all_locked(data []u8) ! {
+	mut sent := 0
+	for sent < data.len {
+		n := c.transport.write(data[sent..])!
+		if n <= 0 {
+			return error('transport write returned ${n}')
+		}
+		sent += n
+	}
+}
+
+// note_write_failure marks the connection as retiring after a transport write
+// failed. The writer must not touch reader-owned state or the transport
+// teardown; the reader will observe the broken transport and fail the
+// connection properly.
+fn (mut c H2MuxConn) note_write_failure() {
+	c.smu.lock()
+	c.shutting_down = true
+	c.smu.unlock()
+}
+
+// --- reader side -------------------------------------------------------------
+
+// read_loop runs on the connection's background thread: it is the only reader
+// of the transport and demuxes every incoming frame.
+fn (mut c H2MuxConn) read_loop() {
+	for {
+		frame := c.mux_read_frame() or {
+			if is_transport_timeout_error(err) {
+				if c.reader_should_exit() {
+					c.fail_conn('connection retired while idle')
+					return
+				}
+				continue
+			}
+			c.fail_conn('connection lost: ${err.msg()}')
+			return
+		}
+		c.dispatch_frame(frame) or {
+			c.fail_conn(err.msg())
+			return
+		}
+	}
+}
+
+// reader_should_exit lets an idle reader retire the connection on shutdown.
+fn (mut c H2MuxConn) reader_should_exit() bool {
+	c.smu.lock()
+	defer {
+		c.smu.unlock()
+	}
+	return c.shutting_down && c.active_streams == 0
+}
+
+// is_transport_timeout_error recognizes read-timeout errors, which wake the
+// reader for shutdown checks rather than killing the connection.
+fn is_transport_timeout_error(err IError) bool {
+	msg := err.msg().to_lower()
+	return msg.contains('timed out') || msg.contains('timeout')
+}
+
+// mux_read_frame reads and decodes one frame from the transport, enforcing
+// our advertised max frame size. Only the reader thread calls this; it is the
+// sole user of rbuf.
+fn (mut c H2MuxConn) mux_read_frame() !H2Frame {
+	c.mux_fill_at_least(h2_frame_header_len)!
+	header := h2_parse_frame_header(c.rbuf)!
+	if header.length > h2_default_max_frame_size {
+		return error('frame larger than SETTINGS_MAX_FRAME_SIZE (${header.length})')
+	}
+	total := h2_frame_header_len + int(header.length)
+	c.mux_fill_at_least(total)!
+	frame := h2_parse_frame(header, c.rbuf[h2_frame_header_len..total])!
+	c.rbuf = c.rbuf[total..].clone()
+	return frame
+}
+
+// mux_fill_at_least reads from the transport until rbuf holds n bytes.
+fn (mut c H2MuxConn) mux_fill_at_least(n int) ! {
+	for c.rbuf.len < n {
+		mut tmp := []u8{len: h2_conn_read_chunk}
+		got := c.transport.read(mut tmp)!
+		if got <= 0 {
+			return error('connection closed by peer')
+		}
+		c.rbuf << tmp[..got]
+	}
+}
+
+fn (mut c H2MuxConn) dispatch_frame(frame H2Frame) ! {
+	match frame {
+		H2SettingsFrame {
+			if !frame.ack {
+				c.apply_peer_settings(frame.settings)
+				c.wmu.lock()
+				c.write_all_locked(H2Frame(H2SettingsFrame{
+					ack: true
+				}).encode()) or {
+					c.wmu.unlock()
+					return error('failed to ack SETTINGS: ${err.msg()}')
+				}
+				c.wmu.unlock()
+			}
+		}
+		H2PingFrame {
+			if !frame.ack {
+				c.wmu.lock()
+				c.write_all_locked(H2Frame(H2PingFrame{
+					ack:  true
+					data: frame.data
+				}).encode()) or {
+					c.wmu.unlock()
+					return error('failed to ack PING: ${err.msg()}')
+				}
+				c.wmu.unlock()
+			}
+		}
+		H2WindowUpdateFrame {
+			if frame.stream_id == 0 {
+				c.fmu.lock()
+				c.send_window += i64(frame.window_size_increment)
+				c.fcv.broadcast()
+				c.fmu.unlock()
+			} else {
+				mut s := c.lookup_stream(frame.stream_id)
+				if s != unsafe { nil } {
+					c.fmu.lock()
+					s.send_window += i64(frame.window_size_increment)
+					c.fcv.broadcast()
+					c.fmu.unlock()
+				}
+			}
+		}
+		H2GoawayFrame {
+			c.smu.lock()
+			c.goaway = true
+			c.goaway_last = frame.last_stream_id
+			mut above := []&H2MuxStream{}
+			for id, st in c.streams {
+				if id > frame.last_stream_id {
+					above << st
+				}
+			}
+			c.smu.unlock()
+			for mut st in above {
+				// Streams above last_stream_id were not processed by the
+				// server, so they are safe to retry elsewhere (RFC 7540 6.8).
+				st.fail('request not processed (GOAWAY)', true)
+			}
+			if frame.error_code != u32(H2ErrorCode.no_error) {
+				return error('connection error (GOAWAY ${h2_error_code_name(frame.error_code)})')
+			}
+		}
+		H2HeadersFrame {
+			c.on_response_headers(frame)!
+		}
+		H2DataFrame {
+			c.on_response_data(frame)!
+		}
+		H2RstStreamFrame {
+			mut s := c.lookup_stream(frame.stream_id)
+			if s != unsafe { nil } {
+				s.fail('stream reset by peer (${h2_error_code_name(frame.error_code)})', false)
+			}
+		}
+		H2ContinuationFrame {
+			// CONTINUATION outside a header block is a connection error; the
+			// in-block ones are consumed by on_response_headers.
+			return error('unexpected CONTINUATION frame')
+		}
+		else {
+			// PRIORITY / PUSH_PROMISE (push is disabled) / unknown: ignore.
+		}
+	}
+}
+
+// apply_peer_settings folds the peer's SETTINGS into the connection,
+// including the retroactive initial-window delta for every open stream
+// (RFC 7540 6.9.2).
+fn (mut c H2MuxConn) apply_peer_settings(settings []H2Setting) {
+	for st in settings {
+		match st.id {
+			h2_settings_header_table_size {
+				c.decoder.set_max_dynamic_size(int(st.value))
+			}
+			h2_settings_max_concurrent_streams {
+				c.smu.lock()
+				c.peer_max_streams = st.value
+				c.smu.unlock()
+			}
+			h2_settings_initial_window_size {
+				c.smu.lock()
+				mut open := []&H2MuxStream{}
+				for _, s in c.streams {
+					open << s
+				}
+				c.smu.unlock()
+				c.fmu.lock()
+				delta := i64(st.value) - c.peer_initial_window
+				c.peer_initial_window = i64(st.value)
+				for mut s in open {
+					s.send_window += delta
+				}
+				if delta > 0 {
+					c.fcv.broadcast()
+				}
+				c.fmu.unlock()
+			}
+			h2_settings_max_frame_size {
+				c.fmu.lock()
+				c.peer_max_frame = st.value
+				c.fmu.unlock()
+			}
+			else {} // unknown settings are ignored (RFC 7540 6.5.2)
+		}
+	}
+}
+
+// on_response_headers assembles a complete header block (reading any
+// CONTINUATION frames inline — the reader owns the read path), decodes it,
+// and delivers it to the stream. Blocks for unknown streams are still decoded
+// to keep the connection's HPACK dynamic table in sync, then dropped.
+fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
+	mut fragment := frame.fragment.clone()
+	if !frame.end_headers {
+		for {
+			cont := c.mux_read_frame() or {
+				return error('connection lost inside a header block: ${err.msg()}')
+			}
+			if cont is H2ContinuationFrame {
+				if cont.stream_id != frame.stream_id {
+					return error('CONTINUATION on the wrong stream')
+				}
+				fragment << cont.fragment
+				if cont.end_headers {
+					break
+				}
+			} else {
+				return error('expected a CONTINUATION frame')
+			}
+		}
+	}
+	fields := c.decoder.decode(fragment)!
+	mut s := c.lookup_stream(frame.stream_id)
+	if s == unsafe { nil } {
+		return c.check_unknown_stream(frame.stream_id)
+	}
+	s.mu.lock()
+	if !s.headers_done {
+		for f in fields {
+			if f.name == ':status' {
+				s.status = f.value.int()
+			} else if !f.name.starts_with(':') {
+				s.resp_headers << f
+			}
+		}
+		s.headers_done = true
+	}
+	// A second HEADERS block on the stream carries trailers; only its
+	// END_STREAM matters for this client.
+	if frame.end_stream {
+		s.ended = true
+	}
+	s.cv.signal()
+	s.mu.unlock()
+}
+
+// on_response_data delivers a DATA payload to its stream, or — for recently
+// cancelled/completed streams — keeps the connection-level flow-control
+// account exact by returning the credit directly (mirroring the server's
+// unknown-stream backstop).
+fn (mut c H2MuxConn) on_response_data(frame H2DataFrame) ! {
+	mut s := c.lookup_stream(frame.stream_id)
+	if s == unsafe { nil } {
+		c.check_unknown_stream(frame.stream_id)!
+		if frame.data.len > 0 {
+			c.wmu.lock()
+			c.write_all_locked(H2Frame(H2WindowUpdateFrame{
+				stream_id:             0
+				window_size_increment: u32(frame.data.len)
+			}).encode()) or {}
+			c.wmu.unlock()
+		}
+		return
+	}
+	s.mu.lock()
+	if frame.data.len > 0 {
+		s.chunks << frame.data.clone()
+		s.body_rcvd += u64(frame.data.len)
+	}
+	if frame.end_stream {
+		s.ended = true
+	}
+	s.cv.signal()
+	s.mu.unlock()
+}
+
+// check_unknown_stream distinguishes late frames for cancelled/finished
+// streams (fine) from protocol garbage (connection error).
+fn (mut c H2MuxConn) check_unknown_stream(stream_id u32) ! {
+	c.wmu.lock()
+	known_range := stream_id < c.next_stream_id
+	c.wmu.unlock()
+	if stream_id % 2 == 1 && known_range {
+		return
+	}
+	return error('frame for an unknown stream ${stream_id}')
+}
+
+fn (mut c H2MuxConn) lookup_stream(stream_id u32) &H2MuxStream {
+	c.smu.lock()
+	defer {
+		c.smu.unlock()
+	}
+	if s := c.streams[stream_id] {
+		return s
+	}
+	return &H2MuxStream(unsafe { nil })
+}
+
+// fail_conn marks the connection dead, fails every in-flight stream, wakes
+// all blocked senders, and lets the reader exit. Only the reader calls this,
+// so `closed == true` also guarantees the reader is gone — which is what
+// makes transport teardown in drop_ref safe.
+fn (mut c H2MuxConn) fail_conn(msg string) {
+	c.smu.lock()
+	if c.closed {
+		c.smu.unlock()
+		return
+	}
+	c.closed = true
+	c.conn_err = msg
+	mut open := []&H2MuxStream{}
+	for _, s in c.streams {
+		open << s
+	}
+	c.streams.clear()
+	pending_teardown := c.refs <= 0
+	c.smu.unlock()
+	for mut s in open {
+		s.mu.lock()
+		retryable := !s.sent_headers
+		s.mu.unlock()
+		s.fail(msg, retryable)
+	}
+	c.fmu.lock()
+	c.fmu_dead = true
+	c.fcv.broadcast()
+	c.fmu.unlock()
+	if pending_teardown && c.close_transport != unsafe { nil } {
+		c.close_transport()
+	}
+}
