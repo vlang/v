@@ -14,8 +14,12 @@ import time
 // single-stream H2Conn in h2_conn.v, which remains for the one-shot paths.
 //
 // Locking protocol — a thread holds at most one of {smu, fmu, wmu} at a time,
-// with a single exception: wmu → smu is allowed (smu sections take no other
-// locks). A stream's own mu is never held while taking a connection lock.
+// with two permitted nestings: wmu → smu and smu → fmu (so wmu → smu → fmu).
+// No lock is ever taken in the reverse direction, which keeps the order
+// acyclic. A stream's own mu is never held while taking a connection lock.
+// The smu → fmu nesting is what serializes stream registration (which assigns
+// the stream's initial send window) against WINDOW_UPDATE credit and SETTINGS
+// initial-window deltas, so early credit can never be lost.
 //   wmu      transport writes, the HPACK encoder, stream-id allocation +
 //            registration + HEADERS send (one atomic critical section), and
 //            the lazy connection preface.
@@ -241,8 +245,20 @@ fn (mut c H2MuxConn) do_on_stream(mut s H2MuxStream, req H2ClientRequest) !H2Cli
 	}
 	s.id = c.next_stream_id
 	c.next_stream_id += 2
-	c.smu.lock() // wmu -> smu is the one permitted lock nesting
+	// Mark the HEADERS as sent *before* the stream becomes visible to the
+	// reader: pessimistic, so a connection death racing this section can never
+	// classify a request whose HEADERS may have reached the wire as safe to
+	// replay. (The stream is still private here, so no lock is needed.)
+	s.sent_headers = true
+	c.smu.lock() // wmu -> smu -> fmu is the permitted lock nesting
+	c.fmu.lock()
+	// The initial send window must be assigned atomically with registration:
+	// the WINDOW_UPDATE and SETTINGS handlers also nest smu -> fmu, so credit
+	// or a delta arriving right after our HEADERS serializes after this
+	// assignment instead of being overwritten by it.
+	s.send_window = c.peer_initial_window
 	c.streams[s.id] = s
+	c.fmu.unlock()
 	c.smu.unlock()
 	block := c.encoder.encode(fields)
 	c.send_header_block_locked(s.id, block, !has_body) or {
@@ -253,15 +269,6 @@ fn (mut c H2MuxConn) do_on_stream(mut s H2MuxStream, req H2ClientRequest) !H2Cli
 		return error('h2: failed to send request headers: ${err.msg()}')
 	}
 	c.wmu.unlock()
-	s.mu.lock()
-	s.sent_headers = true
-	s.mu.unlock()
-
-	// Initial stream send window (see the registration/SETTINGS-delta note:
-	// any orders of this store and a concurrent delta produce the same value).
-	c.fmu.lock()
-	s.send_window = c.peer_initial_window
-	c.fmu.unlock()
 
 	if has_body {
 		c.send_body_on_stream(mut s, req.body)!
@@ -646,13 +653,21 @@ fn (mut c H2MuxConn) dispatch_frame(frame H2Frame) ! {
 				c.fcv.broadcast()
 				c.fmu.unlock()
 			} else {
-				mut s := c.lookup_stream(frame.stream_id)
-				if s != unsafe { nil } {
+				// Hold smu across the lookup and the credit (smu -> fmu), so
+				// this serializes with stream registration and the credit can
+				// never be overwritten by the initial-window assignment.
+				c.smu.lock()
+				mut sref := &H2MuxStream(unsafe { nil })
+				if s := c.streams[frame.stream_id] {
+					sref = s
+				}
+				if sref != unsafe { nil } {
 					c.fmu.lock()
-					s.send_window += i64(frame.window_size_increment)
+					sref.send_window += i64(frame.window_size_increment)
 					c.fcv.broadcast()
 					c.fmu.unlock()
 				}
+				c.smu.unlock()
 			}
 		}
 		H2GoawayFrame {
@@ -713,22 +728,22 @@ fn (mut c H2MuxConn) apply_peer_settings(settings []H2Setting) {
 				c.smu.unlock()
 			}
 			h2_settings_initial_window_size {
+				// smu is held across the fmu section so the snapshot of open
+				// streams and the delta application are atomic with respect to
+				// stream registration (which nests the same way) — a stream can
+				// neither miss the delta nor receive it twice.
 				c.smu.lock()
-				mut open := []&H2MuxStream{}
-				for _, s in c.streams {
-					open << s
-				}
-				c.smu.unlock()
 				c.fmu.lock()
 				delta := i64(st.value) - c.peer_initial_window
 				c.peer_initial_window = i64(st.value)
-				for mut s in open {
+				for _, mut s in c.streams {
 					s.send_window += delta
 				}
 				if delta > 0 {
 					c.fcv.broadcast()
 				}
 				c.fmu.unlock()
+				c.smu.unlock()
 			}
 			h2_settings_max_frame_size {
 				c.fmu.lock()
