@@ -84,12 +84,6 @@ pub fn (c &Conn) drop(table orm.Table) ! {
 pub fn (c &Conn) execute(query string) ![]orm.Row {
 	res := c.exec_result(query)!
 
-	// Build column name array indexed by position.
-	mut sorted_names := []string{len: res.cols.len}
-	for name, idx in res.cols {
-		sorted_names[idx] = name
-	}
-
 	mut orm_rows := []orm.Row{}
 	for r in res.rows {
 		mut vals := []string{}
@@ -98,7 +92,7 @@ pub fn (c &Conn) execute(query string) ![]orm.Row {
 		}
 		orm_rows << orm.Row{
 			vals:  vals
-			names: sorted_names
+			names: res.names
 		}
 	}
 	return orm_rows

@@ -112,8 +112,9 @@ pub mut:
 
 pub struct Result {
 pub:
-	cols map[string]int
-	rows []Row
+	cols  map[string]int
+	names []string
+	rows  []Row
 }
 
 // Notification represents a notification received from the server via LISTEN/NOTIFY
@@ -443,6 +444,7 @@ fn res_to_result(res voidptr) Result {
 	nr_cols := C.PQnfields(res)
 
 	mut cols := map[string]int{}
+	mut names := []string{}
 	mut rows := []Row{}
 	for i in 0 .. nr_rows {
 		mut row := Row{}
@@ -450,6 +452,7 @@ fn res_to_result(res voidptr) Result {
 			if i == 0 {
 				field_name := unsafe { cstring_to_vstring(C.PQfname(res, j)) }
 				cols[field_name] = j
+				names << field_name
 			}
 			if C.PQgetisnull(res, i, j) != 0 {
 				row.vals << none
@@ -462,7 +465,7 @@ fn res_to_result(res voidptr) Result {
 	}
 
 	C.PQclear(res)
-	return Result{cols, rows}
+	return Result{cols, names, rows}
 }
 
 // close releases this conn back to its pool. Safe to call more than once:
