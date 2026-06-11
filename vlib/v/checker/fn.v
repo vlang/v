@@ -2145,6 +2145,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		for mut arg in node.args {
 			c.expr(mut arg.expr)
 		}
+		if name.starts_with('C.') {
+			c.error('unknown C function: `${name}`. `C.` calls are external C calls; declare the function with `fn ${name}(...)` and include/link the C header/library that provides it.',
+				node.pos)
+			return ast.void_type
+		}
 		c.error('unknown function: ${node.get_name()}', node.pos)
 		return ast.void_type
 	}
