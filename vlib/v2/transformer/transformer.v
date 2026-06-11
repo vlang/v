@@ -4616,14 +4616,12 @@ fn (mut t Transformer) transform_expr_in_module(mod string, expr ast.Expr) ast.E
 fn (mut t Transformer) runtime_const_init_fn_stmt(mod string, fn_name string, inits []RuntimeConstInit) ast.Stmt {
 	mut stmts := []ast.Stmt{cap: inits.len}
 	for item in inits {
-		if item.expr_cursor.is_valid() {
-			continue
-		}
+		expr := if item.expr_cursor.is_valid() { item.expr_cursor.expr() } else { item.expr }
 		saved_pending := t.pending_stmts
 		t.pending_stmts = []ast.Stmt{}
 		old_skip_if := t.skip_if_value_lowering
 		t.skip_if_value_lowering = true
-		transformed_expr := t.transform_expr_in_module(mod, item.expr)
+		transformed_expr := t.transform_expr_in_module(mod, expr)
 		t.skip_if_value_lowering = old_skip_if
 		generated_pending := t.pending_stmts
 		t.pending_stmts = saved_pending
@@ -4679,7 +4677,9 @@ fn (mut t Transformer) runtime_const_init_fn_stmt_to_flat(mod string, fn_name st
 		lhs_id := out.emit_ident_by_name(item.name, token.Pos{})
 		stmt_ids << out.emit_assign_stmt_by_ids(.assign, [lhs_id], [rhs_id], token.Pos{})
 	}
-	receiver_id := out.emit_parameter(ast.Parameter{})
+	receiver_id := out.emit_parameter(ast.Parameter{
+		typ: ast.empty_expr
+	})
 	typ_id := out.emit_type(ast.Type(ast.FnType{}))
 	attrs_id := out.emit_aux_list_from_ids([])
 	stmts_id := out.emit_aux_list_from_ids(stmt_ids)

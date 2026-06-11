@@ -7054,7 +7054,7 @@ fn (mut t Transformer) transform_return_expr_cursor_to_flat(c ast.Cursor, mut ou
 }
 
 fn (t &Transformer) return_stmt_cursor_needs_legacy_expand(c ast.Cursor) bool {
-	if t.return_stmt_cursor_needs_return_expr_rewrite(c) {
+	if t.return_stmt_needs_return_expr_rewrite() {
 		return true
 	}
 	if c.edge_count() == 1 {
@@ -7078,7 +7078,7 @@ fn (mut t Transformer) try_expand_return_if_expr_cursor_to_flat(c ast.Cursor, mu
 	if c.kind() != .stmt_return || c.edge_count() != 1 {
 		return false
 	}
-	if t.return_stmt_cursor_needs_return_expr_rewrite(c) {
+	if t.return_stmt_needs_return_expr_rewrite() {
 		return false
 	}
 	if_expr := c.edge(0)
@@ -7216,7 +7216,7 @@ fn (mut t Transformer) append_return_if_branch_expr_cursor_to_flat(expr ast.Curs
 	t.append_transformed_stmt_id_to_flat(mut ids, return_id, mut out)
 }
 
-fn (t &Transformer) return_stmt_cursor_needs_return_expr_rewrite(c ast.Cursor) bool {
+fn (t &Transformer) return_stmt_needs_return_expr_rewrite() bool {
 	if t.is_native_be || t.cur_fn_returns_option || t.cur_fn_returns_result {
 		return true
 	}

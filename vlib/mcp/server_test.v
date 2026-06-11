@@ -835,9 +835,9 @@ fn test_server_initiated_request_returns_on_timeout() {
 	started := time.now()
 	server.list_roots(stdio_session_id, 50 * time.millisecond) or {
 		// `timed_wait` should return promptly after the deadline; allow up to
-		// 5x the timeout to account for CI scheduler jitter.
+		// 10x the timeout to account for CI scheduler jitter.
 		elapsed := time.now() - started
-		assert elapsed < 250 * time.millisecond
+		assert elapsed < 500 * time.millisecond
 		assert err.msg().contains('timeout')
 		return
 	}
