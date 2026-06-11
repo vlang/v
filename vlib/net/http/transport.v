@@ -128,8 +128,15 @@ pub fn (mut t Transport) close_idle() {
 
 // transport_pool_key builds the pool key for a request: connections are only
 // shared between requests whose origin and TLS-relevant settings all match.
+// enable_http2 is part of the key because it changes what the connection
+// advertised via ALPN at dial time: a forced-HTTP/1.1 connection (no ALPN)
+// must not satisfy an HTTP/2-enabled request, which would otherwise silently
+// never negotiate h2 against that origin while the pooled connection lives.
 fn transport_pool_key(req &Request, scheme string, host string, port int) string {
-	return '${scheme}|${host}|${port}|${req.validate}|${req.verify}|${req.cert}|${req.cert_key}|${req.in_memory_verification}'
+	// enable_http2 only affects https dials (plain http ignores it), so keep
+	// the plain-http pool unsplit.
+	h2 := scheme == 'https' && req.enable_http2
+	return '${scheme}|${host}|${port}|${h2}|${req.validate}|${req.verify}|${req.cert}|${req.cert_key}|${req.in_memory_verification}'
 }
 
 // transport_is_idempotent reports whether a request with this method can be

@@ -297,7 +297,11 @@ fn tls_ka_srv_loop(mut s TlsKaSrv, mut listener mbedtls.SSLListener) {
 	for {
 		mut conn := listener.accept() or { return }
 		s.bump_accepts()
-		tls_ka_srv_serve_conn(mut conn)
+		// Serve each connection on its own thread: a pooled idle connection
+		// keeps its serve loop parked in read, which must not block accepting
+		// the next connection. (The serve threads exit when the test closes
+		// the pooled connections via close_idle_connections.)
+		spawn tls_ka_srv_serve_conn(mut conn)
 	}
 }
 
@@ -342,6 +346,62 @@ fn test_h1_tls_reuse() {
 	assert srv.accept_count() == 1
 	// Free the pooled TLS connection (unblocking the server read), then abort
 	// the accept and join the server thread before the test returns.
+	close_idle_connections()
+	listener.shutdown() or {}
+	th.wait()
+}
+
+// A TLS connection dialled with HTTP/2 disabled (no ALPN) must not satisfy an
+// HTTP/2-enabled request to the same origin — the ALPN preference is part of
+// the pool key. Forced-h1 requests still share among themselves.
+fn test_h1_tls_no_reuse_across_alpn_preference() {
+	$if windows && !no_vschannel ? {
+		eprintln('skipping: SChannel connection pooling is not implemented yet')
+		return
+	}
+	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0') or {
+		assert false, 'port: ${err}'
+		return
+	}
+	port := port_listener.addr() or {
+		assert false, 'addr: ${err}'
+		return
+	}.port() or {
+		assert false, 'port: ${err}'
+		return
+	}
+	port_listener.close() or {}
+	mut listener := mbedtls.new_ssl_listener('127.0.0.1:${port}', mbedtls.SSLConnectConfig{
+		cert:     tls_test_cert_path
+		cert_key: tls_test_key_path
+		validate: false
+	}) or {
+		assert false, 'listener: ${err}'
+		return
+	}
+	mut srv := &TlsKaSrv{}
+	th := spawn tls_ka_srv_loop(mut srv, mut listener)
+	// 1. Forced-HTTP/1.1 request: dialled without ALPN, pooled under its key.
+	r1 := fetch(url: 'https://127.0.0.1:${port}/h1', validate: false, enable_http2: false) or {
+		assert false, 'fetch 1: ${err}'
+		return
+	}
+	assert r1.status_code == 200
+	// 2. Default (HTTP/2-enabled) request: must NOT reuse the no-ALPN
+	// connection; it dials fresh and advertises h2.
+	r2 := fetch(url: 'https://127.0.0.1:${port}/h2pref', validate: false) or {
+		assert false, 'fetch 2: ${err}'
+		return
+	}
+	assert r2.status_code == 200
+	assert srv.accept_count() == 2
+	// 3. Another forced-HTTP/1.1 request: reuses connection 1.
+	r3 := fetch(url: 'https://127.0.0.1:${port}/h1again', validate: false, enable_http2: false) or {
+		assert false, 'fetch 3: ${err}'
+		return
+	}
+	assert r3.status_code == 200
+	assert srv.accept_count() == 2
 	close_idle_connections()
 	listener.shutdown() or {}
 	th.wait()
