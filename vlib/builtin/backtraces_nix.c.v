@@ -173,69 +173,64 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 		return false
 	} $else {
 		$if linux && !freestanding {
-			$if tinyc {
-				C.tcc_backtrace(c'Backtrace')
+			$if !glibc {
+				eprintln('backtrace_symbols is missing => printing backtraces is not available.')
+				eprintln('Some libc implementations like musl simply do not provide it.')
 				return false
 			} $else {
-				$if !glibc {
-					eprintln('backtrace_symbols is missing => printing backtraces is not available.')
-					eprintln('Some libc implementations like musl simply do not provide it.')
+				current_executable_name := backtrace_current_executable_name()
+				buffer := [100]voidptr{}
+				nr_ptrs := C.backtrace(&buffer[0], 100)
+				if nr_ptrs < 2 {
+					eprintln('C.backtrace returned less than 2 frames')
 					return false
-				} $else {
-					current_executable_name := backtrace_current_executable_name()
-					buffer := [100]voidptr{}
-					nr_ptrs := C.backtrace(&buffer[0], 100)
-					if nr_ptrs < 2 {
-						eprintln('C.backtrace returned less than 2 frames')
-						return false
+				}
+				nr_actual_frames := nr_ptrs - skipframes
+				//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
+				csymbols := C.backtrace_symbols(voidptr(&buffer[skipframes]), nr_actual_frames)
+				for i in 0 .. nr_actual_frames {
+					sframe := unsafe { tos2(&u8(csymbols[i])) }
+					executable := sframe.all_before('(')
+					addr2line_executable := backtrace_addr2line_executable(executable,
+						current_executable_name)
+					addr := sframe.all_after('[').all_before(']')
+					beforeaddr := sframe.all_before('[')
+					cmd := 'addr2line -e ' + addr2line_executable + ' ' + addr
+					// taken from os, to avoid depending on the os module inside builtin.v
+					f := C.popen(&char(cmd.str), c'r')
+					if f == unsafe { nil } {
+						eprintln(sframe)
+						continue
 					}
-					nr_actual_frames := nr_ptrs - skipframes
-					//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
-					csymbols := C.backtrace_symbols(voidptr(&buffer[skipframes]), nr_actual_frames)
-					for i in 0 .. nr_actual_frames {
-						sframe := unsafe { tos2(&u8(csymbols[i])) }
-						executable := sframe.all_before('(')
-						addr2line_executable := backtrace_addr2line_executable(executable,
-							current_executable_name)
-						addr := sframe.all_after('[').all_before(']')
-						beforeaddr := sframe.all_before('[')
-						cmd := 'addr2line -e ' + addr2line_executable + ' ' + addr
-						// taken from os, to avoid depending on the os module inside builtin.v
-						f := C.popen(&char(cmd.str), c'r')
-						if f == unsafe { nil } {
-							eprintln(sframe)
-							continue
+					buf := [1000]u8{}
+					mut output := ''
+					unsafe {
+						bp := &u8(&buf[0])
+						for C.fgets(&char(bp), 1000, f) != 0 {
+							output += tos(bp, vstrlen(bp))
 						}
-						buf := [1000]u8{}
-						mut output := ''
-						unsafe {
-							bp := &u8(&buf[0])
-							for C.fgets(&char(bp), 1000, f) != 0 {
-								output += tos(bp, vstrlen(bp))
-							}
-						}
-						output = output.trim_chars(' \t\n', .trim_both) + ':'
-						if C.pclose(f) != 0 {
-							eprintln(sframe)
-							continue
-						}
-						if output in ['??:0:', '??:?:'] {
-							output = ''
-						}
-						// See http://wiki.dwarfstd.org/index.php?title=Path_Discriminators
-						// Note: it is shortened here to just d. , just so that it fits, and so
-						// that the common error file:lineno: line format is enforced.
-						output = output.replace(' (discriminator', ': (d.')
-						eprint(output)
-						eprint_space_padding(output, 55)
-						eprint(' | ')
-						eprint(addr)
-						eprint(' | ')
-						eprintln(demangle_backtrace_sym(beforeaddr))
 					}
-					if nr_actual_frames > 0 {
-						unsafe { C.free(csymbols) }
+					output = output.trim_chars(' \t\n', .trim_both) + ':'
+					if C.pclose(f) != 0 {
+						eprintln(sframe)
+						continue
 					}
+					if output in ['??:0:', '??:?:'] {
+						output = ''
+					}
+					// See http://wiki.dwarfstd.org/index.php?title=Path_Discriminators
+					// Note: it is shortened here to just d. , just so that it fits, and so
+					// that the common error file:lineno: line format is enforced.
+					output = output.replace(' (discriminator', ': (d.')
+					eprint(output)
+					eprint_space_padding(output, 55)
+					eprint(' | ')
+					eprint(addr)
+					eprint(' | ')
+					eprintln(demangle_backtrace_sym(beforeaddr))
+				}
+				if nr_actual_frames > 0 {
+					unsafe { C.free(csymbols) }
 				}
 			}
 		}

@@ -43,14 +43,6 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		} $else $if no_backtrace ? {
 			C.exit(1)
 		} $else {
-			$if tinyc {
-				$if panics_break_into_debugger ? {
-					break_if_debugger_attached()
-				} $else {
-					C.tcc_backtrace(c'Backtrace')
-				}
-				C.exit(1)
-			}
 			$if use_libbacktrace ? {
 				$if openbsd {
 					print_backtrace_skipping_top_frames(1)
@@ -115,14 +107,6 @@ pub fn panic(s string) {
 		} $else $if no_backtrace ? {
 			C.exit(1)
 		} $else {
-			$if tinyc {
-				$if panics_break_into_debugger ? {
-					break_if_debugger_attached()
-				} $else {
-					C.tcc_backtrace(c'Backtrace')
-				}
-				C.exit(1)
-			}
 			$if use_libbacktrace ? {
 				$if openbsd {
 					print_backtrace_skipping_top_frames(1)
