@@ -657,10 +657,7 @@ fn (mut c H2MuxConn) dispatch_frame(frame H2Frame) ! {
 				// this serializes with stream registration and the credit can
 				// never be overwritten by the initial-window assignment.
 				c.smu.lock()
-				mut sref := &H2MuxStream(unsafe { nil })
-				if s := c.streams[frame.stream_id] {
-					sref = s
-				}
+				mut sref := c.streams[frame.stream_id] or { &H2MuxStream(unsafe { nil }) }
 				if sref != unsafe { nil } {
 					c.fmu.lock()
 					sref.send_window += i64(frame.window_size_increment)
