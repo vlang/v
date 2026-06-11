@@ -53,6 +53,12 @@ fn test_public_scanner_iterates_tokens() {
 	]
 }
 
+fn test_public_scanner_ignores_utf8_bom() {
+	mut scanner := json.new_scanner('\xEF\xBB\xBF{"a":1}')
+	assert scanner.next()!.kind == .lcbr
+	assert scanner.next()!.literal() == 'a'
+}
+
 fn test_reader_scanner_iterates_tokens() {
 	mut reader := ChunkedReader{
 		data:       '[10,true,"chunked",null]'.bytes()
@@ -82,6 +88,19 @@ fn test_reader_scanner_iterates_tokens() {
 		'rsbr:',
 		'eof:',
 	]
+}
+
+fn test_reader_scanner_ignores_utf8_bom() {
+	mut reader := ChunkedReader{
+		data:       '\xEF\xBB\xBF{"a":1}'.bytes()
+		chunk_size: 1
+	}
+	mut scanner := json.new_reader_scanner(reader: reader, buffer_size: 2)
+	defer {
+		scanner.free()
+	}
+	assert scanner.next()!.kind == .lcbr
+	assert scanner.next()!.literal() == 'a'
 }
 
 fn test_reader_scanner_reports_errors() {

@@ -75,6 +75,20 @@ fn test_option_types() {
 	}
 }
 
+fn test_decode_ignores_utf8_bom() {
+	res := json.decode[StructType[int]]('\xEF\xBB\xBF{"val":2}')!
+	assert res.val == 2
+}
+
+fn test_strict_mode_rejects_duplicate_object_keys() {
+	if _ := json.decode[StructType[string]]('{"val":"a","val":"b"}', strict: true) {
+		assert false
+	} else {
+		assert err.msg().contains('duplicate object keys are not allowed')
+		assert err.msg().contains('val')
+	}
+}
+
 // Test structure for basic number types
 struct JsonNumbers {
 	val_i8  i8
@@ -268,10 +282,10 @@ fn test_performance_large_scale() {
 fn test_special_float_values() {
 	// Test special float values
 
-	// Json does not support nan, +-inf yet
-	assert json.encode(math.nan()) == 'nan'
-	assert json.encode(math.inf(1)) == '+inf'
-	assert json.encode(math.inf(-1)) == '-inf'
+	// JSON does not support nan, +-inf
+	assert json.encode(math.nan()) == 'null'
+	assert json.encode(math.inf(1)) == 'null'
+	assert json.encode(math.inf(-1)) == 'null'
 
 	println('✓ Special float values test passed')
 }

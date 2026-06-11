@@ -2,6 +2,7 @@ module json2
 
 import strconv
 import time
+import x.json2.strict as json2_strict
 
 const null_in_string = 'null'
 
@@ -10,6 +11,10 @@ const true_in_string = 'true'
 const false_in_string = 'false'
 
 const float_zero_in_string = '0.0'
+
+const max_json_nesting_depth = 512
+
+const utf8_bom = '\xEF\xBB\xBF'
 
 const whitespace_chars = [` `, `\t`, `\n`, `\r`]!
 
@@ -69,9 +74,10 @@ struct Decoder {
 	json   string // json is the JSON data to be decoded.
 	strict bool   // strict mode rejects quoted strings as numbers
 mut:
-	values_info  LinkedList[ValueInfo] // A linked list to store ValueInfo.
-	checker_idx  int                   // checker_idx is the current index of the decoder.
-	current_node &Node[ValueInfo] = unsafe { nil } // The current node in the linked list.
+	values_info   LinkedList[ValueInfo] // A linked list to store ValueInfo.
+	checker_idx   int                   // checker_idx is the current index of the decoder.
+	nesting_depth int
+	current_node  &Node[ValueInfo] = unsafe { nil } // The current node in the linked list.
 }
 
 // LinkedList represents a linked list to store ValueInfo.
@@ -291,8 +297,21 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 			character: 1
 		}
 	}
+	json_data := strip_utf8_bom(val)
+	$if T is $struct {
+		if params.strict {
+			strict_result := json2_strict.strict_check[T](json_data)
+			if strict_result.duplicates.len > 0 {
+				return JsonDecodeError{
+					message:   'strict mode: duplicate object keys are not allowed: ${strict_result.duplicates.join(', ')}'
+					line:      1
+					character: 1
+				}
+			}
+		}
+	}
 	mut decoder := Decoder{
-		json:   val
+		json:   json_data
 		strict: params.strict
 	}
 
@@ -319,6 +338,14 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 		decoder.decode_value(mut result)!
 	}
 	return result
+}
+
+@[inline]
+fn strip_utf8_bom(text string) string {
+	if text.len >= utf8_bom.len && text[..utf8_bom.len] == utf8_bom {
+		return text[utf8_bom.len..]
+	}
+	return text
 }
 
 fn get_dynamic_from_element[T](_t T) []T {
@@ -799,6 +826,11 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			struct_info := decoder.current_node.value
 
 			if struct_info.value_kind == .object {
+				decoder.push_decode_nesting()!
+				defer {
+					decoder.pop_decode_nesting()
+				}
+
 				struct_position := struct_info.position
 				struct_end := struct_position + struct_info.length
 				mut has_embeds := false
@@ -1180,6 +1212,11 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 		array_info := decoder.current_node.value
 
 		if array_info.value_kind == .array {
+			decoder.push_decode_nesting()!
+			defer {
+				decoder.pop_decode_nesting()
+			}
+
 			decoder.current_node = decoder.current_node.next
 
 			array_position := array_info.position
@@ -1226,6 +1263,11 @@ fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 		map_info := decoder.current_node.value
 
 		if map_info.value_kind == .object {
+			decoder.push_decode_nesting()!
+			defer {
+				decoder.pop_decode_nesting()
+			}
+
 			map_position := map_info.position
 			map_end := map_position + map_info.length
 
@@ -1309,6 +1351,21 @@ fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 
 fn create_value_from_optional[T](_val ?T) ?T {
 	return T{}
+}
+
+@[inline]
+fn (mut decoder Decoder) push_decode_nesting() ! {
+	if decoder.nesting_depth >= max_json_nesting_depth {
+		decoder.decode_error('maximum nesting depth of ${max_json_nesting_depth} exceeded')!
+	}
+	decoder.nesting_depth++
+}
+
+@[inline]
+fn (mut decoder Decoder) pop_decode_nesting() {
+	if decoder.nesting_depth > 0 {
+		decoder.nesting_depth--
+	}
 }
 
 fn (mut decoder Decoder) decode_enum[T](mut val T) ! {

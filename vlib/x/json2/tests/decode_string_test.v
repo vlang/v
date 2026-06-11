@@ -60,5 +60,8 @@ fn test_json_string_invalid_escapes() {
 fn test_json_string_whitespace() {
 	// Test strings with whitespace
 	assert json.decode[string]('"   "')! == '   '
-	assert json.decode[string]('"\t\n\r"')! == '\t\n\r'
+	// Actual tab/newline/cr bytes in a JSON string are illegal per RFC 8259 §7;
+	// they must be written as escape sequences: \t \n \r
+	// r'"\t\n\r"' is the JSON text with backslash escapes, which decodes to real chars.
+	assert json.decode[string](r'"\t\n\r"')! == '\t\n\r'
 }

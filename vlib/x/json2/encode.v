@@ -1,5 +1,6 @@
 module json2
 
+import math
 import time
 
 // EncoderOptions provides a list of options for encoding
@@ -325,8 +326,16 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 	} $else $if T is isize {
 		integer_val = isize(val).str()
 	} $else $if T is f32 {
+		if math.is_nan(f64(val)) || math.is_inf(f64(val), 0) {
+			encoder.encode_null()
+			return
+		}
 		integer_val = f32(val).str()
 	} $else $if T is f64 {
+		if math.is_nan(val) || math.is_inf(val, 0) {
+			encoder.encode_null()
+			return
+		}
 		integer_val = f64(val).str()
 	}
 	$if T is $float {

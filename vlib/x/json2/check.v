@@ -1,5 +1,20 @@
 module json2
 
+@[inline]
+fn (mut checker Decoder) push_check_nesting() ! {
+	if checker.nesting_depth >= max_json_nesting_depth {
+		checker.checker_error('maximum nesting depth of ${max_json_nesting_depth} exceeded')!
+	}
+	checker.nesting_depth++
+}
+
+@[inline]
+fn (mut checker Decoder) pop_check_nesting() {
+	if checker.nesting_depth > 0 {
+		checker.nesting_depth--
+	}
+}
+
 // increment checks eof and increments checker by one
 @[inline; markused]
 fn (mut checker Decoder) increment(message string) ! {
@@ -111,6 +126,9 @@ fn (mut checker Decoder) check_string() ! {
 
 	// check if the JSON string is a valid escape sequence
 	for checker.json[checker.checker_idx] != `"` {
+		if checker.json[checker.checker_idx] < 0x20 {
+			return checker.checker_error('invalid control character in string; use an escape sequence')
+		}
 		if checker.json[checker.checker_idx] == `\\` {
 			checker.increment('invalid escape sequence')!
 			escaped_char := checker.json[checker.checker_idx]
@@ -262,6 +280,11 @@ fn (mut checker Decoder) check_null() ! {
 
 @[markused]
 fn (mut checker Decoder) check_array() ! {
+	checker.push_check_nesting()!
+	defer {
+		checker.pop_check_nesting()
+	}
+
 	checker.increment('expected array end')!
 
 	checker.skip_whitespace('expected array end')!
@@ -284,6 +307,11 @@ fn (mut checker Decoder) check_array() ! {
 
 @[markused]
 fn (mut checker Decoder) check_object() ! {
+	checker.push_check_nesting()!
+	defer {
+		checker.pop_check_nesting()
+	}
+
 	checker.increment('expected object end')!
 
 	checker.skip_whitespace('expected object end')!

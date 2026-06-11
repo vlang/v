@@ -1,5 +1,6 @@
 module json2
 
+import strconv
 import time
 
 struct SumtypeTimeValue {
@@ -297,6 +298,45 @@ fn (mut decoder Decoder) decode_sumtype_time(mut val time.Time) ! {
 	val = time.unix(wrapper.value)
 }
 
+fn number_literal_is_integer(str string) bool {
+	return str.index_u8(`.`) == -1 && str.index_u8(`e`) == -1 && str.index_u8(`E`) == -1
+}
+
+fn (decoder &Decoder) current_number_literal() string {
+	value_info := decoder.current_node.value
+	return decoder.json[value_info.position..value_info.position + value_info.length]
+}
+
+fn (mut decoder Decoder) prefer_integer_variant_for_any[T](mut val T) bool {
+	$if T is Any {
+		number_literal := decoder.current_number_literal()
+		if !number_literal_is_integer(number_literal) {
+			return false
+		}
+		if _ := strconv.atoi64(number_literal) {
+			$for v in T.variants {
+				$if v.typ is i64 {
+					val = T(v)
+					return true
+				}
+			}
+		}
+		if _ := strconv.atou64(number_literal) {
+			$for v in T.variants {
+				$if v.typ is u64 {
+					val = T(v)
+					return true
+				}
+			}
+		}
+		// exceeds u64: fall through to f64
+		return false
+	} $else {
+		_ = val
+	}
+	return false
+}
+
 fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info ValueInfo) ! {
 	mut failed_struct := false
 	mut struct_variant_count := 0
@@ -317,6 +357,9 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 			}
 		}
 		.number {
+			if decoder.prefer_integer_variant_for_any(mut val) {
+				return
+			}
 			$for v in T.variants {
 				$if v.typ is $float {
 					val = T(v)

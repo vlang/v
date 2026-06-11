@@ -67,8 +67,13 @@ pub enum TokenKind {
 
 // new_scanner creates an iterative scanner for an in-memory JSON string.
 pub fn new_scanner(text string) Scanner {
+	bytes := if text.len >= utf8_bom.len && text[..utf8_bom.len] == utf8_bom {
+		text[utf8_bom.len..].bytes()
+	} else {
+		text.bytes()
+	}
 	return Scanner{
-		text: text.bytes()
+		text: bytes
 		line: 1
 		col:  1
 	}
@@ -76,8 +81,13 @@ pub fn new_scanner(text string) Scanner {
 
 // new_scanner_from_bytes creates an iterative scanner for an in-memory JSON byte slice.
 pub fn new_scanner_from_bytes(text []u8) Scanner {
+	bytes := if text.len >= 3 && text[0] == 0xEF && text[1] == 0xBB && text[2] == 0xBF {
+		text[3..]
+	} else {
+		text
+	}
 	return Scanner{
-		text: text
+		text: bytes
 		line: 1
 		col:  1
 	}
@@ -670,6 +680,13 @@ pub fn (mut s ReaderScanner) next() !Token {
 	line, col := s.line, s.col
 	if !s.has_next_byte()! {
 		return s.tokenize([]u8{}, .eof, line, col)
+	}
+	if s.line == 1 && s.col == 1 && s.ch == 0xEF {
+		_ = s.read_byte()!
+		if s.read_byte()! != 0xBB || s.read_byte()! != 0xBF {
+			return new_scan_error('invalid UTF-8 BOM', line, col)
+		}
+		return s.next()
 	}
 	ch := s.ch
 	if ch == `t` || ch == `n` {

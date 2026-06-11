@@ -6,7 +6,9 @@ fn test_raw_decode_string() {
 }
 
 fn test_raw_decode_string_escape() {
-	jstr := json.decode[json.Any]('"\u001b"')!
+	// \u001b must be given as a JSON \u escape, not a raw control byte.
+	// Raw control characters (< 0x20) in JSON strings are illegal per RFC 8259.
+	jstr := json.decode[json.Any](r'"\u001b"')!
 	str := jstr.str()
 	assert str.len == 1
 	assert str[0] == 27

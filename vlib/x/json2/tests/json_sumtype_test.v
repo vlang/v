@@ -80,8 +80,10 @@ fn test_simple_sum_type() {
 }
 
 fn test_any_sum_type() {
-	assert json.decode[json.Any]('1')! == json.Any(f64(1))
-	assert json.decode[json.Any]('123321')! == json.Any(f64(123321))
+	// Integer literals that fit in i64 are now decoded as i64 to preserve precision
+	// (RFC 8259 §6 recommends implementations preserve integer values exactly).
+	assert json.decode[json.Any]('1')! == json.Any(i64(1))
+	assert json.decode[json.Any]('123321')! == json.Any(i64(123321))
 
 	assert json.decode[json.Any]('"hello"')! == json.Any('hello')
 

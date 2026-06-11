@@ -182,3 +182,16 @@ fn test_check_json_format() {
 		assert has_error, 'Expected error ${json_and_error['error']}'
 	}
 }
+
+fn test_json_nesting_limit_returns_error_instead_of_crashing() {
+	too_deep := '['.repeat(json.max_json_nesting_depth + 1) + '0' +
+		']'.repeat(json.max_json_nesting_depth + 1)
+	mut has_error := false
+	json.decode[json.Any](too_deep) or {
+		if err is json.JsonDecodeError {
+			assert err.message == 'Syntax: maximum nesting depth of ${json.max_json_nesting_depth} exceeded'
+		}
+		has_error = true
+	}
+	assert has_error
+}

@@ -215,6 +215,18 @@ The following list shows the possible outputs when casting a value to an incompa
    JSON string representation of the value.
 4. Casting non-numeric values to int/float (`int()`/`i64()`/`f32()`/`f64()`) will return zero.
 
+## Numeric behavior
+
+`x.json2` preserves integer values exactly when decoding into concrete integer
+types like `i64` and `u64`.
+
+When decoding into `Any`, integer-shaped JSON numbers are preferred as `i64`
+when they fit, then as `u64` when they fit, and otherwise fall back to `f64`.
+Values that fall back to `f64` may lose precision.
+
+When encoding floats, non-finite values (`NaN`, `+Inf`, `-Inf`) are emitted as
+`null`, because they are not valid JSON numbers.
+
 ## Encoding using string builder instead of []u8
 
 To be more performant, `json2`, in PR 20052, decided to use buffers directly instead of Writers.

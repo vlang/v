@@ -1,4 +1,5 @@
 import json2 as json
+import math
 import time
 import math.big
 
@@ -272,6 +273,14 @@ fn test_string_escapes() {
 	assert json.encode('normal escapes: ", \\ special control escapes: \b, \n, \f, \t, \r, other control escapes: \0, \u001b') == r'"normal escapes: \", \\ special control escapes: \b, \n, \f, \t, \r, other control escapes: \u0000, \u001b"'
 	assert json.encode('ascii, é, 한, 😀, ascii') == r'"ascii, é, 한, 😀, ascii"'
 	assert json.encode('ascii, é, 한, 😀, ascii', escape_unicode: true) == r'"ascii, \u00e9, \ud55c, \uD83D\ude00, ascii"'
+}
+
+fn test_non_finite_floats_encode_as_null() {
+	assert json.encode(math.nan()) == 'null'
+	assert json.encode(math.inf(1)) == 'null'
+	assert json.encode(math.inf(-1)) == 'null'
+	assert json.encode(f32(math.nan())) == 'null'
+	assert json.encode(f32(math.inf(1))) == 'null'
 }
 
 fn test_options() {
