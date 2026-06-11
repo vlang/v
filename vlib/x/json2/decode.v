@@ -298,6 +298,12 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 		}
 	}
 	json_data := strip_utf8_bom(val)
+	mut decoder := Decoder{
+		json:   json_data
+		strict: params.strict
+	}
+	decoder.check_json_format()!
+
 	$if T is $struct {
 		if params.strict {
 			strict_result := json2_strict.strict_check[T](json_data)
@@ -310,13 +316,6 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 			}
 		}
 	}
-	mut decoder := Decoder{
-		json:   json_data
-		strict: params.strict
-	}
-
-	decoder.check_json_format()!
-
 	mut result := T{}
 	decoder.current_node = decoder.values_info.head
 	$if T.unaliased_typ is $array_dynamic {
