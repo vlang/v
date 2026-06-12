@@ -245,7 +245,10 @@ fn (mut g Gen) gen_embedded_asm_file(emfile ast.EmbeddedFile) {
 	}
 
 	ef_hash := emfile.hash()
-	asm_filename := '_v_embed_blob_${ef_hash}.S'
+	// Include a per-build random suffix in the filename to prevent collisions
+	// when two V processes embed the same file concurrently (parallel `v test`).
+	// The symbol names stay deterministic (based on hash only).
+	asm_filename := '_v_embed_blob_${ef_hash}_${g.embed_build_id}.S'
 	mut sb := strings.new_builder(512)
 	sb.writeln('// V embedded file: ${emfile.rpath} (hash ${ef_hash}, uncompressed size ${emfile.len})')
 	sb.writeln('#if defined(__APPLE__)')

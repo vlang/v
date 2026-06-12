@@ -7,6 +7,7 @@ import os
 import term
 import strings
 import hash.fnv1a
+import rand
 import v.ast
 import v.pref
 import v.token
@@ -245,6 +246,7 @@ mut:
 	embedded_files                       []ast.EmbeddedFile
 	embedded_asm                         map[string]string  // generated .S file content (filename → content)
 	embedded_temp_files                  []string           // compressed .bin temp files for cleanup
+	embed_build_id                       string             // random suffix for .S/.o filenames to avoid parallel-build collisions
 	sql_i                                int
 	sql_stmt_name                        string
 	sql_bind_name                        string
@@ -346,6 +348,7 @@ pub:
 	out_fn_start_pos    []int           // fn decl positions
 	embedded_asm        map[string]string  // filename → .S file content
 	embedded_temp_files []string           // temp .bin files for cleanup
+		embed_build_id     string             // random suffix for .S/.o filenames to avoid parallel-build collisions
 }
 
 pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenOutput {
@@ -420,6 +423,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		use_segfault_handler:          pref_.should_use_segfault_handler()
 		static_modifier:               if pref_.parallel_cc || pref_.is_o { 'static ' } else { '' }
 		static_non_parallel:           if !pref_.parallel_cc { 'static ' } else { '' }
+		embed_build_id:     rand.ulid()
 		has_reflection:                'v.reflection' in table.modules
 		has_debugger:                  'v.debug' in table.modules
 		reflection_strings:            &reflection_strings
@@ -1001,6 +1005,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		out_fn_start_pos:    out_fn_start_pos
 		embedded_asm:        g.embedded_asm
 		embedded_temp_files: g.embedded_temp_files
+		embed_build_id:     g.embed_build_id
 	}
 }
 
@@ -1052,6 +1057,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		module_built:                       global_g.module_built
 		static_non_parallel:                global_g.static_non_parallel
 		static_modifier:                    global_g.static_modifier
+		embed_build_id:     global_g.embed_build_id
 		timers:                             util.new_timers(
 			should_print: global_g.timers_should_print
 			label:        'cgen_process_one_file_cb idx: ${idx}, wid: ${wid}'
