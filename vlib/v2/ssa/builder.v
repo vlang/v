@@ -377,11 +377,71 @@ pub fn (mut b Builder) new_worker_clone(worker_mod &Module, worker_idx int) &Bui
 }
 
 pub fn imported_symbol_fn_name(module_name string, name string) string {
-	normalized_module_name := module_name.replace('.', '_')
+	normalized_module_name := module_name_to_ssa_name(module_name)
 	if normalized_module_name == '' || normalized_module_name == 'main' {
 		return name
 	}
 	return '${normalized_module_name}__${name}'
+}
+
+fn (b &Builder) resolve_module_call_fn_name(module_name string, name string) string {
+	full_name := imported_symbol_fn_name(module_name, name)
+	if full_name in b.fn_index {
+		return full_name
+	}
+	if module_name.contains('.') {
+		leaf_name := imported_symbol_fn_name(module_name.all_after_last('.'), name)
+		if leaf_name in b.fn_index {
+			return leaf_name
+		}
+	}
+	return full_name
+}
+
+fn module_name_to_ssa_name(module_name string) string {
+	return module_name.replace('.', '_')
+}
+
+fn checked_type_name_to_ssa_name(type_name string) string {
+	if type_name == '' {
+		return ''
+	}
+	if type_name.contains('__') {
+		separator_idx := type_name.last_index('__') or { -1 }
+		module_name := type_name[..separator_idx]
+		name := type_name[separator_idx + 2..]
+		return imported_symbol_fn_name(module_name, name)
+	}
+	if type_name.contains('.') {
+		dot_idx := type_name.last_index('.') or { -1 }
+		module_name := type_name[..dot_idx]
+		name := type_name[dot_idx + 1..]
+		return imported_symbol_fn_name(module_name, name)
+	}
+	return type_name
+}
+
+fn generic_token_part_name(name string) string {
+	if name == '' {
+		return 'Type'
+	}
+	mut out := []u8{cap: name.len}
+	mut wrote_sep := false
+	for i in 0 .. name.len {
+		ch := name[i]
+		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || (ch >= `0` && ch <= `9`) {
+			out << ch
+			wrote_sep = false
+		} else if !wrote_sep {
+			out << `_`
+			wrote_sep = true
+		}
+	}
+	mut tok := out.bytestr().trim('_')
+	if tok == '' {
+		tok = 'Type'
+	}
+	return tok
 }
 
 fn import_module_name(imp ast.ImportStmt) string {
@@ -409,7 +469,7 @@ fn module_import_aliases_from_imports(imports []ast.ImportStmt) map[string]strin
 		if !ssa_string_ok(module_name) {
 			continue
 		}
-		aliases[alias] = module_name.replace('.', '_')
+		aliases[alias] = module_name
 	}
 	return aliases
 }
@@ -1042,17 +1102,20 @@ fn (b &Builder) generic_ident_type_part_name(name string) string {
 		return ''
 	}
 	normalized := name.replace('.', '__')
-	if b.cur_module == '' || b.cur_module == 'main' || normalized.contains('__') {
+	if normalized.contains('__') {
 		return normalized
 	}
 	if b.env == unsafe { nil } {
 		return normalized
 	}
-	scope := b.env.get_scope(b.cur_module) or { return normalized }
-	typ := scope.lookup_type_parent(name, 0) or { return normalized }
+	typ := b.lookup_checked_type_by_name(name) or { return normalized }
 	match typ {
 		types.Struct, types.SumType {
-			return '${b.cur_module.replace('.', '_')}__${normalized}'
+			typ_name := types.type_name(typ)
+			if typ_name == '' {
+				return normalized
+			}
+			return checked_type_name_to_ssa_name(typ_name)
 		}
 		else {
 			return normalized
@@ -1134,6 +1197,114 @@ fn (b &Builder) generic_type_part_name(expr ast.Expr) string {
 	}
 }
 
+fn (b &Builder) generic_ident_type_arg_part_name(name string) string {
+	if name == '' {
+		return ''
+	}
+	if b.env == unsafe { nil } {
+		return generic_token_part_name(name)
+	}
+	typ := b.lookup_checked_type_by_name(name) or { return generic_token_part_name(name) }
+	match typ {
+		types.Struct, types.SumType {
+			typ_name := types.type_name(typ)
+			if typ_name == '' {
+				return generic_token_part_name(name)
+			}
+			return generic_token_part_name(typ_name)
+		}
+		else {
+			return generic_token_part_name(name)
+		}
+	}
+}
+
+fn (b &Builder) generic_selector_type_arg_part_name(expr ast.SelectorExpr) string {
+	full_name := b.generic_selector_type_part_name(expr)
+	if full_name == '' {
+		return ''
+	}
+	return generic_token_part_name(full_name)
+}
+
+fn (b &Builder) generic_type_arg_part_name(expr ast.Expr) string {
+	match expr {
+		ast.Ident {
+			return b.generic_ident_type_arg_part_name(expr.name)
+		}
+		ast.SelectorExpr {
+			return b.generic_selector_type_arg_part_name(expr)
+		}
+		ast.PrefixExpr {
+			if expr.op == .amp {
+				return pointer_type_part_name(b.generic_type_arg_part_name(expr.expr))
+			}
+			return ''
+		}
+		ast.Type {
+			match expr {
+				ast.ArrayType {
+					elem_name := b.generic_type_arg_part_name(expr.elem_type)
+					if elem_name == '' {
+						return ''
+					}
+					return 'Array_${elem_name}'
+				}
+				ast.ArrayFixedType {
+					elem_name := b.generic_type_arg_part_name(expr.elem_type)
+					len_name := if expr.len is ast.BasicLiteral {
+						(expr.len as ast.BasicLiteral).value
+					} else {
+						''
+					}
+					if elem_name == '' || len_name == '' {
+						return ''
+					}
+					return 'Array_fixed_${elem_name}_${len_name}'
+				}
+				ast.MapType {
+					key_name := b.generic_type_arg_part_name(expr.key_type)
+					value_name := b.generic_type_arg_part_name(expr.value_type)
+					if key_name == '' || value_name == '' {
+						return ''
+					}
+					return 'Map_${key_name}_${value_name}'
+				}
+				ast.PointerType {
+					return pointer_type_part_name(b.generic_type_arg_part_name(expr.base_type))
+				}
+				ast.GenericType {
+					concrete_name := b.generic_type_name(expr.name, expr.params)
+					if concrete_name == '' {
+						return ''
+					}
+					return generic_token_part_name(concrete_name)
+				}
+				ast.OptionType {
+					base_name := b.generic_type_arg_part_name(expr.base_type)
+					if base_name == '' {
+						return ''
+					}
+					return 'Option_${base_name}'
+				}
+				ast.ResultType {
+					base_name := b.generic_type_arg_part_name(expr.base_type)
+					if base_name == '' {
+						return ''
+					}
+					return 'Result_${base_name}'
+				}
+				else {
+					return ''
+				}
+			}
+		}
+		else {
+			return ''
+		}
+	}
+}
+
 fn (b &Builder) generic_selector_type_part_name(expr ast.SelectorExpr) string {
 	if expr.lhs is ast.Ident {
 		lhs_name := (expr.lhs as ast.Ident).name
@@ -1142,10 +1313,10 @@ fn (b &Builder) generic_selector_type_part_name(expr ast.SelectorExpr) string {
 			return ''
 		}
 		if resolved_mod := b.module_import_aliases[lhs_name] {
-			return '${resolved_mod}__${rhs_name}'
+			return imported_symbol_fn_name(resolved_mod, rhs_name)
 		}
 		if resolved_mod := b.selector_module_name_for_ident(lhs_name) {
-			return '${resolved_mod}__${rhs_name}'
+			return imported_symbol_fn_name(resolved_mod, rhs_name)
 		}
 		return '${lhs_name.replace('.', '__')}__${rhs_name}'
 	}
@@ -1194,7 +1365,7 @@ fn (b &Builder) generic_type_name(name ast.Expr, params []ast.Expr) string {
 	base := b.generic_type_part_name(name)
 	mut parts := []string{cap: params.len}
 	for param in params {
-		part := b.generic_type_part_name(param)
+		part := b.generic_type_arg_part_name(param)
 		if part == '' {
 			return ''
 		}
@@ -1334,12 +1505,104 @@ fn (b &Builder) generic_selector_type_part_name_from_flat(lhs_name string, rhs_n
 		return ''
 	}
 	if resolved_mod := b.module_import_aliases[lhs_name] {
-		return '${resolved_mod}__${rhs_name}'
+		return imported_symbol_fn_name(resolved_mod, rhs_name)
 	}
 	if resolved_mod := b.selector_module_name_for_ident(lhs_name) {
-		return '${resolved_mod}__${rhs_name}'
+		return imported_symbol_fn_name(resolved_mod, rhs_name)
 	}
 	return '${lhs_name.replace('.', '__')}__${rhs_name}'
+}
+
+fn (b &Builder) generic_ident_type_arg_part_name_from_flat(name string) string {
+	return b.generic_ident_type_arg_part_name(name)
+}
+
+fn (b &Builder) generic_selector_type_arg_part_name_from_flat(lhs_name string, rhs_name string) string {
+	full_name := b.generic_selector_type_part_name_from_flat(lhs_name, rhs_name)
+	if full_name == '' {
+		return ''
+	}
+	return generic_token_part_name(full_name)
+}
+
+fn (b &Builder) generic_type_arg_part_name_from_flat(c ast.Cursor) string {
+	match c.kind() {
+		.expr_ident {
+			return b.generic_ident_type_arg_part_name_from_flat(c.name())
+		}
+		.expr_selector {
+			lhs := c.edge(0)
+			rhs := c.edge(1)
+			if lhs.kind() == .expr_ident && rhs.kind() == .expr_ident {
+				return b.generic_selector_type_arg_part_name_from_flat(lhs.name(), rhs.name())
+			}
+			return ''
+		}
+		.expr_prefix {
+			op := unsafe { token.Token(int(c.aux())) }
+			if op == .amp {
+				return pointer_type_part_name(b.generic_type_arg_part_name_from_flat(c.edge(0)))
+			}
+			return ''
+		}
+		.typ_array {
+			elem_name := b.generic_type_arg_part_name_from_flat(c.edge(0))
+			if elem_name == '' {
+				return ''
+			}
+			return 'Array_${elem_name}'
+		}
+		.typ_array_fixed {
+			if c.edge_count() < 2 {
+				return ''
+			}
+			elem_name := b.generic_type_arg_part_name_from_flat(c.edge(1))
+			len_c := c.edge(0)
+			len_name := if len_c.kind() == .expr_basic_literal { len_c.name() } else { '' }
+			if elem_name == '' || len_name == '' {
+				return ''
+			}
+			return 'Array_fixed_${elem_name}_${len_name}'
+		}
+		.typ_map {
+			if c.edge_count() < 2 {
+				return ''
+			}
+			key_name := b.generic_type_arg_part_name_from_flat(c.edge(0))
+			value_name := b.generic_type_arg_part_name_from_flat(c.edge(1))
+			if key_name == '' || value_name == '' {
+				return ''
+			}
+			return 'Map_${key_name}_${value_name}'
+		}
+		.typ_pointer {
+			return pointer_type_part_name(b.generic_type_arg_part_name_from_flat(c.edge(0)))
+		}
+		.typ_generic {
+			concrete_name := b.generic_type_name_from_flat(c)
+			if concrete_name == '' {
+				return ''
+			}
+			return generic_token_part_name(concrete_name)
+		}
+		.typ_option {
+			base_name := b.generic_type_arg_part_name_from_flat(c.edge(0))
+			if base_name == '' {
+				return ''
+			}
+			return 'Option_${base_name}'
+		}
+		.typ_result {
+			base_name := b.generic_type_arg_part_name_from_flat(c.edge(0))
+			if base_name == '' {
+				return ''
+			}
+			return 'Result_${base_name}'
+		}
+		else {
+			return ''
+		}
+	}
 }
 
 fn (b &Builder) generic_type_name_from_flat(c ast.Cursor) string {
@@ -1349,7 +1612,7 @@ fn (b &Builder) generic_type_name_from_flat(c ast.Cursor) string {
 	base := b.generic_type_part_name_from_flat(c.edge(0))
 	mut parts := []string{cap: c.edge_count() - 1}
 	for i in 1 .. c.edge_count() {
-		part := b.generic_type_part_name_from_flat(c.edge(i))
+		part := b.generic_type_arg_part_name_from_flat(c.edge(i))
 		if part == '' {
 			return ''
 		}
@@ -1493,11 +1756,14 @@ fn (b &Builder) selector_module_name_for_ident(mod_name string) ?string {
 	if mod_name == 'C' {
 		return 'C'
 	}
+	if resolved_mod := b.module_import_aliases[mod_name] {
+		return resolved_mod
+	}
 	if b.env != unsafe { nil } {
 		if scope := b.env.get_scope(b.cur_module) {
 			if obj := scope.lookup_parent(mod_name, 0) {
 				if obj is types.Module {
-					return obj.name.replace('.', '_')
+					return obj.name
 				}
 			}
 		}
@@ -2849,7 +3115,7 @@ fn (mut b Builder) embedded_type_id_from_expr(emb ast.Expr) ?TypeID {
 			if resolved_mod == '' {
 				return none
 			}
-			qualified := '${resolved_mod}__${emb.rhs.name}'
+			qualified := imported_symbol_fn_name(resolved_mod, emb.rhs.name)
 			if type_id := b.struct_types[qualified] {
 				return type_id
 			}
@@ -2889,7 +3155,7 @@ fn (mut b Builder) embedded_type_id_from_flat(emb ast.Cursor) ?TypeID {
 			if resolved_mod == '' {
 				return none
 			}
-			qualified := '${resolved_mod}__${rhs_name}'
+			qualified := imported_symbol_fn_name(resolved_mod, rhs_name)
 			if type_id := b.struct_types[qualified] {
 				return type_id
 			}
@@ -14723,11 +14989,7 @@ fn (mut b Builder) resolve_call_name(expr ast.CallExpr) string {
 				if mod_name == 'C' {
 					return sel.rhs.name
 				}
-				qualified := '${mod_name}__${sel.rhs.name}'
-				if qualified in b.fn_index {
-					return qualified
-				}
-				return qualified
+				return b.resolve_module_call_fn_name(mod_name, sel.rhs.name)
 			}
 			if typed_method := b.resolve_method_name_from_checked_type(sel.lhs, sel.rhs.name) {
 				return typed_method
@@ -14771,11 +15033,7 @@ fn (mut b Builder) resolve_call_name_from_flat(c ast.Cursor) string {
 				if mod_name == 'C' {
 					return rhs_name
 				}
-				qualified := '${mod_name}__${rhs_name}'
-				if qualified in b.fn_index {
-					return qualified
-				}
-				return qualified
+				return b.resolve_module_call_fn_name(mod_name, rhs_name)
 			}
 			if typed_method := b.resolve_method_name_from_checked_type_from_flat(c.edge(0),
 				rhs_name)
@@ -17016,7 +17274,7 @@ fn (b &Builder) sumtype_variant_generic_candidate_names_from_flat(base ast.Curso
 	base_name := b.generic_type_part_name_from_flat(base)
 	mut parts := []string{cap: params.len}
 	for param in params {
-		part := b.generic_type_part_name_from_flat(param)
+		part := b.generic_type_arg_part_name_from_flat(param)
 		if part == '' {
 			return []string{}
 		}
@@ -18047,7 +18305,7 @@ fn (mut b Builder) embedded_init_selector_call_name(lhs_name string, rhs_name st
 		return ''
 	}
 	if resolved_mod := b.module_import_aliases[lhs_name] {
-		qualified := '${resolved_mod}__${rhs_name}'
+		qualified := imported_symbol_fn_name(resolved_mod, rhs_name)
 		if qualified in b.fn_index {
 			return qualified
 		}
@@ -18057,7 +18315,7 @@ fn (mut b Builder) embedded_init_selector_call_name(lhs_name string, rhs_name st
 		return qualified
 	}
 	if resolved_mod := b.selector_module_name_for_ident(lhs_name) {
-		resolved_qualified := '${resolved_mod}__${rhs_name}'
+		resolved_qualified := imported_symbol_fn_name(resolved_mod, rhs_name)
 		if resolved_qualified in b.fn_index {
 			return resolved_qualified
 		}
@@ -19120,49 +19378,98 @@ fn (b &Builder) resolve_alias_base_type(alias types.Alias) ?types.Type {
 	return none
 }
 
+fn (b &Builder) lookup_checked_type_in_module(module_name string, type_name string) ?types.Type {
+	if module_name == '' || type_name == '' || b.env == unsafe { nil } {
+		return none
+	}
+	if scope := b.env.get_scope(module_name) {
+		if typ := scope.lookup_type_parent(type_name, 0) {
+			return typ
+		}
+		if obj := scope.lookup_parent(type_name, 0) {
+			match obj {
+				types.Type {
+					return obj
+				}
+				types.TypeObject {
+					return obj.typ
+				}
+				else {}
+			}
+		}
+	}
+	return none
+}
+
+fn (b &Builder) checked_module_names_for_ssa_module(module_name string) []string {
+	mut candidates := []string{}
+	if module_name == '' || b.env == unsafe { nil } {
+		return candidates
+	}
+	for import_alias, imported_module in b.module_import_aliases {
+		alias_matches := module_name_to_ssa_name(import_alias) == module_name
+		imported_matches := module_name_to_ssa_name(imported_module) == module_name
+		if alias_matches || imported_matches {
+			if imported_module !in candidates {
+				candidates << imported_module
+			}
+		}
+	}
+	if candidates.len > 0 {
+		return candidates
+	}
+	if module_name_to_ssa_name(b.cur_module) == module_name {
+		candidates << b.cur_module
+	}
+	return candidates
+}
+
 fn (b &Builder) lookup_checked_type_by_name(name string) ?types.Type {
 	if name == '' || !ssa_string_ok(name) || b.env == unsafe { nil } {
 		return none
 	}
-	if scope := b.env.get_scope(b.cur_module) {
-		if typ := scope.lookup_type_parent(name, 0) {
-			return typ
-		}
+	if typ := b.lookup_checked_type_in_module(b.cur_module, name) {
+		return typ
 	}
 	if name.contains('.') {
 		dot_idx := name.last_index('.') or { -1 }
 		mod_name := name[..dot_idx]
 		type_name := name[dot_idx + 1..]
-		if scope := b.env.get_scope(mod_name) {
-			if typ := scope.lookup_type_parent(type_name, 0) {
-				return typ
-			}
+		if typ := b.lookup_checked_type_in_module(mod_name, type_name) {
+			return typ
 		}
 	}
 	if name.contains('__') {
 		dunder_idx := name.last_index('__') or { -1 }
-		mod_name := name[..dunder_idx].replace('__', '.')
 		type_name := name[dunder_idx + 2..]
-		if scope := b.env.get_scope(mod_name) {
-			if typ := scope.lookup_type_parent(type_name, 0) {
+		ssa_mod_name := name[..dunder_idx]
+		checked_module_names := b.checked_module_names_for_ssa_module(ssa_mod_name)
+		if checked_module_names.len > 1 {
+			return none
+		}
+		if checked_module_names.len == 1 {
+			checked_module_name := checked_module_names[0]
+			if typ := b.lookup_checked_type_in_module(checked_module_name, type_name) {
 				return typ
+			}
+			if checked_module_name.contains('.') {
+				leaf_module_name := checked_module_name.all_after_last('.')
+				if typ := b.lookup_checked_type_in_module(leaf_module_name, type_name) {
+					return typ
+				}
 			}
 		}
 		short_name := name.all_after_last('__')
-		if scope := b.env.get_scope(b.cur_module) {
-			if typ := scope.lookup_type_parent(short_name, 0) {
-				return typ
-			}
+		if typ := b.lookup_checked_type_in_module(b.cur_module, short_name) {
+			return typ
 		}
 	}
 	for try_mod in ['main', 'builtin'] {
 		if try_mod == b.cur_module {
 			continue
 		}
-		if scope := b.env.get_scope(try_mod) {
-			if typ := scope.lookup_type_parent(name, 0) {
-				return typ
-			}
+		if typ := b.lookup_checked_type_in_module(try_mod, name) {
+			return typ
 		}
 	}
 	return none

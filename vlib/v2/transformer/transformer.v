@@ -194,6 +194,7 @@ mut:
 	concrete_embedded_owner_names      map[string]map[string]string
 	cur_generic_call_file_idx          int = -1
 	cur_import_aliases                 map[string]string
+	sum_type_decl_variant_names        map[string][]string
 	// Cached at construction: avoids per-block t.pref nil/enum re-check in
 	// hot loops (transform_stmts, IfGuardExpr handling, OrExpr expansion, etc).
 	is_native_be               bool
@@ -393,6 +394,7 @@ fn new_transformer_base(env &types.Environment, p &pref.Preferences) &Transforme
 		struct_default_decl_infos:          map[string]StructDefaultDeclInfo{}
 		concrete_embedded_owner_names:      map[string]map[string]string{}
 		cur_import_aliases:                 map[string]string{}
+		sum_type_decl_variant_names:        map[string][]string{}
 		is_native_be:                       p != unsafe { nil }
 			&& (p.backend == .arm64 || p.backend == .x64)
 	}
@@ -467,6 +469,7 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		concrete_embedded_owner_names:      t.concrete_embedded_owner_names.clone()
 		cur_generic_call_file_idx:          t.cur_generic_call_file_idx
 		cur_import_aliases:                 t.cur_import_aliases.clone()
+		sum_type_decl_variant_names:        t.sum_type_decl_variant_names.clone()
 		is_native_be:                       t.is_native_be
 		macos_tiny_candidate_graph:         t.macos_tiny_candidate_graph
 	}
@@ -2052,6 +2055,7 @@ pub fn (mut t Transformer) pre_pass(files []ast.File) {
 	}
 	// Cache scope and method maps for lock-free access during transform.
 	t.cache_env_maps()
+	t.collect_sum_type_decl_variant_names(files)
 }
 
 // pre_pass_from_flat is the FlatAst-driven equivalent of pre_pass. It walks
@@ -2084,6 +2088,7 @@ pub fn (mut t Transformer) pre_pass_from_flat(flat &ast.FlatAst) {
 		t.collect_runtime_const_inits_from_flat(flat)
 	}
 	t.cache_env_maps()
+	t.collect_sum_type_decl_variant_names_from_flat(flat)
 }
 
 // cache_env_maps snapshots the shared Environment maps into plain maps

@@ -64,8 +64,8 @@ fn test_module_import_aliases_keep_nested_module_path() {
 			is_aliased: true
 		},
 	])
-	assert aliases['bar'] == 'foo_bar'
-	assert aliases['qux'] == 'foo_baz'
+	assert aliases['bar'] == 'foo.bar'
+	assert aliases['qux'] == 'foo.baz'
 }
 
 fn test_selective_import_fn_names_keep_nested_module_path() {

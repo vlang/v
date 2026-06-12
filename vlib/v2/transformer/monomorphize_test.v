@@ -23,6 +23,51 @@ fn mono_test_transformer() &Transformer {
 	}
 }
 
+fn test_worker_clone_sees_sumtype_decl_variant_cache() {
+	checked := mono_check_sources_for_test([
+		MonoSource{
+			rel:  'foo/box.v'
+			code: '
+module foo
+
+pub struct Box[T] {
+pub:
+	value T
+}
+'
+		},
+		MonoSource{
+			rel:  'main.v'
+			code: '
+module main
+
+import foo as f
+
+type ImportedValue = f.Box[int] | f.Box[string]
+'
+		},
+	])
+	mut transformer := checked.trans
+	transformer.pre_pass(checked.files)
+	mut worker := transformer.new_worker_clone(1)
+	expected := ['foo__Box_T_int', 'foo__Box_T_string']
+
+	assert transformer.get_sum_type_variants('ImportedValue') == expected
+	assert worker.get_sum_type_variants('ImportedValue') == expected
+	worker.sum_type_decl_variant_names['WorkerOnly'] = ['Nope']
+	assert 'WorkerOnly' !in transformer.sum_type_decl_variant_names
+
+	flat := ast.flatten_files(checked.files)
+	mut flat_transformer := Transformer.new_with_pref(checked.trans.env, checked.trans.pref)
+	flat_transformer.pre_pass_from_flat(&flat)
+	mut flat_worker := flat_transformer.new_worker_clone(2)
+
+	assert flat_transformer.get_sum_type_variants('ImportedValue') == expected
+	assert flat_worker.get_sum_type_variants('ImportedValue') == expected
+	flat_worker.sum_type_decl_variant_names['WorkerOnly'] = ['Nope']
+	assert 'WorkerOnly' !in flat_transformer.sum_type_decl_variant_names
+}
+
 fn test_get_expr_type_prefers_cloned_init_expr_type_over_stale_position_type() {
 	mut env := types.Environment.new()
 	pos := token.Pos{
@@ -1845,6 +1890,186 @@ fn tag(tree Tree[f64]) int {
 	}
 	assert saw_zero, 'generic sumtype match missing Empty tag 0 in ${rhs_values}'
 	assert saw_one, 'generic sumtype match missing Node[f64] tag 1 in ${rhs_values}'
+}
+
+fn test_sumtype_decl_variant_cache_records_concrete_generic_variants_only() {
+	checked := mono_check_sources_for_test([
+		MonoSource{
+			rel:  'foo/box.v'
+			code: '
+module foo
+
+pub struct Box[T] {
+pub:
+	value T
+}
+'
+		},
+		MonoSource{
+			rel:  'main.v'
+			code: '
+module main
+
+import foo as f
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+}
+
+struct Box[T] {
+	value T
+}
+
+type Tree[T] = Empty | Node[T]
+type Value = Box[int] | Box[string]
+type ImportedValue = f.Box[int] | f.Box[string]
+'
+		},
+	])
+	mut trans := checked.trans
+	trans.pre_pass(checked.files)
+	assert trans.get_sum_type_variants('Value') == ['Box_T_int', 'Box_T_string']
+	assert trans.get_sum_type_variants('main__Value') == ['Box_T_int', 'Box_T_string']
+	assert trans.get_sum_type_variants('ImportedValue') == ['foo__Box_T_int', 'foo__Box_T_string']
+	assert trans.get_sum_type_variants('main__ImportedValue') == ['foo__Box_T_int',
+		'foo__Box_T_string']
+	assert 'Tree' !in trans.sum_type_decl_variant_names
+	assert 'main__Tree' !in trans.sum_type_decl_variant_names
+
+	flat := ast.flatten_files(checked.files)
+	mut flat_trans := Transformer.new_with_pref(checked.trans.env, checked.trans.pref)
+	flat_trans.pre_pass_from_flat(&flat)
+	assert flat_trans.get_sum_type_variants('Value') == ['Box_T_int', 'Box_T_string']
+	assert flat_trans.get_sum_type_variants('main__Value') == ['Box_T_int', 'Box_T_string']
+	assert flat_trans.get_sum_type_variants('ImportedValue') == ['foo__Box_T_int',
+		'foo__Box_T_string']
+	assert flat_trans.get_sum_type_variants('main__ImportedValue') == [
+		'foo__Box_T_int',
+		'foo__Box_T_string',
+	]
+	assert 'Tree' !in flat_trans.sum_type_decl_variant_names
+	assert 'main__Tree' !in flat_trans.sum_type_decl_variant_names
+}
+
+fn test_generic_sumtype_match_uses_full_specialization_when_generic_base_repeats() {
+	files := mono_transform_sources_for_test([
+		MonoSource{
+			rel:  'main.v'
+			code: '
+module main
+
+struct Box[T] {
+	value T
+}
+
+type Value = Box[int] | Box[string]
+
+fn tag(value Value) int {
+	return match value {
+		Box[string] { 20 }
+		else { 0 }
+	}
+}
+'
+		},
+	])
+	assert_generic_sumtype_repeated_base_string_tag(files, 'legacy')
+}
+
+fn test_flat_direct_generic_sumtype_match_uses_full_specialization_when_generic_base_repeats() {
+	files := mono_transform_sources_flat_direct_for_test([
+		MonoSource{
+			rel:  'main.v'
+			code: '
+module main
+
+struct Box[T] {
+	value T
+}
+
+type Value = Box[int] | Box[string]
+
+fn tag(value Value) int {
+	return match value {
+		Box[string] { 20 }
+		else { 0 }
+	}
+}
+'
+		},
+	])
+	assert_generic_sumtype_repeated_base_string_tag(files, 'flat direct')
+}
+
+fn test_generic_sumtype_match_smartcast_scans_full_specialization_body() {
+	files := mono_transform_sources_for_test([
+		MonoSource{
+			rel:  'main.v'
+			code: generic_sumtype_repeated_base_smartcast_source()
+		},
+	])
+	assert_generic_sumtype_repeated_base_smartcast_echo(files, 'legacy')
+}
+
+fn test_flat_direct_generic_sumtype_match_smartcast_scans_full_specialization_body() {
+	files := mono_transform_sources_flat_direct_for_test([
+		MonoSource{
+			rel:  'main.v'
+			code: generic_sumtype_repeated_base_smartcast_source()
+		},
+	])
+	assert_generic_sumtype_repeated_base_smartcast_echo(files, 'flat direct')
+}
+
+fn generic_sumtype_repeated_base_smartcast_source() string {
+	return '
+module main
+
+struct Box[T] {
+	value T
+}
+
+type Value = Box[int] | Box[string]
+
+fn echo[T](value T) T {
+	return value
+}
+
+fn use(value Value) string {
+	return match value {
+		Box[string] { echo(value.value) }
+		else { "" }
+	}
+}
+'
+}
+
+fn assert_generic_sumtype_repeated_base_string_tag(files []ast.File, label string) {
+	rhs_values := mono_tag_compare_rhs_for_fn(files, 'tag')
+	mut saw_string_tag := false
+	for rhs in rhs_values {
+		assert rhs !is ast.IndexExpr, '${label}: generic sumtype repeated base left index rhs ${rhs}'
+		assert rhs !is ast.GenericArgs, '${label}: generic sumtype repeated base left generic args rhs ${rhs}'
+		assert rhs !is ast.GenericArgOrIndexExpr, '${label}: generic sumtype repeated base left generic arg/index rhs ${rhs}'
+		if rhs is ast.BasicLiteral && rhs.kind == token.Token.number {
+			assert rhs.value != '0', '${label}: Box[string] branch matched first Box[int] tag in ${rhs_values}'
+			if rhs.value == '1' {
+				saw_string_tag = true
+			}
+		}
+	}
+	assert saw_string_tag, '${label}: Box[string] branch should match the second generic specialization tag, got ${rhs_values}'
+}
+
+fn assert_generic_sumtype_repeated_base_smartcast_echo(files []ast.File, label string) {
+	fn_names := mono_fn_names(files)
+	assert 'echo_T_string' in fn_names, '${label}: smartcasted Box[string] branch did not collect echo[string], got ${fn_names}'
+	assert 'echo_T_int' !in fn_names, '${label}: Box[string] branch collected wrong echo[int] specialization, got ${fn_names}'
+	call_names := mono_call_names_for_fn(files, 'use')
+	assert 'echo_T_string' in call_names, '${label}: use() should call echo_T_string from Box[string] branch, got ${call_names}'
+	assert 'echo' !in call_names, '${label}: open echo call leaked in ${call_names}'
 }
 
 fn test_generic_sumtype_receiver_no_arg_method_call_is_monomorphized() {

@@ -4903,6 +4903,7 @@ fn (mut t Transformer) generic_match_cond_variant_from_generic_expr(lhs ast.Expr
 		name:        base_name
 		name_full:   base_full + suffix
 		module_name: variant_module
+		is_generic:  true
 	}
 }
 
@@ -5459,6 +5460,7 @@ struct GenericMatchCondVariant {
 	name        string
 	name_full   string
 	module_name string
+	is_generic  bool
 }
 
 fn (mut t Transformer) generic_match_cond_variant_from_expr(cond ast.Expr) ?GenericMatchCondVariant {
@@ -5589,6 +5591,7 @@ fn (t &Transformer) generic_match_cond_variant_from_generic_cursor(lhs ast.Curso
 		name:        base_name
 		name_full:   base_full + suffix
 		module_name: variant_module
+		is_generic:  true
 	}
 }
 
@@ -5757,7 +5760,7 @@ fn (t &Transformer) generic_match_smartcast_contexts_from_variants(smartcast_exp
 			c_variant_name
 		}
 		if !match_cond_variant_matches_sumtype(sumtype_name, variants, c_variant_name,
-			qualified_variant) {
+			qualified_variant, qualified_variant_full, cond.is_generic) {
 			return []SmartcastContext{}
 		}
 		ctxs << SmartcastContext{
@@ -5770,9 +5773,18 @@ fn (t &Transformer) generic_match_smartcast_contexts_from_variants(smartcast_exp
 	return ctxs
 }
 
-fn match_cond_variant_matches_sumtype(sumtype_name string, variants []string, variant_name string, qualified_variant string) bool {
+fn match_cond_variant_matches_sumtype(sumtype_name string, variants []string, variant_name string, qualified_variant string, qualified_variant_full string, is_generic bool) bool {
 	for variant in variants {
+		if is_generic
+			&& sum_type_variant_matches_for_sumtype(sumtype_name, variant, qualified_variant_full) {
+			return true
+		}
 		if sum_type_variant_matches_for_sumtype(sumtype_name, variant, qualified_variant) {
+			return true
+		}
+		if is_generic
+			&& sumtype_match_generic_base_is_unique(sumtype_name, variants, qualified_variant)
+			&& sum_type_variant_matches_for_sumtype(sumtype_name, sumtype_match_variant_base_name(variant), qualified_variant) {
 			return true
 		}
 		if variant_name.starts_with('Array_') && variant.starts_with('[]') {

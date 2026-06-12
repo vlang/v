@@ -2101,6 +2101,49 @@ fn x64_generic_sumtype_direct_wrap_stdout() []u8 {
 '.bytes()
 }
 
+fn x64_generic_sumtype_repeated_base_specialization_source() string {
+	return "module main
+
+struct Box[T] {
+	value T
+}
+
+type Value = Box[int] | Box[string]
+
+fn string_tag(value Value) int {
+	return match value {
+		Box[string] { 1 }
+		else { 0 }
+	}
+}
+
+fn int_tag(value Value) int {
+	return match value {
+		Box[int] { 0 }
+		else { 1 }
+	}
+}
+
+fn main() {
+	if string_tag(Value(Box[string]{'ok'})) == 1 {
+		print('S')
+	} else {
+		print('s')
+	}
+	if int_tag(Value(Box[int]{7})) == 0 {
+		println('I')
+	} else {
+		println('i')
+	}
+}
+"
+}
+
+fn x64_generic_sumtype_repeated_base_specialization_stdout() []u8 {
+	return 'SI
+'.bytes()
+}
+
 fn x64_generic_sumtype_receiver_size_source() string {
 	return 'module main
 
@@ -6843,6 +6886,22 @@ fn test_x64_linux_generic_sumtype_direct_wrap_stdout_exact_bytes() {
 		assert_x64_linux_hosted_libc_binary(result, x64_generic_sumtype_direct_wrap_stdout())
 		x64_host_cleanup_tmp(result.tmp_dir)
 	}
+}
+
+fn test_x64_linux_generic_sumtype_repeated_base_specialization_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('generic_sumtype_repeated_base_specialization_exact',
+			x64_generic_sumtype_repeated_base_specialization_source())
+		assert_x64_linux_hosted_libc_binary(result,
+			x64_generic_sumtype_repeated_base_specialization_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_macos_windows_generic_sumtype_repeated_base_specialization_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('generic_sumtype_repeated_base_specialization_exact',
+		x64_generic_sumtype_repeated_base_specialization_source(),
+		x64_generic_sumtype_repeated_base_specialization_stdout())
 }
 
 fn test_x64_linux_generic_sumtype_receiver_size_stdout_exact_bytes() {

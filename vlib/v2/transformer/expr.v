@@ -971,6 +971,21 @@ fn sumtype_match_variant_base_name(name string) string {
 	return c_name
 }
 
+fn sumtype_match_generic_base_is_unique(sumtype_name string, variants []string, base_variant string) bool {
+	mut matches := 0
+	for variant in variants {
+		if sum_type_variant_matches_for_sumtype(sumtype_name,
+			sumtype_match_variant_base_name(variant), base_variant)
+		{
+			matches++
+			if matches > 1 {
+				return false
+			}
+		}
+	}
+	return matches == 1
+}
+
 fn (t &Transformer) generic_match_branch_variant_info(lhs ast.Expr, args []ast.Expr) (string, string, string, bool) {
 	base_name := t.type_expr_name(lhs)
 	if base_name == '' {
@@ -1098,11 +1113,17 @@ fn (mut t Transformer) transform_match_expr_parts(expr ast.MatchExpr) (ast.Expr,
 
 					mut c_tag := -1
 					for i, v in variants {
+						if c_variant_is_generic
+							&& sum_type_variant_matches_for_sumtype(sumtype_name, v, qualified_variant_full) {
+							c_tag = i
+							break
+						}
 						if sum_type_variant_matches_for_sumtype(sumtype_name, v, qualified_variant) {
 							c_tag = i
 							break
 						}
 						if c_variant_is_generic
+							&& sumtype_match_generic_base_is_unique(sumtype_name, variants, qualified_variant)
 							&& sum_type_variant_matches_for_sumtype(sumtype_name, sumtype_match_variant_base_name(v), qualified_variant) {
 							c_tag = i
 							break

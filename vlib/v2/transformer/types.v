@@ -727,8 +727,10 @@ fn (t &Transformer) type_to_variant_name(e ast.Type) string {
 	return ''
 }
 
-// get_sum_type_variants returns the variants for a sum type
 fn (t &Transformer) get_sum_type_variants(type_name string) []string {
+	if variants := t.sum_type_decl_variant_names[type_name] {
+		return variants.clone()
+	}
 	typ := t.lookup_type(type_name) or { return []string{} }
 	if typ is types.SumType {
 		mut variants := []string{}
@@ -738,6 +740,175 @@ fn (t &Transformer) get_sum_type_variants(type_name string) []string {
 		return variants
 	}
 	return []string{}
+}
+
+fn (mut t Transformer) collect_sum_type_decl_variant_names(files []ast.File) {
+	old_module := t.cur_module
+	old_file := t.cur_file_name
+	old_scope := t.scope
+	old_import_aliases := t.cur_import_aliases.clone()
+	t.sum_type_decl_variant_names = map[string][]string{}
+	for file in files {
+		t.cur_file_name = file.name
+		t.cur_module = file.mod
+		t.cur_import_aliases = import_aliases_for_generic_collect(file.imports)
+		if scope := t.get_module_scope(file.mod) {
+			t.scope = scope
+		} else {
+			t.scope = unsafe { nil }
+		}
+		for stmt in file.stmts {
+			if stmt is ast.TypeDecl {
+				t.cache_sum_type_decl_variant_names(file.mod, stmt)
+			}
+		}
+	}
+	t.cur_module = old_module
+	t.cur_file_name = old_file
+	t.scope = old_scope
+	t.cur_import_aliases = old_import_aliases.clone()
+}
+
+fn (mut t Transformer) collect_sum_type_decl_variant_names_from_flat(flat &ast.FlatAst) {
+	old_module := t.cur_module
+	old_file := t.cur_file_name
+	old_scope := t.scope
+	old_import_aliases := t.cur_import_aliases.clone()
+	t.sum_type_decl_variant_names = map[string][]string{}
+	for fi in 0 .. flat.files.len {
+		fc := flat.file_cursor(fi)
+		t.cur_file_name = fc.name()
+		t.cur_module = fc.mod()
+		t.cur_import_aliases = flat_import_aliases_for_generic_collect(flat, fi)
+		if scope := t.get_module_scope(t.cur_module) {
+			t.scope = scope
+		} else {
+			t.scope = unsafe { nil }
+		}
+		stmts := fc.stmts()
+		for si in 0 .. stmts.len() {
+			stmt := stmts.at(si)
+			if stmt.kind() == .stmt_type_decl {
+				t.cache_sum_type_decl_variant_names(fc.mod(), stmt.type_decl())
+			}
+		}
+	}
+	t.cur_module = old_module
+	t.cur_file_name = old_file
+	t.scope = old_scope
+	t.cur_import_aliases = old_import_aliases.clone()
+}
+
+fn (mut t Transformer) cache_sum_type_decl_variant_names(module_name string, decl ast.TypeDecl) {
+	if decl.name == '' || decl.variants.len == 0 || decl.generic_params.len > 0 {
+		return
+	}
+	mut variants := []string{cap: decl.variants.len}
+	for variant in decl.variants {
+		if sum_type_decl_variant_has_open_placeholder(variant) {
+			return
+		}
+		variant_name := t.sum_type_decl_variant_name(variant)
+		if variant_name == '' {
+			return
+		}
+		variants << variant_name
+	}
+	if variants.len == 0 {
+		return
+	}
+	for key in sum_type_decl_cache_keys(module_name, decl.name) {
+		t.sum_type_decl_variant_names[key] = variants
+	}
+}
+
+fn (t &Transformer) sum_type_decl_variant_name(variant ast.Expr) string {
+	match variant {
+		ast.GenericArgs {
+			base_name := t.type_expr_name_full(variant.lhs)
+			suffix := t.generic_specialization_suffix(variant.args)
+			if base_name != '' && suffix != '' {
+				return base_name + suffix
+			}
+		}
+		ast.GenericArgOrIndexExpr {
+			base_name := t.type_expr_name_full(variant.lhs)
+			suffix := t.generic_specialization_suffix([variant.expr])
+			if base_name != '' && suffix != '' {
+				return base_name + suffix
+			}
+		}
+		ast.IndexExpr {
+			base_name := t.type_expr_name_full(variant.lhs)
+			suffix := t.generic_specialization_suffix([variant.expr])
+			if base_name != '' && suffix != '' {
+				return base_name + suffix
+			}
+		}
+		ast.Type {
+			if variant is ast.GenericType {
+				base_name := t.type_expr_name_full(variant.name)
+				suffix := t.generic_specialization_suffix(variant.params)
+				if base_name != '' && suffix != '' {
+					return base_name + suffix
+				}
+			}
+		}
+		else {}
+	}
+
+	return t.type_expr_name_full(variant)
+}
+
+fn sum_type_decl_variant_has_open_placeholder(variant ast.Expr) bool {
+	match variant {
+		ast.GenericArgs {
+			for arg in variant.args {
+				if generic_type_expr_has_open_placeholder(arg) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.GenericArgOrIndexExpr, ast.IndexExpr {
+			return generic_type_expr_has_open_placeholder(variant.expr)
+		}
+		ast.Type {
+			if variant is ast.GenericType {
+				for param in variant.params {
+					if generic_type_expr_has_open_placeholder(param) {
+						return true
+					}
+				}
+				return false
+			}
+			return generic_type_node_has_open_placeholder(variant)
+		}
+		else {
+			return generic_type_expr_has_open_placeholder(variant)
+		}
+	}
+}
+
+fn sum_type_decl_cache_keys(module_name string, name string) []string {
+	c_name := name.replace('.', '__')
+	if c_name == '' {
+		return []string{}
+	}
+	if c_name.contains('__') {
+		return [c_name]
+	}
+	mut keys := []string{}
+	if module_name == '' || module_name == 'main' || module_name == 'builtin' {
+		keys << c_name
+	}
+	if module_name != '' {
+		keys << '${module_name.replace('.', '__')}__${c_name}'
+	}
+	if keys.len == 0 {
+		keys << c_name
+	}
+	return keys
 }
 
 fn sum_type_variant_match_name(name string) string {
