@@ -1716,7 +1716,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					parent_sym := c.table.sym(ast.new_type(sym.info.parent_idx))
 					kind = parent_sym.kind
 				}
-				if is_json_decode && kind !in [.struct, .sum_type, .map, .array] {
+				if is_json_decode && c.table.fully_unaliased_type(unwrapped_typ).is_ptr() {
+					c.error('${fn_name}: cannot decode into a pointer type', expr.pos)
+				} else if is_json_decode && kind !in [.struct, .sum_type, .map, .array] {
 					c.error('${fn_name}: expected sum type, struct, map or array, found ${kind}',
 						expr.pos)
 				}
