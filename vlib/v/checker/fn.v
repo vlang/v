@@ -2290,7 +2290,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.table.cur_concrete_types)
 			param = unwrapped
 		}
-		param.typ = c.resolve_call_arg_param_type(call_arg, param, func.generic_names, concrete_types)
+		param.typ = c.resolve_call_arg_param_type(call_arg, param, func.generic_names,
+			concrete_types)
 		// registers if the arg must be passed by ref to disable auto deref args
 		call_arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
 		if func.is_variadic && call_arg.expr is ast.ArrayDecompose {
@@ -3959,6 +3960,31 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	if method_generic_names_len > 0 && node.concrete_types.len > 0 {
 		for i, mut arg in node.args {
+			param := call_arg_param_for_fn(method, i, true)
+			if method_generic_names_len == node.concrete_types.len && param.typ.has_flag(.generic) {
+				if unwrap_typ := c.table.convert_generic_param_type(param, method.generic_names,
+					concrete_types)
+				{
+					if c.table.final_sym(unwrap_typ).kind == .function
+						&& arg.expr !is ast.LambdaExpr && arg.expr !is ast.AnonFn {
+						if mut arg.expr is ast.Ident {
+							if arg.expr.concrete_types.any(it.has_flag(.generic)
+								|| (it != 0 && c.table.sym(it).kind == .placeholder))
+							{
+								arg.expr.concrete_types = []ast.Type{}
+							}
+						}
+						old_expected_type := c.expected_type
+						c.expected_type = unwrap_typ
+						arg_typ := c.check_expr_option_or_result_call(arg.expr,
+							c.expr(mut arg.expr))
+						c.expected_type = old_expected_type
+						arg.typ = arg_typ
+						node.args[i].typ = arg_typ
+						node.args[i].expr = arg.expr
+					}
+				}
+			}
 			if mut arg.expr is ast.LambdaExpr {
 				c.handle_generic_lambda_arg(node, method.generic_names, mut arg.expr)
 			} else if mut arg.expr is ast.AnonFn {
