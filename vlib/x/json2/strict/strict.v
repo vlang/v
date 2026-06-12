@@ -36,8 +36,10 @@ pub fn strict_check[T](json_data string) StructCheckResult {
 
 		$for field in T.fields {
 			$if field.typ is $struct {
-				last_key := find_last_key(key_struct, field.name) or {
-					panic('field not found: ' + field.name)
+				last_key := find_last_key(key_struct, field.name)
+				if last_key == none {
+					// Field is missing in JSON, skip strict check for this field.
+					continue
 				}
 
 				// TODO: get path here from `last_key.key`
@@ -70,8 +72,10 @@ fn check[T](val T, tokens []string, mut duplicates []string, mut superfluous []s
 
 		$for field in T.fields {
 			$if field.typ is $struct {
-				last_key := find_last_key(key_struct, field.name) or {
-					panic('field not found: ' + field.name)
+				last_key := find_last_key(key_struct, field.name)
+				if last_key == none {
+					// Field is missing in JSON, skip strict check for this field.
+					continue
 				}
 				if last_key.value_type == .map {
 					check(val.$(field.name), tokens[last_key.token_pos + 2..], mut duplicates, mut
