@@ -2290,7 +2290,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.table.cur_concrete_types)
 			param = unwrapped
 		}
-		param.typ = c.resolve_call_arg_param_type(call_arg, param, func.generic_names, concrete_types)
+		param.typ = c.resolve_call_arg_param_type(call_arg, param, func.generic_names,
+			concrete_types)
 		// registers if the arg must be passed by ref to disable auto deref args
 		call_arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
 		if func.is_variadic && call_arg.expr is ast.ArrayDecompose {
@@ -3650,8 +3651,11 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 
 	for i, mut arg in node.args {
+		mut exp_arg_param := call_arg_param_for_fn(method, i, true)
+		variadic_start := variadic_call_arg_start_idx(method, true)
+		has_typed_variadic := method.is_variadic && !method.is_c_variadic
 		if i > 0 || exp_arg_typ == ast.no_type {
-			exp_arg_typ = call_arg_param_for_fn(method, i, true).typ
+			exp_arg_typ = exp_arg_param.typ
 			if !c.inside_recheck {
 				arg.ct_expr = c.comptime.is_comptime(arg.expr)
 			}
@@ -3670,7 +3674,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 							parent_sym := c.table.sym(parent_type)
 							if parent_sym.info is ast.Struct && parent_sym.info.is_generic {
 								if f := parent_sym.find_method(method_name) {
-									exp_arg_typ = call_arg_param_for_fn(f, i, true).typ
+									exp_arg_param = call_arg_param_for_fn(f, i, true)
+									exp_arg_typ = exp_arg_param.typ
 								}
 							}
 						}
@@ -3698,8 +3703,19 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				else {}
 			}
 		}
-		exp_arg_typ = c.resolve_short_syntax_call_arg_type(arg, exp_arg_typ,
-			resolved_method_generic_names, resolved_method_concrete_types)
+		exp_arg_typ = if exp_arg_typ == exp_arg_param.typ {
+			c.resolve_call_arg_param_type(arg, exp_arg_param, resolved_method_generic_names,
+				resolved_method_concrete_types)
+		} else {
+			c.resolve_short_syntax_call_arg_type(arg, exp_arg_typ, resolved_method_generic_names,
+				resolved_method_concrete_types)
+		}
+		if has_typed_variadic && i >= variadic_start {
+			variadic_sym := c.table.sym(exp_arg_typ)
+			if variadic_sym.info is ast.Array {
+				exp_arg_typ = variadic_sym.info.elem_type
+			}
+		}
 		exp_arg_sym := c.table.sym(exp_arg_typ)
 		c.expected_type = exp_arg_typ
 
@@ -3712,8 +3728,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					arg.pos)
 			}
 		}
-		variadic_start := variadic_call_arg_start_idx(method, true)
-		has_typed_variadic := method.is_variadic && !method.is_c_variadic
 		if has_typed_variadic && got_arg_typ.has_flag(.variadic) && node.args.len - 1 > i {
 			c.error('when forwarding a variadic variable, it must be the final argument', arg.pos)
 		}
@@ -3951,7 +3965,41 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		concrete_types = node.concrete_types.map(c.unwrap_generic(it))
 	}
 	if method_generic_names_len > 0 && node.concrete_types.len > 0 {
+		variadic_start := variadic_call_arg_start_idx(method, true)
+		has_typed_variadic := method.is_variadic && !method.is_c_variadic
 		for i, mut arg in node.args {
+			param := call_arg_param_for_fn(method, i, true)
+			if method_generic_names_len == node.concrete_types.len && param.typ.has_flag(.generic) {
+				if unwrap_typ := c.table.convert_generic_param_type(param, method.generic_names,
+					concrete_types)
+				{
+					mut expected_fn_typ := unwrap_typ
+					if has_typed_variadic && i >= variadic_start {
+						unwrap_sym := c.table.sym(unwrap_typ)
+						if unwrap_sym.info is ast.Array {
+							expected_fn_typ = unwrap_sym.info.elem_type
+						}
+					}
+					if c.table.final_sym(expected_fn_typ).kind == .function
+						&& arg.expr !is ast.LambdaExpr && arg.expr !is ast.AnonFn {
+						if mut arg.expr is ast.Ident {
+							if arg.expr.concrete_types.any(it.has_flag(.generic)
+								|| (it != 0 && c.table.sym(it).kind == .placeholder))
+							{
+								arg.expr.concrete_types = []ast.Type{}
+							}
+						}
+						old_expected_type := c.expected_type
+						c.expected_type = expected_fn_typ
+						arg_typ := c.check_expr_option_or_result_call(arg.expr,
+							c.expr(mut arg.expr))
+						c.expected_type = old_expected_type
+						arg.typ = arg_typ
+						node.args[i].typ = arg_typ
+						node.args[i].expr = arg.expr
+					}
+				}
+			}
 			if mut arg.expr is ast.LambdaExpr {
 				c.handle_generic_lambda_arg(node, method.generic_names, mut arg.expr)
 			} else if mut arg.expr is ast.AnonFn {
