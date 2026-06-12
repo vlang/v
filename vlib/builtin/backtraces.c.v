@@ -10,6 +10,8 @@ pub fn print_backtrace() {
 	$if !no_backtrace ? {
 		$if freestanding {
 			println(bare_backtrace())
+		} $else $if tinyc {
+			C.tcc_backtrace(c'Backtrace')
 		} $else $if use_libbacktrace ? {
 			$if openbsd {
 				print_backtrace_skipping_top_frames(2)
