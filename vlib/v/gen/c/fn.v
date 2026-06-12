@@ -5360,7 +5360,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 
-	if g.is_autofree && node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {
+	if g.is_autofree && node.free_receiver && (!g.inside_lambda || g.inside_lambda_autofree_tmp)
+		&& !g.is_builtin_mod {
 		// The receiver expression needs to be freed, use the temp var.
 		fn_name := node.name.replace('.', '_')
 		arg_name := '_arg_expr_${fn_name}_0_${node.pos.pos}'

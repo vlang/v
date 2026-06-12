@@ -1659,7 +1659,10 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	if mut expr is ast.AnonFn {
 		if expr.inherited_vars.len > 0 {
 			closure_var = g.new_tmp_var()
+			prev_track_closure_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+			g.track_lambda_autofree_tmp_arg_vars = false
 			g.declare_closure_fn(mut expr, closure_var)
+			g.track_lambda_autofree_tmp_arg_vars = prev_track_closure_tmp_arg_vars
 		}
 	}
 
@@ -1670,13 +1673,17 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		left_is_array, false)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
+	lambda_autofree_tmp_arg_vars_start := g.lambda_autofree_tmp_arg_vars.len
 	match mut expr {
 		ast.AnonFn {
 			g.write('if (')
 			if expr.inherited_vars.len > 0 {
 				g.write_closure_fn(mut expr, var_name, closure_var)
 			} else {
+				prev_track_anon_fn_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+				g.track_lambda_autofree_tmp_arg_vars = false
 				g.gen_anon_fn_decl(mut expr)
+				g.track_lambda_autofree_tmp_arg_vars = prev_track_anon_fn_tmp_arg_vars
 				g.write('${expr.decl.name}(${var_name})')
 			}
 		}
@@ -1716,6 +1723,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 
 	g.writeln2(') {', '\tbuiltin__array_push${noscan}((array*)&${past.tmp_var}, &${var_name});')
 	g.writeln('}')
+	g.write_lambda_autofree_tmp_arg_vars(lambda_autofree_tmp_arg_vars_start)
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {
@@ -2256,7 +2264,10 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	if mut expr is ast.AnonFn {
 		if expr.inherited_vars.len > 0 {
 			closure_var = g.new_tmp_var()
+			prev_track_closure_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+			g.track_lambda_autofree_tmp_arg_vars = false
 			g.declare_closure_fn(mut expr, closure_var)
+			g.track_lambda_autofree_tmp_arg_vars = prev_track_closure_tmp_arg_vars
 		}
 	}
 	i := g.new_tmp_var()
@@ -2266,13 +2277,17 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array, false)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
+	lambda_autofree_tmp_arg_vars_start := g.lambda_autofree_tmp_arg_vars.len
 	match mut expr {
 		ast.AnonFn {
 			g.write('if (')
 			if expr.inherited_vars.len > 0 {
 				g.write_closure_fn(mut expr, var_name, closure_var)
 			} else {
+				prev_track_anon_fn_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+				g.track_lambda_autofree_tmp_arg_vars = false
 				g.gen_anon_fn_decl(mut expr)
+				g.track_lambda_autofree_tmp_arg_vars = prev_track_anon_fn_tmp_arg_vars
 				g.write('${expr.decl.name}(${var_name})')
 			}
 		}
@@ -2311,7 +2326,11 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	}
 
 	g.writeln2(') {', '\t${past.tmp_var} = true;')
-	g.writeln2('\tbreak;', '}')
+	g.writeln('}')
+	g.write_lambda_autofree_tmp_arg_vars(lambda_autofree_tmp_arg_vars_start)
+	g.writeln('if (${past.tmp_var}) {')
+	g.writeln('\tbreak;')
+	g.writeln('}')
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {
@@ -2350,7 +2369,10 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 	if mut expr is ast.AnonFn {
 		if expr.inherited_vars.len > 0 {
 			closure_var = g.new_tmp_var()
+			prev_track_closure_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+			g.track_lambda_autofree_tmp_arg_vars = false
 			g.declare_closure_fn(mut expr, closure_var)
+			g.track_lambda_autofree_tmp_arg_vars = prev_track_closure_tmp_arg_vars
 		}
 	}
 	i := g.new_tmp_var()
@@ -2360,13 +2382,17 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array, false)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
+	lambda_autofree_tmp_arg_vars_start := g.lambda_autofree_tmp_arg_vars.len
 	match mut expr {
 		ast.AnonFn {
 			g.write('if (')
 			if expr.inherited_vars.len > 0 {
 				g.write_closure_fn(mut expr, var_name, closure_var)
 			} else {
+				prev_track_anon_fn_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+				g.track_lambda_autofree_tmp_arg_vars = false
 				g.gen_anon_fn_decl(mut expr)
+				g.track_lambda_autofree_tmp_arg_vars = prev_track_anon_fn_tmp_arg_vars
 				g.write('${expr.decl.name}(${var_name})')
 			}
 		}
@@ -2406,6 +2432,7 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 
 	g.writeln2(') {', '\t++${past.tmp_var};')
 	g.writeln('}')
+	g.write_lambda_autofree_tmp_arg_vars(lambda_autofree_tmp_arg_vars_start)
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {
@@ -2445,7 +2472,10 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	if mut expr is ast.AnonFn {
 		if expr.inherited_vars.len > 0 {
 			closure_var = g.new_tmp_var()
+			prev_track_closure_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+			g.track_lambda_autofree_tmp_arg_vars = false
 			g.declare_closure_fn(mut expr, closure_var)
+			g.track_lambda_autofree_tmp_arg_vars = prev_track_closure_tmp_arg_vars
 		}
 	}
 
@@ -2455,13 +2485,17 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	g.empty_line = true
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
+	lambda_autofree_tmp_arg_vars_start := g.lambda_autofree_tmp_arg_vars.len
 	match mut expr {
 		ast.AnonFn {
 			g.write('if (!(')
 			if expr.inherited_vars.len > 0 {
 				g.write_closure_fn(mut expr, var_name, closure_var)
 			} else {
+				prev_track_anon_fn_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+				g.track_lambda_autofree_tmp_arg_vars = false
 				g.gen_anon_fn_decl(mut expr)
+				g.track_lambda_autofree_tmp_arg_vars = prev_track_anon_fn_tmp_arg_vars
 				g.write('${expr.decl.name}(${var_name})')
 			}
 		}
@@ -2500,7 +2534,11 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	}
 
 	g.writeln2(')) {', '\t${past.tmp_var} = false;')
-	g.writeln2('\tbreak;', '}')
+	g.writeln('}')
+	g.write_lambda_autofree_tmp_arg_vars(lambda_autofree_tmp_arg_vars_start)
+	g.writeln('if (!${past.tmp_var}) {')
+	g.writeln('\tbreak;')
+	g.writeln('}')
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {

@@ -1712,6 +1712,9 @@ fn (mut g Gen) need_tmp_var_in_array_call(node ast.Expr) bool {
 fn (mut g Gen) expr_has_lambda_autofree_tmp_arg(expr ast.Expr) bool {
 	match expr {
 		ast.CallExpr {
+			if expr.free_receiver {
+				return true
+			}
 			if expr.args.any(it.typ == ast.string_type && it.is_tmp_autofree) {
 				return true
 			}
