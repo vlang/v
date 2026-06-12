@@ -458,7 +458,7 @@ fn selective_import_module_name(imp ast.ImportStmt) string {
 	return imp.name.all_after_last('.')
 }
 
-fn module_import_aliases_from_imports(imports []ast.ImportStmt) map[string]string {
+pub fn module_import_aliases_from_imports(imports []ast.ImportStmt) map[string]string {
 	mut aliases := map[string]string{}
 	for imp in imports {
 		alias := if imp.alias != '' { imp.alias } else { imp.name.all_after_last('.') }
@@ -558,6 +558,10 @@ pub fn (mut b Builder) set_selective_import_fn_names(names map[string]string) {
 
 pub fn (mut b Builder) set_selective_import_fn_candidates(candidates map[string][]string) {
 	b.selective_import_fn_candidates = candidates.clone()
+}
+
+pub fn (mut b Builder) set_module_import_aliases(aliases map[string]string) {
+	b.module_import_aliases = aliases.clone()
 }
 
 pub fn (mut b Builder) build_all(files []ast.File) {
