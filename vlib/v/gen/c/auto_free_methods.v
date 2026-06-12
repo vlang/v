@@ -80,7 +80,7 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 			g.gen_free_for_struct(objtyp, sym.info, styp, fn_name, sym.is_builtin())
 		}
 		ast.Array {
-			g.gen_free_for_array(sym.info, styp, fn_name)
+			g.gen_free_for_array(objtyp, sym.info, styp, fn_name)
 		}
 		ast.Map {
 			g.gen_free_for_map(objtyp, styp, fn_name)
@@ -89,7 +89,7 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 			g.gen_free_for_interface(sym, sym.info, styp, fn_name)
 		}
 		ast.SumType {
-			g.gen_free_for_sumtype(sym.info, styp, fn_name)
+			g.gen_free_for_sumtype(objtyp, sym.info, styp, fn_name)
 		}
 		else {
 			println(g.table.type_str(typ))
@@ -129,13 +129,32 @@ fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, st
 	fn_builder.writeln('}')
 }
 
-fn (mut g Gen) gen_free_for_sumtype(info ast.SumType, styp string, fn_name string) {
+fn (mut g Gen) gen_free_for_sumtype(typ ast.Type, info ast.SumType, styp string, fn_name string) {
 	g.definitions.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it);')
 	mut fn_builder := strings.new_builder(256)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
 	fn_builder.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it) {')
+	if typ.has_flag(.option) {
+		// `?SumType`: `it` is the option wrapper {data, state, err}, NOT the sum
+		// type itself, so `it->_typ`/`it->_<variant>` do not exist here. The active
+		// sum-type payload lives in `it->data`. Unwrap to the base sum type and
+		// delegate to its (non-option) free method. (Mirrors the `is_struct_option`
+		// handling in gen_free_for_struct; the sum-type path previously assumed
+		// `it` was the unwrapped value and emitted invalid member accesses.)
+		base_typ := typ.clear_flag(.option)
+		base_styp := g.base_type(typ)
+		mut base_fn_name := g.gen_free_method(base_typ)
+		if g.table.sym(g.unwrap_generic(base_typ)).is_builtin() {
+			base_fn_name = 'builtin__${base_fn_name}'
+		}
+		fn_builder.writeln('\tif (it->state != 2) {')
+		fn_builder.writeln('\t\t${base_fn_name}((${base_styp}*)&it->data);')
+		fn_builder.writeln('\t}')
+		fn_builder.writeln('}')
+		return
+	}
 	mut idxs := []ast.Type{}
 	for variant in info.variants {
 		if variant in idxs {
@@ -279,13 +298,31 @@ fn (mut g Gen) gen_type_name_for_free_call(typ ast.Type) string {
 	return styp
 }
 
-fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
+fn (mut g Gen) gen_free_for_array(typ ast.Type, info ast.Array, styp string, fn_name string) {
 	g.definitions.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it);')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
 	fn_builder.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it) {')
+
+	if typ.has_flag(.option) {
+		// `?[]T`: `it` is the option wrapper {data, state, err}, so `it->len`/
+		// `it->data` (array fields) do not exist on it. Unwrap the option payload
+		// and delegate to the base array free. (Mirrors gen_free_for_map's option
+		// handling; the array path previously assumed `it` was the unwrapped array.)
+		base_typ := typ.clear_flag(.option)
+		base_styp := g.base_type(typ)
+		mut base_fn_name := g.gen_free_method(base_typ)
+		if g.table.sym(g.unwrap_generic(base_typ)).is_builtin() {
+			base_fn_name = 'builtin__${base_fn_name}'
+		}
+		fn_builder.writeln('\tif (it->state != 2) {')
+		fn_builder.writeln('\t\t${base_fn_name}((${base_styp}*)&it->data);')
+		fn_builder.writeln('\t}')
+		fn_builder.writeln('}')
+		return
+	}
 
 	sym := g.table.sym(g.unwrap_generic(info.elem_type))
 	if sym.kind in [.string, .array, .map, .struct, .sum_type] {
