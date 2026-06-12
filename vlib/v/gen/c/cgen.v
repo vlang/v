@@ -1155,9 +1155,12 @@ pub fn (mut g Gen) gen_file() {
 	// write them to corresponding sections
 	g.gen_hash_stmts_in_top()
 
-	// Transfer embedded files
+	// Transfer embedded files, deduplicating by hash.
+	// Two embeds of the same file with compression get different compressed_temp_path
+	// values (random ULIDs), so struct equality would fail to deduplicate them,
+	// causing duplicate case labels in generated C. hash() excludes temp paths.
 	for path in g.file.embedded_files {
-		if path !in g.embedded_files {
+		if g.embedded_files.all(it.hash() != path.hash()) {
 			g.embedded_files << path
 		}
 	}
