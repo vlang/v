@@ -332,15 +332,32 @@ fn (mut l SSLListener) init_sni(get_cert_callback fn (mut SSLListener, string) !
 
 // accepts a new connection and returns a SSLConn of the connected client
 pub fn (mut l SSLListener) accept() !&SSLConn {
+	mut conn := l.accept_tcp_connection()!
+
+	C.mbedtls_ssl_init(&conn.ssl)
+	C.mbedtls_ssl_config_init(&conn.conf)
+	ret := C.mbedtls_ssl_setup(&conn.ssl, &l.conf)
+	if ret != 0 {
+		conn.shutdown() or {}
+		return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_setup SSL setup failed ret: ${ret}',
+			ret)
+	}
+
+	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
+		C.mbedtls_net_recv_timeout)
+	conn.server_handshake(net.infinite_timeout)!
+	return conn
+}
+
+fn (mut l SSLListener) accept_tcp_connection() !&SSLConn {
 	mut conn := &SSLConn{
 		config: l.config
 		opened: true
 	}
-
 	ip := [16]u8{}
 	iplen := usize(0)
 
-	mut ret := C.mbedtls_net_accept(&l.server_fd, &conn.server_fd, &ip, 16, &iplen)
+	ret := C.mbedtls_net_accept(&l.server_fd, &conn.server_fd, &ip, 16, &iplen)
 	if ret != 0 {
 		return error_with_code("net.mbedtls SSLListener.accept, mbedtls_net_accept can't accept connection ret: ${ret}",
 			ret)
@@ -350,39 +367,68 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 	if iplen == 4 {
 		conn.ip = '${ip[0]}.${ip[1]}.${ip[2]}.${ip[3]}'
 	}
+	return conn
+}
 
-	C.mbedtls_ssl_init(&conn.ssl)
-	C.mbedtls_ssl_config_init(&conn.conf)
-	ret = C.mbedtls_ssl_setup(&conn.ssl, &l.conf)
-	if ret != 0 {
-		return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_setup SSL setup failed ret: ${ret}',
-			ret)
-	}
-
-	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
-		C.mbedtls_net_recv_timeout)
-
-	ret = C.mbedtls_ssl_handshake(&conn.ssl)
+fn (mut conn SSLConn) server_handshake(timeout time.Duration) ! {
+	deadline := ssl_timeout_deadline(timeout)
+	mut ret := C.mbedtls_ssl_handshake(&conn.ssl)
 	for ret != 0 {
-		if ret != C.MBEDTLS_ERR_SSL_WANT_READ && ret != C.MBEDTLS_ERR_SSL_WANT_WRITE {
-			conn.shutdown() or {
-				$if trace_ssl ? {
-					eprintln('${@METHOD} shutdown ---> res: ${err}')
+		match ret {
+			C.MBEDTLS_ERR_SSL_WANT_READ {
+				conn.wait_for_read(ssl_remaining_timeout(deadline)) or {
+					conn.shutdown() or {}
+					return err
 				}
 			}
-			return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_handshake failed 1; handshake ret: ${ret}',
-				ret)
+			C.MBEDTLS_ERR_SSL_WANT_WRITE {
+				conn.wait_for_write(ssl_remaining_timeout(deadline)) or {
+					conn.shutdown() or {}
+					return err
+				}
+			}
+			else {
+				conn.shutdown() or {
+					$if trace_ssl ? {
+						eprintln('${@METHOD} shutdown ---> res: ${err}')
+					}
+				}
+				return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_handshake failed 1; handshake ret: ${ret}',
+					ret)
+			}
 		}
+
 		ret = C.mbedtls_ssl_handshake(&conn.ssl)
 	}
-
-	return conn
 }
 
 // accept_with_timeout waits up to `timeout` for a new client before accepting it.
 pub fn (mut l SSLListener) accept_with_timeout(timeout time.Duration) !&SSLConn {
 	wait_for(l.server_fd.fd, .read, timeout)!
-	return l.accept()
+	mut conn := l.accept_tcp_connection()!
+
+	C.mbedtls_ssl_init(&conn.ssl)
+	C.mbedtls_ssl_config_init(&conn.conf)
+	net.set_blocking(conn.handle, false) or {
+		conn.shutdown() or {}
+		return err
+	}
+	ret := C.mbedtls_ssl_setup(&conn.ssl, &l.conf)
+	if ret != 0 {
+		conn.shutdown() or {}
+		return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_setup SSL setup failed ret: ${ret}',
+			ret)
+	}
+
+	C.v_mbedtls_ssl_set_bio_nonblocking(&conn.ssl, &conn.server_fd)
+	conn.server_handshake(timeout)!
+	net.set_blocking(conn.handle, true) or {
+		conn.shutdown() or {}
+		return err
+	}
+	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
+		C.mbedtls_net_recv_timeout)
+	return conn
 }
 
 @[params]

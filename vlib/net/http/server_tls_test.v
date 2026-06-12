@@ -175,6 +175,48 @@ fn test_server_tls_close_waits_for_active_request() {
 	assert srv.status() == .closed
 }
 
+fn test_server_tls_close_during_silent_handshake() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         100 * time.millisecond
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	mut client := net.dial_tcp('127.0.0.1:${port}') or {
+		srv.close()
+		t.wait()
+		assert false, 'tcp dial failed: ${err}'
+		return
+	}
+	defer {
+		client.close() or {}
+	}
+	time.sleep(50 * time.millisecond)
+	sw := time.new_stopwatch()
+	srv.close()
+	t.wait()
+	assert sw.elapsed() < time.second
+	assert srv.status() == .closed
+}
+
 fn test_server_tls_h2_negotiation() {
 	$if use_openssl ? {
 		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
