@@ -1036,8 +1036,9 @@ fn (t &Transformer) qualify_generic_concrete_type_from_cursor(concrete types.Typ
 		types.SumType {
 			if name := t.generic_concrete_type_arg_c_name_cursor(types.Type(concrete), arg) {
 				return types.Type(types.SumType{
-					name:     name
-					variants: concrete.variants
+					name:           name
+					generic_params: concrete.generic_params
+					variants:       concrete.variants
 				})
 			}
 		}
@@ -1727,6 +1728,15 @@ fn collect_declared_generic_template_type_param_names(typ types.Type, mut seen m
 			}
 		}
 		types.SumType {
+			if typ.generic_params.len > 0 {
+				for param in typ.generic_params {
+					if is_generic_placeholder_ident(param) && param !in seen {
+						seen[param] = true
+						names << param
+					}
+				}
+				return
+			}
 			for variant in typ.variants {
 				collect_declared_generic_template_type_param_names(variant, mut seen, mut names)
 			}
@@ -7872,8 +7882,9 @@ fn substitute_type_with_seen(typ types.Type, bindings map[string]types.Type, mut
 				variants << substitute_type_with_seen(variant, bindings, mut seen)
 			}
 			return types.Type(types.SumType{
-				name:     substitution_safe_string(typ.name)
-				variants: variants
+				name:           substitution_safe_string(typ.name)
+				generic_params: if bindings.len == 0 { typ.generic_params } else { []string{} }
+				variants:       variants
 			})
 		}
 		types.Primitive {

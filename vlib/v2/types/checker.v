@@ -2800,7 +2800,8 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			// sum type
 			else {
 				sum_type := SumType{
-					name: c.qualify_type_name(decl.name)
+					name:           c.qualify_type_name(decl.name)
+					generic_params: generic_params
 					// variants: decl.variants
 				}
 				mut typ := Type(sum_type)
@@ -5216,6 +5217,8 @@ fn (mut c Checker) process_pending_type_decls() {
 	for pending in c.pending_type_decls {
 		c.scope = pending.scope
 		mut scope := pending.scope
+		prev_generic_params := c.generic_params
+		c.generic_params = generic_param_names_from_exprs(pending.decl.generic_params)
 		if pending.decl.variants.len == 0 {
 			if obj := scope.lookup(pending.decl.name) {
 				if obj_type := object_as_type(obj) {
@@ -5230,27 +5233,29 @@ fn (mut c Checker) process_pending_type_decls() {
 					}
 				}
 			}
-			continue
-		}
-		if obj := scope.lookup(pending.decl.name) {
-			if obj_type := object_as_type(obj) {
-				if obj_type is SumType {
-					mut variants := obj_type.variants.clone()
-					for variant in pending.decl.variants {
-						// Keep the inferred variant type in a local first so generated C
-						// does not take the address of a temporary expression result.
-						variant_type := c.type_expr(variant)
-						variants << variant_type
+		} else {
+			if obj := scope.lookup(pending.decl.name) {
+				if obj_type := object_as_type(obj) {
+					if obj_type is SumType {
+						mut variants := obj_type.variants.clone()
+						for variant in pending.decl.variants {
+							// Keep the inferred variant type in a local first so generated C
+							// does not take the address of a temporary expression result.
+							variant_type := c.type_expr(variant)
+							variants << variant_type
+						}
+						sum_type := Type(SumType{
+							name:           obj_type.name
+							generic_params: obj_type.generic_params
+							variants:       variants
+						})
+						scope.objects[pending.decl.name] = object_from_type(sum_type)
+						scope.insert_type(pending.decl.name, sum_type)
 					}
-					sum_type := Type(SumType{
-						name:     obj_type.name
-						variants: variants
-					})
-					scope.objects[pending.decl.name] = object_from_type(sum_type)
-					scope.insert_type(pending.decl.name, sum_type)
 				}
 			}
 		}
+		c.generic_params = prev_generic_params
 	}
 	c.pending_type_decls.clear()
 }
@@ -6846,9 +6851,6 @@ fn (mut c Checker) generic_type_map_from_cached_receiver_expr(receiver ast.Expr)
 }
 
 fn (mut c Checker) merge_receiver_generic_types_from_expr(receiver ast.Expr, fn_type FnType, mut generic_type_map map[string]Type) bool {
-	if receiver is ast.Ident {
-		return false
-	}
 	receiver_map := if init_receiver_map := c.generic_type_map_from_init_expr(receiver) {
 		init_receiver_map.clone()
 	} else if cached_receiver_map := c.generic_type_map_from_cached_receiver_expr(receiver) {
@@ -7791,9 +7793,7 @@ fn (mut c Checker) call_expr(expr &ast.CallExpr) Type {
 			if generic_type_map.len > 0 {
 				resolved_return_type := c.substitute_generic_type_with_stack(return_type,
 					generic_type_map, [])
-				if resolved_return_type.name() != return_type.name() {
-					return resolved_return_type
-				}
+				return resolved_return_type
 			}
 			if return_type is NamedType && generic_type_map.len > 0 {
 				if resolved := generic_type_map[string(return_type)] {

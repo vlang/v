@@ -637,6 +637,35 @@ fn (t &Transformer) concrete_sumtype_wrap_info_from_lhs(lhs ast.Expr) ?ConcreteS
 	return none
 }
 
+fn (t &Transformer) concrete_sumtype_wrap_info_from_return_type(return_type ast.Expr) ?ConcreteSumtypeWrapInfo {
+	match return_type {
+		ast.GenericArgs {
+			return t.concrete_sumtype_wrap_info_from_generic_parts(return_type.lhs,
+				return_type.args)
+		}
+		ast.GenericArgOrIndexExpr {
+			return t.concrete_sumtype_wrap_info_from_generic_parts(return_type.lhs, [
+				return_type.expr,
+			])
+		}
+		ast.Type {
+			match return_type {
+				ast.GenericType {
+					return t.concrete_sumtype_wrap_info_from_generic_parts(return_type.name,
+						return_type.params)
+				}
+				ast.OptionType {
+					return t.concrete_sumtype_wrap_info_from_return_type(return_type.base_type)
+				}
+				else {}
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
 fn (t &Transformer) concrete_sumtype_wrap_info_from_generic_parts(lhs ast.Expr, args []ast.Expr) ?ConcreteSumtypeWrapInfo {
 	base := t.lookup_type_from_expr(lhs) or { return none }
 	if base !is types.SumType {
@@ -707,6 +736,9 @@ fn (t &Transformer) sumtype_wrap_info_for_name(type_name string) ?ConcreteSumtyp
 }
 
 fn (t &Transformer) current_return_sumtype_wrap_info() ?ConcreteSumtypeWrapInfo {
+	if t.cur_fn_return_sumtype_info.name != '' {
+		return t.cur_fn_return_sumtype_info
+	}
 	return t.sumtype_wrap_info_for_name(t.cur_fn_ret_type_name)
 }
 
@@ -791,8 +823,9 @@ fn (t &Transformer) qualify_generic_concrete_type_from_expr(concrete types.Type,
 		types.SumType {
 			if name := t.generic_concrete_type_arg_c_name(types.Type(concrete), arg) {
 				return types.Type(types.SumType{
-					name:     name
-					variants: concrete.variants
+					name:           name
+					generic_params: concrete.generic_params
+					variants:       concrete.variants
 				})
 			}
 		}
@@ -2421,6 +2454,7 @@ mut:
 	old_fn_root_scope                   &types.Scope = unsafe { nil }
 	old_local_decl_types                map[string]types.Type
 	old_fn_ret_type_name                string
+	old_fn_return_sumtype_info          ConcreteSumtypeWrapInfo
 	old_fn_returns_option               bool
 	old_fn_returns_result               bool
 	old_fn_name_str                     string
@@ -2553,8 +2587,10 @@ fn (mut t Transformer) enter_fn_body_transform(decl ast.FnDecl) ?FnBodyTransform
 	// Set current function return type for sum type wrapping in returns
 	// and enum shorthand resolution
 	ctx.old_fn_ret_type_name = t.cur_fn_ret_type_name
+	ctx.old_fn_return_sumtype_info = t.cur_fn_return_sumtype_info
 	ctx.old_fn_returns_option = t.cur_fn_returns_option
 	ctx.old_fn_returns_result = t.cur_fn_returns_result
+	t.cur_fn_return_sumtype_info = ConcreteSumtypeWrapInfo{}
 	t.cur_fn_returns_option = false
 	t.cur_fn_returns_result = false
 	if decl.typ.return_type is ast.Type {
@@ -2600,6 +2636,9 @@ fn (mut t Transformer) enter_fn_body_transform(decl ast.FnDecl) ?FnBodyTransform
 		}
 	} else {
 		t.cur_fn_ret_type_name = t.extract_return_sumtype_name(decl.typ.return_type)
+	}
+	t.cur_fn_return_sumtype_info = t.concrete_sumtype_wrap_info_from_return_type(decl.typ.return_type) or {
+		ConcreteSumtypeWrapInfo{}
 	}
 
 	// Transform function body
@@ -2674,6 +2713,7 @@ fn (mut t Transformer) restore_fn_body_transform_state(mut ctx FnBodyTransformCt
 	t.cur_fn_recv_is_ptr = ctx.old_fn_recv_is_ptr
 	t.cur_monomorphized_fn_bindings = ctx.old_monomorphized_bindings.move()
 	t.cur_fn_ret_type_name = ctx.old_fn_ret_type_name
+	t.cur_fn_return_sumtype_info = ctx.old_fn_return_sumtype_info
 	t.cur_fn_returns_option = ctx.old_fn_returns_option
 	t.cur_fn_returns_result = ctx.old_fn_returns_result
 }

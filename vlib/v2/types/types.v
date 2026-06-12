@@ -272,7 +272,8 @@ pub struct SumType {
 pub:
 	name string
 pub mut:
-	variants []Type
+	generic_params []string
+	variants       []Type
 }
 
 fn (a SumType) == (b SumType) bool {

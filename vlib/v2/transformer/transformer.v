@@ -58,6 +58,9 @@ mut:
 	needed_array_last_index_fns map[string]ArrayMethodInfo
 	// Current function's return type name (for sum type wrapping in returns)
 	cur_fn_ret_type_name string
+	// Current function's concrete sum type return wrapper, when known from
+	// the declared return type.
+	cur_fn_return_sumtype_info ConcreteSumtypeWrapInfo
 	// Tracks whether the current function returns Option/Result.
 	// Some transformations use this to avoid wrapping plain sumtype returns.
 	cur_fn_returns_option bool
