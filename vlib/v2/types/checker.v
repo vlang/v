@@ -6779,6 +6779,31 @@ fn (mut c Checker) type_from_generic_arg_name(name string) ?Type {
 	return none
 }
 
+fn (mut c Checker) generic_type_map_from_receiver_struct_fields(receiver_type Struct) map[string]Type {
+	mut generic_type_map := map[string]Type{}
+	if receiver_type.name == '' || receiver_type.fields.len == 0 {
+		return generic_type_map
+	}
+	template_type := c.lookup_type_by_name(receiver_type.name) or { return generic_type_map }
+	if template_type !is Struct {
+		return generic_type_map
+	}
+	template := template_type as Struct
+	if template.generic_params.len == 0 || template.fields.len == 0 {
+		return generic_type_map
+	}
+	for template_field in template.fields {
+		for actual_field in receiver_type.fields {
+			if actual_field.name != template_field.name {
+				continue
+			}
+			c.infer_generic_type(template_field.typ, actual_field.typ, mut generic_type_map) or {}
+			break
+		}
+	}
+	return generic_type_map
+}
+
 fn (mut c Checker) generic_type_map_from_receiver_type(receiver_type Type) map[string]Type {
 	match receiver_type {
 		Pointer {
@@ -6796,7 +6821,10 @@ fn (mut c Checker) generic_type_map_from_receiver_type(receiver_type Type) map[s
 				}
 				generic_type_map[generic_param] = arg_type
 			}
-			return generic_type_map
+			if generic_type_map.len > 0 {
+				return generic_type_map
+			}
+			return c.generic_type_map_from_receiver_struct_fields(receiver_type)
 		}
 		else {
 			return map[string]Type{}
@@ -6804,12 +6832,31 @@ fn (mut c Checker) generic_type_map_from_receiver_type(receiver_type Type) map[s
 	}
 }
 
+fn (mut c Checker) generic_type_map_from_cached_receiver_expr(receiver ast.Expr) ?map[string]Type {
+	receiver_pos := receiver.pos()
+	if !receiver_pos.is_valid() {
+		return none
+	}
+	receiver_type := c.env.get_expr_type(receiver_pos.id) or { return none }
+	receiver_map := c.generic_type_map_from_receiver_type(receiver_type)
+	if receiver_map.len == 0 {
+		return none
+	}
+	return receiver_map
+}
+
 fn (mut c Checker) merge_receiver_generic_types_from_expr(receiver ast.Expr, fn_type FnType, mut generic_type_map map[string]Type) bool {
 	if receiver is ast.Ident {
 		return false
 	}
-	receiver_type := c.expr_type_without_field_smartcast(receiver) or { return false }
-	receiver_map := c.generic_type_map_from_receiver_type(receiver_type)
+	receiver_map := if init_receiver_map := c.generic_type_map_from_init_expr(receiver) {
+		init_receiver_map.clone()
+	} else if cached_receiver_map := c.generic_type_map_from_cached_receiver_expr(receiver) {
+		cached_receiver_map.clone()
+	} else {
+		receiver_type := c.expr_type_without_field_smartcast(receiver) or { return false }
+		c.generic_type_map_from_receiver_type(receiver_type)
+	}
 	mut added := false
 	for generic_param, arg_type in receiver_map {
 		if generic_param in fn_type.generic_params && generic_param !in generic_type_map {

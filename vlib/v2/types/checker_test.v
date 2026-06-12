@@ -724,6 +724,75 @@ fn main() {
 	assert n.typ().name() == 'int'
 }
 
+fn test_temporary_generic_receiver_init_maps_method_generic() {
+	env := check_code('
+struct Box[T] {
+	value T
+}
+
+fn (b Box[T]) get[T]() T {
+	return b.value
+}
+
+fn main() {
+	x := Box[int]{value: 7}.get()
+	_ = x + 1
+}
+')
+	scope := env.get_fn_scope('main', 'main') or { panic('missing main scope') }
+	x := scope.lookup_parent('x', 0) or { panic('missing x local') }
+	assert x.typ().name() == 'int'
+}
+
+fn test_temporary_generic_call_receiver_maps_method_generic() {
+	env := check_code('
+struct Box[T] {
+	value T
+}
+
+fn (b Box[T]) get[T]() T {
+	return b.value
+}
+
+fn make_box() Box[int] {
+	return Box[int]{value: 7}
+}
+
+fn main() {
+	x := make_box().get()
+	_ = x + 1
+}
+')
+	scope := env.get_fn_scope('main', 'main') or { panic('missing main scope') }
+	x := scope.lookup_parent('x', 0) or { panic('missing x local') }
+	assert x.typ().name() == 'int'
+}
+
+fn test_temporary_generic_selector_receiver_maps_method_generic() {
+	env := check_code('
+struct Box[T] {
+	value T
+}
+
+struct Holder {
+	box Box[int]
+}
+
+fn (b Box[T]) get[T]() T {
+	return b.value
+}
+
+fn main() {
+	holder := Holder{box: Box[int]{value: 7}}
+	x := holder.box.get()
+	_ = x + 1
+}
+')
+	scope := env.get_fn_scope('main', 'main') or { panic('missing main scope') }
+	x := scope.lookup_parent('x', 0) or { panic('missing x local') }
+	assert x.typ().name() == 'int'
+}
+
 fn test_comptime_embed_file_type_and_methods() {
 	code := 'fn main() { x := ' + '$' + 'embed_file("asset.txt"); y := x.to_string(); z := x.len }'
 	env := check_code(code)

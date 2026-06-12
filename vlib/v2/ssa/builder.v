@@ -973,18 +973,126 @@ fn (mut b Builder) struct_name_to_ssa(name string) ?TypeID {
 	return none
 }
 
+fn pointer_type_part_name(base string) string {
+	if base == '' {
+		return ''
+	}
+	return '${base}ptr'
+}
+
+fn (b &Builder) generic_ident_type_part_name(name string) string {
+	if name == '' {
+		return ''
+	}
+	normalized := name.replace('.', '__')
+	if b.cur_module == '' || b.cur_module == 'main' || normalized.contains('__') {
+		return normalized
+	}
+	if b.env == unsafe { nil } {
+		return normalized
+	}
+	scope := b.env.get_scope(b.cur_module) or { return normalized }
+	typ := scope.lookup_type_parent(name, 0) or { return normalized }
+	match typ {
+		types.Struct, types.SumType {
+			return '${b.cur_module.replace('.', '_')}__${normalized}'
+		}
+		else {
+			return normalized
+		}
+	}
+}
+
 fn (b &Builder) generic_type_part_name(expr ast.Expr) string {
 	match expr {
 		ast.Ident {
-			return expr.name.replace('.', '__')
+			return b.generic_ident_type_part_name(expr.name)
 		}
 		ast.SelectorExpr {
-			return expr.name().replace('.', '__')
+			return b.generic_selector_type_part_name(expr)
+		}
+		ast.PrefixExpr {
+			if expr.op == .amp {
+				return pointer_type_part_name(b.generic_type_part_name(expr.expr))
+			}
+			return ''
+		}
+		ast.Type {
+			match expr {
+				ast.ArrayType {
+					elem_name := b.generic_type_part_name(expr.elem_type)
+					if elem_name == '' {
+						return ''
+					}
+					return 'Array_${elem_name}'
+				}
+				ast.ArrayFixedType {
+					elem_name := b.generic_type_part_name(expr.elem_type)
+					len_name := if expr.len is ast.BasicLiteral {
+						(expr.len as ast.BasicLiteral).value
+					} else {
+						''
+					}
+					if elem_name == '' || len_name == '' {
+						return ''
+					}
+					return 'Array_fixed_${elem_name}_${len_name}'
+				}
+				ast.MapType {
+					key_name := b.generic_type_part_name(expr.key_type)
+					value_name := b.generic_type_part_name(expr.value_type)
+					if key_name == '' || value_name == '' {
+						return ''
+					}
+					return 'Map_${key_name}_${value_name}'
+				}
+				ast.PointerType {
+					return pointer_type_part_name(b.generic_type_part_name(expr.base_type))
+				}
+				ast.GenericType {
+					return b.generic_type_name(expr.name, expr.params)
+				}
+				ast.OptionType {
+					base_name := b.generic_type_part_name(expr.base_type)
+					if base_name == '' {
+						return ''
+					}
+					return 'Option_${base_name}'
+				}
+				ast.ResultType {
+					base_name := b.generic_type_part_name(expr.base_type)
+					if base_name == '' {
+						return ''
+					}
+					return 'Result_${base_name}'
+				}
+				else {
+					return ''
+				}
+			}
 		}
 		else {
 			return ''
 		}
 	}
+}
+
+fn (b &Builder) generic_selector_type_part_name(expr ast.SelectorExpr) string {
+	if expr.lhs is ast.Ident {
+		lhs_name := (expr.lhs as ast.Ident).name
+		rhs_name := expr.rhs.name
+		if lhs_name == '' || rhs_name == '' {
+			return ''
+		}
+		if resolved_mod := b.module_import_aliases[lhs_name] {
+			return '${resolved_mod}__${rhs_name}'
+		}
+		if resolved_mod := b.selector_module_name_for_ident(lhs_name) {
+			return '${resolved_mod}__${rhs_name}'
+		}
+		return '${lhs_name.replace('.', '__')}__${rhs_name}'
+	}
+	return expr.name().replace('.', '__')
 }
 
 fn generic_type_name_from_parts(base string, parts []string) string {
@@ -1007,20 +1115,24 @@ fn (b &Builder) generic_type_name(name ast.Expr, params []ast.Expr) string {
 	return generic_type_name_from_parts(base, parts)
 }
 
+fn (mut b Builder) checked_sumtype_for_ssa_name(name string) ?types.SumType {
+	typ := b.lookup_checked_type_by_name(name) or {
+		if name.contains('_T_') {
+			base_name := name.all_before('_T_')
+			b.lookup_checked_type_by_name(base_name) or { return none }
+		} else {
+			return none
+		}
+	}
+	if typ is types.SumType {
+		return typ
+	}
+	return none
+}
+
 fn (mut b Builder) source_base_is_sumtype(name string) bool {
-	if name == '' || b.env == unsafe { nil } {
-		return false
-	}
-	mut lookup_module := b.cur_module
-	mut lookup_name := name
-	if dunder := name.index('__') {
-		lookup_module = name[..dunder]
-		last_dunder := name.last_index('__') or { dunder }
-		lookup_name = name[last_dunder + 2..]
-	}
-	scope := b.env.get_scope(lookup_module) or { return false }
-	obj := scope.lookup_parent(lookup_name, 0) or { return false }
-	return obj.typ() is types.SumType
+	_ := b.checked_sumtype_for_ssa_name(name) or { return false }
+	return true
 }
 
 fn (mut b Builder) generic_sumtype_storage_to_ssa(base_name string, concrete_name string) ?TypeID {
@@ -1059,20 +1171,84 @@ fn (mut b Builder) generic_type_to_ssa(name ast.Expr, params []ast.Expr) TypeID 
 fn (b &Builder) generic_type_part_name_from_flat(c ast.Cursor) string {
 	match c.kind() {
 		.expr_ident {
-			return c.name().replace('.', '__')
+			return b.generic_ident_type_part_name(c.name())
 		}
 		.expr_selector {
 			lhs := c.edge(0)
 			rhs := c.edge(1)
 			if lhs.kind() == .expr_ident && rhs.kind() == .expr_ident {
-				return '${lhs.name().replace('.', '__')}__${rhs.name()}'
+				return b.generic_selector_type_part_name_from_flat(lhs.name(), rhs.name())
 			}
 			return ''
+		}
+		.expr_prefix {
+			op := unsafe { token.Token(int(c.aux())) }
+			if op == .amp {
+				return pointer_type_part_name(b.generic_type_part_name_from_flat(c.edge(0)))
+			}
+			return ''
+		}
+		.typ_array {
+			elem_name := b.generic_type_part_name_from_flat(c.edge(0))
+			if elem_name == '' {
+				return ''
+			}
+			return 'Array_${elem_name}'
+		}
+		.typ_array_fixed {
+			elem_name := b.generic_type_part_name_from_flat(c.edge(1))
+			len_c := c.edge(0)
+			len_name := if len_c.kind() == .expr_basic_literal { len_c.name() } else { '' }
+			if elem_name == '' || len_name == '' {
+				return ''
+			}
+			return 'Array_fixed_${elem_name}_${len_name}'
+		}
+		.typ_map {
+			key_name := b.generic_type_part_name_from_flat(c.edge(0))
+			value_name := b.generic_type_part_name_from_flat(c.edge(1))
+			if key_name == '' || value_name == '' {
+				return ''
+			}
+			return 'Map_${key_name}_${value_name}'
+		}
+		.typ_pointer {
+			return pointer_type_part_name(b.generic_type_part_name_from_flat(c.edge(0)))
+		}
+		.typ_generic {
+			return b.generic_type_name_from_flat(c)
+		}
+		.typ_option {
+			base_name := b.generic_type_part_name_from_flat(c.edge(0))
+			if base_name == '' {
+				return ''
+			}
+			return 'Option_${base_name}'
+		}
+		.typ_result {
+			base_name := b.generic_type_part_name_from_flat(c.edge(0))
+			if base_name == '' {
+				return ''
+			}
+			return 'Result_${base_name}'
 		}
 		else {
 			return ''
 		}
 	}
+}
+
+fn (b &Builder) generic_selector_type_part_name_from_flat(lhs_name string, rhs_name string) string {
+	if lhs_name == '' || rhs_name == '' {
+		return ''
+	}
+	if resolved_mod := b.module_import_aliases[lhs_name] {
+		return '${resolved_mod}__${rhs_name}'
+	}
+	if resolved_mod := b.selector_module_name_for_ident(lhs_name) {
+		return '${resolved_mod}__${rhs_name}'
+	}
+	return '${lhs_name.replace('.', '__')}__${rhs_name}'
 }
 
 fn (b &Builder) generic_type_name_from_flat(c ast.Cursor) string {
@@ -9491,6 +9667,53 @@ fn (mut b Builder) build_sumtype_variant_compare_expr_from_flat(sum_val ValueID,
 	return b.mod.add_instr(cmp_op, b.cur_block, bool_type, [tag_val, expected])
 }
 
+fn (mut b Builder) build_sumtype_tag_selector_variant_compare(tag_val ValueID, tag_expr ast.Expr, variant_expr ast.Expr, op token.Token) ?ValueID {
+	if op !in [.eq, .ne] || !b.valid_value_id(tag_val) {
+		return none
+	}
+	if tag_expr !is ast.SelectorExpr {
+		return none
+	}
+	tag_selector := tag_expr as ast.SelectorExpr
+	if tag_selector.rhs.name != '_tag' {
+		return none
+	}
+	sumtype_checked := b.get_checked_expr_type(tag_selector.lhs) or { return none }
+	sumtype_type := b.type_to_ssa(sumtype_checked)
+	if !b.ssa_type_is_sumtype(sumtype_type) {
+		return none
+	}
+	info := b.match_sumtype_branch_info(sumtype_type, variant_expr) or { return none }
+	tag_type := b.mod.values[tag_val].typ
+	expected := b.mod.get_or_add_const(tag_type, info.tag.str())
+	bool_type := b.mod.type_store.get_int(1)
+	cmp_op := if op == .eq { OpCode.eq } else { OpCode.ne }
+	return b.mod.add_instr(cmp_op, b.cur_block, bool_type, [tag_val, expected])
+}
+
+fn (mut b Builder) build_sumtype_tag_selector_variant_compare_from_flat(tag_val ValueID, tag_expr ast.Cursor, variant_expr ast.Cursor, op token.Token) ?ValueID {
+	if op !in [.eq, .ne] || !b.valid_value_id(tag_val) || tag_expr.kind() != .expr_selector
+		|| tag_expr.edge_count() < 2 {
+		return none
+	}
+	tag_rhs := tag_expr.edge(1)
+	if tag_rhs.kind() != .expr_ident || tag_rhs.name() != '_tag' {
+		return none
+	}
+	tag_lhs := tag_expr.edge(0)
+	sumtype_checked := b.get_checked_expr_type_from_flat(tag_lhs) or { return none }
+	sumtype_type := b.type_to_ssa(sumtype_checked)
+	if !b.ssa_type_is_sumtype(sumtype_type) {
+		return none
+	}
+	info := b.match_sumtype_branch_info_from_flat(sumtype_type, variant_expr) or { return none }
+	tag_type := b.mod.values[tag_val].typ
+	expected := b.mod.get_or_add_const(tag_type, info.tag.str())
+	bool_type := b.mod.type_store.get_int(1)
+	cmp_op := if op == .eq { OpCode.eq } else { OpCode.ne }
+	return b.mod.add_instr(cmp_op, b.cur_block, bool_type, [tag_val, expected])
+}
+
 // build_infix_from_flat (s211) mirrors `build_infix` cursor-natively.
 // InfixExpr flat encoding (`flat.v:1956`) is
 // `(.expr_infix, pos, -1, -1, u16(op), 0, [edge0=lhs, edge1=rhs])`.
@@ -9560,6 +9783,9 @@ fn (mut b Builder) build_infix_from_flat(c ast.Cursor) ValueID {
 
 	lhs := b.build_expr_from_flat(lhs_c)
 	if tag_cmp := b.build_ierror_concrete_compare_from_flat(lhs, lhs_c, rhs_c, op) {
+		return tag_cmp
+	}
+	if tag_cmp := b.build_sumtype_tag_selector_variant_compare_from_flat(lhs, lhs_c, rhs_c, op) {
 		return tag_cmp
 	}
 	if tag_cmp := b.build_sumtype_variant_compare_expr_from_flat(lhs, rhs_c, op) {
@@ -11722,6 +11948,9 @@ fn (mut b Builder) build_infix(expr ast.InfixExpr) ValueID {
 
 	lhs := b.build_expr(expr.lhs)
 	if tag_cmp := b.build_ierror_concrete_compare(lhs, expr.lhs, expr.rhs, expr.op) {
+		return tag_cmp
+	}
+	if tag_cmp := b.build_sumtype_tag_selector_variant_compare(lhs, expr.lhs, expr.rhs, expr.op) {
 		return tag_cmp
 	}
 	if tag_cmp := b.build_sumtype_variant_compare_expr(lhs, expr.rhs, expr.op) {
@@ -16648,10 +16877,67 @@ fn (mut b Builder) build_match_phi(merge_block BlockID, incoming []MatchExprInco
 	return b.mod.add_instr(.phi, merge_block, phi_type, phi_operands)
 }
 
-fn sumtype_variant_candidate_names(expr ast.Expr) []string {
+fn sumtype_variant_index_arg_is_type_shape(expr ast.Expr) bool {
+	return match expr {
+		ast.Ident, ast.SelectorExpr, ast.GenericArgs, ast.GenericArgOrIndexExpr, ast.Type {
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn sumtype_variant_index_arg_is_type_shape_from_flat(expr ast.Cursor) bool {
+	return match expr.kind() {
+		.expr_ident, .expr_selector, .typ_array, .typ_array_fixed, .typ_map, .typ_pointer,
+		.typ_generic, .typ_option, .typ_result, .expr_generic_args, .expr_generic_arg_or_index {
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (b &Builder) sumtype_variant_generic_candidate_names(base ast.Expr, params []ast.Expr) []string {
+	mut names := []string{}
+	generic_name := b.generic_type_name(base, params)
+	base_name := b.generic_type_part_name(base)
+	if generic_name != '' {
+		names << generic_name
+	}
+	if base_name != '' && base_name !in names {
+		names << base_name
+	}
+	return names
+}
+
+fn (b &Builder) sumtype_variant_generic_candidate_names_from_flat(base ast.Cursor, params []ast.Cursor) []string {
+	mut names := []string{}
+	base_name := b.generic_type_part_name_from_flat(base)
+	mut parts := []string{cap: params.len}
+	for param in params {
+		part := b.generic_type_part_name_from_flat(param)
+		if part == '' {
+			return []string{}
+		}
+		parts << part
+	}
+	generic_name := generic_type_name_from_parts(base_name, parts)
+	if generic_name != '' {
+		names << generic_name
+	}
+	if base_name != '' && base_name !in names {
+		names << base_name
+	}
+	return names
+}
+
+fn (b &Builder) sumtype_variant_candidate_names(expr ast.Expr) []string {
 	match expr {
 		ast.ParenExpr {
-			return sumtype_variant_candidate_names(expr.expr)
+			return b.sumtype_variant_candidate_names(expr.expr)
 		}
 		ast.Ident {
 			if expr.name == '' {
@@ -16660,27 +16946,46 @@ fn sumtype_variant_candidate_names(expr ast.Expr) []string {
 			return [expr.name]
 		}
 		ast.SelectorExpr {
-			mut names := []string{}
+			mut selector_names := []string{}
 			if expr.rhs.name != '' {
 				if expr.lhs is ast.Ident {
 					lhs_name := (expr.lhs as ast.Ident).name
 					if lhs_name != '' {
-						names << '${lhs_name}__${expr.rhs.name}'
-						names << '${lhs_name}.${expr.rhs.name}'
+						selector_names << b.generic_selector_type_part_name(expr)
+						selector_names << '${lhs_name}__${expr.rhs.name}'
+						selector_names << '${lhs_name}.${expr.rhs.name}'
 					}
 				}
-				names << expr.rhs.name
+				selector_names << expr.rhs.name
 			}
-			return names
+			return selector_names
+		}
+		ast.GenericType {
+			return b.sumtype_variant_generic_candidate_names(expr.name, expr.params)
+		}
+		ast.GenericArgs {
+			return b.sumtype_variant_generic_candidate_names(expr.lhs, expr.args)
+		}
+		ast.GenericArgOrIndexExpr {
+			if !sumtype_variant_index_arg_is_type_shape(expr.expr) {
+				return []string{}
+			}
+			return b.sumtype_variant_generic_candidate_names(expr.lhs, [expr.expr])
+		}
+		ast.IndexExpr {
+			if !sumtype_variant_index_arg_is_type_shape(expr.expr) {
+				return []string{}
+			}
+			return b.sumtype_variant_generic_candidate_names(expr.lhs, [expr.expr])
 		}
 		ast.InitExpr {
-			return sumtype_variant_candidate_names(expr.typ)
+			return b.sumtype_variant_candidate_names(expr.typ)
 		}
 		ast.CallOrCastExpr {
-			return sumtype_variant_candidate_names(expr.lhs)
+			return b.sumtype_variant_candidate_names(expr.lhs)
 		}
 		ast.CastExpr {
-			return sumtype_variant_candidate_names(expr.typ)
+			return b.sumtype_variant_candidate_names(expr.typ)
 		}
 		else {
 			return []string{}
@@ -16688,10 +16993,10 @@ fn sumtype_variant_candidate_names(expr ast.Expr) []string {
 	}
 }
 
-fn sumtype_variant_candidate_names_from_flat(expr ast.Cursor) []string {
+fn (b &Builder) sumtype_variant_candidate_names_from_flat(expr ast.Cursor) []string {
 	match expr.kind() {
 		.expr_paren {
-			return sumtype_variant_candidate_names_from_flat(expr.edge(0))
+			return b.sumtype_variant_candidate_names_from_flat(expr.edge(0))
 		}
 		.expr_ident {
 			name := expr.name()
@@ -16706,26 +17011,60 @@ fn sumtype_variant_candidate_names_from_flat(expr ast.Cursor) []string {
 			if rhs_name == '' {
 				return []string{}
 			}
-			mut names := []string{}
+			mut selector_names := []string{}
 			lhs := expr.edge(0)
 			if lhs.kind() == .expr_ident {
 				lhs_name := lhs.name()
 				if lhs_name != '' {
-					names << '${lhs_name}__${rhs_name}'
-					names << '${lhs_name}.${rhs_name}'
+					selector_names << b.generic_selector_type_part_name_from_flat(lhs_name,
+						rhs_name)
+					selector_names << '${lhs_name}__${rhs_name}'
+					selector_names << '${lhs_name}.${rhs_name}'
 				}
 			}
-			names << rhs_name
-			return names
+			selector_names << rhs_name
+			return selector_names
+		}
+		.typ_generic {
+			mut params := []ast.Cursor{cap: expr.edge_count() - 1}
+			for i in 1 .. expr.edge_count() {
+				params << expr.edge(i)
+			}
+			return b.sumtype_variant_generic_candidate_names_from_flat(expr.edge(0), params)
+		}
+		.expr_generic_args {
+			mut params := []ast.Cursor{cap: expr.edge_count() - 1}
+			for i in 1 .. expr.edge_count() {
+				params << expr.edge(i)
+			}
+			return b.sumtype_variant_generic_candidate_names_from_flat(expr.edge(0), params)
+		}
+		.expr_generic_arg_or_index {
+			index_expr := expr.edge(1)
+			if !sumtype_variant_index_arg_is_type_shape_from_flat(index_expr) {
+				return []string{}
+			}
+			return b.sumtype_variant_generic_candidate_names_from_flat(expr.edge(0), [
+				index_expr,
+			])
+		}
+		.expr_index {
+			index_expr := expr.edge(1)
+			if !sumtype_variant_index_arg_is_type_shape_from_flat(index_expr) {
+				return []string{}
+			}
+			return b.sumtype_variant_generic_candidate_names_from_flat(expr.edge(0), [
+				index_expr,
+			])
 		}
 		.expr_init {
-			return sumtype_variant_candidate_names_from_flat(expr.edge(0))
+			return b.sumtype_variant_candidate_names_from_flat(expr.edge(0))
 		}
 		.expr_call_or_cast {
-			return sumtype_variant_candidate_names_from_flat(expr.edge(0))
+			return b.sumtype_variant_candidate_names_from_flat(expr.edge(0))
 		}
 		.expr_cast {
-			return sumtype_variant_candidate_names_from_flat(expr.edge(0))
+			return b.sumtype_variant_candidate_names_from_flat(expr.edge(0))
 		}
 		else {
 			return []string{}
@@ -16738,25 +17077,23 @@ fn (mut b Builder) sumtype_variant_type_for_name(sumtype_type TypeID, candidate 
 		return none
 	}
 	sumtype_name := b.mod.c_struct_names[sumtype_type] or { return none }
-	mut lookup_module := b.cur_module
-	mut lookup_name := sumtype_name
-	if dunder := sumtype_name.index('__') {
-		lookup_module = sumtype_name[..dunder]
-		last_dunder := sumtype_name.last_index('__') or { dunder }
-		lookup_name = sumtype_name[last_dunder + 2..]
-	}
-	scope := b.env.get_scope(lookup_module) or { return none }
-	obj := scope.lookup_parent(lookup_name, 0) or { return none }
-	obj_type := obj.typ()
-	if obj_type !is types.SumType {
-		return none
-	}
 	candidate_norm := candidate.replace('.', '__')
-	sumtype_info := obj_type as types.SumType
+	sumtype_info := b.checked_sumtype_for_ssa_name(sumtype_name) or { return none }
 	for variant in sumtype_info.get_variants() {
 		variant_name := variant.name()
 		variant_norm := variant_name.replace('.', '__')
-		if ssa_type_name_matches(variant_norm, candidate_norm) {
+		if ssa_sumtype_variant_name_matches(variant_norm, candidate_norm) {
+			if id := b.struct_types[candidate_norm] {
+				return id
+			}
+			if !candidate_norm.contains('__') {
+				if last_dunder := sumtype_name.last_index('__') {
+					qualified_candidate := '${sumtype_name[..last_dunder]}__${candidate_norm}'
+					if id := b.struct_types[qualified_candidate] {
+						return id
+					}
+				}
+			}
 			return b.type_to_ssa(variant)
 		}
 	}
@@ -16764,13 +17101,14 @@ fn (mut b Builder) sumtype_variant_type_for_name(sumtype_type TypeID, candidate 
 }
 
 fn (mut b Builder) sumtype_variant_type_for_expr(sumtype_type TypeID, expr ast.Expr) ?TypeID {
-	for candidate in sumtype_variant_candidate_names(expr) {
+	candidates := b.sumtype_variant_candidate_names(expr)
+	for candidate in candidates {
 		if variant_type := b.sumtype_variant_type_for_name(sumtype_type, candidate) {
 			return variant_type
 		}
 	}
 	variant_type := b.smartcast_rhs_variant_type_id(expr, true)
-	if b.valid_type_id(variant_type) {
+	if b.valid_type_id(variant_type) && variant_type != sumtype_type {
 		if _ := b.sumtype_variant_tag(sumtype_type, variant_type) {
 			return variant_type
 		}
@@ -16779,13 +17117,14 @@ fn (mut b Builder) sumtype_variant_type_for_expr(sumtype_type TypeID, expr ast.E
 }
 
 fn (mut b Builder) sumtype_variant_type_for_expr_from_flat(sumtype_type TypeID, expr ast.Cursor) ?TypeID {
-	for candidate in sumtype_variant_candidate_names_from_flat(expr) {
+	candidates := b.sumtype_variant_candidate_names_from_flat(expr)
+	for candidate in candidates {
 		if variant_type := b.sumtype_variant_type_for_name(sumtype_type, candidate) {
 			return variant_type
 		}
 	}
 	variant_type := b.smartcast_rhs_variant_type_id_from_flat(expr, true)
-	if b.valid_type_id(variant_type) {
+	if b.valid_type_id(variant_type) && variant_type != sumtype_type {
 		if _ := b.sumtype_variant_tag(sumtype_type, variant_type) {
 			return variant_type
 		}
@@ -18369,38 +18708,39 @@ fn ssa_type_name_matches(actual string, expected string) bool {
 	return actual_short == expected_short
 }
 
+fn ssa_generic_base_name(name string) string {
+	return if name.contains('_T_') { name.all_before('_T_') } else { name }
+}
+
+fn ssa_sumtype_variant_name_matches(actual string, expected string) bool {
+	if ssa_type_name_matches(actual, expected) {
+		return true
+	}
+	actual_base := ssa_generic_base_name(actual)
+	expected_base := ssa_generic_base_name(expected)
+	return ssa_type_name_matches(actual_base, expected)
+		|| ssa_type_name_matches(actual, expected_base)
+		|| ssa_type_name_matches(actual_base, expected_base)
+}
+
 fn (mut b Builder) sumtype_variants_for_type(type_id TypeID) []string {
 	if b.env == unsafe { nil } {
 		return []string{}
 	}
 	sumtype_name := b.mod.c_struct_names[type_id] or { return []string{} }
-	mut lookup_module := b.cur_module
-	mut lookup_name := sumtype_name
-	if dunder := sumtype_name.index('__') {
-		lookup_module = sumtype_name[..dunder]
-		last_dunder := sumtype_name.last_index('__') or { dunder }
-		lookup_name = sumtype_name[last_dunder + 2..]
+	sumtype_info := b.checked_sumtype_for_ssa_name(sumtype_name) or { return []string{} }
+	mut variants := []string{cap: sumtype_info.get_variants().len}
+	for variant in sumtype_info.get_variants() {
+		variants << variant.name()
 	}
-	if scope := b.env.get_scope(lookup_module) {
-		if obj := scope.lookup_parent(lookup_name, 0) {
-			obj_type := obj.typ()
-			if obj_type is types.SumType {
-				mut variants := []string{cap: obj_type.get_variants().len}
-				for variant in obj_type.get_variants() {
-					variants << variant.name()
-				}
-				return variants
-			}
-		}
-	}
-	return []string{}
+	return variants
 }
 
 fn (mut b Builder) sumtype_variant_tag(sumtype_type TypeID, variant_type TypeID) ?int {
 	variant_name := b.mod.c_struct_names[variant_type] or { return none }
 	variants := b.sumtype_variants_for_type(sumtype_type)
 	for i, variant in variants {
-		if ssa_type_name_matches(variant_name, variant) {
+		if ssa_sumtype_variant_name_matches(variant_name, variant) {
 			return i
 		}
 	}
