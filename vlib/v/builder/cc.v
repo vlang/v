@@ -1994,12 +1994,13 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 	if asm_files.len == 0 {
 		return
 	}
-	// wasm targets use a different object format; .S files with ELF/Mach-O
-	// directives would produce host-arch .o files that can't link into wasm.
-	// This should never trigger (should_use_incbin_embed guards at codegen),
-	// but is kept as a safety check.
+	// Safety checks: these should never trigger (should_use_incbin_embed guards
+	// at codegen), but are kept as defense-in-depth.
 	if b.pref.os in [.wasm32, .wasm32_emscripten, .wasm32_wasi] {
 		verror('embedded file .incbin is not supported on wasm targets')
+	}
+	if b.pref.build_mode == .build_module {
+		verror('embedded file .incbin is not supported in build_module mode (separate .o cannot be merged into cached module)')
 	}
 	vtmp := os.vtmp_dir()
 

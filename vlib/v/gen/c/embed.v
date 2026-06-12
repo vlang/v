@@ -20,6 +20,12 @@ fn (g &Gen) should_use_incbin_embed() bool {
 	if g.pref.is_o {
 		return false
 	}
+	// build_module (-usecache) produces a standalone .o per module.
+	// Embed .o files are separate and would not be merged into the module .o,
+	// causing unresolved _v_embed_blob_* symbols at final link time.
+	if g.pref.build_mode == .build_module {
+		return false
+	}
 	if !g.should_really_embed_file() {
 		return false
 	}
@@ -246,6 +252,10 @@ fn (mut g Gen) gen_embedded_asm_file(emfile ast.EmbeddedFile) {
 	sb.writeln('    .section __TEXT,__const')
 	sb.writeln('    .globl __v_embed_blob_${ef_hash}')
 	sb.writeln('__v_embed_blob_${ef_hash}:')
+	sb.writeln('#elif defined(_WIN32)')
+	sb.writeln('    .section .rdata')
+	sb.writeln('    .globl _v_embed_blob_${ef_hash}')
+	sb.writeln('_v_embed_blob_${ef_hash}:')
 	sb.writeln('#else')
 	sb.writeln('    .section .rodata')
 	sb.writeln('    .globl _v_embed_blob_${ef_hash}')
@@ -253,7 +263,7 @@ fn (mut g Gen) gen_embedded_asm_file(emfile ast.EmbeddedFile) {
 	sb.writeln('_v_embed_blob_${ef_hash}:')
 	sb.writeln('#endif')
 	sb.writeln('    .incbin "${cestring(incbin_path)}"')
-	sb.writeln('#if !defined(__APPLE__)')
+	sb.writeln('#if !defined(__APPLE__) && !defined(_WIN32)')
 	sb.writeln('    .size _v_embed_blob_${ef_hash}, ${emfile.bytes.len}')
 	sb.writeln('#endif')
 
