@@ -13158,6 +13158,11 @@ fn (mut g Gen) interface_table() string {
 			// That keeps stray bytes from overlapping storage, like unions, from
 			// aliasing a valid concrete interface variant.
 			interface_index_name := '_${interface_name}_${cctype}_index'
+			interface_index_case_name := if g.pref.use_cache {
+				'${interface_index_name}_enum'
+			} else {
+				interface_index_name
+			}
 			if already_generated_mwrappers[interface_index_name] > 0 {
 				continue
 			}
@@ -13247,7 +13252,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 return ${cast_shared_struct_str};
 }')
 				if shared_interface_mtx_helper_needed {
-					shared_interface_mtx_cases.writeln('\t\tcase ${interface_index_name}:')
+					shared_interface_mtx_cases.writeln('\t\tcase ${interface_index_case_name}:')
 					shared_interface_mtx_cases.writeln('\t\t\treturn &(((__shared__${cctype}*)((char*)x->val._${cctype} - __offsetof(__shared__${cctype}, val)))->mtx);')
 				}
 			}
@@ -13520,11 +13525,15 @@ return ${cast_shared_struct_str};
 					// (not a compile-time `enum` constant, which has no linker
 					// symbol), otherwise the reference is undefined at link time -
 					// e.g. `undefined symbol: _IError_None___index` on FreeBSD/clang.
-					sb.writeln('const u32 ${interface_index_name} = ${iin_idx};')
+					sb.writeln('enum { ${interface_index_case_name} = ${iin_idx} };')
+					sb.writeln('const u32 ${interface_index_name} = ${interface_index_case_name};')
 				} else {
 					sb.writeln('enum { ${interface_index_name} = ${iin_idx} };')
 				}
 			} else {
+				if g.pref.use_cache {
+					sb.writeln('enum { ${interface_index_case_name} = ${iin_idx} };')
+				}
 				sb.writeln('extern const u32 ${interface_index_name};')
 			}
 		}
