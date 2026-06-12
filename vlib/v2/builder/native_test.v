@@ -289,15 +289,22 @@ fn test_validate_macos_sdk_path_for_native_link_rejects_missing_sdk_dir() {
 }
 
 fn test_native_link_commands_append_directive_link_flags() {
-	linux := linux_native_link_command('/tmp/out', 'main.o', '-lm')
+	linux := linux_native_link_command('cc', '/tmp/out', 'main.o', '-lm')
 	macos := macos_native_link_command('/tmp/out', 'main.o', '/SDK Path', 'x86_64', false, '-lm')
 
 	assert linux == 'cc ${os.quoted_path('main.o')} -o ${os.quoted_path('/tmp/out')} -no-pie -lm'
 	assert macos == 'ld -o ${os.quoted_path('/tmp/out')} ${os.quoted_path('main.o')} -lm -lSystem -syslibroot ${os.quoted_path('/SDK Path')} -e _main -arch x86_64 -platform_version macos 11.0.0 11.0.0'
 }
 
+fn test_linux_native_link_command_uses_configured_driver_and_link_flags() {
+	cmd := linux_native_link_command('custom-cc', '/tmp/out', 'main.o', '-fopenmp')
+
+	assert cmd.starts_with('custom-cc ${os.quoted_path('main.o')}'), cmd
+	assert cmd.contains('-fopenmp'), cmd
+}
+
 fn test_native_link_commands_keep_wl_for_linux_and_translate_for_macos_ld() {
-	linux := linux_native_link_command('/tmp/out', 'main.o', '-Wl,-rpath,/tmp/lib')
+	linux := linux_native_link_command('cc', '/tmp/out', 'main.o', '-Wl,-rpath,/tmp/lib')
 	macos := macos_native_link_command('/tmp/out', 'main.o', '/SDK Path', 'x86_64', false,
 		'-Wl,-rpath,@loader_path/lib')
 
@@ -314,12 +321,27 @@ fn test_native_link_commands_translate_xlinker_for_macos_ld() {
 	assert !macos.contains('-Xlinker'), macos
 }
 
+fn test_macos_native_link_command_keeps_framework_search_paths() {
+	macos := macos_native_link_command('/tmp/out', 'main.o', '/SDK Path', 'x86_64', false,
+		'-F /tmp/Fw -F/opt/Fw -framework Foo')
+
+	assert macos.contains(' -F /tmp/Fw -F/opt/Fw -framework Foo '), macos
+}
+
 fn test_split_compile_and_link_flags_duplicates_dual_use_driver_flags() {
 	compile_flags, link_flags :=
 		split_compile_and_link_flags('-I include -fopenmp -fopenmp=libomp -pthread helper.c')
 
 	assert compile_flags == '-I include -fopenmp -fopenmp=libomp -pthread'
 	assert link_flags == '-fopenmp -fopenmp=libomp -pthread helper.c'
+}
+
+fn test_split_compile_and_link_flags_keeps_framework_search_paths_dual_use() {
+	compile_flags, link_flags :=
+		split_compile_and_link_flags('-F /tmp/Fw -F/opt/Fw -framework Foo helper.m')
+
+	assert compile_flags == '-F /tmp/Fw -F/opt/Fw'
+	assert link_flags == '-F /tmp/Fw -F/opt/Fw -framework Foo helper.m'
 }
 
 fn test_macos_native_ld_rejects_dual_use_driver_link_flags() {
@@ -339,7 +361,8 @@ fn test_native_linux_tiny_link_allows_runtime_system_libs_when_user_flags_are_em
 }
 
 fn test_native_linux_tiny_link_blocks_user_external_link_flags() {
-	for user_link_flags in ['-lm', '-Wl,-rpath,/tmp/lib', '/tmp/helper.c', '-fopenmp', '-pthread'] {
+	for user_link_flags in ['-lm', '-Wl,-rpath,/tmp/lib', '/tmp/helper.c', '-fopenmp', '-pthread',
+		'-F/tmp/Frameworks'] {
 		assert !native_link_flags_allow_builtin_linux_tiny('-lpthread -lm -ldl', user_link_flags), user_link_flags
 	}
 }
@@ -472,6 +495,40 @@ fn test_native_external_source_compiler_defaults_to_cc_for_macos() {
 
 	assert b.native_external_source_compiler('macos') == 'cc'
 	assert b.native_external_source_compiler('darwin') == 'cc'
+}
+
+fn test_native_linux_hosted_link_compiler_pref_v2cc_default_order() {
+	old_v2cc := os.getenv_opt('V2CC')
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_builder_native_linux_hosted_cc_${os.getpid()}')
+	tcc_dir := os.join_path(tmp_dir, 'thirdparty', 'tcc')
+	os.mkdir_all(tcc_dir) or { panic(err) }
+	os.write_file(os.join_path(tcc_dir, 'tcc.exe'), '') or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+		if old := old_v2cc {
+			os.setenv('V2CC', old, true)
+		} else {
+			os.unsetenv('V2CC')
+		}
+	}
+
+	os.setenv('V2CC', 'env-hosted-cc', true)
+	mut pref_prefs := pref.new_preferences()
+	pref_prefs.ccompiler = 'pref-hosted-cc'
+	pref_builder := new_builder(&pref_prefs)
+	assert pref_builder.native_linux_hosted_link_compiler() == 'pref-hosted-cc'
+
+	mut env_prefs := pref.new_preferences()
+	env_prefs.ccompiler = ''
+	env_builder := new_builder(&env_prefs)
+	assert env_builder.native_linux_hosted_link_compiler() == 'env-hosted-cc'
+
+	os.unsetenv('V2CC')
+	mut default_prefs := pref.Preferences{
+		vroot: tmp_dir
+	}
+	default_builder := new_builder(&default_prefs)
+	assert default_builder.native_linux_hosted_link_compiler() == 'cc'
 }
 
 fn test_native_link_flags_from_sources_are_not_global() {

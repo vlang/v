@@ -2395,6 +2395,17 @@ fn (b &Builder) native_external_source_compiler(target_os string) string {
 	return configured_cc(b.pref.vroot)
 }
 
+fn (b &Builder) native_linux_hosted_link_compiler() string {
+	if b.pref.ccompiler.len > 0 {
+		return b.pref.ccompiler
+	}
+	v2cc := (os.getenv_opt('V2CC') or { '' }).trim_space()
+	if v2cc != '' {
+		return v2cc
+	}
+	return 'cc'
+}
+
 fn (b &Builder) compile_native_external_sources(inputs NativeExternalLinkInputs, compile_flags string, target_os string, sdk_path string, arch_flag string) ! {
 	if inputs.source_files.len == 0 {
 		return
@@ -2464,8 +2475,8 @@ fn validate_macos_sdk_path_for_native_link(sdk_path string) ! {
 	}
 }
 
-fn linux_native_link_command(output_binary string, obj_file string, link_flags string) string {
-	return 'cc ${os.quoted_path(obj_file)} -o ${os.quoted_path(output_binary)} -no-pie${native_link_flags_suffix(link_flags)}'
+fn linux_native_link_command(cc string, output_binary string, obj_file string, link_flags string) string {
+	return '${cc} ${os.quoted_path(obj_file)} -o ${os.quoted_path(output_binary)} -no-pie${native_link_flags_suffix(link_flags)}'
 }
 
 fn native_external_object_file(output_binary string, target_os string) string {
@@ -2977,8 +2988,9 @@ fn (b &Builder) collect_cflags_from_scan_paths(paths []string) string {
 // split_compile_and_link_flags separates a flags string into compiler-only
 // flags (for -c compilation) and linker-only flags (for the link step).
 // Linker flags include: -l*, -L*, -Wl,*, -Xlinker, -framework, C source files
-// and prebuilt object/library files. Minimal dual-use driver flags are kept in
-// both outputs. Source files from #flag directives must not be passed to
+// and prebuilt object/library files. Minimal dual-use driver flags, plus -F
+// framework search paths, are kept in both outputs. Source files from #flag
+// directives must not be passed to
 // per-module `-c -o module.o` cache compilations.
 fn split_compile_and_link_flags(flags string) (string, string) {
 	tokens := flags.fields()
@@ -2988,6 +3000,17 @@ fn split_compile_and_link_flags(flags string) (string, string) {
 	for i < tokens.len {
 		tok := tokens[i]
 		if native_driver_flag_is_dual_use(tok) {
+			compile << tok
+			link << tok
+		} else if tok == '-F' {
+			compile << tok
+			link << tok
+			if i + 1 < tokens.len {
+				i++
+				compile << tokens[i]
+				link << tokens[i]
+			}
+		} else if tok.starts_with('-F') {
 			compile << tok
 			link << tok
 		} else if tok == '-Xlinker' {
@@ -3845,8 +3868,8 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 				eprint_native_x64_link_error(err.msg())
 				exit(1)
 			}
-			link_result := os.execute(linux_native_link_command(output_binary, obj_file,
-				native_external_inputs.link_flags))
+			link_result := os.execute(linux_native_link_command(b.native_linux_hosted_link_compiler(),
+				output_binary, obj_file, native_external_inputs.link_flags))
 			if link_result.exit_code != 0 {
 				eprintln('Link failed:')
 				eprintln(link_result.output)
