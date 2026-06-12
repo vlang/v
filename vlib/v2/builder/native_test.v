@@ -296,6 +296,23 @@ fn test_native_link_commands_append_directive_link_flags() {
 	assert macos == 'ld -o ${os.quoted_path('/tmp/out')} ${os.quoted_path('main.o')} -lm -lSystem -syslibroot ${os.quoted_path('/SDK Path')} -e _main -arch x86_64 -platform_version macos 11.0.0 11.0.0'
 }
 
+fn test_native_link_commands_keep_wl_for_linux_and_translate_for_macos_ld() {
+	linux := linux_native_link_command('/tmp/out', 'main.o', '-Wl,-rpath,/tmp/lib')
+	macos := macos_native_link_command('/tmp/out', 'main.o', '/SDK Path', 'x86_64', false,
+		'-Wl,-rpath,@loader_path/lib')
+
+	assert linux.contains('-Wl,-rpath,/tmp/lib'), linux
+	assert macos.contains(' -rpath @loader_path/lib '), macos
+	assert !macos.contains('-Wl,'), macos
+}
+
+fn test_native_linux_tiny_link_is_disabled_by_any_link_flags() {
+	assert native_link_flags_allow_builtin_linux_tiny('')
+	assert native_link_flags_allow_builtin_linux_tiny('   ')
+	assert !native_link_flags_allow_builtin_linux_tiny('-lm')
+	assert !native_link_flags_allow_builtin_linux_tiny('-Wl,-rpath,/tmp/lib')
+}
+
 fn test_native_external_link_inputs_replace_sources_with_objects_in_order() {
 	inputs := native_external_link_inputs('-L/tmp/lib /tmp/foo.c -lfoo /tmp/bar.m /tmp/baz.o',
 		'/tmp/out')!
@@ -324,21 +341,6 @@ fn test_native_external_link_inputs_reject_quoted_source_tokens() {
 		return
 	}
 	assert false, 'expected quoted source token to be rejected'
-}
-
-fn test_native_link_flags_external_file_input_detection_ignores_plain_link_flags() {
-	assert !native_link_flags_have_external_file_inputs('-lm -L/tmp/lib -framework Foundation')
-}
-
-fn test_native_link_flags_external_file_input_detection_sees_sources_and_archives() {
-	assert native_link_flags_have_external_file_inputs('/tmp/foo.c')
-	assert native_link_flags_have_external_file_inputs('/tmp/foo.m')
-	assert native_link_flags_have_external_file_inputs('/tmp/foo.o')
-	assert native_link_flags_have_external_file_inputs('/tmp/foo.obj')
-	assert native_link_flags_have_external_file_inputs('/tmp/foo.a')
-	assert native_link_flags_have_external_file_inputs('/tmp/foo.so')
-	assert native_link_flags_have_external_file_inputs('/tmp/foo.dylib')
-	assert native_link_flags_have_external_file_inputs('/tmp/foo.cpp')
 }
 
 fn test_macos_native_link_command_uses_rewritten_external_objects() {
@@ -379,6 +381,32 @@ fn test_native_external_source_compile_command_keeps_linux_compile_flags() {
 	assert cmd.contains('-I /tmp/include -DHELPER'), cmd
 	assert cmd.contains(os.quoted_path('/tmp/foo.c')), cmd
 	assert cmd.contains('-o ${os.quoted_path('/tmp/foo.o')}'), cmd
+}
+
+fn test_native_external_source_compiler_uses_pref_ccompiler() {
+	mut prefs := pref.new_preferences()
+	prefs.ccompiler = 'custom-native-cc'
+	mut b := new_builder(&prefs)
+
+	assert b.native_external_source_compiler() == 'custom-native-cc'
+}
+
+fn test_native_external_source_compiler_uses_v2cc_when_pref_is_empty() {
+	old_v2cc := os.getenv_opt('V2CC')
+	os.setenv('V2CC', 'env-native-cc', true)
+	defer {
+		if old := old_v2cc {
+			os.setenv('V2CC', old, true)
+		} else {
+			os.unsetenv('V2CC')
+		}
+	}
+
+	mut prefs := pref.new_preferences()
+	prefs.ccompiler = ''
+	mut b := new_builder(&prefs)
+
+	assert b.native_external_source_compiler() == 'env-native-cc'
 }
 
 fn test_native_link_flags_from_sources_are_not_global() {
@@ -426,7 +454,7 @@ fn test_native_compile_and_link_flags_from_sources_keep_compile_flags_for_source
 	c_path := os.join_path(tmp_dir, 'helper.c')
 	os.write_file(c_path, 'int helper(void) { return 7; }\n') or { panic(err) }
 	os.write_file(main_path, 'module main
-#flag -I include -DHELPER helper.c -lm
+#flag -I include -DHELPER helper.c -Wl,-rpath,/tmp/native-lib -lm
 ') or {
 		panic(err)
 	}
@@ -448,7 +476,7 @@ fn test_native_compile_and_link_flags_from_sources_keep_compile_flags_for_source
 	expected_c_path := os.real_path(c_path)
 
 	assert compile_flags == '-I ${expected_include_dir} -DHELPER'
-	assert link_flags == '${expected_c_path} -lm'
+	assert link_flags == '${expected_c_path} -Wl,-rpath,/tmp/native-lib -lm'
 }
 
 fn test_native_x64_requires_ssa_optimization() {

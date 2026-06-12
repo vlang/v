@@ -93,15 +93,67 @@ fn (t &Transformer) concrete_generic_sumtype_base_type(type_name string) ?types.
 	if base_name == '' {
 		return none
 	}
-	typ := t.lookup_type(base_name) or {
-		if base_name.contains('__') {
-			t.lookup_type(base_name.all_after_last('__')) or { return none }
-		} else {
-			return none
-		}
-	}
+	typ := t.lookup_concrete_generic_sumtype_base_name(base_name) or { return none }
 	if typ is types.SumType {
 		return typ
+	}
+	return none
+}
+
+fn (t &Transformer) lookup_concrete_generic_sumtype_base_name(base_name string) ?types.Type {
+	last_dunder := base_name.last_index('__') or { return t.lookup_sumtype_by_name(base_name) }
+	module_part := base_name[..last_dunder]
+	short_name := base_name[last_dunder + 2..]
+	if module_part == '' || short_name == '' {
+		return none
+	}
+	if module_part.contains('__') {
+		if typ := t.lookup_sumtype_in_nested_module_path(module_part, short_name) {
+			return typ
+		}
+		if typ := t.lookup_sumtype_by_name('${module_call_c_prefix(module_part)}__${short_name}') {
+			return typ
+		}
+		if typ := t.lookup_sumtype_by_name(base_name) {
+			return typ
+		}
+		return none
+	}
+	if typ := t.lookup_sumtype_by_name(base_name) {
+		return typ
+	}
+	if typ := t.lookup_sumtype_in_nested_module_path(module_part, short_name) {
+		return typ
+	}
+	return none
+}
+
+fn (t &Transformer) lookup_sumtype_by_name(name string) ?types.Type {
+	typ := t.lookup_type(name) or { return none }
+	if typ is types.SumType {
+		return typ
+	}
+	return none
+}
+
+fn (t &Transformer) lookup_sumtype_in_module(module_name string, short_name string) ?types.Type {
+	scope := t.get_module_scope(module_name) or { return none }
+	typ := scope.lookup_type(short_name) or { return none }
+	if typ is types.SumType {
+		return typ
+	}
+	return none
+}
+
+fn (t &Transformer) lookup_sumtype_in_nested_module_path(module_part string, short_name string) ?types.Type {
+	if typ := t.lookup_sumtype_in_module(module_part, short_name) {
+		return typ
+	}
+	dotted_module := module_part.replace('__', '.')
+	if dotted_module != module_part {
+		if typ := t.lookup_sumtype_in_module(dotted_module, short_name) {
+			return typ
+		}
 	}
 	return none
 }

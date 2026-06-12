@@ -1552,6 +1552,123 @@ fn make() Tree[int] {
 	mono_assert_sumtype_payload_memdup_expr(payload_value, 'Node_T_int')
 }
 
+fn test_nested_module_concrete_generic_sumtype_base_does_not_fall_back_to_local_tree() {
+	nested_tree_type := types.Type(types.SumType{
+		name:           'foo.bar__Tree'
+		generic_params: ['T']
+		variants:       [
+			types.Type(types.Struct{
+				name: 'foo.bar__Empty'
+			}),
+			types.Type(types.Struct{
+				name:           'foo.bar__Node'
+				generic_params: ['T']
+			}),
+		]
+	})
+	local_tree_type := types.Type(types.SumType{
+		name:           'main__Tree'
+		generic_params: ['T']
+		variants:       [
+			types.Type(types.Struct{
+				name: 'main__Wrong'
+			}),
+		]
+	})
+	foo_tree_type := types.Type(types.SumType{
+		name:           'foo__Tree'
+		generic_params: ['T']
+		variants:       [
+			types.Type(types.Struct{
+				name: 'foo__Wrong'
+			}),
+		]
+	})
+	mut nested_scope := types.new_scope(unsafe { nil })
+	nested_scope.insert_type('Tree', nested_tree_type)
+	mut foo_scope := types.new_scope(unsafe { nil })
+	foo_scope.insert_type('Tree', foo_tree_type)
+	mut main_scope := types.new_scope(unsafe { nil })
+	main_scope.insert_type('Tree', local_tree_type)
+	mut t := mono_test_transformer()
+	t.cur_module = 'main'
+	t.cached_scopes = {
+		'foo.bar': nested_scope
+		'foo':     foo_scope
+		'main':    main_scope
+	}
+	t.cur_monomorphized_fn_bindings = {
+		'T': types.Type(types.int_)
+	}
+
+	base := t.concrete_generic_sumtype_base_type('foo__bar__Tree_T_int') or {
+		assert false, 'missing nested foo.bar Tree base'
+		return
+	}
+	assert base is types.SumType
+	assert (base as types.SumType).name == 'foo.bar__Tree'
+	info := t.sumtype_wrap_info_for_name('foo__bar__Tree_T_int') or {
+		assert false, 'missing nested foo.bar Tree wrap info'
+		return
+	}
+	assert info.name == 'foo__bar__Tree_T_int'
+	assert info.variants == ['foo__bar__Empty', 'foo__bar__Node_T_int']
+	assert 'foo__Wrong_T_int' !in info.variants
+	assert 'main__Wrong_T_int' !in info.variants
+}
+
+fn test_leaf_module_concrete_generic_sumtype_base_fallback_beats_parent_module_tree() {
+	bar_tree_type := types.Type(types.SumType{
+		name:           'bar__Tree'
+		generic_params: ['T']
+		variants:       [
+			types.Type(types.Struct{
+				name: 'bar__Empty'
+			}),
+			types.Type(types.Struct{
+				name:           'bar__Node'
+				generic_params: ['T']
+			}),
+		]
+	})
+	foo_tree_type := types.Type(types.SumType{
+		name:           'foo__Tree'
+		generic_params: ['T']
+		variants:       [
+			types.Type(types.Struct{
+				name: 'foo__Wrong'
+			}),
+		]
+	})
+	mut bar_scope := types.new_scope(unsafe { nil })
+	bar_scope.insert_type('Tree', bar_tree_type)
+	mut foo_scope := types.new_scope(unsafe { nil })
+	foo_scope.insert_type('Tree', foo_tree_type)
+	mut t := mono_test_transformer()
+	t.cur_module = 'main'
+	t.cached_scopes = {
+		'bar': bar_scope
+		'foo': foo_scope
+	}
+	t.cur_monomorphized_fn_bindings = {
+		'T': types.Type(types.int_)
+	}
+
+	base := t.concrete_generic_sumtype_base_type('foo__bar__Tree_T_int') or {
+		assert false, 'missing leaf module bar Tree base'
+		return
+	}
+	assert base is types.SumType
+	assert (base as types.SumType).name == 'bar__Tree'
+	info := t.sumtype_wrap_info_for_name('foo__bar__Tree_T_int') or {
+		assert false, 'missing leaf module bar Tree wrap info'
+		return
+	}
+	assert info.name == 'foo__bar__Tree_T_int'
+	assert info.variants == ['bar__Empty', 'bar__Node_T_int']
+	assert 'foo__Wrong_T_int' !in info.variants
+}
+
 fn test_option_concrete_sumtype_return_wraps_variant() {
 	files := mono_transform_sources_for_test([
 		MonoSource{

@@ -2196,6 +2196,26 @@ fn native_link_flags_suffix(link_flags string) string {
 	return ' ${trimmed}'
 }
 
+fn macos_native_ld_link_flags(link_flags string) string {
+	mut normalized := []string{}
+	for tok in link_flags.fields() {
+		if tok.starts_with('-Wl,') {
+			for linker_arg in tok['-Wl,'.len..].split(',') {
+				if linker_arg != '' {
+					normalized << linker_arg
+				}
+			}
+			continue
+		}
+		normalized << tok
+	}
+	return normalized.join(' ')
+}
+
+fn native_link_flags_allow_builtin_linux_tiny(link_flags string) bool {
+	return link_flags.trim_space() == ''
+}
+
 fn (b &Builder) native_link_flags_from_sources() string {
 	_, directive_link_flags := split_compile_and_link_flags(b.collect_cflags_from_sources())
 	return directive_link_flags.trim_space()
@@ -2226,23 +2246,6 @@ fn native_external_source_is_unsupported(tok string) bool {
 	lower := native_external_source_clean_token(tok).to_lower()
 	return lower.ends_with('.cc') || lower.ends_with('.cpp') || lower.ends_with('.cxx')
 		|| lower.ends_with('.mm')
-}
-
-fn native_external_link_token_is_file_input(tok string) bool {
-	lower := native_external_source_clean_token(tok).to_lower()
-	return native_external_source_is_supported(lower)
-		|| native_external_source_is_unsupported(lower) || lower.ends_with('.o')
-		|| lower.ends_with('.obj') || lower.ends_with('.a') || lower.ends_with('.so')
-		|| lower.ends_with('.dylib')
-}
-
-fn native_link_flags_have_external_file_inputs(link_flags string) bool {
-	for tok in link_flags.fields() {
-		if native_external_link_token_is_file_input(tok) {
-			return true
-		}
-	}
-	return false
 }
 
 fn native_external_source_unsupported_message(tok string) string {
@@ -2308,12 +2311,20 @@ fn native_external_source_compile_command(cc string, source_file string, object_
 	return parts.join(' ')
 }
 
+fn (b &Builder) native_external_source_compiler() string {
+	if b.pref.ccompiler.len > 0 {
+		return b.pref.ccompiler
+	}
+	return configured_cc(b.pref.vroot)
+}
+
 fn (b &Builder) compile_native_external_sources(inputs NativeExternalLinkInputs, compile_flags string, target_os string, sdk_path string, arch_flag string) ! {
 	if inputs.source_files.len == 0 {
 		return
 	}
+	cc := b.native_external_source_compiler()
 	for i, source_file in inputs.source_files {
-		cmd := native_external_source_compile_command('cc', source_file, inputs.object_files[i],
+		cmd := native_external_source_compile_command(cc, source_file, inputs.object_files[i],
 			compile_flags, sdk_path, arch_flag, target_os)
 		if b.pref.show_cc {
 			println(cmd)
@@ -2332,7 +2343,8 @@ fn cleanup_native_external_objects(inputs NativeExternalLinkInputs) {
 }
 
 fn macos_native_link_command(output_binary string, obj_file string, sdk_path string, arch_flag string, tiny_object bool, link_flags string) string {
-	normal_link_cmd := 'ld -o ${os.quoted_path(output_binary)} ${os.quoted_path(obj_file)}${native_link_flags_suffix(link_flags)} -lSystem -syslibroot ${os.quoted_path(sdk_path)} -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
+	ld_link_flags := macos_native_ld_link_flags(link_flags)
+	normal_link_cmd := 'ld -o ${os.quoted_path(output_binary)} ${os.quoted_path(obj_file)}${native_link_flags_suffix(ld_link_flags)} -lSystem -syslibroot ${os.quoted_path(sdk_path)} -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
 	if tiny_object {
 		return '${normal_link_cmd} -dead_strip -x -S'
 	}
@@ -2856,7 +2868,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 
 // split_compile_and_link_flags separates a flags string into compiler-only
 // flags (for -c compilation) and linker-only flags (for the link step).
-// Linker flags include: -l*, -L*, -framework, C source files and
+// Linker flags include: -l*, -L*, -Wl,*, -framework, C source files and
 // prebuilt object/library files.  Source files from #flag directives must not
 // be passed to per-module `-c -o module.o` cache compilations.
 fn split_compile_and_link_flags(flags string) (string, string) {
@@ -2873,7 +2885,7 @@ fn split_compile_and_link_flags(flags string) (string, string) {
 				i++
 				link << tokens[i]
 			}
-		} else if tok.starts_with('-l') || tok.starts_with('-L') {
+		} else if tok.starts_with('-Wl,') || tok.starts_with('-l') || tok.starts_with('-L') {
 			link << tok
 			// -L or -l alone (space-separated from its argument): grab the next token
 			if (tok == '-L' || tok == '-l') && i + 1 < tokens.len {
@@ -3465,8 +3477,6 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	arch := if backend_arch == .auto { b.pref.get_effective_arch() } else { backend_arch }
 	target_os := b.pref.target_os_or_host()
 	native_compile_flags, native_link_flags := b.native_compile_and_link_flags_from_sources()
-	native_has_external_file_inputs :=
-		native_link_flags_have_external_file_inputs(native_link_flags)
 	mut native_external_inputs := NativeExternalLinkInputs{
 		link_flags: native_link_flags
 	}
@@ -3555,7 +3565,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			if is_linux_x64_native_target(arch, target_os) {
 				mut linux_gen := x64.Gen.new_with_format_and_abi(&mir_mod, obj_format, codegen_abi)
 				linux_gen.gen()
-				if !native_has_external_file_inputs {
+				if native_link_flags_allow_builtin_linux_tiny(native_link_flags) {
 					if os.exists(output_binary) {
 						os.rm(output_binary) or {}
 					}
