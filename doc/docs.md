@@ -1272,7 +1272,8 @@ There are further built-in methods for arrays:
 * `a.trim(new_len)` truncates the length (if `new_length < a.len`, otherwise does nothing)
 * `a.clear()` empties the array without changing `cap` (equivalent to `a.trim(0)`)
 * `a.delete_many(start, size)` removes `size` consecutive elements from index `start`,
-  preserving order; it reuses the backing buffer and keeps capacity when no slices share it
+  preserving order. On the C backend, it reuses the backing buffer and keeps capacity when
+  no slices share it
 * `a.delete(index)` equivalent to `a.delete_many(index, 1)`
 * `a.delete_last()` removes the last element without changing `cap`
 * `a.first()` equivalent to `a[0]`
