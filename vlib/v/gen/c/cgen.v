@@ -13252,8 +13252,15 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 return ${cast_shared_struct_str};
 }')
 				if shared_interface_mtx_helper_needed {
-					shared_interface_mtx_cases.writeln('\t\tcase ${interface_index_case_name}:')
-					shared_interface_mtx_cases.writeln('\t\t\treturn &(((__shared__${cctype}*)((char*)x->val._${cctype} - __offsetof(__shared__${cctype}, val)))->mtx);')
+					mtx_expr := '&(((__shared__${cctype}*)((char*)x->val._${cctype} - __offsetof(__shared__${cctype}, val)))->mtx)'
+					if g.pref.build_mode == .build_module {
+						shared_interface_mtx_cases.writeln('\tif (x->val._typ == ${interface_index_name}) {')
+						shared_interface_mtx_cases.writeln('\t\treturn ${mtx_expr};')
+						shared_interface_mtx_cases.writeln('\t}')
+					} else {
+						shared_interface_mtx_cases.writeln('\t\tcase ${interface_index_case_name}:')
+						shared_interface_mtx_cases.writeln('\t\t\treturn ${mtx_expr};')
+					}
 				}
 			}
 
@@ -13531,9 +13538,6 @@ return ${cast_shared_struct_str};
 					sb.writeln('enum { ${interface_index_name} = ${iin_idx} };')
 				}
 			} else {
-				if g.pref.use_cache {
-					sb.writeln('enum { ${interface_index_case_name} = ${iin_idx} };')
-				}
 				sb.writeln('extern const u32 ${interface_index_name};')
 			}
 		}
@@ -13597,11 +13601,16 @@ return ${cast_shared_struct_str};
 			cast_functions.writeln('
 static inline sync__RwMutex* ${shared_interface_mtx_helper_name}(__shared__${interface_name}* x) {')
 			if shared_interface_mtx_cases.len > 0 {
-				cast_functions.writeln('\tswitch (x->val._typ) {')
-				cast_functions.write_string(shared_interface_mtx_cases.str())
-				cast_functions.writeln('\t\tdefault:')
-				cast_functions.writeln('\t\t\treturn &x->mtx;')
-				cast_functions.writeln('\t}')
+				if g.pref.build_mode == .build_module {
+					cast_functions.write_string(shared_interface_mtx_cases.str())
+					cast_functions.writeln('\treturn &x->mtx;')
+				} else {
+					cast_functions.writeln('\tswitch (x->val._typ) {')
+					cast_functions.write_string(shared_interface_mtx_cases.str())
+					cast_functions.writeln('\t\tdefault:')
+					cast_functions.writeln('\t\t\treturn &x->mtx;')
+					cast_functions.writeln('\t}')
+				}
 			} else {
 				cast_functions.writeln('\treturn &x->mtx;')
 			}

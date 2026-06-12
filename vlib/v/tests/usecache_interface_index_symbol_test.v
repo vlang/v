@@ -91,3 +91,86 @@ fn main() {
 	assert res.output.contains('case _main__MyInterface_main__MyImplementor_index_enum:')
 	assert !res.output.contains('case _main__MyInterface_main__MyImplementor_index:')
 }
+
+fn test_usecache_build_module_shared_interface_lock_uses_canonical_index_symbol() {
+	root := os.join_path(os.vtmp_dir(), 'v_issue_27330_shared_module_${os.getpid()}')
+	cache_dir := os.join_path(root, '.cache')
+	vtmp_dir := os.join_path(root, '.vtmp')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(os.join_path(root, 'maker'))!
+	os.mkdir_all(vtmp_dir)!
+	os.write_file(os.join_path(root, 'v.mod'),
+		"Module {\n\tname: 'v_issue_27330_shared_module'\n}\n") or { panic(err) }
+	os.write_file(os.join_path(root, 'maker', 'maker.v'), '
+module maker
+
+interface MyInterface {
+	foo() string
+}
+
+struct MyStruct {
+pub mut:
+	fooer shared MyInterface
+}
+
+struct MyImplementor {
+mut:
+	num int
+}
+
+fn (m MyImplementor) foo() string {
+	return "Hello World!"
+}
+
+pub fn exercise() {
+	shared imp := MyImplementor{
+		num: 1
+	}
+	s := MyStruct{
+		fooer: imp
+	}
+	lock s.fooer {
+		println(s.fooer.foo())
+	}
+}
+') or {
+		panic(err)
+	}
+
+	old_vcache := os.getenv_opt('VCACHE') or { '' }
+	old_vtmp := os.getenv_opt('VTMP') or { '' }
+	os.setenv('VCACHE', cache_dir, true)
+	os.setenv('VTMP', vtmp_dir, true)
+	defer {
+		if old_vcache.len == 0 {
+			os.unsetenv('VCACHE')
+		} else {
+			os.setenv('VCACHE', old_vcache, true)
+		}
+		if old_vtmp.len == 0 {
+			os.unsetenv('VTMP')
+		} else {
+			os.setenv('VTMP', old_vtmp, true)
+		}
+	}
+	mut p := os.new_process(vexe)
+	p.set_work_folder(root)
+	p.set_args(['-keepc', 'build-module', 'maker'])
+	p.set_redirect_stdio()
+	p.wait()
+	stdout := p.stdout_slurp()
+	stderr := p.stderr_slurp()
+	exit_code := p.code
+	p.close()
+	assert exit_code == 0, '${stdout}${stderr}'
+	generated_c_path := os.join_path(vtmp_dir, 'maker.tmp.c')
+	assert os.exists(generated_c_path)
+	generated_c := os.read_file(generated_c_path)!
+	assert generated_c.contains('extern const u32 _maker__MyInterface_maker__MyImplementor_index;')
+	assert generated_c.contains('if (x->val._typ == _maker__MyInterface_maker__MyImplementor_index) {')
+	assert !generated_c.contains('enum { _maker__MyInterface_maker__MyImplementor_index_enum =')
+	assert !generated_c.contains('case _maker__MyInterface_maker__MyImplementor_index_enum:')
+}
