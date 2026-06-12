@@ -208,9 +208,13 @@ pub fn (db DB) execute(query string) ![]orm.Row {
 
 	result := C.mysql_store_result(guard.conn)
 	if result == unsafe { nil } {
+		if get_errno(guard.conn) != 0 {
+			throw_mysql_error_for_conn(guard.conn)!
+		}
 		return []orm.Row{}
 	} else {
 		res := Result{result}
+		defer { unsafe { res.free() } }
 		fields := res.fields()
 		mut names := []string{}
 		for f in fields {
