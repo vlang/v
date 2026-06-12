@@ -942,9 +942,40 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		}
 	}
 	noscan := g.check_noscan(ret_elem_type)
+	// Perceus reuse (P2): if the receiver is a heap-array local that the analysis
+	// proved UNIQUE and DEAD at this very statement (it is in perceus_drops for the
+	// current stmt), and the result element type is identical to the input's (same
+	// size), reuse the receiver's own buffer for the result instead of allocating a
+	// fresh one — the classic Perceus functional-but-in-place map. The receiver's
+	// free is then ELIDED (perceus_reused) since its storage is now the result's;
+	// the result is freed exactly once. Reads (`_orig.data[i]`) and writes (push at
+	// index i) alias the same buffer, but the write of slot i happens only after
+	// slot i was read this iteration, and i increases monotonically, so no live
+	// element is clobbered before it is read.
+	mut perceus_map_reuse := false
+	if g.is_perceus && left_is_array && inp_elem_styp == ret_elem_styp
+		&& node.left is ast.Ident {
+		recv_name := (node.left as ast.Ident).name
+		if recv_name in g.perceus_drops[g.perceus_cur_stmt_pos] {
+			scope := g.file.scope.innermost(node.pos.pos)
+			if obj := scope.find(recv_name) {
+				if obj is ast.Var {
+					perceus_map_reuse = true
+					g.perceus_reused[obj.pos.pos] = true
+				}
+			}
+		}
+	}
 	has_infix_left_var_name := g.write_prepared_tmp_value(past.tmp_var, node, ret_styp, '{0}')
 	if left_is_array {
-		g.writeln('${past.tmp_var} = builtin____new_array${noscan}(0, ${past.tmp_var}_len, sizeof(${ret_elem_styp}));\n')
+		if perceus_map_reuse {
+			// reuse the receiver's buffer (same data ptr + cap); reset len so the
+			// push loop refills it in place (cap == orig.len, so no realloc).
+			g.writeln('${past.tmp_var} = ${past.tmp_var}_orig; // perceus: in-place map reuse')
+			g.writeln('${past.tmp_var}.len = 0;\n')
+		} else {
+			g.writeln('${past.tmp_var} = builtin____new_array${noscan}(0, ${past.tmp_var}_len, sizeof(${ret_elem_styp}));\n')
+		}
 	}
 
 	mut closure_var := ''

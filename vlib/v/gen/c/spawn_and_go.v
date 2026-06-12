@@ -174,6 +174,13 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	}
 	gohandle_name := g.gen_gohandle_name(call_ret_type)
 	if is_spawn {
+		// vgc: root the heap-allocated thread-arg struct across the create->start
+		// handoff (it is otherwise reachable from no scanned root until the child
+		// registers). The wrapper releases it after consuming the args. Only the
+		// GC-allocated (non-prealloc) arg needs this; prealloc uses plain malloc.
+		if !g.pref.prealloc && g.pref.gc_mode == .vgc {
+			g.writeln('builtin__vgc_spawn_root_add(${arg_tmp_var});')
+		}
 		if g.pref.os == .windows {
 			simple_handle := if node.is_expr && call_ret_type != ast.void_type {
 				'thread_handle_${tmp}'
@@ -476,6 +483,10 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			g.gowrappers.writeln('\tbuiltin__prealloc_scope_release(arg->prealloc_scope);')
 		}
 		if is_spawn {
+			// vgc: release the spawn-arg root before freeing (see add above).
+			if !g.pref.prealloc && g.pref.gc_mode == .vgc {
+				g.gowrappers.writeln('\tbuiltin__vgc_spawn_root_remove(arg);')
+			}
 			if g.pref.prealloc {
 				g.gowrappers.writeln('\tfree(arg);')
 			} else {

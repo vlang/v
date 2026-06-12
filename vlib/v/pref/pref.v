@@ -722,6 +722,19 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						res.gc_mode = .vgc
 						res.parse_define('vgc')
 					}
+					'e' {
+						// Architecture E (RC-first hybrid), the unified "E on" mode:
+						// Perceus-disciplined front line (the `perceus` emission pass,
+						// DECOUPLED from `-autofree` — autofree's clone/temp/scope-free
+						// machinery is unsound under a tracing GC) + the precise STW
+						// backstop collector (the vgc-lineage mark-region collector).
+						// NOTE: deliberately does NOT set `autofree` — Perceus emission
+						// is driven by the `perceus` define alone. `-gc boehm` stays the
+						// default; `-gc e` is opt-in.
+						res.gc_mode = .vgc
+						res.parse_define('vgc')
+						res.parse_define('perceus')
+					}
 					else {
 						eprintln('unknown garbage collection mode `-gc ${gc_mode}`, supported modes are:`')
 						eprintln('  `-gc boehm` ............ default GC-mode (currently `boehm_full_opt`)')
@@ -730,7 +743,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						eprintln('  `-gc boehm_full_opt` ... optimized classic full collection')
 						eprintln('  `-gc boehm_incr_opt` ... optimized incremental collection')
 						eprintln('  `-gc boehm_leak` ....... leak detection (for debugging)')
-						eprintln('  `-gc vgc` .............. V GC (concurrent tri-color mark-and-sweep)')
+						eprintln('  `-gc vgc` .............. V GC backstop collector (precise STW mark-region)')
+						eprintln('  `-gc e` ................ architecture E: Perceus front line + vgc backstop (opt-in)')
 						eprintln('  `-gc none` ............. no garbage collection')
 						exit(1)
 					}

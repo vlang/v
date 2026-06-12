@@ -7,7 +7,13 @@ import strings
 import v.ast
 
 fn (g &Gen) needs_scope_cleanup() bool {
-	return g.is_autofree || g.pref.gc_mode == .boehm_leak
+	// `g.perceus_dropping`: when Perceus emission is decoupled from `-autofree`
+	// (E mode: `-d perceus` without autofree, so autofree's scope-exit freeing /
+	// clone / temp machinery — incompatible with a tracing GC — never runs), the
+	// only frees in the program are the Perceus drops. This flag is true ONLY
+	// transiently inside perceus_drop(), so it authorizes that single free dispatch
+	// without enabling any other scope cleanup.
+	return g.is_autofree || g.pref.gc_mode == .boehm_leak || g.perceus_dropping
 }
 
 fn (mut g Gen) autofree_scope_vars(pos int, line_nr int, free_parent_scopes bool) {
@@ -66,6 +72,12 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 		match obj {
 			ast.Var {
 				g.trace_autofree('// var "${obj.name}" var.pos=${obj.pos.pos} var.line_nr=${obj.pos.line_nr}')
+				// Perceus (`-d perceus`): this var is dropped at its last use, so
+				// skip the scope-exit free here to avoid a double free.
+				if g.is_perceus && obj.pos.pos in g.perceus_suppress {
+					g.trace_autofree('// perceus: skipping scope-exit free of "${obj.name}" (dropped at last use)')
+					continue
+				}
 				if obj.name in g.returned_var_names {
 					g.print_autofree_var(obj, 'returned from function')
 					g.trace_autofree('// skipping returned var')
@@ -141,6 +153,29 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	}
 }
 
+// perceus_drop emits a deterministic free for `v` at the current (last-use)
+// position, reusing the same per-type free dispatch as scope-exit autofree
+// (`autofree_variable` buffers into `autofree_scope_stmts`; we flush it here so
+// the free lands inline after the drop site instead of at scope exit). The
+// scope-exit free for `v` is suppressed via `perceus_suppress`, so this is the
+// var's sole free — same body, earlier position.
+fn (mut g Gen) perceus_drop(v ast.Var) {
+	before := g.autofree_scope_stmts.len
+	// Authorize freeing a proven-unique user-reference (`&Foo`) here even without
+	// `-experimental`; Perceus uniqueness is the soundness proof that gate lacks.
+	old_dropping := g.perceus_dropping
+	g.perceus_dropping = true
+	g.autofree_variable(v)
+	g.perceus_dropping = old_dropping
+	if g.autofree_scope_stmts.len > before {
+		pending := g.autofree_scope_stmts[before..].clone()
+		g.autofree_scope_stmts.trim(before)
+		for s in pending {
+			g.write(s)
+		}
+	}
+}
+
 fn (mut g Gen) autofree_variable(v ast.Var) {
 	// filter out invalid variables
 	if v.typ == 0 {
@@ -201,8 +236,37 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 	is_user_ref := v.typ.is_ptr() && sym.name.after('.')[0].is_capital()
 	// if g.pref.experimental && v.typ.is_ptr() && sym.name.after('.')[0].is_capital() {
 	if is_user_ref {
-		if g.pref.experimental {
-			g.autofree_var_call('free', v)
+		// Perceus (`g.perceus_dropping`) authorizes freeing this user-reference
+		// because its uniqueness analysis PROVED this `&Foo` uniquely owned and dead
+		// here — which is exactly what the blanket `-experimental` flag cannot
+		// establish. So we free it whether or not `-experimental` is set; without a
+		// proof (no Perceus, no -experimental) we still leave it to leak.
+		if g.pref.experimental || g.perceus_dropping {
+			if g.pref.gc_mode == .vgc && g.perceus_dropping && v.name in g.perceus_deep_drop {
+				// DEEP free under E: the deep-drop analysis proved this `&Foo`
+				// uniquely owns its heap fields (born fresh, no field aliased/
+				// reassigned), so cascade-free the nested heap fields via the
+				// generated `<Foo>_free` BEFORE reclaiming the struct allocation —
+				// otherwise the field buffers (e.g. a `[]u8` member) leak and drive
+				// GC pressure (R2-E-FINDINGS.md cause #2).
+				struct_typ := v.typ.set_nr_muls(0)
+				mut field_free := g.get_free_method(struct_typ)
+				if g.table.sym(struct_typ).is_builtin() {
+					field_free = 'builtin__${field_free}'
+				}
+				g.autofree_var_call(field_free, v)
+				g.autofree_var_call('builtin___v_free', v)
+			} else {
+				// Under a tracing GC (E mode: a Perceus drop of a unique `&Foo`), the
+				// object was allocated by the GC allocator, so it must be returned via
+				// the GC's free (`builtin___v_free` routes to `vgc_free`), NOT libc
+				// `free` — freeing a GC-arena pointer with libc aborts ("pointer being
+				// freed was not allocated"). Manual / autofree-without-GC keeps libc
+				// `free` (allocations are libc there), so the validated `-autofree`
+				// path is byte-identical.
+				uref_free := if g.pref.gc_mode == .vgc { 'builtin___v_free' } else { 'free' }
+				g.autofree_var_call(uref_free, v)
+			}
 		} else {
 			g.print_autofree_var(v, 'user reference type, use -experimental to autofree those')
 		}
@@ -236,7 +300,11 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	}
 	mut af := strings.new_builder(128)
 	if v.typ.is_ptr() && v.typ.idx() != ast.u8_type_idx {
-		if !v.is_auto_heap && !g.table.sym(v.typ).has_method('free') {
+		// `g.perceus_dropping`: Perceus proved this pointer both UNIQUE and the OWNER
+		// of fresh memory (`p := &Foo{...}`), so freeing it is sound even though it is
+		// not `is_auto_heap` — that gate exists precisely because plain autofree
+		// cannot establish ownership; Perceus can.
+		if !v.is_auto_heap && !g.table.sym(v.typ).has_method('free') && !g.perceus_dropping {
 			return
 		}
 		af.write_string('\t')

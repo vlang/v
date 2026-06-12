@@ -220,11 +220,14 @@ fn (mut g Gen) gen_c_main_header() {
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		g.gen_boehm_gc_init()
 	}
-	if g.pref.gc_mode == .vgc {
-		g.writeln('\tbuiltin__vgc_init();')
-	}
 	if !g.pref.no_builtin {
 		g.writeln('\t_vinit(___argc, (voidptr)___argv);')
+	}
+	if g.pref.gc_mode == .vgc {
+		// MUST be after _vinit(): _vinit zero-initializes every global (incl.
+		// vgc_heap), so running vgc_init before it would have gc_enabled/next_gc
+		// wiped back to 0 -> GC disabled for the whole program -> unbounded heap.
+		g.writeln('\tbuiltin__vgc_init();')
 	}
 	g.gen_c_main_profile_hook()
 	if g.pref.is_livemain {
@@ -269,11 +272,12 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		g.gen_boehm_gc_init()
 	}
-	if g.pref.gc_mode == .vgc {
-		g.writeln('\tbuiltin__vgc_init();')
-	}
 	if !g.pref.no_builtin {
 		g.writeln('\t_vinit(argc, (voidptr)argv);')
+	}
+	if g.pref.gc_mode == .vgc {
+		// after _vinit(): _vinit zero-inits all globals incl. vgc_heap (see above)
+		g.writeln('\tbuiltin__vgc_init();')
 	}
 	g.gen_c_main_profile_hook()
 	g.writeln('\tmain__main();')
@@ -346,12 +350,13 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		g.gen_boehm_gc_init()
 	}
-	if g.pref.gc_mode == .vgc {
-		g.writeln('\tbuiltin__vgc_init();')
-	}
 	g.writeln('\tmain__vtest_init();')
 	if !g.pref.no_builtin {
 		g.writeln('\t_vinit(___argc, (voidptr)___argv);')
+	}
+	if g.pref.gc_mode == .vgc {
+		// after _vinit(): _vinit zero-inits all globals incl. vgc_heap (see above)
+		g.writeln('\tbuiltin__vgc_init();')
 	}
 	g.gen_c_main_profile_hook()
 

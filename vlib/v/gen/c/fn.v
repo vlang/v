@@ -1179,6 +1179,41 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	defer {
 		g.is_autofree = old_g_autofree
 	}
+	// Perceus emission (`-d perceus -autofree`): build the per-function drop map
+	// (entry-block, unconditional, unique, non-returned heap locals) and the
+	// matching suppress set so their scope-exit frees are not also emitted
+	// (double-free). Analysis is sound-by-construction: anything not provably a
+	// safe early drop falls back to the normal scope-exit autofree. Default build
+	// (flag off) never enters here, so generated C is byte-identical.
+	g.is_perceus = false
+	g.perceus_drops = map[int][]string{}
+	g.perceus_suppress = map[int]bool{}
+	g.perceus_reused = map[int]bool{}
+	g.perceus_deep_drop = map[string]bool{}
+	// Perceus emission is DECOUPLED from `-autofree`: it fires whenever the
+	// `perceus` define is set, with OR without autofree mode. With autofree on
+	// (the original validated path) the drops replace autofree's scope-exit frees
+	// (suppress set below avoids double-free). With autofree OFF (E mode under a
+	// tracing GC, where autofree's clone/temp/scope-free machinery is unsound) the
+	// Perceus drops are the program's ONLY frees, and the suppress set is inert
+	// because autofree emits no scope-exit frees to suppress.
+	if g.pref.compile_defines.contains('perceus') {
+		g.perceus_drops, g.perceus_deep_drop = compute_emittable_drop_map(*node, mut g.table,
+			g.perceus_escapes)
+		if g.perceus_drops.len > 0 {
+			g.is_perceus = true
+			for pos, names in g.perceus_drops {
+				sc := g.file.scope.innermost(pos)
+				for n in names {
+					if obj := sc.find(n) {
+						if obj is ast.Var {
+							g.perceus_suppress[obj.pos.pos] = true
+						}
+					}
+				}
+			}
+		}
+	}
 	effective_generic_names := g.effective_fn_generic_names(*node)
 	if effective_generic_names.len > 0 && g.cur_concrete_types.len == 0 {
 		return

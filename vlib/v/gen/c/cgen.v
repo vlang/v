@@ -275,6 +275,14 @@ mut:
 	arg_no_auto_deref   bool            // smartcast must not be dereferenced
 	branch_parent_pos   int             // used in BranchStmt (continue/break) for autofree stop position
 	returned_var_names  map[string]bool // to detect that vars doesn't need to be freed since it's being returned
+	is_perceus          bool             // `-d perceus -autofree`: drive a subset of frees at Perceus last-use positions
+	perceus_drops       map[int][]string // stmt.pos.pos -> heap-owning local names to drop right after that stmt
+	perceus_suppress    map[int]bool     // ast.Var.pos.pos of vars dropped by Perceus -> skip their scope-exit free (no double-free)
+	perceus_escapes     map[string][]bool // whole-program interproc param-escape summaries (fkey -> per-param escape); built once in gen()
+	perceus_dropping    bool              // true only while perceus_drop() emits: authorizes freeing a proven-unique user-ref (`&Foo`) without -experimental
+	perceus_cur_stmt_pos int             // ast.Stmt.pos.pos of the statement currently being emitted (drop-map key); lets in-place ops test "is this value dropped HERE"
+	perceus_reused      map[int]bool      // ast.Var.pos.pos of locals whose buffer was consumed by an in-place reuse (P2) -> their Perceus drop is skipped (buffer now owned by the result)
+	perceus_deep_drop   map[string]bool   // names of dropped `&Foo` locals SOUND to DEEP-free (free nested heap fields too); see pcs_deep_drop_set
 	infix_left_var_name string          // a && if expr
 	curr_var_name       []string        // curr var name on assignment
 	called_fn_name      string
@@ -459,6 +467,14 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	util.timing_measure('cgen init')
 	global_g.tests_inited = false
 	global_g.file = files.last()
+	// Perceus (`-d perceus -autofree`): build the whole-program interprocedural
+	// parameter-escape summaries ONCE, here, before the per-file generation splits
+	// (parallel or serial). The result is read-only during emission, so the
+	// parallel workers — clones of global_g — safely share it. Default builds never
+	// enter this branch, so generated C stays byte-identical.
+	if global_g.is_autofree && pref_.compile_defines.contains('perceus') {
+		global_g.perceus_escapes = build_escape_summaries(files, mut table)
+	}
 	if !pref_.no_parallel {
 		util.timing_start('cgen parallel processing')
 		mut pp := pool.new_pool_processor(callback: cgen_process_one_file_cb)
@@ -1067,6 +1083,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		done_results:                       global_g.done_results
 		late_chan_types:                    global_g.late_chan_types
 		is_autofree:                        global_g.pref.autofree
+		perceus_escapes:                    global_g.perceus_escapes
 		obf_table:                          global_g.obf_table
 		referenced_fns:                     global_g.referenced_fns
 		is_cc_msvc:                         global_g.is_cc_msvc
@@ -3892,8 +3909,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	}
 	old_inside_call := g.inside_call
 	g.inside_call = false
+	// Track the current statement's drop-map key so in-place ops (P2 reuse) can ask
+	// "is this value Perceus-dropped at THIS statement" (= proven unique + dead here).
+	// Restored on exit so nested statements don't clobber the enclosing one.
+	old_perceus_pos := g.perceus_cur_stmt_pos
+	g.perceus_cur_stmt_pos = node.pos.pos
 	defer {
 		g.inside_call = old_inside_call
+		g.perceus_cur_stmt_pos = old_perceus_pos
 	}
 	if !g.skip_stmt_pos {
 		g.set_current_pos_as_last_stmt_pos()
@@ -4174,6 +4197,27 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 
 	if !g.skip_stmt_pos { // && g.stmt_path_pos.len > 0 {
 		g.stmt_path_pos.delete_last()
+	}
+	// Perceus drop emission (`-d perceus -autofree`): after a statement that is a
+	// drop site, free the unique heap locals whose last use is here, reusing the
+	// existing per-type free dispatch. Guarded to real (non-redirected) statement
+	// output; the scope-exit free for these vars is suppressed in autofree.
+	if g.is_perceus && !g.skip_stmt_pos && g.inside_ternary == 0
+		&& node.pos.pos in g.perceus_drops {
+		names := g.perceus_drops[node.pos.pos]
+		sc := g.file.scope.innermost(node.pos.pos)
+		for n in names {
+			if obj := sc.find(n) {
+				if obj is ast.Var {
+					// Buffer already consumed by an in-place reuse (P2): its storage is
+					// now owned by the reuse result and must NOT be freed here.
+					if obj.pos.pos in g.perceus_reused {
+						continue
+					}
+					g.perceus_drop(obj)
+				}
+			}
+		}
 	}
 	// TODO: If we have temporary string exprs to free after this statement, do it. e.g.:
 	// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
