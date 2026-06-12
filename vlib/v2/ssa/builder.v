@@ -1104,6 +1104,37 @@ fn generic_type_name_from_parts(base string, parts []string) string {
 	return '${base}_T_${parts.join('_')}'
 }
 
+fn concrete_generic_type_suffix_name(concrete_name string) string {
+	if !concrete_name.contains('_T_') {
+		return ''
+	}
+	base := concrete_name.all_before('_T_')
+	args := concrete_name.all_after('_T_')
+	if base == '' || args == '' || !base.contains('__') {
+		return ''
+	}
+	return '${base.all_after_last('__')}_T_${args}'
+}
+
+fn (b &Builder) registered_type_by_unique_concrete_suffix(concrete_name string) ?TypeID {
+	suffix_name := concrete_generic_type_suffix_name(concrete_name)
+	if suffix_name == '' {
+		return none
+	}
+	mut found := TypeID(0)
+	mut found_count := 0
+	for registered_name, type_id in b.struct_types {
+		if registered_name == suffix_name || registered_name.ends_with('__${suffix_name}') {
+			found = type_id
+			found_count++
+		}
+	}
+	if found_count == 1 {
+		return found
+	}
+	return none
+}
+
 fn (b &Builder) generic_type_name(name ast.Expr, params []ast.Expr) string {
 	base := b.generic_type_part_name(name)
 	mut parts := []string{cap: params.len}
@@ -1161,6 +1192,9 @@ fn (mut b Builder) generic_type_to_ssa(name ast.Expr, params []ast.Expr) TypeID 
 		return b.mod.type_store.get_int(64)
 	}
 	if id := b.struct_name_to_ssa(concrete_name) {
+		return id
+	}
+	if id := b.registered_type_by_unique_concrete_suffix(concrete_name) {
 		return id
 	}
 	base_name := b.generic_type_part_name(name)
@@ -1275,6 +1309,9 @@ fn (mut b Builder) generic_type_to_ssa_from_flat(c ast.Cursor) TypeID {
 		return b.mod.type_store.get_int(64)
 	}
 	if id := b.struct_name_to_ssa(concrete_name) {
+		return id
+	}
+	if id := b.registered_type_by_unique_concrete_suffix(concrete_name) {
 		return id
 	}
 	base_name := b.generic_type_part_name_from_flat(c.edge(0))
@@ -5029,6 +5066,7 @@ fn (mut b Builder) fixed_array_type_from_name(name string) TypeID {
 // --- Phase 2: Register function signatures ---
 
 fn (mut b Builder) register_fn_signatures(file ast.File) {
+	b.module_import_aliases = module_import_aliases_from_imports(file.imports)
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
 			if stmt.typ.generic_params.len > 0 {
@@ -5044,6 +5082,8 @@ fn (mut b Builder) register_fn_signatures(file ast.File) {
 // and reads `.stmt_fn_decl` signatures directly from cursor edges. Fn bodies
 // are never materialized in this phase.
 fn (mut b Builder) register_fn_signatures_from_flat(file_cursor ast.FileCursor) {
+	b.module_import_aliases =
+		module_import_aliases_from_imports(file_cursor.imports().import_stmts())
 	stmts := file_cursor.stmts()
 	for si in 0 .. stmts.len() {
 		c := stmts.at(si)

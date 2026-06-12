@@ -1070,6 +1070,23 @@ fn test_nested_module_generic_tree_sumtype_flat_uses_prefixed_names() {
 	tree_ssa_assert_nested_module_generic_tree(m)
 }
 
+fn test_generic_suffix_fallback_rejects_ambiguous_registered_types() {
+	mut mod := Module.new('generic_suffix_collision')
+	mut builder := Builder.new_with_env(mod, types.Environment.new())
+	first := builder.mod.type_store.register(Type{
+		kind: .struct_t
+	})
+	second := builder.mod.type_store.register(Type{
+		kind: .struct_t
+	})
+	builder.struct_types['first__Tree_T_Array_int'] = first
+	builder.struct_types['second__Tree_T_Array_int'] = second
+	_ := builder.registered_type_by_unique_concrete_suffix('nested_tree__Tree_T_Array_int') or {
+		return
+	}
+	assert false, 'ambiguous generic suffix fallback should not choose an arbitrary type'
+}
+
 fn test_tree_sumtype_interpolation_uses_autostr_not_raw_struct_string() {
 	m := tree_ssa_module_for_source('node_str', tree_sumtype_source())
 	main_func := tree_ssa_func(m, 'main') or { panic('missing main') }
