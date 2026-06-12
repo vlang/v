@@ -2288,8 +2288,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.table.cur_concrete_types)
 			param = unwrapped
 		}
-		param.typ = c.resolve_short_syntax_call_arg_type(call_arg, param.typ, func.generic_names,
-			concrete_types)
+		param.typ = c.resolve_call_arg_param_type(call_arg, param, func.generic_names, concrete_types)
 		// registers if the arg must be passed by ref to disable auto deref args
 		call_arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
 		if func.is_variadic && call_arg.expr is ast.ArrayDecompose {
@@ -4067,6 +4066,28 @@ fn (mut c Checker) handle_generic_anon_fn_arg(node &ast.CallExpr, generic_names 
 	if c.table.register_fn_concrete_types(anon.decl.fkey(), anon_concrete_types) {
 		anon.decl.ninstances++
 	}
+}
+
+fn (mut c Checker) resolve_call_arg_param_type(arg ast.CallArg, param ast.Param, generic_names []string, concrete_types []ast.Type) ast.Type {
+	if !param.typ.has_flag(.generic) || generic_names.len == 0
+		|| generic_names.len != concrete_types.len {
+		return param.typ
+	}
+	if arg.expr is ast.StructInit {
+		expr := arg.expr as ast.StructInit
+		if expr.is_short_syntax && expr.typ == ast.void_type {
+			return c.table.convert_generic_param_type(param, generic_names, concrete_types) or {
+				param.typ
+			}
+		}
+	}
+	param_sym := c.table.final_sym(param.typ)
+	if param_sym.kind == .function {
+		if typ := c.table.convert_generic_param_type(param, generic_names, concrete_types) {
+			return typ
+		}
+	}
+	return param.typ
 }
 
 fn (mut c Checker) resolve_short_syntax_call_arg_type(arg ast.CallArg, param_typ ast.Type, generic_names []string, concrete_types []ast.Type) ast.Type {
