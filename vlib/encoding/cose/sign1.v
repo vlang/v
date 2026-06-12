@@ -109,7 +109,7 @@ pub fn (mut m Sign1Message) sign(key Key, payload []u8, external_aad []u8) ! {
 // — putting it in `unprotected` would let an attacker substitute it
 // without invalidating the signature.
 pub fn (m Sign1Message) verify(key Key, payload []u8, external_aad []u8) ! {
-	check_critical(m.protected)!
+	check_protected_headers(m.protected, m.unprotected)!
 	alg := m.protected.algorithm or {
 		return MalformedMessage{
 			reason: 'algorithm missing from protected header (RFC 9052 §3)'

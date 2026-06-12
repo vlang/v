@@ -201,8 +201,16 @@ pub fn parse_headers_map(data []u8) !Headers {
 fn parse_headers_value(v cbor.Value) !Headers {
 	if v is cbor.Map {
 		mut h := Headers{}
+		mut seen_int_labels := []i64{}
+		mut seen_text_labels := []string{}
 		for pair in v.pairs {
 			if int_key := pair.key.as_int() {
+				if int_key in seen_int_labels {
+					return MalformedMessage{
+						reason: 'duplicate header label ${int_key} (RFC 9052 §3)'
+					}
+				}
+				seen_int_labels << int_key
 				match int_key {
 					label_alg {
 						code := pair.value.as_int() or {
@@ -288,6 +296,12 @@ fn parse_headers_value(v cbor.Value) !Headers {
 					}
 				}
 			} else if str_key := pair.key.as_string() {
+				if str_key in seen_text_labels {
+					return MalformedMessage{
+						reason: 'duplicate header label "${str_key}" (RFC 9052 §3)'
+					}
+				}
+				seen_text_labels << str_key
 				h.extra_text_labels << TextHeaderEntry{
 					label: str_key
 					value: pair.value
@@ -314,6 +328,26 @@ pub fn parse_protected(data []u8) !Headers {
 	return parse_headers_map(data)!
 }
 
+// check_protected_headers enforces RFC 9052 §3.1 bucket rules for
+// protected/unprotected headers. `crit` itself must be integrity-protected,
+// and every label listed in `crit` must also be present in the protected
+// bucket.
+fn check_protected_headers(protected Headers, unprotected Headers) ! {
+	if unprotected.critical.len > 0 {
+		return MalformedMessage{
+			reason: 'crit label must be in protected headers (RFC 9052 §3.1)'
+		}
+	}
+	check_critical(protected)!
+	for label in protected.critical {
+		if !has_int_label(protected, label) {
+			return MalformedMessage{
+				reason: 'crit lists label ${label}, but it is not present in protected headers (RFC 9052 §3.1)'
+			}
+		}
+	}
+}
+
 // check_critical enforces RFC 9052 §3.1: every integer label listed in
 // `crit` MUST be one the receiver understands; otherwise verification
 // MUST fail. We "understand" the IANA-registered labels 1..6 modelled
@@ -329,4 +363,49 @@ fn check_critical(h Headers) ! {
 			}
 		}
 	}
+}
+
+// has_int_label reports whether `h` already declares the given integer
+// label, either via a typed well-known field or via `extra_int_labels`.
+fn has_int_label(h Headers, label i64) bool {
+	match label {
+		label_alg {
+			if h.algorithm != none {
+				return true
+			}
+		}
+		label_crit {
+			if h.critical.len > 0 {
+				return true
+			}
+		}
+		label_content_type {
+			if h.content_type_int != none || h.content_type_text != none {
+				return true
+			}
+		}
+		label_kid {
+			if h.kid != none {
+				return true
+			}
+		}
+		label_iv {
+			if h.iv != none {
+				return true
+			}
+		}
+		label_partial_iv {
+			if h.partial_iv != none {
+				return true
+			}
+		}
+		else {}
+	}
+
+	for e in h.extra_int_labels {
+		if e.label == label {
+			return true
+		}
+	}
+	return false
 }

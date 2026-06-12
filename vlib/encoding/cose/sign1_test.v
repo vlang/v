@@ -140,6 +140,43 @@ fn test_verify1_accepts_known_critical_label() {
 	assert got == 'payload'.bytes()
 }
 
+fn test_verify1_rejects_critical_in_unprotected_header() {
+	x := hex.decode(eddsa_x_hex)!
+	d := hex.decode(eddsa_d_hex)!
+	priv_key := Key.okp_private(.ed25519, x, d)
+	pub_key := Key.okp_public(.ed25519, x)
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	mut hu := Headers{}
+	hu.critical = [i64(1)]
+	signed := sign1('payload'.bytes(), priv_key, protected: hp, unprotected: hu)!
+	if _ := verify1(signed, pub_key) {
+		assert false, 'crit in unprotected headers must be rejected'
+	} else {
+		assert err is MalformedMessage
+		assert err.msg().contains('crit label must be in protected headers')
+	}
+}
+
+fn test_verify1_rejects_critical_label_missing_from_protected_header() {
+	x := hex.decode(eddsa_x_hex)!
+	d := hex.decode(eddsa_d_hex)!
+	priv_key := Key.okp_private(.ed25519, x, d)
+	pub_key := Key.okp_public(.ed25519, x)
+	mut hp := Headers{}
+	hp.algorithm = .eddsa
+	hp.critical = [i64(4)]
+	mut hu := Headers{}
+	hu.kid = 'kid-1'.bytes()
+	signed := sign1('payload'.bytes(), priv_key, protected: hp, unprotected: hu)!
+	if _ := verify1(signed, pub_key) {
+		assert false, 'crit labels must be present in protected headers'
+	} else {
+		assert err is MalformedMessage
+		assert err.msg().contains('not present in protected headers')
+	}
+}
+
 fn test_sign1_rejects_key_alg_mismatch() {
 	// A key declaring `alg = ES256` must not be silently used for an
 	// EdDSA signing call: this catches a common copy-paste mistake.
