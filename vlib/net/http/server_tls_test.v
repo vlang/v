@@ -25,6 +25,21 @@ fn (mut h EchoHandler) handle(req http.Request) http.Response {
 	}
 }
 
+struct BlockingHandler {
+	started chan bool
+	release chan bool
+}
+
+fn (mut h BlockingHandler) handle(req http.Request) http.Response {
+	h.started <- true
+	_ := <-h.release
+	return http.Response{
+		status_code: 200
+		header:      http.new_header(key: .connection, value: 'close')
+		body:        'released'
+	}
+}
+
 fn pick_port() !int {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
 	port := l.addr()!.port()!
@@ -106,6 +121,56 @@ fn test_server_tls_stop() {
 	}
 	srv.stop()
 	assert srv.status() == .stopped
+	t.wait()
+	assert srv.status() == .closed
+}
+
+fn test_server_tls_close_waits_for_active_request() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	started := chan bool{cap: 1}
+	release := chan bool{cap: 1}
+	done := chan string{cap: 1}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         100 * time.millisecond
+		handler:                BlockingHandler{
+			started: started
+			release: release
+		}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	spawn fn [done, port] () {
+		resp := http.fetch(
+			url:      'https://127.0.0.1:${port}/blocked'
+			validate: false
+		) or {
+			done <- 'error: ${err}'
+			return
+		}
+		done <- resp.body
+	}()
+	_ := <-started
+	srv.close()
+	time.sleep(50 * time.millisecond)
+	release <- true
+	assert (<-done) == 'released'
 	t.wait()
 	assert srv.status() == .closed
 }

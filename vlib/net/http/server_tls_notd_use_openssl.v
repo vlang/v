@@ -89,6 +89,8 @@ fn (mut s Server) listen_and_serve_tls() {
 		}
 		ch <- conn
 	}
+	ch.close()
+	ws.wait()
 }
 
 // TlsHandlerWorker serves HTTP/1.1 requests on TLS-wrapped connections.
