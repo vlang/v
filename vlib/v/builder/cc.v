@@ -1592,6 +1592,13 @@ pub fn (mut v Builder) cc() {
 		v.build_thirdparty_obj_files()
 		v.setup_output_name()
 
+		// Add embedded data object files to the link step
+		if v.embedded_o_files.len > 0 {
+			for obj_file in v.embedded_o_files {
+				v.ccoptions.o_args << os.quoted_path(obj_file)
+			}
+		}
+
 		if v.pref.os != .windows && ccompiler.contains('++') {
 			cpp_atomic_h_path := '${@VEXEROOT}/thirdparty/stdatomic/nix/cpp/atomic.h'
 			if !os.exists(cpp_atomic_h_path) {
@@ -1974,6 +1981,78 @@ fn linux_cross_target_for_arch(arch pref.Arch) !LinuxCrossTarget {
 	}
 }
 
+fn find_system_assembler() ?string {
+	for candidate in ['clang', 'gcc', 'cc', 'as'] {
+		if path := os.find_abs_path_of_executable(candidate) {
+			return path
+		}
+	}
+	return none
+}
+
+pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
+	if asm_files.len == 0 {
+		return
+	}
+	vtmp := os.vtmp_dir()
+
+	mut asm_cc := b.pref.ccompiler
+	if b.pref.ccompiler_type == .tinyc {
+		asm_cc = find_system_assembler() or {
+			verror('no assembler found for embedded files (TCC cannot assemble .S files); install clang, gcc, cc, or as')
+		}
+	}
+
+	for asm_filename, asm_content in asm_files {
+		asm_path := os.join_path(vtmp, asm_filename)
+		os.write_file(asm_path, asm_content) or {
+			verror('could not write embed assembly file: ${err}')
+		}
+
+		obj_path := asm_path.replace('.S', '.o')
+		mut asm_args := []string{}
+		asm_args << '-c'
+
+		// Cross-compilation target flags
+		if b.pref.os == .linux && pref.get_host_os() != .linux {
+			cross_target := linux_cross_target_for_arch(b.pref.arch) or {
+				verror('failed to determine linux cross target for embedded assembly: ${err.msg()}')
+				return
+			}
+			asm_args << ['-target', cross_target.triple]
+		} else if b.pref.os == .freebsd && pref.get_host_os() != .freebsd {
+			asm_args << ['-target', 'x86_64-unknown-freebsd14.0']
+		}
+
+		// macOS architecture
+		if b.pref.os == .macos {
+			arch_name := darwin_target_arch_name(b.pref.arch)
+			if arch_name != '' {
+				asm_args << ['-arch', arch_name]
+			}
+		}
+
+		asm_args << [os.quoted_path(asm_path), '-o', os.quoted_path(obj_path)]
+
+		cmd := '${b.quote_compiler_name(asm_cc)} ${asm_args.join(' ')}'
+		if b.pref.show_cc {
+			println('> Embedded file assembly: ${cmd}')
+		}
+		res := os.execute(cmd)
+		if res.exit_code != 0 {
+			verror('Failed to compile embedded file assembly ${asm_filename}:\n${res.output}')
+		}
+
+		b.embedded_o_files << obj_path
+
+		// Schedule cleanup
+		if !b.ccoptions.debug_mode {
+			b.pref.cleanup_files << asm_path
+			b.pref.cleanup_files << obj_path
+		}
+	}
+}
+
 fn (mut b Builder) cc_linux_cross() {
 	linux_cross_target := linux_cross_target_for_arch(b.pref.arch) or {
 		verror(err.msg())
@@ -2099,6 +2178,11 @@ fn (mut b Builder) cc_linux_cross() {
 	for eobj in extra_objs {
 		linker_args << os.quoted_path(eobj)
 	}
+	if b.embedded_o_files.len > 0 {
+		for embed_obj in b.embedded_o_files {
+			linker_args << os.quoted_path(embed_obj)
+		}
+	}
 	// User-defined libraries (e.g. `-lpq` from db.pg) and extra object files
 	// must come before the system libraries they depend on. ld.lld resolves
 	// references left-to-right, so libpq.a needs to be encountered before
@@ -2195,6 +2279,11 @@ fn (mut b Builder) cc_freebsd_cross() {
 		os.quoted_path(obj_file),
 		os.quoted_path('${sysroot}/usr/lib/crtn.o'),
 	]
+	if b.embedded_o_files.len > 0 {
+		for embed_obj in b.embedded_o_files {
+			linker_args << os.quoted_path(embed_obj)
+		}
+	}
 	linker_args << '-lc' // needed for fwrite, strlen etc
 	linker_args << '-lexecinfo' // needed for backtrace
 	linker_args << cflags.c_options_only_object_files() // support custom module defined linker flags

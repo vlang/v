@@ -59,6 +59,9 @@ pub mut:
 	str_args              string              // for parallel_cc mode only, to know which cc args to use (like -I etc)
 	last_cc_cmd           string              // the most recently executed C compiler command; reused to regenerate a #line annotated report
 	disable_flto          bool
+	embedded_asm          map[string]string  // filename → .S file content (from GenOutput)
+	embedded_o_files      []string          // compiled embed .o file paths
+	embedded_temp_files   []string          // temp .bin files for cleanup
 }
 
 struct CFunctionCallCollector {

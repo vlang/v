@@ -243,6 +243,8 @@ mut:
 	hotcode_fn_names                     []string
 	hotcode_fpaths                       []string
 	embedded_files                       []ast.EmbeddedFile
+	embedded_asm                         map[string]string  // generated .S file content (filename → content)
+	embedded_temp_files                  []string           // compressed .bin temp files for cleanup
 	sql_i                                int
 	sql_stmt_name                        string
 	sql_bind_name                        string
@@ -336,12 +338,14 @@ mut:
 @[heap]
 pub struct GenOutput {
 pub:
-	header           string          // produced output for out.h (-parallel-cc)
-	res_builder      strings.Builder // produced output (complete)
-	out_str          string          // produced output from g.out
-	out0_str         string          // helpers output (auto fns, dump fns) for out_0.c (-parallel-cc)
-	extern_str       string          // extern chunk for (-parallel-cc)
-	out_fn_start_pos []int           // fn decl positions
+	header              string
+	res_builder         strings.Builder // produced output (complete)
+	out_str             string          // produced output from g.out
+	out0_str            string          // helpers output (auto fns, dump fns) for out_0.c (-parallel-cc)
+	extern_str          string          // extern chunk for (-parallel-cc)
+	out_fn_start_pos    []int           // fn decl positions
+	embedded_asm        map[string]string  // filename → .S file content
+	embedded_temp_files []string           // temp .bin files for cleanup
 }
 
 pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenOutput {
@@ -989,12 +993,14 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	unsafe { g.free_builders() }
 
 	return GenOutput{
-		header:           header
-		res_builder:      b
-		out_str:          out_str
-		out0_str:         shelpers
-		extern_str:       extern_out_str
-		out_fn_start_pos: out_fn_start_pos
+		header:              header
+		res_builder:         b
+		out_str:             out_str
+		out0_str:            shelpers
+		extern_str:          extern_out_str
+		out_fn_start_pos:    out_fn_start_pos
+		embedded_asm:        g.embedded_asm
+		embedded_temp_files: g.embedded_temp_files
 	}
 }
 

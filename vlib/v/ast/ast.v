@@ -1092,9 +1092,10 @@ pub mut:
 	rpath string // used in the source code, as an ID/key to the embed
 	apath string // absolute path during compilation to the resource
 	// these are set by gen_embed_file_init in v/gen/c/embed
-	is_compressed bool
-	bytes         []u8
-	len           int
+	is_compressed        bool
+	bytes                []u8
+	len                  int
+	compressed_temp_path string // path to compressed temp file (kept for .incbin)
 }
 
 // TemplateLineInfo maps a generated code line to the original template location

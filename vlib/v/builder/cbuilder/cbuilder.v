@@ -71,6 +71,15 @@ pub fn build_c(mut b builder.Builder, v_files []string, out_file string) {
 		b.stats_lines = output2.count(it == `\n`) + 1
 		b.stats_bytes = output2.len
 	}
+	// Compile embedded .S files to .o and add to Builder
+	// (skip if parallel_cc already compiled them in gen_c)
+	if b.embedded_asm.len > 0 && b.embedded_o_files.len == 0 {
+		b.compile_embedded_asm_files(b.embedded_asm)
+	}
+	// Schedule compressed temp files for cleanup
+	for temp_file in b.embedded_temp_files {
+		b.pref.cleanup_files << temp_file
+	}
 }
 
 pub fn gen_c(mut b builder.Builder, v_files []string) strings.Builder {
@@ -84,6 +93,23 @@ pub fn gen_c(mut b builder.Builder, v_files []string) strings.Builder {
 	util.timing_start('C GEN')
 	result := c.gen(b.parsed_files, mut b.table, b.pref)
 	util.timing_measure('C GEN')
+
+	// Copy embed data from GenOutput onto Builder
+	if result.embedded_asm.len > 0 {
+		b.embedded_asm = result.embedded_asm.clone()
+	}
+	if result.embedded_temp_files.len > 0 {
+		b.embedded_temp_files = result.embedded_temp_files
+	}
+
+	// When parallel_cc is active, we must compile embed .S files now
+	// because parallel_cc runs inside gen_c() before build_c() gets a chance.
+	if b.pref.parallel_cc && b.embedded_asm.len > 0 {
+		b.compile_embedded_asm_files(b.embedded_asm)
+		for temp_file in b.embedded_temp_files {
+			b.pref.cleanup_files << temp_file
+		}
+	}
 
 	if b.pref.parallel_cc {
 		b.cc() // Call it just to gen b.str_args
