@@ -432,8 +432,6 @@ pub fn without_tenant_filter_value[T](callback fn () T) T {
 }
 
 // apply_tenant_filter appends the configured tenant filter condition to `where`.
-@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
-@[deprecated_after: '2027-06-08']
 pub fn apply_tenant_filter(table Table, where QueryData) QueryData {
 	if !tenant_filter_state.enabled || !tenant_filter_state.has_current_tenant {
 		return where
