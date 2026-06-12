@@ -299,6 +299,73 @@ fn test_server_tls_close_interrupts_idle_keep_alive() {
 	assert srv.status() == .closed
 }
 
+fn test_server_tls_close_interrupts_idle_h2() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         time.second
+		read_timeout:           5 * time.second
+		enable_http2:           true
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	mut client := mbedtls.new_ssl_conn(mbedtls.SSLConnectConfig{
+		alpn_protocols: ['h2']
+	}) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl client init failed: ${err}'
+		return
+	}
+	defer {
+		client.shutdown() or {}
+	}
+	client.dial('127.0.0.1', port) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl dial failed: ${err}'
+		return
+	}
+	assert client.negotiated_alpn() == 'h2'
+	mut h2 := http.new_h2_conn(client)
+	resp := h2.do(http.H2ClientRequest{
+		method:    'GET'
+		scheme:    'https'
+		authority: '127.0.0.1:${port}'
+		path:      '/h2-idle'
+	}) or {
+		srv.close()
+		t.wait()
+		assert false, 'h2 request failed: ${err}'
+		return
+	}
+	assert resp.status == 200
+	assert resp.body.bytestr() == 'tls hello /h2-idle'
+
+	sw := time.new_stopwatch()
+	srv.close()
+	t.wait()
+	assert sw.elapsed() < 2 * time.second
+	assert srv.status() == .closed
+}
+
 fn test_server_tls_h2_negotiation() {
 	$if use_openssl ? {
 		eprintln('skipping: TLS server not implemented for -d use_openssl yet')

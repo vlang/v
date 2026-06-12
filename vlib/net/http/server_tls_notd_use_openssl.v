@@ -5,7 +5,6 @@ module http
 
 import io
 import net
-import sync
 import time
 import net.mbedtls
 
@@ -96,48 +95,6 @@ fn (mut s Server) listen_and_serve_tls() {
 	ws.wait()
 }
 
-@[heap]
-struct TlsIdleConnTracker {
-	mu &sync.Mutex = sync.new_mutex()
-mut:
-	handles []int
-	closing bool
-}
-
-fn (mut t TlsIdleConnTracker) mark_idle(handle int) bool {
-	t.mu.lock()
-	defer {
-		t.mu.unlock()
-	}
-	if t.closing {
-		return false
-	}
-	t.handles << handle
-	return true
-}
-
-fn (mut t TlsIdleConnTracker) unmark_idle(handle int) {
-	t.mu.lock()
-	defer {
-		t.mu.unlock()
-	}
-	idx := t.handles.index(handle)
-	if idx >= 0 {
-		t.handles.delete(idx)
-	}
-}
-
-fn (mut t TlsIdleConnTracker) close_idle() {
-	t.mu.lock()
-	t.closing = true
-	handles := t.handles.clone()
-	t.handles.clear()
-	t.mu.unlock()
-	for handle in handles {
-		net.shutdown(handle)
-	}
-}
-
 // TlsHandlerWorker serves HTTP/1.1 requests on TLS-wrapped connections.
 struct TlsHandlerWorker {
 	id                      int
@@ -175,7 +132,7 @@ fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 	// If the TLS handshake negotiated HTTP/2 via ALPN, switch to the HTTP/2
 	// driver; otherwise fall through to the existing HTTP/1.1 path unchanged.
 	if conn.negotiated_alpn() == 'h2' {
-		serve_h2_conn(mut conn, mut w.handler) or {
+		serve_h2_conn_with_idle_tracker(mut conn, mut w.handler, w.idle_conns, conn.handle) or {
 			$if debug {
 				eprintln('h2 server error: ${err}')
 			}
