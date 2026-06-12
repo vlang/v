@@ -326,17 +326,35 @@ fn test_native_external_link_inputs_reject_quoted_source_tokens() {
 	assert false, 'expected quoted source token to be rejected'
 }
 
+fn test_native_link_flags_external_file_input_detection_ignores_plain_link_flags() {
+	assert !native_link_flags_have_external_file_inputs('-lm -L/tmp/lib -framework Foundation')
+}
+
+fn test_native_link_flags_external_file_input_detection_sees_sources_and_archives() {
+	assert native_link_flags_have_external_file_inputs('/tmp/foo.c')
+	assert native_link_flags_have_external_file_inputs('/tmp/foo.m')
+	assert native_link_flags_have_external_file_inputs('/tmp/foo.o')
+	assert native_link_flags_have_external_file_inputs('/tmp/foo.obj')
+	assert native_link_flags_have_external_file_inputs('/tmp/foo.a')
+	assert native_link_flags_have_external_file_inputs('/tmp/foo.so')
+	assert native_link_flags_have_external_file_inputs('/tmp/foo.dylib')
+	assert native_link_flags_have_external_file_inputs('/tmp/foo.cpp')
+}
+
 fn test_macos_native_link_command_uses_rewritten_external_objects() {
-	inputs :=
-		native_external_link_inputs('/tmp/foo.c -framework Foundation /tmp/bar.m', '/tmp/out')!
-	cmd := macos_native_link_command('/tmp/out', 'main.o', '/SDK Path', 'x86_64', false,
+	tmp_dir := os.real_path(os.vtmp_dir())
+	foo_c := os.join_path(tmp_dir, 'foo.c')
+	bar_m := os.join_path(tmp_dir, 'bar.m')
+	out_path := os.join_path(tmp_dir, 'out')
+	inputs := native_external_link_inputs('${foo_c} -framework Foundation ${bar_m}', out_path)!
+	cmd := macos_native_link_command(out_path, 'main.o', '/SDK Path', 'x86_64', false,
 		inputs.link_flags)
 
 	assert cmd.contains(os.quoted_path(inputs.object_files[0])), cmd
 	assert cmd.contains(os.quoted_path(inputs.object_files[1])), cmd
 	assert cmd.contains('-framework Foundation'), cmd
-	assert !cmd.contains('/tmp/foo.c'), cmd
-	assert !cmd.contains('/tmp/bar.m'), cmd
+	assert !cmd.contains(foo_c), cmd
+	assert !cmd.contains(bar_m), cmd
 }
 
 fn test_native_external_source_compile_command_adds_macos_sdk_and_arch() {
@@ -426,9 +444,11 @@ fn test_native_compile_and_link_flags_from_sources_keep_compile_flags_for_source
 		},
 	]
 	compile_flags, link_flags := b.native_compile_and_link_flags_from_sources()
+	expected_include_dir := os.real_path(include_dir)
+	expected_c_path := os.real_path(c_path)
 
-	assert compile_flags == '-I ${include_dir} -DHELPER'
-	assert link_flags == '${c_path} -lm'
+	assert compile_flags == '-I ${expected_include_dir} -DHELPER'
+	assert link_flags == '${expected_c_path} -lm'
 }
 
 fn test_native_x64_requires_ssa_optimization() {

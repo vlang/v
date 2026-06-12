@@ -2228,6 +2228,23 @@ fn native_external_source_is_unsupported(tok string) bool {
 		|| lower.ends_with('.mm')
 }
 
+fn native_external_link_token_is_file_input(tok string) bool {
+	lower := native_external_source_clean_token(tok).to_lower()
+	return native_external_source_is_supported(lower)
+		|| native_external_source_is_unsupported(lower) || lower.ends_with('.o')
+		|| lower.ends_with('.obj') || lower.ends_with('.a') || lower.ends_with('.so')
+		|| lower.ends_with('.dylib')
+}
+
+fn native_link_flags_have_external_file_inputs(link_flags string) bool {
+	for tok in link_flags.fields() {
+		if native_external_link_token_is_file_input(tok) {
+			return true
+		}
+	}
+	return false
+}
+
 fn native_external_source_unsupported_message(tok string) string {
 	clean := native_external_source_clean_token(tok)
 	if clean.to_lower().ends_with('.mm') {
@@ -3448,7 +3465,8 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	arch := if backend_arch == .auto { b.pref.get_effective_arch() } else { backend_arch }
 	target_os := b.pref.target_os_or_host()
 	native_compile_flags, native_link_flags := b.native_compile_and_link_flags_from_sources()
-	native_has_external_link_inputs := native_link_flags.trim_space() != ''
+	native_has_external_file_inputs :=
+		native_link_flags_have_external_file_inputs(native_link_flags)
 	mut native_external_inputs := NativeExternalLinkInputs{
 		link_flags: native_link_flags
 	}
@@ -3537,7 +3555,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			if is_linux_x64_native_target(arch, target_os) {
 				mut linux_gen := x64.Gen.new_with_format_and_abi(&mir_mod, obj_format, codegen_abi)
 				linux_gen.gen()
-				if !native_has_external_link_inputs {
+				if !native_has_external_file_inputs {
 					if os.exists(output_binary) {
 						os.rm(output_binary) or {}
 					}

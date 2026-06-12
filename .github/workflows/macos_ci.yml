@@ -111,8 +111,8 @@ jobs:
             vlib/v2/gen/x64/x64_backend_diagnostics_test.v \
             vlib/v2/gen/x64/x64_object_format_test.v \
             vlib/v2/gen/x64/x64_pe_linker_test.v \
-            vlib/v2/ssa/tree_sumtype_lowering_test.v \
-            vlib/v2/types/checker_test.v
+            vlib/v2/ssa/tree_sumtype_lowering_test.v
+          VJOBS=1 ./v test -run-only test_temporary_generic_receiver_init_maps_method_generic,test_temporary_generic_call_receiver_maps_method_generic,test_temporary_generic_selector_receiver_maps_method_generic vlib/v2/types/checker_test.v
           VJOBS=1 ./v test -run-only test_x64_macos_windows_math_log_20_stdout_exact_bytes,test_x64_macos_windows_formatted_int_interpolation_stdout_exact_bytes,test_x64_macos_windows_formatted_int_width_100_interpolation_stdout_exact_bytes,test_x64_macos_windows_formatted_f64_interpolation_stdout_exact_bytes,test_x64_macos_windows_formatted_string_return_lifetime_stdout_exact_bytes,test_x64_macos_windows_spectral_reduced_formatted_stdout_exact_bytes,test_x64_macos_windows_bits_len32_stdout_exact_bytes,test_x64_macos_windows_rand_u32n_interface_result_stdout_exact_bytes,test_x64_macos_windows_rand_intn_range_interface_result_stdout_exact_bytes,test_x64_macos_windows_textscanner_embedded_parser_stdout_exact_bytes,test_x64_macos_windows_struct_positional_side_effect_stdout_exact_bytes,test_x64_macos_windows_struct_named_side_effect_stdout_exact_bytes,test_x64_macos_windows_unrelated_same_shape_struct_stdout_exact_bytes,test_x64_macos_windows_named_init_embedded_value_stdout_exact_bytes,test_x64_macos_windows_get_raw_line_example_stdin_stdout_exact_bytes,test_x64_macos_windows_mini_calculator_example_stdin_stdout_exact_bytes,test_x64_macos_windows_mini_calculator_recursive_descent_example_stdin_stdout_exact_bytes,test_x64_macos_external_c_flag_source_uses_hosted_link_with_compile_flags vlib/v2/gen/x64/x64_runtime_smoke_test.v
           ./v test vlib/v2/builder/native_test.v vlib/v2/builder/target_os_test.v
           ./v test vlib/v2/ssa/optimize
