@@ -18,3 +18,8 @@ fn test_ssl_conn_read_timeout_can_be_configured_at_runtime() ! {
 	conn.set_read_timeout(net.infinite_timeout)
 	assert conn.read_timeout() == net.infinite_timeout
 }
+
+fn test_ssl_remaining_timeout_clamps_expired_deadlines() {
+	assert ssl_remaining_timeout(time.unix(0)) == net.infinite_timeout
+	assert ssl_remaining_timeout(time.now().add(-time.second)) == time.nanosecond
+}
