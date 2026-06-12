@@ -1681,6 +1681,126 @@ fn make() Either[string, int] {
 	mono_assert_sumtype_payload_memdup_expr(payload_value, 'Left_T_int')
 }
 
+fn test_generic_template_type_param_names_handles_recursive_generic_struct_fields() {
+	checked := mono_check_sources_for_test([
+		MonoSource{
+			rel:  'datatypes/linked_list.v'
+			code: '
+module datatypes
+
+pub struct ListNode[T] {
+mut:
+	data T
+	next &ListNode[T] = unsafe { nil }
+}
+
+pub struct LinkedList[T] {
+mut:
+	head &ListNode[T] = unsafe { nil }
+}
+'
+		},
+		MonoSource{
+			rel:  'datatypes/queue.v'
+			code: '
+module datatypes
+
+pub struct Queue[T] {
+mut:
+	elements LinkedList[T]
+}
+'
+		},
+		MonoSource{
+			rel:  'main.v'
+			code: '
+module main
+
+import datatypes
+
+fn use() {
+	_ := datatypes.Queue[[]string]{}
+}
+'
+		},
+	])
+	mut trans := checked.trans
+	datatypes_scope := trans.env.get_scope('datatypes') or { panic('missing datatypes scope') }
+	queue_type := datatypes_scope.lookup_type_parent('Queue', 0) or { panic('missing Queue type') }
+	params := generic_template_type_param_names_from_type(queue_type)
+	assert params == ['T'], 'recursive generic Queue params should be [T], got ${params}'
+}
+
+fn test_generic_template_type_param_names_collects_embedded_generic_params() {
+	wrapper_type := types.Type(types.Struct{
+		name:           'Wrapper'
+		generic_params: ['T']
+		fields:         [
+			types.Field{
+				name: 'value'
+				typ:  types.Type(types.NamedType('T'))
+			},
+		]
+		embedded:       [
+			types.Struct{
+				name:           'Embedded'
+				generic_params: ['U']
+				fields:         [types.Field{
+					name: 'inner'
+					typ:  types.Type(types.NamedType('U'))
+				}]
+			},
+		]
+	})
+	params := generic_template_type_param_names_from_type(wrapper_type)
+	assert params == ['T', 'U'], 'embedded generic params should be collected, got ${params}'
+}
+
+fn test_generic_template_type_param_names_keeps_same_name_different_generic_params_separate() {
+	root_type := types.Type(types.Struct{
+		name:   'Root'
+		fields: [
+			types.Field{
+				name: 'left'
+				typ:  types.Type(types.Struct{
+					name:           'Box'
+					generic_params: ['T']
+				})
+			},
+			types.Field{
+				name: 'right'
+				typ:  types.Type(types.Struct{
+					name:           'Box'
+					generic_params: ['U']
+				})
+			},
+		]
+	})
+	params := generic_template_type_param_names_from_type(root_type)
+	assert params == ['T', 'U'], 'same-name structs with different params should stay distinct, got ${params}'
+}
+
+fn test_generic_template_type_param_names_does_not_guard_empty_struct_names() {
+	root_type := types.Type(types.Struct{
+		fields: [
+			types.Field{
+				name: 'left'
+				typ:  types.Type(types.Struct{
+					generic_params: ['T']
+				})
+			},
+			types.Field{
+				name: 'right'
+				typ:  types.Type(types.Struct{
+					generic_params: ['U']
+				})
+			},
+		]
+	})
+	params := generic_template_type_param_names_from_type(root_type)
+	assert params == ['T', 'U'], 'empty-name structs should not share one structural guard, got ${params}'
+}
+
 fn test_generic_sumtype_match_lowers_generic_branch_to_numeric_tag() {
 	files := mono_transform_sources_for_test([
 		MonoSource{

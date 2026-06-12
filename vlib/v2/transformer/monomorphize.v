@@ -1699,30 +1699,45 @@ fn (t &Transformer) generic_template_type_param_names_from_type_name(name string
 
 fn generic_template_type_param_names_from_type(typ types.Type) []string {
 	mut seen := map[string]bool{}
+	mut structural_seen := map[string]bool{}
 	mut names := []string{}
-	collect_declared_generic_template_type_param_names(typ, mut seen, mut names)
+	collect_declared_generic_template_type_param_names(typ, mut seen, mut structural_seen, mut
+		names)
 	return names
 }
 
-fn collect_declared_generic_template_type_param_names(typ types.Type, mut seen map[string]bool, mut names []string) {
+fn generic_template_structural_seen_key(kind string, name string, generic_params []string) string {
+	if name == '' {
+		return ''
+	}
+	return '${kind}:${name}:${generic_params.join(',')}'
+}
+
+fn collect_declared_generic_template_type_param_names(typ types.Type, mut seen map[string]bool, mut structural_seen map[string]bool, mut names []string) {
 	match typ {
 		types.Alias {
-			collect_declared_generic_template_type_param_names(typ.base_type, mut seen, mut names)
+			collect_declared_generic_template_type_param_names(typ.base_type, mut seen, mut
+				structural_seen, mut names)
 		}
 		types.Array {
-			collect_declared_generic_template_type_param_names(typ.elem_type, mut seen, mut names)
+			collect_declared_generic_template_type_param_names(typ.elem_type, mut seen, mut
+				structural_seen, mut names)
 		}
 		types.ArrayFixed {
-			collect_declared_generic_template_type_param_names(typ.elem_type, mut seen, mut names)
+			collect_declared_generic_template_type_param_names(typ.elem_type, mut seen, mut
+				structural_seen, mut names)
 		}
 		types.Channel {
 			if elem_type := typ.elem_type {
-				collect_declared_generic_template_type_param_names(elem_type, mut seen, mut names)
+				collect_declared_generic_template_type_param_names(elem_type, mut seen, mut
+					structural_seen, mut names)
 			}
 		}
 		types.Map {
-			collect_declared_generic_template_type_param_names(typ.key_type, mut seen, mut names)
-			collect_declared_generic_template_type_param_names(typ.value_type, mut seen, mut names)
+			collect_declared_generic_template_type_param_names(typ.key_type, mut seen, mut
+				structural_seen, mut names)
+			collect_declared_generic_template_type_param_names(typ.value_type, mut seen, mut
+				structural_seen, mut names)
 		}
 		types.NamedType {
 			name := string(typ)
@@ -1732,13 +1747,16 @@ fn collect_declared_generic_template_type_param_names(typ types.Type, mut seen m
 			}
 		}
 		types.OptionType {
-			collect_declared_generic_template_type_param_names(typ.base_type, mut seen, mut names)
+			collect_declared_generic_template_type_param_names(typ.base_type, mut seen, mut
+				structural_seen, mut names)
 		}
 		types.Pointer {
-			collect_declared_generic_template_type_param_names(typ.base_type, mut seen, mut names)
+			collect_declared_generic_template_type_param_names(typ.base_type, mut seen, mut
+				structural_seen, mut names)
 		}
 		types.ResultType {
-			collect_declared_generic_template_type_param_names(typ.base_type, mut seen, mut names)
+			collect_declared_generic_template_type_param_names(typ.base_type, mut seen, mut
+				structural_seen, mut names)
 		}
 		types.Struct {
 			for param in typ.generic_params {
@@ -1747,22 +1765,44 @@ fn collect_declared_generic_template_type_param_names(typ types.Type, mut seen m
 					names << param
 				}
 			}
+			struct_key := generic_template_structural_seen_key('struct', typ.name,
+				typ.generic_params)
+			if struct_key != '' {
+				if structural_seen[struct_key] {
+					return
+				}
+				structural_seen[struct_key] = true
+			}
 			for field in typ.fields {
-				collect_declared_generic_template_type_param_names(field.typ, mut seen, mut names)
+				collect_declared_generic_template_type_param_names(field.typ, mut seen, mut
+					structural_seen, mut names)
+			}
+			for embedded in typ.embedded {
+				collect_declared_generic_template_type_param_names(types.Type(embedded), mut seen, mut
+					structural_seen, mut names)
 			}
 		}
 		types.SumType {
-			if typ.generic_params.len > 0 {
-				for param in typ.generic_params {
-					if is_generic_placeholder_ident(param) && param !in seen {
-						seen[param] = true
-						names << param
-					}
+			for param in typ.generic_params {
+				if is_generic_placeholder_ident(param) && param !in seen {
+					seen[param] = true
+					names << param
 				}
+			}
+			sumtype_key := generic_template_structural_seen_key('sumtype', typ.name,
+				typ.generic_params)
+			if sumtype_key != '' {
+				if structural_seen[sumtype_key] {
+					return
+				}
+				structural_seen[sumtype_key] = true
+			}
+			if typ.generic_params.len > 0 {
 				return
 			}
 			for variant in typ.variants {
-				collect_declared_generic_template_type_param_names(variant, mut seen, mut names)
+				collect_declared_generic_template_type_param_names(variant, mut seen, mut
+					structural_seen, mut names)
 			}
 		}
 		else {}
