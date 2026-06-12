@@ -2739,27 +2739,7 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 
 fn (mut g Gen) materialize_c_string_literal(reg int, val_id int) {
 	val := g.mod.values[val_id]
-	mut raw_bytes := []u8{}
-	mut i := 0
-	for i < val.name.len {
-		if val.name[i] == `\\` && i + 1 < val.name.len {
-			match val.name[i + 1] {
-				`n` { raw_bytes << 10 }
-				`t` { raw_bytes << 9 }
-				`r` { raw_bytes << 13 }
-				`\\` { raw_bytes << 92 }
-				`"` { raw_bytes << 34 }
-				`'` { raw_bytes << 39 }
-				`0` { raw_bytes << 0 }
-				else { raw_bytes << val.name[i + 1] }
-			}
-
-			i += 2
-		} else {
-			raw_bytes << val.name[i]
-			i++
-		}
-	}
+	raw_bytes := decode_c_string_literal_bytes(val.name)
 	str_offset := g.rodata_len()
 	g.add_rodata(raw_bytes)
 	g.add_rodata_byte(0)
@@ -2768,6 +2748,110 @@ fn (mut g Gen) materialize_c_string_literal(reg int, val_id int) {
 	asm_lea_reg_rip(mut g, Reg(reg))
 	g.add_rip_reloc(sym_idx)
 	g.emit_u32(0)
+}
+
+fn x64_c_escape_hex_digit(c u8) int {
+	if c >= `0` && c <= `9` {
+		return int(c - `0`)
+	}
+	if c >= `a` && c <= `f` {
+		return int(c - `a`) + 10
+	}
+	if c >= `A` && c <= `F` {
+		return int(c - `A`) + 10
+	}
+	return -1
+}
+
+fn x64_c_escape_is_octal_digit(c u8) bool {
+	return c >= `0` && c <= `7`
+}
+
+fn decode_c_string_literal_bytes(raw string) []u8 {
+	mut raw_bytes := []u8{cap: raw.len}
+	mut i := 0
+	for i < raw.len {
+		if raw[i] == `\\` && i + 1 < raw.len {
+			next := raw[i + 1]
+			if x64_c_escape_is_octal_digit(next) {
+				mut j := i + 1
+				mut value := u32(0)
+				mut digits := 0
+				for j < raw.len && digits < 3 && x64_c_escape_is_octal_digit(raw[j]) {
+					value = (value * 8 + u32(raw[j] - `0`)) & 0xff
+					j++
+					digits++
+				}
+				raw_bytes << u8(value)
+				i = j
+				continue
+			}
+			match next {
+				`a` {
+					raw_bytes << 7
+				}
+				`b` {
+					raw_bytes << 8
+				}
+				`f` {
+					raw_bytes << 12
+				}
+				`n` {
+					raw_bytes << 10
+				}
+				`t` {
+					raw_bytes << 9
+				}
+				`r` {
+					raw_bytes << 13
+				}
+				`v` {
+					raw_bytes << 11
+				}
+				`\\` {
+					raw_bytes << 92
+				}
+				`"` {
+					raw_bytes << 34
+				}
+				`'` {
+					raw_bytes << 39
+				}
+				`?` {
+					raw_bytes << 63
+				}
+				`x` {
+					mut j := i + 2
+					mut value := u32(0)
+					mut saw_digit := false
+					for j < raw.len {
+						digit := x64_c_escape_hex_digit(raw[j])
+						if digit < 0 {
+							break
+						}
+						value = ((value << 4) + u32(digit)) & 0xff
+						saw_digit = true
+						j++
+					}
+					if saw_digit {
+						raw_bytes << u8(value)
+						i = j
+						continue
+					}
+					raw_bytes << next
+				}
+				else {
+					raw_bytes << next
+				}
+			}
+
+			i += 2
+		} else {
+			raw_bytes << raw[i]
+			i++
+		}
+	}
+	return raw_bytes
 }
 
 fn (mut g Gen) store_reg_to_val(reg int, val_id int) {

@@ -373,27 +373,29 @@ pub fn (mut b Builder) new_worker_clone(worker_mod &Module, worker_idx int) &Bui
 }
 
 pub fn imported_symbol_fn_name(module_name string, name string) string {
-	if module_name == '' || module_name == 'main' {
+	normalized_module_name := module_name.replace('.', '_')
+	if normalized_module_name == '' || normalized_module_name == 'main' {
 		return name
 	}
-	return '${module_name}__${name}'
+	return '${normalized_module_name}__${name}'
 }
 
 fn import_module_name(imp ast.ImportStmt) string {
-	return if imp.is_aliased { imp.name.all_after_last('.') } else { imp.alias }
+	return imp.name
 }
 
 fn module_import_aliases_from_imports(imports []ast.ImportStmt) map[string]string {
 	mut aliases := map[string]string{}
 	for imp in imports {
-		if !ssa_string_ok(imp.alias) || imp.name.len == 0 {
+		alias := if imp.alias != '' { imp.alias } else { imp.name.all_after_last('.') }
+		if !ssa_string_ok(alias) || imp.name.len == 0 {
 			continue
 		}
 		module_name := import_module_name(imp)
 		if !ssa_string_ok(module_name) {
 			continue
 		}
-		aliases[imp.alias] = module_name.replace('.', '_')
+		aliases[alias] = module_name.replace('.', '_')
 	}
 	return aliases
 }

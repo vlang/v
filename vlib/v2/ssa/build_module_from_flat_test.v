@@ -51,3 +51,34 @@ fn test_build_module_from_flat_matches_legacy() {
 	assert mod_legacy.blocks.len == mod_flat.blocks.len
 	assert mod_legacy.values.len == mod_flat.values.len
 }
+
+fn test_module_import_aliases_keep_nested_module_path() {
+	aliases := module_import_aliases_from_imports([
+		ast.ImportStmt{
+			name:  'foo.bar'
+			alias: 'bar'
+		},
+		ast.ImportStmt{
+			name:       'foo.baz'
+			alias:      'qux'
+			is_aliased: true
+		},
+	])
+	assert aliases['bar'] == 'foo_bar'
+	assert aliases['qux'] == 'foo_baz'
+}
+
+fn test_selective_import_fn_names_keep_nested_module_path() {
+	names := selective_import_fn_names_from_imports([
+		ast.ImportStmt{
+			name:    'foo.bar'
+			alias:   'bar'
+			symbols: [
+				ast.Expr(ast.Ident{
+					name: 'leaf'
+				}),
+			]
+		},
+	])
+	assert names['leaf'] == 'foo_bar__leaf'
+}

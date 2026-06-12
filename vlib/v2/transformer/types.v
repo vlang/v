@@ -649,7 +649,15 @@ fn (t &Transformer) selector_type_name(expr ast.SelectorExpr, full bool) string 
 	if !full || parts.len == 1 {
 		return parts[parts.len - 1]
 	}
-	module_name := parts[parts.len - 2]
+	mut module_parts := parts[..parts.len - 1].clone()
+	if resolved_module := t.cur_import_aliases[module_parts[0]] {
+		mut resolved_parts := resolved_module.split('.')
+		if module_parts.len > 1 {
+			resolved_parts << module_parts[1..]
+		}
+		module_parts = resolved_parts.clone()
+	}
+	module_name := module_parts.join('__')
 	type_name := parts[parts.len - 1]
 	return '${module_name}__${type_name}'
 }
@@ -1500,8 +1508,58 @@ fn (t &Transformer) expr_is_casted_to_type(expr ast.Expr, target string) bool {
 	return false
 }
 
-fn (mut t Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected types.Type) ast.Expr {
+fn (mut t Transformer) resolve_expr_with_expected_wrapper_type(expr ast.Expr, expected types.Type, is_option bool) ast.Expr {
 	expr_pos := expr.pos()
+	match expr {
+		ast.Keyword {
+			if expr.tok == .key_none {
+				return ast.Expr(ast.CastExpr{
+					typ:  t.type_to_ast_type_expr(expected)
+					expr: expr
+					pos:  expr_pos
+				})
+			}
+		}
+		ast.Ident {
+			if expr.name == 'none' {
+				return ast.Expr(ast.CastExpr{
+					typ:  t.type_to_ast_type_expr(expected)
+					expr: expr
+					pos:  expr_pos
+				})
+			}
+		}
+		ast.Type {
+			if expr is ast.NoneType {
+				return ast.Expr(ast.CastExpr{
+					typ:  t.type_to_ast_type_expr(expected)
+					expr: ast.Expr(ast.Type(expr))
+					pos:  expr_pos
+				})
+			}
+		}
+		else {}
+	}
+
+	if expr_type := t.get_expr_type(expr) {
+		if is_option {
+			if expr_type is types.OptionType {
+				return expr
+			}
+		} else {
+			if expr_type is types.ResultType {
+				return expr
+			}
+		}
+	}
+	return ast.Expr(ast.CastExpr{
+		typ:  t.type_to_ast_type_expr(expected)
+		expr: expr
+		pos:  expr_pos
+	})
+}
+
+fn (mut t Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected types.Type) ast.Expr {
 	base := t.unwrap_alias_and_pointer_type(expected)
 	match expr {
 		ast.ArrayInitExpr {
@@ -1540,51 +1598,11 @@ fn (mut t Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected t
 	}
 
 	match expected {
-		types.OptionType, types.ResultType {
-			match expr {
-				ast.Keyword {
-					if expr.tok == .key_none {
-						return ast.Expr(ast.CastExpr{
-							typ:  t.type_to_ast_type_expr(expected)
-							expr: expr
-							pos:  expr_pos
-						})
-					}
-				}
-				ast.Ident {
-					if expr.name == 'none' {
-						return ast.Expr(ast.CastExpr{
-							typ:  t.type_to_ast_type_expr(expected)
-							expr: expr
-							pos:  expr_pos
-						})
-					}
-				}
-				ast.Type {
-					if expr is ast.NoneType {
-						return ast.Expr(ast.CastExpr{
-							typ:  t.type_to_ast_type_expr(expected)
-							expr: ast.Expr(ast.Type(expr))
-							pos:  expr_pos
-						})
-					}
-				}
-				else {}
-			}
-
-			if expr_type := t.get_expr_type(expr) {
-				if expected is types.OptionType && expr_type is types.OptionType {
-					return expr
-				}
-				if expected is types.ResultType && expr_type is types.ResultType {
-					return expr
-				}
-			}
-			return ast.Expr(ast.CastExpr{
-				typ:  t.type_to_ast_type_expr(expected)
-				expr: expr
-				pos:  expr.pos()
-			})
+		types.OptionType {
+			return t.resolve_expr_with_expected_wrapper_type(expr, expected, true)
+		}
+		types.ResultType {
+			return t.resolve_expr_with_expected_wrapper_type(expr, expected, false)
 		}
 		else {}
 	}

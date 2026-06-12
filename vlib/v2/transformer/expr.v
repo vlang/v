@@ -979,8 +979,8 @@ fn (t &Transformer) generic_match_branch_variant_info(lhs ast.Expr, args []ast.E
 	base_full := t.type_expr_name_full(lhs)
 	suffix := t.generic_specialization_suffix(args)
 	variant_full := if base_full != '' && suffix != '' { base_full + suffix } else { base_full }
-	variant_module := if lhs is ast.SelectorExpr && lhs.lhs is ast.Ident {
-		(lhs.lhs as ast.Ident).name
+	variant_module := if base_full.contains('__') {
+		base_full.all_before_last('__')
 	} else {
 		''
 	}
@@ -1001,12 +1001,11 @@ fn (t &Transformer) match_branch_variant_info(c ast.Expr) (string, string, strin
 	}
 	if c is ast.SelectorExpr {
 		c_variant_name := c.rhs.name
-		mut c_variant_module := ''
-		c_variant_name_full := if c.lhs is ast.Ident {
-			c_variant_module = (c.lhs as ast.Ident).name
-			'${c_variant_module}__${c.rhs.name}'
+		c_variant_name_full := t.type_expr_name_full(c)
+		c_variant_module := if c_variant_name_full.contains('__') {
+			c_variant_name_full.all_before_last('__')
 		} else {
-			c.rhs.name
+			''
 		}
 		return c_variant_name, c_variant_name_full, c_variant_module, false, c_variant_name != ''
 	}
