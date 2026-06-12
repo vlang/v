@@ -12750,13 +12750,42 @@ fn (mut g Gen) enum_val(node ast.EnumVal) {
 	g.write('${g.gen_enum_prefix(node.typ)}${node.val}')
 }
 
+fn (mut g Gen) as_cast_option_payload_expr(typ ast.Type, expr_str string, is_auto_heap bool) string {
+	styp := g.base_type(typ)
+	if is_auto_heap {
+		return '(*(${styp}*)(${expr_str})->data)'
+	}
+	type_sym := g.table.sym(typ)
+	if type_sym.kind == .alias {
+		parent_typ := (type_sym.info as ast.Alias).parent_type
+		if parent_typ.has_flag(.option) {
+			return '*((${g.base_type(parent_typ)}*)(*(${styp}*)(${expr_str}).data).data)'
+		}
+		return '(*(${styp}*)(${expr_str}).data)'
+	} else if typ.has_flag(.option_mut_param_t) {
+		return '(*(${styp}*)(${expr_str})->data)'
+	}
+	return '(*(${styp}*)(${expr_str}).data)'
+}
+
+fn (mut g Gen) as_cast_option_payload_expr_from_expr(typ ast.Type, expr ast.Expr) string {
+	old_inside_opt_or_res := g.inside_opt_or_res
+	g.inside_opt_or_res = true
+	defer {
+		g.inside_opt_or_res = old_inside_opt_or_res
+	}
+	return g.as_cast_option_payload_expr(typ, g.expr_string(expr), false)
+}
+
 fn (mut g Gen) as_cast(node ast.AsCast) {
 	// Make sure the sum type can be cast to this type (the types
 	// are the same), otherwise panic.
 	unwrapped_node_typ := g.unwrap_generic(node.typ)
 	styp := g.styp(unwrapped_node_typ)
 	sym := g.table.sym(unwrapped_node_typ)
-	mut expr_type_sym := g.table.sym(g.unwrap_generic(node.expr_type))
+	unwrapped_expr_type := g.unwrap_generic(node.expr_type)
+	expr_type_without_option := unwrapped_expr_type.clear_flag(.option)
+	mut expr_type_sym := g.table.sym(unwrapped_expr_type)
 	// Reset inside_selector_lhs so that inner g.expr() calls generate
 	// fully dereferenced values, not pointers. The as_cast applies its own
 	// dot/arrow operator based on expr_type.is_ptr().
@@ -12768,18 +12797,28 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	// When expr_type and typ refer to the same sumtype (e.g. from assert autocasts
 	// after `assert a != none` where a is ?SumType), just emit the expression directly.
 	// The ident codegen already handles any needed smartcast/option unwrapping.
-	if expr_type_sym.kind == .sum_type && g.unwrap_generic(node.expr_type) == unwrapped_node_typ {
-		g.expr(node.expr)
+	if expr_type_sym.kind == .sum_type && expr_type_without_option == unwrapped_node_typ {
+		if unwrapped_expr_type.has_flag(.option) {
+			g.write(g.as_cast_option_payload_expr_from_expr(unwrapped_expr_type, node.expr))
+		} else {
+			g.expr(node.expr)
+		}
 		return
 	}
 	if mut expr_type_sym.info is ast.SumType {
-		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
+		expr_is_option := unwrapped_expr_type.has_flag(.option)
+		dot := if expr_type_without_option.is_ptr() { '->' } else { '.' }
 		if node.expr.has_fn_call() && !g.is_cc_msvc {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.styp(node.expr_type)
 			g.write('({ ${expr_styp} ${tmp_var} = ')
 			g.expr(node.expr)
 			g.write('; ')
+			expr_str := if expr_is_option {
+				g.as_cast_option_payload_expr(unwrapped_expr_type, tmp_var, false)
+			} else {
+				tmp_var
+			}
 			if sym.info is ast.FnType {
 				g.write('(${styp})builtin____as_cast(')
 			} else if g.inside_smartcast {
@@ -12787,8 +12826,8 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			} else {
 				g.write('*(${styp}*)builtin____as_cast(')
 			}
-			g.write2(tmp_var, dot)
-			g.write2('_${sym.cname},', tmp_var)
+			g.write2('(${expr_str})', dot)
+			g.write2('_${sym.cname},', '(${expr_str})')
 			g.write(dot)
 			sidx := g.type_sidx(unwrapped_node_typ)
 			g.write('_typ, ${sidx}); })')
@@ -12800,12 +12839,19 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			} else {
 				g.write('*(${styp}*)builtin____as_cast(')
 			}
-			g.write('(')
-			g.expr(node.expr)
-			g.write2(')', dot)
-			g.write2('_${sym.cname},', '(')
-			g.expr(node.expr)
-			g.write2(')', dot)
+			if expr_is_option {
+				expr_str := g.as_cast_option_payload_expr_from_expr(unwrapped_expr_type, node.expr)
+				g.write2('(${expr_str})', dot)
+				g.write2('_${sym.cname},', '(${expr_str})')
+				g.write(dot)
+			} else {
+				g.write('(')
+				g.expr(node.expr)
+				g.write2(')', dot)
+				g.write2('_${sym.cname},', '(')
+				g.expr(node.expr)
+				g.write2(')', dot)
+			}
 			sidx := g.type_sidx(unwrapped_node_typ)
 			g.write('_typ, ${sidx})')
 		}
