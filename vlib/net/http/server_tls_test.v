@@ -126,6 +126,37 @@ fn test_server_tls_stop() {
 	assert srv.status() == .closed
 }
 
+fn test_server_tls_close_caps_default_accept_poll() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	sw := time.new_stopwatch()
+	srv.close()
+	t.wait()
+	assert sw.elapsed() < time.second
+	assert srv.status() == .closed
+}
+
 fn test_server_tls_close_waits_for_active_request() {
 	$if use_openssl ? {
 		eprintln('skipping: TLS server not implemented for -d use_openssl yet')

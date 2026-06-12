@@ -404,7 +404,13 @@ fn (mut conn SSLConn) server_handshake(timeout time.Duration) ! {
 
 // accept_with_timeout waits up to `timeout` for a new client before accepting it.
 pub fn (mut l SSLListener) accept_with_timeout(timeout time.Duration) !&SSLConn {
-	wait_for(l.server_fd.fd, .read, timeout)!
+	return l.accept_with_timeouts(timeout, timeout)
+}
+
+// accept_with_timeouts waits up to `accept_timeout` for a new client, then
+// waits up to `handshake_timeout` for the TLS server handshake to complete.
+pub fn (mut l SSLListener) accept_with_timeouts(accept_timeout time.Duration, handshake_timeout time.Duration) !&SSLConn {
+	wait_for(l.server_fd.fd, .read, accept_timeout)!
 	mut conn := l.accept_tcp_connection()!
 
 	C.mbedtls_ssl_init(&conn.ssl)
@@ -421,7 +427,7 @@ pub fn (mut l SSLListener) accept_with_timeout(timeout time.Duration) !&SSLConn 
 	}
 
 	C.v_mbedtls_ssl_set_bio_nonblocking(&conn.ssl, &conn.server_fd)
-	conn.server_handshake(timeout)!
+	conn.server_handshake(handshake_timeout)!
 	net.set_blocking(conn.handle, true) or {
 		conn.shutdown() or {}
 		return err

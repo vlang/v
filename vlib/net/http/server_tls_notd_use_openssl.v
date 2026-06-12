@@ -8,6 +8,8 @@ import net
 import time
 import net.mbedtls
 
+const tls_accept_poll_timeout = 100 * time.millisecond
+
 // This file implements TLS termination for net.http.Server on top of the
 // mbedtls SSL listener. It is gated to the default TLS backend; the matching
 // `server_tls_d_use_openssl.v` provides a clear-error stub when the project is
@@ -67,13 +69,18 @@ fn (mut s Server) listen_and_serve_tls() {
 	if s.on_running != unsafe { nil } {
 		s.on_running(mut s)
 	}
-	accept_timeout := if s.accept_timeout > 0 {
+	handshake_timeout := if s.accept_timeout > 0 {
 		s.accept_timeout
 	} else {
-		100 * time.millisecond
+		tls_accept_poll_timeout
+	}
+	accept_poll_timeout := if handshake_timeout < tls_accept_poll_timeout {
+		handshake_timeout
+	} else {
+		tls_accept_poll_timeout
 	}
 	for s.state == .running {
-		mut conn := listener.accept_with_timeout(accept_timeout) or {
+		mut conn := listener.accept_with_timeouts(accept_poll_timeout, handshake_timeout) or {
 			if s.state != .running {
 				break
 			}
