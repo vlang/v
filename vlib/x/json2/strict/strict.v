@@ -204,7 +204,8 @@ fn tokenize(json_data string) []string {
 	mut inside_string := false
 	mut escaped_string_char := false
 	json_without_newlines := json_data.replace('\n', ' ')
-	normalized_json := json_without_newlines.replace('\t', ' ')
+	json_without_tabs := json_without_newlines.replace('\t', ' ')
+	normalized_json := json_without_tabs.replace('\r', ' ')
 
 	for letter in normalized_json {
 		if inside_string {

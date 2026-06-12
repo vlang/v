@@ -298,6 +298,13 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 		}
 	}
 	json_data := strip_utf8_bom(val)
+	if json_data == '' {
+		return JsonDecodeError{
+			message:   'empty string'
+			line:      1
+			character: 1
+		}
+	}
 	mut decoder := Decoder{
 		json:   json_data
 		strict: params.strict

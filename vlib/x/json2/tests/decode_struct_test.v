@@ -95,8 +95,25 @@ fn test_decode_ignores_utf8_bom() {
 	assert res.val == 2
 }
 
+fn test_decode_utf8_bom_only_returns_empty_string_error() {
+	if _ := json.decode[StructType[int]]('\xEF\xBB\xBF', strict: true) {
+		assert false, 'BOM-only input must return a decode error'
+	} else {
+		assert err.msg().contains('empty string')
+	}
+}
+
 fn test_strict_mode_rejects_duplicate_object_keys() {
 	if _ := json.decode[StructType[string]]('{"val":"a","val":"b"}', strict: true) {
+		assert false
+	} else {
+		assert err.msg().contains('duplicate object keys are not allowed')
+		assert err.msg().contains('val')
+	}
+}
+
+fn test_strict_mode_rejects_duplicate_keys_with_carriage_return_whitespace() {
+	if _ := json.decode[StructType[int]]('{"val"\r:1,"val":2}', strict: true) {
 		assert false
 	} else {
 		assert err.msg().contains('duplicate object keys are not allowed')
