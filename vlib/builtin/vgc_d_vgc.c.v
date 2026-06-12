@@ -48,13 +48,12 @@ fn C.vgc_thread_regs(t u32, sp_out &usize, regs &usize, max int) int
 fn C.vgc_run_gc_spilled(range_lo &usize, range_hi &usize, stack_base usize)
 fn C.vgc_num_cpus() int
 
-// DIAGNOSTIC (P3 churn-wall trace; revert before shipping)
+// Optional diagnostic trace ring — no-ops unless built with `-cflags -DVGC_DIAG`.
 fn C.vgc_trace(ev int, slot int, a u64, b u64)
 fn C.vgc_trace_init()
-fn C.vgc_say(tag u64, v u64)
+fn C.vgc_say(tag u64, v u64) // loud one-line stderr note (used by the span-registry abort)
 fn C.abort()
 
-__global vgc_said_pace = u32(0) // diagnostic one-shot guard
 fn C.vgc_addr_map_register(base usize, size usize, arena_idx int)
 fn C.vgc_addr_to_arena(addr usize) int
 
@@ -277,13 +276,11 @@ __global vgc_spawn_root_lock = u32(0)
 
 @[markused]
 pub fn vgc_init() {
-	C.vgc_trace_init() // DIAGNOSTIC: install crash-dump handler first
 	C.vgc_init_size_tables()
 	vgc_heap.gc_enabled = 1
 	vgc_heap.gc_percent = 100
 	vgc_heap.next_gc = 256 * 1024 * 1024 // favor throughput over early collections
 	vgc_heap.gc_phase = vgc_phase_off
-	C.vgc_say(1, u64(C.vgc_atomic_load_u32(&vgc_heap.gc_enabled))) // INIT: gc_enabled right after set
 	// Register the main thread
 	vgc_register_thread()
 }
@@ -1068,10 +1065,6 @@ fn vgc_acct_free(sz u64) {
 
 // Amortized GC trigger check - avoids atomic loads on every allocation
 fn vgc_maybe_gc() {
-	if vgc_said_pace == 0 { // diagnostic one-shot (benign race ok)
-		vgc_said_pace = 1
-		C.vgc_say(2, u64(C.vgc_atomic_load_u32(&vgc_heap.gc_enabled))) // FIRST pacer call: gc_enabled
-	}
 	C.vgc_trace(21, C.vgc_get_cache_idx(), C.vgc_atomic_load_u64(&vgc_heap.heap_live),
 		u64(C.vgc_atomic_load_u32(&vgc_heap.gc_enabled))) // MAYBE_GC entry (diagnostic, pre-gate)
 	if C.vgc_atomic_load_u32(&vgc_heap.gc_enabled) != 0 {

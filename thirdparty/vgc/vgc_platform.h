@@ -769,9 +769,23 @@ static inline void vgc_install_thread_exit(int idx) { (void)idx; }
 #endif
 
 // ============================================================
-// DIAGNOSTIC trace ring (P3 thread-churn wall investigation, 2026-06-11).
-// Async-signal-safe crash dump correlates GC cycles with thread lifecycle.
-// Not part of the canonical minimal-collector.patch — revert before shipping.
+// Minimal stderr write helpers — always available. Used by the loud
+// span-registry-overflow abort (vgc_say below); NOT diagnostic scaffolding.
+// ============================================================
+static void vgc__ws(const char* s) { size_t n = 0; while (s[n]) n++; (void)!write(2, s, n); }
+static void vgc__wh(uint64_t v) {
+    char b[18]; b[0] = '0'; b[1] = 'x';
+    for (int i = 0; i < 16; i++) { int d = (int)((v >> ((15 - i) * 4)) & 0xf); b[2 + i] = d < 10 ? '0' + d : 'a' + d - 10; }
+    (void)!write(2, b, 18);
+}
+static inline void vgc_say(uint64_t tag, uint64_t v) { // loud one-line stderr note
+    vgc__ws("[vgc tag="); vgc__wh(tag); vgc__ws(" v="); vgc__wh(v); vgc__ws("]\n");
+}
+
+#ifdef VGC_DIAG
+// ============================================================
+// OPTIONAL diagnostic trace ring + async-signal-safe crash dump (correlates GC
+// cycles with thread lifecycle). OFF by default; enable with `-cflags -DVGC_DIAG`.
 // ============================================================
 #include <signal.h>
 typedef struct { uint32_t seq; int ev; int slot; uint64_t a; uint64_t b; uint32_t port; } vgc_tev;
@@ -793,12 +807,6 @@ static const char* vgc_ev_name(int ev) {
         case 99: return "INITDONE"; default: return "?      ";
     }
 }
-static void vgc__ws(const char* s) { size_t n = 0; while (s[n]) n++; (void)!write(2, s, n); }
-static void vgc__wh(uint64_t v) {
-    char b[18]; b[0] = '0'; b[1] = 'x';
-    for (int i = 0; i < 16; i++) { int d = (int)((v >> ((15 - i) * 4)) & 0xf); b[2 + i] = d < 10 ? '0' + d : 'a' + d - 10; }
-    (void)!write(2, b, 18);
-}
 static void vgc_trace_dump(void) {
     vgc__ws("\n=== VGC TRACE (oldest->newest) ===\n");
     uint32_t end = vgc_trace_seq;
@@ -811,9 +819,6 @@ static void vgc_trace_dump(void) {
         vgc__ws(" a="); vgc__wh(e->a); vgc__ws(" b="); vgc__wh(e->b); vgc__ws("\n");
     }
     vgc__ws("=== END VGC TRACE ===\n");
-}
-static inline void vgc_say(uint64_t tag, uint64_t v) { // DIAGNOSTIC immediate stderr print
-    vgc__ws("[vgc_say tag="); vgc__wh(tag); vgc__ws(" v="); vgc__wh(v); vgc__ws("]\n");
 }
 static volatile uint32_t vgc_dumping = 0;
 static void vgc_crash_handler(int sig) {
@@ -828,5 +833,10 @@ static inline void vgc_trace_init(void) {
     signal(SIGSEGV, vgc_crash_handler);
     signal(SIGBUS, vgc_crash_handler);
 }
+#else
+// Diagnostics compiled out: zero-overhead no-ops the optimizer elides.
+static inline void vgc_trace(int ev, int slot, uint64_t a, uint64_t b) { (void)ev; (void)slot; (void)a; (void)b; }
+static inline void vgc_trace_init(void) {}
+#endif // VGC_DIAG
 
 #endif // VGC_PLATFORM_H
