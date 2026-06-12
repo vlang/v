@@ -306,11 +306,51 @@ fn test_native_link_commands_keep_wl_for_linux_and_translate_for_macos_ld() {
 	assert !macos.contains('-Wl,'), macos
 }
 
-fn test_native_linux_tiny_link_is_disabled_by_any_link_flags() {
-	assert native_link_flags_allow_builtin_linux_tiny('')
-	assert native_link_flags_allow_builtin_linux_tiny('   ')
-	assert !native_link_flags_allow_builtin_linux_tiny('-lm')
-	assert !native_link_flags_allow_builtin_linux_tiny('-Wl,-rpath,/tmp/lib')
+fn test_native_link_commands_translate_xlinker_for_macos_ld() {
+	macos := macos_native_link_command('/tmp/out', 'main.o', '/SDK Path', 'x86_64', false,
+		'-Xlinker -rpath -Xlinker @loader_path/lib')
+
+	assert macos.contains(' -rpath @loader_path/lib '), macos
+	assert !macos.contains('-Xlinker'), macos
+}
+
+fn test_split_compile_and_link_flags_duplicates_dual_use_driver_flags() {
+	compile_flags, link_flags :=
+		split_compile_and_link_flags('-I include -fopenmp -fopenmp=libomp -pthread helper.c')
+
+	assert compile_flags == '-I include -fopenmp -fopenmp=libomp -pthread'
+	assert link_flags == '-fopenmp -fopenmp=libomp -pthread helper.c'
+}
+
+fn test_macos_native_ld_rejects_dual_use_driver_link_flags() {
+	validate_macos_native_ld_link_flags('-lm')!
+	validate_macos_native_ld_link_flags('-fopenmp') or {
+		assert err.msg().contains('macOS native ld cannot consume driver linker flags'), err.msg()
+		return
+	}
+	assert false, 'expected macOS native ld driver flag diagnostic'
+}
+
+fn test_native_linux_tiny_link_allows_runtime_system_libs_when_user_flags_are_empty() {
+	assert native_link_flags_allow_builtin_linux_tiny('', '')
+	assert native_link_flags_allow_builtin_linux_tiny('   ', '')
+	assert native_link_flags_allow_builtin_linux_tiny('-lpthread -lm -ldl -lc', '')
+	assert native_link_flags_allow_builtin_linux_tiny('-l pthread -l m -l dl -l c', '')
+}
+
+fn test_native_linux_tiny_link_blocks_user_external_link_flags() {
+	for user_link_flags in ['-lm', '-Wl,-rpath,/tmp/lib', '/tmp/helper.c', '-fopenmp', '-pthread'] {
+		assert !native_link_flags_allow_builtin_linux_tiny('-lpthread -lm -ldl', user_link_flags), user_link_flags
+	}
+}
+
+fn test_native_linux_tiny_link_blocks_external_link_inputs_in_global_flags() {
+	assert !native_link_flags_allow_builtin_linux_tiny('-Xlinker -rpath', '')
+	assert !native_link_flags_allow_builtin_linux_tiny('-L/tmp', '')
+	assert !native_link_flags_allow_builtin_linux_tiny('/tmp/helper.o', '')
+	assert !native_link_flags_allow_builtin_linux_tiny('/tmp/libhelper.a', '')
+	assert !native_link_flags_allow_builtin_linux_tiny('-framework Foundation', '')
+	assert !native_link_flags_allow_builtin_linux_tiny('-lfoo', '')
 }
 
 fn test_native_external_link_inputs_replace_sources_with_objects_in_order() {
@@ -388,7 +428,7 @@ fn test_native_external_source_compiler_uses_pref_ccompiler() {
 	prefs.ccompiler = 'custom-native-cc'
 	mut b := new_builder(&prefs)
 
-	assert b.native_external_source_compiler() == 'custom-native-cc'
+	assert b.native_external_source_compiler('macos') == 'custom-native-cc'
 }
 
 fn test_native_external_source_compiler_uses_v2cc_when_pref_is_empty() {
@@ -406,7 +446,32 @@ fn test_native_external_source_compiler_uses_v2cc_when_pref_is_empty() {
 	prefs.ccompiler = ''
 	mut b := new_builder(&prefs)
 
-	assert b.native_external_source_compiler() == 'env-native-cc'
+	assert b.native_external_source_compiler('macos') == 'env-native-cc'
+}
+
+fn test_native_external_source_compiler_defaults_to_cc_for_macos() {
+	old_v2cc := os.getenv_opt('V2CC')
+	os.unsetenv('V2CC')
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_builder_native_external_cc_${os.getpid()}')
+	tcc_dir := os.join_path(tmp_dir, 'thirdparty', 'tcc')
+	os.mkdir_all(tcc_dir) or { panic(err) }
+	os.write_file(os.join_path(tcc_dir, 'tcc.exe'), '') or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+		if old := old_v2cc {
+			os.setenv('V2CC', old, true)
+		} else {
+			os.unsetenv('V2CC')
+		}
+	}
+
+	mut prefs := pref.Preferences{
+		vroot: tmp_dir
+	}
+	mut b := new_builder(&prefs)
+
+	assert b.native_external_source_compiler('macos') == 'cc'
+	assert b.native_external_source_compiler('darwin') == 'cc'
 }
 
 fn test_native_link_flags_from_sources_are_not_global() {
@@ -443,6 +508,57 @@ fn test_native_link_flags_from_sources_are_not_global() {
 	assert math_flag_builder.native_link_flags_from_sources() == '-lm'
 }
 
+fn test_native_user_link_flags_ignore_internal_vlib_runtime_flags() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_builder_native_user_link_flags_${os.getpid()}')
+	vlib_os_dir := os.join_path(tmp_dir, 'vlib', 'os')
+	os.mkdir_all(vlib_os_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	main_path := os.join_path(tmp_dir, 'main.v')
+	internal_path := os.join_path(vlib_os_dir, 'signal_linux.c.v')
+	os.write_file(main_path, 'module main\n#flag -lm\n') or { panic(err) }
+	os.write_file(internal_path, 'module os\n#flag -lpthread\n') or { panic(err) }
+
+	mut prefs := pref.Preferences{
+		backend:      .x64
+		arch:         .x64
+		target_os:    'linux'
+		vroot:        tmp_dir
+		skip_builtin: true
+	}
+
+	mut b := new_builder(&prefs)
+	b.user_files = [main_path]
+	b.files = [
+		ast.File{
+			name: main_path
+		},
+		ast.File{
+			name: internal_path
+		},
+	]
+	_, all_link_flags := b.native_compile_and_link_flags_from_sources()
+	_, user_link_flags := b.native_user_compile_and_link_flags_from_sources()
+
+	assert all_link_flags.fields().sorted() == ['-lm', '-lpthread']
+	assert user_link_flags == '-lm'
+	assert !native_link_flags_allow_builtin_linux_tiny(all_link_flags, user_link_flags)
+
+	b.user_files = []
+	b.files = [
+		ast.File{
+			name: internal_path
+		},
+	]
+	_, internal_only_link_flags := b.native_compile_and_link_flags_from_sources()
+	_, no_user_link_flags := b.native_user_compile_and_link_flags_from_sources()
+
+	assert internal_only_link_flags == '-lpthread'
+	assert no_user_link_flags == ''
+	assert native_link_flags_allow_builtin_linux_tiny(internal_only_link_flags, no_user_link_flags)
+}
+
 fn test_native_compile_and_link_flags_from_sources_keep_compile_flags_for_source_inputs() {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_builder_native_source_flags_${os.getpid()}')
 	include_dir := os.join_path(tmp_dir, 'include')
@@ -454,7 +570,7 @@ fn test_native_compile_and_link_flags_from_sources_keep_compile_flags_for_source
 	c_path := os.join_path(tmp_dir, 'helper.c')
 	os.write_file(c_path, 'int helper(void) { return 7; }\n') or { panic(err) }
 	os.write_file(main_path, 'module main
-#flag -I include -DHELPER helper.c -Wl,-rpath,/tmp/native-lib -lm
+#flag -I include -DHELPER -fopenmp -pthread helper.c -Wl,-rpath,/tmp/native-lib -lm
 ') or {
 		panic(err)
 	}
@@ -475,8 +591,8 @@ fn test_native_compile_and_link_flags_from_sources_keep_compile_flags_for_source
 	expected_include_dir := os.real_path(include_dir)
 	expected_c_path := os.real_path(c_path)
 
-	assert compile_flags == '-I ${expected_include_dir} -DHELPER'
-	assert link_flags == '${expected_c_path} -Wl,-rpath,/tmp/native-lib -lm'
+	assert compile_flags == '-I ${expected_include_dir} -DHELPER -fopenmp -pthread'
+	assert link_flags == '-fopenmp -pthread ${expected_c_path} -Wl,-rpath,/tmp/native-lib -lm'
 }
 
 fn test_native_x64_requires_ssa_optimization() {

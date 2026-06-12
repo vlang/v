@@ -861,18 +861,21 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Stack arguments were pushed above; this pass only loads register arguments.
 			sse_arg_idx := g.load_call_register_args(instr, abi_regs, stack_args, 0)
 			fn_val := g.mod.values[instr.operands[0]]
+			is_direct_symbol_call := fn_val.name != '' && fn_val.kind in [.unknown, .func_ref]
+			if !is_direct_symbol_call {
+				g.load_val_to_reg(int(r10), instr.operands[0])
+			}
 
 			// AL carries the number of SSE argument registers for variadic calls.
 			g.emit_sse_arg_count(sse_arg_idx)
 
-			if fn_val.name != '' && fn_val.kind in [.unknown, .func_ref] {
+			if is_direct_symbol_call {
 				asm_call_rel32(mut g)
 				sym_idx := g.add_undefined(fn_val.name)
 				// Use R_X86_64_PLT32 (4) for function calls to support shared libraries (libc)
 				g.add_call_reloc(sym_idx)
 				g.emit_u32(0)
 			} else {
-				g.load_val_to_reg(int(r10), instr.operands[0])
 				asm_call_r10(mut g)
 			}
 
@@ -922,17 +925,20 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			fn_val := g.mod.values[instr.operands[0]]
+			is_direct_symbol_call := fn_val.name != '' && fn_val.kind in [.unknown, .func_ref]
+			if !is_direct_symbol_call {
+				g.load_val_to_reg(int(r10), instr.operands[0])
+			}
 
 			// AL carries the number of SSE argument registers for variadic calls.
 			g.emit_sse_arg_count(sse_arg_idx)
 
-			if fn_val.name != '' && fn_val.kind in [.unknown, .func_ref] {
+			if is_direct_symbol_call {
 				asm_call_rel32(mut g)
 				sym_idx := g.add_undefined(fn_val.name)
 				g.add_call_reloc(sym_idx)
 				g.emit_u32(0)
 			} else {
-				g.load_val_to_reg(int(r10), instr.operands[0])
 				asm_call_r10(mut g)
 			}
 

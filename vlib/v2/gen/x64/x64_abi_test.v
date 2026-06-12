@@ -413,6 +413,30 @@ fn test_x64_sysv_codegen_mixed_aggregate_call_sets_sse_arg_count_to_one() {
 	assert call > al_count
 }
 
+fn test_x64_sysv_codegen_indirect_f64_call_loads_callee_before_sse_arg_count() {
+	code := emit_x64_abi_indirect_f64_call_with_callee_in_rax(false)
+
+	callee_load := index_bytes(code, [u8(0x49), 0x89, 0xc2]) // mov r10, rax
+	al_count := index_bytes(code, [u8(0xb8), 0x01, 0, 0, 0]) // mov eax, 1
+	call := index_bytes(code, [u8(0x41), 0xff, 0xd2]) // call r10
+
+	assert callee_load >= 0
+	assert al_count > callee_load
+	assert call > al_count
+}
+
+fn test_x64_sysv_codegen_indirect_f64_call_sret_loads_callee_before_sse_arg_count() {
+	code := emit_x64_abi_indirect_f64_call_with_callee_in_rax(true)
+
+	callee_load := index_bytes(code, [u8(0x49), 0x89, 0xc2]) // mov r10, rax
+	al_count := index_bytes(code, [u8(0xb8), 0x01, 0, 0, 0]) // mov eax, 1
+	call := index_bytes(code, [u8(0x41), 0xff, 0xd2]) // call r10
+
+	assert callee_load >= 0
+	assert al_count > callee_load
+	assert call > al_count
+}
+
 fn test_x64_sysv_codegen_call_sret_shifts_mixed_user_arg_to_rsi_and_xmm0() {
 	mut mod := new_x64_abi_sret_mixed_aggregate_call_module()
 	mut gen := Gen.new_with_format_and_abi(&mod, .elf, .sysv)
@@ -878,6 +902,106 @@ fn new_x64_abi_call_module(sret bool) mir.Module {
 		name:   'caller'
 		typ:    0
 		blocks: [ssa.BlockID(0)]
+	}
+	return m
+}
+
+fn emit_x64_abi_indirect_f64_call_with_callee_in_rax(sret bool) []u8 {
+	mut mod := new_x64_abi_indirect_f64_call_module(sret)
+	mut gen := Gen.new_with_format_and_abi(&mod, .elf, .sysv)
+	gen.stack_map = {
+		1: -8
+		2: -24
+	}
+	gen.reg_map = {
+		0: int(rax)
+	}
+	gen.gen_instr(2)
+	return gen.elf.text_data
+}
+
+fn new_x64_abi_indirect_f64_call_module(sret bool) mir.Module {
+	mut ts := ssa.TypeStore.new()
+	i64_t := ts.get_int(64)
+	f64_t := ts.get_float(64)
+	ret_t := ts.register(ssa.Type{
+		kind:   .struct_t
+		fields: [i64_t, i64_t, i64_t]
+	})
+	fn_t := ts.register(ssa.Type{
+		kind:     .func_t
+		params:   [f64_t]
+		ret_type: if sret { ret_t } else { i64_t }
+	})
+	mut m := mir.Module{
+		type_store: unsafe { *ts }
+		values:     []mir.Value{len: 5}
+		instrs:     []mir.Instruction{len: 2}
+		blocks:     []mir.BasicBlock{len: 1}
+		funcs:      []mir.Function{len: 1}
+	}
+	m.values[0] = mir.Value{
+		id:    0
+		typ:   fn_t
+		kind:  .argument
+		name:  'callee'
+		index: 0
+	}
+	m.values[1] = mir.Value{
+		id:    1
+		typ:   f64_t
+		kind:  .argument
+		name:  'arg'
+		index: 1
+	}
+	m.values[2] = mir.Value{
+		id:    2
+		typ:   if sret { ret_t } else { i64_t }
+		kind:  .instruction
+		name:  'call'
+		index: 0
+	}
+	m.values[3] = mir.Value{
+		id:    3
+		typ:   0
+		kind:  .instruction
+		name:  'ret'
+		index: 1
+	}
+	m.values[4] = mir.Value{
+		id:    4
+		typ:   0
+		kind:  .basic_block
+		name:  'entry'
+		index: 0
+	}
+	m.instrs[0] = mir.Instruction{
+		op:               if sret { .call_sret } else { .call }
+		operands:         [ssa.ValueID(0), 1]
+		typ:              if sret { ret_t } else { i64_t }
+		block:            0
+		abi_ret_indirect: sret
+		abi_arg_class:    [.in_reg]
+	}
+	m.instrs[1] = mir.Instruction{
+		op:       .ret
+		operands: []ssa.ValueID{}
+		typ:      0
+		block:    0
+	}
+	m.blocks[0] = mir.BasicBlock{
+		id:     0
+		val_id: 4
+		name:   'entry'
+		parent: 0
+		instrs: [ssa.ValueID(2), 3]
+	}
+	m.funcs[0] = mir.Function{
+		id:     0
+		name:   'caller'
+		typ:    0
+		blocks: [ssa.BlockID(0)]
+		params: [ssa.ValueID(0), 1]
 	}
 	return m
 }

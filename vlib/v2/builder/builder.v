@@ -2198,22 +2198,86 @@ fn native_link_flags_suffix(link_flags string) string {
 
 fn macos_native_ld_link_flags(link_flags string) string {
 	mut normalized := []string{}
-	for tok in link_flags.fields() {
+	tokens := link_flags.fields()
+	mut i := 0
+	for i < tokens.len {
+		tok := tokens[i]
 		if tok.starts_with('-Wl,') {
 			for linker_arg in tok['-Wl,'.len..].split(',') {
 				if linker_arg != '' {
 					normalized << linker_arg
 				}
 			}
+			i++
+			continue
+		}
+		if tok == '-Xlinker' {
+			if i + 1 < tokens.len {
+				i++
+				normalized << tokens[i]
+			}
+			i++
 			continue
 		}
 		normalized << tok
+		i++
 	}
 	return normalized.join(' ')
 }
 
-fn native_link_flags_allow_builtin_linux_tiny(link_flags string) bool {
-	return link_flags.trim_space() == ''
+fn native_driver_flag_is_dual_use(tok string) bool {
+	return tok == '-pthread' || tok == '-fopenmp' || tok.starts_with('-fopenmp=')
+}
+
+fn macos_native_ld_unsupported_driver_link_flags(link_flags string) []string {
+	mut unsupported := []string{}
+	for tok in link_flags.fields() {
+		if native_driver_flag_is_dual_use(tok) {
+			unsupported << tok
+		}
+	}
+	return unsupported
+}
+
+fn validate_macos_native_ld_link_flags(link_flags string) ! {
+	unsupported := macos_native_ld_unsupported_driver_link_flags(link_flags)
+	if unsupported.len > 0 {
+		return error('x64: unsupported backend feature: macOS native ld cannot consume driver linker flags: ${unsupported.join(' ')}')
+	}
+}
+
+fn native_linux_tiny_allows_system_lib(lib string) bool {
+	return lib in ['pthread', 'm', 'dl', 'c']
+}
+
+fn native_internal_link_flags_allow_builtin_linux_tiny(link_flags string) bool {
+	tokens := link_flags.trim_space().fields()
+	mut i := 0
+	for i < tokens.len {
+		tok := tokens[i]
+		if tok == '-l' {
+			if i + 1 >= tokens.len {
+				return false
+			}
+			i++
+			if !native_linux_tiny_allows_system_lib(tokens[i]) {
+				return false
+			}
+		} else if tok.starts_with('-l') {
+			if !native_linux_tiny_allows_system_lib(tok['-l'.len..]) {
+				return false
+			}
+		} else {
+			return false
+		}
+		i++
+	}
+	return true
+}
+
+fn native_link_flags_allow_builtin_linux_tiny(link_flags string, user_link_flags string) bool {
+	return user_link_flags.trim_space() == ''
+		&& native_internal_link_flags_allow_builtin_linux_tiny(link_flags)
 }
 
 fn (b &Builder) native_link_flags_from_sources() string {
@@ -2224,6 +2288,12 @@ fn (b &Builder) native_link_flags_from_sources() string {
 fn (b &Builder) native_compile_and_link_flags_from_sources() (string, string) {
 	directive_compile_flags, directive_link_flags :=
 		split_compile_and_link_flags(b.collect_cflags_from_sources())
+	return directive_compile_flags.trim_space(), directive_link_flags.trim_space()
+}
+
+fn (b &Builder) native_user_compile_and_link_flags_from_sources() (string, string) {
+	directive_compile_flags, directive_link_flags :=
+		split_compile_and_link_flags(b.collect_user_cflags_from_sources())
 	return directive_compile_flags.trim_space(), directive_link_flags.trim_space()
 }
 
@@ -2311,9 +2381,16 @@ fn native_external_source_compile_command(cc string, source_file string, object_
 	return parts.join(' ')
 }
 
-fn (b &Builder) native_external_source_compiler() string {
+fn (b &Builder) native_external_source_compiler(target_os string) string {
 	if b.pref.ccompiler.len > 0 {
 		return b.pref.ccompiler
+	}
+	v2cc := (os.getenv_opt('V2CC') or { '' }).trim_space()
+	if v2cc != '' {
+		return v2cc
+	}
+	if is_macos_native_target(target_os) {
+		return 'cc'
 	}
 	return configured_cc(b.pref.vroot)
 }
@@ -2322,7 +2399,7 @@ fn (b &Builder) compile_native_external_sources(inputs NativeExternalLinkInputs,
 	if inputs.source_files.len == 0 {
 		return
 	}
-	cc := b.native_external_source_compiler()
+	cc := b.native_external_source_compiler(target_os)
 	for i, source_file in inputs.source_files {
 		cmd := native_external_source_compile_command(cc, source_file, inputs.object_files[i],
 			compile_flags, sdk_path, arch_flag, target_os)
@@ -2715,9 +2792,6 @@ fn flag_references_missing_file(flag string, include_flags []string) bool {
 }
 
 fn (b &Builder) collect_cflags_from_sources() string {
-	mut flags := []string{}
-	mut seen := map[string]bool{}
-	mut scanned_files := map[string]bool{}
 	// Collect source file paths to scan.  When .vh headers were used for
 	// parsing, b.files references the .vh summaries which lack #flag
 	// directives.  Always include the original core module source files
@@ -2741,12 +2815,46 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			vlib_path := b.pref.get_vlib_module_path(module_path)
 			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines, target_os)
 			for mf in module_files {
-				if mf !in scanned_files {
-					scan_paths << mf
-				}
+				scan_paths << mf
 			}
 		}
 	}
+	return b.collect_cflags_from_scan_paths(scan_paths)
+}
+
+fn (b &Builder) source_path_is_internal_vlib(path string) bool {
+	vlib_root := os.real_path(os.join_path(b.pref.vroot, 'vlib')).replace('\\', '/').trim_right('/')
+	real_path := os.real_path(path).replace('\\', '/')
+	return real_path == vlib_root || real_path.starts_with('${vlib_root}/')
+}
+
+fn (b &Builder) collect_user_cflags_from_sources() string {
+	mut scan_paths := []string{}
+	for path in b.user_files {
+		if path != '' {
+			scan_paths << path
+		}
+	}
+	for file in b.files {
+		if file.name != '' && !b.source_path_is_internal_vlib(file.name) {
+			scan_paths << file.name
+		}
+	}
+	for ff in b.flat.files {
+		name := b.flat.file_name(ff)
+		if name != '' && !b.source_path_is_internal_vlib(name) {
+			scan_paths << name
+		}
+	}
+	return b.collect_cflags_from_scan_paths(scan_paths)
+}
+
+fn (b &Builder) collect_cflags_from_scan_paths(paths []string) string {
+	mut flags := []string{}
+	mut seen := map[string]bool{}
+	mut scanned_files := map[string]bool{}
+	mut scan_paths := paths.clone()
+	cflags_target_os := b.cflags_target_os_for_local_compile()
 	scan_paths.sort()
 	for scan_path in scan_paths {
 		if scan_path == '' || scan_path in scanned_files {
@@ -2868,9 +2976,10 @@ fn (b &Builder) collect_cflags_from_sources() string {
 
 // split_compile_and_link_flags separates a flags string into compiler-only
 // flags (for -c compilation) and linker-only flags (for the link step).
-// Linker flags include: -l*, -L*, -Wl,*, -framework, C source files and
-// prebuilt object/library files.  Source files from #flag directives must not
-// be passed to per-module `-c -o module.o` cache compilations.
+// Linker flags include: -l*, -L*, -Wl,*, -Xlinker, -framework, C source files
+// and prebuilt object/library files. Minimal dual-use driver flags are kept in
+// both outputs. Source files from #flag directives must not be passed to
+// per-module `-c -o module.o` cache compilations.
 fn split_compile_and_link_flags(flags string) (string, string) {
 	tokens := flags.fields()
 	mut compile := []string{}
@@ -2878,7 +2987,16 @@ fn split_compile_and_link_flags(flags string) (string, string) {
 	mut i := 0
 	for i < tokens.len {
 		tok := tokens[i]
-		if tok == '-framework' {
+		if native_driver_flag_is_dual_use(tok) {
+			compile << tok
+			link << tok
+		} else if tok == '-Xlinker' {
+			link << tok
+			if i + 1 < tokens.len {
+				i++
+				link << tokens[i]
+			}
+		} else if tok == '-framework' {
 			// -framework Name: two tokens, linker only
 			link << tok
 			if i + 1 < tokens.len {
@@ -3477,6 +3595,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	arch := if backend_arch == .auto { b.pref.get_effective_arch() } else { backend_arch }
 	target_os := b.pref.target_os_or_host()
 	native_compile_flags, native_link_flags := b.native_compile_and_link_flags_from_sources()
+	_, native_user_link_flags := b.native_user_compile_and_link_flags_from_sources()
 	mut native_external_inputs := NativeExternalLinkInputs{
 		link_flags: native_link_flags
 	}
@@ -3565,7 +3684,9 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			if is_linux_x64_native_target(arch, target_os) {
 				mut linux_gen := x64.Gen.new_with_format_and_abi(&mir_mod, obj_format, codegen_abi)
 				linux_gen.gen()
-				if native_link_flags_allow_builtin_linux_tiny(native_link_flags) {
+				if native_link_flags_allow_builtin_linux_tiny(native_link_flags,
+					native_user_link_flags)
+				{
 					if os.exists(output_binary) {
 						os.rm(output_binary) or {}
 					}
@@ -3656,6 +3777,10 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			}
 			arch_flag := if arch == .arm64 { 'arm64' } else { 'x86_64' }
 			native_external_inputs = native_external_link_inputs(native_link_flags, output_binary) or {
+				eprint_native_x64_link_error(err.msg())
+				exit(1)
+			}
+			validate_macos_native_ld_link_flags(native_external_inputs.link_flags) or {
 				eprint_native_x64_link_error(err.msg())
 				exit(1)
 			}
