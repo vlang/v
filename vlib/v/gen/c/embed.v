@@ -29,7 +29,12 @@ fn (g &Gen) should_use_incbin_embed() bool {
 	if g.pref.os == .windows && pref.get_host_os() != .windows {
 		return false
 	}
-	if g.pref.ccompiler_type in [.gcc, .clang, .mingw, .emcc] {
+	// wasm targets use a different object format; our .S files have ELF/Mach-O
+	// directives and would produce host-arch .o files that can't link into wasm.
+	if g.pref.os in [.wasm32, .wasm32_emscripten, .wasm32_wasi] {
+		return false
+	}
+	if g.pref.ccompiler_type in [.gcc, .clang, .mingw] {
 		return true
 	}
 	if g.pref.ccompiler_type == .tinyc {
