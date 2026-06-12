@@ -66,7 +66,7 @@ fn (mut s Server) listen_and_serve_tls() {
 	if s.on_running != unsafe { nil } {
 		s.on_running(mut s)
 	}
-	accept_timeout := if s.accept_timeout > 0 && s.accept_timeout < 100 * time.millisecond {
+	accept_timeout := if s.accept_timeout > 0 {
 		s.accept_timeout
 	} else {
 		100 * time.millisecond

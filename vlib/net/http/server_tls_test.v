@@ -65,7 +65,7 @@ fn test_server_tls_round_trip() {
 		cert:                   server_tls_cert
 		cert_key:               server_tls_key
 		in_memory_verification: true
-		accept_timeout:         100 * time.millisecond
+		accept_timeout:         time.second
 		handler:                EchoHandler{}
 		show_startup_message:   false
 	}
@@ -142,7 +142,7 @@ fn test_server_tls_close_waits_for_active_request() {
 		cert:                   server_tls_cert
 		cert_key:               server_tls_key
 		in_memory_verification: true
-		accept_timeout:         100 * time.millisecond
+		accept_timeout:         time.second
 		handler:                BlockingHandler{
 			started: started
 			release: release
@@ -231,7 +231,7 @@ fn test_server_tls_h2_negotiation() {
 		cert:                   server_tls_cert
 		cert_key:               server_tls_key
 		in_memory_verification: true
-		accept_timeout:         100 * time.millisecond
+		accept_timeout:         time.second
 		enable_http2:           true
 		handler:                EchoHandler{}
 		show_startup_message:   false

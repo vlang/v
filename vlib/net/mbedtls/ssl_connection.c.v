@@ -470,7 +470,11 @@ fn ssl_remaining_timeout(deadline time.Time) time.Duration {
 	if deadline.unix() == 0 {
 		return net.infinite_timeout
 	}
-	return deadline - time.now()
+	remaining := deadline - time.now()
+	if remaining <= 0 {
+		return time.nanosecond
+	}
+	return remaining
 }
 
 // read_timeout returns the current SSL read timeout.
