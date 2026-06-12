@@ -2201,6 +2201,119 @@ fn (b &Builder) native_link_flags_from_sources() string {
 	return directive_link_flags.trim_space()
 }
 
+fn (b &Builder) native_compile_and_link_flags_from_sources() (string, string) {
+	directive_compile_flags, directive_link_flags :=
+		split_compile_and_link_flags(b.collect_cflags_from_sources())
+	return directive_compile_flags.trim_space(), directive_link_flags.trim_space()
+}
+
+struct NativeExternalLinkInputs {
+	link_flags   string
+	source_files []string
+	object_files []string
+}
+
+fn native_external_source_clean_token(tok string) string {
+	return tok.trim('"').trim("'")
+}
+
+fn native_external_source_is_supported(tok string) bool {
+	lower := native_external_source_clean_token(tok).to_lower()
+	return lower.ends_with('.c') || lower.ends_with('.m')
+}
+
+fn native_external_source_is_unsupported(tok string) bool {
+	lower := native_external_source_clean_token(tok).to_lower()
+	return lower.ends_with('.cc') || lower.ends_with('.cpp') || lower.ends_with('.cxx')
+		|| lower.ends_with('.mm')
+}
+
+fn native_external_source_unsupported_message(tok string) string {
+	clean := native_external_source_clean_token(tok)
+	if clean.to_lower().ends_with('.mm') {
+		return 'x64: unsupported backend feature: Objective-C++ #flag source `${clean}`'
+	}
+	return 'x64: unsupported backend feature: C++ #flag source `${clean}`'
+}
+
+fn native_external_source_object_file(output_binary string, source_index int) string {
+	output_name := if output_binary == '' { 'out' } else { os.file_name(output_binary) }
+	clean_name := output_name.replace('/', '_').replace('\\', '_').replace('.', '_')
+	return os.join_path(os.vtmp_dir(), 'v2_native_${os.getpid()}_${clean_name}_${source_index}.o')
+}
+
+fn native_external_link_inputs(link_flags string, output_binary string) !NativeExternalLinkInputs {
+	mut rewritten := []string{}
+	mut source_files := []string{}
+	mut object_files := []string{}
+	for tok in link_flags.fields() {
+		clean := native_external_source_clean_token(tok)
+		if native_external_source_is_unsupported(clean) {
+			return error(native_external_source_unsupported_message(clean))
+		}
+		if native_external_source_is_supported(clean) {
+			if tok.contains('"') || tok.contains("'") {
+				return error('x64: unsupported backend feature: quoted #flag source path `${tok}`')
+			}
+			obj_file := native_external_source_object_file(output_binary, source_files.len)
+			source_files << clean
+			object_files << obj_file
+			rewritten << os.quoted_path(obj_file)
+			continue
+		}
+		rewritten << tok
+	}
+	return NativeExternalLinkInputs{
+		link_flags:   rewritten.join(' ')
+		source_files: source_files
+		object_files: object_files
+	}
+}
+
+fn native_external_source_compile_command(cc string, source_file string, object_file string, compile_flags string, sdk_path string, arch_flag string, target_os string) string {
+	mut parts := [cc, '-c']
+	if is_macos_native_target(target_os) {
+		if sdk_path != '' {
+			parts << '-isysroot'
+			parts << os.quoted_path(sdk_path)
+		}
+		if arch_flag != '' {
+			parts << '-arch'
+			parts << arch_flag
+		}
+	}
+	if compile_flags != '' {
+		parts << compile_flags
+	}
+	parts << os.quoted_path(source_file)
+	parts << '-o'
+	parts << os.quoted_path(object_file)
+	return parts.join(' ')
+}
+
+fn (b &Builder) compile_native_external_sources(inputs NativeExternalLinkInputs, compile_flags string, target_os string, sdk_path string, arch_flag string) ! {
+	if inputs.source_files.len == 0 {
+		return
+	}
+	for i, source_file in inputs.source_files {
+		cmd := native_external_source_compile_command('cc', source_file, inputs.object_files[i],
+			compile_flags, sdk_path, arch_flag, target_os)
+		if b.pref.show_cc {
+			println(cmd)
+		}
+		res := os.execute(cmd)
+		if res.exit_code != 0 {
+			return error('native external source compilation failed:\n${cmd}\n${res.output}')
+		}
+	}
+}
+
+fn cleanup_native_external_objects(inputs NativeExternalLinkInputs) {
+	for obj_file in inputs.object_files {
+		os.rm(obj_file) or {}
+	}
+}
+
 fn macos_native_link_command(output_binary string, obj_file string, sdk_path string, arch_flag string, tiny_object bool, link_flags string) string {
 	normal_link_cmd := 'ld -o ${os.quoted_path(output_binary)} ${os.quoted_path(obj_file)}${native_link_flags_suffix(link_flags)} -lSystem -syslibroot ${os.quoted_path(sdk_path)} -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
 	if tiny_object {
@@ -3334,7 +3447,11 @@ fn (mut b Builder) build_macos_tiny_candidate_mir(arch pref.Arch, target_os stri
 fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	arch := if backend_arch == .auto { b.pref.get_effective_arch() } else { backend_arch }
 	target_os := b.pref.target_os_or_host()
-	native_link_flags := b.native_link_flags_from_sources()
+	native_compile_flags, native_link_flags := b.native_compile_and_link_flags_from_sources()
+	native_has_external_link_inputs := native_link_flags.trim_space() != ''
+	mut native_external_inputs := NativeExternalLinkInputs{
+		link_flags: native_link_flags
+	}
 
 	mut mir_mod := b.build_native_mir_from_files(b.files, arch, target_os,
 		b.uses_minimal_x64_runtime_roots(), b.used_fn_keys, '')
@@ -3420,22 +3537,24 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			if is_linux_x64_native_target(arch, target_os) {
 				mut linux_gen := x64.Gen.new_with_format_and_abi(&mir_mod, obj_format, codegen_abi)
 				linux_gen.gen()
-				if os.exists(output_binary) {
-					os.rm(output_binary) or {}
-				}
-				linux_gen.link_linux_tiny_executable(output_binary) or {
-					msg := err.msg()
-					if linux_x64_tiny_strict_enabled()
-						|| !msg.starts_with(x64.linux_tiny_not_eligible_prefix) {
-						eprint_native_x64_link_error(msg)
-						exit(1)
+				if !native_has_external_link_inputs {
+					if os.exists(output_binary) {
+						os.rm(output_binary) or {}
 					}
-				}
-				if os.exists(output_binary) {
-					if b.pref.verbose {
-						println('[*] Linked ${output_binary} (built-in Linux tiny linker)')
+					linux_gen.link_linux_tiny_executable(output_binary) or {
+						msg := err.msg()
+						if linux_x64_tiny_strict_enabled()
+							|| !msg.starts_with(x64.linux_tiny_not_eligible_prefix) {
+							eprint_native_x64_link_error(msg)
+							exit(1)
+						}
 					}
-					return
+					if os.exists(output_binary) {
+						if b.pref.verbose {
+							println('[*] Linked ${output_binary} (built-in Linux tiny linker)')
+						}
+						return
+					}
 				}
 				linux_gen.write_file(obj_file)
 			} else if b.uses_macos_x64_tiny_object(arch) {
@@ -3508,10 +3627,20 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 				exit(1)
 			}
 			arch_flag := if arch == .arm64 { 'arm64' } else { 'x86_64' }
+			native_external_inputs = native_external_link_inputs(native_link_flags, output_binary) or {
+				eprint_native_x64_link_error(err.msg())
+				exit(1)
+			}
+			b.compile_native_external_sources(native_external_inputs, native_compile_flags,
+				target_os, sdk_path, arch_flag) or {
+				cleanup_native_external_objects(native_external_inputs)
+				eprint_native_x64_link_error(err.msg())
+				exit(1)
+			}
 			normal_link_cmd := macos_native_link_command(output_binary, obj_file, sdk_path,
-				arch_flag, false, native_link_flags)
+				arch_flag, false, native_external_inputs.link_flags)
 			link_cmd := macos_native_link_command(output_binary, obj_file, sdk_path, arch_flag,
-				used_macos_tiny_object, native_link_flags)
+				used_macos_tiny_object, native_external_inputs.link_flags)
 			mut link_result := os.execute(link_cmd)
 			if link_result.exit_code != 0 && used_macos_tiny_object {
 				if b.pref.verbose {
@@ -3545,6 +3674,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			if link_result.exit_code != 0 {
 				eprintln('Link failed:')
 				eprintln(link_result.output)
+				cleanup_native_external_objects(native_external_inputs)
 				exit(1)
 			}
 			if b.pref.verbose && used_macos_tiny_object {
@@ -3552,11 +3682,22 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			}
 		} else {
 			// Linux linking
+			native_external_inputs = native_external_link_inputs(native_link_flags, output_binary) or {
+				eprint_native_x64_link_error(err.msg())
+				exit(1)
+			}
+			b.compile_native_external_sources(native_external_inputs, native_compile_flags,
+				target_os, '', '') or {
+				cleanup_native_external_objects(native_external_inputs)
+				eprint_native_x64_link_error(err.msg())
+				exit(1)
+			}
 			link_result := os.execute(linux_native_link_command(output_binary, obj_file,
-				native_link_flags))
+				native_external_inputs.link_flags))
 			if link_result.exit_code != 0 {
 				eprintln('Link failed:')
 				eprintln(link_result.output)
+				cleanup_native_external_objects(native_external_inputs)
 				exit(1)
 			}
 		}
@@ -3567,6 +3708,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 
 		// Clean up object file
 		if !b.pref.keep_c {
+			cleanup_native_external_objects(native_external_inputs)
 			os.rm(obj_file) or {}
 		}
 	}

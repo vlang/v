@@ -5699,6 +5699,55 @@ fn assert_x64_macos_tiny_object_rejected_for_arguments(result X64HostRunResult, 
 	assert !result.build_output.contains('built-in macOS tiny object'), context
 }
 
+fn x64_external_c_flag_project_sources() map[string]string {
+	return {
+		'main.v':           'module main
+#flag -I @VMODROOT/include
+#flag -DHELPER_MAGIC=37
+#flag @VMODROOT/native/helper.c
+
+fn C.native_helper_value() int
+
+fn main() {
+	println(C.native_helper_value())
+}
+'
+		'include/helper.h': '#define HELPER_OFFSET 5
+'
+		'native/helper.c':  '#include "helper.h"
+#ifndef HELPER_MAGIC
+#error HELPER_MAGIC missing
+#endif
+
+int native_helper_value(void) {
+	return HELPER_MAGIC + HELPER_OFFSET;
+}
+'
+	}
+}
+
+fn test_x64_linux_external_c_flag_source_uses_hosted_link_with_compile_flags() {
+	$if linux {
+		result := run_x64_host_project_redirected_auto('linux_external_c_flag_source',
+			x64_external_c_flag_project_sources())
+		context := x64_host_result_context(result)
+		assert result.stdout == '42\n'.bytes(), context
+		assert result.stderr == []u8{}, context
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_macos_external_c_flag_source_uses_hosted_link_with_compile_flags() {
+	$if macos {
+		result := run_x64_host_project_redirected_macos_auto_tiny_verbose('macos_external_c_flag_source',
+			x64_external_c_flag_project_sources())
+		context := x64_host_result_context(result)
+		assert result.stdout == '42\n'.bytes(), context
+		assert result.stderr == []u8{}, context
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
 fn test_x64_macos_i64_str_boundary_values_auto_tiny_uses_tiny_object() {
 	$if macos {
 		result := run_x64_host_project_redirected_macos_auto_tiny_verbose('macos_i64_str_boundary_values_auto_tiny', {

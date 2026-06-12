@@ -296,6 +296,73 @@ fn test_native_link_commands_append_directive_link_flags() {
 	assert macos == 'ld -o ${os.quoted_path('/tmp/out')} ${os.quoted_path('main.o')} -lm -lSystem -syslibroot ${os.quoted_path('/SDK Path')} -e _main -arch x86_64 -platform_version macos 11.0.0 11.0.0'
 }
 
+fn test_native_external_link_inputs_replace_sources_with_objects_in_order() {
+	inputs := native_external_link_inputs('-L/tmp/lib /tmp/foo.c -lfoo /tmp/bar.m /tmp/baz.o',
+		'/tmp/out')!
+
+	assert inputs.source_files == ['/tmp/foo.c', '/tmp/bar.m']
+	assert inputs.object_files.len == 2
+	assert inputs.link_flags == '-L/tmp/lib ${os.quoted_path(inputs.object_files[0])} -lfoo ${os.quoted_path(inputs.object_files[1])} /tmp/baz.o'
+	assert !inputs.link_flags.contains('/tmp/foo.c')
+	assert !inputs.link_flags.contains('/tmp/bar.m')
+}
+
+fn test_native_external_link_inputs_reject_unsupported_c_family_sources() {
+	for source in ['/tmp/foo.cc', '/tmp/foo.cpp', '/tmp/foo.cxx', '/tmp/foo.mm'] {
+		native_external_link_inputs(source, '/tmp/out') or {
+			assert err.msg().starts_with('x64: unsupported backend feature: '), err.msg()
+			continue
+		}
+		assert false, 'expected ${source} source to be rejected'
+	}
+}
+
+fn test_native_external_link_inputs_reject_quoted_source_tokens() {
+	native_external_link_inputs('"foo.c"', '/tmp/out') or {
+		assert err.msg().starts_with('x64: unsupported backend feature: quoted #flag source path'), err.msg()
+
+		return
+	}
+	assert false, 'expected quoted source token to be rejected'
+}
+
+fn test_macos_native_link_command_uses_rewritten_external_objects() {
+	inputs :=
+		native_external_link_inputs('/tmp/foo.c -framework Foundation /tmp/bar.m', '/tmp/out')!
+	cmd := macos_native_link_command('/tmp/out', 'main.o', '/SDK Path', 'x86_64', false,
+		inputs.link_flags)
+
+	assert cmd.contains(os.quoted_path(inputs.object_files[0])), cmd
+	assert cmd.contains(os.quoted_path(inputs.object_files[1])), cmd
+	assert cmd.contains('-framework Foundation'), cmd
+	assert !cmd.contains('/tmp/foo.c'), cmd
+	assert !cmd.contains('/tmp/bar.m'), cmd
+}
+
+fn test_native_external_source_compile_command_adds_macos_sdk_and_arch() {
+	cmd := native_external_source_compile_command('cc', '/tmp/foo.c', '/tmp/foo.o',
+		'-I /tmp/include -DHELPER', '/SDK Path', 'x86_64', 'macos')
+
+	assert cmd.starts_with('cc -c '), cmd
+	assert cmd.contains('-isysroot ${os.quoted_path('/SDK Path')}'), cmd
+	assert cmd.contains('-arch x86_64'), cmd
+	assert cmd.contains('-I /tmp/include -DHELPER'), cmd
+	assert cmd.contains(os.quoted_path('/tmp/foo.c')), cmd
+	assert cmd.contains('-o ${os.quoted_path('/tmp/foo.o')}'), cmd
+}
+
+fn test_native_external_source_compile_command_keeps_linux_compile_flags() {
+	cmd := native_external_source_compile_command('cc', '/tmp/foo.c', '/tmp/foo.o',
+		'-I /tmp/include -DHELPER', '', '', 'linux')
+
+	assert cmd.starts_with('cc -c '), cmd
+	assert !cmd.contains('-isysroot'), cmd
+	assert !cmd.contains('-arch'), cmd
+	assert cmd.contains('-I /tmp/include -DHELPER'), cmd
+	assert cmd.contains(os.quoted_path('/tmp/foo.c')), cmd
+	assert cmd.contains('-o ${os.quoted_path('/tmp/foo.o')}'), cmd
+}
+
 fn test_native_link_flags_from_sources_are_not_global() {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_builder_native_link_flags_${os.getpid()}')
 	os.mkdir_all(tmp_dir) or { panic(err) }
@@ -328,6 +395,40 @@ fn test_native_link_flags_from_sources_are_not_global() {
 		},
 	]
 	assert math_flag_builder.native_link_flags_from_sources() == '-lm'
+}
+
+fn test_native_compile_and_link_flags_from_sources_keep_compile_flags_for_source_inputs() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_builder_native_source_flags_${os.getpid()}')
+	include_dir := os.join_path(tmp_dir, 'include')
+	os.mkdir_all(include_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	main_path := os.join_path(tmp_dir, 'main.v')
+	c_path := os.join_path(tmp_dir, 'helper.c')
+	os.write_file(c_path, 'int helper(void) { return 7; }\n') or { panic(err) }
+	os.write_file(main_path, 'module main
+#flag -I include -DHELPER helper.c -lm
+') or {
+		panic(err)
+	}
+
+	mut prefs := pref.new_preferences()
+	prefs.backend = .x64
+	prefs.arch = .x64
+	prefs.target_os = 'linux'
+	prefs.skip_builtin = true
+
+	mut b := new_builder(&prefs)
+	b.files = [
+		ast.File{
+			name: main_path
+		},
+	]
+	compile_flags, link_flags := b.native_compile_and_link_flags_from_sources()
+
+	assert compile_flags == '-I ${include_dir} -DHELPER'
+	assert link_flags == '${c_path} -lm'
 }
 
 fn test_native_x64_requires_ssa_optimization() {
