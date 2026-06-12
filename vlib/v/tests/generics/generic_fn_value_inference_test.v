@@ -47,3 +47,22 @@ fn (r GenericFnArgRunner) run_inferred[T](x T, h fn (T) int) int {
 fn test_generic_fn_value_is_monomorphized_from_inferred_generic_method_call_arg() {
 	assert GenericFnArgRunner{}.run_inferred(GenericFnArgFoo{}, generic_fn_arg_named_handler) == 42
 }
+
+fn (r GenericFnArgRunner) run_variadic[T](handlers ...fn (T) int) int {
+	_ := r
+	return handlers[0](T{}) + 1
+}
+
+fn test_generic_fn_value_is_monomorphized_from_variadic_generic_method_call_arg() {
+	assert GenericFnArgRunner{}.run_variadic[GenericFnArgFoo](generic_fn_arg_named_handler) == 42
+}
+
+fn (r GenericFnArgRunner) run_variadic_inferred[T](x T, handlers ...fn (T) int) int {
+	_ := r
+	return handlers[0](x) + 1
+}
+
+fn test_generic_fn_value_is_monomorphized_from_inferred_variadic_generic_method_call_arg() {
+	assert GenericFnArgRunner{}.run_variadic_inferred(GenericFnArgFoo{},
+		generic_fn_arg_named_handler) == 42
+}
