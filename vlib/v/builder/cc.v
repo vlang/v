@@ -1982,7 +1982,9 @@ fn linux_cross_target_for_arch(arch pref.Arch) !LinuxCrossTarget {
 }
 
 fn find_system_assembler() ?string {
-	for candidate in ['clang', 'gcc', 'cc', 'as'] {
+	// Raw `as` is excluded: it doesn't preprocess #if directives in .S files
+	// and has no -c flag. We need a compiler (clang/gcc/cc) that can do both.
+	for candidate in ['clang', 'gcc', 'cc'] {
 		if path := os.find_abs_path_of_executable(candidate) {
 			return path
 		}
@@ -2022,12 +2024,18 @@ pub fn (mut b Builder) compile_embedded_asm_files(asm_files map[string]string) {
 		asm_args << '-c'
 
 		// Cross-compilation target flags
-		if b.pref.os == .linux && pref.get_host_os() != .linux {
-			cross_target := linux_cross_target_for_arch(b.pref.arch) or {
-				verror('failed to determine linux cross target for embedded assembly: ${err.msg()}')
-				return
+		// When the target OS/arch differs from the host, the .S file must be
+		// assembled for the target, not the host. Without -target, the assembler
+		// produces a host-arch .o that fails to link into the target binary.
+		if b.pref.os == .linux {
+			host_arch := pref.get_host_arch()
+			if pref.get_host_os() != .linux || host_arch != b.pref.arch {
+				cross_target := linux_cross_target_for_arch(b.pref.arch) or {
+					verror('failed to determine linux cross target for embedded assembly: ${err.msg()}')
+					return
+				}
+				asm_args << ['-target', cross_target.triple]
 			}
-			asm_args << ['-target', cross_target.triple]
 		} else if b.pref.os == .freebsd && pref.get_host_os() != .freebsd {
 			asm_args << ['-target', 'x86_64-unknown-freebsd14.0']
 		}

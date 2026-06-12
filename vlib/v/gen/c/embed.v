@@ -44,15 +44,15 @@ fn (g &Gen) should_use_incbin_embed() bool {
 		return true
 	}
 	if g.pref.ccompiler_type == .tinyc {
-		// TCC can't assemble .S files itself, so we need a system assembler.
+		// TCC can't assemble .S files itself, so we need a system compiler
+		// that can handle preprocessor directives in .S files and accepts -c.
+		// Raw `as` is excluded: it doesn't preprocess #if directives and has no -c flag.
 		// If none is found, fall back to C hex arrays (slower compile, but correct).
 		if _ := os.find_abs_path_of_executable('clang') {
 			return true
 		} else if _ := os.find_abs_path_of_executable('gcc') {
 			return true
 		} else if _ := os.find_abs_path_of_executable('cc') {
-			return true
-		} else if _ := os.find_abs_path_of_executable('as') {
 			return true
 		}
 		return false
