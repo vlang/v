@@ -1959,9 +1959,18 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	g.anon_fn = node
 	old_inside_return := g.inside_return
 	old_inside_return_expr := g.inside_return_expr
+	old_inside_lambda := g.inside_lambda
+	old_inside_lambda_autofree_tmp := g.inside_lambda_autofree_tmp
+	old_track_lambda_autofree_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
 	g.inside_return = false
 	g.inside_return_expr = false
+	g.inside_lambda = false
+	g.inside_lambda_autofree_tmp = false
+	g.track_lambda_autofree_tmp_arg_vars = false
 	g.fn_decl(decl)
+	g.track_lambda_autofree_tmp_arg_vars = old_track_lambda_autofree_tmp_arg_vars
+	g.inside_lambda_autofree_tmp = old_inside_lambda_autofree_tmp
+	g.inside_lambda = old_inside_lambda
 	g.inside_return_expr = old_inside_return_expr
 	g.inside_return = old_inside_return
 	g.anon_fn = was_anon_fn

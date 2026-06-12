@@ -36,6 +36,13 @@ fn main() {
 		return it
 	})
 	println(anon_flags)
+	anon_short_flags := ['a'].map(fn (it string) string {
+		if true && accepts(it + '') {
+			return mark(it)
+		}
+		return it
+	})
+	println(anon_short_flags)
 	nested_suffix := '!'
 	nested_flags := [['a'], ['b']].map(it.map(fn [nested_suffix] (s string) string {
 		return mark(s + nested_suffix)
