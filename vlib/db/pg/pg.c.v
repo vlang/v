@@ -445,15 +445,15 @@ fn res_to_result(res voidptr) Result {
 
 	mut cols := map[string]int{}
 	mut names := []string{}
+	for j in 0 .. nr_cols {
+		field_name := unsafe { cstring_to_vstring(C.PQfname(res, j)) }
+		cols[field_name] = j
+		names << field_name
+	}
 	mut rows := []Row{}
 	for i in 0 .. nr_rows {
 		mut row := Row{}
 		for j in 0 .. nr_cols {
-			if i == 0 {
-				field_name := unsafe { cstring_to_vstring(C.PQfname(res, j)) }
-				cols[field_name] = j
-				names << field_name
-			}
 			if C.PQgetisnull(res, i, j) != 0 {
 				row.vals << none
 			} else {
