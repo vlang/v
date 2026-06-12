@@ -6129,7 +6129,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		g.is_autofree = old_is_autofree
 		g.is_autofree_tmp = false
 		g.strs_to_free0 << tmp_arg_init
-		if g.inside_lambda_autofree_tmp {
+		if g.track_lambda_autofree_tmp_arg_vars {
 			g.lambda_autofree_tmp_arg_vars << t
 		}
 		// This tmp arg var will be freed with the rest of the vars at the end of the scope,

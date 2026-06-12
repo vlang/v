@@ -188,6 +188,7 @@ mut:
 	inside_interface_deref               bool
 	inside_assign_fn_var                 bool
 	inside_lambda_autofree_tmp           bool
+	track_lambda_autofree_tmp_arg_vars   bool
 	outer_tmp_var                        string // tmp var from outer context (e.g. from stmts_with_tmp_var) to be used by nested if/match expressions
 	last_tmp_call_var                    []string
 	last_if_option_type                  ast.Type // stores the expected if type on nested if expr
@@ -3542,7 +3543,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 	}
 	// Branch-local lambda temp args are freed by the scope cleanup above.
 	// Keep the outer map cleanup list limited to temps declared in the map body scope.
-	if g.inside_lambda_autofree_tmp && g.inside_ternary == 0
+	if g.track_lambda_autofree_tmp_arg_vars && g.inside_ternary == 0
 		&& g.lambda_autofree_tmp_arg_vars.len > lambda_autofree_tmp_arg_vars_start {
 		g.lambda_autofree_tmp_arg_vars =
 			g.lambda_autofree_tmp_arg_vars[..lambda_autofree_tmp_arg_vars_start].clone()

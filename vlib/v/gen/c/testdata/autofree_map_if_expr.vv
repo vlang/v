@@ -19,6 +19,14 @@ fn main() {
 		it
 	})
 	println(branch_flags)
+	anon_flags := ['ax', 'b'].map(fn (it string) string {
+		suffix := 'x'
+		if it.ends_with(suffix + '') {
+			return mark(it)
+		}
+		return it
+	})
+	println(anon_flags)
 	// This regression only needs the generated C to compile.
 	exit(0)
 }
