@@ -7,7 +7,9 @@ import os
 import v2.pref
 
 fn list_dir_entries(path string) []string {
-	return os.ls(path) or { []string{} }
+	mut entries := os.ls(path) or { []string{} }
+	entries.sort()
+	return entries
 }
 
 pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string) []string {

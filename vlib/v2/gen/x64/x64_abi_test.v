@@ -64,6 +64,27 @@ fn test_x64_abi_float_argument_registers() {
 	assert X64Abi.sysv.float_arg_reg_at(8) == x64_no_arg_reg
 }
 
+fn test_x64_union_type_layout_uses_overlapping_fields() {
+	mut ts := ssa.TypeStore.new()
+	f64_t := ts.get_float(64)
+	u64_t := ts.get_uint(64)
+	union_t := ts.register(ssa.Type{
+		kind:        .struct_t
+		fields:      [f64_t, u64_t]
+		field_names: ['f', 'u']
+		is_union:    true
+	})
+	mut mod := mir.Module{
+		type_store: unsafe { *ts }
+	}
+	gen := Gen.new(&mod)
+
+	assert gen.struct_field_offset_bytes(union_t, 0) == 0
+	assert gen.struct_field_offset_bytes(union_t, 1) == 0
+	assert gen.type_align(union_t) == 8
+	assert gen.type_size(union_t) == 8
+}
+
 fn test_x64_abi_basic_argument_position_matrix() {
 	sysv_int := [int(rdi), int(rsi), int(rdx), int(rcx), int(r8), int(r9), x64_no_arg_reg,
 		x64_no_arg_reg, x64_no_arg_reg]

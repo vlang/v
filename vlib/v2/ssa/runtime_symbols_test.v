@@ -276,6 +276,20 @@ fn main() {
 '
 }
 
+fn windows_invalid_handle_value_macro_code() string {
+	return '
+module main
+
+fn invalid_handle() voidptr {
+	return C.INVALID_HANDLE_VALUE
+}
+
+fn main() {
+	_ := invalid_handle()
+}
+'
+}
+
 fn assert_windows_std_handle_macros_are_ssa_constants_not_external_globals(m &Module) {
 	global_names := global_value_names(m)
 	expected_consts := {
@@ -311,6 +325,35 @@ fn test_windows_std_handle_macros_are_ssa_constants_not_external_globals() {
 fn test_windows_std_handle_macros_are_flat_ssa_constants_not_external_globals() {
 	m := build_ssa_for_runtime_symbol_target_flat_test(windows_std_handle_macros_code(), 'windows')
 	assert_windows_std_handle_macros_are_ssa_constants_not_external_globals(m)
+}
+
+fn assert_windows_invalid_handle_value_macro_is_pointer_sized_constant_not_external_global(m &Module) {
+	global_names := global_value_names(m)
+	assert 'INVALID_HANDLE_VALUE' !in global_names
+
+	mut has_invalid_handle_const := false
+	for val in m.values {
+		if val.kind != .constant || val.name != '-1' {
+			continue
+		}
+		typ := m.type_store.types[val.typ]
+		if typ.kind == .ptr_t {
+			has_invalid_handle_const = true
+		}
+	}
+	assert has_invalid_handle_const
+}
+
+fn test_windows_invalid_handle_value_macro_is_pointer_sized_constant_not_external_global() {
+	m := build_ssa_for_runtime_symbol_target_test(windows_invalid_handle_value_macro_code(),
+		'windows')
+	assert_windows_invalid_handle_value_macro_is_pointer_sized_constant_not_external_global(m)
+}
+
+fn test_windows_invalid_handle_value_macro_is_flat_pointer_sized_constant_not_external_global() {
+	m := build_ssa_for_runtime_symbol_target_flat_test(windows_invalid_handle_value_macro_code(),
+		'windows')
+	assert_windows_invalid_handle_value_macro_is_pointer_sized_constant_not_external_global(m)
 }
 
 fn test_c_stdio_globals_are_loaded_on_non_macos_targets() {

@@ -6757,9 +6757,18 @@ fn f(column_name string) {
 	for file in files {
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl && stmt.name == 'f' {
-				assert stmt.stmts.len == 2
-				assert stmt.stmts[1] is ast.ExprStmt
-				expr_stmt := stmt.stmts[1] as ast.ExprStmt
+				assert stmt.stmts.len == 3
+				assert stmt.stmts[1] is ast.AssignStmt
+				tmp_assign := stmt.stmts[1] as ast.AssignStmt
+				assert tmp_assign.op == .decl_assign
+				assert tmp_assign.lhs.len == 1
+				assert tmp_assign.lhs[0] is ast.Ident
+				tmp_name := (tmp_assign.lhs[0] as ast.Ident).name
+				assert tmp_name.starts_with('_ap_t')
+				assert tmp_assign.rhs.len == 1
+				assert tmp_assign.rhs[0] is ast.ArrayInitExpr
+				assert stmt.stmts[2] is ast.ExprStmt
+				expr_stmt := stmt.stmts[2] as ast.ExprStmt
 				assert expr_stmt.expr is ast.CallExpr
 				call := expr_stmt.expr as ast.CallExpr
 				assert call.lhs is ast.Ident
@@ -6774,24 +6783,8 @@ fn f(column_name string) {
 				assert outer_array_type.elem_type is ast.Ident
 				assert (outer_array_type.elem_type as ast.Ident).name == 'Array_string'
 				assert outer_arr.exprs.len == 1
-				assert outer_arr.exprs[0] is ast.CallExpr
-				inner_call := outer_arr.exprs[0] as ast.CallExpr
-				assert inner_call.lhs is ast.Ident
-				assert (inner_call.lhs as ast.Ident).name == 'builtin__new_array_from_c_array_noscan'
-				assert inner_call.args.len == 4
-				assert inner_call.args[2] is ast.KeywordOperator
-				sizeof_arg := inner_call.args[2] as ast.KeywordOperator
-				assert sizeof_arg.exprs.len == 1
-				assert sizeof_arg.exprs[0] is ast.Ident
-				assert (sizeof_arg.exprs[0] as ast.Ident).name == 'string'
-				assert inner_call.args[3] is ast.ArrayInitExpr
-				inner_arr := inner_call.args[3] as ast.ArrayInitExpr
-				assert inner_arr.typ is ast.Type
-				assert inner_arr.typ as ast.Type is ast.ArrayType
-				inner_type := inner_arr.typ as ast.Type
-				inner_array_type := inner_type as ast.ArrayType
-				assert inner_array_type.elem_type is ast.Ident
-				assert (inner_array_type.elem_type as ast.Ident).name == 'string'
+				assert outer_arr.exprs[0] is ast.Ident
+				assert (outer_arr.exprs[0] as ast.Ident).name == tmp_name
 				found = true
 			}
 		}
@@ -6839,6 +6832,96 @@ fn f() {
 				assert outer_arr.exprs.len == 1
 				assert outer_arr.exprs[0] is ast.Ident
 				assert (outer_arr.exprs[0] as ast.Ident).name == tmp_name
+				found = true
+			}
+		}
+	}
+	assert found
+}
+
+fn assert_array_append_arg_is_addressed_ident(arg ast.Expr, name string) {
+	assert arg is ast.CastExpr
+	arr_ptr := arg as ast.CastExpr
+	assert arr_ptr.expr is ast.PrefixExpr
+	prefix := arr_ptr.expr as ast.PrefixExpr
+	assert prefix.op == .amp
+	assert prefix.expr is ast.Ident
+	assert (prefix.expr as ast.Ident).name == name
+}
+
+fn test_transform_array_append_mut_array_param_uses_local_storage_address() {
+	files := transform_code_for_test('
+fn add_seen(mut seen []string, name string) {
+	seen << name
+}
+
+fn push_path(mut patterns [][]string, path []string) {
+	patterns << path
+}
+
+fn push_many_paths(mut patterns [][]string, paths [][]string) {
+	patterns << paths
+}
+')
+	mut found_seen := false
+	mut found_path := false
+	mut found_many := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name in ['add_seen', 'push_path', 'push_many_paths'] {
+				assert stmt.stmts.len == 1
+				assert stmt.stmts[0] is ast.ExprStmt
+				expr_stmt := stmt.stmts[0] as ast.ExprStmt
+				assert expr_stmt.expr is ast.CallExpr
+				call := expr_stmt.expr as ast.CallExpr
+				assert call.lhs is ast.Ident
+				call_name := (call.lhs as ast.Ident).name
+				assert call.args.len >= 2
+				if stmt.name == 'add_seen' {
+					assert call_name == 'builtin__array_push_noscan'
+					assert_array_append_arg_is_addressed_ident(call.args[0], 'seen')
+					found_seen = true
+				} else if stmt.name == 'push_path' {
+					assert call_name == 'builtin__array_push_noscan'
+					assert_array_append_arg_is_addressed_ident(call.args[0], 'patterns')
+					found_path = true
+				} else if stmt.name == 'push_many_paths' {
+					assert call_name == 'array__push_many'
+					assert_array_append_arg_is_addressed_ident(call.args[0], 'patterns')
+					found_many = true
+				}
+			}
+		}
+	}
+	assert found_seen
+	assert found_path
+	assert found_many
+}
+
+fn test_transform_nested_array_literal_single_push_uses_temp_and_param_storage_address() {
+	files := transform_code_for_test('
+fn push_literal_path(mut patterns [][]string, path []string) {
+	patterns << [path]
+}
+')
+	mut found := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'push_literal_path' {
+				assert stmt.stmts.len == 1
+				assert stmt.stmts[0] is ast.ExprStmt
+				expr_stmt := stmt.stmts[0] as ast.ExprStmt
+				assert expr_stmt.expr is ast.CallExpr
+				call := expr_stmt.expr as ast.CallExpr
+				assert call.lhs is ast.Ident
+				assert (call.lhs as ast.Ident).name == 'builtin__array_push_noscan'
+				assert call.args.len == 2
+				assert_array_append_arg_is_addressed_ident(call.args[0], 'patterns')
+				assert call.args[1] is ast.ArrayInitExpr
+				outer_arr := call.args[1] as ast.ArrayInitExpr
+				assert outer_arr.exprs.len == 1
+				assert outer_arr.exprs[0] is ast.Ident
+				assert (outer_arr.exprs[0] as ast.Ident).name == 'path'
 				found = true
 			}
 		}

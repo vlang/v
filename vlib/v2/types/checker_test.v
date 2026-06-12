@@ -642,6 +642,88 @@ fn use_maybe() ?string {
 	assert obj.typ().name() == 'string'
 }
 
+fn test_generic_receiver_init_mapping_resolves_result_return_type() {
+	env := check_code('
+struct Queue[T] {
+	value T
+}
+
+fn (mut queue Queue[T]) pop() !T {
+	return queue.value
+}
+
+fn abort(err string) {
+	_ = err
+}
+
+fn main() {
+	mut queue := Queue[[]string]{value: ["alpha", "omega"]}
+	v := queue.pop() or { abort(err) }
+	last := v.last()
+	_ = last
+}
+')
+	assert has_type(env, 'string'), 'Queue[[]string].pop() or {} should type v as []string'
+}
+
+fn test_generic_receiver_init_mapping_keeps_method_generics_separate() {
+	env := check_code('
+struct Queue[T] {
+	value T
+}
+
+fn (mut queue Queue[T]) pop_or[U](fallback U) !T {
+	_ = fallback
+	return queue.value
+}
+
+fn abort(err string) {
+	_ = err
+}
+
+fn main() {
+	mut queue := Queue[[]string]{value: ["alpha", "omega"]}
+	v := queue.pop_or(123) or { abort(err) }
+	last := v.last()
+	_ = last
+}
+')
+	assert has_type(env, 'string'), 'method generic U should not replace receiver generic T'
+}
+
+fn test_generic_receiver_init_mapping_respects_shadow_scope() {
+	env := check_code('
+struct Box[T] {
+	value T
+}
+
+fn (mut box Box[T]) take() !T {
+	return box.value
+}
+
+fn abort(err string) {
+	_ = err
+}
+
+fn main() {
+	mut box := Box[int]{value: 7}
+	if true {
+		mut box := Box[[]string]{value: ["alpha", "omega"]}
+		v := box.take() or { abort(err) }
+		inner_last := v.last()
+		_ = inner_last
+	}
+	n := box.take() or { abort(err) }
+	_ = n + 1
+}
+')
+	scope := env.get_fn_scope('main', 'main') or { panic('missing main scope') }
+	inner_last := scope.lookup_parent('inner_last', 0) or { panic('missing inner_last local') }
+	n := scope.lookup_parent('n', 0) or { panic('missing n local') }
+	assert inner_last.typ().name() == 'string'
+	assert n.typ().name() == 'int'
+}
+
 fn test_comptime_embed_file_type_and_methods() {
 	code := 'fn main() { x := ' + '$' + 'embed_file("asset.txt"); y := x.to_string(); z := x.len }'
 	env := check_code(code)

@@ -78,6 +78,115 @@ fn main() {
 		"'tree size: \${size(tree)}'")
 }
 
+fn generic_tree_sumtype_direct_wrap_source() string {
+	return '
+module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+	left  Tree[T]
+	right Tree[T]
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn tag(tree Tree[f64]) int {
+	return match tree {
+		Empty { 0 }
+		Node[f64] { 1 }
+	}
+}
+
+fn main() {
+	empty := Tree[f64](Empty{})
+	tree := Tree[f64](Node[f64]{1.0, empty, empty})
+	_ = tag(tree)
+}
+'
+}
+
+fn generic_tree_sumtype_receiver_size_source() string {
+	return '
+module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+	left  Tree[T]
+	right Tree[T]
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn (tree Tree[T]) size[T]() int {
+	return match tree {
+		Empty { 0 }
+		Node[T] { 1 }
+	}
+}
+
+fn main() {
+	empty := Tree[f64](Empty{})
+	tree := Tree[f64](Node[f64]{1.0, empty, empty})
+	_ = tree.size()
+}
+'
+}
+
+fn generic_tree_sumtype_insert_size_source() string {
+	return '
+module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+	left  Tree[T]
+	right Tree[T]
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn (tree Tree[T]) size[T]() int {
+	return match tree {
+		Empty { 0 }
+		Node[T] { 1 + tree.left.size() + tree.right.size() }
+	}
+}
+
+fn (tree Tree[T]) insert[T](x T) Tree[T] {
+	return match tree {
+		Empty { Node[T]{x, tree, tree} }
+		Node[T] {
+			if x == tree.value {
+				tree
+			} else if x < tree.value {
+				Node[T]{
+					...tree
+					left: tree.left.insert(x)
+				}
+			} else {
+				Node[T]{
+					...tree
+					right: tree.right.insert(x)
+				}
+			}
+		}
+	}
+}
+
+fn main() {
+	mut tree := Tree[f64](Empty{})
+	tree = tree.insert(0.2)
+	tree = tree.insert(0.5)
+	_ = tree.size()
+}
+'
+}
+
 fn string_param_interpolation_source() string {
 	source := r'module main
 
@@ -541,6 +650,127 @@ fn tree_ssa_assert_variant_struct_init_wraps_sumtype_fields(m &Module) {
 	assert saw_root_node_init
 }
 
+fn tree_ssa_value_mentions_type(m &Module, val_id ValueID, type_name string, depth int) bool {
+	if depth <= 0 || val_id <= 0 || val_id >= m.values.len {
+		return false
+	}
+	val := m.values[val_id]
+	if ssa_type_name_matches(tree_ssa_type_name(m, val.typ), type_name)
+		|| tree_ssa_value_points_to_type(m, val_id, type_name) {
+		return true
+	}
+	if val.kind != .instruction {
+		return false
+	}
+	instr := m.instrs[val.index]
+	for operand in instr.operands {
+		if tree_ssa_value_mentions_type(m, operand, type_name, depth - 1) {
+			return true
+		}
+	}
+	return false
+}
+
+fn tree_ssa_assert_generic_sumtype_direct_wrap(m &Module) {
+	tree_type := tree_ssa_type_id_by_name(m, 'Tree_T_f64') or {
+		panic('missing Tree_T_f64 SSA type')
+	}
+	node_type := tree_ssa_type_id_by_name(m, 'Node_T_f64') or {
+		panic('missing Node_T_f64 SSA type')
+	}
+	tree_info := m.type_store.types[tree_type]
+	assert tree_info.kind == .struct_t
+	assert tree_info.field_names == ['_tag', '_data']
+	node_info := m.type_store.types[node_type]
+	left_idx := node_info.field_names.index('left')
+	right_idx := node_info.field_names.index('right')
+	assert left_idx >= 0
+	assert right_idx >= 0
+	left_type := node_info.fields[left_idx]
+	right_type := node_info.fields[right_idx]
+	assert ssa_type_name_matches(tree_ssa_type_name(m, left_type), 'Tree_T_f64')
+	assert ssa_type_name_matches(tree_ssa_type_name(m, right_type), 'Tree_T_f64')
+	main_func := tree_ssa_func(m, 'main') or { panic('missing main') }
+	mut saw_empty_tag := false
+	mut saw_node_tag := false
+	mut saw_node_payload := false
+	for blk_id in main_func.blocks {
+		for val_id in m.blocks[blk_id].instrs {
+			value := m.values[val_id]
+			if value.kind != .instruction || value.typ != tree_type {
+				continue
+			}
+			instr := m.instrs[value.index]
+			if instr.op != .struct_init || instr.operands.len < 2 {
+				continue
+			}
+			tag_name := tree_ssa_const_name(m, instr.operands[0])
+			if tag_name == '0' {
+				saw_empty_tag = true
+			}
+			if tag_name == '1' {
+				saw_node_tag = true
+				data_id := instr.operands[1]
+				saw_node_payload = data_id > 0 && data_id < m.values.len
+					&& tree_ssa_const_name(m, data_id) != '0'
+					&& tree_ssa_value_mentions_type(m, data_id, 'Node_T_f64', 8)
+			}
+		}
+	}
+	assert saw_empty_tag, 'main missing Tree_T_f64 Empty wrapper with _tag 0'
+	assert saw_node_tag, 'main missing Tree_T_f64 Node_T_f64 wrapper with _tag 1'
+	assert saw_node_payload, 'main missing Tree_T_f64 Node_T_f64 payload'
+	tag_func := tree_ssa_func(m, 'tag') or { panic('missing tag') }
+	tree_ssa_assert_sumtype_match_uses_tag(m, tag_func, 'Tree_T_f64')
+}
+
+fn tree_ssa_assert_generic_receiver_size_match(m &Module) {
+	size_func := tree_ssa_func(m, 'Tree_T_f64__size_T_f64') or {
+		panic('missing Tree_T_f64__size_T_f64')
+	}
+	tree_ssa_assert_sumtype_match_uses_tag(m, size_func, 'Tree_T_f64')
+	tag_consts := tree_ssa_sumtype_tag_compare_const_names(m, size_func, 'Tree_T_f64')
+	assert '0' in tag_consts
+	assert '1' in tag_consts
+}
+
+fn tree_ssa_assert_generic_insert_wraps_node_return(m &Module) {
+	tree_type := tree_ssa_type_id_by_name(m, 'Tree_T_f64') or {
+		panic('missing Tree_T_f64 SSA type')
+	}
+	insert_func := tree_ssa_func(m, 'Tree_T_f64__insert_T_f64') or {
+		panic('missing Tree_T_f64__insert_T_f64')
+	}
+	mut node_wrap_count := 0
+	mut saw_node_tag := false
+	mut saw_node_payload := false
+	for blk_id in insert_func.blocks {
+		for val_id in m.blocks[blk_id].instrs {
+			value := m.values[val_id]
+			if value.kind != .instruction || value.typ != tree_type {
+				continue
+			}
+			instr := m.instrs[value.index]
+			if instr.op != .struct_init || instr.operands.len < 2 {
+				continue
+			}
+			if tree_ssa_const_name(m, instr.operands[0]) != '1' {
+				continue
+			}
+			node_wrap_count++
+			saw_node_tag = true
+			data_id := instr.operands[1]
+			if data_id > 0 && data_id < m.values.len
+				&& tree_ssa_value_mentions_type(m, data_id, 'Node_T_f64', 8) {
+				saw_node_payload = true
+			}
+		}
+	}
+	assert saw_node_tag, 'insert missing Tree_T_f64 Node_T_f64 return wrapper with _tag 1'
+	assert saw_node_payload, 'insert missing Tree_T_f64 Node_T_f64 return payload'
+	assert node_wrap_count >= 3, 'insert should wrap Empty plus both recursive Node branches with tag 1; got ${node_wrap_count}'
+}
+
 fn test_tree_sumtype_variant_struct_init_wraps_sumtype_fields() {
 	m := tree_ssa_module_for_source('variant_field_init', tree_sumtype_source())
 	tree_ssa_assert_variant_struct_init_wraps_sumtype_fields(m)
@@ -549,6 +779,42 @@ fn test_tree_sumtype_variant_struct_init_wraps_sumtype_fields() {
 fn test_tree_sumtype_flat_variant_struct_init_wraps_sumtype_fields() {
 	m := tree_ssa_module_for_source_flat('flat_variant_field_init', tree_sumtype_source())
 	tree_ssa_assert_variant_struct_init_wraps_sumtype_fields(m)
+}
+
+fn test_generic_tree_sumtype_direct_wrap_uses_node_tag_on_legacy_ast() {
+	m := tree_ssa_module_for_source('generic_direct_wrap',
+		generic_tree_sumtype_direct_wrap_source())
+	tree_ssa_assert_generic_sumtype_direct_wrap(m)
+}
+
+fn test_generic_tree_sumtype_flat_direct_wrap_uses_node_tag() {
+	m := tree_ssa_module_for_source_flat('generic_direct_wrap',
+		generic_tree_sumtype_direct_wrap_source())
+	tree_ssa_assert_generic_sumtype_direct_wrap(m)
+}
+
+fn test_generic_tree_sumtype_receiver_size_uses_node_tag_on_legacy_ast() {
+	m := tree_ssa_module_for_source('generic_receiver_size',
+		generic_tree_sumtype_receiver_size_source())
+	tree_ssa_assert_generic_receiver_size_match(m)
+}
+
+fn test_generic_tree_sumtype_flat_receiver_size_uses_node_tag() {
+	m := tree_ssa_module_for_source_flat('generic_receiver_size',
+		generic_tree_sumtype_receiver_size_source())
+	tree_ssa_assert_generic_receiver_size_match(m)
+}
+
+fn test_generic_tree_sumtype_insert_return_wraps_node_on_legacy_ast() {
+	m := tree_ssa_module_for_source('generic_insert_size',
+		generic_tree_sumtype_insert_size_source())
+	tree_ssa_assert_generic_insert_wraps_node_return(m)
+}
+
+fn test_generic_tree_sumtype_flat_insert_return_wraps_node() {
+	m := tree_ssa_module_for_source_flat('generic_insert_size',
+		generic_tree_sumtype_insert_size_source())
+	tree_ssa_assert_generic_insert_wraps_node_return(m)
 }
 
 fn test_tree_sumtype_interpolation_uses_autostr_not_raw_struct_string() {
