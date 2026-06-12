@@ -202,11 +202,25 @@ fn tokenize(json_data string) []string {
 	mut tokens := []string{}
 	mut current_token := ''
 	mut inside_string := false
+	mut escaped_string_char := false
 	json_without_newlines := json_data.replace('\n', ' ')
 	normalized_json := json_without_newlines.replace('\t', ' ')
 
 	for letter in normalized_json {
-		if letter == ` ` && !inside_string {
+		if inside_string {
+			current_token += [letter].bytestr()
+			if escaped_string_char {
+				escaped_string_char = false
+				continue
+			}
+			if letter == `\\` {
+				escaped_string_char = true
+				continue
+			}
+			if letter == `\"` {
+				inside_string = false
+			}
+		} else if letter == ` ` {
 			if current_token != '' {
 				tokens << current_token
 				current_token = ''

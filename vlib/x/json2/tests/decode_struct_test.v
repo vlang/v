@@ -54,6 +54,11 @@ mut:
 	id int
 }
 
+struct StrictStringValue {
+mut:
+	a string
+}
+
 fn test_types() {
 	assert json.decode[StructType[string]]('{"val": ""}')!.val == ''
 
@@ -113,6 +118,11 @@ fn test_strict_mode_rejects_duplicate_keys_inside_array_object() {
 		assert err.msg().contains('duplicate object keys are not allowed')
 		assert err.msg().contains('id')
 	}
+}
+
+fn test_strict_mode_allows_structural_characters_inside_string_values() {
+	decoded := json.decode[StrictStringValue](r'{"a":"a:a,{[]}"}', strict: true)!
+	assert decoded.a == 'a:a,{[]}'
 }
 
 // Test structure for basic number types
