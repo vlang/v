@@ -397,6 +397,83 @@ fn test_server_tls_close_interrupts_idle_h2() {
 	assert srv.status() == .closed
 }
 
+fn test_server_tls_close_interrupts_incomplete_h2_request() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         time.second
+		read_timeout:           2 * time.second
+		enable_http2:           true
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	mut client := mbedtls.new_ssl_conn(mbedtls.SSLConnectConfig{
+		alpn_protocols: ['h2']
+	}) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl client init failed: ${err}'
+		return
+	}
+	defer {
+		client.shutdown() or {}
+	}
+	client.dial('127.0.0.1', port) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl dial failed: ${err}'
+		return
+	}
+	assert client.negotiated_alpn() == 'h2'
+	mut enc := http.H2HpackEncoder{}
+	block := enc.encode([
+		http.H2HeaderField{':method', 'POST'},
+		http.H2HeaderField{':scheme', 'https'},
+		http.H2HeaderField{':authority', '127.0.0.1:${port}'},
+		http.H2HeaderField{':path', '/h2-incomplete'},
+	])
+	mut out := []u8{}
+	out << http.h2_client_preface.bytes()
+	out << http.H2Frame(http.H2SettingsFrame{}).encode()
+	out << http.H2Frame(http.H2HeadersFrame{
+		stream_id:   1
+		fragment:    block
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	written := client.write(out) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl write failed: ${err}'
+		return
+	}
+	assert written == out.len
+	time.sleep(100 * time.millisecond)
+
+	sw := time.new_stopwatch()
+	srv.close()
+	t.wait()
+	assert sw.elapsed() < time.second
+	assert srv.status() == .closed
+}
+
 fn test_server_tls_h2_negotiation() {
 	$if use_openssl ? {
 		eprintln('skipping: TLS server not implemented for -d use_openssl yet')

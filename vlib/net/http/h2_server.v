@@ -85,8 +85,7 @@ fn (mut c H2ServerConn) serve(mut handler Handler) ! {
 }
 
 fn (mut c H2ServerConn) should_track_idle_read() bool {
-	return c.idle_handle > 0 && c.streams.len == 0 && c.awaiting_cont == 0
-		&& c.idle_conns != unsafe { nil }
+	return c.idle_handle > 0 && c.idle_conns != unsafe { nil }
 }
 
 fn (mut c H2ServerConn) read_client_preface_idle() ! {
