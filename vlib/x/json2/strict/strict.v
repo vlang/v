@@ -29,23 +29,18 @@ pub fn strict_check[T](json_data string) StructCheckResult {
 
 		key_struct := get_keys_from_json(tokens)
 
-		mut duplicates := get_duplicates_keys(key_struct)
+		mut duplicates := get_duplicate_keys_from_json(tokens)
 		mut superfluous := get_superfluous_keys[T](key_struct)
 
 		mut val := T{}
 
 		$for field in T.fields {
 			$if field.typ is $struct {
-				last_key := find_last_key(key_struct, field.name)
-				if last_key == none {
-					// Field is missing in JSON, skip strict check for this field.
-					continue
-				}
-
-				// TODO: get path here from `last_key.key`
-				if last_key.value_type == .map {
-					check(val.$(field.name), tokens[last_key.token_pos + 2..], mut duplicates, mut
-						superfluous)
+				if last_key := find_last_key(key_struct, field.name) {
+					// TODO: get path here from `last_key.key`
+					if last_key.value_type == .map {
+						check(val.$(field.name), tokens[last_key.token_pos + 2..], mut superfluous)
+					}
 				}
 			}
 		}
@@ -58,13 +53,9 @@ pub fn strict_check[T](json_data string) StructCheckResult {
 	}
 }
 
-fn check[T](val T, tokens []string, mut duplicates []string, mut superfluous []string) {
+fn check[T](val T, tokens []string, mut superfluous []string) {
 	$if T is $struct {
 		key_struct := get_keys_from_json(tokens)
-
-		for duplicate in get_duplicates_keys(key_struct) {
-			duplicates << duplicate
-		}
 
 		for unnecessary in get_superfluous_keys[T](key_struct) {
 			superfluous << unnecessary
@@ -72,14 +63,10 @@ fn check[T](val T, tokens []string, mut duplicates []string, mut superfluous []s
 
 		$for field in T.fields {
 			$if field.typ is $struct {
-				last_key := find_last_key(key_struct, field.name)
-				if last_key == none {
-					// Field is missing in JSON, skip strict check for this field.
-					continue
-				}
-				if last_key.value_type == .map {
-					check(val.$(field.name), tokens[last_key.token_pos + 2..], mut duplicates, mut
-						superfluous)
+				if last_key := find_last_key(key_struct, field.name) {
+					if last_key.value_type == .map {
+						check(val.$(field.name), tokens[last_key.token_pos + 2..], mut superfluous)
+					}
 				}
 			}
 		}
@@ -101,9 +88,40 @@ fn get_superfluous_keys[T](key_struct []KeyStruct) []string {
 	return superfluous
 }
 
-fn get_duplicates_keys(key_struct []KeyStruct) []string {
-	json_keys := key_struct.map(it.key).sorted()
-	return arrays.uniq_only_repeated(json_keys)
+fn get_duplicate_keys(keys []string) []string {
+	return arrays.uniq_only_repeated(keys.sorted())
+}
+
+fn get_duplicate_keys_from_json(tokens []string) []string {
+	mut object_key_stack := [][]string{}
+	mut duplicates := []string{}
+	for i, token in tokens {
+		match token {
+			'{' {
+				object_key_stack << []string{}
+			}
+			'}' {
+				if object_key_stack.len == 0 {
+					continue
+				}
+				current_keys := object_key_stack.pop()
+				for duplicate in get_duplicate_keys(current_keys) {
+					if !duplicates.contains(duplicate) {
+						duplicates << duplicate
+					}
+				}
+			}
+			':' {
+				if object_key_stack.len == 0 || i == 0 {
+					continue
+				}
+				last_idx := object_key_stack.len - 1
+				object_key_stack[last_idx] << tokens[i - 1].replace('"', '')
+			}
+			else {}
+		}
+	}
+	return duplicates
 }
 
 fn find_last_key(key_struct []KeyStruct, field_name string) ?KeyStruct {
@@ -130,37 +148,50 @@ fn get_keys_from_[T]() []string {
 pub fn get_keys_from_json(tokens []string) []KeyStruct {
 	mut key_structs := []KeyStruct{}
 
-	mut nested_map_count := 0
-
+	mut object_depth := 0
+	mut array_depth := 0
+	mut found_root_object := false
 	for i, token in tokens {
-		if token == ':' {
-			mut current_key := tokens[i - 1].replace('"', '')
-			if tokens[i + 1] == '{' {
-				if nested_map_count == 0 {
-					key_type := KeyType.map
-					key_structs << KeyStruct{
-						key:        current_key
-						value_type: key_type
-						token_pos:  i - 1
-					}
+		match token {
+			'{' {
+				object_depth++
+				found_root_object = true
+			}
+			'}' {
+				if object_depth > 0 {
+					object_depth--
 				}
-				nested_map_count++
-			} else if tokens[i + 1] == '[' {
-				continue
-			} else if nested_map_count > 0 {
-				if tokens[i + 1] == '}' {
-					nested_map_count--
+				if found_root_object && object_depth == 0 {
+					break
+				}
+			}
+			'[' {
+				array_depth++
+			}
+			']' {
+				if array_depth > 0 {
+					array_depth--
+				}
+			}
+			':' {
+				if object_depth != 1 || array_depth != 0 || i == 0 || i + 1 >= tokens.len {
+					continue
+				}
+				current_key := tokens[i - 1].replace('"', '')
+				key_type := if tokens[i + 1] == '{' {
+					KeyType.map
+				} else if tokens[i + 1] == '[' {
+					KeyType.array
 				} else {
-					// REVIEW Não sei
+					KeyType.literal
 				}
-			} else {
-				key_type := KeyType.literal
 				key_structs << KeyStruct{
 					key:        current_key
 					value_type: key_type
 					token_pos:  i - 1
 				}
 			}
+			else {}
 		}
 	}
 
@@ -171,8 +202,10 @@ fn tokenize(json_data string) []string {
 	mut tokens := []string{}
 	mut current_token := ''
 	mut inside_string := false
+	json_without_newlines := json_data.replace('\n', ' ')
+	normalized_json := json_without_newlines.replace('\t', ' ')
 
-	for letter in json_data.replace('\n', ' ').replace('\t', ' ') {
+	for letter in normalized_json {
 		if letter == ` ` && !inside_string {
 			if current_token != '' {
 				tokens << current_token

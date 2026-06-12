@@ -44,6 +44,16 @@ mut:
 	val &T
 }
 
+struct StrictArrayRoot {
+mut:
+	items []StrictArrayItem
+}
+
+struct StrictArrayItem {
+mut:
+	id int
+}
+
 fn test_types() {
 	assert json.decode[StructType[string]]('{"val": ""}')!.val == ''
 
@@ -86,6 +96,22 @@ fn test_strict_mode_rejects_duplicate_object_keys() {
 	} else {
 		assert err.msg().contains('duplicate object keys are not allowed')
 		assert err.msg().contains('val')
+	}
+}
+
+fn test_strict_mode_allows_same_keys_in_different_array_objects() {
+	decoded := json.decode[StrictArrayRoot]('{"items":[{"id":1},{"id":2}]}', strict: true)!
+	assert decoded.items.len == 2
+	assert decoded.items[0].id == 1
+	assert decoded.items[1].id == 2
+}
+
+fn test_strict_mode_rejects_duplicate_keys_inside_array_object() {
+	if _ := json.decode[StrictArrayRoot]('{"items":[{"id":1,"id":2}]}', strict: true) {
+		assert false
+	} else {
+		assert err.msg().contains('duplicate object keys are not allowed')
+		assert err.msg().contains('id')
 	}
 }
 
