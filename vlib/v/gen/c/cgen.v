@@ -73,6 +73,7 @@ mut:
 	pcs_declarations                     strings.Builder            // -prof profile counter declarations for each function
 	cov_declarations                     strings.Builder            // -cov coverage
 	embedded_data                        strings.Builder            // data to embed in the executable/binary
+	interface_index_definitions          strings.Builder            // real interface index symbols for -parallel-cc helpers
 	shared_types                         strings.Builder            // shared/lock types
 	shared_functions                     strings.Builder            // shared constructors
 	out_options_forward                  strings.Builder            // forward `option_xxxx` types
@@ -385,6 +386,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		pcs_declarations:              strings.new_builder(100)
 		cov_declarations:              strings.new_builder(100)
 		embedded_data:                 strings.new_builder(1000)
+		interface_index_definitions:   strings.new_builder(100)
 		out_options_forward:           strings.new_builder(100)
 		out_options:                   strings.new_builder(100)
 		out_results_forward:           strings.new_builder(100)
@@ -886,6 +888,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	if g.embedded_data.len > 0 {
 		helpers.write_string2('\n// V embedded data:\n', g.embedded_data.str())
 	}
+	if g.interface_index_definitions.len > 0 {
+		helpers.write_string2('\n// V interface index definitions:\n',
+			g.interface_index_definitions.str())
+	}
 	if g.pref.parallel_cc {
 		helpers.writeln('\n// V global/const non-precomputed definitions:')
 		for var_name in g.sorted_global_const_names {
@@ -1023,6 +1029,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		cov_declarations:                   strings.new_builder(100)
 		hotcode_definitions:                strings.new_builder(100)
 		embedded_data:                      strings.new_builder(1000)
+		interface_index_definitions:        strings.new_builder(100)
 		out_options_forward:                strings.new_builder(100)
 		out_options:                        strings.new_builder(100)
 		out_results_forward:                strings.new_builder(100)
@@ -1112,6 +1119,7 @@ pub fn (mut g Gen) free_builders() {
 		g.cov_declarations.free()
 		g.hotcode_definitions.free()
 		g.embedded_data.free()
+		g.interface_index_definitions.free()
 		g.shared_types.free()
 		g.shared_functions.free()
 		g.channel_definitions.free()
@@ -13533,7 +13541,12 @@ return ${cast_shared_struct_str};
 					// symbol), otherwise the reference is undefined at link time -
 					// e.g. `undefined symbol: _IError_None___index` on FreeBSD/clang.
 					sb.writeln('enum { ${interface_index_case_name} = ${iin_idx} };')
-					sb.writeln('const u32 ${interface_index_name} = ${interface_index_case_name};')
+					if g.pref.parallel_cc {
+						sb.writeln('extern const u32 ${interface_index_name};')
+						g.interface_index_definitions.writeln('const u32 ${interface_index_name} = ${interface_index_case_name};')
+					} else {
+						sb.writeln('const u32 ${interface_index_name} = ${interface_index_case_name};')
+					}
 				} else {
 					sb.writeln('enum { ${interface_index_name} = ${iin_idx} };')
 				}

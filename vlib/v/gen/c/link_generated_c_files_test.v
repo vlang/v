@@ -89,3 +89,31 @@ fn main() {
 	assert header.contains('#ifdef _VPARALLELCC\n\t\t#define VV_LOC\n\t#else\n\t\t#define VV_LOC static\n\t#endif'), header
 	assert header.contains('VV_LOC string main__helper(void);'), header
 }
+
+fn test_parallel_cc_usecache_interface_index_definition_stays_out_of_header() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'parallel_cc_usecache_interface_index_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'main.v')
+	os.write_file(source_path, "fn main() {\n\tprintln('hello world')\n}\n")!
+	mut prefs, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-usecache',
+		'-parallel-cc',
+		source_path,
+	], false)
+	mut b := builder.new_builder(prefs)
+	mut files := b.get_builtin_files()
+	files << b.get_user_files()
+	b.set_module_lookup_paths()
+	b.front_and_middle_stages(files)!
+	result := c.gen(b.parsed_files, mut b.table, b.pref)
+	header := result.header.replace('\r\n', '\n')
+	out0 := result.out0_str.replace('\r\n', '\n')
+	assert header.contains('enum { _IError_None___index_enum ='), header
+	assert header.contains('extern const u32 _IError_None___index;'), header
+	assert !header.contains('const u32 _IError_None___index = _IError_None___index_enum;')
+	assert out0.contains('const u32 _IError_None___index = _IError_None___index_enum;'), out0
+}
