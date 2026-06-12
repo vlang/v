@@ -235,8 +235,10 @@ mut:
 	fn_param_array_elem_types map[string][]TypeID
 	// Function name -> SSA func_ref value
 	fn_refs map[string]ValueID
-	// Current file's selective imports: short symbol name -> mangled function name.
+	// Current file's selective imports: short symbol name -> primary mangled function name.
 	selective_import_fn_names map[string]string
+	// Current file's selective imports: short symbol name -> ordered mangled function candidates.
+	selective_import_fn_candidates map[string][]string
 	// Current file's module imports: local alias/tail name -> mangled module name.
 	module_import_aliases map[string]string
 	// Global variable name -> SSA global value
@@ -296,27 +298,28 @@ pub fn Builder.new(mod &Module) &Builder {
 
 pub fn Builder.new_with_env(mod &Module, env &types.Environment) &Builder {
 	mut b := &Builder{
-		mod:                           mod
-		vars:                          map[string]ValueID{}
-		loop_stack:                    []LoopInfo{}
-		struct_types:                  map[string]TypeID{}
-		struct_embedded_spans:         map[int][]EmbeddedFieldSpan{}
-		type_aliases:                  map[string]TypeID{}
-		enum_values:                   map[string]int{}
-		fn_index:                      map[string]int{}
-		module_fn_names:               map[string]string{}
-		fn_param_array_elem_types:     map[string][]TypeID{}
-		fn_refs:                       map[string]ValueID{}
-		selective_import_fn_names:     map[string]string{}
-		module_import_aliases:         map[string]string{}
-		global_refs:                   map[string]ValueID{}
-		skip_modules:                  map[string]bool{}
-		skip_module_file_fragments:    map[string]string{}
-		option_wrapper_types:          map[string]TypeID{}
-		result_wrapper_types:          map[string]TypeID{}
-		array_value_elem_types:        map[int]TypeID{}
-		struct_field_array_elem_types: map[string]TypeID{}
-		local_smartcasts:              map[string]TypeID{}
+		mod:                            mod
+		vars:                           map[string]ValueID{}
+		loop_stack:                     []LoopInfo{}
+		struct_types:                   map[string]TypeID{}
+		struct_embedded_spans:          map[int][]EmbeddedFieldSpan{}
+		type_aliases:                   map[string]TypeID{}
+		enum_values:                    map[string]int{}
+		fn_index:                       map[string]int{}
+		module_fn_names:                map[string]string{}
+		fn_param_array_elem_types:      map[string][]TypeID{}
+		fn_refs:                        map[string]ValueID{}
+		selective_import_fn_names:      map[string]string{}
+		selective_import_fn_candidates: map[string][]string{}
+		module_import_aliases:          map[string]string{}
+		global_refs:                    map[string]ValueID{}
+		skip_modules:                   map[string]bool{}
+		skip_module_file_fragments:     map[string]string{}
+		option_wrapper_types:           map[string]TypeID{}
+		result_wrapper_types:           map[string]TypeID{}
+		array_value_elem_types:         map[int]TypeID{}
+		struct_field_array_elem_types:  map[string]TypeID{}
+		local_smartcasts:               map[string]TypeID{}
 	}
 	unsafe {
 		b.env = env
@@ -347,6 +350,7 @@ pub fn (mut b Builder) new_worker_clone(worker_mod &Module, worker_idx int) &Bui
 		fn_index:                        b.fn_index.clone()
 		module_fn_names:                 b.module_fn_names.clone()
 		selective_import_fn_names:       b.selective_import_fn_names.clone()
+		selective_import_fn_candidates:  b.selective_import_fn_candidates.clone()
 		module_import_aliases:           b.module_import_aliases.clone()
 		fn_param_array_elem_types:       b.fn_param_array_elem_types.clone()
 		global_refs:                     b.global_refs.clone()
@@ -384,6 +388,16 @@ fn import_module_name(imp ast.ImportStmt) string {
 	return imp.name
 }
 
+fn selective_import_module_name(imp ast.ImportStmt) string {
+	if imp.is_aliased {
+		return imp.name.all_after_last('.')
+	}
+	if imp.alias != '' {
+		return imp.alias
+	}
+	return imp.name.all_after_last('.')
+}
+
 fn module_import_aliases_from_imports(imports []ast.ImportStmt) map[string]string {
 	mut aliases := map[string]string{}
 	for imp in imports {
@@ -416,7 +430,39 @@ pub fn selective_import_fn_names_from_imports(imports []ast.ImportStmt) map[stri
 	return names
 }
 
+pub fn selective_import_fn_candidates_from_imports(imports []ast.ImportStmt) map[string][]string {
+	mut names := map[string][]string{}
+	for imp in imports {
+		if imp.symbols.len == 0 {
+			continue
+		}
+		full_module_name := import_module_name(imp)
+		leaf_module_name := selective_import_module_name(imp)
+		for symbol in imp.symbols {
+			if symbol is ast.Ident {
+				full_name := imported_symbol_fn_name(full_module_name, symbol.name)
+				leaf_name := imported_symbol_fn_name(leaf_module_name, symbol.name)
+				mut candidates := []string{cap: 2}
+				candidates << full_name
+				if leaf_name != full_name {
+					candidates << leaf_name
+				}
+				names[symbol.name] = candidates
+			}
+		}
+	}
+	return names
+}
+
 fn (b &Builder) selective_import_fn_name(name string) ?string {
+	if candidates := b.selective_import_fn_candidates[name] {
+		for candidate in candidates {
+			if candidate in b.fn_index {
+				return candidate
+			}
+		}
+		return none
+	}
 	if imported := b.selective_import_fn_names[name] {
 		if imported in b.fn_index {
 			return imported
@@ -443,6 +489,15 @@ fn (b &Builder) current_module_fn_name(name string) ?string {
 
 pub fn (mut b Builder) set_selective_import_fn_names(names map[string]string) {
 	b.selective_import_fn_names = names.clone()
+	mut candidates := map[string][]string{}
+	for name, imported in names {
+		candidates[name] = [imported]
+	}
+	b.selective_import_fn_candidates = candidates.clone()
+}
+
+pub fn (mut b Builder) set_selective_import_fn_candidates(candidates map[string][]string) {
+	b.selective_import_fn_candidates = candidates.clone()
 }
 
 pub fn (mut b Builder) build_all(files []ast.File) {
@@ -5437,6 +5492,7 @@ fn (mut b Builder) receiver_type_name_from_flat(typ_c ast.Cursor) string {
 
 pub fn (mut b Builder) build_fn_bodies(file ast.File) {
 	b.selective_import_fn_names = selective_import_fn_names_from_imports(file.imports)
+	b.selective_import_fn_candidates = selective_import_fn_candidates_from_imports(file.imports)
 	b.module_import_aliases = module_import_aliases_from_imports(file.imports)
 	nstmts := file.stmts.len
 	for si in 0 .. nstmts {
@@ -5470,10 +5526,10 @@ pub fn (mut b Builder) build_fn_bodies(file ast.File) {
 // body stmts are walked via cursors.
 pub fn (mut b Builder) build_fn_bodies_from_flat(file_cursor ast.FileCursor) {
 	file_name := file_cursor.name()
-	b.selective_import_fn_names =
-		selective_import_fn_names_from_imports(file_cursor.imports().import_stmts())
-	b.module_import_aliases =
-		module_import_aliases_from_imports(file_cursor.imports().import_stmts())
+	imports := file_cursor.imports().import_stmts()
+	b.selective_import_fn_names = selective_import_fn_names_from_imports(imports)
+	b.selective_import_fn_candidates = selective_import_fn_candidates_from_imports(imports)
+	b.module_import_aliases = module_import_aliases_from_imports(imports)
 	stmts := file_cursor.stmts()
 	for si in 0 .. stmts.len() {
 		c := stmts.at(si)
