@@ -951,7 +951,10 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	if mut expr is ast.AnonFn {
 		if expr.inherited_vars.len > 0 {
 			closure_var = g.new_tmp_var()
+			prev_track_closure_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+			g.track_lambda_autofree_tmp_arg_vars = false
 			g.declare_closure_fn(mut expr, closure_var)
+			g.track_lambda_autofree_tmp_arg_vars = prev_track_closure_tmp_arg_vars
 		}
 	}
 

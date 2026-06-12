@@ -27,6 +27,11 @@ fn main() {
 		return it
 	})
 	println(anon_flags)
+	nested_suffix := '!'
+	nested_flags := [['a'], ['b']].map(it.map(fn [nested_suffix] (s string) string {
+		return mark(s + nested_suffix)
+	})[0])
+	println(nested_flags)
 	// This regression only needs the generated C to compile.
 	exit(0)
 }
