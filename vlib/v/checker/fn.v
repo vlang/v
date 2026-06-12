@@ -3648,8 +3648,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 
 	for i, mut arg in node.args {
+		mut exp_arg_param := call_arg_param_for_fn(method, i, true)
 		if i > 0 || exp_arg_typ == ast.no_type {
-			exp_arg_typ = call_arg_param_for_fn(method, i, true).typ
+			exp_arg_typ = exp_arg_param.typ
 			if !c.inside_recheck {
 				arg.ct_expr = c.comptime.is_comptime(arg.expr)
 			}
@@ -3668,7 +3669,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 							parent_sym := c.table.sym(parent_type)
 							if parent_sym.info is ast.Struct && parent_sym.info.is_generic {
 								if f := parent_sym.find_method(method_name) {
-									exp_arg_typ = call_arg_param_for_fn(f, i, true).typ
+									exp_arg_param = call_arg_param_for_fn(f, i, true)
+									exp_arg_typ = exp_arg_param.typ
 								}
 							}
 						}
@@ -3696,8 +3698,13 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				else {}
 			}
 		}
-		exp_arg_typ = c.resolve_short_syntax_call_arg_type(arg, exp_arg_typ,
-			resolved_method_generic_names, resolved_method_concrete_types)
+		exp_arg_typ = if exp_arg_typ == exp_arg_param.typ {
+			c.resolve_call_arg_param_type(arg, exp_arg_param, resolved_method_generic_names,
+				resolved_method_concrete_types)
+		} else {
+			c.resolve_short_syntax_call_arg_type(arg, exp_arg_typ, resolved_method_generic_names,
+				resolved_method_concrete_types)
+		}
 		exp_arg_sym := c.table.sym(exp_arg_typ)
 		c.expected_type = exp_arg_typ
 

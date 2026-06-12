@@ -22,3 +22,14 @@ fn generic_fn_arg_run[T](h fn (T) int) int {
 fn test_generic_fn_value_is_monomorphized_from_generic_call_arg() {
 	assert generic_fn_arg_run[GenericFnArgFoo](generic_fn_arg_handler) == 42
 }
+
+struct GenericFnArgRunner {}
+
+fn (r GenericFnArgRunner) run[T](h fn (T) int) int {
+	_ := r
+	return h(T{}) + 1
+}
+
+fn test_generic_fn_value_is_monomorphized_from_generic_method_call_arg() {
+	assert GenericFnArgRunner{}.run[GenericFnArgFoo](generic_fn_arg_handler) == 42
+}
