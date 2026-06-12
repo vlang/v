@@ -1709,8 +1709,66 @@ fn (mut g Gen) need_tmp_var_in_array_call(node ast.Expr) bool {
 	return false
 }
 
+fn (mut g Gen) expr_has_lambda_autofree_tmp_arg(expr ast.Expr) bool {
+	match expr {
+		ast.CallExpr {
+			if expr.args.any(it.typ == ast.string_type && it.is_tmp_autofree) {
+				return true
+			}
+			if g.expr_has_lambda_autofree_tmp_arg(expr.left) {
+				return true
+			}
+			for arg in expr.args {
+				if g.expr_has_lambda_autofree_tmp_arg(arg.expr) {
+					return true
+				}
+			}
+		}
+		ast.CastExpr {
+			return g.expr_has_lambda_autofree_tmp_arg(expr.expr)
+		}
+		ast.IfExpr {
+			for branch in expr.branches {
+				if g.expr_has_lambda_autofree_tmp_arg(branch.cond) {
+					return true
+				}
+				for stmt in branch.stmts {
+					if stmt is ast.ExprStmt && g.expr_has_lambda_autofree_tmp_arg(stmt.expr) {
+						return true
+					}
+				}
+			}
+		}
+		ast.IndexExpr {
+			return g.expr_has_lambda_autofree_tmp_arg(expr.left)
+				|| g.expr_has_lambda_autofree_tmp_arg(expr.index)
+		}
+		ast.InfixExpr {
+			return g.expr_has_lambda_autofree_tmp_arg(expr.left)
+				|| g.expr_has_lambda_autofree_tmp_arg(expr.right)
+		}
+		ast.ParExpr {
+			return g.expr_has_lambda_autofree_tmp_arg(expr.expr)
+		}
+		ast.PostfixExpr {
+			return g.expr_has_lambda_autofree_tmp_arg(expr.expr)
+		}
+		ast.PrefixExpr {
+			return g.expr_has_lambda_autofree_tmp_arg(expr.right)
+		}
+		ast.SelectorExpr {
+			return g.expr_has_lambda_autofree_tmp_arg(expr.expr)
+		}
+		else {}
+	}
+
+	return false
+}
+
 // infix_expr_and_or_op generates code for `&&` and `||`
 fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
+	rhs_has_lambda_autofree_tmp_arg := g.inside_lambda_autofree_tmp
+		&& g.expr_has_lambda_autofree_tmp_arg(node.right)
 	if g.need_tmp_var_in_array_call(node.right) && g.inside_ternary == 0 {
 		// `if a == 0 || arr.any(it.is_letter()) {...}`
 		tmp := g.new_tmp_var()
@@ -1728,7 +1786,8 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 		g.infix_left_var_name = if node.op == .and { tmp } else { '!${tmp}' }
 		g.expr(node.right)
 		g.infix_left_var_name = ''
-	} else if g.need_tmp_var_in_expr(node.right) && g.inside_ternary == 0 {
+	} else if (rhs_has_lambda_autofree_tmp_arg || g.need_tmp_var_in_expr(node.right))
+		&& g.inside_ternary == 0 {
 		prev_inside_ternary := g.inside_ternary
 		g.inside_ternary = 0
 		tmp := g.new_tmp_var()
@@ -1750,9 +1809,13 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 		g.indent++
 		g.set_current_pos_as_last_stmt_pos()
 		g.infix_left_var_name = ''
+		lambda_autofree_tmp_arg_vars_start := g.lambda_autofree_tmp_arg_vars.len
 		g.write('${tmp} = ')
 		g.expr(node.right)
 		g.writeln(';')
+		if rhs_has_lambda_autofree_tmp_arg {
+			g.write_lambda_autofree_tmp_arg_vars(lambda_autofree_tmp_arg_vars_start)
+		}
 		g.indent--
 		g.writeln('}')
 		g.set_current_pos_as_last_stmt_pos()
@@ -2031,24 +2094,12 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	if is_ctemp_fixed_ret {
 		g.write('(${g.styp(resolved_right_type)})')
 	}
-	disable_lambda_autofree_tmp_arg_pregen := node.op in [.and, .logical_or]
-		&& g.inside_lambda_autofree_tmp
-	prev_inside_lambda_autofree_tmp := g.inside_lambda_autofree_tmp
-	prev_track_lambda_autofree_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
-	if disable_lambda_autofree_tmp_arg_pregen {
-		g.inside_lambda_autofree_tmp = false
-		g.track_lambda_autofree_tmp_arg_vars = false
-	}
 	if resolved_right_type.is_ptr() && node.right.is_auto_deref_var()
 		&& !resolved_left_type.is_pointer() {
 		g.write('*')
 		g.expr(node.right)
 	} else {
 		g.expr_with_cast(node.right, resolved_right_type, resolved_left_type)
-	}
-	if disable_lambda_autofree_tmp_arg_pregen {
-		g.inside_lambda_autofree_tmp = prev_inside_lambda_autofree_tmp
-		g.track_lambda_autofree_tmp_arg_vars = prev_track_lambda_autofree_tmp_arg_vars
 	}
 	if is_ctemp_fixed_ret {
 		g.write(', sizeof(${g.styp(resolved_right_type)}))')

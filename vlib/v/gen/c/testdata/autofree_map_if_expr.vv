@@ -47,6 +47,12 @@ fn main() {
 		it
 	})
 	println(short_flags)
+	evaluated_short_flags := ['a'].map(if true && accepts(it + '') {
+		mark(it)
+	} else {
+		it
+	})
+	println(evaluated_short_flags)
 	// This regression only needs the generated C to compile.
 	exit(0)
 }
