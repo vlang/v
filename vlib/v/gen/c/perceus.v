@@ -1,5 +1,5 @@
 // perceus.v — compiler-resident Perceus drop-placement analysis (P1).
-// Ported from the validated prototype (cx-private bench/parallel-alloc/cfg_proto.v):
+// Ported from a validated standalone CFG/last-use analysis prototype:
 // builds a per-function CFG over V's AST, runs backward liveness to a fixpoint,
 // classifies uniqueness (escape/capture/spawn), and returns a DROP MAP keyed by
 // statement position: stmt.pos -> the unique, non-returned values whose last

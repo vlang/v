@@ -49,8 +49,8 @@
   // there, and a heap pointer parked in an uninitialized-at-link global must
   // still be scanned). dl_iterate_phdr's FIRST callback is always the main
   // program object (dlpi_name == ""), matching darwin's "image 0 only" scope:
-  // V `__global`s and vgc's own globals compile into the main binary, and cx's
-  // static deps (mbedtls, etc.) link in there too. Shared-library .data is not
+  // V `__global`s and vgc's own globals compile into the main binary, and the
+  // program's static deps (mbedtls, etc.) link in there too. Shared-library .data is not
   // scanned (same as darwin) — V places no GC roots there. dl_iterate_phdr takes
   // the loader lock, but the collector calls this with the world stopped during a
   // RARE backstop cycle, not from a signal handler, so it is safe here.
@@ -534,8 +534,8 @@ static inline void vgc_install_thread_exit(int idx) { (void)idx; }
 // backstop collector. Unlike cooperative alloc-path safepoints, mach
 // thread_suspend stops a thread in ANY state (incl. blocked in a syscall or a
 // tight non-allocating loop), and thread_get_state yields its SP + full
-// register file for root scanning. Validated standalone in cx-private
-// bench/parallel-alloc/{suspend_world,stw_root_scan}.c.
+// register file for root scanning. The suspend_world + stw_root_scan
+// primitives were validated standalone before integration.
 // ============================================================
 #if defined(__APPLE__)
   #include <mach/mach.h>
