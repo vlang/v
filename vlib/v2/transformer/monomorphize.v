@@ -1709,12 +1709,36 @@ fn collect_declared_generic_template_type_param_names(typ types.Type, mut seen m
 		types.Alias {
 			collect_declared_generic_template_type_param_names(typ.base_type, mut seen, mut names)
 		}
+		types.Array {
+			collect_declared_generic_template_type_param_names(typ.elem_type, mut seen, mut names)
+		}
+		types.ArrayFixed {
+			collect_declared_generic_template_type_param_names(typ.elem_type, mut seen, mut names)
+		}
+		types.Channel {
+			if elem_type := typ.elem_type {
+				collect_declared_generic_template_type_param_names(elem_type, mut seen, mut names)
+			}
+		}
+		types.Map {
+			collect_declared_generic_template_type_param_names(typ.key_type, mut seen, mut names)
+			collect_declared_generic_template_type_param_names(typ.value_type, mut seen, mut names)
+		}
 		types.NamedType {
 			name := string(typ)
 			if is_generic_placeholder_ident(name) && name !in seen {
 				seen[name] = true
 				names << name
 			}
+		}
+		types.OptionType {
+			collect_declared_generic_template_type_param_names(typ.base_type, mut seen, mut names)
+		}
+		types.Pointer {
+			collect_declared_generic_template_type_param_names(typ.base_type, mut seen, mut names)
+		}
+		types.ResultType {
+			collect_declared_generic_template_type_param_names(typ.base_type, mut seen, mut names)
 		}
 		types.Struct {
 			for param in typ.generic_params {

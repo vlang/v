@@ -797,6 +797,28 @@ fn main() {
 	assert x.typ().name() == 'int'
 }
 
+fn test_phantom_generic_receiver_from_call_maps_method_generic() {
+	env := check_code('
+struct Box[T] {}
+
+fn make_box() Box[int] {
+	return Box[int]{}
+}
+
+fn (b Box[T]) touch[T]() {
+	_ = b
+}
+
+fn main() {
+	b := make_box()
+	b.touch()
+}
+')
+	scope := env.get_fn_scope('main', 'main') or { panic('missing main scope') }
+	b := scope.lookup_parent('b', 0) or { panic('missing b local') }
+	assert b.typ().name() == 'Box'
+}
+
 fn test_temporary_generic_selector_receiver_maps_method_generic() {
 	env := check_code('
 struct Box[T] {

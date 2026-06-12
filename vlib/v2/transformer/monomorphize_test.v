@@ -1550,6 +1550,86 @@ fn make() ?Tree[int] {
 	mono_assert_sumtype_payload_memdup_expr(payload_value, 'Node_T_int')
 }
 
+fn test_result_concrete_sumtype_return_wraps_variant() {
+	files := mono_transform_sources_for_test([
+		MonoSource{
+			rel:  'main.v'
+			code: '
+module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn make() !Tree[int] {
+	return Node[int]{value: 7}
+}
+'
+		},
+	])
+	make_decl := mono_fn_decl_by_name(files, 'make') or {
+		assert false, 'missing transformed make function'
+		return
+	}
+	returns := mono_return_exprs_for_decl(make_decl)
+	assert returns.len == 1, 'expected one make return, got ${returns}'
+	ret_expr := returns[0]
+	assert ret_expr is ast.InitExpr, '!Tree[int] return should wrap Node[int], got ${ret_expr}'
+	ret_init := ret_expr as ast.InitExpr
+	mono_assert_init_ident_name(ret_init, 'Tree_T_int')
+	tag_value := mono_init_field(ret_init, '_tag') or {
+		assert false, 'missing Tree_T_int _tag field in ${ret_init.fields}'
+		return
+	}
+	mono_assert_basic_number_expr(tag_value, '1')
+	payload_value := mono_init_field(ret_init, '_data._Node_T_int') or {
+		assert false, 'missing Tree_T_int Node_T_int payload field in ${ret_init.fields}'
+		return
+	}
+	mono_assert_sumtype_payload_memdup_expr(payload_value, 'Node_T_int')
+}
+
+fn test_pointer_generic_sumtype_variant_uses_concrete_variant_name() {
+	checked := mono_check_sources_for_test([
+		MonoSource{
+			rel:  'main.v'
+			code: '
+module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+}
+
+type Tree[T] = &Node[T] | Empty
+
+fn make() Tree[int] {
+	return &Node[int]{value: 7}
+}
+'
+		},
+	])
+	mut trans := checked.trans
+	main_scope := trans.env.get_scope('main') or { panic('missing main scope') }
+	tree_type := main_scope.lookup_type_parent('Tree', 0) or { panic('missing Tree type') }
+	assert tree_type is types.SumType, 'expected Tree sum type, got ${tree_type}'
+	tree := tree_type as types.SumType
+	mut variants := []string{cap: tree.variants.len}
+	bindings := {
+		'T': types.Type(types.int_)
+	}
+	for variant in tree.variants {
+		concrete_variant := trans.instantiate_generic_sumtype_variant(variant, bindings)
+		variants << trans.type_to_c_name(concrete_variant)
+	}
+	assert variants == ['Node_T_intptr', 'Empty']
+}
+
 fn test_generic_sumtype_declared_param_order_is_preserved_for_crossed_variants() {
 	checked := mono_check_sources_for_test([
 		MonoSource{

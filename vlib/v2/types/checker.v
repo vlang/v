@@ -6809,6 +6809,26 @@ fn (mut c Checker) generic_type_map_from_receiver_struct_fields(receiver_type St
 	return generic_type_map
 }
 
+fn (mut c Checker) generic_type_map_from_receiver_struct_args(receiver_type Struct) map[string]Type {
+	mut generic_type_map := map[string]Type{}
+	if receiver_type.name == '' || receiver_type.generic_params.len == 0 {
+		return generic_type_map
+	}
+	template_params := c.generic_type_params[receiver_type.name] or { return generic_type_map }
+	for i, generic_param in template_params {
+		if i >= receiver_type.generic_params.len {
+			break
+		}
+		arg_name := receiver_type.generic_params[i]
+		arg_type := c.type_from_generic_arg_name(arg_name) or { continue }
+		if arg_type.name() == generic_param {
+			continue
+		}
+		generic_type_map[generic_param] = arg_type
+	}
+	return generic_type_map
+}
+
 fn (mut c Checker) generic_type_map_from_receiver_type(receiver_type Type) map[string]Type {
 	match receiver_type {
 		Pointer {
@@ -6818,6 +6838,16 @@ fn (mut c Checker) generic_type_map_from_receiver_type(receiver_type Type) map[s
 			return c.generic_type_map_from_receiver_type(receiver_type.base_type)
 		}
 		Struct {
+			generic_type_map_from_fields :=
+				c.generic_type_map_from_receiver_struct_fields(receiver_type)
+			if generic_type_map_from_fields.len > 0 {
+				return generic_type_map_from_fields
+			}
+			generic_type_map_from_args :=
+				c.generic_type_map_from_receiver_struct_args(receiver_type)
+			if generic_type_map_from_args.len > 0 {
+				return generic_type_map_from_args
+			}
 			mut generic_type_map := map[string]Type{}
 			for generic_param in receiver_type.generic_params {
 				arg_type := c.type_from_generic_arg_name(generic_param) or { continue }
@@ -6829,7 +6859,7 @@ fn (mut c Checker) generic_type_map_from_receiver_type(receiver_type Type) map[s
 			if generic_type_map.len > 0 {
 				return generic_type_map
 			}
-			return c.generic_type_map_from_receiver_struct_fields(receiver_type)
+			return generic_type_map
 		}
 		else {
 			return map[string]Type{}
@@ -6886,11 +6916,14 @@ fn (mut c Checker) instantiate_generic_struct(base Struct, args []ast.Expr) Type
 		}
 	}
 	mut generic_type_map := map[string]Type{}
+	mut arg_types := []Type{cap: args.len}
 	for i, generic_param in actual_base.generic_params {
 		if i >= args.len {
 			break
 		}
-		generic_type_map[generic_param] = c.expr(args[i])
+		arg_type := c.expr(args[i])
+		arg_types << arg_type
+		generic_type_map[generic_param] = arg_type
 	}
 	mut substitution_stack := []string{}
 	if actual_base.name != '' {
@@ -6935,10 +6968,15 @@ fn (mut c Checker) instantiate_generic_struct(base Struct, args []ast.Expr) Type
 		}
 	}
 	return Struct{
-		name:       actual_base.name
-		implements: actual_base.implements
-		fields:     fields
-		embedded:   embedded
+		name:           actual_base.name
+		generic_params: if fields.len == 0 && embedded.len == 0 {
+			arg_types.map(it.name())
+		} else {
+			[]string{}
+		}
+		implements:     actual_base.implements
+		fields:         fields
+		embedded:       embedded
 	}
 }
 

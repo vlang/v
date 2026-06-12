@@ -610,14 +610,58 @@ fn (t &Transformer) instantiate_generic_sumtype_variant(variant types.Type, bind
 	if suffix == '' {
 		return substituted
 	}
-	if variant is types.Struct && substituted is types.Struct {
+	return specialize_generic_sumtype_variant_type(variant, substituted, suffix)
+}
+
+fn specialize_generic_sumtype_variant_type(template types.Type, substituted types.Type, suffix string) types.Type {
+	if template is types.Struct && substituted is types.Struct {
 		return types.Type(types.Struct{
-			name:           variant.name + suffix
+			name:           template.name + suffix
 			generic_params: substituted.generic_params
 			implements:     substituted.implements
 			embedded:       substituted.embedded
 			fields:         substituted.fields
 			is_soa:         substituted.is_soa
+		})
+	}
+	if template is types.Pointer && substituted is types.Pointer {
+		return types.Type(types.Pointer{
+			lifetime:  substituted.lifetime
+			base_type: specialize_generic_sumtype_variant_type(template.base_type,
+				substituted.base_type, suffix)
+		})
+	}
+	if template is types.Array && substituted is types.Array {
+		return types.Type(types.Array{
+			elem_type: specialize_generic_sumtype_variant_type(template.elem_type,
+				substituted.elem_type, suffix)
+		})
+	}
+	if template is types.ArrayFixed && substituted is types.ArrayFixed {
+		return types.Type(types.ArrayFixed{
+			len:       substituted.len
+			elem_type: specialize_generic_sumtype_variant_type(template.elem_type,
+				substituted.elem_type, suffix)
+		})
+	}
+	if template is types.Map && substituted is types.Map {
+		return types.Type(types.Map{
+			key_type:   specialize_generic_sumtype_variant_type(template.key_type,
+				substituted.key_type, suffix)
+			value_type: specialize_generic_sumtype_variant_type(template.value_type,
+				substituted.value_type, suffix)
+		})
+	}
+	if template is types.OptionType && substituted is types.OptionType {
+		return types.Type(types.OptionType{
+			base_type: specialize_generic_sumtype_variant_type(template.base_type,
+				substituted.base_type, suffix)
+		})
+	}
+	if template is types.ResultType && substituted is types.ResultType {
+		return types.Type(types.ResultType{
+			base_type: specialize_generic_sumtype_variant_type(template.base_type,
+				substituted.base_type, suffix)
 		})
 	}
 	return substituted
@@ -655,6 +699,9 @@ fn (t &Transformer) concrete_sumtype_wrap_info_from_return_type(return_type ast.
 						return_type.params)
 				}
 				ast.OptionType {
+					return t.concrete_sumtype_wrap_info_from_return_type(return_type.base_type)
+				}
+				ast.ResultType {
 					return t.concrete_sumtype_wrap_info_from_return_type(return_type.base_type)
 				}
 				else {}
