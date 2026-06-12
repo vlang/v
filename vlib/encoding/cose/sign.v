@@ -109,8 +109,8 @@ pub fn (m SignMessage) verify(signer_index int, key Key, opts VerifySignOptions)
 		return error('cose: signer index ${signer_index} out of range (have ${m.signatures.len})')
 	}
 	entry := m.signatures[signer_index]
-	check_critical(m.protected)!
-	check_critical(entry.protected)!
+	check_protected_headers(m.protected, m.unprotected)!
+	check_protected_headers(entry.protected, entry.unprotected)!
 	alg := entry.protected.algorithm or {
 		return MalformedMessage{
 			reason: 'signer at index ${signer_index} missing algorithm in protected header'

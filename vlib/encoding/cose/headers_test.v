@@ -108,3 +108,25 @@ fn test_unknown_alg_falls_back_to_extra_label() {
 	assert parsed.extra_int_labels.len == 1
 	assert parsed.extra_int_labels[0].label == 1
 }
+
+fn test_parse_rejects_duplicate_int_labels() {
+	// map with duplicate alg labels: {1: -7, 1: -8}
+	dup := hex.decode('A201260127')!
+	if _ := parse_protected(dup) {
+		assert false, 'duplicate integer labels must be rejected'
+	} else {
+		assert err is MalformedMessage
+		assert err.msg().contains('duplicate header label 1')
+	}
+}
+
+fn test_parse_rejects_duplicate_text_labels() {
+	// map with duplicate text labels: {"x": 0, "x": 1}
+	dup := hex.decode('A2617800617801')!
+	if _ := parse_protected(dup) {
+		assert false, 'duplicate text labels must be rejected'
+	} else {
+		assert err is MalformedMessage
+		assert err.msg().contains('duplicate header label "x"')
+	}
+}

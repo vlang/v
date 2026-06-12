@@ -123,7 +123,10 @@ pub fn mac(payload []u8, key Key, opts MacOptions) ![]u8 {
 // in the protected headers per RFC 9052 §3.
 pub fn verify_mac(message []u8, key Key, opts VerifyMacOptions) ![]u8 {
 	msg := MacMessage.decode(message)!
-	check_critical(msg.protected)!
+	check_protected_headers(msg.protected, msg.unprotected)!
+	for r in msg.recipients {
+		check_protected_headers(r.protected, r.unprotected)!
+	}
 	pl := if dp := opts.detached_payload {
 		dp
 	} else {
@@ -241,20 +244,4 @@ pub fn MacMessage.decode(data []u8) !MacMessage {
 		tag:         tag
 		recipients:  recipients
 	}
-}
-
-// has_int_label reports whether `h` already declares the given integer
-// label, either via a typed well-known field or via `extra_int_labels`.
-// Used internally to avoid double-setting `alg = direct` on
-// recipients that the caller has already configured.
-fn has_int_label(h Headers, label i64) bool {
-	if label == label_alg && h.algorithm != none {
-		return true
-	}
-	for e in h.extra_int_labels {
-		if e.label == label {
-			return true
-		}
-	}
-	return false
 }
