@@ -4,6 +4,7 @@
 module http
 
 import io
+import net
 import time
 import net.mbedtls
 
@@ -59,10 +60,18 @@ fn (mut s Server) listen_and_serve_tls() {
 	if s.on_running != unsafe { nil } {
 		s.on_running(mut s)
 	}
+	accept_timeout := if s.accept_timeout > 0 && s.accept_timeout < 100 * time.millisecond {
+		s.accept_timeout
+	} else {
+		100 * time.millisecond
+	}
 	for s.state == .running {
-		mut conn := listener.accept() or {
+		mut conn := listener.accept_with_timeout(accept_timeout) or {
 			if s.state != .running {
 				break
+			}
+			if err.code() == net.err_timed_out_code {
+				continue
 			}
 			$if debug {
 				eprintln('TLS accept failed: ${err}; skipping')

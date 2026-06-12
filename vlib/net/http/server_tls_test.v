@@ -50,17 +50,20 @@ fn test_server_tls_round_trip() {
 		cert:                   server_tls_cert
 		cert_key:               server_tls_key
 		in_memory_verification: true
+		accept_timeout:         100 * time.millisecond
 		handler:                EchoHandler{}
 		show_startup_message:   false
 	}
-	spawn srv.listen_and_serve()
+	t := spawn srv.listen_and_serve()
 	srv.wait_till_running() or {
 		srv.close()
+		t.wait()
 		assert false, 'server failed to start: ${err}'
 		return
 	}
 	defer {
 		srv.close()
+		t.wait()
 	}
 	// Give the listener a beat to come up.
 	time.sleep(50 * time.millisecond)
@@ -90,18 +93,21 @@ fn test_server_tls_h2_negotiation() {
 		cert:                   server_tls_cert
 		cert_key:               server_tls_key
 		in_memory_verification: true
+		accept_timeout:         100 * time.millisecond
 		enable_http2:           true
 		handler:                EchoHandler{}
 		show_startup_message:   false
 	}
-	spawn srv.listen_and_serve()
+	t := spawn srv.listen_and_serve()
 	srv.wait_till_running() or {
 		srv.close()
+		t.wait()
 		assert false, 'server failed to start: ${err}'
 		return
 	}
 	defer {
 		srv.close()
+		t.wait()
 	}
 	time.sleep(50 * time.millisecond)
 

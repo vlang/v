@@ -379,6 +379,12 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 	return conn
 }
 
+// accept_with_timeout waits up to `timeout` for a new client before accepting it.
+pub fn (mut l SSLListener) accept_with_timeout(timeout time.Duration) !&SSLConn {
+	wait_for(l.server_fd.fd, .read, timeout)!
+	return l.accept()
+}
+
 @[params]
 pub struct SSLConnectConfig {
 pub:
