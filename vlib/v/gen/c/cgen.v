@@ -3320,6 +3320,7 @@ fn is_noreturn_callexpr(expr ast.Expr) bool {
 // It returns true, if the last statement was a `return` or `branch`
 fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 	g.indent++
+	lambda_autofree_tmp_arg_vars_start := g.lambda_autofree_tmp_arg_vars.len
 	if g.inside_ternary > 0 {
 		g.write('(')
 	}
@@ -3538,6 +3539,13 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 			}
 			g.autofree_scope_vars(stmt_pos.pos - 1, stmt_pos.line_nr, false)
 		}
+	}
+	// Branch-local lambda temp args are freed by the scope cleanup above.
+	// Keep the outer map cleanup list limited to temps declared in the map body scope.
+	if g.inside_lambda_autofree_tmp && g.inside_ternary == 0
+		&& g.lambda_autofree_tmp_arg_vars.len > lambda_autofree_tmp_arg_vars_start {
+		g.lambda_autofree_tmp_arg_vars =
+			g.lambda_autofree_tmp_arg_vars[..lambda_autofree_tmp_arg_vars_start].clone()
 	}
 	return last_stmt_was_return
 }
