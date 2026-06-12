@@ -2574,7 +2574,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				} else {
 					arg_typ.nr_muls()
 				}
-				if param_nr_muls == arg_nr_muls
+				if param.typ.has_flag(.option) == arg_typ.has_flag(.option)
+					&& param.typ.has_flag(.result) == arg_typ.has_flag(.result)
+					&& param_nr_muls == arg_nr_muls
 					&& param_typ_sym.info.nr_dims == arg_typ_sym.info.nr_dims
 					&& param_elem_type == arg_elem_type {
 					continue
@@ -3865,7 +3867,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if param_typ_sym.info is ast.Array && arg_typ_sym.info is ast.Array {
 				param_elem_type := c.table.unaliased_type(param_typ_sym.info.elem_type)
 				arg_elem_type := c.table.unaliased_type(arg_typ_sym.info.elem_type)
-				if exp_arg_typ.nr_muls() == got_arg_typ.nr_muls()
+				if exp_arg_typ.has_flag(.option) == got_arg_typ.has_flag(.option)
+					&& exp_arg_typ.has_flag(.result) == got_arg_typ.has_flag(.result)
+					&& exp_arg_typ.nr_muls() == got_arg_typ.nr_muls()
 					&& param_typ_sym.info.nr_dims == arg_typ_sym.info.nr_dims
 					&& param_elem_type == arg_elem_type {
 					continue
