@@ -29,7 +29,8 @@ pub const default_https_server_port = 9043
 
 pub struct Server {
 mut:
-	state ServerStatus = .closed
+	state           ServerStatus = .closed
+	listener_opened bool
 pub mut:
 	addr                    string        = ':${default_server_port}'
 	handler                 Handler       = DebugHandler{}
@@ -89,6 +90,7 @@ pub fn (mut s Server) listen_and_serve() {
 		}
 	}
 	s.addr = l.str()
+	s.listener_opened = true
 	s.listener.set_accept_timeout(s.accept_timeout)
 
 	// Create tcp connection channel
@@ -140,7 +142,10 @@ pub fn (mut s Server) stop() {
 @[inline]
 pub fn (mut s Server) close() {
 	s.state = .closed
-	s.listener.close() or { return }
+	if s.listener_opened {
+		s.listener.close() or { return }
+		s.listener_opened = false
+	}
 	if s.on_closed != unsafe { nil } {
 		s.on_closed(mut s)
 	}

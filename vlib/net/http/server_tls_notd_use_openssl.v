@@ -41,6 +41,12 @@ fn (mut s Server) listen_and_serve_tls() {
 	}
 	defer {
 		listener.shutdown() or {}
+		if s.state == .stopped {
+			s.state = .closed
+			if s.on_closed != unsafe { nil } {
+				s.on_closed(mut s)
+			}
+		}
 	}
 	s.addr = addr
 
@@ -82,9 +88,6 @@ fn (mut s Server) listen_and_serve_tls() {
 			conn.set_read_timeout(s.read_timeout)
 		}
 		ch <- conn
-	}
-	if s.state == .stopped {
-		s.close()
 	}
 }
 
