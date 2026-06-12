@@ -188,6 +188,8 @@ mut:
 	inside_global_decl                   bool
 	inside_interface_deref               bool
 	inside_assign_fn_var                 bool
+	inside_lambda_autofree_tmp           bool
+	track_lambda_autofree_tmp_arg_vars   bool
 	outer_tmp_var                        string // tmp var from outer context (e.g. from stmts_with_tmp_var) to be used by nested if/match expressions
 	last_tmp_call_var                    []string
 	last_if_option_type                  ast.Type // stores the expected if type on nested if expr
@@ -254,6 +256,7 @@ mut:
 	sql_side                             SqlExprSide // left or right, to distinguish idents in `name == name`
 	sql_last_stmt_out_len                int
 	strs_to_free0                        []string // strings.Builder
+	lambda_autofree_tmp_arg_vars         []string
 	// strs_to_free          []string // strings.Builder
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
@@ -3320,6 +3323,7 @@ fn is_noreturn_callexpr(expr ast.Expr) bool {
 // It returns true, if the last statement was a `return` or `branch`
 fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 	g.indent++
+	lambda_autofree_tmp_arg_vars_start := g.lambda_autofree_tmp_arg_vars.len
 	if g.inside_ternary > 0 {
 		g.write('(')
 	}
@@ -3538,6 +3542,13 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 			}
 			g.autofree_scope_vars(stmt_pos.pos - 1, stmt_pos.line_nr, false)
 		}
+	}
+	// Branch-local lambda temp args are freed by the scope cleanup above.
+	// Keep the outer map cleanup list limited to temps declared in the map body scope.
+	if g.track_lambda_autofree_tmp_arg_vars && g.inside_ternary == 0
+		&& g.lambda_autofree_tmp_arg_vars.len > lambda_autofree_tmp_arg_vars_start {
+		g.lambda_autofree_tmp_arg_vars =
+			g.lambda_autofree_tmp_arg_vars[..lambda_autofree_tmp_arg_vars_start].clone()
 	}
 	return last_stmt_was_return
 }
@@ -6085,7 +6096,8 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			}
 			g.call_expr(node)
 			if g.is_autofree && !g.is_builtin_mod && !g.is_js_call && g.strs_to_free0.len == 0
-				&& !g.is_autofree_tmp && !g.inside_lambda && g.inside_ternary == 0 {
+				&& !g.is_autofree_tmp && (!g.inside_lambda || g.inside_lambda_autofree_tmp)
+				&& g.inside_ternary == 0 {
 				// if len != 0, that means we are handling call expr inside call expr (arg)
 				// and it'll get messed up here, since it's handled recursively in autofree_call_pregen()
 				// so just skip it
@@ -12738,13 +12750,42 @@ fn (mut g Gen) enum_val(node ast.EnumVal) {
 	g.write('${g.gen_enum_prefix(node.typ)}${node.val}')
 }
 
+fn (mut g Gen) as_cast_option_payload_expr(typ ast.Type, expr_str string, is_auto_heap bool) string {
+	styp := g.base_type(typ)
+	if is_auto_heap {
+		return '(*(${styp}*)(${expr_str})->data)'
+	}
+	type_sym := g.table.sym(typ)
+	if type_sym.kind == .alias {
+		parent_typ := (type_sym.info as ast.Alias).parent_type
+		if parent_typ.has_flag(.option) {
+			return '*((${g.base_type(parent_typ)}*)(*(${styp}*)(${expr_str}).data).data)'
+		}
+		return '(*(${styp}*)(${expr_str}).data)'
+	} else if typ.has_flag(.option_mut_param_t) {
+		return '(*(${styp}*)(${expr_str})->data)'
+	}
+	return '(*(${styp}*)(${expr_str}).data)'
+}
+
+fn (mut g Gen) as_cast_option_payload_expr_from_expr(typ ast.Type, expr ast.Expr) string {
+	old_inside_opt_or_res := g.inside_opt_or_res
+	g.inside_opt_or_res = true
+	defer {
+		g.inside_opt_or_res = old_inside_opt_or_res
+	}
+	return g.as_cast_option_payload_expr(typ, g.expr_string(expr), false)
+}
+
 fn (mut g Gen) as_cast(node ast.AsCast) {
 	// Make sure the sum type can be cast to this type (the types
 	// are the same), otherwise panic.
 	unwrapped_node_typ := g.unwrap_generic(node.typ)
 	styp := g.styp(unwrapped_node_typ)
 	sym := g.table.sym(unwrapped_node_typ)
-	mut expr_type_sym := g.table.sym(g.unwrap_generic(node.expr_type))
+	unwrapped_expr_type := g.unwrap_generic(node.expr_type)
+	expr_type_without_option := unwrapped_expr_type.clear_flag(.option)
+	mut expr_type_sym := g.table.sym(unwrapped_expr_type)
 	// Reset inside_selector_lhs so that inner g.expr() calls generate
 	// fully dereferenced values, not pointers. The as_cast applies its own
 	// dot/arrow operator based on expr_type.is_ptr().
@@ -12756,18 +12797,28 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	// When expr_type and typ refer to the same sumtype (e.g. from assert autocasts
 	// after `assert a != none` where a is ?SumType), just emit the expression directly.
 	// The ident codegen already handles any needed smartcast/option unwrapping.
-	if expr_type_sym.kind == .sum_type && g.unwrap_generic(node.expr_type) == unwrapped_node_typ {
-		g.expr(node.expr)
+	if expr_type_sym.kind == .sum_type && expr_type_without_option == unwrapped_node_typ {
+		if unwrapped_expr_type.has_flag(.option) {
+			g.write(g.as_cast_option_payload_expr_from_expr(unwrapped_expr_type, node.expr))
+		} else {
+			g.expr(node.expr)
+		}
 		return
 	}
 	if mut expr_type_sym.info is ast.SumType {
-		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
+		expr_is_option := unwrapped_expr_type.has_flag(.option)
+		dot := if expr_type_without_option.is_ptr() { '->' } else { '.' }
 		if node.expr.has_fn_call() && !g.is_cc_msvc {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.styp(node.expr_type)
 			g.write('({ ${expr_styp} ${tmp_var} = ')
 			g.expr(node.expr)
 			g.write('; ')
+			expr_str := if expr_is_option {
+				g.as_cast_option_payload_expr(unwrapped_expr_type, tmp_var, false)
+			} else {
+				tmp_var
+			}
 			if sym.info is ast.FnType {
 				g.write('(${styp})builtin____as_cast(')
 			} else if g.inside_smartcast {
@@ -12775,8 +12826,8 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			} else {
 				g.write('*(${styp}*)builtin____as_cast(')
 			}
-			g.write2(tmp_var, dot)
-			g.write2('_${sym.cname},', tmp_var)
+			g.write2('(${expr_str})', dot)
+			g.write2('_${sym.cname},', '(${expr_str})')
 			g.write(dot)
 			sidx := g.type_sidx(unwrapped_node_typ)
 			g.write('_typ, ${sidx}); })')
@@ -12788,12 +12839,19 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			} else {
 				g.write('*(${styp}*)builtin____as_cast(')
 			}
-			g.write('(')
-			g.expr(node.expr)
-			g.write2(')', dot)
-			g.write2('_${sym.cname},', '(')
-			g.expr(node.expr)
-			g.write2(')', dot)
+			if expr_is_option {
+				expr_str := g.as_cast_option_payload_expr_from_expr(unwrapped_expr_type, node.expr)
+				g.write2('(${expr_str})', dot)
+				g.write2('_${sym.cname},', '(${expr_str})')
+				g.write(dot)
+			} else {
+				g.write('(')
+				g.expr(node.expr)
+				g.write2(')', dot)
+				g.write2('_${sym.cname},', '(')
+				g.expr(node.expr)
+				g.write2(')', dot)
+			}
 			sidx := g.type_sidx(unwrapped_node_typ)
 			g.write('_typ, ${sidx})')
 		}

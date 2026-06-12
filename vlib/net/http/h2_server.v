@@ -48,14 +48,22 @@ mut:
 	last_stream_id u32
 	awaiting_cont  u32 // non-zero when mid-CONTINUATION on this stream
 	closing        bool
+	idle_conns     &TlsIdleConnTracker = unsafe { nil }
+	idle_handle    int
 }
 
 // serve_h2_conn drives a single HTTP/2 server-side connection until the
 // transport closes or a protocol error forces a GOAWAY. `handler` is invoked
 // once per fully-received request stream.
 fn serve_h2_conn(mut transport H2Transport, mut handler Handler) ! {
+	serve_h2_conn_with_idle_tracker(mut transport, mut handler, unsafe { nil }, 0)!
+}
+
+fn serve_h2_conn_with_idle_tracker(mut transport H2Transport, mut handler Handler, idle_conns &TlsIdleConnTracker, idle_handle int) ! {
 	mut c := &H2ServerConn{
-		transport: transport
+		transport:   transport
+		idle_conns:  idle_conns
+		idle_handle: idle_handle
 	}
 	c.serve(mut handler) or {
 		// Best-effort GOAWAY before bailing.
@@ -65,15 +73,46 @@ fn serve_h2_conn(mut transport H2Transport, mut handler Handler) ! {
 }
 
 fn (mut c H2ServerConn) serve(mut handler Handler) ! {
-	c.read_client_preface()!
+	c.read_client_preface_idle()!
 	c.send_initial_settings()!
 	for !c.closing {
-		frame := c.read_frame() or {
+		frame := c.read_idle_frame() or {
 			// Treat a clean transport close as end of session.
 			return
 		}
 		c.dispatch_frame(frame, mut handler)!
 	}
+}
+
+fn (mut c H2ServerConn) should_track_idle_read() bool {
+	return c.idle_handle > 0 && c.idle_conns != unsafe { nil }
+}
+
+fn (mut c H2ServerConn) read_client_preface_idle() ! {
+	if !c.should_track_idle_read() {
+		c.read_client_preface()!
+		return
+	}
+	if !c.idle_conns.mark_idle(c.idle_handle) {
+		return error('h2 server: connection is shutting down')
+	}
+	defer {
+		c.idle_conns.unmark_idle(c.idle_handle)
+	}
+	c.read_client_preface()!
+}
+
+fn (mut c H2ServerConn) read_idle_frame() !H2Frame {
+	if !c.should_track_idle_read() {
+		return c.read_frame()!
+	}
+	if !c.idle_conns.mark_idle(c.idle_handle) {
+		return error('h2 server: connection is shutting down')
+	}
+	defer {
+		c.idle_conns.unmark_idle(c.idle_handle)
+	}
+	return c.read_frame()!
 }
 
 fn (mut c H2ServerConn) read_client_preface() ! {

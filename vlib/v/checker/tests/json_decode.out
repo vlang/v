@@ -32,10 +32,17 @@ vlib/v/checker/tests/json_decode.vv:14:14: error: json.decode: expected sum type
    14 |     json.decode(Num, '5')! // BAD
       |                 ~~~
    15 |     json.decode(St, 6)! // BAD
-   16 | }
+   16 |     json.decode(&[]St, '[]')! // BAD
 vlib/v/checker/tests/json_decode.vv:15:7: error: json.decode: second argument needs to be a string
    13 |     json.decode(string, '""')! // BAD
    14 |     json.decode(Num, '5')! // BAD
    15 |     json.decode(St, 6)! // BAD
       |          ~~~~~~~~~~~~~
-   16 | }
+   16 |     json.decode(&[]St, '[]')! // BAD
+   17 | }
+vlib/v/checker/tests/json_decode.vv:16:15: error: json.decode: cannot decode into a pointer type
+   14 |     json.decode(Num, '5')! // BAD
+   15 |     json.decode(St, 6)! // BAD
+   16 |     json.decode(&[]St, '[]')! // BAD
+      |                  ^
+   17 | }
