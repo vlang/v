@@ -2031,12 +2031,24 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	if is_ctemp_fixed_ret {
 		g.write('(${g.styp(resolved_right_type)})')
 	}
+	disable_lambda_autofree_tmp_arg_pregen := node.op in [.and, .logical_or]
+		&& g.inside_lambda_autofree_tmp
+	prev_inside_lambda_autofree_tmp := g.inside_lambda_autofree_tmp
+	prev_track_lambda_autofree_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+	if disable_lambda_autofree_tmp_arg_pregen {
+		g.inside_lambda_autofree_tmp = false
+		g.track_lambda_autofree_tmp_arg_vars = false
+	}
 	if resolved_right_type.is_ptr() && node.right.is_auto_deref_var()
 		&& !resolved_left_type.is_pointer() {
 		g.write('*')
 		g.expr(node.right)
 	} else {
 		g.expr_with_cast(node.right, resolved_right_type, resolved_left_type)
+	}
+	if disable_lambda_autofree_tmp_arg_pregen {
+		g.inside_lambda_autofree_tmp = prev_inside_lambda_autofree_tmp
+		g.track_lambda_autofree_tmp_arg_vars = prev_track_lambda_autofree_tmp_arg_vars
 	}
 	if is_ctemp_fixed_ret {
 		g.write(', sizeof(${g.styp(resolved_right_type)}))')

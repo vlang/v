@@ -4,6 +4,15 @@ fn mark(s string) string {
 	return s + '!'
 }
 
+fn accepts(s string) bool {
+	return s.len > 0
+}
+
+fn side_effect() string {
+	println('side effect called')
+	return 'x'
+}
+
 fn main() {
 	suffix := 'tcc/lib/libgc.dylib'
 	flags := ['"thirdparty/tcc/lib/libgc.dylib"', 'other'].map(if it.ends_with(suffix + '"')
@@ -32,6 +41,12 @@ fn main() {
 		return mark(s + nested_suffix)
 	})[0])
 	println(nested_flags)
+	short_flags := ['a'].map(if false && accepts(side_effect() + '') {
+		'bad'
+	} else {
+		it
+	})
+	println(short_flags)
 	// This regression only needs the generated C to compile.
 	exit(0)
 }
