@@ -83,7 +83,7 @@ pub fn (mut m Mac0Message) compute(key Key, payload []u8, external_aad []u8) ! {
 
 // verify recomputes the MAC tag and checks it against the stored one.
 pub fn (m Mac0Message) verify(key Key, payload []u8, external_aad []u8) ! {
-	check_critical(m.protected)!
+	check_protected_headers(m.protected, m.unprotected)!
 	alg := m.protected.algorithm or {
 		return MalformedMessage{
 			reason: 'algorithm missing from protected header (RFC 9052 §3)'
