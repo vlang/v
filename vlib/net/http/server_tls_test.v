@@ -6,6 +6,7 @@ module main
 
 import net
 import net.http
+import net.mbedtls
 import time
 
 const server_tls_cert = '-----BEGIN CERTIFICATE-----\nMIIEOTCCAyECFG64Q2g46jZb3kRbDOJWX/BwjSp6MA0GCSqGSIb3DQEBCwUAMEUx\nCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRl\ncm5ldCBXaWRnaXRzIFB0eSBMdGQwIBcNMjMwODAyMTcyOTQyWhgPMjA1MDEyMTcx\nNzI5NDJaMGsxCzAJBgNVBAYTAlVTMRMwEQYDVQQIDApDYWxpZm9ybmlhMRQwEgYD\nVQQHDAtMb3MgQW5nZWxlczEdMBsGA1UECgwUQ2F0YWx5c3QgRGV2ZWxvcG1lbnQx\nEjAQBgNVBAMMCWxvY2FsaG9zdDCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoC\nggIBALqAI4fqUi+QBVWcsXglouLdOML5+w0+1hSR1KdO0Q5XPdQAs/yYWJ+KUkDw\nG++rfy9DUPq7FNRBVurXQkcAtn6gXdllGUSjwUiDo/N4mMOyS/2sufBuaeww7jVi\nrppH+zwP1tUnjRd6khl6bi1Ian9VSzr3Iy9CkXIg1GU4CPXkOydLeoQfepXxWoK1\nOUNwT3VKC/stAfY3j/NIIeiJYkyuRGFCkxn/BUjN+AsXiTugRcYKEFHdIPkOuCXp\nYbhf+lLsczpxCs3rdZG9b/N6mEDCzXTmeHkmsjdPTf+1k5DZZvKzVBBrgdxCgBb7\n5RwjF5v9WmnIc33wWgfJC6FaUzj9NYxYUbPHD+jTz0rJB/jj4u/xJlM/e5NRmXdW\n70pOMKXtWjRSolLOFIPKLY1qs3KMTAZxKKWPDDF7WlMJxMRt7nnnks5yw43Nog4C\njDLk1ZgETnPpLgo3jbmJdIv+OHKTJrBlVvDq7VTyixCoS5G8KoOmyQJhaXG6NwE2\niVhH5JIKgzgCfetfDsnjxqJ/qtrFXPa8FF2TsomD0NK/GZmIcs+9OeVB75Jn5uhF\nfLHScpiTbuu5w3P/LI/MqihLRB6RRNnRzPH8fIg5bYC9b770ta/8GcFRuYE8t+UR\nGtqXJoIKixbDlqV54kal8FQzYzhETf9+NM6Kb/lKEfG/pslvAgMBAAEwDQYJKoZI\nhvcNAQELBQADggEBALI3uNiNO0QE1brA3QYFK+d9ZroB72NrJ0UNkzYHDg2Fc6xg\n4aVVfaxY08+TmKc0JlMOW+pUxeCW/+UBSngdQiR9EE9xm0k0XIrAsy9RXxRvEtPu\nM1VI2h7ayp1Y2BrnQinevTSgtqLRyS1VbOFRl1FiyVvinw2I0KsDdAMNevAPXcOa\nQ8pUgUq6f56DkhocQaj+hxD/uV8HryNxuoSXnPhvfTN3z4YRGzsaWevJ9EYJliOM\n+XugcqfFJ+W7/QCEcAHCL+Bw6OydG5NFORr3p57PXjjcL/uKmxPBrWg2Bz6uT4uR\nMhj0zttiFHLAt9jGfyk6W57UNUja1e1ggftJJhs=\n-----END CERTIFICATE-----\n'
@@ -158,15 +159,30 @@ fn test_server_tls_close_waits_for_active_request() {
 	}
 	spawn fn [done, port] () {
 		resp := http.fetch(
-			url:      'https://127.0.0.1:${port}/blocked'
-			validate: false
+			url:          'https://127.0.0.1:${port}/blocked'
+			enable_http2: false
+			validate:     false
 		) or {
 			done <- 'error: ${err}'
 			return
 		}
 		done <- resp.body
 	}()
-	_ := <-started
+	select {
+		_ := <-started {}
+		msg := <-done {
+			srv.close()
+			t.wait()
+			assert false, 'client finished before handler started: ${msg}'
+			return
+		}
+		2 * time.second {
+			srv.close()
+			t.wait()
+			assert false, 'timed out waiting for handler to start'
+			return
+		}
+	}
 	srv.close()
 	time.sleep(50 * time.millisecond)
 	release <- true
@@ -214,6 +230,72 @@ fn test_server_tls_close_during_silent_handshake() {
 	srv.close()
 	t.wait()
 	assert sw.elapsed() < time.second
+	assert srv.status() == .closed
+}
+
+fn test_server_tls_close_interrupts_idle_keep_alive() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         time.second
+		read_timeout:           5 * time.second
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	mut client := mbedtls.new_ssl_conn(mbedtls.SSLConnectConfig{}) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl client init failed: ${err}'
+		return
+	}
+	defer {
+		client.shutdown() or {}
+	}
+	client.dial('127.0.0.1', port) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl dial failed: ${err}'
+		return
+	}
+	request := 'GET /idle HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nConnection: keep-alive\r\n\r\n'
+	client.write_string(request) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl write failed: ${err}'
+		return
+	}
+	mut buf := []u8{len: 4096}
+	n := client.read(mut buf) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl read failed: ${err}'
+		return
+	}
+	response := buf[..n].bytestr()
+	assert response.to_lower().contains('connection: keep-alive')
+	assert response.contains('tls hello /idle')
+
+	sw := time.new_stopwatch()
+	srv.close()
+	t.wait()
+	assert sw.elapsed() < 2 * time.second
 	assert srv.status() == .closed
 }
 

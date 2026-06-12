@@ -5,6 +5,7 @@ module http
 
 import io
 import net
+import sync
 import time
 import net.mbedtls
 
@@ -51,9 +52,10 @@ fn (mut s Server) listen_and_serve_tls() {
 	s.addr = addr
 
 	ch := chan &mbedtls.SSLConn{cap: s.pool_channel_slots}
+	mut idle_conns := &TlsIdleConnTracker{}
 	mut ws := []thread{cap: s.worker_num}
 	for wid in 0 .. s.worker_num {
-		ws << new_tls_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests)
+		ws << new_tls_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests, idle_conns)
 	}
 
 	if s.show_startup_message {
@@ -90,7 +92,50 @@ fn (mut s Server) listen_and_serve_tls() {
 		ch <- conn
 	}
 	ch.close()
+	idle_conns.close_idle()
 	ws.wait()
+}
+
+@[heap]
+struct TlsIdleConnTracker {
+	mu &sync.Mutex = sync.new_mutex()
+mut:
+	handles []int
+	closing bool
+}
+
+fn (mut t TlsIdleConnTracker) mark_idle(handle int) bool {
+	t.mu.lock()
+	defer {
+		t.mu.unlock()
+	}
+	if t.closing {
+		return false
+	}
+	t.handles << handle
+	return true
+}
+
+fn (mut t TlsIdleConnTracker) unmark_idle(handle int) {
+	t.mu.lock()
+	defer {
+		t.mu.unlock()
+	}
+	idx := t.handles.index(handle)
+	if idx >= 0 {
+		t.handles.delete(idx)
+	}
+}
+
+fn (mut t TlsIdleConnTracker) close_idle() {
+	t.mu.lock()
+	t.closing = true
+	handles := t.handles.clone()
+	t.handles.clear()
+	t.mu.unlock()
+	for handle in handles {
+		net.shutdown(handle)
+	}
 }
 
 // TlsHandlerWorker serves HTTP/1.1 requests on TLS-wrapped connections.
@@ -98,16 +143,19 @@ struct TlsHandlerWorker {
 	id                      int
 	ch                      chan &mbedtls.SSLConn
 	max_keep_alive_requests int
+mut:
+	idle_conns &TlsIdleConnTracker = unsafe { nil }
 pub mut:
 	handler Handler
 }
 
-fn new_tls_handler_worker(wid int, ch chan &mbedtls.SSLConn, handler Handler, max_keep_alive_requests int) thread {
+fn new_tls_handler_worker(wid int, ch chan &mbedtls.SSLConn, handler Handler, max_keep_alive_requests int, idle_conns &TlsIdleConnTracker) thread {
 	mut w := &TlsHandlerWorker{
 		id:                      wid
 		ch:                      ch
 		handler:                 handler
 		max_keep_alive_requests: max_keep_alive_requests
+		idle_conns:              idle_conns
 	}
 	return spawn w.process_requests()
 }
@@ -121,6 +169,7 @@ fn (mut w TlsHandlerWorker) process_requests() {
 
 fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 	defer {
+		w.idle_conns.unmark_idle(conn.handle)
 		conn.shutdown() or {}
 	}
 	// If the TLS handshake negotiated HTTP/2 via ALPN, switch to the HTTP/2
@@ -142,6 +191,9 @@ fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 
 	mut request_count := 0
 	for {
+		if !w.idle_conns.mark_idle(conn.handle) {
+			return
+		}
 		mut req := parse_request(mut reader) or {
 			if err !is io.Eof {
 				$if debug {
@@ -150,6 +202,7 @@ fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 			}
 			return
 		}
+		w.idle_conns.unmark_idle(conn.handle)
 		request_count++
 		// `conn.ip` is the peer's IPv4 address as populated by mbedtls'
 		// accept(); blank for IPv6, which is acceptable for keep-alive logic.
