@@ -13864,6 +13864,16 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 	if t_typ := g.contains_ptr_cache[el_typ] {
 		return t_typ
 	}
+	// Option/result wrappers (`?T` / `!T`) always embed an `IError err` field — a
+	// pointer-bearing interface — regardless of the payload type, so they contain a
+	// pointer even when the payload (e.g. `?int`) does not. This must be checked on
+	// el_typ BEFORE final_sym below, which strips the .option/.result flags and would
+	// otherwise classify `?int` as scan-free, emitting a `_noscan` allocation whose
+	// live err pointer a conservative GC mark would skip.
+	if el_typ.has_flag(.option) || el_typ.has_flag(.result) {
+		g.contains_ptr_cache[el_typ] = true
+		return true
+	}
 	if el_typ.is_any_kind_of_pointer() {
 		g.contains_ptr_cache[el_typ] = true
 		return true
