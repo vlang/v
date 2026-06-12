@@ -1275,7 +1275,7 @@ There are further built-in methods for arrays:
   preserving order. On the C backend, it reuses the backing buffer and keeps capacity when
   no slices share it
 * `a.delete(index)` equivalent to `a.delete_many(index, 1)`
-* `a.delete_last()` removes the last element without changing `cap`
+* `a.delete_last()` removes the last element; on the C backend it does not change `cap`
 * `a.first()` equivalent to `a[0]`
 * `a.last()` equivalent to `a[a.len - 1]`
 * `a.pop()` removes the last element and returns it
