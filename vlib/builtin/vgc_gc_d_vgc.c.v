@@ -454,16 +454,20 @@ fn vgc_drain_mark_work() {
 		}
 		span := vgc_find_span(voidptr(obj_addr))
 		if span == unsafe { nil } || span.noscan {
-			continue // noscan objects don't contain pointers
+			continue // noscan objects contain no pointers (codegen-reliable: only primitive/pointer-free types)
 		}
-		if span.has_ptrmap {
-			// Precise scanning: only check known pointer word offsets
-			vgc_scan_precise(obj_addr, span.ptrmap, span.ptr_words)
-		} else {
-			// Conservative fallback: scan every word
-			obj_size := usize(span.elem_size)
-			vgc_scan_range(obj_addr, obj_addr + obj_size)
-		}
+		// Scan every word conservatively. NOTE: precise per-span ptrmap scanning is
+		// UNSOUND here and was removed — a span serves one size CLASS, but real
+		// workloads pack many different TYPES (and conservative ptrmap==0 allocations)
+		// into the same size class. The span records only the FIRST typed alloc's
+		// ptrmap (vgc_malloc_typed_opts "first typed allocation wins") and applies it
+		// to every object, so any object whose real pointer layout differs has live
+		// child pointers skipped -> reclaimed-while-reachable (observed as corrupted
+		// results under a deep alloc-heavy serial fold). Conservative scanning finds
+		// every pointer (may over-retain, never under-retains); the backstop runs
+		// rarely behind the Perceus front line, so the cost is negligible.
+		obj_size := usize(span.elem_size)
+		vgc_scan_range(obj_addr, obj_addr + obj_size)
 	}
 }
 

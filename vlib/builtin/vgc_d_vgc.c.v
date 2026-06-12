@@ -950,14 +950,14 @@ fn vgc_malloc_typed_opts(n usize, ptrmap u64, ptr_words u8, zero_fill bool) void
 		}
 	}
 
-	// Set precise pointer map on span (first typed allocation wins)
-	if ptrmap != 0 && !span.has_ptrmap {
-		unsafe {
-			(&VGC_Span(span)).has_ptrmap = true
-			(&VGC_Span(span)).ptrmap = ptrmap
-			(&VGC_Span(span)).ptr_words = ptr_words
-		}
-	}
+	// Precise per-span ptrmap scanning was REMOVED as unsound: a span serves one
+	// size CLASS but holds many different TYPES (and conservative ptrmap==0
+	// allocations), so a single per-span ptrmap mis-describes most objects and the
+	// mark phase skips their live pointers (see vgc_drain_mark_work). The mark phase
+	// now scans scannable spans conservatively, so this hint is unused; leave it
+	// unset (has_ptrmap stays false) to avoid resurrecting the unsound path.
+	_ = ptrmap
+	_ = ptr_words
 
 	ptr := unsafe { vgc_span_alloc_obj(mut span) }
 	if ptr != unsafe { nil } {
