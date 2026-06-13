@@ -1231,5 +1231,6 @@ fn is_no_need_retry_error(err_code int) bool {
 		net.err_no_udp_remote.code(),
 		net.err_connect_timed_out.code(),
 		net.err_timed_out_code,
+		transport_err_unsafe_retry,
 	]
 }

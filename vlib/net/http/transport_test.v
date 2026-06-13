@@ -25,7 +25,12 @@ mut:
 	// close_after_each: close after each response WITHOUT advertising it — the
 	// classic stale-pooled-connection scenario.
 	close_after_each bool
-	body             string = 'hello'
+	// drop_on_post: after reading a POST request head, close the connection
+	// without responding — a reused-connection failure after the bytes were
+	// written, for a non-idempotent method.
+	drop_on_post bool
+	posts        int // POST request heads actually read by the server
+	body         string = 'hello'
 }
 
 fn (mut s KaSrv) bump_accepts() {
@@ -42,9 +47,17 @@ fn (mut s KaSrv) accept_count() int {
 	return s.accepts
 }
 
+fn (mut s KaSrv) post_count() int {
+	s.mu.lock()
+	defer {
+		s.mu.unlock()
+	}
+	return s.posts
+}
+
 // ka_read_request_head reads from `conn` until a full request head (terminated
-// by a blank line) has arrived. The test requests carry no bodies.
-fn ka_read_request_head(mut conn net.TcpConn) ! {
+// by a blank line) has arrived, returning it. The test requests carry no bodies.
+fn ka_read_request_head(mut conn net.TcpConn) !string {
 	mut buf := []u8{len: 4096}
 	mut sofar := []u8{}
 	for {
@@ -54,9 +67,10 @@ fn ka_read_request_head(mut conn net.TcpConn) ! {
 		}
 		sofar << buf[..n]
 		if sofar.bytestr().contains('\r\n\r\n') {
-			return
+			return sofar.bytestr()
 		}
 	}
+	return error('closed')
 }
 
 fn ka_srv_serve_conn(mut s KaSrv, mut conn net.TcpConn) {
@@ -65,7 +79,15 @@ fn ka_srv_serve_conn(mut s KaSrv, mut conn net.TcpConn) {
 	}
 	conn.set_read_timeout(10 * time.second)
 	for {
-		ka_read_request_head(mut conn) or { return }
+		head := ka_read_request_head(mut conn) or { return }
+		if s.drop_on_post && head.starts_with('POST ') {
+			s.mu.lock()
+			s.posts++
+			s.mu.unlock()
+			// Drop the connection without responding: the request bytes were
+			// written, so this is not a stale-write.
+			return
+		}
 		mut resp := 'HTTP/1.1 200 OK\r\nContent-Length: ${s.body.len}\r\n'
 		if s.connection_close {
 			resp += 'Connection: close\r\n'
@@ -167,6 +189,37 @@ fn test_h1_stale_pooled_connection_is_retried() {
 		assert resp.body == 'hello'
 	}
 	assert srv.accept_count() == 2
+	stop_ka_srv(mut listener, th)
+}
+
+// A non-idempotent request that fails on a reused keep-alive connection after
+// its bytes were written must NOT be replayed: doing so could duplicate side
+// effects. The server reads the POST then drops the connection; the client must
+// surface the error without retrying on a fresh connection.
+fn test_h1_unsafe_pooled_post_is_not_retried() {
+	mut srv := &KaSrv{
+		drop_on_post: true
+	}
+	port, mut listener, th := start_ka_srv(mut srv) or {
+		assert false, 'server: ${err}'
+		return
+	}
+	// First, a GET to establish and pool a keep-alive connection.
+	resp := fetch(url: 'http://127.0.0.1:${port}/warmup') or {
+		assert false, 'warmup fetch: ${err}'
+		return
+	}
+	assert resp.status_code == 200
+	// The POST reuses that connection; the server reads it and drops the
+	// connection. The request must fail rather than be re-sent.
+	fetch(method: .post, url: 'http://127.0.0.1:${port}/submit', data: 'payload') or {
+		// expected: the POST failed and was not retried.
+		assert srv.post_count() == 1, 'POST was replayed ${srv.post_count()} times'
+		assert srv.accept_count() == 1, 'a fresh connection was opened to retry the POST'
+		stop_ka_srv(mut listener, th)
+		return
+	}
+	assert false, 'the POST unexpectedly succeeded'
 	stop_ka_srv(mut listener, th)
 }
 

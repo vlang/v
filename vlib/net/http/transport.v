@@ -21,6 +21,13 @@ import time
 // always safe to retry on a fresh connection.
 const transport_err_stale_write = -20011
 
+// transport_err_unsafe_retry tags a failure on a reused keep-alive connection
+// that happened after the request bytes were written, for a non-idempotent
+// method: the request may have reached the server, so it must not be replayed
+// (neither here nor by the caller's outer retry loop). is_no_need_retry_error
+// recognizes this code so the outer loop honors the guard.
+const transport_err_unsafe_retry = -20013
+
 // H1PooledConn is one keep-alive HTTP/1.1 connection in a Transport pool:
 // either a plain TCP connection or a TLS one (exactly one of the two is set).
 @[heap]
@@ -253,9 +260,15 @@ fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host
 		}
 		resp, reusable := conn.exchange(req, raw) or {
 			conn.close_conn()
-			if reused
-				&& (err.code() == transport_err_stale_write || transport_is_idempotent(method)) {
-				continue
+			if reused {
+				if err.code() == transport_err_stale_write || transport_is_idempotent(method) {
+					continue
+				}
+				// The reused connection failed after the request bytes were
+				// written and the method is not idempotent: replaying it could
+				// duplicate side effects, so tag the error to stop the caller's
+				// outer retry loop from re-sending it on a fresh connection.
+				return error_with_code(err.msg(), transport_err_unsafe_retry)
 			}
 			return err
 		}
