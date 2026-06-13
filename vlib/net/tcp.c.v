@@ -660,7 +660,9 @@ fn (mut s TcpSocket) set_default_options() ! {
 	}
 
 	// Enable the NODELAY option by default.
-	s.set_option(C.IPPROTO_TCP, C.TCP_NODELAY, 1)!
+	if s.address()!.family() != .unix {
+		s.set_option(C.IPPROTO_TCP, C.TCP_NODELAY, 1)!
+	}
 }
 
 // bind a local rddress for TcpSocket
