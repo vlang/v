@@ -7318,7 +7318,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			}
 			g.write('builtin__closure__closure_create(${name}, ')
 			if !receiver.typ.is_ptr() {
-				g.write('builtin__memdup_uncollectable(')
+				g.write('builtin__memdup(')
 			}
 			mut has_addr := false
 			if !node.expr_type.is_ptr() {
