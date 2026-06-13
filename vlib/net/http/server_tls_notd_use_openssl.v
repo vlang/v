@@ -10,8 +10,18 @@ import net.mbedtls
 
 const tls_accept_poll_timeout = 100 * time.millisecond
 
+// tls_handshake_timeout bounds a single TLS server handshake when the user did
+// not set a finite `accept_timeout`. The handshake runs on the accept thread,
+// so without a finite bound a client that completes the TCP connect and then
+// stalls mid-handshake would wedge the accept loop forever (no new connections,
+// and `stop()` is never observed).
+const tls_handshake_timeout = 30 * time.second
+
 fn tls_accept_timeouts(accept_timeout time.Duration) (time.Duration, time.Duration) {
-	handshake_timeout := accept_timeout
+	// A finite `accept_timeout` doubles as the handshake budget; when it is
+	// infinite (<= 0), fall back to a finite default so the handshake still
+	// times out and shutdown stays responsive.
+	handshake_timeout := if accept_timeout > 0 { accept_timeout } else { tls_handshake_timeout }
 	accept_poll_timeout := if accept_timeout > 0 && accept_timeout < tls_accept_poll_timeout {
 		accept_timeout
 	} else {
