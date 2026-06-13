@@ -190,11 +190,36 @@ static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
 // ============================================================
 // Stack pointer / frame address
 // ============================================================
+// vgc_real_sp reads the ACTUAL stack pointer register. This matters wherever the
+// value is used as the low bound of a conservative root scan: __builtin_frame_address(0)
+// returns the FRAME POINTER, which sits ABOVE this frame's locals (incl. the
+// setjmp jmp_buf that holds the spilled callee-saved registers). A range anchored
+// at the frame pointer would EXCLUDE that spill area, so a live mutator root held
+// only in a callee-saved register — routine under -Os — would never be scanned and
+// would be reclaimed while live. The real SP covers the whole current frame.
+#if defined(__GNUC__) || defined(__clang__)
+  __attribute__((always_inline)) static inline uintptr_t vgc_real_sp(void) {
+      uintptr_t sp;
+  #if defined(__aarch64__) || defined(__arm64__)
+      __asm__ __volatile__("mov %0, sp" : "=r"(sp));
+  #elif defined(__x86_64__)
+      __asm__ __volatile__("mov %%rsp, %0" : "=r"(sp));
+  #elif defined(__i386__)
+      __asm__ __volatile__("mov %%esp, %0" : "=r"(sp));
+  #else
+      sp = (uintptr_t)__builtin_frame_address(0);
+  #endif
+      return sp;
+  }
+#else
+  static inline uintptr_t vgc_real_sp(void) { return (uintptr_t)__builtin_frame_address(0); }
+#endif
+
 #if defined(_MSC_VER)
   #include <intrin.h>
   static inline void* vgc_get_sp(void) { return _AddressOfReturnAddress(); }
 #else
-  static inline void* vgc_get_sp(void) { return __builtin_frame_address(0); }
+  static inline void* vgc_get_sp(void) { return (void*)vgc_real_sp(); }
 #endif
 
 // ============================================================
@@ -484,7 +509,12 @@ extern void vgc_gc_start(void);
 static inline void vgc_run_gc_spilled(uintptr_t* lo, uintptr_t* hi, uintptr_t base) {
     jmp_buf buf;
     setjmp(buf);
-    uintptr_t sp = (uintptr_t)__builtin_frame_address(0);
+    // Anchor at the REAL stack pointer (not the frame pointer): `buf` holding the
+    // spilled callee-saved registers lives BELOW the frame pointer, so a range
+    // anchored there would miss it (see vgc_real_sp). Clamp to <= &buf so the spill
+    // area is covered even on a target without an SP-read primitive.
+    uintptr_t sp = vgc_real_sp();
+    if ((uintptr_t)&buf < sp) { sp = (uintptr_t)&buf; }
     if (base >= sp) { *lo = sp; *hi = base; } else { *lo = base; *hi = sp; }
     vgc_gc_start();
     __asm__ __volatile__("" : : "r"(&buf) : "memory");
@@ -500,7 +530,10 @@ static inline void vgc_park_spill(uint32_t* stop_flag, uint32_t* stopped_count,
                                   uintptr_t* range_hi, uintptr_t stack_base) {
     jmp_buf buf;
     setjmp(buf);
-    uintptr_t sp = (uintptr_t)__builtin_frame_address(0);
+    // Real SP, not the frame pointer: the spilled-register jmp_buf lives below the
+    // frame pointer and must be inside the scanned range (see vgc_real_sp).
+    uintptr_t sp = vgc_real_sp();
+    if ((uintptr_t)&buf < sp) { sp = (uintptr_t)&buf; }
     if (stack_base >= sp) { *range_lo = sp; *range_hi = stack_base; }
     else { *range_lo = stack_base; *range_hi = sp; }
     vgc_atomic_store_u32(my_stopped, 1);
