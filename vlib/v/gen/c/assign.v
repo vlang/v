@@ -588,8 +588,92 @@ fn (mut g Gen) gen_static_decl_runtime_init(node ast.AssignStmt, left ast.Expr, 
 	return true
 }
 
+// cm_is_pure_lvalue reports whether `e` is a side-effect-free lvalue base, so the
+// concurrent-mark write barrier (gen_cm_write_barrier) can re-emit it without
+// risking a double evaluation. Conservative: an unknown shape => false, so we skip
+// the codegen barrier for that store (bulk array/map mutators carry their own
+// barrier; any residual gap surfaces as corruption in the soundness gates).
+fn (g &Gen) cm_is_pure_lvalue(e ast.Expr) bool {
+	return match e {
+		ast.Ident { true }
+		ast.IntegerLiteral { true }
+		ast.BoolLiteral { true }
+		ast.EnumVal { true }
+		ast.SelectorExpr { g.cm_is_pure_lvalue(e.expr) }
+		ast.ParExpr { g.cm_is_pure_lvalue(e.expr) }
+		ast.CastExpr { g.cm_is_pure_lvalue(e.expr) }
+		ast.IndexExpr { g.cm_is_pure_lvalue(e.left) && g.cm_is_pure_lvalue(e.index) }
+		// arithmetic on pure operands is side-effect-free, so re-emitting the base to
+		// take the dirty span is safe — important for `obj[i+k].field = ptr`.
+		ast.InfixExpr { g.cm_is_pure_lvalue(e.left) && g.cm_is_pure_lvalue(e.right) }
+		ast.PrefixExpr { e.op in [.mul, .amp, .minus] && g.cm_is_pure_lvalue(e.right) }
+		else { false }
+	}
+}
+
+// gen_cm_write_barrier emits `vgc_wb_store(<base>);` immediately before a
+// heap-targeted, pointer-bearing store, under `-d vgc_concurrent`. It marks the
+// mutated object's span dirty so the collector re-scans it at mark-termination
+// (vlib/builtin/vgc_gc_d_vgc.c.v::vgc_wb_store / vgc_rescan_dirty_spans). It is
+// emitted at the statement boundary at the top of assign_stmt, so it precedes
+// both the RHS evaluation and the store — dirty-before-store is required for
+// preemption safety (a mutator can be mach-suspended mid-barrier; see
+// bench/parallel-alloc/CONCURRENT-MARK-DESIGN.md hazard 3). Over-approximating and
+// sound: dirtying an extra/imprecise-but-valid span only costs a harmless re-scan;
+// only a MISSED heap store is unsound. Side-effecting bases are skipped (the bulk
+// mutators array_push/map_set/memdup/realloc carry their own barrier).
+fn (mut g Gen) gen_cm_write_barrier(left ast.Expr, left_type ast.Type) {
+	if left_type == 0 || !g.contains_ptr(left_type) {
+		return
+	}
+	match left {
+		ast.SelectorExpr {
+			// (*base).field = v : dirty *base's span, but only when base is a pointer
+			// (a heap object). A value-struct selector lives on the stack / inline in
+			// its owner, covered by the termination root re-scan or the owner's store.
+			if left.expr_type.is_ptr() && g.cm_is_pure_lvalue(left.expr) {
+				base := g.expr_string(left.expr)
+				g.writeln('vgc_wb_store((voidptr)(${base}));')
+			}
+		}
+		ast.PrefixExpr {
+			// *p = v
+			if left.op == .mul && g.cm_is_pure_lvalue(left.right) {
+				base := g.expr_string(left.right)
+				g.writeln('vgc_wb_store((voidptr)(${base}));')
+			}
+		}
+		ast.IndexExpr {
+			if g.cm_is_pure_lvalue(left.left) {
+				base := g.expr_string(left.left)
+				if left.is_array {
+					// a[i] = v : dirty the dynamic array's backing buffer.
+					arrow := if left.left_type.is_ptr() { '->' } else { '.' }
+					g.writeln('vgc_wb_store((voidptr)((${base})${arrow}data));')
+				} else if left.is_farray {
+					// fixed array element: its address is interior to the owning object.
+					g.writeln('vgc_wb_store((voidptr)(&(${base})));')
+				}
+				// maps: handled by map_set's own barrier (the key/value buffers move
+				// in bulk inside the builtin, where codegen has no per-store hook).
+			}
+		}
+		else {}
+	}
+}
+
 fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	mut node := unsafe { node_ }
+	// Concurrent-mark write barrier (-d vgc_concurrent): dirty the span of each
+	// heap-targeted pointer-bearing store target BEFORE the store (and before RHS
+	// evaluation), so the collector re-scans it at mark-termination. Declarations
+	// (decl_assign) create a fresh var (alloc-black if heap) and need no barrier.
+	if node.op != .decl_assign && 'vgc_concurrent' in g.pref.compile_defines {
+		for i, lx in node.left {
+			lt := if i < node.left_types.len { node.left_types[i] } else { ast.void_type }
+			g.gen_cm_write_barrier(lx, lt)
+		}
+	}
 	if node.is_static {
 		is_defer_var := node.left[0] is ast.Ident && node.left[0].name in g.defer_vars
 		if is_defer_var && node.op == .decl_assign {

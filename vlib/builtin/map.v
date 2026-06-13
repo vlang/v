@@ -497,6 +497,9 @@ fn (mut m map) set(key voidptr, value voidptr) {
 		kv_index := int(unsafe { m.metas[index + 1] })
 		pkey := unsafe { m.key_values.key(kv_index) }
 		if m.key_eq_fn(key, pkey) {
+			$if vgc_concurrent ? {
+				vgc_wb_store(m.key_values.values) // concurrent-mark barrier: value overwrite into heap buffer
+			}
 			unsafe {
 				pval := m.key_values.value(kv_index)
 				vmemcpy(pval, value, m.value_bytes)
@@ -507,6 +510,12 @@ fn (mut m map) set(key voidptr, value voidptr) {
 		meta += probe_inc
 	}
 	kv_index := m.key_values.expand()
+	$if vgc_concurrent ? {
+		// concurrent-mark barrier: a new key/value (each possibly pointer-bearing) is
+		// written into the heap key/value buffers below, with no codegen-visible store.
+		vgc_wb_store(m.key_values.keys)
+		vgc_wb_store(m.key_values.values)
+	}
 	unsafe {
 		pkey := m.key_values.key(kv_index)
 		pvalue := m.key_values.value(kv_index)

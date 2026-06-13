@@ -385,6 +385,9 @@ pub fn (mut a array) ensure_cap(required int) {
 	new_size := u64(cap) * u64(a.element_size)
 	use_noscan_data := a.uses_noscan_data()
 	new_data := a.alloc_array_data_like_uninit(new_size)
+	$if vgc_concurrent ? {
+		vgc_wb_store(new_data) // concurrent-mark barrier: existing elements copied into the grown buffer
+	}
 	if a.data != unsafe { nil } {
 		unsafe { vmemcpy(new_data, a.data, u64(a.len) * u64(a.element_size)) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
@@ -538,6 +541,9 @@ fn (mut a array) insert_many(i int, val voidptr, size int) {
 		a.ensure_cap(int(new_len))
 	}
 	elem_size := a.element_size
+	$if vgc_concurrent ? {
+		vgc_wb_store(a.data) // concurrent-mark barrier: shift + insert move elements within the heap buffer
+	}
 	unsafe {
 		iptr := a.get_unsafe(i)
 		vmemmove(a.get_unsafe(i + size), iptr, u64(a.len - i) * u64(elem_size))
@@ -1081,6 +1087,9 @@ pub fn (a &array) clone_to_depth(depth int) array {
 		return arr
 	}
 	if a.data != 0 && source_capacity_in_bytes > 0 {
+		$if vgc_concurrent ? {
+			vgc_wb_store(arr.data) // concurrent-mark barrier: cloned elements copied into fresh buffer
+		}
 		unsafe { vmemcpy(arr.data, a.data, source_capacity_in_bytes) }
 	}
 	return arr
@@ -1089,6 +1098,9 @@ pub fn (a &array) clone_to_depth(depth int) array {
 // we manually inline this for single operations for performance without -prod
 @[inline; unsafe]
 fn (mut a array) set_unsafe(i int, val voidptr) {
+	$if vgc_concurrent ? {
+		vgc_wb_store(a.data) // concurrent-mark barrier: element store into heap buffer
+	}
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
 }
 
@@ -1098,6 +1110,9 @@ fn (mut a array) set(i int, val voidptr) {
 		if i < 0 || i >= a.len {
 			panic_n2('array.set: index out of range (i,a.len):', i, a.len)
 		}
+	}
+	$if vgc_concurrent ? {
+		vgc_wb_store(a.data) // concurrent-mark barrier: element store into heap buffer
 	}
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
 }
@@ -1143,6 +1158,13 @@ fn (mut a array) push(val voidptr) {
 	} else if required > a.cap {
 		a.ensure_cap(required)
 	}
+	// Concurrent-mark barrier: this vmemcpy moves a (possibly-pointer) element into
+	// the heap buffer with no codegen-visible store, so dirty the buffer's span
+	// BEFORE the copy (the collector re-scans it at mark-termination). Gated so
+	// default/boehm/none builds emit nothing.
+	$if vgc_concurrent ? {
+		vgc_wb_store(a.data)
+	}
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size) }
 	a.len++
 }
@@ -1165,6 +1187,9 @@ pub fn (mut a array) push_many(val voidptr, size int) {
 	is_self_append := a.data == val && a.data != 0
 	if int(new_len) > a.cap {
 		a.ensure_cap(int(new_len))
+	}
+	$if vgc_concurrent ? {
+		vgc_wb_store(a.data) // concurrent-mark barrier: bulk element copy into heap buffer
 	}
 	if is_self_append {
 		// handle `arr << arr`

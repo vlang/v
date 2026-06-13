@@ -110,6 +110,12 @@ mut:
 	free_index  u32 // hint: scan from here for free slot
 	// Sweep generation (translated from Go's sweepgen)
 	sweep_gen u32
+	// Concurrent mark (vgc_concurrent): set to 1 by the write barrier
+	// (vgc_wb_store) when any object in this span is mutated during the
+	// concurrent mark; the collector conservatively re-scans every dirty span at
+	// mark-termination (vgc_rescan_dirty_spans), then clears it. Unused (always 0)
+	// under the default STW build.
+	dirty u32
 	// Linked list pointers — SHARED between the central partial/full lists and the
 	// free_spans recycle list (a span is on at most one at a time).
 	next &VGC_Span = unsafe { nil }
@@ -200,15 +206,16 @@ mut:
 	central [136]VGC_Central
 	// Large object spans
 	large_alloc &VGC_Span = unsafe { nil }
-	// All spans, for iteration during GC. mmap-backed (vgc_init), lazily committed by
-	// the OS so the reservation costs ~nothing until filled. The pointer is allocated
-	// ONCE and never moves, so the collector's lock-free allspans walks (incl. lazy
-	// sweep outside STW) never observe a relocated/freed buffer — sidestepping the
-	// realloc race that runtime doubling would introduce. Capacity is load-bearing:
-	// span reuse + the sweep_gen one-cycle grace make the live span count ~2x the
-	// heap-goal working set, and per-thread GC pacing (vgc_pace_by_threads) raises the
-	// heap goal ~N x for N mutators, so an alloc-heavy [par] workload needs far more
-	// than the old fixed 262144. vgc_span_alloc fails loudly (never silently) past cap.
+	// All spans, for iteration during GC. mmap-backed (lazily on first span_alloc),
+	// lazily committed by the OS so the reservation costs ~nothing until filled. The
+	// pointer is allocated ONCE and never moves, so the collector's lock-free allspans
+	// walks (incl. lazy sweep outside STW) never observe a relocated/freed buffer —
+	// sidestepping the realloc race that runtime doubling would introduce. Capacity is
+	// load-bearing: span reuse + the sweep_gen one-cycle grace make the live span
+	// count ~2x the heap-goal working set, and per-thread GC pacing
+	// (vgc_pace_by_threads) raises the heap goal ~N x for N mutators, so an alloc-heavy
+	// [par] workload needs far more than the old fixed 262144. vgc_span_alloc fails
+	// loudly (never silently) past cap.
 	allspans     &&VGC_Span = unsafe { nil }
 	allspans_cap int
 	nspans       int
@@ -288,6 +295,7 @@ __global vgc_base_floor = u64(256 * 1024 * 1024)
 __global vgc_pace_by_threads = false
 
 fn C.atoll(&char) i64
+fn C.getenv(&char) &char
 
 @[markused]
 pub fn vgc_init() {
@@ -761,6 +769,7 @@ fn vgc_span_init(mut span VGC_Span, class_idx u8, noscan bool) {
 	span.free_index = 0
 	span.alloc_count = 0
 	span.is_tiny = false // reset on (re)use; set true only when the tiny allocator carves a packed block
+	span.dirty = 0       // concurrent mark: a recycled span starts clean
 
 	// Bitmaps are inline in the span (alloc_buf/mark_buf); point the working pointers
 	// at them and zero the bytes in use. nobjs <= 1024 -> bitmap_size <= 128 <= 136,
@@ -781,6 +790,24 @@ fn vgc_span_init(mut span VGC_Span, class_idx u8, noscan bool) {
 }
 
 // Find a free slot in a span and allocate it
+// Alloc-black hook (concurrent mark only): a newly allocated object during the
+// concurrent mark phase must have its mark bit set so the cycle's sweep does not
+// reclaim it. It is marked BLACK (not enqueued): its bytes are zero-filled (no
+// pointers to scan) or are filled by subsequent stores, each of which hits the
+// write barrier. Atomic test_and_set because the collector may concurrently shade
+// a different object sharing the same mark_bits byte. Compiled out (and the
+// gc_phase load skipped) under the default build.
+@[inline]
+fn vgc_alloc_black_hook(span &VGC_Span, obj_idx u32) {
+	$if vgc_concurrent ? {
+		if C.vgc_atomic_load_u32(&vgc_heap.gc_phase) != vgc_phase_off {
+			if span.mark_bits != unsafe { nil } {
+				C.vgc_bitmap_test_and_set(span.mark_bits, obj_idx)
+			}
+		}
+	}
+}
+
 fn vgc_span_alloc_obj(mut span VGC_Span) voidptr {
 	if span.alloc_bits == unsafe { nil } {
 		return unsafe { nil }
@@ -813,6 +840,7 @@ fn vgc_span_alloc_obj(mut span VGC_Span) voidptr {
 					}
 					span.alloc_count++
 					span.free_index = i + 1
+					vgc_alloc_black_hook(span, i) // concurrent mark: alloc-black
 					addr := span.base + usize(i) * usize(span.elem_size)
 					return unsafe { voidptr(addr) }
 				}
@@ -1166,6 +1194,17 @@ fn vgc_maybe_gc() {
 			vgc_safepoint()
 		}
 	}
+	// NOTE: GC-assist (a mutator draining a proportional slice of the grey set when it
+	// allocates during the concurrent mark) is DELIBERATELY NOT wired here. It is
+	// UNSOUND under this collector's preemptive mach-suspend: an assisting mutator that
+	// pops a grey object and is then mach-suspended MID-SCAN orphans that object (it is
+	// already off the queue, so the collector never scans its referents -> they are
+	// swept while live). Verified: enabling it corrupted g_churn (thousands of events)
+	// and cm_stress, and segfaulted. A sound assist needs cooperative safepoints for the
+	// assist scan (so a mutator is never frozen mid-scan) or popped-object tracking —
+	// substantial, deferred. Without assist the concurrent mark is correct; the heap can
+	// overshoot the goal during a long mark, bounded by the existing span-exhaustion ->
+	// vgc_collect_and_retry_span (force-collect) safety net. See CONCURRENT-MARK-FINDINGS.md.
 }
 
 fn vgc_malloc_noscan(n usize) voidptr {
@@ -1284,6 +1323,7 @@ fn vgc_alloc_large(n usize, noscan bool, zero_fill bool) voidptr {
 		span.class_idx = 0
 		span.noscan = noscan
 		span.is_tiny = false // large spans are never tiny-packed (reset in case of a recycled span)
+		span.dirty = 0       // concurrent mark: recycled large span starts clean
 		span.elem_size = u32(n)
 		span.nelems = 1
 		span.alloc_count = 1
@@ -1293,6 +1333,7 @@ fn vgc_alloc_large(n usize, noscan bool, zero_fill bool) voidptr {
 		span.mark_bits = &span.mark_buf[0]
 		span.alloc_bits[0] = 1
 		span.mark_bits[0] = 0
+		vgc_alloc_black_hook(span, 0) // concurrent mark: alloc-black this large object
 		// Fully initialized -> publish as live (see the in_use invariant in
 		// vgc_span_init; span_alloc/get_free_span leave in_use false until here).
 		span.in_use = true
@@ -1344,6 +1385,14 @@ fn vgc_realloc(old_ptr voidptr, new_size usize) voidptr {
 	}
 	if new_ptr != unsafe { nil } {
 		copy_size := if old_size < new_size { old_size } else { new_size }
+		// Concurrent-mark barrier: this memcpy moves the old buffer's bytes (which may
+		// hold pointers) into the fresh (alloc-black) buffer with no codegen-visible
+		// store, so dirty the destination span before the copy. Catch-all for every
+		// realloc-based grow (array ensure_cap via realloc, map DenseArray.expand,
+		// string builders, ...). new_ptr is scannable here (noscan path skips dirty).
+		$if vgc_concurrent ? {
+			vgc_wb_store(new_ptr)
+		}
 		unsafe { C.memcpy(new_ptr, old_ptr, copy_size) }
 	}
 	return new_ptr
@@ -1639,6 +1688,9 @@ fn vgc_memdup_typed(src voidptr, n isize, ptrmap u64, ptr_words u8) voidptr {
 	}
 	mem := vgc_malloc_typed_opts(usize(n), ptrmap, ptr_words, false)
 	if mem != unsafe { nil } {
+		$if vgc_concurrent ? {
+			vgc_wb_store(mem) // concurrent-mark barrier: dup'd bytes may hold pointers
+		}
 		unsafe { C.memcpy(mem, src, n) }
 	}
 	return mem
@@ -1652,6 +1704,9 @@ fn vgc_memdup(src voidptr, n isize) voidptr {
 	}
 	mem := vgc_malloc_typed_opts(usize(n), 0, 0, false)
 	if mem != unsafe { nil } {
+		$if vgc_concurrent ? {
+			vgc_wb_store(mem) // concurrent-mark barrier: dup'd bytes may hold pointers
+		}
 		unsafe { C.memcpy(mem, src, n) }
 	}
 	return mem

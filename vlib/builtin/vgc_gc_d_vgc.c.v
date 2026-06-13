@@ -17,6 +17,13 @@ module builtin
 // spilled — so vgc_gc_start must NOT re-record the collector's own range.
 @[export: 'vgc_gc_start']
 fn vgc_gc_start() {
+	$if vgc_concurrent ? {
+		// Concurrent-mark collector: mark while mutators run, with two brief STW
+		// points. Gated by `-d vgc_concurrent`; the default build falls through to
+		// the proven full-STW body below (byte-identical, diff-able for bisection).
+		vgc_gc_start_concurrent()
+		return
+	}
 	// Only one GC at a time
 	mut expected := vgc_phase_off
 	if !C.vgc_atomic_cas_u32(&vgc_heap.gc_phase, &expected, vgc_phase_mark) {
@@ -218,6 +225,179 @@ fn vgc_gc_start() {
 
 	vgc_heap.gc_cycle++
 	C.vgc_trace(12, self_idx, u64(vgc_heap.gc_cycle), 0) // GC_END
+	C.vgc_atomic_store_u32(&vgc_heap.gc_phase, vgc_phase_off)
+}
+
+// ============================================================
+// Concurrent mark (vgc_concurrent) — mark while mutators run.
+// ============================================================
+
+// Take every allocator lock (while its holders are still RUNNING, so none is
+// frozen mid-critical-section), then mach-suspend every other registered
+// mutator. Mirrors the STW collector's enter sequence; used for BOTH
+// concurrent-mark STW windows (start and termination). The write barrier never
+// touches an allocator lock or the work queue, so at the termination window no
+// mutator can be frozen holding one of these (closing the frozen-owner class).
+@[markused]
+fn vgc_cm_stw_enter(self_idx int) {
+	C.vgc_mutex_lock(&vgc_heap.free_spans_lock)
+	C.vgc_mutex_lock(&vgc_heap.cache_lock)
+	C.vgc_mutex_lock(&vgc_heap.lock)
+	for i in 0 .. 136 {
+		C.vgc_mutex_lock(&vgc_heap.central[i].lock)
+	}
+	C.vgc_atomic_store_u32(&vgc_heap.gc_stop_flag, 0) // OS-suspend, not cooperative
+	for i in 0 .. vgc_heap.ncaches {
+		c := unsafe { &vgc_heap.caches[i] }
+		if c.registered && i != self_idx && c.mach_port != 0 {
+			C.vgc_suspend_thread(c.mach_port)
+		}
+	}
+	// The work queue is collector-exclusive (mutators never enqueue — the write barrier
+	// only dirties spans, and GC-assist is not wired; see vgc_maybe_gc), so no holder can
+	// be frozen mid-op; a plain reset suffices.
+	C.vgc_atomic_store_u32(&vgc_heap.work_lock, 0)
+}
+
+// Release every allocator lock (reverse order) and resume every other mutator.
+@[markused]
+fn vgc_cm_stw_exit(self_idx int) {
+	for i in 0 .. 136 {
+		C.vgc_mutex_unlock(&vgc_heap.central[i].lock)
+	}
+	C.vgc_mutex_unlock(&vgc_heap.lock)
+	C.vgc_mutex_unlock(&vgc_heap.free_spans_lock)
+	C.vgc_atomic_fence()
+	for i in 0 .. vgc_heap.ncaches {
+		c := unsafe { &vgc_heap.caches[i] }
+		if c.registered && i != self_idx && c.mach_port != 0 {
+			C.vgc_resume_thread(c.mach_port)
+		}
+	}
+	C.vgc_mutex_unlock(&vgc_heap.cache_lock) // release the registration gate last
+}
+
+// Re-scan every span the write barrier dirtied during the concurrent middle.
+// Conservatively scans each dirtied scannable span's allocated objects, shading
+// their CURRENT referents — so any white object that a mutator stored into an
+// already-black object survives (the "hide a white behind a black" hazard).
+// Runs under STW (mark-termination), so the allspans walk and per-object scans
+// are race-free. Clears each dirty flag as it goes.
+@[markused]
+fn vgc_rescan_dirty_spans() {
+	$if vgc_cm_nobarrier ? {
+		// TEETH KNOB (testing only): skip the dirty-span re-scan, disabling the write
+		// barrier's effect. A sound concurrent-mark build must NEVER set this; it exists
+		// only so the soundness gate (cm_stress.v) can demonstrate it reproduces live
+		// reclamation without the barrier. See bench/parallel-alloc/CONCURRENT-MARK-DESIGN.md.
+		return
+	}
+	for i in 0 .. vgc_heap.nspans {
+		span := unsafe { vgc_heap.allspans[i] }
+		if span == unsafe { nil } || !span.in_use || span.noscan {
+			continue
+		}
+		if C.vgc_atomic_load_u32(&span.dirty) == 0 {
+			continue
+		}
+		if span.alloc_bits != unsafe { nil } {
+			nbytes := (span.nelems + 7) / 8
+			for b in 0 .. nbytes {
+				alloc_byte := unsafe { span.alloc_bits[b] }
+				if alloc_byte == 0 {
+					continue
+				}
+				for bit in 0 .. 8 {
+					idx := u32(b) * 8 + u32(bit)
+					if idx >= span.nelems {
+						break
+					}
+					if (alloc_byte & (u8(1) << u32(bit))) != 0 {
+						obj_addr := span.base + usize(idx) * usize(span.elem_size)
+						vgc_scan_range(obj_addr, obj_addr + usize(span.elem_size))
+					}
+				}
+			}
+		}
+		unsafe {
+			C.vgc_atomic_store_u32(&(&VGC_Span(span)).dirty, 0)
+		}
+	}
+}
+
+// The concurrent-mark cycle: two brief STW points around a concurrent mark.
+//   (1) STW start: clear marks, scan roots, enable barrier + alloc-black, resume.
+//   (2) concurrent mark: drain the grey set while mutators run (barrier dirties
+//       mutated spans; new allocations are alloc-black).
+//   (3) STW mark-termination: re-scan dirtied roots + dirty spans, final drain,
+//       disable barrier, sweep, resume.
+// Entered via the vgc_run_gc_spilled trampoline (like vgc_gc_start), so THIS
+// thread's stack range + spilled registers are already recorded; the collector
+// stays parked in here across the concurrent middle, so that recorded range still
+// covers the triggering mutator's frames at termination (do NOT refresh self).
+@[markused]
+fn vgc_gc_start_concurrent() {
+	mut expected := vgc_phase_off
+	if !C.vgc_atomic_cas_u32(&vgc_heap.gc_phase, &expected, vgc_phase_mark) {
+		return // a cycle is already in flight
+	}
+	self_idx := C.vgc_get_cache_idx()
+
+	// ===== STW START =====
+	vgc_cm_stw_enter(self_idx)
+	vgc_sweep_finish() // finish any lazy sweep from the previous cycle
+	vgc_clear_mark_bits()
+	vgc_scan_suspended_roots(self_idx) // refresh other stacks from suspended SP + reg roots
+	// Enable the barrier and alloc-black BEFORE resuming: the instant a mutator
+	// runs again, its pointer stores dirty their span and its allocations are
+	// alloc-blacked. gc_phase is already vgc_phase_mark (from the CAS above), which
+	// is what vgc_alloc_black_hook tests.
+	C.vgc_atomic_store_u32(&vgc_heap.wb_enabled, 1)
+	vgc_mark_roots() // globals/BSS + every thread stack (snapshot)
+	for i in 0 .. vgc_nspawn_roots {
+		vgc_shade(usize(vgc_spawn_roots[i]))
+	}
+	vgc_cm_stw_exit(self_idx) // RESUME the world — mark now runs concurrently
+
+	// ===== CONCURRENT MARK (world running) =====
+	vgc_drain_mark_work() // collector-exclusive queue; mutators only dirty spans
+
+	// ===== STW MARK-TERMINATION =====
+	vgc_cm_stw_enter(self_idx)
+	C.vgc_atomic_store_u32(&vgc_heap.gc_phase, vgc_phase_mark_term)
+	vgc_scan_suspended_roots(self_idx) // re-scan dirtied roots (stacks moved)
+	vgc_mark_roots()
+	for i in 0 .. vgc_nspawn_roots {
+		vgc_shade(usize(vgc_spawn_roots[i]))
+	}
+	vgc_rescan_dirty_spans() // re-scan everything the barrier dirtied
+	vgc_drain_mark_work() // final drain of the grey set
+	C.vgc_atomic_store_u32(&vgc_heap.wb_enabled, 0)
+
+	// Compute live bytes from mark bits; rebase heap_live (same as the STW path).
+	marked := vgc_count_marked()
+	C.vgc_atomic_store_u64(&vgc_heap.heap_marked, marked)
+	for ci in 0 .. vgc_heap.ncaches {
+		unsafe {
+			vgc_heap.total_alloc += vgc_heap.caches[ci].alloc_delta
+			vgc_heap.caches[ci].alloc_delta = 0
+			vgc_heap.caches[ci].live_delta = 0
+		}
+	}
+	C.vgc_atomic_store_u64(&vgc_heap.heap_live, marked)
+
+	// Sweep (STW) — no span is freed during the concurrent middle, so sweeping
+	// here is identical to the STW collector.
+	vgc_heap.sweep_gen++
+	C.vgc_atomic_store_u32(&vgc_heap.sweep_done, 0)
+	vgc_heap.sweep_idx = 0
+	C.vgc_atomic_store_u32(&vgc_heap.gc_phase, vgc_phase_sweep)
+	vgc_do_sweep()
+	vgc_fixup_caches()
+	vgc_cm_stw_exit(self_idx)
+
+	vgc_update_trigger()
+	vgc_heap.gc_cycle++
 	C.vgc_atomic_store_u32(&vgc_heap.gc_phase, vgc_phase_off)
 }
 
@@ -645,6 +825,76 @@ fn vgc_write_barrier(new_val voidptr) {
 	}
 	// Shade the new pointer (mark it grey)
 	vgc_shade(usize(new_val))
+}
+
+// vgc_wb_store is the concurrent-mark write barrier emitted by codegen (and
+// called by the builtin bulk mutators) immediately BEFORE a pointer store into a
+// possibly-heap location. It is a card / "dirty-span" insertion barrier: it marks
+// the target object's span DIRTY (one idempotent atomic byte store), and the
+// collector re-scans every dirty span at mark-termination (vgc_rescan_dirty_spans).
+// Re-scanning the span conservatively shades every heap pointer its objects now
+// hold — a superset of the Dijkstra insertion barrier (which shades exactly the
+// newly-stored referent) — so it closes the "hide a white behind a black" hazard.
+//
+// Why dirty-span (not immediate shade) and why BEFORE the store: this collector
+// suspends mutators with OS-level mach suspend, NOT cooperative safepoints, so a
+// mutator can be frozen MID-BARRIER. An immediate-shade barrier that enqueues the
+// new value to the mark queue can lose the enqueue if frozen between the slot
+// write and the count bump (-> silent live reclamation). The dirty mark is a
+// single store and is emitted BEFORE the pointer store, so: frozen before the
+// dirty mark -> the pointer store also has not run -> no hazard; frozen after the
+// dirty mark -> the span is dirty and will be re-scanned. Proven in
+// bench/parallel-alloc/cm_barrier_proto.c (hazard 3: dirty-after+freeze is
+// provably unsound, dirty-before is sound under every freeze).
+//
+// The barrier never touches the mark work queue, so during the concurrent middle
+// the queue stays collector-exclusive. Off-cycle (wb_enabled == 0) it is a single
+// atomic load + return; under the default build (no `vgc_concurrent` define)
+// codegen emits NO calls at all, so the STW collector stays byte-identical.
+//
+// @[export] (not @[markused]): the only callers are codegen-emitted C (the
+// per-store barrier in assign.v) + the builtin bulk mutators, so `-skip-unused`
+// would otherwise prune it (it is unreferenced in the V call graph) — leaving the
+// emitted `vgc_wb_store(...)` calls undeclared. Export forces retention and emits
+// an early prototype under the exact C name codegen uses.
+@[export: 'vgc_wb_store']
+fn vgc_wb_store(obj voidptr) {
+	$if vgc_concurrent ? {
+		if C.vgc_atomic_load_u32(&vgc_heap.wb_enabled) == 0 {
+			return
+		}
+		if obj == unsafe { nil } {
+			return
+		}
+		span := vgc_find_span(obj)
+		if span != unsafe { nil } && span.in_use && !span.noscan {
+			unsafe {
+				C.vgc_atomic_store_u32(&(&VGC_Span(span)).dirty, 1)
+			}
+		}
+	}
+}
+
+// Drain at most `budget` grey objects, returning the number actually scanned.
+// Used by GC-assist: a mutator that allocates during the concurrent mark pays
+// down a proportional slice of mark work so allocation cannot outrun marking
+// (Go's gcAssist model). Returns 0 when the grey set is empty (mark is keeping up).
+fn vgc_drain_mark_work_n(budget int) int {
+	mut done := 0
+	for done < budget {
+		obj_addr := vgc_work_get()
+		if obj_addr == 0 {
+			break
+		}
+		span := vgc_find_span(voidptr(obj_addr))
+		if span == unsafe { nil } || span.noscan {
+			continue
+		}
+		obj_size := usize(span.elem_size)
+		vgc_scan_range(obj_addr, obj_addr + obj_size)
+		done++
+	}
+	return done
 }
 
 // ============================================================
