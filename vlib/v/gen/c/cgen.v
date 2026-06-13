@@ -13945,25 +13945,20 @@ fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
 }
 
 fn (mut g Gen) write_heap_alloc(styp string, typ ast.Type) {
-	if g.pref.gc_mode == .vgc {
-		ptrmap, _ := g.vgc_ptrmap(typ)
-		if ptrmap.len > 0 {
-			g.write('HEAP_vgc(${styp}, (')
-			return
-		}
-	}
+	// NOTE: the `HEAP_vgc(type, expr, ptrmap, nptrs)` precise-pointer-map variant is
+	// intentionally NOT used. Its `ptrmap`/`nptrs` are dead at runtime — the unsound
+	// per-span precise scan was removed and `vgc_malloc_typed_opts` ignores them
+	// (the conservative-mark backstop scans every scannable span). So HEAP_vgc and
+	// plain HEAP allocate identically (a scannable, conservatively-scanned object).
+	// Emitting plain HEAP everywhere keeps the macro arity trivially balanced; the
+	// previous open/close split independently recomputed `vgc_ptrmap(typ)` and, when
+	// the two disagreed (or an option-auto-heap close path wrote `))`), produced a
+	// 2-arg `HEAP_vgc(type, expr)` -> "too few arguments to function-like macro".
 	g.write('HEAP(${styp}, (')
 }
 
-// write_heap_alloc_close writes the closing part of a HEAP_vgc or HEAP call.
+// write_heap_alloc_close writes the closing part of a HEAP/HEAP_vgc call.
 fn (mut g Gen) write_heap_alloc_close(typ ast.Type) {
-	if g.pref.gc_mode == .vgc {
-		ptrmap, nptrs := g.vgc_ptrmap(typ)
-		if ptrmap.len > 0 {
-			g.write('), ${ptrmap}, ${nptrs})')
-			return
-		}
-	}
 	g.write('))')
 }
 

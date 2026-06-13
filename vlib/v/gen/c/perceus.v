@@ -1132,14 +1132,15 @@ fn (mut c PcsCfg) pcs_lower_stmt(st ast.Stmt, entry int) int {
 			for r in st.right {
 				pcs_collect(r, mut uses)
 			}
-			if st.op != .decl_assign && st.op != .assign {
-				for l in st.left {
-					pcs_collect(l, mut uses)
-				}
-			}
 			mut defs := []string{}
 			for i, l in st.left {
 				if l is ast.Ident {
+					// A bare identifier on the LHS is the assignment target (a DEF).
+					// For a compound assignment (`+=`, `-=`, ...) the old value is also
+					// READ first, so it is additionally a use.
+					if st.op != .decl_assign && st.op != .assign {
+						pcs_uniq_push(mut uses, l.name)
+					}
 					defs << l.name
 					// record heap-owning locals (the only drop candidates)
 					if i < st.left_types.len && c.pcs_is_heap_owning(st.left_types[i]) {
@@ -1156,6 +1157,17 @@ fn (mut c PcsCfg) pcs_lower_stmt(st ast.Stmt, entry int) int {
 							pcs_uniq_push(mut c.heap_vars, l.name)
 						}
 					}
+				} else {
+					// A store target that is NOT a bare identifier (`m[key]`, `s.f`,
+					// `*p`, `a[i].b`, ...): the container, index and receiver sub-
+					// expressions are all READ to locate the slot being written, so
+					// every identifier in `l` is a USE, not a def. Collect them
+					// unconditionally (regardless of op). Without this, `m[key] = v`
+					// (op `.assign`, non-Ident LHS) left `key` out of the live set,
+					// so Perceus dropped `key` at its declaration — freeing it before
+					// `map_set` cloned it (a use-after-free observed under -gc e:
+					// map keys read back corrupt / the map collapses).
+					pcs_collect(l, mut uses)
 				}
 			}
 			c.pcs_emit(cur, st.pos.pos, defs, uses)

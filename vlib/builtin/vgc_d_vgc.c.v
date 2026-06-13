@@ -94,6 +94,9 @@ mut:
 	noscan     bool  // true if objects contain no pointers (noscan variant)
 	in_use     bool  // true if span is allocated to a size class
 	has_ptrmap bool  // true if ptrmap is valid (precise scanning available)
+	is_tiny    bool  // true if the tiny allocator carved a packed block from this span
+	// (multiple independently-allocated sub-objects share one slot; an individual
+	// free must NOT reclaim such a slot — see vgc_free / the tiny allocator).
 	// Pointer bitmap: bit N = word offset N contains a pointer.
 	// Covers objects up to 512 bytes (64 words on 64-bit).
 	// For larger objects, falls back to conservative scanning.
@@ -714,6 +717,7 @@ fn vgc_span_init(mut span VGC_Span, class_idx u8, noscan bool) {
 	span.nelems = nobjs
 	span.free_index = 0
 	span.alloc_count = 0
+	span.is_tiny = false // reset on (re)use; set true only when the tiny allocator carves a packed block
 
 	// Bitmaps are inline in the span (alloc_buf/mark_buf); point the working pointers
 	// at them and zero the bytes in use. nobjs <= 1024 -> bitmap_size <= 128 <= 136,
@@ -873,6 +877,18 @@ fn vgc_central_return_span(span_class int, mut span VGC_Span) {
 // ============================================================
 
 fn vgc_cache_get_span(cache_idx int, span_class int) &VGC_Span {
+	if cache_idx < 0 {
+		// Unregistered thread: the fixed [vgc_max_threads] cache table is exhausted
+		// (e.g. >64 concurrent `go` threads — vgc_register_thread leaves idx = -1
+		// rather than scribble on caches[-1]). It has no per-thread mcache slot, so
+		// allocate straight from central (vgc_central_get_span is internally locked).
+		// No caching: each call gets its own span; partial spans are reclaimed by the
+		// collector. Slower for these overflow threads, but SAFE — previously this
+		// indexed caches[-1] -> "fixed array index out of range (index: -1, len: 64)"
+		// -> panic, and the panic's own message formatting re-entered malloc -> the
+		// same crash (infinite recursion).
+		return vgc_central_get_span(span_class)
+	}
 	span := unsafe { vgc_heap.caches[cache_idx].alloc[span_class] }
 	if span != unsafe { nil } {
 		// Check if span has free objects
@@ -1027,6 +1043,14 @@ const vgc_acct_flush = u64(1) << 20
 // alloc/free). cache_idx is the caller's own slot, so the writes are race-free.
 @[inline]
 fn vgc_acct_alloc(cache_idx int, live_sz u64, total_n u64) {
+	if cache_idx < 0 {
+		// Unregistered (overflow) thread: no per-thread accounting slot — fold the
+		// bytes straight into the global atomics (mirrors vgc_acct_free's idx<0 path).
+		// Without this, caches[-1] is an out-of-range fixed-array index -> panic.
+		C.vgc_atomic_add_u64(&vgc_heap.heap_live, live_sz)
+		C.vgc_atomic_add_u64(&vgc_heap.total_alloc, total_n)
+		return
+	}
 	unsafe {
 		vgc_heap.caches[cache_idx].live_delta += i64(live_sz)
 		vgc_heap.caches[cache_idx].alloc_delta += total_n
@@ -1149,6 +1173,11 @@ fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
 					unsafe { C.memset(ptr, 0, usize(span.elem_size)) }
 				}
 				unsafe {
+					// Mark the span as tiny-packed: this slot will hold several
+					// independently-allocated sub-objects, so vgc_free must never
+					// reclaim it on an individual free (it would clobber live
+					// siblings). Only the tracing collector reclaims tiny blocks.
+					span.is_tiny = true
 					vgc_heap.caches[cache_idx].tiny = usize(ptr)
 					vgc_heap.caches[cache_idx].tiny_offset = n
 					vgc_heap.caches[cache_idx].tiny_allocs++
@@ -1202,6 +1231,7 @@ fn vgc_alloc_large(n usize, noscan bool, zero_fill bool) voidptr {
 	unsafe {
 		span.class_idx = 0
 		span.noscan = noscan
+		span.is_tiny = false // large spans are never tiny-packed (reset in case of a recycled span)
 		span.elem_size = u32(n)
 		span.nelems = 1
 		span.alloc_count = 1
@@ -1280,6 +1310,21 @@ fn vgc_free(ptr voidptr) {
 		return
 	}
 	if span.elem_size == 0 {
+		return
+	}
+	// TINY-BLOCK SAFETY: the tiny allocator (vgc_malloc_noscan_opts) packs several
+	// independently-allocated sub-objects (each < vgc_tiny_size) into a SINGLE span
+	// slot, Go-style. A tiny-packed slot is therefore NOT solely owned by the object
+	// whose pointer was passed here: `obj_idx` below maps every packed sub-object
+	// (and any interior pointer) to the same slot, so honoring this free would clear
+	// the alloc bit for the whole slot and let a later allocation reuse it while
+	// sibling sub-objects are still live -> their bytes get overwritten. (Observed as
+	// map corruption: a map's `delete` frees one short string key's char buffer,
+	// which shares a tiny block with other live keys.) Like Go, tiny objects are
+	// never reclaimed by an individual free; only the tracing collector reclaims a
+	// tiny block, and only once NONE of its packed sub-objects is reachable. So skip
+	// the eager-free hint for any span the tiny allocator carved from.
+	if span.is_tiny {
 		return
 	}
 	obj_idx := u32((usize(ptr) - span.base) / usize(span.elem_size))
