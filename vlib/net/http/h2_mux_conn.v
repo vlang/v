@@ -60,6 +60,7 @@ mut:
 	sent_headers bool   // the request HEADERS reached the transport
 	// --- send state, guarded by the connection's fmu ---
 	send_window i64
+	send_dead   bool // RST/GOAWAY: wake a body sender blocked on flow-control credit
 }
 
 fn new_h2_mux_stream() &H2MuxStream {
@@ -80,6 +81,16 @@ fn (mut s H2MuxStream) fail(msg string, retryable bool) {
 		s.cv.signal()
 	}
 	s.mu.unlock()
+}
+
+// send_failure_reason returns the terminal error recorded by fail(), for a body
+// sender that observed send_dead while blocked on flow control.
+fn (mut s H2MuxStream) send_failure_reason() string {
+	s.mu.lock()
+	defer {
+		s.mu.unlock()
+	}
+	return if s.err != '' { s.err } else { 'h2: stream terminated while sending the request body' }
 }
 
 // H2MuxConn is a multiplexed client-side HTTP/2 connection, safe for
@@ -338,11 +349,18 @@ fn (mut c H2MuxConn) send_body_on_stream(mut s H2MuxStream, body []u8) ! {
 		// Reserve a window-bounded chunk under fmu (waiting for WINDOW_UPDATE
 		// room when both windows are exhausted), then write it under wmu.
 		c.fmu.lock()
-		for !c.fmu_dead && (c.send_window <= 0 || s.send_window <= 0) {
+		for !c.fmu_dead && !s.send_dead && (c.send_window <= 0 || s.send_window <= 0) {
 			c.fcv.wait()
 		}
-		if c.fmu_dead {
+		if c.fmu_dead || s.send_dead {
+			stream_dead := s.send_dead
 			c.fmu.unlock()
+			if stream_dead {
+				// The stream was reset (RST_STREAM) or repudiated (GOAWAY) while
+				// we were blocked for window credit; surface its terminal error
+				// rather than hang.
+				return error(s.send_failure_reason())
+			}
 			return error('h2: connection closed while sending the request body')
 		}
 		mut chunk := body.len - off
@@ -682,6 +700,7 @@ fn (mut c H2MuxConn) dispatch_frame(frame H2Frame) ! {
 				// Streams above last_stream_id were not processed by the
 				// server, so they are safe to retry elsewhere (RFC 7540 6.8).
 				st.fail('request not processed (GOAWAY)', true)
+				c.wake_send(mut st)
 			}
 			if frame.error_code != u32(H2ErrorCode.no_error) {
 				return error('connection error (GOAWAY ${h2_error_code_name(frame.error_code)})')
@@ -697,6 +716,7 @@ fn (mut c H2MuxConn) dispatch_frame(frame H2Frame) ! {
 			mut s := c.lookup_stream(frame.stream_id)
 			if s != unsafe { nil } {
 				s.fail('stream reset by peer (${h2_error_code_name(frame.error_code)})', false)
+				c.wake_send(mut s)
 			}
 		}
 		H2ContinuationFrame {
@@ -841,6 +861,17 @@ fn (mut c H2MuxConn) check_unknown_stream(stream_id u32) ! {
 		return
 	}
 	return error('frame for an unknown stream ${stream_id}')
+}
+
+// wake_send marks a stream's send side dead and wakes a body sender that is
+// blocked waiting for flow-control credit, so a RST_STREAM or GOAWAY terminates
+// the upload instead of hanging it. The caller must hold no connection lock
+// (it takes fmu). fail() must already have recorded the terminal error.
+fn (mut c H2MuxConn) wake_send(mut s H2MuxStream) {
+	c.fmu.lock()
+	s.send_dead = true
+	c.fcv.broadcast()
+	c.fmu.unlock()
 }
 
 fn (mut c H2MuxConn) lookup_stream(stream_id u32) &H2MuxStream {

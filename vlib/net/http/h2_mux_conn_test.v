@@ -431,6 +431,66 @@ fn test_mux_flow_control_blocks_and_resumes() {
 	cend.close_both()
 }
 
+// A peer that RST_STREAMs an upload after the client has exhausted its send
+// windows must wake the body sender blocked on flow-control credit, so do()
+// returns the reset error instead of hanging forever.
+fn test_mux_rst_wakes_blocked_body_sender() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	body_len := 100000
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{
+		method:    'POST'
+		authority: 't'
+		path:      '/up'
+		body:      []u8{len: body_len, init: `B`}
+	}, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		id := ids[0]
+		// Let the client send until both windows are exhausted; it then blocks
+		// in send_body_on_stream waiting for a WINDOW_UPDATE that never comes.
+		for {
+			peer.mu.lock()
+			got := peer.data_total[id] or { u64(0) }
+			peer.mu.unlock()
+			if got >= u64(h2_default_initial_window) {
+				break
+			}
+			peer.pump() or {
+				peer.fail('pump: ${err.msg()}')
+				return
+			}
+		}
+		// Reset the stream instead of granting credit.
+		peer.write_frame(H2RstStreamFrame{
+			stream_id:  id
+			error_code: u32(H2ErrorCode.cancel)
+		}) or {
+			peer.fail('rst: ${err.msg()}')
+			return
+		}
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	upload_err := out.errs['/up'] or { '' }
+	assert upload_err != '', 'expected the reset upload to fail, not hang'
+	assert upload_err.contains('reset'), 'expected a reset error, got: ${upload_err}'
+	cend.close_both()
+}
+
 // GOAWAY with last_stream_id between two active streams: the lower id
 // completes, the higher fails with a retryable error, and new requests are
 // refused (also retryable).
