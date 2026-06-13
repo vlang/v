@@ -67,6 +67,22 @@ fn test_get_v_files_from_dir_skips_prealloc_without_prealloc_flag() {
 	assert 'prealloc.c.v' in prealloc_names
 }
 
+fn test_get_v_files_from_dir_returns_lexically_sorted_files() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_builder_sorted_v_files_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	os.write_file(os.join_path(tmp_dir, 'foo.v'), 'module test') or { panic(err) }
+	os.write_file(os.join_path(tmp_dir, 'foo.c.v'), 'module test') or { panic(err) }
+	os.write_file(os.join_path(tmp_dir, 'bar.v'), 'module test') or { panic(err) }
+	os.write_file(os.join_path(tmp_dir, 'ignore.txt'), 'not v') or { panic(err) }
+
+	names := get_v_files_from_dir(tmp_dir, []string{}, 'linux').map(os.file_name(it))
+	assert names == ['bar.v', 'foo.c.v', 'foo.v']
+	assert names.index('foo.c.v') or { -1 } < names.index('foo.v') or { -1 }
+}
+
 fn test_flag_helpers_use_target_os() {
 	assert flag_os_matches('macos', 'mac')
 	assert flag_os_matches('bsd', 'mac')

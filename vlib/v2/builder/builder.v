@@ -2188,12 +2188,295 @@ fn (b &Builder) uses_macos_x64_tiny_object(arch pref.Arch) bool {
 		&& b.pref.macos_tiny
 }
 
-fn macos_native_link_command(output_binary string, obj_file string, sdk_path string, arch_flag string, tiny_object bool) string {
-	normal_link_cmd := 'ld -o ${os.quoted_path(output_binary)} ${os.quoted_path(obj_file)} -lSystem -syslibroot ${os.quoted_path(sdk_path)} -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
+fn native_link_flags_suffix(link_flags string) string {
+	trimmed := link_flags.trim_space()
+	if trimmed == '' {
+		return ''
+	}
+	return ' ${trimmed}'
+}
+
+fn macos_native_ld_link_flags(link_flags string) string {
+	mut normalized := []string{}
+	tokens := link_flags.fields()
+	mut i := 0
+	for i < tokens.len {
+		tok := tokens[i]
+		if tok.starts_with('-Wl,') {
+			for linker_arg in tok['-Wl,'.len..].split(',') {
+				if linker_arg != '' {
+					normalized << linker_arg
+				}
+			}
+			i++
+			continue
+		}
+		if tok == '-Xlinker' {
+			if i + 1 < tokens.len {
+				i++
+				normalized << tokens[i]
+			}
+			i++
+			continue
+		}
+		normalized << tok
+		i++
+	}
+	return normalized.join(' ')
+}
+
+fn native_driver_flag_is_dual_use(tok string) bool {
+	return tok == '-pthread' || tok == '-fopenmp' || tok.starts_with('-fopenmp=')
+}
+
+fn macos_native_ld_unsupported_driver_link_flags(link_flags string) []string {
+	mut unsupported := []string{}
+	for tok in link_flags.fields() {
+		if native_driver_flag_is_dual_use(tok) {
+			unsupported << tok
+		}
+	}
+	return unsupported
+}
+
+fn validate_macos_native_ld_link_flags(link_flags string) ! {
+	unsupported := macos_native_ld_unsupported_driver_link_flags(link_flags)
+	if unsupported.len > 0 {
+		return error('x64: unsupported backend feature: macOS native ld cannot consume driver linker flags: ${unsupported.join(' ')}')
+	}
+}
+
+fn native_linux_tiny_allows_system_lib(lib string) bool {
+	return lib in ['pthread', 'm', 'dl', 'c']
+}
+
+fn native_internal_link_flags_allow_builtin_linux_tiny(link_flags string) bool {
+	tokens := link_flags.trim_space().fields()
+	mut i := 0
+	for i < tokens.len {
+		tok := tokens[i]
+		if tok == '-l' {
+			if i + 1 >= tokens.len {
+				return false
+			}
+			i++
+			if !native_linux_tiny_allows_system_lib(tokens[i]) {
+				return false
+			}
+		} else if tok.starts_with('-l') {
+			if !native_linux_tiny_allows_system_lib(tok['-l'.len..]) {
+				return false
+			}
+		} else {
+			return false
+		}
+		i++
+	}
+	return true
+}
+
+fn native_link_flags_allow_builtin_linux_tiny(link_flags string, user_link_flags string) bool {
+	return user_link_flags.trim_space() == ''
+		&& native_internal_link_flags_allow_builtin_linux_tiny(link_flags)
+}
+
+fn (b &Builder) native_link_flags_from_sources() string {
+	_, directive_link_flags := split_compile_and_link_flags(b.collect_cflags_from_sources())
+	return directive_link_flags.trim_space()
+}
+
+fn (b &Builder) native_compile_and_link_flags_from_sources() (string, string) {
+	directive_compile_flags, directive_link_flags :=
+		split_compile_and_link_flags(b.collect_cflags_from_sources())
+	return directive_compile_flags.trim_space(), directive_link_flags.trim_space()
+}
+
+fn (b &Builder) native_user_compile_and_link_flags_from_sources() (string, string) {
+	directive_compile_flags, directive_link_flags :=
+		split_compile_and_link_flags(b.collect_user_cflags_from_sources())
+	return directive_compile_flags.trim_space(), directive_link_flags.trim_space()
+}
+
+struct NativeExternalLinkInputs {
+	link_flags   string
+	source_files []string
+	object_files []string
+}
+
+fn native_external_source_clean_token(tok string) string {
+	return tok.trim('"').trim("'")
+}
+
+fn native_external_source_is_supported(tok string) bool {
+	lower := native_external_source_clean_token(tok).to_lower()
+	return lower.ends_with('.c') || lower.ends_with('.m')
+}
+
+fn native_external_source_is_unsupported(tok string) bool {
+	lower := native_external_source_clean_token(tok).to_lower()
+	return lower.ends_with('.cc') || lower.ends_with('.cpp') || lower.ends_with('.cxx')
+		|| lower.ends_with('.mm')
+}
+
+fn native_external_source_unsupported_message(tok string) string {
+	clean := native_external_source_clean_token(tok)
+	if clean.to_lower().ends_with('.mm') {
+		return 'x64: unsupported backend feature: Objective-C++ #flag source `${clean}`'
+	}
+	return 'x64: unsupported backend feature: C++ #flag source `${clean}`'
+}
+
+fn native_external_source_object_file(output_binary string, source_index int) string {
+	output_name := if output_binary == '' { 'out' } else { os.file_name(output_binary) }
+	clean_name := output_name.replace('/', '_').replace('\\', '_').replace('.', '_')
+	return os.join_path(os.vtmp_dir(), 'v2_native_${os.getpid()}_${clean_name}_${source_index}.o')
+}
+
+fn native_external_link_inputs(link_flags string, output_binary string) !NativeExternalLinkInputs {
+	mut rewritten := []string{}
+	mut source_files := []string{}
+	mut object_files := []string{}
+	for tok in link_flags.fields() {
+		clean := native_external_source_clean_token(tok)
+		if native_external_source_is_unsupported(clean) {
+			return error(native_external_source_unsupported_message(clean))
+		}
+		if native_external_source_is_supported(clean) {
+			if tok.contains('"') || tok.contains("'") {
+				return error('x64: unsupported backend feature: quoted #flag source path `${tok}`')
+			}
+			obj_file := native_external_source_object_file(output_binary, source_files.len)
+			source_files << clean
+			object_files << obj_file
+			rewritten << os.quoted_path(obj_file)
+			continue
+		}
+		rewritten << tok
+	}
+	return NativeExternalLinkInputs{
+		link_flags:   rewritten.join(' ')
+		source_files: source_files
+		object_files: object_files
+	}
+}
+
+fn native_external_source_compile_command(cc string, source_file string, object_file string, compile_flags string, sdk_path string, arch_flag string, target_os string) string {
+	mut parts := [cc, '-c']
+	if is_macos_native_target(target_os) {
+		if sdk_path != '' {
+			parts << '-isysroot'
+			parts << os.quoted_path(sdk_path)
+		}
+		if arch_flag != '' {
+			parts << '-arch'
+			parts << arch_flag
+		}
+	}
+	if compile_flags != '' {
+		parts << compile_flags
+	}
+	parts << os.quoted_path(source_file)
+	parts << '-o'
+	parts << os.quoted_path(object_file)
+	return parts.join(' ')
+}
+
+fn (b &Builder) native_external_source_compiler(target_os string) string {
+	if b.pref.ccompiler.len > 0 {
+		return b.pref.ccompiler
+	}
+	v2cc := (os.getenv_opt('V2CC') or { '' }).trim_space()
+	if v2cc != '' {
+		return v2cc
+	}
+	if is_macos_native_target(target_os) {
+		return 'cc'
+	}
+	return configured_cc(b.pref.vroot)
+}
+
+fn (b &Builder) native_linux_hosted_link_compiler() string {
+	if b.pref.ccompiler.len > 0 {
+		return b.pref.ccompiler
+	}
+	v2cc := (os.getenv_opt('V2CC') or { '' }).trim_space()
+	if v2cc != '' {
+		return v2cc
+	}
+	return 'cc'
+}
+
+fn (b &Builder) compile_native_external_sources(inputs NativeExternalLinkInputs, compile_flags string, target_os string, sdk_path string, arch_flag string) ! {
+	if inputs.source_files.len == 0 {
+		return
+	}
+	cc := b.native_external_source_compiler(target_os)
+	for i, source_file in inputs.source_files {
+		cmd := native_external_source_compile_command(cc, source_file, inputs.object_files[i],
+			compile_flags, sdk_path, arch_flag, target_os)
+		if b.pref.show_cc {
+			println(cmd)
+		}
+		res := os.execute(cmd)
+		if res.exit_code != 0 {
+			return error('native external source compilation failed:\n${cmd}\n${res.output}')
+		}
+	}
+}
+
+fn cleanup_native_external_objects(inputs NativeExternalLinkInputs) {
+	for obj_file in inputs.object_files {
+		os.rm(obj_file) or {}
+	}
+}
+
+fn macos_native_link_command(output_binary string, obj_file string, sdk_path string, arch_flag string, tiny_object bool, link_flags string) string {
+	ld_link_flags := macos_native_ld_link_flags(link_flags)
+	normal_link_cmd := 'ld -o ${os.quoted_path(output_binary)} ${os.quoted_path(obj_file)}${native_link_flags_suffix(ld_link_flags)} -lSystem -syslibroot ${os.quoted_path(sdk_path)} -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
 	if tiny_object {
 		return '${normal_link_cmd} -dead_strip -x -S'
 	}
 	return normal_link_cmd
+}
+
+fn macos_sdk_path_from_xcrun_output(output string) !string {
+	mut sdk_path := ''
+	for raw_line in output.split_into_lines() {
+		line := raw_line.trim(' \t\r')
+		if line == '' {
+			continue
+		}
+		if is_clean_macos_sdk_path_line(line) {
+			sdk_path = line
+		}
+	}
+	if sdk_path == '' {
+		return error('could not find a clean macOS SDK path in xcrun output')
+	}
+	return sdk_path
+}
+
+fn is_clean_macos_sdk_path_line(path string) bool {
+	if !os.is_abs_path(path) {
+		return false
+	}
+	base := os.file_name(path)
+	return base.starts_with('MacOSX') && base.ends_with('.sdk')
+}
+
+fn validate_macos_sdk_path_for_native_link(sdk_path string) ! {
+	if !os.is_dir(sdk_path) {
+		return error('macOS SDK path does not exist: ${sdk_path}')
+	}
+	libsystem_tbd := os.join_path(sdk_path, 'usr', 'lib', 'libSystem.tbd')
+	libsystem_dylib := os.join_path(sdk_path, 'usr', 'lib', 'libSystem.dylib')
+	if !os.exists(libsystem_tbd) && !os.exists(libsystem_dylib) {
+		return error('macOS SDK path is missing usr/lib/libSystem.tbd or usr/lib/libSystem.dylib: ${sdk_path}')
+	}
+}
+
+fn linux_native_link_command(cc string, output_binary string, obj_file string, link_flags string) string {
+	return '${cc} ${os.quoted_path(obj_file)} -o ${os.quoted_path(output_binary)} -no-pie${native_link_flags_suffix(link_flags)}'
 }
 
 fn native_external_object_file(output_binary string, target_os string) string {
@@ -2520,9 +2803,6 @@ fn flag_references_missing_file(flag string, include_flags []string) bool {
 }
 
 fn (b &Builder) collect_cflags_from_sources() string {
-	mut flags := []string{}
-	mut seen := map[string]bool{}
-	mut scanned_files := map[string]bool{}
 	// Collect source file paths to scan.  When .vh headers were used for
 	// parsing, b.files references the .vh summaries which lack #flag
 	// directives.  Always include the original core module source files
@@ -2546,12 +2826,46 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			vlib_path := b.pref.get_vlib_module_path(module_path)
 			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines, target_os)
 			for mf in module_files {
-				if mf !in scanned_files {
-					scan_paths << mf
-				}
+				scan_paths << mf
 			}
 		}
 	}
+	return b.collect_cflags_from_scan_paths(scan_paths)
+}
+
+fn (b &Builder) source_path_is_internal_vlib(path string) bool {
+	vlib_root := os.real_path(os.join_path(b.pref.vroot, 'vlib')).replace('\\', '/').trim_right('/')
+	real_path := os.real_path(path).replace('\\', '/')
+	return real_path == vlib_root || real_path.starts_with('${vlib_root}/')
+}
+
+fn (b &Builder) collect_user_cflags_from_sources() string {
+	mut scan_paths := []string{}
+	for path in b.user_files {
+		if path != '' {
+			scan_paths << path
+		}
+	}
+	for file in b.files {
+		if file.name != '' && !b.source_path_is_internal_vlib(file.name) {
+			scan_paths << file.name
+		}
+	}
+	for ff in b.flat.files {
+		name := b.flat.file_name(ff)
+		if name != '' && !b.source_path_is_internal_vlib(name) {
+			scan_paths << name
+		}
+	}
+	return b.collect_cflags_from_scan_paths(scan_paths)
+}
+
+fn (b &Builder) collect_cflags_from_scan_paths(paths []string) string {
+	mut flags := []string{}
+	mut seen := map[string]bool{}
+	mut scanned_files := map[string]bool{}
+	mut scan_paths := paths.clone()
+	cflags_target_os := b.cflags_target_os_for_local_compile()
 	scan_paths.sort()
 	for scan_path in scan_paths {
 		if scan_path == '' || scan_path in scanned_files {
@@ -2673,9 +2987,11 @@ fn (b &Builder) collect_cflags_from_sources() string {
 
 // split_compile_and_link_flags separates a flags string into compiler-only
 // flags (for -c compilation) and linker-only flags (for the link step).
-// Linker flags include: -l*, -L*, -framework, C source files and
-// prebuilt object/library files.  Source files from #flag directives must not
-// be passed to per-module `-c -o module.o` cache compilations.
+// Linker flags include: -l*, -L*, -Wl,*, -Xlinker, -framework, C source files
+// and prebuilt object/library files. Minimal dual-use driver flags, plus -F
+// framework search paths, are kept in both outputs. Source files from #flag
+// directives must not be passed to
+// per-module `-c -o module.o` cache compilations.
 fn split_compile_and_link_flags(flags string) (string, string) {
 	tokens := flags.fields()
 	mut compile := []string{}
@@ -2683,14 +2999,34 @@ fn split_compile_and_link_flags(flags string) (string, string) {
 	mut i := 0
 	for i < tokens.len {
 		tok := tokens[i]
-		if tok == '-framework' {
+		if native_driver_flag_is_dual_use(tok) {
+			compile << tok
+			link << tok
+		} else if tok == '-F' {
+			compile << tok
+			link << tok
+			if i + 1 < tokens.len {
+				i++
+				compile << tokens[i]
+				link << tokens[i]
+			}
+		} else if tok.starts_with('-F') {
+			compile << tok
+			link << tok
+		} else if tok == '-Xlinker' {
+			link << tok
+			if i + 1 < tokens.len {
+				i++
+				link << tokens[i]
+			}
+		} else if tok == '-framework' {
 			// -framework Name: two tokens, linker only
 			link << tok
 			if i + 1 < tokens.len {
 				i++
 				link << tokens[i]
 			}
-		} else if tok.starts_with('-l') || tok.starts_with('-L') {
+		} else if tok.starts_with('-Wl,') || tok.starts_with('-l') || tok.starts_with('-L') {
 			link << tok
 			// -L or -l alone (space-separated from its argument): grab the next token
 			if (tok == '-L' || tok == '-l') && i + 1 < tokens.len {
@@ -3281,6 +3617,11 @@ fn (mut b Builder) build_macos_tiny_candidate_mir(arch pref.Arch, target_os stri
 fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	arch := if backend_arch == .auto { b.pref.get_effective_arch() } else { backend_arch }
 	target_os := b.pref.target_os_or_host()
+	native_compile_flags, native_link_flags := b.native_compile_and_link_flags_from_sources()
+	_, native_user_link_flags := b.native_user_compile_and_link_flags_from_sources()
+	mut native_external_inputs := NativeExternalLinkInputs{
+		link_flags: native_link_flags
+	}
 
 	mut mir_mod := b.build_native_mir_from_files(b.files, arch, target_os,
 		b.uses_minimal_x64_runtime_roots(), b.used_fn_keys, '')
@@ -3366,22 +3707,26 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			if is_linux_x64_native_target(arch, target_os) {
 				mut linux_gen := x64.Gen.new_with_format_and_abi(&mir_mod, obj_format, codegen_abi)
 				linux_gen.gen()
-				if os.exists(output_binary) {
-					os.rm(output_binary) or {}
-				}
-				linux_gen.link_linux_tiny_executable(output_binary) or {
-					msg := err.msg()
-					if linux_x64_tiny_strict_enabled()
-						|| !msg.starts_with(x64.linux_tiny_not_eligible_prefix) {
-						eprint_native_x64_link_error(msg)
-						exit(1)
+				if native_link_flags_allow_builtin_linux_tiny(native_link_flags,
+					native_user_link_flags)
+				{
+					if os.exists(output_binary) {
+						os.rm(output_binary) or {}
 					}
-				}
-				if os.exists(output_binary) {
-					if b.pref.verbose {
-						println('[*] Linked ${output_binary} (built-in Linux tiny linker)')
+					linux_gen.link_linux_tiny_executable(output_binary) or {
+						msg := err.msg()
+						if linux_x64_tiny_strict_enabled()
+							|| !msg.starts_with(x64.linux_tiny_not_eligible_prefix) {
+							eprint_native_x64_link_error(msg)
+							exit(1)
+						}
 					}
-					return
+					if os.exists(output_binary) {
+						if b.pref.verbose {
+							println('[*] Linked ${output_binary} (built-in Linux tiny linker)')
+						}
+						return
+					}
 				}
 				linux_gen.write_file(obj_file)
 			} else if b.uses_macos_x64_tiny_object(arch) {
@@ -3435,12 +3780,43 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		// Link the object file into an executable
 		if is_macos_native_target(target_os) {
 			sdk_res := os.execute('xcrun -sdk macosx --show-sdk-path')
-			sdk_path := sdk_res.output.trim_space()
+			if sdk_res.exit_code != 0 {
+				eprintln('Link failed:')
+				eprintln('failed to resolve macOS SDK path with xcrun:')
+				eprintln(sdk_res.output)
+				exit(1)
+			}
+			sdk_path := macos_sdk_path_from_xcrun_output(sdk_res.output) or {
+				eprintln('Link failed:')
+				eprintln(err.msg())
+				eprintln('xcrun output:')
+				eprintln(sdk_res.output)
+				exit(1)
+			}
+			validate_macos_sdk_path_for_native_link(sdk_path) or {
+				eprintln('Link failed:')
+				eprintln(err.msg())
+				exit(1)
+			}
 			arch_flag := if arch == .arm64 { 'arm64' } else { 'x86_64' }
+			native_external_inputs = native_external_link_inputs(native_link_flags, output_binary) or {
+				eprint_native_x64_link_error(err.msg())
+				exit(1)
+			}
+			validate_macos_native_ld_link_flags(native_external_inputs.link_flags) or {
+				eprint_native_x64_link_error(err.msg())
+				exit(1)
+			}
+			b.compile_native_external_sources(native_external_inputs, native_compile_flags,
+				target_os, sdk_path, arch_flag) or {
+				cleanup_native_external_objects(native_external_inputs)
+				eprint_native_x64_link_error(err.msg())
+				exit(1)
+			}
 			normal_link_cmd := macos_native_link_command(output_binary, obj_file, sdk_path,
-				arch_flag, false)
+				arch_flag, false, native_external_inputs.link_flags)
 			link_cmd := macos_native_link_command(output_binary, obj_file, sdk_path, arch_flag,
-				used_macos_tiny_object)
+				used_macos_tiny_object, native_external_inputs.link_flags)
 			mut link_result := os.execute(link_cmd)
 			if link_result.exit_code != 0 && used_macos_tiny_object {
 				if b.pref.verbose {
@@ -3474,6 +3850,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			if link_result.exit_code != 0 {
 				eprintln('Link failed:')
 				eprintln(link_result.output)
+				cleanup_native_external_objects(native_external_inputs)
 				exit(1)
 			}
 			if b.pref.verbose && used_macos_tiny_object {
@@ -3481,10 +3858,22 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			}
 		} else {
 			// Linux linking
-			link_result := os.execute('cc ${obj_file} -o ${output_binary} -no-pie')
+			native_external_inputs = native_external_link_inputs(native_link_flags, output_binary) or {
+				eprint_native_x64_link_error(err.msg())
+				exit(1)
+			}
+			b.compile_native_external_sources(native_external_inputs, native_compile_flags,
+				target_os, '', '') or {
+				cleanup_native_external_objects(native_external_inputs)
+				eprint_native_x64_link_error(err.msg())
+				exit(1)
+			}
+			link_result := os.execute(linux_native_link_command(b.native_linux_hosted_link_compiler(),
+				output_binary, obj_file, native_external_inputs.link_flags))
 			if link_result.exit_code != 0 {
 				eprintln('Link failed:')
 				eprintln(link_result.output)
+				cleanup_native_external_objects(native_external_inputs)
 				exit(1)
 			}
 		}
@@ -3495,6 +3884,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 
 		// Clean up object file
 		if !b.pref.keep_c {
+			cleanup_native_external_objects(native_external_inputs)
 			os.rm(obj_file) or {}
 		}
 	}

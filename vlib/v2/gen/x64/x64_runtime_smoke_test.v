@@ -381,7 +381,7 @@ fn run_x64_host_program_redirected_tiny(name string, source string) X64HostRunRe
 		build.close()
 	}
 	build.set_environment(x64_strict_tiny_build_environment(vexe, tmp_dir))
-	build.set_args(['-v2', '-b', 'x64', source_path, '-o', bin_path])
+	build.set_args(['-v2', '-no-parallel', '-b', 'x64', source_path, '-o', bin_path])
 	build.set_redirect_stdio()
 	build.run()
 	build.wait()
@@ -790,7 +790,7 @@ fn run_x64_host_file_redirected_tiny(name string, source_dir string, source_file
 	}
 	build.set_environment(x64_strict_tiny_build_environment(vexe, tmp_dir))
 	build.set_work_folder(source_dir)
-	build.set_args(['-v2', '-b', 'x64', source_file, '-o', bin_path])
+	build.set_args(['-v2', '-no-parallel', '-b', 'x64', source_file, '-o', bin_path])
 	build.set_redirect_stdio()
 	build.run()
 	build.wait()
@@ -841,7 +841,7 @@ fn assert_x64_linux_tiny_file_build_rejected(name string, source_dir string, sou
 		}
 		build.set_environment(x64_strict_tiny_build_environment(vexe, tmp_dir))
 		build.set_work_folder(source_dir)
-		build.set_args(['-v2', '-b', 'x64', source_file, '-o', bin_path])
+		build.set_args(['-v2', '-no-parallel', '-b', 'x64', source_file, '-o', bin_path])
 		build.set_redirect_stdio()
 		build.run()
 		build.wait()
@@ -939,6 +939,56 @@ fn run_x64_host_file_redirected_auto_with_args(name string, source_dir string, s
 	if run.code != 0 {
 		assert false, x64_host_run_failure_message(name, tmp_dir, source_path, source_text,
 			bin_path, build_output, run.code, stdout, stderr)
+	}
+	return X64HostRunResult{
+		name:         name
+		tmp_dir:      tmp_dir
+		source_path:  source_path
+		source_text:  source_text
+		bin_path:     bin_path
+		build_output: build_output
+		stdout:       stdout
+		stderr:       stderr
+	}
+}
+
+fn x64_shell_redirect_args(args []string) string {
+	mut quoted := []string{cap: args.len}
+	for arg in args {
+		quoted << os.quoted_path(arg)
+	}
+	return quoted.join(' ')
+}
+
+fn run_x64_host_file_redirected_auto_with_stdin_and_args(name string, source_dir string, source_file string, stdin_text string, args []string) X64HostRunResult {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	source_path := os.join_path(source_dir, source_file)
+	source_text := 'source file: ${source_path}\nstdin text:\n${stdin_text}'
+	bin_path := x64_host_bin_path(tmp_dir, name)
+	stdin_path := os.join_path(tmp_dir, '${name}.in')
+	stdout_path := os.join_path(tmp_dir, '${name}.out')
+	stderr_path := os.join_path(tmp_dir, '${name}.err')
+	os.write_file(stdin_path, stdin_text) or { panic(err) }
+	vexe := x64_vexe_command_path()
+	build := x64_build_file_from_dir(vexe, source_dir, source_file, bin_path)
+	build_output := build.output
+	if build.exit_code != 0 {
+		assert false, x64_host_build_failure_message(name, tmp_dir, source_path, source_text,
+			bin_path, build.exit_code, build.output)
+	}
+	arg_text := x64_shell_redirect_args(args)
+	mut command := os.quoted_path(bin_path)
+	if arg_text != '' {
+		command += ' ${arg_text}'
+	}
+	command += ' < ${os.quoted_path(stdin_path)} > ${os.quoted_path(stdout_path)} 2> ${os.quoted_path(stderr_path)}'
+	run := os.execute(command)
+	stdout := os.read_bytes(stdout_path) or { panic(err) }
+	stderr := os.read_bytes(stderr_path) or { panic(err) }
+	if run.exit_code != 0 {
+		assert false, x64_host_run_failure_message(name, tmp_dir, source_path, source_text,
+			bin_path, build_output, run.exit_code, stdout, stderr)
 	}
 	return X64HostRunResult{
 		name:         name
@@ -1111,14 +1161,22 @@ fn assert_x64_linux_file_stdout_bytes(name string, source_dir string, source_fil
 }
 
 fn x64_v_run_file_stdout_bytes(source_dir string, source_file string) []u8 {
+	return x64_v_run_file_stdout_bytes_with_args(source_dir, source_file, []string{})
+}
+
+fn x64_v_run_file_stdout_bytes_with_args(source_dir string, source_file string, args []string) []u8 {
 	vexe := x64_vexe_command_path()
 	source_path := os.join_path(source_dir, source_file)
 	mut run := os.new_process(vexe)
 	defer {
 		run.close()
 	}
+	mut run_args := ['run', source_file]
+	for arg in args {
+		run_args << arg
+	}
 	run.set_work_folder(source_dir)
-	run.set_args(['run', source_file])
+	run.set_args(run_args)
 	run.set_redirect_stdio()
 	run.run()
 	run.wait()
@@ -1166,6 +1224,24 @@ fn assert_x64_linux_file_stdout_matches_v_run(name string, source_dir string, so
 	}
 }
 
+fn assert_x64_linux_file_stdout_matches_v_run_with_args(name string, source_dir string, source_file string, args []string) {
+	$if linux {
+		expected_stdout := x64_v_run_file_stdout_bytes_with_args(source_dir, source_file, args)
+		result := run_x64_host_file_redirected_auto_with_args(name, source_dir, source_file, args)
+		assert_x64_linux_hosted_libc_binary(result, expected_stdout)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn assert_x64_linux_file_stdout_bytes_with_stdin(name string, source_dir string, source_file string, stdin_text string, expected_stdout []u8) {
+	$if linux {
+		result := run_x64_host_file_redirected_auto_with_stdin_and_args(name, source_dir,
+			source_file, stdin_text, []string{})
+		assert_x64_linux_hosted_libc_binary(result, expected_stdout)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
 fn assert_x64_macos_windows_file_stdout_matches_v_run(name string, source_dir string, source_file string) {
 	$if macos {
 		expected_stdout := x64_v_run_file_stdout_bytes(source_dir, source_file)
@@ -1174,6 +1250,60 @@ fn assert_x64_macos_windows_file_stdout_matches_v_run(name string, source_dir st
 	$if windows {
 		expected_stdout := x64_v_run_file_stdout_bytes(source_dir, source_file)
 		assert_x64_macos_windows_file_stdout_bytes(name, source_dir, source_file, expected_stdout)
+	}
+}
+
+fn assert_x64_macos_windows_file_stdout_matches_v_run_with_args(name string, source_dir string, source_file string, args []string) {
+	$if macos {
+		expected_stdout := x64_v_run_file_stdout_bytes_with_args(source_dir, source_file, args)
+		result := run_x64_host_file_redirected_macos_auto_tiny_verbose_with_args('macos_${name}',
+			source_dir, source_file, args)
+		context := x64_host_result_context(result)
+		stdout_message := x64_stdout_mismatch_message(name, 'macos', expected_stdout,
+			result.stdout, context)
+		stderr_message := x64_stderr_mismatch_message(name, 'macos', []u8{}, result.stderr, context)
+		assert result.stdout == expected_stdout, stdout_message
+		assert result.stderr == []u8{}, stderr_message
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+	$if windows {
+		expected_stdout := x64_v_run_file_stdout_bytes_with_args(source_dir, source_file, args)
+		result := run_x64_host_file_redirected_auto_with_args('windows_${name}', source_dir,
+			source_file, args)
+		context := x64_host_result_context(result)
+		stdout_message := x64_stdout_mismatch_message(name, 'windows', expected_stdout,
+			result.stdout, context)
+		stderr_message := x64_stderr_mismatch_message(name, 'windows', []u8{}, result.stderr,
+			context)
+		assert result.stdout == expected_stdout, stdout_message
+		assert result.stderr == []u8{}, stderr_message
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn assert_x64_macos_windows_file_stdout_bytes_with_stdin(name string, source_dir string, source_file string, stdin_text string, expected_stdout []u8) {
+	$if macos {
+		result := run_x64_host_file_redirected_auto_with_stdin_and_args('macos_${name}',
+			source_dir, source_file, stdin_text, []string{})
+		context := x64_host_result_context(result)
+		stdout_message := x64_stdout_mismatch_message(name, 'macos', expected_stdout,
+			result.stdout, context)
+		stderr_message := x64_stderr_mismatch_message(name, 'macos', []u8{}, result.stderr, context)
+		assert result.stdout == expected_stdout, stdout_message
+		assert result.stderr == []u8{}, stderr_message
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+	$if windows {
+		result := run_x64_host_file_redirected_auto_with_stdin_and_args('windows_${name}',
+			source_dir, source_file, stdin_text, []string{})
+		context := x64_host_result_context(result)
+		stdout_message := x64_stdout_mismatch_message(name, 'windows', expected_stdout,
+			result.stdout, context)
+		stderr_message := x64_stderr_mismatch_message(name, 'windows', []u8{}, result.stderr,
+			context)
+		assert result.stdout == expected_stdout, stdout_message
+		assert result.stderr == []u8{}, stderr_message
+		x64_host_cleanup_tmp(result.tmp_dir)
 	}
 }
 
@@ -1283,7 +1413,7 @@ fn assert_x64_linux_tiny_build_rejected(name string, source string, expected_mes
 			build.close()
 		}
 		build.set_environment(x64_strict_tiny_build_environment(vexe, tmp_dir))
-		build.set_args(['-v2', '-b', 'x64', source_path, '-o', bin_path])
+		build.set_args(['-v2', '-no-parallel', '-b', 'x64', source_path, '-o', bin_path])
 		build.set_redirect_stdio()
 		build.run()
 		build.wait()
@@ -1573,6 +1703,40 @@ fn main() {
 
 fn x64_status_short_circuit_calls_stdout() []u8 {
 	return 'K
+'.bytes()
+}
+
+fn x64_dump_operator_identity_source() string {
+	return "module main
+
+fn pass_u32(x u32) u32 {
+	y := x + u32(5)
+	return dump(y)
+}
+
+fn main() {
+	if dump(false) {
+		println('bad-bool')
+		return
+	}
+	mut n := u32(1)
+	old := dump(n++)
+	if old == u32(1) && n == u32(2) && pass_u32(u32(7)) == u32(12) {
+		println('ok')
+	} else {
+		println('bad')
+	}
+}
+"
+}
+
+fn x64_dump_operator_identity_stdout() []u8 {
+	return 'ok
+'.bytes()
+}
+
+fn x64_dump_factorial_example_stdout() []u8 {
+	return '120
 '.bytes()
 }
 
@@ -1875,6 +2039,732 @@ fn main() {
 fn x64_heap_alloc_zeroed_struct_literal_stdout() []u8 {
 	return 'AZ
 '.bytes()
+}
+
+fn x64_generic_sumtype_direct_wrap_source() string {
+	return "module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+	left  Tree[T]
+	right Tree[T]
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn tag(tree Tree[f64]) int {
+	return match tree {
+		Empty { 0 }
+		Node[f64] { 1 }
+	}
+}
+
+fn payload_score(tree Tree[f64]) int {
+	return match tree {
+		Empty { 0 }
+		Node[f64] {
+			if tree.value == 8.0 {
+				10 + tag(tree.left) + tag(tree.right)
+			} else {
+				-1
+			}
+		}
+	}
+}
+
+fn main() {
+	empty := Tree[f64](Empty{})
+	tree := Tree[f64](Node[f64]{8.0, empty, empty})
+	if tag(empty) == 0 {
+		print('E')
+	} else {
+		print('e')
+	}
+	if tag(tree) == 1 {
+		print('N')
+	} else {
+		print('n')
+	}
+	if payload_score(tree) == 10 {
+		println('P')
+	} else {
+		println('p')
+	}
+}
+"
+}
+
+fn x64_generic_sumtype_direct_wrap_stdout() []u8 {
+	return 'ENP
+'.bytes()
+}
+
+fn x64_generic_sumtype_repeated_base_specialization_source() string {
+	return "module main
+
+struct Box[T] {
+	value T
+}
+
+type Value = Box[int] | Box[string]
+
+fn string_tag(value Value) int {
+	return match value {
+		Box[string] { 1 }
+		else { 0 }
+	}
+}
+
+fn int_tag(value Value) int {
+	return match value {
+		Box[int] { 0 }
+		else { 1 }
+	}
+}
+
+fn main() {
+	if string_tag(Value(Box[string]{'ok'})) == 1 {
+		print('S')
+	} else {
+		print('s')
+	}
+	if int_tag(Value(Box[int]{7})) == 0 {
+		println('I')
+	} else {
+		println('i')
+	}
+}
+"
+}
+
+fn x64_generic_sumtype_repeated_base_specialization_stdout() []u8 {
+	return 'SI
+'.bytes()
+}
+
+fn x64_generic_sumtype_receiver_size_source() string {
+	return 'module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+	left  Tree[T]
+	right Tree[T]
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn (tree Tree[T]) size[T]() int {
+	return match tree {
+		Empty { 0 }
+		Node[T] { 1 }
+	}
+}
+
+fn main() {
+	empty := Tree[f64](Empty{})
+	tree := Tree[f64](Node[f64]{1.0, empty, empty})
+	println(tree.size())
+}
+'
+}
+
+fn x64_generic_sumtype_receiver_size_stdout() []u8 {
+	return '1
+'.bytes()
+}
+
+fn x64_generic_sumtype_insert_size_source() string {
+	return 'module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+	left  Tree[T]
+	right Tree[T]
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn (tree Tree[T]) size[T]() int {
+	return match tree {
+		Empty { 0 }
+		Node[T] { 1 + tree.left.size() + tree.right.size() }
+	}
+}
+
+fn (tree Tree[T]) insert[T](x T) Tree[T] {
+	return match tree {
+		Empty { Node[T]{x, tree, tree} }
+		Node[T] {
+			if x == tree.value {
+				tree
+			} else if x < tree.value {
+				Node[T]{ ...tree, left: tree.left.insert(x) }
+			} else {
+				Node[T]{ ...tree, right: tree.right.insert(x) }
+			}
+		}
+	}
+}
+
+fn main() {
+	mut tree := Tree[f64](Empty{})
+	tree = tree.insert(0.2)
+	tree = tree.insert(0.5)
+	println(tree.size())
+}
+'
+}
+
+fn x64_generic_sumtype_insert_size_stdout() []u8 {
+	return '2
+'.bytes()
+}
+
+fn x64_struct_float_fields_source() string {
+	return "module main
+
+struct FloatBox {
+	a f64
+	b f32
+}
+
+fn make_box() FloatBox {
+	return FloatBox{
+		a: 8.0
+		b: f32(2.5)
+	}
+}
+
+fn main() {
+	box := make_box()
+	if box.a == 8.0 {
+		print('D')
+	} else {
+		print('d')
+	}
+	if box.b == f32(2.5) {
+		println('F')
+	} else {
+		println('f')
+	}
+}
+"
+}
+
+fn x64_struct_float_fields_stdout() []u8 {
+	return 'DF
+'.bytes()
+}
+
+fn x64_union_f64_bits_source() string {
+	return "module main
+
+import strconv
+
+fn main() {
+	marker := 'hosted'.clone()
+	_ = marker
+	x := 0.2
+	u := strconv.Float64u{
+		f: x
+	}
+	unsafe {
+		if u.u == u64(0) {
+			println('f_to_u=zero')
+		} else {
+			println('f_to_u=nonzero')
+		}
+		v := strconv.Float64u{
+			u: u64(4596373779694328218)
+		}
+		if v.f == x {
+			println('u_to_f=ok')
+		} else {
+			println('u_to_f=bad')
+		}
+	}
+}
+"
+}
+
+fn x64_union_f64_bits_stdout() []u8 {
+	return 'f_to_u=nonzero
+u_to_f=ok
+'.bytes()
+}
+
+fn x64_f64_str_interpolation_source() string {
+	return "module main
+
+fn ok_arg(x f64) int {
+	if x == 0.2 {
+		return 1
+	}
+	return 0
+}
+
+fn main() {
+	x := 0.2
+	println(ok_arg(x))
+	println(x.str())
+	println('\${x}')
+}
+"
+}
+
+fn x64_f64_str_interpolation_stdout() []u8 {
+	return '1
+0.2
+0.2
+'.bytes()
+}
+
+fn x64_f64_for_interpolation_source() string {
+	return "module main
+
+fn main() {
+	vals := [0.2, 0.0, 0.5, 0.3, 0.6, 0.8]
+	for i in vals {
+		if i < 0.7 {
+			print('\${i} ')
+		}
+	}
+	println('')
+}
+"
+}
+
+fn x64_f64_for_interpolation_stdout() []u8 {
+	return '0.2 0.0 0.5 0.3 0.6 \n'.bytes()
+}
+
+fn x64_formatted_int_interpolation_source() string {
+	return 'module main
+
+fn main() {
+	println("\${42:04d}")
+}
+'
+}
+
+fn x64_formatted_int_interpolation_stdout() []u8 {
+	return '0042\n'.bytes()
+}
+
+fn x64_formatted_int_width_100_interpolation_source() string {
+	return 'module main
+
+fn main() {
+	println("\${42:0100d}")
+}
+'
+}
+
+fn x64_formatted_int_width_100_interpolation_stdout() []u8 {
+	return ('0'.repeat(98) + '42\n').bytes()
+}
+
+fn x64_formatted_f64_interpolation_source() string {
+	return 'module main
+
+fn main() {
+	x := 1.271844019
+	println("\${x:0.9f}")
+}
+'
+}
+
+fn x64_formatted_f64_interpolation_stdout() []u8 {
+	return '1.271844019\n'.bytes()
+}
+
+fn x64_formatted_string_return_lifetime_source() string {
+	return 'module main
+
+fn make_formatted() string {
+	return "\${42:04d}"
+}
+
+fn clobber_stack() int {
+	mut data := [256]u8{}
+	for i in 0 .. data.len {
+		data[i] = u8(65 + i % 26)
+	}
+	return int(data[0]) + int(data[255])
+}
+
+fn main() {
+	s := make_formatted()
+	guard := clobber_stack()
+	if guard == 0 {
+		println("bad")
+	}
+	println(s)
+}
+'
+}
+
+fn x64_formatted_string_return_lifetime_stdout() []u8 {
+	return '0042\n'.bytes()
+}
+
+fn x64_spectral_reduced_formatted_source() string {
+	return 'module main
+
+import math
+
+fn evala(i int, j int) int {
+	return (i + j) * (i + j + 1) / 2 + i + 1
+}
+
+fn times(mut v []f64, u []f64) {
+	for i in 0 .. v.len {
+		mut a := f64(0)
+		for j in 0 .. u.len {
+			a += u[j] / f64(evala(i, j))
+		}
+		v[i] = a
+	}
+}
+
+fn times_trans(mut v []f64, u []f64) {
+	for i in 0 .. v.len {
+		mut a := f64(0)
+		for j in 0 .. u.len {
+			a += u[j] / f64(evala(j, i))
+		}
+		v[i] = a
+	}
+}
+
+fn a_times_transp(mut v []f64, u []f64) {
+	mut x := []f64{len: u.len, init: 0}
+	times(mut x, u)
+	times_trans(mut v, x)
+}
+
+fn main() {
+	n := 10
+	mut u := []f64{len: n, init: 1}
+	mut v := []f64{len: n, init: 1}
+	for _ in 0 .. 10 {
+		a_times_transp(mut v, u)
+		a_times_transp(mut u, v)
+	}
+	mut vbv := f64(0)
+	mut vv := f64(0)
+	for i in 0 .. n {
+		vbv += u[i] * v[i]
+		vv += v[i] * v[i]
+	}
+	ans := math.sqrt(vbv / vv)
+	println("\${ans:0.9f}")
+}
+'
+}
+
+fn x64_spectral_reduced_formatted_stdout() []u8 {
+	return '1.271844019\n'.bytes()
+}
+
+fn x64_bits_len32_source() string {
+	return 'module main
+
+import math.bits
+
+fn main() {
+	println(bits.len_32(10))
+	println(bits.len_32(1))
+	println(bits.len_32(0))
+}
+'
+}
+
+fn x64_bits_len32_stdout() []u8 {
+	return '4\n1\n0\n'.bytes()
+}
+
+fn x64_rand_u32n_interface_result_source() string {
+	return 'module main
+
+import rand
+
+fn via_rng_u32n(mut rng rand.PRNG, max u32) !u32 {
+	return rng.u32n(max)
+}
+
+fn main() {
+	rand.seed([u32(1), 2])
+	mut rng := rand.get_current_rng()
+	println("rng.u32n255")
+	for _ in 0 .. 8 {
+		println(rng.u32n(255) or { 999999 })
+	}
+	rand.seed([u32(1), 2])
+	println("rand.u32n255")
+	for _ in 0 .. 8 {
+		println(rand.u32n(255) or { 999999 })
+	}
+	rand.seed([u32(1), 2])
+	mut via_rng := rand.get_current_rng()
+	println("via_rng_u32n255")
+	for _ in 0 .. 8 {
+		println(via_rng_u32n(mut via_rng, 255) or { 999999 })
+	}
+}
+'
+}
+
+fn x64_rand_u32n_interface_result_stdout() []u8 {
+	return 'rng.u32n255\n72\n99\n113\n97\n151\n9\n250\n120\nrand.u32n255\n72\n99\n113\n97\n151\n9\n250\n120\nvia_rng_u32n255\n72\n99\n113\n97\n151\n9\n250\n120\n'.bytes()
+}
+
+fn x64_rand_intn_range_interface_result_source() string {
+	return 'module main
+
+import rand
+
+fn main() {
+	rand.seed([u32(1), 2])
+	mut rng_direct := rand.get_current_rng()
+	println("direct.int.from.rng.u32n255")
+	println(int(rng_direct.u32n(u32(255)) or { 999999 }))
+	rand.seed([u32(1), 2])
+	mut rng_intn := rand.get_current_rng()
+	println("rng.intn255")
+	for _ in 0 .. 8 {
+		println(rng_intn.intn(255) or { 999999 })
+	}
+	rand.seed([u32(1), 2])
+	println("rand.intn255")
+	for _ in 0 .. 8 {
+		println(rand.intn(255) or { 999999 })
+	}
+	rand.seed([u32(1), 2])
+	println("rand.int_in_range_5_15")
+	for _ in 0 .. 8 {
+		println(rand.int_in_range(5, 15) or { 999999 })
+	}
+}
+'
+}
+
+fn x64_rand_intn_range_interface_result_stdout() []u8 {
+	return 'direct.int.from.rng.u32n255\n72\nrng.intn255\n72\n99\n113\n97\n151\n9\n250\n120\nrand.intn255\n72\n99\n113\n97\n151\n9\n250\n120\nrand.int_in_range_5_15\n13\n8\n6\n14\n8\n9\n5\n11\n'.bytes()
+}
+
+fn x64_custom_error_result_or_block_source() string {
+	return 'module main
+
+struct MyErr {
+	Error
+}
+
+struct OtherErr {
+	Error
+}
+
+struct MessageLike {}
+
+fn (m MessageLike) msg() string {
+	return "message-like"
+}
+
+fn fail_direct() !int {
+	return &MyErr{}
+}
+
+fn fail_cast() !int {
+	return IError(&MyErr{})
+}
+
+fn fail_other() !int {
+	return &OtherErr{}
+}
+
+fn fail_builtin() !int {
+	return error("x")
+}
+
+fn inner() !int {
+	return &MyErr{}
+}
+
+fn propagate() !int {
+	inner() or {
+		return err
+	}
+	return 0
+}
+
+fn ok_ierror(e IError) !IError {
+	return e
+}
+
+fn ok_option_ierror(e IError) ?IError {
+	return e
+}
+
+fn classify_my_only(err IError) string {
+	match err {
+		MyErr {
+			return "my"
+		}
+		else {
+			return "not-my"
+		}
+	}
+}
+
+fn classify_full(err IError) string {
+	match err {
+		MyErr {
+			return "my"
+		}
+		OtherErr {
+			return "other"
+		}
+		else {
+			return "builtin"
+		}
+	}
+}
+
+fn classify_is_my(err IError) string {
+	if err is MyErr {
+		return "is-my"
+	}
+	return "not-is-my"
+}
+
+fn classify_not_my(err IError) string {
+	if err !is MyErr {
+		return "not-is-my"
+	}
+	return "is-my"
+}
+
+fn main() {
+	fail_direct() or {
+		println("direct:" + classify_my_only(err))
+		println("direct-is:" + classify_is_my(err))
+	}
+	fail_cast() or {
+		println("cast:" + classify_my_only(err))
+	}
+	fail_other() or {
+		println("other:" + classify_my_only(err))
+		println("other-full:" + classify_full(err))
+		println("other-not-is:" + classify_not_my(err))
+	}
+	fail_builtin() or {
+		println("builtin:" + classify_my_only(err))
+		println("builtin-full:" + classify_full(err))
+	}
+	propagate() or {
+		println("propagate:" + classify_my_only(err))
+	}
+	ok_ierror(IError(&MyErr{})) or {
+		println("bad-result-ierror")
+		return
+	}
+	println("result-ierror:ok")
+	ok_option_ierror(IError(&MyErr{})) or {
+		println("bad-option-ierror")
+		return
+	}
+	println("option-ierror:ok")
+	msg_like := MessageLike{}
+	println("message-like:" + msg_like.msg())
+	println("done")
+}
+'
+}
+
+fn x64_custom_error_result_or_block_stdout() []u8 {
+	return 'direct:my\ndirect-is:is-my\ncast:my\nother:not-my\nother-full:other\nother-not-is:not-is-my\nbuiltin:not-my\nbuiltin-full:builtin\npropagate:my\nresult-ierror:ok\noption-ierror:ok\nmessage-like:message-like\ndone\n'.bytes()
+}
+
+fn x64_custom_error_imported_type_match_sources() map[string]string {
+	return {
+		'main.v':    'module main
+
+import dep
+
+struct LocalErr {
+	Error
+}
+
+fn fail_local() !int {
+	return &LocalErr{}
+}
+
+fn fail_import_cast() !int {
+	return IError(&dep.ForeignErr{})
+}
+
+fn classify(err IError) string {
+	match err {
+		dep.ForeignErr {
+			return "dep.ForeignErr"
+		}
+		dep.LocalErr {
+			return "dep.LocalErr"
+		}
+		LocalErr {
+			return "main.LocalErr"
+		}
+		else {
+			return "other"
+		}
+	}
+}
+
+fn main() {
+	dep.fail_foreign() or {
+		println("foreign:" + classify(err))
+	}
+	fail_import_cast() or {
+		println("foreign-cast:" + classify(err))
+	}
+	dep.fail_local() or {
+		println("dep-local:" + classify(err))
+	}
+	fail_local() or {
+		println("local:" + classify(err))
+	}
+	println("done")
+}
+'
+		'dep/dep.v': 'module dep
+
+pub struct ForeignErr {
+	Error
+}
+
+pub struct LocalErr {
+	Error
+}
+
+pub fn fail_foreign() !int {
+	return &ForeignErr{}
+}
+
+pub fn fail_local() !int {
+	return &LocalErr{}
+}
+'
+	}
+}
+
+fn x64_custom_error_imported_type_match_stdout() []u8 {
+	return 'foreign:dep.ForeignErr\nforeign-cast:dep.ForeignErr\ndep-local:dep.LocalErr\nlocal:main.LocalErr\ndone\n'.bytes()
 }
 
 fn x64_core_int_control_flow_source() string {
@@ -2495,6 +3385,62 @@ path: ['A', 'C', 'F']
 ".bytes()
 }
 
+fn x64_mut_array_param_append_source() string {
+	return "module main
+
+fn append_seen(mut seen []string) {
+	seen << 'A'
+	seen << 'B'
+}
+
+fn append_many(mut seen []string, values []string) {
+	seen << values
+}
+
+fn append_path(mut path []string) {
+	path << 'A'
+	path << 'B'
+}
+
+fn append_pattern_value(mut patterns [][]string, path []string) {
+	patterns << path
+}
+
+fn append_pattern_literal(mut patterns [][]string, path []string) {
+	patterns << [path]
+}
+
+fn main() {
+	mut seen := []string{}
+	append_seen(mut seen)
+	println(seen)
+	println(seen.reverse())
+	mut many := []string{}
+	append_many(mut many, ['B', 'A'])
+	println(many)
+	mut path := []string{}
+	append_path(mut path)
+	println(path)
+	mut value_patterns := [][]string{}
+	append_pattern_value(mut value_patterns, path)
+	println(value_patterns)
+	mut literal_patterns := [][]string{}
+	append_pattern_literal(mut literal_patterns, path)
+	println(literal_patterns)
+}
+"
+}
+
+fn x64_mut_array_param_append_stdout() []u8 {
+	return "['A', 'B']
+['B', 'A']
+['B', 'A']
+['A', 'B']
+[['A', 'B']]
+[['A', 'B']]
+".bytes()
+}
+
 fn x64_string_int_map_literal_lookup_source() string {
 	return "module main
 
@@ -2512,6 +3458,172 @@ fn main() {
 fn x64_string_int_map_literal_lookup_stdout() []u8 {
 	return '11
 22
+'.bytes()
+}
+
+fn x64_map_clone_delete_array_index_delete_source() string {
+	return "module main
+
+fn main() {
+	graph := {
+		'A': ['B', 'C']
+		'B': ['C']
+		'C': []
+	}
+	mut next := graph.clone()
+	next.delete('B')
+	mut path := graph['A'].clone()
+	idx := path.index('B')
+	if idx >= 0 {
+		path.delete(idx)
+	}
+	println('\${graph.len}:\${next.len}:\${'B' in graph}:\${'B' in next}')
+	println('\${idx}:\${path.len}:\${path.index('B')}:\${path[0]}')
+	mut degree := map[string]int{}
+	degree['A'] = 0
+	degree['C'] = 1
+	first := degree.keys().first()
+	println('\${'A' in degree}:\${'B' in degree}:\${first in degree}:\${degree['C']}')
+}
+"
+}
+
+fn x64_map_clone_delete_array_index_delete_stdout() []u8 {
+	return '3:2:true:false
+0:1:-1:C
+true:false:true:1
+'.bytes()
+}
+
+fn x64_graph_priority_queue_generic_mut_array_source() string {
+	return "module main
+
+struct Node {
+mut:
+	data     int
+	priority int
+}
+
+fn push_pq[T](mut queue []T, data int, priority int) {
+	mut temp := []T{}
+	mut i := 0
+	for i < queue.len && priority > queue[i].priority {
+		temp << queue[i]
+		i++
+	}
+	temp << Node{data, priority}
+	for i < queue.len {
+		temp << queue[i]
+		i++
+	}
+	queue = temp.clone()
+}
+
+fn update_priority[T](mut queue []T, search int, priority int) {
+	for i in 0 .. queue.len {
+		if queue[i].data == search {
+			queue[i] = Node{search, priority}
+			break
+		}
+	}
+}
+
+fn pop_front[T](mut queue []T) int {
+	value := queue[0].data
+	queue.delete(0)
+	return value
+}
+
+fn all_adjacents[T](g [][]T, v int) []int {
+	mut out := []int{}
+	for i in 0 .. g.len {
+		if g[v][i] > 0 {
+			out << i
+		}
+	}
+	return out
+}
+
+fn main() {
+	mut queue := []Node{}
+	push_pq(mut queue, 7, 20)
+	push_pq(mut queue, 4, 10)
+	push_pq(mut queue, 9, 30)
+	update_priority(mut queue, 7, 15)
+	graph := [
+		[0, 5, 0],
+		[5, 0, 8],
+		[0, 8, 0],
+	]
+	println('\${pop_front(mut queue)}|\${queue[0].data}:\${queue[0].priority}|\${all_adjacents(graph, 1)}')
+}
+"
+}
+
+fn x64_graph_priority_queue_generic_mut_array_stdout() []u8 {
+	return '4|7:15|[0, 2]
+'.bytes()
+}
+
+fn x64_graph_generic_map_edge_relax_source() string {
+	return "module main
+
+const large = 999
+
+struct Edge {
+mut:
+	src    int
+	dest   int
+	weight int
+}
+
+fn build_edges[T](g [][]T) map[T]Edge {
+	n := g.len
+	mut edges := map[int]Edge{}
+	mut edge := 0
+	for i in 0 .. n {
+		for j in 0 .. n {
+			if g[i][j] != 0 {
+				edges[edge] = Edge{i, j, g[i][j]}
+				edge++
+			}
+		}
+	}
+	return edges
+}
+
+fn relax[T](graph [][]T) []int {
+	mut edges := build_edges[int](graph)
+	n_edges := edges.len
+	mut dist := []int{len: graph.len, init: large}
+	dist[0] = 0
+	for _ in 0 .. graph.len {
+		for j in 0 .. n_edges {
+			u := edges[j].src
+			v := edges[j].dest
+			weight := edges[j].weight
+			if dist[u] != large && dist[u] + weight < dist[v] {
+				dist[v] = dist[u] + weight
+			}
+		}
+	}
+	return dist
+}
+
+fn main() {
+	graph := [
+		[0, 3, 10],
+		[0, 0, -2],
+		[0, 0, 0],
+	]
+	dist := relax(graph)
+	println('\${dist[0]},\${dist[1]},\${dist[2]}')
+}
+"
+}
+
+fn x64_graph_generic_map_edge_relax_stdout() []u8 {
+	return '0,3,1
 '.bytes()
 }
 
@@ -2780,6 +3892,28 @@ fn x64_examples_dir() string {
 	return os.join_path(@VMODROOT, 'examples')
 }
 
+fn x64_get_raw_line_example_stdin() string {
+	return 'hello\nworld\n'
+}
+
+fn x64_get_raw_line_example_stdout() []u8 {
+	return 'Press Ctrl+D(Linux) or Ctrl+Z(Windows) at line begin to exit\n1: hello\n\n2: world\n\n'.bytes()
+}
+
+fn x64_mini_calculator_example_stdin() string {
+	return '3+4*2\nexit\n'
+}
+
+fn x64_mini_calculator_example_stdout() []u8 {
+	return "Please enter the expression you want to calculate, e.g. 1e2+(3-2.5)*6/1.5 .\nEnter 'exit' or 'EXIT' to quit.\n[1] 11.0\n[2] ".bytes()
+}
+
+fn x64_mini_calculator_recursive_descent_example_stdout() []u8 {
+	return 'Enter expressions to calculate, e.g. `2 * (5-1)` or `exit` to quit.
+[1] 11.0
+[2] '.bytes()
+}
+
 fn x64_arguments_index_one_int_source() string {
 	return 'module main
 
@@ -2817,6 +3951,193 @@ fn main() {
 
 fn x64_arguments_via_function_pointer_stdout() []u8 {
 	return '2
+'.bytes()
+}
+
+fn x64_math_log_20_source() string {
+	return 'module main
+
+import math { log }
+
+fn main() {
+	x := log(20.0)
+	println(x > 2.99 && x < 3.0)
+}
+'
+}
+
+fn x64_math_log_20_stdout() []u8 {
+	return 'true
+'.bytes()
+}
+
+fn x64_embedded_scanner_parser_source() string {
+	return "module main
+
+import strings.textscanner
+
+struct Parser {
+	textscanner.TextScanner
+}
+
+fn main() {
+	mut parser := Parser{textscanner.new('3+4*2')}
+	if parser.input == '3+4*2' {
+		println('input')
+	}
+	if parser.ilen == 5 {
+		println('ilen')
+	}
+	if parser.pos == 0 {
+		println('pos0')
+	}
+	if parser.peek_u8() == `3` {
+		println('peek3')
+	}
+	first := parser.next()
+	if first == `3` {
+		println('next3')
+	}
+	if parser.pos == 1 {
+		println('pos1')
+	}
+	if parser.peek_u8() == `+` {
+		println('peek_plus')
+	}
+	start := 0
+	for parser.peek_u8().is_digit() {
+		parser.next()
+	}
+	token := parser.input[start..parser.pos]
+	if token == '3' {
+		println('slice')
+	}
+}
+"
+}
+
+fn x64_embedded_scanner_parser_stdout() []u8 {
+	return 'input
+ilen
+pos0
+peek3
+next3
+pos1
+peek_plus
+slice
+'.bytes()
+}
+
+fn x64_struct_positional_side_effect_source() string {
+	return "module main
+
+struct Sample {
+	x int
+}
+
+fn next() int {
+	println('call')
+	return 7
+}
+
+fn main() {
+	sample := Sample{next()}
+	println(sample.x)
+}
+"
+}
+
+fn x64_struct_positional_side_effect_stdout() []u8 {
+	return 'call
+7
+'.bytes()
+}
+
+fn x64_struct_named_side_effect_source() string {
+	return "module main
+
+struct Sample {
+	x int
+	y int
+}
+
+fn next() int {
+	println('call')
+	return 7
+}
+
+fn main() {
+	sample := Sample{
+		x: next()
+		y: 2
+	}
+	println(sample.x)
+	println(sample.y)
+}
+"
+}
+
+fn x64_struct_named_side_effect_stdout() []u8 {
+	return 'call
+7
+2
+'.bytes()
+}
+
+fn x64_unrelated_same_shape_struct_source() string {
+	return 'module main
+
+struct SameShape {
+	x int
+	y int
+}
+
+struct Holder {
+	item SameShape
+	z    int
+}
+
+fn main() {
+	holder := Holder{SameShape{7, 9}, 2}
+	println(holder.item.x)
+	println(holder.item.y)
+	println(holder.z)
+}
+'
+}
+
+fn x64_unrelated_same_shape_struct_stdout() []u8 {
+	return '7
+9
+2
+'.bytes()
+}
+
+fn x64_named_init_embedded_value_source() string {
+	return 'module main
+
+struct Inner {
+	x int
+}
+
+struct Holder {
+	Inner
+	other Inner
+}
+
+fn main() {
+	holder := Holder{
+		other: Inner{7}
+	}
+	println(holder.x)
+	println(holder.other.x)
+}
+'
+}
+
+fn x64_named_init_embedded_value_stdout() []u8 {
+	return '0
+7
 '.bytes()
 }
 
@@ -3108,6 +4429,80 @@ fn x64_bfs_example_stdout() []u8 {
 	return "Graph: {'A': ['B', 'C'], 'B': ['A', 'D', 'E'], 'C': ['A', 'F'], 'D': ['B'], 'E': ['B', 'F'], 'F': ['C', 'E']}
 The shortest path from node A to node F is: ['A', 'C', 'F']
 ".bytes()
+}
+
+fn x64_minimal_spann_tree_prim_example_stdout() []u8 {
+	return '
+ Minimal Spanning Tree of graph 1 using PRIM algorithm
+   Edge 	Weight
+
+ 0 <== reference or start node
+ 1 <--> 0 	4
+ 2 <--> 8 	2
+ 3 <--> 2 	7
+ 4 <--> 5 	10
+ 5 <--> 6 	2
+ 6 <--> 7 	1
+ 7 <--> 6 	1
+ 8 <--> 2 	2
+ Minimum Cost Spanning Tree: 29
+
+
+ Minimal Spanning Tree of graph 2 using PRIM algorithm
+   Edge 	Weight
+
+ 0 <== reference or start node
+ 1 <--> 0 	2
+ 2 <--> 1 	3
+ 3 <--> 0 	6
+ 4 <--> 1 	5
+ Minimum Cost Spanning Tree: 16
+
+
+ Minimal Spanning Tree of graph 3 using PRIM algorithm
+   Edge 	Weight
+
+ 0 <== reference or start node
+ 1 <--> 0 	10
+ 2 <--> 0 	6
+ 3 <--> 0 	5
+ Minimum Cost Spanning Tree: 21
+
+
+ BYE -- OK
+'.bytes()
+}
+
+fn x64_bellman_ford_example_stdout() []u8 {
+	return '
+
+ Graph 1 using Bellman-Ford algorithm (source node: 0)
+
+ Vertex   Distance from Source
+   0   -->   0
+   1   -->   -1
+   2   -->   2
+   3   -->   -2
+   4   -->   1
+
+ Graph 2 using Bellman-Ford algorithm (source node: 0)
+
+ Vertex   Distance from Source
+   0   -->   0
+   1   -->   2
+   2   -->   5
+   3   -->   6
+   4   -->   7
+
+ Graph 3 using Bellman-Ford algorithm (source node: 0)
+
+ Vertex   Distance from Source
+   0   -->   0
+   1   -->   10
+   2   -->   6
+   3   -->   5
+ BYE -- OK
+'.bytes()
 }
 
 fn x64_js_hello_world_example_stdout() []u8 {
@@ -3475,6 +4870,62 @@ fn main() {
 	exit(37)
 	print('X')
 }
+	"
+}
+
+fn x64_win64_atexit_main_return_source() string {
+	return "module main
+
+fn on_exit() {
+	print('A')
+}
+
+fn main() {
+	at_exit(on_exit) or {
+		exit(91)
+	}
+	print('M')
+}
+"
+}
+
+fn x64_win64_atexit_exit_code_source() string {
+	return "module main
+
+fn on_exit() {
+	print('C')
+}
+
+fn main() {
+	at_exit(on_exit) or {
+		exit(92)
+	}
+	print('B')
+	exit(7)
+}
+"
+}
+
+fn x64_win64_atexit_lifo_source() string {
+	return "module main
+
+fn first() {
+	print('1')
+}
+
+fn second() {
+	print('2')
+}
+
+fn main() {
+	at_exit(first) or {
+		exit(93)
+	}
+	at_exit(second) or {
+		exit(94)
+	}
+	print('M')
+}
 "
 }
 
@@ -3616,35 +5067,17 @@ fn main() {
 
 fn test_x64_linux_getwd_clone_runtime_smoke() {
 	$if linux {
-		tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_getwd_clone_${os.getpid()}')
-		os.mkdir_all(tmp_dir) or { panic(err) }
-		defer {
-			os.rmdir_all(tmp_dir) or {}
-		}
-		source_path := os.join_path(tmp_dir, 'getwd_clone.v')
-		bin_path := os.join_path(tmp_dir, 'getwd_clone')
-		os.write_file(source_path, "module main
-
-import os
-
-fn main() {
-	wd := os.getwd()
-	if wd.len > 0 {
-		println('ok')
-	} else {
-		println('bad')
-	}
-}
-") or {
-			panic(err)
-		}
-		vexe := os.getenv_opt('VEXE') or { @VEXE }
-		build :=
-			os.execute('${os.quoted_path(vexe)} -v2 -no-parallel -b x64 ${os.quoted_path(source_path)} -o ${os.quoted_path(bin_path)}')
-		assert build.exit_code == 0, build.output
-		run := os.execute(os.quoted_path(bin_path))
-		assert run.exit_code == 0, run.output
-		assert run.output.trim_space() == 'ok'
+		result := run_x64_host_program_redirected_auto('getwd_clone_runtime_smoke',
+			x64_getwd_clone_source())
+		expected_stdout := x64_getwd_clone_stdout()
+		context := x64_host_result_context(result)
+		stdout_message := x64_stdout_mismatch_message('getwd_clone_runtime_smoke', 'linux',
+			expected_stdout, result.stdout, context)
+		stderr_message := x64_stderr_mismatch_message('getwd_clone_runtime_smoke', 'linux', []u8{},
+			result.stderr, context)
+		assert result.stdout == expected_stdout, stdout_message
+		assert result.stderr == []u8{}, stderr_message
+		x64_host_cleanup_tmp(result.tmp_dir)
 	}
 }
 
@@ -3826,6 +5259,11 @@ fn test_x64_linux_hanoi_example_top_level_stdout_exact_bytes() {
 		'hanoi.v', x64_hanoi_example_stdout())
 }
 
+fn test_x64_linux_dump_factorial_example_top_level_stdout_exact_bytes() {
+	assert_x64_linux_file_stdout_bytes('dump_factorial_example_top_level_exact',
+		x64_examples_dir(), 'dump_factorial.v', x64_dump_factorial_example_stdout())
+}
+
 fn test_x64_linux_sudoku_example_top_level_stdout_exact_bytes() {
 	assert_x64_linux_file_stdout_bytes('sudoku_example_top_level_exact', x64_examples_dir(),
 		'sudoku.v', x64_sudoku_example_stdout())
@@ -3865,6 +5303,15 @@ fn test_x64_linux_arguments_via_function_pointer_auto_tiny_falls_back_to_hosted(
 	}
 }
 
+fn test_x64_linux_math_log_20_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('math_log_20_exact',
+			x64_math_log_20_source())
+		assert_x64_linux_hosted_libc_binary(result, x64_math_log_20_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
 fn test_x64_linux_fibonacci_example_arg_10_stdout_exact_bytes() {
 	$if linux {
 		result := run_x64_host_file_redirected_auto_with_args('fibonacci_example_arg_10_exact',
@@ -3872,6 +5319,11 @@ fn test_x64_linux_fibonacci_example_arg_10_stdout_exact_bytes() {
 		assert_x64_linux_hosted_libc_binary(result, x64_fibonacci_10_example_stdout())
 		x64_host_cleanup_tmp(result.tmp_dir)
 	}
+}
+
+fn test_x64_linux_primes_example_arg_20_stdout_matches_v_run() {
+	assert_x64_linux_file_stdout_matches_v_run_with_args('primes_example_arg_20_v_run',
+		x64_examples_dir(), 'primes.v', ['20'])
 }
 
 fn test_x64_linux_fibonacci_example_strict_tiny_rejected() {
@@ -3950,6 +5402,16 @@ fn test_x64_windows_fibonacci_example_arg_10_stdout_exact_bytes() {
 	}
 }
 
+fn test_x64_macos_windows_math_log_20_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('math_log_20_exact', x64_math_log_20_source(),
+		x64_math_log_20_stdout())
+}
+
+fn test_x64_macos_windows_primes_example_arg_20_stdout_matches_v_run() {
+	assert_x64_macos_windows_file_stdout_matches_v_run_with_args('primes_example_arg_20_v_run',
+		x64_examples_dir(), 'primes.v', ['20'])
+}
+
 fn test_x64_linux_struct_sumtype_field_init_stdout_exact_bytes() {
 	assert_x64_linux_stdout_bytes('struct_sumtype_field_init_exact',
 		x64_struct_sumtype_field_init_source(), x64_struct_sumtype_field_init_stdout())
@@ -3965,9 +5427,37 @@ fn test_x64_linux_tree_of_nodes_example_top_level_stdout_exact_bytes() {
 		'tree_of_nodes.v', x64_tree_of_nodes_example_stdout())
 }
 
+fn test_x64_linux_binary_search_tree_example_stdout_matches_v_run() {
+	assert_x64_linux_file_stdout_matches_v_run('binary_search_tree_example_top_level_v_run',
+		x64_examples_dir(), 'binary_search_tree.v')
+}
+
+fn test_x64_linux_get_raw_line_example_stdin_stdout_exact_bytes() {
+	assert_x64_linux_file_stdout_bytes_with_stdin('get_raw_line_example_stdin_exact',
+		x64_examples_dir(), 'get_raw_line.v', x64_get_raw_line_example_stdin(),
+		x64_get_raw_line_example_stdout())
+}
+
+fn test_x64_linux_mini_calculator_example_stdin_stdout_exact_bytes() {
+	assert_x64_linux_file_stdout_bytes_with_stdin('mini_calculator_example_stdin_exact',
+		x64_examples_dir(), 'mini_calculator.v', x64_mini_calculator_example_stdin(),
+		x64_mini_calculator_example_stdout())
+}
+
+fn test_x64_linux_mini_calculator_recursive_descent_example_stdin_stdout_exact_bytes() {
+	assert_x64_linux_file_stdout_bytes_with_stdin('mini_calculator_recursive_descent_example_stdin_exact',
+		x64_examples_dir(), 'mini_calculator_recursive_descent.v',
+		x64_mini_calculator_example_stdin(), x64_mini_calculator_recursive_descent_example_stdout())
+}
+
 fn test_x64_linux_bfs_example_top_level_stdout_exact_bytes() {
 	assert_x64_linux_file_stdout_bytes('bfs_example_top_level_exact', os.join_path(x64_examples_dir(),
 		'graphs'), 'bfs.v', x64_bfs_example_stdout())
+}
+
+fn test_x64_linux_bfs3_example_top_level_stdout_matches_v_run() {
+	assert_x64_linux_file_stdout_matches_v_run('bfs3_example_top_level_v_run', os.join_path(x64_examples_dir(),
+		'graphs'), 'bfs3.v')
 }
 
 fn test_x64_linux_dfs_example_top_level_stdout_matches_v_run() {
@@ -3978,6 +5468,58 @@ fn test_x64_linux_dfs_example_top_level_stdout_matches_v_run() {
 fn test_x64_linux_dijkstra_example_top_level_stdout_matches_v_run() {
 	assert_x64_linux_file_stdout_matches_v_run('dijkstra_example_top_level_v_run', os.join_path(x64_examples_dir(),
 		'graphs'), 'dijkstra.v')
+}
+
+fn test_x64_linux_topological_sorting_greedy_example_top_level_stdout_matches_v_run() {
+	assert_x64_linux_file_stdout_matches_v_run('topological_sorting_greedy_example_top_level_v_run', os.join_path(x64_examples_dir(),
+		'graphs'), 'topological_sorting_greedy.v')
+}
+
+fn test_x64_linux_topological_sorting_dfs_example_top_level_stdout_matches_v_run() {
+	assert_x64_linux_file_stdout_matches_v_run('topological_sorting_dfs_example_top_level_v_run', os.join_path(x64_examples_dir(),
+		'graphs'), 'topological_sorting_dfs.v')
+}
+
+fn test_x64_linux_dfs2_example_top_level_stdout_matches_v_run() {
+	assert_x64_linux_file_stdout_matches_v_run('dfs2_example_top_level_v_run', os.join_path(x64_examples_dir(),
+		'graphs'), 'dfs2.v')
+}
+
+fn test_x64_linux_graph_priority_queue_generic_mut_array_normal_required_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('graph_priority_queue_generic_mut_array_normal_required',
+			x64_graph_priority_queue_generic_mut_array_source())
+		assert_x64_linux_hosted_libc_binary(result,
+			x64_graph_priority_queue_generic_mut_array_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_minimal_spann_tree_prim_example_top_level_normal_required_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_file_redirected_auto('minimal_spann_tree_prim_example_normal_required', os.join_path(x64_examples_dir(),
+			'graphs'), 'minimal_spann_tree_prim.v')
+		assert_x64_linux_hosted_libc_binary(result, x64_minimal_spann_tree_prim_example_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_graph_generic_map_edge_relax_normal_required_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('graph_generic_map_edge_relax_normal_required',
+			x64_graph_generic_map_edge_relax_source())
+		assert_x64_linux_hosted_libc_binary(result, x64_graph_generic_map_edge_relax_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_bellman_ford_example_top_level_normal_required_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_file_redirected_auto('bellman_ford_example_normal_required', os.join_path(x64_examples_dir(),
+			'graphs'), 'bellman-ford.v')
+		assert_x64_linux_hosted_libc_binary(result, x64_bellman_ford_example_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
 }
 
 fn test_x64_linux_fizz_buzz_example_auto_tiny_no_libc() {
@@ -4198,6 +5740,55 @@ fn assert_x64_macos_tiny_object_rejected_for_arguments(result X64HostRunResult, 
 
 	assert result.build_output.contains('arguments() requires hosted argc/argv'), context
 	assert !result.build_output.contains('built-in macOS tiny object'), context
+}
+
+fn x64_external_c_flag_project_sources() map[string]string {
+	return {
+		'main.v':           'module main
+#flag -I @VMODROOT/include
+#flag -DHELPER_MAGIC=37
+#flag @VMODROOT/native/helper.c
+
+fn C.native_helper_value() int
+
+fn main() {
+	println(C.native_helper_value())
+}
+'
+		'include/helper.h': '#define HELPER_OFFSET 5
+'
+		'native/helper.c':  '#include "helper.h"
+#ifndef HELPER_MAGIC
+#error HELPER_MAGIC missing
+#endif
+
+int native_helper_value(void) {
+	return HELPER_MAGIC + HELPER_OFFSET;
+}
+'
+	}
+}
+
+fn test_x64_linux_external_c_flag_source_uses_hosted_link_with_compile_flags() {
+	$if linux {
+		result := run_x64_host_project_redirected_auto('linux_external_c_flag_source',
+			x64_external_c_flag_project_sources())
+		context := x64_host_result_context(result)
+		assert result.stdout == '42\n'.bytes(), context
+		assert result.stderr == []u8{}, context
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_macos_external_c_flag_source_uses_hosted_link_with_compile_flags() {
+	$if macos {
+		result := run_x64_host_project_redirected_macos_auto_tiny_verbose('macos_external_c_flag_source',
+			x64_external_c_flag_project_sources())
+		context := x64_host_result_context(result)
+		assert result.stdout == '42\n'.bytes(), context
+		assert result.stderr == []u8{}, context
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
 }
 
 fn test_x64_macos_i64_str_boundary_values_auto_tiny_uses_tiny_object() {
@@ -4984,9 +6575,20 @@ fn test_x64_macos_windows_dynamic_string_array_str_stdout_exact_bytes() {
 		x64_dynamic_string_array_str_source(), x64_dynamic_string_array_str_stdout())
 }
 
+fn test_x64_macos_windows_mut_array_param_append_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('mut_array_param_append_exact',
+		x64_mut_array_param_append_source(), x64_mut_array_param_append_stdout())
+}
+
 fn test_x64_macos_windows_string_int_map_literal_lookup_stdout_exact_bytes() {
 	assert_x64_macos_windows_stdout_bytes('string_int_map_literal_lookup_exact',
 		x64_string_int_map_literal_lookup_source(), x64_string_int_map_literal_lookup_stdout())
+}
+
+fn test_x64_macos_windows_map_clone_delete_array_index_delete_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('map_clone_delete_array_index_delete_exact',
+		x64_map_clone_delete_array_index_delete_source(),
+		x64_map_clone_delete_array_index_delete_stdout())
 }
 
 fn test_x64_windows_noscan_array_grow_free_slice_stdout_exact_bytes() {
@@ -5003,6 +6605,21 @@ fn test_x64_windows_rune_array_string_free_stdout_exact_bytes() {
 fn test_x64_macos_windows_exit_code_stdout_stderr_exact() {
 	assert_x64_macos_windows_exit_code_stdout_stderr('exit_37_exact', x64_exit_37_source(), 37,
 		[]u8{}, []u8{})
+}
+
+fn test_x64_windows_atexit_callback_runs_on_main_return_stdout_exact_bytes() {
+	assert_x64_windows_exit_code_stdout_stderr('win64_atexit_main_return_exact',
+		x64_win64_atexit_main_return_source(), 0, 'MA'.bytes(), []u8{})
+}
+
+fn test_x64_windows_atexit_callback_runs_before_exit_with_code_preserved() {
+	assert_x64_windows_exit_code_stdout_stderr('win64_atexit_exit_code_exact',
+		x64_win64_atexit_exit_code_source(), 7, 'BC'.bytes(), []u8{})
+}
+
+fn test_x64_windows_atexit_callbacks_run_lifo_stdout_exact_bytes() {
+	assert_x64_windows_exit_code_stdout_stderr('win64_atexit_lifo_exact',
+		x64_win64_atexit_lifo_source(), 0, 'M21'.bytes(), []u8{})
 }
 
 fn test_x64_windows_entry_call_exit_exact() {
@@ -5065,6 +6682,11 @@ fn test_x64_macos_windows_hanoi_example_top_level_stdout_exact_bytes() {
 		'hanoi.v', x64_hanoi_example_stdout())
 }
 
+fn test_x64_macos_windows_dump_factorial_example_top_level_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes('dump_factorial_example_top_level_exact',
+		x64_examples_dir(), 'dump_factorial.v', x64_dump_factorial_example_stdout())
+}
+
 fn test_x64_macos_windows_sudoku_example_top_level_stdout_exact_bytes() {
 	assert_x64_macos_windows_file_stdout_bytes('sudoku_example_top_level_exact',
 		x64_examples_dir(), 'sudoku.v', x64_sudoku_example_stdout())
@@ -5095,9 +6717,37 @@ fn test_x64_macos_windows_tree_of_nodes_example_top_level_stdout_exact_bytes() {
 		x64_examples_dir(), 'tree_of_nodes.v', x64_tree_of_nodes_example_stdout())
 }
 
+fn test_x64_macos_windows_binary_search_tree_example_stdout_matches_v_run() {
+	assert_x64_macos_windows_file_stdout_matches_v_run('binary_search_tree_example_top_level_v_run',
+		x64_examples_dir(), 'binary_search_tree.v')
+}
+
+fn test_x64_macos_windows_get_raw_line_example_stdin_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes_with_stdin('get_raw_line_example_stdin_exact',
+		x64_examples_dir(), 'get_raw_line.v', x64_get_raw_line_example_stdin(),
+		x64_get_raw_line_example_stdout())
+}
+
+fn test_x64_macos_windows_mini_calculator_example_stdin_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes_with_stdin('mini_calculator_example_stdin_exact',
+		x64_examples_dir(), 'mini_calculator.v', x64_mini_calculator_example_stdin(),
+		x64_mini_calculator_example_stdout())
+}
+
+fn test_x64_macos_windows_mini_calculator_recursive_descent_example_stdin_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes_with_stdin('mini_calculator_recursive_descent_example_stdin_exact',
+		x64_examples_dir(), 'mini_calculator_recursive_descent.v',
+		x64_mini_calculator_example_stdin(), x64_mini_calculator_recursive_descent_example_stdout())
+}
+
 fn test_x64_macos_windows_bfs_example_top_level_stdout_exact_bytes() {
 	assert_x64_macos_windows_file_stdout_bytes('bfs_example_top_level_exact', os.join_path(x64_examples_dir(),
 		'graphs'), 'bfs.v', x64_bfs_example_stdout())
+}
+
+fn test_x64_macos_windows_bfs3_example_top_level_stdout_matches_v_run() {
+	assert_x64_macos_windows_file_stdout_matches_v_run('bfs3_example_top_level_v_run', os.join_path(x64_examples_dir(),
+		'graphs'), 'bfs3.v')
 }
 
 fn test_x64_macos_windows_dfs_example_top_level_stdout_matches_v_run() {
@@ -5108,6 +6758,42 @@ fn test_x64_macos_windows_dfs_example_top_level_stdout_matches_v_run() {
 fn test_x64_macos_windows_dijkstra_example_top_level_stdout_matches_v_run() {
 	assert_x64_macos_windows_file_stdout_matches_v_run('dijkstra_example_top_level_v_run', os.join_path(x64_examples_dir(),
 		'graphs'), 'dijkstra.v')
+}
+
+fn test_x64_macos_windows_topological_sorting_greedy_example_top_level_stdout_matches_v_run() {
+	assert_x64_macos_windows_file_stdout_matches_v_run('topological_sorting_greedy_example_top_level_v_run', os.join_path(x64_examples_dir(),
+		'graphs'), 'topological_sorting_greedy.v')
+}
+
+fn test_x64_macos_windows_topological_sorting_dfs_example_top_level_stdout_matches_v_run() {
+	assert_x64_macos_windows_file_stdout_matches_v_run('topological_sorting_dfs_example_top_level_v_run', os.join_path(x64_examples_dir(),
+		'graphs'), 'topological_sorting_dfs.v')
+}
+
+fn test_x64_macos_windows_dfs2_example_top_level_stdout_matches_v_run() {
+	assert_x64_macos_windows_file_stdout_matches_v_run('dfs2_example_top_level_v_run', os.join_path(x64_examples_dir(),
+		'graphs'), 'dfs2.v')
+}
+
+fn test_x64_macos_windows_graph_priority_queue_generic_mut_array_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('graph_priority_queue_generic_mut_array_exact',
+		x64_graph_priority_queue_generic_mut_array_source(),
+		x64_graph_priority_queue_generic_mut_array_stdout())
+}
+
+fn test_x64_macos_windows_minimal_spann_tree_prim_example_top_level_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes('minimal_spann_tree_prim_example_top_level_exact', os.join_path(x64_examples_dir(),
+		'graphs'), 'minimal_spann_tree_prim.v', x64_minimal_spann_tree_prim_example_stdout())
+}
+
+fn test_x64_macos_windows_graph_generic_map_edge_relax_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('graph_generic_map_edge_relax_exact',
+		x64_graph_generic_map_edge_relax_source(), x64_graph_generic_map_edge_relax_stdout())
+}
+
+fn test_x64_macos_windows_bellman_ford_example_top_level_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes('bellman_ford_example_top_level_exact', os.join_path(x64_examples_dir(),
+		'graphs'), 'bellman-ford.v', x64_bellman_ford_example_stdout())
 }
 
 fn test_x64_macos_windows_js_hello_world_example_top_level_stdout_exact_bytes() {
@@ -5151,6 +6837,11 @@ fn test_x64_windows_status_short_circuit_calls_stdout_exact_bytes() {
 		x64_status_short_circuit_calls_source(), x64_status_short_circuit_calls_stdout())
 }
 
+fn test_x64_macos_windows_dump_operator_identity_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('dump_operator_identity_exact',
+		x64_dump_operator_identity_source(), x64_dump_operator_identity_stdout())
+}
+
 fn test_x64_linux_exit_code_stdout_stderr_exact() {
 	$if linux {
 		result := run_x64_linux_program_redirected_with_exit('exit_37_exact', x64_exit_37_source())
@@ -5186,6 +6877,243 @@ fn test_x64_linux_heap_alloc_zeroed_struct_literal_stdout_exact_bytes() {
 	assert_x64_linux_stdout_bytes('heap_alloc_zeroed_struct_literal_exact',
 		x64_heap_alloc_zeroed_struct_literal_source(),
 		x64_heap_alloc_zeroed_struct_literal_stdout())
+}
+
+fn test_x64_linux_generic_sumtype_direct_wrap_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('generic_sumtype_direct_wrap_exact',
+			x64_generic_sumtype_direct_wrap_source())
+		assert_x64_linux_hosted_libc_binary(result, x64_generic_sumtype_direct_wrap_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_generic_sumtype_repeated_base_specialization_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('generic_sumtype_repeated_base_specialization_exact',
+			x64_generic_sumtype_repeated_base_specialization_source())
+		assert_x64_linux_hosted_libc_binary(result,
+			x64_generic_sumtype_repeated_base_specialization_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_macos_windows_generic_sumtype_repeated_base_specialization_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('generic_sumtype_repeated_base_specialization_exact',
+		x64_generic_sumtype_repeated_base_specialization_source(),
+		x64_generic_sumtype_repeated_base_specialization_stdout())
+}
+
+fn test_x64_linux_generic_sumtype_receiver_size_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('generic_sumtype_receiver_size_exact',
+			x64_generic_sumtype_receiver_size_source())
+		assert_x64_linux_hosted_libc_binary(result, x64_generic_sumtype_receiver_size_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_generic_sumtype_insert_size_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('generic_sumtype_insert_size_exact',
+			x64_generic_sumtype_insert_size_source())
+		assert_x64_linux_hosted_libc_binary(result, x64_generic_sumtype_insert_size_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_struct_float_fields_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('struct_float_fields_exact',
+			x64_struct_float_fields_source())
+		assert_x64_linux_hosted_libc_binary(result, x64_struct_float_fields_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_union_f64_bits_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('union_f64_bits_exact',
+			x64_union_f64_bits_source())
+		assert_x64_linux_hosted_libc_binary(result, x64_union_f64_bits_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_f64_str_interpolation_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('f64_str_interpolation_exact',
+			x64_f64_str_interpolation_source())
+		assert_x64_linux_hosted_libc_binary(result, x64_f64_str_interpolation_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_f64_for_interpolation_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('f64_for_interpolation_exact',
+			x64_f64_for_interpolation_source())
+		assert_x64_linux_hosted_libc_binary(result, x64_f64_for_interpolation_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_formatted_int_interpolation_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('formatted_int_interpolation_exact',
+		x64_formatted_int_interpolation_source(), x64_formatted_int_interpolation_stdout())
+}
+
+fn test_x64_macos_windows_formatted_int_interpolation_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('formatted_int_interpolation_exact',
+		x64_formatted_int_interpolation_source(), x64_formatted_int_interpolation_stdout())
+}
+
+fn test_x64_linux_formatted_int_width_100_interpolation_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('formatted_int_width_100_interpolation_exact',
+		x64_formatted_int_width_100_interpolation_source(),
+		x64_formatted_int_width_100_interpolation_stdout())
+}
+
+fn test_x64_macos_windows_formatted_int_width_100_interpolation_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('formatted_int_width_100_interpolation_exact',
+		x64_formatted_int_width_100_interpolation_source(),
+		x64_formatted_int_width_100_interpolation_stdout())
+}
+
+fn test_x64_linux_formatted_f64_interpolation_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('formatted_f64_interpolation_exact',
+		x64_formatted_f64_interpolation_source(), x64_formatted_f64_interpolation_stdout())
+}
+
+fn test_x64_macos_windows_formatted_f64_interpolation_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('formatted_f64_interpolation_exact',
+		x64_formatted_f64_interpolation_source(), x64_formatted_f64_interpolation_stdout())
+}
+
+fn test_x64_linux_formatted_string_return_lifetime_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('formatted_string_return_lifetime_exact',
+		x64_formatted_string_return_lifetime_source(),
+		x64_formatted_string_return_lifetime_stdout())
+}
+
+fn test_x64_macos_windows_formatted_string_return_lifetime_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('formatted_string_return_lifetime_exact',
+		x64_formatted_string_return_lifetime_source(),
+		x64_formatted_string_return_lifetime_stdout())
+}
+
+fn test_x64_linux_spectral_reduced_formatted_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('spectral_reduced_formatted_exact',
+		x64_spectral_reduced_formatted_source(), x64_spectral_reduced_formatted_stdout())
+}
+
+fn test_x64_linux_textscanner_embedded_parser_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('embedded_scanner_parser_exact',
+		x64_embedded_scanner_parser_source(), x64_embedded_scanner_parser_stdout())
+}
+
+fn test_x64_macos_windows_textscanner_embedded_parser_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('embedded_scanner_parser_exact',
+		x64_embedded_scanner_parser_source(), x64_embedded_scanner_parser_stdout())
+}
+
+fn test_x64_linux_struct_positional_side_effect_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('struct_positional_side_effect_exact',
+		x64_struct_positional_side_effect_source(), x64_struct_positional_side_effect_stdout())
+}
+
+fn test_x64_macos_windows_struct_positional_side_effect_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('struct_positional_side_effect_exact',
+		x64_struct_positional_side_effect_source(), x64_struct_positional_side_effect_stdout())
+}
+
+fn test_x64_linux_struct_named_side_effect_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('struct_named_side_effect_exact',
+		x64_struct_named_side_effect_source(), x64_struct_named_side_effect_stdout())
+}
+
+fn test_x64_macos_windows_struct_named_side_effect_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('struct_named_side_effect_exact',
+		x64_struct_named_side_effect_source(), x64_struct_named_side_effect_stdout())
+}
+
+fn test_x64_linux_unrelated_same_shape_struct_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('unrelated_same_shape_struct_exact',
+		x64_unrelated_same_shape_struct_source(), x64_unrelated_same_shape_struct_stdout())
+}
+
+fn test_x64_macos_windows_unrelated_same_shape_struct_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('unrelated_same_shape_struct_exact',
+		x64_unrelated_same_shape_struct_source(), x64_unrelated_same_shape_struct_stdout())
+}
+
+fn test_x64_linux_named_init_embedded_value_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('named_init_embedded_value_exact',
+		x64_named_init_embedded_value_source(), x64_named_init_embedded_value_stdout())
+}
+
+fn test_x64_macos_windows_named_init_embedded_value_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('named_init_embedded_value_exact',
+		x64_named_init_embedded_value_source(), x64_named_init_embedded_value_stdout())
+}
+
+fn test_x64_macos_windows_spectral_reduced_formatted_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('spectral_reduced_formatted_exact',
+		x64_spectral_reduced_formatted_source(), x64_spectral_reduced_formatted_stdout())
+}
+
+fn test_x64_linux_bits_len32_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('bits_len32_exact', x64_bits_len32_source(),
+		x64_bits_len32_stdout())
+}
+
+fn test_x64_macos_windows_bits_len32_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('bits_len32_exact', x64_bits_len32_source(),
+		x64_bits_len32_stdout())
+}
+
+fn test_x64_linux_rand_u32n_interface_result_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('rand_u32n_interface_result_exact',
+		x64_rand_u32n_interface_result_source(), x64_rand_u32n_interface_result_stdout())
+}
+
+fn test_x64_macos_windows_rand_u32n_interface_result_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('rand_u32n_interface_result_exact',
+		x64_rand_u32n_interface_result_source(), x64_rand_u32n_interface_result_stdout())
+}
+
+fn test_x64_linux_rand_intn_range_interface_result_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('rand_intn_range_interface_result_exact',
+		x64_rand_intn_range_interface_result_source(),
+		x64_rand_intn_range_interface_result_stdout())
+}
+
+fn test_x64_macos_windows_rand_intn_range_interface_result_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('rand_intn_range_interface_result_exact',
+		x64_rand_intn_range_interface_result_source(),
+		x64_rand_intn_range_interface_result_stdout())
+}
+
+fn test_x64_linux_custom_error_result_runs_or_block() {
+	assert_x64_linux_stdout_bytes('custom_error_result_or_block',
+		x64_custom_error_result_or_block_source(), x64_custom_error_result_or_block_stdout())
+}
+
+fn test_x64_macos_windows_custom_error_result_runs_or_block() {
+	assert_x64_macos_windows_stdout_bytes('custom_error_result_or_block',
+		x64_custom_error_result_or_block_source(), x64_custom_error_result_or_block_stdout())
+}
+
+fn test_x64_linux_custom_error_imported_type_match() {
+	assert_x64_linux_project_stdout_bytes('custom_error_imported_type_match',
+		x64_custom_error_imported_type_match_sources(),
+		x64_custom_error_imported_type_match_stdout())
+}
+
+fn test_x64_macos_windows_custom_error_imported_type_match() {
+	assert_x64_macos_windows_project_stdout_bytes('custom_error_imported_type_match',
+		x64_custom_error_imported_type_match_sources(),
+		x64_custom_error_imported_type_match_stdout())
 }
 
 fn test_x64_linux_core_int_control_flow_stdout_exact_bytes() {
@@ -5442,9 +7370,20 @@ fn test_x64_linux_dynamic_string_array_str_stdout_exact_bytes() {
 		x64_dynamic_string_array_str_source(), x64_dynamic_string_array_str_stdout())
 }
 
+fn test_x64_linux_mut_array_param_append_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('mut_array_param_append_exact',
+		x64_mut_array_param_append_source(), x64_mut_array_param_append_stdout())
+}
+
 fn test_x64_linux_string_int_map_literal_lookup_stdout_exact_bytes() {
 	assert_x64_linux_stdout_bytes('string_int_map_literal_lookup_exact',
 		x64_string_int_map_literal_lookup_source(), x64_string_int_map_literal_lookup_stdout())
+}
+
+fn test_x64_linux_map_clone_delete_array_index_delete_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('map_clone_delete_array_index_delete_exact',
+		x64_map_clone_delete_array_index_delete_source(),
+		x64_map_clone_delete_array_index_delete_stdout())
 }
 
 fn test_x64_linux_imported_module_init_runs_once_before_use_stdout_exact_bytes() {
@@ -5466,4 +7405,9 @@ fn test_x64_linux_logical_and_backward_false_branch_smoke() {
 fn test_x64_linux_status_short_circuit_calls_stdout_exact_bytes() {
 	assert_x64_linux_stdout_bytes('status_short_circuit_calls_exact',
 		x64_status_short_circuit_calls_source(), x64_status_short_circuit_calls_stdout())
+}
+
+fn test_x64_linux_dump_operator_identity_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('dump_operator_identity_exact',
+		x64_dump_operator_identity_source(), x64_dump_operator_identity_stdout())
 }
