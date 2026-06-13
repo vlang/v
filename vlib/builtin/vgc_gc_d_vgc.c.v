@@ -201,6 +201,22 @@ fn vgc_gc_start() {
 	// (unbounded arena growth) and the next alloc faults. See vgc_fixup_caches.
 	vgc_fixup_caches()
 
+	// Advance the cycle counter + recompute the next-GC trigger while the world is
+	// STILL STOPPED — BEFORE resume. gc_cycle is read by mutators to stamp a freshly
+	// acquired span's `sweep_gen` (vgc_span_alloc / vgc_central_get_span), and the
+	// sweep's in-flight guard (vgc_sweep_span) recycles an empty span only when
+	// `sweep_gen != gc_cycle`. Bumping gc_cycle AFTER resume left a tiny but real
+	// window: a mutator that acquired an empty, still-in-flight span between resume
+	// and the bump stamped it with the OLD cycle, so the NEXT cycle's sweep saw
+	// `sweep_gen != gc_cycle` and recycled that span out from under the mutator — a
+	// use-after-free (the residual sporadic crash under concurrent HTTP load; found
+	// with ThreadSanitizer as a gc_cycle race between vgc_gc_start and vgc_span_alloc).
+	// The sweep above already ran at the pre-bump cycle, so it still correctly skipped
+	// spans acquired during THIS cycle. Doing the bump here closes the window: every
+	// post-resume acquisition stamps exactly the cycle the next sweep checks against.
+	vgc_update_trigger()
+	vgc_heap.gc_cycle++
+
 	// Mark + sweep done — release every allocator lock held across the cycle before
 	// resuming, so resumed mutators don't block on them. (Reverse acquisition order.)
 	for i in 0 .. 136 {
@@ -209,7 +225,9 @@ fn vgc_gc_start() {
 	C.vgc_mutex_unlock(&vgc_heap.lock)
 	C.vgc_mutex_unlock(&vgc_heap.free_spans_lock)
 
-	// Resume the world: mark + sweep are complete, every live object survived.
+	// Resume the world: mark + sweep are complete, every live object survived, and
+	// gc_cycle/trigger are already advanced (above) so resumed mutators stamp spans
+	// with the correct cycle.
 	C.vgc_atomic_fence()
 	for i in 0 .. vgc_heap.ncaches {
 		c := unsafe { &vgc_heap.caches[i] }
@@ -220,10 +238,6 @@ fn vgc_gc_start() {
 	}
 	C.vgc_mutex_unlock(&vgc_heap.cache_lock) // release the registration gate
 
-	// Update GC trigger for next cycle (translated from Go's gcController.endCycle)
-	vgc_update_trigger()
-
-	vgc_heap.gc_cycle++
 	C.vgc_trace(12, self_idx, u64(vgc_heap.gc_cycle), 0) // GC_END
 	C.vgc_atomic_store_u32(&vgc_heap.gc_phase, vgc_phase_off)
 }
