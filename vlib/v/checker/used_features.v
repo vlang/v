@@ -41,6 +41,7 @@ fn (mut c Checker) markused_dumpexpr(mut node ast.DumpExpr) {
 	}
 	if !c.table.sym(unwrapped_type).has_method('str') {
 		c.table.used_features.auto_str = true
+		c.markused_auto_str_dependencies(unwrapped_type)
 		if node.expr_type.is_ptr() {
 			c.table.used_features.auto_str_ptr = true
 		}
@@ -130,6 +131,7 @@ fn (mut c Checker) markused_print_call(mut node ast.CallExpr) {
 		if arg_typ == 0 {
 			return
 		}
+		c.markused_auto_str_dependencies(arg_typ)
 		if (node.args[0].expr is ast.CallExpr && node.args[0].expr.is_method
 			&& node.args[0].expr.name == 'str')
 			|| !c.table.sym(arg_typ).has_method('str') {
@@ -212,6 +214,7 @@ fn (mut c Checker) markused_string_inter_lit(mut _ ast.StringInterLiteral, ftyp 
 	}
 	if !c.table.sym(ftyp).has_method('str') {
 		c.table.used_features.auto_str = true
+		c.markused_auto_str_dependencies(ftyp)
 	} else {
 		c.mark_type_str_method_as_referenced(ftyp)
 		c.table.used_features.print_types[ftyp.idx()] = true
@@ -224,6 +227,79 @@ fn (mut c Checker) markused_string_inter_lit(mut _ ast.StringInterLiteral, ftyp 
 	}
 	if ftyp.has_option_or_result() {
 		c.table.used_features.print_options = true
+	}
+}
+
+fn (mut c Checker) markused_auto_str_dependencies(typ ast.Type) {
+	mut visited := map[ast.Type]bool{}
+	c.markused_auto_str_dependencies_for_type(typ, mut visited)
+}
+
+fn (mut c Checker) markused_auto_str_dependencies_for_type(typ ast.Type, mut visited map[ast.Type]bool) {
+	base_typ := c.unwrap_generic(typ.clear_option_and_result().clear_flags(.variadic, .shared_f,
+		.atomic_f).clear_ref())
+	if base_typ == 0 || visited[base_typ] {
+		return
+	}
+	visited[base_typ] = true
+	sym := c.table.final_sym(base_typ)
+	if sym.has_method_with_generic_parent('str') {
+		c.markused_generic_str_method(sym)
+		return
+	}
+	match sym.info {
+		ast.Alias {
+			c.markused_auto_str_dependencies_for_type(sym.info.parent_type, mut visited)
+		}
+		ast.Array {
+			c.markused_auto_str_dependencies_for_type(sym.info.elem_type, mut visited)
+		}
+		ast.ArrayFixed {
+			c.markused_auto_str_dependencies_for_type(sym.info.elem_type, mut visited)
+		}
+		ast.Chan {
+			c.markused_auto_str_dependencies_for_type(sym.info.elem_type, mut visited)
+		}
+		ast.Interface {
+			for concrete_type in sym.info.types {
+				c.markused_auto_str_dependencies_for_type(concrete_type, mut visited)
+			}
+		}
+		ast.Map {
+			c.markused_auto_str_dependencies_for_type(sym.info.key_type, mut visited)
+			c.markused_auto_str_dependencies_for_type(sym.info.value_type, mut visited)
+		}
+		ast.MultiReturn {
+			for ret_type in sym.info.types {
+				c.markused_auto_str_dependencies_for_type(ret_type, mut visited)
+			}
+		}
+		ast.Struct {
+			for field in sym.info.fields {
+				c.markused_auto_str_dependencies_for_type(field.typ, mut visited)
+			}
+		}
+		ast.SumType {
+			for variant in sym.info.variants {
+				c.markused_auto_str_dependencies_for_type(variant, mut visited)
+			}
+		}
+		ast.Thread {
+			c.markused_auto_str_dependencies_for_type(sym.info.return_type, mut visited)
+		}
+		else {}
+	}
+}
+
+fn (mut c Checker) markused_generic_str_method(sym &ast.TypeSymbol) {
+	method := sym.find_method_with_generic_parent('str') or { return }
+	concrete_types := c.concrete_types_for_type_symbol(sym)
+	if method.generic_names.len != concrete_types.len || concrete_types.len == 0
+		|| concrete_types.any(it.has_flag(.generic) || c.type_has_unresolved_generic_parts(it)) {
+		return
+	}
+	if c.table.register_fn_concrete_types(method.fkey(), concrete_types) {
+		c.need_recheck_generic_fns = true
 	}
 }
 

@@ -3292,6 +3292,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			c.fail_if_unreadable(node.left, left_type, 'receiver')
 			if !c.is_builtin_mod {
 				c.table.used_features.auto_str = true
+				c.markused_auto_str_dependencies(left_type)
 			}
 			return ast.string_type
 		} else if node.kind == .free {
