@@ -1805,7 +1805,11 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	ctx_struct := g.closure_ctx(node.decl)
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
 	// TODO: in case of an assignment, this should only call "closure_set_data" and "closure_set_function" (and free the former data)
-	g.write('builtin__closure__closure_create(${fn_name}, (${ctx_struct}*) builtin__memdup_uncollectable(&(${ctx_struct}){')
+	// The closure context is collectable: closure_create records it in a
+	// GC-scanned table so the GC keeps it alive while the closure is live, and
+	// closure_try_destroy drops it from that table so it is reclaimed. (Was
+	// memdup_uncollectable, which the GC never freed -> stored closures leaked.)
+	g.write('builtin__closure__closure_create(${fn_name}, (${ctx_struct}*) builtin__memdup(&(${ctx_struct}){')
 	g.indent++
 	for var in node.inherited_vars {
 		mut has_inherited := false

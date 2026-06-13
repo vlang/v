@@ -29,6 +29,42 @@ mut:
 
 __global g_closure = Closure{}
 
+// ClosureLiveInfo tracks one live capturing closure: its (collectable) captured
+// context and the frame in which it was created. The `ctx` pointer being stored
+// in a GC-scanned map value is what keeps the context reachable for the GC,
+// since the trampoline slot that also references it lives in an mmap page the GC
+// does not scan.
+struct ClosureLiveInfo {
+mut:
+	ctx   voidptr
+	frame u32
+}
+
+// g_closure_live maps each live closure (its user-facing pointer) to its
+// context + creation frame. It serves two purposes under -gc boehm:
+//   1. keeps each live closure's collectable context reachable (the value's
+//      `ctx` field is GC-scanned), so a live closure's context is never freed;
+//   2. enables frame-epoch reclamation (closure_reclaim_frames) for long-running
+//      immediate-mode apps that recreate closures every frame.
+// closure_create inserts; closure_try_destroy and closure_reclaim_frames remove
+// (which clears the slot and lets the GC reclaim the context). Using a table
+// rather than GC_FREE makes destruction idempotent — dropping the same/stale
+// closure twice can never double-free.
+__global g_closure_live = map[voidptr]ClosureLiveInfo{}
+
+// g_closure_frame is the current frame counter, advanced by closure_begin_frame_build.
+__global g_closure_frame = u32(0)
+
+// g_closure_in_build is true only between closure_begin_frame_build and
+// closure_end_frame_build (i.e. while an immediate-mode UI is building a frame's
+// view). Only closures created in that window are frame-stamped and thus eligible
+// for closure_reclaim_frames; all others (app setup, event handlers) get the
+// closure_frame_never sentinel and are never auto-reclaimed.
+__global g_closure_in_build = false
+
+// closure_frame_never marks a closure as not eligible for frame-epoch reclamation.
+const closure_frame_never = u32(0xffffffff)
+
 enum MemoryProtectAtrr {
 	read_exec
 	read_write
@@ -402,10 +438,22 @@ fn closure_create(func voidptr, data voidptr) voidptr {
 			p[1] = func // Target function to execute
 		}
 	}
+	ret := closure_return_ptr(curr_closure)
+	// Keep the collectable context reachable for the GC until the closure is
+	// destroyed (the trampoline slot above is not GC-scanned), and record its
+	// frame for epoch reclamation.
+	$if gcboehm ? {
+		if !isnil(data) {
+			g_closure_live[ret] = ClosureLiveInfo{
+				ctx:   data
+				frame: if g_closure_in_build { g_closure_frame } else { closure_frame_never }
+			}
+		}
+	}
 	closure_mtx_unlock_platform()
 
 	// Return executable closure object
-	return closure_return_ptr(curr_closure)
+	return ret
 }
 
 // closure_data returns the userdata pointer associated with a closure object.
@@ -421,20 +469,22 @@ fn closure_data(closure voidptr) voidptr {
 	}
 }
 
-// closure_try_destroy frees a managed closure slot and its context when the closure is known to be temporary.
+// closure_release_slot clears a managed closure slot and returns it to the free
+// list, dropping its captured context (GC-collectable under boehm, freed under
+// autofree). Caller MUST hold the closure mutex. `user_ptr` is the user-facing
+// closure pointer (the map key); pass nil to skip the map removal. Returns false
+// if the slot was already released (idempotent).
 @[direct_array_access]
-fn closure_try_destroy(closure voidptr) {
-	if isnil(closure) {
-		return
-	}
-	exec_ptr := closure_exec_ptr(closure)
-	closure_mtx_lock_platform()
-	if !closure_is_managed(exec_ptr) {
-		closure_mtx_unlock_platform()
-		return
-	}
+fn closure_release_slot(exec_ptr voidptr, user_ptr voidptr) bool {
 	unsafe {
 		mut p := closure_slot_meta(exec_ptr)
+		// Idempotency guard: an already-released slot sits on the free list with
+		// a nil function pointer (p[1], or p[3] on ppc64). Releasing it again
+		// would corrupt the free list.
+		already_freed := if is_ppc64() { isnil(p[3]) } else { isnil(p[1]) }
+		if already_freed {
+			return false
+		}
 		mut data := nil
 		if is_ppc64() {
 			data = p[2]
@@ -442,7 +492,15 @@ fn closure_try_destroy(closure voidptr) {
 			data = p[0]
 		}
 		if !isnil(data) {
-			free(data)
+			$if gcboehm ? {
+				// Drop the GC reference; the collectable context is reclaimed by
+				// the GC. No explicit free -> no possibility of a double-free.
+				if !isnil(user_ptr) {
+					g_closure_live.delete(user_ptr)
+				}
+			} $else {
+				free(data)
+			}
 		}
 		p[0] = g_closure.free_closure_ptr
 		if is_ppc64() {
@@ -454,5 +512,115 @@ fn closure_try_destroy(closure voidptr) {
 		}
 		g_closure.free_closure_ptr = exec_ptr
 	}
+	return true
+}
+
+// closure_try_destroy frees a managed closure slot and its context when the closure is known to be temporary.
+@[direct_array_access]
+fn closure_try_destroy(closure voidptr) {
+	if isnil(closure) {
+		return
+	}
+	exec_ptr := closure_exec_ptr(closure)
+	closure_mtx_lock_platform()
+	if closure_is_managed(exec_ptr) {
+		closure_release_slot(exec_ptr, closure)
+	}
 	closure_mtx_unlock_platform()
+}
+
+// closure_begin_frame_build advances the frame counter and marks the start of a
+// frame's view build: closures created until closure_end_frame_build are stamped
+// with this frame and become eligible for closure_reclaim_frames (INTERNAL).
+fn closure_begin_frame_build() {
+	closure_mtx_lock_platform()
+	g_closure_frame++
+	g_closure_in_build = true
+	closure_mtx_unlock_platform()
+}
+
+// closure_end_frame_build ends the current frame's view-build window; closures
+// created after this are not frame-stamped and never auto-reclaimed (INTERNAL).
+fn closure_end_frame_build() {
+	closure_mtx_lock_platform()
+	g_closure_in_build = false
+	closure_mtx_unlock_platform()
+}
+
+// closure_reclaim_frames reclaims every live closure created `keep` or more
+// frames ago (by closure_advance_frame). Intended for long-running immediate-mode
+// apps that recreate all their closures every frame: it bounds closure memory
+// regardless of where the (now-dead) closures were referenced. `keep` must be >=1
+// so the current frame's closures are never reclaimed (INTERNAL/ADVANCED).
+fn closure_reclaim_frames(keep u32) {
+	$if gcboehm ? {
+		if keep < 1 {
+			return
+		}
+		closure_mtx_lock_platform()
+		cur := g_closure_frame
+		mut doomed := []voidptr{}
+		for k, info in g_closure_live {
+			// skip closures not created during a view build (setup / event
+			// handlers): they may legitimately outlive `keep` frames.
+			if info.frame == closure_frame_never {
+				continue
+			}
+			// reclaim if created `keep`+ frames ago (guard against u32 wrap)
+			if cur >= info.frame && cur - info.frame >= keep {
+				doomed << k
+			}
+		}
+		for k in doomed {
+			closure_release_slot(closure_exec_ptr(k), k)
+		}
+		closure_mtx_unlock_platform()
+	}
+}
+
+// try_destroy reclaims a managed closure slot and lets the GC reclaim its
+// captured context, when the caller knows the closure is dead (e.g. a per-frame
+// UI event handler whose owning view tree is being discarded). Idempotent and a
+// no-op for nil / non-managed (plain) function pointers. INTERNAL/ADVANCED: the
+// closure must never be invoked again after this returns.
+@[markused]
+pub fn try_destroy(closure voidptr) {
+	closure_try_destroy(closure)
+}
+
+// begin_frame_build advances the closure frame counter and opens the per-frame
+// view-build window: capturing closures created until end_frame_build become
+// eligible for reclaim_frames. Closures created outside this window (app setup,
+// event handlers) are never auto-reclaimed. INTERNAL/ADVANCED.
+@[markused]
+pub fn begin_frame_build() {
+	closure_begin_frame_build()
+}
+
+// end_frame_build closes the per-frame view-build window opened by
+// begin_frame_build. INTERNAL/ADVANCED.
+@[markused]
+pub fn end_frame_build() {
+	closure_end_frame_build()
+}
+
+// reclaim_frames reclaims every live closure created `keep` or more frames ago
+// (see advance_frame). `keep` must be >= 1. CONTRACT: only safe when all such
+// closures are genuinely dead — i.e. the app recreates its closures every frame
+// (the immediate-mode norm) and never invokes a closure older than `keep`
+// frames. INTERNAL/ADVANCED.
+@[markused]
+pub fn reclaim_frames(keep u32) {
+	closure_reclaim_frames(keep)
+}
+
+// live_count returns the number of capturing closures currently tracked for GC
+// (debug/introspection). Bounded by the number of live capturing closures.
+@[markused]
+pub fn live_count() int {
+	$if gcboehm ? {
+		return g_closure_live.len
+	} $else {
+		return -1
+	}
 }
