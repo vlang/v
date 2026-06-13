@@ -6576,11 +6576,13 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.expr(g.table.resolve_init(node, g.unwrap_generic(node.typ)))
 			} else {
 				// `user := User{name: 'Bob'}`
+				old_inside_struct_init := g.inside_struct_init
+				old_cur_struct_init_typ := g.cur_struct_init_typ
 				g.inside_struct_init = true
 				g.cur_struct_init_typ = node.typ
 				g.struct_init(node)
-				g.cur_struct_init_typ = 0
-				g.inside_struct_init = false
+				g.cur_struct_init_typ = old_cur_struct_init_typ
+				g.inside_struct_init = old_inside_struct_init
 			}
 		}
 		ast.TypeNode {
