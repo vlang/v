@@ -64,6 +64,19 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 	g.generated_free_methods[deref_typ] = true
 	g.generated_free_fn_names[fn_name] = true
 
+	// `?&T` — an OPTION whose data slot holds a POINTER. The generic struct/
+	// array/... paths below assume the option payload is the value itself and
+	// inline its field frees; for a pointer payload that yields a wrong-arity
+	// cast (`((T**)&it->data)->field` -> "base type 'T*' is not a structure").
+	// Instead free the POINTEE's heap fields via the base type's own `_free`,
+	// exactly as the non-option `&T` field case does. (`it->data` holds the `T*`;
+	// `*(T**)&it->data` recovers it.) Only the option-of-pointer combination is
+	// special-cased — `?T` value-options still flow through the paths below.
+	if typ.has_flag(.option) && typ.is_ptr() {
+		g.gen_free_for_option_ptr(typ, styp, fn_name)
+		return fn_name
+	}
+
 	objtyp := g.unwrap_generic(typ)
 	mut sym := g.table.sym(objtyp)
 	if mut sym.info is ast.Alias {
@@ -210,6 +223,37 @@ fn (mut g Gen) gen_free_for_sumtype(typ ast.Type, info ast.SumType, styp string,
 		// Sumtypes box their active payload in heap memory via memdup/HEAP.
 		fn_builder.writeln('\t\tbuiltin___v_free(${variant_ptr});')
 		fn_builder.writeln('\t\treturn;')
+		fn_builder.writeln('\t}')
+	}
+	fn_builder.writeln('}')
+}
+
+// gen_free_for_option_ptr generates the free method for an option-of-pointer
+// type (`?&T`). The option wrapper's `data` slot holds a `T*`; we free the
+// POINTEE's heap fields by delegating to the base type's `_free`, mirroring the
+// non-option `&T` field handling in gen_free_for_struct. Nothing is emitted for
+// a pointee that has no heap content (so it remains a sound no-op).
+fn (mut g Gen) gen_free_for_option_ptr(typ ast.Type, styp string, fn_name string) {
+	g.definitions.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it);')
+	mut fn_builder := strings.new_builder(128)
+	defer {
+		g.auto_fn_definitions << fn_builder.str()
+	}
+	fn_builder.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it) {')
+	pointee := typ.clear_flag(.option).set_nr_muls(0)
+	psym := g.table.sym(g.unwrap_generic(pointee))
+	if psym.kind in [.string, .array, .map, .struct, .sum_type, .interface] {
+		mut pfree := if psym.has_method_with_generic_parent('free') {
+			'${g.gen_type_name_for_free_call(typ)}_free'
+		} else {
+			g.gen_free_method(pointee)
+		}
+		if psym.is_builtin() {
+			pfree = 'builtin__${pfree}'
+		}
+		pointee_styp := g.gen_type_name_for_free_call(typ)
+		fn_builder.writeln('\tif (it->state != 2) {')
+		fn_builder.writeln('\t\t${pfree}(*((${pointee_styp}**)&it->data));')
 		fn_builder.writeln('\t}')
 	}
 	fn_builder.writeln('}')

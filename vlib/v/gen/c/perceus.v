@@ -933,6 +933,36 @@ fn (mut c PcsCfg) pcs_scan_share_stmt(st ast.Stmt) {
 					c.pcs_mark_shared(n)
 				}
 			}
+			// Interprocedural return-aliasing pin. A heap value bound from a CALL
+			// may ALIAS memory the current function does NOT uniquely own: the
+			// callee's receiver/args, its captured globals, or — most importantly —
+			// sub-objects the callee traversed and copied out by VALUE. The witness
+			// is a tree walk like `tree.find_all(name)` that returns a `[]Element`
+			// whose members are shallow copies SHARING the originals' child buffers,
+			// and which can even OVERLAP one another (a matched node nested inside
+			// another matched node). Eager deep-dropping such a result frees those
+			// shared/overlapping sub-objects, then frees them again via the real
+			// owner (or via an overlapping sibling) — a double free.
+			//
+			// Only a provably FRESH producer yields a uniquely-owned result. The
+			// `fresh` guard above already admits the safe cases: `map`/`filter` over
+			// primitive elements (pcs_is_fresh_array_call) and fresh string builds
+			// (`+` / interpolation). EVERY OTHER call result is conservatively shared
+			// and reclaimed by the tracing backstop instead of eager-dropped. This is
+			// sound by construction: marking a value shared only ever SUPPRESSES a
+			// drop, never adds one, so it cannot introduce a use-after-free. The cost
+			// is GC residual on call-bound aggregates that happened to be unique —
+			// exactly the conservative-front-line / tracing-backstop split E is built
+			// around.
+			if !fresh && lhs_heap.len == 1 && st.left.len == 1 && st.right.len == 1 {
+				mut rcall := st.right[0]
+				for rcall is ast.ParExpr {
+					rcall = (rcall as ast.ParExpr).expr
+				}
+				if rcall is ast.CallExpr {
+					c.pcs_mark_shared(lhs_heap[0])
+				}
+			}
 			// Field/element/pointee stores retain the RHS (a stored pointer aliases;
 			// see pcs_is_store_target). Pin every heap ident on the RHS of such a
 			// store — paired positionally when arities match, else all of them.

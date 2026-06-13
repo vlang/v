@@ -1429,6 +1429,25 @@ fn vgc_free(ptr voidptr) {
 		return
 	}
 	obj_idx := u32((usize(ptr) - span.base) / usize(span.elem_size))
+	// Serialize the span-metadata mutation (alloc_bits / alloc_count / free_index)
+	// under the per-size-class central lock — the SAME lock the allocator
+	// (vgc_central_get_span / vgc_central_return_span) takes when it moves spans of
+	// this class between the partial/full lists and reads their alloc_count, and the
+	// SAME lock the collector pre-acquires (for ALL 136 classes) before stopping the
+	// world. Without it, an eager Perceus free racing a concurrent allocation of the
+	// same class can interleave the bitmap clear / count decrement with the
+	// allocator's reads -> a corrupt alloc_count or a doubly-handed-out slot. It was
+	// only latent because Perceus frees are rare and the front line is thread-local.
+	// This obeys the lock-before-suspend discipline: the hold is brief and does NO
+	// allocation / blocking / safepoint (vgc_acct_free is lock-free), so a mutator
+	// frozen here releases promptly and the collector — which acquires every central
+	// lock while mutators still run, then never re-enters them — cannot deadlock.
+	span_class := int(span.class_idx) * 2 + (if span.noscan { 1 } else { 0 })
+	if span_class < 0 || span_class >= 136 {
+		return
+	}
+	central := unsafe { &vgc_heap.central[span_class] }
+	C.vgc_mutex_lock(&central.lock)
 	if obj_idx < span.nelems && span.alloc_bits != unsafe { nil } {
 		if C.vgc_bitmap_get(span.alloc_bits, obj_idx) != 0 {
 			C.vgc_bitmap_clear(span.alloc_bits, obj_idx)
@@ -1441,6 +1460,7 @@ fn vgc_free(ptr voidptr) {
 			vgc_acct_free(u64(span.elem_size))
 		}
 	}
+	C.vgc_mutex_unlock(&central.lock)
 }
 
 // DIAGNOSTIC: report allocation state of an address. Returns a packed status:
