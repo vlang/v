@@ -3448,6 +3448,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 				}
 			} else {
 				mut is_array_fixed_init := false
+				mut is_array_fixed_expr := false
 				mut ret_type := ast.void_type
 
 				g.set_current_pos_as_last_stmt_pos()
@@ -3461,6 +3462,14 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 					if stmt.expr is ast.ArrayInit && stmt.expr.is_fixed {
 						is_array_fixed_init = true
 						ret_type = stmt.expr.typ
+					} else {
+						expr_typ := g.unwrap_generic(g.recheck_concrete_type(stmt.typ))
+						if expr_typ != ast.void_type && expr_typ != 0
+							&& !expr_typ.has_option_or_result()
+							&& g.table.final_sym(expr_typ).kind == .array_fixed {
+							is_array_fixed_expr = true
+							ret_type = expr_typ
+						}
 					}
 					if stmt.expr is ast.IfExpr && g.is_autofree && !g.inside_if_option
 						&& !g.inside_if_result {
@@ -3468,9 +3477,19 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 						g.outer_tmp_var = tmp_var
 					}
 				}
+				ret_sym := g.table.sym(g.unwrap_generic(g.recheck_concrete_type(ret_type)))
+				tmp_is_return_fixed_array := ret_sym.info is ast.ArrayFixed
+					&& ret_sym.info.is_fn_ret
+				fixed_array_tmp_var := if tmp_is_return_fixed_array {
+					'${tmp_var}.ret_arr'
+				} else {
+					tmp_var
+				}
 				if !is_noreturn && !is_if_expr_with_tmp {
 					if is_array_fixed_init {
-						g.write('memcpy(${tmp_var}, (${g.styp(ret_type)})')
+						g.write('memcpy(${fixed_array_tmp_var}, (${g.styp(ret_type)})')
+					} else if is_array_fixed_expr {
+						g.write('memcpy(${fixed_array_tmp_var}, ')
 					} else {
 						g.write('${tmp_var} = ')
 					}
@@ -3483,6 +3502,9 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 				if is_array_fixed_init {
 					lines := g.go_before_last_stmt().trim_right('; \n')
 					g.writeln('${lines}, sizeof(${tmp_var}));')
+				} else if is_array_fixed_expr {
+					lines := g.go_before_last_stmt().trim_right('; \n')
+					g.writeln('${lines}, sizeof(${g.styp(ret_type)}));')
 				}
 				if !g.out.last_n(2).contains(';') {
 					g.writeln(';')
