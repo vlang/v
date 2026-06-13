@@ -7,6 +7,7 @@ import time
 const mbedtls_client_read_timeout_ms = $d('mbedtls_client_read_timeout_ms', 10_000)
 const mbedtls_server_read_timeout_ms = $d('mbedtls_server_read_timeout_ms', 41_000)
 const default_mbedtls_client_read_timeout = mbedtls_client_read_timeout_ms * time.millisecond
+const default_mbedtls_server_read_timeout = mbedtls_server_read_timeout_ms * time.millisecond
 
 fn init_rng(mut ctr_drbg C.mbedtls_ctr_drbg_context, mut entropy C.mbedtls_entropy_context) ! {
 	$if trace_ssl ? {
@@ -226,10 +227,6 @@ fn (mut l SSLListener) init() ! {
 	C.mbedtls_ssl_init(&l.ssl)
 	C.mbedtls_ssl_config_init(&l.conf)
 	init_rng(mut l.ctr_drbg, mut l.entropy)!
-	$if trace_mbedtls_timeouts ? {
-		dump(mbedtls_server_read_timeout_ms)
-	}
-	C.mbedtls_ssl_conf_read_timeout(&l.conf, mbedtls_server_read_timeout_ms)
 	l.certs = &SSLCerts{}
 	C.mbedtls_x509_crt_init(&l.certs.client_cert)
 	C.mbedtls_pk_init(&l.certs.client_key)
@@ -275,6 +272,11 @@ fn (mut l SSLListener) init() ! {
 		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_config_defaults can't set config defaults ret: ${ret}",
 			ret)
 	}
+	listener_read_timeout := ssl_listener_read_timeout(l.config)
+	$if trace_mbedtls_timeouts ? {
+		dump(listener_read_timeout)
+	}
+	C.mbedtls_ssl_conf_read_timeout(&l.conf, ssl_read_timeout_ms(listener_read_timeout))
 
 	C.mbedtls_ssl_conf_ca_chain(&l.conf, &l.certs.cacert, unsafe { nil })
 	ret = C.mbedtls_ssl_conf_own_cert(&l.conf, &l.certs.client_cert, &l.certs.client_key)
@@ -351,8 +353,10 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 
 fn (mut l SSLListener) accept_tcp_connection() !&SSLConn {
 	mut conn := &SSLConn{
-		config: l.config
-		opened: true
+		config:       l.config
+		duration:     ssl_listener_read_timeout(l.config)
+		read_timeout: ssl_listener_read_timeout(l.config)
+		opened:       true
 	}
 	ip := [16]u8{}
 	iplen := usize(0)
@@ -463,6 +467,13 @@ fn ssl_read_timeout_ms(timeout time.Duration) u32 {
 		return max_u32
 	}
 	return u32(timeout_ms)
+}
+
+fn ssl_listener_read_timeout(config SSLConnectConfig) time.Duration {
+	if config.read_timeout == default_mbedtls_client_read_timeout {
+		return default_mbedtls_server_read_timeout
+	}
+	return config.read_timeout
 }
 
 fn ssl_timeout_deadline(timeout time.Duration) time.Time {

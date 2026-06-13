@@ -45,5 +45,8 @@ fn (mut t TlsIdleConnTracker) close_idle() {
 	t.mu.unlock()
 	for handle in handles {
 		net.shutdown(handle)
+		$if windows {
+			net.close(handle) or {}
+		}
 	}
 }

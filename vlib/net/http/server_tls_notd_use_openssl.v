@@ -46,6 +46,7 @@ fn (mut s Server) listen_and_serve_tls() {
 		cert_key:               s.cert_key
 		in_memory_verification: s.in_memory_verification
 		validate:               false // accept any client; servers don't verify clients by default
+		read_timeout:           s.read_timeout
 		alpn_protocols:         alpn
 	}) or {
 		eprintln('Listening TLS on ${addr} failed, err: ${err}')
