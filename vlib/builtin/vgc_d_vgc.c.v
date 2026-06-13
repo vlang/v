@@ -200,17 +200,18 @@ mut:
 	central [136]VGC_Central
 	// Large object spans
 	large_alloc &VGC_Span = unsafe { nil }
-	// All spans, for iteration during GC. Capacity is load-bearing, not arbitrary
-	// headroom: with span reuse working + the sweep_gen one-cycle grace, the live
-	// span count is ~2x the heap-goal working set (~66k for the g_churn battery), so
-	// the old 16384 cap would be exceeded and silently leak untracked spans. 262144
-	// (a 2 MB pointer table) covers the battery with margin. NOTE: this is still a
-	// FIXED cap — a workload with a very large live small-object heap could exceed it;
-	// vgc_span_alloc must never silently drop a span past it. TODO(perf-followup):
-	// make allspans dynamically grown (mmap-backed, doubled under vgc_heap.lock) to
-	// remove the fixed limit entirely.
-	allspans [262144]&VGC_Span
-	nspans   int
+	// All spans, for iteration during GC. mmap-backed (vgc_init), lazily committed by
+	// the OS so the reservation costs ~nothing until filled. The pointer is allocated
+	// ONCE and never moves, so the collector's lock-free allspans walks (incl. lazy
+	// sweep outside STW) never observe a relocated/freed buffer — sidestepping the
+	// realloc race that runtime doubling would introduce. Capacity is load-bearing:
+	// span reuse + the sweep_gen one-cycle grace make the live span count ~2x the
+	// heap-goal working set, and per-thread GC pacing (vgc_pace_by_threads) raises the
+	// heap goal ~N x for N mutators, so an alloc-heavy [par] workload needs far more
+	// than the old fixed 262144. vgc_span_alloc fails loudly (never silently) past cap.
+	allspans     &&VGC_Span = unsafe { nil }
+	allspans_cap int
+	nspans       int
 	// Free spans (completely empty, reusable by page count)
 	free_spans_lock u32
 	free_spans      [32]&VGC_Span // free spans indexed by npages (1..31, 0=unused)
@@ -277,13 +278,38 @@ __global vgc_spawn_root_lock = u32(0)
 // Initialization
 // ============================================================
 
+// Per-thread GC pacing + trigger-floor knobs (env-gated; default = historic
+// behaviour, so a build with no env set is byte-identical to before). VGC_NEXT_GC_MB
+// raises the GC trigger floor (MB); VGC_PACE scales the trigger by the live mutator
+// count so N concurrent allocators don't trip the shared trigger N x more often per
+// unit of per-thread progress (recovers parallel alloc-heavy scaling under the
+// full-STW backstop).
+__global vgc_base_floor = u64(256 * 1024 * 1024)
+__global vgc_pace_by_threads = false
+
+fn C.atoll(&char) i64
+
 @[markused]
 pub fn vgc_init() {
 	C.vgc_init_size_tables()
 	vgc_heap.gc_enabled = 1
 	vgc_heap.gc_percent = 100
-	vgc_heap.next_gc = 256 * 1024 * 1024 // favor throughput over early collections
+	mb_env := C.getenv(c'VGC_NEXT_GC_MB')
+	if mb_env != unsafe { nil } {
+		mb := C.atoll(mb_env)
+		if mb > 0 {
+			vgc_base_floor = u64(mb) * 1024 * 1024
+		}
+	}
+	if C.getenv(c'VGC_PACE') != unsafe { nil } {
+		vgc_pace_by_threads = true
+	}
+	vgc_heap.next_gc = vgc_base_floor // favor throughput over early collections
 	vgc_heap.gc_phase = vgc_phase_off
+	// NOTE: allspans is allocated LAZILY on the first vgc_span_alloc (under
+	// vgc_heap.lock), not here — spans can be allocated during _vinit, BEFORE
+	// vgc_init runs (the heap-init ordering quirk), so the registry must be brought
+	// up by whoever adds the first span, not by vgc_init.
 	// Register the main thread
 	vgc_register_thread()
 }
@@ -686,12 +712,29 @@ fn vgc_span_alloc(npages u32) &VGC_Span {
 		}
 	}
 
-	// Track in allspans. Exceeding the fixed capacity is NOT silently ignored: an
-	// untracked span would never be marked/swept (leak) and never recycled, so we
-	// fail loudly rather than corrupt the heap accounting. (262144 is sized well above
-	// the battery's ~66k peak; see the allspans field comment + the dynamic-grow TODO.)
-	if vgc_heap.nspans >= 262144 {
-		C.vgc_say(0xDEAD, u64(vgc_heap.nspans)) // span registry full — raise cap / make dynamic
+	// Bring up the span registry on first use (we hold vgc_heap.lock here). mmap-backed
+	// and lazily committed by the OS, so the reservation costs ~nothing until filled;
+	// the pointer never moves, so the collector's lock-free allspans walks (incl. lazy
+	// sweep outside STW) never see a relocated/freed buffer.
+	if vgc_heap.allspans == unsafe { nil } {
+		mut cap := 16 * 1024 * 1024 // 128 MB of address space; covers a multi-GB paced heap
+		cap_env := C.getenv(c'VGC_ALLSPANS_CAP')
+		if cap_env != unsafe { nil } {
+			c := C.atoll(cap_env)
+			if c > 0 {
+				cap = int(c)
+			}
+		}
+		vgc_heap.allspans = &&VGC_Span(C.vgc_os_alloc(usize(sizeof(voidptr)) * usize(cap)))
+		vgc_heap.allspans_cap = cap
+	}
+	// Track in allspans. Exceeding the (mmap-reserved) capacity is NOT silently
+	// ignored: an untracked span would never be marked/swept (leak) and never
+	// recycled, so we fail loudly rather than corrupt the heap accounting. The cap is
+	// large (16M entries default), so this only fires on a genuinely enormous heap —
+	// the loud abort is kept as the backstop.
+	if vgc_heap.nspans >= vgc_heap.allspans_cap {
+		C.vgc_say(0xDEAD, u64(vgc_heap.nspans)) // span registry full — raise VGC_ALLSPANS_CAP
 		C.vgc_mutex_unlock(&vgc_heap.lock)
 		C.abort()
 	}
@@ -1093,7 +1136,16 @@ fn vgc_maybe_gc() {
 		u64(C.vgc_atomic_load_u32(&vgc_heap.gc_enabled))) // MAYBE_GC entry (diagnostic, pre-gate)
 	if C.vgc_atomic_load_u32(&vgc_heap.gc_enabled) != 0 {
 		heap_live := C.vgc_atomic_load_u64(&vgc_heap.heap_live)
-		next_gc := C.vgc_atomic_load_u64(&vgc_heap.next_gc)
+		mut next_gc := C.vgc_atomic_load_u64(&vgc_heap.next_gc)
+		if vgc_pace_by_threads {
+			// Per-thread pacing: give the heap N mutators' worth of headroom so N
+			// concurrent allocators don't trip the shared trigger N x more often
+			// per unit of per-thread progress.
+			lt := C.vgc_atomic_load_u32(&vgc_heap.live_threads)
+			if lt > 1 {
+				next_gc *= u64(lt)
+			}
+		}
 		C.vgc_trace(20, C.vgc_get_cache_idx(), heap_live, next_gc) // PACE (diagnostic)
 		if heap_live >= next_gc {
 			// Run the collection through a trampoline that spills THIS

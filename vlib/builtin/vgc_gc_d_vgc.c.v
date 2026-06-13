@@ -814,8 +814,8 @@ fn vgc_update_trigger() {
 
 	mut goal := marked + marked * gc_percent / 100
 	// Avoid very small heap goals that force frequent full cycles on bursty workloads.
-	if goal < 256 * 1024 * 1024 {
-		goal = 256 * 1024 * 1024
+	if goal < vgc_base_floor {
+		goal = vgc_base_floor
 	}
 	C.vgc_atomic_store_u64(&vgc_heap.next_gc, goal)
 }
