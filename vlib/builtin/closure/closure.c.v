@@ -496,6 +496,13 @@ fn closure_release_slot(exec_ptr voidptr, user_ptr voidptr) bool {
 				// Drop the GC reference; the collectable context is reclaimed by
 				// the GC. No explicit free -> no possibility of a double-free.
 				if !isnil(user_ptr) {
+					// Clear the value before deleting the key. `map.delete` zeroes
+					// only the key; the value (whose `ctx` field is GC-scanned) can
+					// linger in the backing DenseArray until a later compaction —
+					// which for small/sparse maps may never come — keeping the
+					// context rooted and defeating reclamation. Null the root in
+					// place first so the deleted slot holds no live pointer.
+					g_closure_live[user_ptr] = ClosureLiveInfo{}
 					g_closure_live.delete(user_ptr)
 				}
 			} $else {
