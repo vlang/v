@@ -770,6 +770,11 @@ fn test_c_error_missing_library_name_with_mingw_plain_library_output() {
 	assert c_error_missing_library_name(c_output) == 'v_missing_lib_25499'
 }
 
+fn test_c_error_missing_library_name_with_mingw_driver_missing_file_output() {
+	c_output := 'x86_64-w64-mingw32-gcc.exe: error: libv_missing_lib_25499.dll.a: No such file or directory\n'
+	assert c_error_missing_library_name(c_output) == 'v_missing_lib_25499'
+}
+
 fn test_c_error_missing_library_name_ignores_missing_object_file() {
 	c_output := '/usr/bin/ld: cannot find crt1.o: No such file or directory\ncollect2: error: ld returned 1 exit status\n'
 	assert c_error_missing_library_name(c_output) == ''

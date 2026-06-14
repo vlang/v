@@ -386,6 +386,13 @@ fn c_error_missing_library_name(c_output string) string {
 				return lib_name
 			}
 		}
+		if line.contains(': error: ') && lower_line.contains(': no such file or directory') {
+			lib_name := normalized_missing_library_name(line.all_after(': error: ').all_before(': No such file or directory'),
+				false)
+			if lib_name != '' {
+				return lib_name
+			}
+		}
 	}
 	return ''
 }
