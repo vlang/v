@@ -93,7 +93,8 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 	if sym.has_method_with_generic_parent('str') && !g.pref.new_generic_solver {
 		match mut sym.info {
 			ast.Struct, ast.SumType, ast.Interface {
-				str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
+				str_fn_name = g.generic_fn_name(g.str_method_concrete_types(unwrapped, sym),
+					str_fn_name)
 			}
 			else {}
 		}
@@ -661,6 +662,28 @@ fn styp_to_str_fn_name(styp string) string {
 	return styp.replace_each(['*', '', '.', '__', ' ', '__']) + '_str'
 }
 
+fn (mut g Gen) str_method_concrete_types(typ ast.Type, sym &ast.TypeSymbol) []ast.Type {
+	if _ := g.receiver_exact_method_for_type(typ, 'str') {
+		match sym.info {
+			ast.Struct, ast.SumType, ast.Interface {
+				return sym.info.concrete_types.clone()
+			}
+			else {}
+		}
+	}
+	if structured_method := g.table.find_structured_receiver_method_with_types(typ, 'str') {
+		return structured_method.concrete_types.map(g.unwrap_generic(it))
+	}
+	match sym.info {
+		ast.Struct, ast.SumType, ast.Interface {
+			return sym.info.concrete_types.clone()
+		}
+		else {}
+	}
+
+	return []ast.Type{}
+}
+
 // deref_kind returns deref, deref_label
 fn deref_kind(str_method_expects_ptr bool, is_elem_ptr bool, typ ast.Type) (string, string) {
 	if typ.has_flag(.option) {
@@ -1151,7 +1174,8 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 				'${left_fn_name}_str'
 			}
 			if sym.info is ast.Struct && !g.pref.new_generic_solver {
-				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name)
+				field_fn_name = g.generic_fn_name(g.str_method_concrete_types(ftyp_noshared, sym),
+					field_fn_name)
 			}
 			if sym.is_builtin() && !field_fn_name.starts_with('builtin__') {
 				field_fn_name = 'builtin__${field_fn_name}'

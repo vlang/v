@@ -20,12 +20,16 @@ fn comptime_call_last_arg_type(arg ast.CallArg) ast.Type {
 }
 
 fn (mut c Checker) markused_assertstmt_auto_str(mut node ast.AssertStmt) {
-	if !c.table.used_features.auto_str && !c.is_builtin_mod && mut node.expr is ast.InfixExpr {
-		if !c.table.sym(c.unwrap_generic(node.expr.left_type)).has_method('str') {
+	if !c.is_builtin_mod && mut node.expr is ast.InfixExpr {
+		left_type := c.unwrap_generic(node.expr.left_type)
+		right_type := c.unwrap_generic(node.expr.right_type)
+		c.markused_auto_str_dependencies(left_type)
+		c.markused_auto_str_dependencies(right_type)
+		if !c.table.used_features.auto_str && !c.table.sym(left_type).has_method('str') {
 			c.table.used_features.auto_str = true
 			return
 		}
-		if !c.table.sym(c.unwrap_generic(node.expr.right_type)).has_method('str') {
+		if !c.table.used_features.auto_str && !c.table.sym(right_type).has_method('str') {
 			c.table.used_features.auto_str = true
 		}
 	}
@@ -292,8 +296,20 @@ fn (mut c Checker) markused_auto_str_dependencies_for_type(typ ast.Type, mut vis
 }
 
 fn (mut c Checker) markused_generic_str_method(sym &ast.TypeSymbol) {
-	method := sym.find_method_with_generic_parent('str') or { return }
-	concrete_types := c.concrete_types_for_type_symbol(sym)
+	mut method := ast.Fn{}
+	mut concrete_types := []ast.Type{}
+	if exact_method := sym.find_method('str') {
+		method = exact_method
+		concrete_types = c.concrete_types_for_type_symbol(sym)
+	} else if structured_method := c.table.find_structured_receiver_method_with_types(ast.idx_to_type(sym.idx),
+		'str')
+	{
+		method = structured_method.method
+		concrete_types = structured_method.concrete_types.map(c.unwrap_generic(it))
+	} else {
+		method = sym.find_method_with_generic_parent('str') or { return }
+		concrete_types = c.concrete_types_for_type_symbol(sym)
+	}
 	if method.generic_names.len != concrete_types.len || concrete_types.len == 0
 		|| concrete_types.any(it.has_flag(.generic) || c.type_has_unresolved_generic_parts(it)) {
 		return
