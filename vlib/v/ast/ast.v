@@ -276,7 +276,8 @@ pub mut:
 	fwidth_exprs    []Expr
 	precision_exprs []Expr
 	fmts            []u8
-	need_fmts       []bool // an explicit non-default fmt required, e.g. `x`
+	has_fmts        []bool // a fixed format was explicitly written in source
+	need_fmts       []bool // a non-default fmt is required, e.g. `x`
 }
 
 pub struct CharLiteral {
