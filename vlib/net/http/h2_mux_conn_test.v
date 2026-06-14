@@ -656,9 +656,132 @@ fn test_mux_cancel_one_stream_other_lives() {
 	// The cancelled stream returns its truncated body without an error.
 	assert out.errs['/cancelme'] or { '' } == ''
 	assert out.bodies['/cancelme'] == 'aaaaaaaaaa'
-	// The other stream is unaffected — the connection was not poisoned.
+	// The other stream is unaffected — the connection was not poisoned. (This
+	// exercises the deregister-before-RST ordering in cancel_stream: the late
+	// DATA for the cancelled stream is absorbed by the unknown-stream backstop,
+	// which credits the connection window so other streams keep flowing.)
 	assert out.errs['/lives'] or { '' } == ''
 	assert out.bodies['/lives'] == 'b-survives'
+	cend.close_both()
+}
+
+// A peer SETTINGS_HEADER_TABLE_SIZE only bounds the dynamic table our encoder
+// may use for request headers; it must not shrink the table we advertised for
+// decoding the server's responses. Applying it to the response decoder would
+// break valid dynamic references in later responses, so the decoder limit must
+// stay at its advertised default.
+fn test_mux_peer_header_table_size_keeps_decoder_limit() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{ authority: 't', path: '/h' }, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		// The peer limits the table it uses to DECODE our request headers to 0.
+		peer.write_frame(H2SettingsFrame{
+			settings: [
+				H2Setting{
+					id:    h2_settings_header_table_size
+					value: 0
+				},
+			]
+		}) or {
+			peer.fail('settings: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		id := ids[0]
+		peer.respond_headers(id, false) or {
+			peer.fail('respond: ${err.msg()}')
+			return
+		}
+		peer.write_frame(H2DataFrame{
+			stream_id:  id
+			data:       'ok'.bytes()
+			end_stream: true
+		}) or {
+			peer.fail('data: ${err.msg()}')
+			return
+		}
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	assert out.statuses['/h'] == 200
+	// The response round-trip guarantees the reader processed the peer SETTINGS
+	// first; our response decoder must still be at the advertised default.
+	assert conn.decoder.max_dynamic_size == h2_hpack_default_table_size
+	cend.close_both()
+}
+
+// A POST whose upload is flow-control blocked when GOAWAY repudiates its stream
+// (id above last_stream_id) must surface a retryable error, not a plain one, so
+// the pool can replay a request the server never processed.
+fn test_mux_goaway_preserves_retryable_for_blocked_upload() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	body_len := 100000
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{
+		method:    'POST'
+		authority: 't'
+		path:      '/up'
+		body:      []u8{len: body_len, init: `B`}
+	}, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		id := ids[0]
+		// Let the upload exhaust both windows so the sender blocks in
+		// send_body_on_stream waiting for a WINDOW_UPDATE.
+		for {
+			peer.mu.lock()
+			got := peer.data_total[id] or { u64(0) }
+			peer.mu.unlock()
+			if got >= u64(h2_default_initial_window) {
+				break
+			}
+			peer.pump() or {
+				peer.fail('pump: ${err.msg()}')
+				return
+			}
+		}
+		// GOAWAY repudiating the in-flight stream (last_stream_id 0 < id), with
+		// no connection error: the stream is retryable and the blocked sender
+		// must wake with that classification preserved.
+		peer.write_frame(H2GoawayFrame{
+			last_stream_id: 0
+			error_code:     u32(H2ErrorCode.no_error)
+		}) or {
+			peer.fail('goaway: ${err.msg()}')
+			return
+		}
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	assert out.errs['/up'] or { '' } != '', 'expected the repudiated upload to fail, not hang'
+	assert out.codes['/up'] or { 0 } == h2_err_retryable_code, 'upload error was not retryable: ${out.errs['/up']}'
 	cend.close_both()
 }
 

@@ -83,14 +83,21 @@ fn (mut s H2MuxStream) fail(msg string, retryable bool) {
 	s.mu.unlock()
 }
 
-// send_failure_reason returns the terminal error recorded by fail(), for a body
-// sender that observed send_dead while blocked on flow control.
-fn (mut s H2MuxStream) send_failure_reason() string {
+// send_failure_reason returns the terminal error recorded by fail(), plus its
+// retryable flag, for a body sender that observed send_dead while blocked on
+// flow control. The flag must be preserved so a request the server never
+// processed (e.g. reset by GOAWAY above last_stream_id) can still be retried.
+fn (mut s H2MuxStream) send_failure_reason() (string, bool) {
 	s.mu.lock()
 	defer {
 		s.mu.unlock()
 	}
-	return if s.err != '' { s.err } else { 'h2: stream terminated while sending the request body' }
+	reason := if s.err != '' {
+		s.err
+	} else {
+		'h2: stream terminated while sending the request body'
+	}
+	return reason, s.retryable
 }
 
 // H2MuxConn is a multiplexed client-side HTTP/2 connection, safe for
@@ -358,8 +365,13 @@ fn (mut c H2MuxConn) send_body_on_stream(mut s H2MuxStream, body []u8) ! {
 			if stream_dead {
 				// The stream was reset (RST_STREAM) or repudiated (GOAWAY) while
 				// we were blocked for window credit; surface its terminal error
-				// rather than hang.
-				return error(s.send_failure_reason())
+				// rather than hang, preserving retryability so a request the
+				// server never processed can be replayed on a fresh connection.
+				reason, retryable := s.send_failure_reason()
+				if retryable {
+					return h2_retryable_error(reason)
+				}
+				return error(reason)
 			}
 			return error('h2: connection closed while sending the request body')
 		}
@@ -488,20 +500,26 @@ fn (mut c H2MuxConn) wait_response(mut s H2MuxStream, req H2ClientRequest) !H2Cl
 	return resp
 }
 
-// cancel_stream aborts a stream early (stop_receiving_limit): RST_STREAM is
-// sent and the stream is deregistered immediately, so any in-flight late DATA
+// cancel_stream aborts a stream early (stop_receiving_limit): the stream is
+// deregistered first and then RST_STREAM is sent, so any in-flight late DATA
 // for it is handled by the reader's unknown-stream backstop (connection-level
 // WINDOW_UPDATE), keeping the connection fully usable for other streams.
 fn (mut c H2MuxConn) cancel_stream(mut s H2MuxStream) {
+	// Deregister first, then send RST_STREAM: once the stream is gone from
+	// c.streams, any DATA the reader already had in flight for it hits the
+	// unknown-stream backstop, which credits the connection-level receive
+	// window. If we sent RST first, that in-flight DATA could still find the
+	// registered stream and be queued without a WINDOW_UPDATE (the cancelled
+	// requester has stopped draining), permanently leaking connection window.
+	c.smu.lock()
+	c.streams.delete(s.id)
+	c.smu.unlock()
 	c.wmu.lock()
 	c.write_all_locked(H2Frame(H2RstStreamFrame{
 		stream_id:  s.id
 		error_code: u32(H2ErrorCode.cancel)
 	}).encode()) or {}
 	c.wmu.unlock()
-	c.smu.lock()
-	c.streams.delete(s.id)
-	c.smu.unlock()
 }
 
 // send_conn_window_update replenishes only the connection-level receive
@@ -737,7 +755,14 @@ fn (mut c H2MuxConn) apply_peer_settings(settings []H2Setting) {
 	for st in settings {
 		match st.id {
 			h2_settings_header_table_size {
-				c.decoder.set_max_dynamic_size(int(st.value))
+				// The peer's HEADER_TABLE_SIZE bounds the dynamic table our
+				// *encoder* may use when compressing request headers (the table
+				// the server uses to decode them) — it does not change the table
+				// we advertised for decoding the server's responses. Our encoder
+				// never uses HPACK dynamic indexing (only static entries and
+				// literals), so there is nothing to constrain; applying this to
+				// c.decoder would wrongly shrink our response-decode table and
+				// break valid dynamic references in the server's responses.
 			}
 			h2_settings_max_concurrent_streams {
 				c.smu.lock()
