@@ -24,7 +24,7 @@ pub:
 // strict_check .
 pub fn strict_check[T](json_data string) StructCheckResult {
 	// REVIEW how performatic is it?
-	$if T is $struct {
+	$if T is $struct || T is $map {
 		tokens := tokenize(json_data)
 
 		key_struct := get_keys_from_json(tokens)
