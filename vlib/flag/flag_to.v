@@ -312,8 +312,8 @@ fn (fm FlagMapper) get_struct_info[T]() !StructInfo {
 			for attr in field.attrs {
 				trace_println('\tattribute: "${attr}"')
 				if attr.contains(':') {
-					split := attr.split(':')
-					attrs[split[0].trim_space()] = normalize_attr_value(split[1])
+					attr_name, attr_value := attr.split_once(':') or { '', '' }
+					attrs[attr_name.trim_space()] = normalize_attr_value(attr_value)
 				} else {
 					attrs[attr.trim(' ')] = 'true'
 				}
