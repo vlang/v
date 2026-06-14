@@ -19,6 +19,9 @@ fn C.vgc_atomic_load_u64(ptr &u64) u64
 fn C.vgc_atomic_store_u64(ptr &u64, val u64)
 fn C.vgc_atomic_add_u64(ptr &u64, val u64) u64
 fn C.vgc_atomic_sub_u64(ptr &u64, val u64) u64
+fn C.vgc_atomic_sub_u32(ptr &u32, val u32) u32
+fn C.vgc_atomic_fetch_or_u8(ptr &u8, val u8) u8
+fn C.vgc_atomic_fetch_and_u8(ptr &u8, val u8) u8
 fn C.vgc_atomic_add_u32(ptr &u32, val u32) u32
 fn C.vgc_atomic_cas_u32(ptr &u32, expected &u32, desired u32) bool
 fn C.vgc_atomic_exchange_u32(ptr &u32, val u32) u32
@@ -727,8 +730,16 @@ fn vgc_span_alloc(npages u32) &VGC_Span {
 		for p in 0 .. npages {
 			pidx := page_start + p
 			if pidx < vgc_pages_per_arena {
+				// RELEASE-store the page_span slot (paired with the ACQUIRE load in
+				// vgc_find_span). A span carved from an EXISTING arena does NOT bump
+				// narenas, so the narenas release/acquire publication does not cover
+				// these slot writes; without this, vgc_find_span (called lock-free by
+				// vgc_free/vgc_realloc in the mutator hot path, concurrently with this
+				// locked writer) races the plain store -> stale/garbage span -> heap
+				// corruption (round-1 crash under concurrent HTTP teardown churn).
 				unsafe {
-					vgc_heap.arenas[arena_idx].page_span[pidx] = span
+					C.vgc_atomic_store_u64(&u64(voidptr(&vgc_heap.arenas[arena_idx].page_span[pidx])),
+						u64(voidptr(span)))
 				}
 			}
 		}
@@ -866,12 +877,22 @@ fn vgc_span_alloc_obj(mut span VGC_Span) voidptr {
 				}
 				mask := u8(1) << bit
 				if (b & mask) == 0 {
-					b |= mask
-					unsafe {
-						span.alloc_bits[byte_idx] = b
+					// Atomically claim this slot. The set must be an atomic OR (not a
+					// plain RMW of the byte): a concurrent cross-thread vgc_free clears
+					// another bit in the SAME byte under central[class].lock, which this
+					// lock-free mcache fast path does not hold. With both sides atomic
+					// (OR here, AND in vgc_free) neither loses the other's update.
+					old := unsafe {
+						C.vgc_atomic_fetch_or_u8(&u8(voidptr(usize(span.alloc_bits) + usize(byte_idx))),
+							mask)
 					}
-					span.alloc_count++
-					span.free_index = i + 1
+					if (old & mask) != 0 {
+						// Lost the slot to a racer (defensive; normally only the owning
+						// thread sets bits in its mcache span). Keep scanning.
+						continue
+					}
+					unsafe { C.vgc_atomic_add_u32(&u32(voidptr(&span.alloc_count)), 1) }
+					span.free_index = i + 1 // hint only; a stale value is still correct
 					vgc_alloc_black_hook(span, i) // concurrent mark: alloc-black
 					addr := span.base + usize(i) * usize(span.elem_size)
 					return unsafe { voidptr(addr) }
@@ -1541,9 +1562,16 @@ fn vgc_free(ptr voidptr) {
 	C.vgc_mutex_lock(&central.lock)
 	if obj_idx < span.nelems && span.alloc_bits != unsafe { nil } {
 		if C.vgc_bitmap_get(span.alloc_bits, obj_idx) != 0 {
-			C.vgc_bitmap_clear(span.alloc_bits, obj_idx)
+			// Atomic clear (AND ~mask) + atomic count: pairs with the lock-free
+			// atomic OR in vgc_span_alloc_obj so a free racing a concurrent
+			// mcache allocation of a sibling slot in the same byte cannot lose
+			// either update. (central.lock still serializes free-vs-free for
+			// double-free idempotency and guards the central-list reads.)
 			unsafe {
-				span.alloc_count--
+				cmask := ~(u8(1) << (obj_idx & 7))
+				C.vgc_atomic_fetch_and_u8(&u8(voidptr(usize(span.alloc_bits) + usize(obj_idx >> 3))),
+					cmask)
+				C.vgc_atomic_sub_u32(&u32(voidptr(&span.alloc_count)), 1)
 				if obj_idx < span.free_index {
 					span.free_index = obj_idx
 				}
@@ -1876,7 +1904,12 @@ fn vgc_find_span(ptr voidptr) &VGC_Span {
 	a := unsafe { &vgc_heap.arenas[arena_idx] }
 	page_idx := (addr - a.base) / vgc_page_size
 	if page_idx < vgc_pages_per_arena {
-		return a.page_span[page_idx]
+		// ACQUIRE-load the page_span slot (paired with vgc_span_alloc's RELEASE
+		// store). This reader is lock-free (the collector calls it during STW and
+		// the mutator calls it from vgc_free/vgc_realloc), so it cannot take
+		// vgc_heap.lock; the per-slot atomic gives the happens-before that the
+		// locked writer's plain store lacked for existing-arena span carves.
+		return unsafe { &VGC_Span(voidptr(C.vgc_atomic_load_u64(&u64(voidptr(&a.page_span[page_idx]))))) }
 	}
 	return unsafe { nil }
 }

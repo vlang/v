@@ -176,8 +176,17 @@ fn (mut pv Picoev) handle_timeout() {
 	}
 	for fd in to_remove {
 		target := pv.file_descriptors[fd]
-		assert target.loop_id == pv.loop.id
+		// Drop the timeout entry first.
 		pv.timeouts.delete(fd)
+		// A timed-out fd whose target was already torn down by delete() (loop_id
+		// reset to -1, cb cleared to nil) can still leave a residual timeouts entry
+		// in a high connection-churn window (Connection: close teardown). Mirror
+		// poll_once's stale-target guard instead of asserting: the cb is nil and the
+		// slot is no longer ours, so invoking it would crash. (Was
+		// `assert target.loop_id == pv.loop.id`, which aborted the reactor.)
+		if target.loop_id != pv.loop.id {
+			continue
+		}
 		unsafe { target.cb(fd, picoev_timeout, &pv) }
 	}
 }
