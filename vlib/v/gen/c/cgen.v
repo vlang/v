@@ -7,6 +7,7 @@ import os
 import term
 import strings
 import hash.fnv1a
+import rand
 import v.ast
 import v.pref
 import v.token
@@ -243,6 +244,9 @@ mut:
 	hotcode_fn_names                     []string
 	hotcode_fpaths                       []string
 	embedded_files                       []ast.EmbeddedFile
+	embedded_asm                         map[string]string  // generated .S file content (filename → content)
+	embedded_temp_files                  []string           // compressed .bin temp files for cleanup
+	embed_build_id                       string             // random suffix for .S/.o filenames to avoid parallel-build collisions
 	sql_i                                int
 	sql_stmt_name                        string
 	sql_bind_name                        string
@@ -336,12 +340,15 @@ mut:
 @[heap]
 pub struct GenOutput {
 pub:
-	header           string          // produced output for out.h (-parallel-cc)
-	res_builder      strings.Builder // produced output (complete)
-	out_str          string          // produced output from g.out
-	out0_str         string          // helpers output (auto fns, dump fns) for out_0.c (-parallel-cc)
-	extern_str       string          // extern chunk for (-parallel-cc)
-	out_fn_start_pos []int           // fn decl positions
+	header              string
+	res_builder         strings.Builder // produced output (complete)
+	out_str             string          // produced output from g.out
+	out0_str            string          // helpers output (auto fns, dump fns) for out_0.c (-parallel-cc)
+	extern_str          string          // extern chunk for (-parallel-cc)
+	out_fn_start_pos    []int           // fn decl positions
+	embedded_asm        map[string]string  // filename → .S file content
+	embedded_temp_files []string           // temp .bin files for cleanup
+		embed_build_id     string             // random suffix for .S/.o filenames to avoid parallel-build collisions
 }
 
 pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenOutput {
@@ -416,6 +423,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		use_segfault_handler:          pref_.should_use_segfault_handler()
 		static_modifier:               if pref_.parallel_cc || pref_.is_o { 'static ' } else { '' }
 		static_non_parallel:           if !pref_.parallel_cc { 'static ' } else { '' }
+		embed_build_id:     rand.ulid()
 		has_reflection:                'v.reflection' in table.modules
 		has_debugger:                  'v.debug' in table.modules
 		reflection_strings:            &reflection_strings
@@ -989,12 +997,15 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	unsafe { g.free_builders() }
 
 	return GenOutput{
-		header:           header
-		res_builder:      b
-		out_str:          out_str
-		out0_str:         shelpers
-		extern_str:       extern_out_str
-		out_fn_start_pos: out_fn_start_pos
+		header:              header
+		res_builder:         b
+		out_str:             out_str
+		out0_str:            shelpers
+		extern_str:          extern_out_str
+		out_fn_start_pos:    out_fn_start_pos
+		embedded_asm:        g.embedded_asm
+		embedded_temp_files: g.embedded_temp_files
+		embed_build_id:     g.embed_build_id
 	}
 }
 
@@ -1046,6 +1057,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		module_built:                       global_g.module_built
 		static_non_parallel:                global_g.static_non_parallel
 		static_modifier:                    global_g.static_modifier
+		embed_build_id:     global_g.embed_build_id
 		timers:                             util.new_timers(
 			should_print: global_g.timers_should_print
 			label:        'cgen_process_one_file_cb idx: ${idx}, wid: ${wid}'
@@ -1149,9 +1161,12 @@ pub fn (mut g Gen) gen_file() {
 	// write them to corresponding sections
 	g.gen_hash_stmts_in_top()
 
-	// Transfer embedded files
+	// Transfer embedded files, deduplicating by hash.
+	// Two embeds of the same file with compression get different compressed_temp_path
+	// values (random ULIDs), so struct equality would fail to deduplicate them,
+	// causing duplicate case labels in generated C. hash() excludes temp paths.
 	for path in g.file.embedded_files {
-		if path !in g.embedded_files {
+		if g.embedded_files.all(it.hash() != path.hash()) {
 			g.embedded_files << path
 		}
 	}

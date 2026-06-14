@@ -154,6 +154,9 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 		fo := f.replace('.c', '.o')
 		ofiles << os.quoted_path(fo)
 	}
+	// Note: embedded .o files are NOT added to ofiles here. They are already
+	// included via ccoptions.o_args (set up in cc() during the parallel_cc
+	// str_args generation), which get_linker_args() picks up.
 	obj_files := ofiles.join(' ')
 
 	alink := [
