@@ -369,7 +369,9 @@ fn vgc_register_thread() {
 		C.vgc_mutex_unlock(&vgc_heap.cache_lock)
 		return
 	}
-	vgc_heap.live_threads++
+	// Atomic bump (cache_lock serializes writers, but vgc_maybe_gc reads live_threads
+	// LOCK-FREE for per-thread GC pacing — a plain RMW here races that atomic read).
+	C.vgc_atomic_add_u32(&vgc_heap.live_threads, 1)
 
 	// NOTE: cache_lock is held through the WHOLE slot setup below (clear, stack
 	// bounds, mach_port, registered=true) and released only just before the
@@ -474,8 +476,9 @@ fn vgc_thread_exit_cb(idx int) {
 		vgc_heap.caches[idx].stack_lo = 0
 		vgc_heap.caches[idx].stack_hi = 0
 	}
-	if vgc_heap.live_threads > 0 {
-		vgc_heap.live_threads--
+	// Atomic decrement — see the bump in vgc_register_thread (lock-free PACE reader).
+	if C.vgc_atomic_load_u32(&vgc_heap.live_threads) > 0 {
+		C.vgc_atomic_sub_u32(&vgc_heap.live_threads, 1)
 	}
 	if vgc_heap.nfree_slots < vgc_max_threads {
 		vgc_heap.free_slots[vgc_heap.nfree_slots] = idx
@@ -1611,20 +1614,53 @@ fn vgc_free(ptr voidptr) {
 	if span_class < 0 || span_class >= 136 {
 		return
 	}
+	if obj_idx >= span.nelems || span.alloc_bits == unsafe { nil } {
+		return
+	}
+	// B19 free-path scaling: a span that is NOT on a central partial/full list
+	// (on_central == 0 — i.e. resident in a thread mcache, or dropped and awaiting
+	// sweep) has no central-list membership to guard, and its bitmap + count mutations
+	// are each individually atomic, so the per-class central lock is unnecessary here.
+	// Skipping it removes the dominant serializer of a same-class free storm: N threads
+	// dropping objects of the same size class were N-way serialized on one lock
+	// (bench_scalar anti-scaled 35->7 Mops/s T1->T8). The atomic fetch_and's PRIOR value
+	// gates the count decrement, so even a (buggy) double-free cannot double-subtract —
+	// only the caller that actually cleared the set bit decrements. free_index stays a
+	// racy-but-safe hint (the two-pass scan in vgc_span_alloc_obj tolerates a stale
+	// value). on_central is stably 0 for a mutator-owned span: it is set to 0 at
+	// carve/central-pop BEFORE the span reaches the mutator (happens-before via handoff),
+	// and drop-return means registered threads never push a span onto a central list.
+	// Spans actually ON a central list (on_central != 0: only the unregistered-overflow-
+	// thread fallback path) keep the lock, preserving central-list consistency AND the
+	// collector's lock-before-suspend fence for them. Validated against the residual-#4
+	// churn reproducer + TSan (the exact race the lock was added for).
+	mask := u8(1) << (obj_idx & 7)
+	byte_ptr := unsafe { &u8(voidptr(usize(span.alloc_bits) + usize(obj_idx >> 3))) }
+	if span.on_central == 0 {
+		old := C.vgc_atomic_fetch_and_u8(byte_ptr, ~mask)
+		if (old & mask) != 0 {
+			C.vgc_atomic_sub_u32(&u32(voidptr(&span.alloc_count)), 1)
+			unsafe {
+				if obj_idx < span.free_index {
+					span.free_index = obj_idx
+				}
+			}
+			vgc_acct_free(u64(span.elem_size))
+		}
+		return
+	}
 	central := unsafe { &vgc_heap.central[span_class] }
 	C.vgc_mutex_lock(&central.lock)
-	if obj_idx < span.nelems && span.alloc_bits != unsafe { nil } {
-		if C.vgc_bitmap_get(span.alloc_bits, obj_idx) != 0 {
-			// Atomic clear (AND ~mask) + atomic count: pairs with the lock-free
-			// atomic OR in vgc_span_alloc_obj so a free racing a concurrent
-			// mcache allocation of a sibling slot in the same byte cannot lose
-			// either update. (central.lock still serializes free-vs-free for
-			// double-free idempotency and guards the central-list reads.)
+	if C.vgc_bitmap_get(span.alloc_bits, obj_idx) != 0 {
+		// Atomic clear (AND ~mask) + atomic count: pairs with the lock-free
+		// atomic OR in vgc_span_alloc_obj so a free racing a concurrent
+		// mcache allocation of a sibling slot in the same byte cannot lose
+		// either update. (central.lock still serializes free-vs-free for
+		// double-free idempotency and guards the central-list reads.)
+		old := C.vgc_atomic_fetch_and_u8(byte_ptr, ~mask)
+		if (old & mask) != 0 {
+			C.vgc_atomic_sub_u32(&u32(voidptr(&span.alloc_count)), 1)
 			unsafe {
-				cmask := ~(u8(1) << (obj_idx & 7))
-				C.vgc_atomic_fetch_and_u8(&u8(voidptr(usize(span.alloc_bits) + usize(obj_idx >> 3))),
-					cmask)
-				C.vgc_atomic_sub_u32(&u32(voidptr(&span.alloc_count)), 1)
 				if obj_idx < span.free_index {
 					span.free_index = obj_idx
 				}
