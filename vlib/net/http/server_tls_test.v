@@ -1,3 +1,4 @@
+// vtest build: !sanitize-memory-clang
 // Hermetic TLS-termination test for net.http.Server: spin up a local HTTPS
 // server with an in-memory cert/key, hit it with http.fetch (validate: false),
 // and assert the round-trip.

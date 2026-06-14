@@ -755,6 +755,16 @@ fn test_c_error_missing_library_name_with_gnu_ld_output() {
 	assert c_error_missing_library_name(c_output) == 'ssl'
 }
 
+fn test_c_error_missing_library_name_with_mingw_ld_output() {
+	c_output := 'C:/msys64/ucrt64/bin/ld.exe: cannot find libv_missing_lib_25499.dll.a: No such file or directory\ncollect2.exe: error: ld returned 1 exit status\n'
+	assert c_error_missing_library_name(c_output) == 'v_missing_lib_25499'
+}
+
+fn test_c_error_missing_library_name_with_mingw_lflag_suffix_output() {
+	c_output := 'C:/msys64/ucrt64/bin/ld.exe: cannot find -lv_missing_lib_25499.dll.a: No such file or directory\ncollect2.exe: error: ld returned 1 exit status\n'
+	assert c_error_missing_library_name(c_output) == 'v_missing_lib_25499'
+}
+
 fn test_c_error_missing_library_name_with_regular_c_error() {
 	c_output := "error: unknown type name 'my_missing_type'"
 	assert c_error_missing_library_name(c_output) == ''
