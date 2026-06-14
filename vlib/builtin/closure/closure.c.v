@@ -53,13 +53,22 @@ mut:
 __global g_closure_live = map[voidptr]ClosureLiveInfo{}
 
 // g_closure_frame is the current frame counter, advanced by closure_begin_frame_build.
+// THREAD-LOCAL: the frame-build window belongs to the thread that opened it (the
+// UI thread in an immediate-mode app). Were this process-global, a closure created
+// on a *worker* thread while the UI thread is mid-build would be stamped with the
+// UI frame and could be reclaimed by closure_reclaim_frames even though it was
+// never part of the discarded frame tree — a dangling function pointer. Keeping it
+// per-thread means only closures created on the building thread are frame-stamped.
+@[thread_local]
 __global g_closure_frame = u32(0)
 
 // g_closure_in_build is true only between closure_begin_frame_build and
 // closure_end_frame_build (i.e. while an immediate-mode UI is building a frame's
 // view). Only closures created in that window are frame-stamped and thus eligible
-// for closure_reclaim_frames; all others (app setup, event handlers) get the
-// closure_frame_never sentinel and are never auto-reclaimed.
+// for closure_reclaim_frames; all others (app setup, event handlers, and closures
+// built on other threads) get the closure_frame_never sentinel and are never
+// auto-reclaimed. THREAD-LOCAL for the same reason as g_closure_frame above.
+@[thread_local]
 __global g_closure_in_build = false
 
 // closure_frame_never marks a closure as not eligible for frame-epoch reclamation.
