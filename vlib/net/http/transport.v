@@ -106,16 +106,16 @@ pub fn new_transport() &Transport {
 	return &Transport{}
 }
 
-__global http_transport_default = &Transport(unsafe { nil })
-__global http_transport_once = sync.new_once()
+// Initialized eagerly in _vinit() (before main() and before any thread is
+// spawned), so the shared default Transport is fully constructed without a
+// concurrent-startup race. Lazy init via sync.Once is unsafe here: Once sets its
+// done flag before running the callback, so a second caller can observe "done"
+// and read this global while it is still nil (vlang/v#27456).
+__global http_transport_default = new_transport()
 
 // default_transport returns the process-global Transport that fetch() and
-// Request.do() route through, creating it on first use.
+// Request.do() route through.
 pub fn default_transport() &Transport {
-	mut once := http_transport_once
-	once.do_with_param(fn (_ voidptr) {
-		http_transport_default = new_transport()
-	}, unsafe { nil })
 	return http_transport_default
 }
 
