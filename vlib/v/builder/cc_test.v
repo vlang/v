@@ -1,6 +1,7 @@
 module builder
 
 import os
+import time
 import v.pref
 
 fn test_ccompiler_is_available_with_existing_absolute_path() {
@@ -773,6 +774,54 @@ fn test_c_error_should_send_bug_report_skips_missing_library() {
 fn test_c_error_should_send_bug_report_for_regular_c_error() {
 	c_output := "error: unknown type name 'my_missing_type'"
 	assert c_error_should_send_bug_report(c_output)
+}
+
+fn test_thirdparty_module_root_spans_library_and_include() {
+	// A source under library/ resolves to the whole `thirdparty/<mod>` root, so a
+	// sibling include/ tree (e.g. mbedtls config headers) is in scope when
+	// computing the object's header-dependency mtime.
+	assert thirdparty_module_root('/x/y/thirdparty/mbedtls/library/aes.c') == '/x/y/thirdparty/mbedtls'
+	// Windows-style separators are normalized to forward slashes.
+	assert thirdparty_module_root('S:\\repo\\thirdparty\\mbedtls\\include\\mbedtls\\cfg.h') == 'S:/repo/thirdparty/mbedtls'
+	// A path that is not under a thirdparty/ tree falls back to the source dir.
+	assert thirdparty_module_root('/tmp/foo/bar.c') == os.dir('/tmp/foo/bar.c')
+}
+
+// Regression guard for vlang/v#27437: thirdparty objects must rebuild when a
+// header anywhere in the module changes, including config headers under
+// include/ (not just siblings of the .c). thirdparty_deps_mtime is the shared
+// cache key for both the C and MSVC object paths, so this protects both.
+fn test_thirdparty_deps_mtime_includes_module_include_headers() {
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_thirdparty_deps_${os.getpid()}')
+	os.rmdir_all(test_root) or {}
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	lib_dir := os.join_path(test_root, 'thirdparty', 'mymod', 'library')
+	inc_dir := os.join_path(test_root, 'thirdparty', 'mymod', 'include', 'mymod')
+	os.mkdir_all(lib_dir) or { panic(err) }
+	os.mkdir_all(inc_dir) or { panic(err) }
+	source := os.join_path(lib_dir, 'foo.c')
+	sibling := os.join_path(lib_dir, 'foo.h')
+	os.write_file(source, 'int foo(void){return 0;}') or { panic(err) }
+	os.write_file(sibling, '/* sibling header */') or { panic(err) }
+	// file_last_mod_unix is second-resolution, so a >1s gap is needed for the
+	// config header to be observably newer than the source.
+	time.sleep(1100 * time.millisecond)
+	config := os.join_path(inc_dir, 'mymod_config.h')
+	os.write_file(config, '#define MYMOD 1') or { panic(err) }
+
+	mut b := new_builder_for_args([hello_world_example()])
+	deps := b.thirdparty_deps_mtime(source)
+	config_mtime := os.file_last_mod_unix(config)
+	source_mtime := os.file_last_mod_unix(source)
+	assert config_mtime > source_mtime, 'precondition: the include/ config header must be newer than the source'
+	// The config header lives under include/, not in the source directory, yet
+	// the dependency mtime must still reflect it — otherwise stale objects are
+	// reused after a config-header change (the bug this fix addresses).
+	assert deps == config_mtime, 'thirdparty_deps_mtime must fold in include/ headers; got ${deps}, want ${config_mtime}'
+	// Memoized per module root: a second call returns the same value.
+	assert b.thirdparty_deps_mtime(source) == config_mtime
 }
 
 fn prepare_test_ccompiler_alias(test_root string, compiler_name string, version_output string) string {
