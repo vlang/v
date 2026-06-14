@@ -38,6 +38,11 @@ struct ClosureLiveInfo {
 mut:
 	ctx   voidptr
 	frame u32
+	// owner identifies the thread whose frame-build window stamped this closure
+	// (0 = not frame-stamped). reclaim_frames only reclaims closures it owns, so
+	// one build thread can never collect another build thread's live closures
+	// even though the table and frame counters would otherwise let it.
+	owner u64
 }
 
 // g_closure_live maps each live closure (its user-facing pointer) to its
@@ -70,6 +75,16 @@ __global g_closure_frame = u32(0)
 // auto-reclaimed. THREAD-LOCAL for the same reason as g_closure_frame above.
 @[thread_local]
 __global g_closure_in_build = false
+
+// g_closure_owner_seq hands out a unique, stable owner id to each thread that
+// builds frames. Assigned under closure_mtx (see closure_owner_id), so no atomics.
+__global g_closure_owner_seq = u64(0)
+
+// g_closure_owner is THIS thread's frame-build owner id (0 = not yet assigned).
+// Thread-local: each build thread gets its own id, recorded on the closures it
+// stamps so reclaim_frames only touches its own (see ClosureLiveInfo.owner).
+@[thread_local]
+__global g_closure_owner = u64(0)
 
 // closure_frame_never marks a closure as not eligible for frame-epoch reclamation.
 const closure_frame_never = u32(0xffffffff)
@@ -456,6 +471,7 @@ fn closure_create(func voidptr, data voidptr) voidptr {
 			g_closure_live[ret] = ClosureLiveInfo{
 				ctx:   data
 				frame: if g_closure_in_build { g_closure_frame } else { closure_frame_never }
+				owner: if g_closure_in_build { closure_owner_id() } else { u64(0) }
 			}
 		}
 	}
@@ -548,6 +564,17 @@ fn closure_try_destroy(closure voidptr) {
 // closure_begin_frame_build advances the frame counter and marks the start of a
 // frame's view build: closures created until closure_end_frame_build are stamped
 // with this frame and become eligible for closure_reclaim_frames (INTERNAL).
+// closure_owner_id returns this thread's stable frame-build owner id, assigning
+// one on first use. CALLER MUST HOLD the closure mutex (g_closure_owner_seq is
+// shared); both call sites (closure_create stamping, closure_reclaim_frames) do.
+fn closure_owner_id() u64 {
+	if g_closure_owner == 0 {
+		g_closure_owner_seq++
+		g_closure_owner = g_closure_owner_seq
+	}
+	return g_closure_owner
+}
+
 fn closure_begin_frame_build() {
 	closure_mtx_lock_platform()
 	g_closure_frame++
@@ -575,11 +602,19 @@ fn closure_reclaim_frames(keep u32) {
 		}
 		closure_mtx_lock_platform()
 		cur := g_closure_frame
+		me := closure_owner_id()
 		mut doomed := []voidptr{}
 		for k, info in g_closure_live {
 			// skip closures not created during a view build (setup / event
 			// handlers): they may legitimately outlive `keep` frames.
 			if info.frame == closure_frame_never {
+				continue
+			}
+			// only reclaim closures stamped by THIS thread's frame builds — the
+			// table is process-global but frame counters are per-thread, so
+			// another build thread's frames are meaningless here (and its
+			// closures may still be live).
+			if info.owner != me {
 				continue
 			}
 			// reclaim if created `keep`+ frames ago (guard against u32 wrap)
