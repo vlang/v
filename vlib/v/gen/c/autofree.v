@@ -327,7 +327,12 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 			af.write_string('->val')
 		}
 		if v.typ.has_flag(.option) {
-			af.write_string('.data)')
+			// `.data` only — the call's opening `(` (written above) is closed by the
+			// single `)` below. Previously this wrote `.data)`, double-closing the call
+			// for an option-pointer var (`b := &?Foo{}`) and emitting an extraneous `)`
+			// (a `-gc e` / Perceus-drop C compile error; the non-option path closes only
+			// once below, so this aligns the two).
+			af.write_string('.data')
 		}
 
 		af.writeln('); // autofreed ptr var')
