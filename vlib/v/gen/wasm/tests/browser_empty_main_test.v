@@ -19,12 +19,12 @@ fn test_wasm_browser_target_allows_empty_main() {
 		os.rmdir_all(wrkdir) or {}
 	}
 
-	source_path := os.join_path(wrkdir, 'empty_main.wasm.v')
+	source_path := os.join_path(wrkdir, 'empty_main.v')
 	os.write_file(source_path, 'pub fn main() {}\n')!
 
 	flags_sets := [
-		'-no-bounds-checking -b wasm -os browser',
-		'-no-bounds-checking -enable-globals -b wasm -os browser',
+		'-b wasm -os browser',
+		'-enable-globals -b wasm -os browser',
 	]
 
 	for idx, flags in flags_sets {
