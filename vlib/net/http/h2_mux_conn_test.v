@@ -920,6 +920,72 @@ fn test_mux_cancel_one_stream_other_lives() {
 	cend.close_both()
 }
 
+// Cancelling a stream (stop_receiving_limit) must credit the connection window
+// for ALL DATA received on it — including chunks queued before the cancel that
+// are discarded undrained — or the connection window leaks on every early
+// cancellation. The peer sends three 10-byte chunks; whatever the client does
+// not deliver it must still credit back, so the connection WINDOW_UPDATEs sum
+// to the full 30 bytes sent.
+fn test_mux_cancel_credits_all_received_data() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	total := 30
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{
+		authority:            't'
+		path:                 '/c'
+		stop_receiving_limit: 5
+	}, mut out)
+	peer_thread := spawn fn [total] (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		peer.respond_headers(ids[0], false) or {
+			peer.fail('respond: ${err.msg()}')
+			return
+		}
+		for _ in 0 .. 3 {
+			peer.write_frame(H2DataFrame{
+				stream_id: ids[0]
+				data:      'xxxxxxxxxx'.bytes()
+			}) or {
+				peer.fail('data: ${err.msg()}')
+				return
+			}
+		}
+		// Pump until every sent DATA byte has been credited back on the
+		// connection window; with the fix this terminates regardless of how the
+		// chunks raced against the cancel (drained, queued-then-discarded, or
+		// late via the backstop).
+		for {
+			peer.mu.lock()
+			got := peer.conn_window_updates
+			peer.mu.unlock()
+			if got >= u64(total) {
+				break
+			}
+			peer.pump() or {
+				peer.fail('pump: ${err.msg()}')
+				return
+			}
+		}
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	assert peer.conn_window_updates == u64(total), 'cancel must credit every received DATA byte'
+	cend.close_both()
+}
+
 // A peer SETTINGS_HEADER_TABLE_SIZE only bounds the dynamic table our encoder
 // may use for request headers; it must not shrink the table we advertised for
 // decoding the server's responses. Applying it to the response decoder would

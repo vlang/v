@@ -63,6 +63,7 @@ mut:
 	err          string // non-empty: the stream failed
 	retryable    bool   // the failure is safe to retry on a fresh connection
 	sent_headers bool   // the request HEADERS reached the transport
+	cancelled    bool   // requester abandoned the stream; drop+credit late DATA
 	// --- send state, guarded by the connection's fmu ---
 	send_window i64
 	send_dead   bool // RST/GOAWAY: wake a body sender blocked on flow-control credit
@@ -559,6 +560,23 @@ fn (mut c H2MuxConn) cancel_stream(mut s H2MuxStream) {
 	c.smu.lock()
 	c.streams.delete(s.id)
 	c.smu.unlock()
+	// DATA already queued before cancellation consumed the connection receive
+	// window but will never be drained; credit it back (its padding was already
+	// credited on receipt, so only the chunk data remains). Setting `cancelled`
+	// under s.mu also makes a frame still in flight credit-and-drop in
+	// on_response_data instead of queuing onto a stream nobody drains. Without
+	// this, repeated early cancellations permanently shrink the connection window.
+	s.mu.lock()
+	s.cancelled = true
+	mut queued := u64(0)
+	for ch in s.chunks {
+		queued += u64(ch.len)
+	}
+	s.chunks.clear()
+	s.mu.unlock()
+	if queued > 0 {
+		c.send_conn_window_update(u32(queued)) or {}
+	}
 	c.wmu.lock()
 	c.write_all_locked(H2Frame(H2RstStreamFrame{
 		stream_id:  s.id
@@ -975,6 +993,18 @@ fn (mut c H2MuxConn) on_response_data(frame H2DataFrame) ! {
 		return
 	}
 	s.mu.lock()
+	if s.cancelled {
+		// The requester abandoned this stream (it has been deregistered, but the
+		// reader still held a reference). Account for the whole payload at the
+		// connection level and drop it, so the window does not leak. Checking
+		// the flag under s.mu — the same lock cancel_stream sets it under —
+		// makes this race-free against a frame in flight during cancellation.
+		s.mu.unlock()
+		if frame.flow_size > 0 {
+			c.send_conn_window_update(u32(frame.flow_size)) or {}
+		}
+		return
+	}
 	if frame.data.len > 0 {
 		s.chunks << frame.data.clone()
 		s.body_rcvd += u64(frame.data.len)
