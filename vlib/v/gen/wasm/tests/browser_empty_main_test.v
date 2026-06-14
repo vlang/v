@@ -19,12 +19,12 @@ fn test_wasm_browser_target_allows_empty_main() {
 		os.rmdir_all(wrkdir) or {}
 	}
 
-	source_path := os.join_path(wrkdir, 'empty_main.wasm.v')
+	source_path := os.join_path(wrkdir, 'empty_main.v')
 	os.write_file(source_path, 'pub fn main() {}\n')!
 
 	flags_sets := [
-		'-no-bounds-checking -b wasm -os browser',
-		'-no-bounds-checking -enable-globals -b wasm -os browser',
+		'-b wasm -os browser',
+		'-enable-globals -b wasm -os browser',
 	]
 
 	for idx, flags in flags_sets {
@@ -34,6 +34,24 @@ fn test_wasm_browser_target_allows_empty_main() {
 		assert res.exit_code == 0, 'compilation failed for `${flags}`: ${res.output}'
 		assert os.exists(output_path), 'missing output for `${flags}`'
 	}
+}
+
+fn test_wasm_browser_target_allows_eprintln() {
+	vexe := os.quoted_path(@VEXE)
+	wrkdir := os.join_path(os.vtmp_dir(), 'wasm_browser_eprintln_tests')
+	os.mkdir_all(wrkdir)!
+	defer {
+		os.rmdir_all(wrkdir) or {}
+	}
+
+	source_path := os.join_path(wrkdir, 'eprintln_main.v')
+	output_path := os.join_path(wrkdir, 'eprintln_main.wasm')
+	os.write_file(source_path, "pub fn main() { eprintln('browser stderr') }\n")!
+
+	res :=
+		os.execute('${vexe} -b wasm -os browser -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}')
+	assert res.exit_code == 0, 'compilation failed: ${res.output}'
+	assert os.exists(output_path), 'missing output for browser eprintln'
 }
 
 fn test_wasm_shared_library_exports_custom_names_without_main() {
