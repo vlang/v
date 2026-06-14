@@ -373,16 +373,43 @@ fn (mut g Gen) gen_free_for_array(typ ast.Type, info ast.Array, styp string, fn_
 		fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < it->len; i++) {')
 
 		mut elem_styp := g.styp(info.elem_type).replace('*', '')
-		mut elem_styp_fn_name := if sym.has_method('free') {
-			'${elem_styp}_free'
+		if info.elem_type.has_flag(.option) {
+			// Option element (`[]?T`): `sym` is the UNWRAPPED payload (e.g. `string`),
+			// which may itself have a `free` — so the string-construct path below would
+			// emit a call to `_option_<T>_free`, a method that is never generated (the
+			// option wrapper isn't a struct/array/etc., so no gen path produces it →
+			// "undeclared function builtin___option_string_free"). Instead INLINE the
+			// payload free here, exactly like the sum-type-variant-option and the whole-
+			// `?[]T` paths: check the option state and free the payload via the base
+			// type's own free on `&data`. No separate `_option_<T>_free` method needed.
+			base_typ := info.elem_type.clear_flag(.option)
+			base_styp := g.base_type(info.elem_type)
+			base_sym := g.table.sym(g.unwrap_generic(base_typ))
+			mut base_fn_name := if base_sym.has_method('free') {
+				'${g.gen_type_name_for_free_call(base_typ)}_free'
+			} else {
+				g.gen_free_method(base_typ)
+			}
+			if base_sym.is_builtin() {
+				base_fn_name = 'builtin__${base_fn_name}'
+			}
+			fn_builder.writeln('\t\t${elem_styp}* _opt_elem = &(((${elem_styp}*)it->data)[i]);')
+			fn_builder.writeln('\t\tif (_opt_elem->state != 2) {')
+			fn_builder.writeln('\t\t\t${base_fn_name}((${base_styp}*)&_opt_elem->data);')
+			fn_builder.writeln('\t\t}')
+			fn_builder.writeln('\t}')
 		} else {
-			g.gen_free_method(info.elem_type)
+			mut elem_styp_fn_name := if sym.has_method('free') {
+				'${elem_styp}_free'
+			} else {
+				g.gen_free_method(info.elem_type)
+			}
+			if sym.is_builtin() {
+				elem_styp_fn_name = 'builtin__${elem_styp_fn_name}'
+			}
+			fn_builder.writeln('\t\t${elem_styp_fn_name}(&(((${elem_styp}*)it->data)[i]));')
+			fn_builder.writeln('\t}')
 		}
-		if sym.is_builtin() {
-			elem_styp_fn_name = 'builtin__${elem_styp_fn_name}'
-		}
-		fn_builder.writeln('\t\t${elem_styp_fn_name}(&(((${elem_styp}*)it->data)[i]));')
-		fn_builder.writeln('\t}')
 	}
 	fn_builder.writeln('\tbuiltin__array_free(it);')
 	fn_builder.writeln('}')
