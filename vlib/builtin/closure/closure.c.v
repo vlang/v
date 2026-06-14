@@ -530,6 +530,16 @@ fn closure_release_slot(exec_ptr voidptr, user_ptr voidptr) bool {
 					g_closure_live[user_ptr] = ClosureLiveInfo{}
 					g_closure_live.delete(user_ptr)
 				}
+				$if gcboehm_leak ? {
+					// `-gc boehm_leak` defines `gcboehm` too, so this branch runs in
+					// leak-detection mode — where `free` is a real `GC_FREE` and
+					// find-leak reports any object that becomes unreachable without an
+					// explicit free. The context is now unrooted (map entry dropped
+					// above) and dead, and the slot's `already_freed` guard makes this
+					// release once-per-slot, so freeing it here is safe and keeps
+					// gc_check_leaks() from flagging a false positive.
+					free(data)
+				}
 			} $else {
 				free(data)
 			}
