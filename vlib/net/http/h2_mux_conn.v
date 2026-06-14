@@ -269,6 +269,19 @@ fn (mut c H2MuxConn) do_on_stream(mut s H2MuxStream, req H2ClientRequest) !H2Cli
 	// replay. (The stream is still private here, so no lock is needed.)
 	s.sent_headers = true
 	c.smu.lock() // wmu -> smu -> fmu is the permitted lock nesting
+	// A terminal event (GOAWAY, or fail_conn after the reader saw the transport
+	// die) can land while we are blocked on wmu, after do()'s admission check
+	// already passed. Such an event fails every stream in the map, but this one
+	// is not registered yet, so it would slip through and wait_response could
+	// block forever. Recheck under smu — the same lock those events use to set
+	// these flags — and abort before registering or sending. The HEADERS never
+	// hit the wire here, so the request is safe to retry on a fresh connection.
+	if c.closed || c.goaway || c.shutting_down {
+		reason := if c.conn_err != '' { c.conn_err } else { 'connection is shutting down' }
+		c.smu.unlock()
+		c.wmu.unlock()
+		return h2_retryable_error(reason)
+	}
 	c.fmu.lock()
 	// The initial send window must be assigned atomically with registration:
 	// the WINDOW_UPDATE and SETTINGS handlers also nest smu -> fmu, so credit
@@ -658,7 +671,7 @@ fn (mut c H2MuxConn) dispatch_frame(frame H2Frame) ! {
 	match frame {
 		H2SettingsFrame {
 			if !frame.ack {
-				c.apply_peer_settings(frame.settings)
+				c.apply_peer_settings(frame.settings)!
 				c.wmu.lock()
 				c.write_all_locked(H2Frame(H2SettingsFrame{
 					ack: true
@@ -750,8 +763,10 @@ fn (mut c H2MuxConn) dispatch_frame(frame H2Frame) ! {
 
 // apply_peer_settings folds the peer's SETTINGS into the connection,
 // including the retroactive initial-window delta for every open stream
-// (RFC 7540 6.9.2).
-fn (mut c H2MuxConn) apply_peer_settings(settings []H2Setting) {
+// (RFC 7540 6.9.2). Out-of-range values that would corrupt our framing or
+// flow-control math are rejected as a connection error (the caller turns the
+// error into fail_conn), per RFC 7540 6.5.2 / 6.5.3.
+fn (mut c H2MuxConn) apply_peer_settings(settings []H2Setting) ! {
 	for st in settings {
 		match st.id {
 			h2_settings_header_table_size {
@@ -770,6 +785,11 @@ fn (mut c H2MuxConn) apply_peer_settings(settings []H2Setting) {
 				c.smu.unlock()
 			}
 			h2_settings_initial_window_size {
+				if st.value > u32(0x7fff_ffff) {
+					// RFC 7540 6.5.3: values above 2^31-1 are a FLOW_CONTROL_ERROR;
+					// they also overflow our i64 send-window arithmetic.
+					return error('h2: peer SETTINGS_INITIAL_WINDOW_SIZE ${st.value} exceeds 2^31-1')
+				}
 				// smu is held across the fmu section so the snapshot of open
 				// streams and the delta application are atomic with respect to
 				// stream registration (which nests the same way) — a stream can
@@ -788,6 +808,12 @@ fn (mut c H2MuxConn) apply_peer_settings(settings []H2Setting) {
 				c.smu.unlock()
 			}
 			h2_settings_max_frame_size {
+				if st.value < h2_default_max_frame_size || st.value > u32(0x00ff_ffff) {
+					// RFC 7540 6.5.2: valid range is 2^14..2^24-1. A value such as
+					// 0 would make our HEADERS/DATA chunk step 0 and hang the send
+					// path in a zero-length-frame loop, so fail the connection.
+					return error('h2: peer SETTINGS_MAX_FRAME_SIZE ${st.value} out of range [16384, 16777215]')
+				}
 				c.fmu.lock()
 				c.peer_max_frame = st.value
 				c.fmu.unlock()

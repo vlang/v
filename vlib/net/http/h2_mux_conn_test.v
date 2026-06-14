@@ -785,6 +785,59 @@ fn test_mux_goaway_preserves_retryable_for_blocked_upload() {
 	cend.close_both()
 }
 
+// An out-of-range peer SETTINGS_MAX_FRAME_SIZE (here 0) must fail the connection
+// (RFC 7540 6.5.2), not be accepted — a zero frame size would make the send
+// path's chunk step 0 and hang it in a zero-length-frame loop. The peer also
+// sends a valid response afterwards: with the guard the request fails on the
+// bad SETTINGS (processed first); without it the request would wrongly succeed.
+fn test_mux_invalid_max_frame_size_fails_connection() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{ authority: 't', path: '/x' }, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		peer.write_frame(H2SettingsFrame{
+			settings: [
+				H2Setting{
+					id:    h2_settings_max_frame_size
+					value: 0
+				},
+			]
+		}) or {
+			peer.fail('settings: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		// A perfectly valid response — the client must still have failed the
+		// connection on the illegal SETTINGS processed before it.
+		peer.respond_headers(ids[0], false) or {}
+		peer.write_frame(H2DataFrame{
+			stream_id:  ids[0]
+			data:       'nope'.bytes()
+			end_stream: true
+		}) or {}
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	assert out.statuses['/x'] or { 0 } != 200, 'request must not succeed on an illegal SETTINGS_MAX_FRAME_SIZE'
+	err_msg := out.errs['/x'] or { '' }
+	assert err_msg != '', 'expected the connection to fail, not hang or succeed'
+	assert err_msg.contains('MAX_FRAME_SIZE'), 'unexpected error: ${err_msg}'
+	cend.close_both()
+}
+
 // A response header block split across HEADERS + CONTINUATION is reassembled.
 fn test_mux_continuation_assembly() {
 	mut cend, mut pend := new_mux_pipe()
