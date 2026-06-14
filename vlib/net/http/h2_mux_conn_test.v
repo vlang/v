@@ -491,6 +491,49 @@ fn test_mux_rst_wakes_blocked_body_sender() {
 	cend.close_both()
 }
 
+// A stream reset with REFUSED_STREAM means the server did not process the
+// request, so it must surface a retryable error (RFC 7540 8.1.4) — even for a
+// non-idempotent method — so the pool can replay it on a fresh connection. A
+// reset with any other code (e.g. CANCEL) must stay non-retryable.
+fn test_mux_refused_stream_reset_is_retryable() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{
+		method:    'POST'
+		authority: 't'
+		path:      '/refused'
+		body:      'x'.bytes()
+	}, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		peer.write_frame(H2RstStreamFrame{
+			stream_id:  ids[0]
+			error_code: u32(H2ErrorCode.refused_stream)
+		}) or {
+			peer.fail('rst: ${err.msg()}')
+			return
+		}
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	assert out.errs['/refused'] or { '' } != '', 'expected the refused POST to fail'
+	assert out.codes['/refused'] or { 0 } == h2_err_retryable_code, 'REFUSED_STREAM reset must be retryable, got code ${out.codes['/refused']}'
+	cend.close_both()
+}
+
 // GOAWAY with last_stream_id between two active streams: the lower id
 // completes, the higher fails with a retryable error, and new requests are
 // refused (also retryable).

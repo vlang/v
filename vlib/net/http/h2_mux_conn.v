@@ -122,18 +122,19 @@ mut:
 	peer_max_frame      u32         = h2_default_max_frame_size
 	fmu_dead            bool // mirror of `closed` for blocked senders
 	// --- guarded by smu ---
-	smu              &sync.Mutex = sync.new_mutex()
-	streams          map[u32]&H2MuxStream
-	refs             int = 1 // the owner's (pool's) reference; +1 per in-flight request
-	active_streams   int
-	max_streams      u32 = 100 // our own cap on concurrent streams
-	peer_max_streams u32 = max_u32
-	goaway           bool
-	goaway_last      u32
-	closed           bool // the reader has exited; only the reader sets this
-	shutting_down    bool
-	conn_err         string
-	idle_since       time.Time
+	smu                 &sync.Mutex = sync.new_mutex()
+	streams             map[u32]&H2MuxStream
+	refs                int = 1 // the owner's (pool's) reference; +1 per in-flight request
+	active_streams      int
+	max_streams         u32 = 100 // our own cap on concurrent streams
+	peer_max_streams    u32 = max_u32
+	goaway              bool
+	goaway_last         u32
+	closed              bool // the reader has exited; only the reader sets this
+	shutting_down       bool
+	transport_torn_down bool // close_transport has been (or is being) called
+	conn_err            string
+	idle_since          time.Time
 	// --- reader-thread private (no locks) ---
 	decoder H2HpackDecoder
 	rbuf    []u8
@@ -184,12 +185,28 @@ pub fn (mut c H2MuxConn) release() {
 fn (mut c H2MuxConn) drop_ref() {
 	c.smu.lock()
 	c.refs--
-	do_teardown := c.refs <= 0 && c.closed
+	last_ref := c.refs <= 0
 	c.smu.unlock()
-	if do_teardown {
-		if c.close_transport != unsafe { nil } {
-			c.close_transport()
-		}
+	if last_ref {
+		// Tear the transport down even if the reader has not exited yet: closing
+		// it interrupts the reader's blocking read so it can exit. Otherwise an
+		// idle connection that is shut down and released leaks the reader thread
+		// and the socket, because the reader only sets `closed` after a read
+		// error/timeout, which never arrives on a silent transport.
+		c.teardown_transport()
+	}
+}
+
+// teardown_transport runs the close_transport callback exactly once. Calling it
+// while the reader is still blocked in transport.read() interrupts that read, so
+// the reader observes the closed transport and exits via fail_conn.
+fn (mut c H2MuxConn) teardown_transport() {
+	c.smu.lock()
+	already := c.transport_torn_down
+	c.transport_torn_down = true
+	c.smu.unlock()
+	if !already && c.close_transport != unsafe { nil } {
+		c.close_transport()
 	}
 }
 
@@ -746,7 +763,11 @@ fn (mut c H2MuxConn) dispatch_frame(frame H2Frame) ! {
 		H2RstStreamFrame {
 			mut s := c.lookup_stream(frame.stream_id)
 			if s != unsafe { nil } {
-				s.fail('stream reset by peer (${h2_error_code_name(frame.error_code)})', false)
+				// REFUSED_STREAM means the server did not process the request
+				// (RFC 7540 8.1.4), so it is safe to replay on a fresh connection
+				// even for a non-idempotent method; any other reset code is not.
+				retryable := frame.error_code == u32(H2ErrorCode.refused_stream)
+				s.fail('stream reset by peer (${h2_error_code_name(frame.error_code)})', retryable)
 				c.wake_send(mut s)
 			}
 		}
@@ -937,9 +958,10 @@ fn (mut c H2MuxConn) lookup_stream(stream_id u32) &H2MuxStream {
 }
 
 // fail_conn marks the connection dead, fails every in-flight stream, wakes
-// all blocked senders, and lets the reader exit. Only the reader calls this,
-// so `closed == true` also guarantees the reader is gone — which is what
-// makes transport teardown in drop_ref safe.
+// all blocked senders, and lets the reader exit. Only the reader calls this, so
+// `closed == true` also guarantees the reader is gone. Teardown is routed
+// through teardown_transport, which runs close_transport exactly once, so this
+// path and drop_ref's last-reference teardown can never double-close.
 fn (mut c H2MuxConn) fail_conn(msg string) {
 	c.smu.lock()
 	if c.closed {
@@ -965,7 +987,7 @@ fn (mut c H2MuxConn) fail_conn(msg string) {
 	c.fmu_dead = true
 	c.fcv.broadcast()
 	c.fmu.unlock()
-	if pending_teardown && c.close_transport != unsafe { nil } {
-		c.close_transport()
+	if pending_teardown {
+		c.teardown_transport()
 	}
 }
