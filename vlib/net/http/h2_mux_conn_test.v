@@ -534,6 +534,218 @@ fn test_mux_refused_stream_reset_is_retryable() {
 	cend.close_both()
 }
 
+// Padding in a DATA frame counts toward flow control (RFC 7540 6.9.1) even
+// though it is never delivered to the app. The client must credit the full
+// received payload (pad-length byte + data + padding) back via WINDOW_UPDATE,
+// or the connection receive window leaks and eventually stalls.
+fn test_mux_padded_data_credits_full_flow_control() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	data := 'hi'.bytes()
+	pad := []u8{len: 100}
+	payload_len := 1 + data.len + pad.len // pad-length byte + data + padding
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{ authority: 't', path: '/p' }, mut out)
+	peer_thread := spawn fn [data, pad, payload_len] (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		peer.respond_headers(ids[0], false) or {
+			peer.fail('respond: ${err.msg()}')
+			return
+		}
+		mut payload := [u8(pad.len)]
+		payload << data
+		payload << pad
+		raw := h2_frame_bytes(h2_frame_data, h2_flag_padded | h2_flag_end_stream, ids[0], payload)
+		peer.end.write(raw) or {
+			peer.fail('data: ${err.msg()}')
+			return
+		}
+		// Pump until the connection-level WINDOW_UPDATEs sum to the full padded
+		// payload; with the fix this terminates (data + padding both credited).
+		for {
+			peer.mu.lock()
+			got := peer.conn_window_updates
+			peer.mu.unlock()
+			if got >= u64(payload_len) {
+				break
+			}
+			peer.pump() or {
+				peer.fail('pump: ${err.msg()}')
+				return
+			}
+		}
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	assert out.statuses['/p'] == 200
+	assert out.bodies['/p'] == 'hi'
+	assert peer.conn_window_updates == u64(payload_len), 'padding must count toward connection flow control'
+	cend.close_both()
+}
+
+// A received PUSH_PROMISE must fail the connection: we advertise ENABLE_PUSH=0,
+// so it is a PROTOCOL_ERROR (RFC 7540 6.6 / 8.2). The peer also sends a valid
+// response — with the guard the request fails; without it the push is ignored
+// and the request would wrongly succeed.
+fn test_mux_push_promise_fails_connection() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{ authority: 't', path: '/pp' }, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		block := peer.encoder.encode([H2HeaderField{':status', '200'}])
+		peer.write_frame(H2PushPromiseFrame{
+			stream_id:          ids[0]
+			promised_stream_id: 2
+			fragment:           block
+			end_headers:        true
+		}) or {
+			peer.fail('push: ${err.msg()}')
+			return
+		}
+		peer.respond_headers(ids[0], true) or {}
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	assert out.statuses['/pp'] or { 0 } != 200, 'a PUSH_PROMISE must fail the connection, not be ignored'
+	assert out.errs['/pp'] or { '' } != ''
+	cend.close_both()
+}
+
+// An invalid SETTINGS_ENABLE_PUSH value (not 0/1) must fail the connection
+// (RFC 7540 6.5.2). The peer sends ENABLE_PUSH=2 then a valid response; the
+// request must fail rather than succeed.
+fn test_mux_invalid_enable_push_fails_connection() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{ authority: 't', path: '/ep' }, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		peer.write_frame(H2SettingsFrame{
+			settings: [
+				H2Setting{
+					id:    h2_settings_enable_push
+					value: 2
+				},
+			]
+		}) or {
+			peer.fail('settings: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		peer.respond_headers(ids[0], true) or {}
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	assert out.statuses['/ep'] or { 0 } != 200, 'an invalid ENABLE_PUSH must fail the connection'
+	assert out.errs['/ep'] or { '' } != ''
+	cend.close_both()
+}
+
+// A stream-level WINDOW_UPDATE with a zero increment is a stream error (RFC
+// 7540 6.9): that one stream must be RST and failed, but the connection and
+// other concurrent streams must survive.
+fn test_mux_zero_window_update_resets_only_that_stream() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	mut wa := []thread{}
+	wa << spawn mux_worker(mut conn, H2ClientRequest{ authority: 't', path: '/a' }, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(2) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		mut a := u32(0)
+		mut b := u32(0)
+		peer.mu.lock()
+		for id in ids {
+			if peer.paths[id] or { '' } == '/a' {
+				a = id
+			} else {
+				b = id
+			}
+		}
+		peer.mu.unlock()
+		// Illegal zero-increment WINDOW_UPDATE on stream A: A must be reset.
+		peer.write_frame(H2WindowUpdateFrame{
+			stream_id:             a
+			window_size_increment: 0
+		}) or {
+			peer.fail('wu: ${err.msg()}')
+			return
+		}
+		// B is served to completion; the connection must remain usable.
+		peer.respond_headers(b, false) or {
+			peer.fail('respond b: ${err.msg()}')
+			return
+		}
+		peer.write_frame(H2DataFrame{
+			stream_id:  b
+			data:       'b-ok'.bytes()
+			end_stream: true
+		}) or {
+			peer.fail('data b: ${err.msg()}')
+			return
+		}
+	}(mut peer)
+	time.sleep(50 * time.millisecond)
+	mut wb := []thread{}
+	wb << spawn mux_worker(mut conn, H2ClientRequest{ authority: 't', path: '/b' }, mut out)
+	wa.wait()
+	wb.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	assert out.errs['/a'] or { '' } != '', 'the zero-increment stream must fail'
+	assert out.statuses['/b'] or { 0 } == 200, 'the other stream and the connection must survive'
+	assert out.bodies['/b'] == 'b-ok'
+	cend.close_both()
+}
+
 // GOAWAY with last_stream_id between two active streams: the lower id
 // completes, the higher fails with a retryable error, and new requests are
 // refused (also retryable).

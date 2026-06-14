@@ -58,8 +58,12 @@ pub:
 pub struct H2DataFrame {
 pub:
 	stream_id  u32
-	data       []u8
+	data       []u8 // payload with any padding stripped
 	end_stream bool
+	// flow_size is the full received payload length (pad-length byte + data +
+	// padding) that counts toward flow control (RFC 7540 6.9.1). For outgoing
+	// frames it is left 0 and unused; the parser sets it for received frames.
+	flow_size int
 }
 
 pub struct H2HeadersFrame {
@@ -247,6 +251,7 @@ pub fn h2_parse_frame(header H2FrameHeader, payload []u8) !H2Frame {
 				stream_id:  header.stream_id
 				data:       body.clone()
 				end_stream: header.flags & h2_flag_end_stream != 0
+				flow_size:  payload.len
 			}
 		}
 		h2_frame_headers {
