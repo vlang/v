@@ -1003,7 +1003,7 @@ fn vgc_drain_mark_work_n(budget int) int {
 //                   a noscan-misclassification candidate. (Conservative caveat:
 //                   noscan bytes are not real pointers, so a value that merely
 //                   *looks* like a heap pointer can false-positive; confirm via
-//                   the size pair, which names the CX type.)
+//                   the object's size class / recorded type.)
 fn vgc_verify_mark_closure() {
 	mut violations := 0
 	mut scan_viol := 0

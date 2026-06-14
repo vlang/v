@@ -1,12 +1,12 @@
 module builtin
 
-// vgc_residual4_selftest — deterministic, CX-free white-box self-check for the two
-// load-bearing fixes to the concurrent-HTTP "residual #4" (the vgc allocator returning
-// NULL under multi-reactor churn -> `&T{}` null -> caller null-deref). It lives inside
-// module builtin so it can reach the private span allocator + the mcache-protection
+// vgc_residual4_selftest — deterministic, self-contained white-box self-check for the
+// two load-bearing fixes to the multi-threaded-churn allocator bug (vgc_malloc returning
+// NULL under heavy concurrent alloc/free -> `&T{}` null -> caller null-deref). It lives
+// inside module builtin so it can reach the private span allocator + the mcache-protection
 // pass; it is driven by bench/parallel-alloc/vgc_residual4_test.v (a module-main test —
 // an in-builtin _test.v that references vgc symbols trips a `v test` double-compile of
-// builtin). NOT @[markused]: cx never calls it, so -skip-unused prunes it from
+// builtin). NOT @[markused]: no ordinary program calls it, so -skip-unused prunes it from
 // production binaries; the test runner references it so it survives there. Only compiled
 // under -d vgc / -gc e (the `_d_vgc` filename suffix). Returns 0 on success, else the id
 // of the first failed check.
