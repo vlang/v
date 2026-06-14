@@ -77,12 +77,22 @@ fn (mut c H1PooledConn) exchange(req &Request, raw string) !(Response, bool) {
 // Transport holds the connection pools and reuse policy for HTTP requests. It
 // is safe for concurrent use; fetch()/Request.do() share one process-global
 // instance (see default_transport).
+//
+// Note: idle_timeout is enforced lazily on checkout of the same pool key; there
+// is no background reaper, so a connection to an origin that is never revisited
+// is reclaimed by the global max_idle_conns cap (or close_idle_connections())
+// rather than on a timer. A time-based reaper is a planned follow-up.
 @[heap]
 pub struct Transport {
 pub mut:
 	// max_idle_conns_per_host caps the idle keep-alive connections retained per
 	// pool key (origin + TLS configuration).
 	max_idle_conns_per_host int = 4
+	// max_idle_conns caps the total idle keep-alive connections kept across all
+	// pool keys, bounding file-descriptor use when many distinct origins are
+	// fetched. The least-recently-used idle connection is evicted on overflow.
+	// 0 disables the global cap.
+	max_idle_conns int = 100
 	// idle_timeout is how long an idle connection may sit in the pool before it
 	// is discarded instead of reused.
 	idle_timeout time.Duration = 90 * time.second
@@ -160,7 +170,9 @@ fn response_allows_reuse(resp &Response) bool {
 		// not tracked, so never reuse.
 		return false
 	}
-	conn_tokens := (resp.header.get(.connection) or { '' }).to_lower()
+	// A server may split Connection across repeated header lines; get() returns
+	// only the first, so join all values before scanning for the close token.
+	conn_tokens := resp.header.values(.connection).join(',').to_lower()
 	if conn_tokens.contains('close') {
 		return false
 	}
@@ -200,19 +212,68 @@ fn (mut t Transport) checkout(key string) &H1PooledConn {
 }
 
 // checkin returns a healthy connection to the idle pool, or closes it when the
-// pool for its key is already at capacity.
+// per-host pool is already at capacity. Adding it may push the total idle count
+// over max_idle_conns, in which case the least-recently-used idle connection
+// across all pools is evicted and closed.
 fn (mut t Transport) checkin(mut conn H1PooledConn) {
 	conn.idle_since = time.now()
+	mut evicted := &H1PooledConn(unsafe { nil })
 	t.mu.lock()
 	mut list := t.h1_idle[conn.key] or { []&H1PooledConn{} }
-	if list.len < t.max_idle_conns_per_host {
-		list << conn
-		t.h1_idle[conn.key] = list
+	if list.len >= t.max_idle_conns_per_host {
 		t.mu.unlock()
+		conn.close_conn()
 		return
 	}
+	list << conn
+	t.h1_idle[conn.key] = list
+	if t.max_idle_conns > 0 && t.total_idle_locked() > t.max_idle_conns {
+		evicted = t.evict_oldest_locked()
+	}
 	t.mu.unlock()
-	conn.close_conn()
+	if evicted != unsafe { nil } {
+		evicted.close_conn()
+	}
+}
+
+// total_idle_locked sums the idle connections across all pool keys. The caller
+// must hold t.mu.
+fn (t &Transport) total_idle_locked() int {
+	mut n := 0
+	for _, list in t.h1_idle {
+		n += list.len
+	}
+	return n
+}
+
+// evict_oldest_locked removes and returns the least-recently-used idle
+// connection across all pool keys (nil if the pool is empty), pruning an
+// emptied key. The caller must hold t.mu and close the returned connection.
+fn (mut t Transport) evict_oldest_locked() &H1PooledConn {
+	mut oldest_key := ''
+	mut oldest_idx := -1
+	mut oldest_since := time.now()
+	for k, list in t.h1_idle {
+		for i, c in list {
+			if oldest_idx == -1 || c.idle_since < oldest_since {
+				oldest_key = k
+				oldest_idx = i
+				oldest_since = c.idle_since
+			}
+		}
+	}
+	if oldest_idx == -1 {
+		return &H1PooledConn(unsafe { nil })
+	}
+	mut list := t.h1_idle[oldest_key] or { return &H1PooledConn(unsafe { nil }) }
+	victim := list[oldest_idx]
+	list.delete(oldest_idx)
+	if list.len == 0 {
+		t.h1_idle.delete(oldest_key)
+	} else {
+		t.h1_idle[oldest_key] = list
+	}
+	return victim
 }
 
 // maybe_checkin pools the connection when both the read framing and the

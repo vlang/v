@@ -25,6 +25,11 @@ mut:
 	// close_after_each: close after each response WITHOUT advertising it — the
 	// classic stale-pooled-connection scenario.
 	close_after_each bool
+	// split_connection_close: emit the close token in a SECOND, repeated
+	// `Connection` header (`keep-alive` first, then `close`) while keeping the
+	// socket open — a server that says "do not reuse" via a split field. The
+	// client must honor it and not pool, even though the connection stays usable.
+	split_connection_close bool
 	// drop_on_post: after reading a POST request head, close the connection
 	// without responding — a reused-connection failure after the bytes were
 	// written, for a non-idempotent method.
@@ -91,6 +96,9 @@ fn ka_srv_serve_conn(mut s KaSrv, mut conn net.TcpConn) {
 		mut resp := 'HTTP/1.1 200 OK\r\nContent-Length: ${s.body.len}\r\n'
 		if s.connection_close {
 			resp += 'Connection: close\r\n'
+		}
+		if s.split_connection_close {
+			resp += 'Connection: keep-alive\r\nConnection: close\r\n'
 		}
 		resp += '\r\n' + s.body
 		conn.write(resp.bytes()) or { return }
@@ -166,6 +174,55 @@ fn test_h1_no_reuse_on_connection_close_response() {
 	// `Connection: close` responses must not be pooled.
 	assert srv.accept_count() == 2
 	stop_ka_srv(mut listener, th)
+}
+
+// A close token carried in a repeated `Connection` header (after a keep-alive
+// one) must still be honored: parse_headers stores repeats separately and get()
+// returns only the first, so response_allows_reuse joins all values. The server
+// keeps the socket open, so a wrongly-pooled connection would be reused (1
+// accept); honoring the close dials fresh each time (2 accepts).
+fn test_h1_no_reuse_on_split_connection_close() {
+	mut srv := &KaSrv{
+		split_connection_close: true
+	}
+	port, mut listener, th := start_ka_srv(mut srv) or {
+		assert false, 'server: ${err}'
+		return
+	}
+	for i in 0 .. 2 {
+		resp := fetch(url: 'http://127.0.0.1:${port}/r${i}') or {
+			assert false, 'fetch ${i}: ${err}'
+			return
+		}
+		assert resp.status_code == 200
+	}
+	assert srv.accept_count() == 2
+	stop_ka_srv(mut listener, th)
+}
+
+// The total idle pool is bounded by max_idle_conns across all pool keys, not
+// just per host: checking in more distinct-keyed connections than the cap
+// evicts the least-recently-used ones (here k0, k1) and keeps the newest.
+fn test_transport_global_idle_cap() {
+	mut t := new_transport()
+	t.max_idle_conns = 3
+	t.max_idle_conns_per_host = 10 // keep the per-host cap out of the way
+	for i in 0 .. 5 {
+		mut c := &H1PooledConn{
+			key: 'k${i}'
+		}
+		t.checkin(mut c)
+	}
+	mut total := 0
+	for _, list in t.h1_idle {
+		total += list.len
+	}
+	assert total == 3, 'global idle cap not enforced: ${total}'
+	assert 'k0' !in t.h1_idle
+	assert 'k1' !in t.h1_idle
+	assert 'k2' in t.h1_idle
+	assert 'k3' in t.h1_idle
+	assert 'k4' in t.h1_idle
 }
 
 fn test_h1_stale_pooled_connection_is_retried() {
