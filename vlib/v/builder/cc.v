@@ -340,6 +340,9 @@ fn normalized_linker_library_file_name(lib_name string) string {
 
 fn normalized_missing_library_name(raw_name string, allow_plain_name bool) string {
 	mut lib_name := raw_name.trim_space().trim('`\'"')
+	if lib_name.len > 1 && lib_name[1] == `:` {
+		return ''
+	}
 	for delimiter in ['`', "'", '"', ' ', ':'] {
 		lib_name = lib_name.all_before(delimiter)
 	}
@@ -352,6 +355,10 @@ fn normalized_missing_library_name(raw_name string, allow_plain_name bool) strin
 		return normalized
 	}
 	if allow_plain_name {
+		if lib_name.contains('/') || lib_name.contains('\\') || lib_name.contains('.')
+			|| lib_name.starts_with('-') {
+			return ''
+		}
 		return lib_name
 	}
 	return ''
@@ -374,7 +381,7 @@ fn c_error_missing_library_name(c_output string) string {
 			}
 		}
 		if start := lower_line.index('cannot find ') {
-			lib_name := normalized_missing_library_name(line[start + 'cannot find '.len..], false)
+			lib_name := normalized_missing_library_name(line[start + 'cannot find '.len..], true)
 			if lib_name != '' {
 				return lib_name
 			}

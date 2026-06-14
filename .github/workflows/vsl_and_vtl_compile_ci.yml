@@ -84,6 +84,7 @@ jobs:
     timeout-minutes: 25
     env:
       VFLAGS: -no-parallel
+      VJOBS: 1
       # Fixes complaints about $TERM not being set when running the vtl test script
       # (a warning on Linux, but an error on macOS).
       TERM: xterm
