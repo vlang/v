@@ -212,6 +212,10 @@ fn vgc_gc_start() {
 			C.vgc_say(0x4007, u64(vgc_rootfind_count)) // ROOT(find) total this cycle
 		}
 	}
+	// Protect mcache-RESIDENT spans from reclamation this cycle (residual #4 fix — see
+	// vgc_protect_cached_spans). MUST run under STW, after mark, before sweep, while
+	// gc_cycle still holds THIS cycle's value (it is bumped only after the sweep).
+	vgc_protect_cached_spans()
 	C.vgc_trace(9, self_idx, u64(vgc_heap.gc_cycle), 0) // SWEEP0
 	vgc_do_sweep()
 	C.vgc_trace(10, self_idx, u64(vgc_heap.gc_cycle), 0) // SWEEP1
@@ -492,6 +496,41 @@ fn vgc_clear_mark_bits() {
 // Translated from Go's markroot() / scanblock() - but using conservative scanning
 // since V compiles to C and we don't have precise type info at runtime.
 fn C.vgc_data_segments(los &usize, his &usize, max_ranges int) int
+
+// vgc_protect_cached_spans stamps every mcache-RESIDENT span's sweep_gen with the
+// current gc_cycle so THIS cycle's sweep skips it (residual #4 fix). A span cached in
+// a thread's mcache (caches[i].alloc[sc], on_central==0) is referenced only by that
+// cache slot AND, for a thread suspended mid-allocation, by a local register/stack
+// pointer. A span DESCRIPTOR is vgc_os_alloc'd OUTSIDE the GC arena, so the
+// conservative root scan never protects it. An empty (alloc_count==0) cached span
+// would otherwise be reclaimed by vgc_sweep_span — the on_central==0 path skips the
+// central unlink and calls vgc_put_free_span, which resets nelems/elem_size=0 and pools
+// it on free_spans — while it is still in the mcache / held in a suspended owner's
+// local. The owner resumes and reads a zeroed-or-torn span (nelems=0) ->
+// vgc_span_alloc_obj nil -> vgc_malloc NULL -> caller null-deref (the residual
+// concurrent-HTTP segv; register/niltrace-confirmed: nelems=0, in_use=1, on_central=0).
+// vgc_fixup_caches nulls the recycled CACHE SLOT post-sweep but cannot fix a local
+// pointer held by a thread frozen inside vgc_malloc. Reusing the existing in-flight
+// sweep_gen guard is the fix. Excludes exited threads (registered=false) so their spans
+// still reclaim, and a span evicted to central (on_central!=0) is no longer reachable
+// here so it reclaims next cycle. MUST run under STW, after mark, before sweep, while
+// gc_cycle still holds this cycle's value.
+fn vgc_protect_cached_spans() {
+	for i in 0 .. vgc_heap.ncaches {
+		c := unsafe { &vgc_heap.caches[i] }
+		if !c.registered {
+			continue
+		}
+		for sc in 0 .. 136 {
+			s := unsafe { c.alloc[sc] }
+			if s != unsafe { nil } {
+				unsafe {
+					s.sweep_gen = u32(vgc_heap.gc_cycle)
+				}
+			}
+		}
+	}
+}
 
 // vgc_fixup_caches clears every per-thread mcache slot whose cached span was
 // recycled by THIS cycle's sweep, plus the tiny-allocator cursor. The collector

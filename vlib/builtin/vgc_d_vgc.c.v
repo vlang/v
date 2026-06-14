@@ -869,7 +869,16 @@ fn vgc_span_alloc_obj(mut span VGC_Span) voidptr {
 				byte_idx++
 				continue
 			}
-			start_bit := if byte_idx == start_byte { start_idx & 7 } else { u32(0) }
+			// start_idx is only a search HINT: pass 0 begins at the start byte's
+			// start_bit to skip already-allocated low slots. Pass 1 is the wrap-around
+			// that re-covers [0, start_byte]; it MUST scan the start byte from bit 0,
+			// else bits [0, start_bit) of the start byte are scanned in NEITHER pass.
+			// A span whose free_index points past a still-free low slot (e.g. a stale
+			// free_index vs a concurrent cross-thread free) would then report "full"
+			// with room left -> vgc_span_alloc_obj nil -> vgc_malloc nil -> &T{} NULL
+			// -> caller null-deref. Single-byte spans (small nelems) hit this whenever
+			// free_index == nelems. The `pass == 0 &&` guard closes it.
+			start_bit := if pass == 0 && byte_idx == start_byte { start_idx & 7 } else { u32(0) }
 			for bit := start_bit; bit < u32(8); bit++ {
 				i := bit_base + bit
 				if i >= span.nelems {
