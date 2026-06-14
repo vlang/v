@@ -100,6 +100,16 @@ static VGC_TLS int _vgc_cache_idx = -1;
 static inline int vgc_get_cache_idx(void) { return _vgc_cache_idx; }
 static inline void vgc_set_cache_idx(int idx) { _vgc_cache_idx = idx; }
 
+// DEBUG/BASELINE (-d vgc_coarse_alloc): a per-thread re-entrancy guard so the
+// coarse allocator lock is taken only at the OUTERMOST malloc/free/realloc entry
+// (realloc nests malloc+free). vgc_alloc_try_enter returns 1 iff this thread is
+// not already inside the locked region (caller must then lock); vgc_alloc_exit
+// clears it. Lets us serialize ALL mutator allocation to confirm a residual
+// crash is an allocator data race + provide a known-correct baseline.
+static __thread int _vgc_alloc_held = 0;
+static inline int vgc_alloc_try_enter(void) { if (_vgc_alloc_held) return 0; _vgc_alloc_held = 1; return 1; }
+static inline void vgc_alloc_exit(void) { _vgc_alloc_held = 0; }
+
 // ============================================================
 // Atomic operations
 // ============================================================
@@ -814,6 +824,128 @@ static void vgc__wh(uint64_t v) {
 static inline void vgc_say(uint64_t tag, uint64_t v) { // loud one-line stderr note
     vgc__ws("[vgc tag="); vgc__wh(tag); vgc__ws(" v="); vgc__wh(v); vgc__ws("]\n");
 }
+
+// Mark-closure verifier report (DEBUG, -d vgc_verify only): a MARKED (live)
+// object holds a pointer to an ALLOCATED-but-UNMARKED object that sweep is about
+// to reclaim — i.e. the mark did not reach closure. `kind`: 0 = referrer is a
+// SCAN span (a definite mark-fixpoint / work-queue-drop bug), 1 = referrer is a
+// NOSCAN span (candidate noscan misclassification; possible conservative false
+// positive since noscan bytes are not real pointers — confirm by size). Sizes
+// name the CX type. Async-signal-safe / non-allocating (no GC re-entry).
+static inline void vgc_verify_report(uint64_t kind, uint64_t referrer_addr, uint64_t referrer_size,
+                                     uint64_t off, uint64_t referent_addr, uint64_t referent_size) {
+    vgc__ws("[vgc-verify ");
+    vgc__ws(kind ? "NOSCAN" : "SCAN  ");
+    vgc__ws(" referrer="); vgc__wh(referrer_addr);
+    vgc__ws(" rsz="); vgc__wh(referrer_size);
+    vgc__ws(" off="); vgc__wh(off);
+    vgc__ws(" -> referent="); vgc__wh(referent_addr);
+    vgc__ws(" tsz="); vgc__wh(referent_size);
+    // Dump the referrer's words (the world is stopped — safe to read) so the
+    // struct layout can be matched to a V/CX type by eye. Capped at 8 words.
+    vgc__ws(" words=[");
+    uint64_t nw = referrer_size / 8; if (nw > 8) nw = 8;
+    for (uint64_t i = 0; i < nw; i++) {
+        if (i) vgc__ws(",");
+        vgc__wh(((uint64_t*)(uintptr_t)referrer_addr)[i]);
+    }
+    vgc__ws("]]\n");
+}
+
+// Root-finder report: a root (pointer to an allocated-but-unmarked object) was
+// found outside the GC heap. `in_stack`: the holding address falls inside a
+// registered thread's [stack_lo,stack_hi] (the mark's stack scan should have
+// covered it — a stack-range/scan bug) vs EXTERNAL (libc heap / anon mmap /
+// TLS / a data segment vgc_data_segments misses — memory the GC never scans).
+static inline void vgc_rootfind_report(uint64_t referrer, int in_stack, uint64_t target, uint64_t tsz, uint64_t kind) {
+    vgc__ws("[vgc-rootfind ");
+    vgc__ws(in_stack ? "STACKMISS" : "EXTERNAL ");
+    const char* kn = kind == 1 ? "[stack]" : kind == 2 ? "[heap] " : kind == 3 ? "file   " : "anon   ";
+    vgc__ws(" region="); vgc__ws(kn);
+    vgc__ws(" root@="); vgc__wh(referrer);
+    vgc__ws(" -> target="); vgc__wh(target);
+    vgc__ws(" tsz="); vgc__wh(tsz);
+    vgc__ws(" twords=[");
+    uint64_t nw = tsz / 8; if (nw > 6) nw = 6;
+    for (uint64_t i = 0; i < nw; i++) { if (i) vgc__ws(","); vgc__wh(((uint64_t*)(uintptr_t)target)[i]); }
+    vgc__ws("]]\n");
+}
+
+// ============================================================
+// Root-finder (DEBUG, -d vgc_verify, Linux) — locate the MISSED root.
+// ============================================================
+// When the mark-closure verifier is clean yet a live object is still being
+// swept, the object is reachable only from a root the collector's root scan
+// misses. This enumerates every writable region in /proc/self/maps and (via the
+// V callback vgc_rootfind_region) scans it for pointers to allocated-but-
+// UNMARKED GC objects, telling us WHERE the missed root physically lives — a
+// thread stack the mark's range didn't cover, the libc heap, or an anon mmap the
+// GC never scans. Single read() into a static buffer: no malloc (STW-suspended
+// threads may hold the libc malloc lock). Runs in-STW, so it cannot shift the
+// mutator/collector timing the residual depends on.
+#if defined(__linux__)
+  #include <fcntl.h>
+  extern void vgc_rootfind_region(uintptr_t lo, uintptr_t hi, int kind); // V callback; kind 0=anon 1=[stack] 2=[heap] 3=file
+  static inline uintptr_t vgc__hex(const char* p, const char** end) {
+      uintptr_t v = 0;
+      while (1) {
+          char c = *p; int d;
+          if (c >= '0' && c <= '9') d = c - '0';
+          else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
+          else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
+          else break;
+          v = (v << 4) | (uintptr_t)d; p++;
+      }
+      *end = p; return v;
+  }
+  static inline void vgc_rootfind_enumerate(uintptr_t arena_lo, uintptr_t arena_hi) {
+      int fd = open("/proc/self/maps", O_RDONLY);
+      if (fd < 0) return;
+      static char buf[1 << 20];
+      ssize_t n = 0, total = 0;
+      while (total < (ssize_t)sizeof(buf) - 1 && (n = read(fd, buf + total, sizeof(buf) - 1 - total)) > 0) total += n;
+      close(fd);
+      buf[total > 0 ? total : 0] = 0;
+      const char* p = buf;
+      while (*p) {
+          const char* e;
+          uintptr_t lo = vgc__hex(p, &e);
+          if (*e != '-') { while (*p && *p != '\n') p++; if (*p) p++; continue; }
+          e++;
+          uintptr_t hi = vgc__hex(e, &e);
+          // perms: " rwxp"
+          const char* perms = e + 1; // skip space
+          int readable = perms[0] == 'r', writable = perms[1] == 'w';
+          // classify the line's pathname (last field) before advancing
+          const char* ln = p;                       // start of this line
+          const char* nl = ln; while (*nl && *nl != '\n') nl++; // end of line
+          int kind = 0;                              // anon
+          // find pathname: last token; [stack]/[heap] markers, or a '/'-path = file
+          for (const char* q = ln; q < nl; q++) {
+              if (q[0] == '[' && q[1] == 's' && q[2] == 't') { kind = 1; break; } // [stack]
+              if (q[0] == '[' && q[1] == 'h' && q[2] == 'e') { kind = 2; break; } // [heap]
+              if (*q == '/') { kind = 3; break; }    // file-backed
+          }
+          // advance to next line
+          p = (*nl) ? nl + 1 : nl;
+          if (!readable || !writable || hi <= lo) continue;
+          // skip the GC arena (its objects are the transitive case, already checked)
+          if (lo >= arena_lo && hi <= arena_hi) continue;
+          // Cost control: a root to a live structure lives in a SMALL holder — the
+          // exe's .data (file-backed) / .bss (small anon) / libc [heap], or TLS.
+          // Skip [stack] (kind 1; STACKMISS already proven empty by the live-range
+          // classifier) and skip any anon region > 2 MiB (thread stacks ~8 MiB,
+          // arena chunks huge) so the scan stays cheap enough to run every cycle
+          // under churn without starving the mutators. .bss is a small anon region,
+          // so it survives this cap.
+          if (kind == 1) continue;
+          if (kind == 0 && (hi - lo) > (uintptr_t)2 * 1024 * 1024) continue;
+          vgc_rootfind_region(lo, hi, kind);
+      }
+  }
+#else
+  static inline void vgc_rootfind_enumerate(uintptr_t arena_lo, uintptr_t arena_hi) { (void)arena_lo; (void)arena_hi; }
+#endif
 
 #ifdef VGC_DIAG
 // ============================================================

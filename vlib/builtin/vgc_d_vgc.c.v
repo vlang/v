@@ -13,6 +13,8 @@ fn C.vgc_get_cache_idx() int
 fn C.vgc_set_cache_idx(idx int)
 fn C.vgc_atomic_load_u32(ptr &u32) u32
 fn C.vgc_atomic_store_u32(ptr &u32, val u32)
+fn C.vgc_alloc_try_enter() int // coarse-alloc re-entrancy guard (-d vgc_coarse_alloc)
+fn C.vgc_alloc_exit()
 fn C.vgc_atomic_load_u64(ptr &u64) u64
 fn C.vgc_atomic_store_u64(ptr &u64, val u64)
 fn C.vgc_atomic_add_u64(ptr &u64, val u64) u64
@@ -52,6 +54,9 @@ fn C.vgc_num_cpus() int
 fn C.vgc_trace(ev int, slot int, a u64, b u64)
 fn C.vgc_trace_init()
 fn C.vgc_say(tag u64, v u64) // loud one-line stderr note (used by the span-registry abort)
+fn C.vgc_verify_report(kind u64, referrer_addr u64, referrer_size u64, off u64, referent_addr u64, referent_size u64) // mark-closure verifier (-d vgc_verify)
+fn C.vgc_rootfind_enumerate(arena_lo u64, arena_hi u64) // /proc/self/maps root-finder (-d vgc_verify)
+fn C.vgc_rootfind_report(referrer u64, in_stack int, target u64, tsz u64, kind u64) // root-finder hit reporter
 fn C.abort()
 
 fn C.vgc_addr_map_register(base usize, size usize, arena_idx int)
@@ -261,6 +266,9 @@ mut:
 // global inside `_vinit()` regardless of the source initializer, so vgc_init()
 // MUST run AFTER _vinit() (cmain.v) or its gc_enabled/next_gc setup is wiped.
 __global vgc_heap = VGC_Heap{}
+// Coarse allocator lock (-d vgc_coarse_alloc only): serializes all mutator
+// malloc/free/realloc to confirm/baseline the residual allocator data race.
+__global vgc_alloc_lock = u32(0)
 // Fast bounds check for pointer validation
 __global vgc_arena_lo = usize(0)
 __global vgc_arena_hi = usize(0)
@@ -644,6 +652,7 @@ fn vgc_span_alloc(npages u32) &VGC_Span {
 	// Try to find space in existing arenas
 	mut base := usize(0)
 	mut arena_idx := -1
+	mut new_arena := false
 	for i in 0 .. vgc_heap.narenas {
 		a := unsafe { &vgc_heap.arenas[i] }
 		if a.used + nbytes <= a.size {
@@ -674,7 +683,12 @@ fn vgc_span_alloc(npages u32) &VGC_Span {
 			vgc_heap.arenas[arena_idx].size = asize
 			vgc_heap.arenas[arena_idx].used = nbytes
 		}
-		vgc_heap.narenas = arena_idx + 1
+		// narenas is NOT bumped here: it is the publication point for this whole
+		// arena (base/size/used + the page_span map filled below) and must be
+		// stored with RELEASE only after all of that is written — see the atomic
+		// store just before the unlock. Bumping it here (a plain write, before the
+		// page map existed) is the data race vgc_find_span hit.
+		new_arena = true
 		base = usize(mem)
 		// Register in address map for O(1) lookup
 		C.vgc_addr_map_register(usize(mem), asize, arena_idx)
@@ -750,6 +764,24 @@ fn vgc_span_alloc(npages u32) &VGC_Span {
 		vgc_heap.allspans[vgc_heap.nspans] = span
 	}
 	vgc_heap.nspans++
+
+	// Publish a newly-added arena to the LOCK-FREE readers (vgc_find_span /
+	// vgc_get_obj_size) with a RELEASE store, as the LAST write — after arenas[idx]
+	// (base/size/used) AND its page_span map are fully written. Those readers load
+	// narenas with ACQUIRE, so observing the bumped count guarantees they also
+	// observe the fully-initialized arena + page map. Previously narenas was a plain
+	// write bumped before the page map existed, so a concurrent lock-free reader
+	// could see narenas grow and then read a stale base/size or a nil page_span ->
+	// wrong/missing span -> heap corruption (TSan: data race on global vgc_heap,
+	// vgc_find_span read vs vgc_span_alloc write; reproduced via concurrent HTTP
+	// teardown churn, crashed in the request path). Doing it last also makes every
+	// early-return above leave narenas consistent (the half-built arena is simply
+	// never published).
+	if new_arena {
+		unsafe {
+			C.vgc_atomic_store_u32(&u32(voidptr(&vgc_heap.narenas)), u32(arena_idx + 1))
+		}
+	}
 
 	C.vgc_mutex_unlock(&vgc_heap.lock)
 	return span
@@ -997,6 +1029,18 @@ fn vgc_malloc_typed(n usize, ptrmap u64, ptr_words u8) voidptr {
 }
 
 fn vgc_malloc_typed_opts(n usize, ptrmap u64, ptr_words u8, zero_fill bool) voidptr {
+	$if vgc_coarse_alloc ? {
+		relock := C.vgc_alloc_try_enter() != 0
+		if relock {
+			C.vgc_mutex_lock(&vgc_alloc_lock)
+		}
+		defer {
+			if relock {
+				C.vgc_mutex_unlock(&vgc_alloc_lock)
+				C.vgc_alloc_exit()
+			}
+		}
+	}
 	if n == 0 {
 		return unsafe { nil }
 	}
@@ -1212,6 +1256,18 @@ fn vgc_malloc_noscan(n usize) voidptr {
 }
 
 fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
+	$if vgc_coarse_alloc ? {
+		relock := C.vgc_alloc_try_enter() != 0
+		if relock {
+			C.vgc_mutex_lock(&vgc_alloc_lock)
+		}
+		defer {
+			if relock {
+				C.vgc_mutex_unlock(&vgc_alloc_lock)
+				C.vgc_alloc_exit()
+			}
+		}
+	}
 	if n == 0 {
 		return unsafe { nil }
 	}
@@ -1262,6 +1318,10 @@ fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
 			if ptr != unsafe { nil } {
 				if zero_fill {
 					unsafe { C.memset(ptr, 0, usize(span.elem_size)) }
+				} else {
+					$if vgc_verify ? {
+						unsafe { C.memset(ptr, 0, usize(span.elem_size)) } // DEBUG: clean verifier signal (see non-tiny path)
+					}
 				}
 				unsafe {
 					// Mark the span as tiny-packed: this slot will hold several
@@ -1296,6 +1356,13 @@ fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
 		vgc_acct_alloc(cache_idx, u64(span.elem_size), u64(n))
 		if zero_fill {
 			unsafe { C.memset(ptr, 0, n) }
+		}
+		$if vgc_verify ? {
+			// DEBUG-ONLY: zero the FULL slot (not just n) so the mark-closure
+			// verifier never mistakes a noscan slot's stale tail bytes for a live
+			// pointer. The real collector never scans noscan spans, so this has no
+			// production effect — it only cleans the verifier's signal.
+			unsafe { C.memset(ptr, 0, usize(span.elem_size)) }
 		}
 	}
 	return ptr
@@ -1358,6 +1425,18 @@ fn vgc_alloc_large(n usize, noscan bool, zero_fill bool) voidptr {
 
 // Realloc for VGC-managed memory
 fn vgc_realloc(old_ptr voidptr, new_size usize) voidptr {
+	$if vgc_coarse_alloc ? {
+		relock := C.vgc_alloc_try_enter() != 0
+		if relock {
+			C.vgc_mutex_lock(&vgc_alloc_lock)
+		}
+		defer {
+			if relock {
+				C.vgc_mutex_unlock(&vgc_alloc_lock)
+				C.vgc_alloc_exit()
+			}
+		}
+	}
 	if old_ptr == unsafe { nil } {
 		return vgc_malloc(new_size)
 	}
@@ -1400,6 +1479,18 @@ fn vgc_realloc(old_ptr voidptr, new_size usize) voidptr {
 
 // Free is mostly a no-op for GC, but can hint at deallocation
 fn vgc_free(ptr voidptr) {
+	$if vgc_coarse_alloc ? {
+		relock := C.vgc_alloc_try_enter() != 0
+		if relock {
+			C.vgc_mutex_lock(&vgc_alloc_lock)
+		}
+		defer {
+			if relock {
+				C.vgc_mutex_unlock(&vgc_alloc_lock)
+				C.vgc_alloc_exit()
+			}
+		}
+	}
 	if ptr == unsafe { nil } {
 		return
 	}
@@ -1516,7 +1607,7 @@ __global vgc_watch_in_spawn = u32(0) // bit0=a spawn-root ptr == watch_addr; bit
 __global vgc_watch_rng_cov  = u32(0) // (thread idx+1) whose [stack_lo,stack_hi] numerically COVERS watch_addr
 
 @[markused]
-fn vgc_set_watch(ptr voidptr) {
+pub fn vgc_set_watch(ptr voidptr) {
 	vgc_watch_in_root = 0
 	vgc_watch_marked = 0
 	vgc_watch_swept = 0
@@ -1762,12 +1853,16 @@ fn vgc_find_span(ptr voidptr) &VGC_Span {
 	// arenas (narenas <= vgc_max_arenas = 64) so find_span is as complete as the
 	// allspans sweep. (Collection is rare behind the Perceus front line; the scan
 	// only runs on a hint miss.)
+	// ACQUIRE-load narenas (paired with the RELEASE store in vgc_span_alloc): if we
+	// observe a given count, we also observe the fully-initialized arenas[] entries
+	// + page maps it gates. A plain read here raced the locked writer (TSan).
+	nar := int(C.vgc_atomic_load_u32(&u32(voidptr(&vgc_heap.narenas))))
 	mut arena_idx := C.vgc_addr_to_arena(addr)
-	if arena_idx < 0 || arena_idx >= vgc_heap.narenas
+	if arena_idx < 0 || arena_idx >= nar
 		|| addr < vgc_heap.arenas[arena_idx].base
 		|| addr >= vgc_heap.arenas[arena_idx].base + vgc_heap.arenas[arena_idx].size {
 		arena_idx = -1
-		for i in 0 .. vgc_heap.narenas {
+		for i in 0 .. nar {
 			a := unsafe { &vgc_heap.arenas[i] }
 			if addr >= a.base && addr < a.base + a.size {
 				arena_idx = i
@@ -1802,7 +1897,8 @@ fn vgc_is_heap_ptr(addr usize) bool {
 		return false
 	}
 	arena_idx := C.vgc_addr_to_arena(addr)
-	if arena_idx < 0 || arena_idx >= vgc_heap.narenas {
+	// ACQUIRE-load narenas (paired with vgc_span_alloc's RELEASE store).
+	if arena_idx < 0 || arena_idx >= int(C.vgc_atomic_load_u32(&u32(voidptr(&vgc_heap.narenas)))) {
 		return false
 	}
 	a := unsafe { &vgc_heap.arenas[arena_idx] }
