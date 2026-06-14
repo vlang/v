@@ -263,6 +263,13 @@ mut:
 	sweep_done u32 // atomic
 	// Default GC trigger: collect when heap doubles (GOGC=100 equivalent)
 	gc_percent int // like Go's GOGC, default 100
+	// Span-descriptor slab (bump allocator for VGC_Span metadata). Span descriptors are
+	// never individually freed (vgc_put_free_span pools them for reuse forever), so a
+	// bump slab is sound and removes a per-carve mmap() syscall from the vgc_heap.lock
+	// hold — that syscall lengthened the lock hold and drove the new-span-carve
+	// contention that makes alloc-heavy [par] anti-scale (B18). Bumped under vgc_heap.lock.
+	span_meta_cur usize
+	span_meta_end usize
 }
 
 // Global heap instance. NOTE: V emits a zero-initializing assignment for this
@@ -296,14 +303,17 @@ __global vgc_spawn_root_lock = u32(0)
 // Initialization
 // ============================================================
 
-// Per-thread GC pacing + trigger-floor knobs (env-gated; default = historic
-// behaviour, so a build with no env set is byte-identical to before). VGC_NEXT_GC_MB
-// raises the GC trigger floor (MB); VGC_PACE scales the trigger by the live mutator
-// count so N concurrent allocators don't trip the shared trigger N x more often per
-// unit of per-thread progress (recovers parallel alloc-heavy scaling under the
-// full-STW backstop).
+// Per-thread GC pacing + trigger-floor knobs. VGC_NEXT_GC_MB raises the GC trigger
+// floor (MB). Per-thread pacing scales the live trigger by the live mutator count so N
+// concurrent allocators don't trip the shared trigger N x more often per unit of
+// per-thread progress — recovering parallel alloc-heavy scaling under the full-STW
+// backstop. It is ON BY DEFAULT (B18): it is adaptive (no effect when live_threads<=1,
+// so single-threaded / small programs keep the historic 256 MB trigger and RSS), and
+// with the B18 allocator fixes (descriptor slab + drop-return) it gives ~2.9x [par]
+// scaling at bounded RSS (~2.3 GB on the #14 workload). Set VGC_PACE=0 to disable it
+// (escape hatch); any other VGC_PACE value forces it on.
 __global vgc_base_floor = u64(256 * 1024 * 1024)
-__global vgc_pace_by_threads = false
+__global vgc_pace_by_threads = true
 
 fn C.atoll(&char) i64
 fn C.getenv(&char) &char
@@ -320,8 +330,11 @@ pub fn vgc_init() {
 			vgc_base_floor = u64(mb) * 1024 * 1024
 		}
 	}
-	if C.getenv(c'VGC_PACE') != unsafe { nil } {
-		vgc_pace_by_threads = true
+	pace_env := C.getenv(c'VGC_PACE')
+	if pace_env != unsafe { nil } {
+		// Explicit override of the on-by-default pacing: VGC_PACE=0 disables it,
+		// any other value forces it on.
+		vgc_pace_by_threads = C.atoll(pace_env) != 0
 	}
 	vgc_heap.next_gc = vgc_base_floor // favor throughput over early collections
 	vgc_heap.gc_phase = vgc_phase_off
@@ -635,6 +648,28 @@ fn vgc_put_free_span(mut span VGC_Span) {
 	}
 }
 
+// Allocate a VGC_Span descriptor from the bump slab. Caller MUST hold vgc_heap.lock.
+// Descriptors are never individually freed (pooled via vgc_put_free_span), so a
+// forever-growing bump slab is sound; this replaces a per-carve mmap() of ~one struct
+// (a syscall under the heap lock) with a pointer bump + a rare bulk mmap.
+@[inline]
+fn vgc_alloc_span_meta() &VGC_Span {
+	asz := (usize(sizeof(VGC_Span)) + 15) & ~usize(15)
+	if vgc_heap.span_meta_cur == 0 || vgc_heap.span_meta_cur + asz > vgc_heap.span_meta_end {
+		chunk := usize(1) * 1024 * 1024 // 1 MB slab ≈ thousands of descriptors per mmap
+		csz := if asz > chunk { asz } else { chunk }
+		mem := C.vgc_os_alloc(csz)
+		if mem == unsafe { nil } {
+			return unsafe { nil }
+		}
+		vgc_heap.span_meta_cur = usize(mem)
+		vgc_heap.span_meta_end = usize(mem) + csz
+	}
+	p := vgc_heap.span_meta_cur
+	vgc_heap.span_meta_cur += asz
+	return unsafe { &VGC_Span(voidptr(p)) }
+}
+
 // Allocate a new span with the given number of pages
 fn vgc_span_alloc(npages u32) &VGC_Span {
 	// First try to reuse a free span
@@ -705,8 +740,10 @@ fn vgc_span_alloc(npages u32) &VGC_Span {
 		}
 	}
 
-	// Create span metadata (allocate from OS for metadata to avoid chicken-and-egg)
-	span := unsafe { &VGC_Span(C.vgc_os_alloc(sizeof(VGC_Span))) }
+	// Create span metadata from the bump slab (we hold vgc_heap.lock). Previously this
+	// was a per-carve mmap() — a syscall under the heap lock that lengthened the hold
+	// and drove new-span-carve contention under alloc-heavy [par] (B18).
+	span := vgc_alloc_span_meta()
 	if span == unsafe { nil } {
 		C.vgc_mutex_unlock(&vgc_heap.lock)
 		return unsafe { nil }
@@ -1028,12 +1065,19 @@ fn vgc_cache_get_span(cache_idx int, span_class int) &VGC_Span {
 		if span.alloc_count < span.nelems {
 			return span
 		}
-		// Span is full - return to central and get a new one
-		unsafe {
-			vgc_central_return_span(span_class, mut span)
-		}
+		// Span is full — DROP it instead of returning it to central.full (B18). The
+		// partial list is never reused (vgc_central_return_span only lands FULL spans on
+		// full; sweep relinks only fully-empty), so the per-fill return was pure
+		// central[].lock contention — a top serializer of alloc-heavy [par]. The dropped
+		// span stays in allspans, is marked/swept normally, and is reclaimed when empty
+		// via the on_central==0 path in vgc_sweep_span. SOUND: it is no longer referenced
+		// by this mcache (alloc[span_class] is overwritten below) nor by any mutator
+		// local, so same-cycle reclaim is correct (this is NOT the residual-#4 case,
+		// which was a span STILL mcache-resident); while still referenced here it is
+		// protected by vgc_protect_cached_spans' sweep_gen stamp.
 	}
-	// Get fresh span from central
+	// Get fresh span from central (reuses central.partial if a sweep populated it, else
+	// carves a new span under vgc_heap.lock).
 	new_span := vgc_central_get_span(span_class)
 	unsafe {
 		vgc_heap.caches[cache_idx].alloc[span_class] = new_span
