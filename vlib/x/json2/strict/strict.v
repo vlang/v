@@ -54,7 +54,7 @@ pub fn strict_check[T](json_data string) StructCheckResult {
 }
 
 fn check[T](val T, tokens []string, mut superfluous []string) {
-	$if T is $struct {
+	$if T is $struct || T is $map {
 		key_struct := get_keys_from_json(tokens)
 
 		for unnecessary in get_superfluous_keys[T](key_struct) {
