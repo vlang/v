@@ -592,7 +592,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			continue
 		}
 		if field.is_extern {
-			tls_kw := if field.name == 'g_memory_block' && g.pref.prealloc {
+			tls_kw := if (field.name == 'g_memory_block' && g.pref.prealloc)
+				|| field.is_thread_local {
 				'_Thread_local '
 			} else {
 				''
@@ -607,7 +608,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		}
 		mut needs_ending_semicolon := false
 		if field.language != .c || field.has_expr {
-			tls_kw := if field.name == 'g_memory_block' && g.pref.prealloc {
+			tls_kw := if (field.name == 'g_memory_block' && g.pref.prealloc)
+				|| field.is_thread_local {
 				'_Thread_local '
 			} else {
 				''

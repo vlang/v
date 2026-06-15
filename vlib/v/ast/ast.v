@@ -1051,16 +1051,17 @@ pub:
 @[minify]
 pub struct GlobalField {
 pub:
-	name        string
-	has_expr    bool
-	pos         token.Pos
-	typ_pos     token.Pos
-	is_markused bool // an explicit `@[markused]` tag; the global will NOT be removed by `-skip-unused`
-	is_volatile bool
-	is_const    bool
-	is_exported bool // an explicit `@[export]` tag; the global will NOT be removed by `-skip-unused`
-	is_weak     bool
-	is_hidden   bool
+	name            string
+	has_expr        bool
+	pos             token.Pos
+	typ_pos         token.Pos
+	is_markused     bool // an explicit `@[markused]` tag; the global will NOT be removed by `-skip-unused`
+	is_volatile     bool
+	is_thread_local bool // an explicit `@[thread_local]` tag; the global is emitted with `_Thread_local`
+	is_const        bool
+	is_exported     bool // an explicit `@[export]` tag; the global will NOT be removed by `-skip-unused`
+	is_weak         bool
+	is_hidden       bool
 	// The following fields, are relevant for non V globals, for example `__global C.stdout &C.FILE`:
 	language  Language // for C.stdout, it will be .c .
 	is_extern bool     // true, if an explicit `@[c_extern]` tag was used. It is suitable for globals, that are not initialised by V,

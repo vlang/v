@@ -2960,6 +2960,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	mut is_weak := false
 	mut is_hidden := false
 	mut is_extern := false
+	mut is_thread_local := false
 	for ga in attrs {
 		match ga.name {
 			'export' { is_exported = true }
@@ -2967,6 +2968,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			'weak' { is_weak = true }
 			'hidden' { is_hidden = true }
 			'c_extern' { is_extern = true }
+			'thread_local' { is_thread_local = true }
 			else {}
 		}
 	}
@@ -3053,21 +3055,22 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			name = 'C.' + name
 		}
 		field := ast.GlobalField{
-			name:        name
-			has_expr:    has_expr
-			expr:        expr
-			pos:         pos
-			typ_pos:     typ_pos
-			typ:         typ
-			comments:    comments
-			is_markused: is_markused
-			is_volatile: is_volatile
-			is_const:    is_const
-			is_exported: is_exported
-			is_weak:     is_weak
-			is_hidden:   is_hidden
-			is_extern:   is_extern
-			language:    language
+			name:            name
+			has_expr:        has_expr
+			expr:            expr
+			pos:             pos
+			typ_pos:         typ_pos
+			typ:             typ
+			comments:        comments
+			is_markused:     is_markused
+			is_volatile:     is_volatile
+			is_thread_local: is_thread_local
+			is_const:        is_const
+			is_exported:     is_exported
+			is_weak:         is_weak
+			is_hidden:       is_hidden
+			is_extern:       is_extern
+			language:        language
 		}
 		fields << field
 		if name !in ast.global_reserved_type_names {
