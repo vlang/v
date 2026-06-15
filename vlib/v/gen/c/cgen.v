@@ -7316,8 +7316,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					}
 				}
 			}
-			g.write('builtin__closure__closure_create(${name}, ')
-			if !receiver.typ.is_ptr() {
+			owns_data := !receiver.typ.is_ptr()
+			g.write('builtin__closure__closure_create_with_ownership(${name}, ')
+			if owns_data {
 				g.write('builtin__memdup(')
 			}
 			mut has_addr := false
@@ -7341,10 +7342,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			if has_addr {
 				g.write(')')
 			}
-			if !receiver.typ.is_ptr() {
+			if owns_data {
 				g.write(', sizeof(${expr_styp}))')
 			}
-			g.write(')')
+			g.write(', ${if owns_data { 'true' } else { 'false' }})')
 			return
 		}
 	} else {

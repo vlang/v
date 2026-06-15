@@ -117,6 +117,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			core_fns << 'builtin.closure.closure_alloc'
 			core_fns << 'builtin.closure.closure_init'
 			core_fns << 'builtin.closure.closure_create'
+			core_fns << 'builtin.closure.closure_create_with_ownership'
 			core_fns << 'builtin.closure.closure_data'
 			core_fns << 'builtin.closure.closure_try_destroy'
 		}

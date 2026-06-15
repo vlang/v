@@ -5,6 +5,16 @@ module closure
 
 type IntFn = fn (int) int
 
+struct MethodReceiver {
+mut:
+	value int
+}
+
+fn (mut r MethodReceiver) add(delta int) int {
+	r.value += delta
+	return r.value
+}
+
 fn test_captured_context_survives_gc() {
 	data := [10, 20, 30, 40]
 	f := fn [data] (i int) int {
@@ -43,6 +53,17 @@ fn test_try_destroy_idempotent() {
 		try_destroy(unsafe { nil })
 		assert live_count() == before
 	}
+}
+
+fn test_try_destroy_method_value_does_not_free_borrowed_receiver() {
+	mut receiver := MethodReceiver{
+		value: 10
+	}
+	f := unsafe { receiver.add }
+	assert f(5) == 15
+	try_destroy(voidptr(f))
+	receiver.value = 20
+	assert receiver.value == 20
 }
 
 fn test_setup_closures_not_reclaimed() {

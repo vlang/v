@@ -300,10 +300,11 @@ const closure_get_data_bytes = $if !ppc64le && !amd64 && !i386 && !arm64 && !arm
 
 // vfmt on
 
-// equal to `max(2*sizeof(void*), sizeof(__closure_thunk))`, rounded up to the next multiple of `sizeof(void*)`
+// equal to `max(5*sizeof(void*), sizeof(__closure_thunk))`, rounded up to the next multiple of `sizeof(void*)`
 // NOTE: This is a workaround for `-usecache` bug, as it can't include `fn get_closure_size()` needed by `const closure_size` in `build-module` mode.
-const closure_size_1 = if 2 * u32(sizeof(voidptr)) > u32(closure_thunk.len) {
-	2 * u32(sizeof(voidptr))
+const closure_meta_size = 5 * u32(sizeof(voidptr))
+const closure_size_1 = if closure_meta_size > u32(closure_thunk.len) {
+	closure_meta_size
 } else {
 	u32(closure_thunk.len) + u32(sizeof(voidptr)) - 1
 }
@@ -423,8 +424,16 @@ fn closure_init() {
 }
 
 // closure_create creates closure objects at compile-time(INTERNAL COMPILER USE ONLY).
-@[direct_array_access]
 fn closure_create(func voidptr, data voidptr) voidptr {
+	return closure_create_with_ownership(func, data, true)
+}
+
+// closure_create_with_ownership creates closure objects and records whether the
+// slot owns `data`. Captured closures and copied value receivers pass owned
+// memdup contexts; method values for pointer receivers pass borrowed receiver
+// pointers and must not free them when the closure slot is released.
+@[direct_array_access]
+fn closure_create_with_ownership(func voidptr, data voidptr, owns_data bool) voidptr {
 	closure_mtx_lock_platform()
 
 	mut curr_closure := g_closure.free_closure_ptr
@@ -460,9 +469,19 @@ fn closure_create(func voidptr, data voidptr) voidptr {
 			p[1] = nil
 			p[2] = data
 			p[3] = func
+			if owns_data {
+				p[4] = voidptr(1)
+			} else {
+				p[4] = nil
+			}
 		} else {
 			p[0] = data // Stored closure context
 			p[1] = func // Target function to execute
+			if owns_data {
+				p[2] = voidptr(1)
+			} else {
+				p[2] = nil
+			}
 		}
 	}
 	ret := closure_return_ptr(curr_closure)
@@ -519,6 +538,7 @@ fn closure_release_slot(exec_ptr voidptr, user_ptr voidptr) bool {
 		} else {
 			data = p[0]
 		}
+		owns_data := if is_ppc64() { !isnil(p[4]) } else { !isnil(p[2]) }
 		if !isnil(data) {
 			$if gcboehm ? {
 				// Drop the GC reference; the collectable context is reclaimed by
@@ -541,10 +561,14 @@ fn closure_release_slot(exec_ptr voidptr, user_ptr voidptr) bool {
 					// above) and dead, and the slot's `already_freed` guard makes this
 					// release once-per-slot, so freeing it here is safe and keeps
 					// gc_check_leaks() from flagging a false positive.
-					free(data)
+					if owns_data {
+						free(data)
+					}
 				}
 			} $else {
-				free(data)
+				if owns_data {
+					free(data)
+				}
 			}
 		}
 		p[0] = g_closure.free_closure_ptr
@@ -552,8 +576,10 @@ fn closure_release_slot(exec_ptr voidptr, user_ptr voidptr) bool {
 			p[1] = nil
 			p[2] = nil
 			p[3] = nil
+			p[4] = nil
 		} else {
 			p[1] = nil
+			p[2] = nil
 		}
 		g_closure.free_closure_ptr = exec_ptr
 	}
