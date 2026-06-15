@@ -15,11 +15,16 @@ pub:
 	ctx        voidptr // User data for allocator implementation
 }
 
-// Thread-local context (implicit parameter)
-// This allows all allocations in a scope to be tracked without explicit annotations
+// Thread-local context (implicit parameter).
+// This allows all allocations in a scope to be tracked without explicit annotations.
+// A `@[thread_local]` global can only be const-initialized — a runtime initializer
+// (like `Context{}`, whose default allocator is built in `_vinit()`) would run once on
+// the main thread, so other threads would see a zeroed value. Each thread therefore
+// starts with a zeroed context, and `ctx()` lazily installs the default allocator the
+// first time it is used on that thread.
 
 @[thread_local]
-__global context = Context{}
+__global context Context
 
 pub struct Context {
 pub mut:
@@ -46,18 +51,32 @@ fn default_realloc(ptr voidptr, new_size int, ctx voidptr) voidptr {
 	return unsafe { C.realloc(ptr, new_size) }
 }
 
+// ctx returns this thread's context, installing the default allocator on first use.
+// Thread-local globals are zero-initialized per thread, so a fresh thread's context
+// has nil allocator function pointers until this runs.
+@[inline]
+fn ctx() &Context {
+	if isnil(context.allocator.alloc_fn) {
+		context.allocator = default_allocator
+	}
+	return &context
+}
+
 // User code calls these - they use context.allocator implicitly
 // This provides the Jai-like implicit allocation tracking
 pub fn alloc(size int) voidptr {
-	return context.allocator.alloc_fn(size, context.allocator.ctx)
+	c := ctx()
+	return c.allocator.alloc_fn(size, c.allocator.ctx)
 }
 
 pub fn free(ptr voidptr) {
-	context.allocator.free_fn(ptr, context.allocator.ctx)
+	c := ctx()
+	c.allocator.free_fn(ptr, c.allocator.ctx)
 }
 
 pub fn realloc(ptr voidptr, new_size int) voidptr {
-	return context.allocator.realloc_fn(ptr, new_size, context.allocator.ctx)
+	c := ctx()
+	return c.allocator.realloc_fn(ptr, new_size, c.allocator.ctx)
 }
 
 // Scoped allocator helper - saves and restores the allocator
@@ -66,8 +85,9 @@ pub fn realloc(ptr voidptr, new_size int) voidptr {
 //   defer { profiler.pop_allocator(old) }
 //   // ... all allocations here use my_allocator
 pub fn push_allocator(a Allocator) Allocator {
-	old := context.allocator
-	context.allocator = a
+	mut c := ctx()
+	old := c.allocator
+	c.allocator = a
 	return old
 }
 
