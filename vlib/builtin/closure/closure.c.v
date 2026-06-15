@@ -64,6 +64,7 @@ __global g_closure_live = map[voidptr]ClosureLiveInfo{}
 // UI frame and could be reclaimed by closure_reclaim_frames even though it was
 // never part of the discarded frame tree — a dangling function pointer. Keeping it
 // per-thread means only closures created on the building thread are frame-stamped.
+
 @[thread_local]
 __global g_closure_frame = u32(0)
 
@@ -73,6 +74,7 @@ __global g_closure_frame = u32(0)
 // for closure_reclaim_frames; all others (app setup, event handlers, and closures
 // built on other threads) get the closure_frame_never sentinel and are never
 // auto-reclaimed. THREAD-LOCAL for the same reason as g_closure_frame above.
+
 @[thread_local]
 __global g_closure_in_build = false
 
@@ -83,6 +85,7 @@ __global g_closure_owner_seq = u64(0)
 // g_closure_owner is THIS thread's frame-build owner id (0 = not yet assigned).
 // Thread-local: each build thread gets its own id, recorded on the closures it
 // stamps so reclaim_frames only touches its own (see ClosureLiveInfo.owner).
+
 @[thread_local]
 __global g_closure_owner = u64(0)
 
