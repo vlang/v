@@ -12201,6 +12201,17 @@ fn (mut g Gen) or_block_on_value(var_name string, or_block ast.OrExpr, return_ty
 	g.set_current_pos_as_last_stmt_pos()
 }
 
+fn (mut g Gen) write_main_error_propagation_panic_tail() {
+	// Prevent synthetic main() propagation panics from falling through into cleanup
+	// if a backend panic helper unexpectedly returns.
+	if g.pref.is_bare {
+		g.writeln('\twhile (1) {}')
+	} else {
+		g.writeln('\texit(1);')
+	}
+	g.writeln('\tVUNREACHABLE();')
+}
+
 // If user is accessing the return value eg. in assignment, pass the variable name.
 // If the user is not using the option return value. We need to pass a temp var
 // to access its fields (`.ok`, `.error` etc)
@@ -12326,6 +12337,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			} else {
 				g.writeln('\tbuiltin__panic_result_not_set(${err_msg});')
 			}
+			g.write_main_error_propagation_panic_tail()
 		} else if g.fn_decl != unsafe { nil } && g.fn_decl.is_test {
 			g.gen_failing_error_propagation_for_test_fn(or_block, cvar_name)
 		} else {
@@ -12370,6 +12382,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			} else {
 				g.writeln('\tbuiltin__panic_option_not_set( ${err_msg} );')
 			}
+			g.write_main_error_propagation_panic_tail()
 		} else if g.fn_decl != unsafe { nil } && g.fn_decl.is_test {
 			g.gen_failing_error_propagation_for_test_fn(or_block, cvar_name)
 		} else {
