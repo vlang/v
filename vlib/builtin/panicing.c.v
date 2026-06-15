@@ -50,7 +50,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 			}
 			C.exit(1)
 		} $else {
-			$if use_libbacktrace ? {
+			$if use_libbacktrace ? && !tinyc {
 				$if openbsd {
 					print_backtrace_skipping_top_frames(1)
 				} $else {
@@ -121,7 +121,7 @@ pub fn panic(s string) {
 			}
 			C.exit(1)
 		} $else {
-			$if use_libbacktrace ? {
+			$if use_libbacktrace ? && !tinyc {
 				$if openbsd {
 					print_backtrace_skipping_top_frames(1)
 				} $else {
