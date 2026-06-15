@@ -16,7 +16,7 @@ import v.ast
 
 struct PcsStep {
 mut:
-	pos int      // originating stmt.pos.pos (drop insertion key)
+	pos int // originating stmt.pos.pos (drop insertion key)
 	def []string
 	use []string
 }
@@ -33,15 +33,15 @@ mut:
 
 struct PcsCfg {
 mut:
-	blocks      []PcsBB
-	exit_id     int
-	loop_stack  [][2]int
-	shared_vars []string
-	returned    []string
-	heap_vars   []string // locally-defined, heap-owning (array/map/string/has free()) -> the only drop candidates
-	spine       []int    // block ids on the always-executed-exactly-once "spine" (top-level, before any early exit) — the only blocks drops may be EMITTED in
-	spine_loop_pending bool // set by the spine walker just before lowering a spine-position loop whose body is all-simple — the loop arm then records its body block as per-iteration spine
-	table       &ast.Table = unsafe { nil }
+	blocks             []PcsBB
+	exit_id            int
+	loop_stack         [][2]int
+	shared_vars        []string
+	returned           []string
+	heap_vars          []string // locally-defined, heap-owning (array/map/string/has free()) -> the only drop candidates
+	spine              []int    // block ids on the always-executed-exactly-once "spine" (top-level, before any early exit) — the only blocks drops may be EMITTED in
+	spine_loop_pending bool     // set by the spine walker just before lowering a spine-position loop whose body is all-simple — the loop arm then records its body block as per-iteration spine
+	table              &ast.Table = unsafe { nil }
 	// Interprocedural escape state. When `interproc` is true the call rule consults
 	// `escapes` (whole-program `fkey() -> per-param escape` summaries); when false
 	// it falls back to the conservative "every call argument escapes" rule. A
@@ -271,30 +271,70 @@ fn pcs_set_eq(a []string, b []string) bool {
 // precision (elsewhere) is only a performance dial.
 fn pcs_collect(e ast.Expr, mut out []string) {
 	match e {
-		ast.Ident { pcs_uniq_push(mut out, e.name) }
+		ast.Ident {
+			pcs_uniq_push(mut out, e.name)
+		}
 		ast.InfixExpr {
 			pcs_collect(e.left, mut out)
 			pcs_collect(e.right, mut out)
 		}
-		ast.PrefixExpr { pcs_collect(e.right, mut out) }
-		ast.PostfixExpr { pcs_collect(e.expr, mut out) }
-		ast.ParExpr { pcs_collect(e.expr, mut out) }
-		ast.SelectorExpr { pcs_collect(e.expr, mut out) }
-		ast.ArrayDecompose { pcs_collect(e.expr, mut out) }
-		ast.IfGuardExpr { pcs_collect(e.expr, mut out) }
-		ast.IsRefType { pcs_collect(e.expr, mut out) }
-		ast.Likely { pcs_collect(e.expr, mut out) }
-		ast.SizeOf { pcs_collect(e.expr, mut out) }
-		ast.TypeOf { pcs_collect(e.expr, mut out) }
-		ast.DumpExpr { pcs_collect(e.expr, mut out) }
-		ast.UnsafeExpr { pcs_collect(e.expr, mut out) }
-		ast.LambdaExpr { pcs_collect(e.expr, mut out) }
-		ast.AsCast { pcs_collect(e.expr, mut out) }
-		ast.CTempVar { pcs_collect(e.orig, mut out) }
-		ast.ChanInit { pcs_collect(e.cap_expr, mut out) }
-		ast.SpawnExpr { pcs_collect(e.call_expr, mut out) }
-		ast.GoExpr { pcs_collect(e.call_expr, mut out) }
-		ast.TypeNode { pcs_collect_stmt(e.stmt, mut out) }
+		ast.PrefixExpr {
+			pcs_collect(e.right, mut out)
+		}
+		ast.PostfixExpr {
+			pcs_collect(e.expr, mut out)
+		}
+		ast.ParExpr {
+			pcs_collect(e.expr, mut out)
+		}
+		ast.SelectorExpr {
+			pcs_collect(e.expr, mut out)
+		}
+		ast.ArrayDecompose {
+			pcs_collect(e.expr, mut out)
+		}
+		ast.IfGuardExpr {
+			pcs_collect(e.expr, mut out)
+		}
+		ast.IsRefType {
+			pcs_collect(e.expr, mut out)
+		}
+		ast.Likely {
+			pcs_collect(e.expr, mut out)
+		}
+		ast.SizeOf {
+			pcs_collect(e.expr, mut out)
+		}
+		ast.TypeOf {
+			pcs_collect(e.expr, mut out)
+		}
+		ast.DumpExpr {
+			pcs_collect(e.expr, mut out)
+		}
+		ast.UnsafeExpr {
+			pcs_collect(e.expr, mut out)
+		}
+		ast.LambdaExpr {
+			pcs_collect(e.expr, mut out)
+		}
+		ast.AsCast {
+			pcs_collect(e.expr, mut out)
+		}
+		ast.CTempVar {
+			pcs_collect(e.orig, mut out)
+		}
+		ast.ChanInit {
+			pcs_collect(e.cap_expr, mut out)
+		}
+		ast.SpawnExpr {
+			pcs_collect(e.call_expr, mut out)
+		}
+		ast.GoExpr {
+			pcs_collect(e.call_expr, mut out)
+		}
+		ast.TypeNode {
+			pcs_collect_stmt(e.stmt, mut out)
+		}
 		ast.IndexExpr {
 			pcs_collect(e.left, mut out)
 			pcs_collect(e.index, mut out)
@@ -436,10 +476,9 @@ fn pcs_collect(e ast.Expr, mut out []string) {
 			pcs_collect(e.offset_expr, mut out)
 		}
 		// Pure leaves — carry no enclosing-scope variable references.
-		ast.NodeError, ast.AtExpr, ast.BoolLiteral, ast.CharLiteral, ast.Comment,
-		ast.ComptimeType, ast.EmptyExpr, ast.EnumVal, ast.FloatLiteral,
-		ast.IntegerLiteral, ast.Nil, ast.None, ast.OffsetOf, ast.SqlQueryDataExpr,
-		ast.StringLiteral {}
+		ast.NodeError, ast.AtExpr, ast.BoolLiteral, ast.CharLiteral, ast.Comment, ast.ComptimeType,
+		ast.EmptyExpr, ast.EnumVal, ast.FloatLiteral, ast.IntegerLiteral, ast.Nil, ast.None,
+		ast.OffsetOf, ast.SqlQueryDataExpr, ast.StringLiteral {}
 	}
 }
 
@@ -449,7 +488,9 @@ fn pcs_collect(e ast.Expr, mut out []string) {
 // conservative pin sweep over statement kinds the CFG does not model precisely.
 fn pcs_collect_stmt(st ast.Stmt, mut out []string) {
 	match st {
-		ast.ExprStmt { pcs_collect(st.expr, mut out) }
+		ast.ExprStmt {
+			pcs_collect(st.expr, mut out)
+		}
 		ast.AssignStmt {
 			for r in st.right {
 				pcs_collect(r, mut out)
@@ -522,12 +563,13 @@ fn pcs_collect_stmt(st ast.Stmt, mut out []string) {
 				pcs_collect(c, mut out)
 			}
 		}
-		ast.SqlStmt { pcs_collect(st.db_expr, mut out) }
+		ast.SqlStmt {
+			pcs_collect(st.db_expr, mut out)
+		}
 		// Pure leaves / declaration statements with no local-variable uses.
-		ast.BranchStmt, ast.ConstDecl, ast.DebuggerStmt, ast.EmptyStmt,
-		ast.EnumDecl, ast.GlobalDecl, ast.GotoLabel, ast.GotoStmt, ast.Import,
-		ast.InterfaceDecl, ast.Module, ast.NodeError, ast.SemicolonStmt,
-		ast.StructDecl, ast.TypeDecl {}
+		ast.BranchStmt, ast.ConstDecl, ast.DebuggerStmt, ast.EmptyStmt, ast.EnumDecl,
+		ast.GlobalDecl, ast.GotoLabel, ast.GotoStmt, ast.Import, ast.InterfaceDecl, ast.Module,
+		ast.NodeError, ast.SemicolonStmt, ast.StructDecl, ast.TypeDecl {}
 	}
 }
 
@@ -592,12 +634,14 @@ fn (c &PcsCfg) pcs_call_escape(e ast.CallExpr) (bool, []bool) {
 		// receiver escapes (true) is irrelevant for free fns; harmless for methods.
 		return true, []bool{len: e.args.len, init: true}
 	}
-	summary := c.escapes[e.fkey()] or {
-		return true, []bool{len: e.args.len, init: true}
-	}
+	summary := c.escapes[e.fkey()] or { return true, []bool{len: e.args.len, init: true} }
 	// summary[0] is the receiver for methods; explicit parameters follow.
 	off := if e.is_method { 1 } else { 0 }
-	recv_esc := if e.is_method { if summary.len > 0 { summary[0] } else { true } } else { false }
+	recv_esc := if e.is_method {
+		if summary.len > 0 { summary[0] } else { true }
+	} else {
+		false
+	}
 	mut arg_esc := []bool{len: e.args.len}
 	for i in 0 .. e.args.len {
 		si := i + off
@@ -693,8 +737,12 @@ fn (mut c PcsCfg) pcs_scan_share(e ast.Expr) {
 				c.pcs_mark_shared(v.name)
 			}
 		}
-		ast.ParExpr { c.pcs_scan_share(e.expr) }
-		ast.PostfixExpr { c.pcs_scan_share(e.expr) }
+		ast.ParExpr {
+			c.pcs_scan_share(e.expr)
+		}
+		ast.PostfixExpr {
+			c.pcs_scan_share(e.expr)
+		}
 		ast.SelectorExpr {
 			// Deep-drop guard: selecting a HEAP field through a var (`p.buf`, read
 			// or write) means that field's buffer may be aliased out or reassigned,
@@ -708,13 +756,27 @@ fn (mut c PcsCfg) pcs_scan_share(e ast.Expr) {
 			}
 			c.pcs_scan_share(e.expr)
 		}
-		ast.ArrayDecompose { c.pcs_scan_share(e.expr) }
-		ast.IfGuardExpr { c.pcs_scan_share(e.expr) }
-		ast.IsRefType { c.pcs_scan_share(e.expr) }
-		ast.Likely { c.pcs_scan_share(e.expr) }
-		ast.SizeOf { c.pcs_scan_share(e.expr) }
-		ast.TypeOf { c.pcs_scan_share(e.expr) }
-		ast.DumpExpr { c.pcs_scan_share(e.expr) }
+		ast.ArrayDecompose {
+			c.pcs_scan_share(e.expr)
+		}
+		ast.IfGuardExpr {
+			c.pcs_scan_share(e.expr)
+		}
+		ast.IsRefType {
+			c.pcs_scan_share(e.expr)
+		}
+		ast.Likely {
+			c.pcs_scan_share(e.expr)
+		}
+		ast.SizeOf {
+			c.pcs_scan_share(e.expr)
+		}
+		ast.TypeOf {
+			c.pcs_scan_share(e.expr)
+		}
+		ast.DumpExpr {
+			c.pcs_scan_share(e.expr)
+		}
 		ast.UnsafeExpr {
 			// `unsafe { … }` can launder a pointer past the structured rules
 			// (pointer arithmetic, raw deref stores). Conservatively pin everything
@@ -722,15 +784,21 @@ fn (mut c PcsCfg) pcs_scan_share(e ast.Expr) {
 			c.pcs_share_idents(e.expr)
 			c.pcs_scan_share(e.expr)
 		}
-		ast.LambdaExpr { c.pcs_scan_share(e.expr) }
+		ast.LambdaExpr {
+			c.pcs_scan_share(e.expr)
+		}
 		ast.AsCast {
 			// A cast can move a pointer into an opaque/other-typed binding the
 			// classifier no longer tracks (e.g. `&Foo` -> voidptr). Pin the operand.
 			c.pcs_share_idents(e.expr)
 			c.pcs_scan_share(e.expr)
 		}
-		ast.CTempVar { c.pcs_scan_share(e.orig) }
-		ast.ChanInit { c.pcs_scan_share(e.cap_expr) }
+		ast.CTempVar {
+			c.pcs_scan_share(e.orig)
+		}
+		ast.ChanInit {
+			c.pcs_scan_share(e.cap_expr)
+		}
 		ast.ComptimeSelector {
 			c.pcs_scan_share(e.left)
 			c.pcs_scan_share(e.field_expr)
@@ -849,12 +917,13 @@ fn (mut c PcsCfg) pcs_scan_share(e ast.Expr) {
 			c.pcs_scan_share(e.limit_expr)
 			c.pcs_scan_share(e.offset_expr)
 		}
-		ast.TypeNode { c.pcs_scan_share_stmt(e.stmt) }
+		ast.TypeNode {
+			c.pcs_scan_share_stmt(e.stmt)
+		}
 		// Pure leaves — no sub-expressions that can carry a heap reference.
-		ast.Ident, ast.NodeError, ast.AtExpr, ast.BoolLiteral, ast.CharLiteral,
-		ast.Comment, ast.ComptimeType, ast.EmptyExpr, ast.EnumVal,
-		ast.FloatLiteral, ast.IntegerLiteral, ast.Nil, ast.None, ast.OffsetOf,
-		ast.SqlQueryDataExpr, ast.StringLiteral {}
+		ast.Ident, ast.NodeError, ast.AtExpr, ast.BoolLiteral, ast.CharLiteral, ast.Comment,
+		ast.ComptimeType, ast.EmptyExpr, ast.EnumVal, ast.FloatLiteral, ast.IntegerLiteral,
+		ast.Nil, ast.None, ast.OffsetOf, ast.SqlQueryDataExpr, ast.StringLiteral {}
 	}
 }
 
@@ -978,7 +1047,9 @@ fn (mut c PcsCfg) pcs_scan_share_stmt(st ast.Stmt) {
 				}
 			}
 		}
-		ast.ExprStmt { c.pcs_scan_share(st.expr) }
+		ast.ExprStmt {
+			c.pcs_scan_share(st.expr)
+		}
 		ast.Return {
 			for e in st.exprs {
 				c.pcs_scan_share(e)
@@ -1045,12 +1116,13 @@ fn (mut c PcsCfg) pcs_scan_share_stmt(st ast.Stmt) {
 				c.pcs_scan_share(cc)
 			}
 		}
-		ast.SqlStmt { c.pcs_scan_share(st.db_expr) }
+		ast.SqlStmt {
+			c.pcs_scan_share(st.db_expr)
+		}
 		// Declaration / leaf statements with no local-variable uses.
-		ast.BranchStmt, ast.ConstDecl, ast.DebuggerStmt, ast.EmptyStmt,
-		ast.EnumDecl, ast.GlobalDecl, ast.GotoLabel, ast.GotoStmt, ast.Import,
-		ast.InterfaceDecl, ast.Module, ast.NodeError, ast.SemicolonStmt,
-		ast.StructDecl, ast.TypeDecl {}
+		ast.BranchStmt, ast.ConstDecl, ast.DebuggerStmt, ast.EmptyStmt, ast.EnumDecl,
+		ast.GlobalDecl, ast.GotoLabel, ast.GotoStmt, ast.Import, ast.InterfaceDecl, ast.Module,
+		ast.NodeError, ast.SemicolonStmt, ast.StructDecl, ast.TypeDecl {}
 	}
 }
 
@@ -1229,6 +1301,7 @@ fn (mut c PcsCfg) pcs_lower_stmt(st ast.Stmt, entry int) int {
 			}
 		}
 	}
+
 	return cur
 }
 
@@ -1268,6 +1341,7 @@ fn (mut c PcsCfg) pcs_lower_expr(ex ast.Expr, entry int) int {
 		}
 		else {}
 	}
+
 	return cur
 }
 
@@ -1402,13 +1476,27 @@ fn pcs_expr_has_exit(e ast.Expr) bool {
 		ast.ComptimeSelector {
 			return pcs_or_is_propagate(e.or_block)
 		}
-		ast.ParExpr { return pcs_expr_has_exit(e.expr) }
-		ast.PostfixExpr { return pcs_expr_has_exit(e.expr) }
-		ast.UnsafeExpr { return pcs_expr_has_exit(e.expr) }
-		ast.AsCast { return pcs_expr_has_exit(e.expr) }
-		ast.CastExpr { return pcs_expr_has_exit(e.expr) || pcs_expr_has_exit(e.arg) }
-		ast.RangeExpr { return pcs_expr_has_exit(e.low) || pcs_expr_has_exit(e.high) }
-		ast.ArrayDecompose { return pcs_expr_has_exit(e.expr) }
+		ast.ParExpr {
+			return pcs_expr_has_exit(e.expr)
+		}
+		ast.PostfixExpr {
+			return pcs_expr_has_exit(e.expr)
+		}
+		ast.UnsafeExpr {
+			return pcs_expr_has_exit(e.expr)
+		}
+		ast.AsCast {
+			return pcs_expr_has_exit(e.expr)
+		}
+		ast.CastExpr {
+			return pcs_expr_has_exit(e.expr) || pcs_expr_has_exit(e.arg)
+		}
+		ast.RangeExpr {
+			return pcs_expr_has_exit(e.low) || pcs_expr_has_exit(e.high)
+		}
+		ast.ArrayDecompose {
+			return pcs_expr_has_exit(e.expr)
+		}
 		ast.ConcatExpr {
 			for v in e.vals {
 				if pcs_expr_has_exit(v) {
@@ -1489,10 +1577,14 @@ fn pcs_expr_has_exit(e ast.Expr) bool {
 			}
 			return false
 		}
-		ast.IfGuardExpr { return pcs_expr_has_exit(e.expr) }
+		ast.IfGuardExpr {
+			return pcs_expr_has_exit(e.expr)
+		}
 		// Leaves and constructs that cannot carry a function-exit (closures excluded
 		// by design): treat as exit-free. A miss here can only leak, never corrupt.
-		else { return false }
+		else {
+			return false
+		}
 	}
 }
 
@@ -1504,10 +1596,18 @@ fn pcs_expr_has_exit(e ast.Expr) bool {
 // top-level statement. See pcs_expr_has_exit for the soundness/leak note.
 fn pcs_stmt_has_early_exit(st ast.Stmt) bool {
 	match st {
-		ast.Return { return true }
-		ast.GotoStmt { return true }
-		ast.BranchStmt { return false }
-		ast.ExprStmt { return pcs_expr_has_exit(st.expr) }
+		ast.Return {
+			return true
+		}
+		ast.GotoStmt {
+			return true
+		}
+		ast.BranchStmt {
+			return false
+		}
+		ast.ExprStmt {
+			return pcs_expr_has_exit(st.expr)
+		}
 		ast.AssignStmt {
 			for r in st.right {
 				if pcs_expr_has_exit(r) {
@@ -1579,7 +1679,9 @@ fn pcs_stmt_has_early_exit(st ast.Stmt) bool {
 		}
 		// DeferStmt runs at scope exit (not an early exit of subsequent statements);
 		// declaration/leaf statements cannot exit. Else => exit-free (leak-safe).
-		else { return false }
+		else {
+			return false
+		}
 	}
 }
 
@@ -1641,6 +1743,7 @@ fn pcs_is_simple_body_loop(st ast.Stmt) bool {
 		ast.ForCStmt { st.stmts }
 		else { return false }
 	}
+
 	if body.len == 0 {
 		return false
 	}

@@ -79,7 +79,7 @@ __global (
 )
 
 const nslots_per_worker = 25000 // large long-lived set => the concurrent mark takes
-const iters = 400               // real time, opening a genuine concurrency window
+const iters = 400 // real time, opening a genuine concurrency window
 
 fn worker(wid int) {
 	base := wid * nslots_per_worker
@@ -101,7 +101,7 @@ fn worker(wid int) {
 			a := base + 2 * k
 			b := base + 2 * k + 1
 			c := slots[b].child // candidate victim (white during a concurrent mark)
-			slots[a].child = c  // hide C behind node a (may be black) <-- BARRIER here
+			slots[a].child = c // hide C behind node a (may be black) <-- BARRIER here
 			fresh_id++
 			slots[b].child = make_child(fresh_id) // drop C's path through b; a's old child orphaned
 		}

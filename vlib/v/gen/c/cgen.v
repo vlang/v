@@ -271,35 +271,35 @@ mut:
 	// TypeOne, TypeTwo {}
 	// where an aggregate (at least two types) is generated
 	// sum type deref needs to know which index to deref because unions take care of the correct field
-	aggregate_type_idx  int
-	arg_no_auto_deref   bool            // smartcast must not be dereferenced
-	branch_parent_pos   int             // used in BranchStmt (continue/break) for autofree stop position
-	returned_var_names  map[string]bool // to detect that vars doesn't need to be freed since it's being returned
-	is_perceus          bool             // `-d perceus -autofree`: drive a subset of frees at Perceus last-use positions
-	perceus_drops       map[int][]string // stmt.pos.pos -> heap-owning local names to drop right after that stmt
-	perceus_suppress    map[int]bool     // ast.Var.pos.pos of vars dropped by Perceus -> skip their scope-exit free (no double-free)
-	perceus_escapes     map[string][]bool // whole-program interproc param-escape summaries (fkey -> per-param escape); built once in gen()
-	perceus_dropping    bool              // true only while perceus_drop() emits: authorizes freeing a proven-unique user-ref (`&Foo`) without -experimental
-	perceus_cur_stmt_pos int             // ast.Stmt.pos.pos of the statement currently being emitted (drop-map key); lets in-place ops test "is this value dropped HERE"
-	perceus_reused      map[int]bool      // ast.Var.pos.pos of locals whose buffer was consumed by an in-place reuse (P2) -> their Perceus drop is skipped (buffer now owned by the result)
-	perceus_deep_drop   map[string]bool   // names of dropped `&Foo` locals SOUND to DEEP-free (free nested heap fields too); see pcs_deep_drop_set
-	infix_left_var_name string          // a && if expr
-	curr_var_name       []string        // curr var name on assignment
-	called_fn_name      string
-	timers              &util.Timers = util.get_timers()
-	force_main_console  bool // true when @[console] used on fn main()
-	uses_power          bool
-	uses_power_u64      bool
-	as_cast_type_names  map[string]string // table for type name lookup in runtime (for __as_cast)
-	obf_table           map[string]string
-	referenced_fns      shared map[string]bool // functions that have been referenced
-	nr_closures         int
-	expected_cast_type  ast.Type // for match expr of sumtypes
-	expected_arg_mut    bool     // generating a mutable fn parameter
-	or_expr_return_type ast.Type // or { 0, 1 } return type
-	anon_fn             &ast.AnonFn
-	tests_inited        bool
-	has_main            bool
+	aggregate_type_idx   int
+	arg_no_auto_deref    bool              // smartcast must not be dereferenced
+	branch_parent_pos    int               // used in BranchStmt (continue/break) for autofree stop position
+	returned_var_names   map[string]bool   // to detect that vars doesn't need to be freed since it's being returned
+	is_perceus           bool              // `-d perceus -autofree`: drive a subset of frees at Perceus last-use positions
+	perceus_drops        map[int][]string  // stmt.pos.pos -> heap-owning local names to drop right after that stmt
+	perceus_suppress     map[int]bool      // ast.Var.pos.pos of vars dropped by Perceus -> skip their scope-exit free (no double-free)
+	perceus_escapes      map[string][]bool // whole-program interproc param-escape summaries (fkey -> per-param escape); built once in gen()
+	perceus_dropping     bool              // true only while perceus_drop() emits: authorizes freeing a proven-unique user-ref (`&Foo`) without -experimental
+	perceus_cur_stmt_pos int               // ast.Stmt.pos.pos of the statement currently being emitted (drop-map key); lets in-place ops test "is this value dropped HERE"
+	perceus_reused       map[int]bool      // ast.Var.pos.pos of locals whose buffer was consumed by an in-place reuse (P2) -> their Perceus drop is skipped (buffer now owned by the result)
+	perceus_deep_drop    map[string]bool   // names of dropped `&Foo` locals SOUND to DEEP-free (free nested heap fields too); see pcs_deep_drop_set
+	infix_left_var_name  string            // a && if expr
+	curr_var_name        []string          // curr var name on assignment
+	called_fn_name       string
+	timers               &util.Timers = util.get_timers()
+	force_main_console   bool // true when @[console] used on fn main()
+	uses_power           bool
+	uses_power_u64       bool
+	as_cast_type_names   map[string]string // table for type name lookup in runtime (for __as_cast)
+	obf_table            map[string]string
+	referenced_fns       shared map[string]bool // functions that have been referenced
+	nr_closures          int
+	expected_cast_type   ast.Type // for match expr of sumtypes
+	expected_arg_mut     bool     // generating a mutable fn parameter
+	or_expr_return_type  ast.Type // or { 0, 1 } return type
+	anon_fn              &ast.AnonFn
+	tests_inited         bool
+	has_main             bool
 	// main_fn_decl_node  ast.FnDecl
 	cur_mod                 ast.Module
 	cur_concrete_types      []ast.Type // do not use table.cur_concrete_types because table is global, so should not be accessed by different threads
@@ -4202,8 +4202,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	// drop site, free the unique heap locals whose last use is here, reusing the
 	// existing per-type free dispatch. Guarded to real (non-redirected) statement
 	// output; the scope-exit free for these vars is suppressed in autofree.
-	if g.is_perceus && !g.skip_stmt_pos && g.inside_ternary == 0
-		&& node.pos.pos in g.perceus_drops {
+	if g.is_perceus && !g.skip_stmt_pos && g.inside_ternary == 0 && node.pos.pos in g.perceus_drops {
 		names := g.perceus_drops[node.pos.pos]
 		sc := g.file.scope.innermost(node.pos.pos)
 		for n in names {
