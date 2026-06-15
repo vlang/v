@@ -4213,6 +4213,11 @@ fn (mut c Checker) expr_is_plain_zero(expr ast.Expr) bool {
 	}
 }
 
+fn (mut c Checker) expr_is_c_const_initializer(expr ast.Expr) bool {
+	return expr.is_literal() || (expr is ast.ArrayInit && expr.is_fixed)
+		|| (expr is ast.UnsafeExpr && (expr.expr is ast.Nil || expr.expr.is_literal()))
+}
+
 fn (mut c Checker) type_has_plain_zero_default(typ ast.Type, seen []int) bool {
 	if typ.has_flag(.option) || typ.has_flag(.result) || typ.has_flag(.shared_f) {
 		return false
@@ -4343,9 +4348,7 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 				// initializer runs once in `_vinit()` on the main thread, so other
 				// threads would see a zero-initialized value — reject it instead of
 				// silently handing out zeroed thread-locals.
-				e := field.expr
-				is_const_init := e.is_literal() || (e is ast.ArrayInit && e.is_fixed)
-					|| (e is ast.UnsafeExpr && (e.expr is ast.Nil || e.expr.is_literal()))
+				is_const_init := c.expr_is_c_const_initializer(field.expr)
 					|| node.attrs.contains('cinit')
 				if !is_const_init {
 					c.error('`@[thread_local]` globals must have a constant initializer (a non-constant one runs only on the main thread in `_vinit()`, so other threads would see a zero value)',
