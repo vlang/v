@@ -146,8 +146,7 @@ fn (req &Request) do_request(req_headers string, mut ssl_conn ssl.SSLConn) !Resp
 // carry another request (see ReceivedResponseInfo.reusable).
 fn (req &Request) h1_exchange_ssl(mut ssl_conn ssl.SSLConn, raw string) !(Response, bool) {
 	ssl_conn.write_string(raw) or {
-		return error_with_code('http.transport: TLS connection write failed: ${err.msg()}',
-			transport_err_stale_write)
+		return error('http.transport: TLS connection write failed: ${err.msg()}')
 	}
 	mut content := strings.new_builder(4096)
 	response_info := req.receive_all_data_from_cb_in_builder(mut content, voidptr(ssl_conn),

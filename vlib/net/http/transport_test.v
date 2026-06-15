@@ -137,6 +137,31 @@ fn stop_ka_srv(mut listener net.TcpListener, th thread) {
 	th.wait()
 }
 
+// The pool key must isolate distinct TLS configurations even when a field value
+// contains the '|' separator, or a request could reuse a connection dialed with
+// the wrong cert/CA. cert='a|b',cert_key='c' and cert='a',cert_key='b|c' must
+// not collide.
+fn test_transport_pool_key_no_delimiter_collision() {
+	a := Request{
+		cert:     'a|b'
+		cert_key: 'c'
+	}
+	b := Request{
+		cert:     'a'
+		cert_key: 'b|c'
+	}
+	assert transport_pool_key(a, 'https', 'h', 443) != transport_pool_key(b, 'https', 'h', 443)
+	// Identical configs still share a key.
+	a2 := Request{
+		cert:     'a|b'
+		cert_key: 'c'
+	}
+	assert transport_pool_key(a, 'https', 'h', 443) == transport_pool_key(a2, 'https', 'h', 443)
+	// A host containing '|' must not collide with a different host/port split.
+	assert transport_pool_key(Request{}, 'https', 'h|x', 443) != transport_pool_key(Request{},
+		'https', 'h', 443)
+}
+
 fn test_h1_plain_reuse() {
 	mut srv := &KaSrv{}
 	port, mut listener, th := start_ka_srv(mut srv) or {

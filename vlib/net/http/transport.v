@@ -16,16 +16,11 @@ import time
 // cut pools HTTP/1.1 connections (plain TCP and TLS); HTTP/2 requests run on
 // the existing one-shot driver until the multiplexed H2 connection lands.
 
-// transport_err_stale_write tags request-write failures on a transport
-// connection: the request bytes never reached the server, so the request is
-// always safe to retry on a fresh connection.
-const transport_err_stale_write = -20011
-
-// transport_err_unsafe_retry tags a failure on a reused keep-alive connection
-// that happened after the request bytes were written, for a non-idempotent
-// method: the request may have reached the server, so it must not be replayed
-// (neither here nor by the caller's outer retry loop). is_no_need_retry_error
-// recognizes this code so the outer loop honors the guard.
+// transport_err_unsafe_retry tags a failed exchange on a transport connection
+// for a non-idempotent method: the request bytes may have (partially) reached
+// the server — the write helpers cannot prove otherwise — so it must not be
+// replayed, neither by round_trip's inner loop nor the caller's outer retry
+// loop. is_no_need_retry_error recognizes this code so the outer loop honors it.
 const transport_err_unsafe_retry = -20013
 
 // H1PooledConn is one keep-alive HTTP/1.1 connection in a Transport pool:
@@ -153,7 +148,19 @@ fn transport_pool_key(req &Request, scheme string, host string, port int) string
 	// enable_http2 only affects https dials (plain http ignores it), so keep
 	// the plain-http pool unsplit.
 	h2 := scheme == 'https' && req.enable_http2
-	return '${scheme}|${host}|${port}|${h2}|${req.validate}|${req.verify}|${req.cert}|${req.cert_key}|${req.in_memory_verification}'
+	// Length-prefix the free-form string fields (host and the TLS paths/PEM
+	// blobs) so a value containing the '|' separator cannot collide with a
+	// different field split — e.g. cert='a|b',cert_key='c' vs cert='a',
+	// cert_key='b|c' — which would let a request reuse a connection dialed with
+	// the wrong CA or client certificate. Bools and the int port cannot contain
+	// '|', and scheme is a fixed literal, so they need no prefixing.
+	return '${scheme}|${pk_part(host)}|${port}|${h2}|${req.validate}|${pk_part(req.verify)}|${pk_part(req.cert)}|${pk_part(req.cert_key)}|${req.in_memory_verification}'
+}
+
+// pk_part length-prefixes a string (`len:value`) so concatenated pool-key
+// components stay unambiguous regardless of the bytes they contain.
+fn pk_part(s string) string {
+	return '${s.len}:${s}'
 }
 
 // transport_is_idempotent reports whether a request with this method can be
@@ -321,15 +328,19 @@ fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host
 		}
 		resp, reusable := conn.exchange(req, raw) or {
 			conn.close_conn()
-			if reused {
-				if err.code() == transport_err_stale_write || transport_is_idempotent(method) {
-					continue
-				}
-				// The reused connection failed after the request bytes were
-				// written and the method is not idempotent: replaying it could
-				// duplicate side effects, so tag the error to stop the caller's
-				// outer retry loop from re-sending it on a fresh connection.
+			// The write helpers do partial writes and cannot report how many
+			// bytes reached the server, so a failed exchange may have delivered
+			// part of the request. Only idempotent methods are safe to replay;
+			// a non-idempotent one is tagged so neither this loop nor the
+			// caller's outer retry loop re-sends it (avoiding duplicate side
+			// effects). A pre-write dial failure, by contrast, propagates before
+			// this point and stays freely retryable.
+			if !transport_is_idempotent(method) {
 				return error_with_code(err.msg(), transport_err_unsafe_retry)
+			}
+			if reused {
+				// Drain stale pooled connections, then fall through to a fresh dial.
+				continue
 			}
 			return err
 		}
@@ -378,6 +389,13 @@ fn (mut t Transport) tls_fresh_round_trip(req &Request, key string, raw string, 
 	}
 	resp, reusable := conn.exchange(req, raw) or {
 		conn.close_conn()
+		// Past the TLS handshake the request bytes may have been (partially)
+		// written; a non-idempotent method must not be replayed by the outer
+		// retry loop. (A dial/handshake failure above propagates before this and
+		// stays retryable, since no request byte was sent.)
+		if !transport_is_idempotent(method) {
+			return error_with_code(err.msg(), transport_err_unsafe_retry)
+		}
 		return err
 	}
 	t.maybe_checkin(mut conn, header, reusable, resp)

@@ -437,8 +437,7 @@ fn (req &Request) http_do(host string, method Method, path string, data string, 
 // can safely carry another request (see ReceivedResponseInfo.reusable).
 fn (req &Request) h1_exchange_tcp(mut client net.TcpConn, raw string) !(Response, bool) {
 	client.write(raw.bytes()) or {
-		return error_with_code('http.transport: connection write failed: ${err.msg()}',
-			transport_err_stale_write)
+		return error('http.transport: connection write failed: ${err.msg()}')
 	}
 	response_data := req.read_all_from_client_connection(client)!
 	response_text := response_data.data.bytestr()
