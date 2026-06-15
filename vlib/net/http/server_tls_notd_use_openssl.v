@@ -10,19 +10,23 @@ import net.mbedtls
 
 const tls_accept_poll_timeout = 100 * time.millisecond
 
-// tls_handshake_timeout bounds a single TLS server handshake when the user did
-// not set a finite `accept_timeout`. The handshake runs on the accept thread,
-// so without a finite bound a client that completes the TCP connect and then
-// stalls mid-handshake would wedge the accept loop forever (no new connections,
-// and `stop()` is never observed).
+// tls_handshake_timeout is the default value for Server.tls_handshake_timeout,
+// used as the fallback handshake budget when Server.accept_timeout is zero or
+// net.infinite_timeout. The handshake runs on the accept thread, so without a
+// finite bound a client that completes the TCP connect and then stalls
+// mid-handshake would wedge the accept loop forever.
 const tls_handshake_timeout = 30 * time.second
 
-fn tls_accept_timeouts(accept_timeout time.Duration) (time.Duration, time.Duration) {
+fn tls_accept_timeouts(accept_timeout time.Duration, handshake_fallback time.Duration) (time.Duration, time.Duration) {
 	// A finite `accept_timeout` doubles as the handshake budget; when it is
-	// infinite (<= 0), fall back to a finite default so the handshake still
-	// times out and shutdown stays responsive.
-	handshake_timeout := if accept_timeout > 0 { accept_timeout } else { tls_handshake_timeout }
-	accept_poll_timeout := if accept_timeout > 0 && accept_timeout < tls_accept_poll_timeout {
+	// zero or net.infinite_timeout (i64.max), fall back to `handshake_fallback`
+	// so the handshake still times out and shutdown stays responsive.
+	// net.infinite_timeout is positive (i64.max), so the > 0 check alone is
+	// not enough — mbedtls's ssl_timeout_deadline treats it as an infinite
+	// deadline exactly like 0 or negative values.
+	is_finite := accept_timeout > 0 && accept_timeout != net.infinite_timeout
+	handshake_timeout := if is_finite { accept_timeout } else { handshake_fallback }
+	accept_poll_timeout := if is_finite && accept_timeout < tls_accept_poll_timeout {
 		accept_timeout
 	} else {
 		tls_accept_poll_timeout
@@ -90,7 +94,8 @@ fn (mut s Server) listen_and_serve_tls() {
 	if s.on_running != unsafe { nil } {
 		s.on_running(mut s)
 	}
-	accept_poll_timeout, handshake_timeout := tls_accept_timeouts(s.accept_timeout)
+	accept_poll_timeout, handshake_timeout := tls_accept_timeouts(s.accept_timeout,
+		s.tls_handshake_timeout)
 	for s.state == .running {
 		mut conn := listener.accept_with_timeouts(accept_poll_timeout, handshake_timeout) or {
 			if s.state != .running {

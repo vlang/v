@@ -37,6 +37,7 @@ pub mut:
 	read_timeout            time.Duration = 30 * time.second
 	write_timeout           time.Duration = 30 * time.second
 	accept_timeout          time.Duration = 30 * time.second
+	tls_handshake_timeout   time.Duration = 30 * time.second // fallback handshake budget used when accept_timeout is zero or net.infinite_timeout; ignored on non-TLS servers
 	pool_channel_slots      int           = 1024
 	worker_num              int           = runtime.nr_jobs()
 	max_keep_alive_requests int           = 100 // max requests per keep-alive connection (0 = unlimited)
