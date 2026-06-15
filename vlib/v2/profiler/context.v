@@ -9,9 +9,9 @@ import context
 // Similar to Jai's context.allocator design
 pub struct Allocator {
 pub:
-	alloc_fn   fn (size int, ctx voidptr) voidptr                  = unsafe { nil }
-	free_fn    fn (ptr voidptr, ctx voidptr)                       = unsafe { nil }
-	realloc_fn fn (ptr voidptr, new_size int, ctx voidptr) voidptr = unsafe { nil }
+	alloc_fn   fn (size int, ctx voidptr) voidptr                  = default_alloc
+	free_fn    fn (ptr voidptr, ctx voidptr)                       = default_free
+	realloc_fn fn (ptr voidptr, new_size int, ctx voidptr) voidptr = default_realloc
 	ctx        voidptr // User data for allocator implementation
 }
 
@@ -28,7 +28,11 @@ __global context Context
 
 pub struct Context {
 pub mut:
-	allocator Allocator
+	allocator Allocator = Allocator{
+		alloc_fn: unsafe { nil }
+		free_fn: unsafe { nil }
+		realloc_fn: unsafe { nil }
+	}
 }
 
 // Default allocator - just wraps malloc/free/realloc

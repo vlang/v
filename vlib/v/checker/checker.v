@@ -4207,10 +4207,47 @@ fn (mut c Checker) expr_is_plain_zero(expr ast.Expr) bool {
 		ast.Nil {
 			true
 		}
+		ast.StructInit {
+			c.struct_init_is_plain_zero(expr)
+		}
 		else {
 			false
 		}
 	}
+}
+
+fn (mut c Checker) struct_init_is_plain_zero(expr ast.StructInit) bool {
+	if expr.has_update_expr || expr.typ == 0 {
+		return false
+	}
+	sym := c.table.sym(expr.typ)
+	if sym.kind != .struct {
+		return false
+	}
+	info := sym.info as ast.Struct
+	for field in info.fields {
+		mut found := false
+		for init_field in expr.init_fields {
+			if init_field.name == field.name {
+				found = true
+				if !c.expr_is_plain_zero(init_field.expr) {
+					return false
+				}
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		if field.has_default_expr {
+			if !c.expr_is_plain_zero(field.default_expr) {
+				return false
+			}
+		} else if !c.type_has_plain_zero_default(field.typ, []int{}) {
+			return false
+		}
+	}
+	return true
 }
 
 fn (mut c Checker) expr_is_c_const_initializer(expr ast.Expr) bool {
