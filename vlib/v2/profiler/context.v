@@ -51,13 +51,23 @@ fn default_realloc(ptr voidptr, new_size int, ctx voidptr) voidptr {
 	return unsafe { C.realloc(ptr, new_size) }
 }
 
+fn normalize_allocator(a Allocator) Allocator {
+	return Allocator{
+		alloc_fn:   if isnil(a.alloc_fn) { default_alloc } else { a.alloc_fn }
+		free_fn:    if isnil(a.free_fn) { default_free } else { a.free_fn }
+		realloc_fn: if isnil(a.realloc_fn) { default_realloc } else { a.realloc_fn }
+		ctx:        a.ctx
+	}
+}
+
 // ctx returns this thread's context, installing the default allocator on first use.
 // Thread-local globals are zero-initialized per thread, so a fresh thread's context
 // has nil allocator function pointers until this runs.
 @[inline]
 fn ctx() &Context {
-	if isnil(context.allocator.alloc_fn) {
-		context.allocator = default_allocator
+	if isnil(context.allocator.alloc_fn) || isnil(context.allocator.free_fn)
+		|| isnil(context.allocator.realloc_fn) {
+		context.allocator = normalize_allocator(context.allocator)
 	}
 	return &context
 }
@@ -87,7 +97,7 @@ pub fn realloc(ptr voidptr, new_size int) voidptr {
 pub fn push_allocator(a Allocator) Allocator {
 	mut c := ctx()
 	old := c.allocator
-	c.allocator = a
+	c.allocator = normalize_allocator(a)
 	return old
 }
 
