@@ -1116,7 +1116,11 @@ fn (mut c H2MuxConn) reset_stream(stream_id u32, code H2ErrorCode, reason string
 	c.write_all_locked(H2Frame(H2RstStreamFrame{
 		stream_id:  stream_id
 		error_code: u32(code)
-	}).encode()) or {}
+	}).encode()) or {
+		c.wmu.unlock()
+		c.note_write_failure()
+		return
+	}
 	c.wmu.unlock()
 	if s != unsafe { nil } {
 		// Credit back any DATA bytes already queued but never drained,
