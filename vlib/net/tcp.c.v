@@ -32,9 +32,11 @@ pub mut:
 	read_timeout   time.Duration
 	write_timeout  time.Duration
 	is_blocking    bool = true
-	// last_write_sent is the number of bytes the most recent write_ptr call sent.
-	// It is valid even when that call returned an error, so a caller can tell a
-	// zero-byte failure (nothing reached the peer) from a partial write.
+	// last_write_sent is the exact number of bytes the most recent write_ptr
+	// call sent, valid even when it then returned an error (send() is
+	// byte-accurate), so a caller can tell a zero-byte failure — 0, safe to
+	// replay — from a partial write. (The TLS backends expose the same field but
+	// use -1 for the indeterminate case they cannot prove; plain TCP never does.)
 	last_write_sent int
 }
 
