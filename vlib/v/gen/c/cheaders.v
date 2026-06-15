@@ -238,6 +238,16 @@ const c_common_macros = '
 	#define _likely_(x) (x)
 	#define _unlikely_(x) (x)
 #endif
+// V_THREAD_LOCAL: portable thread-local storage qualifier (for @[thread_local] globals)
+#if defined(__cplusplus)
+	#define V_THREAD_LOCAL thread_local
+#elif defined(_MSC_VER)
+	#define V_THREAD_LOCAL __declspec(thread)
+#elif defined(__GNUC__) && __GNUC__ < 5
+	#define V_THREAD_LOCAL __thread
+#else
+	#define V_THREAD_LOCAL _Thread_local
+#endif
 '
 
 const c_common_weak_attr = '
