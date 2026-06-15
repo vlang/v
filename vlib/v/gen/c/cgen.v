@@ -4619,6 +4619,12 @@ fn (g &Gen) find_matching_sumtype_variant(expected_type ast.Type, got_type ast.T
 			return variant
 		}
 	}
+	got_unaliased := g.table.fully_unaliased_type(got_type)
+	for variant in variants {
+		if g.table.fully_unaliased_type(variant) == got_unaliased {
+			return variant
+		}
+	}
 	for variant in variants {
 		if g.table.can_implicit_array_cast(got_type, variant) {
 			return variant
@@ -12801,6 +12807,42 @@ fn (mut g Gen) as_cast_option_payload_expr_from_expr(typ ast.Type, expr ast.Expr
 	return g.as_cast_option_payload_expr(typ, g.expr_string(expr), false)
 }
 
+fn (mut g Gen) write_as_cast_call_start(styp string, sym ast.TypeSymbol) {
+	if sym.info is ast.FnType {
+		g.write('(${styp})')
+	} else if g.inside_smartcast {
+		g.write('(${styp}*)')
+	} else {
+		g.write('*(${styp}*)')
+	}
+}
+
+fn (mut g Gen) write_as_cast_call(obj_expr string, tag_expr string, expected_sidx string, index_exprs []string) {
+	needs_tag_condition := index_exprs.len > 1
+		|| (index_exprs.len == 1 && index_exprs[0] != expected_sidx)
+	if needs_tag_condition {
+		g.write('(')
+		g.write_type_tag_condition(tag_expr, '==', index_exprs)
+		g.write(' ? ${obj_expr} : ')
+	}
+	g.write('builtin____as_cast(${obj_expr}, ${tag_expr}, ${expected_sidx})')
+	if needs_tag_condition {
+		g.write(')')
+	}
+}
+
+fn (mut g Gen) as_cast_payload_type(target_type ast.Type, matching_variants []ast.Type) ast.Type {
+	for variant in matching_variants {
+		if g.is_exact_sumtype_variant_match(variant, target_type) {
+			return target_type
+		}
+	}
+	if matching_variants.len > 0 {
+		return matching_variants[0]
+	}
+	return target_type
+}
+
 fn (mut g Gen) as_cast(node ast.AsCast) {
 	// Make sure the sum type can be cast to this type (the types
 	// are the same), otherwise panic.
@@ -12832,6 +12874,11 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	if mut expr_type_sym.info is ast.SumType {
 		expr_is_option := unwrapped_expr_type.has_flag(.option)
 		dot := if expr_type_without_option.is_ptr() { '->' } else { '.' }
+		matching_variants := g.matching_sumtype_variant_types(expr_type_without_option,
+			unwrapped_node_typ)
+		index_exprs := g.type_idx_exprs_for_types(matching_variants)
+		payload_sym := g.table.sym(g.as_cast_payload_type(unwrapped_node_typ, matching_variants))
+		sidx := g.type_sidx(unwrapped_node_typ)
 		if node.expr.has_fn_call() && !g.is_cc_msvc {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.styp(node.expr_type)
@@ -12843,41 +12890,21 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			} else {
 				tmp_var
 			}
-			if sym.info is ast.FnType {
-				g.write('(${styp})builtin____as_cast(')
-			} else if g.inside_smartcast {
-				g.write('(${styp}*)builtin____as_cast(')
-			} else {
-				g.write('*(${styp}*)builtin____as_cast(')
-			}
-			g.write2('(${expr_str})', dot)
-			g.write2('_${sym.cname},', '(${expr_str})')
-			g.write(dot)
-			sidx := g.type_sidx(unwrapped_node_typ)
-			g.write('_typ, ${sidx}); })')
+			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
+			tag_expr := '(${expr_str})${dot}_typ'
+			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
+			g.write('; })')
 		} else {
-			if sym.info is ast.FnType {
-				g.write('(${styp})builtin____as_cast(')
-			} else if g.inside_smartcast {
-				g.write('(${styp}*)builtin____as_cast(')
+			expr_str := if expr_is_option {
+				g.as_cast_option_payload_expr_from_expr(unwrapped_expr_type, node.expr)
 			} else {
-				g.write('*(${styp}*)builtin____as_cast(')
+				g.expr_string(node.expr)
 			}
-			if expr_is_option {
-				expr_str := g.as_cast_option_payload_expr_from_expr(unwrapped_expr_type, node.expr)
-				g.write2('(${expr_str})', dot)
-				g.write2('_${sym.cname},', '(${expr_str})')
-				g.write(dot)
-			} else {
-				g.write('(')
-				g.expr(node.expr)
-				g.write2(')', dot)
-				g.write2('_${sym.cname},', '(')
-				g.expr(node.expr)
-				g.write2(')', dot)
-			}
-			sidx := g.type_sidx(unwrapped_node_typ)
-			g.write('_typ, ${sidx})')
+			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
+			tag_expr := '(${expr_str})${dot}_typ'
+			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		}
 
 		// fill as cast name table
@@ -12921,40 +12948,27 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		expr_type_sym.info = info
 	} else if mut expr_type_sym.info is ast.Interface && node.expr_type != node.typ {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
+		matching_variants := g.matching_interface_variant_types(expr_type_sym, unwrapped_node_typ)
+		index_exprs := g.type_idx_exprs_for_types(matching_variants)
+		payload_sym := g.table.sym(g.as_cast_payload_type(unwrapped_node_typ, matching_variants))
+		sidx := g.type_sidx(unwrapped_node_typ)
 		if node.expr.has_fn_call() && !g.is_cc_msvc {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.styp(node.expr_type)
 			g.write('({ ${expr_styp} ${tmp_var} = ')
 			g.expr(node.expr)
 			g.write('; ')
-			if sym.info is ast.FnType {
-				g.write('(${styp})builtin____as_cast(')
-			} else if g.inside_smartcast {
-				g.write('(${styp}*)builtin____as_cast(')
-			} else {
-				g.write('*(${styp}*)builtin____as_cast(')
-			}
-			g.write2(tmp_var, dot)
-			g.write('_${sym.cname},v_typeof_interface_idx_${expr_type_sym.cname}(')
-			g.write2(tmp_var, dot)
-			sidx := g.type_sidx(unwrapped_node_typ)
-			g.write('_typ), ${sidx}); })')
+			obj_expr := '${tmp_var}${dot}_${payload_sym.cname}'
+			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}(${tmp_var}${dot}_typ)'
+			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
+			g.write('; })')
 		} else {
-			if sym.info is ast.FnType {
-				g.write('(${styp})builtin____as_cast(')
-			} else if g.inside_smartcast {
-				g.write('(${styp}*)builtin____as_cast(')
-			} else {
-				g.write('*(${styp}*)builtin____as_cast(')
-			}
-			g.write('(')
-			g.expr(node.expr)
-			g.write2(')', dot)
-			g.write2('_${sym.cname},v_typeof_interface_idx_${expr_type_sym.cname}(', '(')
-			g.expr(node.expr)
-			g.write2(')', dot)
-			sidx := g.type_sidx(unwrapped_node_typ)
-			g.write('_typ), ${sidx})')
+			expr_str := g.expr_string(node.expr)
+			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
+			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}((${expr_str})${dot}_typ)'
+			g.write_as_cast_call_start(styp, sym)
+			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		}
 
 		// fill as cast name table

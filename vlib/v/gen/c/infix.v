@@ -1106,6 +1106,87 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, left_type ast.Type, rig
 	}
 }
 
+fn (mut g Gen) type_tag_expr_for_is_left(node ast.InfixExpr, is_aggregate bool, is_orig_sumtype bool) string {
+	mut left_expr := ''
+	if is_aggregate {
+		left_expr = '${node.left}'
+	} else {
+		if is_orig_sumtype {
+			g.prevent_sum_type_unwrapping_once = true
+		}
+		left_expr = g.expr_string(node.left)
+	}
+	left_value_expr := if node.left_type.nr_muls() > 1 {
+		'(${'*'.repeat(node.left_type.nr_muls() - 1)}${left_expr})'
+	} else {
+		'(${left_expr})'
+	}
+	dot_or_ptr := if node.left_type.is_ptr() { '->' } else { '.' }
+	return '${left_value_expr}${dot_or_ptr}_typ'
+}
+
+fn (mut g Gen) write_type_tag_expr_for_is_left(node ast.InfixExpr, is_aggregate bool, is_orig_sumtype bool) {
+	g.write('(')
+	if node.left_type.nr_muls() > 1 {
+		g.write('*'.repeat(node.left_type.nr_muls() - 1))
+	}
+	if is_aggregate {
+		g.write('${node.left}')
+	} else if is_orig_sumtype {
+		g.prevent_sum_type_unwrapping_once = true
+		g.expr(node.left)
+	} else {
+		g.expr(node.left)
+	}
+	g.write(')')
+	if node.left_type.is_ptr() {
+		g.write('->')
+	} else {
+		g.write('.')
+	}
+	g.write('_typ')
+}
+
+fn (mut g Gen) write_is_type_tag_condition(node ast.InfixExpr, is_aggregate bool, is_orig_sumtype bool, cmp_op string, index_exprs []string) {
+	if index_exprs.len == 0 {
+		g.write(if cmp_op == '==' { 'false' } else { 'true' })
+		return
+	}
+	if index_exprs.len == 1 {
+		g.write_type_tag_expr_for_is_left(node, is_aggregate, is_orig_sumtype)
+		g.write(' ${cmp_op} ${index_exprs[0]}')
+		return
+	}
+	if is_aggregate {
+		tag_expr := g.type_tag_expr_for_is_left(node, is_aggregate, is_orig_sumtype)
+		g.write_type_tag_condition(tag_expr, cmp_op, index_exprs)
+		return
+	}
+	tag_tmp := g.new_tmp_var()
+	if !g.is_cc_msvc {
+		g.write('({ ${ast.int_type_name} ${tag_tmp} = ')
+		g.write_type_tag_expr_for_is_left(node, is_aggregate, is_orig_sumtype)
+		g.write('; ')
+		g.write_type_tag_condition(tag_tmp, cmp_op, index_exprs)
+		g.write('; })')
+		return
+	}
+	mut cur_line := if g.inside_ternary > 0 {
+		g.go_before_ternary().trim_space()
+	} else {
+		g.go_before_last_stmt().trim_space()
+	}
+	if g.inside_return && cur_line.ends_with('return') {
+		cur_line += ' '
+	}
+	g.empty_line = true
+	g.write('${ast.int_type_name} ${tag_tmp} = ')
+	g.write_type_tag_expr_for_is_left(node, is_aggregate, is_orig_sumtype)
+	g.writeln(';')
+	g.write(cur_line)
+	g.write_type_tag_condition(tag_tmp, cmp_op, index_exprs)
+}
+
 // infix_expr_is_op generates code for `is` and `!is`
 fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	mut left_sym := g.table.final_sym(g.unwrap_generic(g.type_resolver.get_type_or_default(node.left,
@@ -1143,30 +1224,10 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	}
 
 	cmp_op := if node.op == .key_is { '==' } else { '!=' }
-	g.write('(')
-	if node.left_type.nr_muls() > 1 {
-		g.write('*'.repeat(node.left_type.nr_muls() - 1))
-	}
-	if is_aggregate {
-		g.write('${node.left}')
-	} else if is_orig_sumtype {
-		g.prevent_sum_type_unwrapping_once = true
-		g.expr(node.left)
-	} else {
-		g.expr(node.left)
-	}
-	g.write(')')
-	if node.left_type.is_ptr() {
-		g.write('->')
-	} else {
-		g.write('.')
-	}
 	if left_sym.kind == .interface {
-		g.write('_typ ${cmp_op} ')
-		// `_Animal_Dog_index`
 		sub_type := match node.right {
 			ast.TypeNode {
-				g.unwrap_generic(node.right.typ)
+				right_type
 			}
 			ast.None {
 				ast.idx_to_type(g.table.type_idxs['None__'])
@@ -1176,17 +1237,57 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 			}
 		}
 
-		sub_sym := g.table.sym(sub_type)
-		g.write('_${left_sym.cname}_${sub_sym.cname}_index')
+		g.write_is_type_tag_condition(node, is_aggregate, is_orig_sumtype, cmp_op, g.matching_interface_variant_index_exprs(left_sym,
+			sub_type))
 		return
 	} else if left_sym.kind == .sum_type || is_aggregate {
-		g.write('_typ ${cmp_op} ')
+		mut aggregate_parent_type := node.left_type
+		if is_aggregate {
+			aggregate_sym := g.table.sym(node.left_type)
+			if aggregate_sym.info is ast.Aggregate {
+				aggregate_parent_type = aggregate_sym.info.sum_type
+			}
+		}
+		sumtype_parent_type := if is_orig_sumtype && node.left is ast.Ident
+			&& node.left.obj is ast.Var {
+			(node.left.obj as ast.Var).orig_type
+		} else if is_aggregate {
+			aggregate_parent_type
+		} else {
+			node.left_type
+		}
+		if node.right is ast.None {
+			g.write_is_type_tag_condition(node, is_aggregate, is_orig_sumtype, cmp_op, [
+				'${ast.none_type.idx()}',
+			])
+		} else if node.right is ast.Ident && node.right.name == g.comptime.comptime_for_variant_var {
+			mut variant_idx := g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
+				ast.void_type)
+			if (left_sym.kind == .sum_type || is_aggregate) && node.left_type.nr_muls() > 0
+				&& variant_idx.nr_muls() <= node.left_type.nr_muls() {
+				variant_idx = variant_idx.set_nr_muls(0)
+			}
+			g.write_is_type_tag_condition(node, is_aggregate, is_orig_sumtype, cmp_op, g.matching_sumtype_variant_type_idx_exprs(sumtype_parent_type,
+				variant_idx))
+		} else if node.right is ast.TypeNode {
+			g.write_is_type_tag_condition(node, is_aggregate, is_orig_sumtype, cmp_op, g.matching_sumtype_variant_type_idx_exprs(sumtype_parent_type,
+				right_type))
+		} else {
+			g.write_type_tag_expr_for_is_left(node, is_aggregate, is_orig_sumtype)
+			g.write(' ${cmp_op} ')
+			g.expr(node.right)
+		}
+		return
 	}
 	if node.right is ast.None {
+		g.write_type_tag_expr_for_is_left(node, is_aggregate, is_orig_sumtype)
+		g.write(' ${cmp_op} ')
 		g.write('${ast.none_type.idx()}')
 	} else if node.right is ast.Ident && node.right.name == g.comptime.comptime_for_variant_var {
 		variant_idx := g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
 			ast.void_type)
+		g.write_type_tag_expr_for_is_left(node, is_aggregate, is_orig_sumtype)
+		g.write(' ${cmp_op} ')
 		if (left_sym.kind == .sum_type || is_aggregate) && node.left_type.nr_muls() > 0
 			&& variant_idx.nr_muls() <= node.left_type.nr_muls() {
 			g.write('${int(variant_idx.set_nr_muls(0))}')
@@ -1194,8 +1295,12 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 			g.write('${int(variant_idx)}')
 		}
 	} else if node.right is ast.TypeNode {
+		g.write_type_tag_expr_for_is_left(node, is_aggregate, is_orig_sumtype)
+		g.write(' ${cmp_op} ')
 		g.write('${int(right_type)}')
 	} else {
+		g.write_type_tag_expr_for_is_left(node, is_aggregate, is_orig_sumtype)
+		g.write(' ${cmp_op} ')
 		g.expr(node.right)
 	}
 }

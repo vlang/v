@@ -237,28 +237,30 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write_v_source_line_info(branch)
 					g.write('if (')
 				}
-				need_deref := node.cond_type.nr_muls() > 1
-				if need_deref {
-					g.write2('(', '*'.repeat(node.cond_type.nr_muls() - 1))
-				}
-				g.write(cond_var)
-				if need_deref {
-					g.write(')')
-				}
 				cur_expr := unsafe { &branch.exprs[sumtype_index] }
+				cond_expr := if node.cond_type.nr_muls() > 1 {
+					'(${'*'.repeat(node.cond_type.nr_muls() - 1)}${cond_var})'
+				} else {
+					cond_var
+				}
+				tag_expr := '${cond_expr}${dot_or_ptr}_typ'
 				if cond_sym.kind == .sum_type {
-					g.write('${dot_or_ptr}_typ == ')
 					if cur_expr is ast.None {
-						g.write('${ast.none_type.idx()} /* none */')
+						g.write('${tag_expr} == ${ast.none_type.idx()} /* none */')
+					} else if cur_expr is ast.TypeNode {
+						variant_type := g.unwrap_generic(g.recheck_concrete_type(cur_expr.typ))
+						g.write_type_tag_condition(tag_expr, '==', g.matching_sumtype_variant_type_idx_exprs(node.cond_type,
+							variant_type))
 					} else {
+						g.write('${tag_expr} == ')
 						g.expr(cur_expr)
 					}
 				} else if cond_sym.kind == .interface {
 					if cur_expr is ast.TypeNode {
-						branch_sym := g.table.sym(g.unwrap_generic(cur_expr.typ))
-						g.write('${dot_or_ptr}_typ == _${cond_sym.cname}_${branch_sym.cname}_index')
+						g.write_type_tag_condition(tag_expr, '==', g.matching_interface_variant_index_exprs(cond_sym,
+							cur_expr.typ))
 					} else if cur_expr is ast.None && cond_sym.idx == ast.error_type_idx {
-						g.write('${dot_or_ptr}_typ == _IError_None___index')
+						g.write('${tag_expr} == _IError_None___index')
 					}
 				}
 				if use_ternary {
