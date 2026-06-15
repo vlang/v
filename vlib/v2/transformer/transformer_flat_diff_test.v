@@ -707,6 +707,13 @@ fn use_for_in_map() int {
 }
 '
 
+const fixture_map_index_array_push = '
+fn use_map_index_array_push() {
+	mut m := map[int][]int{}
+	m[1] << 2
+}
+'
+
 const fixture_return_match = '
 fn classify(n int) string {
 	return match n {
@@ -1878,6 +1885,11 @@ fn test_flat_input_to_flat_direct_matches_file_input_direct() {
 fn test_flat_input_to_flat_direct_monomorphizes_generics_like_file_input() {
 	run_flat_input_to_flat_direct_matches_file_input_direct('flat_input_direct_generic_fn',
 		fixture_generic_fn)
+}
+
+fn test_flat_input_to_flat_direct_map_index_array_push() {
+	run_flat_input_to_flat_direct_matches_file_input_direct('flat_input_direct_map_index_array_push',
+		fixture_map_index_array_push)
 }
 
 fn test_to_flat_direct_parity_for_in_map() {

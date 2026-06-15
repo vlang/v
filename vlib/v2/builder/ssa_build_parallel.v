@@ -9,10 +9,12 @@ import v2.ssa
 
 // FnDeclRef references a function declaration within the files array.
 struct FnDeclRef {
-	file_idx                  int
-	stmt_idx                  int
-	mod_name                  string
-	selective_import_fn_names map[string]string
+	file_idx                       int
+	stmt_idx                       int
+	mod_name                       string
+	selective_import_fn_names      map[string]string
+	selective_import_fn_candidates map[string][]string
+	module_import_aliases          map[string]string
 }
 
 $if !windows {
@@ -44,6 +46,8 @@ $if !windows {
 			ref := unsafe { fn_refs[fi] }
 			worker_b.cur_module = ref.mod_name
 			worker_b.set_selective_import_fn_names(ref.selective_import_fn_names)
+			worker_b.set_selective_import_fn_candidates(ref.selective_import_fn_candidates)
+			worker_b.set_module_import_aliases(ref.module_import_aliases)
 			file := unsafe { (*files)[ref.file_idx] }
 			stmt := file.stmts[ref.stmt_idx]
 			decl := stmt as ast.FnDecl
@@ -65,6 +69,9 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 		file := files[fi]
 		mod_name := ssa.file_module_name(file)
 		selective_import_fn_names := ssa.selective_import_fn_names_from_imports(file.imports)
+		selective_import_fn_candidates :=
+			ssa.selective_import_fn_candidates_from_imports(file.imports)
+		module_import_aliases := ssa.module_import_aliases_from_imports(file.imports)
 		nstmts := file.stmts.len
 		for si in 0 .. nstmts {
 			stmt := file.stmts[si]
@@ -84,10 +91,12 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 					}
 				}
 				fn_refs << FnDeclRef{
-					file_idx:                  fi
-					stmt_idx:                  si
-					mod_name:                  mod_name
-					selective_import_fn_names: selective_import_fn_names.clone()
+					file_idx:                       fi
+					stmt_idx:                       si
+					mod_name:                       mod_name
+					selective_import_fn_names:      selective_import_fn_names.clone()
+					selective_import_fn_candidates: selective_import_fn_candidates.clone()
+					module_import_aliases:          module_import_aliases.clone()
 				}
 			}
 		}

@@ -1,0 +1,9 @@
+fn use_bytes(data []u8) int {
+	return data.len
+}
+
+fn main() {
+	use_bytes(?[]u8(none))
+	maybe := ?[]u8(none)
+	use_bytes(maybe)
+}

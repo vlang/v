@@ -687,6 +687,47 @@ fn main() {
 	assert '_get_osfhandle' !in res.undefined_symbols, res.undefined_symbols.str()
 }
 
+fn test_windows_x64_minimal_runtime_get_raw_line_uses_kernel32_stdin_helpers() {
+	res := build_windows_x64_sample('module main
+import os
+
+fn main() {
+	line := os.get_raw_line()
+	_ = line.len
+}
+',
+		false, false)
+
+	assert 'os__get_raw_line' in res.built_functions, res.built_functions.str()
+	assert 'os__is_atty' in res.built_functions, res.built_functions.str()
+	assert 'GetStdHandle' in res.undefined_symbols, res.undefined_symbols.str()
+	assert 'GetConsoleMode' in res.undefined_symbols, res.undefined_symbols.str()
+	assert 'ReadConsole' in res.undefined_symbols, res.undefined_symbols.str()
+	assert 'ReadFile' in res.undefined_symbols, res.undefined_symbols.str()
+	assert 'STD_INPUT_HANDLE' !in res.undefined_symbols, res.undefined_symbols.str()
+	assert 'INVALID_HANDLE_VALUE' !in res.undefined_symbols, res.undefined_symbols.str()
+	assert '_get_osfhandle' !in res.undefined_symbols, res.undefined_symbols.str()
+	assert 'stdin' !in res.undefined_symbols, res.undefined_symbols.str()
+	assert 'stdout' !in res.undefined_symbols, res.undefined_symbols.str()
+	assert 'stderr' !in res.undefined_symbols, res.undefined_symbols.str()
+}
+
+fn test_windows_x64_invalid_handle_value_macro_does_not_become_undefined_symbol() {
+	res := build_windows_x64_sample('module main
+
+fn invalid_handle() voidptr {
+	return C.INVALID_HANDLE_VALUE
+}
+
+fn main() {
+	_ := invalid_handle()
+}
+',
+		false, false)
+
+	assert 'INVALID_HANDLE_VALUE' !in res.undefined_symbols, res.undefined_symbols.str()
+}
+
 fn test_windows_x64_minimal_runtime_prunes_crt_stdio_else_branch_before_markused() {
 	used := build_windows_x64_markused_sample('module main
 import os

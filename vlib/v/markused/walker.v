@@ -3177,14 +3177,14 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			}
 		}
 		ast.Interface {
-			for typ in isym.info.types {
+			for typ in isym.info.implementor_types(true) {
 				if typ == ast.map_type {
 					w.features.used_maps++
 				}
 				w.mark_by_type(typ)
-				for method in isym.info.methods {
+				for method_name in isym.info.get_methods() {
 					for ityp in [typ.set_nr_muls(1), typ.set_nr_muls(0)] {
-						mname := int(ityp.clear_flags()).str() + '.' + method.name
+						mname := int(ityp.clear_flags()).str() + '.' + method_name
 						w.fn_by_name(mname)
 					}
 				}

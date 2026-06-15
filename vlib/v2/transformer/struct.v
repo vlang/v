@@ -2214,6 +2214,9 @@ fn (mut t Transformer) transform_struct_field_default_expr(struct_name string, e
 }
 
 fn (t &Transformer) get_init_expr_type_name(typ ast.Expr) string {
+	if generic_type_name := t.generic_init_type_name(typ) {
+		return t.qualify_type_name(generic_type_name)
+	}
 	if typ is ast.Ident {
 		if synth_typ := t.get_synth_type(typ.pos) {
 			return t.type_to_c_name(synth_typ)

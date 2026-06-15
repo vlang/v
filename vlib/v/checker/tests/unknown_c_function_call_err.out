@@ -1,0 +1,5 @@
+vlib/v/checker/tests/unknown_c_function_call_err.vv:2:4: error: unknown C function: `C.bad_fn`. `C.` calls are external C calls; declare the function with `fn C.bad_fn(...)` and include/link the C header/library that provides it.
+    1 | fn main() {
+    2 |     C.bad_fn()
+      |       ~~~~~~~~
+    3 | }

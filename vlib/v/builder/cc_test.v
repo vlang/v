@@ -57,6 +57,30 @@ fn test_c_output_suggests_missing_sokol_shader_symbol_ignores_regular_c_errors()
 	assert c_output_suggests_missing_sokol_shader_symbol(c_output) == ''
 }
 
+fn test_c_output_suggests_missing_c_function_with_clang_style_output() {
+	c_output := "/tmp/v_501/main.tmp.c:4111:2: error: call to undeclared function 'bad_fn'; ISO C99 and later do not support implicit function declarations"
+	known_c_functions := {
+		'bad_fn': 'C.bad_fn'
+	}
+	assert c_output_suggests_missing_c_function(c_output, known_c_functions) == 'C.bad_fn'
+}
+
+fn test_c_output_suggests_missing_c_function_with_tcc_style_output() {
+	c_output := "/tmp/v_501/main.tmp.c:4111: warning: implicit declaration of function 'bad_fn'"
+	known_c_functions := {
+		'bad_fn': 'C.bad_fn'
+	}
+	assert c_output_suggests_missing_c_function(c_output, known_c_functions) == 'C.bad_fn'
+}
+
+fn test_c_output_suggests_missing_c_function_ignores_unknown_symbols() {
+	c_output := "/tmp/v_501/main.tmp.c:4111:2: error: call to undeclared function 'bad_fn'"
+	known_c_functions := {
+		'other_fn': 'C.other_fn'
+	}
+	assert c_output_suggests_missing_c_function(c_output, known_c_functions) == ''
+}
+
 fn test_macos_compile_args_do_not_force_version_min_by_default() {
 	compile_args := macos_compile_args(['-os', 'macos', '-cc', 'clang', hello_world_example()])
 	assert macos_version_min_flags(compile_args) == []string{}
@@ -729,6 +753,31 @@ fn test_c_error_missing_library_name_with_macos_ld_output() {
 fn test_c_error_missing_library_name_with_gnu_ld_output() {
 	c_output := '/usr/bin/ld: cannot find -lssl\ncollect2: error: ld returned 1 exit status\n'
 	assert c_error_missing_library_name(c_output) == 'ssl'
+}
+
+fn test_c_error_missing_library_name_with_mingw_ld_output() {
+	c_output := 'C:/msys64/ucrt64/bin/ld.exe: cannot find libv_missing_lib_25499.dll.a: No such file or directory\ncollect2.exe: error: ld returned 1 exit status\n'
+	assert c_error_missing_library_name(c_output) == 'v_missing_lib_25499'
+}
+
+fn test_c_error_missing_library_name_with_mingw_lflag_suffix_output() {
+	c_output := 'C:/msys64/ucrt64/bin/ld.exe: cannot find -lv_missing_lib_25499.dll.a: No such file or directory\ncollect2.exe: error: ld returned 1 exit status\n'
+	assert c_error_missing_library_name(c_output) == 'v_missing_lib_25499'
+}
+
+fn test_c_error_missing_library_name_with_mingw_plain_library_output() {
+	c_output := 'C:/msys64/ucrt64/bin/ld.exe: cannot find v_missing_lib_25499: No such file or directory\ncollect2.exe: error: ld returned 1 exit status\n'
+	assert c_error_missing_library_name(c_output) == 'v_missing_lib_25499'
+}
+
+fn test_c_error_missing_library_name_with_mingw_driver_missing_file_output() {
+	c_output := 'x86_64-w64-mingw32-gcc.exe: error: libv_missing_lib_25499.dll.a: No such file or directory\n'
+	assert c_error_missing_library_name(c_output) == 'v_missing_lib_25499'
+}
+
+fn test_c_error_missing_library_name_ignores_missing_object_file() {
+	c_output := '/usr/bin/ld: cannot find crt1.o: No such file or directory\ncollect2: error: ld returned 1 exit status\n'
+	assert c_error_missing_library_name(c_output) == ''
 }
 
 fn test_c_error_missing_library_name_with_regular_c_error() {

@@ -649,7 +649,15 @@ fn (t &Transformer) selector_type_name(expr ast.SelectorExpr, full bool) string 
 	if !full || parts.len == 1 {
 		return parts[parts.len - 1]
 	}
-	module_name := parts[parts.len - 2]
+	mut module_parts := parts[..parts.len - 1].clone()
+	if resolved_module := t.cur_import_aliases[module_parts[0]] {
+		mut resolved_parts := resolved_module.split('.')
+		if module_parts.len > 1 {
+			resolved_parts << module_parts[1..]
+		}
+		module_parts = resolved_parts.clone()
+	}
+	module_name := module_parts.join('__')
 	type_name := parts[parts.len - 1]
 	return '${module_name}__${type_name}'
 }
@@ -719,8 +727,10 @@ fn (t &Transformer) type_to_variant_name(e ast.Type) string {
 	return ''
 }
 
-// get_sum_type_variants returns the variants for a sum type
 fn (t &Transformer) get_sum_type_variants(type_name string) []string {
+	if variants := t.sum_type_decl_variant_names[type_name] {
+		return variants.clone()
+	}
 	typ := t.lookup_type(type_name) or { return []string{} }
 	if typ is types.SumType {
 		mut variants := []string{}
@@ -730,6 +740,175 @@ fn (t &Transformer) get_sum_type_variants(type_name string) []string {
 		return variants
 	}
 	return []string{}
+}
+
+fn (mut t Transformer) collect_sum_type_decl_variant_names(files []ast.File) {
+	old_module := t.cur_module
+	old_file := t.cur_file_name
+	old_scope := t.scope
+	old_import_aliases := t.cur_import_aliases.clone()
+	t.sum_type_decl_variant_names = map[string][]string{}
+	for file in files {
+		t.cur_file_name = file.name
+		t.cur_module = file.mod
+		t.cur_import_aliases = import_aliases_for_generic_collect(file.imports)
+		if scope := t.get_module_scope(file.mod) {
+			t.scope = scope
+		} else {
+			t.scope = unsafe { nil }
+		}
+		for stmt in file.stmts {
+			if stmt is ast.TypeDecl {
+				t.cache_sum_type_decl_variant_names(file.mod, stmt)
+			}
+		}
+	}
+	t.cur_module = old_module
+	t.cur_file_name = old_file
+	t.scope = old_scope
+	t.cur_import_aliases = old_import_aliases.clone()
+}
+
+fn (mut t Transformer) collect_sum_type_decl_variant_names_from_flat(flat &ast.FlatAst) {
+	old_module := t.cur_module
+	old_file := t.cur_file_name
+	old_scope := t.scope
+	old_import_aliases := t.cur_import_aliases.clone()
+	t.sum_type_decl_variant_names = map[string][]string{}
+	for fi in 0 .. flat.files.len {
+		fc := flat.file_cursor(fi)
+		t.cur_file_name = fc.name()
+		t.cur_module = fc.mod()
+		t.cur_import_aliases = flat_import_aliases_for_generic_collect(flat, fi)
+		if scope := t.get_module_scope(t.cur_module) {
+			t.scope = scope
+		} else {
+			t.scope = unsafe { nil }
+		}
+		stmts := fc.stmts()
+		for si in 0 .. stmts.len() {
+			stmt := stmts.at(si)
+			if stmt.kind() == .stmt_type_decl {
+				t.cache_sum_type_decl_variant_names(fc.mod(), stmt.type_decl())
+			}
+		}
+	}
+	t.cur_module = old_module
+	t.cur_file_name = old_file
+	t.scope = old_scope
+	t.cur_import_aliases = old_import_aliases.clone()
+}
+
+fn (mut t Transformer) cache_sum_type_decl_variant_names(module_name string, decl ast.TypeDecl) {
+	if decl.name == '' || decl.variants.len == 0 || decl.generic_params.len > 0 {
+		return
+	}
+	mut variants := []string{cap: decl.variants.len}
+	for variant in decl.variants {
+		if sum_type_decl_variant_has_open_placeholder(variant) {
+			return
+		}
+		variant_name := t.sum_type_decl_variant_name(variant)
+		if variant_name == '' {
+			return
+		}
+		variants << variant_name
+	}
+	if variants.len == 0 {
+		return
+	}
+	for key in sum_type_decl_cache_keys(module_name, decl.name) {
+		t.sum_type_decl_variant_names[key] = variants
+	}
+}
+
+fn (t &Transformer) sum_type_decl_variant_name(variant ast.Expr) string {
+	match variant {
+		ast.GenericArgs {
+			base_name := t.type_expr_name_full(variant.lhs)
+			suffix := t.generic_specialization_suffix(variant.args)
+			if base_name != '' && suffix != '' {
+				return base_name + suffix
+			}
+		}
+		ast.GenericArgOrIndexExpr {
+			base_name := t.type_expr_name_full(variant.lhs)
+			suffix := t.generic_specialization_suffix([variant.expr])
+			if base_name != '' && suffix != '' {
+				return base_name + suffix
+			}
+		}
+		ast.IndexExpr {
+			base_name := t.type_expr_name_full(variant.lhs)
+			suffix := t.generic_specialization_suffix([variant.expr])
+			if base_name != '' && suffix != '' {
+				return base_name + suffix
+			}
+		}
+		ast.Type {
+			if variant is ast.GenericType {
+				base_name := t.type_expr_name_full(variant.name)
+				suffix := t.generic_specialization_suffix(variant.params)
+				if base_name != '' && suffix != '' {
+					return base_name + suffix
+				}
+			}
+		}
+		else {}
+	}
+
+	return t.type_expr_name_full(variant)
+}
+
+fn sum_type_decl_variant_has_open_placeholder(variant ast.Expr) bool {
+	match variant {
+		ast.GenericArgs {
+			for arg in variant.args {
+				if generic_type_expr_has_open_placeholder(arg) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.GenericArgOrIndexExpr, ast.IndexExpr {
+			return generic_type_expr_has_open_placeholder(variant.expr)
+		}
+		ast.Type {
+			if variant is ast.GenericType {
+				for param in variant.params {
+					if generic_type_expr_has_open_placeholder(param) {
+						return true
+					}
+				}
+				return false
+			}
+			return generic_type_node_has_open_placeholder(variant)
+		}
+		else {
+			return generic_type_expr_has_open_placeholder(variant)
+		}
+	}
+}
+
+fn sum_type_decl_cache_keys(module_name string, name string) []string {
+	c_name := name.replace('.', '__')
+	if c_name == '' {
+		return []string{}
+	}
+	if c_name.contains('__') {
+		return [c_name]
+	}
+	mut keys := []string{}
+	if module_name == '' || module_name == 'main' || module_name == 'builtin' {
+		keys << c_name
+	}
+	if module_name != '' {
+		keys << '${module_name.replace('.', '__')}__${c_name}'
+	}
+	if keys.len == 0 {
+		keys << c_name
+	}
+	return keys
 }
 
 fn sum_type_variant_match_name(name string) string {
@@ -1500,8 +1679,58 @@ fn (t &Transformer) expr_is_casted_to_type(expr ast.Expr, target string) bool {
 	return false
 }
 
-fn (mut t Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected types.Type) ast.Expr {
+fn (mut t Transformer) resolve_expr_with_expected_wrapper_type(expr ast.Expr, expected types.Type, is_option bool) ast.Expr {
 	expr_pos := expr.pos()
+	match expr {
+		ast.Keyword {
+			if expr.tok == .key_none {
+				return ast.Expr(ast.CastExpr{
+					typ:  t.type_to_ast_type_expr(expected)
+					expr: expr
+					pos:  expr_pos
+				})
+			}
+		}
+		ast.Ident {
+			if expr.name == 'none' {
+				return ast.Expr(ast.CastExpr{
+					typ:  t.type_to_ast_type_expr(expected)
+					expr: expr
+					pos:  expr_pos
+				})
+			}
+		}
+		ast.Type {
+			if expr is ast.NoneType {
+				return ast.Expr(ast.CastExpr{
+					typ:  t.type_to_ast_type_expr(expected)
+					expr: ast.Expr(ast.Type(expr))
+					pos:  expr_pos
+				})
+			}
+		}
+		else {}
+	}
+
+	if expr_type := t.get_expr_type(expr) {
+		if is_option {
+			if expr_type is types.OptionType {
+				return expr
+			}
+		} else {
+			if expr_type is types.ResultType {
+				return expr
+			}
+		}
+	}
+	return ast.Expr(ast.CastExpr{
+		typ:  t.type_to_ast_type_expr(expected)
+		expr: expr
+		pos:  expr_pos
+	})
+}
+
+fn (mut t Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected types.Type) ast.Expr {
 	base := t.unwrap_alias_and_pointer_type(expected)
 	match expr {
 		ast.ArrayInitExpr {
@@ -1540,51 +1769,11 @@ fn (mut t Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected t
 	}
 
 	match expected {
-		types.OptionType, types.ResultType {
-			match expr {
-				ast.Keyword {
-					if expr.tok == .key_none {
-						return ast.Expr(ast.CastExpr{
-							typ:  t.type_to_ast_type_expr(expected)
-							expr: expr
-							pos:  expr_pos
-						})
-					}
-				}
-				ast.Ident {
-					if expr.name == 'none' {
-						return ast.Expr(ast.CastExpr{
-							typ:  t.type_to_ast_type_expr(expected)
-							expr: expr
-							pos:  expr_pos
-						})
-					}
-				}
-				ast.Type {
-					if expr is ast.NoneType {
-						return ast.Expr(ast.CastExpr{
-							typ:  t.type_to_ast_type_expr(expected)
-							expr: ast.Expr(ast.Type(expr))
-							pos:  expr_pos
-						})
-					}
-				}
-				else {}
-			}
-
-			if expr_type := t.get_expr_type(expr) {
-				if expected is types.OptionType && expr_type is types.OptionType {
-					return expr
-				}
-				if expected is types.ResultType && expr_type is types.ResultType {
-					return expr
-				}
-			}
-			return ast.Expr(ast.CastExpr{
-				typ:  t.type_to_ast_type_expr(expected)
-				expr: expr
-				pos:  expr.pos()
-			})
+		types.OptionType {
+			return t.resolve_expr_with_expected_wrapper_type(expr, expected, true)
+		}
+		types.ResultType {
+			return t.resolve_expr_with_expected_wrapper_type(expr, expected, false)
 		}
 		else {}
 	}
@@ -2251,10 +2440,14 @@ fn (t &Transformer) init_expr_sumtype_variant_name(init_expr ast.InitExpr, varia
 }
 
 fn (mut t Transformer) wrap_sumtype_value(value ast.Expr, sumtype_name string) ?ast.Expr {
+	info := t.sumtype_wrap_info_for_name(sumtype_name) or { return none }
+	return t.wrap_sumtype_value_with_variants(value, info.name, info.variants)
+}
+
+fn (mut t Transformer) wrap_sumtype_value_with_variants(value ast.Expr, sumtype_name string, variants []string) ?ast.Expr {
 	if t.expr_uses_current_generic_param(value) {
 		return none
 	}
-	variants := t.get_sum_type_variants(sumtype_name)
 	if variants.len == 0 {
 		return none
 	}
@@ -2312,7 +2505,8 @@ fn (mut t Transformer) wrap_sumtype_value(value ast.Expr, sumtype_name string) ?
 	}
 	// Transform the value then wrap
 	transformed_value := t.transform_expr(value)
-	return t.build_sumtype_init(transformed_value, variant_name, sumtype_name)
+	return t.build_sumtype_init_with_variants(transformed_value, variant_name, sumtype_name,
+		variants)
 }
 
 fn (mut t Transformer) transform_declared_sumtype_value(value ast.Expr, sumtype_name string) ?ast.Expr {
@@ -2337,10 +2531,14 @@ fn (mut t Transformer) transform_declared_sumtype_value(value ast.Expr, sumtype_
 
 // wrap_sumtype_value_transformed wraps an already-transformed expression in sum type init
 fn (mut t Transformer) wrap_sumtype_value_transformed(value ast.Expr, sumtype_name string) ?ast.Expr {
+	info := t.sumtype_wrap_info_for_name(sumtype_name) or { return none }
+	return t.wrap_sumtype_value_transformed_with_variants(value, info.name, info.variants)
+}
+
+fn (mut t Transformer) wrap_sumtype_value_transformed_with_variants(value ast.Expr, sumtype_name string, variants []string) ?ast.Expr {
 	if t.expr_uses_current_generic_param(value) {
 		return none
 	}
-	variants := t.get_sum_type_variants(sumtype_name)
 	if variants.len == 0 {
 		return none
 	}
@@ -2446,12 +2644,17 @@ fn (mut t Transformer) wrap_sumtype_value_transformed(value ast.Expr, sumtype_na
 		return none
 	}
 	// Value is already transformed, just wrap it
-	return t.build_sumtype_init(value, variant_name, sumtype_name)
+	return t.build_sumtype_init_with_variants(value, variant_name, sumtype_name, variants)
 }
 
 // build_sumtype_init creates a sum type initialization expression
 fn (t &Transformer) build_sumtype_init(transformed_value ast.Expr, variant_name string, sumtype_name string) ?ast.Expr {
-	variants := t.get_sum_type_variants(sumtype_name)
+	info := t.sumtype_wrap_info_for_name(sumtype_name) or { return none }
+	return t.build_sumtype_init_with_variants(transformed_value, variant_name, info.name,
+		info.variants)
+}
+
+fn (t &Transformer) build_sumtype_init_with_variants(transformed_value ast.Expr, variant_name string, sumtype_name string, variants []string) ?ast.Expr {
 	// Find the tag value for this variant
 	mut tag_value := -1
 	for i, v in variants {
@@ -2998,7 +3201,7 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 		pos := expr.pos
 		if lhs_type := t.get_expr_type(expr.lhs) {
 			if field_typ := t.field_type_from_receiver_type(lhs_type, expr.rhs.name) {
-				return t.normalize_type(field_typ)
+				return t.normalize_type(substitute_type(field_typ, t.cur_monomorphized_fn_bindings))
 			}
 		}
 		if typ := t.get_synth_type(pos) {
@@ -3097,7 +3300,7 @@ fn (t &Transformer) declared_expr_type_for_method_receiver_inner(expr ast.Expr, 
 			ignored_smartcast_expr)
 		{
 			if field_typ := t.field_type_from_receiver_type(lhs_type, expr.rhs.name) {
-				return field_typ
+				return substitute_type(field_typ, t.cur_monomorphized_fn_bindings)
 			}
 		}
 		return t.get_expr_type(expr)
@@ -3343,6 +3546,28 @@ fn (t &Transformer) generic_specialization_token_from_type(typ types.Type) strin
 			return sanitize_generic_token_part(type_name)
 		}
 	}
+}
+
+fn (t &Transformer) generic_specialization_suffix_from_bindings(generic_params []string, bindings map[string]types.Type) string {
+	if generic_params.len == 0 {
+		return ''
+	}
+	mut all_placeholders := true
+	mut parts := []string{cap: generic_params.len}
+	for param_name in generic_params {
+		concrete := bindings[param_name] or { return '' }
+		parts << t.generic_specialization_token_from_type(concrete)
+		if concrete.name() != param_name {
+			all_placeholders = false
+		}
+	}
+	if parts.len == 0 {
+		return ''
+	}
+	if all_placeholders {
+		return '_' + generic_params.join('_')
+	}
+	return '_T_' + parts.join('_')
 }
 
 fn (t &Transformer) generic_specialization_token(expr ast.Expr) string {
@@ -3798,6 +4023,26 @@ fn (t &Transformer) append_rhs_is_array_value_compatible(lhs_elem string, rhs as
 		}
 	}
 	return true
+}
+
+fn (t &Transformer) single_nested_array_append_value(rhs ast.Expr, lhs_elem string) ?ast.Expr {
+	if !(lhs_elem.starts_with('Array_') || lhs_elem.starts_with('Array_fixed_')) {
+		return none
+	}
+	if rhs !is ast.ArrayInitExpr {
+		return none
+	}
+	literal := rhs as ast.ArrayInitExpr
+	if literal.exprs.len != 1 {
+		return none
+	}
+	value := literal.exprs[0]
+	value_type := t.get_expr_type(value) or { return none }
+	value_type_name := t.type_to_c_name_resolve_alias(value_type)
+	if !t.array_elem_types_compatible(lhs_elem, value_type_name) {
+		return none
+	}
+	return value
 }
 
 fn (t &Transformer) array_value_elem_type(expr ast.Expr) ?string {
@@ -4430,6 +4675,25 @@ fn (t &Transformer) is_pointer_type_expr(expr ast.Expr) bool {
 		}
 	}
 	return false
+}
+
+fn (t &Transformer) array_append_lhs_uses_local_array_storage(expr ast.Expr) bool {
+	if expr is ast.ParenExpr {
+		return t.array_append_lhs_uses_local_array_storage(expr.expr)
+	}
+	if expr is ast.ModifierExpr {
+		return t.array_append_lhs_uses_local_array_storage(expr.expr)
+	}
+	if expr !is ast.Ident {
+		return false
+	}
+	ident := expr as ast.Ident
+	decl_type := t.active_local_decl_type_for_expr(ast.Expr(ident)) or { return false }
+	if decl_type !is types.Array {
+		return false
+	}
+	lookup_type := t.lookup_var_type(ident.name) or { return false }
+	return lookup_type is types.Pointer && lookup_type.base_type is types.Array
 }
 
 // get_str_fn_name_for_type returns the str function name for a types.Type

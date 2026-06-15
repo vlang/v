@@ -1716,7 +1716,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					parent_sym := c.table.sym(ast.new_type(sym.info.parent_idx))
 					kind = parent_sym.kind
 				}
-				if is_json_decode && kind !in [.struct, .sum_type, .map, .array] {
+				if is_json_decode && c.table.fully_unaliased_type(unwrapped_typ).is_ptr() {
+					c.error('${fn_name}: cannot decode into a pointer type', expr.pos)
+				} else if is_json_decode && kind !in [.struct, .sum_type, .map, .array] {
 					c.error('${fn_name}: expected sum type, struct, map or array, found ${kind}',
 						expr.pos)
 				}
@@ -2145,6 +2147,11 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		for mut arg in node.args {
 			c.expr(mut arg.expr)
 		}
+		if name.starts_with('C.') {
+			c.error('unknown C function: `${name}`. `C.` calls are external C calls; declare the function with `fn ${name}(...)` and include/link the C header/library that provides it.',
+				node.pos)
+			return ast.void_type
+		}
 		c.error('unknown function: ${node.get_name()}', node.pos)
 		return ast.void_type
 	}
@@ -2264,6 +2271,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	variadic_start := variadic_call_arg_start_idx(func, false)
 	has_typed_variadic := func.is_variadic && !func.is_c_variadic
 	for i, mut call_arg in node.args {
+		mut variadic_arg_handled := false
 		if func.params.len == 0 {
 			continue
 		}
@@ -2283,7 +2291,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.table.cur_concrete_types)
 			param = unwrapped
 		}
-		param.typ = c.resolve_short_syntax_call_arg_type(call_arg, param.typ, func.generic_names,
+		param.typ = c.resolve_call_arg_param_type(call_arg, param, func.generic_names,
 			concrete_types)
 		// registers if the arg must be passed by ref to disable auto deref args
 		call_arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
@@ -2320,9 +2328,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				c.expr(mut call_arg.expr)
 			}
 			if i == args_len - 1 {
-				c.check_variadic_arg(call_arg.expr, typ, expected_type, param.typ, i + 1,
-					func.name, func.is_method, func.is_variadic, args_len == 1 && i == 0,
-					func.generic_names.len > 0, node.pos, call_arg.pos)
+				variadic_arg_handled = c.check_variadic_arg(call_arg.expr, typ, expected_type,
+					param.typ, i + 1, func.name, func.is_method, func.is_variadic, args_len == 1
+					&& i == 0, func.generic_names.len > 0, node.pos, call_arg.pos)
 			}
 		} else {
 			c.expected_type = param.typ
@@ -2548,158 +2556,164 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			c.error('literal argument cannot be passed as reference parameter `${c.table.type_to_str(param.typ)}`',
 				call_arg.pos)
 		}
-		c.check_expected_call_arg(arg_typ, c.unwrap_generic(param.typ), node.language, call_arg) or {
-			if param.typ.has_flag(.generic) {
-				continue
-			}
-			// When decomposing a generic variadic arg into a non-variadic function,
-			// each generic instantiation re-checks all branches (e.g. match arms),
-			// so the decomposed type may not match the target param type for
-			// unreachable branches. Skip the error in this case.
-			if has_decompose && call_arg.expr is ast.ArrayDecompose
-				&& c.table.cur_concrete_types.len > 0 {
-				continue
-			}
-			if param_typ_sym.info is ast.Array && arg_typ_sym.info is ast.Array {
-				param_elem_type := c.table.unaliased_type(param_typ_sym.info.elem_type)
-				arg_elem_type := c.table.unaliased_type(arg_typ_sym.info.elem_type)
-				param_nr_muls := param.typ.nr_muls()
-				arg_nr_muls := if call_arg.is_mut {
-					arg_typ.nr_muls() + 1
-				} else {
-					arg_typ.nr_muls()
-				}
-				if param_nr_muls == arg_nr_muls
-					&& param_typ_sym.info.nr_dims == arg_typ_sym.info.nr_dims
-					&& param_elem_type == arg_elem_type {
+		if !variadic_arg_handled {
+			c.check_expected_call_arg(arg_typ, c.unwrap_generic(param.typ), node.language, call_arg) or {
+				if param.typ.has_flag(.generic) {
 					continue
 				}
-			} else if arg_typ_sym.info is ast.MultiReturn {
-				arg_typs := arg_typ_sym.info.types
-				if !(has_typed_variadic && param_i >= variadic_start) {
-					if arg_typ_sym.info.types.len > func.params.len {
-						c.error('trying to pass ${arg_typ_sym.info.types.len} argument(s), but function expects ${func.params.len} argument(s)',
-							node.pos)
-						continue_check = false
+				// When decomposing a generic variadic arg into a non-variadic function,
+				// each generic instantiation re-checks all branches (e.g. match arms),
+				// so the decomposed type may not match the target param type for
+				// unreachable branches. Skip the error in this case.
+				if has_decompose && call_arg.expr is ast.ArrayDecompose
+					&& c.table.cur_concrete_types.len > 0 {
+					continue
+				}
+				if param_typ_sym.info is ast.Array && arg_typ_sym.info is ast.Array {
+					param_elem_type := c.table.unaliased_type(param_typ_sym.info.elem_type)
+					arg_elem_type := c.table.unaliased_type(arg_typ_sym.info.elem_type)
+					param_nr_muls := param.typ.nr_muls()
+					arg_nr_muls := if call_arg.is_mut {
+						arg_typ.nr_muls() + 1
+					} else {
+						arg_typ.nr_muls()
+					}
+					if param.typ.has_flag(.option) == arg_typ.has_flag(.option)
+						&& param.typ.has_flag(.result) == arg_typ.has_flag(.result)
+						&& param_nr_muls == arg_nr_muls
+						&& param_typ_sym.info.nr_dims == arg_typ_sym.info.nr_dims
+						&& param_elem_type == arg_elem_type {
+						continue
+					}
+				} else if arg_typ_sym.info is ast.MultiReturn {
+					arg_typs := arg_typ_sym.info.types
+					if !(has_typed_variadic && param_i >= variadic_start) {
+						if arg_typ_sym.info.types.len > func.params.len {
+							c.error('trying to pass ${arg_typ_sym.info.types.len} argument(s), but function expects ${func.params.len} argument(s)',
+								node.pos)
+							continue_check = false
+							return ast.void_type
+						}
+					}
+					if !func.is_variadic && func.params.len < (param_i + arg_typ_sym.info.types.len) {
+						c.fn_call_error_have_want(
+							nr_params: func.params.len
+							nr_args:   param_i + arg_typ_sym.info.types.len
+							params:    func.params
+							args:      node.args
+							pos:       node.pos
+						)
 						return ast.void_type
 					}
-				}
-				if !func.is_variadic && func.params.len < (param_i + arg_typ_sym.info.types.len) {
-					c.fn_call_error_have_want(
-						nr_params: func.params.len
-						nr_args:   param_i + arg_typ_sym.info.types.len
-						params:    func.params
-						args:      node.args
-						pos:       node.pos
-					)
-					return ast.void_type
-				}
-				out: for n in 0 .. arg_typ_sym.info.types.len {
-					curr_arg := arg_typs[n]
-					multi_param := call_arg_param_for_fn(func, n + param_i, false)
-					c.check_expected_call_arg(curr_arg, c.unwrap_generic(multi_param.typ),
-						node.language, call_arg) or {
-						c.error('${err.msg()} in argument ${param_i + n + 1} to `${fn_name}` from ${c.table.type_to_str(arg_typ)}',
-							call_arg.pos)
-						continue out
+					out: for n in 0 .. arg_typ_sym.info.types.len {
+						curr_arg := arg_typs[n]
+						multi_param := call_arg_param_for_fn(func, n + param_i, false)
+						c.check_expected_call_arg(curr_arg, c.unwrap_generic(multi_param.typ),
+							node.language, call_arg) or {
+							c.error('${err.msg()} in argument ${param_i + n + 1} to `${fn_name}` from ${c.table.type_to_str(arg_typ)}',
+								call_arg.pos)
+							continue out
+						}
 					}
-				}
-				nr_multi_values += arg_typ_sym.info.types.len - 1
-				continue
-			} else if param_typ_sym.info is ast.Struct && arg_typ_sym.info is ast.Struct
-				&& param_typ_sym.info.is_anon {
-				if c.is_anon_struct_compatible(param_typ_sym.info, arg_typ_sym.info) {
+					nr_multi_values += arg_typ_sym.info.types.len - 1
 					continue
-				}
-			} else if c.embeds_expected_call_arg_type(arg_typ, final_param_typ) {
-				continue
-			}
-			if c.pref.translated || c.file.is_translated {
-				// in case of variadic make sure to use array elem type for checks
-				// check_expected_call_arg already does this before checks also.
-				param_type := if param.typ.has_flag(.variadic) {
-					param_typ_sym.array_info().elem_type
-				} else {
-					param.typ
-				}
-				// TODO: duplicated logic in check_types() (check_types.v)
-				// Allow enums to be used as ints and vice versa in translated code
-				if param_type.idx() in ast.integer_type_idxs && arg_typ_sym.kind == .enum {
-					continue
-				}
-				if arg_typ.idx() in ast.integer_type_idxs && param_typ_sym.kind == .enum {
-					continue
-				}
-
-				if (arg_typ == ast.bool_type && param_type.is_int())
-					|| (arg_typ.is_int() && param_type == ast.bool_type) {
-					continue
-				}
-
-				// In C unsafe number casts are used all the time (e.g. `char*` where
-				// `int*` is expected etc), so just allow them all.
-				mut param_is_number := c.table.unaliased_type(param_type).is_number()
-				if param_type.is_ptr() {
-					param_is_number = param_type.deref().is_number()
-				}
-				mut typ_is_number := c.table.unaliased_type(arg_typ).is_number()
-				if arg_typ.is_ptr() {
-					typ_is_number = arg_typ.deref().is_number()
-				}
-				if param_is_number && typ_is_number {
-					continue
-				}
-				// Allow voidptrs for everything
-				if param_type == ast.voidptr_type_idx || param_type == ast.nil_type_idx
-					|| arg_typ == ast.voidptr_type_idx || arg_typ == ast.nil_type_idx {
-					continue
-				}
-				if param_type.is_any_kind_of_pointer() && arg_typ.is_any_kind_of_pointer() {
-					continue
-				}
-				unaliased_param_sym := c.table.sym(c.table.unaliased_type(param_type))
-				unaliased_arg_sym := c.table.sym(c.table.unaliased_type(arg_typ))
-				// Allow `[32]i8` as `&i8` etc
-				if ((unaliased_arg_sym.kind == .array_fixed || unaliased_arg_sym.kind == .array)
-					&& (param_is_number
-					|| c.table.unaliased_type(param_type).is_any_kind_of_pointer()))
-					|| ((unaliased_param_sym.kind == .array_fixed
-					|| unaliased_param_sym.kind == .array)
-					&& (typ_is_number || c.table.unaliased_type(arg_typ).is_any_kind_of_pointer())) {
-					continue
-				}
-				// Allow `[N]anyptr` as `[N]anyptr`
-				if unaliased_arg_sym.info is ast.Array && unaliased_param_sym.info is ast.Array {
-					if unaliased_arg_sym.info.elem_type.is_any_kind_of_pointer()
-						&& unaliased_param_sym.info.elem_type.is_any_kind_of_pointer() {
+				} else if param_typ_sym.info is ast.Struct && arg_typ_sym.info is ast.Struct
+					&& param_typ_sym.info.is_anon {
+					if c.is_anon_struct_compatible(param_typ_sym.info, arg_typ_sym.info) {
 						continue
 					}
-				} else if unaliased_arg_sym.info is ast.ArrayFixed
-					&& unaliased_param_sym.info is ast.ArrayFixed {
-					if unaliased_arg_sym.info.elem_type.is_any_kind_of_pointer()
-						&& unaliased_param_sym.info.elem_type.is_any_kind_of_pointer() {
+				} else if c.embeds_expected_call_arg_type(arg_typ, final_param_typ) {
+					continue
+				}
+				if c.pref.translated || c.file.is_translated {
+					// in case of variadic make sure to use array elem type for checks
+					// check_expected_call_arg already does this before checks also.
+					param_type := if param.typ.has_flag(.variadic) {
+						param_typ_sym.array_info().elem_type
+					} else {
+						param.typ
+					}
+					// TODO: duplicated logic in check_types() (check_types.v)
+					// Allow enums to be used as ints and vice versa in translated code
+					if param_type.idx() in ast.integer_type_idxs && arg_typ_sym.kind == .enum {
+						continue
+					}
+					if arg_typ.idx() in ast.integer_type_idxs && param_typ_sym.kind == .enum {
+						continue
+					}
+
+					if (arg_typ == ast.bool_type && param_type.is_int())
+						|| (arg_typ.is_int() && param_type == ast.bool_type) {
+						continue
+					}
+
+					// In C unsafe number casts are used all the time (e.g. `char*` where
+					// `int*` is expected etc), so just allow them all.
+					mut param_is_number := c.table.unaliased_type(param_type).is_number()
+					if param_type.is_ptr() {
+						param_is_number = param_type.deref().is_number()
+					}
+					mut typ_is_number := c.table.unaliased_type(arg_typ).is_number()
+					if arg_typ.is_ptr() {
+						typ_is_number = arg_typ.deref().is_number()
+					}
+					if param_is_number && typ_is_number {
+						continue
+					}
+					// Allow voidptrs for everything
+					if param_type == ast.voidptr_type_idx || param_type == ast.nil_type_idx
+						|| arg_typ == ast.voidptr_type_idx || arg_typ == ast.nil_type_idx {
+						continue
+					}
+					if param_type.is_any_kind_of_pointer() && arg_typ.is_any_kind_of_pointer() {
+						continue
+					}
+					unaliased_param_sym := c.table.sym(c.table.unaliased_type(param_type))
+					unaliased_arg_sym := c.table.sym(c.table.unaliased_type(arg_typ))
+					// Allow `[32]i8` as `&i8` etc
+					arg_is_array_like := unaliased_arg_sym.kind in [.array_fixed, .array]
+					param_is_array_like := unaliased_param_sym.kind in [.array_fixed, .array]
+					if arg_is_array_like && (param_is_number
+						|| c.table.unaliased_type(param_type).is_any_kind_of_pointer()) {
+						continue
+					}
+					if param_is_array_like && (typ_is_number
+						|| c.table.unaliased_type(arg_typ).is_any_kind_of_pointer()) {
+						continue
+					}
+					// Allow `[N]anyptr` as `[N]anyptr`
+					if unaliased_arg_sym.info is ast.Array && unaliased_param_sym.info is ast.Array {
+						if unaliased_arg_sym.info.elem_type.is_any_kind_of_pointer()
+							&& unaliased_param_sym.info.elem_type.is_any_kind_of_pointer() {
+							continue
+						}
+					} else if unaliased_arg_sym.info is ast.ArrayFixed
+						&& unaliased_param_sym.info is ast.ArrayFixed {
+						if unaliased_arg_sym.info.elem_type.is_any_kind_of_pointer()
+							&& unaliased_param_sym.info.elem_type.is_any_kind_of_pointer() {
+							continue
+						}
+					}
+					// Allow `int` as `&i8`
+					if param_type.is_any_kind_of_pointer() && typ_is_number {
+						continue
+					}
+					// Allow `&i8` as `int`
+					if arg_typ.is_any_kind_of_pointer() && param_is_number {
 						continue
 					}
 				}
-				// Allow `int` as `&i8`
-				if param_type.is_any_kind_of_pointer() && typ_is_number {
+				// if first_sym.name == 'VContext' && f.params[0].name == 'ctx' { // TODO use int comparison for perf
+				//}
+				/*
+				if param_typ_sym.info is ast.Struct && param_typ_sym.name == 'VContext' {
+					c.note('ok', call_arg.pos)
 					continue
 				}
-				// Allow `&i8` as `int`
-				if arg_typ.is_any_kind_of_pointer() && param_is_number {
-					continue
-				}
+				*/
+				c.error('${err.msg()} in argument ${i + nr_multi_values + 1} to `${fn_name}`',
+					call_arg.pos)
 			}
-			// if first_sym.name == 'VContext' && f.params[0].name == 'ctx' { // TODO use int comparison for perf
-			//}
-			/*
-			if param_typ_sym.info is ast.Struct && param_typ_sym.name == 'VContext' {
-				c.note('ok', call_arg.pos)
-				continue
-			}
-			*/
-			c.error('${err.msg()} in argument ${i + nr_multi_values + 1} to `${fn_name}`',
-				call_arg.pos)
 		}
 		if final_param_sym.kind == .struct && arg_typ !in [ast.voidptr_type, ast.nil_type]
 			&& !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
@@ -3642,8 +3656,11 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 
 	for i, mut arg in node.args {
+		mut exp_arg_param := call_arg_param_for_fn(method, i, true)
+		variadic_start := variadic_call_arg_start_idx(method, true)
+		has_typed_variadic := method.is_variadic && !method.is_c_variadic
 		if i > 0 || exp_arg_typ == ast.no_type {
-			exp_arg_typ = call_arg_param_for_fn(method, i, true).typ
+			exp_arg_typ = exp_arg_param.typ
 			if !c.inside_recheck {
 				arg.ct_expr = c.comptime.is_comptime(arg.expr)
 			}
@@ -3662,7 +3679,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 							parent_sym := c.table.sym(parent_type)
 							if parent_sym.info is ast.Struct && parent_sym.info.is_generic {
 								if f := parent_sym.find_method(method_name) {
-									exp_arg_typ = call_arg_param_for_fn(f, i, true).typ
+									exp_arg_param = call_arg_param_for_fn(f, i, true)
+									exp_arg_typ = exp_arg_param.typ
 								}
 							}
 						}
@@ -3690,8 +3708,20 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 				else {}
 			}
 		}
-		exp_arg_typ = c.resolve_short_syntax_call_arg_type(arg, exp_arg_typ,
-			resolved_method_generic_names, resolved_method_concrete_types)
+		exp_arg_typ = if exp_arg_typ == exp_arg_param.typ {
+			c.resolve_call_arg_param_type(arg, exp_arg_param, resolved_method_generic_names,
+				resolved_method_concrete_types)
+		} else {
+			c.resolve_short_syntax_call_arg_type(arg, exp_arg_typ, resolved_method_generic_names,
+				resolved_method_concrete_types)
+		}
+		mut variadic_arg_handled := false
+		if has_typed_variadic && i >= variadic_start {
+			variadic_sym := c.table.sym(exp_arg_typ)
+			if variadic_sym.info is ast.Array {
+				exp_arg_typ = variadic_sym.info.elem_type
+			}
+		}
 		exp_arg_sym := c.table.sym(exp_arg_typ)
 		c.expected_type = exp_arg_typ
 
@@ -3704,8 +3734,6 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					arg.pos)
 			}
 		}
-		variadic_start := variadic_call_arg_start_idx(method, true)
-		has_typed_variadic := method.is_variadic && !method.is_c_variadic
 		if has_typed_variadic && got_arg_typ.has_flag(.variadic) && node.args.len - 1 > i {
 			c.error('when forwarding a variadic variable, it must be the final argument', arg.pos)
 		}
@@ -3732,9 +3760,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 			typ := c.expr(mut arg.expr)
 			if i == node.args.len - 1 {
-				c.check_variadic_arg(arg.expr, typ, expected_type, param.typ, i + 1, method.name,
-					true, method.is_variadic, node.args.len == 1 && i == 0,
-					method.generic_names.len > 0, node.pos, arg.pos)
+				variadic_arg_handled = c.check_variadic_arg(arg.expr, typ, expected_type,
+					param.typ, i + 1, method.name, true, method.is_variadic, node.args.len == 1
+					&& i == 0, method.generic_names.len > 0, node.pos, arg.pos)
 			}
 		} else {
 			c.expected_type = param.typ
@@ -3848,36 +3876,41 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			c.error('literal argument cannot be passed as reference parameter `${c.table.type_to_str(param.typ)}`',
 				arg.pos)
 		}
-		c.check_expected_call_arg(c.unwrap_generic(got_arg_typ), exp_arg_typ, node.language, arg) or {
-			// str method, allow type with str method if fn arg is string
-			// Passing an int or a string array produces a c error here
-			// Deleting this condition results in proper V error messages
-			// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
-			// continue
-			// }
-			param_typ_sym := c.table.sym(exp_arg_typ)
-			arg_typ_sym := c.table.sym(got_arg_typ)
-			if param_typ_sym.info is ast.Array && arg_typ_sym.info is ast.Array {
-				param_elem_type := c.table.unaliased_type(param_typ_sym.info.elem_type)
-				arg_elem_type := c.table.unaliased_type(arg_typ_sym.info.elem_type)
-				if exp_arg_typ.nr_muls() == got_arg_typ.nr_muls()
-					&& param_typ_sym.info.nr_dims == arg_typ_sym.info.nr_dims
-					&& param_elem_type == arg_elem_type {
+		if !variadic_arg_handled {
+			c.check_expected_call_arg(c.unwrap_generic(got_arg_typ), exp_arg_typ, node.language,
+				arg) or {
+				// str method, allow type with str method if fn arg is string
+				// Passing an int or a string array produces a c error here
+				// Deleting this condition results in proper V error messages
+				// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
+				// continue
+				// }
+				param_typ_sym := c.table.sym(exp_arg_typ)
+				arg_typ_sym := c.table.sym(got_arg_typ)
+				if param_typ_sym.info is ast.Array && arg_typ_sym.info is ast.Array {
+					param_elem_type := c.table.unaliased_type(param_typ_sym.info.elem_type)
+					arg_elem_type := c.table.unaliased_type(arg_typ_sym.info.elem_type)
+					if exp_arg_typ.has_flag(.option) == got_arg_typ.has_flag(.option)
+						&& exp_arg_typ.has_flag(.result) == got_arg_typ.has_flag(.result)
+						&& exp_arg_typ.nr_muls() == got_arg_typ.nr_muls()
+						&& param_typ_sym.info.nr_dims == arg_typ_sym.info.nr_dims
+						&& param_elem_type == arg_elem_type {
+						continue
+					}
+				}
+				if c.is_optional_array_arg_compatible(got_arg_typ, exp_arg_typ) {
 					continue
 				}
+				receiver_name := if method.receiver_type.has_flag(.generic)
+					&& method_concrete_types.len > 0 {
+					c.table.type_to_str(c.table.unwrap_generic_type(method.receiver_type.set_nr_muls(0),
+						method.generic_names, method_concrete_types))
+				} else {
+					left_sym.name
+				}
+				c.error('${err.msg()} in argument ${i + 1} to `${receiver_name}.${method_name}`',
+					arg.pos)
 			}
-			if c.is_optional_array_arg_compatible(got_arg_typ, exp_arg_typ) {
-				continue
-			}
-			receiver_name := if method.receiver_type.has_flag(.generic)
-				&& method_concrete_types.len > 0 {
-				c.table.type_to_str(c.table.unwrap_generic_type(method.receiver_type.set_nr_muls(0),
-					method.generic_names, method_concrete_types))
-			} else {
-				left_sym.name
-			}
-			c.error('${err.msg()} in argument ${i + 1} to `${receiver_name}.${method_name}`',
-				arg.pos)
 		}
 		if mut arg.expr is ast.LambdaExpr {
 			// Calling fn is generic and lambda arg also is generic
@@ -3941,7 +3974,41 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		concrete_types = node.concrete_types.map(c.unwrap_generic(it))
 	}
 	if method_generic_names_len > 0 && node.concrete_types.len > 0 {
+		variadic_start := variadic_call_arg_start_idx(method, true)
+		has_typed_variadic := method.is_variadic && !method.is_c_variadic
 		for i, mut arg in node.args {
+			param := call_arg_param_for_fn(method, i, true)
+			if method_generic_names_len == node.concrete_types.len && param.typ.has_flag(.generic) {
+				if unwrap_typ := c.table.convert_generic_param_type(param, method.generic_names,
+					concrete_types)
+				{
+					mut expected_fn_typ := unwrap_typ
+					if has_typed_variadic && i >= variadic_start {
+						unwrap_sym := c.table.sym(unwrap_typ)
+						if unwrap_sym.info is ast.Array {
+							expected_fn_typ = unwrap_sym.info.elem_type
+						}
+					}
+					if c.table.final_sym(expected_fn_typ).kind == .function
+						&& arg.expr !is ast.LambdaExpr && arg.expr !is ast.AnonFn {
+						if mut arg.expr is ast.Ident {
+							if arg.expr.concrete_types.any(it.has_flag(.generic)
+								|| (it != 0 && c.table.sym(it).kind == .placeholder))
+							{
+								arg.expr.concrete_types = []ast.Type{}
+							}
+						}
+						old_expected_type := c.expected_type
+						c.expected_type = expected_fn_typ
+						arg_typ := c.check_expr_option_or_result_call(arg.expr,
+							c.expr(mut arg.expr))
+						c.expected_type = old_expected_type
+						arg.typ = arg_typ
+						node.args[i].typ = arg_typ
+						node.args[i].expr = arg.expr
+					}
+				}
+			}
 			if mut arg.expr is ast.LambdaExpr {
 				c.handle_generic_lambda_arg(node, method.generic_names, mut arg.expr)
 			} else if mut arg.expr is ast.AnonFn {
@@ -4058,6 +4125,28 @@ fn (mut c Checker) handle_generic_anon_fn_arg(node &ast.CallExpr, generic_names 
 	if c.table.register_fn_concrete_types(anon.decl.fkey(), anon_concrete_types) {
 		anon.decl.ninstances++
 	}
+}
+
+fn (mut c Checker) resolve_call_arg_param_type(arg ast.CallArg, param ast.Param, generic_names []string, concrete_types []ast.Type) ast.Type {
+	if !param.typ.has_flag(.generic) || generic_names.len == 0
+		|| generic_names.len != concrete_types.len {
+		return param.typ
+	}
+	if arg.expr is ast.StructInit {
+		expr := arg.expr as ast.StructInit
+		if expr.is_short_syntax && expr.typ == ast.void_type {
+			return c.table.convert_generic_param_type(param, generic_names, concrete_types) or {
+				param.typ
+			}
+		}
+	}
+	param_sym := c.table.final_sym(param.typ)
+	if param_sym.kind == .function {
+		if typ := c.table.convert_generic_param_type(param, generic_names, concrete_types) {
+			return typ
+		}
+	}
+	return param.typ
 }
 
 fn (mut c Checker) resolve_short_syntax_call_arg_type(arg ast.CallArg, param_typ ast.Type, generic_names []string, concrete_types []ast.Type) ast.Type {
@@ -5548,7 +5637,7 @@ fn (mut c Checker) supports_veb_string_bound_param(typ ast.Type) bool {
 
 fn (mut c Checker) check_variadic_arg(arg_expr ast.Expr, typ ast.Type, expected_type ast.Type, param_typ ast.Type,
 	arg_num int, fn_name string, is_method bool, fn_is_variadic bool, is_single_array_arg bool,
-	is_generic_fn bool, call_pos token.Pos, arg_pos token.Pos) {
+	is_generic_fn bool, call_pos token.Pos, arg_pos token.Pos) bool {
 	kind := c.table.sym(typ).kind
 	is_decompose := arg_expr is ast.ArrayDecompose
 	mut allow_variadic_pass := false
@@ -5576,11 +5665,14 @@ fn (mut c Checker) check_variadic_arg(arg_expr ast.Expr, typ ast.Type, expected_
 		&& !param_typ.has_flag(.generic) && expected_type != typ {
 		c.error('to pass `${arg_expr}` (${styp}) to `${fn_name}` (which accepts type `...${elem_styp}`), use `...${arg_expr}`',
 			call_pos)
+		return true
 	} else if is_decompose && !param_typ.has_flag(.generic) && expected_kind != .interface
 		&& expected_type.idx() != typ.idx() && typ != ast.void_type {
 		c.error('cannot use `...${styp}` as `...${elem_styp}` in argument ${arg_num} to `${fn_name}`',
 			arg_pos)
+		return true
 	}
+	return kind == .array && !is_decompose && allow_variadic_pass
 }
 
 // autofree_expr_has_or_block_in_chain returns true if expr is a CallExpr whose call chain
