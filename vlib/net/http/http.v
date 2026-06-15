@@ -29,14 +29,15 @@ pub mut:
 	read_timeout  i64        = 30 * time.second // timeout for reading the response; applies to plain http and to direct https requests
 	write_timeout i64        = 30 * time.second // timeout for writing the request; applies to plain http (write timeouts are not enforced on the SSL write path yet)
 
-	validate               bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
-	verify                 string // the path to a rootca.pem file, containing trusted CA certificate(s)
-	cert                   string // the path to a cert.pem file, containing client certificate(s) for the request
-	cert_key               string // the path to a key.pem file, containing private keys for the client certificate(s)
-	in_memory_verification bool   // if true, verify, cert, and cert_key are read from memory, not from a file
-	allow_redirect         bool = true // whether to allow redirect
-	max_retries            int  = 5    // maximum number of retries required when an underlying socket error occurs
-	enable_http2           bool = true // when true (the default) and the URL is https, advertise ALPN `h2, http/1.1` and use HTTP/2 if the server selects it; set to false to force HTTP/1.1. Ignored for plain http://, and for the Windows SChannel backend which has no ALPN yet (see vlang/v#27383). on_progress / on_progress_body / stop_copying_limit / stop_receiving_limit are honored on the HTTP/2 path; on_progress fires per DATA frame payload rather than per raw network read.
+	validate                 bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
+	verify                   string // the path to a rootca.pem file, containing trusted CA certificate(s)
+	cert                     string // the path to a cert.pem file, containing client certificate(s) for the request
+	cert_key                 string // the path to a key.pem file, containing private keys for the client certificate(s)
+	in_memory_verification   bool   // if true, verify, cert, and cert_key are read from memory, not from a file
+	allow_redirect           bool = true // whether to allow redirect
+	max_retries              int  = 5    // maximum number of retries required when an underlying socket error occurs
+	enable_http2             bool = true // when true (the default) and the URL is https, advertise ALPN `h2, http/1.1` and use HTTP/2 if the server selects it; set to false to force HTTP/1.1. Ignored for plain http://, and for the Windows SChannel backend which has no ALPN yet (see vlang/v#27383). on_progress / on_progress_body / stop_copying_limit / stop_receiving_limit are honored on the HTTP/2 path; on_progress fires per DATA frame payload rather than per raw network read.
+	disable_connection_reuse bool // opt out of the shared connection pool: open a fresh connection for this request, send `Connection: close`, and close the connection after the response (the pre-pooling behavior)
 	// callbacks to allow custom reporting code to run, while the request is running, and to implement streaming
 	on_redirect      RequestRedirectFn     = unsafe { nil }
 	on_progress      RequestProgressFn     = unsafe { nil }
@@ -171,31 +172,32 @@ pub fn prepare(config FetchConfig) !Request {
 	}
 	url := build_url_from_fetch(config) or { return error('http.fetch: invalid url ${config.url}') }
 	req := Request{
-		method:                 config.method
-		url:                    url
-		data:                   config.data
-		header:                 config.header
-		cookies:                config.cookies
-		user_agent:             config.user_agent
-		user_ptr:               config.user_ptr
-		verbose:                config.verbose
-		validate:               config.validate
-		read_timeout:           config.read_timeout
-		write_timeout:          config.write_timeout
-		verify:                 config.verify
-		cert:                   config.cert
-		proxy:                  config.proxy
-		cert_key:               config.cert_key
-		in_memory_verification: config.in_memory_verification
-		allow_redirect:         config.allow_redirect
-		max_retries:            config.max_retries
-		enable_http2:           config.enable_http2
-		on_progress:            config.on_progress
-		on_progress_body:       config.on_progress_body
-		on_redirect:            config.on_redirect
-		on_finish:              config.on_finish
-		stop_copying_limit:     config.stop_copying_limit
-		stop_receiving_limit:   config.stop_receiving_limit
+		method:                   config.method
+		url:                      url
+		data:                     config.data
+		header:                   config.header
+		cookies:                  config.cookies
+		user_agent:               config.user_agent
+		user_ptr:                 config.user_ptr
+		verbose:                  config.verbose
+		validate:                 config.validate
+		read_timeout:             config.read_timeout
+		write_timeout:            config.write_timeout
+		verify:                   config.verify
+		cert:                     config.cert
+		proxy:                    config.proxy
+		cert_key:                 config.cert_key
+		in_memory_verification:   config.in_memory_verification
+		allow_redirect:           config.allow_redirect
+		max_retries:              config.max_retries
+		enable_http2:             config.enable_http2
+		disable_connection_reuse: config.disable_connection_reuse
+		on_progress:              config.on_progress
+		on_progress_body:         config.on_progress_body
+		on_redirect:              config.on_redirect
+		on_finish:                config.on_finish
+		stop_copying_limit:       config.stop_copying_limit
+		stop_receiving_limit:     config.stop_receiving_limit
 	}
 	return req
 }
