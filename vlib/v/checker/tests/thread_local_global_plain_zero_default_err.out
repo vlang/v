@@ -1,0 +1,33 @@
+vlib/v/checker/tests/thread_local_global_plain_zero_default_err.vv:20:10: error: `@[thread_local]` globals without an explicit initializer must have a plain zero default (types with non-zero struct field defaults, strings, arrays, maps, chans, options, results, or sumtypes need an explicit constant initializer)
+   18 | 
+   19 | @[thread_local]
+   20 | __global bad_struct_default NonZeroDefault
+      |          ~~~~~~~~~~~~~~~~~~
+   21 | 
+   22 | @[thread_local]
+vlib/v/checker/tests/thread_local_global_plain_zero_default_err.vv:23:10: error: `@[thread_local]` globals without an explicit initializer must have a plain zero default (types with non-zero struct field defaults, strings, arrays, maps, chans, options, results, or sumtypes need an explicit constant initializer)
+   21 | 
+   22 | @[thread_local]
+   23 | __global bad_nested_default NestedNonZeroDefault
+      |          ~~~~~~~~~~~~~~~~~~
+   24 | 
+   25 | @[thread_local]
+vlib/v/checker/tests/thread_local_global_plain_zero_default_err.vv:26:10: error: `@[thread_local]` globals without an explicit initializer must have a plain zero default (types with non-zero struct field defaults, strings, arrays, maps, chans, options, results, or sumtypes need an explicit constant initializer)
+   24 | 
+   25 | @[thread_local]
+   26 | __global bad_runtime_default RuntimeDefault
+      |          ~~~~~~~~~~~~~~~~~~~
+   27 | 
+   28 | @[thread_local]
+vlib/v/checker/tests/thread_local_global_plain_zero_default_err.vv:29:10: error: `@[thread_local]` globals without an explicit initializer must have a plain zero default (types with non-zero struct field defaults, strings, arrays, maps, chans, options, results, or sumtypes need an explicit constant initializer)
+   27 | 
+   28 | @[thread_local]
+   29 | __global bad_string string
+      |          ~~~~~~~~~~
+   30 | 
+   31 | @[thread_local]
+vlib/v/checker/tests/thread_local_global_plain_zero_default_err.vv:32:10: error: `@[thread_local]` globals without an explicit initializer must have a plain zero default (types with non-zero struct field defaults, strings, arrays, maps, chans, options, results, or sumtypes need an explicit constant initializer)
+   30 | 
+   31 | @[thread_local]
+   32 | __global bad_array []int
+      |          ~~~~~~~~~

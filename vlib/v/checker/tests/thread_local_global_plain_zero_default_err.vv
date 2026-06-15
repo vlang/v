@@ -1,0 +1,32 @@
+@[has_globals]
+module main
+
+struct NonZeroDefault {
+	x int = 42
+}
+
+struct NestedNonZeroDefault {
+	inner NonZeroDefault
+}
+
+struct RuntimeDefault {
+	name string
+}
+
+@[thread_local]
+__global ok_int int
+
+@[thread_local]
+__global bad_struct_default NonZeroDefault
+
+@[thread_local]
+__global bad_nested_default NestedNonZeroDefault
+
+@[thread_local]
+__global bad_runtime_default RuntimeDefault
+
+@[thread_local]
+__global bad_string string
+
+@[thread_local]
+__global bad_array []int

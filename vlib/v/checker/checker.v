@@ -4181,6 +4181,99 @@ fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
 	}
 }
 
+fn (mut c Checker) expr_is_plain_zero(expr ast.Expr) bool {
+	return match expr {
+		ast.IntegerLiteral {
+			expr.val.trim_left('-') == '0'
+		}
+		ast.FloatLiteral {
+			expr.val.trim_left('-').trim('0').trim('.') == ''
+		}
+		ast.BoolLiteral {
+			!expr.val
+		}
+		ast.CastExpr {
+			!expr.has_arg && c.expr_is_plain_zero(expr.expr)
+		}
+		ast.ParExpr {
+			c.expr_is_plain_zero(expr.expr)
+		}
+		ast.PrefixExpr {
+			expr.op.str() == '-' && c.expr_is_plain_zero(expr.right)
+		}
+		ast.UnsafeExpr {
+			expr.expr.is_nil() || c.expr_is_plain_zero(expr.expr)
+		}
+		ast.Nil {
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut c Checker) type_has_plain_zero_default(typ ast.Type, seen []int) bool {
+	if typ.has_flag(.option) || typ.has_flag(.result) || typ.has_flag(.shared_f) {
+		return false
+	}
+	if typ.is_any_kind_of_pointer() {
+		return true
+	}
+	idx := typ.clear_flags().idx()
+	if idx in seen {
+		return true
+	}
+	mut next_seen := seen.clone()
+	next_seen << idx
+	sym := c.table.sym(typ)
+	return match sym.kind {
+		.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char,
+		.rune, .bool, .voidptr, .byteptr, .charptr, .function, .interface, .thread, .multi_return {
+			true
+		}
+		.array_fixed {
+			info := sym.info as ast.ArrayFixed
+			c.type_has_plain_zero_default(info.elem_type, next_seen)
+		}
+		.alias {
+			info := sym.info as ast.Alias
+			c.type_has_plain_zero_default(info.parent_type, next_seen)
+		}
+		.enum {
+			if enum_decl := c.table.enum_decls[sym.name] {
+				enum_decl.fields.len == 0 || !enum_decl.fields[0].has_expr
+					|| c.expr_is_plain_zero(enum_decl.fields[0].expr)
+			} else {
+				true
+			}
+		}
+		.struct {
+			info := sym.info as ast.Struct
+			if info.is_union {
+				true
+			} else {
+				mut plain_zero := true
+				for field in info.fields {
+					if field.has_default_expr {
+						plain_zero = plain_zero && c.expr_is_plain_zero(field.default_expr)
+					} else {
+						plain_zero = plain_zero
+							&& c.type_has_plain_zero_default(field.typ, next_seen)
+					}
+					if !plain_zero {
+						break
+					}
+				}
+				plain_zero
+			}
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 	if !c.pref.enable_globals && !c.pref.is_fmt && !c.pref.is_vet && !c.pref.translated
 		&& !c.pref.is_livemain && !c.pref.building_v && !c.is_builtin_mod
@@ -4260,6 +4353,12 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 				}
 			}
 		} else {
+			if field.is_thread_local {
+				if !c.type_has_plain_zero_default(field.typ, []int{}) {
+					c.error('`@[thread_local]` globals without an explicit initializer must have a plain zero default (types with non-zero struct field defaults, strings, arrays, maps, chans, options, results, or sumtypes need an explicit constant initializer)',
+						field.pos)
+				}
+			}
 			field_sym := c.table.sym(field.typ)
 			if field_sym.info is ast.ArrayFixed && c.array_fixed_has_unresolved_size(field_sym.info) {
 				mut size_expr := field_sym.info.size_expr
