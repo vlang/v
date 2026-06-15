@@ -641,9 +641,19 @@ fn closure_reclaim_frames(keep u32) {
 
 // try_destroy reclaims a managed closure slot and lets the GC reclaim its
 // captured context, when the caller knows the closure is dead (e.g. a per-frame
-// UI event handler whose owning view tree is being discarded). Idempotent and a
-// no-op for nil / non-managed (plain) function pointers. INTERNAL/ADVANCED: the
-// closure must never be invoked again after this returns.
+// UI event handler whose owning view tree is being discarded). A no-op for nil /
+// non-managed (plain) function pointers.
+//
+// INTERNAL/ADVANCED. After this returns the `closure` pointer is invalid — treat
+// it like a freed pointer: the closure must never be invoked again, and the
+// handle must not be passed here again. The repeated-destroy no-op guard only
+// holds while the slot is still free: a closure value is the bare address of its
+// trampoline slot, so once a *new* closure reuses that slot the address aliases
+// the new one bit-for-bit, and a stale `try_destroy(old)` would release the new
+// closure instead. Detecting that needs the handle to carry a per-slot
+// generation, which the single-pointer closure ABI cannot do (see the fat-closure
+// design discussion); so, as with `free`, calling this on a dead handle is
+// undefined and the caller must not retain destroyed closure handles.
 @[markused]
 pub fn try_destroy(closure voidptr) {
 	closure_try_destroy(closure)
