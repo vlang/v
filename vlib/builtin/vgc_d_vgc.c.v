@@ -316,6 +316,9 @@ __global vgc_pace_by_threads = true
 fn C.atoll(&char) i64
 fn C.getenv(&char) &char
 
+// vgc_init initializes the vgc heap: it fills the size-class tables, enables the
+// collector and reads the `VGC_NEXT_GC_MB` environment override for the initial
+// GC trigger. It is called once during runtime startup, before the first allocation.
 @[markused]
 pub fn vgc_init() {
 	C.vgc_init_size_tables()
@@ -1719,6 +1722,10 @@ __global vgc_watch_in_spawn = u32(0)
 __global vgc_watch_rng_cov = u32(0)
 // (thread idx+1) whose [stack_lo,stack_hi] numerically COVERS watch_addr
 
+// vgc_set_watch arms the diagnostic GC watch on the object at `ptr`, resetting the
+// per-watch counters (root/marked/swept/decommit/cycles/stack hits) so a single
+// object can be tracked across collection cycles. It is a debugging aid for the
+// vgc backend and has no effect on normal allocation or collection.
 @[markused]
 pub fn vgc_set_watch(ptr voidptr) {
 	vgc_watch_in_root = 0
