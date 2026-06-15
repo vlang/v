@@ -642,6 +642,208 @@ fn use_maybe() ?string {
 	assert obj.typ().name() == 'string'
 }
 
+fn test_generic_receiver_init_mapping_resolves_result_return_type() {
+	env := check_code('
+struct Queue[T] {
+	value T
+}
+
+fn (mut queue Queue[T]) pop() !T {
+	return queue.value
+}
+
+fn abort(err string) {
+	_ = err
+}
+
+fn main() {
+	mut queue := Queue[[]string]{value: ["alpha", "omega"]}
+	v := queue.pop() or { abort(err) }
+	last := v.last()
+	_ = last
+}
+')
+	assert has_type(env, 'string'), 'Queue[[]string].pop() or {} should type v as []string'
+}
+
+fn test_generic_receiver_init_mapping_keeps_method_generics_separate() {
+	env := check_code('
+struct Queue[T] {
+	value T
+}
+
+fn (mut queue Queue[T]) pop_or[U](fallback U) !T {
+	_ = fallback
+	return queue.value
+}
+
+fn abort(err string) {
+	_ = err
+}
+
+fn main() {
+	mut queue := Queue[[]string]{value: ["alpha", "omega"]}
+	v := queue.pop_or(123) or { abort(err) }
+	last := v.last()
+	_ = last
+}
+')
+	assert has_type(env, 'string'), 'method generic U should not replace receiver generic T'
+}
+
+fn test_generic_receiver_init_mapping_respects_shadow_scope() {
+	env := check_code('
+struct Box[T] {
+	value T
+}
+
+fn (mut box Box[T]) take() !T {
+	return box.value
+}
+
+fn abort(err string) {
+	_ = err
+}
+
+fn main() {
+	mut box := Box[int]{value: 7}
+	if true {
+		mut box := Box[[]string]{value: ["alpha", "omega"]}
+		v := box.take() or { abort(err) }
+		inner_last := v.last()
+		_ = inner_last
+	}
+	n := box.take() or { abort(err) }
+	_ = n + 1
+}
+')
+	scope := env.get_fn_scope('main', 'main') or { panic('missing main scope') }
+	inner_last := scope.lookup_parent('inner_last', 0) or { panic('missing inner_last local') }
+	n := scope.lookup_parent('n', 0) or { panic('missing n local') }
+	assert inner_last.typ().name() == 'string'
+	assert n.typ().name() == 'int'
+}
+
+fn test_temporary_generic_receiver_init_maps_method_generic() {
+	env := check_code('
+struct Box[T] {
+	value T
+}
+
+fn (b Box[T]) get[T]() T {
+	return b.value
+}
+
+fn main() {
+	x := Box[int]{value: 7}.get()
+	_ = x + 1
+}
+')
+	scope := env.get_fn_scope('main', 'main') or { panic('missing main scope') }
+	x := scope.lookup_parent('x', 0) or { panic('missing x local') }
+	assert x.typ().name() == 'int'
+}
+
+fn test_temporary_generic_call_receiver_maps_method_generic() {
+	env := check_code('
+struct Box[T] {
+	value T
+}
+
+fn (b Box[T]) get[T]() T {
+	return b.value
+}
+
+fn make_box() Box[int] {
+	return Box[int]{value: 7}
+}
+
+fn main() {
+	x := make_box().get()
+	_ = x + 1
+}
+')
+	scope := env.get_fn_scope('main', 'main') or { panic('missing main scope') }
+	x := scope.lookup_parent('x', 0) or { panic('missing x local') }
+	assert x.typ().name() == 'int'
+}
+
+fn test_identifier_generic_receiver_from_call_maps_method_generic() {
+	env := check_code('
+struct Box[T] {
+	value T
+}
+
+fn (b Box[T]) get[T]() T {
+	return b.value
+}
+
+fn make_box[T](value T) Box[T] {
+	return Box[T]{value: value}
+}
+
+fn main() {
+	b := make_box[int](7)
+	y := b.value
+	x := b.get()
+	_ = y + 1
+	_ = x + 1
+}
+')
+	scope := env.get_fn_scope('main', 'main') or { panic('missing main scope') }
+	y := scope.lookup_parent('y', 0) or { panic('missing y local') }
+	x := scope.lookup_parent('x', 0) or { panic('missing x local') }
+	assert y.typ().name() == 'int'
+	assert x.typ().name() == 'int'
+}
+
+fn test_phantom_generic_receiver_from_call_maps_method_generic() {
+	env := check_code('
+struct Box[T] {}
+
+fn make_box() Box[int] {
+	return Box[int]{}
+}
+
+fn (b Box[T]) touch[T]() {
+	_ = b
+}
+
+fn main() {
+	b := make_box()
+	b.touch()
+}
+')
+	scope := env.get_fn_scope('main', 'main') or { panic('missing main scope') }
+	b := scope.lookup_parent('b', 0) or { panic('missing b local') }
+	assert b.typ().name() == 'Box'
+}
+
+fn test_temporary_generic_selector_receiver_maps_method_generic() {
+	env := check_code('
+struct Box[T] {
+	value T
+}
+
+struct Holder {
+	box Box[int]
+}
+
+fn (b Box[T]) get[T]() T {
+	return b.value
+}
+
+fn main() {
+	holder := Holder{box: Box[int]{value: 7}}
+	x := holder.box.get()
+	_ = x + 1
+}
+')
+	scope := env.get_fn_scope('main', 'main') or { panic('missing main scope') }
+	x := scope.lookup_parent('x', 0) or { panic('missing x local') }
+	assert x.typ().name() == 'int'
+}
+
 fn test_comptime_embed_file_type_and_methods() {
 	code := 'fn main() { x := ' + '$' + 'embed_file("asset.txt"); y := x.to_string(); z := x.len }'
 	env := check_code(code)

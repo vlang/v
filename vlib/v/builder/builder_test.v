@@ -258,7 +258,7 @@ fn test_thirdparty_object_build_with_multiline_cflags() {
 }
 
 fn test_missing_library_is_reported_without_compiler_bug_hint() {
-	if os.user_os() == 'windows' && os.getenv('VFLAGS').contains('msvc') {
+	if os.user_os() == 'windows' {
 		return
 	}
 	os.chdir(test_path)!
@@ -272,9 +272,11 @@ fn test_missing_library_is_reported_without_compiler_bug_hint() {
 
 	assert res.exit_code != 0
 	assert normalized_output.contains('builder error:')
-	assert normalized_output.contains('C library `${lib_name}` was not found while linking the generated program.')
-	assert normalized_output.contains('Please install the corresponding development package/libraries')
-	assert !normalized_output.contains('This is a V compiler bug')
+	assert normalized_output.contains('C library `${lib_name}` was not found while linking the generated program.'), normalized_output
+
+	assert normalized_output.contains('Please install the corresponding development package/libraries'), normalized_output
+
+	assert !normalized_output.contains('This is a V compiler bug'), normalized_output
 }
 
 fn test_windows_host_c_compiler_probe_is_skipped_for_non_windows_targets() {

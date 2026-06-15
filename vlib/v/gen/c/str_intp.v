@@ -597,8 +597,9 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut node_ := unsafe { node }
 	mut fmts := node_.fmts.clone()
 	for i, mut expr in node_.exprs {
-		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && !node_.need_fmts[i]
-			&& fmts[i] != `_` {
+		has_explicit_fmt := i < node_.has_fmts.len && node_.has_fmts[i]
+		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && !has_explicit_fmt
+			&& !node_.need_fmts[i] && fmts[i] != `_` {
 			fmts[i] = `_`
 		}
 		mut resolved_if_guard_typ := ast.Type(0)
@@ -667,8 +668,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 					ctyp = ctyp.clear_flag(.option)
 				}
 				node_.expr_types[i] = ctyp
-				if node_.fmts[i] == `_`
-					|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0) {
+				if !has_explicit_fmt && fmts[i] == `_` {
 					ftyp_sym := g.table.sym(ctyp)
 					typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
 						g.table.unalias_num_type(ctyp)
@@ -702,7 +702,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				node_.expr_types[i] = field_typ
 			}
 			// Update format specifier if it was auto-determined and the type changed
-			if !node_.need_fmts[i] && fmts[i] == `_` {
+			if !has_explicit_fmt && !node_.need_fmts[i] && fmts[i] == `_` {
 				ftyp_sym := g.table.sym(field_typ)
 				new_typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
 					g.table.unalias_num_type(field_typ)
@@ -722,7 +722,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 						&& g.table.final_sym(field_typ).kind != .interface {
 						field_typ = field_typ.deref()
 						node_.expr_types[i] = field_typ
-						if !node_.need_fmts[i] {
+						if !has_explicit_fmt && !node_.need_fmts[i] {
 							fmts[i] = g.get_default_fmt(field_typ, field_typ)
 						}
 					}
@@ -735,7 +735,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 					// instead of falling through to `%p`. The pointer type is
 					// preserved in expr_types so `str_val` still emits the
 					// required `*` when reading the value.
-					if !node_.need_fmts[i] {
+					if !has_explicit_fmt && !node_.need_fmts[i] {
 						deref_typ := field_typ.deref()
 						ftyp_sym := g.table.sym(deref_typ)
 						new_typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {

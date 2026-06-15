@@ -71,6 +71,17 @@ fn (req &Request) h2_do(mut ssl_conn ssl.SSLConn, method Method, host_name strin
 	defer {
 		ssl_conn.shutdown() or {}
 	}
+	mut conn := new_h2_conn(ssl_conn)
+	return req.h2_exchange(mut conn, method, host_name, port, path, data, header)!
+}
+
+// h2_exchange runs a single request over an already-established H2Conn and
+// converts the result to a net.http Response. It is transport-agnostic: the
+// caller is responsible for building the H2Conn over whatever ALPN-negotiated
+// `h2` transport (net.ssl on most platforms, SChannel on default Windows) and
+// for tearing it down afterwards. The request's streaming callbacks and stop
+// limits are adapted onto the H2 chunk hook, as documented on h2_do.
+fn (req &Request) h2_exchange(mut conn H2Conn, method Method, host_name string, port int, path string, data string, header Header) !Response {
 	base := req.to_h2_request(method, h2_authority(host_name, port), path, data, header)
 	on_progress := req.on_progress
 	on_progress_body := req.on_progress_body
@@ -96,7 +107,6 @@ fn (req &Request) h2_do(mut ssl_conn ssl.SSLConn, method Method, host_name strin
 		stop_copying_limit:   req.stop_copying_limit
 		stop_receiving_limit: req.stop_receiving_limit
 	}
-	mut conn := new_h2_conn(ssl_conn)
 	h2resp := conn.do(h2req)!
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(h2resp.body.len))!

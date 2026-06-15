@@ -824,12 +824,37 @@ pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) !(S
 			return error('ambiguous field `${field_name}`')
 		}
 	} else if sym.info is Aggregate {
+		mut found_once := false
+		mut new_field := StructField{}
+		mut found_embed_types := []Type{}
 		for typ in sym.info.types {
 			agg_sym := t.sym(typ)
-			field, embed_types := t.find_field_from_embeds(agg_sym, field_name) or { continue }
-			if embed_types.len > 0 {
-				return field, embed_types
+			mut field := StructField{}
+			mut embed_types := []Type{}
+			if type_field := t.find_field(agg_sym, field_name) {
+				field = type_field
+			} else {
+				field, embed_types = t.find_field_from_embeds(agg_sym, field_name) or {
+					return error('type `${t.type_to_str(typ)}` has no field or method `${field_name}`')
+				}
+				if found_embed_types.len == 0 {
+					found_embed_types = embed_types.clone()
+				}
 			}
+			if !found_once {
+				found_once = true
+				new_field = field
+			} else if new_field.typ != field.typ {
+				return error('field `${t.type_to_str(typ)}.${field_name}` type is different')
+			}
+			new_field = StructField{
+				...new_field
+				is_mut: new_field.is_mut && field.is_mut
+				is_pub: new_field.is_pub && field.is_pub
+			}
+		}
+		if found_once {
+			return new_field, found_embed_types
 		}
 	} else if sym.info is Alias {
 		unalias_sym := t.sym(sym.info.parent_type)

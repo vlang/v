@@ -4,6 +4,7 @@
 
 module cleanc
 
+import strings
 import v2.ast
 import v2.types
 
@@ -264,20 +265,21 @@ fn (g &Gen) missing_array_contains_fallback_specs() []ArrayContainsFallbackSpec 
 	return specs
 }
 
-fn (mut g Gen) emit_missing_array_contains_fallback_decls() {
-	specs := g.missing_array_contains_fallback_specs()
+fn array_contains_fallback_decls(specs []ArrayContainsFallbackSpec) string {
 	if specs.len == 0 {
-		return
+		return ''
 	}
+	mut sb := strings.new_builder(specs.len * 80)
 	for spec in specs {
-		g.sb.writeln('bool ${spec.fn_name}(${spec.arr_type} a, ${spec.elem_type} v);')
+		sb.writeln('bool ${spec.fn_name}(${spec.arr_type} a, ${spec.elem_type} v);')
 	}
-	g.sb.writeln('')
+	sb.writeln('')
+	return sb.str()
 }
 
-fn (mut g Gen) emit_missing_array_contains_fallbacks() {
+fn (mut g Gen) emit_array_contains_fallbacks(specs []ArrayContainsFallbackSpec) {
 	mut emitted_any := false
-	for spec in g.missing_array_contains_fallback_specs() {
+	for spec in specs {
 		fn_key := 'fn_${spec.fn_name}'
 		if fn_key in g.emitted_types {
 			continue
@@ -578,6 +580,9 @@ fn (mut g Gen) gen_map_index_array_append(lhs ast.IndexExpr, rhs ast.Expr, elem_
 	if !ok {
 		return false
 	}
+	if value_type.trim_space().ends_with('*') {
+		return false
+	}
 	value_base := value_type.trim_right('*')
 	mut is_array_value := c_type_is_array_value(value_base)
 	if !is_array_value {
@@ -596,7 +601,7 @@ fn (mut g Gen) gen_map_index_array_append(lhs ast.IndexExpr, rhs ast.Expr, elem_
 	g.tmp_counter++
 	g.sb.write_string('({ ${key_type} ${key_tmp} = ')
 	g.expr(lhs.expr)
-	g.sb.write_string('; ${value_type} ${zero_tmp} = (${value_type}){0}; ${value_type}* ${arr_tmp} = (${value_type}*)map__get(')
+	g.sb.write_string('; ${value_type} ${zero_tmp} = __new_array_with_default_noscan(0, 0, sizeof(${elem_type}), NULL); ${value_type}* ${arr_tmp} = (${value_type}*)map__get_and_set(')
 	if lhs_is_ptr {
 		g.expr(lhs.lhs)
 	} else {

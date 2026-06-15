@@ -36,13 +36,51 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Verify MSVC tools
+        run: |
+          where.exe cl.exe
+          where.exe link.exe
+          where.exe dumpbin.exe
       - name: Build
         run: |
           echo %VFLAGS%
           echo $VFLAGS
           .\makev.bat -msvc
           .\v.exe symlink
-      - name: V2 x64 native checks
+      - name: backend x64 regressions
+        run: |
+          function Assert-LastExit([string] $label) {
+            if ($LASTEXITCODE -ne 0) {
+              throw "$label failed with exit code $LASTEXITCODE"
+            }
+          }
+
+          $env:VJOBS = '1'
+          .\v.exe test `
+            vlib/v2/abi `
+            vlib/v2/gen/x64/x64_abi_test.v `
+            vlib/v2/gen/x64/x64_backend_diagnostics_test.v `
+            vlib/v2/gen/x64/x64_object_format_test.v `
+            vlib/v2/gen/x64/x64_pe_linker_test.v `
+            vlib/v2/ssa/tree_sumtype_lowering_test.v
+          Assert-LastExit 'stable V2 x64 unit tests'
+          .\v.exe test -run-only test_module_qualified_alias_array_field_index_has_alias_element_type,test_module_storage_legacy_direct_import_nested_module_selector_uses_declared_leaf_module,test_module_storage_flat_direct_import_nested_module_selector_uses_declared_leaf_module vlib/v2/ssa/module_storage_test.v
+          Assert-LastExit 'targeted vlib/v2/ssa/module_storage_test.v regressions'
+          .\v.exe test -run-only test_x64_macos_windows_math_log_20_stdout_exact_bytes,test_x64_macos_windows_generic_sumtype_repeated_base_specialization_stdout_exact_bytes,test_x64_macos_windows_formatted_int_interpolation_stdout_exact_bytes,test_x64_macos_windows_formatted_int_width_100_interpolation_stdout_exact_bytes,test_x64_macos_windows_formatted_f64_interpolation_stdout_exact_bytes,test_x64_macos_windows_formatted_string_return_lifetime_stdout_exact_bytes,test_x64_macos_windows_spectral_reduced_formatted_stdout_exact_bytes,test_x64_macos_windows_bits_len32_stdout_exact_bytes,test_x64_macos_windows_rand_u32n_interface_result_stdout_exact_bytes,test_x64_macos_windows_rand_intn_range_interface_result_stdout_exact_bytes,test_x64_macos_windows_textscanner_embedded_parser_stdout_exact_bytes,test_x64_macos_windows_struct_positional_side_effect_stdout_exact_bytes,test_x64_macos_windows_struct_named_side_effect_stdout_exact_bytes,test_x64_macos_windows_unrelated_same_shape_struct_stdout_exact_bytes,test_x64_macos_windows_named_init_embedded_value_stdout_exact_bytes,test_x64_macos_windows_get_raw_line_example_stdin_stdout_exact_bytes,test_x64_macos_windows_mini_calculator_example_stdin_stdout_exact_bytes,test_x64_macos_windows_mini_calculator_recursive_descent_example_stdin_stdout_exact_bytes vlib/v2/gen/x64/x64_runtime_smoke_test.v
+          Assert-LastExit 'reduced V2 x64 runtime smoke tests'
+          Remove-Item Env:\VJOBS -ErrorAction SilentlyContinue
+          .\v.exe test vlib/v2/builder/native_test.v vlib/v2/builder/target_os_test.v
+          Assert-LastExit 'vlib/v2/builder/native_test.v vlib/v2/builder/target_os_test.v'
+          .\v.exe test vlib/v2/ssa/optimize
+          Assert-LastExit 'vlib/v2/ssa/optimize'
+          $env:V2_VERIFY_STRICT = '1'
+          .\v.exe test vlib/v2/ssa/optimize
+          Assert-LastExit 'strict vlib/v2/ssa/optimize'
+          Remove-Item Env:\V2_VERIFY_STRICT -ErrorAction SilentlyContinue
+      - name: backend x64 examples
         run: |
           function Assert-LastExit([string] $label) {
             if ($LASTEXITCODE -ne 0) {
@@ -65,13 +103,72 @@ jobs:
             }
           }
 
-          function Invoke-NativeX64Example([string] $source, [string] $name, [byte[]] $expected_stdout, [string[]] $program_args = @()) {
+          function Get-PeImportedDlls([string] $exe) {
+            $output = & dumpbin.exe /imports $exe 2>&1
+            if ($LASTEXITCODE -ne 0) {
+              $text = ($output | Out-String).Trim()
+              throw "dumpbin import inspection failed for $exe with exit code $LASTEXITCODE`n$text"
+            }
+
+            $dlls = [System.Collections.Generic.List[string]]::new()
+            foreach ($lineObject in $output) {
+              $line = [string] $lineObject
+              if ($line -match '^\s*([A-Za-z0-9_.-]+\.dll)\s*$') {
+                $dlls.Add($matches[1].ToLowerInvariant())
+              }
+            }
+            return $dlls | Sort-Object -Unique
+          }
+
+          function Assert-TinyPeImports([string] $name, [string] $exe, [string] $pe_import_mode) {
+            if ($pe_import_mode -eq '') {
+              return
+            }
+            if ($pe_import_mode -eq 'tiny-used') {
+              [string[]] $allowed_dlls = @('kernel32.dll')
+            } elseif ($pe_import_mode -eq 'tiny-shell32-argv') {
+              [string[]] $allowed_dlls = @('kernel32.dll', 'shell32.dll')
+            } else {
+              throw "$name has unknown PE import validation mode: $pe_import_mode"
+            }
+
+            [string[]] $dlls = @(Get-PeImportedDlls $exe)
+            if ($dlls.Count -eq 0) {
+              throw "$name PE import validation found no imported DLLs with dumpbin.exe"
+            }
+
+            $crt_dlls = $dlls | Where-Object {
+              $_ -match '^(msvcrt|ucrtbase|vcruntime)[0-9]*\.dll$' -or $_ -match '^api-ms-win-crt-.*\.dll$'
+            }
+            if ($crt_dlls.Count -gt 0) {
+              throw "$name tiny PE unexpectedly imports CRT DLL(s): $($crt_dlls -join ', ')"
+            }
+
+            $unexpected_dlls = $dlls | Where-Object { $_ -notin $allowed_dlls }
+            if ($unexpected_dlls.Count -gt 0) {
+              throw "$name PE imports unexpected DLL(s): $($unexpected_dlls -join ', ')"
+            }
+
+            $missing_dlls = $allowed_dlls | Where-Object { $_ -notin $dlls }
+            if ($missing_dlls.Count -gt 0) {
+              throw "$name PE import validation missed expected DLL(s): $($missing_dlls -join ', ')"
+            }
+          }
+
+          function Invoke-NativeX64Example([string] $source, [string] $name, [byte[]] $expected_stdout, [string] $pe_import_mode = '', [string[]] $program_args = @()) {
             $exe = Join-Path $tmp "$name.exe"
             $stdout_path = Join-Path $tmp "$name.out"
             $stderr_path = Join-Path $tmp "$name.err"
 
-            .\v.exe -v2 -no-parallel -b x64 $source -o $exe
-            Assert-LastExit "compile $source"
+            $compile_output = & .\v.exe -v2 -no-parallel -b x64 $source -o $exe 2>&1
+            $compile_exit = $LASTEXITCODE
+            foreach ($line in $compile_output) {
+              Write-Host $line
+            }
+            if ($compile_exit -ne 0) {
+              throw "compile $source failed with exit code $compile_exit"
+            }
+            Assert-TinyPeImports $name $exe $pe_import_mode
 
             Remove-Item -LiteralPath $stdout_path, $stderr_path -Force -ErrorAction SilentlyContinue
             if ($program_args.Count -gt 0) {
@@ -93,33 +190,196 @@ jobs:
             Assert-ByteArrayEqual $stderr $empty "$source stderr"
           }
 
-          $env:VJOBS = '1'
-          .\v.exe test vlib/v2/abi vlib/v2/gen/x64
-          Assert-LastExit 'vlib/v2/abi vlib/v2/gen/x64'
-          Remove-Item Env:\VJOBS -ErrorAction SilentlyContinue
-          .\v.exe test vlib/v2/builder/native_test.v vlib/v2/builder/target_os_test.v
-          Assert-LastExit 'vlib/v2/builder/native_test.v vlib/v2/builder/target_os_test.v'
-          .\v.exe test vlib/v2/ssa/optimize
-          Assert-LastExit 'vlib/v2/ssa/optimize'
-          $env:V2_VERIFY_STRICT = '1'
-          .\v.exe test vlib/v2/ssa/optimize
-          Assert-LastExit 'strict vlib/v2/ssa/optimize'
-          Remove-Item Env:\V2_VERIFY_STRICT -ErrorAction SilentlyContinue
+          function Invoke-NativeX64ExampleWithStdin([string] $source, [string] $name, [byte[]] $expected_stdout, [string] $stdin_path, [string] $pe_import_mode = '', [string[]] $program_args = @()) {
+            $exe = Join-Path $tmp "$name.exe"
+            $stdout_path = Join-Path $tmp "$name.out"
+            $stderr_path = Join-Path $tmp "$name.err"
 
-          $tmp = Join-Path $env:RUNNER_TEMP 'v2_x64_native'
-          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+            $compile_output = & .\v.exe -v2 -no-parallel -b x64 $source -o $exe 2>&1
+            $compile_exit = $LASTEXITCODE
+            foreach ($line in $compile_output) {
+              Write-Host $line
+            }
+            if ($compile_exit -ne 0) {
+              throw "compile $source failed with exit code $compile_exit"
+            }
+            Assert-TinyPeImports $name $exe $pe_import_mode
 
-          function Get-VRunExpectedBytes([string] $source, [string] $name) {
-            $stdout_path = Join-Path $tmp "$name.vrun.out"
-            $stderr_path = Join-Path $tmp "$name.vrun.err"
             Remove-Item -LiteralPath $stdout_path, $stderr_path -Force -ErrorAction SilentlyContinue
-
-            $process = Start-Process -FilePath '.\v.exe' -ArgumentList @('run', $source) -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
+            if ($program_args.Count -gt 0) {
+              $process = Start-Process -FilePath $exe -ArgumentList $program_args -NoNewWindow -Wait -PassThru -RedirectStandardInput $stdin_path -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
+            } else {
+              $process = Start-Process -FilePath $exe -NoNewWindow -Wait -PassThru -RedirectStandardInput $stdin_path -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
+            }
             if ($process.ExitCode -ne 0) {
               if (Test-Path -LiteralPath $stderr_path) {
                 Get-Content -LiteralPath $stderr_path
               }
-              throw "v run $source failed with code $($process.ExitCode)"
+              throw "$source exited with code $($process.ExitCode)"
+            }
+
+            [byte[]] $stdout = if (Test-Path -LiteralPath $stdout_path) { [System.IO.File]::ReadAllBytes($stdout_path) } else { New-Object byte[] 0 }
+            [byte[]] $stderr = if (Test-Path -LiteralPath $stderr_path) { [System.IO.File]::ReadAllBytes($stderr_path) } else { New-Object byte[] 0 }
+            $empty = New-Object byte[] 0
+            Assert-ByteArrayEqual $stdout $expected_stdout "$source stdout"
+            Assert-ByteArrayEqual $stderr $empty "$source stderr"
+          }
+
+          function Invoke-NativeX64ExampleCapture([string] $source, [string] $name, [string[]] $program_args = @()) {
+            $exe = Join-Path $tmp "$name.exe"
+            $stdout_path = Join-Path $tmp "$name.out"
+            $stderr_path = Join-Path $tmp "$name.err"
+
+            $compile_output = & .\v.exe -v2 -no-parallel -b x64 $source -o $exe 2>&1
+            $compile_exit = $LASTEXITCODE
+            foreach ($line in $compile_output) {
+              Write-Host $line
+            }
+            if ($compile_exit -ne 0) {
+              throw "compile $source failed with exit code $compile_exit"
+            }
+
+            Remove-Item -LiteralPath $stdout_path, $stderr_path -Force -ErrorAction SilentlyContinue
+            if ($program_args.Count -gt 0) {
+              $process = Start-Process -FilePath $exe -ArgumentList $program_args -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
+            } else {
+              $process = Start-Process -FilePath $exe -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
+            }
+            if ($process.ExitCode -ne 0) {
+              if (Test-Path -LiteralPath $stderr_path) {
+                Get-Content -LiteralPath $stderr_path
+              }
+              throw "$source exited with code $($process.ExitCode)"
+            }
+
+            [byte[]] $stderr = if (Test-Path -LiteralPath $stderr_path) { [System.IO.File]::ReadAllBytes($stderr_path) } else { New-Object byte[] 0 }
+            $empty = New-Object byte[] 0
+            Assert-ByteArrayEqual $stderr $empty "$source stderr"
+            return $stdout_path
+          }
+
+          function Assert-RandomIpsStdout([string] $path) {
+            [string[]] $lines = [System.IO.File]::ReadAllLines($path)
+            if ($lines.Count -ne 10) {
+              throw "random_ips expected 10 lines, got $($lines.Count)"
+            }
+            $rows = [System.Collections.Generic.List[string]]::new()
+            $all_second_zero = $true
+            $all_fourth_zero = $true
+            foreach ($line in $lines) {
+              [string[]] $parts = $line.Split('.')
+              if ($parts.Count -ne 4) {
+                throw "random_ips invalid IPv4 shape: $line"
+              }
+              [int[]] $octets = @()
+              foreach ($part in $parts) {
+                if ($part -notmatch '^[0-9]+$') {
+                  throw "random_ips non-numeric octet: $line"
+                }
+                $value = [int] $part
+                if ($value -lt 0 -or $value -gt 254) {
+                  throw "random_ips octet out of range: $line"
+                }
+                $octets += $value
+              }
+              if ($octets[1] -ne 0) {
+                $all_second_zero = $false
+              }
+              if ($octets[3] -ne 0) {
+                $all_fourth_zero = $false
+              }
+              $rows.Add(($octets -join '.'))
+            }
+            if (($rows | Sort-Object -Unique).Count -lt 3) {
+              throw 'random_ips output has too little row diversity'
+            }
+            if ($all_second_zero -and $all_fourth_zero) {
+              throw 'random_ips suspicious old x.0.x.0 pattern'
+            }
+          }
+
+          function Assert-Rule110Stdout([string] $path, [int] $width) {
+            [string[]] $lines = [System.IO.File]::ReadAllLines($path)
+            $title = 'Rule 110 V Implementation'
+            $idx = -1
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+              if ($lines[$i].Contains($title)) {
+                $idx = $i
+                break
+              }
+            }
+            if ($idx -lt 0) {
+              throw 'rule110 missing title'
+            }
+            [string[]] $generations = @()
+            if ($idx + 1 -lt $lines.Count) {
+              $generations = @($lines[($idx + 1)..($lines.Count - 1)])
+            }
+            if ($generations.Count -gt 0 -and $generations[0] -eq '') {
+              if ($generations.Count -eq 1) {
+                $generations = @()
+              } else {
+                $generations = @($generations[1..($generations.Count - 1)])
+              }
+            }
+            if ($generations.Count -ne $width) {
+              throw "rule110 expected $width generation lines, got $($generations.Count)"
+            }
+            $has_live_cell = $false
+            foreach ($line in $generations) {
+              if ($line.Length -ne $width) {
+                throw "rule110 generation line has width $($line.Length), expected $width`: '$line'"
+              }
+              if ($line -match '[^ *]') {
+                throw "rule110 invalid generation chars: '$line'"
+              }
+              if ($line.Contains('*')) {
+                $has_live_cell = $true
+              }
+            }
+            if (-not $has_live_cell) {
+              throw 'rule110 expected at least one live cell'
+            }
+            if (($generations | Sort-Object -Unique).Count -lt 3) {
+              throw 'rule110 expected at least 3 distinct generation lines'
+            }
+          }
+
+          $tmp = Join-Path $env:RUNNER_TEMP 'v2_x64_native'
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+
+          function Get-VRunExpectedBytes([string] $source, [string] $name, [string[]] $program_args = @()) {
+            $stdout_path = Join-Path $tmp "$name.vrun.out"
+            $stderr_path = Join-Path $tmp "$name.vrun.err"
+            Remove-Item -LiteralPath $stdout_path, $stderr_path -Force -ErrorAction SilentlyContinue
+
+            $v_args = @('run', $source) + $program_args
+            $process = Start-Process -FilePath '.\v.exe' -ArgumentList $v_args -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
+            if ($process.ExitCode -ne 0) {
+              if (Test-Path -LiteralPath $stderr_path) {
+                Get-Content -LiteralPath $stderr_path
+              }
+              throw "v run $source $($program_args -join ' ') failed with code $($process.ExitCode)"
+            }
+
+            [byte[]] $stderr = if (Test-Path -LiteralPath $stderr_path) { [System.IO.File]::ReadAllBytes($stderr_path) } else { New-Object byte[] 0 }
+            $empty = New-Object byte[] 0
+            Assert-ByteArrayEqual $stderr $empty "v run $source stderr"
+            return [System.IO.File]::ReadAllBytes($stdout_path)
+          }
+
+          function Get-VRunExpectedBytesWithStdin([string] $source, [string] $name, [string] $stdin_path, [string[]] $program_args = @()) {
+            $stdout_path = Join-Path $tmp "$name.vrun.out"
+            $stderr_path = Join-Path $tmp "$name.vrun.err"
+            Remove-Item -LiteralPath $stdout_path, $stderr_path -Force -ErrorAction SilentlyContinue
+
+            $v_args = @('run', $source) + $program_args
+            $process = Start-Process -FilePath '.\v.exe' -ArgumentList $v_args -NoNewWindow -Wait -PassThru -RedirectStandardInput $stdin_path -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
+            if ($process.ExitCode -ne 0) {
+              if (Test-Path -LiteralPath $stderr_path) {
+                Get-Content -LiteralPath $stderr_path
+              }
+              throw "v run $source $($program_args -join ' ') failed with code $($process.ExitCode)"
             }
 
             [byte[]] $stderr = if (Test-Path -LiteralPath $stderr_path) { [System.IO.File]::ReadAllBytes($stderr_path) } else { New-Object byte[] 0 }
@@ -129,7 +389,7 @@ jobs:
           }
 
           $hello_expected = [System.Text.Encoding]::UTF8.GetBytes("Hello, World!`n")
-          Invoke-NativeX64Example 'examples/hello_world.v' 'hello_world' $hello_expected
+          Invoke-NativeX64Example 'examples/hello_world.v' 'hello_world' $hello_expected 'tiny-used'
 
           $fizz_lines = 1..100 | ForEach-Object {
             if ($_ % 15 -eq 0) {
@@ -143,10 +403,13 @@ jobs:
             }
           }
           $fizz_expected = [System.Text.Encoding]::UTF8.GetBytes(($fizz_lines -join "`n") + "`n")
-          Invoke-NativeX64Example 'examples/fizz_buzz.v' 'fizz_buzz' $fizz_expected
+          Invoke-NativeX64Example 'examples/fizz_buzz.v' 'fizz_buzz' $fizz_expected 'tiny-used'
 
           $fibonacci_expected = [System.Text.Encoding]::UTF8.GetBytes("1`n1`n2`n3`n5`n8`n13`n21`n34`n55`n89`n")
-          Invoke-NativeX64Example 'examples/fibonacci.v' 'fibonacci' $fibonacci_expected @('10')
+          Invoke-NativeX64Example 'examples/fibonacci.v' 'fibonacci' $fibonacci_expected 'tiny-shell32-argv' @('10')
+
+          $dump_factorial_expected = [System.Text.Encoding]::UTF8.GetBytes("120`n")
+          Invoke-NativeX64Example 'examples/dump_factorial.v' 'dump_factorial' $dump_factorial_expected 'tiny-used'
 
           function Get-HanoiExpectedLines([int] $n, [string] $a, [string] $b, [string] $c) {
             if ($n -eq 1) {
@@ -160,7 +423,7 @@ jobs:
 
           $hanoi_lines = @(Get-HanoiExpectedLines 7 'A' 'B' 'C')
           $hanoi_expected = [System.Text.Encoding]::UTF8.GetBytes(($hanoi_lines -join "`n") + "`n")
-          Invoke-NativeX64Example 'examples/hanoi.v' 'hanoi' $hanoi_expected
+          Invoke-NativeX64Example 'examples/hanoi.v' 'hanoi' $hanoi_expected 'tiny-used'
 
           function Get-SudokuExpectedLines {
             $puzzle = @(
@@ -221,7 +484,7 @@ jobs:
           Invoke-NativeX64Example 'examples/function_types.v' 'function_types' $function_types_expected
 
           $submodule_expected = [System.Text.Encoding]::UTF8.GetBytes("5`n3`n")
-          Invoke-NativeX64Example 'examples/submodule/main.v' 'submodule' $submodule_expected
+          Invoke-NativeX64Example 'examples/submodule/main.v' 'submodule' $submodule_expected 'tiny-used'
 
           function Get-TreeOfNodesExpectedLines {
             @(
@@ -251,7 +514,7 @@ jobs:
           Invoke-NativeX64Example 'examples/tree_of_nodes.v' 'tree_of_nodes' $tree_of_nodes_expected
 
           $js_hello_world_expected = [System.Text.Encoding]::UTF8.GetBytes("Hello from V.js (0)`nHello from V.js (1)`nHello from V.js (2)`n")
-          Invoke-NativeX64Example 'examples/js_hello_world.v' 'js_hello_world' $js_hello_world_expected
+          Invoke-NativeX64Example 'examples/js_hello_world.v' 'js_hello_world' $js_hello_world_expected 'tiny-used'
 
           function Get-VSingleQuotedLiteralBytes([string] $literal) {
             $bytes = [System.Collections.Generic.List[byte]]::new()
@@ -310,19 +573,78 @@ jobs:
           }
 
           [byte[]] $vascii_expected = Get-VasciiExpectedBytes
-          Invoke-NativeX64Example 'examples/vascii.v' 'vascii' $vascii_expected
+          Invoke-NativeX64Example 'examples/vascii.v' 'vascii' $vascii_expected 'tiny-used'
 
           [byte[]] $rune_expected = 0xF0, 0x9F, 0x98, 0x80, 0x0A, 0x40, 0x0A
-          Invoke-NativeX64Example 'examples/rune.v' 'rune' $rune_expected
+          Invoke-NativeX64Example 'examples/rune.v' 'rune' $rune_expected 'tiny-used'
 
           [byte[]] $bfs_expected = Get-VRunExpectedBytes 'examples/graphs/bfs.v' 'bfs'
           Invoke-NativeX64Example 'examples/graphs/bfs.v' 'bfs' $bfs_expected
+
+          [byte[]] $bfs3_expected = Get-VRunExpectedBytes 'examples/graphs/bfs3.v' 'bfs3'
+          Invoke-NativeX64Example 'examples/graphs/bfs3.v' 'bfs3' $bfs3_expected
+
+          [byte[]] $primes_expected = Get-VRunExpectedBytes 'examples/primes.v' 'primes' @('20')
+          Invoke-NativeX64Example 'examples/primes.v' 'primes' $primes_expected '' @('20')
 
           [byte[]] $dfs_expected = Get-VRunExpectedBytes 'examples/graphs/dfs.v' 'dfs'
           Invoke-NativeX64Example 'examples/graphs/dfs.v' 'dfs' $dfs_expected
 
           [byte[]] $dijkstra_expected = Get-VRunExpectedBytes 'examples/graphs/dijkstra.v' 'dijkstra'
           Invoke-NativeX64Example 'examples/graphs/dijkstra.v' 'dijkstra' $dijkstra_expected
+
+          [byte[]] $topological_sorting_greedy_expected = Get-VRunExpectedBytes 'examples/graphs/topological_sorting_greedy.v' 'topological_sorting_greedy'
+          Invoke-NativeX64Example 'examples/graphs/topological_sorting_greedy.v' 'topological_sorting_greedy' $topological_sorting_greedy_expected
+
+          [byte[]] $topological_sorting_dfs_expected = Get-VRunExpectedBytes 'examples/graphs/topological_sorting_dfs.v' 'topological_sorting_dfs'
+          Invoke-NativeX64Example 'examples/graphs/topological_sorting_dfs.v' 'topological_sorting_dfs' $topological_sorting_dfs_expected
+
+          [byte[]] $dfs2_expected = Get-VRunExpectedBytes 'examples/graphs/dfs2.v' 'dfs2'
+          Invoke-NativeX64Example 'examples/graphs/dfs2.v' 'dfs2' $dfs2_expected
+
+          [byte[]] $minimal_spann_tree_prim_expected = Get-VRunExpectedBytes 'examples/graphs/minimal_spann_tree_prim.v' 'minimal_spann_tree_prim'
+          Invoke-NativeX64Example 'examples/graphs/minimal_spann_tree_prim.v' 'minimal_spann_tree_prim' $minimal_spann_tree_prim_expected
+
+          [byte[]] $bellman_ford_expected = Get-VRunExpectedBytes 'examples/graphs/bellman-ford.v' 'bellman_ford'
+          Invoke-NativeX64Example 'examples/graphs/bellman-ford.v' 'bellman_ford' $bellman_ford_expected
+
+          [byte[]] $binary_search_tree_expected = Get-VRunExpectedBytes 'examples/binary_search_tree.v' 'binary_search_tree'
+          Invoke-NativeX64Example 'examples/binary_search_tree.v' 'binary_search_tree' $binary_search_tree_expected
+
+          # normal-required: IError/custom errors
+          [byte[]] $errors_expected = [System.Text.Encoding]::UTF8.GetBytes("wrong format`nempty input`n")
+          Invoke-NativeX64Example 'examples/errors.v' 'errors' $errors_expected
+
+          [byte[]] $custom_error_expected = Get-VRunExpectedBytes 'examples/custom_error.v' 'custom_error'
+          Invoke-NativeX64Example 'examples/custom_error.v' 'custom_error' $custom_error_expected
+
+          # normal-required: spectral norm/math.sqrt/formatted f64 interpolation
+          [byte[]] $spectral_expected = Get-VRunExpectedBytes 'examples/spectral.v' 'spectral' @('10')
+          Invoke-NativeX64Example 'examples/spectral.v' 'spectral' $spectral_expected '' @('10')
+
+          [byte[]] $quick_sort_expected = [System.Text.Encoding]::UTF8.GetBytes("length of random array is 1000`nbefore quick sort whether array is sorted: false`nafter quick sort whether array is sorted: true`n")
+          Invoke-NativeX64Example 'examples/quick_sort.v' 'quick_sort' $quick_sort_expected
+
+          $get_raw_line_input = Join-Path $tmp 'get_raw_line.in'
+          [System.IO.File]::WriteAllText($get_raw_line_input, "hello`nworld`n", [System.Text.UTF8Encoding]::new($false))
+          [byte[]] $get_raw_line_expected = Get-VRunExpectedBytesWithStdin 'examples/get_raw_line.v' 'get_raw_line' $get_raw_line_input
+          Invoke-NativeX64ExampleWithStdin 'examples/get_raw_line.v' 'get_raw_line' $get_raw_line_expected $get_raw_line_input
+
+          $mini_calculator_input = Join-Path $tmp 'mini_calculator.in'
+          [System.IO.File]::WriteAllText($mini_calculator_input, "3+4*2`nexit`n", [System.Text.UTF8Encoding]::new($false))
+          [byte[]] $mini_calculator_expected = Get-VRunExpectedBytesWithStdin 'examples/mini_calculator.v' 'mini_calculator' $mini_calculator_input
+          Invoke-NativeX64ExampleWithStdin 'examples/mini_calculator.v' 'mini_calculator' $mini_calculator_expected $mini_calculator_input
+
+          $mini_calculator_recursive_descent_input = Join-Path $tmp 'mini_calculator_recursive_descent.in'
+          [System.IO.File]::WriteAllText($mini_calculator_recursive_descent_input, "3+4*2`nexit`n", [System.Text.UTF8Encoding]::new($false))
+          [byte[]] $mini_calculator_recursive_descent_expected = Get-VRunExpectedBytesWithStdin 'examples/mini_calculator_recursive_descent.v' 'mini_calculator_recursive_descent' $mini_calculator_recursive_descent_input
+          Invoke-NativeX64ExampleWithStdin 'examples/mini_calculator_recursive_descent.v' 'mini_calculator_recursive_descent' $mini_calculator_recursive_descent_expected $mini_calculator_recursive_descent_input
+
+          $random_ips_stdout = Invoke-NativeX64ExampleCapture 'examples/random_ips.v' 'random_ips'
+          Assert-RandomIpsStdout $random_ips_stdout
+
+          $rule110_stdout = Invoke-NativeX64ExampleCapture 'examples/rule110.v' 'rule110' @('31')
+          Assert-Rule110Stdout $rule110_stdout 31
       - name: Build V with WX
         run: v -cflags /WX self
       - name: All code is formatted

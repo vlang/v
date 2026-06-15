@@ -1,0 +1,12 @@
+string _arg_expr_ends_with_1_
+= builtin__string__plus(suffix, _S("\""));
+if (builtin__string_ends_with(it, /*autofree arg*/_arg_expr_ends_with_1_
+builtin__string_free(&_arg_expr_ends_with_1_
+string _arg_expr_main_accepts_1_
+builtin__string_free(&_arg_expr_main_accepts_1_
+string _arg_expr_starts_with_0_
+builtin__string_free(&_arg_expr_starts_with_0_
+string _arg_expr_main_mark_1_
+= builtin__string__plus(it, _S("x"));
+main__mark(/*autofree arg*/_arg_expr_main_mark_1_
+builtin__string_free(&_arg_expr_main_mark_1_

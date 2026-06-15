@@ -188,6 +188,78 @@ fn main() {
 	assert module_storage_ssa_has_store_to_global(m, 'report__errors')
 }
 
+fn module_storage_selective_import_nested_sources() map[string]string {
+	return {
+		'main.v':                              'module main
+
+import mymodules.submodule { sub_xy }
+
+fn main() {
+	value := sub_xy(10, 7)
+	_ = value
+}
+'
+		'mymodules/submodule/sub_functions.v': 'module submodule
+
+pub fn sub_xy(x int, y int) int {
+	return x - y
+}
+'
+	}
+}
+
+fn module_storage_assert_nested_selective_import_callee(m &Module, label string) {
+	main_func := module_storage_ssa_func(m, 'main') or { panic('${label}: missing main') }
+	callees := module_storage_ssa_call_callees(m, main_func)
+	assert 'submodule__sub_xy' in callees, '${label}: missing submodule__sub_xy in ${callees}'
+	assert 'sub_xy' !in callees, '${label}: bare sub_xy callee leaked into ${callees}'
+	assert 'mymodules_submodule__sub_xy' !in callees, '${label}: import path callee leaked into ${callees}'
+}
+
+fn test_module_storage_legacy_selective_import_nested_module_uses_declared_leaf_module() {
+	m := module_storage_ssa_for_test_sources('selective_nested_legacy',
+		module_storage_selective_import_nested_sources())
+	module_storage_assert_nested_selective_import_callee(m, 'legacy')
+}
+
+fn test_module_storage_flat_selective_import_nested_module_uses_declared_leaf_module() {
+	m := module_storage_ssa_for_test_sources_flat('selective_nested_flat',
+		module_storage_selective_import_nested_sources())
+	module_storage_assert_nested_selective_import_callee(m, 'flat')
+}
+
+fn module_storage_direct_import_nested_sources() map[string]string {
+	return {
+		'main.v':                              'module main
+
+import mymodules.submodule
+
+fn main() {
+	value := submodule.sub_xy(10, 7)
+	_ = value
+}
+'
+		'mymodules/submodule/sub_functions.v': 'module submodule
+
+pub fn sub_xy(x int, y int) int {
+	return x - y
+}
+'
+	}
+}
+
+fn test_module_storage_legacy_direct_import_nested_module_selector_uses_declared_leaf_module() {
+	m := module_storage_ssa_for_test_sources('direct_nested_legacy',
+		module_storage_direct_import_nested_sources())
+	module_storage_assert_nested_selective_import_callee(m, 'legacy direct')
+}
+
+fn test_module_storage_flat_direct_import_nested_module_selector_uses_declared_leaf_module() {
+	m := module_storage_ssa_for_test_sources_flat('direct_nested_flat',
+		module_storage_direct_import_nested_sources())
+	module_storage_assert_nested_selective_import_callee(m, 'flat direct')
+}
+
 fn test_module_storage_legacy_direct_import_module_selector_one_arg_stays_call() {
 	m := module_storage_ssa_for_test_sources('module_selector_one_arg_call', {
 		'main.v':          'module main

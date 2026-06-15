@@ -78,6 +78,318 @@ fn main() {
 		"'tree size: \${size(tree)}'")
 }
 
+fn generic_tree_sumtype_direct_wrap_source() string {
+	return '
+module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+	left  Tree[T]
+	right Tree[T]
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn tag(tree Tree[f64]) int {
+	return match tree {
+		Empty { 0 }
+		Node[f64] { 1 }
+	}
+}
+
+fn main() {
+	empty := Tree[f64](Empty{})
+	tree := Tree[f64](Node[f64]{1.0, empty, empty})
+	_ = tag(tree)
+}
+'
+}
+
+fn generic_tree_sumtype_receiver_size_source() string {
+	return '
+module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+	left  Tree[T]
+	right Tree[T]
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn (tree Tree[T]) size[T]() int {
+	return match tree {
+		Empty { 0 }
+		Node[T] { 1 }
+	}
+}
+
+fn main() {
+	empty := Tree[f64](Empty{})
+	tree := Tree[f64](Node[f64]{1.0, empty, empty})
+	_ = tree.size()
+}
+'
+}
+
+fn generic_tree_sumtype_insert_size_source() string {
+	return '
+module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+	left  Tree[T]
+	right Tree[T]
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn (tree Tree[T]) size[T]() int {
+	return match tree {
+		Empty { 0 }
+		Node[T] { 1 + tree.left.size() + tree.right.size() }
+	}
+}
+
+fn (tree Tree[T]) insert[T](x T) Tree[T] {
+	return match tree {
+		Empty { Node[T]{x, tree, tree} }
+		Node[T] {
+			if x == tree.value {
+				tree
+			} else if x < tree.value {
+				Node[T]{
+					...tree
+					left: tree.left.insert(x)
+				}
+			} else {
+				Node[T]{
+					...tree
+					right: tree.right.insert(x)
+				}
+			}
+		}
+	}
+}
+
+fn main() {
+	mut tree := Tree[f64](Empty{})
+	tree = tree.insert(0.2)
+	tree = tree.insert(0.5)
+	_ = tree.size()
+}
+'
+}
+
+fn generic_tree_nested_type_args_source() string {
+	return '
+module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+	left  Tree[T]
+	right Tree[T]
+}
+
+type Tree[T] = Empty | Node[T]
+
+struct Queue[T] {
+	value T
+}
+
+struct Holder[T] {
+	value T
+}
+
+fn wrap_array(values []int) Tree[[]int] {
+	empty := Tree[[]int](Empty{})
+	return Tree[[]int](Node[[]int]{values, empty, empty})
+}
+
+fn wrap_string_array(values []string) Tree[[]string] {
+	empty := Tree[[]string](Empty{})
+	return Tree[[]string](Node[[]string]{values, empty, empty})
+}
+
+fn wrap_map(values map[string]int) Tree[map[string]int] {
+	empty := Tree[map[string]int](Empty{})
+	return Tree[map[string]int](Node[map[string]int]{values, empty, empty})
+}
+
+fn wrap_pointer(value &int) Tree[&int] {
+	empty := Tree[&int](Empty{})
+	return Tree[&int](Node[&int]{value, empty, empty})
+}
+
+fn make_queue(values []string) Queue[[]string] {
+	return Queue[[]string]{values}
+}
+
+fn hold_option(value ?int) Holder[?int] {
+	return Holder[?int]{value}
+}
+
+fn hold_result(value !int) Holder[!int] {
+	return Holder[!int]{value}
+}
+
+fn main() {
+	mut value := 7
+	_ = wrap_array([1, 2])
+	_ = wrap_string_array(["a", "b"])
+	_ = wrap_map({
+		"a": 1
+	})
+	_ = wrap_pointer(&value)
+	_ = make_queue(["x", "y"])
+}
+'
+}
+
+fn nested_module_generic_tree_source() string {
+	return '
+module bar
+
+pub struct Empty {}
+
+pub struct Node[T] {
+pub:
+	value T
+	left  Tree[T]
+	right Tree[T]
+}
+
+pub struct Leaf {}
+
+pub type Tree[T] = Empty | Node[T] | Leaf
+
+pub fn wrap(values []int) Tree[[]int] {
+	empty := Tree[[]int](Empty{})
+	return Tree[[]int](Node[[]int]{values, empty, empty})
+}
+
+pub fn tag(tree Tree[[]int]) int {
+	return match tree {
+		Empty { 0 }
+		Node[[]int] { 1 }
+		Leaf { 2 }
+	}
+}
+'
+}
+
+fn nested_module_generic_tree_main_source() string {
+	return '
+module main
+
+import foo.bar as fb
+
+fn hold_imported(value fb.Tree[[]int]) fb.Tree[[]int] {
+	return value
+}
+
+fn main() {
+	tree := fb.wrap([1, 2])
+	_ = fb.tag(tree)
+	_ = hold_imported(tree)
+}
+	'
+}
+
+fn nested_module_generic_tree_alias_foo_bar_main_source() string {
+	return '
+module main
+
+import foo.bar as foo_bar
+
+fn hold_imported(value foo_bar.Tree[[]int]) foo_bar.Tree[[]int] {
+	return value
+}
+
+fn main() {
+	tree := foo_bar.wrap([1, 2])
+	_ = foo_bar.tag(tree)
+	_ = hold_imported(tree)
+}
+	'
+}
+
+fn selective_import_generic_arg_foo_source() string {
+	return '
+module foo
+
+pub struct Bar {
+pub:
+	value int
+}
+
+pub fn make_bar() Bar {
+	return Bar{7}
+}
+'
+}
+
+fn selective_import_generic_arg_baz_source() string {
+	return '
+module baz
+
+import foo { Bar }
+
+pub struct Wrapper[T] {
+pub:
+	value T
+}
+
+pub struct NoneType {}
+
+pub type Maybe[T] = Wrapper[T] | NoneType
+
+pub fn wrap_bar(value Bar) Wrapper[Bar] {
+	return Wrapper[Bar]{value}
+}
+
+pub fn hold_bar(value Wrapper[Bar]) Wrapper[Bar] {
+	return value
+}
+
+pub fn make_maybe(value Bar) Maybe[Bar] {
+	return Wrapper[Bar]{value}
+}
+
+pub fn is_wrapped(value Maybe[Bar]) int {
+	return match value {
+		Wrapper[Bar] { 1 }
+		NoneType { 0 }
+	}
+}
+'
+}
+
+fn selective_import_generic_arg_main_source() string {
+	return '
+module main
+
+import baz
+import foo
+
+fn main() {
+	value := foo.make_bar()
+	wrapped := baz.wrap_bar(value)
+	maybe := baz.make_maybe(value)
+	_ = baz.hold_bar(wrapped)
+	_ = baz.is_wrapped(maybe)
+}
+	'
+}
+
 fn string_param_interpolation_source() string {
 	source := r'module main
 
@@ -200,6 +512,97 @@ pub fn size[T](x T) int {
 	return mod
 }
 
+fn tree_ssa_module_for_nested_tree_source(label string, use_flat bool) &Module {
+	return tree_ssa_module_for_nested_tree_main_source(label, use_flat,
+		nested_module_generic_tree_main_source())
+}
+
+fn tree_ssa_module_for_nested_tree_main_source(label string, use_flat bool, main_source string) &Module {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_tree_sumtype_nested_${label}_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic('cannot create ${tmp_dir}') }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	nested_dir := os.join_path(tmp_dir, 'foo', 'bar')
+	os.mkdir_all(nested_dir) or { panic('cannot create ${nested_dir}') }
+	nested_path := os.join_path(nested_dir, 'bar.v')
+	os.write_file(nested_path, nested_module_generic_tree_source()) or {
+		panic('cannot write ${nested_path}')
+	}
+	main_path := os.join_path(tmp_dir, 'main.v')
+	os.write_file(main_path, main_source) or { panic('cannot write ${main_path}') }
+	prefs := &pref.Preferences{
+		backend: .x64
+		arch:    .x64
+	}
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files([nested_path, main_path], mut file_set)
+	env := types.Environment.new()
+	mut checker := types.Checker.new(prefs, file_set, env)
+	checker.check_files(files)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
+	trans.set_file_set(file_set)
+	mut mod := Module.new('tree_sumtype_nested_${label}')
+	mut builder := Builder.new_with_env(mod, env)
+	if use_flat {
+		flat := ast.flatten_files(files)
+		transformed_flat, _ := trans.transform_files_to_flat(&flat, files)
+		builder.build_all_from_flat(&transformed_flat)
+	} else {
+		transformed_files := trans.transform_files(files)
+		builder.build_all(transformed_files)
+	}
+	return mod
+}
+
+fn tree_ssa_module_for_selective_import_generic_arg(label string, use_flat bool) &Module {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_tree_sumtype_selective_${label}_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic('cannot create ${tmp_dir}') }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	foo_dir := os.join_path(tmp_dir, 'foo')
+	baz_dir := os.join_path(tmp_dir, 'baz')
+	os.mkdir_all(foo_dir) or { panic('cannot create ${foo_dir}') }
+	os.mkdir_all(baz_dir) or { panic('cannot create ${baz_dir}') }
+	foo_path := os.join_path(foo_dir, 'foo.v')
+	baz_path := os.join_path(baz_dir, 'baz.v')
+	main_path := os.join_path(tmp_dir, 'main.v')
+	os.write_file(foo_path, selective_import_generic_arg_foo_source()) or {
+		panic('cannot write ${foo_path}')
+	}
+	os.write_file(baz_path, selective_import_generic_arg_baz_source()) or {
+		panic('cannot write ${baz_path}')
+	}
+	os.write_file(main_path, selective_import_generic_arg_main_source()) or {
+		panic('cannot write ${main_path}')
+	}
+	prefs := &pref.Preferences{
+		backend: .x64
+		arch:    .x64
+	}
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files([foo_path, baz_path, main_path], mut file_set)
+	env := types.Environment.new()
+	mut checker := types.Checker.new(prefs, file_set, env)
+	checker.check_files(files)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
+	trans.set_file_set(file_set)
+	mut mod := Module.new('tree_sumtype_selective_${label}')
+	mut builder := Builder.new_with_env(mod, env)
+	if use_flat {
+		flat := ast.flatten_files(files)
+		transformed_flat, _ := trans.transform_files_to_flat(&flat, files)
+		builder.build_all_from_flat(&transformed_flat)
+	} else {
+		transformed_files := trans.transform_files(files)
+		builder.build_all(transformed_files)
+	}
+	return mod
+}
+
 fn tree_ssa_func(m &Module, name string) ?Function {
 	for func in m.funcs {
 		if func.name == name {
@@ -248,6 +651,23 @@ fn tree_ssa_type_id_by_name(m &Module, type_name string) ?TypeID {
 		}
 	}
 	return none
+}
+
+fn tree_ssa_type_id_by_exact_name(m &Module, type_name string) ?TypeID {
+	for type_id, name in m.c_struct_names {
+		if name == type_name {
+			return TypeID(type_id)
+		}
+	}
+	return none
+}
+
+fn tree_ssa_type_is_i64(m &Module, typ TypeID) bool {
+	if typ <= 0 || int(typ) >= m.type_store.types.len {
+		return false
+	}
+	info := m.type_store.types[typ]
+	return info.kind == .int_t && info.width == 64 && !info.is_unsigned
 }
 
 fn tree_ssa_is_const_zero(m &Module, val_id ValueID) bool {
@@ -541,6 +961,213 @@ fn tree_ssa_assert_variant_struct_init_wraps_sumtype_fields(m &Module) {
 	assert saw_root_node_init
 }
 
+fn tree_ssa_value_mentions_type(m &Module, val_id ValueID, type_name string, depth int) bool {
+	if depth <= 0 || val_id <= 0 || val_id >= m.values.len {
+		return false
+	}
+	val := m.values[val_id]
+	if ssa_type_name_matches(tree_ssa_type_name(m, val.typ), type_name)
+		|| tree_ssa_value_points_to_type(m, val_id, type_name) {
+		return true
+	}
+	if val.kind != .instruction {
+		return false
+	}
+	instr := m.instrs[val.index]
+	for operand in instr.operands {
+		if tree_ssa_value_mentions_type(m, operand, type_name, depth - 1) {
+			return true
+		}
+	}
+	return false
+}
+
+fn tree_ssa_assert_generic_sumtype_direct_wrap(m &Module) {
+	tree_type := tree_ssa_type_id_by_name(m, 'Tree_T_f64') or {
+		panic('missing Tree_T_f64 SSA type')
+	}
+	node_type := tree_ssa_type_id_by_name(m, 'Node_T_f64') or {
+		panic('missing Node_T_f64 SSA type')
+	}
+	tree_info := m.type_store.types[tree_type]
+	assert tree_info.kind == .struct_t
+	assert tree_info.field_names == ['_tag', '_data']
+	node_info := m.type_store.types[node_type]
+	left_idx := node_info.field_names.index('left')
+	right_idx := node_info.field_names.index('right')
+	assert left_idx >= 0
+	assert right_idx >= 0
+	left_type := node_info.fields[left_idx]
+	right_type := node_info.fields[right_idx]
+	assert ssa_type_name_matches(tree_ssa_type_name(m, left_type), 'Tree_T_f64')
+	assert ssa_type_name_matches(tree_ssa_type_name(m, right_type), 'Tree_T_f64')
+	main_func := tree_ssa_func(m, 'main') or { panic('missing main') }
+	mut saw_empty_tag := false
+	mut saw_node_tag := false
+	mut saw_node_payload := false
+	for blk_id in main_func.blocks {
+		for val_id in m.blocks[blk_id].instrs {
+			value := m.values[val_id]
+			if value.kind != .instruction || value.typ != tree_type {
+				continue
+			}
+			instr := m.instrs[value.index]
+			if instr.op != .struct_init || instr.operands.len < 2 {
+				continue
+			}
+			tag_name := tree_ssa_const_name(m, instr.operands[0])
+			if tag_name == '0' {
+				saw_empty_tag = true
+			}
+			if tag_name == '1' {
+				saw_node_tag = true
+				data_id := instr.operands[1]
+				saw_node_payload = data_id > 0 && data_id < m.values.len
+					&& tree_ssa_const_name(m, data_id) != '0'
+					&& tree_ssa_value_mentions_type(m, data_id, 'Node_T_f64', 8)
+			}
+		}
+	}
+	assert saw_empty_tag, 'main missing Tree_T_f64 Empty wrapper with _tag 0'
+	assert saw_node_tag, 'main missing Tree_T_f64 Node_T_f64 wrapper with _tag 1'
+	assert saw_node_payload, 'main missing Tree_T_f64 Node_T_f64 payload'
+	tag_func := tree_ssa_func(m, 'tag') or { panic('missing tag') }
+	tree_ssa_assert_sumtype_match_uses_tag(m, tag_func, 'Tree_T_f64')
+}
+
+fn tree_ssa_assert_generic_receiver_size_match(m &Module) {
+	size_func := tree_ssa_func(m, 'Tree_T_f64__size_T_f64') or {
+		panic('missing Tree_T_f64__size_T_f64')
+	}
+	tree_ssa_assert_sumtype_match_uses_tag(m, size_func, 'Tree_T_f64')
+	tag_consts := tree_ssa_sumtype_tag_compare_const_names(m, size_func, 'Tree_T_f64')
+	assert '0' in tag_consts
+	assert '1' in tag_consts
+}
+
+fn tree_ssa_assert_generic_insert_wraps_node_return(m &Module) {
+	tree_type := tree_ssa_type_id_by_name(m, 'Tree_T_f64') or {
+		panic('missing Tree_T_f64 SSA type')
+	}
+	insert_func := tree_ssa_func(m, 'Tree_T_f64__insert_T_f64') or {
+		panic('missing Tree_T_f64__insert_T_f64')
+	}
+	mut node_wrap_count := 0
+	mut saw_node_tag := false
+	mut saw_node_payload := false
+	for blk_id in insert_func.blocks {
+		for val_id in m.blocks[blk_id].instrs {
+			value := m.values[val_id]
+			if value.kind != .instruction || value.typ != tree_type {
+				continue
+			}
+			instr := m.instrs[value.index]
+			if instr.op != .struct_init || instr.operands.len < 2 {
+				continue
+			}
+			if tree_ssa_const_name(m, instr.operands[0]) != '1' {
+				continue
+			}
+			node_wrap_count++
+			saw_node_tag = true
+			data_id := instr.operands[1]
+			if data_id > 0 && data_id < m.values.len
+				&& tree_ssa_value_mentions_type(m, data_id, 'Node_T_f64', 8) {
+				saw_node_payload = true
+			}
+		}
+	}
+	assert saw_node_tag, 'insert missing Tree_T_f64 Node_T_f64 return wrapper with _tag 1'
+	assert saw_node_payload, 'insert missing Tree_T_f64 Node_T_f64 return payload'
+	assert node_wrap_count >= 3, 'insert should wrap Empty plus both recursive Node branches with tag 1; got ${node_wrap_count}'
+}
+
+fn tree_ssa_assert_func_return_type(m &Module, func_name string, type_name string) {
+	func := tree_ssa_func(m, func_name) or { panic('missing ${func_name}') }
+	actual_name := tree_ssa_type_name(m, func.typ)
+	assert ssa_type_name_matches(actual_name, type_name), '${func_name} return type: expected ${type_name}, got ${actual_name}'
+	assert !tree_ssa_type_is_i64(m, func.typ), '${func_name} fell back to i64 instead of ${type_name}'
+}
+
+fn tree_ssa_assert_func_return_type_exact(m &Module, func_name string, type_name string) {
+	func := tree_ssa_func(m, func_name) or { panic('missing ${func_name}') }
+	actual_name := tree_ssa_type_name(m, func.typ)
+	assert actual_name == type_name, '${func_name} return type: expected exact ${type_name}, got ${actual_name}'
+	assert !tree_ssa_type_is_i64(m, func.typ), '${func_name} fell back to i64 instead of ${type_name}'
+}
+
+fn tree_ssa_assert_generic_nested_type_args(m &Module) {
+	expected_types := [
+		'Tree_T_Array_int',
+		'Node_T_Array_int',
+		'Tree_T_Array_string',
+		'Node_T_Array_string',
+		'Tree_T_Map_string_int',
+		'Node_T_Map_string_int',
+		'Tree_T_intptr',
+		'Node_T_intptr',
+		'Queue_T_Array_string',
+		'Holder_T_Option_int',
+		'Holder_T_Result_int',
+	]
+	for type_name in expected_types {
+		_ = tree_ssa_type_id_by_name(m, type_name) or { panic('missing ${type_name}') }
+	}
+	tree_ssa_assert_func_return_type(m, 'wrap_array', 'Tree_T_Array_int')
+	tree_ssa_assert_func_return_type(m, 'wrap_string_array', 'Tree_T_Array_string')
+	tree_ssa_assert_func_return_type(m, 'wrap_map', 'Tree_T_Map_string_int')
+	tree_ssa_assert_func_return_type(m, 'wrap_pointer', 'Tree_T_intptr')
+	tree_ssa_assert_func_return_type(m, 'make_queue', 'Queue_T_Array_string')
+	tree_ssa_assert_func_return_type(m, 'hold_option', 'Holder_T_Option_int')
+	tree_ssa_assert_func_return_type(m, 'hold_result', 'Holder_T_Result_int')
+}
+
+fn tree_ssa_assert_nested_module_generic_tree(m &Module) {
+	expected_types := [
+		'bar__Tree_T_Array_int',
+		'bar__Node_T_Array_int',
+	]
+	for type_name in expected_types {
+		_ = tree_ssa_type_id_by_exact_name(m, type_name) or {
+			panic('missing exact ${type_name} in ${m.c_struct_names}')
+		}
+	}
+	assert tree_ssa_type_id_by_exact_name(m, 'bar__int') == none
+	assert tree_ssa_type_id_by_exact_name(m, 'bar__Array_int') == none
+	tree_ssa_assert_func_return_type_exact(m, 'bar__wrap', 'bar__Tree_T_Array_int')
+	tree_ssa_assert_func_return_type_exact(m, 'hold_imported', 'bar__Tree_T_Array_int')
+	tag_func := tree_ssa_func(m, 'bar__tag') or { panic('missing bar__tag') }
+	tree_ssa_assert_sumtype_match_uses_tag(m, tag_func, 'bar__Tree_T_Array_int')
+	assert tree_ssa_type_id_by_exact_name(m, 'nested_tree__Tree_T_Array_int') == none
+	assert tree_ssa_type_id_by_exact_name(m, 'nested_tree__Node_T_Array_int') == none
+	assert tree_ssa_type_id_by_exact_name(m, 'foo_bar__Tree_T_Array_int') == none
+	assert tree_ssa_type_id_by_exact_name(m, 'foo_bar__Node_T_Array_int') == none
+	assert tree_ssa_func(m, 'nested_tree__wrap') == none
+	assert tree_ssa_func(m, 'nested_tree__tag') == none
+	assert tree_ssa_func(m, 'foo_bar__wrap') == none
+	assert tree_ssa_func(m, 'foo_bar__tag') == none
+}
+
+fn tree_ssa_assert_selective_import_generic_arg(m &Module) {
+	_ = tree_ssa_type_id_by_exact_name(m, 'foo__Bar') or { panic('missing exact foo__Bar') }
+	_ = tree_ssa_type_id_by_exact_name(m, 'baz__Wrapper_T_foo_Bar') or {
+		panic('missing exact baz__Wrapper_T_foo_Bar in ${m.c_struct_names}')
+	}
+	_ = tree_ssa_type_id_by_exact_name(m, 'baz__Maybe_T_foo_Bar') or {
+		panic('missing exact baz__Maybe_T_foo_Bar in ${m.c_struct_names}')
+	}
+	assert tree_ssa_type_id_by_exact_name(m, 'baz__Wrapper_T_baz__Bar') == none
+	assert tree_ssa_type_id_by_exact_name(m, 'baz__Wrapper_T_baz_Bar') == none
+	assert tree_ssa_type_id_by_exact_name(m, 'baz__Maybe_T_baz__Bar') == none
+	assert tree_ssa_type_id_by_exact_name(m, 'baz__Maybe_T_baz_Bar') == none
+	assert tree_ssa_type_id_by_exact_name(m, 'baz__Bar') == none
+	tree_ssa_assert_func_return_type_exact(m, 'baz__wrap_bar', 'baz__Wrapper_T_foo_Bar')
+	tree_ssa_assert_func_return_type_exact(m, 'baz__hold_bar', 'baz__Wrapper_T_foo_Bar')
+	tree_ssa_assert_func_return_type_exact(m, 'baz__make_maybe', 'baz__Maybe_T_foo_Bar')
+	is_wrapped_func := tree_ssa_func(m, 'baz__is_wrapped') or { panic('missing baz__is_wrapped') }
+	tree_ssa_assert_sumtype_match_uses_tag(m, is_wrapped_func, 'baz__Maybe_T_foo_Bar')
+}
+
 fn test_tree_sumtype_variant_struct_init_wraps_sumtype_fields() {
 	m := tree_ssa_module_for_source('variant_field_init', tree_sumtype_source())
 	tree_ssa_assert_variant_struct_init_wraps_sumtype_fields(m)
@@ -549,6 +1176,193 @@ fn test_tree_sumtype_variant_struct_init_wraps_sumtype_fields() {
 fn test_tree_sumtype_flat_variant_struct_init_wraps_sumtype_fields() {
 	m := tree_ssa_module_for_source_flat('flat_variant_field_init', tree_sumtype_source())
 	tree_ssa_assert_variant_struct_init_wraps_sumtype_fields(m)
+}
+
+fn test_generic_tree_sumtype_direct_wrap_uses_node_tag_on_legacy_ast() {
+	m := tree_ssa_module_for_source('generic_direct_wrap',
+		generic_tree_sumtype_direct_wrap_source())
+	tree_ssa_assert_generic_sumtype_direct_wrap(m)
+}
+
+fn test_generic_tree_sumtype_flat_direct_wrap_uses_node_tag() {
+	m := tree_ssa_module_for_source_flat('generic_direct_wrap',
+		generic_tree_sumtype_direct_wrap_source())
+	tree_ssa_assert_generic_sumtype_direct_wrap(m)
+}
+
+fn test_generic_tree_sumtype_receiver_size_uses_node_tag_on_legacy_ast() {
+	m := tree_ssa_module_for_source('generic_receiver_size',
+		generic_tree_sumtype_receiver_size_source())
+	tree_ssa_assert_generic_receiver_size_match(m)
+}
+
+fn test_generic_tree_sumtype_flat_receiver_size_uses_node_tag() {
+	m := tree_ssa_module_for_source_flat('generic_receiver_size',
+		generic_tree_sumtype_receiver_size_source())
+	tree_ssa_assert_generic_receiver_size_match(m)
+}
+
+fn test_generic_tree_sumtype_insert_return_wraps_node_on_legacy_ast() {
+	m := tree_ssa_module_for_source('generic_insert_size',
+		generic_tree_sumtype_insert_size_source())
+	tree_ssa_assert_generic_insert_wraps_node_return(m)
+}
+
+fn test_generic_tree_sumtype_flat_insert_return_wraps_node() {
+	m := tree_ssa_module_for_source_flat('generic_insert_size',
+		generic_tree_sumtype_insert_size_source())
+	tree_ssa_assert_generic_insert_wraps_node_return(m)
+}
+
+fn test_generic_tree_sumtype_nested_type_args_do_not_fall_back_to_i64_on_legacy_ast() {
+	m := tree_ssa_module_for_source('generic_nested_type_args',
+		generic_tree_nested_type_args_source())
+	tree_ssa_assert_generic_nested_type_args(m)
+}
+
+fn test_generic_tree_sumtype_flat_nested_type_args_do_not_fall_back_to_i64() {
+	m := tree_ssa_module_for_source_flat('generic_nested_type_args',
+		generic_tree_nested_type_args_source())
+	tree_ssa_assert_generic_nested_type_args(m)
+}
+
+fn test_nested_module_generic_tree_sumtype_uses_prefixed_names_on_legacy_ast() {
+	m := tree_ssa_module_for_nested_tree_source('nested_generic_tree', false)
+	tree_ssa_assert_nested_module_generic_tree(m)
+}
+
+fn test_nested_module_generic_tree_sumtype_flat_uses_prefixed_names() {
+	m := tree_ssa_module_for_nested_tree_source('nested_generic_tree', true)
+	tree_ssa_assert_nested_module_generic_tree(m)
+}
+
+fn test_nested_module_generic_tree_sumtype_alias_foo_bar_not_ambiguous_on_legacy_ast() {
+	m := tree_ssa_module_for_nested_tree_main_source('nested_generic_tree_alias_foo_bar', false,
+		nested_module_generic_tree_alias_foo_bar_main_source())
+	tree_ssa_assert_nested_module_generic_tree(m)
+}
+
+fn test_nested_module_generic_tree_sumtype_alias_foo_bar_flat_not_ambiguous() {
+	m := tree_ssa_module_for_nested_tree_main_source('nested_generic_tree_alias_foo_bar', true,
+		nested_module_generic_tree_alias_foo_bar_main_source())
+	tree_ssa_assert_nested_module_generic_tree(m)
+}
+
+fn test_selective_import_generic_arg_uses_resolved_type_module_on_legacy_ast() {
+	m := tree_ssa_module_for_selective_import_generic_arg('selective_generic_arg', false)
+	tree_ssa_assert_selective_import_generic_arg(m)
+}
+
+fn test_selective_import_generic_arg_flat_uses_resolved_type_module() {
+	m := tree_ssa_module_for_selective_import_generic_arg('selective_generic_arg', true)
+	tree_ssa_assert_selective_import_generic_arg(m)
+}
+
+fn test_foo_bar_imported_generic_sumtype_resolver_uses_dotted_checker_scope() {
+	mut imported_scope := types.new_scope(unsafe { nil })
+	imported_scope.insert_type('Tree', types.Type(types.SumType{
+		name:           'foo.bar__Tree'
+		generic_params: ['T']
+	}))
+	mut flat_scope := types.new_scope(unsafe { nil })
+	flat_scope.insert_type('Tree', types.Type(types.SumType{
+		name:           'foo_bar__Tree'
+		generic_params: ['T']
+	}))
+	mut env := types.Environment.new()
+	lock env.scopes {
+		env.scopes['foo.bar'] = imported_scope
+		env.scopes['foo_bar'] = flat_scope
+	}
+	mut mod := Module.new('foo_bar_imported_generic_sumtype')
+	mut builder := Builder.new_with_env(mod, env)
+	builder.cur_module = 'main'
+	builder.module_import_aliases = {
+		'bar': 'foo.bar'
+	}
+
+	base_name := builder.generic_selector_type_part_name_from_flat('bar', 'Tree')
+	assert base_name == 'foo_bar__Tree'
+	checked_type := builder.lookup_checked_type_by_name(base_name) or {
+		panic('missing checker type for ${base_name}')
+	}
+	assert types.type_name(checked_type) == 'foo.bar__Tree'
+	type_id := builder.generic_sumtype_storage_to_ssa(base_name, 'foo_bar__Tree_T_Array_int') or {
+		panic('missing foo_bar__Tree_T_Array_int storage')
+	}
+	assert type_id != builder.mod.type_store.get_int(64)
+	assert builder.mod.c_struct_names[type_id] == 'foo_bar__Tree_T_Array_int'
+}
+
+fn test_dotted_checker_type_lookup_rejects_ambiguous_explicit_imports() {
+	mut dotted_scope := types.new_scope(unsafe { nil })
+	dotted_scope.insert_type('Tree', types.Type(types.SumType{
+		name:           'foo.bar__Tree'
+		generic_params: ['T']
+	}))
+	mut flat_scope := types.new_scope(unsafe { nil })
+	flat_scope.insert_type('Tree', types.Type(types.SumType{
+		name:           'foo_bar__Tree'
+		generic_params: ['T']
+	}))
+	mut env := types.Environment.new()
+	lock env.scopes {
+		env.scopes['foo.bar'] = dotted_scope
+		env.scopes['foo_bar'] = flat_scope
+	}
+	mut mod := Module.new('ambiguous_import_type_lookup')
+	mut builder := Builder.new_with_env(mod, env)
+	builder.module_import_aliases = {
+		'bar':  'foo.bar'
+		'flat': 'foo_bar'
+	}
+
+	_ := builder.lookup_checked_type_by_name('foo_bar__Tree') or { return }
+	assert false, 'ambiguous explicit imports should not pick foo.bar or foo_bar'
+}
+
+fn test_selectively_imported_type_generic_arg_uses_resolved_type_module() {
+	mut current_scope := types.new_scope(unsafe { nil })
+	current_scope.insert_type('Bar', types.Type(types.Struct{
+		name: 'foo__Bar'
+	}))
+	current_scope.insert_type('Wrapper', types.Type(types.Struct{
+		name: 'baz__Wrapper'
+	}))
+	mut env := types.Environment.new()
+	lock env.scopes {
+		env.scopes['baz'] = current_scope
+	}
+	mut mod := Module.new('selective_import_generic_arg')
+	mut builder := Builder.new_with_env(mod, env)
+	builder.cur_module = 'baz'
+
+	base_part := builder.generic_ident_type_part_name('Wrapper')
+	arg_part := builder.generic_type_arg_part_name(ast.Expr(ast.Ident{
+		name: 'Bar'
+	}))
+	assert base_part == 'baz__Wrapper'
+	assert arg_part == 'foo_Bar'
+	assert generic_type_name_from_parts(base_part, [arg_part]) == 'baz__Wrapper_T_foo_Bar'
+	assert generic_type_name_from_parts(base_part, [arg_part]) != 'baz__Wrapper_T_baz__Bar'
+	assert generic_type_name_from_parts(base_part, [arg_part]) != 'baz__Wrapper_T_baz_Bar'
+}
+
+fn test_generic_suffix_fallback_rejects_ambiguous_registered_types() {
+	mut mod := Module.new('generic_suffix_collision')
+	mut builder := Builder.new_with_env(mod, types.Environment.new())
+	first := builder.mod.type_store.register(Type{
+		kind: .struct_t
+	})
+	second := builder.mod.type_store.register(Type{
+		kind: .struct_t
+	})
+	builder.struct_types['first__Tree_T_Array_int'] = first
+	builder.struct_types['second__Tree_T_Array_int'] = second
+	_ := builder.registered_type_by_unique_concrete_suffix('nested_tree__Tree_T_Array_int') or {
+		return
+	}
+	assert false, 'ambiguous generic suffix fallback should not choose an arbitrary type'
 }
 
 fn test_tree_sumtype_interpolation_uses_autostr_not_raw_struct_string() {

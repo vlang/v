@@ -1,0 +1,13 @@
+vlib/v/checker/tests/option_array_arg_err.vv:6:12: error: cannot use `?[]u8` as `[]u8`, it must be unwrapped first in argument 1 to `use_bytes`
+    4 | 
+    5 | fn main() {
+    6 |     use_bytes(?[]u8(none))
+      |               ~~~~~~~~~~~
+    7 |     maybe := ?[]u8(none)
+    8 |     use_bytes(maybe)
+vlib/v/checker/tests/option_array_arg_err.vv:8:12: error: cannot use `?[]u8` as `[]u8`, it must be unwrapped first in argument 1 to `use_bytes`
+    6 |     use_bytes(?[]u8(none))
+    7 |     maybe := ?[]u8(none)
+    8 |     use_bytes(maybe)
+      |               ~~~~~
+    9 | }

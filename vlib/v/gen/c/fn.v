@@ -1963,9 +1963,18 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	g.anon_fn = node
 	old_inside_return := g.inside_return
 	old_inside_return_expr := g.inside_return_expr
+	old_inside_lambda := g.inside_lambda
+	old_inside_lambda_autofree_tmp := g.inside_lambda_autofree_tmp
+	old_track_lambda_autofree_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
 	g.inside_return = false
 	g.inside_return_expr = false
+	g.inside_lambda = false
+	g.inside_lambda_autofree_tmp = false
+	g.track_lambda_autofree_tmp_arg_vars = false
 	g.fn_decl(decl)
+	g.track_lambda_autofree_tmp_arg_vars = old_track_lambda_autofree_tmp_arg_vars
+	g.inside_lambda_autofree_tmp = old_inside_lambda_autofree_tmp
+	g.inside_lambda = old_inside_lambda
 	g.inside_return_expr = old_inside_return_expr
 	g.inside_return = old_inside_return
 	g.anon_fn = was_anon_fn
@@ -5364,7 +5373,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 
-	if g.is_autofree && node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {
+	if g.is_autofree && node.free_receiver && (!g.inside_lambda || g.inside_lambda_autofree_tmp)
+		&& !g.is_builtin_mod {
 		// The receiver expression needs to be freed, use the temp var.
 		fn_name := node.name.replace('.', '_')
 		arg_name := '_arg_expr_${fn_name}_0_${node.pos.pos}'
@@ -6133,7 +6143,11 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		g.is_autofree = old_is_autofree
 		g.is_autofree_tmp = false
 		g.strs_to_free0 << tmp_arg_init
-		// This tmp arg var will be freed with the rest of the vars at the end of the scope.
+		if g.track_lambda_autofree_tmp_arg_vars {
+			g.lambda_autofree_tmp_arg_vars << t
+		}
+		// This tmp arg var will be freed with the rest of the vars at the end of the scope,
+		// or explicitly after an inline lambda expression that does not run scope cleanup.
 	}
 }
 
@@ -6558,7 +6572,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				// name := '_tt${g.tmp_count_af}_arg_expr_${fn_name}_${i}'
 				name := '_arg_expr_${fn_name}_${i + 1}_${node.pos.pos}'
 				scope := g.file.scope.innermost(node.pos.pos)
-				if !g.is_autofree_tmp || scope.known_var(name) {
+				if (!g.is_autofree_tmp && (!g.inside_lambda || g.inside_lambda_autofree_tmp))
+					|| scope.known_var(name) {
 					tmp_arg := ast.CallArg{
 						typ:    arg.typ
 						is_mut: effective_arg.is_mut
