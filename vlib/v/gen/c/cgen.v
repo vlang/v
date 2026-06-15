@@ -13943,7 +13943,7 @@ fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
 	return ''
 }
 
-fn (mut g Gen) write_heap_alloc(styp string, typ ast.Type) {
+fn (mut g Gen) write_heap_alloc(styp string, _ ast.Type) {
 	// NOTE: the `HEAP_vgc(type, expr, ptrmap, nptrs)` precise-pointer-map variant is
 	// intentionally NOT used. Its `ptrmap`/`nptrs` are dead at runtime — the unsound
 	// per-span precise scan was removed and `vgc_malloc_typed_opts` ignores them
@@ -13957,7 +13957,7 @@ fn (mut g Gen) write_heap_alloc(styp string, typ ast.Type) {
 }
 
 // write_heap_alloc_close writes the closing part of a HEAP/HEAP_vgc call.
-fn (mut g Gen) write_heap_alloc_close(typ ast.Type) {
+fn (mut g Gen) write_heap_alloc_close(_ ast.Type) {
 	g.write('))')
 }
 
