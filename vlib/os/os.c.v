@@ -1055,7 +1055,11 @@ pub fn file_last_mod_unix(path string) i64 {
 
 // flush will flush the stdout buffer.
 pub fn flush() {
-	C.fflush(C.stdout)
+	$if v2_native_windows_pe_minimal ? {
+		return
+	} $else {
+		C.fflush(C.stdout)
+	}
 }
 
 // chmod change file access attributes of `path` to `mode`.
@@ -1161,9 +1165,30 @@ pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 pub fn is_atty(fd int) int {
 	$if windows {
 		mut mode := u32(0)
-		osfh := voidptr(C._get_osfhandle(fd))
-		C.GetConsoleMode(osfh, voidptr(&mode))
-		return int(mode)
+		$if v2_native_windows_pe_minimal ? {
+			if fd != 0 && fd != 1 && fd != 2 {
+				return 0
+			}
+			handle_id := if fd == 0 {
+				C.STD_INPUT_HANDLE
+			} else if fd == 2 {
+				C.STD_ERROR_HANDLE
+			} else {
+				C.STD_OUTPUT_HANDLE
+			}
+			handle := C.GetStdHandle(handle_id)
+			if isnil(handle) || handle == C.INVALID_HANDLE_VALUE {
+				return 0
+			}
+			if !C.GetConsoleMode(handle, voidptr(&mode)) {
+				return 0
+			}
+			return int(mode)
+		} $else {
+			osfh := voidptr(C._get_osfhandle(fd))
+			C.GetConsoleMode(osfh, voidptr(&mode))
+			return int(mode)
+		}
 	} $else {
 		return C.isatty(fd)
 	}

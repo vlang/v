@@ -755,6 +755,31 @@ fn test_c_error_missing_library_name_with_gnu_ld_output() {
 	assert c_error_missing_library_name(c_output) == 'ssl'
 }
 
+fn test_c_error_missing_library_name_with_mingw_ld_output() {
+	c_output := 'C:/msys64/ucrt64/bin/ld.exe: cannot find libv_missing_lib_25499.dll.a: No such file or directory\ncollect2.exe: error: ld returned 1 exit status\n'
+	assert c_error_missing_library_name(c_output) == 'v_missing_lib_25499'
+}
+
+fn test_c_error_missing_library_name_with_mingw_lflag_suffix_output() {
+	c_output := 'C:/msys64/ucrt64/bin/ld.exe: cannot find -lv_missing_lib_25499.dll.a: No such file or directory\ncollect2.exe: error: ld returned 1 exit status\n'
+	assert c_error_missing_library_name(c_output) == 'v_missing_lib_25499'
+}
+
+fn test_c_error_missing_library_name_with_mingw_plain_library_output() {
+	c_output := 'C:/msys64/ucrt64/bin/ld.exe: cannot find v_missing_lib_25499: No such file or directory\ncollect2.exe: error: ld returned 1 exit status\n'
+	assert c_error_missing_library_name(c_output) == 'v_missing_lib_25499'
+}
+
+fn test_c_error_missing_library_name_with_mingw_driver_missing_file_output() {
+	c_output := 'x86_64-w64-mingw32-gcc.exe: error: libv_missing_lib_25499.dll.a: No such file or directory\n'
+	assert c_error_missing_library_name(c_output) == 'v_missing_lib_25499'
+}
+
+fn test_c_error_missing_library_name_ignores_missing_object_file() {
+	c_output := '/usr/bin/ld: cannot find crt1.o: No such file or directory\ncollect2: error: ld returned 1 exit status\n'
+	assert c_error_missing_library_name(c_output) == ''
+}
+
 fn test_c_error_missing_library_name_with_regular_c_error() {
 	c_output := "error: unknown type name 'my_missing_type'"
 	assert c_error_missing_library_name(c_output) == ''

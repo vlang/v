@@ -28,9 +28,23 @@ TlsContext new_tls_context();
 
 // ALPN (RFC 7301) support. `wire` is the standard ALPN wire format: each
 // protocol name preceded by a 1-byte length, e.g. "\x02h2\x08http/1.1".
+// vschannel_alpn_supported reports whether this Windows version's SChannel
+// can advertise ALPN at all (Windows 8.1+).
+INT vschannel_alpn_supported();
 void vschannel_set_alpn(TlsContext *tls_ctx, const char *wire, INT len);
 INT vschannel_get_alpn(TlsContext *tls_ctx, char *out, INT out_cap);
 INT vschannel_alpn_probe(TlsContext *tls_ctx, INT iport, LPWSTR host, char *out, INT out_cap);
+
+// vschannel_request_on_open runs a one-shot HTTP/1.1 request over an already
+// open connection (the HTTP/1.1 fallback when `h2` was not negotiated).
+INT vschannel_request_on_open(TlsContext *tls_ctx, CHAR *req, DWORD req_len, CHAR **out, vschannel_allocator afn);
+
+// Streaming transport for the HTTP/2 driver: open the connection and keep it
+// open, then move raw application bytes across it. See vschannel.c.
+INT vschannel_h2_connect(TlsContext *tls_ctx, INT iport, LPWSTR host);
+INT vschannel_write(TlsContext *tls_ctx, const char *buf, INT len);
+INT vschannel_read(TlsContext *tls_ctx, char *buf, INT cap);
+void vschannel_h2_close(TlsContext *tls_ctx);
 
 static void vschannel_init(TlsContext *tls_ctx, BOOL validate_server_certificate);
 

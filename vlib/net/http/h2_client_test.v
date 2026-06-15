@@ -85,14 +85,8 @@ fn test_http2_fetch_real_server() {
 	$if !network ? {
 		return
 	}
-	$if windows && !no_vschannel ? {
-		// On Windows the default HTTPS client is SChannel, which has no ALPN
-		// yet (vlang/v#27383), so it cannot negotiate HTTP/2. Covered with
-		// `-d no_vschannel` (mbedtls client).
-		eprintln('skipping: SChannel client has no ALPN/HTTP2 support yet')
-		return
-	}
-	// HTTP/2 is negotiated by default for https requests.
+	// HTTP/2 is negotiated by default for https requests. On Windows this runs
+	// over the SChannel backend's ALPN + HTTP/2 path (vlang/v#27383).
 	resp := get('https://www.google.com/')!
 	assert resp.version() == .v2_0
 	assert resp.status_code == 200

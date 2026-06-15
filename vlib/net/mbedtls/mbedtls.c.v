@@ -135,6 +135,7 @@ $if prod && opt_size ? {
 #include <mbedtls/entropy.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/error.h>
+#insert "@VEXEROOT/vlib/net/mbedtls/mbedtls_helpers.h"
 
 @[typedef]
 pub struct C.mbedtls_net_context {
@@ -233,3 +234,5 @@ fn C.mbedtls_ssl_conf_read_timeout(conf &C.mbedtls_ssl_config, timeout u32)
 fn C.mbedtls_ssl_conf_alpn_protocols(conf &C.mbedtls_ssl_config, protos voidptr) i32
 
 fn C.mbedtls_ssl_get_alpn_protocol(&C.mbedtls_ssl_context) voidptr
+
+fn C.v_mbedtls_ssl_set_bio_nonblocking(&C.mbedtls_ssl_context, &C.mbedtls_net_context)

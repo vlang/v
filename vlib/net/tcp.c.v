@@ -587,7 +587,7 @@ pub fn new_tcp_socket(family AddrFamily) !TcpSocket {
 	// use the non-blocking socket option instead please :)
 
 	// Some options need to be set before the connection is established, otherwise they will not work.
-	s.set_default_options()!
+	s.set_default_options(family)!
 
 	// Set the desired "blocking/non-blocking" mode before the connection is established,
 	// and do not change it once the connection is successful.
@@ -608,7 +608,8 @@ fn tcp_socket_from_handle(sockfd int) !TcpSocket {
 	s.set_dualstack(true) or {
 		// Not ipv6, we dont care
 	}
-	s.set_default_options()!
+	addr := addr_from_socket_handle(sockfd)
+	s.set_default_options(addr.family())!
 
 	return s
 }
@@ -649,7 +650,7 @@ pub fn (mut s TcpSocket) set_dualstack(on bool) ! {
 	s.set_option(C.IPPROTO_IPV6, int(SocketOption.ipv6_only), x)!
 }
 
-fn (mut s TcpSocket) set_default_options() ! {
+fn (mut s TcpSocket) set_default_options(af AddrFamily) ! {
 	s.set_option_int(.reuse_addr, 1)!
 
 	// At the socket level to ignore the exception signal (usually SIGNPIPE).
@@ -660,7 +661,9 @@ fn (mut s TcpSocket) set_default_options() ! {
 	}
 
 	// Enable the NODELAY option by default.
-	s.set_option(C.IPPROTO_TCP, C.TCP_NODELAY, 1)!
+	if af != .unix {
+		s.set_option(C.IPPROTO_TCP, C.TCP_NODELAY, 1)!
+	}
 }
 
 // bind a local rddress for TcpSocket

@@ -175,7 +175,14 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 	g.write(cur_line)
 	if need_tmp_var {
-		g.write(tmp_var)
+		resolved_sym := g.table.sym(g.unwrap_generic(g.recheck_concrete_type(resolved_return_type)))
+		tmp_is_return_fixed_array := resolved_sym.info is ast.ArrayFixed
+			&& resolved_sym.info.is_fn_ret
+		if tmp_is_return_fixed_array {
+			g.write('${tmp_var}.ret_arr')
+		} else {
+			g.write(tmp_var)
+		}
 	}
 	if is_expr && !need_tmp_var {
 		g.write(')')

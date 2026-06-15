@@ -620,8 +620,10 @@ mut:
 	// Current file's module name (for saving function scopes)
 	cur_file_module string
 	// Function root scope - used to flatten local variable types for transformer lookup
-	fn_root_scope &Scope = unsafe { nil }
-	fallback_vars map[string]Type
+	fn_root_scope          &Scope = unsafe { nil }
+	fallback_vars          map[string]Type
+	receiver_generic_types map[string]map[string]Type
+	generic_type_params    map[string][]string
 	// when true, function declarations only register signatures and queue body checking
 	collect_fn_signatures_only bool
 	pending_fn_body_flat       &ast.FlatAst   = unsafe { nil }
@@ -2752,13 +2754,10 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			} else {
 				c.qualify_type_name(decl.name)
 			}
-			mut generic_params := []string{}
-			for gp in decl.generic_params {
-				if gp is ast.Ident {
-					generic_params << gp.name
-				} else if gp is ast.LifetimeExpr {
-					generic_params << '^' + gp.name
-				}
+			generic_params := generic_param_names_from_exprs(decl.generic_params)
+			if generic_params.len > 0 {
+				c.generic_type_params[decl.name] = generic_params.clone()
+				c.generic_type_params[qualified_name] = generic_params.clone()
 			}
 			obj := Struct{
 				name:           qualified_name
@@ -2779,6 +2778,12 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			}
 		}
 		ast.TypeDecl {
+			generic_params := generic_param_names_from_exprs(decl.generic_params)
+			if generic_params.len > 0 {
+				qualified_name := c.qualify_type_name(decl.name)
+				c.generic_type_params[decl.name] = generic_params.clone()
+				c.generic_type_params[qualified_name] = generic_params.clone()
+			}
 			// alias
 			if decl.variants.len == 0 {
 				alias_type := Alias{
@@ -2795,7 +2800,8 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			// sum type
 			else {
 				sum_type := SumType{
-					name: c.qualify_type_name(decl.name)
+					name:           c.qualify_type_name(decl.name)
+					generic_params: generic_params
 					// variants: decl.variants
 				}
 				mut typ := Type(sum_type)
@@ -5211,6 +5217,8 @@ fn (mut c Checker) process_pending_type_decls() {
 	for pending in c.pending_type_decls {
 		c.scope = pending.scope
 		mut scope := pending.scope
+		prev_generic_params := c.generic_params
+		c.generic_params = generic_param_names_from_exprs(pending.decl.generic_params)
 		if pending.decl.variants.len == 0 {
 			if obj := scope.lookup(pending.decl.name) {
 				if obj_type := object_as_type(obj) {
@@ -5225,27 +5233,29 @@ fn (mut c Checker) process_pending_type_decls() {
 					}
 				}
 			}
-			continue
-		}
-		if obj := scope.lookup(pending.decl.name) {
-			if obj_type := object_as_type(obj) {
-				if obj_type is SumType {
-					mut variants := obj_type.variants.clone()
-					for variant in pending.decl.variants {
-						// Keep the inferred variant type in a local first so generated C
-						// does not take the address of a temporary expression result.
-						variant_type := c.type_expr(variant)
-						variants << variant_type
+		} else {
+			if obj := scope.lookup(pending.decl.name) {
+				if obj_type := object_as_type(obj) {
+					if obj_type is SumType {
+						mut variants := obj_type.variants.clone()
+						for variant in pending.decl.variants {
+							// Keep the inferred variant type in a local first so generated C
+							// does not take the address of a temporary expression result.
+							variant_type := c.type_expr(variant)
+							variants << variant_type
+						}
+						sum_type := Type(SumType{
+							name:           obj_type.name
+							generic_params: obj_type.generic_params
+							variants:       variants
+						})
+						scope.objects[pending.decl.name] = object_from_type(sum_type)
+						scope.insert_type(pending.decl.name, sum_type)
 					}
-					sum_type := Type(SumType{
-						name:     obj_type.name
-						variants: variants
-					})
-					scope.objects[pending.decl.name] = object_from_type(sum_type)
-					scope.insert_type(pending.decl.name, sum_type)
 				}
 			}
 		}
+		c.generic_params = prev_generic_params
 	}
 	c.pending_type_decls.clear()
 }
@@ -5382,15 +5392,20 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 	return true
 }
 
-fn collect_fn_generic_params(decl ast.FnDecl) []string {
+fn generic_param_names_from_exprs(exprs []ast.Expr) []string {
 	mut params := []string{}
-	for gp in decl.typ.generic_params {
+	for gp in exprs {
 		if gp is ast.Ident && gp.name !in params {
 			params << gp.name
 		} else if gp is ast.LifetimeExpr && '^' + gp.name !in params {
 			params << '^' + gp.name
 		}
 	}
+	return params
+}
+
+fn collect_fn_generic_params(decl ast.FnDecl) []string {
+	mut params := generic_param_names_from_exprs(decl.typ.generic_params)
 	if !decl.is_method {
 		return params
 	}
@@ -5633,6 +5648,7 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 					c.fn_root_scope.insert(lx_unwrapped.name, value_obj)
 				}
 			}
+			c.update_receiver_generic_types(lx_unwrapped.name, rx, stmt.op != .decl_assign)
 			// Store the type in expr_types for the lhs ident position
 			// so the transformer can look it up directly
 			lx_pos := lx_unwrapped.pos
@@ -6404,11 +6420,7 @@ fn (mut c Checker) match_expr(expr ast.MatchExpr, used_as_expr bool) Type {
 		for cond in branch.cond {
 			expr_unwrapped := c.unwrap_ident(expr.expr)
 			cond_type := c.expr(cond)
-			if cond is ast.Ident || cond is ast.SelectorExpr || cond is ast.Type {
-				// `.value` enum value (without type)
-				if cond is ast.SelectorExpr && cond.lhs is ast.EmptyExpr {
-					continue
-				}
+			if c.match_branch_cond_smartcasts(cond, cond_type) {
 				c.apply_smartcast(expr_unwrapped, cond_type)
 			}
 		}
@@ -6455,6 +6467,119 @@ fn (mut c Checker) match_expr(expr ast.MatchExpr, used_as_expr bool) Type {
 	return last_stmt_type
 }
 
+fn match_branch_generic_cond_type_is_smartcastable(typ Type) bool {
+	return match typ {
+		Alias, Struct, SumType {
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut c Checker) match_branch_generic_ident_is_type_name(name string) bool {
+	if builtin_type(name) != none {
+		return true
+	}
+	if obj := universe.lookup_parent(name, 0) {
+		if _ := object_as_type(obj) {
+			return true
+		}
+	}
+	if _ := c.lookup_type_in_scope_chain(name) {
+		return true
+	}
+	if _ := c.lookup_type_in_imported_modules(name) {
+		return true
+	}
+	return false
+}
+
+fn (c &Checker) match_branch_generic_ident_is_active_param(name string) bool {
+	if name in c.generic_params {
+		return true
+	}
+	for generic_types in c.env.cur_generic_types {
+		if name in generic_types {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) match_branch_generic_selector_is_type(expr ast.SelectorExpr) bool {
+	parts := selector_expr_parts(expr)
+	if parts.len < 2 {
+		return false
+	}
+	module_alias := parts[parts.len - 2]
+	selector_type_name := parts[parts.len - 1]
+	if _ := c.lookup_type_in_module(module_alias, selector_type_name) {
+		return true
+	}
+	return false
+}
+
+fn (mut c Checker) match_branch_generic_arg_is_type_pattern(expr ast.Expr) bool {
+	match expr {
+		ast.Ident {
+			return c.match_branch_generic_ident_is_type_name(expr.name)
+				|| c.match_branch_generic_ident_is_active_param(expr.name)
+		}
+		ast.SelectorExpr {
+			return c.match_branch_generic_selector_is_type(expr)
+		}
+		ast.Type {
+			return true
+		}
+		ast.GenericArgs {
+			return c.match_branch_generic_args_is_type_pattern(expr)
+		}
+		ast.LifetimeExpr {
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut c Checker) match_branch_generic_args_is_type_pattern(expr ast.GenericArgs) bool {
+	if !c.match_branch_generic_arg_is_type_pattern(expr.lhs) {
+		return false
+	}
+	for arg in expr.args {
+		if !c.match_branch_generic_arg_is_type_pattern(arg) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut c Checker) match_branch_cond_smartcasts(cond ast.Expr, cond_type Type) bool {
+	resolved := c.resolve_expr(cond)
+	return match resolved {
+		ast.Ident {
+			true
+		}
+		ast.SelectorExpr {
+			// `.value` enum value (without type)
+			resolved.lhs !is ast.EmptyExpr
+		}
+		ast.Type {
+			true
+		}
+		ast.GenericArgs {
+			match_branch_generic_cond_type_is_smartcastable(cond_type)
+				&& c.match_branch_generic_args_is_type_pattern(resolved)
+		}
+		else {
+			false
+		}
+	}
+}
+
 // TODO: unwrap ModifierExpr etc
 // fn (mut c Checker) argument() ast.Expr {}
 
@@ -6490,6 +6615,290 @@ fn (c &Checker) is_generic_struct_type(t Type) bool {
 	return c.generic_struct_template(t) != none
 }
 
+fn receiver_generic_type_key(scope &Scope, name string) string {
+	return '${voidptr(scope)}:${name}'
+}
+
+fn (mut c Checker) generic_type_map_from_init_expr(expr ast.Expr) ?map[string]Type {
+	resolved := c.resolve_expr(expr)
+	match resolved {
+		ast.InitExpr {
+			return c.generic_type_map_from_type_ref(resolved.typ)
+		}
+		ast.AssocExpr {
+			return c.generic_type_map_from_type_ref(resolved.typ)
+		}
+		ast.ArrayInitExpr {
+			if resolved.typ !is ast.EmptyExpr {
+				return c.generic_type_map_from_type_ref(resolved.typ)
+			}
+		}
+		ast.CastExpr {
+			return c.generic_type_map_from_type_ref(resolved.typ)
+		}
+		ast.CallOrCastExpr {
+			if generic_map := c.generic_type_map_from_type_ref(resolved.lhs) {
+				return generic_map
+			}
+			call_or_cast := c.resolve_call_or_cast_expr(resolved)
+			if call_or_cast is ast.CastExpr {
+				return c.generic_type_map_from_type_ref(call_or_cast.typ)
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (mut c Checker) generic_param_names_from_type_ref(lhs ast.Expr, base_type Type) []string {
+	if base := c.generic_struct_template(base_type) {
+		return base.generic_params.clone()
+	}
+	mut keys := []string{}
+	base_type_name := base_type.name()
+	if base_type_name != '' {
+		keys << base_type_name
+	}
+	lhs_name := lhs.name()
+	if lhs_name != '' {
+		keys << lhs_name
+		qualified_lhs_name := c.qualify_type_name(lhs_name)
+		if qualified_lhs_name != lhs_name {
+			keys << qualified_lhs_name
+		}
+	}
+	for key in keys {
+		if params := c.generic_type_params[key] {
+			return params.clone()
+		}
+	}
+	return []string{}
+}
+
+fn (mut c Checker) generic_type_map_from_generic_type_parts(lhs ast.Expr, args []ast.Expr) ?map[string]Type {
+	base_type := c.type_expr(lhs)
+	mut generic_type_map := map[string]Type{}
+	mut arg_types := []Type{cap: args.len}
+	for arg in args {
+		arg_types << c.expr(arg)
+	}
+	generic_params := c.generic_param_names_from_type_ref(lhs, base_type)
+	for i, generic_param in generic_params {
+		if i >= arg_types.len {
+			break
+		}
+		generic_type_map[generic_param] = arg_types[i]
+	}
+	if generic_type_map.len > 0 {
+		return generic_type_map
+	}
+	return none
+}
+
+fn (mut c Checker) generic_type_map_from_type_ref(expr ast.Expr) ?map[string]Type {
+	match expr {
+		ast.GenericArgs {
+			return c.generic_type_map_from_generic_type_parts(expr.lhs, expr.args)
+		}
+		ast.GenericArgOrIndexExpr {
+			return c.generic_type_map_from_generic_type_parts(expr.lhs, [expr.expr])
+		}
+		ast.Type {
+			if expr is ast.GenericType {
+				return c.generic_type_map_from_generic_type_parts(expr.name, expr.params)
+			}
+		}
+		else {}
+	}
+
+	resolved := c.resolve_expr(expr)
+	match resolved {
+		ast.GenericArgs {
+			return c.generic_type_map_from_generic_type_parts(resolved.lhs, resolved.args)
+		}
+		ast.Type {
+			if resolved is ast.GenericType {
+				return c.generic_type_map_from_generic_type_parts(resolved.name, resolved.params)
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (mut c Checker) update_receiver_generic_types(name string, rhs ast.Expr, preserve_existing bool) {
+	receiver_scope, _ := c.scope.lookup_parent_with_scope(name, 0) or { return }
+	key := receiver_generic_type_key(receiver_scope, name)
+	if generic_type_map := c.generic_type_map_from_init_expr(rhs) {
+		c.receiver_generic_types[key] = generic_type_map.clone()
+		return
+	}
+	if preserve_existing {
+		return
+	}
+	c.receiver_generic_types.delete(key)
+}
+
+fn (mut c Checker) merge_receiver_generic_types(receiver ast.Expr, mut generic_type_map map[string]Type) bool {
+	mut added := false
+	if receiver is ast.Ident {
+		receiver_scope, _ := c.scope.lookup_parent_with_scope(receiver.name, 0) or { return false }
+		key := receiver_generic_type_key(receiver_scope, receiver.name)
+		if receiver_map := c.receiver_generic_types[key] {
+			for generic_param, concrete_type in receiver_map {
+				if generic_param !in generic_type_map {
+					generic_type_map[generic_param] = concrete_type
+					added = true
+				}
+			}
+		}
+	}
+	return added
+}
+
+fn (mut c Checker) type_from_generic_arg_name(name string) ?Type {
+	if typ := builtin_type(name) {
+		return typ
+	}
+	if name.starts_with('[]') {
+		elem_type := c.type_from_generic_arg_name(name[2..]) or { return none }
+		return Type(Array{
+			elem_type: elem_type
+		})
+	}
+	for generic_types in c.env.cur_generic_types {
+		if concrete := generic_types[name] {
+			if concrete.name() != name {
+				return concrete
+			}
+		}
+	}
+	if typ := c.lookup_type_in_scope_chain(name) {
+		return typ
+	}
+	if typ := c.lookup_type_in_imported_modules(name) {
+		return typ
+	}
+	return none
+}
+
+fn (mut c Checker) generic_type_map_from_receiver_struct_fields(receiver_type Struct) map[string]Type {
+	mut generic_type_map := map[string]Type{}
+	if receiver_type.name == '' || receiver_type.fields.len == 0 {
+		return generic_type_map
+	}
+	template_type := c.lookup_type_by_name(receiver_type.name) or { return generic_type_map }
+	if template_type !is Struct {
+		return generic_type_map
+	}
+	template := template_type as Struct
+	if template.generic_params.len == 0 || template.fields.len == 0 {
+		return generic_type_map
+	}
+	for template_field in template.fields {
+		for actual_field in receiver_type.fields {
+			if actual_field.name != template_field.name {
+				continue
+			}
+			c.infer_generic_type(template_field.typ, actual_field.typ, mut generic_type_map) or {}
+			break
+		}
+	}
+	return generic_type_map
+}
+
+fn (mut c Checker) generic_type_map_from_receiver_struct_args(receiver_type Struct) map[string]Type {
+	mut generic_type_map := map[string]Type{}
+	if receiver_type.name == '' || receiver_type.generic_params.len == 0 {
+		return generic_type_map
+	}
+	template_params := c.generic_type_params[receiver_type.name] or { return generic_type_map }
+	for i, generic_param in template_params {
+		if i >= receiver_type.generic_params.len {
+			break
+		}
+		arg_name := receiver_type.generic_params[i]
+		arg_type := c.type_from_generic_arg_name(arg_name) or { continue }
+		if arg_type.name() == generic_param {
+			continue
+		}
+		generic_type_map[generic_param] = arg_type
+	}
+	return generic_type_map
+}
+
+fn (mut c Checker) generic_type_map_from_receiver_type(receiver_type Type) map[string]Type {
+	match receiver_type {
+		Pointer {
+			return c.generic_type_map_from_receiver_type(receiver_type.base_type)
+		}
+		Alias {
+			return c.generic_type_map_from_receiver_type(receiver_type.base_type)
+		}
+		Struct {
+			generic_type_map_from_fields :=
+				c.generic_type_map_from_receiver_struct_fields(receiver_type)
+			if generic_type_map_from_fields.len > 0 {
+				return generic_type_map_from_fields
+			}
+			generic_type_map_from_args :=
+				c.generic_type_map_from_receiver_struct_args(receiver_type)
+			if generic_type_map_from_args.len > 0 {
+				return generic_type_map_from_args
+			}
+			mut generic_type_map := map[string]Type{}
+			for generic_param in receiver_type.generic_params {
+				arg_type := c.type_from_generic_arg_name(generic_param) or { continue }
+				if arg_type.name() == generic_param {
+					continue
+				}
+				generic_type_map[generic_param] = arg_type
+			}
+			if generic_type_map.len > 0 {
+				return generic_type_map
+			}
+			return generic_type_map
+		}
+		else {
+			return map[string]Type{}
+		}
+	}
+}
+
+fn (mut c Checker) generic_type_map_from_cached_receiver_expr(receiver ast.Expr) ?map[string]Type {
+	receiver_pos := receiver.pos()
+	if !receiver_pos.is_valid() {
+		return none
+	}
+	receiver_type := c.env.get_expr_type(receiver_pos.id) or { return none }
+	receiver_map := c.generic_type_map_from_receiver_type(receiver_type)
+	if receiver_map.len == 0 {
+		return none
+	}
+	return receiver_map
+}
+
+fn (mut c Checker) merge_receiver_generic_types_from_expr(receiver ast.Expr, fn_type FnType, mut generic_type_map map[string]Type) bool {
+	receiver_map := if init_receiver_map := c.generic_type_map_from_init_expr(receiver) {
+		init_receiver_map.clone()
+	} else if cached_receiver_map := c.generic_type_map_from_cached_receiver_expr(receiver) {
+		cached_receiver_map.clone()
+	} else {
+		receiver_type := c.expr_type_without_field_smartcast(receiver) or { return false }
+		c.generic_type_map_from_receiver_type(receiver_type)
+	}
+	mut added := false
+	for generic_param, arg_type in receiver_map {
+		if generic_param in fn_type.generic_params && generic_param !in generic_type_map {
+			generic_type_map[generic_param] = arg_type
+			added = true
+		}
+	}
+	return added
+}
+
 fn (mut c Checker) instantiate_generic_struct(base Struct, args []ast.Expr) Type {
 	mut actual_base := base
 	// If base has no fields (stale copy), look up current version from scope
@@ -6507,11 +6916,14 @@ fn (mut c Checker) instantiate_generic_struct(base Struct, args []ast.Expr) Type
 		}
 	}
 	mut generic_type_map := map[string]Type{}
+	mut arg_types := []Type{cap: args.len}
 	for i, generic_param in actual_base.generic_params {
 		if i >= args.len {
 			break
 		}
-		generic_type_map[generic_param] = c.expr(args[i])
+		arg_type := c.expr(args[i])
+		arg_types << arg_type
+		generic_type_map[generic_param] = arg_type
 	}
 	mut substitution_stack := []string{}
 	if actual_base.name != '' {
@@ -6556,10 +6968,15 @@ fn (mut c Checker) instantiate_generic_struct(base Struct, args []ast.Expr) Type
 		}
 	}
 	return Struct{
-		name:       actual_base.name
-		implements: actual_base.implements
-		fields:     fields
-		embedded:   embedded
+		name:           actual_base.name
+		generic_params: if fields.len == 0 && embedded.len == 0 {
+			arg_types.map(it.name())
+		} else {
+			[]string{}
+		}
+		implements:     actual_base.implements
+		fields:         fields
+		embedded:       embedded
 	}
 }
 
@@ -7246,6 +7663,7 @@ fn (mut c Checker) call_expr(expr &ast.CallExpr) Type {
 		}
 		mut checked_array_magic_arg := false
 		mut generic_type_map := map[string]Type{}
+		mut has_call_generic_type_map := false
 		mut checked_sort_cmp_arg := false
 		if lhs_expr is ast.SelectorExpr {
 			if lhs_expr.rhs.name in ['filter', 'map', 'any', 'all', 'count'] {
@@ -7271,6 +7689,7 @@ fn (mut c Checker) call_expr(expr &ast.CallExpr) Type {
 					generic_types << generic_type
 					generic_type_map[generic_param] = generic_type
 				}
+				has_call_generic_type_map = generic_type_map.len > 0
 				// eprintln('GENERIC TYPES: ${expr.lhs.name()}')
 				// dump(generic_types)
 			}
@@ -7294,6 +7713,7 @@ fn (mut c Checker) call_expr(expr &ast.CallExpr) Type {
 					// 	eprintln('should be NamedType but got ${param.typ.name()}')
 					// }
 				}
+				has_call_generic_type_map = generic_type_map.len > 0
 			}
 			// eprintln('## GENERIC TYPE MAP: ${expr.lhs.name()}')
 			// eprintln('========================')
@@ -7306,21 +7726,39 @@ fn (mut c Checker) call_expr(expr &ast.CallExpr) Type {
 			// 		panic('.')
 			// 	}
 			// }
-			// dump(generic_type_map)
-			if generic_type_map.len > 0 {
-				fn_.generic_types << generic_type_map
-				lhs_name := lhs_expr.name()
-				if lhs_name !in c.env.generic_types {
-					empty_generic_types := []map[string]Type{}
-					c.env.generic_types[lhs_name] = empty_generic_types
-				}
-				mut inferred_generic_types := c.env.generic_types[lhs_name]
-				inferred_generic_types << generic_type_map
-				c.env.generic_types[lhs_name] = inferred_generic_types
-			}
 		} else if lhs_expr is ast.GenericArgs {
 			c.error_with_pos('cannot call non generic function with generic argument list',
 				expr.pos)
+		}
+		if lhs_expr is ast.SelectorExpr {
+			if c.merge_receiver_generic_types(lhs_expr.lhs, mut generic_type_map) {
+				has_call_generic_type_map = true
+			}
+			if c.merge_receiver_generic_types_from_expr(lhs_expr.lhs, fn_, mut generic_type_map) {
+				has_call_generic_type_map = true
+			}
+		}
+		if fn_.generic_params.len > 0 {
+			for generic_param in fn_.generic_params {
+				if generic_param !in generic_type_map {
+					c.error_with_pos('cannot infer generic type `${generic_param}`', expr.pos)
+				}
+			}
+		}
+		mut generic_type_map_for_record := map[string]Type{}
+		if has_call_generic_type_map && generic_type_map.len > 0 {
+			generic_type_map_for_record = generic_type_map.clone()
+		}
+		if has_call_generic_type_map && generic_type_map_for_record.len > 0 {
+			fn_.generic_types << generic_type_map_for_record.clone()
+			lhs_name := lhs_expr.name()
+			if lhs_name !in c.env.generic_types {
+				empty_generic_types := []map[string]Type{}
+				c.env.generic_types[lhs_name] = empty_generic_types
+			}
+			mut inferred_generic_types := c.env.generic_types[lhs_name]
+			inferred_generic_types << generic_type_map_for_record.clone()
+			c.env.generic_types[lhs_name] = inferred_generic_types
 		}
 
 		// TODO: is this best place for this?
@@ -7393,9 +7831,7 @@ fn (mut c Checker) call_expr(expr &ast.CallExpr) Type {
 			if generic_type_map.len > 0 {
 				resolved_return_type := c.substitute_generic_type_with_stack(return_type,
 					generic_type_map, [])
-				if resolved_return_type.name() != return_type.name() {
-					return resolved_return_type
-				}
+				return resolved_return_type
 			}
 			if return_type is NamedType && generic_type_map.len > 0 {
 				if resolved := generic_type_map[string(return_type)] {
@@ -9222,6 +9658,9 @@ fn (mut c Checker) open_scope() {
 }
 
 fn (mut c Checker) close_scope() {
+	for name, _ in c.scope.objects {
+		c.receiver_generic_types.delete(receiver_generic_type_key(c.scope, name))
+	}
 	c.scope = c.scope.parent
 }
 

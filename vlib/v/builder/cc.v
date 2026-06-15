@@ -325,19 +325,72 @@ fn c_error_looks_like_missing_libatomic(c_output string) bool {
 	return c_error_missing_libatomic_marker(c_output) != ''
 }
 
+fn normalized_linker_library_file_name(lib_name string) string {
+	for suffix in ['.dll.a', '.lib', '.a', '.dll'] {
+		if lib_name.ends_with(suffix) {
+			mut normalized := lib_name[..lib_name.len - suffix.len]
+			if normalized.starts_with('lib') {
+				normalized = normalized[3..]
+			}
+			return normalized
+		}
+	}
+	return lib_name
+}
+
+fn normalized_missing_library_name(raw_name string, allow_plain_name bool) string {
+	mut lib_name := raw_name.trim_space().trim('`\'"')
+	if lib_name.len > 1 && lib_name[1] == `:` {
+		return ''
+	}
+	for delimiter in ['`', "'", '"', ' ', ':'] {
+		lib_name = lib_name.all_before(delimiter)
+	}
+	lib_name = lib_name.trim_space().trim('`\'"')
+	if lib_name.starts_with('-l') {
+		return normalized_linker_library_file_name(lib_name[2..])
+	}
+	normalized := normalized_linker_library_file_name(lib_name)
+	if normalized != lib_name {
+		return normalized
+	}
+	if allow_plain_name {
+		if lib_name.contains('/') || lib_name.contains('\\') || lib_name.contains('.')
+			|| lib_name.starts_with('-') {
+			return ''
+		}
+		return lib_name
+	}
+	return ''
+}
+
 fn c_error_missing_library_name(c_output string) string {
 	for line in c_output.split_into_lines() {
 		if line.contains("library '") && line.contains("' not found") {
-			return line.all_after("library '").all_before("' not found")
+			return normalized_missing_library_name(line.all_after("library '").all_before("' not found"),
+				true)
 		}
+		lower_line := line.to_lower()
 		for marker in [
 			'cannot find -l',
 			'unable to find library -l',
 			'library not found for -l',
 		] {
-			if line.contains(marker) {
-				lib_name := line.all_after(marker).trim_space()
-				return lib_name.all_before('`').all_before("'").all_before('"').all_before(' ').all_before(':')
+			if start := lower_line.index(marker) {
+				return normalized_missing_library_name(line[start + marker.len..], true)
+			}
+		}
+		if start := lower_line.index('cannot find ') {
+			lib_name := normalized_missing_library_name(line[start + 'cannot find '.len..], true)
+			if lib_name != '' {
+				return lib_name
+			}
+		}
+		if line.contains(': error: ') && lower_line.contains(': no such file or directory') {
+			lib_name := normalized_missing_library_name(line.all_after(': error: ').all_before(': No such file or directory'),
+				false)
+			if lib_name != '' {
+				return lib_name
 			}
 		}
 	}

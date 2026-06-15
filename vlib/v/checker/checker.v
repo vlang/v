@@ -3172,7 +3172,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			} else {
 				first_err := err
 				has_field = false
-				if final_sym.kind in [.aggregate, .sum_type] {
+				if final_sym.kind == .sum_type {
 					if variant_typ, variant_field, variant_embed_types := c.table.find_single_field_variant(final_sym,
 						field_name)
 					{

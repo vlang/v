@@ -23,8 +23,8 @@ pub:
 @[flag]
 pub enum ArrayFlags {
 	noslices    // when <<, `.noslices` will free the old data block immediately (you have to be sure, that there are *no slices* to that specific array). TODO: integrate with reference counting/compiler support for the static cases.
-	noshrink    // when `.noslices` and `.noshrink` are *both set*, .delete(x) will NOT allocate new memory and free the old. It will just move the elements in place, and adjust .len.
-	nogrow      // the array will never be allowed to grow past `.cap`. set `.nogrow` and `.noshrink` for a truly fixed heap array
+	noshrink    // kept for compatibility; shrinking array operations preserve capacity by default
+	nogrow      // the array will never be allowed to grow past `.cap`
 	nofree      // `.data` will never be freed
 	managed     // `.data` uses the builtin managed array allocation with a metadata header
 	noscan_data // `.data` was allocated in a no-scan heap block and can stay atomic when cloned or resized
@@ -560,12 +560,11 @@ fn (mut a array) prepend_many(val voidptr, size int) {
 	unsafe { a.insert_many(0, val, size) }
 }
 
-// delete deletes array element at index `i`.
-// Deleting the last element uses the same in-place fast path as `.delete_last()`.
-// NOTE: When deleting the last element, this operates in-place.
-// Other positions create a copy of the array, skipping over the
-// element at `i`, and then point the original variable to the new
-// memory location.
+// delete deletes array element at index `i`, preserving element order.
+// For unique arrays, it shifts elements left in-place, preserves spare
+// capacity, and clears the obsolete tail slot.
+// If the backing buffer is shared with slices, delete creates a detached
+// array, so existing slices keep their view of the old contents.
 //
 // Example:
 // ```v
@@ -578,16 +577,19 @@ pub fn (mut a array) delete(i int) {
 	}
 	if i == a.len - 1 && !a.needs_unique_shrink() {
 		a.len--
+		unsafe {
+			vmemset(&u8(a.data) + u64(a.len) * u64(a.element_size), 0, u64(a.element_size))
+		}
 		return
 	}
 	a.delete_many(i, 1)
 }
 
 // delete_many deletes `size` elements beginning with index `i`
-// NOTE: This function does NOT operate in-place. Internally, it
-// creates a copy of the array, skipping over `size` elements
-// starting at `i`, and then points the original variable
-// to the new memory location.
+// For unique arrays, it shifts elements left in-place, preserves spare
+// capacity, and clears the obsolete tail range.
+// If the backing buffer is shared with slices, delete_many creates a
+// detached array, so existing slices keep their view of the old contents.
 //
 // Example:
 // ```v
@@ -611,21 +613,15 @@ pub fn (mut a array) delete_many(i int, size int) {
 		}
 		return
 	}
-	if a.flags.all(.noshrink | .noslices) && !a.needs_unique_shrink() {
-		unsafe {
-			vmemmove(&u8(a.data) + u64(i) * u64(a.element_size), &u8(a.data) + u64(i +
-				size) * u64(a.element_size), u64(a.len - i - size) * u64(a.element_size))
-		}
-		a.len -= size
-		return
-	}
 	if !a.needs_unique_shrink() {
+		new_len := a.len - size
 		unsafe {
 			vmemmove(&u8(a.data) + u64(i) * u64(a.element_size), &u8(a.data) + u64(i +
 				size) * u64(a.element_size), u64(a.len - i - size) * u64(a.element_size))
+			vmemset(&u8(a.data) + u64(new_len) * u64(a.element_size), 0,
+				u64(size) * u64(a.element_size))
 		}
-		a.len -= size
-		a.cap = a.len
+		a.len = new_len
 		return
 	}
 	// Note: if a is [12,34], a.len = 2, a.delete(0)
@@ -913,6 +909,7 @@ pub fn (mut a array) pop() voidptr {
 // delete_last efficiently deletes the last element of the array.
 // It does it simply by reducing the length of the array by 1.
 // If the array is empty, this will panic.
+// For unique arrays, it also clears the obsolete tail slot.
 // See also: [trim](#array.trim)
 pub fn (mut a array) delete_last() {
 	if a.len == 0 {
@@ -923,6 +920,9 @@ pub fn (mut a array) delete_last() {
 		return
 	}
 	a.len--
+	unsafe {
+		vmemset(&u8(a.data) + u64(a.len) * u64(a.element_size), 0, u64(a.element_size))
+	}
 }
 
 // slice returns an array using the same buffer as original array

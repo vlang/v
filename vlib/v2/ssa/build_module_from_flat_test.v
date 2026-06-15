@@ -51,3 +51,64 @@ fn test_build_module_from_flat_matches_legacy() {
 	assert mod_legacy.blocks.len == mod_flat.blocks.len
 	assert mod_legacy.values.len == mod_flat.values.len
 }
+
+fn test_module_import_aliases_keep_nested_module_path() {
+	aliases := module_import_aliases_from_imports([
+		ast.ImportStmt{
+			name:  'foo.bar'
+			alias: 'bar'
+		},
+		ast.ImportStmt{
+			name:       'foo.baz'
+			alias:      'qux'
+			is_aliased: true
+		},
+	])
+	assert aliases['bar'] == 'foo.bar'
+	assert aliases['qux'] == 'foo.baz'
+}
+
+fn test_selective_import_fn_names_keep_nested_module_path() {
+	names := selective_import_fn_names_from_imports([
+		ast.ImportStmt{
+			name:    'foo.bar'
+			alias:   'bar'
+			symbols: [
+				ast.Expr(ast.Ident{
+					name: 'leaf'
+				}),
+			]
+		},
+	])
+	assert names['leaf'] == 'foo_bar__leaf'
+}
+
+fn test_selective_import_fn_candidates_try_nested_path_then_leaf_module() {
+	candidates := selective_import_fn_candidates_from_imports([
+		ast.ImportStmt{
+			name:    'foo.bar'
+			alias:   'bar'
+			symbols: [
+				ast.Expr(ast.Ident{
+					name: 'leaf'
+				}),
+			]
+		},
+	])
+	assert candidates['leaf'] == ['foo_bar__leaf', 'bar__leaf']
+
+	mut mod_full := Module.new('selective_full')
+	mut b_full := Builder.new_with_env(mod_full, types.Environment.new())
+	b_full.selective_import_fn_candidates = candidates.clone()
+	b_full.fn_index['foo_bar__leaf'] = 0
+	b_full.fn_index['bar__leaf'] = 1
+	resolved_full := b_full.selective_import_fn_name('leaf') or { '' }
+	assert resolved_full == 'foo_bar__leaf'
+
+	mut mod_leaf := Module.new('selective_leaf')
+	mut b_leaf := Builder.new_with_env(mod_leaf, types.Environment.new())
+	b_leaf.selective_import_fn_candidates = candidates.clone()
+	b_leaf.fn_index['bar__leaf'] = 1
+	resolved_leaf := b_leaf.selective_import_fn_name('leaf') or { '' }
+	assert resolved_leaf == 'bar__leaf'
+}

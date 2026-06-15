@@ -33,6 +33,12 @@ fn read_fixed_string(data []u8, off int, len int) string {
 	return data[off..off + len].bytestr().trim_right('\0')
 }
 
+fn test_decode_c_string_literal_bytes_handles_hex_octal_and_standard_escapes() {
+	got := decode_c_string_literal_bytes(r'\x00username\xff\xfe\101\n\t\r\a\b\f\v\\\"')
+	assert got == [u8(0), `u`, `s`, `e`, `r`, `n`, `a`, `m`, `e`, 0xff, 0xfe, `A`, 10, 9, 13, 7,
+		8, 12, 11, 92, 34]
+}
+
 fn new_macho_global_codegen_test_module(name string, linkage ssa.Linkage) mir.Module {
 	mut ts := ssa.TypeStore.new()
 	i8_t := ts.get_int(8)

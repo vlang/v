@@ -2120,6 +2120,13 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 				t.count_flat_fallback('stmt_expr')
 				t.transform_stmt_list_item_to_flat(expr_stmt_from_cursor(c), mut ids, mut out)
 			} else {
+				expr := c.edge(0)
+				if expr.kind() == .expr_infix
+					&& unsafe { token.Token(int(expr.aux())) } == .left_shift {
+					if t.try_emit_map_index_push_to_flat(expr_stmt_from_cursor(c), mut ids, mut out) {
+						return
+					}
+				}
 				id := t.transform_expr_stmt_cursor_to_flat(c, mut out)
 				t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
 			}
@@ -2141,13 +2148,17 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 			t.transform_stmt_list_item_to_flat(for_in_stmt_from_cursor(c), mut ids, mut out)
 		}
 		.stmt_fn_decl {
+			decl := c.fn_decl_signature()
+			if t.omit_backend_generic_decl(decl) {
+				return
+			}
 			// Stream the body cursor-native when it has no defers (defer
 			// lowering needs the whole body, so those take the legacy
 			// whole-decl decode path).
 			if flat_body_has_defer(c.list_at(3)) {
 				t.count_flat_fallback('stmt_fn_decl_defer')
-				decl := fn_decl_signature_with_body_cursor(c.fn_decl_signature(), c)
-				t.transform_stmt_list_item_to_flat(decl, mut ids, mut out)
+				decl_with_body := fn_decl_signature_with_body_cursor(c.fn_decl_signature(), c)
+				t.transform_stmt_list_item_to_flat(decl_with_body, mut ids, mut out)
 			} else {
 				id := t.transform_fn_decl_streaming_to_flat(c, mut out)
 				t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
@@ -7799,13 +7810,13 @@ pub fn (mut t Transformer) try_expand_return_match_expr_to_flat(stmt ast.ReturnS
 		return false
 	}
 	match_expr_ast := match_expr as ast.MatchExpr
-	should_wrap_return_sumtype := t.cur_fn_ret_type_name != ''
-		&& t.is_sum_type(t.cur_fn_ret_type_name)
+	return_sumtype_info := t.current_return_sumtype_wrap_info() or { ConcreteSumtypeWrapInfo{} }
+	should_wrap_return_sumtype := return_sumtype_info.name != ''
 	skip_return_sumtype_wrap := (t.cur_fn_returns_option || t.cur_fn_returns_result)
 		&& t.return_expr_should_skip_sumtype_wrap(match_expr)
 	old_wrap := t.sumtype_return_wrap
 	if should_wrap_return_sumtype && !skip_return_sumtype_wrap {
-		t.sumtype_return_wrap = t.cur_fn_ret_type_name
+		t.sumtype_return_wrap = return_sumtype_info.name
 	}
 	old_preserve_match_branch_value := t.preserve_match_branch_value
 	t.preserve_match_branch_value = true

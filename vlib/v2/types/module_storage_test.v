@@ -226,6 +226,216 @@ fn main() {}
 	}
 }
 
+fn test_imported_generic_receiver_init_mapping_resolves_result_return_type() {
+	code, output := run_module_storage_v2_check('imported_generic_receiver_init_mapping', {
+		'boxlib/boxlib.v': 'module boxlib
+
+pub struct Queue[T] {
+pub mut:
+	value T
+}
+
+pub fn (mut queue Queue[T]) pop() !T {
+	return queue.value
+}
+'
+		'main.v':          'module main
+
+import boxlib
+
+fn expect_strings(values []string) {
+	_ = values
+}
+
+fn expect_string(value string) {
+	_ = value
+}
+
+fn main() {
+	mut queue := boxlib.Queue[[]string]{value: ["alpha", "omega"]}
+	v := queue.pop() or { return }
+	expect_strings(v)
+	expect_string(v[0])
+}
+'
+	}, 'main.v')
+	assert code == 0, output
+}
+
+fn test_generic_sumtype_match_branch_smartcasts_generic_variant_fields() {
+	code, output := run_module_storage_v2_check('generic_sumtype_match_variant_field', {
+		'main.v': 'module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn value_is_positive(tree Tree[f64]) bool {
+	return match tree {
+		Node[f64] {
+			_ := tree.value
+			tree.value > 0.0
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn main() {
+	tree := Tree[f64](Node[f64]{value: 1.0})
+	_ = value_is_positive(tree)
+}
+'
+	}, 'main.v')
+	assert code == 0, output
+}
+
+fn test_generic_receiver_sumtype_match_branch_smartcasts_generic_variant_fields() {
+	code, output := run_module_storage_v2_check('generic_receiver_sumtype_match_variant_field', {
+		'main.v': r'module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+	left Tree[T]
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn (tree Tree[T]) size[T]() int {
+	return match tree {
+		Node[T] {
+			1 + tree.left.size()
+		}
+		else {
+			0
+		}
+	}
+}
+
+fn (tree Tree[T]) insert[T](x T) Tree[T] {
+	_ = x
+	return tree
+}
+
+fn (tree Tree[T]) ok[T](x T) bool {
+	return match tree {
+		Node[T] {
+			_ := tree.value
+			tree.value == x
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn main() {
+	mut tree := Tree[f64](Node[f64]{
+		value: 1.0
+		left: Empty{}
+	})
+	_ = tree.ok(1.0)
+	tree = tree.insert(1.0)
+	_ = tree.size()
+	_ = "${tree.size()}"
+}
+'
+	}, 'main.v')
+	assert code == 0, output
+}
+
+fn test_generic_call_without_argument_or_receiver_inference_is_rejected() {
+	code, output := run_module_storage_v2_check('generic_call_without_inference', {
+		'main.v': 'module main
+
+fn make[T]() T {
+	return T(0)
+}
+
+fn outer[T](x T) {
+	_ = x
+	_ := make()
+}
+
+fn main() {
+	outer(1)
+}
+'
+	}, 'main.v')
+	assert code != 0, output
+	assert output.contains('cannot infer generic type `T`'), output
+}
+
+fn test_independent_receiver_generic_call_without_inference_is_rejected() {
+	code, output := run_module_storage_v2_check('independent_receiver_generic_call_without_inference', {
+		'main.v': 'module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn (tree Tree[T]) insert[T](x T) Tree[T] {
+	_ = x
+	return tree
+}
+
+fn (tree Tree[T]) make[U]() U {
+	_ = tree
+	return U(0)
+}
+
+fn main() {
+	mut tree := Tree[f64](Node[f64]{value: 1.0})
+	tree = tree.insert(1.0)
+	_ := tree.make()
+}
+'
+	}, 'main.v')
+	assert code != 0, output
+	assert output.contains('cannot infer generic type `U`'), output
+}
+
+fn test_runtime_generic_args_like_index_condition_does_not_smartcast() {
+	code, output := run_module_storage_v2_check('runtime_generic_args_index_no_smartcast', {
+		'main.v': 'module main
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn check(tree Tree[int], nodes []Node[int], i int) {
+	match tree {
+		nodes[i] {
+			_ := tree.value
+		}
+		else {}
+	}
+}
+
+fn main() {
+	check(Tree[int](Node[int]{value: 1}), [Node[int]{value: 1}], 0)
+}
+'
+	}, 'main.v')
+	assert code != 0, output
+	assert output.contains('value'), output
+}
+
 fn test_module_storage_legacy_assignment_without_mut_is_allowed_for_compat() {
 	code, output := run_module_storage_v2_check('legacy_assignment', {
 		'main.v': '__global frozen = 0

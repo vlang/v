@@ -58,6 +58,9 @@ mut:
 	needed_array_last_index_fns map[string]ArrayMethodInfo
 	// Current function's return type name (for sum type wrapping in returns)
 	cur_fn_ret_type_name string
+	// Current function's concrete sum type return wrapper, when known from
+	// the declared return type.
+	cur_fn_return_sumtype_info ConcreteSumtypeWrapInfo
 	// Tracks whether the current function returns Option/Result.
 	// Some transformations use this to avoid wrapping plain sumtype returns.
 	cur_fn_returns_option bool
@@ -191,6 +194,7 @@ mut:
 	concrete_embedded_owner_names      map[string]map[string]string
 	cur_generic_call_file_idx          int = -1
 	cur_import_aliases                 map[string]string
+	sum_type_decl_variant_names        map[string][]string
 	// Cached at construction: avoids per-block t.pref nil/enum re-check in
 	// hot loops (transform_stmts, IfGuardExpr handling, OrExpr expansion, etc).
 	is_native_be               bool
@@ -390,6 +394,7 @@ fn new_transformer_base(env &types.Environment, p &pref.Preferences) &Transforme
 		struct_default_decl_infos:          map[string]StructDefaultDeclInfo{}
 		concrete_embedded_owner_names:      map[string]map[string]string{}
 		cur_import_aliases:                 map[string]string{}
+		sum_type_decl_variant_names:        map[string][]string{}
 		is_native_be:                       p != unsafe { nil }
 			&& (p.backend == .arm64 || p.backend == .x64)
 	}
@@ -464,6 +469,7 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		concrete_embedded_owner_names:      t.concrete_embedded_owner_names.clone()
 		cur_generic_call_file_idx:          t.cur_generic_call_file_idx
 		cur_import_aliases:                 t.cur_import_aliases.clone()
+		sum_type_decl_variant_names:        t.sum_type_decl_variant_names.clone()
 		is_native_be:                       t.is_native_be
 		macos_tiny_candidate_graph:         t.macos_tiny_candidate_graph
 	}
@@ -2049,6 +2055,7 @@ pub fn (mut t Transformer) pre_pass(files []ast.File) {
 	}
 	// Cache scope and method maps for lock-free access during transform.
 	t.cache_env_maps()
+	t.collect_sum_type_decl_variant_names(files)
 }
 
 // pre_pass_from_flat is the FlatAst-driven equivalent of pre_pass. It walks
@@ -2081,6 +2088,7 @@ pub fn (mut t Transformer) pre_pass_from_flat(flat &ast.FlatAst) {
 		t.collect_runtime_const_inits_from_flat(flat)
 	}
 	t.cache_env_maps()
+	t.collect_sum_type_decl_variant_names_from_flat(flat)
 }
 
 // cache_env_maps snapshots the shared Environment maps into plain maps
@@ -3267,7 +3275,7 @@ pub fn (mut t Transformer) transform_files_to_flat_direct(files []ast.File) ast.
 	}
 	mut builder := new_transform_output_flat_builder(files_to_transform)
 	for file in files_to_transform {
-		t.transform_file_to_flat(file, mut builder)
+		t.transform_file_to_flat(t.file_without_open_generic_fn_decls(file), mut builder)
 	}
 	t_print_mem('after per-file flat loop')
 	if timing {
@@ -3328,6 +3336,34 @@ pub fn (mut t Transformer) transform_flat_to_flat_direct(flat &ast.FlatAst, file
 	}
 	t.dump_flat_fallback_stats()
 	return builder.flat
+}
+
+fn (t &Transformer) file_without_open_generic_fn_decls(file ast.File) ast.File {
+	mut has_open_generic_fn := false
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl && t.omit_backend_generic_decl(stmt) {
+			has_open_generic_fn = true
+			break
+		}
+	}
+	if !has_open_generic_fn {
+		return file
+	}
+	mut stmts := []ast.Stmt{cap: file.stmts.len}
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl && t.omit_backend_generic_decl(stmt) {
+			continue
+		}
+		stmts << stmt
+	}
+	return ast.File{
+		attributes:     file.attributes
+		mod:            file.mod
+		name:           file.name
+		stmts:          stmts
+		imports:        file.imports
+		selector_names: file.selector_names
+	}
 }
 
 // count_flat_fallback records one legacy-decode fallback hit for a cursor
@@ -6643,6 +6679,8 @@ fn (mut t Transformer) transform_assign_stmt_parts(stmt ast.AssignStmt) (token.T
 			}
 			if bindings := t.generic_bindings_from_generic_call_expr(rhs_src[0]) {
 				t.local_receiver_generic_bindings[lhs_name] = bindings.clone()
+			} else if bindings := t.generic_bindings_from_generic_init_expr(rhs_src[0]) {
+				t.local_receiver_generic_bindings[lhs_name] = bindings.clone()
 			}
 		}
 	}
@@ -7171,13 +7209,13 @@ fn (mut t Transformer) try_transform_map_index_push(stmt ast.ExprStmt) ?ast.Stmt
 	if infix.op != .left_shift {
 		return none
 	}
-	if infix.lhs !is ast.IndexExpr {
-		return none
-	}
-	index_expr := infix.lhs as ast.IndexExpr
+	index_expr := t.index_expr_from_or_target(infix.lhs) or { return none }
 	// Check if the indexed expression is a map with array value type
 	map_expr_typ := t.map_index_lhs_type(index_expr.lhs) or { return none }
 	map_type := t.unwrap_map_type(map_expr_typ) or { return none }
+	if t.is_pointer_type(map_type.value_type) {
+		return none
+	}
 	// Map values can be aliases of arrays (for example strings.Builder).
 	val_type := t.unwrap_alias_and_pointer_type(map_type.value_type)
 	if val_type !is types.Array {
@@ -12439,7 +12477,11 @@ fn (t &Transformer) return_expr_should_skip_sumtype_wrap(expr ast.Expr) bool {
 }
 
 fn (t &Transformer) return_expr_is_sumtype_variant_init(expr ast.Expr, sumtype_name string) bool {
-	variants := t.get_sum_type_variants(sumtype_name)
+	info := t.sumtype_wrap_info_for_name(sumtype_name) or { return false }
+	return t.return_expr_is_sumtype_variant_init_with_variants(expr, info.name, info.variants)
+}
+
+fn (t &Transformer) return_expr_is_sumtype_variant_init_with_variants(expr ast.Expr, sumtype_name string, variants []string) bool {
 	if variants.len == 0 {
 		return false
 	}
@@ -12472,14 +12514,14 @@ fn (mut t Transformer) transform_return_stmt(stmt ast.ReturnStmt) ast.ReturnStmt
 // `_parts` extraction template established by `transform_fn_decl_parts`
 // (session 4).
 fn (mut t Transformer) transform_return_stmt_parts(stmt ast.ReturnStmt) []ast.Expr {
-	should_wrap_return_sumtype := t.cur_fn_ret_type_name != ''
-		&& t.is_sum_type(t.cur_fn_ret_type_name)
+	return_sumtype_info := t.current_return_sumtype_wrap_info() or { ConcreteSumtypeWrapInfo{} }
+	should_wrap_return_sumtype := return_sumtype_info.name != ''
 	mut exprs := []ast.Expr{cap: stmt.exprs.len}
 	for expr in stmt.exprs {
 		mut skip_return_sumtype_wrap := (t.cur_fn_returns_option || t.cur_fn_returns_result)
 			&& t.return_expr_should_skip_sumtype_wrap(expr)
 		if skip_return_sumtype_wrap && should_wrap_return_sumtype
-			&& t.return_expr_is_sumtype_variant_init(expr, t.cur_fn_ret_type_name) {
+			&& t.return_expr_is_sumtype_variant_init_with_variants(expr, return_sumtype_info.name, return_sumtype_info.variants) {
 			skip_return_sumtype_wrap = false
 		}
 		// Resolve enum shorthands in return expressions (e.g., return .string → token__Token__string)
@@ -12497,7 +12539,7 @@ fn (mut t Transformer) transform_return_stmt_parts(stmt ast.ReturnStmt) []ast.Ex
 		// set sumtype_return_wrap so transform_match_expr wraps each branch value
 		if expr is ast.MatchExpr && should_wrap_return_sumtype && !skip_return_sumtype_wrap {
 			old_wrap := t.sumtype_return_wrap
-			t.sumtype_return_wrap = t.cur_fn_ret_type_name
+			t.sumtype_return_wrap = return_sumtype_info.name
 			transformed := t.transform_expr(expr)
 			t.sumtype_return_wrap = old_wrap
 			exprs << transformed
@@ -12519,7 +12561,7 @@ fn (mut t Transformer) transform_return_stmt_parts(stmt ast.ReturnStmt) []ast.Ex
 				if smartcast_variant != '' {
 					if var_type := t.lookup_var_type(expr.name) {
 						var_c_name := t.type_to_c_name(var_type)
-						if t.is_same_sumtype_name(var_c_name, t.cur_fn_ret_type_name) {
+						if t.is_same_sumtype_name(var_c_name, return_sumtype_info.name) {
 							// Remove smartcast temporarily to prevent transform_expr
 							// from applying the smartcast dereference
 							removed_ctx := t.remove_smartcast_for_expr(expr.name)
@@ -12540,7 +12582,9 @@ fn (mut t Transformer) transform_return_stmt_parts(stmt ast.ReturnStmt) []ast.Ex
 			// wrap_sumtype_value calls transform_expr internally, so the value
 			// is properly transformed.
 			if t.is_native_be {
-				if wrapped := t.wrap_sumtype_value(expr, t.cur_fn_ret_type_name) {
+				if wrapped := t.wrap_sumtype_value_with_variants(expr, return_sumtype_info.name,
+					return_sumtype_info.variants)
+				{
 					exprs << wrapped
 					continue
 				}
@@ -12561,14 +12605,16 @@ fn (mut t Transformer) transform_return_stmt_parts(stmt ast.ReturnStmt) []ast.Ex
 		// Using wrap_sumtype_value would transform the value a second time, causing
 		// double smartcast dereferences (e.g., ((T*)(((T*)(x._data._T))->_data._T))->field).
 		if should_wrap_return_sumtype && !skip_return_sumtype_wrap {
-			if wrapped := t.wrap_sumtype_value_transformed(transformed, t.cur_fn_ret_type_name) {
+			if wrapped := t.wrap_sumtype_value_transformed_with_variants(transformed,
+				return_sumtype_info.name, return_sumtype_info.variants)
+			{
 				exprs << wrapped
 				continue
 			}
 			// If wrapping failed but we have a smartcast context, use the variant from it
 			if smartcast_variant != '' {
-				if wrapped := t.build_sumtype_init(transformed, smartcast_variant,
-					t.cur_fn_ret_type_name)
+				if wrapped := t.build_sumtype_init_with_variants(transformed, smartcast_variant,
+					return_sumtype_info.name, return_sumtype_info.variants)
 				{
 					exprs << wrapped
 					continue
@@ -13354,6 +13400,49 @@ fn (mut t Transformer) resolve_sprintf_format(inter ast.StringInter) string {
 	return '%d' // fallback
 }
 
+fn is_plain_string_interpolation(inter ast.StringInter) bool {
+	return inter.format == .unformatted && inter.width == 0 && inter.precision == 0
+		&& inter.format_expr is ast.EmptyExpr
+}
+
+fn explicit_str_selector_expr(receiver ast.Expr) ast.Expr {
+	return ast.Expr(ast.SelectorExpr{
+		lhs: receiver
+		rhs: ast.Ident{
+			name: 'str'
+		}
+		pos: receiver.pos()
+	})
+}
+
+fn (t &Transformer) explicit_str_method_base_name_for_interpolation(receiver ast.Expr) ?string {
+	if resolved := t.resolve_method_call_name(receiver, 'str') {
+		return resolved
+	}
+	return t.receiver_generic_template_method_from_concrete_receiver(receiver, 'str')
+}
+
+fn (mut t Transformer) explicit_str_interpolation_call_expr(receiver ast.Expr, transformed ast.Expr) ?ast.Expr {
+	base_name := t.explicit_str_method_base_name_for_interpolation(receiver) or { return none }
+	info := t.generic_aware_call_fn_info(explicit_str_selector_expr(receiver), base_name) or {
+		CallFnInfo{}
+	}
+	str_fn_name := t.receiver_generic_method_call_name(base_name, receiver, info, []ast.Expr{}) or {
+		if t.is_receiver_generic_method_call_base(base_name) {
+			return none
+		}
+		base_name
+	}
+	str_call := ast.Expr(ast.CallExpr{
+		lhs:  ast.Ident{
+			name: str_fn_name
+		}
+		args: [transformed]
+		pos:  receiver.pos()
+	})
+	return t.synth_selector(str_call, 'str', types.Type(types.voidptr_))
+}
+
 fn (mut t Transformer) transform_sprintf_arg(inter ast.StringInter) ast.Expr {
 	transformed := t.transform_expr(inter.expr)
 	typ := t.string_inter_arg_type(inter.expr) or {
@@ -13472,6 +13561,11 @@ fn (mut t Transformer) transform_sprintf_arg(inter ast.StringInter) ast.Expr {
 		}
 		else {
 			// For custom types with str() method: Type__str(expr).str
+			if is_plain_string_interpolation(inter) {
+				if str_call := t.explicit_str_interpolation_call_expr(inter.expr, transformed) {
+					return str_call
+				}
+			}
 			str_fn_name := t.register_auto_str_dependency(typ)
 			if str_fn_name != '' {
 				str_call := ast.Expr(ast.CallExpr{

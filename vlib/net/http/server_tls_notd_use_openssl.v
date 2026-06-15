@@ -4,8 +4,21 @@
 module http
 
 import io
+import net
 import time
 import net.mbedtls
+
+const tls_accept_poll_timeout = 100 * time.millisecond
+
+fn tls_accept_timeouts(accept_timeout time.Duration) (time.Duration, time.Duration) {
+	handshake_timeout := accept_timeout
+	accept_poll_timeout := if accept_timeout > 0 && accept_timeout < tls_accept_poll_timeout {
+		accept_timeout
+	} else {
+		tls_accept_poll_timeout
+	}
+	return accept_poll_timeout, handshake_timeout
+}
 
 // This file implements TLS termination for net.http.Server on top of the
 // mbedtls SSL listener. It is gated to the default TLS backend; the matching
@@ -33,6 +46,7 @@ fn (mut s Server) listen_and_serve_tls() {
 		cert_key:               s.cert_key
 		in_memory_verification: s.in_memory_verification
 		validate:               false // accept any client; servers don't verify clients by default
+		read_timeout:           s.read_timeout
 		alpn_protocols:         alpn
 	}) or {
 		eprintln('Listening TLS on ${addr} failed, err: ${err}')
@@ -40,13 +54,20 @@ fn (mut s Server) listen_and_serve_tls() {
 	}
 	defer {
 		listener.shutdown() or {}
+		if s.state == .stopped {
+			s.state = .closed
+			if s.on_closed != unsafe { nil } {
+				s.on_closed(mut s)
+			}
+		}
 	}
 	s.addr = addr
 
 	ch := chan &mbedtls.SSLConn{cap: s.pool_channel_slots}
+	mut idle_conns := &TlsIdleConnTracker{}
 	mut ws := []thread{cap: s.worker_num}
 	for wid in 0 .. s.worker_num {
-		ws << new_tls_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests)
+		ws << new_tls_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests, idle_conns)
 	}
 
 	if s.show_startup_message {
@@ -59,10 +80,14 @@ fn (mut s Server) listen_and_serve_tls() {
 	if s.on_running != unsafe { nil } {
 		s.on_running(mut s)
 	}
+	accept_poll_timeout, handshake_timeout := tls_accept_timeouts(s.accept_timeout)
 	for s.state == .running {
-		mut conn := listener.accept() or {
+		mut conn := listener.accept_with_timeouts(accept_poll_timeout, handshake_timeout) or {
 			if s.state != .running {
 				break
+			}
+			if err.code() == net.err_timed_out_code {
+				continue
 			}
 			$if debug {
 				eprintln('TLS accept failed: ${err}; skipping')
@@ -74,9 +99,9 @@ fn (mut s Server) listen_and_serve_tls() {
 		}
 		ch <- conn
 	}
-	if s.state == .stopped {
-		s.close()
-	}
+	ch.close()
+	idle_conns.close_idle()
+	ws.wait()
 }
 
 // TlsHandlerWorker serves HTTP/1.1 requests on TLS-wrapped connections.
@@ -84,16 +109,19 @@ struct TlsHandlerWorker {
 	id                      int
 	ch                      chan &mbedtls.SSLConn
 	max_keep_alive_requests int
+mut:
+	idle_conns &TlsIdleConnTracker = unsafe { nil }
 pub mut:
 	handler Handler
 }
 
-fn new_tls_handler_worker(wid int, ch chan &mbedtls.SSLConn, handler Handler, max_keep_alive_requests int) thread {
+fn new_tls_handler_worker(wid int, ch chan &mbedtls.SSLConn, handler Handler, max_keep_alive_requests int, idle_conns &TlsIdleConnTracker) thread {
 	mut w := &TlsHandlerWorker{
 		id:                      wid
 		ch:                      ch
 		handler:                 handler
 		max_keep_alive_requests: max_keep_alive_requests
+		idle_conns:              idle_conns
 	}
 	return spawn w.process_requests()
 }
@@ -107,12 +135,13 @@ fn (mut w TlsHandlerWorker) process_requests() {
 
 fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 	defer {
+		w.idle_conns.unmark_idle(conn.handle)
 		conn.shutdown() or {}
 	}
 	// If the TLS handshake negotiated HTTP/2 via ALPN, switch to the HTTP/2
 	// driver; otherwise fall through to the existing HTTP/1.1 path unchanged.
 	if conn.negotiated_alpn() == 'h2' {
-		serve_h2_conn(mut conn, mut w.handler) or {
+		serve_h2_conn_with_idle_tracker(mut conn, mut w.handler, w.idle_conns, conn.handle) or {
 			$if debug {
 				eprintln('h2 server error: ${err}')
 			}
@@ -128,6 +157,9 @@ fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 
 	mut request_count := 0
 	for {
+		if !w.idle_conns.mark_idle(conn.handle) {
+			return
+		}
 		mut req := parse_request(mut reader) or {
 			if err !is io.Eof {
 				$if debug {
@@ -136,6 +168,7 @@ fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 			}
 			return
 		}
+		w.idle_conns.unmark_idle(conn.handle)
 		request_count++
 		// `conn.ip` is the peer's IPv4 address as populated by mbedtls'
 		// accept(); blank for IPv6, which is acceptable for keep-alive logic.
