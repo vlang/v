@@ -57,9 +57,6 @@ fn C.vgc_num_cpus() int
 fn C.vgc_trace(ev int, slot int, a u64, b u64)
 fn C.vgc_trace_init()
 fn C.vgc_say(tag u64, v u64) // loud one-line stderr note (used by the span-registry abort)
-fn C.vgc_verify_report(kind u64, referrer_addr u64, referrer_size u64, off u64, referent_addr u64, referent_size u64) // mark-closure verifier (-d vgc_verify)
-fn C.vgc_rootfind_enumerate(arena_lo u64, arena_hi u64) // /proc/self/maps root-finder (-d vgc_verify)
-fn C.vgc_rootfind_report(referrer u64, in_stack int, target u64, tsz u64, kind u64) // root-finder hit reporter
 fn C.abort()
 
 fn C.vgc_addr_map_register(base usize, size usize, arena_idx int)
@@ -1396,9 +1393,6 @@ fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
 				if zero_fill {
 					unsafe { C.memset(ptr, 0, usize(span.elem_size)) }
 				} else {
-					$if vgc_verify ? {
-						unsafe { C.memset(ptr, 0, usize(span.elem_size)) } // DEBUG: clean verifier signal (see non-tiny path)
-					}
 				}
 				unsafe {
 					// Mark the span as tiny-packed: this slot will hold several
@@ -1433,13 +1427,6 @@ fn vgc_malloc_noscan_opts(n usize, zero_fill bool) voidptr {
 		vgc_acct_alloc(cache_idx, u64(span.elem_size), u64(n))
 		if zero_fill {
 			unsafe { C.memset(ptr, 0, n) }
-		}
-		$if vgc_verify ? {
-			// DEBUG-ONLY: zero the FULL slot (not just n) so the mark-closure
-			// verifier never mistakes a noscan slot's stale tail bytes for a live
-			// pointer. The real collector never scans noscan spans, so this has no
-			// production effect — it only cleans the verifier's signal.
-			unsafe { C.memset(ptr, 0, usize(span.elem_size)) }
 		}
 	}
 	return ptr

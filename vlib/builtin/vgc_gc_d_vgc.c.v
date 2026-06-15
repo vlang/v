@@ -198,20 +198,6 @@ fn vgc_gc_start() {
 
 	// Sweep synchronously - it's fast and avoids race conditions
 	vgc_watch_snapshot(6) // STAGE 6: immediately pre-sweep (the verdict mark+alloc state)
-	$if vgc_verify ? {
-		// DEBUG: verify the mark reached closure before we free anything. Runs
-		// fully inside this STW window (world stopped), so it does NOT perturb the
-		// mutator/collector timing the residual depends on — unlike per-word probes.
-		vgc_verify_mark_closure()
-		// DEBUG: locate the missed root for any swept-while-live object by scanning
-		// every writable non-arena region (thread stacks / libc heap / anon mmaps)
-		// for pointers to allocated-but-unmarked objects.
-		vgc_rootfind_count = 0
-		C.vgc_rootfind_enumerate(u64(vgc_arena_lo), u64(vgc_arena_hi))
-		if vgc_rootfind_count > 0 {
-			C.vgc_say(0x4007, u64(vgc_rootfind_count)) // ROOT(find) total this cycle
-		}
-	}
 	// Protect mcache-RESIDENT spans from reclamation this cycle (residual #4 fix — see
 	// vgc_protect_cached_spans). MUST run under STW, after mark, before sweep, while
 	// gc_cycle still holds THIS cycle's value (it is bumped only after the sweep).
@@ -581,18 +567,6 @@ fn vgc_mark_roots() {
 	// G-CHURN fails ~1-in-3 with reclaimed anchor nodes (verified by isolation). The
 	// scan is cheap now that span reuse is fixed (vgc_heap stays small and bounded),
 	// so correctness wins: scan it all.
-	$if vgc_verify ? {
-		// DEBUG: dump the data-segment ranges once so we can check whether a given
-		// __global's address is actually covered by the conservative root scan.
-		if !vgc_segdump_done {
-			vgc_segdump_done = true
-			C.vgc_say(0x5e60, u64(nseg)) // SEG count
-			for k in 0 .. nseg {
-				C.vgc_say(0x5e61, u64(seg_lo[k])) // SEG lo
-				C.vgc_say(0x5e62, u64(seg_hi[k])) // SEG hi
-			}
-		}
-	}
 	for k in 0 .. nseg {
 		if seg_lo[k] > 0 && seg_hi[k] > seg_lo[k] {
 			vgc_scan_range(seg_lo[k], seg_hi[k])
@@ -983,143 +957,8 @@ fn vgc_drain_mark_work_n(budget int) int {
 	return done
 }
 
-// ============================================================
-// Mark-closure verifier (DEBUG, -d vgc_verify) — soundness oracle.
-// ============================================================
-//
-// Invariant a correct tracing collector must hold at mark termination: every
-// object reachable from a MARKED (live) object is itself MARKED. If a marked
-// object holds a pointer to an allocated-but-UNMARKED object, the about-to-run
-// sweep will reclaim a live object -> use-after-free. This pass walks the whole
-// heap once and reports every such violation. It runs entirely while the world
-// is stopped (right before sweep), so it adds latency but introduces NO new race
-// and does NOT change mutator/collector interleaving — the residual UAF survives
-// instrumentation precisely because per-word probes shift that interleaving;
-// this oracle cannot, by construction.
-//
-// SCAN referrer  => the real mark scanned this object yet left a child unmarked:
-//                   a mark-fixpoint / work-queue-drop bug (definite).
-// NOSCAN referrer => the object was allocated noscan but holds a live pointer:
-//                   a noscan-misclassification candidate. (Conservative caveat:
-//                   noscan bytes are not real pointers, so a value that merely
-//                   *looks* like a heap pointer can false-positive; confirm via
-//                   the object's size class / recorded type.)
-fn vgc_verify_mark_closure() {
-	mut violations := 0
-	mut scan_viol := 0
-	for i in 0 .. vgc_heap.nspans {
-		span := unsafe { vgc_heap.allspans[i] }
-		if span == unsafe { nil } || !span.in_use || span.elem_size == 0 {
-			continue
-		}
-		if span.alloc_bits == unsafe { nil } || span.mark_bits == unsafe { nil } {
-			continue
-		}
-		for oi in 0 .. span.nelems {
-			// Only marked + allocated objects are live referrers.
-			if C.vgc_bitmap_get(span.alloc_bits, oi) == 0 {
-				continue
-			}
-			if C.vgc_bitmap_get(span.mark_bits, oi) == 0 {
-				continue
-			}
-			obj_addr := span.base + usize(oi) * usize(span.elem_size)
-			end := obj_addr + usize(span.elem_size)
-			mut addr := obj_addr
-			for addr + sizeof(usize) <= end {
-				val := unsafe { *(&usize(voidptr(addr))) }
-				if val >= vgc_arena_lo && val < vgc_arena_hi {
-					tspan := vgc_find_span(voidptr(val))
-					if tspan != unsafe { nil } && tspan.in_use && tspan.elem_size != 0
-						&& tspan.alloc_bits != unsafe { nil } && tspan.mark_bits != unsafe { nil } {
-						tidx := u32((val - tspan.base) / usize(tspan.elem_size))
-						if tidx < tspan.nelems && C.vgc_bitmap_get(tspan.alloc_bits, tidx) != 0
-							&& C.vgc_bitmap_get(tspan.mark_bits, tidx) == 0 {
-							// Marked referrer -> allocated-but-unmarked referent: closure broken.
-							if violations < 40 {
-								C.vgc_verify_report(u64(if span.noscan { 1 } else { 0 }),
-									u64(obj_addr), u64(span.elem_size), u64(addr - obj_addr),
-									u64(tspan.base + usize(tidx) * usize(tspan.elem_size)),
-									u64(tspan.elem_size))
-							}
-							violations++
-							if !span.noscan {
-								scan_viol++
-							}
-						}
-					}
-				}
-				addr += sizeof(usize)
-			}
-		}
-	}
-	if violations > 0 {
-		// tag 0xC105 = "CLOS(ure)" total; tag 0x5CA0 = SCAN-only (definite-bug) subset.
-		C.vgc_say(0xc105, u64(violations))
-		C.vgc_say(0x5ca0, u64(scan_viol))
-	}
-}
 
-// vgc_rootfind_active gates the per-region scan: enumerate is only invoked when
-// the closure verifier found NOTHING (so any swept-while-live object is a pure
-// root miss worth locating). Reset by the caller each cycle.
-__global vgc_rootfind_count = u32(0)
-__global vgc_segdump_done = false
 
-// vgc_rootfind_region is the C-callback target of vgc_rootfind_enumerate: scan a
-// writable, non-arena memory region [lo,hi) for pointers to allocated-but-
-// UNMARKED GC objects (objects sweep is about to free). Each such pointer is a
-// root the collector's mark MISSED. Classify the holder: inside a registered
-// thread's live [stack_lo,stack_hi] (STACKMISS — the stack scan should have
-// covered it) vs EXTERNAL (libc heap / anon mmap / TLS / a data segment
-// vgc_data_segments does not enumerate — memory the GC never scans).
-@[export: 'vgc_rootfind_region']
-fn vgc_rootfind_region(lo usize, hi usize, kind int) {
-	mut addr := (lo + sizeof(usize) - 1) & ~(usize(sizeof(usize)) - 1)
-	for addr + sizeof(usize) <= hi {
-		// Per-WORD arena exclusion: if the referrer location itself is GC-arena
-		// memory, this is an in-arena (heap→heap) reference — the transitive case
-		// the mark-closure verifier already covers, NOT an external root. (Region-
-		// level exclusion is too coarse: a /proc/maps mapping can straddle the
-		// arena bound.) Only NON-arena holders are true missed roots.
-		if addr >= vgc_arena_lo && addr < vgc_arena_hi {
-			addr += sizeof(usize)
-			continue
-		}
-		val := unsafe { *(&usize(voidptr(addr))) }
-		if val >= vgc_arena_lo && val < vgc_arena_hi {
-			span := vgc_find_span(voidptr(val))
-			if span != unsafe { nil } && span.in_use && span.elem_size != 0
-				&& span.alloc_bits != unsafe { nil } && span.mark_bits != unsafe { nil } {
-				// Skip val == span.base: the GC's own span registry (allspans / span
-				// structs) holds every span's base pointer; those are bookkeeping, not
-				// mutator roots, and would otherwise flood the report.
-				if val != span.base {
-					tidx := u32((val - span.base) / usize(span.elem_size))
-					if tidx < span.nelems && C.vgc_bitmap_get(span.alloc_bits, tidx) != 0
-						&& C.vgc_bitmap_get(span.mark_bits, tidx) == 0 {
-						mut in_stack := 0
-						for i in 0 .. vgc_heap.ncaches {
-							c := unsafe { &vgc_heap.caches[i] }
-							if c.registered && c.stack_lo > 0 && c.stack_hi > c.stack_lo
-								&& addr >= c.stack_lo && addr < c.stack_hi {
-								in_stack = 1
-								break
-							}
-						}
-						if vgc_rootfind_count < 80 {
-							C.vgc_rootfind_report(u64(addr), in_stack,
-								u64(span.base + usize(tidx) * usize(span.elem_size)),
-								u64(span.elem_size), u64(kind))
-						}
-						vgc_rootfind_count++
-					}
-				}
-			}
-		}
-		addr += sizeof(usize)
-	}
-}
 
 // ============================================================
 // Sweep phase (translated from Go's mgcsweep.go)
