@@ -953,8 +953,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	// slot i was read this iteration, and i increases monotonically, so no live
 	// element is clobbered before it is read.
 	mut perceus_map_reuse := false
-	if g.is_perceus && left_is_array && inp_elem_styp == ret_elem_styp
-		&& node.left is ast.Ident {
+	if g.is_perceus && left_is_array && inp_elem_styp == ret_elem_styp && node.left is ast.Ident {
 		recv_name := (node.left as ast.Ident).name
 		if recv_name in g.perceus_drops[g.perceus_cur_stmt_pos] {
 			scope := g.file.scope.innermost(node.pos.pos)

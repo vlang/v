@@ -229,8 +229,8 @@ mut:
 	free_spans      [32]&VGC_Span // free spans indexed by npages (1..31, 0=unused)
 	// Per-thread caches
 	caches       [64]VGC_Cache
-	ncaches      int // high-water mark of slots ever used
-	live_threads u32 // atomic-ish (guarded by cache_lock): currently-registered mutators
+	ncaches      int     // high-water mark of slots ever used
+	live_threads u32     // atomic-ish (guarded by cache_lock): currently-registered mutators
 	free_slots   [64]int // reclaimed cache indices, reused before growing ncaches
 	nfree_slots  int
 	cache_lock   u32
@@ -292,6 +292,7 @@ __global vgc_arena_hi = usize(0)
 // releases it after the call. While registered, the collector shades it (and,
 // being a scan object, its referents) every STW cycle.
 const vgc_max_spawn_roots = 1024
+
 __global vgc_spawn_roots = [1024]voidptr{}
 __global vgc_nspawn_roots = int(0)
 __global vgc_spawn_root_lock = u32(0)
@@ -397,7 +398,6 @@ fn vgc_register_thread() {
 		vgc_heap.caches[idx].live_delta = 0
 		vgc_heap.caches[idx].alloc_delta = 0
 	}
-
 	C.vgc_set_cache_idx(idx)
 	// Arrange for vgc_thread_exit_cb(idx) to fire when this thread exits.
 	C.vgc_install_thread_exit(idx)
@@ -849,7 +849,7 @@ fn vgc_span_init(mut span VGC_Span, class_idx u8, noscan bool) {
 	span.free_index = 0
 	span.alloc_count = 0
 	span.is_tiny = false // reset on (re)use; set true only when the tiny allocator carves a packed block
-	span.dirty = 0       // concurrent mark: a recycled span starts clean
+	span.dirty = 0 // concurrent mark: a recycled span starts clean
 
 	// Bitmaps are inline in the span (alloc_buf/mark_buf); point the working pointers
 	// at them and zero the bytes in use. nobjs <= 1024 -> bitmap_size <= 128 <= 136,
@@ -929,8 +929,8 @@ fn vgc_span_alloc_obj(mut span VGC_Span) voidptr {
 					// lock-free mcache fast path does not hold. With both sides atomic
 					// (OR here, AND in vgc_free) neither loses the other's update.
 					old := unsafe {
-						C.vgc_atomic_fetch_or_u8(&u8(voidptr(usize(span.alloc_bits) + usize(byte_idx))),
-							mask)
+						C.vgc_atomic_fetch_or_u8(&u8(voidptr(usize(span.alloc_bits) +
+							usize(byte_idx))), mask)
 					}
 					if (old & mask) != 0 {
 						// Lost the slot to a racer (defensive; normally only the owning
@@ -1454,7 +1454,7 @@ fn vgc_alloc_large(n usize, noscan bool, zero_fill bool) voidptr {
 		span.class_idx = 0
 		span.noscan = noscan
 		span.is_tiny = false // large spans are never tiny-packed (reset in case of a recycled span)
-		span.dirty = 0       // concurrent mark: recycled large span starts clean
+		span.dirty = 0 // concurrent mark: recycled large span starts clean
 		span.elem_size = u32(n)
 		span.nelems = 1
 		span.alloc_count = 1
@@ -1692,12 +1692,17 @@ fn vgc_is_allocated(ptr voidptr) u64 {
 // it, swept it, or decommitted its span. A test sets the watch per wave (e.g.
 // vgc_set_watch(c)) and reads vgc_watch_report() at a stall. Gated by
 // vgc_watch_addr != 0 so it is a no-op (one compare) when unused.
-__global vgc_watch_addr     = usize(0)
-__global vgc_watch_in_root  = u32(0) // UNUSED (the per-shade hook perturbed timing; removed)
-__global vgc_watch_marked   = u32(0) // vgc_shade() set the mark bit for the watched object
-__global vgc_watch_swept    = u32(0) // vgc_sweep_span() cleared the watched object's alloc bit
-__global vgc_watch_decommit = u32(0) // vgc_put_free_span() returned the watched object's span
-__global vgc_watch_cycles   = u32(0) // GC cycles observed since the watch was set
+__global vgc_watch_addr = usize(0)
+__global vgc_watch_in_root = u32(0)
+// UNUSED (the per-shade hook perturbed timing; removed)
+__global vgc_watch_marked = u32(0)
+// vgc_shade() set the mark bit for the watched object
+__global vgc_watch_swept = u32(0)
+// vgc_sweep_span() cleared the watched object's alloc bit
+__global vgc_watch_decommit = u32(0)
+// vgc_put_free_span() returned the watched object's span
+__global vgc_watch_cycles = u32(0)
+// GC cycles observed since the watch was set
 
 // ROOT-SCAN-MISS localizers (set ONLY in the bounded root-scan paths
 // vgc_mark_roots / vgc_scan_suspended_roots / the spawn-root shade loop — NEVER
@@ -1705,10 +1710,14 @@ __global vgc_watch_cycles   = u32(0) // GC cycles observed since the watch was s
 // sensitive residual). Each records WHICH scanned root (if any) held a pointer to
 // the watched object this cycle; combined with vgc_watch_marked they pin whether
 // the miss is "no root held it" vs "a root held it but the mark/sweep dropped it".
-__global vgc_watch_in_stack = u32(0) // (thread idx+1) whose [stack_lo,stack_hi] held a word == watch_addr
-__global vgc_watch_in_reg   = u32(0) // (thread idx+1) whose captured registers held watch_addr
-__global vgc_watch_in_spawn = u32(0) // bit0=a spawn-root ptr == watch_addr; bit1=a spawn-root OBJECT held a word == watch_addr
-__global vgc_watch_rng_cov  = u32(0) // (thread idx+1) whose [stack_lo,stack_hi] numerically COVERS watch_addr
+__global vgc_watch_in_stack = u32(0)
+// (thread idx+1) whose [stack_lo,stack_hi] held a word == watch_addr
+__global vgc_watch_in_reg = u32(0)
+// (thread idx+1) whose captured registers held watch_addr
+__global vgc_watch_in_spawn = u32(0)
+// bit0=a spawn-root ptr == watch_addr; bit1=a spawn-root OBJECT held a word == watch_addr
+__global vgc_watch_rng_cov = u32(0)
+// (thread idx+1) whose [stack_lo,stack_hi] numerically COVERS watch_addr
 
 @[markused]
 pub fn vgc_set_watch(ptr voidptr) {
@@ -1820,7 +1829,7 @@ fn vgc_watch_roots_report() u64 {
 // bit2=alloc_bit set, bit3=mark_bit set. vgc_watch_stage_span carries span.base
 // (identity) so we can see if mark and sweep operate on DIFFERENT spans. 6 calls
 // per cycle — off the per-word hot path.
-__global vgc_watch_stage      = [8]u64{}
+__global vgc_watch_stage = [8]u64{}
 __global vgc_watch_stage_span = [8]u64{}
 
 fn vgc_watch_snapshot(stage int) {
@@ -1840,10 +1849,12 @@ fn vgc_watch_snapshot(stage int) {
 		if span.elem_size != 0 {
 			obj_idx := u32((w - span.base) / usize(span.elem_size))
 			if obj_idx < span.nelems {
-				if span.alloc_bits != unsafe { nil } && C.vgc_bitmap_get(span.alloc_bits, obj_idx) != 0 {
+				if span.alloc_bits != unsafe { nil }
+					&& C.vgc_bitmap_get(span.alloc_bits, obj_idx) != 0 {
 					v |= 4
 				}
-				if span.mark_bits != unsafe { nil } && C.vgc_bitmap_get(span.mark_bits, obj_idx) != 0 {
+				if span.mark_bits != unsafe { nil }
+					&& C.vgc_bitmap_get(span.mark_bits, obj_idx) != 0 {
 					v |= 8
 				}
 			}
@@ -1962,8 +1973,7 @@ fn vgc_find_span(ptr voidptr) &VGC_Span {
 	// + page maps it gates. A plain read here raced the locked writer (TSan).
 	nar := int(C.vgc_atomic_load_u32(&u32(voidptr(&vgc_heap.narenas))))
 	mut arena_idx := C.vgc_addr_to_arena(addr)
-	if arena_idx < 0 || arena_idx >= nar
-		|| addr < vgc_heap.arenas[arena_idx].base
+	if arena_idx < 0 || arena_idx >= nar || addr < vgc_heap.arenas[arena_idx].base
 		|| addr >= vgc_heap.arenas[arena_idx].base + vgc_heap.arenas[arena_idx].size {
 		arena_idx = -1
 		for i in 0 .. nar {

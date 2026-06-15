@@ -364,7 +364,7 @@ fn vgc_rescan_dirty_spans() {
 fn vgc_gc_start_concurrent() {
 	mut expected := vgc_phase_off
 	if !C.vgc_atomic_cas_u32(&vgc_heap.gc_phase, &expected, vgc_phase_mark) {
-		return // a cycle is already in flight
+		return
 	}
 	self_idx := C.vgc_get_cache_idx()
 
@@ -956,9 +956,6 @@ fn vgc_drain_mark_work_n(budget int) int {
 	}
 	return done
 }
-
-
-
 
 // ============================================================
 // Sweep phase (translated from Go's mgcsweep.go)
