@@ -1252,3 +1252,134 @@ fn test_mux_conn_death_wakes_all_waiters() {
 	}
 	assert false, 'a request on a dead connection must fail'
 }
+
+// When the connection preface write fails, note_write_failure must be called so
+// the connection is torn down and the pool stops admitting new work. Both the
+// failing request and any immediately subsequent one must return retryable errors.
+fn test_mux_preface_write_failure_tears_down() {
+	mut cend, mut pend := new_mux_pipe()
+	// Close the write side so the very first transport write (the preface) fails.
+	cend.outgoing.close()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut out := &MuxResults{}
+	mut w1 := []thread{}
+	w1 << spawn mux_worker(mut conn, H2ClientRequest{ authority: 't', path: '/x' }, mut out)
+	w1.wait()
+	assert out.errs['/x'] or { '' } != '', 'request on broken transport must fail'
+	assert out.codes['/x'] or { 0 } == h2_err_retryable_code, 'preface write failure must be retryable'
+	// note_write_failure must have set shutting_down; the second request must
+	// fail retryably rather than be admitted to the dead connection.
+	mut out2 := &MuxResults{}
+	mut w2 := []thread{}
+	w2 << spawn mux_worker(mut conn, H2ClientRequest{ authority: 't', path: '/y' }, mut out2)
+	w2.wait()
+	assert out2.errs['/y'] or { '' } != '', 'second request on torn-down connection must fail'
+	assert out2.codes['/y'] or { 0 } == h2_err_retryable_code, 'second request must also be retryable'
+	cend.incoming.close() // unblock the reader thread so it exits cleanly
+	pend.close_both()
+}
+
+// Applying a positive SETTINGS_INITIAL_WINDOW_SIZE delta to a stream that
+// already has extra credit from a WINDOW_UPDATE can overflow the stream's send
+// window above 2^31-1, which is a connection FLOW_CONTROL_ERROR (RFC 7540
+// §6.9.2). The connection must be failed, not silently keep the invalid window.
+fn test_mux_settings_initial_window_delta_overflow_fails_connection() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	mut workers := []thread{}
+	// A simple GET keeps the stream registered in c.streams (waiting for a
+	// response that never arrives), so the SETTINGS delta has a stream to hit.
+	workers << spawn mux_worker(mut conn, H2ClientRequest{ authority: 't', path: '/ov' }, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		// Raise the stream's send window close to 2^31-1 via WINDOW_UPDATE,
+		// then raise SETTINGS_INITIAL_WINDOW_SIZE so the delta pushes the window
+		// over the limit.  Stream send_window ≈ 65535 + 0x7fff_0000 = 0x7fff_ffff;
+		// delta = 0x7fff_ffff - 65535 = 0x7fff_0000 → new window ≈ 0xfffe_0000
+		// which exceeds 0x7fff_ffff → FLOW_CONTROL_ERROR.
+		peer.write_frame(H2WindowUpdateFrame{
+			stream_id:             1
+			window_size_increment: u32(0x7fff_0000)
+		}) or {
+			peer.fail('wu: ${err.msg()}')
+			return
+		}
+		peer.write_frame(H2SettingsFrame{
+			settings: [H2Setting{h2_settings_initial_window_size, u32(0x7fff_ffff)}]
+		}) or {
+			peer.fail('settings: ${err.msg()}')
+			return
+		}
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	err_msg := out.errs['/ov'] or { '' }
+	assert err_msg != '', 'expected a connection FLOW_CONTROL_ERROR, got success or hang'
+	assert err_msg.contains('FLOW_CONTROL_ERROR'), 'unexpected error: ${err_msg}'
+	cend.close_both()
+}
+
+// A server that ignores our advertised receive window and sends more DATA than
+// it allows must trigger a FLOW_CONTROL_ERROR: the connection must be failed,
+// not silently buffer unbounded data. on_data blocks the requester from draining
+// (and sending WINDOW_UPDATE) while the peer floods the connection window.
+fn test_mux_peer_exceeding_recv_window_fails_connection() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	// Deplete the tracked connection-level receive window to 1 byte so the
+	// very first DATA frame (2 bytes) immediately overflows it and triggers
+	// FLOW_CONTROL_ERROR.  Doing this before any goroutine sends frames means
+	// no WINDOW_UPDATE is ever sent that could re-fill the window first, so
+	// the result is fully deterministic with no concurrent timing race.
+	conn.recv_wmu.lock()
+	conn.conn_recv_window = 1
+	conn.recv_wmu.unlock()
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{
+		authority: 't'
+		path:      '/flood'
+	}, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		peer.respond_headers(ids[0], false) or {
+			peer.fail('respond: ${err.msg()}')
+			return
+		}
+		// 2-byte DATA frame: connection window is 1 byte, so this exceeds it
+		// and must trigger FLOW_CONTROL_ERROR on the client.
+		peer.write_frame(H2DataFrame{
+			stream_id: ids[0]
+			data:      [u8(0), 0]
+		}) or { peer.fail('data: ${err.msg()}') }
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	err_msg := out.errs['/flood'] or { '' }
+	assert err_msg != '', 'expected FLOW_CONTROL_ERROR, got success or hang'
+	assert err_msg.contains('FLOW_CONTROL_ERROR'), 'unexpected error: ${err_msg}'
+	cend.close_both()
+}

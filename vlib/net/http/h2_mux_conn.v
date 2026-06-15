@@ -67,6 +67,8 @@ mut:
 	// --- send state, guarded by the connection's fmu ---
 	send_window i64
 	send_dead   bool // RST/GOAWAY: wake a body sender blocked on flow-control credit
+	// --- receive state, guarded by mu ---
+	recv_window i64 = i64(h2_default_initial_window) // our receive window (what we advertised)
 }
 
 fn new_h2_mux_stream() &H2MuxStream {
@@ -141,6 +143,13 @@ mut:
 	transport_torn_down bool // close_transport has been (or is being) called
 	conn_err            string
 	idle_since          time.Time
+	// --- guarded by recv_wmu ---
+	// Inbound flow-control: tracks how much more data the peer is allowed to
+	// send us (our advertised receive windows). Debited on DATA arrival,
+	// replenished when we send WINDOW_UPDATE. recv_wmu is always acquired
+	// solo — never while holding any other connection lock.
+	recv_wmu         &sync.Mutex = sync.new_mutex()
+	conn_recv_window i64         = i64(h2_default_initial_window)
 	// --- reader-thread private (no locks) ---
 	decoder H2HpackDecoder
 	rbuf    []u8
@@ -281,7 +290,12 @@ fn (mut c H2MuxConn) do_on_stream(mut s H2MuxStream, req H2ClientRequest) !H2Cli
 	// always deliver the response.
 	c.wmu.lock()
 	c.handshake_locked() or {
+		// Preface write failed: tear down the transport so the reader exits
+		// and the pool stops admitting new work to this dead connection.
+		// Without this, closed/shutting_down stay false and the pool can keep
+		// dispatching to a connection whose write side is already broken.
 		c.wmu.unlock()
+		c.note_write_failure()
 		return h2_retryable_error('connection handshake failed: ${err.msg()}')
 	}
 	s.id = c.next_stream_id
@@ -591,6 +605,11 @@ fn (mut c H2MuxConn) send_conn_window_update(n u32) ! {
 	if n == 0 {
 		return
 	}
+	// Credit our tracked window before sending the frame so the budget is
+	// never in deficit for longer than necessary.
+	c.recv_wmu.lock()
+	c.conn_recv_window += i64(n)
+	c.recv_wmu.unlock()
 	buf := H2Frame(H2WindowUpdateFrame{
 		stream_id:             0
 		window_size_increment: n
@@ -610,14 +629,29 @@ fn (mut c H2MuxConn) send_window_updates(stream_id u32, n u32) ! {
 	if n == 0 {
 		return
 	}
+	// Credit both tracked receive windows before sending the frames.
+	c.recv_wmu.lock()
+	c.conn_recv_window += i64(n)
+	c.recv_wmu.unlock()
+	mut stream_alive := false
+	c.smu.lock()
+	if mut s := c.streams[stream_id] {
+		s.mu.lock()
+		s.recv_window += i64(n)
+		s.mu.unlock()
+		stream_alive = true
+	}
+	c.smu.unlock()
 	mut buf := H2Frame(H2WindowUpdateFrame{
 		stream_id:             0
 		window_size_increment: n
 	}).encode()
-	buf << H2Frame(H2WindowUpdateFrame{
-		stream_id:             stream_id
-		window_size_increment: n
-	}).encode()
+	if stream_alive {
+		buf << H2Frame(H2WindowUpdateFrame{
+			stream_id:             stream_id
+			window_size_increment: n
+		}).encode()
+	}
 	c.wmu.lock()
 	c.write_all_locked(buf) or {
 		c.wmu.unlock()
@@ -899,6 +933,13 @@ fn (mut c H2MuxConn) apply_peer_settings(settings []H2Setting) ! {
 				c.peer_initial_window = i64(st.value)
 				for _, mut s in c.streams {
 					s.send_window += delta
+					// RFC 7540 §6.9.2: if applying the delta causes a stream
+					// window to exceed 2^31-1, it is a connection FLOW_CONTROL_ERROR.
+					if s.send_window > i64(0x7fff_ffff) {
+						c.fmu.unlock()
+						c.smu.unlock()
+						return error('h2: SETTINGS_INITIAL_WINDOW_SIZE delta overflows stream ${s.id} send window (RFC 7540 §6.9.2 FLOW_CONTROL_ERROR)')
+					}
 				}
 				if delta > 0 {
 					c.fcv.broadcast()
@@ -983,6 +1024,16 @@ fn (mut c H2MuxConn) on_response_data(frame H2DataFrame) ! {
 	// (RFC 7540 6.9.1) but is never delivered to the app, so credit it back
 	// immediately; the data bytes are credited as the requester drains them.
 	pad_overhead := frame.flow_size - frame.data.len
+	// Enforce the connection-level receive window (RFC 7540 §6.9). Debit
+	// first; credit paths (drain, unknown-stream, cancelled) restore it.
+	// recv_wmu is always acquired solo, so no lock-order hazard here.
+	c.recv_wmu.lock()
+	c.conn_recv_window -= i64(frame.flow_size)
+	conn_ok := c.conn_recv_window >= 0
+	c.recv_wmu.unlock()
+	if !conn_ok {
+		return error('h2: peer exceeded connection-level receive window (RFC 7540 §6.9 FLOW_CONTROL_ERROR)')
+	}
 	mut s := c.lookup_stream(frame.stream_id)
 	if s == unsafe { nil } {
 		c.check_unknown_stream(frame.stream_id)!
@@ -1004,6 +1055,16 @@ fn (mut c H2MuxConn) on_response_data(frame H2DataFrame) ! {
 			c.send_conn_window_update(u32(frame.flow_size)) or {}
 		}
 		return
+	}
+	// Enforce the stream-level receive window (RFC 7540 §6.9.1). Padding
+	// counts against stream flow control the same as data, so debit
+	// whenever flow_size > 0 regardless of whether there are data bytes.
+	if frame.flow_size > 0 {
+		s.recv_window -= i64(frame.flow_size)
+		if s.recv_window < 0 {
+			s.mu.unlock()
+			return error('h2: peer exceeded stream ${frame.stream_id} receive window (RFC 7540 §6.9 FLOW_CONTROL_ERROR)')
+		}
 	}
 	if frame.data.len > 0 {
 		s.chunks << frame.data.clone()
@@ -1058,6 +1119,19 @@ fn (mut c H2MuxConn) reset_stream(stream_id u32, code H2ErrorCode, reason string
 	}).encode()) or {}
 	c.wmu.unlock()
 	if s != unsafe { nil } {
+		// Credit back any DATA bytes already queued but never drained,
+		// mirroring cancel_stream, so the connection receive window stays
+		// accurate after a per-stream reset.
+		s.mu.lock()
+		mut queued := u64(0)
+		for ch in s.chunks {
+			queued += u64(ch.len)
+		}
+		s.chunks.clear()
+		s.mu.unlock()
+		if queued > 0 {
+			c.send_conn_window_update(u32(queued)) or {}
+		}
 		s.fail('h2: ${reason}', false)
 		c.wake_send(mut s)
 	}
