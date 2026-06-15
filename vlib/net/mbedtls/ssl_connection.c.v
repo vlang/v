@@ -155,6 +155,10 @@ pub mut:
 	// strings in config.alpn_protocols. mbedtls stores this pointer without
 	// copying, so it must outlive the SSL config; it is freed in shutdown().
 	alpn_list &&char = unsafe { nil }
+	// last_write_sent is the number of bytes the most recent write_ptr call sent.
+	// It is valid even when that call returned an error, so a caller can tell a
+	// zero-byte failure (nothing reached the peer) from a partial write.
+	last_write_sent int
 }
 
 // SSLListener listens on a TCP port and accepts connection secured with TLS
@@ -858,6 +862,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 		}
 	}
 
+	s.last_write_sent = 0
 	deadline := ssl_timeout_deadline(s.duration)
 	unsafe {
 		mut ptr_base := bytes
@@ -885,6 +890,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 				}
 			}
 			total_sent += sent
+			s.last_write_sent = total_sent
 		}
 	}
 	return total_sent

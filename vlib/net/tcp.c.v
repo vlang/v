@@ -32,6 +32,10 @@ pub mut:
 	read_timeout   time.Duration
 	write_timeout  time.Duration
 	is_blocking    bool = true
+	// last_write_sent is the number of bytes the most recent write_ptr call sent.
+	// It is valid even when that call returned an error, so a caller can tell a
+	// zero-byte failure (nothing reached the peer) from a partial write.
+	last_write_sent int
 }
 
 // dial_tcp will try to create a new TcpConn to the given address.
@@ -233,6 +237,7 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 			'>>> TcpConn.write_ptr | data.len: ${len:6} | hex: ${unsafe { b.vbytes(len) }.hex()} | data: ' +
 			unsafe { b.vstring_with_len(len) })
 	}
+	c.last_write_sent = 0
 	unsafe {
 		mut ptr_base := &u8(b)
 		mut total_sent := 0
@@ -260,6 +265,7 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 				}
 			}
 			total_sent += sent
+			c.last_write_sent = total_sent
 		}
 		return total_sent
 	}

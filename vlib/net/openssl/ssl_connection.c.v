@@ -16,6 +16,10 @@ pub mut:
 	duration time.Duration
 
 	owns_socket bool
+	// last_write_sent is the number of bytes the most recent write_ptr call sent.
+	// It is valid even when that call returned an error, so a caller can tell a
+	// zero-byte failure (nothing reached the peer) from a partial write.
+	last_write_sent int
 }
 
 @[params]
@@ -413,6 +417,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 		}
 	}
 
+	s.last_write_sent = 0
 	deadline := ssl_timeout_deadline(s.duration)
 	unsafe {
 		mut ptr_base := bytes
@@ -441,6 +446,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 					int(err_res))
 			}
 			total_sent += sent
+			s.last_write_sent = total_sent
 		}
 	}
 	return total_sent
