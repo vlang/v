@@ -4244,6 +4244,21 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 				panic('internal compiler error - could not find global in scope')
 			}
 			v.typ = ast.mktyp(field.typ)
+			if field.is_thread_local {
+				// A `@[thread_local]` global gets a per-thread copy; only a constant
+				// initializer is replicated into each thread's copy. A non-constant
+				// initializer runs once in `_vinit()` on the main thread, so other
+				// threads would see a zero-initialized value — reject it instead of
+				// silently handing out zeroed thread-locals.
+				e := field.expr
+				is_const_init := e.is_literal() || (e is ast.ArrayInit && e.is_fixed)
+					|| (e is ast.UnsafeExpr && (e.expr is ast.Nil || e.expr.is_literal()))
+					|| node.attrs.contains('cinit')
+				if !is_const_init {
+					c.error('`@[thread_local]` globals must have a constant initializer (a non-constant one runs only on the main thread in `_vinit()`, so other threads would see a zero value)',
+						field.pos)
+				}
+			}
 		} else {
 			field_sym := c.table.sym(field.typ)
 			if field_sym.info is ast.ArrayFixed && c.array_fixed_has_unresolved_size(field_sym.info) {
