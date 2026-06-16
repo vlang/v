@@ -12208,13 +12208,11 @@ fn (mut g Gen) or_block_on_value(var_name string, or_block ast.OrExpr, return_ty
 }
 
 fn (mut g Gen) write_main_error_propagation_panic_tail() {
-	// Prevent synthetic main() propagation panics from falling through into cleanup
-	// if a backend panic helper unexpectedly returns.
-	if g.pref.is_bare {
-		g.writeln('\twhile (1) {}')
-	} else {
-		g.writeln('\texit(1);')
-	}
+	// The panic helper above is `@[noreturn]`, so mark the tail unreachable to
+	// prevent synthetic main() propagation panics from falling through into cleanup.
+	// This matches the `panic(...); VUNREACHABLE();` pattern used at the other panic
+	// sites; emitting a real `exit(1);` here would be dead code after a noreturn call
+	// (and is reported as such by `-Wunreachable-code`).
 	g.writeln('\tVUNREACHABLE();')
 }
 
