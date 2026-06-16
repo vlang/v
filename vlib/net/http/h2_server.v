@@ -66,8 +66,11 @@ fn serve_h2_conn_with_idle_tracker(mut transport H2Transport, mut handler Handle
 		idle_handle: idle_handle
 	}
 	c.serve(mut handler) or {
-		// Best-effort GOAWAY before bailing.
-		c.send_goaway(.protocol_error, err.msg()) or {}
+		// Best-effort GOAWAY before bailing. Skip if one was already sent by
+		// the error path (e.g. apply_settings sends FLOW_CONTROL_ERROR).
+		if !c.closing {
+			c.send_goaway(.protocol_error, err.msg()) or {}
+		}
 		return err
 	}
 }
@@ -218,8 +221,11 @@ fn (mut c H2ServerConn) apply_settings(settings []H2Setting) ! {
 				c.peer.max_concurrent_streams = s.value
 			}
 			h2_settings_initial_window_size {
-				// RFC 7540 §6.5.3: values above 2^31-1 are a FLOW_CONTROL_ERROR.
+				// RFC 7540 §6.5.3: values above 2^31-1 are a FLOW_CONTROL_ERROR,
+				// not a PROTOCOL_ERROR; send the correct code before unwinding.
 				if s.value > u32(0x7fff_ffff) {
+					c.send_goaway(.flow_control_error,
+						'SETTINGS_INITIAL_WINDOW_SIZE ${s.value} exceeds 2^31-1') or {}
 					return error('h2 server: SETTINGS_INITIAL_WINDOW_SIZE ${s.value} exceeds 2^31-1 (FLOW_CONTROL_ERROR)')
 				}
 				// RFC 7540 §6.9.2: a change to the initial window size adjusts
@@ -231,6 +237,10 @@ fn (mut c H2ServerConn) apply_settings(settings []H2Setting) ! {
 				}
 			}
 			h2_settings_max_frame_size {
+				// RFC 7540 §6.5.2: valid range is 2^14 (16384)..2^24-1 inclusive.
+				if s.value < h2_default_max_frame_size || s.value > h2_max_max_frame_size {
+					return error('h2 server: SETTINGS_MAX_FRAME_SIZE ${s.value} out of range [16384, 16777215]')
+				}
 				c.peer.max_frame_size = s.value
 			}
 			h2_settings_max_header_list_size {
@@ -511,6 +521,7 @@ fn (mut c H2ServerConn) send_goaway(code H2ErrorCode, msg string) ! {
 		error_code:     u32(code)
 		debug_data:     msg.bytes()
 	})!
+	c.closing = true
 }
 
 fn (mut c H2ServerConn) read_frame() !H2Frame {
