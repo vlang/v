@@ -2,7 +2,7 @@ import os
 
 const vexe = @VEXE
 
-fn generated_windows_msvc_c(name string, source string) !string {
+fn generated_windows_c(cc string, name string, source string) !string {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'msvc_as_cast_cgen_${name}_${os.getpid()}')
 	os.mkdir_all(tmp_dir)!
 	defer {
@@ -10,13 +10,17 @@ fn generated_windows_msvc_c(name string, source string) !string {
 	}
 	source_path := os.join_path(tmp_dir, '${name}.v')
 	os.write_file(source_path, source)!
-	cmd := '${os.quoted_path(vexe)} -os windows -cc msvc -o - ${os.quoted_path(source_path)}'
+	cmd := '${os.quoted_path(vexe)} -os windows -cc ${cc} -o - ${os.quoted_path(source_path)}'
 	res := os.execute(cmd)
 	if res.exit_code != 0 {
 		eprintln(res.output)
 	}
 	assert res.exit_code == 0
 	return res.output
+}
+
+fn generated_windows_msvc_c(name string, source string) !string {
+	return generated_windows_c('msvc', name, source)
 }
 
 fn c_chunk(c_source string, marker string) string {
@@ -74,6 +78,38 @@ fn test_msvc_result_call_as_cast_uses_plain_temp() ! {
 	assert use_variant.contains('builtin____as_cast')
 	assert !use_variant.contains('({')
 	assert !use_variant.contains('val__make_variant')
+}
+
+fn test_windows_gcc_plain_call_as_cast_evaluates_source_once() ! {
+	c_source := generated_windows_c('gcc', 'plain_call_as_cast', [
+		'module main',
+		'',
+		'struct Alpha {',
+		'	n int',
+		'}',
+		'struct Beta {',
+		'	n int',
+		'}',
+		'type Variant = Alpha | Beta',
+		'',
+		'fn make_variant() Variant {',
+		'	return Variant(Alpha{n: 3})',
+		'}',
+		'',
+		'fn use_variant() int {',
+		'	value := make_variant() as Alpha',
+		'	return value.n',
+		'}',
+		'',
+		'fn main() {',
+		'	_ = use_variant()',
+		'}',
+	].join('\n'))!
+	use_variant := c_chunk(c_source, 'main__use_variant(void) {')
+	assert use_variant.count('main__make_variant()') == 1
+	assert use_variant.contains('({')
+	assert use_variant.contains('builtin____as_cast')
+	assert !use_variant.contains('main__make_variant())._')
 }
 
 fn test_msvc_if_expr_as_cast_with_plain_call_is_not_hoisted() ! {

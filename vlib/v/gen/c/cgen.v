@@ -12874,6 +12874,19 @@ fn (mut g Gen) as_cast_payload_type(target_type ast.Type, matching_variants []as
 	return target_type
 }
 
+fn (g &Gen) uses_msvc_ccompiler() bool {
+	if g.is_cc_msvc || g.pref.ccompiler_type == .msvc {
+		return true
+	}
+	for option in g.pref.build_options {
+		if option.starts_with('-cc ')
+			&& pref.cc_from_string(option.all_after('-cc ').trim('\'"')) == .msvc {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) as_cast(node ast.AsCast) {
 	// Make sure the sum type can be cast to this type (the types
 	// are the same), otherwise panic.
@@ -12914,7 +12927,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		sidx := g.type_sidx(unwrapped_node_typ)
 		expr_needs_tmp := g.need_tmp_var_in_expr(node.expr)
 		use_msvc_compatible_code := g.prefers_msvc_compatible_code()
-		if node.expr.has_fn_call() && !use_msvc_compatible_code {
+		if node.expr.has_fn_call() && !g.uses_msvc_ccompiler() {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.styp(node.expr_type)
 			g.write('({ ${expr_styp} ${tmp_var} = ')
@@ -12998,7 +13011,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		sidx := g.type_sidx(unwrapped_node_typ)
 		expr_needs_tmp := g.need_tmp_var_in_expr(node.expr)
 		use_msvc_compatible_code := g.prefers_msvc_compatible_code()
-		if node.expr.has_fn_call() && !use_msvc_compatible_code {
+		if node.expr.has_fn_call() && !g.uses_msvc_ccompiler() {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.styp(node.expr_type)
 			g.write('({ ${expr_styp} ${tmp_var} = ')
