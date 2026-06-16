@@ -152,6 +152,9 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			}
 			return expr.expected_arg_types.any(it.has_flag(.option))
 		}
+		ast.AsCast {
+			return expr.expr.has_fn_call() || g.need_tmp_var_in_expr(expr.expr)
+		}
 		ast.CastExpr {
 			return g.need_tmp_var_in_expr(expr.expr)
 		}
