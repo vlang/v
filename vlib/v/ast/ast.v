@@ -785,9 +785,15 @@ pub fn (f &Fn) new_method_with_receiver_type(new_type_ Type) Fn {
 	unsafe {
 		mut new_method := f
 		new_method.params = f.params.clone()
-		for i in 1 .. new_method.params.len {
-			if new_method.params[i].typ == new_method.params[0].typ {
-				new_method.params[i].typ = recv_type
+		// Only transform self-referential parameters for interface method declarations
+		// (no_body == true). For concrete receiver methods defined outside the interface,
+		// the parameters keep their original types, so methods like
+		// `fn (mut n Node) add(child &Node)` stay valid when Node is embedded.
+		if f.no_body {
+			for i in 1 .. new_method.params.len {
+				if new_method.params[i].typ == new_method.params[0].typ {
+					new_method.params[i].typ = recv_type
+				}
 			}
 		}
 		new_method.from_embedded_type = if f.from_embedded_type != 0 {
