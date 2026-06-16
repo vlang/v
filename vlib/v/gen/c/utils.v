@@ -525,6 +525,7 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 fn (mut g Gen) type_aliases_to(typ ast.Type, target_type ast.Type) bool {
 	mut current := g.unwrap_generic(typ)
 	target := g.unwrap_generic(target_type)
+	mut extra_flags := u32(current) & 0xff00_0000
 	mut seen := map[u32]bool{}
 	for {
 		if current == target {
@@ -537,7 +538,9 @@ fn (mut g Gen) type_aliases_to(typ ast.Type, target_type ast.Type) bool {
 		seen[current_key] = true
 		sym := g.table.sym(current)
 		if sym.info is ast.Alias {
-			current = sym.info.parent_type.derive_add_muls(current)
+			parent_type := sym.info.parent_type
+			current = ast.Type(u32(parent_type.set_nr_muls(parent_type.nr_muls() + current.nr_muls())) | extra_flags)
+			extra_flags |= u32(current) & 0xff00_0000
 			continue
 		}
 		return false

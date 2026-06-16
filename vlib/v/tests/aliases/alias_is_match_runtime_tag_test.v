@@ -199,3 +199,58 @@ fn test_sumtype_is_in_aggregate_branch_matches_alias_tags() {
 	assert !aggregate_branch_is_original(AliasTagSumWithAlias(1))
 	assert !aggregate_branch_is_alias(AliasTagSumWithAlias(1))
 }
+
+struct AliasTagOptionalPayload {}
+
+type AliasTagOptionalPayloadAlias = ?AliasTagOptionalPayload
+type AliasTagOptionalSum = ?AliasTagOptionalPayload | int
+
+fn alias_tag_get_optional_payload() AliasTagOptionalPayloadAlias {
+	return AliasTagOptionalPayload{}
+}
+
+fn test_sumtype_is_matches_alias_to_option_parent_runtime_tag() {
+	box := AliasTagOptionalSum(alias_tag_get_optional_payload())
+	assert box is AliasTagOptionalPayloadAlias
+}
+
+fn test_sumtype_match_matches_alias_to_option_parent_runtime_tag() {
+	box := AliasTagOptionalSum(alias_tag_get_optional_payload())
+	match box {
+		AliasTagOptionalPayloadAlias {
+			assert true
+		}
+		else {
+			assert false
+		}
+	}
+}
+
+struct AliasTagAsPayload {
+	value int
+}
+
+type AliasTagAsPayloadOption = ?AliasTagAsPayload
+type AliasTagAsOptionSum = ?AliasTagAsPayload | int
+
+fn alias_tag_as_payload(value int) AliasTagAsPayloadOption {
+	return AliasTagAsPayload{
+		value: value
+	}
+}
+
+fn test_sumtype_as_option_parent_alias_keeps_option_payload_field() {
+	box := AliasTagAsOptionSum(alias_tag_as_payload(17))
+	got := box as AliasTagAsPayloadOption
+	assert got != none
+}
+
+fn test_sumtype_as_option_parent_keeps_option_payload_field() {
+	box := AliasTagAsOptionSum(alias_tag_as_payload(23))
+	got := box as ?AliasTagAsPayload
+	if value := got {
+		assert value.value == 23
+	} else {
+		assert false
+	}
+}

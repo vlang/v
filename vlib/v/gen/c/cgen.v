@@ -12908,7 +12908,9 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		matching_variants := g.matching_sumtype_variant_types(expr_type_without_option,
 			unwrapped_node_typ)
 		index_exprs := g.type_idx_exprs_for_types(matching_variants)
-		payload_sym := g.table.sym(g.as_cast_payload_type(unwrapped_node_typ, matching_variants))
+		payload_typ := g.as_cast_payload_type(unwrapped_node_typ, matching_variants)
+		payload_sym := g.table.sym(payload_typ)
+		payload_field := g.get_sumtype_variant_name(payload_typ, payload_sym)
 		sidx := g.type_sidx(unwrapped_node_typ)
 		if node.expr.has_fn_call() && !g.is_cc_msvc {
 			tmp_var := g.new_tmp_var()
@@ -12921,7 +12923,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			} else {
 				tmp_var
 			}
-			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
+			obj_expr := '(${expr_str})${dot}_${payload_field}'
 			tag_expr := '(${expr_str})${dot}_typ'
 			g.write_as_cast_call_start(styp, sym)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
@@ -12932,7 +12934,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			} else {
 				g.expr_string(node.expr)
 			}
-			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
+			obj_expr := '(${expr_str})${dot}_${payload_field}'
 			tag_expr := '(${expr_str})${dot}_typ'
 			g.write_as_cast_call_start(styp, sym)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
@@ -12981,7 +12983,9 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 		matching_variants := g.matching_interface_variant_types(expr_type_sym, unwrapped_node_typ)
 		index_exprs := g.type_idx_exprs_for_types(matching_variants)
-		payload_sym := g.table.sym(g.as_cast_payload_type(unwrapped_node_typ, matching_variants))
+		payload_typ := g.as_cast_payload_type(unwrapped_node_typ, matching_variants)
+		payload_sym := g.table.sym(payload_typ)
+		payload_field := g.get_sumtype_variant_name(payload_typ, payload_sym)
 		sidx := g.type_sidx(unwrapped_node_typ)
 		if node.expr.has_fn_call() && !g.is_cc_msvc {
 			tmp_var := g.new_tmp_var()
@@ -12989,14 +12993,14 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.write('({ ${expr_styp} ${tmp_var} = ')
 			g.expr(node.expr)
 			g.write('; ')
-			obj_expr := '${tmp_var}${dot}_${payload_sym.cname}'
+			obj_expr := '${tmp_var}${dot}_${payload_field}'
 			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}(${tmp_var}${dot}_typ)'
 			g.write_as_cast_call_start(styp, sym)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 			g.write('; })')
 		} else {
 			expr_str := g.expr_string(node.expr)
-			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
+			obj_expr := '(${expr_str})${dot}_${payload_field}'
 			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}((${expr_str})${dot}_typ)'
 			g.write_as_cast_call_start(styp, sym)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
