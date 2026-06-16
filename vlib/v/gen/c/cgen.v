@@ -12912,7 +12912,9 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		payload_sym := g.table.sym(payload_typ)
 		payload_field := g.get_sumtype_variant_name(payload_typ, payload_sym)
 		sidx := g.type_sidx(unwrapped_node_typ)
-		if node.expr.has_fn_call() && !g.is_cc_msvc {
+		expr_needs_tmp := g.need_tmp_var_in_expr(node.expr)
+		use_msvc_compatible_code := g.prefers_msvc_compatible_code()
+		if node.expr.has_fn_call() && !use_msvc_compatible_code {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.styp(node.expr_type)
 			g.write('({ ${expr_styp} ${tmp_var} = ')
@@ -12929,7 +12931,14 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 			g.write('; })')
 		} else {
-			expr_str := if expr_is_option {
+			expr_str := if expr_needs_tmp && use_msvc_compatible_code {
+				tmp_var := g.expr_to_ctemp_before_stmt(node.expr, node.expr_type).name
+				if expr_is_option {
+					g.as_cast_option_payload_expr(unwrapped_expr_type, tmp_var, false)
+				} else {
+					tmp_var
+				}
+			} else if expr_is_option {
 				g.as_cast_option_payload_expr_from_expr(unwrapped_expr_type, node.expr)
 			} else {
 				g.expr_string(node.expr)
@@ -12987,7 +12996,9 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		payload_sym := g.table.sym(payload_typ)
 		payload_field := g.get_sumtype_variant_name(payload_typ, payload_sym)
 		sidx := g.type_sidx(unwrapped_node_typ)
-		if node.expr.has_fn_call() && !g.is_cc_msvc {
+		expr_needs_tmp := g.need_tmp_var_in_expr(node.expr)
+		use_msvc_compatible_code := g.prefers_msvc_compatible_code()
+		if node.expr.has_fn_call() && !use_msvc_compatible_code {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.styp(node.expr_type)
 			g.write('({ ${expr_styp} ${tmp_var} = ')
@@ -12999,7 +13010,11 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 			g.write('; })')
 		} else {
-			expr_str := g.expr_string(node.expr)
+			expr_str := if expr_needs_tmp && use_msvc_compatible_code {
+				g.expr_to_ctemp_before_stmt(node.expr, node.expr_type).name
+			} else {
+				g.expr_string(node.expr)
+			}
 			obj_expr := '(${expr_str})${dot}_${payload_field}'
 			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}((${expr_str})${dot}_typ)'
 			g.write_as_cast_call_start(styp, sym)
