@@ -914,6 +914,17 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 			if parent_loc.vmod_file == '' {
 				break
 			}
+			// Only climb when the resolved parent v.mod is a strict ancestor of the
+			// current folder. On Windows a bare drive letter like `S:` (what
+			// os.dir('S:\proj') yields) resolves via os.real_path to the drive's
+			// *current directory*, which may equal or sit below the current folder.
+			// Without this check the walk could spin forever - either as a fixpoint
+			// (a project directly under a drive root) or as a multi-step oscillation
+			// (a project nested under such a drive-root project).
+			if parent_loc.vmod_folder == importer_vmod_folder
+				|| !importer_vmod_folder.starts_with(parent_loc.vmod_folder + os.path_separator) {
+				break
+			}
 			importer_vmod_folder = parent_loc.vmod_folder
 		}
 	}
