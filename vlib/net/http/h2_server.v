@@ -78,8 +78,9 @@ fn (mut c H2ServerConn) serve(mut handler Handler) ! {
 	// nearly all of its time blocked in a frame read, so per-frame mark/unmark
 	// only added shared-lock contention (and an O(n) list scan) on the hot
 	// path. On shutdown, close_idle still interrupts the reader by shutting the
-	// fd down; an h2 request in flight when the server stops is interrupted,
-	// which is acceptable at shutdown and is not relied on by any caller (the
+	// fd down; an h2 request in flight when the server stops is interrupted —
+	// including response writes, which may be truncated mid-DATA-frame. This
+	// is acceptable at shutdown and is not relied on by any caller (the
 	// graceful "wait for active request" guarantee is HTTP/1.1-only).
 	tracked := c.should_track_idle_read()
 	if tracked && !c.idle_conns.mark_idle(c.idle_handle) {
@@ -139,28 +140,8 @@ fn (mut c H2ServerConn) dispatch_frame(frame H2Frame, mut handler Handler) ! {
 		}
 	}
 	match frame {
-		H2SettingsFrame {
-			if !frame.ack {
-				c.apply_settings(frame.settings)
-				c.send_frame(H2SettingsFrame{
-					ack: true
-				})!
-			}
-		}
-		H2PingFrame {
-			if !frame.ack {
-				c.send_frame(H2PingFrame{
-					ack:  true
-					data: frame.data
-				})!
-			}
-		}
-		H2WindowUpdateFrame {
-			if frame.stream_id == 0 {
-				c.send_window += i64(frame.window_size_increment)
-			} else if mut s := c.streams[frame.stream_id] {
-				s.send_window += i64(frame.window_size_increment)
-			}
+		H2SettingsFrame, H2PingFrame, H2WindowUpdateFrame {
+			c.handle_control_frame(frame)!
 		}
 		H2GoawayFrame {
 			c.closing = true
@@ -190,7 +171,41 @@ fn (mut c H2ServerConn) dispatch_frame(frame H2Frame, mut handler Handler) ! {
 	}
 }
 
-fn (mut c H2ServerConn) apply_settings(settings []H2Setting) {
+// handle_control_frame services SETTINGS, PING, and WINDOW_UPDATE frames that
+// may arrive at any point in the session, including while a response write is
+// blocked in send_body waiting for flow-control credit. Both dispatch_frame and
+// pump_for_window delegate to this function so the logic — and any validation
+// errors — exist in exactly one place.
+fn (mut c H2ServerConn) handle_control_frame(frame H2Frame) ! {
+	match frame {
+		H2SettingsFrame {
+			if !frame.ack {
+				c.apply_settings(frame.settings)!
+				c.send_frame(H2SettingsFrame{
+					ack: true
+				})!
+			}
+		}
+		H2PingFrame {
+			if !frame.ack {
+				c.send_frame(H2PingFrame{
+					ack:  true
+					data: frame.data
+				})!
+			}
+		}
+		H2WindowUpdateFrame {
+			if frame.stream_id == 0 {
+				c.send_window += i64(frame.window_size_increment)
+			} else if mut s := c.streams[frame.stream_id] {
+				s.send_window += i64(frame.window_size_increment)
+			}
+		}
+		else {}
+	}
+}
+
+fn (mut c H2ServerConn) apply_settings(settings []H2Setting) ! {
 	for s in settings {
 		match s.id {
 			h2_settings_header_table_size {
@@ -203,8 +218,12 @@ fn (mut c H2ServerConn) apply_settings(settings []H2Setting) {
 				c.peer.max_concurrent_streams = s.value
 			}
 			h2_settings_initial_window_size {
-				// RFC 7540 Section 6.9.2: a change to the initial window size
-				// adjusts the send window of every active stream by the delta.
+				// RFC 7540 §6.5.3: values above 2^31-1 are a FLOW_CONTROL_ERROR.
+				if s.value > u32(0x7fff_ffff) {
+					return error('h2 server: SETTINGS_INITIAL_WINDOW_SIZE ${s.value} exceeds 2^31-1 (FLOW_CONTROL_ERROR)')
+				}
+				// RFC 7540 §6.9.2: a change to the initial window size adjusts
+				// the send window of every active stream by the delta.
 				delta := i64(s.value) - i64(c.peer.initial_window_size)
 				c.peer.initial_window_size = s.value
 				for _, mut st in c.streams {
@@ -455,44 +474,18 @@ fn (c &H2ServerConn) stream_send_window(stream_id u32) i64 {
 }
 
 // pump_for_window reads one frame while a response is blocked on flow control,
-// servicing connection-level frames (SETTINGS / PING / WINDOW_UPDATE) and a
-// RST_STREAM for the stream being written.
+// servicing control frames (SETTINGS / PING / WINDOW_UPDATE) via
+// handle_control_frame and aborting on RST_STREAM for the active stream.
 fn (mut c H2ServerConn) pump_for_window(stream_id u32) ! {
 	frame := c.read_frame()!
-	match frame {
-		H2SettingsFrame {
-			if !frame.ack {
-				c.apply_settings(frame.settings)
-				c.send_frame(H2SettingsFrame{
-					ack: true
-				})!
-			}
-		}
-		H2PingFrame {
-			if !frame.ack {
-				c.send_frame(H2PingFrame{
-					ack:  true
-					data: frame.data
-				})!
-			}
-		}
-		H2WindowUpdateFrame {
-			if frame.stream_id == 0 {
-				c.send_window += i64(frame.window_size_increment)
-			} else if mut s := c.streams[frame.stream_id] {
-				s.send_window += i64(frame.window_size_increment)
-			}
-		}
-		H2RstStreamFrame {
-			if frame.stream_id == stream_id {
-				return error('h2 server: stream reset by peer while writing response')
-			}
-		}
-		else {
-			// With SETTINGS_MAX_CONCURRENT_STREAMS=1 no other stream frames are
-			// expected mid-response; ignore anything else defensively.
+	c.handle_control_frame(frame)!
+	if frame is H2RstStreamFrame {
+		if frame.stream_id == stream_id {
+			return error('h2 server: stream reset by peer while writing response')
 		}
 	}
+	// With SETTINGS_MAX_CONCURRENT_STREAMS=1 no other stream frames are
+	// expected mid-response; ignore anything else defensively.
 }
 
 fn (mut c H2ServerConn) send_window_update(stream_id u32, inc u32) ! {
