@@ -8164,26 +8164,47 @@ fn (mut g Gen) scope_gc_pin_pregen(node_pos int) []ScopeGcPin {
 			opened_scope = true
 		}
 		// Snapshot nested heap buffers before the call, then keep those snapshots
-		// reachable after it. This covers Boehm opt/noscan arrays of structs.
+		// reachable across it. This covers Boehm opt/noscan arrays of structs.
+		//
+		// The snapshot is normally placed in a small fixed stack array. Boehm scans
+		// the C stack conservatively, so the leaf pointers stored there stay rooted for
+		// the duration of the call without any GC root (de)registration. Only snapshots
+		// larger than the stack buffer fall back to an explicit `calloc` + `GC_add_roots`
+		// / `GC_remove_roots` pair. This avoids the per-call `GC_add_roots`/`GC_remove_roots`
+		// + `calloc`/`free` churn, which otherwise dominates hot loops that call functions
+		// while holding aggregates of pointers in scope (e.g. JSON encoding).
+		stack_cap := 32
 		tmp_name := g.new_tmp_var()
 		len_tmp_name := g.new_tmp_var()
 		roots_tmp_name := g.new_tmp_var()
+		stack_tmp_name := g.new_tmp_var()
+		on_heap_tmp_name := g.new_tmp_var()
 		setup_gc_state_name := g.new_tmp_var()
 		cleanup_gc_state_name := g.new_tmp_var()
+		styp := g.styp(obj.typ)
 		g.writeln('voidptr ${tmp_name} = &${cvar_name};')
-		g.writeln('int ${len_tmp_name} = ${collect_helper_name}((${g.styp(obj.typ)}*)${tmp_name}, 0, 0);')
-		g.writeln('int ${setup_gc_state_name} = GC_is_disabled();')
-		g.writeln('if (!${setup_gc_state_name}) { GC_disable(); }')
-		g.writeln('voidptr* ${roots_tmp_name} = 0;')
-		g.writeln('if (${len_tmp_name} > 0) {')
+		g.writeln('int ${len_tmp_name} = ${collect_helper_name}((${styp}*)${tmp_name}, 0, 0);')
+		g.writeln('voidptr ${stack_tmp_name}[${stack_cap}];')
+		g.writeln('voidptr* ${roots_tmp_name} = ${stack_tmp_name};')
+		g.writeln('bool ${on_heap_tmp_name} = false;')
+		g.writeln('if (${len_tmp_name} > ${stack_cap}) {')
+		// Oversized snapshot: the original explicit-roots path, guarded against a
+		// collection happening between allocation and registration.
+		g.writeln('\tint ${setup_gc_state_name} = GC_is_disabled();')
+		g.writeln('\tif (!${setup_gc_state_name}) { GC_disable(); }')
 		g.writeln('\t${roots_tmp_name} = (voidptr*)calloc(${len_tmp_name}, sizeof(voidptr));')
 		g.writeln('\tif (${roots_tmp_name} == 0) { builtin___memory_panic(_S("calloc"), sizeof(voidptr) * ${len_tmp_name}); }')
-		g.writeln('\t${collect_helper_name}((${g.styp(obj.typ)}*)${tmp_name}, ${roots_tmp_name}, 0);')
+		g.writeln('\t${on_heap_tmp_name} = true;')
+		g.writeln('\t${collect_helper_name}((${styp}*)${tmp_name}, ${roots_tmp_name}, 0);')
 		g.writeln('\tGC_add_roots(${roots_tmp_name}, ${roots_tmp_name} + ${len_tmp_name});')
+		g.writeln('\tif (!${setup_gc_state_name}) { GC_enable(); }')
+		g.writeln('} else if (${len_tmp_name} > 0) {')
+		// Common case: snapshot into the stack buffer. The fill performs no allocation,
+		// so no collection can run while it is partially filled.
+		g.writeln('\t${collect_helper_name}((${styp}*)${tmp_name}, ${roots_tmp_name}, 0);')
 		g.writeln('}')
-		g.writeln('if (!${setup_gc_state_name}) { GC_enable(); }')
 		pins << ScopeGcPin{
-			post_stmt: 'GC_reachable_here(${tmp_name}); if (${len_tmp_name} > 0) { for (int _v_keep_i = 0; _v_keep_i < ${len_tmp_name}; ++_v_keep_i) { GC_reachable_here(${roots_tmp_name}[_v_keep_i]); } } int ${cleanup_gc_state_name} = GC_is_disabled(); if (!${cleanup_gc_state_name}) { GC_disable(); } if (${len_tmp_name} > 0) { GC_remove_roots(${roots_tmp_name}, ${roots_tmp_name} + ${len_tmp_name}); free(${roots_tmp_name}); } if (!${cleanup_gc_state_name}) { GC_enable(); }'
+			post_stmt: 'GC_reachable_here(${tmp_name}); if (${len_tmp_name} > 0) { for (int _v_keep_i = 0; _v_keep_i < ${len_tmp_name}; ++_v_keep_i) { GC_reachable_here(${roots_tmp_name}[_v_keep_i]); } } GC_reachable_here(${roots_tmp_name}); if (${on_heap_tmp_name}) { int ${cleanup_gc_state_name} = GC_is_disabled(); if (!${cleanup_gc_state_name}) { GC_disable(); } GC_remove_roots(${roots_tmp_name}, ${roots_tmp_name} + ${len_tmp_name}); free(${roots_tmp_name}); if (!${cleanup_gc_state_name}) { GC_enable(); } }'
 		}
 	}
 	return pins
