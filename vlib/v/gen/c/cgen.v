@@ -12890,7 +12890,7 @@ fn (g &Gen) uses_msvc_ccompiler() bool {
 fn is_direct_call_expr(expr ast.Expr) bool {
 	match expr {
 		ast.CallExpr {
-			return !expr.is_method
+			return true
 		}
 		ast.ParExpr {
 			return is_direct_call_expr(expr.expr)

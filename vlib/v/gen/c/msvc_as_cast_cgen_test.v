@@ -80,6 +80,41 @@ fn test_msvc_result_call_as_cast_uses_plain_temp() ! {
 	assert !use_variant.contains('val__make_variant')
 }
 
+fn test_msvc_method_result_call_as_cast_uses_plain_temp() ! {
+	c_source := generated_windows_msvc_c('method_result_call_as_cast', [
+		'module main',
+		'',
+		'struct Receiver {}',
+		'struct First {',
+		'	n int',
+		'}',
+		'struct Second {',
+		'	n int',
+		'}',
+		'type Variant = First | Second',
+		'',
+		'fn (r Receiver) make_variant() !Variant {',
+		'	return Variant(Second{n: 7})',
+		'}',
+		'',
+		'fn use_variant(receiver Receiver) !int {',
+		'	value := receiver.make_variant()! as Second',
+		'	return value.n',
+		'}',
+		'',
+		'fn main() {',
+		'	_ = use_variant(Receiver{}) or { 0 }',
+		'}',
+	].join('\n'))!
+	use_variant := c_chunk(c_source, 'main__use_variant(main__Receiver receiver) {')
+	assert use_variant.count('main__Receiver_make_variant(') == 1
+	assert use_variant.contains('main__Second value =*')
+	assert use_variant.contains('builtin____as_cast')
+	assert !use_variant.contains('({')
+	assert !use_variant.contains('val__Receiver_make_variant')
+	assert !use_variant.contains('val__make_variant')
+}
+
 fn test_msvc_sumtype_direct_call_as_cast_evaluates_source_once() ! {
 	c_source := generated_windows_msvc_c('sumtype_direct_call_as_cast', [
 		'module main',
@@ -357,5 +392,56 @@ fn test_msvc_result_call_as_cast_keeps_and_or_short_circuit() ! {
 	assert right_guard < second_make
 	assert !check[first_make + 1..right_guard].contains('main__make_v((voidptr)&counter)')
 	assert !check.contains('({')
+	assert !check.contains('val__make_v')
+}
+
+fn test_msvc_method_result_call_as_cast_keeps_and_or_short_circuit() ! {
+	c_source := generated_windows_msvc_c('short_circuit_method_result_call_as_cast', [
+		'module main',
+		'',
+		'struct Counter {',
+		'mut:',
+		'	n int',
+		'}',
+		'struct FirstValue {',
+		'	n int',
+		'}',
+		'struct SecondValue {',
+		'	n int',
+		'}',
+		'type VariantValue = FirstValue | SecondValue',
+		'',
+		'fn (mut counter Counter) make_v() !VariantValue {',
+		'	counter.n++',
+		'	return VariantValue(SecondValue{n: 7})',
+		'}',
+		'',
+		'fn check(left bool, right bool) !int {',
+		'	mut counter := Counter{}',
+		'	if left || (counter.make_v()! as SecondValue).n == 7 {',
+		'		counter.n += 10',
+		'	}',
+		'	if right && (counter.make_v()! as SecondValue).n == 7 {',
+		'		counter.n += 100',
+		'	}',
+		'	return counter.n',
+		'}',
+		'',
+		'fn main() {',
+		'	_ = check(true, false) or { 0 }',
+		'}',
+	].join('\n'))!
+	check := c_chunk(c_source, 'main__check(bool left, bool right) {')
+	left_guard := must_index(check, '= (left);\n\tif (!_t')
+	first_make := must_index_after(check, 'main__Counter_make_v(&counter)', left_guard)
+	right_guard := must_index_after(check, '= (right);\n\tif (_t', first_make)
+	second_make := must_index_after(check, 'main__Counter_make_v(&counter)', right_guard)
+	assert check.count('main__Counter_make_v(&counter)') == 2
+	assert !check[..left_guard].contains('main__Counter_make_v(&counter)')
+	assert left_guard < first_make
+	assert right_guard < second_make
+	assert !check[first_make + 1..right_guard].contains('main__Counter_make_v(&counter)')
+	assert !check.contains('({')
+	assert !check.contains('val__Counter_make_v')
 	assert !check.contains('val__make_v')
 }
