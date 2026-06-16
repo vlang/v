@@ -369,12 +369,15 @@ fn (mut a array) push_noscan(val voidptr) {
 		panic('array.push_noscan: len bigger than max_int')
 	}
 	required := a.len + 1
-	if a.needs_unique_append(required) {
-		a.clone_shallow_to_cap_noscan(a.cap)
-	} else if required > a.cap {
+	if required > a.cap {
 		a.ensure_cap_noscan(required)
+	} else if a.flags.has(.is_slice) {
+		// `required <= a.cap` here, so this is the `needs_unique_append` case
+		a.clone_shallow_to_cap_noscan(a.cap)
 	}
-	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size) }
+	unsafe {
+		copy_element_to(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size)
+	}
 	a.len++
 }
 

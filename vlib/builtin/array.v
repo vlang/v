@@ -1128,6 +1128,27 @@ fn (mut a array) set_ni(i int, val voidptr) {
 	a.set(v_ni_index(i, a.len), val)
 }
 
+// copy_element_to copies a single `element_size` byte element from `src` to `dest`.
+// It dispatches the common small element sizes to `vmemcpy` with a *compile time constant*
+// size: since `vmemcpy` is inlined and forwards to `C.memcpy`, a literal size lets the C
+// backend inline the copy as plain loads/stores instead of a `memcpy` library call, which
+// otherwise dominates the cost of single element pushes (`a << x`) in hot loops.
+// The copy semantics stay exactly those of `memcpy`, so it is safe for arbitrary element
+// types regardless of their alignment, padding or aliasing.
+@[inline; unsafe]
+fn copy_element_to(dest voidptr, src voidptr, element_size int) {
+	unsafe {
+		match element_size {
+			1 { vmemcpy(dest, src, 1) }
+			2 { vmemcpy(dest, src, 2) }
+			4 { vmemcpy(dest, src, 4) }
+			8 { vmemcpy(dest, src, 8) }
+			16 { vmemcpy(dest, src, 16) }
+			else { vmemcpy(dest, src, element_size) }
+		}
+	}
+}
+
 fn (mut a array) push(val voidptr) {
 	$if !no_bounds_checking {
 		if a.len < 0 {
@@ -1138,12 +1159,15 @@ fn (mut a array) push(val voidptr) {
 		panic('array.push: len bigger than max_int')
 	}
 	required := a.len + 1
-	if a.needs_unique_append(required) {
-		a.clone_shallow_to_cap(a.cap)
-	} else if required > a.cap {
+	if required > a.cap {
 		a.ensure_cap(required)
+	} else if a.flags.has(.is_slice) {
+		// `required <= a.cap` here, so this is the `needs_unique_append` case
+		a.clone_shallow_to_cap(a.cap)
 	}
-	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size) }
+	unsafe {
+		copy_element_to(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size)
+	}
 	a.len++
 }
 
