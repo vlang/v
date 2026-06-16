@@ -298,6 +298,15 @@ fn (mut c H2MuxConn) do_on_stream(mut s H2MuxStream, req H2ClientRequest) !H2Cli
 		c.note_write_failure()
 		return h2_retryable_error('connection handshake failed: ${err.msg()}')
 	}
+	if c.next_stream_id > u32(0x7fff_ffff) {
+		// RFC 7540 §5.1.1: client stream IDs are odd and must not exceed 2^31-1.
+		// Retire this connection and let the caller open a fresh one.
+		c.smu.lock()
+		c.shutting_down = true
+		c.smu.unlock()
+		c.wmu.unlock()
+		return h2_retryable_error('stream ID space exhausted')
+	}
 	s.id = c.next_stream_id
 	c.next_stream_id += 2
 	// Mark the HEADERS as sent *before* the stream becomes visible to the
@@ -595,7 +604,11 @@ fn (mut c H2MuxConn) cancel_stream(mut s H2MuxStream) {
 	c.write_all_locked(H2Frame(H2RstStreamFrame{
 		stream_id:  s.id
 		error_code: u32(H2ErrorCode.cancel)
-	}).encode()) or {}
+	}).encode()) or {
+		c.wmu.unlock()
+		c.note_write_failure()
+		return
+	}
 	c.wmu.unlock()
 }
 
