@@ -12887,6 +12887,20 @@ fn (g &Gen) uses_msvc_ccompiler() bool {
 	return false
 }
 
+fn is_direct_call_expr(expr ast.Expr) bool {
+	match expr {
+		ast.CallExpr {
+			return !expr.is_method
+		}
+		ast.ParExpr {
+			return is_direct_call_expr(expr.expr)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut g Gen) as_cast(node ast.AsCast) {
 	// Make sure the sum type can be cast to this type (the types
 	// are the same), otherwise panic.
@@ -12925,9 +12939,11 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		payload_sym := g.table.sym(payload_typ)
 		payload_field := g.get_sumtype_variant_name(payload_typ, payload_sym)
 		sidx := g.type_sidx(unwrapped_node_typ)
-		expr_needs_tmp := g.need_tmp_var_in_expr(node.expr)
 		use_msvc_compatible_code := g.prefers_msvc_compatible_code()
-		if node.expr.has_fn_call() && !g.uses_msvc_ccompiler() {
+		use_msvc_ccompiler := g.uses_msvc_ccompiler()
+		expr_needs_msvc_tmp := use_msvc_compatible_code && use_msvc_ccompiler
+			&& is_direct_call_expr(node.expr)
+		if node.expr.has_fn_call() && !use_msvc_ccompiler {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.styp(node.expr_type)
 			g.write('({ ${expr_styp} ${tmp_var} = ')
@@ -12944,13 +12960,8 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 			g.write('; })')
 		} else {
-			expr_str := if expr_needs_tmp && use_msvc_compatible_code {
-				tmp_var := g.expr_to_ctemp_before_stmt(node.expr, node.expr_type).name
-				if expr_is_option {
-					g.as_cast_option_payload_expr(unwrapped_expr_type, tmp_var, false)
-				} else {
-					tmp_var
-				}
+			expr_str := if expr_needs_msvc_tmp {
+				g.expr_to_ctemp_before_stmt(node.expr, node.expr_type).name
 			} else if expr_is_option {
 				g.as_cast_option_payload_expr_from_expr(unwrapped_expr_type, node.expr)
 			} else {
@@ -13009,9 +13020,11 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		payload_sym := g.table.sym(payload_typ)
 		payload_field := g.get_sumtype_variant_name(payload_typ, payload_sym)
 		sidx := g.type_sidx(unwrapped_node_typ)
-		expr_needs_tmp := g.need_tmp_var_in_expr(node.expr)
 		use_msvc_compatible_code := g.prefers_msvc_compatible_code()
-		if node.expr.has_fn_call() && !g.uses_msvc_ccompiler() {
+		use_msvc_ccompiler := g.uses_msvc_ccompiler()
+		expr_needs_msvc_tmp := use_msvc_compatible_code && use_msvc_ccompiler
+			&& is_direct_call_expr(node.expr)
+		if node.expr.has_fn_call() && !use_msvc_ccompiler {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.styp(node.expr_type)
 			g.write('({ ${expr_styp} ${tmp_var} = ')
@@ -13023,7 +13036,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 			g.write('; })')
 		} else {
-			expr_str := if expr_needs_tmp && use_msvc_compatible_code {
+			expr_str := if expr_needs_msvc_tmp {
 				g.expr_to_ctemp_before_stmt(node.expr, node.expr_type).name
 			} else {
 				g.expr_string(node.expr)

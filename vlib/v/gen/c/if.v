@@ -154,6 +154,7 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 		}
 		ast.AsCast {
 			return g.need_tmp_var_in_expr(expr.expr)
+				|| (g.uses_msvc_ccompiler() && is_direct_call_expr(expr.expr))
 		}
 		ast.CastExpr {
 			return g.need_tmp_var_in_expr(expr.expr)
