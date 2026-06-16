@@ -4608,7 +4608,7 @@ fn (g &Gen) is_exact_sumtype_variant_match(variant ast.Type, got ast.Type) bool 
 	return true
 }
 
-fn (g &Gen) find_matching_sumtype_variant(expected_type ast.Type, got_type ast.Type) ast.Type {
+fn (mut g Gen) find_matching_sumtype_variant(expected_type ast.Type, got_type ast.Type) ast.Type {
 	expected_sym := g.table.final_sym(expected_type)
 	if expected_sym.kind != .sum_type {
 		return got_type
@@ -4619,9 +4619,8 @@ fn (g &Gen) find_matching_sumtype_variant(expected_type ast.Type, got_type ast.T
 			return variant
 		}
 	}
-	got_unaliased := g.table.fully_unaliased_type(got_type)
 	for variant in variants {
-		if g.table.fully_unaliased_type(variant) == got_unaliased {
+		if g.alias_runtime_tags_match(variant, got_type) {
 			return variant
 		}
 	}

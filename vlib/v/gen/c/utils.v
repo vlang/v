@@ -522,8 +522,34 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 	return resolved
 }
 
-fn (mut g Gen) alias_equivalent_type(typ ast.Type) ast.Type {
-	return g.table.fully_unaliased_type(g.unwrap_generic(typ))
+fn (mut g Gen) type_aliases_to(typ ast.Type, target_type ast.Type) bool {
+	mut current := g.unwrap_generic(typ)
+	target := g.unwrap_generic(target_type)
+	mut seen := map[u32]bool{}
+	for {
+		if current == target {
+			return true
+		}
+		current_key := u32(current)
+		if current_key in seen {
+			return false
+		}
+		seen[current_key] = true
+		sym := g.table.sym(current)
+		if sym.info is ast.Alias {
+			current = sym.info.parent_type.derive_add_muls(current)
+			continue
+		}
+		return false
+	}
+	return false
+}
+
+fn (mut g Gen) alias_runtime_tags_match(variant ast.Type, target_type ast.Type) bool {
+	if g.is_exact_sumtype_variant_match(variant, target_type) {
+		return true
+	}
+	return g.type_aliases_to(variant, target_type) || g.type_aliases_to(target_type, variant)
 }
 
 fn (mut g Gen) type_idx_exprs_for_types(types []ast.Type) []string {
@@ -541,11 +567,10 @@ fn (mut g Gen) type_idx_exprs_for_types(types []ast.Type) []string {
 
 fn (mut g Gen) matching_sumtype_variant_types(parent_type ast.Type, target_type ast.Type) []ast.Type {
 	variants := g.sumtype_runtime_variants(parent_type)
-	target_unaliased := g.alias_equivalent_type(target_type)
 	mut matches := []ast.Type{}
 	mut seen := map[string]bool{}
 	for variant in variants {
-		if g.alias_equivalent_type(variant) == target_unaliased {
+		if g.alias_runtime_tags_match(variant, target_type) {
 			index_expr := g.type_sidx(variant)
 			if index_expr !in seen {
 				seen[index_expr] = true
@@ -572,7 +597,6 @@ fn (mut g Gen) matching_interface_variant_types(interface_sym ast.TypeSymbol, ta
 	if interface_sym.info !is ast.Interface {
 		return []
 	}
-	target_unaliased := g.alias_equivalent_type(target_type)
 	info := interface_sym.info as ast.Interface
 	mut matches := []ast.Type{}
 	mut seen := map[string]bool{}
@@ -584,7 +608,7 @@ fn (mut g Gen) matching_interface_variant_types(interface_sym ast.TypeSymbol, ta
 		if variant_sym.info is ast.Struct && variant_sym.info.is_unresolved_generic() {
 			continue
 		}
-		if g.alias_equivalent_type(variant) != target_unaliased {
+		if !g.alias_runtime_tags_match(variant, target_type) {
 			continue
 		}
 		index_expr := g.type_sidx(variant)
