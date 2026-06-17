@@ -209,6 +209,7 @@ mut:
 	right_is_opt                         bool             // right hand side on assignment is an option
 	assign_ct_type                       map[int]ast.Type // left hand side resolved comptime type
 	expected_rhs_type_by_pos             map[int]ast.Type // expected value type for local RHS expressions
+	closure_frame_arg_tmps               map[int]string
 	indent                               int
 	empty_line                           bool
 	assign_op                            token.Kind // *=, =, etc (for array_set)
@@ -431,6 +432,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		boehm_keep_decl:               map[string]bool{}
 		boehm_keep_gen:                map[string]bool{}
 		boehm_keep_busy:               map[string]bool{}
+		closure_frame_arg_tmps:        map[int]string{}
 		generic_parts_cache:           []i8{len: table.type_symbols.len}
 		unwrap_generic_cache:          map[u64]ast.Type{}
 		resolved_scope_var_type_cache: map[u64]ast.Type{}
@@ -1089,6 +1091,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		boehm_keep_decl:                    map[string]bool{}
 		boehm_keep_gen:                     map[string]bool{}
 		boehm_keep_busy:                    map[string]bool{}
+		closure_frame_arg_tmps:             map[int]string{}
 		generic_parts_cache:                []i8{len: global_g.table.type_symbols.len}
 		unwrap_generic_cache:               map[u64]ast.Type{}
 		resolved_scope_var_type_cache:      map[u64]ast.Type{}
@@ -11138,6 +11141,11 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 	}
 	return_needs_local_closure_cleanup := g.return_needs_local_closure_cleanup(node)
+	return_expr0 := unwrap_paren_call_expr(expr0)
+	return_call_needs_closure_lifetime_arg_tmp := match return_expr0 {
+		ast.CallExpr { g.call_needs_closure_lifetime_arg_tmp(return_expr0) }
+		else { false }
+	}
 
 	if exprs_len > 0 {
 		// `$veb.html()` expands to statements, so the Result return
@@ -11229,16 +11237,17 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	ret_typ := g.ret_styp(fn_ret_type)
 
 	// `return fn_call_opt()`
-	if exprs_len == 1 && (fn_return_is_option || fn_return_is_result) && expr0 is ast.CallExpr
-		&& expr0.or_block.kind == .absent {
-		mut resolved_call_return_type := g.resolve_return_type(expr0)
+	if exprs_len == 1 && (fn_return_is_option || fn_return_is_result)
+		&& return_expr0 is ast.CallExpr && return_expr0.or_block.kind == .absent {
+		mut resolved_call_return_type := g.resolve_return_type(return_expr0)
 		if resolved_call_return_type == ast.void_type {
-			resolved_call_return_type = expr0.return_type
+			resolved_call_return_type = return_expr0.return_type
 		}
 		if g.unwrap_generic(g.recheck_concrete_type(resolved_call_return_type)) == ret_type {
-			if g.defer_stmts.len > 0 || return_needs_local_closure_cleanup {
+			if g.defer_stmts.len > 0 || return_needs_local_closure_cleanup
+				|| return_call_needs_closure_lifetime_arg_tmp {
 				g.write('${ret_typ} ${tmpvar} = ')
-				g.expr(expr0)
+				g.expr(return_expr0)
 				g.writeln(';')
 				g.write_defer_stmts_when_needed(node.scope, true, node.pos)
 				if return_needs_local_closure_cleanup {
@@ -11248,7 +11257,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			} else {
 				g.write_defer_stmts_when_needed(node.scope, true, node.pos)
 				g.write('return ')
-				g.expr(expr0)
+				g.expr(return_expr0)
 				g.writeln(';')
 			}
 			return
@@ -11256,6 +11265,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0
 		|| g.cur_lock.lockeds.len > 0 || return_needs_local_closure_cleanup
+		|| return_call_needs_closure_lifetime_arg_tmp
 		|| (fn_return_is_multi && exprs_len >= 1 && fn_return_is_option)
 		|| fn_return_is_fixed_array_non_result
 		|| (fn_return_is_multi && ret_expr_types.any(g.table.final_sym(it).kind == .array_fixed))
