@@ -155,7 +155,15 @@ fn C.SSLv23_client_method() &C.SSL_METHOD
 
 fn C.TLS_method() voidptr
 
+fn C.TLS_server_method() &C.SSL_METHOD
+
 fn C.TLSv1_2_method() voidptr
+
+fn C.SSL_CTX_check_private_key(ctx &C.SSL_CTX) i32
+
+fn C.SSL_accept(ssl &C.SSL) i32
+
+fn C.ERR_print_errors_fp(fp voidptr)
 
 fn C.v_net_openssl_init_ssl() i32
 
