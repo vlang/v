@@ -4619,8 +4619,9 @@ fn (g &Gen) find_matching_sumtype_variant(expected_type ast.Type, got_type ast.T
 			return variant
 		}
 	}
+	got_unaliased := g.table.fully_unaliased_type(got_type)
 	for variant in variants {
-		if g.alias_chain_equivalent(variant, got_type) {
+		if g.table.fully_unaliased_type(variant) == got_unaliased {
 			return variant
 		}
 	}
@@ -12874,32 +12875,6 @@ fn (mut g Gen) as_cast_payload_type(target_type ast.Type, matching_variants []as
 	return target_type
 }
 
-// as_cast_operand_needs_tmp_eval reports whether emitting `expr` as the operand of
-// an `as` cast over a sum type may itself emit statements (option propagation,
-// if/match temporaries, calls). Such operands must be evaluated into a temporary
-// first: rendering them with g.expr_string() runs g.expr() into a saved builder
-// offset, but a hoisting operand calls go_before_last_stmt() which cuts the
-// builder back past that offset, so the subsequent cut_to() corrupts the output.
-// Plain values (idents, literals, field accesses) never emit statements and can be
-// rendered inline.
-fn as_cast_operand_needs_tmp_eval(expr ast.Expr) bool {
-	return match expr {
-		ast.Ident, ast.BoolLiteral, ast.IntegerLiteral, ast.FloatLiteral, ast.CharLiteral,
-		ast.StringLiteral, ast.EnumVal, ast.TypeNode {
-			false
-		}
-		ast.ParExpr {
-			as_cast_operand_needs_tmp_eval(expr.expr)
-		}
-		ast.SelectorExpr {
-			as_cast_operand_needs_tmp_eval(expr.expr)
-		}
-		else {
-			true
-		}
-	}
-}
-
 fn (mut g Gen) as_cast(node ast.AsCast) {
 	// Make sure the sum type can be cast to this type (the types
 	// are the same), otherwise panic.
@@ -12936,34 +12911,12 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		index_exprs := g.type_idx_exprs_for_types(matching_variants)
 		payload_sym := g.table.sym(g.as_cast_payload_type(unwrapped_node_typ, matching_variants))
 		sidx := g.type_sidx(unwrapped_node_typ)
-		if as_cast_operand_needs_tmp_eval(node.expr) {
-			// The operand emits statements while it is generated (option
-			// propagation, if/match temporaries, calls). g.expr_string() would
-			// drop those statements and corrupt the output, so evaluate the
-			// operand into a temporary first and reference it by name.
+		if node.expr.has_fn_call() && !g.is_cc_msvc {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.styp(node.expr_type)
-			if !g.is_cc_msvc {
-				g.write('({ ${expr_styp} ${tmp_var} = ')
-				g.expr(node.expr)
-				g.write('; ')
-			} else {
-				// MSVC has no statement-expressions; hoist the temporary onto its
-				// own line before the current statement instead.
-				mut cur_line := if g.inside_ternary > 0 {
-					g.go_before_ternary().trim_space()
-				} else {
-					g.go_before_last_stmt().trim_space()
-				}
-				if g.inside_return && cur_line.ends_with('return') {
-					cur_line += ' '
-				}
-				g.empty_line = true
-				g.write('${expr_styp} ${tmp_var} = ')
-				g.expr(node.expr)
-				g.writeln(';')
-				g.write(cur_line)
-			}
+			g.write('({ ${expr_styp} ${tmp_var} = ')
+			g.expr(node.expr)
+			g.write('; ')
 			expr_str := if expr_is_option {
 				g.as_cast_option_payload_expr(unwrapped_expr_type, tmp_var, false)
 			} else {
@@ -12973,9 +12926,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			tag_expr := '(${expr_str})${dot}_typ'
 			g.write_as_cast_call_start(styp, sym)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
-			if !g.is_cc_msvc {
-				g.write('; })')
-			}
+			g.write('; })')
 		} else {
 			expr_str := if expr_is_option {
 				g.as_cast_option_payload_expr_from_expr(unwrapped_expr_type, node.expr)
@@ -13033,38 +12984,17 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		index_exprs := g.type_idx_exprs_for_types(matching_variants)
 		payload_sym := g.table.sym(g.as_cast_payload_type(unwrapped_node_typ, matching_variants))
 		sidx := g.type_sidx(unwrapped_node_typ)
-		if as_cast_operand_needs_tmp_eval(node.expr) {
-			// See as_cast_operand_needs_tmp_eval: a hoisting operand must be
-			// evaluated into a temporary, otherwise g.expr_string() drops the
-			// statements it emits and corrupts the output.
+		if node.expr.has_fn_call() && !g.is_cc_msvc {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.styp(node.expr_type)
-			if !g.is_cc_msvc {
-				g.write('({ ${expr_styp} ${tmp_var} = ')
-				g.expr(node.expr)
-				g.write('; ')
-			} else {
-				mut cur_line := if g.inside_ternary > 0 {
-					g.go_before_ternary().trim_space()
-				} else {
-					g.go_before_last_stmt().trim_space()
-				}
-				if g.inside_return && cur_line.ends_with('return') {
-					cur_line += ' '
-				}
-				g.empty_line = true
-				g.write('${expr_styp} ${tmp_var} = ')
-				g.expr(node.expr)
-				g.writeln(';')
-				g.write(cur_line)
-			}
+			g.write('({ ${expr_styp} ${tmp_var} = ')
+			g.expr(node.expr)
+			g.write('; ')
 			obj_expr := '${tmp_var}${dot}_${payload_sym.cname}'
 			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}(${tmp_var}${dot}_typ)'
 			g.write_as_cast_call_start(styp, sym)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
-			if !g.is_cc_msvc {
-				g.write('; })')
-			}
+			g.write('; })')
 		} else {
 			expr_str := g.expr_string(node.expr)
 			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
