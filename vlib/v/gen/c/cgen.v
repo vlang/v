@@ -6521,9 +6521,21 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				if !g.is_option_auto_heap {
 					has_slice_call = node.op == .amp && node.right is ast.IndexExpr
 						&& node.right.index is ast.RangeExpr
+					mut is_as_cast_ptr := false
+					if node.op == .amp {
+						mut right_expr := node.right
+						if right_expr is ast.ParExpr {
+							right_expr = right_expr.expr
+						}
+						if right_expr is ast.AsCast {
+							if g.as_cast_will_use_ptr(right_expr) {
+								is_as_cast_ptr = true
+							}
+						}
+					}
 					if has_slice_call {
 						g.write('ADDR(${g.styp(node.right_type)}, ')
-					} else if !is_amp_auto_deref {
+					} else if !is_amp_auto_deref && !is_as_cast_ptr {
 						g.write(node.op.str())
 					}
 				}
@@ -12841,7 +12853,7 @@ fn (mut g Gen) as_cast_option_payload_expr_from_expr(typ ast.Type, expr ast.Expr
 fn (mut g Gen) write_as_cast_call_start(styp string, sym ast.TypeSymbol) {
 	if sym.info is ast.FnType {
 		g.write('(${styp})')
-	} else if g.inside_smartcast {
+	} else if g.inside_smartcast || g.is_amp {
 		g.write('(${styp}*)')
 	} else {
 		g.write('*(${styp}*)')
@@ -12907,6 +12919,21 @@ fn as_cast_operand_needs_tmp_eval(expr ast.Expr) bool {
 			false
 		}
 	}
+}
+
+fn (mut g Gen) as_cast_will_use_ptr(node ast.AsCast) bool {
+	unwrapped_node_typ := g.unwrap_generic(node.typ)
+	unwrapped_expr_type := g.unwrap_generic(node.expr_type)
+	expr_type_without_option := unwrapped_expr_type.clear_flag(.option)
+	expr_type_sym := g.table.sym(unwrapped_expr_type)
+	if expr_type_sym.kind == .sum_type && expr_type_without_option == unwrapped_node_typ {
+		return false
+	}
+	if expr_type_sym.info is ast.SumType
+		|| (expr_type_sym.info is ast.Interface && node.expr_type != node.typ) {
+		return true
+	}
+	return false
 }
 
 fn (mut g Gen) as_cast(node ast.AsCast) {
