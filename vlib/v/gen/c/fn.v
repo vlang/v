@@ -1805,7 +1805,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	ctx_struct := g.closure_ctx(node.decl)
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
 	// TODO: in case of an assignment, this should only call "closure_set_data" and "closure_set_function" (and free the former data)
-	g.write('builtin__closure__closure_create(${fn_name}, (${ctx_struct}*) builtin__memdup_uncollectable(&(${ctx_struct}){')
+	g.write('builtin__closure__closure_create_with_data(${fn_name}, (${ctx_struct}*) builtin__memdup(&(${ctx_struct}){')
 	g.indent++
 	for var in node.inherited_vars {
 		mut has_inherited := false
@@ -1894,7 +1894,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		}
 	}
 	g.indent--
-	g.write('}, sizeof(${ctx_struct})))')
+	g.write('}, sizeof(${ctx_struct})), true)')
 
 	g.empty_line = false
 }

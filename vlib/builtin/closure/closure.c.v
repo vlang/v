@@ -15,6 +15,12 @@ mut:
 	exec_page_start voidptr
 }
 
+struct ClosureLiveInfo {
+mut:
+	ctx       voidptr
+	owns_data bool
+}
+
 @[heap]
 struct Closure {
 	ClosureMutex
@@ -25,6 +31,7 @@ mut:
 	free_closure_ptr voidptr
 	pages            &ClosurePage = unsafe { nil }
 	v_page_size      int          = int(0x4000)
+	live             map[voidptr]ClosureLiveInfo
 }
 
 __global g_closure = Closure{}
@@ -295,6 +302,26 @@ fn closure_is_managed(exec_ptr voidptr) bool {
 	return false
 }
 
+fn closure_live_set(exec_ptr voidptr, data voidptr, owns_data bool) {
+	if isnil(data) {
+		return
+	}
+	g_closure.live[exec_ptr] = ClosureLiveInfo{
+		ctx:       data
+		owns_data: owns_data
+	}
+}
+
+fn closure_live_delete(exec_ptr voidptr) bool {
+	if info := g_closure.live[exec_ptr] {
+		owns_data := info.owns_data
+		g_closure.live[exec_ptr] = ClosureLiveInfo{}
+		g_closure.live.delete(exec_ptr)
+		return owns_data
+	}
+	return false
+}
+
 // closure_alloc allocates executable memory pages for closures(INTERNAL COMPILER USE ONLY).
 fn closure_alloc() {
 	p := closure_alloc_platform()
@@ -324,6 +351,7 @@ fn closure_init() {
 	// Determine system page size
 	mut page_size := get_page_size_platform()
 	g_closure.v_page_size = page_size // Store calculated size
+	g_closure.live = map[voidptr]ClosureLiveInfo{}
 
 	// Initialize thread-safety lock
 	closure_mtx_lock_init_platform()
@@ -360,8 +388,13 @@ fn closure_init() {
 }
 
 // closure_create creates closure objects at compile-time(INTERNAL COMPILER USE ONLY).
-@[direct_array_access]
 fn closure_create(func voidptr, data voidptr) voidptr {
+	return closure_create_with_data(func, data, true)
+}
+
+// closure_create_with_data creates closure objects with explicit context ownership(INTERNAL COMPILER USE ONLY).
+@[direct_array_access]
+fn closure_create_with_data(func voidptr, data voidptr, owns_data bool) voidptr {
 	closure_mtx_lock_platform()
 
 	mut curr_closure := g_closure.free_closure_ptr
@@ -402,6 +435,7 @@ fn closure_create(func voidptr, data voidptr) voidptr {
 			p[1] = func // Target function to execute
 		}
 	}
+	closure_live_set(curr_closure, data, owns_data)
 	closure_mtx_unlock_platform()
 
 	// Return executable closure object
@@ -421,7 +455,7 @@ fn closure_data(closure voidptr) voidptr {
 	}
 }
 
-// closure_try_destroy frees a managed closure slot and its context when the closure is known to be temporary.
+// closure_try_destroy frees a managed closure slot and its owned context when the closure is known to be temporary.
 @[direct_array_access]
 fn closure_try_destroy(closure voidptr) {
 	if isnil(closure) {
@@ -441,7 +475,8 @@ fn closure_try_destroy(closure voidptr) {
 		} else {
 			data = p[0]
 		}
-		if !isnil(data) {
+		owns_data := closure_live_delete(exec_ptr)
+		if owns_data && !isnil(data) {
 			free(data)
 		}
 		p[0] = g_closure.free_closure_ptr

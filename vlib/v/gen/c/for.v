@@ -174,8 +174,40 @@ fn (mut g Gen) write_for_c_inc_expr(node ast.ForCStmt) {
 	}
 }
 
+fn (g &Gen) for_c_init_local_closure_vars(node ast.ForCStmt) []ast.Var {
+	if !node.has_init || node.init !is ast.AssignStmt {
+		return []
+	}
+	init := node.init as ast.AssignStmt
+	if init.op != .decl_assign {
+		return []
+	}
+	mut vars := []ast.Var{}
+	for left in init.left {
+		if left is ast.Ident {
+			mut obj := if left.obj is ast.Var {
+				left.obj
+			} else {
+				ast.Var{}
+			}
+			if node.scope != unsafe { nil } {
+				if scope_var := node.scope.find_var(left.name) {
+					if scope_var.pos.pos == left.pos.pos {
+						obj = *scope_var
+					}
+				}
+			}
+			if g.local_closure_var_has_tracked_context(obj) {
+				vars << obj
+			}
+		}
+	}
+	return vars
+}
+
 fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 	g.loop_depth++
+	init_closure_vars := g.for_c_init_local_closure_vars(node)
 	if node.is_multi {
 		g.is_vlines_enabled = false
 		g.inside_for_c_stmt = true
@@ -213,15 +245,23 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		if node.label.len > 0 {
 			g.writeln('{')
 		}
+		preserve_start := g.push_local_closure_cleanup_preserve_vars(init_closure_vars,
+			node.pos.pos)
 		g.stmts(node.stmts)
+		g.pop_local_closure_cleanup_preserve_vars(preserve_start)
 		if node.label.len > 0 {
 			g.writeln('}')
 			g.writeln('${node.label}__continue: {}')
 		}
+		g.write_defer_stmts(node.scope, false, node.pos)
 		g.writeln('}')
+		if init_closure_vars.len > 0 && node.label.len > 0 {
+			g.writeln('${node.label}__break: {}')
+		}
+		g.cleanup_for_c_init_local_closure_vars(node, init_closure_vars)
 		g.indent--
 		g.writeln('}')
-		if node.label.len > 0 {
+		if init_closure_vars.len == 0 && node.label.len > 0 {
 			g.writeln('${node.label}__break: {}')
 		}
 	} else {
@@ -230,9 +270,16 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		overflow_guard_flag := if has_overflow_guard { g.new_tmp_var() } else { '' }
 		g.is_vlines_enabled = false
 		g.inside_for_c_stmt = true
-		if has_overflow_guard {
+		needs_init_closure_scope := init_closure_vars.len > 0
+		has_outer_block := has_overflow_guard || needs_init_closure_scope
+		if has_outer_block {
 			g.writeln('{')
 			g.indent++
+		}
+		if needs_init_closure_scope {
+			g.stmt(node.init)
+		}
+		if has_overflow_guard {
 			g.writeln('bool ${overflow_guard_flag} = false;')
 		}
 		if node.label.len > 0 {
@@ -241,7 +288,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		g.set_current_pos_as_last_stmt_pos()
 		g.skip_stmt_pos = true
 		g.write('for (')
-		if !node.has_init {
+		if !node.has_init || needs_init_closure_scope {
 			g.write('; ')
 		} else {
 			g.stmt(node.init)
@@ -282,18 +329,25 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		if node.label.len > 0 {
 			g.writeln('{')
 		}
+		preserve_start := g.push_local_closure_cleanup_preserve_vars(init_closure_vars,
+			node.pos.pos)
 		g.stmts(node.stmts)
+		g.pop_local_closure_cleanup_preserve_vars(preserve_start)
 		if node.label.len > 0 {
 			g.writeln('}')
 			g.writeln('${node.label}__continue: {}')
 		}
 		g.write_defer_stmts(node.scope, false, node.pos)
 		g.writeln('}')
-		if has_overflow_guard {
+		if needs_init_closure_scope && node.label.len > 0 {
+			g.writeln('${node.label}__break: {}')
+		}
+		g.cleanup_for_c_init_local_closure_vars(node, init_closure_vars)
+		if has_outer_block {
 			g.indent--
 			g.writeln('}')
 		}
-		if node.label.len > 0 {
+		if !needs_init_closure_scope && node.label.len > 0 {
 			g.writeln('${node.label}__break: {}')
 		}
 	}
