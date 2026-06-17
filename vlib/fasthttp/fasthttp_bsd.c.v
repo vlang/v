@@ -127,6 +127,7 @@ mut:
 	file_pos      i64
 	should_close  bool
 	request_arena voidptr
+	processing    bool
 }
 
 fn (mut c Conn) free_write_buf() {
@@ -277,6 +278,156 @@ fn send_request_timeout(fd int) {
 	C.send(fd, status_408_response.data, status_408_response.len, send_flags)
 }
 
+enum LoopCommandKind {
+	close_conn
+	complete_response
+	arm_write
+	manual_takeover
+	enable_read
+}
+
+struct LoopCommand {
+	kind               LoopCommandKind
+	c_ptr              voidptr
+	remove_write_event bool
+}
+
+fn process_request(server &Server, c_ptr voidptr, command_ch chan LoopCommand) {
+	mut c := unsafe { &Conn(c_ptr) }
+	mut request_arena := voidptr(unsafe { nil })
+	$if prealloc {
+		request_arena = unsafe { prealloc_scope_begin() }
+	}
+
+	mut req_buf := c.get_full_request_data()
+	if c.read_extra.cap > 0 {
+		unsafe { c.read_extra.free() }
+		c.read_extra = []u8{}
+	}
+
+	mut decoded := decode_http_request(req_buf) or {
+		send_bad_request(c.fd)
+		end_request_arena_current_thread(request_arena)
+		command_ch <- LoopCommand{
+			kind:  .close_conn
+			c_ptr: c_ptr
+		}
+		return
+	}
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'fasthttp decoded request') }
+	}
+	decoded.client_conn_fd = c.fd
+	decoded.user_data = server.user_data
+
+	mut resp := server.request_handler(decoded) or {
+		send_bad_request(c.fd)
+		end_request_arena_current_thread(request_arena)
+		command_ch <- LoopCommand{
+			kind:  .close_conn
+			c_ptr: c_ptr
+		}
+		return
+	}
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'fasthttp handler returned') }
+	}
+	resp.attach_request_arena_if_empty(request_arena)
+
+	match resp.takeover_mode {
+		.manual {
+			if c.request_active {
+				server.end_request()
+				c.request_active = false
+			}
+			resp.free_owned_content()
+			resp.abandon_request_arena_current_thread()
+			command_ch <- LoopCommand{
+				kind:  .manual_takeover
+				c_ptr: c_ptr
+			}
+			return
+		}
+		.reusable {
+			set_nonblocking(c.fd)
+			c.read_len = 0
+			c.read_extra.clear()
+			c.read_start = 0
+			if c.request_active {
+				server.end_request()
+				c.request_active = false
+			}
+			resp.free_owned_content()
+			resp.end_request_arena_current_thread()
+			if server.is_shutting_down() || resp.should_close {
+				command_ch <- LoopCommand{
+					kind:  .close_conn
+					c_ptr: c_ptr
+				}
+			} else {
+				command_ch <- LoopCommand{
+					kind:  .enable_read
+					c_ptr: c_ptr
+				}
+			}
+			return
+		}
+		.none {}
+	}
+
+	c.should_close = resp.should_close
+	c.free_write_buf()
+	c.free_request_arena()
+	c.request_arena = resp.take_request_arena()
+	c.write_buf = resp.take_or_clone_content()
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'fasthttp response retained') }
+	}
+	leave_request_arena_current_thread(c.request_arena)
+	if resp.file_path != '' {
+		file_fd := C.open(resp.file_path.str, C.O_RDONLY, 0)
+		if file_fd != -1 {
+			mut st := C.stat{}
+			if C.fstat(file_fd, &st) == 0 {
+				c.file_fd = file_fd
+				c.file_len = st.st_size
+				c.file_pos = 0
+			} else {
+				C.close(file_fd)
+			}
+		}
+	}
+
+	c.write_pos = 0
+	c.read_len = 0
+	c.read_extra.clear()
+	c.read_start = 0
+
+	if send_pending(c_ptr) {
+		command_ch <- LoopCommand{
+			kind:  .arm_write
+			c_ptr: c_ptr
+		}
+		return
+	}
+
+	command_ch <- LoopCommand{
+		kind:               .complete_response
+		c_ptr:              c_ptr
+		remove_write_event: false
+	}
+}
+
+fn dispatch_request_async(server &Server, kq int, c_ptr voidptr, command_ch chan LoopCommand) {
+	mut c := unsafe { &Conn(c_ptr) }
+	c.processing = true
+	server.begin_request()
+	c.request_active = true
+	delete_event(kq, u64(c.fd), i16(C.EVFILT_READ), c)
+	delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)
+	spawn process_request(server, c_ptr, command_ch)
+}
+
 fn handle_write(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
 	if send_pending(c_ptr) {
 		return
@@ -307,117 +458,51 @@ fn complete_response(server &Server, kq int, c_ptr voidptr, mut clients map[int]
 	}
 	c.read_start = 0
 	c.should_close = false
+	c.processing = false
+	add_event(kq, u64(c.fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR), c)
 }
 
-// process_request handles a complete HTTP request: decodes, calls the handler,
-// sends the response (or handles takeover/sendfile).
-fn process_request(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
-	mut c := unsafe { &Conn(c_ptr) }
-	mut request_arena := voidptr(unsafe { nil })
-	$if prealloc {
-		request_arena = unsafe { prealloc_scope_begin() }
-	}
-
-	mut req_buf := c.get_full_request_data()
-	if c.read_extra.cap > 0 {
-		unsafe { c.read_extra.free() }
-		c.read_extra = []u8{}
-	}
-
-	mut decoded := decode_http_request(req_buf) or {
-		send_bad_request(c.fd)
-		end_request_arena_current_thread(request_arena)
-		close_conn(server, kq, c_ptr, mut clients)
-		return
-	}
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'fasthttp decoded request') }
-	}
-	server.begin_request()
-	c.request_active = true
-	decoded.client_conn_fd = c.fd
-	decoded.user_data = server.user_data
-
-	mut resp := server.request_handler(decoded) or {
-		send_bad_request(c.fd)
-		end_request_arena_current_thread(request_arena)
-		close_conn(server, kq, c_ptr, mut clients)
-		return
-	}
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'fasthttp handler returned') }
-	}
-	resp.attach_request_arena_if_empty(request_arena)
-
-	match resp.takeover_mode {
-		.manual {
-			// The handler has taken ownership of the connection.
-			// Remove from kqueue and tracking, but do NOT close the fd.
+fn process_loop_command(server &Server, kq int, cmd LoopCommand, mut clients map[int]voidptr) {
+	match cmd.kind {
+		.close_conn {
+			close_conn(server, kq, cmd.c_ptr, mut clients)
+		}
+		.complete_response {
+			complete_response(server, kq, cmd.c_ptr, mut clients, cmd.remove_write_event)
+		}
+		.arm_write {
+			mut c := unsafe { &Conn(cmd.c_ptr) }
+			c.processing = false
+			add_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR),
+				c)
+		}
+		.manual_takeover {
+			mut c := unsafe { &Conn(cmd.c_ptr) }
 			clients.delete(c.fd)
 			delete_event(kq, u64(c.fd), i16(C.EVFILT_READ), c)
 			delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)
-			if c.request_active {
-				server.end_request()
-				c.request_active = false
-			}
-			resp.free_owned_content()
-			resp.abandon_request_arena_current_thread()
-			unsafe { free(c_ptr) }
-			return
+			unsafe { free(cmd.c_ptr) }
 		}
-		.reusable {
-			set_nonblocking(c.fd)
-			c.read_len = 0
-			c.read_extra.clear()
-			c.read_start = 0
-			if c.request_active {
-				server.end_request()
-				c.request_active = false
-			}
-			resp.free_owned_content()
-			resp.end_request_arena_current_thread()
-			if server.is_shutting_down() || resp.should_close {
-				close_conn(server, kq, c_ptr, mut clients)
-			}
-			return
+		.enable_read {
+			mut c := unsafe { &Conn(cmd.c_ptr) }
+			c.processing = false
+			add_event(kq, u64(c.fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR),
+				c)
 		}
-		.none {}
 	}
+}
 
-	c.should_close = resp.should_close
-	c.free_write_buf()
-	c.free_request_arena()
-	c.request_arena = resp.take_request_arena()
-	c.write_buf = resp.take_or_clone_content()
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'fasthttp response retained') }
-	}
-	leave_request_arena_current_thread(c.request_arena)
-	if resp.file_path != '' {
-		fd := C.open(resp.file_path.str, C.O_RDONLY, 0)
-		if fd != -1 {
-			mut st := C.stat{}
-			if C.fstat(fd, &st) == 0 {
-				c.file_fd = fd
-				c.file_len = st.st_size
-				c.file_pos = 0
-			} else {
-				C.close(fd)
+fn drain_loop_commands(server &Server, kq int, command_ch chan LoopCommand, mut clients map[int]voidptr) {
+	for {
+		select {
+			cmd := <-command_ch {
+				process_loop_command(server, kq, cmd, mut clients)
+			}
+			else {
+				break
 			}
 		}
 	}
-
-	c.write_pos = 0
-	c.read_len = 0
-	c.read_extra.clear()
-	c.read_start = 0
-
-	if send_pending(c_ptr) {
-		add_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR), c)
-		return
-	}
-
-	complete_response(server, kq, c_ptr, mut clients, false)
 }
 
 // total_read_len returns the total number of request bytes received so far,
@@ -439,7 +524,7 @@ fn (c &Conn) get_full_request_data() []u8 {
 	return req_buf
 }
 
-fn handle_read(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
+fn handle_read(server &Server, kq int, c_ptr voidptr, command_ch chan LoopCommand, mut clients map[int]voidptr) {
 	mut c := unsafe { &Conn(c_ptr) }
 
 	// Drain the socket for this kqueue notification. EV_CLEAR only rearms once
@@ -535,7 +620,7 @@ fn handle_read(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidpt
 		return
 	}
 
-	process_request(server, kq, c_ptr, mut clients)
+	dispatch_request_async(server, kq, c_ptr, command_ch)
 }
 
 fn accept_clients(kq int, listen_fd int, mut clients map[int]voidptr) {
@@ -637,7 +722,9 @@ pub fn (mut s Server) run() ! {
 
 	mut events := [kqueue_max_events]C.kevent{}
 	mut clients := map[int]voidptr{}
+	command_ch := chan LoopCommand{cap: kqueue_max_events * 4}
 	for {
+		drain_loop_commands(s, s.poll_fd, command_ch, mut clients)
 		if s.is_shutting_down() && s.active_request_count() == 0 {
 			close_all_conns(s, s.poll_fd, mut clients)
 			break
@@ -685,6 +772,11 @@ pub fn (mut s Server) run() ! {
 				continue
 			}
 
+			c := unsafe { &Conn(event.udata) }
+			if c.processing {
+				continue
+			}
+
 			if event.flags & u16(C.EV_EOF) != 0 {
 				close_conn(s, s.poll_fd, event.udata, mut clients)
 				continue
@@ -695,11 +787,12 @@ pub fn (mut s Server) run() ! {
 					close_conn(s, s.poll_fd, event.udata, mut clients)
 					continue
 				}
-				handle_read(s, s.poll_fd, event.udata, mut clients)
+				handle_read(s, s.poll_fd, event.udata, command_ch, mut clients)
 			} else if event.filter == i16(C.EVFILT_WRITE) {
 				handle_write(s, s.poll_fd, event.udata, mut clients)
 			}
 		}
+		drain_loop_commands(s, s.poll_fd, command_ch, mut clients)
 		// Sweep for connections waiting for body data that have timed out
 		if s.timeout_in_seconds > 0 {
 			now := time.sys_mono_now()
@@ -707,7 +800,7 @@ pub fn (mut s Server) run() ! {
 			for client_fd in clients.keys() {
 				c_ptr := clients[client_fd] or { continue }
 				c := unsafe { &Conn(c_ptr) }
-				if c.read_start > 0 && c.read_len > 0 && !c.request_active {
+				if c.read_start > 0 && c.read_len > 0 && !c.request_active && !c.processing {
 					elapsed := now - c.read_start
 					if elapsed >= timeout_ns {
 						send_request_timeout(c.fd)
