@@ -98,37 +98,48 @@ pub fn (mut s SSLConn) shutdown() ! {
 		eprintln(@METHOD)
 	}
 
-	if s.ssl != 0 {
+	if s.ssl != unsafe { nil } {
 		deadline := ssl_timeout_deadline(s.duration)
-		for {
-			mut res := C.SSL_shutdown(voidptr(s.ssl))
+		mut shutdown_done := false
+
+		for !shutdown_done {
+			res := C.SSL_shutdown(voidptr(s.ssl))
 			if res == 1 {
+				shutdown_done = true
 				break
 			}
+			if res == 0 {
+				// Second SSL_shutdown() needed for full bidirectional shutdown.
+				continue
+			}
 
-			err_res := ssl_error(res, s.ssl) or {
-				break // We break to free rest of resources
+			err_res := ssl_error(res, s.ssl) or { break }
+
+			match err_res {
+				.ssl_error_want_read {
+					s.wait_for_read(ssl_remaining_timeout(deadline)) or { break }
+				}
+				.ssl_error_want_write {
+					s.wait_for_write(ssl_remaining_timeout(deadline)) or { break }
+				}
+				else {
+					break
+				}
 			}
-			if err_res == .ssl_error_want_read {
-				s.wait_for_read(ssl_remaining_timeout(deadline))!
-				continue
-			} else if err_res == .ssl_error_want_write {
-				s.wait_for_write(ssl_remaining_timeout(deadline))!
-				continue
-			}
-			if s.ssl != 0 {
-				unsafe { C.SSL_free(voidptr(s.ssl)) }
-			}
-			if s.sslctx != 0 {
-				C.SSL_CTX_free(s.sslctx)
-			}
-			return error('net.openssl Could not connect using SSL. (${err_res}),err')
 		}
-		C.SSL_free(voidptr(s.ssl))
+
+		// Always free SSL object first.
+		if s.ssl != unsafe { nil } {
+			unsafe { C.SSL_free(voidptr(s.ssl)) }
+			s.ssl = unsafe { nil }
+		}
 	}
-	if s.sslctx != 0 {
+
+	if s.sslctx != unsafe { nil } {
 		C.SSL_CTX_free(s.sslctx)
+		s.sslctx = unsafe { nil }
 	}
+
 	if s.owns_socket {
 		net.shutdown(s.handle)
 		net.close(s.handle)!
