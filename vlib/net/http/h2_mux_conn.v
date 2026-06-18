@@ -329,6 +329,13 @@ fn (mut c H2MuxConn) do_on_stream(mut s H2MuxStream, req H2ClientRequest) !H2Cli
 		c.wmu.unlock()
 		return h2_retryable_error(reason)
 	}
+	// If this was the last valid client stream ID (RFC 7540 §5.1.1: max 2^31-1),
+	// retire the connection so can_take_new_request() returns false immediately.
+	// Without this, the pool dispatches one extra request that hits the admission
+	// check at the top of do_on_stream and fails with a retryable error.
+	if c.next_stream_id > u32(0x7fff_ffff) {
+		c.shutting_down = true
+	}
 	c.fmu.lock()
 	// The initial send window must be assigned atomically with registration:
 	// the WINDOW_UPDATE and SETTINGS handlers also nest smu -> fmu, so credit
@@ -605,7 +612,14 @@ fn (mut c H2MuxConn) cancel_stream(mut s H2MuxStream) {
 	s.chunks.clear()
 	s.mu.unlock()
 	if queued > 0 {
-		c.send_conn_window_update(u32(queued)) or {}
+		// A write failure here means the transport is already dead; tear it down
+		// immediately so the pool stops reusing it. note_write_failure is
+		// sufficient — the RST_STREAM is skipped since the peer will not receive
+		// it on a dead transport.
+		c.send_conn_window_update(u32(queued)) or {
+			c.note_write_failure()
+			return
+		}
 	}
 	c.wmu.lock()
 	c.write_all_locked(H2Frame(H2RstStreamFrame{
