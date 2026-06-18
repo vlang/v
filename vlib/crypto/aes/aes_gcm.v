@@ -186,6 +186,10 @@ fn pad_block(data []u8) []u8 {
 @[direct_array_access]
 fn inc32(mut ctr []u8) {
 	mut c := (u32(ctr[12]) << 24) | (u32(ctr[13]) << 16) | (u32(ctr[14]) << 8) | u32(ctr[15])
+	// detect for wrapping u32 counter
+	if (c + 1) == 0 {
+		panic('AES-GCM: inc32 overflow the counter')
+	}
 	c += 1
 	ctr[12] = u8(c >> 24)
 	ctr[13] = u8(c >> 16)
