@@ -226,44 +226,55 @@ fn (mut c Checker) eval_comptime_type_selector_value(expr ast.SelectorExpr) ?ast
 }
 
 fn (c &Checker) comptime_expr_needs_multi_pass(expr ast.Expr) bool {
-	return match expr {
+	match expr {
 		ast.TypeOf {
-			true
+			return true
 		}
 		ast.Ident {
-			(c.table.cur_fn != unsafe { nil } && expr.name in c.table.cur_fn.generic_names)
-				|| (expr.obj is ast.Var && expr.obj.typ.has_flag(.generic))
-				|| expr.ct_expr
+			if c.table.cur_fn != unsafe { nil } && expr.name in c.table.cur_fn.generic_names {
+				return true
+			}
+			if expr.obj is ast.Var && expr.obj.typ.has_flag(.generic) {
+				return true
+			}
+			return expr.ct_expr
 		}
 		ast.SelectorExpr {
-			expr.expr is ast.TypeOf || (expr.expr is ast.Ident && c.table.cur_fn != unsafe { nil }
-				&& expr.expr.name in c.table.cur_fn.generic_names)
-				|| c.comptime_expr_needs_multi_pass(expr.expr)
+			if expr.expr is ast.TypeOf {
+				return true
+			}
+			if expr.expr is ast.Ident {
+				if c.table.cur_fn != unsafe { nil }
+					&& expr.expr.name in c.table.cur_fn.generic_names {
+					return true
+				}
+			}
+			return c.comptime_expr_needs_multi_pass(expr.expr)
 		}
 		ast.InfixExpr {
-			c.comptime_expr_needs_multi_pass(expr.left)
+			return c.comptime_expr_needs_multi_pass(expr.left)
 				|| c.comptime_expr_needs_multi_pass(expr.right)
 		}
 		ast.CastExpr {
-			c.comptime_expr_needs_multi_pass(expr.expr)
+			return c.comptime_expr_needs_multi_pass(expr.expr)
 		}
 		ast.IndexExpr {
-			c.comptime_expr_needs_multi_pass(expr.left)
+			return c.comptime_expr_needs_multi_pass(expr.left)
 				|| c.comptime_expr_needs_multi_pass(expr.index)
 		}
 		ast.ParExpr {
-			c.comptime_expr_needs_multi_pass(expr.expr)
+			return c.comptime_expr_needs_multi_pass(expr.expr)
 		}
 		ast.PostfixExpr {
-			c.comptime_expr_needs_multi_pass(expr.expr)
+			return c.comptime_expr_needs_multi_pass(expr.expr)
 		}
 		ast.PrefixExpr {
-			c.comptime_expr_needs_multi_pass(expr.right)
+			return c.comptime_expr_needs_multi_pass(expr.right)
 		}
-		else {
-			false
-		}
+		else {}
 	}
+
+	return false
 }
 
 fn (mut c Checker) try_eval_comptime_comparison(mut left ast.Expr, mut right ast.Expr, op token.Kind) ?ComptimeComparisonResult {
