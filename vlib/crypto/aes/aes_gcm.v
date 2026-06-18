@@ -26,10 +26,10 @@ mut:
 	h     []u8 // GHASH subkey H = E(K, 0^128)
 }
 
-// new_aes_gcm builds AES-GCM state for a 16- or 32-byte key.
+// new_aes_gcm builds AES-GCM state for a 16, 24 or 32-byte key.
 @[direct_array_access]
 pub fn new_aes_gcm(key []u8) !&AesGcm {
-	if key.len != 16 && key.len != 32 {
+	if key.len != 16 && key.len != 24 && key.len != 32 {
 		return error('AES-GCM key must be 16 or 32 bytes, got ${key.len}')
 	}
 	block := new_cipher(key)
@@ -121,6 +121,7 @@ fn (g &AesGcm) ghash(y []u8, data []u8) []u8 {
 
 // gctr applies the GCM counter mode to `input` starting from counter block
 // `icb`, returning the keystream-XORed output.
+@[direct_array_access]
 fn (g &AesGcm) gctr(icb []u8, input []u8) []u8 {
 	if input.len == 0 {
 		return []u8{}
