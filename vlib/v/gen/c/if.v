@@ -128,6 +128,9 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 				}
 			}
 		}
+		ast.AsCast {
+			return true
+		}
 		ast.CallExpr {
 			if expr.is_method {
 				left_sym := g.table.sym(expr.receiver_type)

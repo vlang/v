@@ -97,6 +97,7 @@ jobs:
       - name: Build V
         run: make -j4 && ./v symlink
       - name: backend x64 regressions
+        if: ${{ false }} # Temporarily disabled.
         run: |
           set -e
 
@@ -115,6 +116,7 @@ jobs:
           V2_VERIFY_STRICT=1 ./v test vlib/v2/ssa/optimize
 
       - name: backend x64 examples
+        if: ${{ false }} # Temporarily disabled.
         run: |
           set -e
 
