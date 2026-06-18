@@ -323,11 +323,23 @@ fn (mut c H2MuxConn) do_on_stream(mut s H2MuxStream, req H2ClientRequest) !H2Cli
 	// block forever. Recheck under smu — the same lock those events use to set
 	// these flags — and abort before registering or sending. The HEADERS never
 	// hit the wire here, so the request is safe to retry on a fresh connection.
+	// Also recheck the peer's stream limit: SETTINGS_MAX_CONCURRENT_STREAMS can
+	// arrive while we are blocked on wmu, lowering the limit below active_streams.
 	if c.closed || c.goaway || c.shutting_down {
 		reason := if c.conn_err != '' { c.conn_err } else { 'connection is shutting down' }
 		c.smu.unlock()
 		c.wmu.unlock()
 		return h2_retryable_error(reason)
+	}
+	recheck_limit := if c.peer_max_streams < c.max_streams {
+		c.peer_max_streams
+	} else {
+		c.max_streams
+	}
+	if u32(c.active_streams) > recheck_limit {
+		c.smu.unlock()
+		c.wmu.unlock()
+		return h2_retryable_error('peer lowered concurrent stream limit; retrying on a fresh connection')
 	}
 	// If this was the last valid client stream ID (RFC 7540 §5.1.1: max 2^31-1),
 	// retire the connection so can_take_new_request() returns false immediately.
@@ -436,6 +448,16 @@ fn (mut c H2MuxConn) send_body_on_stream(mut s H2MuxStream, body []u8) ! {
 			stream_dead := s.send_dead
 			c.fmu.unlock()
 			if stream_dead {
+				// If the server already sent END_STREAM (early final response),
+				// the upload is abandoned cleanly — do_on_stream will read the
+				// response via wait_response. Only error for actual failures
+				// (RST_STREAM, GOAWAY, connection death).
+				s.mu.lock()
+				server_ended := s.ended
+				s.mu.unlock()
+				if server_ended {
+					return
+				}
 				// The stream was reset (RST_STREAM) or repudiated (GOAWAY) while
 				// we were blocked for window credit; surface its terminal error
 				// rather than hang, preserving retryability so a request the
@@ -718,6 +740,13 @@ fn (mut c H2MuxConn) note_write_failure() {
 	c.shutting_down = true
 	c.smu.unlock()
 	c.teardown_transport()
+	// teardown_transport only interrupts the reader when close_transport is set.
+	// If it is nil the reader keeps blocking and never calls fail_conn, leaving
+	// in-flight streams hung. Call fail_conn directly in that case; it is
+	// once-guarded so a concurrent reader invocation is a safe no-op.
+	if c.close_transport == unsafe { nil } {
+		c.fail_conn('transport write failure')
+	}
 }
 
 // --- reader side -------------------------------------------------------------
@@ -1055,6 +1084,12 @@ fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
 	}
 	s.cv.signal()
 	s.mu.unlock()
+	if frame.end_stream {
+		// The server closed the stream: wake any body sender that is blocked
+		// waiting for flow-control credit, so it does not hang forever when
+		// the peer withholds WINDOW_UPDATEs after an early final response.
+		c.wake_send(mut s)
+	}
 }
 
 // on_response_data delivers a DATA payload to its stream, or — for recently
@@ -1205,11 +1240,13 @@ fn (mut c H2MuxConn) lookup_stream(stream_id u32) &H2MuxStream {
 	return &H2MuxStream(unsafe { nil })
 }
 
-// fail_conn marks the connection dead, fails every in-flight stream, wakes
-// all blocked senders, and lets the reader exit. Only the reader calls this, so
-// `closed == true` also guarantees the reader is gone. Teardown is routed
-// through teardown_transport, which runs close_transport exactly once, so this
-// path and drop_ref's last-reference teardown can never double-close.
+// fail_conn marks the connection dead, fails every in-flight stream, and wakes
+// all blocked senders. Normally called by the reader on transport error; also
+// called by note_write_failure when close_transport is nil and cannot interrupt
+// the reader. Guards against double-invocation via the c.closed check under smu.
+// Teardown is routed through teardown_transport, which runs close_transport
+// exactly once, so this path and drop_ref's last-reference teardown can never
+// double-close.
 fn (mut c H2MuxConn) fail_conn(msg string) {
 	c.smu.lock()
 	if c.closed {
