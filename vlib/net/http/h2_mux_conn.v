@@ -1108,6 +1108,11 @@ fn (mut c H2MuxConn) on_response_data(frame H2DataFrame) ! {
 			return error('h2: peer exceeded stream ${frame.stream_id} receive window (RFC 7540 §6.9 FLOW_CONTROL_ERROR)')
 		}
 	}
+	// RFC 7540 §5.1: DATA after END_STREAM is a stream-closed violation.
+	if s.ended {
+		s.mu.unlock()
+		return error('h2: DATA frame received after END_STREAM on stream ${frame.stream_id} (RFC 7540 §5.1)')
+	}
 	if frame.data.len > 0 {
 		s.chunks << frame.data.clone()
 		s.body_rcvd += u64(frame.data.len)
@@ -1161,6 +1166,12 @@ fn (mut c H2MuxConn) reset_stream(stream_id u32, code H2ErrorCode, reason string
 	}).encode()) or {
 		c.wmu.unlock()
 		c.note_write_failure()
+		// The stream was removed from c.streams above, so fail_conn() will not
+		// find it. Wake it directly so the requester does not block forever.
+		if s != unsafe { nil } {
+			s.fail('h2: transport write failure', false)
+			c.wake_send(mut s)
+		}
 		return
 	}
 	c.wmu.unlock()
