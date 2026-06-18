@@ -88,6 +88,11 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 					g.trace_autofree('// skipping inherited var "${obj.name}"')
 					continue
 				}
+				if obj.name in g.for_c_init_autofree_keep_vars {
+					g.print_autofree_var(obj, 'ForC init')
+					g.trace_autofree('// skipping ForC init var "${obj.name}"')
+					continue
+				}
 				// if var.typ == 0 {
 				// // TODO: why 0?
 				// continue
@@ -293,4 +298,26 @@ fn (mut g Gen) detect_used_var_on_return(expr ast.Expr) {
 		}
 		else {}
 	}
+}
+
+fn collect_returned_var_names(expr ast.Expr, mut names map[string]bool) {
+	match expr {
+		ast.Ident {
+			names[expr.name] = true
+		}
+		ast.StructInit {
+			for field_expr in expr.init_fields {
+				collect_returned_var_names(field_expr.expr, mut names)
+			}
+		}
+		else {}
+	}
+}
+
+fn returned_var_names_from_return(node ast.Return) map[string]bool {
+	mut names := map[string]bool{}
+	for expr in node.exprs {
+		collect_returned_var_names(expr, mut names)
+	}
+	return names
 }

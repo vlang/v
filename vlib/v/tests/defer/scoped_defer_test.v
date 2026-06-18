@@ -183,3 +183,16 @@ fn test_labeled_continue_in_multi_for_c_runs_target_defer_once() {
 	}
 	assert values == [10, 11]
 }
+
+fn test_labeled_continue_does_not_run_unreached_target_defer() {
+	mut values := []int{}
+	outer: for i in 0 .. 2 {
+		if i == 0 {
+			continue outer
+		}
+		defer {
+			values << 10 + i
+		}
+	}
+	assert values == [11]
+}

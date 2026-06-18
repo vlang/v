@@ -266,6 +266,9 @@ mut:
 	sql_last_stmt_out_len                int
 	strs_to_free0                        []string // strings.Builder
 	lambda_autofree_tmp_arg_vars         []string
+	for_c_init_autofree_keep_vars        []string
+	for_c_init_autofree_cleanup_vars     []ast.Var
+	skip_scope_cleanup_start_pos         []int
 	// strs_to_free          []string // strings.Builder
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
@@ -3323,6 +3326,24 @@ fn (mut g Gen) stmts(stmts []ast.Stmt) {
 	g.stmts_with_tmp_var(stmts, '')
 }
 
+fn (mut g Gen) push_skip_scope_cleanup(scope &ast.Scope) int {
+	start := g.skip_scope_cleanup_start_pos.len
+	if scope != unsafe { nil } {
+		g.skip_scope_cleanup_start_pos << scope.start_pos
+	}
+	return start
+}
+
+fn (mut g Gen) pop_skip_scope_cleanup(start int) {
+	if g.skip_scope_cleanup_start_pos.len > start {
+		g.skip_scope_cleanup_start_pos = g.skip_scope_cleanup_start_pos[..start].clone()
+	}
+}
+
+fn (g &Gen) should_skip_scope_cleanup(scope &ast.Scope) bool {
+	return scope != unsafe { nil } && scope.start_pos in g.skip_scope_cleanup_start_pos
+}
+
 fn is_noreturn_callexpr(expr ast.Expr) bool {
 	if expr is ast.CallExpr {
 		return expr.is_noreturn
@@ -3802,6 +3823,9 @@ fn (g &Gen) return_needs_local_closure_cleanup(node ast.Return) bool {
 	if g.fn_decl == unsafe { nil } {
 		return false
 	}
+	if g.for_c_init_autofree_cleanup_vars.len > 0 {
+		return true
+	}
 	return g.has_local_closure_vars_to_cleanup(node.pos.pos - 1, node.pos.line_nr, true, -1,
 		g.fn_decl.stmts)
 }
@@ -3814,6 +3838,7 @@ fn (mut g Gen) cleanup_local_closure_vars_on_return(node ast.Return) {
 	g.closure_cleanup_ignore_keep = true
 	g.cleanup_local_closure_vars(node.pos.pos - 1, node.pos.line_nr, true, -1, g.fn_decl.stmts)
 	g.closure_cleanup_ignore_keep = old_closure_cleanup_ignore_keep
+	g.cleanup_for_c_init_autofree_vars_on_return(returned_var_names_from_return(node))
 }
 
 fn (mut g Gen) cleanup_local_closure_vars_before_synthetic_return(scope &ast.Scope, pos token.Pos) {
@@ -3845,14 +3870,128 @@ fn labeled_loop_scope(node &ast.Stmt) &ast.Scope {
 	}
 }
 
-fn (mut g Gen) write_defer_stmts_before_labeled_continue(scope &ast.Scope, target_scope &ast.Scope, pos token.Pos) {
+fn labeled_loop_for_c_init_vars(node &ast.Stmt) []string {
+	return match node {
+		ast.ForCStmt {
+			if !node.has_init || node.init !is ast.AssignStmt {
+				return []
+			}
+			init := node.init as ast.AssignStmt
+			if init.op != .decl_assign {
+				return []
+			}
+			mut vars := []string{}
+			for left in init.left {
+				if left is ast.Ident {
+					vars << left.name
+				}
+			}
+			vars
+		}
+		else {
+			[]
+		}
+	}
+}
+
+fn (mut g Gen) write_defer_stmts_before_labeled_continue_in_scope(scope &ast.Scope, pos token.Pos) {
+	prev_inside_defer_generation := g.inside_defer_generation
+	g.inside_defer_generation = true
+	defer {
+		g.inside_defer_generation = prev_inside_defer_generation
+	}
+	g.indent++
+	for i := g.defer_stmts.len - 1; i >= 0; i-- {
+		defer_stmt := g.defer_stmts[i]
+		if defer_stmt.scope == unsafe { nil } {
+			g.error('Gen.write_defer_stmts_before_labeled_continue(): defer_stmt.scope is nil', pos)
+		}
+		if defer_stmt.mode != .scoped || defer_stmt.scope != scope || defer_stmt.pos.pos >= pos.pos {
+			continue
+		}
+		g.writeln('{ // defer begin')
+		if defer_stmt.ifdef.len > 0 {
+			g.writeln(defer_stmt.ifdef)
+			g.stmts(defer_stmt.stmts)
+			g.writeln2('', '#endif')
+		} else {
+			g.stmts(defer_stmt.stmts)
+		}
+		g.writeln('} // defer end')
+	}
+	g.indent--
+}
+
+fn (mut g Gen) cleanup_scopes_before_labeled_continue(scope &ast.Scope, target_scope &ast.Scope,
+	pos token.Pos, keep_vars []string) {
 	if scope == unsafe { nil } || target_scope == unsafe { nil } {
 		return
 	}
-	for cleanup_scope := unsafe { scope }; cleanup_scope != unsafe { nil }
-		&& cleanup_scope != target_scope; cleanup_scope = cleanup_scope.parent {
-		g.write_defer_stmts(cleanup_scope, false, pos)
+	for cleanup_scope := unsafe { scope }; cleanup_scope != unsafe { nil }; cleanup_scope = cleanup_scope.parent {
+		g.write_defer_stmts_before_labeled_continue_in_scope(cleanup_scope, pos)
+		if g.needs_scope_cleanup() && !g.is_builtin_mod {
+			g.autofree_scope_vars2_before_labeled_continue(cleanup_scope, cleanup_scope.start_pos,
+				pos.pos - 1, cleanup_scope == target_scope, keep_vars)
+		}
+		if cleanup_scope == target_scope || cleanup_scope.detached_from_parent {
+			break
+		}
+	}
+}
+
+fn (mut g Gen) autofree_scope_vars2_before_labeled_continue(scope &ast.Scope, start_pos int,
+	end_pos int, is_target_scope bool, keep_vars []string) {
+	if scope == unsafe { nil } {
+		return
+	}
+	for _, obj in scope.objects {
+		if obj is ast.Var {
+			if obj.name in g.returned_var_names || obj.is_or || obj.is_tmp
+				|| obj.is_inherited || obj.pos.pos > end_pos
+				|| obj.pos.pos < start_pos
+				|| obj.name in g.for_c_init_autofree_keep_vars
+				|| (is_target_scope && obj.name in keep_vars)
+				|| (end_pos < scope.end_pos && obj.expr is ast.IfExpr) {
+				continue
+			}
+			if obj.expr is ast.IfGuardExpr {
+				continue
+			}
+			if obj.expr is ast.UnsafeExpr && obj.expr.expr is ast.CallExpr
+				&& (obj.expr.expr as ast.CallExpr).is_method {
+				if left_var := scope.objects[obj.expr.expr.left.str()] {
+					if func := g.table.find_method(g.table.final_sym(left_var.typ),
+						obj.expr.expr.name)
+					{
+						if func.attrs.contains('reused') && left_var is ast.Var
+							&& left_var.expr is ast.CastExpr {
+							if left_var.expr.expr.is_literal() {
+								continue
+							}
+						}
+					}
+				}
+			}
+			g.autofree_variable(obj)
+		}
+	}
+	for g.autofree_scope_stmts.len > 0 {
+		g.write(g.autofree_scope_stmts.pop())
+	}
+}
+
+fn (mut g Gen) cleanup_local_closure_vars_before_labeled_continue(scope &ast.Scope, target_scope &ast.Scope,
+	pos token.Pos, stmts []ast.Stmt) {
+	if g.fn_decl == unsafe { nil } || scope == unsafe { nil } || target_scope == unsafe { nil } {
+		return
+	}
+	for cleanup_scope := unsafe { scope }; cleanup_scope != unsafe { nil }; cleanup_scope = cleanup_scope.parent {
+		g.cleanup_local_closure_vars2(cleanup_scope, cleanup_scope.start_pos, pos.pos - 1,
+			pos.line_nr, false, -1, stmts)
 		if cleanup_scope.detached_from_parent {
+			break
+		}
+		if cleanup_scope == target_scope {
 			break
 		}
 	}
@@ -4101,7 +4240,10 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 					return last_stmt_was_return
 				}
 			}
-			g.autofree_scope_vars(stmt_pos.pos - 1, stmt_pos.line_nr, false)
+			cleanup_scope := g.file.scope.innermost(stmt_pos.pos - 1)
+			if !g.should_skip_scope_cleanup(cleanup_scope) {
+				g.autofree_scope_vars(stmt_pos.pos - 1, stmt_pos.line_nr, false)
+			}
 		}
 	}
 	if !g.inside_veb_tmpl && stmts.len > 0 && !last_stmt_was_return && g.inside_ternary == 0 {
@@ -4112,7 +4254,11 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 				stmt_pos = stmt.expr.pos()
 			}
 			if stmt_pos.pos != 0 {
-				g.cleanup_local_closure_vars(stmt_pos.pos - 1, stmt_pos.line_nr, false, -1, stmts)
+				cleanup_scope := g.local_closure_cleanup_scope_at(stmt_pos.pos - 1)
+				if !g.should_skip_scope_cleanup(cleanup_scope) {
+					g.cleanup_local_closure_vars(stmt_pos.pos - 1, stmt_pos.line_nr, false, -1,
+						stmts)
+				}
 			}
 		}
 	}
@@ -10994,21 +11140,38 @@ fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 		}
 
 		stop_pos := labeled_loop_cleanup_stop_pos(x)
+		target_scope := labeled_loop_scope(x)
 		if node.kind == .key_break {
 			g.write_defer_stmts(node.scope, false, node.pos)
 		} else {
-			g.write_defer_stmts_before_labeled_continue(node.scope, labeled_loop_scope(x), node.pos)
+			g.cleanup_scopes_before_labeled_continue(node.scope, target_scope, node.pos,
+				labeled_loop_for_c_init_vars(x))
 		}
-		if g.needs_scope_cleanup() && !g.is_builtin_mod {
+		if node.kind == .key_break && g.needs_scope_cleanup() && !g.is_builtin_mod {
 			g.trace_autofree('// free before labeled continue/break')
 			g.autofree_scope_vars_stop(node.pos.pos - 1, node.pos.line_nr, true, stop_pos)
 		}
 		if g.fn_decl != unsafe { nil } {
-			old_closure_cleanup_target_loop_pos := g.closure_cleanup_target_loop_pos
-			g.closure_cleanup_target_loop_pos = if stop_pos > 0 { stop_pos } else { 0 }
-			g.cleanup_local_closure_vars_before_jump(node.scope, node.pos.pos - 1,
-				node.pos.line_nr, true, stop_pos, g.fn_decl.stmts)
-			g.closure_cleanup_target_loop_pos = old_closure_cleanup_target_loop_pos
+			if node.kind == .key_break {
+				old_closure_cleanup_target_loop_pos := g.closure_cleanup_target_loop_pos
+				g.closure_cleanup_target_loop_pos = if stop_pos > 0 { stop_pos } else { 0 }
+				g.cleanup_local_closure_vars_before_jump(node.scope, node.pos.pos - 1,
+					node.pos.line_nr, true, stop_pos, g.fn_decl.stmts)
+				g.closure_cleanup_target_loop_pos = old_closure_cleanup_target_loop_pos
+			} else {
+				preserve_start := if x is ast.ForCStmt {
+					g.push_local_closure_cleanup_preserve_vars(g.for_c_init_local_closure_vars(x),
+						x.pos.pos)
+				} else {
+					g.closure_cleanup_keep_vars.len
+				}
+				old_closure_cleanup_target_loop_pos := g.closure_cleanup_target_loop_pos
+				g.closure_cleanup_target_loop_pos = if stop_pos > 0 { stop_pos } else { 0 }
+				g.cleanup_local_closure_vars_before_labeled_continue(node.scope, target_scope,
+					node.pos, g.fn_decl.stmts)
+				g.closure_cleanup_target_loop_pos = old_closure_cleanup_target_loop_pos
+				g.pop_local_closure_cleanup_preserve_vars(preserve_start)
+			}
 		}
 		if node.kind == .key_break {
 			g.writeln('goto ${node.label}__break;')
