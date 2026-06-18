@@ -9,30 +9,30 @@
 // the straightforward bit-by-bit algorithm, which is constant in structure and
 // easy to audit (performance is adequate for handshakes and modest streams).
 module aes
- 
+
 import crypto.cipher
- 
+
 // gcm_tag_size is the size of the GCM authentication tag in bytes.
 pub const gcm_tag_size = 16
- 
+
 // gcm_nonce_size is the size of the GCM nonce in bytes (only support 96-bit nonce variant).
 pub const gcm_nonce_size = 12
- 
+
 // AesGcm holds the AES block cipher and the derived GHASH subkey for a key.
-@[noinit; heap]
+@[heap; noinit]
 pub struct AesGcm implements cipher.AEAD {
 mut:
 	block cipher.Block
 	h     []u8 // GHASH subkey H = E(K, 0^128)
 }
- 
+
 // new_aes_gcm builds AES-GCM state for a 16- or 32-byte key.
 @[direct_array_access]
 pub fn new_aes_gcm(key []u8) !&AesGcm {
 	if key.len != 16 && key.len != 32 {
 		return error('AES-GCM key must be 16 or 32 bytes, got ${key.len}')
 	}
-	block := aes.new_cipher(key)
+	block := new_cipher(key)
 	mut h := []u8{len: 16}
 	zero := []u8{len: 16}
 	block.encrypt(mut h, zero)
@@ -44,12 +44,12 @@ pub fn new_aes_gcm(key []u8) !&AesGcm {
 
 // nonce_size returns the size of nonce (in bytes).
 pub fn (g &AesGcm) nonce_size() int {
-  return gcm_nonce_size
+	return gcm_nonce_size
 }
 
 // overhead returns the maximum difference between the lengths of a plaintext and its ciphertext.
 pub fn (g &AesGcm) overhead() int {
-  return gcm_tag_size
+	return gcm_tag_size
 }
 
 // encrypt encrypts `plaintext` with the given 12-byte `nonce` and additional
@@ -63,19 +63,19 @@ pub fn (g &AesGcm) encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8 {
 	mut ctr := j0.clone()
 	inc32(mut ctr)
 	ciphertext := g.gctr(ctr, plaintext)
- 
+
 	mut ghash_in := pad_block(ad)
 	ghash_in << pad_block(ciphertext)
 	ghash_in << len_block(ad.len, ciphertext.len)
 	s := g.ghash([]u8{len: 16}, ghash_in)
 	tag := g.gctr(j0, s)
- 
-	mut out := []u8{cap: ciphertext.len + gcm_tag_size)
-  out << ciphertext.clone()
+
+	mut out := []u8{cap: ciphertext.len + gcm_tag_size}
+	out << ciphertext.clone()
 	out << tag
 	return out
 }
- 
+
 // decrypt verifies and decrypts `ciphertext` (which must include the trailing
 // 16-byte tag) using `nonce` and additional authenticated data `ad`.
 @[direct_array_access]
@@ -89,7 +89,7 @@ pub fn (g &AesGcm) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u8 {
 	ct := ciphertext[..ciphertext.len - gcm_tag_size]
 	tag := ciphertext[ciphertext.len - gcm_tag_size..]
 	j0 := j0_from_nonce(nonce)
- 
+
 	mut ghash_in := pad_block(ad)
 	ghash_in << pad_block(ct)
 	ghash_in << len_block(ad.len, ct.len)
@@ -167,21 +167,21 @@ fn gf_mult(x []u8, y []u8) []u8 {
 	}
 	return z
 }
- 
+
 // pad_block returns `data` right-padded with zeros to a multiple of 16 bytes.
 @[direct_array_access]
 fn pad_block(data []u8) []u8 {
-  temp := data.clone()
+	temp := data.clone()
 	rem := data.len % 16
 	if rem == 0 {
 		return temp
 	}
 	mut out := []u8{cap: data.len + 16 - rem}
-  out << temp
+	out << temp
 	out << []u8{len: 16 - rem}
 	return out
 }
- 
+
 // inc32 increments the last 32 bits of the 16-byte counter block in place.
 @[direct_array_access]
 fn inc32(mut ctr []u8) {
@@ -192,9 +192,7 @@ fn inc32(mut ctr []u8) {
 	ctr[14] = u8(c >> 8)
 	ctr[15] = u8(c)
 }
- 
 
- 
 // len_block returns the GHASH length block: the bit lengths of the AAD and the
 // ciphertext, each encoded as a big-endian 64-bit integer.
 fn len_block(ad_len int, ct_len int) []u8 {
@@ -207,7 +205,7 @@ fn len_block(ad_len int, ct_len int) []u8 {
 	}
 	return b
 }
- 
+
 // j0 derives the pre-counter block for a 96-bit nonce: nonce || 0^31 || 1.
 @[direct_array_access]
 fn j0_from_nonce(nonce []u8) []u8 {
@@ -218,7 +216,7 @@ fn j0_from_nonce(nonce []u8) []u8 {
 	j[15] = 1
 	return j
 }
- 
+
 // bytes_equal compares two equal-length byte slices in constant time.
 // similar to `crypto.internal.subtle.constant_time_compare()` ones
 @[direct_array_access]
