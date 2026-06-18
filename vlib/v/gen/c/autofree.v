@@ -300,24 +300,69 @@ fn (mut g Gen) detect_used_var_on_return(expr ast.Expr) {
 	}
 }
 
-fn collect_returned_var_names(expr ast.Expr, mut names map[string]bool) {
+fn selector_root_name(expr ast.SelectorExpr) ?string {
+	mut root_expr := expr.expr
+	for root_expr is ast.SelectorExpr {
+		root_expr = root_expr.expr
+	}
+	if root_expr is ast.Ident {
+		return root_expr.name
+	}
+	return none
+}
+
+fn (mut g Gen) selector_return_preserves_owner(expr ast.SelectorExpr) bool {
+	if expr.typ == 0 {
+		return false
+	}
+	if expr.typ.is_any_kind_of_pointer() {
+		return true
+	}
+	base_typ := expr.typ.set_nr_muls(0).clear_option_and_result()
+	if base_typ == 0 || g.type_has_unresolved_generic_parts(base_typ) {
+		return false
+	}
+	unwrapped_typ := g.unwrap_generic(base_typ)
+	sym := g.table.sym(unwrapped_typ)
+	if sym.has_method('free') {
+		return true
+	}
+	unaliased_typ :=
+		g.table.fully_unaliased_type(unwrapped_typ).set_nr_muls(0).clear_option_and_result()
+	if unaliased_typ == 0 || g.type_has_unresolved_generic_parts(unaliased_typ) {
+		return false
+	}
+	final_sym := g.table.final_sym(unaliased_typ)
+	return final_sym.kind in [.array, .map, .string, .struct, .sum_type, .interface]
+		|| final_sym.has_method('free')
+}
+
+fn (mut g Gen) collect_returned_var_names(expr ast.Expr, mut names map[string]bool, mut selector_owner_names map[string]bool) {
 	match expr {
 		ast.Ident {
 			names[expr.name] = true
 		}
+		ast.SelectorExpr {
+			if g.selector_return_preserves_owner(expr) {
+				if root_name := selector_root_name(expr) {
+					selector_owner_names[root_name] = true
+				}
+			}
+		}
 		ast.StructInit {
 			for field_expr in expr.init_fields {
-				collect_returned_var_names(field_expr.expr, mut names)
+				g.collect_returned_var_names(field_expr.expr, mut names, mut selector_owner_names)
 			}
 		}
 		else {}
 	}
 }
 
-fn returned_var_names_from_return(node ast.Return) map[string]bool {
+fn (mut g Gen) returned_var_names_from_return(node ast.Return) (map[string]bool, map[string]bool) {
 	mut names := map[string]bool{}
+	mut selector_owner_names := map[string]bool{}
 	for expr in node.exprs {
-		collect_returned_var_names(expr, mut names)
+		g.collect_returned_var_names(expr, mut names, mut selector_owner_names)
 	}
-	return names
+	return names, selector_owner_names
 }

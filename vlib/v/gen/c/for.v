@@ -281,9 +281,12 @@ fn (mut g Gen) cleanup_for_c_init_autofree_vars(vars []ast.Var) {
 	}
 }
 
-fn (mut g Gen) cleanup_for_c_init_autofree_vars_on_return(returned_names map[string]bool) {
+fn (mut g Gen) cleanup_for_c_init_autofree_vars_on_return(returned_names map[string]bool, selector_owner_names map[string]bool) {
 	for var in g.for_c_init_autofree_cleanup_vars {
 		if var.name in returned_names {
+			continue
+		}
+		if var.name in selector_owner_names {
 			continue
 		}
 		g.autofree_variable(var)

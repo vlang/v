@@ -3838,7 +3838,8 @@ fn (mut g Gen) cleanup_local_closure_vars_on_return(node ast.Return) {
 	g.closure_cleanup_ignore_keep = true
 	g.cleanup_local_closure_vars(node.pos.pos - 1, node.pos.line_nr, true, -1, g.fn_decl.stmts)
 	g.closure_cleanup_ignore_keep = old_closure_cleanup_ignore_keep
-	g.cleanup_for_c_init_autofree_vars_on_return(returned_var_names_from_return(node))
+	returned_names, selector_owner_names := g.returned_var_names_from_return(node)
+	g.cleanup_for_c_init_autofree_vars_on_return(returned_names, selector_owner_names)
 }
 
 fn (mut g Gen) cleanup_local_closure_vars_before_synthetic_return(scope &ast.Scope, pos token.Pos) {
@@ -3894,7 +3895,7 @@ fn labeled_loop_for_c_init_vars(node &ast.Stmt) []string {
 	}
 }
 
-fn (mut g Gen) write_defer_stmts_before_labeled_continue_in_scope(scope &ast.Scope, pos token.Pos) {
+fn (mut g Gen) write_defer_stmts_before_labeled_jump_in_scope(scope &ast.Scope, pos token.Pos) {
 	prev_inside_defer_generation := g.inside_defer_generation
 	g.inside_defer_generation = true
 	defer {
@@ -3904,7 +3905,7 @@ fn (mut g Gen) write_defer_stmts_before_labeled_continue_in_scope(scope &ast.Sco
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {
 		defer_stmt := g.defer_stmts[i]
 		if defer_stmt.scope == unsafe { nil } {
-			g.error('Gen.write_defer_stmts_before_labeled_continue(): defer_stmt.scope is nil', pos)
+			g.error('Gen.write_defer_stmts_before_labeled_jump(): defer_stmt.scope is nil', pos)
 		}
 		if defer_stmt.mode != .scoped || defer_stmt.scope != scope || defer_stmt.pos.pos >= pos.pos {
 			continue
@@ -3922,15 +3923,15 @@ fn (mut g Gen) write_defer_stmts_before_labeled_continue_in_scope(scope &ast.Sco
 	g.indent--
 }
 
-fn (mut g Gen) cleanup_scopes_before_labeled_continue(scope &ast.Scope, target_scope &ast.Scope,
+fn (mut g Gen) cleanup_scopes_before_labeled_jump(scope &ast.Scope, target_scope &ast.Scope,
 	pos token.Pos, keep_vars []string) {
 	if scope == unsafe { nil } || target_scope == unsafe { nil } {
 		return
 	}
 	for cleanup_scope := unsafe { scope }; cleanup_scope != unsafe { nil }; cleanup_scope = cleanup_scope.parent {
-		g.write_defer_stmts_before_labeled_continue_in_scope(cleanup_scope, pos)
+		g.write_defer_stmts_before_labeled_jump_in_scope(cleanup_scope, pos)
 		if g.needs_scope_cleanup() && !g.is_builtin_mod {
-			g.autofree_scope_vars2_before_labeled_continue(cleanup_scope, cleanup_scope.start_pos,
+			g.autofree_scope_vars2_before_labeled_jump(cleanup_scope, cleanup_scope.start_pos,
 				pos.pos - 1, cleanup_scope == target_scope, keep_vars)
 		}
 		if cleanup_scope == target_scope || cleanup_scope.detached_from_parent {
@@ -3939,7 +3940,7 @@ fn (mut g Gen) cleanup_scopes_before_labeled_continue(scope &ast.Scope, target_s
 	}
 }
 
-fn (mut g Gen) autofree_scope_vars2_before_labeled_continue(scope &ast.Scope, start_pos int,
+fn (mut g Gen) autofree_scope_vars2_before_labeled_jump(scope &ast.Scope, start_pos int,
 	end_pos int, is_target_scope bool, keep_vars []string) {
 	if scope == unsafe { nil } {
 		return
@@ -3949,7 +3950,6 @@ fn (mut g Gen) autofree_scope_vars2_before_labeled_continue(scope &ast.Scope, st
 			if obj.name in g.returned_var_names || obj.is_or || obj.is_tmp
 				|| obj.is_inherited || obj.pos.pos > end_pos
 				|| obj.pos.pos < start_pos
-				|| obj.name in g.for_c_init_autofree_keep_vars
 				|| (is_target_scope && obj.name in keep_vars)
 				|| (end_pos < scope.end_pos && obj.expr is ast.IfExpr) {
 				continue
@@ -11141,16 +11141,8 @@ fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 
 		stop_pos := labeled_loop_cleanup_stop_pos(x)
 		target_scope := labeled_loop_scope(x)
-		if node.kind == .key_break {
-			g.write_defer_stmts(node.scope, false, node.pos)
-		} else {
-			g.cleanup_scopes_before_labeled_continue(node.scope, target_scope, node.pos,
-				labeled_loop_for_c_init_vars(x))
-		}
-		if node.kind == .key_break && g.needs_scope_cleanup() && !g.is_builtin_mod {
-			g.trace_autofree('// free before labeled continue/break')
-			g.autofree_scope_vars_stop(node.pos.pos - 1, node.pos.line_nr, true, stop_pos)
-		}
+		g.cleanup_scopes_before_labeled_jump(node.scope, target_scope, node.pos,
+			labeled_loop_for_c_init_vars(x))
 		if g.fn_decl != unsafe { nil } {
 			if node.kind == .key_break {
 				old_closure_cleanup_target_loop_pos := g.closure_cleanup_target_loop_pos
