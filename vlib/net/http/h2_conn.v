@@ -3,12 +3,26 @@
 // that can be found in the LICENSE file.
 module http
 
+// --- HTTP/2 (RFC 7540 / 7541) file map -----------------------------------------
+// The h2 implementation is split by layer; h2_conn.v (this file) is the lead.
+//   h2_frame.v               binary framing layer (RFC 7540 §4, §6): parse/encode
+//   h2_hpack.v               HPACK header compression (RFC 7541)
+//   h2_hpack_static.v        HPACK static table data (RFC 7541 App. A)
+//   h2_hpack_huffman*.v      HPACK Huffman code + table (generated)
+//   h2_error.v               H2ErrorCode for RST_STREAM / GOAWAY
+//   h2_conn.v                synchronous single-stream client connection (this file)
+//   h2_mux_conn.v            multiplexed client: one connection, many concurrent streams
+//   h2_server.v              server-side connection driver
+//   h2_client.v              glue: net.http Request/Response <-> the h2 layer
+//   vschannel_h2_windows.c.v HTTP/2 over the Windows SChannel TLS transport
+// Each *.v has a sibling *_test.v with hermetic in-memory-transport tests.
+
 // This file implements a minimal HTTP/2 client connection (RFC 7540) on top of
 // the framing and HPACK layers. It is intentionally synchronous and handles a
 // single request at a time: it sends one request, then reads frames until that
 // stream completes, servicing connection-level frames (SETTINGS, PING,
-// WINDOW_UPDATE, GOAWAY) inline. Stream multiplexing and a background reader
-// are a follow-up; this is the smallest useful, testable client.
+// WINDOW_UPDATE, GOAWAY) inline. Concurrent multiplexing over one connection is
+// provided separately by h2_mux_conn.v; this remains the smallest synchronous client.
 
 // h2_client_preface is the fixed sequence a client sends to start an HTTP/2
 // connection, immediately followed by a SETTINGS frame (RFC 7540 Section 3.5).
