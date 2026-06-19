@@ -443,11 +443,16 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					if node.op == .ne {
 						g.write('!')
 					}
+					mut prev_left_is_opt := g.left_is_opt
+					if left.typ.has_flag(.option) {
+						g.left_is_opt = true
+					}
 					g.write('${ptr_typ}_struct_eq(')
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.right)
 					g.write(')')
+					g.left_is_opt = prev_left_is_opt
 				}
 			}
 			.sum_type {
