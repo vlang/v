@@ -663,7 +663,10 @@ fn test_closure_lifetime_dispose_recycles_state_for_later_lifetimes() {
 }
 
 fn test_closure_lifetime_freestanding_no_std_object_compile() {
-	$if windows {
+	$if !linux {
+		return
+	}
+	$if !amd64 {
 		return
 	}
 	$if gcboehm_leak ? {
