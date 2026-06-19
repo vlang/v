@@ -426,28 +426,56 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.write(')')
 			}
 			.struct {
-				ptr_typ := g.equality_fn(left.unaliased)
-				if left.typ.is_ptr() || right.typ.is_ptr() {
-					// `&lvalue` on either side means the user is comparing addresses; skip the deep `_struct_eq` (`&StructInit{}` still does deep eq).
-					left_is_addr_of_lvalue := node.left is ast.PrefixExpr && node.left.op == .amp
-						&& node.left.right.is_lvalue()
-					right_is_addr_of_lvalue := node.right is ast.PrefixExpr && node.right.op == .amp
-						&& node.right.right.is_lvalue()
-					if left.typ.is_ptr() && right.typ.is_ptr()
-						&& (left_is_addr_of_lvalue || right_is_addr_of_lvalue) {
-						g.gen_plain_infix_expr(node)
+				if left_is_option && right_is_option {
+					bare_typ := g.equality_fn(left.unaliased.clear_flag(.option))
+					styp := g.base_type(left_type)
+					old_inside_opt_or_res := g.inside_opt_or_res
+					g.inside_opt_or_res = true
+					if node.op == .eq {
+						g.write('(')
 					} else {
-						g.gen_struct_pointer_eq_op(node, left_type, right_type, ptr_typ)
+						g.write('!(')
 					}
-				} else {
-					if node.op == .ne {
-						g.write('!')
-					}
-					g.write('${ptr_typ}_struct_eq(')
+					g.write('(')
 					g.expr(node.left)
-					g.write(', ')
+					g.write('.state == 2 && ')
 					g.expr(node.right)
-					g.write(')')
+					g.write('.state == 2) || (')
+					g.expr(node.left)
+					g.write('.state == ')
+					g.expr(node.right)
+					g.write('.state && ')
+					g.expr(node.left)
+					g.write('.state != 2 && ')
+					g.write('${bare_typ}_struct_eq(*(${styp}*)&')
+					g.expr(node.left)
+					g.write('.data, *(${styp}*)&')
+					g.expr(node.right)
+					g.write('.data)))')
+					g.inside_opt_or_res = old_inside_opt_or_res
+				} else {
+					ptr_typ := g.equality_fn(left.unaliased)
+					if left.typ.is_ptr() || right.typ.is_ptr() {
+						left_is_addr_of_lvalue := node.left is ast.PrefixExpr
+							&& node.left.op == .amp && node.left.right.is_lvalue()
+						right_is_addr_of_lvalue := node.right is ast.PrefixExpr
+							&& node.right.op == .amp && node.right.right.is_lvalue()
+						if left.typ.is_ptr() && right.typ.is_ptr()
+							&& (left_is_addr_of_lvalue || right_is_addr_of_lvalue) {
+							g.gen_plain_infix_expr(node)
+						} else {
+							g.gen_struct_pointer_eq_op(node, left_type, right_type, ptr_typ)
+						}
+					} else {
+						if node.op == .ne {
+							g.write('!')
+						}
+						g.write('${ptr_typ}_struct_eq(')
+						g.expr(node.left)
+						g.write(', ')
+						g.expr(node.right)
+						g.write(')')
+					}
 				}
 			}
 			.sum_type {
