@@ -1195,7 +1195,15 @@ fn (mut c H2MuxConn) on_response_data(frame H2DataFrame) ! {
 		s.recv_window -= i64(frame.flow_size)
 		if s.recv_window < 0 {
 			s.mu.unlock()
-			return error('h2: peer exceeded stream ${frame.stream_id} receive window (RFC 7540 §6.9 FLOW_CONTROL_ERROR)')
+			// RFC 7540 §6.9.1: a stream-level flow-control violation is a STREAM
+			// error — RST just this stream (like the WINDOW_UPDATE overflow path)
+			// rather than failing the whole connection and every other multiplexed
+			// stream. Credit this frame's bytes back to the connection window
+			// (debited above, never delivered); reset_stream credits queued chunks.
+			c.send_conn_window_update(u32(frame.flow_size)) or {}
+			c.reset_stream(frame.stream_id, .flow_control_error,
+				'peer exceeded stream ${frame.stream_id} receive window')
+			return
 		}
 	}
 	// RFC 7540 §5.1: DATA after END_STREAM is a stream-closed violation.

@@ -1584,3 +1584,77 @@ fn test_mux_peer_exceeding_recv_window_fails_connection() {
 	assert err_msg.contains('FLOW_CONTROL_ERROR'), 'unexpected error: ${err_msg}'
 	cend.close_both()
 }
+
+// A STREAM-level receive-window violation (RFC 7540 §6.9.1) must reset only that
+// stream, not tear down the whole connection: the offending request fails, but
+// the connection stays alive (closed stays false) so other streams are unharmed.
+fn test_mux_stream_window_violation_resets_only_that_stream() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	// Inflate the connection window so the oversized DATA trips ONLY the
+	// stream-level window check, not the connection-level one.
+	conn.recv_wmu.lock()
+	conn.conn_recv_window = 10_000_000
+	conn.recv_wmu.unlock()
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{
+		authority: 't'
+		path:      '/flood'
+	}, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer, mut conn H2MuxConn) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		id := ids[0]
+		peer.respond_headers(id, false) or {
+			peer.fail('respond: ${err.msg()}')
+			return
+		}
+		// White-box: shrink just this stream's receive window so the next DATA
+		// frame exceeds it while the connection window stays valid. No DATA has
+		// arrived yet, so the requester has not credited the window back.
+		conn.smu.lock()
+		if mut s := conn.streams[id] {
+			s.mu.lock()
+			s.recv_window = 1
+			s.mu.unlock()
+		}
+		conn.smu.unlock()
+		peer.write_frame(H2DataFrame{
+			stream_id: id
+			data:      [u8(0), 0]
+		}) or {
+			peer.fail('data: ${err.msg()}')
+			return
+		}
+		// The client must RST only this stream; pump until we see it.
+		for {
+			f := peer.pump() or { return }
+			if f is H2RstStreamFrame {
+				return
+			}
+		}
+	}(mut peer, mut conn)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	err_msg := out.errs['/flood'] or { '' }
+	assert err_msg != '', 'stream-window violation must error the request'
+	assert err_msg.contains('FLOW_CONTROL_ERROR') || err_msg.contains('receive window'), 'unexpected error: ${err_msg}'
+	// The connection must survive — closed is set only when the reader exits on a
+	// connection-level failure, which a stream reset must not cause.
+	conn.smu.lock()
+	closed := conn.closed
+	conn.smu.unlock()
+	assert !closed, 'a stream-level flow-control violation must NOT close the connection'
+	cend.close_both()
+}
