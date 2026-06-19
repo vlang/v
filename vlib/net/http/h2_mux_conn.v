@@ -91,23 +91,6 @@ fn (mut s H2MuxStream) fail(msg string, retryable bool) {
 	s.mu.unlock()
 }
 
-// send_failure_reason returns the terminal error recorded by fail(), plus its
-// retryable flag, for a body sender that observed send_dead while blocked on
-// flow control. The flag must be preserved so a request the server never
-// processed (e.g. reset by GOAWAY above last_stream_id) can still be retried.
-fn (mut s H2MuxStream) send_failure_reason() (string, bool) {
-	s.mu.lock()
-	defer {
-		s.mu.unlock()
-	}
-	reason := if s.err != '' {
-		s.err
-	} else {
-		'h2: stream terminated while sending the request body'
-	}
-	return reason, s.retryable
-}
-
 // H2MuxConn is a multiplexed client-side HTTP/2 connection, safe for
 // concurrent requests from multiple threads.
 @[heap]
@@ -454,25 +437,41 @@ fn (mut c H2MuxConn) send_body_on_stream(mut s H2MuxStream, body []u8) ! {
 			stream_dead := s.send_dead
 			c.fmu.unlock()
 			if stream_dead {
-				// If the server already sent END_STREAM (early final response),
-				// the upload is abandoned cleanly — do_on_stream will read the
-				// response via wait_response. Only error for actual failures
-				// (RST_STREAM, GOAWAY, connection death).
+				// send_dead is always set together with a terminal stream state,
+				// so distinguish the two by whether fail() recorded an error:
+				//  - no error  → the server sent END_STREAM (early final response)
+				//    while we still owed body; abandon the upload and close our
+				//    half (below) so wait_response can still deliver the response.
+				//  - error set → RST_STREAM, GOAWAY, or connection death; surface
+				//    it here, preserving retryability so a request the server never
+				//    processed can be replayed on a fresh connection.
 				s.mu.lock()
-				server_ended := s.ended
+				failure := s.err
+				failure_retryable := s.retryable
 				s.mu.unlock()
-				if server_ended {
+				if failure != '' {
+					if failure_retryable {
+						return h2_retryable_error(failure)
+					}
+					return error('h2: ${failure}')
+				}
+				// Early final response: the server completed and closed its half
+				// while we still owed body. RST_STREAM(CANCEL) closes our half so
+				// the server releases the stream instead of holding it half-open
+				// and counting it against its concurrency limit (RFC 9113 §8.1).
+				// The stream stays registered in c.streams, so wait_response still
+				// returns the already-received response from the s reference.
+				c.wmu.lock()
+				c.write_all_locked(H2Frame(H2RstStreamFrame{
+					stream_id:  s.id
+					error_code: u32(H2ErrorCode.cancel)
+				}).encode()) or {
+					c.wmu.unlock()
+					c.note_write_failure()
 					return
 				}
-				// The stream was reset (RST_STREAM) or repudiated (GOAWAY) while
-				// we were blocked for window credit; surface its terminal error
-				// rather than hang, preserving retryability so a request the
-				// server never processed can be replayed on a fresh connection.
-				reason, retryable := s.send_failure_reason()
-				if retryable {
-					return h2_retryable_error(reason)
-				}
-				return error(reason)
+				c.wmu.unlock()
+				return
 			}
 			return error('h2: connection closed while sending the request body')
 		}
@@ -755,14 +754,14 @@ fn (mut c H2MuxConn) note_write_failure() {
 	c.smu.lock()
 	c.shutting_down = true
 	c.smu.unlock()
+	// Interrupt the reader's blocking read if a closer can, then fail the
+	// connection directly. fail_conn is idempotent (guarded by c.closed), so a
+	// later reader invocation is a safe no-op. Calling it unconditionally — not
+	// only when close_transport is nil — wakes every in-flight stream
+	// immediately, closing both the window before the reader notices the dead
+	// transport and the case of a closer that cannot interrupt a blocking read.
 	c.teardown_transport()
-	// teardown_transport only interrupts the reader when close_transport is set.
-	// If it is nil the reader keeps blocking and never calls fail_conn, leaving
-	// in-flight streams hung. Call fail_conn directly in that case; it is
-	// once-guarded so a concurrent reader invocation is a safe no-op.
-	if c.close_transport == unsafe { nil } {
-		c.fail_conn('transport write failure')
-	}
+	c.fail_conn('transport write failure')
 }
 
 // --- reader side -------------------------------------------------------------
@@ -1099,6 +1098,18 @@ fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
 				break
 			}
 		}
+		// RFC 9113 §8.3.1: every response MUST carry a valid :status (a 3-digit
+		// code, 100..599). A block without one — or with a garbage value — is
+		// malformed. Treat it as a stream-level PROTOCOL_ERROR rather than a 1xx
+		// interim, so the requester gets an error instead of waiting forever for
+		// a "final" HEADERS that will never arrive. (Trailers legitimately omit
+		// :status, but they are handled below since headers_done is already set.)
+		if status < 100 || status > 599 {
+			s.mu.unlock()
+			c.reset_stream(frame.stream_id, .protocol_error,
+				'response with a missing or invalid :status')
+			return
+		}
 		// RFC 9110 §15.2 / RFC 9113 §8.1: a server may send 1xx interim responses
 		// (100 Continue, 103 Early Hints) before the final response. They are not
 		// the final response and carry no body, so ignore them and keep waiting
@@ -1196,6 +1207,13 @@ fn (mut c H2MuxConn) on_response_data(frame H2DataFrame) ! {
 	s.mu.unlock()
 	if pad_overhead > 0 {
 		c.send_window_updates(s.id, u32(pad_overhead)) or {}
+	}
+	if frame.end_stream {
+		// The response ended on this DATA frame (an early final response with a
+		// body, e.g. a 413/auth rejection). Wake any body sender still blocked on
+		// flow-control credit, mirroring on_response_headers; otherwise it hangs
+		// when the peer withholds further WINDOW_UPDATEs.
+		c.wake_send(mut s)
 	}
 }
 

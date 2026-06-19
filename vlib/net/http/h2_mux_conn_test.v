@@ -491,6 +491,152 @@ fn test_mux_rst_wakes_blocked_body_sender() {
 	cend.close_both()
 }
 
+// An early final response that carries a body ends with END_STREAM on the DATA
+// frame, not on HEADERS. A body sender blocked on flow control must still be
+// woken (by on_response_data), abandon the upload with RST_STREAM, and have the
+// response delivered — not hang waiting for a WINDOW_UPDATE that never comes.
+fn test_mux_early_final_response_with_body_wakes_blocked_upload() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	body_len := 100000
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{
+		method:    'POST'
+		authority: 't'
+		path:      '/up'
+		body:      []u8{len: body_len, init: `B`}
+	}, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		id := ids[0]
+		// Let the client exhaust both send windows; it then blocks in
+		// send_body_on_stream waiting for a WINDOW_UPDATE that never comes.
+		for {
+			peer.mu.lock()
+			got := peer.data_total[id] or { u64(0) }
+			peer.mu.unlock()
+			if got >= u64(h2_default_initial_window) {
+				break
+			}
+			peer.pump() or {
+				peer.fail('pump: ${err.msg()}')
+				return
+			}
+		}
+		// Send a complete final response WITH a body, so END_STREAM lands on the
+		// DATA frame rather than HEADERS. No WINDOW_UPDATE is ever granted.
+		block := peer.encoder.encode([H2HeaderField{':status', '413'},
+			H2HeaderField{'content-type', 'text/plain'}])
+		peer.write_frame(H2HeadersFrame{
+			stream_id:   id
+			fragment:    block
+			end_headers: true
+			end_stream:  false
+		}) or {
+			peer.fail('resp headers: ${err.msg()}')
+			return
+		}
+		peer.write_frame(H2DataFrame{
+			stream_id:  id
+			data:       'rejected'.bytes()
+			end_stream: true
+		}) or {
+			peer.fail('resp data: ${err.msg()}')
+			return
+		}
+		// The client must wake, abandon the upload, and close its half with
+		// RST_STREAM; pump until we observe it (or the pipe closes).
+		for {
+			f := peer.pump() or { return }
+			if f is H2RstStreamFrame {
+				return
+			}
+		}
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	upload_err := out.errs['/up'] or { '' }
+	assert upload_err == '', 'early final response must not error the request, got: ${upload_err}'
+	assert out.statuses['/up'] or { 0 } == 413, 'expected the 413 response to be delivered'
+	assert out.bodies['/up'] or { '' } == 'rejected', 'expected the response body to be delivered'
+	peer.mu.lock()
+	saw_rst := u32(1) in peer.rst_streams
+	peer.mu.unlock()
+	assert saw_rst, 'client must RST_STREAM to close its abandoned upload half'
+	cend.close_both()
+}
+
+// RFC 9113 §8.3.1: a response HEADERS block without a valid :status is malformed.
+// The client must reset the stream (PROTOCOL_ERROR) and surface an error to the
+// requester rather than treating it as a 1xx interim and waiting forever.
+fn test_mux_response_missing_status_resets_stream() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{
+		method:    'GET'
+		authority: 't'
+		path:      '/get'
+	}, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		id := ids[0]
+		// A response header block with no :status pseudo-header (malformed); the
+		// stream is left open so the client cannot fall back to "stream closed".
+		block := peer.encoder.encode([H2HeaderField{'content-type', 'text/plain'}])
+		peer.write_frame(H2HeadersFrame{
+			stream_id:   id
+			fragment:    block
+			end_headers: true
+			end_stream:  false
+		}) or {
+			peer.fail('resp headers: ${err.msg()}')
+			return
+		}
+		// The client must reset the stream; pump until we observe the RST.
+		for {
+			f := peer.pump() or { return }
+			if f is H2RstStreamFrame {
+				return
+			}
+		}
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	get_err := out.errs['/get'] or { '' }
+	assert get_err != '', 'expected an error for a response missing :status, not a hang'
+	assert get_err.contains('status'), 'expected a :status protocol error, got: ${get_err}'
+	peer.mu.lock()
+	saw_rst := u32(1) in peer.rst_streams
+	peer.mu.unlock()
+	assert saw_rst, 'client must RST_STREAM a malformed (no :status) response'
+	cend.close_both()
+}
+
 // A stream reset with REFUSED_STREAM means the server did not process the
 // request, so it must surface a retryable error (RFC 7540 8.1.4) — even for a
 // non-idempotent method — so the pool can replay it on a fresh connection. A
