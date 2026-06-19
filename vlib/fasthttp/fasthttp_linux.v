@@ -39,6 +39,20 @@ mut:
 	data   C.epoll_data_t
 }
 
+enum LoopCommandKind {
+	close_conn
+	complete_response
+	arm_write
+	manual_takeover
+	enable_read
+}
+
+struct LoopCommand {
+	kind      LoopCommandKind
+	client_fd int
+	state     &ClientWriteState = unsafe { nil }
+}
+
 pub struct Server {
 pub:
 	family                  net.AddrFamily = .ip6
@@ -439,10 +453,10 @@ fn complete_write(server &Server, epoll_fd int, client_fd int, mut client_fds ma
 	// EPOLL_CTL_MOD would not generate that edge.
 	if epollout_was_armed {
 		remove_fd_from_epoll(epoll_fd, client_fd)
-		if add_fd_to_epoll(epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
-			handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-				client_read_starts, mut closing_client_fds, mut client_write_states)
-		}
+	}
+	if add_fd_to_epoll(epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
+		handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+			client_read_starts, mut closing_client_fds, mut client_write_states)
 	}
 }
 
@@ -465,12 +479,11 @@ fn handle_write(server &Server, epoll_fd int, client_fd int, mut client_fds map[
 	}
 }
 
-fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer []u8, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
+fn process_request_async(server &Server, client_fd int, request_buffer []u8, command_ch chan LoopCommand) {
 	mut request_arena := voidptr(unsafe { nil })
 	$if prealloc {
 		request_arena = unsafe { prealloc_scope_begin() }
 	}
-	client_read_starts.delete(client_fd)
 	server.begin_request()
 	mut request_active := true
 
@@ -482,8 +495,10 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 		if request_active {
 			server.end_request()
 		}
-		handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-			client_read_starts, mut closing_client_fds, mut client_write_states)
+		command_ch <- LoopCommand{
+			kind:      .close_conn
+			client_fd: client_fd
+		}
 		return
 	}
 	$if trace_prealloc ? {
@@ -499,8 +514,10 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 		if request_active {
 			server.end_request()
 		}
-		handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-			client_read_starts, mut closing_client_fds, mut client_write_states)
+		command_ch <- LoopCommand{
+			kind:      .close_conn
+			client_fd: client_fd
+		}
 		return
 	}
 	$if trace_prealloc ? {
@@ -510,32 +527,32 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 
 	match response.takeover_mode {
 		.manual {
-			// The handler has taken ownership of the connection.
-			// Remove from epoll and tracking, but do NOT close the fd.
-			client_fds.delete(client_fd)
-			client_buffers.delete(client_fd)
-			client_read_starts.delete(client_fd)
-			closing_client_fds.delete(client_fd)
-			remove_fd_from_epoll(epoll_fd, client_fd)
 			response.abandon_request_arena_current_thread()
 			response.free_owned_content()
-			if request_active {
-				server.end_request()
+			command_ch <- LoopCommand{
+				kind:      .manual_takeover
+				client_fd: client_fd
 			}
 			return
 		}
 		.reusable {
 			set_blocking(client_fd, false)
-			client_buffers.delete(client_fd)
 			response.free_owned_content()
 			response.end_request_arena_current_thread()
 			if request_active {
 				server.end_request()
+				request_active = false
 			}
 			if server.is_shutting_down() || response.should_close {
-				handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut
-					client_buffers, mut client_read_starts, mut closing_client_fds, mut
-					client_write_states)
+				command_ch <- LoopCommand{
+					kind:      .close_conn
+					client_fd: client_fd
+				}
+			} else {
+				command_ch <- LoopCommand{
+					kind:      .enable_read
+					client_fd: client_fd
+				}
 			}
 			return
 		}
@@ -555,8 +572,10 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 			if request_active {
 				server.end_request()
 			}
-			handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-				client_read_starts, mut closing_client_fds, mut client_write_states)
+			command_ch <- LoopCommand{
+				kind:      .close_conn
+				client_fd: client_fd
+			}
 			return
 		}
 		mut st := C.stat{}
@@ -568,8 +587,10 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 			if request_active {
 				server.end_request()
 			}
-			handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-				client_read_starts, mut closing_client_fds, mut client_write_states)
+			command_ch <- LoopCommand{
+				kind:      .close_conn
+				client_fd: client_fd
+			}
 			return
 		}
 		file_fd = fd
@@ -597,30 +618,98 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 	}
 	// From here on, the state owns end_request bookkeeping.
 	request_active = false
-	client_write_states[client_fd] = state
 
 	status := try_drain_write(client_fd, mut state)
 	match status {
 		.done {
-			complete_write(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-				client_read_starts, mut closing_client_fds, mut client_write_states)
+			command_ch <- LoopCommand{
+				kind:      .complete_response
+				client_fd: client_fd
+				state:     state
+			}
 		}
 		.blocked {
-			// Kernel send buffer is full. Park the state and resume on EPOLLOUT.
-			client_buffers.delete(client_fd)
-			client_read_starts.delete(client_fd)
-			if arm_epollout(epoll_fd, client_fd) == -1 {
-				eprintln('ERROR: epoll_ctl(MOD, EPOLLOUT) failed errno=${C.errno}')
-				handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut
-					client_buffers, mut client_read_starts, mut closing_client_fds, mut
-					client_write_states)
-			} else {
-				state.epollout_armed = true
+			command_ch <- LoopCommand{
+				kind:      .arm_write
+				client_fd: client_fd
+				state:     state
 			}
 		}
 		.failed {
-			handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-				client_read_starts, mut closing_client_fds, mut client_write_states)
+			command_ch <- LoopCommand{
+				kind:      .close_conn
+				client_fd: client_fd
+				state:     state
+			}
+		}
+	}
+}
+
+fn process_loop_command(server &Server, epoll_fd int, cmd LoopCommand, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
+	match cmd.kind {
+		.close_conn {
+			if cmd.state != unsafe { nil } {
+				free_write_state(server, cmd.client_fd, mut client_write_states)
+			}
+			handle_client_closure(server, epoll_fd, cmd.client_fd, mut client_fds, mut
+				client_buffers, mut client_read_starts, mut closing_client_fds, mut
+				client_write_states)
+		}
+		.complete_response {
+			if cmd.state != unsafe { nil } {
+				client_write_states[cmd.client_fd] = cmd.state
+				complete_write(server, epoll_fd, cmd.client_fd, mut client_fds, mut client_buffers, mut
+					client_read_starts, mut closing_client_fds, mut client_write_states)
+			}
+		}
+		.arm_write {
+			if cmd.state != unsafe { nil } {
+				mut state := cmd.state
+				client_write_states[cmd.client_fd] = state
+				client_buffers.delete(cmd.client_fd)
+				client_read_starts.delete(cmd.client_fd)
+				if add_fd_to_epoll(epoll_fd, cmd.client_fd, u32(C.EPOLLIN | C.EPOLLOUT | C.EPOLLET)) == -1 {
+					eprintln('ERROR: epoll_ctl(ADD, EPOLLOUT) failed errno=${C.errno}')
+					handle_client_closure(server, epoll_fd, cmd.client_fd, mut client_fds, mut
+						client_buffers, mut client_read_starts, mut closing_client_fds, mut
+						client_write_states)
+				} else {
+					state.epollout_armed = true
+				}
+			}
+		}
+		.manual_takeover {
+			server.end_request()
+			client_fds.delete(cmd.client_fd)
+			client_buffers.delete(cmd.client_fd)
+			client_read_starts.delete(cmd.client_fd)
+			closing_client_fds.delete(cmd.client_fd)
+			remove_fd_from_epoll(epoll_fd, cmd.client_fd)
+			if cmd.state != unsafe { nil } {
+				free_write_state(server, cmd.client_fd, mut client_write_states)
+			}
+		}
+		.enable_read {
+			client_buffers.delete(cmd.client_fd)
+			if add_fd_to_epoll(epoll_fd, cmd.client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
+				handle_client_closure(server, epoll_fd, cmd.client_fd, mut client_fds, mut
+					client_buffers, mut client_read_starts, mut closing_client_fds, mut
+					client_write_states)
+			}
+		}
+	}
+}
+
+fn drain_loop_commands(server &Server, epoll_fd int, command_ch chan LoopCommand, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
+	for {
+		select {
+			cmd := <-command_ch {
+				process_loop_command(server, epoll_fd, cmd, mut client_fds, mut client_buffers, mut
+					client_read_starts, mut closing_client_fds, mut client_write_states)
+			}
+			else {
+				break
+			}
 		}
 	}
 }
@@ -633,10 +722,13 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 	mut client_read_starts := map[int]i64{}
 	mut closing_client_fds := map[int]bool{}
 	mut client_write_states := map[int]&ClientWriteState{}
+	command_ch := chan LoopCommand{cap: max_connection_size * 4}
 	unsafe {
 		request_buffer.flags.set(.noslices | .nogrow | .noshrink)
 	}
 	for {
+		drain_loop_commands(server, epoll_fd, command_ch, mut client_fds, mut client_buffers, mut
+			client_read_starts, mut closing_client_fds, mut client_write_states)
 		if server.is_shutting_down() && server.active_request_count() == 0 {
 			close_worker_clients(server, epoll_fd, mut client_fds, mut client_buffers, mut
 				client_read_starts, mut closing_client_fds, mut client_write_states)
@@ -784,9 +876,11 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 					continue
 				}
 				if request_complete {
-					process_request(server, epoll_fd, client_fd, readed_request_buffer, mut
-						client_fds, mut client_buffers, mut client_read_starts, mut
-						closing_client_fds, mut client_write_states)
+					remove_fd_from_epoll(epoll_fd, client_fd)
+					client_read_starts.delete(client_fd)
+					req_buf := readed_request_buffer.clone()
+					client_buffers.delete(client_fd)
+					spawn process_request_async(server, client_fd, req_buf, command_ch)
 				} else if recv_error {
 					// Unexpected recv error - send 444 No Response
 					C.send(client_fd, status_444_response.data, status_444_response.len,
@@ -804,6 +898,8 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 				}
 			}
 		}
+		drain_loop_commands(server, epoll_fd, command_ch, mut client_fds, mut client_buffers, mut
+			client_read_starts, mut closing_client_fds, mut client_write_states)
 		if server.timeout_in_seconds > 0 {
 			now := time.sys_mono_now()
 			timeout_ns := i64(server.timeout_in_seconds) * 1_000_000_000
