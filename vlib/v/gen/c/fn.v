@@ -34,16 +34,21 @@ fn (g &Gen) receiver_exact_method_for_type(typ ast.Type, method_name string) ?as
 		return none
 	}
 	sym := g.table.sym(typ)
+	// A `mut` receiver is stored as a pointer (`&T`), so compare the base types
+	// (ignoring the pointer level) to match such a method against both the value
+	// and pointer forms of `typ`. See #27465.
+	typ_base := typ.set_nr_muls(0)
 	for method in sym.methods {
-		if method.name == method_name && method.receiver_type == typ {
+		if method.name == method_name && method.receiver_type.set_nr_muls(0) == typ_base {
 			return method
 		}
 	}
 	if sym.info is ast.Alias {
 		parent_type := sym.info.parent_type.derive(typ)
+		parent_base := parent_type.set_nr_muls(0)
 		parent_sym := g.table.sym(parent_type)
 		for method in parent_sym.methods {
-			if method.name == method_name && method.receiver_type == parent_type {
+			if method.name == method_name && method.receiver_type.set_nr_muls(0) == parent_base {
 				return method
 			}
 		}
@@ -3520,9 +3525,17 @@ fn (mut g Gen) receiver_generic_call_context(left_type ast.Type, method_name str
 	rec_sym := g.table.final_sym(left_type)
 	mut receiver_concrete_types := []ast.Type{}
 	mut parent_method := ast.Fn{}
-	if has_structured_method_for_exact {
+	// A method defined directly on an alias type (e.g. `fn (c Candidates) set()` where
+	// `type Candidates = BitSet[u32]`) takes priority over the generic parent method
+	// inherited from the aliased type. Treat it as the resolved (non-generic) method so
+	// no generic instantiation suffix (`_T_u32`) is appended to its C name. See #27465.
+	exact_method_on_alias := exact_method_exists && exact_method.receiver_type != 0
+		&& g.table.sym(left_type).info is ast.Alias
+		&& g.unwrap_generic(exact_method.receiver_type).set_nr_muls(0) == g.unwrap_generic(left_type).set_nr_muls(0)
+	if has_structured_method_for_exact || exact_method_on_alias {
 		parent_method = exact_method
 	}
+	keep_alias_method := exact_method_on_alias && exact_method.generic_names.len == 0
 	match rec_sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
 			if rec_sym.info.concrete_types.len > 0 {
@@ -3534,7 +3547,7 @@ fn (mut g Gen) receiver_generic_call_context(left_type ast.Type, method_name str
 			if rec_sym.info.parent_type.has_flag(.generic) {
 				parent_sym := g.table.sym(rec_sym.info.parent_type)
 				if m := parent_sym.find_method(method_name) {
-					if !has_structured_method_for_exact {
+					if !has_structured_method_for_exact && !keep_alias_method {
 						parent_method = m
 					}
 				}
@@ -3545,7 +3558,7 @@ fn (mut g Gen) receiver_generic_call_context(left_type ast.Type, method_name str
 			if rec_sym.info.parent_idx > 0 {
 				parent_sym := g.table.sym(ast.idx_to_type(rec_sym.info.parent_idx))
 				if m := parent_sym.find_method(method_name) {
-					if !has_structured_method_for_exact {
+					if !has_structured_method_for_exact && !keep_alias_method {
 						parent_method = m
 					}
 				}
