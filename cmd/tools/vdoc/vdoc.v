@@ -75,7 +75,7 @@ fn (vd &VDoc) gen_json(d doc.Doc) string {
 fn (mut vd VDoc) gen_plaintext(d doc.Doc) string {
 	cfg := vd.cfg
 	mut pw := strings.new_builder(200)
-	if cfg.is_color {
+	if cfg.is_color && d.head.content.contains(' ') {
 		content_arr := d.head.content.split(' ')
 		pw.writeln('${term.bright_blue(content_arr[0])} ${term.green(content_arr[1])}')
 	} else {
@@ -369,6 +369,13 @@ fn (mut vd VDoc) generate_docs_from_file() {
 				vd.emit_generate_err(err)
 				exit(1)
 			}
+		}
+		if dcs.head.name == '' && dcs.contents.len == 0 {
+			// The folder had no valid V files for the target platform (e.g. the
+			// `ios`/`macos` modules when generating docs on Linux), so `generate`
+			// skipped it. There is nothing to document, so do not add an empty
+			// `Doc` that would later be rendered (and crash on its empty head).
+			continue
 		}
 		if cfg.is_multi || (!cfg.is_multi && cfg.include_readme) {
 			readme := vd.get_readme(dirpath)
