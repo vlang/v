@@ -46,6 +46,21 @@ fn h2_retryable_error(reason string) IError {
 	return error_with_code('h2: ${reason}', h2_err_retryable_code)
 }
 
+// all_digits reports whether s is non-empty and every byte is an ASCII digit.
+// Header values must be validated with this before lenient string.int()/.u64()
+// parsing, which otherwise accept malformed input like '200 OK' or '12junk'.
+fn all_digits(s string) bool {
+	if s.len == 0 {
+		return false
+	}
+	for ch in s {
+		if ch < `0` || ch > `9` {
+			return false
+		}
+	}
+	return true
+}
+
 // H2MuxStream is the client-side state of one in-flight request stream.
 @[heap]
 struct H2MuxStream {
@@ -1111,7 +1126,7 @@ fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
 				// RFC 9113 §8.3.1: :status is exactly three digits. string.int()
 				// is lenient ('200 OK' -> 200), so validate the raw value before
 				// converting; otherwise a malformed status is accepted as valid.
-				if f.value.len == 3 && f.value.bytes().all(it >= `0` && it <= `9`) {
+				if f.value.len == 3 && all_digits(f.value) {
 					status = f.value.int()
 					status_valid = true
 				}
@@ -1138,9 +1153,20 @@ fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
 		if status >= 200 {
 			s.status = status
 			for f in fields {
-				if !f.name.starts_with(':') {
-					s.resp_headers << f
+				if f.name.starts_with(':') {
+					continue
 				}
+				// RFC 9110 §8.6 / RFC 9113 §8.1.1: a malformed Content-Length makes
+				// the message malformed (a stream-level PROTOCOL_ERROR). u64() is
+				// lenient ('12junk' -> 12, '0x10' -> 16), so validate it strictly
+				// here before wait_response trusts it for the body-length check.
+				if f.name == 'content-length' && !all_digits(f.value) {
+					s.mu.unlock()
+					c.reset_stream(frame.stream_id, .protocol_error,
+						'malformed Content-Length in response')
+					return
+				}
+				s.resp_headers << f
 			}
 			s.headers_done = true
 		}
@@ -1199,6 +1225,19 @@ fn (mut c H2MuxConn) on_response_data(frame H2DataFrame) ! {
 		if frame.flow_size > 0 {
 			c.send_conn_window_update(u32(frame.flow_size)) or {}
 		}
+		return
+	}
+	if !s.headers_done {
+		// RFC 7540 §8.1: an HTTP/2 response must begin with HEADERS. DATA before
+		// the final header block is malformed — RST this stream (PROTOCOL_ERROR)
+		// rather than queue bytes a requester would see with status 0. Credit the
+		// frame back to the connection window (debited above, never delivered).
+		s.mu.unlock()
+		if frame.flow_size > 0 {
+			c.send_conn_window_update(u32(frame.flow_size)) or {}
+		}
+		c.reset_stream(frame.stream_id, .protocol_error,
+			'DATA before response HEADERS on stream ${frame.stream_id}')
 		return
 	}
 	// RFC 7540 §5.1: a DATA frame after the peer's END_STREAM is a stream-closed

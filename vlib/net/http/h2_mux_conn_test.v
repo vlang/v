@@ -1671,6 +1671,7 @@ fn test_mux_data_after_end_stream_on_closed_stream_fails_connection() {
 	// and we (send_closed) have finished sending.
 	mut s := new_h2_mux_stream()
 	s.id = 1
+	s.headers_done = true
 	s.ended = true
 	s.send_closed = true
 	conn.smu.lock()
@@ -1707,6 +1708,7 @@ fn test_mux_data_after_end_stream_half_closed_resets_only_stream() {
 	// still open (send_closed = false) — "half-closed (remote)".
 	mut s := new_h2_mux_stream()
 	s.id = 1
+	s.headers_done = true
 	s.ended = true
 	s.send_closed = false
 	conn.smu.lock()
@@ -1729,5 +1731,99 @@ fn test_mux_data_after_end_stream_half_closed_resets_only_stream() {
 	closed := conn.closed
 	conn.smu.unlock()
 	assert !closed, 'a stream-level reset must NOT close the connection'
+	cend.close_both()
+}
+
+// A malformed Content-Length (string.u64() would leniently parse '12junk' -> 12)
+// makes the response malformed; it must be rejected, not accepted as a success.
+fn test_mux_malformed_content_length_resets_stream() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{ authority: 't', path: '/x' }, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		block := peer.encoder.encode([H2HeaderField{':status', '200'},
+			H2HeaderField{'content-length', '12junk'}])
+		peer.write_frame(H2HeadersFrame{
+			stream_id:   ids[0]
+			fragment:    block
+			end_headers: true
+			end_stream:  false
+		}) or {
+			peer.fail('resp: ${err.msg()}')
+			return
+		}
+		for {
+			f := peer.pump() or { return }
+			if f is H2RstStreamFrame {
+				return
+			}
+		}
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	err_msg := out.errs['/x'] or { '' }
+	assert err_msg != '', 'malformed Content-Length must error the request, not succeed'
+	assert err_msg.to_lower().contains('content-length'), 'unexpected error: ${err_msg}'
+	cend.close_both()
+}
+
+// RFC 7540 §8.1: a response must begin with HEADERS. A DATA frame before any
+// response HEADERS is malformed — reset that stream, but keep the connection.
+fn test_mux_data_before_headers_resets_stream() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{ authority: 't', path: '/x' }, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		// DATA with no preceding response HEADERS (malformed).
+		peer.write_frame(H2DataFrame{
+			stream_id: ids[0]
+			data:      'oops'.bytes()
+		}) or {
+			peer.fail('data: ${err.msg()}')
+			return
+		}
+		for {
+			f := peer.pump() or { return }
+			if f is H2RstStreamFrame {
+				return
+			}
+		}
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	err_msg := out.errs['/x'] or { '' }
+	assert err_msg != '', 'DATA before HEADERS must error the request'
+	conn.smu.lock()
+	closed := conn.closed
+	conn.smu.unlock()
+	assert !closed, 'DATA before HEADERS is a stream error; the connection must survive'
 	cend.close_both()
 }
