@@ -159,6 +159,17 @@ mut:
 // new_h2_mux_conn creates a multiplexed connection over `transport` and starts
 // its background reader. The connection preface is sent lazily with the first
 // request. `close_transport` (optional) is called once at final teardown.
+//
+// CONCURRENCY REQUIREMENT: the background reader calls `transport.read()` while
+// request threads call `transport.write()`, so `transport` MUST be safe for a
+// read and a write to run simultaneously on separate threads. A raw TCP socket
+// is (it is full-duplex); a TLS connection is NOT — one OpenSSL/mbedTLS `SSL`
+// object must not be read and written at the same time. Wiring this to a TLS
+// backend therefore requires a concurrent-safe transport adapter (a serialized
+// or non-blocking I/O loop); a single blocking I/O mutex is insufficient because
+// it would deadlock the blocked reader. That adapter is provided when the pooled
+// transport is wired up (see the HTTP connection-pooling Phase 3 work); until
+// then this type is exercised only over a full-duplex in-memory pipe in tests.
 pub fn new_h2_mux_conn(transport H2Transport, close_transport fn ()) &H2MuxConn {
 	fmu := sync.new_mutex()
 	mut c := &H2MuxConn{
