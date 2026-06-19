@@ -25,7 +25,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
       fail-fast: false
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build V
         run: make -j4
       - name: Symlink
@@ -66,7 +66,7 @@ jobs:
         flags: ['', '-githubci']
       fail-fast: false
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build V
         run: ./makev.bat
       - name: Symlink

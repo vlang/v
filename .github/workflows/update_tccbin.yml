@@ -53,7 +53,7 @@ jobs:
       PUBLISH: ${{ github.event_name == 'schedule' || github.event.inputs.publish == 'true' }}
       FORCE_REBUILD: ${{ github.event.inputs.force_rebuild == 'true' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install macOS build dependencies
         if: runner.os == 'macOS'
@@ -161,7 +161,7 @@ jobs:
       FORCE_REBUILD: ${{ github.event.inputs.force_rebuild == 'true' }}
       TCCBIN_TOKEN: ${{ secrets.VLANG_BOT_SECRET }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Start ${{ matrix.id }} VM
         uses: cross-platform-actions/action@v1.2.0
