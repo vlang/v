@@ -107,6 +107,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/net/http/status_test.v',
 	'vlib/net/http/header_test.v',
 	'vlib/net/http/server_test.v',
+	'vlib/net/http/transport_test.v', // mbedtls TLS 1.3 handshake trips MSan in thirdparty bignum code
 	'vlib/net/mbedtls/mbedtls_head_with_content_length_test.v',
 	'vlib/net/ssl/ssl_read_all_test.v',
 	'vlib/net/udp_test.v',
