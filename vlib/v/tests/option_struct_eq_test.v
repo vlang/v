@@ -83,3 +83,19 @@ fn test_option_struct_eq_fn_call_result() {
 	assert make_none_id() == make_none_id()
 	assert make_id(1) != make_none_id()
 }
+
+fn test_option_struct_eq_in_short_circuit() {
+	a := ?Id(Id{
+		v: 1
+	})
+	b := ?Id(Id{
+		v: 1
+	})
+	c := ?Id(Id{
+		v: 2
+	})
+	assert true && a == b
+	assert true && a != c
+	assert false || a == b
+	assert !(false && a != b)
+}

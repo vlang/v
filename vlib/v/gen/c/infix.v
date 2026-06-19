@@ -431,10 +431,18 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					styp := g.base_type(left_type)
 					old_inside_opt_or_res := g.inside_opt_or_res
 					g.inside_opt_or_res = true
-					left_tmp := g.expr_to_ctemp_before_stmt(node.left, left_type)
-					right_tmp := g.expr_to_ctemp_before_stmt(node.right, right_type)
-					lv := left_tmp.name
-					rv := right_tmp.name
+					inside_and_rhs := g.infix_left_var_name.len > 0
+					mut lv := ''
+					mut rv := ''
+					if inside_and_rhs {
+						lv = g.expr_string(node.left)
+						rv = g.expr_string(node.right)
+					} else {
+						left_tmp := g.expr_to_ctemp_before_stmt(node.left, left_type)
+						right_tmp := g.expr_to_ctemp_before_stmt(node.right, right_type)
+						lv = left_tmp.name
+						rv = right_tmp.name
+					}
 					if node.op == .eq {
 						g.write('(')
 					} else {
