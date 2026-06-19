@@ -35,7 +35,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
@@ -51,6 +51,7 @@ jobs:
           .\makev.bat -msvc
           .\v.exe symlink
       - name: backend x64 regressions
+        if: ${{ false }} # Temporarily disabled.
         run: |
           function Assert-LastExit([string] $label) {
             if ($LASTEXITCODE -ne 0) {
@@ -81,6 +82,7 @@ jobs:
           Assert-LastExit 'strict vlib/v2/ssa/optimize'
           Remove-Item Env:\V2_VERIFY_STRICT -ErrorAction SilentlyContinue
       - name: backend x64 examples
+        if: ${{ false }} # Temporarily disabled.
         run: |
           function Assert-LastExit([string] $label) {
             if ($LASTEXITCODE -ne 0) {

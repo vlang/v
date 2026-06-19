@@ -1805,7 +1805,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	ctx_struct := g.closure_ctx(node.decl)
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
 	// TODO: in case of an assignment, this should only call "closure_set_data" and "closure_set_function" (and free the former data)
-	g.write('builtin__closure__closure_create(${fn_name}, (${ctx_struct}*) builtin__memdup_uncollectable(&(${ctx_struct}){')
+	g.write('builtin__closure__closure_create_with_data(${fn_name}, (${ctx_struct}*) builtin__memdup(&(${ctx_struct}){')
 	g.indent++
 	for var in node.inherited_vars {
 		mut has_inherited := false
@@ -1894,7 +1894,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		}
 	}
 	g.indent--
-	g.write('}, sizeof(${ctx_struct})))')
+	g.write('}, sizeof(${ctx_struct})), true)')
 
 	g.empty_line = false
 }
@@ -2312,6 +2312,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			return
 		}
 	}
+	closure_frame_arg_tmps := g.prepare_closure_lifetime_arg_tmps(node)
+	defer {
+		for pos in closure_frame_arg_tmps.keys() {
+			g.closure_frame_arg_tmps.delete(pos)
+		}
+	}
 	old_inside_call := g.inside_call
 	g.inside_call = true
 	// Reset inside_selector_lhs so that receiver expressions inside method
@@ -2444,6 +2450,13 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	} else {
 		g.fn_call(node)
 	}
+	if closure_frame_arg_tmps.len > 0 {
+		g.writeln(';')
+		for _, tmp in closure_frame_arg_tmps {
+			g.writeln('builtin__closure__closure_try_destroy((voidptr)${tmp});')
+		}
+		g.set_current_pos_as_last_stmt_pos()
+	}
 	if needs_tmp_fn_result_cleanup && !gen_or && !gen_keep_alive && !g.inside_curry_call {
 		if node.return_type == ast.void_type {
 			g.writeln(';')
@@ -2525,6 +2538,105 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			}
 		}
 	}
+}
+
+fn (mut g Gen) is_closure_lifetime_callback_call(node ast.CallExpr) bool {
+	method_name := node.name.all_after_last('.')
+	if !node.is_method || method_name !in ['frame', 'suspend', 'untracked'] || node.args.len != 1 {
+		return false
+	}
+	mut receiver_type := g.unwrap_generic(node.receiver_type)
+	if receiver_type == 0 {
+		receiver_type = g.unwrap_generic(node.left_type)
+	}
+	if receiver_type == 0 {
+		return false
+	}
+	if receiver_type.is_ptr() {
+		receiver_type = receiver_type.deref()
+	}
+	return g.table.sym(receiver_type).name == 'builtin.closure.Lifetime'
+}
+
+fn (mut g Gen) closure_lifetime_arg_needs_tmp(expr ast.Expr) bool {
+	unwrapped_expr := expr.remove_par()
+	return match unwrapped_expr {
+		ast.AnonFn {
+			unwrapped_expr.inherited_vars.len > 0
+		}
+		ast.SelectorExpr {
+			unwrapped_expr.has_hidden_receiver
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut g Gen) call_needs_closure_lifetime_arg_tmp(node ast.CallExpr) bool {
+	return g.is_closure_lifetime_callback_call(node)
+		&& g.closure_lifetime_arg_needs_tmp(node.args[0].expr)
+}
+
+fn (mut g Gen) closure_lifetime_fn_type_tmp_signature(fn_types []ast.Type, tmp string) ?string {
+	for raw_fn_typ in fn_types {
+		fn_typ := g.unwrap_generic(g.recheck_concrete_type(raw_fn_typ))
+		if fn_typ == 0 {
+			continue
+		}
+		fn_sym := g.table.final_sym(fn_typ)
+		if fn_sym.info is ast.FnType {
+			func := fn_sym.info.func
+			return g.fn_var_signature(ast.void_type, func.return_type, func.params.map(it.typ), tmp)
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) closure_lifetime_arg_tmp_signature(node ast.CallExpr, arg ast.CallArg, tmp string) ?string {
+	unwrapped_expr := arg.expr.remove_par()
+	match unwrapped_expr {
+		ast.AnonFn {
+			return g.fn_var_signature(ast.void_type, unwrapped_expr.decl.return_type,
+				unwrapped_expr.decl.params.map(it.typ), tmp)
+		}
+		ast.SelectorExpr {
+			mut fn_types := []ast.Type{}
+			if arg.typ != 0 {
+				fn_types << arg.typ
+			}
+			if unwrapped_expr.typ != 0 {
+				fn_types << unwrapped_expr.typ
+			}
+			if node.expected_arg_types.len > 0 && node.expected_arg_types[0] != 0 {
+				fn_types << node.expected_arg_types[0]
+			}
+			return g.closure_lifetime_fn_type_tmp_signature(fn_types, tmp)
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (mut g Gen) prepare_closure_lifetime_arg_tmps(node ast.CallExpr) map[int]string {
+	mut tmps := map[int]string{}
+	if !g.call_needs_closure_lifetime_arg_tmp(node) {
+		return tmps
+	}
+	arg := node.args[0]
+	tmp := g.new_tmp_var()
+	fn_type := g.closure_lifetime_arg_tmp_signature(node, arg, tmp) or { return tmps }
+	line := g.go_before_last_stmt().trim_space()
+	g.empty_line = true
+	g.write('${fn_type} = ')
+	g.expr(ast.Expr(arg.expr))
+	g.writeln(';')
+	g.set_current_pos_as_last_stmt_pos()
+	g.write(line)
+	tmps[arg.pos.pos] = tmp
+	g.closure_frame_arg_tmps[arg.pos.pos] = tmp
+	return tmps
 }
 
 fn (mut g Gen) conversion_function_call(prefix string, postfix string, node ast.CallExpr) {
@@ -6409,6 +6521,13 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 	for i, arg in args {
 		if is_variadic && i == expected_types.len - 1 {
 			break
+		}
+		if tmp := g.closure_frame_arg_tmps[arg.pos.pos] {
+			g.write(tmp)
+			if i < args.len - 1 || is_variadic {
+				g.write(', ')
+			}
+			continue
 		}
 		mut is_smartcast := false
 		if arg.expr is ast.Ident {

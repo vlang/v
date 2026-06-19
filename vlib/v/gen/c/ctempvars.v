@@ -30,6 +30,9 @@ fn (mut g Gen) expr_to_ctemp_before_stmt(expr ast.Expr, expr_type ast.Type) ast.
 	mut x := g.new_ctemp_var(expr, expr_type)
 	g.gen_ctemp_var(mut x)
 	g.write(stmt_str)
+	if g.pref.is_vlines && stmt_str.contains('#line') {
+		g.writeln('')
+	}
 	return x
 }
 

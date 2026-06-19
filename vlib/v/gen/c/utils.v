@@ -522,6 +522,168 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 	return resolved
 }
 
+// type_alias_chain_idxs returns the idxs of `typ` and of every type it aliases,
+// transitively, down to the first non-alias type. Comparison is by idx only,
+// so flags and pointer levels are ignored.
+fn (g &Gen) type_alias_chain_idxs(typ ast.Type) []int {
+	mut idxs := [typ.idx()]
+	mut cur := typ
+	for {
+		sym := g.table.sym(cur)
+		if sym.info is ast.Alias {
+			parent := sym.info.parent_type
+			pidx := parent.idx()
+			if pidx in idxs {
+				break
+			}
+			idxs << pidx
+			cur = parent
+		} else {
+			break
+		}
+	}
+	return idxs
+}
+
+// alias_chain_equivalent reports whether `a` and `b` denote the same type modulo
+// alias naming: one type's alias chain (the type itself plus the types it
+// aliases, transitively) contains the other. This is stricter than comparing
+// fully unaliased base types, so distinct aliases that merely share an
+// underlying representation (e.g. `type String = u8` and `type Void = u8`) are
+// NOT treated as equivalent, while genuine alias/original pairs (e.g. a variant
+// `Bar` together with `type Foo = Bar`) still match by runtime tag.
+fn (g &Gen) alias_chain_equivalent(a ast.Type, b ast.Type) bool {
+	if a.nr_muls() != b.nr_muls() || a.has_flag(.option) != b.has_flag(.option) {
+		return false
+	}
+	if a.idx() == b.idx() {
+		return true
+	}
+	return b.idx() in g.type_alias_chain_idxs(a) || a.idx() in g.type_alias_chain_idxs(b)
+}
+
+fn (mut g Gen) type_idx_exprs_for_types(types []ast.Type) []string {
+	mut matches := []string{}
+	mut seen := map[string]bool{}
+	for typ in types {
+		index_expr := g.type_sidx(typ)
+		if index_expr !in seen {
+			seen[index_expr] = true
+			matches << index_expr
+		}
+	}
+	return matches
+}
+
+fn (mut g Gen) matching_sumtype_variant_types(parent_type ast.Type, target_type ast.Type) []ast.Type {
+	variants := g.sumtype_runtime_variants(parent_type)
+	target := g.unwrap_generic(target_type)
+	mut matches := []ast.Type{}
+	mut seen := map[string]bool{}
+	for variant in variants {
+		if g.alias_chain_equivalent(g.unwrap_generic(variant), target) {
+			index_expr := g.type_sidx(variant)
+			if index_expr !in seen {
+				seen[index_expr] = true
+				matches << variant
+			}
+		}
+	}
+	if matches.len > 0 {
+		return matches
+	}
+	for variant in variants {
+		if g.is_exact_sumtype_variant_match(variant, target_type) {
+			return [variant]
+		}
+	}
+	return [target_type]
+}
+
+fn (mut g Gen) matching_sumtype_variant_type_idx_exprs(parent_type ast.Type, target_type ast.Type) []string {
+	return g.type_idx_exprs_for_types(g.matching_sumtype_variant_types(parent_type, target_type))
+}
+
+fn (mut g Gen) matching_interface_variant_types(interface_sym ast.TypeSymbol, target_type ast.Type) []ast.Type {
+	if interface_sym.info !is ast.Interface {
+		return []
+	}
+	target := g.unwrap_generic(target_type)
+	info := interface_sym.info as ast.Interface
+	mut matches := []ast.Type{}
+	mut seen := map[string]bool{}
+	for variant in g.runtime_interface_variants(info) {
+		variant_sym := g.table.sym(variant)
+		if variant_sym.kind in [.interface, .aggregate] {
+			continue
+		}
+		if variant_sym.info is ast.Struct && variant_sym.info.is_unresolved_generic() {
+			continue
+		}
+		if !g.alias_chain_equivalent(g.unwrap_generic(variant), target) {
+			continue
+		}
+		index_expr := g.type_sidx(variant)
+		if index_expr !in seen {
+			seen[index_expr] = true
+			matches << variant
+		}
+	}
+	if matches.len > 0 {
+		return matches
+	}
+	return [target_type]
+}
+
+fn (mut g Gen) matching_interface_variant_index_exprs(interface_sym ast.TypeSymbol, target_type ast.Type) []string {
+	if interface_sym.info !is ast.Interface {
+		return []
+	}
+	matching_variants := g.matching_interface_variant_types(interface_sym, target_type)
+	mut matches := []string{}
+	mut seen := map[string]bool{}
+	for variant in matching_variants {
+		cctype := g.cc_type(ast.mktyp(variant), true)
+		index_expr := '_${interface_sym.cname}_${cctype}_index'
+		if index_expr !in seen {
+			seen[index_expr] = true
+			matches << index_expr
+		}
+	}
+	if matches.len > 0 {
+		return matches
+	}
+	cctype := g.cc_type(ast.mktyp(target_type), true)
+	return ['_${interface_sym.cname}_${cctype}_index']
+}
+
+fn (mut g Gen) matching_interface_variant_type_idx_exprs(interface_sym ast.TypeSymbol, target_type ast.Type) []string {
+	if interface_sym.info !is ast.Interface {
+		return []
+	}
+	return g.type_idx_exprs_for_types(g.matching_interface_variant_types(interface_sym, target_type))
+}
+
+fn (mut g Gen) write_type_tag_condition(tag_expr string, cmp_op string, index_exprs []string) {
+	if index_exprs.len == 0 {
+		g.write(if cmp_op == '==' { 'false' } else { 'true' })
+		return
+	}
+	if index_exprs.len > 1 {
+		g.write('(')
+	}
+	joiner := if cmp_op == '==' { ' || ' } else { ' && ' }
+	for i, index_expr in index_exprs {
+		if i > 0 {
+			g.write(joiner)
+		}
+		g.write('${tag_expr} ${cmp_op} ${index_expr}')
+	}
+	if index_exprs.len > 1 {
+		g.write(')')
+	}
+}
+
 fn (mut g Gen) resolved_scope_var_type_uncached(expr ast.Ident) ast.Type {
 	mut scope := if expr.scope != unsafe { nil } {
 		expr.scope.innermost(expr.pos.pos)

@@ -59,6 +59,10 @@ pub mut:
 	str_args              string              // for parallel_cc mode only, to know which cc args to use (like -I etc)
 	last_cc_cmd           string              // the most recently executed C compiler command; reused to regenerate a #line annotated report
 	disable_flto          bool
+	// thirdparty_header_mtimes memoizes the newest header mtime under a
+	// thirdparty module root (see thirdparty_deps_mtime), so the recursive scan
+	// runs once per module instead of once per compiled object.
+	thirdparty_header_mtimes map[string]i64
 }
 
 struct CFunctionCallCollector {

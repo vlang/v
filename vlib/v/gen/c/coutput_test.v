@@ -256,7 +256,9 @@ fn test_main_error_propagation_panic_branches_do_not_fall_through() {
 	] {
 		assert compilation.output.contains(panic_call)
 		branch_tail := compilation.output.all_after(panic_call).all_before('}')
-		assert branch_tail.contains('exit(1);')
+		// The panic helper is `@[noreturn]`, so the branch is closed off with
+		// `VUNREACHABLE();` (matching the other panic sites) instead of dead code
+		// after the noreturn call.
 		assert branch_tail.contains('VUNREACHABLE();')
 	}
 }

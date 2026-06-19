@@ -2,6 +2,7 @@ module mbedtls
 
 #flag -I @VEXEROOT/thirdparty/mbedtls/library
 #flag -I @VEXEROOT/thirdparty/mbedtls/include
+#flag windows -DWIN32_LEAN_AND_MEAN
 // #flag -D _FILE_OFFSET_BITS=64
 #flag -I @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/include
 #flag -I @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/include/everest
@@ -135,7 +136,21 @@ $if prod && opt_size ? {
 #include <mbedtls/entropy.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/error.h>
+#include <mbedtls/threading.h>
 #insert "@VEXEROOT/vlib/net/mbedtls/mbedtls_helpers.h"
+#insert "@VEXEROOT/vlib/net/mbedtls/mbedtls_threading.h"
+
+// v_mbedtls_threading_setup installs the mutex callbacks mbedtls needs when it
+// is built with MBEDTLS_THREADING_ALT (Windows). On platforms that use pthread
+// threading or no threading it is a no-op. Defined in mbedtls_threading.h.
+fn C.v_mbedtls_threading_setup()
+
+// init installs mbedtls' thread-safety callbacks once, before any TLS use, so
+// the library's shared state (RNG, key blinding, internal globals) is safe to
+// use across threads. A no-op on non-Windows builds.
+fn init() {
+	C.v_mbedtls_threading_setup()
+}
 
 @[typedef]
 pub struct C.mbedtls_net_context {

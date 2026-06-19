@@ -442,17 +442,27 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
 	path_without_o_postfix := path.all_before_last('.')
 	obj_path := v.msvc_thirdparty_obj_path(mod, path, '')
-	if os.exists(obj_path) {
-		// println('${obj_path} already built.')
-		return
-	}
-	if trace_thirdparty_obj_files {
-		println('${obj_path} not found, building it (with msvc)...')
-	}
 	cfile := if os.exists('${path_without_o_postfix}.c') {
 		'${path_without_o_postfix}.c'
 	} else {
 		'${path_without_o_postfix}.cpp'
+	}
+	if os.exists(obj_path) {
+		// Reuse the cached object only when it is newer than its source and
+		// every header in the thirdparty module (config headers under include/
+		// included; see thirdparty_deps_mtime). Without this, a config/header
+		// change silently keeps a stale `.obj` — the long-standing `-cc msvc`
+		// "delete library/*.obj by hand" footgun. Source-less bundled objects
+		// (no sibling .c/.cpp) keep the previous reuse-if-present behavior.
+		src_exists := os.exists('${path_without_o_postfix}.c')
+			|| os.exists('${path_without_o_postfix}.cpp')
+		if !src_exists || os.file_last_mod_unix(obj_path) >= v.thirdparty_deps_mtime(cfile) {
+			// println('${obj_path} already built.')
+			return
+		}
+	}
+	if trace_thirdparty_obj_files {
+		println('${obj_path} not found or stale, building it (with msvc)...')
 	}
 	flags := v.msvc_string_flags(moduleflags)
 	inc_dirs := flags.inc_paths.join(' ')

@@ -39,14 +39,15 @@ pub mut:
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
 
-	validate               bool // when true, certificate failures will stop further processing
-	verify                 string
-	cert                   string
-	cert_key               string
-	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
-	allow_redirect         bool = true // whether to allow redirect
-	max_retries            int  = 5    // maximum number of retries required when an underlying socket error occurs
-	enable_http2           bool = true // when true (the default) and the URL is https, advertise ALPN `h2, http/1.1` and use HTTP/2 if the server selects it; set to false to force HTTP/1.1. Ignored for plain http://, and for the Windows SChannel backend which has no ALPN yet (see vlang/v#27383). on_progress / on_progress_body / stop_copying_limit / stop_receiving_limit are honored on the HTTP/2 path; on_progress fires per DATA frame payload rather than per raw network read.
+	validate                 bool // when true, certificate failures will stop further processing
+	verify                   string
+	cert                     string
+	cert_key                 string
+	in_memory_verification   bool // if true, verify, cert, and cert_key are read from memory, not from a file
+	allow_redirect           bool = true // whether to allow redirect
+	max_retries              int  = 5    // maximum number of retries required when an underlying socket error occurs
+	enable_http2             bool = true // when true (the default) and the URL is https, advertise ALPN `h2, http/1.1` and use HTTP/2 if the server selects it; set to false to force HTTP/1.1. Ignored for plain http://, and for the Windows SChannel backend which has no ALPN yet (see vlang/v#27383). on_progress / on_progress_body / stop_copying_limit / stop_receiving_limit are honored on the HTTP/2 path; on_progress fires per DATA frame payload rather than per raw network read.
+	disable_connection_reuse bool // opt out of the shared connection pool: open a fresh connection for this request, send `Connection: close`, and close the connection after the response (the pre-pooling behavior)
 	// callbacks to allow custom reporting code to run, while the request is running, and to implement streaming
 	on_redirect      RequestRedirectFn     = unsafe { nil }
 	on_progress      RequestProgressFn     = unsafe { nil }
@@ -254,6 +255,22 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, data
 		}
 	}
 	// println('fetch ${method}, ${scheme}, ${host_name}, ${nport}, ${path} ')
+	if req.proxy == unsafe { nil } && !req.disable_connection_reuse
+		&& (scheme == 'http' || scheme == 'https') {
+		// Default path: route through the shared connection-pooling Transport,
+		// which reuses keep-alive connections across requests to the same origin.
+		mut transport := default_transport()
+		for i in 0 .. req.max_retries {
+			res := transport.round_trip(req, method, scheme, host_name, nport, path, data, header) or {
+				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
+					return err
+				}
+				continue
+			}
+			return res
+		}
+		return error('http.request.method_and_url_to_response: exhausted retries')
+	}
 	if scheme == 'https' && req.proxy == unsafe { nil } {
 		// println('ssl_do( ${nport}, ${method}, ${host_name}, ${path} )')
 		for i in 0 .. req.max_retries {
@@ -295,6 +312,15 @@ fn (req &Request) build_request_headers(method Method, host_name string, port in
 }
 
 fn (req &Request) build_request_headers_with(method Method, host_name string, port int, path string, data string, header Header) string {
+	return req.build_request_headers_opts(method, host_name, port, path, data, header, true)
+}
+
+// build_request_headers_opts builds the raw HTTP/1.x request. With
+// `connection_close` true it appends `Connection: close` (the historical
+// one-shot behavior); the pooled keep-alive path passes false and emits no
+// Connection header, leaving the HTTP/1.1 default (keep-alive) in effect and
+// respecting any Connection header the caller set themselves.
+fn (req &Request) build_request_headers_opts(method Method, host_name string, port int, path string, data string, header Header, connection_close bool) string {
 	mut sb := strings.new_builder(4096)
 	version := if req.version == .unknown { Version.v1_1 } else { req.version }
 	sb.write_string(method.str())
@@ -337,7 +363,9 @@ fn (req &Request) build_request_headers_with(method Method, host_name string, po
 		sb.write_string('\r\n')
 	}
 	sb.write_string(req.build_request_cookies_header_with_header(header))
-	sb.write_string('Connection: close\r\n')
+	if connection_close {
+		sb.write_string('Connection: close\r\n')
+	}
 	sb.write_string('\r\n')
 	sb.write_string(data)
 	return sb.str()
@@ -401,6 +429,28 @@ fn (req &Request) http_do(host string, method Method, path string, data string, 
 		req.on_finish(req, u64(response_text.len))!
 	}
 	return parse_received_response(response_text, response_data.info)
+}
+
+// h1_exchange_tcp sends an already-built HTTP/1.x request over an open TCP
+// connection and reads one response, leaving the connection open. The bool
+// result reports whether the response was precisely framed, so the connection
+// can safely carry another request (see ReceivedResponseInfo.reusable).
+fn (req &Request) h1_exchange_tcp(mut client net.TcpConn, raw string) !(Response, bool) {
+	client.write(raw.bytes()) or {
+		return error('http.transport: connection write failed: ${err.msg()}')
+	}
+	response_data := req.read_all_from_client_connection(client)!
+	response_text := response_data.data.bytestr()
+	$if trace_http_response ? {
+		eprint('< ')
+		eprint(response_text)
+		eprintln('')
+	}
+	if req.on_finish != unsafe { nil } {
+		req.on_finish(req, u64(response_text.len))!
+	}
+	resp := parse_received_response(response_text, response_data.info)!
+	return resp, response_data.info.reusable
 }
 
 // abstract over reading the whole content from TCP or SSL connections:
@@ -543,6 +593,12 @@ struct ReceivedResponseInfo {
 	headers_end         int = -1
 	is_chunked_transfer bool
 	has_truncated_body  bool
+	// reusable is true when the read loop terminated via precise response
+	// framing (Content-Length satisfied, chunked transfer complete, or a
+	// no-body status), meaning the connection holds no response leftovers and
+	// can safely carry another request. EOF-terminated or truncated reads
+	// leave it false.
+	reusable bool
 }
 
 fn parse_received_response(response_text string, info ReceivedResponseInfo) !Response {
@@ -589,6 +645,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 	mut new_len := u64(0)
 	mut status_code := -1
 	mut has_truncated_body := false
+	mut framed_complete := false
 	for {
 		readcounter++
 		len := receive_chunk_cb(con, bp, bufsize) or {
@@ -703,18 +760,25 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			has_truncated_body = true
 		}
 		if is_chunked_transfer && chunked_complete {
+			framed_complete = true
 			break
 		}
 		if headers_end >= 0 && response_has_no_body(req.method, status_code) {
 			// HEAD / 1xx / 204 / 304: response body is forbidden by the spec, so
 			// stop as soon as the headers terminator is in. Any `Content-Length`
 			// describes a body that will never be sent.
+			framed_complete = true
 			break
 		}
-		if has_content_length {
-			if expected_size > 0 && body_so_far >= expected_size {
-				break
-			}
+		if has_content_length && body_so_far >= expected_size {
+			// The framing is satisfied even when expected_size == 0: on a
+			// keep-alive connection the server sends nothing further, so waiting
+			// for EOF here would stall until the read timeout.
+			// A response carrying MORE body bytes than its declared
+			// Content-Length is malformed: the stream position is no longer
+			// trustworthy, so such a connection must never be reused.
+			framed_complete = body_so_far == expected_size
+			break
 		}
 		if req.stop_receiving_limit > 0 && new_len > req.stop_receiving_limit {
 			break
@@ -725,6 +789,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		headers_end:         headers_end
 		is_chunked_transfer: is_chunked_transfer
 		has_truncated_body:  has_truncated_body
+		reusable:            framed_complete
 	}
 }
 
@@ -1165,5 +1230,6 @@ fn is_no_need_retry_error(err_code int) bool {
 		net.err_no_udp_remote.code(),
 		net.err_connect_timed_out.code(),
 		net.err_timed_out_code,
+		transport_err_unsafe_retry,
 	]
 }

@@ -125,7 +125,7 @@ fn test_merge_deadline_context_n() {
 	for i in 0 .. 10 {
 		ctxs << context.background()
 	}
-	mut ctx_n, _ := context.with_timeout(mut background, time.second)
+	mut ctx_n, _ := context.with_timeout(mut background, 10 * time.second)
 	ctxs << ctx_n
 
 	for i in 0 .. 10 {

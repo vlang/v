@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 30
     name: Build on ubuntu-24.04 riscv64
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: uraimo/run-on-arch-action@v3
         name: Run commands
         id: runcmd

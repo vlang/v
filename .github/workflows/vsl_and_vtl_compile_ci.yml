@@ -33,7 +33,7 @@ jobs:
     env:
       VFLAGS: -no-parallel
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Cache apt packages
         if: runner.os == 'Linux'
         uses: ./.github/actions/cache-apt-packages-action
@@ -89,7 +89,7 @@ jobs:
       # (a warning on Linux, but an error on macOS).
       TERM: xterm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Cache apt packages
         if: runner.os == 'Linux'
         uses: ./.github/actions/cache-apt-packages-action
