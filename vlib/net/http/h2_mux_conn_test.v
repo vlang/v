@@ -637,6 +637,61 @@ fn test_mux_response_missing_status_resets_stream() {
 	cend.close_both()
 }
 
+// string.int() is lenient ('200 OK' -> 200), so a non-three-digit :status must
+// be rejected by an explicit digit check rather than accepted as a 200 success.
+fn test_mux_response_malformed_status_resets_stream() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{
+		method:    'GET'
+		authority: 't'
+		path:      '/get'
+	}, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		id := ids[0]
+		// A :status that int() would parse leniently to 200, but is malformed.
+		block := peer.encoder.encode([H2HeaderField{':status', '200 OK'},
+			H2HeaderField{'content-type', 'text/plain'}])
+		peer.write_frame(H2HeadersFrame{
+			stream_id:   id
+			fragment:    block
+			end_headers: true
+			end_stream:  false
+		}) or {
+			peer.fail('resp headers: ${err.msg()}')
+			return
+		}
+		for {
+			f := peer.pump() or { return }
+			if f is H2RstStreamFrame {
+				return
+			}
+		}
+	}(mut peer)
+	workers.wait()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	get_err := out.errs['/get'] or { '' }
+	assert get_err != '', 'expected an error for a malformed :status, not a success'
+	assert get_err.contains('status'), 'expected a :status protocol error, got: ${get_err}'
+	delivered := out.statuses['/get'] or { -1 }
+	assert delivered == -1, 'a malformed :status must not be delivered as a success (got ${delivered})'
+	cend.close_both()
+}
+
 // A stream reset with REFUSED_STREAM means the server did not process the
 // request, so it must surface a retryable error (RFC 7540 8.1.4) — even for a
 // non-idempotent method — so the pool can replay it on a fresh connection. A

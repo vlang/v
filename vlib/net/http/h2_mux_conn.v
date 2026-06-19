@@ -1092,19 +1092,26 @@ fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
 	s.mu.lock()
 	if !s.headers_done {
 		mut status := 0
+		mut status_valid := false
 		for f in fields {
 			if f.name == ':status' {
-				status = f.value.int()
+				// RFC 9113 §8.3.1: :status is exactly three digits. string.int()
+				// is lenient ('200 OK' -> 200), so validate the raw value before
+				// converting; otherwise a malformed status is accepted as valid.
+				if f.value.len == 3 && f.value.bytes().all(it >= `0` && it <= `9`) {
+					status = f.value.int()
+					status_valid = true
+				}
 				break
 			}
 		}
-		// RFC 9113 §8.3.1: every response MUST carry a valid :status (a 3-digit
-		// code, 100..599). A block without one — or with a garbage value — is
-		// malformed. Treat it as a stream-level PROTOCOL_ERROR rather than a 1xx
-		// interim, so the requester gets an error instead of waiting forever for
-		// a "final" HEADERS that will never arrive. (Trailers legitimately omit
-		// :status, but they are handled below since headers_done is already set.)
-		if status < 100 || status > 599 {
+		// A response MUST carry a valid :status (RFC 9113 §8.3.1), and HTTP/2
+		// forbids 101 (§8.1.1). A missing, malformed, out-of-range, or 101 status
+		// is a stream-level PROTOCOL_ERROR — reset it rather than treat it as a
+		// 1xx interim and wait forever for a "final" HEADERS that never arrives.
+		// (Trailers legitimately omit :status, but they are handled below since
+		// headers_done is already set by then.)
+		if !status_valid || status < 100 || status > 599 || status == 101 {
 			s.mu.unlock()
 			c.reset_stream(frame.stream_id, .protocol_error,
 				'response with a missing or invalid :status')
