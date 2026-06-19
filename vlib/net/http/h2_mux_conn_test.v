@@ -1734,6 +1734,36 @@ fn test_mux_data_after_end_stream_half_closed_resets_only_stream() {
 	cend.close_both()
 }
 
+// A peer that floods control frames before the client preface (the connection
+// stays pre-handshake until the first request) must not grow the deferred-ACK
+// buffers without bound — the connection is failed once the cap is exceeded.
+fn test_mux_preface_control_flood_fails_connection() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	// No request is made, so the lazy client preface is never sent; every PING
+	// is deferred. Send more than the cap allows.
+	for _ in 0 .. (h2_max_pending_preface_acks + 5) {
+		peer.write_frame(H2PingFrame{ data: [u8(1), 2, 3, 4, 5, 6, 7, 8] }) or {
+			assert false, 'write: ${err.msg()}'
+		}
+	}
+	mut closed := false
+	for _ in 0 .. 2000 {
+		conn.smu.lock()
+		closed = conn.closed
+		conn.smu.unlock()
+		if closed {
+			break
+		}
+		time.sleep(time.millisecond)
+	}
+	assert closed, 'a pre-preface control-frame flood must fail the connection'
+	cend.close_both()
+}
+
 // A malformed Content-Length (string.u64() would leniently parse '12junk' -> 12)
 // makes the response malformed; it must be rejected, not accepted as a success.
 fn test_mux_malformed_content_length_resets_stream() {

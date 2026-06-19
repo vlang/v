@@ -35,6 +35,13 @@ import time
 // frames and exhaust memory (the CONTINUATION-flood DoS, CVE-2024-27316 class).
 const h2_max_recv_header_block = 1024 * 1024
 
+// h2_max_pending_preface_acks caps how many control-frame ACKs (SETTINGS + PING)
+// may be deferred while waiting to send the lazy client preface. A well-behaved
+// server sends only its preface SETTINGS (and perhaps a PING) before ours, so a
+// small bound is ample; without it a peer that holds the connection pre-handshake
+// could flood PING/SETTINGS and grow the deferred-ACK buffers without limit.
+const h2_max_pending_preface_acks = 64
+
 // h2_err_retryable_code tags stream errors where the request provably never
 // reached server processing (GOAWAY-unprocessed, connection closed before the
 // request was sent, admission refused), so it is safe to retry on a fresh
@@ -886,7 +893,11 @@ fn (mut c H2MuxConn) dispatch_frame(frame H2Frame) ! {
 					// immediately after sending the preface. Use a counter so
 					// multiple SETTINGS frames each get their own ACK.
 					c.pending_settings_acks++
+					over := c.pending_settings_acks + c.pending_ping_acks.len > h2_max_pending_preface_acks
 					c.wmu.unlock()
+					if over {
+						return error('h2: too many control frames before the client preface')
+					}
 				} else {
 					c.write_all_locked(H2Frame(H2SettingsFrame{
 						ack: true
@@ -905,7 +916,11 @@ fn (mut c H2MuxConn) dispatch_frame(frame H2Frame) ! {
 					// RFC 7540 §3.5: client preface must be the first bytes sent.
 					// Defer the ACK; handshake_locked() will flush it after the preface.
 					c.pending_ping_acks << frame.data
+					over := c.pending_settings_acks + c.pending_ping_acks.len > h2_max_pending_preface_acks
 					c.wmu.unlock()
+					if over {
+						return error('h2: too many control frames before the client preface')
+					}
 				} else {
 					c.write_all_locked(H2Frame(H2PingFrame{
 						ack:  true
