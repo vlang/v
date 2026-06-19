@@ -832,7 +832,7 @@ import v2.types
 //     direct-call `transform_index_expr` (skipping the outer
 //     `transform_expr` match dispatch) and direct-emit the resulting
 //     UnsafeExpr via `emit_unsafe_expr_by_ids` (already present in
-//     `vlib/v2/ast/flat.v`; no new helper needed).
+//     `vlib/v2_toberemoved/ast/flat.v`; no new helper needed).
 //
 //     Safety: `transform_index_expr` returns an `ast.UnsafeExpr` with
 //     fully-transformed stmts (the helper calls `t.transform_expr` on
@@ -1029,7 +1029,7 @@ import v2.types
 //     leaf `out.emit_expr` — another follow-up routing pass.
 //
 //     New pub helper: `emit_if_expr_by_ids(cond_id, else_id, stmt_ids,
-//     pos)` in `vlib/v2/ast/flat.v` mirrors `add_expr(IfExpr)` encoding
+//     pos)` in `vlib/v2_toberemoved/ast/flat.v` mirrors `add_expr(IfExpr)` encoding
 //     (`emit_simple(.expr_if, pos, [cond, else, stmts...])`). No new
 //     fixture this session. All 168 transformer-diff tests continue to
 //     pass.
@@ -1079,7 +1079,7 @@ import v2.types
 //     to pass.
 //
 //     New pub helper: `emit_call_expr_by_ids(lhs_id, arg_ids, pos)` in
-//     `vlib/v2/ast/flat.v` mirrors `add_expr(CallExpr)` encoding
+//     `vlib/v2_toberemoved/ast/flat.v` mirrors `add_expr(CallExpr)` encoding
 //     (emit_simple `.expr_call` with edges = [lhs, args...]).
 //
 //   Session 43 (2026-05-27): InfixExpr port (always-lowers via helper,
@@ -1123,7 +1123,7 @@ import v2.types
 //     tests continue to pass.
 //
 //     New pub helper: `emit_infix_expr_by_ids(op, lhs_id, rhs_id, pos)`
-//     in `vlib/v2/ast/flat.v` mirrors `add_expr(InfixExpr)` encoding
+//     in `vlib/v2_toberemoved/ast/flat.v` mirrors `add_expr(InfixExpr)` encoding
 //     (aux1=-1, aux2=-1, meta=u16(op), edges = [lhs, rhs]).
 //
 //   Session 42 (2026-05-27): CallOrCastExpr port (always-lowers via helper,
@@ -1215,7 +1215,7 @@ import v2.types
 //
 //     New pub helper: `emit_array_init_expr_by_ids(typ_id, init_id,
 //     cap_id, len_id, update_expr_id, expr_ids, pos)` in
-//     `vlib/v2/ast/flat.v` mirrors `add_expr(ArrayInitExpr)` encoding
+//     `vlib/v2_toberemoved/ast/flat.v` mirrors `add_expr(ArrayInitExpr)` encoding
 //     (`emit_simple(.expr_array_init, pos, [typ, init, cap, len,
 //     update_expr, exprs...])`).
 //
@@ -1256,7 +1256,7 @@ import v2.types
 //     tag tables, etc. All 168 transformer-diff tests continue to pass.
 //
 //     New pub helper: `emit_map_init_expr_by_ids(typ_id, key_ids, val_ids,
-//     pos)` in `vlib/v2/ast/flat.v` mirrors `add_expr(MapInitExpr)`
+//     pos)` in `vlib/v2_toberemoved/ast/flat.v` mirrors `add_expr(MapInitExpr)`
 //     encoding exactly (opcode `expr_map_init`, aux1=-1,
 //     aux2=keys.len, edges = [typ, keys..., vals...]).
 //
@@ -1347,7 +1347,7 @@ import v2.types
 //     transformer-diff tests continue to pass.
 //
 //     New pub helper: `emit_for_stmt_by_ids(init_id, cond_id,
-//     post_id, stmt_ids)` in `vlib/v2/ast/flat.v` (~line 577).
+//     post_id, stmt_ids)` in `vlib/v2_toberemoved/ast/flat.v` (~line 577).
 //
 //   Session 37 (2026-05-27): AssignStmt port (pre-arm guard + helper).
 //     `transform_stmt`'s AssignStmt arm has a pre-arm dispatch block
@@ -1389,7 +1389,7 @@ import v2.types
 //     ops). All 168 transformer-diff tests continue to pass.
 //
 //     New pub helper: `emit_assign_stmt_by_ids(op, lhs_ids, rhs_ids,
-//     pos)` in `vlib/v2/ast/flat.v` (~line 577).
+//     pos)` in `vlib/v2_toberemoved/ast/flat.v` (~line 577).
 //
 //   Session 36 (2026-05-27): SqlExpr port (always-lowers via helper, two
 //     outcome shapes).
@@ -1437,7 +1437,7 @@ import v2.types
 //     to pass.
 //
 //     New pub helper: `emit_sql_expr_by_id(table_name, is_count,
-//     is_create, expr_id, pos)` in `vlib/v2/ast/flat.v` (~line 696).
+//     is_create, expr_id, pos)` in `vlib/v2_toberemoved/ast/flat.v` (~line 696).
 //     Mirrors `add_expr(SqlExpr)`'s encoding exactly: opcode `expr_sql`,
 //     pos, interned table_name (aux1), `flag_is_count | flag_is_create`
 //     packed into flags, one edge to inner expr.
@@ -11082,7 +11082,7 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			// Session 62 refactor (inner ExprStmt wrapper-struct elision):
 			// the legacy arm appended an `ast.ExprStmt{expr: result_expr}`
 			// to prefix_stmts and routed it through `out.emit_stmt(...)`.
-			// Direct-emit via `emit_expr_stmt_by_id` (vlib/v2/ast/flat.v:520)
+			// Direct-emit via `emit_expr_stmt_by_id` (vlib/v2_toberemoved/ast/flat.v:520)
 			// over an already-flat `result_expr` id skips that wrapper
 			// allocation per compound-expression OrExpr occurrence. Both the
 			// legacy `ast.ExprStmt{expr: ...}` (no explicit pos) and
@@ -13176,7 +13176,7 @@ fn (mut t Transformer) transform_index_expr_to_flat_parts(lhs_expr ast.Expr, idx
 // `is_module_ident` sub-module call, `is_module_ident` nested-module call,
 // same-module enum member) previously synthesised `ast.Ident{name, pos}`
 // wrappers and routed them through `out.emit_expr(...)`. Session 63 direct-
-// emits via the new `emit_ident_by_name(name, pos)` helper (vlib/v2/ast/flat.v
+// emits via the new `emit_ident_by_name(name, pos)` helper (vlib/v2_toberemoved/ast/flat.v
 // — bit-equal to `add_expr(Ident)`: `b.emit(.expr_ident, pos, b.intern(name),
 // -1, 0, 0, []FlatEdge{})`) — one wrapper allocation eliminated per occurrence.
 //

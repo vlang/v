@@ -1,4 +1,4 @@
-// Tests for body-level escape analysis (vlib/v2/types/checker_escape.v).
+// Tests for body-level escape analysis (vlib/v2_toberemoved/types/checker_escape.v).
 // Built with `-d ownership`. Mirrors the helpers in the sibling
 // `checker_lifetimes_test.v` and `checker_ownership_test.v` files —
 // `v test` compiles each test file in isolation, so module-private helpers

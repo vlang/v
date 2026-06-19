@@ -997,7 +997,7 @@ pub fn h_divider() {
 }
 
 // filter_args_for_v2 returns a command-line string containing only the flags
-// the v2 compiler accepts (`vlib/v2/pref/pref.v`). v2 errors on any unknown
+// the v2 compiler accepts (`vlib/v2_toberemoved/pref/pref.v`). v2 errors on any unknown
 // flag, so this is used when forwarding `v test` options to v2 for
 // `_test.vv2` files. Keep these lists in sync with v2's pref validator.
 fn filter_args_for_v2(compile_options []string) string {

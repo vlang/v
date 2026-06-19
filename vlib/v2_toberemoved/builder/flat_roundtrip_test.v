@@ -178,7 +178,7 @@ fn max[T](a T, b T) T {
 fn test_roundtrip_real_source_file() {
 	// Round-trip a real V2 source file end-to-end. This exercises the full
 	// surface of parser-produced AST variants.
-	path := os.real_path('vlib/v2/ast/ast.v')
+	path := os.real_path('vlib/v2_toberemoved/ast/ast.v')
 	if !os.exists(path) {
 		return
 	}

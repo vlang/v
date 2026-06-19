@@ -10,14 +10,14 @@ fn test_skip_modules_with_file_fragment_does_not_drop_user_modules() {
 	mut b := Builder.new(mod)
 	b.cur_module = 'c'
 	b.skip_modules['c'] = true
-	b.skip_module_file_fragments['c'] = '/vlib/v2/gen/c/'
+	b.skip_module_file_fragments['c'] = '/vlib/v2_toberemoved/gen/c/'
 
 	decl := ast.FnDecl{
 		name: 'user_fn'
 	}
 	assert b.should_build_fn('/tmp/project/c/user.v', decl)
-	assert !b.should_build_fn('/Users/me/code/v/vlib/v2/gen/c/c.v', decl)
-	assert !b.should_build_fn('../../vlib/v2/gen/c/c.v', decl)
+	assert !b.should_build_fn('/Users/me/code/v/vlib/v2_toberemoved/gen/c/c.v', decl)
+	assert !b.should_build_fn('../../vlib/v2_toberemoved/gen/c/c.v', decl)
 }
 
 fn test_skip_modules_with_file_fragment_matches_eval_backend_path() {
@@ -25,12 +25,12 @@ fn test_skip_modules_with_file_fragment_matches_eval_backend_path() {
 	mut b := Builder.new(mod)
 	b.cur_module = 'eval'
 	b.skip_modules['eval'] = true
-	b.skip_module_file_fragments['eval'] = '/vlib/v2/eval/'
+	b.skip_module_file_fragments['eval'] = '/vlib/v2_toberemoved/eval/'
 
 	decl := ast.FnDecl{
 		name: 'user_fn'
 	}
 	assert b.should_build_fn('/tmp/project/eval/user.v', decl)
-	assert !b.should_build_fn('/Users/me/code/v/vlib/v2/eval/eval.v', decl)
-	assert !b.should_build_fn('../../vlib/v2/eval/eval.v', decl)
+	assert !b.should_build_fn('/Users/me/code/v/vlib/v2_toberemoved/eval/eval.v', decl)
+	assert !b.should_build_fn('../../vlib/v2_toberemoved/eval/eval.v', decl)
 }

@@ -9,5 +9,5 @@ files to temporary `.v` files and compiles them with `-v2`.
 Run:
 
 ```sh
-./v test vlib/v2/types/module_storage_test.v
+./v test vlib/v2_toberemoved/types/module_storage_test.v
 ```

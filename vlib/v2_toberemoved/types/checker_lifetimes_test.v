@@ -1,4 +1,4 @@
-// Tests for the Phase 1 lifetime validator (vlib/v2/types/checker_lifetimes.v).
+// Tests for the Phase 1 lifetime validator (vlib/v2_toberemoved/types/checker_lifetimes.v).
 // Built with `-d ownership`. The `run_lifetime_check` helper below is a
 // local copy of `run_ownership_check` from checker_ownership_test.v —
 // `v test` compiles each test file in isolation, so module-private helpers

@@ -96,7 +96,7 @@ fn (p Point) sum() int { return p.x + p.y }
 }
 
 fn test_streaming_real_source_file() {
-	path := os.real_path('vlib/v2/ast/ast.v')
+	path := os.real_path('vlib/v2_toberemoved/ast/ast.v')
 	if !os.exists(path) {
 		return
 	}

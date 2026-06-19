@@ -1,6 +1,6 @@
-// Test runner for ARM64 backend tests
-// Run with: ./v run vlib/v2/gen/arm64/tests/run_tests.v
-// Or: cd vlib/v2/gen/arm64/tests && v run run_tests.v
+// Test runner for cleanc backend regression tests
+// Run with: ./vnew run vlib/v2_toberemoved/gen/cleanc/tests/run_tests.v
+// Or: cd vlib/v2_toberemoved/gen/cleanc/tests && v run run_tests.v
 
 module main
 
@@ -13,18 +13,18 @@ fn main() {
 	vroot := os.dir(@VEXE)
 	v2_source := os.join_path(vroot, 'cmd', 'v2', 'v2.v')
 	v2_binary := os.join_path(vroot, 'cmd', 'v2', 'v2')
-	tests_dir := os.join_path(vroot, 'vlib', 'v2', 'gen', 'arm64', 'tests')
+	tests_dir := os.join_path(vroot, 'vlib', 'v2', 'gen', 'cleanc', 'tests')
 
-	// Build v2 compiler
+	// Build v2 compiler (with v1).
 	println('[*] Building v2...')
-	build_res := os.execute('${@VEXE} ${v2_source} -o ${v2_binary}')
+	build_res := os.execute('${@VEXE} -gc none -cc cc ${v2_source} -o ${v2_binary}')
 	if build_res.exit_code != 0 {
 		eprintln('Error: Failed to build v2')
 		eprintln(build_res.output)
 		exit(1)
 	}
 
-	// Find all test files (*.v except run_tests.v)
+	// Find all test files (*.v except run_tests.v).
 	test_files := os.ls(tests_dir) or {
 		eprintln('Error: Cannot list tests directory')
 		exit(1)
@@ -44,9 +44,9 @@ fn main() {
 
 		println('\n[*] Testing: ${file}')
 
-		// Run v2 with ARM64 backend
+		// Run v2 with cleanc backend.
 		v2_output := os.join_path(tests_dir, 'test_${test_name}')
-		v2_cmd := '${v2_binary} -backend arm64 ${test_path} -o ${v2_output}'
+		v2_cmd := '${v2_binary} -gc none -backend cleanc ${test_path} -o ${v2_output}'
 		v2_res := os.execute(v2_cmd)
 		if v2_res.exit_code != 0 {
 			eprintln('  [FAIL] v2 compilation failed')
@@ -55,7 +55,7 @@ fn main() {
 			continue
 		}
 
-		// Run the generated binary
+		// Run the generated binary.
 		gen_res := os.execute(v2_output)
 		if gen_res.exit_code != 0 {
 			eprintln('  [FAIL] Generated binary exited with code ${gen_res.exit_code}')
@@ -64,8 +64,8 @@ fn main() {
 			continue
 		}
 
-		// Run reference compiler
-		ref_res := os.execute('${@VEXE} -n -w -enable-globals run ${test_path}')
+		// Run reference compiler (v1).
+		ref_res := os.execute('${@VEXE} -gc none -n -w -enable-globals run ${test_path}')
 		if ref_res.exit_code != 0 {
 			eprintln('  [FAIL] Reference compilation failed')
 			eprintln(ref_res.output)
@@ -73,7 +73,7 @@ fn main() {
 			continue
 		}
 
-		// Compare outputs
+		// Compare outputs.
 		expected := ref_res.output.trim_space().replace('\r\n', '\n')
 		actual := gen_res.output.trim_space().replace('\r\n', '\n')
 
@@ -87,8 +87,9 @@ fn main() {
 			failed++
 		}
 
-		// Clean up
+		// Clean up.
 		os.rm(v2_output) or {}
+		os.rm('${v2_output}.c') or {}
 	}
 
 	println('\n========================================')

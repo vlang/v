@@ -3412,8 +3412,8 @@ fn (b &Builder) should_prune_native_backend_modules(arch pref.Arch) bool {
 
 fn native_backend_module_file_fragment(backend_mod string) string {
 	return match backend_mod {
-		'eval' { '/vlib/v2/eval/' }
-		else { '/vlib/v2/gen/${backend_mod}/' }
+		'eval' { '/vlib/v2_toberemoved/eval/' }
+		else { '/vlib/v2_toberemoved/gen/${backend_mod}/' }
 	}
 }
 
