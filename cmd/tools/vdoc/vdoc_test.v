@@ -356,3 +356,28 @@ pub fn only_win() int {
 	// notice is printed, so we check for the rendered symbol rather than the name.
 	assert !res.output.contains('only_win')
 }
+
+fn test_doc_multi_all_modules_skipped_fails_for_file_output() {
+	// https://github.com/vlang/v/issues/27464 (review follow-up)
+	// When every discovered module is filtered out for the target platform, there
+	// is nothing to document. Writing to a real output path must fail with the same
+	// `No documentation found` error as the stdout path, instead of silently
+	// creating/cleaning an empty output directory and exiting 0.
+	base_dir := 'all_skipped_modules'
+	skipped_dir := os.join_path(base_dir, 'winonly')
+	out_dir := os.join_path(base_dir, 'out')
+	os.mkdir_all(skipped_dir)!
+	os.write_file(os.join_path(skipped_dir, 'winonly_windows.c.v'), 'module winonly
+
+pub fn only_win() int {
+	return 1
+}
+')!
+	// `os.execute` (not `execute_opt`) so the expected non-zero exit is not an error.
+	res := os.execute('${vexe_} doc -no-timestamp -m -f html -o ${os.quoted_path('./' + out_dir)} ${os.quoted_path(
+		'./' + base_dir)}')
+	assert res.exit_code != 0
+	assert res.output.contains('No documentation found')
+	// The output directory must not have been created.
+	assert !os.exists(out_dir)
+}

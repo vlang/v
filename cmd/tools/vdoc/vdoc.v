@@ -404,22 +404,25 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		exit(1)
 	}
 	vd.vprintln('Rendering docs...')
+	if vd.docs.len == 0 {
+		// Every discovered module was skipped (e.g. a tree containing only files
+		// that are filtered out for the target platform), so there is nothing to
+		// render. Report it and fail, regardless of the output destination, instead
+		// of silently creating/cleaning an empty output directory and exiting 0.
+		if dirs.len == 0 {
+			eprintln('vdoc: No documentation found')
+		} else {
+			eprintln('vdoc: No documentation found for ${dirs[0]}')
+		}
+		exit(1)
+	}
 	if out.path == '' || out.path == 'stdout' || out.path == '-' {
 		if out.typ == .html {
 			vd.render_static_html(out)
 		}
 		outputs := vd.render(out)
-		if outputs.len == 0 {
-			if dirs.len == 0 {
-				eprintln('vdoc: No documentation found')
-			} else {
-				eprintln('vdoc: No documentation found for ${dirs[0]}')
-			}
-			exit(1)
-		} else {
-			first := outputs.keys()[0]
-			println(outputs[first])
-		}
+		first := outputs.keys()[0]
+		println(outputs[first])
 	} else {
 		if !os.exists(out.path) {
 			os.mkdir_all(out.path) or { panic(err) }
