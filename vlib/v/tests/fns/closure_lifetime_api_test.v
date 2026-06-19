@@ -2,6 +2,12 @@ import os
 
 const vexe = @VEXE
 
+fn testsuite_begin() {
+	$if rv64 {
+		skip_test('closure lifetime API tests are too slow under riscv64 emulation')
+	}
+}
+
 fn missing_boehm_leak_lib(output string) bool {
 	return output.contains('libgc') && (output.contains('was not found')
 		|| output.contains('cannot find'))
