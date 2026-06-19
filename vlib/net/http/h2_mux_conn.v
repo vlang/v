@@ -118,11 +118,12 @@ mut:
 	// the reader thread has exited and the last reference is dropped.
 	close_transport fn () = unsafe { nil }
 	// --- guarded by wmu ---
-	wmu                  &sync.Mutex = sync.new_mutex()
-	encoder              H2HpackEncoder
-	next_stream_id       u32 = 1
-	handshaked           bool
-	pending_settings_ack bool // server sent SETTINGS before our preface; ACK deferred
+	wmu                   &sync.Mutex = sync.new_mutex()
+	encoder               H2HpackEncoder
+	next_stream_id        u32 = 1
+	handshaked            bool
+	pending_settings_acks int    // count of SETTINGS frames received before our preface; each needs one ACK
+	pending_ping_acks     [][]u8 // PING frames received before our preface; each needs an ACK with the same data
 	// --- guarded by fmu, fcv signals growth/death ---
 	fmu                 &sync.Mutex = unsafe { nil }
 	fcv                 &sync.Cond  = unsafe { nil }
@@ -389,12 +390,17 @@ fn (mut c H2MuxConn) handshake_locked() ! {
 	}).encode()
 	c.write_all_locked(buf)!
 	c.handshaked = true
-	// If the reader processed the server's preface SETTINGS before we sent ours,
-	// it deferred the ACK to preserve client-preface-first ordering. Send it now.
-	if c.pending_settings_ack {
+	// If the reader processed server frames before we sent our preface, ACKs were
+	// deferred to preserve client-preface-first ordering (RFC 7540 §3.5). Flush
+	// them now: one SETTINGS ACK per received non-ACK SETTINGS, then any PING ACKs.
+	for _ in 0 .. c.pending_settings_acks {
 		c.write_all_locked(H2Frame(H2SettingsFrame{ ack: true }).encode())!
-		c.pending_settings_ack = false
 	}
+	c.pending_settings_acks = 0
+	for data in c.pending_ping_acks {
+		c.write_all_locked(H2Frame(H2PingFrame{ ack: true, data: data }).encode())!
+	}
+	c.pending_ping_acks.clear()
 }
 
 // send_header_block_locked writes a header block as HEADERS(+CONTINUATION)
@@ -826,8 +832,9 @@ fn (mut c H2MuxConn) dispatch_frame(frame H2Frame) ! {
 				if !c.handshaked {
 					// RFC 7540 §3.5: no frame may precede the client connection
 					// preface. Defer the ACK; handshake_locked() will flush it
-					// immediately after sending the preface.
-					c.pending_settings_ack = true
+					// immediately after sending the preface. Use a counter so
+					// multiple SETTINGS frames each get their own ACK.
+					c.pending_settings_acks++
 					c.wmu.unlock()
 				} else {
 					c.write_all_locked(H2Frame(H2SettingsFrame{
@@ -843,14 +850,21 @@ fn (mut c H2MuxConn) dispatch_frame(frame H2Frame) ! {
 		H2PingFrame {
 			if !frame.ack {
 				c.wmu.lock()
-				c.write_all_locked(H2Frame(H2PingFrame{
-					ack:  true
-					data: frame.data
-				}).encode()) or {
+				if !c.handshaked {
+					// RFC 7540 §3.5: client preface must be the first bytes sent.
+					// Defer the ACK; handshake_locked() will flush it after the preface.
+					c.pending_ping_acks << frame.data
 					c.wmu.unlock()
-					return error('failed to ack PING: ${err.msg()}')
+				} else {
+					c.write_all_locked(H2Frame(H2PingFrame{
+						ack:  true
+						data: frame.data
+					}).encode()) or {
+						c.wmu.unlock()
+						return error('failed to ack PING: ${err.msg()}')
+					}
+					c.wmu.unlock()
 				}
-				c.wmu.unlock()
 			}
 		}
 		H2WindowUpdateFrame {
