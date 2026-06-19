@@ -99,3 +99,33 @@ fn test_option_struct_eq_in_short_circuit() {
 	assert false || a == b
 	assert !(false && a != b)
 }
+
+fn test_option_ptr_struct_eq() {
+	a := ?&Id(&Id{
+		v: 1
+	})
+	b := ?&Id(&Id{
+		v: 1
+	})
+	c := ?&Id(&Id{
+		v: 2
+	})
+	d := ?&Id(none)
+	e := ?&Id(none)
+	assert a == b
+	assert a != c
+	assert a != d
+	assert d == e
+	assert a != ?&Id(none)
+}
+
+fn test_option_ptr_struct_ne() {
+	a := ?&Id(&Id{
+		v: 1
+	})
+	b := ?&Id(&Id{
+		v: 2
+	})
+	assert a != b
+	assert a != ?&Id(none)
+}

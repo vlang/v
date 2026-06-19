@@ -426,9 +426,8 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.write(')')
 			}
 			.struct {
-				if left_is_option && right_is_option && !left.typ.is_ptr() && !right.typ.is_ptr() {
-					bare_typ := g.equality_fn(left.unaliased.clear_flag(.option))
-					styp := g.base_type(left_type)
+				if left_is_option && right_is_option {
+					bare_typ := g.equality_fn(left.unaliased.clear_flag(.option).set_nr_muls(0))
 					old_inside_opt_or_res := g.inside_opt_or_res
 					g.inside_opt_or_res = true
 					inside_and_rhs := g.infix_left_var_name.len > 0
@@ -450,8 +449,20 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 					}
 					g.write('(${lv}.state == 2 && ${rv}.state == 2) || ')
 					g.write('(${lv}.state == ${rv}.state && ${lv}.state != 2 && ')
-					g.write('${bare_typ}_struct_eq(*(${styp}*)&${lv}.data, *(${styp}*)&${rv}.data))')
-					g.write(')')
+					if left.typ.is_ptr() {
+						ptr_styp := g.styp(left.unaliased.clear_flag(.option))
+						nr_muls := left.typ.nr_muls()
+						deref := '*'.repeat(nr_muls)
+						lp := '*(${ptr_styp}*)&${lv}.data'
+						rp := '*(${ptr_styp}*)&${rv}.data'
+						g.write('(${lp} == ${rp} || (${lp} != 0 && ${rp} != 0 && ')
+						g.write('${bare_typ}_struct_eq(${deref}${lp}, ${deref}${rp})')
+						g.write('))')
+					} else {
+						styp := g.base_type(left_type)
+						g.write('${bare_typ}_struct_eq(*(${styp}*)&${lv}.data, *(${styp}*)&${rv}.data)')
+					}
+					g.write('))')
 					g.inside_opt_or_res = old_inside_opt_or_res
 				} else {
 					ptr_typ := g.equality_fn(left.unaliased)
