@@ -846,15 +846,25 @@ fn (b &Builder) candidate_belongs_to_foreign_project(candidate_path string, impo
 	if candidate_vmod_matches_import(abs_candidate, mod) {
 		return false
 	}
+	candidate_lookup_path := comparable_path(candidate_path)
 	for lookup in b.pref.lookup_path {
 		abs_lookup := comparable_real_path(lookup)
 		if path_is_at_or_inside(abs_candidate, abs_lookup) {
+			return false
+		}
+		// Also check without resolving symlinks, so that a module installed
+		// as a symlink inside a lookup path (e.g. `.vmodules/pkg -> /real/pkg`)
+		// is still recognized as belonging to the project.
+		lookup_path := comparable_path(lookup)
+		if path_is_at_or_inside(candidate_lookup_path, lookup_path) {
 			return false
 		}
 	}
 	return true
 }
 
+// path_belongs_to_lookup_path returns true when the given path is at or
+// inside any of the configured lookup paths.
 fn (b &Builder) path_belongs_to_lookup_path(path string) bool {
 	abs_path := comparable_real_path(path)
 	for lookup in b.pref.lookup_path {
@@ -866,8 +876,25 @@ fn (b &Builder) path_belongs_to_lookup_path(path string) bool {
 	return false
 }
 
+// comparable_real_path normalizes a path for comparison, resolving symlinks
+// via os.real_path. Use when both sides of a comparison should refer to the
+// same physical location on disk.
 fn comparable_real_path(path string) string {
-	mut normalized := os.real_path(path).replace('\\', '/')
+	return comparable_path_from(os.real_path(path))
+}
+
+// comparable_path normalizes a path for comparison without resolving symlinks.
+// Use when the original (logical) path matters, e.g. for symlinked modules
+// inside `.vmodules` that should match their lookup path as-is.
+fn comparable_path(path string) string {
+	return comparable_path_from(os.abs_path(path))
+}
+
+// comparable_path_from normalizes a path string for consistent comparison:
+// converts backslashes to forward slashes, collapses duplicate separators,
+// and strips trailing slashes.
+fn comparable_path_from(path string) string {
+	mut normalized := path.replace('\\', '/')
 	for normalized.contains('//') {
 		normalized = normalized.replace('//', '/')
 	}
