@@ -58,3 +58,17 @@ static void v_net_openssl_get0_alpn_selected(SSL *ssl, const unsigned char **dat
 #ifndef SSL_ERROR_WANT_ASYNC_JOB
 #define SSL_ERROR_WANT_ASYNC_JOB 10
 #endif
+
+// TLS_server_method() is only available in OpenSSL 1.1.0 and newer.
+// On older OpenSSL/LibreSSL, fall back to SSLv23_server_method().
+#if defined(LIBRESSL_VERSION_NUMBER) || !defined(OPENSSL_VERSION_NUMBER) \
+	|| OPENSSL_VERSION_NUMBER < 0x10100000L
+static const SSL_METHOD *v_net_openssl_TLS_server_method(void) {
+	return SSLv23_server_method();
+}
+#else
+static const SSL_METHOD *v_net_openssl_TLS_server_method(void) {
+	return TLS_server_method();
+}
+#endif
+

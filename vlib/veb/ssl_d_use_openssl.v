@@ -61,9 +61,7 @@ fn handle_ssl_connection[A, X](mut ssl_conn openssl.SSLConn, params &SslRequestP
 	defer {
 		ssl_conn.shutdown() or {}
 	}
-	ssl_conn.accept_handshake() or {
-		return
-	}
+	ssl_conn.accept_handshake() or { return }
 	mut reader := io.new_buffered_reader(
 		reader: ssl_conn
 		cap:    params.max_request_buffer_size
@@ -99,6 +97,9 @@ fn handle_ssl_connection[A, X](mut ssl_conn openssl.SSLConn, params &SslRequestP
 }
 
 fn write_ssl_context_response(mut ssl_conn openssl.SSLConn, completed_context &Context) ! {
+	if !completed_context.done && completed_context.return_type == .normal {
+		return error('context did not send a response')
+	}
 	match completed_context.return_type {
 		.normal {
 			write_ssl_response(mut ssl_conn, completed_context.res)!

@@ -27,10 +27,13 @@ fn (mut l SSLListener) init() ! {
 	if l.config.cert == '' || l.config.cert_key == '' {
 		return error('net.openssl SSLListener.init, no certificate or key provided')
 	}
+	if l.config.validate && l.config.verify == '' {
+		return error('net.openssl SSLListener.init, no root CA provided')
+	}
 
 	l.tcp_listener = net.listen_tcp(.ip, l.saddr, net.ListenOptions{})!
 
-	l.sslctx = unsafe { C.SSL_CTX_new(C.TLS_server_method()) }
+	l.sslctx = unsafe { C.SSL_CTX_new(C.v_net_openssl_TLS_server_method()) }
 	if l.sslctx == 0 {
 		l.tcp_listener.close() or {}
 		return error('net.openssl SSLListener.init, could not get ssl context')
@@ -38,6 +41,7 @@ fn (mut l SSLListener) init() ! {
 
 	mut cert := l.config.cert
 	mut cert_key := l.config.cert_key
+	mut ca_file := l.config.verify
 
 	if l.config.in_memory_verification {
 		now := time.now().unix().str()
@@ -48,6 +52,10 @@ fn (mut l SSLListener) init() ! {
 		}
 		if l.config.cert_key != '' {
 			os.write_file(cert_key, l.config.cert_key)!
+		}
+		if l.config.validate && l.config.verify != '' {
+			ca_file = os.temp_dir() + '/v_srv_ca' + now
+			os.write_file(ca_file, l.config.verify)!
 		}
 	}
 
@@ -69,6 +77,16 @@ fn (mut l SSLListener) init() ! {
 	if res != 1 {
 		l.shutdown() or {}
 		return error('net.openssl SSLListener.init, SSL_CTX_check_private_key failed')
+	}
+
+	if l.config.validate {
+		res = C.SSL_CTX_load_verify_locations(voidptr(l.sslctx), &char(ca_file.str), unsafe { nil })
+		if res != 1 {
+			l.shutdown() or {}
+			return error('net.openssl SSLListener.init, SSL_CTX_load_verify_locations failed')
+		}
+		C.SSL_CTX_set_verify(voidptr(l.sslctx),
+			C.SSL_VERIFY_PEER | C.SSL_VERIFY_FAIL_IF_NO_PEER_CERT, unsafe { nil })
 	}
 }
 

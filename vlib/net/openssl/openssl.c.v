@@ -103,6 +103,8 @@ fn C.SSL_CTX_set_options(ctx &C.SSL_CTX, options i32)
 
 fn C.SSL_CTX_set_verify_depth(s &C.SSL_CTX, depth i32)
 
+fn C.SSL_CTX_set_verify(ctx &C.SSL_CTX, mode i32, callback voidptr)
+
 fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, const_file &char, ca_path &char) i32
 
 fn C.SSL_CTX_free(ctx &C.SSL_CTX)
@@ -155,7 +157,7 @@ fn C.SSLv23_client_method() &C.SSL_METHOD
 
 fn C.TLS_method() voidptr
 
-fn C.TLS_server_method() &C.SSL_METHOD
+fn C.v_net_openssl_TLS_server_method() &C.SSL_METHOD
 
 fn C.TLSv1_2_method() voidptr
 
