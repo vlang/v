@@ -511,6 +511,7 @@ fn (mut c H2MuxConn) send_body_on_stream(mut s H2MuxStream, body []u8) ! {
 fn (mut c H2MuxConn) wait_response(mut s H2MuxStream, req H2ClientRequest) !H2ClientResponse {
 	mut resp := H2ClientResponse{}
 	mut body_expected := u64(0)
+	mut has_content_length := false
 	mut got_headers := false
 	mut body_so_far := u64(0)
 	mut cancelled := false
@@ -523,6 +524,7 @@ fn (mut c H2MuxConn) wait_response(mut s H2MuxStream, req H2ClientRequest) !H2Cl
 				resp.headers << f
 				if f.name == 'content-length' {
 					body_expected = f.value.u64()
+					has_content_length = true
 				}
 			}
 			got_headers = true
@@ -603,6 +605,14 @@ fn (mut c H2MuxConn) wait_response(mut s H2MuxStream, req H2ClientRequest) !H2Cl
 			}
 			if !got_headers {
 				return error('h2: stream closed without a response')
+			}
+			// RFC 9110 §8.6: a Content-Length must match the bytes received.
+			// Skip for responses defined to carry no body — HEAD requests and
+			// 204/304 status codes — where Content-Length describes the absent
+			// representation rather than transmitted DATA.
+			body_allowed := req.method != 'HEAD' && resp.status != 204 && resp.status != 304
+			if has_content_length && body_allowed && body_so_far != body_expected {
+				return error('h2: response body length ${body_so_far} does not match Content-Length ${body_expected}')
 			}
 			return resp
 		}
@@ -1082,14 +1092,27 @@ fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
 	}
 	s.mu.lock()
 	if !s.headers_done {
+		mut status := 0
 		for f in fields {
 			if f.name == ':status' {
-				s.status = f.value.int()
-			} else if !f.name.starts_with(':') {
-				s.resp_headers << f
+				status = f.value.int()
+				break
 			}
 		}
-		s.headers_done = true
+		// RFC 9110 §15.2 / RFC 9113 §8.1: a server may send 1xx interim responses
+		// (100 Continue, 103 Early Hints) before the final response. They are not
+		// the final response and carry no body, so ignore them and keep waiting
+		// for the final (>= 200) HEADERS rather than latching the interim status
+		// and headers — which would make the real final HEADERS look like trailers.
+		if status >= 200 {
+			s.status = status
+			for f in fields {
+				if !f.name.starts_with(':') {
+					s.resp_headers << f
+				}
+			}
+			s.headers_done = true
+		}
 	}
 	// A second HEADERS block on the stream carries trailers; only its
 	// END_STREAM matters for this client.
