@@ -82,26 +82,28 @@ fn (g &Gen) int_ref_interpolates_as_value(expr ast.Expr, typ ast.Type, fmt u8) b
 	if g.expr_is_auto_deref_var(expr) {
 		return true
 	}
-	return match expr {
+	match expr {
 		ast.Ident {
 			obj := expr.obj
 			match obj {
 				ast.Var {
-					obj.is_arg || obj.expr is ast.AsCast
-						|| (obj.expr is ast.PrefixExpr && obj.expr.op == .amp)
+					if obj.is_arg || obj.expr is ast.AsCast {
+						return true
+					}
+					if obj.expr is ast.PrefixExpr {
+						return obj.expr.op == .amp
+					}
 				}
-				else {
-					false
-				}
+				else {}
 			}
 		}
 		ast.PrefixExpr {
-			expr.op == .amp
+			return expr.op == .amp
 		}
-		else {
-			false
-		}
+		else {}
 	}
+
+	return false
 }
 
 fn (mut g Gen) should_resolve_str_intp_expr_type(expr ast.Expr, typ ast.Type) bool {

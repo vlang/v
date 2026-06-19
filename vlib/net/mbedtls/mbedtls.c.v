@@ -2,6 +2,7 @@ module mbedtls
 
 #flag -I @VEXEROOT/thirdparty/mbedtls/library
 #flag -I @VEXEROOT/thirdparty/mbedtls/include
+#flag windows -DWIN32_LEAN_AND_MEAN
 // #flag -D _FILE_OFFSET_BITS=64
 #flag -I @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/include
 #flag -I @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/include/everest

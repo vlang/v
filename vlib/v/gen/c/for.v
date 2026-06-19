@@ -4,6 +4,7 @@
 module c
 
 import v.ast
+import v.token
 import v.util
 
 struct ForCOverflowGuard {
@@ -174,8 +175,146 @@ fn (mut g Gen) write_for_c_inc_expr(node ast.ForCStmt) {
 	}
 }
 
+fn (g &Gen) for_c_init_local_closure_vars(node ast.ForCStmt) []ast.Var {
+	if !node.has_init || node.init !is ast.AssignStmt {
+		return []
+	}
+	init := node.init as ast.AssignStmt
+	if init.op != .decl_assign {
+		return []
+	}
+	mut vars := []ast.Var{}
+	for left in init.left {
+		if left is ast.Ident {
+			mut obj := if left.obj is ast.Var {
+				left.obj
+			} else {
+				ast.Var{}
+			}
+			if node.scope != unsafe { nil } {
+				if scope_var := node.scope.find_var(left.name) {
+					if scope_var.pos.pos == left.pos.pos {
+						obj = *scope_var
+					}
+				}
+			}
+			if g.local_closure_var_has_tracked_context(obj) {
+				vars << obj
+			}
+		}
+	}
+	return vars
+}
+
+fn (mut g Gen) local_var_needs_scope_autofree(var ast.Var) bool {
+	if !g.needs_scope_cleanup() || g.is_builtin_mod || var.name == '_' || var.is_arg || var.is_tmp
+		|| var.is_inherited || var.typ == 0 {
+		return false
+	}
+	base_typ := var.typ.set_nr_muls(0).clear_option_and_result()
+	if g.type_has_unresolved_generic_parts(base_typ) {
+		return false
+	}
+	sym := g.table.sym(base_typ)
+	if sym.kind in [.array, .map, .string] || sym.has_method('free') || var.is_auto_heap {
+		return true
+	}
+	return var.typ.is_ptr() && sym.name.after('.').len > 0 && sym.name.after('.')[0].is_capital()
+		&& g.pref.experimental
+}
+
+fn (mut g Gen) for_c_init_autofree_vars(node ast.ForCStmt) []ast.Var {
+	if !node.has_init || node.init !is ast.AssignStmt {
+		return []
+	}
+	init := node.init as ast.AssignStmt
+	if init.op != .decl_assign {
+		return []
+	}
+	mut vars := []ast.Var{}
+	for left in init.left {
+		if left is ast.Ident {
+			mut obj := if left.obj is ast.Var {
+				left.obj
+			} else {
+				ast.Var{}
+			}
+			if node.scope != unsafe { nil } {
+				if scope_var := node.scope.find_var(left.name) {
+					if scope_var.pos.pos == left.pos.pos {
+						obj = *scope_var
+					}
+				}
+			}
+			if g.local_var_needs_scope_autofree(obj) {
+				vars << obj
+			}
+		}
+	}
+	return vars
+}
+
+fn (mut g Gen) push_for_c_init_autofree_keep_vars(vars []ast.Var) int {
+	start := g.for_c_init_autofree_keep_vars.len
+	for var in vars {
+		g.for_c_init_autofree_keep_vars << var.name
+		g.for_c_init_autofree_cleanup_vars << var
+	}
+	return start
+}
+
+fn (mut g Gen) pop_for_c_init_autofree_keep_vars(start int) {
+	if g.for_c_init_autofree_keep_vars.len > start {
+		g.for_c_init_autofree_keep_vars = g.for_c_init_autofree_keep_vars[..start].clone()
+	}
+	if g.for_c_init_autofree_cleanup_vars.len > start {
+		g.for_c_init_autofree_cleanup_vars = g.for_c_init_autofree_cleanup_vars[..start].clone()
+	}
+}
+
+fn (mut g Gen) cleanup_for_c_init_autofree_vars(vars []ast.Var) {
+	for var in vars {
+		g.autofree_variable(var)
+	}
+	for g.autofree_scope_stmts.len > 0 {
+		g.write(g.autofree_scope_stmts.pop())
+	}
+}
+
+fn (mut g Gen) cleanup_for_c_init_autofree_vars_on_return(returned_names map[string]bool, selector_owner_names map[string]bool) {
+	for var in g.for_c_init_autofree_cleanup_vars {
+		if var.name in returned_names {
+			continue
+		}
+		if var.name in selector_owner_names {
+			continue
+		}
+		g.autofree_variable(var)
+	}
+	for g.autofree_scope_stmts.len > 0 {
+		g.write(g.autofree_scope_stmts.pop())
+	}
+}
+
+fn (mut g Gen) write_loop_scope_cleanup_after_defer(scope &ast.Scope, pos token.Pos, stmts []ast.Stmt,
+	ends_with_branch bool) {
+	if ends_with_branch || scope == unsafe { nil } {
+		return
+	}
+	if g.needs_scope_cleanup() && !g.is_builtin_mod {
+		g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, pos.line_nr, false, -1)
+	}
+	if g.fn_decl != unsafe { nil } {
+		g.cleanup_local_closure_vars2(scope, scope.start_pos, scope.end_pos, pos.line_nr, false,
+			-1, stmts)
+	}
+}
+
 fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 	g.loop_depth++
+	init_closure_vars := g.for_c_init_local_closure_vars(node)
+	init_autofree_vars := g.for_c_init_autofree_vars(node)
+	has_init_outer_cleanup := init_closure_vars.len > 0 || init_autofree_vars.len > 0
 	if node.is_multi {
 		g.is_vlines_enabled = false
 		g.inside_for_c_stmt = true
@@ -213,15 +352,34 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		if node.label.len > 0 {
 			g.writeln('{')
 		}
-		g.stmts(node.stmts)
+		autofree_keep_start := g.push_for_c_init_autofree_keep_vars(init_autofree_vars)
+		preserve_start := g.push_local_closure_cleanup_preserve_vars(init_closure_vars,
+			node.pos.pos)
+		skip_cleanup_start := g.push_skip_scope_cleanup(node.scope)
+		ends_with_branch := g.stmts_with_tmp_var(node.stmts, '')
+		g.pop_skip_scope_cleanup(skip_cleanup_start)
 		if node.label.len > 0 {
+			g.write_defer_stmts(node.scope, false, node.pos)
+			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
+				ends_with_branch)
 			g.writeln('}')
 			g.writeln('${node.label}__continue: {}')
+		} else {
+			g.write_defer_stmts(node.scope, false, node.pos)
+			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
+				ends_with_branch)
 		}
+		g.pop_local_closure_cleanup_preserve_vars(preserve_start)
+		g.pop_for_c_init_autofree_keep_vars(autofree_keep_start)
 		g.writeln('}')
+		if has_init_outer_cleanup && node.label.len > 0 {
+			g.writeln('${node.label}__break: {}')
+		}
+		g.cleanup_for_c_init_local_closure_vars(node, init_closure_vars)
+		g.cleanup_for_c_init_autofree_vars(init_autofree_vars)
 		g.indent--
 		g.writeln('}')
-		if node.label.len > 0 {
+		if !has_init_outer_cleanup && node.label.len > 0 {
 			g.writeln('${node.label}__break: {}')
 		}
 	} else {
@@ -230,9 +388,18 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		overflow_guard_flag := if has_overflow_guard { g.new_tmp_var() } else { '' }
 		g.is_vlines_enabled = false
 		g.inside_for_c_stmt = true
-		if has_overflow_guard {
+		needs_init_closure_scope := init_closure_vars.len > 0
+		needs_init_autofree_scope := init_autofree_vars.len > 0
+		has_outer_block := has_overflow_guard || needs_init_closure_scope
+			|| needs_init_autofree_scope
+		if has_outer_block {
 			g.writeln('{')
 			g.indent++
+		}
+		if needs_init_closure_scope || needs_init_autofree_scope {
+			g.stmt(node.init)
+		}
+		if has_overflow_guard {
 			g.writeln('bool ${overflow_guard_flag} = false;')
 		}
 		if node.label.len > 0 {
@@ -241,7 +408,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		g.set_current_pos_as_last_stmt_pos()
 		g.skip_stmt_pos = true
 		g.write('for (')
-		if !node.has_init {
+		if !node.has_init || needs_init_closure_scope || needs_init_autofree_scope {
 			g.write('; ')
 		} else {
 			g.stmt(node.init)
@@ -282,18 +449,36 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		if node.label.len > 0 {
 			g.writeln('{')
 		}
-		g.stmts(node.stmts)
+		autofree_keep_start := g.push_for_c_init_autofree_keep_vars(init_autofree_vars)
+		preserve_start := g.push_local_closure_cleanup_preserve_vars(init_closure_vars,
+			node.pos.pos)
+		skip_cleanup_start := g.push_skip_scope_cleanup(node.scope)
+		ends_with_branch := g.stmts_with_tmp_var(node.stmts, '')
+		g.pop_skip_scope_cleanup(skip_cleanup_start)
 		if node.label.len > 0 {
+			g.write_defer_stmts(node.scope, false, node.pos)
+			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
+				ends_with_branch)
 			g.writeln('}')
 			g.writeln('${node.label}__continue: {}')
+		} else {
+			g.write_defer_stmts(node.scope, false, node.pos)
+			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
+				ends_with_branch)
 		}
-		g.write_defer_stmts(node.scope, false, node.pos)
+		g.pop_local_closure_cleanup_preserve_vars(preserve_start)
+		g.pop_for_c_init_autofree_keep_vars(autofree_keep_start)
 		g.writeln('}')
-		if has_overflow_guard {
+		if has_init_outer_cleanup && node.label.len > 0 {
+			g.writeln('${node.label}__break: {}')
+		}
+		g.cleanup_for_c_init_local_closure_vars(node, init_closure_vars)
+		g.cleanup_for_c_init_autofree_vars(init_autofree_vars)
+		if has_outer_block {
 			g.indent--
 			g.writeln('}')
 		}
-		if node.label.len > 0 {
+		if !has_init_outer_cleanup && node.label.len > 0 {
 			g.writeln('${node.label}__break: {}')
 		}
 	}
@@ -320,12 +505,18 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	if node.label.len > 0 {
 		g.writeln('\t{')
 	}
-	g.stmts(node.stmts)
+	skip_cleanup_start := g.push_skip_scope_cleanup(node.scope)
+	ends_with_branch := g.stmts_with_tmp_var(node.stmts, '')
+	g.pop_skip_scope_cleanup(skip_cleanup_start)
 	if node.label.len > 0 {
+		g.write_defer_stmts(node.scope, false, node.pos)
+		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 		g.writeln('\t}')
 		g.writeln('\t${node.label}__continue: {}')
+	} else {
+		g.write_defer_stmts(node.scope, false, node.pos)
+		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 	}
-	g.write_defer_stmts(node.scope, false, node.pos)
 	g.writeln('}')
 	if node.label.len > 0 {
 		g.writeln('${node.label}__break: {}')
@@ -991,11 +1182,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	if node.label.len > 0 {
 		g.writeln('\t{')
 	}
-	g.stmts(node.stmts)
-	if node.label.len > 0 {
-		g.writeln('\t}')
-		g.writeln('\t${node.label}__continue: {}')
-	}
+	skip_cleanup_start := g.push_skip_scope_cleanup(node.scope)
+	ends_with_branch := g.stmts_with_tmp_var(node.stmts, '')
+	g.pop_skip_scope_cleanup(skip_cleanup_start)
 
 	if node.kind == .map {
 		// diff := g.new_tmp_var()
@@ -1005,7 +1194,15 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		// g.writeln('\t${map_len} = ${cond_var}${arw_or_pt}key_values.len;')
 		// g.writeln('}')
 	}
-	g.write_defer_stmts(node.scope, false, node.pos)
+	if node.label.len > 0 {
+		g.write_defer_stmts(node.scope, false, node.pos)
+		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
+		g.writeln('\t}')
+		g.writeln('\t${node.label}__continue: {}')
+	} else {
+		g.write_defer_stmts(node.scope, false, node.pos)
+		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
+	}
 	g.writeln('}')
 	if array_debug_value_scope_opened {
 		g.indent--
