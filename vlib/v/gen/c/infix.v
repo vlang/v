@@ -426,32 +426,24 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.write(')')
 			}
 			.struct {
-				if left_is_option && right_is_option {
+				if left_is_option && right_is_option && !left.typ.is_ptr() && !right.typ.is_ptr() {
 					bare_typ := g.equality_fn(left.unaliased.clear_flag(.option))
 					styp := g.base_type(left_type)
 					old_inside_opt_or_res := g.inside_opt_or_res
 					g.inside_opt_or_res = true
+					left_tmp := g.expr_to_ctemp_before_stmt(node.left, left_type)
+					right_tmp := g.expr_to_ctemp_before_stmt(node.right, right_type)
+					lv := left_tmp.name
+					rv := right_tmp.name
 					if node.op == .eq {
 						g.write('(')
 					} else {
 						g.write('!(')
 					}
-					g.write('(')
-					g.expr(node.left)
-					g.write('.state == 2 && ')
-					g.expr(node.right)
-					g.write('.state == 2) || (')
-					g.expr(node.left)
-					g.write('.state == ')
-					g.expr(node.right)
-					g.write('.state && ')
-					g.expr(node.left)
-					g.write('.state != 2 && ')
-					g.write('${bare_typ}_struct_eq(*(${styp}*)&')
-					g.expr(node.left)
-					g.write('.data, *(${styp}*)&')
-					g.expr(node.right)
-					g.write('.data)))')
+					g.write('(${lv}.state == 2 && ${rv}.state == 2) || ')
+					g.write('(${lv}.state == ${rv}.state && ${lv}.state != 2 && ')
+					g.write('${bare_typ}_struct_eq(*(${styp}*)&${lv}.data, *(${styp}*)&${rv}.data))')
+					g.write(')')
 					g.inside_opt_or_res = old_inside_opt_or_res
 				} else {
 					ptr_typ := g.equality_fn(left.unaliased)

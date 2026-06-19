@@ -66,3 +66,20 @@ fn test_option_struct_eq_in_fn() {
 	assert cmp(none, none) == false
 	assert cmp(Id{ v: 1 }, none) == true
 }
+
+fn make_id(v int) ?Id {
+	return Id{
+		v: v
+	}
+}
+
+fn make_none_id() ?Id {
+	return none
+}
+
+fn test_option_struct_eq_fn_call_result() {
+	assert make_id(1) == make_id(1)
+	assert make_id(1) != make_id(2)
+	assert make_none_id() == make_none_id()
+	assert make_id(1) != make_none_id()
+}
