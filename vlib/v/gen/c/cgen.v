@@ -13736,7 +13736,11 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		matching_variants := g.matching_sumtype_variant_types(expr_type_without_option,
 			unwrapped_node_typ)
 		index_exprs := g.type_idx_exprs_for_types(matching_variants)
-		payload_sym := g.table.sym(g.as_cast_payload_type(unwrapped_node_typ, matching_variants))
+		payload_type := g.as_cast_payload_type(unwrapped_node_typ, matching_variants)
+		payload_sym := g.table.sym(payload_type)
+		// Use the variant member name, which for an option-type variant
+		// (e.g. `type Foo = ?Bar | Baz`) is `_option_<cname>`, not `_<cname>`.
+		payload_member := g.get_sumtype_variant_name(payload_type, payload_sym)
 		sidx := g.type_sidx(unwrapped_node_typ)
 		if as_cast_operand_needs_tmp_eval(node.expr) {
 			tmp_var := g.expr_to_ctemp_before_stmt(node.expr, node.expr_type).name
@@ -13745,7 +13749,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			} else {
 				tmp_var
 			}
-			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
+			obj_expr := '(${expr_str})${dot}_${payload_member}'
 			tag_expr := '(${expr_str})${dot}_typ'
 			g.write_as_cast_call_start(styp, sym)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
@@ -13755,7 +13759,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			} else {
 				g.expr_string(node.expr)
 			}
-			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
+			obj_expr := '(${expr_str})${dot}_${payload_member}'
 			tag_expr := '(${expr_str})${dot}_typ'
 			g.write_as_cast_call_start(styp, sym)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
