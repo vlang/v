@@ -64,6 +64,7 @@ mut:
 	retryable    bool   // the failure is safe to retry on a fresh connection
 	sent_headers bool   // the request HEADERS reached the transport
 	cancelled    bool   // requester abandoned the stream; drop+credit late DATA
+	send_closed  bool   // we closed our send side (sent END_STREAM or RST_STREAM)
 	// --- send state, guarded by the connection's fmu ---
 	send_window i64
 	send_dead   bool // RST/GOAWAY: wake a body sender blocked on flow-control credit
@@ -353,6 +354,11 @@ fn (mut c H2MuxConn) do_on_stream(mut s H2MuxStream, req H2ClientRequest) !H2Cli
 
 	if has_body {
 		c.send_body_on_stream(mut s, req.body)!
+	} else {
+		// The HEADERS carried END_STREAM, so our send side is now closed.
+		s.mu.lock()
+		s.send_closed = true
+		s.mu.unlock()
 	}
 	return c.wait_response(mut s, req)
 }
@@ -471,6 +477,9 @@ fn (mut c H2MuxConn) send_body_on_stream(mut s H2MuxStream, body []u8) ! {
 					return
 				}
 				c.wmu.unlock()
+				s.mu.lock()
+				s.send_closed = true
+				s.mu.unlock()
 				return
 			}
 			return error('h2: connection closed while sending the request body')
@@ -503,6 +512,10 @@ fn (mut c H2MuxConn) send_body_on_stream(mut s H2MuxStream, body []u8) ! {
 		c.wmu.unlock()
 		off = next
 	}
+	// The final DATA frame carried END_STREAM, so our send side is now closed.
+	s.mu.lock()
+	s.send_closed = true
+	s.mu.unlock()
 }
 
 // wait_response drains the stream until it ends, honoring the request's
@@ -1188,6 +1201,25 @@ fn (mut c H2MuxConn) on_response_data(frame H2DataFrame) ! {
 		}
 		return
 	}
+	// RFC 7540 §5.1: a DATA frame after the peer's END_STREAM is a stream-closed
+	// error. If we have also closed our send side the stream is "closed" — a
+	// connection error (the spec's MUST); otherwise it is "half-closed (remote)"
+	// — a STREAM error, so one peer's misbehavior does not tear down every other
+	// multiplexed stream. Checked before the flow-control debit: a half-closed
+	// (remote) receiver is no longer obligated to maintain the window (§6.9.1).
+	if s.ended {
+		send_closed := s.send_closed
+		s.mu.unlock()
+		if send_closed {
+			return error('h2: DATA frame after END_STREAM on closed stream ${frame.stream_id} (RFC 7540 §5.1)')
+		}
+		if frame.flow_size > 0 {
+			c.send_conn_window_update(u32(frame.flow_size)) or {}
+		}
+		c.reset_stream(frame.stream_id, .stream_closed,
+			'DATA after END_STREAM on stream ${frame.stream_id}')
+		return
+	}
 	// Enforce the stream-level receive window (RFC 7540 §6.9.1). Padding
 	// counts against stream flow control the same as data, so debit
 	// whenever flow_size > 0 regardless of whether there are data bytes.
@@ -1205,11 +1237,6 @@ fn (mut c H2MuxConn) on_response_data(frame H2DataFrame) ! {
 				'peer exceeded stream ${frame.stream_id} receive window')
 			return
 		}
-	}
-	// RFC 7540 §5.1: DATA after END_STREAM is a stream-closed violation.
-	if s.ended {
-		s.mu.unlock()
-		return error('h2: DATA frame received after END_STREAM on stream ${frame.stream_id} (RFC 7540 §5.1)')
 	}
 	if frame.data.len > 0 {
 		s.chunks << frame.data.clone()

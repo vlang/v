@@ -1658,3 +1658,76 @@ fn test_mux_stream_window_violation_resets_only_that_stream() {
 	assert !closed, 'a stream-level flow-control violation must NOT close the connection'
 	cend.close_both()
 }
+
+// DATA after END_STREAM on a fully "closed" stream (we also sent our END_STREAM)
+// is a connection error (RFC 7540 §5.1 MUST).
+fn test_mux_data_after_end_stream_on_closed_stream_fails_connection() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	// White-box: register a stream in the "closed" state — both the peer (ended)
+	// and we (send_closed) have finished sending.
+	mut s := new_h2_mux_stream()
+	s.id = 1
+	s.ended = true
+	s.send_closed = true
+	conn.smu.lock()
+	conn.streams[1] = s
+	conn.smu.unlock()
+	// A DATA frame on the closed stream must fail the whole connection.
+	peer.write_frame(H2DataFrame{ stream_id: 1, data: [u8(0)] }) or {
+		assert false, 'write: ${err.msg()}'
+	}
+	mut closed := false
+	for _ in 0 .. 2000 {
+		conn.smu.lock()
+		closed = conn.closed
+		conn.smu.unlock()
+		if closed {
+			break
+		}
+		time.sleep(time.millisecond)
+	}
+	assert closed, 'DATA after END_STREAM on a closed stream must fail the connection'
+	cend.close_both()
+}
+
+// DATA after END_STREAM on a "half-closed (remote)" stream (the peer ended but
+// we have NOT closed our send side) is a STREAM error: RST that stream, keep the
+// connection alive (RFC 7540 §5.1).
+fn test_mux_data_after_end_stream_half_closed_resets_only_stream() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	// White-box: register a stream where the peer has ended but our send side is
+	// still open (send_closed = false) — "half-closed (remote)".
+	mut s := new_h2_mux_stream()
+	s.id = 1
+	s.ended = true
+	s.send_closed = false
+	conn.smu.lock()
+	conn.streams[1] = s
+	conn.smu.unlock()
+	peer.write_frame(H2DataFrame{ stream_id: 1, data: [u8(0)] }) or {
+		assert false, 'write: ${err.msg()}'
+	}
+	// The client must RST just this stream; pump until we see it.
+	mut saw_rst := false
+	for _ in 0 .. 50 {
+		f := peer.pump() or { break }
+		if f is H2RstStreamFrame {
+			saw_rst = true
+			break
+		}
+	}
+	assert saw_rst, 'half-closed-remote DATA-after-END_STREAM must RST the stream'
+	conn.smu.lock()
+	closed := conn.closed
+	conn.smu.unlock()
+	assert !closed, 'a stream-level reset must NOT close the connection'
+	cend.close_both()
+}
