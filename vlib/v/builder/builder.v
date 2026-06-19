@@ -58,11 +58,8 @@ pub mut:
 	executable_exists     bool                // if the executable already exists, don't remove new executable after `v run`
 	str_args              string              // for parallel_cc mode only, to know which cc args to use (like -I etc)
 	last_cc_cmd           string              // the most recently executed C compiler command; reused to regenerate a #line annotated report
-	disable_flto          bool
-	// thirdparty_header_mtimes memoizes the newest header mtime under a
-	// thirdparty module root (see thirdparty_deps_mtime), so the recursive scan
-	// runs once per module instead of once per compiled object.
-	thirdparty_header_mtimes map[string]i64
+	disable_flto              bool
+	thirdparty_header_mtimes  map[string]i64
 }
 
 struct CFunctionCallCollector {
@@ -918,15 +915,11 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 			if parent_loc.vmod_file == '' {
 				break
 			}
-			// Only climb when the resolved parent v.mod is a strict ancestor of the
-			// current folder. On Windows a bare drive letter like `S:` (what
-			// os.dir('S:\proj') yields) resolves via os.real_path to the drive's
-			// *current directory*, which may equal or sit below the current folder.
-			// Without this check the walk could spin forever - either as a fixpoint
-			// (a project directly under a drive root) or as a multi-step oscillation
-			// (a project nested under such a drive-root project).
-			if parent_loc.vmod_folder == importer_vmod_folder
-				|| !importer_vmod_folder.starts_with(parent_loc.vmod_folder + os.path_separator) {
+			// On Windows, os.dir('C:\project') returns 'C:' (no trailing slash),
+			// and os.real_path('C:') resolves to the drive's current directory —
+			// which may equal importer_vmod_folder, producing an infinite loop.
+			// Stop climbing whenever the candidate is not a strict path ancestor.
+			if !is_strict_ancestor(parent_loc.vmod_folder, importer_vmod_folder) {
 				break
 			}
 			importer_vmod_folder = parent_loc.vmod_folder
@@ -1265,4 +1258,13 @@ pub fn (mut b Builder) show_parsed_files() {
 		}
 		println(p.path)
 	}
+}
+
+fn is_strict_ancestor(ancestor string, descendant string) bool {
+	if ancestor == '' || descendant == '' {
+		return false
+	}
+	a := comparable_real_path(ancestor)
+	d := comparable_real_path(descendant)
+	return a != d && path_is_at_or_inside(d, a)
 }
