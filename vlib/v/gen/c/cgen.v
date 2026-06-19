@@ -196,6 +196,7 @@ mut:
 	inside_lambda_autofree_tmp           bool
 	track_lambda_autofree_tmp_arg_vars   bool
 	outer_tmp_var                        string // tmp var from outer context (e.g. from stmts_with_tmp_var) to be used by nested if/match expressions
+	if_match_tmp_is_fn_ret_arr           ?bool  // set by if/match expr gen: authoritatively whether the shared tmp var is a fn-returned fixed array (wrapper struct accessed via `.ret_arr`); `none` means use the per-branch heuristic
 	last_tmp_call_var                    []string
 	last_if_option_type                  ast.Type // stores the expected if type on nested if expr
 	loop_depth                           int
@@ -4156,8 +4157,18 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 					}
 				}
 				ret_sym := g.table.sym(g.unwrap_generic(g.recheck_concrete_type(ret_type)))
-				tmp_is_return_fixed_array := ret_sym.info is ast.ArrayFixed
-					&& ret_sym.info.is_fn_ret
+				// The tmp var of an if/match expr is a single shared variable, so every
+				// branch must agree on whether to write through `.ret_arr`, based on the
+				// tmp var's declared type rather than each branch's own expr type. A mix
+				// of a function call and a fixed array literal would otherwise disagree
+				// (only the function's fixed array type carries the `is_fn_ret` flag), e.g.
+				// `return if c { fa() } else { [9, 9, 9]! }` or its reverse. When set, the
+				// flag from if/match gen is authoritative; elsewhere fall back to the
+				// per-branch heuristic.
+				tmp_is_return_fixed_array := g.if_match_tmp_is_fn_ret_arr or {
+					ret_sym.info is ast.ArrayFixed && ret_sym.info.is_fn_ret
+				}
+
 				fixed_array_tmp_var := if tmp_is_return_fixed_array {
 					'${tmp_var}.ret_arr'
 				} else {
@@ -7205,7 +7216,12 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 							pos:  node.pos
 							expr: node.right
 						}
+						// This tmp var is local to this `&(...)`; don't inherit an enclosing
+						// if/match's `.ret_arr` decision (only if/match set this flag).
+						prev_ret_arr := g.if_match_tmp_is_fn_ret_arr
+						g.if_match_tmp_is_fn_ret_arr = none
 						g.stmts_with_tmp_var(stmts, tmp_var)
+						g.if_match_tmp_is_fn_ret_arr = prev_ret_arr
 						g.set_current_pos_as_last_stmt_pos()
 						g.write(str)
 					}
@@ -9448,7 +9464,12 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		g.mtxs = ''
 	}
 	g.writeln('/*lock*/ {')
+	// This tmp var is local to the lock expr; don't inherit an enclosing if/match's
+	// `.ret_arr` decision (only if/match set this flag).
+	prev_ret_arr := g.if_match_tmp_is_fn_ret_arr
+	g.if_match_tmp_is_fn_ret_arr = none
 	g.stmts_with_tmp_var(node.stmts, tmp_result)
+	g.if_match_tmp_is_fn_ret_arr = prev_ret_arr
 	if node.is_expr {
 		g.writeln(';')
 	}
