@@ -71,7 +71,7 @@ pub fn (g &AesGcm) encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8 {
 	tag := g.gctr(j0, s)
 
 	mut out := []u8{cap: ciphertext.len + gcm_tag_size}
-	out << ciphertext.clone()
+	out << ciphertext
 	out << tag
 	return out
 }
@@ -150,21 +150,45 @@ fn (g &AesGcm) gctr(icb []u8, input []u8) []u8 {
 fn gf_mult(x []u8, y []u8) []u8 {
 	mut z := []u8{len: 16}
 	mut v := y.clone()
+
+	// Process all 128 bits
 	for i in 0 .. 128 {
+		// Extract bit i from x (MSB first, left to right)
+		// byte index: i >> 3 (i / 8)
+		// bit position: 7 - (i & 7) (7, 6, 5, ..., 0)
 		bit := (x[i >> 3] >> (7 - u8(i & 7))) & 1
-		if bit == 1 {
-			for j in 0 .. 16 {
-				z[j] ^= v[j]
-			}
+
+		// Create constant-time mask
+		// If bit = 1: mask = 0xFF (all 1s)
+		// If bit = 0: mask = 0x00 (all 0s)
+		// This is constant-time: -(i8(bit)) produces correct result
+		mask := u8(-(i8(bit)))
+
+		// Conditional XOR: z ^= v * bit (constant-time)
+		// Instead of: if bit == 1 { z[j] ^= v[j] }
+		// We do:      z[j] ^= (v[j] & mask)
+		for j in 0 .. 16 {
+			z[j] ^= (v[j] & mask)
 		}
-		lsb := v[15] & 1
+
+		// Right shift v by 1 bit (always performed)
+		// This is constant-time - no branches
+		lsb := v[15] & 1 // Save LSB before shift
+
 		for j := 15; j > 0; j-- {
 			v[j] = (v[j] >> 1) | ((v[j - 1] & 1) << 7)
 		}
 		v[0] >>= 1
-		if lsb == 1 {
-			v[0] ^= 0xe1
-		}
+
+		// Polynomial reduction (constant-time)
+		// If lsb = 1: v[0] ^= 0xe1
+		// If lsb = 0: v[0] unchanged
+		// Polynomial: x^128 + x^7 + x^2 + x + 1 = 0xe1 in lowest bits
+		//
+		// Instead of: if lsb == 1 { v[0] ^= 0xe1 }
+		// We do:      v[0] ^= (0xe1 & mask_for_lsb)
+		red_mask := u8(-(i8(lsb)))
+		v[0] ^= (0xe1 & red_mask)
 	}
 	return z
 }
