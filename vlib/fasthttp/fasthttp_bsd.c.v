@@ -336,10 +336,6 @@ fn process_request(server &Server, c_ptr voidptr, command_ch chan LoopCommand) {
 
 	match resp.takeover_mode {
 		.manual {
-			if c.request_active {
-				server.end_request()
-				c.request_active = false
-			}
 			resp.free_owned_content()
 			resp.abandon_request_arena_current_thread()
 			command_ch <- LoopCommand{
@@ -478,6 +474,10 @@ fn process_loop_command(server &Server, kq int, cmd LoopCommand, mut clients map
 		}
 		.manual_takeover {
 			mut c := unsafe { &Conn(cmd.c_ptr) }
+			if c.request_active {
+				server.end_request()
+				c.request_active = false
+			}
 			clients.delete(c.fd)
 			delete_event(kq, u64(c.fd), i16(C.EVFILT_READ), c)
 			delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)

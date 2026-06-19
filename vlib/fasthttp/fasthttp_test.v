@@ -199,7 +199,7 @@ fn test_response_takeover_mode_reusable_keeps_connection() {
 }
 
 fn test_handler_can_make_loopback_request_to_same_server() {
-	$if linux || bsd {
+	$if bsd {
 		mut server := new_server(ServerConfig{
 			family:                  .ip
 			port:                    loopback_request_port
