@@ -268,6 +268,11 @@ fn (mut f Fmt) write_generic_types(gtypes []ast.Type) {
 pub fn (mut f Fmt) set_current_module_name(cmodname string) {
 	f.cur_mod = cmodname
 	f.table.cmod_prefix = cmodname + '.'
+	// Drop type_to_str strings that were memoized before the module context was
+	// known (during parsing `cmod_prefix` is still empty), so that types of the
+	// current module are not left with a stale `mod.` prefix when a `fn` typed
+	// field signature is rebuilt later on (issue #27475).
+	f.table.invalidate_type_to_str_cache()
 }
 
 fn (f &Fmt) get_modname_prefix(mname string) (string, string) {
