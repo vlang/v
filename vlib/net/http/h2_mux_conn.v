@@ -549,7 +549,10 @@ fn (mut c H2MuxConn) wait_response(mut s H2MuxStream, req H2ClientRequest) !H2Cl
 			resp.status = s.status
 			for f in s.resp_headers {
 				resp.headers << f
-				if f.name == 'content-length' {
+				// on_response_headers already rejects a non-numeric Content-Length,
+				// but guard the lenient u64() at the parse site too so this stays
+				// correct even if that upstream check is ever changed.
+				if f.name == 'content-length' && all_digits(f.value) {
 					body_expected = f.value.u64()
 					has_content_length = true
 				}
