@@ -234,9 +234,13 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 					if req.on_data != unsafe { nil } {
 						req.on_data(frame.data, body_so_far, body_expected, resp.status)!
 					}
-					// Replenish flow control so the peer keeps sending.
-					// Use flow_size (full wire payload including padding) not
-					// data.len (stripped), per RFC 7540 §6.9.1.
+				}
+				// Replenish flow control using flow_size (full wire payload including
+				// padding), per RFC 7540 §6.9.1. Credit unconditionally when flow_size>0:
+				// a padding-only DATA frame (data.len==0, flow_size>0) still consumes the
+				// peer's send window and must be credited back. (Formerly inside the
+				// data.len>0 block — padding-only frames leaked window silently.)
+				if frame.flow_size > 0 {
 					c.send_window_update(0, u32(frame.flow_size))!
 					c.send_window_update(stream_id, u32(frame.flow_size))!
 				}

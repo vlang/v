@@ -319,9 +319,13 @@ fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 			return
 		}
 		s.body << frame.data
-		// Replenish the connection window; per-stream we replenish on
-		// completion since we hold the body in memory. Credit flow_size
-		// (full wire bytes including padding) per RFC 7540 §6.9.1.
+	}
+	// Replenish flow control using flow_size (full wire payload including padding),
+	// per RFC 7540 §6.9.1. Credit unconditionally when flow_size>0: a padding-only
+	// DATA frame (data.len==0, flow_size>0) still consumes the peer's send window
+	// and must be credited back. (Formerly inside the data.len>0 block — padding-only
+	// frames leaked window silently.)
+	if frame.flow_size > 0 {
 		c.send_window_update(0, u32(frame.flow_size))!
 		c.send_window_update(s.id, u32(frame.flow_size))!
 	}
