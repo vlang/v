@@ -34,6 +34,10 @@ pub const h2_frame_header_len = 9
 // (RFC 7540 Section 6.5.2), and the smallest value a peer may set it to.
 pub const h2_default_max_frame_size = u32(16384)
 
+// h2_max_max_frame_size is the largest permitted SETTINGS_MAX_FRAME_SIZE
+// (RFC 7540 Section 6.5.2): 2^24-1 bytes.
+pub const h2_max_max_frame_size = u32(16777215)
+
 // HTTP/2 setting identifiers (RFC 7540 Section 6.5.2).
 pub const h2_settings_header_table_size = u16(0x1)
 pub const h2_settings_enable_push = u16(0x2)

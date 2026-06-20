@@ -145,12 +145,62 @@ pub mut:
 
 	build_environment build_constraint.Environment // see the documentation in v.build_constraint
 	custom_defines    []string                     // for adding custom defines, known only to the individual runners
+mut:
+	benchmark_mu &sync.Mutex = sync.new_mutex()
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
 	lock ts.failed_cmds {
 		ts.failed_cmds << cmd
 	}
+}
+
+fn (mut ts TestSession) benchmark_step() {
+	ts.benchmark_mu.lock()
+	defer {
+		ts.benchmark_mu.unlock()
+	}
+	ts.benchmark.step()
+}
+
+fn (mut ts TestSession) benchmark_step_restart() {
+	ts.benchmark_mu.lock()
+	defer {
+		ts.benchmark_mu.unlock()
+	}
+	ts.benchmark.step_restart()
+}
+
+fn (mut ts TestSession) benchmark_fail() {
+	ts.benchmark_mu.lock()
+	defer {
+		ts.benchmark_mu.unlock()
+	}
+	ts.benchmark.fail()
+}
+
+fn (mut ts TestSession) benchmark_ok() {
+	ts.benchmark_mu.lock()
+	defer {
+		ts.benchmark_mu.unlock()
+	}
+	ts.benchmark.ok()
+}
+
+fn (mut ts TestSession) benchmark_skip() {
+	ts.benchmark_mu.lock()
+	defer {
+		ts.benchmark_mu.unlock()
+	}
+	ts.benchmark.skip()
+}
+
+fn (mut ts TestSession) benchmark_stop() {
+	ts.benchmark_mu.lock()
+	defer {
+		ts.benchmark_mu.unlock()
+	}
+	ts.benchmark.stop()
 }
 
 pub fn (mut ts TestSession) show_list_of_failed_tests() {
@@ -460,7 +510,7 @@ pub fn (mut ts TestSession) test() {
 	// all the testing happens here:
 	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
 
-	ts.benchmark.stop()
+	ts.benchmark_stop()
 	ts.append_message(.sentinel, '', MessageThreadContext{ flow_id: '-1' }) // send the sentinel
 	printing_thread.wait()
 	ts.reporter.worker_threads_finish(mut ts)
@@ -602,7 +652,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		if !os.is_executable(v2_bin) {
 			ts.append_message(.info, 'SKIP ${relative_file}: v2 binary not built. Run: ${os.quoted_path(ts.vexe)} -o ${os.quoted_path(v2_bin)} ${os.quoted_path(os.join_path(ts.vroot,
 				'cmd', 'v2', 'v2.v'))}', mtc)
-			ts.benchmark.skip()
+			ts.benchmark_skip()
 			tls_bench.skip()
 			return pool.no_result
 		}
@@ -633,10 +683,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 	}
 
-	ts.benchmark.step()
+	ts.benchmark_step()
 	tls_bench.step()
 	if produces_file_output && !ts.build_tools && (!should_be_built || abs_path in ts.skip_files) {
-		ts.benchmark.skip()
+		ts.benchmark_skip()
 		tls_bench.skip()
 		if !hide_skips {
 			ts.append_message(.skip, tls_bench.step_message_with_label_and_duration(benchmark.b_skip,
@@ -700,7 +750,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			if res.output.contains(': error: ') {
 				ts.append_message(.cannot_compile, 'Cannot compile file ${file}', mtc)
 			}
-			ts.benchmark.fail()
+			ts.benchmark_fail()
 			tls_bench.fail()
 			ts.add_failed_cmd(reproduce_cmd)
 			return pool.no_result
@@ -723,7 +773,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		ts.append_message_with_duration(.compile_end, compile_r.output, compile_cmd_duration, mtc)
 		if compile_r.exit_code != 0 {
-			ts.benchmark.fail()
+			ts.benchmark_fail()
 			tls_bench.fail()
 			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
 				'${normalised_relative_file}\n>> compilation failed:\n${compile_r.output}',
@@ -734,7 +784,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			return pool.no_result
 		}
 		tls_bench.step_restart()
-		ts.benchmark.step_restart()
+		ts.benchmark_step_restart()
 		if ts.exec_mode == .compile {
 			unsafe {
 				goto test_passed_execute
@@ -800,7 +850,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 					goto test_passed_execute
 				}
 			}
-			ts.benchmark.fail()
+			ts.benchmark_fail()
 			tls_bench.fail()
 			cmd_duration = d_cmd.elapsed() - (fail_retry_delay_ms * details.retry)
 			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
@@ -813,7 +863,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	test_passed_system:
 	test_passed_execute:
-	ts.benchmark.ok()
+	ts.benchmark_ok()
 	tls_bench.ok()
 	if !hide_oks {
 		ts.append_message_with_duration(.ok, tls_bench.step_message_with_label_and_duration(benchmark.b_ok,
@@ -947,7 +997,7 @@ pub fn h_divider() {
 }
 
 // filter_args_for_v2 returns a command-line string containing only the flags
-// the v2 compiler accepts (`vlib/v2/pref/pref.v`). v2 errors on any unknown
+// the v2 compiler accepts (`vlib/v2_toberemoved/pref/pref.v`). v2 errors on any unknown
 // flag, so this is used when forwarding `v test` options to v2 for
 // `_test.vv2` files. Keep these lists in sync with v2's pref validator.
 fn filter_args_for_v2(compile_options []string) string {

@@ -59,6 +59,10 @@ pub mut:
 	str_args              string              // for parallel_cc mode only, to know which cc args to use (like -I etc)
 	last_cc_cmd           string              // the most recently executed C compiler command; reused to regenerate a #line annotated report
 	disable_flto          bool
+	// thirdparty_header_mtimes memoizes the newest header mtime under a
+	// thirdparty module root (see thirdparty_deps_mtime), so the recursive scan
+	// runs once per module instead of once per compiled object.
+	thirdparty_header_mtimes map[string]i64
 }
 
 struct CFunctionCallCollector {
@@ -842,9 +846,19 @@ fn (b &Builder) candidate_belongs_to_foreign_project(candidate_path string, impo
 	if candidate_vmod_matches_import(abs_candidate, mod) {
 		return false
 	}
+	// A module installed as a symlink inside a lookup path (e.g.
+	// `.vmodules/einar_hjortdal/luuid -> /real/luuid`) resolves via
+	// os.real_path to a location outside the lookup path. Compare the
+	// logical (unresolved) path too, so such modules are still recognized
+	// as belonging to the project (see #27391).
+	candidate_lookup_path := comparable_path(candidate_path)
 	for lookup in b.pref.lookup_path {
 		abs_lookup := comparable_real_path(lookup)
 		if path_is_at_or_inside(abs_candidate, abs_lookup) {
+			return false
+		}
+		lookup_path := comparable_path(lookup)
+		if path_is_at_or_inside(candidate_lookup_path, lookup_path) {
 			return false
 		}
 	}
@@ -862,8 +876,25 @@ fn (b &Builder) path_belongs_to_lookup_path(path string) bool {
 	return false
 }
 
+// comparable_real_path normalizes a path for comparison, resolving symlinks
+// via os.real_path. Use when both sides of a comparison should refer to the
+// same physical location on disk.
 fn comparable_real_path(path string) string {
-	mut normalized := os.real_path(path).replace('\\', '/')
+	return comparable_path_from(os.real_path(path))
+}
+
+// comparable_path normalizes a path for comparison without resolving symlinks.
+// Use when the original (logical) path matters, e.g. for symlinked modules
+// inside `.vmodules` that should match their lookup path as-is.
+fn comparable_path(path string) string {
+	return comparable_path_from(os.abs_path(path))
+}
+
+// comparable_path_from normalizes a path string for consistent comparison:
+// converts backslashes to forward slashes, collapses duplicate separators,
+// and strips a trailing slash.
+fn comparable_path_from(path string) string {
+	mut normalized := path.replace('\\', '/')
 	for normalized.contains('//') {
 		normalized = normalized.replace('//', '/')
 	}

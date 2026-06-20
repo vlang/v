@@ -16,6 +16,12 @@ pub mut:
 	duration time.Duration
 
 	owns_socket bool
+	// last_write_sent reports the most recent write_ptr's progress for retry
+	// decisions: 0 = provably nothing was sent (safe to replay), or -1 = the
+	// count is indeterminate because a failed/retryable write may have already
+	// flushed complete records to the peer (TLS cannot prove zero). On full
+	// success it equals the bytes written.
+	last_write_sent int
 }
 
 @[params]
@@ -413,6 +419,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 		}
 	}
 
+	s.last_write_sent = 0
 	deadline := ssl_timeout_deadline(s.duration)
 	unsafe {
 		mut ptr_base := bytes
@@ -421,6 +428,12 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 			remaining := len - total_sent
 			mut sent := C.SSL_write(voidptr(s.ssl), ptr, remaining)
 			if sent <= 0 {
+				// SSL_write did not fully complete: OpenSSL may already have
+				// flushed one or more complete records (which the peer can
+				// decrypt and act on) before returning a retryable error, so the
+				// sent count is no longer provable. Mark it indeterminate; a
+				// later full success below resets it to the exact length.
+				s.last_write_sent = -1
 				err_res := ssl_error(sent, s.ssl)!
 				if err_res == .ssl_error_want_read {
 					s.wait_for_read(ssl_remaining_timeout(deadline))!
@@ -441,6 +454,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 					int(err_res))
 			}
 			total_sent += sent
+			s.last_write_sent = total_sent
 		}
 	}
 	return total_sent

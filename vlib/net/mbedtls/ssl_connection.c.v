@@ -155,6 +155,12 @@ pub mut:
 	// strings in config.alpn_protocols. mbedtls stores this pointer without
 	// copying, so it must outlive the SSL config; it is freed in shutdown().
 	alpn_list &&char = unsafe { nil }
+	// last_write_sent reports the most recent write_ptr's progress for retry
+	// decisions: 0 = provably nothing was sent (safe to replay), or -1 = the
+	// count is indeterminate because a failed/retryable write may have already
+	// flushed a record to the peer (TLS cannot prove zero). On full success it
+	// equals the bytes written.
+	last_write_sent int
 }
 
 // SSLListener listens on a TCP port and accepts connection secured with TLS
@@ -858,6 +864,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 		}
 	}
 
+	s.last_write_sent = 0
 	deadline := ssl_timeout_deadline(s.duration)
 	unsafe {
 		mut ptr_base := bytes
@@ -866,6 +873,11 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 			remaining := len - total_sent
 			mut sent := C.mbedtls_ssl_write(&s.ssl, ptr, remaining)
 			if sent <= 0 {
+				// The write did not fully complete; a retryable error can leave a
+				// record partially flushed, so the sent count is no longer
+				// provable. Mark it indeterminate (a later full success below
+				// resets it to the exact length).
+				s.last_write_sent = -1
 				match sent {
 					C.MBEDTLS_ERR_SSL_WANT_READ {
 						s.wait_for_read(ssl_remaining_timeout(deadline))!
@@ -885,6 +897,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 				}
 			}
 			total_sent += sent
+			s.last_write_sent = total_sent
 		}
 	}
 	return total_sent

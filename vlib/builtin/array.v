@@ -181,7 +181,7 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 	mut data := unsafe { nil }
 	if cap_ > 0 && mylen == 0 {
 		data = alloc_array_data_uninit(total_size)
-	} else {
+	} else if cap_ > 0 {
 		data = alloc_array_data(total_size)
 	}
 	arr := array{
@@ -211,7 +211,7 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	total_size := u64(cap_) * u64(elm_size)
 	if cap_ > 0 && mylen == 0 {
 		arr.data = alloc_array_data_uninit(total_size)
-	} else {
+	} else if cap_ > 0 {
 		arr.data = alloc_array_data(total_size)
 	}
 	if val != 0 {
@@ -250,7 +250,9 @@ fn __new_array_with_multi_default(mylen int, cap int, elm_size int, val voidptr)
 	//    -> total_size == 0 -> malloc(0) -> panic;
 	//    to avoid it, just allocate a single byte
 	total_size := u64(cap_) * u64(elm_size)
-	arr.data = alloc_array_data(total_size)
+	if cap_ > 0 {
+		arr.data = alloc_array_data(total_size)
+	}
 	if val != 0 {
 		mut eptr := &u8(arr.data)
 		unsafe {
@@ -271,10 +273,12 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, d
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data:         alloc_array_data(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
 		flags:        .managed
+	}
+	if cap_ > 0 {
+		arr.data = alloc_array_data(u64(cap_) * u64(elm_size))
 	}
 	mut eptr := &u8(arr.data)
 	unsafe {
@@ -295,10 +299,12 @@ fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data:         alloc_array_data(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
 		flags:        .managed
+	}
+	if cap_ > 0 {
+		arr.data = alloc_array_data(u64(cap_) * u64(elm_size))
 	}
 	mut eptr := &u8(arr.data)
 	unsafe {
@@ -1050,10 +1056,12 @@ pub fn (a &array) clone_to_depth(depth int) array {
 	source_capacity_in_bytes := u64(a.cap) * u64(a.element_size)
 	use_noscan_data := depth == 0 && a.uses_noscan_data()
 	mut data := unsafe { nil }
-	if use_noscan_data {
-		data = a.alloc_array_data_like(source_capacity_in_bytes)
-	} else {
-		data = alloc_array_data(source_capacity_in_bytes)
+	if a.cap > 0 {
+		if use_noscan_data {
+			data = a.alloc_array_data_like(source_capacity_in_bytes)
+		} else {
+			data = alloc_array_data(source_capacity_in_bytes)
+		}
 	}
 	mut arr := array{
 		element_size: a.element_size
@@ -1128,6 +1136,27 @@ fn (mut a array) set_ni(i int, val voidptr) {
 	a.set(v_ni_index(i, a.len), val)
 }
 
+// copy_element_to copies a single `element_size` byte element from `src` to `dest`.
+// It dispatches the common small element sizes to `vmemcpy` with a *compile time constant*
+// size: since `vmemcpy` is inlined and forwards to `C.memcpy`, a literal size lets the C
+// backend inline the copy as plain loads/stores instead of a `memcpy` library call, which
+// otherwise dominates the cost of single element pushes (`a << x`) in hot loops.
+// The copy semantics stay exactly those of `memcpy`, so it is safe for arbitrary element
+// types regardless of their alignment, padding or aliasing.
+@[inline; unsafe]
+fn copy_element_to(dest voidptr, src voidptr, element_size int) {
+	unsafe {
+		match element_size {
+			1 { vmemcpy(dest, src, 1) }
+			2 { vmemcpy(dest, src, 2) }
+			4 { vmemcpy(dest, src, 4) }
+			8 { vmemcpy(dest, src, 8) }
+			16 { vmemcpy(dest, src, 16) }
+			else { vmemcpy(dest, src, element_size) }
+		}
+	}
+}
+
 fn (mut a array) push(val voidptr) {
 	$if !no_bounds_checking {
 		if a.len < 0 {
@@ -1138,12 +1167,15 @@ fn (mut a array) push(val voidptr) {
 		panic('array.push: len bigger than max_int')
 	}
 	required := a.len + 1
-	if a.needs_unique_append(required) {
-		a.clone_shallow_to_cap(a.cap)
-	} else if required > a.cap {
+	if required > a.cap {
 		a.ensure_cap(required)
+	} else if a.flags.has(.is_slice) {
+		// `required <= a.cap` here, so this is the `needs_unique_append` case
+		a.clone_shallow_to_cap(a.cap)
 	}
-	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size) }
+	unsafe {
+		copy_element_to(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size)
+	}
 	a.len++
 }
 

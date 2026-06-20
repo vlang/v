@@ -215,7 +215,7 @@ pub const empty_expr = Expr(EmptyExpr(0))
 pub const empty_stmt = Stmt(EmptyStmt{})
 pub const empty_node = Node(EmptyNode{})
 pub const empty_scope_object = ScopeObject(EmptyScopeObject{'empty_scope_object', 0})
-pub const empty_comptime_const_value = ComptTimeConstValue(EmptyExpr(0))
+pub const empty_comptime_const_value = ComptTimeConstValue(EmptyComptimeConstValue{})
 
 // `{stmts}` or `unsafe {stmts}`
 pub struct Block {
