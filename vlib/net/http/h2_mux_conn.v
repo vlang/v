@@ -550,8 +550,20 @@ fn (mut c H2MuxConn) send_body_on_stream(mut s H2MuxStream, body []u8) ! {
 		s.send_window -= i64(chunk)
 		c.fmu.unlock()
 
-		next := off + chunk
+		mut next := off + chunk
 		c.wmu.lock()
+		// Re-cap chunk under wmu→fmu (permitted order): the reader may have
+		// processed SETTINGS_MAX_FRAME_SIZE and sent the ACK between our
+		// fmu.unlock() above and wmu.lock() here; re-read and return any excess.
+		c.fmu.lock()
+		if chunk > int(c.peer_max_frame) {
+			excess := i64(chunk) - i64(c.peer_max_frame)
+			c.send_window += excess
+			s.send_window += excess
+			chunk = int(c.peer_max_frame)
+			next = off + chunk
+		}
+		c.fmu.unlock()
 		c.write_all_locked(H2Frame(H2DataFrame{
 			stream_id:  s.id
 			data:       body[off..next]
