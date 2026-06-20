@@ -388,9 +388,9 @@ fn main() {
 	mut tsession := testing.new_test_session(vargs.join(' '), true)
 	tsession.exec_mode = .compile_and_run
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
-	// v2 has its own driver at `cmd/v2/test_all.sh` and is still under heavy
+	// v2 has its own driver at `cmd/v2/test_all.vsh` and is still under heavy
 	// development, so its tests are excluded from `v test-self`.
-	v2_dir_fragment := '${os.path_separator}vlib${os.path_separator}v2${os.path_separator}'
+	v2_dir_fragment := '${os.path_separator}vlib${os.path_separator}v2_toberemoved${os.path_separator}'
 	tsession.skip_files << tsession.files.filter(it.contains(v2_dir_fragment))
 	if cfg.werror {
 		tsession.custom_defines << 'self_werror'

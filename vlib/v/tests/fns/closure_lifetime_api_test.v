@@ -8,6 +8,12 @@ fn testsuite_begin() {
 	}
 }
 
+@[noreturn]
+fn skip_test(reason string) {
+	println('skipping test, because ${reason} .')
+	exit(0)
+}
+
 fn missing_boehm_leak_lib(output string) bool {
 	return output.contains('libgc') && (output.contains('was not found')
 		|| output.contains('cannot find'))
