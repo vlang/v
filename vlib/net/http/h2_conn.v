@@ -464,13 +464,15 @@ fn (mut c H2Conn) next_frame() !H2Frame {
 }
 
 // read_frame reads and decodes one frame from the transport, enforcing the
-// negotiated max frame size (updated by apply_settings when the peer sends
-// SETTINGS_MAX_FRAME_SIZE).
+// receive limit we advertised to the peer in our own SETTINGS. This is
+// h2_default_max_frame_size, which H2Conn always sends and never renegotiates.
+// (c.peer.max_frame_size is the peer's receive limit — our outbound cap —
+// and must not be used here.)
 fn (mut c H2Conn) read_frame() !H2Frame {
 	c.fill_at_least(h2_frame_header_len)!
 	header := h2_parse_frame_header(c.rbuf)!
-	if header.length > c.peer.max_frame_size {
-		return error('h2: frame larger than negotiated SETTINGS_MAX_FRAME_SIZE (${header.length} > ${c.peer.max_frame_size})')
+	if header.length > h2_default_max_frame_size {
+		return error('h2: frame larger than SETTINGS_MAX_FRAME_SIZE (${header.length})')
 	}
 	total := h2_frame_header_len + int(header.length)
 	c.fill_at_least(total)!
