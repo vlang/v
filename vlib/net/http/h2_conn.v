@@ -199,10 +199,12 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 				fragment := c.collect_header_block(frame.fragment, frame.end_headers, stream_id)!
 				for f in c.decoder.decode(fragment)! {
 					if f.name == ':status' {
-						resp.status = f.value.int()
+						if f.value.len == 3 && all_digits(f.value) {
+							resp.status = f.value.int()
+						}
 					} else if !f.name.starts_with(':') {
 						resp.headers << f
-						if f.name == 'content-length' {
+						if f.name == 'content-length' && all_digits(f.value) {
 							body_expected = f.value.u64()
 						}
 					}
@@ -292,6 +294,9 @@ fn (mut c H2Conn) collect_header_block(first []u8, end_headers bool, stream_id u
 				return error('h2: CONTINUATION on the wrong stream')
 			}
 			fragment << frame.fragment
+			if fragment.len > h2_max_recv_header_block {
+				return error('h2: response header block exceeds ${h2_max_recv_header_block} bytes')
+			}
 			if frame.end_headers {
 				break
 			}
