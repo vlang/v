@@ -43,8 +43,7 @@ fn test_worker_clone_merge_remaps_block_and_value_operands() {
 		params:   w.funcs[fidx].params
 	}
 
-	m.merge_worker_module(w, [fd], seed_values, seed_instrs, seed_blocks, seed_types,
-		seed_funcs)
+	m.merge_worker_module(w, [fd], seed_values, seed_instrs, seed_blocks, seed_types, seed_funcs)
 
 	// The function now has its 4 blocks, all parented correctly.
 	assert m.funcs[fidx].blocks.len == 4

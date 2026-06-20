@@ -246,7 +246,8 @@ fn eliminate_phi_nodes(mut m ssa.Module) {
 		}
 
 		for pred_blk in pred_copy_blocks {
-			resolve_parallel_copies(mut m, pred_blk, pred_copy_dests[pred_blk], pred_copy_srcs[pred_blk])
+			resolve_parallel_copies(mut m, pred_blk, pred_copy_dests[pred_blk],
+				pred_copy_srcs[pred_blk])
 		}
 		for pred_blk in pred_copy_blocks {
 			pred_copy_dests[pred_blk] = []

@@ -78,7 +78,11 @@ pub fn (mut m Module) new_worker_module() &Module {
 fn worker_type_cache_key(t Type, type_remap []TypeID) string {
 	return match t.kind {
 		.int_t {
-			if t.is_unsigned { 'u${t.width}' } else { 'i${t.width}' }
+			if t.is_unsigned {
+				'u${t.width}'
+			} else {
+				'i${t.width}'
+			}
 		}
 		.float_t {
 			'f${t.width}'

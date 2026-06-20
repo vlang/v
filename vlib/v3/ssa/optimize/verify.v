@@ -108,7 +108,8 @@ fn is_legacy_noncritical_verify_error(err VerifyError) bool {
 	// a terminator within the same block). These are tolerated by the lenient
 	// verify_ssa() and removed by remove_unreachable_blocks / DCE.
 	if err.msg.contains('has no instructions') || err.msg.contains('not at end of block')
-		|| err.msg.contains('multiple terminators') || err.msg.contains('does not end with terminator') {
+		|| err.msg.contains('multiple terminators')
+		|| err.msg.contains('does not end with terminator') {
 		return true
 	}
 	// Type-precision findings. The v3 builder does not maintain strict SSA typing
@@ -340,6 +341,7 @@ fn verify_instruction(m &ssa.Module, func_id int, blk_id int, val_id int, instr 
 		}
 		else {}
 	}
+
 	return errors
 }
 
