@@ -463,13 +463,14 @@ fn (mut c H2Conn) next_frame() !H2Frame {
 	return c.read_frame()!
 }
 
-// read_frame reads and decodes one frame from the transport, enforcing our
-// advertised max frame size.
+// read_frame reads and decodes one frame from the transport, enforcing the
+// negotiated max frame size (updated by apply_settings when the peer sends
+// SETTINGS_MAX_FRAME_SIZE).
 fn (mut c H2Conn) read_frame() !H2Frame {
 	c.fill_at_least(h2_frame_header_len)!
 	header := h2_parse_frame_header(c.rbuf)!
-	if header.length > h2_default_max_frame_size {
-		return error('h2: frame larger than SETTINGS_MAX_FRAME_SIZE (${header.length})')
+	if header.length > c.peer.max_frame_size {
+		return error('h2: frame larger than negotiated SETTINGS_MAX_FRAME_SIZE (${header.length} > ${c.peer.max_frame_size})')
 	}
 	total := h2_frame_header_len + int(header.length)
 	c.fill_at_least(total)!

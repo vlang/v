@@ -311,6 +311,9 @@ fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 	}
 	if frame.data.len > 0 {
 		if s.body.len + frame.data.len > h2_server_max_request_body {
+			// Credit the connection window before resetting so the peer is
+			// not penalised for bytes it legitimately sent within its window.
+			c.send_window_update(0, u32(frame.flow_size)) or {}
 			c.send_rst_stream(s.id, .refused_stream)!
 			c.streams.delete(s.id)
 			return
@@ -529,8 +532,8 @@ fn (mut c H2ServerConn) send_goaway(code H2ErrorCode, msg string) ! {
 fn (mut c H2ServerConn) read_frame() !H2Frame {
 	c.fill_at_least(h2_frame_header_len)!
 	header := h2_parse_frame_header(c.rbuf)!
-	if header.length > h2_default_max_frame_size {
-		return error('h2 server: frame larger than SETTINGS_MAX_FRAME_SIZE (${header.length})')
+	if header.length > c.peer.max_frame_size {
+		return error('h2 server: frame larger than negotiated SETTINGS_MAX_FRAME_SIZE (${header.length} > ${c.peer.max_frame_size})')
 	}
 	total := h2_frame_header_len + int(header.length)
 	c.fill_at_least(total)!
