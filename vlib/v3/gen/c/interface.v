@@ -220,13 +220,37 @@ fn (mut g FlatGen) interface_method_stubs() {
 fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method string) {
 	sid := g.intern_string('interface method ${cn}.${method} not implemented')
 	mname := '${iface_name}.${method}'
-	ret_type := g.tc.fn_ret_types[mname] or { types.Type(types.void_) }
+	impls := g.iface_impls[iface_name] or { []string{} }
+	// Interface-declared method signatures store named params unreliably (a named
+	// param like `node &ast.Node` can be split into two type-only params). The
+	// concrete implementer's method is a real fn_decl with a correctly parsed
+	// signature, so derive the dispatch parameter types from the first implementer
+	// that has the method. The receiver convention is resolved per implementer.
+	mut sig_key := ''
+	for concrete in impls {
+		ck := '${concrete}.${method}'
+		if ck in g.tc.fn_param_types {
+			sig_key = ck
+			break
+		}
+	}
+	ret_type := g.tc.fn_ret_types[mname] or {
+		if sig_key.len > 0 {
+			g.tc.fn_ret_types[sig_key] or { types.Type(types.void_) }
+		} else {
+			types.Type(types.void_)
+		}
+	}
 	ret_ct := g.optional_type_name(ret_type)
-	param_types := g.tc.fn_param_types[mname] or { []types.Type{} }
+	mut sig_params := if sig_key.len > 0 {
+		g.tc.fn_param_types[sig_key] or { []types.Type{} }
+	} else {
+		[]types.Type{}
+	}
 	mut arg_names := []string{}
 	g.write('${ret_ct} ${cn}__${method}(${cn}* i')
-	for pi := 1; pi < param_types.len; pi++ {
-		pt := param_types[pi]
+	for pi := 1; pi < sig_params.len; pi++ {
+		pt := sig_params[pi]
 		pct := if pt is types.OptionType || pt is types.ResultType {
 			g.optional_type_name(pt)
 		} else {
@@ -237,7 +261,6 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 		g.write(', ${pct} ${an}')
 	}
 	g.writeln(') {')
-	impls := g.iface_impls[iface_name] or { []string{} }
 	if impls.len > 0 {
 		g.writeln('\tswitch (i->_typ) {')
 		for concrete in impls {
