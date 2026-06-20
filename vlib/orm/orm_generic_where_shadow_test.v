@@ -68,31 +68,31 @@ fn test_generic_where_variable_shadows_field() {
 	// Test: variable `status` shadows field `status`
 	// Before the fix, this would return all rows or error because
 	// `status == status` was optimized to `true`
-	wanted_status := TestStatus.active
+	status := TestStatus.active
 	results := sql db {
-		select from GenericRecord[TestPayload] where status == wanted_status
+		select from GenericRecord[TestPayload] where status == status
 	} or { panic(err) }
 
 	assert results.len == 2, 'Expected 2 active records, got ${results.len}'
 
 	// Test with different status values
-	wanted_status2 := TestStatus.pending
+	status2 := TestStatus.pending
 	pending_results := sql db {
-		select from GenericRecord[TestPayload] where status == wanted_status2
+		select from GenericRecord[TestPayload] where status == status2
 	} or { panic(err) }
 	assert pending_results.len == 1, 'Expected 1 pending record, got ${pending_results.len}'
 
-	wanted_status3 := TestStatus.completed
+	status3 := TestStatus.completed
 	completed_results := sql db {
-		select from GenericRecord[TestPayload] where status == wanted_status3
+		select from GenericRecord[TestPayload] where status == status3
 	} or { panic(err) }
 	assert completed_results.len == 1, 'Expected 1 completed record, got ${completed_results.len}'
 }
 
 // Test generic select helper function with shadowed variable
-fn generic_select_by_status[T](db &sqlite.DB, wanted_status TestStatus) ![]GenericRecord[T] {
+fn generic_select_by_status[T](db &sqlite.DB, status TestStatus) ![]GenericRecord[T] {
 	return sql db {
-		select from GenericRecord[T] where status == wanted_status
+		select from GenericRecord[T] where status == status
 	}!
 }
 
@@ -153,9 +153,9 @@ fn test_generic_count_where_shadow() {
 		} or { panic(err) }
 	}
 
-	wanted_status := TestStatus.active
+	status := TestStatus.active
 	count := sql db {
-		select count from GenericRecord[TestPayload] where status == wanted_status
+		select count from GenericRecord[TestPayload] where status == status
 	} or { panic(err) }
 
 	assert count == 3, 'Expected count 3, got ${count}'
