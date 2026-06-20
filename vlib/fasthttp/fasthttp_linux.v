@@ -480,6 +480,9 @@ fn handle_write(server &Server, epoll_fd int, client_fd int, mut client_fds map[
 }
 
 fn process_request_async(server &Server, client_fd int, request_buffer []u8, command_ch chan LoopCommand) {
+	$if fasthttp_test_delay_async_start ? {
+		time.sleep(200 * time.millisecond)
+	}
 	mut request_arena := voidptr(unsafe { nil })
 	$if prealloc {
 		request_arena = unsafe { prealloc_scope_begin() }
@@ -642,6 +645,12 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 			}
 		}
 	}
+}
+
+fn dispatch_request_async(server &Server, client_fd int, request_buffer []u8, command_ch chan LoopCommand) {
+	// Account for the request before shutdown can observe the spawned work.
+	server.begin_request()
+	spawn process_request_async(server, client_fd, request_buffer, command_ch)
 }
 
 fn process_loop_command(server &Server, epoll_fd int, cmd LoopCommand, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
@@ -881,9 +890,7 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 					client_read_starts.delete(client_fd)
 					req_buf := readed_request_buffer.clone()
 					client_buffers.delete(client_fd)
-					// Account for the request before shutdown can observe the spawned work.
-					server.begin_request()
-					spawn process_request_async(server, client_fd, req_buf, command_ch)
+					dispatch_request_async(server, client_fd, req_buf, command_ch)
 				} else if recv_error {
 					// Unexpected recv error - send 444 No Response
 					C.send(client_fd, status_444_response.data, status_444_response.len,

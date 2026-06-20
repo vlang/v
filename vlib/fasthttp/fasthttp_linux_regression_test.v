@@ -1,0 +1,73 @@
+// vtest build: linux
+// vtest vflags: -d fasthttp_test_delay_async_start
+module fasthttp
+
+import net
+import time
+
+fn lifecycle_test_handler(_ HttpRequest) !HttpResponse {
+	return HttpResponse{
+		content: 'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n'.bytes()
+	}
+}
+
+fn new_lifecycle_test_server() !&Server {
+	return new_server(ServerConfig{
+		family:                  .ip
+		port:                    0
+		max_request_buffer_size: 8192
+		handler:                 lifecycle_test_handler
+	})
+}
+
+fn test_close_command_releases_unregistered_write_state() ! {
+	server := new_lifecycle_test_server()!
+	epoll_fd := C.epoll_create1(0)
+	assert epoll_fd >= 0
+	defer {
+		C.close(epoll_fd)
+	}
+	client_fd := int(C.socket(i32(net.AddrFamily.ip), i32(net.SocketType.tcp), 0))
+	assert client_fd >= 0
+	assert add_fd_to_epoll(epoll_fd, client_fd, u32(C.EPOLLIN)) == 0
+
+	server.begin_request()
+	state := &ClientWriteState{
+		content:        'pending'.bytes()
+		content_owned:  true
+		request_active: true
+	}
+	mut client_fds := {
+		client_fd: true
+	}
+	mut client_buffers := map[int][]u8{}
+	mut client_read_starts := map[int]i64{}
+	mut closing_client_fds := map[int]bool{}
+	mut client_write_states := map[int]&ClientWriteState{}
+	process_loop_command(server, epoll_fd, LoopCommand{
+		kind:      .close_conn
+		client_fd: client_fd
+		state:     state
+	}, mut client_fds, mut client_buffers, mut client_read_starts, mut closing_client_fds, mut
+		client_write_states)
+
+	assert server.active_request_count() == 0
+	assert client_fd !in client_fds
+	assert client_fd !in client_write_states
+}
+
+fn test_dispatch_marks_request_active_before_spawn() ! {
+	server := new_lifecycle_test_server()!
+	command_ch := chan LoopCommand{cap: 1}
+	dispatch_request_async(server, -1, 'invalid request'.bytes(), command_ch)
+	assert server.active_request_count() == 1
+
+	select {
+		_ := <-command_ch {
+			assert server.active_request_count() == 0
+		}
+		1 * time.second {
+			assert false, 'timed out waiting for the async request to finish'
+		}
+	}
+}
