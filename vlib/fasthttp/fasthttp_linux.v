@@ -484,7 +484,6 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 	$if prealloc {
 		request_arena = unsafe { prealloc_scope_begin() }
 	}
-	server.begin_request()
 	mut request_active := true
 
 	mut decoded_http_request := decode_http_request(request_buffer) or {
@@ -649,6 +648,8 @@ fn process_loop_command(server &Server, epoll_fd int, cmd LoopCommand, mut clien
 	match cmd.kind {
 		.close_conn {
 			if cmd.state != unsafe { nil } {
+				// Failed first writes have not registered their state yet.
+				client_write_states[cmd.client_fd] = cmd.state
 				free_write_state(server, cmd.client_fd, mut client_write_states)
 			}
 			handle_client_closure(server, epoll_fd, cmd.client_fd, mut client_fds, mut
@@ -880,6 +881,8 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 					client_read_starts.delete(client_fd)
 					req_buf := readed_request_buffer.clone()
 					client_buffers.delete(client_fd)
+					// Account for the request before shutdown can observe the spawned work.
+					server.begin_request()
 					spawn process_request_async(server, client_fd, req_buf, command_ch)
 				} else if recv_error {
 					// Unexpected recv error - send 444 No Response
