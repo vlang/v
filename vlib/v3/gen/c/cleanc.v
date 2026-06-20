@@ -20,6 +20,10 @@ mut:
 	const_vals              map[string]flat.NodeId
 	const_modules           map[string]string
 	global_modules          map[string]string
+	global_inits            map[string]flat.NodeId // qualified global name -> initializer value node
+	global_init_order       []string               // qualified global names, in declaration order
+	iface_impls             map[string][]string    // interface name -> implementing concrete type names
+	iface_type_ids          map[string]int         // "${iface}::${concrete}" -> 1-based type id
 	tc                      &types.TypeChecker = unsafe { nil }
 	has_builtins            bool
 	tmp_count               int
@@ -62,6 +66,10 @@ pub fn FlatGen.new() FlatGen {
 		const_vals:              map[string]flat.NodeId{}
 		const_modules:           map[string]string{}
 		global_modules:          map[string]string{}
+		global_inits:            map[string]flat.NodeId{}
+		global_init_order:       []string{}
+		iface_impls:             map[string][]string{}
+		iface_type_ids:          map[string]int{}
 		modules:                 map[string]string{}
 		fn_ptr_types:            map[string]string{}
 		fn_decl_param_types:     map[string][]types.Type{}
@@ -104,6 +112,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.const_vals = map[string]flat.NodeId{}
 	g.const_modules = map[string]string{}
 	g.global_modules = map[string]string{}
+	g.global_inits = map[string]flat.NodeId{}
+	g.global_init_order = []string{}
+	g.iface_impls = map[string][]string{}
+	g.iface_type_ids = map[string]int{}
 	g.modules = map[string]string{}
 	g.fn_ptr_types = map[string]string{}
 	g.fn_decl_param_types = map[string][]types.Type{}
@@ -123,6 +135,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	g.has_builtins = g.tc.has_builtins
 	g.collect_gen_info()
+	g.collect_interface_impls()
 	g.preseed_struct_fn_ptr_types()
 	const_code := g.precompute_consts()
 	orig_sb := g.sb
@@ -222,6 +235,14 @@ fn (mut g FlatGen) collect_gen_info() {
 				qname := qualify_name_in_module(cur_module, f.value)
 				g.global_types[qname] = ft
 				g.global_modules[f.value] = cur_module
+				g.global_modules[qname] = cur_module
+				if f.children_count > 0 {
+					val_id := g.a.child(f, 0)
+					if int(val_id) >= 0 {
+						g.global_inits[qname] = val_id
+						g.global_init_order << qname
+					}
+				}
 				g.tc.file_scope.insert(f.value, ft)
 				if qname != f.value {
 					g.tc.file_scope.insert(qname, ft)
@@ -1623,6 +1644,74 @@ fn (mut g FlatGen) global_decls() {
 	}
 	if g.global_types.len > 0 {
 		g.writeln('')
+	}
+	g.emit_global_inits()
+}
+
+// emit_global_inits queues assignments for `__global x = expr` declarations into
+// _vinit. The C globals are emitted zero-initialized above; their initializer
+// expressions (often function calls like `new_timers(...)`) cannot be C static
+// initializers, so they must run at startup. Without this, such globals stay
+// NULL/zero and the first access segfaults.
+//
+// Only initializers that translate to a plain `name = expr;` assignment are
+// emitted. Fixed-array globals (`[N]T{}`) are skipped: C zero-initializes them
+// already and a C array is not assignable. Initializers needing auxiliary
+// temporaries (e.g. `&Struct{}`, which the transformer lowers to a now-dropped
+// stack temp) are also skipped, leaving the global zero/NULL as before — no
+// regression versus the previous behavior of never initializing globals at all.
+fn (mut g FlatGen) emit_global_inits() {
+	old_module := g.tc.cur_module
+	for qname in g.global_init_order {
+		val_id := g.global_inits[qname] or { continue }
+		if int(val_id) < 0 {
+			continue
+		}
+		if typ := g.global_types[qname] {
+			if typ is types.ArrayFixed {
+				continue
+			}
+		}
+		if !g.is_safe_global_init(val_id) {
+			continue
+		}
+		if mod := g.global_modules[qname] {
+			g.tc.cur_module = mod
+		}
+		tmp_sb := g.sb
+		tmp_line_start := g.line_start
+		g.sb = strings.new_builder(64)
+		g.line_start = true
+		g.gen_expr(val_id)
+		expr_str := g.sb.str()
+		g.sb = tmp_sb
+		g.line_start = tmp_line_start
+		if expr_str.trim_space().len == 0 {
+			continue
+		}
+		g.runtime_inits << '\t${c_name(qname)} = ${expr_str};'
+	}
+	g.tc.cur_module = old_module
+}
+
+// is_safe_global_init reports whether a global initializer can be emitted as a
+// self-contained `name = expr;` assignment in _vinit, i.e. without auxiliary
+// declarations/temporaries that the global context cannot host.
+fn (g &FlatGen) is_safe_global_init(val_id flat.NodeId) bool {
+	if int(val_id) < 0 {
+		return false
+	}
+	node := g.a.nodes[int(val_id)]
+	return match node.kind {
+		.prefix, .array_literal, .array_init {
+			// `&Struct{}` / array literals need a backing temp the transformer
+			// drops for globals; leave them zero/NULL instead of emitting a
+			// reference to an undeclared symbol.
+			false
+		}
+		else {
+			true
+		}
 	}
 }
 

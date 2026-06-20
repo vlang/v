@@ -3856,7 +3856,7 @@ fn (tc &TypeChecker) interface_implements_interface(actual_name string, expected
 	return true
 }
 
-fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, iface_name string) bool {
+pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, iface_name string) bool {
 	for method in tc.interface_method_names(iface_name) {
 		concrete_key := '${concrete_name}.${method}'
 		if concrete_key !in tc.fn_param_types {

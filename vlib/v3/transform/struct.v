@@ -243,6 +243,11 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		new_val := if default_node.kind == .enum_val && field.typ.len > 0
 			&& field.typ in t.enum_types {
 			t.transform_enum_shorthand(field.default_expr, default_node, field.typ)
+		} else if t.is_sum_type_name(field.typ) {
+			// A sum-type field default (e.g. `typ_expr Expr = EmptyExpr{}`) must be
+			// wrapped into the sum, not emitted as the bare variant. wrap_sum_value
+			// is a no-op when the value already is the sum type.
+			t.wrap_sum_value(field.default_expr, field.typ)
 		} else {
 			t.transform_expr_for_type(field.default_expr, field.typ)
 		}

@@ -29,6 +29,12 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	g.write('(${name}){')
 	mut set_fields := map[string]bool{}
 	mut has_field := false
+	if g.is_interface_type_name(node.value) {
+		if tid := g.interface_init_typ_id(node) {
+			g.write('._typ = ${tid}')
+			has_field = true
+		}
+	}
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
 		if has_field {
@@ -497,6 +503,18 @@ fn (mut g FlatGen) struct_decls() {
 					can_emit = false
 				}
 			}
+			// An interface struct embeds its declared data fields by value, so the
+			// field types must be fully defined first (same constraint as structs).
+			for field in g.tc.interface_fields[name] or { []types.StructField{} } {
+				if field.typ is types.Pointer {
+					continue
+				}
+				fct := g.tc.c_type(field.typ)
+				if fct !in emitted && fct != cn && fct in remaining_cnames {
+					can_emit = false
+					break
+				}
+			}
 			if can_emit {
 				g.writeln('struct ${cn} {')
 				g.writeln('\tint _typ;')
@@ -504,6 +522,9 @@ fn (mut g FlatGen) struct_decls() {
 					g.writeln('\tvoid* _object;')
 					g.writeln('\tstring message;')
 					g.writeln('\tint code;')
+				} else {
+					// pointer to the boxed concrete value, used by method dispatch
+					g.writeln('\tvoid* _object;')
 				}
 				for field in g.tc.interface_fields[name] or { []types.StructField{} } {
 					ct := g.tc.c_type(field.typ)
@@ -611,6 +632,12 @@ fn (mut g FlatGen) struct_decls() {
 			g.writeln('\tvoid* _object;')
 			g.writeln('\tstring message;')
 			g.writeln('\tint code;')
+		} else {
+			g.writeln('\tvoid* _object;')
+		}
+		for field in g.tc.interface_fields[name] or { []types.StructField{} } {
+			ct := g.tc.c_type(field.typ)
+			g.writeln('\t${ct} ${c_name(field.name)};')
 		}
 		g.writeln('};')
 		g.writeln('')

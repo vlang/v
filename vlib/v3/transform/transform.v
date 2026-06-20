@@ -2622,8 +2622,13 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 }
 
 fn (t &Transformer) is_strings_builder_new_call(id flat.NodeId, node flat.Node) bool {
+	// Only `strings.new_builder` returns a `strings.Builder` (an alias for `[]u8`).
+	// A bare `new_builder` must NOT be assumed to be the strings one: other modules
+	// (e.g. `builder.new_builder`) and user code define their own `new_builder` that
+	// return unrelated struct types. Resolve the call to its qualified name and only
+	// match when it is genuinely the strings module's function.
 	call_name := t.call_name_for_node(id, node)
-	if call_name == 'strings.new_builder' || call_name == 'new_builder' {
+	if call_name == 'strings.new_builder' {
 		return true
 	}
 	if node.children_count == 0 {
@@ -2635,7 +2640,7 @@ fn (t &Transformer) is_strings_builder_new_call(id flat.NodeId, node flat.Node) 
 	}
 	fn_node := t.a.nodes[int(fn_id)]
 	if fn_node.kind == .ident {
-		return fn_node.value == 'strings.new_builder' || fn_node.value == 'new_builder'
+		return fn_node.value == 'strings.new_builder'
 	}
 	if fn_node.kind == .selector && fn_node.value == 'new_builder' && fn_node.children_count > 0 {
 		base := t.a.child_node(&fn_node, 0)
@@ -3372,6 +3377,14 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 	}
 	if t.is_sum_type_name(target_type) {
 		return t.wrap_sum_value(t.a.child(&node, 0), target_type)
+	}
+	// An explicit cast to an interface (`Animal(dog)`, `&PRNG(rng)`) boxes the
+	// concrete value into the interface representation, just like an implicit
+	// conversion does.
+	if t.is_interface_type(target_type) {
+		if boxed := t.transform_interface_value_for_type(t.a.child(&node, 0), node.value) {
+			return boxed
+		}
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {

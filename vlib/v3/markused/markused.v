@@ -169,6 +169,24 @@ pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 	enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
 	enqueue_function_value_selectors(a, fn_decls, mut used, mut queue)
 	enqueue_initializer_calls(a, collector, imports, fn_decls, mut used, mut queue)
+	// Interface dispatch reachability: calling an interface method `Foo.m` may
+	// dispatch to any concrete `T.m` for a type `T` that implements `Foo`. Those
+	// concrete methods are only referenced from the generated dispatch switch, so
+	// without this they would be pruned and produce undefined-symbol errors.
+	mut iface_impls := map[string][]string{}
+	for iface_name, _ in tc.interface_names {
+		mut impls := []string{}
+		for struct_name, _ in tc.structs {
+			if tc.named_type_implements_interface(struct_name, iface_name) {
+				impls << struct_name
+			}
+		}
+		iface_impls[iface_name] = impls
+		short := iface_name.all_after_last('.')
+		if short != iface_name && short !in iface_impls {
+			iface_impls[short] = impls
+		}
+	}
 	mut processed_nodes := map[int]bool{}
 	mut calls := []string{cap: 128}
 	mut qi := 0
@@ -230,6 +248,20 @@ pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 							if enqueue(candidate, mut used, mut queue) {
 								suffix_hits++
 							}
+						}
+					}
+				}
+			}
+			if callee.contains('.') {
+				recv := callee.all_before_last('.')
+				method := callee.all_after_last('.')
+				if impls := iface_impls[recv] {
+					for impl in impls {
+						impl_method := '${impl}.${method}'
+						enqueue(impl_method, mut used, mut queue)
+						short_impl := '${impl.all_after_last('.')}.${method}'
+						if short_impl != impl_method {
+							enqueue(short_impl, mut used, mut queue)
 						}
 					}
 				}

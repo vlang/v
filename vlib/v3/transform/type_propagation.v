@@ -33,8 +33,25 @@ fn (t &Transformer) resolve_selector_type(node flat.Node) string {
 	}
 	base_id := t.a.child(&node, 0)
 	base_node := t.a.nodes[int(base_id)]
-	if base_node.kind == .ident && base_node.value == 'C' && is_c_int_selector(node.value) {
-		return 'int'
+	if base_node.kind == .ident && base_node.value == 'C' {
+		// `C.<name>` references a C symbol (e.g. the `C.stdout &C.FILE` global).
+		// Resolve it via the recorded C global/const type and never fall through to
+		// the V struct field-name heuristics below: an unrelated V struct may have a
+		// field with the same name (e.g. `os.Pipe.stdout`), which would otherwise
+		// mistype `C.stdout` and trigger a bogus auto-reference (`&stdout`).
+		if is_c_int_selector(node.value) {
+			return 'int'
+		}
+		cname := 'C.${node.value}'
+		if gt := t.globals[cname] {
+			if gt.len > 0 {
+				return t.normalize_type_alias(gt)
+			}
+		}
+		if typ := t.const_type_name(cname) {
+			return typ
+		}
+		return ''
 	}
 	field_name := node.value
 	if field_name.len == 0 {

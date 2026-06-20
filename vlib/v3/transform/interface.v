@@ -1,6 +1,7 @@
 module transform
 
 import v3.flat
+import v3.types
 
 // is_interface_type checks if a type name is a known interface.
 fn (t &Transformer) is_interface_type(name string) bool {
@@ -34,6 +35,11 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	if iface_name.len == 0 {
 		return none
 	}
+	// IError has bespoke handling (built via `error()`, fields accessed directly);
+	// do not route it through the generic interface boxing.
+	if iface_name.all_after_last('.') == 'IError' {
+		return none
+	}
 	source_type := t.node_type(id)
 	source_iface := t.resolve_interface_type_name(source_type)
 	if source_iface == iface_name {
@@ -55,25 +61,37 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 }
 
 fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string) ?flat.NodeId {
-	fields := t.tc.interface_fields[iface_name] or { return none }
+	fields := t.tc.interface_fields[iface_name] or { []types.StructField{} }
 	source_type := t.node_type(id)
 	if source_type.len == 0 {
 		return none
 	}
 	source_expr := t.transform_expr(id)
-	source := if fields.len > 1 || !t.is_stable_expr_for_reuse(source_expr) {
-		t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_src')
+	source := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_src')
+	is_ptr := source_type.starts_with('&')
+	concrete_type := if is_ptr { source_type[1..] } else { source_type }
+	// `_object` is a pointer to the boxed concrete value; method dispatch reads it
+	// back and casts it to the concrete type. For pointer sources we store the
+	// pointer directly; for value sources we heap-copy so the box can outlive the
+	// source scope. The pointer is typed (`&Concrete`) so codegen can recover the
+	// concrete type and emit the matching `_typ` dispatch id.
+	object_expr := if is_ptr {
+		source
 	} else {
-		source_expr
+		addr := t.make_prefix(.amp, source)
+		size := t.make_sizeof_type(concrete_type)
+		dup := t.make_call_typed('memdup', arr2(addr, size), 'voidptr')
+		t.make_cast('&${concrete_type}', dup, '&${concrete_type}')
 	}
-	field_base := if source_type.starts_with('&') {
+	field_base := if is_ptr {
 		base := t.make_prefix(.mul, source)
-		t.a.nodes[int(base)].typ = source_type[1..]
+		t.a.nodes[int(base)].typ = concrete_type
 		base
 	} else {
 		source
 	}
-	mut field_ids := []flat.NodeId{cap: fields.len}
+	mut field_ids := []flat.NodeId{cap: fields.len + 1}
+	field_ids << t.make_sum_literal_field('_object', object_expr, '&${concrete_type}')
 	for field in fields {
 		field_type := t.normalize_type_alias(field.typ.name())
 		field_value := t.make_selector(field_base, field.name, field_type)
