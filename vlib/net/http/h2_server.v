@@ -299,9 +299,10 @@ fn (mut c H2ServerConn) finalize_headers(mut s H2ServerStream, mut handler Handl
 fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 	mut s := c.streams[frame.stream_id] or {
 		// DATA for an unknown stream (likely already RST'd); just drop and
-		// keep flow control consistent.
-		if frame.data.len > 0 {
-			c.send_window_update(0, u32(frame.data.len))!
+		// keep flow control consistent. Credit flow_size (full wire bytes
+		// including padding) per RFC 7540 §6.9.1.
+		if frame.flow_size > 0 {
+			c.send_window_update(0, u32(frame.flow_size))!
 		}
 		return
 	}
@@ -316,9 +317,10 @@ fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 		}
 		s.body << frame.data
 		// Replenish the connection window; per-stream we replenish on
-		// completion since we hold the body in memory.
-		c.send_window_update(0, u32(frame.data.len))!
-		c.send_window_update(s.id, u32(frame.data.len))!
+		// completion since we hold the body in memory. Credit flow_size
+		// (full wire bytes including padding) per RFC 7540 §6.9.1.
+		c.send_window_update(0, u32(frame.flow_size))!
+		c.send_window_update(s.id, u32(frame.flow_size))!
 	}
 	if frame.end_stream {
 		s.end_stream = true

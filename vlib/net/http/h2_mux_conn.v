@@ -854,13 +854,13 @@ fn is_transport_timeout_error(err IError) bool {
 }
 
 // mux_read_frame reads and decodes one frame from the transport, enforcing
-// our advertised max frame size. Only the reader thread calls this; it is the
+// the negotiated max frame size. Only the reader thread calls this; it is the
 // sole user of rbuf.
 fn (mut c H2MuxConn) mux_read_frame() !H2Frame {
 	c.mux_fill_at_least(h2_frame_header_len)!
 	header := h2_parse_frame_header(c.rbuf)!
-	if header.length > h2_default_max_frame_size {
-		return error('frame larger than SETTINGS_MAX_FRAME_SIZE (${header.length})')
+	if header.length > c.peer_max_frame {
+		return error('frame larger than negotiated SETTINGS_MAX_FRAME_SIZE (${header.length} > ${c.peer_max_frame})')
 	}
 	total := h2_frame_header_len + int(header.length)
 	c.mux_fill_at_least(total)!
