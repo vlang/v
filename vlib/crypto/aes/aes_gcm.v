@@ -18,6 +18,20 @@ pub const gcm_tag_size = 16
 // gcm_nonce_size is the size of the GCM nonce in bytes (only support 96-bit nonce variant).
 pub const gcm_nonce_size = 12
 
+// zero_block is a preallocated 16-bytes of zeros block. Its currently sized by Aes block size.
+const zero_block = []u8{len: block_size}
+
+// maximum plaintext length per invocation GCM: MUST be <= 2^36 - 32 octets.
+const max_plaintext_size = u64(1) << 36 - 32
+
+// maximum ciphertext length per invocation GCM: MUST be <= 2^36 - 16 octets.
+const max_ciphertext_size = u64(1) << 36 - 16
+
+// maximum length of additional authenticated data. Even technically its was not limited,
+// we give it a limit to reduce the risk. Intended purposes of additional data was
+// as an additional authenticated data included into output, not act as a primary input.
+const max_aad_size = max_u32
+
 // AesGcm holds the AES block cipher and the derived GHASH subkey for a key.
 @[heap; noinit]
 pub struct AesGcm implements cipher.AEAD {
@@ -30,12 +44,11 @@ mut:
 @[direct_array_access]
 pub fn new_aes_gcm(key []u8) !&AesGcm {
 	if key.len != 16 && key.len != 24 && key.len != 32 {
-		return error('AES-GCM key must be 16 or 32 bytes, got ${key.len}')
+		return error('AES-GCM key must be 16, 24 or 32 bytes, got ${key.len}')
 	}
 	block := new_cipher(key)
-	mut h := []u8{len: 16}
-	zero := []u8{len: 16}
-	block.encrypt(mut h, zero)
+	mut h := zero_block.clone()
+	block.encrypt(mut h, zero_block)
 	return &AesGcm{
 		block: block
 		h:     h
@@ -56,6 +69,15 @@ pub fn (g &AesGcm) overhead() int {
 // authenticated data `ad`, returning ciphertext with the 16-byte tag appended.
 @[direct_array_access]
 pub fn (g &AesGcm) encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8 {
+	// In V language, unlike C and Go, int is always a 32 bit integer, so technically safe
+	// to assume if the arrays length not would exceed 32-bit integer (its maybe changed on the future).
+	// For safety purposes, we check agains the limit.
+	if u64(plaintext.len) > max_plaintext_size {
+		return error('AES-GCM encrypt: plaintext size exceed the limit')
+	}
+	if u64(ad.len) > max_aad_size {
+		return error('AES-GCM encrypt: additional data size exceed the limit')
+	}
 	if nonce.len != gcm_nonce_size {
 		return error('AES-GCM nonce must be ${gcm_nonce_size} bytes')
 	}
@@ -67,7 +89,7 @@ pub fn (g &AesGcm) encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8 {
 	mut ghash_in := pad_block(ad)
 	ghash_in << pad_block(ciphertext)
 	ghash_in << len_block(ad.len, ciphertext.len)
-	s := g.ghash([]u8{len: 16}, ghash_in)
+	s := g.ghash(zero_block, ghash_in)
 	tag := g.gctr(j0, s)
 
 	mut out := []u8{cap: ciphertext.len + gcm_tag_size}
@@ -80,6 +102,13 @@ pub fn (g &AesGcm) encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8 {
 // 16-byte tag) using `nonce` and additional authenticated data `ad`.
 @[direct_array_access]
 pub fn (g &AesGcm) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u8 {
+	// Check the array size for safety
+	if u64(ciphertext.len) > max_ciphertext_size {
+		return error('AES-GCM decrypt: ciphertext size exceed the limit')
+	}
+	if u64(ad.len) > max_aad_size {
+		return error('AES-GCM decrypt: additional data size exceed the limit')
+	}
 	if nonce.len != gcm_nonce_size {
 		return error('AES-GCM nonce must be ${gcm_nonce_size} bytes')
 	}
@@ -93,7 +122,7 @@ pub fn (g &AesGcm) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u8 {
 	mut ghash_in := pad_block(ad)
 	ghash_in << pad_block(ct)
 	ghash_in << len_block(ad.len, ct.len)
-	s := g.ghash([]u8{len: 16}, ghash_in)
+	s := g.ghash(zero_block, ghash_in)
 	expected := g.gctr(j0, s)
 	if !bytes_equal(expected, tag) {
 		return error('AES-GCM authentication failed')
@@ -110,11 +139,11 @@ fn (g &AesGcm) ghash(y []u8, data []u8) []u8 {
 	mut acc := y.clone()
 	mut off := 0
 	for off < data.len {
-		for j in 0 .. 16 {
+		for j in 0 .. block_size {
 			acc[j] ^= data[off + j]
 		}
 		acc = gf_mult(acc, g.h)
-		off += 16
+		off += block_size
 	}
 	return acc
 }
@@ -128,16 +157,16 @@ fn (g &AesGcm) gctr(icb []u8, input []u8) []u8 {
 	}
 	mut out := []u8{len: input.len}
 	mut ctr := icb.clone()
-	mut ks := []u8{len: 16}
+	mut ks := zero_block.clone()
 	mut off := 0
 	for off < input.len {
 		g.block.encrypt(mut ks, ctr)
-		n := if input.len - off < 16 { input.len - off } else { 16 }
+		n := if input.len - off < block_size { input.len - off } else { block_size }
 		for j in 0 .. n {
 			out[off + j] = input[off + j] ^ ks[j]
 		}
 		inc32(mut ctr)
-		off += 16
+		off += block_size
 	}
 	return out
 }
@@ -148,13 +177,13 @@ fn (g &AesGcm) gctr(icb []u8, input []u8) []u8 {
 // polynomial from NIST SP 800-38D (the bit-reflected x^128 + x^7 + x^2 + x + 1).
 @[direct_array_access]
 fn gf_mult(x []u8, y []u8) []u8 {
-	mut z := []u8{len: 16}
+	mut z := zero_block.clone()
 	mut v := y.clone()
 
 	// Process all 128 bits
 	for i in 0 .. 128 {
 		// Extract bit i from x (MSB first, left to right)
-		// byte index: i >> 3 (i / 8)
+		// byte index: i >> 3 or (i / 8)
 		// bit position: 7 - (i & 7) (7, 6, 5, ..., 0)
 		bit := (x[i >> 3] >> (7 - u8(i & 7))) & 1
 
@@ -167,7 +196,7 @@ fn gf_mult(x []u8, y []u8) []u8 {
 		// Conditional XOR: z ^= v * bit (constant-time)
 		// Instead of: if bit == 1 { z[j] ^= v[j] }
 		// We do:      z[j] ^= (v[j] & mask)
-		for j in 0 .. 16 {
+		for j in 0 .. block_size {
 			z[j] ^= (v[j] & mask)
 		}
 
@@ -197,13 +226,13 @@ fn gf_mult(x []u8, y []u8) []u8 {
 @[direct_array_access]
 fn pad_block(data []u8) []u8 {
 	temp := data.clone()
-	rem := data.len % 16
+	rem := data.len % block_size
 	if rem == 0 {
 		return temp
 	}
-	mut out := []u8{cap: data.len + 16 - rem}
+	mut out := []u8{cap: data.len + block_size - rem}
 	out << temp
-	out << []u8{len: 16 - rem}
+	out << []u8{len: block_size - rem} // padding
 	return out
 }
 
@@ -227,7 +256,7 @@ fn inc32(mut ctr []u8) {
 fn len_block(ad_len int, ct_len int) []u8 {
 	a := u64(ad_len) * 8
 	c := u64(ct_len) * 8
-	mut b := []u8{len: 16}
+	mut b := zero_block.clone()
 	for i in 0 .. 8 {
 		b[7 - i] = u8(a >> (8 * u32(i)))
 		b[15 - i] = u8(c >> (8 * u32(i)))
@@ -238,7 +267,7 @@ fn len_block(ad_len int, ct_len int) []u8 {
 // j0 derives the pre-counter block for a 96-bit nonce: nonce || 0^31 || 1.
 @[direct_array_access]
 fn j0_from_nonce(nonce []u8) []u8 {
-	mut j := []u8{len: 16}
+	mut j := zero_block.clone()
 	for i in 0 .. 12 {
 		j[i] = nonce[i]
 	}
