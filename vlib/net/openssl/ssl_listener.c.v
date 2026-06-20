@@ -6,18 +6,27 @@ import os
 
 // SSLListener is the SSL listener implementation for OpenSSL.
 pub struct SSLListener {
-	saddr  string
-	config SSLConnectConfig
+	saddr   string
+	config  SSLConnectConfig
+	options SSLListenerOptions
 mut:
 	tcp_listener &net.TcpListener = unsafe { nil }
 	sslctx       &C.SSL_CTX       = unsafe { nil }
 }
 
+// SSLListenerOptions configures the TCP listener used by an SSLListener.
+@[params]
+pub struct SSLListenerOptions {
+pub:
+	family net.AddrFamily = .ip
+}
+
 // new_ssl_listener creates a new SSLListener binding to `saddr` with `config`.
-pub fn new_ssl_listener(saddr string, config SSLConnectConfig) !&SSLListener {
+pub fn new_ssl_listener(saddr string, config SSLConnectConfig, options SSLListenerOptions) !&SSLListener {
 	mut listener := &SSLListener{
-		saddr:  saddr
-		config: config
+		saddr:   saddr
+		config:  config
+		options: options
 	}
 	listener.init()!
 	return listener
@@ -31,7 +40,7 @@ fn (mut l SSLListener) init() ! {
 		return error('net.openssl SSLListener.init, no root CA provided')
 	}
 
-	l.tcp_listener = net.listen_tcp(.ip, l.saddr, net.ListenOptions{})!
+	l.tcp_listener = net.listen_tcp(l.options.family, l.saddr, net.ListenOptions{})!
 
 	l.sslctx = unsafe { C.SSL_CTX_new(C.v_net_openssl_TLS_server_method()) }
 	if l.sslctx == 0 {
@@ -114,6 +123,13 @@ pub fn (mut l SSLListener) accept_without_handshake() !&SSLConn {
 		C.SSL_free(voidptr(ssl))
 		tcp_conn.close() or {}
 		return error('net.openssl SSLListener.accept, could not assign ssl to socket')
+	}
+	// OpenSSL only returns SSL_ERROR_WANT_READ/WRITE while the socket is non-blocking.
+	// The SSLConn retry loops use those results to enforce the configured deadline.
+	net.set_blocking(tcp_conn.sock.handle, false) or {
+		C.SSL_free(voidptr(ssl))
+		tcp_conn.close() or {}
+		return error('net.openssl SSLListener.accept, could not make socket non-blocking: ${err}')
 	}
 
 	mut conn := &SSLConn{
