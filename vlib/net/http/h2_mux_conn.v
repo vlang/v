@@ -287,6 +287,25 @@ fn (mut c H2MuxConn) finish_stream(mut s H2MuxStream) {
 	c.active_streams--
 	c.idle_since = time.now()
 	c.smu.unlock()
+	// Credit any DATA bytes that were queued in s.chunks but never drained.
+	// On the success path wait_response empties chunks before returning, so
+	// queued is 0. On the error path (do_on_stream returned early, e.g. after
+	// a RST_STREAM arrived mid-upload), chunks may hold bytes whose flow-size
+	// was already debited from conn_recv_window; without this credit those bytes
+	// are silently dropped, permanently shrinking the connection receive window.
+	// Setting cancelled prevents a DATA frame in flight from re-queuing onto
+	// the now-deregistered stream and leaking more bytes.
+	s.mu.lock()
+	s.cancelled = true
+	mut queued := u64(0)
+	for ch in s.chunks {
+		queued += u64(ch.len)
+	}
+	s.chunks.clear()
+	s.mu.unlock()
+	if queued > 0 {
+		c.send_conn_window_update(u32(queued)) or { c.note_write_failure() }
+	}
 	c.drop_ref()
 }
 
