@@ -14,9 +14,24 @@ fn skip_test(reason string) {
 	exit(0)
 }
 
-fn missing_boehm_leak_lib(output string) bool {
-	return output.contains('libgc') && (output.contains('was not found')
-		|| output.contains('cannot find'))
+fn missing_boehm_lib(output string) bool {
+	mentions_gc := output.contains('libgc') || output.contains('-lgc')
+		|| output.contains("library 'gc'") || output.contains('bdw-gc')
+	return mentions_gc && (output.contains('was not found')
+		|| output.contains('cannot find') || output.contains('not found')
+		|| output.contains('No such file'))
+}
+
+// assert_run_succeeds_or_missing_boehm runs the program with the given gc mode and
+// asserts success, but skips gracefully when a `boehm`/`boehm_leak` build fails only
+// because the Boehm GC library is unavailable (e.g. musl images without musl libgc).
+fn assert_run_succeeds_or_missing_boehm(tmp_dir string, name string, source string, mode string) {
+	res := run_program_with_gc(tmp_dir, name, source, mode)
+	if mode != 'none' && res.exit_code != 0 && missing_boehm_lib(res.output) {
+		eprintln('skipping ${mode} run for ${name}: missing libgc')
+		return
+	}
+	assert res.exit_code == 0, res.output
 }
 
 fn count_occurrences(haystack string, needle string) int {
@@ -65,7 +80,7 @@ fn c_output_for_program(tmp_dir string, name string, source string) os.Result {
 
 fn assert_boehm_leak_compile_or_missing_lib(tmp_dir string, name string, source string) {
 	res := compile_program_with_gc(tmp_dir, name, source, 'boehm_leak')
-	if res.exit_code != 0 && missing_boehm_leak_lib(res.output) {
+	if res.exit_code != 0 && missing_boehm_lib(res.output) {
 		eprintln('skipping boehm_leak compile for ${name}: missing libgc')
 		return
 	}
@@ -77,7 +92,7 @@ fn assert_boehm_leak_runtime_or_compile_only(tmp_dir string, name string, source
 	if res.exit_code == 0 {
 		return
 	}
-	if missing_boehm_leak_lib(res.output) {
+	if missing_boehm_lib(res.output) {
 		eprintln('skipping boehm_leak runtime for ${name}: missing libgc')
 		return
 	}
@@ -589,8 +604,7 @@ fn test_lifetime_public_api_without_captured_closure() {
 	assert !c_res.output.contains('builtin__closure__closure_create')
 	assert !c_res.output.contains('_V_closure_main__')
 	for mode in ['boehm', 'none'] {
-		res := run_program_with_gc(tmp_dir, 'no_captured_lifetime', source, mode)
-		assert res.exit_code == 0, res.output
+		assert_run_succeeds_or_missing_boehm(tmp_dir, 'no_captured_lifetime', source, mode)
 	}
 	assert_boehm_leak_compile_or_missing_lib(tmp_dir, 'no_captured_lifetime', source)
 }
@@ -606,8 +620,7 @@ fn test_closure_lifetime_runtime_api_contract() {
 	}
 	source := closure_lifetime_runtime_source()
 	for mode in ['boehm', 'none'] {
-		res := run_program_with_gc(tmp_dir, 'closure_lifetime_runtime', source, mode)
-		assert res.exit_code == 0, res.output
+		assert_run_succeeds_or_missing_boehm(tmp_dir, 'closure_lifetime_runtime', source, mode)
 	}
 	assert_boehm_leak_compile_or_missing_lib(tmp_dir, 'closure_lifetime_runtime', source)
 }
@@ -713,8 +726,7 @@ fn test_closure_lifetime_lazy_concurrent_runtime_init() {
 	}
 	source := lazy_concurrent_lifetime_init_source()
 	for mode in ['none', 'boehm'] {
-		res := run_program_with_gc(tmp_dir, 'closure_lifetime_lazy_init', source, mode)
-		assert res.exit_code == 0, res.output
+		assert_run_succeeds_or_missing_boehm(tmp_dir, 'closure_lifetime_lazy_init', source, mode)
 	}
 }
 
