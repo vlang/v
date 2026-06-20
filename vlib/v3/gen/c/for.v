@@ -5,6 +5,7 @@ import v3.types
 
 fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.tc.push_scope()
+	defer_start := g.defers.len
 	init_node := g.a.child_node(&node, 0)
 	cond_id := g.a.child(&node, 1)
 	cond_node := g.a.nodes[int(cond_id)]
@@ -35,6 +36,8 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	for i in 3 .. node.children_count {
 		g.gen_node(g.a.child(&node, i))
 	}
+	g.gen_defers_from(defer_start)
+	g.trim_defers(defer_start)
 	g.indent--
 	g.writeln('}')
 	g.tc.pop_scope()

@@ -65,7 +65,7 @@ fn (mut g FlatGen) gen_array_push_many_stmt(lhs_id flat.NodeId, rhs_id flat.Node
 	rhs_type := types.unwrap_pointer(g.tc.resolve_type(rhs_id))
 	if rhs_fixed := array_fixed_type(rhs_type) {
 		g.write('array_push_many_ptr(${amp}')
-		g.gen_expr_lvalue(lhs_id)
+		gen_expr_lvalue(mut g, lhs_id)
 		g.write(', ')
 		g.gen_fixed_array_data_arg(rhs_id, rhs_fixed)
 		len_expr := g.fixed_array_len_value(rhs_fixed)
@@ -73,7 +73,7 @@ fn (mut g FlatGen) gen_array_push_many_stmt(lhs_id flat.NodeId, rhs_id flat.Node
 		return
 	}
 	g.write('array_push_many(${amp}')
-	g.gen_expr_lvalue(lhs_id)
+	gen_expr_lvalue(mut g, lhs_id)
 	g.write(', ')
 	g.gen_expr(rhs_id)
 	g.writeln(');')
@@ -191,6 +191,14 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.write(', ')
 			g.gen_expr(g.a.child(&node, 1))
 			g.write(')')
+		}
+		'prepend' {
+			amp := if is_ptr { '' } else { '&' }
+			g.write('array__prepend(${amp}')
+			g.gen_expr(base_id)
+			g.write(', &(${c_elem}[]){')
+			g.gen_expr(g.a.child(&node, 1))
+			g.write('})')
 		}
 		'free' {
 			g.write('array__free(')

@@ -94,6 +94,15 @@ fn (g &FlatGen) resolve_variant(sum_name string, variant string) string {
 }
 
 fn (g &FlatGen) sum_field_name(variant string) string {
+	if variant.starts_with('&') {
+		return g.sum_field_name(variant[1..])
+	}
+	if variant.starts_with('ptr') && variant.len > 3 && variant[3..].contains('.') {
+		return g.sum_field_name(variant[3..])
+	}
+	if variant.starts_with('ptr') && variant.len > 3 && variant[3..].contains('__') {
+		return g.sum_field_name(variant[3..].replace('__', '.'))
+	}
 	if variant.starts_with('[]') {
 		return '_Array_${c_name(variant[2..])}'
 	}

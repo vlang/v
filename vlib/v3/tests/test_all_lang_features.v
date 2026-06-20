@@ -1,6 +1,11 @@
 module main
 
+import math
+import os
+import sync
 import strings
+import v3.bench
+import v.token
 
 struct Cat {
 	name string
@@ -1421,6 +1426,701 @@ fn sum_nine116(a int, b int, c int, d int, e int, f int, g int, h int, i int) in
 
 fn use_int116(x int) int {
 	return x
+}
+
+enum BuildArch118 {
+	amd64
+	arm64
+}
+
+fn callback_value118(cb fn () int) int {
+	return cb()
+}
+
+fn maybe_label118(ok bool) !string {
+	if ok {
+		return 'ok'
+	}
+	return error('bad')
+}
+
+fn pass_error118() !string {
+	value := maybe_label118(false) or { return err }
+	return value
+}
+
+fn array_callback_enum_score118() int {
+	mut args118 := []string{}
+	args118 << 'beta'
+	args118 << '-v2'
+	args118 << 'alpha'
+	filtered118 := args118.filter(it != '-v2')
+	mut sorted118 := filtered118.clone()
+	sorted118.sort()
+	mut score118 := sorted118.len * 10
+	if sorted118[0] == 'alpha' && sorted118[1] == 'beta' {
+		score118 += 3
+	}
+	if BuildArch118.arm64.str() == 'arm64' {
+		score118 += 5
+	}
+	score118 += callback_value118(fn () int {
+		return 7
+	})
+	_ := pass_error118() or { 'fallback' }
+	return score118
+}
+
+struct NestedIdent119 {
+	name string
+}
+
+struct NestedInfixExpr119 {
+	op string
+}
+
+struct NestedMatchBranch119 {}
+
+struct NestedIfBranch119 {}
+
+type NestedExpr119 = NestedIdent119 | NestedInfixExpr119
+
+type NestedNode119 = NestedExpr119 | NestedMatchBranch119 | NestedIfBranch119
+
+struct LoopHolder119 {
+mut:
+	current &NestedNode119 = unsafe { nil }
+}
+
+struct SumPointerNilHolder119 {
+	node &NestedNode119 = unsafe { nil }
+}
+
+struct SortItem119 {
+	rank int
+	id   int
+}
+
+struct OpVersion119 {
+	major int
+}
+
+interface InterfaceField119 {
+	value int
+}
+
+struct InterfaceFieldImpl119 {
+	value int
+}
+
+struct NilLink119 {
+mut:
+	next &NilLink119 = unsafe { nil }
+}
+
+struct IErrorDefault119 {
+	err IError = none
+}
+
+struct OptionalInterp119 {
+	stop ?string
+}
+
+struct MapMethodValue119 {
+	kind int
+}
+
+struct StaticNewLocal119 {
+	value int
+}
+
+struct ZeroMapHolder119 {
+mut:
+	data map[string]int
+}
+
+@[flag]
+enum FeatureFlags119 {
+	name
+	version
+}
+
+struct RecursiveIf119 {
+	next &RecursiveExpr119 = unsafe { nil }
+}
+
+struct RecursiveHash119 {
+	id int
+}
+
+struct HeapLocal119 {
+	value int
+}
+
+struct SsaSumPayload119 {
+	code int
+}
+
+struct FnFieldCall119 {
+	op fn (int, int) int
+}
+
+type RecursiveExpr119 = RecursiveIf119 | RecursiveHash119
+
+type RecursiveHashNode119 = RecursiveIf119 | RecursiveHash119
+
+type SsaSum119 = RecursiveHash119 | SsaSumPayload119
+
+fn C.atomic_fetch_add_u32(voidptr, u32) u32
+
+fn C.atomic_load_u16(voidptr) u16
+
+fn C.atomic_store_u16(voidptr, u16)
+
+fn C.atomic_compare_exchange_strong_u16(voidptr, voidptr, u16) bool
+
+fn C.atomic_compare_exchange_weak_u32(voidptr, voidptr, u32) bool
+
+fn C.atomic_compare_exchange_weak_byte(voidptr, voidptr, byte) bool
+
+fn C.atomic_compare_exchange_weak_u64(voidptr, voidptr, u64) bool
+
+fn C.atomic_load_ptr(voidptr) voidptr
+
+fn C.atomic_store_ptr(voidptr, voidptr)
+
+fn C._wymix(u64, u64) u64
+
+fn C.v_filelock_lock(i32, i32, i32, u64, u64) i32
+
+fn C.v_filelock_unlock(i32, u64, u64) i32
+
+fn C.v_prealloc_atomic_add_i32(voidptr, int) int
+
+fn C.v_prealloc_atomic_load_i32(voidptr) int
+
+fn C.v_prealloc_atomic_store_i32(voidptr, int) int
+
+fn C.v_prealloc_atomic_cas_i32(voidptr, int, int) int
+
+fn C.v_signal_with_handler_cast(i32, voidptr) voidptr
+
+fn maybe_const119(ok bool) ?string {
+	if ok {
+		return 'set'
+	}
+	return none
+}
+
+const const_or119 = maybe_const119(false) or { 'fallback' }
+
+fn return_if_branch119(flag bool) int {
+	return if flag { return 12 } else { 7 }
+}
+
+fn match_smartcast_return119(expr NestedExpr119) string {
+	ident119 := match expr {
+		NestedIdent119 {
+			expr as NestedIdent119
+		}
+		else {
+			return 'not-ident'
+		}
+	}
+
+	return ident119.name
+}
+
+fn indexed_smartcast119(items []NestedExpr119) string {
+	first119 := items[0]
+	if first119 is NestedIdent119 && first119.name == 'idx' {
+		return first119.name
+	}
+	return 'none'
+}
+
+fn nested_type_membership119(node NestedNode119) int {
+	if node !in [NestedMatchBranch119, NestedIfBranch119, NestedInfixExpr119] {
+		return 1
+	}
+	return 0
+}
+
+fn sum_pointer_target119(node NestedNode119) int {
+	mut holder119 := LoopHolder119{}
+	match node {
+		NestedIfBranch119 {
+			holder119.current = unsafe { &node }
+		}
+		else {}
+	}
+
+	if isnil(holder119.current) {
+		return 0
+	}
+	return 6
+}
+
+fn compare_sort_item119(a &SortItem119, b &SortItem119) int {
+	if a.rank < b.rank {
+		return -1
+	}
+	if a.rank > b.rank {
+		return 1
+	}
+	return 0
+}
+
+fn sort_with_compare119() int {
+	mut items119 := [
+		SortItem119{
+			rank: 3
+			id:   1
+		},
+		SortItem119{
+			rank: 1
+			id:   2
+		},
+		SortItem119{
+			rank: 2
+			id:   3
+		},
+	]
+	items119.sort_with_compare(fn (a &SortItem119, b &SortItem119) int {
+		if a.rank < b.rank {
+			return -1
+		}
+		if a.rank > b.rank {
+			return 1
+		}
+		return 0
+	})
+	sorted119 := items119.sorted_with_compare(compare_sort_item119)
+	return items119[0].rank * 100 + items119[1].rank * 10 + items119[2].rank + sorted119[0].id
+}
+
+fn (a OpVersion119) == (b OpVersion119) bool {
+	return a.major == b.major
+}
+
+fn (a OpVersion119) < (b OpVersion119) bool {
+	return a.major < b.major
+}
+
+fn operator_compare119() int {
+	low119 := OpVersion119{
+		major: 1
+	}
+	high119 := OpVersion119{
+		major: 2
+	}
+	same119 := OpVersion119{
+		major: 2
+	}
+	mut score119 := 0
+	if high119 > low119 {
+		score119 += 2
+	}
+	if high119 >= low119 {
+		score119 += 3
+	}
+	if low119 <= high119 {
+		score119 += 4
+	}
+	if high119 != low119 {
+		score119 += 5
+	}
+	if high119 >= same119 {
+		score119 += 6
+	}
+	if high119 <= same119 {
+		score119 += 7
+	}
+	return score119
+}
+
+fn read_interface_field119(item InterfaceField119) int {
+	return item.value
+}
+
+fn read_interface_field_ptr119(item &InterfaceField119) int {
+	return item.value
+}
+
+fn interface_field119() int {
+	item119 := InterfaceFieldImpl119{
+		value: 19
+	}
+	return read_interface_field119(item119) + read_interface_field_ptr119(&item119)
+}
+
+fn math_generic119() int {
+	return math.abs(0 - 6) + math.min(8, 5)
+}
+
+fn module_const_method119() int {
+	return token.scanner_matcher.find('fn')
+}
+
+fn qualified_static_new119() int {
+	mut matcher119 := token.KeywordsMatcherTrie.new(2)
+	matcher119.add_word('module', 71)
+	return matcher119.find('module')
+}
+
+fn StaticNewLocal119.new(value int) StaticNewLocal119 {
+	return StaticNewLocal119{
+		value: value + 2
+	}
+}
+
+fn local_static_new119() int {
+	item119 := StaticNewLocal119.new(73)
+	return item119.value
+}
+
+fn module_function_new119() int {
+	mut bench119 := bench.new()
+	_ = bench119
+	return 101
+}
+
+fn nil_newline_pointer_assignment119() int {
+	mut item119 := NilLink119{}
+	mut link119 := &item119.next
+	item119.next = nil
+	*link119 = &item119
+	if isnil(item119.next) {
+		return 0
+	}
+	return 21
+}
+
+fn ierror_none_field119() int {
+	default119 := IErrorDefault119{}
+	explicit119 := IErrorDefault119{
+		err: none
+	}
+	_ = default119
+	_ = explicit119
+	return 29
+}
+
+fn sum_pointer_nil_default119() int {
+	holder119 := SumPointerNilHolder119{}
+	if isnil(holder119.node) {
+		return 31
+	}
+	return 0
+}
+
+fn optional_string_interp119() string {
+	default119 := OptionalInterp119{}
+	set119 := OptionalInterp119{
+		stop: 'halt'
+	}
+	return '${default119.stop}|${set119.stop}'
+}
+
+fn optional_cast_field119(arg string) string {
+	data119 := OptionalInterp119{
+		stop: ?string(arg)
+	}
+	return '${data119.stop}'
+}
+
+fn optional_passthrough_field119(default_value ?string) string {
+	data119 := OptionalInterp119{
+		stop: default_value
+	}
+	return '${data119.stop}'
+}
+
+fn escape_default_string(value string) string {
+	return value
+}
+
+fn flag_default_value(value string) string {
+	return 'not-lowered:${value}'
+}
+
+fn flag_default_value_lowering119() string {
+	return flag_default_value('abc')
+}
+
+fn (m map[string]MapMethodValue119) query_kind119(name string) ?MapMethodValue119 {
+	if name in m {
+		return m[name]
+	}
+	return none
+}
+
+fn map_receiver_method119() int {
+	mut kinds119 := map[string]MapMethodValue119{}
+	kinds119['name'] = MapMethodValue119{
+		kind: 41
+	}
+	got119 := kinds119.query_kind119('name') or { return 0 }
+	return got119.kind
+}
+
+fn map_index_or_none119(items map[string]MapMethodValue119, name string) ?MapMethodValue119 {
+	return items[name] or { none }
+}
+
+fn map_index_bang119(items map[string]MapMethodValue119, name string) ?MapMethodValue119 {
+	return items[name]!
+}
+
+fn map_index_optional_return119() int {
+	mut kinds119 := map[string]MapMethodValue119{}
+	kinds119['name'] = MapMethodValue119{
+		kind: 41
+	}
+	got119 := map_index_or_none119(kinds119, 'name') or { return 0 }
+	missing119 := map_index_or_none119(kinds119, 'missing') or {
+		MapMethodValue119{
+			kind: 7
+		}
+	}
+	got_bang119 := map_index_bang119(kinds119, 'name') or { return 0 }
+	missing_bang119 := map_index_bang119(kinds119, 'missing') or {
+		MapMethodValue119{
+			kind: 5
+		}
+	}
+	return got119.kind + missing119.kind + got_bang119.kind + missing_bang119.kind
+}
+
+struct ReceiverMethodLive119 {
+	base int
+}
+
+fn (r ReceiverMethodLive119) hidden119(extra int) int {
+	return r.base + extra
+}
+
+fn (r ReceiverMethodLive119) visible119(flag bool) int {
+	if flag {
+		return r.hidden119(64)
+	}
+	return r.hidden119(1)
+}
+
+fn receiver_method_liveness119() int {
+	r := ReceiverMethodLive119{
+		base: 53
+	}
+	return r.visible119(true)
+}
+
+fn zero_map_lookup119() int {
+	holder119 := ZeroMapHolder119{}
+	if 'missing' !in holder119.data {
+		return 79
+	}
+	return 0
+}
+
+fn flag_enum_zero119() int {
+	show119 := ~FeatureFlags119.zero() ^ .name
+	if show119.has(.version) && !show119.has(.name) {
+		return 43
+	}
+	return 0
+}
+
+fn sum_alias_pointer_cast119(expr RecursiveExpr119) int {
+	alias119 := &RecursiveHashNode119(expr as RecursiveIf119)
+	if isnil(alias119) {
+		return 0
+	}
+	return 9
+}
+
+fn at_location119() int {
+	location119 := @LOCATION
+	if location119.len > 0 {
+		return 4
+	}
+	return 0
+}
+
+fn c_atomic_wymix119() int {
+	mut counter119 := u32(4)
+	old119 := C.atomic_fetch_add_u32(voidptr(&counter119), u32(3))
+	mix119 := C._wymix(u64(11), u64(17))
+	mut score119 := int(old119) + int(counter119)
+	if mix119 != 0 {
+		score119 += 2
+	}
+	return score119
+}
+
+fn c_atomic_channel_helpers119() int {
+	mut score119 := 0
+	mut flag119 := u16(0)
+	mut expected16_119 := u16(0)
+	if C.atomic_compare_exchange_strong_u16(voidptr(&flag119), voidptr(&expected16_119), u16(3)) {
+		score119 += int(C.atomic_load_u16(voidptr(&flag119)))
+	}
+	C.atomic_store_u16(voidptr(&flag119), u16(4))
+	score119 += int(C.atomic_load_u16(voidptr(&flag119)))
+	mut counter119 := u32(2)
+	mut expected32_119 := u32(2)
+	if C.atomic_compare_exchange_weak_u32(voidptr(&counter119), voidptr(&expected32_119), u32(5)) {
+		score119 += int(counter119)
+	}
+	mut locked119 := byte(0)
+	mut expected_byte119 := byte(0)
+	if C.atomic_compare_exchange_weak_byte(voidptr(&locked119), voidptr(&expected_byte119), byte(8)) {
+		score119 += int(locked119)
+	}
+	mut big119 := u64(10)
+	mut expected64_119 := u64(10)
+	if C.atomic_compare_exchange_weak_u64(voidptr(&big119), voidptr(&expected64_119), u64(12)) {
+		score119 += int(big119)
+	}
+	value119 := 9
+	mut slot119 := unsafe { nil }
+	C.atomic_store_ptr(voidptr(&slot119), voidptr(&value119))
+	if C.atomic_load_ptr(voidptr(&slot119)) == voidptr(&value119) {
+		score119 += 6
+	}
+	return score119
+}
+
+fn c_filelock_helpers119() int {
+	lock_result119 := C.v_filelock_lock(i32(-1), 1, 1, u64(0), u64(0))
+	unlock_result119 := C.v_filelock_unlock(i32(-1), u64(0), u64(0))
+	if lock_result119 != 0 && unlock_result119 != 0 {
+		return 47
+	}
+	return 0
+}
+
+fn local_address_return119() &HeapLocal119 {
+	item119 := HeapLocal119{
+		value: 53
+	}
+	return &item119
+}
+
+fn heap_local_return119() int {
+	item119 := local_address_return119()
+	return item119.value
+}
+
+fn rune_array_string119() int {
+	runes119 := [rune(`v`), rune(`3`)]
+	if runes119.string() == 'v3' {
+		return 61
+	}
+	return 0
+}
+
+fn prealloc_atomic_helpers119() int {
+	mut value119 := 1
+	C.v_prealloc_atomic_store_i32(voidptr(&value119), 2)
+	mut score119 := value119
+	score119 += C.v_prealloc_atomic_load_i32(voidptr(&value119))
+	score119 += C.v_prealloc_atomic_add_i32(voidptr(&value119), 3)
+	if C.v_prealloc_atomic_cas_i32(voidptr(&value119), 5, 7) != 0 {
+		score119 += value119
+	}
+	return score119
+}
+
+fn signal_handler_cast119() int {
+	prev119 := C.v_signal_with_handler_cast(0, unsafe { nil })
+	if isnil(prev119) {
+		return 67
+	}
+	return 67
+}
+
+fn printing_builtin_helpers119() int {
+	print('')
+	eprint('')
+	eprintln('')
+	return 89
+}
+
+fn string_last_part_helpers119() int {
+	path119 := 'vlib/v3/v3.v'
+	if path119.all_before_last('/') == 'vlib/v3' && path119.all_after_last('/') == 'v3.v' {
+		return 97
+	}
+	return 0
+}
+
+fn join_path_variadic119() int {
+	sep119 := os.path_separator
+	expected119 := 'vlib' + sep119 + 'v3' + sep119 + 'v3.v'
+	path119 := os.join_path('vlib', 'v3', 'v3.v')
+	if path119 == expected119 {
+		return 107
+	}
+	return 0
+}
+
+fn ssa_sum_payload_store119() int {
+	payload119 := SsaSum119(SsaSumPayload119{
+		code: 109
+	})
+	if payload119 is SsaSumPayload119 {
+		return payload119.code
+	}
+	return 0
+}
+
+fn add_fn_field119(a int, b int) int {
+	return a + b
+}
+
+fn make_fn_field119() FnFieldCall119 {
+	return FnFieldCall119{
+		op: add_fn_field119
+	}
+}
+
+fn selector_fn_call_base119() int {
+	return make_fn_field119().op(50, 63)
+}
+
+fn channel_runtime119() int {
+	mutex119 := sync.new_mutex()
+	_ = mutex119
+	ch119 := chan bool{cap: 1}
+	ch119 <- true
+	got119 := <-ch119
+	ch119.close()
+	mut score119 := 0
+	if got119 {
+		score119 += 17
+	}
+	if ch119.closed {
+		score119 += 19
+	}
+	waiters119 := [ch119]
+	if waiters119[0] == ch119 {
+		score119 += 23
+	}
+	return score119
+}
+
+struct ZeroDefaultStruct119 {
+	name    string
+	count   int
+	enabled bool
+}
+
+fn zero_default_struct119() int {
+	item119 := ZeroDefaultStruct119{}
+	if item119.name == '' && item119.count == 0 && !item119.enabled {
+		return 103
+	}
+	return 0
 }
 
 fn main() {
@@ -5691,7 +6391,150 @@ fn main() {
 	// 117.34 Discard assignment still evaluates RHS side effects.
 	print_int(discard_assignment_side_effect_score117()) // 1
 
+	// 118 Array DSL calls, enum .str(), callbacks, and result err returns compile.
+	print_int(array_callback_enum_score118()) // 35
+
+	// 119 v1 compiler feature regressions added while making v3 compile cmd/v.
+	// 119.1 Return-if expressions with an early return branch.
+	print_int(return_if_branch119(true)) // 12
+	print_int(return_if_branch119(false)) // 7
+
+	// 119.2 Match smartcasts survive early returns in non-matching branches.
+	print_str(match_smartcast_return119(NestedExpr119(NestedIdent119{
+		name: 'match-id'
+	}))) // match-id
+	print_str(match_smartcast_return119(NestedExpr119(NestedInfixExpr119{
+		op: '+'
+	}))) // not-ident
+
+	// 119.3 Indexed sumtype smartcasts keep the selected variant field type.
+	print_str(indexed_smartcast119([NestedExpr119(NestedIdent119{
+		name: 'idx'
+	})])) // idx
+
+	// 119.4 Sumtype membership checks work with nested sumtype variants.
+	print_int(nested_type_membership119(NestedNode119(NestedExpr119(NestedIdent119{
+		name: 'plain'
+	})))) // 1
+	print_int(nested_type_membership119(NestedNode119(NestedExpr119(NestedInfixExpr119{
+		op: '+'
+	})))) // 0
+
+	// 119.5 Const option-or fallback expressions are lowered.
+	print_str(const_or119) // fallback
+
+	// 119.6 Addressing matched sumtype values can initialize sumtype pointers.
+	print_int(sum_pointer_target119(NestedNode119(NestedIfBranch119{}))) // 6
+
+	// 119.7 Array sort callbacks and named compare functions are supported.
+	print_int(sort_with_compare119()) // 125
+
+	// 119.8 User-defined == and < operators drive derived comparisons.
+	print_int(operator_compare119()) // 27
+
+	// 119.9 Interface fields are readable through value and pointer interfaces.
+	print_int(interface_field119()) // 38
+
+	// 119.10 Generic math helpers used by cmd/v are available.
+	print_int(math_generic119()) // 11
+
+	// 119.11 Imported module constants can call receiver methods.
+	print_int(module_const_method119()) // 83
+
+	// 119.12 Module-qualified static methods resolve before loose .new fallbacks.
+	print_int(qualified_static_new119()) // 71
+
+	// 119.13 Static .new calls resolve by explicit type before loose fallbacks.
+	print_int(local_static_new119()) // 75
+
+	// 119.14 Imported module new() functions resolve after flattening.
+	print_int(module_function_new119()) // 101
+
+	// 119.15 Newline-separated nil assignment does not break pointer lowering.
+	print_int(nil_newline_pointer_assignment119()) // 21
+
+	// 119.16 IError fields accept none in defaults and explicit initializers.
+	print_int(ierror_none_field119()) // 29
+
+	// 119.17 Pointer-to-sumtype fields can default to nil.
+	print_int(sum_pointer_nil_default119()) // 31
+
+	// 119.18 Optional string interpolation prints none and present values.
+	print_str(optional_string_interp119()) // Option(none)|Option('halt')
+
+	// 119.19 Optional casts in struct fields produce present option values.
+	print_str(optional_cast_field119('tail')) // Option('tail')
+
+	// 119.20 Optional values assigned to optional fields are not double-wrapped.
+	print_str(optional_passthrough_field119(maybe_const119(true))) // Option('set')
+
+	// 119.21 flag_default_value calls are lowered through the transformer.
+	print_str(flag_default_value_lowering119()) // "abc"
+
+	// 119.22 Methods with map receivers resolve and return optional values.
+	print_int(map_receiver_method119()) // 41
+
+	// 119.23 Zero-value map fields can be queried without a runtime crash.
+	print_int(zero_map_lookup119()) // 79
+
+	// 119.24 Flag enum static zero() calls work with bit operations.
+	print_int(flag_enum_zero119()) // 43
+
+	// 119.25 Pointer casts to sumtype aliases keep valid pointer values.
+	print_int(sum_alias_pointer_cast119(RecursiveExpr119(RecursiveIf119{}))) // 9
+
+	// 119.26 @LOCATION expands to a non-empty compile-time string.
+	print_int(at_location119()) // 4
+
+	// 119.27 Atomic and wyhash C helper shims are available.
+	print_int(c_atomic_wymix119()) // 13
+
+	// 119.28 More atomic C helpers used by channel/runtime code are available.
+	print_int(c_atomic_channel_helpers119()) // 38
+
+	// 119.29 File lock C helper shims are available.
+	print_int(c_filelock_helpers119()) // 47
+
+	// 119.30 Returning &local struct values promotes them to heap storage.
+	print_int(heap_local_return119()) // 53
+
+	// 119.31 Rune array string conversion is available to the ARM64 backend.
+	print_int(rune_array_string119()) // 61
+
+	// 119.32 Prealloc atomic helpers are available to the ARM64 backend.
+	print_int(prealloc_atomic_helpers119()) // 16
+
+	// 119.33 Signal handler cast helper is available to the ARM64 backend.
+	print_int(signal_handler_cast119()) // 67
+
+	// 119.34 Print/eprint/eprintln builtins are available to the SSA runtime.
+	print_int(printing_builtin_helpers119()) // 89
+
+	// 119.35 String all_before_last/all_after_last helpers are available.
+	print_int(string_last_part_helpers119()) // 97
+
+	// 119.36 Channels can be initialized, sent, received, closed, and compared.
+	print_int(channel_runtime119()) // 59
+
+	// 119.37 Empty struct init uses typed zero values for missing fields.
+	print_int(zero_default_struct119()) // 103
+
+	// 119.38 os.join_path variadic arguments lower to chained join_path_single calls.
+	print_int(join_path_variadic119()) // 107
+
+	// 119.39 SSA sum literals preserve struct payload pointers.
+	print_int(ssa_sum_payload_store119()) // 109
+
+	// 119.40 Function-field calls on call results avoid checker recursion.
+	print_int(selector_fn_call_base119()) // 113
+
+	// 119.41 Map index `or { none }` and `!` propagate optional returns.
+	print_int(map_index_optional_return119()) // 94
+
+	// 119.42 Markused keeps receiver-peer methods needed by live methods.
+	print_int(receiver_method_liveness119()) // 117
+
 	print_str('arm64 self-host regression coverage: ok')
 
-	print_str('=== ALL 117 TESTS PASSED ===')
+	print_str('=== ALL 119 TESTS PASSED ===')
 }

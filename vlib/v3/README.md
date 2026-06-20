@@ -39,11 +39,19 @@ match-based smartcasting are all supported. The transformer lowers sum type
 match branches to `is_expr` nodes, enabling smartcast field access through union
 variants in both `if` and `match` blocks.
 
-Type checking runs as a shared pipeline phase before backend selection:
+Type checking runs before transform, matching V1 and V2:
 `TypeChecker.collect()` walks the flat AST to extract function signatures,
 struct fields, enum names, type aliases, sum types, and C function declarations,
-then registers runtime method signatures. Both the C backend and future backends
-receive the pre-populated `TypeChecker`.
+then registers runtime method signatures. `check_semantics()` validates the
+unlowered source program before the transformer rewrites it. Both the C backend
+and future backends receive the pre-populated `TypeChecker`.
+
+After transform, v3 runs `annotate_types()`. This is not a second semantic
+checker pass and should not report source diagnostics. It repopulates
+expression-type metadata for the post-transform flat AST, including new node IDs
+created by lowering. V1 and V2 do not need a separate step because their checker
+updates the typed AST/table that later stages keep using directly; v3's flat AST
+keeps those per-node caches outside the nodes.
 
 Imports are resolved recursively: after parsing the input file, the driver
 collects `import_decl` nodes, resolves module paths, parses module files, and
@@ -53,9 +61,9 @@ repeats until no new imports are found.
 
 ```
 source + vlib/builtin -> scanner -> flat parser -> flat AST -> imports
-  -> transform -> check -> markused -> gen C -> cc
-                                \-> SSA build -> ARM64 gen -> link
-                                             \-> optimize -> MIR -> insel (-prod)
+  -> check -> transform -> annotate types -> markused -> gen C -> cc
+                                          \-> SSA build -> ARM64 gen -> link
+                                                       \-> optimize -> MIR -> insel (-prod)
 ```
 
 The parser directly emits a flat AST. There is no recursive AST intermediate and
@@ -93,7 +101,8 @@ lowers to C type strings only at final emission. Lexical scopes store
 generation. Function bodies from builtins are skipped during C code generation;
 only type and declaration information is used.
 
-The transformer lowers match statements to if/else chains and collects struct/global type info.
+The transformer lowers match statements to if/else chains and collects
+struct/global type info for its own type-dependent rewrites.
 
 The markused pass performs reachability analysis from `main`, building a call
 graph and BFS-walking to find all used functions. Method calls are resolved to
@@ -172,36 +181,37 @@ function pointers.
 | cc        | 79 ms    | 17,312 KB |
 | **total** | **~259 ms** | **17,312 KB** |
 
-All v3 steps (parse + transform + check + markused + gen + write) complete in
-~8 ms for hello world, including 38 builtin files, and ~157 ms for `test.v`
-with the C backend.
+All v3 steps (parse + check + transform + annotate types + markused + gen +
+write) complete in ~8 ms for hello world, including 38 builtin files, and
+~157 ms for `test.v` with the C backend.
 
 Peak RSS: 9-17 MB.
 
-Compiling `v3.v` itself with a `v3` seed binary built by V:
+Compiling `v3.v` itself in the C self-host chain:
 
 Commands:
 
-- `./vnew -o /tmp/v3_perf_seed vlib/v3`
-- `/tmp/v3_perf_seed vlib/v3/v3.v -o /tmp/v3_self_c_perf_warm`
-- `/tmp/v3_perf_seed vlib/v3/v3.v -b arm64 -o /tmp/v3_self_arm_perf_warm`
+```sh
+v -gc none -prod -o v3 v3.v
+./v3 -parallel -o v4 v3.v
+./v4 -o v5 v3.v
+./v5 -o v6 v3.v
+```
 
-Both backend rows compile the target without `-prod`. The C backend uses
-bundled TCC for the final `cc` step; the ARM64 backend emits and links a
-Mach-O binary directly.
+The table uses the first v3-generated C stage, `./v3 -parallel -o v4 v3.v`.
+Bundled TCC currently rejects the atomic helper shims on macOS and the driver
+falls back to `cc`.
 
-| Phase       | C backend | ARM64 backend |
-|-------------|----------:|--------------:|
-| parse       | 69 ms     | 71 ms         |
-| transform   | 489 ms    | 486 ms        |
-| check       | 176 ms    | 171 ms        |
-| markused    | 356 ms    | 354 ms        |
-| gen C/write | 345 ms    | -             |
-| ssa build   | -         | 3,931 ms      |
-| arm64 gen   | -         | 1,414 ms      |
-| cc/link     | 56 ms     | 226 ms        |
-| **total**   | **1,509 ms** | **6,677 ms** |
-| Peak RSS    | 171 MB    | 399 MB        |
+| Phase          | Time      | Peak RSS |
+|----------------|----------:|---------:|
+| parse          | 47.33 ms  | 73 MB    |
+| check          | 43.92 ms  | 131 MB   |
+| transform      | 94.83 ms  | 274 MB   |
+| annotate types | 30.46 ms  | 307 MB   |
+| markused       | 48.53 ms  | 354 MB   |
+| gen C/write    | 94.67 ms  | 455 MB   |
+| cc             | 707.84 ms | 455 MB   |
+| **total**      | **1,092.92 ms** | **455 MB** |
 
 ## Comparison with V1
 

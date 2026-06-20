@@ -24,6 +24,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 		g.writeln('{')
 	}
 	g.tc.push_scope()
+	defer_start := g.defers.len
 	g.indent++
 	if cond.kind == .is_expr {
 		g.smartcast_is_expr(&cond)
@@ -38,6 +39,8 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			}
 		}
 	}
+	g.gen_defers_from(defer_start)
+	g.trim_defers(defer_start)
 	g.indent--
 	g.tc.pop_scope()
 	g.gen_if_else(node)
@@ -102,6 +105,7 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 	rhs := g.a.nodes[int(rhs_id)]
 	var_name := c_name(lhs.value)
 	tmp := g.tmp_name()
+	defer_start := g.defers.len
 	if rhs.kind == .index {
 		base_id := g.a.child(rhs, 0)
 		base_type := g.tc.resolve_type(base_id)
@@ -154,6 +158,8 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 			}
 		}
 	}
+	g.gen_defers_from(defer_start)
+	g.trim_defers(defer_start)
 	g.indent--
 	g.tc.pop_scope()
 	g.gen_if_else(node)
@@ -189,6 +195,7 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 		} else if else_node.kind == .block {
 			g.writeln('} else {')
 			g.tc.push_scope()
+			defer_start := g.defers.len
 			g.indent++
 			for i in 0 .. else_node.children_count {
 				child_id := g.a.child(&else_node, i)
@@ -196,6 +203,8 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 					g.gen_node(child_id)
 				}
 			}
+			g.gen_defers_from(defer_start)
+			g.trim_defers(defer_start)
 			g.indent--
 			g.tc.pop_scope()
 			g.writeln('}')

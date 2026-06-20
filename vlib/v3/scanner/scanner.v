@@ -15,7 +15,7 @@ pub struct Scanner {
 	mode               Mode
 	skip_interpolation bool
 mut:
-	file        &token.File = &token.File{}
+	file        &token.File = unsafe { nil }
 	insert_semi bool
 pub mut:
 	src                 string
@@ -109,6 +109,7 @@ pub fn (mut s Scanner) scan() token.Token {
 	}
 	c := s.src[s.offset]
 	s.pos = s.offset
+	s.lit = ''
 	preserve_insert_semi := s.insert_semi
 	s.insert_semi = false
 	if c == `\n` {
@@ -160,8 +161,21 @@ pub fn (mut s Scanner) scan() token.Token {
 			s.lit = 'c:${s.lit}'
 			return tok
 		}
+		if s.lit == 'r' && s.offset < s.src.len
+			&& (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
+			quote := s.src[s.offset]
+			s.offset++
+			if !s.in_str_inter {
+				s.str_quote = quote
+			}
+			s.string_literal(true, quote)
+			s.lit = s.src[s.pos..s.offset]
+			s.insert_semi = true
+			return .string
+		}
 		tok := token.Token.from_string_tinyv(s.lit)
-		if tok in [.key_break, .key_continue, .key_none, .key_return, .key_false, .key_true, .name] {
+		if tok in [.key_break, .key_continue, .key_nil, .key_none, .key_return, .key_false, .key_true,
+			.name] {
 			s.insert_semi = true
 		}
 		return tok

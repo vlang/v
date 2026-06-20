@@ -54,6 +54,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			g.gen_fn_items(items)
 			return
 		}
+		g.parallel_used = true
 		g.prepare_parallel_items(items)
 		mut chunk_items := split_flat_cgen_items(items, n_jobs)
 		chunk_count := chunk_items.len
@@ -147,18 +148,19 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	mut cur_module := ''
 	for i in 0 .. g.a.nodes.len {
 		node := g.a.nodes[i]
-		if node.kind == .file {
+		kind_id := node_kind_id(node)
+		if kind_id == 77 {
 			cur_module = ''
 			g.tc.cur_module = cur_module
 			continue
 		}
-		if node.kind == .module_decl {
+		if kind_id == 73 {
 			cur_module = node.value
 			g.tc.cur_module = cur_module
 			continue
 		}
 
-		if node.kind != .fn_decl {
+		if kind_id != 61 {
 			continue
 		}
 		if !g.should_emit_fn_node_in_module(node, i, cur_module) {
@@ -315,6 +317,9 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		struct_decl_infos:       g.struct_decl_infos.clone()
 		struct_decl_short_infos: g.struct_decl_short_infos.clone()
 		runtime_inits:           g.runtime_inits.clone()
+		cur_param_names:         g.cur_param_names.clone()
+		cur_param_type_values:   g.cur_param_type_values.clone()
+		cur_param_types:         g.cur_param_types.clone()
 		cur_fn_ret:              g.cur_fn_ret
 		cur_fn_ret_is_optional:  g.cur_fn_ret_is_optional
 		cur_fn_ret_base:         g.cur_fn_ret_base

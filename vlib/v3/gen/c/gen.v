@@ -17,7 +17,7 @@ fn c_name(name string) string {
 	}
 	n := name.replace('[]', 'Array_').replace('.-', '__minus').replace('.+', '__plus').replace('.==',
 		'__eq').replace('.!=', '__ne').replace('.<=', '__le').replace('.>=', '__ge').replace('.<',
-		'__lt').replace('.>', '__gt').replace('.', '__')
+		'__lt').replace('.>', '__gt').replace('&', 'ptr').replace('[', '_').replace(']', '').replace(',', '_').replace(' ', '_').replace('.', '__')
 	if n in c_reserved_words {
 		return 'v_${n}'
 	}

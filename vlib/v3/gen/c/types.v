@@ -15,7 +15,10 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	if base_type is types.Void || base_type is types.Primitive || base_type is types.Enum {
 		return 'Optional'
 	}
-	inner_ct := g.tc.c_type(base_type)
+	mut inner_ct := g.tc.c_type(base_type)
+	if inner_ct.starts_with('fn_ptr:') {
+		inner_ct = g.resolve_fn_ptr_type(inner_ct)
+	}
 	safe_name := inner_ct.replace('*', 'ptr').replace(' ', '_')
 	opt_name := 'Optional_${safe_name}'
 	g.needed_optional_types[opt_name] = inner_ct
@@ -38,12 +41,29 @@ fn (mut g FlatGen) optional_value_ct(t types.Type) (string, types.Type) {
 }
 
 fn (mut g FlatGen) optional_typedefs() {
-	for opt_name, val_type in g.needed_optional_types {
-		g.writeln('typedef struct { bool ok; ${val_type} value; } ${opt_name};')
+	for _, ret in g.tc.fn_ret_types {
+		if ret is types.OptionType || ret is types.ResultType {
+			g.optional_type_name(ret)
+		}
 	}
-	if g.needed_optional_types.len > 0 {
+	mut wrote := false
+	for opt_name, val_type in g.needed_optional_types {
+		if g.emit_optional_typedef(opt_name, val_type) {
+			wrote = true
+		}
+	}
+	if wrote {
 		g.writeln('')
 	}
+}
+
+fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool {
+	if opt_name in g.emitted_optional_types {
+		return false
+	}
+	g.writeln('typedef struct { bool ok; ${val_type} value; } ${opt_name};')
+	g.emitted_optional_types[opt_name] = true
+	return true
 }
 
 fn (mut g FlatGen) enum_decls() {
