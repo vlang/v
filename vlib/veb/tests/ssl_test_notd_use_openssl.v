@@ -11,7 +11,12 @@ pub struct Context {
 }
 
 pub struct App {
+	veb.Middleware[Context]
 	started chan bool
+}
+
+fn passthrough_middleware(mut _ctx Context) bool {
+	return true
 }
 
 pub fn (mut app App) before_accept_loop() {
@@ -26,6 +31,7 @@ fn test_veb_serves_https_requests() ! {
 	cert_path := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.crt')
 	key_path := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.key')
 	mut app := &App{}
+	app.use(handler: passthrough_middleware)
 	spawn veb.run_at[App, Context](mut app,
 		host:               '127.0.0.1'
 		port:               https_port
