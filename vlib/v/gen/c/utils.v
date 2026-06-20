@@ -522,8 +522,44 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 	return resolved
 }
 
-fn (mut g Gen) alias_equivalent_type(typ ast.Type) ast.Type {
-	return g.table.fully_unaliased_type(g.unwrap_generic(typ))
+// type_alias_chain_idxs returns the idxs of `typ` and of every type it aliases,
+// transitively, down to the first non-alias type. Comparison is by idx only,
+// so flags and pointer levels are ignored.
+fn (g &Gen) type_alias_chain_idxs(typ ast.Type) []int {
+	mut idxs := [typ.idx()]
+	mut cur := typ
+	for {
+		sym := g.table.sym(cur)
+		if sym.info is ast.Alias {
+			parent := sym.info.parent_type
+			pidx := parent.idx()
+			if pidx in idxs {
+				break
+			}
+			idxs << pidx
+			cur = parent
+		} else {
+			break
+		}
+	}
+	return idxs
+}
+
+// alias_chain_equivalent reports whether `a` and `b` denote the same type modulo
+// alias naming: one type's alias chain (the type itself plus the types it
+// aliases, transitively) contains the other. This is stricter than comparing
+// fully unaliased base types, so distinct aliases that merely share an
+// underlying representation (e.g. `type String = u8` and `type Void = u8`) are
+// NOT treated as equivalent, while genuine alias/original pairs (e.g. a variant
+// `Bar` together with `type Foo = Bar`) still match by runtime tag.
+fn (g &Gen) alias_chain_equivalent(a ast.Type, b ast.Type) bool {
+	if a.nr_muls() != b.nr_muls() || a.has_flag(.option) != b.has_flag(.option) {
+		return false
+	}
+	if a.idx() == b.idx() {
+		return true
+	}
+	return b.idx() in g.type_alias_chain_idxs(a) || a.idx() in g.type_alias_chain_idxs(b)
 }
 
 fn (mut g Gen) type_idx_exprs_for_types(types []ast.Type) []string {
@@ -541,11 +577,11 @@ fn (mut g Gen) type_idx_exprs_for_types(types []ast.Type) []string {
 
 fn (mut g Gen) matching_sumtype_variant_types(parent_type ast.Type, target_type ast.Type) []ast.Type {
 	variants := g.sumtype_runtime_variants(parent_type)
-	target_unaliased := g.alias_equivalent_type(target_type)
+	target := g.unwrap_generic(target_type)
 	mut matches := []ast.Type{}
 	mut seen := map[string]bool{}
 	for variant in variants {
-		if g.alias_equivalent_type(variant) == target_unaliased {
+		if g.alias_chain_equivalent(g.unwrap_generic(variant), target) {
 			index_expr := g.type_sidx(variant)
 			if index_expr !in seen {
 				seen[index_expr] = true
@@ -572,7 +608,7 @@ fn (mut g Gen) matching_interface_variant_types(interface_sym ast.TypeSymbol, ta
 	if interface_sym.info !is ast.Interface {
 		return []
 	}
-	target_unaliased := g.alias_equivalent_type(target_type)
+	target := g.unwrap_generic(target_type)
 	info := interface_sym.info as ast.Interface
 	mut matches := []ast.Type{}
 	mut seen := map[string]bool{}
@@ -584,7 +620,7 @@ fn (mut g Gen) matching_interface_variant_types(interface_sym ast.TypeSymbol, ta
 		if variant_sym.info is ast.Struct && variant_sym.info.is_unresolved_generic() {
 			continue
 		}
-		if g.alias_equivalent_type(variant) != target_unaliased {
+		if !g.alias_chain_equivalent(g.unwrap_generic(variant), target) {
 			continue
 		}
 		index_expr := g.type_sidx(variant)

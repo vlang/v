@@ -833,7 +833,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 				}
 			}
 			if node.ct_right_value_evaled {
-				if node.ct_right_value !is ast.EmptyExpr {
+				if node.ct_right_value !is ast.EmptyComptimeConstValue {
 					ival := node.ct_right_value.i64() or { -999 }
 					if ival < 0 {
 						c.error('invalid negative shift count', node.right.pos())

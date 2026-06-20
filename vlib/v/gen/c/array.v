@@ -90,6 +90,9 @@ fn (mut g Gen) prepare_array_init_exprs(exprs []ast.Expr, expr_types []ast.Type,
 		g.write(' ')
 	} else {
 		g.write(stmt_str)
+		if g.pref.is_vlines && stmt_str.contains('#line') {
+			g.writeln('')
+		}
 	}
 	return prepared
 }

@@ -9,7 +9,7 @@ jobs:
     env:
       VFLAGS: -cc msvc
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build
         run: |
           echo %VFLAGS%

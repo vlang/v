@@ -1642,6 +1642,20 @@ pub fn (t &Table) delete_cached_type_to_str(typ Type, import_aliases_len int) {
 	}
 }
 
+// invalidate_type_to_str_cache clears every cached `type_to_str` result.
+// vfmt calls this whenever it enters a new module (see Fmt.set_current_module_name),
+// because strings that were memoized before the current module was known (e.g. while
+// parsing, when `cmod_prefix` was still empty) keep stale `mod.` prefixes on types
+// that actually belong to the current module. Those stale entries are otherwise reused
+// when the signature of a `fn` typed struct field is rebuilt, producing output like
+// `fn (s main.Struct) bool` instead of `fn (s Struct) bool` (issue #27475).
+pub fn (t &Table) invalidate_type_to_str_cache() {
+	mut mt := unsafe { &Table(t) }
+	lock mt.cached_type_to_str {
+		mt.cached_type_to_str.clear()
+	}
+}
+
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
 	cache_key := (u64(import_aliases.len) << 32) | u64(typ)

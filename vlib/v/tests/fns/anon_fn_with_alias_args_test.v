@@ -2,11 +2,11 @@ type MyString = string
 type MyInt = int
 
 struct S1 {
-	x fn (a int) main.MyString
+	x fn (a int) MyString
 }
 
 struct S2 {
-	y fn (a int) main.MyInt
+	y fn (a int) MyInt
 }
 
 fn get_string(a int) MyString {

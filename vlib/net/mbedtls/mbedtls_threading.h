@@ -16,6 +16,9 @@
 
 #if defined(_WIN32) && defined(MBEDTLS_THREADING_ALT)
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #include <mbedtls/threading.h>
 #include <mbedtls/error.h>

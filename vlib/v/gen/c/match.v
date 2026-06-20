@@ -65,6 +65,20 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	need_tmp_var := g.need_tmp_var_in_match(node)
 	is_expr := (node.is_expr && resolved_return_type != ast.void_type) || g.inside_ternary > 0
 
+	// When the tmp var is a fn-returned fixed array, it is a wrapper struct whose data
+	// lives in a `.ret_arr` member. Flag it so every branch writes through `.ret_arr`,
+	// even ones whose own expr type lacks the `is_fn_ret` flag (e.g. a fixed array
+	// literal mixed with a function call returning the same fixed array type).
+	prev_if_match_tmp_is_fn_ret_arr := g.if_match_tmp_is_fn_ret_arr
+	// Mirror the wrapper-struct check used when emitting the tmp var below, so every
+	// branch agrees with how the result is finally read.
+	ret_arr_sym := g.table.sym(g.unwrap_generic(g.recheck_concrete_type(resolved_return_type)))
+	g.if_match_tmp_is_fn_ret_arr = need_tmp_var && ret_arr_sym.info is ast.ArrayFixed
+		&& ret_arr_sym.info.is_fn_ret
+	defer {
+		g.if_match_tmp_is_fn_ret_arr = prev_if_match_tmp_is_fn_ret_arr
+	}
+
 	mut cond_var := ''
 	mut tmp_var := ''
 	mut cur_line := ''
@@ -194,6 +208,14 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 	dot_or_ptr := g.dot_or_ptr(node.cond_type)
 	use_ternary := is_expr && tmp_var == ''
 	cond_sym := g.table.final_sym(node.cond_type)
+	// Tracks the runtime type tags already handled by earlier arms of this match.
+	// With alias/runtime-tag matching, a variant and an alias of it (e.g. `u8` and
+	// `type EmptyExpr = u8`, both variants of the same sumtype) expand to the same
+	// set of tags, so distinct arms can produce identical `_typ == ...` conditions.
+	// Emitting both yields a duplicated `else if` condition (a -Wduplicated-cond
+	// error under -cstrict) and the later arm is unreachable anyway, so drop the
+	// already-covered tags and skip an arm once nothing fresh remains.
+	mut seen_tag_idxs := map[string]bool{}
 	for j, branch in node.branches {
 		mut sumtype_index := 0
 		// iterates through all types in sumtype branches
@@ -208,6 +230,36 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				branch_expr := unsafe { &branch.exprs[sumtype_index] }
 				if branch_expr is ast.TypeNode {
 					branch_type = branch_expr.typ
+				}
+			}
+			mut sumtype_fresh_idx_exprs := []string{}
+			if !branch.is_else && cond_sym.kind == .sum_type && sumtype_index < branch.exprs.len {
+				ce := unsafe { &branch.exprs[sumtype_index] }
+				if ce is ast.TypeNode {
+					variant_type := g.unwrap_generic(g.recheck_concrete_type(ce.typ))
+					all_idx_exprs := g.matching_sumtype_variant_type_idx_exprs(node.cond_type,
+						variant_type)
+					if use_ternary {
+						// Ternary `?:` chains cannot drop an arm, so keep every tag.
+						sumtype_fresh_idx_exprs = all_idx_exprs.clone()
+					} else {
+						for idx_expr in all_idx_exprs {
+							if idx_expr !in seen_tag_idxs {
+								sumtype_fresh_idx_exprs << idx_expr
+							}
+						}
+						if sumtype_fresh_idx_exprs.len == 0 {
+							// every tag of this arm is already handled above: unreachable, skip it
+							sumtype_index++
+							if branch.exprs.len == 0 || sumtype_index == branch.exprs.len {
+								break
+							}
+							continue
+						}
+						for idx_expr in sumtype_fresh_idx_exprs {
+							seen_tag_idxs[idx_expr] = true
+						}
+					}
 				}
 			}
 			if branch.is_else || (use_ternary && is_last) {
@@ -248,9 +300,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					if cur_expr is ast.None {
 						g.write('${tag_expr} == ${ast.none_type.idx()} /* none */')
 					} else if cur_expr is ast.TypeNode {
-						variant_type := g.unwrap_generic(g.recheck_concrete_type(cur_expr.typ))
-						g.write_type_tag_condition(tag_expr, '==', g.matching_sumtype_variant_type_idx_exprs(node.cond_type,
-							variant_type))
+						g.write_type_tag_condition(tag_expr, '==', sumtype_fresh_idx_exprs)
 					} else {
 						g.write('${tag_expr} == ')
 						g.expr(cur_expr)
