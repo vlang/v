@@ -46,6 +46,38 @@ mut:
 	needs_address          bool
 	defer_vars             []Var
 	is_direct_array_access bool // inside a `[direct_array_access]` function
+	// generics: while emitting a monomorph, these hold the current
+	// specialization context used to resolve generic type parameters.
+	cur_concrete_types   []ast.Type
+	cur_fn_generic_names []string
+	compiled_monomorphs  map[string]bool // dedup of emitted monomorph names
+}
+
+// unwrap_generic resolves a (possibly generic) type to its concrete form using
+// the current monomorphization context; a no-op outside a generic context.
+fn (g &Gen) unwrap_generic(typ ast.Type) ast.Type {
+	if g.cur_concrete_types.len == 0 || g.cur_fn_generic_names.len == 0 {
+		return typ
+	}
+	mut mt := unsafe { &ast.Table(g.table) }
+	// convert_generic_type resolves a bare `T` (and nested generics like `[]T`);
+	// it returns none for non-generic types, so keep the original then.
+	return mt.convert_generic_type(typ, g.cur_fn_generic_names, g.cur_concrete_types) or { typ }
+}
+
+// generic_fn_name mangles a base function name with its concrete type arguments,
+// e.g. `max` + `[int]` -> `max_T_int`. The decl and the call site call this with
+// the same inputs, so the names always agree (internal to the wasm backend).
+fn (g &Gen) generic_fn_name(types []ast.Type, base string) string {
+	if types.len == 0 {
+		return base
+	}
+	mut name := base + '_T'
+	for typ in types {
+		sym := g.table.sym(ast.mktyp(typ))
+		name += '_' + sym.name.replace('.', '_')
+	}
+	return name
 }
 
 struct Global {
@@ -182,7 +214,31 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		return
 	}
 
-	name := if node.is_method {
+	// Generic template: emit one monomorph per concrete instantiation the
+	// checker recorded, re-entering `fn_decl` with the specialization context
+	// set (which makes the branch below skip and the body resolve `T`).
+	if node.generic_names.len > 0 && g.cur_concrete_types.len == 0 {
+		for concrete in g.table.fn_generic_types[node.fkey()] or { [] } {
+			if concrete.any(it.has_flag(.generic)) {
+				continue
+			}
+			mangled := g.generic_fn_name(concrete, node.name)
+			if mangled in g.compiled_monomorphs {
+				continue
+			}
+			g.compiled_monomorphs[mangled] = true
+			g.cur_concrete_types = concrete
+			g.cur_fn_generic_names = node.generic_names
+			g.fn_decl(node)
+			g.cur_concrete_types = []
+			g.cur_fn_generic_names = []
+		}
+		return
+	}
+
+	name := if g.cur_concrete_types.len > 0 {
+		g.generic_fn_name(g.cur_concrete_types, node.name)
+	} else if node.is_method {
 		'${g.table.get_type_name(node.receiver.typ)}.${node.name}'
 	} else {
 		node.name
@@ -753,6 +809,23 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 
 	if node.is_method {
 		name = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
+	}
+
+	// Route a generic call to its monomorph, and set the specialization context
+	// so the call's still-generic `expected_arg_types` resolve to concrete types
+	// while the arguments are lowered. Restored on exit (handles nested calls).
+	saved_ct := g.cur_concrete_types
+	saved_gn := g.cur_fn_generic_names
+	defer {
+		g.cur_concrete_types = saved_ct
+		g.cur_fn_generic_names = saved_gn
+	}
+	if node.concrete_types.len > 0 {
+		name = g.generic_fn_name(node.concrete_types, name)
+		g.cur_concrete_types = node.concrete_types
+		if f := g.table.fns[node.name] {
+			g.cur_fn_generic_names = f.generic_names
+		}
 	}
 
 	if node.language in [.js, .wasm] {

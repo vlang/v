@@ -26,7 +26,7 @@ pub fn (mut g Gen) get_wasm_type_int_literal(typ_ ast.Type) wasm.ValType {
 // "Register size" types such as int, i64 and bool boil down to their WASM counterparts.
 // Structures and unions are pointers, i32.
 pub fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
-	typ := ast.mktyp(typ_)
+	typ := ast.mktyp(g.unwrap_generic(typ_))
 	if typ == ast.void_type_idx {
 		g.w_error("get_wasm_type: called with 'void'")
 	}
@@ -82,6 +82,9 @@ pub fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 		else {}
 	}
 
+	if typ.has_flag(.generic) {
+		g.w_error('get_wasm_type: unresolved generic type `${*g.table.sym(typ)}`; generic functions must be instantiated')
+	}
 	g.w_error("get_wasm_type: unreachable type '${*g.table.sym(typ)}' ${ts.info}")
 }
 

@@ -1,0 +1,18 @@
+fn max[T](a T, b T) T {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+fn identity[T](x T) T {
+	return x
+}
+
+fn main() {
+	println(max[int](3, 7)) // 7
+	println(max[int](9, 2)) // 9
+	println(max[i64](100, 50)) // 100
+	println(identity[int](42)) // 42
+	println(identity[i64](999)) // 999
+}
