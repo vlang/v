@@ -3,6 +3,14 @@ module bench
 import os
 import time
 
+#include <sys/resource.h>
+
+struct C.rusage {
+	ru_maxrss i64
+}
+
+fn C.getrusage(who int, usage &C.rusage) int
+
 pub struct Step {
 pub:
 	name    string
@@ -45,7 +53,7 @@ pub fn (b &Bench) print_report() {
 
 fn current_rss_kb() i64 {
 	$if macos {
-		return macos_rss_kb()
+		return macos_peak_rss_kb()
 	}
 	$if linux {
 		return linux_rss_kb()
@@ -53,10 +61,10 @@ fn current_rss_kb() i64 {
 	return 0
 }
 
-fn macos_rss_kb() i64 {
-	result := os.execute('ps -o rss= -p ${C.getpid()}')
-	if result.exit_code == 0 {
-		return result.output.trim_space().i64()
+fn macos_peak_rss_kb() i64 {
+	mut usage := C.rusage{}
+	if C.getrusage(0, &usage) == 0 {
+		return usage.ru_maxrss / 1024
 	}
 	return 0
 }
@@ -73,5 +81,3 @@ fn linux_rss_kb() i64 {
 	}
 	return 0
 }
-
-fn C.getpid() int

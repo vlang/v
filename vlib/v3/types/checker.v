@@ -65,6 +65,13 @@ struct LocalBinding {
 	typ  Type
 }
 
+struct TypeCache {
+mut:
+	parse_enabled bool
+	parse_entries map[string]Type
+	c_entries     map[string]string
+}
+
 @[heap]
 pub struct TypeChecker {
 pub mut:
@@ -110,6 +117,8 @@ pub mut:
 	diagnostic_files              map[string]bool
 	cur_fn_ret_type               Type = Type(void_)
 	smartcasts                    map[string]Type
+mut:
+	type_cache &TypeCache = unsafe { nil }
 }
 
 pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
@@ -146,6 +155,10 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		checking_nodes:             []bool{len: a.nodes.len}
 		diagnostic_files:           map[string]bool{}
 		smartcasts:                 map[string]Type{}
+		type_cache:                 &TypeCache{
+			parse_entries: map[string]Type{}
+			c_entries:     map[string]string{}
+		}
 	}
 }
 
@@ -205,6 +218,10 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.cur_scope = tc.file_scope
 	tc.scope_pool_index = 0
 	tc.reset_node_caches(a.nodes.len)
+	tc.type_cache = &TypeCache{
+		parse_entries: map[string]Type{}
+		c_entries:     map[string]string{}
+	}
 	for node in a.nodes {
 		if node.kind == .struct_decl && node.value == 'string' {
 			tc.has_builtins = true
@@ -275,6 +292,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 		}
 	}
 	// Pass 2: collect struct fields, function signatures (type aliases now available)
+	tc.type_cache.parse_enabled = true
 	tc.cur_module = ''
 	for node in a.nodes {
 		match node.kind {
@@ -2172,6 +2190,10 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 		params = p.clone()
 		params_known = true
 	}
+	if is_print_style_fn_name(name) && params.len == 1
+		&& print_style_param_accepts_string(params[0]) {
+		params[0] = unknown_type('print argument')
+	}
 	return CallInfo{
 		name:         name
 		params:       params
@@ -2180,6 +2202,23 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 		is_variadic:  tc.fn_variadic[name] or { false }
 		params_known: params_known
 	}
+}
+
+fn is_print_style_fn_name(name string) bool {
+	return name in ['print', 'println', 'eprint', 'eprintln', 'builtin.print', 'builtin.println',
+		'builtin.eprint', 'builtin.eprintln']
+}
+
+fn print_style_param_accepts_string(typ Type) bool {
+	mut clean := typ
+	for _ in 0 .. 8 {
+		if clean is Alias {
+			clean = clean.base_type
+			continue
+		}
+		break
+	}
+	return clean is String
 }
 
 fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, info CallInfo) {
@@ -4124,6 +4163,20 @@ fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
 
 // parse_type converts a V type string (from parser) to a structured Type.
 pub fn (tc &TypeChecker) parse_type(typ string) Type {
+	if tc.type_cache != unsafe { nil } && tc.type_cache.parse_enabled {
+		key := tc.cur_module + '\n' + typ
+		mut cache := unsafe { tc.type_cache }
+		if cached := cache.parse_entries[key] {
+			return cached
+		}
+		result := tc.parse_type_uncached(typ)
+		cache.parse_entries[key] = result
+		return result
+	}
+	return tc.parse_type_uncached(typ)
+}
+
+fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.len == 0 {
 		return Type(void_)
 	}
@@ -5206,6 +5259,23 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 }
 
 pub fn (tc &TypeChecker) c_type(t Type) string {
+	if t is Pointer || t is FnType || t is Struct || t is Interface || t is SumType || t is Alias
+		|| t is MultiReturn || t is ArrayFixed {
+		if tc.type_cache != unsafe { nil } {
+			key := t.name()
+			mut cache := unsafe { tc.type_cache }
+			if cached := cache.c_entries[key] {
+				return cached
+			}
+			result := tc.c_type_uncached(t)
+			cache.c_entries[key] = result
+			return result
+		}
+	}
+	return tc.c_type_uncached(t)
+}
+
+fn (tc &TypeChecker) c_type_uncached(t Type) string {
 	if t is Void {
 		return 'void'
 	}

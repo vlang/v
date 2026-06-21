@@ -1,0 +1,406 @@
+import os
+import v3.flat
+import v3.gen.c as cgen
+import v3.markused
+import v3.parser
+import v3.pref
+import v3.transform
+import v3.types
+
+const vexe = @VEXE
+const tests_dir = os.dir(@FILE)
+const v3_dir = os.dir(tests_dir)
+const v3_src = os.join_path(v3_dir, 'v3.v')
+
+fn parse_checked_source(name string, source string) (&flat.FlatAst, &types.TypeChecker) {
+	src := os.join_path(os.temp_dir(), 'v3_markused_${name}.v')
+	os.write_file(src, source) or { panic(err) }
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(src)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.diagnose_unknown_calls = true
+	tc.diagnostic_files[src] = true
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	return a, &tc
+}
+
+fn mark_used_source(name string, source string) map[string]bool {
+	a, tc := parse_checked_source(name, source)
+	return markused.mark_used(a, tc)
+}
+
+fn build_v3_bin(name string) string {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_${name}')
+	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+	return v3_bin
+}
+
+fn test_map_literals_seed_new_map_runtime_helper() {
+	used := mark_used_source('map_literal_new_map', '
+fn make_map() map[string]int {
+	return map[string]int{}
+}
+
+fn main() {
+	_ := make_map()
+}
+')
+	assert used['new_map']
+}
+
+fn test_optional_map_or_seeds_new_map_runtime_helper() {
+	used := mark_used_source('option_map_or_new_map', '
+fn maybe_map() ?map[string]int {
+	return none
+}
+
+fn main() {
+	m := maybe_map() or { return }
+	_ := m
+}
+')
+	assert used['new_map']
+}
+
+fn test_string_membership_seeds_contains_runtime_helpers() {
+	used := mark_used_source('string_membership_contains', '
+fn has_needle() bool {
+	return "bc" in "abcd"
+}
+
+fn main() {
+	_ := has_needle()
+}
+')
+	assert used['string__contains']
+	assert used['string__contains_u8']
+}
+
+fn test_string_interpolation_seeds_string_plus_and_formatter_helpers() {
+	used := mark_used_source('string_interp_plus_formatter', '
+fn message(name string) string {
+	return "hello \${name} \${true}"
+}
+
+fn main() {
+	_ := message("v")
+}
+')
+	assert used['string__plus']
+	assert used['bool.str']
+}
+
+fn test_print_bool_seeds_formatter_runtime_helper() {
+	used := mark_used_source('print_bool_formatter', '
+fn println(s string) {}
+
+fn main() {
+	println(true)
+}
+')
+	assert used['bool.str']
+}
+
+fn test_string_compound_assign_seeds_string_plus_runtime_helper() {
+	used := mark_used_source('string_plus_assign', '
+fn main() {
+	mut s := "a"
+	s += "b"
+	_ := s
+}
+')
+	assert used['string__plus']
+}
+
+fn test_return_local_address_seeds_memdup_runtime_helper() {
+	used := mark_used_source('return_local_address_memdup', '
+struct Box {
+	x int
+}
+
+fn make_box() &Box {
+	b := Box{
+		x: 1
+	}
+	return &b
+}
+
+fn main() {
+	_ := make_box()
+}
+')
+	assert used['memdup']
+}
+
+fn test_map_literals_lower_to_new_map_after_used_filter_transform() {
+	mut a, mut tc := parse_checked_source('map_literal_new_map_cgen', '
+fn make_map() map[string]int {
+	return map[string]int{}
+}
+
+fn main() {
+	_ := make_map()
+}
+')
+	used := markused.mark_used(a, tc)
+	assert used['new_map']
+	transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('new_map(sizeof(string), sizeof(int)')
+}
+
+fn test_optional_map_or_lowers_to_new_map_after_used_filter_transform() {
+	mut a, mut tc := parse_checked_source('option_map_or_new_map_cgen', '
+fn maybe_map() ?map[string]int {
+	return none
+}
+
+fn main() {
+	m := maybe_map() or { return }
+	_ := m
+}
+')
+	used := markused.mark_used(a, tc)
+	assert used['new_map']
+	transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('new_map(sizeof(string), sizeof(int)')
+}
+
+fn test_string_membership_lowers_to_contains_after_used_filter_transform() {
+	mut a, mut tc := parse_checked_source('string_membership_contains_cgen', '
+fn has_needle() bool {
+	return "bc" in "abcd"
+}
+
+fn main() {
+	_ := has_needle()
+}
+')
+	used := markused.mark_used(a, tc)
+	assert used['string__contains']
+	assert used['string__contains_u8']
+	transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('string__contains(')
+}
+
+fn test_string_compound_assign_lowers_to_plus_after_used_filter_transform() {
+	mut a, mut tc := parse_checked_source('string_plus_assign_cgen', '
+fn main() {
+	mut s := "a"
+	s += "b"
+	_ := s
+}
+')
+	used := markused.mark_used(a, tc)
+	assert used['string__plus']
+	transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('string__plus(')
+}
+
+fn test_string_interpolation_lowers_to_formatter_after_used_filter_transform() {
+	mut a, mut tc := parse_checked_source('string_interp_formatter_cgen', '
+fn main() {
+	_ := "\${true}"
+}
+')
+	used := markused.mark_used(a, tc)
+	assert used['bool.str']
+	transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('bool__str(')
+}
+
+fn test_print_bool_lowers_to_formatter_after_used_filter_transform() {
+	mut a, mut tc := parse_checked_source('print_bool_formatter_cgen', '
+fn println(s string) {}
+
+fn main() {
+	println(true)
+}
+')
+	used := markused.mark_used(a, tc)
+	assert used['bool.str']
+	transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('bool__str(')
+}
+
+fn test_return_local_address_lowers_to_memdup_after_used_filter_transform() {
+	mut a, mut tc := parse_checked_source('return_local_address_memdup_cgen', '
+struct Box {
+	x int
+}
+
+fn make_box() &Box {
+	b := Box{
+		x: 1
+	}
+	return &b
+}
+
+fn main() {
+	_ := make_box()
+}
+')
+	used := markused.mark_used(a, tc)
+	assert used['memdup']
+	transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('memdup(')
+}
+
+fn test_map_literal_compile_keeps_new_map_runtime_helper() {
+	v3_bin := build_v3_bin('map_literal_test')
+
+	src := os.join_path(os.temp_dir(), 'v3_markused_map_literal_input.v')
+	bin := os.join_path(os.temp_dir(), 'v3_markused_map_literal_input')
+	os.write_file(src, '
+fn make_map() map[string]int {
+	return map[string]int{}
+}
+
+fn main() {
+	_ := make_map()
+}
+') or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	assert compile.exit_code == 0, compile.output
+}
+
+fn test_optional_map_or_compile_keeps_new_map_runtime_helper() {
+	v3_bin := build_v3_bin('option_map_or_test')
+
+	src := os.join_path(os.temp_dir(), 'v3_markused_option_map_or_input.v')
+	bin := os.join_path(os.temp_dir(), 'v3_markused_option_map_or_input')
+	os.write_file(src, '
+fn maybe_map() ?map[string]int {
+	return none
+}
+
+fn main() {
+	m := maybe_map() or { return }
+	_ := m
+}
+') or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	assert compile.exit_code == 0, compile.output
+}
+
+fn test_return_local_address_compile_keeps_memdup_runtime_helper() {
+	v3_bin := build_v3_bin('return_local_address_test')
+
+	src := os.join_path(os.temp_dir(), 'v3_markused_return_local_address_input.v')
+	bin := os.join_path(os.temp_dir(), 'v3_markused_return_local_address_input')
+	os.write_file(src, '
+struct Box {
+	x int
+}
+
+fn make_box() &Box {
+	b := Box{
+		x: 1
+	}
+	return &b
+}
+
+fn main() {
+	_ := make_box()
+}
+') or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	assert compile.exit_code == 0, compile.output
+}
+
+fn test_print_bool_compile_keeps_formatter_runtime_helper() {
+	v3_bin := build_v3_bin('print_bool_test')
+
+	src := os.join_path(os.temp_dir(), 'v3_markused_print_bool_input.v')
+	bin := os.join_path(os.temp_dir(), 'v3_markused_print_bool_input')
+	os.write_file(src, '
+fn main() {
+	println(true)
+}
+') or { panic(err) }
+	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	assert compile.exit_code == 0, compile.output
+}
+
+fn test_string_plus_compile_keeps_plus_runtime_helper() {
+	v3_bin := build_v3_bin('string_plus_test')
+
+	src := os.join_path(os.temp_dir(), 'v3_markused_string_plus_input.v')
+	bin := os.join_path(os.temp_dir(), 'v3_markused_string_plus_input')
+	os.write_file(src, '
+fn main() {
+	flag := true
+	mut s := "a"
+	s += "\${flag}"
+	_ := s
+}
+') or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	assert compile.exit_code == 0, compile.output
+}
+
+fn test_string_membership_compile_keeps_contains_runtime_helpers() {
+	v3_bin := build_v3_bin('string_membership_test')
+
+	src := os.join_path(os.temp_dir(), 'v3_markused_string_membership_input.v')
+	bin := os.join_path(os.temp_dir(), 'v3_markused_string_membership_input')
+	os.write_file(src, '
+fn has_needle() bool {
+	return "bc" in "abcd"
+}
+
+fn main() {
+	_ := has_needle()
+}
+') or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	assert compile.exit_code == 0, compile.output
+}

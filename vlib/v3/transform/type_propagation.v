@@ -305,6 +305,9 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 	if typ.len == 0 || isnil(t.tc) {
 		return typ
 	}
+	if is_plain_builtin_alias_type(typ) {
+		return typ
+	}
 	if isnil(t.alias_cache) {
 		return t.normalize_type_alias_uncached(typ)
 	}
@@ -361,6 +364,18 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 		}
 	}
 	return typ
+}
+
+fn is_plain_builtin_alias_type(typ string) bool {
+	return match typ {
+		'bool', 'string', 'void', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
+		'f32', 'f64', 'rune', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr' {
+			true
+		}
+		else {
+			false
+		}
+	}
 }
 
 fn is_generic_placeholder_type_name(typ string) bool {
