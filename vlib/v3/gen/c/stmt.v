@@ -294,9 +294,8 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		}
 		.defer_stmt {
 			if node.value == 'function' {
-				flag_name := g.fn_defer_flags[int(id)] or { '' }
-				if flag_name.len > 0 {
-					g.writeln('${flag_name} = true;')
+				if count_name := g.fn_defer_counts[int(id)] {
+					g.writeln('${count_name}++;')
 				}
 				g.fn_defers << id
 			} else {

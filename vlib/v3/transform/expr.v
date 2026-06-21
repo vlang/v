@@ -162,6 +162,13 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 		return none
 	}
 	if call_info := t.struct_operator_call_info(struct_type, node.op) {
+		if t.is_disabled_fn_name(call_info.name) {
+			ret_type := t.struct_operator_return_type(call_info.name)
+			if ret_type.len == 0 || ret_type == 'void' {
+				return t.make_empty()
+			}
+			return t.zero_value_for_type(ret_type)
+		}
 		lhs := t.transform_expr(lhs_id)
 		rhs := t.transform_expr(t.a.children[node.children_start + 1])
 		mut call_lhs := lhs
@@ -193,6 +200,9 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 		return t.make_infix(node.op, cmp, t.make_int_literal(0))
 	}
 	if eq_fn := t.struct_operator_fn_name(struct_type, '==') {
+		if t.is_disabled_fn_name(eq_fn) {
+			return t.make_bool_literal(node.op == .ne)
+		}
 		lhs := t.transform_expr(lhs_id)
 		rhs := t.transform_expr(t.a.children[node.children_start + 1])
 		eq_call := t.make_call_typed(eq_fn, arr2(lhs, rhs), 'bool')

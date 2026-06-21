@@ -988,6 +988,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		prev_fn := p.cur_fn
 		p.cur_fn = name
 		if disable_body {
+			p.mark_disabled_fn(name)
 			p.skip_block()
 		} else {
 			p.check(.lcbr)

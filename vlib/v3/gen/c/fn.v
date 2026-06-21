@@ -135,7 +135,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.tc.push_scope()
 	g.defers = []flat.NodeId{}
 	g.fn_defers = []flat.NodeId{}
-	g.fn_defer_flags = map[int]string{}
+	g.fn_defer_counts = map[int]string{}
 	g.defer_capture_names = []string{}
 	g.defer_capture_types = map[string]types.Type{}
 	g.set_cur_fn_ret(types.Type(types.void_))
@@ -232,7 +232,7 @@ fn (mut g FlatGen) collect_function_defer_ids_from(id flat.NodeId, mut ids []fla
 
 fn (mut g FlatGen) prepare_function_defers(fn_defer_ids []flat.NodeId) {
 	for idx, defer_id in fn_defer_ids {
-		g.fn_defer_flags[int(defer_id)] = '${c_name(g.cur_fn_name)}_defer_${idx}'
+		g.fn_defer_counts[int(defer_id)] = '${c_name(g.cur_fn_name)}_defer_${idx}_count'
 		defer_node := g.a.nodes[int(defer_id)]
 		if defer_node.children_count > 0 {
 			g.collect_function_defer_captures(g.a.child(&defer_node, 0))
@@ -274,8 +274,8 @@ fn (mut g FlatGen) add_function_defer_capture(id flat.NodeId, name string) {
 }
 
 fn (mut g FlatGen) gen_function_defer_prelude() {
-	for _, flag_name in g.fn_defer_flags {
-		g.writeln('bool ${flag_name} = false;')
+	for _, count_name in g.fn_defer_counts {
+		g.writeln('int ${count_name} = 0;')
 	}
 	for name in g.defer_capture_names {
 		typ := g.defer_capture_types[name] or { continue }
@@ -379,8 +379,9 @@ fn (mut g FlatGen) gen_fn_defers() {
 		defer_id := g.fn_defers[i]
 		defer_node := g.a.nodes[int(defer_id)]
 		defer_body := g.a.nodes[int(g.a.child(&defer_node, 0))]
-		flag_name := g.fn_defer_flags[int(defer_id)] or { 'false' }
-		g.writeln('if (${flag_name}) {')
+		count_name := g.fn_defer_counts[int(defer_id)] or { '0' }
+		iter_name := '${count_name}_i'
+		g.writeln('for (int ${iter_name} = 0; ${iter_name} < ${count_name}; ${iter_name}++) {')
 		g.indent++
 		for j in 0 .. defer_body.children_count {
 			g.gen_node(g.a.child(&defer_body, j))

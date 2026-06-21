@@ -18,7 +18,7 @@ mut:
 	enum_vals               map[string]int
 	defers                  []flat.NodeId
 	fn_defers               []flat.NodeId
-	fn_defer_flags          map[int]string
+	fn_defer_counts         map[int]string
 	defer_capture_names     []string
 	defer_capture_types     map[string]types.Type
 	interfaces              map[string][]string
@@ -99,7 +99,7 @@ pub fn FlatGen.new() FlatGen {
 		str_lits:                []string{}
 		defers:                  []flat.NodeId{}
 		fn_defers:               []flat.NodeId{}
-		fn_defer_flags:          map[int]string{}
+		fn_defer_counts:         map[int]string{}
 		defer_capture_names:     []string{}
 		defer_capture_types:     map[string]types.Type{}
 		runtime_inits:           []string{}
@@ -124,7 +124,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.str_lits = []string{}
 	g.defers = []flat.NodeId{}
 	g.fn_defers = []flat.NodeId{}
-	g.fn_defer_flags = map[int]string{}
+	g.fn_defer_counts = map[int]string{}
 	g.defer_capture_names = []string{}
 	g.defer_capture_types = map[string]types.Type{}
 	g.runtime_inits = []string{}

@@ -2903,8 +2903,7 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	return t.transform_call_args(call_id, call_node)
 }
 
-fn (t &Transformer) is_disabled_fn_call(id flat.NodeId, node flat.Node) bool {
-	name := t.call_name_for_node(id, node)
+fn (t &Transformer) is_disabled_fn_name(name string) bool {
 	if name in t.a.disabled_fns {
 		return true
 	}
@@ -2913,6 +2912,11 @@ fn (t &Transformer) is_disabled_fn_call(id flat.NodeId, node flat.Node) bool {
 		return '${t.cur_module}.${name}' in t.a.disabled_fns
 	}
 	return false
+}
+
+fn (t &Transformer) is_disabled_fn_call(id flat.NodeId, node flat.Node) bool {
+	name := t.call_name_for_node(id, node)
+	return t.is_disabled_fn_name(name)
 }
 
 fn (t &Transformer) is_strings_builder_new_call(id flat.NodeId, node flat.Node) bool {
