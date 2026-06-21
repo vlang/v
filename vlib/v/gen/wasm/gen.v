@@ -243,6 +243,17 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		}
 		else {
 			if rt.idx() != ast.void_type_idx {
+				// A scalar `?T`/`!T` return reaches here (it is not a MultiReturn),
+				// so the option/result guards below — which only run inside the
+				// MultiReturn arm or after the match — are dead for it. Guard before
+				// `get_wasm_type`, which would otherwise abort with an internal
+				// "unreachable type" ICE on the option/result-wrapped type.
+				if rt.has_flag(.option) {
+					g.v_error('option types are not implemented', node.return_type_pos)
+				}
+				if rt.has_flag(.result) {
+					g.v_error('result types are not implemented', node.return_type_pos)
+				}
 				wtyp := g.get_wasm_type(rt)
 				if g.is_param_type(rt) {
 					paramdbg << g.dbg_type_name('__rval(0)', rt)
