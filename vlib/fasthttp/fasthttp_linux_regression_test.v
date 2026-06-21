@@ -99,7 +99,8 @@ fn test_loop_command_wakes_epoll() ! {
 	watch := time.new_stopwatch()
 	assert C.epoll_wait(epoll_fd, &event, 1, 1000) == 1
 	assert watch.elapsed() < 250 * time.millisecond
-	assert event.data.fd == wakeup_fd
+	event_fd := unsafe { event.data.fd }
+	assert event_fd == wakeup_fd
 	drain_event_loop_wakeup(wakeup_fd)
 	_ := <-command_ch
 }
