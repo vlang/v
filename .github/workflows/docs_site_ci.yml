@@ -61,35 +61,54 @@ jobs:
           rm -rf docs_site
           ./v retry -- git clone --depth=1 --branch main "https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@github.com/vlang/docs.git" docs_site
 
-          # Sync the freshly generated pages onto the published site. --delete so
-          # that pages/assets removed or renamed in doc/docs.md do not linger as
-          # stale files, but protect the site-only files at the repo root that the
-          # generator does not produce (git metadata, CNAME, .nojekyll, README.md,
-          # favicon.ico and the legacy build.vsh).
-          rsync -a --delete \
-            --exclude '/.git' \
-            --exclude '/.gitattributes' \
-            --exclude '/.gitignore' \
-            --exclude '/.nojekyll' \
-            --exclude '/CNAME' \
-            --exclude '/README.md' \
-            --exclude '/favicon.ico' \
-            --exclude '/build.vsh' \
-            docs_generator/output/ docs_site/
+          # The legacy FreeBSD uploader (cmd/tools/fast/fast.v) may still be
+          # pushing to vlang/docs main too, so our push can be rejected as
+          # non-fast-forward. `v retry` would only rerun the same push, never
+          # fetching the new tip, so retry here by re-syncing onto the latest main
+          # and pushing again. The sync is idempotent, so re-applying it on top of
+          # whatever landed meanwhile is safe.
+          deploy_attempts=5
+          for attempt in $(seq 1 "${deploy_attempts}"); do
+            git -C docs_site fetch --depth=1 origin main
+            git -C docs_site reset --hard FETCH_HEAD
 
-          git -C docs_site add -A
-          # `git diff --cached --quiet` exits 0 with nothing staged, 1 when there
-          # are staged changes, and >1 on a real error - so only 1 means "deploy".
-          set +e
-          git -C docs_site diff --cached --quiet
-          diff_rc=$?
-          set -e
-          if [ "$diff_rc" -eq 0 ]; then
-            echo "docs.vlang.io is already up to date for ${COMMIT_HASH}; nothing to deploy."
-            exit 0
-          elif [ "$diff_rc" -ne 1 ]; then
-            echo "::error::git diff --cached failed with exit code ${diff_rc}" >&2
-            exit "$diff_rc"
-          fi
-          git -C docs_site commit -m "update docs for commit ${COMMIT_HASH} - ${COMMIT_MSG}"
-          ./v retry -- git -C docs_site push origin main
+            # Sync the freshly generated pages onto the published site. --delete so
+            # that pages/assets removed or renamed in doc/docs.md do not linger as
+            # stale files, but protect the site-only files at the repo root that the
+            # generator does not produce (git metadata, CNAME, .nojekyll, README.md,
+            # favicon.ico and the legacy build.vsh).
+            rsync -a --delete \
+              --exclude '/.git' \
+              --exclude '/.gitattributes' \
+              --exclude '/.gitignore' \
+              --exclude '/.nojekyll' \
+              --exclude '/CNAME' \
+              --exclude '/README.md' \
+              --exclude '/favicon.ico' \
+              --exclude '/build.vsh' \
+              docs_generator/output/ docs_site/
+
+            git -C docs_site add -A
+            # `git diff --cached --quiet` exits 0 with nothing staged, 1 when there
+            # are staged changes, and >1 on a real error - so only 1 means "deploy".
+            set +e
+            git -C docs_site diff --cached --quiet
+            diff_rc=$?
+            set -e
+            if [ "${diff_rc}" -eq 0 ]; then
+              echo "docs.vlang.io is already up to date for ${COMMIT_HASH}; nothing to deploy."
+              exit 0
+            elif [ "${diff_rc}" -ne 1 ]; then
+              echo "::error::git diff --cached failed with exit code ${diff_rc}" >&2
+              exit "${diff_rc}"
+            fi
+            git -C docs_site commit -m "update docs for commit ${COMMIT_HASH} - ${COMMIT_MSG}"
+
+            if git -C docs_site push origin main; then
+              echo "docs.vlang.io updated for ${COMMIT_HASH} (attempt ${attempt})."
+              exit 0
+            fi
+            echo "push to vlang/docs main was rejected (attempt ${attempt}/${deploy_attempts}); refetching and retrying..."
+          done
+          echo "::error::could not push to vlang/docs main after ${deploy_attempts} attempts" >&2
+          exit 1
