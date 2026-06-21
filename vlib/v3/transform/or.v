@@ -310,7 +310,7 @@ fn (mut t Transformer) zero_value_for_type(typ string) flat.NodeId {
 		return t.a.add(.nil_literal)
 	}
 	if clean.len > 1 && (clean[0] == `?` || clean[0] == `!`) {
-		clean = clean[1..]
+		return t.make_optional_none(clean)
 	}
 	clean = t.normalize_type_alias(clean)
 	if clean.starts_with('fn(') || clean.starts_with('fn (') || clean.starts_with('fn_ptr:') {
