@@ -231,6 +231,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 							}
 							if expr_ct != base_ct && struct_init_ct != base_ct
 								&& !g.type_names_match(expr_value_type, base)
+								&& !g.type_can_wrap_as_sum(expr_value_type, base)
 								&& !g.types_numeric_compatible(expr_value_type, base)
 								&& !g.call_constructs_type(ret_id, base)
 								&& expr_value_type !is types.Primitive
@@ -448,6 +449,7 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		}
 		if expr_ct != base_ct && struct_init_ct != base_ct
 			&& !g.type_names_match(expr_value_type, base)
+			&& !g.type_can_wrap_as_sum(expr_value_type, base)
 			&& !g.types_numeric_compatible(expr_value_type, base)
 			&& !g.call_constructs_type(ret_id, base) && expr_value_type !is types.Primitive
 			&& expr_value_type !is types.Unknown {
@@ -533,6 +535,22 @@ fn (g &FlatGen) type_names_match(a types.Type, b types.Type) bool {
 		return true
 	}
 	return a_name.all_after_last('.') == b_name.all_after_last('.')
+}
+
+fn (g &FlatGen) type_can_wrap_as_sum(actual types.Type, expected types.Type) bool {
+	expected0 := if expected is types.Alias { expected.base_type } else { expected }
+	if expected0 !is types.SumType {
+		return false
+	}
+	actual0 := if actual is types.Alias { actual.base_type } else { actual }
+	if actual0 is types.SumType {
+		return false
+	}
+	sum_type := expected0 as types.SumType
+	sum_name := g.resolve_sum_name(sum_type.name)
+	variant := g.resolve_variant(sum_name, actual0.name())
+	variants := g.tc.sum_types[sum_name] or { return false }
+	return variant in variants
 }
 
 fn (g &FlatGen) types_numeric_compatible(a types.Type, b types.Type) bool {

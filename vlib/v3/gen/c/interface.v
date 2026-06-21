@@ -11,11 +11,7 @@ fn (mut g FlatGen) emit_sum_type(name string) {
 	for v in variants {
 		ct := g.tc.c_type(g.tc.parse_type(v))
 		field := g.sum_field_name(v)
-		if g.variant_references_sum(v, name) {
-			g.writeln('\t\t${ct}* ${field};')
-		} else {
-			g.writeln('\t\t${ct} ${field};')
-		}
+		g.writeln('\t\t${ct}* ${field};')
 	}
 	g.writeln('\t};')
 	g.writeln('};')
@@ -34,10 +30,9 @@ fn (g &FlatGen) sum_type_contains_struct(sum_name string, struct_name string) bo
 }
 
 fn (g &FlatGen) variant_references_sum(variant string, sum_name string) bool {
-	mut visited := map[string]bool{}
-	resolved_sum := g.resolve_sum_name(sum_name)
-	resolved_variant := g.resolve_variant(resolved_sum, g.normalize_variant_name(variant))
-	return g.variant_refs_sum_inner(resolved_variant, resolved_sum, mut visited)
+	_ = variant
+	_ = sum_name
+	return true
 }
 
 fn (g &FlatGen) variant_refs_sum_inner(variant string, sum_name string, mut visited map[string]bool) bool {

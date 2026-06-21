@@ -4124,19 +4124,21 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 
 fn (mut p Parser) string_literal() flat.NodeId {
 	mut q := u8(`'`)
-	if p.lit.len > 0 {
-		if p.lit[0] == `r` && p.lit.len > 1 {
+	lit := p.lit
+	if lit.len > 0 {
+		if lit[0] == `r` && lit.len > 1 {
 			q = p.lit[1]
-		} else if p.lit[0] == `'` || p.lit[0] == `"` {
-			q = p.lit[0]
+		} else if lit[0] == `'` || lit[0] == `"` {
+			q = lit[0]
 		}
 	}
-	val := strip_quotes(p.lit)
 	p.next()
 	if int(p.tok) != 106 {
+		val := strip_quotes(lit)
 		return p.a.add_val_id(5, val)
 	}
 	// string interpolation
+	val := strip_interp_start_quotes(lit)
 	return p.string_interp(val, q)
 }
 
@@ -4767,6 +4769,21 @@ fn strip_quotes(s string) string {
 		|| (raw[0] == `"` && raw[raw.len - 1] == `"`)) {
 		raw = raw[1..raw.len - 1]
 	} else if raw.len >= 1 && (raw[0] == `'` || raw[0] == `"`) {
+		raw = raw[1..]
+	}
+	if is_raw {
+		return raw
+	}
+	return unescape_string(raw)
+}
+
+fn strip_interp_start_quotes(s string) string {
+	mut raw := s
+	is_raw := s.len >= 3 && s[0] == `r`
+	if is_raw {
+		raw = s[1..]
+	}
+	if raw.len >= 1 && (raw[0] == `'` || raw[0] == `"`) {
 		raw = raw[1..]
 	}
 	if is_raw {

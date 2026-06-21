@@ -1382,6 +1382,9 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	if expanded := t.try_expand_multi_return_assign(node) {
 		return expanded
 	}
+	if expanded := t.try_expand_plain_multi_assign(node) {
+		return expanded
+	}
 	if lowered := t.try_lower_sum_shared_field_assign(node) {
 		return lowered
 	}
@@ -2243,6 +2246,40 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 		return result
 	}
 	return none
+}
+
+fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.NodeId {
+	if node.kind != .assign || node.op != .assign || node.children_count < 4
+		|| node.children_count % 2 != 0 {
+		return none
+	}
+	mut result := []flat.NodeId{}
+	mut lhs_ids := []flat.NodeId{}
+	mut tmp_names := []string{}
+	for i := 0; i < node.children_count; i += 2 {
+		lhs_id := t.a.child(&node, i)
+		rhs_id := t.a.child(&node, i + 1)
+		lhs_ids << lhs_id
+		lhs_type := t.lvalue_type(lhs_id)
+		rhs := if lhs_type.len > 0 {
+			t.transform_expr_for_type(rhs_id, lhs_type)
+		} else {
+			t.transform_expr(rhs_id)
+		}
+		t.drain_pending(mut result)
+		tmp_name := t.new_temp('assign')
+		tmp_type := if lhs_type.len > 0 { lhs_type } else { t.node_type(rhs_id) }
+		result << t.make_decl_assign_typed(tmp_name, rhs, tmp_type)
+		tmp_names << tmp_name
+	}
+	for i, lhs_id in lhs_ids {
+		lhs := t.a.nodes[int(lhs_id)]
+		if lhs.kind == .ident && lhs.value == '_' {
+			continue
+		}
+		result << t.make_assign(t.transform_lvalue(lhs_id), t.make_ident(tmp_names[i]))
+	}
+	return result
 }
 
 fn (t &Transformer) multi_assign_lhs_ids(node flat.Node) []flat.NodeId {
@@ -3330,8 +3367,17 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		}
 		if child.kind == .cast_expr && child.children_count > 0 {
 			cast_arg_id := t.a.child(&child, 0)
-			if ptr_cast := t.transform_amp_sum_cast_from_as_expr(child, cast_arg_id) {
-				return ptr_cast
+			target_sum := t.resolve_sum_name(t.normalize_type_alias(child.value))
+			if target_sum.len > 0 && target_sum in t.sum_types {
+				cast_arg := t.a.nodes[int(cast_arg_id)]
+				if cast_arg.kind == .nil_literal {
+					return t.make_cast('&${child.value}', t.transform_expr(cast_arg_id),
+						'&${child.value}')
+				}
+				wrapped := t.wrap_sum_value(cast_arg_id, target_sum)
+				addr := t.make_prefix(.amp, wrapped)
+				t.a.nodes[int(addr)].typ = if node.typ.len > 0 { node.typ } else { '&${target_sum}' }
+				return addr
 			}
 			// `&InterfaceType(x)` (e.g. `&PRNG(rng)`): box the concrete into a
 			// heap-allocated interface so the resulting pointer stays valid, rather
@@ -4200,12 +4246,10 @@ fn (t &Transformer) sum_field_name(variant string) string {
 }
 
 fn (t &Transformer) variant_references_sum(variant string, sum_name string) bool {
-	if !isnil(t.tc) {
-		mut visited := map[string]bool{}
-		return t.tc_variant_refs_sum_inner(variant, sum_name, mut visited)
-	}
-	mut visited := map[string]bool{}
-	return t.variant_refs_sum_inner(variant, sum_name, mut visited)
+	_ = t
+	_ = variant
+	_ = sum_name
+	return true
 }
 
 fn (t &Transformer) tc_variant_refs_sum_inner(variant string, sum_name string, mut visited map[string]bool) bool {

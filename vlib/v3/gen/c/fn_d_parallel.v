@@ -324,6 +324,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		struct_decl_infos:       g.struct_decl_infos.clone()
 		struct_decl_short_infos: g.struct_decl_short_infos.clone()
 		runtime_inits:           g.runtime_inits.clone()
+		compiler_vroot:          g.compiler_vroot
 		cur_param_names:         g.cur_param_names.clone()
 		cur_param_type_values:   g.cur_param_type_values.clone()
 		cur_param_types:         g.cur_param_types.clone()
