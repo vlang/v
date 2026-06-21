@@ -135,6 +135,127 @@ fn (mut w Walker) mark_fn_as_used(fkey string) {
 	w.used_fns[fkey] = true
 }
 
+fn (w &Walker) runtime_interface_variants(info ast.Interface, interface_name string) []ast.Type {
+	mut variants := []ast.Type{cap: info.types.len + info.mut_types.len}
+	if interface_name == 'IError' {
+		w.add_builtin_ierror_variants(mut variants)
+	}
+	for typ in info.implementor_types(true) {
+		w.add_interface_variant(mut variants, typ)
+	}
+	if interface_name == 'IError' {
+		for sym in w.table.type_symbols {
+			if sym.kind == .struct && w.is_error_type(ast.idx_to_type(sym.idx)) {
+				w.add_interface_variant(mut variants, ast.idx_to_type(sym.idx))
+			}
+		}
+	} else {
+		method_names := info.get_methods()
+		for sym in w.table.type_symbols {
+			if sym.kind == .struct && w.type_has_interface_methods(sym, method_names)
+				&& w.type_has_interface_fields(sym, info.fields) {
+				w.add_interface_variant(mut variants, ast.idx_to_type(sym.idx))
+			}
+		}
+	}
+	return variants
+}
+
+fn (w &Walker) add_interface_variant(mut variants []ast.Type, typ ast.Type) {
+	if typ.idx() <= 0 || typ.idx() >= w.table.type_symbols.len {
+		return
+	}
+	if w.table.sym(typ).kind == .aggregate {
+		return
+	}
+	for variant in variants {
+		if variant.idx() == typ.idx() {
+			return
+		}
+	}
+	variants << typ
+}
+
+fn (w &Walker) type_has_interface_methods(sym ast.TypeSymbol, method_names []string) bool {
+	if method_names.len == 0 {
+		return false
+	}
+	for method_name in method_names {
+		if _ := w.table.find_method(sym, method_name) {
+			continue
+		}
+		if _ := sym.find_method_with_generic_parent(method_name) {
+			continue
+		}
+		if method_name == '_v_free' {
+			if _ := w.table.find_method(sym, 'free') {
+				continue
+			}
+			if _ := sym.find_method_with_generic_parent('free') {
+				continue
+			}
+		}
+		return false
+	}
+	return true
+}
+
+fn (w &Walker) type_has_interface_fields(sym ast.TypeSymbol, fields []ast.StructField) bool {
+	for field in fields {
+		if _ := w.table.find_field(sym, field.name) {
+			continue
+		}
+		if sym.info is ast.Struct {
+			if _, _ := w.table.find_field_from_embeds(sym, field.name) {
+				continue
+			}
+		}
+		return false
+	}
+	return true
+}
+
+fn (w &Walker) add_builtin_ierror_variants(mut variants []ast.Type) {
+	for builtin_variant in ['None__', 'MessageError', 'Error'] {
+		mut typ := w.table.find_type(builtin_variant)
+		if typ.idx() <= 0 {
+			typ = w.table.find_type('builtin.${builtin_variant}')
+		}
+		if typ.idx() <= 0 || typ.idx() >= w.table.type_symbols.len {
+			continue
+		}
+		w.add_interface_variant(mut variants, typ)
+	}
+}
+
+fn (w &Walker) is_error_type(typ ast.Type) bool {
+	sym := w.table.sym(typ)
+	if sym.kind == .struct {
+		if sym.info is ast.Struct {
+			for embed in sym.info.embeds {
+				embed_sym := w.table.sym(embed)
+				if embed_sym.name in ['Error', 'builtin.Error'] || embed_sym.cname == 'Error' {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (mut w Walker) mark_interface_variant_method(typ ast.Type, method_name string) {
+	resolved_method_name := if method_name == '_v_free' { 'free' } else { method_name }
+	resolved_fkey, _ := w.resolve_method_fkey_for_type(typ, resolved_method_name)
+	if resolved_fkey != '' {
+		w.fn_by_name(resolved_fkey)
+		return
+	}
+	for ityp in [typ.set_nr_muls(1), typ.set_nr_muls(0)] {
+		mname := int(ityp.clear_flags()).str() + '.' + resolved_method_name
+		w.fn_by_name(mname)
+	}
+}
+
 fn (w &Walker) fn_generic_names(node ast.FnDecl) []string {
 	if !node.is_method {
 		return node.generic_names
@@ -554,6 +675,10 @@ pub fn (mut w Walker) mark_const_as_used(ckey string) {
 	}
 	w.used_consts[ckey] = true
 	cfield := w.all_consts[ckey] or { return }
+	if ckey == 'none__' {
+		w.mark_by_type(cfield.typ)
+		return
+	}
 	w.expr(cfield.expr)
 	w.mark_by_type(cfield.typ)
 }
@@ -1874,6 +1999,9 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	// Mark function pointer types used in expected arg types, so their typedefs are emitted.
 	// When cgen casts an argument to the expected function pointer type, the typedef must exist.
 	for exp_type in node.expected_arg_types {
+		if exp_type.idx() <= 0 || exp_type.idx() >= w.table.type_symbols.len {
+			continue
+		}
 		exp_sym := w.table.sym(exp_type)
 		if exp_sym.kind == .function && !exp_sym.name.starts_with('fn ') {
 			w.mark_by_type(exp_type)
@@ -1936,12 +2064,19 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		}
 	}
 	if node.is_method && resolved_left_type != 0 {
+		if resolved_left_type.idx() <= 0 || resolved_left_type.idx() >= w.table.type_symbols.len {
+			return
+		}
 		w.mark_by_type(resolved_left_type)
 		left_sym := w.table.sym(resolved_left_type)
 		w.uses_type_name = w.uses_type_name
 			|| (left_sym.kind in [.sum_type, .interface] && node.name == 'type_name')
 		if left_sym.info is ast.Aggregate {
-			for receiver_type in left_sym.info.types {
+			aggregate_info := left_sym.info as ast.Aggregate
+			for receiver_type in aggregate_info.types {
+				if receiver_type.idx() <= 0 || receiver_type.idx() >= w.table.type_symbols.len {
+					continue
+				}
 				receiver_sym := w.table.sym(receiver_type)
 				if m := receiver_sym.find_method(node.name) {
 					fn_name := '${int(m.receiver_type)}.${node.name}'
@@ -1951,7 +2086,11 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				}
 			}
 		} else if left_sym.info is ast.Interface {
-			for typ in left_sym.info.types {
+			interface_info := left_sym.info as ast.Interface
+			for typ in w.runtime_interface_variants(interface_info, left_sym.cname) {
+				if typ.idx() <= 0 || typ.idx() >= w.table.type_symbols.len {
+					continue
+				}
 				sym := w.table.sym(typ)
 				method, embed_types := w.table.find_method_from_embeds(sym, node.name) or {
 					ast.Fn{}, []ast.Type{}
@@ -2024,6 +2163,9 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	}
 	if node.is_method {
 		if node.left_type != 0 {
+			if node.left_type.idx() <= 0 || node.left_type.idx() >= w.table.type_symbols.len {
+				return
+			}
 			lsym := w.table.sym(node.left_type)
 			// Note: maps and arrays are implemented in `builtin` as concrete types `map` and `array`.
 			// They are not normal generics expanded, to separate structs, parametrized on the type of the element.
@@ -2079,6 +2221,9 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	// types so that other instantiations are not stripped.
 	if node.is_method && fn_name !in w.all_fns && !node.receiver_type.has_flag(.generic)
 		&& receiver_typ != 0 {
+		if receiver_typ.idx() <= 0 || receiver_typ.idx() >= w.table.type_symbols.len {
+			return
+		}
 		rsym := w.table.sym(receiver_typ)
 		parent_type := match rsym.info {
 			ast.Struct { rsym.info.parent_type }
@@ -3177,16 +3322,17 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			}
 		}
 		ast.Interface {
-			for typ in isym.info.implementor_types(true) {
+			interface_info := isym.info as ast.Interface
+			for typ in w.runtime_interface_variants(interface_info, isym.cname) {
+				if typ.idx() <= 0 || typ.idx() >= w.table.type_symbols.len {
+					continue
+				}
 				if typ == ast.map_type {
 					w.features.used_maps++
 				}
 				w.mark_by_type(typ)
 				for method_name in isym.info.get_methods() {
-					for ityp in [typ.set_nr_muls(1), typ.set_nr_muls(0)] {
-						mname := int(ityp.clear_flags()).str() + '.' + method_name
-						w.fn_by_name(mname)
-					}
+					w.mark_interface_variant_method(typ, method_name)
 				}
 				for embed_method in w.table.get_embed_methods(w.table.sym(typ)) {
 					mname := int(embed_method.params[0].typ.clear_flags()).str() + '.' +
@@ -3194,14 +3340,14 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 					w.fn_by_name(mname)
 				}
 			}
-			for embed in isym.info.embeds {
+			for embed in interface_info.embeds {
 				w.mark_by_type(embed)
 			}
-			for generic_type in isym.info.generic_types {
+			for generic_type in interface_info.generic_types {
 				w.mark_by_type(generic_type)
 			}
-			w.mark_by_type(isym.info.parent_type)
-			for field in isym.info.fields {
+			w.mark_by_type(interface_info.parent_type)
+			for field in interface_info.fields {
 				w.mark_by_type(field.typ)
 			}
 			for method in isym.methods {
@@ -3999,6 +4145,9 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	// need direct helper calls or resources like FieldData for `$for T.fields`.
 	w.mark_emitted_generic_body_dependencies()
 	w.mark_resource_dependencies()
+	if w.used_syms[ast.array_type_idx] {
+		w.mark_by_sym_name('ArrayFlags')
+	}
 
 	if w.trace_enabled {
 		syms := w.used_syms.keys().map(w.table.type_to_str(it))

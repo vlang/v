@@ -140,6 +140,13 @@ pub fn (pool &PoolProcessor) get_result[T](idx int) T {
 	}
 }
 
+// get_raw_result returns the raw worker callback result pointer at index `idx`.
+pub fn (pool &PoolProcessor) get_raw_result(idx int) voidptr {
+	rlock pool.results {
+		return pool.results[idx]
+	}
+}
+
 // get_results - get a list of type safe results in the main thread.
 pub fn (pool &PoolProcessor) get_results[T]() []T {
 	mut res := []T{cap: pool.results.len}

@@ -10,7 +10,7 @@ const skip_struct_init = ['struct stat', 'struct addrinfo']
 fn (mut g Gen) struct_init(node ast.StructInit) {
 	mut is_update_tmp_var := false
 	mut tmp_update_var := ''
-	base_node_typ := if node.generic_typ != 0 {
+	mut base_node_typ := if node.generic_typ != 0 {
 		if node.is_short_syntax || node.typ.has_flag(.generic) || node.typ == ast.void_type {
 			// Short syntax inits and still-generic types: use generic_typ so the cgen
 			// can resolve it using the current concrete types.
@@ -23,7 +23,22 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			node.typ
 		}
 	} else {
-		node.typ
+		if node.typ.idx() > 0 {
+			node.typ
+		} else if node.typ_str != '' {
+			g.table.find_type(node.typ_str)
+		} else {
+			node.typ
+		}
+	}
+	if base_node_typ.idx() <= 0 && node.typ_str != '' {
+		base_node_typ = g.table.find_type(node.typ_str)
+		if base_node_typ.idx() <= 0 && g.file != unsafe { nil } && g.file.mod.name != '' {
+			base_node_typ = g.table.find_type('${g.file.mod.name}.${node.typ_str}')
+		}
+		if base_node_typ.idx() <= 0 {
+			base_node_typ = g.table.find_type('builtin.${node.typ_str}')
+		}
 	}
 	if node.has_update_expr && !node.update_expr.is_lvalue() {
 		is_update_tmp_var = true
@@ -56,13 +71,17 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	unwrapped_typ := g.unwrap_generic(resolved_node_type)
 	struct_init_typ := if node.typ.has_flag(.generic) && resolved_node_type != 0 {
 		resolved_node_type
+	} else if node.typ.idx() <= 0 {
+		base_node_typ
 	} else {
 		node.typ
 	}
 	mut sym := g.table.final_sym(unwrapped_typ)
 	old_cur_struct_init_typ := g.cur_struct_init_typ
-	if node.typ != 0 {
+	if node.typ.idx() > 0 {
 		g.cur_struct_init_typ = node.typ
+	} else if base_node_typ.idx() > 0 {
+		g.cur_struct_init_typ = base_node_typ
 	}
 	g.zero_struct_init_stack << g.zero_struct_init_type(struct_init_typ)
 	defer {
@@ -118,11 +137,10 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		return
 	}
 
+	mut wrap_struct_init := false
 	if !g.inside_cinit && !is_anon && !is_generic_default && !is_array && !const_msvc_init {
 		g.write('(')
-		defer(fn) {
-			g.write(')')
-		}
+		wrap_struct_init = true
 	}
 	if is_anon && !node.typ.has_flag(.option) {
 		if node.language == .v {
@@ -171,6 +189,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		if pointee_sym.kind !in [.struct, .array_fixed, .array, .sum_type, .interface, .map]
 			&& !pointee_sym.is_heap() && node.init_fields.len == 0 {
 			g.write('0')
+			if wrap_struct_init {
+				g.write(')')
+			}
 			return
 		}
 		// We're generating a compound literal address `&(type){...}`,
@@ -213,6 +234,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.writeln('}, (${option_name}*)&${tmp_var}, sizeof(${base_styp}));')
 		g.empty_line = false
 		g.write2(s, tmp_var)
+		if wrap_struct_init {
+			g.write(')')
+		}
 		return
 	} else if g.inside_cinit {
 		if is_multiline {
@@ -549,6 +573,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		} else {
 			g.write_heap_alloc_close(pointee_type)
 		}
+	}
+	if wrap_struct_init {
+		g.write(')')
 	}
 }
 

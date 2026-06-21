@@ -77,6 +77,9 @@ pub fn set_vroot_folder(vroot_path string) {
 }
 
 fn tool_recompilation_args(tool_name string, user_os string) []string {
+	if tool_name == 'vself' {
+		return ['-no-parallel', '-gc', 'none', '-d', 'no_backtrace']
+	}
 	if user_os == 'freebsd' && tool_name == 'vdoc' {
 		// FreeBSD's default tcc setup can not compile vdoc reliably.
 		return ['-cc', 'cc']
@@ -189,7 +192,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			check_module_is_installed(emodule, is_verbose, false) or { panic(err) }
 		}
 		mut compilation_command := '${os.quoted_path(vexe)} '
-		if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
+		if tool_name in ['vup', 'vdoctor', 'vsymlink'] {
 			// These tools will be called by users in cases where there
 			// is high chance of there being a problem somewhere. Thus
 			// it is better to always compile them with -g, so that in

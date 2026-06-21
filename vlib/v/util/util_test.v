@@ -12,6 +12,11 @@ fn test_tool_recompilation_args_use_openssl_for_vpm() {
 	assert tool_recompilation_args('vpm', 'macos') == ['-d', 'use_openssl']
 }
 
+fn test_tool_recompilation_args_stabilize_vself() {
+	assert tool_recompilation_args('vself', 'macos') == ['-no-parallel', '-gc', 'none', '-d',
+		'no_backtrace']
+}
+
 fn test_tool_recompilation_args_do_not_change_other_tools_or_platforms() {
 	assert tool_recompilation_args('vfmt', 'freebsd').len == 0
 	assert tool_recompilation_args('vdoc', 'linux').len == 0

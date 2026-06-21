@@ -322,6 +322,12 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 
 	idx_got := got.idx()
 	idx_expected := expected.idx()
+	if got == ast.charptr_type && expected == ast.char_type.ref() {
+		return
+	}
+	if got == ast.byteptr_type && expected == ast.u8_type.ref() {
+		return
+	}
 	if got in ast.byteptr_types || got in ast.charptr_types || expected in ast.byteptr_types
 		|| expected in ast.charptr_types {
 		muls_got := got.nr_muls()

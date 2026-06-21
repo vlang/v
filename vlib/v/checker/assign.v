@@ -198,8 +198,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						c.error('cannot use multi-value ${right_type_sym.name} in single-value context',
 							right.pos())
 					}
-					node.right_types = right_type_sym.mr_info().types.map(c.cast_fixed_array_ret(it,
-						c.table.sym(it)))
+					node.right_types = []ast.Type{cap: right_type_sym.mr_info().types.len}
+					for mr_type in right_type_sym.mr_info().types {
+						node.right_types << c.cast_fixed_array_ret(mr_type, c.table.sym(mr_type))
+					}
 					right_len = node.right_types.len
 				}
 			}

@@ -803,6 +803,34 @@ fn (mut g Gen) ensure_extern_sig_type_decl(typ_ ast.Type) {
 	}
 }
 
+fn (g &Gen) should_keep_critical_fn(node ast.FnDecl) bool {
+	if node.is_main || node.name == 'main.main' || node.name == 'main'
+		|| (node.mod == 'main' && node.name == 'main') {
+		return true
+	}
+	short_name := node.name.all_after_last('.')
+	if node.mod == 'builtin' && short_name in ['print', 'println', 'eprint', 'eprintln', 'memdup'] {
+		return true
+	}
+	if node.name in ['builtin.print', 'builtin.println', 'builtin.eprint', 'builtin.eprintln',
+		'builtin.memdup'] {
+		return true
+	}
+	if node.is_method && node.mod == 'builtin' && short_name in ['code', 'msg'] {
+		receiver_type := g.table.final_type(node.receiver.typ.set_nr_muls(0))
+		if receiver_type.idx() > 0 && receiver_type.idx() < g.table.type_symbols.len {
+			receiver_sym := g.table.sym(receiver_type)
+			if receiver_sym.name in ['Error', 'builtin.Error'] {
+				return true
+			}
+		}
+	}
+	if g.use_segfault_handler && short_name == 'v_segmentation_fault_handler' {
+		return true
+	}
+	return false
+}
+
 fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 	$if trace_unused_by_main ? {
 		defer(fn) {
@@ -816,6 +844,9 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 	if g.should_emit_c_extern_decl(node) {
 		return true
 	}
+	if g.should_keep_critical_fn(node) {
+		return true
+	}
 	if node.is_c_extern {
 		return true
 	}
@@ -823,9 +854,6 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 		return true
 	}
 	if node.is_test && node.name.all_after_last('.') in ['before_each', 'after_each'] {
-		return true
-	}
-	if node.mod == 'builtin' && node.name in ['print', 'println', 'eprint', 'eprintln'] {
 		return true
 	}
 	mut is_used_by_main := true
@@ -894,7 +922,11 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 					continue
 				}
 				inter_info := isym.info as ast.Interface
-				impl_types := inter_info.implementor_types(true)
+				mut impl_types := inter_info.implementor_types(true).filter(it.idx() > 0
+					&& it.idx() < g.table.type_symbols.len)
+				if isym.cname == 'IError' {
+					g.add_builtin_ierror_variants(mut impl_types)
+				}
 				if receiver_type !in impl_types {
 					continue
 				}
@@ -928,7 +960,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		eprintln('>   g.tid: ${g.tid} | g.fid: ${g.fid:3} | g.file.path: ${g.file.path} | fn_decl: ${node.name}')
 	}
 	if node.should_be_skipped {
-		return
+		if !g.should_keep_critical_fn(node) {
+			return
+		}
 	}
 	if node.is_test {
 		g.test_function_names << node.name
@@ -1025,7 +1059,8 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	unsafe {
 		g.fn_decl = &node
 	}
-	if node.is_main {
+	if node.is_main || node.name == 'main.main' || node.name == 'main'
+		|| (node.mod == 'main' && node.name == 'main') {
 		g.has_main = true
 	}
 	// TODO: PERF remove this from here
@@ -1035,14 +1070,25 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.write('\n#ifndef __cplusplus\n')
 	}
 	g.gen_fn_decl(node, skip)
+	short_name := node.name.all_after_last('.')
+	if !skip && short_name == 'v_segmentation_fault_handler' {
+		g.emitted_segfault_handler = true
+	} else if !skip && short_name == 'builtin_init' {
+		g.emitted_builtin_init = true
+	} else if !skip && short_name == 'memdup'
+		&& (node.mod == 'builtin' || node.name == 'memdup' || node.name == 'builtin.memdup') {
+		g.emitted_memdup = true
+	}
 	if is_backtrace {
 		g.write('\n#endif\n')
 	}
 	g.fn_decl = keep_fn_decl
 	if skip {
-		g.go_back_to(pos)
-		if g.pref.build_mode != .build_module && !g.pref.use_cache {
-			g.definitions.go_back_to(defs_pos)
+		if !g.should_keep_critical_fn(node) {
+			g.go_back_to(pos)
+			if g.pref.build_mode != .build_module && !g.pref.use_cache {
+				g.definitions.go_back_to(defs_pos)
+			}
 		}
 	}
 	if !g.pref.skip_unused {

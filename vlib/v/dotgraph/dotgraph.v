@@ -24,11 +24,12 @@ pub fn new(name string, label string, color string) &DotGraph {
 }
 
 pub fn (mut d DotGraph) writeln(line string) {
-	d.sb.writeln(line)
+	d.sb.write_string(line)
+	d.sb.write_u8(`\n`)
 }
 
 pub fn (mut d DotGraph) finish() {
-	d.sb.writeln('  }')
+	d.writeln('  }')
 	println(d.sb.str())
 }
 

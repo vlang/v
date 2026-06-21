@@ -14,6 +14,11 @@ const vexe = os.getenv_opt('VEXE') or { @VEXE }
 const vroot = pref.vroot_from_vexe(vexe)
 const vself_flags_with_values = ['-o', '-os', '-cc', '-gc', '-cf', '-cflags', '-d', '-define']
 
+struct RepeatArgs {
+	repeat_count int
+	args         []string
+}
+
 fn main() {
 	// make testing `v up` easier, by providing a way to force `v self` to fail,
 	// to test the fallback logic:
@@ -28,7 +33,9 @@ fn main() {
 		'Please install V from source, to use `${vexe_name} self` .')
 	os.chdir(vroot)!
 	os.setenv('VCOLORS', 'always', true)
-	repeat_count, mut args := extract_repeat_count(args_[1..].filter(it != 'self'))
+	repeat_args := extract_repeat_count(args_[1..].filter(it != 'self'))
+	repeat_count := repeat_args.repeat_count
+	mut args := repeat_args.args.clone()
 	if args.len == 0 || ('-cc' !in args && '-prod' !in args && '-parallel-cc' !in args) {
 		// compiling by default, i.e. `v self`:
 		uos := os.user_os()
@@ -95,7 +102,7 @@ fn repeat_count_arg(arg string) int {
 	return if count > 0 { count } else { 0 }
 }
 
-fn extract_repeat_count(args []string) (int, []string) {
+fn extract_repeat_count(args []string) RepeatArgs {
 	mut repeat_count := 1
 	mut filtered := []string{cap: args.len}
 	mut should_skip_repeat_check := false
@@ -119,7 +126,10 @@ fn extract_repeat_count(args []string) (int, []string) {
 		}
 		filtered << arg
 	}
-	return repeat_count, filtered
+	return RepeatArgs{
+		repeat_count: repeat_count
+		args:         filtered
+	}
 }
 
 fn has_gc_arg(args []string) bool {
@@ -241,6 +251,18 @@ fn clone_args(args []string) []string {
 	return cloned
 }
 
+fn with_bootstrap_lookup_path(args []string) []string {
+	for arg in args {
+		if arg == '-path' || arg.starts_with('-path=') {
+			return clone_args(args)
+		}
+	}
+	mut res := []string{cap: args.len + 2}
+	res << ['-path', '@vlib']
+	res << args
+	return res
+}
+
 fn compose_v_cmd(vexe string, args []string, source string) string {
 	mut parts := []string{cap: args.len + 2}
 	parts << os.quoted_path(vexe)
@@ -259,6 +281,25 @@ fn run_cmd(cmd string) ! {
 	if result.output.len > 0 {
 		println(result.output.trim_space())
 	}
+}
+
+fn restore_vexe_env(old_vexe string, had_vexe bool) {
+	if had_vexe {
+		os.setenv('VEXE', old_vexe, true)
+	} else {
+		os.unsetenv('VEXE')
+	}
+}
+
+fn run_cmd_with_vexe(cmd string, vexe_path string) ! {
+	old_vexe := os.getenv('VEXE')
+	had_vexe := old_vexe != ''
+	os.setenv('VEXE', os.real_path(vexe_path), true)
+	run_cmd(cmd) or {
+		restore_vexe_env(old_vexe, had_vexe)
+		return err
+	}
+	restore_vexe_env(old_vexe, had_vexe)
 }
 
 fn try_compile(cmd string) bool {
@@ -362,16 +403,16 @@ fn bootstrap_self_build(vroot string, args []string, final_binary string) ! {
 		return error('bootstrap fallback failed while building v1.\n${err.msg()}')
 	}
 	mut bootstrap_args := ['-no-parallel']
-	bootstrap_args << with_output_arg(args, bootstrap_v2)
+	bootstrap_args << with_bootstrap_lookup_path(with_output_arg(args, bootstrap_v2))
 	bootstrap_v1_cmd := os.join_path('.', bootstrap_v1)
 	bootstrap_v2_cmd := '${os.quoted_path(bootstrap_v1_cmd)} ${bootstrap_args.join(' ')} ${os.quoted_path('cmd/v')}'
-	run_cmd(bootstrap_v2_cmd) or {
+	run_cmd_with_vexe(bootstrap_v2_cmd, bootstrap_v1_cmd) or {
 		return error('bootstrap fallback failed while building v2.\n${err.msg()}')
 	}
-	final_args := with_output_arg(args, final_binary)
+	final_args := with_bootstrap_lookup_path(with_output_arg(args, final_binary))
 	bootstrap_v2_cmd_path := os.join_path('.', bootstrap_v2)
 	final_cmd := '${os.quoted_path(bootstrap_v2_cmd_path)} ${final_args.join(' ')} ${os.quoted_path('cmd/v')}'
-	run_cmd(final_cmd) or {
+	run_cmd_with_vexe(final_cmd, bootstrap_v2_cmd_path) or {
 		return error('bootstrap fallback failed while building the final compiler.\n${err.msg()}')
 	}
 }

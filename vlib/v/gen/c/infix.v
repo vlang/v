@@ -1358,8 +1358,10 @@ fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 
 	mut info := left_sym.info as ast.Interface
 	right_info := right_sym.info as ast.Interface
-	left_variants := info.implementor_types(true)
-	right_variants := right_info.implementor_types(true)
+	left_variants := info.implementor_types(true).filter(it.idx() > 0
+		&& it.idx() < g.table.type_symbols.len)
+	right_variants := right_info.implementor_types(true).filter(it.idx() > 0
+		&& it.idx() < g.table.type_symbols.len)
 	lock info.conversions {
 		common_variants := info.conversions[right_type] or {
 			c := g.interface_conversion_variants(left_variants, right_variants)

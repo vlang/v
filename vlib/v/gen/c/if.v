@@ -306,9 +306,19 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	mut raw_state := false
 	tmp_if_option_type := g.last_if_option_type
 	mut exit_label := ''
+	prev_if_match_tmp_is_fn_ret_arr := g.if_match_tmp_is_fn_ret_arr
+	mut restore_if_match_tmp_is_fn_ret_arr := false
+	mut restore_inside_if_option := false
+	mut restore_inside_if_result := false
+	mut restore_last_if_option_type := false
+	mut prev_inside_if_option := false
+	mut prev_inside_if_result := false
 	if needs_tmp_var {
 		exit_label = g.new_tmp_var()
-		node_typ := if g.inside_or_block {
+		node_typ := if g.expected_cast_type != 0 && !g.expected_cast_type.has_option_or_result()
+			&& resolved_node_typ.has_option_or_result() {
+			g.expected_cast_type
+		} else if g.inside_or_block {
 			resolved_node_typ.clear_option_and_result()
 		} else {
 			resolved_node_typ
@@ -353,37 +363,28 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		// data lives in a `.ret_arr` member. Flag it so every branch writes through
 		// `.ret_arr`, even ones whose own expr type lacks the `is_fn_ret` flag (e.g. a
 		// fixed array literal mixed with a function call: `if c { fa() } else { [1]! }`).
-		prev_if_match_tmp_is_fn_ret_arr := g.if_match_tmp_is_fn_ret_arr
 		g.if_match_tmp_is_fn_ret_arr = resolved_sym.info is ast.ArrayFixed
 			&& resolved_sym.info.is_fn_ret
-		defer(fn) {
-			g.if_match_tmp_is_fn_ret_arr = prev_if_match_tmp_is_fn_ret_arr
-		}
+		restore_if_match_tmp_is_fn_ret_arr = true
 		if (g.inside_if_option || node_typ.has_flag(.option)) && !g.inside_or_block {
 			raw_state = g.inside_if_option
+			prev_inside_if_option = raw_state
 			if resolved_node_typ != ast.void_type {
 				g.last_if_option_type = resolved_node_typ
-				defer(fn) {
-					g.last_if_option_type = tmp_if_option_type
-				}
-			}
-			defer(fn) {
-				g.inside_if_option = raw_state
+				restore_last_if_option_type = true
 			}
 			g.inside_if_option = true
+			restore_inside_if_option = true
 			styp = styp.replace('*', '_ptr')
 		} else if node_typ.has_flag(.result) && !g.inside_or_block {
 			raw_state = g.inside_if_result
-			defer(fn) {
-				g.inside_if_result = raw_state
-			}
+			prev_inside_if_result = raw_state
 			g.inside_if_result = true
+			restore_inside_if_result = true
 			styp = styp.replace('*', '_ptr')
 		} else {
 			g.last_if_option_type = node_typ
-			defer(fn) {
-				g.last_if_option_type = tmp_if_option_type
-			}
+			restore_last_if_option_type = true
 		}
 		cur_line = g.go_before_last_stmt()
 		g.empty_line = true
@@ -804,6 +805,18 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.write('${cur_line}${tmp}.ret_arr')
 		} else {
 			g.write('${cur_line}${tmp}')
+		}
+		if restore_inside_if_option {
+			g.inside_if_option = prev_inside_if_option
+		}
+		if restore_inside_if_result {
+			g.inside_if_result = prev_inside_if_result
+		}
+		if restore_last_if_option_type {
+			g.last_if_option_type = tmp_if_option_type
+		}
+		if restore_if_match_tmp_is_fn_ret_arr {
+			g.if_match_tmp_is_fn_ret_arr = prev_if_match_tmp_is_fn_ret_arr
 		}
 	}
 }

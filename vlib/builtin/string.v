@@ -392,11 +392,6 @@ pub fn (s string) replace(rep string, with string) string {
 	if pidxs_cap > replace_stack_buffer_size {
 		pidxs = unsafe { &int(malloc(int(sizeof(int)) * pidxs_cap)) }
 	}
-	defer {
-		if pidxs_cap > replace_stack_buffer_size {
-			unsafe { free(pidxs) }
-		}
-	}
 	mut idx := 0
 	for {
 		idx = s.index_after_(rep, idx)
@@ -411,6 +406,9 @@ pub fn (s string) replace(rep string, with string) string {
 	}
 	// Dont change the string if there's nothing to replace
 	if pidxs_len == 0 {
+		if pidxs_cap > replace_stack_buffer_size {
+			unsafe { free(pidxs) }
+		}
 		return s.clone()
 	}
 	// Now we know the number of replacements we need to do and we can calc the len of the new string
@@ -436,6 +434,9 @@ pub fn (s string) replace(rep string, with string) string {
 	}
 	unsafe {
 		b[new_len] = 0
+		if pidxs_cap > replace_stack_buffer_size {
+			free(pidxs)
+		}
 		return tos(b, new_len)
 	}
 }

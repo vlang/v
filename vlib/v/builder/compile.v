@@ -247,7 +247,7 @@ pub fn (mut v Builder) set_module_lookup_paths() {
 	// 3.1) search in vlib/
 	// 3.2) search in ~/.vmodules/ (i.e. modules installed with vpm)
 	lookup_root := v.module_lookup_root()
-	v.module_search_paths = []
+	v.module_search_paths = []string{}
 	if v.pref.is_test {
 		v.module_search_paths << os.dir(v.compiled_dir) // pdir of _test.v
 	}
