@@ -1908,8 +1908,9 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 			s := c.table.type_to_str(typ)
 			println('inferred `${func.name}[${s}]`')
 		}
-		inferred_types << c.unwrap_generic(typ)
-		node.concrete_types << typ
+		concrete_typ := ast.mktyp(c.unwrap_generic(typ))
+		inferred_types << concrete_typ
+		node.concrete_types << concrete_typ
 	}
 
 	if c.table.register_fn_concrete_types(func.fkey(), inferred_types) {

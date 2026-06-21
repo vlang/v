@@ -410,8 +410,9 @@ fn (mut g Gen) resolve_current_fn_generic_type(typ ast.Type) ast.Type {
 	if generic_names.len == 0 || g.cur_concrete_types.len == 0 {
 		return g.unwrap_generic(typ)
 	}
+	concrete_types := g.cur_concrete_types.map(ast.mktyp(it))
 	mut muttable := unsafe { &ast.Table(g.table) }
-	if resolved := muttable.convert_generic_type(typ, generic_names, g.cur_concrete_types) {
+	if resolved := muttable.convert_generic_type(typ, generic_names, concrete_types) {
 		return g.unwrap_generic(resolved)
 	}
 	return g.unwrap_generic(g.recheck_concrete_type(typ))
@@ -2017,7 +2018,13 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		if i >= param_count {
 			break
 		}
-		mut typ := g.unwrap_generic(param.typ)
+		mut typ := if !param.typ.has_flag(.variadic) && g.cur_concrete_types.len > 0
+			&& param.orig_typ != 0 && (param.orig_typ.has_flag(.generic)
+			|| g.type_has_unresolved_generic_parts(param.orig_typ)) {
+			g.resolve_current_fn_generic_type(param.orig_typ)
+		} else {
+			g.unwrap_generic(param.typ)
+		}
 		if g.pref.translated && g.file.is_translated && param.typ.has_flag(.variadic) {
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
 		}
