@@ -159,7 +159,9 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					if fn_n.value == 'error' || fn_n.value == 'error_with_code' {
 						if g.cur_fn_ret_is_optional {
 							ct := g.optional_type_name(g.cur_fn_ret)
-							g.writeln('return (${ct}){.ok = false};')
+							g.write('return ')
+							g.gen_optional_error_from_call(ct, ret_node)
+							g.writeln(';')
 						} else {
 							g.write('return ')
 							g.gen_expr(ret_id)
@@ -171,6 +173,29 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				if g.cur_fn_ret_is_optional {
 					ct := g.optional_type_name(g.cur_fn_ret)
 					base := g.cur_fn_ret_base
+					if g.expr_is_optional_literal(ret_id, g.cur_fn_ret) {
+						g.write('return ')
+						g.gen_expr(ret_id)
+						g.writeln(';')
+						return
+					}
+					if base is types.MultiReturn && node.children_count > 1 {
+						base_ct := g.tc.c_type(base)
+						g.write('return (${ct}){.ok = true, .value = (${base_ct}){')
+						for i in 0 .. node.children_count {
+							if i > 0 {
+								g.write(', ')
+							}
+							child_id := g.a.child(&node, i)
+							if i < base.types.len {
+								g.gen_expr_with_expected_type(child_id, base.types[i])
+							} else {
+								g.gen_expr(child_id)
+							}
+						}
+						g.writeln('}};')
+						return
+					}
 					if ret_node.kind == .none_expr {
 						g.writeln('return (${ct}){.ok = false};')
 						return
@@ -200,13 +225,14 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 							}
 							if expr_ct != base_ct && struct_init_ct != base_ct
 								&& !g.type_names_match(expr_value_type, base)
+								&& !g.types_numeric_compatible(expr_value_type, base)
 								&& !g.call_constructs_type(ret_id, base)
 								&& expr_value_type !is types.Primitive
 								&& expr_value_type !is types.Unknown {
 								g.writeln('return (${ct}){.ok = false};')
 							} else {
 								g.write('return (${ct}){.ok = true, .value = ')
-								g.gen_expr(ret_id)
+								g.gen_expr_with_expected_type(ret_id, base)
 								g.writeln('};')
 							}
 						}
@@ -374,6 +400,11 @@ fn (g &FlatGen) type_names_match(a types.Type, b types.Type) bool {
 		return true
 	}
 	return a_name.all_after_last('.') == b_name.all_after_last('.')
+}
+
+fn (g &FlatGen) types_numeric_compatible(a types.Type, b types.Type) bool {
+	_ = g
+	return (a.is_integer() || a.is_float()) && (b.is_integer() || b.is_float())
 }
 
 fn (g &FlatGen) call_constructs_type(id flat.NodeId, target types.Type) bool {
@@ -781,13 +812,13 @@ fn (mut g FlatGen) gen_assign_or_expr(node flat.Node, lhs_idx int, or_node flat.
 		name: 'IError'
 	}))
 	g.indent++
-	g.writeln('IError err = (IError){0};')
+	g.writeln('IError err = ${tmp}.err;')
 	if or_node.value == '!' || or_node.value == '?' {
 		if g.cur_fn_ret_is_optional {
 			fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
-			g.writeln('return (${fn_opt_ct}){.ok = false};')
+			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
-			g.writeln('v_panic(err.message);')
+			g.writeln('v_panic(IError__str(err));')
 		}
 	} else {
 		for j in 0 .. or_body.children_count {
@@ -832,13 +863,13 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 		name: 'IError'
 	}))
 	g.indent++
-	g.writeln('IError err = (IError){0};')
+	g.writeln('IError err = ${tmp}.err;')
 	if or_node.value == '!' || or_node.value == '?' {
 		if g.cur_fn_ret_is_optional {
 			fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
-			g.writeln('return (${fn_opt_ct}){.ok = false};')
+			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
-			g.writeln('v_panic(err.message);')
+			g.writeln('v_panic(IError__str(err));')
 		}
 	} else if or_body.children_count > 0 {
 		for i in 0 .. or_body.children_count {
@@ -933,7 +964,7 @@ fn (mut g FlatGen) gen_or_expr(node flat.Node) {
 	opt_ct := g.optional_type_name(expr_type)
 	g.write('({${opt_ct} ${tmp} = ')
 	g.gen_expr(expr_id)
-	g.write('; ${tmp}.ok ? ${tmp}.value : ({IError err = (IError){0}; (void)err; ')
+	g.write('; ${tmp}.ok ? ${tmp}.value : ({IError err = ${tmp}.err; (void)err; ')
 	g.gen_or_body(or_body)
 	g.write(';});})')
 }
@@ -992,13 +1023,13 @@ fn (mut g FlatGen) gen_or_expr_stmt(node flat.Node) {
 		name: 'IError'
 	}))
 	g.indent++
-	g.writeln('IError err = (IError){0};')
+	g.writeln('IError err = ${tmp}.err;')
 	if node.value == '!' || node.value == '?' {
 		if g.cur_fn_ret_is_optional {
 			fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
-			g.writeln('return (${fn_opt_ct}){.ok = false};')
+			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
-			g.writeln('v_panic(err.message);')
+			g.writeln('v_panic(IError__str(err));')
 		}
 	} else {
 		for i in 0 .. or_body.children_count {

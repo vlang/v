@@ -1247,7 +1247,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_sym(kind: .bool, name: 'bool', cname: 'bool', mod: 'builtin', is_pub: true) // 19
 	t.register_sym(kind: .none, name: 'none', cname: 'none', mod: 'builtin', is_pub: true) // 20
 	t.register_sym(
-		kind:       .string
+		kind:       Kind.string
 		name:       'string'
 		cname:      'string'
 		mod:        'builtin'
@@ -2040,7 +2040,7 @@ pub fn (t &TypeSymbol) embed_name() string {
 }
 
 pub fn (t &TypeSymbol) has_method(name string) bool {
-	for mut method in unsafe { t.methods } {
+	for method in unsafe { t.methods } {
 		if method.name.len == name.len && method.name == name {
 			return true
 		}
@@ -2054,7 +2054,7 @@ pub fn (t &TypeSymbol) has_method_with_generic_parent(name string) bool {
 }
 
 pub fn (t &TypeSymbol) find_method(name string) ?Fn {
-	for mut method in unsafe { t.methods } {
+	for method in unsafe { t.methods } {
 		if method.name.len == name.len && method.name == name {
 			return method
 		}
@@ -2393,6 +2393,9 @@ pub fn (table &Table) structured_receiver_method_rejects_voidptr(actual_type Typ
 	key := receiver_pattern_method_key(actual.parent_idx, name)
 	methods := table.structured_receiver_methods[key] or { return false }
 	for method in methods {
+		if method.params.len == 0 {
+			continue
+		}
 		receiver_generic_names :=
 			table.structured_receiver_generic_pattern_names(method.receiver_type)
 		if receiver_generic_names.len > 0
@@ -2408,6 +2411,9 @@ pub fn (table &Table) find_structured_receiver_method_with_types(actual_type Typ
 	key := receiver_pattern_method_key(actual.parent_idx, name)
 	methods := table.structured_receiver_methods[key] or { return none }
 	for method in methods {
+		if method.params.len == 0 {
+			continue
+		}
 		receiver_generic_names :=
 			table.structured_receiver_generic_pattern_names(method.receiver_type)
 		if receiver_generic_names.len == 0 || receiver_generic_names.len > method.generic_names.len
@@ -2465,17 +2471,19 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 		}
 		GenericInst {
 			generic_inst_parent_idx = t.info.parent_idx
-			parent_sym := table.sym(new_type(generic_inst_parent_idx))
-			match parent_sym.info {
-				Struct, Interface, SumType {
-					generic_names = parent_sym.info.generic_types.map(table.sym(it).name)
-					concrete_types = t.info.concrete_types.clone()
+			if generic_inst_parent_idx > 0 {
+				parent_sym := table.sym(new_type(generic_inst_parent_idx))
+				match parent_sym.info {
+					Struct, Interface, SumType {
+						generic_names = parent_sym.info.generic_types.map(table.sym(it).name)
+						concrete_types = t.info.concrete_types.clone()
+					}
+					FnType {
+						generic_names = parent_sym.info.func.generic_names.clone()
+						concrete_types = t.info.concrete_types.clone()
+					}
+					else {}
 				}
-				FnType {
-					generic_names = parent_sym.info.func.generic_names.clone()
-					concrete_types = t.info.concrete_types.clone()
-				}
-				else {}
 			}
 		}
 		else {}
@@ -2487,10 +2495,12 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 		}
 		return m
 	}
-	if m := table.find_structured_receiver_method(new_type(t.idx), name) {
-		return m
+	if t.idx > 0 {
+		if m := table.find_structured_receiver_method(new_type(t.idx), name) {
+			return m
+		}
 	}
-	if generic_inst_parent_idx != 0 {
+	if generic_inst_parent_idx > 0 && generic_inst_parent_idx < table.type_symbols.len {
 		mut psym := table.sym(new_type(generic_inst_parent_idx))
 		for {
 			if m := psym.find_method(name) {
@@ -2499,7 +2509,7 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 				}
 				return m
 			}
-			if psym.parent_idx == 0 {
+			if psym.parent_idx <= 0 || psym.parent_idx >= table.type_symbols.len {
 				break
 			}
 			psym = table.type_symbols[psym.parent_idx]
@@ -2519,7 +2529,7 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 							else {}
 						}
 					}
-					if psym2.parent_idx == 0 {
+					if psym2.parent_idx <= 0 || psym2.parent_idx >= table.type_symbols.len {
 						break
 					}
 					psym2 = table.type_symbols[psym2.parent_idx]
@@ -2594,7 +2604,7 @@ pub fn (t &TypeSymbol) has_field(name string) bool {
 }
 
 fn (a &Aggregate) find_field(name string) ?StructField {
-	for mut field in unsafe { a.fields } {
+	for field in unsafe { a.fields } {
 		if field.name.len == name.len && field.name == name {
 			return field
 		}
@@ -2603,7 +2613,7 @@ fn (a &Aggregate) find_field(name string) ?StructField {
 }
 
 pub fn (i &Interface) find_field(name string) ?StructField {
-	for mut field in unsafe { i.fields } {
+	for field in unsafe { i.fields } {
 		if field.name.len == name.len && field.name == name {
 			return field
 		}
@@ -2612,7 +2622,7 @@ pub fn (i &Interface) find_field(name string) ?StructField {
 }
 
 pub fn (i &Interface) find_method(name string) ?Fn {
-	for mut method in unsafe { i.methods } {
+	for method in unsafe { i.methods } {
 		if method.name.len == name.len && method.name == name {
 			return method
 		}
@@ -2621,7 +2631,7 @@ pub fn (i &Interface) find_method(name string) ?Fn {
 }
 
 pub fn (i &Interface) has_method(name string) bool {
-	for mut method in unsafe { i.methods } {
+	for method in unsafe { i.methods } {
 		if method.name.len == name.len && method.name == name {
 			return true
 		}
@@ -2630,7 +2640,7 @@ pub fn (i &Interface) has_method(name string) bool {
 }
 
 pub fn (s Struct) find_field(name string) ?StructField {
-	for mut field in unsafe { s.fields } {
+	for field in unsafe { s.fields } {
 		if name.len == field.name.len && field.name == name {
 			return field
 		}
@@ -2646,7 +2656,7 @@ pub fn (s Struct) get_field(name string) StructField {
 }
 
 pub fn (s &SumType) find_sum_type_field(name string) ?StructField {
-	for mut field in unsafe { s.fields } {
+	for field in unsafe { s.fields } {
 		if field.name == name {
 			return field
 		}

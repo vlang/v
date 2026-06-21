@@ -1821,6 +1821,21 @@ fn (mut t Transformer) make_optional_none(optional_type string) flat.NodeId {
 	})
 }
 
+fn (mut t Transformer) make_optional_none_with_err(optional_type string, err_expr flat.NodeId) flat.NodeId {
+	ok_field := t.make_sum_literal_field('ok', t.make_bool_literal(false), 'bool')
+	err_field := t.make_sum_literal_field('err', err_expr, 'IError')
+	start := t.a.children.len
+	t.a.children << ok_field
+	t.a.children << err_field
+	return t.a.add_node(flat.Node{
+		kind:           .struct_init
+		children_start: start
+		children_count: 2
+		value:          optional_type
+		typ:            optional_type
+	})
+}
+
 fn (t &Transformer) expr_can_take_address(id flat.NodeId) bool {
 	if int(id) < 0 {
 		return false

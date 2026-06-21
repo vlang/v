@@ -227,6 +227,15 @@ fn (g &FlatGen) is_interface_type_name(name string) bool {
 	return name in g.interfaces || g.tc.qualify_name(name) in g.interfaces
 }
 
+fn (g &FlatGen) has_ierror_interface() bool {
+	for name, _ in g.interfaces {
+		if c_name(name) == 'IError' {
+			return true
+		}
+	}
+	return false
+}
+
 // interface_init_typ_id computes the `_typ` dispatch id for a boxed interface
 // literal by recovering the concrete type from its `_object` field.
 fn (g &FlatGen) interface_init_typ_id(node flat.Node) ?int {
@@ -270,6 +279,25 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 	sid := g.intern_string('interface method ${cn}.${method} not implemented')
 	mname := '${iface_name}.${method}'
 	impls := g.iface_impls[iface_name] or { []string{} }
+	if cn == 'IError' {
+		ret_ct := if method == 'code' { 'int' } else { 'string' }
+		g.writeln('${ret_ct} ${cn}__${method}(${cn}* i) {')
+		match method {
+			'msg' {
+				g.writeln('\treturn i->message;')
+			}
+			'code' {
+				g.writeln('\treturn i->code;')
+			}
+			else {
+				g.writeln('\tv_panic(_str_${sid});')
+				g.writeln('\treturn (${ret_ct}){0};')
+			}
+		}
+
+		g.writeln('}')
+		return
+	}
 	// Interface-declared method signatures store named params unreliably (a named
 	// param like `node &ast.Node` can be split into two type-only params). The
 	// concrete implementer's method is a real fn_decl with a correctly parsed

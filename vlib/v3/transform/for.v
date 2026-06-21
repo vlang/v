@@ -307,7 +307,10 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		elem_name = val.value
 	}
 	t.set_var_type(idx_name, 'int')
-	t.set_var_type(elem_name, elem_type)
+	elem_is_mut := node.op == .amp && actual_iter_type != 'string'
+	elem_needs_ref := elem_is_mut && !elem_type.starts_with('&')
+	elem_var_type := if elem_needs_ref { '&${elem_type}' } else { elem_type }
+	t.set_var_type(elem_name, elem_var_type)
 	len_expr := if is_fixed_array_type(actual_iter_type) {
 		t.make_fixed_array_len_expr(actual_iter_type)
 	} else {
@@ -316,12 +319,16 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	cond := t.make_infix(.lt, t.make_ident(idx_name), len_expr)
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
-	elem_expr := if actual_iter_type.starts_with('[]') {
+	elem_expr := if elem_needs_ref && actual_iter_type.starts_with('[]') {
+		t.array_get_ptr(container, t.make_ident(idx_name), elem_type)
+	} else if elem_needs_ref {
+		t.make_prefix(.amp, t.make_index(container, t.make_ident(idx_name), elem_type))
+	} else if actual_iter_type.starts_with('[]') {
 		t.array_get_value(container, t.make_ident(idx_name), elem_type)
 	} else {
 		t.make_index(container, t.make_ident(idx_name), elem_type)
 	}
-	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_type)
+	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_var_type)
 	mut new_body := []flat.NodeId{}
 	new_body << elem_decl
 	new_body << t.transform_stmts(body_ids)

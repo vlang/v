@@ -177,6 +177,9 @@ fn test_type_checker_reports_core_semantic_errors() {
 	nested_array_push_out := run_good(v3_bin, 'nested_array_push',
 		'fn main() {\n\tmut xs := [][]int{}\n\ty := [1, 2]\n\txs << y\n\tprintln(int_str(xs.len))\n\tprintln(int_str(xs[0][1]))\n}\n')
 	assert nested_array_push_out == '1\n2'
+	mut_array_for_out := run_good(v3_bin, 'mut_array_for_in',
+		'struct Item {\nmut:\n\tn int\n}\n\nfn main() {\n\tmut xs := []Item{}\n\txs << Item{n: 1}\n\tfor mut item in xs {\n\t\titem.n = 7\n\t}\n\tprintln(int_str(xs[0].n))\n}\n')
+	assert mut_array_for_out == '7'
 	const_forward_out := run_good(v3_bin, 'const_forward',
 		'const first_value = second_value\nconst second_value = 2\nfn main() {\n\tprintln(int_str(first_value))\n}\n')
 	assert const_forward_out == '2'

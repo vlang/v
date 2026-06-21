@@ -952,7 +952,9 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 	mut type_hi := left_type
 	mut type_lo := right_type
 	if type_hi.idx() < type_lo.idx() {
-		type_hi, type_lo = type_lo, type_hi
+		tmp := type_hi
+		type_hi = type_lo
+		type_lo = tmp
 	}
 	idx_hi := type_hi.idx()
 	idx_lo := type_lo.idx()

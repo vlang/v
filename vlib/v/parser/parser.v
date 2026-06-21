@@ -377,7 +377,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		}
 		// clear the attributes after each statement
 		if !(stmt is ast.ExprStmt && stmt.expr is ast.Comment) {
-			p.attrs = []
+			p.attrs = []ast.Attr{}
 		}
 		stmts << stmt
 		if p.should_abort {
@@ -1184,10 +1184,10 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				p.attributes()
 				if token.is_decl(p.tok.kind) {
 					stmt := p.stmt(is_top_level)
-					p.attrs = []
+					p.attrs = []ast.Attr{}
 					return stmt
 				}
-				p.attrs = []
+				p.attrs = []ast.Attr{}
 				return p.error_with_pos('attributes can only be used before declarations', attr_pos)
 			}
 			return p.parse_multi_expr(is_top_level)
@@ -1848,7 +1848,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		|| p.mod.all_after_last('.') == p.tok.lit) {
 		// p.tok.lit has been recognized as a module
 		if language in [.c, .js, .wasm] {
-			mod = language.str().to_upper_ascii()
+			mod = language_prefix(language)
 		} else {
 			if p.tok.lit in p.imports {
 				// mark the imported module as used
@@ -2761,7 +2761,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	mut attrs := []ast.Attr{}
 	if p.attrs.len > 0 {
 		attrs = p.attrs.clone()
-		p.attrs = []
+		p.attrs = []ast.Attr{}
 	}
 	mut is_markused := false
 	mut is_exported := false
@@ -2953,7 +2953,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	mut attrs := []ast.Attr{}
 	if p.attrs.len > 0 {
 		attrs = p.attrs.clone()
-		p.attrs = []
+		p.attrs = []ast.Attr{}
 	}
 
 	mut is_markused := false
@@ -3174,7 +3174,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.table.sym(fn_type).is_pub = is_pub
 		type_pos = type_pos.extend(p.tok.pos())
 		comments = p.eat_comments(same_line: true)
-		p.attrs = []
+		p.attrs = []ast.Attr{}
 		fn_type_decl := ast.FnTypeDecl{
 			name:          fn_name
 			mod:           p.mod
@@ -3300,7 +3300,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		return ast.AliasTypeDecl{}
 	}
 	comments = sum_variants[0].end_comments.clone()
-	p.attrs = []
+	p.attrs = []ast.Attr{}
 	alias_type_decl := ast.AliasTypeDecl{
 		name:        name
 		mod:         p.mod

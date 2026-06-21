@@ -328,6 +328,11 @@ fn (mut t Transformer) array_get_value(base flat.NodeId, index flat.NodeId, elem
 	return value
 }
 
+fn (mut t Transformer) array_get_ptr(base flat.NodeId, index flat.NodeId, elem_type string) flat.NodeId {
+	get_call := t.make_call_typed('array_get', arr2(base, index), 'voidptr')
+	return t.make_cast('&${elem_type}', get_call, '&${elem_type}')
+}
+
 fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node, base_type string) ?flat.NodeId {
 	if node.children_count < 2 || !base_type.starts_with('[]') {
 		return none

@@ -859,6 +859,28 @@ fn (t &Transformer) is_numeric_stringify_type(typ string) bool {
 	return is_number || typ in t.enum_types
 }
 
+fn (t &Transformer) enum_str_method_name(typ string) ?string {
+	mut candidates := []string{cap: 3}
+	candidates << typ
+	if !typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		candidates << '${t.cur_module}.${typ}'
+	}
+	if !isnil(t.tc) {
+		parsed := t.tc.parse_type(typ)
+		if parsed is types.Enum {
+			candidates << parsed.name
+		}
+	}
+	for candidate in candidates {
+		method := '${candidate}.str'
+		if t.is_known_fn_name(method) {
+			return method
+		}
+	}
+	return none
+}
+
 fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat.NodeId {
 	mut clean_typ := typ
 	is_ref := clean_typ.starts_with('&')
@@ -898,12 +920,18 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		}
 		parsed := t.tc.parse_type(clean_typ)
 		if parsed is types.Enum {
+			if method := t.enum_str_method_name(clean_typ) {
+				return t.make_call_typed(method, arr1(expr), 'string')
+			}
 			return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
 				'string')
 		}
 		if qtyp != clean_typ {
 			qparsed := t.tc.parse_type(qtyp)
 			if qparsed is types.Enum {
+				if method := t.enum_str_method_name(qtyp) {
+					return t.make_call_typed(method, arr1(expr), 'string')
+				}
 				return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
 					'string')
 			}
@@ -947,6 +975,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		}
 		else {
 			if clean_typ in t.enum_types {
+				if method := t.enum_str_method_name(clean_typ) {
+					return t.make_call_typed(method, arr1(expr), 'string')
+				}
 				return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
 					'string')
 			}
@@ -956,6 +987,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 				qenum = '${t.cur_module}.${clean_typ}'
 			}
 			if qenum in t.enum_types {
+				if method := t.enum_str_method_name(qenum) {
+					return t.make_call_typed(method, arr1(expr), 'string')
+				}
 				return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
 					'string')
 			}

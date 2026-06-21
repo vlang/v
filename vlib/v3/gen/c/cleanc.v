@@ -457,9 +457,47 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		g.expected_enum = old_expected_enum
 		return
 	}
+	if g.gen_sum_value_expr(id, expected) {
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
 	g.gen_expr(id)
 	g.expected_expr_type = old_expected
 	g.expected_enum = old_expected_enum
+}
+
+fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool {
+	sum_type0 := if expected is types.Alias { expected.base_type } else { expected }
+	if sum_type0 !is types.SumType {
+		return false
+	}
+	sum_type := sum_type0 as types.SumType
+	actual0 := g.usable_expr_type(id)
+	actual_type := if actual0 is types.Alias { actual0.base_type } else { actual0 }
+	if actual_type is types.SumType {
+		return false
+	}
+	sum_name := g.resolve_sum_name(sum_type.name)
+	variant := g.resolve_variant(sum_name, actual_type.name())
+	variants := g.tc.sum_types[sum_name] or { return false }
+	if variant !in variants {
+		return false
+	}
+	ct := g.tc.c_type(sum_type0)
+	idx := g.sum_type_index(sum_name, variant)
+	field := g.sum_field_name(variant)
+	if g.variant_references_sum(variant, sum_name) {
+		inner_ct := g.tc.c_type(g.tc.parse_type(variant))
+		g.write('(${ct}){.typ = ${idx}, .${field} = (${inner_ct}*)memdup(&')
+		g.gen_expr(id)
+		g.write(', sizeof(${inner_ct}))}')
+		return true
+	}
+	g.write('(${ct}){.typ = ${idx}, .${field} = ')
+	g.gen_expr(id)
+	g.write('}')
+	return true
 }
 
 fn (mut g FlatGen) gen_expr_with_possible_enum_type(id flat.NodeId, expected types.Type) {
@@ -825,6 +863,15 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					eval := g.enum_vals[ekey]
 					g.write('${eval}')
 					return
+				}
+				if !g.expected_enum.contains('.') && g.tc.cur_module.len > 0
+					&& g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
+					qkey := '${g.tc.cur_module}.${g.expected_enum}.${node.value}'
+					if qkey in g.enum_vals {
+						eval := g.enum_vals[qkey]
+						g.write('${eval}')
+						return
+					}
 				}
 			}
 			for ename, eval in g.enum_vals {

@@ -95,7 +95,7 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 	if node.children_count >= 3 {
 		else_id := t.a.child(&node, 2)
 		else_node := t.a.nodes[int(else_id)]
-		else_block = t.transform_if_guard_else_block(else_id, else_node)
+		else_block = t.transform_if_guard_else_block(else_id, else_node, tmp_name)
 	}
 	mut expanded := []flat.NodeId{cap: prelude.len + 2}
 	for stmt in prelude {
@@ -136,11 +136,16 @@ fn (t &Transformer) optional_result_expr_type_name(id flat.NodeId) string {
 	return t.node_type(id)
 }
 
-fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, else_node flat.Node) flat.NodeId {
+fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, else_node flat.Node, err_source string) flat.NodeId {
 	saved_var_types := t.var_types.clone()
 	t.set_var_type('err', 'IError')
 	mut children := []flat.NodeId{}
-	children << t.make_decl_assign_typed('err', t.make_struct_init('IError'), 'IError')
+	err_value := if err_source.len > 0 {
+		t.make_selector(t.make_ident(err_source), 'err', 'IError')
+	} else {
+		t.make_struct_init('IError')
+	}
+	children << t.make_decl_assign_typed('err', err_value, 'IError')
 	if else_node.kind == .block {
 		children << t.transform_stmts(t.a.children_of(&else_node))
 	} else if else_node.kind == .if_expr {
@@ -889,6 +894,12 @@ fn (mut t Transformer) if_value_branch_block(branch_id flat.NodeId, target_name 
 		return t.make_block(result)
 	}
 	if tail.kind == .match_stmt {
+		value := t.transform_if_branch_value(tail_id, target_type)
+		t.drain_pending(mut result)
+		result << t.make_assign(t.make_ident(target_name), value)
+		return t.make_block(result)
+	}
+	if tail.kind == .if_expr {
 		value := t.transform_if_branch_value(tail_id, target_type)
 		t.drain_pending(mut result)
 		result << t.make_assign(t.make_ident(target_name), value)

@@ -621,6 +621,26 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 	return false
 }
 
+fn (mut g FlatGen) emit_interface_struct(name string) {
+	cn := c_name(name)
+	g.writeln('struct ${cn} {')
+	g.writeln('\tint _typ;')
+	if cn == 'IError' {
+		g.writeln('\tvoid* _object;')
+		g.writeln('\tstring message;')
+		g.writeln('\tint code;')
+	} else {
+		// pointer to the boxed concrete value, used by method dispatch
+		g.writeln('\tvoid* _object;')
+	}
+	for field in g.tc.interface_fields[name] or { []types.StructField{} } {
+		ct := g.tc.c_type(field.typ)
+		g.writeln('\t${ct} ${c_name(field.name)};')
+	}
+	g.writeln('};')
+	g.writeln('')
+}
+
 fn (mut g FlatGen) struct_decls() {
 	for name, _ in g.tc.structs {
 		if g.skip_builtin_struct(name) {
@@ -639,8 +659,6 @@ fn (mut g FlatGen) struct_decls() {
 	if g.has_builtins {
 		g.writeln('typedef array Array;')
 	}
-	g.writeln('typedef struct Optional { bool ok; int value; } Optional;')
-	g.writeln('')
 	mut emitted := map[string]bool{}
 	mut remaining := map[string]bool{}
 	mut remaining_cnames := map[string]bool{}
@@ -661,6 +679,26 @@ fn (mut g FlatGen) struct_decls() {
 		sum_remaining[name] = true
 		remaining_cnames[c_name(name)] = true
 	}
+	if 'string' in remaining {
+		g.emit_struct('string')
+		emitted['string'] = true
+		remaining.delete('string')
+		remaining_cnames.delete('string')
+	}
+	mut has_ierror := false
+	for name, _ in iface_remaining {
+		if c_name(name) == 'IError' {
+			g.emit_interface_struct(name)
+			emitted['IError'] = true
+			iface_remaining.delete(name)
+			remaining_cnames.delete('IError')
+			has_ierror = true
+			break
+		}
+	}
+	err_field := if has_ierror { 'IError err; ' } else { '' }
+	g.writeln('typedef struct Optional { bool ok; ${err_field}int value; } Optional;')
+	g.writeln('')
 	for _ in 0 .. 30 {
 		if remaining.len == 0 && iface_remaining.len == 0 && sum_remaining.len == 0 {
 			break
@@ -688,22 +726,7 @@ fn (mut g FlatGen) struct_decls() {
 				}
 			}
 			if can_emit {
-				g.writeln('struct ${cn} {')
-				g.writeln('\tint _typ;')
-				if cn == 'IError' {
-					g.writeln('\tvoid* _object;')
-					g.writeln('\tstring message;')
-					g.writeln('\tint code;')
-				} else {
-					// pointer to the boxed concrete value, used by method dispatch
-					g.writeln('\tvoid* _object;')
-				}
-				for field in g.tc.interface_fields[name] or { []types.StructField{} } {
-					ct := g.tc.c_type(field.typ)
-					g.writeln('\t${ct} ${c_name(field.name)};')
-				}
-				g.writeln('};')
-				g.writeln('')
+				g.emit_interface_struct(name)
 				emitted[cn] = true
 				remaining_cnames.delete(cn)
 				emitted_ifaces << name
@@ -798,21 +821,8 @@ fn (mut g FlatGen) struct_decls() {
 	}
 	for name, _ in iface_remaining {
 		cn := c_name(name)
-		g.writeln('struct ${cn} {')
-		g.writeln('\tint _typ;')
-		if cn == 'IError' {
-			g.writeln('\tvoid* _object;')
-			g.writeln('\tstring message;')
-			g.writeln('\tint code;')
-		} else {
-			g.writeln('\tvoid* _object;')
-		}
-		for field in g.tc.interface_fields[name] or { []types.StructField{} } {
-			ct := g.tc.c_type(field.typ)
-			g.writeln('\t${ct} ${c_name(field.name)};')
-		}
-		g.writeln('};')
-		g.writeln('')
+		g.emit_interface_struct(name)
+		emitted[cn] = true
 	}
 	for name, _ in sum_remaining {
 		g.emit_sum_type(name)

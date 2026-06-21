@@ -930,6 +930,8 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 }
 
 fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type string, op_name string) flat.NodeId {
+	disable_body := p.disable_fn_body
+	p.disable_fn_body = false
 	// parse parameter
 	p.check(.lpar)
 	mut param_ids := []flat.NodeId{}
@@ -964,14 +966,18 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 	if p.tok == .lcbr {
 		prev_fn := p.cur_fn
 		p.cur_fn = name
-		p.check(.lcbr)
-		for p.tok != .rcbr && p.tok != .eof {
-			id := p.stmt()
-			if int(id) >= 0 {
-				body_ids << id
+		if disable_body {
+			p.skip_block()
+		} else {
+			p.check(.lcbr)
+			for p.tok != .rcbr && p.tok != .eof {
+				id := p.stmt()
+				if int(id) >= 0 {
+					body_ids << id
+				}
 			}
+			p.check(.rcbr)
 		}
-		p.check(.rcbr)
 		p.cur_fn = prev_fn
 	}
 
@@ -2446,7 +2452,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 	// Check for for-in: `for x in ...` or `for i, x in ...` or `for mut x in ...`
 	if p.tok == .name && (p.peek() == .key_in || p.peek() == .comma) {
 		first_expr := p.expr(.bit_or)
-		return p.for_in(first_expr)
+		return p.for_in(first_expr, false)
 	}
 	if p.tok == .key_mut {
 		p.next()
@@ -2462,7 +2468,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 			first_expr = p.expr(.lowest)
 		}
 		if p.tok == .key_in || p.tok == .comma {
-			return p.for_in(first_expr)
+			return p.for_in(first_expr, true)
 		}
 		if p.tok == .lcbr {
 			body_ids := p.parse_block_body()
@@ -2519,7 +2525,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 
 	// for-in: `for x in expr` or `for i, x in expr`
 	if p.tok == .key_in || p.tok == .comma {
-		return p.for_in(first_expr)
+		return p.for_in(first_expr, false)
 	}
 
 	// C-style: `for i := 0; ...`
@@ -2649,16 +2655,18 @@ fn (mut p Parser) for_c_style(lhs_expr flat.NodeId) flat.NodeId {
 	})
 }
 
-fn (mut p Parser) for_in(first_expr flat.NodeId) flat.NodeId {
+fn (mut p Parser) for_in(first_expr flat.NodeId, first_is_mut bool) flat.NodeId {
 	// first_expr is either the key var or the only var
 	mut key_id := first_expr
 	mut val_id := flat.empty_node
+	mut value_is_mut := first_is_mut
 
 	if p.tok == .comma {
 		p.next()
 		// second variable
 		if p.tok == .key_mut {
 			p.next()
+			value_is_mut = true
 		}
 		val_id = p.a.add_val(.ident, p.expect_name())
 	}
@@ -2696,6 +2704,7 @@ fn (mut p Parser) for_in(first_expr flat.NodeId) flat.NodeId {
 		// value field stores the count of header elements (key, val, container, [range_end])
 		// so gen knows where body starts
 		value: if int(range_end) >= 0 { '4' } else { '3' }
+		op:    if value_is_mut { .amp } else { .none }
 	})
 }
 

@@ -280,6 +280,35 @@ fn main() {
 	assert arg.value.starts_with('__if_val_')
 }
 
+fn test_nested_if_expr_branch_lowers_to_outer_temp_assignment() {
+	a := parse_transform_source('
+fn main() {
+	x := if true {
+		if false {
+			1
+		} else {
+			2
+		}
+	} else {
+		3
+	}
+}
+')
+	rhs := decl_rhs(a, 'main', 'x')
+	assert rhs.kind == .ident
+	assert rhs.value.starts_with('__if_val_')
+	main_fn := find_fn(a, 'main')
+	mut if_count := 0
+	mut assign_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		if_count += count_kind(a, child_id, .if_expr)
+		assign_count += count_kind(a, child_id, .assign)
+	}
+	assert if_count == 2
+	assert assign_count == 4
+}
+
 fn test_multi_return_decl_lowers_to_temp_field_decls() {
 	a := parse_transform_source("
 fn pair() (int, string) {

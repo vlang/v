@@ -119,7 +119,7 @@ fn (mut p Parser) module_decl() ast.Module {
 		// the attributes were for something else != module, like a struct/fn/type etc.
 		module_attrs = []
 	} else {
-		p.attrs = []
+		p.attrs = []ast.Attr{}
 		module_pos = p.tok.pos()
 		p.next()
 		name_pos = p.tok.pos()

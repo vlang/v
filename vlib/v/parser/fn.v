@@ -568,7 +568,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_expand_simple_interpolation := false
 	mut comments := []ast.Comment{}
 	fn_attrs := p.attrs
-	p.attrs = []
+	p.attrs = []ast.Attr{}
 	for fna in fn_attrs {
 		match fna.name {
 			'noreturn' {

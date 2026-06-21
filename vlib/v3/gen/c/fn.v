@@ -239,6 +239,29 @@ fn (mut g FlatGen) trim_defers(start int) {
 	g.defers = g.defers[..start].clone()
 }
 
+fn (mut g FlatGen) gen_ierror_from_error_call(node flat.Node) {
+	fn_node := g.a.child_node(&node, 0)
+	g.write('(IError){._typ = 0, ._object = NULL, .message = ')
+	if node.children_count > 1 {
+		g.gen_expr(g.a.child(&node, 1))
+	} else {
+		g.write('_S("")')
+	}
+	g.write(', .code = ')
+	if fn_node.value == 'error_with_code' && node.children_count > 2 {
+		g.gen_expr(g.a.child(&node, 2))
+	} else {
+		g.write('0')
+	}
+	g.write('}')
+}
+
+fn (mut g FlatGen) gen_optional_error_from_call(ct string, node flat.Node) {
+	g.write('(${ct}){.ok = false, .err = ')
+	g.gen_ierror_from_error_call(node)
+	g.write('}')
+}
+
 fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	fn_node := g.a.child_node(&node, 0)
 	fn_name := fn_node.value
@@ -292,36 +315,18 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		'error' {
 			if g.cur_fn_ret_is_optional {
 				ct := g.optional_type_name(g.cur_fn_ret)
-				g.write('(${ct}){.ok = false}')
+				g.gen_optional_error_from_call(ct, node)
 			} else {
-				g.write('(IError){._typ = 0, ._object = NULL, .message = ')
-				if node.children_count > 1 {
-					g.gen_expr(g.a.child(&node, 1))
-				} else {
-					g.write('_S("")')
-				}
-				g.write(', .code = 0}')
+				g.gen_ierror_from_error_call(node)
 			}
 			return
 		}
 		'error_with_code' {
 			if g.cur_fn_ret_is_optional {
 				ct := g.optional_type_name(g.cur_fn_ret)
-				g.write('(${ct}){.ok = false}')
+				g.gen_optional_error_from_call(ct, node)
 			} else {
-				g.write('(IError){._typ = 0, ._object = NULL, .message = ')
-				if node.children_count > 1 {
-					g.gen_expr(g.a.child(&node, 1))
-				} else {
-					g.write('_S("")')
-				}
-				g.write(', .code = ')
-				if node.children_count > 2 {
-					g.gen_expr(g.a.child(&node, 2))
-				} else {
-					g.write('0')
-				}
-				g.write('}')
+				g.gen_ierror_from_error_call(node)
 			}
 			return
 		}
