@@ -201,6 +201,8 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 					if f.name == ':status' {
 						if f.value.len == 3 && all_digits(f.value) {
 							resp.status = f.value.int()
+						} else {
+							return error('h2: malformed :status value: ${f.value}')
 						}
 					} else if !f.name.starts_with(':') {
 						resp.headers << f

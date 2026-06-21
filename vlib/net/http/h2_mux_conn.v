@@ -562,6 +562,10 @@ fn (mut c H2MuxConn) send_body_on_stream(mut s H2MuxStream, body []u8) ! {
 			s.send_window += excess
 			chunk = int(c.peer_max_frame)
 			next = off + chunk
+			// Wake any goroutines sleeping in fcv.wait() because c.send_window
+			// was drained; no WINDOW_UPDATE is coming for these bytes since they
+			// were never sent.
+			c.fcv.broadcast()
 		}
 		c.fmu.unlock()
 		c.write_all_locked(H2Frame(H2DataFrame{
