@@ -255,6 +255,47 @@ pub struct Client {}
 	assert !res.output.contains('cannot register struct')
 }
 
+fn test_duplicate_resolved_import_path_still_validates_module_name() {
+	$if windows {
+		return
+	}
+	os.chdir(test_path)!
+	workspace := os.join_path(test_path, 'run_duplicate_resolved_import_path_validation')
+	project_dir := os.join_path(workspace, 'project')
+	foo_dir := os.join_path(project_dir, 'modules', 'foo')
+	bar_dir := os.join_path(project_dir, 'modules', 'bar')
+	defer {
+		os.chdir(test_path) or {}
+		os.rmdir_all(workspace) or {}
+	}
+	os.mkdir_all(foo_dir)!
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module {\n\tname: 'project'\n}\n")!
+	os.write_file(os.join_path(foo_dir, 'foo.v'), 'module foo
+
+pub fn value() int {
+	return 1
+}
+')!
+	os.symlink(foo_dir, bar_dir) or { return }
+	os.write_file(os.join_path(project_dir, 'main.v'), 'module main
+
+import foo
+import bar
+
+fn main() {
+	println(foo.value())
+	println(bar.value())
+}
+')!
+	os.chdir(project_dir)!
+
+	res := os.execute('${os.quoted_path(vexe)} -check main.v')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('bad module definition'), res.output
+	assert res.output.contains('imports module "bar"'), res.output
+	assert res.output.contains('defined as module `foo`'), res.output
+}
+
 fn test_removed_src_layout_error_mentions_vmod_subdirs() {
 	os.chdir(test_path)!
 	project_dir := os.join_path(test_path, 'run_removed_src_project')
