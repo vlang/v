@@ -366,9 +366,7 @@ fn (g &FlatGen) visit_module_init(mod string, module_to_init map[string]string, 
 	}
 	visiting[mod] = true
 	for dep in g.module_imports[mod] or { []string{} } {
-		if dep in module_to_init {
-			g.visit_module_init(dep, module_to_init, mut visiting, mut visited, mut result)
-		}
+		g.visit_module_init(dep, module_to_init, mut visiting, mut visited, mut result)
 	}
 	visiting.delete(mod)
 	visited[mod] = true

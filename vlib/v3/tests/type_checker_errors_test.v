@@ -180,6 +180,9 @@ fn test_type_checker_reports_core_semantic_errors() {
 	mut_array_for_out := run_good(v3_bin, 'mut_array_for_in',
 		'struct Item {\nmut:\n\tn int\n}\n\nfn main() {\n\tmut xs := []Item{}\n\txs << Item{n: 1}\n\tfor mut item in xs {\n\t\titem.n = 7\n\t}\n\tprintln(int_str(xs[0].n))\n}\n')
 	assert mut_array_for_out == '7'
+	mut_array_for_scalar_out := run_good(v3_bin, 'mut_array_for_scalar_updates',
+		'fn main() {\n\tmut xs := []int{}\n\txs << 1\n\txs << 2\n\tfor mut x in xs {\n\t\tx++\n\t\tx += 10\n\t}\n\tprintln(int_str(xs[0]))\n\tprintln(int_str(xs[1]))\n}\n')
+	assert mut_array_for_scalar_out == '12\n13'
 	const_forward_out := run_good(v3_bin, 'const_forward',
 		'const first_value = second_value\nconst second_value = 2\nfn main() {\n\tprintln(int_str(first_value))\n}\n')
 	assert const_forward_out == '2'
@@ -206,6 +209,12 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'parent/child/child.v': 'module child\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
 	}, 'main.v')
 	assert hier_init_order_out == '41\n41'
+	transitive_init_order_out := run_good_project(v3_bin, 'transitive_module_init_order', {
+		'main.v':      'module main\n\nimport moda\n\n__global seen int\n\nfn init() {\n\tseen = moda.value()\n}\n\nfn main() {\n\tprintln(int_str(seen))\n\tprintln(int_str(moda.value()))\n}\n'
+		'moda/moda.v': 'module moda\n\nimport modb\n\npub fn value() int {\n\treturn modb.value()\n}\n'
+		'modb/modb.v': 'module modb\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+	}, 'main.v')
+	assert transitive_init_order_out == '41\n41'
 	global_amp_out := run_good(v3_bin, 'global_amp_initializers',
 		'struct Point {\n\tx int\n\ty int\n}\n\ninterface Reader {\n\tn int\n\tread() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) read() int {\n\treturn b.n + 1\n}\n\n__global (\n\tbase_point = Point{x: 1, y: 2}\n\tassoc_point = &Point{...base_point, y: 5}\n\treader_box = Box{n: 7}\n\treader_ref = &Reader(reader_box)\n)\n\nfn main() {\n\tprintln(int_str(assoc_point.y))\n\tprintln(int_str(reader_ref.n))\n\tprintln(int_str(reader_ref.read()))\n}\n')
 	assert global_amp_out == '5\n7\n8'

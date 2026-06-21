@@ -59,6 +59,7 @@ mut:
 	cur_fn_name         string
 	cur_fn_ret_type     string
 	var_types           []VarTypeBinding
+	pointer_value_lvalues map[string]bool
 	temp_counter        int
 	pending_stmts       []flat.NodeId
 	smartcast_stack     []SmartcastContext
@@ -113,8 +114,9 @@ struct VarTypeBinding {
 
 pub fn transform(mut a flat.FlatAst, tc &types.TypeChecker) {
 	mut t := Transformer{
-		a:  a
-		tc: unsafe { tc }
+		a:                     a
+		tc:                    unsafe { tc }
+		pointer_value_lvalues: map[string]bool{}
 	}
 	t.collect_types()
 	t.collect_const_suffixes()
@@ -1475,7 +1477,7 @@ fn (t &Transformer) type_info_sum_name() ?string {
 }
 
 fn (mut t Transformer) try_lower_pointer_value_assign(node flat.Node) ?[]flat.NodeId {
-	if node.kind != .assign || node.op != .assign || node.children_count != 2 {
+	if node.kind != .assign || node.children_count != 2 {
 		return none
 	}
 	lhs_id := t.a.child(&node, 0)
@@ -1493,6 +1495,13 @@ fn (mut t Transformer) try_lower_pointer_value_assign(node flat.Node) ?[]flat.No
 	rhs_id := t.a.child(&node, 1)
 	rhs_type := t.node_type(rhs_id)
 	lhs_value_type := t.normalize_type_alias(lhs_type[1..])
+	if node.op != .assign {
+		if !t.pointer_value_lvalues[lhs.value] {
+			return none
+		}
+		new_lhs := t.make_prefix(.mul, t.make_ident(lhs.value))
+		return arr1(t.make_assign_op(new_lhs, t.transform_expr(rhs_id), node.op))
+	}
 	if rhs_type.len == 0
 		|| (rhs_type != lhs_value_type && !t.type_alias_targets_type(lhs_type[1..], rhs_type)) {
 		return none
@@ -3446,7 +3455,12 @@ fn (mut t Transformer) transform_postfix_expr(id flat.NodeId, node flat.Node) fl
 		return id
 	}
 	child_id := t.a.child(&node, 0)
-	new_child := t.transform_expr(child_id)
+	child := t.a.nodes[int(child_id)]
+	new_child := if child.kind == .ident && t.pointer_value_lvalues[child.value] {
+		t.make_paren(t.make_prefix(.mul, t.make_ident(child.value)))
+	} else {
+		t.transform_expr(child_id)
+	}
 	start := t.a.children.len
 	t.a.children << new_child
 	return t.a.add_node(flat.Node{

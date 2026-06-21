@@ -329,9 +329,22 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		t.make_index(container, t.make_ident(idx_name), elem_type)
 	}
 	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_var_type)
+	mut transformed_body := []flat.NodeId{}
+	if elem_needs_ref {
+		had_pointer_value_lvalue := t.pointer_value_lvalues[elem_name] or { false }
+		t.pointer_value_lvalues[elem_name] = true
+		transformed_body = t.transform_stmts(body_ids)
+		if had_pointer_value_lvalue {
+			t.pointer_value_lvalues[elem_name] = true
+		} else {
+			t.pointer_value_lvalues.delete(elem_name)
+		}
+	} else {
+		transformed_body = t.transform_stmts(body_ids)
+	}
 	mut new_body := []flat.NodeId{}
 	new_body << elem_decl
-	new_body << t.transform_stmts(body_ids)
+	new_body << transformed_body
 	prefix << t.make_for_stmt(init, cond, post, new_body, node)
 	return prefix
 }
