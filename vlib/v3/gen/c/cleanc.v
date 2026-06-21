@@ -326,11 +326,16 @@ fn (mut g FlatGen) collect_gen_info() {
 				g.modules[alias] = mod_name
 			}
 			if cur_module.len > 0 && mod_name.len > 0 {
+				dep_module := if mod_name.contains('.') {
+					mod_name.all_after_last('.')
+				} else {
+					mod_name
+				}
 				if cur_module !in g.module_imports {
 					g.module_imports[cur_module] = []string{}
 				}
-				if mod_name !in g.module_imports[cur_module] {
-					g.module_imports[cur_module] << mod_name
+				if dep_module !in g.module_imports[cur_module] {
+					g.module_imports[cur_module] << dep_module
 				}
 			}
 			continue

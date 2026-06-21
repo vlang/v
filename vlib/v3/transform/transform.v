@@ -2439,7 +2439,7 @@ fn (mut t Transformer) transform_expr_stmt(id flat.NodeId, node flat.Node) []fla
 	}
 	child_id := t.a.children[node.children_start]
 	child := t.a.nodes[int(child_id)]
-	if child.kind == .call && t.is_disabled_fn_call(child) {
+	if child.kind == .call && t.is_disabled_fn_call(child_id, child) {
 		return []flat.NodeId{}
 	}
 	if child.kind == .or_expr && !t.is_map_index_or_expr(child) {
@@ -2684,7 +2684,7 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 		t.a.nodes[int(call_id)].typ = resolved_typ
 		call_node.typ = resolved_typ
 	}
-	if t.is_disabled_fn_call(call_node) {
+	if t.is_disabled_fn_call(call_id, call_node) {
 		if resolved_typ.len == 0 || resolved_typ == 'void' {
 			return t.make_empty()
 		}
@@ -2699,8 +2699,8 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	return t.transform_call_args(call_id, call_node)
 }
 
-fn (t &Transformer) is_disabled_fn_call(node flat.Node) bool {
-	name := t.resolve_call_name(node)
+fn (t &Transformer) is_disabled_fn_call(id flat.NodeId, node flat.Node) bool {
+	name := t.call_name_for_node(id, node)
 	if name in t.a.disabled_fns {
 		return true
 	}

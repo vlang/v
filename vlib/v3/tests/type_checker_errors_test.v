@@ -201,12 +201,22 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'moda/moda.v': 'module moda\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\nfn value() int {\n\treturn flag\n}\n'
 	}, 'main.v')
 	assert init_order_out == '41\n41'
+	hier_init_order_out := run_good_project(v3_bin, 'hierarchical_module_init_order', {
+		'main.v':               'module main\n\nimport parent.child\n\n__global seen int\n\nfn init() {\n\tseen = child.value()\n}\n\nfn main() {\n\tprintln(int_str(seen))\n\tprintln(int_str(child.value()))\n}\n'
+		'parent/child/child.v': 'module child\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+	}, 'main.v')
+	assert hier_init_order_out == '41\n41'
 	global_amp_out := run_good(v3_bin, 'global_amp_initializers',
 		'struct Point {\n\tx int\n\ty int\n}\n\ninterface Reader {\n\tn int\n}\n\nstruct Box {\n\tn int\n}\n\n__global (\n\tbase_point = Point{x: 1, y: 2}\n\tassoc_point = &Point{...base_point, y: 5}\n\treader_box = Box{n: 7}\n\treader_ref = &Reader(reader_box)\n)\n\nfn main() {\n\tprintln(int_str(assoc_point.y))\n\tprintln(int_str(reader_ref.n))\n}\n')
 	assert global_amp_out == '5\n7'
 	disabled_if_out := run_good(v3_bin, 'disabled_if_call_elides_args',
 		'__global hit int\n\n@[if trace ?]\nfn trace(x int) {}\n\nfn side_effect() int {\n\thit = 99\n\treturn 1\n}\n\nfn main() {\n\ttrace(side_effect())\n\tprintln(int_str(hit))\n}\n')
 	assert disabled_if_out == '0'
+	disabled_if_alias_out := run_good_project(v3_bin, 'disabled_if_alias_call_elides_args', {
+		'main.v':      'module main\n\nimport moda as m\n\n__global hit int\n\nfn side_effect() int {\n\thit = 99\n\treturn 1\n}\n\nfn main() {\n\tm.trace(side_effect())\n\tprintln(int_str(hit))\n}\n'
+		'moda/moda.v': 'module moda\n\n@[if trace ?]\npub fn trace(x int) {}\n'
+	}, 'main.v')
+	assert disabled_if_alias_out == '0'
 	cross_module_array_append_c := gen_c_project(v3_bin, 'array_append_distinct_module_types', {
 		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tmut xs := []moda.Foo{}\n\tys := []modb.Foo{}\n\txs << ys\n}\n'
 		'moda/moda.v': 'module moda\n\nstruct Foo {\n\ta int\n}\n'
