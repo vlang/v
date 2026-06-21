@@ -467,7 +467,13 @@ fn (mut c H2MuxConn) send_header_block_locked(stream_id u32, block []u8, end_str
 	}).encode())!
 	mut off := max
 	for off < block.len {
-		mut next := off + max
+		// Re-read peer_max_frame under fmu before each CONTINUATION to minimise
+		// the TOCTOU window: the peer could send a smaller SETTINGS_MAX_FRAME_SIZE
+		// between iterations and enforce it on the next frame we send.
+		c.fmu.lock()
+		cur_max := int(c.peer_max_frame)
+		c.fmu.unlock()
+		mut next := off + cur_max
 		if next > block.len {
 			next = block.len
 		}
