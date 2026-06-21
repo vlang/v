@@ -61,9 +61,21 @@ jobs:
           rm -rf docs_site
           ./v retry -- git clone --depth=1 --branch main "https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@github.com/vlang/docs.git" docs_site
 
-          # Copy the freshly generated pages on top of the published site. Note:
-          # no --delete, so site-only files (CNAME, .nojekyll, README.md) are kept.
-          rsync -a docs_generator/output/ docs_site/
+          # Sync the freshly generated pages onto the published site. --delete so
+          # that pages/assets removed or renamed in doc/docs.md do not linger as
+          # stale files, but protect the site-only files at the repo root that the
+          # generator does not produce (git metadata, CNAME, .nojekyll, README.md,
+          # favicon.ico and the legacy build.vsh).
+          rsync -a --delete \
+            --exclude '/.git' \
+            --exclude '/.gitattributes' \
+            --exclude '/.gitignore' \
+            --exclude '/.nojekyll' \
+            --exclude '/CNAME' \
+            --exclude '/README.md' \
+            --exclude '/favicon.ico' \
+            --exclude '/build.vsh' \
+            docs_generator/output/ docs_site/
 
           git -C docs_site add -A
           # `git diff --cached --quiet` exits 0 with nothing staged, 1 when there
