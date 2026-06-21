@@ -448,7 +448,7 @@ fn (mut c H2MuxConn) handshake_locked() ! {
 // frames. Callers must hold wmu.
 fn (mut c H2MuxConn) send_header_block_locked(stream_id u32, block []u8, end_stream bool) ! {
 	c.fmu.lock()
-	max := int(c.peer_max_frame)
+	mut max := int(c.peer_max_frame)
 	c.fmu.unlock()
 	if block.len <= max {
 		c.write_all_locked(H2Frame(H2HeadersFrame{
@@ -459,13 +459,23 @@ fn (mut c H2MuxConn) send_header_block_locked(stream_id u32, block []u8, end_str
 		}).encode())!
 		return
 	}
+	// Re-read peer_max_frame under fmu immediately before the first HEADERS write
+	// to minimise the TOCTOU window between the size-check above and this write.
+	c.fmu.lock()
+	max = int(c.peer_max_frame)
+	c.fmu.unlock()
+	// Clamp to block.len in case max grew large enough to fit the whole block.
+	first := if max < block.len { max } else { block.len }
 	c.write_all_locked(H2Frame(H2HeadersFrame{
 		stream_id:   stream_id
-		fragment:    block[..max]
-		end_headers: false
+		fragment:    block[..first]
+		end_headers: first == block.len
 		end_stream:  end_stream
 	}).encode())!
-	mut off := max
+	if first == block.len {
+		return
+	}
+	mut off := first
 	for off < block.len {
 		// Re-read peer_max_frame under fmu before each CONTINUATION to minimise
 		// the TOCTOU window: the peer could send a smaller SETTINGS_MAX_FRAME_SIZE
@@ -573,7 +583,23 @@ fn (mut c H2MuxConn) send_body_on_stream(mut s H2MuxStream, body []u8) ! {
 			// were never sent.
 			c.fcv.broadcast()
 		}
+		// Also revalidate stream send window: an INITIAL_WINDOW_SIZE reduction
+		// applies a negative delta to s.send_window under fmu, so a negative
+		// value here means we over-claimed against the peer's new window.  Return
+		// the excess bytes to both windows so the loop can re-wait for capacity.
+		if s.send_window < 0 {
+			trim := if i64(chunk) < -s.send_window { i64(chunk) } else { -s.send_window }
+			chunk -= int(trim)
+			s.send_window += trim
+			c.send_window += trim
+			next = off + chunk
+			c.fcv.broadcast()
+		}
 		c.fmu.unlock()
+		if chunk == 0 {
+			c.wmu.unlock()
+			continue
+		}
 		c.write_all_locked(H2Frame(H2DataFrame{
 			stream_id:  s.id
 			data:       body[off..next]
