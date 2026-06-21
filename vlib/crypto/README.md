@@ -131,3 +131,47 @@ fn main() {
 	argon2.compare_hash_and_password('correct horse battery staple'.bytes(), hash.bytes())!
 }
 ```
+
+### bcrypt Password Hashing
+
+```v
+import crypto.bcrypt
+
+fn main() {
+	password := 'correct horse battery staple'.bytes()
+	hash := bcrypt.generate_from_password(password, bcrypt.default_cost)!
+	println(hash)
+
+	bcrypt.compare_hash_and_password(password, hash.bytes())!
+}
+```
+
+### scrypt
+
+`scrypt` is a memory-hard key derivation function (RFC 7914). `n` must be a power of two;
+`(n: 16384, r: 8, p: 1)` are common interactive parameters.
+
+```v
+import crypto.scrypt
+
+fn main() {
+	password := 'correct horse battery staple'.bytes()
+	salt := 'some random salt'.bytes()
+	key := scrypt.scrypt(password, salt, 16384, 8, 1, 32)!
+	assert key.len == 32
+}
+```
+
+### PBKDF2
+
+```v
+import crypto.pbkdf2
+import crypto.sha256
+
+fn main() {
+	password := 'correct horse battery staple'.bytes()
+	salt := 'some random salt'.bytes()
+	key := pbkdf2.key(password, salt, 4096, 32, sha256.new())!
+	assert key.len == 32
+}
+```
