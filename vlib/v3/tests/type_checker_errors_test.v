@@ -222,6 +222,9 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'moda/moda.v': 'module moda\n\n__global hit int\n\nstruct Tracer {}\n\n@[if trace ?]\nfn (t Tracer) trace(x int) {}\n\nfn side_effect() int {\n\thit = 99\n\treturn 1\n}\n\npub fn run() int {\n\tt := Tracer{}\n\tt.trace(side_effect())\n\treturn hit\n}\n'
 	}, 'main.v')
 	assert disabled_if_method_out == '0'
+	disabled_if_non_fn_out := run_good(v3_bin, 'disabled_if_non_fn_decl_skipped',
+		'@[if trace ?]\nstruct DisabledStruct {\n\tbad MissingDisabledType\n}\n\nstruct EnabledStruct {\n\tvalue int\n}\n\nfn main() {\n\tprintln(int_str(EnabledStruct{value: 7}.value))\n}\n')
+	assert disabled_if_non_fn_out == '7'
 	cross_module_array_append_c := gen_c_project(v3_bin, 'array_append_distinct_module_types', {
 		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tmut xs := []moda.Foo{}\n\tys := []modb.Foo{}\n\txs << ys\n}\n'
 		'moda/moda.v': 'module moda\n\nstruct Foo {\n\ta int\n}\n'

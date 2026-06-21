@@ -841,19 +841,40 @@ fn (mut p Parser) top_level_stmt() flat.NodeId {
 // here so the declaration itself is parsed next. When the attribute group is a
 // disabled `@[if flag ?]` (skip_next_decl set), functions are emitted as no-op
 // stubs (empty body): the signature must remain so call sites still type-check
-// and link, but the body is elided. Non-function declarations are emitted as-is.
+// and link, but the body is elided. Other disabled declarations are skipped.
 fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
-	for p.tok == .semicolon {
-		p.next()
-	}
+	p.consume_decl_prefix_after_attrs()
 	if p.skip_next_decl {
 		p.skip_next_decl = false
-		p.disable_fn_body = true
-		res := p.top_level_stmt()
-		p.disable_fn_body = false
-		return res
+		if p.cur_decl_is_fn() {
+			p.disable_fn_body = true
+			res := p.top_level_stmt()
+			p.disable_fn_body = false
+			p.skip_next_decl = false
+			return res
+		}
+		p.skip_top_level_stmt()
+		p.skip_next_decl = false
+		return flat.empty_node
 	}
 	return p.top_level_stmt()
+}
+
+fn (mut p Parser) consume_decl_prefix_after_attrs() {
+	for p.tok == .semicolon || p.tok == .attribute || p.tok == .lsbr {
+		if p.tok == .semicolon {
+			p.next()
+			continue
+		}
+		p.skip_attrs()
+	}
+}
+
+fn (mut p Parser) cur_decl_is_fn() bool {
+	if p.tok == .key_fn {
+		return true
+	}
+	return p.tok == .key_pub && p.peek() == .key_fn
 }
 
 fn (mut p Parser) fn_decl() flat.NodeId {
