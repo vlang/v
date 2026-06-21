@@ -151,10 +151,10 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					if p.prev_tok.kind.is_assign() {
 						is_expr = true
 					}
-					node = p.if_expr(true, is_expr)
+					return p.if_expr(true, is_expr)
 				}
 				.key_match {
-					node = p.match_expr(true, p.prev_tok.kind.is_assign())
+					return p.match_expr(true, p.prev_tok.kind.is_assign())
 				}
 				else {
 					return p.unexpected_with_pos(p.peek_tok.pos(),

@@ -30,33 +30,9 @@ pub fn get_host_arch() Arch {
 	// TODO: think about how to solve it for non C backends, perhaps we
 	// need a mechanism to always generate all branches for specific functions?
 	if C.__V_architecture <= int(Arch._auto) || C.__V_architecture >= int(Arch._max) {
-		return comptime_host_arch()
+		return Arch.amd64
 	}
 	return unsafe { Arch(C.__V_architecture) }
-}
-
-fn comptime_host_arch() Arch {
-	return $if amd64 {
-		Arch.amd64
-	} $else $if i386 {
-		Arch.i386
-	} $else $if arm64 {
-		Arch.arm64
-	} $else $if arm32 {
-		Arch.arm32
-	} $else $if rv64 {
-		Arch.rv64
-	} $else $if rv32 {
-		Arch.rv32
-	} $else $if s390x {
-		Arch.s390x
-	} $else $if ppc64le {
-		Arch.ppc64le
-	} $else $if loongarch64 {
-		Arch.loongarch64
-	} $else {
-		Arch.amd64
-	}
 }
 
 pub fn arch_from_string(arch_str string) !Arch {

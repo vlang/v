@@ -5,33 +5,15 @@ import v.util
 import v.token
 import v.errors
 
-fn language_name(language ast.Language) string {
-	return match language {
-		.c { 'c' }
-		.js { 'js' }
-		.wasm { 'wasm' }
-		else { language.str() }
-	}
-}
-
-fn language_prefix(language ast.Language) string {
-	return match language {
-		.c { 'C' }
-		.js { 'JS' }
-		.wasm { 'WASM' }
-		else { language_name(language).to_upper_ascii() }
-	}
-}
-
 fn (mut p Parser) language_not_allowed_error(language ast.Language, pos token.Pos) {
-	upcase_language := language_prefix(language)
-	p.error_with_pos('${upcase_language} code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language_name(language)}.v file',
+	upcase_language := language.str().to_upper_ascii()
+	p.error_with_pos('${upcase_language} code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language}.v file',
 		pos)
 }
 
 fn (mut p Parser) language_not_allowed_warning(language ast.Language, pos token.Pos) {
-	upcase_language := language_prefix(language)
-	p.warn_with_pos('${upcase_language} code will not be allowed in pure .v files, please move it to a .${language_name(language)}.v file instead',
+	upcase_language := language.str().to_upper_ascii()
+	p.warn_with_pos('${upcase_language} code will not be allowed in pure .v files, please move it to a .${language}.v file instead',
 		pos)
 }
 

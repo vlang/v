@@ -459,7 +459,7 @@ pub fn (t &Table) get_type_methods(typ Type) []Fn {
 	for method in methods {
 		seen_method_names[method.name] = true
 	}
-	for ts.parent_idx > 0 && ts.parent_idx < t.type_symbols.len {
+	for ts.parent_idx != 0 {
 		ts = t.type_symbols[ts.parent_idx]
 		for method in ts.get_methods() {
 			if method.name !in seen_method_names {
@@ -479,12 +479,9 @@ pub fn (t &Table) find_method(s &TypeSymbol, name string) !Fn {
 			return method
 		}
 		if ts.kind == .generic_inst {
-			parent_idx := (ts.info as GenericInst).parent_idx
-			if parent_idx > 0 && parent_idx < t.type_symbols.len {
-				parent_sym := t.sym(new_type(parent_idx))
-				if method := parent_sym.find_method_with_generic_parent(name) {
-					return method
-				}
+			parent_sym := t.sym(new_type((ts.info as GenericInst).parent_idx))
+			if method := parent_sym.find_method_with_generic_parent(name) {
+				return method
 			}
 			return error('unknown method')
 		}
@@ -495,16 +492,7 @@ pub fn (t &Table) find_method(s &TypeSymbol, name string) !Fn {
 				return err
 			}
 		}
-		if ts.info is Alias {
-			parent_idx := ts.info.parent_type.idx()
-			if parent_idx > 0 && parent_idx < t.type_symbols.len && parent_idx != ts.idx {
-				parent_sym := t.sym(ts.info.parent_type)
-				if method := t.find_method(parent_sym, name) {
-					return method
-				}
-			}
-		}
-		if ts.parent_idx <= 0 || ts.parent_idx >= t.type_symbols.len {
+		if ts.parent_idx == 0 {
 			// Also try Struct/Interface/SumType parent_type for generic concrete types
 			// whose parent_idx is 0 but have parent_type set.
 			has_parent_type := (ts.kind == .struct && (ts.info as Struct).parent_type != 0)
@@ -767,33 +755,31 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) !StructField {
 				}
 			}
 			GenericInst {
-				if ts.info.parent_idx > 0 && ts.info.parent_idx < t.type_symbols.len {
-					parent_sym := t.sym(new_type(ts.info.parent_idx))
-					if field := t.find_field(parent_sym, name) {
-						match parent_sym.info {
-							Struct, Interface, SumType {
-								mut table := global_table
-								generic_names := parent_sym.info.generic_types.map(t.sym(it).name)
-								if generic_names.len == ts.info.concrete_types.len {
-									mut resolved_field := field
-									if ft := table.convert_generic_type(field.typ, generic_names,
-										ts.info.concrete_types)
-									{
-										resolved_field.typ = ft
-									}
-									if fut := table.convert_generic_type(field.unaliased_typ,
-										generic_names, ts.info.concrete_types)
-									{
-										resolved_field.unaliased_typ = fut
-									}
-									return resolved_field
+				parent_sym := t.sym(new_type(ts.info.parent_idx))
+				if field := t.find_field(parent_sym, name) {
+					match parent_sym.info {
+						Struct, Interface, SumType {
+							mut table := global_table
+							generic_names := parent_sym.info.generic_types.map(t.sym(it).name)
+							if generic_names.len == ts.info.concrete_types.len {
+								mut resolved_field := field
+								if ft := table.convert_generic_type(field.typ, generic_names,
+									ts.info.concrete_types)
+								{
+									resolved_field.typ = ft
 								}
+								if fut := table.convert_generic_type(field.unaliased_typ,
+									generic_names, ts.info.concrete_types)
+								{
+									resolved_field.unaliased_typ = fut
+								}
+								return resolved_field
 							}
-							else {}
 						}
-
-						return field
+						else {}
 					}
+
+					return field
 				}
 			}
 			SumType {
@@ -804,19 +790,10 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) !StructField {
 				missing_variants := t.find_missing_variants(ts.info, name)
 				return error('field `${name}` does not exist or have the same type in these sumtype `${ts.name}` variants: ${missing_variants}')
 			}
-			Alias {
-				parent_idx := ts.info.parent_type.idx()
-				if parent_idx > 0 && parent_idx < t.type_symbols.len && parent_idx != ts.idx {
-					parent_sym := t.sym(ts.info.parent_type)
-					if field := t.find_field(parent_sym, name) {
-						return field
-					}
-				}
-			}
 			else {}
 		}
 
-		if ts.parent_idx <= 0 || ts.parent_idx >= t.type_symbols.len {
+		if ts.parent_idx == 0 {
 			break
 		}
 		ts = t.type_symbols[ts.parent_idx]

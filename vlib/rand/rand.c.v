@@ -174,7 +174,7 @@ fn deinit() {
 
 // init initializes the default RNG.
 fn init() {
-	set_rng(new_default())
+	default_rng = new_default()
 	at_exit(deinit) or {}
 }
 

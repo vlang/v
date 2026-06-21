@@ -612,7 +612,7 @@ fn (mut g Gen) matching_interface_variant_types(interface_sym ast.TypeSymbol, ta
 	info := interface_sym.info as ast.Interface
 	mut matches := []ast.Type{}
 	mut seen := map[string]bool{}
-	for variant in g.runtime_interface_variants(info, interface_sym.cname) {
+	for variant in g.runtime_interface_variants(info) {
 		variant_sym := g.table.sym(variant)
 		if variant_sym.kind in [.interface, .aggregate] {
 			continue

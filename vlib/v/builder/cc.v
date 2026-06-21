@@ -499,9 +499,7 @@ fn (mut v Builder) post_process_c_compiler_output_with_report(ccompiler string, 
 			}
 			if original_elines.len != elines.len {
 				println('...')
-				if original_elines.len > 0 {
-					println('cc: ${original_elines[original_elines.len - 1]}')
-				}
+				println('cc: ${original_elines#[-1..][0]}')
 				println('(note: the original output was ${original_elines.len} lines long; it was truncated to its first ${elines.len} lines + the last line)')
 			}
 			println('='.repeat(header.len))
@@ -1713,12 +1711,7 @@ pub fn (mut v Builder) cc() {
 			}
 		}
 		//
-		compiler_wd := if v.ccoptions.cc == .tcc && is_bundled_tcc_compiler(ccompiler) {
-			v.pref.vroot
-		} else {
-			vdir
-		}
-		os.chdir(compiler_wd) or {}
+		os.chdir(vdir) or {}
 		tried_compilation_commands << cmd
 		v.last_cc_cmd = cmd
 		v.show_cc(cmd, response_file, response_file_content)
@@ -2657,11 +2650,6 @@ fn is_tinyc_version_output(output string) bool {
 fn is_tcc_compiler_name(ccompiler string) bool {
 	name := os.file_name(ccompiler).to_lower()
 	return is_tinyc_compiler_label(name)
-}
-
-fn is_bundled_tcc_compiler(ccompiler string) bool {
-	normalized := ccompiler.replace('\\', '/').to_lower()
-	return normalized.contains('/thirdparty/tcc/')
 }
 
 fn is_tcc_error_output(output string) bool {

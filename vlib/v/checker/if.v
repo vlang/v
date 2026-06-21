@@ -130,9 +130,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	expr_required := node.force_expr || c.expected_type != ast.void_type
 		|| (node.is_comptime && node.is_expr && node.has_else && c.fn_level > 0)
 	former_expected_type := c.expected_type
-	old_expected_expr_type := c.expected_expr_type
 	if node_is_expr {
 		c.expected_expr_type = c.expected_type
+		defer(fn) {
+			c.expected_expr_type = ast.void_type
+		}
 	}
 	node.typ = ast.void_type
 	mut nbranches_with_return := 0
@@ -347,10 +349,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 			if !c.skip_flags {
 				if node_is_expr {
-					old_expected_type := c.expected_type
-					c.expected_type = former_expected_type
 					c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
-					c.expected_type = old_expected_type
 				} else {
 					c.stmts(mut branch.stmts)
 					c.check_non_expr_branch_last_stmt(branch.stmts)
@@ -367,10 +366,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					node.branches[i].stmts = []
 				}
 				if node_is_expr {
-					old_expected_type := c.expected_type
-					c.expected_type = former_expected_type
 					c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
-					c.expected_type = old_expected_type
 				} else {
 					c.stmts(mut branch.stmts)
 					c.check_non_expr_branch_last_stmt(branch.stmts)
@@ -387,10 +383,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			// smartcast sumtypes and interfaces when using `is`
 			c.smartcast_if_conds(mut branch.cond, mut branch.scope, node)
 			if node_is_expr {
-				old_expected_type := c.expected_type
-				c.expected_type = former_expected_type
 				c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
-				c.expected_type = old_expected_type
 			} else {
 				c.stmts(mut branch.stmts)
 				c.check_non_expr_branch_last_stmt(branch.stmts)
@@ -628,9 +621,6 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if expr_required && !node.has_else {
 		d := if node.is_comptime { '$' } else { '' }
 		c.error('`${if_kind}` expression needs `${d}else` clause', node.pos)
-	}
-	if node_is_expr {
-		c.expected_expr_type = old_expected_expr_type
 	}
 	return node.typ
 }

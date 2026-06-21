@@ -10,15 +10,6 @@ mut:
 	uses_exprs bool
 }
 
-fn enum_attrs_contain(attrs []ast.Attr, name string) bool {
-	for attr in attrs {
-		if attr.name == name {
-			return true
-		}
-	}
-	return false
-}
-
 fn (mut p Parser) enum_val_expr(mod string) ast.EnumVal {
 	// `Color.green`
 	mut enum_name := p.check_name()
@@ -75,7 +66,7 @@ fn (mut p Parser) enum_decl_field(mut enum_attrs map[string][]ast.Attr, mut stat
 		p.attributes()
 		attrs << p.attrs
 		enum_attrs[val] = attrs
-		p.attrs = []ast.Attr{}
+		p.attrs = []
 	}
 	comments := p.eat_comments(same_line: true)
 	next_comments := p.eat_comments(follow_up: true)
@@ -192,8 +183,6 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		typ_pos = p.tok.pos()
 		enum_type = p.parse_type()
 	}
-	decl_attrs := p.attrs.clone()
-	p.attrs = []ast.Attr{}
 	mut enum_decl_comments := p.eat_comments()
 	p.check(.lcbr)
 	enum_decl_comments << p.eat_comments()
@@ -206,9 +195,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.enum_decl_fields(mut vals, mut fields, mut enum_attrs, mut state)
 	p.top_level_statement_end()
 	p.check(.rcbr)
-	is_flag := enum_attrs_contain(decl_attrs, 'flag')
-	is_typedef := enum_attrs_contain(decl_attrs, 'typedef')
-	is_multi_allowed := enum_attrs_contain(decl_attrs, '_allow_multiple_values')
+	is_flag := p.attrs.contains('flag')
+	is_typedef := p.attrs.contains('typedef')
+	is_multi_allowed := p.attrs.contains('_allow_multiple_values')
 	pubfn := if p.mod == 'main' { '@[flag_enum_fn] fn' } else { '@[flag_enum_fn] pub fn' }
 	if is_flag {
 		if fields.len > 64 {
@@ -273,7 +262,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	isb.write_string('		match val {\n')
 	for f in fields {
-		isb.write_string("			'${f.name}' { return ${enum_name}.${f.source_name} }\n")
+		isb.write_string('			\'${f.name}\' { return ${enum_name}.${f.source_name} }\n')
 	}
 	isb.write_string('			else{}\n')
 	isb.write_string('		}\n')
@@ -327,7 +316,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		is_multi_allowed: is_multi_allowed
 		fields:           fields
 		pos:              start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
-		attrs:            decl_attrs
+		attrs:            p.attrs
 		comments:         enum_decl_comments
 	}
 

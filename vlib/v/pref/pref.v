@@ -1503,12 +1503,12 @@ pub fn backend_from_string(s string) !Backend {
 	// TODO: unify the "different js backend" options into a single `-b js`
 	// + a separate option, to choose the wanted JS output.
 	return match s {
-		'c' { Backend.c }
+		'c' { .c }
 		'eval', 'interpret' { eprintln_exit('use v -v2 -eval file.v') }
-		'js', 'js_node' { Backend.js_node }
-		'js_browser' { Backend.js_browser }
-		'js_freestanding' { Backend.js_freestanding }
-		'wasm' { Backend.wasm }
+		'js', 'js_node' { .js_node }
+		'js_browser' { .js_browser }
+		'js_freestanding' { .js_freestanding }
+		'wasm' { .wasm }
 		'native' { eprintln_exit('The native backend has been removed. Use `v -v2 -b arm64` or `v -v2 -b x64` instead.') }
 		'go', 'golang' { eprintln_exit('The Go backend has been removed. Use `v -v2 -b golang` instead.') }
 		else { error('Unknown backend type ${s}') }
@@ -1524,28 +1524,28 @@ pub fn cc_from_string(s string) CompilerType {
 	return match true {
 		cc.contains('tcc') || cc.contains('tinyc') || cc.contains('tinygcc')
 			|| cc.contains('tiny_gcc') || cc.contains('tiny-gcc') {
-			CompilerType.tinyc
+			.tinyc
 		}
 		cc.contains('gcc') {
-			CompilerType.gcc
+			.gcc
 		}
 		cc.contains('clang') {
-			CompilerType.clang
+			.clang
 		}
 		cc.contains('emcc') {
-			CompilerType.emcc
+			.emcc
 		}
 		cc == 'cl' || cc == 'cl.exe' || cc.contains('msvc') {
-			CompilerType.msvc
+			.msvc
 		}
 		cc.contains('mingw') {
-			CompilerType.mingw
+			.mingw
 		}
 		cc.contains('++') {
-			CompilerType.cplusplus
+			.cplusplus
 		}
 		else {
-			CompilerType.gcc
+			.gcc
 		}
 	}
 }

@@ -454,61 +454,61 @@ pub enum Precedence {
 @[direct_array_access]
 pub fn build_precedences() []Precedence {
 	mut p := []Precedence{len: int(Kind._end_), init: Precedence.lowest}
-	p[Kind.lsbr] = Precedence.index
-	p[Kind.nilsbr] = Precedence.index
-	p[Kind.dot] = Precedence.call
+	p[Kind.lsbr] = .index
+	p[Kind.nilsbr] = .index
+	p[Kind.dot] = .call
 	// `++` | `--` | `?`
-	p[Kind.inc] = Precedence.postfix
-	p[Kind.dec] = Precedence.postfix
-	p[Kind.question] = Precedence.postfix
+	p[Kind.inc] = .postfix
+	p[Kind.dec] = .postfix
+	p[Kind.question] = .postfix
 	// `*` |  `/` | `%` | `<<` | `>>` | `>>>` | `&`
-	p[Kind.mul] = Precedence.product
-	p[Kind.div] = Precedence.product
-	p[Kind.mod] = Precedence.product
-	p[Kind.left_shift] = Precedence.product
-	p[Kind.right_shift] = Precedence.product
-	p[Kind.unsigned_right_shift] = Precedence.product
-	p[Kind.amp] = Precedence.product
-	p[Kind.arrow] = Precedence.product
-	p[Kind.power] = Precedence.power
+	p[Kind.mul] = .product
+	p[Kind.div] = .product
+	p[Kind.mod] = .product
+	p[Kind.left_shift] = .product
+	p[Kind.right_shift] = .product
+	p[Kind.unsigned_right_shift] = .product
+	p[Kind.amp] = .product
+	p[Kind.arrow] = .product
+	p[Kind.power] = .power
 	// `+` |  `-` |  `|` | `^`
-	p[Kind.plus] = Precedence.sum
-	p[Kind.minus] = Precedence.sum
-	p[Kind.pipe] = Precedence.sum
-	p[Kind.xor] = Precedence.sum
+	p[Kind.plus] = .sum
+	p[Kind.minus] = .sum
+	p[Kind.pipe] = .sum
+	p[Kind.xor] = .sum
 	// `==` | `!=` | `<` | `<=` | `>` | `>=` | `like`
-	p[Kind.eq] = Precedence.eq
-	p[Kind.ne] = Precedence.eq
-	p[Kind.lt] = Precedence.eq
-	p[Kind.le] = Precedence.eq
-	p[Kind.gt] = Precedence.eq
-	p[Kind.ge] = Precedence.eq
-	p[Kind.key_like] = Precedence.eq
-	p[Kind.key_ilike] = Precedence.eq
+	p[Kind.eq] = .eq
+	p[Kind.ne] = .eq
+	p[Kind.lt] = .eq
+	p[Kind.le] = .eq
+	p[Kind.gt] = .eq
+	p[Kind.ge] = .eq
+	p[Kind.key_like] = .eq
+	p[Kind.key_ilike] = .eq
 	// `=` | `+=` | ...
-	p[Kind.assign] = Precedence.assign
-	p[Kind.plus_assign] = Precedence.assign
-	p[Kind.minus_assign] = Precedence.assign
-	p[Kind.power_assign] = Precedence.assign
-	p[Kind.div_assign] = Precedence.assign
-	p[Kind.mod_assign] = Precedence.assign
-	p[Kind.or_assign] = Precedence.assign
-	p[Kind.and_assign] = Precedence.assign
+	p[Kind.assign] = .assign
+	p[Kind.plus_assign] = .assign
+	p[Kind.minus_assign] = .assign
+	p[Kind.power_assign] = .assign
+	p[Kind.div_assign] = .assign
+	p[Kind.mod_assign] = .assign
+	p[Kind.or_assign] = .assign
+	p[Kind.and_assign] = .assign
 	// <<= | *= | ...
-	p[Kind.left_shift_assign] = Precedence.assign
-	p[Kind.right_shift_assign] = Precedence.assign
-	p[Kind.unsigned_right_shift_assign] = Precedence.assign
-	p[Kind.mult_assign] = Precedence.assign
-	p[Kind.xor_assign] = Precedence.assign
-	p[Kind.boolean_or_assign] = Precedence.assign
-	p[Kind.boolean_and_assign] = Precedence.assign
-	p[Kind.key_in] = Precedence.in_as
-	p[Kind.not_in] = Precedence.in_as
-	p[Kind.key_as] = Precedence.in_as
-	p[Kind.key_is] = Precedence.in_as
-	p[Kind.not_is] = Precedence.in_as
-	p[Kind.logical_or] = Precedence.cond
-	p[Kind.and] = Precedence.cond
+	p[Kind.left_shift_assign] = .assign
+	p[Kind.right_shift_assign] = .assign
+	p[Kind.unsigned_right_shift_assign] = .assign
+	p[Kind.mult_assign] = .assign
+	p[Kind.xor_assign] = .assign
+	p[Kind.boolean_or_assign] = .assign
+	p[Kind.boolean_and_assign] = .assign
+	p[Kind.key_in] = .in_as
+	p[Kind.not_in] = .in_as
+	p[Kind.key_as] = .in_as
+	p[Kind.key_is] = .in_as
+	p[Kind.not_is] = .in_as
+	p[Kind.logical_or] = .cond
+	p[Kind.and] = .cond
 	return p
 }
 
