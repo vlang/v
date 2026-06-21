@@ -14,6 +14,9 @@ import v.util
 const tools_in_subfolders = ['vast', 'vcreate', 'vdoc', 'vpm', 'vsqlite', 'vsymlink', 'vvet',
 	'vwhere', 'vcover']
 
+// v2 is temporarily disabled, so tools that depend on it are skipped too.
+const temporarily_disabled_tool_subfolders = ['vast2']
+
 // non_packaged_tools are tools that should not be packaged with
 // prebuild versions of V, to keep the size smaller.
 // They are mainly useful for the V project itself, not to end users.
@@ -34,6 +37,9 @@ fn main() {
 
 	mut skips := []string{}
 	for stool in tools_in_subfolders {
+		skips << os.join_path(tfolder, stool).replace('\\', '/')
+	}
+	for stool in temporarily_disabled_tool_subfolders {
 		skips << os.join_path(tfolder, stool).replace('\\', '/')
 	}
 	buildopts := args_string.all_before('build-tools')

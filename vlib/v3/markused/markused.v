@@ -75,9 +75,17 @@ pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 				module:  cur_module
 			}
 			fn_decls[node.value] = info
+			lowered_name := markused_c_name(node.value)
+			if lowered_name != node.value {
+				fn_decls[lowered_name] = info
+			}
 			qname := qualify_fn(cur_module, node.value)
 			if qname != node.value {
 				fn_decls[qname] = info
+				lowered_qname := markused_c_name(qname)
+				if lowered_qname != qname {
+					fn_decls[lowered_qname] = info
+				}
 			}
 			// Build suffix_map entries
 			if has_dot {
@@ -102,17 +110,28 @@ pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 	mut queue := []string{}
 	queue << 'main'
 	used['main'] = true
+	enqueue_main_module_roots(fn_decls, mut used, mut queue)
 	enqueue_auto_roots(fn_decls, mut used, mut queue)
 	queue << 'time.Time.new'
 	used['time.Time.new'] = true
 	used['Time.new'] = true
+	queue << 'gen_expr_lvalue'
+	used['gen_expr_lvalue'] = true
+	queue << 'c.gen_expr_lvalue'
+	used['c.gen_expr_lvalue'] = true
+	queue << 'gen_assign'
+	used['gen_assign'] = true
+	queue << 'c.gen_assign'
+	used['c.gen_assign'] = true
 	for seed in ['__new_array', 'new_array_from_c_array', 'array.get', 'array.set', 'array.push',
 		'array.push_many', 'array.slice', 'array.clone', 'array.delete', 'array.ensure_cap',
 		'string.==', 'string.<', 'string.free', 'string.all_before', 'string.all_before_last',
 		'string.all_after', 'string.all_after_last', 'u8.vstring', '[]rune.string', 'map.set',
 		'map.exists', 'map.get', 'map.get_check', 'map.get_and_set', 'map.delete', 'map.clone',
 		'map.clear', 'strings.Builder.write_ptr', 'strings.Builder.write_runes',
-		'strings.Builder.free', 'strconv.format_int', 'strconv.format_uint'] {
+		'strings.Builder.free', 'strconv.format_int', 'strconv.format_uint', 'sync.new_channel_st',
+		'sync.Channel.push', 'sync.Channel.pop', 'sync.Channel.close', 'new_channel_st',
+		'Channel.push', 'Channel.pop', 'Channel.close'] {
 		queue << seed
 		used[seed] = true
 	}
@@ -148,7 +167,26 @@ pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 		const_decls:  const_decls
 	}
 	enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
+	enqueue_function_value_selectors(a, fn_decls, mut used, mut queue)
 	enqueue_initializer_calls(a, collector, imports, fn_decls, mut used, mut queue)
+	// Interface dispatch reachability: calling an interface method `Foo.m` may
+	// dispatch to any concrete `T.m` for a type `T` that implements `Foo`. Those
+	// concrete methods are only referenced from the generated dispatch switch, so
+	// without this they would be pruned and produce undefined-symbol errors.
+	mut iface_impls := map[string][]string{}
+	for iface_name, _ in tc.interface_names {
+		mut impls := []string{}
+		for struct_name, _ in tc.structs {
+			if tc.named_type_implements_interface(struct_name, iface_name) {
+				impls << struct_name
+			}
+		}
+		iface_impls[iface_name] = impls
+		short := iface_name.all_after_last('.')
+		if short != iface_name && short !in iface_impls {
+			iface_impls[short] = impls
+		}
+	}
 	mut processed_nodes := map[int]bool{}
 	mut calls := []string{cap: 128}
 	mut qi := 0
@@ -210,6 +248,20 @@ pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 							if enqueue(candidate, mut used, mut queue) {
 								suffix_hits++
 							}
+						}
+					}
+				}
+			}
+			if callee.contains('.') {
+				recv := callee.all_before_last('.')
+				method := callee.all_after_last('.')
+				if impls := iface_impls[recv] {
+					for impl in impls {
+						impl_method := '${impl}.${method}'
+						enqueue(impl_method, mut used, mut queue)
+						short_impl := '${impl.all_after_last('.')}.${method}'
+						if short_impl != impl_method {
+							enqueue(short_impl, mut used, mut queue)
 						}
 					}
 				}
@@ -335,6 +387,15 @@ fn enqueue_auto_roots(fn_decls map[string]FnDeclInfo, mut used map[string]bool, 
 	}
 }
 
+fn enqueue_main_module_roots(fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
+	for name, info in fn_decls {
+		if info.module != 'main' || name.contains('.') {
+			continue
+		}
+		enqueue(name, mut used, mut queue)
+	}
+}
+
 fn is_auto_root_fn(name string) bool {
 	short_name := name.all_after_last('.')
 	return short_name == 'init' || short_name == 'testsuite_begin' || short_name == 'testsuite_end'
@@ -388,6 +449,25 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	}
 }
 
+fn enqueue_function_value_selectors(a &flat.FlatAst, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
+	for node in a.nodes {
+		if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
+			base := a.child_node(&node, 0)
+			if base.kind == .ident && base.value.len > 0 {
+				name := '${base.value}.${node.value}'
+				if name in fn_decls {
+					enqueue(name, mut used, mut queue)
+				}
+			}
+		} else if node.kind == .call && node.children_count > 0 {
+			callee := a.child_node(&node, 0)
+			if callee.kind == .ident && callee.value in fn_decls {
+				enqueue(callee.value, mut used, mut queue)
+			}
+		}
+	}
+}
+
 fn type_string_needs_optional_helpers(typ string) bool {
 	return typ.len > 0 && (typ[0] == `?` || typ[0] == `!`)
 }
@@ -400,25 +480,39 @@ fn qualify_fn(mod string, name string) string {
 }
 
 fn receiver_info(a &flat.FlatAst, node &flat.Node) (string, string) {
-	if !node.value.contains('.') {
-		return '', ''
+	mut receiver_struct := ''
+	if node.value.contains('.') {
+		receiver_struct = node.value.all_before_last('.')
 	}
-	receiver_struct := node.value.all_before_last('.')
 	for pi in 0 .. node.children_count {
 		pc := a.child_node(node, pi)
 		if pc.kind == .param {
-			return pc.value, receiver_struct
+			if receiver_struct.len > 0 {
+				return pc.value, receiver_struct
+			}
+			clean_type := pc.typ.trim_left('&')
+			if pc.value.len > 0 && clean_type.len > 0 && clean_type[0] >= `A`
+				&& clean_type[0] <= `Z` {
+				return pc.value, clean_type
+			}
 		}
+	}
+	if receiver_struct.len == 0 {
+		return '', ''
 	}
 	return '', receiver_struct
 }
 
 fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports map[string]string, receiver_name string, receiver_struct string, mut calls []string) {
+	mut stack := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_id := c.a.child(node, i)
-		if int(child_id) < 0 {
-			continue
+		if int(child_id) >= 0 {
+			stack << child_id
 		}
+	}
+	for stack.len > 0 {
+		child_id := stack.pop()
 		child := &c.a.nodes[int(child_id)]
 		match child.kind {
 			.ident {
@@ -527,6 +621,25 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 				}
 				if child.children_count >= 2 {
 					lhs_id := c.a.child(child, 0)
+					rhs_id := c.a.child(child, 1)
+					if child.op in [.dot, .amp] {
+						lhs_name := c.qualified_expr_name(lhs_id)
+						if lhs_name.len > 0 {
+							rhs := c.a.nodes[int(rhs_id)]
+							if rhs.kind == .call && rhs.children_count > 0 {
+								fn_node := c.a.child_node(&rhs, 0)
+								if fn_node.kind == .ident && fn_node.value.len > 0 {
+									mod_name := if lhs_name in imports {
+										imports[lhs_name]
+									} else {
+										lhs_name
+									}
+									calls << mod_name + '.' + fn_node.value
+									calls << qualify_fn(cur_module, lhs_name + '.' + fn_node.value)
+								}
+							}
+						}
+					}
 					if int(lhs_id) >= 0 {
 						lhs_type := c.node_type(lhs_id)
 						lhs_name := resolve_type_name(lhs_type)
@@ -556,13 +669,49 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 			else {}
 		}
 
-		c.collect_calls(child, cur_module, imports, receiver_name, receiver_struct, mut calls)
+		if child.children_count > 0 {
+			mut j := int(child.children_count) - 1
+			for j >= 0 {
+				next_id := c.a.child(child, j)
+				if int(next_id) >= 0 {
+					stack << next_id
+				}
+				j--
+			}
+		}
+	}
+}
+
+fn (c &CallCollector) qualified_expr_name(id flat.NodeId) string {
+	if int(id) < 0 {
+		return ''
+	}
+	node := c.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value
+		}
+		.selector {
+			if node.children_count == 0 {
+				return node.value
+			}
+			base := c.qualified_expr_name(c.a.child(&node, 0))
+			if base.len == 0 {
+				return node.value
+			}
+			return base + '.' + node.value
+		}
+		else {
+			return ''
+		}
 	}
 }
 
 fn (c &CallCollector) collect_fn_value_ident(id flat.NodeId, name string, cur_module string, imports map[string]string, mut calls []string) {
-	if name.len == 0 || !c.name_may_reference_fn(name, cur_module, imports)
-		|| !c.node_is_fn_value(id) {
+	if name.len == 0 || !c.name_may_reference_fn(name, cur_module, imports) {
+		return
+	}
+	if !c.node_is_fn_value(id) && !c.name_has_fn_decl(name, cur_module, imports) {
 		return
 	}
 	c.add_fn_value_candidates(name, cur_module, imports, mut calls)
@@ -578,7 +727,10 @@ fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node,
 		return
 	}
 	name := '${base.value}.${node.value}'
-	if !c.name_may_reference_fn(name, cur_module, imports) || !c.node_is_fn_value(id) {
+	if !c.name_may_reference_fn(name, cur_module, imports) {
+		return
+	}
+	if !c.node_is_fn_value(id) && !c.name_has_fn_decl(name, cur_module, imports) {
 		return
 	}
 	c.add_fn_value_candidates(name, cur_module, imports, mut calls)
@@ -594,6 +746,15 @@ fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node,
 fn (c &CallCollector) name_may_reference_fn(name string, cur_module string, imports map[string]string) bool {
 	for candidate in c.const_ref_candidates(name, cur_module, imports) {
 		if candidate in c.fn_decls || candidate in c.const_decls {
+			return true
+		}
+	}
+	return false
+}
+
+fn (c &CallCollector) name_has_fn_decl(name string, cur_module string, imports map[string]string) bool {
+	for candidate in c.const_ref_candidates(name, cur_module, imports) {
+		if candidate in c.fn_decls {
 			return true
 		}
 	}
@@ -752,4 +913,17 @@ fn resolve_type_name(t types.Type) string {
 		return 'rune'
 	}
 	return ''
+}
+
+fn markused_c_name(name string) string {
+	if name.starts_with('C.') {
+		return name[2..]
+	}
+	if name == 'malloc' {
+		return 'v_malloc'
+	}
+	return name.replace('[]', 'Array_').replace('.-', '__minus').replace('.+', '__plus').replace('.==',
+		'__eq').replace('.!=', '__ne').replace('.<=', '__le').replace('.>=', '__ge').replace('.<',
+		'__lt').replace('.>', '__gt').replace('&', 'ptr').replace('[', '_').replace(']', '').replace(',',
+		'_').replace(' ', '_').replace('.', '__')
 }

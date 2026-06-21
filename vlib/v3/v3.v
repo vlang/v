@@ -13,6 +13,13 @@ import v3.ssa.optimize
 import v3.transform
 import v3.types
 
+fn run_compile_command(cmd string) os.Result {
+	exit_code := os.system(cmd)
+	return os.Result{
+		exit_code: exit_code
+	}
+}
+
 fn C.open(charptr, int, int) int
 fn C.write(int, voidptr, int) int
 fn C.close(int) int
@@ -106,12 +113,11 @@ fn main() {
 
 	b.step('parse')
 
-	// Type-collect + annotate expression types BEFORE transform, so the
-	// transformer is type-aware (like v2: check runs before transform). The
-	// transformer reads per-expression types to own type-dependent lowering.
+	// Type-collect + check BEFORE transform, so the transformer is type-aware
+	// (like v2: check runs before transform). The transformer reads cached
+	// per-expression types for type-dependent lowering.
 	mut pre_tc := types.TypeChecker.new(a)
 	pre_tc.collect(a)
-	pre_tc.annotate_types()
 	pre_tc.diagnose_unknown_calls = true
 	for uf in user_files {
 		pre_tc.diagnostic_files[uf] = true
@@ -121,26 +127,21 @@ fn main() {
 		print_type_errors(pre_tc.errors)
 		exit(1)
 	}
+	b.step('check')
 
 	// Transform (match lowering, string/in lowering, etc.)
 	transform.transform(mut a, &pre_tc)
 	b.step('transform')
 
-	// Reuse the pre-transform checker. Transform does not add declarations, so
-	// recollecting all type/index maps only duplicates memory when GC is off.
+	// Reuse the pre-transform checker for metadata only. Transform does not add
+	// declarations, and v1/v2 do not run a second semantic checker after lowering.
 	pre_tc.diagnose_unknown_calls = false
 	pre_tc.reject_unlowered_map_mutation = true
 	pre_tc.annotate_types()
 	for uf in user_files {
 		pre_tc.diagnostic_files[uf] = true
 	}
-	b.step('check')
-
-	pre_tc.check_semantics()
-	if pre_tc.errors.len > 0 {
-		print_type_errors(pre_tc.errors)
-		exit(1)
-	}
+	b.step('annotate types')
 
 	// Mark used functions (dead-code elimination)
 	used_fns := markused.mark_used(a, pre_tc)
@@ -170,7 +171,8 @@ fn main() {
 			eprintln('error writing ${output_file}')
 			exit(1)
 		}
-		b.step('gen C/write')
+		gen_step_name := if g.was_parallel() { 'gen C/write (parallel)' } else { 'gen C/write' }
+		b.step(gen_step_name)
 
 		opt_flag := if is_prod { '-O2 ' } else { '' }
 		warn_flags := if is_strict {
@@ -188,7 +190,7 @@ fn main() {
 			tcc_lib := '-L${tcc_lib_dir}'
 			cc_cmd = '${tcc_path} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file} -lm'
 			println('  > ${cc_cmd}')
-			result = os.execute(cc_cmd)
+			result = run_compile_command(cc_cmd)
 		}
 		if is_prod || result.exit_code != 0 {
 			if result.exit_code != 0 && result.output.len > 0 {
@@ -196,7 +198,7 @@ fn main() {
 			}
 			cc_cmd = 'cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion -Wl,-stack_size,0x4000000 -o ${bin_file} ${output_file} -lm'
 			println('  > ${cc_cmd}')
-			result = os.execute(cc_cmd)
+			result = run_compile_command(cc_cmd)
 			if result.exit_code != 0 {
 				eprintln('C compilation failed:')
 				eprintln(result.output)

@@ -126,6 +126,18 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 		return []string{}
 	}
 	all_files := os.ls(dir) or { return []string{} }
+	mut has_os_specific := map[string]bool{}
+	for file in all_files {
+		if !file.ends_with('.v') || file.ends_with('.js.v') || file.contains('_test.') {
+			continue
+		}
+		if file_has_incompatible_os_suffix(file, target_os) {
+			continue
+		}
+		if base := os_specific_base(file, target_os) {
+			has_os_specific[base] = true
+		}
+	}
 	mut v_files := []string{}
 	for file in all_files {
 		if !file.ends_with('.v') || file.ends_with('.js.v') || file.contains('_test.') {
@@ -133,6 +145,11 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 		}
 		if file_has_incompatible_os_suffix(file, target_os) {
 			continue
+		}
+		if base := default_file_base(file) {
+			if has_os_specific[base] {
+				continue
+			}
 		}
 		if file.contains('_notd_') {
 			feature := extract_define_feature(file, '_notd_')
@@ -148,6 +165,74 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 		v_files << os.join_path_single(dir, file)
 	}
 	return v_files
+}
+
+fn default_file_base(file string) ?string {
+	for marker in ['_default.c.v', '_default.v'] {
+		if file.ends_with(marker) {
+			return file[..file.len - marker.len]
+		}
+	}
+	return none
+}
+
+fn os_specific_base(file string, target_os string) ?string {
+	if _ := default_file_base(file) {
+		return none
+	}
+	mut suffixes := []string{}
+	os_name := normalized_os(target_os)
+	if os_name != 'windows' {
+		suffixes << '_nix'
+	}
+	match os_name {
+		'windows' {
+			suffixes << '_windows'
+		}
+		'macos' {
+			suffixes << '_macos'
+			suffixes << '_darwin'
+		}
+		'linux' {
+			suffixes << '_linux'
+		}
+		'android' {
+			suffixes << '_android'
+		}
+		'ios' {
+			suffixes << '_ios'
+		}
+		'freebsd' {
+			suffixes << '_freebsd'
+			suffixes << '_bsd'
+		}
+		'openbsd' {
+			suffixes << '_openbsd'
+			suffixes << '_bsd'
+		}
+		'netbsd' {
+			suffixes << '_netbsd'
+			suffixes << '_bsd'
+		}
+		'dragonfly' {
+			suffixes << '_dragonfly'
+			suffixes << '_bsd'
+		}
+		'solaris' {
+			suffixes << '_solaris'
+		}
+		else {}
+	}
+
+	for suffix in suffixes {
+		for ext in ['.c.v', '.v'] {
+			marker := suffix + ext
+			if file.ends_with(marker) {
+				return file[..file.len - marker.len]
+			}
+		}
+	}
+	return none
 }
 
 fn extract_define_feature(file string, marker string) string {

@@ -1021,6 +1021,7 @@ fn (mut b Builder) register_functions() {
 	b.register_fast_string_eq_stub()
 	b.register_string_lt_stub()
 	b.register_string_trim_stubs()
+	b.register_string_last_part_stubs()
 	b.register_ierror_stubs()
 	b.register_array_runtime_stubs()
 	b.register_arguments_stub()
@@ -1030,8 +1031,12 @@ fn (mut b Builder) register_functions() {
 	b.register_map_runtime_stubs()
 	b.register_u8_runtime_stubs()
 	b.register_heap_tracking_stubs()
+	b.register_printing_stubs()
+	b.register_prealloc_atomic_stubs()
 	b.register_process_capture_stubs()
 	b.register_file_check_stubs()
+	b.register_fd_macro_stubs()
+	b.register_signal_macro_stubs()
 	b.register_os_stat_stubs()
 	b.register_array_string_stubs()
 	b.register_fixed_array_contains_stubs()
@@ -1092,9 +1097,14 @@ fn (b &Builder) skip_source_fn(name string) bool {
 		'Builder.last_n', 'new_map', 'map__set', 'map__get', 'map__exists', 'map__get_check',
 		'map__get_or_set', 'map__delete', 'map__clear', 'map__clone', 'v3_map_find',
 		'v3_map_set_sized', 'u8.is_digit', 'u8.is_letter', 'u8.is_alnum', 'u8.is_capital', 'bytestr',
-		'[]u8.bytestr', 'array.repeat_to_depth', '_ht_alloc', '_ht_free', 'f32_to_str_l',
-		'f32_to_str_l_with_dot', 'f64_to_str_l', 'f64_to_str_l_with_dot', 'current_rss_kb',
+		'[]u8.bytestr', 'Array_u8__bytestr', 'Array_u8__hex', 'Array_rune__string',
+		'array.repeat_to_depth', 'string.all_before_last', 'string__all_before_last',
+		'all_before_last', 'string.all_after_last', 'string__all_after_last', 'all_after_last',
+		'_ht_alloc', '_ht_free', 'f32_to_str_l', 'f32_to_str_l_with_dot', 'f64_to_str_l',
+		'f64_to_str_l_with_dot', 'print', 'println', 'eprint', 'eprintln', 'current_rss_kb',
 		'macos_rss_kb', 'linux_rss_kb', 'arguments', 'tos2', 'tos3', 'tos_clone',
+		'v_prealloc_atomic_add_i32', 'v_prealloc_atomic_load_i32', 'v_prealloc_atomic_store_i32',
+		'v_prealloc_atomic_cas_i32', 'FD_ZERO', 'FD_SET', 'FD_ISSET', 'v_signal_with_handler_cast',
 		'normalize_path_in_builder', 'check_fwrite', 'check_fread', 'os.check_fwrite',
 		'os.check_fread', 'fxx_to_str_l_parse', 'fxx_to_str_l_parse_with_dot', 'u8.vstring',
 		'u8.vstring_with_len', 'char.vstring', 'char.vstring_with_len', 'byteptr.vstring',
@@ -1351,10 +1361,12 @@ fn (mut b Builder) register_basic_format_stubs() {
 	format_uint_id := b.register_synthetic_function('strconv__format_uint', b.str_type, p2_i64)
 	b.generate_int_format_body(format_uint_id, false, true)
 
-	f32_id := b.register_synthetic_function('strconv__f32_to_str_l', b.str_type, p1_i64)
-	b.generate_const_string_body(f32_id, '0.0')
-	f64_id := b.register_synthetic_function('strconv__f64_to_str_l', b.str_type, p1_i64)
-	b.generate_const_string_body(f64_id, '0.0')
+	for name in ['strconv__f32_to_str_l', 'strconv__f32_to_str_l_with_dot', 'f32_to_str_l',
+		'f32_to_str_l_with_dot', 'strconv__f64_to_str_l', 'strconv__f64_to_str_l_with_dot',
+		'f64_to_str_l', 'f64_to_str_l_with_dot'] {
+		float_str_id := b.register_synthetic_function(name, b.str_type, p1_i64)
+		b.generate_const_string_body(float_str_id, '0.0')
+	}
 }
 
 fn (mut b Builder) register_pointer_string_stubs() {
@@ -1823,6 +1835,46 @@ fn (mut b Builder) register_panic_stub() {
 	p1 << b.str_type
 	panic_id := b.register_synthetic_function('panic', b.void_type, p1)
 	b.generate_panic_body(panic_id)
+}
+
+fn (mut b Builder) register_printing_stubs() {
+	mut p1 := []TypeID{}
+	p1 << b.str_type
+	print_id := b.register_synthetic_function('print', b.void_type, p1)
+	b.generate_print_body(print_id, '1', false)
+	println_id := b.register_synthetic_function('println', b.void_type, p1)
+	b.generate_print_body(println_id, '1', true)
+	eprint_id := b.register_synthetic_function('eprint', b.void_type, p1)
+	b.generate_print_body(eprint_id, '2', false)
+	eprintln_id := b.register_synthetic_function('eprintln', b.void_type, p1)
+	b.generate_print_body(eprintln_id, '2', true)
+}
+
+fn (mut b Builder) generate_print_body(func_id int, fd_value string, newline bool) {
+	ptr_string := b.m.type_store.get_ptr(b.str_type)
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	entry := b.m.add_block(func_id, 'entry')
+	message := b.func_add_argument(func_id, b.str_type, 'message')
+	message_slot := b.block_instr0(.alloca, entry, ptr_string)
+	b.block_instr2(.store, entry, b.void_type, message, message_slot)
+	data_ptr := b.block_struct_field_ptr(entry, message_slot, b.str_type, 0)
+	len_ptr := b.block_struct_field_ptr(entry, message_slot, b.str_type, 1)
+	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
+	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len := b.block_instr1(.zext, entry, b.i64_type, len32)
+	fd := b.m.get_or_add_const(b.i64_type, fd_value)
+	write_ref := b.m.add_value(.func_ref, b.void_type, 'write', b.fn_ids['write'])
+	b.block_instr4(.call, entry, b.i64_type, write_ref, fd, data, len)
+	if newline {
+		newline_str := b.m.add_value(.string_literal, b.str_type, '\n', 0)
+		newline_slot := b.block_instr0(.alloca, entry, ptr_string)
+		b.block_instr2(.store, entry, b.void_type, newline_str, newline_slot)
+		newline_data_ptr := b.block_struct_field_ptr(entry, newline_slot, b.str_type, 0)
+		newline_data := b.block_instr1(.load, entry, ptr_i8, newline_data_ptr)
+		one := b.m.get_or_add_const(b.i64_type, '1')
+		b.block_instr4(.call, entry, b.i64_type, write_ref, fd, newline_data, one)
+	}
+	b.block_instr0(.ret, entry, b.void_type)
 }
 
 fn (mut b Builder) generate_panic_body(func_id int) {
@@ -2325,6 +2377,62 @@ fn (mut b Builder) generate_identity_i64_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, n)
 }
 
+fn (mut b Builder) register_fd_macro_stubs() {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	mut fd_set_params := []TypeID{}
+	fd_set_params << ptr_i8
+	zero_id := b.register_synthetic_function('FD_ZERO', b.void_type, fd_set_params)
+	b.generate_void_noop_with_params_body(zero_id, fd_set_params)
+
+	mut fd_check_params := []TypeID{}
+	fd_check_params << b.i64_type
+	fd_check_params << ptr_i8
+	set_id := b.register_synthetic_function('FD_SET', b.void_type, fd_check_params)
+	b.generate_void_noop_with_params_body(set_id, fd_check_params)
+	isset_id := b.register_synthetic_function('FD_ISSET', b.i64_type, fd_check_params)
+	b.generate_const_i64_with_params_body(isset_id, fd_check_params, '0')
+}
+
+fn (mut b Builder) register_signal_macro_stubs() {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	mut params := []TypeID{}
+	params << b.i64_type
+	params << ptr_i8
+	name := 'v_signal_with_handler_cast'
+	func_id := b.register_synthetic_function(name, ptr_i8, params)
+	if fn_type := b.fn_types[name] {
+		b.c_fn_types[name] = fn_type
+	}
+	b.c_fn_ids[name] = func_id
+	b.generate_const_ptr_with_params_body(func_id, params, ptr_i8, '0')
+}
+
+fn (mut b Builder) generate_void_noop_with_params_body(func_id int, params []TypeID) {
+	entry := b.m.add_block(func_id, 'entry')
+	for i, param in params {
+		_ := b.func_add_argument(func_id, param, 'p${i}')
+	}
+	b.block_instr0(.ret, entry, b.void_type)
+}
+
+fn (mut b Builder) generate_const_i64_with_params_body(func_id int, params []TypeID, value string) {
+	entry := b.m.add_block(func_id, 'entry')
+	for i, param in params {
+		_ := b.func_add_argument(func_id, param, 'p${i}')
+	}
+	result := b.m.get_or_add_const(b.i64_type, value)
+	b.block_instr1(.ret, entry, b.void_type, result)
+}
+
+fn (mut b Builder) generate_const_ptr_with_params_body(func_id int, params []TypeID, ret_type TypeID, value string) {
+	entry := b.m.add_block(func_id, 'entry')
+	for i, param in params {
+		_ := b.func_add_argument(func_id, param, 'p${i}')
+	}
+	result := b.m.get_or_add_const(ret_type, value)
+	b.block_instr1(.ret, entry, b.void_type, result)
+}
+
 fn (mut b Builder) register_os_stat_stubs() {
 	mut p1 := []TypeID{}
 	p1 << b.str_type
@@ -2488,6 +2596,75 @@ fn (mut b Builder) generate_const_i64_body(func_id int, value string) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+fn (mut b Builder) register_prealloc_atomic_stubs() {
+	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
+	mut p1_ptr := []TypeID{}
+	p1_ptr << ptr_i64
+	load_id := b.register_synthetic_function('v_prealloc_atomic_load_i32', b.i64_type, p1_ptr)
+	b.generate_atomic_load_i64_body(load_id)
+
+	mut p2 := []TypeID{}
+	p2 << ptr_i64
+	p2 << b.i64_type
+	add_id := b.register_synthetic_function('v_prealloc_atomic_add_i32', b.i64_type, p2)
+	b.generate_atomic_add_i64_body(add_id)
+	store_id := b.register_synthetic_function('v_prealloc_atomic_store_i32', b.i64_type, p2)
+	b.generate_atomic_store_i64_body(store_id)
+
+	mut p3 := []TypeID{}
+	p3 << ptr_i64
+	p3 << b.i64_type
+	p3 << b.i64_type
+	cas_id := b.register_synthetic_function('v_prealloc_atomic_cas_i32', b.i64_type, p3)
+	b.generate_atomic_cas_i64_body(cas_id)
+}
+
+fn (mut b Builder) generate_atomic_load_i64_body(func_id int) {
+	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
+	entry := b.m.add_block(func_id, 'entry')
+	ptr := b.func_add_argument(func_id, ptr_i64, 'ptr')
+	value := b.block_instr1(.load, entry, b.i64_type, ptr)
+	b.block_instr1(.ret, entry, b.void_type, value)
+}
+
+fn (mut b Builder) generate_atomic_store_i64_body(func_id int) {
+	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
+	entry := b.m.add_block(func_id, 'entry')
+	ptr := b.func_add_argument(func_id, ptr_i64, 'ptr')
+	value := b.func_add_argument(func_id, b.i64_type, 'value')
+	b.block_instr2(.store, entry, b.void_type, value, ptr)
+	b.block_instr1(.ret, entry, b.void_type, value)
+}
+
+fn (mut b Builder) generate_atomic_add_i64_body(func_id int) {
+	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
+	entry := b.m.add_block(func_id, 'entry')
+	ptr := b.func_add_argument(func_id, ptr_i64, 'ptr')
+	delta := b.func_add_argument(func_id, b.i64_type, 'delta')
+	old := b.block_instr1(.load, entry, b.i64_type, ptr)
+	new_value := b.block_instr2(.add, entry, b.i64_type, old, delta)
+	b.block_instr2(.store, entry, b.void_type, new_value, ptr)
+	b.block_instr1(.ret, entry, b.void_type, new_value)
+}
+
+fn (mut b Builder) generate_atomic_cas_i64_body(func_id int) {
+	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
+	entry := b.m.add_block(func_id, 'entry')
+	ptr := b.func_add_argument(func_id, ptr_i64, 'ptr')
+	expected := b.func_add_argument(func_id, b.i64_type, 'expected')
+	desired := b.func_add_argument(func_id, b.i64_type, 'desired')
+	old := b.block_instr1(.load, entry, b.i64_type, ptr)
+	ok := b.block_instr2(.eq, entry, b.i1_type, old, expected)
+	then_block := b.m.add_block(func_id, 'cas_store')
+	else_block := b.m.add_block(func_id, 'cas_done')
+	b.block_instr3(.br, entry, b.void_type, ok, ValueID(then_block), ValueID(else_block))
+	b.block_instr2(.store, then_block, b.void_type, desired, ptr)
+	one := b.m.get_or_add_const(b.i64_type, '1')
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	b.block_instr1(.ret, then_block, b.void_type, one)
+	b.block_instr1(.ret, else_block, b.void_type, zero)
+}
+
 fn (mut b Builder) register_array_string_stubs() {
 	mut p1 := []TypeID{}
 	p1 << b.array_type
@@ -2495,6 +2672,12 @@ fn (mut b Builder) register_array_string_stubs() {
 	b.generate_const_string_body(array_str_id, '[]')
 	bytestr_id := b.register_synthetic_function('bytestr', b.str_type, p1)
 	b.generate_array_bytestr_body(bytestr_id)
+	array_bytestr_id := b.register_synthetic_function('Array_u8__bytestr', b.str_type, p1)
+	b.generate_array_bytestr_body(array_bytestr_id)
+	array_hex_id := b.register_synthetic_function('Array_u8__hex', b.str_type, p1)
+	b.generate_const_string_body(array_hex_id, '')
+	rune_string_id := b.register_synthetic_function('Array_rune__string', b.str_type, p1)
+	b.generate_const_string_body(rune_string_id, '')
 
 	mut p2 := []TypeID{}
 	p2 << b.array_type
@@ -2894,13 +3077,8 @@ fn (mut b Builder) generate_map_find_body(func_id int) {
 	alloca_i := b.block_instr0(.alloca, entry, ptr_i64)
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	b.block_instr2(.store, entry, b.void_type, zero, alloca_i)
-	state := b.map_state_ptr(entry, map_ptr)
-	zero_state := b.m.get_or_add_const(ptr_state, '0')
-	has_state := b.block_instr2(.ne, entry, b.i1_type, state, zero_state)
-	keys_ptr := b.map_state_field_ptr(entry, state, 0)
-	len_ptr := b.map_state_field_ptr(entry, state, 3)
-	key_size_ptr := b.map_state_field_ptr(entry, state, 4)
 
+	blk_has_map := b.m.add_block(func_id, 'map_find_has_map')
 	blk_loop := b.m.add_block(func_id, 'map_find_loop')
 	blk_body := b.m.add_block(func_id, 'map_find_body')
 	blk_string_cmp := b.m.add_block(func_id, 'map_find_string_cmp')
@@ -2908,7 +3086,18 @@ fn (mut b Builder) generate_map_find_body(func_id int) {
 	blk_found := b.m.add_block(func_id, 'map_find_found')
 	blk_next := b.m.add_block(func_id, 'map_find_next')
 	blk_not_found := b.m.add_block(func_id, 'map_find_not_found')
-	b.block_instr3(.br, entry, b.void_type, has_state, ValueID(blk_loop), ValueID(blk_not_found))
+	zero_map := b.m.get_or_add_const(ptr_map, '0')
+	has_map := b.block_instr2(.ne, entry, b.i1_type, map_ptr, zero_map)
+	b.block_instr3(.br, entry, b.void_type, has_map, ValueID(blk_has_map), ValueID(blk_not_found))
+
+	state := b.map_state_ptr(blk_has_map, map_ptr)
+	zero_state := b.m.get_or_add_const(ptr_state, '0')
+	has_state := b.block_instr2(.ne, blk_has_map, b.i1_type, state, zero_state)
+	keys_ptr := b.map_state_field_ptr(blk_has_map, state, 0)
+	len_ptr := b.map_state_field_ptr(blk_has_map, state, 3)
+	key_size_ptr := b.map_state_field_ptr(blk_has_map, state, 4)
+	b.block_instr3(.br, blk_has_map, b.void_type, has_state, ValueID(blk_loop),
+		ValueID(blk_not_found))
 
 	i := b.block_instr1(.load, blk_loop, b.i64_type, alloca_i)
 	len := b.block_instr1(.load, blk_loop, b.i64_type, len_ptr)
@@ -3658,6 +3847,98 @@ fn (mut b Builder) generate_string_trim_right_body(func_id int) {
 	b.block_instr1(.ret, done, b.void_type, result)
 }
 
+fn (mut b Builder) register_string_last_part_stubs() {
+	mut p2 := []TypeID{}
+	p2 << b.str_type
+	p2 << b.str_type
+	for name in ['string.all_before_last', 'string__all_before_last', 'all_before_last'] {
+		func_id := b.register_synthetic_function(name, b.str_type, p2)
+		b.generate_string_all_last_body(func_id, true)
+	}
+	for name in ['string.all_after_last', 'string__all_after_last', 'all_after_last'] {
+		func_id := b.register_synthetic_function(name, b.str_type, p2)
+		b.generate_string_all_last_body(func_id, false)
+	}
+}
+
+fn (mut b Builder) generate_string_all_last_body(func_id int, before bool) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
+	ptr_string := b.m.type_store.get_ptr(b.str_type)
+	entry := b.m.add_block(func_id, 'entry')
+	s := b.func_add_argument(func_id, b.str_type, 's')
+	sub := b.func_add_argument(func_id, b.str_type, 'sub')
+	alloca_s := b.block_instr0(.alloca, entry, ptr_string)
+	alloca_sub := b.block_instr0(.alloca, entry, ptr_string)
+	alloca_i := b.block_instr0(.alloca, entry, ptr_i64)
+	alloca_last := b.block_instr0(.alloca, entry, ptr_i64)
+	b.block_instr2(.store, entry, b.void_type, s, alloca_s)
+	b.block_instr2(.store, entry, b.void_type, sub, alloca_sub)
+
+	s_data_ptr := b.block_struct_field_ptr(entry, alloca_s, b.str_type, 0)
+	s_len_ptr := b.block_struct_field_ptr(entry, alloca_s, b.str_type, 1)
+	sub_data_ptr := b.block_struct_field_ptr(entry, alloca_sub, b.str_type, 0)
+	sub_len_ptr := b.block_struct_field_ptr(entry, alloca_sub, b.str_type, 1)
+	s_data := b.block_instr1(.load, entry, ptr_i8, s_data_ptr)
+	s_len32 := b.block_instr1(.load, entry, b.i32_type, s_len_ptr)
+	s_len := b.block_instr1(.zext, entry, b.i64_type, s_len32)
+	sub_data := b.block_instr1(.load, entry, ptr_i8, sub_data_ptr)
+	sub_len32 := b.block_instr1(.load, entry, b.i32_type, sub_len_ptr)
+	sub_len := b.block_instr1(.zext, entry, b.i64_type, sub_len32)
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	one := b.m.get_or_add_const(b.i64_type, '1')
+	minus_one := b.m.get_or_add_const(b.i64_type, '-1')
+	b.block_instr2(.store, entry, b.void_type, zero, alloca_i)
+	b.block_instr2(.store, entry, b.void_type, minus_one, alloca_last)
+
+	check_size := b.m.add_block(func_id, 'all_last_check_size')
+	loop := b.m.add_block(func_id, 'all_last_loop')
+	body := b.m.add_block(func_id, 'all_last_body')
+	match_block := b.m.add_block(func_id, 'all_last_match')
+	next := b.m.add_block(func_id, 'all_last_next')
+	done := b.m.add_block(func_id, 'all_last_done')
+	return_match := b.m.add_block(func_id, 'all_last_return_match')
+	return_original := b.m.add_block(func_id, 'all_last_return_original')
+	has_sub := b.block_instr2(.gt, entry, b.i1_type, sub_len, zero)
+	b.block_instr3(.br, entry, b.void_type, has_sub, ValueID(check_size), ValueID(return_original))
+
+	sub_fits := b.block_instr2(.ge, check_size, b.i1_type, s_len, sub_len)
+	max_start := b.block_instr2(.sub, check_size, b.i64_type, s_len, sub_len)
+	b.block_instr3(.br, check_size, b.void_type, sub_fits, ValueID(loop), ValueID(return_original))
+
+	i := b.block_instr1(.load, loop, b.i64_type, alloca_i)
+	in_range := b.block_instr2(.le, loop, b.i1_type, i, max_start)
+	b.block_instr3(.br, loop, b.void_type, in_range, ValueID(body), ValueID(done))
+
+	slot := b.block_instr2(.add, body, ptr_i8, s_data, i)
+	memcmp_ref := b.m.add_value(.func_ref, b.void_type, 'memcmp', b.fn_ids['memcmp'])
+	cmp := b.block_instr4(.call, body, b.i64_type, memcmp_ref, slot, sub_data, sub_len)
+	is_match := b.block_instr2(.eq, body, b.i1_type, cmp, zero)
+	b.block_instr3(.br, body, b.void_type, is_match, ValueID(match_block), ValueID(next))
+
+	b.block_instr2(.store, match_block, b.void_type, i, alloca_last)
+	b.block_instr1(.jmp, match_block, b.void_type, ValueID(next))
+
+	next_i := b.block_instr2(.add, next, b.i64_type, i, one)
+	b.block_instr2(.store, next, b.void_type, next_i, alloca_i)
+	b.block_instr1(.jmp, next, b.void_type, ValueID(loop))
+
+	last := b.block_instr1(.load, done, b.i64_type, alloca_last)
+	found := b.block_instr2(.ge, done, b.i1_type, last, zero)
+	b.block_instr3(.br, done, b.void_type, found, ValueID(return_match), ValueID(return_original))
+
+	result := if before {
+		b.emit_make_string(return_match, s_data, last)
+	} else {
+		start := b.block_instr2(.add, return_match, b.i64_type, last, sub_len)
+		result_data := b.block_instr2(.add, return_match, ptr_i8, s_data, start)
+		result_len := b.block_instr2(.sub, return_match, b.i64_type, s_len, start)
+		b.emit_make_string(return_match, result_data, result_len)
+	}
+	b.block_instr1(.ret, return_match, b.void_type, result)
+	b.block_instr1(.ret, return_original, b.void_type, s)
+}
+
 fn (mut b Builder) generate_string_eq_body(func_id int) {
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
@@ -4096,6 +4377,10 @@ fn (b &Builder) fn_is_used(name string) bool {
 	if name in b.used_fns {
 		return true
 	}
+	if name == 'bench.new' || name == 'bench__new' || name.ends_with('.bench.new')
+		|| name.ends_with('__bench__new') {
+		return true
+	}
 	if name in ['error_file_not_opened', 'error_size_of_type_0', 'vpopen', 'vpclose'] {
 		return true
 	}
@@ -4223,12 +4508,26 @@ fn (mut b Builder) build_top_level_main() {
 fn (b &Builder) fn_body_ids(node flat.Node) []flat.NodeId {
 	mut ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
-		child := b.a.child_node(&node, i)
-		if child.kind != .param {
-			ids << b.a.child(&node, i)
+		child_id := b.a.child(&node, i)
+		child := b.a.nodes[int(child_id)]
+		if child.kind != .param && !b.is_declaration_node(child) {
+			ids << child_id
 		}
 	}
 	return ids
+}
+
+fn (b &Builder) is_declaration_node(node flat.Node) bool {
+	return match node.kind {
+		.fn_decl, .c_fn_decl, .struct_decl, .field_decl, .global_decl, .const_decl, .const_field,
+		.enum_decl, .enum_field, .type_decl, .interface_decl, .interface_field, .import_decl,
+		.module_decl, .directive {
+			true
+		}
+		else {
+			false
+		}
+	}
 }
 
 fn (b &Builder) is_terminator(val_id ValueID) bool {
@@ -4453,6 +4752,9 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 		.assert_stmt {
 			b.build_assert(node)
 		}
+		.fn_decl, .c_fn_decl, .struct_decl, .field_decl, .global_decl, .const_decl, .const_field,
+		.enum_decl, .enum_field, .type_decl, .interface_decl, .interface_field, .import_decl,
+		.module_decl, .directive, .param {}
 		.empty {}
 		else {
 			eprintln('build_stmt: unsupported node kind: ${node.kind}')
@@ -5697,6 +5999,15 @@ fn (mut b Builder) build_in_expr(node flat.Node) ValueID {
 }
 
 fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
+	if node.typ.len > 0 {
+		if value := b.enum_value_for_type(node.typ, node.value) {
+			return b.m.get_or_add_const(b.i64_type, value.str())
+		}
+	}
+	clean_member0 := node.value.trim_left('.')
+	if value := b.enum_values[clean_member0] {
+		return b.m.get_or_add_const(b.i64_type, value.str())
+	}
 	if b.tc != unsafe { nil } {
 		if typ := b.tc.expr_type(id) {
 			type_name := typ.name()
@@ -6426,6 +6737,9 @@ fn (mut b Builder) build_infix(node flat.Node) ValueID {
 	if node.op == .left_shift && node.value == 'push' {
 		return b.build_array_push_expr(node)
 	}
+	if result := b.build_qualified_infix_call(node) {
+		return result
+	}
 	lhs_id := b.a.child(&node, 0)
 	rhs_id := b.a.child(&node, 1)
 	lhs_node := b.a.nodes[int(lhs_id)]
@@ -6521,6 +6835,119 @@ fn (mut b Builder) build_infix(node flat.Node) ValueID {
 	}
 	result_type := if node.op in [.eq, .ne, .lt, .gt, .le, .ge] { b.i1_type } else { lhs_type }
 	return b.emit2(op, result_type, lhs, rhs)
+}
+
+fn (mut b Builder) build_qualified_infix_call(node flat.Node) ?ValueID {
+	if node.children_count < 2 || node.op !in [.dot, .amp] {
+		return none
+	}
+	lhs_id := b.a.child(&node, 0)
+	rhs_id := b.a.child(&node, 1)
+	lhs_name := b.qualified_expr_name(lhs_id)
+	if lhs_name.len == 0 {
+		return none
+	}
+	if _ := b.vars[lhs_name] {
+		return none
+	}
+	rhs := b.a.nodes[int(rhs_id)]
+	if rhs.kind != .call || rhs.children_count == 0 {
+		return none
+	}
+	fn_node := b.a.child_node(&rhs, 0)
+	if fn_node.kind != .ident || fn_node.value.len == 0 {
+		return none
+	}
+	for candidate in ['${lhs_name}.${fn_node.value}', '${lhs_name}__${fn_node.value}'] {
+		if candidate in b.fn_ids {
+			return b.build_direct_call(candidate, rhs)
+		}
+	}
+	return none
+}
+
+fn (mut b Builder) build_direct_call(resolved_name string, node flat.Node) ValueID {
+	fn_idx := b.fn_ids[resolved_name] or { panic('ssa: unknown function `${resolved_name}`') }
+	fn_ref := b.m.add_value(.func_ref, b.void_type, resolved_name, fn_idx)
+	ret_type := b.m.funcs[fn_idx].typ
+	mut param_types := []TypeID{}
+	if ft_id := b.fn_types[resolved_name] {
+		ft := b.m.type_store.types[ft_id]
+		param_types = ft.params.clone()
+	}
+	mut args := []ValueID{}
+	args << fn_ref
+	for i in 1 .. node.children_count {
+		arg_id := b.a.child(&node, i)
+		param_idx := i - 1
+		if param_idx < param_types.len {
+			param_type := param_types[param_idx]
+			if b.is_option_type(param_type) {
+				arg_node := b.a.nodes[int(arg_id)]
+				if arg_node.kind == .none_expr {
+					args << b.default_value_for_type(param_type)
+					continue
+				}
+				mut arg := b.build_expr(arg_id)
+				if b.value_type(arg) != param_type {
+					arg = b.build_option_value(param_type, true, arg)
+				}
+				args << arg
+				continue
+			}
+			pt := b.m.type_store.types[param_type]
+			if pt.kind == .ptr_t {
+				arg_node := b.a.nodes[int(arg_id)]
+				if arg_node.kind == .ident {
+					if addr := b.vars[arg_node.value] {
+						if b.should_pass_ident_addr_for_ptr_param(addr, param_type) {
+							args << addr
+							continue
+						}
+					}
+				} else if arg_node.kind == .selector {
+					addr := b.build_selector_addr(arg_node)
+					if b.should_pass_ident_addr_for_ptr_param(addr, param_type) {
+						args << addr
+						continue
+					}
+				} else if arg_node.kind == .index {
+					addr := b.build_index_addr(arg_id, arg_node)
+					if b.should_pass_ident_addr_for_ptr_param(addr, param_type) {
+						args << addr
+						continue
+					}
+				}
+			}
+		}
+		args << b.build_expr(arg_id)
+	}
+	return b.m.add_instr(.call, b.cur_block, ret_type, args)
+}
+
+fn (b &Builder) qualified_expr_name(id flat.NodeId) string {
+	if int(id) < 0 {
+		return ''
+	}
+	node := b.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value
+		}
+		.selector {
+			if node.children_count == 0 {
+				return node.value
+			}
+			base := b.qualified_expr_name(b.a.child(&node, 0))
+			if base.len == 0 {
+				return node.value
+			}
+			return '${base}.${node.value}'
+		}
+		else {
+			return ''
+		}
+	}
 }
 
 fn (mut b Builder) build_string_infix(op flat.Op, lhs ValueID, rhs ValueID) ValueID {
@@ -6640,14 +7067,7 @@ fn (mut b Builder) wrap_sum_value(sum_type TypeID, variant string, tag int, valu
 	b.emit2(.store, b.void_type, tag_val, tag_ptr)
 	field_ptr := b.get_field_ptr(alloca, sum_variant_field_name(variant))
 	field_type := b.deref_type(field_ptr)
-	mut field_val := value
-	value_type := b.value_type(value)
-	if b.is_pointer_type(field_type) && !b.is_pointer_type(value_type) {
-		field_val = b.heap_copy_value(value, value_type)
-	} else if field_type != value_type && b.is_pointer_type(field_type)
-		&& b.is_pointer_type(value_type) {
-		field_val = b.emit1(.bitcast, field_type, value)
-	}
+	field_val := b.coerce_store_value(value, field_type)
 	b.emit2(.store, b.void_type, field_val, field_ptr)
 	return b.emit1(.load, sum_type, alloca)
 }
@@ -7129,12 +7549,32 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 				}
 			}
 			if !resolved_handled && base.kind == .ident {
+				mut candidates := []string{}
 				full_name := '${base.value}.${fn_node.value}'
-				c_name := full_name.replace('.', '__')
-				if full_name in b.fn_ids {
-					found_name = full_name
-				} else if c_name in b.fn_ids {
-					found_name = c_name
+				candidates << full_name
+				candidates << full_name.replace('.', '__')
+				if b.cur_module.len > 0 && b.cur_module != 'main' && b.cur_module != 'builtin' {
+					qualified_name := '${b.cur_module}.${base.value}.${fn_node.value}'
+					candidates << qualified_name
+					candidates << qualified_name.replace('.', '__')
+				}
+				for candidate in candidates {
+					if candidate in b.fn_ids {
+						found_name = candidate
+						break
+					}
+				}
+			}
+			if !resolved_handled && base.kind == .selector {
+				qualified_base := b.selector_qualified_name(base)
+				if qualified_base.len > 0 {
+					full_name := '${qualified_base}.${fn_node.value}'
+					c_name := full_name.replace('.', '__')
+					if full_name in b.fn_ids {
+						found_name = full_name
+					} else if c_name in b.fn_ids {
+						found_name = c_name
+					}
 				}
 			}
 			if found_name == fn_node.value {
@@ -7276,6 +7716,12 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		qualified_name := ssa_fn_name_in_module(b.cur_module, resolved_name)
 		if qualified_name in b.fn_ids {
 			resolved_name = qualified_name
+		} else if resolved_name == 'new' && node.children_count == 1 && 'bench.new' in b.fn_ids {
+			resolved_name = 'bench.new'
+		} else if fn_node.kind == .ident {
+			if imported_name := b.unqualified_call_candidate(resolved_name, node.children_count - 1) {
+				resolved_name = imported_name
+			}
 		}
 	}
 	if resolved_name !in b.fn_ids && resolved_name.contains('.') {
@@ -7324,16 +7770,6 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		} else if idx := b.fn_ids[resolved_name] {
 			fn_idx = idx
 		} else {
-			cur_name := if b.cur_func >= 0 && b.cur_func < b.m.funcs.len {
-				b.m.funcs[b.cur_func].name
-			} else {
-				'<none>'
-			}
-			eprintln('ssa debug: unknown function actual="${actual_name}" resolved="${resolved_name}" fn_node.kind=${fn_node.kind} fn_node.value="${fn_node.value}" in=${cur_name} call.children=${node.children_count}')
-			for i in 0 .. node.children_count {
-				child := b.a.child_node(&node, i)
-				eprintln('  child[${i}]: kind=${child.kind} value="${child.value}" typ="${child.typ}" op=${child.op} children=${child.children_count}')
-			}
 			panic('ssa: unknown function `${actual_name}`')
 		}
 	} else if idx := b.fn_ids[resolved_name] {
@@ -7345,16 +7781,6 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			}
 		} else if fn_node.kind == .selector && b.is_function_value_expr(fn_node_id) {
 			return b.build_indirect_call(id, node, fn_node_id)
-		}
-		cur_name := if b.cur_func >= 0 && b.cur_func < b.m.funcs.len {
-			b.m.funcs[b.cur_func].name
-		} else {
-			'<none>'
-		}
-		eprintln('ssa debug: unknown function actual="${actual_name}" resolved="${resolved_name}" fn_node.kind=${fn_node.kind} fn_node.value="${fn_node.value}" in=${cur_name} call.children=${node.children_count}')
-		for i in 0 .. node.children_count {
-			child := b.a.child_node(&node, i)
-			eprintln('  child[${i}]: kind=${child.kind} value="${child.value}" typ="${child.typ}" op=${child.op} children=${child.children_count}')
 		}
 		panic('ssa: unknown function `${actual_name}`')
 	}
@@ -7473,6 +7899,49 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		args << b.build_expr(arg_id)
 	}
 	return b.m.add_instr(.call, b.cur_block, ret_type, args)
+}
+
+fn (b &Builder) unqualified_call_candidate(name string, arg_count int) ?string {
+	mut fallback := ''
+	for candidate, _ in b.fn_ids {
+		if !candidate.ends_with('.${name}') && !candidate.ends_with('__${name}') {
+			continue
+		}
+		if !b.fn_param_count_matches(candidate, arg_count) {
+			continue
+		}
+		if is_single_qualified_name(candidate) {
+			return candidate
+		}
+		if fallback.len == 0 {
+			fallback = candidate
+		}
+	}
+	if fallback.len > 0 {
+		return fallback
+	}
+	return none
+}
+
+fn (b &Builder) fn_param_count_matches(name string, arg_count int) bool {
+	if ft_id := b.fn_types[name] {
+		if ft_id > 0 && ft_id < b.m.type_store.types.len {
+			return b.m.type_store.types[ft_id].params.len == arg_count
+		}
+	}
+	return false
+}
+
+fn is_single_qualified_name(name string) bool {
+	mut dots := 0
+	for ch in name {
+		if ch == `.` {
+			dots++
+		} else if ch == `_` {
+			break
+		}
+	}
+	return dots == 1
 }
 
 fn (mut b Builder) coerce_value_for_param(value ValueID, param_type TypeID) ValueID {
@@ -7771,6 +8240,17 @@ fn (b &Builder) typed_receiver_method_name(base_id flat.NodeId, method string) ?
 	receiver_name := b.receiver_type_name(base_id).trim_left('&')
 	if receiver_name.len == 0 {
 		return none
+	}
+	if b.cur_module.len > 0 && b.cur_module != 'main' && b.cur_module != 'builtin'
+		&& !receiver_name.contains('.') {
+		module_name := '${b.cur_module}.${receiver_name}.${method}'
+		if module_name in b.fn_ids {
+			return module_name
+		}
+		module_c_name := module_name.replace('.', '__')
+		if module_c_name in b.fn_ids {
+			return module_c_name
+		}
 	}
 	mut candidates := []string{}
 	candidates << '${receiver_name}.${method}'
@@ -8934,7 +9414,8 @@ fn (mut b Builder) build_struct_init(node flat.Node) ValueID {
 					off_const := b.m.get_or_add_const(b.i64_type, '${offset}')
 					field_type := if fi < typ.fields.len { typ.fields[fi] } else { b.i64_type }
 					field_type_name := b.field_type_name(struct_name, fname)
-					field_val := b.build_field_value(field_expr_id, field_type_name)
+					field_val := b.coerce_store_value(b.build_field_value(field_expr_id,
+						field_type_name), field_type)
 					field_ptr := b.emit2(.get_element_ptr, b.m.type_store.get_ptr(field_type),
 						alloca, off_const)
 					b.emit2(.store, b.void_type, field_val, field_ptr)
@@ -8958,6 +9439,18 @@ fn (mut b Builder) build_struct_init(node flat.Node) ValueID {
 		return b.emit1(.load, typ_id, alloca)
 	}
 	return b.m.get_or_add_const(b.i64_type, '0')
+}
+
+fn (mut b Builder) coerce_store_value(value ValueID, target_type TypeID) ValueID {
+	mut result := value
+	value_type := b.value_type(value)
+	if b.is_pointer_type(target_type) && !b.is_pointer_type(value_type) {
+		result = b.heap_copy_value(value, value_type)
+	} else if target_type != value_type && b.is_pointer_type(target_type)
+		&& b.is_pointer_type(value_type) {
+		result = b.emit1(.bitcast, target_type, value)
+	}
+	return result
 }
 
 fn (mut b Builder) build_field_value(expr_id flat.NodeId, field_type_name string) ValueID {
@@ -9055,6 +9548,9 @@ fn (mut b Builder) default_field_value(struct_name string, field_name string, ze
 			return b.m.add_instr(.call, b.cur_block, b.map_type, args)
 		}
 	}
+	if field_type.len > 0 {
+		return b.default_value_for_type(b.resolve_type(field_type))
+	}
 	return zero
 }
 
@@ -9104,7 +9600,8 @@ fn (mut b Builder) build_heap_struct_init(node flat.Node) ValueID {
 					off_const := b.m.get_or_add_const(b.i64_type, '${offset}')
 					field_type := if fi < typ.fields.len { typ.fields[fi] } else { b.i64_type }
 					field_type_name := b.field_type_name(struct_name, fname)
-					field_val := b.build_field_value(field_expr_id, field_type_name)
+					field_val := b.coerce_store_value(b.build_field_value(field_expr_id,
+						field_type_name), field_type)
 					field_ptr := b.emit2(.get_element_ptr, b.m.type_store.get_ptr(field_type),
 						alloca, off_const)
 					b.emit2(.store, b.void_type, field_val, field_ptr)
