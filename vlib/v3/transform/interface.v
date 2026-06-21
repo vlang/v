@@ -67,6 +67,45 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	return cast
 }
 
+fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, target_type string) ?flat.NodeId {
+	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+		return none
+	}
+	child_id := t.a.child(&node, 0)
+	child := t.a.nodes[int(child_id)]
+	if child.kind != .cast_expr || child.children_count == 0 {
+		return none
+	}
+	iface_name := t.resolve_interface_type_name(child.value)
+	if iface_name.len == 0 || iface_name.all_after_last('.') == 'IError' {
+		return none
+	}
+	old_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	literal := t.make_interface_literal_from_expr(t.a.child(&child, 0), iface_name) or {
+		t.pending_stmts = old_pending
+		return none
+	}
+	has_pending := t.pending_stmts.len > 0
+	t.pending_stmts.clear()
+	t.pending_stmts = old_pending
+	if has_pending {
+		return none
+	}
+	start := t.a.children.len
+	t.a.children << literal
+	ptr_type := if target_type.len > 0 { target_type } else { '&${iface_name}' }
+	return t.a.add_node(flat.Node{
+		kind:           .prefix
+		op:             .amp
+		children_start: start
+		children_count: 1
+		pos:            node.pos
+		value:          node.value
+		typ:            ptr_type
+	})
+}
+
 fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string) ?flat.NodeId {
 	fields := t.tc.interface_fields[iface_name] or { []types.StructField{} }
 	source_type := t.node_type(id)

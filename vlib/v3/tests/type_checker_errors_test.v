@@ -76,6 +76,24 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	return run.output.trim_space()
 }
 
+fn gen_c_project(v3_bin string, name string, files map[string]string, input string) string {
+	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
+	c_out := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	os.rm(c_out) or {}
+	compile := os.execute('${v3_bin} ${input_path} -o ${c_out}')
+	assert compile.exit_code == 0
+	assert os.exists(c_out)
+	return os.read_file(c_out) or { panic(err) }
+}
+
 fn test_type_checker_reports_core_semantic_errors() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'bad_assignment', "fn main() {\n\tmut x := 1\n\tx = 'bad'\n}\n",
@@ -175,4 +193,19 @@ fn test_type_checker_reports_core_semantic_errors() {
 	builder_out := run_good(v3_bin, 'strings_builder_from_vlib',
 		"import strings\n\nfn main() {\n\tmut sb := strings.new_builder(16)\n\tsb.write_string('ok')\n\tsb.write_u8(u8(33))\n\tprintln(sb.last_n(3))\n\tprintln(sb.str())\n}\n")
 	assert builder_out == 'ok!\nok!'
+	init_order_out := run_good_project(v3_bin, 'module_init_order', {
+		'main.v':      'module main\n\nimport moda\n\n__global seen int\n\nfn init() {\n\tseen = moda.value()\n}\n\nfn main() {\n\tprintln(int_str(seen))\n\tprintln(int_str(moda.value()))\n}\n'
+		'moda/moda.v': 'module moda\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\nfn value() int {\n\treturn flag\n}\n'
+	}, 'main.v')
+	assert init_order_out == '41\n41'
+	global_amp_out := run_good(v3_bin, 'global_amp_initializers',
+		'struct Point {\n\tx int\n\ty int\n}\n\ninterface Reader {\n\tn int\n}\n\nstruct Box {\n\tn int\n}\n\n__global (\n\tbase_point = Point{x: 1, y: 2}\n\tassoc_point = &Point{...base_point, y: 5}\n\treader_box = Box{n: 7}\n\treader_ref = &Reader(reader_box)\n)\n\nfn main() {\n\tprintln(int_str(assoc_point.y))\n\tprintln(int_str(reader_ref.n))\n}\n')
+	assert global_amp_out == '5\n7'
+	cross_module_array_append_c := gen_c_project(v3_bin, 'array_append_distinct_module_types', {
+		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tmut xs := []moda.Foo{}\n\tys := []modb.Foo{}\n\txs << ys\n}\n'
+		'moda/moda.v': 'module moda\n\nstruct Foo {\n\ta int\n}\n'
+		'modb/modb.v': 'module modb\n\nstruct Foo {\n\tb int\n}\n'
+	}, 'main.v')
+	assert !cross_module_array_append_c.contains('array_push_many(&xs')
+	assert cross_module_array_append_c.contains('array_push(&xs')
 }

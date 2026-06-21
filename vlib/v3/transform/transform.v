@@ -541,21 +541,51 @@ fn (mut t Transformer) transform_global_decl(node flat.Node) {
 				continue
 			}
 			val := t.a.nodes[int(val_id)]
-			// Preserve `&Struct{}` as prefix(amp, struct_init) so codegen emits an
-			// inline heap allocation. The generic prefix path would instead spill it
-			// to a temporary whose declaration is dropped in global context (a global
-			// has no statement list to host pending statements), leaving the global
-			// pointing at undefined/uninitialized storage.
-			if val.kind == .prefix && val.op == .amp {
-				if preserved := t.transform_amp_struct_init_for_type(val_id, val, val.typ) {
-					t.a.children[gf.children_start] = preserved
-					continue
-				}
+			if preserved := t.transform_global_amp_initializer(val_id, val) {
+				t.a.children[gf.children_start] = preserved
+				continue
 			}
+			old_pending := t.pending_stmts.clone()
+			t.pending_stmts.clear()
 			new_val := t.transform_expr(val_id)
-			t.a.children[gf.children_start] = new_val
+			has_pending := t.pending_stmts.len > 0
+			t.pending_stmts.clear()
+			t.pending_stmts = old_pending
+			if !has_pending {
+				t.a.children[gf.children_start] = new_val
+			}
 		}
 	}
+}
+
+fn (mut t Transformer) transform_global_amp_initializer(val_id flat.NodeId, val flat.Node) ?flat.NodeId {
+	if val.kind != .prefix || val.op != .amp || val.children_count != 1 {
+		return none
+	}
+	child_id := t.a.child(&val, 0)
+	child := t.a.nodes[int(child_id)]
+	if child.kind == .assoc {
+		return val_id
+	}
+	old_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	mut result := flat.empty_node
+	if child.kind == .struct_init {
+		if preserved := t.transform_amp_struct_init_for_type(val_id, val, val.typ) {
+			result = preserved
+		}
+	} else if child.kind == .cast_expr {
+		if preserved := t.transform_global_amp_interface_cast(val, val.typ) {
+			result = preserved
+		}
+	}
+	has_pending := t.pending_stmts.len > 0
+	t.pending_stmts.clear()
+	t.pending_stmts = old_pending
+	if has_pending || int(result) < 0 {
+		return none
+	}
+	return result
 }
 
 fn (mut t Transformer) transform_const_value(id flat.NodeId) flat.NodeId {

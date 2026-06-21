@@ -25,6 +25,8 @@ mut:
 	iface_impls             map[string][]string    // interface name -> implementing concrete type names
 	iface_type_ids          map[string]int         // "${iface}::${concrete}" -> 1-based type id
 	module_init_fns         []string               // C names of module-level `init()` fns, in source order
+	module_init_fn_modules  map[string]string      // C init fn name -> V module name
+	module_imports          map[string][]string    // module -> imported modules
 	tc                      &types.TypeChecker = unsafe { nil }
 	has_builtins            bool
 	tmp_count               int
@@ -72,6 +74,8 @@ pub fn FlatGen.new() FlatGen {
 		iface_impls:             map[string][]string{}
 		iface_type_ids:          map[string]int{}
 		module_init_fns:         []string{}
+		module_init_fn_modules:  map[string]string{}
+		module_imports:          map[string][]string{}
 		modules:                 map[string]string{}
 		fn_ptr_types:            map[string]string{}
 		fn_decl_param_types:     map[string][]types.Type{}
@@ -119,6 +123,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.iface_impls = map[string][]string{}
 	g.iface_type_ids = map[string]int{}
 	g.module_init_fns = []string{}
+	g.module_init_fn_modules = map[string]string{}
+	g.module_imports = map[string][]string{}
 	g.modules = map[string]string{}
 	g.fn_ptr_types = map[string]string{}
 	g.fn_decl_param_types = map[string][]types.Type{}
@@ -170,7 +176,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			g.writeln(ri)
 		}
 		// Module-level init() functions run after const/global initialization.
-		for init_fn in g.module_init_fns {
+		for init_fn in g.ordered_module_init_fns() {
 			g.writeln('\t${init_fn}();')
 		}
 		g.writeln('}')
@@ -228,6 +234,7 @@ fn (mut g FlatGen) collect_gen_info() {
 				if init_cname !in g.module_init_fns {
 					g.module_init_fns << init_cname
 				}
+				g.module_init_fn_modules[init_cname] = cur_module
 			}
 			continue
 		}
@@ -318,10 +325,51 @@ fn (mut g FlatGen) collect_gen_info() {
 			if alias.len > 0 && mod_name.len > 0 {
 				g.modules[alias] = mod_name
 			}
+			if cur_module.len > 0 && mod_name.len > 0 {
+				if cur_module !in g.module_imports {
+					g.module_imports[cur_module] = []string{}
+				}
+				if mod_name !in g.module_imports[cur_module] {
+					g.module_imports[cur_module] << mod_name
+				}
+			}
 			continue
 		}
 	}
 	g.modules['strings'] = 'strings'
+}
+
+fn (g &FlatGen) ordered_module_init_fns() []string {
+	mut module_to_init := map[string]string{}
+	for init_fn in g.module_init_fns {
+		mod := g.module_init_fn_modules[init_fn] or { '' }
+		module_to_init[mod] = init_fn
+	}
+	mut result := []string{}
+	mut visiting := map[string]bool{}
+	mut visited := map[string]bool{}
+	for init_fn in g.module_init_fns {
+		mod := g.module_init_fn_modules[init_fn] or { '' }
+		g.visit_module_init(mod, module_to_init, mut visiting, mut visited, mut result)
+	}
+	return result
+}
+
+fn (g &FlatGen) visit_module_init(mod string, module_to_init map[string]string, mut visiting map[string]bool, mut visited map[string]bool, mut result []string) {
+	if mod in visited || mod in visiting {
+		return
+	}
+	visiting[mod] = true
+	for dep in g.module_imports[mod] or { []string{} } {
+		if dep in module_to_init {
+			g.visit_module_init(dep, module_to_init, mut visiting, mut visited, mut result)
+		}
+	}
+	visiting.delete(mod)
+	visited[mod] = true
+	if init_fn := module_to_init[mod] {
+		result << init_fn
+	}
 }
 
 fn (mut g FlatGen) register_fn_decl_param_types(name string, full_name string, ptypes []types.Type) {
@@ -1725,7 +1773,7 @@ fn (g &FlatGen) is_safe_global_init(val_id flat.NodeId) bool {
 		// dropped temporary, so skip them.
 		if node.op == .amp && node.children_count > 0 {
 			child := g.a.nodes[int(g.a.child(&node, 0))]
-			return child.kind == .struct_init
+			return child.kind == .struct_init || child.kind == .assoc
 		}
 		return false
 	}

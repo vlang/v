@@ -1636,8 +1636,9 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				// (e.g. `seed_data[]`). `map`/`chan` are type heads, not names.
 				if p.tok == .name && p.lit != 'map' && p.lit != 'chan' {
 					nt := p.peek()
-					if nt == .name || nt == .amp || nt == .lsbr || nt == .question || nt == .not
-						|| nt == .key_fn || nt == .ellipsis {
+					if nt == .name || nt == .amp || nt == .question || nt == .not
+						|| nt == .key_fn || nt == .ellipsis
+						|| (nt == .lsbr && p.peek_lbr_starts_array_type()) {
 						p.next()
 					}
 				}
@@ -4463,6 +4464,22 @@ fn (mut p Parser) parse_type_name_progress() string {
 		p.next()
 	}
 	return typ
+}
+
+fn (mut p Parser) peek_lbr_starts_array_type() bool {
+	if p.peek() != .lsbr {
+		return false
+	}
+	mut idx := p.s.offset
+	for idx < p.s.src.len && (p.s.src[idx] == ` ` || p.s.src[idx] == `\t`
+		|| p.s.src[idx] == `\n` || p.s.src[idx] == `\r`) {
+		idx++
+	}
+	if idx >= p.s.src.len {
+		return false
+	}
+	c := p.s.src[idx]
+	return c == `]` || (c >= `0` && c <= `9`)
 }
 
 fn (p &Parser) can_start_type_name() bool {

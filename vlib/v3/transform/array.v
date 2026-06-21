@@ -276,11 +276,6 @@ fn (t &Transformer) array_append_elem_types_match(rhs_elem_type string, lhs_elem
 	if rhs_raw == lhs_raw {
 		return true
 	}
-	if !rhs_raw.starts_with('[]') && !lhs_raw.starts_with('[]')
-		&& (rhs_raw.contains('.') || lhs_raw.contains('.'))
-		&& rhs_raw.all_after_last('.') == lhs_raw.all_after_last('.') {
-		return true
-	}
 	rhs_clean := t.normalize_type_alias(rhs_elem_type)
 	lhs_clean := t.normalize_type_alias(lhs_elem_type)
 	if rhs_clean == lhs_clean {
