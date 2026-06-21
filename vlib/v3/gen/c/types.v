@@ -1,5 +1,6 @@
 module c
 
+import v3.flat
 import v3.types
 
 fn (mut g FlatGen) optional_type_name(t types.Type) string {
@@ -89,9 +90,8 @@ fn (mut g FlatGen) enum_decls() {
 				for i in 0 .. node.children_count {
 					f := g.a.child_node(&node, i)
 					if f.children_count > 0 {
-						ev := g.a.child_node(f, 0)
-						if ev.kind == .int_literal {
-							val = ev.value.int()
+						if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
+							val = enum_val
 						}
 					}
 					if is_flag {
@@ -106,6 +106,89 @@ fn (mut g FlatGen) enum_decls() {
 				g.writeln('')
 			}
 			else {}
+		}
+	}
+}
+
+fn (g &FlatGen) enum_field_expr_value(id flat.NodeId) ?int {
+	if int(id) < 0 {
+		return none
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.int_literal {
+			return node.value.int()
+		}
+		.paren {
+			if node.children_count == 0 {
+				return none
+			}
+			return g.enum_field_expr_value(g.a.child(&node, 0))
+		}
+		.prefix {
+			if node.children_count == 0 {
+				return none
+			}
+			value := g.enum_field_expr_value(g.a.child(&node, 0))?
+			return match node.op {
+				.plus { value }
+				.minus { -value }
+				.bit_not { ~value }
+				else { none }
+			}
+		}
+		.infix {
+			if node.children_count < 2 {
+				return none
+			}
+			left := g.enum_field_expr_value(g.a.child(&node, 0))?
+			right := g.enum_field_expr_value(g.a.child(&node, 1))?
+			return match node.op {
+				.plus {
+					left + right
+				}
+				.minus {
+					left - right
+				}
+				.mul {
+					left * right
+				}
+				.div {
+					if right == 0 {
+						none
+					} else {
+						left / right
+					}
+				}
+				.mod {
+					if right == 0 {
+						none
+					} else {
+						left % right
+					}
+				}
+				.amp {
+					left & right
+				}
+				.pipe {
+					left | right
+				}
+				.xor {
+					left ^ right
+				}
+				.left_shift {
+					int(u64(left) << right)
+				}
+				.right_shift, .right_shift_unsigned {
+					left >> right
+				}
+				else {
+					none
+				}
+			}
+		}
+		else {
+			return none
 		}
 	}
 }

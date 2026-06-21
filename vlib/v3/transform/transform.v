@@ -3080,6 +3080,9 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 				return expr
 			}
 		}
+		if expr := t.transform_amp_assoc_expr_for_type(id, node, node.typ) {
+			return expr
+		}
 		if child.kind == .cast_expr && child.children_count > 0 {
 			cast_arg_id := t.a.child(&child, 0)
 			if ptr_cast := t.transform_amp_sum_cast_from_as_expr(child, cast_arg_id) {
@@ -4992,7 +4995,7 @@ fn (mut t Transformer) lower_array_appends() {
 				rhs_id := t.a.child(&node, 1)
 				rhs_type := t.lvalue_type(rhs_id)
 				elem_type := clean_lhs_type[2..]
-				val := if array_append_rhs_is_push_many(rhs_type, elem_type) {
+				val := if t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type) {
 					'push_many'
 				} else {
 					'push'
@@ -5089,7 +5092,7 @@ fn (mut t Transformer) annotate_left_shift(node_id flat.NodeId) {
 	rhs_id := t.a.child(&node, 1)
 	rhs_type := t.lvalue_type(rhs_id)
 	elem_type := clean_lhs_type[2..]
-	if array_append_rhs_is_push_many(rhs_type, elem_type) {
+	if t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type) {
 		t.a.nodes[int(node_id)] = flat.Node{
 			kind:           .infix
 			op:             .left_shift
@@ -5128,7 +5131,7 @@ fn (mut t Transformer) annotate_left_shift_assign(node_id flat.NodeId) {
 	rhs_id := t.a.child(&node, 1)
 	rhs_type := t.lvalue_type(rhs_id)
 	elem_type := clean_lhs_type[2..]
-	val := if array_append_rhs_is_push_many(rhs_type, elem_type) {
+	val := if t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type) {
 		'push_many'
 	} else {
 		'push'

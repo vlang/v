@@ -2,6 +2,7 @@ module main
 
 import os
 import os.cmdline
+import v.pref
 import v.util.recompilation
 
 const args_ = arguments()
@@ -10,7 +11,7 @@ const is_debug = args_.contains('-debug')
 // support a renamed `v` executable too:
 const vexe = os.getenv_opt('VEXE') or { @VEXE }
 
-const vroot = os.dir(vexe)
+const vroot = pref.vroot_from_vexe(vexe)
 const vself_flags_with_values = ['-o', '-os', '-cc', '-gc', '-cf', '-cflags', '-d', '-define']
 
 fn main() {

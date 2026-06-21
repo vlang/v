@@ -39,7 +39,7 @@ fn (p &Preferences) is_linux_wayland_only_session() bool {
 fn (mut p Preferences) expand_lookup_paths() {
 	if p.vroot == '' {
 		// Location of all vlib files
-		p.vroot = os.dir(vexe_path())
+		p.vroot = vroot_from_vexe(vexe_path())
 	}
 	p.vlib = os.join_path(p.vroot, 'vlib')
 	p.vmodules_paths = os.vmodules_paths()
@@ -486,7 +486,7 @@ fn usable_bundled_tcc_compiler(vroot string) string {
 // default_tcc_compiler returns the preferred TinyCC path when it exists and works on the host.
 pub fn default_tcc_compiler() string {
 	vexe := vexe_path()
-	vroot := os.dir(vexe)
+	vroot := vroot_from_vexe(vexe)
 	bundled_tcc := usable_bundled_tcc_compiler(vroot)
 	if bundled_tcc != '' {
 		return bundled_tcc
@@ -620,6 +620,41 @@ pub fn vexe_path() string {
 	}
 	os.setenv('VEXE', real_vexe_path, true)
 	return real_vexe_path
+}
+
+fn is_vroot_dir(dir string) bool {
+	return dir.len > 0 && os.is_dir(os.join_path(dir, 'vlib', 'builtin'))
+}
+
+// vroot_from_dir returns the nearest parent source root containing `vlib/builtin`.
+pub fn vroot_from_dir(start string) string {
+	if start.len == 0 {
+		return start
+	}
+	mut dir := start
+	if !os.is_abs_path(dir) {
+		dir = os.abs_path(dir)
+	}
+	if !os.is_dir(dir) {
+		dir = os.dir(dir)
+	}
+	original_dir := dir
+	for {
+		if is_vroot_dir(dir) {
+			return os.real_path(dir)
+		}
+		parent := os.dir(dir)
+		if parent == dir || parent.len == 0 {
+			return original_dir
+		}
+		dir = parent
+	}
+	return original_dir
+}
+
+// vroot_from_vexe returns the source root for a compiler executable path.
+pub fn vroot_from_vexe(vexe string) string {
+	return vroot_from_dir(resolve_vexe_path(vexe))
 }
 
 pub fn (p &Preferences) vcross_linker_name() string {

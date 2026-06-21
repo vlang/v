@@ -262,7 +262,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	isb.write_string('		match val {\n')
 	for f in fields {
-		isb.write_string('			\'${f.name}\' { return ${enum_name}.${f.source_name} }\n')
+		isb.write_string("			'${f.name}' { return ${enum_name}.${f.source_name} }\n")
 	}
 	isb.write_string('			else{}\n')
 	isb.write_string('		}\n')

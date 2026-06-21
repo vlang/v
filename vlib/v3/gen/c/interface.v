@@ -35,19 +35,38 @@ fn (g &FlatGen) sum_type_contains_struct(sum_name string, struct_name string) bo
 
 fn (g &FlatGen) variant_references_sum(variant string, sum_name string) bool {
 	mut visited := map[string]bool{}
-	return g.variant_refs_sum_inner(variant, sum_name, mut visited)
+	resolved_sum := g.resolve_sum_name(sum_name)
+	resolved_variant := g.resolve_variant(resolved_sum, g.normalize_variant_name(variant))
+	return g.variant_refs_sum_inner(resolved_variant, resolved_sum, mut visited)
 }
 
 fn (g &FlatGen) variant_refs_sum_inner(variant string, sum_name string, mut visited map[string]bool) bool {
-	if variant == sum_name || variant.all_after_last('.') == sum_name.all_after_last('.') {
+	normalized_variant := g.normalize_variant_name(variant)
+	if normalized_variant == sum_name
+		|| normalized_variant.all_after_last('.') == sum_name.all_after_last('.') {
 		return true
 	}
-	if variant in visited {
+	if normalized_variant in visited {
 		return false
 	}
-	visited[variant] = true
-	if variant in g.tc.structs {
-		for f in g.tc.structs[variant] {
+	visited[normalized_variant] = true
+	mut lookup := normalized_variant
+	if lookup !in g.tc.structs && !lookup.contains('.') && sum_name.contains('.') {
+		qualified := '${sum_name.all_before_last('.')}.${lookup}'
+		if qualified in g.tc.structs {
+			lookup = qualified
+		}
+	}
+	if lookup !in g.tc.structs && !lookup.contains('.') {
+		for struct_name, _ in g.tc.structs {
+			if struct_name.all_after_last('.') == lookup {
+				lookup = struct_name
+				break
+			}
+		}
+	}
+	if lookup in g.tc.structs {
+		for f in g.tc.structs[lookup] {
 			if g.type_references_sum(f.typ, sum_name, mut visited) {
 				return true
 			}
@@ -56,42 +75,72 @@ fn (g &FlatGen) variant_refs_sum_inner(variant string, sum_name string, mut visi
 	return false
 }
 
+fn (g &FlatGen) normalize_variant_name(name string) string {
+	_ = g
+	mut res := name
+	if res.starts_with('&') {
+		res = res[1..]
+	}
+	if res.starts_with('ptr') && res.len > 3 {
+		res = res[3..]
+	}
+	if res.contains('__') && !res.contains('.') {
+		res = res.replace('__', '.')
+	}
+	return res
+}
+
 fn (g &FlatGen) type_references_sum(typ types.Type, sum_name string, mut visited map[string]bool) bool {
+	resolved_sum := g.resolve_sum_name(sum_name)
 	clean := types.unwrap_pointer(typ)
-	if clean is types.Struct && clean.name == sum_name {
+	if clean is types.Struct && g.resolve_sum_name(clean.name) == resolved_sum {
 		return true
 	}
-	if clean is types.SumType && clean.name == sum_name {
+	if clean is types.SumType && g.resolve_sum_name(clean.name) == resolved_sum {
 		return true
 	}
 	if clean is types.SumType {
 		return true
 	}
 	if clean is types.Struct {
-		if g.variant_refs_sum_inner(clean.name, sum_name, mut visited) {
+		if g.variant_refs_sum_inner(clean.name, resolved_sum, mut visited) {
 			return true
 		}
 	}
 	if clean is types.Array {
-		return g.type_references_sum(clean.elem_type, sum_name, mut visited)
+		return g.type_references_sum(clean.elem_type, resolved_sum, mut visited)
 	}
 	return false
 }
 
-fn (g &FlatGen) resolve_variant(sum_name string, variant string) string {
+fn (g &FlatGen) resolve_sum_name(sum_name string) string {
 	if sum_name in g.tc.sum_types {
-		for v in g.tc.sum_types[sum_name] {
-			if v == variant {
-				return variant
+		return sum_name
+	}
+	for name, _ in g.tc.sum_types {
+		if name.all_after_last('.') == sum_name {
+			return name
+		}
+	}
+	return sum_name
+}
+
+fn (g &FlatGen) resolve_variant(sum_name string, variant string) string {
+	resolved_sum := g.resolve_sum_name(sum_name)
+	normalized_variant := g.normalize_variant_name(variant)
+	if resolved_sum in g.tc.sum_types {
+		for v in g.tc.sum_types[resolved_sum] {
+			if v == normalized_variant {
+				return normalized_variant
 			}
 		}
-		for v in g.tc.sum_types[sum_name] {
-			if v.all_after_last('.') == variant {
+		for v in g.tc.sum_types[resolved_sum] {
+			if v.all_after_last('.') == normalized_variant {
 				return v
 			}
 		}
 	}
-	return variant
+	return normalized_variant
 }
 
 fn (g &FlatGen) sum_field_name(variant string) string {

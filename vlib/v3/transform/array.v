@@ -1,6 +1,7 @@
 module transform
 
 import v3.flat
+import v3.types
 
 fn (mut t Transformer) make_array_new_call(elem_type string, len_expr flat.NodeId, cap_expr flat.NodeId) flat.NodeId {
 	return t.make_call_typed('array_new', arr3(t.make_sizeof_type(elem_type), len_expr, cap_expr),
@@ -130,7 +131,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	rhs_id := t.a.child(&node, 1)
 	mut rhs_type := t.normalize_type_alias(t.node_type(rhs_id))
 	rhs_node := t.a.nodes[int(rhs_id)]
-	mut push_many := array_append_rhs_is_push_many(rhs_type, elem_type)
+	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
 	if push_many && rhs_node.kind == .array_literal && !rhs_type.starts_with('[]') {
 		t.a.nodes[int(rhs_id)].typ = array_type
 		rhs_type = array_type
@@ -151,7 +152,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	t.drain_pending(mut result)
 	if rhs_type.len == 0 {
 		rhs_type = t.node_type(rhs)
-		push_many = array_append_rhs_is_push_many(rhs_type, elem_type)
+		push_many = t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
 	}
 
 	lhs_addr := t.runtime_addr(lhs, lhs_type)
@@ -230,11 +231,47 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 		t.make_ident(value_name))), 'void')
 }
 
-fn array_append_rhs_is_push_many(rhs_type string, elem_type string) bool {
-	if rhs_type.starts_with('[]') {
+fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type string, elem_type string) bool {
+	clean_rhs_type := rhs_type.trim_space()
+	if clean_rhs_type.starts_with('[]') {
+		return t.array_append_elem_types_match(clean_rhs_type[2..], elem_type)
+	}
+	if is_fixed_array_type(clean_rhs_type) {
+		return t.array_append_elem_types_match(fixed_array_elem_type(clean_rhs_type), elem_type)
+	}
+	if !isnil(t.tc) {
+		if rhs_resolved := t.tc.expr_type(rhs_id) {
+			rhs_clean := types.unwrap_pointer(rhs_resolved)
+			if rhs_clean is types.Array {
+				return t.array_append_elem_types_match(rhs_clean.elem_type.name(), elem_type)
+			}
+			if rhs_clean is types.ArrayFixed {
+				return t.array_append_elem_types_match(rhs_clean.elem_type.name(), elem_type)
+			}
+		}
+		if lhs_resolved := t.tc.expr_type(lhs_id) {
+			lhs_clean := types.unwrap_pointer(lhs_resolved)
+			if lhs_clean is types.Array && clean_rhs_type in ['array', 'Array'] {
+				return t.tc.c_type(lhs_clean.elem_type) == 'void*'
+			}
+		}
+	}
+	if clean_rhs_type in ['array', 'Array'] {
+		return !t.normalize_type_alias(elem_type).starts_with('[]')
+	}
+	return false
+}
+
+fn (t &Transformer) array_append_elem_types_match(rhs_elem_type string, lhs_elem_type string) bool {
+	rhs_clean := t.normalize_type_alias(rhs_elem_type)
+	lhs_clean := t.normalize_type_alias(lhs_elem_type)
+	if rhs_clean == lhs_clean {
 		return true
 	}
-	return is_fixed_array_type(rhs_type) && fixed_array_elem_type(rhs_type) == elem_type
+	if isnil(t.tc) {
+		return false
+	}
+	return t.tc.c_type(t.tc.parse_type(rhs_clean)) == t.tc.c_type(t.tc.parse_type(lhs_clean))
 }
 
 fn (mut t Transformer) array_get_value(base flat.NodeId, index flat.NodeId, elem_type string) flat.NodeId {

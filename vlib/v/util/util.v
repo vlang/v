@@ -141,7 +141,7 @@ pub fn is_escape_sequence(c u8) bool {
 @[noreturn]
 pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	vexe := pref.vexe_path()
-	vroot := os.dir(vexe)
+	vroot := pref.vroot_from_vexe(vexe)
 	set_vroot_folder(vroot)
 	tool_args := args_quote_paths(args)
 	tools_folder := os.join_path(vroot, 'cmd', 'tools')
@@ -588,7 +588,7 @@ pub fn no_cur_mod(typename string, cur_mod string) string {
 
 pub fn prepare_tool_when_needed(source_name string) {
 	vexe := os.getenv('VEXE')
-	vroot := os.dir(vexe)
+	vroot := pref.vroot_from_vexe(vexe)
 	stool := os.join_path(vroot, 'cmd', 'tools', source_name)
 	tool_name, tool_exe := tool_source2name_and_exe(stool)
 	if should_recompile_tool(vexe, stool, tool_name, tool_exe) {

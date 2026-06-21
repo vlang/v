@@ -21,6 +21,9 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 		g.gen_channel_init(node)
 		return
 	}
+	if g.gen_lowered_sum_init(node) {
+		return
+	}
 	name := g.struct_init_c_type_name(node.value)
 	if node.children_count == 0 && g.is_scalar_zero_init_type(node.value, name) {
 		g.write(g.scalar_zero_init(name))
@@ -82,6 +85,50 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 		}
 	}
 	g.write('}')
+}
+
+fn (mut g FlatGen) gen_lowered_sum_init(node flat.Node) bool {
+	sum_name := g.resolve_sum_name(node.value)
+	if sum_name !in g.tc.sum_types || node.children_count == 0 {
+		return false
+	}
+	name := g.struct_init_c_type_name(node.value)
+	g.write('(${name}){')
+	for i in 0 .. node.children_count {
+		field := g.a.child_node(&node, i)
+		if i > 0 {
+			g.write(', ')
+		}
+		g.write('.${c_field_name(field.value)} = ')
+		g.gen_lowered_sum_field_value(sum_name, field)
+	}
+	g.write('}')
+	return true
+}
+
+fn (mut g FlatGen) gen_lowered_sum_field_value(sum_name string, field &flat.Node) {
+	child_id := g.a.child(field, 0)
+	if field.value != 'typ' && field.typ.starts_with('&') {
+		variant := g.resolve_variant(sum_name, field.typ[1..])
+		if g.variant_references_sum(variant, sum_name) {
+			inner_ct := g.tc.c_type(g.tc.parse_type(variant))
+			child_type := g.tc.resolve_type(child_id)
+			g.write('(${inner_ct}*)memdup(')
+			if child_type is types.Pointer {
+				g.gen_expr(child_id)
+			} else {
+				g.write('&')
+				g.gen_expr(child_id)
+			}
+			g.write(', sizeof(${inner_ct}))')
+			return
+		}
+	}
+	if field.typ.len > 0 {
+		g.gen_expr_with_expected_type(child_id, g.tc.parse_type(field.typ))
+	} else {
+		g.gen_expr(child_id)
+	}
 }
 
 fn (mut g FlatGen) gen_channel_init(node flat.Node) {
@@ -496,13 +543,52 @@ fn (mut g FlatGen) gen_assoc_expr(node flat.Node) {
 	g.write(' ${tmp};})')
 }
 
-fn (mut g FlatGen) gen_map_init(node flat.Node) {
-	map_type := g.tc.parse_type(node.value)
-	if map_type is types.Map {
-		g.write_new_map(map_type.key_type, map_type.value_type)
-	} else {
-		g.write('new_map(sizeof(int), sizeof(int), 0, 0, 0, 0)')
+fn (mut g FlatGen) gen_heap_assoc_expr(node flat.Node) {
+	ct := g.tc.c_type(g.tc.parse_type(node.value))
+	tmp := g.tmp_name()
+	g.write('({${ct} ${tmp} = ')
+	g.gen_expr(g.a.child(&node, 0))
+	g.write(';')
+	for i in 1 .. node.children_count {
+		field := g.a.child_node(&node, i)
+		if field.kind == .field_init && field.children_count > 0 {
+			g.write(' ${tmp}.${c_name(field.value)} = ')
+			if ftyp := g.struct_field_type(node.value, field.value) {
+				g.gen_expr_with_expected_type(g.a.child(field, 0), ftyp)
+			} else {
+				g.gen_expr(g.a.child(field, 0))
+			}
+			g.write(';')
+		}
 	}
+	g.write(' (${ct}*)memdup(&${tmp}, sizeof(${ct}));})')
+}
+
+fn (mut g FlatGen) gen_map_init(id flat.NodeId, node flat.Node) {
+	if node.value.len > 0 {
+		map_type := g.tc.parse_type(node.value)
+		if map_type is types.Map {
+			g.write_new_map(map_type.key_type, map_type.value_type)
+			return
+		}
+	}
+	if node.typ.len > 0 {
+		map_type := g.tc.parse_type(node.typ)
+		if map_type is types.Map {
+			g.write_new_map(map_type.key_type, map_type.value_type)
+			return
+		}
+	}
+	if g.expected_expr_type is types.Map {
+		g.write_new_map(g.expected_expr_type.key_type, g.expected_expr_type.value_type)
+		return
+	}
+	resolved_type := g.tc.resolve_type(id)
+	if resolved_type is types.Map {
+		g.write_new_map(resolved_type.key_type, resolved_type.value_type)
+		return
+	}
+	g.write('new_map(sizeof(int), sizeof(int), 0, 0, 0, 0)')
 }
 
 fn (mut g FlatGen) write_new_map(key_type types.Type, value_type types.Type) {

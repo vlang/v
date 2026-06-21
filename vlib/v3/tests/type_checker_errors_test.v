@@ -156,6 +156,9 @@ fn test_type_checker_reports_core_semantic_errors() {
 	array_literal_push_many_out := run_good(v3_bin, 'array_literal_push_many',
 		'fn main() {\n\tmut xs := [1, 2]\n\tys := [3, 4]\n\txs << ys\n\txs << [5, 6]\n\tprintln(int_str(xs.len))\n}\n')
 	assert array_literal_push_many_out == '6'
+	nested_array_push_out := run_good(v3_bin, 'nested_array_push',
+		'fn main() {\n\tmut xs := [][]int{}\n\ty := [1, 2]\n\txs << y\n\tprintln(int_str(xs.len))\n\tprintln(int_str(xs[0][1]))\n}\n')
+	assert nested_array_push_out == '1\n2'
 	const_forward_out := run_good(v3_bin, 'const_forward',
 		'const first_value = second_value\nconst second_value = 2\nfn main() {\n\tprintln(int_str(first_value))\n}\n')
 	assert const_forward_out == '2'

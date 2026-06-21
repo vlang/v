@@ -416,6 +416,41 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 	return result
 }
 
+fn (mut t Transformer) transform_amp_assoc_expr_for_type(_id flat.NodeId, node flat.Node, target_type string) ?flat.NodeId {
+	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+		return none
+	}
+	child_id := t.a.child(&node, 0)
+	child := t.a.nodes[int(child_id)]
+	if child.kind != .assoc {
+		return none
+	}
+	value := t.transform_assoc_expr(child_id, child)
+	mut value_type := t.node_type(value)
+	if value_type.len == 0 {
+		value_type = t.node_type(child_id)
+	}
+	if value_type.starts_with('&') {
+		value_type = value_type[1..]
+	}
+	if value_type.len == 0 {
+		return none
+	}
+	addr := t.make_prefix(.amp, value)
+	size := t.make_sizeof_type(value_type)
+	dup := t.make_call_typed('memdup', arr2(addr, size), 'voidptr')
+	mut ptr_type := target_type
+	if ptr_type.len == 0 {
+		ptr_type = node.typ
+	}
+	if !ptr_type.starts_with('&') {
+		ptr_type = '&${value_type}'
+	}
+	cast := t.make_cast(ptr_type, dup, ptr_type)
+	t.a.nodes[int(cast)].typ = ptr_type
+	return cast
+}
+
 fn (t &Transformer) struct_field_sum_type(field_type string, owner_module string) string {
 	if t.is_sum_type_name(field_type) {
 		return field_type

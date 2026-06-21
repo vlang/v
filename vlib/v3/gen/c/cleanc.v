@@ -272,9 +272,8 @@ fn (mut g FlatGen) collect_gen_info() {
 			for i in 0 .. node.children_count {
 				f := g.a.child_node(&node, i)
 				if f.children_count > 0 {
-					ev := g.a.child_node(f, 0)
-					if node_kind_id(ev) == 1 {
-						val = ev.value.int()
+					if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
+						val = enum_val
 					}
 				}
 				if is_flag {
@@ -890,6 +889,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 			if node.op == .amp && child.kind == .struct_init {
 				g.gen_heap_struct_init(child)
+			} else if node.op == .amp && child.kind == .assoc {
+				g.gen_heap_assoc_expr(child)
 			} else if node.op == .amp && child.kind == .cast_expr {
 				target_type := g.tc.parse_type(child.value)
 				ct := g.tc.c_type(target_type)
@@ -1185,7 +1186,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.map_init {
-			g.gen_map_init(node)
+			g.gen_map_init(id, node)
 		}
 		.cast_expr {
 			target_type := g.tc.parse_type(node.value)
