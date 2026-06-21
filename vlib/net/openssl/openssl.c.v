@@ -113,6 +113,12 @@ fn C.SSL_CTX_use_certificate_file(ctx &C.SSL_CTX, const_file &char, file_type i3
 
 fn C.SSL_CTX_use_PrivateKey_file(ctx &C.SSL_CTX, const_file &char, file_type i32) i32
 
+fn C.v_net_openssl_SSL_CTX_use_certificate_chain_memory(ctx &C.SSL_CTX, data &u8, len usize) i32
+
+fn C.v_net_openssl_SSL_CTX_use_PrivateKey_memory(ctx &C.SSL_CTX, data &u8, len usize) i32
+
+fn C.v_net_openssl_SSL_CTX_load_verify_memory(ctx &C.SSL_CTX, data &u8, len usize) i32
+
 fn C.SSL_new(&C.SSL_CTX) &C.SSL
 
 fn C.SSL_set_fd(ssl &C.SSL, fd i32) i32
@@ -144,6 +150,8 @@ fn C.SSL_set_tlsext_host_name(s &C.SSL, name &char) i32
 fn C.v_net_openssl_set_alpn_protos(ssl &C.SSL, protos &u8, protos_len u32) i32
 
 fn C.v_net_openssl_get0_alpn_selected(ssl &C.SSL, data voidptr, len &u32)
+
+fn C.v_net_openssl_SSL_CTX_set_alpn_select_protos(ctx &C.SSL_CTX, protos &u8, protos_len u32) i32
 
 fn C.SSL_shutdown(&C.SSL) i32
 

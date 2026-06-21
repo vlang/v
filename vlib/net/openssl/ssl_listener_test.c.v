@@ -15,6 +15,24 @@ fn new_test_ssl_listener(address string, family net.AddrFamily) !&SSLListener {
 	)
 }
 
+fn load_test_certificate_pem() !string {
+	cert_path := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.crt')
+	return os.read_file(cert_path)
+}
+
+fn load_test_private_key_pem() !string {
+	key_path := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.key')
+	return os.read_file(key_path)
+}
+
+fn accept_one_ssl_connection(mut listener SSLListener) {
+	mut conn := listener.accept() or { return }
+	conn.duration = 500 * time.millisecond
+	mut buffer := []u8{len: 1}
+	_ := conn.read(mut buffer) or { 0 }
+	conn.shutdown() or {}
+}
+
 fn close_tcp_connection_after(mut conn net.TcpConn, delay time.Duration) {
 	time.sleep(delay)
 	conn.close() or {}
@@ -37,7 +55,7 @@ fn test_ssl_listener_handshake_honors_timeout() ! {
 	}
 	address := listener.tcp_listener.addr()!.str()
 	mut tcp_client := net.dial_tcp(address)!
-	spawn close_tcp_connection_after(mut tcp_client, time.second)
+	close_thread := spawn close_tcp_connection_after(mut tcp_client, time.second)
 
 	mut ssl_conn := listener.accept_without_handshake()!
 	defer {
@@ -47,7 +65,47 @@ fn test_ssl_listener_handshake_honors_timeout() ! {
 	stopwatch := time.new_stopwatch()
 	ssl_conn.accept_handshake() or {
 		assert stopwatch.elapsed() < 500 * time.millisecond
+		close_thread.wait()
 		return
 	}
+	close_thread.wait()
 	assert false, 'TLS handshake unexpectedly succeeded without receiving client TLS data'
+}
+
+fn test_ssl_listener_loads_in_memory_credentials_without_temp_files() ! {
+	start := time.now().unix()
+	mut listener := new_ssl_listener('127.0.0.1:0', SSLConnectConfig{
+		cert:                   load_test_certificate_pem()!
+		cert_key:               load_test_private_key_pem()!
+		in_memory_verification: true
+	})!
+	listener.shutdown()!
+	finish := time.now().unix()
+	for timestamp in start .. finish + 1 {
+		for name in ['v_srv_cert', 'v_srv_cert_key', 'v_srv_ca'] {
+			assert !os.exists(os.join_path(os.temp_dir(), name + timestamp.str()))
+		}
+	}
+}
+
+fn test_ssl_listener_negotiates_alpn() ! {
+	mut listener := new_ssl_listener('127.0.0.1:0', SSLConnectConfig{
+		cert:                   load_test_certificate_pem()!
+		cert_key:               load_test_private_key_pem()!
+		in_memory_verification: true
+		alpn_protocols:         ['h2', 'http/1.1']
+	})!
+	defer {
+		listener.shutdown() or {}
+	}
+	port := listener.tcp_listener.addr()!.port()!
+	server_thread := spawn accept_one_ssl_connection(mut listener)
+	mut client := new_ssl_conn(SSLConnectConfig{
+		alpn_protocols: ['http/1.1']
+	})!
+	client.dial('127.0.0.1', port)!
+	assert client.negotiated_alpn() == 'http/1.1'
+	client.duration = 500 * time.millisecond
+	client.shutdown() or {}
+	server_thread.wait()
 }

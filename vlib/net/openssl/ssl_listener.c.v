@@ -1,8 +1,6 @@
 module openssl
 
 import net
-import time
-import os
 
 // SSLListener is the SSL listener implementation for OpenSSL.
 pub struct SSLListener {
@@ -48,54 +46,76 @@ fn (mut l SSLListener) init() ! {
 		return error('net.openssl SSLListener.init, could not get ssl context')
 	}
 
-	mut cert := l.config.cert
-	mut cert_key := l.config.cert_key
-	mut ca_file := l.config.verify
-
 	if l.config.in_memory_verification {
-		now := time.now().unix().str()
-		cert = os.temp_dir() + '/v_srv_cert' + now
-		cert_key = os.temp_dir() + '/v_srv_cert_key' + now
-		if l.config.cert != '' {
-			os.write_file(cert, l.config.cert)!
+		mut res := C.v_net_openssl_SSL_CTX_use_certificate_chain_memory(l.sslctx,
+			l.config.cert.str, usize(l.config.cert.len))
+		if res != 1 {
+			l.shutdown() or {}
+			return error('net.openssl SSLListener.init, could not load certificate from memory')
 		}
-		if l.config.cert_key != '' {
-			os.write_file(cert_key, l.config.cert_key)!
+		res = C.v_net_openssl_SSL_CTX_use_PrivateKey_memory(l.sslctx, l.config.cert_key.str,
+			usize(l.config.cert_key.len))
+		if res != 1 {
+			l.shutdown() or {}
+			return error('net.openssl SSLListener.init, could not load private key from memory')
 		}
-		if l.config.validate && l.config.verify != '' {
-			ca_file = os.temp_dir() + '/v_srv_ca' + now
-			os.write_file(ca_file, l.config.verify)!
+		if l.config.validate {
+			res = C.v_net_openssl_SSL_CTX_load_verify_memory(l.sslctx, l.config.verify.str,
+				usize(l.config.verify.len))
+			if res != 1 {
+				l.shutdown() or {}
+				return error('net.openssl SSLListener.init, could not load root CA from memory')
+			}
+		}
+	} else {
+		mut res := C.SSL_CTX_use_certificate_file(voidptr(l.sslctx), &char(l.config.cert.str),
+			C.SSL_FILETYPE_PEM)
+		if res != 1 {
+			C.ERR_print_errors_fp(C.stderr)
+			l.shutdown() or {}
+			return error('net.openssl SSLListener.init, SSL_CTX_use_certificate_file failed')
+		}
+		res = C.SSL_CTX_use_PrivateKey_file(voidptr(l.sslctx), &char(l.config.cert_key.str),
+			C.SSL_FILETYPE_PEM)
+		if res != 1 {
+			l.shutdown() or {}
+			return error('net.openssl SSLListener.init, SSL_CTX_use_PrivateKey_file failed')
 		}
 	}
 
-	mut res := C.SSL_CTX_use_certificate_file(voidptr(l.sslctx), &char(cert.str),
-		C.SSL_FILETYPE_PEM)
-	if res != 1 {
-		C.ERR_print_errors_fp(C.stderr)
-		l.shutdown() or {}
-		return error('net.openssl SSLListener.init, SSL_CTX_use_certificate_file failed')
-	}
-
-	res = C.SSL_CTX_use_PrivateKey_file(voidptr(l.sslctx), &char(cert_key.str), C.SSL_FILETYPE_PEM)
-	if res != 1 {
-		l.shutdown() or {}
-		return error('net.openssl SSLListener.init, SSL_CTX_use_PrivateKey_file failed')
-	}
-
-	res = C.SSL_CTX_check_private_key(voidptr(l.sslctx))
+	mut res := C.SSL_CTX_check_private_key(voidptr(l.sslctx))
 	if res != 1 {
 		l.shutdown() or {}
 		return error('net.openssl SSLListener.init, SSL_CTX_check_private_key failed')
 	}
 
 	if l.config.validate {
-		res = C.SSL_CTX_load_verify_locations(voidptr(l.sslctx), &char(ca_file.str), unsafe { nil })
-		if res != 1 {
-			l.shutdown() or {}
-			return error('net.openssl SSLListener.init, SSL_CTX_load_verify_locations failed')
+		if !l.config.in_memory_verification {
+			res = C.SSL_CTX_load_verify_locations(voidptr(l.sslctx), &char(l.config.verify.str),
+				unsafe { nil })
+			if res != 1 {
+				l.shutdown() or {}
+				return error('net.openssl SSLListener.init, SSL_CTX_load_verify_locations failed')
+			}
 		}
 		C.SSL_CTX_set_verify(voidptr(l.sslctx),
 			C.SSL_VERIFY_PEER | C.SSL_VERIFY_FAIL_IF_NO_PEER_CERT, unsafe { nil })
+	}
+
+	if l.config.alpn_protocols.len > 0 {
+		mut wire := []u8{cap: 64}
+		for proto in l.config.alpn_protocols {
+			if proto.len == 0 || proto.len > 255 {
+				l.shutdown() or {}
+				return error('net.openssl SSLListener.init, invalid ALPN protocol "${proto}"')
+			}
+			wire << u8(proto.len)
+			wire << proto.bytes()
+		}
+		if C.v_net_openssl_SSL_CTX_set_alpn_select_protos(l.sslctx, wire.data, u32(wire.len)) != 0 {
+			l.shutdown() or {}
+			return error('net.openssl SSLListener.init, failed to configure ALPN protocols (requires OpenSSL >= 1.0.2)')
+		}
 	}
 }
 
