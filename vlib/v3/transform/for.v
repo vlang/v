@@ -17,7 +17,10 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 	}
 	// child 1: condition expression
 	cond_id := t.a.child(&node, 1)
-	new_cond := t.transform_expr(cond_id)
+	cond_smartcasts := t.extract_all_is_exprs(cond_id)
+	new_cond := t.transform_and_chain_smartcasts(cond_id)
+	mut cond_prefix := []flat.NodeId{}
+	t.drain_pending(mut cond_prefix)
 	// child 2: post statement
 	post_id := t.a.child(&node, 2)
 	mut new_post := post_id
@@ -32,13 +35,35 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 	for i in 3 .. node.children_count {
 		body_ids << t.a.child(&node, i)
 	}
+	for info in cond_smartcasts {
+		t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
+	}
 	new_body := t.transform_stmts(body_ids)
+	for _ in cond_smartcasts {
+		t.pop_smartcast()
+	}
+	mut loop_cond := new_cond
+	mut loop_body := new_body.clone()
+	if cond_prefix.len > 0 {
+		mut guarded_body := []flat.NodeId{cap: cond_prefix.len + new_body.len + 1}
+		for stmt in cond_prefix {
+			guarded_body << stmt
+		}
+		not_cond := t.make_prefix(.not, t.make_paren(new_cond))
+		break_block := t.make_block(arr1(t.a.add(.break_stmt)))
+		guarded_body << t.make_if(not_cond, break_block, t.make_block([]flat.NodeId{}))
+		for stmt in new_body {
+			guarded_body << stmt
+		}
+		loop_cond = t.make_bool_literal(true)
+		loop_body = guarded_body.clone()
+	}
 	// Rebuild the for_stmt with transformed children
 	start := t.a.children.len
 	t.a.children << new_init
-	t.a.children << new_cond
+	t.a.children << loop_cond
 	t.a.children << new_post
-	for bid in new_body {
+	for bid in loop_body {
 		t.a.children << bid
 	}
 	count := t.a.children.len - start
@@ -85,7 +110,18 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 	if iter_type.starts_with('map[') {
 		return t.rebuild_for_in_stmt(id, node)
 	}
-	effective_iter := if iter_type.starts_with('...') { '[]' + iter_type[3..] } else { iter_type }
+	if pool_iter := t.pool_get_results_iter_type(container_id) {
+		body_ids := t.a.children_of(&node)[header_count..].clone()
+		return t.lower_indexed_for_in(id, node, key_id, val_id, container_id, pool_iter, has_index,
+			body_ids)
+	}
+	effective_iter := if iter_type.starts_with('...') {
+		'[]' + iter_type[3..]
+	} else if iter_type.starts_with('&[]') {
+		iter_type[1..]
+	} else {
+		iter_type
+	}
 	if effective_iter.starts_with('[]') || effective_iter == 'string'
 		|| is_fixed_array_type(effective_iter) {
 		body_ids := t.a.children_of(&node)[header_count..].clone()
@@ -93,6 +129,36 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 			has_index, body_ids)
 	}
 	return t.rebuild_for_in_stmt(id, node)
+}
+
+fn (t &Transformer) pool_get_results_iter_type(container_id flat.NodeId) ?string {
+	if int(container_id) < 0 {
+		return none
+	}
+	node := t.a.nodes[int(container_id)]
+	if node.kind != .call || node.children_count == 0 {
+		return none
+	}
+	callee_id := t.a.child(&node, 0)
+	if int(callee_id) < 0 {
+		return none
+	}
+	callee := t.a.nodes[int(callee_id)]
+	if callee.kind != .index || callee.children_count < 2 {
+		return none
+	}
+	base := t.a.child_node(&callee, 0)
+	if base.kind != .selector || base.value !in ['get_results', 'get_results_ref'] {
+		return none
+	}
+	elem_type := t.generic_call_type_arg_name(t.a.child(&callee, 1))
+	if elem_type.len == 0 {
+		return none
+	}
+	if base.value == 'get_results_ref' {
+		return '[]&${elem_type}'
+	}
+	return '[]${elem_type}'
 }
 
 fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []flat.NodeId {
@@ -208,7 +274,20 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	if key.kind != .ident || key.value.len == 0 {
 		return arr1(id)
 	}
-	elem_type := t.infer_for_in_elem_type(iter_type, node)
+	mut container := t.stable_expr_for_reuse(container_id)
+	mut prefix := []flat.NodeId{}
+	t.drain_pending(mut prefix)
+	mut actual_iter_type := iter_type
+	container_type := t.node_type(container)
+	if container_type.len > 0 {
+		actual_iter_type = container_type
+	}
+	if actual_iter_type.starts_with('&[]') {
+		container = t.make_prefix(.mul, container)
+		t.a.nodes[int(container)].typ = actual_iter_type[1..]
+		actual_iter_type = actual_iter_type[1..]
+	}
+	elem_type := t.infer_for_in_elem_type(actual_iter_type, node)
 	if elem_type.len == 0 {
 		return arr1(id)
 	}
@@ -229,18 +308,19 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	}
 	t.set_var_type(idx_name, 'int')
 	t.set_var_type(elem_name, elem_type)
-	container := t.stable_expr_for_reuse(container_id)
-	mut prefix := []flat.NodeId{}
-	t.drain_pending(mut prefix)
-	len_expr := if is_fixed_array_type(iter_type) {
-		t.make_fixed_array_len_expr(iter_type)
+	len_expr := if is_fixed_array_type(actual_iter_type) {
+		t.make_fixed_array_len_expr(actual_iter_type)
 	} else {
 		t.make_selector(container, 'len', 'int')
 	}
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	cond := t.make_infix(.lt, t.make_ident(idx_name), len_expr)
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
-	elem_expr := t.make_index(container, t.make_ident(idx_name), elem_type)
+	elem_expr := if actual_iter_type.starts_with('[]') {
+		t.array_get_value(container, t.make_ident(idx_name), elem_type)
+	} else {
+		t.make_index(container, t.make_ident(idx_name), elem_type)
+	}
 	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_type)
 	mut new_body := []flat.NodeId{}
 	new_body << elem_decl
@@ -282,6 +362,9 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 
 // Infer the element type for the loop variable from the iterable type.
 fn (t &Transformer) infer_for_in_elem_type(iter_type string, node flat.Node) string {
+	if iter_type.starts_with('&[]') {
+		return iter_type[3..]
+	}
 	if iter_type.starts_with('[]') {
 		return iter_type[2..]
 	}

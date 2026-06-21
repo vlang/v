@@ -36,66 +36,53 @@ fn flatten_file(mut a FlatAst, file ast.File) NodeId {
 }
 
 fn flatten_stmt(mut a FlatAst, stmt ast.Stmt) NodeId {
-	match stmt {
-		ast.FnDecl {
-			return flatten_fn_decl(mut a, stmt)
+	if stmt is ast.FnDecl {
+		return flatten_fn_decl(mut a, stmt)
+	}
+	if stmt is ast.ExprStmt {
+		child := flatten_expr(mut a, stmt.expr)
+		start := add_children(mut a, [child])
+		return a.add_node(Node{
+			kind:           .expr_stmt
+			children_start: start
+			children_count: 1
+		})
+	}
+	if stmt is ast.AssignStmt {
+		return flatten_assign(mut a, stmt)
+	}
+	if stmt is ast.ReturnStmt {
+		mut ids := []NodeId{}
+		for expr in stmt.exprs {
+			ids << flatten_expr(mut a, expr)
 		}
-		ast.ExprStmt {
-			child := flatten_expr(mut a, stmt.expr)
-			start := add_children(mut a, [child])
-			return a.add_node(Node{
-				kind:           .expr_stmt
-				children_start: start
-				children_count: 1
-			})
-		}
-		ast.AssignStmt {
-			return flatten_assign(mut a, stmt)
-		}
-		ast.ReturnStmt {
-			mut ids := []NodeId{}
-			for expr in stmt.exprs {
-				ids << flatten_expr(mut a, expr)
-			}
-			start := add_children(mut a, ids)
-			return a.add_node(Node{
-				kind:           .return_stmt
-				children_start: start
-				children_count: child_count(ids.len)
-			})
-		}
-		ast.ForStmt {
-			return flatten_for(mut a, stmt)
-		}
-		ast.FlowControlStmt {
-			match stmt.op {
-				.key_break { return a.add(NodeKind.break_stmt) }
-				.key_continue { return a.add(NodeKind.continue_stmt) }
-				else { return empty_node }
-			}
-		}
-		ast.BlockStmt {
-			return flatten_block(mut a, stmt.stmts)
-		}
-		ast.StructDecl {
-			return flatten_struct_decl(mut a, stmt)
-		}
-		ast.GlobalDecl {
-			return flatten_global_decl(mut a, stmt)
-		}
-		ast.ConstDecl {
-			return empty_node
-		}
-		ast.ImportStmt, ast.ModuleStmt, []ast.Attribute {
-			return empty_node
-		}
-		ast.EnumDecl, ast.TypeDecl, ast.InterfaceDecl {
-			return empty_node
-		}
-		else {
-			return empty_node
+		start := add_children(mut a, ids)
+		return a.add_node(Node{
+			kind:           .return_stmt
+			children_start: start
+			children_count: child_count(ids.len)
+		})
+	}
+	if stmt is ast.ForStmt {
+		return flatten_for(mut a, stmt)
+	}
+	if stmt is ast.FlowControlStmt {
+		match stmt.op {
+			.key_break { return a.add(NodeKind.break_stmt) }
+			.key_continue { return a.add(NodeKind.continue_stmt) }
+			else { return empty_node }
 		}
 	}
+	if stmt is ast.BlockStmt {
+		return flatten_block(mut a, stmt.stmts)
+	}
+	if stmt is ast.StructDecl {
+		return flatten_struct_decl(mut a, stmt)
+	}
+	if stmt is ast.GlobalDecl {
+		return flatten_global_decl(mut a, stmt)
+	}
+	return empty_node
 }
 
 fn flatten_fn_decl(mut a FlatAst, decl ast.FnDecl) NodeId {
@@ -278,159 +265,155 @@ fn flatten_match(mut a FlatAst, expr ast.MatchExpr) NodeId {
 }
 
 fn flatten_expr(mut a FlatAst, expr ast.Expr) NodeId {
-	match expr {
-		ast.BasicLiteral {
-			kind := match expr.kind {
-				.number { NodeKind.int_literal }
-				.key_true, .key_false { NodeKind.bool_literal }
-				.char { NodeKind.char_literal }
-				else { NodeKind.int_literal }
-			}
+	if expr is ast.BasicLiteral {
+		kind := match expr.kind {
+			.number { NodeKind.int_literal }
+			.key_true, .key_false { NodeKind.bool_literal }
+			.char { NodeKind.char_literal }
+			else { NodeKind.int_literal }
+		}
 
-			return a.add_val(kind, expr.value)
-		}
-		ast.StringLiteral {
-			return a.add_val(.string_literal, strip_quotes(expr.value))
-		}
-		ast.StringInterLiteral {
-			mut ids := []NodeId{}
-			for i, val in expr.values {
-				if val.len > 0 {
-					ids << a.add_val(.string_literal, strip_quotes(val))
-				}
-				if i < expr.inters.len {
-					ids << flatten_expr(mut a, expr.inters[i].expr)
-				}
-			}
-			start := add_children(mut a, ids)
-			return a.add_node(Node{
-				kind:           .string_literal
-				value:          '_interp'
-				children_start: start
-				children_count: child_count(ids.len)
-			})
-		}
-		ast.Ident {
-			return a.add_val(.ident, expr.name)
-		}
-		ast.CallExpr {
-			mut ids := []NodeId{}
-			ids << flatten_expr(mut a, expr.lhs)
-			for arg in expr.args {
-				ids << flatten_expr(mut a, arg)
-			}
-			start := add_children(mut a, ids)
-			return a.add_node(Node{
-				kind:           .call
-				children_start: start
-				children_count: child_count(ids.len)
-			})
-		}
-		ast.CallOrCastExpr {
-			lhs := flatten_expr(mut a, expr.lhs)
-			arg := flatten_expr(mut a, expr.expr)
-			start := add_children(mut a, [lhs, arg])
-			return a.add_node(Node{
-				kind:           .call
-				children_start: start
-				children_count: 2
-			})
-		}
-		ast.InfixExpr {
-			lhs := flatten_expr(mut a, expr.lhs)
-			rhs := flatten_expr(mut a, expr.rhs)
-			start := add_children(mut a, [lhs, rhs])
-			return a.add_node(Node{
-				kind:           .infix
-				op:             token_to_op(expr.op)
-				children_start: start
-				children_count: 2
-			})
-		}
-		ast.PrefixExpr {
-			child := flatten_expr(mut a, expr.expr)
-			start := add_children(mut a, [child])
-			return a.add_node(Node{
-				kind:           .prefix
-				op:             token_to_op(expr.op)
-				children_start: start
-				children_count: 1
-			})
-		}
-		ast.PostfixExpr {
-			child := flatten_expr(mut a, expr.expr)
-			start := add_children(mut a, [child])
-			return a.add_node(Node{
-				kind:           .postfix
-				op:             token_to_op(expr.op)
-				children_start: start
-				children_count: 1
-			})
-		}
-		ast.ParenExpr {
-			child := flatten_expr(mut a, expr.expr)
-			start := add_children(mut a, [child])
-			return a.add_node(Node{
-				kind:           .paren
-				children_start: start
-				children_count: 1
-			})
-		}
-		ast.SelectorExpr {
-			child := flatten_expr(mut a, expr.lhs)
-			start := add_children(mut a, [child])
-			return a.add_node(Node{
-				kind:           .selector
-				value:          expr.rhs.name
-				children_start: start
-				children_count: 1
-			})
-		}
-		ast.IndexExpr {
-			lhs := flatten_expr(mut a, expr.lhs)
-			idx := flatten_expr(mut a, expr.expr)
-			start := add_children(mut a, [lhs, idx])
-			return a.add_node(Node{
-				kind:           .index
-				children_start: start
-				children_count: 2
-			})
-		}
-		ast.InitExpr {
-			mut ids := []NodeId{}
-			for field in expr.fields {
-				val := flatten_expr(mut a, field.value)
-				ids << a.add_node(Node{
-					kind:           .field_init
-					value:          field.name
-					children_start: add_children(mut a, [val])
-					children_count: 1
-				})
-			}
-			start := add_children(mut a, ids)
-			return a.add_node(Node{
-				kind:           .struct_init
-				value:          expr.typ.name()
-				children_start: start
-				children_count: child_count(ids.len)
-			})
-		}
-		ast.MatchExpr {
-			return flatten_match(mut a, expr)
-		}
-		ast.IfExpr {
-			return flatten_if(mut a, expr)
-		}
-		ast.ModifierExpr {
-			return flatten_expr(mut a, expr.expr)
-		}
-		ast.EmptyExpr {
-			return a.add(NodeKind.empty)
-		}
-		else {
-			return a.add(NodeKind.empty)
-		}
+		return a.add_val(kind, expr.value)
 	}
+	if expr is ast.StringLiteral {
+		return a.add_val(.string_literal, strip_quotes(expr.value))
+	}
+	if expr is ast.StringInterLiteral {
+		mut ids := []NodeId{}
+		for i, val in expr.values {
+			if val.len > 0 {
+				ids << a.add_val(.string_literal, strip_quotes(val))
+			}
+			if i < expr.inters.len {
+				ids << flatten_expr(mut a, expr.inters[i].expr)
+			}
+		}
+		start := add_children(mut a, ids)
+		return a.add_node(Node{
+			kind:           .string_literal
+			value:          '_interp'
+			children_start: start
+			children_count: child_count(ids.len)
+		})
+	}
+	if expr is ast.Ident {
+		return a.add_val(.ident, expr.name)
+	}
+	if expr is ast.CallExpr {
+		mut ids := []NodeId{}
+		ids << flatten_expr(mut a, expr.lhs)
+		for arg in expr.args {
+			ids << flatten_expr(mut a, arg)
+		}
+		start := add_children(mut a, ids)
+		return a.add_node(Node{
+			kind:           .call
+			children_start: start
+			children_count: child_count(ids.len)
+		})
+	}
+	if expr is ast.CallOrCastExpr {
+		lhs := flatten_expr(mut a, expr.lhs)
+		arg := flatten_expr(mut a, expr.expr)
+		start := add_children(mut a, [lhs, arg])
+		return a.add_node(Node{
+			kind:           .call
+			children_start: start
+			children_count: 2
+		})
+	}
+	if expr is ast.InfixExpr {
+		lhs := flatten_expr(mut a, expr.lhs)
+		rhs := flatten_expr(mut a, expr.rhs)
+		start := add_children(mut a, [lhs, rhs])
+		return a.add_node(Node{
+			kind:           .infix
+			op:             token_to_op(expr.op)
+			children_start: start
+			children_count: 2
+		})
+	}
+	if expr is ast.PrefixExpr {
+		child := flatten_expr(mut a, expr.expr)
+		start := add_children(mut a, [child])
+		return a.add_node(Node{
+			kind:           .prefix
+			op:             token_to_op(expr.op)
+			children_start: start
+			children_count: 1
+		})
+	}
+	if expr is ast.PostfixExpr {
+		child := flatten_expr(mut a, expr.expr)
+		start := add_children(mut a, [child])
+		return a.add_node(Node{
+			kind:           .postfix
+			op:             token_to_op(expr.op)
+			children_start: start
+			children_count: 1
+		})
+	}
+	if expr is ast.ParenExpr {
+		child := flatten_expr(mut a, expr.expr)
+		start := add_children(mut a, [child])
+		return a.add_node(Node{
+			kind:           .paren
+			children_start: start
+			children_count: 1
+		})
+	}
+	if expr is ast.SelectorExpr {
+		child := flatten_expr(mut a, expr.lhs)
+		start := add_children(mut a, [child])
+		return a.add_node(Node{
+			kind:           .selector
+			value:          expr.rhs.name
+			children_start: start
+			children_count: 1
+		})
+	}
+	if expr is ast.IndexExpr {
+		lhs := flatten_expr(mut a, expr.lhs)
+		idx := flatten_expr(mut a, expr.expr)
+		start := add_children(mut a, [lhs, idx])
+		return a.add_node(Node{
+			kind:           .index
+			children_start: start
+			children_count: 2
+		})
+	}
+	if expr is ast.InitExpr {
+		mut ids := []NodeId{}
+		for field in expr.fields {
+			val := flatten_expr(mut a, field.value)
+			ids << a.add_node(Node{
+				kind:           .field_init
+				value:          field.name
+				children_start: add_children(mut a, [val])
+				children_count: 1
+			})
+		}
+		start := add_children(mut a, ids)
+		return a.add_node(Node{
+			kind:           .struct_init
+			value:          expr.typ.name()
+			children_start: start
+			children_count: child_count(ids.len)
+		})
+	}
+	if expr is ast.MatchExpr {
+		return flatten_match(mut a, expr)
+	}
+	if expr is ast.IfExpr {
+		return flatten_if(mut a, expr)
+	}
+	if expr is ast.ModifierExpr {
+		return flatten_expr(mut a, expr.expr)
+	}
+	if expr is ast.EmptyExpr {
+		return a.add(NodeKind.empty)
+	}
+	return a.add(NodeKind.empty)
 }
 
 fn flatten_if(mut a FlatAst, expr ast.IfExpr) NodeId {
@@ -467,22 +450,21 @@ fn unwrap_modifier(expr ast.Expr) ast.Expr {
 }
 
 fn type_name(expr ast.Expr) string {
-	match expr {
-		ast.Ident {
-			return expr.name
+	if expr is ast.Ident {
+		return expr.name
+	}
+	if expr is ast.Type {
+		if expr is ast.OptionType {
+			return '?${type_name(expr.base_type)}'
 		}
-		ast.Type {
-			match expr {
-				ast.OptionType { return '?${type_name(expr.base_type)}' }
-				ast.PointerType { return '&${type_name(expr.base_type)}' }
-				ast.ResultType { return '!${type_name(expr.base_type)}' }
-				else { return '' }
-			}
+		if expr is ast.PointerType {
+			return '&${type_name(expr.base_type)}'
 		}
-		else {
-			return ''
+		if expr is ast.ResultType {
+			return '!${type_name(expr.base_type)}'
 		}
 	}
+	return ''
 }
 
 fn return_type_name(typ ast.FnType) string {
@@ -517,6 +499,7 @@ fn token_to_op(tok token.Token) Op {
 		.xor { Op.xor }
 		.left_shift { Op.left_shift }
 		.right_shift { Op.right_shift }
+		.right_shift_unsigned { Op.right_shift_unsigned }
 		.and { Op.logical_and }
 		.logical_or { Op.logical_or }
 		.not { Op.not }

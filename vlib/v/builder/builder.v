@@ -284,6 +284,8 @@ pub fn (mut b Builder) parse_imports() {
 		util.timing_measure(@METHOD)
 	}
 	mut done_imports := []string{}
+	mut done_import_path_modules := map[string][]string{}
+	mut done_import_path_files := map[string][]string{}
 	if b.pref.is_vsh {
 		done_imports << 'os'
 	}
@@ -331,6 +333,15 @@ pub fn (mut b Builder) parse_imports() {
 					ast_file.path, imp.pos)
 				break
 			}
+			import_path_key := comparable_real_path(import_path)
+			if import_path_key in done_import_path_modules {
+				for module_idx, name in done_import_path_modules[import_path_key] {
+					b.validate_imported_module_name(i, ast_file.path, mod,
+						done_import_path_files[import_path_key][module_idx], name, imp.pos)
+				}
+				done_imports << mod
+				continue
+			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
 				// v.parsers[i].error_with_token_index('cannot import module "${mod}" (no .v files in "${import_path}")', v.parsers[i].import_ast.get_import_tok_idx(mod))
@@ -341,23 +352,21 @@ pub fn (mut b Builder) parse_imports() {
 			// eprintln('>> ast_file.path: ${ast_file.path} , done: ${done_imports}, `import ${mod}` => ${v_files}')
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, mut b.table, b.pref)
+			mut imported_module_names := []string{}
+			mut imported_module_paths := []string{}
 			for file in parsed_files {
-				mut name := file.mod.name
-				if name == '' {
-					name = file.mod.short_name
-				}
-				sname := name.all_after_last('.')
-				smod := mod.all_after_last('.')
-				if sname != smod {
-					msg := 'bad module definition: ${ast_file.path} imports module "${mod}" but ${file.path} is defined as module `${name}`'
-					b.parsed_files[i].errors << b.error_with_pos(msg, ast_file.path, imp.pos)
-				}
+				name := imported_file_module_name(file)
+				b.validate_imported_module_name(i, ast_file.path, mod, file.path, name, imp.pos)
+				imported_module_names << name
+				imported_module_paths << file.path
 			}
 			b.parsed_files << parsed_files
 			if b.should_stop_after_frontend_error() && parsed_files.any(it.errors.len > 0) {
 				return
 			}
 			done_imports << mod
+			done_import_path_modules[import_path_key] = imported_module_names
+			done_import_path_files[import_path_key] = imported_module_paths
 		}
 	}
 	b.resolve_deps()
@@ -428,6 +437,22 @@ pub fn (mut b Builder) resolve_deps() {
 		}
 		b.table.modules = mods
 		b.parsed_files = reordered_parsed_files
+	}
+}
+
+fn imported_file_module_name(file ast.File) string {
+	if file.mod.name != '' {
+		return file.mod.name
+	}
+	return file.mod.short_name
+}
+
+fn (mut b Builder) validate_imported_module_name(importer_idx int, importer_path string, mod string, imported_path string, name string, import_pos token.Pos) {
+	sname := name.all_after_last('.')
+	smod := mod.all_after_last('.')
+	if sname != smod {
+		msg := 'bad module definition: ${importer_path} imports module "${mod}" but ${imported_path} is defined as module `${name}`'
+		b.parsed_files[importer_idx].errors << b.error_with_pos(msg, importer_path, import_pos)
 	}
 }
 

@@ -127,31 +127,74 @@ pub enum BindingPower {
 	highest
 }
 
+const token_and_id = 1
+const token_arrow_id = 3
+const token_assign_id = 4
+const token_bit_not_id = 6
+const token_dec_id = 11
+const token_decl_assign_id = 12
+const token_div_id = 13
+const token_div_assign_id = 14
+const token_eq_id = 20
+const token_ge_id = 21
+const token_gt_id = 22
+const token_inc_id = 24
+const token_key_in_id = 44
+const token_key_is_id = 46
+const token_le_id = 74
+const token_left_shift_id = 75
+const token_left_shift_assign_id = 76
+const token_logical_or_id = 77
+const token_lt_id = 80
+const token_minus_id = 81
+const token_minus_assign_id = 82
+const token_mod_id = 83
+const token_mod_assign_id = 84
+const token_mul_id = 85
+const token_mul_assign_id = 86
+const token_ne_id = 88
+const token_not_id = 89
+const token_not_in_id = 90
+const token_not_is_id = 91
+const token_or_assign_id = 93
+const token_pipe_id = 94
+const token_plus_id = 95
+const token_plus_assign_id = 96
+const token_right_shift_id = 99
+const token_right_shift_assign_id = 100
+const token_right_shift_unsigned_id = 101
+const token_right_shift_unsigned_assign_id = 102
+const token_xor_id = 109
+const token_xor_assign_id = 110
+
 @[inline]
 pub fn (t Token) left_binding_power() BindingPower {
-	if t == .logical_or {
+	tv := int(t)
+	if tv == token_logical_or_id {
 		return BindingPower.logical_or
 	}
-	if t == .and {
+	if tv == token_and_id {
 		return BindingPower.logical_and
 	}
-	if t == .eq || t == .ne || t == .lt || t == .le || t == .gt || t == .ge || t == .key_in
-		|| t == .not_in || t == .key_is || t == .not_is {
+	if tv == token_eq_id || tv == token_ne_id || tv == token_lt_id || tv == token_le_id
+		|| tv == token_gt_id || tv == token_ge_id || tv == token_key_in_id || tv == token_not_in_id
+		|| tv == token_key_is_id || tv == token_not_is_id {
 		return BindingPower.compare
 	}
-	if t == .pipe {
+	if tv == token_pipe_id {
 		return BindingPower.bit_or
 	}
-	if t == .xor {
+	if tv == token_xor_id {
 		return BindingPower.bit_xor
 	}
-	if t == .left_shift || t == .right_shift || t == .right_shift_unsigned {
+	if tv == token_left_shift_id || tv == token_right_shift_id
+		|| tv == token_right_shift_unsigned_id {
 		return BindingPower.shift
 	}
-	if t == .plus || t == .minus {
+	if tv == token_plus_id || tv == token_minus_id {
 		return BindingPower.add
 	}
-	if t == .mul || t == .div || t == .mod || t == .amp {
+	if tv == token_mul_id || tv == token_div_id || tv == token_mod_id || tv == 0 {
 		return BindingPower.product
 	}
 	return BindingPower.lowest
@@ -169,42 +212,55 @@ pub fn (t Token) is_keyword() bool {
 
 @[inline]
 pub fn (t Token) is_prefix() bool {
-	return t == .minus || t == .amp || t == .and || t == .mul || t == .not || t == .bit_not
-		|| t == .arrow
+	tv := int(t)
+	return tv == token_minus_id || tv == 0 || tv == token_and_id || tv == token_mul_id
+		|| tv == token_not_id || tv == token_bit_not_id || tv == token_arrow_id
 }
 
 @[inline]
 pub fn (t Token) is_infix() bool {
-	return t == .amp || t == .and || t == .arrow || t == .div || t == .eq || t == .ge || t == .gt
-		|| t == .key_in || t == .key_is || t == .le || t == .left_shift || t == .logical_or
-		|| t == .lt || t == .minus || t == .mod || t == .mul || t == .ne || t == .not_in
-		|| t == .not_is || t == .pipe || t == .plus || t == .right_shift
-		|| t == .right_shift_unsigned || t == .xor
+	tv := int(t)
+	return tv == 0 || tv == token_and_id || tv == token_arrow_id || tv == token_div_id
+		|| tv == token_eq_id || tv == token_ge_id || tv == token_gt_id || tv == token_key_in_id
+		|| tv == token_key_is_id || tv == token_le_id || tv == token_left_shift_id
+		|| tv == token_logical_or_id || tv == token_lt_id || tv == token_minus_id
+		|| tv == token_mod_id || tv == token_mul_id || tv == token_ne_id || tv == token_not_in_id
+		|| tv == token_not_is_id || tv == token_pipe_id || tv == token_plus_id
+		|| tv == token_right_shift_id || tv == token_right_shift_unsigned_id || tv == token_xor_id
 }
 
 @[inline]
 pub fn (t Token) is_postfix() bool {
-	return t == .dec || t == .inc
+	tv := int(t)
+	return tv == token_dec_id || tv == token_inc_id
 }
 
 @[inline]
 pub fn (t Token) is_assignment() bool {
-	return t == .and_assign || t == .assign || t == .decl_assign || t == .div_assign
-		|| t == .left_shift_assign || t == .minus_assign || t == .mod_assign || t == .mul_assign
-		|| t == .or_assign || t == .plus_assign || t == .right_shift_assign
-		|| t == .right_shift_unsigned_assign || t == .xor_assign
+	tv := int(t)
+	return tv == 2 || tv == token_assign_id || tv == token_decl_assign_id
+		|| tv == token_div_assign_id || tv == token_left_shift_assign_id
+		|| tv == token_minus_assign_id || tv == token_mod_assign_id || tv == token_mul_assign_id
+		|| tv == token_or_assign_id || tv == token_plus_assign_id
+		|| tv == token_right_shift_assign_id || tv == token_right_shift_unsigned_assign_id
+		|| tv == token_xor_assign_id
 }
 
 @[inline]
 pub fn (t Token) is_overloadable() bool {
-	return t == .div || t == .eq || t == .ge || t == .gt || t == .le || t == .lt || t == .minus
-		|| t == .mod || t == .mul || t == .ne || t == .pipe || t == .plus || t == .xor
+	tv := int(t)
+	return tv == token_div_id || tv == token_eq_id || tv == token_ge_id || tv == token_gt_id
+		|| tv == token_le_id || tv == token_lt_id || tv == token_minus_id || tv == token_mod_id
+		|| tv == token_mul_id || tv == token_ne_id || tv == token_pipe_id || tv == token_plus_id
+		|| tv == token_xor_id
 }
 
 @[inline]
 pub fn (t Token) is_comparison() bool {
-	return t == .eq || t == .ge || t == .gt || t == .key_in || t == .key_is || t == .le || t == .lt
-		|| t == .ne || t == .not_in || t == .not_is
+	tv := int(t)
+	return tv == token_eq_id || tv == token_ge_id || tv == token_gt_id || tv == token_key_in_id
+		|| tv == token_key_is_id || tv == token_le_id || tv == token_lt_id || tv == token_ne_id
+		|| tv == token_not_in_id || tv == token_not_is_id
 }
 
 pub fn (t Token) str() string {

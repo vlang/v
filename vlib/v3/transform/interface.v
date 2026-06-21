@@ -1,15 +1,113 @@
 module transform
 
 import v3.flat
+import v3.types
 
 // is_interface_type checks if a type name is a known interface.
-// Currently returns false as interface tracking is not yet connected
-// to the TypeChecker. Will be wired up when interface declarations
-// are collected during the type collection pass.
-fn (t &Transformer) is_interface_type(_name string) bool {
-	// TODO: Connect to TypeChecker or add interface_types map to Transformer
-	// once interface_decl nodes are collected in collect_types.
-	return false
+fn (t &Transformer) is_interface_type(name string) bool {
+	return t.resolve_interface_type_name(name).len > 0
+}
+
+fn (t &Transformer) resolve_interface_type_name(name string) string {
+	if name.len == 0 || isnil(t.tc) {
+		return ''
+	}
+	clean := t.trim_pointer_type(t.normalize_type_alias(name))
+	if clean in t.tc.interface_names {
+		return clean
+	}
+	if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		qname := '${t.cur_module}.${clean}'
+		if qname in t.tc.interface_names {
+			return qname
+		}
+	}
+	return ''
+}
+
+fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target_type string) ?flat.NodeId {
+	if int(id) < 0 || target_type.len == 0 || isnil(t.tc) {
+		return none
+	}
+	target_is_ptr := target_type.starts_with('&')
+	iface_name := t.resolve_interface_type_name(target_type)
+	if iface_name.len == 0 {
+		return none
+	}
+	// IError has bespoke handling (built via `error()`, fields accessed directly);
+	// do not route it through the generic interface boxing.
+	if iface_name.all_after_last('.') == 'IError' {
+		return none
+	}
+	source_type := t.node_type(id)
+	source_iface := t.resolve_interface_type_name(source_type)
+	if source_iface == iface_name {
+		return t.transform_expr(id)
+	}
+	if target_is_ptr && source_type.starts_with('&')
+		&& t.resolve_interface_type_name(source_type[1..]) == iface_name {
+		return t.transform_expr(id)
+	}
+	literal := t.make_interface_literal_from_expr(id, iface_name) or { return none }
+	if !target_is_ptr {
+		return literal
+	}
+	tmp_name := t.new_temp('iface_arg')
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, literal, iface_name)
+	ptr := t.make_prefix(.amp, t.make_ident(tmp_name))
+	t.a.nodes[int(ptr)].typ = target_type
+	return ptr
+}
+
+fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string) ?flat.NodeId {
+	fields := t.tc.interface_fields[iface_name] or { []types.StructField{} }
+	source_type := t.node_type(id)
+	if source_type.len == 0 {
+		return none
+	}
+	source_expr := t.transform_expr(id)
+	source := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_src')
+	is_ptr := source_type.starts_with('&')
+	concrete_type := if is_ptr { source_type[1..] } else { source_type }
+	// `_object` is a pointer to the boxed concrete value; method dispatch reads it
+	// back and casts it to the concrete type. For pointer sources we store the
+	// pointer directly; for value sources we heap-copy so the box can outlive the
+	// source scope. The pointer is typed (`&Concrete`) so codegen can recover the
+	// concrete type and emit the matching `_typ` dispatch id.
+	object_expr := if is_ptr {
+		source
+	} else {
+		addr := t.make_prefix(.amp, source)
+		size := t.make_sizeof_type(concrete_type)
+		dup := t.make_call_typed('memdup', arr2(addr, size), 'voidptr')
+		t.make_cast('&${concrete_type}', dup, '&${concrete_type}')
+	}
+	field_base := if is_ptr {
+		base := t.make_prefix(.mul, source)
+		t.a.nodes[int(base)].typ = concrete_type
+		base
+	} else {
+		source
+	}
+	mut field_ids := []flat.NodeId{cap: fields.len + 1}
+	field_ids << t.make_sum_literal_field('_object', object_expr, '&${concrete_type}')
+	for field in fields {
+		field_type := t.normalize_type_alias(field.typ.name())
+		field_value := t.make_selector(field_base, field.name, field_type)
+		field_ids << t.make_sum_literal_field(field.name, field_value, field_type)
+	}
+	start := t.a.children.len
+	for field_id in field_ids {
+		t.a.children << field_id
+	}
+	return t.a.add_node(flat.Node{
+		kind:           .struct_init
+		children_start: start
+		children_count: flat.child_count(field_ids.len)
+		value:          iface_name
+		typ:            iface_name
+	})
 }
 
 // transform_interface_cast transforms interface-to-concrete type casts.

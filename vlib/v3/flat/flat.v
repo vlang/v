@@ -8,7 +8,7 @@ pub const empty_node = NodeId(-1)
 
 const empty_node_value = Node{}
 
-pub enum NodeKind as u8 {
+pub enum NodeKind {
 	empty
 	// expressions
 	int_literal
@@ -93,7 +93,7 @@ pub enum NodeKind as u8 {
 	file
 }
 
-pub enum Op as u8 {
+pub enum Op {
 	none
 	plus
 	minus
@@ -111,6 +111,7 @@ pub enum Op as u8 {
 	xor
 	left_shift
 	right_shift
+	right_shift_unsigned
 	logical_and
 	logical_or
 	not
@@ -126,6 +127,7 @@ pub enum Op as u8 {
 	xor_assign
 	left_shift_assign
 	right_shift_assign
+	right_shift_unsigned_assign
 	inc
 	dec
 	dot
@@ -134,8 +136,9 @@ pub enum Op as u8 {
 
 pub struct Node {
 pub mut:
-	value string
-	typ   string
+	value   string
+	typ     string
+	kind_id int
 pub:
 	pos            token.Pos
 	children_start i32
@@ -162,23 +165,53 @@ pub fn FlatAst.new() FlatAst {
 pub fn (mut a FlatAst) add(kind NodeKind) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind: kind
+		kind:    kind
+		kind_id: int(kind)
 	}
 	return id
+}
+
+pub fn (mut a FlatAst) add_id(kind_id int) NodeId {
+	id := NodeId(a.nodes.len)
+	a.nodes << Node{
+		kind:    node_kind_from_id(kind_id)
+		kind_id: kind_id
+	}
+	return id
+}
+
+@[inline]
+pub fn node_kind_from_id(id int) NodeKind {
+	return unsafe { NodeKind(id) }
 }
 
 pub fn (mut a FlatAst) add_val(kind NodeKind, value string) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind:  kind
-		value: value
+		kind:    kind
+		kind_id: int(kind)
+		value:   value
+	}
+	return id
+}
+
+pub fn (mut a FlatAst) add_val_id(kind_id int, value string) NodeId {
+	id := NodeId(a.nodes.len)
+	a.nodes << Node{
+		kind:    node_kind_from_id(kind_id)
+		kind_id: kind_id
+		value:   value
 	}
 	return id
 }
 
 pub fn (mut a FlatAst) add_node(node Node) NodeId {
 	id := NodeId(a.nodes.len)
-	a.nodes << node
+	mut n := node
+	if n.kind_id == 0 && int(n.kind) != 0 {
+		n.kind_id = int(n.kind)
+	}
+	a.nodes << n
 	return id
 }
 

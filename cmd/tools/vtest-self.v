@@ -23,6 +23,8 @@ mut:
 
 const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 
+const temporarily_disabled_self_test_vlib_dirs = ['v2_toberemoved', 'v3']
+
 const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
 	'cmd/tools/vdoc/document/doc_test.v',
@@ -388,10 +390,12 @@ fn main() {
 	mut tsession := testing.new_test_session(vargs.join(' '), true)
 	tsession.exec_mode = .compile_and_run
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
-	// v2 has its own driver at `cmd/v2/test_all.sh` and is still under heavy
-	// development, so its tests are excluded from `v test-self`.
-	v2_dir_fragment := '${os.path_separator}vlib${os.path_separator}v2${os.path_separator}'
-	tsession.skip_files << tsession.files.filter(it.contains(v2_dir_fragment))
+	// v2 and v3 have their own drivers and are still under heavy development,
+	// so their tests are excluded from `v test-self`.
+	for test_dir in temporarily_disabled_self_test_vlib_dirs {
+		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_dir}${os.path_separator}'
+		tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
+	}
 	if cfg.werror {
 		tsession.custom_defines << 'self_werror'
 	}
