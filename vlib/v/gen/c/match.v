@@ -65,6 +65,20 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	need_tmp_var := g.need_tmp_var_in_match(node)
 	is_expr := (node.is_expr && resolved_return_type != ast.void_type) || g.inside_ternary > 0
 
+	// When the tmp var is a fn-returned fixed array, it is a wrapper struct whose data
+	// lives in a `.ret_arr` member. Flag it so every branch writes through `.ret_arr`,
+	// even ones whose own expr type lacks the `is_fn_ret` flag (e.g. a fixed array
+	// literal mixed with a function call returning the same fixed array type).
+	prev_if_match_tmp_is_fn_ret_arr := g.if_match_tmp_is_fn_ret_arr
+	// Mirror the wrapper-struct check used when emitting the tmp var below, so every
+	// branch agrees with how the result is finally read.
+	ret_arr_sym := g.table.sym(g.unwrap_generic(g.recheck_concrete_type(resolved_return_type)))
+	g.if_match_tmp_is_fn_ret_arr = need_tmp_var && ret_arr_sym.info is ast.ArrayFixed
+		&& ret_arr_sym.info.is_fn_ret
+	defer {
+		g.if_match_tmp_is_fn_ret_arr = prev_if_match_tmp_is_fn_ret_arr
+	}
+
 	mut cond_var := ''
 	mut tmp_var := ''
 	mut cur_line := ''

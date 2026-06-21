@@ -62,6 +62,13 @@ fn selector_index_assign() {
 	println(app.frame[app.idx])
 }
 
+fn fixed_array_len() {
+	a := [10, 12, 150]!
+	println(a.len)
+	b := [8]int{}
+	println(b.len)
+}
+
 fn main() {
 	println('--- static_arrays()')
 	a, b, c := static_arrays()
@@ -83,4 +90,7 @@ fn main() {
 
 	println('--- selector_index_assign()')
 	selector_index_assign()
+
+	println('--- fixed_array_len()')
+	fixed_array_len()
 }

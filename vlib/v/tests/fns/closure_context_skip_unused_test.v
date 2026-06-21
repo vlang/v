@@ -2,9 +2,12 @@ import os
 
 const vexe = @VEXE
 
-fn missing_boehm_leak_lib(output string) bool {
-	return output.contains('libgc') && (output.contains('was not found')
-		|| output.contains('cannot find'))
+fn missing_boehm_lib(output string) bool {
+	mentions_gc := output.contains('libgc') || output.contains('-lgc')
+		|| output.contains("library 'gc'") || output.contains('bdw-gc')
+	return mentions_gc && (output.contains('was not found')
+		|| output.contains('cannot find') || output.contains('not found')
+		|| output.contains('No such file'))
 }
 
 fn closure_skip_unused_source() string {
@@ -61,9 +64,8 @@ fn run_closure_skip_unused_case(tmp_dir string, mode string) {
 	os.write_file(source_path, closure_skip_unused_source()) or { panic(err) }
 	compile_cmd := '${os.quoted_path(vexe)} -skip-unused -gc ${mode} -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}'
 	compile_res := os.execute(compile_cmd)
-	if mode == 'boehm_leak' && compile_res.exit_code != 0
-		&& missing_boehm_leak_lib(compile_res.output) {
-		eprintln('skipping boehm_leak closure skip-unused test: missing libgc')
+	if mode != 'none' && compile_res.exit_code != 0 && missing_boehm_lib(compile_res.output) {
+		eprintln('skipping ${mode} closure skip-unused test: missing libgc')
 		return
 	}
 	assert compile_res.exit_code == 0, compile_res.output

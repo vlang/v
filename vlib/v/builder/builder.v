@@ -281,6 +281,8 @@ pub fn (mut b Builder) parse_imports() {
 		util.timing_measure(@METHOD)
 	}
 	mut done_imports := []string{}
+	mut done_import_path_modules := map[string][]string{}
+	mut done_import_path_files := map[string][]string{}
 	if b.pref.is_vsh {
 		done_imports << 'os'
 	}
@@ -328,6 +330,15 @@ pub fn (mut b Builder) parse_imports() {
 					ast_file.path, imp.pos)
 				break
 			}
+			import_path_key := comparable_real_path(import_path)
+			if import_path_key in done_import_path_modules {
+				for module_idx, name in done_import_path_modules[import_path_key] {
+					b.validate_imported_module_name(i, ast_file.path, mod,
+						done_import_path_files[import_path_key][module_idx], name, imp.pos)
+				}
+				done_imports << mod
+				continue
+			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
 				// v.parsers[i].error_with_token_index('cannot import module "${mod}" (no .v files in "${import_path}")', v.parsers[i].import_ast.get_import_tok_idx(mod))
@@ -338,23 +349,21 @@ pub fn (mut b Builder) parse_imports() {
 			// eprintln('>> ast_file.path: ${ast_file.path} , done: ${done_imports}, `import ${mod}` => ${v_files}')
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, mut b.table, b.pref)
+			mut imported_module_names := []string{}
+			mut imported_module_paths := []string{}
 			for file in parsed_files {
-				mut name := file.mod.name
-				if name == '' {
-					name = file.mod.short_name
-				}
-				sname := name.all_after_last('.')
-				smod := mod.all_after_last('.')
-				if sname != smod {
-					msg := 'bad module definition: ${ast_file.path} imports module "${mod}" but ${file.path} is defined as module `${name}`'
-					b.parsed_files[i].errors << b.error_with_pos(msg, ast_file.path, imp.pos)
-				}
+				name := imported_file_module_name(file)
+				b.validate_imported_module_name(i, ast_file.path, mod, file.path, name, imp.pos)
+				imported_module_names << name
+				imported_module_paths << file.path
 			}
 			b.parsed_files << parsed_files
 			if b.should_stop_after_frontend_error() && parsed_files.any(it.errors.len > 0) {
 				return
 			}
 			done_imports << mod
+			done_import_path_modules[import_path_key] = imported_module_names
+			done_import_path_files[import_path_key] = imported_module_paths
 		}
 	}
 	b.resolve_deps()
@@ -425,6 +434,22 @@ pub fn (mut b Builder) resolve_deps() {
 		}
 		b.table.modules = mods
 		b.parsed_files = reordered_parsed_files
+	}
+}
+
+fn imported_file_module_name(file ast.File) string {
+	if file.mod.name != '' {
+		return file.mod.name
+	}
+	return file.mod.short_name
+}
+
+fn (mut b Builder) validate_imported_module_name(importer_idx int, importer_path string, mod string, imported_path string, name string, import_pos token.Pos) {
+	sname := name.all_after_last('.')
+	smod := mod.all_after_last('.')
+	if sname != smod {
+		msg := 'bad module definition: ${importer_path} imports module "${mod}" but ${imported_path} is defined as module `${name}`'
+		b.parsed_files[importer_idx].errors << b.error_with_pos(msg, importer_path, import_pos)
 	}
 }
 
@@ -843,9 +868,19 @@ fn (b &Builder) candidate_belongs_to_foreign_project(candidate_path string, impo
 	if candidate_vmod_matches_import(abs_candidate, mod) {
 		return false
 	}
+	// A module installed as a symlink inside a lookup path (e.g.
+	// `.vmodules/einar_hjortdal/luuid -> /real/luuid`) resolves via
+	// os.real_path to a location outside the lookup path. Compare the
+	// logical (unresolved) path too, so such modules are still recognized
+	// as belonging to the project (see #27391).
+	candidate_lookup_path := comparable_path(candidate_path)
 	for lookup in b.pref.lookup_path {
 		abs_lookup := comparable_real_path(lookup)
 		if path_is_at_or_inside(abs_candidate, abs_lookup) {
+			return false
+		}
+		lookup_path := comparable_path(lookup)
+		if path_is_at_or_inside(candidate_lookup_path, lookup_path) {
 			return false
 		}
 	}
@@ -863,8 +898,25 @@ fn (b &Builder) path_belongs_to_lookup_path(path string) bool {
 	return false
 }
 
+// comparable_real_path normalizes a path for comparison, resolving symlinks
+// via os.real_path. Use when both sides of a comparison should refer to the
+// same physical location on disk.
 fn comparable_real_path(path string) string {
-	mut normalized := os.real_path(path).replace('\\', '/')
+	return comparable_path_from(os.real_path(path))
+}
+
+// comparable_path normalizes a path for comparison without resolving symlinks.
+// Use when the original (logical) path matters, e.g. for symlinked modules
+// inside `.vmodules` that should match their lookup path as-is.
+fn comparable_path(path string) string {
+	return comparable_path_from(os.abs_path(path))
+}
+
+// comparable_path_from normalizes a path string for consistent comparison:
+// converts backslashes to forward slashes, collapses duplicate separators,
+// and strips a trailing slash.
+fn comparable_path_from(path string) string {
+	mut normalized := path.replace('\\', '/')
 	for normalized.contains('//') {
 		normalized = normalized.replace('//', '/')
 	}

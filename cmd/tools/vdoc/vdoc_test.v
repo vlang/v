@@ -317,3 +317,67 @@ fn test_markdown_renderer_preserves_wrapped_readme_markdown() ! {
 	assert out.contains('the most simple token')
 	assert out.contains('is not <code>abc</code> OR <code>ebc</code>')
 }
+
+fn test_doc_multi_skips_modules_without_valid_files_for_platform() {
+	// https://github.com/vlang/v/issues/27464
+	// A module whose only V files are filtered out for the target platform (e.g.
+	// the `ios`/`macos` modules when generating docs on Linux) is skipped during
+	// generation. It must not produce an empty `Doc` that later crashes rendering.
+	base_dir := 'skip_platform_modules'
+	good_dir := os.join_path(base_dir, 'good')
+	skipped_dir := os.join_path(base_dir, 'winonly')
+	os.mkdir_all(good_dir)!
+	os.mkdir_all(skipped_dir)!
+	os.write_file(os.join_path(good_dir, 'good.v'), "module good
+
+// hello returns a greeting.
+pub fn hello() string {
+	return 'hi'
+}
+")!
+	// This file only compiles on Windows, so on every other platform the `winonly`
+	// module has no valid V files and gets skipped. The test never runs on Windows
+	// (see the `vtest build: !windows` directive at the top of the file).
+	os.write_file(os.join_path(skipped_dir, 'winonly_windows.c.v'), 'module winonly
+
+// only_win does nothing useful here.
+pub fn only_win() int {
+	return 1
+}
+')!
+	// `-color` exercises the original crash path in `gen_plaintext`.
+	res := os.execute_opt('${vexe_} doc -no-timestamp -m -color -f text -o - ${os.quoted_path(
+		'./' + base_dir)}') or { panic(err) }
+	// The crash showed up as a non-zero exit code (V panic), so this is the key check.
+	assert res.exit_code == 0
+	assert res.output.contains('hello')
+	// The skipped module must not be documented (its public symbol must be absent).
+	// Note: `os.execute_opt` merges stderr, where the `Skipping folder: ...winonly`
+	// notice is printed, so we check for the rendered symbol rather than the name.
+	assert !res.output.contains('only_win')
+}
+
+fn test_doc_multi_all_modules_skipped_fails_for_file_output() {
+	// https://github.com/vlang/v/issues/27464 (review follow-up)
+	// When every discovered module is filtered out for the target platform, there
+	// is nothing to document. Writing to a real output path must fail with the same
+	// `No documentation found` error as the stdout path, instead of silently
+	// creating/cleaning an empty output directory and exiting 0.
+	base_dir := 'all_skipped_modules'
+	skipped_dir := os.join_path(base_dir, 'winonly')
+	out_dir := os.join_path(base_dir, 'out')
+	os.mkdir_all(skipped_dir)!
+	os.write_file(os.join_path(skipped_dir, 'winonly_windows.c.v'), 'module winonly
+
+pub fn only_win() int {
+	return 1
+}
+')!
+	// `os.execute` (not `execute_opt`) so the expected non-zero exit is not an error.
+	res := os.execute('${vexe_} doc -no-timestamp -m -f html -o ${os.quoted_path('./' + out_dir)} ${os.quoted_path(
+		'./' + base_dir)}')
+	assert res.exit_code != 0
+	assert res.output.contains('No documentation found')
+	// The output directory must not have been created.
+	assert !os.exists(out_dir)
+}

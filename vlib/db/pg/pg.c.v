@@ -399,7 +399,7 @@ fn (mut c Conn) physical_close() {
 	}
 }
 
-fn res_to_rows(res voidptr) []db.pg.Row {
+fn res_to_rows(res voidptr) []Row {
 	nr_rows := C.PQntuples(res)
 	nr_cols := C.PQnfields(res)
 
@@ -514,12 +514,12 @@ pub fn (c &Conn) q_string(query string) !string {
 
 // q_strings submit a command to the database server and
 // returns the resulting row set. Alias of `exec`
-pub fn (c &Conn) q_strings(query string) ![]db.pg.Row {
+pub fn (c &Conn) q_strings(query string) ![]Row {
 	return c.exec(query)
 }
 
 // exec submits a command to the database server and wait for the result, returning an error on failure and a row set on success
-pub fn (c &Conn) exec(query string) ![]db.pg.Row {
+pub fn (c &Conn) exec(query string) ![]Row {
 	c.ensure_active()!
 	res := C.PQexec(c.conn, &char(query.str))
 	return c.handle_error_or_rows(res, 'exec')
@@ -539,7 +539,7 @@ pub fn (c &Conn) exec_result(query string) !Result {
 	return c.handle_error_or_result(res, 'exec_result')
 }
 
-fn rows_first_or_empty(rows []db.pg.Row) !Row {
+fn rows_first_or_empty(rows []Row) !Row {
 	if rows.len == 0 {
 		return error('no row')
 	}
@@ -560,7 +560,7 @@ pub fn (c &Conn) exec_one(query string) !Row {
 }
 
 // exec_param_many executes a query with the parameters provided as ($1), ($2), ($n)
-pub fn (c &Conn) exec_param_many(query string, params []string) ![]db.pg.Row {
+pub fn (c &Conn) exec_param_many(query string, params []string) ![]Row {
 	c.ensure_active()!
 	unsafe {
 		mut param_vals := []&char{len: params.len}
@@ -588,12 +588,12 @@ pub fn (c &Conn) exec_param_many_result(query string, params []string) !Result {
 }
 
 // exec_param executes a query with 1 parameter ($1), and returns either an error on failure, or the full result set on success
-pub fn (c &Conn) exec_param(query string, param string) ![]db.pg.Row {
+pub fn (c &Conn) exec_param(query string, param string) ![]Row {
 	return c.exec_param_many(query, [param])
 }
 
 // exec_param2 executes a query with 2 parameters ($1) and ($2), and returns either an error on failure, or the full result set on success
-pub fn (c &Conn) exec_param2(query string, param string, param2 string) ![]db.pg.Row {
+pub fn (c &Conn) exec_param2(query string, param string, param2 string) ![]Row {
 	return c.exec_param_many(query, [param, param2])
 }
 
@@ -607,7 +607,7 @@ pub fn (c &Conn) prepare(name string, query string, num_params int) ! {
 }
 
 // exec_prepared sends a request to execute a prepared statement with given parameters, and waits for the result. The number of parameters must match with the parameters declared in the prepared statement.
-pub fn (c &Conn) exec_prepared(name string, params []string) ![]db.pg.Row {
+pub fn (c &Conn) exec_prepared(name string, params []string) ![]Row {
 	c.ensure_active()!
 	unsafe {
 		mut param_vals := []&char{len: params.len}
@@ -645,7 +645,7 @@ fn (c &Conn) mark_bad_if_disconnected() {
 	}
 }
 
-fn (c &Conn) handle_error_or_rows(res voidptr, elabel string) ![]db.pg.Row {
+fn (c &Conn) handle_error_or_rows(res voidptr, elabel string) ![]Row {
 	e := unsafe { C.PQerrorMessage(c.conn).vstring() }
 	if e != '' {
 		C.PQclear(res)
@@ -761,7 +761,7 @@ pub fn (c &Conn) copy_expert(query string, mut file io.ReaderWriter) !int {
 	return 0
 }
 
-fn pg_stmt_worker(c &Conn, query string, data orm.QueryData, where orm.QueryData) ![]db.pg.Row {
+fn pg_stmt_worker(c &Conn, query string, data orm.QueryData, where orm.QueryData) ![]Row {
 	mut param_types := []u32{}
 	mut param_vals := []&char{}
 	mut param_lens := []int{}
