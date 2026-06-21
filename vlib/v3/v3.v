@@ -30,7 +30,7 @@ const o_wronly_creat_trunc = 0x601 // O_WRONLY | O_CREAT | O_TRUNC on Darwin
 fn main() {
 	args := os.args[1..]
 	if args.len == 0 {
-		eprintln('usage: v3 <file.v> [-o output] [-b c|arm64]')
+		eprintln('usage: v3 <file.v> [-o output|file.c] [-b c|arm64]')
 		exit(1)
 	}
 
@@ -71,9 +71,13 @@ fn main() {
 	}
 
 	mut bin_file := ''
+	mut c_only := false
 	if output_file == '' {
 		bin_file = input_file.all_before_last('.v')
 		output_file = bin_file + '.c'
+	} else if backend == 'c' && output_file.ends_with('.c') {
+		c_only = true
+		bin_file = output_file.all_before_last('.c')
 	} else {
 		bin_file = output_file
 		output_file = bin_file + '.c'
@@ -173,6 +177,10 @@ fn main() {
 		}
 		gen_step_name := if g.was_parallel() { 'gen C/write (parallel)' } else { 'gen C/write' }
 		b.step(gen_step_name)
+		if c_only {
+			b.print_report()
+			return
+		}
 
 		opt_flag := if is_prod { '-O2 ' } else { '' }
 		warn_flags := if is_strict {
