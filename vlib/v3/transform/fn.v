@@ -1236,6 +1236,14 @@ fn (mut t Transformer) try_lower_array_method_call(node flat.Node) ?flat.NodeId 
 	if fn_node.value == 'insert' {
 		return t.lower_array_insert_call(node, fn_node, base_type, elem_type)
 	}
+	if fn_node.value == 'contains' {
+		method_name := t.resolve_receiver_method_name(base_id, fn_node.value)
+		if method_name.len > 0 {
+			args := t.transform_receiver_method_args(node, base_id, method_name)
+			ret_type := t.receiver_method_return_type(method_name, node.typ)
+			return t.make_call_typed(method_name, args, ret_type)
+		}
+	}
 	match fn_node.value {
 		'filter' {
 			return t.lower_array_filter_call(node, fn_node, clean_base_type)
@@ -1739,7 +1747,14 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			return none
 		}
 	}
-	mut base_type := t.node_type(base_id)
+	mut base_type := if base_node.kind in [.selector, .index] {
+		t.lvalue_type(base_id)
+	} else {
+		t.node_type(base_id)
+	}
+	if base_type.len == 0 {
+		base_type = t.lvalue_type(base_id)
+	}
 	if base_type.starts_with('&') {
 		base_type = base_type[1..]
 	}
@@ -1770,6 +1785,15 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		}
 		if method == 'hex' {
 			return t.make_call_typed('Array_u8__hex', arr1(t.transform_expr(base_id)), 'string')
+		}
+	}
+	if t.is_builder_receiver(base_id, base_type) {
+		for method_name in ['strings.Builder.${method}', 'Builder.${method}'] {
+			if t.is_known_fn_name(method_name) {
+				args := t.transform_receiver_method_args(node, base_id, method_name)
+				ret_type := t.receiver_method_return_type(method_name, node.typ)
+				return t.make_call_typed(method_name, args, ret_type)
+			}
 		}
 	}
 	if builtin_base_type == 'u8' && method in ['is_space', 'is_digit', 'is_hex_digit', 'is_letter'] {

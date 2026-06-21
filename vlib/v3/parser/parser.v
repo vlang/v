@@ -3029,9 +3029,11 @@ fn (mut p Parser) assign_or_expr_inline() flat.NodeId {
 
 fn (mut p Parser) defer_stmt() flat.NodeId {
 	p.next() // skip 'defer'
+	mut mode := ''
 	if p.tok == .lpar {
 		p.next()
 		if p.tok == .key_fn {
+			mode = 'function'
 			p.next()
 		}
 		p.check(.rpar)
@@ -3042,6 +3044,7 @@ fn (mut p Parser) defer_stmt() flat.NodeId {
 		kind:           .defer_stmt
 		children_start: dstart
 		children_count: 1
+		value:          mode
 	})
 }
 

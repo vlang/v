@@ -112,6 +112,18 @@ fn (mut t Transformer) transform_array_literal_for_type(_id flat.NodeId, node fl
 	return t.make_ident(tmp_name)
 }
 
+fn (mut t Transformer) transform_empty_array_init_for_type(node flat.Node, target_type string) ?flat.NodeId {
+	if node.value.len > 0 || node.children_count > 0 {
+		return none
+	}
+	array_type := t.normalize_type_alias(target_type)
+	if !array_type.starts_with('[]') {
+		return none
+	}
+	elem_type := array_type[2..]
+	return t.make_array_new_call(elem_type, t.make_int_literal(0), t.make_int_literal(0))
+}
+
 fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeId {
 	if int(id) < 0 {
 		return none

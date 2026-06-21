@@ -305,6 +305,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		interfaces:              g.interfaces.clone()
 		const_vals:              g.const_vals.clone()
 		const_modules:           g.const_modules.clone()
+		const_init_order:        g.const_init_order.clone()
 		global_modules:          g.global_modules.clone()
 		global_inits:            g.global_inits.clone()
 		global_init_order:       g.global_init_order.clone()

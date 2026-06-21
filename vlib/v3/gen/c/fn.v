@@ -134,6 +134,10 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.cur_fn_name = node.value
 	g.tc.push_scope()
 	g.defers = []flat.NodeId{}
+	g.fn_defers = []flat.NodeId{}
+	g.fn_defer_flags = map[int]string{}
+	g.defer_capture_names = []string{}
+	g.defer_capture_types = map[string]types.Type{}
 	g.set_cur_fn_ret(types.Type(types.void_))
 	old_param_names := g.cur_param_names.clone()
 	old_param_type_values := g.cur_param_type_values.clone()
@@ -152,6 +156,8 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 			g.tc.cur_scope.insert(p.value, param_type)
 		}
 	}
+	fn_defer_ids := g.collect_function_defer_ids(node)
+	g.prepare_function_defers(fn_defer_ids)
 	is_entry_main := node.value == 'main' && (module_name.len == 0 || module_name == 'main')
 	if is_entry_main {
 		g.writeln('int main(int argc, char** argv) {')
@@ -173,6 +179,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 		g.writeln(') {')
 	}
 	g.indent++
+	g.gen_function_defer_prelude()
 
 	for i in 0 .. node.children_count {
 		id := g.a.child(&node, i)
@@ -181,7 +188,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 			g.gen_node(id)
 		}
 	}
-	g.gen_defers()
+	g.gen_all_defers()
 	if is_entry_main {
 		g.writeln('return 0;')
 	} else if g.cur_fn_ret_is_optional {
@@ -195,6 +202,88 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.cur_param_type_values = old_param_type_values.clone()
 	g.cur_param_types = old_param_types.clone()
 	g.tc.pop_scope()
+}
+
+fn (mut g FlatGen) collect_function_defer_ids(node flat.Node) []flat.NodeId {
+	mut ids := []flat.NodeId{}
+	for i in 0 .. node.children_count {
+		g.collect_function_defer_ids_from(g.a.child(&node, i), mut ids)
+	}
+	return ids
+}
+
+fn (mut g FlatGen) collect_function_defer_ids_from(id flat.NodeId, mut ids []flat.NodeId) {
+	if !g.valid_node_id(id) {
+		return
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .fn_decl || node.kind == .c_fn_decl || node.kind == .fn_literal {
+		return
+	}
+	if node.kind == .defer_stmt && node.value == 'function' {
+		ids << id
+		return
+	}
+	for i in 0 .. node.children_count {
+		g.collect_function_defer_ids_from(g.a.child(&node, i), mut ids)
+	}
+}
+
+fn (mut g FlatGen) prepare_function_defers(fn_defer_ids []flat.NodeId) {
+	for idx, defer_id in fn_defer_ids {
+		g.fn_defer_flags[int(defer_id)] = '${c_name(g.cur_fn_name)}_defer_${idx}'
+		defer_node := g.a.nodes[int(defer_id)]
+		if defer_node.children_count > 0 {
+			g.collect_function_defer_captures(g.a.child(&defer_node, 0))
+		}
+	}
+}
+
+fn (mut g FlatGen) collect_function_defer_captures(id flat.NodeId) {
+	if !g.valid_node_id(id) {
+		return
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .fn_decl || node.kind == .c_fn_decl || node.kind == .fn_literal {
+		return
+	}
+	if node.kind == .ident {
+		g.add_function_defer_capture(id, node.value)
+	}
+	for i in 0 .. node.children_count {
+		g.collect_function_defer_captures(g.a.child(&node, i))
+	}
+}
+
+fn (mut g FlatGen) add_function_defer_capture(id flat.NodeId, name string) {
+	if name.len == 0 || name == '_' || name in g.cur_param_names || name in g.modules
+		|| name in g.global_modules || name in g.defer_capture_types {
+		return
+	}
+	typ := g.usable_expr_type(id)
+	if typ is types.Void || typ is types.Unknown || typ is types.FnType {
+		return
+	}
+	ct := g.tc.c_type(typ)
+	if ct.len == 0 || ct == 'void' || ct.starts_with('fn_ptr:') {
+		return
+	}
+	g.defer_capture_names << name
+	g.defer_capture_types[name] = typ
+}
+
+fn (mut g FlatGen) gen_function_defer_prelude() {
+	for _, flag_name in g.fn_defer_flags {
+		g.writeln('bool ${flag_name} = false;')
+	}
+	for name in g.defer_capture_names {
+		typ := g.defer_capture_types[name] or { continue }
+		ct := g.tc.c_type(typ)
+		g.write('${ct} ${c_name(name)} = ')
+		g.gen_default_value_for_type(typ)
+		g.writeln(';')
+		g.tc.cur_scope.insert(name, typ)
+	}
 }
 
 fn (mut g FlatGen) set_cur_fn_ret(ret_type types.Type) {
@@ -214,6 +303,11 @@ fn (mut g FlatGen) gen_defers() {
 	g.gen_defers_from(0)
 }
 
+fn (mut g FlatGen) gen_all_defers() {
+	g.gen_defers()
+	g.gen_fn_defers()
+}
+
 fn (mut g FlatGen) gen_defers_from(start int) {
 	if g.defers.len == 0 {
 		return
@@ -223,6 +317,27 @@ fn (mut g FlatGen) gen_defers_from(start int) {
 		i--
 		defer_body := g.a.nodes[int(g.defers[i])]
 		g.writeln('{')
+		g.indent++
+		for j in 0 .. defer_body.children_count {
+			g.gen_node(g.a.child(&defer_body, j))
+		}
+		g.indent--
+		g.writeln('}')
+	}
+}
+
+fn (mut g FlatGen) gen_fn_defers() {
+	if g.fn_defers.len == 0 {
+		return
+	}
+	mut i := g.fn_defers.len
+	for i > 0 {
+		i--
+		defer_id := g.fn_defers[i]
+		defer_node := g.a.nodes[int(defer_id)]
+		defer_body := g.a.nodes[int(g.a.child(&defer_node, 0))]
+		flag_name := g.fn_defer_flags[int(defer_id)] or { 'false' }
+		g.writeln('if (${flag_name}) {')
 		g.indent++
 		for j in 0 .. defer_body.children_count {
 			g.gen_node(g.a.child(&defer_body, j))

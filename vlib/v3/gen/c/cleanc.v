@@ -16,9 +16,14 @@ mut:
 	global_types            map[string]types.Type
 	enum_vals               map[string]int
 	defers                  []flat.NodeId
+	fn_defers               []flat.NodeId
+	fn_defer_flags          map[int]string
+	defer_capture_names     []string
+	defer_capture_types     map[string]types.Type
 	interfaces              map[string][]string
 	const_vals              map[string]flat.NodeId
 	const_modules           map[string]string
+	const_init_order        []string
 	global_modules          map[string]string
 	global_inits            map[string]flat.NodeId // qualified global name -> initializer value node
 	global_init_order       []string               // qualified global names, in declaration order
@@ -68,6 +73,7 @@ pub fn FlatGen.new() FlatGen {
 		interfaces:              map[string][]string{}
 		const_vals:              map[string]flat.NodeId{}
 		const_modules:           map[string]string{}
+		const_init_order:        []string{}
 		global_modules:          map[string]string{}
 		global_inits:            map[string]flat.NodeId{}
 		global_init_order:       []string{}
@@ -90,6 +96,10 @@ pub fn FlatGen.new() FlatGen {
 		array_method_cache:      map[string]string{}
 		str_lits:                []string{}
 		defers:                  []flat.NodeId{}
+		fn_defers:               []flat.NodeId{}
+		fn_defer_flags:          map[int]string{}
+		defer_capture_names:     []string{}
+		defer_capture_types:     map[string]types.Type{}
 		runtime_inits:           []string{}
 		line_start:              true
 	}
@@ -110,6 +120,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.used_fn_names = []string{}
 	g.str_lits = []string{}
 	g.defers = []flat.NodeId{}
+	g.fn_defers = []flat.NodeId{}
+	g.fn_defer_flags = map[int]string{}
+	g.defer_capture_names = []string{}
+	g.defer_capture_types = map[string]types.Type{}
 	g.runtime_inits = []string{}
 	g.str_lit_ids = map[string]int{}
 	g.global_types = map[string]types.Type{}
@@ -117,6 +131,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.interfaces = map[string][]string{}
 	g.const_vals = map[string]flat.NodeId{}
 	g.const_modules = map[string]string{}
+	g.const_init_order = []string{}
 	g.global_modules = map[string]string{}
 	g.global_inits = map[string]flat.NodeId{}
 	g.global_init_order = []string{}
@@ -342,6 +357,40 @@ fn (mut g FlatGen) collect_gen_info() {
 		}
 	}
 	g.modules['strings'] = 'strings'
+	g.collect_const_init_order_from_files()
+}
+
+fn (mut g FlatGen) collect_const_init_order_from_files() {
+	mut seen := map[string]bool{}
+	g.const_init_order = []string{}
+	for node in g.a.nodes {
+		if node_kind_id(node) != 77 || node.children_count == 0 {
+			continue
+		}
+		mut cur_module := ''
+		for i in 0 .. node.children_count {
+			child := g.a.child_node(&node, i)
+			kind_id := node_kind_id(child)
+			if kind_id == 73 {
+				cur_module = child.value
+				continue
+			}
+			if kind_id != 65 {
+				continue
+			}
+			for j in 0 .. child.children_count {
+				field := g.a.child_node(child, j)
+				if node_kind_id(field) != 66 || field.children_count == 0 {
+					continue
+				}
+				qname := g.const_storage_name(cur_module, field.value)
+				if qname in g.const_vals && !seen[qname] {
+					seen[qname] = true
+					g.const_init_order << qname
+				}
+			}
+		}
+	}
 }
 
 fn (g &FlatGen) ordered_module_init_fns() []string {
@@ -1950,14 +1999,35 @@ fn (mut g FlatGen) precompute_consts() string {
 	g.line_start = true
 	mut emitted := map[string]bool{}
 	mut deferred := []string{}
-	for name, val_id in g.const_vals {
+	mut names := g.const_init_order.clone()
+	for name, _ in g.const_vals {
+		if g.is_const_alias_name(name) || name in names {
+			continue
+		}
+		names << name
+	}
+	for name in names {
+		val_id := g.const_vals[name] or { continue }
 		if g.is_const_alias_name(name) {
 			continue
 		}
 		if int(val_id) < 0 || int(val_id) >= g.a.nodes.len {
 			continue
 		}
-		if g.const_refs_other_const(val_id) {
+		old_module := g.tc.cur_module
+		if name in g.const_modules {
+			g.tc.cur_module = g.const_modules[name]
+		}
+		deps := g.const_get_deps(val_id)
+		g.tc.cur_module = old_module
+		mut all_met := true
+		for dep in deps {
+			if dep !in emitted {
+				all_met = false
+				break
+			}
+		}
+		if !all_met {
 			deferred << name
 		} else {
 			g.emit_const(name, val_id)

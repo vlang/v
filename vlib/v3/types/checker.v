@@ -2144,11 +2144,11 @@ fn (mut tc TypeChecker) resolve_call_info(_id flat.NodeId, node flat.Node) ?Call
 			}
 		}
 		if typ := tc.cur_scope.lookup(fn_node.value) {
-			if typ is FnType {
+			if fn_typ := fn_type_from_type(typ) {
 				return CallInfo{
 					name:         ''
-					params:       typ.params
-					return_type:  typ.return_type
+					params:       fn_typ.params
+					return_type:  fn_typ.return_type
 					params_known: true
 				}
 			}

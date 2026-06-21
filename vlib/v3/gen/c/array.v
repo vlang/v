@@ -32,6 +32,10 @@ fn array_fixed_type(t types.Type) ?types.ArrayFixed {
 fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type) {
 	c_elem := g.tc.c_type(elem_type)
 	count := node.children_count
+	if count == 0 {
+		g.write('array_new(sizeof(${c_elem}), 0, 0)')
+		return
+	}
 	g.write('new_array_from_c_array(${count}, ${count}, sizeof(${c_elem}), (${c_elem}[]){')
 	for i in 0 .. count {
 		if i > 0 {
