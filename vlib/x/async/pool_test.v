@@ -68,6 +68,210 @@ fn test_pool_queue_full_returns_backpressure_error() {
 	assert false
 }
 
+fn test_pool_submit_with_context_waits_until_capacity_is_available() {
+	mut pool := xasync.new_pool(workers: 1, queue_size: 1)!
+	started := chan bool{cap: 2}
+	release := chan bool{cap: 2}
+	attempting := chan bool{cap: 1}
+	accepted := chan bool{cap: 1}
+	ran := chan bool{cap: 1}
+	blocking_job := fn [started, release] (mut ctx context.Context) ! {
+		_ = ctx
+		started <- true
+		_ := <-release
+	}
+
+	pool.try_submit(blocking_job)!
+	wait_for_bool_signal(started, 'first blocking pool job did not start')
+	pool.try_submit(blocking_job)!
+
+	submit_thread := spawn fn [mut pool, attempting, accepted, ran] () {
+		attempting <- true
+		pool.submit_with_context(context.background(), fn [ran] (mut ctx context.Context) ! {
+			_ = ctx
+			ran <- true
+		}) or {
+			accepted <- false
+			return
+		}
+		accepted <- true
+	}()
+	wait_for_bool_signal(attempting, 'bounded submit thread did not start')
+	select {
+		_ := <-accepted {
+			assert false, 'bounded submit returned while pool was full'
+		}
+		50 * time.millisecond {}
+	}
+
+	release <- true
+	wait_for_bool_signal(accepted, 'bounded submit did not accept after capacity opened')
+	release <- true
+	wait_for_bool_signal(ran, 'accepted bounded submit job did not run')
+	pool.close()!
+	submit_thread.wait()
+}
+
+fn test_pool_submit_with_timeout_returns_timeout_without_leaking_acceptance() {
+	mut pool := xasync.new_pool(workers: 1, queue_size: 1)!
+	started := chan bool{cap: 2}
+	release := chan bool{cap: 2}
+	finished := chan bool{cap: 2}
+	blocking_job := fn [started, release, finished] (mut ctx context.Context) ! {
+		_ = ctx
+		started <- true
+		_ := <-release
+		finished <- true
+	}
+
+	pool.try_submit(blocking_job)!
+	wait_for_bool_signal(started, 'first blocking pool job did not start')
+	pool.try_submit(blocking_job)!
+
+	pool.submit_with_timeout(20 * time.millisecond, fn (mut ctx context.Context) ! {
+		_ = ctx
+	}) or {
+		assert err.msg() == 'async: timeout'
+		release <- true
+		wait_for_bool_signal(finished, 'first blocking pool job did not finish')
+		pool.submit_with_timeout(1 * time.second, fn (mut ctx context.Context) ! {
+			_ = ctx
+		})!
+		release <- true
+		pool.close()!
+		return
+	}
+	assert false
+}
+
+fn test_pool_submit_with_context_parent_cancel_does_not_accept_job() {
+	mut pool := xasync.new_pool(workers: 1, queue_size: 1)!
+	started := chan bool{cap: 1}
+	release := chan bool{cap: 2}
+	attempting := chan bool{cap: 1}
+	would_run := chan bool{cap: 1}
+	result := chan string{cap: 1}
+	parent_ctx, cancel := xasync.with_cancel()
+	blocking_job := fn [started, release] (mut ctx context.Context) ! {
+		_ = ctx
+		started <- true
+		_ := <-release
+	}
+
+	pool.try_submit(blocking_job)!
+	wait_for_bool_signal(started, 'blocking pool job did not start')
+	pool.try_submit(blocking_job)!
+
+	submit_thread := spawn fn [mut pool, parent_ctx, attempting, would_run, result] () {
+		attempting <- true
+		pool.submit_with_context(parent_ctx, fn [would_run] (mut ctx context.Context) ! {
+			_ = ctx
+			would_run <- true
+		}) or {
+			result <- err.msg()
+			return
+		}
+		result <- 'accepted'
+	}()
+	wait_for_bool_signal(attempting, 'bounded submit thread did not start')
+	select {
+		msg := <-result {
+			assert false, 'bounded submit returned before parent cancellation: ${msg}'
+		}
+		50 * time.millisecond {}
+	}
+
+	cancel()
+	select {
+		msg := <-result {
+			assert msg == 'context canceled'
+		}
+		1 * time.second {
+			assert false, 'bounded submit did not return after parent cancellation'
+		}
+	}
+	release <- true
+	release <- true
+	pool.close()!
+	assert_no_bool_signal(would_run, 'job was accepted after parent cancellation')
+	submit_thread.wait()
+}
+
+fn test_pool_close_wakes_waiting_submitter_without_accepting_job() {
+	mut pool := xasync.new_pool(workers: 1, queue_size: 1)!
+	started := chan bool{cap: 1}
+	release := chan bool{cap: 2}
+	attempting := chan bool{cap: 1}
+	would_run := chan bool{cap: 1}
+	result := chan string{cap: 1}
+	closed := chan bool{cap: 1}
+	blocking_job := fn [started, release] (mut ctx context.Context) ! {
+		_ = ctx
+		started <- true
+		_ := <-release
+	}
+
+	pool.try_submit(blocking_job)!
+	wait_for_bool_signal(started, 'blocking pool job did not start')
+	pool.try_submit(blocking_job)!
+
+	submit_thread := spawn fn [mut pool, attempting, would_run, result] () {
+		attempting <- true
+		pool.submit_with_context(context.background(), fn [would_run] (mut ctx context.Context) ! {
+			_ = ctx
+			would_run <- true
+		}) or {
+			result <- err.msg()
+			return
+		}
+		result <- 'accepted'
+	}()
+	wait_for_bool_signal(attempting, 'bounded submit thread did not start')
+	select {
+		msg := <-result {
+			assert false, 'bounded submit returned before close: ${msg}'
+		}
+		50 * time.millisecond {}
+	}
+
+	close_thread := spawn fn [mut pool, closed] () {
+		pool.close() or {
+			closed <- false
+			return
+		}
+		closed <- true
+	}()
+	select {
+		msg := <-result {
+			assert msg == 'async: pool is closed'
+		}
+		1 * time.second {
+			assert false, 'bounded submit did not return after pool close started'
+		}
+	}
+	release <- true
+	release <- true
+	wait_for_bool_signal(closed, 'pool close did not finish after accepted jobs were released')
+	assert_no_bool_signal(would_run, 'job was accepted after pool close started')
+	submit_thread.wait()
+	close_thread.wait()
+}
+
+fn test_pool_bounded_submit_rejects_nil_job() {
+	mut pool := xasync.new_pool(workers: 1, queue_size: 1)!
+	nil_job := unsafe { xasync.JobFn(nil) }
+	pool.submit_with_context(context.background(), nil_job) or {
+		assert err.msg() == 'async: job function is nil'
+		pool.submit_with_timeout(20 * time.millisecond, nil_job) or {
+			assert err.msg() == 'async: job function is nil'
+			pool.close()!
+			return
+		}
+		assert false
+	}
+	assert false
+}
+
 fn test_pool_submit_after_close_is_refused() {
 	mut pool := xasync.new_pool(workers: 1, queue_size: 1)!
 	pool.close()!
@@ -329,6 +533,142 @@ fn test_pool_short_stress_many_jobs() {
 	}
 }
 
+fn test_pool_bounded_submit_stress_waiting_submitters_are_released() {
+	workers := 2
+	queue_size := 2
+	initial_jobs := workers + queue_size
+	submitters := 8
+	mut pool := xasync.new_pool(workers: workers, queue_size: queue_size)!
+	started := chan bool{cap: initial_jobs}
+	release := chan bool{cap: initial_jobs}
+	attempting := chan bool{cap: submitters}
+	accepted := chan int{cap: submitters}
+	ran := chan int{cap: submitters}
+	blocking_job := fn [started, release] (mut ctx context.Context) ! {
+		_ = ctx
+		started <- true
+		_ := <-release
+	}
+
+	for _ in 0 .. initial_jobs {
+		pool.try_submit(blocking_job)!
+	}
+	for _ in 0 .. workers {
+		wait_for_bool_signal(started, 'initial pool worker did not start')
+	}
+
+	mut submit_threads := []thread{}
+	for i in 0 .. submitters {
+		submit_threads << spawn fn [mut pool, attempting, accepted, ran, i] () {
+			attempting <- true
+			pool.submit_with_context(context.background(), fn [ran, i] (mut ctx context.Context) ! {
+				_ = ctx
+				ran <- i
+			}) or {
+				failed_index := -1 - i
+				accepted <- failed_index
+				return
+			}
+			accepted <- i
+		}()
+	}
+	for _ in 0 .. submitters {
+		wait_for_bool_signal(attempting, 'bounded submitter did not start')
+	}
+
+	for _ in 0 .. initial_jobs {
+		release <- true
+	}
+
+	mut seen_accepted := []bool{len: submitters}
+	for _ in 0 .. submitters {
+		i := wait_for_int_signal(accepted, 'bounded submitter was not accepted')
+		assert i >= 0
+		assert i < submitters
+		assert !seen_accepted[i]
+		seen_accepted[i] = true
+	}
+	mut seen_ran := []bool{len: submitters}
+	for _ in 0 .. submitters {
+		i := wait_for_int_signal(ran, 'accepted bounded submitter job did not run')
+		assert i >= 0
+		assert i < submitters
+		assert !seen_ran[i]
+		seen_ran[i] = true
+	}
+
+	pool.close()!
+	for t in submit_threads {
+		t.wait()
+	}
+}
+
+fn test_pool_bounded_submit_stress_waiting_submitters_rejected_on_close() {
+	workers := 2
+	queue_size := 2
+	initial_jobs := workers + queue_size
+	submitters := 8
+	mut pool := xasync.new_pool(workers: workers, queue_size: queue_size)!
+	started := chan bool{cap: initial_jobs}
+	release := chan bool{cap: initial_jobs}
+	attempting := chan bool{cap: submitters}
+	result := chan string{cap: submitters}
+	ran := chan bool{cap: submitters}
+	closed := chan bool{cap: 1}
+	blocking_job := fn [started, release] (mut ctx context.Context) ! {
+		_ = ctx
+		started <- true
+		_ := <-release
+	}
+
+	for _ in 0 .. initial_jobs {
+		pool.try_submit(blocking_job)!
+	}
+	for _ in 0 .. workers {
+		wait_for_bool_signal(started, 'initial pool worker did not start')
+	}
+
+	mut submit_threads := []thread{}
+	for i in 0 .. submitters {
+		submit_threads << spawn fn [mut pool, attempting, result, ran, i] () {
+			attempting <- true
+			pool.submit_with_context(context.background(), fn [ran] (mut ctx context.Context) ! {
+				_ = ctx
+				ran <- true
+			}) or {
+				result <- err.msg()
+				return
+			}
+			result <- 'accepted ${i}'
+		}()
+	}
+	for _ in 0 .. submitters {
+		wait_for_bool_signal(attempting, 'bounded submitter did not start')
+	}
+
+	close_thread := spawn fn [mut pool, closed] () {
+		pool.close() or {
+			closed <- false
+			return
+		}
+		closed <- true
+	}()
+	for _ in 0 .. submitters {
+		msg := wait_for_string_signal(result, 'bounded submitter did not return after close')
+		assert msg == 'async: pool is closed'
+	}
+	assert_no_bool_signal(ran, 'bounded submitter job ran after close started')
+
+	for _ in 0 .. initial_jobs {
+		release <- true
+	}
+	wait_for_bool_signal(closed, 'pool close did not finish after releasing accepted jobs')
+	for t in submit_threads {
+		t.wait()
+	}
+	close_thread.wait()
+}
+
 fn wait_for_bool_signal(signal chan bool, message string) {
 	select {
 		ok := <-signal {
@@ -338,6 +678,30 @@ fn wait_for_bool_signal(signal chan bool, message string) {
 			assert false, message
 		}
 	}
+}
+
+fn wait_for_int_signal(signal chan int, message string) int {
+	select {
+		value := <-signal {
+			return value
+		}
+		1 * time.second {
+			assert false, message
+		}
+	}
+	return 0
+}
+
+fn wait_for_string_signal(signal chan string, message string) string {
+	select {
+		value := <-signal {
+			return value
+		}
+		1 * time.second {
+			assert false, message
+		}
+	}
+	return ''
 }
 
 fn assert_no_bool_signal(signal chan bool, message string) {
