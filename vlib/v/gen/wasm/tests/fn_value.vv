@@ -1,0 +1,42 @@
+fn add1(x int) int {
+	return x + 1
+}
+
+fn double(x int) int {
+	return x * 2
+}
+
+struct Box {
+	op fn (int) int @[required]
+}
+
+fn apply(f fn (int) int, x int) int {
+	return f(x)
+}
+
+fn main() {
+	// a top-level fn taken as a local fn value, then called through the value
+	f := add1
+	println(f(10)) // 11
+
+	// a fn value stored in a struct field, called through the field
+	b := Box{
+		op: double
+	}
+	println(b.op(20)) // 40
+
+	// a top-level fn passed as a fn-typed argument and called indirectly
+	println(apply(add1, 41)) // 42
+
+	// a non-capturing anonymous function as a value
+	h := fn (x int) int {
+		return x * x
+	}
+	println(h(7)) // 49
+
+	// reassign a fn value and call again (dynamic dispatch through the table)
+	mut g := add1
+	println(g(0)) // 1
+	g = double
+	println(g(50)) // 100
+}

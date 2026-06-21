@@ -46,6 +46,22 @@ mut:
 	needs_address          bool
 	defer_vars             []Var
 	is_direct_array_access bool // inside a `[direct_array_access]` function
+	// function values: fn name -> slot in the `__indirect_function_table`.
+	// Single owner of the indirect-call table population (reused by later phases).
+	fn_value_indices  map[string]int
+	pending_anon_fns  []ast.FnDecl    // non-capturing anon fns to compile after toplevel stmts
+	compiled_anon_fns map[string]bool // dedup for pending_anon_fns
+}
+
+// fn_table_index returns the slot of `name` in the indirect function table,
+// registering it (and growing the table) on first use.
+pub fn (mut g Gen) fn_table_index(name string) int {
+	if idx := g.fn_value_indices[name] {
+		return idx
+	}
+	idx := g.fn_value_indices.len
+	g.fn_value_indices[name] = idx
+	return idx
 }
 
 struct Global {
@@ -745,9 +761,90 @@ fn (mut g Gen) match_branch_exprs(node ast.MatchExpr, expected ast.Type, unpacke
 	g.func.c_end(blk)
 }
 
+// fn_value_functype lowers a V function type into the wasm function type used
+// by `call_indirect`. It mirrors the parameter/return lowering done in `fn_decl`
+// (a non-pure return becomes a leading rvar pointer parameter), so the computed
+// type index matches the type the target function was committed with.
+fn (mut g Gen) fn_value_functype(fn_typ ast.Type) wasm.FuncType {
+	ts := g.table.sym(fn_typ)
+	if ts.info !is ast.FnType {
+		g.w_error('fn_value_functype: `${ts.name}` is not a function type')
+	}
+	func := (ts.info as ast.FnType).func
+
+	mut paraml := []wasm.ValType{}
+	mut retl := []wasm.ValType{}
+
+	rt := func.return_type
+	if g.table.sym(rt).info is ast.MultiReturn {
+		g.w_error('wasm backend: calling a function value with multiple return values is not yet supported')
+	}
+	if rt.has_flag(.option) || rt.has_flag(.result) {
+		g.w_error('wasm backend: option/result function values are not yet supported')
+	}
+	if rt.idx() != ast.void_type_idx {
+		wtyp := g.get_wasm_type(rt)
+		if g.is_param_type(rt) {
+			paraml << wtyp // non-pure return -> leading rvar pointer (i32)
+		} else {
+			retl << wtyp
+		}
+	}
+	for p in func.params {
+		paraml << g.get_wasm_type_int_literal(p.typ)
+	}
+
+	return wasm.FuncType{paraml, retl, none}
+}
+
+// push_fn_value evaluates the callee of a function-value call and leaves its
+// i32 index into the indirect function table on the stack.
+fn (mut g Gen) push_fn_value(node ast.CallExpr, fn_typ ast.Type) {
+	if node.is_method {
+		// a fn-typed struct field, e.g. `b.op` in `b.op(x)`: load the field
+		g.expr(ast.SelectorExpr{
+			expr:       node.left
+			field_name: node.name
+			expr_type:  node.left_type
+			typ:        fn_typ
+		}, fn_typ)
+	} else if node.name == '' {
+		// the callee is the expression itself, e.g. `(expr)(x)`
+		g.expr(node.left, fn_typ)
+	} else {
+		// a named local/global variable or const of function type
+		obj := node.scope.find(node.name) or {
+			g.w_error('wasm: cannot resolve function value `${node.name}`')
+		}
+		v := g.get_var_from_ident(ast.Ident{
+			name:  node.name
+			scope: node.scope
+			obj:   obj
+		})
+		g.get(v)
+	}
+}
+
 pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []Var) {
 	mut wasm_ns := ?string(none)
 	mut name := node.name
+
+	// Detect a call to a function value: either a fn-typed local/param/const
+	// (is_fn_var/is_fn_a_const), or a fn-typed struct field, which the checker
+	// represents as a method call (`b.op()`).
+	mut is_fn_value := false
+	mut fn_value_typ := ast.void_type
+	if node.is_fn_var || node.is_fn_a_const {
+		is_fn_value = true
+		fn_value_typ = node.fn_var_type
+	} else if node.is_method && node.left_type != 0 {
+		if field := g.table.find_field(g.table.sym(node.left_type), node.name) {
+			if g.table.sym(field.typ).info is ast.FnType {
+				is_fn_value = true
+				fn_value_typ = field.typ
+			}
+		}
+	}
 
 	is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
 
@@ -792,7 +889,7 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 
 	// {method self}
 	//
-	if node.is_method {
+	if node.is_method && !is_fn_value {
 		expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() { ast.Expr(ast.PrefixExpr{
 				op:    .amp
 				right: node.left
@@ -837,7 +934,14 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 		}
 	}
 
-	if namespace := wasm_ns {
+	if is_fn_value {
+		// args are already on the stack; push the callee's table index on top,
+		// then dispatch through the indirect function table
+		g.is_leaf_function = false
+		typeidx := g.mod.new_functype(g.fn_value_functype(fn_value_typ))
+		g.push_fn_value(node, fn_value_typ)
+		g.func.call_indirect(typeidx, 0)
+	} else if namespace := wasm_ns {
 		// import calls won't touch `__vsp` !
 
 		g.func.call_import(namespace, name)
@@ -1113,9 +1217,15 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.func.i32_const(i32(rns))
 		}
 		ast.Ident {
-			v := g.get_var_from_ident(node)
-			g.get(v)
-			g.cast(v.typ, expected)
+			if node.kind == .function {
+				// a function used as a value: push its index into the
+				// indirect function table (an i32)
+				g.func.i32_const(i32(g.fn_table_index(node.name)))
+			} else {
+				v := g.get_var_from_ident(node)
+				g.get(v)
+				g.cast(v.typ, expected)
+			}
 		}
 		ast.IntegerLiteral, ast.FloatLiteral {
 			g.literal(node.val, expected)
@@ -1150,6 +1260,22 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		}
 		ast.CallExpr {
 			g.call_expr(node, expected, [])
+		}
+		ast.AnonFn {
+			if node.inherited_vars.len > 0 {
+				// closures lower to runtime-generated executable memory, which
+				// WebAssembly does not support efficiently yet; reject for now.
+				g.v_error('closures (capturing anonymous functions) are not yet supported on the `wasm` backend',
+					node.decl.pos)
+			}
+			// compile the anon fn after the current toplevel stmts (when the
+			// per-function state is clean again), then push its table index
+			idx := g.fn_table_index(node.decl.name)
+			if node.decl.name !in g.compiled_anon_fns {
+				g.compiled_anon_fns[node.decl.name] = true
+				g.pending_anon_fns << node.decl
+			}
+			g.func.i32_const(i32(idx))
 		}
 		else {
 			g.w_error('wasm.expr(): unhandled node: ' + node.type_name())

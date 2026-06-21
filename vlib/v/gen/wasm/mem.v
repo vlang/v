@@ -314,6 +314,10 @@ pub fn (g &Gen) is_pure_type(typ ast.Type) bool {
 		ast.Enum {
 			return g.is_pure_type(ts.info.typ)
 		}
+		ast.FnType {
+			// a function value is an i32 index into the indirect function table
+			return true
+		}
 		else {}
 	}
 
@@ -871,6 +875,22 @@ pub fn (mut g Gen) make_vinit() {
 
 pub fn (mut g Gen) housekeeping() {
 	g.make_vinit()
+
+	// Compile any pending non-capturing anonymous functions (their bodies may
+	// reference further anon fns, so loop until the queue drains), then declare
+	// and populate the indirect function table used by `call_indirect`.
+	for g.pending_anon_fns.len > 0 {
+		g.fn_decl(g.pending_anon_fns.pop())
+	}
+	if g.fn_value_indices.len > 0 {
+		mut names := []string{len: g.fn_value_indices.len}
+		for name, idx in g.fn_value_indices {
+			names[idx] = name
+		}
+		t :=
+			g.mod.assign_table('__indirect_function_table', false, .funcref_t, u32(names.len), none)
+		g.mod.new_active_element(t, 0, names)
+	}
 
 	heap_base := calc_align(g.data_base + g.pool.buf.len, 16) // 16?
 	page_boundary := calc_align(g.data_base + g.pool.buf.len, 64 * 1024)
