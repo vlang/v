@@ -216,6 +216,45 @@ fn test_empty_local_dir_does_not_shadow_vlib_module() {
 	assert res.output.trim_space() == 'true'
 }
 
+fn test_imports_with_same_resolved_path_are_parsed_once() {
+	os.chdir(test_path)!
+	workspace := os.join_path(test_path, 'run_duplicate_resolved_import_path')
+	project_dir := os.join_path(workspace, 'dupmod')
+	defer {
+		os.chdir(test_path) or {}
+		os.rmdir_all(workspace) or {}
+	}
+	os.mkdir_all(os.join_path(project_dir, 'providers'))!
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module {\n\tname: 'dupmod'\n}\n")!
+	os.write_file(os.join_path(project_dir, 'dupmod.v'), 'module dupmod
+
+import providers
+
+pub fn make_client() providers.Client {
+	return providers.Client{}
+}
+')!
+	os.write_file(os.join_path(project_dir, 'main_test.v'), 'module main
+
+import dupmod
+import dupmod.providers
+
+fn test_client() {
+	_ := dupmod.make_client()
+	_ := providers.Client{}
+}
+')!
+	os.write_file(os.join_path(project_dir, 'providers', 'client.v'), 'module providers
+
+pub struct Client {}
+')!
+	os.chdir(project_dir)!
+
+	res := os.execute('${os.quoted_path(vexe)} -check main_test.v')
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('cannot register struct')
+}
+
 fn test_removed_src_layout_error_mentions_vmod_subdirs() {
 	os.chdir(test_path)!
 	project_dir := os.join_path(test_path, 'run_removed_src_project')

@@ -684,6 +684,49 @@ fn (mut c Checker) get_match_case_literal_value(mut expr ast.Expr) ?i64 {
 	return none
 }
 
+fn (mut c Checker) match_sumtype_has_variant(parent ast.Type, variant ast.Type) bool {
+	if c.table.sumtype_has_variant_recursive(parent, variant, true) {
+		return true
+	}
+	if c.table.sym(parent).kind == .sum_type {
+		return false
+	}
+	for candidate in c.concrete_sumtype_variants(parent) {
+		if c.match_sumtype_variant_is_handled(candidate, variant) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) match_sumtype_missing_variants(parent ast.Type, handled []ast.Type) []ast.Type {
+	if c.table.sym(parent).kind == .sum_type {
+		return c.table.sumtype_missing_variants(parent, handled)
+	}
+	mut missing := []ast.Type{}
+	for variant in c.concrete_sumtype_variants(parent) {
+		mut is_handled := false
+		for handled_variant in handled {
+			if c.match_sumtype_variant_is_handled(variant, handled_variant) {
+				is_handled = true
+				break
+			}
+		}
+		if !is_handled {
+			missing << variant
+		}
+	}
+	return missing
+}
+
+fn (mut c Checker) match_sumtype_variant_is_handled(variant ast.Type, handled ast.Type) bool {
+	unaliased_variant := c.table.fully_unaliased_type(variant)
+	unaliased_handled := c.table.fully_unaliased_type(handled)
+	return unaliased_variant.idx() == unaliased_handled.idx()
+		&& unaliased_variant.has_flag(.option) == unaliased_handled.has_flag(.option)
+		&& unaliased_variant.nr_muls() == unaliased_handled.nr_muls()
+}
+
 fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSymbol, cond_final_sym ast.TypeSymbol) {
 	c.expected_type = node.expected_type
 	if node.cond_type.idx() == 0 {
@@ -694,6 +737,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 	is_alias_to_matchable_type := cond_type_sym.kind == .alias
 		&& cond_final_sym.kind in [.interface, .sum_type]
 	cond_match_sym := if is_alias_to_matchable_type { cond_final_sym } else { cond_type_sym }
+	sumtype_match_variants := c.concrete_sumtype_variants(cond_match_type)
+	is_cond_match_sumtype := sumtype_match_variants.len > 0
 	mut enum_ref_checked := false
 	mut is_comptime_value_match := false
 	// branch_exprs is a histogram of how many times
@@ -908,12 +953,12 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 							}
 						}
 					}
-				} else if cond_match_sym.info is ast.SumType {
-					if !c.table.sumtype_has_variant_recursive(cond_match_type, expr_type, true) {
+				} else if is_cond_match_sumtype {
+					if !c.match_sumtype_has_variant(cond_match_type, expr_type) {
 						expr_str := c.table.type_to_str(expr_type)
 						expect_str := c.table.type_to_str(node.cond_type)
 						sumtype_variant_names :=
-							c.table.sumtype_matchable_variants(cond_match_type).map(c.table.type_to_str_using_aliases(it, {}))
+							sumtype_match_variants.map(c.table.type_to_str_using_aliases(it, {}))
 						suggestion := util.new_suggestion(expr_str, sumtype_variant_names)
 						c.error(suggestion.say('`${expect_str}` has no variant `${expr_str}`'),
 							expr.pos())
@@ -941,7 +986,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 		}
 		// when match is type matching, then register smart cast for every branch
 		if expr_types.len > 0 {
-			if cond_match_sym.kind in [.sum_type, .interface] {
+			if is_cond_match_sumtype || cond_match_sym.kind == .interface {
 				mut expr_type := ast.no_type
 				if expr_types.len > 1 {
 					mut agg_name := strings.new_builder(20)
@@ -999,33 +1044,33 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			}
 		}
 	} else {
-		match cond_match_sym.info {
-			ast.SumType {
-				for v in c.table.sumtype_missing_variants(cond_match_type, branch_expr_types) {
-					is_exhaustive = false
-					unhandled << '`${c.table.type_to_str(v)}`'
-				}
+		if is_cond_match_sumtype {
+			for v in c.match_sumtype_missing_variants(cond_match_type, branch_expr_types) {
+				is_exhaustive = false
+				unhandled << '`${c.table.type_to_str(v)}`'
 			}
-			//
-			ast.Enum {
-				for v in cond_match_sym.info.vals {
-					mut is_handled := v in branch_exprs
-					if !is_handled && is_multi_allowed_enum_match {
-						if enum_val := c.table.find_enum_field_val(cond_match_sym.name, v) {
-							is_handled = enum_val in branch_enum_values
+		} else {
+			match cond_match_sym.info {
+				ast.Enum {
+					for v in cond_match_sym.info.vals {
+						mut is_handled := v in branch_exprs
+						if !is_handled && is_multi_allowed_enum_match {
+							if enum_val := c.table.find_enum_field_val(cond_match_sym.name, v) {
+								is_handled = enum_val in branch_enum_values
+							}
+						}
+						if !is_handled {
+							is_exhaustive = false
+							unhandled << '`.${v}`'
 						}
 					}
-					if !is_handled {
+					if cond_match_sym.info.is_flag {
 						is_exhaustive = false
-						unhandled << '`.${v}`'
 					}
 				}
-				if cond_match_sym.info.is_flag {
+				else {
 					is_exhaustive = false
 				}
-			}
-			else {
-				is_exhaustive = false
 			}
 		}
 	}

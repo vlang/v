@@ -284,6 +284,7 @@ pub fn (mut b Builder) parse_imports() {
 		util.timing_measure(@METHOD)
 	}
 	mut done_imports := []string{}
+	mut done_import_paths := map[string]bool{}
 	if b.pref.is_vsh {
 		done_imports << 'os'
 	}
@@ -331,6 +332,11 @@ pub fn (mut b Builder) parse_imports() {
 					ast_file.path, imp.pos)
 				break
 			}
+			import_path_key := comparable_real_path(import_path)
+			if import_path_key in done_import_paths {
+				done_imports << mod
+				continue
+			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
 				// v.parsers[i].error_with_token_index('cannot import module "${mod}" (no .v files in "${import_path}")', v.parsers[i].import_ast.get_import_tok_idx(mod))
@@ -358,6 +364,7 @@ pub fn (mut b Builder) parse_imports() {
 				return
 			}
 			done_imports << mod
+			done_import_paths[import_path_key] = true
 		}
 	}
 	b.resolve_deps()
