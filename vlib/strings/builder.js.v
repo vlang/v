@@ -26,6 +26,56 @@ pub fn (mut b Builder) write_u8(data u8) {
 	b << data
 }
 
+// write_decimal appends a decimal representation of the number `n` into the builder `b`.
+// The higher order digits come first, i.e. 6123 will be written with the digit `6` first,
+// then `1`, then `2` and `3` last.
+pub fn (mut b Builder) write_decimal(n i64) {
+	if n == 0 {
+		b.write_u8(0x30)
+		return
+	}
+	if n == min_i64 {
+		b.write_string(n.str())
+		return
+	}
+	mut buf := [25]u8{}
+	mut x := if n < 0 { -n } else { n }
+	mut i := 24
+	for x != 0 {
+		buf[i] = u8(x % 10) + 0x30
+		x = x / 10
+		i--
+	}
+	if n < 0 {
+		buf[i] = `-`
+		i--
+	}
+	for j := i + 1; j <= 24; j++ {
+		b.write_u8(buf[j])
+	}
+}
+
+// write_u_decimal appends a decimal representation of the unsigned number `n` into the
+// builder `b`. Unlike `write_decimal`, it covers the entire `u64` range (values above
+// `max_i64`). The higher order digits come first.
+pub fn (mut b Builder) write_u_decimal(n u64) {
+	if n == 0 {
+		b.write_u8(0x30)
+		return
+	}
+	mut buf := [20]u8{} // max_u64 == 18446744073709551615, i.e. 20 digits
+	mut x := n
+	mut i := 19
+	for x != 0 {
+		buf[i] = u8(x % 10) + 0x30
+		x = x / 10
+		i--
+	}
+	for j := i + 1; j <= 19; j++ {
+		b.write_u8(buf[j])
+	}
+}
+
 pub fn (mut b Builder) write(data []u8) ?int {
 	if data.len == 0 {
 		return 0
