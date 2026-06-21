@@ -1090,10 +1090,9 @@ fn (mut p Parser) mark_disabled_fn(name string) {
 	if name.len == 0 {
 		return
 	}
-	if p.cur_module.len > 0 && p.cur_module != 'main' && p.cur_module != 'builtin'
-		&& !name.contains('.') {
-		p.a.disabled_fns['${p.cur_module}.${name}'] = true
-		return
+	if p.cur_module.len > 0 && p.cur_module != 'main' && p.cur_module != 'builtin' {
+		qname := if name.starts_with('${p.cur_module}.') { name } else { '${p.cur_module}.${name}' }
+		p.a.disabled_fns[qname] = true
 	}
 	p.a.disabled_fns[name] = true
 }

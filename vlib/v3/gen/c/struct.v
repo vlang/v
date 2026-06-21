@@ -158,6 +158,12 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	g.write('(${name}*)memdup(&(${name}){')
 	mut set_fields := map[string]bool{}
 	mut has_field := false
+	if g.is_interface_type_name(node.value) {
+		if tid := g.interface_init_typ_id(node) {
+			g.write('._typ = ${tid}')
+			has_field = true
+		}
+	}
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
 		if has_field {
