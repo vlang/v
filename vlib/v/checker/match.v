@@ -765,6 +765,14 @@ fn (mut c Checker) match_sumtype_variant_is_handled_by(variant ast.Type, handled
 fn (mut c Checker) match_sumtype_variant_is_handled(variant ast.Type, handled ast.Type) bool {
 	unaliased_variant := c.table.fully_unaliased_type(variant)
 	unaliased_handled := c.table.fully_unaliased_type(handled)
+	variant_sym := c.table.sym(unaliased_variant)
+	handled_sym := c.table.sym(unaliased_handled)
+	if variant_sym.info is ast.FnType && handled_sym.info is ast.FnType {
+		return
+			c.table.fn_type_source_signature(variant_sym.info.func) == c.table.fn_type_source_signature(handled_sym.info.func)
+			&& unaliased_variant.has_flag(.option) == unaliased_handled.has_flag(.option)
+			&& unaliased_variant.nr_muls() == unaliased_handled.nr_muls()
+	}
 	return unaliased_variant.idx() == unaliased_handled.idx()
 		&& unaliased_variant.has_flag(.option) == unaliased_handled.has_flag(.option)
 		&& unaliased_variant.nr_muls() == unaliased_handled.nr_muls()
