@@ -376,7 +376,10 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 	ret_id := g.a.child(&node, 0)
 	ret_node := g.a.nodes[int(ret_id)]
 	if ret_node.kind == .assoc {
-		g.gen_return_assoc(ret_node)
+		tmp := g.tmp_name()
+		g.gen_assoc_return_tmp(ret_node, tmp)
+		g.gen_all_defers()
+		g.writeln('return ${tmp};')
 		return
 	}
 	ct := g.return_c_type()

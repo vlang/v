@@ -310,33 +310,19 @@ fn (mut g FlatGen) gen_compiler_vexe_env_setup() {
 	g.writeln("\t\tconst char* v3_base = strrchr(v3_arg0, '/');")
 	g.writeln('\t\tv3_base = v3_base == NULL ? v3_arg0 : v3_base + 1;')
 	g.writeln('\t\tif (v3_base[0] == 0) v3_base = "v";')
-	g.writeln('\t\tchar v3_vexe_target[4096];')
-	g.writeln('\t\tsnprintf(v3_vexe_target, sizeof(v3_vexe_target), "${root}/%s", v3_base);')
+	g.writeln('\t\tconst char* v3_checkout_root = "${root}";')
+	g.writeln('\t\tchar v3_checkout_vexe[4096];')
+	g.writeln('\t\tsnprintf(v3_checkout_vexe, sizeof(v3_checkout_vexe), "%s/%s", v3_checkout_root, v3_base);')
+	g.writeln('\t\tif (access(v3_checkout_vexe, F_OK) != 0) snprintf(v3_checkout_vexe, sizeof(v3_checkout_vexe), "%s/v", v3_checkout_root);')
 	g.writeln('\t\tchar v3_src_real[4096];')
-	g.writeln('\t\tchar v3_dst_real[4096];')
 	g.writeln('\t\tchar* v3_src_real_result = realpath(v3_arg0, v3_src_real);')
-	g.writeln('\t\tconst char* v3_src = v3_src_real_result != NULL ? v3_src_real : v3_arg0;')
-	g.writeln('\t\tint v3_same_exe = 0;')
-	g.writeln('\t\tif (v3_src_real_result != NULL && realpath(v3_vexe_target, v3_dst_real) != NULL && strcmp(v3_src_real, v3_dst_real) == 0) v3_same_exe = 1;')
-	g.writeln('\t\tif (!v3_same_exe) {')
-	g.writeln('\t\t\tFILE* v3_in = fopen(v3_src, "rb");')
-	g.writeln('\t\t\tif (v3_in != NULL) {')
-	g.writeln('\t\t\t\tFILE* v3_out = fopen(v3_vexe_target, "wb");')
-	g.writeln('\t\t\t\tif (v3_out != NULL) {')
-	g.writeln('\t\t\t\t\tchar v3_buf[65536];')
-	g.writeln('\t\t\t\t\tsize_t v3_nread = 0;')
-	g.writeln('\t\t\t\t\twhile ((v3_nread = fread(v3_buf, 1, sizeof(v3_buf), v3_in)) > 0) fwrite(v3_buf, 1, v3_nread, v3_out);')
-	g.writeln('\t\t\t\t\tfclose(v3_out);')
-	g.writeln('\t\t\t\t\tchmod(v3_vexe_target, 0755);')
-	g.writeln('\t\t\t\t}')
-	g.writeln('\t\t\t\tfclose(v3_in);')
-	g.writeln('\t\t\t}')
-	g.writeln('\t\t}')
-	g.writeln('\t\tif (access(v3_vexe_target, F_OK) == 0) {')
+	g.writeln('\t\tconst char* v3_vexe = v3_src_real_result != NULL ? v3_src_real : v3_arg0;')
+	g.writeln('\t\tif (access(v3_checkout_vexe, F_OK) == 0) v3_vexe = v3_checkout_vexe;')
+	g.writeln('\t\tif (v3_vexe[0] != 0) {')
 	g.writeln('#ifdef _WIN32')
-	g.writeln('\t\t\t_putenv_s("VEXE", v3_vexe_target);')
+	g.writeln('\t\t\t_putenv_s("VEXE", v3_vexe);')
 	g.writeln('#else')
-	g.writeln('\t\t\tsetenv("VEXE", v3_vexe_target, 1);')
+	g.writeln('\t\t\tsetenv("VEXE", v3_vexe, 1);')
 	g.writeln('#endif')
 	g.writeln('\t\t}')
 	g.writeln('\t}')
@@ -1110,24 +1096,12 @@ fn (g &FlatGen) enum_receiver_method_name(enum_type types.Enum, method string) ?
 	if direct in g.tc.fn_param_types {
 		return direct
 	}
-	short_name := name.all_after_last('.')
-	if short_name != name {
-		short_method := '${short_name}.${method}'
-		if short_method in g.tc.fn_param_types {
-			return short_method
-		}
-		for candidate, _ in g.tc.fn_param_types {
-			if candidate.ends_with('.${short_method}') {
-				return candidate
-			}
-		}
+	if name.contains('.') {
 		return none
 	}
-	if !name.contains('.') {
-		for candidate, _ in g.tc.fn_param_types {
-			if candidate.ends_with('.${direct}') {
-				return candidate
-			}
+	for candidate, _ in g.tc.fn_param_types {
+		if candidate.ends_with('.${direct}') {
+			return candidate
 		}
 	}
 	return none
