@@ -1,0 +1,60 @@
+import os
+import strings
+
+fn build_parallel_v3() string {
+	vexe := @VEXE
+	v3_src := os.join_path(@VEXEROOT, 'vlib', 'v3', 'v3.v')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_cgen_test')
+	build := os.execute('${vexe} -d parallel -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+	return v3_bin
+}
+
+fn write_parallel_module_init_project(name string) string {
+	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(os.join_path(project_dir, 'moda')) or { panic(err) }
+
+	mut main_src := strings.new_builder(64_000)
+	main_src.writeln('module main')
+	main_src.writeln('')
+	main_src.writeln('import moda')
+	main_src.writeln('')
+	for i in 0 .. 1050 {
+		main_src.writeln('fn unused_${i}() int {')
+		main_src.writeln('\treturn ${i}')
+		main_src.writeln('}')
+		main_src.writeln('')
+	}
+	main_src.writeln('fn main() {')
+	main_src.writeln('\tprintln(int_str(moda.value()))')
+	main_src.writeln('}')
+	os.write_file(os.join_path(project_dir, 'main.v'), main_src.str()) or { panic(err) }
+
+	os.write_file(os.join_path(project_dir, 'moda', 'moda.v'), 'module moda
+
+__global x int
+
+fn init() {
+	x = 7
+}
+
+pub fn value() int {
+	return x
+}
+') or {
+		panic(err)
+	}
+	return os.join_path(project_dir, 'main.v')
+}
+
+fn test_parallel_cgen_main_emits_module_init_call() {
+	v3_bin := build_parallel_v3()
+	main_path := write_parallel_module_init_project('parallel_module_init')
+	c_out := os.join_path(os.temp_dir(), 'v3_parallel_module_init.c')
+	compile := os.execute('VJOBS=2 ${v3_bin} ${main_path} -o ${c_out}')
+	assert compile.exit_code == 0, compile.output
+	assert compile.output.contains('gen C/write (parallel)'), compile.output
+	c_code := os.read_file(c_out) or { panic(err) }
+	assert c_code.all_after('int main').contains('_vinit();')
+}
