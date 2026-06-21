@@ -691,7 +691,7 @@ fn (mut c Checker) match_sumtype_has_variant(parent ast.Type, variant ast.Type) 
 	if c.table.sym(parent).kind == .sum_type {
 		return false
 	}
-	for candidate in c.concrete_sumtype_variants(parent) {
+	for candidate in c.match_sumtype_matchable_variants(parent) {
 		if c.match_sumtype_variant_is_handled(candidate, variant) {
 			return true
 		}
@@ -699,24 +699,67 @@ fn (mut c Checker) match_sumtype_has_variant(parent ast.Type, variant ast.Type) 
 	return false
 }
 
+fn (mut c Checker) match_sumtype_matchable_variants(parent ast.Type) []ast.Type {
+	if c.table.sym(parent).kind == .sum_type {
+		return c.table.sumtype_matchable_variants(parent)
+	}
+	mut variants := []ast.Type{}
+	mut seen := map[u32]bool{}
+	c.collect_match_sumtype_matchable_variants(parent, mut seen, mut variants)
+	return variants
+}
+
+fn (mut c Checker) collect_match_sumtype_matchable_variants(parent ast.Type, mut seen map[u32]bool, mut variants []ast.Type) {
+	for variant in c.concrete_sumtype_variants(parent) {
+		key := u32(variant)
+		if key in seen {
+			continue
+		}
+		seen[key] = true
+		variants << variant
+		if c.concrete_sumtype_variants(variant).len > 0 {
+			c.collect_match_sumtype_matchable_variants(variant, mut seen, mut variants)
+		}
+	}
+}
+
 fn (mut c Checker) match_sumtype_missing_variants(parent ast.Type, handled []ast.Type) []ast.Type {
 	if c.table.sym(parent).kind == .sum_type {
 		return c.table.sumtype_missing_variants(parent, handled)
 	}
 	mut missing := []ast.Type{}
+	mut seen := map[u32]bool{}
+	c.collect_match_sumtype_missing_variants(parent, handled, mut seen, mut missing)
+	return missing
+}
+
+fn (mut c Checker) collect_match_sumtype_missing_variants(parent ast.Type, handled []ast.Type, mut seen map[u32]bool, mut missing []ast.Type) {
+	if c.match_sumtype_variant_is_handled_by(parent, handled) {
+		return
+	}
 	for variant in c.concrete_sumtype_variants(parent) {
-		mut is_handled := false
-		for handled_variant in handled {
-			if c.match_sumtype_variant_is_handled(variant, handled_variant) {
-				is_handled = true
-				break
+		if c.match_sumtype_variant_is_handled_by(variant, handled) {
+			continue
+		}
+		if c.concrete_sumtype_variants(variant).len > 0 {
+			c.collect_match_sumtype_missing_variants(variant, handled, mut seen, mut missing)
+		} else {
+			key := u32(variant)
+			if key !in seen {
+				seen[key] = true
+				missing << variant
 			}
 		}
-		if !is_handled {
-			missing << variant
+	}
+}
+
+fn (mut c Checker) match_sumtype_variant_is_handled_by(variant ast.Type, handled []ast.Type) bool {
+	for handled_variant in handled {
+		if c.match_sumtype_variant_is_handled(variant, handled_variant) {
+			return true
 		}
 	}
-	return missing
+	return false
 }
 
 fn (mut c Checker) match_sumtype_variant_is_handled(variant ast.Type, handled ast.Type) bool {
@@ -737,7 +780,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 	is_alias_to_matchable_type := cond_type_sym.kind == .alias
 		&& cond_final_sym.kind in [.interface, .sum_type]
 	cond_match_sym := if is_alias_to_matchable_type { cond_final_sym } else { cond_type_sym }
-	sumtype_match_variants := c.concrete_sumtype_variants(cond_match_type)
+	sumtype_match_variants := c.match_sumtype_matchable_variants(cond_match_type)
 	is_cond_match_sumtype := sumtype_match_variants.len > 0
 	mut enum_ref_checked := false
 	mut is_comptime_value_match := false
