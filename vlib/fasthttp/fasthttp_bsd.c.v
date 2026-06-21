@@ -17,6 +17,7 @@ const buf_size = max_connection_size
 const kqueue_max_events = 128
 const backlog = max_connection_size
 const kqueue_wait_timeout_ms = 100
+const kqueue_command_ident = u64(0)
 
 // send_flags is OR'd into every C.send() call in this file.  On OpenBSD,
 // which lacks the per-socket SO_NOSIGPIPE option, we pass MSG_NOSIGNAL
@@ -292,7 +293,21 @@ struct LoopCommand {
 	remove_write_event bool
 }
 
-fn process_request(server &Server, c_ptr voidptr, command_ch chan LoopCommand) {
+fn wake_event_loop(kq int) {
+	mut ev := C.kevent{}
+	ev_set(mut &ev, kqueue_command_ident, i16(C.EVFILT_USER), u16(0), u32(C.NOTE_TRIGGER),
+		isize(0), unsafe { nil })
+	if C.kevent(kq, &ev, 1, unsafe { nil }, 0, unsafe { nil }) < 0 {
+		eprintln('ERROR: kqueue NOTE_TRIGGER failed with errno=${C.errno}')
+	}
+}
+
+fn send_loop_command(command_ch chan LoopCommand, kq int, command LoopCommand) {
+	command_ch <- command
+	wake_event_loop(kq)
+}
+
+fn process_request(server &Server, kq int, c_ptr voidptr, command_ch chan LoopCommand) {
 	mut c := unsafe { &Conn(c_ptr) }
 	mut request_arena := voidptr(unsafe { nil })
 	$if prealloc {
@@ -308,10 +323,10 @@ fn process_request(server &Server, c_ptr voidptr, command_ch chan LoopCommand) {
 	mut decoded := decode_http_request(req_buf) or {
 		send_bad_request(c.fd)
 		end_request_arena_current_thread(request_arena)
-		command_ch <- LoopCommand{
+		send_loop_command(command_ch, kq, LoopCommand{
 			kind:  .close_conn
 			c_ptr: c_ptr
-		}
+		})
 		return
 	}
 	$if trace_prealloc ? {
@@ -323,10 +338,10 @@ fn process_request(server &Server, c_ptr voidptr, command_ch chan LoopCommand) {
 	mut resp := server.request_handler(decoded) or {
 		send_bad_request(c.fd)
 		end_request_arena_current_thread(request_arena)
-		command_ch <- LoopCommand{
+		send_loop_command(command_ch, kq, LoopCommand{
 			kind:  .close_conn
 			c_ptr: c_ptr
-		}
+		})
 		return
 	}
 	$if trace_prealloc ? {
@@ -338,10 +353,10 @@ fn process_request(server &Server, c_ptr voidptr, command_ch chan LoopCommand) {
 		.manual {
 			resp.free_owned_content()
 			resp.abandon_request_arena_current_thread()
-			command_ch <- LoopCommand{
+			send_loop_command(command_ch, kq, LoopCommand{
 				kind:  .manual_takeover
 				c_ptr: c_ptr
-			}
+			})
 			return
 		}
 		.reusable {
@@ -349,22 +364,18 @@ fn process_request(server &Server, c_ptr voidptr, command_ch chan LoopCommand) {
 			c.read_len = 0
 			c.read_extra.clear()
 			c.read_start = 0
-			if c.request_active {
-				server.end_request()
-				c.request_active = false
-			}
 			resp.free_owned_content()
 			resp.end_request_arena_current_thread()
 			if server.is_shutting_down() || resp.should_close {
-				command_ch <- LoopCommand{
+				send_loop_command(command_ch, kq, LoopCommand{
 					kind:  .close_conn
 					c_ptr: c_ptr
-				}
+				})
 			} else {
-				command_ch <- LoopCommand{
+				send_loop_command(command_ch, kq, LoopCommand{
 					kind:  .enable_read
 					c_ptr: c_ptr
-				}
+				})
 			}
 			return
 		}
@@ -400,18 +411,18 @@ fn process_request(server &Server, c_ptr voidptr, command_ch chan LoopCommand) {
 	c.read_start = 0
 
 	if send_pending(c_ptr) {
-		command_ch <- LoopCommand{
+		send_loop_command(command_ch, kq, LoopCommand{
 			kind:  .arm_write
 			c_ptr: c_ptr
-		}
+		})
 		return
 	}
 
-	command_ch <- LoopCommand{
+	send_loop_command(command_ch, kq, LoopCommand{
 		kind:               .complete_response
 		c_ptr:              c_ptr
 		remove_write_event: false
-	}
+	})
 }
 
 fn dispatch_request_async(server &Server, kq int, c_ptr voidptr, command_ch chan LoopCommand) {
@@ -421,7 +432,7 @@ fn dispatch_request_async(server &Server, kq int, c_ptr voidptr, command_ch chan
 	c.request_active = true
 	delete_event(kq, u64(c.fd), i16(C.EVFILT_READ), c)
 	delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)
-	spawn process_request(server, c_ptr, command_ch)
+	spawn process_request(server, kq, c_ptr, command_ch)
 }
 
 fn handle_write(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
@@ -485,6 +496,10 @@ fn process_loop_command(server &Server, kq int, cmd LoopCommand, mut clients map
 		}
 		.enable_read {
 			mut c := unsafe { &Conn(cmd.c_ptr) }
+			if c.request_active {
+				server.end_request()
+				c.request_active = false
+			}
 			c.processing = false
 			add_event(kq, u64(c.fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR),
 				c)
@@ -723,6 +738,10 @@ pub fn (mut s Server) run() ! {
 	mut events := [kqueue_max_events]C.kevent{}
 	mut clients := map[int]voidptr{}
 	command_ch := chan LoopCommand{cap: kqueue_max_events * 4}
+	if add_event(s.poll_fd, kqueue_command_ident, i16(C.EVFILT_USER), u16(C.EV_ADD | C.EV_CLEAR),
+		unsafe { nil }) < 0 {
+		return error('failed to register kqueue command wakeup')
+	}
 	for {
 		drain_loop_commands(s, s.poll_fd, command_ch, mut clients)
 		if s.is_shutting_down() && s.active_request_count() == 0 {
@@ -749,6 +768,10 @@ pub fn (mut s Server) run() ! {
 
 		for i := 0; i < nev; i++ {
 			event := events[i]
+			if event.filter == i16(C.EVFILT_USER) && event.ident == kqueue_command_ident {
+				drain_loop_commands(s, s.poll_fd, command_ch, mut clients)
+				continue
+			}
 			if event.flags & u16(C.EV_ERROR) != 0 {
 				if event.ident == u64(listen_fd) {
 					C.perror(c'listener error')

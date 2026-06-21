@@ -5,6 +5,7 @@ import sync.stdatomic
 import time
 
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
 #include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <netinet/tcp.h>
@@ -19,6 +20,8 @@ fn C.epoll_create1(__flags i32) i32
 fn C.epoll_ctl(__epfd i32, __op i32, __fd i32, __event &C.epoll_event) i32
 
 fn C.epoll_wait(__epfd i32, __events &C.epoll_event, __maxevents i32, __timeout i32) i32
+
+fn C.eventfd(initval u32, flags i32) i32
 
 fn C.sendfile(out_fd i32, in_fd i32, offset &i64, count usize) i32
 
@@ -51,6 +54,23 @@ struct LoopCommand {
 	kind      LoopCommandKind
 	client_fd int
 	state     &ClientWriteState = unsafe { nil }
+}
+
+fn wake_event_loop(wakeup_fd int) {
+	one := u64(1)
+	if C.write(wakeup_fd, &one, sizeof(one)) < 0 && C.errno != C.EAGAIN {
+		eprintln('ERROR: eventfd write failed with errno=${C.errno}')
+	}
+}
+
+fn send_loop_command(command_ch chan LoopCommand, wakeup_fd int, command LoopCommand) {
+	command_ch <- command
+	wake_event_loop(wakeup_fd)
+}
+
+fn drain_event_loop_wakeup(wakeup_fd int) {
+	mut value := u64(0)
+	for C.read(wakeup_fd, &value, sizeof(value)) > 0 {}
 }
 
 pub struct Server {
@@ -479,7 +499,7 @@ fn handle_write(server &Server, epoll_fd int, client_fd int, mut client_fds map[
 	}
 }
 
-fn process_request_async(server &Server, client_fd int, request_buffer []u8, command_ch chan LoopCommand) {
+fn process_request_async(server &Server, client_fd int, request_buffer []u8, command_ch chan LoopCommand, wakeup_fd int) {
 	$if fasthttp_test_delay_async_start ? {
 		time.sleep(200 * time.millisecond)
 	}
@@ -497,10 +517,10 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 		if request_active {
 			server.end_request()
 		}
-		command_ch <- LoopCommand{
+		send_loop_command(command_ch, wakeup_fd, LoopCommand{
 			kind:      .close_conn
 			client_fd: client_fd
-		}
+		})
 		return
 	}
 	$if trace_prealloc ? {
@@ -516,10 +536,10 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 		if request_active {
 			server.end_request()
 		}
-		command_ch <- LoopCommand{
+		send_loop_command(command_ch, wakeup_fd, LoopCommand{
 			kind:      .close_conn
 			client_fd: client_fd
-		}
+		})
 		return
 	}
 	$if trace_prealloc ? {
@@ -531,10 +551,10 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 		.manual {
 			response.abandon_request_arena_current_thread()
 			response.free_owned_content()
-			command_ch <- LoopCommand{
+			send_loop_command(command_ch, wakeup_fd, LoopCommand{
 				kind:      .manual_takeover
 				client_fd: client_fd
-			}
+			})
 			return
 		}
 		.reusable {
@@ -546,15 +566,15 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 				request_active = false
 			}
 			if server.is_shutting_down() || response.should_close {
-				command_ch <- LoopCommand{
+				send_loop_command(command_ch, wakeup_fd, LoopCommand{
 					kind:      .close_conn
 					client_fd: client_fd
-				}
+				})
 			} else {
-				command_ch <- LoopCommand{
+				send_loop_command(command_ch, wakeup_fd, LoopCommand{
 					kind:      .enable_read
 					client_fd: client_fd
-				}
+				})
 			}
 			return
 		}
@@ -574,10 +594,10 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 			if request_active {
 				server.end_request()
 			}
-			command_ch <- LoopCommand{
+			send_loop_command(command_ch, wakeup_fd, LoopCommand{
 				kind:      .close_conn
 				client_fd: client_fd
-			}
+			})
 			return
 		}
 		mut st := C.stat{}
@@ -589,10 +609,10 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 			if request_active {
 				server.end_request()
 			}
-			command_ch <- LoopCommand{
+			send_loop_command(command_ch, wakeup_fd, LoopCommand{
 				kind:      .close_conn
 				client_fd: client_fd
-			}
+			})
 			return
 		}
 		file_fd = fd
@@ -605,52 +625,50 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 	content_bytes := response.take_or_clone_content()
 	arena_ptr := response.take_request_arena()
 	leave_request_arena_current_thread(arena_ptr)
-
-	mut state := &ClientWriteState{
-		content:        content_bytes
-		content_pos:    0
-		content_owned:  true
-		file_fd:        file_fd
-		file_len:       file_len
-		file_pos:       0
-		should_close:   response.should_close
-		request_arena:  arena_ptr
-		request_active: request_active
-		start_ns:       time.sys_mono_now()
-	}
+	// Bypass the spawned thread's outer prealloc scope. The event loop owns this
+	// object after the worker exits, so it must be independently allocated.
+	mut state := unsafe { &ClientWriteState(C.calloc(1, sizeof(ClientWriteState))) }
+	state.content = content_bytes
+	state.content_owned = true
+	state.file_fd = file_fd
+	state.file_len = file_len
+	state.should_close = response.should_close
+	state.request_arena = arena_ptr
+	state.request_active = request_active
+	state.start_ns = time.sys_mono_now()
 	// From here on, the state owns end_request bookkeeping.
 	request_active = false
 
 	status := try_drain_write(client_fd, mut state)
 	match status {
 		.done {
-			command_ch <- LoopCommand{
+			send_loop_command(command_ch, wakeup_fd, LoopCommand{
 				kind:      .complete_response
 				client_fd: client_fd
 				state:     state
-			}
+			})
 		}
 		.blocked {
-			command_ch <- LoopCommand{
+			send_loop_command(command_ch, wakeup_fd, LoopCommand{
 				kind:      .arm_write
 				client_fd: client_fd
 				state:     state
-			}
+			})
 		}
 		.failed {
-			command_ch <- LoopCommand{
+			send_loop_command(command_ch, wakeup_fd, LoopCommand{
 				kind:      .close_conn
 				client_fd: client_fd
 				state:     state
-			}
+			})
 		}
 	}
 }
 
-fn dispatch_request_async(server &Server, client_fd int, request_buffer []u8, command_ch chan LoopCommand) {
+fn dispatch_request_async(server &Server, client_fd int, request_buffer []u8, command_ch chan LoopCommand, wakeup_fd int) {
 	// Account for the request before shutdown can observe the spawned work.
 	server.begin_request()
-	spawn process_request_async(server, client_fd, request_buffer, command_ch)
+	spawn process_request_async(server, client_fd, request_buffer, command_ch, wakeup_fd)
 }
 
 fn process_loop_command(server &Server, epoll_fd int, cmd LoopCommand, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
@@ -733,6 +751,17 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 	mut closing_client_fds := map[int]bool{}
 	mut client_write_states := map[int]&ClientWriteState{}
 	command_ch := chan LoopCommand{cap: max_connection_size * 4}
+	wakeup_fd := C.eventfd(0, C.EFD_NONBLOCK | C.EFD_CLOEXEC)
+	if wakeup_fd < 0 {
+		eprintln('ERROR: eventfd() failed with errno=${C.errno}')
+		return
+	}
+	defer {
+		close_socket(wakeup_fd)
+	}
+	if add_fd_to_epoll(epoll_fd, wakeup_fd, u32(C.EPOLLIN)) == -1 {
+		return
+	}
 	unsafe {
 		request_buffer.flags.set(.noslices | .nogrow | .noshrink)
 	}
@@ -757,6 +786,13 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 		}
 		for i := 0; i < num_events; i++ {
 			client_fd := unsafe { events[i].data.fd }
+			if client_fd == wakeup_fd {
+				drain_event_loop_wakeup(wakeup_fd)
+				drain_loop_commands(server, epoll_fd, command_ch, mut client_fds, mut
+					client_buffers, mut client_read_starts, mut closing_client_fds, mut
+					client_write_states)
+				continue
+			}
 			// Accept new connections when the listening socket is readable
 			if client_fd == listen_fd {
 				if server.is_shutting_down() {
@@ -890,7 +926,7 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 					client_read_starts.delete(client_fd)
 					req_buf := readed_request_buffer.clone()
 					client_buffers.delete(client_fd)
-					dispatch_request_async(server, client_fd, req_buf, command_ch)
+					dispatch_request_async(server, client_fd, req_buf, command_ch, wakeup_fd)
 				} else if recv_error {
 					// Unexpected recv error - send 444 No Response
 					C.send(client_fd, status_444_response.data, status_444_response.len,

@@ -1,5 +1,5 @@
 // vtest build: linux
-// vtest vflags: -d fasthttp_test_delay_async_start
+// vtest vflags: -prealloc -d fasthttp_test_delay_async_start
 module fasthttp
 
 import net
@@ -59,7 +59,12 @@ fn test_close_command_releases_unregistered_write_state() ! {
 fn test_dispatch_marks_request_active_before_spawn() ! {
 	server := new_lifecycle_test_server()!
 	command_ch := chan LoopCommand{cap: 1}
-	dispatch_request_async(server, -1, 'invalid request'.bytes(), command_ch)
+	wakeup_fd := C.eventfd(0, C.EFD_NONBLOCK | C.EFD_CLOEXEC)
+	assert wakeup_fd >= 0
+	defer {
+		C.close(wakeup_fd)
+	}
+	dispatch_request_async(server, -1, 'invalid request'.bytes(), command_ch, wakeup_fd)
 	assert server.active_request_count() == 1
 
 	select {
@@ -70,4 +75,31 @@ fn test_dispatch_marks_request_active_before_spawn() ! {
 			assert false, 'timed out waiting for the async request to finish'
 		}
 	}
+}
+
+fn test_loop_command_wakes_epoll() ! {
+	epoll_fd := C.epoll_create1(0)
+	assert epoll_fd >= 0
+	defer {
+		C.close(epoll_fd)
+	}
+	wakeup_fd := C.eventfd(0, C.EFD_NONBLOCK | C.EFD_CLOEXEC)
+	assert wakeup_fd >= 0
+	defer {
+		C.close(wakeup_fd)
+	}
+	assert add_fd_to_epoll(epoll_fd, wakeup_fd, u32(C.EPOLLIN)) == 0
+	command_ch := chan LoopCommand{cap: 1}
+	send_loop_command(command_ch, wakeup_fd, LoopCommand{
+		kind:      .close_conn
+		client_fd: -1
+	})
+
+	mut event := C.epoll_event{}
+	watch := time.new_stopwatch()
+	assert C.epoll_wait(epoll_fd, &event, 1, 1000) == 1
+	assert watch.elapsed() < 250 * time.millisecond
+	assert event.data.fd == wakeup_fd
+	drain_event_loop_wakeup(wakeup_fd)
+	_ := <-command_ch
 }
