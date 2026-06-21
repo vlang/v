@@ -262,6 +262,13 @@ fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_id
 		tail_id
 	}
 	tail_expr_node := t.a.nodes[int(tail_expr)]
+	if tail_expr_node.kind == .match_stmt {
+		nested_return := t.make_return(tail_expr, ret_typ)
+		for stmt in t.transform_stmt(nested_return) {
+			all << stmt
+		}
+		return t.make_block(all)
+	}
 	expected_ret := t.optional_base_type(ret_typ)
 	actual_tail := if tail_expr_node.kind == .enum_val {
 		t.transform_enum_shorthand(tail_expr, tail_expr_node, expected_ret)

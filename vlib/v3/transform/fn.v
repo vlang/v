@@ -859,6 +859,71 @@ fn (t &Transformer) is_numeric_stringify_type(typ string) bool {
 	return is_number || typ in t.enum_types
 }
 
+fn (t &Transformer) is_enum_stringify_type(typ string) bool {
+	mut clean_typ := typ
+	if clean_typ.starts_with('&') {
+		clean_typ = clean_typ[1..]
+	}
+	if clean_typ.starts_with('mut ') {
+		clean_typ = clean_typ[4..]
+	}
+	if clean_typ in t.enum_types {
+		return true
+	}
+	mut qtyp := clean_typ
+	if !qtyp.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		qtyp = '${t.cur_module}.${clean_typ}'
+		if qtyp in t.enum_types {
+			return true
+		}
+	}
+	if isnil(t.tc) {
+		return false
+	}
+	if alias := t.tc.type_aliases[clean_typ] {
+		return t.is_enum_stringify_type(alias)
+	}
+	if qtyp != clean_typ {
+		if alias := t.tc.type_aliases[qtyp] {
+			return t.is_enum_stringify_type(alias)
+		}
+	}
+	parsed := t.tc.parse_type(clean_typ)
+	if parsed is types.Enum {
+		return true
+	}
+	if qtyp != clean_typ {
+		qparsed := t.tc.parse_type(qtyp)
+		if qparsed is types.Enum {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) enum_str_method_name(typ string) ?string {
+	mut candidates := []string{cap: 3}
+	candidates << typ
+	if !typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		candidates << '${t.cur_module}.${typ}'
+	}
+	if !isnil(t.tc) {
+		parsed := t.tc.parse_type(typ)
+		if parsed is types.Enum {
+			candidates << parsed.name
+		}
+	}
+	for candidate in candidates {
+		method := '${candidate}.str'
+		if t.is_known_fn_name(method) {
+			return method
+		}
+	}
+	return none
+}
+
 fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat.NodeId {
 	mut clean_typ := typ
 	is_ref := clean_typ.starts_with('&')
@@ -898,12 +963,18 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		}
 		parsed := t.tc.parse_type(clean_typ)
 		if parsed is types.Enum {
+			if method := t.enum_str_method_name(clean_typ) {
+				return t.make_call_typed(method, arr1(expr), 'string')
+			}
 			return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
 				'string')
 		}
 		if qtyp != clean_typ {
 			qparsed := t.tc.parse_type(qtyp)
 			if qparsed is types.Enum {
+				if method := t.enum_str_method_name(qtyp) {
+					return t.make_call_typed(method, arr1(expr), 'string')
+				}
 				return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
 					'string')
 			}
@@ -947,6 +1018,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		}
 		else {
 			if clean_typ in t.enum_types {
+				if method := t.enum_str_method_name(clean_typ) {
+					return t.make_call_typed(method, arr1(expr), 'string')
+				}
 				return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
 					'string')
 			}
@@ -956,6 +1030,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 				qenum = '${t.cur_module}.${clean_typ}'
 			}
 			if qenum in t.enum_types {
+				if method := t.enum_str_method_name(qenum) {
+					return t.make_call_typed(method, arr1(expr), 'string')
+				}
 				return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
 					'string')
 			}
@@ -1201,6 +1278,14 @@ fn (mut t Transformer) try_lower_array_method_call(node flat.Node) ?flat.NodeId 
 	}
 	if fn_node.value == 'insert' {
 		return t.lower_array_insert_call(node, fn_node, base_type, elem_type)
+	}
+	if fn_node.value == 'contains' {
+		method_name := t.resolve_receiver_method_name(base_id, fn_node.value)
+		if method_name.len > 0 {
+			args := t.transform_receiver_method_args(node, base_id, method_name)
+			ret_type := t.receiver_method_return_type(method_name, node.typ)
+			return t.make_call_typed(method_name, args, ret_type)
+		}
 	}
 	match fn_node.value {
 		'filter' {
@@ -1705,7 +1790,14 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			return none
 		}
 	}
-	mut base_type := t.node_type(base_id)
+	mut base_type := if base_node.kind in [.selector, .index] {
+		t.lvalue_type(base_id)
+	} else {
+		t.node_type(base_id)
+	}
+	if base_type.len == 0 {
+		base_type = t.lvalue_type(base_id)
+	}
 	if base_type.starts_with('&') {
 		base_type = base_type[1..]
 	}
@@ -1728,6 +1820,9 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		return t.wrap_string_conversion(t.transform_expr(base_id), base_type)
 	}
 	if method == 'str' {
+		if t.is_enum_stringify_type(base_type) {
+			return none
+		}
 		return t.wrap_string_conversion(t.transform_expr(base_id), base_type)
 	}
 	if base_type == '[]u8' || base_type == '[]byte' {
@@ -1736,6 +1831,15 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		}
 		if method == 'hex' {
 			return t.make_call_typed('Array_u8__hex', arr1(t.transform_expr(base_id)), 'string')
+		}
+	}
+	if t.is_builder_receiver(base_id, base_type) {
+		for method_name in ['strings.Builder.${method}', 'Builder.${method}'] {
+			if t.is_known_fn_name(method_name) {
+				args := t.transform_receiver_method_args(node, base_id, method_name)
+				ret_type := t.receiver_method_return_type(method_name, node.typ)
+				return t.make_call_typed(method_name, args, ret_type)
+			}
 		}
 	}
 	if builtin_base_type == 'u8' && method in ['is_space', 'is_digit', 'is_hex_digit', 'is_letter'] {

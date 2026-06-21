@@ -76,6 +76,24 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	return run.output.trim_space()
 }
 
+fn gen_c_project(v3_bin string, name string, files map[string]string, input string) string {
+	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
+	c_out := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	os.rm(c_out) or {}
+	compile := os.execute('${v3_bin} ${input_path} -o ${c_out}')
+	assert compile.exit_code == 0
+	assert os.exists(c_out)
+	return os.read_file(c_out) or { panic(err) }
+}
+
 fn test_type_checker_reports_core_semantic_errors() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'bad_assignment', "fn main() {\n\tmut x := 1\n\tx = 'bad'\n}\n",
@@ -156,6 +174,15 @@ fn test_type_checker_reports_core_semantic_errors() {
 	array_literal_push_many_out := run_good(v3_bin, 'array_literal_push_many',
 		'fn main() {\n\tmut xs := [1, 2]\n\tys := [3, 4]\n\txs << ys\n\txs << [5, 6]\n\tprintln(int_str(xs.len))\n}\n')
 	assert array_literal_push_many_out == '6'
+	nested_array_push_out := run_good(v3_bin, 'nested_array_push',
+		'fn main() {\n\tmut xs := [][]int{}\n\ty := [1, 2]\n\txs << y\n\tprintln(int_str(xs.len))\n\tprintln(int_str(xs[0][1]))\n}\n')
+	assert nested_array_push_out == '1\n2'
+	mut_array_for_out := run_good(v3_bin, 'mut_array_for_in',
+		'struct Item {\nmut:\n\tn int\n}\n\nfn main() {\n\tmut xs := []Item{}\n\txs << Item{n: 1}\n\tfor mut item in xs {\n\t\titem.n = 7\n\t}\n\tprintln(int_str(xs[0].n))\n}\n')
+	assert mut_array_for_out == '7'
+	mut_array_for_scalar_out := run_good(v3_bin, 'mut_array_for_scalar_updates',
+		'fn main() {\n\tmut xs := []int{}\n\txs << 1\n\txs << 2\n\tfor mut x in xs {\n\t\tx++\n\t\tx += 10\n\t}\n\tprintln(int_str(xs[0]))\n\tprintln(int_str(xs[1]))\n}\n')
+	assert mut_array_for_scalar_out == '12\n13'
 	const_forward_out := run_good(v3_bin, 'const_forward',
 		'const first_value = second_value\nconst second_value = 2\nfn main() {\n\tprintln(int_str(first_value))\n}\n')
 	assert const_forward_out == '2'
@@ -172,4 +199,52 @@ fn test_type_checker_reports_core_semantic_errors() {
 	builder_out := run_good(v3_bin, 'strings_builder_from_vlib',
 		"import strings\n\nfn main() {\n\tmut sb := strings.new_builder(16)\n\tsb.write_string('ok')\n\tsb.write_u8(u8(33))\n\tprintln(sb.last_n(3))\n\tprintln(sb.str())\n}\n")
 	assert builder_out == 'ok!\nok!'
+	init_order_out := run_good_project(v3_bin, 'module_init_order', {
+		'main.v':      'module main\n\nimport moda\n\n__global seen int\n\nfn init() {\n\tseen = moda.value()\n}\n\nfn main() {\n\tprintln(int_str(seen))\n\tprintln(int_str(moda.value()))\n}\n'
+		'moda/moda.v': 'module moda\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\nfn value() int {\n\treturn flag\n}\n'
+	}, 'main.v')
+	assert init_order_out == '41\n41'
+	hier_init_order_out := run_good_project(v3_bin, 'hierarchical_module_init_order', {
+		'main.v':               'module main\n\nimport parent.child\n\n__global seen int\n\nfn init() {\n\tseen = child.value()\n}\n\nfn main() {\n\tprintln(int_str(seen))\n\tprintln(int_str(child.value()))\n}\n'
+		'parent/child/child.v': 'module child\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+	}, 'main.v')
+	assert hier_init_order_out == '41\n41'
+	transitive_init_order_out := run_good_project(v3_bin, 'transitive_module_init_order', {
+		'main.v':      'module main\n\nimport moda\n\n__global seen int\n\nfn init() {\n\tseen = moda.value()\n}\n\nfn main() {\n\tprintln(int_str(seen))\n\tprintln(int_str(moda.value()))\n}\n'
+		'moda/moda.v': 'module moda\n\nimport modb\n\npub fn value() int {\n\treturn modb.value()\n}\n'
+		'modb/modb.v': 'module modb\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+	}, 'main.v')
+	assert transitive_init_order_out == '41\n41'
+	global_amp_out := run_good(v3_bin, 'global_amp_initializers',
+		'struct Point {\n\tx int\n\ty int\n}\n\ninterface Reader {\n\tn int\n\tread() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) read() int {\n\treturn b.n + 1\n}\n\n__global (\n\tbase_point = Point{x: 1, y: 2}\n\tassoc_point = &Point{...base_point, y: 5}\n\treader_box = Box{n: 7}\n\treader_ref = &Reader(reader_box)\n)\n\nfn main() {\n\tprintln(int_str(assoc_point.y))\n\tprintln(int_str(reader_ref.n))\n\tprintln(int_str(reader_ref.read()))\n}\n')
+	assert global_amp_out == '5\n7\n8'
+	disabled_if_out := run_good(v3_bin, 'disabled_if_call_elides_args',
+		'__global hit int\n\n@[if trace ?]\nfn trace(x int) {}\n\nfn side_effect() int {\n\thit = 99\n\treturn 1\n}\n\nfn main() {\n\ttrace(side_effect())\n\tprintln(int_str(hit))\n}\n')
+	assert disabled_if_out == '0'
+	disabled_if_alias_out := run_good_project(v3_bin, 'disabled_if_alias_call_elides_args', {
+		'main.v':      'module main\n\nimport moda as m\n\n__global hit int\n\nfn side_effect() int {\n\thit = 99\n\treturn 1\n}\n\nfn main() {\n\tm.trace(side_effect())\n\tprintln(int_str(hit))\n}\n'
+		'moda/moda.v': 'module moda\n\n@[if trace ?]\npub fn trace(x int) {}\n'
+	}, 'main.v')
+	assert disabled_if_alias_out == '0'
+	disabled_if_method_out := run_good_project(v3_bin, 'disabled_if_method_call_elides_args', {
+		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\tprintln(int_str(moda.run()))\n}\n'
+		'moda/moda.v': 'module moda\n\n__global hit int\n\nstruct Tracer {}\n\n@[if trace ?]\nfn (t Tracer) trace(x int) {}\n\nfn side_effect() int {\n\thit = 99\n\treturn 1\n}\n\npub fn run() int {\n\tt := Tracer{}\n\tt.trace(side_effect())\n\treturn hit\n}\n'
+	}, 'main.v')
+	assert disabled_if_method_out == '0'
+	disabled_operator_out := run_good(v3_bin, 'disabled_if_operator_call_elides_args',
+		'__global hit int\n\nstruct Number {\n\tn int\n}\n\n@[if trace ?]\nfn (a Number) + (b Number) Number {\n\treturn Number{n: a.n + b.n}\n}\n\nfn side_effect() Number {\n\thit = 99\n\treturn Number{n: 2}\n}\n\nfn main() {\n\ta := Number{n: 1}\n\t_ := a + side_effect()\n\tprintln(int_str(hit))\n}\n')
+	assert disabled_operator_out == '0'
+	disabled_if_non_fn_out := run_good(v3_bin, 'disabled_if_non_fn_decl_skipped',
+		'@[if trace ?]\nstruct DisabledStruct {\n\tbad MissingDisabledType\n}\n\nstruct EnabledStruct {\n\tvalue int\n}\n\nfn main() {\n\tprintln(int_str(EnabledStruct{value: 7}.value))\n}\n')
+	assert disabled_if_non_fn_out == '7'
+	function_defer_loop_out := run_good(v3_bin, 'function_defer_runs_each_loop_execution',
+		'__global hit int\n\nfn run() {\n\tfor _ in 0 .. 3 {\n\t\tdefer(fn) {\n\t\t\thit += 100\n\t\t}\n\t}\n}\n\nfn main() {\n\trun()\n\tprintln(int_str(hit))\n}\n')
+	assert function_defer_loop_out == '300'
+	cross_module_array_append_c := gen_c_project(v3_bin, 'array_append_distinct_module_types', {
+		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tmut xs := []moda.Foo{}\n\tys := []modb.Foo{}\n\txs << ys\n}\n'
+		'moda/moda.v': 'module moda\n\nstruct Foo {\n\ta int\n}\n'
+		'modb/modb.v': 'module modb\n\nstruct Foo {\n\tb int\n}\n'
+	}, 'main.v')
+	assert !cross_module_array_append_c.contains('array_push_many(&xs')
+	assert cross_module_array_append_c.contains('array_push(&xs')
 }

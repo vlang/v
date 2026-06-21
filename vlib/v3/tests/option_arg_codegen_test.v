@@ -31,3 +31,10 @@ fn test_optional_argument_codegen_wraps_values_and_none() {
 		"struct Info {\n\tvalue int\n}\n\nfn pass_int(x ?int) int {\n\treturn 1\n}\n\nfn pass_info(x ?Info) int {\n\treturn 1\n}\n\nfn main() {\n\tassert pass_int(3) == 1\n\tassert pass_int(none) == 1\n\tassert pass_info(Info{value: 4}) == 1\n\tassert pass_info(none) == 1\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
 }
+
+fn test_optional_if_expr_codegen_initializes_optional_temp() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'optional_if_expr_codegen_input',
+		"fn none_int() ?int {\n\treturn none\n}\n\nfn some_int() ?int {\n\treturn 7\n}\n\nfn choose(flag bool) ?int {\n\tvalue := if flag {\n\t\tnone_int()\n\t} else {\n\t\tsome_int()\n\t}\n\treturn value\n}\n\nfn main() {\n\tgood := choose(false) or { 0 }\n\tnone_value := choose(true) or { -1 }\n\tassert good == 7\n\tassert none_value == -1\n\tprintln('ok')\n}\n")
+	assert out == 'ok'
+}

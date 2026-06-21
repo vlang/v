@@ -210,8 +210,7 @@ fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId) {
 	if g.should_preseed_parallel_type_text(node.typ) {
 		g.preseed_parallel_fn_ptr_type(g.tc.parse_type(node.typ))
 	}
-	if int(id) in g.tc.expr_types {
-		expr_type := g.tc.expr_types[int(id)] or { types.Type(types.void_) }
+	if expr_type := g.tc.expr_type(id) {
 		g.preseed_parallel_fn_ptr_type(expr_type)
 	}
 	for i in 0 .. node.children_count {
@@ -306,7 +305,15 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		interfaces:              g.interfaces.clone()
 		const_vals:              g.const_vals.clone()
 		const_modules:           g.const_modules.clone()
+		const_init_order:        g.const_init_order.clone()
 		global_modules:          g.global_modules.clone()
+		global_inits:            g.global_inits.clone()
+		global_init_order:       g.global_init_order.clone()
+		iface_impls:             g.iface_impls.clone()
+		iface_type_ids:          g.iface_type_ids.clone()
+		module_init_fns:         g.module_init_fns.clone()
+		module_init_fn_modules:  g.module_init_fn_modules.clone()
+		module_imports:          g.module_imports.clone()
 		tc:                      g.clone_parallel_type_checker()
 		has_builtins:            g.has_builtins
 		tmp_count:               (worker_id + 1) * 100_000
@@ -317,6 +324,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		struct_decl_infos:       g.struct_decl_infos.clone()
 		struct_decl_short_infos: g.struct_decl_short_infos.clone()
 		runtime_inits:           g.runtime_inits.clone()
+		compiler_vroot:          g.compiler_vroot
 		cur_param_names:         g.cur_param_names.clone()
 		cur_param_type_values:   g.cur_param_type_values.clone()
 		cur_param_types:         g.cur_param_types.clone()
@@ -326,15 +334,17 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		expected_expr_type:      g.expected_expr_type
 		expected_enum:           g.expected_enum
 		needed_optional_types:   g.needed_optional_types.clone()
+		emitted_optional_types:  g.emitted_optional_types.clone()
 		emitted_fns:             g.emitted_fns.clone()
 		array_method_cache:      g.array_method_cache.clone()
 	}
 }
 
-fn (g &FlatGen) clone_parallel_type_checker() types.TypeChecker {
+fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 	mut fs := types.new_scope(unsafe { nil })
-	fs.objects = g.tc.file_scope.objects.clone()
-	return types.TypeChecker{
+	fs.names = g.tc.file_scope.names.clone()
+	fs.types = g.tc.file_scope.types.clone()
+	return &types.TypeChecker{
 		a:                             unsafe { g.tc.a }
 		fn_ret_types:                  g.tc.fn_ret_types.clone()
 		fn_param_types:                g.tc.fn_param_types.clone()
@@ -344,24 +354,32 @@ fn (g &FlatGen) clone_parallel_type_checker() types.TypeChecker {
 		type_aliases:                  g.tc.type_aliases.clone()
 		sum_types:                     g.tc.sum_types.clone()
 		enum_names:                    g.tc.enum_names.clone()
+		enum_fields:                   g.tc.enum_fields.clone()
 		flag_enums:                    g.tc.flag_enums.clone()
 		interface_names:               g.tc.interface_names.clone()
 		interface_fields:              g.tc.interface_fields.clone()
 		interface_embeds:              g.tc.interface_embeds.clone()
+		interface_abstract_methods:    g.tc.interface_abstract_methods.clone()
+		c_globals:                     g.tc.c_globals.clone()
 		const_types:                   g.tc.const_types.clone()
 		const_exprs:                   g.tc.const_exprs.clone()
 		const_modules:                 g.tc.const_modules.clone()
+		const_suffixes:                g.tc.const_suffixes.clone()
 		imports:                       g.tc.imports.clone()
 		file_imports:                  g.tc.file_imports.clone()
 		file_modules:                  g.tc.file_modules.clone()
 		file_scope:                    fs
 		cur_scope:                     fs
+		scope_pool:                    []&types.Scope{}
 		has_builtins:                  g.tc.has_builtins
 		cur_module:                    g.tc.cur_module
 		cur_file:                      g.tc.cur_file
 		errors:                        g.tc.errors.clone()
-		resolved_calls:                g.tc.resolved_calls.clone()
-		expr_types:                    g.tc.expr_types.clone()
+		resolved_call_names:           g.tc.resolved_call_names.clone()
+		resolved_call_set:             g.tc.resolved_call_set.clone()
+		expr_type_values:              g.tc.expr_type_values.clone()
+		expr_type_set:                 g.tc.expr_type_set.clone()
+		checking_nodes:                g.tc.checking_nodes.clone()
 		diagnose_unknown_calls:        g.tc.diagnose_unknown_calls
 		reject_unlowered_map_mutation: g.tc.reject_unlowered_map_mutation
 		diagnostic_files:              g.tc.diagnostic_files.clone()

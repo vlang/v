@@ -95,7 +95,7 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 	if node.children_count >= 3 {
 		else_id := t.a.child(&node, 2)
 		else_node := t.a.nodes[int(else_id)]
-		else_block = t.transform_if_guard_else_block(else_id, else_node)
+		else_block = t.transform_if_guard_else_block(else_id, else_node, tmp_name)
 	}
 	mut expanded := []flat.NodeId{cap: prelude.len + 2}
 	for stmt in prelude {
@@ -136,11 +136,16 @@ fn (t &Transformer) optional_result_expr_type_name(id flat.NodeId) string {
 	return t.node_type(id)
 }
 
-fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, else_node flat.Node) flat.NodeId {
+fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, else_node flat.Node, err_source string) flat.NodeId {
 	saved_var_types := t.var_types.clone()
 	t.set_var_type('err', 'IError')
 	mut children := []flat.NodeId{}
-	children << t.make_decl_assign_typed('err', t.make_struct_init('IError'), 'IError')
+	err_value := if err_source.len > 0 {
+		t.make_selector(t.make_ident(err_source), 'err', 'IError')
+	} else {
+		t.make_struct_init('IError')
+	}
+	children << t.make_decl_assign_typed('err', err_value, 'IError')
 	if else_node.kind == .block {
 		children << t.transform_stmts(t.a.children_of(&else_node))
 	} else if else_node.kind == .if_expr {
@@ -894,6 +899,12 @@ fn (mut t Transformer) if_value_branch_block(branch_id flat.NodeId, target_name 
 		result << t.make_assign(t.make_ident(target_name), value)
 		return t.make_block(result)
 	}
+	if tail.kind == .if_expr {
+		value := t.transform_if_branch_value(tail_id, target_type)
+		t.drain_pending(mut result)
+		result << t.make_assign(t.make_ident(target_name), value)
+		return t.make_block(result)
+	}
 	if t.is_stmt_kind(tail.kind) {
 		tail_stmts := t.transform_stmt(tail_id)
 		t.drain_pending(mut result)
@@ -979,17 +990,25 @@ fn (mut t Transformer) transform_and_chain_smartcasts(cond_id flat.NodeId) flat.
 	for info in lhs_smartcasts {
 		t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
 	}
-	new_rhs := t.transform_and_chain_smartcasts(rhs_id)
+	mut new_rhs := t.transform_and_chain_smartcasts(rhs_id)
 	rhs_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	for _ in lhs_smartcasts {
 		t.pop_smartcast()
 	}
+	// The left operand always evaluates, so its pending statements may run before
+	// the `&&`/`||`. The right operand is conditional, so any statements its
+	// lowering produced (e.g. an `in [...]` / `or {}` temporary) must run only when
+	// the right operand is actually reached — wrap them in a `({ ...; value; })`
+	// statement-expression to preserve short-circuit evaluation.
 	for stmt in lhs_pending {
 		t.pending_stmts << stmt
 	}
-	for stmt in rhs_pending {
-		t.pending_stmts << stmt
+	if rhs_pending.len > 0 {
+		mut block_stmts := rhs_pending.clone()
+		block_stmts << t.make_expr_stmt(new_rhs)
+		new_rhs = t.make_block(block_stmts)
+		t.a.nodes[int(new_rhs)].typ = 'bool'
 	}
 	if lhs.kind == .is_expr && new_lhs == lhs_id && new_rhs == rhs_id {
 		return cond_id

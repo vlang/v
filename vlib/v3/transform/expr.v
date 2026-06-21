@@ -162,6 +162,13 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 		return none
 	}
 	if call_info := t.struct_operator_call_info(struct_type, node.op) {
+		if t.is_disabled_fn_name(call_info.name) {
+			ret_type := t.struct_operator_return_type(call_info.name)
+			if ret_type.len == 0 || ret_type == 'void' {
+				return t.make_empty()
+			}
+			return t.zero_value_for_type(ret_type)
+		}
 		lhs := t.transform_expr(lhs_id)
 		rhs := t.transform_expr(t.a.children[node.children_start + 1])
 		mut call_lhs := lhs
@@ -193,6 +200,9 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 		return t.make_infix(node.op, cmp, t.make_int_literal(0))
 	}
 	if eq_fn := t.struct_operator_fn_name(struct_type, '==') {
+		if t.is_disabled_fn_name(eq_fn) {
+			return t.make_bool_literal(node.op == .ne)
+		}
 		lhs := t.transform_expr(lhs_id)
 		rhs := t.transform_expr(t.a.children[node.children_start + 1])
 		eq_call := t.make_call_typed(eq_fn, arr2(lhs, rhs), 'bool')
@@ -954,22 +964,59 @@ fn (mut t Transformer) runtime_addr(expr flat.NodeId, typ string) flat.NodeId {
 }
 
 fn (mut t Transformer) transform_enum_shorthand(id flat.NodeId, node flat.Node, expected_enum string) flat.NodeId {
-	if expected_enum.len == 0 {
+	resolved_enum := t.enum_type_name_for_expected(expected_enum, '')
+	if resolved_enum.len == 0 {
 		return id
 	}
 	short_name := node.value.trim_left('.')
-	if fields := t.enum_types[expected_enum] {
+	if fields := t.enum_types[resolved_enum] {
 		for f in fields {
 			if f == short_name {
 				return t.a.add_node(flat.Node{
 					kind:  .enum_val
-					value: '${expected_enum}.${short_name}'
-					typ:   expected_enum
+					value: '${resolved_enum}.${short_name}'
+					typ:   resolved_enum
 				})
 			}
 		}
 	}
 	return id
+}
+
+fn (t &Transformer) enum_type_name_for_expected(expected_enum string, owner_mod string) string {
+	if expected_enum.len == 0 {
+		return ''
+	}
+	mut clean := expected_enum
+	if clean.starts_with('&') {
+		clean = clean[1..]
+	}
+	if clean in t.enum_types {
+		return clean
+	}
+	if clean.contains('.') {
+		return ''
+	}
+	for mod_name in [owner_mod, t.cur_module] {
+		if mod_name.len == 0 || mod_name == 'main' || mod_name == 'builtin' {
+			continue
+		}
+		qname := '${mod_name}.${clean}'
+		if qname in t.enum_types {
+			return qname
+		}
+	}
+	mut found := ''
+	for enum_name, _ in t.enum_types {
+		if enum_name.all_after_last('.') != clean {
+			continue
+		}
+		if found.len > 0 && found != enum_name {
+			return ''
+		}
+		found = enum_name
+	}
+	return found
 }
 
 pub fn (mut t Transformer) make_call(fn_name string, args []flat.NodeId) flat.NodeId {
