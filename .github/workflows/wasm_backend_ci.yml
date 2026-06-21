@@ -76,6 +76,8 @@ jobs:
 
       - name: Setup Wasmer
         uses: wasmerio/setup-wasmer@v3.1
+        with:
+          version: '7.1.0'
 
       - name: Prebuild the WASM backend
         run: ./v cmd/tools/builders/wasm_builder.v
