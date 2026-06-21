@@ -2051,10 +2051,13 @@ fn (mut p Parser) skip_parens() {
 }
 
 fn (mut p Parser) parse_comptime_expr() flat.NodeId {
-	if p.peek() == .key_if || p.peek() == .key_for {
+	if p.peek() == .key_for {
 		return p.parse_comptime_if()
 	}
 	p.next() // skip $
+	if p.tok == .key_if || (p.tok == .name && p.lit == 'if') {
+		return p.parse_comptime_if_expr_after_if()
+	}
 	if p.tok == .name && p.lit == 'd' {
 		p.next()
 		if p.tok != .lpar {
@@ -2089,6 +2092,64 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		p.next()
 	}
 	return flat.empty_node
+}
+
+fn (mut p Parser) parse_comptime_if_expr() flat.NodeId {
+	p.next() // skip $
+	if p.tok != .key_if && !(p.tok == .name && p.lit == 'if') {
+		return flat.empty_node
+	}
+	return p.parse_comptime_if_expr_after_if()
+}
+
+fn (mut p Parser) parse_comptime_if_expr_after_if() flat.NodeId {
+	p.next() // skip if
+	cond := p.parse_comptime_cond()
+	taken := eval_comptime_cond(p.prefs, cond)
+	if taken {
+		result := p.parse_comptime_expr_block()
+		p.skip_comptime_else()
+		return result
+	}
+	p.skip_block()
+	return p.parse_comptime_else_expr()
+}
+
+fn (mut p Parser) parse_comptime_else_expr() flat.NodeId {
+	if p.tok == .semicolon && p.peek() == .dollar {
+		p.next()
+	}
+	if p.tok != .dollar || p.peek() != .key_else {
+		return flat.empty_node
+	}
+	p.next() // skip $
+	p.next() // skip else
+	if p.tok == .semicolon && p.peek() == .dollar {
+		p.next()
+	}
+	if p.tok == .dollar {
+		return p.parse_comptime_if_expr()
+	}
+	return p.parse_comptime_expr_block()
+}
+
+fn (mut p Parser) parse_comptime_expr_block() flat.NodeId {
+	if p.tok != .lcbr {
+		return flat.empty_node
+	}
+	p.next()
+	if p.tok == .rcbr {
+		p.next()
+		return flat.empty_node
+	}
+	result := p.expr(.lowest)
+	for p.tok != .rcbr && p.tok != .eof {
+		p.next()
+	}
+	if p.tok == .rcbr {
+		p.next()
+	}
+	return result
 }
 
 // ==================== statements ====================

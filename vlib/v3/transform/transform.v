@@ -1874,17 +1874,15 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 	mut inferred_typ := ''
 	if node.children_count > 2 && !isnil(t.tc) {
 		rhs_id := t.a.child(&node, 1)
-		if rhs_type := t.tc.expr_type(rhs_id) {
-			if rhs_type is types.MultiReturn {
-				for j, field_type in rhs_type.types {
-					lhs_idx := if j == 0 { 0 } else { j + 1 }
-					if lhs_idx >= node.children_count {
-						continue
-					}
-					lhs := t.a.child_node(&node, lhs_idx)
-					if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
-						t.set_var_type(lhs.value, field_type.name())
-					}
+		if rhs_types := t.multi_return_types_for_expr(rhs_id, node.children_count - 1) {
+			for j, field_type in rhs_types {
+				lhs_idx := if j == 0 { 0 } else { j + 1 }
+				if lhs_idx >= node.children_count {
+					continue
+				}
+				lhs := t.a.child_node(&node, lhs_idx)
+				if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
+					t.set_var_type(lhs.value, t.normalize_type_alias(field_type.name()))
 				}
 			}
 		}
@@ -2030,6 +2028,7 @@ fn (mut t Transformer) try_expand_multi_return_decl(node flat.Node) ?[]flat.Node
 			field_name := 'arg${j}'
 			field_type_name := field_type.name()
 			field := t.make_selector(t.make_ident(tmp_name), field_name, field_type_name)
+			t.set_var_type(lhs.value, t.normalize_type_alias(field_type_name))
 			result << t.make_decl_assign_typed(lhs.value, field, field_type_name)
 		}
 		return result
@@ -4177,6 +4176,9 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			return '[]int'
 		}
 		.array_init {
+			if node.value.starts_with('[]') {
+				return '[]${node.value}'
+			}
 			if node.typ.len > 0 {
 				typ := t.normalize_type_alias(node.typ)
 				if typ != 'array' {

@@ -234,7 +234,15 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type string, elem_type string) bool {
 	clean_rhs_type := rhs_type.trim_space()
 	if clean_rhs_type.starts_with('[]') {
-		return t.array_append_elem_types_match(clean_rhs_type[2..], elem_type)
+		if t.array_append_elem_types_match(clean_rhs_type[2..], elem_type) {
+			return true
+		}
+		if declared_rhs_type := t.array_append_ident_type(rhs_id) {
+			if declared_rhs_type.starts_with('[]') {
+				return t.array_append_elem_types_match(declared_rhs_type[2..], elem_type)
+			}
+		}
+		return false
 	}
 	if is_fixed_array_type(clean_rhs_type) {
 		return t.array_append_elem_types_match(fixed_array_elem_type(clean_rhs_type), elem_type)
@@ -257,12 +265,22 @@ fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id fla
 		}
 	}
 	if clean_rhs_type in ['array', 'Array'] {
-		return !t.normalize_type_alias(elem_type).starts_with('[]')
+		return t.array_append_elem_c_type(elem_type) !in ['array', 'Array']
 	}
 	return false
 }
 
 fn (t &Transformer) array_append_elem_types_match(rhs_elem_type string, lhs_elem_type string) bool {
+	rhs_raw := rhs_elem_type.trim_space()
+	lhs_raw := lhs_elem_type.trim_space()
+	if rhs_raw == lhs_raw {
+		return true
+	}
+	if !rhs_raw.starts_with('[]') && !lhs_raw.starts_with('[]')
+		&& (rhs_raw.contains('.') || lhs_raw.contains('.'))
+		&& rhs_raw.all_after_last('.') == lhs_raw.all_after_last('.') {
+		return true
+	}
 	rhs_clean := t.normalize_type_alias(rhs_elem_type)
 	lhs_clean := t.normalize_type_alias(lhs_elem_type)
 	if rhs_clean == lhs_clean {
@@ -271,7 +289,40 @@ fn (t &Transformer) array_append_elem_types_match(rhs_elem_type string, lhs_elem
 	if isnil(t.tc) {
 		return false
 	}
-	return t.tc.c_type(t.tc.parse_type(rhs_clean)) == t.tc.c_type(t.tc.parse_type(lhs_clean))
+	return t.array_append_elem_c_type(rhs_clean) == t.array_append_elem_c_type(lhs_clean)
+}
+
+fn (t &Transformer) array_append_ident_type(id flat.NodeId) ?string {
+	if int(id) < 0 {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .ident || node.value.len == 0 {
+		return none
+	}
+	typ := t.var_type(node.value)
+	if typ.len == 0 {
+		return none
+	}
+	return typ
+}
+
+fn (t &Transformer) array_append_elem_c_type(typ string) string {
+	if isnil(t.tc) {
+		return typ
+	}
+	clean := typ.trim_space()
+	if clean.len == 0 {
+		return clean
+	}
+	if !clean.contains('.') {
+		for alias, target in t.tc.type_aliases {
+			if alias.all_after_last('.') == clean {
+				return t.tc.c_type(t.tc.parse_type(target))
+			}
+		}
+	}
+	return t.tc.c_type(t.tc.parse_type(clean))
 }
 
 fn (mut t Transformer) array_get_value(base flat.NodeId, index flat.NodeId, elem_type string) flat.NodeId {
