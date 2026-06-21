@@ -313,8 +313,8 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 	// Skip HEAD responses and 204/304 which carry no body by definition.
 	// Skip early-cancelled streams where we sent RST_STREAM ourselves.
 	body_allowed := req.method != 'HEAD' && resp.status != 204 && resp.status != 304
-	if has_content_length && body_allowed && !c.aborted && body_so_far < body_expected {
-		return error('h2: truncated response body: received ${body_so_far} bytes, expected ${body_expected}')
+	if has_content_length && body_allowed && !c.aborted && body_so_far != body_expected {
+		return error('h2: response body ${body_so_far} bytes does not match Content-Length ${body_expected}')
 	}
 	return resp
 }

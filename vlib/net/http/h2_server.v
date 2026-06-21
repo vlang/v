@@ -212,7 +212,11 @@ fn (mut c H2ServerConn) apply_settings(settings []H2Setting) ! {
 	for s in settings {
 		match s.id {
 			h2_settings_header_table_size {
+				// Constrains our *encoder* (the server's response-header encoder
+				// whose output the client decodes with its advertised table size).
 				c.peer.header_table_size = s.value
+				c.encoder.dyn_table.set_max_size(int(s.value))
+				c.encoder.pending_max_table_size = int(s.value)
 			}
 			h2_settings_enable_push {
 				c.peer.enable_push = s.value != 0
@@ -234,6 +238,9 @@ fn (mut c H2ServerConn) apply_settings(settings []H2Setting) ! {
 				c.peer.initial_window_size = s.value
 				for _, mut st in c.streams {
 					st.send_window += delta
+					if st.send_window > i64(0x7fff_ffff) {
+						return error('h2: SETTINGS_INITIAL_WINDOW_SIZE delta overflows stream ${st.id} send window (RFC 7540 §6.9.2 FLOW_CONTROL_ERROR)')
+					}
 				}
 			}
 			h2_settings_max_frame_size {
@@ -275,6 +282,9 @@ fn (mut c H2ServerConn) on_headers(frame H2HeadersFrame, mut handler Handler) ! 
 fn (mut c H2ServerConn) on_continuation(frame H2ContinuationFrame, mut handler Handler) ! {
 	mut s := c.streams[frame.stream_id] or {
 		return error('h2 server: CONTINUATION for unknown stream ${frame.stream_id}')
+	}
+	if s.hpack_block.len + frame.fragment.len > h2_max_recv_header_block {
+		return error('h2 server: request header block exceeds ${h2_max_recv_header_block} bytes')
 	}
 	s.hpack_block << frame.fragment
 	if frame.end_headers {

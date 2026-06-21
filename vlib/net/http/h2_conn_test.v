@@ -455,7 +455,7 @@ fn make_capture_fn(cap &ChunkCapture) H2DataFn {
 
 fn test_h2_on_data_fires_per_chunk() {
 	mut cap := &ChunkCapture{}
-	inbound := build_streamed_response('200', '12', [
+	inbound := build_streamed_response('200', '14', [
 		'foo'.bytes(),
 		'bar'.bytes(),
 		'baz quux'.bytes(),
@@ -478,7 +478,7 @@ fn test_h2_on_data_fires_per_chunk() {
 	// body_so_far is cumulative including the current chunk.
 	assert cap.running == [u64(3), u64(6), u64(14)]
 	// content-length is reported.
-	assert cap.expected == [u64(12), u64(12), u64(12)]
+	assert cap.expected == [u64(14), u64(14), u64(14)]
 	// Status was known by the first callback (headers arrived first).
 	assert cap.status == [200, 200, 200]
 }

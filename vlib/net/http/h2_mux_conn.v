@@ -1151,15 +1151,19 @@ fn (mut c H2MuxConn) apply_peer_settings(settings []H2Setting) ! {
 				c.fmu.lock()
 				delta := i64(st.value) - c.peer_initial_window
 				c.peer_initial_window = i64(st.value)
-				for _, mut s in c.streams {
-					s.send_window += delta
-					// RFC 7540 §6.9.2: if applying the delta causes a stream
-					// window to exceed 2^31-1, it is a connection FLOW_CONTROL_ERROR.
-					if s.send_window > i64(0x7fff_ffff) {
+				// RFC 7540 §6.9.2: validate ALL stream windows before applying any
+				// delta so that an overflow on stream N does not leave streams 1..N-1
+				// in a partially updated state.  Pre-validation also ensures the
+				// broadcast below is always reached for a positive delta.
+				for _, s in c.streams {
+					if s.send_window + delta > i64(0x7fff_ffff) {
 						c.fmu.unlock()
 						c.smu.unlock()
 						return error('h2: SETTINGS_INITIAL_WINDOW_SIZE delta overflows stream ${s.id} send window (RFC 7540 §6.9.2 FLOW_CONTROL_ERROR)')
 					}
+				}
+				for _, mut s in c.streams {
+					s.send_window += delta
 				}
 				if delta > 0 {
 					c.fcv.broadcast()
@@ -1216,6 +1220,7 @@ fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
 		return c.check_unknown_stream(frame.stream_id)
 	}
 	s.mu.lock()
+	was_headers_done := s.headers_done
 	if !s.headers_done {
 		mut status := 0
 		mut status_valid := false
@@ -1268,6 +1273,20 @@ fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
 			}
 			s.headers_done = true
 		}
+	}
+	// Trailers without END_STREAM violate RFC 7540 §8.1 (trailers must carry
+	// END_STREAM); reset the stream rather than hanging wait_response forever.
+	if was_headers_done && !frame.end_stream {
+		s.mu.unlock()
+		c.reset_stream(frame.stream_id, .protocol_error,
+			'trailers HEADERS frame must carry END_STREAM')
+		return
+	}
+	// A 1xx informational HEADERS with END_STREAM is also forbidden (RFC 9113 §8.1).
+	if !s.headers_done && frame.end_stream {
+		s.mu.unlock()
+		c.reset_stream(frame.stream_id, .protocol_error, '1xx response must not carry END_STREAM')
+		return
 	}
 	// A second HEADERS block on the stream carries trailers; only its
 	// END_STREAM matters for this client.
