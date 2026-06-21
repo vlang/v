@@ -46,8 +46,9 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		prefs: unsafe { prefs }
 		s:     scanner.new_scanner(prefs, .normal)
 		a:     &flat.FlatAst{
-			nodes:    []flat.Node{cap: 256}
-			children: []flat.NodeId{cap: 512}
+			nodes:        []flat.Node{cap: 256}
+			children:     []flat.NodeId{cap: 512}
+			disabled_fns: map[string]bool{}
 		}
 	}
 }
@@ -1048,6 +1049,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	// A disabled `@[if flag ?]` function keeps its signature but gets an empty body
 	// (a no-op stub), so callers still resolve while the body is compiled out.
 	if disable_body {
+		p.mark_disabled_fn(name)
 		p.skip_block()
 	} else {
 		p.check(.lcbr)
@@ -1076,6 +1078,18 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
 	})
+}
+
+fn (mut p Parser) mark_disabled_fn(name string) {
+	if name.len == 0 {
+		return
+	}
+	if p.cur_module.len > 0 && p.cur_module != 'main' && p.cur_module != 'builtin'
+		&& !name.contains('.') {
+		p.a.disabled_fns['${p.cur_module}.${name}'] = true
+		return
+	}
+	p.a.disabled_fns[name] = true
 }
 
 fn (mut p Parser) parse_param_group() []flat.NodeId {
