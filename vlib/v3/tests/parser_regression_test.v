@@ -37,8 +37,9 @@ fn interface_method_param_types(a &flat.FlatAst, iface string, method string) []
 
 fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
 	a := parse_parser_regression_source('interface_generic_param',
-		'struct Result[T] {}\nstruct Node {}\n\ninterface Sink {\n\tput(Result[int])\n\tappend(values []int)\n\tvisit(node &Node)\n}\n')
+		'const max_len = 16\nstruct Result[T] {}\nstruct Node {}\n\ninterface Sink {\n\tput(Result[int])\n\tappend(values []int)\n\tvisit(node &Node)\n\tread(buf [max_len]u8)\n}\n')
 	assert interface_method_param_types(a, 'Sink', 'put') == ['Result[int]']
 	assert interface_method_param_types(a, 'Sink', 'append') == ['[]int']
 	assert interface_method_param_types(a, 'Sink', 'visit') == ['&Node']
+	assert interface_method_param_types(a, 'Sink', 'read') == ['[max_len]u8']
 }

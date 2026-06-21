@@ -4518,11 +4518,31 @@ fn (mut p Parser) peek_lbr_starts_array_type() bool {
 		|| p.s.src[idx] == `\n` || p.s.src[idx] == `\r`) {
 		idx++
 	}
-	if idx >= p.s.src.len {
-		return false
+	mut depth := 1
+	for idx < p.s.src.len {
+		c := p.s.src[idx]
+		if c == `[` {
+			depth++
+		} else if c == `]` {
+			depth--
+			if depth == 0 {
+				idx++
+				for idx < p.s.src.len && (p.s.src[idx] == ` ` || p.s.src[idx] == `\t`
+					|| p.s.src[idx] == `\n` || p.s.src[idx] == `\r`) {
+					idx++
+				}
+				if idx >= p.s.src.len {
+					return false
+				}
+				next := p.s.src[idx]
+				return (next >= `a` && next <= `z`) || (next >= `A` && next <= `Z`)
+					|| next == `_` || next == `&` || next == `?` || next == `!`
+					|| next == `[` || next == `(`
+			}
+		}
+		idx++
 	}
-	c := p.s.src[idx]
-	return c == `]` || (c >= `0` && c <= `9`)
+	return false
 }
 
 fn (p &Parser) can_start_type_name() bool {
