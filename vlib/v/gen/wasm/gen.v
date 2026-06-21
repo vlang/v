@@ -1856,32 +1856,31 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, w_pref &pref
 
 	if out_name != '-' {
 		os.write_file_array(out_name, mod) or { panic(err) }
+		// The enabled feature set (Safari-15 floor plus any `-d` opt-in) drives
+		// both validation and optimisation, so compute it once and share it.
+		feats := g.enabled_wasm_features()
 		if g.pref.wasm_validate {
-			exe := $if windows { 'wasm-validate.exe' } $else { 'wasm-validate' }
-			if rt := os.find_abs_path_of_executable(exe) {
-				mut p := os.new_process(rt)
-				p.set_args([out_name])
-				p.set_redirect_stdio()
-				p.run()
-				err := p.stderr_slurp()
-				p.wait()
-				if p.code != 0 {
-					eprintln(err)
-					g.w_error('validation failed, this should not happen. report an issue with the above messages, the webassembly generated, and appropriate code.')
-				}
-			} else {
-				g.w_error('${exe} not found! Try installing WABT (WebAssembly Binary Toolkit). Run `./cmd/tools/install_wabt.vsh`, to download a prebuilt executable for your platform.')
-			}
+			g.validate_wasm(out_name, feats)
 		}
 		if g.pref.is_prod {
 			exe := $if windows { 'wasm-opt.exe' } $else { 'wasm-opt' }
 			if rt := os.find_abs_path_of_executable(exe) {
-				// -lmu: low memory unused, very important optimisation
+				g.check_wasm_opt_version(rt)
+				// -lmu: low memory unused, very important optimisation.
+				// Feature flags are an explicit floor-safe allowlist (never `-all`),
+				// so wasm-opt cannot silently introduce opcodes past the baseline.
+				flags := binaryen_feature_flags(feats)
 				res :=
-					os.execute('${os.quoted_path(rt)} -all -lmu -c -O4 ${os.quoted_path(out_name)} -o ${os.quoted_path(out_name)}')
+					os.execute('${os.quoted_path(rt)} ${flags} -lmu -c -O4 ${os.quoted_path(out_name)} -o ${os.quoted_path(out_name)}')
 				if res.exit_code != 0 {
 					eprintln(res.output)
 					g.w_error('${rt} failed, this should not happen. Report an issue with the above messages, the webassembly generated, and appropriate code.')
+				}
+				// Re-validate AFTER optimisation: a passing pre-opt validation is
+				// not sufficient, wasm-opt must not have introduced any opcode past
+				// the enabled feature floor.
+				if g.pref.wasm_validate {
+					g.validate_wasm(out_name, feats)
 				}
 			} else {
 				g.w_error('${exe} not found! Try installing Binaryen.
@@ -1894,5 +1893,43 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, w_pref &pref
 		}
 	} else if g.pref.wasm_validate || g.pref.is_prod {
 		eprintln('stdout output, cannot validate or optimise wasm')
+	}
+}
+
+// validate_wasm runs `wasm-validate` over the emitted module at `out_name`,
+// constraining it to the enabled feature set so that any opcode past the floor
+// fails validation instead of passing under WABT's permissive defaults.
+fn (mut g Gen) validate_wasm(out_name string, feats []WasmFeature) {
+	exe := $if windows { 'wasm-validate.exe' } $else { 'wasm-validate' }
+	if rt := os.find_abs_path_of_executable(exe) {
+		mut p := os.new_process(rt)
+		mut vargs := wabt_validate_args(feats)
+		vargs << out_name
+		p.set_args(vargs)
+		p.set_redirect_stdio()
+		p.run()
+		err := p.stderr_slurp()
+		p.wait()
+		if p.code != 0 {
+			eprintln(err)
+			g.w_error('validation failed, this should not happen. report an issue with the above messages, the webassembly generated, and appropriate code.')
+		}
+	} else {
+		g.w_error('${exe} not found! Try installing WABT (WebAssembly Binary Toolkit). Run `./cmd/tools/install_wabt.vsh`, to download a prebuilt executable for your platform.')
+	}
+}
+
+// check_wasm_opt_version emits a soft warning if the resolved wasm-opt is older
+// than the version the toolchain pins. It never fails the build (a hard pin with
+// checksums belongs to the build/release pipeline, not the backend).
+fn (mut g Gen) check_wasm_opt_version(exe string) {
+	res := os.execute('${os.quoted_path(exe)} --version')
+	if res.exit_code != 0 {
+		return
+	}
+	// `wasm-opt --version` prints e.g. "wasm-opt version 108"
+	ver := res.output.all_after_last(' ').trim_space().int()
+	if ver != 0 && ver < wasm_opt_min_version {
+		eprintln('warning: wasm-opt version ${ver} is older than the pinned minimum (${wasm_opt_min_version}); `-prod` output may differ. Run `./cmd/tools/install_binaryen.vsh` to update.')
 	}
 }
