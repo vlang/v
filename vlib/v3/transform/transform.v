@@ -540,6 +540,18 @@ fn (mut t Transformer) transform_global_decl(node flat.Node) {
 			if int(val_id) < 0 {
 				continue
 			}
+			val := t.a.nodes[int(val_id)]
+			// Preserve `&Struct{}` as prefix(amp, struct_init) so codegen emits an
+			// inline heap allocation. The generic prefix path would instead spill it
+			// to a temporary whose declaration is dropped in global context (a global
+			// has no statement list to host pending statements), leaving the global
+			// pointing at undefined/uninitialized storage.
+			if val.kind == .prefix && val.op == .amp {
+				if preserved := t.transform_amp_struct_init_for_type(val_id, val, val.typ) {
+					t.a.children[gf.children_start] = preserved
+					continue
+				}
+			}
 			new_val := t.transform_expr(val_id)
 			t.a.children[gf.children_start] = new_val
 		}
@@ -3072,6 +3084,15 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 			cast_arg_id := t.a.child(&child, 0)
 			if ptr_cast := t.transform_amp_sum_cast_from_as_expr(child, cast_arg_id) {
 				return ptr_cast
+			}
+			// `&InterfaceType(x)` (e.g. `&PRNG(rng)`): box the concrete into a
+			// heap-allocated interface so the resulting pointer stays valid, rather
+			// than emitting a plain `(Interface*)x` reinterpret cast.
+			iface := t.resolve_interface_type_name(child.value)
+			if iface.len > 0 && iface.all_after_last('.') != 'IError' {
+				if boxed := t.transform_interface_value_for_type(cast_arg_id, '&${child.value}') {
+					return boxed
+				}
 			}
 			cast_arg := t.a.nodes[int(cast_arg_id)]
 			if cast_arg.kind == .nil_literal {

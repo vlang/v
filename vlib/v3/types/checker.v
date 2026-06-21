@@ -68,20 +68,22 @@ struct LocalBinding {
 @[heap]
 pub struct TypeChecker {
 pub mut:
-	a                             &flat.FlatAst = unsafe { nil }
-	fn_ret_types                  map[string]Type
-	fn_param_types                map[string][]Type
-	fn_variadic                   map[string]bool
-	structs                       map[string][]StructField
-	unions                        map[string]bool
-	type_aliases                  map[string]string
-	sum_types                     map[string][]string
-	enum_names                    map[string]bool
-	enum_fields                   map[string][]string
-	flag_enums                    map[string]bool
-	interface_names               map[string]bool
-	interface_fields              map[string][]StructField
-	interface_embeds              map[string][]string
+	a                          &flat.FlatAst = unsafe { nil }
+	fn_ret_types               map[string]Type
+	fn_param_types             map[string][]Type
+	fn_variadic                map[string]bool
+	structs                    map[string][]StructField
+	unions                     map[string]bool
+	type_aliases               map[string]string
+	sum_types                  map[string][]string
+	enum_names                 map[string]bool
+	enum_fields                map[string][]string
+	flag_enums                 map[string]bool
+	interface_names            map[string]bool
+	interface_fields           map[string][]StructField
+	interface_embeds           map[string][]string
+	interface_abstract_methods map[string][]string // iface -> abstract (declared) method names
+
 	c_globals                     map[string]Type
 	const_types                   map[string]Type
 	const_exprs                   map[string]flat.NodeId
@@ -113,36 +115,37 @@ pub mut:
 pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 	fs := new_scope(unsafe { nil })
 	return TypeChecker{
-		a:                   a
-		fn_ret_types:        map[string]Type{}
-		fn_param_types:      map[string][]Type{}
-		fn_variadic:         map[string]bool{}
-		structs:             map[string][]StructField{}
-		unions:              map[string]bool{}
-		type_aliases:        map[string]string{}
-		sum_types:           map[string][]string{}
-		enum_names:          map[string]bool{}
-		enum_fields:         map[string][]string{}
-		flag_enums:          map[string]bool{}
-		interface_names:     map[string]bool{}
-		interface_fields:    map[string][]StructField{}
-		interface_embeds:    map[string][]string{}
-		c_globals:           map[string]Type{}
-		const_types:         map[string]Type{}
-		const_exprs:         map[string]flat.NodeId{}
-		const_modules:       map[string]string{}
-		imports:             map[string]string{}
-		file_imports:        map[string]string{}
-		file_modules:        map[string]string{}
-		file_scope:          fs
-		cur_scope:           fs
-		resolved_call_names: []string{len: a.nodes.len}
-		resolved_call_set:   []bool{len: a.nodes.len}
-		expr_type_values:    []Type{len: a.nodes.len, init: Type(void_)}
-		expr_type_set:       []bool{len: a.nodes.len}
-		checking_nodes:      []bool{len: a.nodes.len}
-		diagnostic_files:    map[string]bool{}
-		smartcasts:          map[string]Type{}
+		a:                          a
+		fn_ret_types:               map[string]Type{}
+		fn_param_types:             map[string][]Type{}
+		fn_variadic:                map[string]bool{}
+		structs:                    map[string][]StructField{}
+		unions:                     map[string]bool{}
+		type_aliases:               map[string]string{}
+		sum_types:                  map[string][]string{}
+		enum_names:                 map[string]bool{}
+		enum_fields:                map[string][]string{}
+		flag_enums:                 map[string]bool{}
+		interface_names:            map[string]bool{}
+		interface_fields:           map[string][]StructField{}
+		interface_embeds:           map[string][]string{}
+		interface_abstract_methods: map[string][]string{}
+		c_globals:                  map[string]Type{}
+		const_types:                map[string]Type{}
+		const_exprs:                map[string]flat.NodeId{}
+		const_modules:              map[string]string{}
+		imports:                    map[string]string{}
+		file_imports:               map[string]string{}
+		file_modules:               map[string]string{}
+		file_scope:                 fs
+		cur_scope:                  fs
+		resolved_call_names:        []string{len: a.nodes.len}
+		resolved_call_set:          []bool{len: a.nodes.len}
+		expr_type_values:           []Type{len: a.nodes.len, init: Type(void_)}
+		expr_type_set:              []bool{len: a.nodes.len}
+		checking_nodes:             []bool{len: a.nodes.len}
+		diagnostic_files:           map[string]bool{}
+		smartcasts:                 map[string]Type{}
 	}
 }
 
@@ -343,6 +346,9 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 					}
 					if f.op == .dot {
 						mname := '${iface_name}.${f.value}'
+						mut absm := tc.interface_abstract_methods[iface_name] or { []string{} }
+						absm << f.value
+						tc.interface_abstract_methods[iface_name] = absm
 						tc.fn_ret_types[mname] = tc.parse_type(f.typ)
 						mut ptypes := []Type{}
 						mut is_variadic := false
@@ -3857,7 +3863,10 @@ fn (tc &TypeChecker) interface_implements_interface(actual_name string, expected
 }
 
 pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, iface_name string) bool {
-	for method in tc.interface_method_names(iface_name) {
+	// Only the abstract (declared) methods must be provided by the concrete type.
+	// Methods defined directly on the interface (default implementations) are
+	// inherited and need not be reimplemented.
+	for method in tc.interface_abstract_method_names(iface_name) {
 		concrete_key := '${concrete_name}.${method}'
 		if concrete_key !in tc.fn_param_types {
 			return false
@@ -3880,6 +3889,35 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, i
 fn (tc &TypeChecker) interface_method_names(iface_name string) []string {
 	mut seen := map[string]bool{}
 	return tc.interface_method_names_inner(iface_name, mut seen)
+}
+
+// interface_abstract_method_names returns the methods an implementer must provide:
+// the interface's own declared (abstract) methods plus those of any embedded
+// interfaces. Default methods defined directly on the interface are excluded.
+pub fn (tc &TypeChecker) interface_abstract_method_names(iface_name string) []string {
+	mut seen := map[string]bool{}
+	return tc.interface_abstract_method_names_inner(iface_name, mut seen)
+}
+
+fn (tc &TypeChecker) interface_abstract_method_names_inner(iface_name string, mut seen map[string]bool) []string {
+	if iface_name in seen {
+		return []string{}
+	}
+	seen[iface_name] = true
+	mut methods := []string{}
+	for embed in tc.interface_embeds[iface_name] or { []string{} } {
+		for method in tc.interface_abstract_method_names_inner(embed, mut seen) {
+			if method !in methods {
+				methods << method
+			}
+		}
+	}
+	for method in tc.interface_abstract_methods[iface_name] or { []string{} } {
+		if method !in methods {
+			methods << method
+		}
+	}
+	return methods
 }
 
 fn (tc &TypeChecker) interface_method_names_inner(iface_name string, mut seen map[string]bool) []string {

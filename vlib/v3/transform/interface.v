@@ -53,11 +53,18 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	if !target_is_ptr {
 		return literal
 	}
-	tmp_name := t.new_temp('iface_arg')
+	// A `&Interface` value must outlive the current scope (it is commonly returned
+	// or stored in a global, e.g. `default_rng = &PRNG(rng)`). Heap-allocate the
+	// interface box rather than taking the address of a local temporary, which
+	// would dangle.
+	tmp_name := t.new_temp('iface_box')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, literal, iface_name)
-	ptr := t.make_prefix(.amp, t.make_ident(tmp_name))
-	t.a.nodes[int(ptr)].typ = target_type
-	return ptr
+	addr := t.make_prefix(.amp, t.make_ident(tmp_name))
+	size := t.make_sizeof_type(iface_name)
+	dup := t.make_call_typed('memdup', arr2(addr, size), 'voidptr')
+	cast := t.make_cast(target_type, dup, target_type)
+	t.a.nodes[int(cast)].typ = target_type
+	return cast
 }
 
 fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string) ?flat.NodeId {

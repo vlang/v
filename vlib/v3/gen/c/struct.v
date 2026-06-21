@@ -71,6 +71,13 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 				}
 				g.write('.${c_field_name(f.name)} = array_new(sizeof(${c_elem}), 0, 0)')
 				has_field = true
+			} else if g.field_needs_default_init(f.typ) {
+				if has_field {
+					g.write(', ')
+				}
+				g.write('.${c_field_name(f.name)} = ')
+				g.gen_default_value_for_type(f.typ)
+				has_field = true
 			}
 		}
 	}
@@ -140,6 +147,13 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 				}
 				g.write('.${c_field_name(f.name)} = array_new(sizeof(${c_elem}), 0, 0)')
 				has_field = true
+			} else if g.field_needs_default_init(f.typ) {
+				if has_field {
+					g.write(', ')
+				}
+				g.write('.${c_field_name(f.name)} = ')
+				g.gen_default_value_for_type(f.typ)
+				has_field = true
 			}
 		}
 	}
@@ -198,6 +212,13 @@ fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 					}
 					g.write('.${c_name(f.name)} = array_new(sizeof(${c_elem}), 0, 0)')
 					has_field = true
+				} else if g.field_needs_default_init(f.typ) {
+					if has_field {
+						g.write(', ')
+					}
+					g.write('.${c_name(f.name)} = ')
+					g.gen_default_value_for_type(f.typ)
+					has_field = true
 				}
 			}
 		}
@@ -210,6 +231,64 @@ fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 		return
 	}
 	g.write('(${ct}){0}')
+}
+
+// field_needs_default_init reports whether an unset field of type `typ` must be
+// explicitly default-initialized in a struct literal — i.e. it is a by-value
+// struct whose type carries field defaults that C's `{0}` would not apply
+// (e.g. `min_len int = 999999`).
+fn (mut g FlatGen) field_needs_default_init(typ types.Type) bool {
+	if typ is types.Struct && !typ.name.starts_with('C.') {
+		return g.struct_has_field_defaults(typ.name)
+	}
+	return false
+}
+
+// struct_has_field_defaults reports whether building `type_name` as a struct
+// literal would set any non-zero field: a field with an explicit default
+// (`x int = 5`), or a by-value struct field whose own type has such defaults.
+// Returns false for structs with interface/sum-typed field defaults, since the
+// codegen default path cannot box those values.
+fn (mut g FlatGen) struct_has_field_defaults(type_name string) bool {
+	mut visited := map[string]bool{}
+	return g.struct_has_field_defaults_inner(type_name, mut visited)
+}
+
+fn (mut g FlatGen) struct_has_field_defaults_inner(type_name string, mut visited map[string]bool) bool {
+	if type_name in visited {
+		return false
+	}
+	visited[type_name] = true
+	info := g.find_struct_decl(type_name) or { return false }
+	old_module := g.tc.cur_module
+	g.tc.cur_module = info.module
+	defer {
+		g.tc.cur_module = old_module
+	}
+	mut found := false
+	for i in 0 .. info.node.children_count {
+		field := g.a.child_node(&info.node, i)
+		if field.kind != .field_decl {
+			continue
+		}
+		ftyp := g.tc.parse_type(field.typ)
+		if field.children_count > 0 {
+			// Defaults for interface/sum-typed fields require boxing the value into
+			// the interface/sum representation, which the codegen default path cannot
+			// do. Treat the whole struct as unsafe to default-emit (leave it
+			// zero-initialized, as before) rather than emit an unboxed value.
+			if ftyp is types.SumType || ftyp is types.Interface {
+				return false
+			}
+			found = true
+		}
+		if ftyp is types.Struct && !ftyp.name.starts_with('C.') {
+			if g.struct_has_field_defaults_inner(ftyp.name, mut visited) {
+				found = true
+			}
+		}
+	}
+	return found
 }
 
 // gen_params_struct_arg emits a struct literal for a `@[params]` argument passed as
@@ -262,6 +341,13 @@ fn (mut g FlatGen) gen_params_struct_arg(typ types.Type, node flat.Node, field_s
 						g.write(', ')
 					}
 					g.write('.${c_name(f.name)} = array_new(sizeof(${c_elem}), 0, 0)')
+					has_field = true
+				} else if g.field_needs_default_init(f.typ) {
+					if has_field {
+						g.write(', ')
+					}
+					g.write('.${c_name(f.name)} = ')
+					g.gen_default_value_for_type(f.typ)
 					has_field = true
 				}
 			}

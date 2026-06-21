@@ -24,6 +24,7 @@ mut:
 	global_init_order       []string               // qualified global names, in declaration order
 	iface_impls             map[string][]string    // interface name -> implementing concrete type names
 	iface_type_ids          map[string]int         // "${iface}::${concrete}" -> 1-based type id
+	module_init_fns         []string               // C names of module-level `init()` fns, in source order
 	tc                      &types.TypeChecker = unsafe { nil }
 	has_builtins            bool
 	tmp_count               int
@@ -70,6 +71,7 @@ pub fn FlatGen.new() FlatGen {
 		global_init_order:       []string{}
 		iface_impls:             map[string][]string{}
 		iface_type_ids:          map[string]int{}
+		module_init_fns:         []string{}
 		modules:                 map[string]string{}
 		fn_ptr_types:            map[string]string{}
 		fn_decl_param_types:     map[string][]types.Type{}
@@ -116,6 +118,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.global_init_order = []string{}
 	g.iface_impls = map[string][]string{}
 	g.iface_type_ids = map[string]int{}
+	g.module_init_fns = []string{}
 	g.modules = map[string]string{}
 	g.fn_ptr_types = map[string]string{}
 	g.fn_decl_param_types = map[string][]types.Type{}
@@ -161,10 +164,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.string_literals()
 	g.interface_method_stubs()
 	g.sb.write_string(const_code)
-	if g.runtime_inits.len > 0 {
+	if g.runtime_inits.len > 0 || g.module_init_fns.len > 0 {
 		g.writeln('void _vinit() {')
 		for ri in g.runtime_inits {
 			g.writeln(ri)
+		}
+		// Module-level init() functions run after const/global initialization.
+		for init_fn in g.module_init_fns {
+			g.writeln('\t${init_fn}();')
 		}
 		g.writeln('}')
 		g.writeln('')
@@ -214,6 +221,14 @@ fn (mut g FlatGen) collect_gen_info() {
 				}
 			}
 			g.register_fn_decl_param_types(node.value, full_name, ptypes)
+			// Module-level `init()` functions run once at startup. Collect their C
+			// names so _vinit can invoke them (V semantics).
+			if node.value == 'init' && ptypes.len == 0 {
+				init_cname := qualified_fn_name_in_module(cur_module, 'init')
+				if init_cname !in g.module_init_fns {
+					g.module_init_fns << init_cname
+				}
+			}
 			continue
 		}
 		if kind_id == 62 {
@@ -1656,10 +1671,11 @@ fn (mut g FlatGen) global_decls() {
 //
 // Only initializers that translate to a plain `name = expr;` assignment are
 // emitted. Fixed-array globals (`[N]T{}`) are skipped: C zero-initializes them
-// already and a C array is not assignable. Initializers needing auxiliary
-// temporaries (e.g. `&Struct{}`, which the transformer lowers to a now-dropped
-// stack temp) are also skipped, leaving the global zero/NULL as before — no
-// regression versus the previous behavior of never initializing globals at all.
+// already and a C array is not assignable. `&Struct{}` is emitted as a
+// self-contained heap allocation (`(T*)memdup(&(T){...}, sizeof(T))`), so it is
+// safe. Other prefix/array initializers that would need a dropped temporary are
+// skipped, leaving the global zero/NULL — no regression versus never
+// initializing globals at all.
 fn (mut g FlatGen) emit_global_inits() {
 	old_module := g.tc.cur_module
 	for qname in g.global_init_order {
@@ -1702,11 +1718,21 @@ fn (g &FlatGen) is_safe_global_init(val_id flat.NodeId) bool {
 		return false
 	}
 	node := g.a.nodes[int(val_id)]
+	if node.kind == .prefix {
+		// `&Struct{}` becomes an inline `(T*)memdup(&(T){...}, sizeof(T))`, which is
+		// self-contained; allow it. Other prefixes (e.g. `&local`) would need a
+		// dropped temporary, so skip them.
+		if node.op == .amp && node.children_count > 0 {
+			child := g.a.nodes[int(g.a.child(&node, 0))]
+			return child.kind == .struct_init
+		}
+		return false
+	}
 	return match node.kind {
-		.prefix, .array_literal, .array_init {
-			// `&Struct{}` / array literals need a backing temp the transformer
-			// drops for globals; leave them zero/NULL instead of emitting a
-			// reference to an undeclared symbol.
+		.array_literal, .array_init {
+			// Array literals need a backing temp the transformer drops for globals;
+			// leave them zero/NULL instead of emitting a reference to an undeclared
+			// symbol.
 			false
 		}
 		else {

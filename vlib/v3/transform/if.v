@@ -979,17 +979,25 @@ fn (mut t Transformer) transform_and_chain_smartcasts(cond_id flat.NodeId) flat.
 	for info in lhs_smartcasts {
 		t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
 	}
-	new_rhs := t.transform_and_chain_smartcasts(rhs_id)
+	mut new_rhs := t.transform_and_chain_smartcasts(rhs_id)
 	rhs_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	for _ in lhs_smartcasts {
 		t.pop_smartcast()
 	}
+	// The left operand always evaluates, so its pending statements may run before
+	// the `&&`/`||`. The right operand is conditional, so any statements its
+	// lowering produced (e.g. an `in [...]` / `or {}` temporary) must run only when
+	// the right operand is actually reached — wrap them in a `({ ...; value; })`
+	// statement-expression to preserve short-circuit evaluation.
 	for stmt in lhs_pending {
 		t.pending_stmts << stmt
 	}
-	for stmt in rhs_pending {
-		t.pending_stmts << stmt
+	if rhs_pending.len > 0 {
+		mut block_stmts := rhs_pending.clone()
+		block_stmts << t.make_expr_stmt(new_rhs)
+		new_rhs = t.make_block(block_stmts)
+		t.a.nodes[int(new_rhs)].typ = 'bool'
 	}
 	if lhs.kind == .is_expr && new_lhs == lhs_id && new_rhs == rhs_id {
 		return cond_id

@@ -33,6 +33,7 @@ mut:
 	cur_fn           string
 	pending_flag     bool
 	skip_next_decl   bool
+	disable_fn_body  bool
 	in_for_container bool
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
@@ -809,21 +810,11 @@ fn (mut p Parser) top_level_stmt() flat.NodeId {
 		}
 		.attribute {
 			p.skip_attrs()
-			if p.skip_next_decl {
-				p.skip_next_decl = false
-				p.skip_top_level_stmt()
-				return flat.empty_node
-			}
-			return p.top_level_stmt()
+			return p.parse_decl_after_attrs()
 		}
 		.lsbr {
 			p.skip_attrs()
-			if p.skip_next_decl {
-				p.skip_next_decl = false
-				p.skip_top_level_stmt()
-				return flat.empty_node
-			}
-			return p.top_level_stmt()
+			return p.parse_decl_after_attrs()
 		}
 		.dollar {
 			return p.parse_comptime_if()
@@ -842,6 +833,26 @@ fn (mut p Parser) top_level_stmt() flat.NodeId {
 			return p.stmt()
 		}
 	}
+}
+
+// parse_decl_after_attrs parses the declaration that follows an attribute group.
+// A newline after `@[...]` yields an auto-inserted semicolon, which is consumed
+// here so the declaration itself is parsed next. When the attribute group is a
+// disabled `@[if flag ?]` (skip_next_decl set), functions are emitted as no-op
+// stubs (empty body): the signature must remain so call sites still type-check
+// and link, but the body is elided. Non-function declarations are emitted as-is.
+fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
+	for p.tok == .semicolon {
+		p.next()
+	}
+	if p.skip_next_decl {
+		p.skip_next_decl = false
+		p.disable_fn_body = true
+		res := p.top_level_stmt()
+		p.disable_fn_body = false
+		return res
+	}
+	return p.top_level_stmt()
 }
 
 fn (mut p Parser) fn_decl() flat.NodeId {
@@ -981,6 +992,10 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 }
 
 fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type string, is_method bool, _ bool) flat.NodeId {
+	// Capture & clear here so it applies only to this function (not nested closures
+	// or a following declaration), and is cleared even on the extern/no-body path.
+	disable_body := p.disable_fn_body
+	p.disable_fn_body = false
 	// generic params — skip
 	if p.tok == .lsbr {
 		p.skip_brackets()
@@ -1030,14 +1045,20 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	mut body_ids := []flat.NodeId{}
 	prev_fn := p.cur_fn
 	p.cur_fn = name
-	p.check(.lcbr)
-	for p.tok != .rcbr && p.tok != .eof {
-		id := p.stmt()
-		if int(id) >= 0 {
-			body_ids << id
+	// A disabled `@[if flag ?]` function keeps its signature but gets an empty body
+	// (a no-op stub), so callers still resolve while the body is compiled out.
+	if disable_body {
+		p.skip_block()
+	} else {
+		p.check(.lcbr)
+		for p.tok != .rcbr && p.tok != .eof {
+			id := p.stmt()
+			if int(id) >= 0 {
+				body_ids << id
+			}
 		}
+		p.check(.rcbr)
 	}
-	p.check(.rcbr)
 	p.cur_fn = prev_fn
 
 	mut all_ids := []flat.NodeId{cap: param_ids.len + body_ids.len}
@@ -1607,20 +1628,24 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				if p.tok == .key_mut {
 					p.next()
 				}
-				ptype := p.parse_type_name()
-				if p.tok == .name {
-					// param has a name before type, consume the actual type
-					ptype2 := p.parse_type_name()
-					params << p.a.add_node(flat.Node{
-						kind: .param
-						typ:  ptype2
-					})
-				} else {
-					params << p.a.add_node(flat.Node{
-						kind: .param
-						typ:  ptype
-					})
+				// Interface method params may be named (e.g. `seed_data []u32`,
+				// `node &ast.Node`) or type-only (`[]u32`). When the current token
+				// is a plain identifier and the next token starts a type, that
+				// identifier is the param name; consume it first so the array/pointer
+				// prefix of the real type is not mis-parsed onto the name
+				// (e.g. `seed_data[]`). `map`/`chan` are type heads, not names.
+				if p.tok == .name && p.lit != 'map' && p.lit != 'chan' {
+					nt := p.peek()
+					if nt == .name || nt == .amp || nt == .lsbr || nt == .question || nt == .not
+						|| nt == .key_fn || nt == .ellipsis {
+						p.next()
+					}
 				}
+				ptype := p.parse_type_name()
+				params << p.a.add_node(flat.Node{
+					kind: .param
+					typ:  ptype
+				})
 				if p.tok == .comma {
 					p.next()
 				}
@@ -1767,7 +1792,14 @@ fn (mut p Parser) skip_attrs() {
 }
 
 fn (mut p Parser) skip_top_level_stmt() {
-	for p.tok == .attribute || p.tok == .lsbr {
+	// A newline after the attribute group (`@[if flag ?]`) yields an auto-inserted
+	// semicolon before the declaration; skip it (and any further attributes) so the
+	// declaration itself — not just the empty statement — is skipped.
+	for p.tok == .attribute || p.tok == .lsbr || p.tok == .semicolon {
+		if p.tok == .semicolon {
+			p.next()
+			continue
+		}
 		p.skip_attrs()
 	}
 	if p.tok == .key_pub {

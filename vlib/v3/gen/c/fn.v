@@ -159,7 +159,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 			g.writeln('\tg_main_argc = argc;')
 			g.writeln('\tg_main_argv = argv;')
 		}
-		if g.runtime_inits.len > 0 {
+		if g.runtime_inits.len > 0 || g.module_init_fns.len > 0 {
 			g.writeln('\t_vinit();')
 		}
 	} else {
