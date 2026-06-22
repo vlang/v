@@ -2027,6 +2027,10 @@ fn (mut g FlatGen) global_decls() {
 		if typ is types.ArrayFixed {
 			c_elem := g.tc.c_type(typ.elem_type)
 			len_expr := g.fixed_array_len_value(typ)
+			if len_expr == '0' {
+				g.writeln('${c_elem} ${c_name(name)}[0];')
+				continue
+			}
 			g.writeln('${c_elem} ${c_name(name)}[${len_expr}] = {0};')
 			continue
 		}

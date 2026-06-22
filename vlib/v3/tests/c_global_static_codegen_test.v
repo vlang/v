@@ -99,6 +99,8 @@ __global (
 	names []string
 	lookup map[string]int
 	box Box
+	empty [0]int
+	slots [2]int
 )
 
 fn main() {}
@@ -106,9 +108,12 @@ fn main() {}
 	assert c_code.contains('Array names = {0};')
 	assert c_code.contains('map lookup = {0};')
 	assert c_code.contains('Box box = {0};')
+	assert c_code.contains('int empty[0];')
+	assert c_code.contains('int slots[2] = {0};')
 	assert !c_code.contains('Array names = 0;')
 	assert !c_code.contains('map lookup = 0;')
 	assert !c_code.contains('Box box = 0;')
+	assert !c_code.contains('int empty[0] = {0};')
 }
 
 fn test_aggregate_decl_with_scalar_zero_uses_brace_initializer() {
