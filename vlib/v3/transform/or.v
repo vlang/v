@@ -84,7 +84,7 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 	index_value := t.make_index(base_expr, t.make_ident(index_name), info.value_type)
 	then_block := t.make_block(arr1(t.make_assign(t.make_ident(val_name), index_value)))
 	else_block := t.make_block(t.lower_or_body_to_stmts(body_id, val_name, info.value_type,
-		node.value))
+		node.value, ''))
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
 		t.pending_stmts << stmt
@@ -198,7 +198,7 @@ fn (mut t Transformer) transform_enum_from_string_or_expr(id flat.NodeId, node f
 		info.enum_type)
 
 	mut else_block := t.make_block(t.lower_or_body_to_stmts(body_id, val_name, info.enum_type,
-		node.value))
+		node.value, ''))
 	for i := info.fields.len - 1; i >= 0; i-- {
 		cond := t.make_call_typed('string__eq', arr2(t.make_ident(str_name),
 			t.make_string_literal(info.fields[i])), 'bool')
@@ -310,7 +310,7 @@ fn (mut t Transformer) zero_value_for_type(typ string) flat.NodeId {
 		return t.a.add(.nil_literal)
 	}
 	if clean.len > 1 && (clean[0] == `?` || clean[0] == `!`) {
-		clean = clean[1..]
+		return t.make_optional_none(clean)
 	}
 	clean = t.normalize_type_alias(clean)
 	if clean.starts_with('fn(') || clean.starts_with('fn (') || clean.starts_with('fn_ptr:') {
@@ -350,6 +350,15 @@ fn (mut t Transformer) make_none_return_stmt() flat.NodeId {
 	return t.make_return(t.a.add(.none_expr), t.cur_fn_ret_type)
 }
 
+fn (mut t Transformer) make_none_return_stmt_with_err(err_source string) flat.NodeId {
+	if err_source.len == 0 {
+		return t.make_none_return_stmt()
+	}
+	err_expr := t.make_selector(t.make_ident(err_source), 'err', 'IError')
+	return t.make_return(t.make_optional_none_with_err(t.cur_fn_ret_type, err_expr),
+		t.cur_fn_ret_type)
+}
+
 fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
 		return id
@@ -375,7 +384,7 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 		prelude << t.make_decl_assign_typed(opt_tmp, new_expr, expr_type)
 		opt_ident := t.make_ident(opt_tmp)
 		not_ok := t.make_prefix(.not, t.make_selector(opt_ident, 'ok', 'bool'))
-		else_block := t.make_block(t.lower_or_body_to_stmts(body_id, '', '', node.value))
+		else_block := t.make_block(t.lower_or_body_to_stmts(body_id, '', '', node.value, opt_tmp))
 		if_stmt := t.make_if(not_ok, else_block, t.make_empty())
 		t.pending_stmts = outer_pending
 		for stmt in prelude {
@@ -393,7 +402,8 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	value_expr := t.make_selector(t.make_ident(opt_tmp), 'value', value_type)
 	then_assign := t.make_assign(t.make_ident(val_tmp), value_expr)
 	then_block := t.make_block(arr1(then_assign))
-	else_block := t.make_block(t.lower_or_body_to_stmts(body_id, val_tmp, value_type, node.value))
+	else_block := t.make_block(t.lower_or_body_to_stmts(body_id, val_tmp, value_type, node.value,
+		opt_tmp))
 	if_stmt := t.make_if(ok_cond, then_block, else_block)
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
@@ -403,10 +413,10 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	return t.make_ident(val_tmp)
 }
 
-fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name string, target_type string, mode string) []flat.NodeId {
+fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name string, target_type string, mode string, err_source string) []flat.NodeId {
 	if mode == '!' || mode == '?' {
 		if t.is_optional_type_name(t.cur_fn_ret_type) {
-			return arr1(t.make_none_return_stmt())
+			return arr1(t.make_none_return_stmt_with_err(err_source))
 		}
 		return arr1(t.make_panic_stmt('option/result propagation failed'))
 	}
@@ -431,7 +441,12 @@ fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name s
 		return result
 	}
 	t.set_var_type('err', 'IError')
-	result << t.make_decl_assign_typed('err', t.make_struct_init('IError'), 'IError')
+	err_value := if err_source.len > 0 {
+		t.make_selector(t.make_ident(err_source), 'err', 'IError')
+	} else {
+		t.make_struct_init('IError')
+	}
+	result << t.make_decl_assign_typed('err', err_value, 'IError')
 	for i in 0 .. body.children_count {
 		child_id := t.a.child(&body, i)
 		child := t.a.nodes[int(child_id)]

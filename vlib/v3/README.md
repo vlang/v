@@ -123,7 +123,6 @@ source to binary uses no external tools.
 | type checker   | 974   |
 | universe       | 97    |
 | scopes         | 34    |
-| C gen (AST)    | 669   |
 | SSA IR+build   | 1,510 |
 | SSA optimize   | 474   |
 | ARM64 gen      | 873   |
@@ -138,7 +137,7 @@ source to binary uses no external tools.
 | scanner        | 593   |
 | token          | 338   |
 | bench          | 81    |
-| **total**      | **~18,300** |
+| **total**      | **~16,300** |
 
 ## Performance
 

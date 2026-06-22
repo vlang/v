@@ -33,6 +33,7 @@ mut:
 	cur_fn           string
 	pending_flag     bool
 	skip_next_decl   bool
+	disable_fn_body  bool
 	in_for_container bool
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
@@ -45,8 +46,9 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		prefs: unsafe { prefs }
 		s:     scanner.new_scanner(prefs, .normal)
 		a:     &flat.FlatAst{
-			nodes:    []flat.Node{cap: 256}
-			children: []flat.NodeId{cap: 512}
+			nodes:        []flat.Node{cap: 256}
+			children:     []flat.NodeId{cap: 512}
+			disabled_fns: map[string]bool{}
 		}
 	}
 }
@@ -809,21 +811,11 @@ fn (mut p Parser) top_level_stmt() flat.NodeId {
 		}
 		.attribute {
 			p.skip_attrs()
-			if p.skip_next_decl {
-				p.skip_next_decl = false
-				p.skip_top_level_stmt()
-				return flat.empty_node
-			}
-			return p.top_level_stmt()
+			return p.parse_decl_after_attrs()
 		}
 		.lsbr {
 			p.skip_attrs()
-			if p.skip_next_decl {
-				p.skip_next_decl = false
-				p.skip_top_level_stmt()
-				return flat.empty_node
-			}
-			return p.top_level_stmt()
+			return p.parse_decl_after_attrs()
 		}
 		.dollar {
 			return p.parse_comptime_if()
@@ -842,6 +834,47 @@ fn (mut p Parser) top_level_stmt() flat.NodeId {
 			return p.stmt()
 		}
 	}
+}
+
+// parse_decl_after_attrs parses the declaration that follows an attribute group.
+// A newline after `@[...]` yields an auto-inserted semicolon, which is consumed
+// here so the declaration itself is parsed next. When the attribute group is a
+// disabled `@[if flag ?]` (skip_next_decl set), functions are emitted as no-op
+// stubs (empty body): the signature must remain so call sites still type-check
+// and link, but the body is elided. Other disabled declarations are skipped.
+fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
+	p.consume_decl_prefix_after_attrs()
+	if p.skip_next_decl {
+		p.skip_next_decl = false
+		if p.cur_decl_is_fn() {
+			p.disable_fn_body = true
+			res := p.top_level_stmt()
+			p.disable_fn_body = false
+			p.skip_next_decl = false
+			return res
+		}
+		p.skip_top_level_stmt()
+		p.skip_next_decl = false
+		return flat.empty_node
+	}
+	return p.top_level_stmt()
+}
+
+fn (mut p Parser) consume_decl_prefix_after_attrs() {
+	for p.tok == .semicolon || p.tok == .attribute || p.tok == .lsbr {
+		if p.tok == .semicolon {
+			p.next()
+			continue
+		}
+		p.skip_attrs()
+	}
+}
+
+fn (mut p Parser) cur_decl_is_fn() bool {
+	if p.tok == .key_fn {
+		return true
+	}
+	return p.tok == .key_pub && p.peek() == .key_fn
 }
 
 fn (mut p Parser) fn_decl() flat.NodeId {
@@ -918,6 +951,8 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 }
 
 fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type string, op_name string) flat.NodeId {
+	disable_body := p.disable_fn_body
+	p.disable_fn_body = false
 	// parse parameter
 	p.check(.lpar)
 	mut param_ids := []flat.NodeId{}
@@ -952,14 +987,19 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 	if p.tok == .lcbr {
 		prev_fn := p.cur_fn
 		p.cur_fn = name
-		p.check(.lcbr)
-		for p.tok != .rcbr && p.tok != .eof {
-			id := p.stmt()
-			if int(id) >= 0 {
-				body_ids << id
+		if disable_body {
+			p.mark_disabled_fn(name)
+			p.skip_block()
+		} else {
+			p.check(.lcbr)
+			for p.tok != .rcbr && p.tok != .eof {
+				id := p.stmt()
+				if int(id) >= 0 {
+					body_ids << id
+				}
 			}
+			p.check(.rcbr)
 		}
-		p.check(.rcbr)
 		p.cur_fn = prev_fn
 	}
 
@@ -981,6 +1021,10 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 }
 
 fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type string, is_method bool, _ bool) flat.NodeId {
+	// Capture & clear here so it applies only to this function (not nested closures
+	// or a following declaration), and is cleared even on the extern/no-body path.
+	disable_body := p.disable_fn_body
+	p.disable_fn_body = false
 	// generic params — skip
 	if p.tok == .lsbr {
 		p.skip_brackets()
@@ -1030,14 +1074,21 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	mut body_ids := []flat.NodeId{}
 	prev_fn := p.cur_fn
 	p.cur_fn = name
-	p.check(.lcbr)
-	for p.tok != .rcbr && p.tok != .eof {
-		id := p.stmt()
-		if int(id) >= 0 {
-			body_ids << id
+	// A disabled `@[if flag ?]` function keeps its signature but gets an empty body
+	// (a no-op stub), so callers still resolve while the body is compiled out.
+	if disable_body {
+		p.mark_disabled_fn(name)
+		p.skip_block()
+	} else {
+		p.check(.lcbr)
+		for p.tok != .rcbr && p.tok != .eof {
+			id := p.stmt()
+			if int(id) >= 0 {
+				body_ids << id
+			}
 		}
+		p.check(.rcbr)
 	}
-	p.check(.rcbr)
 	p.cur_fn = prev_fn
 
 	mut all_ids := []flat.NodeId{cap: param_ids.len + body_ids.len}
@@ -1055,6 +1106,17 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
 	})
+}
+
+fn (mut p Parser) mark_disabled_fn(name string) {
+	if name.len == 0 {
+		return
+	}
+	if p.cur_module.len > 0 && p.cur_module != 'main' && p.cur_module != 'builtin' {
+		qname := if name.starts_with('${p.cur_module}.') { name } else { '${p.cur_module}.${name}' }
+		p.a.disabled_fns[qname] = true
+	}
+	p.a.disabled_fns[name] = true
 }
 
 fn (mut p Parser) parse_param_group() []flat.NodeId {
@@ -1607,20 +1669,25 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				if p.tok == .key_mut {
 					p.next()
 				}
-				ptype := p.parse_type_name()
-				if p.tok == .name {
-					// param has a name before type, consume the actual type
-					ptype2 := p.parse_type_name()
-					params << p.a.add_node(flat.Node{
-						kind: .param
-						typ:  ptype2
-					})
-				} else {
-					params << p.a.add_node(flat.Node{
-						kind: .param
-						typ:  ptype
-					})
+				// Interface method params may be named (e.g. `seed_data []u32`,
+				// `node &ast.Node`) or type-only (`[]u32`). When the current token
+				// is a plain identifier and the next token starts a type, that
+				// identifier is the param name; consume it first so the array/pointer
+				// prefix of the real type is not mis-parsed onto the name
+				// (e.g. `seed_data[]`). `map`/`chan` are type heads, not names.
+				if p.tok == .name && p.lit != 'map' && p.lit != 'chan' {
+					nt := p.peek()
+					if nt == .name || nt == .amp || nt == .question || nt == .not
+						|| nt == .key_fn || nt == .ellipsis
+						|| (nt == .lsbr && p.peek_lbr_starts_array_type()) {
+						p.next()
+					}
 				}
+				ptype := p.parse_type_name()
+				params << p.a.add_node(flat.Node{
+					kind: .param
+					typ:  ptype
+				})
 				if p.tok == .comma {
 					p.next()
 				}
@@ -1767,7 +1834,14 @@ fn (mut p Parser) skip_attrs() {
 }
 
 fn (mut p Parser) skip_top_level_stmt() {
-	for p.tok == .attribute || p.tok == .lsbr {
+	// A newline after the attribute group (`@[if flag ?]`) yields an auto-inserted
+	// semicolon before the declaration; skip it (and any further attributes) so the
+	// declaration itself — not just the empty statement — is skipped.
+	for p.tok == .attribute || p.tok == .lsbr || p.tok == .semicolon {
+		if p.tok == .semicolon {
+			p.next()
+			continue
+		}
 		p.skip_attrs()
 	}
 	if p.tok == .key_pub {
@@ -2019,10 +2093,13 @@ fn (mut p Parser) skip_parens() {
 }
 
 fn (mut p Parser) parse_comptime_expr() flat.NodeId {
-	if p.peek() == .key_if || p.peek() == .key_for {
+	if p.peek() == .key_for {
 		return p.parse_comptime_if()
 	}
 	p.next() // skip $
+	if p.tok == .key_if || (p.tok == .name && p.lit == 'if') {
+		return p.parse_comptime_if_expr_after_if()
+	}
 	if p.tok == .name && p.lit == 'd' {
 		p.next()
 		if p.tok != .lpar {
@@ -2057,6 +2134,64 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		p.next()
 	}
 	return flat.empty_node
+}
+
+fn (mut p Parser) parse_comptime_if_expr() flat.NodeId {
+	p.next() // skip $
+	if p.tok != .key_if && !(p.tok == .name && p.lit == 'if') {
+		return flat.empty_node
+	}
+	return p.parse_comptime_if_expr_after_if()
+}
+
+fn (mut p Parser) parse_comptime_if_expr_after_if() flat.NodeId {
+	p.next() // skip if
+	cond := p.parse_comptime_cond()
+	taken := eval_comptime_cond(p.prefs, cond)
+	if taken {
+		result := p.parse_comptime_expr_block()
+		p.skip_comptime_else()
+		return result
+	}
+	p.skip_block()
+	return p.parse_comptime_else_expr()
+}
+
+fn (mut p Parser) parse_comptime_else_expr() flat.NodeId {
+	if p.tok == .semicolon && p.peek() == .dollar {
+		p.next()
+	}
+	if p.tok != .dollar || p.peek() != .key_else {
+		return flat.empty_node
+	}
+	p.next() // skip $
+	p.next() // skip else
+	if p.tok == .semicolon && p.peek() == .dollar {
+		p.next()
+	}
+	if p.tok == .dollar {
+		return p.parse_comptime_if_expr()
+	}
+	return p.parse_comptime_expr_block()
+}
+
+fn (mut p Parser) parse_comptime_expr_block() flat.NodeId {
+	if p.tok != .lcbr {
+		return flat.empty_node
+	}
+	p.next()
+	if p.tok == .rcbr {
+		p.next()
+		return flat.empty_node
+	}
+	result := p.expr(.lowest)
+	for p.tok != .rcbr && p.tok != .eof {
+		p.next()
+	}
+	if p.tok == .rcbr {
+		p.next()
+	}
+	return result
 }
 
 // ==================== statements ====================
@@ -2338,7 +2473,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 	// Check for for-in: `for x in ...` or `for i, x in ...` or `for mut x in ...`
 	if p.tok == .name && (p.peek() == .key_in || p.peek() == .comma) {
 		first_expr := p.expr(.bit_or)
-		return p.for_in(first_expr)
+		return p.for_in(first_expr, false)
 	}
 	if p.tok == .key_mut {
 		p.next()
@@ -2354,7 +2489,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 			first_expr = p.expr(.lowest)
 		}
 		if p.tok == .key_in || p.tok == .comma {
-			return p.for_in(first_expr)
+			return p.for_in(first_expr, true)
 		}
 		if p.tok == .lcbr {
 			body_ids := p.parse_block_body()
@@ -2411,7 +2546,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 
 	// for-in: `for x in expr` or `for i, x in expr`
 	if p.tok == .key_in || p.tok == .comma {
-		return p.for_in(first_expr)
+		return p.for_in(first_expr, false)
 	}
 
 	// C-style: `for i := 0; ...`
@@ -2541,16 +2676,18 @@ fn (mut p Parser) for_c_style(lhs_expr flat.NodeId) flat.NodeId {
 	})
 }
 
-fn (mut p Parser) for_in(first_expr flat.NodeId) flat.NodeId {
+fn (mut p Parser) for_in(first_expr flat.NodeId, first_is_mut bool) flat.NodeId {
 	// first_expr is either the key var or the only var
 	mut key_id := first_expr
 	mut val_id := flat.empty_node
+	mut value_is_mut := first_is_mut
 
 	if p.tok == .comma {
 		p.next()
 		// second variable
 		if p.tok == .key_mut {
 			p.next()
+			value_is_mut = true
 		}
 		val_id = p.a.add_val(.ident, p.expect_name())
 	}
@@ -2588,6 +2725,7 @@ fn (mut p Parser) for_in(first_expr flat.NodeId) flat.NodeId {
 		// value field stores the count of header elements (key, val, container, [range_end])
 		// so gen knows where body starts
 		value: if int(range_end) >= 0 { '4' } else { '3' }
+		op:    if value_is_mut { .amp } else { .none }
 	})
 }
 
@@ -2892,9 +3030,11 @@ fn (mut p Parser) assign_or_expr_inline() flat.NodeId {
 
 fn (mut p Parser) defer_stmt() flat.NodeId {
 	p.next() // skip 'defer'
+	mut mode := ''
 	if p.tok == .lpar {
 		p.next()
 		if p.tok == .key_fn {
+			mode = 'function'
 			p.next()
 		}
 		p.check(.rpar)
@@ -2905,6 +3045,7 @@ fn (mut p Parser) defer_stmt() flat.NodeId {
 		kind:           .defer_stmt
 		children_start: dstart
 		children_count: 1
+		value:          mode
 	})
 }
 
@@ -3984,19 +4125,21 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 
 fn (mut p Parser) string_literal() flat.NodeId {
 	mut q := u8(`'`)
-	if p.lit.len > 0 {
-		if p.lit[0] == `r` && p.lit.len > 1 {
+	lit := p.lit
+	if lit.len > 0 {
+		if lit[0] == `r` && lit.len > 1 {
 			q = p.lit[1]
-		} else if p.lit[0] == `'` || p.lit[0] == `"` {
-			q = p.lit[0]
+		} else if lit[0] == `'` || lit[0] == `"` {
+			q = lit[0]
 		}
 	}
-	val := strip_quotes(p.lit)
 	p.next()
 	if int(p.tok) != 106 {
+		val := strip_quotes(lit)
 		return p.a.add_val_id(5, val)
 	}
 	// string interpolation
+	val := strip_interp_start_quotes(lit)
 	return p.string_interp(val, q)
 }
 
@@ -4372,6 +4515,42 @@ fn (mut p Parser) parse_type_name_progress() string {
 	return typ
 }
 
+fn (mut p Parser) peek_lbr_starts_array_type() bool {
+	if p.peek() != .lsbr {
+		return false
+	}
+	mut idx := p.s.offset
+	for idx < p.s.src.len && (p.s.src[idx] == ` ` || p.s.src[idx] == `\t`
+		|| p.s.src[idx] == `\n` || p.s.src[idx] == `\r`) {
+		idx++
+	}
+	mut depth := 1
+	for idx < p.s.src.len {
+		c := p.s.src[idx]
+		if c == `[` {
+			depth++
+		} else if c == `]` {
+			depth--
+			if depth == 0 {
+				idx++
+				for idx < p.s.src.len && (p.s.src[idx] == ` ` || p.s.src[idx] == `\t`
+					|| p.s.src[idx] == `\n` || p.s.src[idx] == `\r`) {
+					idx++
+				}
+				if idx >= p.s.src.len {
+					return false
+				}
+				next := p.s.src[idx]
+				return (next >= `a` && next <= `z`) || (next >= `A` && next <= `Z`)
+					|| next == `_` || next == `&` || next == `?` || next == `!`
+					|| next == `[` || next == `(`
+			}
+		}
+		idx++
+	}
+	return false
+}
+
 fn (p &Parser) can_start_type_name() bool {
 	return p.tok == .name || p.tok == .amp || p.tok == .question || p.tok == .not || p.tok == .lsbr
 		|| p.tok == .lpar || p.tok == .key_fn || p.tok == .ellipsis || p.tok == .key_mut
@@ -4599,6 +4778,21 @@ fn strip_quotes(s string) string {
 	return unescape_string(raw)
 }
 
+fn strip_interp_start_quotes(s string) string {
+	mut raw := s
+	is_raw := s.len >= 3 && s[0] == `r`
+	if is_raw {
+		raw = s[1..]
+	}
+	if raw.len >= 1 && (raw[0] == `'` || raw[0] == `"`) {
+		raw = raw[1..]
+	}
+	if is_raw {
+		return raw
+	}
+	return unescape_string(raw)
+}
+
 fn strip_interp_quotes(s string, quote u8) string {
 	mut raw := s
 	if raw.len >= 1 && raw[raw.len - 1] == quote {
@@ -4623,6 +4817,7 @@ fn unescape_string(s string) string {
 				`\\` { u8(`\\`) }
 				`'` { u8(`'`) }
 				`"` { u8(`"`) }
+				`$` { u8(`$`) }
 				`0` { u8(0) }
 				`a` { u8(7) }
 				`b` { u8(8) }
