@@ -4309,9 +4309,20 @@ fn (mut e Eval) maybe_call_os_builtin(fn_name string, args []Value) !MaybeValue 
 			}
 		}
 		'join_path' {
+			parts := args.map(e.value_string(it))
+			if parts.len == 0 {
+				return MaybeValue{
+					found: true
+					value: Value('')
+				}
+			}
+			mut path := parts[0]
+			for part in parts[1..] {
+				path = os.join_path(path, part)
+			}
 			return MaybeValue{
 				found: true
-				value: Value(args.map(e.value_string(it)).join(os.path_separator))
+				value: Value(path)
 			}
 		}
 		'join_path_single' {
@@ -4364,9 +4375,21 @@ fn os_result_value(result os.Result) Value {
 
 fn (mut e Eval) call_value_method(receiver Value, receiver_type_name string, method_name string, args []Value) !MethodCallResult {
 	static_type_name := e.normalize_type_name(receiver_type_name)
+	if value := e.direct_builtin_str_method_value(receiver, static_type_name, method_name, args) {
+		return MethodCallResult{
+			value:    value
+			receiver: receiver
+		}
+	}
 	if static_type_name.len > 0 {
 		if target := e.resolve_method_target(static_type_name, method_name) {
 			return e.call_method_target(receiver, target, args)!
+		}
+	}
+	if value := e.direct_str_method_value(receiver, method_name, args) {
+		return MethodCallResult{
+			value:    value
+			receiver: receiver
 		}
 	}
 	if receiver is string {
@@ -4413,6 +4436,32 @@ fn (mut e Eval) call_value_method(receiver Value, receiver_type_name string, met
 		return result
 	}
 	return error('v3.eval: unsupported method `${method_name}` on `${e.runtime_type_name(receiver)}`')
+}
+
+fn (e &Eval) direct_builtin_str_method_value(receiver Value, static_type_name string, method_name string, args []Value) ?Value {
+	if !is_builtin_str_receiver_type_name(static_type_name) {
+		return none
+	}
+	return e.direct_str_method_value(receiver, method_name, args)
+}
+
+fn (e &Eval) direct_str_method_value(receiver Value, method_name string, args []Value) ?Value {
+	if method_name != 'str' || args.len != 0 {
+		return none
+	}
+	match receiver {
+		bool, i64, f64, string, EnumValue {
+			return Value(e.value_string(receiver))
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn is_builtin_str_receiver_type_name(name string) bool {
+	return name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte', 'u16', 'u32',
+		'u64', 'usize', 'f32', 'f64', 'rune', 'char', 'string']
 }
 
 fn (mut e Eval) call_method_target(receiver Value, target FunctionDef, args []Value) !MethodCallResult {
@@ -5534,7 +5583,7 @@ fn (e &Eval) value_string(value Value) string {
 			return value.str()
 		}
 		EnumValue {
-			return value.value.str()
+			return e.enum_value_string(value)
 		}
 		f64 {
 			return value.str()
@@ -5578,6 +5627,32 @@ fn (e &Eval) value_string(value Value) string {
 			return '<fn>'
 		}
 	}
+}
+
+fn (e &Eval) enum_value_string(value EnumValue) string {
+	enum_name := e.normalize_type_name(value.type_name)
+	if fields := e.enum_fields[enum_name] {
+		module_name := if enum_name.contains('.') {
+			enum_name.all_before_last('.')
+		} else {
+			e.current_module_name()
+		}
+		short_name := enum_name.all_after_last('.')
+		if module_name in e.consts {
+			for field in fields {
+				if entry := e.consts[module_name]['${short_name}.${field}'] {
+					if e.value_as_int(entry.value) or { i64(-1) } == value.value {
+						return field
+					}
+				}
+			}
+		}
+		index := int(value.value)
+		if index >= 0 && index < fields.len {
+			return fields[index]
+		}
+	}
+	return value.value.str()
 }
 
 fn (e &Eval) runtime_type_name(value Value) string {

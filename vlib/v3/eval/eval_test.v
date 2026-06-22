@@ -3211,6 +3211,56 @@ fn main() {
 	assert e.stdout() == 'ints\nstrings\nint-map\nstring-map\n'
 }
 
+fn test_eval_primitive_str_methods_are_direct() {
+	mut e := create()
+	e.run_text('
+fn main() {
+	total := 42
+	println(total.str())
+	println(true.str())
+	f := 1.5
+	println(f.str())
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '42\ntrue\n1.5\n'
+}
+
+fn test_eval_enum_stringification_uses_field_names() {
+	mut e := create()
+	e.run_text('
+enum State {
+	idle
+	busy = 10
+}
+
+fn main() {
+	println(State.busy)
+	println("\${State.idle}")
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == 'busy\nidle\n'
+}
+
+fn test_eval_os_join_path_delegates_to_os() {
+	mut e := create()
+	e.run_text('
+import os
+
+fn main() {
+	println(os.join_path("", "foo"))
+	println(os.join_path("foo", ""))
+}
+	') or {
+		panic(err)
+	}
+	expected := os.join_path('', 'foo') + '\n' + os.join_path('foo', '') + '\n'
+	assert e.stdout() == expected
+}
+
 fn test_v3_eval_backend_cli() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_eval_backend_test')
 	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
