@@ -2328,6 +2328,35 @@ fn main() {
 	assert e.stdout() == 'false\nfalse\n'
 }
 
+fn test_eval_optional_if_guard_binds_payload_type() {
+	mut e := create()
+	e.run_text('
+fn maybe() ?int {
+	return 41
+}
+
+fn absent() ?int {
+	return none
+}
+
+fn main() {
+	if x := maybe() {
+		println(int_str(x + 1))
+	} else {
+		println("missing")
+	}
+	if x := absent() {
+		println(int_str(x))
+	} else {
+		println("absent")
+	}
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '42\nabsent\n'
+}
+
 fn test_eval_optional_sum_return_adapts_payload_before_wrapping() {
 	mut e := create()
 	e.run_text('
@@ -2513,6 +2542,29 @@ fn main() {
 		panic(err)
 	}
 	assert e.stdout() == '0\n7\n\nfallback\n'
+}
+
+fn test_eval_map_index_if_guard_uses_lookup_presence() {
+	mut e := create()
+	e.run_text('
+fn main() {
+	mut m := map[string]int{}
+	m["present"] = 0
+	if v := m["present"] {
+		println(int_str(v))
+	} else {
+		println("missing-present")
+	}
+	if v := m["missing"] {
+		println(int_str(v))
+	} else {
+		println("missing")
+	}
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '0\nmissing\n'
 }
 
 fn test_eval_postfix_option_propagates_failure() {

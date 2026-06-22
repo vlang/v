@@ -1871,15 +1871,47 @@ fn (mut e Eval) eval_condition_flow(id flat.NodeId) !FlowSignal {
 	node := e.node(id)
 	if node.kind == .decl_assign {
 		rhs_id := e.child(node, 1)
-		rhs_signal := e.eval_expr_flow(rhs_id)!
-		if rhs_signal.kind != .normal {
-			return rhs_signal
+		rhs_node := e.node(rhs_id)
+		mut ok := false
+		mut bind_value := Value(void_value())
+		mut bind_type := ''
+		if rhs_node.kind == .index && rhs_node.value != 'range' && rhs_node.children_count > 1 {
+			container_signal := e.eval_expr_flow(e.child(rhs_node, 0))!
+			if container_signal.kind != .normal {
+				return container_signal
+			}
+			container := flow_value(container_signal)
+			index_signal := if container is MapValue {
+				e.eval_expr_flow_expected(e.child(rhs_node, 1), container.key_type_name)!
+			} else {
+				e.eval_expr_flow(e.child(rhs_node, 1))!
+			}
+			if index_signal.kind != .normal {
+				return index_signal
+			}
+			if container is MapValue {
+				value, found := e.map_lookup(container, flow_value(index_signal))
+				ok = found
+				bind_value = value
+				bind_type = container.value_type_name
+			} else {
+				value := e.index_value(container, flow_value(index_signal))!
+				ok = e.value_is_truthy(value)
+				bind_value = e.unwrap_option_like(value)
+				bind_type = e.guard_binding_type_name(rhs_id, value)
+			}
+		} else {
+			rhs_signal := e.eval_expr_flow(rhs_id)!
+			if rhs_signal.kind != .normal {
+				return rhs_signal
+			}
+			value := flow_value(rhs_signal)
+			ok = e.value_is_truthy(value)
+			bind_value = e.unwrap_option_like(value)
+			bind_type = e.guard_binding_type_name(rhs_id, value)
 		}
-		value := flow_value(rhs_signal)
-		ok := e.value_is_truthy(value)
 		if ok {
-			e.assign_target_typed(e.child(node, 0), e.unwrap_option_like(value), true,
-				e.infer_expr_type_name(rhs_id))!
+			e.assign_target_typed(e.child(node, 0), bind_value, true, bind_type)!
 		}
 		return value_flow(Value(ok))
 	}
@@ -1888,6 +1920,18 @@ fn (mut e Eval) eval_condition_flow(id flat.NodeId) !FlowSignal {
 		return signal
 	}
 	return value_flow(Value(e.value_as_bool(flow_value(signal))!))
+}
+
+fn (e &Eval) guard_binding_type_name(rhs_id flat.NodeId, value Value) string {
+	rhs_type := e.infer_expr_type_name(rhs_id)
+	name := rhs_type.trim_left('&')
+	if name.starts_with('?') || name.starts_with('!') {
+		return name[1..]
+	}
+	if name.len > 0 {
+		return name
+	}
+	return e.runtime_type_name(e.unwrap_option_like(value))
 }
 
 fn (e &Eval) unwrap_option_like(value Value) Value {
