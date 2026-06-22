@@ -506,6 +506,77 @@ fn (g &FlatGen) is_scalar_c_type(c_type string) bool {
 		'int', 'isize', 'usize', 'size_t', 'ptrdiff_t', 'float', 'double', 'voidptr']
 }
 
+fn (g &FlatGen) is_aggregate_zero_init_type(typ types.Type, c_type string) bool {
+	if g.is_scalar_c_type(c_type) {
+		return false
+	}
+	return match typ {
+		types.Alias {
+			g.is_aggregate_zero_init_type(typ.base_type, c_type)
+		}
+		types.Array, types.ArrayFixed, types.Channel, types.Map, types.String, types.Struct,
+		types.Interface, types.SumType, types.OptionType, types.ResultType, types.MultiReturn {
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut g FlatGen) can_use_global_brace_zero_init(typ types.Type, c_type string) bool {
+	return g.is_aggregate_zero_init_type(typ, c_type) && !g.has_zero_sized_leading_init_slot(typ)
+}
+
+fn (mut g FlatGen) has_zero_sized_leading_init_slot(typ types.Type) bool {
+	mut visited := map[string]bool{}
+	return g.has_zero_sized_leading_init_slot_inner(typ, mut visited)
+}
+
+fn (mut g FlatGen) has_zero_sized_leading_init_slot_inner(typ types.Type, mut visited map[string]bool) bool {
+	return match typ {
+		types.Alias {
+			g.has_zero_sized_leading_init_slot_inner(typ.base_type, mut visited)
+		}
+		types.ArrayFixed {
+			if g.fixed_array_len_is_zero(typ) {
+				true
+			} else {
+				g.has_zero_sized_leading_init_slot_inner(typ.elem_type, mut visited)
+			}
+		}
+		types.Struct {
+			if info := g.find_struct_decl(typ.name) {
+				if info.full_name in visited {
+					false
+				} else {
+					visited[info.full_name] = true
+					old_module := g.tc.cur_module
+					g.tc.cur_module = info.module
+					first := g.struct_field_at(info.full_name, 0) or {
+						g.tc.cur_module = old_module
+						return false
+					}
+					has := g.has_zero_sized_leading_init_slot_inner(first.typ, mut visited)
+					g.tc.cur_module = old_module
+					has
+				}
+			} else {
+				if typ.name in visited {
+					false
+				} else {
+					visited[typ.name] = true
+					first := g.struct_field_at(typ.name, 0) or { return false }
+					g.has_zero_sized_leading_init_slot_inner(first.typ, mut visited)
+				}
+			}
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (g &FlatGen) scalar_zero_init(c_type string) string {
 	if c_type in ['float', 'double'] {
 		return '0.0'

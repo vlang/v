@@ -761,7 +761,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			}
 			g.gen_decl_lhs(lhs_id)
 			g.write(' = ')
-			g.gen_expr(rhs_id)
+			g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture)
 			g.writeln(';')
 			if lhs.kind == .ident {
 				g.tc.cur_scope.insert(lhs.value, v_type)
@@ -769,6 +769,18 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 		}
 		i += 2
 	}
+}
+
+fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type types.Type, c_type string, is_declaration bool) {
+	if rhs.kind == .int_literal && rhs.value == '0' && g.is_aggregate_zero_init_type(v_type, c_type) {
+		if is_declaration {
+			g.write('{0}')
+		} else {
+			g.write('(${c_type}){0}')
+		}
+		return
+	}
+	g.gen_expr(rhs_id)
 }
 
 fn (mut g FlatGen) gen_multi_return_decl(node flat.Node) {

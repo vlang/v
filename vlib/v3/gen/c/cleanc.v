@@ -1043,6 +1043,13 @@ fn (mut g FlatGen) fixed_array_len_value(arr types.ArrayFixed) string {
 	return g.fixed_array_len_raw(arr.len_expr, arr.len)
 }
 
+fn (mut g FlatGen) fixed_array_len_is_zero(arr types.ArrayFixed) bool {
+	if value := g.tc.fixed_array_len_value(arr) {
+		return value == 0
+	}
+	return g.fixed_array_len_value(arr).trim_space() == '0'
+}
+
 fn (mut g FlatGen) fixed_array_len_raw(raw_len string, fallback int) string {
 	if raw_len.len == 0 {
 		return '${fallback}'
@@ -2023,11 +2030,18 @@ fn (mut g FlatGen) builtin_compat_decls() {
 }
 
 fn (mut g FlatGen) global_decls() {
+	old_module := g.tc.cur_module
 	for name, typ in g.global_types {
+		if mod := g.global_modules[name] {
+			g.tc.cur_module = mod
+		} else {
+			g.tc.cur_module = old_module
+		}
 		if typ is types.ArrayFixed {
 			c_elem := g.tc.c_type(typ.elem_type)
 			len_expr := g.fixed_array_len_value(typ)
-			g.writeln('${c_elem} ${c_name(name)}[${len_expr}];')
+			init := if g.has_zero_sized_leading_init_slot(typ) { '' } else { ' = {0}' }
+			g.writeln('${c_elem} ${c_name(name)}[${len_expr}]${init};')
 			continue
 		}
 		ct := g.tc.c_type(typ)
@@ -2037,8 +2051,10 @@ fn (mut g FlatGen) global_decls() {
 		if typ is types.Struct && typ.name.starts_with('C.') {
 			continue
 		}
-		g.writeln('${ct} ${c_name(name)};')
+		init := if g.can_use_global_brace_zero_init(typ, ct) { ' = {0}' } else { '' }
+		g.writeln('${ct} ${c_name(name)}${init};')
 	}
+	g.tc.cur_module = old_module
 	if g.global_types.len > 0 {
 		g.writeln('')
 	}
