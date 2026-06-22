@@ -351,6 +351,28 @@ fn main() {
 	assert e.stdout() == '0\n1\n0\n'
 }
 
+fn test_eval_array_init_flow_propagates_return() {
+	mut e := create()
+	e.run_text('
+fn maybe() ?int {
+	return none
+}
+
+fn run() []int {
+	return []int{len: 1, init: maybe() or { return [7] }}
+}
+
+fn main() {
+	xs := run()
+	println(int_str(xs.len))
+	println(int_str(xs[0]))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '1\n7\n'
+}
+
 fn test_eval_fixed_array_init_uses_declared_len() {
 	mut e := create()
 	e.run_text('
@@ -957,6 +979,48 @@ fn main() {
 	assert e.stdout() == '0\n1\n'
 }
 
+fn test_eval_imported_return_adapts_in_callee_module() {
+	dir := os.join_path(os.temp_dir(), 'v3_eval_import_return_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	main_file := os.join_path(dir, 'main.v')
+	mod_file := os.join_path(dir, 'm.v')
+	os.write_file(mod_file, '
+module m
+
+pub type Any = int | string
+
+pub fn make() Any {
+	return 1
+}
+	') or {
+		panic(err)
+	}
+	os.write_file(main_file, '
+module main
+
+import m
+
+fn main() {
+	x := m.make()
+	println(int_str(x._typ))
+	if x is int {
+		println("int")
+	}
+}
+	') or {
+		panic(err)
+	}
+	mut e := create()
+	mut p := parser.Parser.new(&e.prefs)
+	p.parse_files([main_file, mod_file])
+	e.run_files(p.a) or { panic(err) }
+	assert e.stdout() == '0\nint\n'
+}
+
 fn test_eval_value_block_preserves_multi_return_values() {
 	mut e := create()
 	e.run_text("
@@ -1181,6 +1245,33 @@ fn main() {
 		panic(err)
 	}
 	assert e.stdout() == 'true\ntrue\ntrue\ntrue\n'
+}
+
+fn test_eval_enum_shorthand_return_preserves_enum_type() {
+	mut e := create()
+	e.run_text('
+enum Color {
+	red
+	blue
+}
+
+type Any = Color | int
+
+fn color() Color {
+	return .red
+}
+
+fn main() {
+	c := color()
+	x := Any(c)
+	println(c == Color.red)
+	println(x is Color)
+	println(int_str(x._typ))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == 'true\ntrue\n0\n'
 }
 
 fn test_eval_enum_shorthand_uses_typed_call_and_struct_contexts() {

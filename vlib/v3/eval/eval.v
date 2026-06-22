@@ -153,6 +153,7 @@ struct CallFrame {
 	module_name string
 	file_name   string
 	fn_name     string
+	return_type string
 	scope_idx   int = -1
 }
 
@@ -791,6 +792,7 @@ fn (mut e Eval) call_function(module_name string, fn_name string, args []Value) 
 		module_name: target_module
 		file_name:   def.file_name
 		fn_name:     fn_name
+		return_type: node.typ
 		scope_idx:   e.scopes.len - 1
 	}
 	e.bind_call_params(params, args)!
@@ -801,11 +803,16 @@ fn (mut e Eval) call_function(module_name string, fn_name string, args []Value) 
 	signal := e.exec_stmts(body_ids)!
 	e.run_deferred_stmts()!
 	mutated_args := e.collect_mutated_param_args(params, args)
+	adapted_values := if signal.kind == .return_ {
+		e.adapt_return_values(signal.values, node.typ)
+	} else {
+		[]Value{}
+	}
 	e.close_scope()!
 	e.call_stack.delete(e.call_stack.len - 1)
 	if signal.kind == .return_ {
 		return CallResult{
-			values:       e.adapt_return_values(signal.values, node.typ)
+			values:       adapted_values
 			mutated_args: mutated_args
 		}
 	}
@@ -895,8 +902,14 @@ fn (mut e Eval) exec_stmt(id flat.NodeId) !FlowSignal {
 		}
 		.return_stmt {
 			mut values := []Value{}
+			return_type := e.current_return_type()
+			return_types := split_multi_return_types(return_type)
+			child_count := node.children_count
+			mut child_index := 0
 			for child_id in e.children(node) {
-				signal := e.eval_expr_flow(child_id)!
+				expected_type := return_child_expected_type(return_type, return_types, child_index,
+					child_count)
+				signal := e.eval_expr_flow_expected(child_id, expected_type)!
 				if signal.kind != .normal {
 					return signal
 				}
@@ -911,6 +924,7 @@ fn (mut e Eval) exec_stmt(id flat.NodeId) !FlowSignal {
 				} else {
 					values << value
 				}
+				child_index++
 			}
 			if values.len == 0 {
 				values << void_value()
@@ -2103,6 +2117,9 @@ fn (mut e Eval) eval_expr_flow(id flat.NodeId) !FlowSignal {
 				values:         values
 			})
 		}
+		.array_init {
+			return e.eval_array_init_flow(node)
+		}
 		.struct_init {
 			return e.eval_struct_init_flow(node)
 		}
@@ -2141,6 +2158,26 @@ fn (mut e Eval) eval_expr_flow_expected(id flat.NodeId, expected_type string) !F
 		}
 	}
 	return e.eval_expr_flow(id)
+}
+
+fn (e &Eval) current_return_type() string {
+	if e.call_stack.len == 0 {
+		return ''
+	}
+	return e.call_stack[e.call_stack.len - 1].return_type
+}
+
+fn return_child_expected_type(return_type string, return_types []string, child_index int, child_count int) string {
+	if return_types.len > 0 {
+		if child_count == return_types.len && child_index < return_types.len {
+			return return_types[child_index]
+		}
+		return ''
+	}
+	if child_count == 1 {
+		return return_type
+	}
+	return ''
 }
 
 fn (mut e Eval) eval_infix_flow(node &flat.Node) !FlowSignal {
@@ -2857,6 +2894,7 @@ fn (mut e Eval) call_fn_value(fv FnValue, args []Value) !CallResult {
 		module_name: fv.module_name
 		file_name:   fv.file_name
 		fn_name:     '<anonymous>'
+		return_type: node.typ
 		scope_idx:   e.scopes.len - 1
 	}
 	for name, value in fv.captures {
@@ -2883,11 +2921,16 @@ fn (mut e Eval) call_fn_value(fv FnValue, args []Value) !CallResult {
 			capture_types: fv.capture_types.clone()
 		}
 	}
+	adapted_values := if signal.kind == .return_ {
+		e.adapt_return_values(signal.values, node.typ)
+	} else {
+		[]Value{}
+	}
 	e.close_scope()!
 	e.call_stack.delete(e.call_stack.len - 1)
 	if signal.kind == .return_ {
 		return CallResult{
-			values:           e.adapt_return_values(signal.values, node.typ)
+			values:           adapted_values
 			mutated_args:     mutated_args
 			fn_value_changed: fv.captures.len > 0
 			fn_value:         updated_fn_value
@@ -3252,6 +3295,10 @@ fn (e &Eval) block_has_only_expr_stmts(node &flat.Node) bool {
 }
 
 fn (mut e Eval) eval_array_init(node &flat.Node) !Value {
+	return flow_value(e.eval_array_init_flow(node)!)
+}
+
+fn (mut e Eval) eval_array_init_flow(node &flat.Node) !FlowSignal {
 	array_type_name := if node.typ.len > 0 { node.typ } else { node.value }
 	is_fixed_array := is_fixed_array_type_name(array_type_name)
 	elem_type_name := if is_fixed_array {
@@ -3268,19 +3315,31 @@ fn (mut e Eval) eval_array_init(node &flat.Node) !Value {
 		child := e.node(child_id)
 		if child.kind == .field_init {
 			if child.value == 'len' {
-				val := e.eval_expr(e.child(child, 0))!
-				len = int(e.value_as_int(val)!)
+				signal := e.eval_expr_flow(e.child(child, 0))!
+				if signal.kind != .normal {
+					return signal
+				}
+				len = int(e.value_as_int(flow_value(signal))!)
 			} else if child.value == 'cap' {
-				val := e.eval_expr(e.child(child, 0))!
-				cap = int(e.value_as_int(val)!)
+				signal := e.eval_expr_flow(e.child(child, 0))!
+				if signal.kind != .normal {
+					return signal
+				}
+				cap = int(e.value_as_int(flow_value(signal))!)
 				has_cap = true
 			} else if child.value == 'init' {
-				val := e.eval_expr_expected(e.child(child, 0), elem_type_name)!
-				init = e.adapt_value_to_type_name(val, elem_type_name)
+				signal := e.eval_expr_flow_expected(e.child(child, 0), elem_type_name)!
+				if signal.kind != .normal {
+					return signal
+				}
+				init = e.adapt_value_to_type_name(flow_value(signal), elem_type_name)
 			}
 		} else {
-			values << e.adapt_value_to_type_name(e.eval_expr_expected(child_id, elem_type_name)!,
-				elem_type_name)
+			signal := e.eval_expr_flow_expected(child_id, elem_type_name)!
+			if signal.kind != .normal {
+				return signal
+			}
+			values << e.adapt_value_to_type_name(flow_value(signal), elem_type_name)
 		}
 	}
 	if len > 0 || has_cap {
@@ -3291,10 +3350,10 @@ fn (mut e Eval) eval_array_init(node &flat.Node) !Value {
 		fixed_len := fixed_array_len(array_type_name)
 		values = []Value{len: fixed_len, cap: fixed_len, init: init}
 	}
-	return ArrayValue{
+	return value_flow(ArrayValue{
 		elem_type_name: elem_type_name
 		values:         values
-	}
+	})
 }
 
 fn is_fixed_array_type_name(type_name string) bool {
@@ -4820,6 +4879,12 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name string) Value {
 		return m
 	}
 	target_type_name := e.normalize_type_name(type_name)
+	if target_type_name in e.enum_fields {
+		return e.enum_value(target_type_name, value)
+	}
+	if type_name in e.enum_fields {
+		return e.enum_value(type_name, value)
+	}
 	if target_type_name in e.sum_types && !e.value_matches_type_name(value, target_type_name) {
 		return e.wrap_sum_value(target_type_name, value)
 	}
