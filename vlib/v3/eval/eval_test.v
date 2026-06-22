@@ -3134,6 +3134,42 @@ fn main() {
 	assert e.stdout() == '23\n'
 }
 
+fn test_eval_enum_initializers_use_file_import_aliases() {
+	dir := os.join_path(os.temp_dir(), 'v3_eval_enum_alias_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	dep_file := os.join_path(dir, 'dep.v')
+	main_file := os.join_path(dir, 'main.v')
+	os.write_file(dep_file, '
+module dep
+
+pub const n = 7
+	') or { panic(err) }
+	os.write_file(main_file, '
+module main
+
+import dep as d
+
+enum E {
+	a = d.n
+}
+
+fn main() {
+	println(int_str(int(E.a)))
+}
+	') or {
+		panic(err)
+	}
+	mut e := create()
+	mut p := parser.Parser.new(&e.prefs)
+	p.parse_files([main_file, dep_file])
+	e.run_files(p.a) or { panic(err) }
+	assert e.stdout() == '7\n'
+}
+
 fn test_eval_global_initializers_run_after_registration_in_declaring_module() {
 	dir := os.join_path(os.temp_dir(), 'v3_eval_global_init_${os.getpid()}')
 	os.rmdir_all(dir) or {}
@@ -3715,6 +3751,47 @@ fn main() {
 		panic(err)
 	}
 	assert e.stdout() == 'busy\nidle\n'
+}
+
+fn test_eval_struct_stringification_matches_v_output() {
+	mut e := create()
+	e.run_text('
+struct Point {
+	x int
+}
+
+struct User {
+	name string
+	age  int
+}
+
+struct Custom {
+	n int
+}
+
+fn (c Custom) str() string {
+	return "custom " + int_str(c.n)
+}
+
+fn main() {
+	println(Point{x: 1})
+	println(User{name: "Ada", age: 2})
+	println(Custom{n: 3})
+	println("\${Custom{n: 4}}")
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == "Point{
+    x: 1
+}
+User{
+    name: 'Ada'
+    age: 2
+}
+custom 3
+custom 4
+"
 }
 
 fn test_eval_os_join_path_delegates_to_os() {

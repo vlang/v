@@ -122,6 +122,12 @@ struct GlobalEntry {
 	file_name    string
 }
 
+struct EnumInitEntry {
+	node        flat.NodeId
+	module_name string
+	file_name   string
+}
+
 struct TopLevelStmt {
 	node        flat.NodeId
 	module_name string
@@ -237,6 +243,7 @@ mut:
 	globals           map[string]map[string]Value
 	global_types      map[string]map[string]string
 	global_inits      []GlobalEntry
+	enum_inits        []EnumInitEntry
 	implicit_main     []TopLevelStmt
 	structs           map[string]StructInfo
 	enum_fields       map[string][]string
@@ -324,6 +331,7 @@ fn (mut e Eval) reset(a &flat.FlatAst) {
 	e.globals = map[string]map[string]Value{}
 	e.global_types = map[string]map[string]string{}
 	e.global_inits = []GlobalEntry{}
+	e.enum_inits = []EnumInitEntry{}
 	e.implicit_main = []TopLevelStmt{}
 	e.structs = map[string]StructInfo{}
 	e.enum_fields = map[string][]string{}
@@ -439,17 +447,22 @@ fn (mut e Eval) register_files() ! {
 		mut import_aliases := map[string]string{}
 		for child_id in top_level_children {
 			child := e.node(child_id)
+			if child.kind != .import_decl {
+				continue
+			}
+			imported_module := child.value.all_after_last('.')
+			if imported_module.len > 0 && imported_module != module_name
+				&& imported_module !in e.module_imports[module_name] {
+				e.module_imports[module_name] << imported_module
+			}
+			import_aliases[child.typ] = imported_module
+			import_aliases[imported_module] = imported_module
+		}
+		e.file_import_alias[file_name] = import_aliases.clone()
+		for child_id in top_level_children {
+			child := e.node(child_id)
 			match child.kind {
-				.import_decl {
-					imported_module := child.value.all_after_last('.')
-					if imported_module.len > 0 && imported_module != module_name
-						&& imported_module !in e.module_imports[module_name] {
-						e.module_imports[module_name] << imported_module
-					}
-					import_aliases[child.typ] = child.value.all_after_last('.')
-					import_aliases[child.value.all_after_last('.')] =
-						child.value.all_after_last('.')
-				}
+				.import_decl {}
 				.const_decl {
 					for field_id in e.children(child) {
 						field := e.node(field_id)
@@ -489,42 +502,21 @@ fn (mut e Eval) register_files() ! {
 					e.type_names[module_name][child.value] = true
 					enum_name := e.qualify_type_name(module_name, child.value)
 					mut enum_fields := []string{}
-					mut next_value := if child.typ == 'flag' { i64(1) } else { i64(0) }
 					for field_id in e.children(child) {
 						field := e.node(field_id)
 						if field.kind != .enum_field {
 							continue
 						}
 						enum_fields << field.value
-						value := if field.children_count > 0 {
-							e.value_as_int(e.eval_expr_in_module(e.child(field, 0), module_name,
-								file_name, '<enum ${child.value}.${field.value}>')!)!
-						} else {
-							next_value
-						}
-						e.consts[module_name][field.value] = ConstEntry{
-							node:        field_id
-							module_name: module_name
-							file_name:   file_name
-							cached:      true
-							value:       Value(value)
-						}
-						e.consts[module_name]['${child.value}.${field.value}'] = ConstEntry{
-							node:        field_id
-							module_name: module_name
-							file_name:   file_name
-							cached:      true
-							value:       Value(value)
-						}
-						next_value = if child.typ == 'flag' {
-							if value <= 0 { i64(1) } else { value * 2 }
-						} else {
-							value + 1
-						}
 					}
 					e.enum_fields[enum_name] = enum_fields
 					if module_name in ['main', 'builtin'] {
 						e.enum_fields[child.value] = enum_fields
+					}
+					e.enum_inits << EnumInitEntry{
+						node:        child_id
+						module_name: module_name
+						file_name:   file_name
 					}
 				}
 				.fn_decl {
@@ -590,12 +582,50 @@ fn (mut e Eval) register_files() ! {
 				}
 			}
 		}
-		e.file_import_alias[file_name] = import_aliases.clone()
 		_ = file_id
 	}
+	e.evaluate_enum_inits()!
 	e.evaluate_global_inits()!
 	if !e.has_main_function() && e.implicit_main.len == 0 {
 		return error('v3.eval: missing main.main entry point')
+	}
+}
+
+fn (mut e Eval) evaluate_enum_inits() ! {
+	for entry in e.enum_inits {
+		node := e.node(entry.node)
+		mut next_value := if node.typ == 'flag' { i64(1) } else { i64(0) }
+		for field_id in e.children(node) {
+			field := e.node(field_id)
+			if field.kind != .enum_field {
+				continue
+			}
+			value := if field.children_count > 0 {
+				e.value_as_int(e.eval_expr_in_module(e.child(field, 0), entry.module_name,
+					entry.file_name, '<enum ${node.value}.${field.value}>')!)!
+			} else {
+				next_value
+			}
+			e.consts[entry.module_name][field.value] = ConstEntry{
+				node:        field_id
+				module_name: entry.module_name
+				file_name:   entry.file_name
+				cached:      true
+				value:       Value(value)
+			}
+			e.consts[entry.module_name]['${node.value}.${field.value}'] = ConstEntry{
+				node:        field_id
+				module_name: entry.module_name
+				file_name:   entry.file_name
+				cached:      true
+				value:       Value(value)
+			}
+			next_value = if node.typ == 'flag' {
+				if value <= 0 { i64(1) } else { value * 2 }
+			} else {
+				value + 1
+			}
+		}
 	}
 }
 
@@ -1090,7 +1120,7 @@ fn (mut e Eval) exec_stmt(id flat.NodeId) !FlowSignal {
 			if !e.value_as_bool(cond)! {
 				mut msg := 'assertion failed'
 				if node.children_count > 1 {
-					msg = e.value_string(e.eval_expr(e.child(node, 1))!)
+					msg = e.display_string(e.eval_expr(e.child(node, 1))!)!
 				}
 				return error('v3.eval: ${msg}')
 			}
@@ -4040,7 +4070,7 @@ fn (mut e Eval) eval_string_interp_flow(node &flat.Node) !FlowSignal {
 		if signal.kind != .normal {
 			return signal
 		}
-		out += e.value_string(flow_value(signal))
+		out += e.display_string(flow_value(signal))!
 	}
 	return value_flow(Value(out))
 }
@@ -4536,7 +4566,7 @@ fn (mut e Eval) maybe_call_builtin(module_name string, fn_name string, args []Va
 		match fn_name {
 			'print' {
 				if args.len > 0 {
-					e.write_stdout(e.value_string(args[0]))
+					e.write_stdout(e.display_string(args[0])!)
 				}
 				return MaybeValue{
 					found: true
@@ -4545,7 +4575,7 @@ fn (mut e Eval) maybe_call_builtin(module_name string, fn_name string, args []Va
 			}
 			'println' {
 				if args.len > 0 {
-					e.write_stdout(e.value_string(args[0]) + '\n')
+					e.write_stdout(e.display_string(args[0])! + '\n')
 				} else {
 					e.write_stdout('\n')
 				}
@@ -4556,7 +4586,7 @@ fn (mut e Eval) maybe_call_builtin(module_name string, fn_name string, args []Va
 			}
 			'eprint' {
 				if args.len > 0 {
-					e.write_stderr(e.value_string(args[0]))
+					e.write_stderr(e.display_string(args[0])!)
 				}
 				return MaybeValue{
 					found: true
@@ -4565,7 +4595,7 @@ fn (mut e Eval) maybe_call_builtin(module_name string, fn_name string, args []Va
 			}
 			'eprintln' {
 				if args.len > 0 {
-					e.write_stderr(e.value_string(args[0]) + '\n')
+					e.write_stderr(e.display_string(args[0])! + '\n')
 				} else {
 					e.write_stderr('\n')
 				}
@@ -4583,11 +4613,11 @@ fn (mut e Eval) maybe_call_builtin(module_name string, fn_name string, args []Va
 			'str' {
 				return MaybeValue{
 					found: true
-					value: Value(e.value_string(args[0] or { void_value() }))
+					value: Value(e.display_string(args[0] or { void_value() })!)
 				}
 			}
 			'panic' {
-				return error(e.value_string(args[0] or { Value('panic') }))
+				return error(e.display_string(args[0] or { Value('panic') })!)
 			}
 			else {}
 		}
@@ -4757,20 +4787,26 @@ fn (mut e Eval) call_value_method(receiver Value, receiver_type_name string, met
 	return error('v3.eval: unsupported method `${method_name}` on `${e.runtime_type_name(receiver)}`')
 }
 
-fn (e &Eval) direct_builtin_str_method_value(receiver Value, static_type_name string, method_name string, args []Value) ?Value {
+fn (mut e Eval) direct_builtin_str_method_value(receiver Value, static_type_name string, method_name string, args []Value) ?Value {
 	if !is_builtin_str_receiver_type_name(static_type_name) {
 		return none
 	}
 	return e.direct_str_method_value(receiver, method_name, args)
 }
 
-fn (e &Eval) direct_str_method_value(receiver Value, method_name string, args []Value) ?Value {
+fn (mut e Eval) direct_str_method_value(receiver Value, method_name string, args []Value) ?Value {
 	if method_name != 'str' || args.len != 0 {
 		return none
 	}
 	match receiver {
 		bool, i64, f64, string, EnumValue {
 			return Value(e.value_string(receiver))
+		}
+		StructValue {
+			if _ := e.resolve_method_target(receiver.type_name, 'str') {
+				return none
+			}
+			return Value(e.default_struct_string(receiver))
 		}
 		else {}
 	}
@@ -5937,7 +5973,7 @@ fn (e &Eval) value_string(value Value) string {
 			if value.type_name == 'os.Result' && 'output' in value.fields {
 				return e.value_string(value.fields['output'] or { void_value() })
 			}
-			return value.type_name
+			return e.default_struct_string(value)
 		}
 		SumValue {
 			return e.value_string(value.payload)
@@ -5950,6 +5986,85 @@ fn (e &Eval) value_string(value Value) string {
 		}
 		FnValue {
 			return '<fn>'
+		}
+	}
+}
+
+fn (mut e Eval) display_string(value Value) !string {
+	match value {
+		ArrayValue {
+			mut parts := []string{cap: value.values.len}
+			for item in value.values {
+				parts << e.display_string(item)!
+			}
+			return '[' + parts.join(', ') + ']'
+		}
+		MapValue {
+			mut parts := []string{cap: value.entries.len}
+			for entry in value.entries {
+				key := e.display_string(entry.key)!
+				map_value := e.display_string(entry.value)!
+				parts << '${key}: ${map_value}'
+			}
+			return '{' + parts.join(', ') + '}'
+		}
+		StructValue {
+			if value.type_name == 'os.Result' && 'output' in value.fields {
+				return e.display_string(value.fields['output'] or { void_value() })
+			}
+			if target := e.resolve_method_target(value.type_name, 'str') {
+				result := e.call_method_target(value, target, [])!
+				return e.value_string(result.value)
+			}
+			return e.default_struct_string(value)
+		}
+		SumValue {
+			return e.display_string(value.payload)
+		}
+		TupleValue {
+			mut parts := []string{cap: value.values.len}
+			for item in value.values {
+				parts << e.display_string(item)!
+			}
+			return parts.join(', ')
+		}
+		else {
+			return e.value_string(value)
+		}
+	}
+}
+
+fn (e &Eval) default_struct_string(value StructValue) string {
+	if value.fields.len == 0 {
+		return '${value.type_name}{}'
+	}
+	mut names := []string{}
+	fields := e.struct_fields(value.type_name)
+	for field in fields {
+		if field.name in value.fields {
+			names << field.name
+		}
+	}
+	if names.len == 0 {
+		names = value.fields.keys()
+		names.sort()
+	}
+	mut out := '${value.type_name}{\n'
+	for name in names {
+		field_value := value.fields[name] or { void_value() }
+		out += '    ${name}: ${e.struct_field_value_string(field_value)}\n'
+	}
+	out += '}'
+	return out
+}
+
+fn (e &Eval) struct_field_value_string(value Value) string {
+	match value {
+		string {
+			return "'${value}'"
+		}
+		else {
+			return e.value_string(value)
 		}
 	}
 }
