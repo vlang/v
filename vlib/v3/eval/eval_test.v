@@ -484,6 +484,32 @@ fn main() {
 	assert e.stdout() == '1\n7\n'
 }
 
+fn test_eval_array_init_evaluates_init_for_each_index() {
+	mut e := create()
+	e.run_text('
+fn bump(mut calls int) int {
+	calls++
+	return calls
+}
+
+fn main() {
+	mut calls := 0
+	xs := []int{len: 3, init: index}
+	ys := []int{len: 3, init: index + bump(mut calls)}
+	fixed := [3]int{init: index}
+	println(int_str(xs[0]))
+	println(int_str(xs[2]))
+	println(int_str(ys[0]))
+	println(int_str(ys[2]))
+	println(int_str(calls))
+	println(int_str(fixed[2]))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '0\n2\n1\n5\n3\n2\n'
+}
+
 fn test_eval_fixed_array_init_uses_declared_len() {
 	mut e := create()
 	e.run_text('
@@ -503,6 +529,32 @@ fn main() {
 		panic(err)
 	}
 	assert e.stdout() == '3\n0\n3\n5\n0\n0\n'
+}
+
+fn test_eval_fixed_array_init_resolves_const_len() {
+	mut e := create()
+	e.run_text('
+const n = 3
+
+struct Box {
+	xs [n]int
+}
+
+fn main() {
+	a := [n]int{}
+	b := [n]int{init: index}
+	box := Box{}
+	println(int_str(a.len))
+	println(int_str(a[2]))
+	println(int_str(b.len))
+	println(int_str(b[2]))
+	println(int_str(box.xs.len))
+	println(int_str(box.xs[2]))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '3\n0\n3\n2\n3\n0\n'
 }
 
 fn test_eval_right_shift_compound_assignment() {

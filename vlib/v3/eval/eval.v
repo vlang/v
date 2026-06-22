@@ -3725,7 +3725,8 @@ fn (mut e Eval) eval_array_init_flow(node &flat.Node) !FlowSignal {
 	mut len := 0
 	mut cap := 0
 	mut has_cap := false
-	mut init := e.zero_value_for_type_name(elem_type_name)
+	mut init_id := flat.empty_node
+	mut has_init := false
 	mut values := []Value{}
 	for child_id in e.children(node) {
 		child := e.node(child_id)
@@ -3744,11 +3745,8 @@ fn (mut e Eval) eval_array_init_flow(node &flat.Node) !FlowSignal {
 				cap = int(e.value_as_int(flow_value(signal))!)
 				has_cap = true
 			} else if child.value == 'init' {
-				signal := e.eval_expr_flow_expected(e.child(child, 0), elem_type_name)!
-				if signal.kind != .normal {
-					return signal
-				}
-				init = e.adapt_value_to_type_name(flow_value(signal), elem_type_name)
+				init_id = e.child(child, 0)
+				has_init = true
 			}
 		} else {
 			signal := e.eval_expr_flow_expected(child_id, elem_type_name)!
@@ -3760,11 +3758,36 @@ fn (mut e Eval) eval_array_init_flow(node &flat.Node) !FlowSignal {
 	}
 	if len > 0 || has_cap {
 		array_cap := if has_cap { cap } else { len }
-		values = []Value{len: len, cap: array_cap, init: init}
+		return e.eval_array_init_values(len, array_cap, has_init, init_id, elem_type_name)
 	}
 	if is_fixed_array && values.len == 0 {
-		fixed_len := fixed_array_len(array_type_name)
-		values = []Value{len: fixed_len, cap: fixed_len, init: init}
+		fixed_len := e.fixed_array_len(array_type_name)!
+		return e.eval_array_init_values(fixed_len, fixed_len, has_init, init_id, elem_type_name)
+	}
+	return value_flow(ArrayValue{
+		elem_type_name: elem_type_name
+		values:         values
+	})
+}
+
+fn (mut e Eval) eval_array_init_values(len int, cap int, has_init bool, init_id flat.NodeId, elem_type_name string) !FlowSignal {
+	mut values := []Value{cap: cap}
+	for i in 0 .. len {
+		if has_init {
+			e.open_scope()
+			e.declare_var_typed('index', Value(i64(i)), 'int')
+			signal := e.eval_expr_flow_expected(init_id, elem_type_name) or {
+				e.close_scope()!
+				return err
+			}
+			e.close_scope()!
+			if signal.kind != .normal {
+				return signal
+			}
+			values << e.adapt_value_to_type_name(flow_value(signal), elem_type_name)
+		} else {
+			values << e.zero_value_for_type_name(elem_type_name)
+		}
 	}
 	return value_flow(ArrayValue{
 		elem_type_name: elem_type_name
@@ -3779,8 +3802,41 @@ fn is_fixed_array_type_name(type_name string) bool {
 	return type_name.contains('[') && (type_name.ends_with(']') || type_name.starts_with('['))
 }
 
-fn fixed_array_len(type_name string) int {
-	return fixed_array_len_text(type_name).int()
+fn (mut e Eval) fixed_array_len(type_name string) !int {
+	return e.fixed_array_len_in_module(type_name, e.current_module_name())
+}
+
+fn (mut e Eval) fixed_array_len_in_module(type_name string, module_name string) !int {
+	text := fixed_array_len_text(type_name)
+	if len := fixed_array_len_literal(text) {
+		return len
+	}
+	if value := e.lookup_const(module_name, text) {
+		return int(e.value_as_int(value)!)
+	}
+	if text.contains('.') {
+		mod_name := text.all_before_last('.')
+		const_name := text.all_after_last('.')
+		if value := e.lookup_const(mod_name, const_name) {
+			return int(e.value_as_int(value)!)
+		}
+	}
+	return 0
+}
+
+fn fixed_array_len_literal(text string) ?int {
+	normalized := text.replace('_', '')
+	if normalized.len == 0 {
+		return none
+	}
+	mut len := 0
+	for ch in normalized {
+		if ch < `0` || ch > `9` {
+			return none
+		}
+		len = len * 10 + int(ch - `0`)
+	}
+	return len
 }
 
 fn fixed_array_len_text(type_name string) string {
@@ -5195,7 +5251,7 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name string, module_name
 	}
 	if is_fixed_array_type_name(name) {
 		elem_type := e.qualify_nested_type_name(module_name, fixed_array_elem_type_name(name))
-		len := fixed_array_len(name)
+		len := e.fixed_array_len_in_module(name, module_name) or { 0 }
 		return ArrayValue{
 			elem_type_name: elem_type
 			values:         []Value{len: len, cap: len, init: e.zero_value_for_type_name_in_module(elem_type,
