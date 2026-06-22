@@ -39,6 +39,7 @@ fn main() {
 	mut backend := 'c'
 	mut is_prod := false
 	mut is_strict := false
+	mut is_selfhost := false
 	mut no_parallel := false
 	mut i := 0
 	for i < args.len {
@@ -52,6 +53,7 @@ fn main() {
 			is_prod = true
 			i++
 		} else if args[i] == '-selfhost' {
+			is_selfhost = true
 			i++
 		} else if args[i] == '-strict' {
 			is_strict = true
@@ -114,6 +116,11 @@ fn main() {
 
 	// Resolve imports recursively
 	resolve_imports(mut a, mut p, prefs, user_files)
+	diagnostic_root := if is_selfhost {
+		diagnostic_root_for_input(input_file, user_files)
+	} else {
+		''
+	}
 
 	b.step('parse')
 
@@ -121,11 +128,11 @@ fn main() {
 	// (like v2: check runs before transform). The transformer reads cached
 	// per-expression types for type-dependent lowering.
 	mut pre_tc := types.TypeChecker.new(a)
+	pre_tc.reject_unsupported_generics = is_selfhost
 	pre_tc.collect(a)
 	pre_tc.diagnose_unknown_calls = true
-	for uf in user_files {
-		pre_tc.diagnostic_files[uf] = true
-	}
+	set_diagnostic_files(mut pre_tc, user_files)
+	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
 	pre_tc.check_semantics()
 	if pre_tc.errors.len > 0 {
 		print_type_errors(pre_tc.errors)
@@ -146,10 +153,9 @@ fn main() {
 	// declarations, and v1/v2 do not run a second semantic checker after lowering.
 	pre_tc.diagnose_unknown_calls = false
 	pre_tc.reject_unlowered_map_mutation = true
+	set_diagnostic_files(mut pre_tc, user_files)
+	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
 	pre_tc.annotate_types()
-	for uf in user_files {
-		pre_tc.diagnostic_files[uf] = true
-	}
 	b.step('annotate types')
 
 	if backend == 'arm64' {
@@ -275,6 +281,42 @@ fn print_type_errors(errors []types.TypeError) {
 	}
 }
 
+fn diagnostic_root_for_input(input_file string, user_files []string) string {
+	if input_file.len > 0 && os.is_dir(input_file) {
+		return os.real_path(input_file)
+	}
+	if user_files.len > 0 {
+		return os.real_path(os.dir(user_files[0]))
+	}
+	return os.real_path(os.getwd())
+}
+
+fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
+	for uf in user_files {
+		tc.diagnostic_files[uf] = true
+	}
+}
+
+fn set_unsupported_generic_files(mut tc types.TypeChecker, a &flat.FlatAst, include_imports bool, diagnostic_root string) {
+	if !include_imports {
+		return
+	}
+	for i, node in a.nodes {
+		if i < a.user_code_start || node.kind != .file || node.value.len == 0 {
+			continue
+		}
+		if path_is_in_dir(node.value, diagnostic_root) {
+			tc.diagnostic_files['generic:' + node.value] = true
+		}
+	}
+}
+
+fn path_is_in_dir(path string, dir string) bool {
+	real_path := os.real_path(path)
+	real_dir := os.real_path(dir)
+	return real_path == real_dir || real_path.starts_with(real_dir + os.path_separator)
+}
+
 fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string) {
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
@@ -284,6 +326,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	if initial_files.len > 0 {
 		first_file = initial_files[0]
 	}
+	project_root := if first_file.len > 0 { os.dir(first_file) } else { os.getwd() }
 
 	mut changed := true
 	for changed {
@@ -307,7 +350,13 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			changed = true
 
 			importing_file := if cur_file.len > 0 { cur_file } else { first_file }
-			mod_dir := prefs.get_module_path(mod_name, importing_file)
+			mut mod_dir := prefs.get_module_path(mod_name, importing_file)
+			if mod_dir == '' {
+				root_mod_dir := os.join_path(project_root, mod_name.replace('.', os.path_separator))
+				if os.is_dir(root_mod_dir) {
+					mod_dir = root_mod_dir
+				}
+			}
 			if mod_dir == '' || !os.is_dir(mod_dir) {
 				continue
 			}

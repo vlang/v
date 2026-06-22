@@ -262,12 +262,44 @@ fn (mut g FlatGen) interface_method_stubs() {
 	for iface_name, methods in g.interfaces {
 		cn := c_name(iface_name)
 		for method in methods {
+			if !g.should_emit_interface_dispatch(iface_name, method) {
+				continue
+			}
 			g.gen_interface_dispatch(iface_name, cn, method)
 		}
 	}
 	if g.interfaces.len > 0 {
 		g.writeln('')
 	}
+}
+
+fn (g &FlatGen) should_emit_interface_dispatch(iface_name string, method string) bool {
+	if !g.has_used_fn_filter() {
+		return true
+	}
+	name := '${iface_name}.${method}'
+	if g.used_fn_contains(name) || g.used_fn_contains(c_name(name)) {
+		return true
+	}
+	short_name := '${iface_name.all_after_last('.')}.${method}'
+	return short_name != name && g.interface_dispatch_short_name_is_unambiguous(short_name, method)
+		&& (g.used_fn_contains(short_name) || g.used_fn_contains(c_name(short_name)))
+}
+
+fn (g &FlatGen) interface_dispatch_short_name_is_unambiguous(short_name string, method string) bool {
+	mut matches := 0
+	for iface_name, methods in g.interfaces {
+		if method !in methods {
+			continue
+		}
+		if '${iface_name.all_after_last('.')}.${method}' == short_name {
+			matches++
+			if matches > 1 {
+				return false
+			}
+		}
+	}
+	return matches == 1
 }
 
 fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method string) {

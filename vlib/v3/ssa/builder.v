@@ -7729,6 +7729,17 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		}
 	}
 	if resolved_name !in b.fn_ids && resolved_name.contains('.') {
+		qualified_name := ssa_fn_name_in_module(b.cur_module, resolved_name)
+		if qualified_name in b.fn_ids {
+			resolved_name = qualified_name
+			if fn_node.kind == .selector {
+				if has_receiver := b.fn_signature_has_receiver(resolved_name,
+					node.children_count - 1)
+				{
+					is_method = has_receiver
+				}
+			}
+		}
 		c_name := resolved_name.replace('.', '__')
 		if c_name in b.fn_ids {
 			resolved_name = c_name

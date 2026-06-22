@@ -46,7 +46,14 @@ fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int,
 	if cfn in ['Array_string__join', 'array_string_join'] {
 		return false
 	}
+	if g.has_used_fn_filter() && is_generated_fn_after_markused(node.value) {
+		return !g.has_generic_params(node)
+	}
 	if module_name == 'main' {
+		if g.has_used_fn_filter() && !g.used_fn_contains(node.value) && !g.used_fn_contains(dfn)
+			&& !g.used_fn_contains(cfn) && !g.used_fn_contains(qfn) {
+			return false
+		}
 		return !g.has_generic_params(node)
 	}
 	if g.has_used_fn_filter() && !g.used_fn_contains(node.value) && !g.used_fn_contains(dfn)
@@ -57,6 +64,10 @@ fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int,
 		return false
 	}
 	return true
+}
+
+fn is_generated_fn_after_markused(name string) bool {
+	return name.starts_with('__anon_fn_')
 }
 
 fn (g &FlatGen) used_fn_contains(name string) bool {

@@ -1581,7 +1581,7 @@ fn C.atomic_compare_exchange_strong_u16(voidptr, voidptr, u16) bool
 
 fn C.atomic_compare_exchange_weak_u32(voidptr, voidptr, u32) bool
 
-fn C.atomic_compare_exchange_weak_byte(voidptr, voidptr, byte) bool
+fn C.atomic_compare_exchange_weak_byte(voidptr, voidptr, u8) bool
 
 fn C.atomic_compare_exchange_weak_u64(voidptr, voidptr, u64) bool
 
@@ -1788,8 +1788,10 @@ fn module_function_new119() int {
 fn nil_newline_pointer_assignment119() int {
 	mut item119 := NilLink119{}
 	mut link119 := &item119.next
-	item119.next = nil
-	*link119 = &item119
+	unsafe {
+		item119.next = nil
+		*link119 = &item119
+	}
 	if isnil(item119.next) {
 		return 0
 	}
@@ -1868,7 +1870,7 @@ fn map_index_or_none119(items map[string]MapMethodValue119, name string) ?MapMet
 	return items[name] or { none }
 }
 
-fn map_index_bang119(items map[string]MapMethodValue119, name string) ?MapMethodValue119 {
+fn map_index_bang119(items map[string]MapMethodValue119, name string) !MapMethodValue119 {
 	return items[name]!
 }
 
@@ -1971,9 +1973,9 @@ fn c_atomic_channel_helpers119() int {
 	if C.atomic_compare_exchange_weak_u32(voidptr(&counter119), voidptr(&expected32_119), u32(5)) {
 		score119 += int(counter119)
 	}
-	mut locked119 := byte(0)
-	mut expected_byte119 := byte(0)
-	if C.atomic_compare_exchange_weak_byte(voidptr(&locked119), voidptr(&expected_byte119), byte(8)) {
+	mut locked119 := u8(0)
+	mut expected_byte119 := u8(0)
+	if C.atomic_compare_exchange_weak_byte(voidptr(&locked119), voidptr(&expected_byte119), u8(8)) {
 		score119 += int(locked119)
 	}
 	mut big119 := u64(10)
