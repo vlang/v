@@ -228,9 +228,13 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 						// Only update body_expected on the first (non-1xx) HEADERS
 						// frame. A content-length field in a trailer must not
 						// overwrite the value used for the completeness check below.
-						if !got_headers && f.name == 'content-length' && all_digits(f.value) {
-							body_expected = f.value.u64()
-							has_content_length = true
+						if !got_headers && f.name == 'content-length' {
+							if all_digits(f.value) {
+								body_expected = f.value.u64()
+								has_content_length = true
+							} else {
+								return error('h2: malformed Content-Length: ${f.value}')
+							}
 						}
 					}
 				}
