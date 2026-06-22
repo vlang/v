@@ -133,8 +133,13 @@ fn main() {
 	}
 	b.step('check')
 
+	// Mark used functions (dead-code elimination). This is done before transform
+	// so the transformer can skip function bodies that the C backend will prune.
+	used_fns := markused.mark_used(a, pre_tc)
+	b.step('markused')
+
 	// Transform (match lowering, string/in lowering, etc.)
-	transform.transform(mut a, &pre_tc)
+	transform.transform_with_used(mut a, &pre_tc, used_fns)
 	b.step('transform')
 
 	// Reuse the pre-transform checker for metadata only. Transform does not add
@@ -146,10 +151,6 @@ fn main() {
 		pre_tc.diagnostic_files[uf] = true
 	}
 	b.step('annotate types')
-
-	// Mark used functions (dead-code elimination)
-	used_fns := markused.mark_used(a, pre_tc)
-	b.step('markused')
 
 	if backend == 'arm64' {
 		// SSA + ARM64 native backend

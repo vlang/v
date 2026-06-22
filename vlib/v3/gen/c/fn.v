@@ -581,16 +581,16 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						}
 						if clean_type is types.Map {
 							if fn_node.value == 'delete' {
-								g.gen_map_delete(node, fn_node, clean_type)
+								g.gen_map_delete(node, fn_node, clean_type, base_type)
 								return
 							} else if fn_node.value == 'clone' {
-								g.write('map__clone(&')
-								g.gen_expr(g.a.child(fn_node, 0))
+								g.write('map__clone(')
+								g.gen_map_ref_arg(g.a.child(fn_node, 0), base_type)
 								g.write(')')
 								return
 							} else if fn_node.value == 'clear' {
-								g.write('map__clear(&')
-								g.gen_expr(g.a.child(fn_node, 0))
+								g.write('map__clear(')
+								g.gen_map_ref_arg(g.a.child(fn_node, 0), base_type)
 								g.write(')')
 								return
 							} else if fn_node.value == 'free' {
@@ -725,16 +725,16 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					}
 					if clean_type is types.Map {
 						if fn_node.value == 'delete' {
-							g.gen_map_delete(node, fn_node, clean_type)
+							g.gen_map_delete(node, fn_node, clean_type, base_type)
 							return
 						} else if fn_node.value == 'clone' {
-							g.write('map__clone(&')
-							g.gen_expr(g.a.child(fn_node, 0))
+							g.write('map__clone(')
+							g.gen_map_ref_arg(g.a.child(fn_node, 0), base_type)
 							g.write(')')
 							return
 						} else if fn_node.value == 'clear' {
-							g.write('map__clear(&')
-							g.gen_expr(g.a.child(fn_node, 0))
+							g.write('map__clear(')
+							g.gen_map_ref_arg(g.a.child(fn_node, 0), base_type)
 							g.write(')')
 							return
 						} else if fn_node.value == 'free' {

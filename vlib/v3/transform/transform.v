@@ -67,6 +67,8 @@ mut:
 	in_const_init         bool
 	in_return_expr        bool
 	alias_cache           &AliasCache = unsafe { nil }
+	sum_cache             &AliasCache = unsafe { nil }
+	used_fns              map[string]bool
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -113,10 +115,15 @@ struct VarTypeBinding {
 // --- entry point ---
 
 pub fn transform(mut a flat.FlatAst, tc &types.TypeChecker) {
+	transform_with_used(mut a, tc, map[string]bool{})
+}
+
+pub fn transform_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) {
 	mut t := Transformer{
 		a:                     a
 		tc:                    unsafe { tc }
 		pointer_value_lvalues: map[string]bool{}
+		used_fns:              used_fns
 	}
 	t.collect_types()
 	t.collect_const_suffixes()
@@ -125,6 +132,7 @@ pub fn transform(mut a flat.FlatAst, tc &types.TypeChecker) {
 	// During collection those maps are incomplete, so caching there would poison
 	// entries with results computed against a partial view.
 	t.alias_cache = &AliasCache{}
+	t.sum_cache = &AliasCache{}
 	t.transform_all()
 }
 
@@ -437,6 +445,9 @@ fn (mut t Transformer) transform_all() {
 			t.cur_module = node.value
 		}
 		if kind_id == 61 {
+			if !t.should_transform_fn(node) {
+				continue
+			}
 			t.transform_fn_body(i)
 		} else if kind_id == 65 {
 			t.transform_const_decl(node)
@@ -444,6 +455,31 @@ fn (mut t Transformer) transform_all() {
 			t.transform_global_decl(node)
 		}
 	}
+}
+
+fn (t &Transformer) should_transform_fn(node flat.Node) bool {
+	if t.used_fns.len == 0 {
+		return true
+	}
+	if node.value in t.used_fns {
+		return true
+	}
+	qname := transform_qualified_fn_name(t.cur_module, node.value)
+	if qname in t.used_fns {
+		return true
+	}
+	cname := c_name(qname)
+	if cname != qname && cname in t.used_fns {
+		return true
+	}
+	return false
+}
+
+fn transform_qualified_fn_name(mod string, name string) string {
+	if mod.len == 0 || mod == 'main' || mod == 'builtin' {
+		return name
+	}
+	return '${mod}.${name}'
 }
 
 // transform_const_decl transforms the initializer expression of each const field

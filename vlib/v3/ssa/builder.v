@@ -37,6 +37,9 @@ const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_
 	'_objc_alloc_init', '_objc_autoreleasePoolPush', '_objc_autoreleasePoolPop',
 	'_MTLCreateSystemDefaultDevice', '_dlopen', '_dlsym']
 
+const bench_runtime_stub_names = ['current_rss_kb', 'macos_peak_rss_kb', 'linux_rss_kb',
+	'bench.current_rss_kb', 'bench.macos_peak_rss_kb', 'bench.linux_rss_kb']
+
 pub struct Builder {
 mut:
 	m                  &Module            = unsafe { nil }
@@ -1087,6 +1090,9 @@ fn (b &Builder) has_fn_decl(name string) bool {
 }
 
 fn (b &Builder) skip_source_fn(name string) bool {
+	if name in bench_runtime_stub_names {
+		return true
+	}
 	if name in ['_wymix', 'wyhash', 'wyhash64', 'string__eq', 'string__lt', 'array_new', 'array_get',
 		'string__plus', 'string_plus_many', 'string.trim_right', 'array_push', 'array_push_many',
 		'array.push_many', 'array_clone', 'panic', 'fast_string_eq', 'strings.new_builder',
@@ -1101,14 +1107,13 @@ fn (b &Builder) skip_source_fn(name string) bool {
 		'array.repeat_to_depth', 'string.all_before_last', 'string__all_before_last',
 		'all_before_last', 'string.all_after_last', 'string__all_after_last', 'all_after_last',
 		'_ht_alloc', '_ht_free', 'f32_to_str_l', 'f32_to_str_l_with_dot', 'f64_to_str_l',
-		'f64_to_str_l_with_dot', 'print', 'println', 'eprint', 'eprintln', 'current_rss_kb',
-		'macos_rss_kb', 'linux_rss_kb', 'arguments', 'tos2', 'tos3', 'tos_clone',
-		'v_prealloc_atomic_add_i32', 'v_prealloc_atomic_load_i32', 'v_prealloc_atomic_store_i32',
-		'v_prealloc_atomic_cas_i32', 'FD_ZERO', 'FD_SET', 'FD_ISSET', 'v_signal_with_handler_cast',
-		'normalize_path_in_builder', 'check_fwrite', 'check_fread', 'os.check_fwrite',
-		'os.check_fread', 'fxx_to_str_l_parse', 'fxx_to_str_l_parse_with_dot', 'u8.vstring',
-		'u8.vstring_with_len', 'char.vstring', 'char.vstring_with_len', 'byteptr.vstring',
-		'byteptr.vstring_with_len', 'charptr.vstring', 'charptr.vstring_with_len',
+		'f64_to_str_l_with_dot', 'print', 'println', 'eprint', 'eprintln', 'arguments', 'tos2',
+		'tos3', 'tos_clone', 'v_prealloc_atomic_add_i32', 'v_prealloc_atomic_load_i32',
+		'v_prealloc_atomic_store_i32', 'v_prealloc_atomic_cas_i32', 'FD_ZERO', 'FD_SET', 'FD_ISSET',
+		'v_signal_with_handler_cast', 'normalize_path_in_builder', 'check_fwrite', 'check_fread',
+		'os.check_fwrite', 'os.check_fread', 'fxx_to_str_l_parse', 'fxx_to_str_l_parse_with_dot',
+		'u8.vstring', 'u8.vstring_with_len', 'char.vstring', 'char.vstring_with_len',
+		'byteptr.vstring', 'byteptr.vstring_with_len', 'charptr.vstring', 'charptr.vstring_with_len',
 		'u8.vstring_literal', 'u8.vstring_literal_with_len', 'char.vstring_literal',
 		'char.vstring_literal_with_len', 'byteptr.vstring_literal',
 		'byteptr.vstring_literal_with_len', 'charptr.vstring_literal',
@@ -1582,8 +1587,7 @@ fn (mut b Builder) generate_string_int_body(func_id int) {
 }
 
 fn (mut b Builder) register_bench_runtime_stubs() {
-	for name in ['current_rss_kb', 'macos_rss_kb', 'linux_rss_kb', 'bench.current_rss_kb',
-		'bench.macos_rss_kb', 'bench.linux_rss_kb'] {
+	for name in bench_runtime_stub_names {
 		id := b.register_synthetic_function(name, b.i64_type, []TypeID{})
 		b.generate_const_i64_body(id, '0')
 	}

@@ -305,10 +305,19 @@ fn (mut g FlatGen) array_method_fallback(method string) string {
 	return best_mname
 }
 
-fn (mut g FlatGen) gen_map_delete(node flat.Node, fn_node &flat.Node, m types.Map) {
+fn (mut g FlatGen) gen_map_ref_arg(base_id flat.NodeId, base_type types.Type) {
+	if base_type is types.Pointer {
+		g.gen_expr(base_id)
+	} else {
+		g.write('&')
+		g.gen_expr(base_id)
+	}
+}
+
+fn (mut g FlatGen) gen_map_delete(node flat.Node, fn_node &flat.Node, m types.Map, base_type types.Type) {
 	c_key := g.tc.c_type(m.key_type)
-	g.write('map__delete(&')
-	g.gen_expr(g.a.child(fn_node, 0))
+	g.write('map__delete(')
+	g.gen_map_ref_arg(g.a.child(fn_node, 0), base_type)
 	g.write(', &(${c_key}[]){')
 	g.gen_expr(g.a.child(&node, 1))
 	g.write('})')

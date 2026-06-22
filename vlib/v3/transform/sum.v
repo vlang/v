@@ -27,6 +27,26 @@ fn (t &Transformer) resolve_variant(sum_name string, variant string) string {
 }
 
 fn (t &Transformer) resolve_sum_name(sum_name string) string {
+	if sum_name.len == 0 {
+		return sum_name
+	}
+	if isnil(t.sum_cache) {
+		return t.resolve_sum_name_uncached(sum_name)
+	}
+	mut c := t.sum_cache
+	if c.module != t.cur_module {
+		c.module = t.cur_module
+		c.entries.clear()
+	}
+	if cached := c.entries[sum_name] {
+		return cached
+	}
+	result := t.resolve_sum_name_uncached(sum_name)
+	c.entries[sum_name] = result
+	return result
+}
+
+fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 	if sum_name in t.sum_types {
 		return sum_name
 	}

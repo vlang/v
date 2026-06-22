@@ -1555,7 +1555,7 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	}
 	name := fn_node.value
 	match name {
-		'println', 'eprintln', 'print' {
+		'println', 'eprintln', 'print', 'eprint' {
 			if node.children_count < 2 {
 				return t.transform_call_args(_id, node)
 			}

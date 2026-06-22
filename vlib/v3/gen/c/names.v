@@ -1,5 +1,7 @@
 module c
 
+import strings
+
 const c_reserved_words = ['auto', 'break', 'case', 'char', 'const', 'continue', 'copy', 'default',
 	'do', 'double', 'else', 'enum', 'extern', 'float', 'for', 'goto', 'if', 'inline', 'int', 'long',
 	'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct', 'switch',
@@ -19,13 +21,103 @@ fn c_name(name string) string {
 	if name == 'exit' {
 		return 'v_exit'
 	}
-	n := name.replace('[]', 'Array_').replace('.-', '__minus').replace('.+', '__plus').replace('.==',
-		'__eq').replace('.!=', '__ne').replace('.<=', '__le').replace('.>=', '__ge').replace('.<',
-		'__lt').replace('.>', '__gt').replace('&', 'ptr').replace('[', '_').replace(']', '').replace(',', '_').replace(' ', '_').replace('.', '__')
+	if c_name_is_plain(name) {
+		if name in c_reserved_words {
+			return 'v_${name}'
+		}
+		return name
+	}
+	n := c_name_sanitize(name)
 	if n in c_reserved_words {
 		return 'v_${n}'
 	}
 	return n
+}
+
+fn c_name_sanitize(name string) string {
+	mut b := strings.new_builder(name.len + 8)
+	mut i := 0
+	for i < name.len {
+		c := name[i]
+		if c == `[` {
+			if i + 1 < name.len && name[i + 1] == `]` {
+				b.write_string('Array_')
+				i += 2
+				continue
+			}
+			b.write_u8(`_`)
+		} else if c == `]` {
+			i++
+			continue
+		} else if c == `.` {
+			if i + 1 < name.len {
+				next := name[i + 1]
+				if next == `-` {
+					b.write_string('__minus')
+					i += 2
+					continue
+				}
+				if next == `+` {
+					b.write_string('__plus')
+					i += 2
+					continue
+				}
+				if i + 2 < name.len {
+					op := name[i + 2]
+					if next == `=` && op == `=` {
+						b.write_string('__eq')
+						i += 3
+						continue
+					}
+					if next == `!` && op == `=` {
+						b.write_string('__ne')
+						i += 3
+						continue
+					}
+					if next == `<` && op == `=` {
+						b.write_string('__le')
+						i += 3
+						continue
+					}
+					if next == `>` && op == `=` {
+						b.write_string('__ge')
+						i += 3
+						continue
+					}
+				}
+				if next == `<` {
+					b.write_string('__lt')
+					i += 2
+					continue
+				}
+				if next == `>` {
+					b.write_string('__gt')
+					i += 2
+					continue
+				}
+			}
+			b.write_string('__')
+		} else if c == `&` {
+			b.write_string('ptr')
+		} else if c == `,` || c == ` ` {
+			b.write_u8(`_`)
+		} else {
+			b.write_u8(c)
+		}
+		i++
+	}
+	return b.str()
+}
+
+fn c_name_is_plain(name string) bool {
+	for i in 0 .. name.len {
+		c := name[i]
+		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_` {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 fn c_escape(s string) string {
