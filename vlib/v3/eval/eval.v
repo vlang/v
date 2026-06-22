@@ -3724,14 +3724,13 @@ fn (mut e Eval) eval_struct_init_flow(node &flat.Node) !FlowSignal {
 			fields := e.struct_fields(type_name)
 			if positional < fields.len {
 				field := fields[positional]
-				field_type := e.qualify_type_name(field.module_name, field.typ)
+				field_type := e.qualify_nested_type_name(field.module_name, field.typ)
 				value_signal := e.eval_expr_flow_expected(e.child(child, 0), field_type)!
 				if value_signal.kind != .normal {
 					return value_signal
 				}
 				value := flow_value(value_signal)
-				st.fields[field.name] = e.adapt_value_to_type_name(value, e.qualify_type_name(field.module_name,
-					field.typ))
+				st.fields[field.name] = e.adapt_value_to_type_name(value, field_type)
 			}
 			positional++
 		}
@@ -5069,8 +5068,9 @@ fn (mut e Eval) eval_struct_field_default(field FieldInfo) Value {
 		e.call_stack.delete(e.call_stack.len - 1)
 		return e.zero_value_for_type_name_in_module(field.typ, field.module_name)
 	}
+	adapted := e.adapt_value_to_type_name(value, field.typ)
 	e.call_stack.delete(e.call_stack.len - 1)
-	return e.adapt_value_to_type_name(value, field.typ)
+	return adapted
 }
 
 fn (e &Eval) struct_fields(type_name string) []FieldInfo {
@@ -5085,7 +5085,7 @@ fn (e &Eval) struct_field_type_name_by_type(type_name string, field_name string)
 	info := e.struct_info(type_name)
 	for field in info.fields {
 		if field.name == field_name {
-			return e.qualify_type_name(field.module_name, field.typ)
+			return e.qualify_nested_type_name(field.module_name, field.typ)
 		}
 	}
 	return ''

@@ -1237,6 +1237,93 @@ fn main() {
 	assert e.stdout() == '3\n'
 }
 
+fn test_eval_imported_struct_field_default_adapts_in_declaring_module() {
+	dir := os.join_path(os.temp_dir(), 'v3_eval_import_field_default_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	main_file := os.join_path(dir, 'main.v')
+	mod_file := os.join_path(dir, 'm.v')
+	os.write_file(mod_file, '
+module m
+
+pub struct A {}
+
+pub type Any = A | string
+
+pub struct Box {
+pub:
+	x Any = A{}
+}
+	') or {
+		panic(err)
+	}
+	os.write_file(main_file, '
+module main
+
+import m
+
+fn main() {
+	box := m.Box{}
+	println(int_str(box.x._typ))
+	if box.x is m.A {
+		println("a")
+	}
+}
+	') or {
+		panic(err)
+	}
+	mut e := create()
+	mut p := parser.Parser.new(&e.prefs)
+	p.parse_files([main_file, mod_file])
+	e.run_files(p.a) or { panic(err) }
+	assert e.stdout() == '0\na\n'
+}
+
+fn test_eval_imported_struct_field_container_type_uses_declaring_module() {
+	dir := os.join_path(os.temp_dir(), 'v3_eval_import_field_container_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	main_file := os.join_path(dir, 'main.v')
+	mod_file := os.join_path(dir, 'm.v')
+	os.write_file(mod_file, '
+module m
+
+pub struct Item {}
+
+pub struct Box {
+pub mut:
+	xs []Item
+}
+	') or {
+		panic(err)
+	}
+	os.write_file(main_file, '
+module main
+
+import m
+
+fn main() {
+	box := m.Box{xs: [m.Item{}]}
+	mut xs := box.xs
+	xs << [m.Item{}, m.Item{}]
+	println(int_str(xs.len))
+}
+	') or {
+		panic(err)
+	}
+	mut e := create()
+	mut p := parser.Parser.new(&e.prefs)
+	p.parse_files([main_file, mod_file])
+	e.run_files(p.a) or { panic(err) }
+	assert e.stdout() == '3\n'
+}
+
 fn test_eval_value_block_preserves_multi_return_values() {
 	mut e := create()
 	e.run_text("
