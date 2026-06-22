@@ -412,6 +412,41 @@ fn main() {
 	assert e.stdout() == '1\n2\n2\n1\n2\n'
 }
 
+fn test_eval_match_value_branches_execute_array_append_statements() {
+	mut e := create()
+	e.run_text('
+fn main() {
+	mut xs := []int{}
+	n := match 0 {
+		0 {
+			xs << 1
+			xs.len
+		}
+		else {
+			0
+		}
+	}
+	m := match 1 {
+		0 {
+			0
+		}
+		else {
+			xs << 2
+			xs.len
+		}
+	}
+	println(int_str(n))
+	println(int_str(m))
+	println(int_str(xs.len))
+	println(int_str(xs[0]))
+	println(int_str(xs[1]))
+}
+		') or {
+		panic(err)
+	}
+	assert e.stdout() == '1\n2\n2\n1\n2\n'
+}
+
 fn test_eval_or_block_return_propagates_from_array_append_rhs() {
 	mut e := create()
 	e.run_text('
@@ -456,6 +491,31 @@ fn main() {
 		panic(err)
 	}
 	assert e.stdout() == '11\n12\n'
+}
+
+fn test_eval_for_mut_reuses_resolved_array_container() {
+	mut e := create()
+	e.run_text('
+fn next(mut i int) int {
+	old := i
+	i++
+	return old
+}
+
+fn main() {
+	mut buckets := [[1], [10]]
+	mut i := 0
+	for mut x in buckets[next(mut i)] {
+		x++
+	}
+	println(int_str(buckets[0][0]))
+	println(int_str(buckets[1][0]))
+	println(int_str(i))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '2\n10\n1\n'
 }
 
 fn test_eval_array_init_preserves_cap() {
@@ -1841,6 +1901,50 @@ fn main() {
 	assert e.stdout() == 'true\ntrue\n0\n'
 }
 
+fn test_eval_enum_shorthand_return_uses_expected_type_in_value_branches() {
+	mut e := create()
+	e.run_text('
+enum Color {
+	red = 10
+	blue = 20
+}
+
+enum Other {
+	red = 1
+	blue = 2
+}
+
+fn pick_if(b bool) Color {
+	return if b {
+		.red
+	} else {
+		.blue
+	}
+}
+
+fn pick_match(n int) Color {
+	return match n {
+		0 {
+			.red
+		}
+		else {
+			.blue
+		}
+	}
+}
+
+fn main() {
+	println(pick_if(true) == Color.red)
+	println(pick_if(false) == Color.blue)
+	println(pick_match(0) == Color.red)
+	println(pick_match(1) == Color.blue)
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == 'true\ntrue\ntrue\ntrue\n'
+}
+
 fn test_eval_enum_shorthand_uses_typed_call_and_struct_contexts() {
 	mut e := create()
 	e.run_text('
@@ -1908,6 +2012,57 @@ enum Other {
 
 fn main() {
 	println(m.take(.red))
+}
+	') or {
+		panic(err)
+	}
+	mut e := create()
+	mut p := parser.Parser.new(&e.prefs)
+	p.parse_files([main_file, mod_file])
+	e.run_files(p.a) or { panic(err) }
+	assert e.stdout() == 'm-red\n'
+}
+
+fn test_eval_imported_fn_value_param_hints_are_qualified() {
+	dir := os.join_path(os.temp_dir(), 'v3_eval_import_fn_value_hint_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	main_file := os.join_path(dir, 'main.v')
+	mod_file := os.join_path(dir, 'm.v')
+	os.write_file(mod_file, '
+module m
+
+pub enum Color {
+	red
+	blue
+}
+
+pub fn make_taker() fn (Color) string {
+	return fn (c Color) string {
+		if c == Color.red {
+			return "m-red"
+		}
+		return "wrong"
+	}
+}
+	') or {
+		panic(err)
+	}
+	os.write_file(main_file, '
+module main
+
+import m
+
+enum Other {
+	red = 10
+}
+
+fn main() {
+	f := m.make_taker()
+	println(f(.red))
 }
 	') or {
 		panic(err)

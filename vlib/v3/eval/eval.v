@@ -2032,11 +2032,25 @@ fn (mut e Eval) exec_for_in(node &flat.Node, loop_label string) !FlowSignal {
 	header_count := if node.value.int() > 0 { node.value.int() } else { 3 }
 	key_id := e.child(node, 0)
 	val_id := e.child(node, 1)
-	container_signal := e.eval_expr_flow(e.child(node, 2))!
-	if container_signal.kind != .normal {
-		return container_signal
+	container_id := e.child(node, 2)
+	is_mut_loop := node.op == .amp
+	mut resolved_container := ResolvedLvalue{}
+	mut has_resolved_container := false
+	mut container := Value(void_value())
+	if is_mut_loop && e.is_assignable_target(container_id) {
+		resolved_container = e.resolve_lvalue_flow(container_id)!
+		if resolved_container.signal.kind != .normal {
+			return resolved_container.signal
+		}
+		container = resolved_container.value
+		has_resolved_container = true
+	} else {
+		container_signal := e.eval_expr_flow(container_id)!
+		if container_signal.kind != .normal {
+			return container_signal
+		}
+		container = flow_value(container_signal)
 	}
-	container := flow_value(container_signal)
 	body := e.children(node)[header_count..]
 	if header_count == 4 {
 		start := e.value_as_int(container)!
@@ -2098,7 +2112,6 @@ fn (mut e Eval) exec_for_in(node &flat.Node, loop_label string) !FlowSignal {
 				elem_type_name: container.elem_type_name
 				values:         container.values.clone()
 			}
-			is_mut_loop := node.op == .amp
 			for i, item in arr.values {
 				e.open_scope()
 				e.assign_loop_vars(key_id, val_id, Value(i64(i)), item, true)
@@ -2106,7 +2119,22 @@ fn (mut e Eval) exec_for_in(node &flat.Node, loop_label string) !FlowSignal {
 				if is_mut_loop {
 					if value := e.loop_mut_value(key_id, val_id, true) {
 						arr.values[i] = e.adapt_value_to_type_name(value, arr.elem_type_name)
-						e.update_target(e.child(node, 2), arr)!
+						mut write_signal := FlowSignal{}
+						if has_resolved_container {
+							write_signal = e.write_resolved_lvalue_flow(resolved_container, arr) or {
+								e.close_scope()!
+								return err
+							}
+						} else {
+							write_signal = e.update_target_flow(container_id, arr) or {
+								e.close_scope()!
+								return err
+							}
+						}
+						if write_signal.kind != .normal {
+							e.close_scope()!
+							return write_signal
+						}
 					}
 				}
 				e.close_scope()!
@@ -2134,7 +2162,6 @@ fn (mut e Eval) exec_for_in(node &flat.Node, loop_label string) !FlowSignal {
 				default_value:   container.default_value
 				entries:         container.entries.clone()
 			}
-			is_mut_loop := node.op == .amp
 			for i, entry in m.entries {
 				e.open_scope()
 				e.assign_loop_vars(key_id, val_id, entry.key, entry.value, true)
@@ -2142,7 +2169,22 @@ fn (mut e Eval) exec_for_in(node &flat.Node, loop_label string) !FlowSignal {
 				if is_mut_loop {
 					if value := e.loop_mut_value(key_id, val_id, true) {
 						m.entries[i].value = e.adapt_value_to_type_name(value, m.value_type_name)
-						e.update_target(e.child(node, 2), m)!
+						mut write_signal := FlowSignal{}
+						if has_resolved_container {
+							write_signal = e.write_resolved_lvalue_flow(resolved_container, m) or {
+								e.close_scope()!
+								return err
+							}
+						} else {
+							write_signal = e.update_target_flow(container_id, m) or {
+								e.close_scope()!
+								return err
+							}
+						}
+						if write_signal.kind != .normal {
+							e.close_scope()!
+							return write_signal
+						}
 					}
 				}
 				e.close_scope()!
@@ -2535,6 +2577,23 @@ fn (mut e Eval) eval_expr_flow_expected(id flat.NodeId, expected_type string) !F
 		if node.kind == .enum_val && expected_type.len > 0 {
 			if value := e.lookup_enum_value(expected_type, node.value) {
 				return value_flow(value)
+			}
+		}
+		if expected_type.len > 0 {
+			match node.kind {
+				.if_expr {
+					return e.eval_if_value_flow_expected(node, expected_type)
+				}
+				.match_stmt {
+					return e.eval_match_value_flow_expected(node, expected_type)
+				}
+				.block {
+					return e.eval_block_value_flow_expected(node, expected_type)
+				}
+				.paren {
+					return e.eval_expr_flow_expected(e.child(node, 0), expected_type)
+				}
+				else {}
 			}
 		}
 	}
@@ -2973,10 +3032,14 @@ fn (e &Eval) qualify_expected_type_name(module_name string, type_name string) st
 }
 
 fn (e &Eval) fn_value_param_type_names(fv FnValue) []string {
-	return e.fn_literal_param_type_names(e.node(fv.node))
+	return e.fn_literal_param_type_names_in_module(e.node(fv.node), fv.module_name)
 }
 
 fn (e &Eval) fn_literal_param_type_names(node &flat.Node) []string {
+	return e.fn_literal_param_type_names_in_module(node, e.current_module_name())
+}
+
+fn (e &Eval) fn_literal_param_type_names_in_module(node &flat.Node, module_name string) []string {
 	children := e.children(node)
 	mut i := 0
 	for i < children.len {
@@ -2992,7 +3055,7 @@ fn (e &Eval) fn_literal_param_type_names(node &flat.Node) []string {
 		if child.kind != .param {
 			break
 		}
-		types << child.typ
+		types << e.qualify_expected_type_name(module_name, child.typ)
 		i++
 	}
 	return types
@@ -3631,6 +3694,10 @@ fn (mut e Eval) eval_if_value(node &flat.Node) !Value {
 }
 
 fn (mut e Eval) eval_if_value_flow(node &flat.Node) !FlowSignal {
+	return e.eval_if_value_flow_expected(node, '')
+}
+
+fn (mut e Eval) eval_if_value_flow_expected(node &flat.Node, expected_type string) !FlowSignal {
 	if node.children_count < 2 {
 		return value_flow(void_value())
 	}
@@ -3655,7 +3722,7 @@ fn (mut e Eval) eval_if_value_flow(node &flat.Node) !FlowSignal {
 				smartcast_scope = true
 			}
 		}
-		signal := e.eval_value_expr_flow(e.child(node, 1))!
+		signal := e.eval_value_expr_flow_expected(e.child(node, 1), expected_type)!
 		if smartcast_scope {
 			e.close_scope()!
 		}
@@ -3668,19 +3735,23 @@ fn (mut e Eval) eval_if_value_flow(node &flat.Node) !FlowSignal {
 		e.close_scope()!
 	}
 	if node.children_count > 2 {
-		return e.eval_value_expr_flow(e.child(node, 2))
+		return e.eval_value_expr_flow_expected(e.child(node, 2), expected_type)
 	}
 	return value_flow(void_value())
 }
 
 fn (mut e Eval) eval_value_expr_flow(id flat.NodeId) !FlowSignal {
+	return e.eval_value_expr_flow_expected(id, '')
+}
+
+fn (mut e Eval) eval_value_expr_flow_expected(id flat.NodeId, expected_type string) !FlowSignal {
 	if int(id) >= 0 {
 		node := e.node(id)
 		if node.kind == .block {
-			return e.eval_block_value_flow(node)
+			return e.eval_block_value_flow_expected(node, expected_type)
 		}
 	}
-	return e.eval_expr_flow(id)
+	return e.eval_expr_flow_expected(id, expected_type)
 }
 
 fn (mut e Eval) eval_block_value(node &flat.Node) !Value {
@@ -3692,10 +3763,14 @@ fn (mut e Eval) eval_block_value(node &flat.Node) !Value {
 }
 
 fn (mut e Eval) eval_block_value_flow(node &flat.Node) !FlowSignal {
-	return e.eval_block_value_flow_collect(node, false)
+	return e.eval_block_value_flow_expected(node, '')
 }
 
-fn (mut e Eval) eval_block_value_flow_collect(node &flat.Node, collect_expr_values bool) !FlowSignal {
+fn (mut e Eval) eval_block_value_flow_expected(node &flat.Node, expected_type string) !FlowSignal {
+	return e.eval_block_value_flow_collect(node, false, expected_type)
+}
+
+fn (mut e Eval) eval_block_value_flow_collect(node &flat.Node, collect_expr_values bool, expected_type string) !FlowSignal {
 	e.open_scope()
 	mut values := []Value{}
 	for child_id in e.children(node) {
@@ -3711,7 +3786,7 @@ fn (mut e Eval) eval_block_value_flow_collect(node &flat.Node, collect_expr_valu
 				}
 				continue
 			}
-			signal := e.eval_expr_flow(expr_id)!
+			signal := e.eval_expr_flow_expected(expr_id, expected_type)!
 			if signal.kind != .normal {
 				e.close_scope()!
 				return signal
@@ -3731,7 +3806,8 @@ fn (mut e Eval) eval_block_value_flow_collect(node &flat.Node, collect_expr_valu
 		if child.kind == .block {
 			collect_child_expr_values := node.children_count == 1
 				&& e.block_has_only_expr_stmts(child) && child.children_count > 1
-			signal := e.eval_block_value_flow_collect(child, collect_child_expr_values)!
+			signal := e.eval_block_value_flow_collect(child, collect_child_expr_values,
+				expected_type)!
 			if signal.kind != .normal {
 				e.close_scope()!
 				return signal
@@ -4253,6 +4329,10 @@ fn (mut e Eval) eval_match_value(node &flat.Node) !Value {
 }
 
 fn (mut e Eval) eval_match_value_flow(node &flat.Node) !FlowSignal {
+	return e.eval_match_value_flow_expected(node, '')
+}
+
+fn (mut e Eval) eval_match_value_flow_expected(node &flat.Node, expected_type string) !FlowSignal {
 	target_id := e.child(node, 0)
 	target_signal := e.eval_expr_flow(target_id)!
 	if target_signal.kind != .normal {
@@ -4289,7 +4369,17 @@ fn (mut e Eval) eval_match_value_flow(node &flat.Node) !FlowSignal {
 				stmt_id := e.child(branch, j)
 				stmt := e.node(stmt_id)
 				if stmt.kind == .expr_stmt && stmt.children_count > 0 {
-					signal := e.eval_expr_flow(e.child(stmt, 0))!
+					expr_id := e.child(stmt, 0)
+					expr := e.node(expr_id)
+					if expr.kind == .infix && expr.op == .left_shift {
+						signal := e.exec_stmt(stmt_id)!
+						if signal.kind != .normal {
+							e.close_scope()!
+							return signal
+						}
+						continue
+					}
+					signal := e.eval_expr_flow_expected(expr_id, expected_type)!
 					if signal.kind != .normal {
 						e.close_scope()!
 						return signal
