@@ -5306,6 +5306,9 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			return tc.resolve_index_type(node)
 		}
 		.array_init {
+			if node.typ.len > 0 {
+				return tc.parse_type(node.typ)
+			}
 			t := tc.parse_type(node.value)
 			raw_t := t
 			if t is ArrayFixed {

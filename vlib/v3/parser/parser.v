@@ -4271,11 +4271,16 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			return p.a.add_node(flat.Node{
 				kind:           .array_init
 				value:          elem_type
+				typ:            '[]${elem_type}'
 				children_start: start
 				children_count: flat.child_count(ids.len)
 			})
 		}
-		return p.a.add_val(.array_init, elem_type)
+		return p.a.add_node(flat.Node{
+			kind:  .array_init
+			value: elem_type
+			typ:   '[]${elem_type}'
+		})
 	}
 	// array literal: [1, 2, 3]
 	// or fixed array type: [3]int
@@ -4321,11 +4326,16 @@ fn (mut p Parser) array_literal() flat.NodeId {
 				return p.a.add_node(flat.Node{
 					kind:           .array_init
 					value:          fixed_type
+					typ:            fixed_type
 					children_start: start
 					children_count: flat.child_count(init_ids.len)
 				})
 			}
-			return p.a.add_val(.array_init, fixed_type)
+			return p.a.add_node(flat.Node{
+				kind:  .array_init
+				value: fixed_type
+				typ:   fixed_type
+			})
 		}
 		// single-element array: [expr]
 		start := p.add_children(ids)

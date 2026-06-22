@@ -2,6 +2,7 @@ module main
 
 import os
 import v3.bench
+import v3.eval
 import v3.flat
 import v3.gen.arm64
 import v3.gen.c as cgen
@@ -30,7 +31,7 @@ const o_wronly_creat_trunc = 0x601 // O_WRONLY | O_CREAT | O_TRUNC on Darwin
 fn main() {
 	args := os.args[1..]
 	if args.len == 0 {
-		eprintln('usage: v3 <file.v> [-o output|file.c] [-b c|arm64]')
+		eprintln('usage: v3 <file.v> [-o output|file.c] [-b c|arm64|eval]')
 		exit(1)
 	}
 
@@ -139,6 +140,17 @@ fn main() {
 		exit(1)
 	}
 	b.step('check')
+
+	if backend == 'eval' {
+		mut runner := eval.new(prefs)
+		runner.run_files(a) or {
+			eprintln('error: ${err.msg()}')
+			exit(1)
+		}
+		b.step('eval')
+		b.print_report()
+		return
+	}
 
 	// Mark used functions (dead-code elimination). This is done before transform
 	// so the transformer can skip function bodies that the C backend will prune.
