@@ -506,6 +506,24 @@ fn (g &FlatGen) is_scalar_c_type(c_type string) bool {
 		'int', 'isize', 'usize', 'size_t', 'ptrdiff_t', 'float', 'double', 'voidptr']
 }
 
+fn (g &FlatGen) is_aggregate_zero_init_type(typ types.Type, c_type string) bool {
+	if g.is_scalar_c_type(c_type) {
+		return false
+	}
+	return match typ {
+		types.Alias {
+			g.is_aggregate_zero_init_type(typ.base_type, c_type)
+		}
+		types.Array, types.ArrayFixed, types.Channel, types.Map, types.String, types.Struct,
+		types.Interface, types.SumType, types.OptionType, types.ResultType, types.MultiReturn {
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (g &FlatGen) scalar_zero_init(c_type string) string {
 	if c_type in ['float', 'double'] {
 		return '0.0'
