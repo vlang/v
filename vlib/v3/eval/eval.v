@@ -1033,11 +1033,14 @@ fn (mut e Eval) exec_assign(node &flat.Node, declare bool) !FlowSignal {
 		if signal.kind != .normal {
 			return signal
 		}
-		e.assign_target_typed(lhs_id, flow_value(signal), declare, if target_type.len > 0 {
+		assign_signal := e.assign_target_typed_flow(lhs_id, flow_value(signal), declare, if target_type.len > 0 {
 			target_type
 		} else {
 			e.infer_expr_type_name(rhs_id)
 		})!
+		if assign_signal.kind != .normal {
+			return assign_signal
+		}
 		return normal_flow()
 	}
 	if children.len > 2 {
@@ -1055,14 +1058,20 @@ fn (mut e Eval) exec_assign(node &flat.Node, declare bool) !FlowSignal {
 		if value is TupleValue {
 			for i, lhs_id in lhs_ids {
 				item := if i < value.values.len { value.values[i] } else { void_value() }
-				e.assign_target(lhs_id, item, declare)!
+				assign_signal := e.assign_target_flow(lhs_id, item, declare)!
+				if assign_signal.kind != .normal {
+					return assign_signal
+				}
 			}
 			return normal_flow()
 		}
 		if children.len % 2 == 1 {
 			for i, lhs_id in lhs_ids {
 				item := if i == 0 { value } else { void_value() }
-				e.assign_target(lhs_id, item, declare)!
+				assign_signal := e.assign_target_flow(lhs_id, item, declare)!
+				if assign_signal.kind != .normal {
+					return assign_signal
+				}
 			}
 			return normal_flow()
 		}
@@ -1087,7 +1096,10 @@ fn (mut e Eval) exec_assign(node &flat.Node, declare bool) !FlowSignal {
 			i += 2
 		}
 		for idx, lhs_id in assign_lhs_ids {
-			e.assign_target(lhs_id, values[idx], declare)!
+			assign_signal := e.assign_target_flow(lhs_id, values[idx], declare)!
+			if assign_signal.kind != .normal {
+				return assign_signal
+			}
 		}
 		return normal_flow()
 	}
@@ -1105,7 +1117,10 @@ fn (mut e Eval) exec_assign(node &flat.Node, declare bool) !FlowSignal {
 		} else {
 			void_value()
 		}
-		e.assign_target(lhs_id, value, declare)!
+		assign_signal := e.assign_target_flow(lhs_id, value, declare)!
+		if assign_signal.kind != .normal {
+			return assign_signal
+		}
 		i += 2
 	}
 	return normal_flow()
@@ -1144,7 +1159,11 @@ fn (mut e Eval) assignment_value_flow(op flat.Op, lhs_id flat.NodeId, rhs_id fla
 			values: [rhs]
 		}
 	}
-	left := e.eval_expr(lhs_id) or { e.zero_value_like(rhs) }
+	left_signal := e.eval_expr_flow(lhs_id)!
+	if left_signal.kind != .normal {
+		return left_signal
+	}
+	left := flow_value(left_signal)
 	return FlowSignal{
 		values: [
 			match op {
@@ -1227,10 +1246,24 @@ fn flow_values_or_void(values []Value) []Value {
 }
 
 fn (mut e Eval) assign_target(id flat.NodeId, value Value, declare bool) ! {
-	e.assign_target_typed(id, value, declare, '')!
+	signal := e.assign_target_typed_flow(id, value, declare, '')!
+	if signal.kind != .normal {
+		return error('v3.eval: unexpected `${signal.kind}` escaped assignment target')
+	}
 }
 
 fn (mut e Eval) assign_target_typed(id flat.NodeId, value Value, declare bool, type_name string) ! {
+	signal := e.assign_target_typed_flow(id, value, declare, type_name)!
+	if signal.kind != .normal {
+		return error('v3.eval: unexpected `${signal.kind}` escaped assignment target')
+	}
+}
+
+fn (mut e Eval) assign_target_flow(id flat.NodeId, value Value, declare bool) !FlowSignal {
+	return e.assign_target_typed_flow(id, value, declare, '')
+}
+
+fn (mut e Eval) assign_target_typed_flow(id flat.NodeId, value Value, declare bool, type_name string) !FlowSignal {
 	node := e.node(id)
 	match node.kind {
 		.ident {
@@ -1249,15 +1282,17 @@ fn (mut e Eval) assign_target_typed(id flat.NodeId, value Value, declare bool, t
 			}
 		}
 		.selector {
-			e.update_selector_target(node, value)!
+			return e.update_selector_target_flow(node, value)
 		}
 		.index {
-			e.update_index_target(node, value)!
+			return e.update_index_target_flow(node, value)
 		}
 		else {
 			return error('v3.eval: unsupported assignment target `${node.kind}`')
 		}
 	}
+
+	return normal_flow()
 }
 
 fn (e &Eval) infer_expr_type_name(id flat.NodeId) string {
@@ -1335,22 +1370,53 @@ fn array_elem_type_name_from_type(type_name string) string {
 }
 
 fn (mut e Eval) update_target(id flat.NodeId, value Value) ! {
-	e.assign_target(id, value, false)!
+	signal := e.update_target_flow(id, value)!
+	if signal.kind != .normal {
+		return error('v3.eval: unexpected `${signal.kind}` escaped assignment target')
+	}
 }
 
 fn (mut e Eval) update_index_target(node &flat.Node, value Value) ! {
+	signal := e.update_index_target_flow(node, value)!
+	if signal.kind != .normal {
+		return error('v3.eval: unexpected `${signal.kind}` escaped index assignment target')
+	}
+}
+
+fn (mut e Eval) update_index_target_flow(node &flat.Node, value Value) !FlowSignal {
 	base_id := e.child(node, 0)
-	index := e.eval_expr(e.child(node, 1))!
-	container := e.eval_expr(base_id)!
-	new_container := e.set_index_value(container, index, value)!
-	e.update_target(base_id, new_container)!
+	index_signal := e.eval_expr_flow(e.child(node, 1))!
+	if index_signal.kind != .normal {
+		return index_signal
+	}
+	container_signal := e.eval_expr_flow(base_id)!
+	if container_signal.kind != .normal {
+		return container_signal
+	}
+	new_container := e.set_index_value(flow_value(container_signal), flow_value(index_signal),
+		value)!
+	return e.update_target_flow(base_id, new_container)
 }
 
 fn (mut e Eval) update_selector_target(node &flat.Node, value Value) ! {
+	signal := e.update_selector_target_flow(node, value)!
+	if signal.kind != .normal {
+		return error('v3.eval: unexpected `${signal.kind}` escaped selector assignment target')
+	}
+}
+
+fn (mut e Eval) update_selector_target_flow(node &flat.Node, value Value) !FlowSignal {
 	base_id := e.child(node, 0)
-	container := e.eval_expr(base_id)!
-	new_container := e.set_selector_value(container, node.value, value)!
-	e.update_target(base_id, new_container)!
+	container_signal := e.eval_expr_flow(base_id)!
+	if container_signal.kind != .normal {
+		return container_signal
+	}
+	new_container := e.set_selector_value(flow_value(container_signal), node.value, value)!
+	return e.update_target_flow(base_id, new_container)
+}
+
+fn (mut e Eval) update_target_flow(id flat.NodeId, value Value) !FlowSignal {
+	return e.assign_target_flow(id, value, false)
 }
 
 fn (mut e Eval) set_index_value(container Value, index Value, value Value) !Value {
@@ -3666,7 +3732,11 @@ fn (mut e Eval) exec_match(node &flat.Node) !FlowSignal {
 		mut matched := branch.value == 'else'
 		mut matched_cond := Value(void_value())
 		for j in 0 .. cond_count {
-			cond := e.eval_match_condition(e.child(branch, j), target_id)!
+			cond_signal := e.eval_match_condition_flow(e.child(branch, j), target_id)!
+			if cond_signal.kind != .normal {
+				return cond_signal
+			}
+			cond := flow_value(cond_signal)
 			if e.match_condition_matches(target, cond) {
 				matched = true
 				matched_cond = cond
@@ -3713,7 +3783,11 @@ fn (mut e Eval) eval_match_value_flow(node &flat.Node) !FlowSignal {
 		mut matched := branch.value == 'else'
 		mut matched_cond := Value(void_value())
 		for j in 0 .. cond_count {
-			cond := e.eval_match_condition(e.child(branch, j), target_id)!
+			cond_signal := e.eval_match_condition_flow(e.child(branch, j), target_id)!
+			if cond_signal.kind != .normal {
+				return cond_signal
+			}
+			cond := flow_value(cond_signal)
 			if e.match_condition_matches(target, cond) {
 				matched = true
 				matched_cond = cond
@@ -3780,28 +3854,36 @@ fn (e &Eval) smartcast_binding_from_match(target_id flat.NodeId, target Value, c
 }
 
 fn (mut e Eval) eval_match_condition(cond_id flat.NodeId, target_id flat.NodeId) !Value {
+	return flow_value(e.eval_match_condition_flow(cond_id, target_id)!)
+}
+
+fn (mut e Eval) eval_match_condition_flow(cond_id flat.NodeId, target_id flat.NodeId) !FlowSignal {
 	cond := e.node(cond_id)
 	if cond.kind == .enum_val {
 		if enum_type := e.match_target_enum_type_name(target_id) {
 			if value := e.lookup_enum_value(enum_type, cond.value) {
-				return value
+				return value_flow(value)
 			}
 		}
 	}
 	if cond.kind == .ident && is_builtin_type_name(cond.value) {
-		return TypeValue{
+		return value_flow(TypeValue{
 			name: cond.value
-		}
+		})
 	}
-	value := e.eval_expr(cond_id)!
+	signal := e.eval_expr_flow(cond_id)!
+	if signal.kind != .normal {
+		return signal
+	}
+	value := flow_value(signal)
 	if value is RangeValue {
-		return RangeValue{
+		return value_flow(RangeValue{
 			start:     value.start
 			end:       value.end
 			inclusive: true
-		}
+		})
 	}
-	return value
+	return value_flow(value)
 }
 
 fn (e &Eval) match_target_enum_type_name(target_id flat.NodeId) ?string {
@@ -4682,12 +4764,13 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name string, module_name
 		return Value(i64(0))
 	}
 	if name.starts_with('[]') {
+		elem_type := e.qualify_nested_type_name(module_name, name[2..])
 		return ArrayValue{
-			elem_type_name: name[2..]
+			elem_type_name: elem_type
 		}
 	}
 	if is_fixed_array_type_name(name) {
-		elem_type := fixed_array_elem_type_name(name)
+		elem_type := e.qualify_nested_type_name(module_name, fixed_array_elem_type_name(name))
 		len := fixed_array_len(name)
 		return ArrayValue{
 			elem_type_name: elem_type
@@ -4697,10 +4780,12 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name string, module_name
 	}
 	if name.starts_with('map[') {
 		key_type, value_type := split_map_type(name)
+		qualified_key_type := e.qualify_nested_type_name(module_name, key_type)
+		qualified_value_type := e.qualify_nested_type_name(module_name, value_type)
 		return MapValue{
-			key_type_name:   key_type
-			value_type_name: value_type
-			default_value:   e.zero_value_for_type_name_in_module(value_type, module_name)
+			key_type_name:   qualified_key_type
+			value_type_name: qualified_value_type
+			default_value:   e.zero_value_for_type_name_in_module(qualified_value_type, module_name)
 		}
 	}
 	enum_name := e.qualify_type_name(module_name, name)
@@ -4732,6 +4817,25 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name string, module_name
 		return e.zero_struct_value(struct_name)
 	}
 	return void_value()
+}
+
+fn (e &Eval) qualify_nested_type_name(module_name string, type_name string) string {
+	name := type_name.trim_space()
+	if name == '' {
+		return ''
+	}
+	if name.starts_with('[]') {
+		return '[]${e.qualify_nested_type_name(module_name, name[2..])}'
+	}
+	if name.starts_with('map[') {
+		key_type, value_type := split_map_type(name)
+		return 'map[${e.qualify_nested_type_name(module_name, key_type)}]${e.qualify_nested_type_name(module_name,
+			value_type)}'
+	}
+	if name.starts_with('?') || name.starts_with('!') {
+		return '${name[..1]}${e.qualify_nested_type_name(module_name, name[1..])}'
+	}
+	return e.qualify_type_name(module_name, name)
 }
 
 fn (mut e Eval) zero_struct_value(type_name string) StructValue {

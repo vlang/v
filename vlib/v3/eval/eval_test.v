@@ -152,6 +152,33 @@ fn main() {
 	assert e.stdout() == '1\n2\n'
 }
 
+fn test_eval_match_condition_propagates_return() {
+	mut e := create()
+	e.run_text('
+fn maybe() ?int {
+	return none
+}
+
+fn run() int {
+	x := 1
+	match x {
+		maybe() or {
+			return 7
+		} {}
+		else {}
+	}
+	return 0
+}
+
+fn main() {
+	println(int_str(run()))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '7\n'
+}
+
 fn test_eval_match_branch_shadows_outer_locals() {
 	mut e := create()
 	e.run_text('
@@ -642,6 +669,30 @@ fn main() {
 		panic(err)
 	}
 	assert e.stdout() == '0\n1\n0\n1\n'
+}
+
+fn test_eval_index_assignment_lhs_index_propagates_return() {
+	mut e := create()
+	e.run_text('
+fn idx() ?int {
+	return none
+}
+
+fn run() int {
+	mut xs := [0]
+	xs[idx() or {
+		return 7
+	}] = 1
+	return xs[0]
+}
+
+fn main() {
+	println(int_str(run()))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '7\n'
 }
 
 fn test_eval_array_literal_preserves_element_type_for_sum_checks() {
@@ -2604,6 +2655,47 @@ fn main() {
 	p.parse_files([main_file, mod_file])
 	e.run_files(p.a) or { panic(err) }
 	assert e.stdout() == '7\n'
+}
+
+fn test_eval_zero_array_field_qualifies_imported_element_type() {
+	dir := os.join_path(os.temp_dir(), 'v3_eval_import_array_elem_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	main_file := os.join_path(dir, 'main.v')
+	mod_file := os.join_path(dir, 'm.v')
+	os.write_file(mod_file, '
+module m
+
+pub struct Item {}
+
+pub struct Box {
+pub mut:
+	xs []Item
+}
+	') or {
+		panic(err)
+	}
+	os.write_file(main_file, '
+module main
+
+import m
+
+fn main() {
+	mut b := m.Box{}
+	b.xs << [m.Item{}, m.Item{}]
+	println(int_str(b.xs.len))
+}
+	') or {
+		panic(err)
+	}
+	mut e := create()
+	mut p := parser.Parser.new(&e.prefs)
+	p.parse_files([main_file, mod_file])
+	e.run_files(p.a) or { panic(err) }
+	assert e.stdout() == '2\n'
 }
 
 fn test_eval_is_checks_keep_module_qualified_types_distinct() {
