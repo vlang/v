@@ -125,3 +125,20 @@ fn main() {
 	assert c_code.contains('Box box = {0};'), c_code
 	assert !c_code.contains('Box box = 0;')
 }
+
+fn test_defer_capture_aggregate_decl_with_scalar_zero_uses_compound_literal() {
+	c_code := gen_c_for_source_with_scalar_zero_decl('defer_capture_aggregate_decl_scalar_zero', 'struct Box {
+	value int
+}
+
+fn main() {
+	box := Box{}
+	defer(fn) {
+		_ = box.value
+	}
+}
+',
+		'box', 'Box')
+	assert c_code.contains('box = (Box){0};'), c_code
+	assert !c_code.contains('box = {0};')
+}
