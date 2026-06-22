@@ -370,7 +370,8 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 		for concrete in impls {
 			id := g.iface_type_id(iface_name, concrete)
 			concrete_key := '${concrete}.${method}'
-			if id == 0 || concrete_key !in g.tc.fn_param_types {
+			if id == 0 || concrete_key !in g.tc.fn_param_types
+				|| !g.interface_dispatch_target_is_emitted(concrete_key) {
 				continue
 			}
 			concrete_params := g.tc.fn_param_types[concrete_key] or { []types.Type{} }
@@ -401,6 +402,14 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 		g.writeln('\treturn (${ret_ct}){0};')
 	}
 	g.writeln('}')
+}
+
+fn (g &FlatGen) interface_dispatch_target_is_emitted(concrete_key string) bool {
+	if !g.has_used_fn_filter() {
+		return true
+	}
+	return g.used_fn_contains(concrete_key) || g.used_fn_contains(c_name(concrete_key))
+		|| g.used_fn_contains(concrete_key.all_after_last('.'))
 }
 
 fn (g &FlatGen) sum_type_index(sum_name string, variant string) int {

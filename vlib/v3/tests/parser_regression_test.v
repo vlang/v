@@ -43,3 +43,20 @@ fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
 	assert interface_method_param_types(a, 'Sink', 'visit') == ['&Node']
 	assert interface_method_param_types(a, 'Sink', 'read') == ['[max_len]u8']
 }
+
+fn test_sql_identifier_calls_are_not_parsed_as_sql_expr() {
+	a := parse_parser_regression_source('sql_identifier_call',
+		'fn sql(x int) int {\n\treturn x + 1\n}\n\nfn main() {\n\tx := sql(2)\n}\n')
+	mut sql_expr_count := 0
+	mut call_count := 0
+	for node in a.nodes {
+		if node.kind == .sql_expr {
+			sql_expr_count++
+		}
+		if node.kind == .call {
+			call_count++
+		}
+	}
+	assert sql_expr_count == 0
+	assert call_count == 1
+}

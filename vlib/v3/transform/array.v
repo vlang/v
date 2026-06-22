@@ -243,6 +243,39 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 		t.make_ident(value_name))), 'void')
 }
 
+fn (mut t Transformer) lower_array_push_many_call(node flat.Node, fn_node flat.Node, base_type string, elem_type string) ?flat.NodeId {
+	if node.children_count < 3 || fn_node.children_count == 0 {
+		return none
+	}
+	base_id := t.a.child(&fn_node, 0)
+	value_id := t.a.child(&node, 1)
+	count_id := t.a.child(&node, 2)
+	base := t.transform_lvalue(base_id)
+	base_addr := t.runtime_addr(base, base_type)
+	if t.push_many_count_is_type_name(count_id) {
+		value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
+			t.wrap_sum_value(value_id, elem_type)
+		} else {
+			t.transform_expr_for_type(value_id, elem_type)
+		}
+		value_name := t.new_temp('arr_val')
+		t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
+		return t.make_call_typed('array_push_many_ptr', arr3(base_addr, t.make_prefix(.amp,
+			t.make_ident(value_name)), t.make_int_literal(1)), 'void')
+	}
+	value := t.transform_expr(value_id)
+	count := t.transform_expr_for_type(count_id, 'int')
+	return t.make_call_typed('array_push_many_ptr', arr3(base_addr, value, count), 'void')
+}
+
+fn (t &Transformer) push_many_count_is_type_name(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	return node.kind == .ident && node.value.len > 0 && node.value[0] >= `A` && node.value[0] <= `Z`
+}
+
 fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type string, elem_type string) bool {
 	clean_rhs_type := rhs_type.trim_space()
 	if clean_rhs_type.starts_with('[]') {

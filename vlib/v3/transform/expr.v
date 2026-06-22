@@ -1175,7 +1175,13 @@ fn is_fixed_array_type(s string) bool {
 	if s.starts_with('[]') || s.starts_with('map[') {
 		return false
 	}
-	return s.contains('[') && (s.ends_with(']') || s.starts_with('['))
+	if s.starts_with('[') {
+		return s.contains(']')
+	}
+	if !s.contains('[') || !s.ends_with(']') {
+		return false
+	}
+	return is_decimal_text(fixed_array_len_text(s))
 }
 
 fn fixed_array_len(s string) int {

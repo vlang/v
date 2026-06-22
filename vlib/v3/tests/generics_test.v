@@ -348,6 +348,19 @@ fn main() {
 ',
 		'99')
 
+	// multi-param generic struct fields
+	run_generic_ok(v3_bin, 'run_multi_param_struct_fields', '
+struct Pair[T, U] {
+	left T
+	right U
+}
+fn main() {
+	p := Pair[int, string]{left: 1, right: "ok"}
+	println(p.right)
+}
+',
+		'')
+
 	// infer from array element type
 	run_generic_ok(v3_bin, 'run_array_infer', '
 fn length[T](xs []T) int {

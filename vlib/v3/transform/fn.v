@@ -109,6 +109,9 @@ fn (t &Transformer) resolve_receiver_method_name(base_id flat.NodeId, method str
 	if alias_method := t.resolve_alias_receiver_method(base_type, method) {
 		return alias_method
 	}
+	if embedded_method := t.resolve_embedded_receiver_method(base_type, method) {
+		return embedded_method
+	}
 	return ''
 }
 
@@ -186,6 +189,34 @@ fn (t &Transformer) resolve_alias_receiver_method(base_type string, method strin
 		param_name := params[0].name()
 		if t.alias_receiver_type_matches(clean_base, param_name) {
 			return name
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) resolve_embedded_receiver_method(base_type string, method string) ?string {
+	if base_type.len == 0 || method.len == 0 {
+		return none
+	}
+	mut lookup_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+	if lookup_type !in t.structs && lookup_type.contains('.') {
+		short_type := lookup_type.all_after_last('.')
+		if short_type in t.structs {
+			lookup_type = short_type
+		}
+	}
+	info := t.lookup_struct_info(lookup_type) or { return none }
+	for field in info.fields {
+		if !t.is_embedded_field(field) {
+			continue
+		}
+		field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
+		clean_field := if field_type.starts_with('&') { field_type[1..] } else { field_type }
+		if method_name := t.resolve_receiver_method_for_type(clean_field, method) {
+			return method_name
+		}
+		if method_name := t.resolve_embedded_receiver_method(clean_field, method) {
+			return method_name
 		}
 	}
 	return none
@@ -410,6 +441,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 				variadic_type.elem_type)
 		}
 	}
+	t.append_missing_params_struct_args(mut new_children, params, param_offset)
 	start := t.a.children.len
 	for nc in new_children {
 		t.a.children << nc
@@ -618,6 +650,16 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		return t.make_cast(param_type, t.transform_expr(arg_id), param_type)
 	}
 	return t.transform_expr_for_type(arg_id, param_type)
+}
+
+fn (mut t Transformer) append_missing_params_struct_args(mut args []flat.NodeId, params []types.Type, param_offset int) {
+	mut param_idx := args.len - 1 + param_offset
+	for param_idx < params.len {
+		param_type := params[param_idx].name()
+		struct_type := t.params_struct_type_name(param_type) or { break }
+		args << t.zero_value_for_type(struct_type)
+		param_idx++
+	}
 }
 
 fn (t &Transformer) is_fn_pointer_type_name(type_name string) bool {
@@ -1208,7 +1250,7 @@ fn (mut t Transformer) try_lower_array_method_call(node flat.Node) ?flat.NodeId 
 		return none
 	}
 	if fn_node.value !in ['clone', 'reverse', 'contains', 'index', 'join', 'any', 'all', 'count',
-		'equals', 'prepend', 'insert'] {
+		'equals', 'prepend', 'insert', 'push_many'] {
 		if fn_node.value !in ['filter', 'map', 'sort', 'sorted', 'sort_with_compare',
 			'sorted_with_compare'] {
 			return none
@@ -1278,6 +1320,9 @@ fn (mut t Transformer) try_lower_array_method_call(node flat.Node) ?flat.NodeId 
 	}
 	if fn_node.value == 'insert' {
 		return t.lower_array_insert_call(node, fn_node, base_type, elem_type)
+	}
+	if fn_node.value == 'push_many' {
+		return t.lower_array_push_many_call(node, fn_node, base_type, elem_type)
 	}
 	if fn_node.value == 'contains' {
 		method_name := t.resolve_receiver_method_name(base_id, fn_node.value)
@@ -1855,6 +1900,12 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			return none
 		}
 	}
+	method_name := t.resolve_receiver_method_name(base_id, method)
+	if method_name.len > 0 {
+		args := t.transform_receiver_method_args(node, base_id, method_name)
+		ret_type := t.receiver_method_return_type(method_name, node.typ)
+		return t.make_call_typed(method_name, args, ret_type)
+	}
 	if !isnil(t.tc) {
 		if resolved_method := t.tc.resolved_call_name(id) {
 			if t.is_known_fn_name(resolved_method) {
@@ -1874,12 +1925,6 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			sum_method), sum_method)
 		ret_type := t.receiver_method_return_type(sum_method, node.typ)
 		return t.make_call_typed(sum_method, args, ret_type)
-	}
-	method_name := t.resolve_receiver_method_name(base_id, method)
-	if method_name.len > 0 {
-		args := t.transform_receiver_method_args(node, base_id, method_name)
-		ret_type := t.receiver_method_return_type(method_name, node.typ)
-		return t.make_call_typed(method_name, args, ret_type)
 	}
 	return none
 }
@@ -1956,10 +2001,19 @@ fn (t &Transformer) resolved_call_uses_receiver_type(base_id flat.NodeId, receiv
 	if base_type.len == 0 {
 		return true
 	}
-	return t.normalize_type_alias(base_type) == t.normalize_type_alias(param_type)
+	if t.normalize_type_alias(base_type) == t.normalize_type_alias(param_type) {
+		return true
+	}
+	if _ := t.embedded_receiver_path(base_type, param_type) {
+		return true
+	}
+	return false
 }
 
 fn (mut t Transformer) receiver_base_for_resolved_method(base_id flat.NodeId, method_name string) flat.NodeId {
+	if embedded_base := t.embedded_receiver_base(base_id, method_name) {
+		return embedded_base
+	}
 	key := t.expr_key(base_id)
 	sc := t.find_smartcast(key) or { return t.transform_expr(base_id) }
 	params := t.call_param_types(method_name)
@@ -1994,6 +2048,81 @@ fn (mut t Transformer) receiver_base_for_resolved_method(base_id flat.NodeId, me
 		return t.make_plain_expr_for_smartcast(base_id)
 	}
 	return t.transform_expr(base_id)
+}
+
+fn (mut t Transformer) embedded_receiver_base(base_id flat.NodeId, method_name string) ?flat.NodeId {
+	params := t.call_param_types(method_name)
+	if params.len == 0 {
+		return none
+	}
+	mut param_type := params[0].name()
+	if param_type.starts_with('&') {
+		param_type = param_type[1..]
+	}
+	mut base_type := t.node_type(base_id)
+	if base_type.len == 0 {
+		base_type = t.lvalue_type(base_id)
+	}
+	mut is_ptr := false
+	if base_type.starts_with('&') {
+		is_ptr = true
+		base_type = base_type[1..]
+	}
+	path := t.embedded_receiver_path(base_type, param_type) or { return none }
+	mut base := t.transform_expr(base_id)
+	mut current_is_ptr := is_ptr
+	for field in path {
+		op := if current_is_ptr { flat.Op.arrow } else { flat.Op.dot }
+		field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
+		base = t.make_selector_op(base, field.name, field_type, op)
+		current_is_ptr = field_type.starts_with('&')
+	}
+	return base
+}
+
+fn (t &Transformer) embedded_receiver_field(base_type string, receiver_type string) ?FieldInfo {
+	path := t.embedded_receiver_path(base_type, receiver_type) or { return none }
+	if path.len == 0 {
+		return none
+	}
+	return path[0]
+}
+
+fn (t &Transformer) embedded_receiver_path(base_type string, receiver_type string) ?[]FieldInfo {
+	if base_type.len == 0 || receiver_type.len == 0 {
+		return none
+	}
+	mut lookup_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+	if lookup_type !in t.structs && lookup_type.contains('.') {
+		short_type := lookup_type.all_after_last('.')
+		if short_type in t.structs {
+			lookup_type = short_type
+		}
+	}
+	info := t.structs[lookup_type] or { return none }
+	clean_receiver := t.normalize_type_alias(receiver_type)
+	for field in info.fields {
+		if !t.is_embedded_field(field) {
+			continue
+		}
+		field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
+		clean_field := t.normalize_type_alias(field_type.trim_left('&'))
+		short_field := if clean_field.contains('.') {
+			clean_field.all_after_last('.')
+		} else {
+			clean_field
+		}
+		if (field.name == clean_field || field.name == short_field) && clean_field == clean_receiver {
+			return [field]
+		}
+		if sub_path := t.embedded_receiver_path(clean_field, receiver_type) {
+			mut path := []FieldInfo{}
+			path << field
+			path << sub_path
+			return path
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) receiver_method_return_type(method_name string, fallback string) string {
@@ -2188,6 +2317,7 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 			args << t.pack_variadic_args(node, int(node.children_count), variadic_type.elem_type)
 		}
 	}
+	t.append_missing_params_struct_args(mut args, params, param_offset)
 	return args
 }
 

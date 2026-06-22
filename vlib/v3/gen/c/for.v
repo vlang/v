@@ -52,7 +52,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	} else {
 		g.a.child_node(&node, 0)
 	}
-	var_name := c_name(var_node.value)
+	var_name := g.c_loop_local_name(var_node.value)
 	g.tc.cur_scope.insert(var_node.value, types.Type(types.int_))
 	body_start := header_count
 
@@ -66,12 +66,12 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			container_type := g.tc.resolve_type(g.a.child(&node, 2))
 			has_index := int(val_id) >= 0
 			idx_var := if has_index {
-				c_name(g.a.child_node(&node, 0).value)
+				g.c_loop_local_name(g.a.child_node(&node, 0).value)
 			} else {
 				'__iter_${var_name}'
 			}
 			elem_var := if has_index {
-				c_name(g.a.child_node(&node, 1).value)
+				g.c_loop_local_name(g.a.child_node(&node, 1).value)
 			} else {
 				var_name
 			}
@@ -148,6 +148,29 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	g.tc.pop_scope()
 }
 
+fn (g &FlatGen) c_loop_local_name(name string) string {
+	if name.contains('.') {
+		return c_name(name.all_after_last('.'))
+	}
+	if name.contains('__') {
+		prefix := name.all_before_last('__')
+		suffix := name.all_after_last('__')
+		if suffix == 'index' {
+			return c_name(suffix)
+		}
+		if prefix in g.modules {
+			return c_name(suffix)
+		}
+		for _, mod_name in g.modules {
+			short_mod := if mod_name.contains('.') { mod_name.all_after_last('.') } else { mod_name }
+			if prefix == short_mod {
+				return c_name(suffix)
+			}
+		}
+	}
+	return c_name(name)
+}
+
 fn (mut g FlatGen) gen_node_inline(id flat.NodeId) {
 	node := g.a.nodes[int(id)]
 	match node.kind {
@@ -161,7 +184,11 @@ fn (mut g FlatGen) gen_node_inline(id flat.NodeId) {
 			v_type := g.tc.resolve_type(rhs_id)
 			typ := g.tc.c_type(v_type)
 			g.write('${typ} ')
-			g.gen_expr(lhs_id)
+			if lhs.kind == .ident {
+				g.write(g.c_loop_local_name(lhs.value))
+			} else {
+				g.gen_expr(lhs_id)
+			}
 			g.write(' = ')
 			g.gen_expr(rhs_id)
 			if lhs.kind == .ident {

@@ -91,6 +91,7 @@ pub enum NodeKind {
 	c_fn_decl
 	// top-level
 	file
+	sql_expr
 }
 
 pub enum Op {

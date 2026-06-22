@@ -1155,6 +1155,9 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 		.map_init {
 			return t.transform_map_init(id, node)
 		}
+		.sql_expr {
+			return t.transform_sql_expr(id, node)
+		}
 		.in_expr {
 			return t.transform_in_expr(id, node)
 		}
@@ -2342,6 +2345,15 @@ fn (t &Transformer) multi_return_types_for_expr(id flat.NodeId, expected_count i
 	if node.kind == .or_expr && node.children_count > 0 {
 		return t.multi_return_types_for_expr(t.a.child(&node, 0), expected_count)
 	}
+	if node.kind == .match_stmt {
+		return t.match_multi_return_types(node, expected_count)
+	}
+	if node.kind == .expr_stmt {
+		return t.expr_stmt_multi_return_types(node, expected_count)
+	}
+	if node.kind == .block {
+		return t.block_multi_return_types(node, expected_count)
+	}
 	mut typ_name := node.typ
 	if node.kind == .call {
 		ret := t.get_call_return_type(id, node)
@@ -2365,6 +2377,70 @@ fn (t &Transformer) multi_return_types_for_expr(id flat.NodeId, expected_count i
 		return t.find_multi_return_call_types(node, expected_count)
 	}
 	return none
+}
+
+fn (t &Transformer) match_multi_return_types(node flat.Node, expected_count int) ?[]types.Type {
+	if node.children_count < 2 {
+		return none
+	}
+	for i in 1 .. node.children_count {
+		branch := t.a.child_node(&node, i)
+		if branch.kind != .match_branch {
+			continue
+		}
+		body_start := if branch.value == 'else' { 0 } else { t.count_conds(*branch) }
+		if branch.children_count <= body_start {
+			continue
+		}
+		tail_id := t.a.child(branch, branch.children_count - 1)
+		if items := t.multi_return_types_for_expr(tail_id, expected_count) {
+			return items
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) expr_stmt_multi_return_types(node flat.Node, expected_count int) ?[]types.Type {
+	if expected_count <= 0 || node.children_count != expected_count {
+		return none
+	}
+	mut result := []types.Type{cap: expected_count}
+	for i in 0 .. node.children_count {
+		child_id := t.a.child(&node, i)
+		mut typ_name := t.node_type(child_id)
+		if typ_name.len == 0 {
+			typ_name = t.resolve_expr_type(child_id)
+		}
+		if typ_name.len == 0 {
+			return none
+		}
+		result << t.tc.parse_type(typ_name)
+	}
+	return result
+}
+
+fn (t &Transformer) block_multi_return_types(node flat.Node, expected_count int) ?[]types.Type {
+	if expected_count <= 0 || node.children_count != expected_count {
+		return none
+	}
+	mut result := []types.Type{cap: expected_count}
+	for i in 0 .. node.children_count {
+		stmt_id := t.a.child(&node, i)
+		stmt := t.a.nodes[int(stmt_id)]
+		if stmt.kind != .expr_stmt || stmt.children_count != 1 {
+			return none
+		}
+		child_id := t.a.child(&stmt, 0)
+		mut typ_name := t.node_type(child_id)
+		if typ_name.len == 0 {
+			typ_name = t.resolve_expr_type(child_id)
+		}
+		if typ_name.len == 0 {
+			return none
+		}
+		result << t.tc.parse_type(typ_name)
+	}
+	return result
 }
 
 fn multi_return_types_from_type(typ types.Type, expected_count int) ?[]types.Type {

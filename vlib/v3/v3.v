@@ -31,7 +31,7 @@ const o_wronly_creat_trunc = 0x601 // O_WRONLY | O_CREAT | O_TRUNC on Darwin
 fn main() {
 	args := os.args[1..]
 	if args.len == 0 {
-		eprintln('usage: v3 <file.v> [-o output|file.c] [-b c|arm64|eval]')
+		eprintln('usage: v3 <file.v> [-o output|file.c] [-b c|arm64|eval] [-d flag]')
 		exit(1)
 	}
 
@@ -42,6 +42,7 @@ fn main() {
 	mut is_strict := false
 	mut is_selfhost := false
 	mut no_parallel := false
+	mut user_defines := []string{}
 	mut i := 0
 	for i < args.len {
 		if args[i] == '-o' && i + 1 < args.len {
@@ -61,6 +62,18 @@ fn main() {
 			i++
 		} else if args[i] == '-no-parallel' || args[i] == '--no-parallel' {
 			no_parallel = true
+			i++
+		} else if args[i] == '-d' && i + 1 < args.len {
+			user_defines << args[i + 1]
+			i += 2
+		} else if args[i].starts_with('-d') && args[i].len > 2 {
+			user_defines << args[i][2..]
+			i++
+		} else if args[i] in ['-gc', '-cc'] && i + 1 < args.len {
+			i += 2
+		} else if args[i] in ['-prealloc', '-enable-globals'] {
+			i++
+		} else if args[i].starts_with('-') {
 			i++
 		} else {
 			input_file = args[i]
@@ -92,7 +105,9 @@ fn main() {
 	// Parse directly to flat AST
 	mut prefs := pref.new_preferences()
 	prefs.backend = backend
+	prefs.user_defines = user_defines
 	prefs.vroot = resolve_vroot(prefs.vroot)
+	prefs.selfhost = is_selfhost
 	mut p := parser.Parser.new(prefs)
 
 	mut files := []string{}
@@ -108,6 +123,11 @@ fn main() {
 		user_files << input_file
 	} else if os.is_dir(input_file) {
 		user_files = pref.get_v_files_from_dir(input_file, prefs.user_defines, prefs.target_os)
+		for subdir in vmod_subdirs(input_file) {
+			subdir_path := os.join_path_single(input_file, subdir)
+			user_files << pref.get_v_files_from_dir(subdir_path, prefs.user_defines,
+				prefs.target_os)
+		}
 	} else {
 		user_files << input_file
 	}
@@ -238,6 +258,31 @@ fn main() {
 	b.print_report()
 }
 
+fn vmod_subdirs(dir string) []string {
+	vmod_path := os.join_path_single(dir, 'v.mod')
+	content := os.read_file(vmod_path) or { return []string{} }
+	subdirs_pos := content.index('subdirs:') or { return []string{} }
+	after_subdirs := content[subdirs_pos..]
+	lb_rel := after_subdirs.index_u8(`[`)
+	if lb_rel < 0 {
+		return []string{}
+	}
+	after_lb := after_subdirs[lb_rel + 1..]
+	rb_rel := after_lb.index_u8(`]`)
+	if rb_rel < 0 {
+		return []string{}
+	}
+	raw_items := after_lb[..rb_rel].split(',')
+	mut subdirs := []string{}
+	for raw in raw_items {
+		item := raw.trim_space().trim('\'"')
+		if item.len > 0 {
+			subdirs << item
+		}
+	}
+	return subdirs
+}
+
 fn resolve_vroot(initial string) string {
 	if is_valid_vroot(initial) {
 		return initial
@@ -362,13 +407,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			changed = true
 
 			importing_file := if cur_file.len > 0 { cur_file } else { first_file }
-			mut mod_dir := prefs.get_module_path(mod_name, importing_file)
-			if mod_dir == '' {
-				root_mod_dir := os.join_path(project_root, mod_name.replace('.', os.path_separator))
-				if os.is_dir(root_mod_dir) {
-					mod_dir = root_mod_dir
-				}
-			}
+			mod_dir := resolve_project_or_pref_module_path(prefs, mod_name, importing_file,
+				project_root)
 			if mod_dir == '' || !os.is_dir(mod_dir) {
 				continue
 			}
@@ -378,4 +418,14 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 		}
 	}
+}
+
+fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string, importing_file string, project_root string) string {
+	if project_root.len > 0 {
+		project_path := os.join_path_single(project_root, mod_name.replace('.', os.path_separator))
+		if os.is_dir(project_path) {
+			return project_path
+		}
+	}
+	return prefs.get_module_path(mod_name, importing_file)
 }

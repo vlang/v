@@ -187,6 +187,21 @@ fn test_type_checker_reports_core_semantic_errors() {
 	alias_out := run_good(v3_bin, 'alias_method',
 		'type UserId = int\n\nfn (id UserId) str() string {\n\treturn int_str(int(id))\n}\n\nfn main() {\n\tid := UserId(1)\n\tprintln(id.str())\n}\n')
 	assert alias_out == '1'
+	err_local_out := run_good(v3_bin, 'local_err_binding',
+		'fn main() {\n\terr := 2\n\tprintln(int_str(err + 1))\n}\n')
+	assert err_local_out == '3'
+	args_contains_out := run_good(v3_bin, 'local_args_contains',
+		"fn main() {\n\targs := [1, 2]\n\tif args.contains(2) {\n\t\tprintln('ok')\n\t}\n}\n")
+	assert args_contains_out == 'ok'
+	custom_codec_out := run_good(v3_bin, 'custom_codec_methods',
+		'struct Codec {}\n\nfn (c Codec) decode() int {\n\treturn 7\n}\n\nfn (c Codec) encode() int {\n\treturn 8\n}\n\nfn (c Codec) use(x int) int {\n\treturn x + 1\n}\n\nfn main() {\n\tc := Codec{}\n\tprintln(int_str(c.decode()))\n\tprintln(int_str(c.encode()))\n\tprintln(int_str(c.use(9)))\n}\n')
+	assert custom_codec_out == '7\n8\n10'
+	item_with_user_out := run_good(v3_bin, 'item_with_user_initializer',
+		'struct ItemWithUserFoo {\n\titem int\n}\n\nfn main() {\n\tx := ItemWithUserFoo{\n\t\titem: 7\n\t}\n\tprintln(int_str(x.item))\n}\n')
+	assert item_with_user_out == '7'
+	nested_embedded_method_out := run_good(v3_bin, 'nested_embedded_method',
+		'struct Leaf {}\n\nfn (leaf Leaf) value() int {\n\treturn 9\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{}\n\tprintln(int_str(outer.value()))\n}\n')
+	assert nested_embedded_method_out == '9'
 	map_mutation_out := run_good(v3_bin, 'map_mutation_lowering',
 		"fn main() {\n\tmut m := map[string]int{}\n\tm['a'] = 1\n\tm['a'] += 2\n\tm['a']++\n\tm['a'] -= 1\n\tprintln(int_str(m['a']))\n}\n")
 	assert map_mutation_out == '3'

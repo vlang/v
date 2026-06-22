@@ -325,7 +325,7 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 }
 
 fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
-	if is_generic_placeholder_type_name(typ) {
+	if is_generic_placeholder_type_name(typ) && !t.is_known_type_name(typ) {
 		return 'int'
 	}
 	if typ.starts_with('mut ') {
@@ -364,6 +364,30 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 		}
 	}
 	return typ
+}
+
+fn (t &Transformer) is_known_type_name(typ string) bool {
+	if typ in t.structs || typ in t.sum_types || typ in t.enum_types {
+		return true
+	}
+	if !isnil(t.tc) {
+		if typ in t.tc.type_aliases || typ in t.tc.structs || typ in t.tc.sum_types
+			|| typ in t.tc.enum_names || typ in t.tc.interface_names {
+			return true
+		}
+	}
+	if !typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		qtyp := '${t.cur_module}.${typ}'
+		if qtyp in t.structs || qtyp in t.sum_types || qtyp in t.enum_types {
+			return true
+		}
+		if !isnil(t.tc) {
+			return qtyp in t.tc.type_aliases || qtyp in t.tc.structs || qtyp in t.tc.sum_types
+				|| qtyp in t.tc.enum_names || qtyp in t.tc.interface_names
+		}
+	}
+	return false
 }
 
 fn is_plain_builtin_alias_type(typ string) bool {

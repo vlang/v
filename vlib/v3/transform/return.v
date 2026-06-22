@@ -226,6 +226,9 @@ fn (mut t Transformer) try_expand_return_if(_id flat.NodeId, node flat.Node) ?[]
 		return none
 	}
 	val_id := t.a.child(&node, 0)
+	if int(val_id) < 0 || int(val_id) >= t.a.nodes.len {
+		return none
+	}
 	val_node := t.a.nodes[int(val_id)]
 	if val_node.kind != .if_expr || val_node.children_count < 3 {
 		return none
@@ -401,11 +404,17 @@ fn (mut t Transformer) try_expand_return_match(_id flat.NodeId, node flat.Node) 
 		return none
 	}
 	val_id := t.a.child(&node, 0)
+	if int(val_id) < 0 || int(val_id) >= t.a.nodes.len {
+		return none
+	}
 	val := t.a.nodes[int(val_id)]
 	if val.kind != .match_stmt || val.children_count < 2 {
 		return none
 	}
 	match_expr_id := t.a.child(&val, 0)
+	if int(match_expr_id) < 0 || int(match_expr_id) >= t.a.nodes.len {
+		return none
+	}
 	match_expr := t.a.nodes[int(match_expr_id)]
 	needs_temp := match_expr.kind !in [.ident, .int_literal, .bool_literal, .string_literal,
 		.char_literal]
