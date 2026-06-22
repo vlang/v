@@ -546,12 +546,29 @@ fn (mut g FlatGen) has_zero_sized_leading_init_slot_inner(typ types.Type, mut vi
 			}
 		}
 		types.Struct {
-			if typ.name in visited {
-				false
+			if info := g.find_struct_decl(typ.name) {
+				if info.full_name in visited {
+					false
+				} else {
+					visited[info.full_name] = true
+					old_module := g.tc.cur_module
+					g.tc.cur_module = info.module
+					first := g.struct_field_at(info.full_name, 0) or {
+						g.tc.cur_module = old_module
+						return false
+					}
+					has := g.has_zero_sized_leading_init_slot_inner(first.typ, mut visited)
+					g.tc.cur_module = old_module
+					has
+				}
 			} else {
-				visited[typ.name] = true
-				first := g.struct_field_at(typ.name, 0) or { return false }
-				g.has_zero_sized_leading_init_slot_inner(first.typ, mut visited)
+				if typ.name in visited {
+					false
+				} else {
+					visited[typ.name] = true
+					first := g.struct_field_at(typ.name, 0) or { return false }
+					g.has_zero_sized_leading_init_slot_inner(first.typ, mut visited)
+				}
 			}
 		}
 		else {

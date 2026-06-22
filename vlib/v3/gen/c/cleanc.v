@@ -2030,7 +2030,13 @@ fn (mut g FlatGen) builtin_compat_decls() {
 }
 
 fn (mut g FlatGen) global_decls() {
+	old_module := g.tc.cur_module
 	for name, typ in g.global_types {
+		if mod := g.global_modules[name] {
+			g.tc.cur_module = mod
+		} else {
+			g.tc.cur_module = old_module
+		}
 		if typ is types.ArrayFixed {
 			c_elem := g.tc.c_type(typ.elem_type)
 			len_expr := g.fixed_array_len_value(typ)
@@ -2048,6 +2054,7 @@ fn (mut g FlatGen) global_decls() {
 		init := if g.can_use_global_brace_zero_init(typ, ct) { ' = {0}' } else { '' }
 		g.writeln('${ct} ${c_name(name)}${init};')
 	}
+	g.tc.cur_module = old_module
 	if g.global_types.len > 0 {
 		g.writeln('')
 	}

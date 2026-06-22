@@ -26,6 +26,39 @@ fn gen_c_for_source(name string, source string) string {
 	return g.gen_with_used_options(a, used_fns, &tc, true)
 }
 
+fn gen_c_for_sources(name string, files map[string]string) string {
+	root := os.join_path(os.temp_dir(), 'v3_${name}')
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	mut paths := []string{}
+	mut rels := files.keys()
+	rels.sort()
+	for rel in rels {
+		path := os.join_path(root, rel)
+		os.mkdir_all(os.dir(path)) or { panic(err) }
+		os.write_file(path, files[rel]) or { panic(err) }
+		paths << path
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_files(paths)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.diagnose_unknown_calls = true
+	for path in paths {
+		tc.diagnostic_files[path] = true
+	}
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	transform.transform(mut a, &tc)
+	tc.annotate_types()
+	used_fns := markused.mark_used(a, tc)
+	mut g := cgen.FlatGen.new()
+	return g.gen_with_used_options(a, used_fns, &tc, true)
+}
+
 fn gen_c_for_source_with_scalar_zero_decl(name string, source string, decl_name string, decl_type string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
@@ -149,6 +182,33 @@ fn main() {}
 	assert !c_code.contains('int const_empty[(1) - (1)] = {0};')
 	assert !c_code.contains('ZeroLeadingConst const_zero = {0};')
 	assert !c_code.contains('ZeroLeadingConst const_zero_slots[2] = {0};')
+}
+
+fn test_imported_zero_length_leading_field_global_uses_decl_only() {
+	c_code := gen_c_for_sources('imported_zero_leading_global', {
+		'main.v':      'module main
+
+import moda
+
+__global imported moda.ImportedZero
+__global imported_slots [2]moda.ImportedZero
+
+fn main() {}
+'
+		'moda/moda.v': 'module moda
+
+const zero_len = 1 - 1
+
+pub struct ImportedZero {
+	z [zero_len]int
+	value int
+}
+'
+	})
+	assert c_code.contains('\nmoda__ImportedZero imported;\n')
+	assert c_code.contains('\nmoda__ImportedZero imported_slots[2];\n')
+	assert !c_code.contains('moda__ImportedZero imported = {0};')
+	assert !c_code.contains('moda__ImportedZero imported_slots[2] = {0};')
 }
 
 fn test_aggregate_decl_with_scalar_zero_uses_brace_initializer() {
