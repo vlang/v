@@ -104,7 +104,7 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 }
 
 fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr types.Array) {
-	c_elem := g.tc.c_type(arr.elem_type)
+	c_elem := g.value_c_type(arr.elem_type)
 	base_id := g.a.child(fn_node, 0)
 	base_node := g.a.nodes[int(base_id)]
 	is_ptr := if base_node.kind == .ident {
@@ -331,8 +331,8 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 		base_type := g.tc.resolve_type(base_id)
 		clean_base := types.unwrap_pointer(base_type)
 		if clean_base is types.Map {
-			c_key := g.tc.c_type(clean_base.key_type)
-			c_val := g.tc.c_type(clean_base.value_type)
+			c_key := g.value_c_type(clean_base.key_type)
+			c_val := g.value_c_type(clean_base.value_type)
 			is_ptr := base_type is types.Pointer
 			if is_ptr {
 				g.write('map__set(')
@@ -374,7 +374,7 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			}
 		}
 		if is_array_base {
-			c_elem := g.tc.c_type(arr_type.elem_type)
+			c_elem := g.value_c_type(arr_type.elem_type)
 			g.write('array_set(')
 			if base_type is types.Pointer {
 				g.write('*')

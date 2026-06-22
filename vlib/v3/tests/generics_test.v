@@ -359,7 +359,7 @@ fn main() {
 	println(p.right)
 }
 ',
-		'')
+		'ok')
 
 	// infer from array element type
 	run_generic_ok(v3_bin, 'run_array_infer', '

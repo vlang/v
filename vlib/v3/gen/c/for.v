@@ -77,8 +77,8 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			}
 			clean_container_type := types.unwrap_pointer(container_type)
 			if clean_container_type is types.Map {
-				c_key := g.tc.c_type(clean_container_type.key_type)
-				c_val := g.tc.c_type(clean_container_type.value_type)
+				c_key := g.value_c_type(clean_container_type.key_type)
+				c_val := g.value_c_type(clean_container_type.value_type)
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				iter_var := '__mi_${g.tmp_count}'
 				g.tmp_count++
@@ -96,7 +96,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 				g.tc.cur_scope.insert(val_var_, clean_container_type.value_type)
 			} else if container_type is types.Array {
-				c_elem := g.tc.c_type(container_type.elem_type)
+				c_elem := g.value_c_type(container_type.elem_type)
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${container_str}.len; ${idx_var}++) {')
 				g.indent++
@@ -110,7 +110,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.tc.cur_scope.insert(elem_var, types.Type(types.u8_))
 			} else if container_type is types.ArrayFixed {
 				af := container_type
-				c_elem := g.tc.c_type(af.elem_type)
+				c_elem := g.value_c_type(af.elem_type)
 				arr_len := g.fixed_array_len_value(af)
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${arr_len}; ${idx_var}++) {')
 				g.indent++

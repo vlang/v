@@ -796,6 +796,10 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 }
 
 fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type types.Type, c_type string, is_declaration bool) {
+	if g.is_json_decode_call_expr(rhs_id) {
+		g.write('(${c_type}){0}')
+		return
+	}
 	if rhs.kind == .int_literal && rhs.value == '0' && g.is_aggregate_zero_init_type(v_type, c_type) {
 		if is_declaration {
 			g.write('{0}')
@@ -804,7 +808,7 @@ fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type 
 		}
 		return
 	}
-	g.gen_expr(rhs_id)
+	g.gen_expr_with_expected_type(rhs_id, v_type)
 }
 
 fn (mut g FlatGen) gen_multi_return_decl(node flat.Node) {

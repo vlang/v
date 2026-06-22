@@ -715,8 +715,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		g.gen_default_value_for_type(g.call_default_return_type(id))
 		return
 	}
-	if target_name in ['veb.run_at', 'run_at']
-		|| g.call_has_selector_name(g.a.child(&node, 0), 'run_at') {
+	if target_name == 'veb.run_at' {
 		g.gen_default_value_for_type(g.call_default_return_type(id))
 		return
 	}
@@ -1471,7 +1470,8 @@ fn (g &FlatGen) is_missing_middleware_use_call(fn_node flat.Node) bool {
 		if fn_node.value in g.tc.fn_param_types || fn_node.value in g.tc.fn_ret_types {
 			return false
 		}
-		return true
+		receiver := fn_node.value.all_before_last('.')
+		return g.struct_has_middleware_receiver(receiver)
 	}
 	if fn_node.kind != .selector || fn_node.value != 'use' || fn_node.children_count == 0 {
 		return false
@@ -1485,7 +1485,27 @@ fn (g &FlatGen) is_missing_middleware_use_call(fn_node flat.Node) bool {
 	if method_name in g.tc.fn_param_types || method_name in g.tc.fn_ret_types {
 		return false
 	}
-	return true
+	return g.struct_has_middleware_receiver(clean_type.name())
+}
+
+fn (g &FlatGen) struct_has_middleware_receiver(type_name string) bool {
+	if is_middleware_type_name(type_name) {
+		return true
+	}
+	fields := g.struct_fields_for_type(type_name) or { return false }
+	for field in fields {
+		embedded_type_name := g.embedded_field_type_name(field)
+		if is_middleware_type_name(embedded_type_name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn is_middleware_type_name(name string) bool {
+	short := if name.contains('.') { name.all_after_last('.') } else { name }
+	base := if short.contains('[') { short.all_before('[') } else { short }
+	return base == 'Middleware'
 }
 
 fn (g &FlatGen) call_default_return_type(id flat.NodeId) types.Type {
@@ -1726,15 +1746,12 @@ fn (mut g FlatGen) param_types_for(name string, fallback string) []types.Type {
 	if decl_types.len > 0 {
 		return decl_types
 	}
+	if interface_types := g.interface_method_param_types(name) {
+		return interface_types
+	}
 	for candidate in [name, fallback] {
 		if candidate in g.tc.fn_param_types {
 			return g.tc.fn_param_types[candidate]
-		}
-		short_method := short_receiver_method_name(candidate)
-		if short_method.len > 0 {
-			if short_method in g.tc.fn_param_types {
-				return g.tc.fn_param_types[short_method]
-			}
 		}
 		if candidate.starts_with('main.') {
 			short_name := candidate.all_after_last('.')
@@ -1746,16 +1763,35 @@ fn (mut g FlatGen) param_types_for(name string, fallback string) []types.Type {
 	return []types.Type{}
 }
 
+fn (g &FlatGen) interface_method_param_types(name string) ?[]types.Type {
+	if !name.contains('.') {
+		return none
+	}
+	iface_name := name.all_before_last('.')
+	if iface_name !in g.interfaces {
+		return none
+	}
+	method := name.all_after_last('.')
+	decl_key := g.interface_method_signature_key(iface_name, method) or { return none }
+	decl_params := g.tc.fn_param_types[decl_key] or { return none }
+	mut params := []types.Type{cap: decl_params.len}
+	params << types.Type(types.Pointer{
+		base_type: types.Type(types.Interface{
+			name: iface_name
+		})
+	})
+	if decl_params.len > 1 {
+		for i in 1 .. decl_params.len {
+			params << decl_params[i]
+		}
+	}
+	return params
+}
+
 fn (mut g FlatGen) param_types_from_decl(name string, fallback string) []types.Type {
 	if name.contains('.') {
 		if ptypes := g.fn_decl_param_types[name] {
 			return ptypes
-		}
-		short_method := short_receiver_method_name(name)
-		if short_method.len > 0 {
-			if ptypes := g.fn_decl_param_types[short_method] {
-				return ptypes
-			}
 		}
 	} else {
 		for candidate in [fallback, name] {
@@ -1765,17 +1801,6 @@ fn (mut g FlatGen) param_types_from_decl(name string, fallback string) []types.T
 		}
 	}
 	return []types.Type{}
-}
-
-fn short_receiver_method_name(name string) string {
-	if !name.contains('.') {
-		return ''
-	}
-	receiver := name.all_before_last('.')
-	if !receiver.contains('.') {
-		return ''
-	}
-	return '${receiver.all_after_last('.')}.${name.all_after_last('.')}'
 }
 
 fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.Type) {

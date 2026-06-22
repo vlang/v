@@ -218,6 +218,49 @@ fn (g &FlatGen) iface_type_id(iface string, concrete string) int {
 	return g.iface_type_ids['${iface}::${concrete}'] or { 0 }
 }
 
+fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type) bool {
+	iface_type := if expected is types.Alias { expected.base_type } else { expected }
+	if iface_type !is types.Interface {
+		return false
+	}
+	iface := iface_type as types.Interface
+	node := g.a.nodes[int(id)]
+	mut actual := g.usable_expr_type(id)
+	if node.kind == .ident {
+		if param_type := g.current_param_type(node.value) {
+			actual = param_type
+		}
+	}
+	actual_clean := if actual is types.Pointer { actual.base_type } else { actual }
+	actual_base := if actual_clean is types.Alias { actual_clean.base_type } else { actual_clean }
+	if actual_base is types.Interface {
+		return false
+	}
+	concrete_name := actual_base.name()
+	if concrete_name.len == 0 {
+		return false
+	}
+	type_id := g.iface_type_id(iface.name, concrete_name)
+	ct := g.tc.c_type(iface)
+	g.write('(${ct}){._typ = ${type_id}, ._object = ')
+	if actual is types.Pointer {
+		g.gen_expr(id)
+	} else {
+		concrete_ct := g.tc.c_type(actual_base)
+		if node.kind in [.ident, .selector, .index] {
+			g.write('memdup(&')
+			g.gen_expr(id)
+			g.write(', sizeof(${concrete_ct}))')
+		} else {
+			g.write('memdup((${concrete_ct}[]){')
+			g.gen_expr(id)
+			g.write('}, sizeof(${concrete_ct}))')
+		}
+	}
+	g.write('}')
+	return true
+}
+
 fn (g &FlatGen) is_interface_type_name(name string) bool {
 	return name in g.interfaces || g.tc.qualify_name(name) in g.interfaces
 }
@@ -305,6 +348,7 @@ fn (g &FlatGen) interface_dispatch_short_name_is_unambiguous(short_name string, 
 fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method string) {
 	sid := g.intern_string('interface method ${cn}.${method} not implemented')
 	mname := '${iface_name}.${method}'
+	decl_key := g.interface_method_signature_key(iface_name, method) or { mname }
 	impls := g.iface_impls[iface_name] or { []string{} }
 	if cn == 'IError' {
 		ret_ct := if method == 'code' { 'int' } else { 'string' }
@@ -338,7 +382,7 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 			break
 		}
 	}
-	ret_type := g.tc.fn_ret_types[mname] or {
+	ret_type := g.tc.fn_ret_types[decl_key] or {
 		if sig_key.len > 0 {
 			g.tc.fn_ret_types[sig_key] or { types.Type(types.void_) }
 		} else {
@@ -349,7 +393,7 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 	mut sig_params := if sig_key.len > 0 {
 		g.tc.fn_param_types[sig_key] or { []types.Type{} }
 	} else {
-		[]types.Type{}
+		g.tc.fn_param_types[decl_key] or { []types.Type{} }
 	}
 	mut arg_names := []string{}
 	g.write('${ret_ct} ${cn}__${method}(${cn}* i')
@@ -402,6 +446,19 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 		g.writeln('\treturn (${ret_ct}){0};')
 	}
 	g.writeln('}')
+}
+
+fn (g &FlatGen) interface_method_signature_key(iface_name string, method string) ?string {
+	key := '${iface_name}.${method}'
+	if key in g.tc.fn_ret_types || key in g.tc.fn_param_types {
+		return key
+	}
+	for embed in g.tc.interface_embeds[iface_name] or { []string{} } {
+		if found := g.interface_method_signature_key(embed, method) {
+			return found
+		}
+	}
+	return none
 }
 
 fn (g &FlatGen) interface_dispatch_target_is_emitted(concrete_key string) bool {

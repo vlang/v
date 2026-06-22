@@ -46,7 +46,7 @@ fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
 
 fn test_sql_identifier_calls_are_not_parsed_as_sql_expr() {
 	a := parse_parser_regression_source('sql_identifier_call',
-		'fn sql(x int) int {\n\treturn x + 1\n}\n\nfn main() {\n\tx := sql(2)\n}\n')
+		'fn sql(x int) int {\n\treturn x + 1\n}\n\nfn main() {\n\tx := sql(2)\n\tsql := 1\n\t_ := sql + 2\n}\n')
 	mut sql_expr_count := 0
 	mut call_count := 0
 	for node in a.nodes {

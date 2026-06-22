@@ -240,19 +240,28 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 	upper_ok := t.make_infix(.lt, t.make_ident(index_name), t.make_selector(array_expr, 'len',
 		'int'))
 	found_cond := t.make_infix(.logical_and, lower_ok, upper_ok)
-	value_decl := t.make_decl_assign_typed(lhs_name, t.make_index(array_expr,
-		t.make_ident(index_name), info.value_type), info.value_type)
 
 	then_id := t.a.child(&node, 1)
 	then_node := t.a.nodes[int(then_id)]
-	t.set_var_type(lhs_name, info.value_type)
+	saved_var_types := t.var_types.clone()
 	mut then_children := []flat.NodeId{}
-	then_children << value_decl
+	mut guard_value_type := info.value_type
+	mut value_expr := t.make_index(array_expr, t.make_ident(index_name), info.value_type)
+	if t.is_optional_type_name(info.value_type) {
+		guard_value_type = t.optional_base_type(t.qualify_optional_type(info.value_type))
+		opt_name := t.new_temp('arr_opt')
+		value_expr = t.make_selector(t.make_ident(opt_name), 'value', guard_value_type)
+		then_children << t.make_decl_assign_typed(opt_name, t.make_index(array_expr,
+			t.make_ident(index_name), info.value_type), info.value_type)
+	}
+	then_children << t.make_decl_assign_typed(lhs_name, value_expr, guard_value_type)
+	t.set_var_type(lhs_name, guard_value_type)
 	if then_node.kind == .block {
 		then_children << t.transform_stmts(t.a.children_of(&then_node))
 	} else {
 		then_children << t.transform_stmt(then_id)
 	}
+	t.var_types = saved_var_types
 	then_block := t.make_block(then_children)
 
 	mut else_block := flat.empty_node
@@ -267,12 +276,24 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 			t.make_block(t.transform_stmt(else_id))
 		}
 	}
+	mut selected_block := then_block
+	if t.is_optional_type_name(info.value_type) && then_children.len > 0 {
+		opt_decl := then_children[0]
+		opt_name := t.a.nodes[int(t.a.child(&t.a.nodes[int(opt_decl)], 0))].value
+		ok_cond := t.make_selector(t.make_ident(opt_name), 'ok', 'bool')
+		mut inner_children := []flat.NodeId{}
+		for i in 1 .. then_children.len {
+			inner_children << then_children[i]
+		}
+		inner_if := t.make_if(ok_cond, t.make_block(inner_children), else_block)
+		selected_block = t.make_block([opt_decl, inner_if])
+	}
 	t.pending_stmts = outer_pending
 	mut expanded := []flat.NodeId{cap: prelude.len + 1}
 	for stmt in prelude {
 		expanded << stmt
 	}
-	expanded << t.make_if(found_cond, then_block, else_block)
+	expanded << t.make_if(found_cond, selected_block, else_block)
 	return expanded
 }
 
@@ -800,10 +821,24 @@ fn (mut t Transformer) build_array_index_if_value_guard_chain(if_node flat.Node,
 
 	saved_var_types := t.var_types.clone()
 	mut then_children := []flat.NodeId{}
+	mut opt_decl := flat.empty_node
+	mut opt_name := ''
 	if lhs_name != '_' {
-		value := t.make_index(array_expr, t.make_ident(index_name), info.value_type)
-		then_children << t.make_decl_assign_typed(lhs_name, value, info.value_type)
-		t.set_var_type(lhs_name, info.value_type)
+		mut value_type := info.value_type
+		mut value := t.make_index(array_expr, t.make_ident(index_name), info.value_type)
+		if t.is_optional_type_name(info.value_type) {
+			value_type = t.optional_base_type(t.qualify_optional_type(info.value_type))
+			opt_name = t.new_temp('arr_opt')
+			opt_decl = t.make_decl_assign_typed(opt_name, t.make_index(array_expr,
+				t.make_ident(index_name), info.value_type), info.value_type)
+			value = t.make_selector(t.make_ident(opt_name), 'value', value_type)
+		}
+		then_children << t.make_decl_assign_typed(lhs_name, value, value_type)
+		t.set_var_type(lhs_name, value_type)
+	} else if t.is_optional_type_name(info.value_type) {
+		opt_name = t.new_temp('arr_opt')
+		opt_decl = t.make_decl_assign_typed(opt_name, t.make_index(array_expr,
+			t.make_ident(index_name), info.value_type), info.value_type)
 	}
 	then_id := t.a.child(&if_node, 1)
 	then_block0 := t.if_value_branch_block(then_id, target_name, target_type)
@@ -819,7 +854,13 @@ fn (mut t Transformer) build_array_index_if_value_guard_chain(if_node flat.Node,
 		t.if_value_branch_block(else_id, target_name, target_type)
 	}
 	t.pending_stmts = outer_pending
-	result << t.make_if(found_cond, then_block, else_block)
+	mut selected_block := then_block
+	if t.is_optional_type_name(info.value_type) && opt_name.len > 0 {
+		ok_cond := t.make_selector(t.make_ident(opt_name), 'ok', 'bool')
+		inner_if := t.make_if(ok_cond, then_block, else_block)
+		selected_block = t.make_block([opt_decl, inner_if])
+	}
+	result << t.make_if(found_cond, selected_block, else_block)
 	return result
 }
 

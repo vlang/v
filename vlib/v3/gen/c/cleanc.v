@@ -165,6 +165,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.collect_gen_info()
 	g.collect_interface_impls()
 	g.preseed_struct_fn_ptr_types()
+	g.preseed_global_fn_ptr_types()
 	const_code := g.precompute_consts()
 	orig_sb := g.sb
 	orig_line_start := g.line_start
@@ -317,14 +318,8 @@ fn (mut g FlatGen) collect_gen_info() {
 			continue
 		}
 		if kind_id == 70 {
-			mut methods := []string{}
-			for i in 0 .. node.children_count {
-				f := g.a.child_node(&node, i)
-				if node_kind_id(f) == 71 && f.op == .dot {
-					methods << f.value
-				}
-			}
-			g.interfaces[qualify_name_in_module(cur_module, node.value)] = methods
+			iface_name := qualify_name_in_module(cur_module, node.value)
+			g.interfaces[iface_name] = g.tc.interface_abstract_method_names(iface_name)
 			continue
 		}
 		if kind_id == 65 {
@@ -452,6 +447,12 @@ fn (mut g FlatGen) register_fn_decl_param_types(name string, full_name string, p
 	if name !in g.fn_decl_param_types {
 		g.fn_decl_param_types[name] = ptypes.clone()
 	}
+	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
+		dotted_name := '${g.tc.cur_module}.${name}'
+		if dotted_name !in g.fn_decl_param_types {
+			g.fn_decl_param_types[dotted_name] = ptypes.clone()
+		}
+	}
 	if full_name !in g.fn_decl_param_types {
 		g.fn_decl_param_types[full_name] = ptypes.clone()
 	}
@@ -542,6 +543,17 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 			actual = param_type
 		}
 	}
+	if node.kind == .ident {
+		if _ := fn_type_from(expected) {
+			call_name := g.call_key(id, node.value)
+			if call_name in g.tc.fn_param_types || call_name in g.tc.fn_ret_types {
+				g.write(c_name(call_name))
+				g.expected_expr_type = old_expected
+				g.expected_enum = old_expected_enum
+				return
+			}
+		}
+	}
 	if expected is types.Array && node.kind == .array_literal {
 		elem_type := if node.children_count > 0 {
 			g.tc.resolve_type(g.a.child(&node, 0))
@@ -564,6 +576,11 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		if needs_paren {
 			g.write(')')
 		}
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
+	if g.gen_interface_value_expr(id, expected) {
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
@@ -732,6 +749,13 @@ fn (mut g FlatGen) gen_expr_with_possible_enum_type(id flat.NodeId, expected typ
 		return
 	}
 	g.gen_expr(id)
+}
+
+fn (g &FlatGen) expected_expr_is_optional_struct() bool {
+	if g.expected_expr_type is types.Struct {
+		return g.expected_expr_type.name.starts_with('Optional')
+	}
+	return false
 }
 
 fn (mut g FlatGen) optional_none_type(id flat.NodeId) types.Type {
@@ -1282,7 +1306,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.gen_heap_assoc_expr(child)
 			} else if node.op == .amp && child.kind == .cast_expr {
 				target_type := g.tc.parse_type(child.value)
-				ct := g.tc.c_type(target_type)
+				ct := g.cast_c_type(target_type)
 				cast_arg := g.a.child_node(&child, 0)
 				if cast_arg.kind == .nil_literal {
 					g.write('(${ct}*)NULL')
@@ -1529,8 +1553,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			if node.value == 'range' {
 				g.gen_slice_expr(node, base_id, base_type)
 			} else if base_type is types.Map {
-				c_key := g.tc.c_type(base_type.key_type)
-				c_val := g.tc.c_type(base_type.value_type)
+				c_key := g.value_c_type(base_type.key_type)
+				c_val := g.value_c_type(base_type.value_type)
 				g.write('(*(${c_val}*)map__get(&')
 				g.gen_expr(base_id)
 				g.write(', &(${c_key}[]){')
@@ -1539,7 +1563,16 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else {
 				is_array_index, is_ptr, arr_type := array_index_info(base_type)
 				if is_array_index {
-					c_elem := g.tc.c_type(arr_type.elem_type)
+					index_type := if g.expected_expr_type is types.OptionType
+						|| g.expected_expr_type is types.ResultType
+						|| g.expected_expr_is_optional_struct() {
+						g.expected_expr_type
+					} else if node.typ.starts_with('?') || node.typ.starts_with('!') {
+						g.tc.parse_type(node.typ)
+					} else {
+						arr_type.elem_type
+					}
+					c_elem := g.value_c_type(index_type)
 					g.write('(*(${c_elem}*)array_get(')
 					if is_ptr {
 						g.write('*')
@@ -1594,7 +1627,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		}
 		.cast_expr {
 			target_type := g.tc.parse_type(node.value)
-			mut ct := g.tc.c_type(target_type)
+			mut ct := g.cast_c_type(target_type)
 			if ct.starts_with('fn_ptr:') {
 				ct = g.resolve_fn_ptr_type(ct)
 			}
@@ -2186,8 +2219,42 @@ fn (mut g FlatGen) late_compat_decls() {
 	g.writeln('static inline Array binary__little_endian_get_u32(u32 v) { (void)v; return (Array){.data = NULL, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(u8)}; }')
 	g.writeln('static inline Array binary__big_endian_get_u32(u32 v) { (void)v; return (Array){.data = NULL, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(u8)}; }')
 	g.writeln('static inline Optional rand__int_u64(u64 max) { (void)max; return (Optional){.ok = true, .value = 0}; }')
+	g.writeln('typedef struct PGconn { int _dummy; } PGconn;')
+	g.writeln('typedef struct PGresult { int _dummy; } PGresult;')
+	g.writeln('typedef struct PGnotify { char* relname; int be_pid; char* extra; } PGnotify;')
+	g.writeln('static inline PGconn* PQconnectdb(char* conninfo) { (void)conninfo; static PGconn conn; return &conn; }')
+	g.writeln('static inline int PQstatus(PGconn* conn) { (void)conn; return 0; }')
+	g.writeln('static inline int PQtransactionStatus(PGconn* conn) { (void)conn; return 0; }')
+	g.writeln('static inline char* PQerrorMessage(PGconn* conn) { (void)conn; return ""; }')
+	g.writeln('static inline PGresult* PQexec(PGconn* conn, char* query) { (void)conn; (void)query; static PGresult res; return &res; }')
+	g.writeln('static inline int PQgetisnull(PGresult* res, int row, int col) { (void)res; (void)row; (void)col; return 1; }')
+	g.writeln('static inline char* PQgetvalue(PGresult* res, int row, int col) { (void)res; (void)row; (void)col; return ""; }')
+	g.writeln('static inline int PQresultStatus(PGresult* res) { (void)res; return 1; }')
+	g.writeln('static inline int PQntuples(PGresult* res) { (void)res; return 0; }')
+	g.writeln('static inline int PQnfields(PGresult* res) { (void)res; return 0; }')
+	g.writeln('static inline char* PQfname(PGresult* res, int col) { (void)res; (void)col; return ""; }')
+	g.writeln('static inline PGresult* PQexecParams(PGconn* conn, char* query, int nparams, void* types, void* vals, void* lens, void* formats, int result_format) { (void)conn; (void)query; (void)nparams; (void)types; (void)vals; (void)lens; (void)formats; (void)result_format; static PGresult res; return &res; }')
+	g.writeln('static inline int PQputCopyData(PGconn* conn, void* buffer, int nbytes) { (void)conn; (void)buffer; (void)nbytes; return 1; }')
+	g.writeln('static inline int PQputCopyEnd(PGconn* conn, char* errmsg) { (void)conn; (void)errmsg; return 1; }')
+	g.writeln('static inline int PQgetCopyData(PGconn* conn, char** buffer, int async) { (void)conn; (void)buffer; (void)async; return -1; }')
+	g.writeln('static inline PGresult* PQprepare(PGconn* conn, char* name, char* query, int nparams, void* param_types) { (void)conn; (void)name; (void)query; (void)nparams; (void)param_types; static PGresult res; return &res; }')
+	g.writeln('static inline PGresult* PQexecPrepared(PGconn* conn, char* name, int nparams, void* vals, void* lens, void* formats, int result_format) { (void)conn; (void)name; (void)nparams; (void)vals; (void)lens; (void)formats; (void)result_format; static PGresult res; return &res; }')
+	g.writeln('static inline void PQclear(PGresult* res) { (void)res; }')
+	g.writeln('static inline void PQfreemem(void* ptr) { (void)ptr; }')
+	g.writeln('static inline void PQfinish(PGconn* conn) { (void)conn; }')
+	g.writeln('static inline PGnotify* PQnotifies(PGconn* conn) { (void)conn; return NULL; }')
+	g.writeln('static inline int PQconsumeInput(PGconn* conn) { (void)conn; return 1; }')
+	g.writeln('static inline int PQsocket(PGconn* conn) { (void)conn; return -1; }')
+	g.writeln('static inline char* PQescapeLiteral(PGconn* conn, char* str, size_t len) { (void)conn; (void)len; return str; }')
+	g.writeln('static inline void pg__pg_stmt_match_array(Array* types, Array* vals, Array* lens, Array* formats, Array data) { (void)types; (void)vals; (void)lens; (void)formats; (void)data; }')
 	g.writeln('typedef void* _fn_ptr_64;')
 	g.writeln('static inline Optional_string orm__orm_table_gen(int sql_dialect, orm__Table table, string q, bool defaults, int def_unique_len, Array fields, void* sql_from_v, bool unique) { (void)sql_dialect; (void)table; (void)q; (void)defaults; (void)def_unique_len; (void)fields; (void)sql_from_v; (void)unique; return (Optional_string){.ok = true, .value = v3_empty_string_lit()}; }')
+	if 'sqlite.Stmt' !in g.struct_decl_infos {
+		g.writeln('typedef struct sqlite__Stmt { void* stmt; void* db; } sqlite__Stmt;')
+	}
+	if 'sqlite.ConnectionPool' !in g.struct_decl_infos {
+		g.writeln('typedef struct sqlite__ConnectionPool { int _dummy; } sqlite__ConnectionPool;')
+	}
 	g.writeln('static inline int sqlite__bind_array(sqlite__Stmt stmt, int** c, Array data) { (void)stmt; (void)c; (void)data; return 0; }')
 	g.writeln('#ifndef orm__type_string')
 	g.writeln('#define orm__type_string 9')
@@ -2437,7 +2504,7 @@ fn (mut g FlatGen) late_compat_decls() {
 	g.writeln('static inline void blowfish__Blowfish__encrypt(blowfish__Blowfish* bf, Array* dst, Array src) { (void)bf; (void)dst; (void)src; }')
 	g.writeln('static inline Optional_blowfish__Blowfish blowfish__new_cipher(Array key) { (void)key; return (Optional_blowfish__Blowfish){.ok = true, .value = (blowfish__Blowfish){}}; }')
 	g.writeln('static inline Optional_blowfish__Blowfish blowfish__new_salted_cipher(Array key, Array salt) { (void)key; (void)salt; return (Optional_blowfish__Blowfish){.ok = true, .value = (blowfish__Blowfish){}}; }')
-	g.writeln('static inline void mbedtls__SSLListener__init_sni(mbedtls__SSLListener* l, _fn_ptr_3 get_cert_callback) { (void)l; (void)get_cert_callback; }')
+	g.writeln('static inline void mbedtls__SSLListener__init_sni(mbedtls__SSLListener* l, void* get_cert_callback) { (void)l; (void)get_cert_callback; }')
 	g.writeln('static inline orm__Primitive v3_orm_empty_primitive(void) { return (orm__Primitive){}; }')
 	g.writeln('static inline orm__Primitive orm__bool_to_primitive(bool b) { (void)b; return v3_orm_empty_primitive(); }')
 	g.writeln('static inline orm__Primitive orm__f32_to_primitive(float b) { (void)b; return v3_orm_empty_primitive(); }')

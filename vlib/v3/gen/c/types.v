@@ -26,6 +26,24 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	return opt_name
 }
 
+fn (mut g FlatGen) value_c_type(t types.Type) string {
+	if t is types.OptionType || t is types.ResultType {
+		return g.optional_type_name(t)
+	}
+	mut ct := g.tc.c_type(t)
+	if ct.starts_with('fn_ptr:') {
+		ct = g.resolve_fn_ptr_type(ct)
+	}
+	return ct
+}
+
+fn (mut g FlatGen) cast_c_type(t types.Type) string {
+	if t is types.Pointer {
+		return '${g.value_c_type(t.base_type)}*'
+	}
+	return g.value_c_type(t)
+}
+
 fn (mut g FlatGen) optional_value_ct(t types.Type) (string, types.Type) {
 	if t is types.OptionType {
 		if t.base_type is types.Void {

@@ -3669,7 +3669,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		.name, .key_module {
 			name := p.lit
 			p.next()
-			if name == 'sql' && (p.tok == .lcbr || p.tok == .name) {
+			if name == 'sql' && p.tok == .name {
 				return p.sql_expr()
 			}
 			if name == '@FILE' {

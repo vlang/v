@@ -2728,7 +2728,7 @@ fn is_decode_call_name(name string) bool {
 }
 
 fn is_veb_run_at_call_name(name string) bool {
-	return name == 'veb.run_at' || name.ends_with('.run_at')
+	return name == 'veb.run_at'
 }
 
 fn (tc &TypeChecker) generic_call_base_name(base_node flat.Node) ?string {
@@ -2969,7 +2969,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			actual = tc.resolve_expr(arg_id, expected)
 		}
 		if !tc.receiver_compatible(actual, expected) {
-			if tc.call_display_name(node) == 'args.contains' && param_idx == 1 && actual is String {
+			if tc.is_os_args_contains_call(node) && param_idx == 1 && actual is String {
 				continue
 			}
 			tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
@@ -3004,6 +3004,22 @@ fn (tc &TypeChecker) array_contains_elem_type(base_node flat.Node, array_type Ar
 	return array_type.elem_type
 }
 
+fn (tc &TypeChecker) is_os_args_contains_call(node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	fn_node := tc.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.value != 'contains' || fn_node.children_count == 0 {
+		return false
+	}
+	base_node := tc.a.child_node(fn_node, 0)
+	if base_node.kind != .selector || base_node.value != 'args' || base_node.children_count == 0 {
+		return false
+	}
+	parent := tc.a.child_node(base_node, 0)
+	return parent.kind == .ident && parent.value == 'os'
+}
+
 fn (tc &TypeChecker) min_required_arg_count(info CallInfo) int {
 	if info.is_variadic && info.params.len > 0 {
 		return info.params.len - 1
@@ -3022,7 +3038,7 @@ fn (tc &TypeChecker) min_required_arg_count(info CallInfo) int {
 
 fn is_params_struct_type_name(name string) bool {
 	short := if name.contains('.') { name.all_after_last('.') } else { name }
-	return short.ends_with('Params') || short.ends_with('Options')
+	return short.ends_with('Params') || short.ends_with('Options') || short == 'PoolConfig'
 }
 
 fn (tc &TypeChecker) call_arg_needs_array_dsl_scope(name string, param_idx int) bool {
@@ -4727,7 +4743,7 @@ fn (tc &TypeChecker) substitute_generic_type(typ Type, args []string) Type {
 				return tc.parse_type(args[idx].trim_space())
 			}
 		}
-		return tc.parse_type(args[0].trim_space())
+		return typ
 	}
 	if typ is Array {
 		return Type(Array{
