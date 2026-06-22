@@ -510,20 +510,57 @@ fn (mut e Eval) register_files() ! {
 }
 
 fn (mut e Eval) evaluate_global_inits() ! {
+	mut entries_by_module := map[string][]GlobalEntry{}
 	for entry in e.global_inits {
-		e.call_stack << CallFrame{
-			module_name: entry.module_name
-			file_name:   entry.file_name
-			fn_name:     '<global ${entry.name}>'
-		}
-		value := if int(entry.default_node) >= 0 {
-			e.eval_expr(entry.default_node)!
-		} else {
-			e.zero_value_for_type_name_in_module(entry.typ, entry.module_name)
-		}
-		e.call_stack.delete(e.call_stack.len - 1)
-		e.globals[entry.module_name][entry.name] = e.adapt_value_to_type_name(value, entry.typ)
+		mut entries := entries_by_module[entry.module_name]
+		entries << entry
+		entries_by_module[entry.module_name] = entries
 	}
+	mut visited := map[string]bool{}
+	mut visiting := map[string]bool{}
+	e.evaluate_module_global_inits('main', entries_by_module, mut visited, mut visiting)!
+	for module_name in e.module_order {
+		e.evaluate_module_global_inits(module_name, entries_by_module, mut visited, mut visiting)!
+	}
+}
+
+fn (mut e Eval) evaluate_module_global_inits(module_name string, entries_by_module map[string][]GlobalEntry, mut visited map[string]bool, mut visiting map[string]bool) ! {
+	if module_name in visited {
+		return
+	}
+	if module_name in visiting {
+		return
+	}
+	visiting[module_name] = true
+	if module_name in e.module_imports {
+		for imported_module in e.module_imports[module_name] {
+			e.evaluate_module_global_inits(imported_module, entries_by_module, mut visited, mut
+				visiting)!
+		}
+	}
+	visiting.delete(module_name)
+	visited[module_name] = true
+	if module_name !in entries_by_module {
+		return
+	}
+	for entry in entries_by_module[module_name] {
+		e.evaluate_global_init(entry)!
+	}
+}
+
+fn (mut e Eval) evaluate_global_init(entry GlobalEntry) ! {
+	e.call_stack << CallFrame{
+		module_name: entry.module_name
+		file_name:   entry.file_name
+		fn_name:     '<global ${entry.name}>'
+	}
+	value := if int(entry.default_node) >= 0 {
+		e.eval_expr(entry.default_node)!
+	} else {
+		e.zero_value_for_type_name_in_module(entry.typ, entry.module_name)
+	}
+	e.call_stack.delete(e.call_stack.len - 1)
+	e.globals[entry.module_name][entry.name] = e.adapt_value_to_type_name(value, entry.typ)
 }
 
 fn (mut e Eval) register_function(module_name string, file_name string, id flat.NodeId, node &flat.Node) {
@@ -816,7 +853,7 @@ fn (mut e Eval) exec_stmt(id flat.NodeId) !FlowSignal {
 				expr_id := e.child(node, 0)
 				expr := e.node(expr_id)
 				if expr.kind == .infix && expr.op == .left_shift {
-					e.exec_array_append(expr)!
+					return e.exec_array_append(expr)
 				} else {
 					signal := e.eval_expr_flow(expr_id)!
 					if signal.kind != .normal {
@@ -1298,11 +1335,19 @@ fn (mut e Eval) set_selector_value(container Value, field_name string, value Val
 	}
 }
 
-fn (mut e Eval) exec_array_append(node &flat.Node) ! {
+fn (mut e Eval) exec_array_append(node &flat.Node) !FlowSignal {
 	lhs_id := e.child(node, 0)
 	rhs_id := e.child(node, 1)
-	rhs := e.eval_expr(rhs_id)!
-	current := e.eval_expr(lhs_id)!
+	rhs_signal := e.eval_expr_flow(rhs_id)!
+	if rhs_signal.kind != .normal {
+		return rhs_signal
+	}
+	rhs := flow_value(rhs_signal)
+	current_signal := e.eval_expr_flow(lhs_id)!
+	if current_signal.kind != .normal {
+		return current_signal
+	}
+	current := flow_value(current_signal)
 	if current !is ArrayValue {
 		return error('v3.eval: `<<` is only supported for arrays')
 	}
@@ -1315,6 +1360,7 @@ fn (mut e Eval) exec_array_append(node &flat.Node) ! {
 		arr.values << e.adapt_value_to_type_name(rhs, arr.elem_type_name)
 	}
 	e.update_target(lhs_id, arr)!
+	return normal_flow()
 }
 
 fn (e &Eval) array_append_rhs_spreads(rhs_id flat.NodeId, rhs ArrayValue, elem_type_name string) bool {
@@ -3354,7 +3400,11 @@ fn (e &Eval) or_block_err_value(value Value) Value {
 
 fn (mut e Eval) exec_match(node &flat.Node) !FlowSignal {
 	target_id := e.child(node, 0)
-	target := e.eval_expr(target_id)!
+	target_signal := e.eval_expr_flow(target_id)!
+	if target_signal.kind != .normal {
+		return target_signal
+	}
+	target := flow_value(target_signal)
 	for i in 1 .. node.children_count {
 		branch := e.child_node(node, i)
 		if branch.kind != .match_branch {

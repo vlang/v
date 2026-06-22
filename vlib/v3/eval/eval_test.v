@@ -270,6 +270,30 @@ fn main() {
 	assert e.stdout() == '1\n2\n2\n2\n4\n'
 }
 
+fn test_eval_or_block_return_propagates_from_array_append_rhs() {
+	mut e := create()
+	e.run_text('
+fn maybe() ?int {
+	return none
+}
+
+fn run() int {
+	mut xs := []int{}
+	xs << (maybe() or {
+		return 7
+	})
+	return xs.len
+}
+
+fn main() {
+	println(int_str(run()))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '7\n'
+}
+
 fn test_eval_for_mut_array_writes_back_elements() {
 	mut e := create()
 	e.run_text('
@@ -1506,6 +1530,31 @@ fn main() {
 	assert e.stdout() == '1\n'
 }
 
+fn test_eval_or_block_return_propagates_from_match_subject() {
+	mut e := create()
+	e.run_text('
+fn maybe() ?int {
+	return none
+}
+
+fn run() int {
+	match (maybe() or {
+		return 7
+	}) {
+		else {}
+	}
+	return 0
+}
+
+fn main() {
+	println(int_str(run()))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '7\n'
+}
+
 fn test_eval_map_index_or_uses_lookup_presence() {
 	mut e := create()
 	e.run_text('
@@ -1856,6 +1905,46 @@ fn main() {
 	p.parse_files([main_file, mod_file])
 	e.run_files(p.a) or { panic(err) }
 	assert e.stdout() == '99\n7\n'
+}
+
+fn test_eval_global_initializers_run_imports_before_main() {
+	dir := os.join_path(os.temp_dir(), 'v3_eval_global_init_order_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	main_file := os.join_path(dir, 'main.v')
+	mod_file := os.join_path(dir, 'm.v')
+	os.write_file(mod_file, '
+module m
+
+__global g = 7
+
+pub fn value() int {
+	return g
+}
+	') or {
+		panic(err)
+	}
+	os.write_file(main_file, '
+module main
+
+import m
+
+__global x = m.value()
+
+fn main() {
+	println(int_str(x))
+}
+	') or {
+		panic(err)
+	}
+	mut e := create()
+	mut p := parser.Parser.new(&e.prefs)
+	p.parse_files([main_file, mod_file])
+	e.run_files(p.a) or { panic(err) }
+	assert e.stdout() == '7\n'
 }
 
 fn test_eval_module_inits_run_dependencies_first() {
