@@ -1,5 +1,5 @@
 // vtest build: linux
-// vtest vflags: -prealloc -d fasthttp_test_delay_async_start
+// vtest vflags: -d fasthttp_test_delay_async_start
 module fasthttp
 
 import net

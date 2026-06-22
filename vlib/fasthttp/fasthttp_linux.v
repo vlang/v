@@ -712,7 +712,6 @@ fn process_loop_command(server &Server, epoll_fd int, cmd LoopCommand, mut clien
 			client_buffers.delete(cmd.client_fd)
 			client_read_starts.delete(cmd.client_fd)
 			closing_client_fds.delete(cmd.client_fd)
-			remove_fd_from_epoll(epoll_fd, cmd.client_fd)
 			if cmd.state != unsafe { nil } {
 				free_write_state(server, cmd.client_fd, mut client_write_states)
 			}

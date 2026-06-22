@@ -233,7 +233,10 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 		form:                  form
 		files:                 files
 	}
-	mut user_context := X{
+	// A manual takeover handler may spawn work that outlives the async fasthttp
+	// request worker. Keep its context in the request arena/heap, not on that
+	// worker's stack.
+	mut user_context := &X{
 		Context: ctx
 	}
 	$if trace_prealloc ? {
@@ -247,7 +250,7 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 			app.static_compression_mime_types, app.enable_markdown_negotiation), mut user_context,
 			url, host)
 		{
-			// Preserve the handled context on the heap before the stack-local user context goes away.
+			// Preserve the handled context in the base context returned to fasthttp.
 			unsafe {
 				*ctx = user_context.Context
 			}
@@ -268,7 +271,7 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 	$if trace_prealloc ? {
 		unsafe { prealloc_scope_checkpoint(c'veb route returned') }
 	}
-	// Preserve the handled context on the heap before the stack-local user context goes away.
+	// Preserve the handled context in the base context returned to fasthttp.
 	unsafe {
 		*ctx = user_context.Context
 	}
