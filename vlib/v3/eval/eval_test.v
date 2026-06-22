@@ -916,6 +916,33 @@ fn main() {
 	assert e.stdout() == '2\n'
 }
 
+fn test_eval_mut_index_argument_writes_back_once() {
+	mut e := create()
+	e.run_text('
+fn next(mut i int) int {
+	old := i
+	i++
+	return old
+}
+
+fn inc(mut x int) {
+	x++
+}
+
+fn main() {
+	mut xs := [1, 2]
+	mut i := 0
+	inc(mut xs[next(mut i)])
+	println(int_str(xs[0]))
+	println(int_str(xs[1]))
+	println(int_str(i))
+}
+') or {
+		panic(err)
+	}
+	assert e.stdout() == '2\n2\n1\n'
+}
+
 fn test_eval_mut_function_literal_arg_updates_original() {
 	mut e := create()
 	e.run_text('
@@ -1605,6 +1632,54 @@ fn main() {
 		panic(err)
 	}
 	assert e.stdout() == '0\n0\n'
+}
+
+fn test_eval_imported_function_param_hints_are_qualified() {
+	dir := os.join_path(os.temp_dir(), 'v3_eval_import_param_hint_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	main_file := os.join_path(dir, 'main.v')
+	mod_file := os.join_path(dir, 'm.v')
+	os.write_file(mod_file, '
+module m
+
+pub enum Color {
+	red
+	blue
+}
+
+pub fn take(c Color) string {
+	if c == Color.red {
+		return "m-red"
+	}
+	return "wrong"
+}
+	') or {
+		panic(err)
+	}
+	os.write_file(main_file, '
+module main
+
+import m
+
+enum Other {
+	red = 10
+}
+
+fn main() {
+	println(m.take(.red))
+}
+	') or {
+		panic(err)
+	}
+	mut e := create()
+	mut p := parser.Parser.new(&e.prefs)
+	p.parse_files([main_file, mod_file])
+	e.run_files(p.a) or { panic(err) }
+	assert e.stdout() == 'm-red\n'
 }
 
 fn test_eval_match_range_patterns_are_inclusive() {

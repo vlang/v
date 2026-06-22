@@ -211,9 +211,10 @@ enum FlowKind {
 }
 
 struct FlowSignal {
-	kind   FlowKind
-	label  string
-	values []Value
+	kind        FlowKind
+	label       string
+	values      []Value
+	mut_lvalues map[int]ResolvedLvalue
 }
 
 // Eval interprets v3 flat AST nodes directly for a practical subset of V.
@@ -2590,7 +2591,7 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 			}
 			result := e.call_fn_value(fv, args_signal.values)!
 			e.write_back_fn_value(callee_id, result)!
-			e.write_back_mutated_arg_values(node, result.mutated_args)!
+			e.write_back_mutated_arg_values(node, result.mutated_args, args_signal.mut_lvalues)!
 			return FlowSignal{
 				values: [e.call_result_value(result)]
 			}
@@ -2605,7 +2606,7 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 			return args_signal
 		}
 		result := e.call_function(e.current_module_name(), fn_name, args_signal.values)!
-		e.write_back_mutated_args(node, result)!
+		e.write_back_mutated_args(node, result, args_signal.mut_lvalues)!
 		return FlowSignal{
 			values: [e.call_result_value(result)]
 		}
@@ -2628,7 +2629,7 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 				return args_signal
 			}
 			result := e.call_function(left.name, callee.value, args_signal.values)!
-			e.write_back_mutated_args(node, result)!
+			e.write_back_mutated_args(node, result, args_signal.mut_lvalues)!
 			return FlowSignal{
 				values: [e.call_result_value(result)]
 			}
@@ -2646,7 +2647,7 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 				return args_signal
 			}
 			result := e.call_function(static_module, static_name, args_signal.values)!
-			e.write_back_mutated_args(node, result)!
+			e.write_back_mutated_args(node, result, args_signal.mut_lvalues)!
 			return FlowSignal{
 				values: [e.call_result_value(result)]
 			}
@@ -2660,7 +2661,7 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 			}
 			result := e.call_fn_value(selector_value, args_signal.values)!
 			e.write_back_fn_value(callee_id, result)!
-			e.write_back_mutated_arg_values(node, result.mutated_args)!
+			e.write_back_mutated_arg_values(node, result.mutated_args, args_signal.mut_lvalues)!
 			return FlowSignal{
 				values: [e.call_result_value(result)]
 			}
@@ -2677,7 +2678,7 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 				e.update_target(receiver_id, result.receiver)!
 			}
 		}
-		e.write_back_mutated_arg_values(node, result.mutated_args)!
+		e.write_back_mutated_arg_values(node, result.mutated_args, args_signal.mut_lvalues)!
 		return FlowSignal{
 			values: [result.value]
 		}
@@ -2689,7 +2690,7 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 			return args_signal
 		}
 		result := e.call_fn_value(fv, args_signal.values)!
-		e.write_back_mutated_arg_values(node, result.mutated_args)!
+		e.write_back_mutated_arg_values(node, result.mutated_args, args_signal.mut_lvalues)!
 		return FlowSignal{
 			values: [e.call_result_value(result)]
 		}
@@ -2702,7 +2703,7 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 		}
 		result := e.call_fn_value(value, args_signal.values)!
 		e.write_back_fn_value(callee_id, result)!
-		e.write_back_mutated_arg_values(node, result.mutated_args)!
+		e.write_back_mutated_arg_values(node, result.mutated_args, args_signal.mut_lvalues)!
 		return FlowSignal{
 			values: [e.call_result_value(result)]
 		}
@@ -2787,11 +2788,28 @@ fn (e &Eval) function_param_type_names(def FunctionDef, skip int) []string {
 			break
 		}
 		if param_index >= skip {
-			types << child.typ
+			types << e.qualify_expected_type_name(def.module_name, child.typ)
 		}
 		param_index++
 	}
 	return types
+}
+
+fn (e &Eval) qualify_expected_type_name(module_name string, type_name string) string {
+	name := type_name.trim_space()
+	if name == '' {
+		return ''
+	}
+	if name.starts_with('&') {
+		return '&${e.qualify_expected_type_name(module_name, name[1..])}'
+	}
+	if name.starts_with('...') {
+		return '...${e.qualify_expected_type_name(module_name, name[3..])}'
+	}
+	if name.starts_with('mut ') {
+		return '&${e.qualify_expected_type_name(module_name, name[4..])}'
+	}
+	return e.qualify_nested_type_name(module_name, name)
 }
 
 fn (e &Eval) fn_value_param_type_names(fv FnValue) []string {
@@ -2860,17 +2878,30 @@ fn (e &Eval) map_method_param_type_names(receiver MapValue, method_name string) 
 
 fn (mut e Eval) eval_call_arg_values(node &flat.Node, expected_types []string) !FlowSignal {
 	mut args := []Value{}
+	mut mut_lvalues := map[int]ResolvedLvalue{}
 	for child_index in 1 .. node.children_count {
 		arg_index := child_index - 1
 		expected_type := call_arg_expected_type(expected_types, arg_index)
-		signal := e.eval_expr_flow_expected(e.child(node, child_index), expected_type)!
+		value_expected_type := call_arg_value_expected_type(expected_type)
+		arg_id := e.child(node, child_index)
+		if expected_type.starts_with('&') && e.is_assignable_target(arg_id) {
+			resolved := e.resolve_lvalue_flow(arg_id)!
+			if resolved.signal.kind != .normal {
+				return resolved.signal
+			}
+			args << resolved.value
+			mut_lvalues[arg_index] = resolved
+			continue
+		}
+		signal := e.eval_expr_flow_expected(arg_id, value_expected_type)!
 		if signal.kind != .normal {
 			return signal
 		}
 		args << flow_value(signal)
 	}
 	return FlowSignal{
-		values: args
+		values:      args
+		mut_lvalues: mut_lvalues
 	}
 }
 
@@ -2889,6 +2920,20 @@ fn call_arg_expected_type(expected_types []string, index int) string {
 		}
 	}
 	return ''
+}
+
+fn call_arg_value_expected_type(type_name string) string {
+	name := type_name.trim_space()
+	if name.starts_with('&') {
+		return call_arg_value_expected_type(name[1..])
+	}
+	if name.starts_with('mut ') {
+		return call_arg_value_expected_type(name[4..])
+	}
+	if name.starts_with('...') {
+		return call_arg_value_expected_type(name[3..])
+	}
+	return name
 }
 
 fn (mut e Eval) disabled_function_zero_value(module_name string, fn_name string, call_node &flat.Node) ?Value {
@@ -2952,8 +2997,8 @@ fn (e &Eval) call_result_value(result CallResult) Value {
 	}
 }
 
-fn (mut e Eval) write_back_mutated_args(node &flat.Node, result CallResult) ! {
-	e.write_back_mutated_arg_values(node, result.mutated_args)!
+fn (mut e Eval) write_back_mutated_args(node &flat.Node, result CallResult, mut_lvalues map[int]ResolvedLvalue) ! {
+	e.write_back_mutated_arg_values(node, result.mutated_args, mut_lvalues)!
 }
 
 fn (mut e Eval) adapt_return_values(values []Value, return_type string) []Value {
@@ -3088,13 +3133,20 @@ fn (mut e Eval) write_back_fn_value(callee_id flat.NodeId, result CallResult) ! 
 	}
 }
 
-fn (mut e Eval) write_back_mutated_arg_values(node &flat.Node, mutated_args map[int]Value) ! {
+fn (mut e Eval) write_back_mutated_arg_values(node &flat.Node, mutated_args map[int]Value, mut_lvalues map[int]ResolvedLvalue) ! {
 	for child_index := 1; child_index < node.children_count; child_index++ {
 		arg_index := child_index - 1
 		if arg_index !in mutated_args {
 			continue
 		}
 		value := mutated_args[arg_index] or { continue }
+		if resolved := mut_lvalues[arg_index] {
+			signal := e.write_resolved_lvalue_flow(resolved, value)!
+			if signal.kind != .normal {
+				return error('v3.eval: unexpected `${signal.kind}` escaped mut argument writeback')
+			}
+			continue
+		}
 		arg_id := e.child(node, child_index)
 		if e.is_assignable_target(arg_id) {
 			e.update_target(arg_id, value)!
