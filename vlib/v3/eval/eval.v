@@ -229,6 +229,7 @@ mut:
 	functions         map[string]map[string]FunctionDef
 	consts            map[string]map[string]ConstEntry
 	globals           map[string]map[string]Value
+	global_types      map[string]map[string]string
 	global_inits      []GlobalEntry
 	structs           map[string]StructInfo
 	enum_fields       map[string][]string
@@ -311,6 +312,7 @@ fn (mut e Eval) reset(a &flat.FlatAst) {
 	e.functions = map[string]map[string]FunctionDef{}
 	e.consts = map[string]map[string]ConstEntry{}
 	e.globals = map[string]map[string]Value{}
+	e.global_types = map[string]map[string]string{}
 	e.global_inits = []GlobalEntry{}
 	e.structs = map[string]StructInfo{}
 	e.enum_fields = map[string][]string{}
@@ -351,9 +353,25 @@ fn (mut e Eval) ensure_module_maps(module_name string) {
 	if module_name !in e.globals {
 		e.globals[module_name] = map[string]Value{}
 	}
+	if module_name !in e.global_types {
+		e.global_types[module_name] = map[string]string{}
+	}
 	if module_name !in e.type_names {
 		e.type_names[module_name] = map[string]bool{}
 	}
+}
+
+fn (e &Eval) top_level_registration_children(node &flat.Node) []flat.NodeId {
+	mut ids := []flat.NodeId{}
+	for child_id in e.children(node) {
+		child := e.node(child_id)
+		if child.kind == .block {
+			ids << e.top_level_registration_children(child)
+			continue
+		}
+		ids << child_id
+	}
+	return ids
 }
 
 fn (mut e Eval) register_files() ! {
@@ -362,8 +380,9 @@ fn (mut e Eval) register_files() ! {
 			continue
 		}
 		file_name := file_node.value
+		top_level_children := e.top_level_registration_children(&file_node)
 		mut module_name := 'main'
-		for child_id in e.children(&file_node) {
+		for child_id in top_level_children {
 			child := e.node(child_id)
 			if child.kind == .module_decl {
 				module_name = child.value
@@ -379,7 +398,7 @@ fn (mut e Eval) register_files() ! {
 			e.module_imports[module_name] = []string{}
 		}
 		mut import_aliases := map[string]string{}
-		for child_id in e.children(&file_node) {
+		for child_id in top_level_children {
 			child := e.node(child_id)
 			match child.kind {
 				.import_decl {
@@ -423,6 +442,8 @@ fn (mut e Eval) register_files() ! {
 							module_name:  module_name
 							file_name:    file_name
 						}
+						e.global_types[module_name][field.value] = e.qualify_nested_type_name(module_name,
+							field.typ)
 					}
 				}
 				.enum_decl {
@@ -738,6 +759,10 @@ fn (e &Eval) lookup_var_type(name string) ?string {
 		if name in e.scopes[i].types {
 			return e.scopes[i].types[name]
 		}
+	}
+	module_name := e.current_module_name()
+	if module_name in e.global_types && name in e.global_types[module_name] {
+		return e.global_types[module_name][name]
 	}
 	return none
 }

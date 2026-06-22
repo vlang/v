@@ -27,6 +27,32 @@ fn main() {
 	assert e.stdout() == '10\n'
 }
 
+fn test_eval_registers_top_level_comptime_block_declarations() {
+	mut e := create()
+	e.run_text('
+$if windows {
+	fn gated_message() string {
+		return "ok"
+	}
+} $else $if macos {
+	fn gated_message() string {
+		return "ok"
+	}
+} $else {
+	fn gated_message() string {
+		return "ok"
+	}
+}
+
+fn main() {
+	println(gated_message())
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == 'ok\n'
+}
+
 fn test_eval_disabled_if_call_skips_arguments() {
 	mut e := create()
 	e.run_text('
@@ -1575,6 +1601,26 @@ fn main() {
 		panic(err)
 	}
 	assert e.stdout() == 'true\ntrue\ntrue\ntrue\n'
+}
+
+fn test_eval_global_assignment_uses_declared_type() {
+	mut e := create()
+	e.run_text('
+enum State {
+	idle
+	busy
+}
+
+__global state State
+
+fn main() {
+	state = .busy
+	println(state)
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == 'busy\n'
 }
 
 fn test_eval_enum_shorthand_return_preserves_enum_type() {
