@@ -153,6 +153,7 @@ struct CallFrame {
 	module_name string
 	file_name   string
 	fn_name     string
+	scope_idx   int = -1
 }
 
 struct MaybeValue {
@@ -763,12 +764,13 @@ fn (mut e Eval) call_function(module_name string, fn_name string, args []Value) 
 	if args.len < min_args {
 		return error('v3.eval: `${target_module}.${fn_name}` expected ${min_args} arguments, got ${args.len}')
 	}
+	e.open_scope()
 	e.call_stack << CallFrame{
 		module_name: target_module
 		file_name:   def.file_name
 		fn_name:     fn_name
+		scope_idx:   e.scopes.len - 1
 	}
-	e.open_scope()
 	e.bind_call_params(params, args)!
 	mut body_ids := e.children(node)
 	if body_start > 0 {
@@ -953,7 +955,13 @@ fn (mut e Eval) register_defer_stmt(id flat.NodeId) {
 	if e.scopes.len == 0 {
 		e.open_scope()
 	}
-	scope_idx := e.scopes.len - 1
+	node := e.node(id)
+	scope_idx := if node.value == 'function' && e.call_stack.len > 0
+		&& e.call_stack[e.call_stack.len - 1].scope_idx >= 0 {
+		e.call_stack[e.call_stack.len - 1].scope_idx
+	} else {
+		e.scopes.len - 1
+	}
 	e.scopes[scope_idx].defer_stmts << id
 }
 
@@ -2333,6 +2341,20 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 				values: [e.call_result_value(result)]
 			}
 		}
+		selector_value := e.eval_selector_value(left, callee.value) or { void_value() }
+		if selector_value is FnValue {
+			args_signal :=
+				e.eval_call_arg_values(node, e.fn_value_param_type_names(selector_value))!
+			if args_signal.kind != .normal {
+				return args_signal
+			}
+			result := e.call_fn_value(selector_value, args_signal.values)!
+			e.write_back_fn_value(callee_id, result)!
+			e.write_back_mutated_arg_values(node, result.mutated_args)!
+			return FlowSignal{
+				values: [e.call_result_value(result)]
+			}
+		}
 		receiver_type_name := e.infer_expr_type_name(receiver_id)
 		expected_types := e.method_call_param_type_names(left, receiver_type_name, callee.value)
 		args_signal := e.eval_call_arg_values(node, expected_types)!
@@ -2724,12 +2746,13 @@ fn (mut e Eval) call_fn_value(fv FnValue, args []Value) !CallResult {
 		}
 		break
 	}
+	e.open_scope()
 	e.call_stack << CallFrame{
 		module_name: fv.module_name
 		file_name:   fv.file_name
 		fn_name:     '<anonymous>'
+		scope_idx:   e.scopes.len - 1
 	}
-	e.open_scope()
 	for name, value in fv.captures {
 		e.declare_var_typed(name, value, fv.capture_types[name] or { '' })
 	}

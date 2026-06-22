@@ -760,6 +760,34 @@ fn main() {
 	assert e.stdout() == '1\n2\n3\n'
 }
 
+fn test_eval_function_valued_selector_call_updates_captures() {
+	mut e := create()
+	e.run_text('
+struct S {
+	f fn () int
+}
+
+fn new_counter() fn () int {
+	mut i := 0
+	return fn [mut i] () int {
+		i++
+		return i
+	}
+}
+
+fn main() {
+	mut s := S{
+		f: new_counter()
+	}
+	println(int_str(s.f()))
+	println(int_str(s.f()))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '1\n2\n'
+}
+
 fn test_eval_mut_method_arg_updates_original() {
 	mut e := create()
 	e.run_text('
@@ -1330,6 +1358,32 @@ fn main() {
 		panic(err)
 	}
 	assert e.stdout() == 'bdai0i1\n'
+}
+
+fn test_eval_defer_fn_runs_at_function_exit() {
+	mut e := create()
+	e.run_text('
+__global hit int
+
+fn run() {
+	for _ in 0 .. 2 {
+		defer(fn) {
+			hit += 100
+		}
+		println(int_str(hit))
+		hit++
+	}
+	println(int_str(hit))
+}
+
+fn main() {
+	run()
+	println(int_str(hit))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '0\n1\n2\n202\n'
 }
 
 fn test_eval_or_block_return_propagates() {
