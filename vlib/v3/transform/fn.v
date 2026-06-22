@@ -521,13 +521,17 @@ fn (t &Transformer) params_struct_type_name(param_type string) ?string {
 	if typ.starts_with('&') {
 		typ = typ[1..]
 	}
-	if _ := t.lookup_struct_info(typ) {
-		return typ
+	if info := t.lookup_struct_info(typ) {
+		if info.is_params {
+			return typ
+		}
 	}
 	normalized := t.normalize_type_alias(typ)
 	if normalized != typ {
-		if _ := t.lookup_struct_info(normalized) {
-			return normalized
+		if info := t.lookup_struct_info(normalized) {
+			if info.is_params {
+				return normalized
+			}
 		}
 	}
 	return none

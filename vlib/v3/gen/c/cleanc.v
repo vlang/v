@@ -1509,7 +1509,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					g.write(c_name('${qname}.${node.value}'))
 				}
-			} else if embedded := g.embedded_field_for_promoted_selector(base_type0, node.value) {
+			} else if embedded_path := g.embedded_field_path_for_promoted_selector(base_type0,
+				node.value)
+			{
 				needs_paren := base.kind !in [.ident, .selector]
 				if needs_paren {
 					g.write('(')
@@ -1518,9 +1520,14 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				if needs_paren {
 					g.write(')')
 				}
-				first_op := if node.op == .arrow || base_type0 is types.Pointer { '->' } else { '.' }
-				second_op := if embedded.typ is types.Pointer { '->' } else { '.' }
-				g.write('${first_op}${c_name(embedded.name)}${second_op}${c_name(node.value)}')
+				mut is_ptr := node.op == .arrow || base_type0 is types.Pointer
+				for embedded in embedded_path {
+					op := if is_ptr { '->' } else { '.' }
+					g.write('${op}${c_name(embedded.name)}')
+					is_ptr = embedded.typ is types.Pointer
+				}
+				final_op := if is_ptr { '->' } else { '.' }
+				g.write('${final_op}${c_name(node.value)}')
 			} else {
 				needs_paren := base.kind !in [.ident, .selector]
 				if needs_paren {

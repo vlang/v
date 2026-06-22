@@ -80,6 +80,7 @@ pub mut:
 	fn_param_types             map[string][]Type
 	fn_variadic                map[string]bool
 	structs                    map[string][]StructField
+	params_structs             map[string]bool
 	unions                     map[string]bool
 	type_aliases               map[string]string
 	sum_types                  map[string][]string
@@ -131,6 +132,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		fn_param_types:             map[string][]Type{}
 		fn_variadic:                map[string]bool{}
 		structs:                    map[string][]StructField{}
+		params_structs:             map[string]bool{}
 		unions:                     map[string]bool{}
 		type_aliases:               map[string]string{}
 		sum_types:                  map[string][]string{}
@@ -282,6 +284,9 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				if node.typ.contains('union') {
 					tc.unions[qname] = true
 				}
+				if node.typ.contains('params') {
+					tc.params_structs[qname] = true
+				}
 			}
 			.type_decl {
 				if node.children_count > 0 {
@@ -357,6 +362,9 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				tc.structs[qname] = fields
 				if node.typ.contains('union') {
 					tc.unions[qname] = true
+				}
+				if node.typ.contains('params') {
+					tc.params_structs[qname] = true
 				}
 			}
 			.c_fn_decl {
@@ -1329,7 +1337,7 @@ fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ string, n
 	if clean.len == 0 {
 		return
 	}
-	if clean == 'generic' {
+	if clean in ['generic', 'params', 'union'] {
 		return
 	}
 	if clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
@@ -1441,52 +1449,52 @@ fn generic_type_application(typ string) bool {
 	return ok
 }
 
-fn generic_args_are_concrete(args []string) bool {
+fn (tc &TypeChecker) generic_args_are_concrete(args []string) bool {
 	for arg in args {
-		if type_text_has_generic_placeholder(arg) {
+		if tc.type_text_has_generic_placeholder(arg) {
 			return false
 		}
 	}
 	return true
 }
 
-fn type_text_has_generic_placeholder(typ string) bool {
+fn (tc &TypeChecker) type_text_has_generic_placeholder(typ string) bool {
 	clean := typ.trim_space()
 	if is_bare_generic_param(clean) {
-		return true
+		return !tc.is_known_type_text(clean)
 	}
 	if clean.starts_with('&') {
-		return type_text_has_generic_placeholder(clean[1..])
+		return tc.type_text_has_generic_placeholder(clean[1..])
 	}
 	if clean.starts_with('mut ') {
-		return type_text_has_generic_placeholder(clean[4..])
+		return tc.type_text_has_generic_placeholder(clean[4..])
 	}
 	if clean.starts_with('?') || clean.starts_with('!') {
-		return type_text_has_generic_placeholder(clean[1..])
+		return tc.type_text_has_generic_placeholder(clean[1..])
 	}
 	if clean.starts_with('...') {
-		return type_text_has_generic_placeholder(clean[3..])
+		return tc.type_text_has_generic_placeholder(clean[3..])
 	}
 	if clean.starts_with('[]') {
-		return type_text_has_generic_placeholder(clean[2..])
+		return tc.type_text_has_generic_placeholder(clean[2..])
 	}
 	if clean.starts_with('map[') {
 		bracket_end := find_matching_bracket(clean, 3)
 		if bracket_end < clean.len {
-			return type_text_has_generic_placeholder(clean[4..bracket_end])
-				|| type_text_has_generic_placeholder(clean[bracket_end + 1..])
+			return tc.type_text_has_generic_placeholder(clean[4..bracket_end])
+				|| tc.type_text_has_generic_placeholder(clean[bracket_end + 1..])
 		}
 	}
 	if clean.starts_with('[') {
 		bracket_end := find_matching_bracket(clean, 0)
 		if bracket_end < clean.len {
-			return type_text_has_generic_placeholder(clean[bracket_end + 1..])
+			return tc.type_text_has_generic_placeholder(clean[bracket_end + 1..])
 		}
 	}
 	_, args, ok := generic_type_application_parts(clean)
 	if ok {
 		for arg in args {
-			if type_text_has_generic_placeholder(arg) {
+			if tc.type_text_has_generic_placeholder(arg) {
 				return true
 			}
 		}
@@ -3027,7 +3035,7 @@ fn (tc &TypeChecker) min_required_arg_count(info CallInfo) int {
 	mut n := info.params.len
 	for n > 0 {
 		param := info.params[n - 1]
-		if param is Struct && is_params_struct_type_name(param.name) {
+		if tc.is_params_struct_type(param) {
 			n--
 			continue
 		}
@@ -3036,9 +3044,18 @@ fn (tc &TypeChecker) min_required_arg_count(info CallInfo) int {
 	return n
 }
 
-fn is_params_struct_type_name(name string) bool {
-	short := if name.contains('.') { name.all_after_last('.') } else { name }
-	return short.ends_with('Params') || short.ends_with('Options') || short == 'PoolConfig'
+fn (tc &TypeChecker) is_params_struct_type(typ Type) bool {
+	if typ is Struct {
+		if typ.name in tc.params_structs {
+			return true
+		}
+		qname := tc.qualify_name(typ.name)
+		return qname in tc.params_structs
+	}
+	if typ is Alias {
+		return tc.is_params_struct_type(typ.base_type)
+	}
+	return false
 }
 
 fn (tc &TypeChecker) call_arg_needs_array_dsl_scope(name string, param_idx int) bool {
@@ -4029,6 +4046,15 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
+		tc.register_synth_type(id, tc.resolve_index_type(node))
+		return
+	}
+	if node.children_count > 2 {
+		for i in 2 .. node.children_count {
+			tc.check_node(tc.a.child(&node, i))
+		}
+		tc.record_error(.cannot_index,
+			'index expression accepts one index, got ${node.children_count - 1}', id)
 		tc.register_synth_type(id, tc.resolve_index_type(node))
 		return
 	}
@@ -5275,7 +5301,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		base := typ[..bracket]
 		generic_suffix := typ[bracket..]
 		_, generic_args, _ := generic_type_application_parts(typ)
-		is_concrete_generic := generic_args_are_concrete(generic_args)
+		is_concrete_generic := tc.generic_args_are_concrete(generic_args)
 		qbase := tc.qualify_name(base)
 		if qbase in tc.type_aliases {
 			return Type(Alias{

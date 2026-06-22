@@ -843,57 +843,65 @@ fn generic_param_index(name string) int {
 	}
 }
 
-fn generic_args_are_concrete(args []string) bool {
+fn (g &FlatGen) generic_args_are_concrete(args []string, module_name string) bool {
 	for arg in args {
-		if type_text_has_generic_placeholder(arg) {
+		if g.type_text_has_generic_placeholder(arg, module_name) {
 			return false
 		}
 	}
 	return true
 }
 
-fn type_text_has_generic_placeholder(typ string) bool {
+fn (g &FlatGen) type_text_has_generic_placeholder(typ string, module_name string) bool {
 	clean := typ.trim_space()
 	if clean.len == 1 && clean[0] >= `A` && clean[0] <= `Z` {
-		return true
+		return !g.concrete_type_name_known(clean, module_name)
 	}
 	if clean.starts_with('&') {
-		return type_text_has_generic_placeholder(clean[1..])
+		return g.type_text_has_generic_placeholder(clean[1..], module_name)
 	}
 	if clean.starts_with('mut ') {
-		return type_text_has_generic_placeholder(clean[4..])
+		return g.type_text_has_generic_placeholder(clean[4..], module_name)
 	}
 	if clean.starts_with('?') || clean.starts_with('!') {
-		return type_text_has_generic_placeholder(clean[1..])
+		return g.type_text_has_generic_placeholder(clean[1..], module_name)
 	}
 	if clean.starts_with('...') {
-		return type_text_has_generic_placeholder(clean[3..])
+		return g.type_text_has_generic_placeholder(clean[3..], module_name)
 	}
 	if clean.starts_with('[]') {
-		return type_text_has_generic_placeholder(clean[2..])
+		return g.type_text_has_generic_placeholder(clean[2..], module_name)
 	}
 	if clean.starts_with('map[') {
 		bracket_end := generic_matching_bracket(clean, 3)
 		if bracket_end < clean.len {
-			return type_text_has_generic_placeholder(clean[4..bracket_end])
-				|| type_text_has_generic_placeholder(clean[bracket_end + 1..])
+			return g.type_text_has_generic_placeholder(clean[4..bracket_end], module_name)
+				|| g.type_text_has_generic_placeholder(clean[bracket_end + 1..], module_name)
 		}
 	}
 	if clean.starts_with('[') {
 		bracket_end := generic_matching_bracket(clean, 0)
 		if bracket_end < clean.len {
-			return type_text_has_generic_placeholder(clean[bracket_end + 1..])
+			return g.type_text_has_generic_placeholder(clean[bracket_end + 1..], module_name)
 		}
 	}
 	_, args, ok := generic_app_parts(clean)
 	if ok {
 		for arg in args {
-			if type_text_has_generic_placeholder(arg) {
+			if g.type_text_has_generic_placeholder(arg, module_name) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+fn (g &FlatGen) concrete_type_name_known(name string, module_name string) bool {
+	qname := g.generic_struct_base_name(name, module_name)
+	return name in g.struct_decl_infos || qname in g.struct_decl_infos || name in g.tc.type_aliases
+		|| qname in g.tc.type_aliases || name in g.tc.enum_names || qname in g.tc.enum_names
+		|| name in g.tc.sum_types || qname in g.tc.sum_types || name in g.tc.interface_names
+		|| qname in g.tc.interface_names
 }
 
 fn substitute_generic_type_text(typ string, args []string) string {
@@ -1071,7 +1079,7 @@ fn (g &FlatGen) collect_generic_struct_specialization_from_type(typ string, modu
 	for arg in args {
 		g.collect_generic_struct_specialization_from_type(arg, module_name, mut specs)
 	}
-	if !generic_args_are_concrete(args) {
+	if !g.generic_args_are_concrete(args, module_name) {
 		return
 	}
 	spec_base := g.generic_struct_base_name(base, module_name)
@@ -1208,6 +1216,14 @@ fn (g &FlatGen) direct_struct_field_exists(type_name string, field_name string) 
 }
 
 fn (g &FlatGen) embedded_field_for_promoted_field(type_name string, field_name string) ?types.StructField {
+	path := g.embedded_field_path_for_promoted_field(type_name, field_name) or { return none }
+	if path.len == 0 {
+		return none
+	}
+	return path[0]
+}
+
+fn (g &FlatGen) embedded_field_path_for_promoted_field(type_name string, field_name string) ?[]types.StructField {
 	fields := g.struct_fields_for_type(type_name) or { return none }
 	for field in fields {
 		embedded_type_name := g.embedded_field_type_name(field)
@@ -1215,13 +1231,23 @@ fn (g &FlatGen) embedded_field_for_promoted_field(type_name string, field_name s
 			continue
 		}
 		if g.direct_struct_field_exists(embedded_type_name, field_name) {
-			return field
+			return [field]
 		}
-		if _ := g.embedded_field_for_promoted_field(embedded_type_name, field_name) {
-			return field
+		if nested := g.embedded_field_path_for_promoted_field(embedded_type_name, field_name) {
+			mut path := [field]
+			path << nested
+			return path
 		}
 	}
 	return none
+}
+
+fn (g &FlatGen) embedded_field_path_for_promoted_selector(base_type types.Type, field_name string) ?[]types.StructField {
+	type_name := g.type_lookup_name(base_type)
+	if type_name.len == 0 {
+		return none
+	}
+	return g.embedded_field_path_for_promoted_field(type_name, field_name)
 }
 
 fn (g &FlatGen) embedded_field_for_promoted_selector(base_type types.Type, field_name string) ?types.StructField {

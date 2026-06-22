@@ -323,6 +323,36 @@ fn main() {
 ',
 		'v3')
 
+	// A one-letter concrete type argument should not be treated as an unresolved
+	// generic placeholder when discovering struct specializations.
+	one_letter_src := os.join_path(os.temp_dir(), 'v3_gen_one_letter_concrete_arg.v')
+	os.write_file(one_letter_src, '
+struct A {
+	value int
+}
+
+struct Box[T] {
+	value T
+}
+
+fn main() {
+	b := Box[A]{
+		value: A{
+			value: 3
+		}
+	}
+	_ := b
+}
+') or {
+		panic(err)
+	}
+	one_letter_bin := os.join_path(os.temp_dir(), 'v3_gen_one_letter_concrete_arg')
+	one_letter_compile := os.execute('${v3_bin} ${one_letter_src} -b c -o ${one_letter_bin}')
+	assert !one_letter_compile.output.contains('unsupported generic'), one_letter_compile.output
+	assert !one_letter_compile.output.contains('type checker found'), one_letter_compile.output
+	one_letter_c := os.read_file(one_letter_bin + '.c') or { '' }
+	assert one_letter_c.contains('struct Box_A'), one_letter_c
+
 	// transitive generic calls: outer[T] calls id[T]
 	run_generic_ok(v3_bin, 'run_transitive', '
 fn id[T](x T) T {

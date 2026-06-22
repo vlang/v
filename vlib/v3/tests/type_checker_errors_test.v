@@ -114,6 +114,8 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'struct Foo {\n\tx int\n}\nfn main() {\n\tf := Foo{}\n\t_ := f.y\n}\n',
 		'unknown field `y` on `Foo`')
 	run_bad(v3_bin, 'bad_index', 'fn main() {\n\tx := 1\n\t_ := x[0]\n}\n', 'cannot index `int`')
+	run_bad(v3_bin, 'bad_comma_index', 'fn main() {\n\txs := [1]\n\t_ := xs[0, 0]\n}\n',
+		'index expression accepts one index')
 	run_bad(v3_bin, 'bad_condition', "fn main() {\n\tif 'bad' {}\n}\n",
 		'if condition must be `bool`, not `string`')
 	run_bad(v3_bin, 'bad_zero_arg_call', 'fn f() {}\nfn main() {\n\tf(1)\n}\n',
@@ -193,6 +195,9 @@ fn test_type_checker_reports_core_semantic_errors() {
 	args_contains_out := run_good(v3_bin, 'local_args_contains',
 		"fn main() {\n\targs := [1, 2]\n\tif args.contains(2) {\n\t\tprintln('ok')\n\t}\n}\n")
 	assert args_contains_out == 'ok'
+	run_bad(v3_bin, 'required_options_param',
+		"struct Options {\n\tlimit int\n}\n\nfn connect(url string, opts Options) int {\n\treturn opts.limit\n}\n\nfn main() {\n\t_ := connect('db')\n}\n",
+		'argument count mismatch')
 	custom_codec_out := run_good(v3_bin, 'custom_codec_methods',
 		'struct Codec {}\n\nfn (c Codec) decode() int {\n\treturn 7\n}\n\nfn (c Codec) encode() int {\n\treturn 8\n}\n\nfn (c Codec) use(x int) int {\n\treturn x + 1\n}\n\nfn (c Codec) run_at(x int) int {\n\treturn x + 2\n}\n\nfn main() {\n\tc := Codec{}\n\tprintln(int_str(c.decode()))\n\tprintln(int_str(c.encode()))\n\tprintln(int_str(c.use(9)))\n\tprintln(int_str(c.run_at(5)))\n}\n')
 	assert custom_codec_out == '7\n8\n10\n7'
@@ -205,6 +210,9 @@ fn test_type_checker_reports_core_semantic_errors() {
 	nested_embedded_method_out := run_good(v3_bin, 'nested_embedded_method',
 		'struct Leaf {}\n\nfn (leaf Leaf) value() int {\n\treturn 9\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{}\n\tprintln(int_str(outer.value()))\n}\n')
 	assert nested_embedded_method_out == '9'
+	nested_embedded_field_out := run_good(v3_bin, 'nested_embedded_field',
+		'struct Leaf {\n\tx int\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{\n\t\tMiddle: Middle{\n\t\t\tLeaf: Leaf{\n\t\t\t\tx: 12\n\t\t\t}\n\t\t}\n\t}\n\tprintln(int_str(outer.x))\n}\n')
+	assert nested_embedded_field_out == '12'
 	map_mutation_out := run_good(v3_bin, 'map_mutation_lowering',
 		"fn main() {\n\tmut m := map[string]int{}\n\tm['a'] = 1\n\tm['a'] += 2\n\tm['a']++\n\tm['a'] -= 1\n\tprintln(int_str(m['a']))\n}\n")
 	assert map_mutation_out == '3'

@@ -32,6 +32,7 @@ mut:
 	cur_module       string
 	cur_fn           string
 	pending_flag     bool
+	pending_params   bool
 	skip_next_decl   bool
 	disable_fn_body  bool
 	in_for_container bool
@@ -845,6 +846,7 @@ fn (mut p Parser) top_level_stmt() flat.NodeId {
 fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
 	p.consume_decl_prefix_after_attrs()
 	if p.skip_next_decl {
+		p.pending_params = false
 		p.skip_next_decl = false
 		if p.cur_decl_is_fn() {
 			p.disable_fn_body = true
@@ -857,7 +859,9 @@ fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
 		p.skip_next_decl = false
 		return flat.empty_node
 	}
-	return p.top_level_stmt()
+	res := p.top_level_stmt()
+	p.pending_params = false
+	return res
 }
 
 fn (mut p Parser) consume_decl_prefix_after_attrs() {
@@ -1177,6 +1181,8 @@ fn (mut p Parser) parse_param_group() []flat.NodeId {
 
 fn (mut p Parser) struct_decl() flat.NodeId {
 	is_union := p.tok == .key_union
+	is_params := p.pending_params
+	p.pending_params = false
 	p.next() // skip 'struct' or 'union'
 	mut name := p.expect(.name)
 	if (name == 'C' || name == 'JS') && p.tok == .dot {
@@ -1209,7 +1215,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		return p.a.add_node(flat.Node{
 			kind:           .struct_decl
 			value:          name
-			typ:            struct_decl_typ(is_union, is_generic)
+			typ:            struct_decl_typ(is_union, is_generic, is_params)
 			generic_params: generic_params
 		})
 	}
@@ -1338,24 +1344,28 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		}
 	}
 	p.check(.rcbr)
+	p.pending_params = false
 	start := p.add_children(ids)
 	return p.a.add_node(flat.Node{
 		kind:           .struct_decl
 		value:          name
-		typ:            struct_decl_typ(is_union, is_generic)
+		typ:            struct_decl_typ(is_union, is_generic, is_params)
 		generic_params: generic_params
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
 }
 
-fn struct_decl_typ(is_union bool, is_generic bool) string {
+fn struct_decl_typ(is_union bool, is_generic bool, is_params bool) string {
 	mut parts := []string{}
 	if is_union {
 		parts << 'union'
 	}
 	if is_generic {
 		parts << 'generic'
+	}
+	if is_params {
+		parts << 'params'
 	}
 	return parts.join(',')
 }
@@ -1817,6 +1827,9 @@ fn (mut p Parser) skip_attrs() {
 		p.next()
 		if p.tok == .name && p.lit == 'flag' {
 			p.pending_flag = true
+		}
+		if p.tok == .name && p.lit == 'params' {
+			p.pending_params = true
 		}
 		if p.tok == .key_if {
 			p.next()

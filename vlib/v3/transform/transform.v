@@ -84,9 +84,10 @@ mut:
 
 pub struct StructInfo {
 pub:
-	name   string
-	module string
-	fields []FieldInfo
+	name      string
+	module    string
+	is_params bool
+	fields    []FieldInfo
 }
 
 pub struct FieldInfo {
@@ -211,9 +212,10 @@ fn (mut t Transformer) collect_types() {
 					}
 				}
 				info := StructInfo{
-					name:   node.value
-					module: cur_mod
-					fields: fields
+					name:      node.value
+					module:    cur_mod
+					is_params: node.typ.contains('params')
+					fields:    fields
 				}
 				t.structs[node.value] = info
 				if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
