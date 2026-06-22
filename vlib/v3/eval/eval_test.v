@@ -315,7 +315,7 @@ fn main() {
 fn test_eval_array_append_keeps_nested_array_rhs_as_single_element() {
 	mut e := create()
 	e.run_text('
-fn main() {
+	fn main() {
 	mut nested := [][]int{}
 	nested << [1, 2]
 	println(int_str(nested.len))
@@ -333,10 +333,36 @@ fn main() {
 	assert e.stdout() == '1\n2\n2\n2\n4\n'
 }
 
+fn test_eval_array_append_index_target_evaluates_once() {
+	mut e := create()
+	e.run_text('
+	fn next(mut i int) int {
+		old := i
+		i++
+		return old
+	}
+
+	fn main() {
+		mut xs := [][]int{}
+		xs << [1]
+		xs << [2]
+		mut i := 0
+		xs[next(mut i)] << 9
+		println(int_str(xs[0].len))
+		println(int_str(xs[0][1]))
+		println(int_str(xs[1].len))
+		println(int_str(i))
+	}
+		') or {
+		panic(err)
+	}
+	assert e.stdout() == '2\n9\n1\n1\n'
+}
+
 fn test_eval_or_block_return_propagates_from_array_append_rhs() {
 	mut e := create()
 	e.run_text('
-fn maybe() ?int {
+	fn maybe() ?int {
 	return none
 }
 
@@ -1408,11 +1434,13 @@ fn main() {
 fn test_eval_value_block_uses_last_sequential_expression_value() {
 	mut e := create()
 	e.run_text('
-fn trace() {}
+	fn trace() int {
+		return 1
+	}
 
-fn choose(ok bool) int {
-	return if ok {
-		trace()
+	fn choose(ok bool) int {
+		return if ok {
+			trace()
 		2
 	} else {
 		3

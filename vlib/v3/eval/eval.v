@@ -1731,11 +1731,11 @@ fn (mut e Eval) exec_array_append(node &flat.Node) !FlowSignal {
 		return rhs_signal
 	}
 	rhs := flow_value(rhs_signal)
-	current_signal := e.eval_expr_flow(lhs_id)!
-	if current_signal.kind != .normal {
-		return current_signal
+	resolved := e.resolve_lvalue_flow(lhs_id)!
+	if resolved.signal.kind != .normal {
+		return resolved.signal
 	}
-	current := flow_value(current_signal)
+	current := resolved.value
 	if current !is ArrayValue {
 		return error('v3.eval: `<<` is only supported for arrays')
 	}
@@ -1747,8 +1747,7 @@ fn (mut e Eval) exec_array_append(node &flat.Node) !FlowSignal {
 	} else {
 		arr.values << e.adapt_value_to_type_name(rhs, arr.elem_type_name)
 	}
-	e.update_target(lhs_id, arr)!
-	return normal_flow()
+	return e.write_resolved_lvalue_flow(resolved, arr)
 }
 
 fn (e &Eval) array_append_rhs_spreads(rhs_id flat.NodeId, rhs ArrayValue, elem_type_name string) bool {
@@ -3639,9 +3638,12 @@ fn (mut e Eval) eval_block_value(node &flat.Node) !Value {
 }
 
 fn (mut e Eval) eval_block_value_flow(node &flat.Node) !FlowSignal {
+	return e.eval_block_value_flow_collect(node, false)
+}
+
+fn (mut e Eval) eval_block_value_flow_collect(node &flat.Node, collect_expr_values bool) !FlowSignal {
 	e.open_scope()
 	mut values := []Value{}
-	collect_expr_values := e.block_has_only_expr_stmts(node) && node.children_count > 1
 	for child_id in e.children(node) {
 		child := e.node(child_id)
 		if child.kind == .expr_stmt && child.children_count > 0 {
@@ -3664,7 +3666,9 @@ fn (mut e Eval) eval_block_value_flow(node &flat.Node) !FlowSignal {
 			continue
 		}
 		if child.kind == .block {
-			signal := e.eval_block_value_flow(child)!
+			collect_child_expr_values := node.children_count == 1
+				&& e.block_has_only_expr_stmts(child) && child.children_count > 1
+			signal := e.eval_block_value_flow_collect(child, collect_child_expr_values)!
 			if signal.kind != .normal {
 				e.close_scope()!
 				return signal
