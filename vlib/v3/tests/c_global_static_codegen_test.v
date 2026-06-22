@@ -95,12 +95,25 @@ fn test_aggregate_globals_are_brace_zero_initialized() {
 	value int
 }
 
+struct ZeroLeading {
+	z [0]int
+	value int
+}
+
+struct NestedZeroLeading {
+	zero ZeroLeading
+	value int
+}
+
 __global (
 	names []string
 	lookup map[string]int
 	box Box
 	empty [0]int
 	slots [2]int
+	zero ZeroLeading
+	nested NestedZeroLeading
+	zero_slots [2]ZeroLeading
 )
 
 fn main() {}
@@ -110,10 +123,16 @@ fn main() {}
 	assert c_code.contains('Box box = {0};')
 	assert c_code.contains('int empty[0];')
 	assert c_code.contains('int slots[2] = {0};')
+	assert c_code.contains('\nZeroLeading zero;\n')
+	assert c_code.contains('\nNestedZeroLeading nested;\n')
+	assert c_code.contains('\nZeroLeading zero_slots[2];\n')
 	assert !c_code.contains('Array names = 0;')
 	assert !c_code.contains('map lookup = 0;')
 	assert !c_code.contains('Box box = 0;')
 	assert !c_code.contains('int empty[0] = {0};')
+	assert !c_code.contains('ZeroLeading zero = {0};')
+	assert !c_code.contains('NestedZeroLeading nested = {0};')
+	assert !c_code.contains('ZeroLeading zero_slots[2] = {0};')
 }
 
 fn test_aggregate_decl_with_scalar_zero_uses_brace_initializer() {

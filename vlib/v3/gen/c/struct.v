@@ -524,6 +524,42 @@ fn (g &FlatGen) is_aggregate_zero_init_type(typ types.Type, c_type string) bool 
 	}
 }
 
+fn (mut g FlatGen) can_use_global_brace_zero_init(typ types.Type, c_type string) bool {
+	return g.is_aggregate_zero_init_type(typ, c_type) && !g.has_zero_sized_leading_init_slot(typ)
+}
+
+fn (mut g FlatGen) has_zero_sized_leading_init_slot(typ types.Type) bool {
+	mut visited := map[string]bool{}
+	return g.has_zero_sized_leading_init_slot_inner(typ, mut visited)
+}
+
+fn (mut g FlatGen) has_zero_sized_leading_init_slot_inner(typ types.Type, mut visited map[string]bool) bool {
+	return match typ {
+		types.Alias {
+			g.has_zero_sized_leading_init_slot_inner(typ.base_type, mut visited)
+		}
+		types.ArrayFixed {
+			if g.fixed_array_len_value(typ) == '0' {
+				true
+			} else {
+				g.has_zero_sized_leading_init_slot_inner(typ.elem_type, mut visited)
+			}
+		}
+		types.Struct {
+			if typ.name in visited {
+				false
+			} else {
+				visited[typ.name] = true
+				first := g.struct_field_at(typ.name, 0) or { return false }
+				g.has_zero_sized_leading_init_slot_inner(first.typ, mut visited)
+			}
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (g &FlatGen) scalar_zero_init(c_type string) string {
 	if c_type in ['float', 'double'] {
 		return '0.0'

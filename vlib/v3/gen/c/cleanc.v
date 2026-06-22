@@ -2027,11 +2027,8 @@ fn (mut g FlatGen) global_decls() {
 		if typ is types.ArrayFixed {
 			c_elem := g.tc.c_type(typ.elem_type)
 			len_expr := g.fixed_array_len_value(typ)
-			if len_expr == '0' {
-				g.writeln('${c_elem} ${c_name(name)}[0];')
-				continue
-			}
-			g.writeln('${c_elem} ${c_name(name)}[${len_expr}] = {0};')
+			init := if g.has_zero_sized_leading_init_slot(typ) { '' } else { ' = {0}' }
+			g.writeln('${c_elem} ${c_name(name)}[${len_expr}]${init};')
 			continue
 		}
 		ct := g.tc.c_type(typ)
@@ -2041,7 +2038,7 @@ fn (mut g FlatGen) global_decls() {
 		if typ is types.Struct && typ.name.starts_with('C.') {
 			continue
 		}
-		init := if g.is_aggregate_zero_init_type(typ, ct) { ' = {0}' } else { '' }
+		init := if g.can_use_global_brace_zero_init(typ, ct) { ' = {0}' } else { '' }
 		g.writeln('${ct} ${c_name(name)}${init};')
 	}
 	if g.global_types.len > 0 {
