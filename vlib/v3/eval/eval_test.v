@@ -359,6 +359,28 @@ fn test_eval_array_append_index_target_evaluates_once() {
 	assert e.stdout() == '2\n9\n1\n1\n'
 }
 
+fn test_eval_array_append_rhs_uses_element_enum_type() {
+	mut e := create()
+	e.run_text('
+	enum Color {
+		red = 10
+	}
+
+	enum Other {
+		red = 1
+	}
+
+	fn main() {
+		mut xs := []Color{}
+		xs << .red
+		println(xs[0] == Color.red)
+	}
+		') or {
+		panic(err)
+	}
+	assert e.stdout() == 'true\n'
+}
+
 fn test_eval_or_block_return_propagates_from_array_append_rhs() {
 	mut e := create()
 	e.run_text('
@@ -664,7 +686,7 @@ fn main() {
 fn test_eval_map_delete_mutates_receiver() {
 	mut e := create()
 	e.run_text("
-fn main() {
+	fn main() {
 	mut m := map[string]int{}
 	m['a'] = 7
 	m.delete('a')
@@ -678,10 +700,35 @@ fn main() {
 	assert e.stdout() == '0\nfalse\n0\n'
 }
 
+fn test_eval_map_delete_index_receiver_evaluates_once() {
+	mut e := create()
+	e.run_text("
+	fn next(mut i int) int {
+		old := i
+		i++
+		return old
+	}
+
+	fn main() {
+		mut maps := []map[string]int{}
+		maps << map[string]int{'a': 1}
+		maps << map[string]int{'a': 2}
+		mut i := 0
+		maps[next(mut i)].delete('a')
+		println('a' in maps[0])
+		println('a' in maps[1])
+		println(int_str(i))
+	}
+	") or {
+		panic(err)
+	}
+	assert e.stdout() == 'false\ntrue\n1\n'
+}
+
 fn test_eval_map_literal_adapts_sum_values() {
 	mut e := create()
 	e.run_text('
-type Any = int | string
+	type Any = int | string
 
 fn main() {
 	m := map[string]Any{"a": 1, "b": "s"}
@@ -1615,7 +1662,7 @@ fn main() {
 fn test_eval_enum_zero_values_use_first_field() {
 	mut e := create()
 	e.run_text('
-enum Color {
+	enum Color {
 	red
 	blue
 }
@@ -1641,10 +1688,33 @@ fn main() {
 	assert e.stdout() == 'true\ntrue\ntrue\ntrue\n'
 }
 
+fn test_eval_enum_cast_preserves_enum_identity() {
+	mut e := create()
+	e.run_text('
+	enum Color {
+		red
+		blue
+	}
+
+	type Any = Color | int
+
+	fn main() {
+		c := Color(1)
+		x := Any(Color(1))
+		println(c == Color.blue)
+		println(c)
+		println(x is Color)
+	}
+		') or {
+		panic(err)
+	}
+	assert e.stdout() == 'true\nblue\ntrue\n'
+}
+
 fn test_eval_global_assignment_uses_declared_type() {
 	mut e := create()
 	e.run_text('
-enum State {
+	enum State {
 	idle
 	busy
 }

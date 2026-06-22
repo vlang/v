@@ -1726,11 +1726,6 @@ fn (mut e Eval) set_selector_value(container Value, field_name string, value Val
 fn (mut e Eval) exec_array_append(node &flat.Node) !FlowSignal {
 	lhs_id := e.child(node, 0)
 	rhs_id := e.child(node, 1)
-	rhs_signal := e.eval_expr_flow(rhs_id)!
-	if rhs_signal.kind != .normal {
-		return rhs_signal
-	}
-	rhs := flow_value(rhs_signal)
 	resolved := e.resolve_lvalue_flow(lhs_id)!
 	if resolved.signal.kind != .normal {
 		return resolved.signal
@@ -1740,6 +1735,18 @@ fn (mut e Eval) exec_array_append(node &flat.Node) !FlowSignal {
 		return error('v3.eval: `<<` is only supported for arrays')
 	}
 	mut arr := current as ArrayValue
+	rhs_type_name := e.infer_expr_type_name(rhs_id)
+	rhs_expected_type := if rhs_type_name.len > 0
+		&& e.array_type_spreads_into_elem(rhs_type_name, arr.elem_type_name) {
+		rhs_type_name
+	} else {
+		arr.elem_type_name
+	}
+	rhs_signal := e.eval_expr_flow_expected(rhs_id, rhs_expected_type)!
+	if rhs_signal.kind != .normal {
+		return rhs_signal
+	}
+	rhs := flow_value(rhs_signal)
 	if rhs is ArrayValue && e.array_append_rhs_spreads(rhs_id, rhs, arr.elem_type_name) {
 		for item in rhs.values {
 			arr.values << e.adapt_value_to_type_name(item, arr.elem_type_name)
@@ -2719,11 +2726,11 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 	}
 	if callee.kind == .selector {
 		receiver_id := e.child(callee, 0)
-		receiver_signal := e.eval_expr_flow(receiver_id)!
-		if receiver_signal.kind != .normal {
-			return receiver_signal
+		receiver_resolved := e.resolve_lvalue_flow(receiver_id)!
+		if receiver_resolved.signal.kind != .normal {
+			return receiver_resolved.signal
 		}
-		left := flow_value(receiver_signal)
+		left := receiver_resolved.value
 		if left is ModuleValue {
 			expected_types := if target := e.function_def(left.name, callee.value) {
 				e.function_param_type_names(target, 0)
@@ -2781,7 +2788,10 @@ fn (mut e Eval) eval_call_flow(id flat.NodeId, node &flat.Node) !FlowSignal {
 		result := e.call_value_method(left, receiver_type_name, callee.value, args_signal.values)!
 		if result.receiver_changed {
 			if e.is_assignable_target(receiver_id) {
-				e.update_target(receiver_id, result.receiver)!
+				write_signal := e.write_resolved_lvalue_flow(receiver_resolved, result.receiver)!
+				if write_signal.kind != .normal {
+					return write_signal
+				}
 			}
 		}
 		e.write_back_mutated_arg_values(node, result.mutated_args, args_signal.mut_lvalues)!
@@ -5474,6 +5484,12 @@ fn (e &Eval) cast_value_in_module(value Value, type_name string, module_name str
 	}
 	if name == 'string' {
 		return Value(e.value_string(source))
+	}
+	if target_name in e.enum_fields {
+		return e.enum_value(target_name, source)
+	}
+	if name in e.enum_fields {
+		return e.enum_value(name, source)
 	}
 	if name.starts_with('?') {
 		inner_type := name[1..]
