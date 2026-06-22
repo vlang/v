@@ -546,11 +546,12 @@ enum Other {
 fn main() {
 	m := map[Color]int{.red: 7}
 	println(int_str(m[Color.red]))
+	println(int_str(m[.red] or { 0 }))
 }
 	') or {
 		panic(err)
 	}
-	assert e.stdout() == '7\n'
+	assert e.stdout() == '7\n7\n'
 }
 
 fn test_eval_map_lookup_adapts_sum_keys() {
@@ -1988,8 +1989,7 @@ fn maybe() ?int {
 }
 
 fn run() int {
-	_ := "' + '$' +
-		'{maybe() or {
+	_ := "\${maybe() or {
 		return 7
 	}}"
 	return 9

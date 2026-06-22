@@ -3450,7 +3450,8 @@ fn (mut e Eval) eval_or_expr_flow(node &flat.Node) !FlowSignal {
 		}
 		container := flow_value(container_signal)
 		if container is MapValue {
-			index_signal := e.eval_expr_flow(e.child(left_node, 1))!
+			index_signal := e.eval_expr_flow_expected(e.child(left_node, 1),
+				container.key_type_name)!
 			if index_signal.kind != .normal {
 				return index_signal
 			}
