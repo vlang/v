@@ -553,6 +553,22 @@ fn main() {
 	assert e.stdout() == '7\n'
 }
 
+fn test_eval_map_lookup_adapts_sum_keys() {
+	mut e := create()
+	e.run_text('
+type Any = int | string
+
+fn main() {
+	m := map[Any]int{1: 2, "s": 3}
+	println(int_str(m[1]))
+	println(int_str(m["s"]))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '2\n3\n'
+}
+
 fn test_eval_indexed_writes_adapt_sum_values() {
 	mut e := create()
 	e.run_text('
@@ -604,6 +620,31 @@ fn main() {
 		panic(err)
 	}
 	assert e.stdout() == '1\n0\n'
+}
+
+fn test_eval_typed_map_target_adapts_entries() {
+	mut e := create()
+	e.run_text('
+type Any = int | string
+
+struct S {
+	m map[string]Any
+}
+
+fn main() {
+	s := S{
+		m: {
+			"a": 1
+			"b": "s"
+		}
+	}
+	println(int_str(s.m["a"]._typ))
+	println(int_str(s.m["b"]._typ))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '0\n1\n'
 }
 
 fn test_eval_mut_receiver_method_updates_original() {
@@ -1939,6 +1980,30 @@ fn main() {
 	assert e.stdout() == '7\n'
 }
 
+fn test_eval_or_block_return_propagates_from_string_interpolation() {
+	mut e := create()
+	e.run_text('
+fn maybe() ?int {
+	return none
+}
+
+fn run() int {
+	_ := "' + '$' +
+		'{maybe() or {
+		return 7
+	}}"
+	return 9
+}
+
+fn main() {
+	println(int_str(run()))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '7\n'
+}
+
 fn test_eval_match_expression_propagates_branch_return() {
 	mut e := create()
 	e.run_text('
@@ -2004,6 +2069,51 @@ fn main() {
 	p.parse_files([mod_file, main_file])
 	e.run_files(p.a) or { panic(err) }
 	assert e.stdout() == '7\n'
+}
+
+fn test_eval_enum_initializers_use_declaring_module_context() {
+	dir := os.join_path(os.temp_dir(), 'v3_eval_enum_module_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	mod_file := os.join_path(dir, 'm.v')
+	main_file := os.join_path(dir, 'main.v')
+	os.write_file(mod_file, '
+module m
+
+const base = 2
+
+pub enum E {
+	a = base
+	b
+}
+
+pub fn value() int {
+	return int(E.a) * 10 + int(E.b)
+}
+') or {
+		panic(err)
+	}
+	os.write_file(main_file, '
+module main
+
+import m
+
+const base = 10
+
+fn main() {
+	println(int_str(m.value()))
+}
+') or {
+		panic(err)
+	}
+	mut e := create()
+	mut p := parser.Parser.new(&e.prefs)
+	p.parse_files([mod_file, main_file])
+	e.run_files(p.a) or { panic(err) }
+	assert e.stdout() == '23\n'
 }
 
 fn test_eval_global_initializers_run_after_registration_in_declaring_module() {

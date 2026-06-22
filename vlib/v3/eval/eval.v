@@ -415,7 +415,8 @@ fn (mut e Eval) register_files() ! {
 							continue
 						}
 						value := if field.children_count > 0 {
-							e.value_as_int(e.eval_expr(e.child(field, 0))!)!
+							e.value_as_int(e.eval_expr_in_module(e.child(field, 0), module_name,
+								file_name, '<enum ${child.value}.${field.value}>')!)!
 						} else {
 							next_value
 						}
@@ -562,6 +563,18 @@ fn (mut e Eval) evaluate_global_init(entry GlobalEntry) ! {
 	}
 	e.call_stack.delete(e.call_stack.len - 1)
 	e.globals[entry.module_name][entry.name] = e.adapt_value_to_type_name(value, entry.typ)
+}
+
+fn (mut e Eval) eval_expr_in_module(id flat.NodeId, module_name string, file_name string, label string) !Value {
+	e.call_stack << CallFrame{
+		module_name: module_name
+		file_name:   file_name
+		fn_name:     label
+	}
+	defer {
+		e.call_stack.delete(e.call_stack.len - 1)
+	}
+	return e.eval_expr(id)
 }
 
 fn (mut e Eval) register_function(module_name string, file_name string, id flat.NodeId, node &flat.Node) {
@@ -1838,16 +1851,7 @@ fn (mut e Eval) eval_expr(id flat.NodeId) !Value {
 			return Value(node.value)
 		}
 		.string_interp {
-			mut out := ''
-			for child_id in e.children(node) {
-				child := e.node(child_id)
-				if child.kind == .string_literal {
-					out += child.value
-				} else {
-					out += e.value_string(e.eval_expr(child_id)!)
-				}
-			}
-			return Value(out)
+			return flow_value(e.eval_string_interp_flow(node)!)
 		}
 		.ident {
 			return e.eval_ident(node.value)
@@ -2095,6 +2099,9 @@ fn (mut e Eval) eval_expr_flow(id flat.NodeId) !FlowSignal {
 		}
 		.assoc {
 			return e.eval_assoc_flow(node)
+		}
+		.string_interp {
+			return e.eval_string_interp_flow(node)
 		}
 		else {
 			return FlowSignal{
@@ -2955,7 +2962,11 @@ fn (mut e Eval) eval_index(node &flat.Node) !Value {
 		}
 		return e.slice_value(container, start, end)!
 	}
-	index := e.eval_expr(e.child(node, 1))!
+	index := if container is MapValue {
+		e.eval_expr_expected(e.child(node, 1), container.key_type_name)!
+	} else {
+		e.eval_expr(e.child(node, 1))!
+	}
 	return e.index_value(container, index)
 }
 
@@ -2990,7 +3001,11 @@ fn (mut e Eval) eval_index_flow(node &flat.Node) !FlowSignal {
 		}
 		return value_flow(e.slice_value(container, start, end)!)
 	}
-	index_signal := e.eval_expr_flow(e.child(node, 1))!
+	index_signal := if container is MapValue {
+		e.eval_expr_flow_expected(e.child(node, 1), container.key_type_name)!
+	} else {
+		e.eval_expr_flow(e.child(node, 1))!
+	}
 	if index_signal.kind != .normal {
 		return index_signal
 	}
@@ -3007,7 +3022,8 @@ fn (mut e Eval) index_value(container Value, index Value) !Value {
 			return container.values[idx]
 		}
 		MapValue {
-			value, ok := e.map_lookup(container, index)
+			value, ok := e.map_lookup(container, e.adapt_value_to_type_name(index,
+				container.key_type_name))
 			if ok {
 				return value
 			}
@@ -3270,6 +3286,23 @@ fn (mut e Eval) eval_map_init(node &flat.Node) !Value {
 		m = e.map_set_value(m, key, values[j])
 	}
 	return m
+}
+
+fn (mut e Eval) eval_string_interp_flow(node &flat.Node) !FlowSignal {
+	mut out := ''
+	for child_id in e.children(node) {
+		child := e.node(child_id)
+		if child.kind == .string_literal {
+			out += child.value
+			continue
+		}
+		signal := e.eval_expr_flow(child_id)!
+		if signal.kind != .normal {
+			return signal
+		}
+		out += e.value_string(flow_value(signal))
+	}
+	return value_flow(Value(out))
 }
 
 fn split_map_type(type_name string) (string, string) {
@@ -4365,8 +4398,9 @@ fn (e &Eval) value_eq(left Value, right Value) bool {
 }
 
 fn (e &Eval) map_lookup(receiver MapValue, key Value) (Value, bool) {
+	typed_key := e.adapt_value_to_type_name(key, receiver.key_type_name)
 	for entry in receiver.entries {
-		if e.value_eq(entry.key, key) {
+		if e.value_eq(entry.key, typed_key) {
 			return entry.value, true
 		}
 	}
@@ -4379,6 +4413,7 @@ fn (e &Eval) map_contains_key(receiver MapValue, key Value) bool {
 }
 
 fn (e &Eval) map_set_value(receiver MapValue, key Value, value Value) MapValue {
+	entry_key := e.adapt_value_to_type_name(key, receiver.key_type_name)
 	entry_value := e.adapt_value_to_type_name(value, receiver.value_type_name)
 	mut m := MapValue{
 		key_type_name:   receiver.key_type_name
@@ -4387,13 +4422,13 @@ fn (e &Eval) map_set_value(receiver MapValue, key Value, value Value) MapValue {
 		entries:         receiver.entries.clone()
 	}
 	for i, entry in m.entries {
-		if e.value_eq(entry.key, key) {
+		if e.value_eq(entry.key, entry_key) {
 			m.entries[i].value = entry_value
 			return m
 		}
 	}
 	m.entries << MapEntry{
-		key:   key
+		key:   entry_key
 		value: entry_value
 	}
 	return m
@@ -4401,8 +4436,9 @@ fn (e &Eval) map_set_value(receiver MapValue, key Value, value Value) MapValue {
 
 fn (e &Eval) map_delete_value(receiver MapValue, key Value) MapValue {
 	mut m := receiver
+	typed_key := e.adapt_value_to_type_name(key, receiver.key_type_name)
 	for i, entry in m.entries {
-		if e.value_eq(entry.key, key) {
+		if e.value_eq(entry.key, typed_key) {
 			m.entries.delete(i)
 			break
 		}
@@ -4678,6 +4714,18 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name string) Value {
 		}
 		arr.values = values
 		return arr
+	}
+	if type_name.starts_with('map[') && value is MapValue {
+		key_type_name, value_type_name := split_map_type(type_name)
+		mut m := MapValue{
+			key_type_name:   key_type_name
+			value_type_name: value_type_name
+			default_value:   e.adapt_value_to_type_name(value.default_value, value_type_name)
+		}
+		for entry in value.entries {
+			m = e.map_set_value(m, entry.key, entry.value)
+		}
+		return m
 	}
 	target_type_name := e.normalize_type_name(type_name)
 	if target_type_name in e.sum_types && !e.value_matches_type_name(value, target_type_name) {
