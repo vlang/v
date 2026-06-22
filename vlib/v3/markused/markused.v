@@ -132,7 +132,8 @@ pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 		'strings.Builder.free', 'strconv.format_int', 'strconv.format_uint', 'bool.str', 'ptr_str',
 		'strconv__f32_to_str_l', 'strconv__f64_to_str_l', 'sync.new_channel_st', 'sync.Channel.push',
 		'sync.Channel.pop', 'sync.Channel.close', 'new_channel_st', 'Channel.push', 'Channel.pop',
-		'Channel.close'] {
+		'Channel.close', 'panic', 'u8.is_letter', 'u8.is_capital', 'string.is_capital',
+		'string.to_lower_ascii', 'rune.to_lower', 'data_to_hex_string'] {
 		queue << seed
 		used[seed] = true
 	}

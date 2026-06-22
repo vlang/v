@@ -1986,13 +1986,13 @@ fn (mut g FlatGen) builtin_compat_decls() {
 	g.writeln('#define array_delete array__delete')
 	g.writeln('#define array_ensure_cap array__ensure_cap')
 	g.writeln('#define map__get_or_set map__get_and_set')
-	g.writeln('static inline void v_panic(string s) { fprintf(stderr, "V panic: %.*s\\n", s.len, s.str); exit(1); }')
-	g.writeln("static inline bool u8__is_letter(u8 c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }")
-	g.writeln("static inline bool u8__is_capital(u8 c) { return c >= 'A' && c <= 'Z'; }")
-	g.writeln('static inline bool string__is_capital(string s) { return s.len > 0 && u8__is_capital(s.str[0]); }')
-	g.writeln("static inline string string__to_lower_ascii(string s) { u8* out = (u8*)malloc((size_t)s.len + 1); for (int i = 0; i < s.len; i++) { u8 c = s.str[i]; out[i] = c >= 'A' && c <= 'Z' ? c + 32 : c; } out[s.len] = 0; return (string){.str = out, .len = s.len, .is_lit = 0}; }")
-	g.writeln("static inline i32 rune__to_lower(i32 c) { return c >= 'A' && c <= 'Z' ? c + 32 : c; }")
-	g.writeln('static inline string data_to_hex_string(const void* data, int len) { static const char* hex = "0123456789abcdef"; int n = len > 0 ? len : 0; u8* out = (u8*)malloc((size_t)n * 2 + 1); const u8* bytes = (const u8*)data; for (int i = 0; i < n; i++) { out[i * 2] = (u8)hex[(bytes[i] >> 4) & 15]; out[i * 2 + 1] = (u8)hex[bytes[i] & 15]; } out[n * 2] = 0; return (string){.str = out, .len = n * 2, .is_lit = 0}; }')
+	g.writeln('void panic(string s);')
+	g.writeln('bool u8__is_letter(u8 c);')
+	g.writeln('bool u8__is_capital(u8 c);')
+	g.writeln('bool string__is_capital(string s);')
+	g.writeln('string string__to_lower_ascii(string s);')
+	g.writeln('i32 rune__to_lower(i32 c);')
+	g.writeln('string data_to_hex_string(u8* data, int len);')
 	g.writeln('#ifndef V_COMMIT_HASH')
 	g.writeln('#define V_COMMIT_HASH ""')
 	g.writeln('#endif')
@@ -2136,9 +2136,6 @@ fn (g &FlatGen) needs_late_compat_decls() bool {
 fn (mut g FlatGen) late_compat_decls() {
 	if 'strconv.AtoF64Param' in g.struct_decl_infos {
 		g.writeln('static inline Optional strconv__atof64(string s, strconv__AtoF64Param param) { (void)param; char buf[128]; int n = s.len < 127 ? s.len : 127; if (n < 0) n = 0; if (s.str != NULL && n > 0) memcpy(buf, s.str, (size_t)n); buf[n] = 0; return (Optional){.ok = true, .value = (int)strtod(buf, NULL)}; }')
-	}
-	if 'strconv.PrepNumber' in g.struct_decl_infos {
-		g.writeln('static inline multi_return_int_strconv__PrepNumber strconv__parser(string s) { (void)s; return (multi_return_int_strconv__PrepNumber){.arg0 = 0, .arg1 = (strconv__PrepNumber){}}; }')
 	}
 	if !g.needs_late_compat_decls() {
 		return

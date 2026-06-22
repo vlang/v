@@ -361,7 +361,7 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 				g.writeln('\treturn i->code;')
 			}
 			else {
-				g.writeln('\tv_panic(_str_${sid});')
+				g.writeln('\tpanic(_str_${sid});')
 				g.writeln('\treturn (${ret_ct}){0};')
 			}
 		}
@@ -441,7 +441,7 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 		g.writeln('\t\tdefault: break;')
 		g.writeln('\t}')
 	}
-	g.writeln('\tv_panic(_str_${sid});')
+	g.writeln('\tpanic(_str_${sid});')
 	if ret_ct != 'void' {
 		g.writeln('\treturn (${ret_ct}){0};')
 	}

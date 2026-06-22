@@ -765,7 +765,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			return
 		}
 		'panic' {
-			g.write('v_panic(')
+			g.write('panic(')
 			if node.children_count > 1 {
 				arg_id := g.a.child(&node, 1)
 				arg_type := g.tc.resolve_type(arg_id)
@@ -2177,6 +2177,10 @@ fn (g &FlatGen) node_has_unresolved_generics(id flat.NodeId) bool {
 	}
 	node := g.a.nodes[int(id)]
 	if node.kind == .fn_decl || node.kind == .c_fn_decl || node.kind == .fn_literal {
+		return false
+	}
+	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.nil_literal, .none_expr] {
 		return false
 	}
 	if g.has_unresolved_generic_text(node.value) || g.has_unresolved_generic_text(node.typ) {

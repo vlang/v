@@ -1035,7 +1035,7 @@ fn (mut g FlatGen) gen_assign_or_expr(node flat.Node, lhs_idx int, or_node flat.
 			fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
 			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
-			g.writeln('v_panic(IError__str(err));')
+			g.writeln('panic(IError__str(err));')
 		}
 	} else {
 		for j in 0 .. or_body.children_count {
@@ -1090,7 +1090,7 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 			fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
 			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
-			g.writeln('v_panic(IError__str(err));')
+			g.writeln('panic(IError__str(err));')
 		}
 	} else if or_body.children_count > 0 {
 		for i in 0 .. or_body.children_count {
@@ -1272,7 +1272,7 @@ fn (mut g FlatGen) gen_or_expr_stmt(node flat.Node) {
 			fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
 			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
-			g.writeln('v_panic(IError__str(err));')
+			g.writeln('panic(IError__str(err));')
 		}
 	} else {
 		for i in 0 .. or_body.children_count {
