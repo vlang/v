@@ -13,10 +13,18 @@ fn build_v3() string {
 }
 
 fn run_bad(v3_bin string, name string, src string, expected string) {
+	run_bad_with_flags(v3_bin, name, src, expected, '')
+}
+
+fn run_bad_selfhost(v3_bin string, name string, src string, expected string) {
+	run_bad_with_flags(v3_bin, name, src, expected, '-selfhost')
+}
+
+fn run_bad_with_flags(v3_bin string, name string, src string, expected string, flags string) {
 	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	result := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	result := os.execute('${v3_bin} ${bad_src} ${flags} -b c -o ${bad_bin}')
 	assert result.exit_code != 0
 	assert result.output.contains(expected)
 	assert !result.output.contains('C compilation failed')
@@ -27,10 +35,10 @@ fn run_good(v3_bin string, name string, src string) string {
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
 	compile := os.execute('${v3_bin} ${good_src} -b c -o ${good_bin}')
-	assert compile.exit_code == 0
-	assert !compile.output.contains('C compilation failed')
+	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
 	run := os.execute(good_bin)
-	assert run.exit_code == 0
+	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
 	return run.output.trim_space()
 }
 
@@ -69,10 +77,10 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
 	compile := os.execute('${v3_bin} ${input_path} -b c -o ${good_bin}')
-	assert compile.exit_code == 0
-	assert !compile.output.contains('C compilation failed')
+	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
 	run := os.execute(good_bin)
-	assert run.exit_code == 0
+	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
 	return run.output.trim_space()
 }
 
@@ -145,10 +153,27 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'`Bird` is not a variant of sum type `Animal`')
 	run_bad(v3_bin, 'bad_unknown_decl_type', 'fn f(x Missing) {}\nfn main() {}\n',
 		'unknown type `Missing`')
-	run_bad(v3_bin, 'bad_generic_param',
+	run_bad(v3_bin, 'bad_unknown_generic_application_base',
+		'fn f(x Missing[int]) {}\nfn main() {}\n', 'unknown type `Missing`')
+	run_bad(v3_bin, 'bad_unknown_generic_application_arg',
+		'struct Box[T] {\n\tvalue T\n}\nfn f(x Box[Missing]) {}\nfn main() {}\n',
+		'unknown type `Missing`')
+	run_bad(v3_bin, 'bad_single_letter_struct_arg',
+		'struct A {}\nfn takes_a(a A) {}\nfn main() {\n\ttakes_a(1)\n}\n',
+		'cannot use `int` as argument 1 to `takes_a`; expected `A`')
+	run_bad(v3_bin, 'bad_unknown_single_letter_type', 'fn f(x Z) {}\nfn main() {}\n',
+		'unknown type `Z`')
+	run_bad(v3_bin, 'bad_repeated_unknown_single_letter_type',
+		'fn f(x Z) Z {\n\treturn x\n}\nfn main() {}\n', 'unknown type `Z`')
+	run_bad(v3_bin, 'bad_undeclared_generic_fn_param', 'fn f[T](x T, y Z) {}\nfn main() {}\n',
+		'unknown type `Z`')
+	run_bad(v3_bin, 'bad_undeclared_generic_struct_field',
+		'struct Box[T] {\n\tother U\n}\nfn main() {}\n', 'unknown type `U`')
+	run_bad_selfhost(v3_bin, 'bad_generic_param',
 		'fn id[T](x T) T {\n\treturn x\n}\nfn main() {\n\t_ := id(1)\n}\n',
 		'unsupported generic type parameter `T`')
-	run_bad(v3_bin, 'bad_generic_type_application', 'fn takes_box(x Box[int]) {}\nfn main() {}\n',
+	run_bad_selfhost(v3_bin, 'bad_generic_type_application',
+		'fn takes_box(x Box[int]) {}\nfn main() {}\n',
 		'unsupported generic type application `Box[int]`')
 	run_bad_project(v3_bin, 'bad_bare_imported_call', {
 		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\t_ := answer()\n}\n'

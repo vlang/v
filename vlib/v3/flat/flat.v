@@ -136,9 +136,10 @@ pub enum Op {
 
 pub struct Node {
 pub mut:
-	value   string
-	typ     string
-	kind_id int
+	value          string
+	typ            string
+	generic_params []string
+	kind_id        int
 pub:
 	pos            token.Pos
 	children_start i32

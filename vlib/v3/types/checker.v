@@ -114,6 +114,7 @@ pub mut:
 	checking_nodes                []bool
 	diagnose_unknown_calls        bool
 	reject_unlowered_map_mutation bool
+	reject_unsupported_generics   bool
 	diagnostic_files              map[string]bool
 	cur_fn_ret_type               Type = Type(void_)
 	smartcasts                    map[string]Type
@@ -208,6 +209,17 @@ fn (mut tc TypeChecker) record_error(kind TypeErrorKind, msg string, node flat.N
 	tc.errors << TypeError{
 		msg:  msg
 		kind: kind
+		node: node
+	}
+}
+
+fn (mut tc TypeChecker) record_unsupported_generic(msg string, node flat.NodeId) {
+	if !tc.should_diagnose_unsupported_generic(node) {
+		return
+	}
+	tc.errors << TypeError{
+		msg:  msg
+		kind: .unsupported_generic
 		node: node
 	}
 }
@@ -1027,6 +1039,11 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				tc.pop_scope()
 				tc.cur_fn_ret_type = Type(void_)
 			}
+			.c_fn_decl {
+				if tc.reject_unsupported_generics {
+					tc.check_decl_type_strings(flat.NodeId(i), node)
+				}
+			}
 			else {}
 		}
 
@@ -1046,8 +1063,17 @@ fn (mut tc TypeChecker) check_fn_body(node flat.Node) {
 }
 
 fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.Node) {
-	if !(node.kind == .struct_decl && node.typ.contains('union')) {
-		tc.check_type_string_for_unsupported_generics(node.typ, node_id)
+	generic_params := tc.infer_decl_generic_params(node)
+	if node.kind == .struct_decl {
+		if node.typ.contains('generic') && tc.reject_unsupported_generics {
+			tc.record_unsupported_generic('unsupported generic struct `${node.value}`', node_id)
+		}
+	} else {
+		if node.generic_params.len > 0 && tc.reject_unsupported_generics {
+			tc.record_unsupported_generic('unsupported generic declaration `${node.value}`',
+				node_id)
+		}
+		tc.check_type_string_for_unsupported_generics(node.typ, node_id, generic_params)
 	}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
@@ -1055,9 +1081,9 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 			continue
 		}
 		child := tc.a.nodes[int(child_id)]
-		tc.check_type_string_for_unsupported_generics(child.typ, child_id)
+		tc.check_type_string_for_unsupported_generics(child.typ, child_id, generic_params)
 		if node.kind == .type_decl && child.value.len > 0 {
-			tc.check_type_string_for_unsupported_generics(child.value, child_id)
+			tc.check_type_string_for_unsupported_generics(child.value, child_id, generic_params)
 		}
 		for j in 0 .. child.children_count {
 			grandchild_id := tc.a.child(&child, j)
@@ -1065,73 +1091,227 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 				continue
 			}
 			grandchild := tc.a.nodes[int(grandchild_id)]
-			tc.check_type_string_for_unsupported_generics(grandchild.typ, grandchild_id)
+			tc.check_type_string_for_unsupported_generics(grandchild.typ, grandchild_id,
+				generic_params)
 		}
 	}
 }
 
-fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ string, node_id flat.NodeId) {
+fn (tc &TypeChecker) infer_decl_generic_params(node flat.Node) map[string]bool {
+	mut params := map[string]bool{}
+	for name in node.generic_params {
+		params[name] = true
+	}
+	tc.collect_generic_receiver_params(node, mut params)
+	return params
+}
+
+fn (tc &TypeChecker) collect_generic_receiver_params(node flat.Node, mut params map[string]bool) {
+	if node.kind != .fn_decl && node.kind != .c_fn_decl {
+		return
+	}
+	if !node.value.contains('.') {
+		return
+	}
+	if node.children_count == 0 {
+		return
+	}
+	receiver_id := tc.a.child(&node, 0)
+	if int(receiver_id) < 0 {
+		return
+	}
+	receiver := tc.a.nodes[int(receiver_id)]
+	if receiver.kind != .param {
+		return
+	}
+	receiver_type := receiver.typ.trim_left('&')
+	if receiver_type != node.value.all_before_last('.') {
+		return
+	}
+	mut counts := map[string]int{}
+	if !tc.collect_generic_param_candidates(receiver.typ, mut counts) {
+		return
+	}
+	for name, _ in counts {
+		params[name] = true
+	}
+}
+
+fn (tc &TypeChecker) collect_generic_param_candidates(typ string, mut counts map[string]int) bool {
+	clean := typ.trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	if clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
+		return tc.collect_generic_param_candidates(clean[1..], mut counts)
+	}
+	if clean.starts_with('shared ') {
+		return tc.collect_generic_param_candidates(clean[7..], mut counts)
+	}
+	if clean.starts_with('...') {
+		return tc.collect_generic_param_candidates(clean[3..], mut counts)
+	}
+	if clean.starts_with('[]') {
+		return tc.collect_generic_param_candidates(clean[2..], mut counts)
+	}
+	if clean.starts_with('map[') {
+		mut found_context := false
+		bracket_end := find_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			if tc.collect_generic_param_candidates(clean[4..bracket_end], mut counts) {
+				found_context = true
+			}
+			if tc.collect_generic_param_candidates(clean[bracket_end + 1..], mut counts) {
+				found_context = true
+			}
+		}
+		return found_context
+	}
+	if clean.starts_with('[') {
+		idx := clean.index_u8(`]`)
+		if idx > 0 {
+			return tc.collect_generic_param_candidates(clean[idx + 1..], mut counts)
+		}
+		return false
+	}
+	if clean.starts_with('(') && clean.ends_with(')') {
+		mut found_context := false
+		for part in split_params(clean[1..clean.len - 1]) {
+			if tc.collect_generic_param_candidates(part, mut counts) {
+				found_context = true
+			}
+		}
+		return found_context
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		mut found_context := false
+		params_start := clean.index_u8(`(`) + 1
+		mut depth := 1
+		mut params_end := params_start
+		for params_end < clean.len {
+			if clean[params_end] == `(` {
+				depth++
+			} else if clean[params_end] == `)` {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+			params_end++
+		}
+		if params_end < clean.len {
+			for part in split_params(clean[params_start..params_end]) {
+				trimmed := part.trim_space()
+				parts := trimmed.split(' ')
+				param_type := if parts.len >= 2 { parts[parts.len - 1] } else { trimmed }
+				if tc.collect_generic_param_candidates(param_type, mut counts) {
+					found_context = true
+				}
+			}
+			if tc.collect_generic_param_candidates(clean[params_end + 1..], mut counts) {
+				found_context = true
+			}
+		}
+		return found_context
+	}
+	if generic_type_application(clean) {
+		bracket := clean.index_u8(`[`)
+		bracket_end := find_matching_bracket(clean, bracket)
+		if bracket_end < clean.len {
+			for part in split_params(clean[bracket + 1..bracket_end]) {
+				tc.collect_generic_param_candidates(part, mut counts)
+			}
+		}
+		return true
+	}
+	if is_bare_generic_param(clean) && !tc.type_name_known(clean) {
+		counts[clean] = (counts[clean] or { 0 }) + 1
+	}
+	return false
+}
+
+fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ string, node_id flat.NodeId, generic_params map[string]bool) {
 	clean := typ.trim_space()
 	if clean.len == 0 {
 		return
 	}
 	if clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
-		tc.check_type_string_for_unsupported_generics(clean[1..], node_id)
+		tc.check_type_string_for_unsupported_generics(clean[1..], node_id, generic_params)
 		return
 	}
 	if clean.starts_with('shared ') {
-		tc.check_type_string_for_unsupported_generics(clean[7..], node_id)
+		tc.check_type_string_for_unsupported_generics(clean[7..], node_id, generic_params)
 		return
 	}
 	if clean.starts_with('...') {
-		tc.check_type_string_for_unsupported_generics(clean[3..], node_id)
+		tc.check_type_string_for_unsupported_generics(clean[3..], node_id, generic_params)
 		return
 	}
 	if clean.starts_with('[]') {
-		tc.check_type_string_for_unsupported_generics(clean[2..], node_id)
+		tc.check_type_string_for_unsupported_generics(clean[2..], node_id, generic_params)
 		return
 	}
 	if clean.starts_with('map[') {
 		bracket_end := find_matching_bracket(clean, 3)
 		if bracket_end < clean.len {
-			tc.check_type_string_for_unsupported_generics(clean[4..bracket_end], node_id)
-			tc.check_type_string_for_unsupported_generics(clean[bracket_end + 1..], node_id)
+			tc.check_type_string_for_unsupported_generics(clean[4..bracket_end], node_id,
+				generic_params)
+			tc.check_type_string_for_unsupported_generics(clean[bracket_end + 1..], node_id,
+				generic_params)
 		}
 		return
 	}
 	if clean.starts_with('[') {
 		idx := clean.index_u8(`]`)
 		if idx > 0 {
-			tc.check_type_string_for_unsupported_generics(clean[idx + 1..], node_id)
+			tc.check_type_string_for_unsupported_generics(clean[idx + 1..], node_id, generic_params)
 		}
 		return
 	}
 	if clean.starts_with('(') && clean.ends_with(')') {
 		for part in split_params(clean[1..clean.len - 1]) {
-			tc.check_type_string_for_unsupported_generics(part, node_id)
+			tc.check_type_string_for_unsupported_generics(part, node_id, generic_params)
 		}
 		return
 	}
 	if clean.starts_with('fn(') || clean.starts_with('fn (') {
-		tc.check_fn_type_string_for_unsupported_generics(clean, node_id)
+		tc.check_fn_type_string_for_unsupported_generics(clean, node_id, generic_params)
 		return
 	}
 	if generic_type_application(clean) {
-		tc.record_error(.unsupported_generic, 'unsupported generic type application `${clean}`',
-			node_id)
+		if tc.reject_unsupported_generics {
+			tc.record_unsupported_generic('unsupported generic type application `${clean}`',
+				node_id)
+			return
+		}
+		bracket := clean.index_u8(`[`)
+		bracket_end := find_matching_bracket(clean, bracket)
+		base := clean[..bracket].trim_space()
+		if should_check_named_type(base) && !tc.type_name_known(base) {
+			tc.record_error(.unknown_type, 'unknown type `${base}`', node_id)
+		}
+		if bracket_end < clean.len {
+			for part in split_params(clean[bracket + 1..bracket_end]) {
+				tc.check_type_string_for_unsupported_generics(part, node_id, generic_params)
+			}
+		}
 		return
 	}
 	if is_bare_generic_param(clean) && !tc.type_name_known(clean) {
-		tc.record_error(.unsupported_generic, 'unsupported generic type parameter `${clean}`',
-			node_id)
-		return
+		if tc.reject_unsupported_generics {
+			tc.record_unsupported_generic('unsupported generic type parameter `${clean}`', node_id)
+			return
+		}
+		if clean in generic_params {
+			return
+		}
 	}
 	if should_check_named_type(clean) && !tc.type_name_known(clean) {
 		tc.record_error(.unknown_type, 'unknown type `${clean}`', node_id)
 	}
 }
 
-fn (mut tc TypeChecker) check_fn_type_string_for_unsupported_generics(typ string, node_id flat.NodeId) {
+fn (mut tc TypeChecker) check_fn_type_string_for_unsupported_generics(typ string, node_id flat.NodeId, generic_params map[string]bool) {
 	params_start := typ.index_u8(`(`) + 1
 	mut depth := 1
 	mut params_end := params_start
@@ -1153,10 +1333,10 @@ fn (mut tc TypeChecker) check_fn_type_string_for_unsupported_generics(typ string
 		trimmed := part.trim_space()
 		parts := trimmed.split(' ')
 		param_type := if parts.len >= 2 { parts[parts.len - 1] } else { trimmed }
-		tc.check_type_string_for_unsupported_generics(param_type, node_id)
+		tc.check_type_string_for_unsupported_generics(param_type, node_id, generic_params)
 	}
 	ret := typ[params_end + 1..].trim_space()
-	tc.check_type_string_for_unsupported_generics(ret, node_id)
+	tc.check_type_string_for_unsupported_generics(ret, node_id, generic_params)
 }
 
 fn generic_type_application(typ string) bool {
@@ -1877,6 +2057,19 @@ fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
 		return true
 	}
 	return tc.cur_file in tc.diagnostic_files
+}
+
+fn (tc &TypeChecker) should_diagnose_unsupported_generic(id flat.NodeId) bool {
+	if tc.should_diagnose(id) {
+		return true
+	}
+	if int(id) < 0 || int(id) < tc.a.user_code_start {
+		return false
+	}
+	if tc.diagnostic_files.len == 0 {
+		return false
+	}
+	return tc.diagnostic_files['generic:' + tc.cur_file]
 }
 
 fn (tc &TypeChecker) should_diagnose_unknown_call(id flat.NodeId) bool {
@@ -4180,9 +4373,6 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.len == 0 {
 		return Type(void_)
 	}
-	if is_generic_placeholder_type(typ) {
-		return Type(int_)
-	}
 	if typ.starts_with('&') {
 		return Type(Pointer{
 			base_type: tc.parse_type(typ[1..])
@@ -4449,6 +4639,9 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			})
 		}
 	}
+	if is_generic_placeholder_type(typ) {
+		return unknown_type('generic type parameter `${typ}`')
+	}
 	if typ.contains('[') && !typ.starts_with('[') {
 		bracket := typ.index_u8(`[`)
 		bracket_end := typ.index_u8(`]`)
@@ -4527,7 +4720,7 @@ fn is_generic_placeholder_type(typ string) bool {
 		last := typ.all_after_last('.')
 		return is_generic_placeholder_type(last)
 	}
-	return typ in ['T', 'U', 'V', 'K']
+	return is_bare_generic_param(typ)
 }
 
 fn (tc &TypeChecker) parse_fn_type(typ string) Type {

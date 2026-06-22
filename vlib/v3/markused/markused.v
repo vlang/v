@@ -414,7 +414,7 @@ fn enqueue_auto_roots(fn_decls map[string]FnDeclInfo, mut used map[string]bool, 
 
 fn enqueue_main_module_roots(fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
 	for name, info in fn_decls {
-		if info.module != 'main' || name.contains('.') {
+		if info.module != 'main' || name != 'main' {
 			continue
 		}
 		enqueue(name, mut used, mut queue)
@@ -469,6 +469,9 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 					if fn_node.kind == .ident
 						&& (fn_node.value == 'error' || fn_node.value == 'error_with_code') {
 						needs_optional_helpers = true
+					}
+					if fn_node.kind == .ident && fn_node.value == 'flag_default_value' {
+						enqueue('escape_default_string', mut used, mut queue)
 					}
 					if fn_node.kind == .ident
 						&& fn_node.value in ['print', 'println', 'eprint', 'eprintln']
@@ -784,7 +787,10 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 										}
 									}
 									base_type := c.node_type(base_id)
-									type_name := resolve_type_name(base_type)
+									mut type_name := resolve_type_name(base_type)
+									if type_name.len == 0 && base.kind == .ident {
+										type_name = c.value_type_name(base.value, cur_module)
+									}
 									if type_name.len > 0 {
 										calls << type_name + '.' + callee.value
 									}
@@ -1153,6 +1159,24 @@ fn (c &CallCollector) node_type(id flat.NodeId) types.Type {
 		return t
 	}
 	return c.tc.resolve_type(id)
+}
+
+fn (c &CallCollector) value_type_name(name string, cur_module string) string {
+	for candidate in [qualify_fn(cur_module, name), name] {
+		if typ := c.tc.file_scope.lookup(candidate) {
+			type_name := resolve_type_name(typ)
+			if type_name.len > 0 {
+				return type_name
+			}
+		}
+		if typ := c.tc.const_types[candidate] {
+			type_name := resolve_type_name(typ)
+			if type_name.len > 0 {
+				return type_name
+			}
+		}
+	}
+	return ''
 }
 
 fn (c &CallCollector) collect_zero_struct_default_calls(typ types.Type, cur_module string, imports map[string]string, mut calls []string) {

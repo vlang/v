@@ -1026,8 +1026,9 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	disable_body := p.disable_fn_body
 	p.disable_fn_body = false
 	// generic params — skip
+	mut generic_params := []string{}
 	if p.tok == .lsbr {
-		p.skip_brackets()
+		generic_params = p.parse_generic_param_names()
 	}
 
 	// params
@@ -1065,6 +1066,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			kind:           .c_fn_decl
 			value:          name
 			typ:            ret_type
+			generic_params: generic_params
 			children_start: start
 			children_count: flat.child_count(param_ids.len)
 		})
@@ -1103,6 +1105,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		kind:           .fn_decl
 		value:          name
 		typ:            ret_type
+		generic_params: generic_params
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
 	})
@@ -1184,9 +1187,10 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	}
 	// generic params — skip
 	mut is_generic := false
+	mut generic_params := []string{}
 	if p.tok == .lsbr {
 		is_generic = true
-		p.skip_brackets()
+		generic_params = p.parse_generic_param_names()
 	}
 	// implements clause
 	if p.tok == .name && p.lit == 'implements' {
@@ -1203,9 +1207,10 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			p.next()
 		}
 		return p.a.add_node(flat.Node{
-			kind:  .struct_decl
-			value: name
-			typ:   struct_decl_typ(is_union, is_generic)
+			kind:           .struct_decl
+			value:          name
+			typ:            struct_decl_typ(is_union, is_generic)
+			generic_params: generic_params
 		})
 	}
 	p.check(.lcbr)
@@ -1338,6 +1343,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		kind:           .struct_decl
 		value:          name
 		typ:            struct_decl_typ(is_union, is_generic)
+		generic_params: generic_params
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
@@ -1595,8 +1601,9 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	}
 	name := p.expect_name()
 	// generic params
+	mut generic_params := []string{}
 	if p.tok == .lsbr {
-		p.skip_brackets()
+		generic_params = p.parse_generic_param_names()
 	}
 	p.expect(.assign)
 	first_type := p.parse_type_name()
@@ -1620,6 +1627,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 		return p.a.add_node(flat.Node{
 			kind:           .type_decl
 			value:          name
+			generic_params: generic_params
 			children_start: start
 			children_count: flat.child_count(variants.len)
 		})
@@ -1629,9 +1637,10 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	}
 	// type alias
 	return p.a.add_node(flat.Node{
-		kind:  .type_decl
-		value: name
-		typ:   first_type
+		kind:           .type_decl
+		value:          name
+		typ:            first_type
+		generic_params: generic_params
 	})
 }
 
@@ -1643,8 +1652,9 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 		name += '.' + p.expect(.name)
 	}
 	// generic params
+	mut generic_params := []string{}
 	if p.tok == .lsbr {
-		p.skip_brackets()
+		generic_params = p.parse_generic_param_names()
 	}
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
@@ -1730,6 +1740,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 	return p.a.add_node(flat.Node{
 		kind:           .interface_decl
 		value:          name
+		generic_params: generic_params
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
@@ -2074,6 +2085,39 @@ fn (mut p Parser) skip_brackets() {
 		}
 		p.next()
 	}
+}
+
+fn (mut p Parser) parse_generic_param_names() []string {
+	mut names := []string{}
+	if p.tok != .lsbr {
+		return names
+	}
+	mut depth := 1
+	mut expect_name := true
+	p.next()
+	for depth > 0 && p.tok != .eof {
+		if p.tok == .lsbr {
+			depth++
+			expect_name = false
+		} else if p.tok == .rsbr {
+			depth--
+			if depth == 0 {
+				p.next()
+				break
+			}
+		} else if depth == 1 {
+			if p.tok == .comma {
+				expect_name = true
+			} else if expect_name && p.tok == .name {
+				names << p.lit
+				expect_name = false
+			} else {
+				expect_name = false
+			}
+		}
+		p.next()
+	}
+	return names
 }
 
 fn (mut p Parser) skip_parens() {

@@ -22,6 +22,27 @@ fn run_selfhost_bad(v3_bin string, name string, src string, expected string) {
 	assert !result.output.contains('C compilation failed')
 }
 
+fn write_project_file(root string, rel string, src string) {
+	path := os.join_path(root, rel)
+	os.mkdir_all(os.dir(path)) or { panic(err) }
+	os.write_file(path, src) or { panic(err) }
+}
+
+fn run_selfhost_project_bad(v3_bin string, name string, files map[string]string, input string, expected string) {
+	root := os.join_path(os.temp_dir(), 'v3_gen_${name}_project')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	input_path := os.join_path(root, input)
+	bad_bin := os.join_path(os.temp_dir(), 'v3_gen_${name}')
+	result := os.execute('${v3_bin} ${input_path} -selfhost -b c -o ${bad_bin}')
+	assert result.exit_code != 0, 'expected error for ${name}, but compilation succeeded'
+	assert result.output.contains(expected), 'expected "${expected}" in output for ${name}, got: ${result.output}'
+	assert !result.output.contains('C compilation failed')
+}
+
 fn run_no_generic_error(v3_bin string, name string, src string) {
 	src_file := os.join_path(os.temp_dir(), 'v3_gen_${name}.v')
 	os.write_file(src_file, src) or { panic(err) }
@@ -70,8 +91,41 @@ fn main() {
 	b := Box[int]{value: 7}
 	println(b.value)
 }
-',
+	',
 		'unsupported generic')
+
+	// generic struct with no generic fields
+	run_selfhost_bad(v3_bin, 'generic_struct_marker_only', '
+struct Phantom[T] {
+	value int
+}
+fn main() {}
+',
+		'unsupported generic struct `Phantom`')
+
+	run_selfhost_bad(v3_bin, 'generic_fn_marker_only', '
+fn unused[T]() {}
+fn main() {}
+	',
+		'unsupported generic declaration `unused`')
+
+	run_selfhost_bad(v3_bin, 'generic_c_fn_marker_only', '
+fn helper[T]()
+fn main() {}
+	',
+		'unsupported generic declaration `helper`')
+
+	run_selfhost_bad(v3_bin, 'generic_interface_marker_only', '
+interface I[T] {}
+fn main() {}
+	',
+		'unsupported generic declaration `I`')
+
+	run_selfhost_bad(v3_bin, 'generic_type_alias_marker_only', '
+type Alias[T] = int
+fn main() {}
+',
+		'unsupported generic declaration `Alias`')
 
 	// generic method
 	run_selfhost_bad(v3_bin, 'generic_method', '
@@ -151,6 +205,21 @@ interface Container[T] {
 fn main() {}
 ',
 		'unsupported generic')
+
+	run_selfhost_project_bad(v3_bin, 'imported_generic_struct', {
+		'main.v':          'module main
+
+import badmod
+
+fn main() {}
+'
+		'badmod/badmod.v': 'module badmod
+
+struct Phantom[T] {
+	value int
+}
+'
+	}, 'main.v', 'unsupported generic struct `Phantom`')
 }
 
 fn test_generics_allowed_without_building_v() {

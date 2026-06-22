@@ -21,13 +21,17 @@ fn write_parallel_module_init_project(name string) string {
 	main_src.writeln('import moda')
 	main_src.writeln('')
 	for i in 0 .. 1050 {
-		main_src.writeln('fn unused_${i}() int {')
+		main_src.writeln('fn helper_${i}() int {')
 		main_src.writeln('\treturn ${i}')
 		main_src.writeln('}')
 		main_src.writeln('')
 	}
 	main_src.writeln('fn main() {')
-	main_src.writeln('\tprintln(int_str(moda.value()))')
+	main_src.writeln('\tmut total := 0')
+	for i in 0 .. 1050 {
+		main_src.writeln('\ttotal += helper_${i}()')
+	}
+	main_src.writeln('\tprintln(int_str(total + moda.value()))')
 	main_src.writeln('}')
 	os.write_file(os.join_path(project_dir, 'main.v'), main_src.str()) or { panic(err) }
 
