@@ -381,6 +381,37 @@ fn test_eval_array_append_rhs_uses_element_enum_type() {
 	assert e.stdout() == 'true\n'
 }
 
+fn test_eval_value_blocks_execute_array_append_statements() {
+	mut e := create()
+	e.run_text('
+fn maybe() ?int {
+	return none
+}
+
+fn main() {
+	mut xs := []int{}
+	n := if true {
+		xs << 1
+		xs.len
+	} else {
+		0
+	}
+	m := maybe() or {
+		xs << 2
+		xs.len
+	}
+	println(int_str(n))
+	println(int_str(m))
+	println(int_str(xs.len))
+	println(int_str(xs[0]))
+	println(int_str(xs[1]))
+}
+		') or {
+		panic(err)
+	}
+	assert e.stdout() == '1\n2\n2\n1\n2\n'
+}
+
 fn test_eval_or_block_return_propagates_from_array_append_rhs() {
 	mut e := create()
 	e.run_text('

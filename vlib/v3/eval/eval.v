@@ -3702,6 +3702,15 @@ fn (mut e Eval) eval_block_value_flow_collect(node &flat.Node, collect_expr_valu
 		child := e.node(child_id)
 		if child.kind == .expr_stmt && child.children_count > 0 {
 			expr_id := e.child(child, 0)
+			expr := e.node(expr_id)
+			if expr.kind == .infix && expr.op == .left_shift {
+				signal := e.exec_stmt(child_id)!
+				if signal.kind != .normal {
+					e.close_scope()!
+					return signal
+				}
+				continue
+			}
 			signal := e.eval_expr_flow(expr_id)!
 			if signal.kind != .normal {
 				e.close_scope()!
