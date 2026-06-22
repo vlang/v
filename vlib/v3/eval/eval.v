@@ -122,6 +122,12 @@ struct GlobalEntry {
 	file_name    string
 }
 
+struct TopLevelStmt {
+	node        flat.NodeId
+	module_name string
+	file_name   string
+}
+
 struct StructInfo {
 	module_name string
 	name        string
@@ -231,6 +237,7 @@ mut:
 	globals           map[string]map[string]Value
 	global_types      map[string]map[string]string
 	global_inits      []GlobalEntry
+	implicit_main     []TopLevelStmt
 	structs           map[string]StructInfo
 	enum_fields       map[string][]string
 	sum_types         map[string][]string
@@ -286,7 +293,10 @@ pub fn (mut e Eval) run_files(a &flat.FlatAst) ![]Value {
 	e.reset(a)
 	e.register_files()!
 	e.run_inits()!
-	return e.call_function('main', 'main', []Value{})!.values
+	if e.has_main_function() {
+		return e.call_function('main', 'main', []Value{})!.values
+	}
+	return e.run_implicit_main()
 }
 
 fn void_value() Value {
@@ -314,6 +324,7 @@ fn (mut e Eval) reset(a &flat.FlatAst) {
 	e.globals = map[string]map[string]Value{}
 	e.global_types = map[string]map[string]string{}
 	e.global_inits = []GlobalEntry{}
+	e.implicit_main = []TopLevelStmt{}
 	e.structs = map[string]StructInfo{}
 	e.enum_fields = map[string][]string{}
 	e.sum_types = map[string][]string{}
@@ -372,6 +383,34 @@ fn (e &Eval) top_level_registration_children(node &flat.Node) []flat.NodeId {
 		ids << child_id
 	}
 	return ids
+}
+
+fn (e &Eval) has_main_function() bool {
+	return 'main' in e.functions && 'main' in e.functions['main']
+}
+
+fn is_top_level_declaration_kind(kind flat.NodeKind) bool {
+	match kind {
+		.empty, .module_decl, .import_decl, .directive, .fn_decl, .c_fn_decl, .struct_decl,
+		.field_decl, .global_decl, .const_decl, .const_field, .enum_decl, .enum_field, .type_decl,
+		.interface_decl, .interface_field, .param, .comptime_if, .comptime_for {
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut e Eval) register_implicit_main_stmt(module_name string, file_name string, id flat.NodeId, node &flat.Node) {
+	if module_name != 'main' || is_top_level_declaration_kind(node.kind) {
+		return
+	}
+	e.implicit_main << TopLevelStmt{
+		node:        id
+		module_name: module_name
+		file_name:   file_name
+	}
 }
 
 fn (mut e Eval) register_files() ! {
@@ -546,16 +585,59 @@ fn (mut e Eval) register_files() ! {
 						}
 					}
 				}
-				else {}
+				else {
+					e.register_implicit_main_stmt(module_name, file_name, child_id, child)
+				}
 			}
 		}
 		e.file_import_alias[file_name] = import_aliases.clone()
 		_ = file_id
 	}
 	e.evaluate_global_inits()!
-	if 'main' !in e.functions || 'main' !in e.functions['main'] {
+	if !e.has_main_function() && e.implicit_main.len == 0 {
 		return error('v3.eval: missing main.main entry point')
 	}
+}
+
+fn (mut e Eval) run_implicit_main() ![]Value {
+	e.open_scope()
+	scope_idx := e.scopes.len - 1
+	mut frame := CallFrame{
+		module_name: 'main'
+		file_name:   if e.implicit_main.len > 0 { e.implicit_main[0].file_name } else { '' }
+		fn_name:     'main'
+		return_type: 'void'
+		scope_idx:   scope_idx
+	}
+	e.call_stack << frame
+	mut values := [void_value()]
+	mut escaped := normal_flow()
+	for stmt in e.implicit_main {
+		frame = CallFrame{
+			module_name: stmt.module_name
+			file_name:   stmt.file_name
+			fn_name:     'main'
+			return_type: 'void'
+			scope_idx:   scope_idx
+		}
+		e.call_stack[e.call_stack.len - 1] = frame
+		signal := e.exec_stmt(stmt.node)!
+		if signal.kind == .return_ {
+			values = flow_values_or_void(signal.values)
+			break
+		}
+		if signal.kind != .normal {
+			escaped = signal
+			break
+		}
+	}
+	e.run_deferred_stmts()!
+	e.close_scope()!
+	e.call_stack.delete(e.call_stack.len - 1)
+	if escaped.kind != .normal {
+		return error('v3.eval: unexpected `${escaped.kind}` escaped implicit main')
+	}
+	return values
 }
 
 fn (mut e Eval) evaluate_global_inits() ! {
@@ -4111,7 +4193,10 @@ fn (e &Eval) match_condition_matches(target Value, cond Value) bool {
 	if cond is RangeValue {
 		return e.value_in(target, cond)
 	}
-	return e.value_eq(target, cond) || e.value_matches_type_name(target, e.value_string(cond))
+	if cond is TypeValue {
+		return e.value_matches_type_name(target, cond.name)
+	}
+	return e.value_eq(target, cond)
 }
 
 fn (e &Eval) smartcast_binding_from_match(target_id flat.NodeId, target Value, cond Value) ?SmartcastBinding {

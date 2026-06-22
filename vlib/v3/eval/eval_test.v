@@ -30,7 +30,7 @@ fn main() {
 fn test_eval_registers_top_level_comptime_block_declarations() {
 	mut e := create()
 	e.run_text('
-$if windows {
+	$if windows {
 	fn gated_message() string {
 		return "ok"
 	}
@@ -53,10 +53,20 @@ fn main() {
 	assert e.stdout() == 'ok\n'
 }
 
+fn test_eval_executes_implicit_main_top_level_statements() {
+	mut e := create()
+	e.run_text('
+	mut x := 1
+	x += 2
+	println(x)
+	') or { panic(err) }
+	assert e.stdout() == '3\n'
+}
+
 fn test_eval_disabled_if_call_skips_arguments() {
 	mut e := create()
 	e.run_text('
-__global hit int
+	__global hit int
 
 @[if trace ?]
 fn trace(x int) {}
@@ -1769,7 +1779,7 @@ fn main() {
 fn test_eval_match_primitive_sum_branches_are_type_patterns() {
 	mut e := create()
 	e.run_text('
-type Any = int | string
+	type Any = int | string
 
 fn classify(x Any) string {
 	return match x {
@@ -1795,10 +1805,38 @@ fn main() {
 	assert e.stdout() == 'int\nstring\n'
 }
 
+fn test_eval_match_value_pattern_is_not_type_pattern() {
+	mut e := create()
+	e.run_text('
+	type Any = int | string
+
+	fn classify(x Any) string {
+		return match x {
+			"int" {
+				"literal"
+			}
+			int {
+				"type"
+			}
+			else {
+				"other"
+			}
+		}
+	}
+
+	fn main() {
+		println(classify(1))
+	}
+		') or {
+		panic(err)
+	}
+	assert e.stdout() == 'type\n'
+}
+
 fn test_eval_sum_smartcasts_bind_branch_payloads() {
 	mut e := create()
 	e.run_text('
-type Any = int | string
+	type Any = int | string
 
 fn if_cast(x Any) int {
 	if x is int {
