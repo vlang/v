@@ -554,6 +554,34 @@ fn main() {
 	assert e.stdout() == '7\n7\n'
 }
 
+fn test_eval_map_literal_value_flow_propagates_return() {
+	mut e := create()
+	e.run_text('
+fn maybe() ?int {
+	return none
+}
+
+fn run() map[string]int {
+	return {
+		"a": maybe() or {
+			return {
+				"b": 7
+			}
+		}
+	}
+}
+
+fn main() {
+	m := run()
+	println(int_str(m["b"]))
+	println(int_str(m["a"]))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '7\n0\n'
+}
+
 fn test_eval_map_lookup_adapts_sum_keys() {
 	mut e := create()
 	e.run_text('
@@ -909,6 +937,26 @@ fn main() {
 	assert e.stdout() == '1\ntwo\n3\n'
 }
 
+fn test_eval_multi_return_adapts_items_to_declared_types() {
+	mut e := create()
+	e.run_text('
+type Any = int | string
+
+fn pair() (Any, Any) {
+	return 1, "s"
+}
+
+fn main() {
+	a, b := pair()
+	println(int_str(a._typ))
+	println(int_str(b._typ))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '0\n1\n'
+}
+
 fn test_eval_value_block_preserves_multi_return_values() {
 	mut e := create()
 	e.run_text("
@@ -1104,6 +1152,35 @@ fn main() {
 		panic(err)
 	}
 	assert e.stdout() == 'a\n'
+}
+
+fn test_eval_enum_zero_values_use_first_field() {
+	mut e := create()
+	e.run_text('
+enum Color {
+	red
+	blue
+}
+
+struct S {
+	c Color
+}
+
+__global g Color
+
+fn main() {
+	s := S{}
+	arr := [2]Color{}
+	m := map[string]Color{}
+	println(s.c == Color.red)
+	println(g == Color.red)
+	println(arr[0] == Color.red)
+	println(m["missing"] == Color.red)
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == 'true\ntrue\ntrue\ntrue\n'
 }
 
 fn test_eval_enum_shorthand_uses_typed_call_and_struct_contexts() {

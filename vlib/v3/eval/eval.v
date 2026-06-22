@@ -214,6 +214,7 @@ mut:
 	globals           map[string]map[string]Value
 	global_inits      []GlobalEntry
 	structs           map[string]StructInfo
+	enum_fields       map[string][]string
 	sum_types         map[string][]string
 	type_aliases      map[string]TypeAliasInfo
 	type_names        map[string]map[string]bool
@@ -295,6 +296,7 @@ fn (mut e Eval) reset(a &flat.FlatAst) {
 	e.globals = map[string]map[string]Value{}
 	e.global_inits = []GlobalEntry{}
 	e.structs = map[string]StructInfo{}
+	e.enum_fields = map[string][]string{}
 	e.sum_types = map[string][]string{}
 	e.type_aliases = map[string]TypeAliasInfo{}
 	e.type_names = map[string]map[string]bool{}
@@ -408,12 +410,15 @@ fn (mut e Eval) register_files() ! {
 				}
 				.enum_decl {
 					e.type_names[module_name][child.value] = true
+					enum_name := e.qualify_type_name(module_name, child.value)
+					mut enum_fields := []string{}
 					mut next_value := if child.typ == 'flag' { i64(1) } else { i64(0) }
 					for field_id in e.children(child) {
 						field := e.node(field_id)
 						if field.kind != .enum_field {
 							continue
 						}
+						enum_fields << field.value
 						value := if field.children_count > 0 {
 							e.value_as_int(e.eval_expr_in_module(e.child(field, 0), module_name,
 								file_name, '<enum ${child.value}.${field.value}>')!)!
@@ -439,6 +444,10 @@ fn (mut e Eval) register_files() ! {
 						} else {
 							value + 1
 						}
+					}
+					e.enum_fields[enum_name] = enum_fields
+					if module_name in ['main', 'builtin'] {
+						e.enum_fields[child.value] = enum_fields
 					}
 				}
 				.fn_decl {
@@ -1917,7 +1926,7 @@ fn (mut e Eval) eval_expr(id flat.NodeId) !Value {
 			return e.eval_array_init(node)
 		}
 		.map_init {
-			return e.eval_map_init(node)
+			return flow_value(e.eval_map_init_flow(node)!)
 		}
 		.struct_init {
 			return e.eval_struct_init(node)
@@ -2096,6 +2105,9 @@ fn (mut e Eval) eval_expr_flow(id flat.NodeId) !FlowSignal {
 		}
 		.struct_init {
 			return e.eval_struct_init_flow(node)
+		}
+		.map_init {
+			return e.eval_map_init_flow(node)
 		}
 		.assoc {
 			return e.eval_assoc_flow(node)
@@ -2665,10 +2677,66 @@ fn (mut e Eval) write_back_mutated_args(node &flat.Node, result CallResult) ! {
 }
 
 fn (mut e Eval) adapt_return_values(values []Value, return_type string) []Value {
+	return_types := split_multi_return_types(return_type)
+	if return_types.len > 0 {
+		mut adapted := []Value{cap: values.len}
+		for i, value in values {
+			adapted << if i < return_types.len {
+				e.adapt_value_to_type_name(value, return_types[i])
+			} else {
+				value
+			}
+		}
+		return adapted
+	}
 	if values.len == 1 && return_type.len > 0 {
 		return [e.adapt_value_to_type_name(values[0], return_type)]
 	}
 	return values.clone()
+}
+
+fn split_multi_return_types(return_type string) []string {
+	if !return_type.starts_with('(') || !return_type.ends_with(')') {
+		return []string{}
+	}
+	inner := return_type[1..return_type.len - 1]
+	mut types := []string{}
+	mut start := 0
+	mut paren_depth := 0
+	mut bracket_depth := 0
+	for i := 0; i < inner.len; i++ {
+		ch := inner[i]
+		match ch {
+			`(` {
+				paren_depth++
+			}
+			`)` {
+				if paren_depth > 0 {
+					paren_depth--
+				}
+			}
+			`[` {
+				bracket_depth++
+			}
+			`]` {
+				if bracket_depth > 0 {
+					bracket_depth--
+				}
+			}
+			`,` {
+				if paren_depth == 0 && bracket_depth == 0 {
+					types << inner[start..i].trim_space()
+					start = i + 1
+				}
+			}
+			else {}
+		}
+	}
+	last := inner[start..].trim_space()
+	if last.len > 0 {
+		types << last
+	}
+	return if types.len > 1 { types } else { []string{} }
 }
 
 fn (e &Eval) minimum_arg_count(params []flat.NodeId) int {
@@ -3252,13 +3320,21 @@ fn fixed_array_elem_type_name(type_name string) string {
 }
 
 fn (mut e Eval) eval_map_init(node &flat.Node) !Value {
+	return flow_value(e.eval_map_init_flow(node)!)
+}
+
+fn (mut e Eval) eval_map_init_flow(node &flat.Node) !FlowSignal {
 	mut key_type, mut value_type := split_map_type(node.value)
 	children := e.children(node)
 	mut keys := []Value{}
 	mut values := []Value{}
 	mut i := 0
 	for i + 1 < children.len {
-		key := e.eval_expr_expected(children[i], key_type)!
+		key_signal := e.eval_expr_flow_expected(children[i], key_type)!
+		if key_signal.kind != .normal {
+			return key_signal
+		}
+		key := flow_value(key_signal)
 		if key_type.len == 0 {
 			key_type = e.infer_expr_type_name(children[i])
 			if key_type.len == 0 {
@@ -3266,7 +3342,11 @@ fn (mut e Eval) eval_map_init(node &flat.Node) !Value {
 			}
 		}
 		typed_key := e.adapt_value_to_type_name(key, key_type)
-		value := e.eval_expr_expected(children[i + 1], value_type)!
+		value_signal := e.eval_expr_flow_expected(children[i + 1], value_type)!
+		if value_signal.kind != .normal {
+			return value_signal
+		}
+		value := flow_value(value_signal)
 		if value_type.len == 0 {
 			value_type = e.infer_expr_type_name(children[i + 1])
 			if value_type.len == 0 {
@@ -3285,7 +3365,7 @@ fn (mut e Eval) eval_map_init(node &flat.Node) !Value {
 	for j, key in keys {
 		m = e.map_set_value(m, key, values[j])
 	}
-	return m
+	return value_flow(m)
 }
 
 fn (mut e Eval) eval_string_interp_flow(node &flat.Node) !FlowSignal {
@@ -4562,6 +4642,17 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name string, module_name
 			key_type_name:   key_type
 			value_type_name: value_type
 			default_value:   e.zero_value_for_type_name_in_module(value_type, module_name)
+		}
+	}
+	enum_name := e.qualify_type_name(module_name, name)
+	if fields := e.enum_fields[enum_name] {
+		if fields.len > 0 {
+			if value := e.lookup_enum_value(enum_name, fields[0]) {
+				return value
+			}
+		}
+		return EnumValue{
+			type_name: enum_name
 		}
 	}
 	sum_name := e.qualify_type_name(module_name, name)
