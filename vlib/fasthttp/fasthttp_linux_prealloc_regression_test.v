@@ -31,8 +31,9 @@ fn test_prealloc_async_write_state_outlives_worker() ! {
 		C.close(wakeup_fd)
 	}
 	command_ch := chan LoopCommand{cap: 1}
-	dispatch_request_async(server, sockets[0], 'GET / HTTP/1.1\r\nHost: localhost\r\n\r\n'.bytes(),
-		command_ch, wakeup_fd)
+	server.begin_request()
+	worker := spawn process_request_async(server, sockets[0],
+		'GET / HTTP/1.1\r\nHost: localhost\r\n\r\n'.bytes(), command_ch, wakeup_fd)
 
 	mut cmd := LoopCommand{}
 	select {
@@ -44,8 +45,7 @@ fn test_prealloc_async_write_state_outlives_worker() ! {
 			return
 		}
 	}
-	// The worker must have exited before the event loop consumes its state.
-	time.sleep(50 * time.millisecond)
+	worker.wait()
 	assert cmd.kind == .complete_response
 	assert cmd.state != unsafe { nil }
 	assert cmd.state.content.len > 0
