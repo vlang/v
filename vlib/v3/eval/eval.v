@@ -4316,13 +4316,9 @@ fn (mut e Eval) maybe_call_os_builtin(fn_name string, args []Value) !MaybeValue 
 					value: Value('')
 				}
 			}
-			mut path := parts[0]
-			for part in parts[1..] {
-				path = os.join_path(path, part)
-			}
 			return MaybeValue{
 				found: true
-				value: Value(path)
+				value: Value(os.join_path(parts[0], ...parts[1..]))
 			}
 		}
 		'join_path_single' {
