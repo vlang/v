@@ -182,6 +182,21 @@ struct MethodCallResult {
 	mutated_args     map[int]Value
 }
 
+struct LvalueStep {
+	kind       flat.NodeKind
+	container  Value
+	index      Value
+	field_name string
+}
+
+struct ResolvedLvalue {
+mut:
+	signal  FlowSignal
+	root_id flat.NodeId
+	value   Value
+	steps   []LvalueStep
+}
+
 struct InfixOperatorCallInfo {
 	target  FunctionDef
 	reverse bool
@@ -1154,10 +1169,10 @@ fn (mut e Eval) apply_compound_target_flow(op flat.Op, lhs_id flat.NodeId, rhs V
 	node := e.node(lhs_id)
 	match node.kind {
 		.index {
-			return e.update_index_target_with_op_flow(node, op, rhs)
+			return e.update_resolved_lvalue_with_op_flow(lhs_id, op, rhs)
 		}
 		.selector {
-			return e.update_selector_target_with_op_flow(node, op, rhs)
+			return e.update_resolved_lvalue_with_op_flow(lhs_id, op, rhs)
 		}
 		else {
 			left_signal := e.eval_expr_flow(lhs_id)!
@@ -1245,18 +1260,26 @@ fn (mut e Eval) assignment_target_type_name(lhs_id flat.NodeId, declare bool) st
 			return node.typ
 		}
 		.selector {
-			base := e.eval_expr(e.child(node, 0)) or { return '' }
-			if base is StructValue {
-				return e.struct_field_type_name(base, node.value)
+			if node.children_count > 0 {
+				base_type := e.infer_expr_type_name(e.child(node, 0))
+				if base_type.len > 0 {
+					return e.struct_field_type_name_by_type(base_type, node.value)
+				}
 			}
 		}
 		.index {
-			container := e.eval_expr(e.child(node, 0)) or { return '' }
-			if container is ArrayValue {
-				return container.elem_type_name
-			}
-			if container is MapValue {
-				return container.value_type_name
+			if node.children_count > 0 {
+				container_type := e.infer_expr_type_name(e.child(node, 0))
+				if container_type.starts_with('[]') {
+					return container_type[2..]
+				}
+				if is_fixed_array_type_name(container_type) {
+					return fixed_array_elem_type_name(container_type)
+				}
+				if container_type.starts_with('map[') {
+					_, value_type := split_map_type(container_type)
+					return value_type
+				}
 			}
 		}
 		else {}
@@ -1328,10 +1351,10 @@ fn (mut e Eval) assign_target_typed_flow(id flat.NodeId, value Value, declare bo
 			}
 		}
 		.selector {
-			return e.update_selector_target_flow(node, value)
+			return e.update_resolved_lvalue_flow(id, value)
 		}
 		.index {
-			return e.update_index_target_flow(node, value)
+			return e.update_resolved_lvalue_flow(id, value)
 		}
 		else {
 			return error('v3.eval: unsupported assignment target `${node.kind}`')
@@ -1378,6 +1401,25 @@ fn (e &Eval) infer_expr_type_name(id flat.NodeId) string {
 				if typ := e.type_value_name_from_expr(e.child(node, 0)) {
 					return typ
 				}
+				base_type := e.infer_expr_type_name(e.child(node, 0))
+				if base_type.len > 0 {
+					return e.struct_field_type_name_by_type(base_type, node.value)
+				}
+			}
+		}
+		.index {
+			if node.children_count > 0 {
+				container_type := e.infer_expr_type_name(e.child(node, 0))
+				if container_type.starts_with('[]') {
+					return container_type[2..]
+				}
+				if is_fixed_array_type_name(container_type) {
+					return fixed_array_elem_type_name(container_type)
+				}
+				if container_type.starts_with('map[') {
+					_, value_type := split_map_type(container_type)
+					return value_type
+				}
 			}
 		}
 		.array_literal {
@@ -1422,82 +1464,113 @@ fn (mut e Eval) update_target(id flat.NodeId, value Value) ! {
 	}
 }
 
-fn (mut e Eval) update_index_target(node &flat.Node, value Value) ! {
-	signal := e.update_index_target_flow(node, value)!
-	if signal.kind != .normal {
-		return error('v3.eval: unexpected `${signal.kind}` escaped index assignment target')
-	}
-}
-
-fn (mut e Eval) update_index_target_flow(node &flat.Node, value Value) !FlowSignal {
-	base_id := e.child(node, 0)
-	index_signal := e.eval_expr_flow(e.child(node, 1))!
-	if index_signal.kind != .normal {
-		return index_signal
-	}
-	container_signal := e.eval_expr_flow(base_id)!
-	if container_signal.kind != .normal {
-		return container_signal
-	}
-	new_container := e.set_index_value(flow_value(container_signal), flow_value(index_signal),
-		value)!
-	return e.update_target_flow(base_id, new_container)
-}
-
-fn (mut e Eval) update_index_target_with_op_flow(node &flat.Node, op flat.Op, rhs Value) !FlowSignal {
-	base_id := e.child(node, 0)
-	container_signal := e.eval_expr_flow(base_id)!
-	if container_signal.kind != .normal {
-		return container_signal
-	}
-	container := flow_value(container_signal)
-	index_signal := if container is MapValue {
-		e.eval_expr_flow_expected(e.child(node, 1), container.key_type_name)!
-	} else {
-		e.eval_expr_flow(e.child(node, 1))!
-	}
-	if index_signal.kind != .normal {
-		return index_signal
-	}
-	index := flow_value(index_signal)
-	old := e.index_value(container, index)!
-	value := e.apply_assignment_op(op, old, rhs)!
-	new_container := e.set_index_value(container, index, value)!
-	return e.update_target_flow(base_id, new_container)
-}
-
-fn (mut e Eval) update_selector_target(node &flat.Node, value Value) ! {
-	signal := e.update_selector_target_flow(node, value)!
-	if signal.kind != .normal {
-		return error('v3.eval: unexpected `${signal.kind}` escaped selector assignment target')
-	}
-}
-
-fn (mut e Eval) update_selector_target_flow(node &flat.Node, value Value) !FlowSignal {
-	base_id := e.child(node, 0)
-	container_signal := e.eval_expr_flow(base_id)!
-	if container_signal.kind != .normal {
-		return container_signal
-	}
-	new_container := e.set_selector_value(flow_value(container_signal), node.value, value)!
-	return e.update_target_flow(base_id, new_container)
-}
-
-fn (mut e Eval) update_selector_target_with_op_flow(node &flat.Node, op flat.Op, rhs Value) !FlowSignal {
-	base_id := e.child(node, 0)
-	container_signal := e.eval_expr_flow(base_id)!
-	if container_signal.kind != .normal {
-		return container_signal
-	}
-	container := flow_value(container_signal)
-	old := e.eval_selector_value(container, node.value)!
-	value := e.apply_assignment_op(op, old, rhs)!
-	new_container := e.set_selector_value(container, node.value, value)!
-	return e.update_target_flow(base_id, new_container)
-}
-
 fn (mut e Eval) update_target_flow(id flat.NodeId, value Value) !FlowSignal {
 	return e.assign_target_flow(id, value, false)
+}
+
+fn (mut e Eval) update_resolved_lvalue_flow(id flat.NodeId, value Value) !FlowSignal {
+	resolved := e.resolve_lvalue_flow(id)!
+	if resolved.signal.kind != .normal {
+		return resolved.signal
+	}
+	return e.write_resolved_lvalue_flow(resolved, value)
+}
+
+fn (mut e Eval) update_resolved_lvalue_with_op_flow(id flat.NodeId, op flat.Op, rhs Value) !FlowSignal {
+	resolved := e.resolve_lvalue_flow(id)!
+	if resolved.signal.kind != .normal {
+		return resolved.signal
+	}
+	value := e.apply_assignment_op(op, resolved.value, rhs)!
+	return e.write_resolved_lvalue_flow(resolved, value)
+}
+
+fn (mut e Eval) update_resolved_lvalue_postfix_flow(id flat.NodeId, op flat.Op) !FlowSignal {
+	resolved := e.resolve_lvalue_flow(id)!
+	if resolved.signal.kind != .normal {
+		return resolved.signal
+	}
+	value := e.apply_postfix_op(op, resolved.value)!
+	update_signal := e.write_resolved_lvalue_flow(resolved, value)!
+	if update_signal.kind != .normal {
+		return update_signal
+	}
+	return value_flow(resolved.value)
+}
+
+fn (mut e Eval) resolve_lvalue_flow(id flat.NodeId) !ResolvedLvalue {
+	node := e.node(id)
+	match node.kind {
+		.selector {
+			mut base := e.resolve_lvalue_flow(e.child(node, 0))!
+			if base.signal.kind != .normal {
+				return base
+			}
+			value := e.eval_selector_value(base.value, node.value)!
+			base.steps << LvalueStep{
+				kind:       .selector
+				container:  base.value
+				index:      void_value()
+				field_name: node.value
+			}
+			base.value = value
+			return base
+		}
+		.index {
+			mut base := e.resolve_lvalue_flow(e.child(node, 0))!
+			if base.signal.kind != .normal {
+				return base
+			}
+			index_signal := if base.value is MapValue {
+				e.eval_expr_flow_expected(e.child(node, 1), base.value.key_type_name)!
+			} else {
+				e.eval_expr_flow(e.child(node, 1))!
+			}
+			if index_signal.kind != .normal {
+				return ResolvedLvalue{
+					signal: index_signal
+				}
+			}
+			index := flow_value(index_signal)
+			value := e.index_value(base.value, index)!
+			base.steps << LvalueStep{
+				kind:      .index
+				container: base.value
+				index:     index
+			}
+			base.value = value
+			return base
+		}
+		else {
+			signal := e.eval_expr_flow(id)!
+			if signal.kind != .normal {
+				return ResolvedLvalue{
+					signal: signal
+				}
+			}
+			return ResolvedLvalue{
+				root_id: id
+				value:   flow_value(signal)
+			}
+		}
+	}
+}
+
+fn (mut e Eval) write_resolved_lvalue_flow(resolved ResolvedLvalue, value Value) !FlowSignal {
+	mut new_value := value
+	for i := resolved.steps.len - 1; i >= 0; i-- {
+		step := resolved.steps[i]
+		match step.kind {
+			.index {
+				new_value = e.set_index_value(step.container, step.index, new_value)!
+			}
+			.selector {
+				new_value = e.set_selector_value(step.container, step.field_name, new_value)!
+			}
+			else {}
+		}
+	}
+	return e.update_target_flow(resolved.root_id, new_value)
 }
 
 fn (mut e Eval) set_index_value(container Value, index Value, value Value) !Value {
@@ -2759,10 +2832,30 @@ fn (e &Eval) method_call_param_type_names(receiver Value, receiver_type_name str
 			return e.function_param_type_names(target, 1)
 		}
 	}
+	if receiver is ArrayValue {
+		return e.array_method_param_type_names(receiver, method_name)
+	}
+	if receiver is MapValue {
+		return e.map_method_param_type_names(receiver, method_name)
+	}
 	if receiver is SumValue {
 		return e.method_call_param_type_names(receiver.payload, receiver.variant_name, method_name)
 	}
 	return []string{}
+}
+
+fn (e &Eval) array_method_param_type_names(receiver ArrayValue, method_name string) []string {
+	return match method_name {
+		'contains', 'index' { [receiver.elem_type_name] }
+		else { []string{} }
+	}
+}
+
+fn (e &Eval) map_method_param_type_names(receiver MapValue, method_name string) []string {
+	return match method_name {
+		'delete' { [receiver.key_type_name] }
+		else { []string{} }
+	}
 }
 
 fn (mut e Eval) eval_call_arg_values(node &flat.Node, expected_types []string) !FlowSignal {
@@ -3719,11 +3812,8 @@ fn (mut e Eval) eval_postfix_flow(node &flat.Node) !FlowSignal {
 fn (mut e Eval) apply_postfix_target_flow(target_id flat.NodeId, op flat.Op) !FlowSignal {
 	target := e.node(target_id)
 	match target.kind {
-		.index {
-			return e.update_index_postfix_flow(target, op)
-		}
-		.selector {
-			return e.update_selector_postfix_flow(target, op)
+		.index, .selector {
+			return e.update_resolved_lvalue_postfix_flow(target_id, op)
 		}
 		else {
 			old_signal := e.eval_expr_flow(target_id)!
@@ -3739,49 +3829,6 @@ fn (mut e Eval) apply_postfix_target_flow(target_id flat.NodeId, op flat.Op) !Fl
 			return value_flow(old)
 		}
 	}
-}
-
-fn (mut e Eval) update_index_postfix_flow(node &flat.Node, op flat.Op) !FlowSignal {
-	base_id := e.child(node, 0)
-	container_signal := e.eval_expr_flow(base_id)!
-	if container_signal.kind != .normal {
-		return container_signal
-	}
-	container := flow_value(container_signal)
-	index_signal := if container is MapValue {
-		e.eval_expr_flow_expected(e.child(node, 1), container.key_type_name)!
-	} else {
-		e.eval_expr_flow(e.child(node, 1))!
-	}
-	if index_signal.kind != .normal {
-		return index_signal
-	}
-	index := flow_value(index_signal)
-	old := e.index_value(container, index)!
-	value := e.apply_postfix_op(op, old)!
-	new_container := e.set_index_value(container, index, value)!
-	update_signal := e.update_target_flow(base_id, new_container)!
-	if update_signal.kind != .normal {
-		return update_signal
-	}
-	return value_flow(old)
-}
-
-fn (mut e Eval) update_selector_postfix_flow(node &flat.Node, op flat.Op) !FlowSignal {
-	base_id := e.child(node, 0)
-	container_signal := e.eval_expr_flow(base_id)!
-	if container_signal.kind != .normal {
-		return container_signal
-	}
-	container := flow_value(container_signal)
-	old := e.eval_selector_value(container, node.value)!
-	value := e.apply_postfix_op(op, old)!
-	new_container := e.set_selector_value(container, node.value, value)!
-	update_signal := e.update_target_flow(base_id, new_container)!
-	if update_signal.kind != .normal {
-		return update_signal
-	}
-	return value_flow(old)
 }
 
 fn (mut e Eval) apply_postfix_op(op flat.Op, old Value) !Value {
@@ -5031,7 +5078,11 @@ fn (e &Eval) struct_fields(type_name string) []FieldInfo {
 }
 
 fn (e &Eval) struct_field_type_name(value StructValue, field_name string) string {
-	info := e.struct_info(value.type_name)
+	return e.struct_field_type_name_by_type(value.type_name, field_name)
+}
+
+fn (e &Eval) struct_field_type_name_by_type(type_name string, field_name string) string {
+	info := e.struct_info(type_name)
 	for field in info.fields {
 		if field.name == field_name {
 			return e.qualify_type_name(field.module_name, field.typ)

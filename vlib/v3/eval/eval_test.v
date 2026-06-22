@@ -471,6 +471,34 @@ fn main() {
 	assert e.stdout() == '11\n2\n1\n'
 }
 
+fn test_eval_selector_index_receiver_evaluates_once_on_write() {
+	mut e := create()
+	e.run_text('
+struct Item {
+mut:
+	x int
+}
+
+fn next(mut i int) int {
+	old := i
+	i++
+	return old
+}
+
+fn main() {
+	mut xs := [Item{x: 1}, Item{x: 2}]
+	mut i := 0
+	xs[next(mut i)].x = 5
+	println(int_str(xs[0].x))
+	println(int_str(xs[1].x))
+	println(int_str(i))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '5\n2\n1\n'
+}
+
 fn test_eval_struct_method_and_map_update() {
 	mut e := create()
 	e.run_text("
@@ -624,6 +652,32 @@ fn main() {
 		panic(err)
 	}
 	assert e.stdout() == '7\n7\n'
+}
+
+fn test_eval_container_methods_use_declared_enum_arg_type() {
+	mut e := create()
+	e.run_text('
+enum Color {
+	red
+	blue
+}
+
+enum Other {
+	red = 10
+}
+
+fn main() {
+	mut m := map[Color]int{.red: 1}
+	m.delete(.red)
+	println(int_str(m.len))
+	xs := [Color.red, Color.blue]
+	println(xs.contains(.red))
+	println(int_str(xs.index(.red)))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '0\ntrue\n0\n'
 }
 
 fn test_eval_map_literal_value_flow_propagates_return() {
