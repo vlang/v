@@ -232,15 +232,20 @@ fn (mut c H2ServerConn) apply_settings(settings []H2Setting) ! {
 						'SETTINGS_INITIAL_WINDOW_SIZE ${s.value} exceeds 2^31-1') or {}
 					return error('h2 server: SETTINGS_INITIAL_WINDOW_SIZE ${s.value} exceeds 2^31-1 (FLOW_CONTROL_ERROR)')
 				}
-				// RFC 7540 §6.9.2: a change to the initial window size adjusts
-				// the send window of every active stream by the delta.
+				// RFC 7540 §6.9.2: validate ALL stream windows before mutating any
+				// so that a delta overflow on stream N does not leave streams 1..N-1
+				// partially updated. Send FLOW_CONTROL_ERROR (not PROTOCOL_ERROR).
 				delta := i64(s.value) - i64(c.peer.initial_window_size)
+				for _, st in c.streams {
+					if st.send_window + delta > i64(0x7fff_ffff) {
+						c.send_goaway(.flow_control_error,
+							'SETTINGS_INITIAL_WINDOW_SIZE delta overflows stream ${st.id} send window') or {}
+						return error('h2 server: SETTINGS_INITIAL_WINDOW_SIZE delta overflows stream ${st.id} send window (RFC 7540 §6.9.2 FLOW_CONTROL_ERROR)')
+					}
+				}
 				c.peer.initial_window_size = s.value
 				for _, mut st in c.streams {
 					st.send_window += delta
-					if st.send_window > i64(0x7fff_ffff) {
-						return error('h2: SETTINGS_INITIAL_WINDOW_SIZE delta overflows stream ${st.id} send window (RFC 7540 §6.9.2 FLOW_CONTROL_ERROR)')
-					}
 				}
 			}
 			h2_settings_max_frame_size {

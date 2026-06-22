@@ -451,13 +451,22 @@ fn (mut c H2MuxConn) send_header_block_locked(stream_id u32, block []u8, end_str
 	mut max := int(c.peer_max_frame)
 	c.fmu.unlock()
 	if block.len <= max {
-		c.write_all_locked(H2Frame(H2HeadersFrame{
-			stream_id:   stream_id
-			fragment:    block
-			end_headers: true
-			end_stream:  end_stream
-		}).encode())!
-		return
+		// Re-read peer_max_frame right before writing to close the TOCTOU window:
+		// the peer may have lowered SETTINGS_MAX_FRAME_SIZE since the check above.
+		c.fmu.lock()
+		max = int(c.peer_max_frame)
+		c.fmu.unlock()
+		if block.len <= max {
+			c.write_all_locked(H2Frame(H2HeadersFrame{
+				stream_id:   stream_id
+				fragment:    block
+				end_headers: true
+				end_stream:  end_stream
+			}).encode())!
+			return
+		}
+		// block no longer fits in one frame under the refreshed limit;
+		// fall through to the multi-frame path.
 	}
 	// Re-read peer_max_frame under fmu immediately before the first HEADERS write
 	// to minimise the TOCTOU window between the size-check above and this write.
