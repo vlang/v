@@ -532,6 +532,27 @@ fn main() {
 	assert e.stdout() == '0\n1\n'
 }
 
+fn test_eval_map_literal_keys_use_declared_enum_type() {
+	mut e := create()
+	e.run_text('
+enum Color {
+	red
+}
+
+enum Other {
+	red = 10
+}
+
+fn main() {
+	m := map[Color]int{.red: 7}
+	println(int_str(m[Color.red]))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '7\n'
+}
+
 fn test_eval_indexed_writes_adapt_sum_values() {
 	mut e := create()
 	e.run_text('
@@ -904,6 +925,29 @@ fn main() {
 	assert e.stdout() == '2\n1\n'
 }
 
+fn test_eval_multi_assign_propagates_rhs_flow() {
+	mut e := create()
+	e.run_text('
+fn maybe_pair() ?(int, int) {
+	return none
+}
+
+fn run() int {
+	a, b := maybe_pair() or {
+		return 7
+	}
+	return a + b
+}
+
+fn main() {
+	println(int_str(run()))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '7\n'
+}
+
 fn test_eval_struct_equality_compares_fields() {
 	mut e := create()
 	e.run_text('
@@ -1150,6 +1194,26 @@ fn main() {
 		panic(err)
 	}
 	assert e.stdout() == '2\n0\n3\n0\n'
+}
+
+fn test_eval_logical_and_rhs_uses_is_smartcast() {
+	mut e := create()
+	e.run_text('
+type Any = int | string
+
+fn positive(x Any) bool {
+	return x is int && x > 0
+}
+
+fn main() {
+	println(positive(2))
+	println(positive(-1))
+	println(positive("s"))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == 'true\nfalse\nfalse\n'
 }
 
 fn test_eval_calls_function_value_from_identifier() {
@@ -1838,6 +1902,36 @@ fn run() []int {
 
 fn main() {
 	println(int_str(run()[0]))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '7\n'
+}
+
+fn test_eval_or_block_return_propagates_from_struct_init_field() {
+	mut e := create()
+	e.run_text('
+struct S {
+	n int
+}
+
+fn maybe() ?int {
+	return none
+}
+
+fn run() S {
+	return S{
+		n: maybe() or {
+			return S{
+				n: 7
+			}
+		}
+	}
+}
+
+fn main() {
+	println(int_str(run().n))
 }
 	') or {
 		panic(err)

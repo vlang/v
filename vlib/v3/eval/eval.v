@@ -1005,7 +1005,13 @@ fn (mut e Eval) exec_assign(node &flat.Node, declare bool) !FlowSignal {
 		return normal_flow()
 	}
 	if children.len > 2 {
-		value := e.assignment_value(node.op, children[0], children[1])!
+		first_target_type := e.assignment_target_type_name(children[0], declare)
+		first_signal := e.assignment_value_flow(node.op, children[0], children[1],
+			first_target_type)!
+		if first_signal.kind != .normal {
+			return first_signal
+		}
+		value := flow_value(first_signal)
 		mut lhs_ids := [children[0]]
 		for i := 2; i < children.len; i++ {
 			lhs_ids << children[i]
@@ -1031,7 +1037,12 @@ fn (mut e Eval) exec_assign(node &flat.Node, declare bool) !FlowSignal {
 			lhs_id := children[i]
 			rhs_id := if i + 1 < children.len { children[i + 1] } else { flat.empty_node }
 			item := if int(rhs_id) >= 0 {
-				e.assignment_value(node.op, lhs_id, rhs_id)!
+				target_type := e.assignment_target_type_name(lhs_id, declare)
+				signal := e.assignment_value_flow(node.op, lhs_id, rhs_id, target_type)!
+				if signal.kind != .normal {
+					return signal
+				}
+				flow_value(signal)
 			} else {
 				void_value()
 			}
@@ -1049,7 +1060,12 @@ fn (mut e Eval) exec_assign(node &flat.Node, declare bool) !FlowSignal {
 		lhs_id := children[i]
 		rhs_id := if i + 1 < children.len { children[i + 1] } else { flat.empty_node }
 		value := if int(rhs_id) >= 0 {
-			e.assignment_value(node.op, lhs_id, rhs_id)!
+			target_type := e.assignment_target_type_name(lhs_id, declare)
+			signal := e.assignment_value_flow(node.op, lhs_id, rhs_id, target_type)!
+			if signal.kind != .normal {
+				return signal
+			}
+			flow_value(signal)
 		} else {
 			void_value()
 		}
@@ -2074,6 +2090,12 @@ fn (mut e Eval) eval_expr_flow(id flat.NodeId) !FlowSignal {
 				values:         values
 			})
 		}
+		.struct_init {
+			return e.eval_struct_init_flow(node)
+		}
+		.assoc {
+			return e.eval_assoc_flow(node)
+		}
 		else {
 			return FlowSignal{
 				values: [e.eval_expr(id)!]
@@ -2112,7 +2134,16 @@ fn (mut e Eval) eval_infix_flow(node &flat.Node) !FlowSignal {
 		if !e.value_as_bool(left)! {
 			return value_flow(Value(false))
 		}
+		mut smartcast_scope := false
+		if binding := e.smartcast_binding_from_condition(e.child(node, 0)) {
+			e.open_scope()
+			e.declare_var_typed(binding.name, binding.value, binding.type_name)
+			smartcast_scope = true
+		}
 		right_signal := e.eval_expr_flow(e.child(node, 1))!
+		if smartcast_scope {
+			e.close_scope()!
+		}
 		if right_signal.kind != .normal {
 			return right_signal
 		}
@@ -3211,13 +3242,14 @@ fn (mut e Eval) eval_map_init(node &flat.Node) !Value {
 	mut values := []Value{}
 	mut i := 0
 	for i + 1 < children.len {
-		key := e.eval_expr(children[i])!
+		key := e.eval_expr_expected(children[i], key_type)!
 		if key_type.len == 0 {
 			key_type = e.infer_expr_type_name(children[i])
 			if key_type.len == 0 {
 				key_type = e.runtime_type_name(key)
 			}
 		}
+		typed_key := e.adapt_value_to_type_name(key, key_type)
 		value := e.eval_expr_expected(children[i + 1], value_type)!
 		if value_type.len == 0 {
 			value_type = e.infer_expr_type_name(children[i + 1])
@@ -3225,7 +3257,7 @@ fn (mut e Eval) eval_map_init(node &flat.Node) !Value {
 				value_type = e.runtime_type_name(value)
 			}
 		}
-		keys << key
+		keys << typed_key
 		values << value
 		i += 2
 	}
@@ -3252,6 +3284,10 @@ fn split_map_type(type_name string) (string, string) {
 }
 
 fn (mut e Eval) eval_struct_init(node &flat.Node) !Value {
+	return flow_value(e.eval_struct_init_flow(node)!)
+}
+
+fn (mut e Eval) eval_struct_init_flow(node &flat.Node) !FlowSignal {
 	type_name := e.normalize_type_name(node.value)
 	mut st := e.zero_struct_value(type_name)
 	mut positional := 0
@@ -3262,7 +3298,11 @@ fn (mut e Eval) eval_struct_init(node &flat.Node) !Value {
 		}
 		if child.value.len > 0 {
 			field_type := e.struct_field_type_name(st, child.value)
-			value := e.eval_expr_expected(e.child(child, 0), field_type)!
+			value_signal := e.eval_expr_flow_expected(e.child(child, 0), field_type)!
+			if value_signal.kind != .normal {
+				return value_signal
+			}
+			value := flow_value(value_signal)
 			st.fields[child.value] = e.adapt_value_to_type_name(value, e.struct_field_type_name(st,
 				child.value))
 		} else {
@@ -3270,21 +3310,33 @@ fn (mut e Eval) eval_struct_init(node &flat.Node) !Value {
 			if positional < fields.len {
 				field := fields[positional]
 				field_type := e.qualify_type_name(field.module_name, field.typ)
-				value := e.eval_expr_expected(e.child(child, 0), field_type)!
+				value_signal := e.eval_expr_flow_expected(e.child(child, 0), field_type)!
+				if value_signal.kind != .normal {
+					return value_signal
+				}
+				value := flow_value(value_signal)
 				st.fields[field.name] = e.adapt_value_to_type_name(value, e.qualify_type_name(field.module_name,
 					field.typ))
 			}
 			positional++
 		}
 	}
-	return st
+	return value_flow(st)
 }
 
 fn (mut e Eval) eval_assoc(node &flat.Node) !Value {
+	return flow_value(e.eval_assoc_flow(node)!)
+}
+
+fn (mut e Eval) eval_assoc_flow(node &flat.Node) !FlowSignal {
 	if node.children_count == 0 {
-		return e.zero_struct_value(node.value)
+		return value_flow(e.zero_struct_value(node.value))
 	}
-	base := e.eval_expr(e.child(node, 0))!
+	base_signal := e.eval_expr_flow(e.child(node, 0))!
+	if base_signal.kind != .normal {
+		return base_signal
+	}
+	base := flow_value(base_signal)
 	if base !is StructValue {
 		return error('v3.eval: assoc base must be struct')
 	}
@@ -3293,11 +3345,15 @@ fn (mut e Eval) eval_assoc(node &flat.Node) !Value {
 		field := e.child_node(node, i)
 		if field.kind == .field_init {
 			field_type := e.struct_field_type_name(st, field.value)
-			st.fields[field.value] = e.adapt_value_to_type_name(e.eval_expr_expected(e.child(field, 0),
-				field_type)!, field_type)
+			value_signal := e.eval_expr_flow_expected(e.child(field, 0), field_type)!
+			if value_signal.kind != .normal {
+				return value_signal
+			}
+			st.fields[field.value] = e.adapt_value_to_type_name(flow_value(value_signal),
+				field_type)
 		}
 	}
-	return st
+	return value_flow(st)
 }
 
 fn (mut e Eval) eval_prefix(node &flat.Node) !Value {
