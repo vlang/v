@@ -539,7 +539,7 @@ fn (mut g FlatGen) has_zero_sized_leading_init_slot_inner(typ types.Type, mut vi
 			g.has_zero_sized_leading_init_slot_inner(typ.base_type, mut visited)
 		}
 		types.ArrayFixed {
-			if g.fixed_array_len_value(typ) == '0' {
+			if g.fixed_array_len_is_zero(typ) {
 				true
 			} else {
 				g.has_zero_sized_leading_init_slot_inner(typ.elem_type, mut visited)

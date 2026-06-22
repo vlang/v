@@ -91,7 +91,9 @@ fn main() {
 }
 
 fn test_aggregate_globals_are_brace_zero_initialized() {
-	c_code := gen_c_for_source('aggregate_global_zero_init', 'struct Box {
+	c_code := gen_c_for_source('aggregate_global_zero_init', 'const zero_len = 1 - 1
+
+struct Box {
 	value int
 }
 
@@ -105,6 +107,11 @@ struct NestedZeroLeading {
 	value int
 }
 
+struct ZeroLeadingConst {
+	z [zero_len]int
+	value int
+}
+
 __global (
 	names []string
 	lookup map[string]int
@@ -114,6 +121,9 @@ __global (
 	zero ZeroLeading
 	nested NestedZeroLeading
 	zero_slots [2]ZeroLeading
+	const_empty [zero_len]int
+	const_zero ZeroLeadingConst
+	const_zero_slots [2]ZeroLeadingConst
 )
 
 fn main() {}
@@ -126,6 +136,9 @@ fn main() {}
 	assert c_code.contains('\nZeroLeading zero;\n')
 	assert c_code.contains('\nNestedZeroLeading nested;\n')
 	assert c_code.contains('\nZeroLeading zero_slots[2];\n')
+	assert c_code.contains('\nint const_empty[(1) - (1)];\n')
+	assert c_code.contains('\nZeroLeadingConst const_zero;\n')
+	assert c_code.contains('\nZeroLeadingConst const_zero_slots[2];\n')
 	assert !c_code.contains('Array names = 0;')
 	assert !c_code.contains('map lookup = 0;')
 	assert !c_code.contains('Box box = 0;')
@@ -133,6 +146,9 @@ fn main() {}
 	assert !c_code.contains('ZeroLeading zero = {0};')
 	assert !c_code.contains('NestedZeroLeading nested = {0};')
 	assert !c_code.contains('ZeroLeading zero_slots[2] = {0};')
+	assert !c_code.contains('int const_empty[(1) - (1)] = {0};')
+	assert !c_code.contains('ZeroLeadingConst const_zero = {0};')
+	assert !c_code.contains('ZeroLeadingConst const_zero_slots[2] = {0};')
 }
 
 fn test_aggregate_decl_with_scalar_zero_uses_brace_initializer() {

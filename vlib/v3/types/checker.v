@@ -3763,7 +3763,8 @@ fn (tc &TypeChecker) fixed_array_lengths_compatible(actual ArrayFixed, expected 
 	return actual_len == expected_len
 }
 
-fn (tc &TypeChecker) fixed_array_len_value(arr ArrayFixed) ?int {
+// fixed_array_len_value returns the evaluated fixed-array length when it can be resolved.
+pub fn (tc &TypeChecker) fixed_array_len_value(arr ArrayFixed) ?int {
 	if arr.len > 0 {
 		return arr.len
 	}

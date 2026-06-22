@@ -1043,6 +1043,13 @@ fn (mut g FlatGen) fixed_array_len_value(arr types.ArrayFixed) string {
 	return g.fixed_array_len_raw(arr.len_expr, arr.len)
 }
 
+fn (mut g FlatGen) fixed_array_len_is_zero(arr types.ArrayFixed) bool {
+	if value := g.tc.fixed_array_len_value(arr) {
+		return value == 0
+	}
+	return g.fixed_array_len_value(arr).trim_space() == '0'
+}
+
 fn (mut g FlatGen) fixed_array_len_raw(raw_len string, fallback int) string {
 	if raw_len.len == 0 {
 		return '${fallback}'
