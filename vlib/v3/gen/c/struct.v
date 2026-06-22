@@ -688,8 +688,13 @@ fn (g &FlatGen) struct_field_type_at(type_name string, index int) ?types.Type {
 }
 
 fn (mut g FlatGen) gen_return_assoc(node flat.Node) {
-	ct := g.tc.c_type(g.tc.parse_type(node.value))
 	tmp := g.tmp_name()
+	g.gen_assoc_return_tmp(node, tmp)
+	g.writeln('return ${tmp};')
+}
+
+fn (mut g FlatGen) gen_assoc_return_tmp(node flat.Node, tmp string) {
+	ct := g.tc.c_type(g.tc.parse_type(node.value))
 	g.write('${ct} ${tmp} = ')
 	g.gen_expr(g.a.child(&node, 0))
 	g.writeln(';')
@@ -705,7 +710,6 @@ fn (mut g FlatGen) gen_return_assoc(node flat.Node) {
 			g.writeln(';')
 		}
 	}
-	g.writeln('return ${tmp};')
 }
 
 fn (mut g FlatGen) gen_assoc_expr(node flat.Node) {
