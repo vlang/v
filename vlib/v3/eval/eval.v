@@ -1028,6 +1028,9 @@ fn (mut e Eval) exec_assign(node &flat.Node, declare bool) !FlowSignal {
 	if children.len == 2 {
 		lhs_id := children[0]
 		rhs_id := children[1]
+		if node.op != .assign && node.op != .none && e.target_needs_single_eval(lhs_id) {
+			return e.exec_compound_assignment_pair_flow(node.op, lhs_id, rhs_id, declare)
+		}
 		target_type := e.assignment_target_type_name(lhs_id, declare)
 		signal := e.assignment_value_flow(node.op, lhs_id, rhs_id, target_type)!
 		if signal.kind != .normal {
@@ -1126,6 +1129,47 @@ fn (mut e Eval) exec_assign(node &flat.Node, declare bool) !FlowSignal {
 	return normal_flow()
 }
 
+fn (e &Eval) target_needs_single_eval(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	return e.node(id).kind in [.index, .selector]
+}
+
+fn (mut e Eval) exec_compound_assignment_pair_flow(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId, declare bool) !FlowSignal {
+	target_type := e.assignment_target_type_name(lhs_id, declare)
+	rhs_signal := e.eval_expr_flow_expected(rhs_id, target_type)!
+	if rhs_signal.kind != .normal {
+		return rhs_signal
+	}
+	rhs := flow_value(rhs_signal)
+	return e.apply_compound_target_flow(op, lhs_id, rhs, declare, if target_type.len > 0 {
+		target_type
+	} else {
+		e.infer_expr_type_name(rhs_id)
+	})
+}
+
+fn (mut e Eval) apply_compound_target_flow(op flat.Op, lhs_id flat.NodeId, rhs Value, declare bool, type_name string) !FlowSignal {
+	node := e.node(lhs_id)
+	match node.kind {
+		.index {
+			return e.update_index_target_with_op_flow(node, op, rhs)
+		}
+		.selector {
+			return e.update_selector_target_with_op_flow(node, op, rhs)
+		}
+		else {
+			left_signal := e.eval_expr_flow(lhs_id)!
+			if left_signal.kind != .normal {
+				return left_signal
+			}
+			value := e.apply_assignment_op(op, flow_value(left_signal), rhs)!
+			return e.assign_target_typed_flow(lhs_id, value, declare, type_name)
+		}
+	}
+}
+
 fn (mut e Eval) assignment_value(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId) !Value {
 	rhs := e.eval_expr(rhs_id)!
 	if op == .assign || op == .none {
@@ -1165,22 +1209,24 @@ fn (mut e Eval) assignment_value_flow(op flat.Op, lhs_id flat.NodeId, rhs_id fla
 	}
 	left := flow_value(left_signal)
 	return FlowSignal{
-		values: [
-			match op {
-				.plus_assign { e.apply_infix(.plus, left, rhs)! }
-				.minus_assign { e.apply_infix(.minus, left, rhs)! }
-				.mul_assign { e.apply_infix(.mul, left, rhs)! }
-				.div_assign { e.apply_infix(.div, left, rhs)! }
-				.mod_assign { e.apply_infix(.mod, left, rhs)! }
-				.amp_assign { e.apply_infix(.amp, left, rhs)! }
-				.pipe_assign { e.apply_infix(.pipe, left, rhs)! }
-				.xor_assign { e.apply_infix(.xor, left, rhs)! }
-				.left_shift_assign { e.apply_infix(.left_shift, left, rhs)! }
-				.right_shift_assign { e.apply_infix(.right_shift, left, rhs)! }
-				.right_shift_unsigned_assign { e.apply_infix(.right_shift_unsigned, left, rhs)! }
-				else { rhs }
-			},
-		]
+		values: [e.apply_assignment_op(op, left, rhs)!]
+	}
+}
+
+fn (mut e Eval) apply_assignment_op(op flat.Op, left Value, rhs Value) !Value {
+	return match op {
+		.plus_assign { e.apply_infix(.plus, left, rhs)! }
+		.minus_assign { e.apply_infix(.minus, left, rhs)! }
+		.mul_assign { e.apply_infix(.mul, left, rhs)! }
+		.div_assign { e.apply_infix(.div, left, rhs)! }
+		.mod_assign { e.apply_infix(.mod, left, rhs)! }
+		.amp_assign { e.apply_infix(.amp, left, rhs)! }
+		.pipe_assign { e.apply_infix(.pipe, left, rhs)! }
+		.xor_assign { e.apply_infix(.xor, left, rhs)! }
+		.left_shift_assign { e.apply_infix(.left_shift, left, rhs)! }
+		.right_shift_assign { e.apply_infix(.right_shift, left, rhs)! }
+		.right_shift_unsigned_assign { e.apply_infix(.right_shift_unsigned, left, rhs)! }
+		else { rhs }
 	}
 }
 
@@ -1398,6 +1444,28 @@ fn (mut e Eval) update_index_target_flow(node &flat.Node, value Value) !FlowSign
 	return e.update_target_flow(base_id, new_container)
 }
 
+fn (mut e Eval) update_index_target_with_op_flow(node &flat.Node, op flat.Op, rhs Value) !FlowSignal {
+	base_id := e.child(node, 0)
+	container_signal := e.eval_expr_flow(base_id)!
+	if container_signal.kind != .normal {
+		return container_signal
+	}
+	container := flow_value(container_signal)
+	index_signal := if container is MapValue {
+		e.eval_expr_flow_expected(e.child(node, 1), container.key_type_name)!
+	} else {
+		e.eval_expr_flow(e.child(node, 1))!
+	}
+	if index_signal.kind != .normal {
+		return index_signal
+	}
+	index := flow_value(index_signal)
+	old := e.index_value(container, index)!
+	value := e.apply_assignment_op(op, old, rhs)!
+	new_container := e.set_index_value(container, index, value)!
+	return e.update_target_flow(base_id, new_container)
+}
+
 fn (mut e Eval) update_selector_target(node &flat.Node, value Value) ! {
 	signal := e.update_selector_target_flow(node, value)!
 	if signal.kind != .normal {
@@ -1412,6 +1480,19 @@ fn (mut e Eval) update_selector_target_flow(node &flat.Node, value Value) !FlowS
 		return container_signal
 	}
 	new_container := e.set_selector_value(flow_value(container_signal), node.value, value)!
+	return e.update_target_flow(base_id, new_container)
+}
+
+fn (mut e Eval) update_selector_target_with_op_flow(node &flat.Node, op flat.Op, rhs Value) !FlowSignal {
+	base_id := e.child(node, 0)
+	container_signal := e.eval_expr_flow(base_id)!
+	if container_signal.kind != .normal {
+		return container_signal
+	}
+	container := flow_value(container_signal)
+	old := e.eval_selector_value(container, node.value)!
+	value := e.apply_assignment_op(op, old, rhs)!
+	new_container := e.set_selector_value(container, node.value, value)!
 	return e.update_target_flow(base_id, new_container)
 }
 
@@ -2125,6 +2206,9 @@ fn (mut e Eval) eval_expr_flow(id flat.NodeId) !FlowSignal {
 				return value_signal
 			}
 			return value_flow(e.apply_prefix(node.op, flow_value(value_signal))!)
+		}
+		.postfix {
+			return e.eval_postfix_flow(node)
 		}
 		.infix {
 			return e.eval_infix_flow(node)
@@ -3624,15 +3708,88 @@ fn (e &Eval) apply_prefix(op flat.Op, value Value) !Value {
 }
 
 fn (mut e Eval) eval_postfix(node &flat.Node) !Value {
+	return flow_value(e.eval_postfix_flow(node)!)
+}
+
+fn (mut e Eval) eval_postfix_flow(node &flat.Node) !FlowSignal {
 	target_id := e.child(node, 0)
-	old := e.eval_expr(target_id)!
-	if node.op == .inc {
-		e.update_target(target_id, e.apply_infix(.plus, old, Value(i64(1)))!)!
-		return old
+	return e.apply_postfix_target_flow(target_id, node.op)
+}
+
+fn (mut e Eval) apply_postfix_target_flow(target_id flat.NodeId, op flat.Op) !FlowSignal {
+	target := e.node(target_id)
+	match target.kind {
+		.index {
+			return e.update_index_postfix_flow(target, op)
+		}
+		.selector {
+			return e.update_selector_postfix_flow(target, op)
+		}
+		else {
+			old_signal := e.eval_expr_flow(target_id)!
+			if old_signal.kind != .normal {
+				return old_signal
+			}
+			old := flow_value(old_signal)
+			value := e.apply_postfix_op(op, old)!
+			update_signal := e.update_target_flow(target_id, value)!
+			if update_signal.kind != .normal {
+				return update_signal
+			}
+			return value_flow(old)
+		}
 	}
-	if node.op == .dec {
-		e.update_target(target_id, e.apply_infix(.minus, old, Value(i64(1)))!)!
-		return old
+}
+
+fn (mut e Eval) update_index_postfix_flow(node &flat.Node, op flat.Op) !FlowSignal {
+	base_id := e.child(node, 0)
+	container_signal := e.eval_expr_flow(base_id)!
+	if container_signal.kind != .normal {
+		return container_signal
+	}
+	container := flow_value(container_signal)
+	index_signal := if container is MapValue {
+		e.eval_expr_flow_expected(e.child(node, 1), container.key_type_name)!
+	} else {
+		e.eval_expr_flow(e.child(node, 1))!
+	}
+	if index_signal.kind != .normal {
+		return index_signal
+	}
+	index := flow_value(index_signal)
+	old := e.index_value(container, index)!
+	value := e.apply_postfix_op(op, old)!
+	new_container := e.set_index_value(container, index, value)!
+	update_signal := e.update_target_flow(base_id, new_container)!
+	if update_signal.kind != .normal {
+		return update_signal
+	}
+	return value_flow(old)
+}
+
+fn (mut e Eval) update_selector_postfix_flow(node &flat.Node, op flat.Op) !FlowSignal {
+	base_id := e.child(node, 0)
+	container_signal := e.eval_expr_flow(base_id)!
+	if container_signal.kind != .normal {
+		return container_signal
+	}
+	container := flow_value(container_signal)
+	old := e.eval_selector_value(container, node.value)!
+	value := e.apply_postfix_op(op, old)!
+	new_container := e.set_selector_value(container, node.value, value)!
+	update_signal := e.update_target_flow(base_id, new_container)!
+	if update_signal.kind != .normal {
+		return update_signal
+	}
+	return value_flow(old)
+}
+
+fn (mut e Eval) apply_postfix_op(op flat.Op, old Value) !Value {
+	if op == .inc {
+		return e.apply_infix(.plus, old, Value(i64(1)))
+	}
+	if op == .dec {
+		return e.apply_infix(.minus, old, Value(i64(1)))
 	}
 	return old
 }
@@ -4960,7 +5117,7 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name string) Value {
 		}
 	}
 	if type_name.starts_with('[]') && value is ArrayValue {
-		elem_type_name := type_name[2..]
+		elem_type_name := e.qualify_nested_type_name(e.current_module_name(), type_name[2..])
 		mut arr := value
 		arr.elem_type_name = elem_type_name
 		mut values := []Value{cap: arr.values.cap}
@@ -4972,10 +5129,15 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name string) Value {
 	}
 	if type_name.starts_with('map[') && value is MapValue {
 		key_type_name, value_type_name := split_map_type(type_name)
+		qualified_key_type_name := e.qualify_nested_type_name(e.current_module_name(),
+			key_type_name)
+		qualified_value_type_name := e.qualify_nested_type_name(e.current_module_name(),
+			value_type_name)
 		mut m := MapValue{
-			key_type_name:   key_type_name
-			value_type_name: value_type_name
-			default_value:   e.adapt_value_to_type_name(value.default_value, value_type_name)
+			key_type_name:   qualified_key_type_name
+			value_type_name: qualified_value_type_name
+			default_value:   e.adapt_value_to_type_name(value.default_value,
+				qualified_value_type_name)
 		}
 		for entry in value.entries {
 			m = e.map_set_value(m, entry.key, entry.value)

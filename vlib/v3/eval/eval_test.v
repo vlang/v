@@ -448,6 +448,29 @@ fn main() {
 	assert e.stdout() == '9223372036854775805\n9223372036854775805\n'
 }
 
+fn test_eval_compound_index_target_evaluates_once() {
+	mut e := create()
+	e.run_text('
+fn next(mut i int) int {
+	old := i
+	i++
+	return old
+}
+
+fn main() {
+	mut xs := [1, 2]
+	mut i := 0
+	xs[next(mut i)] += 10
+	println(int_str(xs[0]))
+	println(int_str(xs[1]))
+	println(int_str(i))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '11\n2\n1\n'
+}
+
 fn test_eval_struct_method_and_map_update() {
 	mut e := create()
 	e.run_text("
@@ -683,6 +706,54 @@ fn run() int {
 	xs[idx() or {
 		return 7
 	}] = 1
+	return xs[0]
+}
+
+fn main() {
+	println(int_str(run()))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '7\n'
+}
+
+fn test_eval_postfix_index_target_evaluates_once() {
+	mut e := create()
+	e.run_text('
+fn next(mut i int) int {
+	old := i
+	i++
+	return old
+}
+
+fn main() {
+	mut xs := [1, 2]
+	mut i := 0
+	old := xs[next(mut i)]++
+	println(int_str(old))
+	println(int_str(xs[0]))
+	println(int_str(xs[1]))
+	println(int_str(i))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '1\n2\n2\n1\n'
+}
+
+fn test_eval_postfix_index_target_propagates_flow() {
+	mut e := create()
+	e.run_text('
+fn idx() ?int {
+	return none
+}
+
+fn run() int {
+	mut xs := [0]
+	xs[idx() or {
+		return 7
+	}]++
 	return xs[0]
 }
 
@@ -1070,6 +1141,46 @@ fn main() {
 	p.parse_files([main_file, mod_file])
 	e.run_files(p.a) or { panic(err) }
 	assert e.stdout() == '0\nint\n'
+}
+
+fn test_eval_imported_array_return_qualifies_element_type() {
+	dir := os.join_path(os.temp_dir(), 'v3_eval_import_array_return_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	main_file := os.join_path(dir, 'main.v')
+	mod_file := os.join_path(dir, 'm.v')
+	os.write_file(mod_file, '
+module m
+
+pub struct Item {}
+
+pub fn items() []Item {
+	return [Item{}]
+}
+	') or {
+		panic(err)
+	}
+	os.write_file(main_file, '
+module main
+
+import m
+
+fn main() {
+	mut xs := m.items()
+	xs << [m.Item{}, m.Item{}]
+	println(int_str(xs.len))
+}
+	') or {
+		panic(err)
+	}
+	mut e := create()
+	mut p := parser.Parser.new(&e.prefs)
+	p.parse_files([main_file, mod_file])
+	e.run_files(p.a) or { panic(err) }
+	assert e.stdout() == '3\n'
 }
 
 fn test_eval_value_block_preserves_multi_return_values() {
