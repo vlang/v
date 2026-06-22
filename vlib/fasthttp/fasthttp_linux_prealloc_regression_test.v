@@ -2,7 +2,6 @@
 // vtest vflags: -prealloc
 module fasthttp
 
-import net
 import time
 
 fn C.socketpair(domain i32, typ i32, protocol i32, sockets &i32) i32
