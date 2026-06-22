@@ -109,9 +109,6 @@ fn (mut s Server) listen_and_serve_tls() {
 			}
 			continue
 		}
-		if s.read_timeout > 0 {
-			conn.set_read_timeout(s.read_timeout)
-		}
 		ch <- conn
 	}
 	ch.close()

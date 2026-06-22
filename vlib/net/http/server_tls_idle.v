@@ -42,11 +42,16 @@ fn (mut t TlsIdleConnTracker) close_idle() {
 	t.closing = true
 	handles := t.handles.clone()
 	t.handles.clear()
-	t.mu.unlock()
+	// Shut down handles under the lock: a worker racing through
+	// unmark_idle → conn.shutdown() → net.close(fd) could cause the OS
+	// to reuse the fd before we call net.shutdown here, hitting an
+	// unrelated socket. Holding the lock keeps unmark_idle serialized
+	// with this loop, closing the window.
 	for handle in handles {
 		net.shutdown(handle)
 		$if windows {
 			net.close(handle) or {}
 		}
 	}
+	t.mu.unlock()
 }
