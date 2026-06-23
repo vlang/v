@@ -3143,7 +3143,16 @@ fn (mut t Transformer) transform_string_interp(_id flat.NodeId, node flat.Node) 
 	if node.children_count == 0 {
 		return t.make_string_literal('')
 	}
-	mut parts := []flat.NodeId{cap: int(node.children_count)}
+	// Some parts (arrays, optionals) lower into a prelude pushed onto pending_stmts, which
+	// runs before the containing statement. If such a part follows a part with side effects,
+	// keeping the earlier part inline in the string__plus chain would evaluate it after the
+	// hoisted prelude, reversing source order. So once any part hoists statements, bind every
+	// part to a temp in source order; while nothing hoists, keep the cheap inline form.
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	mut inline_parts := []flat.NodeId{cap: int(node.children_count)}
+	mut temps := []flat.NodeId{cap: int(node.children_count)}
+	mut hoisting := false
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		transformed := t.transform_expr(child_id)
@@ -3160,8 +3169,40 @@ fn (mut t Transformer) transform_string_interp(_id flat.NodeId, node flat.Node) 
 		if typ.len == 0 {
 			typ = 'string'
 		}
-		parts << t.wrap_string_conversion(transformed, typ)
+		part := t.wrap_string_conversion(transformed, typ)
+		mut part_stmts := []flat.NodeId{}
+		t.drain_pending(mut part_stmts)
+		if !hoisting && part_stmts.len == 0 {
+			inline_parts << part
+			continue
+		}
+		if !hoisting {
+			hoisting = true
+			// Earlier parts had no prelude; bind them to temps first so their side effects
+			// still happen before this part's hoisted statements.
+			for earlier in inline_parts {
+				earlier_name := t.new_temp('interp_part')
+				t.pending_stmts << t.make_decl_assign_typed(earlier_name, earlier, 'string')
+				temps << t.make_ident(earlier_name)
+			}
+		}
+		for st in part_stmts {
+			t.pending_stmts << st
+		}
+		name := t.new_temp('interp_part')
+		t.pending_stmts << t.make_decl_assign_typed(name, part, 'string')
+		temps << t.make_ident(name)
 	}
+	// The interp's own statements must run after any pending the surrounding context queued.
+	mut interp_stmts := []flat.NodeId{}
+	t.drain_pending(mut interp_stmts)
+	for st in outer_pending {
+		t.pending_stmts << st
+	}
+	for st in interp_stmts {
+		t.pending_stmts << st
+	}
+	parts := if hoisting { temps } else { inline_parts }
 	mut result := if parts.len == 0 { t.make_string_literal('') } else { parts[0] }
 	for i in 1 .. parts.len {
 		result = t.string_plus(result, parts[i])
