@@ -51,6 +51,12 @@ static int v_net_openssl_SSL_CTX_use_certificate_chain_memory(SSL_CTX *ctx,
 	return 1;
 }
 
+static int v_net_openssl_SSL_CTX_extra_chain_certs_count(SSL_CTX *ctx) {
+	STACK_OF(X509) *chain = NULL;
+	SSL_CTX_get_extra_chain_certs(ctx, &chain);
+	return chain == NULL ? 0 : sk_X509_num(chain);
+}
+
 static int v_net_openssl_SSL_CTX_use_PrivateKey_memory(SSL_CTX *ctx,
 		const unsigned char *data, size_t len) {
 	if (len > INT_MAX) {

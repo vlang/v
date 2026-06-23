@@ -88,6 +88,23 @@ fn test_ssl_listener_loads_in_memory_credentials_without_temp_files() ! {
 	}
 }
 
+fn test_ssl_listener_file_credentials_load_full_certificate_chain() ! {
+	cert_path := os.join_path(os.temp_dir(),
+		'v_openssl_listener_fullchain_${time.now().unix_nano()}.pem')
+	os.write_file(cert_path, load_test_certificate_pem()! + load_test_certificate_pem()!)!
+	defer {
+		os.rm(cert_path) or {}
+	}
+	mut listener := new_ssl_listener('127.0.0.1:0', SSLConnectConfig{
+		cert:     cert_path
+		cert_key: os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.key')
+	})!
+	defer {
+		listener.shutdown() or {}
+	}
+	assert C.v_net_openssl_SSL_CTX_extra_chain_certs_count(listener.sslctx) == 1
+}
+
 fn test_ssl_listener_negotiates_alpn() ! {
 	mut listener := new_ssl_listener('127.0.0.1:0', SSLConnectConfig{
 		cert:                   load_test_certificate_pem()!

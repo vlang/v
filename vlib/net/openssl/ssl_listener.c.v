@@ -68,12 +68,11 @@ fn (mut l SSLListener) init() ! {
 			}
 		}
 	} else {
-		mut res := C.SSL_CTX_use_certificate_file(voidptr(l.sslctx), &char(l.config.cert.str),
-			C.SSL_FILETYPE_PEM)
+		mut res := C.SSL_CTX_use_certificate_chain_file(voidptr(l.sslctx), &char(l.config.cert.str))
 		if res != 1 {
 			C.ERR_print_errors_fp(C.stderr)
 			l.shutdown() or {}
-			return error('net.openssl SSLListener.init, SSL_CTX_use_certificate_file failed')
+			return error('net.openssl SSLListener.init, SSL_CTX_use_certificate_chain_file failed')
 		}
 		res = C.SSL_CTX_use_PrivateKey_file(voidptr(l.sslctx), &char(l.config.cert_key.str),
 			C.SSL_FILETYPE_PEM)

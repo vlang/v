@@ -4,6 +4,7 @@ import net.openssl
 
 pub type SSLConn = openssl.SSLConn
 pub type SSLListener = openssl.SSLListener
+pub type SSLListenerOptions = openssl.SSLListenerOptions
 
 @[params]
 pub struct SSLConnectConfig {
@@ -16,6 +17,6 @@ pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 }
 
 // new_ssl_listener returns a new SSLListener with the given config.
-pub fn new_ssl_listener(saddr string, config SSLConnectConfig) !&SSLListener {
-	return openssl.new_ssl_listener(saddr, config.SSLConnectConfig) or { return err }
+pub fn new_ssl_listener(saddr string, config SSLConnectConfig, options SSLListenerOptions) !&SSLListener {
+	return openssl.new_ssl_listener(saddr, config.SSLConnectConfig, options) or { return err }
 }

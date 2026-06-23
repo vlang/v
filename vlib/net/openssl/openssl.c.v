@@ -111,9 +111,13 @@ fn C.SSL_CTX_free(ctx &C.SSL_CTX)
 
 fn C.SSL_CTX_use_certificate_file(ctx &C.SSL_CTX, const_file &char, file_type i32) i32
 
+fn C.SSL_CTX_use_certificate_chain_file(ctx &C.SSL_CTX, const_file &char) i32
+
 fn C.SSL_CTX_use_PrivateKey_file(ctx &C.SSL_CTX, const_file &char, file_type i32) i32
 
 fn C.v_net_openssl_SSL_CTX_use_certificate_chain_memory(ctx &C.SSL_CTX, data &u8, len usize) i32
+
+fn C.v_net_openssl_SSL_CTX_extra_chain_certs_count(ctx &C.SSL_CTX) int
 
 fn C.v_net_openssl_SSL_CTX_use_PrivateKey_memory(ctx &C.SSL_CTX, data &u8, len usize) i32
 
