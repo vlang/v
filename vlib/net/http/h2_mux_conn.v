@@ -1062,6 +1062,15 @@ fn (mut c H2MuxConn) dispatch_frame(frame H2Frame) ! {
 			}
 		}
 		H2GoawayFrame {
+			// Take wmu before smu (the permitted wmu -> smu nesting) so setting
+			// c.goaway serializes with do_on_stream's terminal-flag recheck, which
+			// runs under smu while holding wmu. Without this, a GOAWAY landing
+			// between that recheck (smu released at the end of the registration
+			// section) and the HEADERS write (still under wmu) lets the client
+			// open one more stream after observing GOAWAY (RFC 7540 6.8). Holding
+			// wmu here means c.goaway cannot be set while any writer is mid-section,
+			// so the recheck is authoritative.
+			c.wmu.lock()
 			c.smu.lock()
 			c.goaway = true
 			c.goaway_last = frame.last_stream_id
@@ -1072,6 +1081,7 @@ fn (mut c H2MuxConn) dispatch_frame(frame H2Frame) ! {
 				}
 			}
 			c.smu.unlock()
+			c.wmu.unlock()
 			for mut st in above {
 				// Streams above last_stream_id were not processed by the
 				// server, so they are safe to retry elsewhere (RFC 7540 6.8).
