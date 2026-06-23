@@ -82,7 +82,8 @@ mut:
 	fn_index     map[string]int
 	fn_ret       map[string]WType
 	fn_params    map[string][]WType
-	file_aliases map[string]map[string]string // file -> (import alias -> module)
+	file_aliases map[string]map[string]string // file -> (import alias -> full import path)
+	import_paths []string                     // every `import a.b.c` path (full)
 	data_pool []u8
 	data_off  map[string]int
 	uses_print bool
@@ -103,7 +104,7 @@ pub fn Gen.new(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool)
 
 // gen builds the whole module from the flat AST.
 pub fn (mut g Gen) gen() {
-	g.collect_module_aliases()
+	g.collect_imports()
 	user_fns := g.collect_user_fns()
 	g.uses_print = g.detect_print(user_fns)
 
@@ -188,12 +189,14 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 	mut order := []string{}
 	mut cur_module := ''
 	mut cur_file := ''
+	mut cur_module_path := ''
 	for i in 0 .. g.a.nodes.len {
 		node := g.a.nodes[i]
 		match node.kind {
 			.file {
 				cur_module = ''
 				cur_file = node.value
+				cur_module_path = g.module_path_for_file(cur_file)
 			}
 			.module_decl {
 				cur_module = node.value
@@ -205,8 +208,17 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 				if node.generic_params.len > 0 || node.value == '' {
 					continue
 				}
-				if fi := g.fn_info(node, flat.NodeId(i), cur_module, cur_file) {
-					key := qualified_fn_key(cur_module, node.value)
+				// Prefer the import path (distinguishes same-leaf modules); fall
+				// back to the module declaration name if no import matched.
+				mod_key := if cur_module_path != '' {
+					cur_module_path
+				} else if cur_module != '' && cur_module != 'main' {
+					cur_module
+				} else {
+					''
+				}
+				if fi := g.fn_info(node, flat.NodeId(i), mod_key, cur_file) {
+					key := qualified_fn_key(mod_key, node.value)
 					if key !in candidates {
 						candidates[key] = fi
 						order << key
@@ -1011,7 +1023,9 @@ fn (mut g Gen) gen_infix(id flat.NodeId, node flat.Node) WType {
 	// the node's own type with the operand-derived width (the latter recovers
 	// i64/float when the node type is missing).
 	ow := combine_wtype(g.expr_wtype(id, node.typ), g.operand_wtype(lhs_id, rhs_id))
-	signed := !g.is_unsigned(lhs_id)
+	// div/rem opcode signedness must follow the promoted result, so an unsigned
+	// operand (e.g. `4000000000 / u32(2)`) selects div_u/rem_u, not the lhs.
+	signed := !g.is_unsigned(id) && !g.is_unsigned(lhs_id) && !g.is_unsigned(rhs_id)
 	g.gen_expr_as(lhs_id, ow)
 	g.gen_expr_as(rhs_id, ow)
 	g.emit_arith(op, ow, signed)
@@ -1180,23 +1194,45 @@ fn (mut g Gen) gen_call(node flat.Node) WType {
 	return .i32
 }
 
-// collect_module_aliases records `import path as alias` mappings per source
-// file, so aliased calls (`m.answer()`) resolve to the real module and aliases
-// from different files do not collide. The target is the module declaration
-// name (the last path component), since candidates are keyed by `module X`:
-// `import foo.bar` => `bar -> bar`, `import foo.bar as m` => `m -> bar`.
-fn (mut g Gen) collect_module_aliases() {
+// collect_imports records every import path and, per source file, the
+// selector/alias -> full import path mapping. Candidates are keyed by the full
+// import path (see module_path_for_file), so two nested modules with the same
+// leaf (`import foo.util as fu`, `import bar.util as bu`) stay distinct.
+fn (mut g Gen) collect_imports() {
 	mut cur_file := ''
 	for node in g.a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
-		} else if node.kind == .import_decl && node.typ.len > 0 {
-			if cur_file !in g.file_aliases {
-				g.file_aliases[cur_file] = map[string]string{}
+		} else if node.kind == .import_decl && node.value.len > 0 {
+			g.import_paths << node.value
+			if node.typ.len > 0 {
+				if cur_file !in g.file_aliases {
+					g.file_aliases[cur_file] = map[string]string{}
+				}
+				g.file_aliases[cur_file][node.typ] = node.value
 			}
-			g.file_aliases[cur_file][node.typ] = node.value.all_after_last('.')
 		}
 	}
+}
+
+// module_path_for_file returns the full import path whose directory form is a
+// suffix of the file's directory (longest match), or '' for main/local code.
+fn (g &Gen) module_path_for_file(file string) string {
+	if file.len == 0 {
+		return ''
+	}
+	dir := os.dir(file)
+	mut best := ''
+	for p in g.import_paths {
+		if p.len <= best.len {
+			continue
+		}
+		df := p.replace('.', os.path_separator)
+		if dir == df || dir.ends_with(os.path_separator + df) {
+			best = p
+		}
+	}
+	return best
 }
 
 // resolve_call_keys returns the candidate fn_index keys for a callee, in
@@ -1734,7 +1770,7 @@ fn export_fn_name(mod string, name string) string {
 	if mod == '' || mod == 'main' {
 		return name
 	}
-	return '${mod}__${name}'
+	return '${mod.replace('.', '__')}__${name}'
 }
 
 // unalias resolves a (possibly chained) numeric type alias to its base type so

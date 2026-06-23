@@ -487,6 +487,42 @@ fn test_wasm_top_level_const_inlined() {
 	run_wasi_expect(wasm, ['42', '9223372036854775808', '43'])
 }
 
+fn test_wasm_unsigned_division_promotes() {
+	v3_bin := v3_binary()
+	// An unsigned operand makes / and % unsigned even when the lhs is an
+	// untyped/signed literal; signed div/rem still works for signed operands.
+	src := 'fn main() {\n\tprintln(4000000000 / u32(2))\n\tprintln(4000000001 % u32(3))\n\tprintln(-10 / 3)\n\tprintln(-10 % 3)\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_udiv')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['2000000000', '2', '-3', '-1'])
+}
+
+fn test_wasm_same_leaf_imported_modules() {
+	v3_bin := v3_binary()
+	// Two nested modules with the same leaf name, under different aliases, must
+	// resolve to their own functions.
+	dir := os.join_path(os.vtmp_dir(), 'wasm_sameleaf')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'foo', 'util')) or { panic(err) }
+	os.mkdir_all(os.join_path(dir, 'bar', 'util')) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'import foo.util as fu\nimport bar.util as bu\n\nfn main() {\n\tprintln(fu.val())\n\tprintln(bu.val())\n}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'foo', 'util', 'util.v'), 'module util\n\npub fn val() int {\n\treturn 111\n}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'bar', 'util', 'util.v'), 'module util\n\npub fn val() int {\n\treturn 222\n}\n') or {
+		panic(err)
+	}
+	out_wasm := os.join_path(dir, 'main.wasm')
+	main_v := os.join_path(dir, 'main.v')
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+	assert res.exit_code == 0, res.output
+	assert_valid_wasm(out_wasm)
+	assert !res.output.contains('unsupported call'), res.output
+	run_wasi_expect(out_wasm, ['111', '222'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });
