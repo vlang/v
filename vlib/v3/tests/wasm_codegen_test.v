@@ -782,6 +782,27 @@ fn test_wasm_global_narrow_cast_initializer() {
 	run_wasi_expect(wasm, ['44', '-128', '4464'])
 }
 
+fn test_wasm_global_const_expr_initializers() {
+	v3_bin := v3_binary()
+	// A const-expression initializer (binary ops, const-identifier references,
+	// shifts) is folded into the wasm global's constant init, not zeroed.
+	src := 'const base = 10\n\n__global a = 1 + 2\n__global c = base * 4 + 1\n__global e = 1 << 4\n__global f = (7 - 2) * 3\n__global neg = -5 + 2\n__global big = i64(1) << 40\n\nfn main() {\n\tprintln(a)\n\tprintln(c)\n\tprintln(e)\n\tprintln(f)\n\tprintln(neg)\n\tprintln(big)\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_const_expr')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['3', '41', '16', '15', '-3', '1099511627776'])
+}
+
+fn test_wasm_global_nested_cast_initializer() {
+	v3_bin := v3_binary()
+	// A nested cast initializer keeps each cast's width: the inner cast narrows
+	// before the wider outer cast, so `int(u8(300))` is 44, not 300, and a folded
+	// float initializer rounds through an int cast (1.5 + 2.0 -> 3).
+	src := '__global b = int(u8(300))\n__global g = int(i8(128))\n__global h = u8(300) + u8(100)\n__global fl = 1.5 + 2.0\n\nfn main() {\n\tprintln(b)\n\tprintln(g)\n\tprintln(int(h))\n\tprintln(int(fl))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_nested_cast')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['44', '-128', '144', '3'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });

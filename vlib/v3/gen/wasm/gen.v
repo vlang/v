@@ -1613,19 +1613,87 @@ fn (g &Gen) fold_const_int(id flat.NodeId) i64 {
 		.int_literal { return parse_int_literal(n.value) }
 		.char_literal { return char_literal_value(n.value) }
 		.bool_literal { return if n.value == 'true' { i64(1) } else { i64(0) } }
-		.prefix {
-			if n.op == .minus && n.children_count > 0 {
-				return -g.fold_const_int(g.a.child(&n, 0))
+		.ident {
+			// A constant referenced by name folds to its own constant value.
+			if cid := g.const_value_node(n.value) {
+				return g.fold_const_int(cid)
 			}
 		}
-		.paren, .cast_expr {
+		.prefix {
+			if n.children_count > 0 {
+				match n.op {
+					.minus { return -g.fold_const_int(g.a.child(&n, 0)) }
+					.bit_not { return ~g.fold_const_int(g.a.child(&n, 0)) }
+					else {}
+				}
+			}
+		}
+		.infix {
+			if n.children_count >= 2 {
+				return g.fold_const_infix(n)
+			}
+		}
+		.paren {
 			if n.children_count > 0 {
 				return g.fold_const_int(g.a.child(&n, 0))
+			}
+		}
+		.cast_expr {
+			if n.children_count > 0 {
+				cv := g.fold_const_int(g.a.child(&n, 0))
+				// Apply the cast target's own width/signedness so a nested narrow
+				// cast keeps its value even when the enclosing global is wider
+				// (e.g. `int(u8(300))` -> 44, not 300).
+				return if n.value.len > 0 { g.fold_cast_int(cv, n.value) } else { cv }
 			}
 		}
 		else {}
 	}
 	return 0
+}
+
+// fold_const_infix folds a binary constant expression (`1 + 2`, `base << 3`, ...)
+// over its already-folded integer operands.
+fn (g &Gen) fold_const_infix(n flat.Node) i64 {
+	a := g.fold_const_int(g.a.child(&n, 0))
+	b := g.fold_const_int(g.a.child(&n, 1))
+	return match n.op {
+		.plus { a + b }
+		.minus { a - b }
+		.mul { a * b }
+		.div { if b != 0 { a / b } else { i64(0) } }
+		.mod { if b != 0 { a % b } else { i64(0) } }
+		.amp { a & b }
+		.pipe { a | b }
+		.xor { a ^ b }
+		.left_shift { a << b }
+		.right_shift { a >> b }
+		.right_shift_unsigned { i64(u64(a) >> b) }
+		.eq { if a == b { i64(1) } else { i64(0) } }
+		.ne { if a != b { i64(1) } else { i64(0) } }
+		.lt { if a < b { i64(1) } else { i64(0) } }
+		.gt { if a > b { i64(1) } else { i64(0) } }
+		.le { if a <= b { i64(1) } else { i64(0) } }
+		.ge { if a >= b { i64(1) } else { i64(0) } }
+		else { i64(0) }
+	}
+}
+
+// fold_cast_int wraps a folded constant to a numeric cast target's width and
+// signedness, the compile-time form of gen_cast's narrowing (i64 targets keep
+// the full value; i32-family targets wrap to 8/16/32 bits).
+fn (g &Gen) fold_cast_int(v i64, type_name string) i64 {
+	tt := g.tc.parse_type(type_name)
+	w := prim_wtype(tt) or { return v }
+	if w == .i64 {
+		return v
+	}
+	unsigned := type_is_unsigned(tt)
+	return match narrow_width(tt) {
+		8 { if unsigned { i64(u8(v)) } else { i64(i8(v)) } }
+		16 { if unsigned { i64(u16(v)) } else { i64(i16(v)) } }
+		else { if unsigned { i64(u32(v)) } else { i64(i32(v)) } }
+	}
 }
 
 fn (g &Gen) fold_const_float(id flat.NodeId) f64 {
@@ -1636,9 +1704,27 @@ fn (g &Gen) fold_const_float(id flat.NodeId) f64 {
 	match n.kind {
 		.float_literal { return n.value.replace('_', '').f64() }
 		.int_literal { return f64(parse_int_literal(n.value)) }
+		.ident {
+			if cid := g.const_value_node(n.value) {
+				return g.fold_const_float(cid)
+			}
+		}
 		.prefix {
 			if n.op == .minus && n.children_count > 0 {
 				return -g.fold_const_float(g.a.child(&n, 0))
+			}
+		}
+		.infix {
+			if n.children_count >= 2 {
+				a := g.fold_const_float(g.a.child(&n, 0))
+				b := g.fold_const_float(g.a.child(&n, 1))
+				return match n.op {
+					.plus { a + b }
+					.minus { a - b }
+					.mul { a * b }
+					.div { if b != 0 { a / b } else { f64(0) } }
+					else { f64(0) }
+				}
 			}
 		}
 		.paren, .cast_expr {
