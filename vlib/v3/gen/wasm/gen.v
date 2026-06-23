@@ -150,11 +150,20 @@ pub fn (mut g Gen) gen() {
 		start_idx = g.emit_start()
 	}
 
-	// 5. exports + memory sizing + data.
+	// 5. exports + memory sizing + data. WASM export names must be unique, so
+	//    reserve the runtime names and skip any user function that would clash.
 	g.mod.add_export('memory', wasm.export_mem, 0)
+	mut used_exports := map[string]bool{}
+	used_exports['memory'] = true
+	used_exports['_start'] = true
 	for f in user_fns {
-		g.mod.add_export(export_fn_name(f.module, f.name), wasm.export_func, g.fn_index[qualified_fn_key(f.module,
-			f.name)])
+		ename := export_fn_name(f.module, f.name)
+		if ename in used_exports {
+			g.warn('not exporting ${f.name}: export name `${ename}` is already in use')
+			continue
+		}
+		used_exports[ename] = true
+		g.mod.add_export(ename, wasm.export_func, g.fn_index[qualified_fn_key(f.module, f.name)])
 	}
 	if start_idx >= 0 {
 		g.mod.add_export('_start', wasm.export_func, start_idx)
@@ -196,10 +205,18 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 			.file {
 				cur_module = ''
 				cur_file = node.value
-				cur_module_path = g.module_path_for_file(cur_file)
+				cur_module_path = ''
 			}
 			.module_decl {
 				cur_module = node.value
+				// Only files that declare a non-main module are imported modules;
+				// resolve their import path. Main files (no decl or `module main`)
+				// must never be classified by a directory-name coincidence.
+				cur_module_path = if cur_module != '' && cur_module != 'main' {
+					g.module_path_for_file(cur_file)
+				} else {
+					''
+				}
 			}
 			.fn_decl {
 				if i < g.a.user_code_start {

@@ -523,6 +523,37 @@ fn test_wasm_same_leaf_imported_modules() {
 	run_wasi_expect(out_wasm, ['111', '222'])
 }
 
+fn test_wasm_main_dir_matching_import_name() {
+	v3_bin := v3_binary()
+	// The main file lives in a directory whose name matches an imported module;
+	// `fn main` must still be treated as main-module (export main/_start).
+	dir := os.join_path(os.vtmp_dir(), 'wasm_dircollide', 'moda')
+	os.rmdir_all(os.dir(dir)) or {}
+	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'import moda\n\nfn main() {\n\tprintln(moda.answer())\n}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'moda', 'moda.v'), 'module moda\n\npub fn answer() int {\n\treturn 42\n}\n') or {
+		panic(err)
+	}
+	out_wasm := os.join_path(dir, 'main.wasm')
+	main_v := os.join_path(dir, 'main.v')
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+	assert res.exit_code == 0, res.output
+	assert_valid_wasm(out_wasm)
+	run_wasi_expect(out_wasm, ['42'])
+}
+
+fn test_wasm_user_function_named_memory() {
+	v3_bin := v3_binary()
+	// A user `fn memory()` must not collide with the exported linear memory;
+	// the module stays valid (the conflicting export is skipped).
+	src := 'fn memory() int {\n\treturn 7\n}\n\nfn main() {\n\tprintln(memory())\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_memname')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['7'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });
