@@ -217,6 +217,10 @@ fn (t &Transformer) lookup_struct_info_for_field(type_name string, field_name st
 	}
 	mut lookup_type := if type_name.starts_with('&') { type_name[1..] } else { type_name }
 	owner_type := lookup_type
+	base, _, is_generic_app := generic_app_parts(lookup_type)
+	if is_generic_app {
+		lookup_type = base
+	}
 	if lookup_type !in t.structs && lookup_type.contains('.') {
 		short_type := lookup_type.all_after_last('.')
 		if short_type in t.structs {
@@ -284,6 +288,38 @@ fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 	if typ.starts_with('[') {
 		bracket_end := typ.index(']') or { return t.normalize_type_alias(typ) }
 		return typ[..bracket_end + 1] + t.normalize_field_type(typ[bracket_end + 1..], owner_type)
+	}
+	owner_base, owner_args, owner_is_generic_app := generic_app_parts(owner_type)
+	if owner_is_generic_app {
+		if owner_base.len > 0 {
+			substituted := substitute_generic_type_text(typ, owner_args)
+			if substituted != typ {
+				return t.normalize_field_type(substituted, owner_type)
+			}
+		}
+	}
+	base, args, type_is_generic_app := generic_app_parts(typ)
+	if type_is_generic_app {
+		mut field_base := base
+		if !field_base.contains('.') && owner_type.contains('.') {
+			owner_mod := owner_type.all_before_last('.')
+			qbase := '${owner_mod}.${field_base}'
+			if qbase in t.structs || qbase in t.sum_types || qbase in t.enum_types {
+				field_base = qbase
+			}
+		}
+		mut normalized_args := []string{cap: args.len}
+		for arg in args {
+			mut normalized_arg := t.normalize_field_type(arg, owner_type)
+			if field_base.contains('.') {
+				field_mod := field_base.all_before_last('.')
+				if normalized_arg.starts_with('${field_mod}.') {
+					normalized_arg = normalized_arg.all_after_last('.')
+				}
+			}
+			normalized_args << normalized_arg
+		}
+		return t.normalize_type_alias('${field_base}[${normalized_args.join(', ')}]')
 	}
 	if typ.contains('.') || !owner_type.contains('.') {
 		return t.normalize_type_alias(typ)

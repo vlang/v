@@ -61,8 +61,12 @@ mut:
 	array_method_cache      map[string]string
 	spawn_wrapper_names     map[string]string
 	spawn_wrapper_defs      []string
-	generic_fn_specs        map[string][]string
 	parallel_used           bool
+}
+
+struct FixedArrayTypedefInfo {
+	arr    types.ArrayFixed
+	module string
 }
 
 // was_parallel reports whether the last fn codegen actually ran across threads.
@@ -109,7 +113,6 @@ pub fn FlatGen.new() FlatGen {
 		array_method_cache:      map[string]string{}
 		spawn_wrapper_names:     map[string]string{}
 		spawn_wrapper_defs:      []string{}
-		generic_fn_specs:        map[string][]string{}
 		str_lits:                []string{}
 		defers:                  []flat.NodeId{}
 		fn_defers:               []flat.NodeId{}
@@ -174,7 +177,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.array_method_cache = map[string]string{}
 	g.spawn_wrapper_names = map[string]string{}
 	g.spawn_wrapper_defs = []string{}
-	g.generic_fn_specs = map[string][]string{}
 	g.parallel_used = false
 	g.tc = unsafe { tc }
 	if g.tc.a == unsafe { nil } {
@@ -185,7 +187,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.collect_interface_impls()
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
-	g.collect_generic_fn_specializations()
 	const_code := g.precompute_consts()
 	orig_sb := g.sb
 	orig_line_start := g.line_start
@@ -207,7 +208,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.optional_typedefs()
 	g.global_decls()
 	g.forward_decls()
-	g.generic_fn_forward_decls()
 	g.spawn_wrapper_decls()
 	g.register_interface_strings()
 	g.string_literals()
@@ -247,18 +247,21 @@ fn (mut g FlatGen) collect_gen_info() {
 		if kind_id == 77 {
 			cur_file = node.value
 			g.note_compiler_source_file(node.value)
+			g.tc.cur_file = cur_file
 			cur_module = ''
 			g.tc.cur_module = cur_module
 			continue
 		}
 		if kind_id == 73 {
 			cur_module = node.value
+			g.tc.cur_file = cur_file
 			g.tc.cur_module = cur_module
 			continue
 		}
 		if kind_id == 61 {
 			full_name := qualify_name_in_module(cur_module, node.value)
 			mut ptypes := []types.Type{}
+			g.tc.cur_file = cur_file
 			g.tc.cur_module = cur_module
 			for i in 0 .. node.children_count {
 				child := g.a.child_node(&node, i)
@@ -317,6 +320,7 @@ fn (mut g FlatGen) collect_gen_info() {
 			continue
 		}
 		if kind_id == 64 {
+			g.tc.cur_file = cur_file
 			g.tc.cur_module = cur_module
 			for i in 0 .. node.children_count {
 				f := g.a.child_node(&node, i)
@@ -378,7 +382,8 @@ fn (mut g FlatGen) collect_gen_info() {
 					qname := g.const_storage_name(cur_module, f.value)
 					g.const_vals[qname] = g.a.child(f, 0)
 					g.const_modules[qname] = cur_module
-					if f.value !in g.const_vals {
+					if (cur_module.len == 0 || cur_module == 'main' || cur_module == 'builtin')
+						&& f.value !in g.const_vals {
 						g.const_vals[f.value] = g.a.child(f, 0)
 						g.const_modules[f.value] = cur_module
 					}
@@ -1106,7 +1111,11 @@ fn (g &FlatGen) const_ref_name(name string) string {
 			return cur_qname
 		}
 		if name in g.const_vals {
-			return g.const_primary_name(name)
+			mod := g.const_modules[name] or { '' }
+			if mod.len == 0 || mod == g.tc.cur_module
+				|| (g.tc.cur_module in ['', 'main', 'builtin'] && mod in ['', 'main', 'builtin']) {
+				return g.const_primary_name(name)
+			}
 		}
 		return ''
 	}
@@ -1165,7 +1174,12 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			if const_name.len > 0 && const_name !in seen {
 				mut next_seen := seen.clone()
 				next_seen << const_name
+				old_module := g.tc.cur_module
+				if mod := g.const_modules[const_name] {
+					g.tc.cur_module = mod
+				}
 				dep_expr := g.const_expr_to_string(g.const_vals[const_name], next_seen)
+				g.tc.cur_module = old_module
 				if dep_expr.trim_space().len > 0 {
 					return dep_expr
 				}
@@ -1801,8 +1815,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						g.write('.len')
 					}
 				}
-			} else if base.kind == .ident && !base_is_local && base.value in g.modules {
-				mod := g.modules[base.value]
+			} else if base.kind == .ident && !base_is_local && g.has_import_alias(base.value) {
+				mod := g.import_alias_module(base.value) or { '' }
 				short_mod := if mod.contains('.') {
 					mod.all_after_last('.')
 				} else {
@@ -1812,7 +1826,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else if base.kind == .selector && base.children_count > 0
 				&& g.is_module_qualified_enum(base) {
 				inner_base := g.a.child_node(&base, 0)
-				mod := g.modules[inner_base.value]
+				mod := g.import_alias_module(inner_base.value) or { inner_base.value }
 				short_mod := if mod.contains('.') {
 					mod.all_after_last('.')
 				} else {
@@ -1881,6 +1895,13 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				if base.kind == .ident {
 					if typ := g.tc.cur_scope.lookup(base.value) {
 						is_ptr = typ is types.Pointer
+					}
+				} else if base.kind == .selector {
+					if declared := g.selector_declared_type(base_id) {
+						is_ptr = declared is types.Pointer
+					} else {
+						resolved := g.tc.resolve_type(base_id)
+						is_ptr = resolved is types.Pointer
 					}
 				} else {
 					resolved := g.tc.resolve_type(base_id)
@@ -2195,10 +2216,10 @@ fn (g &FlatGen) is_module_qualified_enum(base flat.Node) bool {
 		return false
 	}
 	inner_base := g.a.child_node(&base, 0)
-	if inner_base.kind != .ident || inner_base.value !in g.modules {
+	if inner_base.kind != .ident || !g.has_import_alias(inner_base.value) {
 		return false
 	}
-	mod := g.modules[inner_base.value]
+	mod := g.import_alias_module(inner_base.value) or { inner_base.value }
 	short_mod := if mod.contains('.') { mod.all_after_last('.') } else { mod }
 	qname := '${short_mod}.${base.value}'
 	return qname in g.tc.enum_names || base.value in g.tc.enum_names
@@ -2370,47 +2391,88 @@ fn (mut g FlatGen) builtin_abi_decls() {
 }
 
 fn (mut g FlatGen) fixed_array_typedefs() {
-	mut needed := map[string]types.ArrayFixed{}
-	for _, ret_type in g.tc.fn_ret_types {
+	mut needed := map[string]FixedArrayTypedefInfo{}
+	old_module := g.tc.cur_module
+	for name, ret_type in g.tc.fn_ret_types {
+		g.tc.cur_module = module_from_qualified_name(name)
 		g.collect_fixed_array_typedef(ret_type, mut needed)
 	}
-	for _, param_types in g.tc.fn_param_types {
+	for name, param_types in g.tc.fn_param_types {
+		g.tc.cur_module = module_from_qualified_name(name)
 		for param_type in param_types {
 			g.collect_fixed_array_typedef(param_type, mut needed)
 		}
 	}
-	for _, fields in g.tc.structs {
+	for name, fields in g.tc.structs {
+		g.tc.cur_module = module_from_qualified_name(name)
 		for field in fields {
 			g.collect_fixed_array_typedef(field.typ, mut needed)
 		}
 	}
-	for _, fields in g.tc.interface_fields {
+	for name, fields in g.tc.interface_fields {
+		g.tc.cur_module = module_from_qualified_name(name)
 		for field in fields {
 			g.collect_fixed_array_typedef(field.typ, mut needed)
 		}
 	}
-	for _, typ in g.global_types {
+	for name, typ in g.global_types {
+		g.tc.cur_module = g.global_modules[name] or { old_module }
 		g.collect_fixed_array_typedef(typ, mut needed)
 	}
 	for _, typ in g.tc.c_globals {
+		g.tc.cur_module = old_module
 		g.collect_fixed_array_typedef(typ, mut needed)
 	}
-	for _, typ in g.tc.const_types {
+	for name, typ in g.tc.const_types {
+		g.tc.cur_module = g.const_modules[name] or { old_module }
 		g.collect_fixed_array_typedef(typ, mut needed)
 	}
+	g.tc.cur_module = old_module
 	mut emitted := map[string]bool{}
-	for name, arr in needed {
-		g.emit_fixed_array_typedef(name, arr, needed, mut emitted)
+	for name, info in needed {
+		g.emit_fixed_array_typedef(name, info, needed, mut emitted)
 	}
+	g.tc.cur_module = old_module
 	if emitted.len > 0 {
 		g.writeln('')
 	}
 }
 
-fn (mut g FlatGen) collect_fixed_array_typedef(typ types.Type, mut needed map[string]types.ArrayFixed) {
+fn module_from_qualified_name(name string) string {
+	if name.contains('.') {
+		return name.all_before_last('.')
+	}
+	if name.contains('__') {
+		return name.all_before_last('__').replace('__', '.')
+	}
+	return ''
+}
+
+fn fixed_array_typedef_module_priority(module_name string) int {
+	if module_name.len == 0 || module_name == 'C' {
+		return 0
+	}
+	if module_name == 'main' || module_name == 'builtin' {
+		return 1
+	}
+	return 2
+}
+
+fn (mut g FlatGen) collect_fixed_array_typedef(typ types.Type, mut needed map[string]FixedArrayTypedefInfo) {
 	if typ is types.ArrayFixed {
 		name := g.tc.c_type(typ)
-		needed[name] = typ
+		existing_priority := if name in needed {
+			fixed_array_typedef_module_priority(needed[name].module)
+		} else {
+			-1
+		}
+		current_priority := fixed_array_typedef_module_priority(g.tc.cur_module)
+		if name !in needed || current_priority > existing_priority {
+			needed[name] = FixedArrayTypedefInfo{
+				arr:    typ
+				module: g.tc.cur_module
+			}
+		}
 		g.collect_fixed_array_typedef(typ.elem_type, mut needed)
 	} else if typ is types.Pointer {
 		g.collect_fixed_array_typedef(typ.base_type, mut needed)
@@ -2437,10 +2499,13 @@ fn (mut g FlatGen) collect_fixed_array_typedef(typ types.Type, mut needed map[st
 	}
 }
 
-fn (mut g FlatGen) emit_fixed_array_typedef(name string, arr types.ArrayFixed, needed map[string]types.ArrayFixed, mut emitted map[string]bool) {
+fn (mut g FlatGen) emit_fixed_array_typedef(name string, info FixedArrayTypedefInfo, needed map[string]FixedArrayTypedefInfo, mut emitted map[string]bool) {
 	if emitted[name] {
 		return
 	}
+	arr := info.arr
+	old_module := g.tc.cur_module
+	g.tc.cur_module = info.module
 	if arr.elem_type is types.ArrayFixed {
 		inner_name := g.tc.c_type(arr.elem_type)
 		if inner := needed[inner_name] {
@@ -2450,6 +2515,7 @@ fn (mut g FlatGen) emit_fixed_array_typedef(name string, arr types.ArrayFixed, n
 	elem_ct := g.tc.c_type(arr.elem_type)
 	len_expr := g.fixed_array_len_value(arr)
 	g.writeln('typedef ${elem_ct} ${name}[${len_expr}];')
+	g.tc.cur_module = old_module
 	emitted[name] = true
 }
 

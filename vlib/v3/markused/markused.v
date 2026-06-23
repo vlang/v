@@ -24,8 +24,7 @@ pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 			continue
 		}
 		if node.kind == .import_decl {
-			mod := if node.value.contains('.') { node.value.all_after_last('.') } else { node.value }
-			imports[node.typ] = mod
+			imports[node.typ] = node.value
 			continue
 		}
 		if node.kind == .struct_decl {

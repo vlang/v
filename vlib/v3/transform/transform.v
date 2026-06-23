@@ -113,19 +113,51 @@ struct VarTypeBinding {
 	typ  string
 }
 
+struct GenericFnDecl {
+	id     flat.NodeId
+	node   flat.Node
+	module string
+	key    string
+}
+
 // --- entry point ---
 
 pub fn transform(mut a flat.FlatAst, tc &types.TypeChecker) {
 	transform_with_used(mut a, tc, map[string]bool{})
 }
 
-pub fn transform_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) {
-	mut t := Transformer{
+pub fn transform_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) map[string]bool {
+	mut augmented_used_fns := used_fns.clone()
+	mut t := new_transformer(mut a, tc, augmented_used_fns)
+	t.prepare()
+	t.transform_all()
+	return augmented_used_fns
+}
+
+pub fn monomorphize_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) map[string]bool {
+	mut augmented_used_fns := used_fns.clone()
+	mut t := new_transformer(mut a, tc, augmented_used_fns)
+	t.prepare()
+	for name in t.monomorphize_pass() {
+		augmented_used_fns[name] = true
+		augmented_used_fns[c_name(name)] = true
+		t.used_fns[name] = true
+		t.used_fns[c_name(name)] = true
+	}
+	t.materialize_generic_structs()
+	return augmented_used_fns
+}
+
+fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) Transformer {
+	return Transformer{
 		a:                     a
 		tc:                    unsafe { tc }
 		pointer_value_lvalues: map[string]bool{}
-		used_fns:              used_fns
+		used_fns:              used_fns.clone()
 	}
+}
+
+fn (mut t Transformer) prepare() {
 	t.collect_types()
 	t.collect_const_suffixes()
 	t.collect_alias_methods()
@@ -134,7 +166,6 @@ pub fn transform_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fns m
 	// entries with results computed against a partial view.
 	t.alias_cache = &AliasCache{}
 	t.sum_cache = &AliasCache{}
-	t.transform_all()
 }
 
 fn (mut t Transformer) reset_var_types() {
@@ -769,6 +800,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		pos:            fn_node.pos
 		value:          fn_node.value
 		typ:            fn_node.typ
+		generic_params: fn_node.generic_params
 	}
 	t.smartcast_stack.clear()
 }
@@ -3565,11 +3597,12 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	}
 	if node.op == .mul && node.children_count == 1 {
 		child_id := t.a.child(&node, 0)
+		child := t.a.nodes[int(child_id)]
 		mut child_type := t.node_type(child_id)
 		if child_type.len == 0 {
 			child_type = t.original_expr_type(child_id)
 		}
-		if child_type.len > 0 && !child_type.starts_with('&') {
+		if child.kind != .cast_expr && child_type.len > 0 && !child_type.starts_with('&') {
 			return t.transform_expr(child_id)
 		}
 	}
@@ -3902,6 +3935,26 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		return id
 	}
 	target_type := t.normalize_type_alias(node.value)
+	if target_type.starts_with('&') && !t.is_interface_type(target_type) {
+		mut new_children := []flat.NodeId{cap: int(node.children_count)}
+		for i in 0 .. node.children_count {
+			child_id := t.a.child(&node, i)
+			new_children << t.transform_expr(child_id)
+		}
+		start := t.a.children.len
+		for nc in new_children {
+			t.a.children << nc
+		}
+		return t.a.add_node(flat.Node{
+			kind:           .cast_expr
+			op:             node.op
+			children_start: start
+			children_count: node.children_count
+			pos:            node.pos
+			value:          node.value
+			typ:            node.typ
+		})
+	}
 	if t.is_optional_type_name(node.value) {
 		child_id := t.a.child(&node, 0)
 		expr := t.transform_expr(child_id)
@@ -4082,6 +4135,15 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 						pos:   node.pos
 					})
 				}
+			}
+			typ := t.var_type(node.value)
+			if typ.len > 0 {
+				return t.a.add_node(flat.Node{
+					kind:  .ident
+					value: node.value
+					typ:   typ
+					pos:   node.pos
+				})
 			}
 			return id
 		}

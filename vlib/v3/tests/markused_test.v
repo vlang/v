@@ -256,10 +256,10 @@ fn (f File) read() int {
 
 fn main() {}
 ')
-	used := markused.mark_used(a, tc)
+	mut used := markused.mark_used(a, tc)
 	assert !used['Reader.read']
 	assert !used['File.read']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
@@ -305,10 +305,10 @@ fn (r Remote) read(path string) string {
 }
 '
 	}, 'main.v')
-	used := markused.mark_used(a, tc)
+	mut used := markused.mark_used(a, tc)
 	assert used['Reader.read']
 	assert !used['moda.Reader.read']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
@@ -338,10 +338,10 @@ fn (x X) unused(r Reader) int {
 
 fn main() {}
 ')
-	used := markused.mark_used(a, tc)
+	mut used := markused.mark_used(a, tc)
 	assert !used['X.unused']
 	assert !used['Reader.read']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
@@ -354,10 +354,10 @@ fn main() {}
 fn test_unused_main_helper_with_method_call_is_pruned_with_method() {
 	mut a, mut tc := parse_checked_source('unused_main_helper_method_call_cgen',
 		'module main\n\nstruct X {}\n\nfn (x X) m() int {\n\treturn 1\n}\n\nfn helper() int {\n\treturn X{}.m()\n}\n\nfn main() {}\n')
-	used := markused.mark_used(a, tc)
+	mut used := markused.mark_used(a, tc)
 	assert !used['helper']
 	assert !used['X.m']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
@@ -370,9 +370,9 @@ fn test_unused_main_helper_with_method_call_is_pruned_with_method() {
 fn test_reachable_main_fn_literal_is_emitted_after_used_filter_transform() {
 	mut a, mut tc := parse_checked_source('reachable_main_fn_literal_cgen',
 		'module main\n\nfn callback_value(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\t_ := callback_value(fn () int {\n\t\treturn 7\n\t})\n}\n')
-	used := markused.mark_used(a, tc)
+	mut used := markused.mark_used(a, tc)
 	assert used['callback_value']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
@@ -385,9 +385,9 @@ fn test_reachable_main_fn_literal_is_emitted_after_used_filter_transform() {
 fn test_flag_default_value_lowering_keeps_escape_helper() {
 	mut a, mut tc := parse_checked_source('flag_default_value_escape_helper_cgen',
 		'module main\n\nfn escape_default_string(value string) string {\n\treturn value\n}\n\nfn flag_default_value(value string) string {\n\treturn value\n}\n\nfn main() {\n\t_ := flag_default_value("abc")\n}\n')
-	used := markused.mark_used(a, tc)
+	mut used := markused.mark_used(a, tc)
 	assert used['escape_default_string']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
@@ -426,9 +426,9 @@ fn main() {
 	_ := make_map()
 }
 ')
-	used := markused.mark_used(a, tc)
+	mut used := markused.mark_used(a, tc)
 	assert used['new_map']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
@@ -448,9 +448,9 @@ fn main() {
 	_ := m
 }
 ')
-	used := markused.mark_used(a, tc)
+	mut used := markused.mark_used(a, tc)
 	assert used['new_map']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
@@ -469,10 +469,10 @@ fn main() {
 	_ := has_needle()
 }
 ')
-	used := markused.mark_used(a, tc)
+	mut used := markused.mark_used(a, tc)
 	assert used['string__contains']
 	assert used['string__contains_u8']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
@@ -489,9 +489,9 @@ fn main() {
 	_ := s
 }
 ')
-	used := markused.mark_used(a, tc)
+	mut used := markused.mark_used(a, tc)
 	assert used['string__plus']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
@@ -506,9 +506,9 @@ fn main() {
 	_ := "\${true}"
 }
 ')
-	used := markused.mark_used(a, tc)
+	mut used := markused.mark_used(a, tc)
 	assert used['bool.str']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
@@ -525,9 +525,9 @@ fn main() {
 	println(true)
 }
 ')
-	used := markused.mark_used(a, tc)
+	mut used := markused.mark_used(a, tc)
 	assert used['bool.str']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
@@ -553,9 +553,9 @@ fn main() {
 	_ := make_box()
 }
 ')
-	used := markused.mark_used(a, tc)
+	mut used := markused.mark_used(a, tc)
 	assert used['memdup']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()

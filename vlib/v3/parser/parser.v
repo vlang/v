@@ -1267,10 +1267,11 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				p.next()
 				second := p.expect_name_or_keyword()
 				full_type := '${field_name}.${second}'
+				field_type := full_type + p.parse_type_generic_suffix()
 				ids << p.a.add_node(flat.Node{
 					kind:  .field_decl
 					value: full_type
-					typ:   full_type
+					typ:   field_type
 				})
 				if p.tok == .semicolon {
 					p.next()
@@ -2070,33 +2071,121 @@ fn (mut p Parser) parse_comptime_else() flat.NodeId {
 }
 
 fn eval_comptime_cond(prefs &pref.Preferences, cond string) bool {
-	c := cond.trim_space()
-	if c.contains('pkgconfig') {
-		return eval_pkgconfig_cond(c)
+	c := comptime_cond_strip_outer_parens(cond.trim_space())
+	left_or, right_or, has_or := comptime_cond_split_top_level(c, '||')
+	if has_or {
+		return eval_comptime_cond(prefs, left_or) || eval_comptime_cond(prefs, right_or)
+	}
+	left_and, right_and, has_and := comptime_cond_split_top_level(c, '&&')
+	if has_and {
+		return eval_comptime_cond(prefs, left_and) && eval_comptime_cond(prefs, right_and)
 	}
 	if c.starts_with('!') {
 		return !eval_comptime_cond(prefs, c[1..])
 	}
-	if c.contains('&&') {
-		left := c.all_before('&&')
-		right := c.all_after('&&')
-		return eval_comptime_cond(prefs, left) && eval_comptime_cond(prefs, right)
+	if c == 'true' {
+		return true
 	}
-	if c.contains('||') {
-		left := c.all_before('||')
-		right := c.all_after('||')
-		return eval_comptime_cond(prefs, left) || eval_comptime_cond(prefs, right)
+	if c == 'false' {
+		return false
+	}
+	if c.starts_with('pkgconfig') {
+		return eval_pkgconfig_cond(c)
 	}
 	flag := c.trim_space().trim_right('? ')
 	return pref.comptime_flag_value(prefs, flag)
 }
 
+fn comptime_cond_strip_outer_parens(cond string) string {
+	mut c := cond
+	for c.len >= 2 && c[0] == `(` && c[c.len - 1] == `)` {
+		mut depth := 0
+		mut quote := u8(0)
+		mut wraps := true
+		for i in 0 .. c.len {
+			ch := c[i]
+			if quote != 0 {
+				if ch == quote {
+					quote = 0
+				}
+				continue
+			}
+			if ch == `'` || ch == `"` {
+				quote = ch
+				continue
+			}
+			if ch == `(` {
+				depth++
+			} else if ch == `)` {
+				depth--
+				if depth == 0 && i != c.len - 1 {
+					wraps = false
+					break
+				}
+			}
+		}
+		if !wraps {
+			break
+		}
+		c = c[1..c.len - 1].trim_space()
+	}
+	return c
+}
+
+fn comptime_cond_split_top_level(cond string, op string) (string, string, bool) {
+	mut depth := 0
+	mut quote := u8(0)
+	mut i := 0
+	for i < cond.len {
+		ch := cond[i]
+		if quote != 0 {
+			if ch == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if ch == `'` || ch == `"` {
+			quote = ch
+			i++
+			continue
+		}
+		if ch == `(` {
+			depth++
+		} else if ch == `)` && depth > 0 {
+			depth--
+		}
+		if depth == 0 && i + op.len <= cond.len && cond[i..i + op.len] == op {
+			return cond[..i], cond[i + op.len..], true
+		}
+		i++
+	}
+	return '', '', false
+}
+
 fn eval_pkgconfig_cond(cond string) bool {
 	name := pkgconfig_name_from_cond(cond)
-	if name.len == 0 {
+	if !is_safe_pkgconfig_name(name) {
 		return false
 	}
 	return os.system('pkg-config --exists ${name}') == 0
+}
+
+fn is_safe_pkgconfig_name(name string) bool {
+	if name.len == 0 || !pkgconfig_name_char_is_alnum(name[0]) {
+		return false
+	}
+	for ch in name {
+		if pkgconfig_name_char_is_alnum(ch) || ch == `_` || ch == `-` || ch == `.` || ch == `+` {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+fn pkgconfig_name_char_is_alnum(ch u8) bool {
+	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || (ch >= `0` && ch <= `9`)
 }
 
 fn pkgconfig_name_from_cond(cond string) string {
@@ -4968,6 +5057,25 @@ fn (mut p Parser) parse_fn_type_param() string {
 	return fn_type_param_with_mut(first, is_mut)
 }
 
+fn (mut p Parser) parse_type_generic_suffix() string {
+	if p.tok != .lsbr {
+		return ''
+	}
+	pk := p.peek()
+	if pk != .name && pk != .amp && pk != .lsbr && pk != .question && pk != .key_fn {
+		return ''
+	}
+	p.next() // skip [
+	mut params := []string{}
+	params << p.parse_type_name()
+	for p.tok == .comma {
+		p.next()
+		params << p.parse_type_name()
+	}
+	p.check(.rsbr)
+	return '[' + params.join(', ') + ']'
+}
+
 fn (mut p Parser) parse_type_name() string {
 	if p.tok == .name && p.lit == '&' {
 		p.next()
@@ -5123,21 +5231,7 @@ fn (mut p Parser) parse_type_name() string {
 			}
 		}
 		// generic: Type[T, U]
-		if p.tok == .lsbr {
-			// peek ahead to distinguish generic from index
-			pk := p.peek()
-			if pk == .name || pk == .amp || pk == .lsbr || pk == .question || pk == .key_fn {
-				p.next() // skip [
-				mut params := []string{}
-				params << p.parse_type_name()
-				for p.tok == .comma {
-					p.next()
-					params << p.parse_type_name()
-				}
-				p.check(.rsbr)
-				name += '[' + params.join(', ') + ']'
-			}
-		}
+		name += p.parse_type_generic_suffix()
 	}
 	return name
 }

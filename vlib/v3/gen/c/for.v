@@ -100,7 +100,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${container_str}.len; ${idx_var}++) {')
 				g.indent++
-				g.writeln('${c_elem} ${elem_var} = *(${c_elem}*)array_get(${container_str}, ${idx_var});')
+				g.write('${c_elem} ${elem_var} = *(')
+				g.write(c_elem)
+				g.writeln('*)array_get(${container_str}, ${idx_var});')
 				g.tc.cur_scope.insert(elem_var, container_type.elem_type)
 			} else if container_type is types.String {
 				container_str := g.expr_to_string(g.a.child(&node, 2))
@@ -158,7 +160,7 @@ fn (g &FlatGen) c_loop_local_name(name string) string {
 		if suffix == 'index' {
 			return c_name(suffix)
 		}
-		if prefix in g.modules {
+		if g.has_import_alias(prefix) {
 			return c_name(suffix)
 		}
 		for _, mod_name in g.modules {

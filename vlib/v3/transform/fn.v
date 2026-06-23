@@ -724,6 +724,9 @@ fn (t &Transformer) const_expr_for_arg(arg_id flat.NodeId) ?flat.NodeId {
 	}
 	node := t.a.nodes[int(arg_id)]
 	if node.kind == .ident {
+		if t.var_type(node.value).len > 0 {
+			return none
+		}
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 			if expr_id := t.const_expr_for_name('${t.cur_module}.${node.value}') {
 				return expr_id
@@ -1692,6 +1695,9 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	}
 	name := fn_node.value
 	match name {
+		'copy' {
+			return t.try_lower_copy_call(node)
+		}
 		'println', 'eprintln', 'print', 'eprint' {
 			if node.children_count < 2 {
 				return t.transform_call_args(_id, node)
@@ -1721,6 +1727,57 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 			return none
 		}
 	}
+}
+
+fn (mut t Transformer) try_lower_copy_call(node flat.Node) ?flat.NodeId {
+	if node.children_count != 3 {
+		return none
+	}
+	dst_arg_id := t.a.child(&node, 1)
+	src_arg_id := t.a.child(&node, 2)
+	dst_id := t.copy_mut_arg_value(dst_arg_id)
+	src := t.transform_expr_for_type(src_arg_id, '[]u8')
+	if t.copy_destination_is_range(dst_id) {
+		slice := t.transform_expr(dst_id)
+		tmp_name := t.new_temp('copy_dst')
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, slice, '[]u8')
+		return t.make_call_typed('copy', arr2(t.make_prefix(.amp, t.make_ident(tmp_name)), src),
+			'int')
+	}
+	dst := t.make_prefix(.amp, t.transform_expr(dst_id))
+	return t.make_call_typed('copy', arr2(dst, src), 'int')
+}
+
+fn (t &Transformer) copy_mut_arg_value(id flat.NodeId) flat.NodeId {
+	if int(id) < 0 {
+		return id
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return t.copy_mut_arg_value(t.a.child(&node, 0))
+	}
+	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
+		return t.copy_mut_arg_value(t.a.child(&node, 0))
+	}
+	return id
+}
+
+fn (t &Transformer) copy_destination_is_range(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .index {
+		return false
+	}
+	if node.value == 'range' {
+		return true
+	}
+	if node.children_count > 1 {
+		index := t.a.child_node(&node, 1)
+		return index.kind == .range
+	}
+	return false
 }
 
 const primitive_cast_type_names = ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte',

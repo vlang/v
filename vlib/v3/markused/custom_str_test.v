@@ -169,7 +169,7 @@ pub fn maybe_box() ?Box {
 fn test_string_interpolation_seeds_imported_enum_str_method() {
 	a, tc := parse_checked_two_file_source('imported_enum_interp_str',
 		imported_enum_main_source('_ := "\${c}"'), 'colors/colors.v', imported_enum_module_source())
-	used := mark_used(a, tc)
+	mut used := mark_used(a, tc)
 	assert used['colors.Color.str']
 }
 
@@ -177,7 +177,7 @@ fn test_optional_string_interpolation_seeds_imported_enum_str_method() {
 	a, tc := parse_checked_two_file_source('imported_optional_enum_interp_str',
 		imported_optional_enum_main_source('_ := "\${maybe_color()}"'), 'colors/colors.v',
 		imported_enum_module_source())
-	used := mark_used(a, tc)
+	mut used := mark_used(a, tc)
 	assert used['colors.Color.str']
 }
 
@@ -185,7 +185,7 @@ fn test_imported_operator_infix_seeds_operator_methods() {
 	a, tc := parse_checked_two_file_source('imported_operator_infix',
 		imported_operator_main_source(imported_operator_usage_source()), 'vectors/vectors.v',
 		imported_operator_module_source())
-	used := mark_used(a, tc)
+	mut used := mark_used(a, tc)
 	assert used['vectors.Vec.+']
 	assert used['vectors.Vec.<']
 }
@@ -194,16 +194,16 @@ fn test_optional_struct_zero_seeds_imported_default_helper() {
 	a, tc := parse_checked_two_file_source('imported_struct_default_or',
 		imported_struct_default_main_source('box := defaults.maybe_box() or { return }\n\t_ := box'),
 		'defaults/defaults.v', imported_struct_default_module_source())
-	used := mark_used(a, tc)
+	mut used := mark_used(a, tc)
 	assert used['defaults.default_value']
 }
 
 fn test_string_interpolation_lowers_to_imported_enum_str_after_used_filter_transform() {
 	mut a, mut tc := parse_checked_two_file_source('imported_enum_interp_str_cgen',
 		imported_enum_main_source('_ := "\${c}"'), 'colors/colors.v', imported_enum_module_source())
-	used := mark_used(a, tc)
+	mut used := mark_used(a, tc)
 	assert used['colors.Color.str']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
@@ -216,10 +216,10 @@ fn test_imported_operator_infix_lowers_after_used_filter_transform() {
 	mut a, mut tc := parse_checked_two_file_source('imported_operator_infix_cgen',
 		imported_operator_main_source(imported_operator_usage_source()), 'vectors/vectors.v',
 		imported_operator_module_source())
-	used := mark_used(a, tc)
+	mut used := mark_used(a, tc)
 	assert used['vectors.Vec.+']
 	assert used['vectors.Vec.<']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
@@ -233,9 +233,9 @@ fn test_optional_struct_zero_lowers_to_imported_default_after_used_filter_transf
 	mut a, mut tc := parse_checked_two_file_source('imported_struct_default_or_cgen',
 		imported_struct_default_main_source('box := defaults.maybe_box() or { return }\n\t_ := box'),
 		'defaults/defaults.v', imported_struct_default_module_source())
-	used := mark_used(a, tc)
+	mut used := mark_used(a, tc)
 	assert used['defaults.default_value']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
@@ -248,9 +248,9 @@ fn test_optional_string_interpolation_lowers_to_imported_enum_str_after_used_fil
 	mut a, mut tc := parse_checked_two_file_source('imported_optional_enum_interp_str_cgen',
 		imported_optional_enum_main_source('_ := "\${maybe_color()}"'), 'colors/colors.v',
 		imported_enum_module_source())
-	used := mark_used(a, tc)
+	mut used := mark_used(a, tc)
 	assert used['colors.Color.str']
-	transform.transform_with_used(mut a, tc, used)
+	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()

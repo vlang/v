@@ -252,11 +252,11 @@ fn main() {
 
 	// Mark used functions (dead-code elimination). This is done before transform
 	// so the transformer can skip function bodies that the C backend will prune.
-	used_fns := markused.mark_used(a, pre_tc)
+	mut used_fns := markused.mark_used(a, pre_tc)
 	b.step('markused')
 
 	// Transform (match lowering, string/in lowering, etc.)
-	transform.transform_with_used(mut a, &pre_tc, used_fns)
+	used_fns = transform.transform_with_used(mut a, &pre_tc, used_fns)
 	b.step('transform')
 
 	// Reuse the pre-transform checker for metadata only. Transform does not add
@@ -267,6 +267,9 @@ fn main() {
 	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
 	pre_tc.annotate_types()
 	b.step('annotate types')
+
+	used_fns = transform.monomorphize_with_used(mut a, &pre_tc, used_fns)
+	b.step('monomorphize')
 
 	if backend == 'arm64' {
 		// SSA + ARM64 native backend
@@ -364,6 +367,34 @@ fn vmod_subdirs(dir string) []string {
 		}
 	}
 	return subdirs
+}
+
+fn project_root_for_files(files []string) string {
+	for file in files {
+		root := nearest_vmod_root_for_file(file)
+		if root.len > 0 {
+			return root
+		}
+	}
+	if files.len > 0 {
+		return os.dir(files[0])
+	}
+	return os.getwd()
+}
+
+fn nearest_vmod_root_for_file(path string) string {
+	mut dir := if os.is_dir(path) { path } else { os.dir(path) }
+	for _ in 0 .. 32 {
+		if os.exists(os.join_path_single(dir, 'v.mod')) {
+			return dir
+		}
+		parent := os.dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ''
 }
 
 fn resolve_vroot(initial string) string {
@@ -466,7 +497,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	if initial_files.len > 0 {
 		first_file = initial_files[0]
 	}
-	project_root := if first_file.len > 0 { os.dir(first_file) } else { os.getwd() }
+	project_root := project_root_for_files(initial_files)
 
 	mut changed := true
 	for changed {
@@ -495,12 +526,64 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			if mod_dir == '' || !os.is_dir(mod_dir) {
 				continue
 			}
+			module_identity := import_module_identity(prefs, mod_name, importing_file,
+				project_root, mod_dir)
 			mod_files := pref.get_v_files_from_dir(mod_dir, prefs.user_defines, prefs.target_os)
 			for mf in mod_files {
+				first_node := a.nodes.len
 				p.parse_into(mf)
+				if module_identity == mod_name {
+					canonicalize_imported_module_name(mut a, first_node, mod_name)
+				}
 			}
 		}
 	}
+	normalize_import_module_identities(mut a, prefs, first_file, project_root)
+}
+
+fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, import_path string) {
+	if import_path.len == 0 {
+		return
+	}
+	short_name := import_path.all_after_last('.')
+	for i in first_node .. a.nodes.len {
+		if a.nodes[i].kind == .module_decl && a.nodes[i].value == short_name {
+			a.nodes[i].value = import_path
+		}
+	}
+}
+
+fn normalize_import_module_identities(mut a flat.FlatAst, prefs &pref.Preferences, first_file string, project_root string) {
+	mut cur_file := first_file
+	for i in 0 .. a.nodes.len {
+		node := a.nodes[i]
+		if node.kind == .file && node.value.len > 0 {
+			cur_file = node.value
+			continue
+		}
+		if node.kind != .import_decl {
+			continue
+		}
+		importing_file := if cur_file.len > 0 { cur_file } else { first_file }
+		mod_dir := resolve_project_or_pref_module_path(prefs, node.value, importing_file,
+			project_root)
+		a.nodes[i].value = import_module_identity(prefs, node.value, importing_file, project_root,
+			mod_dir)
+	}
+}
+
+fn import_module_identity(prefs &pref.Preferences, import_path string, importing_file string, project_root string, import_dir string) string {
+	if !import_path.contains('.') {
+		return import_path
+	}
+	short_name := import_path.all_after_last('.')
+	short_dir := resolve_project_or_pref_module_path(prefs, short_name, importing_file,
+		project_root)
+	if short_dir.len > 0 && import_dir.len > 0 && os.is_dir(short_dir)
+		&& os.real_path(short_dir) != os.real_path(import_dir) {
+		return import_path
+	}
+	return short_name
 }
 
 fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string, importing_file string, project_root string) string {

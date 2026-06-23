@@ -253,13 +253,8 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				tc.enter_module(node.value)
 			}
 			.import_decl {
-				mod := if node.value.contains('.') {
-					node.value.all_after_last('.')
-				} else {
-					node.value
-				}
-				tc.imports[node.typ] = mod
-				tc.file_imports[file_import_key(tc.cur_file, node.typ)] = mod
+				tc.imports[node.typ] = node.value
+				tc.file_imports[file_import_key(tc.cur_file, node.typ)] = node.value
 			}
 			.enum_decl {
 				qn := tc.qualify_name(node.value)
@@ -600,7 +595,7 @@ pub fn (tc &TypeChecker) qualify_name(name string) string {
 		return '?' + tc.qualify_name(name[1..])
 	}
 	if name.contains('.') {
-		return name
+		return tc.resolve_imported_type_text(name)
 	}
 	if is_builtin_type_name(name) {
 		return name
@@ -730,6 +725,23 @@ fn (tc &TypeChecker) resolve_import_alias(alias string) ?string {
 		return mod
 	}
 	return none
+}
+
+fn (tc &TypeChecker) resolve_imported_type_text(typ string) string {
+	if !typ.contains('.') || typ.starts_with('C.') {
+		return typ
+	}
+	dot := typ.index_u8(`.`)
+	if dot <= 0 {
+		return typ
+	}
+	alias := typ[..dot]
+	if resolved := tc.resolve_import_alias(alias) {
+		if resolved != alias {
+			return resolved + typ[dot..]
+		}
+	}
+	return typ
 }
 
 fn (tc &TypeChecker) has_active_import(alias string) bool {
@@ -4599,8 +4611,12 @@ fn (tc &TypeChecker) interface_implements_interface(actual_name string, expected
 		return true
 	}
 	for method in tc.interface_method_names(expected_name) {
-		actual_key := '${actual_name}.${method}'
-		expected_key := '${expected_name}.${method}'
+		actual_key := tc.interface_method_signature_key(actual_name, method) or {
+			'${actual_name}.${method}'
+		}
+		expected_key := tc.interface_method_signature_key(expected_name, method) or {
+			'${expected_name}.${method}'
+		}
 		if actual_key !in tc.fn_param_types
 			|| !tc.method_signature_compatible(actual_key, expected_key) {
 			return false
@@ -4625,7 +4641,9 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, i
 		if concrete_key !in tc.fn_param_types {
 			return false
 		}
-		expected_key := '${iface_name}.${method}'
+		expected_key := tc.interface_method_signature_key(iface_name, method) or {
+			'${iface_name}.${method}'
+		}
 		if !tc.method_signature_compatible(concrete_key, expected_key) {
 			return false
 		}
@@ -4697,6 +4715,19 @@ fn (tc &TypeChecker) interface_method_names_inner(iface_name string, mut seen ma
 		}
 	}
 	return methods
+}
+
+pub fn (tc &TypeChecker) interface_method_signature_key(iface_name string, method string) ?string {
+	key := '${iface_name}.${method}'
+	if key in tc.fn_ret_types || key in tc.fn_param_types {
+		return key
+	}
+	for embed in tc.interface_embeds[iface_name] or { []string{} } {
+		if found := tc.interface_method_signature_key(embed, method) {
+			return found
+		}
+	}
+	return none
 }
 
 fn (tc &TypeChecker) interface_field_list(iface_name string) []StructField {
@@ -4848,9 +4879,23 @@ fn (tc &TypeChecker) embedded_method_call_info_inner(struct_name string, method 
 		if receiver.len == 0 {
 			continue
 		}
-		method_name := '${receiver}.${method}'
-		if method_name in tc.fn_ret_types {
-			return tc.call_info(method_name, true)
+		mut method_names := ['${receiver}.${method}']
+		base_name, _, is_generic := generic_type_application_parts(receiver)
+		if is_generic {
+			method_names << '${base_name}.${method}'
+		}
+		for method_name in method_names {
+			if method_name in tc.fn_ret_types {
+				info := tc.call_info(method_name, true)
+				return CallInfo{
+					name:         info.name
+					params:       info.params
+					return_type:  info.return_type
+					has_receiver: info.has_receiver
+					is_variadic:  info.is_variadic
+					params_known: if receiver.contains('[') { false } else { info.params_known }
+				}
+			}
 		}
 		if info := tc.embedded_method_call_info_inner(receiver, method, mut seen) {
 			return info
@@ -4911,13 +4956,16 @@ fn embedded_field_type(field StructField) ?Type {
 	if field_type_name.len == 0 {
 		return none
 	}
-	short_name := if field_type_name.contains('.') {
-		field_type_name.all_after_last('.')
-	} else {
-		field_type_name
+	mut names := [field_type_name]
+	base_name, _, is_generic := generic_type_application_parts(field_type_name)
+	if is_generic {
+		names << base_name
 	}
-	if field.name == field_type_name || field.name == short_name {
-		return field.typ
+	for name in names {
+		short_name := if name.contains('.') { name.all_after_last('.') } else { name }
+		if field.name == name || field.name == short_name {
+			return field.typ
+		}
 	}
 	return none
 }
@@ -5063,7 +5111,7 @@ fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
 // parse_type converts a V type string (from parser) to a structured Type.
 pub fn (tc &TypeChecker) parse_type(typ string) Type {
 	if tc.type_cache != unsafe { nil } && tc.type_cache.parse_enabled {
-		key := tc.cur_module + '\n' + typ
+		key := tc.cur_file + '\n' + tc.cur_module + '\n' + typ
 		mut cache := unsafe { tc.type_cache }
 		if cached := cache.parse_entries[key] {
 			return cached
