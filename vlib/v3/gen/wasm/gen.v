@@ -1354,7 +1354,8 @@ fn (mut g Gen) decl_is_unsigned(rhs_id flat.NodeId, fallback_typ string) bool {
 	return false
 }
 
-fn type_is_unsigned(t types.Type) bool {
+fn type_is_unsigned(t_ types.Type) bool {
+	t := unalias(t_)
 	if t is types.Primitive {
 		return t.props.has(.unsigned)
 	}
@@ -1363,7 +1364,8 @@ fn type_is_unsigned(t types.Type) bool {
 
 // narrow_width returns 8 or 16 for sub-32-bit integer types (which the backend
 // stores in an i32 and must mask/sign-extend), or 32 otherwise.
-fn narrow_width(t types.Type) int {
+fn narrow_width(t_ types.Type) int {
+	t := unalias(t_)
 	if t is types.Primitive && t.props.has(.integer) {
 		if t.size == 8 {
 			return 8
@@ -1510,9 +1512,24 @@ fn export_fn_name(mod string, name string) string {
 	return '${mod}__${name}'
 }
 
+// unalias resolves a (possibly chained) numeric type alias to its base type so
+// scalar aliases like `type Byte = u8` classify as their underlying type.
+fn unalias(t types.Type) types.Type {
+	mut cur := t
+	for {
+		if cur is types.Alias {
+			cur = cur.base_type
+		} else {
+			break
+		}
+	}
+	return cur
+}
+
 // prim_wtype maps a primitive/numeric/bool V type to a WASM value type, or none
 // for aggregate/reference types the backend cannot yet represent inline.
-fn prim_wtype(t types.Type) ?WType {
+fn prim_wtype(t_ types.Type) ?WType {
+	t := unalias(t_)
 	if t is types.Primitive {
 		if t.props.has(.float) {
 			return if t.size == 32 { WType.f32 } else { WType.f64 }

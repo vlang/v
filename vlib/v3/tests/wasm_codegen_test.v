@@ -350,6 +350,16 @@ fn test_wasm_import_aliases_are_file_scoped() {
 	run_wasi_expect(out_wasm, ['100', '200'])
 }
 
+fn test_wasm_numeric_type_aliases() {
+	v3_bin := v3_binary()
+	// Scalar aliases must classify as their base type: the alias-typed function
+	// is emitted, and Byte(300) wraps to u8 (44) rather than keeping 300.
+	src := 'type Byte = u8\ntype MyInt = int\n\nfn val() Byte {\n\treturn Byte(300)\n}\n\nfn add(a MyInt, b MyInt) MyInt {\n\treturn a + b\n}\n\nfn main() {\n\tprintln(int(val()))\n\tprintln(int(add(3, 4)))\n\tmut x := Byte(250)\n\tx += Byte(10)\n\tprintln(int(x))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_alias_types')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['44', '7', '4'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });
