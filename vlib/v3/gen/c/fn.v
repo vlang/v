@@ -234,16 +234,31 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	fn_node := g.a.child_node(&call_node, 0)
 	mut wrapper := ''
 	mut arg_expr := 'NULL'
-	if fn_node.kind == .ident && call_node.children_count == 1 {
+	if fn_node.kind == .ident {
 		call_key := g.call_key(call_id, fn_node.value)
 		cfn := if call_key in g.tc.fn_ret_types || call_key in g.tc.fn_param_types {
 			g.direct_call_name(call_key)
 		} else {
 			g.direct_call_name(fn_node.value)
 		}
-		wrapper = g.ensure_noarg_spawn_wrapper(cfn)
-	} else if fn_node.kind == .selector && call_node.children_count == 1
-		&& fn_node.children_count > 0 {
+		if call_node.children_count == 1 {
+			wrapper = g.ensure_noarg_spawn_wrapper(cfn)
+		} else {
+			// `spawn work(a, b)` packs the arguments into a heap struct so the
+			// spawned thread receives them, instead of silently dropping them.
+			param_types := g.param_types_for(call_key, fn_node.value)
+			if param_types.len > 0 && param_types.len == int(call_node.children_count) - 1 {
+				mut param_cts := []string{}
+				mut arg_exprs := []string{}
+				for i, pt in param_types {
+					param_cts << g.tc.c_type(pt)
+					arg_exprs << g.expr_to_string(g.a.child(&call_node, i + 1))
+				}
+				g.emit_args_spawn_expr(cfn, param_cts, arg_exprs)
+				return
+			}
+		}
+	} else if fn_node.kind == .selector && fn_node.children_count > 0 {
 		base_id := g.a.child(fn_node, 0)
 		base_type := g.receiver_base_type(base_id)
 		clean_type := types.unwrap_pointer(base_type)
@@ -253,16 +268,38 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 			if param_types.len > 0 {
 				receiver_type := param_types[0]
 				receiver_ct := g.tc.c_type(receiver_type)
-				wrapper = g.ensure_receiver_spawn_wrapper(c_name(method_name), receiver_ct)
 				base_expr := g.expr_to_string(base_id)
-				if receiver_type is types.Pointer {
-					if base_type is types.Pointer {
-						arg_expr = '(${receiver_ct})(${base_expr})'
+				if call_node.children_count == 1 {
+					wrapper = g.ensure_receiver_spawn_wrapper(c_name(method_name), receiver_ct)
+					if receiver_type is types.Pointer {
+						if base_type is types.Pointer {
+							arg_expr = '(${receiver_ct})(${base_expr})'
+						} else {
+							arg_expr = '(${receiver_ct})(&(${base_expr}))'
+						}
 					} else {
-						arg_expr = '(${receiver_ct})(&(${base_expr}))'
+						arg_expr = '&(${base_expr})'
 					}
-				} else {
-					arg_expr = '&(${base_expr})'
+				} else if param_types.len == int(call_node.children_count) {
+					// `spawn recv.method(a, b)` packs the receiver and arguments
+					// into a heap struct rather than dropping the call.
+					receiver_expr := if receiver_type is types.Pointer {
+						if base_type is types.Pointer {
+							'(${receiver_ct})(${base_expr})'
+						} else {
+							'(${receiver_ct})(&(${base_expr}))'
+						}
+					} else {
+						base_expr
+					}
+					mut param_cts := [receiver_ct]
+					mut arg_exprs := [receiver_expr]
+					for i in 1 .. param_types.len {
+						param_cts << g.tc.c_type(param_types[i])
+						arg_exprs << g.expr_to_string(g.a.child(&call_node, i))
+					}
+					g.emit_args_spawn_expr(c_name(method_name), param_cts, arg_exprs)
+					return
 				}
 			}
 		}
@@ -299,6 +336,44 @@ fn (mut g FlatGen) ensure_receiver_spawn_wrapper(cfn string, receiver_ct string)
 	g.spawn_wrapper_names[key] = name
 	g.spawn_wrapper_defs << 'static void* ${name}(void* arg) { ${cfn}((${receiver_ct})arg); return NULL; }'
 	return name
+}
+
+// ensure_args_spawn_wrapper registers (once per callee) a heap-arg struct plus a
+// thread wrapper that unpacks the struct, calls the function with all arguments,
+// and frees the struct. Returns the wrapper name and the arg struct name.
+fn (mut g FlatGen) ensure_args_spawn_wrapper(cfn string, param_cts []string) (string, string) {
+	struct_name := c_name('${cfn}_thread_args')
+	key := 'args|${cfn}'
+	if name := g.spawn_wrapper_names[key] {
+		return name, struct_name
+	}
+	name := c_name('${cfn}_args_thread_wrapper')
+	g.spawn_wrapper_names[key] = name
+	mut fields := ''
+	mut call_args := []string{}
+	for i, ct in param_cts {
+		fields += '${ct} a${i}; '
+		call_args << 'p->a${i}'
+	}
+	g.spawn_wrapper_defs << 'typedef struct { ${fields}} ${struct_name};'
+	g.spawn_wrapper_defs << 'static void* ${name}(void* arg) { ${struct_name}* p = (${struct_name}*)arg; ${cfn}(${call_args.join(', ')}); free(p); return NULL; }'
+	return name, struct_name
+}
+
+// emit_args_spawn_expr writes a statement-expression that heap-allocates the arg
+// struct, populates it, and starts the thread on the packing wrapper.
+fn (mut g FlatGen) emit_args_spawn_expr(cfn string, param_cts []string, arg_exprs []string) {
+	wrapper, struct_name := g.ensure_args_spawn_wrapper(cfn, param_cts)
+	tmp := g.tmp_count
+	g.tmp_count++
+	g.write('({ ${struct_name}* _sa${tmp} = (${struct_name}*)malloc(sizeof(${struct_name})); ')
+	for i, e in arg_exprs {
+		g.write('_sa${tmp}->a${i} = ${e}; ')
+	}
+	g.write('pthread_t _t${tmp}; pthread_attr_t _at${tmp}; pthread_attr_init(&_at${tmp}); ')
+	g.write('pthread_attr_setstacksize(&_at${tmp}, 8388608); ')
+	g.write('int _r${tmp} = pthread_create(&_t${tmp}, &_at${tmp}, ${wrapper}, (void*)_sa${tmp}); ')
+	g.write('pthread_attr_destroy(&_at${tmp}); (void)_r${tmp}; (void*)_t${tmp}; })')
 }
 
 fn (g &FlatGen) resolved_method_name_for_spawn(clean_type types.Type, method string) string {
