@@ -197,7 +197,9 @@ fn test_wasm_imported_module_numeric_call() {
 	os.write_file(os.join_path(dir, 'main.v'), 'import moda\n\nfn main() {\n\tprintln(moda.answer())\n\tprintln(moda.add(3, 4))\n}\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(dir, 'moda', 'moda.v'), 'module moda\n\npub fn answer() int {\n\treturn 42\n}\n\npub fn add(a int, b int) int {\n\treturn a + b\n}\n') or {
+	// answer() calls a bare helper() in the same module, which must resolve to
+	// moda.helper (not main-module helper).
+	os.write_file(os.join_path(dir, 'moda', 'moda.v'), 'module moda\n\nfn helper() int {\n\treturn 21\n}\n\npub fn answer() int {\n\treturn helper() * 2\n}\n\npub fn add(a int, b int) int {\n\treturn a + b\n}\n') or {
 		panic(err)
 	}
 	out_wasm := os.join_path(dir, 'main.wasm')

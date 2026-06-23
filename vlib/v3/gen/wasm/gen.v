@@ -64,7 +64,8 @@ mut:
 	var_wtype    map[string]WType
 	var_unsigned map[string]bool
 	frames       []Frame
-	cur_ret     WType
+	cur_ret       WType
+	cur_fn_module string
 	// module-wide; keyed by qualified function name (see qualified_fn_key)
 	fn_index  map[string]int
 	fn_ret    map[string]WType
@@ -240,21 +241,23 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 // builtins are ignored).
 fn (g &Gen) called_candidate_keys(f FnInfo, candidates map[string]FnInfo) []string {
 	mut keys := []string{}
-	g.collect_call_keys(g.a.nodes[int(f.node_id)], candidates, mut keys)
+	g.collect_call_keys(g.a.nodes[int(f.node_id)], f.module, candidates, mut keys)
 	return keys
 }
 
-fn (g &Gen) collect_call_keys(node flat.Node, candidates map[string]FnInfo, mut keys []string) {
+fn (g &Gen) collect_call_keys(node flat.Node, cur_mod string, candidates map[string]FnInfo, mut keys []string) {
 	if node.kind == .call && node.children_count > 0 {
-		key := g.resolve_call_key(g.a.child_node(&node, 0))
-		if key.len > 0 && key in candidates {
-			keys << key
+		for key in g.resolve_call_keys(g.a.child_node(&node, 0), cur_mod) {
+			if key in candidates {
+				keys << key
+				break
+			}
 		}
 	}
 	for i in 0 .. node.children_count {
 		cid := g.a.child(&node, i)
 		if int(cid) >= 0 {
-			g.collect_call_keys(g.a.nodes[int(cid)], candidates, mut keys)
+			g.collect_call_keys(g.a.nodes[int(cid)], cur_mod, candidates, mut keys)
 		}
 	}
 }
@@ -326,6 +329,7 @@ fn (mut g Gen) emit_user_fn(f FnInfo) {
 	g.var_unsigned = map[string]bool{}
 	g.frames = []Frame{}
 	g.cur_ret = f.ret
+	g.cur_fn_module = f.module
 
 	// register params as locals 0..n-1
 	mut pi := 0
@@ -698,7 +702,9 @@ fn (mut g Gen) gen_infix(id flat.NodeId, node flat.Node) WType {
 	}
 	// arithmetic / bitwise / shift: in V both operands share the result type,
 	// so combine the node's own type with the operand-derived width (the
-	// latter recovers i64/float when the node type is missing).
+	// latter recovers i64/float when the node type is missing). For shifts WASM
+	// also takes both operands at the result width (e.g. i64.shl is
+	// [i64 i64] -> [i64]); the count is reduced modulo the bit width.
 	ow := combine_wtype(g.expr_wtype(id, node.typ), g.operand_wtype(lhs_id, rhs_id))
 	signed := !g.is_unsigned(lhs_id)
 	g.gen_expr_as(lhs_id, ow)
@@ -826,39 +832,45 @@ fn (mut g Gen) gen_call(node flat.Node) WType {
 		g.gen_print_call(node, callee.value)
 		return .void
 	}
-	key := g.resolve_call_key(callee)
-	if key.len > 0 && key in g.fn_index {
-		params := g.fn_params[key]
-		for i in 1 .. node.children_count {
-			pw := if i - 1 < params.len { params[i - 1] } else { WType.i32 }
-			g.gen_expr_as(g.a.child(&node, i), pw)
+	for key in g.resolve_call_keys(callee, g.cur_fn_module) {
+		if key in g.fn_index {
+			params := g.fn_params[key]
+			for i in 1 .. node.children_count {
+				pw := if i - 1 < params.len { params[i - 1] } else { WType.i32 }
+				g.gen_expr_as(g.a.child(&node, i), pw)
+			}
+			g.cur.call(g.fn_index[key])
+			return g.fn_ret[key]
 		}
-		g.cur.call(g.fn_index[key])
-		return g.fn_ret[key]
 	}
 	if callee.kind == .ident {
 		g.warn('unsupported call: ${callee.value}')
 	} else {
-		g.warn('unsupported call target: ${key}')
+		g.warn('unsupported call target')
 	}
 	// keep the stack balanced for value contexts
 	g.cur.i32_const(0)
 	return .i32
 }
 
-// resolve_call_key maps a callee node to its qualified fn_index key: a bare
-// name for unqualified idents, or `module.name` for `module.fn()` selectors.
-fn (g &Gen) resolve_call_key(callee &flat.Node) string {
+// resolve_call_keys returns the candidate fn_index keys for a callee, in
+// priority order. A bare ident inside an imported module resolves to the
+// same-module function first (`mod.name`) and falls back to a main-module name;
+// a `module.fn()` selector resolves to that module's qualified name.
+fn (g &Gen) resolve_call_keys(callee &flat.Node, cur_mod string) []string {
 	if callee.kind == .ident {
-		return callee.value
+		if cur_mod != '' && cur_mod != 'main' {
+			return ['${cur_mod}.${callee.value}', callee.value]
+		}
+		return [callee.value]
 	}
 	if callee.kind == .selector && callee.children_count > 0 {
 		base := g.a.child_node(callee, 0)
 		if base.kind == .ident {
-			return '${base.value}.${callee.value}'
+			return ['${base.value}.${callee.value}']
 		}
 	}
-	return ''
+	return []
 }
 
 // ---- print intrinsics ----
