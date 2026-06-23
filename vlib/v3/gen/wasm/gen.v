@@ -673,18 +673,19 @@ fn (mut g Gen) gen_assign(node flat.Node) {
 			}
 			g.narrow_for_local(lhs.value)
 			g.cur.local_set(idx)
-		} else if lhs.kind == .ident && lhs.value in g.global_index {
-			gidx := g.global_index[lhs.value]
-			w := g.global_wtype[lhs.value]
+		} else if lhs.kind == .ident && g.global_key(lhs.value) != '' {
+			gkey := g.global_key(lhs.value)
+			gidx := g.global_index[gkey]
+			w := g.global_wtype[gkey]
 			if node.op == .assign {
 				g.gen_expr_as(rhs_id, w)
 			} else {
 				op := compound_to_op(node.op)
-				signed := !g.global_unsigned[lhs.value]
+				signed := !g.global_unsigned[gkey]
 				g.cur.global_get(gidx)
 				if op in [.left_shift, .right_shift, .right_shift_unsigned] {
 					if op == .right_shift_unsigned && w == .i32 {
-						lw := g.global_widths[lhs.value]
+						lw := g.global_widths[gkey]
 						if lw == 8 || lw == 16 {
 							g.emit_narrow(lw, true)
 						}
@@ -695,7 +696,7 @@ fn (mut g Gen) gen_assign(node flat.Node) {
 					g.emit_arith(op, w, signed)
 				}
 			}
-			g.narrow_for_global(lhs.value)
+			g.narrow_for_global(gkey)
 			g.cur.global_set(gidx)
 		} else {
 			g.warn('unsupported assign target')
@@ -745,11 +746,29 @@ fn (mut g Gen) narrow_for_local(name string) {
 	}
 }
 
-fn (mut g Gen) narrow_for_global(name string) {
-	width := g.global_widths[name]
+fn (mut g Gen) narrow_for_global(key string) {
+	width := g.global_widths[key]
 	if width == 8 || width == 16 {
-		g.emit_narrow(width, g.global_unsigned[name])
+		g.emit_narrow(width, g.global_unsigned[key])
 	}
+}
+
+// global_key resolves a `__global` referenced by bare name from the current
+// function to its metadata key, preferring a same-module global and falling
+// back to a main-module one, mirroring resolve_call_keys. Globals are keyed by
+// module-qualified name, so two modules declaring the same name stay distinct.
+// Returns '' when no such global exists.
+fn (g &Gen) global_key(name string) string {
+	if g.cur_fn_module != '' && g.cur_fn_module != 'main' {
+		k := '${g.cur_fn_module}.${name}'
+		if k in g.global_index {
+			return k
+		}
+	}
+	if name in g.global_index {
+		return name
+	}
+	return ''
 }
 
 // decl_width resolves the declared sub-32-bit width (8/16) of an initializer.
@@ -955,9 +974,10 @@ fn (mut g Gen) gen_expr(id flat.NodeId) WType {
 				g.cur.local_get(g.var_index[node.value])
 				return g.var_wtype[node.value]
 			}
-			if node.value in g.global_index {
-				g.cur.global_get(g.global_index[node.value])
-				return g.global_wtype[node.value]
+			gkey := g.global_key(node.value)
+			if gkey != '' {
+				g.cur.global_get(g.global_index[gkey])
+				return g.global_wtype[gkey]
 			}
 			// Top-level consts are inlined from their recorded value expression.
 			if cid := g.const_value_node(node.value) {
@@ -1342,14 +1362,32 @@ fn (mut g Gen) gen_prefix(id flat.NodeId, node flat.Node) WType {
 
 fn (mut g Gen) gen_postfix(node flat.Node) {
 	target := g.a.child_node(&node, 0)
-	if target.kind != .ident || target.value !in g.var_index {
-		g.warn('unsupported postfix target')
+	inc := node.op == .inc
+	if target.kind == .ident && target.value in g.var_index {
+		idx := g.var_index[target.value]
+		g.cur.local_get(idx)
+		g.emit_inc(g.var_wtype[target.value], inc)
+		g.narrow_for_local(target.value)
+		g.cur.local_set(idx)
 		return
 	}
-	idx := g.var_index[target.value]
-	w := g.var_wtype[target.value]
-	inc := node.op == .inc
-	g.cur.local_get(idx)
+	if target.kind == .ident {
+		gkey := g.global_key(target.value)
+		if gkey != '' {
+			gidx := g.global_index[gkey]
+			g.cur.global_get(gidx)
+			g.emit_inc(g.global_wtype[gkey], inc)
+			g.narrow_for_global(gkey)
+			g.cur.global_set(gidx)
+			return
+		}
+	}
+	g.warn('unsupported postfix target')
+}
+
+// emit_inc pushes 1 of the given type and adds (inc) or subtracts it from the
+// value already on the stack, used by `x++`/`x--` for locals and globals.
+fn (mut g Gen) emit_inc(w WType, inc bool) {
 	match w {
 		.i64 {
 			g.cur.i64_const(1)
@@ -1368,8 +1406,6 @@ fn (mut g Gen) gen_postfix(node flat.Node) {
 			g.cur.raw(if inc { u8(0x6a) } else { u8(0x6b) }) // i32.add/sub
 		}
 	}
-	g.narrow_for_local(target.value)
-	g.cur.local_set(idx)
 }
 
 fn (mut g Gen) gen_cast(node flat.Node) WType {
@@ -1471,13 +1507,37 @@ fn (mut g Gen) collect_imports() {
 // collect_globals lowers primitive `__global` declarations to mutable wasm
 // globals, recording each name's index/type and emitting a constant initializer.
 fn (mut g Gen) collect_globals() {
+	mut cur_module := ''
+	mut cur_file := ''
+	mut cur_module_path := ''
 	for i in 0 .. g.a.nodes.len {
-		if i < g.a.user_code_start {
+		node := g.a.nodes[i]
+		if node.kind == .file {
+			cur_module = ''
+			cur_file = node.value
+			cur_module_path = ''
 			continue
 		}
-		node := g.a.nodes[i]
-		if node.kind != .global_decl {
+		if node.kind == .module_decl {
+			cur_module = node.value
+			cur_module_path = if cur_module != '' && cur_module != 'main' {
+				g.module_path_for_file(cur_file)
+			} else {
+				''
+			}
 			continue
+		}
+		if node.kind != .global_decl || i < g.a.user_code_start {
+			continue
+		}
+		// Qualify the global by its declaring module so a name declared in two
+		// modules maps to two distinct wasm globals (see global_key for lookup).
+		mod_key := if cur_module_path != '' {
+			cur_module_path
+		} else if cur_module != '' && cur_module != 'main' {
+			cur_module
+		} else {
+			''
 		}
 		for fi in 0 .. node.children_count {
 			f := g.a.child_node(&node, fi)
@@ -1492,25 +1552,28 @@ fn (mut g Gen) collect_globals() {
 				t = g.tc.resolve_type(g.a.child(f, 0))
 			}
 			w := prim_wtype(t) or { continue } // only numeric/bool globals
+			width := narrow_width(t)
+			unsigned := type_is_unsigned(t)
 			mut init := Code{}
 			if f.children_count > 0 {
-				g.emit_global_init(g.a.child(f, 0), w, mut init)
+				g.emit_global_init(g.a.child(f, 0), w, width, unsigned, mut init)
 			} else {
 				init_push_zero(w, mut init)
 			}
 			init.end()
 			gidx := g.mod.add_global(wt_valtype(w), init.bytes)
-			g.global_index[f.value] = gidx
-			g.global_wtype[f.value] = w
-			g.global_unsigned[f.value] = type_is_unsigned(t)
-			g.global_widths[f.value] = narrow_width(t)
+			key := qualified_fn_key(mod_key, f.value)
+			g.global_index[key] = gidx
+			g.global_wtype[key] = w
+			g.global_unsigned[key] = unsigned
+			g.global_widths[key] = width
 		}
 	}
 }
 
 // emit_global_init writes a constant initializer expression for a global. Only
 // constant literals (optionally negated/cast) are folded; others default to 0.
-fn (g &Gen) emit_global_init(init_id flat.NodeId, w WType, mut c Code) {
+fn (g &Gen) emit_global_init(init_id flat.NodeId, w WType, width int, unsigned bool, mut c Code) {
 	if w in [WType.f32, WType.f64] {
 		fv := g.fold_const_float(init_id)
 		if w == .f32 {
@@ -1524,7 +1587,20 @@ fn (g &Gen) emit_global_init(init_id flat.NodeId, w WType, mut c Code) {
 	if w == .i64 {
 		c.i64_const(iv)
 	} else {
-		c.i32_const(iv)
+		// Apply the global's declared sub-32-bit width so an out-of-range cast
+		// initializer (e.g. `u8(300)` -> 44, `i8(128)` -> -128) matches what a
+		// later store would narrow it to via narrow_for_global.
+		c.i32_const(narrow_const(iv, width, unsigned))
+	}
+}
+
+// narrow_const wraps/sign-extends a constant to a declared 8/16-bit width; the
+// compile-time counterpart of emit_narrow.
+fn narrow_const(v i64, width int, unsigned bool) i64 {
+	return match width {
+		8 { if unsigned { i64(u8(v)) } else { i64(i8(v)) } }
+		16 { if unsigned { i64(u16(v)) } else { i64(i16(v)) } }
+		else { v }
 	}
 }
 
@@ -1881,8 +1957,11 @@ fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
 		if node.kind == .ident && node.value in g.var_wtype {
 			return g.var_wtype[node.value]
 		}
-		if node.kind == .ident && node.value in g.global_wtype {
-			return g.global_wtype[node.value]
+		if node.kind == .ident {
+			gkey := g.global_key(node.value)
+			if gkey != '' {
+				return g.global_wtype[gkey]
+			}
 		}
 		if node.kind == .paren && node.children_count > 0 {
 			return g.expr_wtype(g.a.child(&node, 0), fallback_typ)
@@ -1949,8 +2028,11 @@ fn (mut g Gen) is_unsigned(id flat.NodeId) bool {
 		if node.kind == .ident && node.value in g.var_unsigned {
 			return g.var_unsigned[node.value]
 		}
-		if node.kind == .ident && node.value in g.global_unsigned {
-			return g.global_unsigned[node.value]
+		if node.kind == .ident {
+			gkey := g.global_key(node.value)
+			if gkey != '' {
+				return g.global_unsigned[gkey]
+			}
 		}
 		if node.kind == .paren && node.children_count > 0 {
 			return g.is_unsigned(g.a.child(&node, 0))

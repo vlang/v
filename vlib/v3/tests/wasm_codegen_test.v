@@ -268,6 +268,40 @@ fn test_wasm_imported_module_numeric_call() {
 	}
 }
 
+fn test_wasm_module_scoped_globals() {
+	v3_bin := v3_binary()
+	// main and an imported module both declare `__global counter`. They must map
+	// to two distinct wasm globals keyed by module, so bumping the module's copy
+	// leaves main's untouched (main=100, foo=3).
+	dir := os.join_path(os.vtmp_dir(), 'wasm_modglobals')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'foo')) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\nimport foo\n\n__global counter int\n\nfn main() {\n\tcounter = 100\n\tfoo.bump()\n\tfoo.bump()\n\tfoo.bump()\n\tprintln(counter)\n\tprintln(foo.get())\n}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'foo', 'foo.v'), 'module foo\n\n__global counter int\n\npub fn bump() {\n\tcounter++\n}\n\npub fn get() int {\n\treturn counter\n}\n') or {
+		panic(err)
+	}
+	out_wasm := os.join_path(dir, 'main.wasm')
+	main_v := os.join_path(dir, 'main.v')
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+	assert res.exit_code == 0, res.output
+	assert_valid_wasm(out_wasm)
+
+	node := node_path() or { return }
+	runner := os.join_path(os.vtmp_dir(), 'wasm_run_wasi.mjs')
+	os.write_file(runner, wasi_runner_js) or { panic(err) }
+	rres := run_node(node, runner, out_wasm)
+	assert rres.exit_code == 0, rres.output
+	lines := rres.output.split_into_lines().map(it.trim_space()).filter(it.len > 0)
+	expected := ['100', '3']
+	assert lines.len >= expected.len, rres.output
+	for i, want in expected {
+		got := lines[lines.len - expected.len + i]
+		assert got == want, 'line ${i}: got ${got}, want ${want} (full: ${rres.output})'
+	}
+}
+
 fn test_wasm_for_post_uses_loop_var_not_body_shadow() {
 	v3_bin := v3_binary()
 	// A body-local `i` must not rebind the name used by the post `i++`; the
@@ -725,6 +759,27 @@ fn test_wasm_numeric_globals() {
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_globals')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['5', '15', '4'])
+}
+
+fn test_wasm_global_postfix() {
+	v3_bin := v3_binary()
+	// `counter++`/`counter--` on a numeric global must read-modify-write the wasm
+	// global (incl. across functions) and narrow-wrap for sub-32-bit globals.
+	src := '__global counter int\n__global b = u8(250)\n\nfn bump() {\n\tcounter++\n}\n\nfn main() {\n\tcounter = 3\n\tcounter++\n\tbump()\n\tcounter--\n\tprintln(counter)\n\tb++\n\tprintln(int(b))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_postfix')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['4', '251'])
+}
+
+fn test_wasm_global_narrow_cast_initializer() {
+	v3_bin := v3_binary()
+	// An out-of-range cast initializer on an inferred narrow global must be
+	// wrapped to the global's width at compile time, so the first read already
+	// sees the V value (u8(300)=44, i8(128)=-128, u16(70000)=4464).
+	src := '__global b = u8(300)\n__global s = i8(128)\n__global w = u16(70000)\n\nfn main() {\n\tprintln(int(b))\n\tprintln(int(s))\n\tprintln(int(w))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_narrow_init')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['44', '-128', '4464'])
 }
 
 const wasi_runner_js = "import { WASI } from 'node:wasi';
