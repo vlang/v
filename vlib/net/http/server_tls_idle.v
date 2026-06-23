@@ -12,6 +12,11 @@ struct TlsIdleConnTracker {
 mut:
 	handles []int
 	closing bool
+	// closed records handles that close_idle force-closed on Windows. The woken
+	// worker consults was_force_closed and skips its own conn.shutdown so the fd
+	// is closed exactly once. Empty on non-Windows (close_idle only shuts the fd
+	// down there, leaving the worker the sole closer).
+	closed []int
 }
 
 fn (mut t TlsIdleConnTracker) mark_idle(handle int) bool {
@@ -37,6 +42,25 @@ fn (mut t TlsIdleConnTracker) unmark_idle(handle int) {
 	}
 }
 
+// was_force_closed reports whether close_idle has already closed `handle`
+// (Windows force-close to wake a worker blocked in select). The woken worker
+// must then skip its own conn.shutdown: a second close would race process-wide
+// SOCKET reuse — the value can be reused by ANY socket the process opens, not
+// just this server's accept loop — and could close an unrelated socket. Always
+// false on non-Windows, where close_idle only shuts the fd down and the worker
+// remains the sole closer.
+fn (mut t TlsIdleConnTracker) was_force_closed(handle int) bool {
+	$if windows {
+		t.mu.lock()
+		defer {
+			t.mu.unlock()
+		}
+		return t.closed.index(handle) >= 0
+	} $else {
+		return false
+	}
+}
+
 fn (mut t TlsIdleConnTracker) close_idle() {
 	t.mu.lock()
 	defer {
@@ -45,19 +69,24 @@ fn (mut t TlsIdleConnTracker) close_idle() {
 	t.closing = true
 	handles := t.handles.clone()
 	t.handles.clear()
-	// Shut down handles under the lock: a worker racing through
-	// unmark_idle → conn.shutdown() → net.close(fd) could cause the OS
-	// to reuse the fd before we call net.shutdown here, hitting an
-	// unrelated socket. Holding the lock keeps unmark_idle serialized
-	// with this loop, closing the window.
-	// On Windows, net.shutdown(SD_BOTH) alone does not unblock a blocking
-	// select() in another thread — only closesocket() does. We call
-	// net.close here for that reason. The worker's deferred conn.shutdown()
-	// will call closesocket again; that second call returns WSAENOTSOCK and
-	// is swallowed by or {}. The double-close is safe: listen_and_serve_tls
-	// calls ch.close() before close_idle(), so the accept loop has already
-	// stopped; no new connection can claim the recycled handle before the
-	// worker's conn.shutdown() runs.
+	$if windows {
+		// On Windows, net.shutdown(SD_BOTH) does not unblock a worker blocked in
+		// select() — only closesocket() (net.close, below) does — so we must
+		// force-close idle handles to wake their workers. Record ownership of
+		// those closes here, under the lock, so a worker that wakes (or exits for
+		// another reason) sees it via was_force_closed and skips its own
+		// conn.shutdown. Without that the fd would be closed twice, and between
+		// the two closes the SOCKET value can be reused by any socket the process
+		// opens, so the second close could hit an unrelated socket.
+		t.closed << handles
+	}
+	// Hold the lock across the loop. On non-Windows, was_force_closed is always
+	// false, so the worker remains the sole closer (via conn.shutdown); holding
+	// the lock blocks its unmark_idle until our net.shutdown below has run, so
+	// the worker cannot close the fd — and let the OS recycle the value — before
+	// we shut it down. (Releasing the lock here would reopen exactly that race.)
+	// On Windows the woken worker skips its close regardless, so the held lock
+	// only briefly delays it and is otherwise harmless.
 	for handle in handles {
 		net.shutdown(handle)
 		$if windows {

@@ -158,7 +158,14 @@ fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 		if !is_h2 {
 			w.idle_conns.unmark_idle(conn.handle)
 		}
-		conn.shutdown() or {}
+		// close_idle may have already closed conn.handle on Windows (a forced
+		// closesocket to wake this worker from a blocked read). Closing it again
+		// would race process-wide SOCKET reuse and could close an unrelated
+		// socket, so skip our close when close_idle owns it. On non-Windows this
+		// is always false and the worker remains the sole closer.
+		if !w.idle_conns.was_force_closed(conn.handle) {
+			conn.shutdown() or {}
+		}
 	}
 	// If the TLS handshake negotiated HTTP/2 via ALPN, switch to the HTTP/2
 	// driver; otherwise fall through to the existing HTTP/1.1 path unchanged.
