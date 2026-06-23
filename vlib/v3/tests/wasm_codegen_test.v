@@ -468,6 +468,25 @@ fn test_wasm_unsigned_shift_assign_masks_narrow() {
 	run_wasi_expect(wasm, ['125', '32765'])
 }
 
+fn test_wasm_if_expression_value() {
+	v3_bin := v3_binary()
+	// `if` used as a value (decl rhs, return, else-if chain) selects the branch
+	// value rather than producing zero.
+	src := 'fn classify(n int) int {\n\treturn if n > 0 { 1 } else if n < 0 { -1 } else { 0 }\n}\n\nfn main() {\n\tx := if 3 > 2 { 10 } else { 20 }\n\tprintln(x)\n\tprintln(classify(5))\n\tprintln(classify(-5))\n\tprintln(classify(0))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_ifexpr')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['10', '1', '-1', '0'])
+}
+
+fn test_wasm_top_level_const_inlined() {
+	v3_bin := v3_binary()
+	// Numeric/bool consts are inlined at the use site instead of warning + 0.
+	src := 'const answer = 42\nconst big = u64(9223372036854775808)\n\nfn main() {\n\tprintln(answer)\n\tprintln(big)\n\tprintln(answer + 1)\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_const')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['42', '9223372036854775808', '43'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });

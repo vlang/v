@@ -377,6 +377,13 @@ fn (mut g Gen) emit_user_fn(f FnInfo) {
 		}
 		g.gen_stmt(g.a.child(&node, i))
 	}
+	// A non-void function returns via explicit `return`s; if control still
+	// reaches the end (e.g. the body is `if c { return ... } else { return
+	// ... }`), the fall-through is unreachable. `unreachable` keeps the stack
+	// type-valid without inventing a bogus result value.
+	if f.ret != .void {
+		g.cur.raw(0x00) // unreachable
+	}
 	g.cur.end()
 
 	mut results := []u8{}
@@ -816,6 +823,10 @@ fn (mut g Gen) gen_expr(id flat.NodeId) WType {
 				g.cur.local_get(g.var_index[node.value])
 				return g.var_wtype[node.value]
 			}
+			// Top-level consts are inlined from their recorded value expression.
+			if cid := g.const_value_node(node.value) {
+				return g.gen_expr(cid)
+			}
 			g.warn('unknown ident: ${node.value}')
 			g.cur.i32_const(0)
 			return .i32
@@ -839,11 +850,97 @@ fn (mut g Gen) gen_expr(id flat.NodeId) WType {
 		.call {
 			return g.gen_call(node)
 		}
+		.if_expr {
+			return g.gen_if_value(id, node)
+		}
 		else {
 			g.warn('unsupported expr: ${node.kind}')
 			g.cur.i32_const(0)
 			return .i32
 		}
+	}
+}
+
+// const_value_node resolves an identifier to the value expression of a
+// top-level const, if any (numeric/bool consts are inlined at the use site).
+fn (g &Gen) const_value_node(name string) ?flat.NodeId {
+	if cid := g.tc.const_exprs[name] {
+		return cid
+	}
+	if key := g.tc.const_suffixes[name] {
+		if key.len > 0 {
+			if cid := g.tc.const_exprs[key] {
+				return cid
+			}
+		}
+	}
+	return none
+}
+
+// gen_if_value emits an `if` used as an expression, leaving the selected
+// branch's value on the stack (e.g. `x := if c { 1 } else { 2 }`).
+fn (mut g Gen) gen_if_value(id flat.NodeId, node flat.Node) WType {
+	result_w := g.expr_wtype(id, '')
+	g.gen_if_value_typed(node, result_w)
+	return result_w
+}
+
+fn (mut g Gen) gen_if_value_typed(node flat.Node, result_w WType) {
+	g.gen_expr_as_bool(g.a.child(&node, 0))
+	g.cur.raw(0x04) // if
+	g.cur.raw(wt_valtype(result_w)) // result type
+	g.frames << Frame{.plain}
+	g.gen_block_value(g.a.child_node(&node, 1), result_w)
+	g.cur.else_()
+	if node.children_count > 2 {
+		else_id := g.a.child(&node, 2)
+		else_node := g.a.nodes[int(else_id)]
+		if else_node.kind == .if_expr {
+			g.gen_if_value_typed(else_node, result_w)
+		} else if else_node.kind == .block {
+			g.gen_block_value(else_node, result_w)
+		} else {
+			g.push_zero(result_w)
+		}
+	} else {
+		// A value `if` requires an else; keep the stack typed otherwise.
+		g.push_zero(result_w)
+	}
+	g.cur.end()
+	g.frames.pop()
+}
+
+// gen_block_value emits a block's statements, leaving the value of its trailing
+// expression on the stack, coerced to result_w.
+fn (mut g Gen) gen_block_value(block flat.Node, result_w WType) {
+	saved := g.snapshot_scope()
+	n := int(block.children_count)
+	for i in 0 .. n - 1 {
+		g.gen_stmt(g.a.child(&block, i))
+	}
+	if n > 0 {
+		last_id := g.a.child(&block, n - 1)
+		last := g.a.nodes[int(last_id)]
+		if last.kind == .expr_stmt {
+			g.gen_expr_as(g.a.child(&last, 0), result_w)
+		} else if last.kind == .if_expr {
+			g.gen_if_value_typed(last, result_w)
+		} else {
+			g.gen_stmt(last_id)
+			g.push_zero(result_w)
+		}
+	} else {
+		g.push_zero(result_w)
+	}
+	g.restore_scope(saved)
+}
+
+fn (mut g Gen) push_zero(w WType) {
+	match w {
+		.i64 { g.cur.i64_const(0) }
+		.f64 { g.cur.f64_const(0) }
+		.f32 { g.cur.f32_const(0) }
+		else { g.cur.i32_const(0) }
 	}
 }
 
