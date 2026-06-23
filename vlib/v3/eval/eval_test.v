@@ -493,6 +493,38 @@ fn main() {
 	assert e.stdout() == '11\n12\n'
 }
 
+fn test_eval_for_mut_defer_persists_mutation() {
+	mut e := create()
+	e.run_text("
+struct Item {
+mut:
+	n int
+}
+
+fn main() {
+	mut xs := [Item{n: 1}, Item{n: 2}]
+	for mut item in xs {
+		defer {
+			item.n += 100
+		}
+	}
+	println(int_str(xs[0].n))
+	println(int_str(xs[1].n))
+	mut m := {'a': Item{n: 1}, 'b': Item{n: 2}}
+	for _, mut item in m {
+		defer {
+			item.n += 100
+		}
+	}
+	println(int_str(m['a'].n))
+	println(int_str(m['b'].n))
+}
+") or {
+		panic(err)
+	}
+	assert e.stdout() == '101\n102\n101\n102\n'
+}
+
 fn test_eval_for_mut_reuses_resolved_array_container() {
 	mut e := create()
 	e.run_text('
