@@ -39,6 +39,9 @@ fn (mut t TlsIdleConnTracker) unmark_idle(handle int) {
 
 fn (mut t TlsIdleConnTracker) close_idle() {
 	t.mu.lock()
+	defer {
+		t.mu.unlock()
+	}
 	t.closing = true
 	handles := t.handles.clone()
 	t.handles.clear()
@@ -47,11 +50,18 @@ fn (mut t TlsIdleConnTracker) close_idle() {
 	// to reuse the fd before we call net.shutdown here, hitting an
 	// unrelated socket. Holding the lock keeps unmark_idle serialized
 	// with this loop, closing the window.
+	// On Windows, net.shutdown(SD_BOTH) alone does not unblock a blocking
+	// select() in another thread — only closesocket() does. We call
+	// net.close here for that reason. The worker's deferred conn.shutdown()
+	// will call closesocket again; that second call returns WSAENOTSOCK and
+	// is swallowed by or {}. The double-close is safe: listen_and_serve_tls
+	// calls ch.close() before close_idle(), so the accept loop has already
+	// stopped; no new connection can claim the recycled handle before the
+	// worker's conn.shutdown() runs.
 	for handle in handles {
 		net.shutdown(handle)
 		$if windows {
 			net.close(handle) or {}
 		}
 	}
-	t.mu.unlock()
 }
