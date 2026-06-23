@@ -52,6 +52,50 @@ fn run_node(node string, runner string, wasm string) os.Result {
 	return os.execute('${os.quoted_path(node)} --no-warnings ${os.quoted_path(runner)} ${os.quoted_path(wasm)}')
 }
 
+// run_wasi_expect runs a WASI module and asserts its trailing output lines.
+// Skips execution (compile/validate already happened) when node is absent.
+fn run_wasi_expect(wasm string, expected []string) {
+	node := node_path() or { return }
+	runner := os.join_path(os.vtmp_dir(), 'wasm_run_wasi.mjs')
+	os.write_file(runner, wasi_runner_js) or { panic(err) }
+	res := run_node(node, runner, wasm)
+	assert res.exit_code == 0, res.output
+	lines := res.output.split_into_lines().map(it.trim_space()).filter(it.len > 0)
+	assert lines.len >= expected.len, res.output
+	for i, want in expected {
+		got := lines[lines.len - expected.len + i]
+		assert got == want, 'line ${i}: got ${got}, want ${want} (full: ${res.output})'
+	}
+}
+
+fn test_wasm_block_scoping_preserves_outer_locals() {
+	v3_bin := v3_binary()
+	// A shadowing for-initializer and a loop-body declaration must not leak:
+	// after the loops the outer i (10) and x (1) are restored.
+	src := 'fn main() {\n\ti := 10\n\tfor i := 0; i < 1; i++ {\n\t}\n\tprintln(i)\n\tx := 1\n\tfor j := 0; j < 2; j++ {\n\t\tx := j + 2\n\t\tprintln(x)\n\t}\n\tprintln(x)\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_scope')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['10', '2', '3', '1'])
+}
+
+fn test_wasm_narrow_integer_casts_and_arithmetic_wrap() {
+	v3_bin := v3_binary()
+	src := 'fn main() {\n\tprintln(int(i8(128)))\n\tprintln(int(u8(256)))\n\tprintln(int(u16(65536)))\n\tprintln(int(i16(32768)))\n\tmut a := u8(250)\n\ta += u8(10)\n\tprintln(int(a))\n\tmut b := i8(127)\n\tb++\n\tprintln(int(b))\n\tprintln(int(u8(200) + u8(100)))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_narrow')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['-128', '0', '0', '-32768', '4', '-128', '44'])
+}
+
+fn test_wasm_runtime_oversized_shift_is_zero() {
+	v3_bin := v3_binary()
+	// V yields 0 when a runtime shift count is >= the operand width, whereas
+	// raw WASM masks the count modulo the width; in-range shifts are unchanged.
+	src := 'fn osc() u64 {\n\treturn u64(64)\n}\n\nfn main() {\n\tshift := osc()\n\tbits := u64(9221120237041090561)\n\tprintln(bits >> shift)\n\tprintln(bits << shift)\n\tmut left := u64(1)\n\tleft <<= shift\n\tprintln(left)\n\tprintln(u64(1) << u64(40))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_shiftguard')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['0', '0', '0', '1099511627776'])
+}
+
 fn test_wasm_hello_world() {
 	v3_bin := v3_binary()
 	wasm := compile_to_wasm(v3_bin, "fn main() {\n\tprintln('hello world')\n}\n", 'wasm_hello')

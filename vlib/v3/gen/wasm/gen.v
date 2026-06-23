@@ -43,6 +43,15 @@ struct Frame {
 	tag FrameTag
 }
 
+// VarScope snapshots the local-name bindings so an inner block or for-loop can
+// shadow an outer local and have the outer binding restored on scope exit.
+struct VarScope {
+	index    map[string]int
+	wtype    map[string]WType
+	unsigned map[string]bool
+	widths   map[string]int
+}
+
 enum FrameTag {
 	plain
 	brk
@@ -63,6 +72,7 @@ mut:
 	var_index    map[string]int
 	var_wtype    map[string]WType
 	var_unsigned map[string]bool
+	var_widths   map[string]int // sub-32-bit int locals: 8 or 16; else 32
 	frames       []Frame
 	cur_ret       WType
 	cur_fn_module string
@@ -327,6 +337,7 @@ fn (mut g Gen) emit_user_fn(f FnInfo) {
 	g.var_index = map[string]int{}
 	g.var_wtype = map[string]WType{}
 	g.var_unsigned = map[string]bool{}
+	g.var_widths = map[string]int{}
 	g.frames = []Frame{}
 	g.cur_ret = f.ret
 	g.cur_fn_module = f.module
@@ -340,9 +351,11 @@ fn (mut g Gen) emit_user_fn(f FnInfo) {
 			continue
 		}
 		w := f.params[pi]
+		pt := g.tc.parse_type(p.typ)
 		g.var_index[p.value] = pi
 		g.var_wtype[p.value] = w
-		g.var_unsigned[p.value] = type_is_unsigned(g.tc.parse_type(p.typ))
+		g.var_unsigned[p.value] = type_is_unsigned(pt)
+		g.var_widths[p.value] = narrow_width(pt)
 		wparams << wt_valtype(w)
 		pi++
 	}
@@ -377,13 +390,40 @@ fn (mut g Gen) emit_start() int {
 }
 
 // new_local allocates a fresh local beyond the params and records its type.
-fn (mut g Gen) new_local(name string, w WType, unsigned bool) int {
+fn (mut g Gen) new_local(name string, w WType, unsigned bool, width int) int {
 	idx := g.nparams + g.local_types.len
 	g.local_types << wt_valtype(w)
 	g.var_index[name] = idx
 	g.var_wtype[name] = w
 	g.var_unsigned[name] = unsigned
+	g.var_widths[name] = width
 	return idx
+}
+
+// alloc_temp allocates an anonymous function-level local (e.g. for the shift
+// over-width guard) and returns its index.
+fn (mut g Gen) alloc_temp(w WType) int {
+	idx := g.nparams + g.local_types.len
+	g.local_types << wt_valtype(w)
+	return idx
+}
+
+// snapshot_scope / restore_scope save and restore local-name bindings so inner
+// declarations that shadow an outer local do not leak past their scope.
+fn (g &Gen) snapshot_scope() VarScope {
+	return VarScope{
+		index:    g.var_index.clone()
+		wtype:    g.var_wtype.clone()
+		unsigned: g.var_unsigned.clone()
+		widths:   g.var_widths.clone()
+	}
+}
+
+fn (mut g Gen) restore_scope(s VarScope) {
+	g.var_index = s.index.clone()
+	g.var_wtype = s.wtype.clone()
+	g.var_unsigned = s.unsigned.clone()
+	g.var_widths = s.widths.clone()
 }
 
 // ---- statements ----
@@ -396,9 +436,11 @@ fn (mut g Gen) gen_stmt(id flat.NodeId) {
 	match node.kind {
 		.fn_decl, .c_fn_decl {}
 		.block {
+			saved := g.snapshot_scope()
 			for i in 0 .. node.children_count {
 				g.gen_stmt(g.a.child(&node, i))
 			}
+			g.restore_scope(saved)
 		}
 		.expr_stmt {
 			child_id := g.a.child(&node, 0)
@@ -447,9 +489,11 @@ fn (mut g Gen) gen_decl_assign(node flat.Node) {
 		rhs_id := g.a.child(&node, i + 1)
 		w := g.expr_wtype(rhs_id, node.typ)
 		uns := g.decl_is_unsigned(rhs_id, node.typ)
+		width := g.decl_width(rhs_id, node.typ)
 		if lhs.kind == .ident {
-			idx := g.new_local(lhs.value, w, uns)
+			idx := g.new_local(lhs.value, w, uns, width)
 			g.gen_expr_as(rhs_id, w)
+			g.narrow_for_local(lhs.value)
 			g.cur.local_set(idx)
 		}
 		i += 2
@@ -472,6 +516,7 @@ fn (mut g Gen) gen_assign(node flat.Node) {
 				signed := !g.var_unsigned[lhs.value]
 				g.emit_arith(compound_to_op(node.op), w, signed)
 			}
+			g.narrow_for_local(lhs.value)
 			g.cur.local_set(idx)
 		} else {
 			g.warn('unsupported assign target')
@@ -480,20 +525,44 @@ fn (mut g Gen) gen_assign(node flat.Node) {
 	}
 }
 
+// narrow_for_local masks/sign-extends the value on the stack to the local's
+// declared sub-32-bit width before it is stored.
+fn (mut g Gen) narrow_for_local(name string) {
+	width := g.var_widths[name]
+	if width == 8 || width == 16 {
+		g.emit_narrow(width, g.var_unsigned[name])
+	}
+}
+
+// decl_width resolves the declared sub-32-bit width (8/16) of an initializer.
+fn (mut g Gen) decl_width(rhs_id flat.NodeId, fallback_typ string) int {
+	w := narrow_width(g.tc.resolve_type(rhs_id))
+	if w != 32 {
+		return w
+	}
+	if fallback_typ.len > 0 {
+		return narrow_width(g.tc.parse_type(fallback_typ))
+	}
+	return 32
+}
+
 fn (mut g Gen) gen_if(node flat.Node) {
 	cond_id := g.a.child(&node, 0)
 	g.gen_expr_as_bool(cond_id)
 	g.cur.if_void()
 	g.frames << Frame{.plain}
 	then_block := g.a.child_node(&node, 1)
+	saved_then := g.snapshot_scope()
 	for i in 0 .. then_block.children_count {
 		g.gen_stmt(g.a.child(then_block, i))
 	}
+	g.restore_scope(saved_then)
 	if node.children_count > 2 {
 		else_id := g.a.child(&node, 2)
 		if int(else_id) >= 0 {
 			else_node := g.a.nodes[int(else_id)]
 			g.cur.else_()
+			saved_else := g.snapshot_scope()
 			if else_node.kind == .if_expr {
 				g.gen_if(else_node)
 			} else if else_node.kind == .block {
@@ -501,6 +570,7 @@ fn (mut g Gen) gen_if(node flat.Node) {
 					g.gen_stmt(g.a.child(&else_node, i))
 				}
 			}
+			g.restore_scope(saved_else)
 		}
 	}
 	g.cur.end()
@@ -508,6 +578,12 @@ fn (mut g Gen) gen_if(node flat.Node) {
 }
 
 fn (mut g Gen) gen_for(node flat.Node) {
+	// The initializer and body are scoped to the loop; restore outer bindings
+	// afterwards so a shadowing `for i := ...` or body-local does not leak.
+	saved := g.snapshot_scope()
+	defer {
+		g.restore_scope(saved)
+	}
 	init_node := g.a.child_node(&node, 0)
 	cond_id := g.a.child(&node, 1)
 	cond_node := g.a.nodes[int(cond_id)]
@@ -710,6 +786,11 @@ fn (mut g Gen) gen_infix(id flat.NodeId, node flat.Node) WType {
 	g.gen_expr_as(lhs_id, ow)
 	g.gen_expr_as(rhs_id, ow)
 	g.emit_arith(op, ow, signed)
+	// Sub-32-bit results (e.g. u8 + u8) wrap to their declared width in V.
+	if ow == .i32 {
+		rt := g.tc.resolve_type(id)
+		g.emit_narrow(narrow_width(rt), type_is_unsigned(rt))
+	}
 	return ow
 }
 
@@ -815,14 +896,18 @@ fn (mut g Gen) gen_postfix(node flat.Node) {
 			g.cur.raw(if inc { u8(0x6a) } else { u8(0x6b) }) // i32.add/sub
 		}
 	}
+	g.narrow_for_local(target.value)
 	g.cur.local_set(idx)
 }
 
 fn (mut g Gen) gen_cast(node flat.Node) WType {
 	child_id := g.a.child(&node, 0)
-	target := prim_wtype(g.tc.parse_type(node.value)) or { WType.i32 }
+	tt := g.tc.parse_type(node.value)
+	target := prim_wtype(tt) or { WType.i32 }
 	src := g.gen_expr(child_id)
 	g.coerce(src, target, g.is_signed(child_id))
+	// Casting to a sub-32-bit type wraps/sign-extends to that width.
+	g.emit_narrow(narrow_width(tt), type_is_unsigned(tt))
 	return target
 }
 
@@ -1185,6 +1270,20 @@ fn type_is_unsigned(t types.Type) bool {
 	return t is types.USize
 }
 
+// narrow_width returns 8 or 16 for sub-32-bit integer types (which the backend
+// stores in an i32 and must mask/sign-extend), or 32 otherwise.
+fn narrow_width(t types.Type) int {
+	if t is types.Primitive && t.props.has(.integer) {
+		if t.size == 8 {
+			return 8
+		}
+		if t.size == 16 {
+			return 16
+		}
+	}
+	return 32
+}
+
 fn (mut g Gen) is_signed(id flat.NodeId) bool {
 	return !g.is_unsigned(id)
 }
@@ -1233,7 +1332,58 @@ fn (mut g Gen) coerce(from WType, to WType, signed bool) {
 }
 
 fn (mut g Gen) emit_arith(op flat.Op, w WType, signed bool) {
+	if op in [.left_shift, .right_shift, .right_shift_unsigned] {
+		g.emit_shift(op, w, signed)
+		return
+	}
 	g.cur.raw(arith_op(op, w, signed))
+}
+
+// emit_shift emits a shift with V's over-width semantics: WASM masks the count
+// modulo the operand width, but V yields 0 when the count >= the width, so the
+// raw result is selected only while count < width. Stack on entry: [value,
+// count]; on exit: [result].
+fn (mut g Gen) emit_shift(op flat.Op, w WType, signed bool) {
+	count_t := if w == .i64 { WType.i64 } else { WType.i32 }
+	tmp := g.alloc_temp(count_t)
+	g.cur.local_tee(tmp) // keep the count, also store it
+	g.cur.raw(arith_op(op, w, signed)) // value << (count mod width)
+	if w == .i64 {
+		g.cur.i64_const(0)
+		g.cur.local_get(tmp)
+		g.cur.i64_const(64)
+		g.cur.raw(0x54) // i64.lt_u
+	} else {
+		g.cur.i32_const(0)
+		g.cur.local_get(tmp)
+		g.cur.i32_const(32)
+		g.cur.raw(0x49) // i32.lt_u
+	}
+	g.cur.raw(0x1b) // select: (count < width) ? shifted : 0
+}
+
+// emit_narrow masks (unsigned) or sign-extends (signed) the i32 on the stack to
+// a sub-32-bit width; a no-op for 32/64-bit values.
+fn (mut g Gen) emit_narrow(width int, unsigned bool) {
+	match width {
+		8 {
+			if unsigned {
+				g.cur.i32_const(0xff)
+				g.cur.raw(0x71) // i32.and
+			} else {
+				g.cur.raw(0xc0) // i32.extend8_s
+			}
+		}
+		16 {
+			if unsigned {
+				g.cur.i32_const(0xffff)
+				g.cur.raw(0x71) // i32.and
+			} else {
+				g.cur.raw(0xc1) // i32.extend16_s
+			}
+		}
+		else {}
+	}
 }
 
 fn (mut g Gen) warn(msg string) {
