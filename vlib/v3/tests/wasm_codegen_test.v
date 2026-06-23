@@ -380,6 +380,36 @@ fn test_wasm_shift_keeps_lhs_width() {
 	run_wasi_expect(wasm, ['0', '1099511627776', '0'])
 }
 
+fn test_wasm_multi_decl_buffers_rhs() {
+	v3_bin := v3_binary()
+	// Both initializers must read the outer x before either new local is bound,
+	// so y == 7 (outer x + 2), not 8 (rebound x + 2).
+	src := 'fn main() {\n\tx := 5\n\t{\n\t\tx, y := x + 1, x + 2\n\t\tprintln(x)\n\t\tprintln(y)\n\t}\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_multidecl')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['6', '7'])
+}
+
+fn test_wasm_unsigned_right_shift_masks_narrow() {
+	v3_bin := v3_binary()
+	// `>>>` on a signed narrow operand works on the 8/16-bit pattern, so the
+	// sign-extension bits must be masked off first.
+	src := 'fn main() {\n\tprintln(int(i8(-5) >>> 1))\n\tprintln(int(i16(-5) >>> 1))\n\tprintln(int(u8(250) >>> 1))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_urshift')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['125', '32765', '125'])
+}
+
+fn test_wasm_bit_not_narrows_result() {
+	v3_bin := v3_binary()
+	// ~ keeps the operand width: ~u8(0) is 255, ~u16(0) is 65535, and a u8
+	// return carries the narrowed value.
+	src := 'fn allset() u8 {\n\treturn ~u8(0)\n}\n\nfn main() {\n\tprintln(~u8(0))\n\tprintln(~u16(0))\n\tprintln(allset())\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_bitnot')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['255', '65535', '255'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });

@@ -491,22 +491,58 @@ fn (mut g Gen) gen_stmt(id flat.NodeId) {
 }
 
 fn (mut g Gen) gen_decl_assign(node flat.Node) {
+	// Multi-declaration (`x, y := a, b`): evaluate every RHS against the outer
+	// scope before binding any new name, so a shadowing `x, y := x+1, x+2`
+	// reads the outer x for both initializers.
+	if node.children_count > 2 {
+		g.gen_multi_decl(node)
+		return
+	}
+	lhs := g.a.child_node(&node, 0)
+	rhs_id := g.a.child(&node, 1)
+	w := g.expr_wtype(rhs_id, node.typ)
+	uns := g.decl_is_unsigned(rhs_id, node.typ)
+	width := g.decl_width(rhs_id, node.typ)
+	if lhs.kind == .ident {
+		// Emit the initializer before binding the new name, so a shadowing
+		// `x := x + 1` reads the outer x rather than the fresh zero local.
+		g.gen_expr_as(rhs_id, w)
+		idx := g.new_local(lhs.value, w, uns, width)
+		g.narrow_for_local(lhs.value)
+		g.cur.local_set(idx)
+	}
+}
+
+fn (mut g Gen) gen_multi_decl(node flat.Node) {
+	mut temps := []int{}
+	mut names := []string{}
+	mut ws := []WType{}
+	mut unss := []bool{}
+	mut widths := []int{}
+	// Phase 1: buffer every RHS into a temporary (outer bindings still in scope).
 	mut i := 0
 	for i + 1 < node.children_count {
 		lhs := g.a.child_node(&node, i)
 		rhs_id := g.a.child(&node, i + 1)
-		w := g.expr_wtype(rhs_id, node.typ)
-		uns := g.decl_is_unsigned(rhs_id, node.typ)
-		width := g.decl_width(rhs_id, node.typ)
 		if lhs.kind == .ident {
-			// Emit the initializer before binding the new name, so a shadowing
-			// `x := x + 1` reads the outer x rather than the fresh zero local.
+			w := g.expr_wtype(rhs_id, node.typ)
 			g.gen_expr_as(rhs_id, w)
-			idx := g.new_local(lhs.value, w, uns, width)
-			g.narrow_for_local(lhs.value)
-			g.cur.local_set(idx)
+			t := g.alloc_temp(w)
+			g.cur.local_set(t)
+			temps << t
+			names << lhs.value
+			ws << w
+			unss << g.decl_is_unsigned(rhs_id, node.typ)
+			widths << g.decl_width(rhs_id, node.typ)
 		}
 		i += 2
+	}
+	// Phase 2: bind each new local and store its buffered value.
+	for k, name in names {
+		idx := g.new_local(name, ws[k], unss[k], widths[k])
+		g.cur.local_get(temps[k])
+		g.narrow_for_local(name)
+		g.cur.local_set(idx)
 	}
 }
 
@@ -786,7 +822,7 @@ fn (mut g Gen) gen_expr(id flat.NodeId) WType {
 			return g.gen_infix(id, node)
 		}
 		.prefix {
-			return g.gen_prefix(node)
+			return g.gen_prefix(id, node)
 		}
 		.postfix {
 			g.gen_postfix(node)
@@ -852,10 +888,17 @@ fn (mut g Gen) gen_infix(id flat.NodeId, node flat.Node) WType {
 		}
 		signed := !g.is_unsigned(lhs_id)
 		g.gen_expr_as(lhs_id, value_w)
+		if op == .right_shift_unsigned && value_w == .i32 {
+			// A narrow signed lhs is stored sign-extended in i32; mask it to its
+			// width so the upper bits don't feed into the logical shift.
+			lw := narrow_width(g.tc.resolve_type(lhs_id))
+			if lw != 32 {
+				g.emit_narrow(lw, true)
+			}
+		}
 		g.emit_shift_with_count(op, value_w, rhs_id, signed)
 		if value_w == .i32 {
-			rt := g.tc.resolve_type(id)
-			g.emit_narrow(narrow_width(rt), type_is_unsigned(rt))
+			g.narrow_result(id)
 		}
 		return value_w
 	}
@@ -869,10 +912,16 @@ fn (mut g Gen) gen_infix(id flat.NodeId, node flat.Node) WType {
 	g.emit_arith(op, ow, signed)
 	// Sub-32-bit results (e.g. u8 + u8) wrap to their declared width in V.
 	if ow == .i32 {
-		rt := g.tc.resolve_type(id)
-		g.emit_narrow(narrow_width(rt), type_is_unsigned(rt))
+		g.narrow_result(id)
 	}
 	return ow
+}
+
+// narrow_result masks/sign-extends the i32 on the stack to the resolved type's
+// sub-32-bit width (a no-op for 32/64-bit types).
+fn (mut g Gen) narrow_result(id flat.NodeId) {
+	rt := g.tc.resolve_type(id)
+	g.emit_narrow(narrow_width(rt), type_is_unsigned(rt))
 }
 
 fn (mut g Gen) gen_logical(node flat.Node) WType {
@@ -896,7 +945,7 @@ fn (mut g Gen) gen_logical(node flat.Node) WType {
 	return .i32
 }
 
-fn (mut g Gen) gen_prefix(node flat.Node) WType {
+fn (mut g Gen) gen_prefix(id flat.NodeId, node flat.Node) WType {
 	child_id := g.a.child(&node, 0)
 	match node.op {
 		.minus {
@@ -922,6 +971,7 @@ fn (mut g Gen) gen_prefix(node flat.Node) WType {
 					g.cur.i32_const(0)
 					g.gen_expr_as(child_id, .i32)
 					g.cur.raw(0x6b) // i32.sub
+					g.narrow_result(id) // negation of a narrow type wraps to its width
 					return .i32
 				}
 			}
@@ -940,6 +990,7 @@ fn (mut g Gen) gen_prefix(node flat.Node) WType {
 			}
 			g.cur.i32_const(-1)
 			g.cur.raw(0x73) // i32.xor
+			g.narrow_result(id) // ~ of a narrow type keeps its width (e.g. ~u8(0)=255)
 			return .i32
 		}
 		else {
