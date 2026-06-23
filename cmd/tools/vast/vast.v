@@ -577,8 +577,8 @@ fn (t Tree) const_field(node ast.ConstField) &Node {
 
 fn (t Tree) comptime_expr_value(node ast.ComptTimeConstValue) &Node {
 	match node {
-		ast.EmptyExpr {
-			return t.empty_expr(node)
+		ast.EmptyComptimeConstValue {
+			return t.empty_expr(ast.EmptyExpr{})
 		}
 		string {
 			return t.string_node(node)

@@ -3,12 +3,12 @@ name: SSA backends CI
 on:
   push:
     paths:
-      - 'vlib/v2/**'
+      - 'vlib/v2_toberemoved/**'
       - 'cmd/tinyv/**'
       - '.github/workflows/ssa_backends_ci.yml'
   pull_request:
     paths:
-      - 'vlib/v2/**'
+      - 'vlib/v2_toberemoved/**'
       - 'cmd/tinyv/**'
       - '.github/workflows/ssa_backends_ci.yml'
 

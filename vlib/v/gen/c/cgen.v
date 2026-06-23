@@ -38,6 +38,11 @@ struct ScopeGcPin {
 	post_stmt string
 }
 
+struct ClosureCleanupKeep {
+	cname    string
+	loop_pos int
+}
+
 pub struct Gen {
 	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups
@@ -191,6 +196,7 @@ mut:
 	inside_lambda_autofree_tmp           bool
 	track_lambda_autofree_tmp_arg_vars   bool
 	outer_tmp_var                        string // tmp var from outer context (e.g. from stmts_with_tmp_var) to be used by nested if/match expressions
+	if_match_tmp_is_fn_ret_arr           ?bool  // set by if/match expr gen: authoritatively whether the shared tmp var is a fn-returned fixed array (wrapper struct accessed via `.ret_arr`); `none` means use the per-branch heuristic
 	last_tmp_call_var                    []string
 	last_if_option_type                  ast.Type // stores the expected if type on nested if expr
 	loop_depth                           int
@@ -204,6 +210,7 @@ mut:
 	right_is_opt                         bool             // right hand side on assignment is an option
 	assign_ct_type                       map[int]ast.Type // left hand side resolved comptime type
 	expected_rhs_type_by_pos             map[int]ast.Type // expected value type for local RHS expressions
+	closure_frame_arg_tmps               map[int]string
 	indent                               int
 	empty_line                           bool
 	assign_op                            token.Kind // *=, =, etc (for array_set)
@@ -213,6 +220,9 @@ mut:
 	inside_defer_generation              bool
 	defer_vars                           []string
 	closure_structs                      []string
+	closure_cleanup_keep_vars            []ClosureCleanupKeep
+	closure_cleanup_ignore_keep          bool
+	closure_cleanup_target_loop_pos      int
 	str_types                            []StrType       // types that need automatic str() generation
 	generated_str_fns                    []StrType       // types that already have a str() function
 	str_fn_names                         shared []string // remove duplicate function names
@@ -257,6 +267,9 @@ mut:
 	sql_last_stmt_out_len                int
 	strs_to_free0                        []string // strings.Builder
 	lambda_autofree_tmp_arg_vars         []string
+	for_c_init_autofree_keep_vars        []string
+	for_c_init_autofree_cleanup_vars     []ast.Var
+	skip_scope_cleanup_start_pos         []int
 	// strs_to_free          []string // strings.Builder
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
@@ -423,6 +436,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		boehm_keep_decl:               map[string]bool{}
 		boehm_keep_gen:                map[string]bool{}
 		boehm_keep_busy:               map[string]bool{}
+		closure_frame_arg_tmps:        map[int]string{}
 		generic_parts_cache:           []i8{len: table.type_symbols.len}
 		unwrap_generic_cache:          map[u64]ast.Type{}
 		resolved_scope_var_type_cache: map[u64]ast.Type{}
@@ -1081,6 +1095,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		boehm_keep_decl:                    map[string]bool{}
 		boehm_keep_gen:                     map[string]bool{}
 		boehm_keep_busy:                    map[string]bool{}
+		closure_frame_arg_tmps:             map[int]string{}
 		generic_parts_cache:                []i8{len: global_g.table.type_symbols.len}
 		unwrap_generic_cache:               map[u64]ast.Type{}
 		resolved_scope_var_type_cache:      map[u64]ast.Type{}
@@ -3312,11 +3327,675 @@ fn (mut g Gen) stmts(stmts []ast.Stmt) {
 	g.stmts_with_tmp_var(stmts, '')
 }
 
+fn (mut g Gen) push_skip_scope_cleanup(scope &ast.Scope) int {
+	start := g.skip_scope_cleanup_start_pos.len
+	if scope != unsafe { nil } {
+		g.skip_scope_cleanup_start_pos << scope.start_pos
+	}
+	return start
+}
+
+fn (mut g Gen) pop_skip_scope_cleanup(start int) {
+	if g.skip_scope_cleanup_start_pos.len > start {
+		g.skip_scope_cleanup_start_pos = g.skip_scope_cleanup_start_pos[..start].clone()
+	}
+}
+
+fn (g &Gen) should_skip_scope_cleanup(scope &ast.Scope) bool {
+	return scope != unsafe { nil } && scope.start_pos in g.skip_scope_cleanup_start_pos
+}
+
 fn is_noreturn_callexpr(expr ast.Expr) bool {
 	if expr is ast.CallExpr {
 		return expr.is_noreturn
 	}
 	return false
+}
+
+fn (g &Gen) local_closure_var_has_tracked_context(var ast.Var) bool {
+	if var.name == '_' || var.is_arg || var.is_tmp || var.is_inherited || var.typ == 0 {
+		return false
+	}
+	if g.table.final_sym(var.typ).kind != .function {
+		return false
+	}
+	return match var.expr {
+		ast.AnonFn {
+			if var.expr.inherited_vars.len == 0 {
+				false
+			} else {
+				mut captures_self := false
+				for inherited_var in var.expr.inherited_vars {
+					if inherited_var.name == var.name {
+						captures_self = true
+						break
+					}
+				}
+				!captures_self
+			}
+		}
+		ast.SelectorExpr {
+			var.expr.has_hidden_receiver
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (g &Gen) local_closure_cleanup_preserves_var(var ast.Var) bool {
+	if g.closure_cleanup_ignore_keep {
+		return false
+	}
+	cname := g.var_cname(var)
+	for keep_var in g.closure_cleanup_keep_vars {
+		if keep_var.cname == cname && (g.closure_cleanup_target_loop_pos == 0
+			|| keep_var.loop_pos == g.closure_cleanup_target_loop_pos) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) push_local_closure_cleanup_preserve_vars(vars []ast.Var, loop_pos int) int {
+	start := g.closure_cleanup_keep_vars.len
+	for var in vars {
+		cname := g.var_cname(var)
+		if !g.closure_cleanup_keep_vars.any(it.cname == cname && it.loop_pos == loop_pos) {
+			g.closure_cleanup_keep_vars << ClosureCleanupKeep{
+				cname:    cname
+				loop_pos: loop_pos
+			}
+		}
+	}
+	return start
+}
+
+fn (mut g Gen) pop_local_closure_cleanup_preserve_vars(start int) {
+	if g.closure_cleanup_keep_vars.len > start {
+		g.closure_cleanup_keep_vars = g.closure_cleanup_keep_vars[..start].clone()
+	}
+}
+
+fn (mut g Gen) cleanup_for_c_init_local_closure_vars(node ast.ForCStmt, vars []ast.Var) {
+	for var in vars {
+		if local_closure_var_escapes_in_node(ast.Node(ast.Stmt(node)), var.name) {
+			continue
+		}
+		g.writeln('\tbuiltin__closure__closure_try_destroy((voidptr)${g.var_cname(var)});')
+	}
+}
+
+fn local_closure_var_decl_stmt_name(stmt ast.Stmt, name string) bool {
+	if stmt is ast.AssignStmt && stmt.op == .decl_assign {
+		for left in stmt.left {
+			if left is ast.Ident && left.name == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn local_closure_var_decl_stmt(stmt ast.Stmt, var ast.Var) bool {
+	return local_closure_var_decl_stmt_name(stmt, var.name)
+}
+
+fn local_closure_direct_call(node ast.CallExpr, name string) bool {
+	if node.is_fn_var && node.name == name {
+		return true
+	}
+	return node.name == '' && node.left is ast.Ident && node.left.name == name
+}
+
+fn local_closure_var_mentioned_in_node(node ast.Node, name string) bool {
+	match node {
+		ast.Expr {
+			match node {
+				ast.Ident {
+					if node.name == name {
+						return true
+					}
+				}
+				ast.CallExpr {
+					if local_closure_direct_call(node, name) {
+						return true
+					}
+				}
+				ast.ArrayInit {
+					if node.has_len
+						&& local_closure_var_mentioned_in_node(ast.Node(ast.Expr(node.len_expr)), name) {
+						return true
+					}
+					if node.has_cap
+						&& local_closure_var_mentioned_in_node(ast.Node(ast.Expr(node.cap_expr)), name) {
+						return true
+					}
+					if node.has_init
+						&& local_closure_var_mentioned_in_node(ast.Node(ast.Expr(node.init_expr)), name) {
+						return true
+					}
+					if node.elem_type_expr !is ast.EmptyExpr
+						&& local_closure_var_mentioned_in_node(ast.Node(ast.Expr(node.elem_type_expr)), name) {
+						return true
+					}
+					if node.has_update_expr
+						&& local_closure_var_mentioned_in_node(ast.Node(ast.Expr(node.update_expr)), name) {
+						return true
+					}
+				}
+				else {}
+			}
+		}
+		ast.Stmt {
+			match node {
+				ast.ForCStmt {
+					if node.has_init
+						&& local_closure_var_mentioned_in_node(ast.Node(node.init), name) {
+						return true
+					}
+					if node.has_cond
+						&& local_closure_var_mentioned_in_node(ast.Node(ast.Expr(node.cond)), name) {
+						return true
+					}
+					if node.has_inc && local_closure_var_mentioned_in_node(ast.Node(node.inc), name) {
+						return true
+					}
+				}
+				ast.ForStmt {
+					if !node.is_inf
+						&& local_closure_var_mentioned_in_node(ast.Node(ast.Expr(node.cond)), name) {
+						return true
+					}
+				}
+				ast.ForInStmt {
+					if local_closure_var_mentioned_in_node(ast.Node(ast.Expr(node.cond)), name) {
+						return true
+					}
+					if local_closure_var_mentioned_in_node(ast.Node(ast.Expr(node.high)), name) {
+						return true
+					}
+				}
+				else {}
+			}
+		}
+		ast.IfBranch {
+			if local_closure_var_mentioned_in_node(ast.Node(ast.Expr(node.cond)), name) {
+				return true
+			}
+		}
+		ast.CallArg {
+			if local_closure_var_mentioned_in_node(ast.Node(ast.Expr(node.expr)), name) {
+				return true
+			}
+		}
+		else {}
+	}
+
+	for child in node.children() {
+		if local_closure_var_mentioned_in_node(child, name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn local_closure_var_escapes_in_node(node ast.Node, name string) bool {
+	match node {
+		ast.Expr {
+			match node {
+				ast.Ident {
+					if node.name == name {
+						return true
+					}
+				}
+				ast.AnonFn {
+					for inherited_var in node.inherited_vars {
+						if inherited_var.name == name {
+							return true
+						}
+					}
+				}
+				ast.CallExpr {
+					if local_closure_direct_call(node, name) {
+						for arg in node.args {
+							if local_closure_var_escapes_in_node(ast.Node(arg), name) {
+								return true
+							}
+						}
+						return local_closure_var_escapes_in_node(ast.Node(ast.Expr(node.or_block)),
+							name)
+					}
+				}
+				ast.ArrayInit {
+					if node.has_len
+						&& local_closure_var_escapes_in_node(ast.Node(ast.Expr(node.len_expr)), name) {
+						return true
+					}
+					if node.has_cap
+						&& local_closure_var_escapes_in_node(ast.Node(ast.Expr(node.cap_expr)), name) {
+						return true
+					}
+					if node.has_init
+						&& local_closure_var_escapes_in_node(ast.Node(ast.Expr(node.init_expr)), name) {
+						return true
+					}
+					if node.elem_type_expr !is ast.EmptyExpr
+						&& local_closure_var_escapes_in_node(ast.Node(ast.Expr(node.elem_type_expr)), name) {
+						return true
+					}
+					if node.has_update_expr
+						&& local_closure_var_escapes_in_node(ast.Node(ast.Expr(node.update_expr)), name) {
+						return true
+					}
+				}
+				ast.GoExpr {
+					if local_closure_var_mentioned_in_node(ast.Node(ast.Expr(node.call_expr)), name) {
+						return true
+					}
+				}
+				ast.SpawnExpr {
+					if local_closure_var_mentioned_in_node(ast.Node(ast.Expr(node.call_expr)), name) {
+						return true
+					}
+				}
+				else {}
+			}
+		}
+		ast.Stmt {
+			match node {
+				ast.AssignStmt {
+					if local_closure_var_decl_stmt_name(node, name) {
+						return false
+					}
+				}
+				ast.DeferStmt {
+					if local_closure_var_mentioned_in_node(ast.Node(ast.Stmt(node)), name) {
+						return true
+					}
+				}
+				ast.ForCStmt {
+					if node.has_init && local_closure_var_escapes_in_node(ast.Node(node.init), name) {
+						return true
+					}
+					if node.has_cond
+						&& local_closure_var_escapes_in_node(ast.Node(ast.Expr(node.cond)), name) {
+						return true
+					}
+					if node.has_inc && local_closure_var_escapes_in_node(ast.Node(node.inc), name) {
+						return true
+					}
+				}
+				ast.ForStmt {
+					if !node.is_inf
+						&& local_closure_var_escapes_in_node(ast.Node(ast.Expr(node.cond)), name) {
+						return true
+					}
+				}
+				ast.ForInStmt {
+					if local_closure_var_escapes_in_node(ast.Node(ast.Expr(node.cond)), name) {
+						return true
+					}
+					if local_closure_var_escapes_in_node(ast.Node(ast.Expr(node.high)), name) {
+						return true
+					}
+				}
+				else {}
+			}
+		}
+		ast.IfBranch {
+			if local_closure_var_escapes_in_node(ast.Node(ast.Expr(node.cond)), name) {
+				return true
+			}
+		}
+		ast.CallArg {
+			if local_closure_var_escapes_in_node(ast.Node(ast.Expr(node.expr)), name) {
+				return true
+			}
+		}
+		else {}
+	}
+
+	for child in node.children() {
+		if local_closure_var_escapes_in_node(child, name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn local_closure_var_escapes_in_stmts(stmts []ast.Stmt, var ast.Var) bool {
+	for stmt in stmts {
+		if local_closure_var_decl_stmt(stmt, var) {
+			continue
+		}
+		if local_closure_var_escapes_in_node(ast.Node(stmt), var.name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &Gen) local_closure_cleanup_scope_at(pos int) &ast.Scope {
+	if g.fn_decl != unsafe { nil } && g.fn_decl.scope != unsafe { nil } {
+		fn_scope := g.fn_decl.scope
+		if fn_scope.contains(pos) {
+			return fn_scope.innermost(pos)
+		}
+		return unsafe { nil }
+	}
+	if g.file.scope == unsafe { nil } {
+		return unsafe { nil }
+	}
+	return g.file.scope.innermost(pos)
+}
+
+fn (g &Gen) local_closure_cleanup_scope_in_current_fn(scope &ast.Scope) bool {
+	if scope == unsafe { nil } {
+		return false
+	}
+	if g.fn_decl == unsafe { nil } || g.fn_decl.scope == unsafe { nil } {
+		return true
+	}
+	fn_scope := g.fn_decl.scope
+	for sc := unsafe { scope }; sc != unsafe { nil }; sc = sc.parent {
+		if sc == fn_scope {
+			return true
+		}
+		if sc.detached_from_parent {
+			break
+		}
+	}
+	return false
+}
+
+fn (g &Gen) local_closure_cleanup_can_visit_parent(scope &ast.Scope, free_parent_scopes bool,
+	stop_pos int) bool {
+	if !free_parent_scopes || scope == unsafe { nil } || scope.parent == unsafe { nil }
+		|| scope.detached_from_parent {
+		return false
+	}
+	if stop_pos != -1 && scope.parent.start_pos < stop_pos {
+		return false
+	}
+	if g.fn_decl != unsafe { nil } && g.fn_decl.scope != unsafe { nil } {
+		if scope == g.fn_decl.scope {
+			return false
+		}
+		return g.local_closure_cleanup_scope_in_current_fn(scope.parent)
+	}
+	return true
+}
+
+fn (g &Gen) has_local_closure_vars_to_cleanup(pos int, line_nr int, free_parent_scopes bool,
+	stop_pos int, stmts []ast.Stmt) bool {
+	if g.is_builtin_mod || pos == -1 {
+		return false
+	}
+	scope := g.local_closure_cleanup_scope_at(pos)
+	if scope == unsafe { nil } || scope.start_pos == 0 {
+		return false
+	}
+	return g.has_local_closure_vars_to_cleanup2(scope, scope.start_pos, scope.end_pos, line_nr,
+		free_parent_scopes, stop_pos, stmts)
+}
+
+fn (g &Gen) has_local_closure_vars_to_cleanup2(scope &ast.Scope, start_pos int, end_pos int,
+	line_nr int, free_parent_scopes bool, stop_pos int, stmts []ast.Stmt) bool {
+	if scope == unsafe { nil } {
+		return false
+	}
+	for _, obj in scope.objects {
+		if obj is ast.Var {
+			if obj.pos.pos > end_pos
+				|| (obj.pos.pos < start_pos && obj.pos.line_nr == line_nr)
+				|| !g.local_closure_var_has_tracked_context(obj)
+				|| local_closure_var_escapes_in_stmts(stmts, obj) {
+				continue
+			}
+			return true
+		}
+	}
+	if g.local_closure_cleanup_can_visit_parent(scope, free_parent_scopes, stop_pos) {
+		return g.has_local_closure_vars_to_cleanup2(scope.parent, start_pos, end_pos, line_nr,
+			true, stop_pos, stmts)
+	}
+	return false
+}
+
+fn (mut g Gen) cleanup_local_closure_vars(pos int, line_nr int, free_parent_scopes bool, stop_pos int,
+	stmts []ast.Stmt) {
+	if g.is_builtin_mod || pos == -1 {
+		return
+	}
+	scope := g.local_closure_cleanup_scope_at(pos)
+	if scope == unsafe { nil } || scope.start_pos == 0 {
+		return
+	}
+	g.cleanup_local_closure_vars2(scope, scope.start_pos, scope.end_pos, line_nr,
+		free_parent_scopes, stop_pos, stmts)
+}
+
+fn (mut g Gen) cleanup_local_closure_vars_before_jump(scope &ast.Scope, pos int, line_nr int,
+	free_parent_scopes bool, stop_pos int, stmts []ast.Stmt) {
+	if g.is_builtin_mod || pos == -1 {
+		return
+	}
+	if scope == unsafe { nil } {
+		cleanup_scope := g.local_closure_cleanup_scope_at(pos)
+		if cleanup_scope == unsafe { nil } || cleanup_scope.start_pos == 0 {
+			return
+		}
+		g.cleanup_local_closure_vars2(cleanup_scope, cleanup_scope.start_pos, pos, line_nr,
+			free_parent_scopes, stop_pos, stmts)
+		return
+	}
+	if scope.start_pos == 0 || !g.local_closure_cleanup_scope_in_current_fn(scope) {
+		return
+	}
+	g.cleanup_local_closure_vars2(scope, scope.start_pos, pos, line_nr, free_parent_scopes,
+		stop_pos, stmts)
+}
+
+fn (mut g Gen) cleanup_local_closure_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int,
+	free_parent_scopes bool, stop_pos int, stmts []ast.Stmt) {
+	if scope == unsafe { nil } {
+		return
+	}
+	for _, obj in scope.objects {
+		if obj is ast.Var {
+			if obj.pos.pos > end_pos
+				|| (obj.pos.pos < start_pos && obj.pos.line_nr == line_nr)
+				|| !g.local_closure_var_has_tracked_context(obj)
+				|| g.local_closure_cleanup_preserves_var(obj)
+				|| local_closure_var_escapes_in_stmts(stmts, obj) {
+				continue
+			}
+			g.writeln('\tbuiltin__closure__closure_try_destroy((voidptr)${g.var_cname(obj)});')
+		}
+	}
+	if g.local_closure_cleanup_can_visit_parent(scope, free_parent_scopes, stop_pos) {
+		g.cleanup_local_closure_vars2(scope.parent, start_pos, end_pos, line_nr, true, stop_pos,
+			stmts)
+	}
+}
+
+fn (g &Gen) return_needs_local_closure_cleanup(node ast.Return) bool {
+	if g.fn_decl == unsafe { nil } {
+		return false
+	}
+	if g.for_c_init_autofree_cleanup_vars.len > 0 {
+		return true
+	}
+	return g.has_local_closure_vars_to_cleanup(node.pos.pos - 1, node.pos.line_nr, true, -1,
+		g.fn_decl.stmts)
+}
+
+fn (mut g Gen) cleanup_local_closure_vars_on_return(node ast.Return) {
+	if g.fn_decl == unsafe { nil } {
+		return
+	}
+	old_closure_cleanup_ignore_keep := g.closure_cleanup_ignore_keep
+	g.closure_cleanup_ignore_keep = true
+	g.cleanup_local_closure_vars(node.pos.pos - 1, node.pos.line_nr, true, -1, g.fn_decl.stmts)
+	g.closure_cleanup_ignore_keep = old_closure_cleanup_ignore_keep
+	returned_names, selector_owner_names := g.returned_var_names_from_return(node)
+	g.cleanup_for_c_init_autofree_vars_on_return(returned_names, selector_owner_names)
+}
+
+fn (mut g Gen) cleanup_local_closure_vars_before_synthetic_return(scope &ast.Scope, pos token.Pos) {
+	if g.fn_decl == unsafe { nil } {
+		return
+	}
+	old_closure_cleanup_ignore_keep := g.closure_cleanup_ignore_keep
+	g.closure_cleanup_ignore_keep = true
+	g.cleanup_local_closure_vars_before_jump(scope, pos.pos - 1, pos.line_nr, true, -1,
+		g.fn_decl.stmts)
+	g.closure_cleanup_ignore_keep = old_closure_cleanup_ignore_keep
+}
+
+fn labeled_loop_cleanup_stop_pos(node &ast.Stmt) int {
+	return match node {
+		ast.ForCStmt { node.pos.pos }
+		ast.ForInStmt { node.pos.pos }
+		ast.ForStmt { node.pos.pos }
+		else { -1 }
+	}
+}
+
+fn labeled_loop_scope(node &ast.Stmt) &ast.Scope {
+	return match node {
+		ast.ForCStmt { node.scope }
+		ast.ForInStmt { node.scope }
+		ast.ForStmt { node.scope }
+		else { unsafe { nil } }
+	}
+}
+
+fn labeled_loop_for_c_init_vars(node &ast.Stmt) []string {
+	return match node {
+		ast.ForCStmt {
+			if !node.has_init || node.init !is ast.AssignStmt {
+				return []
+			}
+			init := node.init as ast.AssignStmt
+			if init.op != .decl_assign {
+				return []
+			}
+			mut vars := []string{}
+			for left in init.left {
+				if left is ast.Ident {
+					vars << left.name
+				}
+			}
+			vars
+		}
+		else {
+			[]
+		}
+	}
+}
+
+fn (mut g Gen) write_defer_stmts_before_labeled_jump_in_scope(scope &ast.Scope, pos token.Pos) {
+	prev_inside_defer_generation := g.inside_defer_generation
+	g.inside_defer_generation = true
+	defer {
+		g.inside_defer_generation = prev_inside_defer_generation
+	}
+	g.indent++
+	for i := g.defer_stmts.len - 1; i >= 0; i-- {
+		defer_stmt := g.defer_stmts[i]
+		if defer_stmt.scope == unsafe { nil } {
+			g.error('Gen.write_defer_stmts_before_labeled_jump(): defer_stmt.scope is nil', pos)
+		}
+		if defer_stmt.mode != .scoped || defer_stmt.scope != scope || defer_stmt.pos.pos >= pos.pos {
+			continue
+		}
+		g.writeln('{ // defer begin')
+		if defer_stmt.ifdef.len > 0 {
+			g.writeln(defer_stmt.ifdef)
+			g.stmts(defer_stmt.stmts)
+			g.writeln2('', '#endif')
+		} else {
+			g.stmts(defer_stmt.stmts)
+		}
+		g.writeln('} // defer end')
+	}
+	g.indent--
+}
+
+fn (mut g Gen) cleanup_scopes_before_labeled_jump(scope &ast.Scope, target_scope &ast.Scope,
+	pos token.Pos, keep_vars []string) {
+	if scope == unsafe { nil } || target_scope == unsafe { nil } {
+		return
+	}
+	for cleanup_scope := unsafe { scope }; cleanup_scope != unsafe { nil }; cleanup_scope = cleanup_scope.parent {
+		g.write_defer_stmts_before_labeled_jump_in_scope(cleanup_scope, pos)
+		if g.needs_scope_cleanup() && !g.is_builtin_mod {
+			g.autofree_scope_vars2_before_labeled_jump(cleanup_scope, cleanup_scope.start_pos,
+				pos.pos - 1, cleanup_scope == target_scope, keep_vars)
+		}
+		if cleanup_scope == target_scope || cleanup_scope.detached_from_parent {
+			break
+		}
+	}
+}
+
+fn (mut g Gen) autofree_scope_vars2_before_labeled_jump(scope &ast.Scope, start_pos int,
+	end_pos int, is_target_scope bool, keep_vars []string) {
+	if scope == unsafe { nil } {
+		return
+	}
+	for _, obj in scope.objects {
+		if obj is ast.Var {
+			if obj.name in g.returned_var_names || obj.is_or || obj.is_tmp
+				|| obj.is_inherited || obj.pos.pos > end_pos
+				|| obj.pos.pos < start_pos
+				|| (is_target_scope && obj.name in keep_vars)
+				|| (end_pos < scope.end_pos && obj.expr is ast.IfExpr) {
+				continue
+			}
+			if obj.expr is ast.IfGuardExpr {
+				continue
+			}
+			if obj.expr is ast.UnsafeExpr && obj.expr.expr is ast.CallExpr
+				&& (obj.expr.expr as ast.CallExpr).is_method {
+				if left_var := scope.objects[obj.expr.expr.left.str()] {
+					if func := g.table.find_method(g.table.final_sym(left_var.typ),
+						obj.expr.expr.name)
+					{
+						if func.attrs.contains('reused') && left_var is ast.Var
+							&& left_var.expr is ast.CastExpr {
+							if left_var.expr.expr.is_literal() {
+								continue
+							}
+						}
+					}
+				}
+			}
+			g.autofree_variable(obj)
+		}
+	}
+	for g.autofree_scope_stmts.len > 0 {
+		g.write(g.autofree_scope_stmts.pop())
+	}
+}
+
+fn (mut g Gen) cleanup_local_closure_vars_before_labeled_continue(scope &ast.Scope, target_scope &ast.Scope,
+	pos token.Pos, stmts []ast.Stmt) {
+	if g.fn_decl == unsafe { nil } || scope == unsafe { nil } || target_scope == unsafe { nil } {
+		return
+	}
+	for cleanup_scope := unsafe { scope }; cleanup_scope != unsafe { nil }; cleanup_scope = cleanup_scope.parent {
+		g.cleanup_local_closure_vars2(cleanup_scope, cleanup_scope.start_pos, pos.pos - 1,
+			pos.line_nr, false, -1, stmts)
+		if cleanup_scope.detached_from_parent {
+			break
+		}
+		if cleanup_scope == target_scope {
+			break
+		}
+	}
 }
 
 // stmts_with_tmp_var is used in `if` or `match` branches.
@@ -3478,8 +4157,18 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 					}
 				}
 				ret_sym := g.table.sym(g.unwrap_generic(g.recheck_concrete_type(ret_type)))
-				tmp_is_return_fixed_array := ret_sym.info is ast.ArrayFixed
-					&& ret_sym.info.is_fn_ret
+				// The tmp var of an if/match expr is a single shared variable, so every
+				// branch must agree on whether to write through `.ret_arr`, based on the
+				// tmp var's declared type rather than each branch's own expr type. A mix
+				// of a function call and a fixed array literal would otherwise disagree
+				// (only the function's fixed array type carries the `is_fn_ret` flag), e.g.
+				// `return if c { fa() } else { [9, 9, 9]! }` or its reverse. When set, the
+				// flag from if/match gen is authoritative; elsewhere fall back to the
+				// per-branch heuristic.
+				tmp_is_return_fixed_array := g.if_match_tmp_is_fn_ret_arr or {
+					ret_sym.info is ast.ArrayFixed && ret_sym.info.is_fn_ret
+				}
+
 				fixed_array_tmp_var := if tmp_is_return_fixed_array {
 					'${tmp_var}.ret_arr'
 				} else {
@@ -3562,7 +4251,26 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 					return last_stmt_was_return
 				}
 			}
-			g.autofree_scope_vars(stmt_pos.pos - 1, stmt_pos.line_nr, false)
+			cleanup_scope := g.file.scope.innermost(stmt_pos.pos - 1)
+			if !g.should_skip_scope_cleanup(cleanup_scope) {
+				g.autofree_scope_vars(stmt_pos.pos - 1, stmt_pos.line_nr, false)
+			}
+		}
+	}
+	if !g.inside_veb_tmpl && stmts.len > 0 && !last_stmt_was_return && g.inside_ternary == 0 {
+		stmt := stmts[0]
+		if stmt !is ast.FnDecl {
+			mut stmt_pos := stmt.pos
+			if stmt_pos.pos == 0 && stmt is ast.ExprStmt {
+				stmt_pos = stmt.expr.pos()
+			}
+			if stmt_pos.pos != 0 {
+				cleanup_scope := g.local_closure_cleanup_scope_at(stmt_pos.pos - 1)
+				if !g.should_skip_scope_cleanup(cleanup_scope) {
+					g.cleanup_local_closure_vars(stmt_pos.pos - 1, stmt_pos.line_nr, false, -1,
+						stmts)
+				}
+			}
 		}
 	}
 	// Branch-local lambda temp args are freed by the scope cleanup above.
@@ -6508,7 +7216,12 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 							pos:  node.pos
 							expr: node.right
 						}
+						// This tmp var is local to this `&(...)`; don't inherit an enclosing
+						// if/match's `.ret_arr` decision (only if/match set this flag).
+						prev_ret_arr := g.if_match_tmp_is_fn_ret_arr
+						g.if_match_tmp_is_fn_ret_arr = none
 						g.stmts_with_tmp_var(stmts, tmp_var)
+						g.if_match_tmp_is_fn_ret_arr = prev_ret_arr
 						g.set_current_pos_as_last_stmt_pos()
 						g.write(str)
 					}
@@ -7357,9 +8070,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					}
 				}
 			}
-			g.write('builtin__closure__closure_create(${name}, ')
+			g.write('builtin__closure__closure_create_with_data(${name}, ')
 			if !receiver.typ.is_ptr() {
-				g.write('builtin__memdup_uncollectable(')
+				g.write('builtin__memdup(')
 			}
 			mut has_addr := false
 			if !node.expr_type.is_ptr() {
@@ -7385,7 +8098,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			if !receiver.typ.is_ptr() {
 				g.write(', sizeof(${expr_styp}))')
 			}
-			g.write(')')
+			if receiver.typ.is_ptr() {
+				g.write(', false)')
+			} else {
+				g.write(', true)')
+			}
 			return
 		}
 	} else {
@@ -8747,7 +9464,12 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		g.mtxs = ''
 	}
 	g.writeln('/*lock*/ {')
+	// This tmp var is local to the lock expr; don't inherit an enclosing if/match's
+	// `.ret_arr` decision (only if/match set this flag).
+	prev_ret_arr := g.if_match_tmp_is_fn_ret_arr
+	g.if_match_tmp_is_fn_ret_arr = none
 	g.stmts_with_tmp_var(node.stmts, tmp_result)
+	g.if_match_tmp_is_fn_ret_arr = prev_ret_arr
 	if node.is_expr {
 		g.writeln(';')
 	}
@@ -10438,6 +11160,32 @@ fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 			else {}
 		}
 
+		stop_pos := labeled_loop_cleanup_stop_pos(x)
+		target_scope := labeled_loop_scope(x)
+		g.cleanup_scopes_before_labeled_jump(node.scope, target_scope, node.pos,
+			labeled_loop_for_c_init_vars(x))
+		if g.fn_decl != unsafe { nil } {
+			if node.kind == .key_break {
+				old_closure_cleanup_target_loop_pos := g.closure_cleanup_target_loop_pos
+				g.closure_cleanup_target_loop_pos = if stop_pos > 0 { stop_pos } else { 0 }
+				g.cleanup_local_closure_vars_before_jump(node.scope, node.pos.pos - 1,
+					node.pos.line_nr, true, stop_pos, g.fn_decl.stmts)
+				g.closure_cleanup_target_loop_pos = old_closure_cleanup_target_loop_pos
+			} else {
+				preserve_start := if x is ast.ForCStmt {
+					g.push_local_closure_cleanup_preserve_vars(g.for_c_init_local_closure_vars(x),
+						x.pos.pos)
+				} else {
+					g.closure_cleanup_keep_vars.len
+				}
+				old_closure_cleanup_target_loop_pos := g.closure_cleanup_target_loop_pos
+				g.closure_cleanup_target_loop_pos = if stop_pos > 0 { stop_pos } else { 0 }
+				g.cleanup_local_closure_vars_before_labeled_continue(node.scope, target_scope,
+					node.pos, g.fn_decl.stmts)
+				g.closure_cleanup_target_loop_pos = old_closure_cleanup_target_loop_pos
+				g.pop_local_closure_cleanup_preserve_vars(preserve_start)
+			}
+		}
 		if node.kind == .key_break {
 			g.writeln('goto ${node.label}__break;')
 		} else {
@@ -10473,6 +11221,17 @@ fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 			g.trace_autofree('// free before continue/break')
 			g.autofree_scope_vars_stop(node.pos.pos - 1, node.pos.line_nr, true,
 				g.branch_parent_pos)
+		}
+		if g.fn_decl != unsafe { nil } {
+			old_closure_cleanup_target_loop_pos := g.closure_cleanup_target_loop_pos
+			g.closure_cleanup_target_loop_pos = if g.branch_parent_pos > 0 {
+				g.branch_parent_pos
+			} else {
+				0
+			}
+			g.cleanup_local_closure_vars_before_jump(node.scope, node.pos.pos - 1,
+				node.pos.line_nr, true, g.branch_parent_pos, g.fn_decl.stmts)
+			g.closure_cleanup_target_loop_pos = old_closure_cleanup_target_loop_pos
 		}
 		g.writeln('${node.kind};')
 	}
@@ -10557,6 +11316,12 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			type0 = resolved_obj_type
 		}
 	}
+	return_needs_local_closure_cleanup := g.return_needs_local_closure_cleanup(node)
+	return_expr0 := unwrap_paren_call_expr(expr0)
+	return_call_needs_closure_lifetime_arg_tmp := match return_expr0 {
+		ast.CallExpr { g.call_needs_closure_lifetime_arg_tmp(return_expr0) }
+		else { false }
+	}
 
 	if exprs_len > 0 {
 		// `$veb.html()` expands to statements, so the Result return
@@ -10571,6 +11336,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.write_defer_stmts_when_needed(node.scope, true, node.pos)
 			if !g.is_builtin_mod {
 				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
+			}
+			if return_needs_local_closure_cleanup {
+				g.cleanup_local_closure_vars_on_return(node)
 			}
 			// `$veb.html()` returns `veb.Result` and the template body
 			// already writes the rendered string to the response, so just
@@ -10624,11 +11392,17 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.trace_autofree('// free before return (no values returned)')
 				g.autofree_scope_vars(node.pos.pos, node.pos.line_nr, false)
 			}
+			if return_needs_local_closure_cleanup {
+				g.cleanup_local_closure_vars_on_return(node)
+			}
 			g.writeln('return (${styp}){0};')
 		} else {
 			if g.needs_scope_cleanup() {
 				g.trace_autofree('// free before return (no values returned)')
 				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
+			}
+			if return_needs_local_closure_cleanup {
+				g.cleanup_local_closure_vars_on_return(node)
 			}
 			g.writeln('return;')
 		}
@@ -10639,30 +11413,35 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	ret_typ := g.ret_styp(fn_ret_type)
 
 	// `return fn_call_opt()`
-	if exprs_len == 1 && (fn_return_is_option || fn_return_is_result) && expr0 is ast.CallExpr
-		&& expr0.or_block.kind == .absent {
-		mut resolved_call_return_type := g.resolve_return_type(expr0)
+	if exprs_len == 1 && (fn_return_is_option || fn_return_is_result)
+		&& return_expr0 is ast.CallExpr && return_expr0.or_block.kind == .absent {
+		mut resolved_call_return_type := g.resolve_return_type(return_expr0)
 		if resolved_call_return_type == ast.void_type {
-			resolved_call_return_type = expr0.return_type
+			resolved_call_return_type = return_expr0.return_type
 		}
 		if g.unwrap_generic(g.recheck_concrete_type(resolved_call_return_type)) == ret_type {
-			if g.defer_stmts.len > 0 {
+			if g.defer_stmts.len > 0 || return_needs_local_closure_cleanup
+				|| return_call_needs_closure_lifetime_arg_tmp {
 				g.write('${ret_typ} ${tmpvar} = ')
-				g.expr(expr0)
+				g.expr(return_expr0)
 				g.writeln(';')
 				g.write_defer_stmts_when_needed(node.scope, true, node.pos)
+				if return_needs_local_closure_cleanup {
+					g.cleanup_local_closure_vars_on_return(node)
+				}
 				g.writeln('return ${tmpvar};')
 			} else {
 				g.write_defer_stmts_when_needed(node.scope, true, node.pos)
 				g.write('return ')
-				g.expr(expr0)
+				g.expr(return_expr0)
 				g.writeln(';')
 			}
 			return
 		}
 	}
 	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0
-		|| g.cur_lock.lockeds.len > 0
+		|| g.cur_lock.lockeds.len > 0 || return_needs_local_closure_cleanup
+		|| return_call_needs_closure_lifetime_arg_tmp
 		|| (fn_return_is_multi && exprs_len >= 1 && fn_return_is_option)
 		|| fn_return_is_fixed_array_non_result
 		|| (fn_return_is_multi && ret_expr_types.any(g.table.final_sym(it).kind == .array_fixed))
@@ -10678,6 +11457,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.gen_option_error(fn_ret_type, expr0)
 				g.writeln(';')
 				g.write_defer_stmts_when_needed(node.scope, true, node.pos)
+				if return_needs_local_closure_cleanup {
+					g.cleanup_local_closure_vars_on_return(node)
+				}
 				g.gen_failing_return_error_for_test_fn(node, test_error_var)
 				return
 			}
@@ -10701,6 +11483,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					}
 				}
 				g.write_defer_stmts_when_needed(node.scope, true, node.pos)
+				if return_needs_local_closure_cleanup {
+					g.cleanup_local_closure_vars_on_return(node)
+				}
 				g.writeln('return ${tmpvar};')
 			}
 			return
@@ -10717,6 +11502,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.gen_result_error(fn_ret_type, expr0)
 				g.writeln(';')
 				g.write_defer_stmts_when_needed(node.scope, true, node.pos)
+				if return_needs_local_closure_cleanup {
+					g.cleanup_local_closure_vars_on_return(node)
+				}
 				g.gen_failing_return_error_for_test_fn(node, test_error_var)
 				return
 			}
@@ -10729,6 +11517,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln(';')
 			if use_tmp_var {
 				g.write_defer_stmts_when_needed(node.scope, true, node.pos)
+				if return_needs_local_closure_cleanup {
+					g.cleanup_local_closure_vars_on_return(node)
+				}
 				g.writeln('return ${tmpvar};')
 			}
 			return
@@ -10742,6 +11533,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.expr(expr0)
 			g.writeln(';')
 			g.write_defer_stmts_when_needed(node.scope, true, node.pos)
+			if return_needs_local_closure_cleanup {
+				g.cleanup_local_closure_vars_on_return(node)
+			}
 			g.writeln('return ${tmpvar};')
 			return
 		}
@@ -10861,9 +11655,15 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.writeln(';')
 			}
 			g.write_defer_stmts_when_needed(node.scope, true, node.pos)
+			if return_needs_local_closure_cleanup {
+				g.cleanup_local_closure_vars_on_return(node)
+			}
 			g.writeln('return ${tmpvar};')
 			has_semicolon = true
 		} else if fn_return_is_option || fn_return_is_result {
+			if return_needs_local_closure_cleanup {
+				g.cleanup_local_closure_vars_on_return(node)
+			}
 			g.write('return ${tmpvar}')
 		}
 	} else if exprs_len >= 1 {
@@ -10900,6 +11700,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.detect_used_var_on_return(expr0)
 			}
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
+			if return_needs_local_closure_cleanup {
+				g.cleanup_local_closure_vars_on_return(node)
+			}
 			g.writeln('return ${tmpvar};')
 			return
 		}
@@ -11008,6 +11811,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.write_defer_stmts_when_needed(node.scope, true, node.pos)
 			if !g.is_builtin_mod {
 				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
+			}
+			if return_needs_local_closure_cleanup {
+				g.cleanup_local_closure_vars_on_return(node)
 			}
 			g.write('return ${tmpvar}')
 			has_semicolon = false
@@ -12372,6 +13178,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			g.write_defer_stmts(or_block.scope, true, or_block.pos)
 			// Now that option types are distinct we need a cast here
 			if g.fn_decl == unsafe { nil } || g.fn_decl.return_type == ast.void_type {
+				g.cleanup_local_closure_vars_before_synthetic_return(or_block.scope, or_block.pos)
 				g.writeln('\treturn;')
 			} else {
 				mut fn_return_type := g.fn_decl.return_type
@@ -12392,6 +13199,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 				} else if fn_return_type.has_flag(.option) {
 					g.writeln('\t${err_obj}.state = 2;')
 				}
+				g.cleanup_local_closure_vars_before_synthetic_return(or_block.scope, or_block.pos)
 				g.writeln('\treturn ${err_obj};')
 			}
 		}
@@ -12417,14 +13225,17 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			g.write_defer_stmts(or_block.scope, true, or_block.pos)
 			// Now that option types are distinct we need a cast here
 			if g.fn_decl == unsafe { nil } || g.fn_decl.return_type == ast.void_type {
+				g.cleanup_local_closure_vars_before_synthetic_return(or_block.scope, or_block.pos)
 				g.writeln('\treturn;')
 			} else if g.fn_decl.return_type.clear_option_and_result() == return_type.clear_option_and_result() {
 				styp := g.styp(g.fn_decl.return_type).replace('*', '_ptr')
 				err_obj := g.new_tmp_var()
 				g.writeln2('\t${styp} ${err_obj};',
 					'\tmemcpy(&${err_obj}, &${cvar_name}, sizeof(_option));')
+				g.cleanup_local_closure_vars_before_synthetic_return(or_block.scope, or_block.pos)
 				g.writeln('\treturn ${err_obj};')
 			} else {
+				g.cleanup_local_closure_vars_before_synthetic_return(or_block.scope, or_block.pos)
 				g.write('\treturn ')
 				g.gen_option_error(g.fn_decl.return_type, ast.None{})
 				g.writeln(';')
@@ -12875,18 +13686,30 @@ fn (mut g Gen) as_cast_payload_type(target_type ast.Type, matching_variants []as
 }
 
 // as_cast_operand_needs_tmp_eval reports whether emitting `expr` as the operand of
-// an `as` cast over a sum type may itself emit statements (option propagation,
-// if/match temporaries, calls). Such operands must be evaluated into a temporary
-// first: rendering them with g.expr_string() runs g.expr() into a saved builder
-// offset, but a hoisting operand calls go_before_last_stmt() which cuts the
-// builder back past that offset, so the subsequent cut_to() corrupts the output.
-// Plain values (idents, literals, field accesses) never emit statements and can be
-// rendered inline.
+// an `as` cast over a sum type may itself emit statements (calls, option
+// propagation / `or {}` blocks, if/match temporaries). Such operands must be
+// evaluated into a temporary first: rendering them with g.expr_string() runs
+// g.expr() into a saved builder offset, but a hoisting operand calls
+// go_before_last_stmt() which cuts the builder back past that offset, so the
+// subsequent cut_to() corrupts the output. The temporary must be emitted before
+// the cast writes any surrounding C text, because the operand itself may also
+// need to cut back to the current statement while it is generated.
+//
+// Operands that do NOT emit statements (idents, literals, field accesses, plain
+// map/array indexing without an `or {}`/propagation) are rendered inline so the
+// cast stays an lvalue (`*(T*)__as_cast(...)`); wrapping them in a statement
+// expression would make `&(x as T)` take the address of an rvalue.
 fn as_cast_operand_needs_tmp_eval(expr ast.Expr) bool {
+	if expr.has_fn_call() {
+		return true
+	}
 	return match expr {
-		ast.Ident, ast.BoolLiteral, ast.IntegerLiteral, ast.FloatLiteral, ast.CharLiteral,
-		ast.StringLiteral, ast.EnumVal, ast.TypeNode {
-			false
+		ast.IndexExpr {
+			expr.or_expr.kind != .absent || as_cast_operand_needs_tmp_eval(expr.left)
+				|| as_cast_operand_needs_tmp_eval(expr.index)
+		}
+		ast.IfExpr, ast.MatchExpr {
+			true
 		}
 		ast.ParExpr {
 			as_cast_operand_needs_tmp_eval(expr.expr)
@@ -12895,7 +13718,7 @@ fn as_cast_operand_needs_tmp_eval(expr ast.Expr) bool {
 			as_cast_operand_needs_tmp_eval(expr.expr)
 		}
 		else {
-			true
+			false
 		}
 	}
 }
@@ -12934,55 +13757,30 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		matching_variants := g.matching_sumtype_variant_types(expr_type_without_option,
 			unwrapped_node_typ)
 		index_exprs := g.type_idx_exprs_for_types(matching_variants)
-		payload_sym := g.table.sym(g.as_cast_payload_type(unwrapped_node_typ, matching_variants))
+		payload_type := g.as_cast_payload_type(unwrapped_node_typ, matching_variants)
+		payload_sym := g.table.sym(payload_type)
+		// Use the variant member name, which for an option-type variant
+		// (e.g. `type Foo = ?Bar | Baz`) is `_option_<cname>`, not `_<cname>`.
+		payload_member := g.get_sumtype_variant_name(payload_type, payload_sym)
 		sidx := g.type_sidx(unwrapped_node_typ)
 		if as_cast_operand_needs_tmp_eval(node.expr) {
-			// The operand emits statements while it is generated (option
-			// propagation, if/match temporaries, calls). g.expr_string() would
-			// drop those statements and corrupt the output, so evaluate the
-			// operand into a temporary first and reference it by name.
-			tmp_var := g.new_tmp_var()
-			expr_styp := g.styp(node.expr_type)
-			if !g.is_cc_msvc {
-				g.write('({ ${expr_styp} ${tmp_var} = ')
-				g.expr(node.expr)
-				g.write('; ')
-			} else {
-				// MSVC has no statement-expressions; hoist the temporary onto its
-				// own line before the current statement instead.
-				mut cur_line := if g.inside_ternary > 0 {
-					g.go_before_ternary().trim_space()
-				} else {
-					g.go_before_last_stmt().trim_space()
-				}
-				if g.inside_return && cur_line.ends_with('return') {
-					cur_line += ' '
-				}
-				g.empty_line = true
-				g.write('${expr_styp} ${tmp_var} = ')
-				g.expr(node.expr)
-				g.writeln(';')
-				g.write(cur_line)
-			}
+			tmp_var := g.expr_to_ctemp_before_stmt(node.expr, node.expr_type).name
 			expr_str := if expr_is_option {
 				g.as_cast_option_payload_expr(unwrapped_expr_type, tmp_var, false)
 			} else {
 				tmp_var
 			}
-			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
+			obj_expr := '(${expr_str})${dot}_${payload_member}'
 			tag_expr := '(${expr_str})${dot}_typ'
 			g.write_as_cast_call_start(styp, sym)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
-			if !g.is_cc_msvc {
-				g.write('; })')
-			}
 		} else {
 			expr_str := if expr_is_option {
 				g.as_cast_option_payload_expr_from_expr(unwrapped_expr_type, node.expr)
 			} else {
 				g.expr_string(node.expr)
 			}
-			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
+			obj_expr := '(${expr_str})${dot}_${payload_member}'
 			tag_expr := '(${expr_str})${dot}_typ'
 			g.write_as_cast_call_start(styp, sym)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
@@ -13034,37 +13832,11 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		payload_sym := g.table.sym(g.as_cast_payload_type(unwrapped_node_typ, matching_variants))
 		sidx := g.type_sidx(unwrapped_node_typ)
 		if as_cast_operand_needs_tmp_eval(node.expr) {
-			// See as_cast_operand_needs_tmp_eval: a hoisting operand must be
-			// evaluated into a temporary, otherwise g.expr_string() drops the
-			// statements it emits and corrupts the output.
-			tmp_var := g.new_tmp_var()
-			expr_styp := g.styp(node.expr_type)
-			if !g.is_cc_msvc {
-				g.write('({ ${expr_styp} ${tmp_var} = ')
-				g.expr(node.expr)
-				g.write('; ')
-			} else {
-				mut cur_line := if g.inside_ternary > 0 {
-					g.go_before_ternary().trim_space()
-				} else {
-					g.go_before_last_stmt().trim_space()
-				}
-				if g.inside_return && cur_line.ends_with('return') {
-					cur_line += ' '
-				}
-				g.empty_line = true
-				g.write('${expr_styp} ${tmp_var} = ')
-				g.expr(node.expr)
-				g.writeln(';')
-				g.write(cur_line)
-			}
+			tmp_var := g.expr_to_ctemp_before_stmt(node.expr, node.expr_type).name
 			obj_expr := '${tmp_var}${dot}_${payload_sym.cname}'
 			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}(${tmp_var}${dot}_typ)'
 			g.write_as_cast_call_start(styp, sym)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
-			if !g.is_cc_msvc {
-				g.write('; })')
-			}
 		} else {
 			expr_str := g.expr_string(node.expr)
 			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'

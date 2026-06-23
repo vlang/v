@@ -1,0 +1,15 @@
+type GenericAliasA = int
+type GenericAliasB = int
+type GenericAliasBox[T] = GenericAliasA | T
+
+fn main() {
+	value := GenericAliasBox[string](GenericAliasA(1))
+	match value {
+		GenericAliasB {
+			println('bad')
+		}
+		string {
+			println(value)
+		}
+	}
+}

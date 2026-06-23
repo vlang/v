@@ -1,5 +1,5 @@
 struct Foo {
-	f fn (main.Foo) int = dummy
+	f fn (Foo) int = dummy
 }
 
 fn dummy(s Foo) int {

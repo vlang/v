@@ -252,7 +252,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, cname string, fie
 		voidptr {
 			g.const_decl_write_precomputed(mod, styp, cname, field_name, '(voidptr)(0x${ct_value})')
 		}
-		ast.EmptyExpr {
+		ast.EmptyComptimeConstValue {
 			return false
 		}
 	}
