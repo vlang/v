@@ -33,7 +33,7 @@ jobs:
       VTMP: /tmp
     steps:
       - name: Checkout V
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
 
       - name: Build local v

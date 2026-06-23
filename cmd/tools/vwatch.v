@@ -218,7 +218,7 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		mut files := os.ls(path) or { []string{} }
 		next_file: for pf in files {
 			pf_path := os.join_path_single(path, pf)
-			if context.only_watch.len > 0 {
+			if context.only_watch.len > 0 && context.only_watch[0] != '' {
 				// in the whitelist mode, first only allow files, which match at least one of the patterns in context.only_watch:
 				mut matched_pattern_idx := -1
 				for ow_pattern_idx, ow_pattern in context.only_watch {

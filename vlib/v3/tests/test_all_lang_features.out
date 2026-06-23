@@ -1,0 +1,957 @@
+=== v3 Test Suite ===
+--- 1. Struct Declaration & Initialization ---
+10
+20
+0
+0
+100
+200
+14
+21
+4
+6
+--- 2. Calls & Selector Assignment ---
+15
+35
+12
+15
+20
+25
+50
+--- 3. Globals & Compound Assignment ---
+100
+70
+30
+25
+50
+84
+--- 4. Bool & Logic ---
+1
+0
+1
+1
+1
+1
+--- 5. Loop with Break/Continue ---
+23
+25
+15
+37
+10
+--- 6. Match ---
+777
+200
+111
+500
+40
+--- 7. C-style Loop ---
+120
+55
+256
+55
+30
+--- 8. Recursive Functions ---
+55
+720
+55
+6
+1024
+--- 9. Nested Loops ---
+9
+20
+36
+6
+15
+--- 10. Infinite Loop ---
+5
+21
+128
+0
+10
+--- 11. Many Arguments ---
+8
+36
+16
+9
+36
+--- 12. Modifying Struct via Function ---
+999
+888
+15
+5
+30
+60
+105
+210
+0
+0
+--- 13. Assert ---
+Assert 1 passed
+Assert 2 passed
+Assert 3 passed
+Assert 4 passed
+Assert 5 passed
+--- 14. Heap Allocation ---
+10
+20
+0
+0
+25
+36
+100
+200
+42
+1
+2
+--- 15. Bitwise Operations ---
+8
+14
+6
+205
+5
+4
+--- 16. Shift Operations ---
+16
+8
+15
+56
+6
+--- 17. Modulo ---
+2
+2
+1
+0
+4
+5
+4
+--- 18. Pointer Arithmetic ---
+10
+20
+400
+600
+50
+100
+90
+300
+--- 19. Nested Struct Access ---
+100
+200
+110
+100
+200
+40
+60
+120
+--- 20. Negative Numbers ---
+-42
+-5
+-30
+-21
+50
+--- 21. Else-If Chains ---
+3
+2
+1
+0
+3
+--- 22. Function Returning Struct ---
+10
+20
+15
+24
+40
+60
+4
+6
+300
+--- 23. Early Return ---
+42
+17
+0
+10
+20
+--- 24. Clamp & Multi-Arg Functions ---
+10
+100
+50
+10
+100
+--- 25. Postfix Inc/Dec ---
+11
+9
+5
+101
+10
+--- 26. Compound Bitwise Assignment ---
+15
+10
+6
+16
+16
+--- 27. Complex Boolean ---
+1
+1
+1
+1
+1
+--- 28. Iterative Algorithms ---
+8
+111
+0
+15
+45
+--- 29. Bit Counting ---
+0
+3
+8
+1
+4
+--- 30. Global Counter Patterns ---
+45
+1
+15
+55
+120
+42
+--- 31. Nested Struct Mutation ---
+50
+60
+50
+100
+15
+25
+1200
+20
+60
+--- 32. Quadrant & Struct Passing ---
+1
+2
+3
+4
+0
+--- 33. 4-Field Struct ---
+255
+128
+100
+100
+0
+50
+765
+128
+--- 34. Fibonacci Iterative ---
+55
+6765
+88
+12
+987
+--- 35. Nested Loops with Flow Control ---
+30
+10
+27
+36
+12
+--- 36. Complex Match ---
+13
+400
+400
+2111
+300
+--- 37. Chained Function Calls ---
+10
+42
+15
+15
+25
+--- 38. Mixed Arithmetic ---
+257
+31
+20
+20
+249
+--- 39. Large Computations ---
+3628800
+1048576
+2870
+5050
+40320
+--- 40. Integration Test ---
+15
+30
+21
+26
+5
+Integration asserts passed
+55
+100
+--- 41. Vector Math ---
+32
+14
+5
+7
+9
+--- 42. Vector Scale & Cross ---
+3
+6
+9
+-3
+14
+--- 43. Matrix Operations ---
+-2
+5
+19
+22
+50
+--- 44. Prime Checking ---
+10
+1
+0
+1
+0
+--- 45. Integer Square Root ---
+0
+1
+2
+10
+9
+--- 46. Reverse & Palindrome ---
+54321
+1
+5
+1
+0
+--- 47. Stats Tracking ---
+3
+25
+60
+5
+12
+--- 48. Binary Search ---
+2
+0
+4
+-1
+3
+--- 49. Ackermann Function ---
+1
+3
+7
+29
+6
+--- 50. Triangle & Geometry ---
+12
+100
+-4
+3
+7
+--- 51. Digital Root ---
+0
+5
+3
+9
+6
+--- 52. Interpolation & Sign ---
+50
+13
+1
+-1
+0
+--- 53. Bit Manipulation ---
+0
+3
+8
+30
+32
+--- 54. Chained Struct Operations ---
+8
+16
+10
+18
+10
+--- 55. Global Accumulation ---
+15
+30
+45
+90
+3150
+--- 56. Sieve Simulation ---
+328
+47
+2
+6
+--- 57. Complex Loop Patterns ---
+55
+55
+10
+55
+89
+--- 58. Heap Struct Computations ---
+1400
+625
+4
+40
+150
+--- 59. Multi-Function Pipeline ---
+2
+2
+195
+55
+55
+--- 60. Stress Integration ---
+190
+0
+30
+25
+All stress assertions passed
+=== ALL 60 TESTS PASSED ===
+--- 61. Methods ---
+30
+30
+14
+16
+50
+30
+130
+9
+20
+--- 62. If-Expressions ---
+5
+7
+0
+20
+30
+5
+10
+15
+8
+-1
+1
+0
+5
+0
+10
+50
+30
+--- 63. String Interpolation ---
+The answer is 42
+10 + 20 = 30
+Value: 100!
+999
+1-2-3
+Hello World
+ABC
+--- 64. For-In Range ---
+10
+35
+14
+42
+120
+10
+25
+--- 65. Enums ---
+0
+3
+10
+1
+300
+--- 66. Defer Statements ---
+42
+100
+111
+--- 67. Unary Operations ---
+1
+0
+1
+1
+1
+--- 68. Complex Boolean ---
+1
+1
+1
+1
+1
+--- 69. Comparison as Expression ---
+1
+1
+1
+1
+1
+--- 70. Deeply Nested If ---
+1
+20
+300
+3
+8
+--- 71. Large Constants ---
+100000
+1000000
+100000
+100000
+10000
+--- 72. Mixed Operations ---
+1
+1
+11
+11
+4
+--- 73. Edge Cases ---
+0
+0
+0
+42
+42
+42
+1
+10
+0
+5
+1
+1
+--- 74. Complex Recursion ---
+5050
+21
+610
+243
+5040
+--- 75. Struct Operations ---
+0
+0
+15
+25
+300
+100
+40
+20
+1
+--- 76. Control Flow Edge Cases ---
+1
+7
+22
+55
+100
+200
+300
+15
+--- 77. Array Initialization ---
+10
+20
+30
+30
+7
+14
+21
+400
+7
+20
+--- 78. For-In Array ---
+60
+70
+6
+9
+180
+--- 79. Fixed Size Arrays ---
+5
+10
+15
+10
+30
+120
+103
+1
+5
+5
+15
+--- 80. String Struct Fields ---
+Hello
+5
+5
+Passed directly
+--- 81. Struct Field Operations ---
+15
+17
+42
+25
+75
+20
+40
+8
+7
+28
+15
+18
+2
+2
+8
+13
+15
+30
+20
+25
+100
+50
+--- 82. Println ---
+hello world
+--- 83. Algebraic Optimizations ---
+0
+0
+99
+77
+50
+0
+10
+26
+5
+14
+0
+0
+12345
+12345
+10
+--- 84. Dead Store Elimination ---
+1
+30
+5
+100
+75
+--- 85. Goto Statement ---
+3
+1
+--- 86. String Match Return ---
+__plus
+__minus
+__mul
+?
+--- 87. Return If Expression ---
+return if expr: ok
+--- 88. Or Blocks and Optional ---
+42
+99
+42
+7
+or blocks: ok
+--- 89. If Guard (Optional Unwrap) ---
+42
+99
+84
+50
+1
+if guard: ok
+--- 90. Maps ---
+1
+2
+3
+3
+2
+99
+100
+200
+10
+20
+maps: ok
+--- 91. String Methods ---
+1
+2
+3
+4
+5
+6
+4
+7
+hello
+world
+hello
+world
+/Users/test
+file.v
+hello
+abc
+abc
+42
+string methods: ok
+--- 92. Dynamic Arrays ---
+3
+10
+20
+30
+60
+20
+2
+hello
+world
+dynamic arrays: ok
+--- 93. Array Methods, Slicing, Split ---
+3
+4
+1
+3
+2
+20
+2
+200
+0
+contains 10: yes
+contains 7: no
+hello
+world
+hello
+3
+20
+30
+3
+a
+b
+c
+hello v3
+1
+array methods, slicing, split: ok
+--- 94. Map Iteration, Array Init with len ---
+6
+6
+5
+0
+3
+42
+42
+map iteration, array init: ok
+--- 95. In Operator, Array Join ---
+hello in map: yes
+missing not in map: yes
+20 in array: yes
+99 not in array: yes
+hello, world, v3
+hello world v3
+in operator, array join: ok
+hello world
+line1
+line2
+line3
+strings.Builder: ok
+static methods: ok
+@FILE: ok
+unsafe blocks: ok
+function pointers: ok
+sum type smartcast: ok
+--- 102. In Operator LHS Evaluation ---
+range side effect: yes
+1
+inline side effect: no
+1
+not in side effect: yes
+1
+in operator lhs eval: ok
+--- 103. Transformer Semantic Lowering ---
+interp 7 true
+6
+297
+12
+42
+9
+42
+4
+map membership lowered: yes
+10
+Milo
+transformer semantic lowering: ok
+--- 104. Review Regression Lowering ---
+2
+v3
+2
+100
+Bolt
+8
+7
+-1
+7
+-1
+42
+review regression lowering: ok
+--- 105. Self-Hosting Features ---
+10
+11
+2
+1
+hello
+world
+3
+2
+Socks and Buddy
+self-hosting features: ok
+--- 106. Multi-Return Functions ---
+42
+hello
+20
+10
+30
+33
+3
+multi-return: ok
+--- 107. Struct Update Syntax (Assoc) ---
+99
+20
+10
+55
+3
+42
+3
+struct update (assoc): ok
+--- 108. Array Push Many ---
+5
+2
+9
+6
+20
+third
+array push_many: ok
+--- 109. String Comparison Operators ---
+1
+1
+1
+1
+cat
+string comparison: ok
+--- 110. Struct Operator Overloading ---
+4
+6
+1
+1
+14
+18
+struct operators: ok
+--- 111. Return Match / Match as Expression ---
+one
+three
+B
+zero
+one-two
+match expression: ok
+--- 112. If Expression Returning String ---
+yes
+big
+positive
+Result: pass
+odd
+if expr string: ok
+--- 113. @FN Comptime ---
+main
+@FN and @FILE: ok
+--- 114. String in Expressions ---
+1
+less
+1
+Hello, World
+3
+string expressions: ok
+--- 115. Self-Host Regression Features ---
+14
+9
+3
+resolved
+7
+resolved
+11
+7
+self-host regression features: ok
+--- 116. Additional Self-Host Feature Coverage ---
+v3
+7
+v3
+42
+2
+11
+int literal
+1
+2
+45
+additional self-host feature coverage: ok
+--- 117. ARM64 Self-Host Regression Coverage ---
+map[string][]Type
+Type
+fn(ArrayDataHeader) base_data
+Writer
+Reader
+8
+1
+-1
+3
+SSA
+2
+20
+2
+5
+scoped
+1
+12
+24
+9
+23
+31
+as-cast
+Elem
+Array
+4
+-5
+0
+1
+116
+8
+[]Type
+1
+1
+27
+1
+15
+38
+80
+33
+92
+41
+18
+6
+1
+35
+12
+7
+match-id
+not-ident
+idx
+1
+0
+fallback
+6
+125
+27
+38
+11
+83
+71
+75
+101
+21
+29
+31
+Option(none)|Option('halt')
+Option('tail')
+Option('set')
+"abc"
+41
+79
+43
+9
+4
+13
+38
+47
+53
+61
+16
+67
+89
+97
+59
+103
+107
+109
+113
+94
+117
+arm64 self-host regression coverage: ok
+=== ALL 119 TESTS PASSED ===

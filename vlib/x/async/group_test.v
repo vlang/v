@@ -46,6 +46,28 @@ fn test_group_error_returns_first_error() {
 	assert false
 }
 
+fn test_group_default_does_not_collect_errors() {
+	mut group := xasync.new_group(context.background())
+	group.go(fn (mut ctx context.Context) ! {
+		_ = ctx
+		return error('group failed')
+	})!
+	group.wait() or {
+		assert err.msg() == 'group failed'
+		assert group.errors().len == 0
+		return
+	}
+	assert false
+}
+
+fn test_group_rejects_invalid_error_collection_config() {
+	xasync.new_group_with_config(context.background(), collect_errors: true, max_errors: 0) or {
+		assert err.msg() == 'async: group max_errors must be positive'
+		return
+	}
+	assert false
+}
+
 fn test_group_wait_without_tasks() {
 	parent := context.background()
 	mut group := xasync.new_group(parent)
@@ -142,6 +164,102 @@ fn test_group_first_error_remains_stable_with_concurrent_secondary_errors() {
 	assert false
 }
 
+fn test_group_collects_errors_without_changing_wait_error() {
+	mut group := xasync.new_group_with_config(context.background(),
+		collect_errors: true
+		max_errors:     4
+	)!
+	secondary_ready := chan bool{cap: 3}
+	for i in 0 .. 3 {
+		group.go(fn [secondary_ready, i] (mut ctx context.Context) ! {
+			secondary_ready <- true
+			done := ctx.done()
+			select {
+				_ := <-done {
+					return error('secondary collected error ${i}')
+				}
+				1 * time.second {
+					return error('secondary timeout ${i}')
+				}
+			}
+		})!
+	}
+	for _ in 0 .. 3 {
+		assert <-secondary_ready
+	}
+	group.go(fn (mut ctx context.Context) ! {
+		_ = ctx
+		return error('primary collected error')
+	})!
+	group.wait() or {
+		assert err.msg() == 'primary collected error'
+		errs := group.errors()
+		assert errs.len == 4
+		assert error_messages_contain(errs, 'primary collected error')
+		return
+	}
+	assert false
+}
+
+fn test_group_error_collection_is_bounded_and_includes_first_error() {
+	mut group := xasync.new_group_with_config(context.background(),
+		collect_errors: true
+		max_errors:     2
+	)!
+	secondary_ready := chan bool{cap: 4}
+	for i in 0 .. 4 {
+		group.go(fn [secondary_ready, i] (mut ctx context.Context) ! {
+			secondary_ready <- true
+			done := ctx.done()
+			select {
+				_ := <-done {
+					return error('bounded secondary error ${i}')
+				}
+				1 * time.second {
+					return error('bounded secondary timeout ${i}')
+				}
+			}
+		})!
+	}
+	for _ in 0 .. 4 {
+		assert <-secondary_ready
+	}
+	group.go(fn (mut ctx context.Context) ! {
+		_ = ctx
+		return error('bounded primary error')
+	})!
+	group.wait() or {
+		assert err.msg() == 'bounded primary error'
+		errs := group.errors()
+		assert errs.len == 2
+		assert error_messages_contain(errs, 'bounded primary error')
+		return
+	}
+	assert false
+}
+
+fn test_group_errors_returns_snapshot_copy() {
+	mut group := xasync.new_group_with_config(context.background(),
+		collect_errors: true
+		max_errors:     1
+	)!
+	group.go(fn (mut ctx context.Context) ! {
+		_ = ctx
+		return error('snapshot source error')
+	})!
+	group.wait() or {
+		assert err.msg() == 'snapshot source error'
+		mut snapshot := group.errors()
+		assert snapshot.len == 1
+		snapshot[0] = error('mutated snapshot error')
+		second_snapshot := group.errors()
+		assert second_snapshot.len == 1
+		assert second_snapshot[0].msg() == 'snapshot source error'
+		return
+	}
+	assert false
+}
+
 fn test_group_many_short_jobs_return_first_error() {
 	jobs := 64
 	mut group := xasync.new_group(context.background())
@@ -208,4 +326,13 @@ fn test_group_parent_cancellation_is_observed_by_cooperative_job() {
 			assert false, 'cooperative group job did not observe parent cancellation'
 		}
 	}
+}
+
+fn error_messages_contain(errs []IError, msg string) bool {
+	for err in errs {
+		if err.msg() == msg {
+			return true
+		}
+	}
+	return false
 }
