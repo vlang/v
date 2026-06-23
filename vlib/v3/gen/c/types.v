@@ -81,7 +81,7 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 		return false
 	}
 	err_field := if g.has_ierror_interface() { 'IError err; ' } else { '' }
-	g.writeln('typedef struct { bool ok; ${err_field}${val_type} value; } ${opt_name};')
+	g.writeln('typedef struct ${opt_name} { bool ok; ${err_field}${val_type} value; } ${opt_name};')
 	g.emitted_optional_types[opt_name] = true
 	return true
 }

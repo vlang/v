@@ -21,6 +21,84 @@ fn run_compile_command(cmd string) os.Result {
 	}
 }
 
+fn prepare_c_flags_for_link(flags []string) ![]string {
+	support_flags := c_object_compile_support_flags(flags)
+	mut prepared := []string{}
+	for flag in flags {
+		clean := flag.trim_space()
+		if c_flag_is_object_file(clean) {
+			prepared << ensure_c_object_file(clean, support_flags)!
+		} else {
+			prepared << flag
+		}
+	}
+	return prepared
+}
+
+fn c_object_compile_support_flags(flags []string) []string {
+	mut support := []string{}
+	for flag in flags {
+		clean := flag.trim_space()
+		if clean.len == 0 || c_flag_is_object_file(clean) || c_flag_is_c_source_file(clean)
+			|| clean.starts_with('-l') {
+			continue
+		}
+		if clean.starts_with('-I') || clean.starts_with('-D') || clean.starts_with('-U')
+			|| clean.starts_with('-std') || clean.starts_with('-f') || clean.starts_with('-W')
+			|| clean == '-pthread' {
+			support << clean
+		}
+	}
+	return support
+}
+
+fn ensure_c_object_file(obj_path string, support_flags []string) !string {
+	if os.exists(obj_path) {
+		return obj_path
+	}
+	source_file := c_source_from_object_file(obj_path) or {
+		return error('missing C object ${obj_path}, and no adjacent .c/.cpp/.S source was found')
+	}
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	os.mkdir_all(cache_dir)!
+	cached_obj := os.join_path(cache_dir, c_object_cache_name(obj_path))
+	if os.exists(cached_obj)
+		&& os.file_last_mod_unix(cached_obj) >= os.file_last_mod_unix(source_file) {
+		return cached_obj
+	}
+	compiler := if source_file.ends_with('.cpp') { 'c++' } else { 'cc' }
+	std_flag := if source_file.ends_with('.cpp') { '-std=c++11' } else { '-std=gnu11' }
+	cmd := '${compiler} ${std_flag} -w ${support_flags.join(' ')} -o ${os.quoted_path(cached_obj)} -c ${os.quoted_path(source_file)}'
+	res := os.execute(cmd)
+	if res.exit_code != 0 {
+		return error('failed to build C object ${obj_path} from ${source_file}:\n${res.output}')
+	}
+	return cached_obj
+}
+
+fn c_source_from_object_file(obj_path string) ?string {
+	base := obj_path.all_before_last('.')
+	for ext in ['.c', '.cpp', '.S'] {
+		source_file := base + ext
+		if os.exists(source_file) {
+			return source_file
+		}
+	}
+	return none
+}
+
+fn c_object_cache_name(path string) string {
+	return path.replace_each(['/', '_', '\\', '_', ':', '_', '.', '_', ' ', '_']) + '.o'
+}
+
+fn c_flag_is_object_file(flag string) bool {
+	return flag.ends_with('.o') || flag.ends_with('.obj')
+}
+
+fn c_flag_is_c_source_file(flag string) bool {
+	return flag.ends_with('.c') || flag.ends_with('.cc') || flag.ends_with('.cpp')
+}
+
 fn C.open(charptr, int, int) int
 fn C.write(int, voidptr, int) int
 fn C.close(int) int
@@ -227,6 +305,11 @@ fn main() {
 		} else {
 			'-w'
 		}
+		resolved_c_flags := prepare_c_flags_for_link(g.c_flags()) or {
+			eprintln(err.msg())
+			exit(1)
+		}
+		c_flags := resolved_c_flags.join(' ')
 		mut cc_cmd := ''
 		mut result := os.Result{}
 		if !is_prod {
@@ -235,7 +318,7 @@ fn main() {
 			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
-			cc_cmd = '${tcc_path} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file} -lm'
+			cc_cmd = '${tcc_path} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file} ${c_flags} -lm'
 			println('  > ${cc_cmd}')
 			result = run_compile_command(cc_cmd)
 		}
@@ -243,7 +326,7 @@ fn main() {
 			if result.exit_code != 0 && result.output.len > 0 {
 				eprintln('  tcc error: ${result.output.trim_space()}')
 			}
-			cc_cmd = 'cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion -Wl,-stack_size,0x4000000 -o ${bin_file} ${output_file} -lm'
+			cc_cmd = 'cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion -Wl,-stack_size,0x4000000 -o ${bin_file} ${output_file} ${c_flags} -lm'
 			println('  > ${cc_cmd}')
 			result = run_compile_command(cc_cmd)
 			if result.exit_code != 0 {

@@ -33,7 +33,7 @@ fn (mut t Transformer) make_new_map_call(map_type string) flat.NodeId {
 
 fn map_callback_names(key_type string) (string, string, string, string) {
 	if key_type == 'string' {
-		return 'v3_map_hash_string', 'v3_map_eq_string', 'v3_map_clone_string', 'v3_map_free_string'
+		return 'map_hash_string', 'map_eq_string', 'map_clone_string', 'map_free_string'
 	}
 	size_suffix := match key_type {
 		'u8', 'i8', 'bool', 'char' { '1' }
@@ -42,7 +42,7 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 		else { '4' }
 	}
 
-	return 'v3_map_hash_int_${size_suffix}', 'v3_map_eq_int_${size_suffix}', 'v3_map_clone_int_${size_suffix}', 'v3_map_free_nop'
+	return 'map_hash_int_${size_suffix}', 'map_eq_int_${size_suffix}', 'map_clone_int_${size_suffix}', 'map_free_nop'
 }
 
 fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {

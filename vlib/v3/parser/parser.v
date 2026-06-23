@@ -1803,8 +1803,11 @@ fn (mut p Parser) module_stmt() flat.NodeId {
 }
 
 fn (mut p Parser) directive() flat.NodeId {
-	full := p.lit
+	mut full := p.lit
 	p.next() // skip '#' (lit already contains the full line)
+	if full.starts_with('#') {
+		full = full[1..]
+	}
 	mut name := full
 	mut value := ''
 	space_idx := full.index_u8(` `)
@@ -1825,12 +1828,6 @@ fn (mut p Parser) directive() flat.NodeId {
 fn (mut p Parser) skip_attrs() {
 	if p.tok == .attribute {
 		p.next()
-		if p.tok == .name && p.lit == 'flag' {
-			p.pending_flag = true
-		}
-		if p.tok == .name && p.lit == 'params' {
-			p.pending_params = true
-		}
 		if p.tok == .key_if {
 			p.next()
 			mut cond := strings.new_builder(32)
@@ -1847,13 +1844,36 @@ fn (mut p Parser) skip_attrs() {
 			}
 		}
 		for p.tok != .rsbr && p.tok != .eof {
+			if p.tok == .name {
+				if p.lit == 'flag' {
+					p.pending_flag = true
+				} else if p.lit == 'params' {
+					p.pending_params = true
+				}
+			}
 			p.next()
 		}
 		p.check(.rsbr)
 		return
 	}
 	if p.tok == .lsbr {
-		p.skip_brackets()
+		mut depth := 1
+		p.next()
+		for depth > 0 && p.tok != .eof {
+			if depth == 1 && p.tok == .name {
+				if p.lit == 'flag' {
+					p.pending_flag = true
+				} else if p.lit == 'params' {
+					p.pending_params = true
+				}
+			}
+			if p.tok == .lsbr {
+				depth++
+			} else if p.tok == .rsbr {
+				depth--
+			}
+			p.next()
+		}
 	}
 }
 
@@ -2051,6 +2071,9 @@ fn (mut p Parser) parse_comptime_else() flat.NodeId {
 
 fn eval_comptime_cond(prefs &pref.Preferences, cond string) bool {
 	c := cond.trim_space()
+	if c.contains('pkgconfig') {
+		return eval_pkgconfig_cond(c)
+	}
 	if c.starts_with('!') {
 		return !eval_comptime_cond(prefs, c[1..])
 	}
@@ -2066,6 +2089,42 @@ fn eval_comptime_cond(prefs &pref.Preferences, cond string) bool {
 	}
 	flag := c.trim_space().trim_right('? ')
 	return pref.comptime_flag_value(prefs, flag)
+}
+
+fn eval_pkgconfig_cond(cond string) bool {
+	name := pkgconfig_name_from_cond(cond)
+	if name.len == 0 {
+		return false
+	}
+	return os.system('pkg-config --exists ${name}') == 0
+}
+
+fn pkgconfig_name_from_cond(cond string) string {
+	quote1 := cond.index_u8(`'`)
+	if quote1 >= 0 {
+		rest := cond[quote1 + 1..]
+		end := rest.index_u8(`'`)
+		if end >= 0 {
+			return rest[..end]
+		}
+	}
+	quote2 := cond.index_u8(`"`)
+	if quote2 >= 0 {
+		rest := cond[quote2 + 1..]
+		end := rest.index_u8(`"`)
+		if end >= 0 {
+			return rest[..end]
+		}
+	}
+	open := cond.index_u8(`(`)
+	close := cond.last_index_u8(`)`)
+	if open < 0 || close < 0 {
+		return ''
+	}
+	if close <= open {
+		return ''
+	}
+	return cond[open + 1..close].trim_space().trim('\'"')
 }
 
 fn (mut p Parser) skip_block() {
@@ -3485,6 +3544,44 @@ fn (mut p Parser) sql_expr() flat.NodeId {
 	})
 }
 
+fn (mut p Parser) starts_sql_expr() bool {
+	if p.tok != .name {
+		return false
+	}
+	saved_s := p.s
+	saved_tok := p.tok
+	saved_lit := p.lit
+	saved_tok_pos := p.tok_pos
+	saved_tok_is_str_tail := p.tok_is_str_tail
+	saved_prev_tok := p.prev_tok
+	saved_peek_tok := p.peek_tok
+	saved_peek_lit := p.peek_lit
+	saved_peek_pos := p.peek_pos
+	saved_peek_is_str_tail := p.peek_is_str_tail
+	saved_has_peek := p.has_peek
+	p.next()
+	for p.tok == .dot {
+		p.next()
+		if p.tok != .name && !p.tok.is_keyword() {
+			break
+		}
+		p.next()
+	}
+	ok := p.tok == .lcbr
+	p.s = saved_s
+	p.tok = saved_tok
+	p.lit = saved_lit
+	p.tok_pos = saved_tok_pos
+	p.tok_is_str_tail = saved_tok_is_str_tail
+	p.prev_tok = saved_prev_tok
+	p.peek_tok = saved_peek_tok
+	p.peek_lit = saved_peek_lit
+	p.peek_pos = saved_peek_pos
+	p.peek_is_str_tail = saved_peek_is_str_tail
+	p.has_peek = saved_has_peek
+	return ok
+}
+
 fn (mut p Parser) sql_block_tokens() []string {
 	mut tokens := []string{}
 	if p.tok != .lcbr {
@@ -3682,7 +3779,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		.name, .key_module {
 			name := p.lit
 			p.next()
-			if name == 'sql' && p.tok == .name {
+			if name == 'sql' && p.starts_sql_expr() {
 				return p.sql_expr()
 			}
 			if name == '@FILE' {
@@ -3975,6 +4072,10 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return p.lock_expr()
 		}
 		.key_select {
+			if p.peek() == .lpar {
+				p.next()
+				return p.a.add_val(.ident, 'select')
+			}
 			return p.select_expr()
 		}
 		.key_sizeof {
@@ -4737,6 +4838,19 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 
 fn (mut p Parser) typeof_expr() flat.NodeId {
 	p.next() // skip 'typeof'
+	if p.tok == .lsbr {
+		p.next()
+		type_name := p.parse_type_name()
+		p.check(.rsbr)
+		if p.tok == .lpar {
+			p.next()
+			p.check(.rpar)
+		}
+		return p.a.add_node(flat.Node{
+			kind:  .typeof_expr
+			value: type_name
+		})
+	}
 	p.check(.lpar)
 	inner := p.expr(.lowest)
 	p.check(.rpar)
@@ -5012,8 +5126,7 @@ fn (mut p Parser) parse_type_name() string {
 		if p.tok == .lsbr {
 			// peek ahead to distinguish generic from index
 			pk := p.peek()
-			if pk == .name || pk == .amp || pk == .lsbr || pk == .question || pk == .rsbr
-				|| pk == .key_fn {
+			if pk == .name || pk == .amp || pk == .lsbr || pk == .question || pk == .key_fn {
 				p.next() // skip [
 				mut params := []string{}
 				params << p.parse_type_name()

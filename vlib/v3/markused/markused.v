@@ -131,9 +131,14 @@ pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 		'map.clear', 'memdup', 'strings.Builder.write_ptr', 'strings.Builder.write_runes',
 		'strings.Builder.free', 'strconv.format_int', 'strconv.format_uint', 'bool.str', 'ptr_str',
 		'strconv__f32_to_str_l', 'strconv__f64_to_str_l', 'sync.new_channel_st', 'sync.Channel.push',
-		'sync.Channel.pop', 'sync.Channel.close', 'new_channel_st', 'Channel.push', 'Channel.pop',
-		'Channel.close', 'panic', 'u8.is_letter', 'u8.is_capital', 'string.is_capital',
-		'string.to_lower_ascii', 'rune.to_lower', 'data_to_hex_string'] {
+		'sync.Channel.pop', 'sync.Channel.close', 'sync.Channel.len', 'sync.Channel.closed',
+		'new_channel_st', 'Channel.push', 'Channel.pop', 'Channel.close', 'Channel.len',
+		'Channel.closed', 'panic', 'u8.is_letter', 'u8.is_capital', 'string.is_capital',
+		'string.to_lower_ascii', 'rune.to_lower', 'data_to_hex_string', 'map_hash_string',
+		'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_4', 'map_hash_int_8', 'map_eq_string',
+		'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8', 'map_clone_string',
+		'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_4', 'map_clone_int_8', 'map_free_string',
+		'map_free_nop', '[]string.join', 'Array_string__join', 'exit', 'v_exit'] {
 		queue << seed
 		used[seed] = true
 	}
@@ -1315,6 +1320,9 @@ fn markused_c_name(name string) string {
 	}
 	if name == 'malloc' {
 		return 'v_malloc'
+	}
+	if name == 'exit' {
+		return 'v_exit'
 	}
 	if markused_c_name_is_plain(name) {
 		return name

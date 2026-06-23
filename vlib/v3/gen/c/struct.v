@@ -836,9 +836,9 @@ fn split_generic_args(s string) []string {
 
 fn generic_param_index(name string) int {
 	return match name {
-		'T', 'A', 'K' { 0 }
-		'U', 'B', 'V' { 1 }
-		'C', 'W' { 2 }
+		'T', 'A', 'K', 'X' { 0 }
+		'U', 'B', 'V', 'Y' { 1 }
+		'C', 'W', 'Z' { 2 }
 		else { 0 }
 	}
 }
@@ -1223,6 +1223,30 @@ fn (g &FlatGen) embedded_field_for_promoted_field(type_name string, field_name s
 	return path[0]
 }
 
+fn (g &FlatGen) direct_embedded_field_for_selector(base_type types.Type, field_name string) ?types.StructField {
+	type_name := g.type_lookup_name(base_type)
+	if type_name.len == 0 {
+		return none
+	}
+	fields := g.struct_fields_for_type(type_name) or { return none }
+	for field in fields {
+		embedded_type_name := g.embedded_field_type_name(field)
+		if embedded_type_name.len == 0 {
+			continue
+		}
+		short_type := if embedded_type_name.contains('.') {
+			embedded_type_name.all_after_last('.')
+		} else {
+			embedded_type_name
+		}
+		if field_name == embedded_type_name || field_name == short_type
+			|| c_name(field_name) == c_name(embedded_type_name) {
+			return field
+		}
+	}
+	return none
+}
+
 fn (g &FlatGen) embedded_field_path_for_promoted_field(type_name string, field_name string) ?[]types.StructField {
 	fields := g.struct_fields_for_type(type_name) or { return none }
 	for field in fields {
@@ -1407,7 +1431,7 @@ fn (mut g FlatGen) write_new_map(key_type types.Type, value_type types.Type) {
 
 fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string, string) {
 	if key_type is types.String {
-		return 'v3_map_hash_string', 'v3_map_eq_string', 'v3_map_clone_string', 'v3_map_free_string'
+		return 'map_hash_string', 'map_eq_string', 'map_clone_string', 'map_free_string'
 	}
 	c_key := g.tc.c_type(key_type)
 	size_suffix := match c_key {
@@ -1417,7 +1441,7 @@ fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string,
 		else { '4' }
 	}
 
-	return 'v3_map_hash_int_${size_suffix}', 'v3_map_eq_int_${size_suffix}', 'v3_map_clone_int_${size_suffix}', 'v3_map_free_nop'
+	return 'map_hash_int_${size_suffix}', 'map_eq_int_${size_suffix}', 'map_clone_int_${size_suffix}', 'map_free_nop'
 }
 
 fn (g &FlatGen) skip_builtin_struct(name string) bool {
@@ -1681,63 +1705,6 @@ fn (mut g FlatGen) struct_decls() {
 	}
 }
 
-fn (mut g FlatGen) c_value_struct_stub_decls() {
-	mut emitted := map[string]bool{}
-	for _, fields in g.tc.structs {
-		for field in fields {
-			g.collect_c_value_struct_stub(field.typ, mut emitted)
-		}
-	}
-	if emitted.len > 0 {
-		g.writeln('')
-	}
-}
-
-fn (mut g FlatGen) collect_c_value_struct_stub(typ types.Type, mut emitted map[string]bool) {
-	if typ is types.Alias {
-		g.collect_c_value_struct_stub(typ.base_type, mut emitted)
-		return
-	}
-	if typ is types.Pointer {
-		return
-	}
-	if typ is types.Struct {
-		if typ.name.starts_with('C.') {
-			raw := typ.name[2..]
-			if c_struct_stub_needed(raw) && !emitted[raw] {
-				if raw == 'mbedtls_net_context' {
-					g.writeln('struct ${raw} { int fd; };')
-				} else {
-					g.writeln('struct ${raw} { int _dummy; };')
-				}
-				emitted[raw] = true
-			}
-		}
-		return
-	}
-	if typ is types.ArrayFixed {
-		g.collect_c_value_struct_stub(typ.elem_type, mut emitted)
-		return
-	}
-	if typ is types.OptionType {
-		g.collect_c_value_struct_stub(typ.base_type, mut emitted)
-		return
-	}
-	if typ is types.ResultType {
-		g.collect_c_value_struct_stub(typ.base_type, mut emitted)
-		return
-	}
-	if typ is types.MultiReturn {
-		for item in typ.types {
-			g.collect_c_value_struct_stub(item, mut emitted)
-		}
-	}
-}
-
-fn c_struct_stub_needed(raw string) bool {
-	return raw.starts_with('mbedtls_') || raw.starts_with('ZSTD_')
-}
-
 fn (mut g FlatGen) type_forward_decls() {
 	specs := g.generic_struct_specializations()
 	for name, _ in g.tc.structs {
@@ -1875,9 +1842,8 @@ fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) 
 		ct := g.resolve_fn_ptr_type(g.tc.c_type(raw_field_type))
 		g.writeln('\t${ct} ${c_name(f.name)};')
 	} else if f.typ is types.ArrayFixed {
-		c_elem := g.tc.c_type(f.typ.elem_type)
-		len_expr := g.fixed_array_len_value(f.typ)
-		g.writeln('\t${c_elem} ${c_name(f.name)}[${len_expr}];')
+		c_elem, dims := g.fixed_array_decl_parts(f.typ)
+		g.writeln('\t${c_elem} ${c_name(f.name)}${dims};')
 	} else {
 		mut ct := if f.typ is types.OptionType || f.typ is types.ResultType {
 			g.optional_type_name(f.typ)
@@ -1940,10 +1906,12 @@ fn (mut g FlatGen) preseed_fn_ptr_type(typ types.Type) {
 		return
 	}
 	if typ is types.OptionType {
+		g.optional_type_name(typ)
 		g.preseed_fn_ptr_type(typ.base_type)
 		return
 	}
 	if typ is types.ResultType {
+		g.optional_type_name(typ)
 		g.preseed_fn_ptr_type(typ.base_type)
 		return
 	}

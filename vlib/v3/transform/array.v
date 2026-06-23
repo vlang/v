@@ -8,6 +8,17 @@ fn (mut t Transformer) make_array_new_call(elem_type string, len_expr flat.NodeI
 		'[]${elem_type}')
 }
 
+fn (mut t Transformer) make_array_push_many_call(lhs_addr flat.NodeId, rhs flat.NodeId, rhs_type string) flat.NodeId {
+	rhs_value := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'push_many')
+	return t.make_call_typed('array__push_many', arr3(lhs_addr, t.make_selector(rhs_value, 'data',
+		'voidptr'), t.make_selector(rhs_value, 'len', 'int')), 'void')
+}
+
+fn (mut t Transformer) make_array_clone_call(base_id flat.NodeId, base_type string) flat.NodeId {
+	receiver := t.transform_expr(base_id)
+	return t.make_call_typed('array__clone', arr1(t.runtime_addr(receiver, base_type)), base_type)
+}
+
 fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.value.len == 0 || is_fixed_array_type(node.value) {
 		return id
@@ -59,9 +70,15 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 		elem_id := t.a.child(&node, i)
 		elem := t.a.nodes[int(elem_id)]
 		if elem.kind == .prefix && elem.value == '...' && elem.children_count > 0 {
-			spread := t.transform_expr(t.a.child(&elem, 0))
-			call := t.make_call_typed('array_push_many', arr2(t.make_prefix(.amp,
-				t.make_ident(tmp_name)), spread), 'void')
+			spread_id := t.a.child(&elem, 0)
+			spread := t.transform_expr(spread_id)
+			spread_type := if t.node_type(spread_id).len > 0 {
+				t.node_type(spread_id)
+			} else {
+				array_type
+			}
+			call := t.make_array_push_many_call(t.make_prefix(.amp, t.make_ident(tmp_name)),
+				spread, spread_type)
 			t.pending_stmts << t.make_expr_stmt(call)
 			continue
 		}
@@ -93,8 +110,8 @@ fn (mut t Transformer) transform_array_literal_for_type(_id flat.NodeId, node fl
 		elem := t.a.nodes[int(elem_id)]
 		if elem.kind == .prefix && elem.value == '...' && elem.children_count > 0 {
 			spread := t.transform_expr_for_type(t.a.child(&elem, 0), array_type)
-			call := t.make_call_typed('array_push_many', arr2(t.make_prefix(.amp,
-				t.make_ident(tmp_name)), spread), 'void')
+			call := t.make_array_push_many_call(t.make_prefix(.amp, t.make_ident(tmp_name)),
+				spread, array_type)
 			t.pending_stmts << t.make_expr_stmt(call)
 			continue
 		}
@@ -110,6 +127,20 @@ fn (mut t Transformer) transform_array_literal_for_type(_id flat.NodeId, node fl
 		t.pending_stmts << t.make_expr_stmt(call)
 	}
 	return t.make_ident(tmp_name)
+}
+
+fn (mut t Transformer) transform_fixed_array_literal_for_type(_id flat.NodeId, node flat.Node, target_type string) ?flat.NodeId {
+	fixed_type := t.normalize_type_alias(target_type)
+	if !is_fixed_array_type(fixed_type) {
+		return none
+	}
+	elem_type := fixed_array_elem_type(fixed_type)
+	mut values := []flat.NodeId{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		elem_id := t.a.child(&node, i)
+		values << t.transform_expr_for_type(elem_id, elem_type)
+	}
+	return t.make_array_literal_typed(values, fixed_type)
 }
 
 fn (mut t Transformer) transform_empty_array_init_for_type(node flat.Node, target_type string) ?flat.NodeId {
@@ -134,7 +165,9 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	}
 	lhs_id := t.a.child(&node, 0)
 	mut lhs_type := t.lvalue_type(lhs_id)
-	lhs_type = t.normalize_type_alias(lhs_type)
+	if !array_type_has_generic_placeholder(lhs_type) {
+		lhs_type = t.normalize_type_alias(lhs_type)
+	}
 	mut array_type := t.clean_array_append_lhs_type(lhs_type)
 	if !array_type.starts_with('[]') {
 		return none
@@ -173,7 +206,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 			t.make_call_typed('array_push_many_ptr', arr3(lhs_addr, rhs,
 				t.make_fixed_array_len_expr(rhs_type)), 'void')
 		} else {
-			t.make_call_typed('array_push_many', arr2(lhs_addr, rhs), 'void')
+			t.make_array_push_many_call(lhs_addr, rhs, rhs_type)
 		}
 		result << t.make_expr_stmt(call)
 		return result
@@ -186,7 +219,11 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 }
 
 fn (t &Transformer) clean_array_append_lhs_type(typ string) string {
-	mut clean := t.normalize_type_alias(typ).trim_space()
+	mut clean := if array_type_has_generic_placeholder(typ) {
+		typ.trim_space()
+	} else {
+		t.normalize_type_alias(typ).trim_space()
+	}
 	for {
 		if clean.starts_with('&') {
 			clean = clean[1..].trim_space()
@@ -203,6 +240,32 @@ fn (t &Transformer) clean_array_append_lhs_type(typ string) string {
 		break
 	}
 	return clean
+}
+
+fn array_type_has_generic_placeholder(typ string) bool {
+	clean := typ.trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	if is_generic_placeholder_type_name(clean) {
+		return true
+	}
+	if clean.starts_with('&') {
+		return array_type_has_generic_placeholder(clean[1..])
+	}
+	if clean.starts_with('[]') {
+		return array_type_has_generic_placeholder(clean[2..])
+	}
+	if clean.starts_with('map[') {
+		bracket_end := clean.index(']') or { return false }
+		return array_type_has_generic_placeholder(clean[4..bracket_end])
+			|| array_type_has_generic_placeholder(clean[bracket_end + 1..])
+	}
+	if clean.starts_with('[') {
+		bracket_end := clean.index(']') or { return false }
+		return array_type_has_generic_placeholder(clean[bracket_end + 1..])
+	}
+	return false
 }
 
 fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Node, base_type string, elem_type string) ?flat.NodeId {
@@ -722,7 +785,7 @@ fn (mut t Transformer) lower_array_sorted_call(node flat.Node, fn_node flat.Node
 	}
 	base_id := t.a.child(&fn_node, 0)
 	clone_name := t.new_temp('sorted')
-	clone_call := t.make_call_typed('array_clone', arr1(t.transform_expr(base_id)), base_type)
+	clone_call := t.make_array_clone_call(base_id, base_type)
 	t.pending_stmts << t.make_decl_assign_typed(clone_name, clone_call, base_type)
 	cmp_id := if node.children_count > 1 { t.a.child(&node, 1) } else { flat.empty_node }
 	t.pending_stmts << t.make_array_default_sort_stmt(t.make_ident(clone_name), base_type[2..],
@@ -751,7 +814,7 @@ fn (mut t Transformer) lower_array_sorted_with_compare_call(node flat.Node, fn_n
 	}
 	base_id := t.a.child(&fn_node, 0)
 	clone_name := t.new_temp('sorted')
-	clone_call := t.make_call_typed('array_clone', arr1(t.transform_expr(base_id)), base_type)
+	clone_call := t.make_array_clone_call(base_id, base_type)
 	t.pending_stmts << t.make_decl_assign_typed(clone_name, clone_call, base_type)
 	elem_type := base_type[2..]
 	cmp := t.stable_array_compare_fn(t.a.child(&node, 1), elem_type)

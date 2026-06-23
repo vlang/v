@@ -63,7 +63,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 		if container.kind == .range {
 			panic('internal error: range for-in reached C backend after transform')
 		} else {
-			container_type := g.tc.resolve_type(g.a.child(&node, 2))
+			container_type := g.usable_expr_type(g.a.child(&node, 2))
 			has_index := int(val_id) >= 0
 			idx_var := if has_index {
 				g.c_loop_local_name(g.a.child_node(&node, 0).value)
@@ -85,7 +85,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				key_var := if has_index { idx_var } else { '__mk_${g.tmp_count}' }
 				val_var_ := if has_index { elem_var } else { var_name }
 				access := if container_type is types.Pointer { '->' } else { '.' }
-				key_values := '${container_str}${access}key_values'
+				key_values := '(${container_str})${access}key_values'
 				g.writeln('for (int ${iter_var} = 0; ${iter_var} < ${key_values}.len; ${iter_var}++) {')
 				g.indent++
 				g.writeln('if (${key_values}.all_deleted && ${key_values}.all_deleted[${iter_var}]) continue;')

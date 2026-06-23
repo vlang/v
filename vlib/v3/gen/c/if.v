@@ -3,6 +3,11 @@ module c
 import v3.flat
 import v3.types
 
+struct MultiReturnTailParts {
+	prefix_count int
+	values       []flat.NodeId
+}
+
 fn (mut g FlatGen) gen_if(node flat.Node) {
 	if node.children_count < 2 {
 		return
@@ -265,7 +270,12 @@ fn (mut g FlatGen) gen_if_expr(node flat.Node) {
 	g.write(')')
 }
 
-fn (mut g FlatGen) gen_if_expr_block(block &flat.Node) {
+fn (mut g FlatGen) gen_if_expr_block(block &flat.Node, ret_type types.Type) {
+	if ret_type is types.MultiReturn {
+		if g.gen_if_expr_multi_return_block(block, ret_type) {
+			return
+		}
+	}
 	for i in 0 .. block.children_count {
 		child_id := g.a.child(block, i)
 		child := g.a.nodes[int(child_id)]
@@ -289,6 +299,57 @@ fn (mut g FlatGen) gen_if_expr_block(block &flat.Node) {
 			g.gen_node(child_id)
 		}
 	}
+}
+
+fn (g &FlatGen) multi_return_tail_parts(block &flat.Node, count int) ?MultiReturnTailParts {
+	if block.kind != .block || count <= 0 || block.children_count == 0 {
+		return none
+	}
+	last_id := g.a.child(block, block.children_count - 1)
+	last := g.a.nodes[int(last_id)]
+	if last.kind == .block {
+		if nested := g.multi_return_tail_parts(&last, count) {
+			if nested.prefix_count == 0 {
+				return MultiReturnTailParts{
+					prefix_count: int(block.children_count) - 1
+					values:       nested.values.clone()
+				}
+			}
+		}
+	}
+	mut values := []flat.NodeId{}
+	for i := int(block.children_count) - 1; i >= 0; i-- {
+		child_id := g.a.child(block, i)
+		child := g.a.nodes[int(child_id)]
+		if child.kind != .expr_stmt || child.children_count != 1 {
+			break
+		}
+		values.prepend(g.a.child(&child, 0))
+		if values.len == count {
+			return MultiReturnTailParts{
+				prefix_count: i
+				values:       values.clone()
+			}
+		}
+	}
+	return none
+}
+
+fn (mut g FlatGen) gen_if_expr_multi_return_block(block &flat.Node, ret_type types.MultiReturn) bool {
+	parts := g.multi_return_tail_parts(block, ret_type.types.len) or { return false }
+	for i in 0 .. parts.prefix_count {
+		g.gen_node(g.a.child(block, i))
+	}
+	g.write('_ifexpr = (${g.tc.c_type(types.Type(ret_type))}){')
+	for i, value_id in parts.values {
+		if i > 0 {
+			g.write(', ')
+		}
+		g.write('.arg${i} = ')
+		g.gen_expr(value_id)
+	}
+	g.writeln('};')
+	return true
 }
 
 fn (g &FlatGen) is_expr_kind(kind flat.NodeKind) bool {
@@ -364,22 +425,28 @@ fn (mut g FlatGen) if_expr_type(node &flat.Node) types.Type {
 }
 
 fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
-	ret_type := g.if_expr_type(&node)
+	ret_type := if g.expected_expr_type !is types.Void {
+		g.expected_expr_type
+	} else if node.typ.len > 0 {
+		g.tc.parse_type(node.typ)
+	} else {
+		g.if_expr_type(&node)
+	}
 	then_block := g.a.child_node(&node, 1)
 	ct := g.tc.c_type(ret_type)
 	g.writeln('({${ct} _ifexpr;')
 	g.write('if (')
 	g.gen_expr(g.a.child(&node, 0))
 	g.writeln(') {')
-	g.gen_if_expr_block(then_block)
+	g.gen_if_expr_block(then_block, ret_type)
 	g.write('} else ')
 	if node.children_count > 2 {
 		else_node := g.a.child_node(&node, 2)
 		if else_node.kind == .if_expr {
-			g.gen_if_expr_else_if(*else_node)
+			g.gen_if_expr_else_if(*else_node, ret_type)
 		} else if else_node.kind == .block {
 			g.writeln('{')
-			g.gen_if_expr_block(else_node)
+			g.gen_if_expr_block(else_node, ret_type)
 			g.writeln('}')
 		}
 	} else {
@@ -388,20 +455,20 @@ fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
 	g.write('_ifexpr;})')
 }
 
-fn (mut g FlatGen) gen_if_expr_else_if(node flat.Node) {
+fn (mut g FlatGen) gen_if_expr_else_if(node flat.Node, ret_type types.Type) {
 	then_block := g.a.child_node(&node, 1)
 	g.write('if (')
 	g.gen_expr(g.a.child(&node, 0))
 	g.writeln(') {')
-	g.gen_if_expr_block(then_block)
+	g.gen_if_expr_block(then_block, ret_type)
 	g.write('} else ')
 	if node.children_count > 2 {
 		else_node := g.a.child_node(&node, 2)
 		if else_node.kind == .if_expr {
-			g.gen_if_expr_else_if(*else_node)
+			g.gen_if_expr_else_if(*else_node, ret_type)
 		} else if else_node.kind == .block {
 			g.writeln('{')
-			g.gen_if_expr_block(else_node)
+			g.gen_if_expr_block(else_node, ret_type)
 			g.writeln('}')
 		}
 	} else {

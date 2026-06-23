@@ -242,20 +242,41 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	}
 	type_id := g.iface_type_id(iface.name, concrete_name)
 	ct := g.tc.c_type(iface)
+	fields := g.tc.interface_fields[iface.name] or { []types.StructField{} }
+	concrete_ct := g.tc.c_type(actual_base)
+	if fields.len > 0 {
+		tmp := g.tmp_count
+		g.tmp_count++
+		if actual is types.Pointer {
+			g.write('({ ${concrete_ct}* _iface${tmp} = ')
+			g.gen_expr(id)
+			g.write('; (${ct}){._typ = ${type_id}, ._object = _iface${tmp}')
+			for field in fields {
+				g.write(', .${c_name(field.name)} = _iface${tmp}->${c_name(field.name)}')
+			}
+			g.write('}; })')
+		} else {
+			g.write('({ ${concrete_ct} _iface${tmp} = ')
+			g.gen_expr(id)
+			g.write('; (${ct}){._typ = ${type_id}, ._object = memdup(&_iface${tmp}, sizeof(${concrete_ct}))')
+			for field in fields {
+				g.write(', .${c_name(field.name)} = _iface${tmp}.${c_name(field.name)}')
+			}
+			g.write('}; })')
+		}
+		return true
+	}
 	g.write('(${ct}){._typ = ${type_id}, ._object = ')
 	if actual is types.Pointer {
 		g.gen_expr(id)
+	} else if node.kind in [.ident, .selector, .index] {
+		g.write('memdup(&')
+		g.gen_expr(id)
+		g.write(', sizeof(${concrete_ct}))')
 	} else {
-		concrete_ct := g.tc.c_type(actual_base)
-		if node.kind in [.ident, .selector, .index] {
-			g.write('memdup(&')
-			g.gen_expr(id)
-			g.write(', sizeof(${concrete_ct}))')
-		} else {
-			g.write('memdup((${concrete_ct}[]){')
-			g.gen_expr(id)
-			g.write('}, sizeof(${concrete_ct}))')
-		}
+		g.write('memdup((${concrete_ct}[]){')
+		g.gen_expr(id)
+		g.write('}, sizeof(${concrete_ct}))')
 	}
 	g.write('}')
 	return true
@@ -323,6 +344,17 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name string, method string)
 	name := '${iface_name}.${method}'
 	if g.used_fn_contains(name) || g.used_fn_contains(c_name(name)) {
 		return true
+	}
+	if decl_key := g.interface_method_signature_key(iface_name, method) {
+		if decl_key != name
+			&& (g.used_fn_contains(decl_key) || g.used_fn_contains(c_name(decl_key))) {
+			return true
+		}
+		decl_short_name := '${decl_key.all_before_last('.').all_after_last('.')}.${method}'
+		if decl_short_name != decl_key
+			&& (g.used_fn_contains(decl_short_name) || g.used_fn_contains(c_name(decl_short_name))) {
+			return true
+		}
 	}
 	short_name := '${iface_name.all_after_last('.')}.${method}'
 	return short_name != name && g.interface_dispatch_short_name_is_unambiguous(short_name, method)

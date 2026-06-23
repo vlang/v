@@ -363,7 +363,6 @@ pub fn (mut s Scanner) scan() token.Token {
 				s.offset++
 				return .lsbr
 			}
-			s.offset++
 			start := s.offset
 			for s.offset < s.src.len && s.src[s.offset] != `\n` {
 				s.offset++

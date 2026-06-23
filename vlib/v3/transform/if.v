@@ -1268,12 +1268,10 @@ fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) strin
 // find_sum_type_for_variant returns the sum type name that contains
 // the given variant, or '' if none is found.
 fn (t &Transformer) find_sum_type_for_variant(variant string) string {
-	short := if variant.contains('.') { variant.all_after_last('.') } else { variant }
 	mut best := ''
 	for sum_name, variants in t.sum_types {
 		for v in variants {
-			short_v := if v.contains('.') { v.all_after_last('.') } else { v }
-			if v == variant || short_v == short {
+			if t.variant_names_match(v, variant) {
 				if sum_name.contains('.') {
 					return sum_name
 				}

@@ -163,6 +163,14 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 		if kind_id != 61 {
 			continue
 		}
+		decl_key := g.generic_fn_decl_key(node, cur_module)
+		if decl_key in g.generic_fn_specs || g.has_generic_params(node)
+			|| g.fn_has_unresolved_generics(node) {
+			for item in g.generic_fn_specialization_items(node, cur_module) {
+				items << item
+			}
+			continue
+		}
 		if !g.should_emit_fn_node_in_module(node, i, cur_module) {
 			continue
 		}
@@ -175,6 +183,27 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			node_id: flat.NodeId(i)
 			module:  cur_module
 			cost:    node.children_count + 1
+		}
+	}
+	return items
+}
+
+fn (mut g FlatGen) generic_fn_specialization_items(node flat.Node, module_name string) []FlatFnGenItem {
+	decl_key := g.generic_fn_decl_key(node, module_name)
+	specs := g.generic_fn_specs[decl_key] or { return []FlatFnGenItem{} }
+	mut items := []FlatFnGenItem{cap: specs.len}
+	for type_arg in specs {
+		clone_id := g.clone_generic_fn_node(node, type_arg)
+		clone := g.a.nodes[int(clone_id)]
+		qfn := qualified_fn_name_in_module(module_name, clone.value)
+		if g.emitted_fn_contains(qfn) {
+			continue
+		}
+		g.emitted_fns[qfn] = true
+		items << FlatFnGenItem{
+			node_id: clone_id
+			module:  module_name
+			cost:    clone.children_count + 1
 		}
 	}
 	return items

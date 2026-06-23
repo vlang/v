@@ -757,6 +757,20 @@ fn (t &Transformer) const_expr_for_name(name string) ?flat.NodeId {
 fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_type types.Type) flat.NodeId {
 	expected_enum := elem_type.name()
 	array_type := '[]${expected_enum}'
+	if named_arg := t.transform_variadic_struct_fields(node, first_arg, elem_type) {
+		if t.in_const_init {
+			return t.make_array_literal_typed([named_arg], array_type)
+		}
+		tmp_name := t.new_temp('varargs')
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, t.make_array_new_call(expected_enum,
+			t.make_int_literal(0), t.make_int_literal(1)), array_type)
+		value_name := t.new_temp('vararg')
+		t.pending_stmts << t.make_decl_assign_typed(value_name, named_arg, expected_enum)
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('array_push', arr2(t.make_prefix(.amp,
+			t.make_ident(tmp_name)), t.make_prefix(.amp, t.make_ident(value_name))), 'void'))
+		t.set_var_type(tmp_name, array_type)
+		return t.make_ident(tmp_name)
+	}
 	if t.in_const_init {
 		mut values := []flat.NodeId{cap: int(node.children_count) - first_arg}
 		for i in first_arg .. node.children_count {
@@ -793,6 +807,43 @@ fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_ty
 	}
 	t.set_var_type(tmp_name, array_type)
 	return t.make_ident(tmp_name)
+}
+
+fn (mut t Transformer) transform_variadic_struct_fields(node flat.Node, field_start int, elem_type types.Type) ?flat.NodeId {
+	if field_start >= node.children_count {
+		return none
+	}
+	if elem_type !is types.Struct {
+		return none
+	}
+	first := t.a.child_node(&node, field_start)
+	if first.kind != .field_init {
+		return none
+	}
+	mut field_ids := []flat.NodeId{}
+	for i in field_start .. node.children_count {
+		field_id := t.a.child(&node, i)
+		field := t.a.nodes[int(field_id)]
+		if field.kind != .field_init {
+			break
+		}
+		field_ids << field_id
+	}
+	if field_ids.len == 0 {
+		return none
+	}
+	start := t.a.children.len
+	for field_id in field_ids {
+		t.a.children << field_id
+	}
+	struct_id := t.a.add_node(flat.Node{
+		kind:           .struct_init
+		children_start: start
+		children_count: flat.child_count(field_ids.len)
+		value:          elem_type.name()
+		typ:            elem_type.name()
+	})
+	return t.transform_struct_fields(struct_id, t.a.nodes[int(struct_id)])
 }
 
 fn (mut t Transformer) make_array_literal_typed(values []flat.NodeId, typ string) flat.NodeId {
@@ -1384,7 +1435,8 @@ fn (mut t Transformer) try_lower_array_method_call(node flat.Node) ?flat.NodeId 
 	match fn_node.value {
 		'clone' {
 			receiver := t.transform_expr(base_id)
-			return t.make_call_typed('array_clone', arr1(receiver), clean_base_type)
+			return t.make_call_typed('array__clone', arr1(t.runtime_addr(receiver, base_type)),
+				clean_base_type)
 		}
 		'reverse' {
 			receiver := t.transform_expr(base_id)
@@ -1426,7 +1478,7 @@ fn (mut t Transformer) try_lower_array_method_call(node flat.Node) ?flat.NodeId 
 			}
 			receiver := t.transform_expr(base_id)
 			arg := t.transform_expr(t.a.children[node.children_start + 1])
-			return t.make_call_typed('array_string_join', arr2(receiver, arg), 'string')
+			return t.make_call_typed('Array_string__join', arr2(receiver, arg), 'string')
 		}
 		else {
 			return none
@@ -1486,16 +1538,39 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	name := t.new_temp('anon_fn')
 	mut param_types := []types.Type{}
 	mut param_ids := []flat.NodeId{}
+	mut param_names := []string{}
+	mut capture_names := []string{}
+	mut capture_types := map[string]string{}
 	mut body_ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		child := t.a.nodes[int(child_id)]
 		if child.kind == .param {
 			param_ids << child_id
+			if child.value.len > 0 {
+				param_names << child.value
+			}
 			if !isnil(t.tc) {
 				param_types << t.tc.parse_type(child.typ)
 			}
-		} else if child.kind != .ident {
+		} else if child.kind == .ident {
+			if child.value.len > 0 && child.value !in capture_names {
+				mut capture_type := t.var_type(child.value)
+				if capture_type.len == 0 {
+					capture_type = t.node_type(child_id)
+				}
+				if capture_type.len == 0 && !isnil(t.tc) {
+					if typ := t.tc.expr_type(child_id) {
+						capture_type = typ.name()
+					}
+				}
+				if capture_type.len == 0 || capture_type == 'unknown' {
+					capture_type = 'int'
+				}
+				capture_names << child.value
+				capture_types[child.value] = capture_type
+			}
+		} else {
 			body_ids << child_id
 		}
 	}
@@ -1512,7 +1587,20 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			t.set_var_type(param.value, param.typ)
 		}
 	}
-	new_body := t.transform_stmts(body_ids)
+	mut lifted_body := []flat.NodeId{cap: capture_names.len + body_ids.len}
+	for capture_name in capture_names {
+		if capture_name in param_names {
+			continue
+		}
+		capture_type := capture_types[capture_name] or { continue }
+		t.set_var_type(capture_name, capture_type)
+		lifted_body << t.make_decl_assign_typed(capture_name, t.zero_value_for_type(capture_type),
+			capture_type)
+	}
+	for body_id in body_ids {
+		lifted_body << body_id
+	}
+	new_body := t.transform_stmts(lifted_body)
 	t.var_types = saved_vars
 	t.cur_fn_name = saved_fn_name
 	t.cur_fn_ret_type = saved_ret_type
@@ -2177,7 +2265,7 @@ fn (t &Transformer) sum_type_parents_for_variant(variant string) []string {
 	if parents := t.sum_variant_parents[variant] {
 		return parents.clone()
 	}
-	short := if variant.contains('.') { variant.all_after_last('.') } else { variant }
+	short := t.variant_short_name(variant)
 	if short != variant {
 		if parents := t.sum_variant_parents[short] {
 			return parents.clone()
@@ -2186,7 +2274,7 @@ fn (t &Transformer) sum_type_parents_for_variant(variant string) []string {
 	mut result := []string{}
 	for sum_name, variants in t.sum_types {
 		for v in variants {
-			short_v := if v.contains('.') { v.all_after_last('.') } else { v }
+			short_v := t.variant_short_name(v)
 			if v == variant || short_v == short {
 				result << sum_name
 				break
@@ -2199,7 +2287,7 @@ fn (t &Transformer) sum_type_parents_for_variant(variant string) []string {
 				continue
 			}
 			for v in variants {
-				short_v := if v.contains('.') { v.all_after_last('.') } else { v }
+				short_v := t.variant_short_name(v)
 				if v == variant || short_v == short {
 					result << sum_name
 					break

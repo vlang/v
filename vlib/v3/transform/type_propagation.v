@@ -326,7 +326,7 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 
 fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 	if is_generic_placeholder_type_name(typ) && !t.is_known_type_name(typ) {
-		return 'int'
+		return typ
 	}
 	if typ.starts_with('mut ') {
 		return '&' + t.normalize_type_alias(typ[4..])

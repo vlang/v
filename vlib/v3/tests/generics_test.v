@@ -380,9 +380,9 @@ fn main() {
 
 	// multi-param generic struct fields
 	run_generic_ok(v3_bin, 'run_multi_param_struct_fields', '
-struct Pair[T, U] {
-	left T
-	right U
+struct Pair[X, Y] {
+	left X
+	right Y
 }
 fn main() {
 	p := Pair[int, string]{left: 1, right: "ok"}

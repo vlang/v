@@ -1104,7 +1104,7 @@ fn (tc &TypeChecker) implicit_veb_ctx_type() Type {
 fn (tc &TypeChecker) fn_needs_implicit_veb_ctx(node flat.Node) bool {
 	return tc.fn_returns_veb_result(node) && tc.fn_has_receiver_param(node)
 		&& !tc.fn_receiver_type_is_context(node) && !tc.fn_has_param(node, 'ctx')
-		&& tc.type_name_known('Context')
+		&& tc.type_name_known_in_current_module('Context')
 }
 
 fn (tc &TypeChecker) fn_implicit_veb_ctx_insert_index(node flat.Node) int {
@@ -1536,9 +1536,9 @@ fn is_bare_generic_param(typ string) bool {
 
 fn generic_param_index(name string) int {
 	return match name {
-		'T', 'A', 'K' { 0 }
-		'U', 'B', 'V' { 1 }
-		'C', 'W' { 2 }
+		'T', 'A', 'K', 'X' { 0 }
+		'U', 'B', 'V', 'Y' { 1 }
+		'C', 'W', 'Z' { 2 }
 		else { 0 }
 	}
 }
@@ -1605,6 +1605,12 @@ fn (tc &TypeChecker) type_name_known(typ string) bool {
 		|| qtyp in tc.structs || typ in tc.interface_names || qtyp in tc.interface_names
 		|| typ in tc.enum_names || qtyp in tc.enum_names || typ in tc.sum_types
 		|| qtyp in tc.sum_types
+}
+
+fn (tc &TypeChecker) type_name_known_in_current_module(typ string) bool {
+	qtyp := tc.qualify_name(typ)
+	return qtyp in tc.type_aliases || qtyp in tc.structs || qtyp in tc.interface_names
+		|| qtyp in tc.enum_names || qtyp in tc.sum_types
 }
 
 fn should_check_named_type(typ string) bool {
@@ -2732,7 +2738,7 @@ fn (mut tc TypeChecker) resolve_generic_call_info(fn_node flat.Node) ?CallInfo {
 }
 
 fn is_decode_call_name(name string) bool {
-	return name == 'decode' || name.ends_with('.decode') || name.ends_with('__decode')
+	return name in ['json.decode', 'json2.decode']
 }
 
 fn is_veb_run_at_call_name(name string) bool {
@@ -4868,9 +4874,8 @@ fn (tc &TypeChecker) struct_has_middleware_receiver(struct_name string) bool {
 }
 
 fn is_middleware_type_name(name string) bool {
-	short := if name.contains('.') { name.all_after_last('.') } else { name }
-	base := if short.contains('[') { short.all_before('[') } else { short }
-	return base == 'Middleware'
+	base := if name.contains('[') { name.all_before('[') } else { name }
+	return base == 'veb.Middleware'
 }
 
 fn (tc &TypeChecker) receiver_embeds(actual Type, expected Type) bool {
@@ -5577,6 +5582,9 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			if typ := tc.cur_scope.lookup(node.value) {
 				return typ
 			}
+			if typ := tc.file_scope.lookup(node.value) {
+				return typ
+			}
 			qname := tc.qualify_name(node.value)
 			if qname in tc.const_types {
 				return tc.const_types[qname] or { unknown_type('unknown const `${qname}`') }
@@ -5917,6 +5925,9 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 		.sizeof_expr {
 			return Type(USize{})
 		}
+		.offsetof_expr {
+			return Type(USize{})
+		}
 		.cast_expr {
 			return tc.parse_type(node.value)
 		}
@@ -6158,6 +6169,23 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 		if base_type is Array {
 			return base_type_raw
 		}
+		if base_type is ArrayFixed {
+			return Type(Array{
+				elem_type: fixed_array_elem_type(base_type)
+			})
+		}
+		if base_type is Pointer {
+			inner0 := pointer_base_type(base_type)
+			mut inner := inner0
+			if inner0 is Alias {
+				inner = inner0.base_type
+			}
+			if inner is ArrayFixed {
+				return Type(Array{
+					elem_type: fixed_array_elem_type(inner)
+				})
+			}
+		}
 		return Type(string_)
 	}
 	if base_type is Map {
@@ -6241,7 +6269,8 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return 'Array'
 	}
 	if t is ArrayFixed {
-		return if tc.has_builtins { 'array' } else { 'Array' }
+		len_text := if t.len_expr.len > 0 { t.len_expr } else { t.len.str() }
+		return 'Array_fixed_${c_type_name_part(tc.c_type(t.elem_type))}_${c_type_name_part(len_text)}'
 	}
 	if t is Channel {
 		return 'chan'
@@ -6253,7 +6282,7 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return tc.c_type(t.base_type) + '*'
 	}
 	if t is FnType {
-		ret := if t.return_type is Void { 'void' } else { tc.c_type(t.return_type) }
+		ret := tc.fn_ptr_return_c_type(t.return_type)
 		if t.params.len == 0 {
 			return 'fn_ptr:${ret}|void'
 		}
@@ -6305,9 +6334,31 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 	return 'int'
 }
 
+fn (tc &TypeChecker) fn_ptr_return_c_type(t Type) string {
+	if t is Void {
+		return 'void'
+	}
+	if t is OptionType {
+		return tc.optional_c_type_name(t.base_type)
+	}
+	if t is ResultType {
+		return tc.optional_c_type_name(t.base_type)
+	}
+	return tc.c_type(t)
+}
+
+fn (tc &TypeChecker) optional_c_type_name(base_type Type) string {
+	if base_type is Void || base_type is Primitive || base_type is Enum {
+		return 'Optional'
+	}
+	inner_ct := tc.c_type(base_type)
+	return 'Optional_${inner_ct.replace('*', 'ptr').replace(' ', '_')}'
+}
+
 fn c_type_name_part(s string) string {
 	return s.replace('*', 'ptr').replace(' ', '_').replace(',', '_').replace('|', '_').replace(':',
-		'_')
+		'_').replace('.', '_').replace('[', '_').replace(']', '_').replace('(', '_').replace(')',
+		'_').replace('-', '_')
 }
 
 fn resolve_type_name_for_method(t Type) string {

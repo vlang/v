@@ -425,6 +425,9 @@ fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name s
 	}
 	body := t.a.nodes[int(body_id)]
 	if body.kind != .block {
+		if body.kind == .none_expr && t.is_optional_type_name(t.cur_fn_ret_type) {
+			return arr1(t.make_none_return_stmt())
+		}
 		if target_name.len == 0 {
 			value := t.transform_expr(body_id)
 			mut result := []flat.NodeId{}
@@ -460,6 +463,11 @@ fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name s
 				for eid in expanded {
 					result << eid
 				}
+			} else if inner.kind == .call && t.is_error_call(inner)
+				&& t.is_optional_type_name(t.cur_fn_ret_type) {
+				result << t.make_return(inner_id, t.cur_fn_ret_type)
+			} else if inner.kind == .none_expr && t.is_optional_type_name(t.cur_fn_ret_type) {
+				result << t.make_none_return_stmt()
 			} else if t.node_type(inner_id) == 'void' {
 				expanded := t.transform_stmt(child_id)
 				t.drain_pending(mut result)
@@ -492,6 +500,14 @@ fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name s
 	}
 	_ = target_type
 	return result
+}
+
+fn (t &Transformer) is_error_call(node flat.Node) bool {
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	fn_node := t.a.child_node(&node, 0)
+	return fn_node.value == 'error' || fn_node.value == 'error_with_code'
 }
 
 fn (t &Transformer) is_noreturn_call(node flat.Node) bool {
