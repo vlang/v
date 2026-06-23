@@ -82,8 +82,9 @@ mut:
 	fn_index     map[string]int
 	fn_ret       map[string]WType
 	fn_params    map[string][]WType
-	file_aliases map[string]map[string]string // file -> (import alias -> full import path)
-	import_paths []string                     // every `import a.b.c` path (full)
+	file_aliases   map[string]map[string]string // file -> (import alias -> full import path)
+	import_paths   []string                     // every `import a.b.c` path (full)
+	module_imports map[string][]string          // module path -> imported module paths ('' = main)
 	data_pool []u8
 	data_off  map[string]int
 	uses_print bool
@@ -123,7 +124,7 @@ pub fn (mut g Gen) gen() {
 		g.print_int_idx = g.mod.reserve_func_index(defined)
 		defined++
 	}
-	mut main_init := -1
+	mut module_init := map[string]string{} // module path -> its init fn key
 	for i, f in user_fns {
 		idx := g.mod.reserve_func_index(defined + i)
 		key := qualified_fn_key(f.module, f.name)
@@ -133,17 +134,13 @@ pub fn (mut g Gen) gen() {
 		if f.name == 'main' && (f.module == '' || f.module == 'main') {
 			g.has_main = true
 		} else if f.name == 'init' && f.params.len == 0 {
-			// Imported-module inits run before main's init (which runs last).
-			if f.module == '' || f.module == 'main' {
-				main_init = idx
-			} else {
-				g.init_fns << idx
-			}
+			module_init[f.module] = key
 		}
 	}
-	if main_init >= 0 {
-		g.init_fns << main_init
-	}
+	// Order init calls by the import graph (dependencies first), so a module's
+	// init observes its imports' startup; main's init runs last.
+	mut visited := map[string]bool{}
+	g.order_module_inits('', module_init, mut visited)
 
 	// 2. helper bodies (must be added in the same order as reserved above).
 	if g.uses_print {
@@ -274,36 +271,28 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 		}
 	}
 	// `init` functions are entry points (run before main), like the C path's
-	// _vinit. Activate the init of any reached module (main is always active),
-	// then keep following calls and activating until the set stabilizes.
-	for {
-		for work.len > 0 {
-			f := candidates[work.pop()]
-			for callee_key in g.called_candidate_keys(f, candidates) {
-				if callee_key !in reached {
-					reached[callee_key] = true
-					work << callee_key
-				}
-			}
+	// _vinit. Every imported module runs its init regardless of whether any of
+	// its other functions are called, so seed the init of main and of every
+	// imported module, then follow the calls those inits make.
+	mut active := map[string]bool{}
+	active[''] = true
+	for p in g.import_paths {
+		active[p] = true
+	}
+	for key in order {
+		f := candidates[key]
+		if key !in reached && f.name == 'init' && f.params.len == 0 && f.module in active {
+			reached[key] = true
+			work << key
 		}
-		mut active := map[string]bool{}
-		for key, _ in reached {
-			active[candidates[key].module] = true
-		}
-		mut added := false
-		for key in order {
-			f := candidates[key]
-			if key in reached {
-				continue
+	}
+	for work.len > 0 {
+		f := candidates[work.pop()]
+		for callee_key in g.called_candidate_keys(f, candidates) {
+			if callee_key !in reached {
+				reached[callee_key] = true
+				work << callee_key
 			}
-			if f.name == 'init' && f.params.len == 0 && (f.module == '' || f.module in active) {
-				reached[key] = true
-				work << key
-				added = true
-			}
-		}
-		if !added {
-			break
 		}
 	}
 
@@ -1340,6 +1329,7 @@ fn (mut g Gen) gen_call(node flat.Node) WType {
 // import path (see module_path_for_file), so two nested modules with the same
 // leaf (`import foo.util as fu`, `import bar.util as bu`) stay distinct.
 fn (mut g Gen) collect_imports() {
+	// Pass 1: import paths + per-file aliases.
 	mut cur_file := ''
 	for node in g.a.nodes {
 		if node.kind == .file {
@@ -1352,6 +1342,42 @@ fn (mut g Gen) collect_imports() {
 				}
 				g.file_aliases[cur_file][node.typ] = node.value
 			}
+		}
+	}
+	// Pass 2: the module import graph (module_path_for_file now works), keyed by
+	// the importing file's module path ('' for main), used to order init calls.
+	cur_file = ''
+	mut cur_mod := ''
+	for node in g.a.nodes {
+		if node.kind == .file {
+			cur_file = node.value
+			cur_mod = ''
+		} else if node.kind == .module_decl {
+			cur_mod = if node.value != '' && node.value != 'main' {
+				g.module_path_for_file(cur_file)
+			} else {
+				''
+			}
+		} else if node.kind == .import_decl && node.value.len > 0 {
+			g.module_imports[cur_mod] << node.value
+		}
+	}
+}
+
+// order_module_inits appends init function indices in dependency order via a
+// post-order walk of the import graph: a module's imports' inits run first, and
+// since main ('') is the root, its own init is appended last.
+fn (mut g Gen) order_module_inits(mod string, module_init map[string]string, mut visited map[string]bool) {
+	if mod in visited {
+		return
+	}
+	visited[mod] = true
+	for dep in g.module_imports[mod] {
+		g.order_module_inits(dep, module_init, mut visited)
+	}
+	if init_key := module_init[mod] {
+		if idx := g.fn_index[init_key] {
+			g.init_fns << idx
 		}
 	}
 }

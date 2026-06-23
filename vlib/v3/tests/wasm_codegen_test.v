@@ -631,6 +631,51 @@ fn test_wasm_char_literals() {
 	run_wasi_expect(wasm, ['65', '65', '48', '10'])
 }
 
+fn test_wasm_init_only_imported_module() {
+	v3_bin := v3_binary()
+	// An imported module with only an init() (no called function) must still
+	// run its init before main.
+	dir := os.join_path(os.vtmp_dir(), 'wasm_initonly')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), "import moda\n\nfn main() {\n\tprintln('main')\n}\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'moda', 'moda.v'), "module moda\n\nfn init() {\n\tprintln('moda init')\n}\n") or {
+		panic(err)
+	}
+	out_wasm := os.join_path(dir, 'main.wasm')
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir,
+		'main.v'))}')
+	assert res.exit_code == 0, res.output
+	assert_valid_wasm(out_wasm)
+	run_wasi_expect(out_wasm, ['moda init', 'main'])
+}
+
+fn test_wasm_init_dependency_order() {
+	v3_bin := v3_binary()
+	// main -> a -> b: inits run dependency-first (b, then a), then main.
+	dir := os.join_path(os.vtmp_dir(), 'wasm_initdep')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'a')) or { panic(err) }
+	os.mkdir_all(os.join_path(dir, 'b')) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), "import a\n\nfn main() {\n\tprintln('main')\n\tprintln(a.av())\n}\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'a', 'a.v'), "module a\n\nimport b\n\nfn init() {\n\tprintln('a init')\n}\n\npub fn av() int {\n\treturn b.bv()\n}\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'b', 'b.v'), "module b\n\nfn init() {\n\tprintln('b init')\n}\n\npub fn bv() int {\n\treturn 5\n}\n") or {
+		panic(err)
+	}
+	out_wasm := os.join_path(dir, 'main.wasm')
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir,
+		'main.v'))}')
+	assert res.exit_code == 0, res.output
+	assert_valid_wasm(out_wasm)
+	run_wasi_expect(out_wasm, ['b init', 'a init', 'main', '5'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });
