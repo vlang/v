@@ -613,8 +613,8 @@ fn (mut g Gen) gen_assign(node flat.Node) {
 				if op in [.left_shift, .right_shift, .right_shift_unsigned] {
 					// Keep the lhs width; the count may be wider (`x <<= u64(n)`).
 					if op == .right_shift_unsigned && w == .i32 {
-						// A narrow signed local is stored sign-extended; mask it to
-						// its width so `>>>=` shifts the 8/16-bit pattern.
+						// `>>>=` shifts the narrow bit pattern; a narrow signed local
+						// is stored sign-extended, so mask it to its width first.
 						lw := g.var_widths[lhs.value]
 						if lw == 8 || lw == 16 {
 							g.emit_narrow(lw, true)
@@ -1023,8 +1023,8 @@ fn (mut g Gen) gen_infix(id flat.NodeId, node flat.Node) WType {
 		signed := !g.is_unsigned(lhs_id)
 		g.gen_expr_as(lhs_id, value_w)
 		if op == .right_shift_unsigned && value_w == .i32 {
-			// A narrow signed lhs is stored sign-extended in i32; mask it to its
-			// width so the upper bits don't feed into the logical shift.
+			// `>>>` operates on the narrow bit pattern; a narrow signed lhs is
+			// stored sign-extended, so mask it to its width first.
 			lw := narrow_width(g.tc.resolve_type(lhs_id))
 			if lw != 32 {
 				g.emit_narrow(lw, true)
@@ -1172,6 +1172,19 @@ fn (mut g Gen) gen_cast(node flat.Node) WType {
 	child_id := g.a.child(&node, 0)
 	tt := g.tc.parse_type(node.value)
 	target := prim_wtype(tt) or { WType.i32 }
+	child := g.a.nodes[int(child_id)]
+	if target in [WType.f32, WType.f64] && child.kind == .int_literal {
+		// Materialize the literal directly for the float target: an integer
+		// path would wrap large non-negative values (e.g.
+		// f64(9223372036854775808)) before the conversion and flip the sign.
+		uval := u64(parse_int_literal(child.value))
+		if target == .f32 {
+			g.cur.f32_const(f32(uval))
+		} else {
+			g.cur.f64_const(f64(uval))
+		}
+		return target
+	}
 	src := g.gen_expr(child_id)
 	if src in [WType.f32, WType.f64] && target in [WType.i32, WType.i64] {
 		// float -> int: signedness comes from the target, not the source.
@@ -1695,6 +1708,9 @@ fn (mut g Gen) emit_shift_op(op flat.Op, value_w WType, count_w WType, signed bo
 	}
 	g.cur.raw(arith_op(op, value_w, signed)) // value << (count mod value width)
 	// result = (count < value_width) ? shifted : 0, comparing the full count.
+	// V promotes narrow types to int for shifts, so the threshold is the
+	// computation (WASM) width, not the declared 8/16 (matches v1: i8(-1) >> 8
+	// stays -1, while u32 << 32 and u64 << 64 become 0).
 	width := if value_w == .i64 { 64 } else { 32 }
 	if value_w == .i64 {
 		g.cur.i64_const(0)

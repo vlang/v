@@ -554,6 +554,26 @@ fn test_wasm_user_function_named_memory() {
 	run_wasi_expect(wasm, ['7'])
 }
 
+fn test_wasm_float_cast_of_large_literal() {
+	v3_bin := v3_binary()
+	// A non-negative literal beyond i64 max must keep its magnitude/sign when
+	// cast to a float (the integer path would wrap it negative first).
+	src := 'fn main() {\n\tprintln(int(f64(9223372036854775808) > 0.0))\n\tprintln(int(f64(18446744073709551615) > 0.0))\n\tprintln(int(f64(9223372036854775808) == 9223372036854775808.0))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_fcastlit')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['1', '1', '1'])
+}
+
+fn test_wasm_shift_over_width_semantics() {
+	v3_bin := v3_binary()
+	// V promotes narrow types to int for shifts, so i8(-1) >> 8 stays -1 (the
+	// computation width is 32), while full-width over-width shifts zero out.
+	src := 'fn rc(n int) int {\n\treturn n\n}\n\nfn main() {\n\tprintln(int(i8(-1) >> rc(8)))\n\tprintln(u32(1) << rc(32))\n\ta := u64(1)\n\tprintln(a << rc(64))\n\tprintln(int(i8(-5) >>> rc(1)))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_shiftsem')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['-1', '0', '0', '125'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });
