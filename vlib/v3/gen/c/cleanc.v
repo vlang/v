@@ -594,11 +594,30 @@ fn c_pkgconfig_flags(raw string) []string {
 	if name.len == 0 {
 		return []string{}
 	}
+	// The package name comes straight from source text and is interpolated into a
+	// shell command, so reject anything that is not a plain pkg-config name/flag to
+	// avoid command injection (e.g. `#pkgconfig foo; touch /tmp/pwned`).
+	if !c_pkgconfig_arg_is_safe(name) {
+		return []string{}
+	}
 	result := os.execute('pkg-config --cflags --libs ${name}')
 	if result.exit_code != 0 {
 		return []string{}
 	}
 	return result.output.trim_space().fields()
+}
+
+fn c_pkgconfig_arg_is_safe(raw string) bool {
+	for ch in raw {
+		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || (ch >= `0` && ch <= `9`) {
+			continue
+		}
+		if ch in [` `, `\t`, `_`, `-`, `.`, `+`, `:`, `/`] {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 fn c_flag_has_target_prefix(target string) bool {
