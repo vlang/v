@@ -595,6 +595,42 @@ fn test_wasm_unary_minus_large_literal() {
 		'-5'])
 }
 
+fn test_wasm_init_runs_before_main() {
+	v3_bin := v3_binary()
+	// fn init() is an entry point: it (and imported-module inits) run before main.
+	src := "fn init() {\n\tprintln('init')\n}\n\nfn main() {\n\tprintln('main')\n}\n"
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_init')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['init', 'main'])
+}
+
+fn test_wasm_imported_module_init() {
+	v3_bin := v3_binary()
+	dir := os.join_path(os.vtmp_dir(), 'wasm_initmod')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), "import moda\n\nfn main() {\n\tprintln('main')\n\tprintln(moda.answer())\n}\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'moda', 'moda.v'), "module moda\n\nfn init() {\n\tprintln('moda init')\n}\n\npub fn answer() int {\n\treturn 42\n}\n") or {
+		panic(err)
+	}
+	out_wasm := os.join_path(dir, 'main.wasm')
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir,
+		'main.v'))}')
+	assert res.exit_code == 0, res.output
+	assert_valid_wasm(out_wasm)
+	run_wasi_expect(out_wasm, ['moda init', 'main', '42'])
+}
+
+fn test_wasm_char_literals() {
+	v3_bin := v3_binary()
+	src := 'fn code() u8 {\n\treturn `A`\n}\n\nfn main() {\n\tprintln(int(code()))\n\tprintln(int(`A`))\n\tprintln(int(`0`))\n\tprintln(int(`\\n`))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_char')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['65', '65', '48', '10'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });

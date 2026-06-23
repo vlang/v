@@ -90,6 +90,7 @@ mut:
 	write_idx  int
 	print_int_idx int
 	has_main   bool
+	init_fns   []int // function indices of init() entry points, in call order
 	warnings   []string
 }
 
@@ -122,6 +123,7 @@ pub fn (mut g Gen) gen() {
 		g.print_int_idx = g.mod.reserve_func_index(defined)
 		defined++
 	}
+	mut main_init := -1
 	for i, f in user_fns {
 		idx := g.mod.reserve_func_index(defined + i)
 		key := qualified_fn_key(f.module, f.name)
@@ -130,7 +132,17 @@ pub fn (mut g Gen) gen() {
 		g.fn_params[key] = f.params
 		if f.name == 'main' && (f.module == '' || f.module == 'main') {
 			g.has_main = true
+		} else if f.name == 'init' && f.params.len == 0 {
+			// Imported-module inits run before main's init (which runs last).
+			if f.module == '' || f.module == 'main' {
+				main_init = idx
+			} else {
+				g.init_fns << idx
+			}
 		}
+	}
+	if main_init >= 0 {
+		g.init_fns << main_init
 	}
 
 	// 2. helper bodies (must be added in the same order as reserved above).
@@ -261,13 +273,37 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 			work << key
 		}
 	}
-	for work.len > 0 {
-		f := candidates[work.pop()]
-		for callee_key in g.called_candidate_keys(f, candidates) {
-			if callee_key !in reached {
-				reached[callee_key] = true
-				work << callee_key
+	// `init` functions are entry points (run before main), like the C path's
+	// _vinit. Activate the init of any reached module (main is always active),
+	// then keep following calls and activating until the set stabilizes.
+	for {
+		for work.len > 0 {
+			f := candidates[work.pop()]
+			for callee_key in g.called_candidate_keys(f, candidates) {
+				if callee_key !in reached {
+					reached[callee_key] = true
+					work << callee_key
+				}
 			}
+		}
+		mut active := map[string]bool{}
+		for key, _ in reached {
+			active[candidates[key].module] = true
+		}
+		mut added := false
+		for key in order {
+			f := candidates[key]
+			if key in reached {
+				continue
+			}
+			if f.name == 'init' && f.params.len == 0 && (f.module == '' || f.module in active) {
+				reached[key] = true
+				work << key
+				added = true
+			}
+		}
+		if !added {
+			break
 		}
 	}
 
@@ -425,6 +461,10 @@ fn (mut g Gen) emit_user_fn(f FnInfo) {
 
 fn (mut g Gen) emit_start() int {
 	mut c := Code{}
+	// Run init() entry points before main, matching the C path's _vinit.
+	for init_idx in g.init_fns {
+		c.call(init_idx)
+	}
 	if main_idx := g.fn_index['main'] {
 		c.call(main_idx)
 	}
@@ -835,6 +875,11 @@ fn (mut g Gen) gen_expr(id flat.NodeId) WType {
 		}
 		.bool_literal {
 			g.cur.i32_const(if node.value == 'true' { 1 } else { 0 })
+			return .i32
+		}
+		.char_literal {
+			// `A` etc. is a scalar (u8/rune); emit its code value.
+			g.cur.i32_const(char_literal_value(node.value))
 			return .i32
 		}
 		.float_literal {
@@ -2057,4 +2102,33 @@ fn parse_int_literal(s_ string) i64 {
 		val = i64(s.parse_uint(10, 64) or { 0 })
 	}
 	return if neg { -val } else { val }
+}
+
+// char_literal_value decodes a char-literal node value to its code point.
+fn char_literal_value(s string) i64 {
+	if s.len == 0 {
+		return 0
+	}
+	if s[0] == `\\` && s.len >= 2 {
+		return match s[1] {
+			`n` { i64(10) }
+			`t` { i64(9) }
+			`r` { i64(13) }
+			`\\` { i64(92) }
+			`'` { i64(39) }
+			`"` { i64(34) }
+			`0` { i64(0) }
+			`a` { i64(7) }
+			`b` { i64(8) }
+			`f` { i64(12) }
+			`v` { i64(11) }
+			else { i64(s[1]) }
+		}
+	}
+	if s.len == 1 {
+		return i64(s[0])
+	}
+	// multi-byte UTF-8 rune: use the first code point
+	runes := s.runes()
+	return if runes.len > 0 { i64(runes[0]) } else { i64(s[0]) }
 }
