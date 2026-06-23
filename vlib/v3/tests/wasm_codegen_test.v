@@ -138,6 +138,27 @@ fn test_wasm_f32_cast_and_unsigned_u64_print() {
 	}
 }
 
+fn test_wasm_signed_compound_float_postfix_and_u64_literal() {
+	v3_bin := v3_binary()
+	// signed /= %= >>=, unsigned /=, float ++/--, full-range u64 decimal literal.
+	src := 'fn main() {\n\tmut x := -6\n\tx /= 2\n\tprintln(x)\n\tmut y := -7\n\ty %= 3\n\tprintln(y)\n\tmut z := -8\n\tz >>= 1\n\tprintln(z)\n\tmut u := u32(4000000000)\n\tu /= u32(2)\n\tprintln(u)\n\tmut f := 1.5\n\tf++\n\tprintln(int(f))\n\tmut g := f32(5.5)\n\tg--\n\tprintln(int(g))\n\tprintln(u64(18446744073709551615))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_signed_float_u64')
+	assert_valid_wasm(wasm)
+
+	node := node_path() or { return }
+	runner := os.join_path(os.vtmp_dir(), 'wasm_run_wasi.mjs')
+	os.write_file(runner, wasi_runner_js) or { panic(err) }
+	res := run_node(node, runner, wasm)
+	assert res.exit_code == 0, res.output
+	lines := res.output.split_into_lines().map(it.trim_space()).filter(it.len > 0)
+	expected := ['-3', '-1', '-4', '2000000000', '2', '4', '18446744073709551615']
+	assert lines.len >= expected.len, res.output
+	for i, want in expected {
+		got := lines[lines.len - expected.len + i]
+		assert got == want, 'line ${i}: got ${got}, want ${want} (full: ${res.output})'
+	}
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });

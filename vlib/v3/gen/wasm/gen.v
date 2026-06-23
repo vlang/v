@@ -400,7 +400,8 @@ fn (mut g Gen) gen_assign(node flat.Node) {
 			} else {
 				g.cur.local_get(idx)
 				g.gen_expr_as(rhs_id, w)
-				g.emit_arith(compound_to_op(node.op), w, false)
+				signed := !g.var_unsigned[lhs.value]
+				g.emit_arith(compound_to_op(node.op), w, signed)
 			}
 			g.cur.local_set(idx)
 		} else {
@@ -723,13 +724,25 @@ fn (mut g Gen) gen_postfix(node flat.Node) {
 	}
 	idx := g.var_index[target.value]
 	w := g.var_wtype[target.value]
+	inc := node.op == .inc
 	g.cur.local_get(idx)
-	if w == .i64 {
-		g.cur.i64_const(1)
-		g.cur.raw(if node.op == .inc { u8(0x7c) } else { u8(0x7d) })
-	} else {
-		g.cur.i32_const(1)
-		g.cur.raw(if node.op == .inc { u8(0x6a) } else { u8(0x6b) })
+	match w {
+		.i64 {
+			g.cur.i64_const(1)
+			g.cur.raw(if inc { u8(0x7c) } else { u8(0x7d) }) // i64.add/sub
+		}
+		.f64 {
+			g.cur.f64_const(1)
+			g.cur.raw(if inc { u8(0xa0) } else { u8(0xa1) }) // f64.add/sub
+		}
+		.f32 {
+			g.cur.f32_const(1)
+			g.cur.raw(if inc { u8(0x92) } else { u8(0x93) }) // f32.add/sub
+		}
+		else {
+			g.cur.i32_const(1)
+			g.cur.raw(if inc { u8(0x6a) } else { u8(0x6b) }) // i32.add/sub
+		}
 	}
 	g.cur.local_set(idx)
 }
@@ -1340,7 +1353,9 @@ fn parse_int_literal(s_ string) i64 {
 	} else if s.starts_with('0b') || s.starts_with('0B') {
 		val = i64(s[2..].parse_uint(2, 64) or { 0 })
 	} else {
-		val = s.i64()
+		// parse_uint preserves the full u64 bit pattern; string.i64() would
+		// saturate values above i64 max (e.g. u64(18446744073709551615)).
+		val = i64(s.parse_uint(10, 64) or { 0 })
 	}
 	return if neg { -val } else { val }
 }
