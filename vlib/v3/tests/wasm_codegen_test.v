@@ -676,6 +676,28 @@ fn test_wasm_init_dependency_order() {
 	run_wasi_expect(out_wasm, ['b init', 'a init', 'main', '5'])
 }
 
+fn test_wasm_imported_module_const() {
+	v3_bin := v3_binary()
+	// A numeric const accessed through an imported-module selector (mod.name)
+	// must be inlined, not emitted as 0.
+	dir := os.join_path(os.vtmp_dir(), 'wasm_constmod')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'import moda\n\nfn main() {\n\tprintln(moda.answer)\n\tprintln(moda.answer + 1)\n}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'moda', 'moda.v'), 'module moda\n\npub const answer = 42\n') or {
+		panic(err)
+	}
+	out_wasm := os.join_path(dir, 'main.wasm')
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir,
+		'main.v'))}')
+	assert res.exit_code == 0, res.output
+	assert_valid_wasm(out_wasm)
+	assert !res.output.contains('unsupported'), res.output
+	run_wasi_expect(out_wasm, ['42', '43'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });

@@ -916,12 +916,43 @@ fn (mut g Gen) gen_expr(id flat.NodeId) WType {
 		.if_expr {
 			return g.gen_if_value(id, node)
 		}
+		.selector {
+			// An imported-module const is accessed as `mod.name`; inline it.
+			if cid := g.selector_const_node(node) {
+				return g.gen_expr(cid)
+			}
+			g.warn('unsupported selector: ${node.value}')
+			g.cur.i32_const(0)
+			return .i32
+		}
 		else {
 			g.warn('unsupported expr: ${node.kind}')
 			g.cur.i32_const(0)
 			return .i32
 		}
 	}
+}
+
+// selector_const_node resolves a `module.name` selector to a top-level const's
+// value expression. v3 keys module consts by the module declaration name, so we
+// try the literal base, the resolved import path and its last component, then
+// the bare field name as an unambiguous suffix.
+fn (g &Gen) selector_const_node(node flat.Node) ?flat.NodeId {
+	if node.children_count == 0 {
+		return none
+	}
+	base := g.a.child_node(&node, 0)
+	if base.kind != .ident {
+		return none
+	}
+	field := node.value
+	real := g.resolve_module_alias(g.cur_fn_file, base.value)
+	for modname in [base.value, real, real.all_after_last('.')] {
+		if cid := g.const_value_node('${modname}.${field}') {
+			return cid
+		}
+	}
+	return g.const_value_node(field)
 }
 
 // const_value_node resolves an identifier to the value expression of a
