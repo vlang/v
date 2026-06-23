@@ -1125,14 +1125,14 @@ fn (mut c H2MuxConn) apply_peer_settings(settings []H2Setting) ! {
 	for st in settings {
 		match st.id {
 			h2_settings_header_table_size {
-				// The peer's HEADER_TABLE_SIZE bounds the dynamic table our
-				// *encoder* may use when compressing request headers (the table
-				// the server uses to decode them) — it does not change the table
-				// we advertised for decoding the server's responses. Our encoder
-				// never uses HPACK dynamic indexing (only static entries and
-				// literals), so there is nothing to constrain; applying this to
-				// c.decoder would wrongly shrink our response-decode table and
-				// break valid dynamic references in the server's responses.
+				// RFC 7541 §6.3: even if our encoder uses only literals, we MUST
+				// emit a Dynamic Table Size Update prefix at the start of the next
+				// HEADERS block when the peer lowers this limit. encode() emits
+				// the update when pending_max_table_size >= 0.
+				c.wmu.lock()
+				c.encoder.dyn_table.set_max_size(int(st.value))
+				c.encoder.pending_max_table_size = int(st.value)
+				c.wmu.unlock()
 			}
 			h2_settings_enable_push {
 				if st.value > 1 {
