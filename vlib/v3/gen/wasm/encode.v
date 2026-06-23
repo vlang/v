@@ -49,6 +49,12 @@ struct DataSeg {
 	bytes  []u8
 }
 
+// Global is a module-level mutable global variable.
+struct Global {
+	valtype u8
+	init    []u8 // constant init expression, ending with `end` (0x0b)
+}
+
 @[heap]
 pub struct Module {
 mut:
@@ -57,6 +63,7 @@ mut:
 	funcs    []Func
 	exports  []Export
 	datas    []DataSeg
+	globals  []Global
 	mem_min  int = 2
 	n_import int
 }
@@ -89,6 +96,15 @@ pub fn (mut m Module) add_import_func(module_ string, name string, type_idx int)
 	}
 	m.n_import = m.imports.len
 	return m.imports.len - 1
+}
+
+// add_global appends a mutable global and returns its index.
+pub fn (mut m Module) add_global(valtype u8, init []u8) int {
+	m.globals << Global{
+		valtype: valtype
+		init:    init.clone()
+	}
+	return m.globals.len - 1
 }
 
 // reserve_func_index returns the function index a later add_func will occupy.
@@ -241,6 +257,18 @@ pub fn (m &Module) compile() []u8 {
 	msec << 0x00       // limits: min only
 	leb_u(mut msec, u64(m.mem_min))
 	section(mut out, 0x05, msec)
+
+	// global section (6)
+	if m.globals.len > 0 {
+		mut gsec := []u8{}
+		leb_u(mut gsec, u64(m.globals.len))
+		for gl in m.globals {
+			gsec << gl.valtype
+			gsec << 0x01 // mutable
+			gsec << gl.init
+		}
+		section(mut out, 0x06, gsec)
+	}
 
 	// export section (7)
 	mut esec := []u8{}

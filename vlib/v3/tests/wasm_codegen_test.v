@@ -717,6 +717,16 @@ fn res_contains_unsupported(v3_bin string, src string) bool {
 	return res.output.contains('unsupported statement: label_stmt')
 }
 
+fn test_wasm_numeric_globals() {
+	v3_bin := v3_binary()
+	// __global is lowered to a wasm mutable global: reads/writes (incl. across
+	// functions), initializers, compound assigns and narrow wrapping all work.
+	src := '__global counter int\n__global x = 10\n__global b u8\n\nfn inc() {\n\tcounter = counter + 1\n}\n\nfn main() {\n\tcounter = 3\n\tinc()\n\tinc()\n\tprintln(counter)\n\tx += 5\n\tprintln(x)\n\tb = u8(250)\n\tb += u8(10)\n\tprintln(int(b))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_globals')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['5', '15', '4'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });

@@ -69,6 +69,16 @@ pub fn (mut c Code) local_tee(idx int) {
 	leb_u(mut c.bytes, u64(idx))
 }
 
+pub fn (mut c Code) global_get(idx int) {
+	c.bytes << 0x23
+	leb_u(mut c.bytes, u64(idx))
+}
+
+pub fn (mut c Code) global_set(idx int) {
+	c.bytes << 0x24
+	leb_u(mut c.bytes, u64(idx))
+}
+
 // ---- memory ----
 
 pub fn (mut c Code) load(op u8, align int, offset int) {
