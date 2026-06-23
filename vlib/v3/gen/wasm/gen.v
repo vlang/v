@@ -823,25 +823,25 @@ fn (mut g Gen) gen_print_call(node flat.Node, name string) {
 	}
 	if arg.kind == .call {
 		inner := g.a.child_node(&arg, 0)
-		if inner.kind == .ident && inner.value in int_format_fns && arg.children_count >= 2 {
-			g.gen_expr_as(g.a.child(&arg, 1), .i64)
-			g.cur.i32_const(fd)
-			g.cur.i32_const(if newline { 1 } else { 0 })
-			g.cur.call(g.print_int_idx)
-			return
-		}
-		if inner.kind == .ident && inner.value in bool_format_fns && arg.children_count >= 2 {
-			g.gen_print_bool(g.a.child(&arg, 1), fd, newline)
-			return
+		if inner.kind == .ident && arg.children_count >= 2 {
+			if inner.value in signed_int_format_fns {
+				g.emit_print_int(g.a.child(&arg, 1), fd, newline, true)
+				return
+			}
+			if inner.value in unsigned_int_format_fns {
+				g.emit_print_int(g.a.child(&arg, 1), fd, newline, false)
+				return
+			}
+			if inner.value in bool_format_fns {
+				g.gen_print_bool(g.a.child(&arg, 1), fd, newline)
+				return
+			}
 		}
 	}
 	// integer expression passed directly (e.g. print(x))
 	w := g.expr_wtype(arg_id, '')
 	if w in [WType.i32, WType.i64] {
-		g.gen_expr_as(arg_id, .i64)
-		g.cur.i32_const(fd)
-		g.cur.i32_const(if newline { 1 } else { 0 })
-		g.cur.call(g.print_int_idx)
+		g.emit_print_int(arg_id, fd, newline, !g.is_unsigned(arg_id))
 		return
 	}
 	g.warn('unsupported ${name} argument: ${arg.kind}')
@@ -862,6 +862,16 @@ fn (mut g Gen) gen_print_bool(arg_id flat.NodeId, fd int, newline bool) {
 	if newline {
 		g.emit_write_const(nl_ptr, 1, fd)
 	}
+}
+
+// emit_print_int evaluates an integer expression and prints it via the runtime
+// helper, choosing signed or unsigned decimal conversion.
+fn (mut g Gen) emit_print_int(int_arg_id flat.NodeId, fd int, newline bool, signed bool) {
+	g.gen_expr_as(int_arg_id, .i64)
+	g.cur.i32_const(fd)
+	g.cur.i32_const(if newline { 1 } else { 0 })
+	g.cur.i32_const(if signed { 1 } else { 0 })
+	g.cur.call(g.print_int_idx)
 }
 
 fn (mut g Gen) emit_write_const(ptr int, len int, fd int) {
@@ -894,19 +904,24 @@ fn (mut g Gen) emit_write_helper(fd_write_idx int) {
 	g.mod.add_func(ti, [], c.bytes)
 }
 
-// emit_print_int_helper builds `__v_print_int(val: i64, fd: i32, nl: i32)`.
+// emit_print_int_helper builds `__v_print_int(val: i64, fd: i32, nl: i32,
+// signed: i32)`. The digit loop uses unsigned div/rem, so passing signed=0
+// prints the full u64 range; signed=1 adds two's-complement sign handling.
 fn (mut g Gen) emit_print_int_helper() {
-	// params: val(0,i64) fd(1,i32) nl(2,i32)
-	// locals: p(3,i32) v(4,i64) neg(5,i32) digit(6,i64)
-	p := 3
-	v := 4
-	neg := 5
-	digit := 6
+	// params: val(0,i64) fd(1,i32) nl(2,i32) signed(3,i32)
+	// locals: p(4,i32) v(5,i64) neg(6,i32) digit(7,i64)
+	signed := 3
+	p := 4
+	v := 5
+	neg := 6
+	digit := 7
 	mut c := Code{}
-	// neg = val < 0
+	// neg = signed && val < 0
 	c.local_get(0)
 	c.i64_const(0)
 	c.raw(0x53) // i64.lt_s
+	c.local_get(signed)
+	c.raw(0x71) // i32.and
 	c.local_set(neg)
 	// v = val
 	c.local_get(0)
@@ -979,7 +994,8 @@ fn (mut g Gen) emit_print_int_helper() {
 	c.end()
 	c.end() // function
 	locals := [wasm.valtype_i32, wasm.valtype_i64, wasm.valtype_i32, wasm.valtype_i64]
-	ti := g.mod.add_type([wasm.valtype_i64, wasm.valtype_i32, wasm.valtype_i32], [])
+	ti := g.mod.add_type([wasm.valtype_i64, wasm.valtype_i32, wasm.valtype_i32, wasm.valtype_i32],
+		[])
 	g.mod.add_func(ti, locals, c.bytes)
 }
 
@@ -1105,6 +1121,8 @@ fn (mut g Gen) coerce(from WType, to WType, signed bool) {
 		.i64 {
 			if from == .i32 {
 				g.cur.raw(if signed { u8(0xac) } else { u8(0xad) }) // i64.extend_i32_s/u
+			} else if from == .f32 {
+				g.cur.raw(if signed { u8(0xae) } else { u8(0xaf) }) // i64.trunc_f32_s/u
 			} else if from == .f64 {
 				g.cur.raw(if signed { u8(0xb0) } else { u8(0xb1) }) // i64.trunc_f64_s/u
 			}
@@ -1112,8 +1130,10 @@ fn (mut g Gen) coerce(from WType, to WType, signed bool) {
 		.i32 {
 			if from == .i64 {
 				g.cur.raw(0xa7) // i32.wrap_i64
+			} else if from == .f32 {
+				g.cur.raw(if signed { u8(0xa8) } else { u8(0xa9) }) // i32.trunc_f32_s/u
 			} else if from == .f64 {
-				g.cur.raw(if signed { u8(0xaa) } else { u8(0xab) }) // i32.trunc_f64
+				g.cur.raw(if signed { u8(0xaa) } else { u8(0xab) }) // i32.trunc_f64_s/u
 			}
 		}
 		.f64 {
@@ -1176,8 +1196,11 @@ fn prim_wtype(t types.Type) ?WType {
 	return none
 }
 
-const int_format_fns = ['strconv__format_int', 'strconv__format_uint', 'int_str', 'i64_str',
-	'u32_str', 'u64_str', 'i8_str', 'i16_str', 'u8_str', 'u16_str']
+const signed_int_format_fns = ['strconv__format_int', 'int_str', 'i64_str', 'i8_str', 'i16_str',
+	'i32_str', 'isize_str']
+
+const unsigned_int_format_fns = ['strconv__format_uint', 'u8_str', 'u16_str', 'u32_str', 'u64_str',
+	'usize_str']
 
 const bool_format_fns = ['bool.str', 'bool__str', 'bool_str']
 

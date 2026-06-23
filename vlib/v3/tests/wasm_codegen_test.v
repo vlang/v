@@ -117,6 +117,27 @@ fn test_wasm_unsigned_i64_and_bool() {
 	}
 }
 
+fn test_wasm_f32_cast_and_unsigned_u64_print() {
+	v3_bin := v3_binary()
+	// f32->int/i64 truncation casts and full-range unsigned u64 printing.
+	src := 'fn main() {\n\tf := f32(3.9)\n\tprintln(int(f))\n\tprintln(i64(f))\n\tg := f32(-2.7)\n\tprintln(int(g))\n\tprintln(u64(0) - u64(1))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_f32_u64')
+	assert_valid_wasm(wasm)
+
+	node := node_path() or { return }
+	runner := os.join_path(os.vtmp_dir(), 'wasm_run_wasi.mjs')
+	os.write_file(runner, wasi_runner_js) or { panic(err) }
+	res := run_node(node, runner, wasm)
+	assert res.exit_code == 0, res.output
+	lines := res.output.split_into_lines().map(it.trim_space()).filter(it.len > 0)
+	expected := ['3', '3', '-2', '18446744073709551615']
+	assert lines.len >= expected.len, res.output
+	for i, want in expected {
+		got := lines[lines.len - expected.len + i]
+		assert got == want, 'line ${i}: got ${got}, want ${want} (full: ${res.output})'
+	}
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });
