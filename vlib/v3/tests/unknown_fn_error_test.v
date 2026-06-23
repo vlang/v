@@ -5,6 +5,7 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
+// test_unknown_function_stops_in_type_checker validates this v3 regression case.
 fn test_unknown_function_stops_in_type_checker() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_unknown_fn_error_test')
 	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')

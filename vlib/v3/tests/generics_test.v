@@ -5,6 +5,7 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
+// build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_generics_test')
 	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
@@ -12,6 +13,7 @@ fn build_v3() string {
 	return v3_bin
 }
 
+// run_selfhost_bad supports run selfhost bad handling for v3 tests.
 fn run_selfhost_bad(v3_bin string, name string, src string, expected string) {
 	bad_src := os.join_path(os.temp_dir(), 'v3_gen_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
@@ -43,6 +45,7 @@ fn run_selfhost_project_bad(v3_bin string, name string, files map[string]string,
 	assert !result.output.contains('C compilation failed')
 }
 
+// run_no_generic_error supports run no generic error handling for v3 tests.
 fn run_no_generic_error(v3_bin string, name string, src string) {
 	src_file := os.join_path(os.temp_dir(), 'v3_gen_${name}.v')
 	os.write_file(src_file, src) or { panic(err) }
@@ -51,6 +54,7 @@ fn run_no_generic_error(v3_bin string, name string, src string) {
 	assert !result.output.contains('unsupported generic'), '${name}: should not reject generics without -selfhost, got: ${result.output}'
 }
 
+// run_generic_ok supports run generic ok handling for v3 tests.
 fn run_generic_ok(v3_bin string, name string, src string, expected string) {
 	src_file := os.join_path(os.temp_dir(), 'v3_gen_${name}.v')
 	os.write_file(src_file, src) or { panic(err) }
@@ -60,7 +64,8 @@ fn run_generic_ok(v3_bin string, name string, src string, expected string) {
 	// Check that v3 type checker and transform pass without errors
 	assert !compile.output.contains('unsupported generic'), '${name}: should not reject generics, got: ${compile.output}'
 	assert !compile.output.contains('type checker found'), '${name}: type checker errors: ${compile.output}'
-	// Verify C file was generated (v3 pipeline succeeded even if cc fails due to pre-existing runtime issues)
+	// Verify C file was generated. The v3 pipeline can succeed even if cc fails due
+	// to pre-existing runtime issues.
 	assert os.exists(c_file), '${name}: C file not generated'
 	c_content := os.read_file(c_file) or { '' }
 	// The mangled generic function should appear in the generated C code
@@ -69,6 +74,7 @@ fn run_generic_ok(v3_bin string, name string, src string, expected string) {
 	}
 }
 
+// test_generics_rejected_when_building_v validates this v3 regression case.
 fn test_generics_rejected_when_building_v() {
 	v3_bin := build_v3()
 	// generic function
@@ -222,6 +228,7 @@ struct Phantom[T] {
 	}, 'main.v', 'unsupported generic struct `Phantom`')
 }
 
+// test_generics_allowed_without_building_v validates this v3 regression case.
 fn test_generics_allowed_without_building_v() {
 	v3_bin := build_v3()
 	// generic function — no "unsupported generic" error
@@ -296,6 +303,7 @@ fn main() {}
 ')
 }
 
+// test_generics_compile_and_run validates generics compile and run behavior in v3 tests.
 fn test_generics_compile_and_run() {
 	v3_bin := build_v3()
 

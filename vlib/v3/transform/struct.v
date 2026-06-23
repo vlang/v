@@ -2,6 +2,7 @@ module transform
 
 import v3.flat
 
+// transform_field_init_expr transforms transform field init expr data for transform.
 fn (mut t Transformer) transform_field_init_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count == 0 {
 		return id
@@ -290,6 +291,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 	return final_id
 }
 
+// lookup_struct_info resolves lookup struct info information for transform.
 fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 	if name.contains('.') {
 		if name in t.structs {
@@ -313,6 +315,7 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 	return none
 }
 
+// struct_field_type supports struct field type handling for Transformer.
 fn (t &Transformer) struct_field_type(info StructInfo, field_name string) ?string {
 	for field in info.fields {
 		if field.name == field_name {
@@ -322,6 +325,8 @@ fn (t &Transformer) struct_field_type(info StructInfo, field_name string) ?strin
 	return none
 }
 
+// embedded_field_for_promoted_field
+// supports helper handling in transform.
 fn (t &Transformer) embedded_field_for_promoted_field(info StructInfo, field_name string) ?FieldInfo {
 	for field in info.fields {
 		if !t.is_embedded_field(field) {
@@ -335,6 +340,7 @@ fn (t &Transformer) embedded_field_for_promoted_field(info StructInfo, field_nam
 	return none
 }
 
+// is_embedded_field reports whether is embedded field applies in transform.
 fn (t &Transformer) is_embedded_field(field FieldInfo) bool {
 	if field.name.len == 0 || field.typ.len == 0 {
 		return false
@@ -344,6 +350,7 @@ fn (t &Transformer) is_embedded_field(field FieldInfo) bool {
 	return short_name == short_typ
 }
 
+// transform_assoc_expr transforms transform assoc expr data for transform.
 fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.kind != .assoc || node.children_count == 0 {
 		return id
@@ -419,6 +426,7 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 	return result
 }
 
+// transform_amp_assoc_expr_for_type supports transform_amp_assoc_expr_for_type handling.
 fn (mut t Transformer) transform_amp_assoc_expr_for_type(_id flat.NodeId, node flat.Node, target_type string) ?flat.NodeId {
 	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
 		return none
@@ -454,6 +462,7 @@ fn (mut t Transformer) transform_amp_assoc_expr_for_type(_id flat.NodeId, node f
 	return cast
 }
 
+// struct_field_sum_type supports struct field sum type handling for Transformer.
 fn (t &Transformer) struct_field_sum_type(field_type string, owner_module string) string {
 	if t.is_sum_type_name(field_type) {
 		return field_type
@@ -468,6 +477,7 @@ fn (t &Transformer) struct_field_sum_type(field_type string, owner_module string
 	return ''
 }
 
+// sum_type_for_field_variant supports sum type for field variant handling for Transformer.
 fn (t &Transformer) sum_type_for_field_variant(field_name string, val_id flat.NodeId, val_node flat.Node) ?string {
 	if field_name != 'info' {
 		return none
@@ -500,6 +510,7 @@ fn (t &Transformer) sum_type_for_field_variant(field_name string, val_id flat.No
 	return none
 }
 
+// fixed_array_value_to_array converts fixed array value to array data for transform.
 fn (mut t Transformer) fixed_array_value_to_array(value_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
 	elem_type := fixed_array_elem_type(fixed_type)
 	len_expr := t.make_fixed_array_len_expr(fixed_type)

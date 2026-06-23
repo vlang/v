@@ -2,6 +2,7 @@ module transform
 
 import v3.flat
 
+// MapIndexInfo stores map index info metadata used by transform.
 struct MapIndexInfo {
 	base_id    flat.NodeId
 	key_id     flat.NodeId
@@ -10,6 +11,7 @@ struct MapIndexInfo {
 	value_type string
 }
 
+// map_type_parts supports map type parts handling for Transformer.
 fn (mut t Transformer) map_type_parts(map_type string) (string, string) {
 	clean := t.clean_map_type(map_type)
 	if !clean.starts_with('map[') {
@@ -18,6 +20,7 @@ fn (mut t Transformer) map_type_parts(map_type string) (string, string) {
 	return t.map_key_type(clean), t.map_value_type(clean)
 }
 
+// make_new_map_call builds make new map call data for transform.
 fn (mut t Transformer) make_new_map_call(map_type string) flat.NodeId {
 	key_type, value_type := t.map_type_parts(map_type)
 	hash_fn, eq_fn, clone_fn, free_fn := map_callback_names(key_type)
@@ -31,6 +34,7 @@ fn (mut t Transformer) make_new_map_call(map_type string) flat.NodeId {
 	return t.make_call_typed('new_map', args, map_type)
 }
 
+// map_callback_names supports map callback names handling for transform.
 fn map_callback_names(key_type string) (string, string, string, string) {
 	if key_type == 'string' {
 		return 'v3_map_hash_string', 'v3_map_eq_string', 'v3_map_clone_string', 'v3_map_free_string'
@@ -45,6 +49,7 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 	return 'v3_map_hash_int_${size_suffix}', 'v3_map_eq_int_${size_suffix}', 'v3_map_clone_int_${size_suffix}', 'v3_map_free_nop'
 }
 
+// map_index_info supports map index info handling for Transformer.
 fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 	if int(index_id) < 0 {
 		return none
@@ -73,6 +78,7 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 	}
 }
 
+// make_map_get_expr builds make map get expr data for transform.
 fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type string, key_name string, zero_name string, value_type string) flat.NodeId {
 	call := t.make_call_typed('map__get', arr3(t.runtime_addr(map_expr, base_type), t.make_prefix(.amp,
 		t.make_ident(key_name)), t.make_prefix(.amp, t.make_ident(zero_name))), 'voidptr')
@@ -80,22 +86,26 @@ fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type string,
 	return t.make_prefix(.mul, cast)
 }
 
+// make_map_get_check_expr builds make map get check expr data for transform.
 fn (mut t Transformer) make_map_get_check_expr(map_expr flat.NodeId, base_type string, key_name string) flat.NodeId {
 	return t.make_call_typed('map__get_check', arr2(t.runtime_addr(map_expr, base_type), t.make_prefix(.amp,
 		t.make_ident(key_name))), 'voidptr')
 }
 
+// make_map_exists_expr builds make map exists expr data for transform.
 fn (mut t Transformer) make_map_exists_expr(map_expr flat.NodeId, base_type string, key_name string) flat.NodeId {
 	return t.make_call_typed('map__exists', arr2(t.runtime_addr(map_expr, base_type), t.make_prefix(.amp,
 		t.make_ident(key_name))), 'bool')
 }
 
+// make_map_set_stmt builds make map set stmt data for transform.
 fn (mut t Transformer) make_map_set_stmt(map_expr flat.NodeId, base_type string, key_name string, value_name string) flat.NodeId {
 	call := t.make_call_typed('map__set', arr3(t.runtime_addr(map_expr, base_type), t.make_prefix(.amp,
 		t.make_ident(key_name)), t.make_prefix(.amp, t.make_ident(value_name))), 'void')
 	return t.make_expr_stmt(call)
 }
 
+// const_expr_for_ident supports const expr for ident handling for Transformer.
 fn (t &Transformer) const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
 	if int(id) < 0 || isnil(t.tc) {
 		return none
@@ -116,6 +126,7 @@ fn (t &Transformer) const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
 	return none
 }
 
+// lower_map_membership_expr builds lower map membership expr data for transform.
 fn (mut t Transformer) lower_map_membership_expr(map_id flat.NodeId, key_id flat.NodeId, map_type string) ?flat.NodeId {
 	clean_type := t.clean_map_type(map_type)
 	mut key_type := ''
@@ -141,6 +152,7 @@ fn (mut t Transformer) lower_map_membership_expr(map_id flat.NodeId, key_id flat
 	return t.make_map_exists_expr(map_expr, map_type, key_name)
 }
 
+// try_lower_map_index_expr supports try lower map index expr handling for Transformer.
 fn (mut t Transformer) try_lower_map_index_expr(_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.kind != .index || node.children_count < 2 || node.value == 'range' {
 		return none
@@ -166,6 +178,7 @@ fn (mut t Transformer) try_lower_map_index_expr(_id flat.NodeId, node flat.Node)
 	return t.make_map_get_expr(map_expr, base_type, key_name, zero_name, value_type)
 }
 
+// is_map_index_or_expr reports whether is map index or expr applies in transform.
 fn (mut t Transformer) is_map_index_or_expr(node flat.Node) bool {
 	if node.kind != .or_expr || node.children_count < 2 {
 		return false
@@ -179,6 +192,7 @@ fn (mut t Transformer) is_map_index_or_expr(node flat.Node) bool {
 	return t.clean_map_type(base_type).starts_with('map[')
 }
 
+// transform_map_index_or_expr transforms transform map index or expr data for transform.
 fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
 		return id
@@ -216,6 +230,7 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 	return t.make_ident(val_name)
 }
 
+// lower_map_or_body_to_stmts converts lower map or body to stmts data for transform.
 fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_name string, target_type string, mode string) []flat.NodeId {
 	if mode == '!' || mode == '?' {
 		if t.is_optional_type_name(t.cur_fn_ret_type) {
@@ -270,6 +285,7 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 	return result
 }
 
+// try_lower_map_index_assign supports try lower map index assign handling for Transformer.
 fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId {
 	if node.kind !in [.assign, .index_assign] || node.children_count < 2 {
 		return none
@@ -304,6 +320,7 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 	return result
 }
 
+// map_compound_to_infix_op converts map compound to infix op data for transform.
 fn map_compound_to_infix_op(op flat.Op) ?flat.Op {
 	match op {
 		.plus_assign { return flat.Op.plus }
@@ -320,6 +337,7 @@ fn map_compound_to_infix_op(op flat.Op) ?flat.Op {
 	}
 }
 
+// load_map_index_current reads load map index current input for transform.
 fn (mut t Transformer) load_map_index_current(info MapIndexInfo, map_expr flat.NodeId, key_name string, mut result []flat.NodeId) string {
 	zero_name := t.new_temp('map_zero')
 	current_name := t.new_temp('map_val')
@@ -330,6 +348,7 @@ fn (mut t Transformer) load_map_index_current(info MapIndexInfo, map_expr flat.N
 	return current_name
 }
 
+// lower_map_index_compound_with_info builds lower map index compound with info data for transform.
 fn (mut t Transformer) lower_map_index_compound_with_info(info MapIndexInfo, map_expr flat.NodeId, key_name string, op flat.Op, rhs_id flat.NodeId, mut result []flat.NodeId) {
 	current_name := t.load_map_index_current(info, map_expr, key_name, mut result)
 	rhs := t.transform_expr(rhs_id)
@@ -342,6 +361,7 @@ fn (mut t Transformer) lower_map_index_compound_with_info(info MapIndexInfo, map
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
 }
 
+// lower_map_index_postfix_with_info builds lower map index postfix with info data for transform.
 fn (mut t Transformer) lower_map_index_postfix_with_info(info MapIndexInfo, map_expr flat.NodeId, key_name string, op flat.Op, mut result []flat.NodeId) {
 	current_name := t.load_map_index_current(info, map_expr, key_name, mut result)
 	infix_op := if op == .dec { flat.Op.minus } else { flat.Op.plus }
@@ -350,6 +370,7 @@ fn (mut t Transformer) lower_map_index_postfix_with_info(info MapIndexInfo, map_
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
 }
 
+// lower_map_index_append_with_info builds lower map index append with info data for transform.
 fn (mut t Transformer) lower_map_index_append_with_info(info MapIndexInfo, map_expr flat.NodeId, key_name string, rhs_id flat.NodeId, mut result []flat.NodeId) {
 	current_name := t.load_map_index_current(info, map_expr, key_name, mut result)
 	append := t.make_infix(.left_shift, t.make_ident(current_name), t.transform_expr(rhs_id))
@@ -358,6 +379,8 @@ fn (mut t Transformer) lower_map_index_append_with_info(info MapIndexInfo, map_e
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
 }
 
+// try_lower_map_index_postfix_stmt
+// supports helper handling in transform.
 fn (mut t Transformer) try_lower_map_index_postfix_stmt(id flat.NodeId) ?[]flat.NodeId {
 	if int(id) < 0 {
 		return none
@@ -376,6 +399,8 @@ fn (mut t Transformer) try_lower_map_index_postfix_stmt(id flat.NodeId) ?[]flat.
 	return result
 }
 
+// try_lower_map_index_append_stmt
+// supports helper handling in transform.
 fn (mut t Transformer) try_lower_map_index_append_stmt(id flat.NodeId) ?[]flat.NodeId {
 	if int(id) < 0 {
 		return none
@@ -397,6 +422,7 @@ fn (mut t Transformer) try_lower_map_index_append_stmt(id flat.NodeId) ?[]flat.N
 	return result
 }
 
+// lower_map_init_to_runtime converts lower map init to runtime data for transform.
 fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node) flat.NodeId {
 	map_type := if node.value.len > 0 {
 		node.value

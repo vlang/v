@@ -2,12 +2,14 @@ module types
 
 import v3.flat
 
+// tarr1 supports tarr1 handling for types.
 fn tarr1(a Type) []Type {
 	mut r := []Type{}
 	r << a
 	return r
 }
 
+// tarr2 supports tarr2 handling for types.
 fn tarr2(a Type, b Type) []Type {
 	mut r := []Type{}
 	r << a
@@ -15,6 +17,7 @@ fn tarr2(a Type, b Type) []Type {
 	return r
 }
 
+// tarr3 supports tarr3 handling for types.
 fn tarr3(a Type, b Type, c Type) []Type {
 	mut r := []Type{}
 	r << a
@@ -23,12 +26,14 @@ fn tarr3(a Type, b Type, c Type) []Type {
 	return r
 }
 
+// unknown_type supports unknown type handling for types.
 fn unknown_type(reason string) Type {
 	return Type(Unknown{
 		reason: reason
 	})
 }
 
+// TypeError represents type error data used by types.
 pub struct TypeError {
 pub:
 	msg  string
@@ -36,6 +41,7 @@ pub:
 	node flat.NodeId
 }
 
+// TypeErrorKind lists type error kind values used by types.
 pub enum TypeErrorKind {
 	unknown_ident
 	unknown_type
@@ -51,6 +57,7 @@ pub enum TypeErrorKind {
 	unsupported_generic
 }
 
+// CallInfo stores call info metadata used by types.
 struct CallInfo {
 	name         string
 	params       []Type
@@ -60,11 +67,13 @@ struct CallInfo {
 	params_known bool
 }
 
+// LocalBinding represents local binding data used by types.
 struct LocalBinding {
 	name string
 	typ  Type
 }
 
+// TypeCache represents type cache data used by types.
 struct TypeCache {
 mut:
 	parse_enabled bool
@@ -72,6 +81,7 @@ mut:
 	c_entries     map[string]string
 }
 
+// TypeChecker represents type checker data used by types.
 @[heap]
 pub struct TypeChecker {
 pub mut:
@@ -122,6 +132,7 @@ mut:
 	type_cache &TypeCache = unsafe { nil }
 }
 
+// new creates a TypeChecker value for types.
 pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 	fs := new_scope(unsafe { nil })
 	return TypeChecker{
@@ -163,6 +174,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 	}
 }
 
+// reset_node_caches updates reset node caches state for types.
 fn (mut tc TypeChecker) reset_node_caches(n int) {
 	tc.resolved_call_names = []string{len: n}
 	tc.resolved_call_set = []bool{len: n}
@@ -171,10 +183,12 @@ fn (mut tc TypeChecker) reset_node_caches(n int) {
 	tc.checking_nodes = []bool{len: n}
 }
 
+// push_scope updates push scope state for TypeChecker.
 pub fn (mut tc TypeChecker) push_scope() {
 	tc.cur_scope = tc.reuse_scope(tc.cur_scope)
 }
 
+// pop_scope updates pop scope state for TypeChecker.
 pub fn (mut tc TypeChecker) pop_scope() {
 	if tc.cur_scope == unsafe { nil } {
 		return
@@ -189,6 +203,7 @@ pub fn (mut tc TypeChecker) pop_scope() {
 	tc.cur_scope = parent
 }
 
+// reuse_scope supports reuse scope handling for TypeChecker.
 fn (mut tc TypeChecker) reuse_scope(parent &Scope) &Scope {
 	if tc.scope_pool_index < tc.scope_pool.len {
 		mut scope := tc.scope_pool[tc.scope_pool_index]
@@ -202,6 +217,7 @@ fn (mut tc TypeChecker) reuse_scope(parent &Scope) &Scope {
 	return scope
 }
 
+// record_error supports record error handling for TypeChecker.
 fn (mut tc TypeChecker) record_error(kind TypeErrorKind, msg string, node flat.NodeId) {
 	if !tc.should_diagnose(node) {
 		return
@@ -224,6 +240,7 @@ fn (mut tc TypeChecker) record_unsupported_generic(msg string, node flat.NodeId)
 	}
 }
 
+// collect supports collect handling for TypeChecker.
 pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.a = a
 	tc.file_scope = new_scope(unsafe { nil })
@@ -481,6 +498,7 @@ fn (tc &TypeChecker) const_key_for_suffix(name string) ?string {
 	return none
 }
 
+// resolve_const_types resolves resolve const types information for types.
 fn (mut tc TypeChecker) resolve_const_types() {
 	if tc.const_exprs.len == 0 {
 		return
@@ -514,6 +532,7 @@ fn (mut tc TypeChecker) resolve_const_types() {
 	tc.cur_module = saved_module
 }
 
+// const_type_from_initializer converts const type from initializer data for types.
 fn (tc &TypeChecker) const_type_from_initializer(name string, typ Type) Type {
 	if typ !is Unknown {
 		return typ
@@ -552,6 +571,7 @@ fn (tc &TypeChecker) const_type_from_initializer(name string, typ Type) Type {
 	return typ
 }
 
+// qualify_fn_name supports qualify fn name handling for TypeChecker.
 pub fn (tc &TypeChecker) qualify_fn_name(name string) string {
 	if tc.cur_module.len == 0 || tc.cur_module == 'main' || tc.cur_module == 'builtin' {
 		return name
@@ -559,6 +579,7 @@ pub fn (tc &TypeChecker) qualify_fn_name(name string) string {
 	return '${tc.cur_module}.${name}'
 }
 
+// qualify_name supports qualify name handling for TypeChecker.
 pub fn (tc &TypeChecker) qualify_name(name string) string {
 	if tc.cur_module.len == 0 || tc.cur_module == 'main' || tc.cur_module == 'builtin' {
 		return name
@@ -593,6 +614,7 @@ pub fn (tc &TypeChecker) qualify_name(name string) string {
 	return tc.cur_module + '.' + name
 }
 
+// qualify_type_text supports qualify type text handling for TypeChecker.
 fn (tc &TypeChecker) qualify_type_text(typ string) string {
 	clean := typ.trim_space()
 	if clean.len == 0 {
@@ -665,6 +687,7 @@ fn (tc &TypeChecker) qualify_type_text(typ string) string {
 	return tc.qualify_name(clean)
 }
 
+// qualify_fn_type_text supports qualify fn type text handling for TypeChecker.
 fn (tc &TypeChecker) qualify_fn_type_text(typ string) string {
 	params_start := typ.index_u8(`(`) + 1
 	mut depth := 1
@@ -694,15 +717,18 @@ fn (tc &TypeChecker) qualify_fn_type_text(typ string) string {
 	return 'fn(${params.join(', ')})'
 }
 
+// file_import_key supports file import key handling for types.
 fn file_import_key(file string, alias string) string {
 	return '${file}\n${alias}'
 }
 
+// enter_file supports enter file handling for TypeChecker.
 fn (mut tc TypeChecker) enter_file(file string) {
 	tc.cur_file = file
 	tc.cur_module = tc.file_modules[file] or { '' }
 }
 
+// enter_module supports enter module handling for TypeChecker.
 fn (mut tc TypeChecker) enter_module(name string) {
 	tc.cur_module = name
 	if tc.cur_file.len > 0 {
@@ -710,6 +736,7 @@ fn (mut tc TypeChecker) enter_module(name string) {
 	}
 }
 
+// resolve_import_alias resolves resolve import alias information for types.
 fn (tc &TypeChecker) resolve_import_alias(alias string) ?string {
 	if mod := tc.file_imports[file_import_key(tc.cur_file, alias)] {
 		return mod
@@ -717,10 +744,12 @@ fn (tc &TypeChecker) resolve_import_alias(alias string) ?string {
 	return none
 }
 
+// has_active_import reports whether has active import applies in types.
 fn (tc &TypeChecker) has_active_import(alias string) bool {
 	return file_import_key(tc.cur_file, alias) in tc.file_imports
 }
 
+// register_fn_signature updates register fn signature state for types.
 fn (mut tc TypeChecker) register_fn_signature(name string, ret_type Type, params []Type, is_variadic bool) {
 	tc.register_fn_name_alias(name, ret_type, params, is_variadic)
 	lowered_name := c_name(name)
@@ -736,6 +765,7 @@ fn (mut tc TypeChecker) register_fn_signature(name string, ret_type Type, params
 	}
 }
 
+// register_fn_name_alias updates register fn name alias state for types.
 fn (mut tc TypeChecker) register_fn_name_alias(name string, ret_type Type, params []Type, is_variadic bool) {
 	tc.fn_ret_types[name] = ret_type
 	tc.fn_param_types[name] = params.clone()
@@ -779,6 +809,7 @@ pub fn (mut tc TypeChecker) annotate_types() {
 	}
 }
 
+// annotate_node supports annotate node handling for TypeChecker.
 fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 	if int(id) < 0 {
 		return
@@ -824,6 +855,7 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 	}
 }
 
+// annotate_for_in supports annotate for in handling for TypeChecker.
 fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 	header := node.value.int()
 	if header < 3 || node.children_count < 3 {
@@ -879,6 +911,7 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 	}
 }
 
+// insert_loop_var updates insert loop var state for types.
 fn (mut tc TypeChecker) insert_loop_var(id flat.NodeId, typ Type) {
 	if int(id) < 0 {
 		return
@@ -907,6 +940,7 @@ pub fn (tc &TypeChecker) expr_type(id flat.NodeId) ?Type {
 	return none
 }
 
+// resolved_call_type supports resolved call type handling for TypeChecker.
 fn (tc &TypeChecker) resolved_call_type(id flat.NodeId) ?Type {
 	if int(id) < 0 {
 		return none
@@ -923,6 +957,7 @@ fn (tc &TypeChecker) resolved_call_type(id flat.NodeId) ?Type {
 	return none
 }
 
+// cached_expr_type supports cached expr type handling for TypeChecker.
 fn (tc &TypeChecker) cached_expr_type(id flat.NodeId) ?Type {
 	idx := int(id)
 	if idx >= 0 && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
@@ -931,6 +966,7 @@ fn (tc &TypeChecker) cached_expr_type(id flat.NodeId) ?Type {
 	return none
 }
 
+// cached_resolved_call supports cached resolved call handling for TypeChecker.
 fn (tc &TypeChecker) cached_resolved_call(id flat.NodeId) ?string {
 	idx := int(id)
 	if idx >= 0 && idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
@@ -944,6 +980,7 @@ pub fn (tc &TypeChecker) resolved_call_name(id flat.NodeId) ?string {
 	return tc.cached_resolved_call(id)
 }
 
+// remember_resolved_call supports remember resolved call handling for TypeChecker.
 fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 	idx := int(id)
 	if idx < 0 {
@@ -963,6 +1000,7 @@ pub fn (mut tc TypeChecker) register_synth_type(id flat.NodeId, typ Type) {
 	tc.remember_expr_type(id, typ)
 }
 
+// remember_expr_type supports remember expr type handling for TypeChecker.
 fn (mut tc TypeChecker) remember_expr_type(id flat.NodeId, typ Type) {
 	if int(id) < 0 {
 		return
@@ -980,6 +1018,7 @@ fn (mut tc TypeChecker) remember_expr_type(id flat.NodeId, typ Type) {
 	}
 }
 
+// should_cache_expr_type reports whether should cache expr type applies in types.
 fn should_cache_expr_type(kind flat.NodeKind, typ Type) bool {
 	if typ is Void || typ is Unknown {
 		return false
@@ -994,6 +1033,7 @@ fn should_cache_expr_type(kind flat.NodeKind, typ Type) bool {
 		&& kind_id != 28
 }
 
+// check_semantics validates check semantics state for types.
 pub fn (mut tc TypeChecker) check_semantics() {
 	tc.cur_module = ''
 	tc.cur_file = ''
@@ -1051,6 +1091,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 	}
 }
 
+// check_fn_body validates check fn body state for types.
 fn (mut tc TypeChecker) check_fn_body(node flat.Node) {
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
@@ -1062,6 +1103,7 @@ fn (mut tc TypeChecker) check_fn_body(node flat.Node) {
 	}
 }
 
+// check_decl_type_strings validates check decl type strings state for types.
 fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.Node) {
 	generic_params := tc.infer_decl_generic_params(node)
 	if node.kind == .struct_decl {
@@ -1230,6 +1272,8 @@ fn (tc &TypeChecker) collect_generic_param_candidates(typ string, mut counts map
 	return false
 }
 
+// check_type_string_for_unsupported_generics
+// validates helper state for types.
 fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ string, node_id flat.NodeId, generic_params map[string]bool) {
 	clean := typ.trim_space()
 	if clean.len == 0 {
@@ -1311,6 +1355,8 @@ fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ string, n
 	}
 }
 
+// check_fn_type_string_for_unsupported_generics
+// validates helper state for types.
 fn (mut tc TypeChecker) check_fn_type_string_for_unsupported_generics(typ string, node_id flat.NodeId, generic_params map[string]bool) {
 	params_start := typ.index_u8(`(`) + 1
 	mut depth := 1
@@ -1339,6 +1385,7 @@ fn (mut tc TypeChecker) check_fn_type_string_for_unsupported_generics(typ string
 	tc.check_type_string_for_unsupported_generics(ret, node_id, generic_params)
 }
 
+// generic_type_application supports generic type application handling for types.
 fn generic_type_application(typ string) bool {
 	if typ.starts_with('[') || !typ.contains('[') {
 		return false
@@ -1352,6 +1399,7 @@ fn generic_type_application(typ string) bool {
 	return !is_decimal_int_literal(inner)
 }
 
+// is_decimal_int_literal reports whether is decimal int literal applies in types.
 fn is_decimal_int_literal(s string) bool {
 	if s.len == 0 {
 		return false
@@ -1364,10 +1412,12 @@ fn is_decimal_int_literal(s string) bool {
 	return true
 }
 
+// is_bare_generic_param reports whether is bare generic param applies in types.
 fn is_bare_generic_param(typ string) bool {
 	return typ.len == 1 && typ[0] >= `A` && typ[0] <= `Z`
 }
 
+// type_name_known returns type name known data for TypeChecker.
 fn (tc &TypeChecker) type_name_known(typ string) bool {
 	if is_builtin_type_name(typ) || typ == 'unknown' || typ.starts_with('C.') {
 		return true
@@ -1379,6 +1429,7 @@ fn (tc &TypeChecker) type_name_known(typ string) bool {
 		|| qtyp in tc.sum_types
 }
 
+// should_check_named_type reports whether should check named type applies in types.
 fn should_check_named_type(typ string) bool {
 	if typ.len == 0 {
 		return false
@@ -1393,6 +1444,7 @@ fn should_check_named_type(typ string) bool {
 	return true
 }
 
+// check_struct_field_defaults validates check struct field defaults state for types.
 fn (mut tc TypeChecker) check_struct_field_defaults(node flat.Node) {
 	for i in 0 .. node.children_count {
 		field := tc.a.child_node(&node, i)
@@ -1411,6 +1463,7 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node flat.Node) {
 	}
 }
 
+// check_enum_field_values validates check enum field values state for types.
 fn (mut tc TypeChecker) check_enum_field_values(node flat.Node) {
 	for i in 0 .. node.children_count {
 		field := tc.a.child_node(&node, i)
@@ -1431,6 +1484,7 @@ fn (mut tc TypeChecker) check_enum_field_values(node flat.Node) {
 	}
 }
 
+// check_const_field_values validates check const field values state for types.
 fn (mut tc TypeChecker) check_const_field_values(node flat.Node) {
 	for i in 0 .. node.children_count {
 		field := tc.a.child_node(&node, i)
@@ -1441,6 +1495,7 @@ fn (mut tc TypeChecker) check_const_field_values(node flat.Node) {
 	}
 }
 
+// fn_body_definitely_returns supports fn body definitely returns handling for TypeChecker.
 fn (tc &TypeChecker) fn_body_definitely_returns(node flat.Node) bool {
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
@@ -1455,10 +1510,12 @@ fn (tc &TypeChecker) fn_body_definitely_returns(node flat.Node) bool {
 	return false
 }
 
+// valid_node_id supports valid node id handling for TypeChecker.
 fn (tc &TypeChecker) valid_node_id(id flat.NodeId) bool {
 	return int(id) >= 0 && tc.a != unsafe { nil } && int(id) < tc.a.nodes.len
 }
 
+// stmt_definitely_returns supports stmt definitely returns handling for TypeChecker.
 fn (tc &TypeChecker) stmt_definitely_returns(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
@@ -1508,6 +1565,8 @@ fn (tc &TypeChecker) stmt_definitely_returns(id flat.NodeId) bool {
 	}
 }
 
+// match_branch_definitely_returns
+// supports helper handling in types.
 fn (tc &TypeChecker) match_branch_definitely_returns(branch &flat.Node) bool {
 	body_start := if branch.value == 'else' { 0 } else { branch.value.int() }
 	for i in body_start .. branch.children_count {
@@ -1518,6 +1577,7 @@ fn (tc &TypeChecker) match_branch_definitely_returns(branch &flat.Node) bool {
 	return false
 }
 
+// node_kind_id supports node kind id handling for types.
 fn node_kind_id(node flat.Node) int {
 	mut kind_id := node.kind_id
 	if kind_id == 0 && int(node.kind) != 0 {
@@ -1526,6 +1586,7 @@ fn node_kind_id(node flat.Node) int {
 	return kind_id
 }
 
+// check_node validates check node state for types.
 fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	idx := int(id)
 	if idx < 0 {
@@ -1627,6 +1688,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	}
 }
 
+// check_or_expr validates check or expr state for types.
 fn (mut tc TypeChecker) check_or_expr(node flat.Node) {
 	if node.children_count == 0 {
 		return
@@ -1641,6 +1703,7 @@ fn (mut tc TypeChecker) check_or_expr(node flat.Node) {
 	tc.pop_scope()
 }
 
+// check_fn_literal validates check fn literal state for types.
 fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	saved_ret := tc.cur_fn_ret_type
 	tc.cur_fn_ret_type = tc.parse_type(node.typ)
@@ -1663,6 +1726,7 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	tc.cur_fn_ret_type = saved_ret
 }
 
+// check_lambda_expr validates check lambda expr state for types.
 fn (mut tc TypeChecker) check_lambda_expr(node flat.Node) {
 	if node.children_count == 0 {
 		return
@@ -1678,6 +1742,7 @@ fn (mut tc TypeChecker) check_lambda_expr(node flat.Node) {
 	tc.pop_scope()
 }
 
+// check_block validates check block state for types.
 fn (mut tc TypeChecker) check_block(node flat.Node) {
 	tc.push_scope()
 	for i in 0 .. node.children_count {
@@ -1686,6 +1751,7 @@ fn (mut tc TypeChecker) check_block(node flat.Node) {
 	tc.pop_scope()
 }
 
+// check_for_stmt validates check for stmt state for types.
 fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	tc.push_scope()
 	if node.children_count > 0 {
@@ -1712,6 +1778,7 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	tc.pop_scope()
 }
 
+// check_for_in_stmt validates check for in stmt state for types.
 fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 	header := node.value.int()
 	if header < 3 || node.children_count < 3 {
@@ -1772,6 +1839,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 	tc.pop_scope()
 }
 
+// check_decl_assign validates check decl assign state for types.
 fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
@@ -1799,6 +1867,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// check_multi_return_decl_assign validates check multi return decl assign state for types.
 fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat.Node) bool {
 	if node.children_count < 3 {
 		return false
@@ -1825,6 +1894,7 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 	return false
 }
 
+// multi_assign_lhs_ids supports multi assign lhs ids handling for TypeChecker.
 fn (tc &TypeChecker) multi_assign_lhs_ids(node flat.Node) []flat.NodeId {
 	mut lhs_ids := []flat.NodeId{}
 	if node.children_count > 0 {
@@ -1836,6 +1906,7 @@ fn (tc &TypeChecker) multi_assign_lhs_ids(node flat.Node) []flat.NodeId {
 	return lhs_ids
 }
 
+// insert_decl_lhs updates insert decl lhs state for types.
 fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type) {
 	if int(lhs_id) < 0 || typ is Void {
 		return
@@ -1847,6 +1918,7 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type) {
 	}
 }
 
+// check_assign validates check assign state for types.
 fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	if node.children_count < 2 {
 		return
@@ -1881,6 +1953,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// index_assign_lhs_is_map supports index assign lhs is map handling for TypeChecker.
 fn (tc &TypeChecker) index_assign_lhs_is_map(node flat.Node) bool {
 	if node.children_count == 0 {
 		return false
@@ -1897,6 +1970,7 @@ fn (tc &TypeChecker) index_assign_lhs_is_map(node flat.Node) bool {
 	return base_type is Map
 }
 
+// check_multi_return_assign validates check multi return assign state for types.
 fn (mut tc TypeChecker) check_multi_return_assign(id flat.NodeId, node flat.Node) bool {
 	if node.children_count < 3 {
 		return false
@@ -1927,6 +2001,7 @@ fn (mut tc TypeChecker) check_multi_return_assign(id flat.NodeId, node flat.Node
 	return false
 }
 
+// check_postfix validates check postfix state for types.
 fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
@@ -1945,6 +2020,7 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// resolve_lvalue_type resolves resolve lvalue type information for types.
 fn (mut tc TypeChecker) resolve_lvalue_type(lhs_id flat.NodeId) Type {
 	if int(lhs_id) < 0 {
 		return Type(void_)
@@ -1973,6 +2049,7 @@ fn (mut tc TypeChecker) resolve_lvalue_type(lhs_id flat.NodeId) Type {
 	return tc.resolve_type(lhs_id)
 }
 
+// check_return validates check return state for types.
 fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	expected := tc.cur_fn_ret_type
 	if expected is Void {
@@ -2027,6 +2104,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// check_call validates check call state for types.
 fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 	if info := tc.resolve_call_info(id, node) {
 		if info.name.len > 0 && !is_array_dsl_call_name(info.name) {
@@ -2046,6 +2124,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// should_diagnose reports whether should diagnose applies in types.
 fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) < tc.a.user_code_start {
 		return false
@@ -2072,10 +2151,12 @@ fn (tc &TypeChecker) should_diagnose_unsupported_generic(id flat.NodeId) bool {
 	return tc.diagnostic_files['generic:' + tc.cur_file]
 }
 
+// should_diagnose_unknown_call reports whether should diagnose unknown call applies in types.
 fn (tc &TypeChecker) should_diagnose_unknown_call(id flat.NodeId) bool {
 	return tc.diagnose_unknown_calls && tc.should_diagnose(id)
 }
 
+// resolve_call_info resolves resolve call info information for types.
 fn (mut tc TypeChecker) resolve_call_info(_id flat.NodeId, node flat.Node) ?CallInfo {
 	if node.children_count == 0 {
 		return none
@@ -2376,6 +2457,7 @@ fn (mut tc TypeChecker) resolve_call_info(_id flat.NodeId, node flat.Node) ?Call
 	return none
 }
 
+// call_info updates call info state for TypeChecker.
 fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 	mut params := []Type{}
 	mut params_known := false
@@ -2397,11 +2479,13 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 	}
 }
 
+// is_print_style_fn_name reports whether is print style fn name applies in types.
 fn is_print_style_fn_name(name string) bool {
 	return name in ['print', 'println', 'eprint', 'eprintln', 'builtin.print', 'builtin.println',
 		'builtin.eprint', 'builtin.eprintln']
 }
 
+// print_style_param_accepts_string updates print style param accepts string state for types.
 fn print_style_param_accepts_string(typ Type) bool {
 	mut clean := typ
 	for _ in 0 .. 8 {
@@ -2414,6 +2498,7 @@ fn print_style_param_accepts_string(typ Type) bool {
 	return clean is String
 }
 
+// check_call_arg_types validates check call arg types state for types.
 fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, info CallInfo) {
 	if node.children_count == 0 {
 		return
@@ -2538,6 +2623,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	}
 }
 
+// array_map_return_elem_type supports array map return elem type handling for TypeChecker.
 fn (mut tc TypeChecker) array_map_return_elem_type(node flat.Node) Type {
 	if node.children_count < 2 {
 		return Type(void_)
@@ -2552,6 +2638,7 @@ fn (mut tc TypeChecker) array_map_return_elem_type(node flat.Node) Type {
 	return elem_type
 }
 
+// min_required_arg_count supports min required arg count handling for TypeChecker.
 fn (tc &TypeChecker) min_required_arg_count(info CallInfo) int {
 	if info.is_variadic && info.params.len > 0 {
 		return info.params.len - 1
@@ -2568,15 +2655,18 @@ fn (tc &TypeChecker) min_required_arg_count(info CallInfo) int {
 	return n
 }
 
+// call_arg_needs_array_dsl_scope updates call arg needs array dsl scope state for TypeChecker.
 fn (tc &TypeChecker) call_arg_needs_array_dsl_scope(name string, param_idx int) bool {
 	return param_idx == 1 && is_array_dsl_call_name(name)
 }
 
+// is_array_dsl_call_name reports whether is array dsl call name applies in types.
 fn is_array_dsl_call_name(name string) bool {
 	return name in ['array.filter', 'array.any', 'array.all', 'array.count', 'array.map',
 		'array.sort', 'array.sorted']
 }
 
+// call_explicit_arg_count updates call explicit arg count state for types.
 fn call_explicit_arg_count(node flat.Node) int {
 	if node.children_count <= 1 {
 		return 0
@@ -2591,6 +2681,7 @@ fn call_explicit_arg_count(node flat.Node) int {
 	return n
 }
 
+// push_array_dsl_scope updates push array dsl scope state for TypeChecker.
 fn (mut tc TypeChecker) push_array_dsl_scope(node flat.Node, name string) {
 	tc.push_scope()
 	arr := tc.call_receiver_array_type(node) or { return }
@@ -2602,6 +2693,7 @@ fn (mut tc TypeChecker) push_array_dsl_scope(node flat.Node, name string) {
 	tc.cur_scope.insert('it', arr.elem_type)
 }
 
+// call_receiver_array_type updates call receiver array type state for TypeChecker.
 fn (tc &TypeChecker) call_receiver_array_type(node flat.Node) ?Array {
 	if node.children_count == 0 {
 		return none
@@ -2617,6 +2709,7 @@ fn (tc &TypeChecker) call_receiver_array_type(node flat.Node) ?Array {
 	return none
 }
 
+// call_arg_value updates call arg value state for TypeChecker.
 fn (tc &TypeChecker) call_arg_value(id flat.NodeId) flat.NodeId {
 	if int(id) < 0 {
 		return id
@@ -2628,6 +2721,7 @@ fn (tc &TypeChecker) call_arg_value(id flat.NodeId) flat.NodeId {
 	return id
 }
 
+// receiver_compatible supports receiver compatible handling for TypeChecker.
 fn (tc &TypeChecker) receiver_compatible(actual Type, expected Type) bool {
 	if tc.type_compatible(actual, expected) {
 		return true
@@ -2641,6 +2735,7 @@ fn (tc &TypeChecker) receiver_compatible(actual Type, expected Type) bool {
 	return false
 }
 
+// is_zero_literal reports whether is zero literal applies in types.
 fn (tc &TypeChecker) is_zero_literal(id flat.NodeId) bool {
 	if int(id) < 0 {
 		return false
@@ -2649,6 +2744,7 @@ fn (tc &TypeChecker) is_zero_literal(id flat.NodeId) bool {
 	return node.kind == .int_literal && node.value == '0'
 }
 
+// is_fn_pointer_type reports whether is fn pointer type applies in types.
 fn is_fn_pointer_type(typ Type) bool {
 	clean0 := typ
 	mut clean := clean0
@@ -2658,6 +2754,7 @@ fn is_fn_pointer_type(typ Type) bool {
 	return clean is FnType
 }
 
+// fn_type_from_type converts fn type from type data for types.
 fn fn_type_from_type(typ Type) ?FnType {
 	if typ is FnType {
 		return typ
@@ -2668,6 +2765,7 @@ fn fn_type_from_type(typ Type) ?FnType {
 	return none
 }
 
+// selector_fn_type supports selector fn type handling for TypeChecker.
 fn (tc &TypeChecker) selector_fn_type(node flat.Node) ?FnType {
 	if node.children_count == 0 {
 		return none
@@ -2701,6 +2799,7 @@ fn (tc &TypeChecker) selector_fn_type(node flat.Node) ?FnType {
 	return none
 }
 
+// selector_fn_base_type supports selector fn base type handling for TypeChecker.
 fn (tc &TypeChecker) selector_fn_base_type(base_id flat.NodeId) ?Type {
 	if typ := tc.cached_expr_type(base_id) {
 		return typ
@@ -2724,6 +2823,7 @@ fn (tc &TypeChecker) selector_fn_base_type(base_id flat.NodeId) ?Type {
 	return tc.resolve_type(base_id)
 }
 
+// direct_call_return_type supports direct call return type handling for TypeChecker.
 fn (tc &TypeChecker) direct_call_return_type(node flat.Node) ?Type {
 	if node.children_count == 0 {
 		return none
@@ -2772,6 +2872,7 @@ fn (tc &TypeChecker) direct_call_return_type(node flat.Node) ?Type {
 	return none
 }
 
+// module_const_receiver_method_name supports module_const_receiver_method_name handling in types.
 fn (tc &TypeChecker) module_const_receiver_method_name(base_node flat.Node, method string) ?string {
 	if base_node.kind != .selector || base_node.children_count == 0 || method.len == 0 {
 		return none
@@ -2801,6 +2902,7 @@ fn (tc &TypeChecker) module_const_receiver_method_name(base_node flat.Node, meth
 	return none
 }
 
+// valid_string_data supports valid string data handling for types.
 fn valid_string_data(s string) bool {
 	if s.len == 0 {
 		return true
@@ -2809,6 +2911,7 @@ fn valid_string_data(s string) bool {
 	return ptr >= 4096 && ptr < 281474976710656 && s.len < 1048576
 }
 
+// clone_smartcasts supports clone smartcasts handling for types.
 fn clone_smartcasts(src map[string]Type) map[string]Type {
 	mut dst := map[string]Type{}
 	for key, typ in src {
@@ -2819,26 +2922,32 @@ fn clone_smartcasts(src map[string]Type) map[string]Type {
 	return dst
 }
 
+// array_elem_type supports array elem type handling for types.
 fn array_elem_type(arr Array) Type {
 	return arr.elem_type
 }
 
+// fixed_array_elem_type supports fixed array elem type handling for types.
 fn fixed_array_elem_type(arr ArrayFixed) Type {
 	return arr.elem_type
 }
 
+// map_value_type supports map value type handling for types.
 fn map_value_type(m Map) Type {
 	return m.value_type
 }
 
+// pointer_base_type supports pointer base type handling for types.
 fn pointer_base_type(p Pointer) Type {
 	return p.base_type
 }
 
+// fn_param_type supports fn param type handling for types.
 fn fn_param_type(f FnType, idx int) Type {
 	return f.params[idx]
 }
 
+// is_known_call reports whether is known call applies in types.
 fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 	if node.children_count == 0 {
 		return true
@@ -2936,6 +3045,7 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 	return false
 }
 
+// call_display_name updates call display name state for TypeChecker.
 fn (tc &TypeChecker) call_display_name(node flat.Node) string {
 	if node.children_count == 0 {
 		return '<missing>'
@@ -2953,6 +3063,7 @@ fn (tc &TypeChecker) call_display_name(node flat.Node) string {
 	return fn_node.value
 }
 
+// check_if_expr validates check if expr state for types.
 fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	if node.children_count < 2 {
 		return
@@ -2994,6 +3105,7 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// branch_has_value_tail converts branch has value tail data for types.
 fn (tc &TypeChecker) branch_has_value_tail(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
@@ -3026,6 +3138,7 @@ fn (tc &TypeChecker) branch_has_value_tail(id flat.NodeId) bool {
 		.block]
 }
 
+// check_condition validates check condition state for types.
 fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 	if int(cond_id) < 0 {
 		return []LocalBinding{}
@@ -3052,6 +3165,7 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 	return []LocalBinding{}
 }
 
+// check_bool_condition validates check bool condition state for types.
 fn (mut tc TypeChecker) check_bool_condition(cond_id flat.NodeId) {
 	tc.check_node(cond_id)
 	cond_type := tc.resolve_type(cond_id)
@@ -3061,6 +3175,7 @@ fn (mut tc TypeChecker) check_bool_condition(cond_id flat.NodeId) {
 	}
 }
 
+// check_if_guard validates check if guard state for types.
 fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBinding {
 	if node.children_count < 2 {
 		return []LocalBinding{}
@@ -3101,6 +3216,7 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 	return []LocalBinding{}
 }
 
+// check_match_stmt validates check match stmt state for types.
 fn (mut tc TypeChecker) check_match_stmt(_id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
@@ -3147,6 +3263,7 @@ fn (mut tc TypeChecker) check_match_stmt(_id flat.NodeId, node flat.Node) {
 	}
 }
 
+// check_is_expr validates check is expr state for types.
 fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
@@ -3172,6 +3289,7 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// branch_tail_type supports branch tail type handling for TypeChecker.
 fn (tc &TypeChecker) branch_tail_type(id flat.NodeId) Type {
 	if !tc.valid_node_id(id) {
 		return Type(void_)
@@ -3212,6 +3330,7 @@ fn (tc &TypeChecker) branch_tail_type(id flat.NodeId) Type {
 	return tc.resolve_type(id)
 }
 
+// if_expr_tail_type supports if expr tail type handling for TypeChecker.
 fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 	mut cur_id := id
 	mut result := Type(void_)
@@ -3242,6 +3361,7 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 	return result
 }
 
+// choose_if_tail_type supports choose if tail type handling for types.
 fn choose_if_tail_type(current Type, next Type) Type {
 	if current is Void {
 		return next
@@ -3258,6 +3378,7 @@ fn choose_if_tail_type(current Type, next Type) Type {
 	return current
 }
 
+// extract_smartcasts supports extract smartcasts handling for TypeChecker.
 fn (tc &TypeChecker) extract_smartcasts(cond_id flat.NodeId) []LocalBinding {
 	if int(cond_id) < 0 {
 		return []LocalBinding{}
@@ -3283,6 +3404,7 @@ fn (tc &TypeChecker) extract_smartcasts(cond_id flat.NodeId) []LocalBinding {
 	return []LocalBinding{}
 }
 
+// check_struct_init validates check struct init state for types.
 fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	init_type := tc.parse_type(node.value)
 	if init_type is Struct {
@@ -3330,6 +3452,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	_ = id
 }
 
+// check_selector validates check selector state for types.
 fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
@@ -3356,6 +3479,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// is_namespace_selector reports whether is namespace selector applies in types.
 fn (tc &TypeChecker) is_namespace_selector(node flat.Node, base flat.Node) bool {
 	if base.kind != .ident {
 		return false
@@ -3372,6 +3496,7 @@ fn (tc &TypeChecker) is_namespace_selector(node flat.Node, base flat.Node) bool 
 	return qname in tc.const_types || qname in tc.fn_ret_types || qname in tc.enum_names
 }
 
+// selector_type supports selector type handling for TypeChecker.
 fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 	if node.children_count == 0 {
 		return none
@@ -3452,6 +3577,7 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 	return none
 }
 
+// multi_return_selector_type supports multi return selector type handling for types.
 fn multi_return_selector_type(typ MultiReturn, field string) ?Type {
 	if !field.starts_with('arg') || field.len <= 3 {
 		return none
@@ -3464,6 +3590,7 @@ fn multi_return_selector_type(typ MultiReturn, field string) ?Type {
 	return typ.types[idx]
 }
 
+// lowered_sum_selector_type supports lowered sum selector type handling for TypeChecker.
 fn (tc &TypeChecker) lowered_sum_selector_type(sum SumType, field string) ?Type {
 	if field == 'typ' {
 		return Type(int_)
@@ -3478,6 +3605,7 @@ fn (tc &TypeChecker) lowered_sum_selector_type(sum SumType, field string) ?Type 
 	return none
 }
 
+// sum_shared_field_type supports sum shared field type handling for TypeChecker.
 fn (tc &TypeChecker) sum_shared_field_type(sum SumType, field string) ?Type {
 	variants := tc.sum_types[sum.name] or { return none }
 	if variants.len == 0 {
@@ -3500,6 +3628,7 @@ fn (tc &TypeChecker) sum_shared_field_type(sum SumType, field string) ?Type {
 	return common_typ
 }
 
+// option_result_selector_type supports option result selector type handling for types.
 fn option_result_selector_type(typ Type, field string) ?Type {
 	if typ is OptionType {
 		if field == 'ok' {
@@ -3520,6 +3649,7 @@ fn option_result_selector_type(typ Type, field string) ?Type {
 	return none
 }
 
+// check_index validates check index state for types.
 fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
@@ -3582,6 +3712,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	tc.register_synth_type(id, tc.resolve_index_type(node))
 }
 
+// check_ident validates check ident state for types.
 fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 	if node.value.len == 0 || node.value == '_' {
 		return
@@ -3619,6 +3750,7 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// resolve_expr resolves resolve expr information for types.
 fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 	if int(id) < 0 {
 		return unknown_type('missing expression')
@@ -3686,6 +3818,7 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 	return actual
 }
 
+// fn_value_matches supports fn value matches handling for TypeChecker.
 fn (tc &TypeChecker) fn_value_matches(name string, expected Type) bool {
 	if expected is FnType {
 		actual := tc.fn_value_type(name) or { return false }
@@ -3706,6 +3839,7 @@ fn (tc &TypeChecker) fn_value_matches(name string, expected Type) bool {
 	return false
 }
 
+// fn_value_type supports fn value type handling for TypeChecker.
 fn (tc &TypeChecker) fn_value_type(name string) ?Type {
 	qfn := tc.qualify_fn_name(name)
 	if qfn in tc.fn_ret_types {
@@ -3717,6 +3851,7 @@ fn (tc &TypeChecker) fn_value_type(name string) ?Type {
 	return none
 }
 
+// fn_type_from_key converts fn type from key data for types.
 fn (tc &TypeChecker) fn_type_from_key(key string) ?Type {
 	params := tc.fn_param_types[key] or { return none }
 	ret := tc.fn_ret_types[key] or { return none }
@@ -3726,6 +3861,7 @@ fn (tc &TypeChecker) fn_type_from_key(key string) ?Type {
 	})
 }
 
+// enum_value_matches supports enum value matches handling for TypeChecker.
 fn (tc &TypeChecker) enum_value_matches(value string, enum_name string) bool {
 	if value.contains('.') {
 		prefix := value.all_before_last('.')
@@ -3738,11 +3874,13 @@ fn (tc &TypeChecker) enum_value_matches(value string, enum_name string) bool {
 	return tc.enum_has_field(enum_name, value)
 }
 
+// enum_has_field converts enum has field data for types.
 fn (tc &TypeChecker) enum_has_field(enum_name string, field string) bool {
 	fields := tc.enum_fields[enum_name] or { return false }
 	return field in fields
 }
 
+// resolve_enum_name resolves resolve enum name information for types.
 fn (tc &TypeChecker) resolve_enum_name(name string) ?string {
 	if name in tc.enum_names {
 		return name
@@ -3754,6 +3892,7 @@ fn (tc &TypeChecker) resolve_enum_name(name string) ?string {
 	return none
 }
 
+// enum_selector_type supports enum selector type handling for TypeChecker.
 fn (tc &TypeChecker) enum_selector_type(node &flat.Node) ?Type {
 	if node.kind != .selector || node.children_count == 0 {
 		return none
@@ -3778,6 +3917,7 @@ fn (tc &TypeChecker) enum_selector_type(node &flat.Node) ?Type {
 	})
 }
 
+// type_compatible returns type compatible data for TypeChecker.
 fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	actual_raw := actual
 	expected_raw := expected
@@ -3917,6 +4057,7 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	return false
 }
 
+// is_ierror_type reports whether is ierror type applies in types.
 fn is_ierror_type(t Type) bool {
 	if t is Alias {
 		return t.name == 'IError' || t.name.ends_with('.IError') || is_ierror_type(t.base_type)
@@ -3933,6 +4074,7 @@ fn is_ierror_type(t Type) bool {
 	return false
 }
 
+// is_runtime_array_type reports whether is runtime array type applies in types.
 fn is_runtime_array_type(t Type) bool {
 	if t is Alias {
 		return is_runtime_array_type(t.base_type)
@@ -3943,6 +4085,7 @@ fn is_runtime_array_type(t Type) bool {
 	return false
 }
 
+// fixed_array_lengths_compatible supports fixed array lengths compatible handling for TypeChecker.
 fn (tc &TypeChecker) fixed_array_lengths_compatible(actual ArrayFixed, expected ArrayFixed) bool {
 	if actual.len > 0 && expected.len > 0 {
 		return actual.len == expected.len
@@ -3967,6 +4110,7 @@ pub fn (tc &TypeChecker) fixed_array_len_value(arr ArrayFixed) ?int {
 	return tc.const_int_value(arr.len_expr, []string{})
 }
 
+// const_int_value supports const int value handling for TypeChecker.
 fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 	if name in seen {
 		return none
@@ -3990,6 +4134,7 @@ fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 	return none
 }
 
+// const_int_expr supports const int expr handling for TypeChecker.
 fn (tc &TypeChecker) const_int_expr(id flat.NodeId, seen []string) ?int {
 	if int(id) < 0 {
 		return none
@@ -4059,6 +4204,7 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, seen []string) ?int {
 	return none
 }
 
+// type_implements_interface returns type implements interface data for TypeChecker.
 fn (tc &TypeChecker) type_implements_interface(actual Type, expected Interface) bool {
 	clean := unwrap_pointer(actual)
 	if clean is Unknown {
@@ -4074,6 +4220,7 @@ fn (tc &TypeChecker) type_implements_interface(actual Type, expected Interface) 
 	return tc.named_type_implements_interface(concrete_name, expected.name)
 }
 
+// interface_implements_interface supports interface implements interface handling for TypeChecker.
 fn (tc &TypeChecker) interface_implements_interface(actual_name string, expected_name string) bool {
 	if actual_name == expected_name {
 		return true
@@ -4096,6 +4243,8 @@ fn (tc &TypeChecker) interface_implements_interface(actual_name string, expected
 	return true
 }
 
+// named_type_implements_interface
+// supports helper handling in types.
 pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, iface_name string) bool {
 	// Only the abstract (declared) methods must be provided by the concrete type.
 	// Methods defined directly on the interface (default implementations) are
@@ -4120,6 +4269,7 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, i
 	return true
 }
 
+// interface_method_names supports interface method names handling for TypeChecker.
 fn (tc &TypeChecker) interface_method_names(iface_name string) []string {
 	mut seen := map[string]bool{}
 	return tc.interface_method_names_inner(iface_name, mut seen)
@@ -4133,6 +4283,7 @@ pub fn (tc &TypeChecker) interface_abstract_method_names(iface_name string) []st
 	return tc.interface_abstract_method_names_inner(iface_name, mut seen)
 }
 
+// interface_abstract_method_names_inner supports interface_abstract_method_names_inner handling.
 fn (tc &TypeChecker) interface_abstract_method_names_inner(iface_name string, mut seen map[string]bool) []string {
 	if iface_name in seen {
 		return []string{}
@@ -4154,6 +4305,7 @@ fn (tc &TypeChecker) interface_abstract_method_names_inner(iface_name string, mu
 	return methods
 }
 
+// interface_method_names_inner supports interface method names inner handling for TypeChecker.
 fn (tc &TypeChecker) interface_method_names_inner(iface_name string, mut seen map[string]bool) []string {
 	if iface_name in seen {
 		return []string{}
@@ -4179,11 +4331,13 @@ fn (tc &TypeChecker) interface_method_names_inner(iface_name string, mut seen ma
 	return methods
 }
 
+// interface_field_list supports interface field list handling for TypeChecker.
 fn (tc &TypeChecker) interface_field_list(iface_name string) []StructField {
 	mut seen := map[string]bool{}
 	return tc.interface_field_list_inner(iface_name, mut seen)
 }
 
+// interface_field_list_inner supports interface field list inner handling for TypeChecker.
 fn (tc &TypeChecker) interface_field_list_inner(iface_name string, mut seen map[string]bool) []StructField {
 	if iface_name in seen {
 		return []StructField{}
@@ -4199,6 +4353,7 @@ fn (tc &TypeChecker) interface_field_list_inner(iface_name string, mut seen map[
 	return fields
 }
 
+// interface_field_type supports interface field type handling for TypeChecker.
 fn (tc &TypeChecker) interface_field_type(iface_name string, field_name string) ?Type {
 	for field in tc.interface_field_list(iface_name) {
 		if field.name == field_name {
@@ -4208,6 +4363,7 @@ fn (tc &TypeChecker) interface_field_type(iface_name string, field_name string) 
 	return none
 }
 
+// struct_field_type supports struct field type handling for TypeChecker.
 fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?Type {
 	for field in tc.structs[struct_name] or { []StructField{} } {
 		if field.name == field_name {
@@ -4217,6 +4373,7 @@ fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?T
 	return none
 }
 
+// method_signature_compatible supports method signature compatible handling for TypeChecker.
 fn (tc &TypeChecker) method_signature_compatible(actual_key string, expected_key string) bool {
 	actual_params := tc.fn_param_types[actual_key] or { return false }
 	expected_params := tc.fn_param_types[expected_key] or { return false }
@@ -4234,6 +4391,7 @@ fn (tc &TypeChecker) method_signature_compatible(actual_key string, expected_key
 	return tc.type_compatible(actual_ret, expected_ret)
 }
 
+// method_type_name supports method type name handling for types.
 fn method_type_name(t Type) string {
 	if t is Alias {
 		return t.name
@@ -4268,6 +4426,7 @@ fn method_type_name(t Type) string {
 	return ''
 }
 
+// type_matches_sum returns type matches sum data for TypeChecker.
 fn (tc &TypeChecker) type_matches_sum(actual Type, expected Type) bool {
 	if expected is SumType {
 		actual_name := actual.name()
@@ -4276,6 +4435,7 @@ fn (tc &TypeChecker) type_matches_sum(actual Type, expected Type) bool {
 	return false
 }
 
+// sum_has_variant converts sum has variant data for types.
 fn (tc &TypeChecker) sum_has_variant(sum_name string, variant_name string) bool {
 	variants := tc.sum_types[sum_name] or { return false }
 	variant_short := short_type_name(variant_name)
@@ -4295,6 +4455,7 @@ fn (tc &TypeChecker) sum_has_variant(sum_name string, variant_name string) bool 
 	return false
 }
 
+// match_type_pattern supports match type pattern handling for TypeChecker.
 fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?string {
 	if node.kind == .ident {
 		return node.value
@@ -4308,6 +4469,7 @@ fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?string {
 	return none
 }
 
+// short_type_name supports short type name handling for types.
 fn short_type_name(name string) string {
 	if name.contains('.') {
 		return name.all_after_last('.')
@@ -4315,12 +4477,14 @@ fn short_type_name(name string) string {
 	return name
 }
 
+// type_mismatch returns type mismatch data for TypeChecker.
 fn (mut tc TypeChecker) type_mismatch(kind TypeErrorKind, msg string, node flat.NodeId) {
 	if tc.should_diagnose(node) {
 		tc.record_error(kind, msg, node)
 	}
 }
 
+// expr_key supports expr key handling for TypeChecker.
 fn (tc &TypeChecker) expr_key(id flat.NodeId) string {
 	if int(id) < 0 {
 		return ''
@@ -4341,6 +4505,7 @@ fn (tc &TypeChecker) expr_key(id flat.NodeId) string {
 	return ''
 }
 
+// smartcast_type supports smartcast type handling for TypeChecker.
 fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
 	key := tc.expr_key(id)
 	if key.len == 0 {
@@ -4370,6 +4535,7 @@ pub fn (tc &TypeChecker) parse_type(typ string) Type {
 	return tc.parse_type_uncached(typ)
 }
 
+// parse_type_uncached reads parse type uncached input for types.
 fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.len == 0 {
 		return Type(void_)
@@ -4665,6 +4831,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	})
 }
 
+// unique_qualified_type_name supports unique qualified type name handling for TypeChecker.
 fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
 	if short_name.len == 0 {
 		return none
@@ -4716,6 +4883,7 @@ fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
 	return found
 }
 
+// is_generic_placeholder_type reports whether is generic placeholder type applies in types.
 fn is_generic_placeholder_type(typ string) bool {
 	if typ.contains('.') {
 		last := typ.all_after_last('.')
@@ -4724,6 +4892,7 @@ fn is_generic_placeholder_type(typ string) bool {
 	return is_bare_generic_param(typ)
 }
 
+// parse_fn_type reads parse fn type input for types.
 fn (tc &TypeChecker) parse_fn_type(typ string) Type {
 	params_start := typ.index_u8(`(`) + 1
 	mut depth := 1
@@ -4760,6 +4929,7 @@ fn (tc &TypeChecker) parse_fn_type(typ string) Type {
 	})
 }
 
+// resolve_type resolves resolve type information for types.
 pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	if int(id) < 0 {
 		return unknown_type('missing node')
@@ -5381,6 +5551,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	}
 }
 
+// fn_literal_type supports fn literal type handling for TypeChecker.
 fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 	mut params := []Type{}
 	for i in 0 .. node.children_count {
@@ -5395,6 +5566,7 @@ fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 	})
 }
 
+// lambda_expr_type supports lambda expr type handling for TypeChecker.
 fn (tc &TypeChecker) lambda_expr_type(node flat.Node) Type {
 	mut params := []Type{}
 	if node.children_count > 0 {
@@ -5413,6 +5585,7 @@ fn (tc &TypeChecker) lambda_expr_type(node flat.Node) Type {
 	})
 }
 
+// resolve_index_type resolves resolve index type information for types.
 fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 	base_type0 := tc.resolve_type(tc.a.child(&node, 0))
 	mut base_type := base_type0
@@ -5455,6 +5628,7 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 	return unknown_type('cannot index `${base_type.name()}`')
 }
 
+// c_type supports c type handling for TypeChecker.
 pub fn (tc &TypeChecker) c_type(t Type) string {
 	if t is Pointer || t is FnType || t is Struct || t is Interface || t is SumType || t is Alias
 		|| t is MultiReturn || t is ArrayFixed {
@@ -5472,6 +5646,7 @@ pub fn (tc &TypeChecker) c_type(t Type) string {
 	return tc.c_type_uncached(t)
 }
 
+// c_type_uncached supports c type uncached handling for TypeChecker.
 fn (tc &TypeChecker) c_type_uncached(t Type) string {
 	if t is Void {
 		return 'void'
@@ -5567,11 +5742,13 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 	return 'int'
 }
 
+// c_type_name_part supports c type name part handling for types.
 fn c_type_name_part(s string) string {
 	return s.replace('*', 'ptr').replace(' ', '_').replace(',', '_').replace('|', '_').replace(':',
 		'_')
 }
 
+// resolve_type_name_for_method resolves resolve type name for method information for types.
 fn resolve_type_name_for_method(t Type) string {
 	if t is Alias {
 		return t.name
@@ -5597,6 +5774,7 @@ fn resolve_type_name_for_method(t Type) string {
 	return ''
 }
 
+// prim_c_type_from supports prim c type from handling for types.
 fn prim_c_type_from(props Properties, size u8) string {
 	if props.has(.boolean) {
 		return 'bool'
@@ -5630,6 +5808,7 @@ fn prim_c_type_from(props Properties, size u8) string {
 	return 'int'
 }
 
+// prim_c_type supports prim c type handling for types.
 fn prim_c_type(p Primitive) string {
 	if p.props.has(.boolean) {
 		return 'bool'
@@ -5663,6 +5842,7 @@ fn prim_c_type(p Primitive) string {
 	return 'int'
 }
 
+// find_matching_bracket resolves find matching bracket information for types.
 fn find_matching_bracket(s string, start int) int {
 	mut depth := 1
 	for i := start + 1; i < s.len; i++ {
@@ -5679,6 +5859,7 @@ fn find_matching_bracket(s string, start int) int {
 	return s.len
 }
 
+// split_params supports split params handling for types.
 fn split_params(s string) []string {
 	mut parts := []string{}
 	mut depth := 0
@@ -5706,6 +5887,7 @@ fn split_params(s string) []string {
 	return parts
 }
 
+// normalize_fn_type_param_text transforms normalize fn type param text data for types.
 fn normalize_fn_type_param_text(param string) string {
 	mut text := param.trim_space()
 	mut is_mut := false
@@ -5727,6 +5909,7 @@ fn normalize_fn_type_param_text(param string) string {
 	return text
 }
 
+// top_level_space_index supports top level space index handling for types.
 fn top_level_space_index(s string) int {
 	mut depth := 0
 	for i := 0; i < s.len; i++ {
@@ -5748,6 +5931,7 @@ fn top_level_space_index(s string) int {
 	return -1
 }
 
+// fn_type_param_head_is_name supports fn type param head is name handling for types.
 fn fn_type_param_head_is_name(head string, tail string) bool {
 	if head.len == 0 || tail.len == 0 {
 		return false
@@ -5769,6 +5953,7 @@ const c_reserved_words = ['auto', 'break', 'case', 'char', 'const', 'continue', 
 	'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct', 'switch',
 	'typedef', 'union', 'unsigned', 'void', 'volatile', 'while']
 
+// c_name converts c name data for types.
 fn c_name(name string) string {
 	if name.starts_with('C.') {
 		return name[2..]

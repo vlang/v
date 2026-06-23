@@ -5,6 +5,7 @@ import v3.pref
 import v3.ssa
 import v3.types
 
+// parse_checked_source reads parse checked source input for v3 tests.
 fn parse_checked_source(name string, source string) (&flat.FlatAst, &types.TypeChecker) {
 	src := os.join_path(os.temp_dir(), 'v3_ssa_builder_${name}.v')
 	os.write_file(src, source) or { panic(err) }
@@ -18,15 +19,18 @@ fn parse_checked_source(name string, source string) (&flat.FlatAst, &types.TypeC
 	return a, &tc
 }
 
+// build_source builds source data for v3 tests.
 fn build_source(name string, source string) &ssa.Module {
 	return build_source_with_used(name, source, map[string]bool{})
 }
 
+// build_source_with_used builds source with used data for v3 tests.
 fn build_source_with_used(name string, source string, used_fns map[string]bool) &ssa.Module {
 	a, tc := parse_checked_source(name, source)
 	return ssa.build_with_used(a, used_fns, tc)
 }
 
+// find_func resolves find func information for v3 tests.
 fn find_func(m &ssa.Module, name string) ssa.Function {
 	for f in m.funcs {
 		if f.name == name {
@@ -37,6 +41,7 @@ fn find_func(m &ssa.Module, name string) ssa.Function {
 	return ssa.Function{}
 }
 
+// func_instrs supports func instrs handling for v3 tests.
 fn func_instrs(m &ssa.Module, name string) []ssa.Instruction {
 	f := find_func(m, name)
 	mut instrs := []ssa.Instruction{}
@@ -51,6 +56,7 @@ fn func_instrs(m &ssa.Module, name string) []ssa.Instruction {
 	return instrs
 }
 
+// ret_operand supports ret operand handling for v3 tests.
 fn ret_operand(m &ssa.Module, name string) ssa.ValueID {
 	for instr in func_instrs(m, name) {
 		if instr.op == .ret && instr.operands.len == 1 {
@@ -61,6 +67,7 @@ fn ret_operand(m &ssa.Module, name string) ssa.ValueID {
 	return ssa.ValueID(0)
 }
 
+// has_call_to reports whether has call to applies in v3 tests.
 fn has_call_to(m &ssa.Module, fn_name string, callee string) bool {
 	for instr in func_instrs(m, fn_name) {
 		if instr.op != .call || instr.operands.len == 0 {
@@ -74,6 +81,7 @@ fn has_call_to(m &ssa.Module, fn_name string, callee string) bool {
 	return false
 }
 
+// has_instr_op reports whether has instr op applies in v3 tests.
 fn has_instr_op(m &ssa.Module, fn_name string, op ssa.OpCode) bool {
 	for instr in func_instrs(m, fn_name) {
 		if instr.op == op {
@@ -83,6 +91,7 @@ fn has_instr_op(m &ssa.Module, fn_name string, op ssa.OpCode) bool {
 	return false
 }
 
+// has_alloca_len_const reports whether has alloca len const applies in v3 tests.
 fn has_alloca_len_const(m &ssa.Module, fn_name string, len string) bool {
 	for instr in func_instrs(m, fn_name) {
 		if instr.op != .alloca || instr.operands.len == 0 {
@@ -96,6 +105,7 @@ fn has_alloca_len_const(m &ssa.Module, fn_name string, len string) bool {
 	return false
 }
 
+// test_if_expression_builds_phi validates if expression builds phi behavior in v3 tests.
 fn test_if_expression_builds_phi() {
 	m := build_source('if_phi', '
 fn pick(flag bool) int {
@@ -116,6 +126,7 @@ fn pick(flag bool) int {
 	assert found_phi
 }
 
+// test_match_expression_builds_phi validates match expression builds phi behavior in v3 tests.
 fn test_match_expression_builds_phi() {
 	m := build_source('match_phi', '
 fn pick(x int) int {
@@ -142,6 +153,7 @@ fn pick(x int) int {
 	assert found_phi
 }
 
+// test_string_infix_lowers_to_runtime_calls validates this v3 regression case.
 fn test_string_infix_lowers_to_runtime_calls() {
 	m := build_source('string_infix', '
 fn join(a string, b string) string {
@@ -156,6 +168,7 @@ fn same(a string, b string) bool {
 	assert has_call_to(m, 'same', 'string__eq')
 }
 
+// test_c_fn_decl_registers_extern_signature validates this v3 regression case.
 fn test_c_fn_decl_registers_extern_signature() {
 	m := build_source('c_fn_decl', '
 fn C.abs(x int) int
@@ -171,6 +184,7 @@ fn main() {
 	assert ret_type.width == 32
 }
 
+// test_function_parameter_call_lowers_to_call_indirect validates this v3 regression case.
 fn test_function_parameter_call_lowers_to_call_indirect() {
 	m := build_source('call_indirect', '
 fn add(a int, b int) int {
@@ -191,6 +205,7 @@ fn apply(f fn (int, int) int, x int, y int) int {
 	assert found_indirect
 }
 
+// test_label_and_goto_lower_to_jump_blocks validates this v3 regression case.
 fn test_label_and_goto_lower_to_jump_blocks() {
 	m := build_source('label_goto', '
 fn jumpy() int {
@@ -210,6 +225,7 @@ done:
 	assert found_jump
 }
 
+// test_const_identifier_lowers_to_const_value validates this v3 regression case.
 fn test_const_identifier_lowers_to_const_value() {
 	m := build_source('const_ident', '
 const answer = 42
@@ -223,6 +239,7 @@ fn get_answer() int {
 	assert ret.name == '42'
 }
 
+// test_enum_selector_lowers_to_const_value validates this v3 regression case.
 fn test_enum_selector_lowers_to_const_value() {
 	m := build_source('enum_selector', '
 enum Color {
@@ -249,6 +266,7 @@ fn get_blue() int {
 	}
 }
 
+// test_float_literal_uses_float_type validates this v3 regression case.
 fn test_float_literal_uses_float_type() {
 	m := build_source('float_literal', '
 fn get_float() f64 {
@@ -261,6 +279,7 @@ fn get_float() f64 {
 	assert typ.width == 64
 }
 
+// test_integer_casts_emit_conversion_ops validates this v3 regression case.
 fn test_integer_casts_emit_conversion_ops() {
 	m := build_source('int_casts', '
 fn narrow(x i64) u8 {
@@ -295,6 +314,7 @@ fn widen_signed(x int) i64 {
 	assert has_instr_op(m, 'widen_signed', .sext)
 }
 
+// test_unsigned_integer_infix_uses_unsigned_ops validates this v3 regression case.
 fn test_unsigned_integer_infix_uses_unsigned_ops() {
 	m := build_source('unsigned_ops', '
 fn div_u(x u32, y u32) u32 {
@@ -320,6 +340,7 @@ fn cmp_s(x int, y int) bool {
 	assert !has_instr_op(m, 'cmp_s', .ult)
 }
 
+// test_fixed_array_const_length_is_resolved validates this v3 regression case.
 fn test_fixed_array_const_length_is_resolved() {
 	mut used_fns := map[string]bool{}
 	used_fns['make_array'] = true
@@ -337,6 +358,7 @@ fn make_array() int {
 	assert has_alloca_len_const(m, 'make_array', '4')
 }
 
+// test_string_range_does_not_lower_to_array_slice validates this v3 regression case.
 fn test_string_range_does_not_lower_to_array_slice() {
 	m := build_source('string_range', '
 fn cut(s string) string {
@@ -346,6 +368,7 @@ fn cut(s string) string {
 	assert !has_call_to(m, 'cut', 'array_slice')
 }
 
+// test_array_first_last_load_elements validates this v3 regression case.
 fn test_array_first_last_load_elements() {
 	m := build_source('array_first_last', '
 fn first_value(values []int) int {

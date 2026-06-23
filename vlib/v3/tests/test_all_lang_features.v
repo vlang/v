@@ -7,25 +7,31 @@ import strings
 import v3.bench
 import v.token
 
+// Cat represents cat data used by v3 tests.
 struct Cat {
 	name string
 	age  int
 }
 
+// Dog represents dog data used by v3 tests.
 struct Dog {
 	name   string
 	tricks int
 }
 
+// Animal aliases animal values used by v3 tests.
 type Animal = Cat | Dog
 
+// UserId104 aliases user id104 values used by v3 tests.
 type UserId104 = int
 
+// Holder represents holder data used by v3 tests.
 struct Holder {
 mut:
 	pet Animal
 }
 
+// describe_holder supports describe holder handling for v3 tests.
 fn describe_holder(h Holder) string {
 	if h.pet is Cat {
 		return h.pet.name
@@ -35,6 +41,7 @@ fn describe_holder(h Holder) string {
 	return 'unknown'
 }
 
+// holder_detail supports holder detail handling for v3 tests.
 fn holder_detail(h Holder) int {
 	match h.pet {
 		Cat {
@@ -48,12 +55,14 @@ fn holder_detail(h Holder) int {
 	return 0
 }
 
+// Point represents point data used by v3 tests.
 struct Point {
 mut:
 	x int
 	y int
 }
 
+// Node represents node data used by v3 tests.
 struct Node {
 mut:
 	value int
@@ -61,6 +70,7 @@ mut:
 	right int
 }
 
+// Rectangle represents rectangle data used by v3 tests.
 struct Rectangle {
 mut:
 	width  int
@@ -80,6 +90,7 @@ __global (
 
 // ===================== HELPER FUNCTIONS =====================
 
+// fib supports fib handling for v3 tests.
 fn fib(n int) int {
 	if n < 2 {
 		return n
@@ -87,6 +98,7 @@ fn fib(n int) int {
 	return fib(n - 1) + fib(n - 2)
 }
 
+// factorial supports factorial handling for v3 tests.
 fn factorial(n int) int {
 	if n <= 1 {
 		return 1
@@ -94,6 +106,7 @@ fn factorial(n int) int {
 	return n * factorial(n - 1)
 }
 
+// sum_recursive supports sum recursive handling for v3 tests.
 fn sum_recursive(n int) int {
 	if n <= 0 {
 		return 0
@@ -101,6 +114,7 @@ fn sum_recursive(n int) int {
 	return n + sum_recursive(n - 1)
 }
 
+// Foo97 represents foo97 data used by v3 tests.
 struct Foo97 {
 	x    int
 	y    int
@@ -108,6 +122,7 @@ struct Foo97 {
 	val  int
 }
 
+// new creates a Foo97 value for v3 tests.
 fn Foo97.new(x int, y int) Foo97 {
 	return Foo97{
 		x: x
@@ -115,6 +130,7 @@ fn Foo97.new(x int, y int) Foo97 {
 	}
 }
 
+// with_name supports with name handling for Foo97.
 fn Foo97.with_name(name string, val int) Foo97 {
 	return Foo97{
 		name: name
@@ -122,14 +138,17 @@ fn Foo97.with_name(name string, val int) Foo97 {
 	}
 }
 
+// multiply supports multiply handling for v3 tests.
 fn multiply(a int, b int) int {
 	return a * b
 }
 
+// apply_op supports apply op handling for v3 tests.
 fn apply_op(f fn (int, int) int, x int, y int) int {
 	return f(x, y)
 }
 
+// gcd supports gcd handling for v3 tests.
 fn gcd(a int, b int) int {
 	if b == 0 {
 		return a
@@ -137,6 +156,7 @@ fn gcd(a int, b int) int {
 	return gcd(b, a % b)
 }
 
+// power supports power handling for v3 tests.
 fn power(base int, exp int) int {
 	if exp == 0 {
 		return 1
@@ -144,18 +164,22 @@ fn power(base int, exp int) int {
 	return base * power(base, exp - 1)
 }
 
+// add updates add state for v3 tests.
 fn add(a int, b int) int {
 	return a + b
 }
 
+// sub supports sub handling for v3 tests.
 fn sub(a int, b int) int {
 	return a - b
 }
 
+// mul supports mul handling for v3 tests.
 fn mul(a int, b int) int {
 	return a * b
 }
 
+// print_rec updates print rec state for v3 tests.
 fn print_rec(n int) {
 	if n == 0 {
 		return
@@ -165,6 +189,7 @@ fn print_rec(n int) {
 	C.putchar(rem + 48)
 }
 
+// print_int updates print int state for v3 tests.
 fn print_int(n int) {
 	if n == 0 {
 		C.putchar(48)
@@ -180,10 +205,12 @@ fn print_int(n int) {
 	C.putchar(10)
 }
 
+// print_str updates print str state for v3 tests.
 fn print_str(s string) {
 	C.puts(s.str)
 }
 
+// repeat supports repeat handling for v3 tests.
 fn repeat(c u8, n int) int {
 	if c == `x` && n == 3 {
 		return 8
@@ -191,11 +218,13 @@ fn repeat(c u8, n int) int {
 	return 0
 }
 
+// next_in_value returns next in value data for v3 tests.
 fn next_in_value() int {
 	g_count = g_count + 1
 	return g_count
 }
 
+// maybe_review_value supports maybe review value handling for v3 tests.
 fn maybe_review_value(ok bool) ?int {
 	if ok {
 		return 42
@@ -203,15 +232,18 @@ fn maybe_review_value(ok bool) ?int {
 	return none
 }
 
+// optional_arg_int104 supports optional arg int104 handling for v3 tests.
 fn optional_arg_int104(x ?int) int {
 	return x or { -1 }
 }
 
+// optional_arg_point104 supports optional arg point104 handling for v3 tests.
 fn optional_arg_point104(p ?Point) int {
 	pt := p or { return -1 }
 	return pt.x + pt.y
 }
 
+// make_review_animal builds make review animal data for v3 tests.
 fn make_review_animal() Animal {
 	return Cat{
 		name: 'Milo'
@@ -219,18 +251,22 @@ fn make_review_animal() Animal {
 	}
 }
 
+// next supports next handling for UserId104.
 fn (id UserId104) next() int {
 	return int(id) + 1
 }
 
+// sum_many supports sum many handling for v3 tests.
 fn sum_many(a int, b int, c int, d int, e int, f int, g int, h int) int {
 	return a + b + c + d + e + f + g + h
 }
 
+// mul_many supports mul many handling for v3 tests.
 fn mul_many(a int, b int, c int, d int, e int, f int, g int, h int) int {
 	return a * b * c * d * e * f * g * h
 }
 
+// max_of_eight supports max of eight handling for v3 tests.
 fn max_of_eight(a int, b int, c int, d int, e int, f int, g int, h int) int {
 	mut m := a
 	if b > m {
@@ -257,10 +293,12 @@ fn max_of_eight(a int, b int, c int, d int, e int, f int, g int, h int) int {
 	return m
 }
 
+// weighted_sum supports weighted sum handling for v3 tests.
 fn weighted_sum(a int, b int, c int, d int, e int, f int, g int, h int) int {
 	return a * 1 + b * 2 + c * 3 + d * 4 + e * 5 + f * 6 + g * 7 + h * 8
 }
 
+// Color represents color data used by v3 tests.
 struct Color {
 mut:
 	r int
@@ -269,6 +307,7 @@ mut:
 	a int
 }
 
+// Vec3 represents vec3 data used by v3 tests.
 struct Vec3 {
 mut:
 	x int
@@ -276,6 +315,7 @@ mut:
 	z int
 }
 
+// Matrix2x2 represents matrix2x2 data used by v3 tests.
 struct Matrix2x2 {
 mut:
 	a int
@@ -284,12 +324,14 @@ mut:
 	d int
 }
 
+// LinkedNode represents linked node data used by v3 tests.
 struct LinkedNode {
 mut:
 	val  int
 	next int
 }
 
+// Stats represents stats data used by v3 tests.
 struct Stats {
 mut:
 	min_v int
@@ -298,6 +340,7 @@ mut:
 	count int
 }
 
+// make_point builds make point data for v3 tests.
 fn make_point(px int, py int) Point {
 	return Point{
 		x: px
@@ -305,6 +348,7 @@ fn make_point(px int, py int) Point {
 	}
 }
 
+// add_points updates add points state for v3 tests.
 fn add_points(a Point, b Point) Point {
 	return Point{
 		x: a.x + b.x
@@ -312,6 +356,7 @@ fn add_points(a Point, b Point) Point {
 	}
 }
 
+// abs_val supports abs val handling for v3 tests.
 fn abs_val(n int) int {
 	if n < 0 {
 		return 0 - n
@@ -319,6 +364,7 @@ fn abs_val(n int) int {
 	return n
 }
 
+// min_val supports min val handling for v3 tests.
 fn min_val(a int, b int) int {
 	if a < b {
 		return a
@@ -326,6 +372,7 @@ fn min_val(a int, b int) int {
 	return b
 }
 
+// max_val supports max val handling for v3 tests.
 fn max_val(a int, b int) int {
 	if a > b {
 		return a
@@ -333,6 +380,7 @@ fn max_val(a int, b int) int {
 	return b
 }
 
+// clamp supports clamp handling for v3 tests.
 fn clamp(val int, lo int, hi int) int {
 	if val < lo {
 		return lo
@@ -343,6 +391,7 @@ fn clamp(val int, lo int, hi int) int {
 	return val
 }
 
+// collatz_steps supports collatz steps handling for v3 tests.
 fn collatz_steps(start int) int {
 	mut v := start
 	mut steps := 0
@@ -357,6 +406,7 @@ fn collatz_steps(start int) int {
 	return steps
 }
 
+// sum_digits supports sum digits handling for v3 tests.
 fn sum_digits(n int) int {
 	mut v := n
 	if v < 0 {
@@ -370,6 +420,7 @@ fn sum_digits(n int) int {
 	return s
 }
 
+// count_bits supports count bits handling for v3 tests.
 fn count_bits(n int) int {
 	mut v := n
 	mut count := 0
@@ -380,6 +431,7 @@ fn count_bits(n int) int {
 	return count
 }
 
+// classify supports classify handling for v3 tests.
 fn classify(n int) int {
 	if n > 100 {
 		return 3
@@ -392,6 +444,7 @@ fn classify(n int) int {
 	}
 }
 
+// point_quadrant supports point quadrant handling for v3 tests.
 fn point_quadrant(p Point) int {
 	if p.x > 0 && p.y > 0 {
 		return 1
@@ -406,6 +459,7 @@ fn point_quadrant(p Point) int {
 	}
 }
 
+// make_color builds make color data for v3 tests.
 fn make_color(r int, g int, b int, a int) Color {
 	return Color{
 		r: r
@@ -415,53 +469,64 @@ fn make_color(r int, g int, b int, a int) Color {
 	}
 }
 
+// color_brightness supports color brightness handling for v3 tests.
 fn color_brightness(c Color) int {
 	return (c.r + c.g + c.b) / 3
 }
 
+// scale_rect supports scale rect handling for v3 tests.
 fn scale_rect(mut r Rectangle, factor int) {
 	r.width = r.width * factor
 	r.height = r.height * factor
 }
 
+// modify_struct supports modify struct handling for v3 tests.
 fn modify_struct(mut p Point) {
 	p.x = 999
 	p.y = 888
 }
 
+// swap_point supports swap point handling for v3 tests.
 fn swap_point(mut p Point) {
 	tmp := p.x
 	p.x = p.y
 	p.y = tmp
 }
 
+// scale_point supports scale point handling for v3 tests.
 fn scale_point(mut p Point, factor int) {
 	p.x = p.x * factor
 	p.y = p.y * factor
 }
 
+// translate_point supports translate point handling for v3 tests.
 fn translate_point(mut p Point, dx int, dy int) {
 	p.x = p.x + dx
 	p.y = p.y + dy
 }
 
+// reset_point updates reset point state for v3 tests.
 fn reset_point(mut p Point) {
 	p.x = 0
 	p.y = 0
 }
 
+// vec3_dot supports vec3 dot handling for v3 tests.
 fn vec3_dot(a Vec3, b Vec3) int {
 	return a.x * b.x + a.y * b.y + a.z * b.z
 }
 
+// vec3_cross_z supports vec3 cross z handling for v3 tests.
 fn vec3_cross_z(a Vec3, b Vec3) int {
 	return a.x * b.y - a.y * b.x
 }
 
+// vec3_len_sq supports vec3 len sq handling for v3 tests.
 fn vec3_len_sq(v Vec3) int {
 	return v.x * v.x + v.y * v.y + v.z * v.z
 }
 
+// vec3_add supports vec3 add handling for v3 tests.
 fn vec3_add(a Vec3, b Vec3) Vec3 {
 	return Vec3{
 		x: a.x + b.x
@@ -470,6 +535,7 @@ fn vec3_add(a Vec3, b Vec3) Vec3 {
 	}
 }
 
+// vec3_scale supports vec3 scale handling for v3 tests.
 fn vec3_scale(v Vec3, s int) Vec3 {
 	return Vec3{
 		x: v.x * s
@@ -478,10 +544,12 @@ fn vec3_scale(v Vec3, s int) Vec3 {
 	}
 }
 
+// mat_det supports mat det handling for v3 tests.
 fn mat_det(m Matrix2x2) int {
 	return m.a * m.d - m.b * m.c
 }
 
+// mat_mul supports mat mul handling for v3 tests.
 fn mat_mul(m Matrix2x2, n Matrix2x2) Matrix2x2 {
 	return Matrix2x2{
 		a: m.a * n.a + m.b * n.c
@@ -491,10 +559,12 @@ fn mat_mul(m Matrix2x2, n Matrix2x2) Matrix2x2 {
 	}
 }
 
+// mat_trace supports mat trace handling for v3 tests.
 fn mat_trace(m Matrix2x2) int {
 	return m.a + m.d
 }
 
+// is_prime reports whether is prime applies in v3 tests.
 fn is_prime(n int) bool {
 	if n < 2 {
 		return false
@@ -509,6 +579,7 @@ fn is_prime(n int) bool {
 	return true
 }
 
+// isqrt supports isqrt handling for v3 tests.
 fn isqrt(n int) int {
 	if n <= 0 {
 		return 0
@@ -522,6 +593,7 @@ fn isqrt(n int) int {
 	return x
 }
 
+// reverse_int supports reverse int handling for v3 tests.
 fn reverse_int(n int) int {
 	mut v := n
 	mut neg := false
@@ -540,6 +612,7 @@ fn reverse_int(n int) int {
 	return result
 }
 
+// count_digits supports count digits handling for v3 tests.
 fn count_digits(n int) int {
 	if n == 0 {
 		return 1
@@ -556,6 +629,7 @@ fn count_digits(n int) int {
 	return count
 }
 
+// is_palindrome_num reports whether is palindrome num applies in v3 tests.
 fn is_palindrome_num(n int) bool {
 	if n < 0 {
 		return false
@@ -563,6 +637,7 @@ fn is_palindrome_num(n int) bool {
 	return n == reverse_int(n)
 }
 
+// update_stats supports update stats handling for v3 tests.
 fn update_stats(mut s Stats, val int) {
 	if s.count == 0 || val < s.min_v {
 		s.min_v = val
@@ -574,6 +649,7 @@ fn update_stats(mut s Stats, val int) {
 	s.count++
 }
 
+// binary_search_step supports binary search step handling for v3 tests.
 fn binary_search_step(target int, lo int, hi int, a0 int, a1 int, a2 int, a3 int, a4 int) int {
 	if lo > hi {
 		return 0 - 1
@@ -600,6 +676,7 @@ fn binary_search_step(target int, lo int, hi int, a0 int, a1 int, a2 int, a3 int
 	return binary_search_step(target, lo, mid - 1, a0, a1, a2, a3, a4)
 }
 
+// ackermann supports ackermann handling for v3 tests.
 fn ackermann(m int, n int) int {
 	if m == 0 {
 		return n + 1
@@ -610,6 +687,7 @@ fn ackermann(m int, n int) int {
 	return ackermann(m - 1, ackermann(m, n - 1))
 }
 
+// triangle_area_2x supports triangle area 2x handling for v3 tests.
 fn triangle_area_2x(x1 int, y1 int, x2 int, y2 int, x3 int, y3 int) int {
 	area := x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)
 	if area < 0 {
@@ -618,6 +696,7 @@ fn triangle_area_2x(x1 int, y1 int, x2 int, y2 int, x3 int, y3 int) int {
 	return area
 }
 
+// rotate_point_90 supports rotate point 90 handling for v3 tests.
 fn rotate_point_90(p Point) Point {
 	return Point{
 		x: 0 - p.y
@@ -625,6 +704,7 @@ fn rotate_point_90(p Point) Point {
 	}
 }
 
+// manhattan_dist supports manhattan dist handling for v3 tests.
 fn manhattan_dist(a Point, b Point) int {
 	mut dx := a.x - b.x
 	mut dy := a.y - b.y
@@ -637,6 +717,7 @@ fn manhattan_dist(a Point, b Point) int {
 	return dx + dy
 }
 
+// digital_root supports digital root handling for v3 tests.
 fn digital_root(n int) int {
 	mut v := n
 	if v < 0 {
@@ -648,10 +729,12 @@ fn digital_root(n int) int {
 	return v
 }
 
+// lerp supports lerp handling for v3 tests.
 fn lerp(a int, b int, t_num int, t_den int) int {
 	return a + (b - a) * t_num / t_den
 }
 
+// sign supports sign handling for v3 tests.
 fn sign(n int) int {
 	if n > 0 {
 		return 1
@@ -661,6 +744,7 @@ fn sign(n int) int {
 	return 0
 }
 
+// popcount_loop supports popcount loop handling for v3 tests.
 fn popcount_loop(n int) int {
 	mut v := n
 	mut c := 0
@@ -671,6 +755,7 @@ fn popcount_loop(n int) int {
 	return c
 }
 
+// leading_zeros supports leading zeros handling for v3 tests.
 fn leading_zeros(n int) int {
 	if n == 0 {
 		return 32
@@ -690,45 +775,55 @@ fn leading_zeros(n int) int {
 
 // ===================== METHODS =====================
 
+// sum supports sum handling for Point.
 fn (p Point) sum() int {
 	return p.x + p.y
 }
 
+// product supports product handling for Point.
 fn (p Point) product() int {
 	return p.x * p.y
 }
 
+// double supports double handling for Point.
 fn (mut p Point) double() {
 	p.x = p.x * 2
 	p.y = p.y * 2
 }
 
+// area supports area handling for Rectangle.
 fn (r Rectangle) area() int {
 	return r.width * r.height
 }
 
+// perimeter supports perimeter handling for Rectangle.
 fn (r Rectangle) perimeter() int {
 	return 2 * (r.width + r.height)
 }
 
+// total supports total handling for Node.
 fn (n Node) total() int {
 	return n.value + n.left + n.right
 }
 
 // ===================== IF-EXPRESSION HELPERS =====================
 
+// int_abs supports int abs handling for v3 tests.
 fn int_abs(a int) int {
 	return if a < 0 { 0 - a } else { a }
 }
 
+// int_max2 supports int max2 handling for v3 tests.
 fn int_max2(a int, b int) int {
 	return if a > b { a } else { b }
 }
 
+// int_min2 supports int min2 handling for v3 tests.
 fn int_min2(a int, b int) int {
 	return if a < b { a } else { b }
 }
 
+// sign_expr supports sign expr handling for v3 tests.
 fn sign_expr(x int) int {
 	return if x < 0 {
 		0 - 1
@@ -741,6 +836,7 @@ fn sign_expr(x int) int {
 	}
 }
 
+// clamp_expr supports clamp expr handling for v3 tests.
 fn clamp_expr(x int, lo int, hi int) int {
 	return if x < lo {
 		lo
@@ -755,6 +851,7 @@ fn clamp_expr(x int, lo int, hi int) int {
 
 // ===================== DEFER HELPERS =====================
 
+// defer_return_test supports defer return test handling for v3 tests.
 fn defer_return_test() int {
 	defer {
 		g_acc += 100
@@ -762,6 +859,7 @@ fn defer_return_test() int {
 	return 42
 }
 
+// defer_order_test supports defer order test handling for v3 tests.
 fn defer_order_test() {
 	defer { g_acc += 1 }
 	defer { g_acc += 10 }
@@ -770,6 +868,7 @@ fn defer_order_test() {
 
 // ===================== ENUMS =====================
 
+// nested_return supports nested return handling for v3 tests.
 fn nested_return(x int) int {
 	if x < 10 {
 		return 100
@@ -782,6 +881,7 @@ fn nested_return(x int) int {
 	}
 }
 
+// operator_to_name converts operator to name data for v3 tests.
 fn operator_to_name(op string) string {
 	return match op {
 		'+' { '__plus' }
@@ -792,6 +892,7 @@ fn operator_to_name(op string) string {
 	}
 }
 
+// get_type_name returns get type name data for v3 tests.
 fn get_type_name(is_signed bool, size int) string {
 	return if is_signed {
 		match size {
@@ -811,6 +912,7 @@ fn get_type_name(is_signed bool, size int) string {
 	}
 }
 
+// test_return_if_expr validates return if expr behavior in v3 tests.
 fn test_return_if_expr() {
 	assert get_type_name(true, 32) == 'int'
 	assert get_type_name(false, 64) == 'u64'
@@ -819,6 +921,7 @@ fn test_return_if_expr() {
 	print_str('return if expr: ok')
 }
 
+// Direction lists direction values used by v3 tests.
 enum Direction {
 	up
 	down
@@ -828,20 +931,24 @@ enum Direction {
 
 // ===================== MULTI-RETURN FUNCTIONS =====================
 
+// two_vals supports two vals handling for v3 tests.
 fn two_vals() (int, string) {
 	return 42, 'hello'
 }
 
+// swap_ints supports swap ints handling for v3 tests.
 fn swap_ints(a int, b int) (int, int) {
 	return b, a
 }
 
+// three_ints supports three ints handling for v3 tests.
 fn three_ints(x int) (int, int, int) {
 	return x, x * 2, x * 3
 }
 
 // ===================== STRUCT OPERATORS =====================
 
+// operator + implements the + operator for Point.
 fn (a Point) + (b Point) Point {
 	return Point{
 		x: a.x + b.x
@@ -849,16 +956,19 @@ fn (a Point) + (b Point) Point {
 	}
 }
 
+// operator == implements the == operator for Point.
 fn (a Point) == (b Point) bool {
 	return a.x == b.x && a.y == b.y
 }
 
+// operator < implements the < operator for Point.
 fn (a Point) < (b Point) bool {
 	return a.x + a.y < b.x + b.y
 }
 
 // ===================== RETURN MATCH / IF-EXPR-STRING =====================
 
+// classify_str supports classify str handling for v3 tests.
 fn classify_str(n int) string {
 	return match n {
 		0 { 'zero' }
@@ -868,6 +978,7 @@ fn classify_str(n int) string {
 	}
 }
 
+// describe_sign supports describe sign handling for v3 tests.
 fn describe_sign(n int) string {
 	return if n > 0 {
 		'positive'
@@ -878,6 +989,7 @@ fn describe_sign(n int) string {
 	}
 }
 
+// return_assoc_point supports return assoc point handling for v3 tests.
 fn return_assoc_point(p Point, new_x int) Point {
 	return Point{
 		...p
@@ -887,6 +999,7 @@ fn return_assoc_point(p Point, new_x int) Point {
 
 // ===================== MAIN TEST FUNCTION =====================
 
+// try_get_value supports try get value handling for v3 tests.
 fn try_get_value(ok bool) ?int {
 	if ok {
 		return 42
@@ -894,11 +1007,13 @@ fn try_get_value(ok bool) ?int {
 	return none
 }
 
+// CallInfo115 represents call info115 data used by v3 tests.
 struct CallInfo115 {
 	name  string
 	score int
 }
 
+// maybe_call_info115 supports maybe call info115 handling for v3 tests.
 fn maybe_call_info115(ok bool) ?CallInfo115 {
 	if ok {
 		return CallInfo115{
@@ -909,6 +1024,7 @@ fn maybe_call_info115(ok bool) ?CallInfo115 {
 	return none
 }
 
+// make_scores115 builds make scores115 data for v3 tests.
 fn make_scores115() map[string]int {
 	mut scores := map[string]int{}
 	scores['alpha'] = 2
@@ -917,11 +1033,13 @@ fn make_scores115() map[string]int {
 	return scores
 }
 
+// Defaults116 represents defaults116 data used by v3 tests.
 struct Defaults116 {
 	name  string = 'v' + '3'
 	count int    = 42
 }
 
+// MetaType117 aliases meta type117 values used by v3 tests.
 type MetaType117 = MetaNamed117
 	| MetaIface117
 	| MetaArray117
@@ -929,131 +1047,162 @@ type MetaType117 = MetaNamed117
 	| MetaFn117
 	| MetaPointer117
 
+// CastLeak117 aliases cast leak117 values used by v3 tests.
 type CastLeak117 = CastNamed117 | CastOther117
 
+// SumNameLeft117 aliases sum name left117 values used by v3 tests.
 type SumNameLeft117 = SumNameLeftNamed117 | SumNameLeftOther117
 
+// SumNameRight117 aliases sum name right117 values used by v3 tests.
 type SumNameRight117 = SumNameRightNamed117 | SumNameRightOther117
 
+// MetaNamed117 represents meta named117 data used by v3 tests.
 struct MetaNamed117 {
 	name string
 }
 
+// MetaIface117 represents meta iface117 data used by v3 tests.
 struct MetaIface117 {
 	name string
 }
 
+// MetaArray117 represents meta array117 data used by v3 tests.
 struct MetaArray117 {
 	elem MetaType117
 }
 
+// MetaMap117 represents meta map117 data used by v3 tests.
 struct MetaMap117 {
 	key MetaType117
 	val MetaType117
 }
 
+// MetaFn117 represents meta fn117 data used by v3 tests.
 struct MetaFn117 {
 	params []MetaType117
 	ret    MetaType117
 }
 
+// MetaPointer117 represents meta pointer117 data used by v3 tests.
 struct MetaPointer117 {
 	base MetaType117
 }
 
+// Registry117 represents registry117 data used by v3 tests.
 struct Registry117 {
 	prefix string
 mut:
 	items map[string]MetaType117
 }
 
+// Stack117 represents stack117 data used by v3 tests.
 struct Stack117 {
 mut:
 	values []int
 }
 
+// Instr117 represents instr117 data used by v3 tests.
 struct Instr117 {
 	op       int
 	operands []int
 }
 
+// FieldBag117 represents field bag117 data used by v3 tests.
 struct FieldBag117 {
 	values []int
 }
 
+// TypeStore117 represents type store117 data used by v3 tests.
 struct TypeStore117 {
 	types []FieldBag117
 }
 
+// Symbol117 represents symbol117 data used by v3 tests.
 struct Symbol117 {
 	sect int
 mut:
 	value int
 }
 
+// SymbolStore117 represents symbol store117 data used by v3 tests.
 struct SymbolStore117 {
 mut:
 	symbols []Symbol117
 }
 
+// ForField117 represents for field117 data used by v3 tests.
 struct ForField117 {
 	name string
 	typ  MetaType117
 }
 
+// OptionalContext117 represents optional context117 data used by v3 tests.
 struct OptionalContext117 {
 	expr    string
 	variant string
 	sum     string
 }
 
+// OptionalContextHolder117 represents optional context holder117 data used by v3 tests.
 struct OptionalContextHolder117 {
 	items []OptionalContext117
 }
 
+// ConstHolder117 represents const holder117 data used by v3 tests.
 struct ConstHolder117 {
 	value int
 }
 
 const zero_const_holder117 = ConstHolder117{}
 
+// CastNamed117 represents cast named117 data used by v3 tests.
 struct CastNamed117 {
 	name string
 }
 
+// CastOther117 represents cast other117 data used by v3 tests.
 struct CastOther117 {
 	id int
 }
 
+// SumNameLeftNamed117 represents sum name left named117 data used by v3 tests.
 struct SumNameLeftNamed117 {
 	value string
 }
 
+// SumNameLeftOther117 represents sum name left other117 data used by v3 tests.
 struct SumNameLeftOther117 {}
 
+// SumNameRightNamed117 represents sum name right named117 data used by v3 tests.
 struct SumNameRightNamed117 {
 	value string
 }
 
+// SumNameRightOther117 represents sum name right other117 data used by v3 tests.
 struct SumNameRightOther117 {}
 
+// Marker117 lists marker117 values used by v3 tests.
 enum Marker117 {
 	off
 	on
 }
 
+// ScalarAlias117 aliases scalar alias117 values used by v3 tests.
 type ScalarAlias117 = int
 
 const fixed_len117 = 3
 
+// FixedHolder117 represents fixed holder117 data used by v3 tests.
 struct FixedHolder117 {
 	values [fixed_len117]int
 }
 
+// FnHolder117 represents fn holder117 data used by v3 tests.
 struct FnHolder117 {
 	op fn (int, int) int
 }
 
+// smartcast_name117 supports smartcast name117 handling for v3 tests.
 fn smartcast_name117(t CastLeak117) string {
 	if t is CastNamed117 {
 		return t.name
@@ -1061,6 +1210,7 @@ fn smartcast_name117(t CastLeak117) string {
 	return 'other'
 }
 
+// smartcast_as_name117 converts smartcast as name117 data for v3 tests.
 fn smartcast_as_name117(t CastLeak117) string {
 	if t is CastNamed117 {
 		named := t as CastNamed117
@@ -1069,10 +1219,12 @@ fn smartcast_as_name117(t CastLeak117) string {
 	return 'other'
 }
 
+// is_on reports whether is on applies in v3 tests.
 fn (t Marker117) is_on() bool {
 	return t == .on
 }
 
+// qualify supports qualify handling for Registry117.
 fn (r &Registry117) qualify(name string) string {
 	if r.prefix.len == 0 {
 		return name
@@ -1080,6 +1232,7 @@ fn (r &Registry117) qualify(name string) string {
 	return '${r.prefix}.${name}'
 }
 
+// meta_name117 supports meta name117 handling for v3 tests.
 fn meta_name117(t MetaType117) string {
 	if t is MetaNamed117 {
 		return t.name
@@ -1096,6 +1249,7 @@ fn meta_name117(t MetaType117) string {
 	return 'unknown'
 }
 
+// meta_array_elem117 supports meta array elem117 handling for v3 tests.
 fn meta_array_elem117(t MetaType117) MetaType117 {
 	if t is MetaArray117 {
 		return t.elem
@@ -1105,6 +1259,7 @@ fn meta_array_elem117(t MetaType117) MetaType117 {
 	})
 }
 
+// meta_fn_signature117 supports meta fn signature117 handling for v3 tests.
 fn meta_fn_signature117(t MetaType117) string {
 	if t is MetaFn117 {
 		mut parts := []string{}
@@ -1116,6 +1271,7 @@ fn meta_fn_signature117(t MetaType117) string {
 	return 'not-fn'
 }
 
+// meta_iface_name117 supports meta iface name117 handling for v3 tests.
 fn meta_iface_name117(t MetaType117) string {
 	if t is MetaIface117 {
 		return t.name
@@ -1123,10 +1279,12 @@ fn meta_iface_name117(t MetaType117) string {
 	return 'not-interface'
 }
 
+// meta_iface_passthrough117 supports meta iface passthrough117 handling for v3 tests.
 fn meta_iface_passthrough117(v MetaIface117) string {
 	return v.name
 }
 
+// meta_iface_call117 supports meta iface call117 handling for v3 tests.
 fn meta_iface_call117(t MetaType117) string {
 	if t is MetaIface117 {
 		return meta_iface_passthrough117(t)
@@ -1134,6 +1292,7 @@ fn meta_iface_call117(t MetaType117) string {
 	return 'not-interface'
 }
 
+// pointer_array_elem117 supports pointer array elem117 handling for v3 tests.
 fn pointer_array_elem117(t MetaType117) string {
 	mut arr := MetaArray117{
 		elem: MetaType117(MetaNamed117{
@@ -1150,6 +1309,7 @@ fn pointer_array_elem117(t MetaType117) string {
 	return meta_name117(arr.elem)
 }
 
+// short_variant117 supports short variant117 handling for v3 tests.
 fn short_variant117(name string) string {
 	mut short := name
 	if name.contains('.') {
@@ -1158,6 +1318,7 @@ fn short_variant117(name string) string {
 	return short
 }
 
+// optional_match_arith117 supports optional match arith117 handling for v3 tests.
 fn optional_match_arith117(op string, left int, right int) ?int {
 	match op {
 		'div' {
@@ -1178,6 +1339,7 @@ fn optional_match_arith117(op string, left int, right int) ?int {
 	}
 }
 
+// maybe_strings117 supports maybe strings117 handling for v3 tests.
 fn maybe_strings117(ok bool) ?[]string {
 	if ok {
 		mut values := []string{}
@@ -1188,34 +1350,42 @@ fn maybe_strings117(ok bool) ?[]string {
 	return none
 }
 
+// trim_last117 transforms trim last117 data for v3 tests.
 fn trim_last117(mut values []int) {
 	values.delete_last()
 }
 
+// trim_stack117 transforms trim stack117 data for v3 tests.
 fn trim_stack117(mut stack Stack117) {
 	stack.values.delete_last()
 }
 
+// scalar_alias_if117 converts scalar alias if117 data for v3 tests.
 fn scalar_alias_if117(ok bool) ScalarAlias117 {
 	return if ok { ScalarAlias117(11) } else { ScalarAlias117(12) }
 }
 
+// fixed_holder_sum117 supports fixed holder sum117 handling for v3 tests.
 fn fixed_holder_sum117(holder FixedHolder117) int {
 	return holder.values[0] + holder.values[1] + holder.values[2]
 }
 
+// add117 supports add117 handling for v3 tests.
 fn add117(a int, b int) int {
 	return a + b
 }
 
+// fn_holder_call117 supports fn holder call117 handling for v3 tests.
 fn fn_holder_call117(holder FnHolder117) int {
 	return holder.op(4, 5)
 }
 
+// operand_total117 supports operand total117 handling for Instr117.
 fn (i &Instr117) operand_total117(extra int) int {
 	return i.op + i.operands[0] + extra
 }
 
+// indexed_struct_field117 supports indexed struct field117 handling for v3 tests.
 fn indexed_struct_field117(store TypeStore117, idx int) int {
 	bag := store.types[idx]
 	if bag.values.len > 0 {
@@ -1224,11 +1394,13 @@ fn indexed_struct_field117(store TypeStore117, idx int) int {
 	return -1
 }
 
+// const_holder_value117 supports const holder value117 handling for v3 tests.
 fn const_holder_value117() int {
 	holder := unsafe { &zero_const_holder117 }
 	return holder.value
 }
 
+// adjust_symbol_values117 supports adjust symbol values117 handling for v3 tests.
 fn adjust_symbol_values117(mut store SymbolStore117, base int) int {
 	for i in 0 .. store.symbols.len {
 		if store.symbols[i].sect == 2 {
@@ -1238,6 +1410,7 @@ fn adjust_symbol_values117(mut store SymbolStore117, base int) int {
 	return store.symbols[0].value + store.symbols[1].value
 }
 
+// sum_string_for_in117 supports sum string for in117 handling for v3 tests.
 fn sum_string_for_in117(values []string) int {
 	mut total := 0
 	for value117 in values {
@@ -1246,6 +1419,7 @@ fn sum_string_for_in117(values []string) int {
 	return total
 }
 
+// find_field_type117 resolves find field type117 information for v3 tests.
 fn find_field_type117(fields []ForField117, wanted string) string {
 	for field117 in fields {
 		if field117.name == wanted {
@@ -1255,6 +1429,7 @@ fn find_field_type117(fields []ForField117, wanted string) string {
 	return 'missing'
 }
 
+// map_clone_pair117 supports map clone pair117 handling for v3 tests.
 fn map_clone_pair117() int {
 	original117 := make_scores115()
 	mut cloned117 := make_scores115()
@@ -1265,6 +1440,7 @@ fn map_clone_pair117() int {
 	return orig117 * 10 + copy117
 }
 
+// optional_context117 supports optional context117 handling for v3 tests.
 fn optional_context117(holder OptionalContextHolder117, wanted string) ?OptionalContext117 {
 	mut i := holder.items.len - 1
 	for i >= 0 {
@@ -1276,6 +1452,7 @@ fn optional_context117(holder OptionalContextHolder117, wanted string) ?Optional
 	return none
 }
 
+// optional_context_score117 supports optional context score117 handling for v3 tests.
 fn optional_context_score117() int {
 	holder117 := OptionalContextHolder117{
 		items: [
@@ -1299,6 +1476,7 @@ fn optional_context_score117() int {
 	return 0
 }
 
+// signed_narrow_load_score117 supports signed narrow load score117 handling for v3 tests.
 fn signed_narrow_load_score117() int {
 	mut values117 := []i8{}
 	values117 << i8(-1)
@@ -1309,10 +1487,12 @@ fn signed_narrow_load_score117() int {
 	return 0
 }
 
+// push_mut_stack_selector117 updates push mut stack selector117 state for v3 tests.
 fn push_mut_stack_selector117(mut stack Stack117, value int) {
 	stack.values << value
 }
 
+// mut_selector_base_score117 supports mut selector base score117 handling for v3 tests.
 fn mut_selector_base_score117() int {
 	mut stack117 := Stack117{
 		values: [3]
@@ -1321,6 +1501,7 @@ fn mut_selector_base_score117() int {
 	return stack117.values[0] * 10 + stack117.values[1]
 }
 
+// chained_if_expr_score117 supports chained if expr score117 handling for v3 tests.
 fn chained_if_expr_score117(value int) int {
 	typ117 := if value == 0 {
 		MetaType117(MetaNamed117{
@@ -1345,6 +1526,7 @@ fn chained_if_expr_score117(value int) int {
 	return 0
 }
 
+// name returns name data for SumNameLeft117.
 fn (t SumNameLeft117) name() string {
 	if t is SumNameLeftNamed117 {
 		return t.value
@@ -1352,6 +1534,7 @@ fn (t SumNameLeft117) name() string {
 	return 'left-other'
 }
 
+// name returns name data for SumNameRight117.
 fn (t SumNameRight117) name() string {
 	if t is SumNameRightNamed117 {
 		return t.value
@@ -1359,6 +1542,8 @@ fn (t SumNameRight117) name() string {
 	return 'right-other'
 }
 
+// sum_type_method_same_name_score117
+// supports helper handling in v3 tests.
 fn sum_type_method_same_name_score117() int {
 	left117 := SumNameLeft117(SumNameLeftNamed117{
 		value: 'left'
@@ -1372,12 +1557,14 @@ fn sum_type_method_same_name_score117() int {
 	return 0
 }
 
+// array_pop_score117 supports array pop score117 handling for v3 tests.
 fn array_pop_score117() int {
 	mut values117 := [4, 6, 9]
 	last117 := values117.pop()
 	return last117 * 10 + values117.len
 }
 
+// array_repeat_score117 supports array repeat score117 handling for v3 tests.
 fn array_repeat_score117() int {
 	base117 := []int{len: 2, init: 5}
 	values117 := base117.repeat(3)
@@ -1387,12 +1574,15 @@ fn array_repeat_score117() int {
 	return 0
 }
 
+// discard_assignment_side_effect_score117
+// supports helper handling in v3 tests.
 fn discard_assignment_side_effect_score117() int {
 	g_count = 0
 	_ = next_in_value()
 	return g_count
 }
 
+// recursive_sum_method_score117 supports recursive sum method score117 handling for MetaType117.
 fn (t MetaType117) recursive_sum_method_score117() int {
 	if t is MetaPointer117 {
 		if meta_name117(t.base) == 'core' {
@@ -1402,6 +1592,7 @@ fn (t MetaType117) recursive_sum_method_score117() int {
 	return 0
 }
 
+// large_sumtype_method_receiver_score117 supports large_sumtype_method_receiver_score117 handling.
 fn large_sumtype_method_receiver_score117() int {
 	typ117 := MetaType117(MetaPointer117{
 		base: MetaType117(MetaNamed117{
@@ -1411,6 +1602,7 @@ fn large_sumtype_method_receiver_score117() int {
 	return typ117.recursive_sum_method_score117()
 }
 
+// qualified_import_same_short_score117 supports qualified_import_same_short_score117 handling.
 fn qualified_import_same_short_score117() int {
 	mut score117 := repeat(`x`, 3)
 	repeated117 := strings.repeat(`x`, 3)
@@ -1420,23 +1612,28 @@ fn qualified_import_same_short_score117() int {
 	return score117
 }
 
+// sum_nine116 supports sum nine116 handling for v3 tests.
 fn sum_nine116(a int, b int, c int, d int, e int, f int, g int, h int, i int) int {
 	return a + b + c + d + e + f + g + h + i
 }
 
+// use_int116 supports use int116 handling for v3 tests.
 fn use_int116(x int) int {
 	return x
 }
 
+// BuildArch118 lists build arch118 values used by v3 tests.
 enum BuildArch118 {
 	amd64
 	arm64
 }
 
+// callback_value118 supports callback value118 handling for v3 tests.
 fn callback_value118(cb fn () int) int {
 	return cb()
 }
 
+// maybe_label118 supports maybe label118 handling for v3 tests.
 fn maybe_label118(ok bool) !string {
 	if ok {
 		return 'ok'
@@ -1444,11 +1641,13 @@ fn maybe_label118(ok bool) !string {
 	return error('bad')
 }
 
+// pass_error118 supports pass error118 handling for v3 tests.
 fn pass_error118() !string {
 	value := maybe_label118(false) or { return err }
 	return value
 }
 
+// array_callback_enum_score118 supports array callback enum score118 handling for v3 tests.
 fn array_callback_enum_score118() int {
 	mut args118 := []string{}
 	args118 << 'beta'
@@ -1471,140 +1670,185 @@ fn array_callback_enum_score118() int {
 	return score118
 }
 
+// NestedIdent119 represents nested ident119 data used by v3 tests.
 struct NestedIdent119 {
 	name string
 }
 
+// NestedInfixExpr119 represents nested infix expr119 data used by v3 tests.
 struct NestedInfixExpr119 {
 	op string
 }
 
+// NestedMatchBranch119 represents nested match branch119 data used by v3 tests.
 struct NestedMatchBranch119 {}
 
+// NestedIfBranch119 represents nested if branch119 data used by v3 tests.
 struct NestedIfBranch119 {}
 
+// NestedExpr119 aliases nested expr119 values used by v3 tests.
 type NestedExpr119 = NestedIdent119 | NestedInfixExpr119
 
+// NestedNode119 aliases nested node119 values used by v3 tests.
 type NestedNode119 = NestedExpr119 | NestedMatchBranch119 | NestedIfBranch119
 
+// LoopHolder119 represents loop holder119 data used by v3 tests.
 struct LoopHolder119 {
 mut:
 	current &NestedNode119 = unsafe { nil }
 }
 
+// SumPointerNilHolder119 represents sum pointer nil holder119 data used by v3 tests.
 struct SumPointerNilHolder119 {
 	node &NestedNode119 = unsafe { nil }
 }
 
+// SortItem119 represents sort item119 data used by v3 tests.
 struct SortItem119 {
 	rank int
 	id   int
 }
 
+// OpVersion119 represents op version119 data used by v3 tests.
 struct OpVersion119 {
 	major int
 }
 
+// InterfaceField119 defines the interface field119 contract used by v3 tests.
 interface InterfaceField119 {
 	value int
 }
 
+// InterfaceFieldImpl119 represents interface field impl119 data used by v3 tests.
 struct InterfaceFieldImpl119 {
 	value int
 }
 
+// NilLink119 represents nil link119 data used by v3 tests.
 struct NilLink119 {
 mut:
 	next &NilLink119 = unsafe { nil }
 }
 
+// IErrorDefault119 represents ierror default119 data used by v3 tests.
 struct IErrorDefault119 {
 	err IError = none
 }
 
+// OptionalInterp119 represents optional interp119 data used by v3 tests.
 struct OptionalInterp119 {
 	stop ?string
 }
 
+// MapMethodValue119 represents map method value119 data used by v3 tests.
 struct MapMethodValue119 {
 	kind int
 }
 
+// StaticNewLocal119 represents static new local119 data used by v3 tests.
 struct StaticNewLocal119 {
 	value int
 }
 
+// ZeroMapHolder119 represents zero map holder119 data used by v3 tests.
 struct ZeroMapHolder119 {
 mut:
 	data map[string]int
 }
 
+// FeatureFlags119 lists feature flags119 values used by v3 tests.
 @[flag]
 enum FeatureFlags119 {
 	name
 	version
 }
 
+// RecursiveIf119 represents recursive if119 data used by v3 tests.
 struct RecursiveIf119 {
 	next &RecursiveExpr119 = unsafe { nil }
 }
 
+// RecursiveHash119 represents recursive hash119 data used by v3 tests.
 struct RecursiveHash119 {
 	id int
 }
 
+// HeapLocal119 represents heap local119 data used by v3 tests.
 struct HeapLocal119 {
 	value int
 }
 
+// SsaSumPayload119 represents ssa sum payload119 data used by v3 tests.
 struct SsaSumPayload119 {
 	code int
 }
 
+// FnFieldCall119 represents fn field call119 data used by v3 tests.
 struct FnFieldCall119 {
 	op fn (int, int) int
 }
 
+// RecursiveExpr119 aliases recursive expr119 values used by v3 tests.
 type RecursiveExpr119 = RecursiveIf119 | RecursiveHash119
 
+// RecursiveHashNode119 aliases recursive hash node119 values used by v3 tests.
 type RecursiveHashNode119 = RecursiveIf119 | RecursiveHash119
 
+// SsaSum119 aliases ssa sum119 values used by v3 tests.
 type SsaSum119 = RecursiveHash119 | SsaSumPayload119
 
+// C.atomic_fetch_add_u32 declares the C atomic_fetch_add_u32 symbol used by v3 tests.
 fn C.atomic_fetch_add_u32(voidptr, u32) u32
 
+// C.atomic_load_u16 declares the C atomic_load_u16 symbol used by v3 tests.
 fn C.atomic_load_u16(voidptr) u16
 
+// C.atomic_store_u16 declares the C atomic_store_u16 symbol used by v3 tests.
 fn C.atomic_store_u16(voidptr, u16)
 
+// C.atomic_compare_exchange_strong_u16 declares a C symbol used by v3 tests.
 fn C.atomic_compare_exchange_strong_u16(voidptr, voidptr, u16) bool
 
+// C.atomic_compare_exchange_weak_u32 declares a C symbol used by v3 tests.
 fn C.atomic_compare_exchange_weak_u32(voidptr, voidptr, u32) bool
 
+// C.atomic_compare_exchange_weak_byte declares a C symbol used by v3 tests.
 fn C.atomic_compare_exchange_weak_byte(voidptr, voidptr, u8) bool
 
+// C.atomic_compare_exchange_weak_u64 declares a C symbol used by v3 tests.
 fn C.atomic_compare_exchange_weak_u64(voidptr, voidptr, u64) bool
 
+// C.atomic_load_ptr declares the C atomic_load_ptr symbol used by v3 tests.
 fn C.atomic_load_ptr(voidptr) voidptr
 
+// C.atomic_store_ptr declares the C atomic_store_ptr symbol used by v3 tests.
 fn C.atomic_store_ptr(voidptr, voidptr)
 
+// C._wymix declares the C _wymix symbol used by v3 tests.
 fn C._wymix(u64, u64) u64
 
+// C.v_filelock_lock declares the C v_filelock_lock symbol used by v3 tests.
 fn C.v_filelock_lock(i32, i32, i32, u64, u64) i32
 
+// C.v_filelock_unlock declares the C v_filelock_unlock symbol used by v3 tests.
 fn C.v_filelock_unlock(i32, u64, u64) i32
 
+// C.v_prealloc_atomic_add_i32 declares the C v_prealloc_atomic_add_i32 symbol used by v3 tests.
 fn C.v_prealloc_atomic_add_i32(voidptr, int) int
 
+// C.v_prealloc_atomic_load_i32 declares the C v_prealloc_atomic_load_i32 symbol used by v3 tests.
 fn C.v_prealloc_atomic_load_i32(voidptr) int
 
+// C.v_prealloc_atomic_store_i32 declares the C v_prealloc_atomic_store_i32 symbol used by v3 tests.
 fn C.v_prealloc_atomic_store_i32(voidptr, int) int
 
+// C.v_prealloc_atomic_cas_i32 declares the C v_prealloc_atomic_cas_i32 symbol used by v3 tests.
 fn C.v_prealloc_atomic_cas_i32(voidptr, int, int) int
 
+// C.v_signal_with_handler_cast declares the C v_signal_with_handler_cast symbol used by v3 tests.
 fn C.v_signal_with_handler_cast(i32, voidptr) voidptr
 
+// maybe_const119 supports maybe const119 handling for v3 tests.
 fn maybe_const119(ok bool) ?string {
 	if ok {
 		return 'set'
@@ -1614,10 +1858,12 @@ fn maybe_const119(ok bool) ?string {
 
 const const_or119 = maybe_const119(false) or { 'fallback' }
 
+// return_if_branch119 supports return if branch119 handling for v3 tests.
 fn return_if_branch119(flag bool) int {
 	return if flag { return 12 } else { 7 }
 }
 
+// match_smartcast_return119 supports match smartcast return119 handling for v3 tests.
 fn match_smartcast_return119(expr NestedExpr119) string {
 	ident119 := match expr {
 		NestedIdent119 {
@@ -1631,6 +1877,7 @@ fn match_smartcast_return119(expr NestedExpr119) string {
 	return ident119.name
 }
 
+// indexed_smartcast119 supports indexed smartcast119 handling for v3 tests.
 fn indexed_smartcast119(items []NestedExpr119) string {
 	first119 := items[0]
 	if first119 is NestedIdent119 && first119.name == 'idx' {
@@ -1639,6 +1886,7 @@ fn indexed_smartcast119(items []NestedExpr119) string {
 	return 'none'
 }
 
+// nested_type_membership119 supports nested type membership119 handling for v3 tests.
 fn nested_type_membership119(node NestedNode119) int {
 	if node !in [NestedMatchBranch119, NestedIfBranch119, NestedInfixExpr119] {
 		return 1
@@ -1646,6 +1894,7 @@ fn nested_type_membership119(node NestedNode119) int {
 	return 0
 }
 
+// sum_pointer_target119 supports sum pointer target119 handling for v3 tests.
 fn sum_pointer_target119(node NestedNode119) int {
 	mut holder119 := LoopHolder119{}
 	match node {
@@ -1661,6 +1910,7 @@ fn sum_pointer_target119(node NestedNode119) int {
 	return 6
 }
 
+// compare_sort_item119 supports compare sort item119 handling for v3 tests.
 fn compare_sort_item119(a &SortItem119, b &SortItem119) int {
 	if a.rank < b.rank {
 		return -1
@@ -1671,6 +1921,7 @@ fn compare_sort_item119(a &SortItem119, b &SortItem119) int {
 	return 0
 }
 
+// sort_with_compare119 updates sort with compare119 state for v3 tests.
 fn sort_with_compare119() int {
 	mut items119 := [
 		SortItem119{
@@ -1699,14 +1950,17 @@ fn sort_with_compare119() int {
 	return items119[0].rank * 100 + items119[1].rank * 10 + items119[2].rank + sorted119[0].id
 }
 
+// operator == implements the == operator for OpVersion119.
 fn (a OpVersion119) == (b OpVersion119) bool {
 	return a.major == b.major
 }
 
+// operator < implements the < operator for OpVersion119.
 fn (a OpVersion119) < (b OpVersion119) bool {
 	return a.major < b.major
 }
 
+// operator_compare119 supports operator compare119 handling for v3 tests.
 fn operator_compare119() int {
 	low119 := OpVersion119{
 		major: 1
@@ -1739,14 +1993,17 @@ fn operator_compare119() int {
 	return score119
 }
 
+// read_interface_field119 reads read interface field119 input for v3 tests.
 fn read_interface_field119(item InterfaceField119) int {
 	return item.value
 }
 
+// read_interface_field_ptr119 reads read interface field ptr119 input for v3 tests.
 fn read_interface_field_ptr119(item &InterfaceField119) int {
 	return item.value
 }
 
+// interface_field119 supports interface field119 handling for v3 tests.
 fn interface_field119() int {
 	item119 := InterfaceFieldImpl119{
 		value: 19
@@ -1754,37 +2011,45 @@ fn interface_field119() int {
 	return read_interface_field119(item119) + read_interface_field_ptr119(&item119)
 }
 
+// math_generic119 supports math generic119 handling for v3 tests.
 fn math_generic119() int {
 	return math.abs(0 - 6) + math.min(8, 5)
 }
 
+// module_const_method119 supports module const method119 handling for v3 tests.
 fn module_const_method119() int {
 	return token.scanner_matcher.find('fn')
 }
 
+// qualified_static_new119 supports qualified static new119 handling for v3 tests.
 fn qualified_static_new119() int {
 	mut matcher119 := token.KeywordsMatcherTrie.new(2)
 	matcher119.add_word('module', 71)
 	return matcher119.find('module')
 }
 
+// new creates a StaticNewLocal119 value for v3 tests.
 fn StaticNewLocal119.new(value int) StaticNewLocal119 {
 	return StaticNewLocal119{
 		value: value + 2
 	}
 }
 
+// local_static_new119 supports local static new119 handling for v3 tests.
 fn local_static_new119() int {
 	item119 := StaticNewLocal119.new(73)
 	return item119.value
 }
 
+// module_function_new119 supports module function new119 handling for v3 tests.
 fn module_function_new119() int {
 	mut bench119 := bench.new()
 	_ = bench119
 	return 101
 }
 
+// nil_newline_pointer_assignment119
+// supports helper handling in v3 tests.
 fn nil_newline_pointer_assignment119() int {
 	mut item119 := NilLink119{}
 	mut link119 := &item119.next
@@ -1798,6 +2063,7 @@ fn nil_newline_pointer_assignment119() int {
 	return 21
 }
 
+// ierror_none_field119 supports ierror none field119 handling for v3 tests.
 fn ierror_none_field119() int {
 	default119 := IErrorDefault119{}
 	explicit119 := IErrorDefault119{
@@ -1808,6 +2074,7 @@ fn ierror_none_field119() int {
 	return 29
 }
 
+// sum_pointer_nil_default119 supports sum pointer nil default119 handling for v3 tests.
 fn sum_pointer_nil_default119() int {
 	holder119 := SumPointerNilHolder119{}
 	if isnil(holder119.node) {
@@ -1816,6 +2083,7 @@ fn sum_pointer_nil_default119() int {
 	return 0
 }
 
+// optional_string_interp119 supports optional string interp119 handling for v3 tests.
 fn optional_string_interp119() string {
 	default119 := OptionalInterp119{}
 	set119 := OptionalInterp119{
@@ -1824,6 +2092,7 @@ fn optional_string_interp119() string {
 	return '${default119.stop}|${set119.stop}'
 }
 
+// optional_cast_field119 supports optional cast field119 handling for v3 tests.
 fn optional_cast_field119(arg string) string {
 	data119 := OptionalInterp119{
 		stop: ?string(arg)
@@ -1831,6 +2100,7 @@ fn optional_cast_field119(arg string) string {
 	return '${data119.stop}'
 }
 
+// optional_passthrough_field119 supports optional passthrough field119 handling for v3 tests.
 fn optional_passthrough_field119(default_value ?string) string {
 	data119 := OptionalInterp119{
 		stop: default_value
@@ -1838,18 +2108,22 @@ fn optional_passthrough_field119(default_value ?string) string {
 	return '${data119.stop}'
 }
 
+// escape_default_string supports escape default string handling for v3 tests.
 fn escape_default_string(value string) string {
 	return value
 }
 
+// flag_default_value supports flag default value handling for v3 tests.
 fn flag_default_value(value string) string {
 	return 'not-lowered:${value}'
 }
 
+// flag_default_value_lowering119 supports flag default value lowering119 handling for v3 tests.
 fn flag_default_value_lowering119() string {
 	return flag_default_value('abc')
 }
 
+// query_kind119 supports query kind119 handling for map[string]MapMethodValue119.
 fn (m map[string]MapMethodValue119) query_kind119(name string) ?MapMethodValue119 {
 	if name in m {
 		return m[name]
@@ -1857,6 +2131,7 @@ fn (m map[string]MapMethodValue119) query_kind119(name string) ?MapMethodValue11
 	return none
 }
 
+// map_receiver_method119 supports map receiver method119 handling for v3 tests.
 fn map_receiver_method119() int {
 	mut kinds119 := map[string]MapMethodValue119{}
 	kinds119['name'] = MapMethodValue119{
@@ -1866,14 +2141,17 @@ fn map_receiver_method119() int {
 	return got119.kind
 }
 
+// map_index_or_none119 supports map index or none119 handling for v3 tests.
 fn map_index_or_none119(items map[string]MapMethodValue119, name string) ?MapMethodValue119 {
 	return items[name] or { none }
 }
 
+// map_index_bang119 supports map index bang119 handling for v3 tests.
 fn map_index_bang119(items map[string]MapMethodValue119, name string) !MapMethodValue119 {
 	return items[name]!
 }
 
+// map_index_optional_return119 supports map index optional return119 handling for v3 tests.
 fn map_index_optional_return119() int {
 	mut kinds119 := map[string]MapMethodValue119{}
 	kinds119['name'] = MapMethodValue119{
@@ -1894,14 +2172,17 @@ fn map_index_optional_return119() int {
 	return got119.kind + missing119.kind + got_bang119.kind + missing_bang119.kind
 }
 
+// ReceiverMethodLive119 represents receiver method live119 data used by v3 tests.
 struct ReceiverMethodLive119 {
 	base int
 }
 
+// hidden119 supports hidden119 handling for ReceiverMethodLive119.
 fn (r ReceiverMethodLive119) hidden119(extra int) int {
 	return r.base + extra
 }
 
+// visible119 supports visible119 handling for ReceiverMethodLive119.
 fn (r ReceiverMethodLive119) visible119(flag bool) int {
 	if flag {
 		return r.hidden119(64)
@@ -1909,6 +2190,7 @@ fn (r ReceiverMethodLive119) visible119(flag bool) int {
 	return r.hidden119(1)
 }
 
+// receiver_method_liveness119 supports receiver method liveness119 handling for v3 tests.
 fn receiver_method_liveness119() int {
 	r := ReceiverMethodLive119{
 		base: 53
@@ -1916,6 +2198,7 @@ fn receiver_method_liveness119() int {
 	return r.visible119(true)
 }
 
+// zero_map_lookup119 supports zero map lookup119 handling for v3 tests.
 fn zero_map_lookup119() int {
 	holder119 := ZeroMapHolder119{}
 	if 'missing' !in holder119.data {
@@ -1924,6 +2207,7 @@ fn zero_map_lookup119() int {
 	return 0
 }
 
+// flag_enum_zero119 supports flag enum zero119 handling for v3 tests.
 fn flag_enum_zero119() int {
 	show119 := ~FeatureFlags119.zero() ^ .name
 	if show119.has(.version) && !show119.has(.name) {
@@ -1932,6 +2216,7 @@ fn flag_enum_zero119() int {
 	return 0
 }
 
+// sum_alias_pointer_cast119 converts sum alias pointer cast119 data for v3 tests.
 fn sum_alias_pointer_cast119(expr RecursiveExpr119) int {
 	alias119 := &RecursiveHashNode119(expr as RecursiveIf119)
 	if isnil(alias119) {
@@ -1940,6 +2225,7 @@ fn sum_alias_pointer_cast119(expr RecursiveExpr119) int {
 	return 9
 }
 
+// at_location119 supports at location119 handling for v3 tests.
 fn at_location119() int {
 	location119 := @LOCATION
 	if location119.len > 0 {
@@ -1948,6 +2234,7 @@ fn at_location119() int {
 	return 0
 }
 
+// c_atomic_wymix119 supports c atomic wymix119 handling for v3 tests.
 fn c_atomic_wymix119() int {
 	mut counter119 := u32(4)
 	old119 := C.atomic_fetch_add_u32(voidptr(&counter119), u32(3))
@@ -1959,6 +2246,7 @@ fn c_atomic_wymix119() int {
 	return score119
 }
 
+// c_atomic_channel_helpers119 supports c atomic channel helpers119 handling for v3 tests.
 fn c_atomic_channel_helpers119() int {
 	mut score119 := 0
 	mut flag119 := u16(0)
@@ -1992,6 +2280,7 @@ fn c_atomic_channel_helpers119() int {
 	return score119
 }
 
+// c_filelock_helpers119 supports c filelock helpers119 handling for v3 tests.
 fn c_filelock_helpers119() int {
 	lock_result119 := C.v_filelock_lock(i32(-1), 1, 1, u64(0), u64(0))
 	unlock_result119 := C.v_filelock_unlock(i32(-1), u64(0), u64(0))
@@ -2001,6 +2290,7 @@ fn c_filelock_helpers119() int {
 	return 0
 }
 
+// local_address_return119 supports local address return119 handling for v3 tests.
 fn local_address_return119() &HeapLocal119 {
 	item119 := HeapLocal119{
 		value: 53
@@ -2008,11 +2298,13 @@ fn local_address_return119() &HeapLocal119 {
 	return &item119
 }
 
+// heap_local_return119 supports heap local return119 handling for v3 tests.
 fn heap_local_return119() int {
 	item119 := local_address_return119()
 	return item119.value
 }
 
+// rune_array_string119 supports rune array string119 handling for v3 tests.
 fn rune_array_string119() int {
 	runes119 := [rune(`v`), rune(`3`)]
 	if runes119.string() == 'v3' {
@@ -2021,6 +2313,7 @@ fn rune_array_string119() int {
 	return 0
 }
 
+// prealloc_atomic_helpers119 supports prealloc atomic helpers119 handling for v3 tests.
 fn prealloc_atomic_helpers119() int {
 	mut value119 := 1
 	C.v_prealloc_atomic_store_i32(voidptr(&value119), 2)
@@ -2033,6 +2326,7 @@ fn prealloc_atomic_helpers119() int {
 	return score119
 }
 
+// signal_handler_cast119 supports signal handler cast119 handling for v3 tests.
 fn signal_handler_cast119() int {
 	prev119 := C.v_signal_with_handler_cast(0, unsafe { nil })
 	if isnil(prev119) {
@@ -2041,6 +2335,7 @@ fn signal_handler_cast119() int {
 	return 67
 }
 
+// printing_builtin_helpers119 supports printing builtin helpers119 handling for v3 tests.
 fn printing_builtin_helpers119() int {
 	print('')
 	eprint('')
@@ -2048,6 +2343,7 @@ fn printing_builtin_helpers119() int {
 	return 89
 }
 
+// string_last_part_helpers119 supports string last part helpers119 handling for v3 tests.
 fn string_last_part_helpers119() int {
 	path119 := 'vlib/v3/v3.v'
 	if path119.all_before_last('/') == 'vlib/v3' && path119.all_after_last('/') == 'v3.v' {
@@ -2056,6 +2352,7 @@ fn string_last_part_helpers119() int {
 	return 0
 }
 
+// join_path_variadic119 supports join path variadic119 handling for v3 tests.
 fn join_path_variadic119() int {
 	sep119 := os.path_separator
 	expected119 := 'vlib' + sep119 + 'v3' + sep119 + 'v3.v'
@@ -2066,6 +2363,7 @@ fn join_path_variadic119() int {
 	return 0
 }
 
+// ssa_sum_payload_store119 supports ssa sum payload store119 handling for v3 tests.
 fn ssa_sum_payload_store119() int {
 	payload119 := SsaSum119(SsaSumPayload119{
 		code: 109
@@ -2076,20 +2374,24 @@ fn ssa_sum_payload_store119() int {
 	return 0
 }
 
+// add_fn_field119 updates add fn field119 state for v3 tests.
 fn add_fn_field119(a int, b int) int {
 	return a + b
 }
 
+// make_fn_field119 builds make fn field119 data for v3 tests.
 fn make_fn_field119() FnFieldCall119 {
 	return FnFieldCall119{
 		op: add_fn_field119
 	}
 }
 
+// selector_fn_call_base119 supports selector fn call base119 handling for v3 tests.
 fn selector_fn_call_base119() int {
 	return make_fn_field119().op(50, 63)
 }
 
+// channel_runtime119 supports channel runtime119 handling for v3 tests.
 fn channel_runtime119() int {
 	mutex119 := sync.new_mutex()
 	_ = mutex119
@@ -2111,12 +2413,14 @@ fn channel_runtime119() int {
 	return score119
 }
 
+// ZeroDefaultStruct119 represents zero default struct119 data used by v3 tests.
 struct ZeroDefaultStruct119 {
 	name    string
 	count   int
 	enabled bool
 }
 
+// zero_default_struct119 supports zero default struct119 handling for v3 tests.
 fn zero_default_struct119() int {
 	item119 := ZeroDefaultStruct119{}
 	if item119.name == '' && item119.count == 0 && !item119.enabled {
@@ -2125,6 +2429,7 @@ fn zero_default_struct119() int {
 	return 0
 }
 
+// main runs the v3 tests entry point.
 fn main() {
 	print_str('=== v3 Test Suite ===')
 

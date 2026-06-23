@@ -14,6 +14,7 @@ import v3.ssa.optimize
 import v3.transform
 import v3.types
 
+// run_compile_command supports run compile command handling for v3 entry point.
 fn run_compile_command(cmd string) os.Result {
 	exit_code := os.system(cmd)
 	return os.Result{
@@ -21,13 +22,7 @@ fn run_compile_command(cmd string) os.Result {
 	}
 }
 
-fn C.open(charptr, int, int) int
-fn C.write(int, voidptr, int) int
-fn C.close(int) int
-fn C.chmod(charptr, int) int
-
-const o_wronly_creat_trunc = 0x601 // O_WRONLY | O_CREAT | O_TRUNC on Darwin
-
+// main runs the v3 entry point entry point.
 fn main() {
 	args := os.args[1..]
 	if args.len == 0 {
@@ -207,7 +202,24 @@ fn main() {
 		} else {
 			'-w'
 		}
+		// Compile inside a per-output build dir, using constant relative source/output basenames,
+		// then move the result to bin_file. On macOS arm64 tcc bakes the -o basename into the
+		// ad-hoc code-signature identifier and the input .c path into the symbol table, so building
+		// `v5.c`->`v5` vs `v6.c`->`v6` directly would make the binaries differ only by those embedded
+		// names (plus the code-directory hashes covering them). Compiling fixed `src.c`->`out` keeps
+		// those embedded names identical, so the self-host chain is byte-for-byte reproducible
+		// (v5 == v6). The build dir is unique per output and never embedded (we cd into it), so
+		// parallel compilations into a shared directory never clobber each other.
+		cc_dir := '${bin_file}.v3cc'
+		os.mkdir(cc_dir) or {}
+		cc_src := os.join_path_single(cc_dir, 'src.c')
+		cc_out := os.join_path_single(cc_dir, 'out')
+		if !write_text_file_raw(cc_src, c_code) {
+			eprintln('error writing ${cc_src}')
+			exit(1)
+		}
 		mut cc_cmd := ''
+		mut exec_cmd := ''
 		mut result := os.Result{}
 		if !is_prod {
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
@@ -216,28 +228,37 @@ fn main() {
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
 			cc_cmd = '${tcc_path} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file} -lm'
+			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${tcc_includes} ${tcc_lib} ${warn_flags} -o out src.c -lm'
 			println('  > ${cc_cmd}')
-			result = run_compile_command(cc_cmd)
+			result = run_compile_command(exec_cmd)
 		}
 		if is_prod || result.exit_code != 0 {
 			if result.exit_code != 0 && result.output.len > 0 {
 				eprintln('  tcc error: ${result.output.trim_space()}')
 			}
 			cc_cmd = 'cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion -Wl,-stack_size,0x4000000 -o ${bin_file} ${output_file} -lm'
+			exec_cmd = 'cd ${cc_dir} && cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion -Wl,-stack_size,0x4000000 -o out src.c -lm'
 			println('  > ${cc_cmd}')
-			result = run_compile_command(cc_cmd)
+			result = run_compile_command(exec_cmd)
 			if result.exit_code != 0 {
 				eprintln('C compilation failed:')
 				eprintln(result.output)
 				exit(1)
 			}
 		}
+		os.mv(cc_out, bin_file) or {
+			eprintln('failed to finalize ${bin_file}: ${err}')
+			exit(1)
+		}
+		os.rm(cc_src) or {}
+		os.rmdir(cc_dir) or {}
 		b.step('cc')
 	}
 
 	b.print_report()
 }
 
+// resolve_vroot resolves resolve vroot information for v3 entry point.
 fn resolve_vroot(initial string) string {
 	if is_valid_vroot(initial) {
 		return initial
@@ -256,32 +277,25 @@ fn resolve_vroot(initial string) string {
 	return initial
 }
 
+// is_valid_vroot reports whether is valid vroot applies in v3 entry point.
 fn is_valid_vroot(root string) bool {
 	return root.len > 0 && os.is_dir(builtin_dir_for_vroot(root))
 }
 
+// builtin_dir_for_vroot supports builtin dir for vroot handling for v3 entry point.
 fn builtin_dir_for_vroot(root string) string {
 	return os.join_path_single(os.join_path_single(root, 'vlib'), 'builtin')
 }
 
+// write_text_file_raw writes text file raw output for v3 entry point.
 fn write_text_file_raw(path string, data string) bool {
-	fd := C.open(path.str, o_wronly_creat_trunc, 420)
-	if fd < 0 {
-		return false
-	}
-	if data.len > 0 {
-		written := C.write(fd, data.str, data.len)
-		if written != data.len {
-			C.close(fd)
-			return false
-		}
-	}
-	if C.close(fd) != 0 {
-		return false
-	}
-	return C.chmod(path.str, 420) == 0
+	// Delegate to the stdlib writer so the open flags (O_CREAT/O_TRUNC, binary mode)
+	// are correct on every platform, instead of hardcoding per-OS bit values.
+	os.write_file(path, data) or { return false }
+	return true
 }
 
+// print_type_errors updates print type errors state for v3 entry point.
 fn print_type_errors(errors []types.TypeError) {
 	eprintln('type checker found ${errors.len} error(s):')
 	max_errors := if errors.len < 20 { errors.len } else { 20 }
@@ -329,6 +343,7 @@ fn path_is_in_dir(path string, dir string) bool {
 	return real_path == real_dir || real_path.starts_with(real_dir + os.path_separator)
 }
 
+// resolve_imports resolves resolve imports information for v3 entry point.
 fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string) {
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true

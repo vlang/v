@@ -3,6 +3,7 @@ module c
 import v3.flat
 import v3.types
 
+// gen_fns emits fns output for c.
 fn (mut g FlatGen) gen_fns() {
 	mut cur_module := ''
 	for i in 0 .. g.a.nodes.len {
@@ -34,10 +35,12 @@ fn (mut g FlatGen) gen_fns() {
 	}
 }
 
+// should_emit_fn_node reports whether should emit fn node applies in c.
 fn (mut g FlatGen) should_emit_fn_node(node flat.Node, node_index int) bool {
 	return g.should_emit_fn_node_in_module(node, node_index, g.tc.cur_module)
 }
 
+// should_emit_fn_node_in_module reports whether should emit fn node in module applies in c.
 fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int, module_name string) bool {
 	_ = node_index
 	dfn := dotted_fn_name_in_module(module_name, node.value)
@@ -70,6 +73,7 @@ fn is_generated_fn_after_markused(name string) bool {
 	return name.starts_with('__anon_fn_')
 }
 
+// used_fn_contains reports whether used fn contains applies in c.
 fn (g &FlatGen) used_fn_contains(name string) bool {
 	if name.len == 0 {
 		return false
@@ -77,18 +81,22 @@ fn (g &FlatGen) used_fn_contains(name string) bool {
 	return g.used_fns[name]
 }
 
+// has_used_fn_filter reports whether has used fn filter applies in c.
 fn (g &FlatGen) has_used_fn_filter() bool {
 	return g.used_fns.len > 0 && g.used_fn_contains('main')
 }
 
+// emitted_fn_contains reports whether emitted fn contains applies in c.
 fn (g &FlatGen) emitted_fn_contains(name string) bool {
 	return name.len > 0 && g.emitted_fns[name]
 }
 
+// qualified_fn_name supports qualified fn name handling for FlatGen.
 fn (g &FlatGen) qualified_fn_name(name string) string {
 	return qualified_fn_name_in_module(g.tc.cur_module, name)
 }
 
+// qualified_fn_name_in_module supports qualified fn name in module handling for c.
 fn qualified_fn_name_in_module(module_name string, name string) string {
 	if module_name == 'builtin' && name == 'free' {
 		return 'v_free'
@@ -102,6 +110,7 @@ fn qualified_fn_name_in_module(module_name string, name string) string {
 	return c_name(name)
 }
 
+// direct_call_name supports direct call name handling for FlatGen.
 fn (g &FlatGen) direct_call_name(name string) string {
 	if name == 'free' {
 		return 'v_free'
@@ -115,10 +124,12 @@ fn (g &FlatGen) direct_call_name(name string) string {
 	return c_name(name)
 }
 
+// dotted_fn_name supports dotted fn name handling for FlatGen.
 fn (g &FlatGen) dotted_fn_name(name string) string {
 	return dotted_fn_name_in_module(g.tc.cur_module, name)
 }
 
+// dotted_fn_name_in_module supports dotted fn name in module handling for c.
 fn dotted_fn_name_in_module(module_name string, name string) string {
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
 		return '${module_name}.${name}'
@@ -126,6 +137,7 @@ fn dotted_fn_name_in_module(module_name string, name string) string {
 	return name
 }
 
+// qualify_name_in_module supports qualify name in module handling for c.
 fn qualify_name_in_module(module_name string, name string) string {
 	if module_name.len == 0 || module_name == 'main' || module_name == 'builtin' {
 		return name
@@ -136,10 +148,12 @@ fn qualify_name_in_module(module_name string, name string) string {
 	return '${module_name}.${name}'
 }
 
+// gen_fn emits fn output for c.
 fn (mut g FlatGen) gen_fn(node flat.Node) {
 	g.gen_fn_in_module(node, g.tc.cur_module)
 }
 
+// gen_fn_in_module emits fn in module output for c.
 fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.tc.cur_module = module_name
 	g.cur_fn_name = node.value
@@ -216,6 +230,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.tc.pop_scope()
 }
 
+// collect_function_defer_ids updates collect function defer ids state for c.
 fn (mut g FlatGen) collect_function_defer_ids(node flat.Node) []flat.NodeId {
 	mut ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
@@ -224,6 +239,7 @@ fn (mut g FlatGen) collect_function_defer_ids(node flat.Node) []flat.NodeId {
 	return ids
 }
 
+// collect_function_defer_ids_from updates collect function defer ids from state for c.
 fn (mut g FlatGen) collect_function_defer_ids_from(id flat.NodeId, mut ids []flat.NodeId) {
 	if !g.valid_node_id(id) {
 		return
@@ -241,6 +257,7 @@ fn (mut g FlatGen) collect_function_defer_ids_from(id flat.NodeId, mut ids []fla
 	}
 }
 
+// prepare_function_defers supports prepare function defers handling for FlatGen.
 fn (mut g FlatGen) prepare_function_defers(fn_defer_ids []flat.NodeId) {
 	for idx, defer_id in fn_defer_ids {
 		g.fn_defer_counts[int(defer_id)] = '${c_name(g.cur_fn_name)}_defer_${idx}_count'
@@ -251,6 +268,7 @@ fn (mut g FlatGen) prepare_function_defers(fn_defer_ids []flat.NodeId) {
 	}
 }
 
+// collect_function_defer_captures updates collect function defer captures state for c.
 fn (mut g FlatGen) collect_function_defer_captures(id flat.NodeId) {
 	if !g.valid_node_id(id) {
 		return
@@ -267,6 +285,7 @@ fn (mut g FlatGen) collect_function_defer_captures(id flat.NodeId) {
 	}
 }
 
+// add_function_defer_capture updates add function defer capture state for FlatGen.
 fn (mut g FlatGen) add_function_defer_capture(id flat.NodeId, name string) {
 	if name.len == 0 || name == '_' || name in g.cur_param_names || name in g.modules
 		|| name in g.global_modules || name in g.defer_capture_types {
@@ -284,6 +303,7 @@ fn (mut g FlatGen) add_function_defer_capture(id flat.NodeId, name string) {
 	g.defer_capture_types[name] = typ
 }
 
+// gen_function_defer_prelude emits function defer prelude output for c.
 fn (mut g FlatGen) gen_function_defer_prelude() {
 	for _, count_name in g.fn_defer_counts {
 		g.writeln('int ${count_name} = 0;')
@@ -298,6 +318,7 @@ fn (mut g FlatGen) gen_function_defer_prelude() {
 	}
 }
 
+// set_cur_fn_ret updates set cur fn ret state for c.
 fn (mut g FlatGen) set_cur_fn_ret(ret_type types.Type) {
 	g.cur_fn_ret = ret_type
 	g.cur_fn_ret_is_optional = false
@@ -311,6 +332,7 @@ fn (mut g FlatGen) set_cur_fn_ret(ret_type types.Type) {
 	}
 }
 
+// gen_compiler_vexe_env_setup emits compiler vexe env setup output for c.
 fn (mut g FlatGen) gen_compiler_vexe_env_setup() {
 	if g.compiler_vroot.len == 0 {
 		return
@@ -339,15 +361,18 @@ fn (mut g FlatGen) gen_compiler_vexe_env_setup() {
 	g.writeln('\t}')
 }
 
+// gen_defers emits defers output for c.
 fn (mut g FlatGen) gen_defers() {
 	g.gen_defers_from(0)
 }
 
+// gen_all_defers emits all defers output for c.
 fn (mut g FlatGen) gen_all_defers() {
 	g.gen_defers()
 	g.gen_fn_defers()
 }
 
+// gen_defers_from emits defers from output for c.
 fn (mut g FlatGen) gen_defers_from(start int) {
 	if g.defers.len == 0 {
 		return
@@ -366,6 +391,7 @@ fn (mut g FlatGen) gen_defers_from(start int) {
 	}
 }
 
+// gen_fn_defers emits fn defers output for c.
 fn (mut g FlatGen) gen_fn_defers() {
 	if g.fn_defers.len == 0 {
 		return
@@ -388,6 +414,7 @@ fn (mut g FlatGen) gen_fn_defers() {
 	}
 }
 
+// trim_defers transforms trim defers data for c.
 fn (mut g FlatGen) trim_defers(start int) {
 	if start >= g.defers.len {
 		return
@@ -395,6 +422,7 @@ fn (mut g FlatGen) trim_defers(start int) {
 	g.defers = g.defers[..start].clone()
 }
 
+// gen_ierror_from_error_call converts gen ierror from error call data for c.
 fn (mut g FlatGen) gen_ierror_from_error_call(node flat.Node) {
 	fn_node := g.a.child_node(&node, 0)
 	g.write('(IError){._typ = 0, ._object = NULL, .message = ')
@@ -412,12 +440,14 @@ fn (mut g FlatGen) gen_ierror_from_error_call(node flat.Node) {
 	g.write('}')
 }
 
+// gen_optional_error_from_call converts gen optional error from call data for c.
 fn (mut g FlatGen) gen_optional_error_from_call(ct string, node flat.Node) {
 	g.write('(${ct}){.ok = false, .err = ')
 	g.gen_ierror_from_error_call(node)
 	g.write('}')
 }
 
+// gen_call emits call output for c.
 fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	fn_node := g.a.child_node(&node, 0)
 	fn_name := fn_node.value
@@ -1050,6 +1080,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// receiver_base_type supports receiver base type handling for FlatGen.
 fn (g &FlatGen) receiver_base_type(base_id flat.NodeId) types.Type {
 	if int(base_id) < 0 {
 		return types.Type(types.void_)
@@ -1069,6 +1100,7 @@ fn (g &FlatGen) receiver_base_type(base_id flat.NodeId) types.Type {
 	return g.tc.resolve_type(base_id)
 }
 
+// current_param_type returns current param type data for FlatGen.
 fn (g &FlatGen) current_param_type(name string) ?types.Type {
 	for i in 0 .. g.cur_param_names.len {
 		if g.cur_param_names[i] == name {
@@ -1078,6 +1110,7 @@ fn (g &FlatGen) current_param_type(name string) ?types.Type {
 	return none
 }
 
+// gen_enum_str_call emits enum str call output for c.
 fn (mut g FlatGen) gen_enum_str_call(fn_node &flat.Node, enum_type types.Enum) {
 	fields := g.tc.enum_fields[enum_type.name] or { []string{} }
 	if fields.len == 0 {
@@ -1101,6 +1134,7 @@ fn (mut g FlatGen) gen_enum_str_call(fn_node &flat.Node, enum_type types.Enum) {
 	g.tmp_count++
 }
 
+// enum_receiver_method_name supports enum receiver method name handling for FlatGen.
 fn (g &FlatGen) enum_receiver_method_name(enum_type types.Enum, method string) ?string {
 	name := enum_type.name
 	direct := '${name}.${method}'
@@ -1118,6 +1152,7 @@ fn (g &FlatGen) enum_receiver_method_name(enum_type types.Enum, method string) ?
 	return none
 }
 
+// gen_fn_field_call emits fn field call output for c.
 fn (mut g FlatGen) gen_fn_field_call(node flat.Node, fn_node &flat.Node, base_type types.Type) bool {
 	fn_type := g.fn_field_type(base_type, fn_node.value) or { return false }
 	base_id := g.a.child(fn_node, 0)
@@ -1153,6 +1188,7 @@ fn (mut g FlatGen) gen_fn_field_call(node flat.Node, fn_node &flat.Node, base_ty
 	return true
 }
 
+// call_key updates call key state for FlatGen.
 fn (g &FlatGen) call_key(id flat.NodeId, name string) string {
 	if resolved := g.tc.resolved_call_name(id) {
 		return g.normalize_call_key(resolved)
@@ -1160,6 +1196,7 @@ fn (g &FlatGen) call_key(id flat.NodeId, name string) string {
 	return g.normalize_call_key(name)
 }
 
+// normalize_call_key transforms normalize call key data for c.
 fn (g &FlatGen) normalize_call_key(name string) string {
 	if name.starts_with('main.') {
 		short_name := name.all_after_last('.')
@@ -1190,6 +1227,7 @@ fn (g &FlatGen) normalize_call_key(name string) string {
 	return qname
 }
 
+// param_types_for supports param types for handling for FlatGen.
 fn (mut g FlatGen) param_types_for(name string, fallback string) []types.Type {
 	decl_types := g.param_types_from_decl(name, fallback)
 	if decl_types.len > 0 {
@@ -1215,6 +1253,7 @@ fn (mut g FlatGen) param_types_for(name string, fallback string) []types.Type {
 	return []types.Type{}
 }
 
+// param_types_from_decl converts param types from decl data for c.
 fn (mut g FlatGen) param_types_from_decl(name string, fallback string) []types.Type {
 	if name.contains('.') {
 		if ptypes := g.fn_decl_param_types[name] {
@@ -1236,6 +1275,7 @@ fn (mut g FlatGen) param_types_from_decl(name string, fallback string) []types.T
 	return []types.Type{}
 }
 
+// short_receiver_method_name supports short receiver method name handling for c.
 fn short_receiver_method_name(name string) string {
 	if !name.contains('.') {
 		return ''
@@ -1247,6 +1287,7 @@ fn short_receiver_method_name(name string) string {
 	return '${receiver.all_after_last('.')}.${name.all_after_last('.')}'
 }
 
+// gen_arg_for_expected_type emits arg for expected type output for c.
 fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.Type) {
 	arg_node := g.a.nodes[int(arg_id)]
 	mut needs_addr := false
@@ -1268,6 +1309,7 @@ fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.
 	g.gen_expr_with_expected_type(arg_id, expected)
 }
 
+// gen_optional_arg emits optional arg output for c.
 fn (mut g FlatGen) gen_optional_arg(arg_id flat.NodeId, expected types.Type) bool {
 	mut base_type := types.Type(types.void_)
 	if expected is types.OptionType {
@@ -1304,6 +1346,7 @@ fn (mut g FlatGen) gen_optional_arg(arg_id flat.NodeId, expected types.Type) boo
 	return true
 }
 
+// expr_is_optional_literal supports expr is optional literal handling for FlatGen.
 fn (mut g FlatGen) expr_is_optional_literal(id flat.NodeId, expected types.Type) bool {
 	if int(id) < 0 {
 		return false
@@ -1316,6 +1359,7 @@ fn (mut g FlatGen) expr_is_optional_literal(id flat.NodeId, expected types.Type)
 		|| node.value == g.optional_type_name(expected) || node.value.starts_with('Optional')
 }
 
+// collapsed_optional_literal supports collapsed optional literal handling for FlatGen.
 fn (mut g FlatGen) collapsed_optional_literal(id flat.NodeId, expected types.Type) flat.NodeId {
 	mut current := id
 	for _ in 0 .. 4 {
@@ -1328,6 +1372,7 @@ fn (mut g FlatGen) collapsed_optional_literal(id flat.NodeId, expected types.Typ
 	return current
 }
 
+// optional_literal_value_id supports optional literal value id handling for FlatGen.
 fn (g &FlatGen) optional_literal_value_id(id flat.NodeId) ?flat.NodeId {
 	if int(id) < 0 {
 		return none
@@ -1345,11 +1390,13 @@ fn (g &FlatGen) optional_literal_value_id(id flat.NodeId) ?flat.NodeId {
 	return none
 }
 
+// fn_field_type supports fn field type handling for FlatGen.
 fn (g &FlatGen) fn_field_type(base_type types.Type, field_name string) ?types.FnType {
 	field_type := g.field_type(base_type, field_name) or { return none }
 	return fn_type_from(field_type)
 }
 
+// field_type supports field type handling for FlatGen.
 fn (g &FlatGen) field_type(base_type types.Type, field_name string) ?types.Type {
 	clean0 := types.unwrap_pointer(base_type)
 	mut clean := clean0
@@ -1378,6 +1425,7 @@ fn (g &FlatGen) field_type(base_type types.Type, field_name string) ?types.Type 
 	return none
 }
 
+// fn_type_from supports fn type from handling for c.
 fn fn_type_from(t types.Type) ?types.FnType {
 	if t is types.FnType {
 		return t
@@ -1388,6 +1436,7 @@ fn fn_type_from(t types.Type) ?types.FnType {
 	return none
 }
 
+// gen_call_args emits call args output for c.
 fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 	mut param_types := []types.Type{}
 	if fn_name in g.tc.fn_param_types {
@@ -1512,6 +1561,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 	}
 }
 
+// is_flag_enum_method reports whether is flag enum method applies in c.
 fn (g &FlatGen) is_flag_enum_method(fn_node &flat.Node) bool {
 	if fn_node.kind != .selector {
 		return false
@@ -1532,6 +1582,7 @@ fn (g &FlatGen) is_flag_enum_method(fn_node &flat.Node) bool {
 	return false
 }
 
+// gen_flag_enum_call emits flag enum call output for c.
 fn (mut g FlatGen) gen_flag_enum_call(node flat.Node) {
 	fn_node := g.a.child_node(&node, 0)
 	method := fn_node.value
@@ -1579,6 +1630,7 @@ fn (mut g FlatGen) gen_flag_enum_call(node flat.Node) {
 	}
 }
 
+// gen_flag_enum_arg emits flag enum arg output for c.
 fn (mut g FlatGen) gen_flag_enum_arg(arg_id flat.NodeId, base_type types.Type) {
 	if base_type is types.Enum {
 		g.gen_expr_with_expected_type(arg_id, base_type)
@@ -1587,11 +1639,13 @@ fn (mut g FlatGen) gen_flag_enum_arg(arg_id flat.NodeId, base_type types.Type) {
 	}
 }
 
+// is_generic_type reports whether is generic type applies in c.
 fn is_generic_type(typ string) bool {
 	t := typ.trim_left('&?!')
 	return t.len == 1 && t[0] >= `A` && t[0] <= `Z`
 }
 
+// has_generic_params reports whether has generic params applies in c.
 fn (g &FlatGen) has_generic_params(node flat.Node) bool {
 	for i in 0 .. node.children_count {
 		child := g.a.child_node(&node, i)
@@ -1602,6 +1656,7 @@ fn (g &FlatGen) has_generic_params(node flat.Node) bool {
 	return is_generic_type(node.typ)
 }
 
+// find_prim_method resolves find prim method information for c.
 fn (g &FlatGen) find_prim_method(method string) string {
 	if 'u8.${method}' in g.tc.fn_param_types {
 		return c_name('u8.${method}')
@@ -1621,6 +1676,7 @@ fn (g &FlatGen) find_prim_method(method string) string {
 	return ''
 }
 
+// find_alias_method converts find alias method data for c.
 fn (g &FlatGen) find_alias_method(target string, method string) ?string {
 	mut fallback := ''
 	for alias, alias_target in g.tc.type_aliases {
@@ -1650,6 +1706,7 @@ fn (g &FlatGen) find_alias_method(target string, method string) ?string {
 	return none
 }
 
+// gen_sum_variant_arg emits sum variant arg output for c.
 fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) bool {
 	actual0 := types.unwrap_pointer(g.tc.resolve_type(arg_id))
 	mut actual := actual0
@@ -1692,6 +1749,7 @@ fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) 
 	return true
 }
 
+// forward_decls supports forward decls handling for FlatGen.
 fn (mut g FlatGen) forward_decls() {
 	mut cur_module := ''
 	for i in 0 .. g.a.nodes.len {
@@ -1737,6 +1795,7 @@ fn (mut g FlatGen) forward_decls() {
 	g.writeln('')
 }
 
+// write_fn_node_params writes fn node params output for c.
 fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 	mut params_len := 0
 	for i in 0 .. node.children_count {
@@ -1778,6 +1837,7 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 	}
 }
 
+// write_c_fn_node_params writes c fn node params output for c.
 fn (mut g FlatGen) write_c_fn_node_params(node flat.Node) {
 	if node.children_count == 0 {
 		g.write('void')
@@ -1820,6 +1880,7 @@ fn (mut g FlatGen) write_c_fn_node_params(node flat.Node) {
 	}
 }
 
+// fn_ptr_typedefs supports fn ptr typedefs handling for FlatGen.
 fn (mut g FlatGen) fn_ptr_typedefs() {
 	for encoded, name in g.fn_ptr_types {
 		parts := encoded['fn_ptr:'.len..].split('|')
@@ -1832,6 +1893,7 @@ fn (mut g FlatGen) fn_ptr_typedefs() {
 	}
 }
 
+// multi_return_typedefs supports multi return typedefs handling for FlatGen.
 fn (mut g FlatGen) multi_return_typedefs() {
 	mut emitted := map[string]bool{}
 	for _, ret in g.tc.fn_ret_types {
@@ -1842,6 +1904,7 @@ fn (mut g FlatGen) multi_return_typedefs() {
 	}
 }
 
+// emit_multi_return_typedef emits emit multi return typedef output for c.
 fn (mut g FlatGen) emit_multi_return_typedef(ret types.Type, mut emitted map[string]bool) {
 	if ret is types.OptionType {
 		g.emit_multi_return_typedef(ret.base_type, mut emitted)
@@ -1865,6 +1928,7 @@ fn (mut g FlatGen) emit_multi_return_typedef(ret types.Type, mut emitted map[str
 	}
 }
 
+// resolve_fn_ptr_type resolves resolve fn ptr type information for c.
 fn (mut g FlatGen) resolve_fn_ptr_type(typ string) string {
 	if typ in g.fn_ptr_types {
 		return g.fn_ptr_types[typ]

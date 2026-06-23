@@ -2,6 +2,7 @@ module transform
 
 import v3.flat
 
+// trim_pointer_type transforms trim pointer type data for transform.
 fn (t &Transformer) trim_pointer_type(typ string) string {
 	if typ.starts_with('&') {
 		return typ[1..]
@@ -9,6 +10,7 @@ fn (t &Transformer) trim_pointer_type(typ string) string {
 	return typ
 }
 
+// resolve_variant resolves resolve variant information for transform.
 fn (t &Transformer) resolve_variant(sum_name string, variant string) string {
 	if variant.contains('.') {
 		return variant
@@ -26,6 +28,7 @@ fn (t &Transformer) resolve_variant(sum_name string, variant string) string {
 	return variant
 }
 
+// resolve_sum_name resolves resolve sum name information for transform.
 fn (t &Transformer) resolve_sum_name(sum_name string) string {
 	if sum_name.len == 0 {
 		return sum_name
@@ -46,6 +49,7 @@ fn (t &Transformer) resolve_sum_name(sum_name string) string {
 	return result
 }
 
+// resolve_sum_name_uncached resolves resolve sum name uncached information for transform.
 fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 	if sum_name in t.sum_types {
 		return sum_name
@@ -114,6 +118,7 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 	return sum_name
 }
 
+// is_sum_type_name reports whether is sum type name applies in transform.
 fn (t &Transformer) is_sum_type_name(name string) bool {
 	if name.len == 0 {
 		return false
@@ -122,6 +127,7 @@ fn (t &Transformer) is_sum_type_name(name string) bool {
 	return resolved in t.sum_types
 }
 
+// is_interface_type_name reports whether is interface type name applies in transform.
 fn (t &Transformer) is_interface_type_name(name string) bool {
 	if name.len == 0 || isnil(t.tc) {
 		return false
@@ -137,6 +143,7 @@ fn (t &Transformer) is_interface_type_name(name string) bool {
 	return false
 }
 
+// interface_variant_type supports interface variant type handling for Transformer.
 fn (t &Transformer) interface_variant_type(variant string) string {
 	if variant.contains('.') {
 		return variant
@@ -158,6 +165,7 @@ fn (t &Transformer) interface_variant_type(variant string) string {
 	return variant
 }
 
+// smartcast_target_type supports smartcast target type handling for Transformer.
 fn (t &Transformer) smartcast_target_type(sc SmartcastContext) string {
 	if t.is_interface_type_name(sc.sum_type_name) {
 		return t.interface_variant_type(sc.variant_name)
@@ -165,6 +173,7 @@ fn (t &Transformer) smartcast_target_type(sc SmartcastContext) string {
 	return t.resolve_variant(sc.sum_type_name, sc.variant_name)
 }
 
+// sum_type_index supports sum type index handling for Transformer.
 fn (t &Transformer) sum_type_index(sum_name string, variant string) int {
 	resolved_sum := t.resolve_sum_name(sum_name)
 	variants := t.sum_types[resolved_sum] or {
@@ -177,6 +186,7 @@ fn (t &Transformer) sum_type_index(sum_name string, variant string) int {
 	return sum_type_index_in_variants(variants, variant)
 }
 
+// sum_type_index_in_variants supports sum type index in variants handling for transform.
 fn sum_type_index_in_variants(variants []string, variant string) int {
 	short_variant := if variant.contains('.') { variant.all_after_last('.') } else { variant }
 	for i, v in variants {
@@ -188,6 +198,7 @@ fn sum_type_index_in_variants(variants []string, variant string) int {
 	return 0
 }
 
+// transform_is_expr transforms transform is expr data for transform.
 fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count == 0 {
 		return id
@@ -219,6 +230,7 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	return t.make_bool_literal(true)
 }
 
+// make_sum_is_check builds make sum is check data for transform.
 fn (mut t Transformer) make_sum_is_check(expr flat.NodeId, expr_type string, sum_name string, variant string) flat.NodeId {
 	tag := t.make_selector_op(expr, 'typ', 'int', if expr_type.starts_with('&') {
 		.arrow
@@ -229,11 +241,13 @@ fn (mut t Transformer) make_sum_is_check(expr flat.NodeId, expr_type string, sum
 	return t.make_infix(.eq, tag, idx)
 }
 
+// sum_variant_path supports sum variant path handling for Transformer.
 fn (t &Transformer) sum_variant_path(sum_name string, variant string) []string {
 	mut visited := map[string]bool{}
 	return t.sum_variant_path_inner(sum_name, variant, mut visited)
 }
 
+// sum_variant_path_inner supports sum variant path inner handling for Transformer.
 fn (t &Transformer) sum_variant_path_inner(sum_name string, variant string, mut visited map[string]bool) []string {
 	resolved_sum := t.resolve_sum_name(t.trim_pointer_type(sum_name))
 	if resolved_sum.len == 0 || resolved_sum in visited {
@@ -261,6 +275,7 @@ fn (t &Transformer) sum_variant_path_inner(sum_name string, variant string, mut 
 	return []string{}
 }
 
+// make_sum_type_pattern_check builds make sum type pattern check data for transform.
 fn (mut t Transformer) make_sum_type_pattern_check(expr flat.NodeId, expr_type string, sum_name string, variant string) ?flat.NodeId {
 	resolved_sum := t.resolve_sum_name(t.trim_pointer_type(sum_name))
 	path := t.sum_variant_path(resolved_sum, variant)
@@ -295,6 +310,7 @@ fn (mut t Transformer) make_sum_type_pattern_check(expr flat.NodeId, expr_type s
 	return chain
 }
 
+// transform_as_expr converts transform as expr data for transform.
 fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count == 0 {
 		return id
@@ -352,6 +368,7 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 	return field_sel
 }
 
+// wrap_sum_return_expr transforms wrap sum return expr data for transform.
 fn (mut t Transformer) wrap_sum_return_expr(expr_id flat.NodeId) flat.NodeId {
 	was_return_expr := t.in_return_expr
 	t.in_return_expr = true
@@ -364,6 +381,7 @@ fn (mut t Transformer) wrap_sum_return_expr(expr_id flat.NodeId) flat.NodeId {
 	return result
 }
 
+// wrap_sum_value transforms wrap sum value data for transform.
 fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) flat.NodeId {
 	resolved_sum := t.resolve_sum_name(target_sum)
 	if resolved_sum.len == 0 || resolved_sum !in t.sum_types {
@@ -476,6 +494,7 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 	})
 }
 
+// ensure_sum_variant_ref supports ensure sum variant ref handling for Transformer.
 fn (mut t Transformer) ensure_sum_variant_ref(value flat.NodeId, variant string) flat.NodeId {
 	mut value_type := t.node_type(value)
 	if value_type.starts_with('&') {
@@ -497,6 +516,7 @@ fn (mut t Transformer) ensure_sum_variant_ref(value flat.NodeId, variant string)
 	return ref
 }
 
+// make_sum_literal builds make sum literal data for transform.
 fn (mut t Transformer) make_sum_literal(sum_name string, variant string, value flat.NodeId) flat.NodeId {
 	qvariant := t.resolve_variant(sum_name, variant)
 	typ_field := t.make_sum_literal_field('typ', t.make_int_literal(t.sum_type_index(sum_name,
@@ -520,6 +540,7 @@ fn (mut t Transformer) make_sum_literal(sum_name string, variant string, value f
 	})
 }
 
+// make_sum_literal_field builds make sum literal field data for transform.
 fn (mut t Transformer) make_sum_literal_field(name string, value flat.NodeId, typ string) flat.NodeId {
 	start := t.a.children.len
 	t.a.children << value

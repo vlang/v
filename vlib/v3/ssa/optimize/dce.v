@@ -2,6 +2,7 @@ module optimize
 
 import v3.ssa
 
+// dead_code_elimination supports dead code elimination handling for optimize.
 fn dead_code_elimination(mut m ssa.Module) {
 	mut changed := true
 	for changed {
@@ -53,6 +54,7 @@ fn dead_code_elimination(mut m ssa.Module) {
 	}
 }
 
+// remove_use updates remove use state for optimize.
 fn remove_use(mut m ssa.Module, val_id int, user_id int) {
 	if val_id < 0 || val_id >= m.values.len {
 		return
@@ -66,6 +68,7 @@ fn remove_use(mut m ssa.Module, val_id int, user_id int) {
 	m.values[val_id] = val
 }
 
+// find_dead_stores resolves find dead stores information for optimize.
 fn find_dead_stores(m &ssa.Module, func ssa.Function) map[int]bool {
 	mut dead_stores := map[int]bool{}
 	mut allocas := map[int]bool{}

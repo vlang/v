@@ -3,6 +3,7 @@ module c
 import v3.flat
 import v3.types
 
+// c_field_name supports c field name handling for c.
 fn c_field_name(name string) string {
 	if name.starts_with('&') {
 		return c_field_name(name[1..])
@@ -16,6 +17,7 @@ fn c_field_name(name string) string {
 	return c_name(name)
 }
 
+// gen_struct_init emits struct init output for c.
 fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	if node.value.starts_with('chan ') {
 		g.gen_channel_init(node)
@@ -115,6 +117,7 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	g.write('}')
 }
 
+// gen_lowered_sum_init emits lowered sum init output for c.
 fn (mut g FlatGen) gen_lowered_sum_init(node flat.Node) bool {
 	sum_name := g.resolve_sum_name(node.value)
 	if sum_name !in g.tc.sum_types || node.children_count == 0 {
@@ -134,6 +137,7 @@ fn (mut g FlatGen) gen_lowered_sum_init(node flat.Node) bool {
 	return true
 }
 
+// gen_lowered_sum_field_value emits lowered sum field value output for c.
 fn (mut g FlatGen) gen_lowered_sum_field_value(sum_name string, field &flat.Node) {
 	child_id := g.a.child(field, 0)
 	if field.value != 'typ' {
@@ -174,6 +178,7 @@ fn (mut g FlatGen) gen_lowered_sum_field_value(sum_name string, field &flat.Node
 	}
 }
 
+// gen_channel_init emits channel init output for c.
 fn (mut g FlatGen) gen_channel_init(node flat.Node) {
 	elem_type := g.tc.parse_type(node.value[5..])
 	elem_ct := g.tc.c_type(elem_type)
@@ -186,6 +191,7 @@ fn (mut g FlatGen) gen_channel_init(node flat.Node) {
 	g.write('), (u32)(sizeof(${elem_ct})))')
 }
 
+// channel_init_field supports channel init field handling for c.
 fn channel_init_field(node flat.Node, a &flat.FlatAst, name string) ?flat.NodeId {
 	for i in 0 .. node.children_count {
 		field := a.child_node(&node, i)
@@ -196,6 +202,7 @@ fn channel_init_field(node flat.Node, a &flat.FlatAst, name string) ?flat.NodeId
 	return none
 }
 
+// gen_heap_struct_init emits heap struct init output for c.
 fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	name := g.struct_init_c_type_name(node.value)
 	sum_name := g.resolve_sum_name(node.value)
@@ -270,6 +277,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	g.write('}, sizeof(${name}))')
 }
 
+// heap_copy_type_for_sum_pointer_field supports heap_copy_type_for_sum_pointer_field handling in c.
 fn (g &FlatGen) heap_copy_type_for_sum_pointer_field(type_name string, field_name string, value_id flat.NodeId) ?types.Type {
 	resolved_sum := g.resolve_sum_name(type_name)
 	if resolved_sum !in g.tc.sum_types || int(value_id) < 0 {
@@ -290,6 +298,7 @@ fn (g &FlatGen) heap_copy_type_for_sum_pointer_field(type_name string, field_nam
 	return none
 }
 
+// gen_struct_default_fields emits struct default fields output for c.
 fn (mut g FlatGen) gen_struct_default_fields(type_name string, mut set_fields map[string]bool, has_field bool) bool {
 	mut has := has_field
 	info := g.find_struct_decl(type_name) or { return has }
@@ -312,6 +321,7 @@ fn (mut g FlatGen) gen_struct_default_fields(type_name string, mut set_fields ma
 	return has
 }
 
+// gen_default_value_for_type emits default value for type output for c.
 fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 	raw_typ := typ
 	if typ is types.Struct && !typ.name.starts_with('C.') {
@@ -384,6 +394,7 @@ fn (mut g FlatGen) struct_has_field_defaults(type_name string) bool {
 	return g.struct_has_field_defaults_inner(type_name, mut visited)
 }
 
+// struct_has_field_defaults_inner converts struct has field defaults inner data for c.
 fn (mut g FlatGen) struct_has_field_defaults_inner(type_name string, mut visited map[string]bool) bool {
 	if type_name in visited {
 		return false
@@ -488,6 +499,7 @@ fn (mut g FlatGen) gen_params_struct_arg(typ types.Type, node flat.Node, field_s
 	g.gen_default_value_for_type(typ)
 }
 
+// is_scalar_zero_init_type reports whether is scalar zero init type applies in c.
 fn (g &FlatGen) is_scalar_zero_init_type(type_name string, c_type string) bool {
 	if type_name in g.tc.structs || g.tc.qualify_name(type_name) in g.tc.structs {
 		return false
@@ -498,6 +510,7 @@ fn (g &FlatGen) is_scalar_zero_init_type(type_name string, c_type string) bool {
 	return g.is_scalar_c_type(c_type)
 }
 
+// is_scalar_c_type reports whether is scalar c type applies in c.
 fn (g &FlatGen) is_scalar_c_type(c_type string) bool {
 	if c_type.ends_with('*') {
 		return true
@@ -506,6 +519,7 @@ fn (g &FlatGen) is_scalar_c_type(c_type string) bool {
 		'int', 'isize', 'usize', 'size_t', 'ptrdiff_t', 'float', 'double', 'voidptr']
 }
 
+// is_aggregate_zero_init_type reports whether is aggregate zero init type applies in c.
 fn (g &FlatGen) is_aggregate_zero_init_type(typ types.Type, c_type string) bool {
 	if g.is_scalar_c_type(c_type) {
 		return false
@@ -524,15 +538,18 @@ fn (g &FlatGen) is_aggregate_zero_init_type(typ types.Type, c_type string) bool 
 	}
 }
 
+// can_use_global_brace_zero_init reports whether can use global brace zero init applies in c.
 fn (mut g FlatGen) can_use_global_brace_zero_init(typ types.Type, c_type string) bool {
 	return g.is_aggregate_zero_init_type(typ, c_type) && !g.has_zero_sized_leading_init_slot(typ)
 }
 
+// has_zero_sized_leading_init_slot reports whether has zero sized leading init slot applies in c.
 fn (mut g FlatGen) has_zero_sized_leading_init_slot(typ types.Type) bool {
 	mut visited := map[string]bool{}
 	return g.has_zero_sized_leading_init_slot_inner(typ, mut visited)
 }
 
+// has_zero_sized_leading_init_slot_inner reports has_zero_sized_leading_init_slot_inner logic in c.
 fn (mut g FlatGen) has_zero_sized_leading_init_slot_inner(typ types.Type, mut visited map[string]bool) bool {
 	return match typ {
 		types.Alias {
@@ -577,6 +594,7 @@ fn (mut g FlatGen) has_zero_sized_leading_init_slot_inner(typ types.Type, mut vi
 	}
 }
 
+// scalar_zero_init supports scalar zero init handling for FlatGen.
 fn (g &FlatGen) scalar_zero_init(c_type string) string {
 	if c_type in ['float', 'double'] {
 		return '0.0'
@@ -584,12 +602,14 @@ fn (g &FlatGen) scalar_zero_init(c_type string) string {
 	return '0'
 }
 
+// StructDeclInfo stores struct decl info metadata used by c.
 struct StructDeclInfo {
 	node      flat.Node
 	module    string
 	full_name string
 }
 
+// struct_init_c_type_name supports struct init c type name handling for FlatGen.
 fn (mut g FlatGen) struct_init_c_type_name(type_name string) string {
 	typ := g.tc.parse_type(type_name)
 	if typ is types.OptionType || typ is types.ResultType {
@@ -602,6 +622,7 @@ fn (mut g FlatGen) struct_init_c_type_name(type_name string) string {
 	return c_name(info.full_name)
 }
 
+// find_struct_decl resolves find struct decl information for c.
 fn (g &FlatGen) find_struct_decl(type_name string) ?StructDeclInfo {
 	short_name := if type_name.contains('.') { type_name.all_after_last('.') } else { type_name }
 	preferred_name := if !type_name.contains('.') && g.tc.cur_module.len > 0
@@ -627,6 +648,7 @@ fn (g &FlatGen) find_struct_decl(type_name string) ?StructDeclInfo {
 	return none
 }
 
+// struct_field_type supports struct field type handling for FlatGen.
 fn (g &FlatGen) struct_field_type(type_name string, field_name string) ?types.Type {
 	qname := g.tc.qualify_name(type_name)
 	if fields := g.tc.structs[qname] {
@@ -655,6 +677,7 @@ fn (g &FlatGen) struct_field_type(type_name string, field_name string) ?types.Ty
 	return none
 }
 
+// struct_field_at supports struct field at handling for FlatGen.
 fn (g &FlatGen) struct_field_at(type_name string, index int) ?types.StructField {
 	if index < 0 {
 		return none
@@ -680,6 +703,7 @@ fn (g &FlatGen) struct_field_at(type_name string, index int) ?types.StructField 
 	return none
 }
 
+// struct_field_type_at supports struct field type at handling for FlatGen.
 fn (g &FlatGen) struct_field_type_at(type_name string, index int) ?types.Type {
 	if field := g.struct_field_at(type_name, index) {
 		return field.typ
@@ -687,6 +711,7 @@ fn (g &FlatGen) struct_field_type_at(type_name string, index int) ?types.Type {
 	return none
 }
 
+// gen_return_assoc emits return assoc output for c.
 fn (mut g FlatGen) gen_return_assoc(node flat.Node) {
 	tmp := g.tmp_name()
 	g.gen_assoc_return_tmp(node, tmp)
@@ -712,6 +737,7 @@ fn (mut g FlatGen) gen_assoc_return_tmp(node flat.Node, tmp string) {
 	}
 }
 
+// gen_assoc_expr emits assoc expr output for c.
 fn (mut g FlatGen) gen_assoc_expr(node flat.Node) {
 	ct := g.tc.c_type(g.tc.parse_type(node.value))
 	tmp := g.tmp_name()
@@ -733,6 +759,7 @@ fn (mut g FlatGen) gen_assoc_expr(node flat.Node) {
 	g.write(' ${tmp};})')
 }
 
+// gen_heap_assoc_expr emits heap assoc expr output for c.
 fn (mut g FlatGen) gen_heap_assoc_expr(node flat.Node) {
 	ct := g.tc.c_type(g.tc.parse_type(node.value))
 	tmp := g.tmp_name()
@@ -754,6 +781,7 @@ fn (mut g FlatGen) gen_heap_assoc_expr(node flat.Node) {
 	g.write(' (${ct}*)memdup(&${tmp}, sizeof(${ct}));})')
 }
 
+// gen_map_init emits map init output for c.
 fn (mut g FlatGen) gen_map_init(id flat.NodeId, node flat.Node) {
 	if node.value.len > 0 {
 		map_type := g.tc.parse_type(node.value)
@@ -781,6 +809,7 @@ fn (mut g FlatGen) gen_map_init(id flat.NodeId, node flat.Node) {
 	g.write('new_map(sizeof(int), sizeof(int), 0, 0, 0, 0)')
 }
 
+// write_new_map writes new map output for c.
 fn (mut g FlatGen) write_new_map(key_type types.Type, value_type types.Type) {
 	c_key := g.tc.c_type(key_type)
 	c_val := g.tc.c_type(value_type)
@@ -788,6 +817,7 @@ fn (mut g FlatGen) write_new_map(key_type types.Type, value_type types.Type) {
 	g.write('new_map(sizeof(${c_key}), sizeof(${c_val}), ${hash_fn}, ${eq_fn}, ${clone_fn}, ${free_fn})')
 }
 
+// map_callback_names supports map callback names handling for FlatGen.
 fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string, string) {
 	if key_type is types.String {
 		return 'v3_map_hash_string', 'v3_map_eq_string', 'v3_map_clone_string', 'v3_map_free_string'
@@ -803,6 +833,7 @@ fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string,
 	return 'v3_map_hash_int_${size_suffix}', 'v3_map_eq_int_${size_suffix}', 'v3_map_clone_int_${size_suffix}', 'v3_map_free_nop'
 }
 
+// skip_builtin_struct supports skip builtin struct handling for FlatGen.
 fn (g &FlatGen) skip_builtin_struct(name string) bool {
 	_ = g
 	if name.starts_with('C.') {
@@ -811,6 +842,7 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 	return false
 }
 
+// emit_interface_struct emits emit interface struct output for c.
 fn (mut g FlatGen) emit_interface_struct(name string) {
 	cn := c_name(name)
 	g.writeln('struct ${cn} {')
@@ -831,6 +863,7 @@ fn (mut g FlatGen) emit_interface_struct(name string) {
 	g.writeln('')
 }
 
+// struct_decls supports struct decls handling for FlatGen.
 fn (mut g FlatGen) struct_decls() {
 	for name, _ in g.tc.structs {
 		if g.skip_builtin_struct(name) {
@@ -1025,6 +1058,7 @@ fn (mut g FlatGen) struct_decls() {
 	}
 }
 
+// type_forward_decls returns type forward decls data for FlatGen.
 fn (mut g FlatGen) type_forward_decls() {
 	for name, _ in g.tc.structs {
 		if g.skip_builtin_struct(name) {
@@ -1045,6 +1079,7 @@ fn (mut g FlatGen) type_forward_decls() {
 	g.writeln('')
 }
 
+// emit_struct emits emit struct output for c.
 fn (mut g FlatGen) emit_struct(name string) {
 	if name in g.tc.structs {
 		fields := g.tc.structs[name]
@@ -1061,6 +1096,7 @@ fn (mut g FlatGen) emit_struct(name string) {
 	}
 }
 
+// is_generic_struct reports whether is generic struct applies in c.
 fn (g &FlatGen) is_generic_struct(name string) bool {
 	if info := g.struct_decl_infos[name] {
 		return info.node.typ.contains('generic')
@@ -1072,6 +1108,7 @@ fn (g &FlatGen) is_generic_struct(name string) bool {
 	return false
 }
 
+// write_struct_field writes struct field output for c.
 fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) {
 	mut field_type := f.typ
 	if f.typ is types.Alias {
@@ -1098,6 +1135,7 @@ fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) 
 	}
 }
 
+// preseed_struct_fn_ptr_types supports preseed struct fn ptr types handling for FlatGen.
 fn (mut g FlatGen) preseed_struct_fn_ptr_types() {
 	for _, fields in g.tc.structs {
 		for f in fields {
@@ -1114,6 +1152,7 @@ fn (mut g FlatGen) preseed_struct_fn_ptr_types() {
 	}
 }
 
+// emit_struct_option_typedefs emits emit struct option typedefs output for c.
 fn (mut g FlatGen) emit_struct_option_typedefs(fields []types.StructField) {
 	mut wrote := false
 	for f in fields {
