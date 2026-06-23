@@ -7,9 +7,16 @@ $if !no_gc_threads ? {
 	// serializes on the global allocator lock. Without it, allocation does not scale
 	// across cores (16 cores ≈ 1 core aggregate). V's spawned threads are registered
 	// via the `pthread_create` -> `GC_pthread_create` redirect, so their free lists
-	// are set up automatically. TLA requires GC_THREADS (defined just above); it only
-	// affects the bundled gc.c build and is inert for a system libgc that V merely
-	// links against. See issues #27486 and #27488.
+	// are set up automatically. TLA requires GC_THREADS (defined just above).
+	//
+	// This flag only matters for the bundled `gc.c` that V compiles from source (the
+	// `-prod`/no-prebuilt-archive branches below): its amalgamation was generated with
+	// `--enable-thread-local-alloc=no` (see thirdparty/libgc/amalgamation.txt), so the
+	// flag turns TLA back on. The prebuilt `thirdparty/tcc/lib/libgc.a`/`.dylib` used by
+	// the default fast path is already built with TLA (bdwgc enables it by default with
+	// `--enable-threads=pthreads`; see thirdparty/build_scripts/*_bdwgc.sh), and a system
+	// libgc that V merely links against is unaffected. So both bundled GC paths end up
+	// thread-local-alloc enabled. See issues #27486 and #27488.
 	#flag -DTHREAD_LOCAL_ALLOC=1
 }
 
