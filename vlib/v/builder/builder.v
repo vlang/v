@@ -51,17 +51,14 @@ pub mut:
 	table     &ast.Table = unsafe { nil }
 	ccoptions CcompilerOptions
 	// Note: changes in mod `builtin` force invalidation of every other .v file
-	mod_invalidates_paths map[string][]string // changes in mod `os`, invalidate only .v files, that do `import os`
-	mod_invalidates_mods  map[string][]string // changes in mod `os`, force invalidation of mods, that do `import os`
-	path_invalidates_mods map[string][]string // changes in a .v file from `os`, invalidates `os`
-	crun_cache_keys       []string            // target executable + top level source files; filled in by Builder.should_rebuild
-	executable_exists     bool                // if the executable already exists, don't remove new executable after `v run`
-	str_args              string              // for parallel_cc mode only, to know which cc args to use (like -I etc)
-	last_cc_cmd           string              // the most recently executed C compiler command; reused to regenerate a #line annotated report
-	disable_flto          bool
-	// thirdparty_header_mtimes memoizes the newest header mtime under a
-	// thirdparty module root (see thirdparty_deps_mtime), so the recursive scan
-	// runs once per module instead of once per compiled object.
+	mod_invalidates_paths    map[string][]string // changes in mod `os`, invalidate only .v files, that do `import os`
+	mod_invalidates_mods     map[string][]string // changes in mod `os`, force invalidation of mods, that do `import os`
+	path_invalidates_mods    map[string][]string // changes in a .v file from `os`, invalidates `os`
+	crun_cache_keys          []string            // target executable + top level source files; filled in by Builder.should_rebuild
+	executable_exists        bool                // if the executable already exists, don't remove new executable after `v run`
+	str_args                 string              // for parallel_cc mode only, to know which cc args to use (like -I etc)
+	last_cc_cmd              string              // the most recently executed C compiler command; reused to regenerate a #line annotated report
+	disable_flto             bool
 	thirdparty_header_mtimes map[string]i64
 }
 
@@ -970,6 +967,13 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 			if parent_loc.vmod_file == '' {
 				break
 			}
+			// On Windows, os.dir('C:\project') returns 'C:' (no trailing slash),
+			// and os.real_path('C:') resolves to the drive's current directory —
+			// which may equal importer_vmod_folder, producing an infinite loop.
+			// Stop climbing whenever the candidate is not a strict path ancestor.
+			if !is_strict_ancestor(parent_loc.vmod_folder, importer_vmod_folder) {
+				break
+			}
 			importer_vmod_folder = parent_loc.vmod_folder
 		}
 	}
@@ -1306,4 +1310,13 @@ pub fn (mut b Builder) show_parsed_files() {
 		}
 		println(p.path)
 	}
+}
+
+fn is_strict_ancestor(ancestor string, descendant string) bool {
+	if ancestor == '' || descendant == '' {
+		return false
+	}
+	a := comparable_real_path(ancestor)
+	d := comparable_real_path(descendant)
+	return a != d && path_is_at_or_inside(d, a)
 }
