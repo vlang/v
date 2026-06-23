@@ -149,13 +149,24 @@ fn (mut w TlsHandlerWorker) process_requests() {
 }
 
 fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
+	// For H2 connections, serve_h2_conn_with_idle_tracker's serve() owns the
+	// mark_idle/unmark_idle lifetime (it marks idle once and unmarks in its
+	// own defer). Calling unmark_idle here a second time would race: after
+	// serve()'s defer fires the OS can recycle conn.handle for a new
+	// connection that has already called mark_idle, and this stale unmark
+	// would silently evict it, preventing close_idle from ever shutting it
+	// down and leaking the reader goroutine.
+	mut is_h2 := false
 	defer {
-		w.idle_conns.unmark_idle(conn.handle)
+		if !is_h2 {
+			w.idle_conns.unmark_idle(conn.handle)
+		}
 		conn.shutdown() or {}
 	}
 	// If the TLS handshake negotiated HTTP/2 via ALPN, switch to the HTTP/2
 	// driver; otherwise fall through to the existing HTTP/1.1 path unchanged.
 	if conn.negotiated_alpn() == 'h2' {
+		is_h2 = true
 		serve_h2_conn_with_idle_tracker(mut conn, mut w.handler, w.idle_conns, conn.handle) or {
 			$if debug {
 				eprintln('h2 server error: ${err}')

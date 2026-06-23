@@ -32,6 +32,10 @@ struct BlockingHandler {
 	release chan bool
 }
 
+fn testsuite_end() {
+	http.close_idle_connections()
+}
+
 fn (mut h BlockingHandler) handle(req http.Request) http.Response {
 	h.started <- true
 	_ := <-h.release

@@ -426,28 +426,67 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.write(')')
 			}
 			.struct {
-				ptr_typ := g.equality_fn(left.unaliased)
-				if left.typ.is_ptr() || right.typ.is_ptr() {
-					// `&lvalue` on either side means the user is comparing addresses; skip the deep `_struct_eq` (`&StructInit{}` still does deep eq).
-					left_is_addr_of_lvalue := node.left is ast.PrefixExpr && node.left.op == .amp
-						&& node.left.right.is_lvalue()
-					right_is_addr_of_lvalue := node.right is ast.PrefixExpr && node.right.op == .amp
-						&& node.right.right.is_lvalue()
-					if left.typ.is_ptr() && right.typ.is_ptr()
-						&& (left_is_addr_of_lvalue || right_is_addr_of_lvalue) {
-						g.gen_plain_infix_expr(node)
+				if left_is_option && right_is_option {
+					bare_typ := g.equality_fn(left.unaliased.clear_flag(.option).set_nr_muls(0))
+					old_inside_opt_or_res := g.inside_opt_or_res
+					g.inside_opt_or_res = true
+					inside_and_rhs := g.infix_left_var_name.len > 0
+					mut lv := ''
+					mut rv := ''
+					if inside_and_rhs {
+						lv = g.expr_string(node.left)
+						rv = g.expr_string(node.right)
 					} else {
-						g.gen_struct_pointer_eq_op(node, left_type, right_type, ptr_typ)
+						left_tmp := g.expr_to_ctemp_before_stmt(node.left, left_type)
+						right_tmp := g.expr_to_ctemp_before_stmt(node.right, right_type)
+						lv = left_tmp.name
+						rv = right_tmp.name
 					}
+					if node.op == .eq {
+						g.write('(')
+					} else {
+						g.write('!(')
+					}
+					g.write('(${lv}.state == 2 && ${rv}.state == 2) || ')
+					g.write('(${lv}.state == ${rv}.state && ${lv}.state != 2 && ')
+					if left.typ.is_ptr() {
+						ptr_styp := g.styp(left.unaliased.clear_flag(.option))
+						nr_muls := left.typ.nr_muls()
+						deref := '*'.repeat(nr_muls)
+						lp := '*(${ptr_styp}*)&${lv}.data'
+						rp := '*(${ptr_styp}*)&${rv}.data'
+						g.write('(${lp} == ${rp} || (${lp} != 0 && ${rp} != 0 && ')
+						g.write('${bare_typ}_struct_eq(${deref}${lp}, ${deref}${rp})')
+						g.write('))')
+					} else {
+						styp := g.base_type(left_type)
+						g.write('${bare_typ}_struct_eq(*(${styp}*)&${lv}.data, *(${styp}*)&${rv}.data)')
+					}
+					g.write('))')
+					g.inside_opt_or_res = old_inside_opt_or_res
 				} else {
-					if node.op == .ne {
-						g.write('!')
+					ptr_typ := g.equality_fn(left.unaliased)
+					if left.typ.is_ptr() || right.typ.is_ptr() {
+						left_is_addr_of_lvalue := node.left is ast.PrefixExpr
+							&& node.left.op == .amp && node.left.right.is_lvalue()
+						right_is_addr_of_lvalue := node.right is ast.PrefixExpr
+							&& node.right.op == .amp && node.right.right.is_lvalue()
+						if left.typ.is_ptr() && right.typ.is_ptr()
+							&& (left_is_addr_of_lvalue || right_is_addr_of_lvalue) {
+							g.gen_plain_infix_expr(node)
+						} else {
+							g.gen_struct_pointer_eq_op(node, left_type, right_type, ptr_typ)
+						}
+					} else {
+						if node.op == .ne {
+							g.write('!')
+						}
+						g.write('${ptr_typ}_struct_eq(')
+						g.expr(node.left)
+						g.write(', ')
+						g.expr(node.right)
+						g.write(')')
 					}
-					g.write('${ptr_typ}_struct_eq(')
-					g.expr(node.left)
-					g.write(', ')
-					g.expr(node.right)
-					g.write(')')
 				}
 			}
 			.sum_type {

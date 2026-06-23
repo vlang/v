@@ -3,6 +3,14 @@ module async
 import context
 import sync
 
+// GroupConfig enables optional Group behavior while preserving new_group() defaults.
+@[params]
+pub struct GroupConfig {
+pub:
+	collect_errors bool
+	max_errors     int
+}
+
 // Group coordinates a set of related concurrent jobs.
 //
 // Jobs share a derived context. The first job error is returned by wait() and
@@ -19,6 +27,11 @@ mut:
 	// Stored once. Later job errors never replace the first failure observed by
 	// the group, even when several jobs fail concurrently after cancellation.
 	first_err IError = none
+	// Optional bounded collection of observed job errors. It does not change
+	// wait(), which still returns only first_err.
+	collect_errors   bool
+	max_errors       int
+	collected_errors []IError
 	// Set before wait() calls wg.wait(). Once true, no further jobs are accepted.
 	waiting bool
 }
@@ -29,12 +42,26 @@ mut:
 // derived context is owned by the group and canceled on first job error or when
 // wait() completes.
 pub fn new_group(parent context.Context) &Group {
+	return new_group_internal(parent, GroupConfig{})
+}
+
+// new_group_with_config creates a Group with opt-in bounded error collection.
+pub fn new_group_with_config(parent context.Context, config GroupConfig) !&Group {
+	if config.collect_errors && config.max_errors <= 0 {
+		return error(err_group_max_errors_invalid)
+	}
+	return new_group_internal(parent, config)
+}
+
+fn new_group_internal(parent context.Context, config GroupConfig) &Group {
 	ctx, cancel := new_cancel_context(parent)
 	return &Group{
-		ctx:    context.Context(ctx)
-		cancel: cancel
-		wg:     sync.new_waitgroup()
-		mutex:  sync.new_mutex()
+		ctx:            context.Context(ctx)
+		cancel:         cancel
+		wg:             sync.new_waitgroup()
+		mutex:          sync.new_mutex()
+		collect_errors: config.collect_errors
+		max_errors:     config.max_errors
 	}
 }
 
@@ -81,6 +108,17 @@ pub fn (mut g Group) wait() ! {
 	}
 }
 
+// errors returns a snapshot of collected job errors.
+//
+// Collection is opt-in through new_group_with_config(). The order of concurrently
+// observed errors is not guaranteed.
+pub fn (mut g Group) errors() []IError {
+	g.mutex.lock()
+	errs := g.collected_errors.clone()
+	g.mutex.unlock()
+	return errs
+}
+
 fn run_group_job(mut g Group, f JobFn) {
 	defer {
 		g.wg.done()
@@ -97,6 +135,9 @@ fn (mut g Group) set_first_error(err IError) {
 	if g.first_err is none {
 		g.first_err = err
 		should_cancel = true
+	}
+	if g.collect_errors && g.collected_errors.len < g.max_errors {
+		g.collected_errors << err
 	}
 	g.mutex.unlock()
 	if should_cancel {

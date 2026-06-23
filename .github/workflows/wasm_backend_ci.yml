@@ -61,7 +61,7 @@ jobs:
     env:
       VTEST_ONLY: wasm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build V
         if: runner.os != 'Windows'

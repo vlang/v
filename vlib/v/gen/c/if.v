@@ -128,6 +128,9 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 				}
 			}
 		}
+		ast.AsCast {
+			return true
+		}
 		ast.CallExpr {
 			if expr.is_method {
 				left_sym := g.table.sym(expr.receiver_type)
@@ -346,6 +349,16 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		resolved_sym := g.table.final_sym(resolved_typ)
 		mut styp := g.styp(resolved_typ)
+		// When the tmp var is a fn-returned fixed array, it is a wrapper struct whose
+		// data lives in a `.ret_arr` member. Flag it so every branch writes through
+		// `.ret_arr`, even ones whose own expr type lacks the `is_fn_ret` flag (e.g. a
+		// fixed array literal mixed with a function call: `if c { fa() } else { [1]! }`).
+		prev_if_match_tmp_is_fn_ret_arr := g.if_match_tmp_is_fn_ret_arr
+		g.if_match_tmp_is_fn_ret_arr = resolved_sym.info is ast.ArrayFixed
+			&& resolved_sym.info.is_fn_ret
+		defer(fn) {
+			g.if_match_tmp_is_fn_ret_arr = prev_if_match_tmp_is_fn_ret_arr
+		}
 		if (g.inside_if_option || node_typ.has_flag(.option)) && !g.inside_or_block {
 			raw_state = g.inside_if_option
 			if resolved_node_typ != ast.void_type {
@@ -785,6 +798,12 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		g.empty_line = false
 		g.writeln('\t${exit_label}: {};')
 		g.set_current_pos_as_last_stmt_pos()
-		g.write('${cur_line}${tmp}')
+		// A fn-returned fixed array tmp var is a wrapper struct; read its data through
+		// `.ret_arr` (mirrors how match exprs emit the tmp var, see match.v).
+		if g.if_match_tmp_is_fn_ret_arr or { false } {
+			g.write('${cur_line}${tmp}.ret_arr')
+		} else {
+			g.write('${cur_line}${tmp}')
+		}
 	}
 }

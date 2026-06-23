@@ -1,0 +1,275 @@
+import os
+
+const vexe = @VEXE
+const tests_dir = os.dir(@FILE)
+const v3_dir = os.dir(tests_dir)
+const v3_src = os.join_path(v3_dir, 'v3.v')
+
+fn build_v3() string {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_type_checker_errors_test')
+	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0
+	return v3_bin
+}
+
+fn run_bad(v3_bin string, name string, src string, expected string) {
+	run_bad_with_flags(v3_bin, name, src, expected, '')
+}
+
+fn run_bad_selfhost(v3_bin string, name string, src string, expected string) {
+	run_bad_with_flags(v3_bin, name, src, expected, '-selfhost')
+}
+
+fn run_bad_with_flags(v3_bin string, name string, src string, expected string, flags string) {
+	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	result := os.execute('${v3_bin} ${bad_src} ${flags} -b c -o ${bad_bin}')
+	assert result.exit_code != 0
+	assert result.output.contains(expected)
+	assert !result.output.contains('C compilation failed')
+}
+
+fn run_good(v3_bin string, name string, src string) string {
+	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(good_src, src) or { panic(err) }
+	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	compile := os.execute('${v3_bin} ${good_src} -b c -o ${good_bin}')
+	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
+	run := os.execute(good_bin)
+	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
+	return run.output.trim_space()
+}
+
+fn write_project_file(root string, rel string, src string) {
+	path := os.join_path(root, rel)
+	os.mkdir_all(os.dir(path)) or { panic(err) }
+	os.write_file(path, src) or { panic(err) }
+}
+
+fn run_bad_project(v3_bin string, name string, files map[string]string, input string, expected string) {
+	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
+	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	result := os.execute('${v3_bin} ${input_path} -b c -o ${bad_bin}')
+	assert result.exit_code != 0
+	assert result.output.contains(expected)
+	assert !result.output.contains('C compilation failed')
+}
+
+fn run_good_project(v3_bin string, name string, files map[string]string, input string) string {
+	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
+	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	compile := os.execute('${v3_bin} ${input_path} -b c -o ${good_bin}')
+	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
+	run := os.execute(good_bin)
+	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
+	return run.output.trim_space()
+}
+
+fn gen_c_project(v3_bin string, name string, files map[string]string, input string) string {
+	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
+	c_out := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	os.rm(c_out) or {}
+	compile := os.execute('${v3_bin} ${input_path} -o ${c_out}')
+	assert compile.exit_code == 0
+	assert os.exists(c_out)
+	return os.read_file(c_out) or { panic(err) }
+}
+
+fn test_type_checker_reports_core_semantic_errors() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_assignment', "fn main() {\n\tmut x := 1\n\tx = 'bad'\n}\n",
+		'cannot assign `string` to `int`')
+	run_bad(v3_bin, 'bad_return', "fn f() int {\n\treturn 'bad'\n}\nfn main() {}\n",
+		'cannot return `string` as `int`')
+	run_bad(v3_bin, 'bad_call_arg', "fn takes_int(x int) {}\nfn main() {\n\ttakes_int('bad')\n}\n",
+		'cannot use `string` as argument 1 to `takes_int`; expected `int`')
+	run_bad(v3_bin, 'bad_field',
+		'struct Foo {\n\tx int\n}\nfn main() {\n\tf := Foo{}\n\t_ := f.y\n}\n',
+		'unknown field `y` on `Foo`')
+	run_bad(v3_bin, 'bad_index', 'fn main() {\n\tx := 1\n\t_ := x[0]\n}\n', 'cannot index `int`')
+	run_bad(v3_bin, 'bad_condition', "fn main() {\n\tif 'bad' {}\n}\n",
+		'if condition must be `bool`, not `string`')
+	run_bad(v3_bin, 'bad_zero_arg_call', 'fn f() {}\nfn main() {\n\tf(1)\n}\n',
+		'argument count mismatch for `f`: expected 0, got 1')
+	run_bad(v3_bin, 'bad_int_condition', "fn main() {\n\tif 1 {\n\t\tprintln('bad')\n\t}\n}\n",
+		'if condition must be `bool`, not `int`')
+	run_bad(v3_bin, 'bad_missing_return',
+		'fn f(x bool) int {\n\tif x {\n\t\treturn 1\n\t}\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_interface_method_set',
+		'interface Speaker {\n\tspeak() string\n}\nstruct Person {}\nfn takes_speaker(s Speaker) {}\nfn main() {\n\ttakes_speaker(Person{})\n}\n',
+		'cannot use `Person` as argument 1 to `takes_speaker`; expected `Speaker`')
+	run_bad(v3_bin, 'bad_fn_value_call',
+		"fn add(a int, b int) int {\n\treturn a + b\n}\nfn main() {\n\tf := add\n\t_ := f('bad', 4)\n}\n",
+		'cannot use `string` as argument 1 to `f`; expected `int`')
+	run_bad(v3_bin, 'bad_struct_default', "struct Foo {\n\tx int = 'bad'\n}\nfn main() {}\n",
+		'cannot initialize field `x` with `string`; expected `int`')
+	run_bad(v3_bin, 'bad_enum_value', "enum Color {\n\tred = 'bad'\n}\nfn main() {}\n",
+		'enum field `red` value must be integer, not `string`')
+	run_bad(v3_bin, 'bad_enum_shorthand',
+		'enum Color {\n\tred\n}\nfn paint(c Color) {}\nfn main() {\n\tpaint(.blue)\n}\n',
+		'unknown enum field `blue` for `Color`')
+	run_bad(v3_bin, 'bad_interface_field',
+		'interface Named {\n\tname string\n}\nstruct Person {}\nfn takes_named(n Named) {}\nfn main() {\n\ttakes_named(Person{})\n}\n',
+		'cannot use `Person` as argument 1 to `takes_named`; expected `Named`')
+	run_bad(v3_bin, 'bad_sum_missing_shared_field',
+		'struct A {\n\tid int\n}\nstruct B {\n\tname string\n}\ntype Node = A | B\nfn main() {\n\tn := Node(A{\n\t\tid: 1\n\t})\n\t_ := n.id\n}\n',
+		'unknown field `id` on `Node`')
+	run_bad(v3_bin, 'bad_sum_and_smartcast_rhs',
+		'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\ntype Animal = Cat | Dog\nfn main() {\n\ta := Animal(Cat{\n\t\tage: 2\n\t})\n\tif a is Cat && a.tricks == 2 {}\n}\n',
+		'unknown field `tricks` on `Cat`')
+	run_bad(v3_bin, 'bad_sum_is_variant',
+		'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\nstruct Bird {\n\twings int\n}\ntype Animal = Cat | Dog\nfn main() {\n\ta := Animal(Cat{\n\t\tage: 2\n\t})\n\tif a is Bird {}\n}\n',
+		'`Bird` is not a variant of sum type `Animal`')
+	run_bad(v3_bin, 'bad_sum_match_variant',
+		'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\nstruct Bird {\n\twings int\n}\ntype Animal = Cat | Dog\nfn main() {\n\ta := Animal(Cat{\n\t\tage: 2\n\t})\n\tmatch a {\n\t\tBird {}\n\t\telse {}\n\t}\n}\n',
+		'`Bird` is not a variant of sum type `Animal`')
+	run_bad(v3_bin, 'bad_unknown_decl_type', 'fn f(x Missing) {}\nfn main() {}\n',
+		'unknown type `Missing`')
+	run_bad(v3_bin, 'bad_unknown_generic_application_base',
+		'fn f(x Missing[int]) {}\nfn main() {}\n', 'unknown type `Missing`')
+	run_bad(v3_bin, 'bad_unknown_generic_application_arg',
+		'struct Box[T] {\n\tvalue T\n}\nfn f(x Box[Missing]) {}\nfn main() {}\n',
+		'unknown type `Missing`')
+	run_bad(v3_bin, 'bad_single_letter_struct_arg',
+		'struct A {}\nfn takes_a(a A) {}\nfn main() {\n\ttakes_a(1)\n}\n',
+		'cannot use `int` as argument 1 to `takes_a`; expected `A`')
+	run_bad(v3_bin, 'bad_unknown_single_letter_type', 'fn f(x Z) {}\nfn main() {}\n',
+		'unknown type `Z`')
+	run_bad(v3_bin, 'bad_repeated_unknown_single_letter_type',
+		'fn f(x Z) Z {\n\treturn x\n}\nfn main() {}\n', 'unknown type `Z`')
+	run_bad(v3_bin, 'bad_undeclared_generic_fn_param', 'fn f[T](x T, y Z) {}\nfn main() {}\n',
+		'unknown type `Z`')
+	run_bad(v3_bin, 'bad_undeclared_generic_struct_field',
+		'struct Box[T] {\n\tother U\n}\nfn main() {}\n', 'unknown type `U`')
+	run_bad_selfhost(v3_bin, 'bad_generic_param',
+		'fn id[T](x T) T {\n\treturn x\n}\nfn main() {\n\t_ := id(1)\n}\n',
+		'unsupported generic type parameter `T`')
+	run_bad_selfhost(v3_bin, 'bad_generic_type_application',
+		'fn takes_box(x Box[int]) {}\nfn main() {}\n',
+		'unsupported generic type application `Box[int]`')
+	run_bad_project(v3_bin, 'bad_bare_imported_call', {
+		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\t_ := answer()\n}\n'
+		'moda/moda.v': 'module moda\n\nfn answer() int {\n\treturn 7\n}\n'
+	}, 'main.v', 'unknown function `answer`')
+	run_bad_project(v3_bin, 'bad_import_leak', {
+		'main.v':      'module main\n\nimport moda\n\nfn main() {}\n'
+		'other.v':     'module main\n\nfn use_it() int {\n\treturn moda.answer()\n}\n'
+		'moda/moda.v': 'module moda\n\nfn answer() int {\n\treturn 7\n}\n'
+	}, '', 'unknown function `moda.answer`')
+	alias_out := run_good(v3_bin, 'alias_method',
+		'type UserId = int\n\nfn (id UserId) str() string {\n\treturn int_str(int(id))\n}\n\nfn main() {\n\tid := UserId(1)\n\tprintln(id.str())\n}\n')
+	assert alias_out == '1'
+	map_mutation_out := run_good(v3_bin, 'map_mutation_lowering',
+		"fn main() {\n\tmut m := map[string]int{}\n\tm['a'] = 1\n\tm['a'] += 2\n\tm['a']++\n\tm['a'] -= 1\n\tprintln(int_str(m['a']))\n}\n")
+	assert map_mutation_out == '3'
+	map_array_append_out := run_good(v3_bin, 'map_array_append_lowering',
+		"fn main() {\n\tmut m := map[string][]int{}\n\tm['a'] << 1\n\tm['a'] << 2\n\tprintln(int_str(m['a'].len))\n}\n")
+	assert map_array_append_out == '2'
+	assoc_selector_out := run_good(v3_bin, 'assoc_selector_type',
+		'struct Point {\n\tx int\n\ty int\n}\n\nfn main() {\n\tp := Point{\n\t\tx: 10\n\t\ty: 20\n\t}\n\tq := Point{\n\t\t...p\n\t\tx: 99\n\t}\n\tprintln(int_str(q.x + q.y))\n}\n')
+	assert assoc_selector_out == '119'
+	array_literal_push_many_out := run_good(v3_bin, 'array_literal_push_many',
+		'fn main() {\n\tmut xs := [1, 2]\n\tys := [3, 4]\n\txs << ys\n\txs << [5, 6]\n\tprintln(int_str(xs.len))\n}\n')
+	assert array_literal_push_many_out == '6'
+	nested_array_push_out := run_good(v3_bin, 'nested_array_push',
+		'fn main() {\n\tmut xs := [][]int{}\n\ty := [1, 2]\n\txs << y\n\tprintln(int_str(xs.len))\n\tprintln(int_str(xs[0][1]))\n}\n')
+	assert nested_array_push_out == '1\n2'
+	mut_array_for_out := run_good(v3_bin, 'mut_array_for_in',
+		'struct Item {\nmut:\n\tn int\n}\n\nfn main() {\n\tmut xs := []Item{}\n\txs << Item{n: 1}\n\tfor mut item in xs {\n\t\titem.n = 7\n\t}\n\tprintln(int_str(xs[0].n))\n}\n')
+	assert mut_array_for_out == '7'
+	mut_array_for_scalar_out := run_good(v3_bin, 'mut_array_for_scalar_updates',
+		'fn main() {\n\tmut xs := []int{}\n\txs << 1\n\txs << 2\n\tfor mut x in xs {\n\t\tx++\n\t\tx += 10\n\t}\n\tprintln(int_str(xs[0]))\n\tprintln(int_str(xs[1]))\n}\n')
+	assert mut_array_for_scalar_out == '12\n13'
+	const_forward_out := run_good(v3_bin, 'const_forward',
+		'const first_value = second_value\nconst second_value = 2\nfn main() {\n\tprintln(int_str(first_value))\n}\n')
+	assert const_forward_out == '2'
+	imported_call_out := run_good_project(v3_bin, 'qualified_import_call', {
+		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\tprintln(int_str(moda.answer()))\n}\n'
+		'moda/moda.v': 'module moda\n\nfn answer() int {\n\treturn 7\n}\n'
+	}, 'main.v')
+	assert imported_call_out == '7'
+	comptime_type_chain_out := run_good_project(v3_bin, 'comptime_type_chain_keeps_later_decls', {
+		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\tprintln(int_str(moda.after_chain()))\n}\n'
+		'moda/moda.v': 'module moda\n\nfn choose[T](x T) T {\n\t$if T is u8 {\n\t\treturn x\n\t} $else $if T is int {\n\t\treturn x\n\t} $else {}\n\treturn x\n}\n\nfn after_chain() int {\n\treturn 7\n}\n'
+	}, 'main.v')
+	assert comptime_type_chain_out == '7'
+	builder_out := run_good(v3_bin, 'strings_builder_from_vlib',
+		"import strings\n\nfn main() {\n\tmut sb := strings.new_builder(16)\n\tsb.write_string('ok')\n\tsb.write_u8(u8(33))\n\tprintln(sb.last_n(3))\n\tprintln(sb.str())\n}\n")
+	assert builder_out == 'ok!\nok!'
+	init_order_out := run_good_project(v3_bin, 'module_init_order', {
+		'main.v':      'module main\n\nimport moda\n\n__global seen int\n\nfn init() {\n\tseen = moda.value()\n}\n\nfn main() {\n\tprintln(int_str(seen))\n\tprintln(int_str(moda.value()))\n}\n'
+		'moda/moda.v': 'module moda\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\nfn value() int {\n\treturn flag\n}\n'
+	}, 'main.v')
+	assert init_order_out == '41\n41'
+	hier_init_order_out := run_good_project(v3_bin, 'hierarchical_module_init_order', {
+		'main.v':               'module main\n\nimport parent.child\n\n__global seen int\n\nfn init() {\n\tseen = child.value()\n}\n\nfn main() {\n\tprintln(int_str(seen))\n\tprintln(int_str(child.value()))\n}\n'
+		'parent/child/child.v': 'module child\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+	}, 'main.v')
+	assert hier_init_order_out == '41\n41'
+	transitive_init_order_out := run_good_project(v3_bin, 'transitive_module_init_order', {
+		'main.v':      'module main\n\nimport moda\n\n__global seen int\n\nfn init() {\n\tseen = moda.value()\n}\n\nfn main() {\n\tprintln(int_str(seen))\n\tprintln(int_str(moda.value()))\n}\n'
+		'moda/moda.v': 'module moda\n\nimport modb\n\npub fn value() int {\n\treturn modb.value()\n}\n'
+		'modb/modb.v': 'module modb\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+	}, 'main.v')
+	assert transitive_init_order_out == '41\n41'
+	global_amp_out := run_good(v3_bin, 'global_amp_initializers',
+		'struct Point {\n\tx int\n\ty int\n}\n\ninterface Reader {\n\tn int\n\tread() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) read() int {\n\treturn b.n + 1\n}\n\n__global (\n\tbase_point = Point{x: 1, y: 2}\n\tassoc_point = &Point{...base_point, y: 5}\n\treader_box = Box{n: 7}\n\treader_ref = &Reader(reader_box)\n)\n\nfn main() {\n\tprintln(int_str(assoc_point.y))\n\tprintln(int_str(reader_ref.n))\n\tprintln(int_str(reader_ref.read()))\n}\n')
+	assert global_amp_out == '5\n7\n8'
+	disabled_if_out := run_good(v3_bin, 'disabled_if_call_elides_args',
+		'__global hit int\n\n@[if trace ?]\nfn trace(x int) {}\n\nfn side_effect() int {\n\thit = 99\n\treturn 1\n}\n\nfn main() {\n\ttrace(side_effect())\n\tprintln(int_str(hit))\n}\n')
+	assert disabled_if_out == '0'
+	disabled_if_alias_out := run_good_project(v3_bin, 'disabled_if_alias_call_elides_args', {
+		'main.v':      'module main\n\nimport moda as m\n\n__global hit int\n\nfn side_effect() int {\n\thit = 99\n\treturn 1\n}\n\nfn main() {\n\tm.trace(side_effect())\n\tprintln(int_str(hit))\n}\n'
+		'moda/moda.v': 'module moda\n\n@[if trace ?]\npub fn trace(x int) {}\n'
+	}, 'main.v')
+	assert disabled_if_alias_out == '0'
+	disabled_if_method_out := run_good_project(v3_bin, 'disabled_if_method_call_elides_args', {
+		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\tprintln(int_str(moda.run()))\n}\n'
+		'moda/moda.v': 'module moda\n\n__global hit int\n\nstruct Tracer {}\n\n@[if trace ?]\nfn (t Tracer) trace(x int) {}\n\nfn side_effect() int {\n\thit = 99\n\treturn 1\n}\n\npub fn run() int {\n\tt := Tracer{}\n\tt.trace(side_effect())\n\treturn hit\n}\n'
+	}, 'main.v')
+	assert disabled_if_method_out == '0'
+	disabled_operator_out := run_good(v3_bin, 'disabled_if_operator_call_elides_args',
+		'__global hit int\n\nstruct Number {\n\tn int\n}\n\n@[if trace ?]\nfn (a Number) + (b Number) Number {\n\treturn Number{n: a.n + b.n}\n}\n\nfn side_effect() Number {\n\thit = 99\n\treturn Number{n: 2}\n}\n\nfn main() {\n\ta := Number{n: 1}\n\t_ := a + side_effect()\n\tprintln(int_str(hit))\n}\n')
+	assert disabled_operator_out == '0'
+	disabled_if_non_fn_out := run_good(v3_bin, 'disabled_if_non_fn_decl_skipped',
+		'@[if trace ?]\nstruct DisabledStruct {\n\tbad MissingDisabledType\n}\n\nstruct EnabledStruct {\n\tvalue int\n}\n\nfn main() {\n\tprintln(int_str(EnabledStruct{value: 7}.value))\n}\n')
+	assert disabled_if_non_fn_out == '7'
+	function_defer_loop_out := run_good(v3_bin, 'function_defer_runs_each_loop_execution',
+		'__global hit int\n\nfn run() {\n\tfor _ in 0 .. 3 {\n\t\tdefer(fn) {\n\t\t\thit += 100\n\t\t}\n\t}\n}\n\nfn main() {\n\trun()\n\tprintln(int_str(hit))\n}\n')
+	assert function_defer_loop_out == '300'
+	cross_module_array_append_c := gen_c_project(v3_bin, 'array_append_distinct_module_types', {
+		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tmut xs := []moda.Foo{}\n\tys := []modb.Foo{}\n\txs << ys\n}\n'
+		'moda/moda.v': 'module moda\n\nstruct Foo {\n\ta int\n}\n'
+		'modb/modb.v': 'module modb\n\nstruct Foo {\n\tb int\n}\n'
+	}, 'main.v')
+	assert !cross_module_array_append_c.contains('array_push_many(&xs')
+	assert cross_module_array_append_c.contains('array_push(&xs')
+}

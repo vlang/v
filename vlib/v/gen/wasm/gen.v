@@ -1016,7 +1016,13 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.get(v)
 		}
 		ast.SelectorExpr {
-			if v := g.get_var_from_expr(node) {
+			final := g.table.final_sym(node.expr_type)
+			if node.field_name == 'len' && final.info is ast.ArrayFixed {
+				// a fixed array's `.len` is a compile-time constant; the checker
+				// types it as `int` but emits no field, so resolve it here rather
+				// than aborting in get_field_offset ("could not find field len").
+				g.func.i32_const(i32(final.info.size))
+			} else if v := g.get_var_from_expr(node) {
 				if g.needs_address {
 					if !v.is_address {
 						g.v_error("cannot take the address of a value that doesn't live on the stack. this is a current limitation.",

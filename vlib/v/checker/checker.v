@@ -3486,10 +3486,13 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		node.fields[i].typ = ast.mktyp(typ)
 		if mut field.expr is ast.IfExpr {
 			for branch in field.expr.branches {
-				if branch.stmts.len > 0 && branch.stmts.last() is ast.ExprStmt
-					&& branch.stmts.last().typ != ast.void_type {
+				if branch.stmts.len == 0 {
+					continue
+				}
+				last_stmt := branch.stmts[branch.stmts.len - 1]
+				if last_stmt is ast.ExprStmt && last_stmt.typ != ast.void_type {
 					field.expr.is_expr = true
-					field.expr.typ = (branch.stmts.last() as ast.ExprStmt).typ
+					field.expr.typ = last_stmt.typ
 					field.typ = field.expr.typ
 					// update ConstField object's type in table
 					if mut obj := c.file.global_scope.find_const(field.name) {
