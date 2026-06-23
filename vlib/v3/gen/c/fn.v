@@ -270,15 +270,26 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 				receiver_ct := g.tc.c_type(receiver_type)
 				base_expr := g.expr_to_string(base_id)
 				if call_node.children_count == 1 {
-					wrapper = g.ensure_receiver_spawn_wrapper(c_name(method_name), receiver_ct)
 					if receiver_type is types.Pointer {
+						wrapper = g.ensure_receiver_spawn_wrapper(c_name(method_name), receiver_ct)
 						if base_type is types.Pointer {
 							arg_expr = '(${receiver_ct})(${base_expr})'
 						} else {
 							arg_expr = '(${receiver_ct})(&(${base_expr}))'
 						}
 					} else {
-						arg_expr = '&(${base_expr})'
+						// Casting the void* thread argument straight to a struct type
+						// is invalid C, so copy the value receiver into the heap arg
+						// struct and dispatch through the argument-packing path.
+						receiver_value := if base_type is types.Pointer {
+							'*(${base_expr})'
+						} else {
+							base_expr
+						}
+						g.emit_args_spawn_expr(c_name(method_name), [receiver_ct], [
+							receiver_value,
+						])
+						return
 					}
 				} else if param_types.len == int(call_node.children_count) {
 					// `spawn recv.method(a, b)` packs the receiver and arguments
@@ -289,6 +300,8 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 						} else {
 							'(${receiver_ct})(&(${base_expr}))'
 						}
+					} else if base_type is types.Pointer {
+						'*(${base_expr})'
 					} else {
 						base_expr
 					}

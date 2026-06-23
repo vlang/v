@@ -71,3 +71,28 @@ fn main() {
 	assert c_code.contains('pthread_create'), c_code
 	assert c_code.contains('Counter__bump(p->a0, p->a1)'), c_code
 }
+
+// A no-arg `spawn` of a by-value receiver method must copy the receiver into the
+// heap arg struct; casting the void* thread argument straight to the struct type
+// (`(Greeter)arg`) is invalid C.
+fn test_spawn_value_receiver_copies_receiver() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_value_receiver', '
+struct Greeter {
+	name string
+}
+
+fn (g Greeter) greet() {
+	println(g.name)
+}
+
+fn main() {
+	g := Greeter{name: "world"}
+	_ := spawn g.greet()
+	println("ok")
+}
+')
+	assert c_code.contains('pthread_create'), c_code
+	assert c_code.contains('Greeter__greet(p->a0)'), c_code
+	assert !c_code.contains('(Greeter)arg'), c_code
+}

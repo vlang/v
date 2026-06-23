@@ -153,8 +153,11 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 	} else if is_fixed_array {
 		c_elem := g.tc.c_type(fixed.elem_type)
 		data_str := if fixed_is_ptr { '(*${base_str})' } else { base_str }
-		count_str := '((${end_str}) - (${start_str}))'
-		g.write('new_array_from_c_array(${count_str}, ${count_str}, sizeof(${c_elem}), &${data_str}[${start_str}])')
+		// Evaluate the slice bounds once so side-effecting expressions such as
+		// `arr[i++..limit()]` are not run multiple times in the generated C.
+		start_tmp := g.tmp_name()
+		count_tmp := g.tmp_name()
+		g.write('({ int ${start_tmp} = (${start_str}); int ${count_tmp} = (${end_str}) - ${start_tmp}; new_array_from_c_array(${count_tmp}, ${count_tmp}, sizeof(${c_elem}), &${data_str}[${start_tmp}]); })')
 	} else if is_array {
 		arr_str := if is_ptr { '*${base_str}' } else { base_str }
 		g.write('array_slice(${arr_str}, ${start_str}, ${end_str})')

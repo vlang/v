@@ -61,7 +61,7 @@ fn ensure_c_object_file(obj_path string, support_flags []string) !string {
 	}
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
-	cached_obj := os.join_path(cache_dir, c_object_cache_name(obj_path))
+	cached_obj := os.join_path(cache_dir, c_object_cache_name(obj_path, support_flags))
 	if os.exists(cached_obj)
 		&& os.file_last_mod_unix(cached_obj) >= os.file_last_mod_unix(source_file) {
 		return cached_obj
@@ -87,8 +87,24 @@ fn c_source_from_object_file(obj_path string) ?string {
 	return none
 }
 
-fn c_object_cache_name(path string) string {
-	return path.replace_each(['/', '_', '\\', '_', ':', '_', '.', '_', ' ', '_']) + '.o'
+fn c_object_cache_name(path string, support_flags []string) string {
+	base := path.replace_each(['/', '_', '\\', '_', ':', '_', '.', '_', ' ', '_'])
+	// The compile flags (`-D`/`-I`/...) change the object contents, so they must
+	// be part of the cache key; otherwise a rebuild with different `#flag` defines
+	// silently links the stale object built with the previous configuration.
+	if support_flags.len == 0 {
+		return base + '.o'
+	}
+	return '${base}_${c_flags_hash(support_flags)}.o'
+}
+
+fn c_flags_hash(flags []string) string {
+	mut h := u64(1469598103934665603)
+	joined := flags.join(' ')
+	for c in joined.bytes() {
+		h = (h ^ u64(c)) * u64(1099511628211)
+	}
+	return h.hex()
 }
 
 fn c_flag_is_object_file(flag string) bool {
