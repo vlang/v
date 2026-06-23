@@ -200,6 +200,11 @@ fn delete_event(kq int, ident u64, filter i16, udata voidptr) {
 	C.kevent(kq, &ev, 1, unsafe { nil }, 0, unsafe { nil })
 }
 
+fn client_is_tracked(c &Conn, c_ptr voidptr, clients map[int]voidptr) bool {
+	tracked := clients[c.fd] or { return false }
+	return tracked == c_ptr
+}
+
 fn close_conn(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
 	mut c := unsafe { &Conn(c_ptr) }
 	clients.delete(c.fd)
@@ -489,9 +494,11 @@ fn process_loop_command(server &Server, kq int, cmd LoopCommand, mut clients map
 				server.end_request()
 				c.request_active = false
 			}
-			clients.delete(c.fd)
-			delete_event(kq, u64(c.fd), i16(C.EVFILT_READ), c)
-			delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)
+			if client_is_tracked(c, cmd.c_ptr, clients) {
+				clients.delete(c.fd)
+				delete_event(kq, u64(c.fd), i16(C.EVFILT_READ), c)
+				delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)
+			}
 			unsafe { free(cmd.c_ptr) }
 		}
 		.enable_read {
