@@ -1205,7 +1205,10 @@ fn (mut g Gen) gen_print_bool(arg_id flat.NodeId, fd int, newline bool) {
 // emit_print_int evaluates an integer expression and prints it via the runtime
 // helper, choosing signed or unsigned decimal conversion.
 fn (mut g Gen) emit_print_int(int_arg_id flat.NodeId, fd int, newline bool, signed bool) {
-	g.gen_expr_as(int_arg_id, .i64)
+	w := g.gen_expr(int_arg_id)
+	// Widen to i64 using the formatter's signedness (an unsigned formatter must
+	// zero-extend, e.g. `1 + u64(x)` or a u32 result with the high bit set).
+	g.coerce(w, .i64, signed)
 	g.cur.i32_const(fd)
 	g.cur.i32_const(if newline { 1 } else { 0 })
 	g.cur.i32_const(if signed { 1 } else { 0 })

@@ -192,9 +192,10 @@ fn main() {
 	mut c_only := false
 	if output_file == '' {
 		bin_file = input_file.all_before_last('.v')
-		output_file = bin_file + '.c'
+		// The wasm backend writes the binary itself; default to <name>.wasm.
+		output_file = if backend == 'wasm' { bin_file + '.wasm' } else { bin_file + '.c' }
 	} else if backend == 'wasm' {
-		// The wasm backend writes the binary itself; keep the path as given.
+		// Honor the exact -o path; the wasm backend writes output_file directly.
 		bin_file = output_file.all_before_last('.wasm')
 	} else if backend == 'c' && output_file.ends_with('.c') {
 		c_only = true
@@ -298,16 +299,12 @@ fn main() {
 
 	if backend == 'wasm' {
 		// Direct flat-AST-to-WASM native backend. Runs before monomorphize (which
-		// targets generics, not yet supported here).
+		// targets generics, not yet supported here). output_file is the exact path
+		// requested via -o (or the <name>.wasm default).
 		mut g := wasm.Gen.new(a, pre_tc, used_fns)
 		g.gen()
-		wasm_out := if output_file.ends_with('.wasm') {
-			output_file
-		} else {
-			bin_file + '.wasm'
-		}
-		g.write(wasm_out) or {
-			eprintln('error writing ${wasm_out}')
+		g.write(output_file) or {
+			eprintln('error writing ${output_file}')
 			exit(1)
 		}
 		for w in g.warnings_list() {

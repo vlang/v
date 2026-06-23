@@ -410,6 +410,32 @@ fn test_wasm_bit_not_narrows_result() {
 	run_wasi_expect(wasm, ['255', '65535', '255'])
 }
 
+fn test_wasm_output_path_is_exact() {
+	v3_bin := v3_binary()
+	src_path := os.join_path(os.vtmp_dir(), 'wasm_exactpath.v')
+	os.write_file(src_path, "fn main() {\n\tprintln('hi')\n}\n") or { panic(err) }
+	// -o with a path that does not end in .wasm must write that exact file,
+	// not <path>.wasm.
+	out_path := os.join_path(os.vtmp_dir(), 'wasm_exact_out')
+	os.rm(out_path) or {}
+	os.rm(out_path + '.wasm') or {}
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_path)} ${os.quoted_path(src_path)}')
+	assert res.exit_code == 0, res.output
+	assert os.exists(out_path), 'expected exact output ${out_path}'
+	assert !os.exists(out_path + '.wasm'), 'unexpected ${out_path}.wasm'
+	assert_valid_wasm(out_path)
+}
+
+fn test_wasm_mixed_numeric_println_promotes() {
+	v3_bin := v3_binary()
+	// `1 + u64(x)` promotes to u64, so it must print unsigned, not as a signed
+	// int. Also a u32 sum with the high bit set must zero-extend.
+	src := 'fn main() {\n\tprintln(1 + u64(9223372036854775808))\n\tprintln(u64(9223372036854775808) + 1)\n\ta := u32(4000000000)\n\tprintln(1 + a)\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_promote')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['9223372036854775809', '9223372036854775809', '4000000001'])
+}
+
 fn test_wasm_nested_module_import_call() {
 	v3_bin := v3_binary()
 	// `import foo.bar` selects `bar`; calls must resolve to the `module bar`
