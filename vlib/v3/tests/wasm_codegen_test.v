@@ -410,6 +410,38 @@ fn test_wasm_bit_not_narrows_result() {
 	run_wasi_expect(wasm, ['255', '65535', '255'])
 }
 
+fn test_wasm_nested_module_import_call() {
+	v3_bin := v3_binary()
+	// `import foo.bar` selects `bar`; calls must resolve to the `module bar`
+	// declaration name, not the full import path.
+	dir := os.join_path(os.vtmp_dir(), 'wasm_nestmod')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'foo', 'bar')) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'import foo.bar\n\nfn main() {\n\tprintln(bar.answer())\n\tprintln(bar.add(3, 4))\n}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'foo', 'bar', 'bar.v'), 'module bar\n\npub fn answer() int {\n\treturn 42\n}\n\npub fn add(a int, b int) int {\n\treturn a + b\n}\n') or {
+		panic(err)
+	}
+	out_wasm := os.join_path(dir, 'main.wasm')
+	main_v := os.join_path(dir, 'main.v')
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+	assert res.exit_code == 0, res.output
+	assert_valid_wasm(out_wasm)
+	assert !res.output.contains('unsupported call'), res.output
+	run_wasi_expect(out_wasm, ['42', '7'])
+}
+
+fn test_wasm_unsigned_shift_assign_masks_narrow() {
+	v3_bin := v3_binary()
+	// `>>>=` on a signed narrow local must shift the 8/16-bit pattern, not the
+	// sign-extended i32.
+	src := 'fn main() {\n\tmut x := i8(-5)\n\tx >>>= 1\n\tprintln(int(x))\n\tmut y := i16(-5)\n\ty >>>= 1\n\tprintln(int(y))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_urshift_assign')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['125', '32765'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });

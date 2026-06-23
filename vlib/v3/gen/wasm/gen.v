@@ -576,6 +576,14 @@ fn (mut g Gen) gen_assign(node flat.Node) {
 				g.cur.local_get(idx)
 				if op in [.left_shift, .right_shift, .right_shift_unsigned] {
 					// Keep the lhs width; the count may be wider (`x <<= u64(n)`).
+					if op == .right_shift_unsigned && w == .i32 {
+						// A narrow signed local is stored sign-extended; mask it to
+						// its width so `>>>=` shifts the 8/16-bit pattern.
+						lw := g.var_widths[lhs.value]
+						if lw == 8 || lw == 16 {
+							g.emit_narrow(lw, true)
+						}
+					}
 					g.emit_shift_with_count(op, w, rhs_id, signed)
 				} else {
 					g.gen_expr_as(rhs_id, w)
@@ -1075,9 +1083,11 @@ fn (mut g Gen) gen_call(node flat.Node) WType {
 	return .i32
 }
 
-// collect_module_aliases records `import mod as alias` mappings per source
+// collect_module_aliases records `import path as alias` mappings per source
 // file, so aliased calls (`m.answer()`) resolve to the real module and aliases
-// from different files do not collide.
+// from different files do not collide. The target is the module declaration
+// name (the last path component), since candidates are keyed by `module X`:
+// `import foo.bar` => `bar -> bar`, `import foo.bar as m` => `m -> bar`.
 fn (mut g Gen) collect_module_aliases() {
 	mut cur_file := ''
 	for node in g.a.nodes {
@@ -1087,7 +1097,7 @@ fn (mut g Gen) collect_module_aliases() {
 			if cur_file !in g.file_aliases {
 				g.file_aliases[cur_file] = map[string]string{}
 			}
-			g.file_aliases[cur_file][node.typ] = node.value
+			g.file_aliases[cur_file][node.typ] = node.value.all_after_last('.')
 		}
 	}
 }
