@@ -22,20 +22,6 @@ fn run_compile_command(cmd string) os.Result {
 	}
 }
 
-// C.open declares the C open symbol used by v3 entry point.
-fn C.open(charptr, int, int) int
-
-// C.write declares the C write symbol used by v3 entry point.
-fn C.write(int, voidptr, int) int
-
-// C.close declares the C close symbol used by v3 entry point.
-fn C.close(int) int
-
-// C.chmod declares the C chmod symbol used by v3 entry point.
-fn C.chmod(charptr, int) int
-
-const o_wronly_creat_trunc = 0x601 // O_WRONLY | O_CREAT | O_TRUNC on Darwin
-
 // main runs the v3 entry point entry point.
 fn main() {
 	args := os.args[1..]
@@ -303,21 +289,10 @@ fn builtin_dir_for_vroot(root string) string {
 
 // write_text_file_raw writes text file raw output for v3 entry point.
 fn write_text_file_raw(path string, data string) bool {
-	fd := C.open(path.str, o_wronly_creat_trunc, 420)
-	if fd < 0 {
-		return false
-	}
-	if data.len > 0 {
-		written := C.write(fd, data.str, data.len)
-		if written != data.len {
-			C.close(fd)
-			return false
-		}
-	}
-	if C.close(fd) != 0 {
-		return false
-	}
-	return C.chmod(path.str, 420) == 0
+	// Delegate to the stdlib writer so the open flags (O_CREAT/O_TRUNC, binary mode)
+	// are correct on every platform, instead of hardcoding per-OS bit values.
+	os.write_file(path, data) or { return false }
+	return true
 }
 
 // print_type_errors updates print type errors state for v3 entry point.
