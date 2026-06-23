@@ -535,10 +535,16 @@ fn (mut g Gen) gen_assign(node flat.Node) {
 			if node.op == .assign {
 				g.gen_expr_as(rhs_id, w)
 			} else {
-				g.cur.local_get(idx)
-				g.gen_expr_as(rhs_id, w)
+				op := compound_to_op(node.op)
 				signed := !g.var_unsigned[lhs.value]
-				g.emit_arith(compound_to_op(node.op), w, signed)
+				g.cur.local_get(idx)
+				if op in [.left_shift, .right_shift, .right_shift_unsigned] {
+					// Keep the lhs width; the count may be wider (`x <<= u64(n)`).
+					g.emit_shift_with_count(op, w, rhs_id, signed)
+				} else {
+					g.gen_expr_as(rhs_id, w)
+					g.emit_arith(op, w, signed)
+				}
 			}
 			g.narrow_for_local(lhs.value)
 			g.cur.local_set(idx)
@@ -837,11 +843,25 @@ fn (mut g Gen) gen_infix(id flat.NodeId, node flat.Node) WType {
 		g.cur.raw(cmp_op(op, ow, signed))
 		return .i32
 	}
-	// arithmetic / bitwise / shift: in V both operands share the result type,
-	// so combine the node's own type with the operand-derived width (the
-	// latter recovers i64/float when the node type is missing). For shifts WASM
-	// also takes both operands at the result width (e.g. i64.shl is
-	// [i64 i64] -> [i64]); the count is reduced modulo the bit width.
+	if op in [.left_shift, .right_shift, .right_shift_unsigned] {
+		// V keeps the result type/width from the left operand and permits a
+		// wider shift count, so the width comes from the lhs, not both operands.
+		mut value_w := g.expr_wtype(lhs_id, '')
+		if value_w !in [WType.i32, WType.i64] {
+			value_w = .i32
+		}
+		signed := !g.is_unsigned(lhs_id)
+		g.gen_expr_as(lhs_id, value_w)
+		g.emit_shift_with_count(op, value_w, rhs_id, signed)
+		if value_w == .i32 {
+			rt := g.tc.resolve_type(id)
+			g.emit_narrow(narrow_width(rt), type_is_unsigned(rt))
+		}
+		return value_w
+	}
+	// arithmetic / bitwise: in V both operands share the result type, so combine
+	// the node's own type with the operand-derived width (the latter recovers
+	// i64/float when the node type is missing).
 	ow := combine_wtype(g.expr_wtype(id, node.typ), g.operand_wtype(lhs_id, rhs_id))
 	signed := !g.is_unsigned(lhs_id)
 	g.gen_expr_as(lhs_id, ow)
@@ -966,7 +986,12 @@ fn (mut g Gen) gen_cast(node flat.Node) WType {
 	tt := g.tc.parse_type(node.value)
 	target := prim_wtype(tt) or { WType.i32 }
 	src := g.gen_expr(child_id)
-	g.coerce(src, target, g.is_signed(child_id))
+	if src in [WType.f32, WType.f64] && target in [WType.i32, WType.i64] {
+		// float -> int: signedness comes from the target, not the source.
+		g.emit_float_to_int(src, target, !type_is_unsigned(tt))
+	} else {
+		g.coerce(src, target, g.is_signed(child_id))
+	}
 	// Casting to a sub-32-bit type wraps/sign-extends to that width.
 	g.emit_narrow(narrow_width(tt), type_is_unsigned(tt))
 	return target
@@ -1284,6 +1309,10 @@ fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
 			if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
 				return .i32
 			}
+			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
+				// Shift result width follows the lhs, not the (possibly wider) count.
+				return g.expr_wtype(g.a.child(&node, 0), '')
+			}
 			return combine_wtype(g.expr_wtype(g.a.child(&node, 0), ''), g.expr_wtype(g.a.child(&node,
 				1), ''))
 		}
@@ -1389,19 +1418,15 @@ fn (mut g Gen) coerce(from WType, to WType, signed bool) {
 		.i64 {
 			if from == .i32 {
 				g.cur.raw(if signed { u8(0xac) } else { u8(0xad) }) // i64.extend_i32_s/u
-			} else if from == .f32 {
-				g.cur.raw(if signed { u8(0xae) } else { u8(0xaf) }) // i64.trunc_f32_s/u
-			} else if from == .f64 {
-				g.cur.raw(if signed { u8(0xb0) } else { u8(0xb1) }) // i64.trunc_f64_s/u
+			} else if from == .f32 || from == .f64 {
+				g.emit_float_to_int(from, .i64, signed)
 			}
 		}
 		.i32 {
 			if from == .i64 {
 				g.cur.raw(0xa7) // i32.wrap_i64
-			} else if from == .f32 {
-				g.cur.raw(if signed { u8(0xa8) } else { u8(0xa9) }) // i32.trunc_f32_s/u
-			} else if from == .f64 {
-				g.cur.raw(if signed { u8(0xaa) } else { u8(0xab) }) // i32.trunc_f64_s/u
+			} else if from == .f32 || from == .f64 {
+				g.emit_float_to_int(from, .i32, signed)
 			}
 		}
 		.f64 {
@@ -1426,33 +1451,72 @@ fn (mut g Gen) coerce(from WType, to WType, signed bool) {
 
 fn (mut g Gen) emit_arith(op flat.Op, w WType, signed bool) {
 	if op in [.left_shift, .right_shift, .right_shift_unsigned] {
-		g.emit_shift(op, w, signed)
+		g.emit_shift_op(op, w, w, signed)
 		return
 	}
 	g.cur.raw(arith_op(op, w, signed))
 }
 
-// emit_shift emits a shift with V's over-width semantics: WASM masks the count
-// modulo the operand width, but V yields 0 when the count >= the width, so the
-// raw result is selected only while count < width. Stack on entry: [value,
-// count]; on exit: [result].
-fn (mut g Gen) emit_shift(op flat.Op, w WType, signed bool) {
-	count_t := if w == .i64 { WType.i64 } else { WType.i32 }
-	tmp := g.alloc_temp(count_t)
-	g.cur.local_tee(tmp) // keep the count, also store it
-	g.cur.raw(arith_op(op, w, signed)) // value << (count mod width)
-	if w == .i64 {
+// emit_shift_with_count generates the (already-on-stack value's) shift count at
+// its natural width and emits the shift. The result keeps the value's width
+// while V permits a wider shift count, so value and count widths may differ.
+fn (mut g Gen) emit_shift_with_count(op flat.Op, value_w WType, rhs_id flat.NodeId, signed bool) {
+	count_w := if g.expr_wtype(rhs_id, '') == .i64 { WType.i64 } else { WType.i32 }
+	g.gen_expr_as(rhs_id, count_w)
+	g.emit_shift_op(op, value_w, count_w, signed)
+}
+
+// emit_shift_op emits a shift with V's over-width semantics: WASM masks the
+// count modulo the value width, but V yields 0 once the (full-width) count
+// reaches the value width. Stack on entry: [value(value_w), count(count_w)];
+// on exit: [result(value_w)].
+fn (mut g Gen) emit_shift_op(op flat.Op, value_w WType, count_w WType, signed bool) {
+	tmp := g.alloc_temp(count_w)
+	g.cur.local_tee(tmp) // keep the original count, also store it
+	// The WASM shift opcode needs the count at the value width.
+	if count_w == .i64 && value_w == .i32 {
+		g.cur.raw(0xa7) // i32.wrap_i64
+	} else if count_w == .i32 && value_w == .i64 {
+		g.cur.raw(0xad) // i64.extend_i32_u
+	}
+	g.cur.raw(arith_op(op, value_w, signed)) // value << (count mod value width)
+	// result = (count < value_width) ? shifted : 0, comparing the full count.
+	width := if value_w == .i64 { 64 } else { 32 }
+	if value_w == .i64 {
 		g.cur.i64_const(0)
-		g.cur.local_get(tmp)
-		g.cur.i64_const(64)
-		g.cur.raw(0x54) // i64.lt_u
 	} else {
 		g.cur.i32_const(0)
-		g.cur.local_get(tmp)
-		g.cur.i32_const(32)
+	}
+	g.cur.local_get(tmp)
+	if count_w == .i64 {
+		g.cur.i64_const(width)
+		g.cur.raw(0x54) // i64.lt_u
+	} else {
+		g.cur.i32_const(width)
 		g.cur.raw(0x49) // i32.lt_u
 	}
-	g.cur.raw(0x1b) // select: (count < width) ? shifted : 0
+	g.cur.raw(0x1b) // select
+}
+
+// emit_float_to_int truncates a float to an integer with V's saturating cast
+// semantics (NaN -> 0, out-of-range saturates to the target min/max), using the
+// target type's signedness rather than the source's.
+fn (mut g Gen) emit_float_to_int(from WType, to WType, signed bool) {
+	g.cur.raw(0xfc) // saturating-truncation prefix
+	op2 := if to == .i64 {
+		if from == .f32 {
+			if signed { u8(0x04) } else { u8(0x05) }
+		} else {
+			if signed { u8(0x06) } else { u8(0x07) }
+		}
+	} else {
+		if from == .f32 {
+			if signed { u8(0x00) } else { u8(0x01) }
+		} else {
+			if signed { u8(0x02) } else { u8(0x03) }
+		}
+	}
+	g.cur.raw(op2)
 }
 
 // emit_narrow masks (unsigned) or sign-extends (signed) the i32 on the stack to

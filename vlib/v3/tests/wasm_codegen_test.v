@@ -360,6 +360,26 @@ fn test_wasm_numeric_type_aliases() {
 	run_wasi_expect(wasm, ['44', '7', '4'])
 }
 
+fn test_wasm_float_to_unsigned_cast_saturates() {
+	v3_bin := v3_binary()
+	// V's float->int casts saturate: u64(-1.0) -> 0, 2^63 keeps the high bit,
+	// 2^64 saturates to max. Signedness comes from the target type.
+	src := 'fn main() {\n\tprintln(u64(-1.0))\n\tprintln(u64(9223372036854775808.0))\n\tprintln(u64(18446744073709551616.0))\n\tprintln(int(f32(3.9)))\n\tprintln(int(f32(-2.7)))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_fcast')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['0', '9223372036854775808', '18446744073709551615', '3', '-2'])
+}
+
+fn test_wasm_shift_keeps_lhs_width() {
+	v3_bin := v3_binary()
+	// The shift result keeps the lhs width even with a wider count: a u32 shift
+	// by 40 is over-width (>= 32) -> 0, while a u64 shift by 40 is valid.
+	src := 'fn w32() u32 {\n\treturn u32(40)\n}\n\nfn w64() u64 {\n\treturn u64(40)\n}\n\nfn main() {\n\ta := u32(1)\n\tprintln(a << w64())\n\tb := u64(1)\n\tprintln(b << w32())\n\tmut e := u32(1)\n\te <<= w64()\n\tprintln(e)\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_shiftwidth')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['0', '1099511627776', '0'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });
