@@ -34,6 +34,7 @@ struct FnInfo {
 	name    string
 	node_id flat.NodeId
 	module  string
+	file    string
 	params  []WType
 	ret     WType
 	index   int
@@ -76,11 +77,12 @@ mut:
 	frames       []Frame
 	cur_ret       WType
 	cur_fn_module string
+	cur_fn_file   string
 	// module-wide; keyed by qualified function name (see qualified_fn_key)
-	fn_index       map[string]int
-	fn_ret         map[string]WType
-	fn_params      map[string][]WType
-	module_aliases map[string]string // import alias -> real module name
+	fn_index     map[string]int
+	fn_ret       map[string]WType
+	fn_params    map[string][]WType
+	file_aliases map[string]map[string]string // file -> (import alias -> module)
 	data_pool []u8
 	data_off  map[string]int
 	uses_print bool
@@ -185,11 +187,13 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 	mut candidates := map[string]FnInfo{}
 	mut order := []string{}
 	mut cur_module := ''
+	mut cur_file := ''
 	for i in 0 .. g.a.nodes.len {
 		node := g.a.nodes[i]
 		match node.kind {
 			.file {
 				cur_module = ''
+				cur_file = node.value
 			}
 			.module_decl {
 				cur_module = node.value
@@ -201,7 +205,7 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 				if node.generic_params.len > 0 || node.value == '' {
 					continue
 				}
-				if fi := g.fn_info(node, flat.NodeId(i), cur_module) {
+				if fi := g.fn_info(node, flat.NodeId(i), cur_module, cur_file) {
 					key := qualified_fn_key(cur_module, node.value)
 					if key !in candidates {
 						candidates[key] = fi
@@ -253,13 +257,13 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 // builtins are ignored).
 fn (g &Gen) called_candidate_keys(f FnInfo, candidates map[string]FnInfo) []string {
 	mut keys := []string{}
-	g.collect_call_keys(g.a.nodes[int(f.node_id)], f.module, candidates, mut keys)
+	g.collect_call_keys(g.a.nodes[int(f.node_id)], f.module, f.file, candidates, mut keys)
 	return keys
 }
 
-fn (g &Gen) collect_call_keys(node flat.Node, cur_mod string, candidates map[string]FnInfo, mut keys []string) {
+fn (g &Gen) collect_call_keys(node flat.Node, cur_mod string, cur_file string, candidates map[string]FnInfo, mut keys []string) {
 	if node.kind == .call && node.children_count > 0 {
-		for key in g.resolve_call_keys(g.a.child_node(&node, 0), cur_mod) {
+		for key in g.resolve_call_keys(g.a.child_node(&node, 0), cur_mod, cur_file) {
 			if key in candidates {
 				keys << key
 				break
@@ -269,14 +273,14 @@ fn (g &Gen) collect_call_keys(node flat.Node, cur_mod string, candidates map[str
 	for i in 0 .. node.children_count {
 		cid := g.a.child(&node, i)
 		if int(cid) >= 0 {
-			g.collect_call_keys(g.a.nodes[int(cid)], cur_mod, candidates, mut keys)
+			g.collect_call_keys(g.a.nodes[int(cid)], cur_mod, cur_file, candidates, mut keys)
 		}
 	}
 }
 
 // fn_info extracts a compilable signature, or none if the function uses types
 // the backend does not handle yet (strings, structs, arrays, pointers, ...).
-fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string) ?FnInfo {
+fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string, file string) ?FnInfo {
 	mut params := []WType{}
 	for i in 0 .. node.children_count {
 		p := g.a.child_node(&node, i)
@@ -296,6 +300,7 @@ fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string) ?FnInfo {
 		name:    node.value
 		node_id: id
 		module:  module_
+		file:    file
 		params:  params
 		ret:     ret
 	}
@@ -343,6 +348,7 @@ fn (mut g Gen) emit_user_fn(f FnInfo) {
 	g.frames = []Frame{}
 	g.cur_ret = f.ret
 	g.cur_fn_module = f.module
+	g.cur_fn_file = f.file
 
 	// register params as locals 0..n-1
 	mut pi := 0
@@ -493,8 +499,10 @@ fn (mut g Gen) gen_decl_assign(node flat.Node) {
 		uns := g.decl_is_unsigned(rhs_id, node.typ)
 		width := g.decl_width(rhs_id, node.typ)
 		if lhs.kind == .ident {
-			idx := g.new_local(lhs.value, w, uns, width)
+			// Emit the initializer before binding the new name, so a shadowing
+			// `x := x + 1` reads the outer x rather than the fresh zero local.
 			g.gen_expr_as(rhs_id, w)
+			idx := g.new_local(lhs.value, w, uns, width)
 			g.narrow_for_local(lhs.value)
 			g.cur.local_set(idx)
 		}
@@ -503,6 +511,14 @@ fn (mut g Gen) gen_decl_assign(node flat.Node) {
 }
 
 fn (mut g Gen) gen_assign(node flat.Node) {
+	// Multi-target assignment (`a, b = b, a`): V evaluates every RHS before any
+	// store, so buffer them in temporaries first. The transformer normally
+	// pre-decomposes these into temp-backed single assigns, so this path is a
+	// safeguard rather than the common case.
+	if node.op == .assign && node.children_count > 2 {
+		g.gen_multi_assign(node)
+		return
+	}
 	mut i := 0
 	for i + 1 < node.children_count {
 		lhs := g.a.child_node(&node, i)
@@ -530,6 +546,38 @@ fn (mut g Gen) gen_assign(node flat.Node) {
 			g.warn('unsupported assign target')
 		}
 		i += 2
+	}
+}
+
+// gen_multi_assign evaluates all RHS values into temporaries first, then stores
+// each into its target, so `a, b = b, a` swaps instead of clobbering.
+fn (mut g Gen) gen_multi_assign(node flat.Node) {
+	mut temps := []int{}
+	mut targets := []string{}
+	mut j := 0
+	for j + 1 < node.children_count {
+		lhs := g.a.child_node(&node, j)
+		rhs_id := g.a.child(&node, j + 1)
+		if lhs.kind == .ident && lhs.value != '_' && lhs.value in g.var_index {
+			w := g.var_wtype[lhs.value]
+			g.gen_expr_as(rhs_id, w)
+			t := g.alloc_temp(w)
+			g.cur.local_set(t)
+			temps << t
+			targets << lhs.value
+		} else {
+			// blank or unsupported target: evaluate for side effects, discard
+			rw := g.gen_expr(rhs_id)
+			if rw != .void {
+				g.cur.drop()
+			}
+		}
+		j += 2
+	}
+	for k, name in targets {
+		g.cur.local_get(temps[k])
+		g.narrow_for_local(name)
+		g.cur.local_set(g.var_index[name])
 	}
 }
 
@@ -930,7 +978,7 @@ fn (mut g Gen) gen_call(node flat.Node) WType {
 		g.gen_print_call(node, callee.value)
 		return .void
 	}
-	for key in g.resolve_call_keys(callee, g.cur_fn_module) {
+	for key in g.resolve_call_keys(callee, g.cur_fn_module, g.cur_fn_file) {
 		if key in g.fn_index {
 			params := g.fn_params[key]
 			for i in 1 .. node.children_count {
@@ -951,12 +999,19 @@ fn (mut g Gen) gen_call(node flat.Node) WType {
 	return .i32
 }
 
-// collect_module_aliases records `import mod as alias` mappings so aliased
-// calls (`m.answer()`) resolve to the real module's qualified key.
+// collect_module_aliases records `import mod as alias` mappings per source
+// file, so aliased calls (`m.answer()`) resolve to the real module and aliases
+// from different files do not collide.
 fn (mut g Gen) collect_module_aliases() {
+	mut cur_file := ''
 	for node in g.a.nodes {
-		if node.kind == .import_decl && node.typ.len > 0 {
-			g.module_aliases[node.typ] = node.value
+		if node.kind == .file {
+			cur_file = node.value
+		} else if node.kind == .import_decl && node.typ.len > 0 {
+			if cur_file !in g.file_aliases {
+				g.file_aliases[cur_file] = map[string]string{}
+			}
+			g.file_aliases[cur_file][node.typ] = node.value
 		}
 	}
 }
@@ -966,7 +1021,7 @@ fn (mut g Gen) collect_module_aliases() {
 // same-module function first (`mod.name`) and falls back to a main-module name;
 // a `module.fn()` selector resolves to that module's qualified name, with any
 // import alias mapped back to the real module.
-fn (g &Gen) resolve_call_keys(callee &flat.Node, cur_mod string) []string {
+fn (g &Gen) resolve_call_keys(callee &flat.Node, cur_mod string, cur_file string) []string {
 	if callee.kind == .ident {
 		if cur_mod != '' && cur_mod != 'main' {
 			return ['${cur_mod}.${callee.value}', callee.value]
@@ -976,11 +1031,22 @@ fn (g &Gen) resolve_call_keys(callee &flat.Node, cur_mod string) []string {
 	if callee.kind == .selector && callee.children_count > 0 {
 		base := g.a.child_node(callee, 0)
 		if base.kind == .ident {
-			real := g.module_aliases[base.value] or { base.value }
+			real := g.resolve_module_alias(cur_file, base.value)
 			return ['${real}.${callee.value}']
 		}
 	}
 	return []
+}
+
+// resolve_module_alias maps an import alias to its real module using the
+// aliases declared in the call site's source file, or returns the name as-is.
+fn (g &Gen) resolve_module_alias(cur_file string, name string) string {
+	if aliases := g.file_aliases[cur_file] {
+		if real := aliases[name] {
+			return real
+		}
+	}
+	return name
 }
 
 // ---- print intrinsics ----

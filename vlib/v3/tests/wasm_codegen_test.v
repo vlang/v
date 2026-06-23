@@ -299,6 +299,57 @@ fn test_wasm_imported_module_alias_call() {
 	run_wasi_expect(out_wasm, ['42', '7'])
 }
 
+fn test_wasm_shadowing_initializer_reads_outer() {
+	v3_bin := v3_binary()
+	// The inner `x := x + 1` initializer must read the outer x (5), giving 6,
+	// and the outer x is unchanged afterwards.
+	src := 'fn main() {\n\tx := 5\n\t{\n\t\tx := x + 1\n\t\tprintln(x)\n\t}\n\tprintln(x)\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_shadow_init')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['6', '5'])
+}
+
+fn test_wasm_parallel_multi_assign_swaps() {
+	v3_bin := v3_binary()
+	src := 'fn main() {\n\tmut a := 1\n\tmut b := 2\n\ta, b = b, a\n\tprintln(a)\n\tprintln(b)\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_swap')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['2', '1'])
+}
+
+fn test_wasm_import_aliases_are_file_scoped() {
+	v3_bin := v3_binary()
+	// Two modules each `import ... as m` for different real modules; the alias
+	// must resolve per file, not via a single global map.
+	dir := os.join_path(os.vtmp_dir(), 'wasm_aliascol')
+	os.rmdir_all(dir) or {}
+	for sub in ['mc', 'md', 'usea', 'useb'] {
+		os.mkdir_all(os.join_path(dir, sub)) or { panic(err) }
+	}
+	os.write_file(os.join_path(dir, 'main.v'), 'import usea\nimport useb\n\nfn main() {\n\tprintln(usea.go())\n\tprintln(useb.go())\n}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'mc', 'mc.v'), 'module mc\n\npub fn val() int {\n\treturn 100\n}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'md', 'md.v'), 'module md\n\npub fn val() int {\n\treturn 200\n}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'usea', 'usea.v'), 'module usea\n\nimport mc as m\n\npub fn go() int {\n\treturn m.val()\n}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'useb', 'useb.v'), 'module useb\n\nimport md as m\n\npub fn go() int {\n\treturn m.val()\n}\n') or {
+		panic(err)
+	}
+	out_wasm := os.join_path(dir, 'main.wasm')
+	main_v := os.join_path(dir, 'main.v')
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+	assert res.exit_code == 0, res.output
+	assert_valid_wasm(out_wasm)
+	assert !res.output.contains('unsupported call'), res.output
+	run_wasi_expect(out_wasm, ['100', '200'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });
