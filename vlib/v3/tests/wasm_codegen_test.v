@@ -698,6 +698,25 @@ fn test_wasm_imported_module_const() {
 	run_wasi_expect(out_wasm, ['42', '43'])
 }
 
+fn test_wasm_labeled_break_continue() {
+	v3_bin := v3_binary()
+	// `break label` exits the labeled outer loop (count 1, not 3); `continue
+	// label` advances the outer loop (count 3, not 9); plain inner break works.
+	src := 'fn main() {\n\tmut cb := 0\n\touter: for i := 0; i < 3; i++ {\n\t\tfor j := 0; j < 3; j++ {\n\t\t\tcb++\n\t\t\tif j == 0 {\n\t\t\t\tbreak outer\n\t\t\t}\n\t\t}\n\t}\n\tprintln(cb)\n\tmut cc := 0\n\to2: for i := 0; i < 3; i++ {\n\t\tfor j := 0; j < 3; j++ {\n\t\t\tcc++\n\t\t\tcontinue o2\n\t\t}\n\t}\n\tprintln(cc)\n\tmut cn := 0\n\tfor i := 0; i < 3; i++ {\n\t\tfor j := 0; j < 3; j++ {\n\t\t\tcn++\n\t\t\tbreak\n\t\t}\n\t}\n\tprintln(cn)\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_labeled')
+	assert_valid_wasm(wasm)
+	assert !res_contains_unsupported(v3_bin, src), 'labeled loop emitted a warning'
+	run_wasi_expect(wasm, ['1', '3', '3'])
+}
+
+fn res_contains_unsupported(v3_bin string, src string) bool {
+	src_path := os.join_path(os.vtmp_dir(), 'wasm_labeled_warn.v')
+	out := os.join_path(os.vtmp_dir(), 'wasm_labeled_warn.wasm')
+	os.write_file(src_path, src) or { panic(err) }
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out)} ${os.quoted_path(src_path)}')
+	return res.output.contains('unsupported statement: label_stmt')
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });

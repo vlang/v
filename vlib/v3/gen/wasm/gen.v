@@ -41,7 +41,8 @@ struct FnInfo {
 }
 
 struct Frame {
-	tag FrameTag
+	tag   FrameTag
+	label string // loop label for `break label` / `continue label`, else ''
 }
 
 // VarScope snapshots the local-name bindings so an inner block or for-loop can
@@ -75,6 +76,7 @@ mut:
 	var_unsigned map[string]bool
 	var_widths   map[string]int // sub-32-bit int locals: 8 or 16; else 32
 	frames       []Frame
+	pending_label string // label of a preceding `label:` marker, for the next loop
 	cur_ret       WType
 	cur_fn_module string
 	cur_fn_file   string
@@ -400,6 +402,7 @@ fn (mut g Gen) emit_user_fn(f FnInfo) {
 	g.var_unsigned = map[string]bool{}
 	g.var_widths = map[string]int{}
 	g.frames = []Frame{}
+	g.pending_label = ''
 	g.cur_ret = f.ret
 	g.cur_fn_module = f.module
 	g.cur_fn_file = f.file
@@ -506,6 +509,14 @@ fn (mut g Gen) gen_stmt(id flat.NodeId) {
 		return
 	}
 	node := g.a.nodes[int(id)]
+	if node.kind == .label_stmt {
+		// `outer:` marker; attach the label to the next loop. Goto-only markers
+		// (outer_break/outer_continue) aren't consumed by a loop and are dropped.
+		g.pending_label = node.value
+		return
+	}
+	loop_label := g.pending_label
+	g.pending_label = ''
 	match node.kind {
 		.fn_decl, .c_fn_decl {}
 		.block {
@@ -538,13 +549,13 @@ fn (mut g Gen) gen_stmt(id flat.NodeId) {
 			g.gen_if(node)
 		}
 		.for_stmt {
-			g.gen_for(node)
+			g.gen_for(node, loop_label)
 		}
 		.break_stmt {
-			g.gen_branch(.brk)
+			g.gen_branch(node, .brk)
 		}
 		.continue_stmt {
-			g.gen_branch(.cont)
+			g.gen_branch(node, .cont)
 		}
 		.assert_stmt {
 			g.gen_assert(node)
@@ -721,7 +732,7 @@ fn (mut g Gen) gen_if(node flat.Node) {
 	cond_id := g.a.child(&node, 0)
 	g.gen_expr_as_bool(cond_id)
 	g.cur.if_void()
-	g.frames << Frame{.plain}
+	g.frames << Frame{ tag: .plain }
 	then_block := g.a.child_node(&node, 1)
 	saved_then := g.snapshot_scope()
 	for i in 0 .. then_block.children_count {
@@ -748,7 +759,7 @@ fn (mut g Gen) gen_if(node flat.Node) {
 	g.frames.pop()
 }
 
-fn (mut g Gen) gen_for(node flat.Node) {
+fn (mut g Gen) gen_for(node flat.Node, label string) {
 	// The initializer and body are scoped to the loop; restore outer bindings
 	// afterwards so a shadowing `for i := ...` or body-local does not leak.
 	saved := g.snapshot_scope()
@@ -767,9 +778,12 @@ fn (mut g Gen) gen_for(node flat.Node) {
 	// initializer, but no body-local shadows.
 	header_scope := g.snapshot_scope()
 	g.cur.block_void() // break target
-	g.frames << Frame{.brk}
+	g.frames << Frame{
+		tag:   .brk
+		label: label
+	}
 	g.cur.loop_void() // back-edge target
-	g.frames << Frame{.plain}
+	g.frames << Frame{ tag: .plain }
 
 	if cond_node.kind != .empty {
 		g.gen_expr_as_bool(cond_id)
@@ -778,7 +792,10 @@ fn (mut g Gen) gen_for(node flat.Node) {
 	}
 
 	g.cur.block_void() // continue target
-	g.frames << Frame{.cont}
+	g.frames << Frame{
+		tag:   .cont
+		label: label
+	}
 	for i in 3 .. node.children_count {
 		g.gen_stmt(g.a.child(&node, i))
 	}
@@ -797,8 +814,13 @@ fn (mut g Gen) gen_for(node flat.Node) {
 	g.frames.pop()
 }
 
-fn (mut g Gen) gen_branch(tag FrameTag) {
-	g.cur.br(g.depth_to(tag))
+fn (mut g Gen) gen_branch(node flat.Node, tag FrameTag) {
+	if node.value.len > 0 {
+		// `break label` / `continue label`: target the labeled loop's frame.
+		g.cur.br(g.depth_to_labeled(tag, node.value))
+	} else {
+		g.cur.br(g.depth_to(tag))
+	}
 }
 
 fn (mut g Gen) gen_assert(node flat.Node) {
@@ -821,6 +843,17 @@ fn (g &Gen) depth_to(tag FrameTag) int {
 		}
 	}
 	return 0
+}
+
+// depth_to_labeled finds the nearest frame with the given tag and loop label
+// (for `break label` / `continue label`), falling back to the nearest tag.
+fn (g &Gen) depth_to_labeled(tag FrameTag, label string) int {
+	for i := g.frames.len - 1; i >= 0; i-- {
+		if g.frames[i].tag == tag && g.frames[i].label == label {
+			return (g.frames.len - 1) - i
+		}
+	}
+	return g.depth_to(tag)
 }
 
 // depth_to_loop returns the depth of the nearest `.plain` loop frame. Loop and
@@ -983,7 +1016,7 @@ fn (mut g Gen) gen_if_value_typed(node flat.Node, result_w WType) {
 	g.gen_expr_as_bool(g.a.child(&node, 0))
 	g.cur.raw(0x04) // if
 	g.cur.raw(wt_valtype(result_w)) // result type
-	g.frames << Frame{.plain}
+	g.frames << Frame{ tag: .plain }
 	g.gen_block_value(g.a.child_node(&node, 1), result_w)
 	g.cur.else_()
 	if node.children_count > 2 {
@@ -1137,7 +1170,7 @@ fn (mut g Gen) gen_logical(node flat.Node) WType {
 	g.gen_expr_as_bool(lhs_id)
 	g.cur.raw(0x04) // if
 	g.cur.raw(wasm.valtype_i32) // -> i32 result
-	g.frames << Frame{.plain}
+	g.frames << Frame{ tag: .plain }
 	if node.op == .logical_and {
 		g.gen_expr_as_bool(rhs_id)
 		g.cur.else_()
@@ -1175,7 +1208,7 @@ fn (mut g Gen) gen_mixed_cmp(lhs_id flat.NodeId, rhs_id flat.NodeId, op flat.Op,
 	}
 	g.cur.raw(0x04) // if
 	g.cur.raw(wasm.valtype_i32) // -> i32
-	g.frames << Frame{.plain}
+	g.frames << Frame{ tag: .plain }
 	g.cur.i32_const(neg_signed_cmp_result(op, lhs_signed))
 	g.cur.else_()
 	g.cur.local_get(lhs_tmp)
@@ -1522,7 +1555,7 @@ fn (mut g Gen) gen_print_bool(arg_id flat.NodeId, fd int, newline bool) {
 	false_off := g.intern_data('false'.bytes())
 	g.gen_expr_as_bool(arg_id)
 	g.cur.if_void()
-	g.frames << Frame{.plain}
+	g.frames << Frame{ tag: .plain }
 	g.emit_write_const(true_off, 4, fd)
 	g.cur.else_()
 	g.emit_write_const(false_off, 5, fd)
