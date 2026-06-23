@@ -317,6 +317,14 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			&& (!node.is_comptime || (node.is_comptime && comptime_match_branch_result)) {
 			mut stmt := branch.stmts.last()
 			if mut stmt is ast.ExprStmt {
+				// A trailing `spawn`/`go` is the value of this match-expression branch,
+				// so it must produce a usable thread handle (waiter, no detach),
+				// like the assignment form `t := spawn f()`. See issue #27485.
+				if mut stmt.expr is ast.SpawnExpr {
+					stmt.expr.is_expr = true
+				} else if mut stmt.expr is ast.GoExpr {
+					stmt.expr.is_expr = true
+				}
 				c.expected_type = if c.expected_expr_type != ast.void_type {
 					c.expected_expr_type
 				} else {

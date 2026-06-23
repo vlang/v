@@ -2,6 +2,15 @@ module builtin
 
 $if !no_gc_threads ? {
 	#flag -DGC_THREADS=1
+	// Enable Boehm's thread-local allocation: each registered thread gets its own
+	// small-object free lists, so concurrent `GC_malloc` on the fast path no longer
+	// serializes on the global allocator lock. Without it, allocation does not scale
+	// across cores (16 cores ≈ 1 core aggregate). V's spawned threads are registered
+	// via the `pthread_create` -> `GC_pthread_create` redirect, so their free lists
+	// are set up automatically. TLA requires GC_THREADS (defined just above); it only
+	// affects the bundled gc.c build and is inert for a system libgc that V merely
+	// links against. See issues #27486 and #27488.
+	#flag -DTHREAD_LOCAL_ALLOC=1
 }
 
 $if use_bundled_libgc ? {
