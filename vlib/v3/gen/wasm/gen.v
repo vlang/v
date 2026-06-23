@@ -1007,6 +1007,12 @@ fn (mut g Gen) gen_infix(id flat.NodeId, node flat.Node) WType {
 	}
 	if op in [.eq, .ne, .lt, .gt, .le, .ge] {
 		ow := g.operand_wtype(lhs_id, rhs_id)
+		// Mixed signed/unsigned integer comparisons compare mathematical values,
+		// not bit patterns, so a negative signed operand needs special handling.
+		if ow in [WType.i32, WType.i64] && g.is_unsigned(lhs_id) != g.is_unsigned(rhs_id) {
+			g.gen_mixed_cmp(lhs_id, rhs_id, op, ow)
+			return .i32
+		}
 		signed := !g.is_unsigned(lhs_id) && !g.is_unsigned(rhs_id)
 		g.gen_expr_as(lhs_id, ow)
 		g.gen_expr_as(rhs_id, ow)
@@ -1081,10 +1087,70 @@ fn (mut g Gen) gen_logical(node flat.Node) WType {
 	return .i32
 }
 
+// gen_mixed_cmp emits a comparison of a signed and an unsigned integer operand
+// by mathematical value. The two operands are buffered, then: if the signed
+// operand is negative it is smaller than the (non-negative) unsigned operand,
+// otherwise both are non-negative and an unsigned comparison is exact.
+fn (mut g Gen) gen_mixed_cmp(lhs_id flat.NodeId, rhs_id flat.NodeId, op flat.Op, ow WType) {
+	lhs_signed := !g.is_unsigned(lhs_id)
+	lhs_tmp := g.alloc_temp(ow)
+	rhs_tmp := g.alloc_temp(ow)
+	g.gen_expr_as(lhs_id, ow)
+	g.cur.local_set(lhs_tmp)
+	g.gen_expr_as(rhs_id, ow)
+	g.cur.local_set(rhs_tmp)
+	// is the signed operand negative?
+	g.cur.local_get(if lhs_signed { lhs_tmp } else { rhs_tmp })
+	if ow == .i64 {
+		g.cur.i64_const(0)
+		g.cur.raw(0x53) // i64.lt_s
+	} else {
+		g.cur.i32_const(0)
+		g.cur.raw(0x48) // i32.lt_s
+	}
+	g.cur.raw(0x04) // if
+	g.cur.raw(wasm.valtype_i32) // -> i32
+	g.frames << Frame{.plain}
+	g.cur.i32_const(neg_signed_cmp_result(op, lhs_signed))
+	g.cur.else_()
+	g.cur.local_get(lhs_tmp)
+	g.cur.local_get(rhs_tmp)
+	g.cur.raw(cmp_op(op, ow, false)) // both non-negative: unsigned comparison
+	g.cur.end()
+	g.frames.pop()
+}
+
+// neg_signed_cmp_result is the comparison result when the signed operand is
+// negative and the other operand is unsigned (hence non-negative), so the
+// signed operand is strictly the smaller value.
+fn neg_signed_cmp_result(op flat.Op, signed_is_lhs bool) int {
+	return match op {
+		.lt, .le { if signed_is_lhs { 1 } else { 0 } }
+		.gt, .ge { if signed_is_lhs { 0 } else { 1 } }
+		.eq { 0 }
+		.ne { 1 }
+		else { 0 }
+	}
+}
+
 fn (mut g Gen) gen_prefix(id flat.NodeId, node flat.Node) WType {
 	child_id := g.a.child(&node, 0)
 	match node.op {
 		.minus {
+			child := g.a.nodes[int(child_id)]
+			if child.kind == .int_literal {
+				// Fold `-literal` directly: the checker may type a large literal
+				// as plain int, which would wrap the magnitude to 32 bits before
+				// negating (e.g. i64(-9223372036854775808)).
+				mag := u64(parse_int_literal(child.value))
+				if mag > 2147483648 {
+					g.cur.i64_const(i64(u64(0) - mag))
+					return .i64
+				}
+				g.cur.i32_const(-i64(mag))
+				g.narrow_result(id)
+				return .i32
+			}
 			w := g.expr_wtype(child_id, '')
 			match w {
 				.f64 {

@@ -574,6 +574,27 @@ fn test_wasm_shift_over_width_semantics() {
 	run_wasi_expect(wasm, ['-1', '0', '0', '125'])
 }
 
+fn test_wasm_mixed_signed_unsigned_comparison() {
+	v3_bin := v3_binary()
+	// Mixed signed/unsigned comparisons compare by mathematical value, so a
+	// negative signed operand is smaller than any unsigned operand.
+	src := 'fn main() {\n\tprintln(int(i64(-89) <= u64(567)))\n\tprintln(int(int(-1) != u32(0xffffffff)))\n\tprintln(int(u64(0xfffffffffffffffe) == i64(-2)))\n\tprintln(int(u32(8543) > int(-7523)))\n\tprintln(int(i16(-27) < u32(65463356)))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_mixedcmp')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['1', '1', '0', '1', '1'])
+}
+
+fn test_wasm_unary_minus_large_literal() {
+	v3_bin := v3_binary()
+	// Negating a literal outside i32 range must keep i64 width (and wrap on
+	// overflow like V's cast), not truncate to 32 bits.
+	src := 'fn main() {\n\tprintln(i64(-9223372036854775808))\n\tprintln(i64(-9223372036854775809))\n\tprintln(-9223372036854775807)\n\tprintln(i64(-5))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_negbig')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['-9223372036854775808', '9223372036854775807', '-9223372036854775807',
+		'-5'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });
