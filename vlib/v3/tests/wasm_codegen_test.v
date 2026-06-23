@@ -268,6 +268,37 @@ fn test_wasm_imported_module_numeric_call() {
 	}
 }
 
+fn test_wasm_for_post_uses_loop_var_not_body_shadow() {
+	v3_bin := v3_binary()
+	// A body-local `i` must not rebind the name used by the post `i++`; the
+	// outer loop counter must still advance. The count/break bound keeps the
+	// test terminating even if the fix regresses (it would loop otherwise).
+	src := 'fn main() {\n\tmut i := 0\n\tmut count := 0\n\tfor ; i < 3; i++ {\n\t\ti := 10\n\t\t_ = i\n\t\tcount++\n\t\tif count > 100 {\n\t\t\tbreak\n\t\t}\n\t}\n\tprintln(i)\n\tprintln(count)\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_loopshadow')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['3', '3'])
+}
+
+fn test_wasm_imported_module_alias_call() {
+	v3_bin := v3_binary()
+	dir := os.join_path(os.vtmp_dir(), 'wasm_modalias')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'import moda as m\n\nfn main() {\n\tprintln(m.answer())\n\tprintln(m.add(3, 4))\n}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'moda', 'moda.v'), 'module moda\n\npub fn answer() int {\n\treturn 42\n}\n\npub fn add(a int, b int) int {\n\treturn a + b\n}\n') or {
+		panic(err)
+	}
+	out_wasm := os.join_path(dir, 'main.wasm')
+	main_v := os.join_path(dir, 'main.v')
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+	assert res.exit_code == 0, res.output
+	assert_valid_wasm(out_wasm)
+	assert !res.output.contains('unsupported call'), res.output
+	run_wasi_expect(out_wasm, ['42', '7'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });

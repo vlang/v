@@ -77,9 +77,10 @@ mut:
 	cur_ret       WType
 	cur_fn_module string
 	// module-wide; keyed by qualified function name (see qualified_fn_key)
-	fn_index  map[string]int
-	fn_ret    map[string]WType
-	fn_params map[string][]WType
+	fn_index       map[string]int
+	fn_ret         map[string]WType
+	fn_params      map[string][]WType
+	module_aliases map[string]string // import alias -> real module name
 	data_pool []u8
 	data_off  map[string]int
 	uses_print bool
@@ -100,6 +101,7 @@ pub fn Gen.new(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool)
 
 // gen builds the whole module from the flat AST.
 pub fn (mut g Gen) gen() {
+	g.collect_module_aliases()
 	user_fns := g.collect_user_fns()
 	g.uses_print = g.detect_print(user_fns)
 
@@ -505,7 +507,13 @@ fn (mut g Gen) gen_assign(node flat.Node) {
 	for i + 1 < node.children_count {
 		lhs := g.a.child_node(&node, i)
 		rhs_id := g.a.child(&node, i + 1)
-		if lhs.kind == .ident && lhs.value in g.var_index {
+		if lhs.kind == .ident && lhs.value == '_' {
+			// Blank assignment `_ = expr`: evaluate for side effects, discard.
+			w := g.gen_expr(rhs_id)
+			if w != .void {
+				g.cur.drop()
+			}
+		} else if lhs.kind == .ident && lhs.value in g.var_index {
 			idx := g.var_index[lhs.value]
 			w := g.var_wtype[lhs.value]
 			if node.op == .assign {
@@ -592,6 +600,9 @@ fn (mut g Gen) gen_for(node flat.Node) {
 	if init_node.kind != .empty {
 		g.gen_stmt(g.a.child(&node, 0))
 	}
+	// Bindings visible to the condition and post: the loop variable from the
+	// initializer, but no body-local shadows.
+	header_scope := g.snapshot_scope()
 	g.cur.block_void() // break target
 	g.frames << Frame{.brk}
 	g.cur.loop_void() // back-edge target
@@ -611,6 +622,8 @@ fn (mut g Gen) gen_for(node flat.Node) {
 	g.cur.end()
 	g.frames.pop()
 
+	// Drop body-local shadows so the post statement rebinds to the loop var.
+	g.restore_scope(header_scope)
 	if post_node.kind != .empty {
 		g.gen_stmt(g.a.child(&node, 2))
 	}
@@ -938,10 +951,21 @@ fn (mut g Gen) gen_call(node flat.Node) WType {
 	return .i32
 }
 
+// collect_module_aliases records `import mod as alias` mappings so aliased
+// calls (`m.answer()`) resolve to the real module's qualified key.
+fn (mut g Gen) collect_module_aliases() {
+	for node in g.a.nodes {
+		if node.kind == .import_decl && node.typ.len > 0 {
+			g.module_aliases[node.typ] = node.value
+		}
+	}
+}
+
 // resolve_call_keys returns the candidate fn_index keys for a callee, in
 // priority order. A bare ident inside an imported module resolves to the
 // same-module function first (`mod.name`) and falls back to a main-module name;
-// a `module.fn()` selector resolves to that module's qualified name.
+// a `module.fn()` selector resolves to that module's qualified name, with any
+// import alias mapped back to the real module.
 fn (g &Gen) resolve_call_keys(callee &flat.Node, cur_mod string) []string {
 	if callee.kind == .ident {
 		if cur_mod != '' && cur_mod != 'main' {
@@ -952,7 +976,8 @@ fn (g &Gen) resolve_call_keys(callee &flat.Node, cur_mod string) []string {
 	if callee.kind == .selector && callee.children_count > 0 {
 		base := g.a.child_node(callee, 0)
 		if base.kind == .ident {
-			return ['${base.value}.${callee.value}']
+			real := g.module_aliases[base.value] or { base.value }
+			return ['${real}.${callee.value}']
 		}
 	}
 	return []
