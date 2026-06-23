@@ -351,6 +351,17 @@ fn test_wasm_parallel_multi_assign_swaps() {
 	run_wasi_expect(wasm, ['2', '1'])
 }
 
+fn test_wasm_parallel_multi_assign_swaps_globals() {
+	v3_bin := v3_binary()
+	// Parallel assignment must buffer __global targets too and write them back
+	// with global_set + narrowing, so `a, b = b, a` swaps the globals (incl.
+	// sub-32-bit ones) instead of leaving them unchanged.
+	src := '__global a int\n__global b int\n__global p = u8(250)\n__global q = u8(10)\n\nfn main() {\n\ta = 1\n\tb = 2\n\ta, b = b, a\n\tprintln(a)\n\tprintln(b)\n\tp, q = q, p\n\tprintln(int(p))\n\tprintln(int(q))\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_swap')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['2', '1', '10', '250'])
+}
+
 fn test_wasm_import_aliases_are_file_scoped() {
 	v3_bin := v3_binary()
 	// Two modules each `import ... as m` for different real modules; the alias
@@ -801,6 +812,28 @@ fn test_wasm_global_nested_cast_initializer() {
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_nested_cast')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['44', '-128', '144', '3'])
+}
+
+fn test_wasm_global_infix_narrows_before_outer_cast() {
+	v3_bin := v3_binary()
+	// A folded infix initializer must wrap to its own resolved type before a
+	// wider outer cast observes it: `u8(250)+u8(10)` narrows to 4 (not 260)
+	// before the surrounding `int`, matching normal codegen.
+	src := '__global x = int(u8(250) + u8(10))\n__global y = int(u8(200) + u8(100))\n\nfn main() {\n\tprintln(x)\n\tprintln(y)\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_infix_cast')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['4', '44'])
+}
+
+fn test_wasm_global_float_cast_of_large_literal() {
+	v3_bin := v3_binary()
+	// A float cast of a large non-negative integer literal must stay positive,
+	// like gen_cast: f64(9223372036854775808) (2^63) must not flip sign through
+	// parse_int_literal's wrapped i64, so `x > 0.0` holds.
+	src := '__global x = f64(9223372036854775808)\n\nfn main() {\n\tprintln(x > 0.0)\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_float_cast')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['true'])
 }
 
 const wasi_runner_js = "import { WASI } from 'node:wasi';

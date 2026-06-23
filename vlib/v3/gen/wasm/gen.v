@@ -709,7 +709,8 @@ fn (mut g Gen) gen_assign(node flat.Node) {
 // each into its target, so `a, b = b, a` swaps instead of clobbering.
 fn (mut g Gen) gen_multi_assign(node flat.Node) {
 	mut temps := []int{}
-	mut targets := []string{}
+	mut targets := []string{} // local name, or global key when is_global
+	mut is_global := []bool{}
 	mut j := 0
 	for j + 1 < node.children_count {
 		lhs := g.a.child_node(&node, j)
@@ -721,6 +722,16 @@ fn (mut g Gen) gen_multi_assign(node flat.Node) {
 			g.cur.local_set(t)
 			temps << t
 			targets << lhs.value
+			is_global << false
+		} else if lhs.kind == .ident && lhs.value != '_' && g.global_key(lhs.value) != '' {
+			gkey := g.global_key(lhs.value)
+			w := g.global_wtype[gkey]
+			g.gen_expr_as(rhs_id, w)
+			t := g.alloc_temp(w)
+			g.cur.local_set(t)
+			temps << t
+			targets << gkey
+			is_global << true
 		} else {
 			// blank or unsupported target: evaluate for side effects, discard
 			rw := g.gen_expr(rhs_id)
@@ -732,8 +743,13 @@ fn (mut g Gen) gen_multi_assign(node flat.Node) {
 	}
 	for k, name in targets {
 		g.cur.local_get(temps[k])
-		g.narrow_for_local(name)
-		g.cur.local_set(g.var_index[name])
+		if is_global[k] {
+			g.narrow_for_global(name)
+			g.cur.global_set(g.global_index[name])
+		} else {
+			g.narrow_for_local(name)
+			g.cur.local_set(g.var_index[name])
+		}
 	}
 }
 
@@ -1630,7 +1646,10 @@ fn (g &Gen) fold_const_int(id flat.NodeId) i64 {
 		}
 		.infix {
 			if n.children_count >= 2 {
-				return g.fold_const_infix(n)
+				// Narrow to the infix's own resolved type so any wrapping happens
+				// before a wider outer cast can observe it, matching normal codegen
+				// (`int(u8(250) + u8(10))` -> 4, not 260).
+				return narrow_to_type(g.fold_const_infix(n), g.tc.resolve_type(id))
 			}
 		}
 		.paren {
@@ -1680,16 +1699,21 @@ fn (g &Gen) fold_const_infix(n flat.Node) i64 {
 }
 
 // fold_cast_int wraps a folded constant to a numeric cast target's width and
-// signedness, the compile-time form of gen_cast's narrowing (i64 targets keep
-// the full value; i32-family targets wrap to 8/16/32 bits).
+// signedness, the compile-time form of gen_cast's narrowing.
 fn (g &Gen) fold_cast_int(v i64, type_name string) i64 {
-	tt := g.tc.parse_type(type_name)
-	w := prim_wtype(tt) or { return v }
-	if w == .i64 {
+	return narrow_to_type(v, g.tc.parse_type(type_name))
+}
+
+// narrow_to_type wraps a folded constant to an integer type's width and
+// signedness (i64 targets keep the full value; i32-family targets wrap to
+// 8/16/32 bits; non-integer targets are left unchanged).
+fn narrow_to_type(v i64, t types.Type) i64 {
+	w := prim_wtype(t) or { return v }
+	if w != .i32 {
 		return v
 	}
-	unsigned := type_is_unsigned(tt)
-	return match narrow_width(tt) {
+	unsigned := type_is_unsigned(t)
+	return match narrow_width(t) {
 		8 { if unsigned { i64(u8(v)) } else { i64(i8(v)) } }
 		16 { if unsigned { i64(u16(v)) } else { i64(i16(v)) } }
 		else { if unsigned { i64(u32(v)) } else { i64(i32(v)) } }
@@ -1727,9 +1751,34 @@ fn (g &Gen) fold_const_float(id flat.NodeId) f64 {
 				}
 			}
 		}
-		.paren, .cast_expr {
+		.paren {
 			if n.children_count > 0 {
 				return g.fold_const_float(g.a.child(&n, 0))
+			}
+		}
+		.cast_expr {
+			if n.children_count > 0 {
+				cid := g.a.child(&n, 0)
+				tw := prim_wtype(g.tc.parse_type(n.value)) or { WType.f64 }
+				if tw !in [WType.f32, WType.f64] {
+					// Cast to an integer type inside a float context: fold and
+					// narrow as an int, then widen to float.
+					return f64(g.fold_cast_int(g.fold_const_int(cid), n.value))
+				}
+				child := g.a.nodes[int(cid)]
+				mut fv := if child.kind == .int_literal {
+					// Match gen_cast: reinterpret the literal's wrapped i64 bits as
+					// u64 so a large non-negative literal (e.g.
+					// f64(9223372036854775808)) stays positive instead of flipping
+					// sign through parse_int_literal.
+					f64(u64(parse_int_literal(child.value)))
+				} else {
+					g.fold_const_float(cid)
+				}
+				if tw == .f32 {
+					fv = f64(f32(fv)) // round to f32 precision like an f32 cast
+				}
+				return fv
 			}
 		}
 		else {}
