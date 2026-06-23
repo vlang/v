@@ -936,6 +936,16 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 	if typ.len == 0 {
 		typ = t.node_type(expr_id)
 	}
+	if typ.len == 0 {
+		// Structural fallback for compound arguments (infix, prefix, cast,
+		// paren, ...) so e.g. `println(a + b)` for ints is stringified via
+		// strconv__format_int instead of being passed to println as a raw
+		// number. Mirrors the fallback already used by string interpolation.
+		typ = t.reliable_stringify_type(expr)
+		if typ.len == 0 {
+			typ = t.reliable_stringify_type(expr_id)
+		}
+	}
 	return t.wrap_string_conversion(expr, typ)
 }
 

@@ -1,0 +1,1349 @@
+module wasm
+
+import os
+import v3.flat
+import v3.types
+
+// gen.v is the v3 WebAssembly backend. Like the C backend's FlatGen it walks
+// the flat AST directly (WASM has structured control flow, so no SSA/relooping
+// is needed), and like the arm64 backend it emits a binary module. Generics,
+// strings-as-values, structs, arrays and maps are out of scope for now; the
+// backend targets the integer/float core plus WASI `print`/`println`.
+
+// Fixed low-memory scratch layout (bytes):
+//   [0..3]   nwritten result for fd_write
+//   [4..11]  iovec (ptr @4, len @8)
+//   [12]     newline byte '\n'
+//   [16..47] itoa scratch buffer (BUF_END = 48, filled back-to-front)
+//   [64..]   interned string-literal data
+const nwritten_ptr = 0
+const iov_ptr = 4
+const nl_ptr = 12
+const buf_end = 48
+const data_base = 64
+
+pub enum WType {
+	void
+	i32
+	i64
+	f32
+	f64
+}
+
+struct FnInfo {
+	name    string
+	node_id flat.NodeId
+	module  string
+	params  []WType
+	ret     WType
+	index   int
+}
+
+struct Frame {
+	tag FrameTag
+}
+
+enum FrameTag {
+	plain
+	brk
+	cont
+}
+
+@[heap]
+pub struct Gen {
+mut:
+	a          &flat.FlatAst    = unsafe { nil }
+	tc         &types.TypeChecker = unsafe { nil }
+	used_fns   map[string]bool
+	mod        &Module = unsafe { nil }
+	// per-function state
+	cur         Code
+	local_types  []u8
+	nparams      int
+	var_index    map[string]int
+	var_wtype    map[string]WType
+	var_unsigned map[string]bool
+	frames       []Frame
+	cur_ret     WType
+	// module-wide
+	fn_index  map[string]int
+	fn_ret    map[string]WType
+	data_pool []u8
+	data_off  map[string]int
+	uses_print bool
+	write_idx  int
+	print_int_idx int
+	has_main   bool
+	warnings   []string
+}
+
+pub fn Gen.new(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) &Gen {
+	return &Gen{
+		a:        a
+		tc:       tc
+		used_fns: used_fns
+		mod:      Module.new()
+	}
+}
+
+// gen builds the whole module from the flat AST.
+pub fn (mut g Gen) gen() {
+	user_fns := g.collect_user_fns()
+	g.uses_print = g.detect_print(user_fns)
+
+	// 1. function-index assignment (imports first, then helpers, then user fns).
+	mut fd_write_idx := -1
+	if g.uses_print {
+		ft := g.mod.add_type([wasm.valtype_i32, wasm.valtype_i32, wasm.valtype_i32, wasm.valtype_i32],
+			[wasm.valtype_i32])
+		fd_write_idx = g.mod.add_import_func('wasi_snapshot_preview1', 'fd_write', ft)
+	}
+	mut defined := 0
+	if g.uses_print {
+		g.write_idx = g.mod.reserve_func_index(defined)
+		defined++
+		g.print_int_idx = g.mod.reserve_func_index(defined)
+		defined++
+	}
+	for i, f in user_fns {
+		idx := g.mod.reserve_func_index(defined + i)
+		g.fn_index[f.name] = idx
+		g.fn_ret[f.name] = f.ret
+		if f.name == 'main' && (f.module == '' || f.module == 'main') {
+			g.has_main = true
+		}
+	}
+
+	// 2. helper bodies (must be added in the same order as reserved above).
+	if g.uses_print {
+		g.emit_write_helper(fd_write_idx)
+		g.emit_print_int_helper()
+	}
+
+	// 3. user function bodies.
+	for f in user_fns {
+		g.emit_user_fn(f)
+	}
+
+	// 4. WASI `_start` entry that calls main.
+	mut start_idx := -1
+	if g.has_main {
+		start_idx = g.emit_start()
+	}
+
+	// 5. exports + memory sizing + data.
+	g.mod.add_export('memory', wasm.export_mem, 0)
+	for f in user_fns {
+		g.mod.add_export(f.name, wasm.export_func, g.fn_index[f.name])
+	}
+	if start_idx >= 0 {
+		g.mod.add_export('_start', wasm.export_func, start_idx)
+	}
+	if g.data_pool.len > 0 {
+		g.mod.add_data(data_base, g.data_pool)
+	}
+	if g.uses_print {
+		g.mod.add_data(nl_ptr, [u8(0x0a)])
+	}
+	total := data_base + g.data_pool.len
+	pages := if total <= 0x10000 { 2 } else { (total + 0xffff) / 0x10000 + 1 }
+	g.mod.set_mem_min(pages)
+}
+
+pub fn (g &Gen) warnings_list() []string {
+	return g.warnings
+}
+
+// write serializes the module to `path`.
+pub fn (mut g Gen) write(path string) ! {
+	bytes := g.mod.compile()
+	os.write_file_array(path, bytes)!
+}
+
+// ---- function collection ----
+
+fn (mut g Gen) collect_user_fns() []FnInfo {
+	mut out := []FnInfo{}
+	mut cur_module := ''
+	for i in 0 .. g.a.nodes.len {
+		node := g.a.nodes[i]
+		match node.kind {
+			.file {
+				cur_module = ''
+			}
+			.module_decl {
+				cur_module = node.value
+			}
+			.fn_decl {
+				if i < g.a.user_code_start {
+					continue
+				}
+				if cur_module != '' && cur_module != 'main' {
+					continue
+				}
+				if node.generic_params.len > 0 || node.value == '' {
+					continue
+				}
+				if fi := g.fn_info(node, flat.NodeId(i), cur_module) {
+					out << fi
+				}
+			}
+			else {}
+		}
+	}
+	return out
+}
+
+// fn_info extracts a compilable signature, or none if the function uses types
+// the backend does not handle yet (strings, structs, arrays, pointers, ...).
+fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string) ?FnInfo {
+	mut params := []WType{}
+	for i in 0 .. node.children_count {
+		p := g.a.child_node(&node, i)
+		if p.kind != .param || p.value.len == 0 {
+			continue
+		}
+		pt := g.tc.parse_type(p.typ)
+		w := prim_wtype(pt) or { return none }
+		params << w
+	}
+	mut ret := WType.void
+	if node.typ.len > 0 && node.typ != 'void' {
+		rt := g.tc.parse_type(node.typ)
+		ret = prim_wtype(rt) or { return none }
+	}
+	return FnInfo{
+		name:    node.value
+		node_id: id
+		module:  module_
+		params:  params
+		ret:     ret
+	}
+}
+
+fn (mut g Gen) detect_print(fns []FnInfo) bool {
+	for f in fns {
+		node := g.a.nodes[int(f.node_id)]
+		if g.subtree_has_print(node) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &Gen) subtree_has_print(node flat.Node) bool {
+	if node.kind == .call {
+		callee := g.a.child_node(&node, 0)
+		if callee.kind == .ident && callee.value in ['println', 'print', 'eprintln', 'eprint'] {
+			return true
+		}
+	}
+	for i in 0 .. node.children_count {
+		child_id := g.a.child(&node, i)
+		if int(child_id) < 0 {
+			continue
+		}
+		if g.subtree_has_print(g.a.nodes[int(child_id)]) {
+			return true
+		}
+	}
+	return false
+}
+
+// ---- user function emission ----
+
+fn (mut g Gen) emit_user_fn(f FnInfo) {
+	node := g.a.nodes[int(f.node_id)]
+	g.cur = Code{}
+	g.local_types = []u8{}
+	g.var_index = map[string]int{}
+	g.var_wtype = map[string]WType{}
+	g.var_unsigned = map[string]bool{}
+	g.frames = []Frame{}
+	g.cur_ret = f.ret
+
+	// register params as locals 0..n-1
+	mut pi := 0
+	mut wparams := []u8{}
+	for i in 0 .. node.children_count {
+		p := g.a.child_node(&node, i)
+		if p.kind != .param || p.value.len == 0 {
+			continue
+		}
+		w := f.params[pi]
+		g.var_index[p.value] = pi
+		g.var_wtype[p.value] = w
+		g.var_unsigned[p.value] = type_is_unsigned(g.tc.parse_type(p.typ))
+		wparams << wt_valtype(w)
+		pi++
+	}
+	g.nparams = pi
+
+	// body: non-param children
+	for i in 0 .. node.children_count {
+		child := g.a.child_node(&node, i)
+		if child.kind == .param {
+			continue
+		}
+		g.gen_stmt(g.a.child(&node, i))
+	}
+	g.cur.end()
+
+	mut results := []u8{}
+	if f.ret != .void {
+		results << wt_valtype(f.ret)
+	}
+	type_idx := g.mod.add_type(wparams, results)
+	g.mod.add_func(type_idx, g.local_types, g.cur.bytes)
+}
+
+fn (mut g Gen) emit_start() int {
+	mut c := Code{}
+	if main_idx := g.fn_index['main'] {
+		c.call(main_idx)
+	}
+	c.end()
+	type_idx := g.mod.add_type([], [])
+	return g.mod.add_func(type_idx, [], c.bytes)
+}
+
+// new_local allocates a fresh local beyond the params and records its type.
+fn (mut g Gen) new_local(name string, w WType, unsigned bool) int {
+	idx := g.nparams + g.local_types.len
+	g.local_types << wt_valtype(w)
+	g.var_index[name] = idx
+	g.var_wtype[name] = w
+	g.var_unsigned[name] = unsigned
+	return idx
+}
+
+// ---- statements ----
+
+fn (mut g Gen) gen_stmt(id flat.NodeId) {
+	if int(id) < 0 {
+		return
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.fn_decl, .c_fn_decl {}
+		.block {
+			for i in 0 .. node.children_count {
+				g.gen_stmt(g.a.child(&node, i))
+			}
+		}
+		.expr_stmt {
+			child_id := g.a.child(&node, 0)
+			w := g.gen_expr(child_id)
+			if w != .void {
+				g.cur.drop()
+			}
+		}
+		.decl_assign {
+			g.gen_decl_assign(node)
+		}
+		.assign, .selector_assign {
+			g.gen_assign(node)
+		}
+		.return_stmt {
+			if node.children_count > 0 {
+				g.gen_expr_as(g.a.child(&node, 0), g.cur_ret)
+			}
+			g.cur.ret()
+		}
+		.if_expr {
+			g.gen_if(node)
+		}
+		.for_stmt {
+			g.gen_for(node)
+		}
+		.break_stmt {
+			g.gen_branch(.brk)
+		}
+		.continue_stmt {
+			g.gen_branch(.cont)
+		}
+		.assert_stmt {
+			g.gen_assert(node)
+		}
+		else {
+			g.warn('unsupported statement: ${node.kind}')
+		}
+	}
+}
+
+fn (mut g Gen) gen_decl_assign(node flat.Node) {
+	mut i := 0
+	for i + 1 < node.children_count {
+		lhs := g.a.child_node(&node, i)
+		rhs_id := g.a.child(&node, i + 1)
+		w := g.expr_wtype(rhs_id, node.typ)
+		uns := g.decl_is_unsigned(rhs_id, node.typ)
+		if lhs.kind == .ident {
+			idx := g.new_local(lhs.value, w, uns)
+			g.gen_expr_as(rhs_id, w)
+			g.cur.local_set(idx)
+		}
+		i += 2
+	}
+}
+
+fn (mut g Gen) gen_assign(node flat.Node) {
+	mut i := 0
+	for i + 1 < node.children_count {
+		lhs := g.a.child_node(&node, i)
+		rhs_id := g.a.child(&node, i + 1)
+		if lhs.kind == .ident && lhs.value in g.var_index {
+			idx := g.var_index[lhs.value]
+			w := g.var_wtype[lhs.value]
+			if node.op == .assign {
+				g.gen_expr_as(rhs_id, w)
+			} else {
+				g.cur.local_get(idx)
+				g.gen_expr_as(rhs_id, w)
+				g.emit_arith(compound_to_op(node.op), w, false)
+			}
+			g.cur.local_set(idx)
+		} else {
+			g.warn('unsupported assign target')
+		}
+		i += 2
+	}
+}
+
+fn (mut g Gen) gen_if(node flat.Node) {
+	cond_id := g.a.child(&node, 0)
+	g.gen_expr_as_bool(cond_id)
+	g.cur.if_void()
+	g.frames << Frame{.plain}
+	then_block := g.a.child_node(&node, 1)
+	for i in 0 .. then_block.children_count {
+		g.gen_stmt(g.a.child(then_block, i))
+	}
+	if node.children_count > 2 {
+		else_id := g.a.child(&node, 2)
+		if int(else_id) >= 0 {
+			else_node := g.a.nodes[int(else_id)]
+			g.cur.else_()
+			if else_node.kind == .if_expr {
+				g.gen_if(else_node)
+			} else if else_node.kind == .block {
+				for i in 0 .. else_node.children_count {
+					g.gen_stmt(g.a.child(&else_node, i))
+				}
+			}
+		}
+	}
+	g.cur.end()
+	g.frames.pop()
+}
+
+fn (mut g Gen) gen_for(node flat.Node) {
+	init_node := g.a.child_node(&node, 0)
+	cond_id := g.a.child(&node, 1)
+	cond_node := g.a.nodes[int(cond_id)]
+	post_node := g.a.child_node(&node, 2)
+
+	if init_node.kind != .empty {
+		g.gen_stmt(g.a.child(&node, 0))
+	}
+	g.cur.block_void() // break target
+	g.frames << Frame{.brk}
+	g.cur.loop_void() // back-edge target
+	g.frames << Frame{.plain}
+
+	if cond_node.kind != .empty {
+		g.gen_expr_as_bool(cond_id)
+		g.cur.raw(0x45) // i32.eqz
+		g.cur.br_if(g.depth_to(.brk))
+	}
+
+	g.cur.block_void() // continue target
+	g.frames << Frame{.cont}
+	for i in 3 .. node.children_count {
+		g.gen_stmt(g.a.child(&node, i))
+	}
+	g.cur.end()
+	g.frames.pop()
+
+	if post_node.kind != .empty {
+		g.gen_stmt(g.a.child(&node, 2))
+	}
+	g.cur.br(g.depth_to_loop())
+	g.cur.end() // loop
+	g.frames.pop()
+	g.cur.end() // block
+	g.frames.pop()
+}
+
+fn (mut g Gen) gen_branch(tag FrameTag) {
+	g.cur.br(g.depth_to(tag))
+}
+
+fn (mut g Gen) gen_assert(node flat.Node) {
+	if node.children_count == 0 {
+		return
+	}
+	g.gen_expr_as_bool(g.a.child(&node, 0))
+	g.cur.raw(0x45) // i32.eqz
+	g.cur.if_void()
+	g.cur.raw(0x00) // unreachable -> trap
+	g.cur.end()
+}
+
+// depth_to returns the relative br depth to the nearest enclosing frame tagged
+// `tag`, counted from the current (innermost) frame.
+fn (g &Gen) depth_to(tag FrameTag) int {
+	for i := g.frames.len - 1; i >= 0; i-- {
+		if g.frames[i].tag == tag {
+			return (g.frames.len - 1) - i
+		}
+	}
+	return 0
+}
+
+// depth_to_loop returns the depth of the nearest `.plain` loop frame. Loop and
+// if frames are both `.plain`; the back-edge target is the most recent one that
+// is not the continue block, which by construction is the loop directly below
+// the continue frame. We resolve it as the nearest `.plain` frame.
+fn (g &Gen) depth_to_loop() int {
+	for i := g.frames.len - 1; i >= 0; i-- {
+		if g.frames[i].tag == .plain {
+			return (g.frames.len - 1) - i
+		}
+	}
+	return 0
+}
+
+// ---- expressions ----
+
+// gen_expr emits code that pushes the value of `id` and returns its WType
+// (`.void` if nothing was pushed).
+fn (mut g Gen) gen_expr(id flat.NodeId) WType {
+	if int(id) < 0 {
+		g.cur.i32_const(0)
+		return .i32
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.int_literal {
+			val := parse_int_literal(node.value)
+			mut w := g.expr_wtype(id, '')
+			// Promote to i64 when the literal does not fit in i32: the checker
+			// types untyped literals as plain `int`, which would truncate.
+			if w == .i32 && (val > 2147483647 || val < -2147483648) {
+				w = .i64
+			}
+			if w == .i64 {
+				g.cur.i64_const(val)
+				return .i64
+			}
+			g.cur.i32_const(val)
+			return .i32
+		}
+		.bool_literal {
+			g.cur.i32_const(if node.value == 'true' { 1 } else { 0 })
+			return .i32
+		}
+		.float_literal {
+			w := g.expr_wtype(id, '')
+			fv := node.value.replace('_', '').f64()
+			if w == .f32 {
+				g.cur.f32_const(f32(fv))
+				return .f32
+			}
+			g.cur.f64_const(fv)
+			return .f64
+		}
+		.ident {
+			if node.value in g.var_index {
+				g.cur.local_get(g.var_index[node.value])
+				return g.var_wtype[node.value]
+			}
+			g.warn('unknown ident: ${node.value}')
+			g.cur.i32_const(0)
+			return .i32
+		}
+		.paren {
+			return g.gen_expr(g.a.child(&node, 0))
+		}
+		.cast_expr {
+			return g.gen_cast(node)
+		}
+		.infix {
+			return g.gen_infix(id, node)
+		}
+		.prefix {
+			return g.gen_prefix(node)
+		}
+		.postfix {
+			g.gen_postfix(node)
+			return .void
+		}
+		.call {
+			return g.gen_call(node)
+		}
+		else {
+			g.warn('unsupported expr: ${node.kind}')
+			g.cur.i32_const(0)
+			return .i32
+		}
+	}
+}
+
+// gen_expr_as emits `id` coerced to the target WType.
+fn (mut g Gen) gen_expr_as(id flat.NodeId, target WType) {
+	w := g.gen_expr(id)
+	if target == .void || w == .void {
+		return
+	}
+	g.coerce(w, target, g.is_signed(id))
+}
+
+// gen_expr_as_bool emits `id` leaving an i32 truth value on the stack.
+fn (mut g Gen) gen_expr_as_bool(id flat.NodeId) {
+	w := g.gen_expr(id)
+	if w == .i64 {
+		g.cur.i64_const(0)
+		g.cur.raw(0x52) // i64.ne -> i32
+	} else if w == .f64 {
+		g.cur.f64_const(0)
+		g.cur.raw(0x62) // f64.ne
+	} else if w == .f32 {
+		g.cur.f32_const(0)
+		g.cur.raw(0x5c) // f32.ne
+	}
+	// i32 already a truth value
+}
+
+fn (mut g Gen) gen_infix(id flat.NodeId, node flat.Node) WType {
+	lhs_id := g.a.child(&node, 0)
+	rhs_id := g.a.child(&node, 1)
+	op := node.op
+	if op == .logical_and || op == .logical_or {
+		return g.gen_logical(node)
+	}
+	if op in [.eq, .ne, .lt, .gt, .le, .ge] {
+		ow := g.operand_wtype(lhs_id, rhs_id)
+		signed := !g.is_unsigned(lhs_id) && !g.is_unsigned(rhs_id)
+		g.gen_expr_as(lhs_id, ow)
+		g.gen_expr_as(rhs_id, ow)
+		g.cur.raw(cmp_op(op, ow, signed))
+		return .i32
+	}
+	// arithmetic / bitwise / shift: in V both operands share the result type,
+	// so combine the node's own type with the operand-derived width (the
+	// latter recovers i64/float when the node type is missing).
+	ow := combine_wtype(g.expr_wtype(id, node.typ), g.operand_wtype(lhs_id, rhs_id))
+	signed := !g.is_unsigned(lhs_id)
+	g.gen_expr_as(lhs_id, ow)
+	g.gen_expr_as(rhs_id, ow)
+	g.emit_arith(op, ow, signed)
+	return ow
+}
+
+fn (mut g Gen) gen_logical(node flat.Node) WType {
+	lhs_id := g.a.child(&node, 0)
+	rhs_id := g.a.child(&node, 1)
+	g.gen_expr_as_bool(lhs_id)
+	g.cur.raw(0x04) // if
+	g.cur.raw(wasm.valtype_i32) // -> i32 result
+	g.frames << Frame{.plain}
+	if node.op == .logical_and {
+		g.gen_expr_as_bool(rhs_id)
+		g.cur.else_()
+		g.cur.i32_const(0)
+	} else {
+		g.cur.i32_const(1)
+		g.cur.else_()
+		g.gen_expr_as_bool(rhs_id)
+	}
+	g.cur.end()
+	g.frames.pop()
+	return .i32
+}
+
+fn (mut g Gen) gen_prefix(node flat.Node) WType {
+	child_id := g.a.child(&node, 0)
+	match node.op {
+		.minus {
+			w := g.expr_wtype(child_id, '')
+			match w {
+				.f64 {
+					g.gen_expr(child_id)
+					g.cur.raw(0x9a) // f64.neg
+					return .f64
+				}
+				.f32 {
+					g.gen_expr(child_id)
+					g.cur.raw(0x8c) // f32.neg
+					return .f32
+				}
+				.i64 {
+					g.cur.i64_const(0)
+					g.gen_expr_as(child_id, .i64)
+					g.cur.raw(0x7d) // i64.sub
+					return .i64
+				}
+				else {
+					g.cur.i32_const(0)
+					g.gen_expr_as(child_id, .i32)
+					g.cur.raw(0x6b) // i32.sub
+					return .i32
+				}
+			}
+		}
+		.not {
+			g.gen_expr_as_bool(child_id)
+			g.cur.raw(0x45) // i32.eqz
+			return .i32
+		}
+		.bit_not {
+			w := g.gen_expr(child_id)
+			if w == .i64 {
+				g.cur.i64_const(-1)
+				g.cur.raw(0x85) // i64.xor
+				return .i64
+			}
+			g.cur.i32_const(-1)
+			g.cur.raw(0x73) // i32.xor
+			return .i32
+		}
+		else {
+			g.warn('unsupported prefix op: ${node.op}')
+			return g.gen_expr(child_id)
+		}
+	}
+}
+
+fn (mut g Gen) gen_postfix(node flat.Node) {
+	target := g.a.child_node(&node, 0)
+	if target.kind != .ident || target.value !in g.var_index {
+		g.warn('unsupported postfix target')
+		return
+	}
+	idx := g.var_index[target.value]
+	w := g.var_wtype[target.value]
+	g.cur.local_get(idx)
+	if w == .i64 {
+		g.cur.i64_const(1)
+		g.cur.raw(if node.op == .inc { u8(0x7c) } else { u8(0x7d) })
+	} else {
+		g.cur.i32_const(1)
+		g.cur.raw(if node.op == .inc { u8(0x6a) } else { u8(0x6b) })
+	}
+	g.cur.local_set(idx)
+}
+
+fn (mut g Gen) gen_cast(node flat.Node) WType {
+	child_id := g.a.child(&node, 0)
+	target := prim_wtype(g.tc.parse_type(node.value)) or { WType.i32 }
+	src := g.gen_expr(child_id)
+	g.coerce(src, target, g.is_signed(child_id))
+	return target
+}
+
+fn (mut g Gen) gen_call(node flat.Node) WType {
+	callee := g.a.child_node(&node, 0)
+	if callee.kind == .ident {
+		name := callee.value
+		if name in ['println', 'print', 'eprintln', 'eprint'] {
+			g.gen_print_call(node, name)
+			return .void
+		}
+		if name in g.fn_index {
+			for i in 1 .. node.children_count {
+				pw := g.param_wtype(name, i - 1)
+				g.gen_expr_as(g.a.child(&node, i), pw)
+			}
+			g.cur.call(g.fn_index[name])
+			return g.fn_ret[name]
+		}
+		g.warn('unsupported call: ${name}')
+	} else {
+		g.warn('unsupported call target')
+	}
+	// keep the stack balanced for value contexts
+	g.cur.i32_const(0)
+	return .i32
+}
+
+fn (mut g Gen) param_wtype(name string, idx int) WType {
+	fnode := g.a.nodes[int(g.find_fn_node(name))]
+	mut pi := 0
+	for i in 0 .. fnode.children_count {
+		p := g.a.child_node(&fnode, i)
+		if p.kind != .param || p.value.len == 0 {
+			continue
+		}
+		if pi == idx {
+			return prim_wtype(g.tc.parse_type(p.typ)) or { WType.i32 }
+		}
+		pi++
+	}
+	return .i32
+}
+
+fn (g &Gen) find_fn_node(name string) flat.NodeId {
+	mut cur_module := ''
+	for i in 0 .. g.a.nodes.len {
+		node := g.a.nodes[i]
+		if node.kind == .file {
+			cur_module = ''
+		} else if node.kind == .module_decl {
+			cur_module = node.value
+		} else if node.kind == .fn_decl && i >= g.a.user_code_start && node.value == name
+			&& (cur_module == '' || cur_module == 'main') {
+			return flat.NodeId(i)
+		}
+	}
+	return flat.empty_node
+}
+
+// ---- print intrinsics ----
+
+fn (mut g Gen) gen_print_call(node flat.Node, name string) {
+	fd := if name.starts_with('e') { 2 } else { 1 }
+	newline := name.ends_with('ln')
+	if node.children_count < 2 {
+		if newline {
+			g.emit_write_const(nl_ptr, 1, fd)
+		}
+		return
+	}
+	arg_id := g.a.child(&node, 1)
+	arg := g.a.nodes[int(arg_id)]
+	if arg.kind == .string_literal {
+		bytes := decode_string(arg.value)
+		off := g.intern_data(bytes)
+		g.emit_write_const(off, bytes.len, fd)
+		if newline {
+			g.emit_write_const(nl_ptr, 1, fd)
+		}
+		return
+	}
+	if arg.kind == .call {
+		inner := g.a.child_node(&arg, 0)
+		if inner.kind == .ident && inner.value in int_format_fns && arg.children_count >= 2 {
+			g.gen_expr_as(g.a.child(&arg, 1), .i64)
+			g.cur.i32_const(fd)
+			g.cur.i32_const(if newline { 1 } else { 0 })
+			g.cur.call(g.print_int_idx)
+			return
+		}
+		if inner.kind == .ident && inner.value in bool_format_fns && arg.children_count >= 2 {
+			g.gen_print_bool(g.a.child(&arg, 1), fd, newline)
+			return
+		}
+	}
+	// integer expression passed directly (e.g. print(x))
+	w := g.expr_wtype(arg_id, '')
+	if w in [WType.i32, WType.i64] {
+		g.gen_expr_as(arg_id, .i64)
+		g.cur.i32_const(fd)
+		g.cur.i32_const(if newline { 1 } else { 0 })
+		g.cur.call(g.print_int_idx)
+		return
+	}
+	g.warn('unsupported ${name} argument: ${arg.kind}')
+}
+
+// gen_print_bool prints "true"/"false" based on the i32 truth value of arg.
+fn (mut g Gen) gen_print_bool(arg_id flat.NodeId, fd int, newline bool) {
+	true_off := g.intern_data('true'.bytes())
+	false_off := g.intern_data('false'.bytes())
+	g.gen_expr_as_bool(arg_id)
+	g.cur.if_void()
+	g.frames << Frame{.plain}
+	g.emit_write_const(true_off, 4, fd)
+	g.cur.else_()
+	g.emit_write_const(false_off, 5, fd)
+	g.cur.end()
+	g.frames.pop()
+	if newline {
+		g.emit_write_const(nl_ptr, 1, fd)
+	}
+}
+
+fn (mut g Gen) emit_write_const(ptr int, len int, fd int) {
+	g.cur.i32_const(ptr)
+	g.cur.i32_const(len)
+	g.cur.i32_const(fd)
+	g.cur.call(g.write_idx)
+}
+
+// emit_write_helper builds `__v_write(ptr, len, fd)` -> calls WASI fd_write.
+fn (mut g Gen) emit_write_helper(fd_write_idx int) {
+	mut c := Code{}
+	// iov[0] = ptr  (mem @ iov_ptr)
+	c.i32_const(iov_ptr)
+	c.local_get(0)
+	c.i32_store(0)
+	// iov[1] = len  (mem @ iov_ptr+4)
+	c.i32_const(iov_ptr)
+	c.local_get(1)
+	c.i32_store(4)
+	// fd_write(fd, iov_ptr, 1, nwritten_ptr)
+	c.local_get(2)
+	c.i32_const(iov_ptr)
+	c.i32_const(1)
+	c.i32_const(nwritten_ptr)
+	c.call(fd_write_idx)
+	c.drop()
+	c.end()
+	ti := g.mod.add_type([wasm.valtype_i32, wasm.valtype_i32, wasm.valtype_i32], [])
+	g.mod.add_func(ti, [], c.bytes)
+}
+
+// emit_print_int_helper builds `__v_print_int(val: i64, fd: i32, nl: i32)`.
+fn (mut g Gen) emit_print_int_helper() {
+	// params: val(0,i64) fd(1,i32) nl(2,i32)
+	// locals: p(3,i32) v(4,i64) neg(5,i32) digit(6,i64)
+	p := 3
+	v := 4
+	neg := 5
+	digit := 6
+	mut c := Code{}
+	// neg = val < 0
+	c.local_get(0)
+	c.i64_const(0)
+	c.raw(0x53) // i64.lt_s
+	c.local_set(neg)
+	// v = val
+	c.local_get(0)
+	c.local_set(v)
+	// if neg { v = 0 - v }
+	c.local_get(neg)
+	c.if_void()
+	c.i64_const(0)
+	c.local_get(v)
+	c.raw(0x7d) // i64.sub
+	c.local_set(v)
+	c.end()
+	// p = buf_end
+	c.i32_const(buf_end)
+	c.local_set(p)
+	// do { ... } while v != 0
+	c.loop_void()
+	c.local_get(p)
+	c.i32_const(1)
+	c.raw(0x6b) // i32.sub
+	c.local_set(p)
+	// digit = v % 10
+	c.local_get(v)
+	c.i64_const(10)
+	c.raw(0x82) // i64.rem_u
+	c.local_set(digit)
+	// mem8[p] = '0' + digit
+	c.local_get(p)
+	c.local_get(digit)
+	c.raw(0xa7) // i32.wrap_i64
+	c.i32_const(48)
+	c.raw(0x6a) // i32.add
+	c.i32_store8(0)
+	// v = v / 10
+	c.local_get(v)
+	c.i64_const(10)
+	c.raw(0x80) // i64.div_u
+	c.local_set(v)
+	// continue if v != 0
+	c.local_get(v)
+	c.i64_const(0)
+	c.raw(0x52) // i64.ne
+	c.br_if(0)
+	c.end() // loop
+	// if neg { p--; mem8[p]='-' }
+	c.local_get(neg)
+	c.if_void()
+	c.local_get(p)
+	c.i32_const(1)
+	c.raw(0x6b)
+	c.local_set(p)
+	c.local_get(p)
+	c.i32_const(45) // '-'
+	c.i32_store8(0)
+	c.end()
+	// __v_write(p, buf_end - p, fd)
+	c.local_get(p)
+	c.i32_const(buf_end)
+	c.local_get(p)
+	c.raw(0x6b) // i32.sub
+	c.local_get(1) // fd
+	c.call(g.write_idx)
+	// if nl { __v_write(nl_ptr, 1, fd) }
+	c.local_get(2)
+	c.if_void()
+	c.i32_const(nl_ptr)
+	c.i32_const(1)
+	c.local_get(1)
+	c.call(g.write_idx)
+	c.end()
+	c.end() // function
+	locals := [wasm.valtype_i32, wasm.valtype_i64, wasm.valtype_i32, wasm.valtype_i64]
+	ti := g.mod.add_type([wasm.valtype_i64, wasm.valtype_i32, wasm.valtype_i32], [])
+	g.mod.add_func(ti, locals, c.bytes)
+}
+
+fn (mut g Gen) intern_data(bytes []u8) int {
+	key := bytes.bytestr()
+	if key in g.data_off {
+		return g.data_off[key]
+	}
+	off := data_base + g.data_pool.len
+	g.data_pool << bytes
+	g.data_off[key] = off
+	return off
+}
+
+// ---- type helpers ----
+
+fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
+	if int(id) >= 0 {
+		node := g.a.nodes[int(id)]
+		// Locals are authoritative: our own table is more reliable than the
+		// shared checker scope, which the backend does not repopulate.
+		if node.kind == .ident && node.value in g.var_wtype {
+			return g.var_wtype[node.value]
+		}
+		if node.kind == .paren && node.children_count > 0 {
+			return g.expr_wtype(g.a.child(&node, 0), fallback_typ)
+		}
+		if node.kind == .cast_expr && node.value.len > 0 {
+			if w := prim_wtype(g.tc.parse_type(node.value)) {
+				return w
+			}
+		}
+		if node.kind == .infix && node.children_count >= 2 {
+			if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+				return .i32
+			}
+			return combine_wtype(g.expr_wtype(g.a.child(&node, 0), ''), g.expr_wtype(g.a.child(&node,
+				1), ''))
+		}
+		if node.kind == .prefix && node.children_count >= 1 {
+			if node.op == .not {
+				return .i32
+			}
+			return g.expr_wtype(g.a.child(&node, 0), fallback_typ)
+		}
+	}
+	t := g.tc.resolve_type(id)
+	if w := prim_wtype(t) {
+		if !(t is types.Void) {
+			return w
+		}
+	}
+	if fallback_typ.len > 0 && fallback_typ != 'void' {
+		if w := prim_wtype(g.tc.parse_type(fallback_typ)) {
+			return w
+		}
+	}
+	return .i32
+}
+
+fn (mut g Gen) operand_wtype(lhs_id flat.NodeId, rhs_id flat.NodeId) WType {
+	return combine_wtype(g.expr_wtype(lhs_id, ''), g.expr_wtype(rhs_id, ''))
+}
+
+// combine_wtype picks the widest of two value types (float beats int, 64 beats
+// 32), which is the shared operand/result width for a binary operation.
+fn combine_wtype(a WType, b WType) WType {
+	if a == .f64 || b == .f64 {
+		return .f64
+	}
+	if a == .f32 || b == .f32 {
+		return .f32
+	}
+	if a == .i64 || b == .i64 {
+		return .i64
+	}
+	return .i32
+}
+
+fn (mut g Gen) is_unsigned(id flat.NodeId) bool {
+	if int(id) >= 0 {
+		node := g.a.nodes[int(id)]
+		if node.kind == .ident && node.value in g.var_unsigned {
+			return g.var_unsigned[node.value]
+		}
+		if node.kind == .paren && node.children_count > 0 {
+			return g.is_unsigned(g.a.child(&node, 0))
+		}
+		if node.kind == .cast_expr && node.value.len > 0 {
+			return type_is_unsigned(g.tc.parse_type(node.value))
+		}
+	}
+	return type_is_unsigned(g.tc.resolve_type(id))
+}
+
+// decl_is_unsigned resolves the signedness of a declared variable's initializer.
+fn (mut g Gen) decl_is_unsigned(rhs_id flat.NodeId, fallback_typ string) bool {
+	if g.is_unsigned(rhs_id) {
+		return true
+	}
+	if fallback_typ.len > 0 {
+		return type_is_unsigned(g.tc.parse_type(fallback_typ))
+	}
+	return false
+}
+
+fn type_is_unsigned(t types.Type) bool {
+	if t is types.Primitive {
+		return t.props.has(.unsigned)
+	}
+	return t is types.USize
+}
+
+fn (mut g Gen) is_signed(id flat.NodeId) bool {
+	return !g.is_unsigned(id)
+}
+
+fn (mut g Gen) coerce(from WType, to WType, signed bool) {
+	if from == to || from == .void || to == .void {
+		return
+	}
+	match to {
+		.i64 {
+			if from == .i32 {
+				g.cur.raw(if signed { u8(0xac) } else { u8(0xad) }) // i64.extend_i32_s/u
+			} else if from == .f64 {
+				g.cur.raw(if signed { u8(0xb0) } else { u8(0xb1) }) // i64.trunc_f64_s/u
+			}
+		}
+		.i32 {
+			if from == .i64 {
+				g.cur.raw(0xa7) // i32.wrap_i64
+			} else if from == .f64 {
+				g.cur.raw(if signed { u8(0xaa) } else { u8(0xab) }) // i32.trunc_f64
+			}
+		}
+		.f64 {
+			match from {
+				.i32 { g.cur.raw(if signed { u8(0xb7) } else { u8(0xb8) }) }
+				.i64 { g.cur.raw(if signed { u8(0xb9) } else { u8(0xba) }) }
+				.f32 { g.cur.raw(0xbb) } // f64.promote_f32
+				else {}
+			}
+		}
+		.f32 {
+			match from {
+				.i32 { g.cur.raw(if signed { u8(0xb2) } else { u8(0xb3) }) }
+				.i64 { g.cur.raw(if signed { u8(0xb4) } else { u8(0xb5) }) }
+				.f64 { g.cur.raw(0xb6) } // f32.demote_f64
+				else {}
+			}
+		}
+		else {}
+	}
+}
+
+fn (mut g Gen) emit_arith(op flat.Op, w WType, signed bool) {
+	g.cur.raw(arith_op(op, w, signed))
+}
+
+fn (mut g Gen) warn(msg string) {
+	g.warnings << msg
+}
+
+// ---- free helpers ----
+
+fn wt_valtype(w WType) u8 {
+	return match w {
+		.i32, .void { wasm.valtype_i32 }
+		.i64 { wasm.valtype_i64 }
+		.f32 { wasm.valtype_f32 }
+		.f64 { wasm.valtype_f64 }
+	}
+}
+
+// prim_wtype maps a primitive/numeric/bool V type to a WASM value type, or none
+// for aggregate/reference types the backend cannot yet represent inline.
+fn prim_wtype(t types.Type) ?WType {
+	if t is types.Primitive {
+		if t.props.has(.float) {
+			return if t.size == 32 { WType.f32 } else { WType.f64 }
+		}
+		if t.props.has(.integer) {
+			return if t.size == 64 { WType.i64 } else { WType.i32 }
+		}
+		if t.props.has(.boolean) {
+			return WType.i32
+		}
+		return WType.i32
+	}
+	if t is types.Char || t is types.Rune || t is types.ISize || t is types.USize {
+		return WType.i32
+	}
+	return none
+}
+
+const int_format_fns = ['strconv__format_int', 'strconv__format_uint', 'int_str', 'i64_str',
+	'u32_str', 'u64_str', 'i8_str', 'i16_str', 'u8_str', 'u16_str']
+
+const bool_format_fns = ['bool.str', 'bool__str', 'bool_str']
+
+fn compound_to_op(op flat.Op) flat.Op {
+	return match op {
+		.plus_assign { flat.Op.plus }
+		.minus_assign { flat.Op.minus }
+		.mul_assign { flat.Op.mul }
+		.div_assign { flat.Op.div }
+		.mod_assign { flat.Op.mod }
+		.amp_assign { flat.Op.amp }
+		.pipe_assign { flat.Op.pipe }
+		.xor_assign { flat.Op.xor }
+		.left_shift_assign { flat.Op.left_shift }
+		.right_shift_assign { flat.Op.right_shift }
+		.right_shift_unsigned_assign { flat.Op.right_shift_unsigned }
+		else { flat.Op.plus }
+	}
+}
+
+fn arith_op(op flat.Op, w WType, signed bool) u8 {
+	match w {
+		.i64 {
+			return match op {
+				.plus { 0x7c }
+				.minus { 0x7d }
+				.mul { 0x7e }
+				.div { if signed { u8(0x7f) } else { u8(0x80) } }
+				.mod { if signed { u8(0x81) } else { u8(0x82) } }
+				.amp { 0x83 }
+				.pipe { 0x84 }
+				.xor { 0x85 }
+				.left_shift { 0x86 }
+				.right_shift { 0x87 }
+				.right_shift_unsigned { 0x88 }
+				else { 0x7c }
+			}
+		}
+		.f64 {
+			return match op {
+				.plus { 0xa0 }
+				.minus { 0xa1 }
+				.mul { 0xa2 }
+				.div { 0xa3 }
+				else { 0xa0 }
+			}
+		}
+		.f32 {
+			return match op {
+				.plus { 0x92 }
+				.minus { 0x93 }
+				.mul { 0x94 }
+				.div { 0x95 }
+				else { 0x92 }
+			}
+		}
+		else {
+			return match op {
+				.plus { 0x6a }
+				.minus { 0x6b }
+				.mul { 0x6c }
+				.div { if signed { u8(0x6d) } else { u8(0x6e) } }
+				.mod { if signed { u8(0x6f) } else { u8(0x70) } }
+				.amp { 0x71 }
+				.pipe { 0x72 }
+				.xor { 0x73 }
+				.left_shift { 0x74 }
+				.right_shift { if signed { u8(0x75) } else { u8(0x76) } }
+				.right_shift_unsigned { 0x76 }
+				else { 0x6a }
+			}
+		}
+	}
+}
+
+fn cmp_op(op flat.Op, w WType, signed bool) u8 {
+	match w {
+		.i64 {
+			return match op {
+				.eq { 0x51 }
+				.ne { 0x52 }
+				.lt { if signed { u8(0x53) } else { u8(0x54) } }
+				.gt { if signed { u8(0x55) } else { u8(0x56) } }
+				.le { if signed { u8(0x57) } else { u8(0x58) } }
+				.ge { if signed { u8(0x59) } else { u8(0x5a) } }
+				else { 0x51 }
+			}
+		}
+		.f64 {
+			return match op {
+				.eq { 0x61 }
+				.ne { 0x62 }
+				.lt { 0x63 }
+				.gt { 0x64 }
+				.le { 0x65 }
+				.ge { 0x66 }
+				else { 0x61 }
+			}
+		}
+		.f32 {
+			return match op {
+				.eq { 0x5b }
+				.ne { 0x5c }
+				.lt { 0x5d }
+				.gt { 0x5e }
+				.le { 0x5f }
+				.ge { 0x60 }
+				else { 0x5b }
+			}
+		}
+		else {
+			return match op {
+				.eq { 0x46 }
+				.ne { 0x47 }
+				.lt { if signed { u8(0x48) } else { u8(0x49) } }
+				.gt { if signed { u8(0x4a) } else { u8(0x4b) } }
+				.le { if signed { u8(0x4c) } else { u8(0x4d) } }
+				.ge { if signed { u8(0x4e) } else { u8(0x4f) } }
+				else { 0x46 }
+			}
+		}
+	}
+}
+
+fn parse_int_literal(s_ string) i64 {
+	mut s := s_.replace('_', '')
+	mut neg := false
+	if s.starts_with('-') {
+		neg = true
+		s = s[1..]
+	}
+	mut val := i64(0)
+	if s.starts_with('0x') || s.starts_with('0X') {
+		val = i64(s[2..].parse_uint(16, 64) or { 0 })
+	} else if s.starts_with('0o') || s.starts_with('0O') {
+		val = i64(s[2..].parse_uint(8, 64) or { 0 })
+	} else if s.starts_with('0b') || s.starts_with('0B') {
+		val = i64(s[2..].parse_uint(2, 64) or { 0 })
+	} else {
+		val = s.i64()
+	}
+	return if neg { -val } else { val }
+}
+
+fn decode_string(s string) []u8 {
+	mut out := []u8{}
+	mut i := 0
+	for i < s.len {
+		c := s[i]
+		if c == `\\` && i + 1 < s.len {
+			n := s[i + 1]
+			match n {
+				`n` { out << 0x0a }
+				`t` { out << 0x09 }
+				`r` { out << 0x0d }
+				`0` { out << 0x00 }
+				`\\` { out << `\\` }
+				`'` { out << `'` }
+				`"` { out << `"` }
+				else { out << n }
+			}
+			i += 2
+			continue
+		}
+		out << c
+		i++
+	}
+	return out
+}

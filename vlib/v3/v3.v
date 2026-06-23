@@ -6,6 +6,7 @@ import v3.eval
 import v3.flat
 import v3.gen.arm64
 import v3.gen.c as cgen
+import v3.gen.wasm
 import v3.markused
 import v3.parser
 import v3.pref
@@ -192,6 +193,9 @@ fn main() {
 	if output_file == '' {
 		bin_file = input_file.all_before_last('.v')
 		output_file = bin_file + '.c'
+	} else if backend == 'wasm' {
+		// The wasm backend writes the binary itself; keep the path as given.
+		bin_file = output_file.all_before_last('.wasm')
 	} else if backend == 'c' && output_file.ends_with('.c') {
 		c_only = true
 		bin_file = output_file.all_before_last('.c')
@@ -291,6 +295,28 @@ fn main() {
 	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
 	pre_tc.annotate_types()
 	b.step('annotate types')
+
+	if backend == 'wasm' {
+		// Direct flat-AST-to-WASM native backend. Runs before monomorphize (which
+		// targets generics, not yet supported here).
+		mut g := wasm.Gen.new(a, pre_tc, used_fns)
+		g.gen()
+		wasm_out := if output_file.ends_with('.wasm') {
+			output_file
+		} else {
+			bin_file + '.wasm'
+		}
+		g.write(wasm_out) or {
+			eprintln('error writing ${wasm_out}')
+			exit(1)
+		}
+		for w in g.warnings_list() {
+			eprintln('wasm: ${w}')
+		}
+		b.step('wasm gen')
+		b.print_report()
+		return
+	}
 
 	// Monomorphization only adds specialized generic instantiations to `used_fns`. The V
 	// compiler sources use no generics, so when building V we skip the pass entirely

@@ -3,10 +3,11 @@
 Clean rewrite of the V compiler. Reuses v2's scanner, uses a flat AST parser
 with Pratt parsing, a structured type system with sum-type variants, lexical
 scoping, a transformer for AST simplification, a shared type-checking phase, a
-markused pass for dead-code elimination, recursive import resolution, and two
-backends: a direct flat-AST-to-C backend and a native ARM64 backend via SSA IR
-with a built-in linker. With `-prod`, the ARM64 backend runs SSA optimization,
-MIR lowering, and instruction selection.
+markused pass for dead-code elimination, recursive import resolution, and three
+backends: a direct flat-AST-to-C backend, a native ARM64 backend via SSA IR with
+a built-in linker, and a direct flat-AST-to-WebAssembly backend. With `-prod`,
+the ARM64 backend runs SSA optimization, MIR lowering, and instruction
+selection.
 
 Imports all `vlib/builtin/` V source files, both pure V (`.v`) and C-interop
 (`.c.v`), for struct, enum, type alias, interface, C function declarations, and
@@ -63,8 +64,24 @@ repeats until no new imports are found.
 source + vlib/builtin -> scanner -> flat parser -> flat AST -> imports
   -> check -> transform -> annotate types -> markused -> gen C -> cc
                                           \-> SSA build -> ARM64 gen -> link
-                                                       \-> optimize -> MIR -> insel (-prod)
+                                          |            \-> optimize -> MIR -> insel (-prod)
+                                          \-> gen WASM -> .wasm
 ```
+
+The WebAssembly backend (`-b wasm`) walks the flat AST directly, like the C
+backend, since WASM's structured control flow (`block`/`loop`/`if`/`br`) maps
+cleanly from the tree and needs no relooping. It emits a self-contained `.wasm`
+module via its own minimal binary encoder (LEB128 + section assembly, mirroring
+how the ARM64 backend ships its own `asm`/`macho`/`linker`), so v3 stays
+self-contained. The current scope is the integer/float core: functions with
+numeric/bool params and locals, arithmetic, comparison, logical (short-circuit),
+bitwise and shift operators, casts, `if`/`else`/`else if`, all `for` forms with
+`break`/`continue`, direct calls, and recursion. `print`/`println` of string
+literals, integers, and booleans is provided through WASI `fd_write` with a
+built-in `itoa` helper. The module is a WASI command (`_start` calls `main`) and
+also exports every compiled function for direct testing. Generics, strings as
+values, structs, arrays, and maps are out of scope for now. Output runs under any
+WASI runtime (e.g. `node:wasi`).
 
 The parser directly emits a flat AST. There is no recursive AST intermediate and
 no flatten step. All nodes live in a single `[]Node` array with children as
