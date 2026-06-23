@@ -1836,6 +1836,7 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#include <stdlib.h>')
 	g.writeln('#include <string.h>')
 	g.writeln('#include <stddef.h>')
+	g.writeln('#include <stdint.h>') // guarantees UINTPTR_MAX for the pointer-width atomic helpers
 	g.writeln('#include <math.h>')
 	g.writeln('#include <unistd.h>')
 	if g.has_builtins {
