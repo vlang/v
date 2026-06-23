@@ -216,7 +216,24 @@ fn main() {
 		} else {
 			'-w'
 		}
+		// Compile inside a per-output build dir, using constant relative source/output basenames,
+		// then move the result to bin_file. On macOS arm64 tcc bakes the -o basename into the
+		// ad-hoc code-signature identifier and the input .c path into the symbol table, so building
+		// `v5.c`->`v5` vs `v6.c`->`v6` directly would make the binaries differ only by those embedded
+		// names (plus the code-directory hashes covering them). Compiling fixed `src.c`->`out` keeps
+		// those embedded names identical, so the self-host chain is byte-for-byte reproducible
+		// (v5 == v6). The build dir is unique per output and never embedded (we cd into it), so
+		// parallel compilations into a shared directory never clobber each other.
+		cc_dir := '${bin_file}.v3cc'
+		os.mkdir(cc_dir) or {}
+		cc_src := os.join_path_single(cc_dir, 'src.c')
+		cc_out := os.join_path_single(cc_dir, 'out')
+		if !write_text_file_raw(cc_src, c_code) {
+			eprintln('error writing ${cc_src}')
+			exit(1)
+		}
 		mut cc_cmd := ''
+		mut exec_cmd := ''
 		mut result := os.Result{}
 		if !is_prod {
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
@@ -225,22 +242,30 @@ fn main() {
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
 			cc_cmd = '${tcc_path} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file} -lm'
+			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${tcc_includes} ${tcc_lib} ${warn_flags} -o out src.c -lm'
 			println('  > ${cc_cmd}')
-			result = run_compile_command(cc_cmd)
+			result = run_compile_command(exec_cmd)
 		}
 		if is_prod || result.exit_code != 0 {
 			if result.exit_code != 0 && result.output.len > 0 {
 				eprintln('  tcc error: ${result.output.trim_space()}')
 			}
 			cc_cmd = 'cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion -Wl,-stack_size,0x4000000 -o ${bin_file} ${output_file} -lm'
+			exec_cmd = 'cd ${cc_dir} && cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion -Wl,-stack_size,0x4000000 -o out src.c -lm'
 			println('  > ${cc_cmd}')
-			result = run_compile_command(cc_cmd)
+			result = run_compile_command(exec_cmd)
 			if result.exit_code != 0 {
 				eprintln('C compilation failed:')
 				eprintln(result.output)
 				exit(1)
 			}
 		}
+		os.mv(cc_out, bin_file) or {
+			eprintln('failed to finalize ${bin_file}: ${err}')
+			exit(1)
+		}
+		os.rm(cc_src) or {}
+		os.rmdir(cc_dir) or {}
 		b.step('cc')
 	}
 
