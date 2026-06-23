@@ -159,6 +159,69 @@ fn test_wasm_signed_compound_float_postfix_and_u64_literal() {
 	}
 }
 
+fn test_wasm_string_literal_escapes_not_double_decoded() {
+	v3_bin := v3_binary()
+	// The parser already unescapes literals, so `'a\\nb'` is the four bytes
+	// a, backslash, n, b and must print verbatim (not as a newline). Compare
+	// against the C backend to avoid escape miscounts.
+	src := "fn main() {\n\tprintln('a\\\\nb')\n\tprintln('c\\nd')\n}\n"
+	src_path := os.join_path(os.vtmp_dir(), 'wasm_esc.v')
+	os.write_file(src_path, src) or { panic(err) }
+	c_bin := os.join_path(os.vtmp_dir(), 'wasm_esc_c')
+	cres := os.execute('${os.quoted_path(v3_bin)} -b c -o ${os.quoted_path(c_bin)} ${os.quoted_path(src_path)}')
+	assert cres.exit_code == 0, cres.output
+	cout := os.execute(os.quoted_path(c_bin))
+	assert cout.exit_code == 0, cout.output
+
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_esc')
+	assert_valid_wasm(wasm)
+	node := node_path() or { return }
+	runner := os.join_path(os.vtmp_dir(), 'wasm_run_wasi.mjs')
+	os.write_file(runner, wasi_runner_js) or { panic(err) }
+	wres := run_node(node, runner, wasm)
+	assert wres.exit_code == 0, wres.output
+	wlines := wres.output.split_into_lines().map(it.trim_space()).filter(it.len > 0)
+	clines := cout.output.split_into_lines().map(it.trim_space()).filter(it.len > 0)
+	assert wlines.len >= clines.len, wres.output
+	for i, want in clines {
+		got := wlines[wlines.len - clines.len + i]
+		assert got == want, 'line ${i}: wasm ${got} != c ${want}'
+	}
+}
+
+fn test_wasm_imported_module_numeric_call() {
+	v3_bin := v3_binary()
+	dir := os.join_path(os.vtmp_dir(), 'wasm_modtest')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'import moda\n\nfn main() {\n\tprintln(moda.answer())\n\tprintln(moda.add(3, 4))\n}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'moda', 'moda.v'), 'module moda\n\npub fn answer() int {\n\treturn 42\n}\n\npub fn add(a int, b int) int {\n\treturn a + b\n}\n') or {
+		panic(err)
+	}
+	out_wasm := os.join_path(dir, 'main.wasm')
+	main_v := os.join_path(dir, 'main.v')
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+	assert res.exit_code == 0, res.output
+	assert_valid_wasm(out_wasm)
+	// No fallback warnings: the imported module calls must resolve.
+	assert !res.output.contains('unsupported call'), res.output
+
+	node := node_path() or { return }
+	runner := os.join_path(os.vtmp_dir(), 'wasm_run_wasi.mjs')
+	os.write_file(runner, wasi_runner_js) or { panic(err) }
+	rres := run_node(node, runner, out_wasm)
+	assert rres.exit_code == 0, rres.output
+	lines := rres.output.split_into_lines().map(it.trim_space()).filter(it.len > 0)
+	expected := ['42', '7']
+	assert lines.len >= expected.len, rres.output
+	for i, want in expected {
+		got := lines[lines.len - expected.len + i]
+		assert got == want, 'line ${i}: got ${got}, want ${want} (full: ${rres.output})'
+	}
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });

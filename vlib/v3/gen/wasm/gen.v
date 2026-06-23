@@ -65,9 +65,10 @@ mut:
 	var_unsigned map[string]bool
 	frames       []Frame
 	cur_ret     WType
-	// module-wide
+	// module-wide; keyed by qualified function name (see qualified_fn_key)
 	fn_index  map[string]int
 	fn_ret    map[string]WType
+	fn_params map[string][]WType
 	data_pool []u8
 	data_off  map[string]int
 	uses_print bool
@@ -107,8 +108,10 @@ pub fn (mut g Gen) gen() {
 	}
 	for i, f in user_fns {
 		idx := g.mod.reserve_func_index(defined + i)
-		g.fn_index[f.name] = idx
-		g.fn_ret[f.name] = f.ret
+		key := qualified_fn_key(f.module, f.name)
+		g.fn_index[key] = idx
+		g.fn_ret[key] = f.ret
+		g.fn_params[key] = f.params
 		if f.name == 'main' && (f.module == '' || f.module == 'main') {
 			g.has_main = true
 		}
@@ -134,7 +137,8 @@ pub fn (mut g Gen) gen() {
 	// 5. exports + memory sizing + data.
 	g.mod.add_export('memory', wasm.export_mem, 0)
 	for f in user_fns {
-		g.mod.add_export(f.name, wasm.export_func, g.fn_index[f.name])
+		g.mod.add_export(export_fn_name(f.module, f.name), wasm.export_func, g.fn_index[qualified_fn_key(f.module,
+			f.name)])
 	}
 	if start_idx >= 0 {
 		g.mod.add_export('_start', wasm.export_func, start_idx)
@@ -163,7 +167,10 @@ pub fn (mut g Gen) write(path string) ! {
 // ---- function collection ----
 
 fn (mut g Gen) collect_user_fns() []FnInfo {
-	mut out := []FnInfo{}
+	// 1. Gather every candidate (primitive-signature, non-generic) function in
+	//    user code, keyed by qualified name, preserving source order.
+	mut candidates := map[string]FnInfo{}
+	mut order := []string{}
 	mut cur_module := ''
 	for i in 0 .. g.a.nodes.len {
 		node := g.a.nodes[i]
@@ -178,20 +185,78 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 				if i < g.a.user_code_start {
 					continue
 				}
-				if cur_module != '' && cur_module != 'main' {
-					continue
-				}
 				if node.generic_params.len > 0 || node.value == '' {
 					continue
 				}
 				if fi := g.fn_info(node, flat.NodeId(i), cur_module) {
-					out << fi
+					key := qualified_fn_key(cur_module, node.value)
+					if key !in candidates {
+						candidates[key] = fi
+						order << key
+					}
 				}
 			}
 			else {}
 		}
 	}
+
+	// 2. Seed with every main-module candidate (all of them are compiled and
+	//    exported), then BFS-follow direct calls into imported-module
+	//    candidates. This deliberately ignores markused reachability: builtins
+	//    such as strconv__format_int are intercepted by the print path and
+	//    never emitted as real calls, so their numeric helpers must not be
+	//    pulled in.
+	mut reached := map[string]bool{}
+	mut work := []string{}
+	for key in order {
+		f := candidates[key]
+		if f.module == '' || f.module == 'main' {
+			reached[key] = true
+			work << key
+		}
+	}
+	for work.len > 0 {
+		f := candidates[work.pop()]
+		for callee_key in g.called_candidate_keys(f, candidates) {
+			if callee_key !in reached {
+				reached[callee_key] = true
+				work << callee_key
+			}
+		}
+	}
+
+	// 3. Emit reached functions in source order for deterministic indices.
+	mut out := []FnInfo{}
+	for key in order {
+		if reached[key] {
+			out << candidates[key]
+		}
+	}
 	return out
+}
+
+// called_candidate_keys returns the qualified keys of the candidate functions
+// directly called inside f's body (calls to non-candidates such as intercepted
+// builtins are ignored).
+fn (g &Gen) called_candidate_keys(f FnInfo, candidates map[string]FnInfo) []string {
+	mut keys := []string{}
+	g.collect_call_keys(g.a.nodes[int(f.node_id)], candidates, mut keys)
+	return keys
+}
+
+fn (g &Gen) collect_call_keys(node flat.Node, candidates map[string]FnInfo, mut keys []string) {
+	if node.kind == .call && node.children_count > 0 {
+		key := g.resolve_call_key(g.a.child_node(&node, 0))
+		if key.len > 0 && key in candidates {
+			keys << key
+		}
+	}
+	for i in 0 .. node.children_count {
+		cid := g.a.child(&node, i)
+		if int(cid) >= 0 {
+			g.collect_call_keys(g.a.nodes[int(cid)], candidates, mut keys)
+		}
+	}
 }
 
 // fn_info extracts a compilable signature, or none if the function uses types
@@ -757,59 +822,43 @@ fn (mut g Gen) gen_cast(node flat.Node) WType {
 
 fn (mut g Gen) gen_call(node flat.Node) WType {
 	callee := g.a.child_node(&node, 0)
+	if callee.kind == .ident && callee.value in ['println', 'print', 'eprintln', 'eprint'] {
+		g.gen_print_call(node, callee.value)
+		return .void
+	}
+	key := g.resolve_call_key(callee)
+	if key.len > 0 && key in g.fn_index {
+		params := g.fn_params[key]
+		for i in 1 .. node.children_count {
+			pw := if i - 1 < params.len { params[i - 1] } else { WType.i32 }
+			g.gen_expr_as(g.a.child(&node, i), pw)
+		}
+		g.cur.call(g.fn_index[key])
+		return g.fn_ret[key]
+	}
 	if callee.kind == .ident {
-		name := callee.value
-		if name in ['println', 'print', 'eprintln', 'eprint'] {
-			g.gen_print_call(node, name)
-			return .void
-		}
-		if name in g.fn_index {
-			for i in 1 .. node.children_count {
-				pw := g.param_wtype(name, i - 1)
-				g.gen_expr_as(g.a.child(&node, i), pw)
-			}
-			g.cur.call(g.fn_index[name])
-			return g.fn_ret[name]
-		}
-		g.warn('unsupported call: ${name}')
+		g.warn('unsupported call: ${callee.value}')
 	} else {
-		g.warn('unsupported call target')
+		g.warn('unsupported call target: ${key}')
 	}
 	// keep the stack balanced for value contexts
 	g.cur.i32_const(0)
 	return .i32
 }
 
-fn (mut g Gen) param_wtype(name string, idx int) WType {
-	fnode := g.a.nodes[int(g.find_fn_node(name))]
-	mut pi := 0
-	for i in 0 .. fnode.children_count {
-		p := g.a.child_node(&fnode, i)
-		if p.kind != .param || p.value.len == 0 {
-			continue
-		}
-		if pi == idx {
-			return prim_wtype(g.tc.parse_type(p.typ)) or { WType.i32 }
-		}
-		pi++
+// resolve_call_key maps a callee node to its qualified fn_index key: a bare
+// name for unqualified idents, or `module.name` for `module.fn()` selectors.
+fn (g &Gen) resolve_call_key(callee &flat.Node) string {
+	if callee.kind == .ident {
+		return callee.value
 	}
-	return .i32
-}
-
-fn (g &Gen) find_fn_node(name string) flat.NodeId {
-	mut cur_module := ''
-	for i in 0 .. g.a.nodes.len {
-		node := g.a.nodes[i]
-		if node.kind == .file {
-			cur_module = ''
-		} else if node.kind == .module_decl {
-			cur_module = node.value
-		} else if node.kind == .fn_decl && i >= g.a.user_code_start && node.value == name
-			&& (cur_module == '' || cur_module == 'main') {
-			return flat.NodeId(i)
+	if callee.kind == .selector && callee.children_count > 0 {
+		base := g.a.child_node(callee, 0)
+		if base.kind == .ident {
+			return '${base.value}.${callee.value}'
 		}
 	}
-	return flat.empty_node
+	return ''
 }
 
 // ---- print intrinsics ----
@@ -826,7 +875,9 @@ fn (mut g Gen) gen_print_call(node flat.Node, name string) {
 	arg_id := g.a.child(&node, 1)
 	arg := g.a.nodes[int(arg_id)]
 	if arg.kind == .string_literal {
-		bytes := decode_string(arg.value)
+		// arg.value is already unescaped by the parser (strip_quotes ->
+		// unescape_string); use the bytes as-is, no second escape pass.
+		bytes := arg.value.bytes()
 		off := g.intern_data(bytes)
 		g.emit_write_const(off, bytes.len, fd)
 		if newline {
@@ -1188,6 +1239,24 @@ fn wt_valtype(w WType) u8 {
 	}
 }
 
+// qualified_fn_key keys fn_index/fn_ret/fn_params: a bare name for the main
+// module, `module.name` for imported modules (matching call-site selectors).
+fn qualified_fn_key(mod string, name string) string {
+	if mod == '' || mod == 'main' {
+		return name
+	}
+	return '${mod}.${name}'
+}
+
+// export_fn_name is the wasm export name for a function (`.` is replaced so the
+// name is convenient to reference from a host like JS).
+fn export_fn_name(mod string, name string) string {
+	if mod == '' || mod == 'main' {
+		return name
+	}
+	return '${mod}__${name}'
+}
+
 // prim_wtype maps a primitive/numeric/bool V type to a WASM value type, or none
 // for aggregate/reference types the backend cannot yet represent inline.
 fn prim_wtype(t types.Type) ?WType {
@@ -1358,30 +1427,4 @@ fn parse_int_literal(s_ string) i64 {
 		val = i64(s.parse_uint(10, 64) or { 0 })
 	}
 	return if neg { -val } else { val }
-}
-
-fn decode_string(s string) []u8 {
-	mut out := []u8{}
-	mut i := 0
-	for i < s.len {
-		c := s[i]
-		if c == `\\` && i + 1 < s.len {
-			n := s[i + 1]
-			match n {
-				`n` { out << 0x0a }
-				`t` { out << 0x09 }
-				`r` { out << 0x0d }
-				`0` { out << 0x00 }
-				`\\` { out << `\\` }
-				`'` { out << `'` }
-				`"` { out << `"` }
-				else { out << n }
-			}
-			i += 2
-			continue
-		}
-		out << c
-		i++
-	}
-	return out
 }
