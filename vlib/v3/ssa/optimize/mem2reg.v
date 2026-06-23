@@ -17,6 +17,7 @@ mut:
 	phi_blocks     []int
 }
 
+// array2d_append supports array2d append handling for optimize.
 fn array2d_append(mut arr [][]int, idx int, val int) {
 	mut inner := arr[idx]
 	inner << val
@@ -200,6 +201,7 @@ fn is_promotable(m &ssa.Module, alloc_id int) bool {
 	return true
 }
 
+// compute_dominance_frontier_flat supports compute dominance frontier flat handling for optimize.
 fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cfg &CfgData, mut df [][]int, mut df_blocks []int) {
 	func := m.funcs[func_idx]
 	for blk_id in func.blocks {
@@ -231,6 +233,7 @@ fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cf
 	}
 }
 
+// RenameFrame represents rename frame data used by optimize.
 struct RenameFrame {
 mut:
 	blk_id        int
@@ -239,6 +242,7 @@ mut:
 	processed     bool
 }
 
+// rename_blocks supports rename blocks handling for optimize.
 fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo, cfg &CfgData) {
 	mut work := []RenameFrame{}
 	work << RenameFrame{

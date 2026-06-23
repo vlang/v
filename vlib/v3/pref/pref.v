@@ -2,6 +2,7 @@ module pref
 
 import os
 
+// Preferences represents preferences data used by pref.
 pub struct Preferences {
 pub mut:
 	verbose      bool
@@ -12,10 +13,12 @@ pub mut:
 	vroot        string = detect_vroot()
 }
 
+// new_preferences supports new preferences handling for pref.
 pub fn new_preferences() &Preferences {
 	return &Preferences{}
 }
 
+// detect_vroot resolves detect vroot information for pref.
 fn detect_vroot() string {
 	baked_root := @VMODROOT
 	if baked_root.len > 0 {
@@ -30,6 +33,7 @@ fn detect_vroot() string {
 	return detect_vroot_from(os.getwd())
 }
 
+// detect_vroot_from resolves detect vroot from information for pref.
 fn detect_vroot_from(start string) string {
 	if start.len == 0 {
 		return ''
@@ -57,11 +61,13 @@ fn detect_vroot_from(start string) string {
 	return ''
 }
 
+// get_vlib_module_path returns get vlib module path data for Preferences.
 pub fn (p &Preferences) get_vlib_module_path(mod string) string {
 	mod_path := mod.replace('.', os.path_separator)
 	return os.join_path_single(os.join_path_single(p.vroot, 'vlib'), mod_path)
 }
 
+// get_module_path returns get module path data for Preferences.
 pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) string {
 	mod_path := mod.replace('.', os.path_separator)
 	relative_path := os.join_path_single(os.dir(importing_file_path), mod_path)
@@ -75,6 +81,7 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	return ''
 }
 
+// file_has_incompatible_os_suffix converts file has incompatible os suffix data for pref.
 pub fn file_has_incompatible_os_suffix(file string, current_os string) bool {
 	os_name := normalized_os(current_os)
 	if os_name == 'windows' && file.contains('_nix.') {
@@ -121,6 +128,7 @@ pub fn file_has_incompatible_os_suffix(file string, current_os string) bool {
 	return false
 }
 
+// get_v_files_from_dir returns get v files from dir data for pref.
 pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string) []string {
 	if dir == '' || !os.is_dir(dir) {
 		return []string{}
@@ -167,6 +175,7 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 	return v_files
 }
 
+// default_file_base supports default file base handling for pref.
 fn default_file_base(file string) ?string {
 	for marker in ['_default.c.v', '_default.v'] {
 		if file.ends_with(marker) {
@@ -176,6 +185,7 @@ fn default_file_base(file string) ?string {
 	return none
 }
 
+// os_specific_base supports os specific base handling for pref.
 fn os_specific_base(file string, target_os string) ?string {
 	if _ := default_file_base(file) {
 		return none
@@ -235,6 +245,7 @@ fn os_specific_base(file string, target_os string) ?string {
 	return none
 }
 
+// extract_define_feature supports extract define feature handling for pref.
 fn extract_define_feature(file string, marker string) string {
 	idx := file.index(marker) or { return '' }
 	rest := file[idx + marker.len..]
@@ -247,6 +258,7 @@ fn extract_define_feature(file string, marker string) string {
 	return rest
 }
 
+// normalized_os supports normalized os handling for pref.
 pub fn normalized_os(target_os string) string {
 	return match target_os {
 		'darwin' { 'macos' }
@@ -255,14 +267,17 @@ pub fn normalized_os(target_os string) string {
 	}
 }
 
+// normalized_target_os supports normalized target os handling for Preferences.
 pub fn (p &Preferences) normalized_target_os() string {
 	return normalized_os(p.target_os)
 }
 
+// is_cross_target reports whether is cross target applies in pref.
 pub fn (p &Preferences) is_cross_target() bool {
 	return p.normalized_target_os() != normalized_os(os.user_os())
 }
 
+// comptime_flag_value supports comptime flag value handling for pref.
 pub fn comptime_flag_value(p &Preferences, name string) bool {
 	match name {
 		'macos', 'darwin', 'mac' {
@@ -349,6 +364,7 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 	}
 }
 
+// comptime_optional_flag_value supports comptime optional flag value handling for pref.
 pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	if name in p.user_defines {
 		return true
@@ -356,6 +372,7 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	return comptime_flag_value(p, name)
 }
 
+// comptime_pkgconfig_value supports comptime pkgconfig value handling for pref.
 pub fn comptime_pkgconfig_value(name string) bool {
 	result := os.execute('pkg-config --exists ${name}')
 	return result.exit_code == 0

@@ -36,6 +36,7 @@ fn cfg_data_from_module(m &ssa.Module) CfgData {
 
 // --- Dominators (Lengauer-Tarjan) ---
 
+// LTContext stores ltcontext state used by optimize.
 struct LTContext {
 mut:
 	parent   []int
@@ -50,6 +51,7 @@ mut:
 	n        int
 }
 
+// DfsFrame represents dfs frame data used by optimize.
 struct DfsFrame {
 mut:
 	node     int
@@ -255,6 +257,7 @@ fn compute_dominators(mut m ssa.Module, cfg &CfgData) DomInfo {
 	}
 }
 
+// lt_dfs supports lt dfs handling for optimize.
 fn lt_dfs(root int, cfg &CfgData, mut ctx LTContext) {
 	if root < 0 || root >= ctx.dfnum.len {
 		return
@@ -305,6 +308,7 @@ fn lt_dfs(root int, cfg &CfgData, mut ctx LTContext) {
 	}
 }
 
+// compress supports compress handling for LTContext.
 fn (mut ctx LTContext) compress(v int) {
 	if v < 0 || v >= ctx.ancestor.len {
 		return
@@ -353,6 +357,7 @@ fn (mut ctx LTContext) compress(v int) {
 	}
 }
 
+// eval supports eval handling for LTContext.
 fn (mut ctx LTContext) eval(v int) int {
 	if v < 0 || v >= ctx.ancestor.len {
 		if v >= 0 && v < ctx.label.len {
@@ -390,6 +395,7 @@ fn (mut ctx LTContext) eval(v int) int {
 	return label_av
 }
 
+// link supports link handling for LTContext.
 fn (mut ctx LTContext) link(v int, w int) {
 	ctx.ancestor[w] = v
 }

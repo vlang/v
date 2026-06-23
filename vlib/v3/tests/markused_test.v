@@ -12,6 +12,7 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
+// parse_checked_source reads parse checked source input for v3 tests.
 fn parse_checked_source(name string, source string) (&flat.FlatAst, &types.TypeChecker) {
 	src := os.join_path(os.temp_dir(), 'v3_markused_${name}.v')
 	os.write_file(src, source) or { panic(err) }
@@ -63,11 +64,13 @@ fn parse_checked_project(name string, files map[string]string, main_file string)
 	return a, &tc
 }
 
+// mark_used_source updates mark used source state for v3 tests.
 fn mark_used_source(name string, source string) map[string]bool {
 	a, tc := parse_checked_source(name, source)
 	return markused.mark_used(a, tc)
 }
 
+// build_v3_bin builds v3 bin data for v3 tests.
 fn build_v3_bin(name string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_${name}')
 	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
@@ -75,6 +78,7 @@ fn build_v3_bin(name string) string {
 	return v3_bin
 }
 
+// test_map_literals_seed_new_map_runtime_helper validates this v3 regression case.
 fn test_map_literals_seed_new_map_runtime_helper() {
 	used := mark_used_source('map_literal_new_map', '
 fn make_map() map[string]int {
@@ -88,6 +92,7 @@ fn main() {
 	assert used['new_map']
 }
 
+// test_optional_map_or_seeds_new_map_runtime_helper validates this v3 regression case.
 fn test_optional_map_or_seeds_new_map_runtime_helper() {
 	used := mark_used_source('option_map_or_new_map', '
 fn maybe_map() ?map[string]int {
@@ -102,6 +107,7 @@ fn main() {
 	assert used['new_map']
 }
 
+// test_string_membership_seeds_contains_runtime_helpers validates this v3 regression case.
 fn test_string_membership_seeds_contains_runtime_helpers() {
 	used := mark_used_source('string_membership_contains', '
 fn has_needle() bool {
@@ -116,6 +122,8 @@ fn main() {
 	assert used['string__contains_u8']
 }
 
+// test_string_interpolation_seeds_string_plus_and_formatter_helpers
+// validates this v3 regression case.
 fn test_string_interpolation_seeds_string_plus_and_formatter_helpers() {
 	used := mark_used_source('string_interp_plus_formatter', '
 fn message(name string) string {
@@ -130,6 +138,7 @@ fn main() {
 	assert used['bool.str']
 }
 
+// test_print_bool_seeds_formatter_runtime_helper validates this v3 regression case.
 fn test_print_bool_seeds_formatter_runtime_helper() {
 	used := mark_used_source('print_bool_formatter', '
 fn println(s string) {}
@@ -141,6 +150,7 @@ fn main() {
 	assert used['bool.str']
 }
 
+// test_string_compound_assign_seeds_string_plus_runtime_helper validates this v3 regression case.
 fn test_string_compound_assign_seeds_string_plus_runtime_helper() {
 	used := mark_used_source('string_plus_assign', '
 fn main() {
@@ -396,6 +406,7 @@ fn test_flag_default_value_lowering_keeps_escape_helper() {
 	assert c_code.contains('escape_default_string(')
 }
 
+// test_return_local_address_seeds_memdup_runtime_helper validates this v3 regression case.
 fn test_return_local_address_seeds_memdup_runtime_helper() {
 	used := mark_used_source('return_local_address_memdup', '
 struct Box {
@@ -416,6 +427,7 @@ fn main() {
 	assert used['memdup']
 }
 
+// test_map_literals_lower_to_new_map_after_used_filter_transform validates this v3 regression case.
 fn test_map_literals_lower_to_new_map_after_used_filter_transform() {
 	mut a, mut tc := parse_checked_source('map_literal_new_map_cgen', '
 fn make_map() map[string]int {
@@ -437,6 +449,8 @@ fn main() {
 	assert c_code.contains('new_map(sizeof(string), sizeof(int)')
 }
 
+// test_optional_map_or_lowers_to_new_map_after_used_filter_transform
+// validates this v3 regression case.
 fn test_optional_map_or_lowers_to_new_map_after_used_filter_transform() {
 	mut a, mut tc := parse_checked_source('option_map_or_new_map_cgen', '
 fn maybe_map() ?map[string]int {
@@ -459,6 +473,8 @@ fn main() {
 	assert c_code.contains('new_map(sizeof(string), sizeof(int)')
 }
 
+// test_string_membership_lowers_to_contains_after_used_filter_transform
+// validates this v3 regression case.
 fn test_string_membership_lowers_to_contains_after_used_filter_transform() {
 	mut a, mut tc := parse_checked_source('string_membership_contains_cgen', '
 fn has_needle() bool {
@@ -481,6 +497,8 @@ fn main() {
 	assert c_code.contains('string__contains(')
 }
 
+// test_string_compound_assign_lowers_to_plus_after_used_filter_transform
+// validates this v3 regression case.
 fn test_string_compound_assign_lowers_to_plus_after_used_filter_transform() {
 	mut a, mut tc := parse_checked_source('string_plus_assign_cgen', '
 fn main() {
@@ -500,6 +518,8 @@ fn main() {
 	assert c_code.contains('string__plus(')
 }
 
+// test_string_interpolation_lowers_to_formatter_after_used_filter_transform
+// validates this v3 regression case.
 fn test_string_interpolation_lowers_to_formatter_after_used_filter_transform() {
 	mut a, mut tc := parse_checked_source('string_interp_formatter_cgen', '
 fn main() {
@@ -517,6 +537,8 @@ fn main() {
 	assert c_code.contains('bool__str(')
 }
 
+// test_print_bool_lowers_to_formatter_after_used_filter_transform
+// validates this v3 regression case.
 fn test_print_bool_lowers_to_formatter_after_used_filter_transform() {
 	mut a, mut tc := parse_checked_source('print_bool_formatter_cgen', '
 fn println(s string) {}
@@ -536,6 +558,8 @@ fn main() {
 	assert c_code.contains('bool__str(')
 }
 
+// test_return_local_address_lowers_to_memdup_after_used_filter_transform
+// validates this v3 regression case.
 fn test_return_local_address_lowers_to_memdup_after_used_filter_transform() {
 	mut a, mut tc := parse_checked_source('return_local_address_memdup_cgen', '
 struct Box {
@@ -564,6 +588,7 @@ fn main() {
 	assert c_code.contains('memdup(')
 }
 
+// test_map_literal_compile_keeps_new_map_runtime_helper validates this v3 regression case.
 fn test_map_literal_compile_keeps_new_map_runtime_helper() {
 	v3_bin := build_v3_bin('map_literal_test')
 
@@ -584,6 +609,7 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 }
 
+// test_optional_map_or_compile_keeps_new_map_runtime_helper validates this v3 regression case.
 fn test_optional_map_or_compile_keeps_new_map_runtime_helper() {
 	v3_bin := build_v3_bin('option_map_or_test')
 
@@ -605,6 +631,7 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 }
 
+// test_return_local_address_compile_keeps_memdup_runtime_helper validates this v3 regression case.
 fn test_return_local_address_compile_keeps_memdup_runtime_helper() {
 	v3_bin := build_v3_bin('return_local_address_test')
 
@@ -632,6 +659,7 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 }
 
+// test_print_bool_compile_keeps_formatter_runtime_helper validates this v3 regression case.
 fn test_print_bool_compile_keeps_formatter_runtime_helper() {
 	v3_bin := build_v3_bin('print_bool_test')
 
@@ -646,6 +674,7 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 }
 
+// test_string_plus_compile_keeps_plus_runtime_helper validates this v3 regression case.
 fn test_string_plus_compile_keeps_plus_runtime_helper() {
 	v3_bin := build_v3_bin('string_plus_test')
 
@@ -665,6 +694,7 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 }
 
+// test_string_membership_compile_keeps_contains_runtime_helpers validates this v3 regression case.
 fn test_string_membership_compile_keeps_contains_runtime_helpers() {
 	v3_bin := build_v3_bin('string_membership_test')
 

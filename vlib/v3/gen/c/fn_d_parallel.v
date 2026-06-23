@@ -8,6 +8,7 @@ import v3.types
 const max_flat_cgen_jobs = 3
 const min_flat_cgen_parallel_items = 1024
 
+// FlatFnGenItem represents flat fn gen item data used by c.
 struct FlatFnGenItem {
 	node_id flat.NodeId
 	module  string
@@ -15,20 +16,32 @@ struct FlatFnGenItem {
 }
 
 $if !windows {
+	// FlatCgenChunkArgs represents flat cgen chunk args data used by c.
 	struct FlatCgenChunkArgs {
 		worker         voidptr
 		work_items_ptr voidptr
 	}
 
+	// C.pthread_t declares C pthread t data used by c.
 	@[typedef]
 	struct C.pthread_t {}
 
+	// C.pthread_create declares the C pthread_create symbol used by c.
 	fn C.pthread_create(thread &C.pthread_t, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
+
+	// C.pthread_join declares the C pthread_join symbol used by c.
 	fn C.pthread_join(thread C.pthread_t, retval voidptr) int
+
+	// C.pthread_attr_init declares the C pthread_attr_init symbol used by c.
 	fn C.pthread_attr_init(attr voidptr) int
+
+	// C.pthread_attr_setstacksize declares the C pthread_attr_setstacksize symbol used by c.
 	fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
+
+	// C.pthread_attr_destroy declares the C pthread_attr_destroy symbol used by c.
 	fn C.pthread_attr_destroy(attr voidptr) int
 
+	// flat_cgen_chunk_thread supports flat cgen chunk thread handling for c.
 	fn flat_cgen_chunk_thread(arg voidptr) voidptr {
 		a := unsafe { &FlatCgenChunkArgs(arg) }
 		mut w := unsafe { &FlatGen(a.worker) }
@@ -38,6 +51,7 @@ $if !windows {
 	}
 }
 
+// gen_fns_dispatch emits fns dispatch output for c.
 fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 	if no_parallel {
 		g.gen_fns()
@@ -92,6 +106,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 	}
 }
 
+// flat_cgen_job_count supports flat cgen job count handling for c.
 fn flat_cgen_job_count(n_runtime_jobs int, n_items int) int {
 	if n_runtime_jobs <= 0 || n_items <= 0 {
 		return 0
@@ -106,6 +121,7 @@ fn flat_cgen_job_count(n_runtime_jobs int, n_items int) int {
 	return n_jobs
 }
 
+// split_flat_cgen_items supports split flat cgen items handling for c.
 fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 	mut chunks := [][]FlatFnGenItem{}
 	if n_jobs <= 0 || items.len == 0 {
@@ -143,6 +159,7 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 	return chunks
 }
 
+// collect_fn_gen_items updates collect fn gen items state for c.
 fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	mut items := []FlatFnGenItem{}
 	mut cur_module := ''
@@ -180,6 +197,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	return items
 }
 
+// gen_fn_items emits fn items output for c.
 fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 	for item in items {
 		if int(item.node_id) < 0 || int(item.node_id) >= g.a.nodes.len {
@@ -191,6 +209,7 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 	}
 }
 
+// prepare_parallel_items supports prepare parallel items handling for FlatGen.
 fn (mut g FlatGen) prepare_parallel_items(items []FlatFnGenItem) {
 	for item in items {
 		g.tc.cur_module = item.module
@@ -199,6 +218,7 @@ fn (mut g FlatGen) prepare_parallel_items(items []FlatFnGenItem) {
 	g.register_interface_strings()
 }
 
+// prepare_parallel_node supports prepare parallel node handling for FlatGen.
 fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId) {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return
@@ -218,6 +238,7 @@ fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId) {
 	}
 }
 
+// should_preseed_parallel_type_text reports whether should preseed parallel type text applies in c.
 fn (g &FlatGen) should_preseed_parallel_type_text(typ string) bool {
 	if typ.len == 0 {
 		return false
@@ -233,6 +254,7 @@ fn (g &FlatGen) should_preseed_parallel_type_text(typ string) bool {
 	return qtyp in g.tc.type_aliases
 }
 
+// parallel_base_type_text supports parallel base type text handling for FlatGen.
 fn (g &FlatGen) parallel_base_type_text(typ string) string {
 	mut clean := typ.trim_space()
 	for clean.len > 0 {
@@ -251,6 +273,7 @@ fn (g &FlatGen) parallel_base_type_text(typ string) string {
 	return clean
 }
 
+// preseed_parallel_fn_ptr_type supports preseed parallel fn ptr type handling for FlatGen.
 fn (mut g FlatGen) preseed_parallel_fn_ptr_type(typ types.Type) {
 	if typ is types.FnType {
 		g.resolve_fn_ptr_type(g.fn_ptr_type_key(typ))
@@ -280,6 +303,7 @@ fn (mut g FlatGen) preseed_parallel_fn_ptr_type(typ types.Type) {
 	}
 }
 
+// fn_ptr_type_key supports fn ptr type key handling for FlatGen.
 fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
 	ret := if typ.return_type is types.Void { 'void' } else { g.tc.c_type(typ.return_type) }
 	if typ.params.len == 0 {
@@ -292,6 +316,7 @@ fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
 	return 'fn_ptr:${ret}|${params.join(', ')}'
 }
 
+// new_parallel_worker supports new parallel worker handling for FlatGen.
 fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 	return &FlatGen{
 		sb:                      strings.new_builder(64_000)
@@ -340,6 +365,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 	}
 }
 
+// clone_parallel_type_checker supports clone parallel type checker handling for FlatGen.
 fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 	mut fs := types.new_scope(unsafe { nil })
 	fs.names = g.tc.file_scope.names.clone()
@@ -388,6 +414,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 	}
 }
 
+// merge_parallel_worker supports merge parallel worker handling for FlatGen.
 fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	mut ww := unsafe { w }
 	worker_output := ww.sb.str()

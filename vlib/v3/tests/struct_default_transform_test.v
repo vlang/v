@@ -5,6 +5,7 @@ import v3.pref
 import v3.transform
 import v3.types
 
+// parse_and_transform reads parse and transform input for v3 tests.
 fn parse_and_transform(source string) &flat.FlatAst {
 	src := os.join_path(os.temp_dir(), 'v3_struct_default_transform_test.v')
 	os.write_file(src, source) or { panic(err) }
@@ -18,6 +19,7 @@ fn parse_and_transform(source string) &flat.FlatAst {
 	return a
 }
 
+// transformed_struct_init supports transformed struct init handling for v3 tests.
 fn transformed_struct_init(a &flat.FlatAst, fn_name string) flat.Node {
 	for node in a.nodes {
 		if node.kind != .fn_decl || node.value != fn_name {
@@ -38,6 +40,7 @@ fn transformed_struct_init(a &flat.FlatAst, fn_name string) flat.Node {
 	return flat.Node{}
 }
 
+// find_field resolves find field information for v3 tests.
 fn find_field(a &flat.FlatAst, node flat.Node, name string) flat.Node {
 	for i in 0 .. node.children_count {
 		field := a.child_node(&node, i)
@@ -49,6 +52,7 @@ fn find_field(a &flat.FlatAst, node flat.Node, name string) flat.Node {
 	return flat.Node{}
 }
 
+// call_name updates call name state for v3 tests.
 fn call_name(a &flat.FlatAst, call flat.Node) string {
 	if call.kind != .call || call.children_count == 0 {
 		return ''
@@ -56,6 +60,7 @@ fn call_name(a &flat.FlatAst, call flat.Node) string {
 	return a.child_node(&call, 0).value
 }
 
+// test_transform_fills_missing_struct_defaults validates this v3 regression case.
 fn test_transform_fills_missing_struct_defaults() {
 	mut a := parse_and_transform("
 struct Person {

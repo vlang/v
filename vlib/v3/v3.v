@@ -14,6 +14,7 @@ import v3.ssa.optimize
 import v3.transform
 import v3.types
 
+// run_compile_command supports run compile command handling for v3 entry point.
 fn run_compile_command(cmd string) os.Result {
 	exit_code := os.system(cmd)
 	return os.Result{
@@ -21,13 +22,21 @@ fn run_compile_command(cmd string) os.Result {
 	}
 }
 
+// C.open declares the C open symbol used by v3 entry point.
 fn C.open(charptr, int, int) int
+
+// C.write declares the C write symbol used by v3 entry point.
 fn C.write(int, voidptr, int) int
+
+// C.close declares the C close symbol used by v3 entry point.
 fn C.close(int) int
+
+// C.chmod declares the C chmod symbol used by v3 entry point.
 fn C.chmod(charptr, int) int
 
 const o_wronly_creat_trunc = 0x601 // O_WRONLY | O_CREAT | O_TRUNC on Darwin
 
+// main runs the v3 entry point entry point.
 fn main() {
 	args := os.args[1..]
 	if args.len == 0 {
@@ -238,6 +247,7 @@ fn main() {
 	b.print_report()
 }
 
+// resolve_vroot resolves resolve vroot information for v3 entry point.
 fn resolve_vroot(initial string) string {
 	if is_valid_vroot(initial) {
 		return initial
@@ -256,14 +266,17 @@ fn resolve_vroot(initial string) string {
 	return initial
 }
 
+// is_valid_vroot reports whether is valid vroot applies in v3 entry point.
 fn is_valid_vroot(root string) bool {
 	return root.len > 0 && os.is_dir(builtin_dir_for_vroot(root))
 }
 
+// builtin_dir_for_vroot supports builtin dir for vroot handling for v3 entry point.
 fn builtin_dir_for_vroot(root string) string {
 	return os.join_path_single(os.join_path_single(root, 'vlib'), 'builtin')
 }
 
+// write_text_file_raw writes text file raw output for v3 entry point.
 fn write_text_file_raw(path string, data string) bool {
 	fd := C.open(path.str, o_wronly_creat_trunc, 420)
 	if fd < 0 {
@@ -282,6 +295,7 @@ fn write_text_file_raw(path string, data string) bool {
 	return C.chmod(path.str, 420) == 0
 }
 
+// print_type_errors updates print type errors state for v3 entry point.
 fn print_type_errors(errors []types.TypeError) {
 	eprintln('type checker found ${errors.len} error(s):')
 	max_errors := if errors.len < 20 { errors.len } else { 20 }
@@ -329,6 +343,7 @@ fn path_is_in_dir(path string, dir string) bool {
 	return real_path == real_dir || real_path.starts_with(real_dir + os.path_separator)
 }
 
+// resolve_imports resolves resolve imports information for v3 entry point.
 fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string) {
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true

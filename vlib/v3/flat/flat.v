@@ -2,12 +2,14 @@ module flat
 
 import v3.token
 
+// NodeId aliases node id values used by flat.
 pub type NodeId = int
 
 pub const empty_node = NodeId(-1)
 
 const empty_node_value = Node{}
 
+// NodeKind lists node kind values used by flat.
 pub enum NodeKind {
 	empty
 	// expressions
@@ -93,6 +95,7 @@ pub enum NodeKind {
 	file
 }
 
+// Op lists op values used by flat.
 pub enum Op {
 	none
 	plus
@@ -134,6 +137,7 @@ pub enum Op {
 	arrow
 }
 
+// Node represents node data used by flat.
 pub struct Node {
 pub mut:
 	value          string
@@ -148,6 +152,7 @@ pub:
 	op             Op
 }
 
+// FlatAst represents flat ast data used by flat.
 @[heap]
 pub struct FlatAst {
 pub mut:
@@ -157,6 +162,7 @@ pub mut:
 	disabled_fns    map[string]bool
 }
 
+// new creates a FlatAst value for flat.
 pub fn FlatAst.new() FlatAst {
 	return FlatAst{
 		nodes:        []Node{cap: 256}
@@ -165,6 +171,7 @@ pub fn FlatAst.new() FlatAst {
 	}
 }
 
+// add updates add state for FlatAst.
 pub fn (mut a FlatAst) add(kind NodeKind) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
@@ -174,6 +181,7 @@ pub fn (mut a FlatAst) add(kind NodeKind) NodeId {
 	return id
 }
 
+// add_id updates add id state for FlatAst.
 pub fn (mut a FlatAst) add_id(kind_id int) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
@@ -183,11 +191,13 @@ pub fn (mut a FlatAst) add_id(kind_id int) NodeId {
 	return id
 }
 
+// node_kind_from_id converts node kind from id data for flat.
 @[inline]
 pub fn node_kind_from_id(id int) NodeKind {
 	return unsafe { NodeKind(id) }
 }
 
+// add_val updates add val state for FlatAst.
 pub fn (mut a FlatAst) add_val(kind NodeKind, value string) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
@@ -198,6 +208,7 @@ pub fn (mut a FlatAst) add_val(kind NodeKind, value string) NodeId {
 	return id
 }
 
+// add_val_id updates add val id state for FlatAst.
 pub fn (mut a FlatAst) add_val_id(kind_id int, value string) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
@@ -208,6 +219,7 @@ pub fn (mut a FlatAst) add_val_id(kind_id int, value string) NodeId {
 	return id
 }
 
+// add_node updates add node state for FlatAst.
 pub fn (mut a FlatAst) add_node(node Node) NodeId {
 	id := NodeId(a.nodes.len)
 	mut n := node
@@ -226,14 +238,17 @@ pub fn child_count(count int) i16 {
 	return i16(count)
 }
 
+// begin_children supports begin children handling for FlatAst.
 pub fn (mut a FlatAst) begin_children() int {
 	return a.children.len
 }
 
+// add_child updates add child state for FlatAst.
 pub fn (mut a FlatAst) add_child(id NodeId) {
 	a.children << id
 }
 
+// child supports child handling for FlatAst.
 pub fn (a &FlatAst) child(node &Node, index int) NodeId {
 	child_index := node.children_start + index
 	if index < 0 || index >= node.children_count || child_index < 0 || child_index >= a.children.len {
@@ -242,6 +257,7 @@ pub fn (a &FlatAst) child(node &Node, index int) NodeId {
 	return a.children[child_index]
 }
 
+// child_node supports child node handling for FlatAst.
 pub fn (a &FlatAst) child_node(node &Node, index int) &Node {
 	id := a.child(node, index)
 	if int(id) < 0 || int(id) >= a.nodes.len {
@@ -250,6 +266,7 @@ pub fn (a &FlatAst) child_node(node &Node, index int) &Node {
 	return &a.nodes[int(id)]
 }
 
+// node supports node handling for FlatAst.
 pub fn (a &FlatAst) node(id NodeId) &Node {
 	if int(id) < 0 || int(id) >= a.nodes.len {
 		return &empty_node_value
@@ -257,6 +274,7 @@ pub fn (a &FlatAst) node(id NodeId) &Node {
 	return &a.nodes[int(id)]
 }
 
+// children_of supports children of handling for FlatAst.
 pub fn (a &FlatAst) children_of(node &Node) []NodeId {
 	if node.children_count == 0 {
 		return []
@@ -270,6 +288,7 @@ pub fn (a &FlatAst) children_of(node &Node) []NodeId {
 	return a.children[node.children_start..node.children_start + node.children_count]
 }
 
+// print_tree updates print tree state for FlatAst.
 pub fn (a &FlatAst) print_tree(id NodeId, indent int) {
 	node := a.nodes[int(id)]
 	mut prefix := ''

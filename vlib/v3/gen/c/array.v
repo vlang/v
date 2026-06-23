@@ -3,6 +3,7 @@ module c
 import v3.flat
 import v3.types
 
+// array_like_type supports array like type handling for c.
 fn array_like_type(t types.Type) ?types.Array {
 	if t is types.Array {
 		return t
@@ -16,6 +17,7 @@ fn array_like_type(t types.Type) ?types.Array {
 	return none
 }
 
+// array_fixed_type supports array fixed type handling for c.
 fn array_fixed_type(t types.Type) ?types.ArrayFixed {
 	if t is types.ArrayFixed {
 		return t
@@ -29,6 +31,7 @@ fn array_fixed_type(t types.Type) ?types.ArrayFixed {
 	return none
 }
 
+// gen_array_literal_value emits array literal value output for c.
 fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type) {
 	c_elem := g.tc.c_type(elem_type)
 	count := node.children_count
@@ -46,6 +49,7 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 	g.write('})')
 }
 
+// gen_fixed_array_data_arg emits fixed array data arg output for c.
 fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed) {
 	node := g.a.nodes[int(id)]
 	if node.kind == .array_literal {
@@ -63,6 +67,7 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 	g.gen_expr(id)
 }
 
+// gen_array_push_many_stmt emits array push many stmt output for c.
 fn (mut g FlatGen) gen_array_push_many_stmt(lhs_id flat.NodeId, rhs_id flat.NodeId) {
 	lhs_is_ptr := g.tc.resolve_type(lhs_id) is types.Pointer
 	amp := if lhs_is_ptr { '' } else { '&' }
@@ -83,6 +88,7 @@ fn (mut g FlatGen) gen_array_push_many_stmt(lhs_id flat.NodeId, rhs_id flat.Node
 	g.writeln(');')
 }
 
+// gen_slice_expr emits slice expr output for c.
 fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type types.Type) {
 	start_node := g.a.child_node(&node, 1)
 	has_start := start_node.kind != .empty
@@ -103,6 +109,7 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 	}
 }
 
+// gen_array_method_call emits array method call output for c.
 fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr types.Array) {
 	c_elem := g.tc.c_type(arr.elem_type)
 	base_id := g.a.child(fn_node, 0)
@@ -276,6 +283,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 	}
 }
 
+// array_lookup_suffix supports array lookup suffix handling for c.
 fn array_lookup_suffix(elem_type types.Type) string {
 	if elem_type is types.String {
 		return 'string'
@@ -288,6 +296,7 @@ fn array_lookup_suffix(elem_type types.Type) string {
 	return 'int'
 }
 
+// array_method_fallback supports array method fallback handling for FlatGen.
 fn (mut g FlatGen) array_method_fallback(method string) string {
 	if method in g.array_method_cache {
 		return g.array_method_cache[method]
@@ -305,6 +314,7 @@ fn (mut g FlatGen) array_method_fallback(method string) string {
 	return best_mname
 }
 
+// gen_map_ref_arg emits map ref arg output for c.
 fn (mut g FlatGen) gen_map_ref_arg(base_id flat.NodeId, base_type types.Type) {
 	if base_type is types.Pointer {
 		g.gen_expr(base_id)
@@ -314,6 +324,7 @@ fn (mut g FlatGen) gen_map_ref_arg(base_id flat.NodeId, base_type types.Type) {
 	}
 }
 
+// gen_map_delete emits map delete output for c.
 fn (mut g FlatGen) gen_map_delete(node flat.Node, fn_node &flat.Node, m types.Map, base_type types.Type) {
 	c_key := g.tc.c_type(m.key_type)
 	g.write('map__delete(')
@@ -323,6 +334,7 @@ fn (mut g FlatGen) gen_map_delete(node flat.Node, fn_node &flat.Node, m types.Ma
 	g.write('})')
 }
 
+// gen_index_assign emits index assign output for c.
 fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 	lhs_id := g.a.child(&node, 0)
 	lhs := g.a.nodes[int(lhs_id)]

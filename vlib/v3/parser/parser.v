@@ -7,13 +7,21 @@ import v3.pref
 import v3.scanner
 import v3.token
 
+// C.open declares the C open symbol used by parser.
 fn C.open(charptr, int, int) int
+
+// C.read declares the C read symbol used by parser.
 fn C.read(int, voidptr, int) int
+
+// C.close declares the C close symbol used by parser.
 fn C.close(int) int
+
+// C.malloc declares the C malloc symbol used by parser.
 fn C.malloc(int) &u8
 
 const max_source_file_size = 8388608
 
+// Parser represents parser data used by parser.
 pub struct Parser {
 	prefs &pref.Preferences
 mut:
@@ -41,6 +49,7 @@ pub mut:
 	parsed_v_lines int
 }
 
+// new creates a Parser value for parser.
 pub fn Parser.new(prefs &pref.Preferences) &Parser {
 	return &Parser{
 		prefs: unsafe { prefs }
@@ -53,11 +62,13 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 	}
 }
 
+// parse_file reads parse file input for parser.
 pub fn (mut p Parser) parse_file(path string) &flat.FlatAst {
 	p.parse_into(path)
 	return p.a
 }
 
+// parse_files reads parse files input for parser.
 pub fn (mut p Parser) parse_files(paths []string) &flat.FlatAst {
 	for path in paths {
 		p.parse_into(path)
@@ -65,6 +76,7 @@ pub fn (mut p Parser) parse_files(paths []string) &flat.FlatAst {
 	return p.a
 }
 
+// parse_into reads parse into input for parser.
 pub fn (mut p Parser) parse_into(path string) {
 	p.cur_file = path
 	// File marker before content so import resolver can track source files
@@ -120,6 +132,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	})
 }
 
+// count_source_lines supports count source lines handling for parser.
 fn count_source_lines(src string) int {
 	if src.len == 0 {
 		return 0
@@ -133,6 +146,7 @@ fn count_source_lines(src string) int {
 	return lines
 }
 
+// read_source_file_raw reads read source file raw input for parser.
 fn read_source_file_raw(path string) string {
 	cpath := cstring_from_vstring(path)
 	fd := C.open(cpath, 0, 0)
@@ -157,6 +171,7 @@ fn read_source_file_raw(path string) string {
 	}
 }
 
+// cstring_from_vstring converts cstring from vstring data for parser.
 fn cstring_from_vstring(s string) &u8 {
 	buf := C.malloc(s.len + 1)
 	unsafe {
@@ -168,6 +183,7 @@ fn cstring_from_vstring(s string) &u8 {
 	return buf
 }
 
+// vmod_root_for_file supports vmod root for file handling for parser.
 fn vmod_root_for_file(path string) string {
 	mut dir := if path.len > 0 { os.dir(path) } else { os.getwd() }
 	if dir.len == 0 {
@@ -187,6 +203,7 @@ fn vmod_root_for_file(path string) string {
 	return dir
 }
 
+// next supports next handling for Parser.
 fn (mut p Parser) next() {
 	p.prev_tok = p.tok
 	if p.has_peek {
@@ -212,6 +229,7 @@ fn (mut p Parser) next() {
 	}
 }
 
+// peek supports peek handling for Parser.
 fn (mut p Parser) peek() token.Token {
 	if !p.has_peek {
 		p.peek_is_str_tail = p.s.in_str_incomplete
@@ -231,24 +249,29 @@ fn (mut p Parser) peek() token.Token {
 	return p.peek_tok
 }
 
+// peek_is supports peek is handling for Parser.
 fn (mut p Parser) peek_is(tok token.Token) bool {
 	return p.peek() == tok
 }
 
+// normalize_current_token transforms normalize current token data for parser.
 fn (mut p Parser) normalize_current_token() {
 	p.tok = normalize_scanned_token(p.tok, p.lit, p.s.src, p.tok_pos, p.tok_is_str_tail)
 }
 
+// normalize_peek_token transforms normalize peek token data for parser.
 fn (mut p Parser) normalize_peek_token() {
 	p.peek_tok = normalize_scanned_token(p.peek_tok, p.peek_lit, p.s.src, p.peek_pos,
 		p.peek_is_str_tail)
 }
 
+// token_from_id converts token from id data for parser.
 @[inline]
 fn token_from_id(id int) token.Token {
 	return unsafe { token.Token(id) }
 }
 
+// keyword_token_id supports keyword token id handling for parser.
 fn keyword_token_id(lit string) int {
 	return match lit {
 		'as' { 25 }
@@ -303,6 +326,7 @@ fn keyword_token_id(lit string) int {
 	}
 }
 
+// normalize_scanned_token transforms normalize scanned token data for parser.
 fn normalize_scanned_token(tok token.Token, lit string, src string, pos int, is_str_tail bool) token.Token {
 	if int(tok) == 19 || int(tok) == 105 || int(tok) == 106 {
 		return tok
@@ -4187,6 +4211,7 @@ fn (mut p Parser) string_literal() flat.NodeId {
 	return p.string_interp(val, q)
 }
 
+// string_interp supports string interp handling for Parser.
 fn (mut p Parser) string_interp(first_part string, quote u8) flat.NodeId {
 	mut ids := []flat.NodeId{}
 	if first_part.len > 0 {
@@ -4221,6 +4246,7 @@ fn (mut p Parser) string_interp(first_part string, quote u8) flat.NodeId {
 	})
 }
 
+// array_literal supports array literal handling for Parser.
 fn (mut p Parser) array_literal() flat.NodeId {
 	p.next() // skip '['
 	// empty array or fixed array type: []Type{} or [N]Type{}
@@ -4366,6 +4392,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	})
 }
 
+// fn_literal supports fn literal handling for Parser.
 fn (mut p Parser) fn_literal() flat.NodeId {
 	p.next() // skip 'fn'
 	// capture list: fn [a, b] (params) ret { }
@@ -4433,6 +4460,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	})
 }
 
+// lock_expr supports lock expr handling for Parser.
 fn (mut p Parser) lock_expr() flat.NodeId {
 	is_rlock := p.tok == .key_rlock
 	p.next() // skip 'lock' or 'rlock'
@@ -4457,6 +4485,7 @@ fn (mut p Parser) lock_expr() flat.NodeId {
 	})
 }
 
+// select_expr resolves select expr information for parser.
 fn (mut p Parser) select_expr() flat.NodeId {
 	p.next() // skip 'select'
 	p.check(.lcbr)
@@ -4477,6 +4506,7 @@ fn (mut p Parser) select_expr() flat.NodeId {
 	})
 }
 
+// select_branch resolves select branch information for parser.
 fn (mut p Parser) select_branch() flat.NodeId {
 	mut is_else := false
 	mut cond_ids := []flat.NodeId{}
@@ -4510,6 +4540,7 @@ fn (mut p Parser) select_branch() flat.NodeId {
 	})
 }
 
+// sizeof_expr supports sizeof expr handling for Parser.
 fn (mut p Parser) sizeof_expr() flat.NodeId {
 	p.next() // skip 'sizeof'
 	p.check(.lpar)
@@ -4518,6 +4549,7 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 	return p.a.add_val(.sizeof_expr, type_name)
 }
 
+// typeof_expr supports typeof expr handling for Parser.
 fn (mut p Parser) typeof_expr() flat.NodeId {
 	p.next() // skip 'typeof'
 	p.check(.lpar)
@@ -4531,6 +4563,7 @@ fn (mut p Parser) typeof_expr() flat.NodeId {
 	})
 }
 
+// dump_expr updates dump expr state for Parser.
 fn (mut p Parser) dump_expr() flat.NodeId {
 	p.next() // skip 'dump'
 	p.check(.lpar)
@@ -4544,6 +4577,7 @@ fn (mut p Parser) dump_expr() flat.NodeId {
 	})
 }
 
+// offsetof_expr supports offsetof expr handling for Parser.
 fn (mut p Parser) offsetof_expr() flat.NodeId {
 	p.next() // skip '__offsetof'
 	p.check(.lpar)
@@ -4560,6 +4594,7 @@ fn (mut p Parser) offsetof_expr() flat.NodeId {
 
 // ==================== types ====================
 
+// parse_type_name_progress reads parse type name progress input for parser.
 fn (mut p Parser) parse_type_name_progress() string {
 	start_offset := p.s.offset
 	typ := p.parse_type_name()
@@ -4569,6 +4604,7 @@ fn (mut p Parser) parse_type_name_progress() string {
 	return typ
 }
 
+// peek_lbr_starts_array_type supports peek lbr starts array type handling for Parser.
 fn (mut p Parser) peek_lbr_starts_array_type() bool {
 	if p.peek() != .lsbr {
 		return false
@@ -4605,12 +4641,14 @@ fn (mut p Parser) peek_lbr_starts_array_type() bool {
 	return false
 }
 
+// can_start_type_name reports whether can start type name applies in parser.
 fn (p &Parser) can_start_type_name() bool {
 	return p.tok == .name || p.tok == .amp || p.tok == .question || p.tok == .not || p.tok == .lsbr
 		|| p.tok == .lpar || p.tok == .key_fn || p.tok == .ellipsis || p.tok == .key_mut
 		|| p.tok == .key_shared || p.tok == .key_atomic
 }
 
+// fn_type_param_with_mut supports fn type param with mut handling for parser.
 fn fn_type_param_with_mut(typ string, is_mut bool) string {
 	if !is_mut || typ.len == 0 || typ.starts_with('&') {
 		return typ
@@ -4618,6 +4656,7 @@ fn fn_type_param_with_mut(typ string, is_mut bool) string {
 	return '&' + typ
 }
 
+// parse_fn_type_param reads parse fn type param input for parser.
 fn (mut p Parser) parse_fn_type_param() string {
 	mut is_mut := false
 	if p.tok == .key_mut {
@@ -4637,6 +4676,7 @@ fn (mut p Parser) parse_fn_type_param() string {
 	return fn_type_param_with_mut(first, is_mut)
 }
 
+// parse_type_name reads parse type name input for parser.
 fn (mut p Parser) parse_type_name() string {
 	if p.tok == .name && p.lit == '&' {
 		p.next()
@@ -4814,6 +4854,7 @@ fn (mut p Parser) parse_type_name() string {
 
 // ==================== helpers ====================
 
+// strip_quotes supports strip quotes handling for parser.
 fn strip_quotes(s string) string {
 	mut raw := s
 	is_raw := s.len >= 3 && s[0] == `r`

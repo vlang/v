@@ -5,6 +5,7 @@ import strings
 import v3.flat
 import v3.types
 
+// FlatGen emits flat gen output used by c.
 pub struct FlatGen {
 mut:
 	sb                      strings.Builder
@@ -65,6 +66,7 @@ pub fn (g &FlatGen) was_parallel() bool {
 	return g.parallel_used
 }
 
+// new creates a FlatGen value for c.
 pub fn FlatGen.new() FlatGen {
 	return FlatGen{
 		sb:                      strings.new_builder(4096)
@@ -108,15 +110,18 @@ pub fn FlatGen.new() FlatGen {
 	}
 }
 
+// gen supports gen handling for FlatGen.
 pub fn (mut g FlatGen) gen(a &flat.FlatAst) string {
 	tc := types.TypeChecker.new(a)
 	return g.gen_with_used(a, map[string]bool{}, &tc)
 }
 
+// gen_with_used emits with used output for c.
 pub fn (mut g FlatGen) gen_with_used(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker) string {
 	return g.gen_with_used_options(a, used_fns, tc, false)
 }
 
+// gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
 	g.a = a
 	g.used_fns = used_fns.clone()
@@ -206,6 +211,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	return result
 }
 
+// node_kind_id supports node kind id handling for c.
 fn node_kind_id(node flat.Node) int {
 	mut kind_id := node.kind_id
 	if kind_id == 0 && int(node.kind) != 0 {
@@ -214,6 +220,7 @@ fn node_kind_id(node flat.Node) int {
 	return kind_id
 }
 
+// collect_gen_info updates collect gen info state for c.
 fn (mut g FlatGen) collect_gen_info() {
 	mut cur_module := ''
 	for node_idx in 0 .. g.a.nodes.len {
@@ -365,6 +372,7 @@ fn (mut g FlatGen) collect_gen_info() {
 	g.collect_const_init_order_from_files()
 }
 
+// note_compiler_source_file supports note compiler source file handling for FlatGen.
 fn (mut g FlatGen) note_compiler_source_file(path string) {
 	if g.compiler_vroot.len > 0 || path.len == 0 {
 		return
@@ -381,6 +389,7 @@ fn (mut g FlatGen) note_compiler_source_file(path string) {
 	}
 }
 
+// collect_const_init_order_from_files converts collect const init order from files data for c.
 fn (mut g FlatGen) collect_const_init_order_from_files() {
 	mut seen := map[string]bool{}
 	g.const_init_order = []string{}
@@ -414,6 +423,7 @@ fn (mut g FlatGen) collect_const_init_order_from_files() {
 	}
 }
 
+// ordered_module_init_fns supports ordered module init fns handling for FlatGen.
 fn (g &FlatGen) ordered_module_init_fns() []string {
 	mut module_to_init := map[string]string{}
 	for init_fn in g.module_init_fns {
@@ -430,6 +440,7 @@ fn (g &FlatGen) ordered_module_init_fns() []string {
 	return result
 }
 
+// visit_module_init updates visit module init state for FlatGen.
 fn (g &FlatGen) visit_module_init(mod string, module_to_init map[string]string, mut visiting map[string]bool, mut visited map[string]bool, mut result []string) {
 	if mod in visited || mod in visiting {
 		return
@@ -445,6 +456,7 @@ fn (g &FlatGen) visit_module_init(mod string, module_to_init map[string]string, 
 	}
 }
 
+// register_fn_decl_param_types updates register fn decl param types state for c.
 fn (mut g FlatGen) register_fn_decl_param_types(name string, full_name string, ptypes []types.Type) {
 	if name !in g.fn_decl_param_types {
 		g.fn_decl_param_types[name] = ptypes.clone()
@@ -454,6 +466,7 @@ fn (mut g FlatGen) register_fn_decl_param_types(name string, full_name string, p
 	}
 }
 
+// register_struct_decl_info updates register struct decl info state for c.
 fn (mut g FlatGen) register_struct_decl_info(name string, full_name string, module_name string, node flat.Node) {
 	info := StructDeclInfo{
 		node:      node
@@ -466,6 +479,7 @@ fn (mut g FlatGen) register_struct_decl_info(name string, full_name string, modu
 	}
 }
 
+// enum_value_for_type supports enum value for type handling for FlatGen.
 fn (g &FlatGen) enum_value_for_type(type_name string, field_name string) ?int {
 	if type_name.len == 0 || field_name.len == 0 {
 		return none
@@ -501,6 +515,7 @@ fn (g &FlatGen) enum_value_for_type(type_name string, field_name string) ?int {
 	return none
 }
 
+// expr_to_string converts expr to string data for c.
 fn (mut g FlatGen) expr_to_string(id flat.NodeId) string {
 	orig := g.sb
 	orig_line_start := g.line_start
@@ -513,6 +528,7 @@ fn (mut g FlatGen) expr_to_string(id flat.NodeId) string {
 	return result
 }
 
+// expr_to_string_with_expected_type converts expr to string with expected type data for c.
 fn (mut g FlatGen) expr_to_string_with_expected_type(id flat.NodeId, expected types.Type) string {
 	orig := g.sb
 	orig_line_start := g.line_start
@@ -525,6 +541,7 @@ fn (mut g FlatGen) expr_to_string_with_expected_type(id flat.NodeId, expected ty
 	return result
 }
 
+// gen_expr_with_expected_type emits expr with expected type output for c.
 fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Type) {
 	old_expected := g.expected_expr_type
 	old_expected_enum := g.expected_enum
@@ -575,6 +592,7 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 	g.expected_enum = old_expected_enum
 }
 
+// gen_sum_value_expr emits sum value expr output for c.
 fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool {
 	sum_type0 := if expected is types.Alias { expected.base_type } else { expected }
 	if sum_type0 !is types.SumType {
@@ -619,6 +637,7 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool 
 	return true
 }
 
+// gen_sum_cast_expr emits sum cast expr output for c.
 fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.NodeId) {
 	inner := g.a.nodes[int(inner_id)]
 	actual_type := g.tc.resolve_type(inner_id)
@@ -685,6 +704,7 @@ fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.No
 	}
 }
 
+// pointer_variant_arg_needs_heap_copy supports pointer_variant_arg_needs_heap_copy handling in c.
 fn (g &FlatGen) pointer_variant_arg_needs_heap_copy(node flat.Node) bool {
 	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
 		return false
@@ -706,6 +726,7 @@ fn (g &FlatGen) pointer_variant_arg_needs_heap_copy(node flat.Node) bool {
 	return false
 }
 
+// selector_declared_type supports selector declared type handling for FlatGen.
 fn (g &FlatGen) selector_declared_type(id flat.NodeId) ?types.Type {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return none
@@ -723,6 +744,7 @@ fn (g &FlatGen) selector_declared_type(id flat.NodeId) ?types.Type {
 	return none
 }
 
+// gen_expr_with_possible_enum_type emits expr with possible enum type output for c.
 fn (mut g FlatGen) gen_expr_with_possible_enum_type(id flat.NodeId, expected types.Type) {
 	if expected is types.Enum {
 		g.gen_expr_with_expected_type(id, expected)
@@ -731,6 +753,7 @@ fn (mut g FlatGen) gen_expr_with_possible_enum_type(id flat.NodeId, expected typ
 	g.gen_expr(id)
 }
 
+// optional_none_type supports optional none type handling for FlatGen.
 fn (mut g FlatGen) optional_none_type(id flat.NodeId) types.Type {
 	if g.expected_expr_type is types.OptionType || g.expected_expr_type is types.ResultType {
 		return g.expected_expr_type
@@ -748,6 +771,7 @@ fn (mut g FlatGen) optional_none_type(id flat.NodeId) types.Type {
 	})
 }
 
+// array_index_info supports array index info handling for c.
 fn array_index_info(t types.Type) (bool, bool, types.Array) {
 	if t is types.Array {
 		return true, false, t
@@ -773,10 +797,12 @@ fn array_index_info(t types.Type) (bool, bool, types.Array) {
 	return false, false, types.Array{}
 }
 
+// valid_node_id supports valid node id handling for FlatGen.
 fn (g &FlatGen) valid_node_id(id flat.NodeId) bool {
 	return g.a != unsafe { nil } && int(id) >= 0 && int(id) < g.a.nodes.len
 }
 
+// const_storage_name supports const storage name handling for FlatGen.
 fn (g &FlatGen) const_storage_name(module_name string, name string) string {
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin'
 		&& !name.contains('.') {
@@ -785,6 +811,7 @@ fn (g &FlatGen) const_storage_name(module_name string, name string) string {
 	return name
 }
 
+// const_primary_name supports const primary name handling for FlatGen.
 fn (g &FlatGen) const_primary_name(name string) string {
 	mod := if name in g.const_modules { g.const_modules[name] } else { '' }
 	qname := g.const_storage_name(mod, name)
@@ -794,10 +821,12 @@ fn (g &FlatGen) const_primary_name(name string) string {
 	return name
 }
 
+// is_const_alias_name reports whether is const alias name applies in c.
 fn (g &FlatGen) is_const_alias_name(name string) bool {
 	return g.const_primary_name(name) != name
 }
 
+// const_ref_name supports const ref name handling for FlatGen.
 fn (g &FlatGen) const_ref_name(name string) string {
 	if !name.contains('.') && !name.contains('__') {
 		cur_qname := g.const_storage_name(g.tc.cur_module, name)
@@ -840,6 +869,7 @@ fn (g &FlatGen) const_ref_name(name string) string {
 	return ''
 }
 
+// const_ref_name_from_node converts const ref name from node data for c.
 fn (g &FlatGen) const_ref_name_from_node(node flat.Node) string {
 	if node.kind == .ident {
 		return g.const_ref_name(node.value)
@@ -853,6 +883,7 @@ fn (g &FlatGen) const_ref_name_from_node(node flat.Node) string {
 	return ''
 }
 
+// const_expr_to_string converts const expr to string data for c.
 fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return '0'
@@ -1012,6 +1043,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 	}
 }
 
+// const_ident_c_name converts const ident c name data for c.
 fn (g &FlatGen) const_ident_c_name(name string) string {
 	if name.contains('.') {
 		return c_name(name)
@@ -1023,6 +1055,7 @@ fn (g &FlatGen) const_ident_c_name(name string) string {
 	return c_name(name)
 }
 
+// fixed_array_len_expr supports fixed array len expr handling for FlatGen.
 fn (mut g FlatGen) fixed_array_len_expr(type_name string, fallback int) string {
 	mut raw_len := ''
 	if type_name.starts_with('[') {
@@ -1039,10 +1072,12 @@ fn (mut g FlatGen) fixed_array_len_expr(type_name string, fallback int) string {
 	return g.fixed_array_len_raw(raw_len, fallback)
 }
 
+// fixed_array_len_value supports fixed array len value handling for FlatGen.
 fn (mut g FlatGen) fixed_array_len_value(arr types.ArrayFixed) string {
 	return g.fixed_array_len_raw(arr.len_expr, arr.len)
 }
 
+// fixed_array_len_is_zero supports fixed array len is zero handling for FlatGen.
 fn (mut g FlatGen) fixed_array_len_is_zero(arr types.ArrayFixed) bool {
 	if value := g.tc.fixed_array_len_value(arr) {
 		return value == 0
@@ -1050,6 +1085,7 @@ fn (mut g FlatGen) fixed_array_len_is_zero(arr types.ArrayFixed) bool {
 	return g.fixed_array_len_value(arr).trim_space() == '0'
 }
 
+// fixed_array_len_raw supports fixed array len raw handling for FlatGen.
 fn (mut g FlatGen) fixed_array_len_raw(raw_len string, fallback int) string {
 	if raw_len.len == 0 {
 		return '${fallback}'
@@ -1069,6 +1105,7 @@ fn (mut g FlatGen) fixed_array_len_raw(raw_len string, fallback int) string {
 	return c_name(raw_len)
 }
 
+// gen_expr emits expr output for c.
 fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 	if int(id) < 0 {
 		g.write('0')

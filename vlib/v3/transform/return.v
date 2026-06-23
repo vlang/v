@@ -64,6 +64,7 @@ fn (mut t Transformer) make_return(val flat.NodeId, ret_typ string) flat.NodeId 
 	})
 }
 
+// return_expr_is_err supports return expr is err handling for Transformer.
 fn (t &Transformer) return_expr_is_err(id flat.NodeId) bool {
 	if int(id) < 0 {
 		return false
@@ -72,6 +73,8 @@ fn (t &Transformer) return_expr_is_err(id flat.NodeId) bool {
 	return node.kind == .ident && node.value == 'err'
 }
 
+// try_expand_return_optional_expr
+// supports helper handling in transform.
 fn (mut t Transformer) try_expand_return_optional_expr(node flat.Node) ?[]flat.NodeId {
 	if node.children_count != 1 || !t.is_optional_type_name(t.cur_fn_ret_type) {
 		return none
@@ -104,6 +107,7 @@ fn (mut t Transformer) try_expand_return_optional_expr(node flat.Node) ?[]flat.N
 	return result
 }
 
+// return_expr_is_optional_result supports return expr is optional result handling for Transformer.
 fn (t &Transformer) return_expr_is_optional_result(id flat.NodeId) bool {
 	if int(id) < 0 {
 		return false
@@ -233,6 +237,7 @@ fn (mut t Transformer) try_expand_return_if(_id flat.NodeId, node flat.Node) ?[]
 	return arr1(t.build_return_if_chain(val_id, node.typ))
 }
 
+// match_branch_return_block supports match branch return block handling for Transformer.
 fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_idx int, ret_typ string) flat.NodeId {
 	mut body_ids := []flat.NodeId{}
 	for i in body_start_idx .. branch.children_count {
@@ -281,6 +286,7 @@ fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_id
 	return t.make_block(all)
 }
 
+// build_return_match_chain builds return match chain data for transform.
 fn (mut t Transformer) build_return_match_chain(match_expr_id flat.NodeId, orig_expr_id flat.NodeId, branches []flat.NodeId, idx int, ret_typ string) flat.NodeId {
 	if idx >= branches.len {
 		return t.a.add(flat.NodeKind.empty)
@@ -341,6 +347,7 @@ fn (mut t Transformer) build_return_match_chain(match_expr_id flat.NodeId, orig_
 	})
 }
 
+// build_return_match_type_branch_chain supports build_return_match_type_branch_chain handling.
 fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.NodeId, orig_expr_id flat.NodeId, branch flat.Node, branches []flat.NodeId, idx int, cond_idx int, ret_typ string) flat.NodeId {
 	n_conds := t.count_conds(branch)
 	if cond_idx >= n_conds {

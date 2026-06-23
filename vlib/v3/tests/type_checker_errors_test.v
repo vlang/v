@@ -5,6 +5,7 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
+// build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_type_checker_errors_test')
 	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
@@ -12,6 +13,7 @@ fn build_v3() string {
 	return v3_bin
 }
 
+// run_bad supports run bad handling for v3 tests.
 fn run_bad(v3_bin string, name string, src string, expected string) {
 	run_bad_with_flags(v3_bin, name, src, expected, '')
 }
@@ -30,6 +32,7 @@ fn run_bad_with_flags(v3_bin string, name string, src string, expected string, f
 	assert !result.output.contains('C compilation failed')
 }
 
+// run_good supports run good handling for v3 tests.
 fn run_good(v3_bin string, name string, src string) string {
 	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
@@ -42,12 +45,14 @@ fn run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
+// write_project_file writes project file output for v3 tests.
 fn write_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
 	os.mkdir_all(os.dir(path)) or { panic(err) }
 	os.write_file(path, src) or { panic(err) }
 }
 
+// run_bad_project supports run bad project handling for v3 tests.
 fn run_bad_project(v3_bin string, name string, files map[string]string, input string, expected string) {
 	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
 	if os.exists(root) {
@@ -65,6 +70,7 @@ fn run_bad_project(v3_bin string, name string, files map[string]string, input st
 	assert !result.output.contains('C compilation failed')
 }
 
+// run_good_project supports run good project handling for v3 tests.
 fn run_good_project(v3_bin string, name string, files map[string]string, input string) string {
 	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
 	if os.exists(root) {
@@ -84,6 +90,7 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	return run.output.trim_space()
 }
 
+// gen_c_project emits c project output for v3 tests.
 fn gen_c_project(v3_bin string, name string, files map[string]string, input string) string {
 	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
 	if os.exists(root) {
@@ -102,6 +109,7 @@ fn gen_c_project(v3_bin string, name string, files map[string]string, input stri
 	return os.read_file(c_out) or { panic(err) }
 }
 
+// test_type_checker_reports_core_semantic_errors validates this v3 regression case.
 fn test_type_checker_reports_core_semantic_errors() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'bad_assignment', "fn main() {\n\tmut x := 1\n\tx = 'bad'\n}\n",

@@ -2,16 +2,19 @@ module mir
 
 import v3.ssa
 
+// TargetArch lists target arch values used by mir.
 pub enum TargetArch {
 	unknown
 	arm64
 }
 
+// AbiKind lists abi kind values used by mir.
 pub enum AbiKind {
 	unknown
 	aapcs64
 }
 
+// Target represents target data used by mir.
 pub struct Target {
 pub:
 	arch         TargetArch
@@ -22,6 +25,7 @@ pub:
 	stack_align  int
 }
 
+// AbiLocationKind lists abi location kind values used by mir.
 pub enum AbiLocationKind {
 	none
 	register
@@ -29,6 +33,7 @@ pub enum AbiLocationKind {
 	indirect
 }
 
+// AbiLocation represents abi location data used by mir.
 pub struct AbiLocation {
 pub:
 	kind           AbiLocationKind
@@ -38,6 +43,7 @@ pub:
 	size           int
 }
 
+// FunctionAbi represents function abi data used by mir.
 pub struct FunctionAbi {
 pub:
 	params          []AbiLocation
@@ -46,6 +52,7 @@ pub:
 	stack_align     int
 }
 
+// Value represents value data used by mir.
 pub struct Value {
 pub mut:
 	id    int
@@ -56,6 +63,7 @@ pub mut:
 	uses  []ssa.ValueID
 }
 
+// Instruction represents instruction data used by mir.
 pub struct Instruction {
 pub mut:
 	op       ssa.OpCode
@@ -64,6 +72,7 @@ pub mut:
 	block    int
 }
 
+// BasicBlock represents basic block data used by mir.
 pub struct BasicBlock {
 pub mut:
 	id     int
@@ -74,6 +83,7 @@ pub mut:
 	succs  []ssa.BlockID
 }
 
+// Function represents function data used by mir.
 pub struct Function {
 pub mut:
 	id          int
@@ -85,6 +95,7 @@ pub mut:
 	abi         FunctionAbi
 }
 
+// Module represents module data used by mir.
 @[heap]
 pub struct Module {
 pub mut:
@@ -187,10 +198,12 @@ pub fn lower_from_ssa_for_target(m &ssa.Module, target Target) Module {
 	return mod
 }
 
+// type_size returns type size data for Module.
 pub fn (m &Module) type_size(typ_id ssa.TypeID) int {
 	return m.type_size_inner(typ_id, 0)
 }
 
+// type_size_inner returns type size inner data for Module.
 fn (m &Module) type_size_inner(typ_id ssa.TypeID, depth int) int {
 	if typ_id <= 0 || typ_id >= m.type_store.types.len {
 		return 0
@@ -238,10 +251,12 @@ fn (m &Module) type_size_inner(typ_id ssa.TypeID, depth int) int {
 	return 8
 }
 
+// type_align returns type align data for Module.
 pub fn (m &Module) type_align(typ_id ssa.TypeID) int {
 	return m.type_align_inner(typ_id, 0)
 }
 
+// type_align_inner returns type align inner data for Module.
 fn (m &Module) type_align_inner(typ_id ssa.TypeID, depth int) int {
 	if typ_id <= 0 || typ_id >= m.type_store.types.len {
 		return 1
@@ -290,6 +305,7 @@ fn (m &Module) type_align_inner(typ_id ssa.TypeID, depth int) int {
 	return 1
 }
 
+// build_function_abi builds function abi data for mir.
 fn (m &Module) build_function_abi(f Function) FunctionAbi {
 	mut params := []AbiLocation{}
 	mut next_reg := 0
@@ -347,6 +363,7 @@ fn (m &Module) build_function_abi(f Function) FunctionAbi {
 	}
 }
 
+// value_size returns value size data for Module.
 fn (m &Module) value_size(val_id ssa.ValueID) int {
 	if val_id <= 0 || val_id >= m.values.len {
 		return m.target_word_size()
@@ -358,6 +375,7 @@ fn (m &Module) value_size(val_id ssa.ValueID) int {
 	return m.target_word_size()
 }
 
+// target_word_size supports target word size handling for Module.
 fn (m &Module) target_word_size() int {
 	if m.target.pointer_size > 0 {
 		return m.target.pointer_size
@@ -365,6 +383,7 @@ fn (m &Module) target_word_size() int {
 	return 8
 }
 
+// target_stack_align supports target stack align handling for Module.
 fn (m &Module) target_stack_align() int {
 	if m.target.stack_align > 0 {
 		return m.target.stack_align
@@ -372,6 +391,7 @@ fn (m &Module) target_stack_align() int {
 	return m.target_word_size()
 }
 
+// words_for supports words for handling for mir.
 fn words_for(size int, word_size int) int {
 	if size <= 0 {
 		return 0
@@ -379,6 +399,7 @@ fn words_for(size int, word_size int) int {
 	return (size + word_size - 1) / word_size
 }
 
+// align_to supports align to handling for mir.
 fn align_to(value int, alignment int) int {
 	if alignment <= 1 {
 		return value

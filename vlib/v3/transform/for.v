@@ -2,6 +2,7 @@ module transform
 
 import v3.flat
 
+// transform_for_body transforms transform for body data for transform.
 fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count < 3 {
 		return arr1(id)
@@ -79,6 +80,7 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 	return arr1(new_id)
 }
 
+// transform_for_in_body transforms transform for in body data for transform.
 fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []flat.NodeId {
 	header_count := node.value.int()
 	if header_count < 3 || node.children_count < 3 {
@@ -131,6 +133,7 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 	return t.rebuild_for_in_stmt(id, node)
 }
 
+// pool_get_results_iter_type supports pool get results iter type handling for Transformer.
 fn (t &Transformer) pool_get_results_iter_type(container_id flat.NodeId) ?string {
 	if int(container_id) < 0 {
 		return none
@@ -161,6 +164,7 @@ fn (t &Transformer) pool_get_results_iter_type(container_id flat.NodeId) ?string
 	return '[]${elem_type}'
 }
 
+// rebuild_for_in_stmt supports rebuild for in stmt handling for Transformer.
 fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []flat.NodeId {
 	header_count := node.value.int()
 	key_id := t.a.child(&node, 0)
@@ -245,6 +249,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	}))
 }
 
+// lower_range_for_in builds lower range for in data for transform.
 fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, low_id flat.NodeId, high_id flat.NodeId, body_ids []flat.NodeId) []flat.NodeId {
 	if int(key_id) < 0 {
 		return arr1(id)
@@ -266,6 +271,7 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 	return prefix
 }
 
+// lower_indexed_for_in builds lower indexed for in data for transform.
 fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, iter_type string, has_index bool, body_ids []flat.NodeId) []flat.NodeId {
 	if int(key_id) < 0 {
 		return arr1(id)
@@ -349,6 +355,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	return prefix
 }
 
+// make_for_stmt builds make for stmt data for transform.
 fn (mut t Transformer) make_for_stmt(init flat.NodeId, cond flat.NodeId, post flat.NodeId, body []flat.NodeId, src flat.Node) flat.NodeId {
 	start := t.a.children.len
 	t.a.children << init
@@ -367,6 +374,7 @@ fn (mut t Transformer) make_for_stmt(init flat.NodeId, cond flat.NodeId, post fl
 	})
 }
 
+// detect_for_in_type resolves detect for in type information for transform.
 fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 	if node.typ.len > 0 {
 		return node.typ

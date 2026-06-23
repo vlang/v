@@ -2,6 +2,7 @@ module optimize
 
 import v3.ssa
 
+// constant_fold supports constant fold handling for optimize.
 fn constant_fold(mut m ssa.Module) bool {
 	mut changed := false
 	for fi in 0 .. m.funcs.len {
@@ -279,6 +280,7 @@ fn try_algebraic_simplify(_m &ssa.Module, val_id int, instr ssa.Instruction, lhs
 	return -1, false
 }
 
+// branch_fold supports branch fold handling for optimize.
 fn branch_fold(mut m ssa.Module) bool {
 	mut changed := false
 	for fi in 0 .. m.funcs.len {
