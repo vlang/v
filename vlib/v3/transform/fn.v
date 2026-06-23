@@ -1091,7 +1091,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 				arr := t.fixed_array_value_to_array(expr, clean_typ, '[]${elem_type}')
 				return t.wrap_string_conversion(arr, '[]${elem_type}')
 			} else if clean_typ.len > 0 && clean_typ.starts_with('[]') {
-				return t.make_call_typed('Array_str', arr1(expr), 'string')
+				return t.lower_array_str(expr, clean_typ)
 			} else if clean_typ == 'rune' {
 				return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
 					'string')
@@ -1100,6 +1100,58 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			}
 		}
 	}
+}
+
+// append_string builds `result = result + piece` using the runtime string concat helper.
+// Using string__plus directly (instead of `+=`) keeps the synthesized node independent of
+// type resolution for the freshly-introduced temp.
+fn (mut t Transformer) append_string(result_name string, piece flat.NodeId) flat.NodeId {
+	concat := t.make_call_typed('string__plus', arr2(t.make_ident(result_name), piece), 'string')
+	return t.make_assign(t.make_ident(result_name), concat)
+}
+
+// lower_array_str expands `${arr}` for a `[]T` into a runtime loop that formats each element
+// via wrap_string_conversion, so nested arrays, structs with `str`, enums, etc. all recurse
+// correctly. Produces `[e0, e1, ...]`; string elements are wrapped in single quotes to match V.
+fn (mut t Transformer) lower_array_str(arr_expr flat.NodeId, base_type string) flat.NodeId {
+	src := t.a.nodes[int(arr_expr)]
+	elem_type := base_type[2..]
+	base := t.stable_expr_for_reuse(arr_expr)
+	mut prefix := []flat.NodeId{}
+	t.drain_pending(mut prefix)
+	result_name := t.new_temp('arr_str')
+	idx_name := t.new_temp('arr_str_idx')
+	prefix << t.make_decl_assign_typed(result_name, t.make_string_literal('['), 'string')
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(base, 'len', 'int'))
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	elem_name := t.new_temp('arr_str_it')
+	elem_expr := t.array_get_value(base, t.make_ident(idx_name), elem_type)
+	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_type)
+	mut loop_body := []flat.NodeId{}
+	loop_body << elem_decl
+	// `if idx > 0 { result = result + ', ' }`
+	sep_cond := t.make_infix(.gt, t.make_ident(idx_name), t.make_int_literal(0))
+	sep_stmt := t.append_string(result_name, t.make_string_literal(', '))
+	loop_body << t.make_if(sep_cond, t.make_block(arr1(sep_stmt)), t.make_empty())
+	// element text (recurses; may push its own statements for nested arrays/optionals)
+	t.set_var_type(elem_name, elem_type)
+	elem_str := t.wrap_string_conversion(t.make_ident(elem_name), elem_type)
+	t.unset_var_type(elem_name)
+	t.drain_pending(mut loop_body)
+	if elem_type == 'string' {
+		loop_body << t.append_string(result_name, t.make_string_literal("'"))
+		loop_body << t.append_string(result_name, elem_str)
+		loop_body << t.append_string(result_name, t.make_string_literal("'"))
+	} else {
+		loop_body << t.append_string(result_name, elem_str)
+	}
+	prefix << t.make_for_stmt(init, cond, post, loop_body, src)
+	prefix << t.append_string(result_name, t.make_string_literal(']'))
+	for stmt in prefix {
+		t.pending_stmts << stmt
+	}
+	return t.make_ident(result_name)
 }
 
 // wrap_optional_string_conversion transforms wrap optional string conversion data for transform.
