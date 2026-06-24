@@ -5,6 +5,7 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
+// build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_generics_test')
 	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
@@ -12,6 +13,7 @@ fn build_v3() string {
 	return v3_bin
 }
 
+// run_selfhost_bad supports run selfhost bad handling for v3 tests.
 fn run_selfhost_bad(v3_bin string, name string, src string, expected string) {
 	bad_src := os.join_path(os.temp_dir(), 'v3_gen_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
@@ -43,6 +45,7 @@ fn run_selfhost_project_bad(v3_bin string, name string, files map[string]string,
 	assert !result.output.contains('C compilation failed')
 }
 
+// run_no_generic_error supports run no generic error handling for v3 tests.
 fn run_no_generic_error(v3_bin string, name string, src string) {
 	src_file := os.join_path(os.temp_dir(), 'v3_gen_${name}.v')
 	os.write_file(src_file, src) or { panic(err) }
@@ -51,6 +54,7 @@ fn run_no_generic_error(v3_bin string, name string, src string) {
 	assert !result.output.contains('unsupported generic'), '${name}: should not reject generics without -selfhost, got: ${result.output}'
 }
 
+// run_generic_ok supports run generic ok handling for v3 tests.
 fn run_generic_ok(v3_bin string, name string, src string, expected string) {
 	src_file := os.join_path(os.temp_dir(), 'v3_gen_${name}.v')
 	os.write_file(src_file, src) or { panic(err) }
@@ -60,7 +64,8 @@ fn run_generic_ok(v3_bin string, name string, src string, expected string) {
 	// Check that v3 type checker and transform pass without errors
 	assert !compile.output.contains('unsupported generic'), '${name}: should not reject generics, got: ${compile.output}'
 	assert !compile.output.contains('type checker found'), '${name}: type checker errors: ${compile.output}'
-	// Verify C file was generated (v3 pipeline succeeded even if cc fails due to pre-existing runtime issues)
+	// Verify C file was generated. The v3 pipeline can succeed even if cc fails due
+	// to pre-existing runtime issues.
 	assert os.exists(c_file), '${name}: C file not generated'
 	c_content := os.read_file(c_file) or { '' }
 	// The mangled generic function should appear in the generated C code
@@ -69,6 +74,7 @@ fn run_generic_ok(v3_bin string, name string, src string, expected string) {
 	}
 }
 
+// test_generics_rejected_when_building_v validates this v3 regression case.
 fn test_generics_rejected_when_building_v() {
 	v3_bin := build_v3()
 	// generic function
@@ -222,6 +228,7 @@ struct Phantom[T] {
 	}, 'main.v', 'unsupported generic struct `Phantom`')
 }
 
+// test_generics_allowed_without_building_v validates this v3 regression case.
 fn test_generics_allowed_without_building_v() {
 	v3_bin := build_v3()
 	// generic function — no "unsupported generic" error
@@ -296,6 +303,7 @@ fn main() {}
 ')
 }
 
+// test_generics_compile_and_run validates generics compile and run behavior in v3 tests.
 fn test_generics_compile_and_run() {
 	v3_bin := build_v3()
 
@@ -323,6 +331,36 @@ fn main() {
 ',
 		'v3')
 
+	// A one-letter concrete type argument should not be treated as an unresolved
+	// generic placeholder when discovering struct specializations.
+	one_letter_src := os.join_path(os.temp_dir(), 'v3_gen_one_letter_concrete_arg.v')
+	os.write_file(one_letter_src, '
+struct A {
+	value int
+}
+
+struct Box[T] {
+	value T
+}
+
+fn main() {
+	b := Box[A]{
+		value: A{
+			value: 3
+		}
+	}
+	_ := b
+}
+') or {
+		panic(err)
+	}
+	one_letter_bin := os.join_path(os.temp_dir(), 'v3_gen_one_letter_concrete_arg')
+	one_letter_compile := os.execute('${v3_bin} ${one_letter_src} -b c -o ${one_letter_bin}')
+	assert !one_letter_compile.output.contains('unsupported generic'), one_letter_compile.output
+	assert !one_letter_compile.output.contains('type checker found'), one_letter_compile.output
+	one_letter_c := os.read_file(one_letter_bin + '.c') or { '' }
+	assert one_letter_c.contains('struct Box_A'), one_letter_c
+
 	// transitive generic calls: outer[T] calls id[T]
 	run_generic_ok(v3_bin, 'run_transitive', '
 fn id[T](x T) T {
@@ -347,6 +385,19 @@ fn main() {
 }
 ',
 		'99')
+
+	// multi-param generic struct fields
+	run_generic_ok(v3_bin, 'run_multi_param_struct_fields', '
+struct Pair[X, Y] {
+	left X
+	right Y
+}
+fn main() {
+	p := Pair[int, string]{left: 1, right: "ok"}
+	println(p.right)
+}
+',
+		'ok')
 
 	// infer from array element type
 	run_generic_ok(v3_bin, 'run_array_infer', '

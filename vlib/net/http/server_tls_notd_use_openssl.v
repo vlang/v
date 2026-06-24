@@ -109,9 +109,6 @@ fn (mut s Server) listen_and_serve_tls() {
 			}
 			continue
 		}
-		if s.read_timeout > 0 {
-			conn.set_read_timeout(s.read_timeout)
-		}
 		ch <- conn
 	}
 	ch.close()
@@ -160,6 +157,17 @@ fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 	defer {
 		if !is_h2 {
 			w.idle_conns.unmark_idle(conn.handle)
+		}
+		// close_idle may have already closed conn.handle on Windows (a forced
+		// closesocket to wake this worker from a blocked read). conn.shutdown()
+		// both frees the mbedtls TLS resources (SSL ctx, config, certs, RNG,
+		// ALPN alloc) AND closes the socket; we must always do the former but
+		// must not close the socket a second time — that would race process-wide
+		// SOCKET reuse and could close an unrelated socket. So relinquish socket
+		// ownership and still call shutdown for the TLS cleanup. On non-Windows
+		// was_force_closed is always false and the worker remains the sole closer.
+		if w.idle_conns.was_force_closed(conn.handle) {
+			conn.owns_socket = false
 		}
 		conn.shutdown() or {}
 	}

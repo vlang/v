@@ -1,6 +1,7 @@
 import v3.ssa
 import v3.ssa.optimize
 
+// test_optimize_verifies_and_preserves_valid_ssa validates this v3 regression case.
 fn test_optimize_verifies_and_preserves_valid_ssa() {
 	mut m := ssa.Module.new()
 	i64_type := m.type_store.get_int(64)

@@ -3,6 +3,7 @@ module c
 import v3.flat
 import v3.types
 
+// gen_string_interp emits string interp output for c.
 fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 	n := node.children_count
 	if n == 0 {
@@ -30,12 +31,12 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				g.gen_expr(child_id)
 				g.write('.message')
 			} else if typ is types.Primitive {
-				ct := g.tc.c_type(typ)
-				g.write('${ct}_str(')
+				prim_name := types.Type(typ).name()
+				g.write('${c_name('${prim_name}.str')}(')
 				g.gen_expr(child_id)
 				g.write(')')
 			} else if typ is types.ISize || typ is types.USize {
-				g.write('${typ.name()}_str(')
+				g.write('${c_name('${typ.name()}.str')}(')
 				g.gen_expr(child_id)
 				g.write(')')
 			} else if typ is types.Struct {
@@ -47,7 +48,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				g.gen_expr(child_id)
 				g.write(')')
 			} else {
-				g.write('int_str(')
+				g.write('int__str(')
 				g.gen_expr(child_id)
 				g.write(')')
 			}
@@ -56,10 +57,12 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 	g.write('})')
 }
 
+// is_string_node reports whether is string node applies in c.
 fn (g &FlatGen) is_string_node(id flat.NodeId) bool {
 	return g.tc.resolve_type(id) is types.String
 }
 
+// string_literals supports string literals handling for FlatGen.
 fn (mut g FlatGen) string_literals() {
 	for i, s in g.str_lits {
 		escaped := s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\t',
@@ -71,6 +74,7 @@ fn (mut g FlatGen) string_literals() {
 	}
 }
 
+// intern_string supports intern string handling for FlatGen.
 fn (mut g FlatGen) intern_string(s string) int {
 	if s in g.str_lit_ids {
 		return g.str_lit_ids[s]

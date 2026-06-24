@@ -3,6 +3,7 @@ module c
 import v3.flat
 import v3.types
 
+// gen_for emits for output for c.
 fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.tc.push_scope()
 	defer_start := g.defers.len
@@ -43,6 +44,7 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.tc.pop_scope()
 }
 
+// gen_for_in emits for in output for c.
 fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	g.tc.push_scope()
 	header_count := node.value.int()
@@ -52,7 +54,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	} else {
 		g.a.child_node(&node, 0)
 	}
-	var_name := c_name(var_node.value)
+	var_name := g.c_loop_local_name(var_node.value)
 	g.tc.cur_scope.insert(var_node.value, types.Type(types.int_))
 	body_start := header_count
 
@@ -63,29 +65,29 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 		if container.kind == .range {
 			panic('internal error: range for-in reached C backend after transform')
 		} else {
-			container_type := g.tc.resolve_type(g.a.child(&node, 2))
+			container_type := g.usable_expr_type(g.a.child(&node, 2))
 			has_index := int(val_id) >= 0
 			idx_var := if has_index {
-				c_name(g.a.child_node(&node, 0).value)
+				g.c_loop_local_name(g.a.child_node(&node, 0).value)
 			} else {
 				'__iter_${var_name}'
 			}
 			elem_var := if has_index {
-				c_name(g.a.child_node(&node, 1).value)
+				g.c_loop_local_name(g.a.child_node(&node, 1).value)
 			} else {
 				var_name
 			}
 			clean_container_type := types.unwrap_pointer(container_type)
 			if clean_container_type is types.Map {
-				c_key := g.tc.c_type(clean_container_type.key_type)
-				c_val := g.tc.c_type(clean_container_type.value_type)
+				c_key := g.value_c_type(clean_container_type.key_type)
+				c_val := g.value_c_type(clean_container_type.value_type)
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				iter_var := '__mi_${g.tmp_count}'
 				g.tmp_count++
 				key_var := if has_index { idx_var } else { '__mk_${g.tmp_count}' }
 				val_var_ := if has_index { elem_var } else { var_name }
 				access := if container_type is types.Pointer { '->' } else { '.' }
-				key_values := '${container_str}${access}key_values'
+				key_values := '(${container_str})${access}key_values'
 				g.writeln('for (int ${iter_var} = 0; ${iter_var} < ${key_values}.len; ${iter_var}++) {')
 				g.indent++
 				g.writeln('if (${key_values}.all_deleted && ${key_values}.all_deleted[${iter_var}]) continue;')
@@ -96,11 +98,13 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 				g.tc.cur_scope.insert(val_var_, clean_container_type.value_type)
 			} else if container_type is types.Array {
-				c_elem := g.tc.c_type(container_type.elem_type)
+				c_elem := g.value_c_type(container_type.elem_type)
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${container_str}.len; ${idx_var}++) {')
 				g.indent++
-				g.writeln('${c_elem} ${elem_var} = *(${c_elem}*)array_get(${container_str}, ${idx_var});')
+				g.write('${c_elem} ${elem_var} = *(')
+				g.write(c_elem)
+				g.writeln('*)array_get(${container_str}, ${idx_var});')
 				g.tc.cur_scope.insert(elem_var, container_type.elem_type)
 			} else if container_type is types.String {
 				container_str := g.expr_to_string(g.a.child(&node, 2))
@@ -110,7 +114,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.tc.cur_scope.insert(elem_var, types.Type(types.u8_))
 			} else if container_type is types.ArrayFixed {
 				af := container_type
-				c_elem := g.tc.c_type(af.elem_type)
+				c_elem := g.value_c_type(af.elem_type)
 				arr_len := g.fixed_array_len_value(af)
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${arr_len}; ${idx_var}++) {')
 				g.indent++
@@ -148,6 +152,30 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	g.tc.pop_scope()
 }
 
+fn (g &FlatGen) c_loop_local_name(name string) string {
+	if name.contains('.') {
+		return c_name(name.all_after_last('.'))
+	}
+	if name.contains('__') {
+		prefix := name.all_before_last('__')
+		suffix := name.all_after_last('__')
+		if suffix == 'index' {
+			return c_name(suffix)
+		}
+		if g.has_import_alias(prefix) {
+			return c_name(suffix)
+		}
+		for _, mod_name in g.modules {
+			short_mod := if mod_name.contains('.') { mod_name.all_after_last('.') } else { mod_name }
+			if prefix == short_mod {
+				return c_name(suffix)
+			}
+		}
+	}
+	return c_name(name)
+}
+
+// gen_node_inline emits node inline output for c.
 fn (mut g FlatGen) gen_node_inline(id flat.NodeId) {
 	node := g.a.nodes[int(id)]
 	match node.kind {
@@ -161,7 +189,11 @@ fn (mut g FlatGen) gen_node_inline(id flat.NodeId) {
 			v_type := g.tc.resolve_type(rhs_id)
 			typ := g.tc.c_type(v_type)
 			g.write('${typ} ')
-			g.gen_expr(lhs_id)
+			if lhs.kind == .ident {
+				g.write(g.c_loop_local_name(lhs.value))
+			} else {
+				g.gen_expr(lhs_id)
+			}
 			g.write(' = ')
 			g.gen_expr(rhs_id)
 			if lhs.kind == .ident {

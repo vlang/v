@@ -1,6 +1,7 @@
 import os
 import strings
 
+// build_parallel_v3 builds parallel v3 data for v3 tests.
 fn build_parallel_v3() string {
 	vexe := @VEXE
 	v3_src := os.join_path(@VEXEROOT, 'vlib', 'v3', 'v3.v')
@@ -10,6 +11,7 @@ fn build_parallel_v3() string {
 	return v3_bin
 }
 
+// write_parallel_module_init_project writes parallel module init project output for v3 tests.
 fn write_parallel_module_init_project(name string) string {
 	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
 	os.rmdir_all(project_dir) or {}
@@ -52,6 +54,7 @@ pub fn value() int {
 	return os.join_path(project_dir, 'main.v')
 }
 
+// test_parallel_cgen_main_emits_module_init_call validates this v3 regression case.
 fn test_parallel_cgen_main_emits_module_init_call() {
 	v3_bin := build_parallel_v3()
 	main_path := write_parallel_module_init_project('parallel_module_init')

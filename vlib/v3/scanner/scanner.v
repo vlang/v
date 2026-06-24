@@ -3,6 +3,7 @@ module scanner
 import v3.token
 import v3.pref
 
+// Mode lists mode values used by scanner.
 @[flag]
 pub enum Mode {
 	normal
@@ -10,6 +11,7 @@ pub enum Mode {
 	skip_interpolation
 }
 
+// Scanner represents scanner data used by scanner.
 pub struct Scanner {
 	pref               &pref.Preferences
 	mode               Mode
@@ -28,6 +30,7 @@ pub mut:
 	str_quote           u8
 }
 
+// peek_byte supports peek byte handling for Scanner.
 @[direct_array_access; inline]
 fn (s &Scanner) peek_byte(n int) u8 {
 	idx := s.offset + n
@@ -37,6 +40,7 @@ fn (s &Scanner) peek_byte(n int) u8 {
 	return s.src[idx]
 }
 
+// new_scanner supports new scanner handling for scanner.
 pub fn new_scanner(prefs &pref.Preferences, mode Mode) Scanner {
 	unsafe {
 		return Scanner{
@@ -47,6 +51,7 @@ pub fn new_scanner(prefs &pref.Preferences, mode Mode) Scanner {
 	}
 }
 
+// init supports init handling for Scanner.
 pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.offset = 0
 	s.pos = 0
@@ -60,6 +65,7 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.src = src
 }
 
+// scan_char_literal reads scan char literal input for scanner.
 fn (mut s Scanner) scan_char_literal(quote u8) token.Token {
 	s.offset++
 	for s.offset < s.src.len {
@@ -83,10 +89,12 @@ fn (mut s Scanner) scan_char_literal(quote u8) token.Token {
 	return .char
 }
 
+// current_file returns current file data for Scanner.
 pub fn (s &Scanner) current_file() &token.File {
 	return unsafe { s.file }
 }
 
+// scan supports scan handling for Scanner.
 @[direct_array_access]
 pub fn (mut s Scanner) scan() token.Token {
 	if s.in_str_incomplete {
@@ -363,7 +371,6 @@ pub fn (mut s Scanner) scan() token.Token {
 				s.offset++
 				return .lsbr
 			}
-			s.offset++
 			start := s.offset
 			for s.offset < s.src.len && s.src[s.offset] != `\n` {
 				s.offset++

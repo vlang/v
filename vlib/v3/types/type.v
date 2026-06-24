@@ -1,5 +1,6 @@
 module types
 
+// Type aliases type values used by types.
 pub type Type = Void
 	| Unknown
 	| Primitive
@@ -25,43 +26,53 @@ pub type Type = Void
 	| Alias
 	| MultiReturn
 
+// Void represents void data used by types.
 pub struct Void {
 	dummy_ u8
 }
 
+// Unknown represents unknown data used by types.
 pub struct Unknown {
 pub:
 	reason string
 }
 
+// String represents string data used by types.
 pub struct String {
 	dummy_ u8
 }
 
+// Char represents char data used by types.
 pub struct Char {
 	dummy_ u8
 }
 
+// Rune represents rune data used by types.
 pub struct Rune {
 	dummy_ u8
 }
 
+// ISize represents isize data used by types.
 pub struct ISize {
 	dummy_ u8
 }
 
+// USize represents usize data used by types.
 pub struct USize {
 	dummy_ u8
 }
 
+// Nil represents nil data used by types.
 pub struct Nil {
 	dummy_ u8
 }
 
+// None represents none data used by types.
 pub struct None {
 	dummy_ u8
 }
 
+// Properties lists properties values used by types.
 @[flag]
 pub enum Properties {
 	boolean
@@ -71,17 +82,20 @@ pub enum Properties {
 	untyped
 }
 
+// Primitive represents primitive data used by types.
 pub struct Primitive {
 pub:
 	props Properties
 	size  u8
 }
 
+// Array represents array data used by types.
 pub struct Array {
 pub:
 	elem_type Type
 }
 
+// ArrayFixed represents array fixed data used by types.
 pub struct ArrayFixed {
 pub:
 	elem_type Type
@@ -89,76 +103,90 @@ pub:
 	len_expr  string
 }
 
+// Channel represents channel data used by types.
 pub struct Channel {
 pub:
 	elem_type Type
 }
 
+// Map represents map data used by types.
 pub struct Map {
 pub:
 	key_type   Type
 	value_type Type
 }
 
+// Pointer represents pointer data used by types.
 pub struct Pointer {
 pub:
 	base_type Type
 }
 
+// FnType represents fn type data used by types.
 pub struct FnType {
 pub:
 	params      []Type
 	return_type Type
 }
 
+// OptionType represents option type data used by types.
 pub struct OptionType {
 pub:
 	base_type Type
 }
 
+// ResultType represents result type data used by types.
 pub struct ResultType {
 pub:
 	base_type Type
 }
 
+// Struct represents struct data used by types.
 pub struct Struct {
 pub:
 	name string
 }
 
+// Interface represents interface data used by types.
 pub struct Interface {
 pub:
 	name string
 }
 
+// Enum represents enum data used by types.
 pub struct Enum {
 pub:
 	name    string
 	is_flag bool
 }
 
+// SumType represents sum type data used by types.
 pub struct SumType {
 pub:
 	name string
 }
 
+// Alias represents alias data used by types.
 pub struct Alias {
 pub:
 	name      string
 	base_type Type
 }
 
+// MultiReturn represents multi return data used by types.
 pub struct MultiReturn {
 pub:
 	types []Type
 }
 
+// StructField represents struct field data used by types.
 pub struct StructField {
 pub:
 	name string
 	typ  Type
 }
 
+// unwrap_pointer transforms unwrap pointer data for types.
 pub fn unwrap_pointer(t Type) Type {
 	if t is Pointer {
 		return t.base_type
@@ -166,14 +194,29 @@ pub fn unwrap_pointer(t Type) Type {
 	return t
 }
 
+// generic_base_name returns the declaration part of a concrete generic type name.
+pub fn generic_base_name(name string) string {
+	if name.starts_with('[') {
+		return name
+	}
+	idx := name.index_u8(`[`)
+	if idx > 0 {
+		return name[..idx]
+	}
+	return name
+}
+
+// is_pointer reports whether is pointer applies in types.
 pub fn (t Type) is_pointer() bool {
 	return t is Pointer
 }
 
+// is_string reports whether is string applies in types.
 pub fn (t Type) is_string() bool {
 	return t is String
 }
 
+// is_integer reports whether is integer applies in types.
 pub fn (t Type) is_integer() bool {
 	if t is Primitive {
 		return t.props.has(.integer)
@@ -181,6 +224,7 @@ pub fn (t Type) is_integer() bool {
 	return t is Rune || t is ISize || t is USize
 }
 
+// is_float reports whether is float applies in types.
 pub fn (t Type) is_float() bool {
 	if t is Primitive {
 		return t.props.has(.float)
@@ -188,6 +232,7 @@ pub fn (t Type) is_float() bool {
 	return false
 }
 
+// name returns name data for Type.
 pub fn (t Type) name() string {
 	if t is Void {
 		return 'void'
@@ -283,14 +328,17 @@ pub fn (t Type) name() string {
 	return ''
 }
 
+// nested_type_name supports nested type name handling for types.
 fn nested_type_name(t Type) string {
 	return t.name()
 }
 
+// fn_type_param_type supports fn type param type handling for types.
 fn fn_type_param_type(f FnType, idx int) Type {
 	return f.params[idx]
 }
 
+// prim_name_from supports prim name from handling for types.
 fn prim_name_from(props Properties, size u8) string {
 	if props.has(.boolean) {
 		return 'bool'
@@ -324,6 +372,7 @@ fn prim_name_from(props Properties, size u8) string {
 	return 'int'
 }
 
+// prim_name supports prim name handling for types.
 fn prim_name(t Primitive) string {
 	if t.props.has(.boolean) {
 		return 'bool'

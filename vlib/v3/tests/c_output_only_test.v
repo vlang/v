@@ -6,6 +6,7 @@ const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 const hello_src = os.join_path(tests_dir, 'hello.v')
 
+// test_c_output_path_only_writes_c_file validates this v3 regression case.
 fn test_c_output_path_only_writes_c_file() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c_output_only_test')
 	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')

@@ -6,6 +6,7 @@ const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 const hello_src = os.join_path(tests_dir, 'hello.v')
 
+// test_prod_flag_before_input_uses_optimized_c_compile validates this v3 regression case.
 fn test_prod_flag_before_input_uses_optimized_c_compile() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_prod_flag_test')
 	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')

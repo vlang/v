@@ -14,6 +14,7 @@ import v3.ssa.optimize
 import v3.transform
 import v3.types
 
+// run_compile_command supports run compile command handling for v3 entry point.
 fn run_compile_command(cmd string) os.Result {
 	exit_code := os.system(cmd)
 	return os.Result{
@@ -21,17 +22,105 @@ fn run_compile_command(cmd string) os.Result {
 	}
 }
 
-fn C.open(charptr, int, int) int
-fn C.write(int, voidptr, int) int
-fn C.close(int) int
-fn C.chmod(charptr, int) int
+fn prepare_c_flags_for_link(flags []string) ![]string {
+	support_flags := c_object_compile_support_flags(flags)
+	mut prepared := []string{}
+	for flag in flags {
+		clean := flag.trim_space()
+		if c_flag_is_object_file(clean) {
+			prepared << ensure_c_object_file(clean, support_flags)!
+		} else {
+			prepared << flag
+		}
+	}
+	return prepared
+}
 
-const o_wronly_creat_trunc = 0x601 // O_WRONLY | O_CREAT | O_TRUNC on Darwin
+fn c_object_compile_support_flags(flags []string) []string {
+	mut support := []string{}
+	for flag in flags {
+		clean := flag.trim_space()
+		if clean.len == 0 || c_flag_is_object_file(clean) || c_flag_is_c_source_file(clean)
+			|| clean.starts_with('-l') {
+			continue
+		}
+		if clean.starts_with('-I') || clean.starts_with('-D') || clean.starts_with('-U')
+			|| clean.starts_with('-std') || clean.starts_with('-f') || clean.starts_with('-W')
+			|| clean == '-pthread' {
+			support << clean
+		}
+	}
+	return support
+}
 
+fn ensure_c_object_file(obj_path string, support_flags []string) !string {
+	if os.exists(obj_path) {
+		return obj_path
+	}
+	source_file := c_source_from_object_file(obj_path) or {
+		return error('missing C object ${obj_path}, and no adjacent .c/.cpp/.S source was found')
+	}
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	os.mkdir_all(cache_dir)!
+	cached_obj := os.join_path(cache_dir, c_object_cache_name(obj_path, support_flags))
+	if os.exists(cached_obj)
+		&& os.file_last_mod_unix(cached_obj) >= os.file_last_mod_unix(source_file) {
+		return cached_obj
+	}
+	compiler := if source_file.ends_with('.cpp') { 'c++' } else { 'cc' }
+	std_flag := if source_file.ends_with('.cpp') { '-std=c++11' } else { '-std=gnu11' }
+	cmd := '${compiler} ${std_flag} -w ${support_flags.join(' ')} -o ${os.quoted_path(cached_obj)} -c ${os.quoted_path(source_file)}'
+	res := os.execute(cmd)
+	if res.exit_code != 0 {
+		return error('failed to build C object ${obj_path} from ${source_file}:\n${res.output}')
+	}
+	return cached_obj
+}
+
+fn c_source_from_object_file(obj_path string) ?string {
+	base := obj_path.all_before_last('.')
+	for ext in ['.c', '.cpp', '.S'] {
+		source_file := base + ext
+		if os.exists(source_file) {
+			return source_file
+		}
+	}
+	return none
+}
+
+fn c_object_cache_name(path string, support_flags []string) string {
+	base := path.replace_each(['/', '_', '\\', '_', ':', '_', '.', '_', ' ', '_'])
+	// The compile flags (`-D`/`-I`/...) change the object contents, so they must
+	// be part of the cache key; otherwise a rebuild with different `#flag` defines
+	// silently links the stale object built with the previous configuration.
+	if support_flags.len == 0 {
+		return base + '.o'
+	}
+	return '${base}_${c_flags_hash(support_flags)}.o'
+}
+
+fn c_flags_hash(flags []string) string {
+	mut h := u64(1469598103934665603)
+	joined := flags.join(' ')
+	for c in joined.bytes() {
+		h = (h ^ u64(c)) * u64(1099511628211)
+	}
+	return h.hex()
+}
+
+fn c_flag_is_object_file(flag string) bool {
+	return flag.ends_with('.o') || flag.ends_with('.obj')
+}
+
+fn c_flag_is_c_source_file(flag string) bool {
+	return flag.ends_with('.c') || flag.ends_with('.cc') || flag.ends_with('.cpp')
+}
+
+// main runs the v3 entry point.
 fn main() {
 	args := os.args[1..]
 	if args.len == 0 {
-		eprintln('usage: v3 <file.v> [-o output|file.c] [-b c|arm64|eval]')
+		eprintln('usage: v3 <file.v> [-o output|file.c] [-b c|arm64|eval] [-d flag]')
 		exit(1)
 	}
 
@@ -42,6 +131,8 @@ fn main() {
 	mut is_strict := false
 	mut is_selfhost := false
 	mut no_parallel := false
+	mut building_v := false
+	mut user_defines := []string{}
 	mut i := 0
 	for i < args.len {
 		if args[i] == '-o' && i + 1 < args.len {
@@ -56,11 +147,28 @@ fn main() {
 		} else if args[i] == '-selfhost' {
 			is_selfhost = true
 			i++
+		} else if args[i] == '-building-v' || args[i] == '-building_v' {
+			// The V compiler itself uses no generics, so monomorphization (and the rest
+			// of the generics machinery) is pure overhead when building it.
+			building_v = true
+			i++
 		} else if args[i] == '-strict' {
 			is_strict = true
 			i++
 		} else if args[i] == '-no-parallel' || args[i] == '--no-parallel' {
 			no_parallel = true
+			i++
+		} else if args[i] == '-d' && i + 1 < args.len {
+			user_defines << args[i + 1]
+			i += 2
+		} else if args[i].starts_with('-d') && args[i].len > 2 {
+			user_defines << args[i][2..]
+			i++
+		} else if args[i] in ['-gc', '-cc'] && i + 1 < args.len {
+			i += 2
+		} else if args[i] in ['-prealloc', '-enable-globals'] {
+			i++
+		} else if args[i].starts_with('-') {
 			i++
 		} else {
 			input_file = args[i]
@@ -71,6 +179,12 @@ fn main() {
 	if input_file == '' {
 		eprintln('no input file')
 		exit(1)
+	}
+
+	// Compiling the V compiler itself (v3.v) implies building_v: it uses no generics, so
+	// the monomorphization pass is pure overhead. -building-v can force this for any input.
+	if input_file.all_after_last('/') == 'v3.v' {
+		building_v = true
 	}
 
 	mut bin_file := ''
@@ -92,7 +206,10 @@ fn main() {
 	// Parse directly to flat AST
 	mut prefs := pref.new_preferences()
 	prefs.backend = backend
+	prefs.user_defines = user_defines
 	prefs.vroot = resolve_vroot(prefs.vroot)
+	prefs.selfhost = is_selfhost
+	prefs.building_v = building_v
 	mut p := parser.Parser.new(prefs)
 
 	mut files := []string{}
@@ -108,6 +225,11 @@ fn main() {
 		user_files << input_file
 	} else if os.is_dir(input_file) {
 		user_files = pref.get_v_files_from_dir(input_file, prefs.user_defines, prefs.target_os)
+		for subdir in vmod_subdirs(input_file) {
+			subdir_path := os.join_path_single(input_file, subdir)
+			user_files << pref.get_v_files_from_dir(subdir_path, prefs.user_defines,
+				prefs.target_os)
+		}
 	} else {
 		user_files << input_file
 	}
@@ -154,11 +276,11 @@ fn main() {
 
 	// Mark used functions (dead-code elimination). This is done before transform
 	// so the transformer can skip function bodies that the C backend will prune.
-	used_fns := markused.mark_used(a, pre_tc)
+	mut used_fns := markused.mark_used(a, pre_tc)
 	b.step('markused')
 
 	// Transform (match lowering, string/in lowering, etc.)
-	transform.transform_with_used(mut a, &pre_tc, used_fns)
+	used_fns = transform.transform_with_used(mut a, &pre_tc, used_fns)
 	b.step('transform')
 
 	// Reuse the pre-transform checker for metadata only. Transform does not add
@@ -169,6 +291,14 @@ fn main() {
 	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
 	pre_tc.annotate_types()
 	b.step('annotate types')
+
+	// Monomorphization only adds specialized generic instantiations to `used_fns`. The V
+	// compiler sources use no generics, so when building V we skip the pass entirely
+	// (`used_fns` passes through unchanged) instead of scanning the whole AST for nothing.
+	if !building_v {
+		used_fns = transform.monomorphize_with_used(mut a, &pre_tc, used_fns)
+	}
+	b.step('monomorphize')
 
 	if backend == 'arm64' {
 		// SSA + ARM64 native backend
@@ -207,7 +337,29 @@ fn main() {
 		} else {
 			'-w'
 		}
+		resolved_c_flags := prepare_c_flags_for_link(g.c_flags()) or {
+			eprintln(err.msg())
+			exit(1)
+		}
+		c_flags := resolved_c_flags.join(' ')
+		// Compile inside a per-output build dir, using constant relative source/output basenames,
+		// then move the result to bin_file. On macOS arm64 tcc bakes the -o basename into the
+		// ad-hoc code-signature identifier and the input .c path into the symbol table, so building
+		// `v5.c`->`v5` vs `v6.c`->`v6` directly would make the binaries differ only by those embedded
+		// names (plus the code-directory hashes covering them). Compiling fixed `src.c`->`out` keeps
+		// those embedded names identical, so the self-host chain is byte-for-byte reproducible
+		// (v5 == v6). The build dir is unique per output and never embedded (we cd into it), so
+		// parallel compilations into a shared directory never clobber each other.
+		cc_dir := '${bin_file}.v3cc'
+		os.mkdir(cc_dir) or {}
+		cc_src := os.join_path_single(cc_dir, 'src.c')
+		cc_out := os.join_path_single(cc_dir, 'out')
+		if !write_text_file_raw(cc_src, c_code) {
+			eprintln('error writing ${cc_src}')
+			exit(1)
+		}
 		mut cc_cmd := ''
+		mut exec_cmd := ''
 		mut result := os.Result{}
 		if !is_prod {
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
@@ -215,29 +367,91 @@ fn main() {
 			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
-			cc_cmd = '${tcc_path} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file} -lm'
+			cc_cmd = '${tcc_path} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file} ${c_flags} -lm'
+			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${tcc_includes} ${tcc_lib} ${warn_flags} -o out src.c ${c_flags} -lm'
 			println('  > ${cc_cmd}')
-			result = run_compile_command(cc_cmd)
+			result = run_compile_command(exec_cmd)
 		}
 		if is_prod || result.exit_code != 0 {
 			if result.exit_code != 0 && result.output.len > 0 {
 				eprintln('  tcc error: ${result.output.trim_space()}')
 			}
-			cc_cmd = 'cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion -Wl,-stack_size,0x4000000 -o ${bin_file} ${output_file} -lm'
+			cc_cmd = 'cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion -Wl,-stack_size,0x4000000 -o ${bin_file} ${output_file} ${c_flags} -lm'
+			exec_cmd = 'cd ${cc_dir} && cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion -Wl,-stack_size,0x4000000 -o out src.c ${c_flags} -lm'
 			println('  > ${cc_cmd}')
-			result = run_compile_command(cc_cmd)
+			result = run_compile_command(exec_cmd)
 			if result.exit_code != 0 {
 				eprintln('C compilation failed:')
 				eprintln(result.output)
 				exit(1)
 			}
 		}
+		os.mv(cc_out, bin_file) or {
+			eprintln('failed to finalize ${bin_file}: ${err}')
+			exit(1)
+		}
+		os.rm(cc_src) or {}
+		os.rmdir(cc_dir) or {}
 		b.step('cc')
 	}
 
 	b.print_report()
 }
 
+fn vmod_subdirs(dir string) []string {
+	vmod_path := os.join_path_single(dir, 'v.mod')
+	content := os.read_file(vmod_path) or { return []string{} }
+	subdirs_pos := content.index('subdirs:') or { return []string{} }
+	after_subdirs := content[subdirs_pos..]
+	lb_rel := after_subdirs.index_u8(`[`)
+	if lb_rel < 0 {
+		return []string{}
+	}
+	after_lb := after_subdirs[lb_rel + 1..]
+	rb_rel := after_lb.index_u8(`]`)
+	if rb_rel < 0 {
+		return []string{}
+	}
+	raw_items := after_lb[..rb_rel].split(',')
+	mut subdirs := []string{}
+	for raw in raw_items {
+		item := raw.trim_space().trim('\'"')
+		if item.len > 0 {
+			subdirs << item
+		}
+	}
+	return subdirs
+}
+
+fn project_root_for_files(files []string) string {
+	for file in files {
+		root := nearest_vmod_root_for_file(file)
+		if root.len > 0 {
+			return root
+		}
+	}
+	if files.len > 0 {
+		return os.dir(files[0])
+	}
+	return os.getwd()
+}
+
+fn nearest_vmod_root_for_file(path string) string {
+	mut dir := if os.is_dir(path) { path } else { os.dir(path) }
+	for _ in 0 .. 32 {
+		if os.exists(os.join_path_single(dir, 'v.mod')) {
+			return dir
+		}
+		parent := os.dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ''
+}
+
+// resolve_vroot resolves resolve vroot information for v3 entry point.
 fn resolve_vroot(initial string) string {
 	if is_valid_vroot(initial) {
 		return initial
@@ -256,32 +470,25 @@ fn resolve_vroot(initial string) string {
 	return initial
 }
 
+// is_valid_vroot reports whether is valid vroot applies in v3 entry point.
 fn is_valid_vroot(root string) bool {
 	return root.len > 0 && os.is_dir(builtin_dir_for_vroot(root))
 }
 
+// builtin_dir_for_vroot supports builtin dir for vroot handling for v3 entry point.
 fn builtin_dir_for_vroot(root string) string {
 	return os.join_path_single(os.join_path_single(root, 'vlib'), 'builtin')
 }
 
+// write_text_file_raw writes text file raw output for v3 entry point.
 fn write_text_file_raw(path string, data string) bool {
-	fd := C.open(path.str, o_wronly_creat_trunc, 420)
-	if fd < 0 {
-		return false
-	}
-	if data.len > 0 {
-		written := C.write(fd, data.str, data.len)
-		if written != data.len {
-			C.close(fd)
-			return false
-		}
-	}
-	if C.close(fd) != 0 {
-		return false
-	}
-	return C.chmod(path.str, 420) == 0
+	// Delegate to the stdlib writer so the open flags (O_CREAT/O_TRUNC, binary mode)
+	// are correct on every platform, instead of hardcoding per-OS bit values.
+	os.write_file(path, data) or { return false }
+	return true
 }
 
+// print_type_errors updates print type errors state for v3 entry point.
 fn print_type_errors(errors []types.TypeError) {
 	eprintln('type checker found ${errors.len} error(s):')
 	max_errors := if errors.len < 20 { errors.len } else { 20 }
@@ -329,6 +536,7 @@ fn path_is_in_dir(path string, dir string) bool {
 	return real_path == real_dir || real_path.starts_with(real_dir + os.path_separator)
 }
 
+// resolve_imports resolves resolve imports information for v3 entry point.
 fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string) {
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
@@ -338,7 +546,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	if initial_files.len > 0 {
 		first_file = initial_files[0]
 	}
-	project_root := if first_file.len > 0 { os.dir(first_file) } else { os.getwd() }
+	project_root := project_root_for_files(initial_files)
 
 	mut changed := true
 	for changed {
@@ -362,20 +570,77 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			changed = true
 
 			importing_file := if cur_file.len > 0 { cur_file } else { first_file }
-			mut mod_dir := prefs.get_module_path(mod_name, importing_file)
-			if mod_dir == '' {
-				root_mod_dir := os.join_path(project_root, mod_name.replace('.', os.path_separator))
-				if os.is_dir(root_mod_dir) {
-					mod_dir = root_mod_dir
-				}
-			}
+			mod_dir := resolve_project_or_pref_module_path(prefs, mod_name, importing_file,
+				project_root)
 			if mod_dir == '' || !os.is_dir(mod_dir) {
 				continue
 			}
+			module_identity := import_module_identity(prefs, mod_name, importing_file,
+				project_root, mod_dir)
 			mod_files := pref.get_v_files_from_dir(mod_dir, prefs.user_defines, prefs.target_os)
 			for mf in mod_files {
+				first_node := a.nodes.len
 				p.parse_into(mf)
+				if module_identity == mod_name {
+					canonicalize_imported_module_name(mut a, first_node, mod_name)
+				}
 			}
 		}
 	}
+	normalize_import_module_identities(mut a, prefs, first_file, project_root)
+}
+
+fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, import_path string) {
+	if import_path.len == 0 {
+		return
+	}
+	short_name := import_path.all_after_last('.')
+	for i in first_node .. a.nodes.len {
+		if a.nodes[i].kind == .module_decl && a.nodes[i].value == short_name {
+			a.nodes[i].value = import_path
+		}
+	}
+}
+
+fn normalize_import_module_identities(mut a flat.FlatAst, prefs &pref.Preferences, first_file string, project_root string) {
+	mut cur_file := first_file
+	for i in 0 .. a.nodes.len {
+		node := a.nodes[i]
+		if node.kind == .file && node.value.len > 0 {
+			cur_file = node.value
+			continue
+		}
+		if node.kind != .import_decl {
+			continue
+		}
+		importing_file := if cur_file.len > 0 { cur_file } else { first_file }
+		mod_dir := resolve_project_or_pref_module_path(prefs, node.value, importing_file,
+			project_root)
+		a.nodes[i].value = import_module_identity(prefs, node.value, importing_file, project_root,
+			mod_dir)
+	}
+}
+
+fn import_module_identity(prefs &pref.Preferences, import_path string, importing_file string, project_root string, import_dir string) string {
+	if !import_path.contains('.') {
+		return import_path
+	}
+	short_name := import_path.all_after_last('.')
+	short_dir := resolve_project_or_pref_module_path(prefs, short_name, importing_file,
+		project_root)
+	if short_dir.len > 0 && import_dir.len > 0 && os.is_dir(short_dir)
+		&& os.real_path(short_dir) != os.real_path(import_dir) {
+		return import_path
+	}
+	return short_name
+}
+
+fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string, importing_file string, project_root string) string {
+	if project_root.len > 0 {
+		project_path := os.join_path_single(project_root, mod_name.replace('.', os.path_separator))
+		if os.is_dir(project_path) {
+			return project_path
+		}
+	}
+	return prefs.get_module_path(mod_name, importing_file)
 }
