@@ -316,7 +316,13 @@ fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_id
 	} else {
 		tail_expr
 	}
-	ret_val := t.wrap_sum_return_expr(actual_tail)
+	// Convert a fixed-array branch value (e.g. a fixed-array const) to a dynamic
+	// array when the function returns `[]T`, matching a plain `return <expr>`.
+	ret_val := if converted := t.fixed_array_return_value(actual_tail) {
+		converted
+	} else {
+		t.wrap_sum_return_expr(actual_tail)
+	}
 	t.drain_pending(mut all)
 	all << t.make_return(ret_val, ret_typ)
 	return t.make_block(all)

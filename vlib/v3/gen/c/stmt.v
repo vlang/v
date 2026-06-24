@@ -316,6 +316,11 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					}
 				} else if ret_node.kind == .assoc {
 					g.gen_return_assoc(ret_node)
+				} else if g.cur_fn_ret is types.ArrayFixed
+					&& g.tc.c_type(g.cur_fn_ret) in g.fixed_array_ret_wrappers {
+					g.write('return ')
+					g.gen_fixed_array_return_wrap(g.cur_fn_ret, ret_id)
+					g.writeln(';')
 				} else {
 					if g.cur_fn_ret is types.Interface {
 						ct := g.tc.c_type(g.cur_fn_ret)
@@ -428,12 +433,34 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 		g.writeln('return ${tmp};')
 		return
 	}
+	if g.cur_fn_ret is types.ArrayFixed
+		&& g.tc.c_type(g.cur_fn_ret) in g.fixed_array_ret_wrappers {
+		wrapper := fixed_array_ret_wrapper_name(g.tc.c_type(g.cur_fn_ret))
+		tmp := g.tmp_name()
+		g.write('${wrapper} ${tmp} = ')
+		g.gen_fixed_array_return_wrap(g.cur_fn_ret, ret_id)
+		g.writeln(';')
+		g.gen_all_defers()
+		g.writeln('return ${tmp};')
+		return
+	}
 	ct := g.return_c_type()
 	expr := g.return_expr_string(node, ret_id, ret_node, ct)
 	tmp := g.tmp_name()
 	g.writeln('${ct} ${tmp} = ${expr};')
 	g.gen_all_defers()
 	g.writeln('return ${tmp};')
+}
+
+// gen_fixed_array_return_wrap emits a fixed-array return value wrapped in its
+// return-wrapper struct: `({ Wrapper __fa_ret; memcpy(__fa_ret.ret_arr, <expr>,
+// sizeof(...)); __fa_ret; })`. C cannot return raw arrays, so the array is copied
+// into the wrapper's `ret_arr` field and the struct is returned by value.
+fn (mut g FlatGen) gen_fixed_array_return_wrap(ret_type types.Type, ret_id flat.NodeId) {
+	wrapper := fixed_array_ret_wrapper_name(g.tc.c_type(ret_type))
+	g.write('({ ${wrapper} __fa_ret; memcpy(__fa_ret.ret_arr, ')
+	g.gen_fixed_array_copy_source(ret_id, ret_type)
+	g.write(', sizeof(__fa_ret.ret_arr)); __fa_ret; })')
 }
 
 fn (mut g FlatGen) gen_default_return_stmt() {
@@ -1041,6 +1068,22 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				g.optional_type_name(v_type)
 			} else {
 				ct0
+			}
+			if v_type is types.ArrayFixed {
+				// A fixed array cannot be initialized from another array value
+				// (`T x[N] = expr` is illegal); declare then memcpy.
+				lhs_str := g.decl_lhs_str(lhs_id)
+				if !lhs_is_defer_capture {
+					g.writeln('${decl_prefix}${ct} ${lhs_str};')
+				}
+				g.write('memcpy(${lhs_str}, ')
+				g.gen_fixed_array_copy_source(rhs_id, v_type)
+				g.writeln(', sizeof(${lhs_str}));')
+				if lhs.kind == .ident {
+					g.tc.cur_scope.insert(lhs.value, v_type)
+				}
+				i += 2
+				continue
 			}
 			if ct.starts_with('fn_ptr:') {
 				fp_name := g.resolve_fn_ptr_type(ct)

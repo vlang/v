@@ -31,6 +31,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	if decls.len == 0 {
 		return []string{}
 	}
+	struct_decls := t.collect_generic_struct_decls()
 	template_nodes := t.generic_decl_template_nodes(decls)
 	mut emitted := map[string]bool{}
 	mut generated := []string{}
@@ -66,10 +67,65 @@ fn (mut t Transformer) monomorphize_pass() []string {
 				else {}
 			}
 		}
+		// Specialize methods of instantiated generic structs that are never reached
+		// through an explicit call node — notably operator overloads (`a + b`), which
+		// are infix expressions lowered to method calls only later in the pipeline.
+		if t.specialize_generic_struct_methods(struct_decls, decls, mut emitted, mut generated) {
+			changed = true
+		}
 	}
 	t.rewrite_generic_calls(decls, template_nodes)
 	t.erase_generic_fn_decls(decls)
 	return generated
+}
+
+// is_operator_method_name reports whether a method-name part is an overloaded
+// operator symbol (`+`, `-`, `*`, `/`, `%`, `==`, `<`, `>`, `<=`, `>=`).
+fn is_operator_method_name(name string) bool {
+	return name in ['+', '-', '*', '/', '%', '==', '!=', '<', '>', '<=', '>=']
+}
+
+// specialize_generic_struct_methods specializes every generic method of each
+// instantiated generic struct (e.g. for `Vec4[f32]`, generate `vec__Vec4_f32__plus`,
+// `vec__Vec4_f32__one`, ...). It only handles methods whose generic parameters are
+// exactly the struct's parameters (no extra method-level `[U]`); those are left to
+// the call-driven path. Returns whether any new specialization was emitted.
+fn (mut t Transformer) specialize_generic_struct_methods(struct_decls map[string]GenericStructDecl, decls map[string]GenericFnDecl, mut emitted map[string]bool, mut generated []string) bool {
+	mut specs := map[string]string{}
+	t.collect_generic_struct_specs(struct_decls, mut specs)
+	mut any := false
+	for spec, base in specs {
+		_, args, ok := generic_app_parts(spec)
+		if !ok || args.len == 0 {
+			continue
+		}
+		for decl_key, decl in decls {
+			if !decl_key.contains('.') || decl_key.all_before_last('.') != base {
+				continue
+			}
+			// Only operator overloads need struct-instantiation-driven specialization:
+			// they are reached through infix expressions, not call nodes. Regular
+			// methods are specialized on demand by the call-driven path, so emitting
+			// every method here would generate unused (and possibly unresolved) bodies.
+			if !is_operator_method_name(decl_key.all_after_last('.')) {
+				continue
+			}
+			if decl.node.generic_params.len != 0 {
+				// Method has its own generic parameters beyond the struct's; leave it
+				// to the call-driven specialization which can infer them.
+				continue
+			}
+			spec_key := generic_fn_spec_key(decl_key, args)
+			if emitted[spec_key] {
+				continue
+			}
+			generated << t.generated_fn_used_names(decl, t.emit_generic_fn_specialization(decl,
+				args), args)
+			emitted[spec_key] = true
+			any = true
+		}
+	}
+	return any
 }
 
 fn (mut t Transformer) materialize_generic_structs() {

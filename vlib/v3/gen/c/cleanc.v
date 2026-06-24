@@ -42,6 +42,8 @@ mut:
 	line_start              bool
 	modules                 map[string]string // alias -> full module name
 	fn_ptr_types            map[string]string // fn_ptr:ret|params -> typedef name
+	fixed_array_ret_wrappers map[string]bool // bare fixed-array c_type name -> has a return wrapper struct
+	emitted_fixed_array_typedefs map[string]bool // bare fixed-array typedefs already written (shared across passes)
 	fn_decl_param_types     map[string][]types.Type
 	fn_decl_ret_types       map[string]types.Type // fn decl name (and qualified variants) -> return type
 	struct_decl_infos       map[string]StructDeclInfo
@@ -107,6 +109,8 @@ pub fn FlatGen.new() FlatGen {
 		c_flags:                 []string{}
 		modules:                 map[string]string{}
 		fn_ptr_types:            map[string]string{}
+		fixed_array_ret_wrappers: map[string]bool{}
+		emitted_fixed_array_typedefs: map[string]bool{}
 		fn_decl_param_types:     map[string][]types.Type{}
 		fn_decl_ret_types:       map[string]types.Type{}
 		struct_decl_infos:       map[string]StructDeclInfo{}
@@ -178,6 +182,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.c_flags = []string{}
 	g.modules = map[string]string{}
 	g.fn_ptr_types = map[string]string{}
+	g.fixed_array_ret_wrappers = map[string]bool{}
+	g.emitted_fixed_array_typedefs = map[string]bool{}
 	g.fn_decl_param_types = map[string][]types.Type{}
 	g.fn_decl_ret_types = map[string]types.Type{}
 	g.struct_decl_infos = map[string]StructDeclInfo{}
@@ -206,6 +212,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.collect_interface_impls()
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
+	// Decide fixed-array return wrappers before generating function bodies, so
+	// signatures, returns and call sites all agree on the wrapped types.
+	g.populate_fixed_array_ret_wrappers()
 	const_code := g.precompute_consts()
 	orig_sb := g.sb
 	orig_line_start := g.line_start
@@ -222,6 +231,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// Forward-declare multi-return structs before fn-ptr typedefs, which may name a
 	// multi-return as a by-value return type (full bodies come after struct_decls).
 	g.multi_return_forward_decls()
+	// Bare typedefs for primitive-element fixed arrays and wrapper structs for
+	// fixed-array return types, before fn-ptr typedefs (which may name a fixed
+	// array in param or return position) and the function declarations.
+	g.fixed_array_early_typedefs()
 	g.fn_ptr_typedefs()
 	g.struct_decls()
 	g.fixed_array_typedefs()
@@ -1543,6 +1556,16 @@ fn (mut g FlatGen) fixed_array_decl_parts(arr types.ArrayFixed) (string, string)
 	return g.tc.c_type(arr.elem_type), '[${len_expr}]'
 }
 
+// infix_can_skip_child_parens reports whether a child infix operand needs no
+// surrounding parentheses. For associative logical chains (`||`, `&&`) a child of
+// the same operator is safe unparenthesised; this keeps long lowered chains (e.g.
+// a `match` over hundreds of enum values → `a || b || c || ...`) from nesting
+// parentheses past the C compiler's bracket-depth limit.
+fn infix_can_skip_child_parens(parent_op flat.Op, child_op flat.Op) bool {
+	return (parent_op == .logical_or && child_op == .logical_or)
+		|| (parent_op == .logical_and && child_op == .logical_and)
+}
+
 // gen_expr emits expr output for c.
 fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 	if int(id) < 0 {
@@ -1649,7 +1672,17 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			g.write('0')
 		}
 		.call {
-			g.gen_call(id, node)
+			// A call to a fixed-array-returning function yields the wrapper struct;
+			// unwrap `.ret_arr` so the result behaves as the array value everywhere
+			// (indexing, arg passing, memcpy into a destination).
+			ret_t := g.declared_call_return_type(node)
+			if ret_t is types.ArrayFixed && g.tc.c_type(ret_t) in g.fixed_array_ret_wrappers {
+				g.write('(')
+				g.gen_call(id, node)
+				g.write(').ret_arr')
+			} else {
+				g.gen_call(id, node)
+			}
 		}
 		.spawn_expr {
 			g.gen_spawn_expr(node)
@@ -1706,7 +1739,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else {
 				lhs_node := g.a.nodes[int(lhs_id)]
 				rhs_node := g.a.nodes[int(rhs_id)]
-				if lhs_node.kind == .infix {
+				if lhs_node.kind == .infix && !infix_can_skip_child_parens(node.op, lhs_node.op) {
 					g.write('(')
 					g.gen_expr_with_possible_enum_type(lhs_id, rhs_type)
 					g.write(')')
@@ -1714,7 +1747,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.gen_expr_with_possible_enum_type(lhs_id, rhs_type)
 				}
 				g.write(' ${g.op_str(node.op)} ')
-				if rhs_node.kind == .infix {
+				if rhs_node.kind == .infix && !infix_can_skip_child_parens(node.op, rhs_node.op) {
 					g.write('(')
 					g.gen_expr_with_possible_enum_type(rhs_id, lhs_type)
 					g.write(')')
@@ -2524,8 +2557,12 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#ifndef V_COMMIT_HASH')
 	g.writeln('#define V_COMMIT_HASH ""')
 	g.writeln('#endif')
-	g.writeln('static inline void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
-	g.writeln('static inline void vheap_free(void* p) { (void)p; }')
+	// Weak fallbacks for the heap-tracking hooks. A program that provides real
+	// implementations (e.g. a `vheap_alloc`/`vheap_free` from a linked C file, as
+	// some projects do) overrides these without a redefinition/static-vs-non-static
+	// clash against that file's own non-static prototype.
+	g.writeln('__attribute__((weak)) void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
+	g.writeln('__attribute__((weak)) void vheap_free(void* p) { (void)p; }')
 	// Atomic helpers. We use the C11 __atomic_* builtins (memory order 5 == __ATOMIC_SEQ_CST).
 	// clang/gcc inline the generic _n / RMW builtins. tcc only implements the inline
 	// __atomic_{add,sub,fetch}_* RMW builtins; for load/store/exchange/cas it has no generic
@@ -2611,7 +2648,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('')
 }
 
-fn (mut g FlatGen) fixed_array_typedefs() {
+fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTypedefInfo {
 	mut needed := map[string]FixedArrayTypedefInfo{}
 	old_module := g.tc.cur_module
 	for name, ret_type in g.tc.fn_ret_types {
@@ -2649,14 +2686,121 @@ fn (mut g FlatGen) fixed_array_typedefs() {
 		g.collect_fixed_array_typedef(typ, mut needed)
 	}
 	g.tc.cur_module = old_module
-	mut emitted := map[string]bool{}
+	return needed
+}
+
+fn (mut g FlatGen) fixed_array_typedefs() {
+	needed := g.collect_fixed_array_typedefs_needed()
+	old_len := g.emitted_fixed_array_typedefs.len
 	for name, info in needed {
-		g.emit_fixed_array_typedef(name, info, needed, mut emitted)
+		g.emit_fixed_array_typedef(name, info, needed, mut g.emitted_fixed_array_typedefs)
 	}
-	g.tc.cur_module = old_module
-	if emitted.len > 0 {
+	if g.emitted_fixed_array_typedefs.len > old_len {
 		g.writeln('')
 	}
+}
+
+// fixed_array_typedef_is_early reports whether a fixed array's bare typedef can be
+// emitted before struct definitions: its element chain must bottom out in a
+// primitive/pointer/enum (not a struct or `string`, whose definitions come later).
+fn fixed_array_typedef_is_early(arr types.ArrayFixed) bool {
+	elem := arr.elem_type
+	if elem is types.ArrayFixed {
+		return fixed_array_typedef_is_early(elem)
+	}
+	return fixed_array_elem_is_early_complete(elem)
+}
+
+// populate_fixed_array_ret_wrappers records which fixed-array types get a return
+// wrapper struct. It must run before function bodies are generated, so that fn
+// signatures, return statements and call sites all agree on whether a given
+// fixed-array return is wrapped. Only primitive/pointer/enum element types are
+// wrapped (their definitions precede the wrapper typedef block).
+fn (mut g FlatGen) populate_fixed_array_ret_wrappers() {
+	needed := g.collect_fixed_array_typedefs_needed()
+	for name, info in needed {
+		if fixed_array_elem_is_early_complete(info.arr.elem_type) {
+			g.fixed_array_ret_wrappers[name] = true
+		}
+	}
+}
+
+// fixed_array_early_typedefs emits, before the fn-ptr typedef block, the bare
+// typedefs for fixed arrays whose element chain is a primitive/pointer/enum, plus
+// a one-field struct wrapper `struct { T ret_arr[N]; }` for each fixed-array
+// return type. fn-ptr typedefs may name a fixed array in param position (bare
+// typedef) or return position (wrapper); both must therefore be defined first. C
+// functions cannot return raw array types, hence the wrapper (as V1 does). Bare
+// typedefs of struct/`string`-element fixed arrays are deferred to
+// fixed_array_typedefs(), after the struct definitions.
+fn (mut g FlatGen) fixed_array_early_typedefs() {
+	needed := g.collect_fixed_array_typedefs_needed()
+	mut names := []string{}
+	for name, _ in needed {
+		names << name
+	}
+	names.sort()
+	mut emitted_any := false
+	for name in names {
+		info := needed[name] or { continue }
+		if !fixed_array_typedef_is_early(info.arr) {
+			continue
+		}
+		g.emit_fixed_array_typedef(name, info, needed, mut g.emitted_fixed_array_typedefs)
+		emitted_any = true
+	}
+	// Wrapper structs for fixed-array return types.
+	for name in names {
+		if name !in g.fixed_array_ret_wrappers {
+			continue
+		}
+		info := needed[name] or { continue }
+		arr := info.arr
+		old_module := g.tc.cur_module
+		g.tc.cur_module = info.module
+		elem_ct := g.tc.c_type(arr.elem_type)
+		len_expr := g.fixed_array_len_value(arr)
+		g.tc.cur_module = old_module
+		g.writeln('typedef struct { ${elem_ct} ret_arr[${len_expr}]; } ${fixed_array_ret_wrapper_name(name)};')
+		emitted_any = true
+	}
+	if emitted_any {
+		g.writeln('')
+	}
+}
+
+// fixed_array_ret_wrapper_name is the struct name wrapping a fixed-array return.
+fn fixed_array_ret_wrapper_name(bare_c_name string) string {
+	return '_v_ret_${bare_c_name}'
+}
+
+// fixed_array_elem_is_early_complete reports whether a fixed-array element type's
+// C definition is available before the fn_ptr/return-wrapper typedef block (i.e.
+// it is a primitive, pointer, or enum — not a struct or nested fixed array, whose
+// bare typedefs/definitions are emitted later).
+fn fixed_array_elem_is_early_complete(elem types.Type) bool {
+	return elem is types.Primitive || elem is types.Pointer || elem is types.Enum
+}
+
+// fn_return_type_name is the C type to write for a function/fn-ptr return type,
+// substituting the fixed-array wrapper struct when one exists.
+fn (mut g FlatGen) fn_return_type_name(t types.Type) string {
+	if t is types.ArrayFixed {
+		bare := g.tc.c_type(t)
+		if bare in g.fixed_array_ret_wrappers {
+			return fixed_array_ret_wrapper_name(bare)
+		}
+	}
+	return g.optional_type_name(t)
+}
+
+// fn_ptr_return_ct maps a fixed-array return c_type name (string form, used by the
+// fn-ptr typedef machinery) to its wrapper struct name when one exists.
+fn (g &FlatGen) fn_ptr_return_ct(ct string) string {
+	if ct.starts_with('Array_fixed_') && ct in g.fixed_array_ret_wrappers {
+		return fixed_array_ret_wrapper_name(ct)
+	}
+	return ct
 }
 
 fn module_from_qualified_name(name string) string {

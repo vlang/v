@@ -1722,18 +1722,30 @@ fn (mut t Transformer) fixed_array_return_value(child_id flat.NodeId) ?flat.Node
 	if t.is_optional_type_name(ret_type) {
 		ret_type = t.optional_base_type(ret_type)
 	}
-	mut array_type := ret_type
+	// A function whose declared return type is itself a fixed array keeps
+	// fixed-array (by-value) semantics; the C backend returns it via a wrapper
+	// struct. Only a *dynamic* array return needs a fixed→dynamic conversion of a
+	// fixed-array return value.
 	if is_fixed_array_type(ret_type) {
-		array_type = '[]${fixed_array_elem_type(ret_type)}'
+		return none
 	}
+	return t.fixed_array_value_to_dynamic(child_id, ret_type)
+}
+
+// fixed_array_value_to_dynamic converts a fixed-array *value* (e.g. a fixed-array
+// const or variable, not a literal — those have their own lowering) to a dynamic
+// array when `target_type` is `[]T` with a matching element type. Returns none
+// when no conversion is needed/possible.
+fn (mut t Transformer) fixed_array_value_to_dynamic(value_id flat.NodeId, target_type string) ?flat.NodeId {
+	array_type := target_type
 	if !array_type.starts_with('[]') {
 		return none
 	}
-	child_type := t.node_type(child_id)
+	child_type := t.node_type(value_id)
 	if !is_fixed_array_type(child_type) || fixed_array_elem_type(child_type) != array_type[2..] {
 		return none
 	}
-	return t.fixed_array_value_to_array(child_id, child_type, array_type)
+	return t.fixed_array_value_to_array(value_id, child_type, array_type)
 }
 
 // transform_assign_stmt transforms transform assign stmt data for transform.

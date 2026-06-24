@@ -174,11 +174,19 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	if lhs_type.starts_with('&') {
 		return none
 	}
-	struct_type := t.struct_lookup_name(lhs_type)
+	mut struct_type := t.struct_lookup_name(lhs_type)
+	if struct_type.len == 0 {
+		// Generic-struct instance operand (e.g. `Vec4[f32]`): keep the instance type
+		// so the operator lowers to the monomorphized method (`vec__Vec4_f32__plus`).
+		struct_type = t.generic_struct_instance_name(lhs_type)
+	}
 	if struct_type.len == 0 {
 		return none
 	}
-	if checker_lhs_type.len > 0 && !has_smartcast {
+	// Skip the checker/transformer agreement guard for generic-struct instances:
+	// they resolve reliably, and an alias name (`SimdFloat4`) vs the resolved form
+	// (`vec.Vec4[f32]`) would otherwise spuriously fail the comparison.
+	if checker_lhs_type.len > 0 && !has_smartcast && !struct_type.contains('[') {
 		checker_struct_type := t.struct_lookup_name(checker_lhs_type)
 		if checker_struct_type.len > 0 && checker_struct_type != struct_type {
 			return none
@@ -400,6 +408,49 @@ fn (t &Transformer) struct_operator_fn_name(struct_type string, op_name string) 
 	cmethod_name := c_name(method_name)
 	if t.is_known_operator_fn_name(cmethod_name, require_used) {
 		return cmethod_name
+	}
+	if name := t.generic_struct_operator_fn_name(struct_type, op_name) {
+		return name
+	}
+	return none
+}
+
+// generic_struct_instance_name returns `type_name` when it is a generic-struct
+// instance (its base is a known generic struct), else ''.
+fn (t &Transformer) generic_struct_instance_name(type_name string) string {
+	if isnil(t.tc) {
+		return ''
+	}
+	base, _, ok := generic_app_parts(type_name)
+	if !ok {
+		return ''
+	}
+	if base in t.tc.struct_generic_params {
+		return type_name
+	}
+	return ''
+}
+
+// generic_struct_operator_fn_name handles operator overloads on a generic-struct
+// instance (e.g. `Vec4[f32] + Vec4[f32]`). The operator is declared on the generic
+// form (`Vec4[T].+`) and specialized to `vec__Vec4_f32__plus` by the monomorphizer
+// (which runs after this lowering). When the generic operator exists, anticipate
+// the specialized C name so the infix lowers to that call.
+fn (t &Transformer) generic_struct_operator_fn_name(struct_type string, op_name string) ?string {
+	if isnil(t.tc) {
+		return none
+	}
+	base, _, ok := generic_app_parts(struct_type)
+	if !ok {
+		return none
+	}
+	params := t.tc.struct_generic_params[base] or { return none }
+	if params.len == 0 {
+		return none
+	}
+	generic_key := '${base}[${params.join(', ')}].${op_name}'
+	if generic_key in t.tc.fn_ret_types || generic_key in t.tc.fn_param_types {
+		return c_name('${struct_type}.${op_name}')
 	}
 	return none
 }

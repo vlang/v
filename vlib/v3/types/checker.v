@@ -92,6 +92,7 @@ pub mut:
 	fn_variadic                map[string]bool
 	fn_implicit_veb_ctx        map[string]bool
 	structs                    map[string][]StructField
+	struct_generic_params      map[string][]string // generic struct base name -> type-param names (e.g. Vec4 -> [T])
 	params_structs             map[string]bool
 	unions                     map[string]bool
 	type_aliases               map[string]string
@@ -318,6 +319,12 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				qname := tc.qualify_name(node.value)
 				if qname !in tc.structs {
 					tc.structs[qname] = []StructField{}
+				}
+				if node.generic_params.len > 0 {
+					tc.struct_generic_params[qname] = node.generic_params.clone()
+					if qname != node.value {
+						tc.struct_generic_params[node.value] = node.generic_params.clone()
+					}
 				}
 				if node.typ.contains('union') {
 					tc.unions[qname] = true
@@ -2623,7 +2630,9 @@ fn (mut tc TypeChecker) resolve_call_info(_id flat.NodeId, node flat.Node) ?Call
 			static_name := '${qbase}.${fn_node.value}'
 			if static_name in tc.fn_ret_types && (qbase in tc.structs
 				|| qbase in tc.enum_names || qbase in tc.sum_types
-				|| qbase in tc.interface_names) {
+				|| qbase in tc.interface_names || qbase in tc.type_aliases) {
+				// `qbase in tc.type_aliases` covers static methods on a type alias,
+				// e.g. `fn SimdFloat4.new()` for `type SimdFloat4 = vec.Vec4[f32]`.
 				return tc.call_info(static_name, false)
 			}
 			if fn_node.value == 'zero' && qbase in tc.flag_enums {
@@ -2852,6 +2861,9 @@ fn (mut tc TypeChecker) resolve_call_info(_id flat.NodeId, node flat.Node) ?Call
 				return tc.call_info(mname, true)
 			}
 			if info := tc.embedded_method_call_info(type_name, fn_node.value) {
+				return info
+			}
+			if info := tc.resolve_generic_struct_method(type_name, fn_node.value) {
 				return info
 			}
 			if fn_node.value == 'use' && clean is Struct
@@ -3403,7 +3415,37 @@ fn (tc &TypeChecker) receiver_compatible(actual Type, expected Type) bool {
 	if actual is Pointer {
 		return tc.type_compatible(actual.base_type, expected)
 	}
+	if tc.generic_receiver_base_match(actual, expected) {
+		return true
+	}
 	return false
+}
+
+// generic_receiver_base_match reports whether `actual` is a generic-struct
+// instance (e.g. `Vec4[f32]`) whose base matches `expected` — the generic
+// receiver form a generic method is declared against (`Vec4` / `Vec4[T]`).
+fn (tc &TypeChecker) generic_receiver_base_match(actual Type, expected Type) bool {
+	a_full := unwrap_pointer(actual).name()
+	e_full := unwrap_pointer(expected).name()
+	a := strip_generic_args_name(a_full)
+	if a.len == 0 || a != strip_generic_args_name(e_full) {
+		return false
+	}
+	if a !in tc.struct_generic_params {
+		return false
+	}
+	// At least one side must be a concrete instance (differs from the base form).
+	return a_full != e_full
+}
+
+// strip_generic_args_name returns the base name of a generic instance type
+// (`Box[int]` -> `Box`); array/map types (leading `[`) yield the name unchanged.
+fn strip_generic_args_name(name string) string {
+	bracket := name.index_u8(`[`)
+	if bracket <= 0 {
+		return name
+	}
+	return name[..bracket]
 }
 
 // is_zero_literal reports whether is zero literal applies in types.
@@ -6929,6 +6971,67 @@ fn c_type_name_part(s string) string {
 }
 
 // resolve_type_name_for_method resolves resolve type name for method information for types.
+// resolve_generic_struct_method resolves a method call on a generic-struct
+// instance (e.g. `Vec4[f32].r_sqrt`). The method is registered against the
+// generic form (`Vec4[T].r_sqrt`); this maps the instance's concrete type
+// arguments onto the generic parameters and substitutes them into the method's
+// signature, so the pre-transform checker accepts the call. The transformer's
+// monomorphize pass later materialises the concrete method body.
+fn (mut tc TypeChecker) resolve_generic_struct_method(type_name string, method string) ?CallInfo {
+	bracket := type_name.index_u8(`[`)
+	if bracket <= 0 || !type_name.ends_with(']') {
+		return none
+	}
+	base := type_name[..bracket]
+	args_str := type_name[bracket + 1..type_name.len - 1]
+	mut concrete_args := []string{}
+	for a in split_generic_arg_list(args_str) {
+		concrete_args << a.trim_space()
+	}
+	params := tc.struct_generic_params[base] or { return none }
+	if params.len == 0 || params.len != concrete_args.len {
+		return none
+	}
+	generic_key := '${base}[${params.join(', ')}].${method}'
+	ret := tc.fn_ret_types[generic_key] or { return none }
+	sub_ret := tc.substitute_generic_type(ret, concrete_args)
+	mut sub_params := []Type{}
+	if ptypes := tc.fn_param_types[generic_key] {
+		for pt in ptypes {
+			sub_params << tc.substitute_generic_type(pt, concrete_args)
+		}
+	}
+	return CallInfo{
+		name:         generic_key
+		params:       sub_params
+		return_type:  sub_ret
+		has_receiver: true
+		is_variadic:  tc.fn_variadic[generic_key] or { false }
+		params_known: true
+	}
+}
+
+// split_generic_arg_list splits a comma-separated generic argument list at the
+// top bracket level (so nested types like `map[int]string` stay intact).
+fn split_generic_arg_list(s string) []string {
+	mut parts := []string{}
+	mut depth := 0
+	mut start := 0
+	for i := 0; i < s.len; i++ {
+		c := s[i]
+		if c == `[` || c == `(` {
+			depth++
+		} else if c == `]` || c == `)` {
+			depth--
+		} else if c == `,` && depth == 0 {
+			parts << s[start..i]
+			start = i + 1
+		}
+	}
+	parts << s[start..]
+	return parts
+}
+
 fn resolve_type_name_for_method(t Type) string {
 	if t is Alias {
 		return t.name

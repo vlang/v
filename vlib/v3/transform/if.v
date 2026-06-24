@@ -987,6 +987,9 @@ fn (mut t Transformer) transform_if_branch_value(id flat.NodeId, target_type str
 	if t.is_sum_type_name(target_type) {
 		return t.wrap_sum_value(id, target_type)
 	}
+	if converted := t.fixed_array_value_to_dynamic(id, target_type) {
+		return converted
+	}
 	return t.transform_expr_for_type(id, target_type)
 }
 

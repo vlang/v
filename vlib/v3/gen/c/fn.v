@@ -184,6 +184,30 @@ fn (mut g FlatGen) write_method_c_name(id flat.NodeId, node flat.Node, method_na
 	g.write(c_name(method_name))
 }
 
+// static_method_fn_name resolves `Type.method(...)` static calls where `Type` is a
+// named type, struct, enum, sum type or type alias (e.g. `SimdFloat4.new` for
+// `type SimdFloat4 = vec.Vec4[f32]`). Returns the fn key, or none if `type_ident`
+// is not a type or has no such static method.
+fn (g &FlatGen) static_method_fn_name(type_ident string, method string) ?string {
+	qtype := g.tc.qualify_name(type_ident)
+	is_type := type_ident in g.tc.type_aliases || qtype in g.tc.type_aliases
+		|| type_ident in g.tc.structs || qtype in g.tc.structs
+		|| type_ident in g.tc.enum_names || qtype in g.tc.enum_names
+		|| type_ident in g.tc.sum_types || qtype in g.tc.sum_types
+	if !is_type {
+		return none
+	}
+	direct := '${type_ident}.${method}'
+	if direct in g.tc.fn_ret_types || direct in g.tc.fn_param_types {
+		return direct
+	}
+	qdirect := '${qtype}.${method}'
+	if qdirect in g.tc.fn_ret_types || qdirect in g.tc.fn_param_types {
+		return qdirect
+	}
+	return none
+}
+
 fn (g &FlatGen) resolve_method_name(type_name string, method string) string {
 	direct := '${type_name}.${method}'
 	if direct in g.tc.fn_param_types || direct in g.tc.fn_ret_types {
@@ -471,7 +495,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	} else {
 		ret_type := g.tc.parse_type(node.typ)
 		g.set_cur_fn_ret(ret_type)
-		g.write(g.optional_type_name(ret_type))
+		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
 		g.write(qualified_fn_name_in_module(module_name, node.value))
 		g.write('(')
@@ -1160,6 +1184,26 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 							}
 						}
 					}
+						if !is_method {
+							// Static method on a named type / type alias (e.g. `SimdFloat4.new(...)`,
+							// where `SimdFloat4` names a type, not a value). The base ident resolves to
+							// no value type, so handle it before the instance-method fallback.
+							base_node_s := g.a.child_node(fn_node, 0)
+							if base_node_s.kind == .ident {
+								if static_fn := g.static_method_fn_name(base_node_s.value, fn_node.value) {
+									g.write(g.direct_call_name(static_fn))
+									g.write('(')
+									for i in 1 .. node.children_count {
+										if i > 1 {
+											g.write(', ')
+										}
+										g.gen_expr(g.a.child(&node, i))
+									}
+									g.write(')')
+									return
+								}
+							}
+						}
 					if !is_method {
 						mut struct_name := clean_type.name()
 						if clean_type is types.Struct {
@@ -2678,7 +2722,7 @@ fn (mut g FlatGen) forward_decls() {
 			g.tc.cur_file = cur_file
 			g.tc.cur_module = cur_module
 			ret_type := g.tc.parse_type(node.typ)
-			g.write(g.optional_type_name(ret_type))
+			g.write(g.fn_return_type_name(ret_type))
 			g.write(' ')
 			g.write(qfn)
 			g.write('(')
@@ -2979,7 +3023,7 @@ fn (mut g FlatGen) emit_fn_ptr_typedef(encoded string, name string, mut emitted 
 	}
 	emitted[encoded] = true
 	ret, params := fn_ptr_typedef_parts(encoded)
-	ret_ct := g.fn_ptr_typedef_type(ret, mut emitted)
+	ret_ct := g.fn_ptr_return_ct(g.fn_ptr_typedef_type(ret, mut emitted))
 	params_ct := g.fn_ptr_typedef_params(params, mut emitted)
 	g.writeln('typedef ${ret_ct} (*${name})(${params_ct});')
 }

@@ -169,6 +169,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields(node flat.Node, name 
 	}
 	mut fixed_fields := []string{}
 	mut fixed_values := []flat.NodeId{}
+	mut fixed_field_types := []types.Type{}
 	mut set_fields := map[string]bool{}
 	mut has_field := false
 	for i in 0 .. node.children_count {
@@ -182,6 +183,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields(node flat.Node, name 
 				if sf.typ is types.ArrayFixed {
 					fixed_fields << sf.name
 					fixed_values << value_id
+					fixed_field_types << sf.typ
 					set_fields[sf.name] = true
 					continue
 				}
@@ -204,6 +206,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields(node flat.Node, name 
 			if ftyp is types.ArrayFixed {
 				fixed_fields << field.value
 				fixed_values << value_id
+				fixed_field_types << ftyp
 				set_fields[field.value] = true
 				continue
 			}
@@ -270,10 +273,31 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields(node flat.Node, name 
 	for i in 0 .. fixed_fields.len {
 		cfield := c_field_name(fixed_fields[i])
 		g.write(' memcpy(${tmp}.${cfield}, ')
-		g.gen_expr(fixed_values[i])
+		g.gen_fixed_array_copy_source(fixed_values[i], fixed_field_types[i])
 		g.write(', sizeof(${tmp}.${cfield}));')
 	}
 	g.write(' ${tmp};})')
+}
+
+// gen_fixed_array_copy_source emits a `memcpy` source for assigning into a fixed
+// array. A raw array literal becomes a typed compound literal (a valid expression
+// that decays to a pointer); a dynamic array value copies from its `.data` buffer;
+// other fixed-array expressions (variables, fields, unwrapped calls) decay as-is.
+fn (mut g FlatGen) gen_fixed_array_copy_source(value_id flat.NodeId, field_type types.Type) {
+	val_node := g.a.node(value_id)
+	if val_node.kind == .array_literal {
+		g.write('(${g.tc.c_type(field_type)})')
+		g.gen_expr(value_id)
+		return
+	}
+	val_type := types.unwrap_pointer(g.usable_expr_type(value_id))
+	if val_type is types.Array {
+		g.write('(')
+		g.gen_expr(value_id)
+		g.write(').data')
+		return
+	}
+	g.gen_expr(value_id)
 }
 
 // gen_lowered_sum_init emits lowered sum init output for c.
