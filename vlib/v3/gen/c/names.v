@@ -2,10 +2,45 @@ module c
 
 import strings
 
-const c_reserved_words = ['auto', 'break', 'case', 'char', 'const', 'continue', 'copy', 'default',
-	'do', 'double', 'else', 'enum', 'extern', 'float', 'for', 'goto', 'if', 'inline', 'int', 'long',
-	'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct', 'switch',
-	'typedef', 'union', 'unsigned', 'void', 'volatile', 'while']
+// c_reserved_words is a set (not a list) so `name in c_reserved_words` is an O(1) hash
+// lookup. c_name() runs on every emitted identifier, so a linear scan here is costly.
+const c_reserved_words = {
+	'auto':     true
+	'break':    true
+	'case':     true
+	'char':     true
+	'const':    true
+	'continue': true
+	'copy':     true
+	'default':  true
+	'do':       true
+	'double':   true
+	'else':     true
+	'enum':     true
+	'extern':   true
+	'float':    true
+	'for':      true
+	'goto':     true
+	'if':       true
+	'inline':   true
+	'int':      true
+	'long':     true
+	'register': true
+	'restrict': true
+	'return':   true
+	'short':    true
+	'signed':   true
+	'sizeof':   true
+	'static':   true
+	'struct':   true
+	'switch':   true
+	'typedef':  true
+	'union':    true
+	'unsigned': true
+	'void':     true
+	'volatile': true
+	'while':    true
+}
 
 // c_name converts c name data for c.
 fn c_name(name string) string {

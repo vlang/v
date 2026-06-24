@@ -354,6 +354,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		modules:                 g.modules.clone()
 		fn_ptr_types:            g.fn_ptr_types.clone()
 		fn_decl_param_types:     g.fn_decl_param_types.clone()
+		fn_decl_ret_types:       g.fn_decl_ret_types.clone()
 		struct_decl_infos:       g.struct_decl_infos.clone()
 		struct_decl_short_infos: g.struct_decl_short_infos.clone()
 		runtime_inits:           g.runtime_inits.clone()
@@ -370,6 +371,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		emitted_optional_types:  g.emitted_optional_types.clone()
 		emitted_fns:             g.emitted_fns.clone()
 		array_method_cache:      g.array_method_cache.clone()
+		param_types_cache:       g.param_types_cache.clone()
 	}
 }
 

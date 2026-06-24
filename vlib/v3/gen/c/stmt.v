@@ -673,13 +673,15 @@ fn (g &FlatGen) fn_decl_return_type_for_call_name(name string) ?types.Type {
 	if name.len == 0 {
 		return none
 	}
+	// Indexed in collect_gen_info (register_fn_decl_ret_type); previously this scanned
+	// every AST node per call (O(n^2)) and re-mangled each decl name with c_name.
+	if rt := g.fn_decl_ret_types[name] {
+		return rt
+	}
 	cname := c_name(name)
-	for node in g.a.nodes {
-		if node.kind != .fn_decl && node.kind != .c_fn_decl {
-			continue
-		}
-		if node.value == name || c_name(node.value) == cname {
-			return g.tc.parse_type(node.typ)
+	if cname != name {
+		if rt := g.fn_decl_ret_types[cname] {
+			return rt
 		}
 	}
 	return none

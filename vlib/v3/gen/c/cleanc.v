@@ -43,6 +43,7 @@ mut:
 	modules                 map[string]string // alias -> full module name
 	fn_ptr_types            map[string]string // fn_ptr:ret|params -> typedef name
 	fn_decl_param_types     map[string][]types.Type
+	fn_decl_ret_types       map[string]types.Type // fn decl name (and qualified variants) -> return type
 	struct_decl_infos       map[string]StructDeclInfo
 	struct_decl_short_infos map[string]StructDeclInfo
 	runtime_inits           []string
@@ -60,6 +61,7 @@ mut:
 	emitted_optional_types  map[string]bool
 	emitted_fns             map[string]bool
 	array_method_cache      map[string]string
+	param_types_cache       map[string][]types.Type // (name|fallback) -> resolved param types
 	spawn_wrapper_names     map[string]string
 	spawn_wrapper_defs      []string
 	parallel_used           bool
@@ -104,6 +106,7 @@ pub fn FlatGen.new() FlatGen {
 		modules:                 map[string]string{}
 		fn_ptr_types:            map[string]string{}
 		fn_decl_param_types:     map[string][]types.Type{}
+		fn_decl_ret_types:       map[string]types.Type{}
 		struct_decl_infos:       map[string]StructDeclInfo{}
 		struct_decl_short_infos: map[string]StructDeclInfo{}
 		cur_param_names:         []string{}
@@ -113,6 +116,7 @@ pub fn FlatGen.new() FlatGen {
 		emitted_optional_types:  map[string]bool{}
 		emitted_fns:             map[string]bool{}
 		array_method_cache:      map[string]string{}
+		param_types_cache:       map[string][]types.Type{}
 		spawn_wrapper_names:     map[string]string{}
 		spawn_wrapper_defs:      []string{}
 		str_lits:                []string{}
@@ -171,6 +175,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.modules = map[string]string{}
 	g.fn_ptr_types = map[string]string{}
 	g.fn_decl_param_types = map[string][]types.Type{}
+	g.fn_decl_ret_types = map[string]types.Type{}
 	g.struct_decl_infos = map[string]StructDeclInfo{}
 	g.struct_decl_short_infos = map[string]StructDeclInfo{}
 	g.cur_param_names = []string{}
@@ -180,6 +185,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.emitted_optional_types = map[string]bool{}
 	g.emitted_fns = map[string]bool{}
 	g.array_method_cache = map[string]string{}
+	g.param_types_cache = map[string][]types.Type{}
 	g.spawn_wrapper_names = map[string]string{}
 	g.spawn_wrapper_defs = []string{}
 	g.parallel_used = false
@@ -284,6 +290,7 @@ fn (mut g FlatGen) collect_gen_info() {
 			}
 			ptypes = g.fn_param_types_with_implicit_veb_ctx(node, ptypes)
 			g.register_fn_decl_param_types(node.value, full_name, ptypes)
+			g.register_fn_decl_ret_type(node.value, full_name, node.typ)
 			// Module-level `init()` functions run once at startup. Collect their C
 			// names so _vinit can invoke them (V semantics).
 			if node.value == 'init' && ptypes.len == 0 {
@@ -705,6 +712,29 @@ fn (mut g FlatGen) register_fn_decl_param_types(name string, full_name string, p
 	}
 	if full_name !in g.fn_decl_param_types {
 		g.fn_decl_param_types[full_name] = ptypes.clone()
+	}
+}
+
+// register_fn_decl_ret_type indexes a fn decl's return type by its name (and qualified
+// variants), so the return type can be looked up in O(1) instead of scanning all AST
+// nodes per call (see fn_decl_return_type_for_call_name).
+fn (mut g FlatGen) register_fn_decl_ret_type(name string, full_name string, ret_typ string) {
+	rt := g.tc.parse_type(ret_typ)
+	if name !in g.fn_decl_ret_types {
+		g.fn_decl_ret_types[name] = rt
+	}
+	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
+		dotted_name := '${g.tc.cur_module}.${name}'
+		if dotted_name !in g.fn_decl_ret_types {
+			g.fn_decl_ret_types[dotted_name] = rt
+		}
+	}
+	if full_name !in g.fn_decl_ret_types {
+		g.fn_decl_ret_types[full_name] = rt
+	}
+	cname := c_name(name)
+	if cname != name && cname !in g.fn_decl_ret_types {
+		g.fn_decl_ret_types[cname] = rt
 	}
 }
 

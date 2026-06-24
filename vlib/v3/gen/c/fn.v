@@ -2000,7 +2000,21 @@ fn (g &FlatGen) normalize_call_key(name string) string {
 }
 
 // param_types_for supports param types for handling for FlatGen.
+// param_types_for resolves the parameter types of a called function. It is invoked once
+// per call site during codegen, and the slow path below scans every known function, so
+// results are memoized: without this, generic/monomorphized call names that miss the
+// direct lookups re-scan (and copy) the whole function table on every call (O(n^2)).
 fn (mut g FlatGen) param_types_for(name string, fallback string) []types.Type {
+	cache_key := '${name}\x01${fallback}'
+	if cached := g.param_types_cache[cache_key] {
+		return cached
+	}
+	result := g.param_types_for_uncached(name, fallback)
+	g.param_types_cache[cache_key] = result
+	return result
+}
+
+fn (mut g FlatGen) param_types_for_uncached(name string, fallback string) []types.Type {
 	if name in ['json2.LinkedList[ValueInfo].push', 'json2.LinkedList_ValueInfo.push'] {
 		return [
 			g.tc.parse_type('&json2.LinkedList[ValueInfo]'),
@@ -2031,14 +2045,17 @@ fn (mut g FlatGen) param_types_for(name string, fallback string) []types.Type {
 	}
 	if name.contains('.') {
 		short_name := name.all_after_last('.')
-		for candidate, ptypes in g.fn_decl_param_types {
-			if candidate.ends_with('.${short_name}') {
-				return ptypes
+		suffix := '.${short_name}'
+		// Look up the value only on a match: `for _, v in map` copies every array value
+		// on every iteration, which is wasteful for a table-wide scan.
+		for candidate, _ in g.fn_decl_param_types {
+			if candidate.ends_with(suffix) {
+				return g.fn_decl_param_types[candidate]
 			}
 		}
-		for candidate, ptypes in g.tc.fn_param_types {
-			if candidate.ends_with('.${short_name}') {
-				return ptypes
+		for candidate, _ in g.tc.fn_param_types {
+			if candidate.ends_with(suffix) {
+				return g.tc.fn_param_types[candidate]
 			}
 		}
 	}
