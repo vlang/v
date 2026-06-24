@@ -1,4 +1,5 @@
 // vtest build: !sanitized_job?
+// vtest vflags: -d use_openssl
 import net.http
 import net.openssl
 import os
