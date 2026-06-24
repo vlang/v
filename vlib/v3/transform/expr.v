@@ -436,15 +436,13 @@ fn (t &Transformer) struct_operator_return_type(fn_name string) string {
 
 // infix_struct_operator_result_type
 // supports helper handling in transform.
-fn (t &Transformer) infix_struct_operator_result_type(node flat.Node) string {
+fn (t &Transformer) infix_struct_operator_result_type(node flat.Node, lhs_type_in string) string {
 	if node.children_count < 2 {
 		return ''
 	}
-	lhs_id := t.a.child(&node, 0)
-	mut lhs_type := t.node_type(lhs_id)
-	if lhs_type.starts_with('&') {
-		lhs_type = lhs_type[1..]
-	}
+	// `lhs_type_in` is the already-resolved type of the left operand; the caller passes
+	// it so we don't re-resolve the operand (operator-overload checks run on every infix).
+	lhs_type := if lhs_type_in.starts_with('&') { lhs_type_in[1..] } else { lhs_type_in }
 	struct_type := t.struct_lookup_name(lhs_type)
 	if struct_type.len == 0 {
 		return ''

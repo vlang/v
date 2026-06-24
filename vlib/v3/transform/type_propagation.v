@@ -576,12 +576,8 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 			return elem_type
 		}
 	}
-	if node.kind == .infix {
-		infix_type := t.infix_struct_operator_result_type(node)
-		if infix_type.len > 0 {
-			return infix_type
-		}
-	}
+	// NOTE: infix is intentionally not handled here — resolve_expr_type() (called at the top
+	// of node_type) already resolves infix types, including struct operator overloads.
 	if node.kind == .struct_init && node.value.len > 0 {
 		if node.value in t.structs {
 			return node.value

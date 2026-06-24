@@ -5145,11 +5145,11 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 				if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
 					return 'bool'
 				}
-				ret_type := t.infix_struct_operator_result_type(node)
+				lhs_type := t.node_type(t.a.child(&node, 0))
+				ret_type := t.infix_struct_operator_result_type(node, lhs_type)
 				if ret_type.len > 0 {
 					return ret_type
 				}
-				lhs_type := t.resolve_expr_type(t.a.child(&node, 0))
 				if node.op == .plus && lhs_type == 'string' {
 					return 'string'
 				}

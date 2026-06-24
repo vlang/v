@@ -181,6 +181,12 @@ fn main() {
 		exit(1)
 	}
 
+	// Compiling the V compiler itself (v3.v) implies building_v: it uses no generics, so
+	// the monomorphization pass is pure overhead. -building-v can force this for any input.
+	if input_file.all_after_last('/') == 'v3.v' {
+		building_v = true
+	}
+
 	mut bin_file := ''
 	mut c_only := false
 	if output_file == '' {
