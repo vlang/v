@@ -1292,9 +1292,22 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			} else {
 				-1
 			}
+			// A veb handler whose hidden `Context` parameter (param index 1, right
+			// after the receiver) was omitted by the caller forwards the enclosing
+			// handler's `ctx` in that slot so the remaining explicit arguments still
+			// line up with their parameters.
+			expected_non_ctx := if is_method { param_types.len - 1 } else { param_types.len }
+			forward_ctx := param_types.len > 1 && g.is_implicit_veb_ctx_param(param_types[1])
+				&& num_call_args < expected_non_ctx && g.cur_scope_has_ctx()
+			if forward_ctx && is_method {
+				g.write(', ctx')
+			}
 			mut emitted_arg_count := 0
 			for i in arg_start .. node.children_count {
-				arg_idx := if is_method { i } else { i - 1 }
+				mut arg_idx := if is_method { i } else { i - 1 }
+				if forward_ctx && (is_method || i - arg_start >= 1) {
+					arg_idx++
+				}
 				arg_id := g.a.child(&node, i)
 				if int(arg_id) < 0 {
 					continue
@@ -1429,8 +1442,14 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					}
 				}
 				g.expected_enum = ''
+				// A no-arg delegation leaves the forwarded ctx as the final argument;
+				// emit it here, right after the receiver, for the lowered free call.
+				if forward_ctx && !is_method && i - arg_start == 0 {
+					g.write(', ctx')
+				}
 			}
-			actual_args := emitted_arg_count
+			// Count the forwarded ctx (if any) as already supplied.
+			actual_args := emitted_arg_count + (if forward_ctx { 1 } else { 0 })
 			expected_args := if is_method {
 				param_types.len - 1
 			} else {
@@ -1443,7 +1462,13 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					}
 					pidx := if is_method { pi + 1 } else { pi }
 					pt := param_types[pidx]
-					g.gen_default_value_for_type(pt)
+					// The implicit veb `Context` parameter is supplied from the
+					// enclosing handler's `ctx`, not a zero/default value.
+					if g.is_implicit_veb_ctx_param(pt) && g.cur_scope_has_ctx() {
+						g.write('ctx')
+					} else {
+						g.gen_default_value_for_type(pt)
+					}
 				}
 			}
 			g.write(')')
@@ -2698,6 +2723,24 @@ fn (mut g FlatGen) fn_needs_implicit_veb_ctx(node flat.Node) bool {
 	return g.fn_returns_veb_result(node) && g.fn_has_receiver_param(node)
 		&& !g.fn_receiver_type_is_context(node) && !g.fn_has_param(node, 'ctx')
 		&& g.type_name_known_in_current_module('Context')
+}
+
+// is_implicit_veb_ctx_param reports whether a callee parameter is the hidden
+// veb `Context` pointer that callers do not supply explicitly.
+fn (g &FlatGen) is_implicit_veb_ctx_param(pt types.Type) bool {
+	if pt is types.Pointer {
+		return pt.base_type.name().all_after_last('.') == 'Context'
+	}
+	return false
+}
+
+// cur_scope_has_ctx reports whether the current function exposes a `ctx`
+// variable (the implicit veb context) that can be forwarded to delegated calls.
+fn (g &FlatGen) cur_scope_has_ctx() bool {
+	if _ := g.tc.cur_scope.lookup('ctx') {
+		return true
+	}
+	return false
 }
 
 fn (g &FlatGen) type_name_known_in_current_module(name string) bool {

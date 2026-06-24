@@ -59,12 +59,13 @@ pub enum TypeErrorKind {
 
 // CallInfo stores call info metadata used by types.
 struct CallInfo {
-	name         string
-	params       []Type
-	return_type  Type
-	has_receiver bool
-	is_variadic  bool
-	params_known bool
+	name                 string
+	params               []Type
+	return_type          Type
+	has_receiver         bool
+	is_variadic          bool
+	params_known         bool
+	has_implicit_veb_ctx bool
 }
 
 // LocalBinding represents local binding data used by types.
@@ -89,6 +90,7 @@ pub mut:
 	fn_ret_types               map[string]Type
 	fn_param_types             map[string][]Type
 	fn_variadic                map[string]bool
+	fn_implicit_veb_ctx        map[string]bool
 	structs                    map[string][]StructField
 	params_structs             map[string]bool
 	unions                     map[string]bool
@@ -142,6 +144,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		fn_ret_types:               map[string]Type{}
 		fn_param_types:             map[string][]Type{}
 		fn_variadic:                map[string]bool{}
+		fn_implicit_veb_ctx:        map[string]bool{}
 		structs:                    map[string][]StructField{}
 		params_structs:             map[string]bool{}
 		unions:                     map[string]bool{}
@@ -346,11 +349,12 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						ptypes << tc.parse_type(child.typ)
 					}
 				}
+				needs_ctx := tc.fn_needs_implicit_veb_ctx(node)
 				ptypes = tc.fn_param_types_with_implicit_veb_ctx(node, ptypes)
-				tc.register_fn_signature(qname, ret_type, ptypes, is_variadic)
+				tc.register_fn_signature(qname, ret_type, ptypes, is_variadic, needs_ctx)
 				if tc.cur_module in ['', 'main', 'builtin'] && qname != node.value
 					&& node.value !in tc.fn_param_types {
-					tc.register_fn_signature(node.value, ret_type, ptypes, is_variadic)
+					tc.register_fn_signature(node.value, ret_type, ptypes, is_variadic, needs_ctx)
 				}
 			}
 			.struct_decl {
@@ -392,7 +396,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						ptypes << tc.parse_type(child.typ)
 					}
 				}
-				tc.register_fn_signature(node.value, ret_type, ptypes, is_variadic)
+				tc.register_fn_signature(node.value, ret_type, ptypes, is_variadic, false)
 			}
 			.interface_decl {
 				iface_name := tc.qualify_name(node.value)
@@ -777,26 +781,27 @@ fn (tc &TypeChecker) has_active_import(alias string) bool {
 }
 
 // register_fn_signature updates register fn signature state for types.
-fn (mut tc TypeChecker) register_fn_signature(name string, ret_type Type, params []Type, is_variadic bool) {
-	tc.register_fn_name_alias(name, ret_type, params, is_variadic)
+fn (mut tc TypeChecker) register_fn_signature(name string, ret_type Type, params []Type, is_variadic bool, implicit_veb_ctx bool) {
+	tc.register_fn_name_alias(name, ret_type, params, is_variadic, implicit_veb_ctx)
 	lowered_name := c_name(name)
 	if lowered_name != name {
-		tc.register_fn_name_alias(lowered_name, ret_type, params, is_variadic)
+		tc.register_fn_name_alias(lowered_name, ret_type, params, is_variadic, implicit_veb_ctx)
 	}
 	if name.ends_with('.str') {
 		receiver := name.all_before_last('.')
 		legacy_name := '${receiver}_str'
 		if !legacy_name.contains('.') {
-			tc.register_fn_name_alias(legacy_name, ret_type, params, is_variadic)
+			tc.register_fn_name_alias(legacy_name, ret_type, params, is_variadic, implicit_veb_ctx)
 		}
 	}
 }
 
 // register_fn_name_alias updates register fn name alias state for types.
-fn (mut tc TypeChecker) register_fn_name_alias(name string, ret_type Type, params []Type, is_variadic bool) {
+fn (mut tc TypeChecker) register_fn_name_alias(name string, ret_type Type, params []Type, is_variadic bool, implicit_veb_ctx bool) {
 	tc.fn_ret_types[name] = ret_type
 	tc.fn_param_types[name] = params.clone()
 	tc.fn_variadic[name] = is_variadic
+	tc.fn_implicit_veb_ctx[name] = implicit_veb_ctx
 }
 
 // annotate_types performs a scope-aware walk over every function body, tracking
@@ -2933,12 +2938,15 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 		params[0] = unknown_type('print argument')
 	}
 	return CallInfo{
-		name:         name
-		params:       params
-		return_type:  tc.fn_ret_types[name] or { unknown_type('unknown return type for `${name}`') }
-		has_receiver: has_receiver
-		is_variadic:  tc.fn_variadic[name] or { false }
-		params_known: params_known
+		name:                 name
+		params:               params
+		return_type:          tc.fn_ret_types[name] or {
+			unknown_type('unknown return type for `${name}`')
+		}
+		has_receiver:         has_receiver
+		is_variadic:          tc.fn_variadic[name] or { false }
+		params_known:         params_known
+		has_implicit_veb_ctx: tc.fn_implicit_veb_ctx[name] or { false }
 	}
 }
 
@@ -2989,7 +2997,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	collapsed := if field_init_args > 0 { 1 } else { 0 }
 	recv_extra := if info.has_receiver { 1 } else { 0 }
 	actual_count := node.children_count - 1 - field_init_args + collapsed + recv_extra
-	min_count := tc.min_required_arg_count(info)
+	// A hidden veb `Context` parameter may be supplied implicitly from the
+	// enclosing handler instead of by the caller, so accept argument counts both
+	// with the ctx (route dispatch) and without it (handler delegation).
+	ctx_count := if info.has_implicit_veb_ctx { 1 } else { 0 }
+	ctx_omitted := ctx_count > 0 && actual_count < info.params.len
+	min_count := tc.min_required_arg_count(info) - ctx_count
 	if actual_count < min_count || (!info.is_variadic && actual_count > info.params.len) {
 		if tc.should_diagnose(id) {
 			tc.record_error(.call_arg_mismatch,
@@ -3019,7 +3032,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			tc.check_node(arg_id)
 			continue
 		}
-		param_idx := if info.has_receiver { i } else { i - 1 }
+		// When the caller omitted the implicit veb `Context` parameter, skip it
+		// (it is inserted right after the receiver) while mapping the caller's
+		// positional arguments to the callee's params.
+		arg_shift := if ctx_omitted { ctx_count } else { 0 }
+		param_idx := (if info.has_receiver { i } else { i - 1 }) + arg_shift
 		has_dsl_scope := tc.call_arg_needs_array_dsl_scope(info.name, param_idx)
 		if has_dsl_scope {
 			tc.push_array_dsl_scope(node, info.name)
