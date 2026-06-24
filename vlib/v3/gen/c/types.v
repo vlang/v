@@ -27,6 +27,24 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	return opt_name
 }
 
+fn (mut g FlatGen) value_c_type(t types.Type) string {
+	if t is types.OptionType || t is types.ResultType {
+		return g.optional_type_name(t)
+	}
+	mut ct := g.tc.c_type(t)
+	if ct.starts_with('fn_ptr:') {
+		ct = g.resolve_fn_ptr_type(ct)
+	}
+	return ct
+}
+
+fn (mut g FlatGen) cast_c_type(t types.Type) string {
+	if t is types.Pointer {
+		return '${g.value_c_type(t.base_type)}*'
+	}
+	return g.value_c_type(t)
+}
+
 // optional_value_ct supports optional value ct handling for FlatGen.
 fn (mut g FlatGen) optional_value_ct(t types.Type) (string, types.Type) {
 	if t is types.OptionType {
@@ -67,7 +85,7 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 		return false
 	}
 	err_field := if g.has_ierror_interface() { 'IError err; ' } else { '' }
-	g.writeln('typedef struct { bool ok; ${err_field}${val_type} value; } ${opt_name};')
+	g.writeln('typedef struct ${opt_name} { bool ok; ${err_field}${val_type} value; } ${opt_name};')
 	g.emitted_optional_types[opt_name] = true
 	return true
 }

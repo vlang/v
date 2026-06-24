@@ -285,7 +285,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	t.drain_pending(mut prefix)
 	mut actual_iter_type := iter_type
 	container_type := t.node_type(container)
-	if container_type.len > 0 {
+	if container_type.len > 0 && !for_iter_type_has_generic_placeholder(actual_iter_type) {
 		actual_iter_type = container_type
 	}
 	if actual_iter_type.starts_with('&[]') {
@@ -386,6 +386,32 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 		return t.node_type(iter_id)
 	}
 	return ''
+}
+
+fn for_iter_type_has_generic_placeholder(iter_type string) bool {
+	clean := iter_type.trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	if is_generic_placeholder_type_name(clean) {
+		return true
+	}
+	if clean.starts_with('&') {
+		return for_iter_type_has_generic_placeholder(clean[1..])
+	}
+	if clean.starts_with('[]') {
+		return for_iter_type_has_generic_placeholder(clean[2..])
+	}
+	if clean.starts_with('map[') {
+		bracket_end := clean.index(']') or { return false }
+		return for_iter_type_has_generic_placeholder(clean[4..bracket_end])
+			|| for_iter_type_has_generic_placeholder(clean[bracket_end + 1..])
+	}
+	if clean.starts_with('[') {
+		bracket_end := clean.index(']') or { return false }
+		return for_iter_type_has_generic_placeholder(clean[bracket_end + 1..])
+	}
+	return false
 }
 
 // Infer the element type for the loop variable from the iterable type.

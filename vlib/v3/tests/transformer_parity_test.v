@@ -473,6 +473,88 @@ fn main() {
 	assert left_shift_count == 0
 }
 
+fn test_array_push_many_method_lowers_to_runtime_ptr_call() {
+	a := parse_transform_source('
+fn main() {
+	mut xs := []u8{}
+	mut b := u8(7)
+	unsafe {
+		xs.push_many(&b, 1)
+	}
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut push_many_ptr_count := 0
+	mut push_many_selector_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		push_many_ptr_count += count_call_name(a, child_id, 'array_push_many_ptr')
+		push_many_selector_count += count_selector_value(a, child_id, 'push_many')
+	}
+	assert push_many_ptr_count == 1
+	assert push_many_selector_count == 0
+}
+
+fn test_array_push_many_type_marker_lowers_to_runtime_ptr_call() {
+	a := parse_transform_source('
+struct PushManyItem {
+	value int
+}
+
+fn main() {
+	mut xs := []PushManyItem{}
+	item := PushManyItem{value: 7}
+	xs.push_many(item, PushManyItem)
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut push_many_ptr_count := 0
+	mut push_many_selector_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		push_many_ptr_count += count_call_name(a, child_id, 'array_push_many_ptr')
+		push_many_selector_count += count_selector_value(a, child_id, 'push_many')
+	}
+	assert push_many_ptr_count == 1
+	assert push_many_selector_count == 0
+}
+
+fn test_sql_expr_lowers_to_success_result_default() {
+	a := parse_transform_source('
+struct User {
+	id int
+}
+
+fn main() {
+	db := 0
+	users := sql db {
+		select from User
+	}
+	count := sql db {
+		select count from User
+	}
+	created := sql db {
+		create table User
+	}
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut sql_expr_count := 0
+	for i in 0 .. main_fn.children_count {
+		sql_expr_count += count_kind(a, a.child(&main_fn, i), .sql_expr)
+	}
+	assert sql_expr_count == 0
+	users := decl_rhs(a, 'main', 'users')
+	assert users.kind == .struct_init
+	assert users.value == '![]User'
+	count := decl_rhs(a, 'main', 'count')
+	assert count.kind == .struct_init
+	assert count.value == '!int'
+	created := decl_rhs(a, 'main', 'created')
+	assert created.kind == .struct_init
+	assert created.value == '!void'
+}
+
 // test_or_expr_lowers_to_temp_and_if validates this v3 regression case.
 fn test_or_expr_lowers_to_temp_and_if() {
 	a := parse_transform_source('

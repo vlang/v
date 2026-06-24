@@ -93,6 +93,7 @@ pub enum NodeKind {
 	c_fn_decl
 	// top-level
 	file
+	sql_expr
 }
 
 // Op lists op values used by flat.

@@ -37,7 +37,7 @@ fn (mut t Transformer) make_new_map_call(map_type string) flat.NodeId {
 // map_callback_names supports map callback names handling for transform.
 fn map_callback_names(key_type string) (string, string, string, string) {
 	if key_type == 'string' {
-		return 'v3_map_hash_string', 'v3_map_eq_string', 'v3_map_clone_string', 'v3_map_free_string'
+		return 'map_hash_string', 'map_eq_string', 'map_clone_string', 'map_free_string'
 	}
 	size_suffix := match key_type {
 		'u8', 'i8', 'bool', 'char' { '1' }
@@ -46,7 +46,7 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 		else { '4' }
 	}
 
-	return 'v3_map_hash_int_${size_suffix}', 'v3_map_eq_int_${size_suffix}', 'v3_map_clone_int_${size_suffix}', 'v3_map_free_nop'
+	return 'map_hash_int_${size_suffix}', 'map_eq_int_${size_suffix}', 'map_clone_int_${size_suffix}', 'map_free_nop'
 }
 
 // map_index_info supports map index info handling for Transformer.
@@ -112,6 +112,9 @@ fn (t &Transformer) const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind != .ident || node.value.len == 0 {
+		return none
+	}
+	if t.var_type(node.value).len > 0 {
 		return none
 	}
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {

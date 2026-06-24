@@ -31,12 +31,12 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				g.gen_expr(child_id)
 				g.write('.message')
 			} else if typ is types.Primitive {
-				ct := g.tc.c_type(typ)
-				g.write('${ct}_str(')
+				prim_name := types.Type(typ).name()
+				g.write('${c_name('${prim_name}.str')}(')
 				g.gen_expr(child_id)
 				g.write(')')
 			} else if typ is types.ISize || typ is types.USize {
-				g.write('${typ.name()}_str(')
+				g.write('${c_name('${typ.name()}.str')}(')
 				g.gen_expr(child_id)
 				g.write(')')
 			} else if typ is types.Struct {
@@ -48,7 +48,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				g.gen_expr(child_id)
 				g.write(')')
 			} else {
-				g.write('int_str(')
+				g.write('int__str(')
 				g.gen_expr(child_id)
 				g.write(')')
 			}

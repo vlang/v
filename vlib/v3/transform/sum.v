@@ -188,9 +188,9 @@ fn (t &Transformer) sum_type_index(sum_name string, variant string) int {
 
 // sum_type_index_in_variants supports sum type index in variants handling for transform.
 fn sum_type_index_in_variants(variants []string, variant string) int {
-	short_variant := if variant.contains('.') { variant.all_after_last('.') } else { variant }
+	short_variant := variant_short_name_text(variant)
 	for i, v in variants {
-		short_v := if v.contains('.') { v.all_after_last('.') } else { v }
+		short_v := variant_short_name_text(v)
 		if v == variant || short_v == short_variant {
 			return i + 1
 		}
@@ -446,15 +446,11 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 		&& clean_variant[3..].contains('__') {
 		clean_variant = clean_variant[3..].replace('__', '.')
 	}
-	short_variant := if clean_variant.contains('.') {
-		clean_variant.all_after_last('.')
-	} else {
-		clean_variant
-	}
+	short_variant := t.variant_short_name(clean_variant)
 	mut matches := false
 	mut matched_variant := clean_variant
 	for v in t.sum_types[resolved_sum] {
-		short_v := if v.contains('.') { v.all_after_last('.') } else { v }
+		short_v := t.variant_short_name(v)
 		if v == clean_variant || short_v == short_variant {
 			matches = true
 			matched_variant = v

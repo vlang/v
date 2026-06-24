@@ -11,6 +11,7 @@ pub mut:
 	user_defines []string
 	backend      string = 'c'
 	vroot        string = detect_vroot()
+	selfhost     bool
 }
 
 // new_preferences supports new preferences handling for pref.

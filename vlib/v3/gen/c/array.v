@@ -31,6 +31,18 @@ fn array_fixed_type(t types.Type) ?types.ArrayFixed {
 	return none
 }
 
+fn fixed_array_index_info(t types.Type) (bool, bool, types.ArrayFixed) {
+	if fixed := array_fixed_type(t) {
+		return true, false, fixed
+	}
+	if t is types.Pointer {
+		if fixed := array_fixed_type(t.base_type) {
+			return true, true, fixed
+		}
+	}
+	return false, false, types.ArrayFixed{}
+}
+
 // gen_array_literal_value emits array literal value output for c.
 fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type) {
 	c_elem := g.tc.c_type(elem_type)
@@ -49,6 +61,32 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 	g.write('})')
 }
 
+fn (mut g FlatGen) gen_array_literal_ptr_arg(node flat.Node, elem_type types.Type) {
+	c_elem := g.tc.c_type(elem_type)
+	g.write('(${c_elem}[]){')
+	for i in 0 .. node.children_count {
+		if i > 0 {
+			g.write(', ')
+		}
+		g.gen_expr_with_expected_type(g.a.child(&node, i), elem_type)
+	}
+	if node.children_count == 0 {
+		g.write('0')
+	}
+	g.write('}')
+}
+
+fn (mut g FlatGen) gen_pointer_arg_from_array_literal(node flat.Node, expected types.Type) bool {
+	if node.kind != .array_literal {
+		return false
+	}
+	if expected is types.Pointer {
+		g.gen_array_literal_ptr_arg(node, expected.base_type)
+		return true
+	}
+	return false
+}
+
 // gen_fixed_array_data_arg emits fixed array data arg output for c.
 fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed) {
 	node := g.a.nodes[int(id)]
@@ -63,6 +101,14 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 		}
 		g.write('}')
 		return
+	}
+	if node.kind == .postfix && node.children_count > 0 {
+		child_id := g.a.child(&node, 0)
+		child := g.a.nodes[int(child_id)]
+		if child.kind == .array_literal {
+			g.gen_fixed_array_data_arg(child_id, arr)
+			return
+		}
 	}
 	g.gen_expr(id)
 }
@@ -81,11 +127,13 @@ fn (mut g FlatGen) gen_array_push_many_stmt(lhs_id flat.NodeId, rhs_id flat.Node
 		g.writeln(', ${len_expr});')
 		return
 	}
-	g.write('array_push_many(${amp}')
-	gen_expr_lvalue(mut g, lhs_id)
-	g.write(', ')
+	tmp := g.tmp_name()
+	g.write('{ Array ${tmp} = ')
 	g.gen_expr(rhs_id)
-	g.writeln(');')
+	g.writeln(';')
+	g.write('array__push_many(${amp}')
+	gen_expr_lvalue(mut g, lhs_id)
+	g.writeln(', ${tmp}.data, ${tmp}.len); }')
 }
 
 // gen_slice_expr emits slice expr output for c.
@@ -94,16 +142,31 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 	has_start := start_node.kind != .empty
 	has_end := node.children_count > 2
 	base_str := g.expr_to_string(base_id)
+	is_array, is_ptr, _ := array_index_info(base_type)
+	is_fixed_array, fixed_is_ptr, fixed := fixed_array_index_info(base_type)
 	start_str := if has_start { g.expr_to_string(g.a.child(&node, 1)) } else { '0' }
 	end_str := if has_end {
 		g.expr_to_string(g.a.child(&node, 2))
+	} else if is_fixed_array {
+		g.fixed_array_len_value(fixed)
+	} else if is_array && is_ptr {
+		'${base_str}->len'
 	} else {
 		'${base_str}.len'
 	}
 	if base_type is types.String {
 		g.write('string__substr(${base_str}, ${start_str}, ${end_str})')
-	} else if base_type is types.Array {
-		g.write('array_slice(${base_str}, ${start_str}, ${end_str})')
+	} else if is_fixed_array {
+		c_elem := g.tc.c_type(fixed.elem_type)
+		data_str := if fixed_is_ptr { '(*${base_str})' } else { base_str }
+		// Evaluate the slice bounds once so side-effecting expressions such as
+		// `arr[i++..limit()]` are not run multiple times in the generated C.
+		start_tmp := g.tmp_name()
+		count_tmp := g.tmp_name()
+		g.write('({ int ${start_tmp} = (${start_str}); int ${count_tmp} = (${end_str}) - ${start_tmp}; new_array_from_c_array(${count_tmp}, ${count_tmp}, sizeof(${c_elem}), &${data_str}[${start_tmp}]); })')
+	} else if is_array {
+		arr_str := if is_ptr { '*${base_str}' } else { base_str }
+		g.write('array_slice(${arr_str}, ${start_str}, ${end_str})')
 	} else {
 		g.write('string__substr(${base_str}, ${start_str}, ${end_str})')
 	}
@@ -111,7 +174,7 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 
 // gen_array_method_call emits array method call output for c.
 fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr types.Array) {
-	c_elem := g.tc.c_type(arr.elem_type)
+	c_elem := g.value_c_type(arr.elem_type)
 	base_id := g.a.child(fn_node, 0)
 	base_node := g.a.nodes[int(base_id)]
 	is_ptr := if base_node.kind == .ident {
@@ -122,7 +185,10 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 	dot := if is_ptr { '->' } else { '.' }
 	match fn_node.value {
 		'clone' {
-			g.write('array_clone(')
+			g.write('array__clone(')
+			if !is_ptr {
+				g.write('&')
+			}
 			g.gen_expr(base_id)
 			g.write(')')
 		}
@@ -226,7 +292,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.write(')')
 		}
 		'join' {
-			g.write('array_string_join(')
+			g.write('Array_string__join(')
 			g.gen_expr(base_id)
 			g.write(', ')
 			g.gen_expr(g.a.child(&node, 1))
@@ -343,8 +409,8 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 		base_type := g.tc.resolve_type(base_id)
 		clean_base := types.unwrap_pointer(base_type)
 		if clean_base is types.Map {
-			c_key := g.tc.c_type(clean_base.key_type)
-			c_val := g.tc.c_type(clean_base.value_type)
+			c_key := g.value_c_type(clean_base.key_type)
+			c_val := g.value_c_type(clean_base.value_type)
 			is_ptr := base_type is types.Pointer
 			if is_ptr {
 				g.write('map__set(')
@@ -386,7 +452,7 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			}
 		}
 		if is_array_base {
-			c_elem := g.tc.c_type(arr_type.elem_type)
+			c_elem := g.value_c_type(arr_type.elem_type)
 			g.write('array_set(')
 			if base_type is types.Pointer {
 				g.write('*')

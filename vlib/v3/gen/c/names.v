@@ -15,6 +15,9 @@ fn c_name(name string) string {
 	if name == 'malloc' {
 		return 'v_malloc'
 	}
+	if name == 'int_str' {
+		return 'int__str'
+	}
 	// The V builtin `exit` wraps `C.exit`; both lower to the C symbol `exit`.
 	// Rename the V function (and its call sites) to `v_exit` so its body's
 	// `C.exit(code)` call resolves to libc `exit` instead of recursing forever.
@@ -64,6 +67,36 @@ fn c_name_sanitize(name string) string {
 					i += 2
 					continue
 				}
+				if next == `*` {
+					b.write_string('__mul')
+					i += 2
+					continue
+				}
+				if next == `/` {
+					b.write_string('__div')
+					i += 2
+					continue
+				}
+				if next == `%` {
+					b.write_string('__mod')
+					i += 2
+					continue
+				}
+				if next == `&` {
+					b.write_string('__and')
+					i += 2
+					continue
+				}
+				if next == `|` {
+					b.write_string('__or')
+					i += 2
+					continue
+				}
+				if next == `^` {
+					b.write_string('__xor')
+					i += 2
+					continue
+				}
 				if i + 2 < name.len {
 					op := name[i + 2]
 					if next == `=` && op == `=` {
@@ -83,6 +116,16 @@ fn c_name_sanitize(name string) string {
 					}
 					if next == `>` && op == `=` {
 						b.write_string('__ge')
+						i += 3
+						continue
+					}
+					if next == `<` && op == `<` {
+						b.write_string('__left_shift')
+						i += 3
+						continue
+					}
+					if next == `>` && op == `>` {
+						b.write_string('__right_shift')
 						i += 3
 						continue
 					}
@@ -121,6 +164,11 @@ fn c_name_is_plain(name string) bool {
 		return false
 	}
 	return true
+}
+
+fn c_local_name(name string) string {
+	local_name := if name.contains('.') { name.all_after_last('.') } else { name }
+	return c_name(local_name)
 }
 
 // c_escape supports c escape handling for c.

@@ -73,6 +73,39 @@ fn (t &Transformer) return_expr_is_err(id flat.NodeId) bool {
 	return node.kind == .ident && node.value == 'err'
 }
 
+fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.NodeId {
+	if node.children_count != 1 || !t.is_optional_type_name(t.cur_fn_ret_type) {
+		return none
+	}
+	child_id := t.a.child(&node, 0)
+	child := t.a.nodes[int(child_id)]
+	if child.kind == .none_expr || !t.return_expr_is_optional_result(child_id) {
+		return none
+	}
+	ret_type := t.qualify_optional_type(t.cur_fn_ret_type)
+	expr_type := t.qualify_optional_type(t.optional_result_expr_type_name(child_id))
+	if !t.optional_types_match(ret_type, expr_type) {
+		return none
+	}
+	new_expr := t.transform_expr(child_id)
+	mut result := []flat.NodeId{}
+	t.drain_pending(mut result)
+	result << t.make_return(new_expr, ret_type)
+	return result
+}
+
+fn (t &Transformer) optional_types_match(a string, b string) bool {
+	if !t.is_optional_type_name(a) || !t.is_optional_type_name(b) || a[0] != b[0] {
+		return false
+	}
+	a_base := t.normalize_type_alias(t.optional_base_type(a))
+	b_base := t.normalize_type_alias(t.optional_base_type(b))
+	if a_base == b_base {
+		return true
+	}
+	return a_base.all_after_last('.') == b_base.all_after_last('.')
+}
+
 // try_expand_return_optional_expr
 // supports helper handling in transform.
 fn (mut t Transformer) try_expand_return_optional_expr(node flat.Node) ?[]flat.NodeId {
@@ -230,6 +263,9 @@ fn (mut t Transformer) try_expand_return_if(_id flat.NodeId, node flat.Node) ?[]
 		return none
 	}
 	val_id := t.a.child(&node, 0)
+	if int(val_id) < 0 || int(val_id) >= t.a.nodes.len {
+		return none
+	}
 	val_node := t.a.nodes[int(val_id)]
 	if val_node.kind != .if_expr || val_node.children_count < 3 {
 		return none
@@ -408,11 +444,17 @@ fn (mut t Transformer) try_expand_return_match(_id flat.NodeId, node flat.Node) 
 		return none
 	}
 	val_id := t.a.child(&node, 0)
+	if int(val_id) < 0 || int(val_id) >= t.a.nodes.len {
+		return none
+	}
 	val := t.a.nodes[int(val_id)]
 	if val.kind != .match_stmt || val.children_count < 2 {
 		return none
 	}
 	match_expr_id := t.a.child(&val, 0)
+	if int(match_expr_id) < 0 || int(match_expr_id) >= t.a.nodes.len {
+		return none
+	}
 	match_expr := t.a.nodes[int(match_expr_id)]
 	needs_temp := match_expr.kind !in [.ident, .int_literal, .bool_literal, .string_literal,
 		.char_literal]

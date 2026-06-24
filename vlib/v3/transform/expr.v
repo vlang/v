@@ -158,12 +158,33 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	}
 	lhs_id := t.a.children[node.children_start]
 	mut lhs_type := t.node_type(lhs_id)
+	checker_lhs_type := t.checker_node_type(lhs_id)
+	lhs_key := t.expr_key(lhs_id)
+	mut has_smartcast := false
+	if lhs_key.len > 0 {
+		if sc := t.find_smartcast(lhs_key) {
+			has_smartcast = true
+			lhs_type = t.smartcast_target_type(sc)
+		}
+	}
+	if lhs_type.len == 0 {
+		lhs_type = checker_lhs_type
+	}
 	if lhs_type.starts_with('&') {
 		return none
 	}
 	struct_type := t.struct_lookup_name(lhs_type)
 	if struct_type.len == 0 {
 		return none
+	}
+	if checker_lhs_type.len > 0 && !has_smartcast {
+		checker_struct_type := t.struct_lookup_name(checker_lhs_type)
+		if checker_struct_type.len > 0 && checker_struct_type != struct_type {
+			return none
+		}
+		if checker_struct_type.len == 0 && checker_lhs_type != lhs_type {
+			return none
+		}
 	}
 	if call_info := t.struct_operator_call_info(struct_type, node.op) {
 		if t.is_disabled_fn_name(call_info.name) {
@@ -216,6 +237,80 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 		return eq_call
 	}
 	return none
+}
+
+fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.NodeId, rhs flat.NodeId) ?flat.NodeId {
+	mut lhs_type := t.node_type(lhs)
+	if lhs_type.starts_with('&') {
+		lhs_type = lhs_type[1..]
+	}
+	mut rhs_type := t.node_type(rhs)
+	if rhs_type.starts_with('&') {
+		rhs_type = rhs_type[1..]
+	}
+	lhs_struct_type := t.struct_lookup_name(lhs_type)
+	rhs_struct_type := t.struct_lookup_name(rhs_type)
+	if lhs_struct_type.len == 0 || rhs_struct_type.len == 0 {
+		return none
+	}
+	struct_type := lhs_struct_type
+	if lhs_struct_type != rhs_struct_type
+		&& lhs_struct_type.all_after_last('.') != rhs_struct_type.all_after_last('.') {
+		return none
+	}
+	if call_info := t.struct_operator_call_info(struct_type, node.op) {
+		if t.is_disabled_fn_name(call_info.name) {
+			ret_type := t.struct_operator_return_type(call_info.name)
+			if ret_type.len == 0 || ret_type == 'void' {
+				return t.make_empty()
+			}
+			return t.zero_value_for_type(ret_type)
+		}
+		call_lhs := t.stable_transformed_expr_for_reuse(lhs, lhs_type, 'op_lhs')
+		call_rhs := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'op_rhs')
+		args := if call_info.reverse {
+			arr2(call_rhs, call_lhs)
+		} else {
+			arr2(call_lhs, call_rhs)
+		}
+		call := t.make_call_typed(call_info.name, args, node.typ)
+		if call_info.negate {
+			return t.make_prefix(.not, call)
+		}
+		return call
+	}
+	if node.op != .eq && node.op != .ne {
+		return none
+	}
+	if eq_fn := t.struct_operator_fn_name(struct_type, '==') {
+		if t.is_disabled_fn_name(eq_fn) {
+			return t.make_bool_literal(node.op == .ne)
+		}
+		call_lhs := t.stable_transformed_expr_for_reuse(lhs, lhs_type, 'eq_lhs')
+		call_rhs := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'eq_rhs')
+		eq_call := t.make_call_typed(eq_fn, arr2(call_lhs, call_rhs), 'bool')
+		if node.op == .ne {
+			return t.make_prefix(.not, eq_call)
+		}
+		return eq_call
+	}
+	cmp_lhs := t.stable_transformed_expr_for_reuse(lhs, lhs_type, 'eq_lhs')
+	cmp_rhs := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'eq_rhs')
+	cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, cmp_lhs), t.make_prefix(.amp,
+		cmp_rhs), t.make_sizeof_type(struct_type)), 'int')
+	return t.make_infix(node.op, cmp, t.make_int_literal(0))
+}
+
+fn (t &Transformer) checker_node_type(id flat.NodeId) string {
+	if isnil(t.tc) || int(id) < 0 {
+		return ''
+	}
+	typ := t.tc.expr_type(id) or { t.tc.resolve_type(id) }
+	name := typ.name()
+	if name.len == 0 || name == 'void' {
+		return ''
+	}
+	return t.normalize_type_alias(name)
 }
 
 // StructOperatorCallInfo stores struct operator call info metadata used by transform.
@@ -297,14 +392,25 @@ fn struct_operator_symbol(op flat.Op) ?string {
 // struct_operator_fn_name supports struct operator fn name handling for Transformer.
 fn (t &Transformer) struct_operator_fn_name(struct_type string, op_name string) ?string {
 	method_name := '${struct_type}.${op_name}'
-	if t.is_known_fn_name(method_name) {
+	require_used := op_name in ['==', '!=']
+	if t.is_known_operator_fn_name(method_name, require_used) {
 		return method_name
 	}
 	cmethod_name := c_name(method_name)
-	if t.is_known_fn_name(cmethod_name) {
+	if t.is_known_operator_fn_name(cmethod_name, require_used) {
 		return cmethod_name
 	}
 	return none
+}
+
+fn (t &Transformer) is_known_operator_fn_name(name string, require_used bool) bool {
+	if !t.is_known_fn_name(name) {
+		return false
+	}
+	if !require_used || t.used_fns.len == 0 {
+		return true
+	}
+	return name in t.used_fns || c_name(name) in t.used_fns
 }
 
 // has_struct_operator_fn reports whether has struct operator fn applies in transform.
@@ -946,6 +1052,24 @@ fn (t &Transformer) is_stable_expr_for_reuse(id flat.NodeId) bool {
 		.selector {
 			node.children_count > 0 && t.is_stable_expr_for_reuse(t.a.children[node.children_start])
 		}
+		.field_init {
+			node.children_count == 0
+				|| t.is_stable_expr_for_reuse(t.a.children[node.children_start])
+		}
+		.struct_init {
+			mut stable := true
+			for i in 0 .. node.children_count {
+				if !t.is_stable_expr_for_reuse(t.a.child(&node, i)) {
+					stable = false
+					break
+				}
+			}
+			stable
+		}
+		.cast_expr {
+			node.children_count == 0
+				|| t.is_stable_expr_for_reuse(t.a.children[node.children_start])
+		}
 		.index {
 			node.children_count >= 2
 				&& t.is_stable_expr_for_reuse(t.a.children[node.children_start])
@@ -1231,7 +1355,13 @@ fn is_fixed_array_type(s string) bool {
 	if s.starts_with('[]') || s.starts_with('map[') {
 		return false
 	}
-	return s.contains('[') && (s.ends_with(']') || s.starts_with('['))
+	if s.starts_with('[') {
+		return s.contains(']')
+	}
+	if !s.contains('[') || !s.ends_with(']') {
+		return false
+	}
+	return is_decimal_text(fixed_array_len_text(s))
 }
 
 // fixed_array_len supports fixed array len handling for transform.
@@ -1291,7 +1421,9 @@ fn c_name(name string) string {
 	}
 	n := name.replace('[]', 'Array_').replace('.-', '__minus').replace('.+', '__plus').replace('.==',
 		'__eq').replace('.!=', '__ne').replace('.<=', '__le').replace('.>=', '__ge').replace('.<',
-		'__lt').replace('.>', '__gt').replace('&', 'ptr').replace('[', '_').replace(']', '').replace(',', '_').replace(' ', '_').replace('.', '__')
+		'__lt').replace('.>', '__gt').replace('.*', '__mul').replace('./', '__div').replace('.%',
+		'__mod').replace('.&', '__and').replace('.|', '__or').replace('.^', '__xor').replace('.<<',
+		'__left_shift').replace('.>>', '__right_shift').replace('&', 'ptr').replace('[', '_').replace(']', '').replace(',', '_').replace(' ', '_').replace('.', '__')
 	if n in c_reserved_words {
 		return 'v_${n}'
 	}

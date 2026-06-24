@@ -194,6 +194,18 @@ pub fn unwrap_pointer(t Type) Type {
 	return t
 }
 
+// generic_base_name returns the declaration part of a concrete generic type name.
+pub fn generic_base_name(name string) string {
+	if name.starts_with('[') {
+		return name
+	}
+	idx := name.index_u8(`[`)
+	if idx > 0 {
+		return name[..idx]
+	}
+	return name
+}
+
 // is_pointer reports whether is pointer applies in types.
 pub fn (t Type) is_pointer() bool {
 	return t is Pointer

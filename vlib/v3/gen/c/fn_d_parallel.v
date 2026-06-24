@@ -11,6 +11,7 @@ const min_flat_cgen_parallel_items = 1024
 // FlatFnGenItem represents flat fn gen item data used by c.
 struct FlatFnGenItem {
 	node_id flat.NodeId
+	file    string
 	module  string
 	cost    int
 }
@@ -163,16 +164,20 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	mut items := []FlatFnGenItem{}
 	mut cur_module := ''
+	mut cur_file := ''
 	for i in 0 .. g.a.nodes.len {
 		node := g.a.nodes[i]
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
+			cur_file = node.value
+			g.tc.cur_file = cur_file
 			cur_module = ''
 			g.tc.cur_module = cur_module
 			continue
 		}
 		if kind_id == 73 {
 			cur_module = node.value
+			g.tc.cur_file = cur_file
 			g.tc.cur_module = cur_module
 			continue
 		}
@@ -190,6 +195,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 		g.emitted_fns[qfn] = true
 		items << FlatFnGenItem{
 			node_id: flat.NodeId(i)
+			file:    cur_file
 			module:  cur_module
 			cost:    node.children_count + 1
 		}
@@ -203,6 +209,7 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 		if int(item.node_id) < 0 || int(item.node_id) >= g.a.nodes.len {
 			continue
 		}
+		g.tc.cur_file = item.file
 		g.tc.cur_module = item.module
 		node := g.a.nodes[int(item.node_id)]
 		g.gen_fn_in_module(node, item.module)
@@ -212,6 +219,7 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 // prepare_parallel_items supports prepare parallel items handling for FlatGen.
 fn (mut g FlatGen) prepare_parallel_items(items []FlatFnGenItem) {
 	for item in items {
+		g.tc.cur_file = item.file
 		g.tc.cur_module = item.module
 		g.prepare_parallel_node(item.node_id)
 	}
