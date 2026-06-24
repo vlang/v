@@ -1925,7 +1925,16 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					mod
 				}
-				g.write(c_name('${short_mod}.${node.value}'))
+				// A module-level const is stored under the importing module's full path
+				// (e.g. `v3.gen.wasm`), matching its function naming. Reference it by that
+				// exact storage name rather than the short alias, otherwise we'd emit an
+				// undeclared `wasm__x` for a const defined as `v3__gen__wasm__x`.
+				full_qname := g.const_storage_name(mod, node.value)
+				if full_qname in g.const_vals {
+					g.write(c_name(full_qname))
+				} else {
+					g.write(c_name('${short_mod}.${node.value}'))
+				}
 			} else if base.kind == .selector && base.children_count > 0
 				&& g.is_module_qualified_enum(base) {
 				inner_base := g.a.child_node(&base, 0)
