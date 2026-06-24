@@ -51,9 +51,10 @@ enum LoopCommandKind {
 }
 
 struct LoopCommand {
-	kind      LoopCommandKind
-	client_fd int
-	state     &ClientWriteState = unsafe { nil }
+	kind       LoopCommandKind
+	client_fd  int
+	generation u64
+	state      &ClientWriteState = unsafe { nil }
 }
 
 fn wake_event_loop(wakeup_fd int) {
@@ -248,7 +249,8 @@ fn remove_fd_from_epoll(epoll_fd int, fd int) bool {
 	return true
 }
 
-fn handle_accept_loop(epoll_fd int, listen_fd int, mut client_fds map[int]bool) {
+fn handle_accept_loop(epoll_fd int, listen_fd int, mut client_fds map[int]u64, next_generation u64) u64 {
+	mut current_generation := next_generation
 	for {
 		client_fd := C.accept4(listen_fd, C.NULL, C.NULL, C.SOCK_NONBLOCK)
 		if client_fd < 0 {
@@ -267,8 +269,13 @@ fn handle_accept_loop(epoll_fd int, listen_fd int, mut client_fds map[int]bool) 
 			close_socket(client_fd)
 			continue
 		}
-		client_fds[client_fd] = true
+		current_generation++
+		if current_generation == 0 {
+			current_generation++
+		}
+		client_fds[client_fd] = current_generation
 	}
+	return current_generation
 }
 
 fn free_write_state(server &Server, client_fd int, mut client_write_states map[int]&ClientWriteState) {
@@ -295,7 +302,7 @@ fn free_write_state(server &Server, client_fd int, mut client_write_states map[i
 	unsafe { free(state) }
 }
 
-fn handle_client_closure(server &Server, epoll_fd int, client_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
+fn handle_client_closure(server &Server, epoll_fd int, client_fd int, mut client_fds map[int]u64, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
 	// Never close the listening socket here
 	if client_fd == 0 {
 		return
@@ -313,14 +320,14 @@ fn handle_client_closure(server &Server, epoll_fd int, client_fd int, mut client
 	close_socket(client_fd)
 }
 
-fn close_worker_clients(server &Server, epoll_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
+fn close_worker_clients(server &Server, epoll_fd int, mut client_fds map[int]u64, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
 	for client_fd in client_fds.keys() {
 		handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
 			client_read_starts, mut closing_client_fds, mut client_write_states)
 	}
 }
 
-fn drain_closing_client(server &Server, epoll_fd int, client_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
+fn drain_closing_client(server &Server, epoll_fd int, client_fd int, mut client_fds map[int]u64, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
 	mut drain_buf := []u8{len: 4096}
 	for {
 		bytes_read := C.recv(client_fd, unsafe { &drain_buf[0] }, drain_buf.len, 0)
@@ -455,7 +462,7 @@ fn arm_epollout(epoll_fd int, client_fd int) int {
 
 // complete_write tears down the per-fd write state after a successful drain,
 // then either closes the connection or leaves it in keep-alive mode.
-fn complete_write(server &Server, epoll_fd int, client_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
+fn complete_write(server &Server, epoll_fd int, client_fd int, mut client_fds map[int]u64, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
 	state := client_write_states[client_fd] or { return }
 	should_close := state.should_close
 	epollout_was_armed := state.epollout_armed
@@ -481,7 +488,7 @@ fn complete_write(server &Server, epoll_fd int, client_fd int, mut client_fds ma
 }
 
 // handle_write resumes a blocked write when EPOLLOUT fires for `client_fd`.
-fn handle_write(server &Server, epoll_fd int, client_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
+fn handle_write(server &Server, epoll_fd int, client_fd int, mut client_fds map[int]u64, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
 	mut state := client_write_states[client_fd] or { return }
 	status := try_drain_write(client_fd, mut state)
 	match status {
@@ -499,7 +506,7 @@ fn handle_write(server &Server, epoll_fd int, client_fd int, mut client_fds map[
 	}
 }
 
-fn process_request_async(server &Server, client_fd int, request_buffer []u8, command_ch chan LoopCommand, wakeup_fd int) {
+fn process_request_async(server &Server, client_fd int, generation u64, request_buffer []u8, command_ch chan LoopCommand, wakeup_fd int) {
 	$if fasthttp_test_delay_async_start ? {
 		time.sleep(200 * time.millisecond)
 	}
@@ -518,8 +525,9 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 			server.end_request()
 		}
 		send_loop_command(command_ch, wakeup_fd, LoopCommand{
-			kind:      .close_conn
-			client_fd: client_fd
+			kind:       .close_conn
+			client_fd:  client_fd
+			generation: generation
 		})
 		return
 	}
@@ -537,8 +545,9 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 			server.end_request()
 		}
 		send_loop_command(command_ch, wakeup_fd, LoopCommand{
-			kind:      .close_conn
-			client_fd: client_fd
+			kind:       .close_conn
+			client_fd:  client_fd
+			generation: generation
 		})
 		return
 	}
@@ -552,8 +561,9 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 			response.abandon_request_arena_current_thread()
 			response.free_owned_content()
 			send_loop_command(command_ch, wakeup_fd, LoopCommand{
-				kind:      .manual_takeover
-				client_fd: client_fd
+				kind:       .manual_takeover
+				client_fd:  client_fd
+				generation: generation
 			})
 			return
 		}
@@ -567,13 +577,15 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 			}
 			if server.is_shutting_down() || response.should_close {
 				send_loop_command(command_ch, wakeup_fd, LoopCommand{
-					kind:      .close_conn
-					client_fd: client_fd
+					kind:       .close_conn
+					client_fd:  client_fd
+					generation: generation
 				})
 			} else {
 				send_loop_command(command_ch, wakeup_fd, LoopCommand{
-					kind:      .enable_read
-					client_fd: client_fd
+					kind:       .enable_read
+					client_fd:  client_fd
+					generation: generation
 				})
 			}
 			return
@@ -595,8 +607,9 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 				server.end_request()
 			}
 			send_loop_command(command_ch, wakeup_fd, LoopCommand{
-				kind:      .close_conn
-				client_fd: client_fd
+				kind:       .close_conn
+				client_fd:  client_fd
+				generation: generation
 			})
 			return
 		}
@@ -610,8 +623,9 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 				server.end_request()
 			}
 			send_loop_command(command_ch, wakeup_fd, LoopCommand{
-				kind:      .close_conn
-				client_fd: client_fd
+				kind:       .close_conn
+				client_fd:  client_fd
+				generation: generation
 			})
 			return
 		}
@@ -643,35 +657,44 @@ fn process_request_async(server &Server, client_fd int, request_buffer []u8, com
 	match status {
 		.done {
 			send_loop_command(command_ch, wakeup_fd, LoopCommand{
-				kind:      .complete_response
-				client_fd: client_fd
-				state:     state
+				kind:       .complete_response
+				client_fd:  client_fd
+				generation: generation
+				state:      state
 			})
 		}
 		.blocked {
 			send_loop_command(command_ch, wakeup_fd, LoopCommand{
-				kind:      .arm_write
-				client_fd: client_fd
-				state:     state
+				kind:       .arm_write
+				client_fd:  client_fd
+				generation: generation
+				state:      state
 			})
 		}
 		.failed {
 			send_loop_command(command_ch, wakeup_fd, LoopCommand{
-				kind:      .close_conn
-				client_fd: client_fd
-				state:     state
+				kind:       .close_conn
+				client_fd:  client_fd
+				generation: generation
+				state:      state
 			})
 		}
 	}
 }
 
-fn dispatch_request_async(server &Server, client_fd int, request_buffer []u8, command_ch chan LoopCommand, wakeup_fd int) {
+fn dispatch_request_async(server &Server, client_fd int, generation u64, request_buffer []u8, command_ch chan LoopCommand, wakeup_fd int) {
 	// Account for the request before shutdown can observe the spawned work.
 	server.begin_request()
-	spawn process_request_async(server, client_fd, request_buffer, command_ch, wakeup_fd)
+	spawn process_request_async(server, client_fd, generation, request_buffer, command_ch,
+		wakeup_fd)
 }
 
-fn process_loop_command(server &Server, epoll_fd int, cmd LoopCommand, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
+fn command_matches_client(cmd LoopCommand, client_fds map[int]u64) bool {
+	generation := client_fds[cmd.client_fd] or { return false }
+	return generation == cmd.generation
+}
+
+fn process_loop_command(server &Server, epoll_fd int, cmd LoopCommand, mut client_fds map[int]u64, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
 	match cmd.kind {
 		.close_conn {
 			if cmd.state != unsafe { nil } {
@@ -708,10 +731,12 @@ fn process_loop_command(server &Server, epoll_fd int, cmd LoopCommand, mut clien
 		}
 		.manual_takeover {
 			server.end_request()
-			client_fds.delete(cmd.client_fd)
-			client_buffers.delete(cmd.client_fd)
-			client_read_starts.delete(cmd.client_fd)
-			closing_client_fds.delete(cmd.client_fd)
+			if command_matches_client(cmd, client_fds) {
+				client_fds.delete(cmd.client_fd)
+				client_buffers.delete(cmd.client_fd)
+				client_read_starts.delete(cmd.client_fd)
+				closing_client_fds.delete(cmd.client_fd)
+			}
 			if cmd.state != unsafe { nil } {
 				free_write_state(server, cmd.client_fd, mut client_write_states)
 			}
@@ -727,7 +752,7 @@ fn process_loop_command(server &Server, epoll_fd int, cmd LoopCommand, mut clien
 	}
 }
 
-fn drain_loop_commands(server &Server, epoll_fd int, command_ch chan LoopCommand, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
+fn drain_loop_commands(server &Server, epoll_fd int, command_ch chan LoopCommand, mut client_fds map[int]u64, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
 	for {
 		select {
 			cmd := <-command_ch {
@@ -744,11 +769,12 @@ fn drain_loop_commands(server &Server, epoll_fd int, command_ch chan LoopCommand
 fn process_events(server &Server, epoll_fd int, listen_fd int) {
 	mut events := [max_connection_size]C.epoll_event{}
 	mut request_buffer := []u8{len: server.max_request_buffer_size, cap: server.max_request_buffer_size}
-	mut client_fds := map[int]bool{}
+	mut client_fds := map[int]u64{}
 	mut client_buffers := map[int][]u8{}
 	mut client_read_starts := map[int]i64{}
 	mut closing_client_fds := map[int]bool{}
 	mut client_write_states := map[int]&ClientWriteState{}
+	mut next_generation := u64(0)
 	command_ch := chan LoopCommand{cap: max_connection_size * 4}
 	wakeup_fd := C.eventfd(0, C.EFD_NONBLOCK | C.EFD_CLOEXEC)
 	if wakeup_fd < 0 {
@@ -797,7 +823,8 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 				if server.is_shutting_down() {
 					continue
 				}
-				handle_accept_loop(epoll_fd, listen_fd, mut client_fds)
+				next_generation = handle_accept_loop(epoll_fd, listen_fd, mut client_fds,
+					next_generation)
 				continue
 			}
 
@@ -925,7 +952,9 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 					client_read_starts.delete(client_fd)
 					req_buf := readed_request_buffer.clone()
 					client_buffers.delete(client_fd)
-					dispatch_request_async(server, client_fd, req_buf, command_ch, wakeup_fd)
+					generation := client_fds[client_fd] or { 0 }
+					dispatch_request_async(server, client_fd, generation, req_buf, command_ch,
+						wakeup_fd)
 				} else if recv_error {
 					// Unexpected recv error - send 444 No Response
 					C.send(client_fd, status_444_response.data, status_444_response.len,

@@ -32,7 +32,7 @@ fn test_prealloc_async_write_state_outlives_worker() ! {
 	}
 	command_ch := chan LoopCommand{cap: 1}
 	server.begin_request()
-	worker := spawn process_request_async(server, sockets[0],
+	worker := spawn process_request_async(server, sockets[0], 1,
 		'GET / HTTP/1.1\r\nHost: localhost\r\n\r\n'.bytes(), command_ch, wakeup_fd)
 
 	mut cmd := LoopCommand{}

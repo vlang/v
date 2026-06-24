@@ -38,16 +38,17 @@ fn test_close_command_releases_unregistered_write_state() ! {
 		request_active: true
 	}
 	mut client_fds := {
-		client_fd: true
+		client_fd: u64(1)
 	}
 	mut client_buffers := map[int][]u8{}
 	mut client_read_starts := map[int]i64{}
 	mut closing_client_fds := map[int]bool{}
 	mut client_write_states := map[int]&ClientWriteState{}
 	process_loop_command(server, epoll_fd, LoopCommand{
-		kind:      .close_conn
-		client_fd: client_fd
-		state:     state
+		kind:       .close_conn
+		client_fd:  client_fd
+		generation: 1
+		state:      state
 	}, mut client_fds, mut client_buffers, mut client_read_starts, mut closing_client_fds, mut
 		client_write_states)
 
@@ -64,7 +65,7 @@ fn test_dispatch_marks_request_active_before_spawn() ! {
 	defer {
 		C.close(wakeup_fd)
 	}
-	dispatch_request_async(server, -1, 'invalid request'.bytes(), command_ch, wakeup_fd)
+	dispatch_request_async(server, -1, 1, 'invalid request'.bytes(), command_ch, wakeup_fd)
 	assert server.active_request_count() == 1
 
 	select {
@@ -75,6 +76,45 @@ fn test_dispatch_marks_request_active_before_spawn() ! {
 			assert false, 'timed out waiting for the async request to finish'
 		}
 	}
+}
+
+fn test_manual_takeover_keeps_reused_fd_state() ! {
+	server := new_lifecycle_test_server()!
+	epoll_fd := C.epoll_create1(0)
+	assert epoll_fd >= 0
+	defer {
+		C.close(epoll_fd)
+	}
+	client_fd := int(C.socket(i32(net.AddrFamily.ip), i32(net.SocketType.tcp), 0))
+	assert client_fd >= 0
+	defer {
+		C.close(client_fd)
+	}
+	mut client_fds := {
+		client_fd: u64(2)
+	}
+	mut client_buffers := {
+		client_fd: 'GET /partial'.bytes()
+	}
+	mut client_read_starts := map[int]i64{}
+	client_read_starts[client_fd] = time.sys_mono_now()
+	mut closing_client_fds := {
+		client_fd: true
+	}
+	mut client_write_states := map[int]&ClientWriteState{}
+	server.begin_request()
+	process_loop_command(server, epoll_fd, LoopCommand{
+		kind:       .manual_takeover
+		client_fd:  client_fd
+		generation: 1
+	}, mut client_fds, mut client_buffers, mut client_read_starts, mut closing_client_fds, mut
+		client_write_states)
+
+	assert server.active_request_count() == 0
+	assert client_fds[client_fd] or { 0 } == 2
+	assert client_buffers[client_fd] or { []u8{} } == 'GET /partial'.bytes()
+	assert client_fd in client_read_starts
+	assert closing_client_fds[client_fd] or { false }
 }
 
 fn test_loop_command_wakes_epoll() ! {
