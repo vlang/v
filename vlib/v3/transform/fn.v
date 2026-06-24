@@ -936,6 +936,16 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 	if typ.len == 0 {
 		typ = t.node_type(expr_id)
 	}
+	if typ.len == 0 {
+		// Structural fallback for compound arguments (infix, prefix, cast,
+		// paren, ...) so e.g. `println(a + b)` for ints is stringified via
+		// strconv__format_int instead of being passed to println as a raw
+		// number. Mirrors the fallback already used by string interpolation.
+		typ = t.reliable_stringify_type(expr)
+		if typ.len == 0 {
+			typ = t.reliable_stringify_type(expr_id)
+		}
+	}
 	return t.wrap_string_conversion(expr, typ)
 }
 
@@ -1010,17 +1020,64 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) string {
 		.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or {
 			return 'bool'
 		}
-		.plus, .minus, .mul, .div, .mod, .left_shift, .right_shift, .right_shift_unsigned, .amp,
-		.pipe, .xor {
+		.left_shift, .right_shift, .right_shift_unsigned {
+			// shifts keep the left operand's type/width
+			if lhs_type.len > 0 && t.is_numeric_stringify_type(lhs_type) {
+				return lhs_type
+			}
+		}
+		.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor {
 			if lhs_type.len > 0 && rhs_type.len > 0 && t.is_numeric_stringify_type(lhs_type)
 				&& t.is_numeric_stringify_type(rhs_type) {
-				return lhs_type
+				// Use the promoted result type, not the lhs, so e.g.
+				// `1 + u64(x)` formats as unsigned rather than signed int.
+				return promote_numeric_stringify_type(lhs_type, rhs_type)
 			}
 		}
 		else {}
 	}
 
 	return ''
+}
+
+// promote_numeric_stringify_type returns the result type of a binary numeric
+// operation for stringify purposes: floats dominate, the wider integer wins,
+// and on equal width an explicit type beats the untyped-literal default `int`.
+fn promote_numeric_stringify_type(a string, b string) string {
+	if a == b {
+		return a
+	}
+	if a == 'f64' || b == 'f64' {
+		return 'f64'
+	}
+	if a == 'f32' || b == 'f32' {
+		return 'f32'
+	}
+	ra := int_stringify_rank(a)
+	rb := int_stringify_rank(b)
+	if ra > rb {
+		return a
+	}
+	if rb > ra {
+		return b
+	}
+	if a == 'int' {
+		return b
+	}
+	if b == 'int' {
+		return a
+	}
+	return a
+}
+
+fn int_stringify_rank(typ string) int {
+	return match typ {
+		'i8', 'u8', 'byte' { 8 }
+		'i16', 'u16' { 16 }
+		'i32', 'u32', 'int', 'rune' { 32 }
+		'i64', 'u64', 'isize', 'usize' { 64 }
+		else { 32 }
+	}
 }
 
 // is_numeric_stringify_type reports whether is numeric stringify type applies in transform.
