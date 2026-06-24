@@ -869,6 +869,47 @@ fn (g &FlatGen) struct_field_type(type_name string, field_name string) ?types.Ty
 	return none
 }
 
+// precompute_embedded_fields records, per struct type, only its embedded fields (those
+// whose field name is the embedded type name). Most structs have none. Done once so the
+// per-selector embedded-field resolution doesn't rescan (and re-c_name) every field of
+// the receiver struct on every field access — a major cgen cost after #27538.
+fn (mut g FlatGen) precompute_embedded_fields() {
+	for type_name, fields in g.tc.structs {
+		mut emb := []types.StructField{}
+		for field in fields {
+			if g.embedded_field_type_name(field).len > 0 {
+				emb << field
+			}
+		}
+		g.embedded_fields_by_type[type_name] = emb
+	}
+}
+
+// struct_embedded_fields returns the embedded fields of a type (mirrors
+// struct_fields_for_type's key resolution against the precomputed map). Returns an empty
+// slice for non-embedding structs, which is the common case.
+fn (g &FlatGen) struct_embedded_fields(type_name string) []types.StructField {
+	if emb := g.embedded_fields_by_type[type_name] {
+		return emb
+	}
+	qname := g.tc.qualify_name(type_name)
+	if emb := g.embedded_fields_by_type[qname] {
+		return emb
+	}
+	if info := g.find_struct_decl(type_name) {
+		if emb := g.embedded_fields_by_type[info.full_name] {
+			return emb
+		}
+	}
+	if type_name.contains('.') {
+		short_name := type_name.all_after_last('.')
+		if emb := g.embedded_fields_by_type[short_name] {
+			return emb
+		}
+	}
+	return []
+}
+
 fn (g &FlatGen) struct_fields_for_type(type_name string) ?[]types.StructField {
 	if fields := g.tc.structs[type_name] {
 		return fields
@@ -935,8 +976,8 @@ fn (g &FlatGen) direct_embedded_field_for_selector(base_type types.Type, field_n
 	if type_name.len == 0 {
 		return none
 	}
-	fields := g.struct_fields_for_type(type_name) or { return none }
-	for field in fields {
+	// Only the embedded fields (precomputed) can match — no need to scan every field.
+	for field in g.struct_embedded_fields(type_name) {
 		embedded_type_name := g.embedded_field_type_name(field)
 		if embedded_type_name.len == 0 {
 			continue
@@ -955,8 +996,7 @@ fn (g &FlatGen) direct_embedded_field_for_selector(base_type types.Type, field_n
 }
 
 fn (g &FlatGen) embedded_field_path_for_promoted_field(type_name string, field_name string) ?[]types.StructField {
-	fields := g.struct_fields_for_type(type_name) or { return none }
-	for field in fields {
+	for field in g.struct_embedded_fields(type_name) {
 		embedded_type_name := g.embedded_field_type_name(field)
 		if embedded_type_name.len == 0 {
 			continue

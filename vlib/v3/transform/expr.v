@@ -1,6 +1,7 @@
 module transform
 
 import v3.flat
+import v3.types
 
 // transform_infix_string_ops transforms transform infix string ops data for transform.
 fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Node) ?flat.NodeId {
@@ -541,6 +542,15 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 // struct_lookup_name supports struct lookup name handling for Transformer.
 fn (t &Transformer) struct_lookup_name(type_name string) string {
 	if type_name.len == 0 {
+		return ''
+	}
+	// Primitives, arrays and maps are never struct names. Bail before the qualified-name
+	// concatenation below — this runs for every infix operand, so the saved allocation
+	// matters. (Behaviour is unchanged: these always resolved to '' anyway.)
+	first := type_name[0]
+	if first == `[`
+		|| (first >= `a` && first <= `z` && types.is_builtin_type_name(type_name))
+		|| type_name.starts_with('map[') {
 		return ''
 	}
 	if type_name.contains('.') {

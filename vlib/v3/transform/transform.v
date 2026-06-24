@@ -143,6 +143,18 @@ pub fn transform_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fns m
 	mut augmented_used_fns := used_fns.clone()
 	mut t := new_transformer(mut a, tc, augmented_used_fns)
 	t.prepare()
+	// Transform roughly grows the node/children arrays by ~75%. Reserve that capacity
+	// up front so they don't double past it (the parsed AST already overshoots to the
+	// next power of two, wasting ~40MB, and each doubling briefly holds both the old and
+	// new arrays — the dominant peak-RSS contributor under -gc none).
+	reserve_nodes := a.nodes.len * 7 / 4 - a.nodes.cap
+	if reserve_nodes > 0 {
+		unsafe { a.nodes.grow_cap(reserve_nodes) }
+	}
+	reserve_children := a.children.len * 7 / 4 - a.children.cap
+	if reserve_children > 0 {
+		unsafe { a.children.grow_cap(reserve_children) }
+	}
 	t.transform_all()
 	return augmented_used_fns
 }
@@ -3121,6 +3133,7 @@ fn (mut t Transformer) transform_children_expr(id flat.NodeId, node flat.Node) f
 		return id
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
+	mut changed := false
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		if int(child_id) < 0 {
@@ -3132,12 +3145,23 @@ fn (mut t Transformer) transform_children_expr(id flat.NodeId, node flat.Node) f
 			expanded := t.transform_stmt(child_id)
 			if expanded.len == 1 {
 				new_children << expanded[0]
+				if expanded[0] != child_id {
+					changed = true
+				}
 			} else {
 				new_children << t.make_block(expanded)
+				changed = true
 			}
 		} else {
-			new_children << t.transform_expr(child_id)
+			nc := t.transform_expr(child_id)
+			new_children << nc
+			if nc != child_id {
+				changed = true
+			}
 		}
+	}
+	if !changed {
+		return id
 	}
 	start := t.a.children.len
 	for nc in new_children {
@@ -3206,6 +3230,12 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 	new_rhs := t.transform_expr(rhs_id)
 	if struct_result := t.transform_transformed_struct_eq(node, new_lhs, new_rhs) {
 		return struct_result
+	}
+	if new_lhs == lhs_id && new_rhs == rhs_id {
+		// Nothing was lowered (the common case for plain arithmetic): reuse the original
+		// node instead of allocating an identical copy. Under -gc none these copies are
+		// never freed, so avoiding them cuts both transform time and peak RAM.
+		return id
 	}
 	start := t.a.children.len
 	t.a.children << new_lhs
@@ -3314,6 +3344,7 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 		return lowered
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
+	mut changed := false
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		mut new_child := t.transform_expr(child_id)
@@ -3327,7 +3358,18 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 				}
 			}
 		}
+		if new_child != child_id {
+			changed = true
+		}
 		new_children << new_child
+	}
+	// Children unchanged: update the type annotation in place (applying the same
+	// `typ = node.value when empty` fixup the rebuild would) instead of copying the node.
+	if !changed {
+		if node.typ.len == 0 && node.value.len > 0 {
+			t.a.nodes[int(id)].typ = node.value
+		}
+		return id
 	}
 	start := t.a.children.len
 	for nc in new_children {
@@ -3541,19 +3583,31 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		return t.lower_sum_shared_field_selector(new_base, base_type0, node.value, shared_typ)
 	}
 	new_base := t.transform_expr(base_id)
+	mut changed := new_base != base_id
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	new_children << new_base
 	for i in 1 .. node.children_count {
 		child_id := t.a.child(&node, i)
-		new_children << t.transform_expr(child_id)
+		nc := t.transform_expr(child_id)
+		if nc != child_id {
+			changed = true
+		}
+		new_children << nc
+	}
+	sel_typ := if node.typ.len > 0 { node.typ } else { t.resolve_selector_type(node) }
+	base_type := t.node_type(base_id)
+	sel_op := if node.op == .arrow || base_type.starts_with('&') { flat.Op.arrow } else { node.op }
+	if !changed && sel_op == node.op {
+		// Children and op unchanged; only the type annotation may differ. Update it in
+		// place rather than allocating an identical copy (cuts -gc none peak RAM). (`op`
+		// is an immutable Node field, so a differing op still needs a fresh node below.)
+		t.a.nodes[int(id)].typ = sel_typ
+		return id
 	}
 	start := t.a.children.len
 	for nc in new_children {
 		t.a.children << nc
 	}
-	sel_typ := if node.typ.len > 0 { node.typ } else { t.resolve_selector_type(node) }
-	base_type := t.node_type(base_id)
-	sel_op := if node.op == .arrow || base_type.starts_with('&') { flat.Op.arrow } else { node.op }
 	return t.a.add_node(flat.Node{
 		kind:           .selector
 		op:             sel_op
@@ -4298,24 +4352,18 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 			if smartcasted := t.smartcast_ident_value(node.value) {
 				return smartcasted
 			}
+			// Idents are the most common node; re-annotating them in place (rather than
+			// allocating a fresh node) avoids cascading rebuilds of every enclosing
+			// expression and the associated allocations (critical under -gc none).
 			if !t.in_call_callee {
 				if fn_name := t.resolve_fn_value_ident(node.value) {
-					return t.a.add_node(flat.Node{
-						kind:  .ident
-						value: fn_name
-						typ:   node.typ
-						pos:   node.pos
-					})
+					t.a.nodes[int(id)].value = fn_name
+					return id
 				}
 			}
 			typ := t.var_type(node.value)
-			if typ.len > 0 {
-				return t.a.add_node(flat.Node{
-					kind:  .ident
-					value: node.value
-					typ:   typ
-					pos:   node.pos
-				})
+			if typ.len > 0 && typ != node.typ {
+				t.a.nodes[int(id)].typ = typ
 			}
 			return id
 		}
@@ -5418,8 +5466,11 @@ fn (mut t Transformer) build_match_chain(match_expr_id flat.NodeId, orig_expr_id
 	branch := t.a.nodes[int(branches[idx])]
 	is_else := branch.value == 'else'
 
-	body_start_idx := if is_else { 0 } else { t.count_conds(branch) }
-	if !is_else && t.match_branch_all_type_patterns(branch) && t.count_conds(branch) > 1 {
+	// count_conds scans the branch's condition children; compute it once and reuse
+	// (build_match_chain runs per branch, and the compiler has very large matches).
+	n_conds := if is_else { 0 } else { t.count_conds(branch) }
+	body_start_idx := n_conds
+	if !is_else && n_conds > 1 && t.match_branch_all_type_patterns(branch) {
 		return t.build_match_type_branch_chain(match_expr_id, orig_expr_id, branch, branches, idx,
 			0)
 	}
@@ -5427,7 +5478,6 @@ fn (mut t Transformer) build_match_chain(match_expr_id flat.NodeId, orig_expr_id
 	// single sum-type variant, so selectors inside the body get narrowed.
 	mut sc_pushed := 0
 	if !is_else {
-		n_conds := t.count_conds(branch)
 		if n_conds == 1 {
 			cond_val_id := t.a.child(&branch, 0)
 			if variant_name := t.match_type_pattern(cond_val_id) {

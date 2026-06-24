@@ -324,8 +324,7 @@ fn main() {
 			eprintln('error writing ${output_file}')
 			exit(1)
 		}
-		gen_step_name := if g.was_parallel() { 'gen C/write (parallel)' } else { 'gen C/write' }
-		b.step(gen_step_name)
+		b.step_parallel('gen C/write', g.was_parallel())
 		if c_only {
 			b.print_report()
 			return

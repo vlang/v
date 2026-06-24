@@ -61,7 +61,8 @@ mut:
 	emitted_optional_types  map[string]bool
 	emitted_fns             map[string]bool
 	array_method_cache      map[string]string
-	param_types_cache       map[string][]types.Type // (name|fallback) -> resolved param types
+	param_types_cache       map[string][]types.Type        // (name|fallback) -> resolved param types
+	embedded_fields_by_type map[string][]types.StructField // type name -> its embedded fields (usually empty)
 	spawn_wrapper_names     map[string]string
 	spawn_wrapper_defs      []string
 	parallel_used           bool
@@ -117,6 +118,7 @@ pub fn FlatGen.new() FlatGen {
 		emitted_fns:             map[string]bool{}
 		array_method_cache:      map[string]string{}
 		param_types_cache:       map[string][]types.Type{}
+		embedded_fields_by_type: map[string][]types.StructField{}
 		spawn_wrapper_names:     map[string]string{}
 		spawn_wrapper_defs:      []string{}
 		str_lits:                []string{}
@@ -186,6 +188,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.emitted_fns = map[string]bool{}
 	g.array_method_cache = map[string]string{}
 	g.param_types_cache = map[string][]types.Type{}
+	g.embedded_fields_by_type = map[string][]types.StructField{}
 	g.spawn_wrapper_names = map[string]string{}
 	g.spawn_wrapper_defs = []string{}
 	g.parallel_used = false
@@ -195,6 +198,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	g.has_builtins = g.tc.has_builtins
 	g.collect_gen_info()
+	g.precompute_embedded_fields()
 	g.collect_interface_impls()
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
