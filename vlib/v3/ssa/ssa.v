@@ -2,10 +2,16 @@ module ssa
 
 import v3.token
 
+// ValueID aliases value id values used by ssa.
 pub type ValueID = int
+
+// TypeID aliases type id values used by ssa.
 pub type TypeID = int
+
+// BlockID aliases block id values used by ssa.
 pub type BlockID = int
 
+// OpCode lists op code values used by ssa.
 pub enum OpCode {
 	// Terminators
 	ret
@@ -80,6 +86,7 @@ pub enum OpCode {
 	struct_init
 }
 
+// AtomicOrdering lists atomic ordering values used by ssa.
 pub enum AtomicOrdering {
 	not_atomic
 	unordered
@@ -90,6 +97,7 @@ pub enum AtomicOrdering {
 	seq_cst
 }
 
+// InlineHint lists inline hint values used by ssa.
 pub enum InlineHint {
 	none_  // No hint, let optimizer decide
 	always // Always inline (e.g. V's [inline] attribute)
@@ -97,6 +105,7 @@ pub enum InlineHint {
 	hint   // Suggest inlining (optimizer may ignore)
 }
 
+// TypeKind lists type kind values used by ssa.
 pub enum TypeKind {
 	void_t
 	int_t
@@ -109,6 +118,7 @@ pub enum TypeKind {
 	metadata_t
 }
 
+// Type represents type data used by ssa.
 pub struct Type {
 pub:
 	kind        TypeKind
@@ -124,6 +134,7 @@ pub:
 	is_union    bool // True for union types (all fields overlap at offset 0)
 }
 
+// TypeStore represents type store data used by ssa.
 pub struct TypeStore {
 pub mut:
 	types []Type
@@ -132,6 +143,7 @@ pub mut:
 
 const recursive_type_slot_size = 256
 
+// new creates a TypeStore value for ssa.
 pub fn TypeStore.new() TypeStore {
 	mut ts := TypeStore{
 		cache: map[string]TypeID{}
@@ -142,6 +154,7 @@ pub fn TypeStore.new() TypeStore {
 	return ts
 }
 
+// get_int returns get int data for TypeStore.
 pub fn (mut ts TypeStore) get_int(width int) TypeID {
 	key := 'i${width}'
 	if id := ts.cache[key] {
@@ -154,6 +167,7 @@ pub fn (mut ts TypeStore) get_int(width int) TypeID {
 	return id
 }
 
+// get_uint returns get uint data for TypeStore.
 pub fn (mut ts TypeStore) get_uint(width int) TypeID {
 	key := 'u${width}'
 	if id := ts.cache[key] {
@@ -166,6 +180,7 @@ pub fn (mut ts TypeStore) get_uint(width int) TypeID {
 	return id
 }
 
+// get_float returns get float data for TypeStore.
 pub fn (mut ts TypeStore) get_float(width int) TypeID {
 	key := 'f${width}'
 	if id := ts.cache[key] {
@@ -178,6 +193,7 @@ pub fn (mut ts TypeStore) get_float(width int) TypeID {
 	return id
 }
 
+// get_ptr returns get ptr data for TypeStore.
 pub fn (mut ts TypeStore) get_ptr(elem TypeID) TypeID {
 	key := 'p${elem}'
 	if id := ts.cache[key] {
@@ -222,12 +238,14 @@ pub fn (mut ts TypeStore) get_tuple(elem_types []TypeID) TypeID {
 	return id
 }
 
+// register supports register handling for TypeStore.
 pub fn (mut ts TypeStore) register(t Type) TypeID {
 	id := TypeID(ts.types.len)
 	ts.types << t
 	return id
 }
 
+// ValueKind lists value kind values used by ssa.
 pub enum ValueKind {
 	unknown
 	constant
@@ -240,6 +258,7 @@ pub enum ValueKind {
 	func_ref
 }
 
+// Value represents value data used by ssa.
 pub struct Value {
 pub mut:
 	id    ValueID
@@ -260,6 +279,7 @@ pub:
 	str_val   string
 }
 
+// Instruction represents instruction data used by ssa.
 pub struct Instruction {
 pub mut:
 	op         OpCode
@@ -271,6 +291,7 @@ pub mut:
 	inline     InlineHint // Inline hint for call instructions
 }
 
+// BasicBlock represents basic block data used by ssa.
 pub struct BasicBlock {
 pub mut:
 	id     BlockID
@@ -285,18 +306,21 @@ pub mut:
 	dom_tree []BlockID
 }
 
+// CallConv lists call conv values used by ssa.
 pub enum CallConv {
 	c_decl
 	fast_call
 	wasm_std
 }
 
+// Linkage lists linkage values used by ssa.
 pub enum Linkage {
 	external
 	private
 	internal
 }
 
+// Function represents function data used by ssa.
 pub struct Function {
 pub mut:
 	id           int
@@ -310,6 +334,7 @@ pub mut:
 	call_conv    CallConv
 }
 
+// GlobalVar represents global var data used by ssa.
 pub struct GlobalVar {
 pub mut:
 	name          string
@@ -321,12 +346,14 @@ pub mut:
 	initial_data  []u8 // For constant arrays: serialized element data
 }
 
+// TargetData represents target data data used by ssa.
 pub struct TargetData {
 pub:
 	ptr_size      int  = 8
 	endian_little bool = true
 }
 
+// Module represents module data used by ssa.
 @[heap]
 pub struct Module {
 pub mut:
@@ -347,6 +374,7 @@ pub mut:
 	const_cache map[string]ValueID
 }
 
+// new creates a Module value for ssa.
 pub fn Module.new() &Module {
 	mut m := &Module{
 		type_store:        TypeStore.new()
@@ -361,6 +389,7 @@ pub fn Module.new() &Module {
 	return m
 }
 
+// add_value updates add value state for Module.
 pub fn (mut m Module) add_value(kind ValueKind, typ TypeID, name string, index int) ValueID {
 	id := ValueID(m.values.len)
 	m.values << Value{
@@ -373,6 +402,7 @@ pub fn (mut m Module) add_value(kind ValueKind, typ TypeID, name string, index i
 	return id
 }
 
+// add_instr updates add instr state for Module.
 pub fn (mut m Module) add_instr(op OpCode, block BlockID, typ TypeID, operands []ValueID) ValueID {
 	instr_idx := m.instrs.len
 	m.instrs << Instruction{
@@ -430,6 +460,7 @@ pub fn (mut m Module) append_phi_operands(instr_idx int, val ValueID, block_id B
 	}
 }
 
+// add_block updates add block state for Module.
 pub fn (mut m Module) add_block(func_id int, name string) BlockID {
 	id := BlockID(m.blocks.len)
 	unique := '${name}_${id}'
@@ -445,6 +476,7 @@ pub fn (mut m Module) add_block(func_id int, name string) BlockID {
 	return id
 }
 
+// new_function supports new function handling for Module.
 pub fn (mut m Module) new_function(name string, ret TypeID) int {
 	for i, f in m.funcs {
 		if f.name == name {
@@ -462,36 +494,42 @@ pub fn (mut m Module) new_function(name string, ret TypeID) int {
 
 // --- Safe mutation helpers (avoid chained struct-array mutations) ---
 
+// func_add_param supports func add param handling for Module.
 pub fn (mut m Module) func_add_param(func_id int, param_val ValueID) {
 	mut f := m.funcs[func_id]
 	f.params << param_val
 	m.funcs[func_id] = f
 }
 
+// func_set_c_extern supports func set c extern handling for Module.
 pub fn (mut m Module) func_set_c_extern(func_id int, val bool) {
 	mut f := m.funcs[func_id]
 	f.is_c_extern = val
 	m.funcs[func_id] = f
 }
 
+// func_set_prototype supports func set prototype handling for Module.
 pub fn (mut m Module) func_set_prototype(func_id int, val bool) {
 	mut f := m.funcs[func_id]
 	f.is_prototype = val
 	m.funcs[func_id] = f
 }
 
+// block_add_succ supports block add succ handling for Module.
 pub fn (mut m Module) block_add_succ(from BlockID, to BlockID) {
 	mut blk := m.blocks[from]
 	blk.succs << to
 	m.blocks[from] = blk
 }
 
+// block_add_pred supports block add pred handling for Module.
 pub fn (mut m Module) block_add_pred(to BlockID, from BlockID) {
 	mut blk := m.blocks[to]
 	blk.preds << from
 	m.blocks[to] = blk
 }
 
+// add_global updates add global state for Module.
 pub fn (mut m Module) add_global(name string, typ TypeID) ValueID {
 	id := m.globals.len
 	m.globals << GlobalVar{
@@ -536,6 +574,7 @@ pub fn (mut m Module) add_external_global(name string, typ TypeID) ValueID {
 	return m.add_value(.global, ptr_typ, name, id)
 }
 
+// get_or_add_const returns get or add const data for Module.
 pub fn (mut m Module) get_or_add_const(typ TypeID, name string) ValueID {
 	key := '${typ}:${name}'
 	if existing := m.const_cache[key] {
@@ -560,6 +599,7 @@ pub fn (m &Module) type_size(typ_id TypeID) int {
 	return m.type_size_inner(typ_id, 0, mut visiting, mut cache)
 }
 
+// type_size_inner returns type size inner data for Module.
 fn (m &Module) type_size_inner(typ_id TypeID, depth int, mut visiting []bool, mut cache []int) int {
 	if typ_id <= 0 || typ_id >= m.type_store.types.len {
 		return 0
@@ -664,10 +704,12 @@ pub fn (m &Module) type_align(typ_id TypeID) int {
 	return m.type_align_for_layout(typ_id)
 }
 
+// type_align_for_layout returns type align for layout data for Module.
 fn (m &Module) type_align_for_layout(typ_id TypeID) int {
 	return m.type_align_for_layout_inner(typ_id, 0)
 }
 
+// type_align_for_layout_inner returns type align for layout inner data for Module.
 fn (m &Module) type_align_for_layout_inner(typ_id TypeID, depth int) int {
 	if typ_id <= 0 || typ_id >= m.type_store.types.len {
 		return 1
@@ -701,6 +743,7 @@ fn (m &Module) type_align_for_layout_inner(typ_id TypeID, depth int) int {
 	return 1
 }
 
+// replace_uses supports replace uses handling for Module.
 pub fn (mut m Module) replace_uses(old_id ValueID, new_id ValueID) {
 	if old_id <= 0 || old_id >= m.values.len {
 		return
@@ -723,6 +766,7 @@ pub fn (mut m Module) replace_uses(old_id ValueID, new_id ValueID) {
 	}
 }
 
+// value_operands returns value operands data for Instruction.
 pub fn (i &Instruction) value_operands() []ValueID {
 	if i.op == .br {
 		if i.operands.len > 0 {

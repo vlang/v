@@ -3,6 +3,7 @@ module errors
 import os
 import v3.token
 
+// details supports details handling for errors.
 pub fn details(file &token.File, pos token.Position, row_padding int) string {
 	if file.name == '' {
 		return 'at ${pos.line}:${pos.column}'

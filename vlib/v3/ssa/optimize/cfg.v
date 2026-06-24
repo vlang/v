@@ -2,6 +2,7 @@ module optimize
 
 import v3.ssa
 
+// arr_contains reports whether arr contains applies in optimize.
 fn arr_contains(arr []int, val int) bool {
 	for v in arr {
 		if v == val {
@@ -11,6 +12,7 @@ fn arr_contains(arr []int, val int) bool {
 	return false
 }
 
+// build_cfg builds cfg data for optimize.
 fn build_cfg(mut m ssa.Module) {
 	n_blocks := m.blocks.len
 	n_values := m.values.len

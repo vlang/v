@@ -4,6 +4,7 @@ import strings
 import v3.flat
 import v3.types
 
+// gen_expr_lvalue emits expr lvalue output for c.
 fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 	node := g.a.nodes[int(id)]
 	if node.kind == .index {
@@ -54,6 +55,7 @@ fn (mut g FlatGen) gen_split_array_append_expr_stmt(node flat.Node) bool {
 	return true
 }
 
+// gen_node emits node output for c.
 fn (mut g FlatGen) gen_node(id flat.NodeId) {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return
@@ -403,10 +405,12 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 	}
 }
 
+// has_pending_defers reports whether has pending defers applies in c.
 fn (g &FlatGen) has_pending_defers() bool {
 	return g.defers.len > 0 || g.fn_defers.len > 0
 }
 
+// gen_return_with_defers emits return with defers output for c.
 fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 	ret_id := g.a.child(&node, 0)
 	if int(ret_id) < 0 || int(ret_id) >= g.a.nodes.len {
@@ -445,6 +449,7 @@ fn (mut g FlatGen) gen_default_return_stmt() {
 	}
 }
 
+// return_c_type supports return c type handling for FlatGen.
 fn (mut g FlatGen) return_c_type() string {
 	if g.cur_fn_ret_is_optional {
 		return g.optional_type_name(g.cur_fn_ret)
@@ -452,6 +457,7 @@ fn (mut g FlatGen) return_c_type() string {
 	return g.tc.c_type(g.cur_fn_ret)
 }
 
+// return_expr_string supports return expr string handling for FlatGen.
 fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_node flat.Node, ct string) string {
 	if ret_node.kind == .call {
 		fn_n := g.a.child_node(&ret_node, 0)
@@ -649,6 +655,7 @@ fn fn_type_return_type(typ types.Type) types.Type {
 	return types.Type(types.void_)
 }
 
+// optional_error_from_call_string converts optional error from call string data for c.
 fn (mut g FlatGen) optional_error_from_call_string(ct string, node flat.Node) string {
 	orig := g.sb
 	orig_line_start := g.line_start
@@ -661,6 +668,7 @@ fn (mut g FlatGen) optional_error_from_call_string(ct string, node flat.Node) st
 	return result
 }
 
+// expr_really_returns_optional supports expr really returns optional handling for FlatGen.
 fn (g &FlatGen) expr_really_returns_optional(id flat.NodeId) bool {
 	if int(id) < 0 {
 		return false
@@ -678,6 +686,7 @@ fn (g &FlatGen) expr_really_returns_optional(id flat.NodeId) bool {
 	return false
 }
 
+// optional_result_matches_base supports optional result matches base handling for FlatGen.
 fn (g &FlatGen) optional_result_matches_base(expr_type types.Type, base types.Type) bool {
 	if expr_type is types.OptionType {
 		return g.type_names_match(expr_type.base_type, base)
@@ -688,6 +697,7 @@ fn (g &FlatGen) optional_result_matches_base(expr_type types.Type, base types.Ty
 	return false
 }
 
+// usable_expr_type supports usable expr type handling for FlatGen.
 fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
 		node := g.a.nodes[int(id)]
@@ -741,6 +751,7 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 	return g.tc.resolve_type(id)
 }
 
+// type_names_match returns type names match data for FlatGen.
 fn (g &FlatGen) type_names_match(a types.Type, b types.Type) bool {
 	a_name := a.name()
 	b_name := b.name()
@@ -753,6 +764,7 @@ fn (g &FlatGen) type_names_match(a types.Type, b types.Type) bool {
 	return a_name.all_after_last('.') == b_name.all_after_last('.')
 }
 
+// type_can_wrap_as_sum returns type can wrap as sum data for FlatGen.
 fn (g &FlatGen) type_can_wrap_as_sum(actual types.Type, expected types.Type) bool {
 	expected0 := if expected is types.Alias { expected.base_type } else { expected }
 	if expected0 !is types.SumType {
@@ -769,11 +781,13 @@ fn (g &FlatGen) type_can_wrap_as_sum(actual types.Type, expected types.Type) boo
 	return variant in variants
 }
 
+// types_numeric_compatible supports types numeric compatible handling for FlatGen.
 fn (g &FlatGen) types_numeric_compatible(a types.Type, b types.Type) bool {
 	_ = g
 	return (a.is_integer() || a.is_float()) && (b.is_integer() || b.is_float())
 }
 
+// call_constructs_type updates call constructs type state for FlatGen.
 fn (g &FlatGen) call_constructs_type(id flat.NodeId, target types.Type) bool {
 	if int(id) < 0 {
 		return false
@@ -794,6 +808,7 @@ fn (g &FlatGen) call_constructs_type(id flat.NodeId, target types.Type) bool {
 	return fn_node.value == target_name || fn_node.value == short_target
 }
 
+// is_runtime_array_flags_stmt reports whether is runtime array flags stmt applies in c.
 fn (g &FlatGen) is_runtime_array_flags_stmt(id flat.NodeId) bool {
 	if int(id) < 0 {
 		return false
@@ -816,6 +831,7 @@ fn (g &FlatGen) is_runtime_array_flags_stmt(id flat.NodeId) bool {
 	return owner_type is types.Array || owner_type.name() == 'strings.Builder'
 }
 
+// gen_decl_assign emits decl assign output for c.
 fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 	if node.children_count >= 3 {
 		rhs_type := g.tc.resolve_type(g.a.child(&node, 1))
@@ -988,6 +1004,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 	}
 }
 
+// gen_decl_init_expr emits decl init expr output for c.
 fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type types.Type, c_type string, is_declaration bool) {
 	if g.is_json_decode_call_expr(rhs_id) {
 		g.write('(${c_type}){0}')
@@ -1004,6 +1021,7 @@ fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type 
 	g.gen_expr_with_expected_type(rhs_id, v_type)
 }
 
+// gen_multi_return_decl emits multi return decl output for c.
 fn (mut g FlatGen) gen_multi_return_decl(node flat.Node) {
 	rhs_id := g.a.child(&node, 1)
 	rhs_type := g.tc.resolve_type(rhs_id)
@@ -1042,6 +1060,7 @@ fn (mut g FlatGen) gen_multi_return_decl(node flat.Node) {
 	}
 }
 
+// gen_assign emits assign output for c.
 fn (mut g FlatGen) gen_assign(node flat.Node) {
 	if node.children_count >= 3 {
 		rhs_id := g.a.child(&node, 1)
@@ -1189,6 +1208,7 @@ fn assign_struct_operator_symbol(op flat.Op) ?string {
 	return none
 }
 
+// assign_lhs_needs_deref supports assign lhs needs deref handling for FlatGen.
 fn (g &FlatGen) assign_lhs_needs_deref(lhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
 	if op != .assign {
 		return false
@@ -1203,6 +1223,7 @@ fn (g &FlatGen) assign_lhs_needs_deref(lhs_id flat.NodeId, lhs_type types.Type, 
 	return false
 }
 
+// gen_multi_return_assign emits multi return assign output for c.
 fn (mut g FlatGen) gen_multi_return_assign(node flat.Node) {
 	rhs_id := g.a.child(&node, 1)
 	rhs_type := g.tc.resolve_type(rhs_id)
@@ -1224,6 +1245,7 @@ fn (mut g FlatGen) gen_multi_return_assign(node flat.Node) {
 	}
 }
 
+// gen_decl_lhs emits decl lhs output for c.
 fn (mut g FlatGen) gen_decl_lhs(id flat.NodeId) {
 	node := g.a.nodes[int(id)]
 	if node.kind == .ident {
@@ -1233,6 +1255,7 @@ fn (mut g FlatGen) gen_decl_lhs(id flat.NodeId) {
 	}
 }
 
+// decl_lhs_str supports decl lhs str handling for FlatGen.
 fn (mut g FlatGen) decl_lhs_str(id flat.NodeId) string {
 	node := g.a.nodes[int(id)]
 	if node.kind == .ident {
@@ -1241,6 +1264,7 @@ fn (mut g FlatGen) decl_lhs_str(id flat.NodeId) string {
 	return g.expr_to_string(id)
 }
 
+// gen_assign_or_expr emits assign or expr output for c.
 fn (mut g FlatGen) gen_assign_or_expr(node flat.Node, lhs_idx int, or_node flat.Node) {
 	expr_id := g.a.child(&or_node, 0)
 	or_body_id := g.a.child(&or_node, 1)
@@ -1281,6 +1305,7 @@ fn (mut g FlatGen) gen_assign_or_expr(node flat.Node, lhs_idx int, or_node flat.
 	g.writeln('}')
 }
 
+// gen_decl_or_expr emits decl or expr output for c.
 fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 	expr_id := g.a.child(&or_node, 0)
 	or_body_id := g.a.child(&or_node, 1)
@@ -1348,6 +1373,7 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 	g.writeln('}')
 }
 
+// gen_decl_or_map_index emits decl or map index output for c.
 fn (mut g FlatGen) gen_decl_or_map_index(lhs flat.Node, expr_node flat.Node, m types.Map, or_body flat.Node) {
 	tmp := g.tmp_name()
 	c_val := g.tc.c_type(m.value_type)
@@ -1409,6 +1435,7 @@ fn (g &FlatGen) is_json_decode_call_expr(id flat.NodeId) bool {
 	return false
 }
 
+// is_noreturn_call reports whether is noreturn call applies in c.
 fn (g &FlatGen) is_noreturn_call(node &flat.Node) bool {
 	if node.kind != .call || node.children_count == 0 {
 		return false
@@ -1417,11 +1444,13 @@ fn (g &FlatGen) is_noreturn_call(node &flat.Node) bool {
 	return fn_node.value in ['panic', 'exit']
 }
 
+// tmp_name supports tmp name handling for FlatGen.
 fn (mut g FlatGen) tmp_name() string {
 	g.tmp_count++
 	return '_t${g.tmp_count}'
 }
 
+// gen_or_expr emits or expr output for c.
 fn (mut g FlatGen) gen_or_expr(node flat.Node) {
 	expr_id := g.a.child(&node, 0)
 	or_body_id := g.a.child(&node, 1)
@@ -1447,6 +1476,7 @@ fn (mut g FlatGen) gen_or_expr(node flat.Node) {
 	g.write(' } ${val};})')
 }
 
+// gen_or_body emits or body output for c.
 fn (mut g FlatGen) gen_or_body(or_body flat.Node) {
 	if or_body.children_count == 1 {
 		last_id := g.a.child(&or_body, or_body.children_count - 1)
@@ -1507,6 +1537,7 @@ fn (g &FlatGen) expr_is_error_call(id flat.NodeId) bool {
 	return fn_node.value == 'error' || fn_node.value == 'error_with_code'
 }
 
+// gen_or_map_index emits or map index output for c.
 fn (mut g FlatGen) gen_or_map_index(expr_node flat.Node, m types.Map, or_body flat.Node) {
 	tmp := g.tmp_name()
 	c_val := g.tc.c_type(m.value_type)
@@ -1521,6 +1552,7 @@ fn (mut g FlatGen) gen_or_map_index(expr_node flat.Node, m types.Map, or_body fl
 	g.write(' } ${val};})')
 }
 
+// gen_or_expr_stmt emits or expr stmt output for c.
 fn (mut g FlatGen) gen_or_expr_stmt(node flat.Node) {
 	expr_id := g.a.child(&node, 0)
 	or_body_id := g.a.child(&node, 1)

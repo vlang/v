@@ -130,10 +130,12 @@ fn (t &Transformer) resolve_selector_type(node flat.Node) string {
 	return ''
 }
 
+// is_c_int_selector reports whether is c int selector applies in transform.
 fn is_c_int_selector(name string) bool {
 	return name in ['errno', 'EINTR', 'STDOUT_FILENO', 'STDERR_FILENO', 'EINVAL']
 }
 
+// selector_expr_name supports selector expr name handling for Transformer.
 fn (t &Transformer) selector_expr_name(id flat.NodeId) string {
 	if int(id) < 0 {
 		return ''
@@ -151,6 +153,7 @@ fn (t &Transformer) selector_expr_name(id flat.NodeId) string {
 	return ''
 }
 
+// enum_type_name_from_expr converts enum type name from expr data for transform.
 fn (t &Transformer) enum_type_name_from_expr(id flat.NodeId) ?string {
 	name := t.selector_expr_name(id)
 	if name.len == 0 {
@@ -169,6 +172,8 @@ fn (t &Transformer) enum_type_name_from_expr(id flat.NodeId) ?string {
 	return none
 }
 
+// qualified_enum_type_selector_name
+// supports helper handling in transform.
 fn (t &Transformer) qualified_enum_type_selector_name(base_id flat.NodeId, field_name string) ?string {
 	base := t.selector_expr_name(base_id)
 	if base.len == 0 || field_name.len == 0 {
@@ -188,6 +193,7 @@ fn (t &Transformer) qualified_enum_type_selector_name(base_id flat.NodeId, field
 	return none
 }
 
+// lookup_struct_field_type resolves lookup struct field type information for transform.
 fn (t &Transformer) lookup_struct_field_type(type_name string, field_name string) ?string {
 	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
 	for f in lookup.info.fields {
@@ -198,6 +204,7 @@ fn (t &Transformer) lookup_struct_field_type(type_name string, field_name string
 	return none
 }
 
+// lookup_struct_field_raw_type resolves lookup struct field raw type information for transform.
 fn (t &Transformer) lookup_struct_field_raw_type(type_name string, field_name string) ?string {
 	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
 	for f in lookup.info.fields {
@@ -211,6 +218,7 @@ fn (t &Transformer) lookup_struct_field_raw_type(type_name string, field_name st
 	return none
 }
 
+// lookup_struct_info_for_field resolves lookup struct info for field information for transform.
 fn (t &Transformer) lookup_struct_info_for_field(type_name string, field_name string) ?StructFieldLookup {
 	if type_name.len == 0 || field_name.len == 0 {
 		return none
@@ -241,6 +249,7 @@ fn (t &Transformer) lookup_struct_info_for_field(type_name string, field_name st
 	}
 }
 
+// lookup_unique_field_type resolves lookup unique field type information for transform.
 fn (t &Transformer) lookup_unique_field_type(field_name string) ?string {
 	match field_name {
 		'name' {
@@ -263,6 +272,7 @@ fn (t &Transformer) lookup_unique_field_type(field_name string) ?string {
 	return none
 }
 
+// normalize_field_type transforms normalize field type data for transform.
 fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 	if typ.len == 0 {
 		return typ
@@ -337,6 +347,7 @@ fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 	return t.normalize_type_alias(typ)
 }
 
+// normalize_type_alias transforms normalize type alias data for transform.
 fn (t &Transformer) normalize_type_alias(typ string) string {
 	if typ.len == 0 || isnil(t.tc) {
 		return typ
@@ -360,6 +371,7 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 	return result
 }
 
+// normalize_type_alias_uncached converts normalize type alias uncached data for transform.
 fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 	if is_generic_placeholder_type_name(typ) && !t.is_known_type_name(typ) {
 		return typ
@@ -426,6 +438,7 @@ fn (t &Transformer) is_known_type_name(typ string) bool {
 	return false
 }
 
+// is_plain_builtin_alias_type reports whether is plain builtin alias type applies in transform.
 fn is_plain_builtin_alias_type(typ string) bool {
 	return match typ {
 		'bool', 'string', 'void', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
@@ -438,6 +451,7 @@ fn is_plain_builtin_alias_type(typ string) bool {
 	}
 }
 
+// is_generic_placeholder_type_name reports is_generic_placeholder_type_name logic in transform.
 fn is_generic_placeholder_type_name(typ string) bool {
 	if typ.contains('.') {
 		return is_generic_placeholder_type_name(typ.all_after_last('.'))
@@ -445,6 +459,7 @@ fn is_generic_placeholder_type_name(typ string) bool {
 	return typ in ['T', 'U', 'V', 'K']
 }
 
+// normalize_type_in_module transforms normalize type in module data for transform.
 fn (t &Transformer) normalize_type_in_module(typ string, mod string) string {
 	clean := typ.trim_space()
 	if clean.len == 0 {

@@ -7,6 +7,7 @@ const c_reserved_words = ['auto', 'break', 'case', 'char', 'const', 'continue', 
 	'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct', 'switch',
 	'typedef', 'union', 'unsigned', 'void', 'volatile', 'while']
 
+// c_name converts c name data for c.
 fn c_name(name string) string {
 	if name.starts_with('C.') {
 		return name[2..]
@@ -37,6 +38,7 @@ fn c_name(name string) string {
 	return n
 }
 
+// c_name_sanitize converts c name sanitize data for c.
 fn c_name_sanitize(name string) string {
 	mut b := strings.new_builder(name.len + 8)
 	mut i := 0
@@ -152,6 +154,7 @@ fn c_name_sanitize(name string) string {
 	return b.str()
 }
 
+// c_name_is_plain converts c name is plain data for c.
 fn c_name_is_plain(name string) bool {
 	for i in 0 .. name.len {
 		c := name[i]
@@ -168,6 +171,7 @@ fn c_local_name(name string) string {
 	return c_name(local_name)
 }
 
+// c_escape supports c escape handling for c.
 fn c_escape(s string) string {
 	return s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\t', '\\t').replace('\r',
 		'\\r')

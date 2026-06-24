@@ -3,6 +3,7 @@ module c
 import v3.flat
 import v3.types
 
+// gen_for emits for output for c.
 fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.tc.push_scope()
 	defer_start := g.defers.len
@@ -43,6 +44,7 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.tc.pop_scope()
 }
 
+// gen_for_in emits for in output for c.
 fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	g.tc.push_scope()
 	header_count := node.value.int()
@@ -173,6 +175,7 @@ fn (g &FlatGen) c_loop_local_name(name string) string {
 	return c_name(name)
 }
 
+// gen_node_inline emits node inline output for c.
 fn (mut g FlatGen) gen_node_inline(id flat.NodeId) {
 	node := g.a.nodes[int(id)]
 	match node.kind {

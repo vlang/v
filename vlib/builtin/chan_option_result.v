@@ -144,6 +144,17 @@ pub fn error_with_code(message string, code int) IError {
 	}
 }
 
+// error_sentinel is a reusable, allocation-free `IError` for hot "not found"/stateless
+// error paths. Unlike `error('...')`, which heap-allocates a fresh `MessageError` on every
+// call, `error_sentinel` is a single cached const (mirroring how `none` works for `?T`),
+// so `return error_sentinel` from a `!T` function avoids the per-call allocation.
+// Use it when the caller discards the error (e.g. `x() or { ... }`) and the specific
+// message is not needed; its `.msg()` is just `'error'`.
+// Example: fn find(x int) !int { if x < 0 { return error_sentinel } return x }
+pub const error_sentinel = IError(&MessageError{
+	msg: 'error'
+})
+
 // Option is the base of V's internal option return system.
 struct Option {
 	state u8 // 0 - ok; 2 - none; 1 - ?

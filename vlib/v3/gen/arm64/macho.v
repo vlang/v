@@ -18,6 +18,7 @@ const arm64_reloc_pageoff12 = 4
 const arm64_reloc_got_load_page21 = 5
 const arm64_reloc_got_load_pageoff12 = 6
 
+// MachOObject represents mach oobject data used by arm64.
 pub struct MachOObject {
 pub mut:
 	text_data []u8
@@ -30,6 +31,7 @@ pub mut:
 	sym_by_name map[string]int // symbol name → index in symbols
 }
 
+// RelocationInfo stores relocation info metadata used by arm64.
 struct RelocationInfo {
 	addr    int
 	sym_idx int
@@ -39,6 +41,7 @@ struct RelocationInfo {
 	type_   int
 }
 
+// Symbol represents symbol data used by arm64.
 struct Symbol {
 mut:
 	name     string
@@ -49,6 +52,7 @@ mut:
 	name_off int
 }
 
+// new creates a MachOObject value for arm64.
 pub fn MachOObject.new() &MachOObject {
 	mut m := &MachOObject{
 		text_data:   []u8{}
@@ -62,6 +66,7 @@ pub fn MachOObject.new() &MachOObject {
 	return m
 }
 
+// add_symbol updates add symbol state for MachOObject.
 pub fn (mut m MachOObject) add_symbol(name string, addr u64, is_ext bool, sect u8) int {
 	typ := if is_ext { u8(0x0f) } else { u8(0x0e) } // N_SECT | N_EXT : N_SECT
 
@@ -92,6 +97,7 @@ pub fn (mut m MachOObject) add_symbol(name string, addr u64, is_ext bool, sect u
 	return idx
 }
 
+// add_undefined updates add undefined state for MachOObject.
 pub fn (mut m MachOObject) add_undefined(name string) int {
 	// Check for any existing symbol with this name (defined or undefined)
 	if i := m.sym_by_name[name] {
@@ -115,6 +121,7 @@ pub fn (mut m MachOObject) add_undefined(name string) int {
 	return idx
 }
 
+// add_reloc updates add reloc state for MachOObject.
 pub fn (mut m MachOObject) add_reloc(addr int, sym_idx int, typ int, pcrel bool) {
 	m.relocs << RelocationInfo{
 		addr:    addr
@@ -126,6 +133,7 @@ pub fn (mut m MachOObject) add_reloc(addr int, sym_idx int, typ int, pcrel bool)
 	}
 }
 
+// write supports write handling for MachOObject.
 pub fn (mut m MachOObject) write(path string) {
 	mut buf := []u8{}
 
@@ -256,6 +264,7 @@ pub fn (mut m MachOObject) write(path string) {
 	}
 }
 
+// write_u32_le writes u32 le output for arm64.
 fn write_u32_le(mut b []u8, v u32) {
 	b << u8(v)
 	b << u8(v >> 8)
@@ -263,6 +272,7 @@ fn write_u32_le(mut b []u8, v u32) {
 	b << u8(v >> 24)
 }
 
+// write_mh_magic_64 writes mh magic 64 output for arm64.
 fn write_mh_magic_64(mut b []u8) {
 	b << u8(0xcf)
 	b << u8(0xfa)
@@ -270,6 +280,7 @@ fn write_mh_magic_64(mut b []u8) {
 	b << u8(0xfe)
 }
 
+// write_u64_le writes u64 le output for arm64.
 fn write_u64_le(mut b []u8, v u64) {
 	b << u8(v)
 	b << u8(v >> 8)
@@ -281,11 +292,13 @@ fn write_u64_le(mut b []u8, v u64) {
 	b << u8(v >> 56)
 }
 
+// write_u16_le writes u16 le output for arm64.
 fn write_u16_le(mut b []u8, v u16) {
 	b << u8(v)
 	b << u8(v >> 8)
 }
 
+// write_string_fixed writes string fixed output for arm64.
 fn write_string_fixed(mut b []u8, s string, len int) {
 	mut bytes := s.bytes()
 	for bytes.len < len {

@@ -13,6 +13,7 @@ const custom_str_v3_dir = os.dir(custom_str_tests_dir)
 const custom_str_v3_src = os.join_path(custom_str_v3_dir, 'v3.v')
 const custom_str_vexe = @VEXE
 
+// parse_checked_two_file_source reads parse checked two file source input for v3 tests.
 fn parse_checked_two_file_source(name string, main_source string, module_rel string, module_source string) (&flat.FlatAst, &types.TypeChecker) {
 	root := os.join_path(os.temp_dir(), 'v3_markused_${name}_project')
 	if os.exists(root) {
@@ -37,6 +38,7 @@ fn parse_checked_two_file_source(name string, main_source string, module_rel str
 	return a, &tc
 }
 
+// build_v3_bin builds v3 bin data for v3 tests.
 fn build_v3_bin(name string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_${name}')
 	build := os.execute('${custom_str_vexe} -o ${v3_bin} ${custom_str_v3_src}')
@@ -44,6 +46,7 @@ fn build_v3_bin(name string) string {
 	return v3_bin
 }
 
+// imported_enum_main_source supports imported enum main source handling for v3 tests.
 fn imported_enum_main_source(expr string) string {
 	return '
 module main
@@ -57,6 +60,8 @@ fn main() {
 '
 }
 
+// imported_optional_enum_main_source
+// supports helper handling in v3 tests.
 fn imported_optional_enum_main_source(expr string) string {
 	return '
 module main
@@ -73,6 +78,7 @@ fn main() {
 '
 }
 
+// imported_enum_module_source supports imported enum module source handling for v3 tests.
 fn imported_enum_module_source() string {
 	return '
 module colors
@@ -88,6 +94,7 @@ pub fn (c Color) str() string {
 '
 }
 
+// imported_operator_main_source supports imported operator main source handling for v3 tests.
 fn imported_operator_main_source(expr string) string {
 	return '
 module main
@@ -102,6 +109,7 @@ fn main() {
 '
 }
 
+// imported_operator_module_source supports imported operator module source handling for v3 tests.
 fn imported_operator_module_source() string {
 	return '
 module vectors
@@ -128,6 +136,7 @@ pub fn (a Vec) < (b Vec) bool {
 '
 }
 
+// imported_operator_usage_source supports imported operator usage source handling for v3 tests.
 fn imported_operator_usage_source() string {
 	return 'sum := a + b
 	gt := b > a
@@ -136,6 +145,7 @@ fn imported_operator_usage_source() string {
 	}'
 }
 
+// imported_struct_default_main_source supports imported_struct_default_main_source handling.
 fn imported_struct_default_main_source(expr string) string {
 	return '
 module main
@@ -148,6 +158,7 @@ fn main() {
 '
 }
 
+// imported_struct_default_module_source supports imported_struct_default_module_source handling.
 fn imported_struct_default_module_source() string {
 	return '
 module defaults
@@ -166,6 +177,7 @@ pub fn maybe_box() ?Box {
 '
 }
 
+// test_string_interpolation_seeds_imported_enum_str_method validates this v3 regression case.
 fn test_string_interpolation_seeds_imported_enum_str_method() {
 	a, tc := parse_checked_two_file_source('imported_enum_interp_str',
 		imported_enum_main_source('_ := "\${c}"'), 'colors/colors.v', imported_enum_module_source())
@@ -173,6 +185,8 @@ fn test_string_interpolation_seeds_imported_enum_str_method() {
 	assert used['colors.Color.str']
 }
 
+// test_optional_string_interpolation_seeds_imported_enum_str_method
+// validates this v3 regression case.
 fn test_optional_string_interpolation_seeds_imported_enum_str_method() {
 	a, tc := parse_checked_two_file_source('imported_optional_enum_interp_str',
 		imported_optional_enum_main_source('_ := "\${maybe_color()}"'), 'colors/colors.v',
@@ -181,6 +195,7 @@ fn test_optional_string_interpolation_seeds_imported_enum_str_method() {
 	assert used['colors.Color.str']
 }
 
+// test_imported_operator_infix_seeds_operator_methods validates this v3 regression case.
 fn test_imported_operator_infix_seeds_operator_methods() {
 	a, tc := parse_checked_two_file_source('imported_operator_infix',
 		imported_operator_main_source(imported_operator_usage_source()), 'vectors/vectors.v',
@@ -190,6 +205,7 @@ fn test_imported_operator_infix_seeds_operator_methods() {
 	assert used['vectors.Vec.<']
 }
 
+// test_optional_struct_zero_seeds_imported_default_helper validates this v3 regression case.
 fn test_optional_struct_zero_seeds_imported_default_helper() {
 	a, tc := parse_checked_two_file_source('imported_struct_default_or',
 		imported_struct_default_main_source('box := defaults.maybe_box() or { return }\n\t_ := box'),
@@ -198,6 +214,8 @@ fn test_optional_struct_zero_seeds_imported_default_helper() {
 	assert used['defaults.default_value']
 }
 
+// test_string_interpolation_lowers_to_imported_enum_str_after_used_filter_transform
+// validates this v3 regression case.
 fn test_string_interpolation_lowers_to_imported_enum_str_after_used_filter_transform() {
 	mut a, mut tc := parse_checked_two_file_source('imported_enum_interp_str_cgen',
 		imported_enum_main_source('_ := "\${c}"'), 'colors/colors.v', imported_enum_module_source())
@@ -212,6 +230,8 @@ fn test_string_interpolation_lowers_to_imported_enum_str_after_used_filter_trans
 	assert c_code.contains('colors__Color__str(')
 }
 
+// test_imported_operator_infix_lowers_after_used_filter_transform
+// validates this v3 regression case.
 fn test_imported_operator_infix_lowers_after_used_filter_transform() {
 	mut a, mut tc := parse_checked_two_file_source('imported_operator_infix_cgen',
 		imported_operator_main_source(imported_operator_usage_source()), 'vectors/vectors.v',
@@ -229,6 +249,8 @@ fn test_imported_operator_infix_lowers_after_used_filter_transform() {
 	assert c_code.contains('vectors__Vec__lt(')
 }
 
+// test_optional_struct_zero_lowers_to_imported_default_after_used_filter_transform
+// validates this v3 regression case.
 fn test_optional_struct_zero_lowers_to_imported_default_after_used_filter_transform() {
 	mut a, mut tc := parse_checked_two_file_source('imported_struct_default_or_cgen',
 		imported_struct_default_main_source('box := defaults.maybe_box() or { return }\n\t_ := box'),
@@ -244,6 +266,8 @@ fn test_optional_struct_zero_lowers_to_imported_default_after_used_filter_transf
 	assert c_code.contains('defaults__default_value(')
 }
 
+// test_optional_string_interpolation_lowers_to_imported_enum_str_after_used_filter_transform
+// validates this v3 regression case.
 fn test_optional_string_interpolation_lowers_to_imported_enum_str_after_used_filter_transform() {
 	mut a, mut tc := parse_checked_two_file_source('imported_optional_enum_interp_str_cgen',
 		imported_optional_enum_main_source('_ := "\${maybe_color()}"'), 'colors/colors.v',
@@ -259,6 +283,7 @@ fn test_optional_string_interpolation_lowers_to_imported_enum_str_after_used_fil
 	assert c_code.contains('colors__Color__str(')
 }
 
+// test_imported_enum_print_compile_keeps_str_method validates this v3 regression case.
 fn test_imported_enum_print_compile_keeps_str_method() {
 	v3_bin := build_v3_bin('imported_enum_print_str_test')
 
@@ -278,6 +303,7 @@ fn test_imported_enum_print_compile_keeps_str_method() {
 	assert compile.exit_code == 0, compile.output
 }
 
+// test_imported_operator_compile_keeps_operator_methods validates this v3 regression case.
 fn test_imported_operator_compile_keeps_operator_methods() {
 	v3_bin := build_v3_bin('imported_operator_test')
 
@@ -296,6 +322,8 @@ fn test_imported_operator_compile_keeps_operator_methods() {
 	assert compile.exit_code == 0, compile.output
 }
 
+// test_optional_struct_zero_compile_keeps_imported_default_helper
+// validates this v3 regression case.
 fn test_optional_struct_zero_compile_keeps_imported_default_helper() {
 	v3_bin := build_v3_bin('imported_struct_default_or_test')
 
@@ -315,6 +343,8 @@ fn test_optional_struct_zero_compile_keeps_imported_default_helper() {
 	assert compile.exit_code == 0, compile.output
 }
 
+// test_imported_optional_enum_interpolation_compile_keeps_str_method
+// validates this v3 regression case.
 fn test_imported_optional_enum_interpolation_compile_keeps_str_method() {
 	v3_bin := build_v3_bin('imported_optional_enum_interp_str_test')
 

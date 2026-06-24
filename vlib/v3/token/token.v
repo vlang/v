@@ -1,5 +1,6 @@
 module token
 
+// Token lists token values used by token.
 pub enum Token {
 	amp        // &
 	and        // &&
@@ -114,6 +115,7 @@ pub enum Token {
 	xor_assign // ^=
 }
 
+// BindingPower lists binding power values used by token.
 pub enum BindingPower {
 	lowest
 	logical_or  // ||
@@ -167,6 +169,7 @@ const token_right_shift_unsigned_assign_id = 102
 const token_xor_id = 109
 const token_xor_assign_id = 110
 
+// left_binding_power supports left binding power handling for Token.
 @[inline]
 pub fn (t Token) left_binding_power() BindingPower {
 	tv := int(t)
@@ -200,16 +203,19 @@ pub fn (t Token) left_binding_power() BindingPower {
 	return BindingPower.lowest
 }
 
+// right_binding_power supports right binding power handling for Token.
 @[inline]
 pub fn (t Token) right_binding_power() BindingPower {
 	return unsafe { BindingPower((int(t.left_binding_power()) + 1)) }
 }
 
+// is_keyword reports whether is keyword applies in token.
 @[inline]
 pub fn (t Token) is_keyword() bool {
 	return int(t) >= int(Token.key_as) && int(t) <= int(Token.key_volatile)
 }
 
+// is_prefix reports whether is prefix applies in token.
 @[inline]
 pub fn (t Token) is_prefix() bool {
 	tv := int(t)
@@ -217,6 +223,7 @@ pub fn (t Token) is_prefix() bool {
 		|| tv == token_not_id || tv == token_bit_not_id || tv == token_arrow_id
 }
 
+// is_infix reports whether is infix applies in token.
 @[inline]
 pub fn (t Token) is_infix() bool {
 	tv := int(t)
@@ -229,12 +236,14 @@ pub fn (t Token) is_infix() bool {
 		|| tv == token_right_shift_id || tv == token_right_shift_unsigned_id || tv == token_xor_id
 }
 
+// is_postfix reports whether is postfix applies in token.
 @[inline]
 pub fn (t Token) is_postfix() bool {
 	tv := int(t)
 	return tv == token_dec_id || tv == token_inc_id
 }
 
+// is_assignment reports whether is assignment applies in token.
 @[inline]
 pub fn (t Token) is_assignment() bool {
 	tv := int(t)
@@ -246,6 +255,7 @@ pub fn (t Token) is_assignment() bool {
 		|| tv == token_xor_assign_id
 }
 
+// is_overloadable reports whether is overloadable applies in token.
 @[inline]
 pub fn (t Token) is_overloadable() bool {
 	tv := int(t)
@@ -255,6 +265,7 @@ pub fn (t Token) is_overloadable() bool {
 		|| tv == token_xor_id
 }
 
+// is_comparison reports whether is comparison applies in token.
 @[inline]
 pub fn (t Token) is_comparison() bool {
 	tv := int(t)
@@ -263,6 +274,7 @@ pub fn (t Token) is_comparison() bool {
 		|| tv == token_not_in_id || tv == token_not_is_id
 }
 
+// str returns the string form for Token.
 pub fn (t Token) str() string {
 	return match t {
 		.amp { '&' }

@@ -261,6 +261,13 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 		ast.SqlExpr {
 			return true
 		}
+		ast.SpawnExpr, ast.GoExpr {
+			// `spawn`/`go` lower to statement-level setup (arg struct alloc,
+			// pthread_create, ...) that cannot live inside a C ternary operand,
+			// so an if/match expression branch that is a spawn must use the
+			// tmp-var form instead of the ternary form. See issue #27485.
+			return true
+		}
 		else {}
 	}
 

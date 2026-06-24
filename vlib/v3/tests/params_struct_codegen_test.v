@@ -5,6 +5,7 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
+// build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_params_struct_codegen_test')
 	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
@@ -12,6 +13,7 @@ fn build_v3() string {
 	return v3_bin
 }
 
+// run_good supports run good handling for v3 tests.
 fn run_good(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }

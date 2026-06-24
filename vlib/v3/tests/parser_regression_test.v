@@ -3,6 +3,7 @@ import v3.flat
 import v3.parser
 import v3.pref
 
+// parse_parser_regression_source reads parse parser regression source input for v3 tests.
 fn parse_parser_regression_source(name string, source string) &flat.FlatAst {
 	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
@@ -12,6 +13,7 @@ fn parse_parser_regression_source(name string, source string) &flat.FlatAst {
 	return p.a
 }
 
+// interface_method_param_types supports interface method param types handling for v3 tests.
 fn interface_method_param_types(a &flat.FlatAst, iface string, method string) []string {
 	for node in a.nodes {
 		if node.kind != .interface_decl || node.value != iface {
@@ -35,6 +37,8 @@ fn interface_method_param_types(a &flat.FlatAst, iface string, method string) []
 	return []string{}
 }
 
+// test_interface_method_generic_type_only_param_is_not_parsed_as_name
+// validates this v3 regression case.
 fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
 	a := parse_parser_regression_source('interface_generic_param',
 		'const max_len = 16\nstruct Result[T] {}\nstruct Node {}\n\ninterface Sink {\n\tput(Result[int])\n\tappend(values []int)\n\tvisit(node &Node)\n\tread(buf [max_len]u8)\n}\n')

@@ -8,6 +8,7 @@ fn (t &Transformer) is_interface_type(name string) bool {
 	return t.resolve_interface_type_name(name).len > 0
 }
 
+// resolve_interface_type_name resolves resolve interface type name information for transform.
 fn (t &Transformer) resolve_interface_type_name(name string) string {
 	if name.len == 0 || isnil(t.tc) {
 		return ''
@@ -26,6 +27,7 @@ fn (t &Transformer) resolve_interface_type_name(name string) string {
 	return ''
 }
 
+// transform_interface_value_for_type supports transform_interface_value_for_type handling.
 fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target_type string) ?flat.NodeId {
 	if int(id) < 0 || target_type.len == 0 || isnil(t.tc) {
 		return none
@@ -67,6 +69,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	return cast
 }
 
+// transform_global_amp_interface_cast supports transform_global_amp_interface_cast handling.
 fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, target_type string) ?flat.NodeId {
 	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
 		return none
@@ -106,6 +109,7 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 	})
 }
 
+// make_interface_literal_from_expr converts make interface literal from expr data for transform.
 fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string) ?flat.NodeId {
 	fields := t.tc.interface_fields[iface_name] or { []types.StructField{} }
 	source_type := t.node_type(id)

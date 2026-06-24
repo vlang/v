@@ -1,3 +1,4 @@
+// main runs the v3 tests entry point.
 fn main() {
 	x := 10
 	if x > 5 {

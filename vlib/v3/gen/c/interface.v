@@ -3,6 +3,7 @@ module c
 import v3.types
 import v3.flat
 
+// emit_sum_type emits emit sum type output for c.
 fn (mut g FlatGen) emit_sum_type(name string) {
 	variants := g.tc.sum_types[name]
 	g.writeln('struct ${c_name(name)} {')
@@ -18,6 +19,7 @@ fn (mut g FlatGen) emit_sum_type(name string) {
 	g.writeln('')
 }
 
+// sum_type_contains_struct reports whether sum type contains struct applies in c.
 fn (g &FlatGen) sum_type_contains_struct(sum_name string, struct_name string) bool {
 	if sum_name in g.tc.sum_types {
 		for v in g.tc.sum_types[sum_name] {
@@ -29,12 +31,14 @@ fn (g &FlatGen) sum_type_contains_struct(sum_name string, struct_name string) bo
 	return false
 }
 
+// variant_references_sum supports variant references sum handling for FlatGen.
 fn (g &FlatGen) variant_references_sum(variant string, sum_name string) bool {
 	_ = variant
 	_ = sum_name
 	return true
 }
 
+// variant_refs_sum_inner supports variant refs sum inner handling for FlatGen.
 fn (g &FlatGen) variant_refs_sum_inner(variant string, sum_name string, mut visited map[string]bool) bool {
 	normalized_variant := g.normalize_variant_name(variant)
 	if normalized_variant == sum_name
@@ -70,6 +74,7 @@ fn (g &FlatGen) variant_refs_sum_inner(variant string, sum_name string, mut visi
 	return false
 }
 
+// normalize_variant_name transforms normalize variant name data for c.
 fn (g &FlatGen) normalize_variant_name(name string) string {
 	_ = g
 	mut res := name
@@ -85,6 +90,7 @@ fn (g &FlatGen) normalize_variant_name(name string) string {
 	return res
 }
 
+// type_references_sum returns type references sum data for FlatGen.
 fn (g &FlatGen) type_references_sum(typ types.Type, sum_name string, mut visited map[string]bool) bool {
 	resolved_sum := g.resolve_sum_name(sum_name)
 	clean := types.unwrap_pointer(typ)
@@ -108,6 +114,7 @@ fn (g &FlatGen) type_references_sum(typ types.Type, sum_name string, mut visited
 	return false
 }
 
+// resolve_sum_name resolves resolve sum name information for c.
 fn (g &FlatGen) resolve_sum_name(sum_name string) string {
 	if sum_name in g.tc.sum_types {
 		return sum_name
@@ -120,6 +127,7 @@ fn (g &FlatGen) resolve_sum_name(sum_name string) string {
 	return sum_name
 }
 
+// resolve_variant resolves resolve variant information for c.
 fn (g &FlatGen) resolve_variant(sum_name string, variant string) string {
 	resolved_sum := g.resolve_sum_name(sum_name)
 	normalized_variant := g.normalize_variant_name(variant)
@@ -138,6 +146,7 @@ fn (g &FlatGen) resolve_variant(sum_name string, variant string) string {
 	return normalized_variant
 }
 
+// sum_field_name supports sum field name handling for FlatGen.
 fn (g &FlatGen) sum_field_name(variant string) string {
 	if variant.starts_with('&') {
 		return g.sum_field_name(variant[1..])
@@ -171,6 +180,7 @@ fn (g &FlatGen) sum_field_name(variant string) string {
 	}
 }
 
+// register_interface_strings updates register interface strings state for c.
 fn (mut g FlatGen) register_interface_strings() {
 	for iface_name, methods in g.interfaces {
 		cn := c_name(iface_name)
@@ -282,10 +292,12 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	return true
 }
 
+// is_interface_type_name reports whether is interface type name applies in c.
 fn (g &FlatGen) is_interface_type_name(name string) bool {
 	return name in g.interfaces || g.tc.qualify_name(name) in g.interfaces
 }
 
+// has_ierror_interface reports whether has ierror interface applies in c.
 fn (g &FlatGen) has_ierror_interface() bool {
 	for name, _ in g.interfaces {
 		if c_name(name) == 'IError' {
@@ -377,6 +389,7 @@ fn (g &FlatGen) interface_dispatch_short_name_is_unambiguous(short_name string, 
 	return matches == 1
 }
 
+// gen_interface_dispatch emits interface dispatch output for c.
 fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method string) {
 	sid := g.intern_string('interface method ${cn}.${method} not implemented')
 	mname := '${iface_name}.${method}'
@@ -501,6 +514,7 @@ fn (g &FlatGen) interface_dispatch_target_is_emitted(concrete_key string) bool {
 		|| g.used_fn_contains(concrete_key.all_after_last('.'))
 }
 
+// sum_type_index supports sum type index handling for FlatGen.
 fn (g &FlatGen) sum_type_index(sum_name string, variant string) int {
 	if sum_name in g.tc.sum_types {
 		for i, v in g.tc.sum_types[sum_name] {

@@ -5,11 +5,13 @@ import v3.pref
 import v3.transform
 import v3.types
 
+// parse_transform_source reads parse transform source input for v3 tests.
 fn parse_transform_source(source string) &flat.FlatAst {
 	src := os.join_path(os.temp_dir(), 'v3_transformer_parity_test.v')
 	return parse_transform_file(src, source)
 }
 
+// parse_transform_file reads parse transform file input for v3 tests.
 fn parse_transform_file(src string, source string) &flat.FlatAst {
 	os.write_file(src, source) or { panic(err) }
 	prefs := pref.new_preferences()
@@ -22,6 +24,7 @@ fn parse_transform_file(src string, source string) &flat.FlatAst {
 	return a
 }
 
+// find_fn resolves find fn information for v3 tests.
 fn find_fn(a &flat.FlatAst, name string) flat.Node {
 	for node in a.nodes {
 		if node.kind == .fn_decl && node.value == name {
@@ -32,6 +35,7 @@ fn find_fn(a &flat.FlatAst, name string) flat.Node {
 	return flat.Node{}
 }
 
+// first_decl_rhs returns first decl rhs data for v3 tests.
 fn first_decl_rhs(a &flat.FlatAst, fn_name string) flat.Node {
 	f := find_fn(a, fn_name)
 	for i in 0 .. f.children_count {
@@ -44,6 +48,7 @@ fn first_decl_rhs(a &flat.FlatAst, fn_name string) flat.Node {
 	return flat.Node{}
 }
 
+// decl_rhs supports decl rhs handling for v3 tests.
 fn decl_rhs(a &flat.FlatAst, fn_name string, name string) flat.Node {
 	f := find_fn(a, fn_name)
 	for i in 0 .. f.children_count {
@@ -59,6 +64,7 @@ fn decl_rhs(a &flat.FlatAst, fn_name string, name string) flat.Node {
 	return flat.Node{}
 }
 
+// first_return_expr returns first return expr data for v3 tests.
 fn first_return_expr(a &flat.FlatAst, fn_name string) flat.Node {
 	f := find_fn(a, fn_name)
 	for i in 0 .. f.children_count {
@@ -71,6 +77,7 @@ fn first_return_expr(a &flat.FlatAst, fn_name string) flat.Node {
 	return flat.Node{}
 }
 
+// count_kind supports count kind handling for v3 tests.
 fn count_kind(a &flat.FlatAst, id flat.NodeId, kind flat.NodeKind) int {
 	if int(id) < 0 {
 		return 0
@@ -83,6 +90,7 @@ fn count_kind(a &flat.FlatAst, id flat.NodeId, kind flat.NodeKind) int {
 	return total
 }
 
+// count_call_name supports count call name handling for v3 tests.
 fn count_call_name(a &flat.FlatAst, id flat.NodeId, name string) int {
 	if int(id) < 0 {
 		return 0
@@ -101,6 +109,7 @@ fn count_call_name(a &flat.FlatAst, id flat.NodeId, name string) int {
 	return total
 }
 
+// count_infix_op supports count infix op handling for v3 tests.
 fn count_infix_op(a &flat.FlatAst, id flat.NodeId, op flat.Op) int {
 	if int(id) < 0 {
 		return 0
@@ -113,6 +122,7 @@ fn count_infix_op(a &flat.FlatAst, id flat.NodeId, op flat.Op) int {
 	return total
 }
 
+// count_wide_decl_assigns supports count wide decl assigns handling for v3 tests.
 fn count_wide_decl_assigns(a &flat.FlatAst, id flat.NodeId) int {
 	if int(id) < 0 {
 		return 0
@@ -125,6 +135,7 @@ fn count_wide_decl_assigns(a &flat.FlatAst, id flat.NodeId) int {
 	return total
 }
 
+// count_wide_assigns supports count wide assigns handling for v3 tests.
 fn count_wide_assigns(a &flat.FlatAst, id flat.NodeId) int {
 	if int(id) < 0 {
 		return 0
@@ -137,6 +148,7 @@ fn count_wide_assigns(a &flat.FlatAst, id flat.NodeId) int {
 	return total
 }
 
+// count_selector_value supports count selector value handling for v3 tests.
 fn count_selector_value(a &flat.FlatAst, id flat.NodeId, value string) int {
 	if int(id) < 0 {
 		return 0
@@ -149,6 +161,7 @@ fn count_selector_value(a &flat.FlatAst, id flat.NodeId, value string) int {
 	return total
 }
 
+// test_typeof_expression_lowers_to_string_literal validates this v3 regression case.
 fn test_typeof_expression_lowers_to_string_literal() {
 	a := parse_transform_source('
 fn main() {
@@ -168,6 +181,7 @@ fn main() {
 	assert false
 }
 
+// test_vmodroot_lowers_to_nearest_vmod_dir validates this v3 regression case.
 fn test_vmodroot_lowers_to_nearest_vmod_dir() {
 	root := os.join_path(os.temp_dir(), 'v3_vmodroot_transformer_parity')
 	os.mkdir_all(root) or { panic(err) }
@@ -183,6 +197,7 @@ fn main() {
 	assert rhs.value == root
 }
 
+// test_return_match_lowers_to_explicit_branch_returns validates this v3 regression case.
 fn test_return_match_lowers_to_explicit_branch_returns() {
 	a := parse_transform_source('
 fn choose(x int) int {
@@ -208,6 +223,7 @@ fn choose(x int) int {
 	assert return_count == 2
 }
 
+// test_return_if_keeps_or_lowering_inside_branch validates this v3 regression case.
 fn test_return_if_keeps_or_lowering_inside_branch() {
 	a := parse_transform_source('
 fn maybe_int() ?int {
@@ -237,6 +253,7 @@ fn choose(flag bool) int {
 	assert a.nodes[int(body_ids[0])].kind == .if_expr
 }
 
+// test_if_expr_value_lowers_to_temp_and_branch_assigns validates this v3 regression case.
 fn test_if_expr_value_lowers_to_temp_and_branch_assigns() {
 	a := parse_transform_source('
 fn main() {
@@ -262,6 +279,7 @@ fn main() {
 	assert assign_count == 2
 }
 
+// test_if_expr_call_arg_lowers_before_call validates this v3 regression case.
 fn test_if_expr_call_arg_lowers_before_call() {
 	a := parse_transform_source('
 fn use(x int) int {
@@ -280,6 +298,7 @@ fn main() {
 	assert arg.value.starts_with('__if_val_')
 }
 
+// test_nested_if_expr_branch_lowers_to_outer_temp_assignment validates this v3 regression case.
 fn test_nested_if_expr_branch_lowers_to_outer_temp_assignment() {
 	a := parse_transform_source('
 fn main() {
@@ -309,6 +328,7 @@ fn main() {
 	assert assign_count == 4
 }
 
+// test_multi_return_decl_lowers_to_temp_field_decls validates this v3 regression case.
 fn test_multi_return_decl_lowers_to_temp_field_decls() {
 	a := parse_transform_source("
 fn pair() (int, string) {
@@ -333,6 +353,7 @@ fn main() {
 	assert b_rhs.value == 'arg1'
 }
 
+// test_multi_return_assign_lowers_to_temp_field_assigns validates this v3 regression case.
 fn test_multi_return_assign_lowers_to_temp_field_assigns() {
 	a := parse_transform_source("
 fn pair() (int, string) {
@@ -360,6 +381,7 @@ fn main() {
 	assert arg1_count == 1
 }
 
+// test_assoc_expr_lowers_to_temp_and_field_assigns validates this v3 regression case.
 fn test_assoc_expr_lowers_to_temp_and_field_assigns() {
 	a := parse_transform_source('
 struct Point {
@@ -387,6 +409,7 @@ fn main() {
 	assert assign_count == 1
 }
 
+// test_return_assoc_expr_lowers_before_return validates this v3 regression case.
 fn test_return_assoc_expr_lowers_before_return() {
 	a := parse_transform_source('
 struct Point {
@@ -409,6 +432,7 @@ fn moved(p Point) Point {
 	assert assoc_count == 0
 }
 
+// test_array_append_stmt_lowers_to_runtime_push validates this v3 regression case.
 fn test_array_append_stmt_lowers_to_runtime_push() {
 	a := parse_transform_source('
 fn main() {
@@ -428,6 +452,7 @@ fn main() {
 	assert left_shift_count == 0
 }
 
+// test_array_append_many_stmt_lowers_to_runtime_push_many validates this v3 regression case.
 fn test_array_append_many_stmt_lowers_to_runtime_push_many() {
 	a := parse_transform_source('
 fn main() {
@@ -530,6 +555,7 @@ fn main() {
 	assert created.value == '!void'
 }
 
+// test_or_expr_lowers_to_temp_and_if validates this v3 regression case.
 fn test_or_expr_lowers_to_temp_and_if() {
 	a := parse_transform_source('
 fn maybe_int() ?int {
@@ -554,6 +580,7 @@ fn main() {
 	assert if_count == 1
 }
 
+// test_map_index_or_lowers_to_get_check validates this v3 regression case.
 fn test_map_index_or_lowers_to_get_check() {
 	a := parse_transform_source('
 fn main() {

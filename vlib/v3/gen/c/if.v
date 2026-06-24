@@ -8,6 +8,7 @@ struct MultiReturnTailParts {
 	values       []flat.NodeId
 }
 
+// gen_if emits if output for c.
 fn (mut g FlatGen) gen_if(node flat.Node) {
 	if node.children_count < 2 {
 		return
@@ -51,6 +52,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 	g.gen_if_else(node)
 }
 
+// smartcast_is_expr supports smartcast is expr handling for FlatGen.
 fn (mut g FlatGen) smartcast_is_expr(cond &flat.Node) {
 	expr_id := g.a.child(cond, 0)
 	expr_node := g.a.nodes[int(expr_id)]
@@ -83,6 +85,7 @@ fn (mut g FlatGen) smartcast_is_expr(cond &flat.Node) {
 	}
 }
 
+// expr_key supports expr key handling for FlatGen.
 fn (g &FlatGen) expr_key(id flat.NodeId) string {
 	node := g.a.nodes[int(id)]
 	if node.kind == .ident {
@@ -97,6 +100,7 @@ fn (g &FlatGen) expr_key(id flat.NodeId) string {
 	return ''
 }
 
+// gen_if_guard emits if guard output for c.
 fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 	if cond.children_count < 2 {
 		return
@@ -170,6 +174,7 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 	g.gen_if_else(node)
 }
 
+// gen_if_else emits if else output for c.
 fn (mut g FlatGen) gen_if_else(node flat.Node) {
 	if node.children_count > 2 {
 		else_id := g.a.child(&node, 2)
@@ -221,6 +226,7 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 	}
 }
 
+// gen_if_expr emits if expr output for c.
 fn (mut g FlatGen) gen_if_expr(node flat.Node) {
 	then_block := g.a.child_node(&node, 1)
 	mut needs_stmt_expr := then_block.children_count > 1
@@ -270,6 +276,7 @@ fn (mut g FlatGen) gen_if_expr(node flat.Node) {
 	g.write(')')
 }
 
+// gen_if_expr_block emits if expr block output for c.
 fn (mut g FlatGen) gen_if_expr_block(block &flat.Node, ret_type types.Type) {
 	if ret_type is types.MultiReturn {
 		if g.gen_if_expr_multi_return_block(block, ret_type) {
@@ -352,6 +359,7 @@ fn (mut g FlatGen) gen_if_expr_multi_return_block(block &flat.Node, ret_type typ
 	return true
 }
 
+// is_expr_kind reports whether is expr kind applies in c.
 fn (g &FlatGen) is_expr_kind(kind flat.NodeKind) bool {
 	return match kind {
 		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
@@ -368,6 +376,7 @@ fn (g &FlatGen) is_expr_kind(kind flat.NodeKind) bool {
 	}
 }
 
+// seed_scope_from_decl converts seed scope from decl data for c.
 fn (mut g FlatGen) seed_scope_from_decl(node flat.Node) {
 	if node.kind != .decl_assign || node.children_count < 2 {
 		return
@@ -380,6 +389,7 @@ fn (mut g FlatGen) seed_scope_from_decl(node flat.Node) {
 	g.tc.cur_scope.insert(lhs.value, g.tc.resolve_type(rhs_id))
 }
 
+// if_expr_block_tail_type supports if expr block tail type handling for FlatGen.
 fn (mut g FlatGen) if_expr_block_tail_type(block &flat.Node) types.Type {
 	if block.children_count == 0 {
 		return types.Type(types.void_)
@@ -398,6 +408,7 @@ fn (mut g FlatGen) if_expr_block_tail_type(block &flat.Node) types.Type {
 	return ret
 }
 
+// if_expr_type supports if expr type handling for FlatGen.
 fn (mut g FlatGen) if_expr_type(node &flat.Node) types.Type {
 	if node.children_count < 2 {
 		return types.Type(types.void_)
@@ -424,6 +435,7 @@ fn (mut g FlatGen) if_expr_type(node &flat.Node) types.Type {
 	return ret_type
 }
 
+// gen_if_expr_stmt emits if expr stmt output for c.
 fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
 	ret_type := if g.expected_expr_type !is types.Void {
 		g.expected_expr_type
@@ -455,6 +467,7 @@ fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
 	g.write('_ifexpr;})')
 }
 
+// gen_if_expr_else_if emits if expr else if output for c.
 fn (mut g FlatGen) gen_if_expr_else_if(node flat.Node, ret_type types.Type) {
 	then_block := g.a.child_node(&node, 1)
 	g.write('if (')

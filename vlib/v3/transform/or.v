@@ -3,6 +3,7 @@ module transform
 import v3.flat
 import v3.types
 
+// ArrayIndexInfo stores array index info metadata used by transform.
 struct ArrayIndexInfo {
 	base_id    flat.NodeId
 	index_id   flat.NodeId
@@ -10,12 +11,14 @@ struct ArrayIndexInfo {
 	value_type string
 }
 
+// EnumFromStringInfo stores enum from string info metadata used by transform.
 struct EnumFromStringInfo {
 	enum_type string
 	fields    []string
 	arg_id    flat.NodeId
 }
 
+// optional_base_type supports optional base type handling for Transformer.
 fn (t &Transformer) optional_base_type(typ string) string {
 	if typ.len > 1 && (typ[0] == `?` || typ[0] == `!`) {
 		return typ[1..]
@@ -23,6 +26,7 @@ fn (t &Transformer) optional_base_type(typ string) string {
 	return typ
 }
 
+// array_index_info supports array index info handling for Transformer.
 fn (mut t Transformer) array_index_info(index_id flat.NodeId) ?ArrayIndexInfo {
 	if int(index_id) < 0 {
 		return none
@@ -49,6 +53,7 @@ fn (mut t Transformer) array_index_info(index_id flat.NodeId) ?ArrayIndexInfo {
 	}
 }
 
+// is_array_index_or_expr reports whether is array index or expr applies in transform.
 fn (mut t Transformer) is_array_index_or_expr(node flat.Node) bool {
 	if node.kind != .or_expr || node.children_count < 2 {
 		return false
@@ -57,6 +62,7 @@ fn (mut t Transformer) is_array_index_or_expr(node flat.Node) bool {
 	return true
 }
 
+// transform_array_index_or_expr transforms transform array index or expr data for transform.
 fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
 		return id
@@ -93,6 +99,7 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 	return t.make_ident(val_name)
 }
 
+// or_body_is_nil supports or body is nil handling for Transformer.
 fn (t &Transformer) or_body_is_nil(body_id flat.NodeId) bool {
 	if int(body_id) < 0 {
 		return false
@@ -112,6 +119,7 @@ fn (t &Transformer) or_body_is_nil(body_id flat.NodeId) bool {
 	return stmt.kind == .nil_literal
 }
 
+// enum_from_string_info converts enum from string info data for transform.
 fn (t &Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStringInfo {
 	if int(expr_id) < 0 {
 		return none
@@ -138,6 +146,7 @@ fn (t &Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStringIn
 	}
 }
 
+// enum_type_from_node converts enum type from node data for transform.
 fn (t &Transformer) enum_type_from_node(id flat.NodeId) ?string {
 	if int(id) < 0 {
 		return none
@@ -171,6 +180,7 @@ fn (t &Transformer) enum_type_from_node(id flat.NodeId) ?string {
 	return none
 }
 
+// is_enum_from_string_or_expr reports whether is enum from string or expr applies in transform.
 fn (mut t Transformer) is_enum_from_string_or_expr(node flat.Node) bool {
 	if node.kind != .or_expr || node.children_count < 2 {
 		return false
@@ -179,6 +189,7 @@ fn (mut t Transformer) is_enum_from_string_or_expr(node flat.Node) bool {
 	return true
 }
 
+// transform_enum_from_string_or_expr supports transform_enum_from_string_or_expr handling.
 fn (mut t Transformer) transform_enum_from_string_or_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
 		return id
@@ -214,6 +225,7 @@ fn (mut t Transformer) transform_enum_from_string_or_expr(id flat.NodeId, node f
 	return t.make_ident(val_name)
 }
 
+// or_expr_types supports or expr types handling for Transformer.
 fn (t &Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) (string, string) {
 	if !isnil(t.tc) {
 		if typ := t.tc.expr_type(expr_id) {
@@ -253,6 +265,7 @@ fn (t &Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) (st
 	return expr_type, value_type
 }
 
+// value_type_name returns value type name data for Transformer.
 fn (t &Transformer) value_type_name(typ types.Type) string {
 	if typ is types.Void {
 		return 'void'
@@ -260,10 +273,12 @@ fn (t &Transformer) value_type_name(typ types.Type) string {
 	return typ.name()
 }
 
+// is_optional_type_name reports whether is optional type name applies in transform.
 fn (t &Transformer) is_optional_type_name(typ string) bool {
 	return typ.len > 0 && (typ[0] == `?` || typ[0] == `!`)
 }
 
+// qualify_optional_type supports qualify optional type handling for Transformer.
 fn (t &Transformer) qualify_optional_type(typ string) string {
 	if typ.len < 2 || (typ[0] != `?` && typ[0] != `!`) {
 		return typ
@@ -279,6 +294,7 @@ fn (t &Transformer) qualify_optional_type(typ string) string {
 	return typ
 }
 
+// qualify_type supports qualify type handling for Transformer.
 fn (t &Transformer) qualify_type(name string) string {
 	if name.contains('.') || name.len == 0 {
 		return name
@@ -295,6 +311,7 @@ fn (t &Transformer) qualify_type(name string) string {
 	return name
 }
 
+// make_decl_assign_typed builds make decl assign typed data for transform.
 fn (mut t Transformer) make_decl_assign_typed(name string, rhs flat.NodeId, typ string) flat.NodeId {
 	decl := t.make_decl_assign(name, rhs)
 	if typ.len > 0 {
@@ -304,6 +321,7 @@ fn (mut t Transformer) make_decl_assign_typed(name string, rhs flat.NodeId, typ 
 	return decl
 }
 
+// zero_value_for_type supports zero value for type handling for Transformer.
 fn (mut t Transformer) zero_value_for_type(typ string) flat.NodeId {
 	mut clean := typ
 	if clean.starts_with('&') {
@@ -341,15 +359,18 @@ fn (mut t Transformer) zero_value_for_type(typ string) flat.NodeId {
 	return t.make_struct_init(clean)
 }
 
+// make_panic_stmt builds make panic stmt data for transform.
 fn (mut t Transformer) make_panic_stmt(message string) flat.NodeId {
 	call := t.make_call('panic', arr1(t.make_string_literal(message)))
 	return t.make_expr_stmt(call)
 }
 
+// make_none_return_stmt builds make none return stmt data for transform.
 fn (mut t Transformer) make_none_return_stmt() flat.NodeId {
 	return t.make_return(t.a.add(.none_expr), t.cur_fn_ret_type)
 }
 
+// make_none_return_stmt_with_err builds make none return stmt with err data for transform.
 fn (mut t Transformer) make_none_return_stmt_with_err(err_source string) flat.NodeId {
 	if err_source.len == 0 {
 		return t.make_none_return_stmt()
@@ -359,6 +380,7 @@ fn (mut t Transformer) make_none_return_stmt_with_err(err_source string) flat.No
 		t.cur_fn_ret_type)
 }
 
+// lower_or_expr_to_temp converts lower or expr to temp data for transform.
 fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
 		return id
@@ -413,6 +435,7 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	return t.make_ident(val_tmp)
 }
 
+// lower_or_body_to_stmts converts lower or body to stmts data for transform.
 fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name string, target_type string, mode string, err_source string) []flat.NodeId {
 	if mode == '!' || mode == '?' {
 		if t.is_optional_type_name(t.cur_fn_ret_type) {
@@ -510,6 +533,7 @@ fn (t &Transformer) is_error_call(node flat.Node) bool {
 	return fn_node.value == 'error' || fn_node.value == 'error_with_code'
 }
 
+// is_noreturn_call reports whether is noreturn call applies in transform.
 fn (t &Transformer) is_noreturn_call(node flat.Node) bool {
 	if node.kind != .call || node.children_count == 0 {
 		return false
