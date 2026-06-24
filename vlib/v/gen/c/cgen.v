@@ -5174,7 +5174,10 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	} else if is_interface_cast {
 		interface_cast_source_expr.is_lvalue()
 	} else {
-		expr.is_lvalue()
+		// A slice expression (`s[a..b]`) yields a fresh rvalue with no stable
+		// address, even though `is_lvalue()` reports it as one. Treat it as an
+		// rvalue so the sumtype cast materializes it via ADDR instead of `&`.
+		expr.is_lvalue() && !(expr is ast.IndexExpr && expr.index is ast.RangeExpr)
 	}
 	is_comptime_variant := is_not_ptr_and_fn && expr is ast.Ident
 		&& g.comptime.is_comptime_variant_var(expr)
@@ -7984,8 +7987,13 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					for i, typ in smartcasts {
 						if i == 0 && (is_option_unwrap || nested_unwrap) {
 							deref := if g.inside_selector {
-								if is_iface_or_sumtype || (field.orig_type.is_ptr() && g.left_is_opt
-									&& is_option_unwrap) {
+								if is_iface_or_sumtype
+									|| (field.orig_type.is_ptr() && is_option_unwrap) {
+									// Unwrapping an option-of-pointer field (`?&T`): the
+									// option's `.data` buffer holds a single `&T`, so one
+									// deref of the `(T**)` cast yields the pointer. This must
+									// hold for every unwrap form (smartcast `:=`, `== nil`,
+									// `== none`), independent of `g.left_is_opt`.
 									'*'.repeat(typ.nr_muls())
 								} else {
 									'*'.repeat(typ.nr_muls() + 1)
