@@ -836,6 +836,17 @@ fn test_wasm_global_float_cast_of_large_literal() {
 	run_wasi_expect(wasm, ['true'])
 }
 
+fn test_wasm_global_unsigned_const_fold() {
+	v3_bin := v3_binary()
+	// Unsigned constant initializers must fold with unsigned div/rem/compare:
+	// folded operands are i64 bit patterns (u64 max -> -1), so signed division
+	// would mis-fold `u64(max) / u64(2)` to 0 instead of 9223372036854775807.
+	src := '__global half = u64(18446744073709551615) / u64(2)\n__global rem = u64(18446744073709551615) % u64(10)\n__global cmp = u64(18446744073709551615) > u64(1)\n\nfn main() {\n\tprintln(half)\n\tprintln(rem)\n\tprintln(cmp)\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_unsigned_fold')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['9223372036854775807', '5', 'true'])
+}
+
 const wasi_runner_js = "import { WASI } from 'node:wasi';
 import { readFile } from 'node:fs/promises';
 const wasi = new WASI({ version: 'preview1', args: [], env: {} });

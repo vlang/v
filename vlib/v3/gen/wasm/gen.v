@@ -1672,30 +1672,40 @@ fn (g &Gen) fold_const_int(id flat.NodeId) i64 {
 }
 
 // fold_const_infix folds a binary constant expression (`1 + 2`, `base << 3`, ...)
-// over its already-folded integer operands.
+// over its already-folded integer operands. Division, remainder, right shift and
+// comparisons use unsigned semantics when either operand resolves to an unsigned
+// type, since folded operands are stored as i64 bit patterns (u64(max) -> -1) and
+// signed ops would otherwise mis-fold, e.g. `u64(max) / u64(2)`.
 fn (g &Gen) fold_const_infix(n flat.Node) i64 {
-	a := g.fold_const_int(g.a.child(&n, 0))
-	b := g.fold_const_int(g.a.child(&n, 1))
+	la := g.a.child(&n, 0)
+	lb := g.a.child(&n, 1)
+	a := g.fold_const_int(la)
+	b := g.fold_const_int(lb)
+	unsigned := type_is_unsigned(g.tc.resolve_type(la)) || type_is_unsigned(g.tc.resolve_type(lb))
 	return match n.op {
 		.plus { a + b }
 		.minus { a - b }
 		.mul { a * b }
-		.div { if b != 0 { a / b } else { i64(0) } }
-		.mod { if b != 0 { a % b } else { i64(0) } }
+		.div { if b == 0 { i64(0) } else if unsigned { i64(u64(a) / u64(b)) } else { a / b } }
+		.mod { if b == 0 { i64(0) } else if unsigned { i64(u64(a) % u64(b)) } else { a % b } }
 		.amp { a & b }
 		.pipe { a | b }
 		.xor { a ^ b }
 		.left_shift { a << b }
-		.right_shift { a >> b }
+		.right_shift { if unsigned { i64(u64(a) >> b) } else { a >> b } }
 		.right_shift_unsigned { i64(u64(a) >> b) }
-		.eq { if a == b { i64(1) } else { i64(0) } }
-		.ne { if a != b { i64(1) } else { i64(0) } }
-		.lt { if a < b { i64(1) } else { i64(0) } }
-		.gt { if a > b { i64(1) } else { i64(0) } }
-		.le { if a <= b { i64(1) } else { i64(0) } }
-		.ge { if a >= b { i64(1) } else { i64(0) } }
+		.eq { bool_to_i64(a == b) }
+		.ne { bool_to_i64(a != b) }
+		.lt { if unsigned { bool_to_i64(u64(a) < u64(b)) } else { bool_to_i64(a < b) } }
+		.gt { if unsigned { bool_to_i64(u64(a) > u64(b)) } else { bool_to_i64(a > b) } }
+		.le { if unsigned { bool_to_i64(u64(a) <= u64(b)) } else { bool_to_i64(a <= b) } }
+		.ge { if unsigned { bool_to_i64(u64(a) >= u64(b)) } else { bool_to_i64(a >= b) } }
 		else { i64(0) }
 	}
+}
+
+fn bool_to_i64(b bool) i64 {
+	return if b { i64(1) } else { i64(0) }
 }
 
 // fold_cast_int wraps a folded constant to a numeric cast target's width and
