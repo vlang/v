@@ -2044,22 +2044,36 @@ fn (mut g FlatGen) param_types_for_uncached(name string, fallback string) []type
 		return decl_types
 	}
 	if name.contains('.') {
+		// O(1) lookup via the precomputed short-name index instead of scanning the whole
+		// function table on every (cache-missing) call — this fallback ran ~3000× and was
+		// a top cgen self-time cost (each scan is O(functions)).
 		short_name := name.all_after_last('.')
-		suffix := '.${short_name}'
-		// Look up the value only on a match: `for _, v in map` copies every array value
-		// on every iteration, which is wasteful for a table-wide scan.
-		for candidate, _ in g.fn_decl_param_types {
-			if candidate.ends_with(suffix) {
-				return g.fn_decl_param_types[candidate]
-			}
-		}
-		for candidate, _ in g.tc.fn_param_types {
-			if candidate.ends_with(suffix) {
-				return g.tc.fn_param_types[candidate]
-			}
+		if params := g.param_types_by_short[short_name] {
+			return params
 		}
 	}
 	return []types.Type{}
+}
+
+// precompute_param_type_index builds short-name -> param-types, preserving the fallback's
+// priority (fn_decl_param_types first, then the checker's fn_param_types; first match wins).
+fn (mut g FlatGen) precompute_param_type_index() {
+	for name, params in g.fn_decl_param_types {
+		if name.contains('.') {
+			short := name.all_after_last('.')
+			if short !in g.param_types_by_short {
+				g.param_types_by_short[short] = params
+			}
+		}
+	}
+	for name, params in g.tc.fn_param_types {
+		if name.contains('.') {
+			short := name.all_after_last('.')
+			if short !in g.param_types_by_short {
+				g.param_types_by_short[short] = params
+			}
+		}
+	}
 }
 
 fn (g &FlatGen) interface_method_param_types(name string) ?[]types.Type {
@@ -3051,11 +3065,46 @@ fn fn_ptr_typedef_is_generic_placeholder(typ string) bool {
 	return short.len == 1 && short[0] >= `A` && short[0] <= `Z`
 }
 
-// multi_return_typedefs supports multi return typedefs handling for FlatGen.
+// multi_return_forward_decls forward-declares every multi-return struct that the
+// generated C can reference by name. It must run before fn_ptr_typedefs(), because
+// a function-pointer typedef may name a multi-return as its (by-value) return type
+// — and a `typedef RET (*fp)(...)` only needs RET's tag declared, not its full
+// layout. The full struct bodies are emitted later by multi_return_typedefs(),
+// after the member struct definitions they depend on are available.
+fn (mut g FlatGen) multi_return_forward_decls() {
+	mut emitted := map[string]bool{}
+	g.walk_multi_return_typedefs(mut emitted, true)
+	// Also cover multi-returns reachable only as a fn-pointer return type: parallel
+	// cgen preseeds fn-ptr types that the serial path never materializes, so their
+	// return multi-returns may not appear among the function/expression types above.
+	for encoded, _ in g.fn_ptr_types {
+		ret, _ := fn_ptr_typedef_parts(encoded)
+		if ret.starts_with('multi_return_') && ret !in emitted {
+			emitted[ret] = true
+			g.writeln('typedef struct ${ret} ${ret};')
+		}
+	}
+	if emitted.len > 0 {
+		g.writeln('')
+	}
+}
+
+// multi_return_typedefs emits the full struct definitions for multi-return types.
 fn (mut g FlatGen) multi_return_typedefs() {
 	mut emitted := map[string]bool{}
+	g.walk_multi_return_typedefs(mut emitted, false)
+	if emitted.len > 0 {
+		g.writeln('')
+	}
+}
+
+// walk_multi_return_typedefs visits every multi-return type reachable from a
+// function return type or an expression type and emits it via emit_multi_return_typedef.
+// Shared by the forward-declaration and full-definition passes so both see the same
+// set in the same (deterministic) order.
+fn (mut g FlatGen) walk_multi_return_typedefs(mut emitted map[string]bool, forward_only bool) {
 	for _, ret in g.tc.fn_ret_types {
-		g.emit_multi_return_typedef(ret, mut emitted)
+		g.emit_multi_return_typedef(ret, mut emitted, forward_only)
 	}
 	mut cur_module := ''
 	mut cur_file := ''
@@ -3076,23 +3125,28 @@ fn (mut g FlatGen) multi_return_typedefs() {
 		}
 		g.tc.cur_file = cur_file
 		g.tc.cur_module = cur_module
-		if node.typ.len > 0 {
-			g.emit_multi_return_typedef(g.tc.parse_type(node.typ), mut emitted)
+		// emit_multi_return_typedef only acts on (optionally `?`/`!`-wrapped) multi-return
+		// types, whose string form always begins with `(`. Skip parse_type for everything
+		// else — this ran on every node's type (~hundreds of thousands of parse_type calls).
+		typ := node.typ
+		if typ.len > 0 && (typ[0] == `(` || ((typ[0] == `?` || typ[0] == `!`) && typ.len > 1
+			&& typ[1] == `(`)) {
+			g.emit_multi_return_typedef(g.tc.parse_type(typ), mut emitted, forward_only)
 		}
-	}
-	if emitted.len > 0 {
-		g.writeln('')
 	}
 }
 
-// emit_multi_return_typedef emits emit multi return typedef output for c.
-fn (mut g FlatGen) emit_multi_return_typedef(ret types.Type, mut emitted map[string]bool) {
+// emit_multi_return_typedef emits one multi-return type: a forward declaration
+// (`typedef struct NAME NAME;`) when forward_only, otherwise the full struct body
+// (`struct NAME { ... };`). The two forms are paired — the forward decl provides the
+// typedef name, the body completes the tagged struct.
+fn (mut g FlatGen) emit_multi_return_typedef(ret types.Type, mut emitted map[string]bool, forward_only bool) {
 	if ret is types.OptionType {
-		g.emit_multi_return_typedef(ret.base_type, mut emitted)
+		g.emit_multi_return_typedef(ret.base_type, mut emitted, forward_only)
 		return
 	}
 	if ret is types.ResultType {
-		g.emit_multi_return_typedef(ret.base_type, mut emitted)
+		g.emit_multi_return_typedef(ret.base_type, mut emitted, forward_only)
 		return
 	}
 	if ret is types.MultiReturn {
@@ -3101,11 +3155,15 @@ fn (mut g FlatGen) emit_multi_return_typedef(ret types.Type, mut emitted map[str
 			return
 		}
 		emitted[name] = true
-		g.writeln('typedef struct {')
-		for i, typ in ret.types {
-			g.writeln('\t${g.tc.c_type(typ)} arg${i};')
+		if forward_only {
+			g.writeln('typedef struct ${name} ${name};')
+		} else {
+			g.writeln('struct ${name} {')
+			for i, typ in ret.types {
+				g.writeln('\t${g.tc.c_type(typ)} arg${i};')
+			}
+			g.writeln('};')
 		}
-		g.writeln('} ${name};')
 	}
 }
 

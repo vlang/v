@@ -63,6 +63,7 @@ mut:
 	array_method_cache      map[string]string
 	param_types_cache       map[string][]types.Type        // (name|fallback) -> resolved param types
 	embedded_fields_by_type map[string][]types.StructField // type name -> its embedded fields (usually empty)
+	param_types_by_short    map[string][]types.Type        // method short-name suffix -> param types (fallback index)
 	spawn_wrapper_names     map[string]string
 	spawn_wrapper_defs      []string
 	parallel_used           bool
@@ -119,6 +120,7 @@ pub fn FlatGen.new() FlatGen {
 		array_method_cache:      map[string]string{}
 		param_types_cache:       map[string][]types.Type{}
 		embedded_fields_by_type: map[string][]types.StructField{}
+		param_types_by_short:    map[string][]types.Type{}
 		spawn_wrapper_names:     map[string]string{}
 		spawn_wrapper_defs:      []string{}
 		str_lits:                []string{}
@@ -189,6 +191,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.array_method_cache = map[string]string{}
 	g.param_types_cache = map[string][]types.Type{}
 	g.embedded_fields_by_type = map[string][]types.StructField{}
+	g.param_types_by_short = map[string][]types.Type{}
 	g.spawn_wrapper_names = map[string]string{}
 	g.spawn_wrapper_defs = []string{}
 	g.parallel_used = false
@@ -199,6 +202,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.has_builtins = g.tc.has_builtins
 	g.collect_gen_info()
 	g.precompute_embedded_fields()
+	g.precompute_param_type_index()
 	g.collect_interface_impls()
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
@@ -215,6 +219,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.enum_decls()
 	g.type_alias_decls()
 	g.type_forward_decls()
+	// Forward-declare multi-return structs before fn-ptr typedefs, which may name a
+	// multi-return as a by-value return type (full bodies come after struct_decls).
+	g.multi_return_forward_decls()
 	g.fn_ptr_typedefs()
 	g.struct_decls()
 	g.fixed_array_typedefs()

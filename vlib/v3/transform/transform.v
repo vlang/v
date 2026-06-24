@@ -140,6 +140,15 @@ pub fn transform(mut a flat.FlatAst, tc &types.TypeChecker) {
 
 // transform_with_used transforms transform with used data for transform.
 pub fn transform_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) map[string]bool {
+	augmented, _ := transform_with_used_opt(mut a, tc, used_fns, false)
+	return augmented
+}
+
+// transform_with_used_opt is transform_with_used with an opt-in for parallel
+// function-body transform. It returns the augmented used-fn set and whether the
+// function bodies were actually transformed across threads (false when parallel
+// was not requested, the build lacks thread support, or there was too little work).
+pub fn transform_with_used_opt(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool) (map[string]bool, bool) {
 	mut augmented_used_fns := used_fns.clone()
 	mut t := new_transformer(mut a, tc, augmented_used_fns)
 	t.prepare()
@@ -155,8 +164,8 @@ pub fn transform_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fns m
 	if reserve_children > 0 {
 		unsafe { a.children.grow_cap(reserve_children) }
 	}
-	t.transform_all()
-	return augmented_used_fns
+	was_parallel := t.transform_all_dispatch(want_parallel)
+	return augmented_used_fns, was_parallel
 }
 
 pub fn monomorphize_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) map[string]bool {
@@ -535,6 +544,210 @@ fn (mut t Transformer) transform_all() {
 			t.transform_global_decl(node)
 		}
 	}
+}
+
+// FnWorkItem identifies one top-level function body to transform, together with
+// the file/module context active at its declaration and a rough cost estimate
+// (subtree node count) used to balance work across parallel workers.
+struct FnWorkItem {
+	fn_idx int
+	file   string
+	module string
+	cost   int
+}
+
+// transform_all_dispatch runs the main transform pass either serially (the
+// original single-threaded walk) or, when `want_parallel` is set and there is
+// enough work, with closure-free function bodies transformed across threads.
+// Returns whether function bodies were actually transformed in parallel.
+fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
+	if !want_parallel {
+		t.transform_all()
+		return false
+	}
+	// Serial phase: transform consts/globals and every function whose body
+	// contains a function literal (the only construct that lifts new top-level
+	// declarations and mutates the shared TypeChecker). Collect the remaining,
+	// closure-free functions as parallelizable work items.
+	pure_items := t.transform_serial_then_collect_pure()
+	base_nodes := t.a.nodes.len
+	base_children := t.a.children.len
+	return t.run_parallel_transform(pure_items, base_nodes, base_children)
+}
+
+// transform_serial_then_collect_pure walks the top level once: it transforms
+// const/global declarations and closure-bearing functions in place (serially),
+// and returns work items for the closure-free functions left to transform.
+fn (mut t Transformer) transform_serial_then_collect_pure() []FnWorkItem {
+	mut pure := []FnWorkItem{}
+	original_len := t.a.nodes.len
+	for i in 0 .. original_len {
+		node := t.a.nodes[i]
+		kind_id := node_kind_id(node)
+		if kind_id == 77 {
+			t.cur_file = node.value
+		} else if kind_id == 73 {
+			t.cur_module = node.value
+		} else if kind_id == 61 {
+			if !t.should_transform_fn(node) {
+				continue
+			}
+			has_literal, cost := t.fn_subtree_scan(i)
+			if has_literal {
+				t.transform_fn_body(i)
+			} else {
+				pure << FnWorkItem{
+					fn_idx: i
+					file:   t.cur_file
+					module: t.cur_module
+					cost:   cost
+				}
+			}
+		} else if kind_id == 65 {
+			t.transform_const_decl(node)
+		} else if kind_id == 64 {
+			t.transform_global_decl(node)
+		}
+	}
+	return pure
+}
+
+// fn_subtree_scan walks the subtree rooted at the function declaration `fn_idx`
+// and reports (whether it contains a function literal, total node count). The
+// function-literal flag routes closure-bearing functions to the serial path; the
+// count is a cheap per-function cost used to balance parallel workers.
+fn (t &Transformer) fn_subtree_scan(fn_idx int) (bool, int) {
+	mut has_literal := false
+	mut count := 0
+	mut stack := [flat.NodeId(fn_idx)]
+	for stack.len > 0 {
+		id := stack.pop()
+		idx := int(id)
+		if idx < 0 || idx >= t.a.nodes.len {
+			continue
+		}
+		node := t.a.nodes[idx]
+		count++
+		// 21 = fn_literal, 32 = lambda_expr: both can lower to a lifted closure.
+		kid := node_kind_id(node)
+		if kid == 21 || kid == 32 {
+			has_literal = true
+		}
+		for ci in 0 .. node.children_count {
+			child_id := t.a.children[node.children_start + ci]
+			if int(child_id) >= 0 {
+				stack << child_id
+			}
+		}
+	}
+	return has_literal, count
+}
+
+// transform_pure_items_serial transforms a list of closure-free function bodies
+// on this Transformer, in order. Used both as the serial fallback and as the
+// per-worker body in the parallel path.
+fn (mut t Transformer) transform_pure_items_serial(items []FnWorkItem) {
+	for it in items {
+		t.cur_file = it.file
+		t.cur_module = it.module
+		t.transform_fn_body(it.fn_idx)
+	}
+}
+
+// clone_ast_base produces a private FlatAst holding an independent copy of the
+// first base_nodes nodes / base_children children, so a worker can append its own
+// transformed nodes without racing the master or other workers. Read-only metadata
+// (disabled_fns) is shared.
+fn (t &Transformer) clone_ast_base(base_nodes int, base_children int) &flat.FlatAst {
+	return &flat.FlatAst{
+		nodes:           t.a.nodes[0..base_nodes].clone()
+		children:        t.a.children[0..base_children].clone()
+		user_code_start: t.a.user_code_start
+		disabled_fns:    t.a.disabled_fns
+	}
+}
+
+// fork_worker builds a worker Transformer that shares this transformer's
+// read-only collected maps (structs, sum types, fn return types, used_fns, …)
+// and operates on its own cloned AST `ast` and forked TypeChecker `wtc`. All
+// per-function mutable state and memoization caches are reset/private so the
+// worker can run on its own thread.
+fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Transformer {
+	mut w := *t
+	w.a = ast
+	w.tc = wtc
+	w.alias_cache = &AliasCache{}
+	w.sum_cache = &AliasCache{}
+	w.var_types = []VarTypeBinding{}
+	w.smartcast_stack = []SmartcastContext{}
+	w.pending_stmts = []flat.NodeId{}
+	w.pointer_value_lvalues = map[string]bool{}
+	w.temp_counter = 0
+	w.cur_file = ''
+	w.cur_module = ''
+	w.cur_fn_name = ''
+	w.cur_fn_ret_type = ''
+	w.in_call_callee = false
+	w.in_const_init = false
+	w.in_return_expr = false
+	return &w
+}
+
+// merge_worker folds a finished worker's transformed output back into the master
+// AST. The worker created its new nodes/children at indices base_nodes/base_children
+// (matching the master at fork time); here they are appended to the master and every
+// reference to a worker-local new node or new children block is shifted by the
+// distance the block moved. `items` lists the function indices this worker owned, so
+// their rewritten top-level nodes can be copied into place.
+fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nodes int, base_children int) {
+	node_shift := i32(t.a.nodes.len - base_nodes)
+	child_shift := i32(t.a.children.len - base_children)
+	// New children: relocate references to worker-local new nodes.
+	for k in base_children .. w.a.children.len {
+		cid := w.a.children[k]
+		if int(cid) >= base_nodes {
+			t.a.children << flat.NodeId(int(cid) + int(node_shift))
+		} else {
+			t.a.children << cid
+		}
+	}
+	// New nodes: relocate children_start that points into the new children block.
+	for k in base_nodes .. w.a.nodes.len {
+		n := w.a.nodes[k]
+		if n.children_start >= base_children {
+			t.a.nodes << n.with_shifted_children(child_shift)
+		} else {
+			t.a.nodes << n
+		}
+	}
+	// Rewritten top-level function nodes keep their original index in the master.
+	for it in items {
+		n := w.a.nodes[it.fn_idx]
+		if n.children_start >= base_children {
+			t.a.nodes[it.fn_idx] = n.with_shifted_children(child_shift)
+		} else {
+			t.a.nodes[it.fn_idx] = n
+		}
+	}
+}
+
+// split_work_items distributes items across `n` buckets using greedy
+// least-loaded-by-cost assignment, so heavy functions are spread evenly. The
+// assignment is deterministic for a given input (required for reproducible builds).
+fn split_work_items(items []FnWorkItem, n int) [][]FnWorkItem {
+	mut buckets := [][]FnWorkItem{len: n, init: []FnWorkItem{}}
+	mut loads := []i64{len: n}
+	for it in items {
+		mut best := 0
+		for b in 1 .. n {
+			if loads[b] < loads[best] {
+				best = b
+			}
+		}
+		buckets[best] << it
+		loads[best] += i64(it.cost) + 1
+	}
+	return buckets
 }
 
 // should_transform_fn reports whether should transform fn applies in transform.

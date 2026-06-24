@@ -131,6 +131,7 @@ fn main() {
 	mut is_strict := false
 	mut is_selfhost := false
 	mut no_parallel := false
+	mut parallel_transform := false
 	mut building_v := false
 	mut user_defines := []string{}
 	mut i := 0
@@ -157,6 +158,9 @@ fn main() {
 			i++
 		} else if args[i] == '-no-parallel' || args[i] == '--no-parallel' {
 			no_parallel = true
+			i++
+		} else if args[i] == '-parallel-transform' || args[i] == '--parallel-transform' {
+			parallel_transform = true
 			i++
 		} else if args[i] == '-d' && i + 1 < args.len {
 			user_defines << args[i + 1]
@@ -279,9 +283,13 @@ fn main() {
 	mut used_fns := markused.mark_used(a, pre_tc)
 	b.step('markused')
 
-	// Transform (match lowering, string/in lowering, etc.)
-	used_fns = transform.transform_with_used(mut a, &pre_tc, used_fns)
-	b.step('transform')
+	// Transform (match lowering, string/in lowering, etc.). Parallel transform is an
+	// explicit opt-in (`-parallel-transform`), independent of `-no-parallel` (which
+	// gates the parallel C codegen): the two phases can be threaded independently.
+	mut transform_was_parallel := false
+	used_fns, transform_was_parallel = transform.transform_with_used_opt(mut a, &pre_tc, used_fns,
+		parallel_transform)
+	b.step_parallel('transform', transform_was_parallel)
 
 	// Reuse the pre-transform checker for metadata only. Transform does not add
 	// declarations, and v1/v2 do not run a second semantic checker after lowering.

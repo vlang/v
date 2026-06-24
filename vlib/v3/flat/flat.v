@@ -220,6 +220,24 @@ pub fn (mut a FlatAst) add_val_id(kind_id int, value string) NodeId {
 	return id
 }
 
+// with_shifted_children returns a copy of the node whose children_start is moved
+// by `shift`. children_start lives in the immutable section of Node, so callers
+// that relocate a node's children block (e.g. the parallel-transform merge) build
+// a fresh node instead of mutating in place.
+pub fn (n Node) with_shifted_children(shift i32) Node {
+	return Node{
+		value:          n.value
+		typ:            n.typ
+		generic_params: n.generic_params
+		kind_id:        n.kind_id
+		pos:            n.pos
+		children_start: n.children_start + shift
+		children_count: n.children_count
+		kind:           n.kind
+		op:             n.op
+	}
+}
+
 // add_node updates add node state for FlatAst.
 pub fn (mut a FlatAst) add_node(node Node) NodeId {
 	id := NodeId(a.nodes.len)

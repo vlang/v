@@ -373,6 +373,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		array_method_cache:      g.array_method_cache.clone()
 		param_types_cache:       g.param_types_cache.clone()
 		embedded_fields_by_type: g.embedded_fields_by_type.clone()
+		param_types_by_short:    g.param_types_by_short.clone()
 	}
 }
 

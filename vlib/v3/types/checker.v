@@ -180,6 +180,29 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 	}
 }
 
+// fork_for_parallel_transform returns a TypeChecker that shares all of `tc`'s
+// read-only data (semantic maps and node-indexed cache arrays, which the transform
+// pass only reads) but owns a fresh, private `type_cache` and a private AST view.
+// During transform the only hidden mutation a TypeChecker performs through its `&`
+// receiver is memoization into `type_cache` (parse_type / c_type); giving each
+// worker its own cache makes concurrent use race-free without cloning the large
+// semantic maps. `ast` must be the worker's own (cloned) FlatAst so that any
+// expr_type lookup on a freshly-created node id indexes a valid array.
+pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChecker {
+	mut forked := *tc
+	forked.a = ast
+	forked.type_cache = &TypeCache{
+		parse_enabled: if tc.type_cache != unsafe { nil } {
+			tc.type_cache.parse_enabled
+		} else {
+			false
+		}
+		parse_entries: map[string]Type{}
+		c_entries:     map[string]string{}
+	}
+	return &forked
+}
+
 // reset_node_caches updates reset node caches state for types.
 fn (mut tc TypeChecker) reset_node_caches(n int) {
 	tc.resolved_call_names = []string{len: n}
