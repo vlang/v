@@ -216,6 +216,15 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 				if status >= 100 && status < 200 {
 					// 1xx informational: discard and continue waiting for the
 					// final HEADERS block. Do not set got_headers here.
+					// A 1xx is not a final response and must not end the stream
+					// (RFC 9113 §8.1); END_STREAM here is malformed. Fail rather
+					// than loop forever waiting for a final response the stream can
+					// no longer send. (The mux path rejects this as a stream-level
+					// PROTOCOL_ERROR; the synchronous client has no other stream to
+					// keep alive, so a connection-level error is appropriate here.)
+					if frame.end_stream {
+						return error('h2: server set END_STREAM on a 1xx informational response')
+					}
 					continue
 				}
 				// Second pass: populate the response. Skip pseudo-headers.
