@@ -131,6 +131,7 @@ fn main() {
 	mut is_strict := false
 	mut is_selfhost := false
 	mut no_parallel := false
+	mut building_v := false
 	mut user_defines := []string{}
 	mut i := 0
 	for i < args.len {
@@ -145,6 +146,11 @@ fn main() {
 			i++
 		} else if args[i] == '-selfhost' {
 			is_selfhost = true
+			i++
+		} else if args[i] == '-building-v' || args[i] == '-building_v' {
+			// The V compiler itself uses no generics, so monomorphization (and the rest
+			// of the generics machinery) is pure overhead when building it.
+			building_v = true
 			i++
 		} else if args[i] == '-strict' {
 			is_strict = true
@@ -197,6 +203,7 @@ fn main() {
 	prefs.user_defines = user_defines
 	prefs.vroot = resolve_vroot(prefs.vroot)
 	prefs.selfhost = is_selfhost
+	prefs.building_v = building_v
 	mut p := parser.Parser.new(prefs)
 
 	mut files := []string{}
@@ -279,7 +286,12 @@ fn main() {
 	pre_tc.annotate_types()
 	b.step('annotate types')
 
-	used_fns = transform.monomorphize_with_used(mut a, &pre_tc, used_fns)
+	// Monomorphization only adds specialized generic instantiations to `used_fns`. The V
+	// compiler sources use no generics, so when building V we skip the pass entirely
+	// (`used_fns` passes through unchanged) instead of scanning the whole AST for nothing.
+	if !building_v {
+		used_fns = transform.monomorphize_with_used(mut a, &pre_tc, used_fns)
+	}
 	b.step('monomorphize')
 
 	if backend == 'arm64' {

@@ -12,6 +12,7 @@ pub mut:
 	backend      string = 'c'
 	vroot        string = detect_vroot()
 	selfhost     bool
+	building_v   bool // compiling the V compiler itself: no generics, skip monomorphization
 }
 
 // new_preferences supports new preferences handling for pref.
