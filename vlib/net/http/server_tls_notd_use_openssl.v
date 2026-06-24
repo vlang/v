@@ -159,13 +159,17 @@ fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 			w.idle_conns.unmark_idle(conn.handle)
 		}
 		// close_idle may have already closed conn.handle on Windows (a forced
-		// closesocket to wake this worker from a blocked read). Closing it again
-		// would race process-wide SOCKET reuse and could close an unrelated
-		// socket, so skip our close when close_idle owns it. On non-Windows this
-		// is always false and the worker remains the sole closer.
-		if !w.idle_conns.was_force_closed(conn.handle) {
-			conn.shutdown() or {}
+		// closesocket to wake this worker from a blocked read). conn.shutdown()
+		// both frees the mbedtls TLS resources (SSL ctx, config, certs, RNG,
+		// ALPN alloc) AND closes the socket; we must always do the former but
+		// must not close the socket a second time — that would race process-wide
+		// SOCKET reuse and could close an unrelated socket. So relinquish socket
+		// ownership and still call shutdown for the TLS cleanup. On non-Windows
+		// was_force_closed is always false and the worker remains the sole closer.
+		if w.idle_conns.was_force_closed(conn.handle) {
+			conn.owns_socket = false
 		}
+		conn.shutdown() or {}
 	}
 	// If the TLS handshake negotiated HTTP/2 via ALPN, switch to the HTTP/2
 	// driver; otherwise fall through to the existing HTTP/1.1 path unchanged.

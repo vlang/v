@@ -13,9 +13,10 @@ mut:
 	handles []int
 	closing bool
 	// closed records handles that close_idle force-closed on Windows. The woken
-	// worker consults was_force_closed and skips its own conn.shutdown so the fd
-	// is closed exactly once. Empty on non-Windows (close_idle only shuts the fd
-	// down there, leaving the worker the sole closer).
+	// worker consults was_force_closed and relinquishes socket ownership (so its
+	// conn.shutdown frees the TLS resources without closing the fd again), keeping
+	// the fd closed exactly once. Empty on non-Windows (close_idle only shuts the
+	// fd down there, leaving the worker the sole closer).
 	closed []int
 }
 
@@ -44,11 +45,12 @@ fn (mut t TlsIdleConnTracker) unmark_idle(handle int) {
 
 // was_force_closed reports whether close_idle has already closed `handle`
 // (Windows force-close to wake a worker blocked in select). The woken worker
-// must then skip its own conn.shutdown: a second close would race process-wide
-// SOCKET reuse — the value can be reused by ANY socket the process opens, not
-// just this server's accept loop — and could close an unrelated socket. Always
-// false on non-Windows, where close_idle only shuts the fd down and the worker
-// remains the sole closer.
+// must then relinquish socket ownership before its own conn.shutdown, which
+// then frees the TLS resources without closing the fd again: a second close
+// would race process-wide SOCKET reuse — the value can be reused by ANY socket
+// the process opens, not just this server's accept loop — and could close an
+// unrelated socket. Always false on non-Windows, where close_idle only shuts
+// the fd down and the worker remains the sole closer.
 fn (mut t TlsIdleConnTracker) was_force_closed(handle int) bool {
 	$if windows {
 		t.mu.lock()
@@ -74,8 +76,9 @@ fn (mut t TlsIdleConnTracker) close_idle() {
 		// select() — only closesocket() (net.close, below) does — so we must
 		// force-close idle handles to wake their workers. Record ownership of
 		// those closes here, under the lock, so a worker that wakes (or exits for
-		// another reason) sees it via was_force_closed and skips its own
-		// conn.shutdown. Without that the fd would be closed twice, and between
+		// another reason) sees it via was_force_closed and relinquishes socket
+		// ownership instead of closing the fd again. Without that the fd would be
+		// closed twice, and between
 		// the two closes the SOCKET value can be reused by any socket the process
 		// opens, so the second close could hit an unrelated socket.
 		t.closed << handles
