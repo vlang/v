@@ -21,7 +21,7 @@ fn test_c_output_path_only_writes_c_file() {
 	assert compile.exit_code == 0, compile.output
 	assert os.exists(c_out)
 	assert !os.exists(bin_out)
-	assert compile.output.contains('gen C/write')
+	assert compile.output.contains('cgen')
 	assert !compile.output.contains('  > ')
 	assert !compile.output.contains('tcc.exe')
 	assert !compile.output.contains('cc -std=gnu11')

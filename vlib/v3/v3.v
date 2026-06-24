@@ -332,7 +332,7 @@ fn main() {
 			eprintln('error writing ${output_file}')
 			exit(1)
 		}
-		b.step_parallel('gen C/write', g.was_parallel())
+		b.step_parallel('cgen', g.was_parallel())
 		if c_only {
 			b.print_report()
 			return

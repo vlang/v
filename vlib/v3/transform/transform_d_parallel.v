@@ -63,40 +63,54 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		mut chunks := split_work_items(items, n_jobs)
 		chunk_count := chunks.len
 
-		// Build one worker per chunk: a private AST clone + forked TypeChecker.
-		mut workers := []voidptr{cap: chunk_count}
-		for _ in 0 .. chunk_count {
+		// chunk[0] is transformed by the master on this thread, directly against the
+		// master AST — no clone. Only chunks[1..] get helper threads, each with a
+		// private AST clone + forked TypeChecker. This removes one full base-AST clone
+		// from the peak (each clone is ~one nodes-array; under -gc none they are never
+		// freed, so they also inflate the later cgen peak) and keeps the master thread,
+		// which would otherwise block in join, doing useful work.
+		thread_count := chunk_count - 1
+		mut workers := []voidptr{cap: thread_count}
+		for _ in 0 .. thread_count {
 			wast := t.clone_ast_base(base_nodes, base_children)
 			wtc := t.tc.fork_for_parallel_transform(wast)
 			ww := t.fork_worker(wast, wtc)
 			workers << voidptr(ww)
 		}
-		mut args := []TransformChunkArgs{cap: chunk_count}
-		for ci in 0 .. chunk_count {
+		mut args := []TransformChunkArgs{cap: thread_count}
+		for ci in 0 .. thread_count {
 			args << TransformChunkArgs{
 				worker:    workers[ci]
-				items_ptr: unsafe { voidptr(&chunks[ci]) }
+				items_ptr: unsafe { voidptr(&chunks[ci + 1]) }
 			}
 		}
 
-		mut thread_ids := []C.pthread_t{len: chunk_count}
+		mut thread_ids := []C.pthread_t{len: thread_count}
 		attr_buf := [64]u8{}
 		attr := unsafe { voidptr(&attr_buf[0]) }
 		C.pthread_attr_init(attr)
 		// Transform recurses deeply on large expressions; give workers a roomy stack.
 		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
-		for ci in 0 .. chunk_count {
+		for ci in 0 .. thread_count {
 			C.pthread_create(unsafe { &thread_ids[ci] }, attr, transform_chunk_thread,
 				unsafe { voidptr(&args[ci]) })
 		}
 		C.pthread_attr_destroy(attr)
-		for ci in 0 .. chunk_count {
+		// Master transforms chunk[0] in place while the helper threads run. It only
+		// touches its own functions' nodes and the master AST/TypeChecker, all disjoint
+		// from the workers' clones, and never writes the shared (read-only) type tables.
+		// Reset temp_counter to 0 like a freshly forked worker (transform temps are
+		// function-local, so this is collision-free and matches the all-workers output).
+		t.temp_counter = 0
+		t.transform_pure_items_serial(chunks[0])
+		for ci in 0 .. thread_count {
 			C.pthread_join(thread_ids[ci], unsafe { nil })
 		}
-		// Merge in a fixed order for reproducible node numbering.
-		for ci in 0 .. chunk_count {
+		// Merge helper results in fixed chunk order (chunk[0] is already in place), so
+		// node numbering stays deterministic for reproducible builds.
+		for ci in 0 .. thread_count {
 			ww := unsafe { &Transformer(workers[ci]) }
-			t.merge_worker(ww, chunks[ci], base_nodes, base_children)
+			t.merge_worker(ww, chunks[ci + 1], base_nodes, base_children)
 		}
 		return true
 	}
