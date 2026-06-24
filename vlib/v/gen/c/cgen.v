@@ -5153,13 +5153,19 @@ fn (mut g Gen) fn_ptr_cast_typ(func ast.FnType) string {
 	return g.fn_ptr_decl_str(func, ptr_name).replace_once(ptr_name, '')
 }
 
-// expr_is_range_index reports whether expr is a slice (`s[a..b]`), possibly
-// wrapped in parentheses. A slice yields a fresh rvalue with no stable address,
-// so it must be materialized via ADDR rather than `&` in a sumtype cast.
-fn expr_is_range_index(expr ast.Expr) bool {
+// expr_is_range_index_rvalue reports whether expr is rooted in a slice
+// (`s[a..b]`). A slice yields a fresh rvalue with no stable address, so it (and
+// anything reading through it, e.g. `(s[a..b]).len` or `arr[a..b][0].field`)
+// must be materialized via ADDR rather than `&` in a sumtype cast. The recursion
+// mirrors the lvalue-recursing shapes of `ast.Expr.is_lvalue()`, so that an
+// expression `is_lvalue()` accepts is still caught when its root is a slice.
+fn expr_is_range_index_rvalue(expr ast.Expr) bool {
 	return match expr {
-		ast.IndexExpr { expr.index is ast.RangeExpr }
-		ast.ParExpr { expr_is_range_index(expr.expr) }
+		ast.IndexExpr { expr.index is ast.RangeExpr || expr_is_range_index_rvalue(expr.left) }
+		ast.SelectorExpr { expr_is_range_index_rvalue(expr.expr) }
+		ast.ParExpr { expr_is_range_index_rvalue(expr.expr) }
+		ast.PrefixExpr { expr_is_range_index_rvalue(expr.right) }
+		ast.ComptimeSelector { expr_is_range_index_rvalue(expr.field_expr) }
 		else { false }
 	}
 }
@@ -5186,11 +5192,10 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		interface_cast_source_expr.is_lvalue()
 	} else {
 		// A slice expression (`s[a..b]`) yields a fresh rvalue with no stable
-		// address, even though `is_lvalue()` reports it as one. Treat it as an
+		// address, even though `is_lvalue()` reports it (and selector/index
+		// reads rooted in it) as one. Treat anything rooted in a slice as an
 		// rvalue so the sumtype cast materializes it via ADDR instead of `&`.
-		// `is_lvalue()` recurses through `ParExpr`, so unwrap parens too
-		// (`(s[a..b])`).
-		expr.is_lvalue() && !expr_is_range_index(expr)
+		expr.is_lvalue() && !expr_is_range_index_rvalue(expr)
 	}
 	is_comptime_variant := is_not_ptr_and_fn && expr is ast.Ident
 		&& g.comptime.is_comptime_variant_var(expr)
