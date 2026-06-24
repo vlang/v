@@ -3,6 +3,7 @@ import v3.ssa.optimize
 
 // --- helpers ---------------------------------------------------------------
 
+// count_op supports count op handling for v3 tests.
 fn count_op(m &ssa.Module, func_id int, op ssa.OpCode) int {
 	mut n := 0
 	for blk_id in m.funcs[func_id].blocks {
@@ -18,6 +19,7 @@ fn count_op(m &ssa.Module, func_id int, op ssa.OpCode) int {
 
 // --- TypeStore: arrays, tuples, unsigned ----------------------------------
 
+// test_type_store_arrays_tuples_unsigned validates this v3 regression case.
 fn test_type_store_arrays_tuples_unsigned() {
 	mut ts := ssa.TypeStore.new()
 	s32 := ts.get_int(32)
@@ -39,6 +41,7 @@ fn test_type_store_arrays_tuples_unsigned() {
 	assert ts.types[tup].fields == [s32, un32]
 }
 
+// test_array_type_sizing validates array type sizing behavior in v3 tests.
 fn test_array_type_sizing() {
 	mut m := ssa.Module.new()
 	s32 := m.type_store.get_int(32)
@@ -50,6 +53,7 @@ fn test_array_type_sizing() {
 
 // --- algebraic simplification ---------------------------------------------
 
+// test_algebraic_add_zero validates algebraic add zero behavior in v3 tests.
 fn test_algebraic_add_zero() {
 	mut m := ssa.Module.new()
 	i64t := m.type_store.get_int(64)
@@ -70,6 +74,7 @@ fn test_algebraic_add_zero() {
 	assert m.values[ret.operands[0]].kind == .argument
 }
 
+// test_algebraic_mul_two_to_shift validates algebraic mul two to shift behavior in v3 tests.
 fn test_algebraic_mul_two_to_shift() {
 	mut m := ssa.Module.new()
 	i64t := m.type_store.get_int(64)
@@ -88,6 +93,7 @@ fn test_algebraic_mul_two_to_shift() {
 	assert count_op(m, func_id, .shl) == 1
 }
 
+// test_algebraic_sub_self_is_zero validates algebraic sub self is zero behavior in v3 tests.
 fn test_algebraic_sub_self_is_zero() {
 	mut m := ssa.Module.new()
 	i64t := m.type_store.get_int(64)
@@ -110,6 +116,7 @@ fn test_algebraic_sub_self_is_zero() {
 
 // --- DCE side-effect preservation -----------------------------------------
 
+// test_dce_preserves_side_effecting_ops validates this v3 regression case.
 fn test_dce_preserves_side_effecting_ops() {
 	mut m := ssa.Module.new()
 	i64t := m.type_store.get_int(64)
@@ -133,6 +140,7 @@ fn test_dce_preserves_side_effecting_ops() {
 
 // --- structured verifier ---------------------------------------------------
 
+// test_structured_verifier_accepts_valid_module validates this v3 regression case.
 fn test_structured_verifier_accepts_valid_module() {
 	mut m := ssa.Module.new()
 	i64t := m.type_store.get_int(64)
@@ -150,6 +158,7 @@ fn test_structured_verifier_accepts_valid_module() {
 	}
 }
 
+// test_structured_verifier_accepts_prototype_declaration validates this v3 regression case.
 fn test_structured_verifier_accepts_prototype_declaration() {
 	mut m := ssa.Module.new()
 	i64t := m.type_store.get_int(64)
@@ -164,6 +173,7 @@ fn test_structured_verifier_accepts_prototype_declaration() {
 
 // --- mem2reg + phi elimination (IR level) ---------------------------------
 
+// test_mem2reg_promotes_diamond_slot validates this v3 regression case.
 fn test_mem2reg_promotes_diamond_slot() {
 	mut m := ssa.Module.new()
 	i64t := m.type_store.get_int(64)

@@ -40,6 +40,7 @@ const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_
 const bench_runtime_stub_names = ['current_rss_kb', 'macos_peak_rss_kb', 'linux_rss_kb',
 	'bench.current_rss_kb', 'bench.macos_peak_rss_kb', 'bench.linux_rss_kb']
 
+// Builder stores state for SSA construction.
 pub struct Builder {
 mut:
 	m                  &Module            = unsafe { nil }
@@ -99,12 +100,14 @@ mut:
 	type_aliases map[string]TypeID
 }
 
+// VarBinding represents var binding data used by ssa.
 struct VarBinding {
 	exists bool
 	addr   ValueID
 	typ    string
 }
 
+// IfGuardState stores if guard state state used by ssa.
 struct IfGuardState {
 	active    bool
 	name      string
@@ -124,14 +127,17 @@ pub:
 	skip_modules   []string // skip all functions declared in these modules
 }
 
+// build supports build handling for ssa.
 pub fn build(a_ &flat.FlatAst) &Module {
 	return build_with_used(a_, map[string]bool{}, unsafe { nil })
 }
 
+// build_with_used builds with used data for ssa.
 pub fn build_with_used(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker) &Module {
 	return build_with_options(a_, used_fns, tc, BuildOptions{})
 }
 
+// build_with_options builds with options data for ssa.
 pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, opts BuildOptions) &Module {
 	mut b := Builder{
 		m:                  Module.new()
@@ -247,6 +253,7 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 	return b.m
 }
 
+// register_types updates register types state for ssa.
 fn (mut b Builder) register_types() {
 	mut cur_module := ''
 	for node in b.a.nodes {
@@ -358,6 +365,7 @@ fn (mut b Builder) register_types() {
 	b.register_multi_return_types()
 }
 
+// register_multi_return_types updates register multi return types state for ssa.
 fn (mut b Builder) register_multi_return_types() {
 	if b.tc == unsafe { nil } {
 		return
@@ -369,6 +377,7 @@ fn (mut b Builder) register_multi_return_types() {
 	}
 }
 
+// register_multi_return_type updates register multi return type state for ssa.
 fn (mut b Builder) register_multi_return_type(ret types.MultiReturn) TypeID {
 	name := b.multi_return_c_type(ret)
 	if typ := b.struct_types[name] {
@@ -394,6 +403,7 @@ fn (mut b Builder) register_multi_return_type(ret types.MultiReturn) TypeID {
 	return typ_id
 }
 
+// multi_return_c_type supports multi return c type handling for Builder.
 fn (b &Builder) multi_return_c_type(ret types.MultiReturn) string {
 	mut parts := []string{}
 	for field_type in ret.types {
@@ -402,6 +412,7 @@ fn (b &Builder) multi_return_c_type(ret types.MultiReturn) string {
 	return 'multi_return_${parts.join('_')}'
 }
 
+// primitive_type_name supports primitive type name handling for ssa.
 fn primitive_type_name(typ types.Primitive) string {
 	if typ.props.has(.boolean) {
 		return 'bool'
@@ -434,6 +445,7 @@ fn primitive_type_name(typ types.Primitive) string {
 	return 'int'
 }
 
+// ssa_type_from_checker_type converts ssa type from checker type data for ssa.
 fn (mut b Builder) ssa_type_from_checker_type(typ types.Type) TypeID {
 	if typ is types.Void {
 		return b.void_type
@@ -483,6 +495,7 @@ fn (mut b Builder) ssa_type_from_checker_type(typ types.Type) TypeID {
 	return b.resolve_type(typ.name())
 }
 
+// register_enum_values updates register enum values state for ssa.
 fn (mut b Builder) register_enum_values(node flat.Node, module_name string) {
 	short_name := node.value.all_after('.')
 	mut enum_names := []string{}
@@ -533,6 +546,7 @@ fn (mut b Builder) register_enum_values(node flat.Node, module_name string) {
 	}
 }
 
+// register_struct_type_name updates register struct type name state for ssa.
 fn (mut b Builder) register_struct_type_name(name string, module_name string, typ_id TypeID) {
 	b.struct_types[name] = typ_id
 	short_name := name.all_after('.')
@@ -545,6 +559,7 @@ fn (mut b Builder) register_struct_type_name(name string, module_name string, ty
 	}
 }
 
+// register_sum_type_name updates register sum type name state for ssa.
 fn (mut b Builder) register_sum_type_name(name string, module_name string, typ_id TypeID) {
 	qualified_name := qualify_type_name(name, module_name)
 	b.register_struct_type_name(name, module_name, typ_id)
@@ -577,6 +592,7 @@ fn (mut b Builder) register_sum_type_name(name string, module_name string, typ_i
 	b.sum_type_canonical[short_name] = qualified_name
 }
 
+// qualify_type_name supports qualify type name handling for ssa.
 fn qualify_type_name(name string, module_name string) string {
 	if name.contains('.') || module_name.len == 0 || module_name == 'main'
 		|| module_name == 'builtin' {
@@ -585,6 +601,7 @@ fn qualify_type_name(name string, module_name string) string {
 	return '${module_name}.${name}'
 }
 
+// qualify_type_ref_name supports qualify type ref name handling for ssa.
 fn qualify_type_ref_name(name string, module_name string) string {
 	if name.len == 0 {
 		return name
@@ -624,11 +641,13 @@ fn qualify_type_ref_name(name string, module_name string) string {
 	return module_name + '.' + name
 }
 
+// type_ref_is_builtin returns type ref is builtin data for ssa.
 fn type_ref_is_builtin(name string) bool {
 	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'byte', 'u16', 'u32', 'u64', 'f32',
 		'f64', 'bool', 'string', 'void', 'voidptr', 'rune', 'char', 'array', 'map']
 }
 
+// sum_type_variants_for_decl supports sum type variants for decl handling for Builder.
 fn (b &Builder) sum_type_variants_for_decl(node flat.Node, module_name string) []string {
 	mut variants := []string{}
 	for i in 0 .. node.children_count {
@@ -638,6 +657,7 @@ fn (b &Builder) sum_type_variants_for_decl(node flat.Node, module_name string) [
 	return variants
 }
 
+// register_sum_field_type updates register sum field type state for ssa.
 fn (mut b Builder) register_sum_field_type(name string, module_name string, field_name string, field_type string) {
 	short_name := name.all_after('.')
 	b.struct_field_types[name + '.' + field_name] = field_type
@@ -647,6 +667,7 @@ fn (mut b Builder) register_sum_field_type(name string, module_name string, fiel
 	}
 }
 
+// struct_type_id_for_decl supports struct type id for decl handling for Builder.
 fn (b &Builder) struct_type_id_for_decl(name string, module_name string) TypeID {
 	short_name := name.all_after('.')
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
@@ -664,6 +685,7 @@ fn (b &Builder) struct_type_id_for_decl(name string, module_name string) TypeID 
 	return TypeID(0)
 }
 
+// register_consts updates register consts state for ssa.
 fn (mut b Builder) register_consts() {
 	mut cur_module := ''
 	for node in b.a.nodes {
@@ -692,6 +714,7 @@ fn (mut b Builder) register_consts() {
 	}
 }
 
+// register_globals updates register globals state for ssa.
 fn (mut b Builder) register_globals() {
 	for node in b.a.nodes {
 		if node.kind == .global_decl {
@@ -707,6 +730,7 @@ fn (mut b Builder) register_globals() {
 		b.m.type_store.get_ptr(b.m.type_store.get_ptr(b.i8_type)))
 }
 
+// ensure_runtime_global supports ensure runtime global handling for Builder.
 fn (mut b Builder) ensure_runtime_global(name string, typ TypeID) {
 	if name in b.vars {
 		return
@@ -720,6 +744,7 @@ fn (mut b Builder) ensure_runtime_global(name string, typ TypeID) {
 	b.vars[name] = b.m.add_global(name, typ)
 }
 
+// register_functions updates register functions state for ssa.
 fn (mut b Builder) register_functions() {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	mut p1 := []TypeID{}
@@ -1046,6 +1071,7 @@ fn (mut b Builder) register_functions() {
 	b.register_array_contains_stubs()
 }
 
+// ssa_fn_name_in_module supports ssa fn name in module handling for ssa.
 fn ssa_fn_name_in_module(module_name string, name string) string {
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
 		return module_name + '.' + name
@@ -1053,6 +1079,7 @@ fn ssa_fn_name_in_module(module_name string, name string) string {
 	return name
 }
 
+// register_extern updates register extern state for ssa.
 fn (mut b Builder) register_extern(name string, ret TypeID, params []TypeID) {
 	fn_type := b.m.type_store.register(Type{
 		kind:     .func_t
@@ -1073,6 +1100,7 @@ fn (mut b Builder) register_extern(name string, ret TypeID, params []TypeID) {
 	b.m.funcs[func_id] = f
 }
 
+// register_runtime_extern updates register runtime extern state for ssa.
 fn (mut b Builder) register_runtime_extern(name string, ret TypeID, params []TypeID) {
 	if b.has_fn_decl(name) {
 		return
@@ -1080,6 +1108,7 @@ fn (mut b Builder) register_runtime_extern(name string, ret TypeID, params []Typ
 	b.register_extern(name, ret, params)
 }
 
+// has_fn_decl reports whether has fn decl applies in ssa.
 fn (b &Builder) has_fn_decl(name string) bool {
 	for node in b.a.nodes {
 		if node.kind == .fn_decl && node.value == name {
@@ -1089,6 +1118,7 @@ fn (b &Builder) has_fn_decl(name string) bool {
 	return false
 }
 
+// skip_source_fn supports skip source fn handling for Builder.
 fn (b &Builder) skip_source_fn(name string) bool {
 	if name in bench_runtime_stub_names {
 		return true
@@ -1125,6 +1155,7 @@ fn (b &Builder) skip_source_fn(name string) bool {
 		|| name in ['print_libbacktrace', 'eprint_libbacktrace', 'bsd_backtrace_resolve_atos']
 }
 
+// skip_source_fn_in_module supports skip source fn in module handling for Builder.
 fn (b &Builder) skip_source_fn_in_module(name string, module_name string) bool {
 	if module_name == 'builtin' && name in b.c_fn_ids {
 		return true
@@ -1141,6 +1172,7 @@ fn (b &Builder) skip_source_fn_in_module(name string, module_name string) bool {
 	return b.skip_source_fn(name)
 }
 
+// register_top_level_main updates register top level main state for ssa.
 fn (mut b Builder) register_top_level_main() {
 	if 'main' in b.fn_ids || !b.has_top_level_stmts() {
 		return
@@ -1154,10 +1186,12 @@ fn (mut b Builder) register_top_level_main() {
 	b.top_level_main = true
 }
 
+// has_top_level_stmts reports whether has top level stmts applies in ssa.
 fn (b &Builder) has_top_level_stmts() bool {
 	return b.top_level_stmt_ids().len > 0
 }
 
+// top_level_stmt_ids supports top level stmt ids handling for Builder.
 fn (b &Builder) top_level_stmt_ids() []flat.NodeId {
 	mut ids := []flat.NodeId{}
 	for file_idx, file_node in b.a.nodes {
@@ -1179,6 +1213,7 @@ fn (b &Builder) top_level_stmt_ids() []flat.NodeId {
 	return ids
 }
 
+// is_top_level_stmt reports whether is top level stmt applies in ssa.
 fn (b &Builder) is_top_level_stmt(node flat.Node) bool {
 	return match node.kind {
 		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt,
@@ -1191,6 +1226,7 @@ fn (b &Builder) is_top_level_stmt(node flat.Node) bool {
 	}
 }
 
+// register_wyhash_stubs updates register wyhash stubs state for ssa.
 fn (mut b Builder) register_wyhash_stubs() {
 	mut p2 := []TypeID{}
 	p2 << b.i64_type
@@ -1211,6 +1247,7 @@ fn (mut b Builder) register_wyhash_stubs() {
 	b.generate_wyhash_body(wyhash_id)
 }
 
+// register_synthetic_function updates register synthetic function state for ssa.
 fn (mut b Builder) register_synthetic_function(name string, ret TypeID, params []TypeID) int {
 	fn_type := b.m.type_store.register(Type{
 		kind:     .func_t
@@ -1229,6 +1266,7 @@ fn (mut b Builder) register_synthetic_function(name string, ret TypeID, params [
 	return func_id
 }
 
+// func_add_argument supports func add argument handling for Builder.
 fn (mut b Builder) func_add_argument(func_id int, typ TypeID, name string) ValueID {
 	mut f := b.m.funcs[func_id]
 	param := b.m.add_value(.argument, typ, name, f.params.len)
@@ -1237,17 +1275,20 @@ fn (mut b Builder) func_add_argument(func_id int, typ TypeID, name string) Value
 	return param
 }
 
+// block_instr0 supports block instr0 handling for Builder.
 fn (mut b Builder) block_instr0(op OpCode, block_id BlockID, typ TypeID) ValueID {
 	ops := []ValueID{}
 	return b.m.add_instr(op, block_id, typ, ops)
 }
 
+// block_instr1 supports block instr1 handling for Builder.
 fn (mut b Builder) block_instr1(op OpCode, block_id BlockID, typ TypeID, a ValueID) ValueID {
 	mut ops := []ValueID{}
 	ops << a
 	return b.m.add_instr(op, block_id, typ, ops)
 }
 
+// block_instr2 supports block instr2 handling for Builder.
 fn (mut b Builder) block_instr2(op OpCode, block_id BlockID, typ TypeID, a ValueID, c ValueID) ValueID {
 	mut ops := []ValueID{}
 	ops << a
@@ -1255,6 +1296,7 @@ fn (mut b Builder) block_instr2(op OpCode, block_id BlockID, typ TypeID, a Value
 	return b.m.add_instr(op, block_id, typ, ops)
 }
 
+// block_instr3 supports block instr3 handling for Builder.
 fn (mut b Builder) block_instr3(op OpCode, block_id BlockID, typ TypeID, a ValueID, c ValueID, d ValueID) ValueID {
 	mut ops := []ValueID{}
 	ops << a
@@ -1263,6 +1305,7 @@ fn (mut b Builder) block_instr3(op OpCode, block_id BlockID, typ TypeID, a Value
 	return b.m.add_instr(op, block_id, typ, ops)
 }
 
+// block_instr4 supports block instr4 handling for Builder.
 fn (mut b Builder) block_instr4(op OpCode, block_id BlockID, typ TypeID, a ValueID, c ValueID, d ValueID, e ValueID) ValueID {
 	mut ops := []ValueID{}
 	ops << a
@@ -1272,6 +1315,7 @@ fn (mut b Builder) block_instr4(op OpCode, block_id BlockID, typ TypeID, a Value
 	return b.m.add_instr(op, block_id, typ, ops)
 }
 
+// block_struct_field_ptr supports block struct field ptr handling for Builder.
 fn (mut b Builder) block_struct_field_ptr(block_id BlockID, base_addr ValueID, typ_id TypeID, field_idx int) ValueID {
 	mut builtin_field_type := TypeID(0)
 	mut builtin_offset := 0
@@ -1323,12 +1367,14 @@ fn (mut b Builder) block_struct_field_ptr(block_id BlockID, base_addr ValueID, t
 		base_addr, off_const)
 }
 
+// block_load_array_int_field supports block load array int field handling for Builder.
 fn (mut b Builder) block_load_array_int_field(block_id BlockID, arr_ptr ValueID, field_idx int) ValueID {
 	field_ptr := b.block_struct_field_ptr(block_id, arr_ptr, b.array_type, field_idx)
 	field32 := b.block_instr1(.load, block_id, b.i32_type, field_ptr)
 	return b.block_instr1(.zext, block_id, b.i64_type, field32)
 }
 
+// register_basic_format_stubs converts register basic format stubs data for ssa.
 fn (mut b Builder) register_basic_format_stubs() {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	mut p1_ptr := []TypeID{}
@@ -1374,6 +1420,7 @@ fn (mut b Builder) register_basic_format_stubs() {
 	}
 }
 
+// register_pointer_string_stubs updates register pointer string stubs state for ssa.
 fn (mut b Builder) register_pointer_string_stubs() {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	mut p1_ptr := []TypeID{}
@@ -1396,12 +1443,14 @@ fn (mut b Builder) register_pointer_string_stubs() {
 	}
 }
 
+// generate_const_string_body supports generate const string body handling for Builder.
 fn (mut b Builder) generate_const_string_body(func_id int, value string) {
 	entry := b.m.add_block(func_id, 'entry')
 	result := b.m.add_value(.string_literal, b.str_type, value, 0)
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// generate_bool_str_body supports generate bool str body handling for Builder.
 fn (mut b Builder) generate_bool_str_body(func_id int) {
 	entry := b.m.add_block(func_id, 'entry')
 	value := b.func_add_argument(func_id, b.i1_type, 'value')
@@ -1414,6 +1463,7 @@ fn (mut b Builder) generate_bool_str_body(func_id int) {
 	b.block_instr1(.ret, false_block, b.void_type, false_val)
 }
 
+// generate_int_format_body converts generate int format body data for ssa.
 fn (mut b Builder) generate_int_format_body(func_id int, is_signed bool, has_radix bool) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
@@ -1519,6 +1569,7 @@ fn (mut b Builder) generate_int_format_body(func_id int, is_signed bool, has_rad
 	b.block_instr1(.ret, done_block, b.void_type, result)
 }
 
+// generate_string_int_body supports generate string int body handling for Builder.
 fn (mut b Builder) generate_string_int_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
@@ -1586,6 +1637,7 @@ fn (mut b Builder) generate_string_int_body(func_id int) {
 	b.block_instr1(.ret, done, b.void_type, signed)
 }
 
+// register_bench_runtime_stubs updates register bench runtime stubs state for ssa.
 fn (mut b Builder) register_bench_runtime_stubs() {
 	for name in bench_runtime_stub_names {
 		id := b.register_synthetic_function(name, b.i64_type, []TypeID{})
@@ -1593,6 +1645,7 @@ fn (mut b Builder) register_bench_runtime_stubs() {
 	}
 }
 
+// generate_tos2_body supports generate tos2 body handling for Builder.
 fn (mut b Builder) generate_tos2_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	entry := b.m.add_block(func_id, 'entry')
@@ -1603,6 +1656,7 @@ fn (mut b Builder) generate_tos2_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// generate_tos_clone_body supports generate tos clone body handling for Builder.
 fn (mut b Builder) generate_tos_clone_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	entry := b.m.add_block(func_id, 'entry')
@@ -1622,6 +1676,7 @@ fn (mut b Builder) generate_tos_clone_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// generate_vstring_with_len_body supports generate vstring with len body handling for Builder.
 fn (mut b Builder) generate_vstring_with_len_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	entry := b.m.add_block(func_id, 'entry')
@@ -1631,6 +1686,7 @@ fn (mut b Builder) generate_vstring_with_len_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// register_string_plus_stubs updates register string plus stubs state for ssa.
 fn (mut b Builder) register_string_plus_stubs() {
 	mut p2 := []TypeID{}
 	p2 << b.str_type
@@ -1645,6 +1701,7 @@ fn (mut b Builder) register_string_plus_stubs() {
 	b.generate_string_plus_many_body(many_id)
 }
 
+// emit_make_string emits emit make string output for ssa.
 fn (mut b Builder) emit_make_string(block_id BlockID, data ValueID, len64 ValueID) ValueID {
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
 	alloca_out := b.block_instr0(.alloca, block_id, ptr_string)
@@ -1655,6 +1712,7 @@ fn (mut b Builder) emit_make_string(block_id BlockID, data ValueID, len64 ValueI
 	return b.block_instr1(.load, block_id, b.str_type, alloca_out)
 }
 
+// generate_string_plus_body supports generate string plus body handling for Builder.
 fn (mut b Builder) generate_string_plus_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
@@ -1696,6 +1754,7 @@ fn (mut b Builder) generate_string_plus_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// generate_string_plus_many_body supports generate string plus many body handling for Builder.
 fn (mut b Builder) generate_string_plus_many_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
@@ -1775,6 +1834,7 @@ fn (mut b Builder) generate_string_plus_many_body(func_id int) {
 	b.block_instr1(.ret, done, b.void_type, result)
 }
 
+// register_array_runtime_stubs updates register array runtime stubs state for ssa.
 fn (mut b Builder) register_array_runtime_stubs() {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_array := b.m.type_store.get_ptr(b.array_type)
@@ -1834,6 +1894,7 @@ fn (mut b Builder) register_array_runtime_stubs() {
 	b.generate_array_repeat_to_depth_body(array_repeat_id)
 }
 
+// register_panic_stub updates register panic stub state for ssa.
 fn (mut b Builder) register_panic_stub() {
 	mut p1 := []TypeID{}
 	p1 << b.str_type
@@ -1841,6 +1902,7 @@ fn (mut b Builder) register_panic_stub() {
 	b.generate_panic_body(panic_id)
 }
 
+// register_printing_stubs updates register printing stubs state for ssa.
 fn (mut b Builder) register_printing_stubs() {
 	mut p1 := []TypeID{}
 	p1 << b.str_type
@@ -1854,6 +1916,7 @@ fn (mut b Builder) register_printing_stubs() {
 	b.generate_print_body(eprintln_id, '2', true)
 }
 
+// generate_print_body supports generate print body handling for Builder.
 fn (mut b Builder) generate_print_body(func_id int, fd_value string, newline bool) {
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
@@ -1881,6 +1944,7 @@ fn (mut b Builder) generate_print_body(func_id int, fd_value string, newline boo
 	b.block_instr0(.ret, entry, b.void_type)
 }
 
+// generate_panic_body supports generate panic body handling for Builder.
 fn (mut b Builder) generate_panic_body(func_id int) {
 	entry := b.m.add_block(func_id, 'entry')
 	message := b.func_add_argument(func_id, b.str_type, 'message')
@@ -1896,6 +1960,7 @@ fn (mut b Builder) generate_panic_body(func_id int) {
 	b.block_instr0(.ret, entry, b.void_type)
 }
 
+// register_string_builder_stubs updates register string builder stubs state for ssa.
 fn (mut b Builder) register_string_builder_stubs() {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_builder := b.m.type_store.get_ptr(b.array_type)
@@ -1949,6 +2014,7 @@ fn (mut b Builder) register_string_builder_stubs() {
 	b.generate_builder_last_n_body(last_n_id)
 }
 
+// generate_builder_new_body supports generate builder new body handling for Builder.
 fn (mut b Builder) generate_builder_new_body(func_id int) {
 	entry := b.m.add_block(func_id, 'entry')
 	initial_size := b.func_add_argument(func_id, b.i64_type, 'initial_size')
@@ -1959,6 +2025,7 @@ fn (mut b Builder) generate_builder_new_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, builder)
 }
 
+// emit_builder_append emits emit builder append output for ssa.
 fn (mut b Builder) emit_builder_append(func_id int, entry BlockID, builder_ptr ValueID, src_ptr ValueID, add_len ValueID) BlockID {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	data_ptr := b.block_struct_field_ptr(entry, builder_ptr, b.array_type, 0)
@@ -1993,6 +2060,8 @@ fn (mut b Builder) emit_builder_append(func_id int, entry BlockID, builder_ptr V
 	return blk_copy
 }
 
+// generate_builder_write_string_body
+// supports helper handling in ssa.
 fn (mut b Builder) generate_builder_write_string_body(func_id int, add_newline bool) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_builder := b.m.type_store.get_ptr(b.array_type)
@@ -2024,6 +2093,7 @@ fn (mut b Builder) generate_builder_write_string_body(func_id int, add_newline b
 	}
 }
 
+// generate_builder_write_ptr_body supports generate builder write ptr body handling for Builder.
 fn (mut b Builder) generate_builder_write_ptr_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_builder := b.m.type_store.get_ptr(b.array_type)
@@ -2035,6 +2105,7 @@ fn (mut b Builder) generate_builder_write_ptr_body(func_id int) {
 	b.block_instr0(.ret, end_block, b.void_type)
 }
 
+// generate_builder_write_u8_body supports generate builder write u8 body handling for Builder.
 fn (mut b Builder) generate_builder_write_u8_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_builder := b.m.type_store.get_ptr(b.array_type)
@@ -2048,6 +2119,7 @@ fn (mut b Builder) generate_builder_write_u8_body(func_id int) {
 	b.block_instr0(.ret, end_block, b.void_type)
 }
 
+// generate_builder_str_body supports generate builder str body handling for Builder.
 fn (mut b Builder) generate_builder_str_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_builder := b.m.type_store.get_ptr(b.array_type)
@@ -2068,6 +2140,7 @@ fn (mut b Builder) generate_builder_str_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// generate_builder_last_n_body supports generate builder last n body handling for Builder.
 fn (mut b Builder) generate_builder_last_n_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_builder := b.m.type_store.get_ptr(b.array_type)
@@ -2091,6 +2164,7 @@ fn (mut b Builder) generate_builder_last_n_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// generate_builder_free_body supports generate builder free body handling for Builder.
 fn (mut b Builder) generate_builder_free_body(func_id int) {
 	ptr_builder := b.m.type_store.get_ptr(b.array_type)
 	entry := b.m.add_block(func_id, 'entry')
@@ -2098,6 +2172,7 @@ fn (mut b Builder) generate_builder_free_body(func_id int) {
 	b.block_instr0(.ret, entry, b.void_type)
 }
 
+// register_path_runtime_stubs updates register path runtime stubs state for ssa.
 fn (mut b Builder) register_path_runtime_stubs() {
 	ptr_builder := b.m.type_store.get_ptr(b.array_type)
 	mut p1 := []TypeID{}
@@ -2116,6 +2191,7 @@ fn (mut b Builder) register_path_runtime_stubs() {
 	}
 }
 
+// generate_join_path_single_body supports generate join path single body handling for Builder.
 fn (mut b Builder) generate_join_path_single_body(func_id int) {
 	entry := b.m.add_block(func_id, 'entry')
 	base := b.func_add_argument(func_id, b.str_type, 'base')
@@ -2127,6 +2203,7 @@ fn (mut b Builder) generate_join_path_single_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// register_map_runtime_stubs updates register map runtime stubs state for ssa.
 fn (mut b Builder) register_map_runtime_stubs() {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
@@ -2197,6 +2274,7 @@ fn (mut b Builder) register_map_runtime_stubs() {
 	b.generate_map_clone_body(clone_id)
 }
 
+// generate_map_ptr_noop_body supports generate map ptr noop body handling for Builder.
 fn (mut b Builder) generate_map_ptr_noop_body(func_id int) {
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
 	entry := b.m.add_block(func_id, 'entry')
@@ -2204,6 +2282,7 @@ fn (mut b Builder) generate_map_ptr_noop_body(func_id int) {
 	b.block_instr0(.ret, entry, b.void_type)
 }
 
+// generate_map_delete_body supports generate map delete body handling for Builder.
 fn (mut b Builder) generate_map_delete_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
@@ -2229,6 +2308,7 @@ fn (mut b Builder) generate_map_delete_body(func_id int) {
 	b.block_instr0(.ret, blk_done, b.void_type)
 }
 
+// generate_map_clone_body supports generate map clone body handling for Builder.
 fn (mut b Builder) generate_map_clone_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
@@ -2294,6 +2374,7 @@ fn (mut b Builder) generate_map_clone_body(func_id int) {
 	b.block_instr1(.ret, blk_empty, b.void_type, m)
 }
 
+// register_u8_runtime_stubs updates register u8 runtime stubs state for ssa.
 fn (mut b Builder) register_u8_runtime_stubs() {
 	mut p1 := []TypeID{}
 	p1 << b.i8_type
@@ -2303,6 +2384,7 @@ fn (mut b Builder) register_u8_runtime_stubs() {
 	}
 }
 
+// generate_u8_predicate_body supports generate u8 predicate body handling for Builder.
 fn (mut b Builder) generate_u8_predicate_body(func_id int, name string) {
 	entry := b.m.add_block(func_id, 'entry')
 	c := b.func_add_argument(func_id, b.i8_type, 'c')
@@ -2328,6 +2410,7 @@ fn (mut b Builder) generate_u8_predicate_body(func_id int, name string) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// u8_in_range supports u8 in range handling for Builder.
 fn (mut b Builder) u8_in_range(block_id BlockID, c ValueID, low u8, high u8) ValueID {
 	low_v := b.m.get_or_add_const(b.i8_type, '${int(low)}')
 	high_v := b.m.get_or_add_const(b.i8_type, '${int(high)}')
@@ -2336,6 +2419,7 @@ fn (mut b Builder) u8_in_range(block_id BlockID, c ValueID, low u8, high u8) Val
 	return b.block_instr2(.and_, block_id, b.i1_type, ge_low, le_high)
 }
 
+// register_heap_tracking_stubs updates register heap tracking stubs state for ssa.
 fn (mut b Builder) register_heap_tracking_stubs() {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	mut p2 := []TypeID{}
@@ -2349,11 +2433,13 @@ fn (mut b Builder) register_heap_tracking_stubs() {
 	b.generate_void_noop_body(free_id)
 }
 
+// generate_void_noop_body supports generate void noop body handling for Builder.
 fn (mut b Builder) generate_void_noop_body(func_id int) {
 	entry := b.m.add_block(func_id, 'entry')
 	b.block_instr0(.ret, entry, b.void_type)
 }
 
+// register_process_capture_stubs updates register process capture stubs state for ssa.
 fn (mut b Builder) register_process_capture_stubs() {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	mut p3 := []TypeID{}
@@ -2366,6 +2452,7 @@ fn (mut b Builder) register_process_capture_stubs() {
 	}
 }
 
+// register_file_check_stubs updates register file check stubs state for ssa.
 fn (mut b Builder) register_file_check_stubs() {
 	mut p1 := []TypeID{}
 	p1 << b.i64_type
@@ -2375,12 +2462,14 @@ fn (mut b Builder) register_file_check_stubs() {
 	}
 }
 
+// generate_identity_i64_body supports generate identity i64 body handling for Builder.
 fn (mut b Builder) generate_identity_i64_body(func_id int) {
 	entry := b.m.add_block(func_id, 'entry')
 	n := b.func_add_argument(func_id, b.i64_type, 'n')
 	b.block_instr1(.ret, entry, b.void_type, n)
 }
 
+// register_fd_macro_stubs updates register fd macro stubs state for ssa.
 fn (mut b Builder) register_fd_macro_stubs() {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	mut fd_set_params := []TypeID{}
@@ -2397,6 +2486,7 @@ fn (mut b Builder) register_fd_macro_stubs() {
 	b.generate_const_i64_with_params_body(isset_id, fd_check_params, '0')
 }
 
+// register_signal_macro_stubs updates register signal macro stubs state for ssa.
 fn (mut b Builder) register_signal_macro_stubs() {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	mut params := []TypeID{}
@@ -2411,6 +2501,7 @@ fn (mut b Builder) register_signal_macro_stubs() {
 	b.generate_const_ptr_with_params_body(func_id, params, ptr_i8, '0')
 }
 
+// generate_void_noop_with_params_body supports generate_void_noop_with_params_body handling in ssa.
 fn (mut b Builder) generate_void_noop_with_params_body(func_id int, params []TypeID) {
 	entry := b.m.add_block(func_id, 'entry')
 	for i, param in params {
@@ -2419,6 +2510,7 @@ fn (mut b Builder) generate_void_noop_with_params_body(func_id int, params []Typ
 	b.block_instr0(.ret, entry, b.void_type)
 }
 
+// generate_const_i64_with_params_body supports generate_const_i64_with_params_body handling in ssa.
 fn (mut b Builder) generate_const_i64_with_params_body(func_id int, params []TypeID, value string) {
 	entry := b.m.add_block(func_id, 'entry')
 	for i, param in params {
@@ -2428,6 +2520,7 @@ fn (mut b Builder) generate_const_i64_with_params_body(func_id int, params []Typ
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// generate_const_ptr_with_params_body supports generate_const_ptr_with_params_body handling in ssa.
 fn (mut b Builder) generate_const_ptr_with_params_body(func_id int, params []TypeID, ret_type TypeID, value string) {
 	entry := b.m.add_block(func_id, 'entry')
 	for i, param in params {
@@ -2437,6 +2530,7 @@ fn (mut b Builder) generate_const_ptr_with_params_body(func_id int, params []Typ
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// register_os_stat_stubs updates register os stat stubs state for ssa.
 fn (mut b Builder) register_os_stat_stubs() {
 	mut p1 := []TypeID{}
 	p1 << b.str_type
@@ -2455,6 +2549,7 @@ fn (mut b Builder) register_os_stat_stubs() {
 	}
 }
 
+// generate_os_stat_kind_body supports generate os stat kind body handling for Builder.
 fn (mut b Builder) generate_os_stat_kind_body(func_id int, stat_fn string, expected_mode string) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_i32 := b.m.type_store.get_ptr(b.i32_type)
@@ -2492,6 +2587,7 @@ fn (mut b Builder) generate_os_stat_kind_body(func_id int, stat_fn string, expec
 	b.block_instr1(.ret, ok_block, b.void_type, is_kind)
 }
 
+// generate_os_ls_body supports generate os ls body handling for Builder.
 fn (mut b Builder) generate_os_ls_body(func_id int, result_type TypeID) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_array := b.m.type_store.get_ptr(b.array_type)
@@ -2554,6 +2650,7 @@ fn (mut b Builder) generate_os_ls_body(func_id int, result_type TypeID) {
 	b.block_instr1(.ret, blk_done, b.void_type, wrapped)
 }
 
+// block_option_value supports block option value handling for Builder.
 fn (mut b Builder) block_option_value(block_id BlockID, opt_typ TypeID, ok bool, raw_value ValueID) ValueID {
 	ptr_opt := b.m.type_store.get_ptr(opt_typ)
 	alloca := b.block_instr0(.alloca, block_id, ptr_opt)
@@ -2572,6 +2669,7 @@ fn (mut b Builder) block_option_value(block_id BlockID, opt_typ TypeID, ok bool,
 	return b.block_instr1(.load, block_id, opt_typ, alloca)
 }
 
+// emit_cstring_from_string converts emit cstring from string data for ssa.
 fn (mut b Builder) emit_cstring_from_string(block_id BlockID, value ValueID) ValueID {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
@@ -2594,12 +2692,14 @@ fn (mut b Builder) emit_cstring_from_string(block_id BlockID, value ValueID) Val
 	return out_data
 }
 
+// generate_const_i64_body supports generate const i64 body handling for Builder.
 fn (mut b Builder) generate_const_i64_body(func_id int, value string) {
 	entry := b.m.add_block(func_id, 'entry')
 	result := b.m.get_or_add_const(b.i64_type, value)
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// register_prealloc_atomic_stubs updates register prealloc atomic stubs state for ssa.
 fn (mut b Builder) register_prealloc_atomic_stubs() {
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
 	mut p1_ptr := []TypeID{}
@@ -2623,6 +2723,7 @@ fn (mut b Builder) register_prealloc_atomic_stubs() {
 	b.generate_atomic_cas_i64_body(cas_id)
 }
 
+// generate_atomic_load_i64_body supports generate atomic load i64 body handling for Builder.
 fn (mut b Builder) generate_atomic_load_i64_body(func_id int) {
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
 	entry := b.m.add_block(func_id, 'entry')
@@ -2631,6 +2732,7 @@ fn (mut b Builder) generate_atomic_load_i64_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, value)
 }
 
+// generate_atomic_store_i64_body supports generate atomic store i64 body handling for Builder.
 fn (mut b Builder) generate_atomic_store_i64_body(func_id int) {
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
 	entry := b.m.add_block(func_id, 'entry')
@@ -2640,6 +2742,7 @@ fn (mut b Builder) generate_atomic_store_i64_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, value)
 }
 
+// generate_atomic_add_i64_body supports generate atomic add i64 body handling for Builder.
 fn (mut b Builder) generate_atomic_add_i64_body(func_id int) {
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
 	entry := b.m.add_block(func_id, 'entry')
@@ -2651,6 +2754,7 @@ fn (mut b Builder) generate_atomic_add_i64_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, new_value)
 }
 
+// generate_atomic_cas_i64_body converts generate atomic cas i64 body data for ssa.
 fn (mut b Builder) generate_atomic_cas_i64_body(func_id int) {
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
 	entry := b.m.add_block(func_id, 'entry')
@@ -2669,6 +2773,7 @@ fn (mut b Builder) generate_atomic_cas_i64_body(func_id int) {
 	b.block_instr1(.ret, else_block, b.void_type, zero)
 }
 
+// register_array_string_stubs updates register array string stubs state for ssa.
 fn (mut b Builder) register_array_string_stubs() {
 	mut p1 := []TypeID{}
 	p1 << b.array_type
@@ -2692,6 +2797,7 @@ fn (mut b Builder) register_array_string_stubs() {
 	}
 }
 
+// generate_array_string_join_body supports generate array string join body handling for Builder.
 fn (mut b Builder) generate_array_string_join_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
@@ -2757,6 +2863,7 @@ fn (mut b Builder) generate_array_string_join_body(func_id int) {
 	b.block_instr1(.ret, done, b.void_type, result)
 }
 
+// generate_array_bytestr_body supports generate array bytestr body handling for Builder.
 fn (mut b Builder) generate_array_bytestr_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_array := b.m.type_store.get_ptr(b.array_type)
@@ -2785,6 +2892,7 @@ fn (mut b Builder) generate_array_bytestr_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// register_ierror_stubs updates register ierror stubs state for ssa.
 fn (mut b Builder) register_ierror_stubs() {
 	ptr_ierror := b.m.type_store.get_ptr(b.i64_type)
 	mut p1 := []TypeID{}
@@ -2795,6 +2903,7 @@ fn (mut b Builder) register_ierror_stubs() {
 	b.generate_ierror_code_body(code_id, ptr_ierror)
 }
 
+// generate_ierror_msg_body supports generate ierror msg body handling for Builder.
 fn (mut b Builder) generate_ierror_msg_body(func_id int, ptr_ierror TypeID) {
 	entry := b.m.add_block(func_id, 'entry')
 	_ := b.func_add_argument(func_id, ptr_ierror, 'err')
@@ -2802,6 +2911,7 @@ fn (mut b Builder) generate_ierror_msg_body(func_id int, ptr_ierror TypeID) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// generate_ierror_code_body supports generate ierror code body handling for Builder.
 fn (mut b Builder) generate_ierror_code_body(func_id int, ptr_ierror TypeID) {
 	entry := b.m.add_block(func_id, 'entry')
 	_ := b.func_add_argument(func_id, ptr_ierror, 'err')
@@ -2809,6 +2919,7 @@ fn (mut b Builder) generate_ierror_code_body(func_id int, ptr_ierror TypeID) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// register_fixed_array_contains_stubs reports register_fixed_array_contains_stubs logic in ssa.
 fn (mut b Builder) register_fixed_array_contains_stubs() {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	mut p3_string := []TypeID{}
@@ -2827,6 +2938,8 @@ fn (mut b Builder) register_fixed_array_contains_stubs() {
 	b.generate_const_bool_body(contains_int_id, false)
 }
 
+// generate_fixed_array_contains_string_body
+// builds helper data for ssa.
 fn (mut b Builder) generate_fixed_array_contains_string_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
@@ -2870,12 +2983,14 @@ fn (mut b Builder) generate_fixed_array_contains_string_body(func_id int) {
 	b.block_instr1(.ret, blk_not_found, b.void_type, false_value)
 }
 
+// generate_const_bool_body supports generate const bool body handling for Builder.
 fn (mut b Builder) generate_const_bool_body(func_id int, value bool) {
 	entry := b.m.add_block(func_id, 'entry')
 	result := b.m.get_or_add_const(b.i1_type, if value { '1' } else { '0' })
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// register_array_contains_stubs reports whether register array contains stubs applies in ssa.
 fn (mut b Builder) register_array_contains_stubs() {
 	mut p2_string := []TypeID{}
 	p2_string << b.array_type
@@ -2895,6 +3010,8 @@ fn (mut b Builder) register_array_contains_stubs() {
 	b.generate_array_contains_from_index_body(contains_int_id, 'array_index_int', b.i64_type)
 }
 
+// generate_array_contains_from_index_body
+// supports helper handling in ssa.
 fn (mut b Builder) generate_array_contains_from_index_body(func_id int, index_name string, needle_type TypeID) {
 	entry := b.m.add_block(func_id, 'entry')
 	arr := b.func_add_argument(func_id, b.array_type, 'arr')
@@ -2906,6 +3023,7 @@ fn (mut b Builder) generate_array_contains_from_index_body(func_id int, index_na
 	b.block_instr1(.ret, entry, b.void_type, found)
 }
 
+// generate_array_index_string_body supports generate array index string body handling for Builder.
 fn (mut b Builder) generate_array_index_string_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
@@ -2957,6 +3075,7 @@ fn (mut b Builder) generate_array_index_string_body(func_id int) {
 	b.block_instr1(.ret, blk_not_found, b.void_type, not_found)
 }
 
+// generate_array_index_int_body supports generate array index int body handling for Builder.
 fn (mut b Builder) generate_array_index_int_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
@@ -3008,6 +3127,7 @@ fn (mut b Builder) generate_array_index_int_body(func_id int) {
 	b.block_instr1(.ret, blk_not_found, b.void_type, not_found)
 }
 
+// emit_map_state_alloc emits emit map state alloc output for ssa.
 fn (mut b Builder) emit_map_state_alloc(block_id BlockID, key_size ValueID, val_size ValueID) ValueID {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_state := b.m.type_store.get_ptr(b.map_state_type)
@@ -3036,16 +3156,19 @@ fn (mut b Builder) emit_map_state_alloc(block_id BlockID, key_size ValueID, val_
 	return state
 }
 
+// map_state_ptr supports map state ptr handling for Builder.
 fn (mut b Builder) map_state_ptr(block_id BlockID, map_ptr ValueID) ValueID {
 	ptr_state := b.m.type_store.get_ptr(b.map_state_type)
 	state_field_ptr := b.block_struct_field_ptr(block_id, map_ptr, b.map_type, 0)
 	return b.block_instr1(.load, block_id, ptr_state, state_field_ptr)
 }
 
+// map_state_field_ptr supports map state field ptr handling for Builder.
 fn (mut b Builder) map_state_field_ptr(block_id BlockID, state_ptr ValueID, field_idx int) ValueID {
 	return b.block_struct_field_ptr(block_id, state_ptr, b.map_state_type, field_idx)
 }
 
+// generate_new_map_body supports generate new map body handling for Builder.
 fn (mut b Builder) generate_new_map_body(func_id int) {
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
 	entry := b.m.add_block(func_id, 'entry')
@@ -3068,6 +3191,7 @@ fn (mut b Builder) generate_new_map_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// generate_map_find_body supports generate map find body handling for Builder.
 fn (mut b Builder) generate_map_find_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
@@ -3142,6 +3266,7 @@ fn (mut b Builder) generate_map_find_body(func_id int) {
 	b.block_instr1(.ret, blk_not_found, b.void_type, not_found)
 }
 
+// generate_map_exists_body supports generate map exists body handling for Builder.
 fn (mut b Builder) generate_map_exists_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
@@ -3155,6 +3280,7 @@ fn (mut b Builder) generate_map_exists_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, found)
 }
 
+// generate_map_get_body supports generate map get body handling for Builder.
 fn (mut b Builder) generate_map_get_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
@@ -3183,6 +3309,7 @@ fn (mut b Builder) generate_map_get_body(func_id int) {
 	b.block_instr1(.ret, blk_missing, b.void_type, zero_ptr)
 }
 
+// generate_map_get_check_body supports generate map get check body handling for Builder.
 fn (mut b Builder) generate_map_get_check_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
@@ -3211,6 +3338,7 @@ fn (mut b Builder) generate_map_get_check_body(func_id int) {
 	b.block_instr1(.ret, blk_missing, b.void_type, zero_ptr)
 }
 
+// generate_map_set_default_body supports generate map set default body handling for Builder.
 fn (mut b Builder) generate_map_set_default_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
@@ -3233,6 +3361,7 @@ fn (mut b Builder) generate_map_set_default_body(func_id int) {
 	b.block_instr0(.ret, entry, b.void_type)
 }
 
+// generate_map_set_sized_body supports generate map set sized body handling for Builder.
 fn (mut b Builder) generate_map_set_sized_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
@@ -3329,6 +3458,7 @@ fn (mut b Builder) generate_map_set_sized_body(func_id int) {
 	b.block_instr0(.ret, blk_store, b.void_type)
 }
 
+// generate_array_new_body supports generate array new body handling for Builder.
 fn (mut b Builder) generate_array_new_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_array := b.m.type_store.get_ptr(b.array_type)
@@ -3390,6 +3520,7 @@ fn (mut b Builder) generate_array_new_body(func_id int) {
 	b.block_instr1(.ret, blk_fields, b.void_type, arr)
 }
 
+// generate_array_get_body supports generate array get body handling for Builder.
 fn (mut b Builder) generate_array_get_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_array := b.m.type_store.get_ptr(b.array_type)
@@ -3410,6 +3541,7 @@ fn (mut b Builder) generate_array_get_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// generate_array_slice_body supports generate array slice body handling for Builder.
 fn (mut b Builder) generate_array_slice_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_array := b.m.type_store.get_ptr(b.array_type)
@@ -3449,11 +3581,13 @@ fn (mut b Builder) generate_array_slice_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// register_arguments_stub updates register arguments stub state for ssa.
 fn (mut b Builder) register_arguments_stub() {
 	arguments_id := b.register_synthetic_function('arguments', b.array_type, []TypeID{})
 	b.generate_arguments_body(arguments_id)
 }
 
+// generate_arguments_body supports generate arguments body handling for Builder.
 fn (mut b Builder) generate_arguments_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_ptr_i8 := b.m.type_store.get_ptr(ptr_i8)
@@ -3510,6 +3644,7 @@ fn (mut b Builder) generate_arguments_body(func_id int) {
 	b.block_instr1(.ret, done, b.void_type, result)
 }
 
+// generate_array_clone_body supports generate array clone body handling for Builder.
 fn (mut b Builder) generate_array_clone_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_array := b.m.type_store.get_ptr(b.array_type)
@@ -3545,6 +3680,7 @@ fn (mut b Builder) generate_array_clone_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// generate_array_repeat_to_depth_body converts generate array repeat to depth body data for ssa.
 fn (mut b Builder) generate_array_repeat_to_depth_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_array := b.m.type_store.get_ptr(b.array_type)
@@ -3601,6 +3737,7 @@ fn (mut b Builder) generate_array_repeat_to_depth_body(func_id int) {
 	b.block_instr1(.ret, done, b.void_type, result)
 }
 
+// generate_array_push_body supports generate array push body handling for Builder.
 fn (mut b Builder) generate_array_push_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_array := b.m.type_store.get_ptr(b.array_type)
@@ -3648,6 +3785,7 @@ fn (mut b Builder) generate_array_push_body(func_id int) {
 	b.block_instr0(.ret, blk_store, b.void_type)
 }
 
+// generate_array_push_many_body supports generate array push many body handling for Builder.
 fn (mut b Builder) generate_array_push_many_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_array := b.m.type_store.get_ptr(b.array_type)
@@ -3705,6 +3843,7 @@ fn (mut b Builder) generate_array_push_many_body(func_id int) {
 	b.block_instr0(.ret, blk_done, b.void_type)
 }
 
+// generate_array_push_many_array_body supports generate_array_push_many_array_body handling in ssa.
 fn (mut b Builder) generate_array_push_many_array_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_array := b.m.type_store.get_ptr(b.array_type)
@@ -3725,6 +3864,7 @@ fn (mut b Builder) generate_array_push_many_array_body(func_id int) {
 	b.block_instr0(.ret, entry, b.void_type)
 }
 
+// register_string_eq_stub updates register string eq stub state for ssa.
 fn (mut b Builder) register_string_eq_stub() {
 	mut p2 := []TypeID{}
 	p2 << b.str_type
@@ -3733,6 +3873,7 @@ fn (mut b Builder) register_string_eq_stub() {
 	b.generate_string_eq_body(func_id)
 }
 
+// register_fast_string_eq_stub updates register fast string eq stub state for ssa.
 fn (mut b Builder) register_fast_string_eq_stub() {
 	mut p2 := []TypeID{}
 	p2 << b.str_type
@@ -3741,6 +3882,7 @@ fn (mut b Builder) register_fast_string_eq_stub() {
 	b.generate_string_eq_body(func_id)
 }
 
+// register_string_lt_stub updates register string lt stub state for ssa.
 fn (mut b Builder) register_string_lt_stub() {
 	mut p2 := []TypeID{}
 	p2 << b.str_type
@@ -3749,6 +3891,7 @@ fn (mut b Builder) register_string_lt_stub() {
 	b.generate_string_lt_body(func_id)
 }
 
+// register_string_trim_stubs updates register string trim stubs state for ssa.
 fn (mut b Builder) register_string_trim_stubs() {
 	mut p2 := []TypeID{}
 	p2 << b.str_type
@@ -3757,6 +3900,7 @@ fn (mut b Builder) register_string_trim_stubs() {
 	b.generate_string_trim_right_body(trim_right_id)
 }
 
+// generate_string_trim_right_body supports generate string trim right body handling for Builder.
 fn (mut b Builder) generate_string_trim_right_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
@@ -3851,6 +3995,7 @@ fn (mut b Builder) generate_string_trim_right_body(func_id int) {
 	b.block_instr1(.ret, done, b.void_type, result)
 }
 
+// register_string_last_part_stubs updates register string last part stubs state for ssa.
 fn (mut b Builder) register_string_last_part_stubs() {
 	mut p2 := []TypeID{}
 	p2 << b.str_type
@@ -3865,6 +4010,7 @@ fn (mut b Builder) register_string_last_part_stubs() {
 	}
 }
 
+// generate_string_all_last_body supports generate string all last body handling for Builder.
 fn (mut b Builder) generate_string_all_last_body(func_id int, before bool) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
@@ -3943,6 +4089,7 @@ fn (mut b Builder) generate_string_all_last_body(func_id int, before bool) {
 	b.block_instr1(.ret, return_original, b.void_type, s)
 }
 
+// generate_string_eq_body supports generate string eq body handling for Builder.
 fn (mut b Builder) generate_string_eq_body(func_id int) {
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
@@ -3982,6 +4129,7 @@ fn (mut b Builder) generate_string_eq_body(func_id int) {
 	b.block_instr1(.ret, blk_cmp, b.void_type, is_eq)
 }
 
+// generate_string_lt_body supports generate string lt body handling for Builder.
 fn (mut b Builder) generate_string_lt_body(func_id int) {
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
@@ -4042,6 +4190,7 @@ fn (mut b Builder) generate_string_lt_body(func_id int) {
 	b.block_instr1(.ret, blk_len, b.void_type, len_lt)
 }
 
+// generate_wymix_body supports generate wymix body handling for Builder.
 fn (mut b Builder) generate_wymix_body(func_id int) {
 	entry := b.m.add_block(func_id, 'entry')
 	param_a := b.func_add_argument(func_id, b.i64_type, 'a')
@@ -4050,6 +4199,7 @@ fn (mut b Builder) generate_wymix_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// generate_wyhash64_body supports generate wyhash64 body handling for Builder.
 fn (mut b Builder) generate_wyhash64_body(func_id int) {
 	entry := b.m.add_block(func_id, 'entry')
 	param_a := b.func_add_argument(func_id, b.i64_type, 'a')
@@ -4064,6 +4214,7 @@ fn (mut b Builder) generate_wyhash64_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// wymum_pair_inline supports wymum pair inline handling for Builder.
 fn (mut b Builder) wymum_pair_inline(block_id BlockID, a ValueID, b_val ValueID) (ValueID, ValueID) {
 	mask32 := b.m.get_or_add_const(b.i64_type, '4294967295')
 	c32 := b.m.get_or_add_const(b.i64_type, '32')
@@ -4090,11 +4241,13 @@ fn (mut b Builder) wymum_pair_inline(block_id BlockID, a ValueID, b_val ValueID)
 	return lo, hi
 }
 
+// wymix_inline supports wymix inline handling for Builder.
 fn (mut b Builder) wymix_inline(block_id BlockID, a ValueID, b_val ValueID) ValueID {
 	lo, hi := b.wymum_pair_inline(block_id, a, b_val)
 	return b.block_instr2(.xor, block_id, b.i64_type, hi, lo)
 }
 
+// generate_wyhash_body supports generate wyhash body handling for Builder.
 fn (mut b Builder) generate_wyhash_body(func_id int) {
 	ptr_u8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_u32 := b.m.type_store.get_ptr(b.u32_type)
@@ -4247,6 +4400,7 @@ fn (mut b Builder) generate_wyhash_body(func_id int) {
 	b.block_instr1(.ret, blk_final, b.void_type, final_result)
 }
 
+// build_functions builds functions data for ssa.
 fn (mut b Builder) build_functions() {
 	mut cur_module := ''
 	for node in b.a.nodes {
@@ -4326,6 +4480,7 @@ fn (mut b Builder) register_type_aliases() {
 	}
 }
 
+// checker_param_type_name supports checker param type name handling for Builder.
 fn (b &Builder) checker_param_type_name(fn_name string, module_name string, idx int) ?string {
 	if b.tc == unsafe { nil } {
 		return none
@@ -4341,6 +4496,7 @@ fn (b &Builder) checker_param_type_name(fn_name string, module_name string, idx 
 	return none
 }
 
+// checker_fn_name_candidates supports checker fn name candidates handling for ssa.
 fn checker_fn_name_candidates(fn_name string, module_name string) []string {
 	mut candidates := []string{}
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
@@ -4364,6 +4520,7 @@ fn checker_fn_name_candidates(fn_name string, module_name string) []string {
 	return candidates
 }
 
+// checker_return_type supports checker return type handling for Builder.
 fn (mut b Builder) checker_return_type(fn_name string, module_name string) ?TypeID {
 	if b.tc == unsafe { nil } {
 		return none
@@ -4377,6 +4534,7 @@ fn (mut b Builder) checker_return_type(fn_name string, module_name string) ?Type
 	return none
 }
 
+// fn_is_used supports fn is used handling for Builder.
 fn (b &Builder) fn_is_used(name string) bool {
 	if name in b.used_fns {
 		return true
@@ -4425,6 +4583,7 @@ fn (b &Builder) fn_is_used(name string) bool {
 	return false
 }
 
+// build_function builds function data for ssa.
 fn (mut b Builder) build_function(node flat.Node, module_name string) {
 	fn_name := ssa_fn_name_in_module(module_name, node.value)
 	func_id := b.fn_ids[fn_name]
@@ -4482,6 +4641,7 @@ fn (mut b Builder) build_function(node flat.Node, module_name string) {
 	}
 }
 
+// build_top_level_main builds top level main data for ssa.
 fn (mut b Builder) build_top_level_main() {
 	func_id := b.fn_ids['main'] or { return }
 	b.cur_module = 'main'
@@ -4509,6 +4669,7 @@ fn (mut b Builder) build_top_level_main() {
 	}
 }
 
+// fn_body_ids supports fn body ids handling for Builder.
 fn (b &Builder) fn_body_ids(node flat.Node) []flat.NodeId {
 	mut ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
@@ -4521,6 +4682,7 @@ fn (b &Builder) fn_body_ids(node flat.Node) []flat.NodeId {
 	return ids
 }
 
+// is_declaration_node reports whether is declaration node applies in ssa.
 fn (b &Builder) is_declaration_node(node flat.Node) bool {
 	return match node.kind {
 		.fn_decl, .c_fn_decl, .struct_decl, .field_decl, .global_decl, .const_decl, .const_field,
@@ -4534,6 +4696,7 @@ fn (b &Builder) is_declaration_node(node flat.Node) bool {
 	}
 }
 
+// is_terminator reports whether is terminator applies in ssa.
 fn (b &Builder) is_terminator(val_id ValueID) bool {
 	if val_id <= 0 || val_id >= b.m.values.len {
 		return false
@@ -4546,10 +4709,12 @@ fn (b &Builder) is_terminator(val_id ValueID) bool {
 	return instr.op == .ret || instr.op == .br || instr.op == .jmp || instr.op == .unreachable
 }
 
+// valid_node_id supports valid node id handling for Builder.
 fn (b &Builder) valid_node_id(id flat.NodeId) bool {
 	return b.a != unsafe { nil } && int(id) >= 0 && int(id) < b.a.nodes.len
 }
 
+// ident_name supports ident name handling for Builder.
 fn (b &Builder) ident_name(id flat.NodeId) string {
 	if !b.valid_node_id(id) {
 		return ''
@@ -4561,6 +4726,7 @@ fn (b &Builder) ident_name(id flat.NodeId) string {
 	return node.value
 }
 
+// save_var_binding updates save var binding state for ssa.
 fn (b &Builder) save_var_binding(name string) VarBinding {
 	if name.len == 0 {
 		return VarBinding{}
@@ -4575,6 +4741,7 @@ fn (b &Builder) save_var_binding(name string) VarBinding {
 	return VarBinding{}
 }
 
+// restore_var_binding supports restore var binding handling for Builder.
 fn (mut b Builder) restore_var_binding(name string, binding VarBinding) {
 	if name.len == 0 {
 		return
@@ -4592,6 +4759,7 @@ fn (mut b Builder) restore_var_binding(name string, binding VarBinding) {
 	}
 }
 
+// bind_loop_var supports bind loop var handling for Builder.
 fn (mut b Builder) bind_loop_var(name string, typ TypeID, typ_name string) ValueID {
 	if name.len == 0 {
 		return ValueID(0)
@@ -4604,6 +4772,7 @@ fn (mut b Builder) bind_loop_var(name string, typ TypeID, typ_name string) Value
 	return slot
 }
 
+// for_in_container_type_name supports for in container type name handling for Builder.
 fn (b &Builder) for_in_container_type_name(container_id flat.NodeId) string {
 	checked := b.checked_expr_type_name(container_id)
 	if checked.len > 0 && checked != 'unknown' {
@@ -4634,6 +4803,7 @@ fn (b &Builder) for_in_container_type_name(container_id flat.NodeId) string {
 	return ''
 }
 
+// for_in_array_elem_type_name supports for in array elem type name handling for Builder.
 fn (b &Builder) for_in_array_elem_type_name(container_id flat.NodeId, container_type string) string {
 	clean := container_type.trim_left('&')
 	if clean.starts_with('[]') {
@@ -4661,6 +4831,7 @@ fn (b &Builder) for_in_array_elem_type_name(container_id flat.NodeId, container_
 	return 'int'
 }
 
+// build_stmt builds stmt data for ssa.
 fn (mut b Builder) build_stmt(id flat.NodeId) {
 	if int(id) < 0 {
 		return
@@ -4766,6 +4937,7 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 	}
 }
 
+// build_multi_return_value builds multi return value data for ssa.
 fn (mut b Builder) build_multi_return_value(ret_type TypeID, node flat.Node) ValueID {
 	alloca := b.emit0(.alloca, b.m.type_store.get_ptr(ret_type))
 	typ := b.m.type_store.types[ret_type]
@@ -4784,6 +4956,7 @@ fn (mut b Builder) build_multi_return_value(ret_type TypeID, node flat.Node) Val
 	return b.emit1(.load, ret_type, alloca)
 }
 
+// emit_deferred_stmts emits emit deferred stmts output for ssa.
 fn (mut b Builder) emit_deferred_stmts() {
 	for i := b.defer_body_ids.len; i > 0; i-- {
 		body_id := b.defer_body_ids[i - 1]
@@ -4807,6 +4980,7 @@ fn (mut b Builder) emit_deferred_stmts() {
 	}
 }
 
+// label_block supports label block handling for Builder.
 fn (mut b Builder) label_block(name string) BlockID {
 	if block := b.label_blocks[name] {
 		return block
@@ -4816,6 +4990,7 @@ fn (mut b Builder) label_block(name string) BlockID {
 	return block
 }
 
+// build_decl_assign builds decl assign data for ssa.
 fn (mut b Builder) build_decl_assign(node flat.Node) {
 	mut i := 0
 	for i < node.children_count {
@@ -4842,6 +5017,7 @@ fn (mut b Builder) build_decl_assign(node flat.Node) {
 	}
 }
 
+// build_assign builds assign data for ssa.
 fn (mut b Builder) build_assign(node flat.Node) {
 	mut i := 0
 	for i < node.children_count {
@@ -4889,6 +5065,7 @@ fn (mut b Builder) build_assign(node flat.Node) {
 	}
 }
 
+// build_selector_assign builds selector assign data for ssa.
 fn (mut b Builder) build_selector_assign(node flat.Node) {
 	mut i := 0
 	for i < node.children_count {
@@ -4914,6 +5091,7 @@ fn (mut b Builder) build_selector_assign(node flat.Node) {
 	}
 }
 
+// build_index_assign builds index assign data for ssa.
 fn (mut b Builder) build_index_assign(node flat.Node) {
 	mut i := 0
 	for i < node.children_count {
@@ -4935,6 +5113,7 @@ fn (mut b Builder) build_index_assign(node flat.Node) {
 	}
 }
 
+// build_for builds for data for ssa.
 fn (mut b Builder) build_for(node flat.Node) {
 	init_id := b.a.child(&node, 0)
 	cond_id := b.a.child(&node, 1)
@@ -4993,6 +5172,7 @@ fn (mut b Builder) build_for(node flat.Node) {
 	b.cur_block = exit_block
 }
 
+// build_for_in builds for in data for ssa.
 fn (mut b Builder) build_for_in(node flat.Node) {
 	if node.children_count < 3 {
 		return
@@ -5018,6 +5198,7 @@ fn (mut b Builder) build_for_in(node flat.Node) {
 	b.build_array_for_in(node, key_id, val_id, container_id, body_start, container_type)
 }
 
+// build_range_for_in builds range for in data for ssa.
 fn (mut b Builder) build_range_for_in(node flat.Node, key_id flat.NodeId, start_id flat.NodeId, end_id flat.NodeId, body_start int) {
 	start_val := b.build_expr(start_id)
 	end_val := b.build_expr(end_id)
@@ -5062,6 +5243,7 @@ fn (mut b Builder) build_range_for_in(node flat.Node, key_id flat.NodeId, start_
 	b.cur_block = exit_block
 }
 
+// build_array_for_in builds array for in data for ssa.
 fn (mut b Builder) build_array_for_in(node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, body_start int, container_type string) {
 	arr_val := b.build_expr(container_id)
 	ptr_array := b.m.type_store.get_ptr(b.array_type)
@@ -5130,6 +5312,7 @@ fn (mut b Builder) build_array_for_in(node flat.Node, key_id flat.NodeId, val_id
 	b.cur_block = exit_block
 }
 
+// build_string_for_in builds string for in data for ssa.
 fn (mut b Builder) build_string_for_in(node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, body_start int) {
 	str_val := b.build_expr(container_id)
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
@@ -5200,6 +5383,7 @@ fn (mut b Builder) build_string_for_in(node flat.Node, key_id flat.NodeId, val_i
 	b.cur_block = exit_block
 }
 
+// build_map_for_in builds map for in data for ssa.
 fn (mut b Builder) build_map_for_in(node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, body_start int, container_type string) {
 	key_type_name, val_type_name := map_type_parts(container_type)
 	key_type := if key_type_name.len > 0 { b.resolve_type(key_type_name) } else { b.str_type }
@@ -5289,12 +5473,14 @@ fn (mut b Builder) build_map_for_in(node flat.Node, key_id flat.NodeId, val_id f
 	b.cur_block = exit_block
 }
 
+// build_for_in_body builds for in body data for ssa.
 fn (mut b Builder) build_for_in_body(node flat.Node, body_start int) {
 	for i in body_start .. node.children_count {
 		b.build_stmt(b.a.child(&node, i))
 	}
 }
 
+// build_if builds if data for ssa.
 fn (mut b Builder) build_if(node flat.Node) {
 	cond_node := b.a.child_node(&node, 0)
 	then_block := b.m.add_block(b.cur_func, 'if_then')
@@ -5351,6 +5537,7 @@ fn (mut b Builder) build_if(node flat.Node) {
 	b.cur_block = merge_block
 }
 
+// build_if_guard_condition builds if guard condition data for ssa.
 fn (mut b Builder) build_if_guard_condition(node flat.Node) (ValueID, IfGuardState) {
 	if node.children_count < 2 {
 		return b.m.get_or_add_const(b.i1_type, '1'), IfGuardState{}
@@ -5375,6 +5562,7 @@ fn (mut b Builder) build_if_guard_condition(node flat.Node) (ValueID, IfGuardSta
 	return b.m.get_or_add_const(b.i1_type, '1'), IfGuardState{}
 }
 
+// build_option_if_guard builds option if guard data for ssa.
 fn (mut b Builder) build_option_if_guard(name string, rhs_id flat.NodeId) (bool, ValueID, IfGuardState) {
 	if name.len == 0 {
 		return false, b.m.get_or_add_const(b.i1_type, '0'), IfGuardState{}
@@ -5402,6 +5590,7 @@ fn (mut b Builder) build_option_if_guard(name string, rhs_id flat.NodeId) (bool,
 	return true, cond, guard
 }
 
+// build_map_index_if_guard builds map index if guard data for ssa.
 fn (mut b Builder) build_map_index_if_guard(name string, index_node flat.Node) (bool, ValueID, IfGuardState) {
 	base_id := b.a.child(&index_node, 0)
 	key_id := b.a.child(&index_node, 1)
@@ -5440,6 +5629,7 @@ fn (mut b Builder) build_map_index_if_guard(name string, index_node flat.Node) (
 	return true, found, guard
 }
 
+// activate_if_guard supports activate if guard handling for Builder.
 fn (mut b Builder) activate_if_guard(guard IfGuardState) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_val_type := b.m.type_store.get_ptr(guard.typ)
@@ -5456,6 +5646,7 @@ fn (mut b Builder) activate_if_guard(guard IfGuardState) {
 	}
 }
 
+// build_if_value builds if value data for ssa.
 fn (mut b Builder) build_if_value(id flat.NodeId, node flat.Node) ValueID {
 	if node.children_count < 3 {
 		b.build_if(node)
@@ -5516,6 +5707,7 @@ fn (mut b Builder) build_if_value(id flat.NodeId, node flat.Node) ValueID {
 	return b.m.add_instr(.phi, b.cur_block, result_type, operands)
 }
 
+// build_branch_value builds branch value data for ssa.
 fn (mut b Builder) build_branch_value(id flat.NodeId, node &flat.Node) ?ValueID {
 	if int(id) < 0 {
 		return none
@@ -5560,6 +5752,7 @@ fn (mut b Builder) build_branch_value(id flat.NodeId, node &flat.Node) ?ValueID 
 	return b.build_expr(id)
 }
 
+// build_match_stmt builds match stmt data for ssa.
 fn (mut b Builder) build_match_stmt(node flat.Node) {
 	if node.children_count < 2 {
 		return
@@ -5601,6 +5794,7 @@ fn (mut b Builder) build_match_stmt(node flat.Node) {
 	}
 }
 
+// build_match_value builds match value data for ssa.
 fn (mut b Builder) build_match_value(id flat.NodeId, node flat.Node) ValueID {
 	if node.children_count < 2 {
 		return b.default_value_for_type(b.if_value_result_type(id, []ValueID{}))
@@ -5659,6 +5853,7 @@ fn (mut b Builder) build_match_value(id flat.NodeId, node flat.Node) ValueID {
 	return b.m.add_instr(.phi, b.cur_block, result_type, operands)
 }
 
+// build_match_branch_value builds match branch value data for ssa.
 fn (mut b Builder) build_match_branch_value(branch flat.Node) ?ValueID {
 	body_start := b.match_branch_body_start(branch)
 	if body_start >= branch.children_count {
@@ -5688,6 +5883,7 @@ fn (mut b Builder) build_match_branch_value(branch flat.Node) ?ValueID {
 	return b.build_expr(last_id)
 }
 
+// match_branch_body_start supports match branch body start handling for Builder.
 fn (b &Builder) match_branch_body_start(branch flat.Node) int {
 	if branch.value == 'else' {
 		return 0
@@ -5695,6 +5891,7 @@ fn (b &Builder) match_branch_body_start(branch flat.Node) int {
 	return branch.value.int()
 }
 
+// build_match_condition builds match condition data for ssa.
 fn (mut b Builder) build_match_condition(subject ValueID, branch flat.Node) ValueID {
 	n_conds := b.match_branch_body_start(branch)
 	mut result := ValueID(0)
@@ -5713,6 +5910,7 @@ fn (mut b Builder) build_match_condition(subject ValueID, branch flat.Node) Valu
 	return result
 }
 
+// if_value_result_type supports if value result type handling for Builder.
 fn (mut b Builder) if_value_result_type(id flat.NodeId, values []ValueID) TypeID {
 	if b.tc != unsafe { nil } {
 		if typ := b.tc.expr_type(id) {
@@ -5731,6 +5929,7 @@ fn (mut b Builder) if_value_result_type(id flat.NodeId, values []ValueID) TypeID
 	return b.i64_type
 }
 
+// build_assert builds assert data for ssa.
 fn (mut b Builder) build_assert(node flat.Node) {
 	cond_val := b.build_expr(b.a.child(&node, 0))
 	fail_block := b.m.add_block(b.cur_func, 'assert_fail')
@@ -5748,6 +5947,7 @@ fn (mut b Builder) build_assert(node flat.Node) {
 	b.cur_block = ok_block
 }
 
+// build_expr builds expr data for ssa.
 fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 	if int(id) < 0 {
 		return b.m.get_or_add_const(b.i64_type, '0')
@@ -5956,6 +6156,7 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 	}
 }
 
+// build_range_expr builds range expr data for ssa.
 fn (mut b Builder) build_range_expr(node flat.Node) ValueID {
 	if node.children_count > 0 {
 		return b.build_expr(b.a.child(&node, 0))
@@ -5963,6 +6164,7 @@ fn (mut b Builder) build_range_expr(node flat.Node) ValueID {
 	return b.m.get_or_add_const(b.i64_type, '0')
 }
 
+// build_in_expr builds in expr data for ssa.
 fn (mut b Builder) build_in_expr(node flat.Node) ValueID {
 	if node.children_count < 2 {
 		return b.m.get_or_add_const(b.i1_type, '0')
@@ -6002,6 +6204,7 @@ fn (mut b Builder) build_in_expr(node flat.Node) ValueID {
 	return b.emit3(.call, b.i1_type, exists_ref, map_ptr, key_ptr)
 }
 
+// build_enum_val builds enum val data for ssa.
 fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
 	if node.typ.len > 0 {
 		if value := b.enum_value_for_type(node.typ, node.value) {
@@ -6028,6 +6231,7 @@ fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
 	return b.m.get_or_add_const(b.i64_type, '0')
 }
 
+// enum_value_for_type supports enum value for type handling for Builder.
 fn (b &Builder) enum_value_for_type(type_name string, member string) ?int {
 	if type_name.len == 0 || type_name in ['int', 'unknown'] {
 		return none
@@ -6053,6 +6257,7 @@ fn (b &Builder) enum_value_for_type(type_name string, member string) ?int {
 	return none
 }
 
+// is_flag_enum_type_name reports whether is flag enum type name applies in ssa.
 fn (b &Builder) is_flag_enum_type_name(type_name string) bool {
 	clean := type_name.trim_left('&')
 	if clean in b.flag_enum_types {
@@ -6076,6 +6281,7 @@ fn (b &Builder) is_flag_enum_type_name(type_name string) bool {
 	return clean == 'ArrayFlags'
 }
 
+// checker_has_flag_enum converts checker has flag enum data for ssa.
 fn (b &Builder) checker_has_flag_enum(type_name string) bool {
 	if b.tc == unsafe { nil } {
 		return false
@@ -6087,6 +6293,7 @@ fn (b &Builder) checker_has_flag_enum(type_name string) bool {
 	return short_name in b.tc.flag_enums
 }
 
+// build_enum_val_with_type builds enum val with type data for ssa.
 fn (mut b Builder) build_enum_val_with_type(node flat.Node, type_name string) ?ValueID {
 	if value := b.enum_value_for_type(type_name, node.value) {
 		return b.m.get_or_add_const(b.i64_type, value.str())
@@ -6094,6 +6301,7 @@ fn (mut b Builder) build_enum_val_with_type(node flat.Node, type_name string) ?V
 	return none
 }
 
+// char_literal_value supports char literal value handling for ssa.
 fn char_literal_value(value string) int {
 	if value.len == 0 {
 		return 0

@@ -2,17 +2,56 @@ module c
 
 import strings
 
-const c_reserved_words = ['auto', 'break', 'case', 'char', 'const', 'continue', 'copy', 'default',
-	'do', 'double', 'else', 'enum', 'extern', 'float', 'for', 'goto', 'if', 'inline', 'int', 'long',
-	'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct', 'switch',
-	'typedef', 'union', 'unsigned', 'void', 'volatile', 'while']
+// c_reserved_words is a set (not a list) so `name in c_reserved_words` is an O(1) hash
+// lookup. c_name() runs on every emitted identifier, so a linear scan here is costly.
+const c_reserved_words = {
+	'auto':     true
+	'break':    true
+	'case':     true
+	'char':     true
+	'const':    true
+	'continue': true
+	'copy':     true
+	'default':  true
+	'do':       true
+	'double':   true
+	'else':     true
+	'enum':     true
+	'extern':   true
+	'float':    true
+	'for':      true
+	'goto':     true
+	'if':       true
+	'inline':   true
+	'int':      true
+	'long':     true
+	'register': true
+	'restrict': true
+	'return':   true
+	'short':    true
+	'signed':   true
+	'sizeof':   true
+	'static':   true
+	'struct':   true
+	'switch':   true
+	'typedef':  true
+	'union':    true
+	'unsigned': true
+	'void':     true
+	'volatile': true
+	'while':    true
+}
 
+// c_name converts c name data for c.
 fn c_name(name string) string {
 	if name.starts_with('C.') {
 		return name[2..]
 	}
 	if name == 'malloc' {
 		return 'v_malloc'
+	}
+	if name == 'int_str' {
+		return 'int__str'
 	}
 	// The V builtin `exit` wraps `C.exit`; both lower to the C symbol `exit`.
 	// Rename the V function (and its call sites) to `v_exit` so its body's
@@ -34,6 +73,7 @@ fn c_name(name string) string {
 	return n
 }
 
+// c_name_sanitize converts c name sanitize data for c.
 fn c_name_sanitize(name string) string {
 	mut b := strings.new_builder(name.len + 8)
 	mut i := 0
@@ -62,6 +102,36 @@ fn c_name_sanitize(name string) string {
 					i += 2
 					continue
 				}
+				if next == `*` {
+					b.write_string('__mul')
+					i += 2
+					continue
+				}
+				if next == `/` {
+					b.write_string('__div')
+					i += 2
+					continue
+				}
+				if next == `%` {
+					b.write_string('__mod')
+					i += 2
+					continue
+				}
+				if next == `&` {
+					b.write_string('__and')
+					i += 2
+					continue
+				}
+				if next == `|` {
+					b.write_string('__or')
+					i += 2
+					continue
+				}
+				if next == `^` {
+					b.write_string('__xor')
+					i += 2
+					continue
+				}
 				if i + 2 < name.len {
 					op := name[i + 2]
 					if next == `=` && op == `=` {
@@ -81,6 +151,16 @@ fn c_name_sanitize(name string) string {
 					}
 					if next == `>` && op == `=` {
 						b.write_string('__ge')
+						i += 3
+						continue
+					}
+					if next == `<` && op == `<` {
+						b.write_string('__left_shift')
+						i += 3
+						continue
+					}
+					if next == `>` && op == `>` {
+						b.write_string('__right_shift')
 						i += 3
 						continue
 					}
@@ -109,6 +189,7 @@ fn c_name_sanitize(name string) string {
 	return b.str()
 }
 
+// c_name_is_plain converts c name is plain data for c.
 fn c_name_is_plain(name string) bool {
 	for i in 0 .. name.len {
 		c := name[i]
@@ -120,6 +201,12 @@ fn c_name_is_plain(name string) bool {
 	return true
 }
 
+fn c_local_name(name string) string {
+	local_name := if name.contains('.') { name.all_after_last('.') } else { name }
+	return c_name(local_name)
+}
+
+// c_escape supports c escape handling for c.
 fn c_escape(s string) string {
 	return s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\t', '\\t').replace('\r',
 		'\\r')

@@ -3,6 +3,7 @@ module c
 import v3.flat
 import v3.types
 
+// optional_type_name supports optional type name handling for FlatGen.
 fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	mut base_type := types.Type(types.void_)
 	if t is types.OptionType {
@@ -26,6 +27,25 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	return opt_name
 }
 
+fn (mut g FlatGen) value_c_type(t types.Type) string {
+	if t is types.OptionType || t is types.ResultType {
+		return g.optional_type_name(t)
+	}
+	mut ct := g.tc.c_type(t)
+	if ct.starts_with('fn_ptr:') {
+		ct = g.resolve_fn_ptr_type(ct)
+	}
+	return ct
+}
+
+fn (mut g FlatGen) cast_c_type(t types.Type) string {
+	if t is types.Pointer {
+		return '${g.value_c_type(t.base_type)}*'
+	}
+	return g.value_c_type(t)
+}
+
+// optional_value_ct supports optional value ct handling for FlatGen.
 fn (mut g FlatGen) optional_value_ct(t types.Type) (string, types.Type) {
 	if t is types.OptionType {
 		if t.base_type is types.Void {
@@ -41,6 +61,7 @@ fn (mut g FlatGen) optional_value_ct(t types.Type) (string, types.Type) {
 	return 'int', types.Type(types.int_)
 }
 
+// optional_typedefs supports optional typedefs handling for FlatGen.
 fn (mut g FlatGen) optional_typedefs() {
 	for _, ret in g.tc.fn_ret_types {
 		if ret is types.OptionType || ret is types.ResultType {
@@ -58,16 +79,18 @@ fn (mut g FlatGen) optional_typedefs() {
 	}
 }
 
+// emit_optional_typedef emits emit optional typedef output for c.
 fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool {
 	if opt_name in g.emitted_optional_types {
 		return false
 	}
 	err_field := if g.has_ierror_interface() { 'IError err; ' } else { '' }
-	g.writeln('typedef struct { bool ok; ${err_field}${val_type} value; } ${opt_name};')
+	g.writeln('typedef struct ${opt_name} { bool ok; ${err_field}${val_type} value; } ${opt_name};')
 	g.emitted_optional_types[opt_name] = true
 	return true
 }
 
+// enum_decls supports enum decls handling for FlatGen.
 fn (mut g FlatGen) enum_decls() {
 	mut cur_module := ''
 	for node in g.a.nodes {
@@ -111,6 +134,7 @@ fn (mut g FlatGen) enum_decls() {
 	}
 }
 
+// enum_field_expr_value supports enum field expr value handling for FlatGen.
 fn (g &FlatGen) enum_field_expr_value(id flat.NodeId) ?int {
 	if int(id) < 0 {
 		return none
@@ -194,6 +218,7 @@ fn (g &FlatGen) enum_field_expr_value(id flat.NodeId) ?int {
 	}
 }
 
+// type_alias_decls returns type alias decls data for FlatGen.
 fn (mut g FlatGen) type_alias_decls() {
 	mut emitted := false
 	for name, target in g.tc.type_aliases {

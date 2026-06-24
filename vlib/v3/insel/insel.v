@@ -3,17 +3,20 @@ module insel
 import v3.mir
 import v3.ssa
 
+// OperandKind lists operand kind values used by insel.
 pub enum OperandKind {
 	value
 	block
 }
 
+// Operand represents operand data used by insel.
 pub struct Operand {
 pub:
 	kind OperandKind
 	id   int
 }
 
+// Instruction represents instruction data used by insel.
 pub struct Instruction {
 pub:
 	op       ssa.OpCode
@@ -21,6 +24,7 @@ pub:
 	typ      ssa.TypeID
 }
 
+// BasicBlock represents basic block data used by insel.
 pub struct BasicBlock {
 pub:
 	id     int
@@ -28,6 +32,7 @@ pub:
 	instrs []Instruction
 }
 
+// Function represents function data used by insel.
 pub struct Function {
 pub:
 	id     int
@@ -36,6 +41,7 @@ pub:
 	blocks []BasicBlock
 }
 
+// Module represents module data used by insel.
 pub struct Module {
 pub:
 	target mir.Target
@@ -90,6 +96,7 @@ pub fn select_(mut m mir.Module) Module {
 	}
 }
 
+// select_operands resolves select operands information for insel.
 fn select_operands(instr mir.Instruction) []Operand {
 	mut operands := []Operand{}
 	for i, operand in instr.operands {

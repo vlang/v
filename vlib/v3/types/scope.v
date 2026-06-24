@@ -1,5 +1,6 @@
 module types
 
+// Scope represents scope data used by types.
 @[heap]
 pub struct Scope {
 pub mut:

@@ -5,6 +5,7 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
+// build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_type_checker_errors_test')
 	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
@@ -12,6 +13,7 @@ fn build_v3() string {
 	return v3_bin
 }
 
+// run_bad supports run bad handling for v3 tests.
 fn run_bad(v3_bin string, name string, src string, expected string) {
 	run_bad_with_flags(v3_bin, name, src, expected, '')
 }
@@ -30,6 +32,7 @@ fn run_bad_with_flags(v3_bin string, name string, src string, expected string, f
 	assert !result.output.contains('C compilation failed')
 }
 
+// run_good supports run good handling for v3 tests.
 fn run_good(v3_bin string, name string, src string) string {
 	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
@@ -42,12 +45,14 @@ fn run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
+// write_project_file writes project file output for v3 tests.
 fn write_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
 	os.mkdir_all(os.dir(path)) or { panic(err) }
 	os.write_file(path, src) or { panic(err) }
 }
 
+// run_bad_project supports run bad project handling for v3 tests.
 fn run_bad_project(v3_bin string, name string, files map[string]string, input string, expected string) {
 	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
 	if os.exists(root) {
@@ -65,6 +70,7 @@ fn run_bad_project(v3_bin string, name string, files map[string]string, input st
 	assert !result.output.contains('C compilation failed')
 }
 
+// run_good_project supports run good project handling for v3 tests.
 fn run_good_project(v3_bin string, name string, files map[string]string, input string) string {
 	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
 	if os.exists(root) {
@@ -84,6 +90,7 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	return run.output.trim_space()
 }
 
+// gen_c_project emits c project output for v3 tests.
 fn gen_c_project(v3_bin string, name string, files map[string]string, input string) string {
 	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
 	if os.exists(root) {
@@ -102,6 +109,7 @@ fn gen_c_project(v3_bin string, name string, files map[string]string, input stri
 	return os.read_file(c_out) or { panic(err) }
 }
 
+// test_type_checker_reports_core_semantic_errors validates this v3 regression case.
 fn test_type_checker_reports_core_semantic_errors() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'bad_assignment', "fn main() {\n\tmut x := 1\n\tx = 'bad'\n}\n",
@@ -114,6 +122,8 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'struct Foo {\n\tx int\n}\nfn main() {\n\tf := Foo{}\n\t_ := f.y\n}\n',
 		'unknown field `y` on `Foo`')
 	run_bad(v3_bin, 'bad_index', 'fn main() {\n\tx := 1\n\t_ := x[0]\n}\n', 'cannot index `int`')
+	run_bad(v3_bin, 'bad_comma_index', 'fn main() {\n\txs := [1]\n\t_ := xs[0, 0]\n}\n',
+		'index expression accepts one index')
 	run_bad(v3_bin, 'bad_condition', "fn main() {\n\tif 'bad' {}\n}\n",
 		'if condition must be `bool`, not `string`')
 	run_bad(v3_bin, 'bad_zero_arg_call', 'fn f() {}\nfn main() {\n\tf(1)\n}\n',
@@ -187,6 +197,30 @@ fn test_type_checker_reports_core_semantic_errors() {
 	alias_out := run_good(v3_bin, 'alias_method',
 		'type UserId = int\n\nfn (id UserId) str() string {\n\treturn int_str(int(id))\n}\n\nfn main() {\n\tid := UserId(1)\n\tprintln(id.str())\n}\n')
 	assert alias_out == '1'
+	err_local_out := run_good(v3_bin, 'local_err_binding',
+		'fn main() {\n\terr := 2\n\tprintln(int_str(err + 1))\n}\n')
+	assert err_local_out == '3'
+	args_contains_out := run_good(v3_bin, 'local_args_contains',
+		"fn main() {\n\targs := [1, 2]\n\tif args.contains(2) {\n\t\tprintln('ok')\n\t}\n}\n")
+	assert args_contains_out == 'ok'
+	run_bad(v3_bin, 'required_options_param',
+		"struct Options {\n\tlimit int\n}\n\nfn connect(url string, opts Options) int {\n\treturn opts.limit\n}\n\nfn main() {\n\t_ := connect('db')\n}\n",
+		'argument count mismatch')
+	custom_codec_out := run_good(v3_bin, 'custom_codec_methods',
+		'struct Codec {}\n\nfn (c Codec) decode() int {\n\treturn 7\n}\n\nfn (c Codec) encode() int {\n\treturn 8\n}\n\nfn (c Codec) use(x int) int {\n\treturn x + 1\n}\n\nfn (c Codec) run_at(x int) int {\n\treturn x + 2\n}\n\nfn main() {\n\tc := Codec{}\n\tprintln(int_str(c.decode()))\n\tprintln(int_str(c.encode()))\n\tprintln(int_str(c.use(9)))\n\tprintln(int_str(c.run_at(5)))\n}\n')
+	assert custom_codec_out == '7\n8\n10\n7'
+	item_with_user_out := run_good(v3_bin, 'item_with_user_initializer',
+		'struct ItemWithUserFoo {\n\titem int\n}\n\nfn main() {\n\tx := ItemWithUserFoo{\n\t\titem: 7\n\t}\n\tprintln(int_str(x.item))\n}\n')
+	assert item_with_user_out == '7'
+	struct_default_out := run_good(v3_bin, 'struct_default_literals',
+		'type GetFn = fn () int\n\nfn default_num() int {\n\treturn 6\n}\n\nstruct Defaults {\n\tx int = 5\n\tget GetFn = default_num\n}\n\nfn main() {\n\ta := Defaults{}\n\tb := &Defaults{}\n\tprintln(int_str(a.x))\n\tprintln(int_str(b.x))\n\tprintln(int_str(a.get()))\n}\n')
+	assert struct_default_out == '5\n5\n6'
+	nested_embedded_method_out := run_good(v3_bin, 'nested_embedded_method',
+		'struct Leaf {}\n\nfn (leaf Leaf) value() int {\n\treturn 9\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{}\n\tprintln(int_str(outer.value()))\n}\n')
+	assert nested_embedded_method_out == '9'
+	nested_embedded_field_out := run_good(v3_bin, 'nested_embedded_field',
+		'struct Leaf {\n\tx int\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{\n\t\tMiddle: Middle{\n\t\t\tLeaf: Leaf{\n\t\t\t\tx: 12\n\t\t\t}\n\t\t}\n\t}\n\tprintln(int_str(outer.x))\n}\n')
+	assert nested_embedded_field_out == '12'
 	map_mutation_out := run_good(v3_bin, 'map_mutation_lowering',
 		"fn main() {\n\tmut m := map[string]int{}\n\tm['a'] = 1\n\tm['a'] += 2\n\tm['a']++\n\tm['a'] -= 1\n\tprintln(int_str(m['a']))\n}\n")
 	assert map_mutation_out == '3'

@@ -75,6 +75,7 @@ pub fn (mut m Module) new_worker_module() &Module {
 	return w
 }
 
+// worker_type_cache_key supports worker type cache key handling for ssa.
 fn worker_type_cache_key(t Type, type_remap []TypeID) string {
 	return match t.kind {
 		.int_t {

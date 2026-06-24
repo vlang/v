@@ -3,6 +3,7 @@ module optimize
 import os
 import v3.ssa
 
+// OptimizeOptions controls optimize options behavior used by optimize.
 pub struct OptimizeOptions {
 pub:
 	mem2reg          bool // promote scalar allocas to SSA values + phi nodes
@@ -30,6 +31,7 @@ pub fn optimize(mut m ssa.Module) {
 	})
 }
 
+// optimize_with_options supports optimize with options handling for optimize.
 pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
 	rebuild_use_lists(mut m)
 	build_cfg(mut m)
@@ -103,6 +105,7 @@ pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
 	verify_pipeline_checkpoint(m, opts, 'final')
 }
 
+// verify_pipeline_checkpoint validates verify pipeline checkpoint state for optimize.
 fn verify_pipeline_checkpoint(m &ssa.Module, opts OptimizeOptions, pass_name string) {
 	if opts.verify_each_pass || opts.strict_verify {
 		verify_and_panic_with_options(m, pass_name, VerifyPanicOptions{
@@ -111,6 +114,7 @@ fn verify_pipeline_checkpoint(m &ssa.Module, opts OptimizeOptions, pass_name str
 	}
 }
 
+// rebuild_use_lists supports rebuild use lists handling for optimize.
 fn rebuild_use_lists(mut m ssa.Module) {
 	for vi in 0 .. m.values.len {
 		mut val := m.values[vi]

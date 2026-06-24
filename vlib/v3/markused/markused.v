@@ -5,6 +5,7 @@ import v3.types
 
 const trace_markused = false
 
+// mark_used updates mark used state for markused.
 pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 	mut cur_module := ''
 	mut imports := map[string]string{}
@@ -24,8 +25,7 @@ pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 			continue
 		}
 		if node.kind == .import_decl {
-			mod := if node.value.contains('.') { node.value.all_after_last('.') } else { node.value }
-			imports[node.typ] = mod
+			imports[node.typ] = node.value
 			continue
 		}
 		if node.kind == .struct_decl {
@@ -131,8 +131,14 @@ pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 		'map.clear', 'memdup', 'strings.Builder.write_ptr', 'strings.Builder.write_runes',
 		'strings.Builder.free', 'strconv.format_int', 'strconv.format_uint', 'bool.str', 'ptr_str',
 		'strconv__f32_to_str_l', 'strconv__f64_to_str_l', 'sync.new_channel_st', 'sync.Channel.push',
-		'sync.Channel.pop', 'sync.Channel.close', 'new_channel_st', 'Channel.push', 'Channel.pop',
-		'Channel.close'] {
+		'sync.Channel.pop', 'sync.Channel.close', 'sync.Channel.len', 'sync.Channel.closed',
+		'new_channel_st', 'Channel.push', 'Channel.pop', 'Channel.close', 'Channel.len',
+		'Channel.closed', 'panic', 'u8.is_letter', 'u8.is_capital', 'string.is_capital',
+		'string.to_lower_ascii', 'rune.to_lower', 'data_to_hex_string', 'map_hash_string',
+		'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_4', 'map_hash_int_8', 'map_eq_string',
+		'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8', 'map_clone_string',
+		'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_4', 'map_clone_int_8', 'map_free_string',
+		'map_free_nop', '[]string.join', 'Array_string__join', 'exit', 'v_exit'] {
 		queue << seed
 		used[seed] = true
 	}
@@ -281,6 +287,7 @@ pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 	return used
 }
 
+// ensure_iface_impls supports ensure iface impls handling for markused.
 fn ensure_iface_impls(recv string, tc &types.TypeChecker, mut iface_impls map[string][]string, mut checked map[string]bool) {
 	if recv.len == 0 || recv in checked {
 		return
@@ -313,6 +320,7 @@ fn ensure_iface_impls(recv string, tc &types.TypeChecker, mut iface_impls map[st
 	}
 }
 
+// add_suffix_candidate updates add suffix candidate state for markused.
 fn add_suffix_candidate(mut suffix_map map[string][]string, short string, name string) {
 	if !valid_symbol_name(short) || !valid_symbol_name(name) {
 		return
@@ -322,10 +330,12 @@ fn add_suffix_candidate(mut suffix_map map[string][]string, short string, name s
 	suffix_map[short] = candidates
 }
 
+// valid_symbol_name supports valid symbol name handling for markused.
 fn valid_symbol_name(name string) bool {
 	return name.len > 0 && name.len < 512
 }
 
+// enqueue_initializer_calls supports enqueue initializer calls handling for markused.
 fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, imports map[string]string, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
 	mut cur_module := ''
 	mut calls := []string{cap: 32}
@@ -360,6 +370,7 @@ fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, imports m
 	}
 }
 
+// enqueue supports enqueue handling for markused.
 fn enqueue(name string, mut used map[string]bool, mut queue []string) bool {
 	if !valid_symbol_name(name) {
 		return false
@@ -372,21 +383,25 @@ fn enqueue(name string, mut used map[string]bool, mut queue []string) bool {
 	return true
 }
 
+// FnDeclInfo stores fn decl info metadata used by markused.
 struct FnDeclInfo {
 	node_id flat.NodeId
 	module  string
 }
 
+// StructDeclInfo stores struct decl info metadata used by markused.
 struct StructDeclInfo {
 	node_id flat.NodeId
 	module  string
 }
 
+// ConstDeclInfo stores const decl info metadata used by markused.
 struct ConstDeclInfo {
 	expr_id flat.NodeId
 	module  string
 }
 
+// CallCollector represents call collector data used by markused.
 struct CallCollector {
 	a            &flat.FlatAst      = unsafe { nil }
 	tc           &types.TypeChecker = unsafe { nil }
@@ -395,6 +410,7 @@ struct CallCollector {
 	const_decls  map[string]ConstDeclInfo
 }
 
+// enqueue_auto_roots supports enqueue auto roots handling for markused.
 fn enqueue_auto_roots(fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
 	for name, info in fn_decls {
 		if !is_auto_root_fn(name) {
@@ -412,6 +428,7 @@ fn enqueue_auto_roots(fn_decls map[string]FnDeclInfo, mut used map[string]bool, 
 	}
 }
 
+// enqueue_main_module_roots supports enqueue main module roots handling for markused.
 fn enqueue_main_module_roots(fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
 	for name, info in fn_decls {
 		if info.module != 'main' || name != 'main' {
@@ -421,12 +438,14 @@ fn enqueue_main_module_roots(fn_decls map[string]FnDeclInfo, mut used map[string
 	}
 }
 
+// is_auto_root_fn reports whether is auto root fn applies in markused.
 fn is_auto_root_fn(name string) bool {
 	short_name := name.all_after_last('.')
 	return short_name == 'init' || short_name == 'testsuite_begin' || short_name == 'testsuite_end'
 		|| short_name.starts_with('test_')
 }
 
+// enqueue_detected_runtime_helpers supports enqueue detected runtime helpers handling for markused.
 fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
 	mut needs_optional_helpers := false
 	mut needs_string_interp_helpers := false
@@ -541,6 +560,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	}
 }
 
+// enqueue_stringified_custom_str_method supports enqueue_stringified_custom_str_method handling.
 fn enqueue_stringified_custom_str_method(expr_id flat.NodeId, cur_module string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
 	mut typ := tc.expr_type(expr_id) or { tc.resolve_type(expr_id) }
 	for _ in 0 .. 8 {
@@ -572,6 +592,7 @@ fn enqueue_stringified_custom_str_method(expr_id flat.NodeId, cur_module string,
 	}
 }
 
+// enqueue_enum_str_method supports enqueue enum str method handling for markused.
 fn enqueue_enum_str_method(type_name string, cur_module string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
 	for candidate in stringification_type_candidates(type_name, cur_module) {
 		method := '${candidate}.str'
@@ -585,6 +606,7 @@ fn enqueue_enum_str_method(type_name string, cur_module string, tc &types.TypeCh
 	}
 }
 
+// enqueue_structlike_str_method supports enqueue structlike str method handling for markused.
 fn enqueue_structlike_str_method(type_name string, cur_module string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
 	for candidate in stringification_type_candidates(type_name, cur_module) {
 		lowered := '${markused_c_name(candidate)}__str'
@@ -598,6 +620,7 @@ fn enqueue_structlike_str_method(type_name string, cur_module string, tc &types.
 	}
 }
 
+// stringification_type_candidates supports stringification type candidates handling for markused.
 fn stringification_type_candidates(type_name string, cur_module string) []string {
 	if type_name.len == 0 {
 		return []string{}
@@ -611,6 +634,7 @@ fn stringification_type_candidates(type_name string, cur_module string) []string
 	return candidates
 }
 
+// enqueue_function_value_selectors supports enqueue function value selectors handling for markused.
 fn enqueue_function_value_selectors(a &flat.FlatAst, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
 	for node in a.nodes {
 		if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
@@ -630,10 +654,12 @@ fn enqueue_function_value_selectors(a &flat.FlatAst, fn_decls map[string]FnDeclI
 	}
 }
 
+// type_string_needs_optional_helpers returns type string needs optional helpers data for markused.
 fn type_string_needs_optional_helpers(typ string) bool {
 	return typ.len > 0 && (typ[0] == `?` || typ[0] == `!`)
 }
 
+// type_needs_zero_map returns type needs zero map data for markused.
 fn type_needs_zero_map(typ types.Type) bool {
 	mut clean := typ
 	for _ in 0 .. 8 {
@@ -654,6 +680,8 @@ fn type_needs_zero_map(typ types.Type) bool {
 	return clean is types.Map
 }
 
+// markused_membership_container_type
+// supports helper handling in markused.
 fn markused_membership_container_type(tc &types.TypeChecker, typ types.Type) string {
 	mut clean := typ.name().trim_space()
 	for {
@@ -678,6 +706,7 @@ fn markused_membership_container_type(tc &types.TypeChecker, typ types.Type) str
 	return clean
 }
 
+// qualify_fn supports qualify fn handling for markused.
 fn qualify_fn(mod string, name string) string {
 	if mod.len == 0 || mod == 'main' || mod == 'builtin' {
 		return name
@@ -685,6 +714,7 @@ fn qualify_fn(mod string, name string) string {
 	return '${mod}.${name}'
 }
 
+// receiver_info supports receiver info handling for markused.
 fn receiver_info(a &flat.FlatAst, node &flat.Node) (string, string) {
 	mut receiver_struct := ''
 	if node.value.contains('.') {
@@ -709,6 +739,7 @@ fn receiver_info(a &flat.FlatAst, node &flat.Node) (string, string) {
 	return '', receiver_struct
 }
 
+// collect_calls updates collect calls state for markused.
 fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports map[string]string, receiver_name string, receiver_struct string, mut calls []string) {
 	mut stack := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
@@ -880,6 +911,7 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 	}
 }
 
+// collect_struct_operator_call updates collect struct operator call state for markused.
 fn (c &CallCollector) collect_struct_operator_call(lhs_id flat.NodeId, op flat.Op, cur_module string, mut calls []string) {
 	lhs_type := c.node_type(lhs_id)
 	lhs_name := resolve_type_name(lhs_type)
@@ -891,6 +923,7 @@ fn (c &CallCollector) collect_struct_operator_call(lhs_id flat.NodeId, op flat.O
 	c.add_operator_call_name(method_name, mut calls)
 }
 
+// struct_operator_call_name supports struct operator call name handling for CallCollector.
 fn (c &CallCollector) struct_operator_call_name(struct_type string, op flat.Op) ?string {
 	if op_name := markused_struct_operator_symbol(op) {
 		if method_name := c.struct_operator_fn_name(struct_type, op_name) {
@@ -914,6 +947,7 @@ fn (c &CallCollector) struct_operator_call_name(struct_type string, op flat.Op) 
 	return none
 }
 
+// markused_struct_operator_symbol supports markused struct operator symbol handling for markused.
 fn markused_struct_operator_symbol(op flat.Op) ?string {
 	match op {
 		.plus { return '+' }
@@ -933,6 +967,7 @@ fn markused_struct_operator_symbol(op flat.Op) ?string {
 	return none
 }
 
+// struct_operator_fn_name supports struct operator fn name handling for CallCollector.
 fn (c &CallCollector) struct_operator_fn_name(struct_type string, op_name string) ?string {
 	method_name := '${struct_type}.${op_name}'
 	if c.is_known_fn_name(method_name) {
@@ -945,10 +980,12 @@ fn (c &CallCollector) struct_operator_fn_name(struct_type string, op_name string
 	return none
 }
 
+// is_known_fn_name reports whether is known fn name applies in markused.
 fn (c &CallCollector) is_known_fn_name(name string) bool {
 	return name in c.fn_decls || name in c.tc.fn_ret_types || name in c.tc.fn_param_types
 }
 
+// struct_lookup_name supports struct lookup name handling for CallCollector.
 fn (c &CallCollector) struct_lookup_name(type_name string, cur_module string) string {
 	if type_name.len == 0 {
 		return ''
@@ -985,6 +1022,7 @@ fn (c &CallCollector) struct_lookup_name(type_name string, cur_module string) st
 	return ''
 }
 
+// add_operator_call_name updates add operator call name state for CallCollector.
 fn (c &CallCollector) add_operator_call_name(method_name string, mut calls []string) {
 	calls << method_name
 	lowered := markused_c_name(method_name)
@@ -993,6 +1031,7 @@ fn (c &CallCollector) add_operator_call_name(method_name string, mut calls []str
 	}
 }
 
+// qualified_expr_name supports qualified expr name handling for CallCollector.
 fn (c &CallCollector) qualified_expr_name(id flat.NodeId) string {
 	if int(id) < 0 {
 		return ''
@@ -1018,6 +1057,7 @@ fn (c &CallCollector) qualified_expr_name(id flat.NodeId) string {
 	}
 }
 
+// collect_fn_value_ident updates collect fn value ident state for markused.
 fn (c &CallCollector) collect_fn_value_ident(id flat.NodeId, name string, cur_module string, imports map[string]string, mut calls []string) {
 	if name.len == 0 || !c.name_may_reference_fn(name, cur_module, imports) {
 		return
@@ -1030,6 +1070,7 @@ fn (c &CallCollector) collect_fn_value_ident(id flat.NodeId, name string, cur_mo
 	c.add_const_alias_candidates(name, cur_module, imports, mut calls)
 }
 
+// collect_fn_value_selector updates collect fn value selector state for markused.
 fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node, cur_module string, imports map[string]string, mut calls []string) {
 	if node.children_count == 0 {
 		return
@@ -1056,14 +1097,17 @@ fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node,
 	}
 }
 
+// name_may_reference_fn returns name may reference fn data for CallCollector.
 fn (c &CallCollector) name_may_reference_fn(name string, cur_module string, imports map[string]string) bool {
 	return c.name_has_candidate_decl(name, cur_module, imports, true)
 }
 
+// name_has_fn_decl returns name has fn decl data for CallCollector.
 fn (c &CallCollector) name_has_fn_decl(name string, cur_module string, imports map[string]string) bool {
 	return c.name_has_candidate_decl(name, cur_module, imports, false)
 }
 
+// name_has_candidate_decl returns name has candidate decl data for CallCollector.
 fn (c &CallCollector) name_has_candidate_decl(name string, cur_module string, imports map[string]string, include_consts bool) bool {
 	if c.candidate_matches_decl(name, include_consts) {
 		return true
@@ -1085,6 +1129,7 @@ fn (c &CallCollector) name_has_candidate_decl(name string, cur_module string, im
 	return false
 }
 
+// candidate_matches_decl supports candidate matches decl handling for CallCollector.
 fn (c &CallCollector) candidate_matches_decl(candidate string, include_consts bool) bool {
 	if candidate in c.fn_decls {
 		return true
@@ -1092,11 +1137,13 @@ fn (c &CallCollector) candidate_matches_decl(candidate string, include_consts bo
 	return include_consts && candidate in c.const_decls
 }
 
+// node_is_fn_value supports node is fn value handling for CallCollector.
 fn (c &CallCollector) node_is_fn_value(id flat.NodeId) bool {
 	expr_type := c.node_type(id)
 	return expr_type is types.FnType
 }
 
+// add_fn_value_candidates updates add fn value candidates state for CallCollector.
 fn (c &CallCollector) add_fn_value_candidates(name string, cur_module string, imports map[string]string, mut calls []string) {
 	if name.len == 0 {
 		return
@@ -1115,6 +1162,7 @@ fn (c &CallCollector) add_fn_value_candidates(name string, cur_module string, im
 	}
 }
 
+// add_const_alias_candidates converts add const alias candidates data for markused.
 fn (c &CallCollector) add_const_alias_candidates(name string, cur_module string, imports map[string]string, mut calls []string) {
 	c.add_const_alias_candidate(name, imports, mut calls)
 	qname := qualify_fn(cur_module, name)
@@ -1130,6 +1178,7 @@ fn (c &CallCollector) add_const_alias_candidates(name string, cur_module string,
 	}
 }
 
+// add_const_alias_candidate converts add const alias candidate data for markused.
 fn (c &CallCollector) add_const_alias_candidate(const_name string, imports map[string]string, mut calls []string) {
 	info := c.const_decls[const_name] or { return }
 	expr := c.a.node(info.expr_id)
@@ -1154,6 +1203,7 @@ fn (c &CallCollector) add_const_alias_candidate(const_name string, imports map[s
 	}
 }
 
+// node_type supports node type handling for CallCollector.
 fn (c &CallCollector) node_type(id flat.NodeId) types.Type {
 	if t := c.tc.expr_type(id) {
 		return t
@@ -1179,6 +1229,7 @@ fn (c &CallCollector) value_type_name(name string, cur_module string) string {
 	return ''
 }
 
+// collect_zero_struct_default_calls updates collect zero struct default calls state for markused.
 fn (c &CallCollector) collect_zero_struct_default_calls(typ types.Type, cur_module string, imports map[string]string, mut calls []string) {
 	type_name := zero_value_struct_type_name(typ)
 	if type_name.len == 0 {
@@ -1187,6 +1238,7 @@ fn (c &CallCollector) collect_zero_struct_default_calls(typ types.Type, cur_modu
 	c.collect_struct_default_calls_for_type(type_name, cur_module, imports, mut calls)
 }
 
+// zero_value_struct_type_name supports zero value struct type name handling for markused.
 fn zero_value_struct_type_name(typ types.Type) string {
 	mut clean := typ
 	for _ in 0 .. 8 {
@@ -1210,6 +1262,7 @@ fn zero_value_struct_type_name(typ types.Type) string {
 	return ''
 }
 
+// collect_struct_default_calls updates collect struct default calls state for markused.
 fn (c &CallCollector) collect_struct_default_calls(init &flat.Node, cur_module string, imports map[string]string, mut calls []string) {
 	info := c.struct_decl_info(init.value, cur_module) or { return }
 	mut set_fields := map[string]bool{}
@@ -1222,11 +1275,13 @@ fn (c &CallCollector) collect_struct_default_calls(init &flat.Node, cur_module s
 	c.collect_struct_default_calls_from_info(info, set_fields, imports, mut calls)
 }
 
+// collect_struct_default_calls_for_type supports collect_struct_default_calls_for_type handling.
 fn (c &CallCollector) collect_struct_default_calls_for_type(type_name string, cur_module string, imports map[string]string, mut calls []string) {
 	info := c.struct_decl_info(type_name, cur_module) or { return }
 	c.collect_struct_default_calls_from_info(info, map[string]bool{}, imports, mut calls)
 }
 
+// struct_decl_info supports struct decl info handling for CallCollector.
 fn (c &CallCollector) struct_decl_info(type_name string, cur_module string) ?StructDeclInfo {
 	struct_name := c.struct_lookup_name(type_name, cur_module)
 	if struct_name.len == 0 {
@@ -1235,6 +1290,7 @@ fn (c &CallCollector) struct_decl_info(type_name string, cur_module string) ?Str
 	return c.struct_decls[struct_name] or { none }
 }
 
+// collect_struct_default_calls_from_info supports collect_struct_default_calls_from_info handling.
 fn (c &CallCollector) collect_struct_default_calls_from_info(info StructDeclInfo, provided map[string]bool, imports map[string]string, mut calls []string) {
 	node := c.a.node(info.node_id)
 	for i in 0 .. node.children_count {
@@ -1246,6 +1302,7 @@ fn (c &CallCollector) collect_struct_default_calls_from_info(info StructDeclInfo
 	}
 }
 
+// resolve_type_name resolves resolve type name information for markused.
 fn resolve_type_name(t types.Type) string {
 	if t is types.Alias {
 		return t.name
@@ -1308,12 +1365,16 @@ fn resolve_type_name(t types.Type) string {
 	return ''
 }
 
+// markused_c_name converts markused c name data for markused.
 fn markused_c_name(name string) string {
 	if name.starts_with('C.') {
 		return name[2..]
 	}
 	if name == 'malloc' {
 		return 'v_malloc'
+	}
+	if name == 'exit' {
+		return 'v_exit'
 	}
 	if markused_c_name_is_plain(name) {
 		return name
@@ -1324,6 +1385,7 @@ fn markused_c_name(name string) string {
 		'_').replace(' ', '_').replace('.', '__')
 }
 
+// markused_c_name_is_plain converts markused c name is plain data for markused.
 fn markused_c_name_is_plain(name string) bool {
 	for i in 0 .. name.len {
 		c := name[i]

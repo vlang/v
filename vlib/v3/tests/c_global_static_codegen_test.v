@@ -7,6 +7,7 @@ import v3.pref
 import v3.transform
 import v3.types
 
+// gen_c_for_source emits c for source output for v3 tests.
 fn gen_c_for_source(name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
@@ -26,6 +27,7 @@ fn gen_c_for_source(name string, source string) string {
 	return g.gen_with_used_options(a, used_fns, &tc, true)
 }
 
+// gen_c_for_sources emits c for sources output for v3 tests.
 fn gen_c_for_sources(name string, files map[string]string) string {
 	root := os.join_path(os.temp_dir(), 'v3_${name}')
 	if os.exists(root) {
@@ -59,6 +61,7 @@ fn gen_c_for_sources(name string, files map[string]string) string {
 	return g.gen_with_used_options(a, used_fns, &tc, true)
 }
 
+// gen_c_for_source_with_scalar_zero_decl supports gen_c_for_source_with_scalar_zero_decl handling.
 fn gen_c_for_source_with_scalar_zero_decl(name string, source string, decl_name string, decl_type string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
@@ -96,6 +99,7 @@ fn gen_c_for_source_with_scalar_zero_decl(name string, source string, decl_name 
 	return g.gen_with_used_options(a, used_fns, &tc, true)
 }
 
+// test_c_global_pointer_arg_is_not_addressed_again validates this v3 regression case.
 fn test_c_global_pointer_arg_is_not_addressed_again() {
 	c_code := gen_c_for_source('c_global_stdout_arg', '__global C.stdout &C.FILE
 
@@ -109,6 +113,7 @@ fn main() {
 	assert !c_code.contains('set_stream_unbuffered(&stdout);')
 }
 
+// test_mut_static_local_decl_codegen validates this v3 regression case.
 fn test_mut_static_local_decl_codegen() {
 	c_code := gen_c_for_source('static_local_decl', 'fn next_value() int {
 	mut static x := 0
@@ -123,6 +128,7 @@ fn main() {
 	assert c_code.contains('static int x = 0;')
 }
 
+// test_aggregate_globals_are_brace_zero_initialized validates this v3 regression case.
 fn test_aggregate_globals_are_brace_zero_initialized() {
 	c_code := gen_c_for_source('aggregate_global_zero_init', 'const zero_len = 1 - 1
 
@@ -184,6 +190,7 @@ fn main() {}
 	assert !c_code.contains('ZeroLeadingConst const_zero_slots[2] = {0};')
 }
 
+// test_imported_zero_length_leading_field_global_uses_decl_only validates this v3 regression case.
 fn test_imported_zero_length_leading_field_global_uses_decl_only() {
 	c_code := gen_c_for_sources('imported_zero_leading_global', {
 		'main.v':      'module main
@@ -211,6 +218,7 @@ pub struct ImportedZero {
 	assert !c_code.contains('moda__ImportedZero imported_slots[2] = {0};')
 }
 
+// test_aggregate_decl_with_scalar_zero_uses_brace_initializer validates this v3 regression case.
 fn test_aggregate_decl_with_scalar_zero_uses_brace_initializer() {
 	c_code := gen_c_for_source_with_scalar_zero_decl('aggregate_decl_scalar_zero', 'struct Box {
 	value int
@@ -226,6 +234,8 @@ fn main() {
 	assert !c_code.contains('Box box = 0;')
 }
 
+// test_defer_capture_aggregate_decl_with_scalar_zero_uses_compound_literal
+// validates this v3 regression case.
 fn test_defer_capture_aggregate_decl_with_scalar_zero_uses_compound_literal() {
 	c_code := gen_c_for_source_with_scalar_zero_decl('defer_capture_aggregate_decl_scalar_zero', 'struct Box {
 	value int

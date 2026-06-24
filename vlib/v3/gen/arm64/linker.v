@@ -7,10 +7,19 @@ module arm64
 import os
 import time
 
+// C.open declares the C open symbol used by arm64.
 fn C.open(charptr, int, int) int
+
+// C.write declares the C write symbol used by arm64.
 fn C.write(int, voidptr, int) int
+
+// C.close declares the C close symbol used by arm64.
 fn C.close(int) int
+
+// C.chmod declares the C chmod symbol used by arm64.
 fn C.chmod(charptr, int) int
+
+// C.rename declares the C rename symbol used by arm64.
 fn C.rename(charptr, charptr) int
 
 // Mach-O executable constants
@@ -144,6 +153,7 @@ const objc_syms = ['_objc_msgSend', '_objc_getClass', '_sel_registerName', '_obj
 // Symbols that live in Metal.framework.
 const metal_syms = ['_MTLCreateSystemDefaultDevice']
 
+// Linker represents linker data used by arm64.
 pub struct Linker {
 	macho &MachOObject
 pub mut:
@@ -185,6 +195,7 @@ mut:
 	code_start int
 }
 
+// new creates a Linker value for arm64.
 pub fn Linker.new(macho &MachOObject) &Linker {
 	return unsafe {
 		&Linker{
@@ -199,6 +210,7 @@ pub fn Linker.new(macho &MachOObject) &Linker {
 	}
 }
 
+// link supports link handling for Linker.
 pub fn (mut l Linker) link(output_path string, entry_name string) {
 	// Pre-allocate buffer with estimated size to avoid reallocations
 	estimated_size := l.macho.text_data.len + l.macho.str_data.len + l.macho.data_data.len + 0x10000
@@ -429,7 +441,8 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	cs_pad := cs_off - code_limit_unaligned
 	// code_limit is where the signature starts (everything before is hashed)
 	code_limit := cs_off
-	// Signature size: SuperBlob(12) + 2*BlobIndex(8) + CodeDirectory header + identifier + hashes + Requirements blob
+	// Signature size: SuperBlob(12) + 2*BlobIndex(8) + CodeDirectory header + identifier
+	// + hashes + Requirements blob
 	ident := output_path.all_after_last('/') // Use filename as identifier
 	cs_size := l.estimate_signature_size(code_limit, ident)
 
@@ -534,6 +547,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	println('  TOTAL linker: ${time.since(t_total)}')
 }
 
+// write_file_array_raw writes file array raw output for arm64.
 fn write_file_array_raw(path string, data []u8) bool {
 	fd := C.open(path.str, o_wronly_creat_trunc, 0o755)
 	if fd < 0 {
@@ -549,6 +563,7 @@ fn write_file_array_raw(path string, data []u8) bool {
 	return C.close(fd) == 0
 }
 
+// write_header writes header output for arm64.
 fn (mut l Linker) write_header(ncmds int, cmdsize int) {
 	write_mh_magic_64(mut l.buf)
 	write_u32_le(mut l.buf, u32(cpu_type_arm64))
@@ -560,6 +575,7 @@ fn (mut l Linker) write_header(ncmds int, cmdsize int) {
 	write_u32_le(mut l.buf, 0) // reserved
 }
 
+// write_pagezero_segment writes pagezero segment output for arm64.
 fn (mut l Linker) write_pagezero_segment() {
 	write_u32_le(mut l.buf, u32(lc_segment_64))
 	write_u32_le(mut l.buf, 72)
@@ -574,6 +590,7 @@ fn (mut l Linker) write_pagezero_segment() {
 	write_u32_le(mut l.buf, 0) // flags
 }
 
+// write_text_segment writes text segment output for arm64.
 fn (mut l Linker) write_text_segment() {
 	write_u32_le(mut l.buf, u32(lc_segment_64))
 	write_u32_le(mut l.buf, 72 + 80 * 2) // cmd size with 2 sections
@@ -617,6 +634,7 @@ fn (mut l Linker) write_text_segment() {
 	write_u32_le(mut l.buf, 0) // reserved3
 }
 
+// write_data_segment writes data segment output for arm64.
 fn (mut l Linker) write_data_segment() {
 	write_u32_le(mut l.buf, u32(lc_segment_64))
 	write_u32_le(mut l.buf, 72 + 80 * 2) // cmd size with 2 sections
@@ -659,6 +677,7 @@ fn (mut l Linker) write_data_segment() {
 	write_u32_le(mut l.buf, 0) // reserved3
 }
 
+// write_linkedit_segment writes linkedit segment output for arm64.
 fn (mut l Linker) write_linkedit_segment() {
 	write_u32_le(mut l.buf, u32(lc_segment_64))
 	write_u32_le(mut l.buf, 72)
@@ -673,6 +692,7 @@ fn (mut l Linker) write_linkedit_segment() {
 	write_u32_le(mut l.buf, 0) // flags
 }
 
+// patch_linkedit supports patch linkedit handling for Linker.
 fn (mut l Linker) patch_linkedit(cmd_start int, fileoff int, filesize int) {
 	linkedit_vmaddr := l.data_vmaddr + u64(l.data_size)
 	mut linkedit_vmsize := u64((filesize + page_size - 1) & ~(page_size - 1))
@@ -688,6 +708,7 @@ fn (mut l Linker) patch_linkedit(cmd_start int, fileoff int, filesize int) {
 	write_u64_le_at(mut l.buf, off + 24, u64(filesize))
 }
 
+// write_dyld_info writes dyld info output for arm64.
 fn (mut l Linker) write_dyld_info(bind_off int, bind_size int) {
 	write_u32_le(mut l.buf, u32(lc_dyld_info_only))
 	write_u32_le(mut l.buf, 48)
@@ -703,6 +724,7 @@ fn (mut l Linker) write_dyld_info(bind_off int, bind_size int) {
 	write_u32_le(mut l.buf, 0) // export_size
 }
 
+// write_symtab writes symtab output for arm64.
 fn (mut l Linker) write_symtab(symoff int, nsyms int, stroff int, strsize int) {
 	write_u32_le(mut l.buf, u32(lc_symtab))
 	write_u32_le(mut l.buf, 24)
@@ -712,6 +734,7 @@ fn (mut l Linker) write_symtab(symoff int, nsyms int, stroff int, strsize int) {
 	write_u32_le(mut l.buf, u32(strsize))
 }
 
+// write_dysymtab writes dysymtab output for arm64.
 fn (mut l Linker) write_dysymtab(_nsyms int) {
 	write_u32_le(mut l.buf, u32(lc_dysymtab))
 	write_u32_le(mut l.buf, 80)
@@ -735,6 +758,7 @@ fn (mut l Linker) write_dysymtab(_nsyms int) {
 	write_u32_le(mut l.buf, 0) // nlocrel
 }
 
+// write_load_dylinker writes load dylinker output for arm64.
 fn (mut l Linker) write_load_dylinker() {
 	write_u32_le(mut l.buf, u32(lc_load_dylinker))
 	write_u32_le(mut l.buf, 32)
@@ -742,6 +766,7 @@ fn (mut l Linker) write_load_dylinker() {
 	write_string_fixed(mut l.buf, '/usr/lib/dyld', 20)
 }
 
+// write_load_dylibs writes load dylibs output for arm64.
 fn (mut l Linker) write_load_dylibs() {
 	for dylib_path in l.dylibs {
 		path_len := dylib_path.len + 1 // +1 for null terminator
@@ -757,6 +782,7 @@ fn (mut l Linker) write_load_dylibs() {
 	}
 }
 
+// write_main_cmd writes main cmd output for arm64.
 fn (mut l Linker) write_main_cmd(entry_off int) {
 	write_u32_le(mut l.buf, u32(lc_main))
 	write_u32_le(mut l.buf, 24)
@@ -764,6 +790,7 @@ fn (mut l Linker) write_main_cmd(entry_off int) {
 	write_u64_le(mut l.buf, 0) // stacksize
 }
 
+// write_uuid writes uuid output for arm64.
 fn (mut l Linker) write_uuid() {
 	write_u32_le(mut l.buf, u32(lc_uuid))
 	write_u32_le(mut l.buf, 24)
@@ -773,6 +800,7 @@ fn (mut l Linker) write_uuid() {
 	}
 }
 
+// write_build_version writes build version output for arm64.
 fn (mut l Linker) write_build_version() {
 	write_u32_le(mut l.buf, u32(lc_build_version))
 	write_u32_le(mut l.buf, 24)
@@ -782,12 +810,14 @@ fn (mut l Linker) write_build_version() {
 	write_u32_le(mut l.buf, 0) // ntools
 }
 
+// write_source_version writes source version output for arm64.
 fn (mut l Linker) write_source_version() {
 	write_u32_le(mut l.buf, u32(lc_source_version))
 	write_u32_le(mut l.buf, 16)
 	write_u64_le(mut l.buf, 0) // version
 }
 
+// write_code_signature_cmd writes code signature cmd output for arm64.
 fn (mut l Linker) write_code_signature_cmd(dataoff int, datasize int) {
 	write_u32_le(mut l.buf, u32(lc_code_signature))
 	write_u32_le(mut l.buf, 16) // cmdsize
@@ -795,6 +825,7 @@ fn (mut l Linker) write_code_signature_cmd(dataoff int, datasize int) {
 	write_u32_le(mut l.buf, u32(datasize))
 }
 
+// estimate_signature_size supports estimate signature size handling for Linker.
 fn (l &Linker) estimate_signature_size(code_limit int, ident string) int {
 	// Calculate pages using ARM64 16KB page size
 	n_pages := (code_limit + cs_page_size_arm64 - 1) / cs_page_size_arm64
@@ -816,6 +847,7 @@ fn (l &Linker) estimate_signature_size(code_limit int, ident string) int {
 	return 12 + 24 + cd_size_aligned + req_size + cms_size
 }
 
+// generate_code_signature supports generate code signature handling for Linker.
 fn (l &Linker) generate_code_signature(ident string) []u8 {
 	mut sig := []u8{}
 
@@ -955,6 +987,7 @@ fn (l &Linker) generate_code_signature(ident string) []u8 {
 	return sig
 }
 
+// find_entry_offset resolves find entry offset information for arm64.
 fn (mut l Linker) find_entry_offset(entry_name string) int {
 	// Find the _main symbol
 	// LC_MAIN entryoff is relative to __TEXT segment vmaddr
@@ -967,6 +1000,7 @@ fn (mut l Linker) find_entry_offset(entry_name string) int {
 	return l.code_start // Default to start of code section
 }
 
+// generate_bind_info supports generate bind info handling for Linker.
 fn (mut l Linker) generate_bind_info(got_offset int) []u8 {
 	mut info := []u8{}
 
@@ -1014,6 +1048,7 @@ fn (mut l Linker) generate_bind_info(got_offset int) []u8 {
 	return info
 }
 
+// encode_uleb128_int converts encode uleb128 int data for arm64.
 fn (l Linker) encode_uleb128_int(val int) []u8 {
 	mut result := []u8{}
 	if val < 0x80 {
@@ -1034,6 +1069,7 @@ fn (l Linker) encode_uleb128_int(val int) []u8 {
 	return l.encode_uleb128(u64(u32(val)))
 }
 
+// encode_uleb128 converts encode uleb128 data for arm64.
 fn (l Linker) encode_uleb128(val u64) []u8 {
 	mut result := []u8{}
 	mut v := val
@@ -1051,6 +1087,7 @@ fn (l Linker) encode_uleb128(val u64) []u8 {
 	return result
 }
 
+// write_text_with_relocations writes text with relocations output for arm64.
 fn (mut l Linker) write_text_with_relocations() {
 	// Copy text data
 	mut text := l.macho.text_data.clone()
@@ -1231,6 +1268,7 @@ fn (mut l Linker) write_text_with_relocations() {
 	l.buf << text
 }
 
+// write_stubs writes stubs output for arm64.
 fn (mut l Linker) write_stubs() {
 	// Generate stub for each external symbol
 	// Each stub: ADRP x16, GOT@PAGE; LDR x16, [x16, GOT@PAGEOFF]; BR x16
@@ -1264,6 +1302,7 @@ fn (mut l Linker) write_stubs() {
 	}
 }
 
+// read_u32_le reads read u32 le input for arm64.
 fn read_u32_le(data []u8, off int) u32 {
 	b0 := u32(data[off]) & u32(0xff)
 	b1 := (u32(data[off + 1]) & u32(0xff)) << 8
@@ -1272,6 +1311,7 @@ fn read_u32_le(data []u8, off int) u32 {
 	return b0 | b1 | b2 | b3
 }
 
+// write_u32_le_at_arr writes u32 le at arr output for arm64.
 fn write_u32_le_at_arr(mut data []u8, off int, v u32) {
 	data[off] = u8(v)
 	data[off + 1] = u8(v >> 8)
@@ -1279,6 +1319,7 @@ fn write_u32_le_at_arr(mut data []u8, off int, v u32) {
 	data[off + 3] = u8(v >> 24)
 }
 
+// write_u32_le_at writes u32 le at output for arm64.
 fn write_u32_le_at(mut data []u8, off int, v u32) {
 	data[off] = u8(v)
 	data[off + 1] = u8(v >> 8)
@@ -1294,6 +1335,7 @@ fn write_u32_be(mut b []u8, v u32) {
 	b << u8(v)
 }
 
+// write_u64_be writes u64 be output for arm64.
 fn write_u64_be(mut b []u8, v u64) {
 	b << u8(v >> 56)
 	b << u8(v >> 48)
@@ -1305,6 +1347,7 @@ fn write_u64_be(mut b []u8, v u64) {
 	b << u8(v)
 }
 
+// write_u64_le_at writes u64 le at output for arm64.
 fn write_u64_le_at(mut b []u8, off int, v u64) {
 	b[off] = u8(v)
 	b[off + 1] = u8(v >> 8)
@@ -1407,6 +1450,7 @@ const sha256_k = [
 	0xc67178f2,
 ]!
 
+// rotr32 supports rotr32 handling for arm64.
 @[inline]
 fn rotr32(x u32, n u32) u32 {
 	return (x >> n) | (x << (32 - n))
@@ -1504,6 +1548,7 @@ fn sha256_hash(data &u8, data_len int, out_ptr &u8) {
 	}
 }
 
+// sha256_compress supports sha256 compress handling for arm64.
 @[direct_array_access]
 fn sha256_compress(state_ptr &u32, w_ptr &u32) {
 	mut state := unsafe { &u32(state_ptr) }

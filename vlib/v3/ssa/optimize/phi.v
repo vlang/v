@@ -397,6 +397,7 @@ fn resolve_parallel_copies(mut m ssa.Module, blk_id int, dests []int, srcs []int
 	}
 }
 
+// insert_temp_in_block updates insert temp in block state for optimize.
 fn insert_temp_in_block(mut m ssa.Module, blk_id int, src int, typ int) int {
 	m.instrs << ssa.Instruction{
 		op:       .bitcast
@@ -409,6 +410,7 @@ fn insert_temp_in_block(mut m ssa.Module, blk_id int, src int, typ int) int {
 	return temp_id
 }
 
+// insert_copy_in_block updates insert copy in block state for optimize.
 fn insert_copy_in_block(mut m ssa.Module, blk_id int, dest int, src int) {
 	typ := m.values[dest].typ
 	m.instrs << ssa.Instruction{
@@ -421,6 +423,7 @@ fn insert_copy_in_block(mut m ssa.Module, blk_id int, dest int, src int) {
 	insert_before_terminator(mut m, blk_id, val_id)
 }
 
+// insert_before_terminator updates insert before terminator state for optimize.
 fn insert_before_terminator(mut m ssa.Module, blk_id int, new_val int) {
 	mut blk := m.blocks[blk_id]
 	mut insert_idx := blk.instrs.len
