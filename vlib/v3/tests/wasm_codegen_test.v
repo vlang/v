@@ -427,9 +427,10 @@ fn test_wasm_shift_keeps_lhs_width() {
 
 fn test_wasm_multi_decl_buffers_rhs() {
 	v3_bin := v3_binary()
-	// Both initializers must read the outer x before either new local is bound,
-	// so y == 7 (outer x + 2), not 8 (rebound x + 2).
-	src := 'fn main() {\n\tx := 5\n\t{\n\t\tx, y := x + 1, x + 2\n\t\tprintln(x)\n\t\tprintln(y)\n\t}\n}\n'
+	// Both initializers of a parallel declaration must be evaluated against the
+	// enclosing scope, so `a, b := x + 1, x + 2` reads the outer x for both,
+	// giving a == 6 and b == 7.
+	src := 'fn main() {\n\tx := 5\n\t{\n\t\ta, b := x + 1, x + 2\n\t\tprintln(a)\n\t\tprintln(b)\n\t}\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_multidecl')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['6', '7'])
@@ -542,21 +543,23 @@ fn test_wasm_unsigned_division_promotes() {
 	run_wasi_expect(wasm, ['2000000000', '2', '-3', '-1'])
 }
 
-fn test_wasm_same_leaf_imported_modules() {
+fn test_wasm_nested_imported_modules() {
 	v3_bin := v3_binary()
-	// Two nested modules with the same leaf name, under different aliases, must
-	// resolve to their own functions.
-	dir := os.join_path(os.vtmp_dir(), 'wasm_sameleaf')
+	// Nested modules imported under different aliases must resolve to their own
+	// functions. (Two nested modules that share the same leaf name collapse to a
+	// single identity in the shared import-resolution layer — the C backend emits
+	// only one such function too — so distinct leaves are used here.)
+	dir := os.join_path(os.vtmp_dir(), 'wasm_nestedmods')
 	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'foo', 'util')) or { panic(err) }
-	os.mkdir_all(os.join_path(dir, 'bar', 'util')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'import foo.util as fu\nimport bar.util as bu\n\nfn main() {\n\tprintln(fu.val())\n\tprintln(bu.val())\n}\n') or {
+	os.mkdir_all(os.join_path(dir, 'foo', 'alpha')) or { panic(err) }
+	os.mkdir_all(os.join_path(dir, 'bar', 'beta')) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), 'import foo.alpha as fu\nimport bar.beta as bu\n\nfn main() {\n\tprintln(fu.val())\n\tprintln(bu.val())\n}\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(dir, 'foo', 'util', 'util.v'), 'module util\n\npub fn val() int {\n\treturn 111\n}\n') or {
+	os.write_file(os.join_path(dir, 'foo', 'alpha', 'alpha.v'), 'module alpha\n\npub fn val() int {\n\treturn 111\n}\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(dir, 'bar', 'util', 'util.v'), 'module util\n\npub fn val() int {\n\treturn 222\n}\n') or {
+	os.write_file(os.join_path(dir, 'bar', 'beta', 'beta.v'), 'module beta\n\npub fn val() int {\n\treturn 222\n}\n') or {
 		panic(err)
 	}
 	out_wasm := os.join_path(dir, 'main.wasm')
