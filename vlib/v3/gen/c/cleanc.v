@@ -2025,8 +2025,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						g.gen_expr(g.a.child(&node, 1))
 						g.write('))')
 					} else if base_type is types.String {
+						// Parenthesize the base: a smartcast sum variant yields a deref
+						// like `*v._string`, and `*v._string.str[i]` would bind as
+						// `*(v._string.str[i])`. `(*v._string).str[i]` is what we want.
+						g.write('(')
 						g.gen_expr(base_id)
-						g.write('.str[')
+						g.write(').str[')
 						g.gen_expr(g.a.child(&node, 1))
 						g.write(']')
 					} else if base_type is types.Pointer {
@@ -2693,6 +2697,13 @@ fn (mut g FlatGen) emit_global_inits() {
 		if int(val_id) < 0 {
 			continue
 		}
+		// g_main_argc/g_main_argv are filled in by main's preamble (from argc/argv)
+		// *before* _vinit runs, and are zero by default in C anyway. Re-emitting their
+		// `= 0` initializer here would clobber the real argv, leaving os.args empty.
+		cqname := c_name(qname)
+		if cqname == 'g_main_argc' || cqname == 'g_main_argv' {
+			continue
+		}
 		if typ := g.global_types[qname] {
 			if typ is types.ArrayFixed {
 				continue
@@ -2831,6 +2842,13 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 			g.writeln('${c_elem} ${qname}${dims};')
 		} else if ct != 'void' {
 			g.writeln('${ct} ${qname};')
+			// The initializer is not a compile-time constant (e.g. `os.args =
+			// arguments()`), so it cannot be a C static initializer. Run it at startup
+			// in _vinit; otherwise the const stays zero/empty and first use is wrong.
+			g.runtime_inits << '\t${qname} = ${expr_str};'
+			if v_type is types.Map {
+				g.queue_map_literal_sets(qname, val_id, v_type)
+			}
 		}
 		g.tc.cur_module = old_module
 		return

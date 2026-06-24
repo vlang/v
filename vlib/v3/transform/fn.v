@@ -473,6 +473,15 @@ fn (mut t Transformer) try_lower_join_path_call(id flat.NodeId, node flat.Node) 
 	if call_name != 'join_path' && call_name != 'os.join_path' {
 		return none
 	}
+	// A spread argument (`...rest`) has a runtime-determined length and cannot be
+	// unrolled into nested join_path_single calls at compile time. Defer to the real
+	// variadic os.join_path in that case.
+	for i in 1 .. node.children_count {
+		arg := t.a.child_node(&node, i)
+		if arg.kind == .prefix && arg.value == '...' {
+			return none
+		}
+	}
 	if node.children_count <= 1 {
 		return t.make_string_literal('')
 	}
@@ -571,6 +580,11 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 		return 0
 	}
 	base_id := t.a.child(fn_node, 0)
+	// `module.Type.fn(...)` / `Type.fn(...)` is a static associated function call, not a
+	// method: the base names a type, not a value, so no receiver must be prepended.
+	if _ := t.static_assoc_fn_name(base_id, fn_node.value) {
+		return 0
+	}
 	if t.receiver_method_param_offset(base_id, node, params) == 1 {
 		return 1
 	}
@@ -582,6 +596,32 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 		return 1
 	}
 	return 0
+}
+
+// static_assoc_fn_name returns the name of the static associated function a selector
+// call resolves to, if the base names a type (`Type.fn` or `module.Type.fn`) and that
+// function exists. Such calls take no receiver, so the base must not be prepended as an
+// argument. Returns none for ordinary method calls (base is a value).
+fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?string {
+	if method.len == 0 {
+		return none
+	}
+	base := t.a.nodes[int(base_id)]
+	if base.kind == .ident {
+		name := '${base.value}.${method}'
+		if t.is_known_fn_name(name) {
+			return name
+		}
+	} else if base.kind == .selector && base.children_count > 0 {
+		inner := t.a.child_node(&base, 0)
+		if inner.kind == .ident {
+			name := '${inner.value}.${base.value}.${method}'
+			if t.is_known_fn_name(name) {
+				return name
+			}
+		}
+	}
+	return none
 }
 
 // call_param_types updates call param types state for Transformer.
@@ -2084,11 +2124,10 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	method := fn_node.value
 	base_id := t.a.child(&fn_node, 0)
 	base_node := t.a.nodes[int(base_id)]
-	if base_node.kind == .ident {
-		static_name := '${base_node.value}.${method}'
-		if t.is_known_fn_name(static_name) {
-			return none
-		}
+	// `Type.fn(...)` / `module.Type.fn(...)` is a static associated function, not a method:
+	// the base names a type, so it must not be lowered into `fn(receiver, ...)`.
+	if _ := t.static_assoc_fn_name(base_id, method) {
+		return none
 	}
 	mut base_type := if base_node.kind in [.selector, .index] {
 		t.lvalue_type(base_id)

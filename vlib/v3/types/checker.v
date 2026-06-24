@@ -1946,9 +1946,31 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		tc.check_ident(id, node)
 		return
 	}
+	if node.kind == .array_init {
+		tc.check_array_init(node)
+		return
+	}
 
 	for i in 0 .. node.children_count {
 		tc.check_node(tc.a.child(&node, i))
+	}
+}
+
+// check_array_init validates an `[]T{len: ..., init: ...}` initializer. The `init:`
+// expression may reference the magic `index` variable (the current element index),
+// so it is checked in a scope where `index` is bound to an int.
+fn (mut tc TypeChecker) check_array_init(node flat.Node) {
+	for i in 0 .. node.children_count {
+		child_id := tc.a.child(&node, i)
+		child := tc.a.nodes[int(child_id)]
+		if child.kind == .field_init && child.value == 'init' {
+			tc.push_scope()
+			tc.cur_scope.insert('index', Type(int_))
+			tc.check_node(child_id)
+			tc.pop_scope()
+		} else {
+			tc.check_node(child_id)
+		}
 	}
 }
 

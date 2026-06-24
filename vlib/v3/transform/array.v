@@ -55,7 +55,11 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	elem_lhs := t.make_index(t.make_ident(tmp_name), t.make_ident(idx_name), elem_type)
 	assign := t.make_assign(elem_lhs, init_expr)
-	t.pending_stmts << t.make_for_stmt(init_idx, cond, post, arr1(assign), node)
+	// `init:` expressions may reference the magic `index` variable, which V binds to
+	// the current element index. Declare it inside the loop body so it resolves to the
+	// generated loop counter instead of leaking to an external symbol (e.g. libc `index`).
+	index_decl := t.make_decl_assign_typed('index', t.make_ident(idx_name), 'int')
+	t.pending_stmts << t.make_for_stmt(init_idx, cond, post, arr2(index_decl, assign), node)
 	return t.make_ident(tmp_name)
 }
 

@@ -1734,7 +1734,7 @@ fn (g &FlatGen) is_missing_middleware_use_call(fn_node flat.Node) bool {
 	if clean_type !is types.Struct {
 		return false
 	}
-	method_name := '${clean_type.name}.use'
+	method_name := '${clean_type.name()}.use'
 	if method_name in g.tc.fn_param_types || method_name in g.tc.fn_ret_types {
 		return false
 	}

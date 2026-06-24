@@ -253,9 +253,11 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 						raw_expr_type := g.tc.resolve_type(ret_id)
 						expr_type := g.usable_expr_type(ret_id)
 						call_ret_type := g.local_fn_call_return_type(ret_id, ret_node)
+						decl_ret_type := g.declared_call_return_type(ret_node)
 						if g.optional_result_matches_base(raw_expr_type, base)
 							|| g.optional_result_matches_base(expr_type, base)
-							|| g.optional_result_matches_base(call_ret_type, base) {
+							|| g.optional_result_matches_base(call_ret_type, base)
+							|| g.optional_result_matches_base(decl_ret_type, base) {
 							g.write('return ')
 							g.gen_expr(ret_id)
 							g.writeln(';')
@@ -495,9 +497,11 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		raw_expr_type := g.tc.resolve_type(ret_id)
 		expr_type := g.usable_expr_type(ret_id)
 		call_ret_type := g.local_fn_call_return_type(ret_id, ret_node)
+		decl_ret_type := g.declared_call_return_type(ret_node)
 		if g.optional_result_matches_base(raw_expr_type, base)
 			|| g.optional_result_matches_base(expr_type, base)
-			|| g.optional_result_matches_base(call_ret_type, base) {
+			|| g.optional_result_matches_base(call_ret_type, base)
+			|| g.optional_result_matches_base(decl_ret_type, base) {
 			return g.expr_to_string(ret_id)
 		}
 		mut expr_value_type := expr_type
@@ -590,6 +594,42 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 		return ret_type
 	}
 	return node_type
+}
+
+// declared_call_return_type returns the *declared* return type of a (possibly
+// lowered) call's target function, preserving type aliases. Method calls are
+// lowered to ident calls (`Recv__method(recv, ...)`) before codegen, and the
+// call node's own `.typ` annotation has aliases resolved away (e.g. `?NodeId`
+// becomes `?int`), which makes the optional C type name appear to differ from
+// the callee's signature. The declared type read from `fn_ret_types`/the fn decl
+// keeps the alias, so propagating `return call()` is recognised as valid.
+fn (g &FlatGen) declared_call_return_type(call_node flat.Node) types.Type {
+	if call_node.kind != .call || call_node.children_count == 0 {
+		return types.Type(types.void_)
+	}
+	fn_node := g.a.child_node(&call_node, 0)
+	if fn_node.kind == .selector {
+		if ret := g.selector_call_return_type(fn_node) {
+			return ret
+		}
+		return types.Type(types.void_)
+	}
+	if fn_node.kind != .ident {
+		return types.Type(types.void_)
+	}
+	if ret := g.tc.fn_ret_types[fn_node.value] {
+		return ret
+	}
+	cfn := c_name(fn_node.value)
+	if cfn != fn_node.value {
+		if ret := g.tc.fn_ret_types[cfn] {
+			return ret
+		}
+	}
+	if ret := g.fn_decl_return_type_for_call_name(fn_node.value) {
+		return ret
+	}
+	return types.Type(types.void_)
 }
 
 fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
@@ -688,13 +728,31 @@ fn (g &FlatGen) expr_really_returns_optional(id flat.NodeId) bool {
 
 // optional_result_matches_base supports optional result matches base handling for FlatGen.
 fn (g &FlatGen) optional_result_matches_base(expr_type types.Type, base types.Type) bool {
+	mut inner := types.Type(types.void_)
 	if expr_type is types.OptionType {
-		return g.type_names_match(expr_type.base_type, base)
+		inner = expr_type.base_type
+	} else if expr_type is types.ResultType {
+		inner = expr_type.base_type
+	} else {
+		return false
 	}
-	if expr_type is types.ResultType {
-		return g.type_names_match(expr_type.base_type, base)
+	if g.type_names_match(inner, base) {
+		return true
 	}
-	return false
+	// Aliases keep their declared name (e.g. `[]NodeId`) while `resolve_type` collapses
+	// them to the underlying type (`[]int`), so a structural name comparison spuriously
+	// fails. What actually matters for `return <call>;` is whether the C optional type
+	// emitted for the call equals the one this function returns — compare those instead.
+	return g.option_c_name_for_base(inner) == g.option_c_name_for_base(base)
+}
+
+// option_c_name_for_base returns the C optional type name used for a `?base`/`!base`
+// value, mirroring optional_type_name without its side effects.
+fn (g &FlatGen) option_c_name_for_base(base types.Type) string {
+	if base is types.Void || base is types.Primitive || base is types.Enum {
+		return 'Optional'
+	}
+	return 'Optional_' + g.tc.c_type(base).replace('*', 'ptr').replace(' ', '_')
 }
 
 // usable_expr_type supports usable expr type handling for FlatGen.
@@ -1184,7 +1242,7 @@ fn (g &FlatGen) assign_struct_operator_method(lhs_type types.Type, op flat.Op) ?
 		return none
 	}
 	op_symbol := assign_struct_operator_symbol(op) or { return none }
-	method_name := '${clean.name}.${op_symbol}'
+	method_name := '${clean.name()}.${op_symbol}'
 	if method_name in g.tc.fn_param_types || method_name in g.tc.fn_ret_types {
 		return method_name
 	}

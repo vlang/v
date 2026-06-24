@@ -65,9 +65,20 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 	if !map_type.starts_with('map[') {
 		return none
 	}
-	key_type, value_type := t.map_type_parts(map_type)
-	if key_type.len == 0 || value_type.len == 0 {
+	key_type, raw_value_type := t.map_type_parts(map_type)
+	if key_type.len == 0 || raw_value_type.len == 0 {
 		return none
+	}
+	// Qualify a bare local sum type (`Value` -> `eval.Value`). A bare name can clash
+	// with an imported type of the same name and resolve to the wrong sum type when the
+	// value is later wrapped into the map element type.
+	mut value_type := raw_value_type
+	if !value_type.contains('.') && !value_type.contains('[') && !value_type.starts_with('&')
+		&& t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		qualified := '${t.cur_module}.${value_type}'
+		if qualified in t.sum_types || (!isnil(t.tc) && qualified in t.tc.sum_types) {
+			value_type = qualified
+		}
 	}
 	return MapIndexInfo{
 		base_id:    base_id
