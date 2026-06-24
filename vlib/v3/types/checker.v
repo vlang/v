@@ -575,6 +575,9 @@ fn (tc &TypeChecker) const_type_from_initializer(name string, typ Type) Type {
 		return typ
 	}
 	expr_id := tc.const_exprs[name] or { return typ }
+	if int(expr_id) < 0 || int(expr_id) >= tc.a.nodes.len {
+		return typ
+	}
 	expr := tc.a.nodes[int(expr_id)]
 	if expr.kind != .call || expr.children_count == 0 {
 		return typ
@@ -1432,6 +1435,18 @@ fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ string, n
 		tc.check_type_string_for_unsupported_generics(clean[7..], node_id, generic_params)
 		return
 	}
+	if clean == 'thread' || clean == 'chan' {
+		return
+	}
+	if clean.starts_with('thread ') {
+		// `thread T` is a thread handle; only its element type T needs checking.
+		tc.check_type_string_for_unsupported_generics(clean[7..], node_id, generic_params)
+		return
+	}
+	if clean.starts_with('chan ') {
+		tc.check_type_string_for_unsupported_generics(clean[5..], node_id, generic_params)
+		return
+	}
 	if clean.starts_with('...') {
 		tc.check_type_string_for_unsupported_generics(clean[3..], node_id, generic_params)
 		return
@@ -1844,12 +1859,57 @@ fn (tc &TypeChecker) stmt_definitely_returns(id flat.NodeId) bool {
 					return false
 				}
 			}
-			return has_else
+			// All branches return. An explicit `else` makes the match exhaustive;
+			// otherwise it is still exhaustive when it covers every variant of the
+			// subject enum (V requires match statements to be exhaustive).
+			return has_else || tc.match_covers_all_enum_variants(node)
 		}
 		else {
 			return false
 		}
 	}
+}
+
+// match_covers_all_enum_variants reports whether a `match` over an enum subject
+// lists every variant of that enum (so it is exhaustive without an `else`).
+fn (tc &TypeChecker) match_covers_all_enum_variants(node flat.Node) bool {
+	if node.children_count < 2 {
+		return false
+	}
+	subject_type := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
+	mut enum_name := ''
+	if subject_type is Enum {
+		enum_name = subject_type.name
+	} else {
+		return false
+	}
+	all_fields := tc.enum_fields[enum_name] or { return false }
+	if all_fields.len == 0 {
+		return false
+	}
+	mut covered := map[string]bool{}
+	for i in 1 .. node.children_count {
+		branch := tc.a.child_node(&node, i)
+		if branch.kind != .match_branch {
+			return false
+		}
+		if branch.value == 'else' {
+			return true
+		}
+		n_conds := branch.value.int()
+		for j in 0 .. n_conds {
+			cond := tc.a.child_node(branch, j)
+			if cond.kind == .enum_val {
+				covered[cond.value.all_after_last('.')] = true
+			}
+		}
+	}
+	for f in all_fields {
+		if f !in covered {
+			return false
+		}
+	}
+	return true
 }
 
 // match_branch_definitely_returns
@@ -1973,9 +2033,50 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		tc.check_array_init(node)
 		return
 	}
+	if node.kind == .select_stmt {
+		tc.check_select_stmt(node)
+		return
+	}
 
 	for i in 0 .. node.children_count {
 		tc.check_node(tc.a.child(&node, i))
+	}
+}
+
+// check_select_stmt validates a `select { ... }` statement. A receive branch
+// `val := <-ch` binds `val` (the channel's element type) in the branch body's
+// scope; other branches (sends, bare conditions, `else`) are checked as-is.
+fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
+	for i in 0 .. node.children_count {
+		branch_id := tc.a.child(&node, i)
+		if !tc.valid_node_id(branch_id) {
+			continue
+		}
+		branch := tc.a.nodes[int(branch_id)]
+		if branch.kind != .select_branch {
+			tc.check_node(branch_id)
+			continue
+		}
+		tc.push_scope()
+		mut body_start := 0
+		if branch.value == 'recv' && branch.children_count >= 2 {
+			// children[0] = bound var ident, children[1] = `<-ch` receive expr.
+			var_id := tc.a.child(&branch, 0)
+			recv_id := tc.a.child(&branch, 1)
+			tc.check_node(recv_id)
+			elem_type := tc.resolve_type(recv_id)
+			if tc.valid_node_id(var_id) {
+				var_node := tc.a.nodes[int(var_id)]
+				if var_node.kind == .ident && var_node.value.len > 0 {
+					tc.cur_scope.insert(var_node.value, elem_type)
+				}
+			}
+			body_start = 2
+		}
+		for j in body_start .. branch.children_count {
+			tc.check_node(tc.a.child(&branch, j))
+		}
+		tc.pop_scope()
 	}
 }
 
@@ -3505,6 +3606,30 @@ fn array_elem_type(arr Array) Type {
 	return arr.elem_type
 }
 
+// array_like_elem_type returns the element type of an `Array` or `ArrayFixed`.
+fn array_like_elem_type(t Type) ?Type {
+	if t is Array {
+		return t.elem_type
+	}
+	if t is ArrayFixed {
+		return t.elem_type
+	}
+	return none
+}
+
+// if_branch_types_compatible reports whether two if-expression branch types are
+// compatible. Bare array literals (`[a, b, c]`) resolve to a fixed `T[n]`, but V
+// treats them as dynamic `[]T`; two array branches with compatible element types
+// must therefore not be flagged as a mismatch merely because their lengths differ.
+fn (tc &TypeChecker) if_branch_types_compatible(a Type, b Type) bool {
+	if tc.type_compatible(a, b) || tc.type_compatible(b, a) {
+		return true
+	}
+	a_elem := array_like_elem_type(a) or { return false }
+	b_elem := array_like_elem_type(b) or { return false }
+	return tc.type_compatible(a_elem, b_elem) || tc.type_compatible(b_elem, a_elem)
+}
+
 // fixed_array_elem_type supports fixed array elem type handling for types.
 fn fixed_array_elem_type(arr ArrayFixed) Type {
 	return arr.elem_type
@@ -3672,8 +3797,7 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	}
 	if then_type !is Void && else_type !is Void {
 		if tc.branch_has_value_tail(then_id) && tc.branch_has_value_tail(tc.a.child(&node, 2))
-			&& !tc.type_compatible(then_type, else_type)
-			&& !tc.type_compatible(else_type, then_type) {
+			&& !tc.if_branch_types_compatible(then_type, else_type) {
 			if tc.should_diagnose(id) {
 				tc.record_error(.if_branch_mismatch,
 					'if-expression branch type mismatch: then `${then_type.name()}` vs else `${else_type.name()}`',
@@ -3954,6 +4078,105 @@ fn choose_if_tail_type(current Type, next Type) Type {
 		return next
 	}
 	return current
+}
+
+// branch_tail_expr_id returns the value-producing tail expression of a branch
+// body (a `block` or `match_branch`), unwrapping a trailing `expr_stmt`. Returns
+// `empty_node` when the branch has no expression tail.
+fn (tc &TypeChecker) branch_tail_expr_id(id flat.NodeId) flat.NodeId {
+	if !tc.valid_node_id(id) {
+		return flat.empty_node
+	}
+	node := tc.a.nodes[int(id)]
+	mut last_id := flat.empty_node
+	if node.kind == .block {
+		if node.children_count == 0 {
+			return flat.empty_node
+		}
+		last_id = tc.a.child(&node, node.children_count - 1)
+	} else if node.kind == .match_branch {
+		body_start := if node.value == 'else' { 0 } else { node.value.int() }
+		if node.children_count <= body_start {
+			return flat.empty_node
+		}
+		last_id = tc.a.child(&node, node.children_count - 1)
+	} else {
+		return id
+	}
+	if !tc.valid_node_id(last_id) {
+		return flat.empty_node
+	}
+	last := tc.a.nodes[int(last_id)]
+	if last.kind == .expr_stmt {
+		if last.children_count > 0 {
+			return tc.a.child(&last, 0)
+		}
+		return flat.empty_node
+	}
+	return last_id
+}
+
+// branches_compatible_with propagates `expected` into every value-producing tail
+// of a match/if expression (so context-dependent tails such as enum shorthand
+// `.foo`, `none`, or fn literals type against it instead of defaulting to e.g.
+// `int`). Returns true when the node is a match/if expression and every branch
+// tail is compatible with `expected`.
+fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .match_stmt {
+		mut saw_branch := false
+		for i in 1 .. node.children_count {
+			branch_id := tc.a.child(&node, i)
+			if !tc.valid_node_id(branch_id) {
+				continue
+			}
+			if tc.a.nodes[int(branch_id)].kind != .match_branch {
+				continue
+			}
+			tail := tc.branch_tail_expr_id(branch_id)
+			if !tc.valid_node_id(tail) {
+				return false
+			}
+			saw_branch = true
+			actual := tc.resolve_expr(tail, expected)
+			if !tc.receiver_compatible(actual, expected) {
+				return false
+			}
+		}
+		return saw_branch
+	}
+	if node.kind == .if_expr {
+		// A value if-expression needs an else branch (child 2). children: cond,
+		// then-block, else (block or nested if_expr).
+		if node.children_count <= 2 {
+			return false
+		}
+		then_tail := tc.branch_tail_expr_id(tc.a.child(&node, 1))
+		if !tc.valid_node_id(then_tail) {
+			return false
+		}
+		then_actual := tc.resolve_expr(then_tail, expected)
+		if !tc.receiver_compatible(then_actual, expected) {
+			return false
+		}
+		else_id := tc.a.child(&node, 2)
+		if !tc.valid_node_id(else_id) {
+			return false
+		}
+		if tc.a.nodes[int(else_id)].kind == .if_expr {
+			return tc.branches_compatible_with(else_id, expected)
+		}
+		else_tail := tc.branch_tail_expr_id(else_id)
+		if !tc.valid_node_id(else_tail) {
+			return false
+		}
+		else_actual := tc.resolve_expr(else_tail, expected)
+		return tc.receiver_compatible(else_actual, expected)
+	}
+	return false
 }
 
 // extract_smartcasts supports extract smartcasts handling for TypeChecker.
@@ -4367,11 +4590,46 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 		return Type(int_)
 	}
 	if node.kind == .array_literal {
-		if expected is Array && node.children_count == 0 {
-			tc.register_synth_type(id, expected_raw)
-			return expected_raw
+		mut elem_expected := Type(void_)
+		mut expected_is_array := false
+		if expected is Array {
+			elem_expected = array_elem_type(expected)
+			expected_is_array = true
+		} else if expected is ArrayFixed {
+			elem_expected = fixed_array_elem_type(expected)
+			expected_is_array = true
 		}
-		if expected is ArrayFixed && node.children_count == 0 {
+		if expected_is_array {
+			// Empty literal `[]` simply adopts the expected array type.
+			if node.children_count == 0 {
+				tc.register_synth_type(id, expected_raw)
+				return expected_raw
+			}
+			// Non-empty literal: propagate the expected element type down to each
+			// element so context-dependent elements (enum shorthand `[.foo]`, `none`,
+			// fn literals) type against it instead of defaulting to a fixed `int[N]`.
+			// Adopt the expected array type when every element fits.
+			mut all_ok := true
+			for i in 0 .. node.children_count {
+				child_id := tc.a.child(&node, i)
+				elem_actual := tc.resolve_expr(child_id, elem_expected)
+				if !tc.receiver_compatible(elem_actual, elem_expected) {
+					all_ok = false
+					break
+				}
+			}
+			if all_ok {
+				tc.register_synth_type(id, expected_raw)
+				return expected_raw
+			}
+		}
+	}
+	if node.kind == .match_stmt || node.kind == .if_expr {
+		// Match/if used as a value expression: propagate the expected type into
+		// each branch tail so enum-shorthand / `none` / fn-literal tails type
+		// against it (e.g. `return match s { 'a' { .foo } ... }` with an enum
+		// return type), then adopt the expected type when every branch fits.
+		if expected !is Void && expected !is Unknown && tc.branches_compatible_with(id, expected) {
 			tc.register_synth_type(id, expected_raw)
 			return expected_raw
 		}
@@ -5384,6 +5642,14 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			elem_type: Type(void_)
 		})
 	}
+	if typ.starts_with('thread ') || typ == 'thread' {
+		// A thread handle. The element type (the spawned fn's return type) is kept
+		// in the struct name (`thread T`) so `array_of_threads.wait()` can recover
+		// `[]T`. The handle itself lowers to `void*` in C (see c_type).
+		return Type(Struct{
+			name: typ
+		})
+	}
 	if typ.starts_with('?') {
 		return Type(OptionType{
 			base_type: tc.parse_type(typ[1..])
@@ -6007,6 +6273,16 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 							})
 						})
 					}
+					if fn_node.value == 'wait' {
+						// `[]thread T`.wait() joins all threads and returns `[]T`.
+						elem := array_elem_type(clean_type)
+						if elem is Struct && elem.name.starts_with('thread ') {
+							return Type(Array{
+								elem_type: tc.parse_type(elem.name[7..])
+							})
+						}
+						return base_type
+					}
 					if fn_node.value == 'clone' {
 						return base_type
 					}
@@ -6486,6 +6762,11 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 		if inner0 is Alias {
 			inner = inner0.base_type
 		}
+		if inner is Map {
+			// `mut m map[K]V` params resolve to a pointer-to-map; indexing still
+			// yields the value type V, not the whole map.
+			return map_value_type(inner)
+		}
 		if inner is Array {
 			return array_elem_type(inner)
 		}
@@ -6584,7 +6865,7 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return 'Optional'
 	}
 	if t is Struct {
-		if t.name == 'thread' || t.name.ends_with('.thread') {
+		if t.name == 'thread' || t.name.ends_with('.thread') || t.name.starts_with('thread ') {
 			return 'void*'
 		}
 		if t.name.starts_with('C.') {

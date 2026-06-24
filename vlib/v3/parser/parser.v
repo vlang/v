@@ -87,7 +87,11 @@ pub fn (mut p Parser) parse_into(path string) {
 	})
 	src := read_source_file_raw(path)
 	if src.len == 0 {
-		eprintln('error reading ${path}')
+		// An empty but existing `.v` file is valid (declares nothing); only a
+		// genuine read failure (missing file) is an error worth reporting.
+		if !os.exists(path) {
+			eprintln('error reading ${path}')
+		}
 		return
 	}
 	if path.ends_with('.v') {
@@ -2359,10 +2363,31 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		}
 		return p.a.add_val_id(3, 'false')
 	}
+	if p.tok == .name && p.lit == 'env' {
+		// $env('NAME') evaluates an environment variable at compile time and
+		// becomes a plain string literal (empty when the variable is unset).
+		p.next() // skip 'env'
+		mut env_val := ''
+		if p.tok == .lpar {
+			p.next() // skip (
+			if p.tok == .string {
+				env_val = os.getenv(strip_quotes(p.lit))
+				p.next()
+			}
+			for p.tok != .rpar && p.tok != .eof {
+				p.next()
+			}
+			p.check(.rpar)
+		}
+		return p.a.add_val_id(5, env_val)
+	}
 	for p.tok != .semicolon && p.tok != .eof {
 		p.next()
 	}
-	return flat.empty_node
+	// Unknown comptime expression: return an empty string literal rather than
+	// `empty_node`, so consumers (e.g. const initializers) never store an
+	// invalid (-1) child node.
+	return p.a.add_val_id(5, '')
 }
 
 fn (mut p Parser) parse_comptime_if_expr() flat.NodeId {
@@ -4916,6 +4941,7 @@ fn (mut p Parser) select_expr() flat.NodeId {
 // select_branch resolves select branch information for parser.
 fn (mut p Parser) select_branch() flat.NodeId {
 	mut is_else := false
+	mut is_recv_decl := false
 	mut cond_ids := []flat.NodeId{}
 	if p.tok == .key_else {
 		is_else = true
@@ -4925,9 +4951,13 @@ fn (mut p Parser) select_branch() flat.NodeId {
 		// could be assignment: ch <- val or val := <-ch
 		if token_is_assignment(p.tok) || p.tok == .decl_assign {
 			op := p.tok
+			// Record `val := <-ch` so the type checker can bind `val` (the
+			// channel's element type) in the branch body's scope.
+			if op == .decl_assign {
+				is_recv_decl = true
+			}
 			p.next()
 			cond_ids << p.expr(.lowest)
-			_ = op
 		}
 	}
 	mut body_ids := []flat.NodeId{}
@@ -4939,9 +4969,16 @@ fn (mut p Parser) select_branch() flat.NodeId {
 		all_ids << id
 	}
 	start := p.add_children(all_ids)
+	branch_value := if is_else {
+		'else'
+	} else if is_recv_decl {
+		'recv'
+	} else {
+		''
+	}
 	return p.a.add_node(flat.Node{
 		kind:           .select_branch
-		value:          if is_else { 'else' } else { '' }
+		value:          branch_value
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
 	})

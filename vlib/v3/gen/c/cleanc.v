@@ -571,7 +571,51 @@ fn c_flag_arg(raw string, vroot string, source_file string) string {
 	if clean.len == 0 {
 		return ''
 	}
-	return c_resolve_pseudo_paths(clean, vroot, source_file)
+	resolved := c_resolve_pseudo_paths(clean, vroot, source_file)
+	return c_resolve_relative_flag_paths(resolved, source_file)
+}
+
+// c_resolve_relative_flag_paths rewrites relative path arguments in a `#flag`
+// directive (e.g. `-I ./thirdparty`, or a bare `./foo.c`) to absolute paths,
+// resolved against the directory of the source file that carried the directive.
+// V1 does the same: a project's `#flag` paths are relative to its own module dir,
+// not to the compiler's build/working directory.
+fn c_resolve_relative_flag_paths(flag string, source_file string) string {
+	if source_file.len == 0 || !flag.contains('/') {
+		return flag
+	}
+	base_dir := os.dir(source_file)
+	if base_dir.len == 0 {
+		return flag
+	}
+	mut out := []string{}
+	for tok in flag.fields() {
+		out << c_resolve_flag_path_token(tok, base_dir)
+	}
+	return out.join(' ')
+}
+
+fn c_resolve_flag_path_token(tok string, base_dir string) string {
+	for prefix in ['-I', '-L'] {
+		if tok.starts_with(prefix) && tok.len > prefix.len {
+			path := tok[prefix.len..]
+			if c_flag_path_is_relative(path) {
+				return prefix + os.real_path(os.join_path_single(base_dir, path))
+			}
+			return tok
+		}
+	}
+	if !tok.starts_with('-') && c_flag_path_is_relative(tok) {
+		return os.real_path(os.join_path_single(base_dir, tok))
+	}
+	return tok
+}
+
+fn c_flag_path_is_relative(p string) bool {
+	if p.len == 0 || os.is_abs_path(p) {
+		return false
+	}
+	return p.starts_with('./') || p.starts_with('../') || p.contains('/')
 }
 
 fn c_directive_arg_for_target(raw string) ?string {
