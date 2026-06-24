@@ -5153,6 +5153,17 @@ fn (mut g Gen) fn_ptr_cast_typ(func ast.FnType) string {
 	return g.fn_ptr_decl_str(func, ptr_name).replace_once(ptr_name, '')
 }
 
+// expr_is_range_index reports whether expr is a slice (`s[a..b]`), possibly
+// wrapped in parentheses. A slice yields a fresh rvalue with no stable address,
+// so it must be materialized via ADDR rather than `&` in a sumtype cast.
+fn expr_is_range_index(expr ast.Expr) bool {
+	return match expr {
+		ast.IndexExpr { expr.index is ast.RangeExpr }
+		ast.ParExpr { expr_is_range_index(expr.expr) }
+		else { false }
+	}
+}
+
 fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Type, got ast.Type, actual_got ast.Type, exp_styp string,
 	got_is_ptr bool, got_is_fn bool, got_styp string) {
 	mut rparen_n := 1
@@ -5177,7 +5188,9 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		// A slice expression (`s[a..b]`) yields a fresh rvalue with no stable
 		// address, even though `is_lvalue()` reports it as one. Treat it as an
 		// rvalue so the sumtype cast materializes it via ADDR instead of `&`.
-		expr.is_lvalue() && !(expr is ast.IndexExpr && expr.index is ast.RangeExpr)
+		// `is_lvalue()` recurses through `ParExpr`, so unwrap parens too
+		// (`(s[a..b])`).
+		expr.is_lvalue() && !expr_is_range_index(expr)
 	}
 	is_comptime_variant := is_not_ptr_and_fn && expr is ast.Ident
 		&& g.comptime.is_comptime_variant_var(expr)
