@@ -200,9 +200,26 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 				fragment := c.collect_header_block(frame.fragment, frame.end_headers, stream_id)!
 				// Decode once — HPACK table state is advanced here.
 				decoded := c.decoder.decode(fragment)!
-				// First pass: find :status to detect 1xx informational responses
-				// (RFC 7540 §8.1, RFC 7231 §6.2). Trailers have no :status (== 0).
+				if got_headers {
+					// A second HEADERS block carries trailers, which MUST end the
+					// stream (RFC 9113 §8.1). Without END_STREAM read_response would
+					// loop forever waiting for a stream end that never comes; the mux
+					// path resets such a stream, so the synchronous client fails too.
+					if !frame.end_stream {
+						return error('h2: trailers HEADERS frame must carry END_STREAM')
+					}
+					for f in decoded {
+						if !f.name.starts_with(':') {
+							resp.headers << f
+						}
+					}
+					break
+				}
+				// First (interim or final) response HEADERS. Find :status. A
+				// response MUST carry a valid :status (RFC 9113 §8.3.1), and 101 is
+				// forbidden in HTTP/2 (§8.1.1).
 				mut status := 0
+				mut status_seen := false
 				for f in decoded {
 					if f.name == ':status' {
 						if f.value.len == 3 && all_digits(f.value) {
@@ -210,8 +227,16 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 						} else {
 							return error('h2: malformed :status value: ${f.value}')
 						}
+						status_seen = true
 						break
 					}
+				}
+				if !status_seen || status < 100 || status > 599 || status == 101 {
+					// Missing / out-of-range / 101 status: fail rather than latch a
+					// bogus status or (for 101 or a sub-200 interim) loop forever
+					// waiting for a "final" HEADERS. Mirrors the mux path, which
+					// resets the stream with PROTOCOL_ERROR.
+					return error('h2: response with a missing or invalid :status: ${status}')
 				}
 				if status >= 100 && status < 200 {
 					// 1xx informational: discard and continue waiting for the
@@ -227,17 +252,12 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 					}
 					continue
 				}
-				// Second pass: populate the response. Skip pseudo-headers.
-				if status > 0 {
-					resp.status = status
-				}
+				// Final response (status >= 200): populate, skipping pseudo-headers.
+				resp.status = status
 				for f in decoded {
 					if !f.name.starts_with(':') {
 						resp.headers << f
-						// Only update body_expected on the first (non-1xx) HEADERS
-						// frame. A content-length field in a trailer must not
-						// overwrite the value used for the completeness check below.
-						if !got_headers && f.name == 'content-length' {
+						if f.name == 'content-length' {
 							if all_digits(f.value) {
 								body_expected = f.value.u64()
 								has_content_length = true
@@ -255,6 +275,12 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 			H2DataFrame {
 				if frame.stream_id != stream_id {
 					continue
+				}
+				if !got_headers {
+					// DATA before the response HEADERS is a protocol error
+					// (RFC 9113 §8.1); the mux path rejects it. Fail rather than
+					// deliver body bytes for a response that has no status yet.
+					return error('h2: DATA frame before response HEADERS')
 				}
 				if frame.data.len > 0 {
 					body_so_far += u64(frame.data.len)
