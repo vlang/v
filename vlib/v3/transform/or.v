@@ -466,6 +466,11 @@ fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name s
 	if body.children_count == 0 {
 		return result
 	}
+	// The or-body is its own scope: `err` (and any locals it declares) are bound only
+	// for its lowering and restored afterwards, so the previous binding (e.g. an outer
+	// `err := 1`) survives and a subsequent `${err}` is not mis-typed as `IError`.
+	// Mirrors transform_if_guard_else_block.
+	saved_var_types := t.var_types.clone()
 	t.set_var_type('err', 'IError')
 	err_value := if err_source.len > 0 {
 		t.make_selector(t.make_ident(err_source), 'err', 'IError')
@@ -522,6 +527,7 @@ fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name s
 		}
 	}
 	_ = target_type
+	t.var_types = saved_var_types
 	return result
 }
 

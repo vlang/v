@@ -395,3 +395,31 @@ fn test_const_expr_fixed_array_field_and_spacing() {
 		'const segs = 3\nconst mult = 2\nfn main() {\n\ta := [segs + 1]int{}\n\tb := [segs+1]int{}\n\tc := [segs * mult]int{}\n\td := [segs - 1]int{}\n\te := [segs * mult + 1]int{}\n\tprintln(int_str(a.len + b.len + c.len + d.len + e.len))\n}\n')
 	assert good_forms == '23'
 }
+
+// Regression tests for the second PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_two() {
+	v3_bin := build_v3()
+	// or-block binds `err` (IError) only inside the or-body; an outer `err` keeps its
+	// type afterwards (was emitted as `err.message` on an int).
+	or_err := run_good(v3_bin, 'good_or_block_err_scope',
+		'fn maybe() ?int {\n\treturn 1\n}\nfn main() {\n\terr := 7\n\t_ := maybe() or { 0 }\n\tprintln(int_str(err))\n}\n')
+	assert or_err == '7'
+	// Generic receiver params are substituted by declared name: `Pair[L, R].right()`
+	// returns `R` (int), not the first arg `L` (string).
+	pair := run_good(v3_bin, 'good_generic_receiver_param_by_name',
+		"struct Pair[L, R] {\n\tleft  L\n\tright R\n}\nfn (p Pair[L, R]) right_val() R {\n\treturn p.right\n}\nfn main() {\n\tp := Pair[string, int]{\n\t\tleft:  'hi'\n\t\tright: 42\n\t}\n\tprintln(int_str(p.right_val()))\n}\n")
+	assert pair == '42'
+	// `[flag]` enum stringification renders combined values as `Enum{.a | .b}`.
+	flag := run_good(v3_bin, 'good_flag_enum_str',
+		'@[flag]\nenum Perm {\n\tread\n\twrite\n\texec\n}\nfn main() {\n\ta := Perm.read | Perm.write\n\tprintln(a.str())\n\tb := Perm.read\n\tprintln(b.str())\n}\n')
+	assert flag == 'Perm{.read | .write}\nPerm{.read}'
+	// spawn of an option-returning fn stores/reads the `Optional_T` ABI layout.
+	spawn_opt := run_good(v3_bin, 'good_spawn_option_return',
+		"fn work() ?string {\n\treturn 'hello'\n}\nfn main() {\n\tmut ts := []thread ?string{}\n\tts << spawn work()\n\trs := ts.wait()\n\tx := rs[0] or { 'none' }\n\tprintln(x)\n}\n")
+	assert spawn_opt == 'hello'
+	// A global V function passed to a method `fn ()` param keeps the function-pointer
+	// typedef (not `(void*)`).
+	cb := run_good(v3_bin, 'good_method_fn_ptr_arg',
+		"struct S {\n\tn int\n}\nfn (s S) run(cb fn ()) {\n\tcb()\n}\nfn greet() {\n\tprintln('hi')\n}\nfn main() {\n\ts := S{\n\t\tn: 1\n\t}\n\ts.run(greet)\n}\n")
+	assert cb == 'hi'
+}

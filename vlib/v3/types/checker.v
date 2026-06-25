@@ -5424,13 +5424,17 @@ fn (tc &TypeChecker) struct_field_type_inner(struct_name string, field_name stri
 	for field in tc.structs[lookup_name] or { []StructField{} } {
 		if field.name == field_name {
 			if is_generic {
-				return tc.substitute_generic_type(field.typ, generic_args)
+				return tc.substitute_generic_type(field.typ, generic_args, tc.struct_generic_params[base_name] or {
+					[]string{}
+				})
 			}
 			return field.typ
 		}
 		mut embedded_type := embedded_field_type(field) or { continue }
 		embedded_type = if is_generic {
-			tc.substitute_generic_type(embedded_type, generic_args)
+			tc.substitute_generic_type(embedded_type, generic_args, tc.struct_generic_params[base_name] or {
+				[]string{}
+			})
 		} else {
 			embedded_type
 		}
@@ -5445,13 +5449,22 @@ fn (tc &TypeChecker) struct_field_type_inner(struct_name string, field_name stri
 	return none
 }
 
-fn (tc &TypeChecker) substitute_generic_type(typ Type, args []string) Type {
+// substitute_generic_type replaces generic placeholders in `typ` with the concrete
+// `args`. When `param_names` (the struct/fn's declared type parameters, e.g.
+// `['L', 'R']`) is provided, a placeholder is matched to its arg by its declared
+// position — so `Pair[L, R]`'s `R` resolves to `args[1]`, not the letter-based
+// `generic_param_index` guess (which maps any unrecognised name to 0). The
+// letter-based fallback is kept only for callers that have no declared names.
+fn (tc &TypeChecker) substitute_generic_type(typ Type, args []string, param_names []string) Type {
 	if args.len == 0 {
 		return typ
 	}
 	if typ is Unknown {
 		if name := generic_placeholder_from_unknown(typ) {
-			idx := generic_param_index(name)
+			mut idx := if param_names.len > 0 { param_names.index(name) } else { -1 }
+			if idx < 0 {
+				idx = generic_param_index(name)
+			}
 			if idx >= 0 && idx < args.len {
 				return tc.parse_type(args[idx].trim_space())
 			}
@@ -5460,51 +5473,51 @@ fn (tc &TypeChecker) substitute_generic_type(typ Type, args []string) Type {
 	}
 	if typ is Array {
 		return Type(Array{
-			elem_type: tc.substitute_generic_type(typ.elem_type, args)
+			elem_type: tc.substitute_generic_type(typ.elem_type, args, param_names)
 		})
 	}
 	if typ is ArrayFixed {
 		return Type(ArrayFixed{
-			elem_type: tc.substitute_generic_type(typ.elem_type, args)
+			elem_type: tc.substitute_generic_type(typ.elem_type, args, param_names)
 			len:       typ.len
 			len_expr:  typ.len_expr
 		})
 	}
 	if typ is Map {
 		return Type(Map{
-			key_type:   tc.substitute_generic_type(typ.key_type, args)
-			value_type: tc.substitute_generic_type(typ.value_type, args)
+			key_type:   tc.substitute_generic_type(typ.key_type, args, param_names)
+			value_type: tc.substitute_generic_type(typ.value_type, args, param_names)
 		})
 	}
 	if typ is Pointer {
 		return Type(Pointer{
-			base_type: tc.substitute_generic_type(typ.base_type, args)
+			base_type: tc.substitute_generic_type(typ.base_type, args, param_names)
 		})
 	}
 	if typ is OptionType {
 		return Type(OptionType{
-			base_type: tc.substitute_generic_type(typ.base_type, args)
+			base_type: tc.substitute_generic_type(typ.base_type, args, param_names)
 		})
 	}
 	if typ is ResultType {
 		return Type(ResultType{
-			base_type: tc.substitute_generic_type(typ.base_type, args)
+			base_type: tc.substitute_generic_type(typ.base_type, args, param_names)
 		})
 	}
 	if typ is FnType {
 		mut params := []Type{}
 		for param in typ.params {
-			params << tc.substitute_generic_type(param, args)
+			params << tc.substitute_generic_type(param, args, param_names)
 		}
 		return Type(FnType{
 			params:      params
-			return_type: tc.substitute_generic_type(typ.return_type, args)
+			return_type: tc.substitute_generic_type(typ.return_type, args, param_names)
 		})
 	}
 	if typ is MultiReturn {
 		mut parts := []Type{}
 		for part in typ.types {
-			parts << tc.substitute_generic_type(part, args)
+			parts << tc.substitute_generic_type(part, args, param_names)
 		}
 		return Type(MultiReturn{
 			types: parts
@@ -7178,11 +7191,11 @@ fn (mut tc TypeChecker) resolve_generic_struct_method(type_name string, method s
 	}
 	generic_key := '${base}[${params.join(', ')}].${method}'
 	ret := tc.fn_ret_types[generic_key] or { return none }
-	sub_ret := tc.substitute_generic_type(ret, concrete_args)
+	sub_ret := tc.substitute_generic_type(ret, concrete_args, params)
 	mut sub_params := []Type{}
 	if ptypes := tc.fn_param_types[generic_key] {
 		for pt in ptypes {
-			sub_params << tc.substitute_generic_type(pt, concrete_args)
+			sub_params << tc.substitute_generic_type(pt, concrete_args, params)
 		}
 	}
 	return CallInfo{

@@ -388,7 +388,10 @@ fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_
 // heap-returned value into a result `[]T` (freeing the per-thread allocation).
 fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
 	is_void := ret_name.len == 0
-	ret_ct := if is_void { 'void' } else { g.tc.c_type(g.tc.parse_type(ret_name)) }
+	// Match the ABI return type the spawn wrapper stores (gen_spawn_expr): an
+	// option/result payload is `Optional_T`, a fixed-array payload its `_v_ret_*`
+	// wrapper — not the bare `c_type`, or the malloc'd and read-back layouts diverge.
+	ret_ct := if is_void { 'void' } else { g.fn_return_type_name(g.tc.parse_type(ret_name)) }
 	key := 'threadwait|${ret_ct}'
 	if name := g.spawn_wrapper_names[key] {
 		return name

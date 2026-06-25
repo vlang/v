@@ -475,8 +475,7 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 		g.writeln('return ${tmp};')
 		return
 	}
-	if g.cur_fn_ret is types.ArrayFixed
-		&& g.tc.c_type(g.cur_fn_ret) in g.fixed_array_ret_wrappers {
+	if g.cur_fn_ret is types.ArrayFixed && g.tc.c_type(g.cur_fn_ret) in g.fixed_array_ret_wrappers {
 		wrapper := fixed_array_ret_wrapper_name(g.tc.c_type(g.cur_fn_ret))
 		tmp := g.tmp_name()
 		g.write('${wrapper} ${tmp} = ')
@@ -1642,12 +1641,15 @@ fn (mut g FlatGen) gen_or_expr(node flat.Node) {
 	g.write('({${opt_ct} ${tmp} = ')
 	g.gen_expr_with_expected_type(expr_id, expr_type)
 	g.write('; ${val_ct} ${val}; if (${tmp}.ok) { ${val} = ${tmp}.value; } else { IError err = ${tmp}.err; (void)err; ')
-	// Bind `err` (IError) in the cgen scope so the or-body's own string interpolations
-	// and selector accesses resolve `err`'s type correctly. Without this, an `${err}`
-	// inside the or-body (common in const-init or-blocks lowered here) falls back to
-	// `int__str(err)`. Mirrors the for-loop / if-guard scope inserts elsewhere in cgen.
+	// Bind `err` (IError) in a *temporary* cgen scope so the or-body's own string
+	// interpolations and selector accesses resolve `err`'s type correctly (without this
+	// an `${err}` inside the or-body falls back to `int__str(err)`). The scope is popped
+	// afterwards so an outer local named `err` keeps its real type — e.g.
+	// `err := 1; _ := maybe() or { 0 }; println('${err}')` must still see `err` as int.
+	g.tc.push_scope()
 	g.tc.cur_scope.insert('err', g.tc.parse_type('IError'))
 	g.gen_or_body_value(or_body, val, val_type)
+	g.tc.pop_scope()
 	g.write(' } ${val};})')
 }
 

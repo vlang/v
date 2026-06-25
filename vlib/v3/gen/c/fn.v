@@ -248,12 +248,20 @@ fn net_ip_fixed_arg_type(fn_name string, arg_idx int) ?types.ArrayFixed {
 	return none
 }
 
-fn (mut g FlatGen) gen_special_c_callback_arg(fn_name string, arg_idx int, arg_id flat.NodeId) bool {
+fn (mut g FlatGen) gen_special_c_callback_arg(fn_name string, arg_idx int, arg_id flat.NodeId, expected_param types.Type) bool {
 	clean_name := fn_name.trim_string_left('C.').all_after_last('.')
 	if clean_name == 'mbedtls_ssl_conf_sni' && arg_idx == 1 {
 		g.write('(int (*)(void *, mbedtls_ssl_context *, const unsigned char *, size_t))')
 		g.gen_expr(arg_id)
 		return true
+	}
+	// Only convert to `(void*)` for an actual C-callback slot. A V `fn (...) ...`
+	// parameter is generated as a `_fn_ptr_*` typedef and must receive the function
+	// pointer directly: `(void*)foo` is an object-pointer-to-function-pointer cast that
+	// strict C rejects and that is not portable across ABIs. C functions (and loosely
+	// typed `voidptr` slots) still need it, because C uses the header prototype.
+	if expected_param is types.FnType {
+		return false
 	}
 	// A V function passed by name to a C function (a callback) must be cast: the V
 	// declaration's parameter type (often `voidptr`) is ignored by C in favour of the
@@ -379,7 +387,11 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	fn_node := g.a.child_node(&call_node, 0)
 	// The spawned call's return type: heap-captured by the wrapper so a later
 	// `[]thread T .wait()` can recover the value (void callees just return NULL).
-	ret_ct := g.tc.c_type(g.tc.resolve_type(call_id))
+	// Use the callee's ABI return type, not the bare value type: an option/result
+	// return is `Optional_T` (not the generic `Optional`, whose payload is `int`) and a
+	// fixed-array return is its `_v_ret_*` wrapper struct. The wrapper mallocs and
+	// assigns this type, and `[]thread T.wait()` must read back the same layout.
+	ret_ct := g.fn_return_type_name(g.tc.resolve_type(call_id))
 	mut wrapper := ''
 	mut arg_expr := 'NULL'
 	if fn_node.kind == .ident {
@@ -1570,7 +1582,12 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					&& g.gen_pointer_arg_from_array_literal(arg_node, param_types[arg_idx]) {
 					continue
 				}
-				if g.gen_special_c_callback_arg(target_name, arg_idx, arg_id) {
+				cb_param := if arg_idx >= 0 && arg_idx < param_types.len {
+					param_types[arg_idx]
+				} else {
+					types.Type(types.void_)
+				}
+				if g.gen_special_c_callback_arg(target_name, arg_idx, arg_id, cb_param) {
 					continue
 				}
 				if variadic_idx >= 0 && arg_idx == variadic_idx {
@@ -2089,28 +2106,18 @@ fn (g &FlatGen) current_param_type(name string) ?types.Type {
 	return none
 }
 
-// gen_enum_str_call emits enum str call output for c.
+// gen_enum_str_call emits an explicit `enum_val.str()` (with no user-defined `str`)
+// by routing to the compiler-synthesized `<Enum>__autostr`, so it matches `${enum}`
+// interpolation exactly — including `[flag]` enums' `Enum{.a | .b}` form, which the
+// old inline single-value ternary chain could not render.
 fn (mut g FlatGen) gen_enum_str_call(fn_node &flat.Node, enum_type types.Enum) {
-	fields := g.tc.enum_fields[enum_type.name] or { []string{} }
-	if fields.len == 0 {
-		sid := g.intern_string('')
-		g.write('_str_${sid}')
-		return
+	mut name := enum_type.name
+	if name.starts_with('main.') {
+		name = name[5..]
 	}
-	g.write('({ int _e${g.tmp_count} = ')
+	g.write('${c_name(name)}__autostr(')
 	g.gen_expr(g.a.child(fn_node, 0))
-	g.write('; ')
-	for field in fields {
-		ekey := '${enum_type.name}.${field}'
-		if ekey in g.enum_vals {
-			val := g.enum_vals[ekey]
-			sid := g.intern_string(field)
-			g.write('_e${g.tmp_count} == ${val} ? _str_${sid} : ')
-		}
-	}
-	unknown := g.intern_string('')
-	g.write('_str_${unknown}; })')
-	g.tmp_count++
+	g.write(')')
 }
 
 // enum_receiver_method_name supports enum receiver method name handling for FlatGen.
@@ -2556,7 +2563,12 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			&& g.gen_pointer_arg_from_array_literal(arg_node, param_types[arg_idx]) {
 			continue
 		}
-		if g.gen_special_c_callback_arg(fn_name, arg_idx, arg_id) {
+		cb_param := if arg_idx >= 0 && arg_idx < param_types.len {
+			param_types[arg_idx]
+		} else {
+			types.Type(types.void_)
+		}
+		if g.gen_special_c_callback_arg(fn_name, arg_idx, arg_id, cb_param) {
 			continue
 		}
 		if is_variadic && arg_idx == variadic_idx {

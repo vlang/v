@@ -183,37 +183,81 @@ fn (mut g FlatGen) enum_str_defs() {
 					node.value
 				}
 				cn := c_name(name)
-				is_flag := node.typ == 'flag'
-				g.writeln('string ${cn}__autostr(${cn} it) {')
-				g.writeln('\tswitch (it) {')
-				mut val := 0
-				mut seen := map[int]bool{}
-				for i in 0 .. node.children_count {
-					f := g.a.child_node(&node, i)
-					if f.children_count > 0 {
-						if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
-							val = enum_val
+				if node.typ == 'flag' {
+					// `[flag]` enum: a value can combine several bits, so build the V
+					// `Enum{.a | .b}` form by testing each field bit instead of matching a
+					// single case (which would send any combination to the integer path).
+					g.emit_flag_enum_autostr(node, cn)
+				} else {
+					g.writeln('string ${cn}__autostr(${cn} it) {')
+					g.writeln('\tswitch (it) {')
+					mut val := 0
+					mut seen := map[int]bool{}
+					for i in 0 .. node.children_count {
+						f := g.a.child_node(&node, i)
+						if f.children_count > 0 {
+							if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
+								val = enum_val
+							}
 						}
+						case_val := val
+						val++
+						// Duplicate field values would produce duplicate C `case` labels; keep first.
+						if case_val in seen {
+							continue
+						}
+						seen[case_val] = true
+						fname := f.value
+						g.writeln('\t\tcase ${cn}__${fname}: return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
 					}
-					case_val := if is_flag { 1 << val } else { val }
-					val++
-					// Duplicate field values would produce duplicate C `case` labels; keep first.
-					if case_val in seen {
-						continue
-					}
-					seen[case_val] = true
-					fname := f.value
-					g.writeln('\t\tcase ${cn}__${fname}: return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
+					g.writeln('\t\tdefault: break;')
+					g.writeln('\t}')
+					g.writeln('\treturn strconv__format_int((i64)it, 10);')
+					g.writeln('}')
+					g.writeln('')
 				}
-				g.writeln('\t\tdefault: break;')
-				g.writeln('\t}')
-				g.writeln('\treturn strconv__format_int((i64)it, 10);')
-				g.writeln('}')
-				g.writeln('')
 			}
 			else {}
 		}
 	}
+}
+
+// emit_flag_enum_autostr emits the `<Enum>__autostr` helper for a `[flag]` enum.
+// Matching V, a combined value is rendered as `Enum{.a | .b}` by testing each
+// field's bit; `Enum(0)` renders as `Enum{}`.
+fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, cn string) {
+	short := node.value.all_after_last('.')
+	g.writeln('string ${cn}__autostr(${cn} it) {')
+	g.writeln('\tint __fe_v = (int)it;')
+	g.writeln('\tstring __fe_res = (string){.str = (u8*)"${short}{", .len = ${short.len + 1}, .is_lit = 1};')
+	g.writeln('\tbool __fe_first = true;')
+	mut val := 0
+	mut seen := map[int]bool{}
+	for i in 0 .. node.children_count {
+		f := g.a.child_node(&node, i)
+		if f.children_count > 0 {
+			if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
+				val = enum_val
+			}
+		}
+		bit := 1 << val
+		val++
+		if bit in seen {
+			continue
+		}
+		seen[bit] = true
+		fname := f.value
+		g.writeln('\tif (${cn}__${fname} != 0 && (__fe_v & ${cn}__${fname}) == ${cn}__${fname}) {')
+		g.writeln('\t\tif (!__fe_first) { __fe_res = string__plus(__fe_res, (string){.str = (u8*)" | ", .len = 3, .is_lit = 1}); }')
+		g.writeln('\t\t__fe_res = string__plus(__fe_res, (string){.str = (u8*)".${fname}", .len = ${
+			fname.len + 1}, .is_lit = 1});')
+		g.writeln('\t\t__fe_first = false;')
+		g.writeln('\t}')
+	}
+	g.writeln('\t__fe_res = string__plus(__fe_res, (string){.str = (u8*)"}", .len = 1, .is_lit = 1});')
+	g.writeln('\treturn __fe_res;')
+	g.writeln('}')
+	g.writeln('')
 }
 
 // enum_field_expr_value supports enum field expr value handling for FlatGen.
