@@ -2800,7 +2800,28 @@ fn (mut g FlatGen) fixed_array_typedefs() {
 	for name, info in needed {
 		g.emit_fixed_array_typedef(name, info, needed, mut g.emitted_fixed_array_typedefs)
 	}
-	if g.emitted_fixed_array_typedefs.len > old_len {
+	// Return wrappers for non-early element types (struct/`string`/nested fixed array):
+	// their bare typedef (above) and element definitions are available now, so a C
+	// function returning `[N]Foo`/`[N]string` can return the wrapper struct instead of the
+	// raw array type C rejects. Sorted for deterministic output.
+	mut wrapper_names := []string{}
+	for name, _ in needed {
+		wrapper_names << name
+	}
+	wrapper_names.sort()
+	mut emitted_wrapper := false
+	for name in wrapper_names {
+		if name !in g.fixed_array_ret_wrappers {
+			continue
+		}
+		info := needed[name] or { continue }
+		if fixed_array_typedef_is_early(info.arr) {
+			continue
+		}
+		g.emit_fixed_array_ret_wrapper(name, info)
+		emitted_wrapper = true
+	}
+	if g.emitted_fixed_array_typedefs.len > old_len || emitted_wrapper {
 		g.writeln('')
 	}
 }
@@ -2819,19 +2840,28 @@ fn fixed_array_typedef_is_early(arr types.ArrayFixed) bool {
 // populate_fixed_array_ret_wrappers records which fixed-array types get a return
 // wrapper struct. It must run before function bodies are generated, so that fn
 // signatures, return statements and call sites all agree on whether a given
-// fixed-array return is wrapped. Only primitive/pointer/enum element types are
-// wrapped (their definitions precede the wrapper typedef block).
+// fixed-array return is wrapped. EVERY fixed-array type is wrapped, because C
+// functions and fn pointers cannot return a raw array type regardless of the element:
+// primitive/pointer/enum element wrappers are emitted early (before structs), while
+// struct/`string`/nested element wrappers are emitted by fixed_array_typedefs(), after
+// the element type is defined.
 fn (mut g FlatGen) populate_fixed_array_ret_wrappers() {
 	needed := g.collect_fixed_array_typedefs_needed()
-	for name, info in needed {
-		// Use the recursive early check so a nested fixed array (`[2][3]int`, whose
-		// `elem_type` is itself an `ArrayFixed`) is still wrapped: its chain bottoms out
-		// in a primitive/pointer/enum, so the bare typedefs are emitted early and a C
-		// function still cannot return the raw array type.
-		if fixed_array_typedef_is_early(info.arr) {
-			g.fixed_array_ret_wrappers[name] = true
-		}
+	for name, _ in needed {
+		g.fixed_array_ret_wrappers[name] = true
 	}
+}
+
+// emit_fixed_array_ret_wrapper writes the one-field `struct { T ret_arr[N]; }` wrapper
+// for a fixed-array return type. The element type's C definition must already be emitted.
+fn (mut g FlatGen) emit_fixed_array_ret_wrapper(name string, info FixedArrayTypedefInfo) {
+	arr := info.arr
+	old_module := g.tc.cur_module
+	g.tc.cur_module = info.module
+	elem_ct := g.tc.c_type(arr.elem_type)
+	len_expr := g.fixed_array_len_value(arr)
+	g.tc.cur_module = old_module
+	g.writeln('typedef struct { ${elem_ct} ret_arr[${len_expr}]; } ${fixed_array_ret_wrapper_name(name)};')
 }
 
 // fixed_array_early_typedefs emits, before the fn-ptr typedef block, the bare
@@ -2858,19 +2888,18 @@ fn (mut g FlatGen) fixed_array_early_typedefs() {
 		g.emit_fixed_array_typedef(name, info, needed, mut g.emitted_fixed_array_typedefs)
 		emitted_any = true
 	}
-	// Wrapper structs for fixed-array return types.
+	// Wrapper structs for fixed-array return types whose element chain is already complete
+	// here (primitive/pointer/enum). Struct/`string`/nested element wrappers are deferred
+	// to fixed_array_typedefs(), after the element definitions are emitted.
 	for name in names {
 		if name !in g.fixed_array_ret_wrappers {
 			continue
 		}
 		info := needed[name] or { continue }
-		arr := info.arr
-		old_module := g.tc.cur_module
-		g.tc.cur_module = info.module
-		elem_ct := g.tc.c_type(arr.elem_type)
-		len_expr := g.fixed_array_len_value(arr)
-		g.tc.cur_module = old_module
-		g.writeln('typedef struct { ${elem_ct} ret_arr[${len_expr}]; } ${fixed_array_ret_wrapper_name(name)};')
+		if !fixed_array_typedef_is_early(info.arr) {
+			continue
+		}
+		g.emit_fixed_array_ret_wrapper(name, info)
 		emitted_any = true
 	}
 	if emitted_any {

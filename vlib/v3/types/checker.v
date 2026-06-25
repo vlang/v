@@ -5316,26 +5316,47 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 	if const_expr_paren_wraps_whole(expr) {
 		return tc.const_int_value(expr[1..expr.len - 1].trim_space(), seen)
 	}
-	for level in [['+', '-'], ['*', '/', '%']] {
+	// Operators grouped by precedence level, lowest first: `+ - | ^` (additive/bitwise),
+	// then `* / % & << >>` (multiplicative/shift), matching V/Go precedence. Split on the
+	// rightmost top-level operator of the lowest level present. Two-character operators
+	// (`<<`, `>>`) are matched before single characters; `idx + op.len` skips the operator.
+	for level in [['+', '-', '|', '^'], ['*', '/', '%', '&', '<<', '>>']] {
 		mut idx := -1
 		mut op := ''
 		mut depth := 0
-		for i := 0; i < expr.len; i++ {
+		mut i := 0
+		for i < expr.len {
 			ch := expr[i..i + 1]
 			if ch == '(' {
 				depth++
-			} else if ch == ')' {
-				depth--
-			} else if depth == 0 && ch in level {
-				idx = i
-				op = ch
+				i++
+				continue
 			}
+			if ch == ')' {
+				depth--
+				i++
+				continue
+			}
+			if depth == 0 {
+				two := if i + 2 <= expr.len { expr[i..i + 2] } else { '' }
+				if two.len == 2 && two in level {
+					idx = i
+					op = two
+					i += 2
+					continue
+				}
+				if ch in level {
+					idx = i
+					op = ch
+				}
+			}
+			i++
 		}
 		if idx <= 0 {
 			continue
 		}
 		lhs := expr[..idx].trim_space()
-		rhs := expr[idx + 1..].trim_space()
+		rhs := expr[idx + op.len..].trim_space()
 		if lhs.len == 0 || rhs.len == 0 {
 			continue
 		}
@@ -5344,12 +5365,20 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 		if (op == '/' || op == '%') && r == 0 {
 			return none
 		}
+		if (op == '<<' || op == '>>') && (r < 0 || r >= 64) {
+			return none
+		}
 		return match op {
 			'+' { l + r }
 			'-' { l - r }
 			'*' { l * r }
 			'/' { l / r }
-			else { l % r }
+			'%' { l % r }
+			'|' { l | r }
+			'^' { l ^ r }
+			'&' { l & r }
+			'<<' { l << r }
+			else { l >> r }
 		}
 	}
 	return none
@@ -5383,6 +5412,7 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, seen []string) ?int {
 			return match node.op {
 				.minus { -value }
 				.plus { value }
+				.bit_not { ~value }
 				else { none }
 			}
 		}
@@ -5413,6 +5443,33 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, seen []string) ?int {
 						return none
 					}
 					return left % right
+				}
+				.amp {
+					return left & right
+				}
+				.pipe {
+					return left | right
+				}
+				.xor {
+					return left ^ right
+				}
+				.left_shift {
+					if right < 0 || right >= 64 {
+						return none
+					}
+					return left << right
+				}
+				.right_shift {
+					if right < 0 || right >= 64 {
+						return none
+					}
+					return left >> right
+				}
+				.right_shift_unsigned {
+					if right < 0 || right >= 64 {
+						return none
+					}
+					return int(u64(left) >> right)
 				}
 				else {
 					return none

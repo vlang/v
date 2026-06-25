@@ -573,3 +573,30 @@ fn test_pr_review_codegen_batch_eight() {
 		"struct Game {\n\tscore int\n}\nfn (g Game) draw() {\n\tprintln('drawing')\n}\ntype Cb = fn ()\nfn run(cb Cb) {\n\tcb()\n}\nfn main() {\n\tg := Game{\n\t\tscore: 5\n\t}\n\trun(g.draw)\n}\n")
 	assert mv_alias == 'drawing'
 }
+
+// Regression tests for the tenth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_ten() {
+	v3_bin := build_v3()
+	// Const fixed-array lengths may use shifts and bitwise operators, in both the string
+	// evaluator (recovered length text) and the AST const evaluator (`const n = 1 << 2`).
+	// `1 << 2`=4, `8 >> 1`=4, `3 | 4`=7, `0xF & 6`=6, `(1 << 3) + 2`=10, `16 >> 2 << 1`=8.
+	shifts := run_good(v3_bin, 'good_shift_bitwise_fixed_array_len',
+		'const shift_amt = 1 << 2\nconst my_mask = 0xF & 6\nfn main() {\n\ta := [1 << 2]int{}\n\tb := [shift_amt]int{}\n\tc := [8 >> 1]int{}\n\td := [3 | 4]int{}\n\te := [my_mask]int{}\n\tf := [(1 << 3) + 2]int{}\n\tg := [16 >> 2 << 1]int{}\n\tprintln(int_str(a.len + b.len + c.len + d.len + e.len + f.len + g.len))\n}\n')
+	// 4 + 4 + 4 + 7 + 6 + 10 + 8 = 43
+	assert shifts == '43'
+	// The fixed-array literal length guard evaluates a shift length: `[1, 2]` (two
+	// elements) does not match an expected `[1 << 2]int` (four), so it is rejected.
+	run_bad(v3_bin, 'bad_shift_fixed_array_literal_len',
+		'fn take(a [1 << 2]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n',
+		'cannot use')
+	// A function returning a fixed array of structs gets a C return wrapper (emitted after
+	// the struct is defined), so it compiles and round-trips instead of emitting a raw
+	// `Array_fixed_Foo_2` return type C rejects.
+	fa_struct := run_good(v3_bin, 'good_fixed_array_struct_return',
+		'struct Foo {\n\tx int\n}\nfn make() [2]Foo {\n\treturn [Foo{\n\t\tx: 1\n\t}, Foo{\n\t\tx: 2\n\t}]!\n}\nfn main() {\n\tr := make()\n\tprintln(int_str(r[0].x + r[1].x))\n}\n')
+	assert fa_struct == '3'
+	// Likewise a fixed array of `string` returns through a wrapper.
+	fa_string := run_good(v3_bin, 'good_fixed_array_string_return',
+		"fn make() [2]string {\n\treturn ['hi', 'yo']!\n}\nfn main() {\n\tr := make()\n\tprintln(r[0] + r[1])\n}\n")
+	assert fa_string == 'hiyo'
+}

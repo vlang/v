@@ -889,6 +889,12 @@ fn (g &FlatGen) generic_struct_init_instance_ct(type_name string) ?string {
 		// literal — the heap path (`&Box{..}`) needs the struct (`Box_int`), not the
 		// pointer, type name.
 		base_cand := types.unwrap_pointer(cand)
+		// A fixed/dynamic array type is not a generic struct instance even though its
+		// `.name()` renders like one (`[2]Foo` -> `Foo[2]`); skip it so a `Foo{..}` element
+		// of a `[2]Foo` literal keeps its element type instead of adopting the array type.
+		if base_cand is types.ArrayFixed || base_cand is types.Array {
+			continue
+		}
 		cand_name := base_cand.name()
 		if !cand_name.contains('[') {
 			continue
