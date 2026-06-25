@@ -622,3 +622,24 @@ fn test_pr_review_codegen_batch_eleven() {
 	// 7 + 2 (xs has [1, 4]) = 9
 	assert imm == '9'
 }
+
+// Regression tests for the twelfth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_twelve() {
+	v3_bin := build_v3()
+	// A heap struct literal with POSITIONAL fields must emit positional C values, not a
+	// `. = v` designator. For a *generic* heap literal the fields live under the concrete
+	// instance key (`Box[int]`), so the per-index field lookup must use that, not the bare
+	// `Box`; otherwise `arr << &Box[int]{1, 2}` generates invalid C like `(Box_int){. = 1}`.
+	gpos := run_good(v3_bin, 'good_positional_generic_heap_struct',
+		'struct Box[T] {\n\ta T\n\tb T\n}\nfn main() {\n\tmut arr := []&Box[int]{}\n\tarr << &Box[int]{1, 2}\n\tprintln(int_str(arr[0].a + arr[0].b))\n}\n')
+	assert gpos == '3'
+	// A positional generic heap literal that omits a default-initialized `[]T` field still
+	// gets that field's default (`array_new(...)`) alongside the positional value.
+	gposdef := run_good(v3_bin, 'good_positional_generic_heap_default',
+		'struct Box[T] {\n\tv     T\n\titems []T\n}\nfn main() {\n\tb := &Box[int]{5}\n\tmut its := b.items\n\tits << 10\n\tprintln(int_str(b.v))\n\tprintln(int_str(its.len))\n}\n')
+	assert gposdef == '5\n1'
+	// Non-generic positional heap literals keep working (no regression).
+	pos := run_good(v3_bin, 'good_positional_heap_struct',
+		'struct Point {\n\tx int\n\ty int\n}\nfn main() {\n\tmut arr := []&Point{}\n\tarr << &Point{1, 2}\n\tprintln(int_str(arr[0].x + arr[0].y))\n}\n')
+	assert pos == '3'
+}

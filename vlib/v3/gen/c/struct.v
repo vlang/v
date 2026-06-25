@@ -426,6 +426,10 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		return
 	}
 	g.write('(${name}*)memdup(&(${name}){')
+	// A bare generic literal stores its fields under the concrete instance key (`Box[int]`);
+	// the bare `node.value` (`Box`) entry is removed by monomorphization, so resolve the
+	// instance name for the positional field lookup below.
+	lookup_name := g.generic_struct_init_instance_name(node.value) or { node.value }
 	mut allowed_fields := map[string]bool{}
 	if fields := g.struct_fields_for_type(node.value) {
 		for f in fields {
@@ -448,8 +452,30 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		if has_field {
 			g.write(', ')
 		}
-		g.write('.${c_field_name(field.value)} = ')
 		value_id := g.a.child(field, 0)
+		if field.value.len == 0 {
+			// Positional initializer (empty field name): emit a positional C value mapped
+			// to the field at this index (mirrors gen_struct_init); a `. = v` designator
+			// is invalid C.
+			if sf := g.struct_field_at(lookup_name, i) {
+				if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(lookup_name, sf.name,
+					value_id)
+				{
+					inner_ct := g.tc.c_type(heap_copy_type)
+					g.write('(${inner_ct}*)memdup(')
+					g.gen_expr(value_id)
+					g.write(', sizeof(${inner_ct}))')
+				} else {
+					g.gen_expr_with_expected_type(value_id, sf.typ)
+				}
+				set_fields[sf.name] = true
+			} else {
+				g.gen_expr(value_id)
+			}
+			has_field = true
+			continue
+		}
+		g.write('.${c_field_name(field.value)} = ')
 		if is_sum_literal {
 			g.gen_lowered_sum_field_value(sum_name, field)
 		} else if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(node.value, field.value,
@@ -866,6 +892,22 @@ struct StructDeclInfo {
 // the literal is already specialized, the base is not a generic struct, or the
 // expected type is not a matching concrete instance.
 fn (g &FlatGen) generic_struct_init_instance_ct(type_name string) ?string {
+	return g.tc.c_type(g.generic_struct_init_instance_type(type_name)?)
+}
+
+// generic_struct_init_instance_name is the concrete-instance V type name (`Box[int]`)
+// for a bare generic struct literal, so field and default lookups use the materialized
+// key under which the struct's fields are stored (the bare `Box` entry is removed by
+// monomorphization), not just the emitted C type.
+fn (g &FlatGen) generic_struct_init_instance_name(type_name string) ?string {
+	return g.generic_struct_init_instance_type(type_name)?.name()
+}
+
+// generic_struct_init_instance_type resolves the concrete generic instance a bare literal
+// adopts from the surrounding expected/return type (e.g. `Vec4{..}` -> `Vec4[f32]`).
+// Returns none when the literal is already specialized, the base is not a generic struct,
+// or the expected type is not a matching concrete instance.
+fn (g &FlatGen) generic_struct_init_instance_type(type_name string) ?types.Type {
 	if type_name.contains('[') {
 		return none
 	}
@@ -903,7 +945,7 @@ fn (g &FlatGen) generic_struct_init_instance_ct(type_name string) ?string {
 		if cand_base.len == 0 || cand_base.all_after_last('.') != short {
 			continue
 		}
-		return g.tc.c_type(base_cand)
+		return base_cand
 	}
 	return none
 }
