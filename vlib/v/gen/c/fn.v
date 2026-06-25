@@ -2028,8 +2028,13 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		if g.pref.translated && g.file.is_translated && param.typ.has_flag(.variadic) {
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
 		}
+		// A `mut x T` parameter is passed by reference, so its C type must be a pointer to
+		// the concrete type. The normal solver keeps `.generic` on `param.typ` here, but the
+		// new generic solver pre-resolves `param.typ` to the concrete type (dropping the flag),
+		// so it would otherwise miss the indirection. `param.orig_typ` still carries the
+		// generic `T`, which resolves correctly via `cur_concrete_types`.
 		if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.generic)
-			&& param.typ.has_flag(.generic) {
+			&& (param.typ.has_flag(.generic) || g.pref.new_generic_solver) {
 			mut surface_typ := g.unwrap_generic(param.orig_typ)
 			// Only use ref() when the pointer comes from the generic type argument
 			// (T=&int), not from the param signature (&T / ?&T).
