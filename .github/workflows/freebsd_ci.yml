@@ -33,7 +33,7 @@ jobs:
 
       - name: Start FreeBSD VM for tcc
         id: vm-freebsd-tcc
-        uses: cross-platform-actions/action@v1.2.0
+        uses: cross-platform-actions/action@v1.3.0
         with:
           operating_system: freebsd
           version: '15.0'
@@ -74,7 +74,7 @@ jobs:
 
       - name: Start FreeBSD VM for clang
         id: vm-freebsd-clang
-        uses: cross-platform-actions/action@v1.2.0
+        uses: cross-platform-actions/action@v1.3.0
         with:
           operating_system: freebsd
           version: '15.0'
@@ -115,7 +115,7 @@ jobs:
 
       - name: Start FreeBSD VM for gcc
         id: vm-freebsd-gcc
-        uses: cross-platform-actions/action@v1.2.0
+        uses: cross-platform-actions/action@v1.3.0
         with:
           operating_system: freebsd
           version: '15.0'
