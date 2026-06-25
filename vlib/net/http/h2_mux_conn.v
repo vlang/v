@@ -120,8 +120,11 @@ fn (mut s H2MuxStream) fail(msg string, retryable bool) {
 pub struct H2MuxConn {
 mut:
 	transport H2Transport
-	// close_transport, when set, is called exactly once during teardown, after
-	// the reader thread has exited and the last reference is dropped.
+	// close_transport is called exactly once during teardown and MUST close or
+	// interrupt the transport so the reader thread (blocked in transport.read())
+	// can exit. It is required (non-nil): the H2Transport interface has no close()
+	// of its own, so this is the only way to unblock the reader. new_h2_mux_conn
+	// panics on a nil closer.
 	close_transport fn () = unsafe { nil }
 	// --- guarded by wmu ---
 	wmu                   &sync.Mutex = sync.new_mutex()
@@ -165,7 +168,10 @@ mut:
 
 // new_h2_mux_conn creates a multiplexed connection over `transport` and starts
 // its background reader. The connection preface is sent lazily with the first
-// request. `close_transport` (optional) is called once at final teardown.
+// request. `close_transport` is REQUIRED (non-nil): it is called once at final
+// teardown and MUST close/interrupt the transport so the blocked reader exits.
+// A nil closer is a programming error and panics here, because the reader can
+// only be unblocked by closing the transport (see the field comment).
 //
 // CONCURRENCY REQUIREMENT: the background reader calls `transport.read()` while
 // request threads call `transport.write()`, so `transport` MUST be safe for a
@@ -178,6 +184,13 @@ mut:
 // transport is wired up (see the HTTP connection-pooling Phase 3 work); until
 // then this type is exercised only over a full-duplex in-memory pipe in tests.
 pub fn new_h2_mux_conn(transport H2Transport, close_transport fn ()) &H2MuxConn {
+	if close_transport == unsafe { nil } {
+		// The reader thread spawned below blocks in transport.read(); the
+		// H2Transport interface has no close(), so this callback is the only way
+		// to interrupt that read at teardown. Without it an idle retirement or
+		// last-reference release would leak the reader thread and the connection.
+		panic('new_h2_mux_conn: close_transport must be non-nil so teardown can wake the reader')
+	}
 	fmu := sync.new_mutex()
 	mut c := &H2MuxConn{
 		transport:       transport

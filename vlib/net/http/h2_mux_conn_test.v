@@ -94,6 +94,16 @@ fn new_mux_pipe() (&MuxPipeEnd, &MuxPipeEnd) {
 	return client, server
 }
 
+// new_test_mux_conn builds a mux conn over the client pipe end with a real
+// (non-nil) close_transport, satisfying new_h2_mux_conn's required-closer
+// contract. The closer closes the in-memory pipe, mirroring how a real transport
+// adapter would close its socket so teardown wakes the blocked reader.
+fn new_test_mux_conn(mut cend MuxPipeEnd) &H2MuxConn {
+	return new_h2_mux_conn(cend, fn [mut cend] () {
+		cend.close_both()
+	})
+}
+
 // MuxTestPeer is the scripted server side: it parses real frames off the pipe
 // (with its own HPACK state) and records what it saw for the test to assert.
 @[heap]
@@ -292,7 +302,7 @@ fn mux_worker(mut c H2MuxConn, req H2ClientRequest, mut out MuxResults) {
 // frames. Each requester must receive exactly its own body.
 fn test_mux_concurrent_interleaved_streams() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -348,7 +358,7 @@ fn test_mux_concurrent_interleaved_streams() {
 // windows and resume when the peer grants WINDOW_UPDATEs.
 fn test_mux_flow_control_blocks_and_resumes() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -436,7 +446,7 @@ fn test_mux_flow_control_blocks_and_resumes() {
 // returns the reset error instead of hanging forever.
 fn test_mux_rst_wakes_blocked_body_sender() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -497,7 +507,7 @@ fn test_mux_rst_wakes_blocked_body_sender() {
 // response delivered — not hang waiting for a WINDOW_UPDATE that never comes.
 fn test_mux_early_final_response_with_body_wakes_blocked_upload() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -583,7 +593,7 @@ fn test_mux_early_final_response_with_body_wakes_blocked_upload() {
 // requester rather than treating it as a 1xx interim and waiting forever.
 fn test_mux_response_missing_status_resets_stream() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -641,7 +651,7 @@ fn test_mux_response_missing_status_resets_stream() {
 // be rejected by an explicit digit check rather than accepted as a 200 success.
 fn test_mux_response_malformed_status_resets_stream() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -698,7 +708,7 @@ fn test_mux_response_malformed_status_resets_stream() {
 // reset with any other code (e.g. CANCEL) must stay non-retryable.
 fn test_mux_refused_stream_reset_is_retryable() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -741,7 +751,7 @@ fn test_mux_refused_stream_reset_is_retryable() {
 // or the connection receive window leaks and eventually stalls.
 fn test_mux_padded_data_credits_full_flow_control() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -802,7 +812,7 @@ fn test_mux_padded_data_credits_full_flow_control() {
 // and the request would wrongly succeed.
 fn test_mux_push_promise_fails_connection() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -843,7 +853,7 @@ fn test_mux_push_promise_fails_connection() {
 // request must fail rather than succeed.
 fn test_mux_invalid_enable_push_fails_connection() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -885,7 +895,7 @@ fn test_mux_invalid_enable_push_fails_connection() {
 // other concurrent streams must survive.
 fn test_mux_zero_window_update_resets_only_that_stream() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -952,7 +962,7 @@ fn test_mux_zero_window_update_resets_only_that_stream() {
 // refused (also retryable).
 fn test_mux_goaway_mid_flight() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1023,7 +1033,7 @@ fn test_mux_goaway_mid_flight() {
 // a second stream completes afterwards.
 fn test_mux_cancel_one_stream_other_lives() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1129,7 +1139,7 @@ fn test_mux_cancel_one_stream_other_lives() {
 // to the full 30 bytes sent.
 fn test_mux_cancel_credits_all_received_data() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1194,7 +1204,7 @@ fn test_mux_cancel_credits_all_received_data() {
 // stay at its advertised default.
 fn test_mux_peer_header_table_size_keeps_decoder_limit() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1251,7 +1261,7 @@ fn test_mux_peer_header_table_size_keeps_decoder_limit() {
 // the pool can replay a request the server never processed.
 fn test_mux_goaway_preserves_retryable_for_blocked_upload() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1314,7 +1324,7 @@ fn test_mux_goaway_preserves_retryable_for_blocked_upload() {
 // bad SETTINGS (processed first); without it the request would wrongly succeed.
 fn test_mux_invalid_max_frame_size_fails_connection() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1363,7 +1373,7 @@ fn test_mux_invalid_max_frame_size_fails_connection() {
 // A response header block split across HEADERS + CONTINUATION is reassembled.
 fn test_mux_continuation_assembly() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1421,7 +1431,7 @@ fn test_mux_continuation_assembly() {
 // wake with an error (no hangs).
 fn test_mux_conn_death_wakes_all_waiters() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1461,7 +1471,7 @@ fn test_mux_preface_write_failure_tears_down() {
 	mut cend, mut pend := new_mux_pipe()
 	// Close the write side so the very first transport write (the preface) fails.
 	cend.outgoing.close()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut out := &MuxResults{}
 	mut w1 := []thread{}
 	w1 << spawn mux_worker(mut conn, H2ClientRequest{ authority: 't', path: '/x' }, mut out)
@@ -1486,7 +1496,7 @@ fn test_mux_preface_write_failure_tears_down() {
 // §6.9.2). The connection must be failed, not silently keep the invalid window.
 fn test_mux_settings_initial_window_delta_overflow_fails_connection() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1538,7 +1548,7 @@ fn test_mux_settings_initial_window_delta_overflow_fails_connection() {
 // (and sending WINDOW_UPDATE) while the peer floods the connection window.
 fn test_mux_peer_exceeding_recv_window_fails_connection() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1590,7 +1600,7 @@ fn test_mux_peer_exceeding_recv_window_fails_connection() {
 // the connection stays alive (closed stays false) so other streams are unharmed.
 fn test_mux_stream_window_violation_resets_only_that_stream() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1663,7 +1673,7 @@ fn test_mux_stream_window_violation_resets_only_that_stream() {
 // is a connection error (RFC 7540 §5.1 MUST).
 fn test_mux_data_after_end_stream_on_closed_stream_fails_connection() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1700,7 +1710,7 @@ fn test_mux_data_after_end_stream_on_closed_stream_fails_connection() {
 // connection alive (RFC 7540 §5.1).
 fn test_mux_data_after_end_stream_half_closed_resets_only_stream() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1739,7 +1749,7 @@ fn test_mux_data_after_end_stream_half_closed_resets_only_stream() {
 // buffers without bound — the connection is failed once the cap is exceeded.
 fn test_mux_preface_control_flood_fails_connection() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1768,7 +1778,7 @@ fn test_mux_preface_control_flood_fails_connection() {
 // makes the response malformed; it must be rejected, not accepted as a success.
 fn test_mux_malformed_content_length_resets_stream() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1815,7 +1825,7 @@ fn test_mux_malformed_content_length_resets_stream() {
 // response HEADERS is malformed — reset that stream, but keep the connection.
 fn test_mux_data_before_headers_resets_stream() {
 	mut cend, mut pend := new_mux_pipe()
-	mut conn := new_h2_mux_conn(cend, unsafe { nil })
+	mut conn := new_test_mux_conn(mut cend)
 	mut peer := &MuxTestPeer{
 		end: pend
 	}
@@ -1856,4 +1866,33 @@ fn test_mux_data_before_headers_resets_stream() {
 	conn.smu.unlock()
 	assert !closed, 'DATA before HEADERS is a stream error; the connection must survive'
 	cend.close_both()
+}
+
+// Releasing the last reference on an idle connection must wake the background
+// reader through the required close_transport callback. With no requests and no
+// inbound frames the reader is blocked in transport.read(); only closing the
+// transport can unblock it (the H2Transport interface has no close()). This
+// exercises the teardown -> closer -> reader-exit chain WITHOUT the test closing
+// the pipe manually, guarding the Codex P2 fix (discussion_r3475761576): a nil
+// closer is now rejected, so teardown can always close the transport. (Note: the
+// nil-closer leak itself is reproduced statically by detect_mux_requires_closer.sh,
+// since a nil closer now panics and cannot be exercised at runtime.)
+fn test_mux_release_wakes_reader_via_closer() {
+	mut cend, _ := new_mux_pipe()
+	mut conn := new_test_mux_conn(mut cend)
+	// No requests, no frames: the reader is blocked in transport.read().
+	conn.shutdown_when_idle()
+	conn.release() // last ref -> teardown_transport -> close_transport closes the pipe
+	// The reader observes the closed transport and exits via fail_conn(closed=true).
+	mut woke := false
+	for _ in 0 .. 200 {
+		conn.smu.lock()
+		woke = conn.closed
+		conn.smu.unlock()
+		if woke {
+			break
+		}
+		time.sleep(5 * time.millisecond)
+	}
+	assert woke, 'reader did not exit after release(): close_transport failed to wake it'
 }
