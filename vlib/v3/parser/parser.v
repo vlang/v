@@ -956,7 +956,7 @@ fn (mut p Parser) c_anon_param_starts_type() bool {
 		if pk == .dot || pk == .rpar || pk == .eof {
 			return true
 		}
-		if pk == .comma && is_builtin_type(p.lit) {
+		if pk == .comma && (is_builtin_type(p.lit) || is_c_anon_simple_type_name(p.lit)) {
 			return true
 		}
 	}
@@ -5312,6 +5312,13 @@ fn is_builtin_type(name string) bool {
 	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
 		'byte', 'bool', 'string', 'rune', 'char', 'voidptr', 'charptr', 'byteptr', 'usize', 'isize',
 		'array', 'map', 'mapnode', '_result', '_option', 'any']
+}
+
+fn is_c_anon_simple_type_name(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	return name[0] >= `A` && name[0] <= `Z`
 }
 
 fn is_all_upper_ident(s string) bool {

@@ -640,13 +640,16 @@ fn validate_test_file_harness_inputs(a &flat.FlatAst, tc &types.TypeChecker, tes
 			errors << 'no runnable tests in ${file_node.value}: only module main test files are supported'
 			continue
 		}
+		if test_file_has_executable_top_level_stmt(a, file_node) {
+			errors << 'invalid test file ${file_node.value}: executable top-level statements are not supported in test files'
+			continue
+		}
 		mut runnable_tests := 0
 		mut invalid_items := 0
-		for i in 0 .. file_node.children_count {
-			child := a.child_node(&file_node, i)
-			if child.kind != .fn_decl {
-				continue
-			}
+		mut decl_ids := []flat.NodeId{}
+		collect_test_harness_decl_ids(a, file_node, mut decl_ids)
+		for child_id in decl_ids {
+			child := a.node(child_id)
 			if child.value.starts_with('test_') {
 				if is_supported_test_harness_fn(a, tc, child) {
 					runnable_tests++
@@ -666,6 +669,57 @@ fn validate_test_file_harness_inputs(a &flat.FlatAst, tc &types.TypeChecker, tes
 		}
 	}
 	return errors
+}
+
+fn test_file_has_executable_top_level_stmt(a &flat.FlatAst, node flat.Node) bool {
+	if node.kind != .file && node.kind != .block {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		child_id := a.child(&node, i)
+		if int(child_id) < a.user_code_start {
+			continue
+		}
+		child := a.node(child_id)
+		if child.kind == .block {
+			if test_file_has_executable_top_level_stmt(a, child) {
+				return true
+			}
+		} else if test_file_is_executable_top_level_stmt(child) {
+			return true
+		}
+	}
+	return false
+}
+
+fn test_file_is_executable_top_level_stmt(node flat.Node) bool {
+	return match node.kind {
+		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt,
+		.for_in_stmt, .if_expr, .match_stmt, .assert_stmt {
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn collect_test_harness_decl_ids(a &flat.FlatAst, node flat.Node, mut ids []flat.NodeId) {
+	if node.kind != .file && node.kind != .block {
+		return
+	}
+	for i in 0 .. node.children_count {
+		child_id := a.child(&node, i)
+		if int(child_id) < a.user_code_start {
+			continue
+		}
+		child := a.node(child_id)
+		if child.kind == .fn_decl {
+			ids << child_id
+		} else if child.kind == .block {
+			collect_test_harness_decl_ids(a, child, mut ids)
+		}
+	}
 }
 
 fn is_user_test_file_node(a &flat.FlatAst, file_idx int, file_node flat.Node, test_files map[string]bool) bool {

@@ -24,31 +24,68 @@ fn write_source(name string, suffix string, src string) string {
 	return src_path
 }
 
+fn write_project(name string, files map[string]string) string {
+	root := os.join_path(os.temp_dir(), 'v3_${name}')
+	os.rmdir_all(root) or {}
+	for rel, src in files {
+		path := os.join_path(root, rel)
+		os.mkdir_all(os.dir(path)) or { panic(err) }
+		os.write_file(path, src) or { panic(err) }
+	}
+	return root
+}
+
 fn gen_c(v3_bin string, name string, suffix string, src string) string {
+	return gen_c_flags(v3_bin, name, suffix, src, '')
+}
+
+fn gen_c_flags(v3_bin string, name string, suffix string, src string, flags string) string {
 	src_path := write_source(name, suffix, src)
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	compile := os.execute('${v3_bin} ${flags} ${src_path} -b c -o ${c_path}')
 	assert compile.exit_code == 0, '${name}: C output failed: ${compile.output}'
 	assert os.exists(c_path), '${name}: missing generated C file ${c_path}'
 	return os.read_file(c_path) or { panic(err) }
 }
 
 fn compile_and_run(v3_bin string, name string, suffix string, src string) os.Result {
+	return compile_and_run_flags(v3_bin, name, suffix, src, '')
+}
+
+fn compile_and_run_flags(v3_bin string, name string, suffix string, src string, flags string) os.Result {
 	src_path := write_source(name, suffix, src)
 	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
+	compile := os.execute('${v3_bin} ${flags} ${src_path} -b c -o ${bin_path}')
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains("undefined reference to `main'"), compile.output
 	return os.execute(bin_path)
 }
 
+fn compile_project_and_run(v3_bin string, name string, files map[string]string) (os.Result, string) {
+	root := write_project(name, files)
+	return compile_project_root_and_run(v3_bin, name, root)
+}
+
+fn compile_project_root_and_run(v3_bin string, name string, root string) (os.Result, string) {
+	bin_path := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin_path}')
+	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
+	run := os.execute(bin_path)
+	c_code := os.read_file(bin_path + '.c') or { panic(err) }
+	return run, c_code
+}
+
 fn compile_expect_failure(v3_bin string, name string, suffix string, src string) os.Result {
+	return compile_expect_failure_flags(v3_bin, name, suffix, src, '')
+}
+
+fn compile_expect_failure_flags(v3_bin string, name string, suffix string, src string, flags string) os.Result {
 	src_path := write_source(name, suffix, src)
 	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
 	c_path := bin_path + '.c'
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
+	compile := os.execute('${v3_bin} ${flags} ${src_path} -b c -o ${bin_path}')
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !os.exists(c_path), '${name}: generated C despite harness input failure'
 	return compile
@@ -177,4 +214,108 @@ fn test_one() {
 ")
 	assert !ordinary_c.contains('int main('), ordinary_c
 	assert !ordinary_c.contains('test_lonely();'), ordinary_c
+}
+
+fn test_v3_test_file_harness_rejects_top_level_stmt() {
+	v3_bin := build_v3()
+	src := "println('top')
+
+fn test_one() {
+	println('test')
+}
+"
+	invalid := compile_expect_failure(v3_bin, 'harness_top_level_and_test', '_test.v', src)
+	assert invalid.output.contains('executable top-level statements are not supported in test files'), invalid.output
+}
+
+fn test_v3_test_file_harness_finds_top_level_comptime_block_tests() {
+	v3_bin := build_v3()
+	src := "$if v3_nested_harness ? {
+	fn before_each() {
+		println('before')
+	}
+
+	fn test_nested() {
+		println('nested')
+	}
+}
+"
+	c_code := gen_c_flags(v3_bin, 'harness_nested_block', '_test.v', src, '-d v3_nested_harness')
+	assert c_code.contains('before_each();'), c_code
+	assert c_code.contains('test_nested();'), c_code
+	run := compile_and_run_flags(v3_bin, 'harness_nested_block_run', '_test.v', src,
+		'-d v3_nested_harness')
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'before\nnested'
+
+	invalid := compile_expect_failure_flags(v3_bin, 'harness_nested_invalid', '_test.v', '$if v3_nested_harness ? {
+	fn test_bad(i int) {
+	}
+}
+',
+		'-d v3_nested_harness')
+	assert invalid.output.contains('invalid test signature'), invalid.output
+}
+
+fn test_v3_top_level_main_preserves_file_import_alias_context() {
+	v3_bin := build_v3()
+	run, c_code := compile_project_and_run(v3_bin, 'harness_file_alias_context', {
+		'v.mod':      'Module { name: "alias_context" }
+'
+		'a/a.v':      'module a
+
+pub fn value() int {
+	return 11
+}
+'
+		'b/b.v':      'module b
+
+pub fn value() int {
+	return 22
+}
+'
+		'aa_alias.v': 'module main
+
+import a as m
+
+a_value := m.value()
+println(int_str(a_value))
+'
+		'zz_alias.v': 'module main
+
+import b as m
+
+b_value := m.value()
+println(int_str(b_value))
+'
+	})
+	assert run.exit_code == 0, run.output
+	lines := run.output.trim_space().split_into_lines()
+	assert lines.len == 2, run.output
+	assert '11' in lines, run.output
+	assert '22' in lines, run.output
+	assert c_code.contains('a__value()'), c_code
+	assert c_code.contains('b__value()'), c_code
+}
+
+fn test_v3_top_level_match_lowers_before_cgen_main() {
+	v3_bin := build_v3()
+	run := compile_and_run(v3_bin, 'harness_top_level_match', '.v', "x := match 2 {
+	2 {
+		7
+	}
+	else {
+		3
+	}
+}
+println(int_str(x))
+match 2 {
+	2 {
+		println('two')
+	}
+	else {}
+}
+")
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '7\ntwo'
 }

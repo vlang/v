@@ -17,6 +17,12 @@ mut:
 	after_each      string
 }
 
+struct TopLevelStmt {
+	id     flat.NodeId
+	file   string
+	module string
+}
+
 // gen_fns emits fns output for c.
 fn (mut g FlatGen) gen_fns() {
 	mut cur_module := ''
@@ -58,11 +64,13 @@ fn (mut g FlatGen) gen_synthetic_main_after_fns() {
 	if g.has_entry_main() {
 		return
 	}
-	top_level_ids := g.top_level_stmt_ids()
-	if top_level_ids.len > 0 {
-		g.gen_top_level_main(top_level_ids)
-	} else if g.test_files.len > 0 {
+	if g.test_files.len > 0 {
 		g.gen_test_main()
+		return
+	}
+	top_level_stmts := g.top_level_stmts()
+	if top_level_stmts.len > 0 {
+		g.gen_top_level_main(top_level_stmts)
 	}
 }
 
@@ -85,12 +93,13 @@ fn (g &FlatGen) has_entry_main() bool {
 	return false
 }
 
-fn (g &FlatGen) top_level_stmt_ids() []flat.NodeId {
-	mut ids := []flat.NodeId{}
+fn (g &FlatGen) top_level_stmts() []TopLevelStmt {
+	mut stmts := []TopLevelStmt{}
 	for file_idx, file_node in g.a.nodes {
 		if !g.should_emit_top_level_file(file_idx, file_node) {
 			continue
 		}
+		module_name := g.top_level_file_module_name(file_node)
 		for i in 0 .. file_node.children_count {
 			child_id := g.a.child(&file_node, i)
 			if int(child_id) < g.a.user_code_start {
@@ -98,11 +107,15 @@ fn (g &FlatGen) top_level_stmt_ids() []flat.NodeId {
 			}
 			child := g.a.nodes[int(child_id)]
 			if cgen_is_top_level_stmt(child) {
-				ids << child_id
+				stmts << TopLevelStmt{
+					id:     child_id
+					file:   file_node.value
+					module: if module_name.len == 0 { 'main' } else { module_name }
+				}
 			}
 		}
 	}
-	return ids
+	return stmts
 }
 
 fn (g &FlatGen) should_emit_top_level_file(file_idx int, file_node flat.Node) bool {
@@ -904,7 +917,9 @@ fn (mut g FlatGen) export_wrapper_arg_names(node flat.Node) []string {
 	return args
 }
 
-fn (mut g FlatGen) gen_top_level_main(stmt_ids []flat.NodeId) {
+fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
+	old_tc_file := g.tc.cur_file
+	old_tc_module := g.tc.cur_module
 	g.tc.cur_module = 'main'
 	old_fn_name := g.cur_fn_name
 	g.cur_fn_name = 'main'
@@ -922,8 +937,8 @@ fn (mut g FlatGen) gen_top_level_main(stmt_ids []flat.NodeId) {
 	g.cur_param_type_values = []types.Type{}
 	g.cur_param_types = map[string]types.Type{}
 	mut fn_defer_ids := []flat.NodeId{}
-	for id in stmt_ids {
-		g.collect_function_defer_ids_from(id, mut fn_defer_ids)
+	for stmt in stmts {
+		g.collect_function_defer_ids_from(stmt.id, mut fn_defer_ids)
 	}
 	g.prepare_function_defers(fn_defer_ids)
 	g.writeln('int main(int argc, char** argv) {')
@@ -937,9 +952,10 @@ fn (mut g FlatGen) gen_top_level_main(stmt_ids []flat.NodeId) {
 	}
 	g.indent++
 	g.gen_function_defer_prelude()
-	for id in stmt_ids {
-		g.tc.cur_module = 'main'
-		g.gen_node(id)
+	for stmt in stmts {
+		g.tc.cur_file = stmt.file
+		g.tc.cur_module = stmt.module
+		g.gen_node(stmt.id)
 	}
 	g.gen_all_defers()
 	g.writeln('return 0;')
@@ -950,6 +966,8 @@ fn (mut g FlatGen) gen_top_level_main(stmt_ids []flat.NodeId) {
 	g.cur_param_type_values = old_param_type_values.clone()
 	g.cur_param_types = old_param_types.clone()
 	g.cur_fn_name = old_fn_name
+	g.tc.cur_file = old_tc_file
+	g.tc.cur_module = old_tc_module
 	g.tc.pop_scope()
 }
 
@@ -1014,15 +1032,10 @@ fn (g &FlatGen) test_harness_fns() ([]TestHarnessFn, TestHarnessHooks) {
 		if module_name.len > 0 && module_name != 'main' {
 			continue
 		}
-		for i in 0 .. file_node.children_count {
-			child_id := g.a.child(&file_node, i)
-			if int(child_id) < g.a.user_code_start {
-				continue
-			}
+		mut decl_ids := []flat.NodeId{}
+		g.collect_test_harness_decl_ids(file_node, mut decl_ids)
+		for child_id in decl_ids {
 			child := g.a.nodes[int(child_id)]
-			if child.kind != .fn_decl {
-				continue
-			}
 			cname := qualified_fn_name_in_module(module_name, child.value)
 			match child.value {
 				'testsuite_begin' {
@@ -1058,6 +1071,24 @@ fn (g &FlatGen) test_harness_fns() ([]TestHarnessFn, TestHarnessHooks) {
 		}
 	}
 	return tests, hooks
+}
+
+fn (g &FlatGen) collect_test_harness_decl_ids(node flat.Node, mut ids []flat.NodeId) {
+	if node.kind != .file && node.kind != .block {
+		return
+	}
+	for i in 0 .. node.children_count {
+		child_id := g.a.child(&node, i)
+		if int(child_id) < g.a.user_code_start {
+			continue
+		}
+		child := g.a.nodes[int(child_id)]
+		if child.kind == .fn_decl {
+			ids << child_id
+		} else if child.kind == .block {
+			g.collect_test_harness_decl_ids(child, mut ids)
+		}
+	}
 }
 
 fn (g &FlatGen) is_supported_test_fn_decl(node flat.Node) bool {

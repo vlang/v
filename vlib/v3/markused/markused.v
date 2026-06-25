@@ -638,15 +638,31 @@ fn enqueue_test_file_roots(a &flat.FlatAst, test_files map[string]bool, mut used
 		if module_name.len > 0 && module_name != 'main' {
 			continue
 		}
-		for i in 0 .. file_node.children_count {
-			child_id := a.child(&file_node, i)
-			if int(child_id) < a.user_code_start {
-				continue
-			}
+		mut decl_ids := []flat.NodeId{}
+		markused_collect_test_harness_decl_ids(a, file_node, mut decl_ids)
+		for child_id in decl_ids {
 			child := a.node(child_id)
-			if child.kind == .fn_decl && is_test_harness_root_name(child.value) {
+			if is_test_harness_root_name(child.value) {
 				enqueue(qualify_fn(module_name, child.value), mut used, mut queue)
 			}
+		}
+	}
+}
+
+fn markused_collect_test_harness_decl_ids(a &flat.FlatAst, node flat.Node, mut ids []flat.NodeId) {
+	if node.kind != .file && node.kind != .block {
+		return
+	}
+	for i in 0 .. node.children_count {
+		child_id := a.child(&node, i)
+		if int(child_id) < a.user_code_start {
+			continue
+		}
+		child := a.node(child_id)
+		if child.kind == .fn_decl {
+			ids << child_id
+		} else if child.kind == .block {
+			markused_collect_test_harness_decl_ids(a, child, mut ids)
 		}
 	}
 }

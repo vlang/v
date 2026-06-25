@@ -67,7 +67,7 @@ fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
 
 fn test_c_function_anonymous_params_are_parsed_as_types() {
 	a := parse_parser_regression_source('c_anon_params',
-		'struct T {}\nstruct C.FILE {}\nstruct C.Widget {}\nstruct C.Node {}\n\nfn C.anon(&C.FILE, voidptr, int, &&T, [4]&C.Widget, ?&C.Node, !&C.Node, fn (&C.Node) int) int\nfn C.named(stream &C.FILE, a, b int) int\nfn C.named_arrays(m [16]f32, r []rune) int\nfn C.variadic(...int) int\nfn JS.js_anon(JS.Number) JS.Number\nfn JS.js_named(x JS.Number) JS.Number\nfn JS.setInterval(any, int, ...any) int\nfn JS.console.dir(any, any)\nfn JS.named_any(x any) any\nfn ordinary(int) {}\n')
+		'struct T {}\nstruct C.FILE {}\nstruct C.Widget {}\nstruct C.Node {}\ntype MyHandle = voidptr\n\nfn C.anon(&C.FILE, voidptr, int, &&T, [4]&C.Widget, ?&C.Node, !&C.Node, fn (&C.Node) int) int\nfn C.custom(MyHandle, int, MyHandle) int\nfn C.named(stream &C.FILE, a, b int) int\nfn C.named_custom(handle MyHandle, a, b int) int\nfn C.named_arrays(m [16]f32, r []rune) int\nfn C.variadic(...int) int\nfn JS.js_anon(JS.Number) JS.Number\nfn JS.js_named(x JS.Number) JS.Number\nfn JS.setInterval(any, int, ...any) int\nfn JS.console.dir(any, any)\nfn JS.named_any(x any) any\nfn ordinary(int) {}\n')
 	assert fn_decl_param_pairs(a, .c_fn_decl, 'anon') == [
 		':&C.FILE',
 		':voidptr',
@@ -78,8 +78,18 @@ fn test_c_function_anonymous_params_are_parsed_as_types() {
 		':!&C.Node',
 		':fn(&C.Node) int',
 	]
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'custom') == [
+		':MyHandle',
+		':int',
+		':MyHandle',
+	]
 	assert fn_decl_param_pairs(a, .c_fn_decl, 'named') == [
 		'stream:&C.FILE',
+		'a:int',
+		'b:int',
+	]
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'named_custom') == [
+		'handle:MyHandle',
 		'a:int',
 		'b:int',
 	]
