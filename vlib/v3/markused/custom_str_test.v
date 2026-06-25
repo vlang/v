@@ -205,6 +205,34 @@ fn test_imported_operator_infix_seeds_operator_methods() {
 	assert used['vectors.Vec.<']
 }
 
+// test_flag_enum_seeds_string_plus_helper validates this v3 regression case: a `[flag]`
+// enum's synthesized `<Enum>__autostr` builds its string with `string__plus`, but that
+// generated body is invisible to markused, so the helper must be seeded from the flag-enum
+// declaration or it could be pruned and leave the autostr calling an undefined helper.
+fn test_flag_enum_seeds_string_plus_helper() {
+	main_src := '
+module main
+
+import colors
+
+@[flag]
+enum Perm {
+	read
+	write
+}
+
+fn main() {
+	p := Perm.read | Perm.write
+	_ := p
+	_ := colors.Color.red
+}
+'
+	a, tc := parse_checked_two_file_source('flag_enum_string_plus', main_src, 'colors/colors.v',
+		imported_enum_module_source())
+	mut used := mark_used(a, tc)
+	assert used['string__plus']
+}
+
 // test_optional_struct_zero_seeds_imported_default_helper validates this v3 regression case.
 fn test_optional_struct_zero_seeds_imported_default_helper() {
 	a, tc := parse_checked_two_file_source('imported_struct_default_or',

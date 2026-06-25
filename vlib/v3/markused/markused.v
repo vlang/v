@@ -572,6 +572,17 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			.map_init {
 				needs_new_map = true
 			}
+			.enum_decl {
+				// A `[flag]` enum's synthesized `<Enum>__autostr` helper (emitted
+				// unconditionally in cgen) builds its `Enum{.a | .b}` string with
+				// `string__plus`. markused never walks that generated body, so without
+				// seeding the helper here it can be pruned when the program has no other
+				// string concatenation, leaving the autostr calling an undefined
+				// `string__plus`.
+				if node.typ == 'flag' {
+					needs_string_plus_helper = true
+				}
+			}
 			else {}
 		}
 	}
