@@ -380,29 +380,22 @@ fn (mut l SSLListener) accept_tcp_connection() !&SSLConn {
 	return conn
 }
 
-fn (mut conn SSLConn) server_handshake(timeout time.Duration) ! {
-	deadline := ssl_timeout_deadline(timeout)
+// do_handshake_loop drives the non-blocking TLS server handshake to completion
+// (or `deadline`). It never calls shutdown: on any error it just returns, leaving
+// cleanup to the caller. server_handshake wraps it for the synchronous accept
+// path (self-shutdown on error); the threaded server path (complete_handshake)
+// lets its worker defer own the single shutdown instead.
+fn (mut conn SSLConn) do_handshake_loop(deadline time.Time) ! {
 	mut ret := C.mbedtls_ssl_handshake(&conn.ssl)
 	for ret != 0 {
 		match ret {
 			C.MBEDTLS_ERR_SSL_WANT_READ {
-				conn.wait_for_read(ssl_remaining_timeout(deadline)) or {
-					conn.shutdown() or {}
-					return err
-				}
+				conn.wait_for_read(ssl_remaining_timeout(deadline))!
 			}
 			C.MBEDTLS_ERR_SSL_WANT_WRITE {
-				conn.wait_for_write(ssl_remaining_timeout(deadline)) or {
-					conn.shutdown() or {}
-					return err
-				}
+				conn.wait_for_write(ssl_remaining_timeout(deadline))!
 			}
 			else {
-				conn.shutdown() or {
-					$if trace_ssl ? {
-						eprintln('${@METHOD} shutdown ---> res: ${err}')
-					}
-				}
 				return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_handshake failed 1; handshake ret: ${ret}',
 					ret)
 			}
@@ -412,14 +405,29 @@ fn (mut conn SSLConn) server_handshake(timeout time.Duration) ! {
 	}
 }
 
+fn (mut conn SSLConn) server_handshake(timeout time.Duration) ! {
+	deadline := ssl_timeout_deadline(timeout)
+	conn.do_handshake_loop(deadline) or {
+		conn.shutdown() or {
+			$if trace_ssl ? {
+				eprintln('${@METHOD} shutdown ---> res: ${err}')
+			}
+		}
+		return err
+	}
+}
+
 // accept_with_timeout waits up to `timeout` for a new client before accepting it.
 pub fn (mut l SSLListener) accept_with_timeout(timeout time.Duration) !&SSLConn {
 	return l.accept_with_timeouts(timeout, timeout)
 }
 
-// accept_with_timeouts waits up to `accept_timeout` for a new client, then
-// waits up to `handshake_timeout` for the TLS server handshake to complete.
-pub fn (mut l SSLListener) accept_with_timeouts(accept_timeout time.Duration, handshake_timeout time.Duration) !&SSLConn {
+// accept_raw_with_timeout waits up to `accept_timeout` for a new client, accepts
+// the raw TCP connection and sets up its (non-blocking) SSL context, but does NOT
+// perform the TLS handshake. The returned conn is non-blocking with a non-blocking
+// bio; the caller must run conn.complete_handshake to finish negotiation. This lets
+// the threaded server accept on one thread and handshake on a worker thread.
+pub fn (mut l SSLListener) accept_raw_with_timeout(accept_timeout time.Duration) !&SSLConn {
 	wait_for(l.server_fd.fd, .read, accept_timeout)!
 	mut conn := l.accept_tcp_connection()!
 
@@ -437,13 +445,29 @@ pub fn (mut l SSLListener) accept_with_timeouts(accept_timeout time.Duration, ha
 	}
 
 	C.v_mbedtls_ssl_set_bio_nonblocking(&conn.ssl, &conn.server_fd)
-	conn.server_handshake(handshake_timeout)!
-	net.set_blocking(conn.handle, true) or {
+	return conn
+}
+
+// complete_handshake finishes the TLS server handshake on a conn returned by
+// accept_raw_with_timeout, waiting up to `timeout`, then restores blocking mode
+// and the blocking bio. It never calls shutdown: on any error it returns and the
+// caller owns cleanup (so the conn is shut down exactly once, by the caller).
+pub fn (mut conn SSLConn) complete_handshake(timeout time.Duration) ! {
+	deadline := ssl_timeout_deadline(timeout)
+	conn.do_handshake_loop(deadline)!
+	net.set_blocking(conn.handle, true)!
+	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
+		C.mbedtls_net_recv_timeout)
+}
+
+// accept_with_timeouts waits up to `accept_timeout` for a new client, then
+// waits up to `handshake_timeout` for the TLS server handshake to complete.
+pub fn (mut l SSLListener) accept_with_timeouts(accept_timeout time.Duration, handshake_timeout time.Duration) !&SSLConn {
+	mut conn := l.accept_raw_with_timeout(accept_timeout)!
+	conn.complete_handshake(handshake_timeout) or {
 		conn.shutdown() or {}
 		return err
 	}
-	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
-		C.mbedtls_net_recv_timeout)
 	return conn
 }
 
@@ -546,6 +570,10 @@ pub fn (mut s SSLConn) shutdown() ! {
 	if !s.opened {
 		return error('net.mbedtls SSLConn.shutdown, connection was not open')
 	}
+	// Mark closed before freeing so a second shutdown (e.g. a worker defer racing
+	// close_idle) is a harmless no-op rather than a double-free of the mbedtls
+	// contexts below.
+	s.opened = false
 	if unsafe { s.certs != nil } {
 		C.mbedtls_x509_crt_free(&s.certs.cacert)
 		C.mbedtls_x509_crt_free(&s.certs.client_cert)

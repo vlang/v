@@ -28,7 +28,13 @@ fn (mut t TlsIdleConnTracker) mark_idle(handle int) bool {
 	if t.closing {
 		return false
 	}
-	t.handles << handle
+	// Dedup: the same handle can be marked twice (e.g. a worker marks it for the
+	// handshake window and again per keep-alive request, or the OS recycles the
+	// fd value). A duplicate would make close_idle shut down / close the same fd
+	// twice within its own loop, so only track each handle once.
+	if t.handles.index(handle) < 0 {
+		t.handles << handle
+	}
 	return true
 }
 
