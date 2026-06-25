@@ -1388,6 +1388,16 @@ fn (c &CallCollector) collect_top_level_expr_calls(id flat.NodeId, cur_module st
 		child_id := stack.pop()
 		child := c.a.node(child_id)
 		match child.kind {
+			.ident {
+				if child.value !in local_values {
+					c.collect_fn_value_ident(child_id, child.value, cur_module, imports, mut calls)
+				}
+			}
+			.selector {
+				if !c.top_level_selector_base_is_local(child, local_values) {
+					c.collect_fn_value_selector(child_id, child, cur_module, imports, mut calls)
+				}
+			}
 			.call {
 				c.collect_top_level_call(child_id, child, cur_module, imports, local_values,
 					local_types, mut calls)
@@ -1462,6 +1472,18 @@ fn (c &CallCollector) collect_top_level_expr_calls(id flat.NodeId, cur_module st
 	}
 }
 
+fn (c &CallCollector) top_level_selector_base_is_local(node flat.Node, local_values map[string]bool) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	base_id := c.a.child(&node, 0)
+	if int(base_id) < 0 {
+		return false
+	}
+	base := c.a.node(base_id)
+	return base.kind == .ident && base.value in local_values
+}
+
 fn (c &CallCollector) collect_top_level_call(call_id flat.NodeId, call &flat.Node, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string, mut calls []string) {
 	mut resolved_call := ''
 	if resolved := c.tc.resolved_call_name(call_id) {
@@ -1498,7 +1520,9 @@ fn (c &CallCollector) collect_top_level_call(call_id flat.NodeId, call &flat.Nod
 		if int(arg_id) >= 0 {
 			arg := c.a.node(arg_id)
 			if arg.kind == .ident && arg.value.len > 0 {
-				calls << arg.value
+				if arg.value !in local_values {
+					c.collect_fn_value_ident(arg_id, arg.value, cur_module, imports, mut calls)
+				}
 			}
 		}
 	}

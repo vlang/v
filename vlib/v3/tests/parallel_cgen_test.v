@@ -115,6 +115,52 @@ fn test_parallel_cgen_merges_worker_gettid_compat() {
 	assert c_code.contains('return v3_gettid();'), c_code
 }
 
+fn write_parallel_user_main_test_project(name string) string {
+	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(project_dir) or { panic(err) }
+
+	mut main_src := strings.new_builder(96_000)
+	main_src.writeln('module main')
+	main_src.writeln('')
+	for i in 0 .. 1050 {
+		main_src.writeln('fn helper_${i}() int {')
+		main_src.writeln('\treturn ${i}')
+		main_src.writeln('}')
+		main_src.writeln('')
+	}
+	main_src.writeln('fn main() {')
+	main_src.writeln("\tprintln('user-main')")
+	main_src.writeln('}')
+	main_src.writeln('')
+	main_src.writeln('fn test_call_user_main() {')
+	main_src.writeln('\tmut total := 0')
+	for i in 0 .. 1050 {
+		main_src.writeln('\ttotal += helper_${i}()')
+	}
+	main_src.writeln('\tassert total == 550725')
+	main_src.writeln('\tmain()')
+	main_src.writeln('}')
+	os.write_file(os.join_path(project_dir, 'main_test.v'), main_src.str()) or { panic(err) }
+	return os.join_path(project_dir, 'main_test.v')
+}
+
+fn test_parallel_cgen_worker_keeps_test_user_main_renamed() {
+	v3_bin := build_parallel_v3()
+	main_path := write_parallel_user_main_test_project('parallel_user_main_test_file')
+	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_user_main_test_file_out')
+	compile := os.execute('VJOBS=2 ${v3_bin} ${main_path} -b c -o ${bin_out}')
+	assert compile.exit_code == 0, compile.output
+	assert compile.output.contains('cgen'), compile.output
+	run := os.execute(bin_out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'user-main'
+	c_code := os.read_file(bin_out + '.c') or { panic(err) }
+	assert c_code.count('int main(') == 1, c_code
+	assert c_code.contains('main__user_main'), c_code
+	assert c_code.contains('main__user_main();'), c_code
+}
+
 fn write_parallel_top_level_no_main_project(name string) string {
 	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
 	os.rmdir_all(project_dir) or {}

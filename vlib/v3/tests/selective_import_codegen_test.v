@@ -107,6 +107,72 @@ pub fn hit() int {
 	}
 }
 
+fn selective_import_type_collision_modules() map[string]string {
+	return {
+		'geometry/geometry.v': 'module geometry
+
+pub struct Point {
+pub:
+	x int
+}
+
+pub struct Size {
+pub:
+	w int
+}
+
+pub type ItemId = int
+
+pub enum Mode {
+	on = 7
+	off = 8
+}
+
+@[flag]
+pub enum Perm {
+	a
+	b
+}
+
+pub struct Box[T] {
+pub:
+	value T
+}
+'
+		'pixels/pixels.v':     'module pixels
+
+pub struct Point {
+pub:
+	x int
+}
+
+pub struct Size {
+pub:
+	w int
+}
+
+pub type ItemId = int
+
+pub enum Mode {
+	on = 70
+	off = 80
+}
+
+@[flag]
+pub enum Perm {
+	a
+	c
+	b
+}
+
+pub struct Box[T] {
+pub:
+	other T
+}
+'
+	}
+}
+
 fn test_selective_import_calls_module_and_submodule_functions() {
 	v3_bin := selective_import_build_v3()
 	output, generated := selective_import_compile_run(v3_bin, 'positive', 'module main
@@ -304,4 +370,175 @@ fn main() {
 	assert output == '9'
 	assert generated.contains('mymodules__add_xy(4, 5)'), generated
 	assert !generated.contains('mm__add_xy'), generated
+}
+
+fn test_selective_import_resolves_struct_collision() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'struct_collision', 'module main
+
+import geometry { Point }
+import pixels
+
+fn main() {
+	p := Point{x: 7}
+	println(int_str(p.x))
+}
+',
+		selective_import_type_collision_modules())
+	assert output == '7'
+	assert generated.contains('geometry__Point p ='), generated
+	assert !generated.contains('pixels__Point p ='), generated
+}
+
+fn test_selective_import_resolves_generic_struct_collision() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin,
+		'generic_struct_collision', 'module main
+
+import geometry { Box }
+import pixels
+
+fn main() {
+	b := Box[int]{value: 7}
+	p := pixels.Box[int]{other: 8}
+	println(int_str(b.value + p.other))
+}
+',
+		selective_import_type_collision_modules())
+	assert output == '15'
+	assert generated.contains('struct geometry__Box_int'), generated
+	assert generated.contains('struct pixels__Box_int'), generated
+	assert generated.contains('geometry__Box_int b ='), generated
+	assert generated.contains('pixels__Box_int p ='), generated
+}
+
+fn test_selective_import_resolves_alias_collision() {
+	v3_bin := selective_import_build_v3()
+	output, _ := selective_import_compile_run_with_extra(v3_bin, 'alias_collision', 'module main
+
+import geometry { ItemId }
+import pixels
+
+fn value(id ItemId) int {
+	return int(id)
+}
+
+fn main() {
+	println(int_str(value(ItemId(9))))
+}
+',
+		selective_import_type_collision_modules())
+	assert output == '9'
+}
+
+fn test_selective_import_resolves_enum_collision() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'enum_collision', 'module main
+
+import geometry { Mode }
+import pixels
+
+fn is_on(mode Mode) bool {
+	return mode == .on
+}
+
+fn main() {
+	if is_on(.on) {
+		println("on")
+	}
+}
+',
+		selective_import_type_collision_modules())
+	assert output == 'on'
+	assert generated.contains('return mode == 7;'), generated
+	assert generated.contains('is_on(7)'), generated
+	assert !generated.contains('return mode == 70;'), generated
+	assert !generated.contains('is_on(70)'), generated
+}
+
+fn test_selective_import_resolves_flag_enum_collision() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'flag_enum_collision', 'module main
+
+import geometry { Perm }
+import pixels
+
+fn main() {
+	m := Perm.a | .b
+	println(int_str(int(m)))
+}
+',
+		selective_import_type_collision_modules())
+	assert output == '3'
+	assert generated.contains('int m = 1 | 2;'), generated
+	assert !generated.contains('int m = 1 | 4;'), generated
+	assert !generated.contains('Perm.a'), generated
+}
+
+fn test_duplicate_selective_import_type_fails() {
+	v3_bin := selective_import_build_v3()
+	output := selective_import_compile_bad_with_extra(v3_bin, 'ambiguous_type', 'module main
+
+import geometry { Point }
+import pixels { Point }
+
+fn main() {
+	p := Point{x: 1}
+	println(int_str(p.x))
+}
+',
+		selective_import_type_collision_modules())
+	assert output.contains('ambiguous selective import `Point`'), output
+}
+
+fn test_duplicate_selective_import_enum_selector_fails() {
+	v3_bin := selective_import_build_v3()
+	output := selective_import_compile_bad_with_extra(v3_bin, 'ambiguous_enum_selector', 'module main
+
+import geometry { Mode }
+import pixels { Mode }
+
+fn main() {
+	mode := Mode.on
+	println(int_str(int(mode)))
+}
+',
+		selective_import_type_collision_modules())
+	assert output.contains('ambiguous selective import `Mode`'), output
+}
+
+fn test_selective_import_enum_selector_keeps_selected_authority() {
+	v3_bin := selective_import_build_v3()
+	output := selective_import_compile_bad_with_extra(v3_bin, 'enum_selector_authority', 'module main
+
+import geometry { Mode }
+import pixels
+
+fn takes_pixel(mode pixels.Mode) {}
+
+fn main() {
+	takes_pixel(Mode.on)
+}
+',
+		selective_import_type_collision_modules())
+	assert output.contains('cannot use `geometry.Mode` as argument 1 to `takes_pixel`; expected `pixels.Mode`'), output
+}
+
+fn test_unselected_type_from_selective_import_is_not_resolved_by_suffix() {
+	v3_bin := selective_import_build_v3()
+	output := selective_import_compile_bad_with_extra(v3_bin, 'unselected_type', 'module main
+
+import geometry { Point }
+import pixels
+
+fn use_size(s Size) int {
+	return s.w
+}
+
+fn main() {
+	println("ok")
+}
+',
+		selective_import_type_collision_modules())
+	assert output.contains('unknown type `Size`'), output
 }

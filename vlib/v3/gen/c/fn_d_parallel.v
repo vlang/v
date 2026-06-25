@@ -360,7 +360,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		a:                        unsafe { g.a }
 		used_fns:                 g.used_fns
 		used_fn_names:            g.used_fn_names
-		test_files:               g.test_files
+		test_files:               g.test_files.clone()
 		str_lits:                 g.str_lits.clone()
 		str_lit_ids:              g.str_lit_ids.clone()
 		global_types:             g.global_types

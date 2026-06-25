@@ -1001,6 +1001,26 @@ fn (g &FlatGen) enum_value_for_type(type_name string, field_name string) ?int {
 	return none
 }
 
+fn (g &FlatGen) enum_selector_base_name(name string) ?string {
+	if name in g.tc.enum_names || name in g.tc.flag_enums {
+		return name
+	}
+	qname := g.tc.qualify_name(name)
+	if qname in g.tc.enum_names || qname in g.tc.flag_enums {
+		return qname
+	}
+	if name.contains('.') || g.tc.cur_file.len == 0 {
+		return none
+	}
+	candidates := g.tc.file_selective_imports['${g.tc.cur_file}\n${name}'] or { return none }
+	for candidate in candidates {
+		if candidate in g.tc.enum_names || candidate in g.tc.flag_enums {
+			return candidate
+		}
+	}
+	return none
+}
+
 // expr_to_string converts expr to string data for c.
 fn (mut g FlatGen) expr_to_string(id flat.NodeId) string {
 	orig := g.sb
@@ -2297,16 +2317,15 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			if g.gen_method_value_closure(base_id, base_type0, node.value) {
 				return
 			}
+			enum_selector_qbase := if base.kind == .ident && base.value != 'C' && !base_is_local {
+				g.enum_selector_base_name(base.value) or { '' }
+			} else {
+				''
+			}
 			if base.kind == .ident && base.value == 'C' {
 				g.write(node.value)
-			} else if base.kind == .ident && !base_is_local && (base.value in g.tc.enum_names
-				|| g.tc.qualify_name(base.value) in g.tc.enum_names) {
-				qbase := if base.value in g.tc.enum_names {
-					base.value
-				} else {
-					g.tc.qualify_name(base.value)
-				}
-				ekey := '${qbase}.${node.value}'
+			} else if enum_selector_qbase.len > 0 {
+				ekey := '${enum_selector_qbase}.${node.value}'
 				if eval := g.enum_vals[ekey] {
 					g.write('${eval}')
 				} else {

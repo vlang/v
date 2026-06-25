@@ -1038,6 +1038,57 @@ fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
 	return none
 }
 
+fn (tc &TypeChecker) resolve_selective_import_type_symbol(name string) ?string {
+	candidates := tc.file_selective_imports[file_import_key(tc.cur_file, name)] or { return none }
+	for candidate in candidates {
+		if tc.type_symbol_known(candidate) {
+			return candidate
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) type_symbol_known(name string) bool {
+	return name in tc.type_aliases || name in tc.structs || name in tc.interface_names
+		|| name in tc.flag_enums || name in tc.enum_names || name in tc.sum_types
+}
+
+fn (tc &TypeChecker) type_from_known_symbol(name string) ?Type {
+	if name in tc.type_aliases {
+		return Type(Alias{
+			name:      name
+			base_type: tc.parse_type(tc.type_aliases[name])
+		})
+	}
+	if name in tc.structs {
+		return Type(Struct{
+			name: name
+		})
+	}
+	if name in tc.interface_names {
+		return Type(Interface{
+			name: name
+		})
+	}
+	if name in tc.flag_enums {
+		return Type(Enum{
+			name:    name
+			is_flag: true
+		})
+	}
+	if name in tc.enum_names {
+		return Type(Enum{
+			name: name
+		})
+	}
+	if name in tc.sum_types {
+		return Type(SumType{
+			name: name
+		})
+	}
+	return none
+}
+
 fn (tc &TypeChecker) selective_import_symbol_is_ambiguous(name string) bool {
 	candidates := tc.file_selective_imports[file_import_key(tc.cur_file, name)] or { return false }
 	return candidates.len == 0
@@ -2357,6 +2408,11 @@ fn (tc &TypeChecker) type_name_known(typ string) bool {
 		return true
 	}
 	qtyp := tc.qualify_name(typ)
+	if !typ.contains('.') {
+		if resolved := tc.resolve_selective_import_type_symbol(typ) {
+			return tc.type_symbol_known(resolved)
+		}
+	}
 	return typ in tc.type_aliases || qtyp in tc.type_aliases || typ in tc.structs
 		|| qtyp in tc.structs || typ in tc.interface_names || qtyp in tc.interface_names
 		|| typ in tc.enum_names || qtyp in tc.enum_names || typ in tc.sum_types
@@ -5446,6 +5502,9 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	base_id := tc.a.child(&node, 0)
 	base := tc.a.nodes[int(base_id)]
 	if tc.is_namespace_selector(node, base) {
+		if typ := tc.enum_selector_type(&node) {
+			tc.register_synth_type(id, typ)
+		}
 		return
 	}
 	tc.check_node(base_id)
@@ -5506,6 +5565,12 @@ fn (tc &TypeChecker) is_namespace_selector(node flat.Node, base flat.Node) bool 
 	}
 	if base.value == 'C' || tc.has_active_import(base.value) {
 		return true
+	}
+	if resolved := tc.resolve_selective_import_type_symbol(base.value) {
+		if resolved in tc.structs || resolved in tc.enum_names || resolved in tc.flag_enums
+			|| resolved in tc.sum_types || resolved in tc.interface_names {
+			return true
+		}
 	}
 	qbase := tc.qualify_name(base.value)
 	if qbase in tc.structs || qbase in tc.enum_names || qbase in tc.sum_types
@@ -6130,6 +6195,13 @@ fn (tc &TypeChecker) resolve_enum_name(name string) ?string {
 	qname := tc.qualify_name(name)
 	if qname in tc.enum_names {
 		return qname
+	}
+	if !name.contains('.') {
+		if resolved := tc.resolve_selective_import_type_symbol(name) {
+			if resolved in tc.enum_names || resolved in tc.flag_enums {
+				return resolved
+			}
+		}
 	}
 	return none
 }
@@ -7408,6 +7480,13 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		})
 	}
 	if !typ.contains('.') {
+		if resolved := tc.resolve_selective_import_type_symbol(typ) {
+			if resolved_type := tc.type_from_known_symbol(resolved) {
+				return resolved_type
+			}
+		}
+	}
+	if !typ.contains('.') {
 		if resolved := tc.unique_qualified_type_name(typ) {
 			if resolved in tc.type_aliases {
 				return Type(Alias{
@@ -7470,6 +7549,31 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			return Type(SumType{
 				name: qbase
 			})
+		}
+		if !base.contains('.') {
+			if resolved := tc.resolve_selective_import_type_symbol(base) {
+				if resolved in tc.type_aliases {
+					return Type(Alias{
+						name:      resolved
+						base_type: tc.parse_type(tc.type_aliases[resolved])
+					})
+				}
+				if resolved in tc.structs {
+					return Type(Struct{
+						name: if is_concrete_generic { resolved + generic_suffix } else { resolved }
+					})
+				}
+				if resolved in tc.interface_names {
+					return Type(Interface{
+						name: resolved
+					})
+				}
+				if resolved in tc.sum_types {
+					return Type(SumType{
+						name: resolved
+					})
+				}
+			}
 		}
 		if base in tc.type_aliases {
 			return Type(Alias{
@@ -7544,6 +7648,11 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 
 fn (tc &TypeChecker) is_known_type_text(typ string) bool {
 	qtyp := tc.qualify_name(typ)
+	if !typ.contains('.') {
+		if resolved := tc.resolve_selective_import_type_symbol(typ) {
+			return tc.type_symbol_known(resolved)
+		}
+	}
 	return typ in tc.structs || qtyp in tc.structs || typ in tc.interface_names
 		|| qtyp in tc.interface_names || typ in tc.enum_names || qtyp in tc.enum_names
 		|| typ in tc.sum_types || qtyp in tc.sum_types || typ in tc.type_aliases

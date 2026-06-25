@@ -6,6 +6,7 @@ import v3.types
 struct GenericStructDecl {
 	id     flat.NodeId
 	node   flat.Node
+	file   string
 	module string
 	key    string
 }
@@ -194,7 +195,8 @@ fn (mut t Transformer) materialize_generic_structs() {
 				}
 				field_type := substitute_generic_type_text_with_params(field.typ, args,
 					decl.node.generic_params)
-				t.collect_generic_struct_spec_from_type(field_type, decl.module, decls, mut specs)
+				t.collect_generic_struct_spec_from_type(field_type, decl.module, decl.file, decls, mut
+					specs)
 			}
 		}
 		if specs.len == before {
@@ -215,9 +217,13 @@ fn (mut t Transformer) materialize_generic_structs() {
 fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDecl {
 	mut decls := map[string]GenericStructDecl{}
 	node_modules := t.node_module_map()
+	mut cur_file := ''
 	mut cur_module := ''
 	for i, node in t.a.nodes {
 		match node.kind {
+			.file {
+				cur_file = node.value
+			}
 			.module_decl {
 				cur_module = node.value
 			}
@@ -230,6 +236,7 @@ fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDe
 				decls[key] = GenericStructDecl{
 					id:     flat.NodeId(i)
 					node:   node
+					file:   cur_file
 					module: module_name
 					key:    key
 				}
@@ -250,12 +257,14 @@ fn generic_struct_decl_key(name string, module_name string) string {
 
 fn (mut t Transformer) collect_generic_struct_specs(decls map[string]GenericStructDecl, mut specs map[string]string) {
 	for _, target in t.tc.type_aliases {
-		t.collect_generic_struct_spec_from_type(target, '', decls, mut specs)
+		t.collect_generic_struct_spec_from_type(target, '', '', decls, mut specs)
 	}
+	mut file_name := ''
 	mut module_name := ''
 	for node in t.a.nodes {
 		match node.kind {
 			.file {
+				file_name = node.value
 				module_name = ''
 			}
 			.module_decl {
@@ -265,57 +274,64 @@ fn (mut t Transformer) collect_generic_struct_specs(decls map[string]GenericStru
 		}
 
 		if node.typ.len > 0 {
-			t.collect_generic_struct_spec_from_type(node.typ, module_name, decls, mut specs)
+			t.collect_generic_struct_spec_from_type(node.typ, module_name, file_name, decls, mut
+				specs)
 		}
 		match node.kind {
 			.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr, .is_expr {
-				t.collect_generic_struct_spec_from_type(node.value, module_name, decls, mut specs)
+				t.collect_generic_struct_spec_from_type(node.value, module_name, file_name, decls, mut
+					specs)
 			}
 			else {}
 		}
 	}
 }
 
-fn (mut t Transformer) collect_generic_struct_spec_from_type(typ string, module_name string, decls map[string]GenericStructDecl, mut specs map[string]string) {
+fn (mut t Transformer) collect_generic_struct_spec_from_type(typ string, module_name string, file_name string, decls map[string]GenericStructDecl, mut specs map[string]string) {
 	clean := typ.trim_space()
 	if clean.len == 0 {
 		return
 	}
 	if clean.starts_with('&') {
-		t.collect_generic_struct_spec_from_type(clean[1..], module_name, decls, mut specs)
+		t.collect_generic_struct_spec_from_type(clean[1..], module_name, file_name, decls, mut
+			specs)
 		return
 	}
 	if clean.starts_with('mut ') {
-		t.collect_generic_struct_spec_from_type(clean[4..], module_name, decls, mut specs)
+		t.collect_generic_struct_spec_from_type(clean[4..], module_name, file_name, decls, mut
+			specs)
 		return
 	}
 	if clean.starts_with('?') || clean.starts_with('!') {
-		t.collect_generic_struct_spec_from_type(clean[1..], module_name, decls, mut specs)
+		t.collect_generic_struct_spec_from_type(clean[1..], module_name, file_name, decls, mut
+			specs)
 		return
 	}
 	if clean.starts_with('...') {
-		t.collect_generic_struct_spec_from_type(clean[3..], module_name, decls, mut specs)
+		t.collect_generic_struct_spec_from_type(clean[3..], module_name, file_name, decls, mut
+			specs)
 		return
 	}
 	if clean.starts_with('[]') {
-		t.collect_generic_struct_spec_from_type(clean[2..], module_name, decls, mut specs)
+		t.collect_generic_struct_spec_from_type(clean[2..], module_name, file_name, decls, mut
+			specs)
 		return
 	}
 	if clean.starts_with('map[') {
 		bracket_end := generic_matching_bracket(clean, 3)
 		if bracket_end < clean.len {
-			t.collect_generic_struct_spec_from_type(clean[4..bracket_end], module_name, decls, mut
-				specs)
-			t.collect_generic_struct_spec_from_type(clean[bracket_end + 1..], module_name, decls, mut
-				specs)
+			t.collect_generic_struct_spec_from_type(clean[4..bracket_end], module_name, file_name,
+				decls, mut specs)
+			t.collect_generic_struct_spec_from_type(clean[bracket_end + 1..], module_name,
+				file_name, decls, mut specs)
 		}
 		return
 	}
 	if clean.starts_with('[') {
 		bracket_end := generic_matching_bracket(clean, 0)
 		if bracket_end < clean.len {
-			t.collect_generic_struct_spec_from_type(clean[bracket_end + 1..], module_name, decls, mut
-				specs)
+			t.collect_generic_struct_spec_from_type(clean[bracket_end + 1..], module_name,
+				file_name, decls, mut specs)
 		}
 		return
 	}
@@ -324,17 +340,17 @@ fn (mut t Transformer) collect_generic_struct_spec_from_type(typ string, module_
 		return
 	}
 	for arg in args {
-		t.collect_generic_struct_spec_from_type(arg, module_name, decls, mut specs)
+		t.collect_generic_struct_spec_from_type(arg, module_name, file_name, decls, mut specs)
 	}
 	if t.generic_args_have_placeholders(args) {
 		return
 	}
-	spec_base := generic_struct_spec_base_name(base, module_name, decls) or { return }
+	spec_base := t.generic_struct_spec_base_name(base, module_name, file_name, decls) or { return }
 	spec_name := '${spec_base}[${args.join(', ')}]'
 	specs[spec_name] = spec_base
 }
 
-fn generic_struct_spec_base_name(base string, module_name string, decls map[string]GenericStructDecl) ?string {
+fn (t &Transformer) generic_struct_spec_base_name(base string, module_name string, file_name string, decls map[string]GenericStructDecl) ?string {
 	if base in decls {
 		return base
 	}
@@ -347,6 +363,9 @@ fn generic_struct_spec_base_name(base string, module_name string, decls map[stri
 			return qbase
 		}
 	}
+	if resolved := t.selective_import_generic_struct_base(base, file_name, decls) {
+		return resolved
+	}
 	mut found := ''
 	for key, _ in decls {
 		if key.all_after_last('.') == base {
@@ -358,6 +377,19 @@ fn generic_struct_spec_base_name(base string, module_name string, decls map[stri
 	}
 	if found.len > 0 {
 		return found
+	}
+	return none
+}
+
+fn (t &Transformer) selective_import_generic_struct_base(base string, file_name string, decls map[string]GenericStructDecl) ?string {
+	if isnil(t.tc) || base.contains('.') || file_name.len == 0 {
+		return none
+	}
+	candidates := t.tc.file_selective_imports[file_import_key(file_name, base)] or { return none }
+	for candidate in candidates {
+		if candidate in decls {
+			return candidate
+		}
 	}
 	return none
 }

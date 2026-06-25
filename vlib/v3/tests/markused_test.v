@@ -531,6 +531,57 @@ fn test_reachable_main_fn_literal_is_emitted_after_used_filter_transform() {
 	assert c_code.contains('callback_value(__anon_fn_')
 }
 
+fn test_top_level_fn_value_roots_helper() {
+	mut a, mut tc := parse_checked_source('top_level_fn_value_helper_cgen',
+		'module main\n\nfn helper() int {\n\treturn 41\n}\n\nf := helper\nprintln(int_str(f() + 1))\n')
+	mut used := markused.mark_used(a, tc)
+	assert used['helper']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('helper(')
+}
+
+fn test_top_level_fn_value_compile_keeps_helper() {
+	v3_bin := build_v3_bin('top_level_fn_value_test')
+
+	src := os.join_path(os.temp_dir(), 'v3_markused_top_level_fn_value_input.v')
+	bin := os.join_path(os.temp_dir(), 'v3_markused_top_level_fn_value_input')
+	os.write_file(src, '
+fn helper() int {
+	return 41
+}
+
+f := helper
+println(int_str(f() + 1))
+') or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42'
+	c_code := os.read_file(bin + '.c') or { panic(err) }
+	assert c_code.contains('helper('), c_code
+}
+
+fn test_top_level_fn_value_respects_prior_local_shadow() {
+	used := mark_used_source('top_level_fn_value_prior_shadow', '
+fn helper() int {
+	return 1
+}
+
+helper := 10
+f := helper
+println(int_str(f))
+')
+	assert !used['helper']
+}
+
 fn test_flag_default_value_lowering_keeps_escape_helper() {
 	mut a, mut tc := parse_checked_source('flag_default_value_escape_helper_cgen',
 		'module main\n\nfn escape_default_string(value string) string {\n\treturn value\n}\n\nfn flag_default_value(value string) string {\n\treturn value\n}\n\nfn main() {\n\t_ := flag_default_value("abc")\n}\n')
