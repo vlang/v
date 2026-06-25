@@ -339,3 +339,27 @@ fn test_fixed_array_length_checks() {
 		'fn pick(c bool) []int {\n\treturn if c { [1, 2, 3] } else { [4, 5] }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n')
 	assert good_ret_lit == '5'
 }
+
+// Regression tests for the post-PR review fixes around generic struct receivers
+// and generic heap struct literals.
+fn test_generic_struct_receiver_and_heap_init() {
+	v3_bin := build_v3()
+	// Two *different concrete* instantiations are incompatible: `Box[string]` must
+	// not satisfy an expected `Box[int]` (value or pointer form).
+	run_bad(v3_bin, 'bad_generic_concrete_value_arg',
+		"struct Box[T] {\n\tval T\n}\nfn use_int(b Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n",
+		'expected `Box[int]`')
+	run_bad(v3_bin, 'bad_generic_concrete_ptr_arg',
+		"struct Box[T] {\n\tval T\n}\nfn use_int(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := &Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n",
+		'expected `&Box[int]`')
+	// A generic method on the open `Box[T]` receiver works for every instantiation.
+	good_method := run_good(v3_bin, 'good_generic_method_instances',
+		"struct Box[T] {\n\tval T\n}\nfn (b Box[T]) get() T {\n\treturn b.val\n}\nfn main() {\n\tbi := Box[int]{\n\t\tval: 42\n\t}\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\tprintln(int_str(bi.get()))\n\tprintln(bs.get())\n}\n")
+	assert good_method == '42\nhi'
+	// A bare generic literal (`Box{..}` / `&Box{..}`) specializes to the expected
+	// concrete instance — and the heap literal must materialize the same concrete
+	// C type (`Box_int`) as the value literal, not the bare template.
+	good_heap := run_good(v3_bin, 'good_generic_bare_value_and_heap_args',
+		'struct Box[T] {\n\tval T\n}\nfn take_val(b Box[int]) int {\n\treturn b.val\n}\nfn take_heap(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tprintln(int_str(take_val(Box{\n\t\tval: 7\n\t}) + take_heap(&Box{\n\t\tval: 9\n\t})))\n}\n')
+	assert good_heap == '16'
+}

@@ -409,7 +409,13 @@ fn channel_init_field(node flat.Node, a &flat.FlatAst, name string) ?flat.NodeId
 // gen_heap_struct_init emits heap struct init output for c.
 fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	init_module := g.tc.cur_module
-	name := g.struct_init_c_type_name(node.value)
+	mut name := g.struct_init_c_type_name(node.value)
+	// A bare generic heap literal (`&Vec4{..}`) carries no type args; when the
+	// surrounding expected type fixes them (e.g. a `&Vec4[f32]` return), emit the
+	// concrete instance name so the materialized struct matches the value path.
+	if inst := g.generic_struct_init_instance_ct(node.value) {
+		name = inst
+	}
 	sum_name := g.resolve_sum_name(node.value)
 	is_sum_literal := sum_name in g.tc.sum_types
 	if !is_sum_literal && !g.is_interface_type_name(node.value)
@@ -873,7 +879,11 @@ fn (g &FlatGen) generic_struct_init_instance_ct(type_name string) ?string {
 	// shape (a `Base[args]` instance whose base short-name equals the literal's) is
 	// the sole evidence that this bare literal is a generic struct instantiation.
 	for cand in [g.expected_expr_type, g.cur_fn_ret] {
-		cand_name := types.Type(cand).name()
+		// Unwrap a pointer so a `&Box[int]` expected type still matches a bare `Box`
+		// literal — the heap path (`&Box{..}`) needs the struct (`Box_int`), not the
+		// pointer, type name.
+		base_cand := types.unwrap_pointer(cand)
+		cand_name := base_cand.name()
 		if !cand_name.contains('[') {
 			continue
 		}
@@ -881,7 +891,7 @@ fn (g &FlatGen) generic_struct_init_instance_ct(type_name string) ?string {
 		if cand_base.len == 0 || cand_base.all_after_last('.') != short {
 			continue
 		}
-		return g.tc.c_type(cand)
+		return g.tc.c_type(base_cand)
 	}
 	return none
 }

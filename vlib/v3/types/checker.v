@@ -3419,21 +3419,30 @@ fn (tc &TypeChecker) receiver_compatible(actual Type, expected Type) bool {
 	if tc.type_compatible(actual, expected) {
 		return true
 	}
+	// Check the generic-base relaxation before the pointer fallbacks: it unwraps
+	// pointers itself, so a bare `&Box{...}` literal still matches an expected
+	// `&Box[int]` (while `&Box[string]` vs `&Box[int]` stays rejected).
+	if tc.generic_receiver_base_match(actual, expected) {
+		return true
+	}
 	if expected is Pointer {
 		return tc.type_compatible(actual, expected.base_type)
 	}
 	if actual is Pointer {
 		return tc.type_compatible(actual.base_type, expected)
 	}
-	if tc.generic_receiver_base_match(actual, expected) {
-		return true
-	}
 	return false
 }
 
-// generic_receiver_base_match reports whether `actual` is a generic-struct
-// instance (e.g. `Vec4[f32]`) whose base matches `expected` — the generic
-// receiver form a generic method is declared against (`Vec4` / `Vec4[T]`).
+// generic_receiver_base_match relaxes compatibility between two same-base generic
+// struct types when at least one side is the open/bare generic form — a bare
+// `Vec4{...}` literal specializing to the expected `Vec4[f32]`, or a concrete
+// `Vec4[f32]` value matching the open `Vec4` / `Vec4[T]` method-receiver form.
+//
+// It deliberately does NOT relax two *different concrete* instantiations. Because
+// `receiver_compatible` is also used for ordinary call arguments, field inits,
+// array literals, and expected-type propagation, conflating them would let
+// `Box[string]` satisfy an expected `Box[int]` and emit incompatible C structs.
 fn (tc &TypeChecker) generic_receiver_base_match(actual Type, expected Type) bool {
 	a_full := unwrap_pointer(actual).name()
 	e_full := unwrap_pointer(expected).name()
@@ -3444,8 +3453,29 @@ fn (tc &TypeChecker) generic_receiver_base_match(actual Type, expected Type) boo
 	if a !in tc.struct_generic_params {
 		return false
 	}
-	// At least one side must be a concrete instance (differs from the base form).
-	return a_full != e_full
+	if a_full == e_full {
+		return false
+	}
+	// Reject two *different concrete* instantiations (`Box[string]` vs `Box[int]`),
+	// which produce incompatible C structs. Relax only when at least one side is
+	// the open/bare generic form: a bare `Box{...}` literal specializing to the
+	// expected `Box[int]`, or a concrete `Box[int]` value matching the open
+	// `Box`/`Box[T]` method-receiver form.
+	if tc.is_concrete_generic_instance(a_full) && tc.is_concrete_generic_instance(e_full) {
+		return false
+	}
+	return true
+}
+
+// is_concrete_generic_instance reports whether `name` is a fully concrete generic
+// instantiation (e.g. `Box[int]`), as opposed to the bare base (`Box`) or an open
+// parameter form (`Box[T]`).
+fn (tc &TypeChecker) is_concrete_generic_instance(name string) bool {
+	_, args, ok := generic_type_application_parts(name)
+	if !ok {
+		return false
+	}
+	return tc.generic_args_are_concrete(args)
 }
 
 // strip_generic_args_name returns the base name of a generic instance type
