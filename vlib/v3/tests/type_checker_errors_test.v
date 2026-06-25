@@ -363,3 +363,19 @@ fn test_generic_struct_receiver_and_heap_init() {
 		'struct Box[T] {\n\tval T\n}\nfn take_val(b Box[int]) int {\n\treturn b.val\n}\nfn take_heap(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tprintln(int_str(take_val(Box{\n\t\tval: 7\n\t}) + take_heap(&Box{\n\t\tval: 9\n\t})))\n}\n')
 	assert good_heap == '16'
 }
+
+// Regression tests for the post-PR review fixes: const-expression fixed-array
+// lengths must be folded to a literal (not c_name-mangled into `segs_+_1`), and the
+// `[]thread T.wait()` helper name must sanitize a pointer payload C type (`Foo*`).
+fn test_const_expr_fixed_array_and_thread_ptr_wait() {
+	v3_bin := build_v3()
+	// `[segs + 1]f32` must emit `[5]` for both the array dimension and `.len`.
+	good_len := run_good(v3_bin, 'good_const_expr_fixed_array_len',
+		'const segs = 4\nfn main() {\n\tmut x := [segs + 1]f32{}\n\tx[0] = 1.5\n\tx[segs] = 2.5\n\tprintln(int_str(x.len))\n\tprintln(int_str(int(x[0] + x[segs])))\n}\n')
+	assert good_len == '5\n4'
+	// `[]thread &Foo.wait()` returns `[]&Foo`; the wait helper symbol must not contain
+	// the `*` from the `Foo*` payload C type.
+	good_thread := run_good(v3_bin, 'good_thread_ptr_payload_wait',
+		'struct Foo {\n\tx int\n}\nfn work(n int) &Foo {\n\treturn &Foo{\n\t\tx: n\n\t}\n}\nfn main() {\n\tmut threads := []thread &Foo{}\n\tthreads << spawn work(40)\n\tthreads << spawn work(2)\n\tresults := threads.wait()\n\tmut sum := 0\n\tfor r in results {\n\t\tsum += r.x\n\t}\n\tprintln(int_str(sum))\n}\n')
+	assert good_thread == '42'
+}

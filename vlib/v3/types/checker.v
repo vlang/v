@@ -7023,8 +7023,16 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return 'Array'
 	}
 	if t is ArrayFixed {
-		len_text := if t.len_expr.len > 0 { t.len_expr } else { t.len.str() }
-		return 'Array_fixed_${c_type_name_part(tc.c_type(t.elem_type))}_${c_type_name_part(len_text)}'
+		// Prefer the evaluated length so a const-expression size (`[segs + 1]f32`)
+		// names the same type as its literal equivalent (`[5]f32`) and never leaks
+		// operators into the identifier; fall back to the sanitized raw expression.
+		len_name := if resolved := tc.fixed_array_len_value(t) {
+			resolved.str()
+		} else {
+			len_text := if t.len_expr.len > 0 { t.len_expr } else { t.len.str() }
+			c_type_name_part(len_text)
+		}
+		return 'Array_fixed_${c_type_name_part(tc.c_type(t.elem_type))}_${len_name}'
 	}
 	if t is Channel {
 		return 'chan'
@@ -7120,11 +7128,28 @@ fn (tc &TypeChecker) optional_c_type_name(base_type Type) string {
 	return 'Optional_${inner_ct.replace('*', 'ptr').replace(' ', '_')}'
 }
 
-// c_type_name_part supports c type name part handling for types.
-fn c_type_name_part(s string) string {
-	return s.replace('*', 'ptr').replace(' ', '_').replace(',', '_').replace('|', '_').replace(':',
-		'_').replace('.', '_').replace('[', '_').replace(']', '_').replace('(', '_').replace(')',
-		'_').replace('-', '_')
+// c_type_name_part turns a C type or length expression into a fragment that is safe
+// to embed inside a C identifier: `*` becomes `ptr` (so pointer payloads stay
+// distinguishable), and every other character that is not a letter, digit, or `_`
+// becomes `_`. This keeps const-expression fixed-array lengths (e.g. `segs + 1`) and
+// pointer return types (`Foo*`) from producing invalid identifiers such as
+// `Array_fixed_f32_segs_+_1` or `__v_thread_arr_wait_Foo*`.
+pub fn c_type_name_part(s string) string {
+	mut b := []u8{cap: s.len + 2}
+	for i := 0; i < s.len; i++ {
+		c := s[i]
+		if c == `*` {
+			b << `p`
+			b << `t`
+			b << `r`
+		} else if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+			|| (c >= `0` && c <= `9`) || c == `_` {
+			b << c
+		} else {
+			b << `_`
+		}
+	}
+	return b.bytestr()
 }
 
 // resolve_type_name_for_method resolves resolve type name for method information for types.

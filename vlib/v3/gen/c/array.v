@@ -393,7 +393,10 @@ fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
 	if name := g.spawn_wrapper_names[key] {
 		return name
 	}
-	name := c_name('__v_thread_arr_wait_${ret_ct}')
+	// Sanitize the payload C type (`Foo*`, `void*`, ...) into an identifier fragment
+	// — `c_name` does not strip `*`, so a raw pointer return type would otherwise put
+	// an asterisk in the helper symbol.
+	name := c_name('__v_thread_arr_wait_${types.c_type_name_part(ret_ct)}')
 	g.spawn_wrapper_names[key] = name
 	if is_void {
 		g.spawn_wrapper_defs << 'static void ${name}(Array a) { for (int __i = 0; __i < a.len; __i++) { void* __r = NULL; pthread_join((pthread_t)(((void**)a.data)[__i]), &__r); if (__r) free(__r); } }'

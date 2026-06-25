@@ -1505,6 +1505,15 @@ fn (mut t Transformer) make_fixed_array_len_expr(s string) flat.NodeId {
 	if is_decimal_text(len_text) {
 		return t.make_int_literal(len_text.int())
 	}
+	// Fold a const length — a bare const (`SEGS`) or an expression (`segs + 1`) — to
+	// its integer value. A fixed array's `.len` is a compile-time constant; emitting
+	// the raw expression as an ident would c_name-mangle it into an undeclared
+	// identifier such as `segs_+_1`.
+	if !isnil(t.tc) {
+		if v := t.tc.const_int_value(len_text, []string{}) {
+			return t.make_int_literal(v)
+		}
+	}
 	if len_text.contains('.') {
 		base := len_text.all_before_last('.')
 		field := len_text.all_after_last('.')
