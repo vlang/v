@@ -551,3 +551,25 @@ fn test_pr_review_codegen_batch_seven() {
 		"struct Box[T] {\n\tv T\n}\nfn (a Box[T]) + (b Box[T]) Box[T] {\n\treturn Box[T]{\n\t\tv: a.v + b.v\n\t}\n}\nstruct NoPlus {\n\tname string\n}\nfn main() {\n\tx := Box[int]{\n\t\tv: 1\n\t}\n\ty := Box[int]{\n\t\tv: 2\n\t}\n\tz := x + y\n\tprintln(int_str(z.v))\n\tw := Box[NoPlus]{\n\t\tv: NoPlus{\n\t\t\tname: 'hi'\n\t\t}\n\t}\n\tprintln(w.v.name)\n}\n")
 	assert op_gate == '3\nhi'
 }
+
+// Regression tests for the eighth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_eight() {
+	v3_bin := build_v3()
+	// A bare *value* generic literal must not adopt a *pointer* expectation: `&Box[int]`
+	// expected from a plain `Box{...}` is a definite mismatch (cgen would emit a `Box_int`
+	// value where a `Box_int*` is required), so it is rejected rather than silently typed
+	// as `&Box[int]`.
+	run_bad(v3_bin, 'bad_value_literal_pointer_expectation',
+		'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\t_ := make()\n}\n',
+		'cannot return `Box` as `&Box[int]`')
+	// The pointer form `&Box{...}` still adopts the `&Box[int]` expectation and round-trips.
+	heap := run_good(v3_bin, 'good_amp_generic_literal_pointer',
+		'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 7\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
+	assert heap == '7'
+	// A method value passed through a function-type *alias* parameter (`type Cb = fn ()`)
+	// must be cast to the generated `_fn_ptr_*` typedef, not `(void*)` (which strict C
+	// rejects for a function pointer). `fn_type_from` unwraps the alias.
+	mv_alias := run_good(v3_bin, 'good_method_value_fn_alias',
+		"struct Game {\n\tscore int\n}\nfn (g Game) draw() {\n\tprintln('drawing')\n}\ntype Cb = fn ()\nfn run(cb Cb) {\n\tcb()\n}\nfn main() {\n\tg := Game{\n\t\tscore: 5\n\t}\n\trun(g.draw)\n}\n")
+	assert mv_alias == 'drawing'
+}

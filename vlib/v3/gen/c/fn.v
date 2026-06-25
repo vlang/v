@@ -400,9 +400,11 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 	// Yield the wrapper as the callback value. A V `fn (...) ...` parameter is a
 	// `_fn_ptr_*` typedef and needs the wrapper cast to that function-pointer type; only
 	// a C / `voidptr` callback slot gets the object-pointer `(void*)` cast (which strict
-	// C rejects for function pointers).
-	if g.expected_expr_type is types.FnType {
-		fnptr_ct := g.value_c_type(g.expected_expr_type)
+	// C rejects for function pointers). `fn_type_from` is alias-aware, so a method value
+	// passed through a `type Cb = fn ()` parameter (an `Alias`, not a bare `FnType`) is
+	// recognised too and cast to the function-pointer typedef rather than `(void*)`.
+	if fnt := fn_type_from(g.expected_expr_type) {
+		fnptr_ct := g.value_c_type(fnt)
 		g.write('; (${fnptr_ct})${wrap_name}; })')
 	} else {
 		g.write('; (void*)${wrap_name}; })')

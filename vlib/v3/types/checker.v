@@ -4857,8 +4857,13 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 	// A bare generic struct literal (`Box{...}` / `&Box{...}`) adopts a matching concrete
 	// expected instance (`Box[int]` / `&Box[int]`), so `fn make() Box[int] { return
 	// Box{...} }` and bare literals passed/assigned where a concrete instance is expected
-	// type-check and carry the concrete type into codegen.
-	if node.kind == .struct_init && tc.bare_generic_literal_adopts(node.value, expected)
+	// type-check and carry the concrete type into codegen. A *value* literal only adopts a
+	// *value* expectation: `bare_generic_literal_adopts` unwraps the pointer, so without
+	// the `expected !is Pointer` guard `return Box{...}` would be accepted for an expected
+	// `&Box[int]`, and cgen would emit a `Box_int` value where a `Box_int*` is required.
+	// The pointer case is the `prefix .amp` (`&Box{...}`) path below.
+	if node.kind == .struct_init && expected !is Pointer
+		&& tc.bare_generic_literal_adopts(node.value, expected)
 		&& tc.generic_literal_fields_compatible(node, expected) {
 		tc.register_synth_type(id, expected_raw)
 		return expected_raw
