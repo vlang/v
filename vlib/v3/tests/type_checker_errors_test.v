@@ -610,11 +610,11 @@ fn test_pr_review_codegen_batch_eleven() {
 	// reaching cgen and emitting an undefined helper. Append form:
 	run_bad(v3_bin, 'bad_method_value_array_append',
 		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\tmut cbs := []fn () int{}\n\tfor i in 0 .. 3 {\n\t\tc := Counter{\n\t\t\tid: i * 10\n\t\t}\n\t\tcbs << c.report\n\t}\n\tprintln(int_str(cbs.len))\n}\n',
-		'cannot be stored in an array')
+		'cannot escape its call site')
 	// Array-literal form is rejected too.
 	run_bad(v3_bin, 'bad_method_value_array_literal',
 		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\ta := Counter{\n\t\tid: 1\n\t}\n\tb := Counter{\n\t\tid: 2\n\t}\n\tcbs := [a.report, b.report]\n\tprintln(int_str(cbs.len))\n}\n',
-		'cannot be stored in an array')
+		'cannot escape its call site')
 	// The supported single-use forms still work: a method value passed directly as a
 	// callback argument, and an `arr << int` append / `int << int` shift are not flagged.
 	imm := run_good(v3_bin, 'good_method_value_immediate_after_guard',
@@ -660,4 +660,34 @@ fn test_pr_review_codegen_batch_thirteen() {
 	run_bad(v3_bin, 'bad_unsigned_shift_fixed_array_literal_len',
 		'fn take(a [8 >>> 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n',
 		'cannot use')
+}
+
+// Regression tests for the fourteenth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_fourteen() {
+	v3_bin := build_v3()
+	// Non-decimal integer literals (hex `0x`, octal `0o`, binary `0b`) fold in const
+	// fixed-array lengths: `0xF & 6` = 6, `0b1100 >> 1` = 6, `0o17 & 8` = 8.
+	nondec := run_good(v3_bin, 'good_non_decimal_const_fixed_array_len',
+		'const flags = 0b1010 | 0b0100\nfn main() {\n\ta := [0xF & 6]int{}\n\tb := [0b1100 >> 1]int{}\n\tc := [0o17 & 8]int{}\n\td := [flags]int{}\n\tprintln(int_str(a.len + b.len + c.len + d.len))\n}\n')
+	// 6 + 6 + 8 + 14 = 34
+	assert nondec == '34'
+	// The length guard evaluates non-decimal too: `[1, 2]` does not match `[0xF & 6]int`.
+	run_bad(v3_bin, 'bad_non_decimal_fixed_array_literal_len',
+		'fn take(a [0xF & 6]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n',
+		'cannot use')
+	// A generic-receiver method with a function-type parameter substitutes the type params
+	// inside the signature, so `Box[string].apply` expects `fn (string) int`, and a matching
+	// callback is accepted and emitted with the right fn-pointer type.
+	apply := run_good(v3_bin, 'good_generic_method_fn_type_param',
+		"struct Box[T] {\n\tv T\n}\nfn (b Box[T]) apply(cb fn (T) int) int {\n\treturn cb(b.v)\n}\nfn slen(s string) int {\n\treturn s.len\n}\nfn main() {\n\tb := Box[string]{\n\t\tv: 'hello'\n\t}\n\tprintln(int_str(b.apply(slen)))\n}\n")
+	assert apply == '5'
+	// A method value that escapes its call site is rejected: returned from a factory, stored
+	// in a struct field, or put in a map (the per-site static receiver can't keep several
+	// instances distinct). Immediately-passed callbacks and local bindings still work.
+	run_bad(v3_bin, 'bad_method_value_return_escape',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn bind(c Counter) fn () int {\n\treturn c.report\n}\nfn main() {\n\t_ := bind(Counter{\n\t\tid: 1\n\t})\n}\n',
+		'cannot escape its call site')
+	run_bad(v3_bin, 'bad_method_value_struct_field_escape',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nstruct Engine {\n\tcb fn () int\n}\nfn main() {\n\t_ := Engine{\n\t\tcb: Counter{\n\t\t\tid: 1\n\t\t}.report\n\t}\n}\n',
+		'cannot escape its call site')
 }

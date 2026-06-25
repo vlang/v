@@ -1812,6 +1812,14 @@ fn substitute_generic_type_text_with_params(typ string, args []string, params []
 				substitute_generic_type_text_with_params(clean[bracket_end + 1..], args, params)
 		}
 	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		// Substitute the generic params inside a function-type parameter so a specialized
+		// method body emits e.g. `fn (string) int`, not the placeholder `fn (T) int` (which
+		// cgen would otherwise render as `fn (int) int`).
+		if sub := subst_generic_fn_type_text(clean, args, params) {
+			return sub
+		}
+	}
 	base, nested_args, ok := generic_app_parts(clean)
 	if ok {
 		mut resolved_args := []string{}
@@ -1821,6 +1829,54 @@ fn substitute_generic_type_text_with_params(typ string, args []string, params []
 		return '${base}[${resolved_args.join(', ')}]'
 	}
 	return clean
+}
+
+// subst_generic_fn_type_text substitutes generic params inside a `fn (...) ...` type text,
+// recursing into each parameter type and the return type. Returns none when the signature
+// is malformed (unbalanced parens).
+fn subst_generic_fn_type_text(clean string, args []string, params []string) ?string {
+	params_start := clean.index_u8(`(`) + 1
+	mut depth := 1
+	mut params_end := params_start
+	for params_end < clean.len {
+		if clean[params_end] == `(` {
+			depth++
+		} else if clean[params_end] == `)` {
+			depth--
+			if depth == 0 {
+				break
+			}
+		}
+		params_end++
+	}
+	if params_end >= clean.len {
+		return none
+	}
+	params_str := clean[params_start..params_end]
+	mut fn_parts := []string{}
+	if params_str.trim_space().len > 0 {
+		mut pdepth := 0
+		mut start := 0
+		for i := 0; i < params_str.len; i++ {
+			c := params_str[i]
+			if c == `(` || c == `[` {
+				pdepth++
+			} else if c == `)` || c == `]` {
+				pdepth--
+			} else if c == `,` && pdepth == 0 {
+				fn_parts << substitute_generic_type_text_with_params(params_str[start..i], args,
+					params)
+				start = i + 1
+			}
+		}
+		fn_parts << substitute_generic_type_text_with_params(params_str[start..], args, params)
+	}
+	ret_str := clean[params_end + 1..].trim_space()
+	if ret_str.len > 0 {
+		return 'fn(${fn_parts.join(', ')}) ${substitute_generic_type_text_with_params(ret_str,
+			args, params)}'
+	}
+	return 'fn(${fn_parts.join(', ')})'
 }
 
 // subst_type substitutes generic placeholders in a type-text using the currently

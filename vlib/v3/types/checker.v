@@ -1670,6 +1670,56 @@ fn is_decimal_int_literal(s string) bool {
 	return true
 }
 
+// v_int_literal_value parses a complete V integer literal — decimal, hex (`0x`), octal
+// (`0o`), or binary (`0b`), with optional `_` digit separators — to its value. Returns
+// none when `s` is not a whole integer literal (a const name, an expression, etc.), so
+// const-length folding accepts `0xF & 6` / `[0b1100 >> 1]int`, not just decimal text.
+fn v_int_literal_value(s string) ?int {
+	if s.len == 0 {
+		return none
+	}
+	t := s.replace('_', '')
+	if t.len == 0 {
+		return none
+	}
+	mut base := 10
+	mut digits := t
+	if t.len >= 2 && t[0] == `0` {
+		c := t[1]
+		if c == `x` || c == `X` {
+			base = 16
+			digits = t[2..]
+		} else if c == `o` || c == `O` {
+			base = 8
+			digits = t[2..]
+		} else if c == `b` || c == `B` {
+			base = 2
+			digits = t[2..]
+		}
+	}
+	if digits.len == 0 {
+		return none
+	}
+	mut value := 0
+	for ch in digits {
+		mut d := 0
+		if ch >= `0` && ch <= `9` {
+			d = int(ch - `0`)
+		} else if ch >= `a` && ch <= `f` {
+			d = int(ch - `a`) + 10
+		} else if ch >= `A` && ch <= `F` {
+			d = int(ch - `A`) + 10
+		} else {
+			return none
+		}
+		if d >= base {
+			return none
+		}
+		value = value * base + d
+	}
+	return value
+}
+
 // is_bare_generic_param reports whether is bare generic param applies in types.
 fn is_bare_generic_param(typ string) bool {
 	return typ.len == 1 && typ[0] >= `A` && typ[0] <= `Z`
@@ -2080,11 +2130,16 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		tc.check_select_stmt(node)
 		return
 	}
-	// A method value stored in an array escapes the single-use guarantee of its per-site
-	// static receiver, so reject `[obj.method]` literals and `arr << obj.method` appends.
+	// A method value stored in a container escapes the single-use guarantee of its per-site
+	// static receiver, so reject `[obj.method]` / `arr << obj.method` / `{'k': obj.method}`.
 	if node.kind == .array_literal {
 		for i in 0 .. node.children_count {
 			tc.reject_stored_method_value(tc.a.child(&node, i))
+		}
+	} else if node.kind == .map_init {
+		// children alternate key, value, key, value, ...; check the value positions.
+		for j := 1; j < node.children_count; j += 2 {
+			tc.reject_stored_method_value(tc.a.child(&node, j))
 		}
 	} else if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
 		if unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) is Array {
@@ -2516,6 +2571,12 @@ fn (mut tc TypeChecker) resolve_lvalue_type(lhs_id flat.NodeId) Type {
 
 // check_return validates check return state for types.
 fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
+	// A returned method value escapes the function, where its per-site static receiver
+	// can't keep multiple returned callbacks distinct (a factory `fn bind(c) fn () int {
+	// return c.report }`); reject it rather than emitting invalid C.
+	for i in 0 .. node.children_count {
+		tc.reject_stored_method_value(tc.a.child(&node, i))
+	}
 	expected := tc.cur_fn_ret_type
 	if expected is Void {
 		if node.children_count > 0 && tc.should_diagnose(id) {
@@ -4465,6 +4526,9 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				continue
 			}
 			value_id := tc.a.child(&field, 0)
+			// A method value stored in a struct field escapes the evaluation site (several
+			// instances from the same `Foo{cb: obj.method}` site would share one receiver).
+			tc.reject_stored_method_value(value_id)
 			mut expected := Type(void_)
 			if field.value.len > 0 {
 				mut found := false
@@ -4527,14 +4591,17 @@ fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 	return false
 }
 
-// reject_stored_method_value reports a clear error when a method value is stored into an
-// array, where the per-site static receiver slot cannot keep multiple instances distinct
-// (e.g. `cbs << obj.method` in a loop would make every callback use the last receiver).
-// Without this the value reaches cgen and emits C referencing an unsupported helper.
+// reject_stored_method_value reports a clear error when a method value escapes its
+// evaluation site — stored in an array/map/struct field or returned. The per-site static
+// receiver slot cannot keep several live instances distinct, so a factory like
+// `fn bind(c Counter) fn () int { return c.report }` (or storage in a loop) would make
+// every escaped callback use the last receiver; without this the value also reaches cgen
+// and emits C referencing an unsupported helper. Pass method values directly as a
+// callback argument instead (a real closure capture is not yet supported).
 fn (mut tc TypeChecker) reject_stored_method_value(id flat.NodeId) {
 	if tc.expr_is_method_value(id) && tc.should_diagnose(id) {
 		tc.record_error(.assignment_mismatch,
-			'a method value (`obj.method`) cannot be stored in an array (no closure capture); pass it directly as a callback argument',
+			'a method value (`obj.method`) cannot escape its call site (no closure capture); pass it directly as a callback argument',
 			id)
 	}
 }
@@ -5354,8 +5421,8 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 			return tc.const_int_expr(expr_id, next_seen)
 		}
 	}
-	if is_decimal_int_literal(name) {
-		return name.int()
+	if v := v_int_literal_value(name) {
+		return v
 	}
 	// Simple const arithmetic in string form, e.g. a fixed-array size `[SEGS + 1]`,
 	// `[SEGS+1]`, `[segs / 2]`, `[segs % 4]` or `[2 * (segs + 1)]`. A length wrapped
@@ -5453,8 +5520,8 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, seen []string) ?int {
 	node := tc.a.nodes[int(id)]
 	match node.kind {
 		.int_literal {
-			if is_decimal_int_literal(node.value) {
-				return node.value.int()
+			if v := v_int_literal_value(node.value) {
+				return v
 			}
 		}
 		.ident {
@@ -7595,6 +7662,39 @@ fn subst_generic_text(typ string, args []string, params []string) string {
 		if bracket_end < clean.len {
 			return clean[..bracket_end + 1] + subst_generic_text(clean[bracket_end +
 				1..], args, params)
+		}
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		// A function-type parameter (`fn (T) int`) carries the generic params in its own
+		// signature; substitute each parameter and the return type so a `Box[string].apply`
+		// callback is expected as `fn (string) int`, not the unsubstituted `fn (T) int`.
+		params_start := clean.index_u8(`(`) + 1
+		mut depth := 1
+		mut params_end := params_start
+		for params_end < clean.len {
+			if clean[params_end] == `(` {
+				depth++
+			} else if clean[params_end] == `)` {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+			params_end++
+		}
+		if params_end < clean.len {
+			mut fn_parts := []string{}
+			params_str := clean[params_start..params_end]
+			if params_str.trim_space().len > 0 {
+				for part in split_params(params_str) {
+					fn_parts << subst_generic_text(normalize_fn_type_param_text(part), args, params)
+				}
+			}
+			ret_str := clean[params_end + 1..].trim_space()
+			if ret_str.len > 0 {
+				return 'fn(${fn_parts.join(', ')}) ${subst_generic_text(ret_str, args, params)}'
+			}
+			return 'fn(${fn_parts.join(', ')})'
 		}
 	}
 	bracket := clean.index_u8(`[`)
