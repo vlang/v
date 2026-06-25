@@ -254,7 +254,7 @@ pub fn (m &Module) compile() []u8 {
 	// memory section (5)
 	mut msec := []u8{}
 	leb_u(mut msec, 1) // one memory
-	msec << 0x00       // limits: min only
+	msec << 0x00 // limits: min only
 	leb_u(mut msec, u64(m.mem_min))
 	section(mut out, 0x05, msec)
 

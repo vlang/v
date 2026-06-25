@@ -7,7 +7,8 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 
 fn v3_binary() string {
 	v3_bin := os.join_path(os.vtmp_dir(), 'v3_wasm_codegen_test')
-	build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
+	build :=
+		os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -17,7 +18,8 @@ fn compile_to_wasm(v3_bin string, src string, name string) string {
 	out_path := os.join_path(os.vtmp_dir(), '${name}.wasm')
 	os.write_file(src_path, src) or { panic(err) }
 	os.rm(out_path) or {}
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_path)} ${os.quoted_path(src_path)}')
+	res :=
+		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_path)} ${os.quoted_path(src_path)}')
 	assert res.exit_code == 0, res.output
 	assert os.exists(out_path), 'missing wasm output for ${name}'
 	return out_path
@@ -114,7 +116,7 @@ fn test_wasm_hello_world() {
 
 fn test_wasm_control_flow_and_int_print() {
 	v3_bin := v3_binary()
-	src := "fn main() {\n\tmut sum := 0\n\tfor i := 0; i < 5; i++ {\n\t\tsum = sum + i\n\t}\n\tif sum > 5 {\n\t\tprintln(sum)\n\t} else {\n\t\tprintln(-1)\n\t}\n}\n"
+	src := 'fn main() {\n\tmut sum := 0\n\tfor i := 0; i < 5; i++ {\n\t\tsum = sum + i\n\t}\n\tif sum > 5 {\n\t\tprintln(sum)\n\t} else {\n\t\tprintln(-1)\n\t}\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_flow')
 	assert_valid_wasm(wasm)
 
@@ -212,7 +214,8 @@ fn test_wasm_string_literal_escapes_not_double_decoded() {
 	src_path := os.join_path(os.vtmp_dir(), 'wasm_esc.v')
 	os.write_file(src_path, src) or { panic(err) }
 	c_bin := os.join_path(os.vtmp_dir(), 'wasm_esc_c')
-	cres := os.execute('${os.quoted_path(v3_bin)} -b c -o ${os.quoted_path(c_bin)} ${os.quoted_path(src_path)}')
+	cres :=
+		os.execute('${os.quoted_path(v3_bin)} -b c -o ${os.quoted_path(c_bin)} ${os.quoted_path(src_path)}')
 	assert cres.exit_code == 0, cres.output
 	cout := os.execute(os.quoted_path(c_bin))
 	assert cout.exit_code == 0, cout.output
@@ -238,17 +241,20 @@ fn test_wasm_imported_module_numeric_call() {
 	dir := os.join_path(os.vtmp_dir(), 'wasm_modtest')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'import moda\n\nfn main() {\n\tprintln(moda.answer())\n\tprintln(moda.add(3, 4))\n}\n') or {
+	os.write_file(os.join_path(dir, 'main.v'),
+		'import moda\n\nfn main() {\n\tprintln(moda.answer())\n\tprintln(moda.add(3, 4))\n}\n') or {
 		panic(err)
 	}
 	// answer() calls a bare helper() in the same module, which must resolve to
 	// moda.helper (not main-module helper).
-	os.write_file(os.join_path(dir, 'moda', 'moda.v'), 'module moda\n\nfn helper() int {\n\treturn 21\n}\n\npub fn answer() int {\n\treturn helper() * 2\n}\n\npub fn add(a int, b int) int {\n\treturn a + b\n}\n') or {
+	os.write_file(os.join_path(dir, 'moda', 'moda.v'),
+		'module moda\n\nfn helper() int {\n\treturn 21\n}\n\npub fn answer() int {\n\treturn helper() * 2\n}\n\npub fn add(a int, b int) int {\n\treturn a + b\n}\n') or {
 		panic(err)
 	}
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+	res :=
+		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	// No fallback warnings: the imported module calls must resolve.
@@ -276,15 +282,18 @@ fn test_wasm_module_scoped_globals() {
 	dir := os.join_path(os.vtmp_dir(), 'wasm_modglobals')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(os.join_path(dir, 'foo')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\nimport foo\n\n__global counter int\n\nfn main() {\n\tcounter = 100\n\tfoo.bump()\n\tfoo.bump()\n\tfoo.bump()\n\tprintln(counter)\n\tprintln(foo.get())\n}\n') or {
+	os.write_file(os.join_path(dir, 'main.v'),
+		'module main\n\nimport foo\n\n__global counter int\n\nfn main() {\n\tcounter = 100\n\tfoo.bump()\n\tfoo.bump()\n\tfoo.bump()\n\tprintln(counter)\n\tprintln(foo.get())\n}\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(dir, 'foo', 'foo.v'), 'module foo\n\n__global counter int\n\npub fn bump() {\n\tcounter++\n}\n\npub fn get() int {\n\treturn counter\n}\n') or {
+	os.write_file(os.join_path(dir, 'foo', 'foo.v'),
+		'module foo\n\n__global counter int\n\npub fn bump() {\n\tcounter++\n}\n\npub fn get() int {\n\treturn counter\n}\n') or {
 		panic(err)
 	}
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+	res :=
+		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 
@@ -318,15 +327,18 @@ fn test_wasm_imported_module_alias_call() {
 	dir := os.join_path(os.vtmp_dir(), 'wasm_modalias')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'import moda as m\n\nfn main() {\n\tprintln(m.answer())\n\tprintln(m.add(3, 4))\n}\n') or {
+	os.write_file(os.join_path(dir, 'main.v'),
+		'import moda as m\n\nfn main() {\n\tprintln(m.answer())\n\tprintln(m.add(3, 4))\n}\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(dir, 'moda', 'moda.v'), 'module moda\n\npub fn answer() int {\n\treturn 42\n}\n\npub fn add(a int, b int) int {\n\treturn a + b\n}\n') or {
+	os.write_file(os.join_path(dir, 'moda', 'moda.v'),
+		'module moda\n\npub fn answer() int {\n\treturn 42\n}\n\npub fn add(a int, b int) int {\n\treturn a + b\n}\n') or {
 		panic(err)
 	}
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+	res :=
+		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	assert !res.output.contains('unsupported call'), res.output
@@ -371,24 +383,26 @@ fn test_wasm_import_aliases_are_file_scoped() {
 	for sub in ['mc', 'md', 'usea', 'useb'] {
 		os.mkdir_all(os.join_path(dir, sub)) or { panic(err) }
 	}
-	os.write_file(os.join_path(dir, 'main.v'), 'import usea\nimport useb\n\nfn main() {\n\tprintln(usea.go())\n\tprintln(useb.go())\n}\n') or {
+	os.write_file(os.join_path(dir, 'main.v'),
+		'import usea\nimport useb\n\nfn main() {\n\tprintln(usea.go())\n\tprintln(useb.go())\n}\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(dir, 'mc', 'mc.v'), 'module mc\n\npub fn val() int {\n\treturn 100\n}\n') or {
+	os.write_file(os.join_path(dir, 'mc', 'mc.v'),
+		'module mc\n\npub fn val() int {\n\treturn 100\n}\n') or { panic(err) }
+	os.write_file(os.join_path(dir, 'md', 'md.v'),
+		'module md\n\npub fn val() int {\n\treturn 200\n}\n') or { panic(err) }
+	os.write_file(os.join_path(dir, 'usea', 'usea.v'),
+		'module usea\n\nimport mc as m\n\npub fn go() int {\n\treturn m.val()\n}\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(dir, 'md', 'md.v'), 'module md\n\npub fn val() int {\n\treturn 200\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'usea', 'usea.v'), 'module usea\n\nimport mc as m\n\npub fn go() int {\n\treturn m.val()\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'useb', 'useb.v'), 'module useb\n\nimport md as m\n\npub fn go() int {\n\treturn m.val()\n}\n') or {
+	os.write_file(os.join_path(dir, 'useb', 'useb.v'),
+		'module useb\n\nimport md as m\n\npub fn go() int {\n\treturn m.val()\n}\n') or {
 		panic(err)
 	}
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+	res :=
+		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	assert !res.output.contains('unsupported call'), res.output
@@ -465,7 +479,8 @@ fn test_wasm_output_path_is_exact() {
 	out_path := os.join_path(os.vtmp_dir(), 'wasm_exact_out')
 	os.rm(out_path) or {}
 	os.rm(out_path + '.wasm') or {}
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_path)} ${os.quoted_path(src_path)}')
+	res :=
+		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_path)} ${os.quoted_path(src_path)}')
 	assert res.exit_code == 0, res.output
 	assert os.exists(out_path), 'expected exact output ${out_path}'
 	assert !os.exists(out_path + '.wasm'), 'unexpected ${out_path}.wasm'
@@ -489,15 +504,18 @@ fn test_wasm_nested_module_import_call() {
 	dir := os.join_path(os.vtmp_dir(), 'wasm_nestmod')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(os.join_path(dir, 'foo', 'bar')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'import foo.bar\n\nfn main() {\n\tprintln(bar.answer())\n\tprintln(bar.add(3, 4))\n}\n') or {
+	os.write_file(os.join_path(dir, 'main.v'),
+		'import foo.bar\n\nfn main() {\n\tprintln(bar.answer())\n\tprintln(bar.add(3, 4))\n}\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(dir, 'foo', 'bar', 'bar.v'), 'module bar\n\npub fn answer() int {\n\treturn 42\n}\n\npub fn add(a int, b int) int {\n\treturn a + b\n}\n') or {
+	os.write_file(os.join_path(dir, 'foo', 'bar', 'bar.v'),
+		'module bar\n\npub fn answer() int {\n\treturn 42\n}\n\npub fn add(a int, b int) int {\n\treturn a + b\n}\n') or {
 		panic(err)
 	}
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+	res :=
+		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	assert !res.output.contains('unsupported call'), res.output
@@ -553,18 +571,18 @@ fn test_wasm_nested_imported_modules() {
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(os.join_path(dir, 'foo', 'alpha')) or { panic(err) }
 	os.mkdir_all(os.join_path(dir, 'bar', 'beta')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'import foo.alpha as fu\nimport bar.beta as bu\n\nfn main() {\n\tprintln(fu.val())\n\tprintln(bu.val())\n}\n') or {
+	os.write_file(os.join_path(dir, 'main.v'),
+		'import foo.alpha as fu\nimport bar.beta as bu\n\nfn main() {\n\tprintln(fu.val())\n\tprintln(bu.val())\n}\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(dir, 'foo', 'alpha', 'alpha.v'), 'module alpha\n\npub fn val() int {\n\treturn 111\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'bar', 'beta', 'beta.v'), 'module beta\n\npub fn val() int {\n\treturn 222\n}\n') or {
-		panic(err)
-	}
+	os.write_file(os.join_path(dir, 'foo', 'alpha', 'alpha.v'),
+		'module alpha\n\npub fn val() int {\n\treturn 111\n}\n') or { panic(err) }
+	os.write_file(os.join_path(dir, 'bar', 'beta', 'beta.v'),
+		'module beta\n\npub fn val() int {\n\treturn 222\n}\n') or { panic(err) }
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+	res :=
+		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	assert !res.output.contains('unsupported call'), res.output
@@ -578,15 +596,14 @@ fn test_wasm_main_dir_matching_import_name() {
 	dir := os.join_path(os.vtmp_dir(), 'wasm_dircollide', 'moda')
 	os.rmdir_all(os.dir(dir)) or {}
 	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'import moda\n\nfn main() {\n\tprintln(moda.answer())\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'moda', 'moda.v'), 'module moda\n\npub fn answer() int {\n\treturn 42\n}\n') or {
-		panic(err)
-	}
+	os.write_file(os.join_path(dir, 'main.v'),
+		'import moda\n\nfn main() {\n\tprintln(moda.answer())\n}\n') or { panic(err) }
+	os.write_file(os.join_path(dir, 'moda', 'moda.v'),
+		'module moda\n\npub fn answer() int {\n\treturn 42\n}\n') or { panic(err) }
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+	res :=
+		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	run_wasi_expect(out_wasm, ['42'])
@@ -657,10 +674,12 @@ fn test_wasm_imported_module_init() {
 	dir := os.join_path(os.vtmp_dir(), 'wasm_initmod')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), "import moda\n\nfn main() {\n\tprintln('main')\n\tprintln(moda.answer())\n}\n") or {
+	os.write_file(os.join_path(dir, 'main.v'),
+		"import moda\n\nfn main() {\n\tprintln('main')\n\tprintln(moda.answer())\n}\n") or {
 		panic(err)
 	}
-	os.write_file(os.join_path(dir, 'moda', 'moda.v'), "module moda\n\nfn init() {\n\tprintln('moda init')\n}\n\npub fn answer() int {\n\treturn 42\n}\n") or {
+	os.write_file(os.join_path(dir, 'moda', 'moda.v'),
+		"module moda\n\nfn init() {\n\tprintln('moda init')\n}\n\npub fn answer() int {\n\treturn 42\n}\n") or {
 		panic(err)
 	}
 	out_wasm := os.join_path(dir, 'main.wasm')
@@ -689,9 +708,8 @@ fn test_wasm_init_only_imported_module() {
 	os.write_file(os.join_path(dir, 'main.v'), "import moda\n\nfn main() {\n\tprintln('main')\n}\n") or {
 		panic(err)
 	}
-	os.write_file(os.join_path(dir, 'moda', 'moda.v'), "module moda\n\nfn init() {\n\tprintln('moda init')\n}\n") or {
-		panic(err)
-	}
+	os.write_file(os.join_path(dir, 'moda', 'moda.v'),
+		"module moda\n\nfn init() {\n\tprintln('moda init')\n}\n") or { panic(err) }
 	out_wasm := os.join_path(dir, 'main.wasm')
 	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir,
 		'main.v'))}')
@@ -707,13 +725,14 @@ fn test_wasm_init_dependency_order() {
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(os.join_path(dir, 'a')) or { panic(err) }
 	os.mkdir_all(os.join_path(dir, 'b')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), "import a\n\nfn main() {\n\tprintln('main')\n\tprintln(a.av())\n}\n") or {
+	os.write_file(os.join_path(dir, 'main.v'),
+		"import a\n\nfn main() {\n\tprintln('main')\n\tprintln(a.av())\n}\n") or { panic(err) }
+	os.write_file(os.join_path(dir, 'a', 'a.v'),
+		"module a\n\nimport b\n\nfn init() {\n\tprintln('a init')\n}\n\npub fn av() int {\n\treturn b.bv()\n}\n") or {
 		panic(err)
 	}
-	os.write_file(os.join_path(dir, 'a', 'a.v'), "module a\n\nimport b\n\nfn init() {\n\tprintln('a init')\n}\n\npub fn av() int {\n\treturn b.bv()\n}\n") or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'b', 'b.v'), "module b\n\nfn init() {\n\tprintln('b init')\n}\n\npub fn bv() int {\n\treturn 5\n}\n") or {
+	os.write_file(os.join_path(dir, 'b', 'b.v'),
+		"module b\n\nfn init() {\n\tprintln('b init')\n}\n\npub fn bv() int {\n\treturn 5\n}\n") or {
 		panic(err)
 	}
 	out_wasm := os.join_path(dir, 'main.wasm')
@@ -731,7 +750,8 @@ fn test_wasm_imported_module_const() {
 	dir := os.join_path(os.vtmp_dir(), 'wasm_constmod')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'import moda\n\nfn main() {\n\tprintln(moda.answer)\n\tprintln(moda.answer + 1)\n}\n') or {
+	os.write_file(os.join_path(dir, 'main.v'),
+		'import moda\n\nfn main() {\n\tprintln(moda.answer)\n\tprintln(moda.answer + 1)\n}\n') or {
 		panic(err)
 	}
 	os.write_file(os.join_path(dir, 'moda', 'moda.v'), 'module moda\n\npub const answer = 42\n') or {
@@ -761,7 +781,8 @@ fn res_contains_unsupported(v3_bin string, src string) bool {
 	src_path := os.join_path(os.vtmp_dir(), 'wasm_labeled_warn.v')
 	out := os.join_path(os.vtmp_dir(), 'wasm_labeled_warn.wasm')
 	os.write_file(src_path, src) or { panic(err) }
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out)} ${os.quoted_path(src_path)}')
+	res :=
+		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out)} ${os.quoted_path(src_path)}')
 	return res.output.contains('unsupported statement: label_stmt')
 }
 

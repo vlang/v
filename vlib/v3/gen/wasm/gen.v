@@ -63,42 +63,42 @@ enum FrameTag {
 @[heap]
 pub struct Gen {
 mut:
-	a          &flat.FlatAst    = unsafe { nil }
-	tc         &types.TypeChecker = unsafe { nil }
-	used_fns   map[string]bool
-	mod        &Module = unsafe { nil }
+	a        &flat.FlatAst      = unsafe { nil }
+	tc       &types.TypeChecker = unsafe { nil }
+	used_fns map[string]bool
+	mod      &Module = unsafe { nil }
 	// per-function state
-	cur         Code
-	local_types  []u8
-	nparams      int
-	var_index    map[string]int
-	var_wtype    map[string]WType
-	var_unsigned map[string]bool
-	var_widths   map[string]int // sub-32-bit int locals: 8 or 16; else 32
-	frames       []Frame
+	cur           Code
+	local_types   []u8
+	nparams       int
+	var_index     map[string]int
+	var_wtype     map[string]WType
+	var_unsigned  map[string]bool
+	var_widths    map[string]int // sub-32-bit int locals: 8 or 16; else 32
+	frames        []Frame
 	pending_label string // label of a preceding `label:` marker, for the next loop
 	cur_ret       WType
 	cur_fn_module string
 	cur_fn_file   string
 	// module-wide; keyed by qualified function name (see qualified_fn_key)
-	fn_index     map[string]int
-	fn_ret       map[string]WType
-	fn_params    map[string][]WType
-	file_aliases   map[string]map[string]string // file -> (import alias -> full import path)
-	import_paths   []string                     // every `import a.b.c` path (full)
-	module_imports map[string][]string          // module path -> imported module paths ('' = main)
-	global_index    map[string]int   // __global name -> wasm global index
+	fn_index        map[string]int
+	fn_ret          map[string]WType
+	fn_params       map[string][]WType
+	file_aliases    map[string]map[string]string // file -> (import alias -> full import path)
+	import_paths    []string                     // every `import a.b.c` path (full)
+	module_imports  map[string][]string          // module path -> imported module paths ('' = main)
+	global_index    map[string]int               // __global name -> wasm global index
 	global_wtype    map[string]WType
 	global_unsigned map[string]bool
 	global_widths   map[string]int
-	data_pool []u8
-	data_off  map[string]int
-	uses_print bool
-	write_idx  int
-	print_int_idx int
-	has_main   bool
-	init_fns   []int // function indices of init() entry points, in call order
-	warnings   []string
+	data_pool       []u8
+	data_off        map[string]int
+	uses_print      bool
+	write_idx       int
+	print_int_idx   int
+	has_main        bool
+	init_fns        []int // function indices of init() entry points, in call order
+	warnings        []string
 }
 
 pub fn Gen.new(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) &Gen {
@@ -120,8 +120,9 @@ pub fn (mut g Gen) gen() {
 	// 1. function-index assignment (imports first, then helpers, then user fns).
 	mut fd_write_idx := -1
 	if g.uses_print {
-		ft := g.mod.add_type([wasm.valtype_i32, wasm.valtype_i32, wasm.valtype_i32, wasm.valtype_i32],
-			[wasm.valtype_i32])
+		ft := g.mod.add_type([valtype_i32, valtype_i32, valtype_i32, valtype_i32], [
+			valtype_i32,
+		])
 		fd_write_idx = g.mod.add_import_func('wasi_snapshot_preview1', 'fd_write', ft)
 	}
 	mut defined := 0
@@ -168,7 +169,7 @@ pub fn (mut g Gen) gen() {
 
 	// 5. exports + memory sizing + data. WASM export names must be unique, so
 	//    reserve the runtime names and skip any user function that would clash.
-	g.mod.add_export('memory', wasm.export_mem, 0)
+	g.mod.add_export('memory', export_mem, 0)
 	mut used_exports := map[string]bool{}
 	used_exports['memory'] = true
 	used_exports['_start'] = true
@@ -179,10 +180,10 @@ pub fn (mut g Gen) gen() {
 			continue
 		}
 		used_exports[ename] = true
-		g.mod.add_export(ename, wasm.export_func, g.fn_index[qualified_fn_key(f.module, f.name)])
+		g.mod.add_export(ename, export_func, g.fn_index[qualified_fn_key(f.module, f.name)])
 	}
 	if start_idx >= 0 {
-		g.mod.add_export('_start', wasm.export_func, start_idx)
+		g.mod.add_export('_start', export_func, start_idx)
 	}
 	if g.data_pool.len > 0 {
 		g.mod.add_data(data_base, g.data_pool)
@@ -803,7 +804,9 @@ fn (mut g Gen) gen_if(node flat.Node) {
 	cond_id := g.a.child(&node, 0)
 	g.gen_expr_as_bool(cond_id)
 	g.cur.if_void()
-	g.frames << Frame{ tag: .plain }
+	g.frames << Frame{
+		tag: .plain
+	}
 	then_block := g.a.child_node(&node, 1)
 	saved_then := g.snapshot_scope()
 	for i in 0 .. then_block.children_count {
@@ -854,7 +857,9 @@ fn (mut g Gen) gen_for(node flat.Node, label string) {
 		label: label
 	}
 	g.cur.loop_void() // back-edge target
-	g.frames << Frame{ tag: .plain }
+	g.frames << Frame{
+		tag: .plain
+	}
 
 	if cond_node.kind != .empty {
 		g.gen_expr_as_bool(cond_id)
@@ -1092,7 +1097,9 @@ fn (mut g Gen) gen_if_value_typed(node flat.Node, result_w WType) {
 	g.gen_expr_as_bool(g.a.child(&node, 0))
 	g.cur.raw(0x04) // if
 	g.cur.raw(wt_valtype(result_w)) // result type
-	g.frames << Frame{ tag: .plain }
+	g.frames << Frame{
+		tag: .plain
+	}
 	g.gen_block_value(g.a.child_node(&node, 1), result_w)
 	g.cur.else_()
 	if node.children_count > 2 {
@@ -1245,8 +1252,10 @@ fn (mut g Gen) gen_logical(node flat.Node) WType {
 	rhs_id := g.a.child(&node, 1)
 	g.gen_expr_as_bool(lhs_id)
 	g.cur.raw(0x04) // if
-	g.cur.raw(wasm.valtype_i32) // -> i32 result
-	g.frames << Frame{ tag: .plain }
+	g.cur.raw(valtype_i32) // -> i32 result
+	g.frames << Frame{
+		tag: .plain
+	}
 	if node.op == .logical_and {
 		g.gen_expr_as_bool(rhs_id)
 		g.cur.else_()
@@ -1283,8 +1292,10 @@ fn (mut g Gen) gen_mixed_cmp(lhs_id flat.NodeId, rhs_id flat.NodeId, op flat.Op,
 		g.cur.raw(0x48) // i32.lt_s
 	}
 	g.cur.raw(0x04) // if
-	g.cur.raw(wasm.valtype_i32) // -> i32
-	g.frames << Frame{ tag: .plain }
+	g.cur.raw(valtype_i32) // -> i32
+	g.frames << Frame{
+		tag: .plain
+	}
 	g.cur.i32_const(neg_signed_cmp_result(op, lhs_signed))
 	g.cur.else_()
 	g.cur.local_get(lhs_tmp)
@@ -1299,11 +1310,29 @@ fn (mut g Gen) gen_mixed_cmp(lhs_id flat.NodeId, rhs_id flat.NodeId, op flat.Op,
 // signed operand is strictly the smaller value.
 fn neg_signed_cmp_result(op flat.Op, signed_is_lhs bool) int {
 	return match op {
-		.lt, .le { if signed_is_lhs { 1 } else { 0 } }
-		.gt, .ge { if signed_is_lhs { 0 } else { 1 } }
-		.eq { 0 }
-		.ne { 1 }
-		else { 0 }
+		.lt, .le {
+			if signed_is_lhs {
+				1
+			} else {
+				0
+			}
+		}
+		.gt, .ge {
+			if signed_is_lhs {
+				0
+			} else {
+				1
+			}
+		}
+		.eq {
+			0
+		}
+		.ne {
+			1
+		}
+		else {
+			0
+		}
 	}
 }
 
@@ -1614,9 +1643,23 @@ fn (g &Gen) emit_global_init(init_id flat.NodeId, w WType, width int, unsigned b
 // compile-time counterpart of emit_narrow.
 fn narrow_const(v i64, width int, unsigned bool) i64 {
 	return match width {
-		8 { if unsigned { i64(u8(v)) } else { i64(i8(v)) } }
-		16 { if unsigned { i64(u16(v)) } else { i64(i16(v)) } }
-		else { v }
+		8 {
+			if unsigned {
+				i64(u8(v))
+			} else {
+				i64(i8(v))
+			}
+		}
+		16 {
+			if unsigned {
+				i64(u16(v))
+			} else {
+				i64(i16(v))
+			}
+		}
+		else {
+			v
+		}
 	}
 }
 
@@ -1626,9 +1669,15 @@ fn (g &Gen) fold_const_int(id flat.NodeId) i64 {
 	}
 	n := g.a.nodes[int(id)]
 	match n.kind {
-		.int_literal { return parse_int_literal(n.value) }
-		.char_literal { return char_literal_value(n.value) }
-		.bool_literal { return if n.value == 'true' { i64(1) } else { i64(0) } }
+		.int_literal {
+			return parse_int_literal(n.value)
+		}
+		.char_literal {
+			return char_literal_value(n.value)
+		}
+		.bool_literal {
+			return if n.value == 'true' { i64(1) } else { i64(0) }
+		}
 		.ident {
 			// A constant referenced by name folds to its own constant value.
 			if cid := g.const_value_node(n.value) {
@@ -1668,6 +1717,7 @@ fn (g &Gen) fold_const_int(id flat.NodeId) i64 {
 		}
 		else {}
 	}
+
 	return 0
 }
 
@@ -1683,24 +1733,92 @@ fn (g &Gen) fold_const_infix(n flat.Node) i64 {
 	b := g.fold_const_int(lb)
 	unsigned := type_is_unsigned(g.tc.resolve_type(la)) || type_is_unsigned(g.tc.resolve_type(lb))
 	return match n.op {
-		.plus { a + b }
-		.minus { a - b }
-		.mul { a * b }
-		.div { if b == 0 { i64(0) } else if unsigned { i64(u64(a) / u64(b)) } else { a / b } }
-		.mod { if b == 0 { i64(0) } else if unsigned { i64(u64(a) % u64(b)) } else { a % b } }
-		.amp { a & b }
-		.pipe { a | b }
-		.xor { a ^ b }
-		.left_shift { a << b }
-		.right_shift { if unsigned { i64(u64(a) >> b) } else { a >> b } }
-		.right_shift_unsigned { i64(u64(a) >> b) }
-		.eq { bool_to_i64(a == b) }
-		.ne { bool_to_i64(a != b) }
-		.lt { if unsigned { bool_to_i64(u64(a) < u64(b)) } else { bool_to_i64(a < b) } }
-		.gt { if unsigned { bool_to_i64(u64(a) > u64(b)) } else { bool_to_i64(a > b) } }
-		.le { if unsigned { bool_to_i64(u64(a) <= u64(b)) } else { bool_to_i64(a <= b) } }
-		.ge { if unsigned { bool_to_i64(u64(a) >= u64(b)) } else { bool_to_i64(a >= b) } }
-		else { i64(0) }
+		.plus {
+			a + b
+		}
+		.minus {
+			a - b
+		}
+		.mul {
+			a * b
+		}
+		.div {
+			if b == 0 {
+				i64(0)
+			} else if unsigned {
+				i64(u64(a) / u64(b))
+			} else {
+				a / b
+			}
+		}
+		.mod {
+			if b == 0 {
+				i64(0)
+			} else if unsigned {
+				i64(u64(a) % u64(b))
+			} else {
+				a % b
+			}
+		}
+		.amp {
+			a & b
+		}
+		.pipe {
+			a | b
+		}
+		.xor {
+			a ^ b
+		}
+		.left_shift {
+			a << b
+		}
+		.right_shift {
+			if unsigned {
+				i64(u64(a) >> b)
+			} else {
+				a >> b
+			}
+		}
+		.right_shift_unsigned {
+			i64(u64(a) >> b)
+		}
+		.eq {
+			bool_to_i64(a == b)
+		}
+		.ne {
+			bool_to_i64(a != b)
+		}
+		.lt {
+			if unsigned {
+				bool_to_i64(u64(a) < u64(b))
+			} else {
+				bool_to_i64(a < b)
+			}
+		}
+		.gt {
+			if unsigned {
+				bool_to_i64(u64(a) > u64(b))
+			} else {
+				bool_to_i64(a > b)
+			}
+		}
+		.le {
+			if unsigned {
+				bool_to_i64(u64(a) <= u64(b))
+			} else {
+				bool_to_i64(a <= b)
+			}
+		}
+		.ge {
+			if unsigned {
+				bool_to_i64(u64(a) >= u64(b))
+			} else {
+				bool_to_i64(a >= b)
+			}
+		}
+		else {
+			i64(0)
+		}
 	}
 }
 
@@ -1724,9 +1842,27 @@ fn narrow_to_type(v i64, t types.Type) i64 {
 	}
 	unsigned := type_is_unsigned(t)
 	return match narrow_width(t) {
-		8 { if unsigned { i64(u8(v)) } else { i64(i8(v)) } }
-		16 { if unsigned { i64(u16(v)) } else { i64(i16(v)) } }
-		else { if unsigned { i64(u32(v)) } else { i64(i32(v)) } }
+		8 {
+			if unsigned {
+				i64(u8(v))
+			} else {
+				i64(i8(v))
+			}
+		}
+		16 {
+			if unsigned {
+				i64(u16(v))
+			} else {
+				i64(i16(v))
+			}
+		}
+		else {
+			if unsigned {
+				i64(u32(v))
+			} else {
+				i64(i32(v))
+			}
+		}
 	}
 }
 
@@ -1736,8 +1872,12 @@ fn (g &Gen) fold_const_float(id flat.NodeId) f64 {
 	}
 	n := g.a.nodes[int(id)]
 	match n.kind {
-		.float_literal { return n.value.replace('_', '').f64() }
-		.int_literal { return f64(parse_int_literal(n.value)) }
+		.float_literal {
+			return n.value.replace('_', '').f64()
+		}
+		.int_literal {
+			return f64(parse_int_literal(n.value))
+		}
 		.ident {
 			if cid := g.const_value_node(n.value) {
 				return g.fold_const_float(cid)
@@ -1753,11 +1893,25 @@ fn (g &Gen) fold_const_float(id flat.NodeId) f64 {
 				a := g.fold_const_float(g.a.child(&n, 0))
 				b := g.fold_const_float(g.a.child(&n, 1))
 				return match n.op {
-					.plus { a + b }
-					.minus { a - b }
-					.mul { a * b }
-					.div { if b != 0 { a / b } else { f64(0) } }
-					else { f64(0) }
+					.plus {
+						a + b
+					}
+					.minus {
+						a - b
+					}
+					.mul {
+						a * b
+					}
+					.div {
+						if b != 0 {
+							a / b
+						} else {
+							f64(0)
+						}
+					}
+					else {
+						f64(0)
+					}
 				}
 			}
 		}
@@ -1793,6 +1947,7 @@ fn (g &Gen) fold_const_float(id flat.NodeId) f64 {
 		}
 		else {}
 	}
+
 	return 0
 }
 
@@ -1932,7 +2087,9 @@ fn (mut g Gen) gen_print_bool(arg_id flat.NodeId, fd int, newline bool) {
 	false_off := g.intern_data('false'.bytes())
 	g.gen_expr_as_bool(arg_id)
 	g.cur.if_void()
-	g.frames << Frame{ tag: .plain }
+	g.frames << Frame{
+		tag: .plain
+	}
 	g.emit_write_const(true_off, 4, fd)
 	g.cur.else_()
 	g.emit_write_const(false_off, 5, fd)
@@ -1982,7 +2139,7 @@ fn (mut g Gen) emit_write_helper(fd_write_idx int) {
 	c.call(fd_write_idx)
 	c.drop()
 	c.end()
-	ti := g.mod.add_type([wasm.valtype_i32, wasm.valtype_i32, wasm.valtype_i32], [])
+	ti := g.mod.add_type([valtype_i32, valtype_i32, valtype_i32], [])
 	g.mod.add_func(ti, [], c.bytes)
 }
 
@@ -2075,9 +2232,8 @@ fn (mut g Gen) emit_print_int_helper() {
 	c.call(g.write_idx)
 	c.end()
 	c.end() // function
-	locals := [wasm.valtype_i32, wasm.valtype_i64, wasm.valtype_i32, wasm.valtype_i64]
-	ti := g.mod.add_type([wasm.valtype_i64, wasm.valtype_i32, wasm.valtype_i32, wasm.valtype_i32],
-		[])
+	locals := [valtype_i32, valtype_i64, valtype_i32, valtype_i64]
+	ti := g.mod.add_type([valtype_i64, valtype_i32, valtype_i32, valtype_i32], [])
 	g.mod.add_func(ti, locals, c.bytes)
 }
 
@@ -2136,7 +2292,7 @@ fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
 	}
 	t := g.tc.resolve_type(id)
 	if w := prim_wtype(t) {
-		if !(t is types.Void) {
+		if t !is types.Void {
 			return w
 		}
 	}
@@ -2371,10 +2527,10 @@ fn (mut g Gen) warn(msg string) {
 
 fn wt_valtype(w WType) u8 {
 	return match w {
-		.i32, .void { wasm.valtype_i32 }
-		.i64 { wasm.valtype_i64 }
-		.f32 { wasm.valtype_f32 }
-		.f64 { wasm.valtype_f64 }
+		.i32, .void { valtype_i32 }
+		.i64 { valtype_i64 }
+		.f32 { valtype_f32 }
+		.f64 { valtype_f64 }
 	}
 }
 
@@ -2461,18 +2617,50 @@ fn arith_op(op flat.Op, w WType, signed bool) u8 {
 	match w {
 		.i64 {
 			return match op {
-				.plus { 0x7c }
-				.minus { 0x7d }
-				.mul { 0x7e }
-				.div { if signed { u8(0x7f) } else { u8(0x80) } }
-				.mod { if signed { u8(0x81) } else { u8(0x82) } }
-				.amp { 0x83 }
-				.pipe { 0x84 }
-				.xor { 0x85 }
-				.left_shift { 0x86 }
-				.right_shift { 0x87 }
-				.right_shift_unsigned { 0x88 }
-				else { 0x7c }
+				.plus {
+					0x7c
+				}
+				.minus {
+					0x7d
+				}
+				.mul {
+					0x7e
+				}
+				.div {
+					if signed {
+						u8(0x7f)
+					} else {
+						u8(0x80)
+					}
+				}
+				.mod {
+					if signed {
+						u8(0x81)
+					} else {
+						u8(0x82)
+					}
+				}
+				.amp {
+					0x83
+				}
+				.pipe {
+					0x84
+				}
+				.xor {
+					0x85
+				}
+				.left_shift {
+					0x86
+				}
+				.right_shift {
+					0x87
+				}
+				.right_shift_unsigned {
+					0x88
+				}
+				else {
+					0x7c
+				}
 			}
 		}
 		.f64 {
@@ -2495,18 +2683,54 @@ fn arith_op(op flat.Op, w WType, signed bool) u8 {
 		}
 		else {
 			return match op {
-				.plus { 0x6a }
-				.minus { 0x6b }
-				.mul { 0x6c }
-				.div { if signed { u8(0x6d) } else { u8(0x6e) } }
-				.mod { if signed { u8(0x6f) } else { u8(0x70) } }
-				.amp { 0x71 }
-				.pipe { 0x72 }
-				.xor { 0x73 }
-				.left_shift { 0x74 }
-				.right_shift { if signed { u8(0x75) } else { u8(0x76) } }
-				.right_shift_unsigned { 0x76 }
-				else { 0x6a }
+				.plus {
+					0x6a
+				}
+				.minus {
+					0x6b
+				}
+				.mul {
+					0x6c
+				}
+				.div {
+					if signed {
+						u8(0x6d)
+					} else {
+						u8(0x6e)
+					}
+				}
+				.mod {
+					if signed {
+						u8(0x6f)
+					} else {
+						u8(0x70)
+					}
+				}
+				.amp {
+					0x71
+				}
+				.pipe {
+					0x72
+				}
+				.xor {
+					0x73
+				}
+				.left_shift {
+					0x74
+				}
+				.right_shift {
+					if signed {
+						u8(0x75)
+					} else {
+						u8(0x76)
+					}
+				}
+				.right_shift_unsigned {
+					0x76
+				}
+				else {
+					0x6a
+				}
 			}
 		}
 	}
@@ -2516,13 +2740,43 @@ fn cmp_op(op flat.Op, w WType, signed bool) u8 {
 	match w {
 		.i64 {
 			return match op {
-				.eq { 0x51 }
-				.ne { 0x52 }
-				.lt { if signed { u8(0x53) } else { u8(0x54) } }
-				.gt { if signed { u8(0x55) } else { u8(0x56) } }
-				.le { if signed { u8(0x57) } else { u8(0x58) } }
-				.ge { if signed { u8(0x59) } else { u8(0x5a) } }
-				else { 0x51 }
+				.eq {
+					0x51
+				}
+				.ne {
+					0x52
+				}
+				.lt {
+					if signed {
+						u8(0x53)
+					} else {
+						u8(0x54)
+					}
+				}
+				.gt {
+					if signed {
+						u8(0x55)
+					} else {
+						u8(0x56)
+					}
+				}
+				.le {
+					if signed {
+						u8(0x57)
+					} else {
+						u8(0x58)
+					}
+				}
+				.ge {
+					if signed {
+						u8(0x59)
+					} else {
+						u8(0x5a)
+					}
+				}
+				else {
+					0x51
+				}
 			}
 		}
 		.f64 {
@@ -2549,13 +2803,43 @@ fn cmp_op(op flat.Op, w WType, signed bool) u8 {
 		}
 		else {
 			return match op {
-				.eq { 0x46 }
-				.ne { 0x47 }
-				.lt { if signed { u8(0x48) } else { u8(0x49) } }
-				.gt { if signed { u8(0x4a) } else { u8(0x4b) } }
-				.le { if signed { u8(0x4c) } else { u8(0x4d) } }
-				.ge { if signed { u8(0x4e) } else { u8(0x4f) } }
-				else { 0x46 }
+				.eq {
+					0x46
+				}
+				.ne {
+					0x47
+				}
+				.lt {
+					if signed {
+						u8(0x48)
+					} else {
+						u8(0x49)
+					}
+				}
+				.gt {
+					if signed {
+						u8(0x4a)
+					} else {
+						u8(0x4b)
+					}
+				}
+				.le {
+					if signed {
+						u8(0x4c)
+					} else {
+						u8(0x4d)
+					}
+				}
+				.ge {
+					if signed {
+						u8(0x4e)
+					} else {
+						u8(0x4f)
+					}
+				}
+				else {
+					0x46
+				}
 			}
 		}
 	}
