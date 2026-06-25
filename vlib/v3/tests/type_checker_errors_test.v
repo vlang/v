@@ -459,3 +459,23 @@ fn test_bare_generic_literal_adopts_expected_instance() {
 		"struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 'str'\n\t}\n}\nfn main() {\n\t_ := make()\n}\n",
 		'cannot return `Box` as `Box[int]`')
 }
+
+// Regression tests for the fourth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_four() {
+	v3_bin := build_v3()
+	// A `&Box{...}` value must not be accepted where a `Box[int]` value is expected
+	// (pointer shape must match in the generic-base relaxation).
+	run_bad(v3_bin, 'bad_generic_pointer_shape_arg',
+		'struct Box[T] {\n\tv T\n}\nfn take(b Box[int]) int {\n\treturn b.v\n}\nfn main() {\n\t_ := take(&Box{\n\t\tv: 1\n\t})\n}\n',
+		'cannot use')
+	// A method value on a concrete generic receiver resolves the open `Box[T].get`,
+	// types the value, and codegen materialises the `Box_int__get` wrapper.
+	mval := run_good(v3_bin, 'good_generic_receiver_method_value',
+		'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) get() T {\n\treturn b.v\n}\nfn run(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tb := Box[int]{\n\t\tv: 7\n\t}\n\tprintln(int_str(run(b.get)))\n}\n')
+	assert mval == '7'
+	// A V function passed to a parameter whose type is a `fn`-type *alias* keeps the
+	// function pointer (not `(void*)`).
+	alias_cb := run_good(v3_bin, 'good_fn_type_alias_callback',
+		'type Cb = fn () int\nfn run(cb Cb) int {\n\treturn cb()\n}\nfn five() int {\n\treturn 5\n}\nfn main() {\n\tprintln(int_str(run(five)))\n}\n')
+	assert alias_cb == '5'
+}

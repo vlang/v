@@ -107,8 +107,13 @@ fn (mut t Transformer) specialize_generic_struct_methods(struct_decls map[string
 			// they are reached through infix expressions, not call nodes. Regular
 			// methods are specialized on demand by the call-driven path, so emitting
 			// every method here would generate unused (and possibly unresolved) bodies.
+			// The exception is a method used as a *value* (`b.method`): it has no call
+			// node to drive specialization, so specialize the ones the checker recorded.
 			if !is_operator_method_name(decl_key.all_after_last('.')) {
-				continue
+				mvkey := '${spec}.${decl_key.all_after_last('.')}'
+				if isnil(t.tc) || mvkey !in t.tc.generic_method_value_info {
+					continue
+				}
 			}
 			if decl.node.generic_params.len != 0 {
 				// Method has its own generic parameters beyond the struct's; leave it
@@ -119,8 +124,8 @@ fn (mut t Transformer) specialize_generic_struct_methods(struct_decls map[string
 			if emitted[spec_key] {
 				continue
 			}
-			generated << t.generated_fn_used_names(decl, t.emit_generic_fn_specialization(decl,
-				args), args)
+			generated << t.generated_fn_used_names(decl,
+				t.emit_generic_fn_specialization(decl, args), args)
 			emitted[spec_key] = true
 			any = true
 		}

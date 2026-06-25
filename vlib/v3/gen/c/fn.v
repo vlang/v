@@ -260,7 +260,8 @@ fn (mut g FlatGen) gen_special_c_callback_arg(fn_name string, arg_idx int, arg_i
 	// pointer directly: `(void*)foo` is an object-pointer-to-function-pointer cast that
 	// strict C rejects and that is not portable across ABIs. C functions (and loosely
 	// typed `voidptr` slots) still need it, because C uses the header prototype.
-	if expected_param is types.FnType {
+	// `fn_type_from` is alias-aware, so a `type Cb = fn ()` parameter is recognised too.
+	if _ := fn_type_from(expected_param) {
 		return false
 	}
 	// A V function passed by name to a C function (a callback) must be cast: the V
@@ -328,15 +329,39 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 		return false
 	}
 	method_key := g.resolve_method_name(struct_name, method)
-	if method_key.len == 0 {
+	mut params := []types.Type{}
+	mut ret := types.Type(types.void_)
+	mut cname := ''
+	if method_key.len > 0 {
+		params = g.tc.fn_param_types[method_key] or { return false }
+		ret = g.tc.fn_ret_types[method_key] or { types.Type(types.void_) }
+		cname = c_name(method_key)
+	} else if ci := g.tc.generic_method_value_info['${struct_name}.${method}'] {
+		// Generic receiver (`Box[int]`): the open `Box[T].get` registration is gone by
+		// cgen, so use the substituted params/return the checker stashed, plus the
+		// monomorphised C name `c_name('Box[int].get')` == `Box_int__get`.
+		params = ci.params.clone()
+		// The receiver param is the un-substituted open `Box[T]`; replace it with the
+		// concrete receiver type (keeping the method's pointer-ness) so its C name
+		// resolves to `Box_int` rather than the template `Box`.
+		if params.len > 0 {
+			recv_concrete := types.unwrap_pointer(base_type)
+			params[0] = if params[0] is types.Pointer {
+				types.Type(types.Pointer{
+					base_type: recv_concrete
+				})
+			} else {
+				recv_concrete
+			}
+		}
+		ret = ci.return_type
+		cname = c_name('${struct_name}.${method}')
+	} else {
 		return false
 	}
-	params := g.tc.fn_param_types[method_key] or { return false }
 	if params.len == 0 {
 		return false
 	}
-	ret := g.tc.fn_ret_types[method_key] or { types.Type(types.void_) }
-	cname := c_name(method_key)
 	recv_is_ptr := params[0] is types.Pointer
 	recv_ct := g.tc.c_type(params[0])
 	// Use the method's ABI return type (matching `cname`'s signature and the callback

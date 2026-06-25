@@ -58,7 +58,8 @@ pub enum TypeErrorKind {
 }
 
 // CallInfo stores call info metadata used by types.
-struct CallInfo {
+pub struct CallInfo {
+pub:
 	name                 string
 	params               []Type
 	return_type          Type
@@ -86,13 +87,17 @@ mut:
 @[heap]
 pub struct TypeChecker {
 pub mut:
-	a                          &flat.FlatAst = unsafe { nil }
-	fn_ret_types               map[string]Type
-	fn_param_types             map[string][]Type
-	fn_variadic                map[string]bool
-	fn_implicit_veb_ctx        map[string]bool
-	structs                    map[string][]StructField
-	struct_generic_params      map[string][]string // generic struct base name -> type-param names (e.g. Vec4 -> [T])
+	a                     &flat.FlatAst = unsafe { nil }
+	fn_ret_types          map[string]Type
+	fn_param_types        map[string][]Type
+	fn_variadic           map[string]bool
+	fn_implicit_veb_ctx   map[string]bool
+	structs               map[string][]StructField
+	struct_generic_params map[string][]string // generic struct base name -> type-param names (e.g. Vec4 -> [T])
+	// concrete `Box[int].method` -> substituted CallInfo for a method *value* on a
+	// generic receiver. The open `Box[T].method` registration is gone by cgen time, so
+	// the checker stashes the resolved signature here for gen_method_value_closure.
+	generic_method_value_info  map[string]CallInfo
 	params_structs             map[string]bool
 	unions                     map[string]bool
 	type_aliases               map[string]string
@@ -3450,6 +3455,15 @@ fn (tc &TypeChecker) receiver_compatible(actual Type, expected Type) bool {
 // array literals, and expected-type propagation, conflating them would let
 // `Box[string]` satisfy an expected `Box[int]` and emit incompatible C structs.
 fn (tc &TypeChecker) generic_receiver_base_match(actual Type, expected Type) bool {
+	// Both sides must share pointer shape before unwrapping: a `&Box{...}` value must
+	// not satisfy an expected `Box[int]` value. The C argument path only
+	// auto-dereferences when the actual/expected type names match exactly, so the bare
+	// `Box` vs `Box[int]` mismatch would otherwise be emitted as a pointer where a value
+	// is required. (A pointer receiver on a value-receiver method is handled by
+	// receiver_compatible's pointer fallbacks, not here.)
+	if (actual is Pointer) != (expected is Pointer) {
+		return false
+	}
 	a_full := unwrap_pointer(actual).name()
 	e_full := unwrap_pointer(expected).name()
 	a := strip_generic_args_name(a_full)
@@ -3618,8 +3632,16 @@ fn (tc &TypeChecker) selector_fn_type(node flat.Node) ?FnType {
 
 fn (tc &TypeChecker) method_value_type(receiver_name string, method string) ?Type {
 	method_name := '${receiver_name}.${method}'
-	ret_type := tc.fn_ret_types[method_name] or { return none }
-	params := tc.fn_param_types[method_name] or { []Type{} }
+	mut ret_type := tc.fn_ret_types[method_name] or { Type(void_) }
+	mut params := tc.fn_param_types[method_name] or { []Type{} }
+	if method_name !in tc.fn_ret_types && method_name !in tc.fn_param_types {
+		// A concrete generic receiver (`Box[int]`) has its methods registered under the
+		// open key (`Box[T].method`); resolve and substitute so a method *value* on a
+		// generic struct is typed instead of reported as an unknown field.
+		ci := tc.resolve_generic_struct_method(receiver_name, method) or { return none }
+		ret_type = ci.return_type
+		params = ci.params.clone()
+	}
 	mut bound_params := []Type{}
 	if params.len > 1 {
 		bound_params = params[1..].clone()
@@ -4460,7 +4482,16 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	clean_recv := unwrap_pointer(base_type)
 	if clean_recv is Struct {
 		if tc.struct_field_type(clean_recv.name, node.value) == none {
-			mkey := '${clean_recv.name}.${node.value}'
+			mut mkey := '${clean_recv.name}.${node.value}'
+			if mkey !in tc.fn_param_types {
+				// Generic receiver methods are registered under the open key
+				// (`Box[T].method`); mark that one reachable for the wrapper, and stash
+				// the substituted signature for cgen (the open form is gone by cgen time).
+				if ci := tc.resolve_generic_struct_method(clean_recv.name, node.value) {
+					tc.generic_method_value_info['${clean_recv.name}.${node.value}'] = ci
+					mkey = ci.name
+				}
+			}
 			if mkey in tc.fn_param_types {
 				// Record per enclosing function so markused marks it only when that
 				// function is reachable (over-marking unreachable method values can pull
@@ -7261,7 +7292,7 @@ pub fn c_type_name_part(s string) string {
 // arguments onto the generic parameters and substitutes them into the method's
 // signature, so the pre-transform checker accepts the call. The transformer's
 // monomorphize pass later materialises the concrete method body.
-fn (mut tc TypeChecker) resolve_generic_struct_method(type_name string, method string) ?CallInfo {
+pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method string) ?CallInfo {
 	bracket := type_name.index_u8(`[`)
 	if bracket <= 0 || !type_name.ends_with(']') {
 		return none
