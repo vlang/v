@@ -4162,7 +4162,12 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	if node.op == .amp && node.children_count == 1 {
 		child_id := t.a.child(&node, 0)
 		child := t.a.nodes[int(child_id)]
-		if t.in_return_expr && child.kind == .struct_init {
+		if child.kind == .struct_init {
+			// `&T{...}` (address of a struct literal) is ALWAYS a heap allocation in V,
+			// in any context — not just in a return. Keeping it as a `.prefix .amp`
+			// struct_init routes it through cgen's gen_heap_struct_init; otherwise the
+			// generic fall-through lowers it to `&<stack temp>`, which dangles once the
+			// frame dies (e.g. `arr << &T{...}` storing a stack pointer in the array).
 			if expr := t.transform_amp_struct_init_for_type(id, node, node.typ) {
 				return expr
 			}

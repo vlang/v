@@ -8,68 +8,68 @@ import v3.types
 // FlatGen emits flat gen output used by c.
 pub struct FlatGen {
 mut:
-	sb                      strings.Builder
-	indent                  int
-	a                       &flat.FlatAst = unsafe { nil }
-	used_fns                map[string]bool
-	used_fn_names           []string
-	str_lits                []string
-	str_lit_ids             map[string]int
-	global_types            map[string]types.Type
-	enum_vals               map[string]int
-	defers                  []flat.NodeId
-	fn_defers               []flat.NodeId
-	fn_defer_counts         map[int]string
-	defer_capture_names     []string
-	defer_capture_types     map[string]types.Type
-	interfaces              map[string][]string
-	const_vals              map[string]flat.NodeId
-	const_modules           map[string]string
-	const_init_order        []string
-	global_modules          map[string]string
-	global_inits            map[string]flat.NodeId // qualified global name -> initializer value node
-	global_init_order       []string               // qualified global names, in declaration order
-	iface_impls             map[string][]string    // interface name -> implementing concrete type names
-	iface_type_ids          map[string]int         // "${iface}::${concrete}" -> 1-based type id
-	module_init_fns         []string               // C names of module-level `init()` fns, in source order
-	module_init_fn_modules  map[string]string      // C init fn name -> V module name
-	module_imports          map[string][]string    // module -> imported modules
-	c_includes              []string
-	c_flags                 []string
-	tc                      &types.TypeChecker = unsafe { nil }
-	has_builtins            bool
-	tmp_count               int
-	line_start              bool
-	field_name_set          map[string]bool // every struct field's C name (lazy) — for const/field collision checks
-	modules                 map[string]string // alias -> full module name
-	fn_ptr_types            map[string]string // fn_ptr:ret|params -> typedef name
-	fixed_array_ret_wrappers map[string]bool // bare fixed-array c_type name -> has a return wrapper struct
-	emitted_fixed_array_typedefs map[string]bool // bare fixed-array typedefs already written (shared across passes)
-	fn_decl_param_types     map[string][]types.Type
-	fn_decl_ret_types       map[string]types.Type // fn decl name (and qualified variants) -> return type
-	struct_decl_infos       map[string]StructDeclInfo
-	struct_decl_short_infos map[string]StructDeclInfo
-	runtime_inits           []string
-	compiler_vroot          string
-	cur_fn_name             string
-	cur_param_names         []string
-	cur_param_type_values   []types.Type
-	cur_param_types         map[string]types.Type
-	cur_fn_ret              types.Type = types.Type(types.void_)
-	cur_fn_ret_is_optional  bool
-	cur_fn_ret_base         types.Type = types.Type(types.void_)
-	expected_expr_type      types.Type = types.Type(types.void_)
-	expected_enum           string
-	needed_optional_types   map[string]string
-	emitted_optional_types  map[string]bool
-	emitted_fns             map[string]bool
-	array_method_cache      map[string]string
-	param_types_cache       map[string][]types.Type        // (name|fallback) -> resolved param types
-	embedded_fields_by_type map[string][]types.StructField // type name -> its embedded fields (usually empty)
-	param_types_by_short    map[string][]types.Type        // method short-name suffix -> param types (fallback index)
-	spawn_wrapper_names     map[string]string
-	spawn_wrapper_defs      []string
-	parallel_used           bool
+	sb                           strings.Builder
+	indent                       int
+	a                            &flat.FlatAst = unsafe { nil }
+	used_fns                     map[string]bool
+	used_fn_names                []string
+	str_lits                     []string
+	str_lit_ids                  map[string]int
+	global_types                 map[string]types.Type
+	enum_vals                    map[string]int
+	defers                       []flat.NodeId
+	fn_defers                    []flat.NodeId
+	fn_defer_counts              map[int]string
+	defer_capture_names          []string
+	defer_capture_types          map[string]types.Type
+	interfaces                   map[string][]string
+	const_vals                   map[string]flat.NodeId
+	const_modules                map[string]string
+	const_init_order             []string
+	global_modules               map[string]string
+	global_inits                 map[string]flat.NodeId // qualified global name -> initializer value node
+	global_init_order            []string               // qualified global names, in declaration order
+	iface_impls                  map[string][]string    // interface name -> implementing concrete type names
+	iface_type_ids               map[string]int         // "${iface}::${concrete}" -> 1-based type id
+	module_init_fns              []string               // C names of module-level `init()` fns, in source order
+	module_init_fn_modules       map[string]string      // C init fn name -> V module name
+	module_imports               map[string][]string    // module -> imported modules
+	c_includes                   []string
+	c_flags                      []string
+	tc                           &types.TypeChecker = unsafe { nil }
+	has_builtins                 bool
+	tmp_count                    int
+	line_start                   bool
+	field_name_set               map[string]bool   // every struct field's C name (lazy) — for const/field collision checks
+	modules                      map[string]string // alias -> full module name
+	fn_ptr_types                 map[string]string // fn_ptr:ret|params -> typedef name
+	fixed_array_ret_wrappers     map[string]bool   // bare fixed-array c_type name -> has a return wrapper struct
+	emitted_fixed_array_typedefs map[string]bool   // bare fixed-array typedefs already written (shared across passes)
+	fn_decl_param_types          map[string][]types.Type
+	fn_decl_ret_types            map[string]types.Type // fn decl name (and qualified variants) -> return type
+	struct_decl_infos            map[string]StructDeclInfo
+	struct_decl_short_infos      map[string]StructDeclInfo
+	runtime_inits                []string
+	compiler_vroot               string
+	cur_fn_name                  string
+	cur_param_names              []string
+	cur_param_type_values        []types.Type
+	cur_param_types              map[string]types.Type
+	cur_fn_ret                   types.Type = types.Type(types.void_)
+	cur_fn_ret_is_optional       bool
+	cur_fn_ret_base              types.Type = types.Type(types.void_)
+	expected_expr_type           types.Type = types.Type(types.void_)
+	expected_enum                string
+	needed_optional_types        map[string]string
+	emitted_optional_types       map[string]bool
+	emitted_fns                  map[string]bool
+	array_method_cache           map[string]string
+	param_types_cache            map[string][]types.Type        // (name|fallback) -> resolved param types
+	embedded_fields_by_type      map[string][]types.StructField // type name -> its embedded fields (usually empty)
+	param_types_by_short         map[string][]types.Type        // method short-name suffix -> param types (fallback index)
+	spawn_wrapper_names          map[string]string
+	spawn_wrapper_defs           []string
+	parallel_used                bool
 }
 
 struct FixedArrayTypedefInfo {
@@ -89,54 +89,54 @@ pub fn (g &FlatGen) c_flags() []string {
 // new creates a FlatGen value for c.
 pub fn FlatGen.new() FlatGen {
 	return FlatGen{
-		sb:                      strings.new_builder(4096)
-		used_fns:                map[string]bool{}
-		str_lit_ids:             map[string]int{}
-		global_types:            map[string]types.Type{}
-		enum_vals:               map[string]int{}
-		interfaces:              map[string][]string{}
-		const_vals:              map[string]flat.NodeId{}
-		const_modules:           map[string]string{}
-		const_init_order:        []string{}
-		global_modules:          map[string]string{}
-		global_inits:            map[string]flat.NodeId{}
-		global_init_order:       []string{}
-		iface_impls:             map[string][]string{}
-		iface_type_ids:          map[string]int{}
-		module_init_fns:         []string{}
-		module_init_fn_modules:  map[string]string{}
-		module_imports:          map[string][]string{}
-		c_includes:              []string{}
-		c_flags:                 []string{}
-		modules:                 map[string]string{}
-		fn_ptr_types:            map[string]string{}
-		fixed_array_ret_wrappers: map[string]bool{}
+		sb:                           strings.new_builder(4096)
+		used_fns:                     map[string]bool{}
+		str_lit_ids:                  map[string]int{}
+		global_types:                 map[string]types.Type{}
+		enum_vals:                    map[string]int{}
+		interfaces:                   map[string][]string{}
+		const_vals:                   map[string]flat.NodeId{}
+		const_modules:                map[string]string{}
+		const_init_order:             []string{}
+		global_modules:               map[string]string{}
+		global_inits:                 map[string]flat.NodeId{}
+		global_init_order:            []string{}
+		iface_impls:                  map[string][]string{}
+		iface_type_ids:               map[string]int{}
+		module_init_fns:              []string{}
+		module_init_fn_modules:       map[string]string{}
+		module_imports:               map[string][]string{}
+		c_includes:                   []string{}
+		c_flags:                      []string{}
+		modules:                      map[string]string{}
+		fn_ptr_types:                 map[string]string{}
+		fixed_array_ret_wrappers:     map[string]bool{}
 		emitted_fixed_array_typedefs: map[string]bool{}
-		fn_decl_param_types:     map[string][]types.Type{}
-		fn_decl_ret_types:       map[string]types.Type{}
-		struct_decl_infos:       map[string]StructDeclInfo{}
-		struct_decl_short_infos: map[string]StructDeclInfo{}
-		cur_param_names:         []string{}
-		cur_param_type_values:   []types.Type{}
-		cur_param_types:         map[string]types.Type{}
-		needed_optional_types:   map[string]string{}
-		emitted_optional_types:  map[string]bool{}
-		emitted_fns:             map[string]bool{}
-		array_method_cache:      map[string]string{}
-		param_types_cache:       map[string][]types.Type{}
-		embedded_fields_by_type: map[string][]types.StructField{}
-		param_types_by_short:    map[string][]types.Type{}
-		spawn_wrapper_names:     map[string]string{}
-		spawn_wrapper_defs:      []string{}
-		str_lits:                []string{}
-		defers:                  []flat.NodeId{}
-		fn_defers:               []flat.NodeId{}
-		fn_defer_counts:         map[int]string{}
-		defer_capture_names:     []string{}
-		defer_capture_types:     map[string]types.Type{}
-		runtime_inits:           []string{}
-		compiler_vroot:          ''
-		line_start:              true
+		fn_decl_param_types:          map[string][]types.Type{}
+		fn_decl_ret_types:            map[string]types.Type{}
+		struct_decl_infos:            map[string]StructDeclInfo{}
+		struct_decl_short_infos:      map[string]StructDeclInfo{}
+		cur_param_names:              []string{}
+		cur_param_type_values:        []types.Type{}
+		cur_param_types:              map[string]types.Type{}
+		needed_optional_types:        map[string]string{}
+		emitted_optional_types:       map[string]bool{}
+		emitted_fns:                  map[string]bool{}
+		array_method_cache:           map[string]string{}
+		param_types_cache:            map[string][]types.Type{}
+		embedded_fields_by_type:      map[string][]types.StructField{}
+		param_types_by_short:         map[string][]types.Type{}
+		spawn_wrapper_names:          map[string]string{}
+		spawn_wrapper_defs:           []string{}
+		str_lits:                     []string{}
+		defers:                       []flat.NodeId{}
+		fn_defers:                    []flat.NodeId{}
+		fn_defer_counts:              map[int]string{}
+		defer_capture_names:          []string{}
+		defer_capture_types:          map[string]types.Type{}
+		runtime_inits:                []string{}
+		compiler_vroot:               ''
+		line_start:                   true
 	}
 }
 
@@ -244,10 +244,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.optional_typedefs()
 	g.global_decls()
 	g.forward_decls()
+	g.enum_str_forward_decls()
 	g.spawn_wrapper_decls()
 	g.register_interface_strings()
 	g.string_literals()
 	g.interface_method_stubs()
+	g.enum_str_defs()
 	g.sb.write_string(const_code)
 	if g.runtime_inits.len > 0 || g.module_init_fns.len > 0 || g.global_inits.len > 0 {
 		g.writeln('void _vinit() {')

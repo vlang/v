@@ -1154,6 +1154,24 @@ fn (t &Transformer) enum_str_method_name(typ string) ?string {
 	return none
 }
 
+// enum_autostr_call builds a call to the compiler-synthesized `<Enum>__autostr` helper
+// (emitted by cgen's enum_str_defs) which returns the enum field NAME. Used as the default
+// `${enum}` stringification when the user has not defined a custom `.str()` — V auto-derives
+// one. Mirrors the struct-str qualification so the C name matches cgen's enum_decls naming.
+fn (mut t Transformer) enum_autostr_call(expr flat.NodeId, typ string) flat.NodeId {
+	mut qualified := typ
+	if qualified.starts_with('main.') {
+		qualified = qualified[5..]
+	} else if !typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		q := '${t.cur_module}.${typ}'
+		if q in t.enum_types {
+			qualified = q
+		}
+	}
+	return t.make_call_typed('${c_name(qualified)}__autostr', arr1(expr), 'string')
+}
+
 // wrap_string_conversion transforms wrap string conversion data for transform.
 fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat.NodeId {
 	mut clean_typ := typ
@@ -1197,8 +1215,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			if method := t.enum_str_method_name(clean_typ) {
 				return t.make_call_typed(method, arr1(expr), 'string')
 			}
-			return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
-				'string')
+			return t.enum_autostr_call(expr, clean_typ)
 		}
 		if qtyp != clean_typ {
 			qparsed := t.tc.parse_type(qtyp)
@@ -1206,8 +1223,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 				if method := t.enum_str_method_name(qtyp) {
 					return t.make_call_typed(method, arr1(expr), 'string')
 				}
-				return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
-					'string')
+				return t.enum_autostr_call(expr, qtyp)
 			}
 		}
 	}
@@ -1252,8 +1268,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 				if method := t.enum_str_method_name(clean_typ) {
 					return t.make_call_typed(method, arr1(expr), 'string')
 				}
-				return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
-					'string')
+				return t.enum_autostr_call(expr, clean_typ)
 			}
 			mut qenum := clean_typ
 			if !clean_typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
@@ -1264,8 +1279,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 				if method := t.enum_str_method_name(qenum) {
 					return t.make_call_typed(method, arr1(expr), 'string')
 				}
-				return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
-					'string')
+				return t.enum_autostr_call(expr, qenum)
 			}
 			if clean_typ in t.structs || clean_typ in t.sum_types {
 				mut qualified := clean_typ
