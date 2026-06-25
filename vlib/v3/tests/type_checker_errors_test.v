@@ -379,3 +379,19 @@ fn test_const_expr_fixed_array_and_thread_ptr_wait() {
 		'struct Foo {\n\tx int\n}\nfn work(n int) &Foo {\n\treturn &Foo{\n\t\tx: n\n\t}\n}\nfn main() {\n\tmut threads := []thread &Foo{}\n\tthreads << spawn work(40)\n\tthreads << spawn work(2)\n\tresults := threads.wait()\n\tmut sum := 0\n\tfor r in results {\n\t\tsum += r.x\n\t}\n\tprintln(int_str(sum))\n}\n')
 	assert good_thread == '42'
 }
+
+// Regression tests: a const-expression fixed-array length must work as a STRUCT
+// FIELD type (not only as a literal) and must fold whether or not the operators
+// are spaced (`segs+1` as well as `segs + 1`).
+fn test_const_expr_fixed_array_field_and_spacing() {
+	v3_bin := build_v3()
+	// Struct field `[segs + 1]f32` was emitted as `void verts[4]` (element lost,
+	// size = segs); it must be `[5]f32` with `.len == 5`.
+	good_field := run_good(v3_bin, 'good_const_expr_fixed_array_field',
+		'const segs = 4\nstruct Mesh {\n\tverts [segs + 1]f32\n}\nfn main() {\n\tm := Mesh{}\n\tprintln(int_str(m.verts.len))\n}\n')
+	assert good_field == '5'
+	// Spaced, unspaced, and nested const-expression sizes all fold to a literal.
+	good_forms := run_good(v3_bin, 'good_const_expr_fixed_array_forms',
+		'const segs = 3\nconst mult = 2\nfn main() {\n\ta := [segs + 1]int{}\n\tb := [segs+1]int{}\n\tc := [segs * mult]int{}\n\td := [segs - 1]int{}\n\te := [segs * mult + 1]int{}\n\tprintln(int_str(a.len + b.len + c.len + d.len + e.len))\n}\n')
+	assert good_forms == '23'
+}

@@ -4912,11 +4912,22 @@ fn (mut p Parser) parse_type_name() string {
 			p.next()
 			return '[]' + p.parse_type_name()
 		}
-		// fixed array [N]T
-		mut len_lit := p.lit
-		p.next()
+		// fixed array [N]T — the size may be a const expression (`[segs + 1]f32`),
+		// not just a single token, so parse the whole expression and recover its
+		// source text when it is not a plain literal (mirrors the array-literal path).
+		size_start := p.tok_pos
+		size_node := p.expr(.lowest)
+		size_end := p.tok_pos
 		p.check(.rsbr)
-		return '[${len_lit}]' + p.parse_type_name()
+		lit_size := p.a.nodes[int(size_node)].value
+		size_str := if lit_size.len > 0 {
+			lit_size
+		} else if size_start >= 0 && size_end > size_start && size_end <= p.s.src.len {
+			p.s.src[size_start..size_end].trim_space()
+		} else {
+			lit_size
+		}
+		return '[${size_str}]' + p.parse_type_name()
 	}
 	// multi-return (T, U)
 	if p.tok == .lpar {

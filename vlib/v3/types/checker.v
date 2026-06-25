@@ -5137,10 +5137,12 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 	if is_decimal_int_literal(name) {
 		return name.int()
 	}
-	// Simple const arithmetic in string form, e.g. a fixed-array size `[SEGS + 1]`.
-	// Split on the rightmost low-precedence operator first (left associativity); each
-	// side can itself be a const, a literal, or a nested expression.
-	for op in [' + ', ' - ', ' * '] {
+	// Simple const arithmetic in string form, e.g. a fixed-array size `[SEGS + 1]` or
+	// `[SEGS+1]`. Split on the rightmost low-precedence operator first (left
+	// associativity); each side is trimmed, so spaced and unspaced forms both work and
+	// each side can itself be a const, a literal, or a nested expression. A leading `-`
+	// (unary) leaves an empty lhs and is skipped.
+	for op in ['+', '-', '*'] {
 		if idx := name.last_index(op) {
 			lhs := name[..idx].trim_space()
 			rhs := name[idx + op.len..].trim_space()
@@ -5148,8 +5150,8 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 				l := tc.const_int_value(lhs, seen) or { continue }
 				r := tc.const_int_value(rhs, seen) or { continue }
 				return match op {
-					' + ' { l + r }
-					' - ' { l - r }
+					'+' { l + r }
+					'-' { l - r }
 					else { l * r }
 				}
 			}
