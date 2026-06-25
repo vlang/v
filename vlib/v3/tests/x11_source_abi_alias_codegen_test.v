@@ -23,6 +23,7 @@ fn x11_alias_write_project() string {
 #define V3_X11_ALIAS_NATIVE_ABI_H
 typedef unsigned long NativeAtom;
 typedef unsigned long NativeKeySym;
+typedef unsigned long NativeULong;
 typedef unsigned long NativeWindow;
 #endif
 ') or {
@@ -34,22 +35,23 @@ typedef unsigned long NativeWindow;
 
 pub type Atom = C.NativeAtom
 pub type KeySym = C.NativeKeySym
+pub type NativeULong = C.NativeULong
 pub type Window = C.NativeWindow
 pub type LocalId = u64
 
 fn C.take_key(key &KeySym)
 fn C.take_atom(atom &Atom)
 fn C.take_window(window Window)
-fn C.read_prop(window Window, property Atom, actual &Atom, count &usize, bytes &usize, prop &&u8)
+fn C.read_prop(window Window, property Atom, actual &Atom, count &NativeULong, bytes &NativeULong, prop &&u8)
 
 fn helper(value &&u8) usize {
 	mut actual_type := Atom(0)
-	mut item_count := usize(0)
-	mut bytes_after := usize(0)
+	mut item_count := NativeULong(0)
+	mut bytes_after := NativeULong(0)
 	window := Window(0)
 	property := Atom(0)
 	C.read_prop(window, property, &actual_type, &item_count, &bytes_after, value)
-	return item_count
+	return usize(item_count)
 }
 
 fn main() {
@@ -85,13 +87,15 @@ fn test_c_typedef_aliases_are_preserved_for_x11_abi_shapes() {
 	assert compact.contains('NativeAtomprotocols[1]'), c_code
 	assert compact.contains('NativeWindowwindow'), c_code
 	assert compact.contains('NativeAtomactual_type'), c_code
-	assert compact.contains('size_titem_count'), c_code
-	assert compact.contains('size_tbytes_after'), c_code
+	assert compact.contains('NativeULongitem_count'), c_code
+	assert compact.contains('NativeULongbytes_after'), c_code
 	assert compact.contains('read_prop(window,property,&actual_type,&item_count,&bytes_after,value);'), c_code
 
 	assert !compact.contains('u64keysym'), c_code
 	assert !compact.contains('u64protocols[1]'), c_code
 	assert !compact.contains('u64actual_type'), c_code
+	assert !compact.contains('u64item_count'), c_code
+	assert !compact.contains('u64bytes_after'), c_code
 	assert !compact.contains('0&(u8)(value)'), c_code
 	assert compact.contains('u64local_id'), c_code
 	assert !compact.contains('LocalIdlocal_id'), c_code
