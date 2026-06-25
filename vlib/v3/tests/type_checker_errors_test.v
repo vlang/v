@@ -329,4 +329,13 @@ fn test_fixed_array_length_checks() {
 	good_lit := run_good(v3_bin, 'good_if_branch_array_literal_len',
 		'fn main() {\n\tc := true\n\tx := if c { [1, 2, 3] } else { [4, 5] }\n\tprintln(int_str(x.len))\n}\n')
 	assert good_lit == '3'
+	// `return if cond { ... } else { ... }` with fixed-array-const branches must
+	// coerce each branch to the dynamic `[]T` return type (like a plain return and
+	// the `return match` path), not return the bare C fixed array.
+	good_ret_const := run_good(v3_bin, 'good_return_if_fixed_const',
+		'const wp3 = [1, 2, 3]\nconst wp2 = [4, 5]\nfn pick(c bool) []int {\n\treturn if c { wp3 } else { wp2 }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n')
+	assert good_ret_const == '5'
+	good_ret_lit := run_good(v3_bin, 'good_return_if_array_literal',
+		'fn pick(c bool) []int {\n\treturn if c { [1, 2, 3] } else { [4, 5] }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n')
+	assert good_ret_lit == '5'
 }
