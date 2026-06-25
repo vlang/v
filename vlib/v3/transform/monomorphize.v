@@ -51,6 +51,11 @@ fn (mut t Transformer) monomorphize_pass() []string {
 					cur_module = node.value
 				}
 				.call {
+					// An infix operator on a generic instance was already lowered to a
+					// direct call (`Vec_int__plus(a, b)`) before this pass. Record the
+					// callee so `specialize_generic_struct_methods` emits an operator
+					// overload only for instances whose operator is actually called.
+					t.record_called_fn_name(node)
 					call_module := node_modules[i] or { cur_module }
 					decl_key, args := t.generic_call_specialization(flat.NodeId(i), node,
 						call_module, decls) or { continue }
@@ -85,6 +90,20 @@ fn is_operator_method_name(name string) bool {
 	return name in ['+', '-', '*', '/', '%', '==', '!=', '<', '>', '<=', '>=']
 }
 
+// record_called_fn_name records the callee name of a direct call so operator overloads
+// (lowered to direct calls before this pass) can be specialized only when actually
+// called. Operator method names are mangled (`Vec_int__plus`), matching the name
+// `specialize_generic_struct_methods` would emit for that instance and operator.
+fn (mut t Transformer) record_called_fn_name(node flat.Node) {
+	if node.children_count < 1 {
+		return
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind == .ident && fn_node.value.len > 0 {
+		t.used_struct_operator_fns[fn_node.value] = true
+	}
+}
+
 // specialize_generic_struct_methods specializes every generic method of each
 // instantiated generic struct (e.g. for `Vec4[f32]`, generate `vec__Vec4_f32__plus`,
 // `vec__Vec4_f32__one`, ...). It only handles methods whose generic parameters are
@@ -109,8 +128,17 @@ fn (mut t Transformer) specialize_generic_struct_methods(struct_decls map[string
 			// every method here would generate unused (and possibly unresolved) bodies.
 			// The exception is a method used as a *value* (`b.method`): it has no call
 			// node to drive specialization, so specialize the ones the checker recorded.
-			if !is_operator_method_name(decl_key.all_after_last('.')) {
-				mvkey := '${spec}.${decl_key.all_after_last('.')}'
+			method := decl_key.all_after_last('.')
+			if is_operator_method_name(method) {
+				// Specialize an operator overload only for an instance whose operator is
+				// actually applied somewhere (recorded by record_used_struct_operator).
+				// Otherwise a stored-but-never-operated instance whose type argument does
+				// not support the operation would emit a body that fails C compilation.
+				if c_name('${spec}.${method}') !in t.used_struct_operator_fns {
+					continue
+				}
+			} else {
+				mvkey := '${spec}.${method}'
 				if isnil(t.tc) || mvkey !in t.tc.generic_method_value_info {
 					continue
 				}

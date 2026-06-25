@@ -90,6 +90,8 @@ pub mut:
 	a                     &flat.FlatAst = unsafe { nil }
 	fn_ret_types          map[string]Type
 	fn_param_types        map[string][]Type
+	fn_ret_type_texts     map[string]string   // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
+	fn_param_type_texts   map[string][]string // generic struct method key -> original param type texts (receiver first)
 	fn_variadic           map[string]bool
 	fn_implicit_veb_ctx   map[string]bool
 	structs               map[string][]StructField
@@ -382,6 +384,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				qname := tc.qualify_fn_name(node.value)
 				ret_type := tc.parse_type(node.typ)
 				mut ptypes := []Type{}
+				mut param_texts := []string{}
 				mut is_variadic := false
 				for i in 0 .. node.children_count {
 					child := a.child_node(&node, i)
@@ -390,6 +393,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 							is_variadic = true
 						}
 						ptypes << tc.parse_type(child.typ)
+						param_texts << child.typ
 					}
 				}
 				needs_ctx := tc.fn_needs_implicit_veb_ctx(node)
@@ -398,6 +402,17 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				if tc.cur_module in ['', 'main', 'builtin'] && qname != node.value
 					&& node.value !in tc.fn_param_types {
 					tc.register_fn_signature(node.value, ret_type, ptypes, is_variadic, needs_ctx)
+				}
+				// A generic struct method (`Box[T].clone`) keeps its original signature
+				// TEXT: the parsed types collapse a non-concrete `Box[T]` to the bare base,
+				// so a concrete call must re-substitute the type arguments from the text to
+				// recover applications like the receiver type in the return position
+				// (`Box[T]` -> `Box[int]`). Only such methods carry `[` in their key.
+				if node.value.contains('[') {
+					tc.fn_ret_type_texts[qname] = node.typ
+					tc.fn_param_type_texts[qname] = param_texts.clone()
+					tc.fn_ret_type_texts[node.value] = node.typ
+					tc.fn_param_type_texts[node.value] = param_texts.clone()
 				}
 			}
 			.struct_decl {
@@ -5242,6 +5257,27 @@ pub fn (tc &TypeChecker) fixed_array_len_value(arr ArrayFixed) ?int {
 	return tc.const_int_value(arr.len_expr, []string{})
 }
 
+// const_expr_paren_wraps_whole reports whether `s` is a single parenthesised group that
+// encloses the entire string (`(a + b)`), as opposed to one that only covers part of it
+// (`(a) + (b)`), so a const length wrapped in redundant parentheses can be unwrapped.
+fn const_expr_paren_wraps_whole(s string) bool {
+	if s.len < 2 || s[0] != `(` || s[s.len - 1] != `)` {
+		return false
+	}
+	mut depth := 0
+	for i := 0; i < s.len; i++ {
+		if s[i] == `(` {
+			depth++
+		} else if s[i] == `)` {
+			depth--
+			if depth == 0 {
+				return i == s.len - 1
+			}
+		}
+	}
+	return false
+}
+
 // const_int_value supports const int value handling for TypeChecker.
 pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 	if name in seen {
@@ -5264,16 +5300,28 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 		return name.int()
 	}
 	// Simple const arithmetic in string form, e.g. a fixed-array size `[SEGS + 1]`,
-	// `[SEGS+1]`, `[segs / 2]` or `[segs % 4]`. Split on the rightmost operator of the
-	// lowest precedence level present (`+ -`, then `* / % `), so both precedence and left
-	// associativity hold; each side is trimmed (spaced and unspaced forms both work) and
-	// resolved recursively. A leading `-` (unary) leaves an empty lhs and is skipped.
+	// `[SEGS+1]`, `[segs / 2]`, `[segs % 4]` or `[2 * (segs + 1)]`. A length wrapped
+	// wholly in parentheses is the inner expression, so strip the outer pair and
+	// re-evaluate. Otherwise split on the rightmost operator of the lowest precedence
+	// level present (`+ -`, then `* / %`) that sits OUTSIDE any parentheses, so a nested
+	// operator (the `+` inside `2 * (segs + 1)`) is not chosen; precedence and left
+	// associativity hold and each side is trimmed and resolved recursively. A leading `-`
+	// (unary) leaves an empty lhs and is skipped.
+	expr := name.trim_space()
+	if const_expr_paren_wraps_whole(expr) {
+		return tc.const_int_value(expr[1..expr.len - 1].trim_space(), seen)
+	}
 	for level in [['+', '-'], ['*', '/', '%']] {
 		mut idx := -1
 		mut op := ''
-		for i := 0; i < name.len; i++ {
-			ch := name[i..i + 1]
-			if ch in level {
+		mut depth := 0
+		for i := 0; i < expr.len; i++ {
+			ch := expr[i..i + 1]
+			if ch == '(' {
+				depth++
+			} else if ch == ')' {
+				depth--
+			} else if depth == 0 && ch in level {
 				idx = i
 				op = ch
 			}
@@ -5281,8 +5329,8 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 		if idx <= 0 {
 			continue
 		}
-		lhs := name[..idx].trim_space()
-		rhs := name[idx + 1..].trim_space()
+		lhs := expr[..idx].trim_space()
+		rhs := expr[idx + 1..].trim_space()
 		if lhs.len == 0 || rhs.len == 0 {
 			continue
 		}
@@ -6715,6 +6763,13 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 							unknown_type('unknown return type for `${mname}`')
 						}
 					}
+					// A method on a concrete generic instance (`Box[int].clone`) is
+					// registered under the open form (`Box[T].clone`); resolve it so the
+					// call types as the substituted return (`Box[int]`) rather than the
+					// bare base the collapsed open signature would yield.
+					if ci := tc.resolve_generic_struct_method(clean_type.name, fn_node.value) {
+						return ci.return_type
+					}
 				}
 				if clean_type is Interface {
 					mname := '${clean_type.name}.${fn_node.value}'
@@ -7348,9 +7403,19 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method 
 	}
 	generic_key := '${base}[${params.join(', ')}].${method}'
 	ret := tc.fn_ret_types[generic_key] or { return none }
-	sub_ret := tc.substitute_generic_type(ret, concrete_args, params)
+	// Prefer substituting the original signature TEXT: parsing `Box[T]` collapses the
+	// non-concrete application to the bare `Box`, so substituting the already-parsed type
+	// cannot recover `Box[int]`. Re-substituting the text and re-parsing does.
+	mut sub_ret := tc.substitute_generic_type(ret, concrete_args, params)
+	if ret_text := tc.fn_ret_type_texts[generic_key] {
+		sub_ret = tc.parse_type(subst_generic_text(ret_text, concrete_args, params))
+	}
 	mut sub_params := []Type{}
-	if ptypes := tc.fn_param_types[generic_key] {
+	if param_texts := tc.fn_param_type_texts[generic_key] {
+		for pt in param_texts {
+			sub_params << tc.parse_type(subst_generic_text(pt, concrete_args, params))
+		}
+	} else if ptypes := tc.fn_param_types[generic_key] {
 		for pt in ptypes {
 			sub_params << tc.substitute_generic_type(pt, concrete_args, params)
 		}
@@ -7363,6 +7428,69 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method 
 		is_variadic:  tc.fn_variadic[generic_key] or { false }
 		params_known: true
 	}
+}
+
+// subst_generic_text textually substitutes the generic parameter names `params` with the
+// concrete argument texts `args` inside a type text, preserving the generic application
+// form so a method signature mentioning the receiver type (`Box[T]`) becomes the concrete
+// instance (`Box[int]`) when re-parsed, instead of collapsing to the bare base. Prefix and
+// container forms (`&`, `mut`, `?`, `!`, `...`, `[]`, `map[`, `[N]`) recurse into the
+// element type; a bare parameter name is replaced with its argument.
+fn subst_generic_text(typ string, args []string, params []string) string {
+	clean := typ.trim_space()
+	if clean.len == 0 || args.len == 0 || params.len != args.len {
+		return clean
+	}
+	if clean.starts_with('&') {
+		return '&' + subst_generic_text(clean[1..], args, params)
+	}
+	if clean.starts_with('mut ') {
+		return 'mut ' + subst_generic_text(clean[4..], args, params)
+	}
+	if clean.starts_with('?') {
+		return '?' + subst_generic_text(clean[1..], args, params)
+	}
+	if clean.starts_with('!') {
+		return '!' + subst_generic_text(clean[1..], args, params)
+	}
+	if clean.starts_with('...') {
+		return '...' + subst_generic_text(clean[3..], args, params)
+	}
+	if clean.starts_with('[]') {
+		return '[]' + subst_generic_text(clean[2..], args, params)
+	}
+	if clean.starts_with('map[') {
+		bracket_end := find_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			key := subst_generic_text(clean[4..bracket_end], args, params)
+			val := subst_generic_text(clean[bracket_end + 1..], args, params)
+			return 'map[${key}]${val}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := find_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return clean[..bracket_end + 1] + subst_generic_text(clean[bracket_end +
+				1..], args, params)
+		}
+	}
+	bracket := clean.index_u8(`[`)
+	if bracket > 0 {
+		bracket_end := find_matching_bracket(clean, bracket)
+		if bracket_end < clean.len {
+			mut parts := []string{}
+			for part in split_params(clean[bracket + 1..bracket_end]) {
+				parts << subst_generic_text(part, args, params)
+			}
+			return clean[..bracket] + '[' + parts.join(', ') + ']' + clean[bracket_end + 1..]
+		}
+	}
+	for i, p in params {
+		if clean == p {
+			return args[i]
+		}
+	}
+	return clean
 }
 
 // split_generic_arg_list splits a comma-separated generic argument list at the

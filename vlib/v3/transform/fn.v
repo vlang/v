@@ -2854,6 +2854,22 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) string 
 				}
 			}
 		}
+		// A method on a concrete generic instance (`Box[int].clone`) is registered under
+		// the open form (`Box[T].clone`), whose stored return type collapsed `Box[T]` to
+		// the bare base. Resolve it through the checker, which re-substitutes the concrete
+		// arguments from the signature text, so the inferred decl type is `Box[int]`.
+		if !isnil(t.tc) && fn_node.kind == .selector && fn_node.children_count > 0 {
+			base_type := t.node_type(t.a.child(fn_node, 0))
+			clean_base := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+			if clean_base.contains('[') && clean_base.ends_with(']') {
+				if ci := t.tc.resolve_generic_struct_method(clean_base, fn_node.value) {
+					rn := ci.return_type.name()
+					if rn.len > 0 && rn != 'void' && rn != 'unknown' {
+						return t.normalize_type_alias(rn)
+					}
+				}
+			}
+		}
 	}
 	if !isnil(t.tc) {
 		if name := t.tc.resolved_call_name(id) {

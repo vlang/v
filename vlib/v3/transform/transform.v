@@ -75,6 +75,13 @@ mut:
 	alias_cache           &AliasCache = unsafe { nil }
 	sum_cache             &AliasCache = unsafe { nil }
 	used_fns              map[string]bool
+	// used_struct_operator_fns holds the callee names of direct calls seen during
+	// monomorphize. Infix operators on generic instances are lowered to direct calls
+	// (`Vec_int__plus(a, b)`) before this pass, so an operator overload is specialized for
+	// an instantiated generic struct only when its mangled name appears here — an instance
+	// whose type argument never has the operator applied is not emitted with a body that
+	// would fail C compilation.
+	used_struct_operator_fns map[string]bool
 	// active_generic_params holds the generic parameter names of the decl currently
 	// being specialized/rewritten, in the same order as the inferred type `args`.
 	// It lets type-text substitution map placeholders by name (so non-canonical
