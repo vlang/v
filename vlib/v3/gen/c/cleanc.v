@@ -2824,7 +2824,11 @@ fn fixed_array_typedef_is_early(arr types.ArrayFixed) bool {
 fn (mut g FlatGen) populate_fixed_array_ret_wrappers() {
 	needed := g.collect_fixed_array_typedefs_needed()
 	for name, info in needed {
-		if fixed_array_elem_is_early_complete(info.arr.elem_type) {
+		// Use the recursive early check so a nested fixed array (`[2][3]int`, whose
+		// `elem_type` is itself an `ArrayFixed`) is still wrapped: its chain bottoms out
+		// in a primitive/pointer/enum, so the bare typedefs are emitted early and a C
+		// function still cannot return the raw array type.
+		if fixed_array_typedef_is_early(info.arr) {
 			g.fixed_array_ret_wrappers[name] = true
 		}
 	}

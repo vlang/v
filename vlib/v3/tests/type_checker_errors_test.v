@@ -502,3 +502,27 @@ fn test_pr_review_codegen_batch_five() {
 		"fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tx := threads.wait()\n\tprintln(x)\n}\n",
 		'unknown identifier `x`')
 }
+
+// Regression tests for the sixth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_six() {
+	v3_bin := build_v3()
+	// A bare generic struct literal with POSITIONAL fields (`Box{'str'}`) must validate
+	// each value against the struct field order before adopting the expected concrete
+	// instance; a wrong positional type is a definite mismatch, not a silent adoption
+	// that codegen would init an `int` field from a string.
+	run_bad(v3_bin, 'bad_positional_generic_literal_field_mismatch',
+		"struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{'str'}\n}\nfn main() {\n\t_ := make()\n}\n",
+		'cannot return `Box` as `Box[int]`')
+	// A positional bare generic literal whose value matches the concrete field type is
+	// accepted and round-trips.
+	pos_good := run_good(v3_bin, 'good_positional_generic_literal',
+		'struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{5}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
+	assert pos_good == '5'
+	// A function returning a nested fixed array (`[2][3]int`, whose element is itself a
+	// fixed array) must get a C return wrapper (functions cannot return raw arrays) and
+	// the caller must type the result as the full nested array (`int[3][2]` round-trips
+	// through parse_type), so the values survive the wrapper memcpy.
+	nested_ret := run_good(v3_bin, 'good_nested_fixed_array_return',
+		'fn make() [2][3]int {\n\tmut m := [2][3]int{}\n\tm[0][0] = 1\n\tm[0][1] = 2\n\tm[0][2] = 3\n\tm[1][0] = 4\n\tm[1][1] = 5\n\tm[1][2] = 6\n\treturn m\n}\nfn main() {\n\tr := make()\n\tprintln(int_str(r[0][0] + r[0][1] + r[0][2] + r[1][0] + r[1][1] + r[1][2]))\n}\n')
+	assert nested_ret == '21'
+}

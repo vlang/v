@@ -3535,17 +3535,25 @@ fn (mut tc TypeChecker) generic_literal_fields_compatible(node flat.Node, expect
 	fields := tc.structs[e_base] or { tc.structs[e_base.all_after_last('.')] or { return true } }
 	for i in 0 .. node.children_count {
 		fi := tc.a.child_node(&node, i)
-		if fi.kind != .field_init || fi.value.len == 0 || fi.children_count == 0 {
+		if fi.kind != .field_init || fi.children_count == 0 {
 			continue
 		}
 		mut decl_typ := Type(void_)
 		mut found := false
-		for f in fields {
-			if f.name == fi.value {
-				decl_typ = f.typ
-				found = true
-				break
+		if fi.value.len > 0 {
+			// Named initializer (`Box{v: 'x'}`): match by field name.
+			for f in fields {
+				if f.name == fi.value {
+					decl_typ = f.typ
+					found = true
+					break
+				}
 			}
+		} else if i < fields.len {
+			// Positional initializer (`Box{'x'}`): the parser emits a `field_init` with
+			// an empty name, so match by field order like `check_struct_init` does.
+			decl_typ = fields[i].typ
+			found = true
 		}
 		if !found {
 			continue
@@ -6234,9 +6242,15 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		return unknown_type('generic type parameter `${typ}`')
 	}
 	if typ.contains('[') && !typ.starts_with('[') {
-		bracket := typ.index_u8(`[`)
-		bracket_end := typ.index_u8(`]`)
-		if bracket_end > bracket {
+		// Postfix fixed-array name (`ArrayFixed.name()`): the element comes first and
+		// each dimension is appended, so the OUTERMOST dimension is the trailing `[N]`
+		// (`int[3][2]` is `[2][3]int`). Split on the last bracket pair so a nested fixed
+		// array recovers the outer length and recurses into the inner element, instead of
+		// taking the first `[N]` and dropping the rest. For a single dimension the last
+		// and first brackets coincide, so this matches the previous behaviour.
+		bracket := typ.last_index_u8(`[`)
+		bracket_end := typ.last_index_u8(`]`)
+		if bracket >= 0 && bracket_end > bracket {
 			len_text := typ[bracket + 1..bracket_end].trim_space()
 			return Type(ArrayFixed{
 				elem_type: tc.parse_type(typ[..bracket])
