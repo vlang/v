@@ -2080,6 +2080,17 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		tc.check_select_stmt(node)
 		return
 	}
+	// A method value stored in an array escapes the single-use guarantee of its per-site
+	// static receiver, so reject `[obj.method]` literals and `arr << obj.method` appends.
+	if node.kind == .array_literal {
+		for i in 0 .. node.children_count {
+			tc.reject_stored_method_value(tc.a.child(&node, i))
+		}
+	} else if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
+		if unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) is Array {
+			tc.reject_stored_method_value(tc.a.child(&node, 1))
+		}
+	}
 
 	for i in 0 .. node.children_count {
 		tc.check_node(tc.a.child(&node, i))
@@ -4484,6 +4495,48 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		tc.check_node(tc.a.child(&node, i))
 	}
 	_ = id
+}
+
+// expr_is_method_value reports whether `id` is a selector that resolves to a *method
+// value* — a struct method used as a value (`obj.draw`), not a field access or a method
+// call. cgen backs such a value with a per-evaluation-site static receiver slot, which is
+// only safe for an immediately-consumed callback; it cannot hold several live instances
+// from the same site at once (see gen_method_value_closure).
+fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .selector || node.children_count == 0 {
+		return false
+	}
+	clean := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
+	if clean !is Struct {
+		return false
+	}
+	sname := (clean as Struct).name
+	if tc.struct_field_type(sname, node.value) != none {
+		return false
+	}
+	if '${sname}.${node.value}' in tc.fn_param_types {
+		return true
+	}
+	if _ := tc.resolve_generic_struct_method(sname, node.value) {
+		return true
+	}
+	return false
+}
+
+// reject_stored_method_value reports a clear error when a method value is stored into an
+// array, where the per-site static receiver slot cannot keep multiple instances distinct
+// (e.g. `cbs << obj.method` in a loop would make every callback use the last receiver).
+// Without this the value reaches cgen and emits C referencing an unsupported helper.
+fn (mut tc TypeChecker) reject_stored_method_value(id flat.NodeId) {
+	if tc.expr_is_method_value(id) && tc.should_diagnose(id) {
+		tc.record_error(.assignment_mismatch,
+			'a method value (`obj.method`) cannot be stored in an array (no closure capture); pass it directly as a callback argument',
+			id)
+	}
 }
 
 // check_selector validates check selector state for types.

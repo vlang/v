@@ -600,3 +600,25 @@ fn test_pr_review_codegen_batch_ten() {
 		"fn make() [2]string {\n\treturn ['hi', 'yo']!\n}\nfn main() {\n\tr := make()\n\tprintln(r[0] + r[1])\n}\n")
 	assert fa_string == 'hiyo'
 }
+
+// Regression tests for the eleventh PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_eleven() {
+	v3_bin := build_v3()
+	// A method value is backed by a per-evaluation-site static receiver, so storing it in
+	// an array (where several instances from one site would share that slot and every
+	// callback would use the last receiver) is rejected with a clear error instead of
+	// reaching cgen and emitting an undefined helper. Append form:
+	run_bad(v3_bin, 'bad_method_value_array_append',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\tmut cbs := []fn () int{}\n\tfor i in 0 .. 3 {\n\t\tc := Counter{\n\t\t\tid: i * 10\n\t\t}\n\t\tcbs << c.report\n\t}\n\tprintln(int_str(cbs.len))\n}\n',
+		'cannot be stored in an array')
+	// Array-literal form is rejected too.
+	run_bad(v3_bin, 'bad_method_value_array_literal',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\ta := Counter{\n\t\tid: 1\n\t}\n\tb := Counter{\n\t\tid: 2\n\t}\n\tcbs := [a.report, b.report]\n\tprintln(int_str(cbs.len))\n}\n',
+		'cannot be stored in an array')
+	// The supported single-use forms still work: a method value passed directly as a
+	// callback argument, and an `arr << int` append / `int << int` shift are not flagged.
+	imm := run_good(v3_bin, 'good_method_value_immediate_after_guard',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn run(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tmut xs := [1]\n\txs << (2 << 1)\n\tprintln(int_str(run(c.report) + xs.len))\n}\n')
+	// 7 + 2 (xs has [1, 4]) = 9
+	assert imm == '9'
+}
