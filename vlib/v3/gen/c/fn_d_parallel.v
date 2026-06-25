@@ -527,5 +527,4 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 			g.callback_wrapper_defs << def
 		}
 	}
-	g.gettid_compat = g.gettid_compat || w.gettid_compat
 }

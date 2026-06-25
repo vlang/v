@@ -158,12 +158,46 @@ fn test_result() ! {
 	assert result_fail.exit_code != 0
 	assert result_fail.output.contains('test failed: test_fail')
 
+	result_fail_cleanup := compile_and_run(v3_bin, 'harness_result_fail_cleanup', '_test.v', "fn testsuite_end() {
+	println('end')
+}
+
+fn after_each() {
+	println('after')
+}
+
+fn test_fail() ! {
+	return error('bad')
+}
+")
+	assert result_fail_cleanup.exit_code != 0
+	assert result_fail_cleanup.output.contains('test failed: test_fail')
+	assert result_fail_cleanup.output.contains('after')
+	assert result_fail_cleanup.output.contains('end')
+
 	option_fail := compile_and_run(v3_bin, 'harness_option_fail', '_test.v', 'fn test_fail() ? {
 	return none
 }
 ')
 	assert option_fail.exit_code != 0
 	assert option_fail.output.contains('test failed: test_fail')
+
+	option_fail_cleanup := compile_and_run(v3_bin, 'harness_option_fail_cleanup', '_test.v', "fn testsuite_end() {
+	println('end')
+}
+
+fn after_each() {
+	println('after')
+}
+
+fn test_fail() ? {
+	return none
+}
+")
+	assert option_fail_cleanup.exit_code != 0
+	assert option_fail_cleanup.output.contains('test failed: test_fail')
+	assert option_fail_cleanup.output.contains('after')
+	assert option_fail_cleanup.output.contains('end')
 
 	assert_fail := compile_and_run(v3_bin, 'harness_assert_fail', '_test.v', 'fn test_fail() {
 	assert false
@@ -226,6 +260,136 @@ fn test_one() {
 "
 	invalid := compile_expect_failure(v3_bin, 'harness_top_level_and_test', '_test.v', src)
 	assert invalid.output.contains('executable top-level statements are not supported in test files'), invalid.output
+}
+
+fn test_v3_test_file_harness_owns_entrypoint_over_user_main() {
+	v3_bin := build_v3()
+	src := "fn main() {
+	println('user-main')
+}
+
+fn test_one() {
+	println('test')
+}
+"
+	c_code := gen_c(v3_bin, 'harness_user_main', '_test.v', src)
+	assert c_code.count('int main(') == 1, c_code
+	assert c_code.contains('test_one();'), c_code
+	run := compile_and_run(v3_bin, 'harness_user_main_run', '_test.v', src)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'test'
+}
+
+fn test_v3_test_file_harness_keeps_user_main_callable() {
+	v3_bin := build_v3()
+	src := "fn main() {
+	println('user-main')
+}
+
+fn test_call_main() {
+	main()
+}
+"
+	c_code := gen_c(v3_bin, 'harness_user_main_callable', '_test.v', src)
+	assert c_code.count('int main(') == 1, c_code
+	assert c_code.contains('main__user_main'), c_code
+	assert c_code.contains('main__user_main();'), c_code
+	assert c_code.contains('test_call_main();'), c_code
+	run := compile_and_run(v3_bin, 'harness_user_main_callable_run', '_test.v', src)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'user-main'
+}
+
+fn test_v3_test_file_harness_forward_declares_user_main() {
+	v3_bin := build_v3()
+	src := "fn test_call_main() {
+	main()
+}
+
+fn main() {
+	println('late-main')
+}
+"
+	c_code := gen_c(v3_bin, 'harness_user_main_forward', '_test.v', src)
+	assert c_code.count('int main(') == 1, c_code
+	proto_idx := c_code.index('void main__user_main(void);') or { -1 }
+	test_idx := c_code.index('void test_call_main(void) {') or { -1 }
+	assert proto_idx >= 0, c_code
+	assert test_idx > proto_idx, c_code
+	assert c_code.contains('main__user_main();'), c_code
+	run := compile_and_run(v3_bin, 'harness_user_main_forward_run', '_test.v', src)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'late-main'
+}
+
+fn test_v3_test_file_harness_renames_user_main_without_collision() {
+	v3_bin := build_v3()
+	src := "fn main__user_main() {
+	println('collision')
+}
+
+fn main() {
+	println('user-main')
+}
+
+fn test_call_both() {
+	main__user_main()
+	main()
+}
+"
+	c_code := gen_c(v3_bin, 'harness_user_main_collision', '_test.v', src)
+	assert c_code.count('int main(') == 1, c_code
+	assert c_code.contains('void main__user_main('), c_code
+	assert c_code.contains('void main__user_main_1('), c_code
+	assert c_code.contains('main__user_main();'), c_code
+	assert c_code.contains('main__user_main_1();'), c_code
+	run := compile_and_run(v3_bin, 'harness_user_main_collision_run', '_test.v', src)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'collision\nuser-main'
+}
+
+fn test_v3_test_file_harness_renames_user_main_fn_value() {
+	v3_bin := build_v3()
+	src := "fn main() {
+	println('user-main')
+}
+
+fn test_fn_value_main() {
+	f := main
+	f()
+}
+"
+	c_code := gen_c(v3_bin, 'harness_user_main_fn_value', '_test.v', src)
+	assert c_code.count('int main(') == 1, c_code
+	assert c_code.contains('main__user_main'), c_code
+	assert c_code.contains('test_fn_value_main();'), c_code
+	assert !c_code.contains('= main;'), c_code
+	run := compile_and_run(v3_bin, 'harness_user_main_fn_value_run', '_test.v', src)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'user-main'
+}
+
+fn test_v3_test_file_harness_renames_user_main_fn_arg() {
+	v3_bin := build_v3()
+	src := "fn takes(cb fn ()) {
+	cb()
+}
+
+fn main() {
+	println('user-main')
+}
+
+fn test_fn_arg_main() {
+	takes(main)
+}
+"
+	c_code := gen_c(v3_bin, 'harness_user_main_fn_arg', '_test.v', src)
+	assert c_code.count('int main(') == 1, c_code
+	assert c_code.contains('takes(main__user_main);'), c_code
+	assert !c_code.contains('takes(main);'), c_code
+	run := compile_and_run(v3_bin, 'harness_user_main_fn_arg_run', '_test.v', src)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'user-main'
 }
 
 fn test_v3_test_file_harness_finds_top_level_comptime_block_tests() {

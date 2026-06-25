@@ -376,6 +376,13 @@ fn (mut t Transformer) make_none_return_stmt_with_err(err_source string) flat.No
 		return t.make_none_return_stmt()
 	}
 	err_expr := t.make_selector(t.make_ident(err_source), 'err', 'IError')
+	return t.make_none_return_stmt_with_err_expr(err_expr)
+}
+
+fn (mut t Transformer) make_none_return_stmt_with_err_expr(err_expr flat.NodeId) flat.NodeId {
+	if int(err_expr) < 0 {
+		return t.make_none_return_stmt()
+	}
 	return t.make_return(t.make_optional_none_with_err(t.cur_fn_ret_type, err_expr),
 		t.cur_fn_ret_type)
 }
@@ -437,9 +444,18 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 
 // lower_or_body_to_stmts converts lower or body to stmts data for transform.
 fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name string, target_type string, mode string, err_source string) []flat.NodeId {
+	err_expr := if err_source.len > 0 {
+		t.make_selector(t.make_ident(err_source), 'err', 'IError')
+	} else {
+		flat.empty_node
+	}
+	return t.lower_or_body_to_stmts_with_err_expr(body_id, target_name, target_type, mode, err_expr)
+}
+
+fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId, target_name string, target_type string, mode string, err_expr flat.NodeId) []flat.NodeId {
 	if mode == '!' || mode == '?' {
 		if t.is_optional_type_name(t.cur_fn_ret_type) {
-			return arr1(t.make_none_return_stmt_with_err(err_source))
+			return arr1(t.make_none_return_stmt_with_err_expr(err_expr))
 		}
 		return arr1(t.make_panic_stmt('option/result propagation failed'))
 	}
@@ -472,8 +488,8 @@ fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name s
 	// Mirrors transform_if_guard_else_block.
 	saved_var_types := t.var_types.clone()
 	t.set_var_type('err', 'IError')
-	err_value := if err_source.len > 0 {
-		t.make_selector(t.make_ident(err_source), 'err', 'IError')
+	err_value := if int(err_expr) >= 0 {
+		err_expr
 	} else {
 		t.make_struct_init('IError')
 	}

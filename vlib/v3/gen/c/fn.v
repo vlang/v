@@ -48,7 +48,7 @@ fn (mut g FlatGen) gen_fns() {
 			if !g.should_emit_fn_node_in_module(node, i, cur_module) {
 				continue
 			}
-			qfn := qualified_fn_name_in_module(cur_module, node.value)
+			qfn := g.fn_c_name_in_module(cur_module, node.value)
 			if g.emitted_fn_contains(qfn) {
 				continue
 			}
@@ -61,11 +61,11 @@ fn (mut g FlatGen) gen_fns() {
 }
 
 fn (mut g FlatGen) gen_synthetic_main_after_fns() {
-	if g.has_entry_main() {
-		return
-	}
 	if g.test_files.len > 0 {
 		g.gen_test_main()
+		return
+	}
+	if g.has_entry_main() {
 		return
 	}
 	top_level_stmts := g.top_level_stmts()
@@ -157,6 +157,9 @@ fn (mut g FlatGen) should_emit_fn_node(node flat.Node, node_index int) bool {
 fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int, module_name string) bool {
 	_ = node_index
 	qfn := qualified_fn_name_in_module(module_name, node.value)
+	if g.should_rename_user_main_for_tests(module_name, node.value) {
+		return true
+	}
 	if module_name == 'builtin' && node.value == 'exit' {
 		return true
 	}
@@ -235,10 +238,70 @@ fn qualified_fn_name_in_module(module_name string, name string) string {
 	return c_name(name)
 }
 
+fn is_main_fn_in_main_module(module_name string, name string) bool {
+	return name == 'main' && (module_name.len == 0 || module_name == 'main')
+}
+
+fn (g &FlatGen) should_rename_user_main_for_tests(module_name string, name string) bool {
+	return g.test_files.len > 0 && is_main_fn_in_main_module(module_name, name)
+}
+
+fn (g &FlatGen) fn_c_name_in_module(module_name string, name string) string {
+	if g.should_rename_user_main_for_tests(module_name, name) {
+		return g.test_user_main_c_name()
+	}
+	return qualified_fn_name_in_module(module_name, name)
+}
+
+fn (g &FlatGen) test_user_main_c_name() string {
+	base := 'main__user_main'
+	if !g.c_fn_symbol_exists(base) {
+		return base
+	}
+	limit := g.a.nodes.len + 2
+	for idx in 1 .. limit {
+		candidate := '${base}_${idx}'
+		if !g.c_fn_symbol_exists(candidate) {
+			return candidate
+		}
+	}
+	return '${base}_${limit}'
+}
+
+fn (g &FlatGen) c_fn_symbol_exists(candidate string) bool {
+	mut cur_module := ''
+	for node in g.a.nodes {
+		kind_id := node_kind_id(node)
+		if kind_id == 77 {
+			cur_module = ''
+			continue
+		}
+		if kind_id == 73 {
+			cur_module = node.value
+			continue
+		}
+		if kind_id != 61 {
+			continue
+		}
+		if qualified_fn_name_in_module(cur_module, node.value) == candidate {
+			return true
+		}
+		if export_name := g.export_fn_name_in_module(cur_module, node.value) {
+			if export_name == candidate {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // direct_call_name supports direct call name handling for FlatGen.
 fn (mut g FlatGen) direct_call_name(name string) string {
 	if compat_name := g.libc_compat_call_name(name) {
 		return compat_name
+	}
+	if g.test_files.len > 0 && (name == 'main' || name == 'main.main') {
+		return g.test_user_main_c_name()
 	}
 	if name == 'free' {
 		return 'v_free'
@@ -259,6 +322,26 @@ fn (mut g FlatGen) libc_compat_call_name(name string) ?string {
 	if name == 'C.gettid' {
 		g.libc_compat_fns['gettid'] = true
 		return 'v3_gettid'
+	}
+	return none
+}
+
+fn (g &FlatGen) test_user_main_fn_value_c_name(id flat.NodeId, node flat.Node) ?string {
+	if g.test_files.len == 0 || node.kind != .ident || node.value != 'main' {
+		return none
+	}
+	looked_up := g.tc.cur_scope.lookup(node.value) or { types.Type(types.void_) }
+	if looked_up !is types.Void {
+		return none
+	}
+	if resolved := g.tc.resolved_fn_value_name(id) {
+		if resolved == 'main' || resolved == 'main.main' {
+			return g.test_user_main_c_name()
+		}
+		return none
+	}
+	if g.usable_expr_type(id) is types.FnType {
+		return g.test_user_main_c_name()
 	}
 	return none
 }
@@ -821,7 +904,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.insert_cur_implicit_veb_ctx_param(node)
 	fn_defer_ids := g.collect_function_defer_ids(node)
 	g.prepare_function_defers(fn_defer_ids)
-	is_entry_main := node.value == 'main' && (module_name.len == 0 || module_name == 'main')
+	is_entry_main := is_main_fn_in_main_module(module_name, node.value) && g.test_files.len == 0
 	if is_entry_main {
 		g.writeln('int main(int argc, char** argv) {')
 		if g.has_builtins {
@@ -837,7 +920,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 		g.set_cur_fn_ret(ret_type)
 		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
-		g.write(qualified_fn_name_in_module(module_name, node.value))
+		g.write(g.fn_c_name_in_module(module_name, node.value))
 		g.write('(')
 		g.write_fn_node_params(node)
 		g.writeln(') {')
@@ -874,7 +957,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 
 fn (mut g FlatGen) gen_export_wrapper_for_fn(node flat.Node, module_name string) {
 	export_name := g.export_fn_name_in_module(module_name, node.value) or { return }
-	canonical_name := qualified_fn_name_in_module(module_name, node.value)
+	canonical_name := g.fn_c_name_in_module(module_name, node.value)
 	ret_type := g.tc.parse_type(node.typ)
 	ret_ct := g.optional_type_name(ret_type)
 	g.write(ret_ct)
@@ -991,7 +1074,7 @@ fn (mut g FlatGen) gen_test_main() {
 		if hooks.before_each.len > 0 {
 			g.writeln('${hooks.before_each}();')
 		}
-		g.gen_test_fn_call(test_fn, idx)
+		g.gen_test_fn_call(test_fn, hooks, idx)
 		if hooks.after_each.len > 0 {
 			g.writeln('${hooks.after_each}();')
 		}
@@ -1005,7 +1088,7 @@ fn (mut g FlatGen) gen_test_main() {
 	g.writeln('')
 }
 
-fn (mut g FlatGen) gen_test_fn_call(test_fn TestHarnessFn, idx int) {
+fn (mut g FlatGen) gen_test_fn_call(test_fn TestHarnessFn, hooks TestHarnessHooks, idx int) {
 	if test_fn.ret is types.OptionType || test_fn.ret is types.ResultType {
 		ct := g.optional_type_name(test_fn.ret)
 		tmp_name := '__test_opt_${idx}'
@@ -1013,6 +1096,12 @@ fn (mut g FlatGen) gen_test_fn_call(test_fn TestHarnessFn, idx int) {
 		g.writeln('if (!${tmp_name}.ok) {')
 		g.indent++
 		g.writeln('fprintf(stderr, "test failed: ${c_escape(test_fn.name)}\\n");')
+		if hooks.after_each.len > 0 {
+			g.writeln('${hooks.after_each}();')
+		}
+		if hooks.testsuite_end.len > 0 {
+			g.writeln('${hooks.testsuite_end}();')
+		}
 		g.writeln('return 1;')
 		g.indent--
 		g.writeln('}')
@@ -3084,6 +3173,9 @@ fn (g &FlatGen) callback_c_fn_name(name string) string {
 	if name.starts_with('C.') {
 		return c_name(name.all_after_last('.'))
 	}
+	if g.test_files.len > 0 && (name == 'main' || name == 'main.main') {
+		return g.test_user_main_c_name()
+	}
 	if name.starts_with('main.') {
 		return c_name(name.all_after_last('.'))
 	}
@@ -3619,12 +3711,12 @@ fn (mut g FlatGen) forward_decls() {
 			continue
 		}
 
-		is_entry_main := node.value == 'main' && (cur_module.len == 0 || cur_module == 'main')
+		is_entry_main := is_main_fn_in_main_module(cur_module, node.value) && g.test_files.len == 0
 		if kind_id == 61 && !is_entry_main {
 			if !g.should_emit_fn_node_in_module(node, i, cur_module) {
 				continue
 			}
-			qfn := qualified_fn_name_in_module(cur_module, node.value)
+			qfn := g.fn_c_name_in_module(cur_module, node.value)
 			if forwarded[qfn] {
 				continue
 			}

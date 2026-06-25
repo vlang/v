@@ -56,6 +56,41 @@ fn mutate_result_source(mut h ResultHolder) ! {
 	h.res!.name = 'result'
 }
 
+fn mutate_explicit_or_source(mut holder Holder) {
+	(holder.opt or {
+		assert false
+		return
+	}).name = 'ok'
+}
+
+fn mutate_explicit_or_none() {
+	mut holder := Holder{
+		opt: none
+	}
+	(holder.opt or {
+		assert err.msg() == ''
+		println('none')
+		return
+	}).name = 'bad'
+	assert false
+}
+
+fn mutate_result_explicit_or_ok(mut h ResultHolder) {
+	(h.res or {
+		assert false
+		return
+	}).name = 'explicit-result'
+}
+
+fn mutate_result_explicit_or_err(mut h ResultHolder) {
+	(h.res or {
+		assert err.msg() == 'boom'
+		println('boom')
+		return
+	}).name = 'bad'
+	assert false
+}
+
 fn main() {
 	mut m := ?AFoo(AFoo{})
 	assert m?.opt_string([1, 2, 3])? == '3'
@@ -74,6 +109,8 @@ fn main() {
 	}
 	mutate_result_source(mut result_ok)!
 	assert result_ok.res!.name == 'result'
+	mutate_result_explicit_or_ok(mut result_ok)
+	assert result_ok.res!.name == 'explicit-result'
 	mut result_bad := ResultHolder{
 		res: fail_inner()
 	}
@@ -83,6 +120,10 @@ fn main() {
 		saw_result_err = true
 	}
 	assert saw_result_err
+	mutate_result_explicit_or_err(mut result_bad)
+	mutate_explicit_or_source(mut holder)
+	assert holder.opt?.name == 'ok'
+	mutate_explicit_or_none()
 	guarded_failure() or {
 		assert err.msg() == ''
 		println('ok')
@@ -103,10 +144,16 @@ fn main() {
 	assert c_code.contains('m.value.name ='), c_code
 	assert c_code.contains('holder.opt.value.name ='), c_code
 	assert c_code.contains('outer.value.inner.name ='), c_code
+	assert c_code.contains('holder->opt.value.name =') || c_code.contains('holder.opt.value.name ='), c_code
+
 	assert c_code.contains('if (!m.ok)'), c_code
 	assert c_code.contains('if (!holder.opt.ok)'), c_code
 	assert c_code.contains('if (!outer.ok)'), c_code
 	assert c_code.contains('.err = h->res.err') || c_code.contains('.err = h.res.err'), c_code
+	assert c_code.contains('IError err = holder.opt.err')
+		|| c_code.contains('IError err = holder->opt.err'), c_code
+	assert c_code.contains('IError err = h->res.err') || c_code.contains('IError err = h.res.err'), c_code
+
 	mutate_result_start := c_code.index('\nOptional mutate_result_source(ResultHolder* h) {') or {
 		-1
 	}
@@ -123,5 +170,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
+	assert run.output.trim_space() == 'boom\nnone\nok'
 }

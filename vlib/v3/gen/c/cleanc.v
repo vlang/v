@@ -1956,6 +1956,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.ident {
+			if c_fn_name := g.test_user_main_fn_value_c_name(id, node) {
+				g.write(c_fn_name)
+				return
+			}
 			looked_up := g.tc.cur_scope.lookup(node.value) or { types.Type(types.void_) }
 			is_local := looked_up !is types.Void
 			const_name := if !is_local { g.const_ref_name(node.value) } else { '' }

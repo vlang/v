@@ -2211,14 +2211,13 @@ fn (mut t Transformer) try_lower_optional_selector_lvalue_assign(node flat.Node)
 	if int(lhs_id) < 0 || int(rhs_id) < 0 {
 		return none
 	}
-	lowered_lhs, guard_source, guard_body, guard_mode, err_source := t.lower_optional_selector_lvalue(lhs_id) or {
+	lowered_lhs, guard_source, guard_body, guard_mode := t.lower_optional_selector_lvalue(lhs_id) or {
 		return none
 	}
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
 	not_ok := t.make_prefix(.not, t.make_selector(guard_source, 'ok', 'bool'))
-	guard_stmts := t.optional_selector_lvalue_guard_stmts(guard_body, guard_mode, err_source,
-		guard_source)
+	guard_stmts := t.optional_selector_lvalue_guard_stmts(guard_body, guard_mode, guard_source)
 	result << t.make_if(not_ok, t.make_block(guard_stmts), t.make_empty())
 	lhs_type := t.lvalue_type(lhs_id)
 	sum_target := t.assignment_sum_target(lhs_id, rhs_id, lhs_type)
@@ -2232,19 +2231,19 @@ fn (mut t Transformer) try_lower_optional_selector_lvalue_assign(node flat.Node)
 	return result
 }
 
-fn (mut t Transformer) optional_selector_lvalue_guard_stmts(body_id flat.NodeId, mode string, err_source string, guard_source flat.NodeId) []flat.NodeId {
+fn (mut t Transformer) optional_selector_lvalue_guard_stmts(body_id flat.NodeId, mode string, guard_source flat.NodeId) []flat.NodeId {
+	err_expr := t.make_selector(guard_source, 'err', 'IError')
 	if mode == '!' || mode == '?' {
 		if t.is_optional_type_name(t.cur_fn_ret_type) {
-			err_expr := t.make_selector(guard_source, 'err', 'IError')
 			return arr1(t.make_return(t.make_optional_none_with_err(t.cur_fn_ret_type, err_expr),
 				t.cur_fn_ret_type))
 		}
 		return arr1(t.make_panic_stmt('option/result propagation failed'))
 	}
-	return t.lower_or_body_to_stmts(body_id, '', '', mode, err_source)
+	return t.lower_or_body_to_stmts_with_err_expr(body_id, '', '', mode, err_expr)
 }
 
-fn (mut t Transformer) lower_optional_selector_lvalue(id flat.NodeId) ?(flat.NodeId, flat.NodeId, flat.NodeId, string, string) {
+fn (mut t Transformer) lower_optional_selector_lvalue(id flat.NodeId) ?(flat.NodeId, flat.NodeId, flat.NodeId, string) {
 	if int(id) < 0 {
 		return none
 	}
@@ -2257,7 +2256,14 @@ fn (mut t Transformer) lower_optional_selector_lvalue(id flat.NodeId) ?(flat.Nod
 	if base.kind == .or_expr && base.children_count >= 2 {
 		return t.lower_optional_selector_lvalue_from_or(id, node, base)
 	}
-	lowered_base, guard_source, guard_body, guard_mode, err_source := t.lower_optional_selector_lvalue(base_id) or {
+	if base.kind == .paren && base.children_count > 0 {
+		inner_id := t.a.child(&base, 0)
+		inner := t.a.nodes[int(inner_id)]
+		if inner.kind == .or_expr && inner.children_count >= 2 {
+			return t.lower_optional_selector_lvalue_from_or(id, node, inner)
+		}
+	}
+	lowered_base, guard_source, guard_body, guard_mode := t.lower_optional_selector_lvalue(base_id) or {
 		return none
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
@@ -2278,10 +2284,10 @@ fn (mut t Transformer) lower_optional_selector_lvalue(id flat.NodeId) ?(flat.Nod
 		value:          node.value
 		typ:            node.typ
 	})
-	return lowered, guard_source, guard_body, guard_mode, err_source
+	return lowered, guard_source, guard_body, guard_mode
 }
 
-fn (mut t Transformer) lower_optional_selector_lvalue_from_or(id flat.NodeId, node flat.Node, base flat.Node) ?(flat.NodeId, flat.NodeId, flat.NodeId, string, string) {
+fn (mut t Transformer) lower_optional_selector_lvalue_from_or(id flat.NodeId, node flat.Node, base flat.Node) ?(flat.NodeId, flat.NodeId, flat.NodeId, string) {
 	source_id := t.a.child(&base, 0)
 	if !t.optional_selector_lvalue_source(source_id) {
 		return none
@@ -2311,7 +2317,7 @@ fn (mut t Transformer) lower_optional_selector_lvalue_from_or(id flat.NodeId, no
 		value:          node.value
 		typ:            if lhs_type.len > 0 { lhs_type } else { node.typ }
 	})
-	return lowered, source, t.a.child(&base, 1), base.value, t.optional_lvalue_err_source(source_id)
+	return lowered, source, t.a.child(&base, 1), base.value
 }
 
 fn (t &Transformer) optional_selector_lvalue_source(id flat.NodeId) bool {
@@ -2339,20 +2345,6 @@ fn (t &Transformer) optional_selector_lvalue_source(id flat.NodeId) bool {
 			return false
 		}
 	}
-}
-
-fn (t &Transformer) optional_lvalue_err_source(id flat.NodeId) string {
-	if int(id) < 0 {
-		return ''
-	}
-	node := t.a.nodes[int(id)]
-	if node.kind == .ident {
-		return node.value
-	}
-	if node.kind == .paren && node.children_count > 0 {
-		return t.optional_lvalue_err_source(t.a.child(&node, 0))
-	}
-	return ''
 }
 
 fn (mut t Transformer) try_lower_struct_compound_assign(node flat.Node) ?[]flat.NodeId {
