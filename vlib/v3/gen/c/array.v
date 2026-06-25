@@ -331,35 +331,57 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.write(')')
 		}
 		'wait' {
-			// `[]thread T .wait()` joins every spawned thread and (for non-void T)
-			// collects their return values into a fresh `[]T`.
-			g.gen_thread_array_wait(base_id, is_ptr, arr.elem_type)
-		}
-		else {
-			best_mname := g.array_method_fallback(fn_node.value)
-			if best_mname.len > 0 {
-				g.write(c_name(best_mname))
-				g.write('(')
-				ptypes := g.tc.fn_param_types[best_mname]
-				wants_ptr := ptypes.len > 0 && ptypes[0] is types.Pointer
-				if wants_ptr && !is_ptr {
-					g.write('&')
-				} else if !wants_ptr && is_ptr {
-					g.write('*')
-				}
-				g.gen_expr(base_id)
-				for i in 1 .. node.children_count {
-					g.write(', ')
-					g.gen_expr(g.a.child(&node, i))
-				}
-				g.write(')')
+			// Only a thread array supports `.wait()` (joining every spawned thread and,
+			// for non-void payloads, collecting their return values into a fresh `[]T`).
+			// The element carries the thread payload in its name (`thread`/`thread T`).
+			// Any other element type is not a thread, so route it through the normal
+			// method fallback instead of joining arbitrary array data as pthread_t handles.
+			mut is_thread := false
+			elem := arr.elem_type
+			if elem is types.Struct {
+				tn := elem.name.trim_space()
+				is_thread = tn == 'thread' || tn.starts_with('thread ')
+			}
+			if is_thread {
+				g.gen_thread_array_wait(base_id, is_ptr, arr.elem_type)
 			} else {
-				g.gen_expr(g.a.child(&node, 0))
-				g.write('(')
-				g.gen_expr(base_id)
-				g.write(')')
+				g.gen_array_method_call_fallback(node, fn_node.value, base_id, is_ptr)
 			}
 		}
+		else {
+			g.gen_array_method_call_fallback(node, fn_node.value, base_id, is_ptr)
+		}
+	}
+}
+
+// gen_array_method_call_fallback emits a call for an array method that has no dedicated
+// codegen arm: it resolves a `[]T.method` function when one is registered, and otherwise
+// emits the selector itself as a direct call. Shared by the catch-all `else` arm and by
+// `.wait()` on non-thread arrays (which is unsupported and falls through here rather than
+// joining elements as thread handles).
+fn (mut g FlatGen) gen_array_method_call_fallback(node flat.Node, mname string, base_id flat.NodeId, is_ptr bool) {
+	best_mname := g.array_method_fallback(mname)
+	if best_mname.len > 0 {
+		g.write(c_name(best_mname))
+		g.write('(')
+		ptypes := g.tc.fn_param_types[best_mname]
+		wants_ptr := ptypes.len > 0 && ptypes[0] is types.Pointer
+		if wants_ptr && !is_ptr {
+			g.write('&')
+		} else if !wants_ptr && is_ptr {
+			g.write('*')
+		}
+		g.gen_expr(base_id)
+		for i in 1 .. node.children_count {
+			g.write(', ')
+			g.gen_expr(g.a.child(&node, i))
+		}
+		g.write(')')
+	} else {
+		g.gen_expr(g.a.child(&node, 0))
+		g.write('(')
+		g.gen_expr(base_id)
+		g.write(')')
 	}
 }
 

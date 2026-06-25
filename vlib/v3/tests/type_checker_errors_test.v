@@ -479,3 +479,26 @@ fn test_pr_review_codegen_batch_four() {
 		'type Cb = fn () int\nfn run(cb Cb) int {\n\treturn cb()\n}\nfn five() int {\n\treturn 5\n}\nfn main() {\n\tprintln(int_str(run(five)))\n}\n')
 	assert alias_cb == '5'
 }
+
+// Regression tests for the fifth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_five() {
+	v3_bin := build_v3()
+	// A const-expression fixed-array length using `/` and `%` (and mixed precedence)
+	// must fold to the right literal, not mangle the raw expression into an identifier:
+	// `segs / 2` = 4, `segs % 3` = 2, `segs * 2 + 1` = 17, `segs / 2 * 2` = 8.
+	divmod := run_good(v3_bin, 'good_const_expr_fixed_array_divmod',
+		'const segs = 8\nstruct Buf {\n\ta [segs / 2]u8\n\tb [segs % 3]u8\n\tc [segs * 2 + 1]u8\n\td [segs / 2 * 2]u8\n}\nfn main() {\n\tx := Buf{}\n\tprintln(int_str(x.a.len + x.b.len + x.c.len + x.d.len))\n}\n')
+	// 4 + 2 + 17 + 8 = 31
+	assert divmod == '31'
+	// A bare `[]thread` (threads with no return value) joins to `void`: `.wait()` is a
+	// valid statement that runs every spawned thread to completion.
+	void_wait := run_good(v3_bin, 'good_bare_thread_void_wait',
+		"fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tthreads << spawn work()\n\tthreads.wait()\n\tprintln('done')\n}\n")
+	assert void_wait.contains('done')
+	// Because a bare `[]thread`.wait() is `void` (not the receiver `[]thread`), its
+	// result cannot be bound to a variable — guards against the old fallback that typed
+	// the call as the receiver array.
+	run_bad(v3_bin, 'bad_bare_thread_void_wait_assign',
+		"fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tx := threads.wait()\n\tprintln(x)\n}\n",
+		'unknown identifier `x`')
+}

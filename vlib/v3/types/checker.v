@@ -5255,24 +5255,40 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 	if is_decimal_int_literal(name) {
 		return name.int()
 	}
-	// Simple const arithmetic in string form, e.g. a fixed-array size `[SEGS + 1]` or
-	// `[SEGS+1]`. Split on the rightmost low-precedence operator first (left
-	// associativity); each side is trimmed, so spaced and unspaced forms both work and
-	// each side can itself be a const, a literal, or a nested expression. A leading `-`
-	// (unary) leaves an empty lhs and is skipped.
-	for op in ['+', '-', '*'] {
-		if idx := name.last_index(op) {
-			lhs := name[..idx].trim_space()
-			rhs := name[idx + op.len..].trim_space()
-			if lhs.len > 0 && rhs.len > 0 {
-				l := tc.const_int_value(lhs, seen) or { continue }
-				r := tc.const_int_value(rhs, seen) or { continue }
-				return match op {
-					'+' { l + r }
-					'-' { l - r }
-					else { l * r }
-				}
+	// Simple const arithmetic in string form, e.g. a fixed-array size `[SEGS + 1]`,
+	// `[SEGS+1]`, `[segs / 2]` or `[segs % 4]`. Split on the rightmost operator of the
+	// lowest precedence level present (`+ -`, then `* / % `), so both precedence and left
+	// associativity hold; each side is trimmed (spaced and unspaced forms both work) and
+	// resolved recursively. A leading `-` (unary) leaves an empty lhs and is skipped.
+	for level in [['+', '-'], ['*', '/', '%']] {
+		mut idx := -1
+		mut op := ''
+		for i := 0; i < name.len; i++ {
+			ch := name[i..i + 1]
+			if ch in level {
+				idx = i
+				op = ch
 			}
+		}
+		if idx <= 0 {
+			continue
+		}
+		lhs := name[..idx].trim_space()
+		rhs := name[idx + 1..].trim_space()
+		if lhs.len == 0 || rhs.len == 0 {
+			continue
+		}
+		l := tc.const_int_value(lhs, seen) or { return none }
+		r := tc.const_int_value(rhs, seen) or { return none }
+		if (op == '/' || op == '%') && r == 0 {
+			return none
+		}
+		return match op {
+			'+' { l + r }
+			'-' { l - r }
+			'*' { l * r }
+			'/' { l / r }
+			else { l % r }
 		}
 	}
 	return none
@@ -6595,14 +6611,23 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 						})
 					}
 					if fn_node.value == 'wait' {
-						// `[]thread T`.wait() joins all threads and returns `[]T`.
+						// `[]thread T`.wait() joins all threads and returns `[]T`. A bare
+						// `[]thread` (threads with no return value) joins to `void`. Any
+						// other array element type is not a thread and `.wait()` is
+						// unsupported, so reject it rather than mis-typing the call as the
+						// receiver array (which would emit invalid C joining non-handles).
 						elem := array_elem_type(clean_type)
-						if elem is Struct && elem.name.starts_with('thread ') {
-							return Type(Array{
-								elem_type: tc.parse_type(elem.name[7..])
-							})
+						if elem is Struct {
+							if elem.name == 'thread' {
+								return Type(void_)
+							}
+							if elem.name.starts_with('thread ') {
+								return Type(Array{
+									elem_type: tc.parse_type(elem.name[7..])
+								})
+							}
 						}
-						return base_type
+						return unknown_type('`.wait()` requires an array of threads')
 					}
 					if fn_node.value == 'clone' {
 						return base_type
