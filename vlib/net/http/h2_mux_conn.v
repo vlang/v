@@ -1197,9 +1197,20 @@ fn (mut c H2MuxConn) apply_peer_settings(settings []H2Setting) ! {
 					// path in a zero-length-frame loop, so fail the connection.
 					return error('h2: peer SETTINGS_MAX_FRAME_SIZE ${st.value} out of range [16384, 16777215]')
 				}
+				// Take wmu (then fmu, the permitted wmu -> fmu nesting) before
+				// lowering the cap. The send paths re-read peer_max_frame under fmu
+				// and then write the frame under wmu, holding wmu across both; an
+				// fmu-only update could land in the fmu-release -> write gap and let
+				// a sender emit a frame larger than the peer's new limit
+				// (FRAME_SIZE_ERROR). Serializing on wmu makes the senders' re-read
+				// authoritative, mirroring the header_table_size arm above.
+				// apply_peer_settings holds no connection lock at entry, so this
+				// wmu acquisition cannot invert any held lock.
+				c.wmu.lock()
 				c.fmu.lock()
 				c.peer_max_frame = st.value
 				c.fmu.unlock()
+				c.wmu.unlock()
 			}
 			else {} // unknown settings are ignored (RFC 7540 6.5.2)
 		}
