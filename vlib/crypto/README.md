@@ -152,11 +152,13 @@ fn main() {
 `(n: 16384, r: 8, p: 1)` are common interactive parameters.
 
 ```v
+import crypto.rand
 import crypto.scrypt
 
 fn main() {
 	password := 'correct horse battery staple'.bytes()
-	salt := 'some random salt'.bytes()
+	// generate and persist a unique random salt per password
+	salt := rand.bytes(16)!
 	key := scrypt.scrypt(password, salt, 16384, 8, 1, 32)!
 	assert key.len == 32
 }
@@ -166,11 +168,13 @@ fn main() {
 
 ```v
 import crypto.pbkdf2
+import crypto.rand
 import crypto.sha256
 
 fn main() {
 	password := 'correct horse battery staple'.bytes()
-	salt := 'some random salt'.bytes()
+	// generate and persist a unique random salt per password
+	salt := rand.bytes(16)!
 	key := pbkdf2.key(password, salt, 4096, 32, sha256.new())!
 	assert key.len == 32
 }
