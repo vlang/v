@@ -5370,10 +5370,10 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 		return tc.const_int_value(expr[1..expr.len - 1].trim_space(), seen)
 	}
 	// Operators grouped by precedence level, lowest first: `+ - | ^` (additive/bitwise),
-	// then `* / % & << >>` (multiplicative/shift), matching V/Go precedence. Split on the
-	// rightmost top-level operator of the lowest level present. Two-character operators
-	// (`<<`, `>>`) are matched before single characters; `idx + op.len` skips the operator.
-	for level in [['+', '-', '|', '^'], ['*', '/', '%', '&', '<<', '>>']] {
+	// then `* / % & << >> >>>` (multiplicative/shift), matching V/Go precedence. Split on
+	// the rightmost top-level operator of the lowest level present. Longer operators are
+	// matched first (`>>>` before `>>`, two-char before one); `idx + op.len` skips it.
+	for level in [['+', '-', '|', '^'], ['*', '/', '%', '&', '<<', '>>', '>>>']] {
 		mut idx := -1
 		mut op := ''
 		mut depth := 0
@@ -5391,6 +5391,13 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 				continue
 			}
 			if depth == 0 {
+				three := if i + 3 <= expr.len { expr[i..i + 3] } else { '' }
+				if three.len == 3 && three in level {
+					idx = i
+					op = three
+					i += 3
+					continue
+				}
 				two := if i + 2 <= expr.len { expr[i..i + 2] } else { '' }
 				if two.len == 2 && two in level {
 					idx = i
@@ -5418,7 +5425,7 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 		if (op == '/' || op == '%') && r == 0 {
 			return none
 		}
-		if (op == '<<' || op == '>>') && (r < 0 || r >= 64) {
+		if (op == '<<' || op == '>>' || op == '>>>') && (r < 0 || r >= 64) {
 			return none
 		}
 		return match op {
@@ -5431,7 +5438,8 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 			'^' { l ^ r }
 			'&' { l & r }
 			'<<' { l << r }
-			else { l >> r }
+			'>>' { l >> r }
+			else { int(u64(l) >> r) }
 		}
 	}
 	return none

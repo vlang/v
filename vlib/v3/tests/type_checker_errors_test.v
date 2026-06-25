@@ -643,3 +643,21 @@ fn test_pr_review_codegen_batch_twelve() {
 		'struct Point {\n\tx int\n\ty int\n}\nfn main() {\n\tmut arr := []&Point{}\n\tarr << &Point{1, 2}\n\tprintln(int_str(arr[0].x + arr[0].y))\n}\n')
 	assert pos == '3'
 }
+
+// Regression tests for the thirteenth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_thirteen() {
+	v3_bin := build_v3()
+	// V's unsigned right shift `>>>` is a valid constant-length operator. It must fold in
+	// the const evaluator (so the array dimension is emitted as a numeric literal, since
+	// `>>>` has no C form) and in the literal-length guard. `8 >>> 1` = 4, `16 >>> 2` = 4,
+	// `(1 << 5) >>> 2` = 8.
+	ushift := run_good(v3_bin, 'good_unsigned_shift_fixed_array_len',
+		'const shamt = 16 >>> 2\nfn main() {\n\ta := [8 >>> 1]int{}\n\tb := [shamt]int{}\n\tc := [(1 << 5) >>> 2]int{}\n\tprintln(int_str(a.len + b.len + c.len))\n}\n')
+	// 4 + 4 + 8 = 16
+	assert ushift == '16'
+	// The fixed-array literal-length guard evaluates `>>>` too: `[1, 2]` (two elements)
+	// does not match an expected `[8 >>> 1]int` (four), so it is rejected.
+	run_bad(v3_bin, 'bad_unsigned_shift_fixed_array_literal_len',
+		'fn take(a [8 >>> 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n',
+		'cannot use')
+}

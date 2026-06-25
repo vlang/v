@@ -1555,14 +1555,16 @@ fn (mut g FlatGen) fixed_array_len_raw(raw_len string, fallback int) string {
 	if raw_len.len == 0 {
 		return '${fallback}'
 	}
+	// A literal or const-expression size (`8`, `SEGS + 1`, `1 << 2`, `8 >>> 1`) folds to an
+	// integer; emit that literal so the C dimension is always valid — `>>>` has no C form,
+	// so a digit-leading expression like `8 >>> 1` must not be passed through raw — and a
+	// non-numeric expr isn't c_name-mangled (`SEGS_+_1`) into an undeclared identifier.
+	if v := g.tc.const_int_value(raw_len, []string{}) {
+		return v.str()
+	}
 	clean_len := raw_len.replace('_', '')
 	if clean_len.len > 0 && clean_len[0] >= `0` && clean_len[0] <= `9` {
 		return clean_len
-	}
-	// A const-expression size (`SEGS + 1`) evaluates to a literal; otherwise the whole
-	// string would be c_name-mangled (`SEGS_+_1`) into an undeclared identifier.
-	if v := g.tc.const_int_value(raw_len, []string{}) {
-		return v.str()
 	}
 	const_name := g.const_ref_name(raw_len)
 	if const_name.len > 0 {
