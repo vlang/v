@@ -37,6 +37,23 @@ fn interface_method_param_types(a &flat.FlatAst, iface string, method string) []
 	return []string{}
 }
 
+fn fn_decl_param_pairs(a &flat.FlatAst, kind flat.NodeKind, name string) []string {
+	for node in a.nodes {
+		if node.kind != kind || node.value != name {
+			continue
+		}
+		mut pairs := []string{}
+		for i in 0 .. node.children_count {
+			param := a.child_node(&node, i)
+			if param.kind == .param {
+				pairs << '${param.value}:${param.typ}'
+			}
+		}
+		return pairs
+	}
+	return []string{}
+}
+
 // test_interface_method_generic_type_only_param_is_not_parsed_as_name
 // validates this v3 regression case.
 fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
@@ -46,6 +63,44 @@ fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
 	assert interface_method_param_types(a, 'Sink', 'append') == ['[]int']
 	assert interface_method_param_types(a, 'Sink', 'visit') == ['&Node']
 	assert interface_method_param_types(a, 'Sink', 'read') == ['[max_len]u8']
+}
+
+fn test_c_function_anonymous_params_are_parsed_as_types() {
+	a := parse_parser_regression_source('c_anon_params',
+		'struct T {}\nstruct C.FILE {}\nstruct C.Widget {}\nstruct C.Node {}\n\nfn C.anon(&C.FILE, voidptr, int, &&T, [4]&C.Widget, ?&C.Node, !&C.Node, fn (&C.Node) int) int\nfn C.named(stream &C.FILE, a, b int) int\nfn C.named_arrays(m [16]f32, r []rune) int\nfn C.variadic(...int) int\nfn JS.js_anon(JS.Number) JS.Number\nfn JS.js_named(x JS.Number) JS.Number\nfn JS.setInterval(any, int, ...any) int\nfn JS.console.dir(any, any)\nfn JS.named_any(x any) any\nfn ordinary(int) {}\n')
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'anon') == [
+		':&C.FILE',
+		':voidptr',
+		':int',
+		':&&T',
+		':[4]&C.Widget',
+		':?&C.Node',
+		':!&C.Node',
+		':fn(&C.Node) int',
+	]
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'named') == [
+		'stream:&C.FILE',
+		'a:int',
+		'b:int',
+	]
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'named_arrays') == [
+		'm:[16]f32',
+		'r:[]rune',
+	]
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'variadic') == [':...int']
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'js_anon') == [':JS.Number']
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'js_named') == ['x:JS.Number']
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'setInterval') == [
+		':any',
+		':int',
+		':...any',
+	]
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'console.dir') == [
+		':any',
+		':any',
+	]
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'named_any') == ['x:any']
+	assert fn_decl_param_pairs(a, .fn_decl, 'ordinary') == ['int:']
 }
 
 fn test_sql_identifier_calls_are_not_parsed_as_sql_expr() {

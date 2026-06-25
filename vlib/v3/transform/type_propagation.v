@@ -1,6 +1,7 @@
 module transform
 
 import v3.flat
+import v3.types
 
 // propagate_decl_type infers the declared variable type from a .decl_assign node
 // and registers it in var_types so downstream transforms can resolve it.
@@ -8,21 +9,87 @@ fn (mut t Transformer) propagate_decl_type(node flat.Node) {
 	if node.kind != .decl_assign || node.children_count < 2 {
 		return
 	}
-	lhs_id := t.a.child(&node, 0)
+	if node.children_count >= 4 && node.children_count % 2 == 0 {
+		for i := 0; i < node.children_count; i += 2 {
+			t.propagate_decl_pair_type(node, i, i + 1, '')
+		}
+		return
+	}
+	t.propagate_decl_pair_type(node, 0, 1, node.typ)
+}
+
+fn (mut t Transformer) propagate_decl_pair_type(node flat.Node, lhs_idx int, rhs_idx int, fallback_type string) {
+	if lhs_idx >= node.children_count || rhs_idx >= node.children_count {
+		return
+	}
+	lhs_id := t.a.child(&node, lhs_idx)
 	lhs := t.a.nodes[int(lhs_id)]
 	if lhs.kind != .ident || lhs.value.len == 0 {
 		return
 	}
 	mut typ := ''
-	if node.typ.len > 0 {
-		typ = node.typ
+	rhs_id := t.a.child(&node, rhs_idx)
+	rhs_authority := t.decl_rhs_type(rhs_id)
+	if t.is_fn_pointer_type_name(rhs_authority) {
+		typ = rhs_authority
+	} else if decl_type_is_usable(fallback_type) {
+		typ = fallback_type
 	} else {
-		rhs_id := t.a.child(&node, 1)
-		typ = t.resolve_expr_type(rhs_id)
+		if decl_type_is_usable(rhs_authority) {
+			typ = rhs_authority
+		} else if decl_type_is_usable(lhs.typ) {
+			typ = lhs.typ
+		}
 	}
 	if typ.len > 0 {
-		t.set_var_type(lhs.value, typ)
+		t.set_var_type(lhs.value, t.normalize_type_alias(typ))
 	}
+}
+
+fn decl_type_is_usable(typ string) bool {
+	return typ.len > 0 && typ !in ['unknown', 'array', 'map']
+}
+
+fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
+	if fn_type := t.fn_value_type_name(id) {
+		return fn_type
+	}
+	return t.node_type(id)
+}
+
+fn (t &Transformer) fn_value_type_name(id flat.NodeId) ?string {
+	if isnil(t.tc) || int(id) < 0 {
+		return none
+	}
+	if typ := t.tc.expr_type(id) {
+		if name := fn_value_type_name_from_type(typ) {
+			return t.normalize_type_alias(name)
+		}
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .fn_literal || node.kind == .lambda_expr {
+		typ := t.tc.resolve_type(id)
+		if name := fn_value_type_name_from_type(typ) {
+			return t.normalize_type_alias(name)
+		}
+	}
+	return none
+}
+
+fn fn_value_type_name_from_type(typ types.Type) ?string {
+	name := typ.name()
+	if name.len == 0 {
+		return none
+	}
+	if typ is types.FnType {
+		return name
+	}
+	if typ is types.Alias {
+		if typ.base_type is types.FnType {
+			return name
+		}
+	}
+	return none
 }
 
 // resolve_selector_type resolves the type of a .selector node (e.g. `obj.field`).
@@ -235,11 +302,21 @@ fn (t &Transformer) lookup_struct_info_for_field(type_name string, field_name st
 			lookup_type = short_type
 		}
 	}
-	if lookup_type !in t.structs && !lookup_type.contains('.') && t.cur_module.len > 0
-		&& t.cur_module != 'main' && t.cur_module != 'builtin' {
+	if !lookup_type.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
 		qtype := '${t.cur_module}.${lookup_type}'
 		if qtype in t.structs {
 			lookup_type = qtype
+		} else if !isnil(t.tc) {
+			if target := t.tc.type_aliases[qtype] {
+				lookup_type = target
+			}
+		}
+	}
+	if lookup_type !in t.structs {
+		normalized := t.normalize_type_alias(lookup_type)
+		if normalized != lookup_type {
+			lookup_type = normalized
 		}
 	}
 	info := t.structs[lookup_type] or { return none }
@@ -314,7 +391,7 @@ fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 		if !field_base.contains('.') && owner_type.contains('.') {
 			owner_mod := owner_type.all_before_last('.')
 			qbase := '${owner_mod}.${field_base}'
-			if qbase in t.structs || qbase in t.sum_types || qbase in t.enum_types {
+			if t.type_authority_has(qbase) {
 				field_base = qbase
 			}
 		}
@@ -336,7 +413,7 @@ fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 	}
 	owner_mod := owner_type.all_before_last('.')
 	qtyp := '${owner_mod}.${typ}'
-	if qtyp in t.structs || qtyp in t.sum_types || qtyp in t.enum_types {
+	if t.type_authority_has(qtyp) {
 		return t.normalize_type_alias(qtyp)
 	}
 	if !isnil(t.tc) {
@@ -345,6 +422,17 @@ fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 		}
 	}
 	return t.normalize_type_alias(typ)
+}
+
+fn (t &Transformer) type_authority_has(name string) bool {
+	if name in t.structs || name in t.sum_types || name in t.enum_types {
+		return true
+	}
+	if isnil(t.tc) {
+		return false
+	}
+	return name in t.tc.structs || name in t.tc.sum_types || name in t.tc.enum_names
+		|| name in t.tc.interface_names || name in t.tc.type_aliases
 }
 
 // normalize_type_alias transforms normalize type alias data for transform.
@@ -394,7 +482,10 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 	if !typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
 		qtyp := '${t.cur_module}.${typ}'
-		if qtyp in t.structs || qtyp in t.sum_types || qtyp in t.enum_types {
+		if target := t.tc.type_aliases[qtyp] {
+			return target
+		}
+		if t.type_authority_has(qtyp) {
 			return qtyp
 		}
 	}
@@ -493,7 +584,7 @@ fn (t &Transformer) normalize_type_in_module(typ string, mod string) string {
 		return t.normalize_type_alias(clean)
 	}
 	qtyp := '${mod}.${clean}'
-	if qtyp in t.structs || qtyp in t.sum_types || qtyp in t.enum_types {
+	if t.type_authority_has(qtyp) {
 		return t.normalize_type_alias(qtyp)
 	}
 	if !isnil(t.tc) {
@@ -520,7 +611,8 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) string {
 		ptr_elem_type := t.normalize_type_alias(base_type[1..])
 		// A `mut map`/`mut []T` param is a pointer to the container; indexing it must
 		// still yield the element/value type, so fall through to the container cases.
-		if !ptr_elem_type.starts_with('[]') && !ptr_elem_type.starts_with('map[') {
+		if !ptr_elem_type.starts_with('[]') && !ptr_elem_type.starts_with('map[')
+			&& !t.is_fixed_array_type(ptr_elem_type) {
 			return ptr_elem_type
 		}
 		base_type = ptr_elem_type
@@ -535,11 +627,14 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) string {
 		// A range/slice of a fixed array (`arr[..]`, `arr[a..b]`) yields a dynamic
 		// `[]T`, not the fixed array or a bogus `range` type.
 		if t.is_fixed_array_type(base_type) {
-			return '[]${fixed_array_elem_type(base_type)}'
+			return '[]${t.normalize_type_alias(for_in_fixed_array_elem_type(base_type))}'
 		}
 	}
 	if base_type.starts_with('[]') {
 		return t.normalize_type_alias(base_type[2..])
+	}
+	if t.is_fixed_array_type(base_type) {
+		return t.normalize_type_alias(for_in_fixed_array_elem_type(base_type))
 	}
 	if base_type.starts_with('map[') {
 		bracket_end := base_type.index(']') or { return '' }
@@ -552,6 +647,18 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) string {
 		return 'u8'
 	}
 	return ''
+}
+
+fn (t &Transformer) index_expr_type(id flat.NodeId, node flat.Node) string {
+	if !isnil(t.tc) {
+		if typ := t.tc.expr_type(id) {
+			name := typ.name()
+			if name.len > 0 && name != 'unknown' {
+				return t.normalize_type_alias(name)
+			}
+		}
+	}
+	return t.resolve_index_elem_type(node)
 }
 
 // node_type returns the v-type string for an expression node, preferring the
@@ -578,7 +685,7 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 		}
 	}
 	if node.kind == .index {
-		elem_type := t.resolve_index_elem_type(node)
+		elem_type := t.index_expr_type(id, node)
 		if elem_type.len > 0 {
 			return elem_type
 		}

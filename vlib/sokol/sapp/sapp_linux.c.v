@@ -462,14 +462,14 @@ const map_private = 2
 #include <X11/Xcursor/Xcursor.h>
 
 // X11 types
-pub type XID = u64
-pub type Atom = u64
-pub type Window = u64
-pub type Colormap = u64
-pub type Cursor = u64
-pub type KeySym = u64
-pub type Time = u64
-pub type VisualID = u64
+pub type XID = C.XID
+pub type Atom = C.Atom
+pub type Window = C.Window
+pub type Colormap = C.Colormap
+pub type Cursor = C.Cursor
+pub type KeySym = C.KeySym
+pub type Time = C.Time
+pub type VisualID = C.VisualID
 
 // X11 types are defined by X11 headers (#preinclude above)
 // Forward declarations for V type checking only
@@ -845,7 +845,7 @@ fn C.XSetWMProtocols(display &C.Display, window Window, protocols &Atom, count i
 fn C.XSetWMNormalHints(display &C.Display, window Window, hints &C.XSizeHints) int
 fn C.XAllocSizeHints() &C.XSizeHints
 fn C.XGetWindowAttributes(display &C.Display, window Window, attrs &C.XWindowAttributes) int
-fn C.XGetWindowProperty(display &C.Display, window Window, property Atom, long_offset i64, long_length i64, delete int, req_type Atom, actual_type &Atom, actual_format &int, nitems &u64, bytes_after &u64, prop &&&u8) int
+fn C.XGetWindowProperty(display &C.Display, window Window, property Atom, long_offset i64, long_length i64, delete int, req_type Atom, actual_type &Atom, actual_format &int, nitems &usize, bytes_after &usize, prop &&u8) int
 fn C.XChangeProperty(display &C.Display, window Window, property Atom, @type Atom, format int, mode int, data &u8, nelements int) int
 fn C.Xutf8SetWMProperties(display &C.Display, window Window, window_name &char, icon_name &char, argv &&char, argc int, normal_hints voidptr, wm_hints voidptr, class_hints voidptr)
 fn C.XSetSelectionOwner(display &C.Display, selection Atom, owner Window, time Time)

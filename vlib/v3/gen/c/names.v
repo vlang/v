@@ -40,6 +40,7 @@ const c_reserved_words = {
 	'void':     true
 	'volatile': true
 	'while':    true
+	'unix':     true
 }
 
 // c_libc_collisions are libc function names that are not C keywords but clash at
@@ -196,6 +197,9 @@ fn c_name_sanitize(name string) string {
 			b.write_string('__')
 		} else if c == `&` {
 			b.write_string('ptr')
+		} else if c == `@` {
+			i++
+			continue
 		} else if c == `,` || c == ` ` {
 			b.write_u8(`_`)
 		} else {

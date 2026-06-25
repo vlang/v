@@ -1,12 +1,18 @@
 import os
 import strings
 
+const parallel_tests_dir = os.dir(@FILE)
+const parallel_v3_dir = os.dir(parallel_tests_dir)
+const parallel_vlib_dir = os.dir(parallel_v3_dir)
+const parallel_v3_src = os.join_path(parallel_v3_dir, 'v3.v')
+
 // build_parallel_v3 builds parallel v3 data for v3 tests.
 fn build_parallel_v3() string {
 	vexe := @VEXE
-	v3_src := os.join_path(@VEXEROOT, 'vlib', 'v3', 'v3.v')
 	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_cgen_test')
-	build := os.execute('${vexe} -d parallel -o ${v3_bin} ${v3_src}')
+	os.rm(v3_bin) or {}
+	build :=
+		os.execute('${vexe} -d parallel -path "${parallel_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${parallel_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }

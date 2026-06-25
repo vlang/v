@@ -318,6 +318,7 @@ fn (r Remote) read(path string) string {
 	mut used := markused.mark_used(a, tc)
 	assert used['Reader.read']
 	assert !used['moda.Reader.read']
+	assert !used['moda.Remote.read']
 	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
@@ -326,6 +327,144 @@ fn (r Remote) read(path string) string {
 	c_code := g.gen_with_used_options(a, used, tc, true)
 	assert c_code.contains('Reader__read(')
 	assert !c_code.contains('moda__Reader__read(')
+}
+
+fn test_local_receiver_method_does_not_root_imported_interface_by_short_name() {
+	mut a, mut tc := parse_checked_project('local_receiver_imported_interface_short_name', {
+		'main.v':      'module main
+
+import moda
+
+struct Reader {}
+
+fn (r Reader) read() int {
+	return 1
+}
+
+fn main() {
+	_ := Reader{}.read()
+}
+'
+		'moda/moda.v': 'module moda
+
+pub interface Reader {
+	read() int
+}
+
+pub struct Remote {}
+
+pub fn (r Remote) read() int {
+	return 2
+}
+'
+	}, 'main.v')
+	mut used := markused.mark_used(a, tc)
+	assert used['Reader.read']
+	assert !used['moda.Reader.read']
+	assert !used['moda.Remote.read']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('Reader__read(')
+	assert !c_code.contains('moda__Reader__read(')
+	assert !c_code.contains('moda__Remote__read(')
+}
+
+fn test_imported_interface_dispatch_is_emitted_when_exactly_used() {
+	mut a, mut tc := parse_checked_project('imported_interface_dispatch_used', {
+		'main.v':      'module main
+
+import moda
+
+fn call_reader(r moda.Reader) string {
+	return r.read("ok")
+}
+
+fn main() {
+	_ := call_reader(moda.Remote{})
+}
+'
+		'moda/moda.v': 'module moda
+
+pub interface Reader {
+	read(path string) string
+}
+
+pub struct Remote {}
+
+pub fn (r Remote) read(path string) string {
+	return path
+}
+'
+	}, 'main.v')
+	mut used := markused.mark_used(a, tc)
+	assert used['moda.Reader.read']
+	assert used['moda.Remote.read']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('moda__Reader__read(')
+	assert c_code.contains('moda__Remote__read(')
+}
+
+fn test_interface_dispatch_target_does_not_use_bare_method_key_for_imported_homonym() {
+	mut a, mut tc := parse_checked_project('interface_dispatch_target_homonym', {
+		'main.v':      'module main
+
+import moda
+
+interface Reader {
+	read() int
+}
+
+struct Local {}
+
+fn (l Local) read() int {
+	return 1
+}
+
+fn read() int {
+	return 9
+}
+
+fn call_reader(r Reader) int {
+	return r.read()
+}
+
+fn main() {
+	_ := read()
+	_ := call_reader(Local{})
+}
+'
+		'moda/moda.v': 'module moda
+
+pub struct Remote {}
+
+pub fn (r Remote) read() int {
+	return 2
+}
+'
+	}, 'main.v')
+	mut used := markused.mark_used(a, tc)
+	assert used['read']
+	assert used['Reader.read']
+	used.delete('moda.Remote.read')
+	used.delete('Remote.read')
+	used.delete('moda__Remote__read')
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('Reader__read(')
+	assert !c_code.contains('moda__Remote__read(')
 }
 
 fn test_unused_main_method_with_interface_dispatch_is_pruned_with_stub() {

@@ -6,6 +6,7 @@ module os
 #include <sys/utsname.h>
 #include <sys/types.h>
 #include <sys/statvfs.h>
+#include <sys/wait.h>
 #include <utime.h>
 #insert "@VEXEROOT/vlib/os/execute_capture_nix.h"
 

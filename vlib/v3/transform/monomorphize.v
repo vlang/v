@@ -604,6 +604,93 @@ fn (mut t Transformer) rewrite_generic_calls(decls map[string]GenericFnDecl, tem
 	}
 }
 
+fn (mut t Transformer) concrete_generic_call_return_type(id flat.NodeId, node flat.Node) string {
+	if node.kind != .call || node.children_count == 0 {
+		return ''
+	}
+	decls := t.cached_generic_fn_decls()
+	if decls.len == 0 {
+		return ''
+	}
+	decl_key := t.generic_call_decl_key(id, node, t.cur_module, decls) or { return '' }
+	decl := decls[decl_key] or { return '' }
+	if t.should_skip_generic_call_specialization(decl_key) {
+		return ''
+	}
+	mut args := []string{}
+	if explicit := t.explicit_generic_call_args(node, t.cur_module) {
+		args = explicit.clone()
+	} else {
+		args = t.infer_generic_call_args_from_params(decl, node) or { return '' }
+	}
+	if args.len == 0 || t.generic_args_have_placeholders(args) {
+		return ''
+	}
+	ret := substitute_generic_type_text(decl.node.typ, args)
+	if ret.len == 0 || t.generic_arg_is_unresolved(ret) {
+		return ''
+	}
+	return t.normalize_type_alias(ret)
+}
+
+fn (mut t Transformer) cached_generic_fn_decls() map[string]GenericFnDecl {
+	if !t.generic_fn_decls_ready {
+		t.generic_fn_decls_cache = t.collect_generic_fn_decls()
+		t.generic_fn_decls_ready = true
+	}
+	return t.generic_fn_decls_cache
+}
+
+fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, node flat.Node) ?[]string {
+	param_names := t.generic_fn_param_names(decl.node, decl.module)
+	if param_names.len == 0 {
+		return none
+	}
+	mut inferred := map[string]string{}
+	mut param_idx := 0
+	for i in 0 .. decl.node.children_count {
+		child := t.a.child_node(&decl.node, i)
+		if child.kind != .param {
+			continue
+		}
+		arg_idx := if t.generic_decl_is_receiver_method(decl.node) && param_idx == 0 {
+			0
+		} else {
+			param_idx + 1
+		}
+		if arg_idx >= int(node.children_count) {
+			param_idx++
+			continue
+		}
+		arg_id := if arg_idx == 0 {
+			t.generic_call_receiver_id(node) or {
+				param_idx++
+				continue
+			}
+		} else {
+			t.a.child(&node, arg_idx)
+		}
+		mut arg_type := t.node_type(arg_id)
+		if arg_type.len == 0 {
+			arg_type = t.generic_arg_expr_type(arg_id)
+		}
+		if arg_type.len > 0 {
+			infer_generic_type_args(child.typ, arg_type, mut inferred)
+			if t.generic_decl_is_receiver_method(decl.node) && param_idx == 0 {
+				t.infer_generic_receiver_suffix_args(child.typ, arg_type, mut inferred)
+				t.infer_generic_embedded_receiver_args(child.typ, arg_type, mut inferred)
+			}
+		}
+		param_idx++
+	}
+	mut args := []string{cap: param_names.len}
+	for name in param_names {
+		arg := inferred[name] or { return none }
+		args << t.generic_arg_for_decl_module(arg, decl.module)
+	}
+	return args
+}
+
 fn (mut t Transformer) rewrite_generic_plain_call(id flat.NodeId, node flat.Node, decl GenericFnDecl, args []string) {
 	spec_value := specialized_generic_fn_value(decl.node.value, args)
 	spec_name := transform_qualified_fn_name(decl.module, spec_value)

@@ -354,7 +354,7 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name string, method string)
 		return true
 	}
 	name := '${iface_name}.${method}'
-	if g.used_fn_contains(name) || g.used_fn_contains(c_name(name)) {
+	if g.used_interface_dispatch_key(name) {
 		return true
 	}
 	// If any concrete implementer's method is live, the dispatch is reachable even
@@ -371,19 +371,26 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name string, method string)
 		}
 	}
 	if decl_key := g.interface_method_signature_key(iface_name, method) {
-		if decl_key != name
-			&& (g.used_fn_contains(decl_key) || g.used_fn_contains(c_name(decl_key))) {
+		if decl_key != name && g.used_interface_dispatch_key(decl_key) {
 			return true
 		}
 		decl_short_name := '${decl_key.all_before_last('.').all_after_last('.')}.${method}'
-		if decl_short_name != decl_key
-			&& (g.used_fn_contains(decl_short_name) || g.used_fn_contains(c_name(decl_short_name))) {
+		if decl_short_name != decl_key && g.interface_dispatch_short_name_allowed(iface_name)
+			&& g.used_interface_dispatch_key(decl_short_name) {
 			return true
 		}
 	}
 	short_name := '${iface_name.all_after_last('.')}.${method}'
-	return short_name != name && g.interface_dispatch_short_name_is_unambiguous(short_name, method)
-		&& (g.used_fn_contains(short_name) || g.used_fn_contains(c_name(short_name)))
+	return short_name != name && g.interface_dispatch_short_name_allowed(iface_name)
+		&& g.used_interface_dispatch_key(short_name)
+}
+
+fn (g &FlatGen) used_interface_dispatch_key(name string) bool {
+	return g.used_fn_contains(name) || g.used_fn_contains(c_name(name))
+}
+
+fn (g &FlatGen) interface_dispatch_short_name_allowed(iface_name string) bool {
+	return !iface_name.contains('.')
 }
 
 fn (g &FlatGen) interface_dispatch_short_name_is_unambiguous(short_name string, method string) bool {
@@ -526,8 +533,38 @@ fn (g &FlatGen) interface_dispatch_target_is_emitted(concrete_key string) bool {
 	if !g.has_used_fn_filter() {
 		return true
 	}
-	return g.used_fn_contains(concrete_key) || g.used_fn_contains(c_name(concrete_key))
-		|| g.used_fn_contains(concrete_key.all_after_last('.'))
+	if g.used_interface_dispatch_key(concrete_key) {
+		return true
+	}
+	receiver_name := concrete_key.all_before_last('.')
+	if receiver_name.contains('.') {
+		return false
+	}
+	method := concrete_key.all_after_last('.')
+	short_key := '${receiver_name.all_after_last('.')}.${method}'
+	return short_key != concrete_key
+		&& g.interface_dispatch_target_short_name_is_unambiguous(short_key, method)
+		&& g.used_interface_dispatch_key(short_key)
+}
+
+fn (g &FlatGen) interface_dispatch_target_short_name_is_unambiguous(short_name string, method string) bool {
+	mut seen := map[string]bool{}
+	mut matches := 0
+	for _, impls in g.iface_impls {
+		for concrete in impls {
+			if seen[concrete] {
+				continue
+			}
+			seen[concrete] = true
+			if '${concrete.all_after_last('.')}.${method}' == short_name {
+				matches++
+				if matches > 1 {
+					return false
+				}
+			}
+		}
+	}
+	return matches == 1
 }
 
 // sum_type_index supports sum type index handling for FlatGen.
