@@ -439,3 +439,23 @@ fn test_pr_review_codegen_batch_three() {
 		"struct G {\n\tn int\n}\nfn (g G) make() ?string {\n\treturn 'hi'\n}\nfn run(cb fn () ?string) {\n\ts := cb() or { 'none' }\n\tprintln(s)\n}\nfn main() {\n\tg := G{\n\t\tn: 1\n\t}\n\trun(g.make)\n}\n")
 	assert mv == 'hi'
 }
+
+// Regression tests: a bare generic struct literal adopts a matching concrete
+// expected instance (value and heap), and a field-type mismatch is rejected.
+fn test_bare_generic_literal_adopts_expected_instance() {
+	v3_bin := build_v3()
+	val := run_good(v3_bin, 'good_bare_generic_literal_return',
+		'struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 7\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
+	assert val == '7'
+	heap := run_good(v3_bin, 'good_bare_generic_literal_heap_return',
+		'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 9\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
+	assert heap == '9'
+	pair := run_good(v3_bin, 'good_bare_generic_literal_multi_param',
+		"struct Pair[L, R] {\n\tl L\n\tr R\n}\nfn make() Pair[string, int] {\n\treturn Pair{\n\t\tl: 'hi'\n\t\tr: 5\n\t}\n}\nfn main() {\n\tp := make()\n\tprintln(p.l)\n\tprintln(int_str(p.r))\n}\n")
+	assert pair == 'hi\n5'
+	// A field whose type does not match the concrete instantiation is rejected by the
+	// checker (rather than adopting the type and emitting broken C).
+	run_bad(v3_bin, 'bad_bare_generic_literal_field_mismatch',
+		"struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 'str'\n\t}\n}\nfn main() {\n\t_ := make()\n}\n",
+		'cannot return `Box` as `Box[int]`')
+}

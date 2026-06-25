@@ -3484,6 +3484,70 @@ fn (tc &TypeChecker) is_concrete_generic_instance(name string) bool {
 	return tc.generic_args_are_concrete(args)
 }
 
+// bare_generic_literal_adopts reports whether a struct literal written as the bare
+// generic base (`Box{...}`, no type args) should adopt the concrete `expected`
+// instance (`Box[int]`, optionally behind a pointer). The base short-names must match
+// and the base must be a known generic struct, so a non-generic same-named struct is
+// left to ordinary checking.
+fn (tc &TypeChecker) bare_generic_literal_adopts(lit_value string, expected Type) bool {
+	if lit_value.len == 0 || lit_value.contains('[') {
+		return false
+	}
+	e_base, _, e_ok := generic_type_application_parts(unwrap_pointer(expected).name())
+	if !e_ok || e_base.all_after_last('.') != lit_value.all_after_last('.') {
+		return false
+	}
+	return e_base in tc.struct_generic_params
+		|| e_base.all_after_last('.') in tc.struct_generic_params
+}
+
+// generic_literal_fields_compatible checks a bare generic struct literal's named
+// field initializers against the expected concrete instantiation (`Box[int]`),
+// substituting the struct's type parameters into each field's declared type. It
+// returns false only on a *definite* mismatch (e.g. `Box{v: 'str'}` for `Box[int]`),
+// so a clearly-unrelated literal yields a clean checker error instead of adopting the
+// type and emitting broken C; unresolvable fields stay lenient.
+fn (mut tc TypeChecker) generic_literal_fields_compatible(node flat.Node, expected Type) bool {
+	e_base, e_args, e_ok := generic_type_application_parts(unwrap_pointer(expected).name())
+	if !e_ok {
+		return true
+	}
+	params := tc.struct_generic_params[e_base] or {
+		tc.struct_generic_params[e_base.all_after_last('.')] or { return true }
+	}
+	if params.len != e_args.len {
+		return true
+	}
+	fields := tc.structs[e_base] or { tc.structs[e_base.all_after_last('.')] or { return true } }
+	for i in 0 .. node.children_count {
+		fi := tc.a.child_node(&node, i)
+		if fi.kind != .field_init || fi.value.len == 0 || fi.children_count == 0 {
+			continue
+		}
+		mut decl_typ := Type(void_)
+		mut found := false
+		for f in fields {
+			if f.name == fi.value {
+				decl_typ = f.typ
+				found = true
+				break
+			}
+		}
+		if !found {
+			continue
+		}
+		sub := tc.substitute_generic_type(decl_typ, e_args, params)
+		if sub is Unknown || sub is Void {
+			continue
+		}
+		actual := tc.resolve_expr(tc.a.child(fi, 0), sub)
+		if !tc.receiver_compatible(actual, sub) {
+			return false
+		}
+	}
+	return true
+}
+
 // strip_generic_args_name returns the base name of a generic instance type
 // (`Box[int]` -> `Box`); array/map types (leading `[`) yield the name unchanged.
 fn strip_generic_args_name(name string) string {
@@ -4735,6 +4799,23 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 		tc.type_mismatch(.assignment_mismatch,
 			'unknown enum field `${node.value}` for `${expected.name}`', id)
 		return Type(int_)
+	}
+	// A bare generic struct literal (`Box{...}` / `&Box{...}`) adopts a matching concrete
+	// expected instance (`Box[int]` / `&Box[int]`), so `fn make() Box[int] { return
+	// Box{...} }` and bare literals passed/assigned where a concrete instance is expected
+	// type-check and carry the concrete type into codegen.
+	if node.kind == .struct_init && tc.bare_generic_literal_adopts(node.value, expected)
+		&& tc.generic_literal_fields_compatible(node, expected) {
+		tc.register_synth_type(id, expected_raw)
+		return expected_raw
+	}
+	if node.kind == .prefix && node.op == .amp && node.children_count == 1 && expected is Pointer {
+		child := tc.a.nodes[int(tc.a.child(&node, 0))]
+		if child.kind == .struct_init && tc.bare_generic_literal_adopts(child.value, expected)
+			&& tc.generic_literal_fields_compatible(child, expected) {
+			tc.register_synth_type(id, expected_raw)
+			return expected_raw
+		}
 	}
 	if node.kind == .array_literal {
 		mut elem_expected := Type(void_)
