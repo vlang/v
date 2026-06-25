@@ -54,6 +54,15 @@ pub fn sub_xy(x int, y int) int {
 
 fn selective_import_compile_run(v3_bin string, name string, main_src string) (string, string) {
 	root := selective_import_write_project(name, main_src)
+	return selective_import_compile_run_root(v3_bin, root)
+}
+
+fn selective_import_compile_run_with_extra(v3_bin string, name string, main_src string, extra_files map[string]string) (string, string) {
+	root := selective_import_write_project_with_extra(name, main_src, extra_files)
+	return selective_import_compile_run_root(v3_bin, root)
+}
+
+fn selective_import_compile_run_root(v3_bin string, root string) (string, string) {
 	bin := os.join_path(root, 'out')
 	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
@@ -130,6 +139,37 @@ fn main() {
 	assert generated.contains('mymodules__add_xy'), generated
 	assert generated.contains('f(2, 3)'), generated
 	assert !generated.contains('int f = mymodules__add_xy'), generated
+}
+
+fn test_selective_import_function_value_roots_exact_symbol_with_imported_homonym() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin,
+		'fn_value_imported_homonym', 'module main
+
+import a { choose }
+import b
+
+fn main() {
+	f := choose
+	println(int_str(f()))
+}
+', {
+		'a/a.v': 'module a
+
+pub fn choose() int {
+	return 11
+}
+'
+		'b/b.v': 'module b
+
+pub fn choose() int {
+	return 99
+}
+'
+	})
+	assert output == '11'
+	assert generated.contains('a__choose'), generated
+	assert !generated.contains('b__choose'), generated
 }
 
 fn test_selective_import_does_not_import_other_symbols_by_suffix() {

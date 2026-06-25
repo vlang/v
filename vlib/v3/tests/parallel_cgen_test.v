@@ -71,3 +71,87 @@ fn test_parallel_cgen_main_emits_module_init_call() {
 	c_code := os.read_file(c_out) or { panic(err) }
 	assert c_code.all_after('int main').contains('_vinit();')
 }
+
+fn write_parallel_gettid_project(name string) string {
+	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(project_dir) or { panic(err) }
+
+	mut main_src := strings.new_builder(96_000)
+	main_src.writeln('module main')
+	main_src.writeln('')
+	main_src.writeln('fn C.gettid() int')
+	main_src.writeln('')
+	for i in 0 .. 1050 {
+		main_src.writeln('fn helper_${i}() int {')
+		main_src.writeln('\treturn ${i}')
+		main_src.writeln('}')
+		main_src.writeln('')
+	}
+	main_src.writeln('fn worker_gettid_value() int {')
+	main_src.writeln('\treturn C.gettid()')
+	main_src.writeln('}')
+	main_src.writeln('')
+	main_src.writeln('fn main() {')
+	main_src.writeln('\tmut total := 0')
+	for i in 0 .. 1050 {
+		main_src.writeln('\ttotal += helper_${i}()')
+	}
+	main_src.writeln('\tprintln(int_str(total + worker_gettid_value()))')
+	main_src.writeln('}')
+	os.write_file(os.join_path(project_dir, 'main.v'), main_src.str()) or { panic(err) }
+	return os.join_path(project_dir, 'main.v')
+}
+
+fn test_parallel_cgen_merges_worker_gettid_compat() {
+	v3_bin := build_parallel_v3()
+	main_path := write_parallel_gettid_project('parallel_gettid_compat')
+	c_out := os.join_path(os.temp_dir(), 'v3_parallel_gettid_compat.c')
+	compile := os.execute('VJOBS=2 ${v3_bin} ${main_path} -o ${c_out}')
+	assert compile.exit_code == 0, compile.output
+	assert compile.output.contains('cgen'), compile.output
+	c_code := os.read_file(c_out) or { panic(err) }
+	assert c_code.contains('static inline u32 v3_gettid(void)'), c_code
+	assert c_code.contains('return v3_gettid();'), c_code
+}
+
+fn write_parallel_top_level_no_main_project(name string) string {
+	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(project_dir) or { panic(err) }
+
+	mut main_src := strings.new_builder(48_000)
+	main_src.writeln('module main')
+	main_src.writeln('')
+	for i in 0 .. 320 {
+		main_src.writeln('fn helper_${i}() int {')
+		main_src.writeln('\treturn ${i}')
+		main_src.writeln('}')
+		main_src.writeln('')
+	}
+	main_src.writeln('mut values := map[string]int{}')
+	main_src.writeln("mut total := values['missing'] or {")
+	main_src.writeln('\t7')
+	main_src.writeln('}')
+	for i in 0 .. 320 {
+		main_src.writeln('total += helper_${i}()')
+	}
+	main_src.writeln('println(int_str(total))')
+	os.write_file(os.join_path(project_dir, 'main.v'), main_src.str()) or { panic(err) }
+	return os.join_path(project_dir, 'main.v')
+}
+
+fn test_parallel_transform_lowers_top_level_stmts_without_main_once() {
+	v3_bin := build_parallel_v3()
+	main_path := write_parallel_top_level_no_main_project('parallel_top_level_no_main')
+	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_top_level_no_main_out')
+	compile := os.execute('VJOBS=2 ${v3_bin} --parallel-transform ${main_path} -b c -o ${bin_out}')
+	assert compile.exit_code == 0, compile.output
+	assert compile.output.contains('transform (parallel)'), compile.output
+	assert compile.output.contains('cgen'), compile.output
+	run := os.execute(bin_out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '51047'
+	c_code := os.read_file(bin_out + '.c') or { panic(err) }
+	assert c_code.all_after('int main').count('map__get_check') == 1, c_code
+}

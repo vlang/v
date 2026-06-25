@@ -868,6 +868,10 @@ fn (mut p Parser) register_pending_export(name string) {
 	} else {
 		name
 	}
+	if name in p.a.disabled_fns || qname in p.a.disabled_fns {
+		p.pending_export = ''
+		return
+	}
 	p.a.export_fn_names[qname] = p.pending_export
 	p.pending_export = ''
 }

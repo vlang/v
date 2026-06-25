@@ -725,6 +725,7 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 		t.transform_all()
 		return false
 	}
+	has_entry_main := t.has_entry_main()
 	// Serial phase: transform consts/globals and every function whose body
 	// contains a function literal (the only construct that lifts new top-level
 	// declarations and mutates the shared TypeChecker). Collect the remaining,
@@ -732,7 +733,11 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	pure_items := t.transform_serial_then_collect_pure()
 	base_nodes := t.a.nodes.len
 	base_children := t.a.children.len
-	return t.run_parallel_transform(pure_items, base_nodes, base_children)
+	was_parallel := t.run_parallel_transform(pure_items, base_nodes, base_children)
+	if !has_entry_main {
+		t.transform_top_level_user_stmts()
+	}
+	return was_parallel
 }
 
 // transform_serial_then_collect_pure walks the top level once: it transforms

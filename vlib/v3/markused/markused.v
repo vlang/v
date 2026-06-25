@@ -1747,6 +1747,10 @@ fn (c &CallCollector) qualified_expr_name(id flat.NodeId) string {
 
 // collect_fn_value_ident updates collect fn value ident state for markused.
 fn (c &CallCollector) collect_fn_value_ident(id flat.NodeId, name string, cur_module string, imports map[string]string, mut calls []string) {
+	if resolved := c.tc.resolved_fn_value_name(id) {
+		calls << resolved
+		return
+	}
 	if name.len == 0 || !c.name_may_reference_fn(name, cur_module, imports) {
 		return
 	}
@@ -1760,6 +1764,10 @@ fn (c &CallCollector) collect_fn_value_ident(id flat.NodeId, name string, cur_mo
 
 // collect_fn_value_selector updates collect fn value selector state for markused.
 fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node, cur_module string, imports map[string]string, mut calls []string) {
+	if resolved := c.tc.resolved_fn_value_name(id) {
+		calls << resolved
+		return
+	}
 	if node.children_count == 0 {
 		return
 	}

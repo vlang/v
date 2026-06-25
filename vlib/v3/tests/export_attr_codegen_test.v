@@ -103,6 +103,39 @@ fn main() {}
 	assert compile.output.contains('duplicate export name `raw_duplicate`'), compile.output
 }
 
+fn test_disabled_export_attr_does_not_register_raw_symbol() {
+	v3_bin := export_attr_build_v3()
+	root := export_attr_project('disabled_export', {
+		'main.v': "module main
+
+@[if missing_export_flag ?]
+@[export: 'raw_disabled_export']
+fn disabled_export() int {
+	return 2
+}
+
+@[export: 'raw_enabled_export']
+fn enabled_export() int {
+	return 7
+}
+
+fn main() {
+	println(enabled_export().str())
+}
+"
+	})
+	bin_path := os.join_path(root, 'app')
+	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin_path)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '7', run.output
+
+	c_code := os.read_file(bin_path + '.c') or { panic(err) }
+	assert c_code.contains('int raw_enabled_export(void) {'), c_code
+	assert !c_code.contains('raw_disabled_export'), c_code
+}
+
 fn test_export_name_collision_with_runtime_symbol_is_rejected() {
 	v3_bin := export_attr_build_v3()
 	root := export_attr_project('runtime_collision', {
