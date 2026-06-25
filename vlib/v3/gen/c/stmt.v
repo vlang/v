@@ -249,6 +249,12 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					}
 					if base is types.Void {
 						g.writeln('return (${ct}){.ok = false};')
+					} else if base is types.ArrayFixed {
+						// The optional's `.value` is a fixed-array member, which can't be set
+						// in the compound literal; build via a temp + memcpy.
+						g.write('return ({ ${ct} __opt = {.ok = true}; memcpy(__opt.value, ')
+						g.gen_fixed_array_copy_source(ret_id, base)
+						g.writeln(', sizeof(__opt.value)); __opt; });')
 					} else {
 						raw_expr_type := g.tc.resolve_type(ret_id)
 						expr_type := g.usable_expr_type(ret_id)
@@ -293,6 +299,34 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				} else if g.cur_fn_ret is types.MultiReturn {
 					if node.children_count > 1 {
 						ct := g.tc.c_type(g.cur_fn_ret)
+						mr_types := g.cur_fn_ret.types
+						mut has_fixed := false
+						for mt in mr_types {
+							if mt is types.ArrayFixed {
+								has_fixed = true
+								break
+							}
+						}
+						if has_fixed {
+							// A multi-return with a fixed-array member can't be built by a
+							// positional compound literal (array members need memcpy).
+							tmp := g.tmp_name()
+							g.write('return ({ ${ct} ${tmp} = {0};')
+							for i in 0 .. node.children_count {
+								if i < mr_types.len && mr_types[i] is types.ArrayFixed {
+									g.write(' memcpy(${tmp}.arg${i}, ')
+									g.gen_fixed_array_copy_source(g.a.child(&node, i), mr_types[i])
+									g.write(', sizeof(${tmp}.arg${i}));')
+								} else {
+									g.write(' ${tmp}.arg${i} = ')
+									g.gen_expr(g.a.child(&node, i))
+									g.write(';')
+								}
+							}
+							g.writeln(' ${tmp}; });')
+							g.expected_enum = ''
+							return
+						}
 						g.write('return (${ct}){')
 						for i in 0 .. node.children_count {
 							if i > 0 {
@@ -322,14 +356,22 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					g.gen_fixed_array_return_wrap(g.cur_fn_ret, ret_id)
 					g.writeln(';')
 				} else {
+					g.write('return ')
+					// Most interface returns are already boxed by the transform pass into
+					// a `(Iface){._typ = N, ._object = ...}` literal, in which case
+					// gen_interface_value_expr is a no-op (the value is already an
+					// interface) and we emit it directly. IError is intentionally left
+					// unboxed by the transform, so box the concrete error here. Never emit
+					// a zeroed `(Iface){0}` — that drops `_typ`/`_object` and makes every
+					// dispatch through the returned interface panic as "not implemented".
 					if g.cur_fn_ret is types.Interface {
-						ct := g.tc.c_type(g.cur_fn_ret)
-						g.writeln('return (${ct}){0};')
+						if !g.gen_interface_value_expr(ret_id, g.cur_fn_ret) {
+							g.gen_expr(ret_id)
+						}
 					} else {
-						g.write('return ')
 						g.gen_expr(ret_id)
-						g.writeln(';')
 					}
+					g.writeln(';')
 				}
 			} else {
 				g.gen_default_return_stmt()
@@ -1230,6 +1272,19 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 			lhs_id := g.a.child(&node, i)
 			if rhs_node.kind == .array_literal {
 				lhs_type := types.unwrap_pointer(g.tc.resolve_type(lhs_id))
+				if lhs_type is types.ArrayFixed {
+					// A fixed-array field/var can't be `=`-assigned an array literal (which
+					// lowers to a dynamic `Array`); memcpy the element bytes instead.
+					g.write('memcpy(')
+					g.gen_expr(lhs_id)
+					g.write(', ')
+					g.gen_fixed_array_data_arg(rhs_id, lhs_type)
+					g.write(', sizeof(')
+					g.gen_expr(lhs_id)
+					g.writeln('));')
+					i += 2
+					continue
+				}
 				elem_type := if rhs_node.children_count > 0 {
 					g.tc.resolve_type(g.a.child(&rhs_node, 0))
 				} else if lhs_arr := array_like_type(lhs_type) {
@@ -1244,6 +1299,18 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 			} else {
 				lhs_type := g.usable_expr_type(lhs_id)
 				rhs_type := g.usable_expr_type(rhs_id)
+				if node.op == .assign && lhs_type is types.ArrayFixed {
+					// A fixed array can't be assigned with `=`; copy element bytes.
+					g.write('memcpy(')
+					g.gen_expr(lhs_id)
+					g.write(', ')
+					g.gen_fixed_array_copy_source(rhs_id, lhs_type)
+					g.write(', sizeof(')
+					g.gen_expr(lhs_id)
+					g.writeln('));')
+					i += 2
+					continue
+				}
 				if node.op == .plus_assign && (lhs_type is types.String || rhs_type is types.String) {
 					g.gen_expr(g.a.child(&node, i))
 					g.write(' = string__plus(')
@@ -1575,6 +1642,11 @@ fn (mut g FlatGen) gen_or_expr(node flat.Node) {
 	g.write('({${opt_ct} ${tmp} = ')
 	g.gen_expr_with_expected_type(expr_id, expr_type)
 	g.write('; ${val_ct} ${val}; if (${tmp}.ok) { ${val} = ${tmp}.value; } else { IError err = ${tmp}.err; (void)err; ')
+	// Bind `err` (IError) in the cgen scope so the or-body's own string interpolations
+	// and selector accesses resolve `err`'s type correctly. Without this, an `${err}`
+	// inside the or-body (common in const-init or-blocks lowered here) falls back to
+	// `int__str(err)`. Mirrors the for-loop / if-guard scope inserts elsewhere in cgen.
+	g.tc.cur_scope.insert('err', g.tc.parse_type('IError'))
 	g.gen_or_body_value(or_body, val, val_type)
 	g.write(' } ${val};})')
 }
@@ -1616,6 +1688,11 @@ fn (mut g FlatGen) gen_or_body_value(or_body flat.Node, value_name string, value
 				fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
 				g.write('return ')
 				g.gen_optional_error_from_call(fn_opt_ct, g.a.nodes[int(expr_id)])
+				g.write(';')
+			} else if g.tc.resolve_type(expr_id) is types.Void {
+				// A diverging/void or-body tail (e.g. `panic(..)`/`exit(..)`) yields no
+				// value; emit it as a bare statement instead of assigning void.
+				g.gen_expr(expr_id)
 				g.write(';')
 			} else {
 				g.write('${value_name} = ')

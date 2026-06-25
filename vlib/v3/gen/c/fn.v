@@ -197,11 +197,18 @@ fn (g &FlatGen) static_method_fn_name(type_ident string, method string) ?string 
 	if !is_type {
 		return none
 	}
+	// Prefer the module-qualified key: a static method defined in the current (or the
+	// type's) module is emitted under its qualified C name (`viper__Animation__load`),
+	// so the call must resolve to the same qualified key even though an unqualified
+	// alias (`Animation.load`) may also be registered.
+	qdirect := '${qtype}.${method}'
+	if qtype != type_ident && (qdirect in g.tc.fn_ret_types || qdirect in g.tc.fn_param_types) {
+		return qdirect
+	}
 	direct := '${type_ident}.${method}'
 	if direct in g.tc.fn_ret_types || direct in g.tc.fn_param_types {
 		return direct
 	}
-	qdirect := '${qtype}.${method}'
 	if qdirect in g.tc.fn_ret_types || qdirect in g.tc.fn_param_types {
 		return qdirect
 	}
@@ -249,6 +256,31 @@ fn (mut g FlatGen) gen_special_c_callback_arg(fn_name string, arg_idx int, arg_i
 		g.gen_expr(arg_id)
 		return true
 	}
+	// A V function passed by name to a C function (a callback) must be cast: the V
+	// declaration's parameter type (often `voidptr`) is ignored by C in favour of the
+	// real header prototype, so the bare name trips -Wincompatible-function-pointer-types.
+	// `(void*)` converts cleanly to any function-pointer parameter.
+	if int(arg_id) >= 0 {
+		arg_node := g.a.nodes[int(arg_id)]
+		if arg_node.kind == .ident {
+			is_local := (g.tc.cur_scope.lookup(arg_node.value) or { types.Type(types.void_) }) !is types.Void
+			if !is_local {
+				call_name := g.call_key(arg_id, arg_node.value)
+				fn_key := if call_name in g.tc.fn_ret_types {
+					call_name
+				} else if arg_node.value in g.tc.fn_ret_types {
+					arg_node.value
+				} else {
+					''
+				}
+				if fn_key.len > 0 && !fn_key.starts_with('C.') {
+					g.write('(void*)')
+					g.write(c_name(fn_key))
+					return true
+				}
+			}
+		}
+	}
 	return false
 }
 
@@ -259,6 +291,67 @@ fn (mut g FlatGen) spawn_wrapper_decls() {
 	if g.spawn_wrapper_defs.len > 0 {
 		g.writeln('')
 	}
+}
+
+// gen_method_value_closure handles a method used as a *value* (e.g. `game.draw`
+// passed where a `fn ()` callback is expected) rather than called. A plain struct
+// field access can't represent the bound receiver, so it binds the receiver into a
+// per-site context global and yields a wrapper function that invokes the method on
+// it. Returns false when the selector is an ordinary field access (handled normally).
+fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types.Type, method string) bool {
+	clean := types.unwrap_pointer(base_type)
+	if clean !is types.Struct {
+		return false
+	}
+	struct_name := (clean as types.Struct).name
+	// A real field shadows any same-named method: that's a field access, not a value.
+	if _ := g.struct_field_type(struct_name, method) {
+		return false
+	}
+	method_key := g.resolve_method_name(struct_name, method)
+	if method_key.len == 0 {
+		return false
+	}
+	params := g.tc.fn_param_types[method_key] or { return false }
+	if params.len == 0 {
+		return false
+	}
+	ret := g.tc.fn_ret_types[method_key] or { types.Type(types.void_) }
+	cname := c_name(method_key)
+	recv_is_ptr := params[0] is types.Pointer
+	recv_ct := g.tc.c_type(params[0])
+	ret_ct := g.tc.c_type(ret)
+	idx := g.tmp_count
+	g.tmp_count++
+	ctx_name := '_mvctx_${idx}'
+	wrap_name := '_mvwrap_${idx}'
+	mut wparams := []string{}
+	mut call_args := [ctx_name]
+	for i in 1 .. params.len {
+		pt := g.tc.c_type(params[i])
+		wparams << '${pt} a${i}'
+		call_args << 'a${i}'
+	}
+	wparam_str := if wparams.len == 0 { 'void' } else { wparams.join(', ') }
+	g.spawn_wrapper_defs << 'static ${recv_ct} ${ctx_name};'
+	ret_prefix := if ret_ct == 'void' { '' } else { 'return ' }
+	g.spawn_wrapper_defs << 'static ${ret_ct} ${wrap_name}(${wparam_str}) { ${ret_prefix}${cname}(${call_args.join(', ')}); }'
+	// Set the context global to the receiver, then yield the wrapper as the value.
+	g.write('({ ${ctx_name} = ')
+	base_is_ptr := base_type is types.Pointer
+	if recv_is_ptr && !base_is_ptr {
+		g.write('&(')
+		g.gen_expr(base_id)
+		g.write(')')
+	} else if !recv_is_ptr && base_is_ptr {
+		g.write('*(')
+		g.gen_expr(base_id)
+		g.write(')')
+	} else {
+		g.gen_expr(base_id)
+	}
+	g.write('; (void*)${wrap_name}; })')
+	return true
 }
 
 fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
@@ -273,6 +366,9 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 		return
 	}
 	fn_node := g.a.child_node(&call_node, 0)
+	// The spawned call's return type: heap-captured by the wrapper so a later
+	// `[]thread T .wait()` can recover the value (void callees just return NULL).
+	ret_ct := g.tc.c_type(g.tc.resolve_type(call_id))
 	mut wrapper := ''
 	mut arg_expr := 'NULL'
 	if fn_node.kind == .ident {
@@ -283,7 +379,7 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 			g.direct_call_name(fn_node.value)
 		}
 		if call_node.children_count == 1 {
-			wrapper = g.ensure_noarg_spawn_wrapper(cfn)
+			wrapper = g.ensure_noarg_spawn_wrapper(cfn, ret_ct)
 		} else {
 			// `spawn work(a, b)` packs the arguments into a heap struct so the
 			// spawned thread receives them, instead of silently dropping them.
@@ -295,7 +391,7 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 					param_cts << g.tc.c_type(pt)
 					arg_exprs << g.expr_to_string(g.a.child(&call_node, i + 1))
 				}
-				g.emit_args_spawn_expr(cfn, param_cts, arg_exprs)
+				g.emit_args_spawn_expr(cfn, param_cts, arg_exprs, ret_ct)
 				return
 			}
 		}
@@ -312,7 +408,8 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 				base_expr := g.expr_to_string(base_id)
 				if call_node.children_count == 1 {
 					if receiver_type is types.Pointer {
-						wrapper = g.ensure_receiver_spawn_wrapper(c_name(method_name), receiver_ct)
+						wrapper = g.ensure_receiver_spawn_wrapper(c_name(method_name),
+							receiver_ct, ret_ct)
 						if base_type is types.Pointer {
 							arg_expr = '(${receiver_ct})(${base_expr})'
 						} else {
@@ -329,7 +426,7 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 						}
 						g.emit_args_spawn_expr(c_name(method_name), [receiver_ct], [
 							receiver_value,
-						])
+						], ret_ct)
 						return
 					}
 				} else if param_types.len == int(call_node.children_count) {
@@ -352,7 +449,8 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 						param_cts << g.tc.c_type(param_types[i])
 						arg_exprs << g.expr_to_string(g.a.child(&call_node, i))
 					}
-					g.emit_args_spawn_expr(c_name(method_name), param_cts, arg_exprs)
+					g.emit_args_spawn_expr(c_name(method_name), param_cts, arg_exprs,
+						ret_ct)
 					return
 				}
 			}
@@ -370,32 +468,45 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	g.write('pthread_attr_destroy(&_a${tmp}); (void)_r${tmp}; (void*)_t${tmp}; })')
 }
 
-fn (mut g FlatGen) ensure_noarg_spawn_wrapper(cfn string) string {
+// spawn_wrapper_body builds the thread-wrapper statement that invokes the spawned
+// call and returns its result as a `void*`. When the callee returns a value, the
+// result is heap-copied so `[]thread T .wait()` can recover it (the wait fn frees
+// it); a void callee returns NULL. `post` runs after the call (e.g. `free(p);`).
+fn spawn_wrapper_body(call_expr string, ret_ct string, post string) string {
+	if ret_ct == 'void' || ret_ct.len == 0 {
+		return '${call_expr}; ${post}return NULL;'
+	}
+	return '${ret_ct}* __tr = (${ret_ct}*)malloc(sizeof(${ret_ct})); *__tr = ${call_expr}; ${post}return (void*)__tr;'
+}
+
+fn (mut g FlatGen) ensure_noarg_spawn_wrapper(cfn string, ret_ct string) string {
 	key := 'noarg|${cfn}'
 	if name := g.spawn_wrapper_names[key] {
 		return name
 	}
 	name := c_name('${cfn}_thread_wrapper')
 	g.spawn_wrapper_names[key] = name
-	g.spawn_wrapper_defs << 'static void* ${name}(void* arg) { (void)arg; ${cfn}(); return NULL; }'
+	body := spawn_wrapper_body('${cfn}()', ret_ct, '')
+	g.spawn_wrapper_defs << 'static void* ${name}(void* arg) { (void)arg; ${body} }'
 	return name
 }
 
-fn (mut g FlatGen) ensure_receiver_spawn_wrapper(cfn string, receiver_ct string) string {
+fn (mut g FlatGen) ensure_receiver_spawn_wrapper(cfn string, receiver_ct string, ret_ct string) string {
 	key := 'receiver|${cfn}|${receiver_ct}'
 	if name := g.spawn_wrapper_names[key] {
 		return name
 	}
 	name := c_name('${cfn}_thread_wrapper')
 	g.spawn_wrapper_names[key] = name
-	g.spawn_wrapper_defs << 'static void* ${name}(void* arg) { ${cfn}((${receiver_ct})arg); return NULL; }'
+	body := spawn_wrapper_body('${cfn}((${receiver_ct})arg)', ret_ct, '')
+	g.spawn_wrapper_defs << 'static void* ${name}(void* arg) { ${body} }'
 	return name
 }
 
 // ensure_args_spawn_wrapper registers (once per callee) a heap-arg struct plus a
 // thread wrapper that unpacks the struct, calls the function with all arguments,
 // and frees the struct. Returns the wrapper name and the arg struct name.
-fn (mut g FlatGen) ensure_args_spawn_wrapper(cfn string, param_cts []string) (string, string) {
+fn (mut g FlatGen) ensure_args_spawn_wrapper(cfn string, param_cts []string, ret_ct string) (string, string) {
 	struct_name := c_name('${cfn}_thread_args')
 	key := 'args|${cfn}'
 	if name := g.spawn_wrapper_names[key] {
@@ -410,14 +521,15 @@ fn (mut g FlatGen) ensure_args_spawn_wrapper(cfn string, param_cts []string) (st
 		call_args << 'p->a${i}'
 	}
 	g.spawn_wrapper_defs << 'typedef struct { ${fields}} ${struct_name};'
-	g.spawn_wrapper_defs << 'static void* ${name}(void* arg) { ${struct_name}* p = (${struct_name}*)arg; ${cfn}(${call_args.join(', ')}); free(p); return NULL; }'
+	body := spawn_wrapper_body('${cfn}(${call_args.join(', ')})', ret_ct, 'free(p); ')
+	g.spawn_wrapper_defs << 'static void* ${name}(void* arg) { ${struct_name}* p = (${struct_name}*)arg; ${body} }'
 	return name, struct_name
 }
 
 // emit_args_spawn_expr writes a statement-expression that heap-allocates the arg
 // struct, populates it, and starts the thread on the packing wrapper.
-fn (mut g FlatGen) emit_args_spawn_expr(cfn string, param_cts []string, arg_exprs []string) {
-	wrapper, struct_name := g.ensure_args_spawn_wrapper(cfn, param_cts)
+fn (mut g FlatGen) emit_args_spawn_expr(cfn string, param_cts []string, arg_exprs []string, ret_ct string) {
+	wrapper, struct_name := g.ensure_args_spawn_wrapper(cfn, param_cts, ret_ct)
 	tmp := g.tmp_count
 	g.tmp_count++
 	g.write('({ ${struct_name}* _sa${tmp} = (${struct_name}*)malloc(sizeof(${struct_name})); ')
@@ -888,6 +1000,34 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					g.gen_call_args(full_name, node, 1)
 					g.write(')')
 					return
+				} else if base.kind == .ident && !base_is_local
+					&& g.static_method_fn_name(base.value, fn_node.value) != none {
+					// `Type.method(...)` where the base ident names a (possibly
+					// imported) type, not a value — e.g. `Animation.load(path)` inside
+					// the type's own module. Resolve to the module-qualified static fn.
+					static_fn := g.static_method_fn_name(base.value, fn_node.value) or { '' }
+					static_params := g.param_types_for(static_fn, fn_node.value)
+					g.write(g.direct_call_name(static_fn))
+					g.write('(')
+					for i in 1 .. node.children_count {
+						if i > 1 {
+							g.write(', ')
+						}
+						arg_id := g.a.child(&node, i)
+						arg_idx := i - 1
+						// Decay a fixed-array `[N]T` argument to `T*` when the static
+						// method's parameter is a fixed array (`SimdInt4.load_ptr([4]int)`),
+						// matching how ordinary calls coerce such arguments.
+						if arg_idx < static_params.len {
+							if fixed := array_fixed_type(static_params[arg_idx]) {
+								g.gen_fixed_array_data_arg(arg_id, fixed)
+								continue
+							}
+						}
+						g.gen_expr(arg_id)
+					}
+					g.write(')')
+					return
 				} else if base.kind == .selector {
 					inner := g.a.child_node(base, 0)
 					inner_is_local := if inner.kind == .ident {
@@ -1301,7 +1441,16 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			} else {
 				g.call_key(id, fn_name)
 			}
-			param_types := g.param_types_for(actual_fn, fn_name)
+			mut param_types := g.param_types_for(actual_fn, fn_name)
+			if param_types.len == 0 && !is_method {
+				// Calling through a function-typed value (a generic `f F` parameter or a
+				// local fn variable): the callee is not a named function, so recover the
+				// parameter types from the value's own function type. This lets `mut` /
+				// pointer arguments receive their `&` exactly as a direct call would.
+				if ft := fn_type_from(g.tc.resolve_type(g.a.child(&node, 0))) {
+					param_types = ft.params.clone()
+				}
+			}
 			mut arg_start := 1
 			if is_method {
 				base_type := g.receiver_base_type(base_id)
@@ -1318,7 +1467,15 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					&& g.gen_embedded_method_receiver(base_id, base_type, param_types[0], wants_ptr) {
 					arg_start = 1
 				} else {
-					is_ptr_base := base_type is types.Pointer
+					mut is_ptr_base := base_type is types.Pointer
+					// A `string.*` method always takes its receiver by value. If the
+					// receiver mis-resolves to a char pointer (e.g. a `const x =
+					// os.getenv(..)` whose type was inferred as `&char`), the actual
+					// storage is still a `string`, so do not dereference it.
+					if is_ptr_base && method_name.starts_with('string.')
+						&& base_type is types.Pointer && base_type.base_type is types.Char {
+						is_ptr_base = false
+					}
 					if (wants_ptr || atomic_receiver_wants_ptr) && !is_ptr_base {
 						g.write('&')
 					} else if !wants_ptr && !atomic_receiver_wants_ptr && is_ptr_base {

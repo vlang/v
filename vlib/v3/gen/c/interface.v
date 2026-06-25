@@ -357,6 +357,18 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name string, method string)
 	if g.used_fn_contains(name) || g.used_fn_contains(c_name(name)) {
 		return true
 	}
+	// If any concrete implementer's method is live, the dispatch is reachable even
+	// when the interface entry itself wasn't directly marked — markused's reachability
+	// can enqueue the implementers (via iface_impls) but miss the interface method when
+	// its short name is ambiguous (e.g. `resize` also on Camera/SamplingJobContext).
+	for impl in g.iface_impls[iface_name] or { []string{} } {
+		im := '${impl}.${method}'
+		short_im := '${impl.all_after_last('.')}.${method}'
+		if g.used_fn_contains(im) || g.used_fn_contains(c_name(im))
+			|| (short_im != im && (g.used_fn_contains(short_im) || g.used_fn_contains(c_name(short_im)))) {
+			return true
+		}
+	}
 	if decl_key := g.interface_method_signature_key(iface_name, method) {
 		if decl_key != name
 			&& (g.used_fn_contains(decl_key) || g.used_fn_contains(c_name(decl_key))) {

@@ -415,18 +415,21 @@ fn (t &Transformer) struct_operator_fn_name(struct_type string, op_name string) 
 	return none
 }
 
-// generic_struct_instance_name returns `type_name` when it is a generic-struct
-// instance (its base is a known generic struct), else ''.
+// generic_struct_instance_name returns the resolved generic-struct instance type
+// for `type_name` (its base is a known generic struct), else ''. A type alias to a
+// generic instance (`SimdFloat4` -> `vec.Vec4[f32]`) is normalized first, so an
+// operand typed by its alias still lowers to the monomorphized operator.
 fn (t &Transformer) generic_struct_instance_name(type_name string) string {
 	if isnil(t.tc) {
 		return ''
 	}
-	base, _, ok := generic_app_parts(type_name)
+	normalized := t.normalize_type_alias(type_name)
+	base, _, ok := generic_app_parts(normalized)
 	if !ok {
 		return ''
 	}
 	if base in t.tc.struct_generic_params {
-		return type_name
+		return normalized
 	}
 	return ''
 }
@@ -497,6 +500,14 @@ fn (t &Transformer) infix_struct_operator_result_type(node flat.Node, lhs_type_i
 	lhs_type := if lhs_type_in.starts_with('&') { lhs_type_in[1..] } else { lhs_type_in }
 	struct_type := t.struct_lookup_name(lhs_type)
 	if struct_type.len == 0 {
+		// Generic-struct instance (`Vec4[f32]`): the specialized operator method is
+		// not registered until monomorphization, so derive the result from the
+		// generic operator's (substituted) return type.
+		if rt := t.generic_struct_operator_return_type(t.generic_struct_instance_name(lhs_type),
+			node.op)
+		{
+			return rt
+		}
 		return ''
 	}
 	if call_info := t.struct_operator_call_info(struct_type, node.op) {
@@ -506,6 +517,40 @@ fn (t &Transformer) infix_struct_operator_result_type(node flat.Node, lhs_type_i
 		}
 	}
 	return ''
+}
+
+// generic_struct_operator_return_type returns the result type of an operator on a
+// generic-struct instance (`Vec4[f32]`), derived from the generic operator's
+// declared return type (`Vec4[T].- -> Vec4[T]`) with the instance's type arguments
+// substituted (`-> Vec4[f32]`), qualified with the struct's module so the outer
+// expression resolves to the monomorphized operator.
+fn (t &Transformer) generic_struct_operator_return_type(struct_type string, op flat.Op) ?string {
+	if struct_type.len == 0 || isnil(t.tc) {
+		return none
+	}
+	op_name := struct_operator_symbol(op) or { return none }
+	full_base, args, ok := generic_app_parts(struct_type)
+	if !ok {
+		return none
+	}
+	params := t.tc.struct_generic_params[full_base] or { return none }
+	generic_key := '${full_base}[${params.join(', ')}].${op_name}'
+	mut ret := ''
+	if r := t.fn_ret_types[generic_key] {
+		ret = r
+	} else if r := t.tc.fn_ret_types[generic_key] {
+		ret = r.name()
+	} else {
+		return none
+	}
+	substituted := substitute_generic_type_text_with_params(ret, args, params)
+	// Qualify a returned instance of the same struct family with the struct's module.
+	rbase, _, rok := generic_app_parts(substituted)
+	if rok && full_base.contains('.') && !rbase.contains('.')
+		&& rbase == full_base.all_after_last('.') {
+		return '${full_base.all_before_last('.')}.${substituted}'
+	}
+	return substituted
 }
 
 // transform_infix_sum_ops transforms transform infix sum ops data for transform.

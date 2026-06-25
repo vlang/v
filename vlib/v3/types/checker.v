@@ -123,6 +123,14 @@ pub mut:
 	errors                        []TypeError
 	resolved_call_names           []string // node_id -> resolved function name
 	resolved_call_set             []bool
+	// `Type.method` keys for methods used as *values* (`recv.method` passed as a
+	// callback). Recorded during semantic checking — which has full scope/type info,
+	// runs before markused, and (unlike a call) routes a value-context selector through
+	// check_selector — so markused can keep these methods (reachable only via a wrapper)
+	// out of the dead-code pruner.
+	method_value_targets          map[string]bool
+	method_values_by_fn           map[int][]string // enclosing fn node id -> method-value `Type.method` keys
+	cur_fn_node_id                int = -1
 	expr_type_values              []Type // node_id -> complex/contextual resolved type
 	expr_type_set                 []bool
 	checking_nodes                []bool
@@ -1130,6 +1138,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 			.fn_decl {
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 				tc.cur_fn_ret_type = tc.parse_type(node.typ)
+				tc.cur_fn_node_id = i
 				tc.push_scope()
 				for pi in 0 .. node.children_count {
 					p := tc.a.child_node(&node, pi)
@@ -1139,6 +1148,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				}
 				tc.insert_implicit_veb_ctx(node)
 				tc.check_fn_body(node)
+				tc.cur_fn_node_id = -1
 				is_disabled_stub := node.value in tc.a.disabled_fns
 				if !type_allows_implicit_return(tc.cur_fn_ret_type)
 					&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub
@@ -4305,6 +4315,26 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	tc.check_node(base_id)
 	base_type := tc.resolve_type(base_id)
 	tc.register_synth_type(base_id, base_type)
+	// A value-context selector whose name is a method (not a field) of a struct
+	// receiver is a method value; record the concrete `Type.method` so it survives
+	// dead-code elimination (cgen emits a wrapper that calls it).
+	clean_recv := unwrap_pointer(base_type)
+	if clean_recv is Struct {
+		if tc.struct_field_type(clean_recv.name, node.value) == none {
+			mkey := '${clean_recv.name}.${node.value}'
+			if mkey in tc.fn_param_types {
+				// Record per enclosing function so markused marks it only when that
+				// function is reachable (over-marking unreachable method values can pull
+				// in code that crashes cgen). Non-fn contexts (const inits) are always
+				// emitted, so mark those unconditionally.
+				if tc.cur_fn_node_id >= 0 {
+					tc.method_values_by_fn[tc.cur_fn_node_id] << mkey
+				} else {
+					tc.method_value_targets[mkey] = true
+				}
+			}
+		}
+	}
 	if typ := tc.selector_type(id, node) {
 		tc.register_synth_type(id, typ)
 		return
@@ -5005,7 +5035,7 @@ pub fn (tc &TypeChecker) fixed_array_len_value(arr ArrayFixed) ?int {
 }
 
 // const_int_value supports const int value handling for TypeChecker.
-fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
+pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 	if name in seen {
 		return none
 	}
@@ -5024,6 +5054,24 @@ fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 	}
 	if is_decimal_int_literal(name) {
 		return name.int()
+	}
+	// Simple const arithmetic in string form, e.g. a fixed-array size `[SEGS + 1]`.
+	// Split on the rightmost low-precedence operator first (left associativity); each
+	// side can itself be a const, a literal, or a nested expression.
+	for op in [' + ', ' - ', ' * '] {
+		if idx := name.last_index(op) {
+			lhs := name[..idx].trim_space()
+			rhs := name[idx + op.len..].trim_space()
+			if lhs.len > 0 && rhs.len > 0 {
+				l := tc.const_int_value(lhs, seen) or { continue }
+				r := tc.const_int_value(rhs, seen) or { continue }
+				return match op {
+					' + ' { l + r }
+					' - ' { l - r }
+					else { l * r }
+				}
+			}
+		}
 	}
 	return none
 }
@@ -5932,6 +5980,22 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		if base in tc.sum_types {
 			return Type(SumType{
 				name: base
+			})
+		}
+		if is_concrete_generic {
+			// A concrete generic instance (`Vec4[f32]`) is a monomorphized struct, even
+			// when the generic base decl has been erased after monomorphization. It is
+			// never a fixed array, so don't fall through to the `[N]T` handler below.
+			// Qualify an imported base (`Vec4` -> `vec.Vec4`) so its c_type matches the
+			// materialized struct (`vec__Vec4_f32`) everywhere it appears.
+			mut full := typ
+			if !base.contains('.') {
+				if resolved := tc.unique_qualified_type_name(base) {
+					full = resolved + generic_suffix
+				}
+			}
+			return Type(Struct{
+				name: full
 			})
 		}
 	}
@@ -6930,7 +6994,18 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return c_name(t.name)
 	}
 	if t is Alias {
-		return tc.c_type(t.base_type)
+		// Follow the alias chain iteratively. A self-referential / cyclic alias (whose
+		// base resolves back to itself) would otherwise recurse forever here — the cache
+		// is only populated after the recursive call returns — overflowing the stack.
+		mut cur := Type(t)
+		for _ in 0 .. 1000 {
+			if cur is Alias {
+				cur = cur.base_type
+			} else {
+				return tc.c_type(cur)
+			}
+		}
+		return 'void*'
 	}
 	if t is MultiReturn {
 		mut parts := []string{}

@@ -378,6 +378,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		line_start:              true
 		modules:                 g.modules
 		fn_ptr_types:            g.fn_ptr_types.clone()
+		fixed_array_ret_wrappers: g.fixed_array_ret_wrappers
 		fn_decl_param_types:     g.fn_decl_param_types
 		fn_decl_ret_types:       g.fn_decl_ret_types
 		struct_decl_infos:       g.struct_decl_infos
@@ -476,6 +477,19 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	for encoded, name in w.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
 			g.fn_ptr_types[encoded] = name
+		}
+	}
+	// Spawn wrappers (thread arg structs + trampoline fns) are generated on demand
+	// inside fn bodies, so a worker that emits a `spawn` produces wrapper defs the
+	// master must also emit. Deduplicate by their deterministic key/def.
+	for key, name in w.spawn_wrapper_names {
+		if key !in g.spawn_wrapper_names {
+			g.spawn_wrapper_names[key] = name
+		}
+	}
+	for def in w.spawn_wrapper_defs {
+		if def !in g.spawn_wrapper_defs {
+			g.spawn_wrapper_defs << def
 		}
 	}
 }

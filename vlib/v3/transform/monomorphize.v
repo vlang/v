@@ -439,9 +439,12 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 			value: decl.module
 		})
 	}
+	old_params := t.active_generic_params
+	t.active_generic_params = t.generic_fn_param_names(decl.node, decl.module)
 	clone_id := t.clone_generic_fn_node(decl.node, args)
 	clone := t.a.nodes[int(clone_id)]
 	t.register_specialized_fn_signature(decl, clone, args)
+	t.active_generic_params = old_params
 	t.transform_specialized_fn_body(clone_id, decl.module)
 	return clone_id
 }
@@ -480,7 +483,7 @@ fn (mut t Transformer) register_specialized_fn_signature(decl GenericFnDecl, clo
 	if !isnil(t.tc) {
 		t.tc.cur_module = decl.module
 	}
-	ret_name := substitute_generic_type_text(decl.node.typ, args)
+	ret_name := t.subst_type(decl.node.typ, args)
 	ret := if !isnil(t.tc) { t.tc.parse_type(ret_name) } else { types.Type(types.void_) }
 	mut params := []types.Type{}
 	mut variadic := false
@@ -489,7 +492,7 @@ fn (mut t Transformer) register_specialized_fn_signature(decl GenericFnDecl, clo
 		if child.kind != .param {
 			continue
 		}
-		param_type := substitute_generic_type_text(child.typ, args)
+		param_type := t.subst_type(child.typ, args)
 		if param_type.starts_with('...') {
 			variadic = true
 		}
@@ -585,8 +588,31 @@ fn (mut t Transformer) rewrite_generic_plain_call(id flat.NodeId, node flat.Node
 	t.clear_resolved_call(id)
 }
 
+// call_is_selector_form reports whether a call node embeds its receiver inside the
+// callee (`recv.method(args)`) rather than passing it as an explicit child
+// (`Type.method(recv, args)`, the ident-lowered form).
+fn (t &Transformer) call_is_selector_form(node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	mut callee := t.a.nodes[int(t.a.child(&node, 0))]
+	if callee.kind == .index && callee.children_count > 0 {
+		callee = t.a.nodes[int(t.a.child(&callee, 0))]
+	}
+	return callee.kind == .selector
+}
+
 fn (mut t Transformer) rewrite_generic_method_call(id flat.NodeId, node flat.Node, decl GenericFnDecl, args []string) {
 	if node.children_count == 0 {
+		return
+	}
+	// Method-level generics (`method[U](...)`) cannot be resolved from the receiver
+	// type alone — the receiver carries no `_U` suffix — so the call must name the
+	// specialized function explicitly, passing the receiver as the first argument
+	// (exactly like a plain generic call). Pure struct-generic methods keep the
+	// selector callee, which cgen resolves via the already-monomorphized receiver.
+	if decl.node.generic_params.len > 0 {
+		t.rewrite_method_level_generic_call(id, node, decl, args)
 		return
 	}
 	fn_id := t.a.child(&node, 0)
@@ -618,6 +644,50 @@ fn (mut t Transformer) rewrite_generic_method_call(id flat.NodeId, node flat.Nod
 		pos:            node.pos
 		value:          ''
 		typ:            substitute_generic_type_text(decl.node.typ, args)
+	}
+	t.clear_resolved_call(id)
+}
+
+// rewrite_method_level_generic_call rewrites a call to a method-level generic into
+// an explicit call of the specialized function: `SpecName(receiver, args...)`. It
+// handles both the selector form (receiver inside the callee) and the
+// ident-lowered form (receiver already an explicit child).
+fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node flat.Node, decl GenericFnDecl, args []string) {
+	old_params := t.active_generic_params
+	t.active_generic_params = t.generic_fn_param_names(decl.node, decl.module)
+	spec_value := specialized_generic_fn_value(decl.node.value, args)
+	spec_name := transform_qualified_fn_name(decl.module, spec_value)
+	ret_typ := t.subst_type(decl.node.typ, args)
+	t.active_generic_params = old_params
+
+	mut children := []flat.NodeId{cap: int(node.children_count) + 1}
+	children << t.make_ident(spec_name)
+	if t.call_is_selector_form(node) {
+		// Receiver is embedded in the selector callee; explicit args are children 1..n.
+		if recv_id := t.generic_call_receiver_id(node) {
+			children << recv_id
+		}
+		for i in 1 .. node.children_count {
+			children << t.a.child(&node, i)
+		}
+	} else {
+		// Ident-lowered form: receiver and args are already explicit children 1..n.
+		for i in 1 .. node.children_count {
+			children << t.a.child(&node, i)
+		}
+	}
+	start := t.a.children.len
+	for child in children {
+		t.a.children << child
+	}
+	t.a.nodes[int(id)] = flat.Node{
+		kind:           .call
+		op:             node.op
+		children_start: start
+		children_count: flat.child_count(children.len)
+		pos:            node.pos
+		value:          ''
+		typ:            ret_typ
 	}
 	t.clear_resolved_call(id)
 }
@@ -815,7 +885,14 @@ fn (t &Transformer) generic_call_arg_count_matches_decl(node flat.Node, decl Gen
 			is_variadic = true
 		}
 	}
-	actual := if decl.node.value.contains('.') {
+	// param_count includes the receiver for methods. The call's child count
+	// depends on form: the selector form (`recv.method(args)`) keeps the receiver
+	// inside the callee child, so children = [callee, args...] and the callee child
+	// offsets the receiver param (actual == children_count). The ident-lowered form
+	// (`Type.method(recv, args)`) carries the receiver as a real child, so
+	// children = [callee, recv, args...] and actual == children_count - 1.
+	is_receiver := decl.node.value.contains('.')
+	actual := if is_receiver && t.call_is_selector_form(node) {
 		int(node.children_count)
 	} else {
 		int(node.children_count) - 1
@@ -890,6 +967,20 @@ fn (mut t Transformer) infer_generic_call_args(decl GenericFnDecl, _id flat.Node
 	if param_names.len == 0 {
 		return none
 	}
+	is_receiver := t.generic_decl_is_receiver_method(decl.node)
+	// Determine the call form. The selector form (`recv.method(args)`) embeds the
+	// receiver in the callee, so explicit args begin at child index 1. The
+	// ident-lowered form (`Type__method(recv, args)`) passes the receiver as child
+	// 1, so explicit args begin at child index 2. Using the wrong offset misaligns
+	// every explicit param and makes method-level generic inference silently fail.
+	mut selector_form := false
+	if is_receiver {
+		mut callee := t.a.nodes[int(t.a.child(&node, 0))]
+		if callee.kind == .index && callee.children_count > 0 {
+			callee = t.a.nodes[int(t.a.child(&callee, 0))]
+		}
+		selector_form = callee.kind == .selector
+	}
 	mut inferred := map[string]string{}
 	mut param_idx := 0
 	for i in 0 .. decl.node.children_count {
@@ -897,21 +988,26 @@ fn (mut t Transformer) infer_generic_call_args(decl GenericFnDecl, _id flat.Node
 		if child.kind != .param {
 			continue
 		}
-		arg_idx := if t.generic_decl_is_receiver_method(decl.node) && param_idx == 0 {
-			0
+		is_recv_param := is_receiver && param_idx == 0
+		arg_id := if is_recv_param {
+			if selector_form {
+				t.generic_call_receiver_id(node) or {
+					param_idx++
+					continue
+				}
+			} else {
+				if int(node.children_count) <= 1 {
+					param_idx++
+					continue
+				}
+				t.a.child(&node, 1)
+			}
 		} else {
-			param_idx + 1
-		}
-		if arg_idx >= int(node.children_count) {
-			param_idx++
-			continue
-		}
-		arg_id := if arg_idx == 0 {
-			t.generic_call_receiver_id(node) or {
+			arg_idx := if selector_form { param_idx } else { param_idx + 1 }
+			if arg_idx >= int(node.children_count) {
 				param_idx++
 				continue
 			}
-		} else {
 			t.a.child(&node, arg_idx)
 		}
 		mut arg_type := t.node_type(arg_id)
@@ -920,7 +1016,7 @@ fn (mut t Transformer) infer_generic_call_args(decl GenericFnDecl, _id flat.Node
 		}
 		if arg_type.len > 0 {
 			infer_generic_type_args(child.typ, arg_type, mut inferred)
-			if t.generic_decl_is_receiver_method(decl.node) && param_idx == 0 {
+			if is_recv_param {
 				t.infer_generic_receiver_suffix_args(child.typ, arg_type, mut inferred)
 				t.infer_generic_embedded_receiver_args(child.typ, arg_type, mut inferred)
 			}
@@ -1168,8 +1264,11 @@ fn infer_generic_type_args(param_type string, arg_type string, mut inferred map[
 		}
 		return
 	}
-	if param.starts_with('&') && arg.starts_with('&') {
-		infer_generic_type_args(param[1..], arg[1..], mut inferred)
+	if param.starts_with('&') {
+		// A `&T` / `mut T` parameter binds to a by-value argument too (the arg type
+		// carries no `&`), so strip the reference from the parameter regardless of
+		// whether the argument is itself a reference.
+		infer_generic_type_args(param[1..], arg.trim_left('&'), mut inferred)
 		return
 	}
 	if param.starts_with('mut ') {
@@ -1230,7 +1329,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	if node.kind == .selector && node.value == 'name' && node.children_count > 0 {
 		base := t.a.child_node(&node, 0)
 		if base.kind == .ident && is_generic_fn_placeholder_name(base.value) {
-			idx := generic_param_index(base.value)
+			idx := t.active_generic_param_index(base.value)
 			if idx < args.len {
 				return t.make_string_literal(args[idx])
 			}
@@ -1247,7 +1346,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	cloned_value := if is_root {
 		specialized_generic_fn_value(node.value, args)
 	} else {
-		substitute_generic_node_value(node, args)
+		t.subst_node_value(node, args)
 	}
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
@@ -1256,7 +1355,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		pos:            node.pos
 		children_start: start
 		children_count: flat.child_count(children.len)
-		typ:            substitute_generic_type_text(node.typ, args)
+		typ:            t.subst_type(node.typ, args)
 		value:          cloned_value
 	})
 }
@@ -1691,6 +1790,37 @@ fn substitute_generic_type_text_with_params(typ string, args []string, params []
 	return clean
 }
 
+// subst_type substitutes generic placeholders in a type-text using the currently
+// active generic parameter names (so non-canonical params resolve by name). Falls
+// back to positional substitution when no params are active.
+fn (t &Transformer) subst_type(typ string, args []string) string {
+	return substitute_generic_type_text_with_params(typ, args, t.active_generic_params)
+}
+
+// subst_node_value is the param-aware counterpart of substitute_generic_node_value.
+fn (t &Transformer) subst_node_value(node flat.Node, args []string) string {
+	match node.kind {
+		.call, .array_init, .struct_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr,
+		.is_expr, .type_decl, .field_decl, .param {
+			return t.subst_type(node.value, args)
+		}
+		else {
+			return node.value
+		}
+	}
+}
+
+// active_generic_param_index returns the position of a placeholder name within the
+// active generic params, or the positional fallback when none are active.
+fn (t &Transformer) active_generic_param_index(name string) int {
+	for i, p in t.active_generic_params {
+		if p == name {
+			return i
+		}
+	}
+	return generic_param_index(name)
+}
+
 fn specialized_generic_fn_value(value string, args []string) string {
 	if value.contains('.') {
 		receiver := value.all_before_last('.')
@@ -1713,10 +1843,75 @@ fn generic_type_args_short(args []string) string {
 }
 
 fn generic_type_arg_short(type_arg string) string {
-	if type_arg.contains('.') {
-		return type_arg.all_after_last('.')
+	clean := type_arg.trim_space()
+	// Function-type args (`fn (A, B) R`) and other compound types cannot appear
+	// verbatim in a C identifier and must not be naively shortened by the last
+	// `.` (which would truncate `fn(...) mod.R` to `R)`). Reduce them to a
+	// deterministic sanitized fragment instead.
+	if clean.contains('(') || clean.contains(' ') {
+		return sanitize_type_name_fragment(clean)
 	}
-	return type_arg
+	if clean.contains('.') {
+		return clean.all_after_last('.')
+	}
+	return clean
+}
+
+// sanitize_type_name_fragment reduces an arbitrary type text (notably a function
+// type) to a deterministic fragment that is a valid C identifier piece: module
+// qualifiers are dropped, `[]`/`&` become readable prefixes, and every other run
+// of non-identifier characters collapses to a single underscore.
+fn sanitize_type_name_fragment(typ string) string {
+	mut out := []u8{}
+	mut prev_us := false
+	mut i := 0
+	for i < typ.len {
+		c := typ[i]
+		if (c >= `A` && c <= `Z`) || (c >= `a` && c <= `z`) || (c >= `0` && c <= `9`) {
+			out << c
+			prev_us = false
+			i++
+		} else if c == `[` && i + 1 < typ.len && typ[i + 1] == `]` {
+			for ch in 'Array_'.bytes() {
+				out << ch
+			}
+			prev_us = false
+			i += 2
+		} else if c == `&` {
+			for ch in 'ptr_'.bytes() {
+				out << ch
+			}
+			prev_us = false
+			i++
+		} else if c == `.` {
+			// Drop the preceding module qualifier (everything emitted since the
+			// last separator), keeping only the unqualified name.
+			for out.len > 0 {
+				last := out[out.len - 1]
+				if (last >= `A` && last <= `Z`) || (last >= `a` && last <= `z`)
+					|| (last >= `0` && last <= `9`) {
+					out.delete_last()
+				} else {
+					break
+				}
+			}
+			i++
+		} else {
+			if !prev_us {
+				out << `_`
+				prev_us = true
+			}
+			i++
+		}
+	}
+	mut s := out.bytestr()
+	for s.starts_with('_') {
+		s = s[1..]
+	}
+	for s.ends_with('_') {
+		s = s[..s.len - 1]
+	}
+	return s
 }
 
 fn generic_type_suffixes(args []string) string {

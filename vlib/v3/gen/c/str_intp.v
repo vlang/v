@@ -24,10 +24,23 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 		} else if child.typ == 'string' {
 			g.gen_expr(child_id)
 		} else {
-			typ := g.tc.resolve_type(child_id)
+			mut typ := g.tc.resolve_type(child_id)
+			// For a bare ident, prefer the live cgen scope binding when present: it reflects
+			// locals introduced during generation (e.g. the `err` of an or-body lowered here,
+			// or for-loop vars) that resolve_type may stale-cache as `int`.
+			if child.kind == .ident {
+				if scope_typ := g.tc.cur_scope.lookup(child.value) {
+					if scope_typ !is types.Void {
+						typ = scope_typ
+					}
+				}
+			}
+			typ_name := types.Type(typ).name()
 			if typ is types.String {
 				g.gen_expr(child_id)
-			} else if typ is types.Struct && typ.name == 'IError' {
+			} else if typ_name == 'IError' || typ_name.ends_with('.IError') {
+				// IError may resolve as Interface/Alias/Struct depending on context; match by
+				// name and interpolate its `.message` (mirrors the transformer's IError path).
 				g.gen_expr(child_id)
 				g.write('.message')
 			} else if typ is types.Primitive {

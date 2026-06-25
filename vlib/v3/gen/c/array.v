@@ -110,6 +110,15 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 			return
 		}
 	}
+	// A fixed-array value (e.g. `[4]u8` color) is sometimes represented as a dynamic
+	// `Array`; a C fixed-array parameter decays to `elem*`, so pass the data pointer.
+	if g.tc.resolve_type(id) is types.Array {
+		elem_ct := g.tc.c_type(arr.elem_type)
+		g.write('(${elem_ct}*)(')
+		g.gen_expr(id)
+		g.write(').data')
+		return
+	}
 	g.gen_expr(id)
 }
 
@@ -321,6 +330,11 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.gen_expr(g.a.child(&node, 1))
 			g.write(')')
 		}
+		'wait' {
+			// `[]thread T .wait()` joins every spawned thread and (for non-void T)
+			// collects their return values into a fresh `[]T`.
+			g.gen_thread_array_wait(base_id, is_ptr, arr.elem_type)
+		}
 		else {
 			best_mname := g.array_method_fallback(fn_node.value)
 			if best_mname.len > 0 {
@@ -347,6 +361,46 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			}
 		}
 	}
+}
+
+// gen_thread_array_wait emits a call to the (lazily generated) wait function for a
+// `[]thread T` receiver. The element type carries the thread's return type in its
+// name (`thread T`); a bare `thread` denotes a void payload.
+fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_type types.Type) {
+	mut ret_name := ''
+	if elem_type is types.Struct {
+		trimmed := elem_type.name.trim_space()
+		if trimmed != 'thread' && trimmed.starts_with('thread ') {
+			ret_name = trimmed[7..].trim_space()
+		}
+	}
+	fn_name := g.ensure_thread_arr_wait_fn(ret_name)
+	g.write('${fn_name}(')
+	if is_ptr {
+		g.write('*')
+	}
+	g.gen_expr(base_id)
+	g.write(')')
+}
+
+// ensure_thread_arr_wait_fn registers (once per payload type) a function that joins
+// every thread handle in the array and, for a non-void payload, copies each thread's
+// heap-returned value into a result `[]T` (freeing the per-thread allocation).
+fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
+	is_void := ret_name.len == 0
+	ret_ct := if is_void { 'void' } else { g.tc.c_type(g.tc.parse_type(ret_name)) }
+	key := 'threadwait|${ret_ct}'
+	if name := g.spawn_wrapper_names[key] {
+		return name
+	}
+	name := c_name('__v_thread_arr_wait_${ret_ct}')
+	g.spawn_wrapper_names[key] = name
+	if is_void {
+		g.spawn_wrapper_defs << 'static void ${name}(Array a) { for (int __i = 0; __i < a.len; __i++) { void* __r = NULL; pthread_join((pthread_t)(((void**)a.data)[__i]), &__r); if (__r) free(__r); } }'
+	} else {
+		g.spawn_wrapper_defs << 'static Array ${name}(Array a) { Array __res = array_new(sizeof(${ret_ct}), a.len, a.len); for (int __i = 0; __i < a.len; __i++) { void* __r = NULL; pthread_join((pthread_t)(((void**)a.data)[__i]), &__r); if (__r) { ((${ret_ct}*)__res.data)[__i] = *(${ret_ct}*)__r; free(__r); } } return __res; }'
+	}
+	return name
 }
 
 // array_lookup_suffix supports array lookup suffix handling for c.

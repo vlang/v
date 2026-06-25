@@ -40,6 +40,7 @@ mut:
 	has_builtins            bool
 	tmp_count               int
 	line_start              bool
+	field_name_set          map[string]bool // every struct field's C name (lazy) — for const/field collision checks
 	modules                 map[string]string // alias -> full module name
 	fn_ptr_types            map[string]string // fn_ptr:ret|params -> typedef name
 	fixed_array_ret_wrappers map[string]bool // bare fixed-array c_type name -> has a return wrapper struct
@@ -340,6 +341,17 @@ fn (mut g FlatGen) collect_gen_info() {
 			include := '#include ${include_arg}'
 			if include !in g.c_includes {
 				g.c_includes << include
+			}
+			continue
+		}
+		if node.kind == .directive && node.value == 'define' && node.typ.len > 0 {
+			// `#define NAME [value]` from a `.c.v` file. Emit it into the same ordered
+			// include stream so a define that precedes an `#include` (e.g. viper's
+			// `#define GLFW_INCLUDE_GLCOREARB` before `<GLFW/glfw3.h>`, which selects the
+			// GL core-profile header that declares glGenVertexArrays/…) still does so.
+			define := '#define ${node.typ}'
+			if define !in g.c_includes {
+				g.c_includes << define
 			}
 			continue
 		}
@@ -1516,6 +1528,11 @@ fn (mut g FlatGen) fixed_array_len_expr(type_name string, fallback int) string {
 
 // fixed_array_len_value supports fixed array len value handling for FlatGen.
 fn (mut g FlatGen) fixed_array_len_value(arr types.ArrayFixed) string {
+	// Prefer the evaluated integer length: a const-expression size (`[segs + 1]f32`)
+	// otherwise reaches the raw fallback and is c_name-mangled into garbage.
+	if v := g.tc.fixed_array_len_value(arr) {
+		return v.str()
+	}
 	return g.fixed_array_len_raw(arr.len_expr, arr.len)
 }
 
@@ -1535,6 +1552,11 @@ fn (mut g FlatGen) fixed_array_len_raw(raw_len string, fallback int) string {
 	clean_len := raw_len.replace('_', '')
 	if clean_len.len > 0 && clean_len[0] >= `0` && clean_len[0] <= `9` {
 		return clean_len
+	}
+	// A const-expression size (`SEGS + 1`) evaluates to a literal; otherwise the whole
+	// string would be c_name-mangled (`SEGS_+_1`) into an undeclared identifier.
+	if v := g.tc.const_int_value(raw_len, []string{}) {
+		return v.str()
 	}
 	const_name := g.const_ref_name(raw_len)
 	if const_name.len > 0 {
@@ -1564,6 +1586,69 @@ fn (mut g FlatGen) fixed_array_decl_parts(arr types.ArrayFixed) (string, string)
 fn infix_can_skip_child_parens(parent_op flat.Op, child_op flat.Op) bool {
 	return (parent_op == .logical_or && child_op == .logical_or)
 		|| (parent_op == .logical_and && child_op == .logical_and)
+}
+
+// assoc_infix_chain_len counts how many same-operator infix nodes hang off the left
+// spine of `node` (its nesting depth). Capped early since only "very deep" matters.
+fn (g &FlatGen) assoc_infix_chain_len(node flat.Node) int {
+	op := node.op
+	mut cur := node
+	mut depth := 0
+	for {
+		if cur.children_count < 1 {
+			break
+		}
+		lhs_id := g.a.child(&cur, 0)
+		if !g.valid_node_id(lhs_id) {
+			break
+		}
+		lhs := g.a.nodes[int(lhs_id)]
+		if lhs.kind == .infix && lhs.op == op {
+			depth++
+			if depth > 101 {
+				break
+			}
+			cur = lhs
+		} else {
+			break
+		}
+	}
+	return depth
+}
+
+// gen_assoc_infix_chain emits a left-nested `||`/`&&` chain iteratively, producing the
+// same flat `a || b || c …` C as the recursive path but without growing the stack per
+// link (a big match's condition chain can be hundreds deep).
+fn (mut g FlatGen) gen_assoc_infix_chain(node flat.Node) {
+	op := node.op
+	op_s := g.op_str(op)
+	mut operands := []flat.NodeId{cap: 256}
+	mut cur := node
+	for {
+		operands << g.a.child(&cur, 1)
+		lhs_id := g.a.child(&cur, 0)
+		lhs := g.a.nodes[int(lhs_id)]
+		if lhs.kind == .infix && lhs.op == op && g.valid_node_id(g.a.child(&lhs, 0)) {
+			cur = lhs
+		} else {
+			operands << lhs_id
+			break
+		}
+	}
+	for i := operands.len - 1; i >= 0; i-- {
+		if i != operands.len - 1 {
+			g.write(' ${op_s} ')
+		}
+		oid := operands[i]
+		onode := g.a.nodes[int(oid)]
+		if onode.kind == .infix && !infix_can_skip_child_parens(op, onode.op) {
+			g.write('(')
+			g.gen_expr(oid)
+			g.write(')')
+		} else {
+			g.gen_expr(oid)
+		}
+	}
 }
 
 // gen_expr emits expr output for c.
@@ -1688,6 +1773,15 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			g.gen_spawn_expr(node)
 		}
 		.infix {
+			// A very long left-nested `||`/`&&` chain (e.g. from a big match condition or
+			// a `!in [...]` over many values) would recurse once per link and overflow the
+			// stack; emit those iteratively. Only pathologically long chains take this path,
+			// so ordinary code keeps the existing per-node generation unchanged.
+			if (node.op == .logical_or || node.op == .logical_and)
+				&& g.assoc_infix_chain_len(node) > 100 {
+				g.gen_assoc_infix_chain(node)
+				return
+			}
 			lhs_id := g.a.child(&node, 0)
 			rhs_id := g.a.child(&node, 1)
 			old_expected_enum := g.expected_enum
@@ -1937,6 +2031,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				(g.tc.cur_scope.lookup(base.value) or { types.Type(types.void_) }) !is types.Void
 			} else {
 				false
+			}
+			// A method used as a value (e.g. `game.draw` passed as a callback) rather
+			// than a field access — bind the receiver and yield a wrapper function.
+			if g.gen_method_value_closure(base_id, base_type0, node.value) {
+				return
 			}
 			if base.kind == .ident && base.value == 'C' {
 				g.write(node.value)
@@ -2803,6 +2902,48 @@ fn (g &FlatGen) fn_ptr_return_ct(ct string) string {
 	return ct
 }
 
+// emit_ready_fixed_array_typedefs emits, during the topological struct emission,
+// any fixed-array bare typedef whose element type is now fully defined (i.e. its
+// element struct has been emitted). Struct fields reference the typedef name
+// (`Array_fixed_vec__Vec4_f32 x`), so the typedef must precede any struct that
+// uses it — which a single later pass cannot guarantee.
+fn (mut g FlatGen) emit_ready_fixed_array_typedefs(needed map[string]FixedArrayTypedefInfo, emitted_structs map[string]bool) {
+	for name, info in needed {
+		if g.emitted_fixed_array_typedefs[name] {
+			continue
+		}
+		if g.fixed_array_elem_defined(info.arr, emitted_structs) {
+			g.emit_fixed_array_typedef(name, info, needed, mut g.emitted_fixed_array_typedefs)
+		}
+	}
+}
+
+// fixed_array_elem_defined reports whether a fixed array's element type is fully
+// available: a primitive/pointer/enum (always), or a struct/`string` already
+// emitted. Aliases are unwrapped to their underlying type first (`SimdFloat4` ->
+// `vec.Vec4[f32]` struct), so an alias to a not-yet-emitted struct is not treated
+// as ready.
+fn (g &FlatGen) fixed_array_elem_defined(arr types.ArrayFixed, emitted_structs map[string]bool) bool {
+	return g.fixed_array_type_defined(arr.elem_type, emitted_structs)
+}
+
+fn (g &FlatGen) fixed_array_type_defined(typ0 types.Type, emitted_structs map[string]bool) bool {
+	mut typ := typ0
+	for typ is types.Alias {
+		typ = typ.base_type
+	}
+	if typ is types.ArrayFixed {
+		return g.fixed_array_type_defined(typ.elem_type, emitted_structs)
+	}
+	if typ is types.Struct {
+		return g.tc.c_type(typ) in emitted_structs
+	}
+	if typ is types.String {
+		return 'string' in emitted_structs
+	}
+	return true
+}
+
 fn module_from_qualified_name(name string) string {
 	if name.contains('.') {
 		return name.all_before_last('.')
@@ -3101,6 +3242,11 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		|| ct in ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'float', 'double', 'isize', 'usize'] {
 		if qname == 'max_len' && ct == 'int' {
 			g.writeln('enum { ${qname} = ${expr_str} };')
+		} else if g.name_collides_with_struct_field(qname) {
+			// A `#define` whose name matches a struct field would wrongly expand every
+			// `.field` access; emit a real `const` variable instead (C keeps member and
+			// ordinary-identifier namespaces separate, so there is no collision).
+			g.writeln('static const ${ct} ${qname} = ${expr_str};')
 		} else {
 			g.writeln('#define ${qname} (${expr_str})')
 		}
@@ -3108,6 +3254,21 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		g.writeln('const ${ct} ${qname} = ${expr_str};')
 	}
 	g.tc.cur_module = old_module
+}
+
+// name_collides_with_struct_field reports whether a name is the C name of any struct
+// field, building the set lazily on first use.
+fn (mut g FlatGen) name_collides_with_struct_field(name string) bool {
+	if g.field_name_set.len == 0 {
+		for _, fields in g.tc.structs {
+			for f in fields {
+				g.field_name_set[c_field_name(f.name)] = true
+			}
+		}
+		// Guard against an all-fieldless program re-scanning every call.
+		g.field_name_set[''] = true
+	}
+	return name in g.field_name_set
 }
 
 fn (g &FlatGen) const_expr_needs_runtime_storage(expr string) bool {

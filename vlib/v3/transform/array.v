@@ -187,7 +187,17 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	mut rhs_type := t.normalize_type_alias(t.node_type(rhs_id))
 	rhs_node := t.a.nodes[int(rhs_id)]
 	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
-	if push_many && rhs_node.kind == .array_literal && !rhs_type.starts_with('[]') {
+	if rhs_node.kind == .array_literal && !elem_type.starts_with('[]')
+		&& !is_fixed_array_type(elem_type) {
+		// `[]scalar << [a, b, c]` always appends the literal's elements. Retype the
+		// literal from the destination so a mis-inferred element type (e.g. `[]int`
+		// for `[f32_expr, ..]`) is corrected and the append stays a clean push_many,
+		// instead of degrading to a single push of the whole array. (An array-typed
+		// element is genuinely ambiguous, so leave that to the inferred decision.)
+		push_many = true
+		t.a.nodes[int(rhs_id)].typ = array_type
+		rhs_type = array_type
+	} else if push_many && rhs_node.kind == .array_literal && !rhs_type.starts_with('[]') {
 		t.a.nodes[int(rhs_id)].typ = array_type
 		rhs_type = array_type
 	}

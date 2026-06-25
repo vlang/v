@@ -75,6 +75,20 @@ mut:
 	alias_cache           &AliasCache = unsafe { nil }
 	sum_cache             &AliasCache = unsafe { nil }
 	used_fns              map[string]bool
+	// active_generic_params holds the generic parameter names of the decl currently
+	// being specialized/rewritten, in the same order as the inferred type `args`.
+	// It lets type-text substitution map placeholders by name (so non-canonical
+	// params like `D`/`F` resolve to the right arg) instead of by the positional
+	// `generic_param_index` heuristic (which collapses anything outside the T/U/C
+	// sequences to index 0). Empty for struct-generic specialization, which keeps
+	// the legacy positional behaviour.
+	active_generic_params []string
+	// escaping_amp_ptrs holds the names of pointer locals `p` declared as `p := &v`
+	// (v a value local) whose pointer escapes the function (is returned). V semantics
+	// auto-heap such a `v`; v3 otherwise takes the address of a stack local that dies
+	// on return. Recomputed per function (structural pre-pass in transform_fn_body),
+	// consumed when the `p := &v` decl is transformed (RHS rewritten to a heap copy).
+	escaping_amp_ptrs map[string]bool
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -991,6 +1005,105 @@ fn (mut t Transformer) transform_const_string_interp(_id flat.NodeId, node flat.
 }
 
 // transform_fn_body transforms transform fn body data for transform.
+// try_heap_escaping_amp reports whether a `p := &v` decl is an escaping address of
+// a value local that must be heap-copied: `p` is in escaping_amp_ptrs (returned)
+// and `v` resolves to a non-reference value type.
+fn (t &Transformer) try_heap_escaping_amp(node flat.Node, rhs_id flat.NodeId) bool {
+	lhs := t.a.nodes[int(t.a.child(&node, 0))]
+	if lhs.kind != .ident || lhs.value !in t.escaping_amp_ptrs {
+		return false
+	}
+	rhs := t.a.nodes[int(rhs_id)]
+	if rhs.kind != .prefix || rhs.op != .amp || rhs.children_count == 0 {
+		return false
+	}
+	amp_child := t.a.child(&rhs, 0)
+	amp_node := t.a.nodes[int(amp_child)]
+	if amp_node.kind != .ident {
+		return false
+	}
+	local_type := t.node_type(amp_child)
+	return local_type.len > 0 && !local_type.starts_with('&') && !local_type.starts_with('[]')
+		&& !local_type.starts_with('map[') && !local_type.starts_with('?')
+		&& !local_type.starts_with('!')
+}
+
+// heap_escaping_amp_rhs rewrites `&v` into `(&T)memdup(&v, sizeof(T))`, a heap copy
+// of the value local `v` so the escaping pointer outlives the stack frame.
+fn (mut t Transformer) heap_escaping_amp_rhs(rhs_id flat.NodeId) flat.NodeId {
+	rhs := t.a.nodes[int(rhs_id)]
+	amp_child := t.a.child(&rhs, 0)
+	local_type := t.node_type(amp_child)
+	addr := t.make_prefix(.amp, t.transform_expr(amp_child))
+	size := t.make_sizeof_type(local_type)
+	dup := t.make_call_typed('memdup', arr2(addr, size), 'voidptr')
+	return t.make_cast('&${local_type}', dup, '&${local_type}')
+}
+
+// mark_escaping_amp_ptrs runs a structural pre-pass over a function body to find
+// `p := &v` declarations whose pointer `p` is later returned. Such a `v` is a local
+// value whose address escapes, so it must be heap-copied (V auto-heaps it); the
+// names are recorded in `escaping_amp_ptrs` and consumed by the decl-assign
+// transform. Purely structural (no type info needed here): the type check happens
+// at rewrite time when `v`'s type is known.
+fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
+	t.escaping_amp_ptrs = map[string]bool{}
+	mut amp_ptrs := map[string]bool{}
+	mut returned := map[string]bool{}
+	for id in body_ids {
+		t.scan_escape_pass(id, mut amp_ptrs, mut returned)
+	}
+	for name, _ in amp_ptrs {
+		if name in returned {
+			t.escaping_amp_ptrs[name] = true
+		}
+	}
+}
+
+// scan_escape_pass recursively collects, in a function-body subtree, (a) the LHS
+// names of `p := &ident` declarations into `amp_ptrs`, and (b) every ident name
+// appearing inside a return statement into `returned`.
+fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut returned map[string]bool) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .decl_assign && node.children_count == 2 {
+		lhs := t.a.nodes[int(t.a.child(&node, 0))]
+		rhs := t.a.nodes[int(t.a.child(&node, 1))]
+		if lhs.kind == .ident && lhs.value.len > 0 && rhs.kind == .prefix && rhs.op == .amp
+			&& rhs.children_count > 0 {
+			amp_child := t.a.nodes[int(t.a.child(&rhs, 0))]
+			if amp_child.kind == .ident {
+				amp_ptrs[lhs.value] = true
+			}
+		}
+	}
+	if node.kind == .return_stmt {
+		for i in 0 .. node.children_count {
+			t.collect_subtree_idents(t.a.child(&node, i), mut returned)
+		}
+	}
+	for i in 0 .. node.children_count {
+		t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut returned)
+	}
+}
+
+// collect_subtree_idents gathers every ident name in a subtree (used to find which
+// names flow into a return statement).
+fn (mut t Transformer) collect_subtree_idents(id flat.NodeId, mut names map[string]bool) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident && node.value.len > 0 {
+		names[node.value] = true
+	}
+	for i in 0 .. node.children_count {
+		t.collect_subtree_idents(t.a.child(&node, i), mut names)
+	}
+}
+
 fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	fn_node := t.a.nodes[fn_idx]
 	t.cur_fn_name = fn_node.value
@@ -1035,6 +1148,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			body_ids << child_id
 		}
 	}
+	t.mark_escaping_amp_ptrs(body_ids)
 	new_body := t.transform_stmts(body_ids)
 	// Rebuild function children: params then new body
 	start := t.a.children.len
@@ -2571,6 +2685,8 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		child_id := t.a.child(&node, i)
 		if i == 0 || (node.children_count > 2 && i > 1) {
 			new_children << t.transform_lvalue(child_id)
+		} else if node.children_count == 2 && t.try_heap_escaping_amp(node, child_id) {
+			new_children << t.heap_escaping_amp_rhs(child_id)
 		} else {
 			lhs_id := t.a.child(&node, 0)
 			lhs_type := if inferred_typ.len > 0 {
