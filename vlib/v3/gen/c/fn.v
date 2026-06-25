@@ -191,9 +191,8 @@ fn (mut g FlatGen) write_method_c_name(id flat.NodeId, node flat.Node, method_na
 fn (g &FlatGen) static_method_fn_name(type_ident string, method string) ?string {
 	qtype := g.tc.qualify_name(type_ident)
 	is_type := type_ident in g.tc.type_aliases || qtype in g.tc.type_aliases
-		|| type_ident in g.tc.structs || qtype in g.tc.structs
-		|| type_ident in g.tc.enum_names || qtype in g.tc.enum_names
-		|| type_ident in g.tc.sum_types || qtype in g.tc.sum_types
+		|| type_ident in g.tc.structs || qtype in g.tc.structs || type_ident in g.tc.enum_names
+		|| qtype in g.tc.enum_names || type_ident in g.tc.sum_types || qtype in g.tc.sum_types
 	if !is_type {
 		return none
 	}
@@ -298,6 +297,18 @@ fn (mut g FlatGen) spawn_wrapper_decls() {
 // field access can't represent the bound receiver, so it binds the receiver into a
 // per-site context global and yields a wrapper function that invokes the method on
 // it. Returns false when the selector is an ordinary field access (handled normally).
+//
+// LIMITATION: the captured receiver lives in a single per-site global, so it is
+// only valid while no later evaluation of the *same* selector site overwrites it.
+// That covers the supported cases — passing/storing a method value and invoking it
+// before the site is re-evaluated (immediate callbacks, a single stored callback).
+// It does NOT support keeping several live method values from one site with
+// different receivers (e.g. building an array of `obj.method` in a loop): they all
+// share the global and would observe the last-bound receiver. A correct general
+// form needs a real per-closure captured environment, which the v3 backend has no
+// ABI for yet (anonymous fns are lifted without true capture). Such escaping method
+// values should be reworked (e.g. capture into an explicit struct + free fn) until
+// closure support lands.
 fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types.Type, method string) bool {
 	clean := types.unwrap_pointer(base_type)
 	if clean !is types.Struct {
@@ -408,8 +419,8 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 				base_expr := g.expr_to_string(base_id)
 				if call_node.children_count == 1 {
 					if receiver_type is types.Pointer {
-						wrapper = g.ensure_receiver_spawn_wrapper(c_name(method_name),
-							receiver_ct, ret_ct)
+						wrapper = g.ensure_receiver_spawn_wrapper(c_name(method_name), receiver_ct,
+							ret_ct)
 						if base_type is types.Pointer {
 							arg_expr = '(${receiver_ct})(${base_expr})'
 						} else {
@@ -449,8 +460,7 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 						param_cts << g.tc.c_type(param_types[i])
 						arg_exprs << g.expr_to_string(g.a.child(&call_node, i))
 					}
-					g.emit_args_spawn_expr(c_name(method_name), param_cts, arg_exprs,
-						ret_ct)
+					g.emit_args_spawn_expr(c_name(method_name), param_cts, arg_exprs, ret_ct)
 					return
 				}
 			}
@@ -1324,26 +1334,28 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 							}
 						}
 					}
-						if !is_method {
-							// Static method on a named type / type alias (e.g. `SimdFloat4.new(...)`,
-							// where `SimdFloat4` names a type, not a value). The base ident resolves to
-							// no value type, so handle it before the instance-method fallback.
-							base_node_s := g.a.child_node(fn_node, 0)
-							if base_node_s.kind == .ident {
-								if static_fn := g.static_method_fn_name(base_node_s.value, fn_node.value) {
-									g.write(g.direct_call_name(static_fn))
-									g.write('(')
-									for i in 1 .. node.children_count {
-										if i > 1 {
-											g.write(', ')
-										}
-										g.gen_expr(g.a.child(&node, i))
+					if !is_method {
+						// Static method on a named type / type alias (e.g. `SimdFloat4.new(...)`,
+						// where `SimdFloat4` names a type, not a value). The base ident resolves to
+						// no value type, so handle it before the instance-method fallback.
+						base_node_s := g.a.child_node(fn_node, 0)
+						if base_node_s.kind == .ident {
+							if static_fn := g.static_method_fn_name(base_node_s.value,
+								fn_node.value)
+							{
+								g.write(g.direct_call_name(static_fn))
+								g.write('(')
+								for i in 1 .. node.children_count {
+									if i > 1 {
+										g.write(', ')
 									}
-									g.write(')')
-									return
+									g.gen_expr(g.a.child(&node, i))
 								}
+								g.write(')')
+								return
 							}
 						}
+					}
 					if !is_method {
 						mut struct_name := clean_type.name()
 						if clean_type is types.Struct {

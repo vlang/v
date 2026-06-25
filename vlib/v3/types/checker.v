@@ -105,24 +105,24 @@ pub mut:
 	interface_embeds           map[string][]string
 	interface_abstract_methods map[string][]string // iface -> abstract (declared) method names
 
-	c_globals                     map[string]Type
-	const_types                   map[string]Type
-	const_exprs                   map[string]flat.NodeId
-	const_modules                 map[string]string
-	const_suffixes                map[string]string // dot-suffix -> full const key (O(1) lookup; '' if ambiguous)
-	imports                       map[string]string // alias -> short module name
-	file_imports                  map[string]string
-	file_modules                  map[string]string
-	file_scope                    &Scope = unsafe { nil }
-	cur_scope                     &Scope = unsafe { nil }
-	scope_pool                    []&Scope
-	scope_pool_index              int
-	has_builtins                  bool
-	cur_module                    string
-	cur_file                      string
-	errors                        []TypeError
-	resolved_call_names           []string // node_id -> resolved function name
-	resolved_call_set             []bool
+	c_globals           map[string]Type
+	const_types         map[string]Type
+	const_exprs         map[string]flat.NodeId
+	const_modules       map[string]string
+	const_suffixes      map[string]string // dot-suffix -> full const key (O(1) lookup; '' if ambiguous)
+	imports             map[string]string // alias -> short module name
+	file_imports        map[string]string
+	file_modules        map[string]string
+	file_scope          &Scope = unsafe { nil }
+	cur_scope           &Scope = unsafe { nil }
+	scope_pool          []&Scope
+	scope_pool_index    int
+	has_builtins        bool
+	cur_module          string
+	cur_file            string
+	errors              []TypeError
+	resolved_call_names []string // node_id -> resolved function name
+	resolved_call_set   []bool
 	// `Type.method` keys for methods used as *values* (`recv.method` passed as a
 	// callback). Recorded during semantic checking — which has full scope/type info,
 	// runs before markused, and (unlike a call) routes a value-context selector through
@@ -3671,15 +3671,53 @@ fn array_like_elem_type(t Type) ?Type {
 
 // if_branch_types_compatible reports whether two if-expression branch types are
 // compatible. Bare array literals (`[a, b, c]`) resolve to a fixed `T[n]`, but V
-// treats them as dynamic `[]T`; two array branches with compatible element types
-// must therefore not be flagged as a mismatch merely because their lengths differ.
-fn (tc &TypeChecker) if_branch_types_compatible(a Type, b Type) bool {
+// treats them as dynamic `[]T`; two *literal* branches with compatible element
+// types must therefore not be flagged as a mismatch merely because their lengths
+// differ. The length-agnostic relaxation is limited to literal tails: genuine
+// fixed-array values keep their length (handled by `type_compatible` above), so
+// e.g. `[2]int` vs `[3]int` branches still mismatch.
+fn (tc &TypeChecker) if_branch_types_compatible(a Type, b Type, a_is_array_lit bool, b_is_array_lit bool) bool {
 	if tc.type_compatible(a, b) || tc.type_compatible(b, a) {
 		return true
+	}
+	if !a_is_array_lit || !b_is_array_lit {
+		return false
 	}
 	a_elem := array_like_elem_type(a) or { return false }
 	b_elem := array_like_elem_type(b) or { return false }
 	return tc.type_compatible(a_elem, b_elem) || tc.type_compatible(b_elem, a_elem)
+}
+
+// branch_tail_is_array_literal reports whether a branch's value tail is a bare
+// array literal (`[a, b, c]`) — directly, or through a const whose initializer is
+// one. V types such values as dynamic `[]T` regardless of element count, so they
+// must not constrain if-branch length compatibility. Explicit fixed-array
+// initializers (`[N]T{...}`, parsed as `.array_init`) are genuine fixed arrays and
+// keep their length.
+fn (tc &TypeChecker) branch_tail_is_array_literal(id flat.NodeId) bool {
+	return tc.expr_is_bare_array_literal(tc.branch_tail_expr_id(id))
+}
+
+// expr_is_bare_array_literal reports whether `id` is a bare `[a, b, c]` literal,
+// directly or through a single const reference.
+fn (tc &TypeChecker) expr_is_bare_array_literal(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .array_literal {
+		return true
+	}
+	if node.kind == .ident {
+		for cand in [tc.qualify_name(node.value), node.value] {
+			if expr_id := tc.const_exprs[cand] {
+				if tc.valid_node_id(expr_id) {
+					return tc.a.nodes[int(expr_id)].kind == .array_literal
+				}
+			}
+		}
+	}
+	return false
 }
 
 // fixed_array_elem_type supports fixed array elem type handling for types.
@@ -3848,8 +3886,9 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		else_type = tc.branch_tail_type(else_id)
 	}
 	if then_type !is Void && else_type !is Void {
-		if tc.branch_has_value_tail(then_id) && tc.branch_has_value_tail(tc.a.child(&node, 2))
-			&& !tc.if_branch_types_compatible(then_type, else_type) {
+		else_id := tc.a.child(&node, 2)
+		if tc.branch_has_value_tail(then_id) && tc.branch_has_value_tail(else_id)
+			&& !tc.if_branch_types_compatible(then_type, else_type, tc.branch_tail_is_array_literal(then_id), tc.branch_tail_is_array_literal(else_id)) {
 			if tc.should_diagnose(id) {
 				tc.record_error(.if_branch_mismatch,
 					'if-expression branch type mismatch: then `${then_type.name()}` vs else `${else_type.name()}`',
@@ -4688,6 +4727,19 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 				if !tc.receiver_compatible(elem_actual, elem_expected) {
 					all_ok = false
 					break
+				}
+			}
+			// A fixed-array expectation additionally requires the literal to have
+			// exactly the expected number of elements; otherwise `[1, 2]` would be
+			// accepted as e.g. `[4]int` and the C backend would copy/read past the
+			// compound literal. Element-type propagation above still happens either
+			// way; only the type adoption is gated. Unresolvable const lengths stay
+			// lenient (we cannot verify them here).
+			if all_ok && expected is ArrayFixed {
+				if expected_len := tc.fixed_array_len_value(expected) {
+					if node.children_count != expected_len {
+						all_ok = false
+					}
 				}
 			}
 			if all_ok {

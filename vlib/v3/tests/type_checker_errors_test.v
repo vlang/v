@@ -307,3 +307,26 @@ fn test_type_checker_reports_core_semantic_errors() {
 	assert !cross_module_array_append_c.contains('array_push_many(&xs')
 	assert cross_module_array_append_c.contains('array_push(&xs')
 }
+
+// Regression tests for the post-PR review fixes: fixed-array literals must match
+// the expected fixed length, and genuine fixed-array if-branches of different
+// lengths must mismatch — while bare array literals stay length-agnostic.
+fn test_fixed_array_length_checks() {
+	v3_bin := build_v3()
+	// A literal passed where a fixed array is expected must have the exact length.
+	run_bad(v3_bin, 'bad_fixed_array_arg_len',
+		'fn take4(a [4]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take4([1, 2])\n}\n',
+		'expected `int[4]`')
+	// Genuine fixed arrays of different lengths in if-branches must mismatch.
+	run_bad(v3_bin, 'bad_if_branch_fixed_array_len',
+		'fn main() {\n\ta := [2]int{}\n\tb := [3]int{}\n\tc := true\n\t_ := if c { a } else { b }\n}\n',
+		'if-expression branch type mismatch')
+	// Correct fixed-array length is accepted and round-trips.
+	good4 := run_good(v3_bin, 'good_fixed_array_arg_len',
+		'fn take4(a [4]int) int {\n\treturn a[0] + a[1] + a[2] + a[3]\n}\nfn main() {\n\tprintln(int_str(take4([10, 20, 30, 40])))\n}\n')
+	assert good4 == '100'
+	// Bare array literals are dynamic `[]T`, so different-length branches are fine.
+	good_lit := run_good(v3_bin, 'good_if_branch_array_literal_len',
+		'fn main() {\n\tc := true\n\tx := if c { [1, 2, 3] } else { [4, 5] }\n\tprintln(int_str(x.len))\n}\n')
+	assert good_lit == '3'
+}
