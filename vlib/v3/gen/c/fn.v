@@ -339,7 +339,10 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 	cname := c_name(method_key)
 	recv_is_ptr := params[0] is types.Pointer
 	recv_ct := g.tc.c_type(params[0])
-	ret_ct := g.tc.c_type(ret)
+	// Use the method's ABI return type (matching `cname`'s signature and the callback
+	// fn-pointer typedef): an option/result is `Optional_T`, a fixed array its
+	// `_v_ret_*` wrapper — not the bare `c_type` (`Optional`/`Array_fixed_*`).
+	ret_ct := g.fn_return_type_name(ret)
 	idx := g.tmp_count
 	g.tmp_count++
 	ctx_name := '_mvctx_${idx}'
@@ -369,7 +372,16 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 	} else {
 		g.gen_expr(base_id)
 	}
-	g.write('; (void*)${wrap_name}; })')
+	// Yield the wrapper as the callback value. A V `fn (...) ...` parameter is a
+	// `_fn_ptr_*` typedef and needs the wrapper cast to that function-pointer type; only
+	// a C / `voidptr` callback slot gets the object-pointer `(void*)` cast (which strict
+	// C rejects for function pointers).
+	if g.expected_expr_type is types.FnType {
+		fnptr_ct := g.value_c_type(g.expected_expr_type)
+		g.write('; (${fnptr_ct})${wrap_name}; })')
+	} else {
+		g.write('; (void*)${wrap_name}; })')
+	}
 	return true
 }
 

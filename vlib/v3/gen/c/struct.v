@@ -871,14 +871,20 @@ fn (g &FlatGen) generic_struct_init_instance_ct(type_name string) ?string {
 	}
 	short := type_name.all_after_last('.')
 	// Prefer the explicit expected type; fall back to the enclosing function's return
-	// type, since a bare generic literal in return position carries no
-	// expected_expr_type. Only adopt a candidate whose generic base matches the
-	// literal's base, so unrelated expected types never rename the struct.
+	// type ONLY for a literal in return position (a bare generic literal there carries
+	// no expected_expr_type) — otherwise a `Box{...}` in a local decl / argument whose
+	// expected type is the bare `Box` would be wrongly materialised as `Box_int`. Only
+	// adopt a candidate whose generic base matches the literal's base, so unrelated
+	// expected types never rename the struct.
 	//
 	// Note: `tc.struct_generic_params` is empty by cgen time, so the candidate's
 	// shape (a `Base[args]` instance whose base short-name equals the literal's) is
 	// the sole evidence that this bare literal is a generic struct instantiation.
-	for cand in [g.expected_expr_type, g.cur_fn_ret] {
+	mut candidates := [g.expected_expr_type]
+	if g.in_return {
+		candidates << g.cur_fn_ret
+	}
+	for cand in candidates {
 		// Unwrap a pointer so a `&Box[int]` expected type still matches a bare `Box`
 		// literal — the heap path (`&Box{..}`) needs the struct (`Box_int`), not the
 		// pointer, type name.

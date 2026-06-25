@@ -61,6 +61,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		return
 	}
 	node := g.a.nodes[int(id)]
+	g.in_return = false
 	match node.kind {
 		.fn_decl, .c_fn_decl {
 			return
@@ -184,6 +185,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.gen_index_assign(node)
 		}
 		.return_stmt {
+			g.in_return = true
 			if g.cur_fn_ret is types.Enum {
 				g.expected_enum = g.cur_fn_ret.name
 			}

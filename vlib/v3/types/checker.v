@@ -1900,6 +1900,12 @@ fn (tc &TypeChecker) match_covers_all_enum_variants(node flat.Node) bool {
 	} else {
 		return false
 	}
+	// A `[flag]` enum value can hold combined or zero bits (`.read | .write`, `0`) that
+	// no single-field branch covers, so listing every field is NOT exhaustive — such a
+	// match needs an explicit `else`.
+	if enum_name in tc.flag_enums {
+		return false
+	}
 	all_fields := tc.enum_fields[enum_name] or { return false }
 	if all_fields.len == 0 {
 		return false

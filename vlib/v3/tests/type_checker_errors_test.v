@@ -423,3 +423,19 @@ fn test_pr_review_codegen_batch_two() {
 		"struct S {\n\tn int\n}\nfn (s S) run(cb fn ()) {\n\tcb()\n}\nfn greet() {\n\tprintln('hi')\n}\nfn main() {\n\ts := S{\n\t\tn: 1\n\t}\n\ts.run(greet)\n}\n")
 	assert cb == 'hi'
 }
+
+// Regression tests for the third PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_three() {
+	v3_bin := build_v3()
+	// A `[flag]` enum match that lists only single-field branches is NOT exhaustive
+	// (combined/zero values fall through), so a non-void fn needs `else`/missing-return.
+	run_bad(v3_bin, 'bad_flag_enum_match_not_exhaustive',
+		'@[flag]\nenum Perm {\n\tread\n\twrite\n}\nfn f(p Perm) int {\n\tmatch p {\n\t\t.read { return 1 }\n\t\t.write { return 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(Perm.read)))\n}\n',
+		'missing return')
+	// A bound method value returning an option, passed to a V `fn () ?string`
+	// parameter, must emit a wrapper with the `Optional_string` ABI return and a
+	// function-pointer (not `(void*)`) cast.
+	mv := run_good(v3_bin, 'good_method_value_option_return',
+		"struct G {\n\tn int\n}\nfn (g G) make() ?string {\n\treturn 'hi'\n}\nfn run(cb fn () ?string) {\n\ts := cb() or { 'none' }\n\tprintln(s)\n}\nfn main() {\n\tg := G{\n\t\tn: 1\n\t}\n\trun(g.make)\n}\n")
+	assert mv == 'hi'
+}
