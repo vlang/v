@@ -2951,7 +2951,14 @@ fn (mut g FlatGen) fn_return_type_name(t types.Type) string {
 			return fixed_array_ret_wrapper_name(bare)
 		}
 	}
-	return g.optional_type_name(t)
+	ct := g.optional_type_name(t)
+	// A function/fn-ptr-valued return (`fn f() fn () int`) has the internal `fn_ptr:...`
+	// encoding for its C type; map it to the shared `_fn_ptr_N` typedef, since a C function
+	// cannot be declared returning that raw encoding (it would emit invalid C).
+	if ct.starts_with('fn_ptr:') {
+		return g.resolve_fn_ptr_type(ct)
+	}
+	return ct
 }
 
 // fn_ptr_return_ct maps a fixed-array return c_type name (string form, used by the

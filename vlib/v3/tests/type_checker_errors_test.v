@@ -895,3 +895,21 @@ fn test_pr_review_codegen_batch_twentythree() {
 		'fn build_cb(c Counter) int {\n\tmut cb := c.report\n\tcb = plain\n\treturn cb()\n}\nfn main() {\n\tprintln(int_str(build_cb(Counter{\n\t\tid: 1\n\t})))\n}\n')
 	assert uncond == '0'
 }
+
+fn test_fn_pointer_return_type() {
+	v3_bin := build_v3()
+	// A function whose return type is itself a function pointer (`fn () fn (int) int`) must be
+	// declared with the shared `_fn_ptr_N` typedef, not the internal `fn_ptr:...` encoding (which
+	// would emit invalid C). Covers a plain fn return and a method returning a fn pointer.
+	picker := run_good(v3_bin, 'good_fn_pointer_return',
+		'fn add_one(x int) int {\n\treturn x + 1\n}\nfn picker() fn (int) int {\n\treturn add_one\n}\nfn main() {\n\tf := picker()\n\tprintln(int_str(f(41)))\n}\n')
+	assert picker == '42'
+	method_ret := run_good(v3_bin, 'good_method_fn_pointer_return',
+		'struct Calc {\n\tbase int\n}\nfn dbl(x int) int {\n\treturn x * 2\n}\nfn (c Calc) op() fn (int) int {\n\treturn dbl\n}\nfn main() {\n\tc := Calc{\n\t\tbase: 5\n\t}\n\tf := c.op()\n\tprintln(int_str(f(21)))\n}\n')
+	assert method_ret == '42'
+	// A function returning a callback assembled from a reassigned method-value local compiles and
+	// returns the (plain) callback through the fn-pointer return type.
+	built := run_good(v3_bin, 'good_fn_pointer_return_reassigned_method_value',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn plain() int {\n\treturn 7\n}\nfn build_cb(c Counter) fn () int {\n\tmut cb := c.report\n\tcb = plain\n\treturn cb\n}\nfn main() {\n\tf := build_cb(Counter{\n\t\tid: 1\n\t})\n\tprintln(int_str(f()))\n}\n')
+	assert built == '7'
+}
