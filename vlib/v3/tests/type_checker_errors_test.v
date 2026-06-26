@@ -867,3 +867,31 @@ fn test_pr_review_codegen_batch_twentytwo() {
 		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tcb := c.report\n\t_ = cb\n\tprintln(int_str(c.report()))\n}\n')
 	assert blank == '5'
 }
+
+fn test_pr_review_codegen_batch_twentythree() {
+	v3_bin := build_v3()
+	// A concrete generic with multiple arguments including a later pointer argument
+	// (`Pair[int, &Node]`) must parse as a generic instance, not a fixed array: the `&` only
+	// leads a type argument because of the preceding comma, so a comma-bearing bracket is never
+	// a fixed-array length (which is always a single integer expression).
+	genptr := run_good(v3_bin, 'good_generic_multi_arg_pointer',
+		'struct Node {\n\tval int\n}\nstruct Pair[A, B] {\n\tfirst  A\n\tsecond B\n}\nfn main() {\n\tn := Node{\n\t\tval: 5\n\t}\n\tp := Pair[int, &Node]{\n\t\tfirst:  1\n\t\tsecond: &n\n\t}\n\tprintln(int_str(p.first + p.second.val))\n}\n')
+	assert genptr == '6'
+	// A whole-value assignment between two heaped locals (both moved to `&T` because their
+	// addresses escape) must copy the value through the pointers (`*v = *w`), not alias `w`'s
+	// object. Here `v = w` then mutating `w` must leave the first returned pointer at w's old value.
+	heap2 := run_good(v3_bin, 'good_heaped_local_whole_value_assign',
+		"struct Box {\nmut:\n\tx int\n}\nfn split() (&Box, &Box) {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tmut w := Box{\n\t\tx: 2\n\t}\n\tp := &v\n\tq := &w\n\tv = w\n\tw.x = 100\n\treturn p, q\n}\nfn main() {\n\ta, b := split()\n\tprintln(int_str(a.x) + ',' + int_str(b.x))\n}\n")
+	assert heap2 == '2,100'
+	// A method value bound to a local and reassigned only on one branch still escapes on the
+	// other path, so returning it is rejected (the marker survives a non-dominating reassignment).
+	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn plain() int {\n\treturn 0\n}\n'
+	run_bad(v3_bin, 'bad_method_value_conditional_reassign_escape', mv +
+		'fn build_cb(c Counter, cond bool) fn () int {\n\tmut cb := c.report\n\tif cond {\n\t\tcb = plain\n\t}\n\treturn cb\n}\nfn main() {\n\t_ := build_cb(Counter{\n\t\tid: 1\n\t}, false)\n}\n',
+		'cannot escape its call site')
+	// An unconditional reassignment to a non-method value dominates the later use, so the marker
+	// is cleared and the (now plain) callback is accepted.
+	uncond := run_good(v3_bin, 'good_method_value_unconditional_reassign', mv +
+		'fn build_cb(c Counter) int {\n\tmut cb := c.report\n\tcb = plain\n\treturn cb()\n}\nfn main() {\n\tprintln(int_str(build_cb(Counter{\n\t\tid: 1\n\t})))\n}\n')
+	assert uncond == '0'
+}

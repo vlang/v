@@ -1997,6 +1997,13 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			if lhs_type.len == 0 {
 				lhs_type = t.lvalue_type(lhs_id)
 			}
+			// A value local moved to the heap (its type became `&T`) is assigned by storing a
+			// value through the pointer (cgen emits `*v = ...`), so coerce the RHS to the value
+			// type `T`, not `&T`. Otherwise a heaped-local RHS (`v = w`, both `&T`) is copied as a
+			// pointer — aliasing `w`'s object — instead of dereferenced to its value.
+			if lhs.kind == .ident && lhs.value in t.heaped_amp_locals && lhs_type.starts_with('&') {
+				lhs_type = lhs_type[1..]
+			}
 			sum_target := t.assignment_sum_target(lhs_id, child_id, lhs_type)
 			if node.op == .assign && sum_target.len > 0 {
 				new_children << t.wrap_sum_value(child_id, sum_target)

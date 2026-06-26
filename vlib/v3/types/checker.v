@@ -140,7 +140,11 @@ pub mut:
 	// Such an alias shares the same per-site static receiver slot as the bare selector, so it
 	// escapes (and corrupts other live callbacks) just like `return c.report`; the escape
 	// checks below treat a reference to one of these locals as a method value. Reset per fn.
-	method_value_locals           map[string]bool
+	method_value_locals map[string]bool
+	// Scope depth at which each method-value local was marked, so a reassignment to a
+	// non-method value only clears the marker when it dominates later uses (same-or-shallower
+	// scope); a reassignment in a deeper conditional/loop scope keeps the maybe-method marker.
+	method_value_local_depth      map[string]int
 	cur_fn_node_id                int = -1
 	expr_type_values              []Type // node_id -> complex/contextual resolved type
 	expr_type_set                 []bool
@@ -1164,6 +1168,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				tc.cur_fn_ret_type = tc.parse_type(node.typ)
 				tc.cur_fn_node_id = i
 				tc.method_value_locals = map[string]bool{}
+				tc.method_value_local_depth = map[string]int{}
 				tc.push_scope()
 				for pi in 0 .. node.children_count {
 					p := tc.a.child_node(&node, pi)
@@ -1671,6 +1676,12 @@ fn generic_type_application_parts(typ string) (string, []string, bool) {
 fn is_fixed_array_len_text(inner string) bool {
 	s := inner.trim_space()
 	if s.len == 0 {
+		return false
+	}
+	// A fixed-array length is a single integer expression; a comma means the brackets hold a
+	// generic argument LIST (`Pair[int, &Node]`), not a length. Without this an `&` (or `-`)
+	// that merely leads a later pointer type argument would be read as a length operator.
+	if s.contains(',') {
 		return false
 	}
 	if v_int_literal_value(s) != none {
@@ -2421,6 +2432,18 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// cur_scope_depth returns the number of enclosing scopes (the current scope's parent-chain
+// length), used to tell a dominating top-level reassignment from one nested in a branch/loop.
+fn (tc &TypeChecker) cur_scope_depth() int {
+	mut d := 0
+	mut s := tc.cur_scope
+	for s != unsafe { nil } {
+		d++
+		s = s.parent
+	}
+	return d
+}
+
 // track_method_value_local records (or clears) a local variable bound to a method value, so a
 // later `return cb` / `arr << cb` aliasing the same per-site static receiver is rejected as an
 // escape just like the bare `return c.report`.
@@ -2434,9 +2457,18 @@ fn (mut tc TypeChecker) track_method_value_local(lhs_id flat.NodeId, rhs_id flat
 	}
 	if tc.expr_is_method_value(rhs_id) {
 		tc.method_value_locals[lhs.value] = true
+		tc.method_value_local_depth[lhs.value] = tc.cur_scope_depth()
 	} else if lhs.value in tc.method_value_locals {
-		// Reassigned to a non-method-value: the alias no longer holds one.
-		tc.method_value_locals.delete(lhs.value)
+		// Reassigned to a non-method-value. Only clear the marker when this reassignment
+		// dominates later uses — at the same or a shallower scope than where the local was
+		// marked. A reassignment in a deeper conditional/loop scope does not run on every path
+		// (`mut cb := c.report; if x { cb = plain }; return cb`), so the local may still hold the
+		// method value; keep the maybe-method marker and let the later escape be rejected.
+		marked_depth := tc.method_value_local_depth[lhs.value] or { 0 }
+		if tc.cur_scope_depth() <= marked_depth {
+			tc.method_value_locals.delete(lhs.value)
+			tc.method_value_local_depth.delete(lhs.value)
+		}
 	}
 }
 
