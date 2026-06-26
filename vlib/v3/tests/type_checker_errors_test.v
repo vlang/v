@@ -733,3 +733,17 @@ fn test_pr_review_codegen_batch_sixteen() {
 		"struct Box[T] {\n\tv T\n}\nfn first(a []Box[int]) int {\n\treturn a[0].v\n}\nstruct Holder {\n\titems []Box[int]\n}\nfn make() []Box[int] {\n\treturn [Box{\n\t\tv: 1\n\t}, Box{\n\t\tv: 2\n\t}]\n}\nfn main() {\n\tr := make()\n\ta := first([Box{\n\t\tv: 3\n\t}, Box{\n\t\tv: 4\n\t}])\n\th := Holder{\n\t\titems: [Box{\n\t\t\tv: 5\n\t\t}]\n\t}\n\tprintln(int_str(r[0].v + r[1].v) + ',' + int_str(a) + ',' + int_str(h.items[0].v))\n}\n")
 	assert out == '3,3,5'
 }
+
+fn test_pr_review_codegen_batch_seventeen() {
+	v3_bin := build_v3()
+	// Static method `Type.method(...)` calls now lower their arguments through the ordinary
+	// argument path, so a parameter that needs coercion is emitted against its expected type.
+	// Here `Factory.describe` takes a sum type, so the bare `Circle{..}` argument is wrapped as
+	// a `Shape` variant instead of being passed as the raw struct (which would be wrong C).
+	// `Shader.build()` takes no parameters but shares the short name `build` with `Config.build`
+	// (a method, hence has params); the lowering must not adopt that unrelated signature and
+	// append a phantom argument to the 0-parameter static call.
+	out := run_good(v3_bin, 'good_static_method_arg_lowering',
+		"struct Config {\n\tlengths []int\n}\nfn (c Config) build() int {\n\treturn c.lengths.len\n}\nstruct Shader {\n\tid int\n}\nfn Shader.build() Shader {\n\treturn Shader{\n\t\tid: 42\n\t}\n}\ntype Shape = Circle | Square\nstruct Circle {\n\tr int\n}\nstruct Square {\n\ts int\n}\nstruct Factory {}\nfn Factory.describe(sh Shape) int {\n\treturn match sh {\n\t\tCircle { sh.r }\n\t\tSquare { sh.s }\n\t}\n}\nfn main() {\n\ts := Shader.build()\n\td := Factory.describe(Circle{r: 7})\n\tprintln(int_str(s.id) + ',' + int_str(d))\n}\n")
+	assert out == '42,7'
+}

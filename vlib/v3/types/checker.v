@@ -130,12 +130,11 @@ pub mut:
 	errors              []TypeError
 	resolved_call_names []string // node_id -> resolved function name
 	resolved_call_set   []bool
-	// `Type.method` keys for methods used as *values* (`recv.method` passed as a
-	// callback). Recorded during semantic checking — which has full scope/type info,
-	// runs before markused, and (unlike a call) routes a value-context selector through
-	// check_selector — so markused can keep these methods (reachable only via a wrapper)
-	// out of the dead-code pruner.
-	method_value_targets          map[string]bool
+	// Methods used as *values* (`recv.method` passed as a callback), recorded per enclosing
+	// function during semantic checking — which has full scope/type info, runs before
+	// markused, and (unlike a call) routes a value-context selector through check_selector.
+	// markused seeds these (keeping the wrapper-only method out of the dead-code pruner)
+	// only when their enclosing function is reachable.
 	method_values_by_fn           map[int][]string // enclosing fn node id -> method-value `Type.method` keys
 	cur_fn_node_id                int = -1
 	expr_type_values              []Type // node_id -> complex/contextual resolved type
@@ -4635,16 +4634,13 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 					mkey = ci.name
 				}
 			}
-			if mkey in tc.fn_param_types {
+			if mkey in tc.fn_param_types && tc.cur_fn_node_id >= 0 {
 				// Record per enclosing function so markused marks it only when that
-				// function is reachable (over-marking unreachable method values can pull
-				// in code that crashes cgen). Non-fn contexts (const inits) are always
-				// emitted, so mark those unconditionally.
-				if tc.cur_fn_node_id >= 0 {
-					tc.method_values_by_fn[tc.cur_fn_node_id] << mkey
-				} else {
-					tc.method_value_targets[mkey] = true
-				}
+				// function is reachable; over-marking an unreachable method value can pull
+				// in (and fail to compile) an otherwise-unused specialization. A method
+				// value can only appear inside a function body — escaping to a const/global
+				// is rejected elsewhere — so a non-fn context needs no recording here.
+				tc.method_values_by_fn[tc.cur_fn_node_id] << mkey
 			}
 		}
 	}

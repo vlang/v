@@ -176,24 +176,10 @@ pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 	enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
 	enqueue_function_value_selectors(a, fn_decls, mut used, mut queue)
 	// Methods used as values (`recv.method` passed as a callback) are reachable only
-	// through a wrapper cgen generates later. The checker recorded them with full type
-	// info; seed them (and their suffix-resolved forms) so they survive pruning and get
-	// transformed/emitted like any other reachable function.
-	for mkey, _ in tc.method_value_targets {
-		enqueue(mkey, mut used, mut queue)
-		lowered := markused_c_name(mkey)
-		if lowered != mkey {
-			enqueue(lowered, mut used, mut queue)
-		}
-		short := mkey.all_after_last('.')
-		if candidates := suffix_map[short] {
-			for cand in candidates {
-				if cand == mkey || cand.ends_with('.${mkey}') {
-					enqueue(cand, mut used, mut queue)
-				}
-			}
-		}
-	}
+	// through a wrapper cgen generates later. The checker records them per enclosing
+	// function in `method_values_by_fn`; they are seeded inside the BFS below (only when
+	// that function is reached), so an unreachable function's method value never forces an
+	// otherwise-unused specialization to be transformed/emitted.
 	enqueue_initializer_calls(a, collector, imports, fn_decls, mut used, mut queue)
 	// Interface dispatch reachability: calling an interface method `Foo.m` may
 	// dispatch to any concrete `T.m` for a type `T` that implements `Foo`. Those

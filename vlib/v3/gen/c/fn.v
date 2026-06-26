@@ -1067,26 +1067,13 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					// imported) type, not a value — e.g. `Animation.load(path)` inside
 					// the type's own module. Resolve to the module-qualified static fn.
 					static_fn := g.static_method_fn_name(base.value, fn_node.value) or { '' }
-					static_params := g.param_types_for(static_fn, fn_node.value)
 					g.write(g.direct_call_name(static_fn))
 					g.write('(')
-					for i in 1 .. node.children_count {
-						if i > 1 {
-							g.write(', ')
-						}
-						arg_id := g.a.child(&node, i)
-						arg_idx := i - 1
-						// Decay a fixed-array `[N]T` argument to `T*` when the static
-						// method's parameter is a fixed array (`SimdInt4.load_ptr([4]int)`),
-						// matching how ordinary calls coerce such arguments.
-						if arg_idx < static_params.len {
-							if fixed := array_fixed_type(static_params[arg_idx]) {
-								g.gen_fixed_array_data_arg(arg_id, fixed)
-								continue
-							}
-						}
-						g.gen_expr(arg_id)
-					}
+					// Lower the arguments through the ordinary call path so a static method
+					// parameter that needs coercion — option/result wrapping, fn-pointer alias
+					// callbacks, sum variants, fixed-array decay, variadic/`@[params]` handling —
+					// is emitted against its expected type, not as the raw expression.
+					g.gen_call_args(static_fn, node, 1)
 					g.write(')')
 					return
 				} else if base.kind == .selector {
@@ -2543,7 +2530,12 @@ fn fn_type_from(t types.Type) ?types.FnType {
 // gen_call_args emits call args output for c.
 fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 	mut param_types := g.param_types_for(fn_name, fn_name.all_after_last('.'))
-	if param_types.len == 0 && fn_name.contains('.') {
+	// Retry with the bare method name only when the qualified name is genuinely unresolved —
+	// not when it is a known function that simply takes no parameters. The short-name index
+	// matches any same-named function, so retrying a real 0-param fn (e.g. a static method
+	// `Type.build()`) would adopt an unrelated `build`'s parameters and append phantom args.
+	if param_types.len == 0 && fn_name.contains('.') && fn_name !in g.tc.fn_param_types
+		&& c_name(fn_name) !in g.tc.fn_param_types {
 		param_types = g.param_types_for(fn_name.all_after_last('.'), fn_name.all_after_last('.'))
 	}
 	is_variadic_fn := g.tc.fn_variadic[fn_name] or { false }
