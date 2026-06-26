@@ -98,46 +98,58 @@ pub fn (mut s SSLConn) shutdown() ! {
 		eprintln(@METHOD)
 	}
 
-	// Always release the SSL object, its context and the underlying socket,
-	// even when the SSL_shutdown handshake below times out or errors. A peer
-	// that aborts the connection or never sends a close-notify (e.g. an idle
-	// TLS client during an `SSL_shutdown` WANT_READ/WANT_WRITE wait) must not
-	// leak the SSL handle or one TCP fd per connection.
-	defer {
-		if s.ssl != 0 {
-			C.SSL_free(voidptr(s.ssl))
-			s.ssl = unsafe { nil }
-		}
-		if s.sslctx != 0 {
-			C.SSL_CTX_free(s.sslctx)
-			s.sslctx = unsafe { nil }
-		}
-		if s.owns_socket {
-			net.shutdown(s.handle)
-			net.close(s.handle) or {}
-		}
-	}
-
-	if s.ssl != 0 {
+	if s.ssl != unsafe { nil } {
 		deadline := ssl_timeout_deadline(s.duration)
-		for {
+		mut shutdown_done := false
+
+		for !shutdown_done {
+			// Clear the thread's OpenSSL error queue so ssl_error()/SSL_get_error()
+			// below reflect only this call and not a stale entry from an earlier
+			// operation, which could be misread as a fatal SSL_ERROR_SSL.
+			C.ERR_clear_error()
 			res := C.SSL_shutdown(voidptr(s.ssl))
 			if res == 1 {
+				shutdown_done = true
 				break
 			}
 
-			err_res := ssl_error(res, s.ssl) or {
-				break // give up on the graceful close, the defer frees the rest
+			// res == 0 means our close_notify was sent, but the peer's has not
+			// been received yet, so another SSL_shutdown() call is needed to
+			// finish the bidirectional shutdown; res < 0 signals an error or a
+			// retryable condition. In both cases SSL_get_error() tells us whether
+			// the socket must first become readable/writable before retrying.
+			// Routing res == 0 through ssl_error() instead of looping immediately
+			// avoids busy-spinning on non-blocking sockets.
+			err_res := ssl_error(res, s.ssl) or { break }
+
+			match err_res {
+				.ssl_error_want_read {
+					s.wait_for_read(ssl_remaining_timeout(deadline)) or { break }
+				}
+				.ssl_error_want_write {
+					s.wait_for_write(ssl_remaining_timeout(deadline)) or { break }
+				}
+				else {
+					break
+				}
 			}
-			if err_res == .ssl_error_want_read {
-				s.wait_for_read(ssl_remaining_timeout(deadline)) or { break }
-				continue
-			} else if err_res == .ssl_error_want_write {
-				s.wait_for_write(ssl_remaining_timeout(deadline)) or { break }
-				continue
-			}
-			break
 		}
+
+		// Always free SSL object first.
+		if s.ssl != unsafe { nil } {
+			unsafe { C.SSL_free(voidptr(s.ssl)) }
+			s.ssl = unsafe { nil }
+		}
+	}
+
+	if s.sslctx != unsafe { nil } {
+		C.SSL_CTX_free(s.sslctx)
+		s.sslctx = unsafe { nil }
+	}
+
+	if s.owns_socket {
+		net.shutdown(s.handle)
+		net.close(s.handle)!
 	}
 }
 
@@ -280,6 +292,8 @@ fn (mut s SSLConn) complete_connect() ! {
 
 	deadline := ssl_timeout_deadline(s.duration)
 	for {
+		// Clear the error queue so SSL_get_error() reflects only this call.
+		C.ERR_clear_error()
 		mut res := C.SSL_connect(voidptr(s.ssl))
 		if res == 1 {
 			break
@@ -300,6 +314,8 @@ fn (mut s SSLConn) complete_connect() ! {
 	if s.config.validate {
 		mut pcert := &C.X509(unsafe { nil })
 		for {
+			// Clear the error queue so SSL_get_error() reflects only this call.
+			C.ERR_clear_error()
 			mut res := C.SSL_do_handshake(voidptr(s.ssl))
 			if res == 1 {
 				break
@@ -362,6 +378,8 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 	deadline := ssl_timeout_deadline(s.duration)
 	// s.wait_for_read(deadline - time.now())!
 	for {
+		// Clear the error queue so SSL_get_error() reflects only this call.
+		C.ERR_clear_error()
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)
 		if res > 0 {
 			return res
@@ -432,6 +450,8 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 		for total_sent < len {
 			ptr := ptr_base + total_sent
 			remaining := len - total_sent
+			// Clear the error queue so SSL_get_error() reflects only this call.
+			C.ERR_clear_error()
 			mut sent := C.SSL_write(voidptr(s.ssl), ptr, remaining)
 			if sent <= 0 {
 				// SSL_write did not fully complete: OpenSSL may already have

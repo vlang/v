@@ -2874,8 +2874,13 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, defa
 				}
 
 				c.expected_or_type = ast.void_type
-				type_fits := c.check_types(last_stmt_typ, ret_type)
-					&& last_stmt_typ.nr_muls() == ret_type.nr_muls()
+				// A multi-return `or {}` default may supply a plain `T` element where the
+				// expected slot is `?T`; the or-block codegen wraps it (see `concat_expr`'s
+				// `inside_or_block` path), so allow that promotion explicitly here. The
+				// strict `check_types` multi-return check above otherwise rejects it.
+				type_fits := (c.check_types(last_stmt_typ, ret_type)
+					&& last_stmt_typ.nr_muls() == ret_type.nr_muls())
+					|| c.can_use_expected_multi_return_expr_type(last_stmt_typ, ret_type, stmt.expr)
 				is_noreturn := is_noreturn_callexpr(stmt.expr)
 				if type_fits || is_noreturn {
 					return

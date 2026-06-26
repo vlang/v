@@ -99,7 +99,16 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.tc.cur_scope.insert(val_var_, clean_container_type.value_type)
 			} else if container_type is types.Array {
 				c_elem := g.value_c_type(container_type.elem_type)
-				container_str := g.expr_to_string(g.a.child(&node, 2))
+				mut container_str := g.expr_to_string(g.a.child(&node, 2))
+				// A call-valued container (e.g. `threads.wait()`, `xs.map(..)`) is not
+				// idempotent and is referenced multiple times below; bind it to a temp so
+				// it runs exactly once.
+				if g.a.nodes[int(g.a.child(&node, 2))].kind == .call {
+					arr_tmp := '__for_arr_${g.tmp_count}'
+					g.tmp_count++
+					g.writeln('Array ${arr_tmp} = ${container_str};')
+					container_str = arr_tmp
+				}
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${container_str}.len; ${idx_var}++) {')
 				g.indent++
 				g.write('${c_elem} ${elem_var} = *(')

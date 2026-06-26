@@ -577,6 +577,18 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 			return false
 		}
 		for i in 0 .. exp_types.len {
+			// Each multi-return element lowers to a distinct C struct field, so an
+			// optional/result element (`?T`/`!T`, a `_option_T`/`_result_T` struct) is
+			// not layout-compatible with a plain `T`. `check_types` below matches by type
+			// index and ignores these flags, which would let `(string, ?string)`
+			// masquerade as `(string, string)` and emit mismatched `multi_return_*`
+			// structs. Keep this a strict layout check (both directions): the safe
+			// `T` -> `?T` element promotion is opted into only where codegen wraps it (the
+			// `return` and `or {}` paths, via `can_use_expected_multi_return_*`).
+			if got_types[i].has_flag(.option) != exp_types[i].has_flag(.option)
+				|| got_types[i].has_flag(.result) != exp_types[i].has_flag(.result) {
+				return false
+			}
 			if !c.check_types(got_types[i], exp_types[i]) {
 				return false
 			}

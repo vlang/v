@@ -56,7 +56,12 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 		if i > 0 {
 			g.write(', ')
 		}
-		g.gen_expr(g.a.child(&node, i))
+		// Emit each element against the concrete element type, not the enclosing
+		// `expected_expr_type` (which is the whole array). A bare generic struct element
+		// (`Box{..}` in a `[]Box[int]` literal) otherwise sees the array type, fails the
+		// `generic_struct_init_instance_type` array skip, and is emitted as the bare `Box`
+		// while the array storage is `Box_int` — incompatible C.
+		g.gen_expr_with_expected_type(g.a.child(&node, i), elem_type)
 	}
 	g.write('})')
 }
@@ -109,6 +114,15 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 			g.gen_fixed_array_data_arg(child_id, arr)
 			return
 		}
+	}
+	// A fixed-array value (e.g. `[4]u8` color) is sometimes represented as a dynamic
+	// `Array`; a C fixed-array parameter decays to `elem*`, so pass the data pointer.
+	if g.tc.resolve_type(id) is types.Array {
+		elem_ct := g.tc.c_type(arr.elem_type)
+		g.write('(${elem_ct}*)(')
+		g.gen_expr(id)
+		g.write(').data')
+		return
 	}
 	g.gen_expr(id)
 }
@@ -321,32 +335,105 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.gen_expr(g.a.child(&node, 1))
 			g.write(')')
 		}
-		else {
-			best_mname := g.array_method_fallback(fn_node.value)
-			if best_mname.len > 0 {
-				g.write(c_name(best_mname))
-				g.write('(')
-				ptypes := g.tc.fn_param_types[best_mname]
-				wants_ptr := ptypes.len > 0 && ptypes[0] is types.Pointer
-				if wants_ptr && !is_ptr {
-					g.write('&')
-				} else if !wants_ptr && is_ptr {
-					g.write('*')
-				}
-				g.gen_expr(base_id)
-				for i in 1 .. node.children_count {
-					g.write(', ')
-					g.gen_expr(g.a.child(&node, i))
-				}
-				g.write(')')
+		'wait' {
+			// Only a thread array supports `.wait()` (joining every spawned thread and,
+			// for non-void payloads, collecting their return values into a fresh `[]T`).
+			// The element carries the thread payload in its name (`thread`/`thread T`).
+			// Any other element type is not a thread, so route it through the normal
+			// method fallback instead of joining arbitrary array data as pthread_t handles.
+			mut is_thread := false
+			elem := arr.elem_type
+			if elem is types.Struct {
+				tn := elem.name.trim_space()
+				is_thread = tn == 'thread' || tn.starts_with('thread ')
+			}
+			if is_thread {
+				g.gen_thread_array_wait(base_id, is_ptr, arr.elem_type)
 			} else {
-				g.gen_expr(g.a.child(&node, 0))
-				g.write('(')
-				g.gen_expr(base_id)
-				g.write(')')
+				g.gen_array_method_call_fallback(node, fn_node.value, base_id, is_ptr)
 			}
 		}
+		else {
+			g.gen_array_method_call_fallback(node, fn_node.value, base_id, is_ptr)
+		}
 	}
+}
+
+// gen_array_method_call_fallback emits a call for an array method that has no dedicated
+// codegen arm: it resolves a `[]T.method` function when one is registered, and otherwise
+// emits the selector itself as a direct call. Shared by the catch-all `else` arm and by
+// `.wait()` on non-thread arrays (which is unsupported and falls through here rather than
+// joining elements as thread handles).
+fn (mut g FlatGen) gen_array_method_call_fallback(node flat.Node, mname string, base_id flat.NodeId, is_ptr bool) {
+	best_mname := g.array_method_fallback(mname)
+	if best_mname.len > 0 {
+		g.write(c_name(best_mname))
+		g.write('(')
+		ptypes := g.tc.fn_param_types[best_mname]
+		wants_ptr := ptypes.len > 0 && ptypes[0] is types.Pointer
+		if wants_ptr && !is_ptr {
+			g.write('&')
+		} else if !wants_ptr && is_ptr {
+			g.write('*')
+		}
+		g.gen_expr(base_id)
+		for i in 1 .. node.children_count {
+			g.write(', ')
+			g.gen_expr(g.a.child(&node, i))
+		}
+		g.write(')')
+	} else {
+		g.gen_expr(g.a.child(&node, 0))
+		g.write('(')
+		g.gen_expr(base_id)
+		g.write(')')
+	}
+}
+
+// gen_thread_array_wait emits a call to the (lazily generated) wait function for a
+// `[]thread T` receiver. The element type carries the thread's return type in its
+// name (`thread T`); a bare `thread` denotes a void payload.
+fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_type types.Type) {
+	mut ret_name := ''
+	if elem_type is types.Struct {
+		trimmed := elem_type.name.trim_space()
+		if trimmed != 'thread' && trimmed.starts_with('thread ') {
+			ret_name = trimmed[7..].trim_space()
+		}
+	}
+	fn_name := g.ensure_thread_arr_wait_fn(ret_name)
+	g.write('${fn_name}(')
+	if is_ptr {
+		g.write('*')
+	}
+	g.gen_expr(base_id)
+	g.write(')')
+}
+
+// ensure_thread_arr_wait_fn registers (once per payload type) a function that joins
+// every thread handle in the array and, for a non-void payload, copies each thread's
+// heap-returned value into a result `[]T` (freeing the per-thread allocation).
+fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
+	is_void := ret_name.len == 0
+	// Match the ABI return type the spawn wrapper stores (gen_spawn_expr): an
+	// option/result payload is `Optional_T`, a fixed-array payload its `_v_ret_*`
+	// wrapper — not the bare `c_type`, or the malloc'd and read-back layouts diverge.
+	ret_ct := if is_void { 'void' } else { g.fn_return_type_name(g.tc.parse_type(ret_name)) }
+	key := 'threadwait|${ret_ct}'
+	if name := g.spawn_wrapper_names[key] {
+		return name
+	}
+	// Sanitize the payload C type (`Foo*`, `void*`, ...) into an identifier fragment
+	// — `c_name` does not strip `*`, so a raw pointer return type would otherwise put
+	// an asterisk in the helper symbol.
+	name := c_name('__v_thread_arr_wait_${types.c_type_name_part(ret_ct)}')
+	g.spawn_wrapper_names[key] = name
+	if is_void {
+		g.spawn_wrapper_defs << 'static void ${name}(Array a) { for (int __i = 0; __i < a.len; __i++) { void* __r = NULL; pthread_join((pthread_t)(((void**)a.data)[__i]), &__r); if (__r) free(__r); } }'
+	} else {
+		g.spawn_wrapper_defs << 'static Array ${name}(Array a) { Array __res = array_new(sizeof(${ret_ct}), a.len, a.len); for (int __i = 0; __i < a.len; __i++) { void* __r = NULL; pthread_join((pthread_t)(((void**)a.data)[__i]), &__r); if (__r) { ((${ret_ct}*)__res.data)[__i] = *(${ret_ct}*)__r; free(__r); } } return __res; }'
+	}
+	return name
 }
 
 // array_lookup_suffix supports array lookup suffix handling for c.

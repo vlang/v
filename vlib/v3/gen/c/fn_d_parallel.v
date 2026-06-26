@@ -73,18 +73,27 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		g.prepare_parallel_items(items)
 		mut chunk_items := split_flat_cgen_items(items, n_jobs)
 		chunk_count := chunk_items.len
-		mut thread_ids := []C.pthread_t{len: chunk_count}
-		mut args := []FlatCgenChunkArgs{cap: chunk_count}
-		mut workers := []voidptr{cap: chunk_count}
+		// chunk[0] is emitted by the master (this thread) directly into its own builder
+		// — no worker clone. Only chunks[1..] get helper threads with a cloned FlatGen.
+		// This drops one full FlatGen clone from the peak and uses the master thread that
+		// would otherwise just block in join.
+		thread_count := chunk_count - 1
+		mut thread_ids := []C.pthread_t{len: thread_count}
+		mut args := []FlatCgenChunkArgs{cap: thread_count}
+		mut workers := []voidptr{cap: thread_count}
 
-		for ci := 0; ci < chunk_count; ci++ {
-			w := g.new_parallel_worker(ci)
+		// Helper workers keep the same temp-name base they had when every chunk was a
+		// worker (worker_id ci+1 -> base (ci+2)*100_000), and the master adopts what was
+		// worker 0's base. This keeps each chunk in its own disjoint _tN range AND makes
+		// the output byte-identical to the all-workers version.
+		for ci := 0; ci < thread_count; ci++ {
+			w := g.new_parallel_worker(ci + 1)
 			workers << voidptr(w)
 		}
-		for ci := 0; ci < chunk_count; ci++ {
+		for ci := 0; ci < thread_count; ci++ {
 			args << FlatCgenChunkArgs{
 				worker:         workers[ci]
-				work_items_ptr: unsafe { voidptr(&chunk_items[ci]) }
+				work_items_ptr: unsafe { voidptr(&chunk_items[ci + 1]) }
 			}
 		}
 
@@ -92,15 +101,20 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		attr := unsafe { voidptr(&attr_buf[0]) }
 		C.pthread_attr_init(attr)
 		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
-		for ci := 0; ci < chunk_count; ci++ {
+		for ci := 0; ci < thread_count; ci++ {
 			C.pthread_create(unsafe { &thread_ids[ci] }, attr, flat_cgen_chunk_thread,
 				unsafe { voidptr(&args[ci]) })
 		}
 		C.pthread_attr_destroy(attr)
-		for ci := 0; ci < chunk_count; ci++ {
+		// Master emits chunk[0] into g.sb while the helper threads run, using worker 0's
+		// old temp base so its emitted temps match the all-workers numbering.
+		g.tmp_count = 100_000
+		g.gen_fn_items(chunk_items[0])
+		for ci := 0; ci < thread_count; ci++ {
 			C.pthread_join(thread_ids[ci], unsafe { nil })
 		}
-		for ci := 0; ci < chunk_count; ci++ {
+		// Merge helper output after the master's chunk[0], in fixed order.
+		for ci := 0; ci < thread_count; ci++ {
 			w := unsafe { &FlatGen(workers[ci]) }
 			g.merge_parallel_worker(w)
 		}
@@ -324,86 +338,112 @@ fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
 	return 'fn_ptr:${ret}|${params.join(', ')}'
 }
 
-// new_parallel_worker supports new parallel worker handling for FlatGen.
+// new_parallel_worker builds a per-worker FlatGen for parallel codegen.
+//
+// The lookup tables populated before gen_fns_dispatch (in collect_gen_info,
+// collect_interface_impls and the precompute_* passes) are READ-ONLY during codegen, so
+// they are SHARED by reference instead of cloned — V maps/arrays are reference types and
+// concurrent readers are safe. Only the state a worker actually mutates while emitting is
+// kept private: the output builder; the string-literal table (interned during gen); the
+// fn_ptr_types / needed_optional_types / emitted_* sets and the param_types_cache /
+// array_method_cache memoization caches (all written during gen); the per-function
+// cur_param_* scratch; and runtime_inits (kept private out of caution). This drops the
+// bulk of each worker's clone cost — previously the whole table set was duplicated per
+// worker and, under -gc none, never freed.
 fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 	return &FlatGen{
-		sb:                      strings.new_builder(64_000)
-		a:                       unsafe { g.a }
-		used_fns:                g.used_fns.clone()
-		used_fn_names:           g.used_fn_names.clone()
-		str_lits:                g.str_lits.clone()
-		str_lit_ids:             g.str_lit_ids.clone()
-		global_types:            g.global_types.clone()
-		enum_vals:               g.enum_vals.clone()
-		interfaces:              g.interfaces.clone()
-		const_vals:              g.const_vals.clone()
-		const_modules:           g.const_modules.clone()
-		const_init_order:        g.const_init_order.clone()
-		global_modules:          g.global_modules.clone()
-		global_inits:            g.global_inits.clone()
-		global_init_order:       g.global_init_order.clone()
-		iface_impls:             g.iface_impls.clone()
-		iface_type_ids:          g.iface_type_ids.clone()
-		module_init_fns:         g.module_init_fns.clone()
-		module_init_fn_modules:  g.module_init_fn_modules.clone()
-		module_imports:          g.module_imports.clone()
-		tc:                      g.clone_parallel_type_checker()
-		has_builtins:            g.has_builtins
-		tmp_count:               (worker_id + 1) * 100_000
-		line_start:              true
-		modules:                 g.modules.clone()
-		fn_ptr_types:            g.fn_ptr_types.clone()
-		fn_decl_param_types:     g.fn_decl_param_types.clone()
-		fn_decl_ret_types:       g.fn_decl_ret_types.clone()
-		struct_decl_infos:       g.struct_decl_infos.clone()
-		struct_decl_short_infos: g.struct_decl_short_infos.clone()
-		runtime_inits:           g.runtime_inits.clone()
-		compiler_vroot:          g.compiler_vroot
-		cur_param_names:         g.cur_param_names.clone()
-		cur_param_type_values:   g.cur_param_type_values.clone()
-		cur_param_types:         g.cur_param_types.clone()
-		cur_fn_ret:              g.cur_fn_ret
-		cur_fn_ret_is_optional:  g.cur_fn_ret_is_optional
-		cur_fn_ret_base:         g.cur_fn_ret_base
-		expected_expr_type:      g.expected_expr_type
-		expected_enum:           g.expected_enum
-		needed_optional_types:   g.needed_optional_types.clone()
-		emitted_optional_types:  g.emitted_optional_types.clone()
-		emitted_fns:             g.emitted_fns.clone()
-		array_method_cache:      g.array_method_cache.clone()
-		param_types_cache:       g.param_types_cache.clone()
+		sb:                       strings.new_builder(64_000)
+		a:                        unsafe { g.a }
+		used_fns:                 g.used_fns
+		used_fn_names:            g.used_fn_names
+		str_lits:                 g.str_lits.clone()
+		str_lit_ids:              g.str_lit_ids.clone()
+		global_types:             g.global_types
+		enum_vals:                g.enum_vals
+		interfaces:               g.interfaces
+		const_vals:               g.const_vals
+		const_modules:            g.const_modules
+		const_init_order:         g.const_init_order
+		global_modules:           g.global_modules
+		global_inits:             g.global_inits
+		global_init_order:        g.global_init_order
+		iface_impls:              g.iface_impls
+		iface_type_ids:           g.iface_type_ids
+		module_init_fns:          g.module_init_fns
+		module_init_fn_modules:   g.module_init_fn_modules
+		module_imports:           g.module_imports
+		tc:                       g.clone_parallel_type_checker()
+		has_builtins:             g.has_builtins
+		tmp_count:                (worker_id + 1) * 100_000
+		line_start:               true
+		modules:                  g.modules
+		fn_ptr_types:             g.fn_ptr_types.clone()
+		fixed_array_ret_wrappers: g.fixed_array_ret_wrappers
+		fn_decl_param_types:      g.fn_decl_param_types
+		fn_decl_ret_types:        g.fn_decl_ret_types
+		struct_decl_infos:        g.struct_decl_infos
+		struct_decl_short_infos:  g.struct_decl_short_infos
+		runtime_inits:            g.runtime_inits.clone()
+		compiler_vroot:           g.compiler_vroot
+		cur_param_names:          g.cur_param_names.clone()
+		cur_param_type_values:    g.cur_param_type_values.clone()
+		cur_param_types:          g.cur_param_types.clone()
+		cur_fn_ret:               g.cur_fn_ret
+		cur_fn_ret_is_optional:   g.cur_fn_ret_is_optional
+		cur_fn_ret_base:          g.cur_fn_ret_base
+		expected_expr_type:       g.expected_expr_type
+		expected_enum:            g.expected_enum
+		needed_optional_types:    g.needed_optional_types.clone()
+		emitted_optional_types:   g.emitted_optional_types.clone()
+		emitted_fns:              g.emitted_fns.clone()
+		array_method_cache:       g.array_method_cache.clone()
+		param_types_cache:        g.param_types_cache.clone()
+		embedded_fields_by_type:  g.embedded_fields_by_type
+		param_types_by_short:     g.param_types_by_short
 	}
 }
 
-// clone_parallel_type_checker supports clone parallel type checker handling for FlatGen.
+// clone_parallel_type_checker builds a per-worker TypeChecker for parallel codegen.
+//
+// During codegen the checker's lookup tables are READ-ONLY: cgen only ever assigns the
+// scalar `cur_file`/`cur_module` fields, and the read paths it uses (expr_type, c_type,
+// parse_type, resolve_type, cached_resolved_call) never write into the big maps — the only
+// memoizing write is into `type_cache`, which is left nil here so workers take the uncached
+// path. V maps and arrays are reference types, so the read-only tables are SHARED by
+// reference (no `.clone()`), exactly like the already-shared `a` FlatAst. This avoids
+// deep-copying the program-wide `expr_type_*`/`structs`/signature tables once per worker,
+// which was the bulk of parallel cgen's extra RAM and serial setup time.
+//
+// Only genuinely per-worker mutable state is given its own copy: the scope chain (gen pushes
+// child scopes) and `errors` (avoid a concurrent append race, though gen does not emit any).
 fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 	mut fs := types.new_scope(unsafe { nil })
 	fs.names = g.tc.file_scope.names.clone()
 	fs.types = g.tc.file_scope.types.clone()
 	return &types.TypeChecker{
 		a:                             unsafe { g.tc.a }
-		fn_ret_types:                  g.tc.fn_ret_types.clone()
-		fn_param_types:                g.tc.fn_param_types.clone()
-		fn_variadic:                   g.tc.fn_variadic.clone()
-		structs:                       g.tc.structs.clone()
-		unions:                        g.tc.unions.clone()
-		type_aliases:                  g.tc.type_aliases.clone()
-		sum_types:                     g.tc.sum_types.clone()
-		enum_names:                    g.tc.enum_names.clone()
-		enum_fields:                   g.tc.enum_fields.clone()
-		flag_enums:                    g.tc.flag_enums.clone()
-		interface_names:               g.tc.interface_names.clone()
-		interface_fields:              g.tc.interface_fields.clone()
-		interface_embeds:              g.tc.interface_embeds.clone()
-		interface_abstract_methods:    g.tc.interface_abstract_methods.clone()
-		c_globals:                     g.tc.c_globals.clone()
-		const_types:                   g.tc.const_types.clone()
-		const_exprs:                   g.tc.const_exprs.clone()
-		const_modules:                 g.tc.const_modules.clone()
-		const_suffixes:                g.tc.const_suffixes.clone()
-		imports:                       g.tc.imports.clone()
-		file_imports:                  g.tc.file_imports.clone()
-		file_modules:                  g.tc.file_modules.clone()
+		fn_ret_types:                  g.tc.fn_ret_types
+		fn_param_types:                g.tc.fn_param_types
+		fn_variadic:                   g.tc.fn_variadic
+		structs:                       g.tc.structs
+		unions:                        g.tc.unions
+		type_aliases:                  g.tc.type_aliases
+		sum_types:                     g.tc.sum_types
+		enum_names:                    g.tc.enum_names
+		enum_fields:                   g.tc.enum_fields
+		flag_enums:                    g.tc.flag_enums
+		interface_names:               g.tc.interface_names
+		interface_fields:              g.tc.interface_fields
+		interface_embeds:              g.tc.interface_embeds
+		interface_abstract_methods:    g.tc.interface_abstract_methods
+		c_globals:                     g.tc.c_globals
+		const_types:                   g.tc.const_types
+		const_exprs:                   g.tc.const_exprs
+		const_modules:                 g.tc.const_modules
+		const_suffixes:                g.tc.const_suffixes
+		imports:                       g.tc.imports
+		file_imports:                  g.tc.file_imports
+		file_modules:                  g.tc.file_modules
 		file_scope:                    fs
 		cur_scope:                     fs
 		scope_pool:                    []&types.Scope{}
@@ -411,16 +451,20 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		cur_module:                    g.tc.cur_module
 		cur_file:                      g.tc.cur_file
 		errors:                        g.tc.errors.clone()
-		resolved_call_names:           g.tc.resolved_call_names.clone()
-		resolved_call_set:             g.tc.resolved_call_set.clone()
-		expr_type_values:              g.tc.expr_type_values.clone()
-		expr_type_set:                 g.tc.expr_type_set.clone()
-		checking_nodes:                g.tc.checking_nodes.clone()
+		resolved_call_names:           g.tc.resolved_call_names
+		resolved_call_set:             g.tc.resolved_call_set
+		expr_type_values:              g.tc.expr_type_values
+		expr_type_set:                 g.tc.expr_type_set
+		checking_nodes:                g.tc.checking_nodes
 		diagnose_unknown_calls:        g.tc.diagnose_unknown_calls
 		reject_unlowered_map_mutation: g.tc.reject_unlowered_map_mutation
-		diagnostic_files:              g.tc.diagnostic_files.clone()
+		diagnostic_files:              g.tc.diagnostic_files
 		cur_fn_ret_type:               g.tc.cur_fn_ret_type
-		smartcasts:                    g.tc.smartcasts.clone()
+		smartcasts:                    g.tc.smartcasts
+		// Read-only map cgen uses to recover substituted signatures for generic-receiver
+		// method values (`Box[int].method` as a callback); without it a parallel worker
+		// sees an empty map and gen_method_value_closure falls through.
+		generic_method_value_info: g.tc.generic_method_value_info
 	}
 }
 
@@ -437,6 +481,19 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	for encoded, name in w.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
 			g.fn_ptr_types[encoded] = name
+		}
+	}
+	// Spawn wrappers (thread arg structs + trampoline fns) are generated on demand
+	// inside fn bodies, so a worker that emits a `spawn` produces wrapper defs the
+	// master must also emit. Deduplicate by their deterministic key/def.
+	for key, name in w.spawn_wrapper_names {
+		if key !in g.spawn_wrapper_names {
+			g.spawn_wrapper_names[key] = name
+		}
+	}
+	for def in w.spawn_wrapper_defs {
+		if def !in g.spawn_wrapper_defs {
+			g.spawn_wrapper_defs << def
 		}
 	}
 }

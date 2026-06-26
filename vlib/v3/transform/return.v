@@ -180,7 +180,14 @@ fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ s
 	if branch.kind != .block {
 		// single expression branch: just `return <expr>`
 		mut all := []flat.NodeId{}
-		ret_val := t.wrap_sum_return_expr(branch_id)
+		// Convert a fixed-array branch value (e.g. a fixed-array const) to a dynamic
+		// array when the function returns `[]T`, matching a plain `return <expr>` and
+		// the `return match {...}` path (match_branch_return_block).
+		ret_val := if converted := t.fixed_array_return_value(branch_id) {
+			converted
+		} else {
+			t.wrap_sum_return_expr(branch_id)
+		}
 		t.drain_pending(mut all)
 		all << t.make_return(ret_val, ret_typ)
 		return t.make_block(all)
@@ -210,7 +217,11 @@ fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ s
 		}
 		return t.make_block(all)
 	}
-	ret_val := t.wrap_sum_return_expr(tail_expr)
+	ret_val := if converted := t.fixed_array_return_value(tail_expr) {
+		converted
+	} else {
+		t.wrap_sum_return_expr(tail_expr)
+	}
 	t.drain_pending(mut all)
 	ret := t.make_return(ret_val, ret_typ)
 	all << ret
@@ -316,7 +327,13 @@ fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_id
 	} else {
 		tail_expr
 	}
-	ret_val := t.wrap_sum_return_expr(actual_tail)
+	// Convert a fixed-array branch value (e.g. a fixed-array const) to a dynamic
+	// array when the function returns `[]T`, matching a plain `return <expr>`.
+	ret_val := if converted := t.fixed_array_return_value(actual_tail) {
+		converted
+	} else {
+		t.wrap_sum_return_expr(actual_tail)
+	}
 	t.drain_pending(mut all)
 	all << t.make_return(ret_val, ret_typ)
 	return t.make_block(all)

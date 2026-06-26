@@ -75,6 +75,35 @@ mut:
 	alias_cache           &AliasCache = unsafe { nil }
 	sum_cache             &AliasCache = unsafe { nil }
 	used_fns              map[string]bool
+	// used_struct_operator_fns holds the callee names of direct calls seen during
+	// monomorphize. Infix operators on generic instances are lowered to direct calls
+	// (`Vec_int__plus(a, b)`) before this pass, so an operator overload is specialized for
+	// an instantiated generic struct only when its mangled name appears here — an instance
+	// whose type argument never has the operator applied is not emitted with a body that
+	// would fail C compilation.
+	used_struct_operator_fns map[string]bool
+	// active_generic_params holds the generic parameter names of the decl currently
+	// being specialized/rewritten, in the same order as the inferred type `args`.
+	// It lets type-text substitution map placeholders by name (so non-canonical
+	// params like `D`/`F` resolve to the right arg) instead of by the positional
+	// `generic_param_index` heuristic (which collapses anything outside the T/U/C
+	// sequences to index 0). Empty for struct-generic specialization, which keeps
+	// the legacy positional behaviour.
+	active_generic_params []string
+	// escaping_amp_ptrs holds the names of pointer locals `p` declared as `p := &v`
+	// (v a value local) whose pointer escapes the function (is returned). V semantics
+	// auto-heap such a `v`; v3 otherwise takes the address of a stack local that dies
+	// on return. Recomputed per function (structural pre-pass in transform_fn_body),
+	// consumed when the `p := &v` decl is transformed (RHS rewritten to a heap copy).
+	escaping_amp_ptrs map[string]bool
+	// escaping_amp_sources holds the source locals `v` of such `p := &v` escapes — the
+	// values whose address leaves the frame. The local itself is moved to the heap at its
+	// declaration (its type becomes `&T`) so a mutation between `p := &v` and `return p`
+	// is observed by the caller; copying eagerly at the alias would return stale data.
+	escaping_amp_sources map[string]bool
+	// heaped_amp_locals records which of those sources were actually moved to the heap, so
+	// the `p := &v` alias emits `p = v` (the heap pointer) instead of a fresh memdup copy.
+	heaped_amp_locals map[string]bool
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -140,11 +169,32 @@ pub fn transform(mut a flat.FlatAst, tc &types.TypeChecker) {
 
 // transform_with_used transforms transform with used data for transform.
 pub fn transform_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) map[string]bool {
+	augmented, _ := transform_with_used_opt(mut a, tc, used_fns, false)
+	return augmented
+}
+
+// transform_with_used_opt is transform_with_used with an opt-in for parallel
+// function-body transform. It returns the augmented used-fn set and whether the
+// function bodies were actually transformed across threads (false when parallel
+// was not requested, the build lacks thread support, or there was too little work).
+pub fn transform_with_used_opt(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool) (map[string]bool, bool) {
 	mut augmented_used_fns := used_fns.clone()
 	mut t := new_transformer(mut a, tc, augmented_used_fns)
 	t.prepare()
-	t.transform_all()
-	return augmented_used_fns
+	// Transform roughly grows the node/children arrays by ~75%. Reserve that capacity
+	// up front so they don't double past it (the parsed AST already overshoots to the
+	// next power of two, wasting ~40MB, and each doubling briefly holds both the old and
+	// new arrays — the dominant peak-RSS contributor under -gc none).
+	reserve_nodes := a.nodes.len * 7 / 4 - a.nodes.cap
+	if reserve_nodes > 0 {
+		unsafe { a.nodes.grow_cap(reserve_nodes) }
+	}
+	reserve_children := a.children.len * 7 / 4 - a.children.cap
+	if reserve_children > 0 {
+		unsafe { a.children.grow_cap(reserve_children) }
+	}
+	was_parallel := t.transform_all_dispatch(want_parallel)
+	return augmented_used_fns, was_parallel
 }
 
 pub fn monomorphize_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) map[string]bool {
@@ -525,6 +575,210 @@ fn (mut t Transformer) transform_all() {
 	}
 }
 
+// FnWorkItem identifies one top-level function body to transform, together with
+// the file/module context active at its declaration and a rough cost estimate
+// (subtree node count) used to balance work across parallel workers.
+struct FnWorkItem {
+	fn_idx int
+	file   string
+	module string
+	cost   int
+}
+
+// transform_all_dispatch runs the main transform pass either serially (the
+// original single-threaded walk) or, when `want_parallel` is set and there is
+// enough work, with closure-free function bodies transformed across threads.
+// Returns whether function bodies were actually transformed in parallel.
+fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
+	if !want_parallel {
+		t.transform_all()
+		return false
+	}
+	// Serial phase: transform consts/globals and every function whose body
+	// contains a function literal (the only construct that lifts new top-level
+	// declarations and mutates the shared TypeChecker). Collect the remaining,
+	// closure-free functions as parallelizable work items.
+	pure_items := t.transform_serial_then_collect_pure()
+	base_nodes := t.a.nodes.len
+	base_children := t.a.children.len
+	return t.run_parallel_transform(pure_items, base_nodes, base_children)
+}
+
+// transform_serial_then_collect_pure walks the top level once: it transforms
+// const/global declarations and closure-bearing functions in place (serially),
+// and returns work items for the closure-free functions left to transform.
+fn (mut t Transformer) transform_serial_then_collect_pure() []FnWorkItem {
+	mut pure := []FnWorkItem{}
+	original_len := t.a.nodes.len
+	for i in 0 .. original_len {
+		node := t.a.nodes[i]
+		kind_id := node_kind_id(node)
+		if kind_id == 77 {
+			t.cur_file = node.value
+		} else if kind_id == 73 {
+			t.cur_module = node.value
+		} else if kind_id == 61 {
+			if !t.should_transform_fn(node) {
+				continue
+			}
+			has_literal, cost := t.fn_subtree_scan(i)
+			if has_literal {
+				t.transform_fn_body(i)
+			} else {
+				pure << FnWorkItem{
+					fn_idx: i
+					file:   t.cur_file
+					module: t.cur_module
+					cost:   cost
+				}
+			}
+		} else if kind_id == 65 {
+			t.transform_const_decl(node)
+		} else if kind_id == 64 {
+			t.transform_global_decl(node)
+		}
+	}
+	return pure
+}
+
+// fn_subtree_scan walks the subtree rooted at the function declaration `fn_idx`
+// and reports (whether it contains a function literal, total node count). The
+// function-literal flag routes closure-bearing functions to the serial path; the
+// count is a cheap per-function cost used to balance parallel workers.
+fn (t &Transformer) fn_subtree_scan(fn_idx int) (bool, int) {
+	mut has_literal := false
+	mut count := 0
+	mut stack := [flat.NodeId(fn_idx)]
+	for stack.len > 0 {
+		id := stack.pop()
+		idx := int(id)
+		if idx < 0 || idx >= t.a.nodes.len {
+			continue
+		}
+		node := t.a.nodes[idx]
+		count++
+		// 21 = fn_literal, 32 = lambda_expr: both can lower to a lifted closure.
+		kid := node_kind_id(node)
+		if kid == 21 || kid == 32 {
+			has_literal = true
+		}
+		for ci in 0 .. node.children_count {
+			child_id := t.a.children[node.children_start + ci]
+			if int(child_id) >= 0 {
+				stack << child_id
+			}
+		}
+	}
+	return has_literal, count
+}
+
+// transform_pure_items_serial transforms a list of closure-free function bodies
+// on this Transformer, in order. Used both as the serial fallback and as the
+// per-worker body in the parallel path.
+fn (mut t Transformer) transform_pure_items_serial(items []FnWorkItem) {
+	for it in items {
+		t.cur_file = it.file
+		t.cur_module = it.module
+		t.transform_fn_body(it.fn_idx)
+	}
+}
+
+// clone_ast_base produces a private FlatAst holding an independent copy of the
+// first base_nodes nodes / base_children children, so a worker can append its own
+// transformed nodes without racing the master or other workers. Read-only metadata
+// (disabled_fns) is shared.
+fn (t &Transformer) clone_ast_base(base_nodes int, base_children int) &flat.FlatAst {
+	return &flat.FlatAst{
+		nodes:           t.a.nodes[0..base_nodes].clone()
+		children:        t.a.children[0..base_children].clone()
+		user_code_start: t.a.user_code_start
+		disabled_fns:    t.a.disabled_fns
+	}
+}
+
+// fork_worker builds a worker Transformer that shares this transformer's
+// read-only collected maps (structs, sum types, fn return types, used_fns, …)
+// and operates on its own cloned AST `ast` and forked TypeChecker `wtc`. All
+// per-function mutable state and memoization caches are reset/private so the
+// worker can run on its own thread.
+fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Transformer {
+	mut w := *t
+	w.a = ast
+	w.tc = wtc
+	w.alias_cache = &AliasCache{}
+	w.sum_cache = &AliasCache{}
+	w.var_types = []VarTypeBinding{}
+	w.smartcast_stack = []SmartcastContext{}
+	w.pending_stmts = []flat.NodeId{}
+	w.pointer_value_lvalues = map[string]bool{}
+	w.temp_counter = 0
+	w.cur_file = ''
+	w.cur_module = ''
+	w.cur_fn_name = ''
+	w.cur_fn_ret_type = ''
+	w.in_call_callee = false
+	w.in_const_init = false
+	w.in_return_expr = false
+	return &w
+}
+
+// merge_worker folds a finished worker's transformed output back into the master
+// AST. The worker created its new nodes/children at indices base_nodes/base_children
+// (matching the master at fork time); here they are appended to the master and every
+// reference to a worker-local new node or new children block is shifted by the
+// distance the block moved. `items` lists the function indices this worker owned, so
+// their rewritten top-level nodes can be copied into place.
+fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nodes int, base_children int) {
+	node_shift := i32(t.a.nodes.len - base_nodes)
+	child_shift := i32(t.a.children.len - base_children)
+	// New children: relocate references to worker-local new nodes.
+	for k in base_children .. w.a.children.len {
+		cid := w.a.children[k]
+		if int(cid) >= base_nodes {
+			t.a.children << flat.NodeId(int(cid) + int(node_shift))
+		} else {
+			t.a.children << cid
+		}
+	}
+	// New nodes: relocate children_start that points into the new children block.
+	for k in base_nodes .. w.a.nodes.len {
+		n := w.a.nodes[k]
+		if n.children_start >= base_children {
+			t.a.nodes << n.with_shifted_children(child_shift)
+		} else {
+			t.a.nodes << n
+		}
+	}
+	// Rewritten top-level function nodes keep their original index in the master.
+	for it in items {
+		n := w.a.nodes[it.fn_idx]
+		if n.children_start >= base_children {
+			t.a.nodes[it.fn_idx] = n.with_shifted_children(child_shift)
+		} else {
+			t.a.nodes[it.fn_idx] = n
+		}
+	}
+}
+
+// split_work_items distributes items across `n` buckets using greedy
+// least-loaded-by-cost assignment, so heavy functions are spread evenly. The
+// assignment is deterministic for a given input (required for reproducible builds).
+fn split_work_items(items []FnWorkItem, n int) [][]FnWorkItem {
+	mut buckets := [][]FnWorkItem{len: n, init: []FnWorkItem{}}
+	mut loads := []i64{len: n}
+	for it in items {
+		mut best := 0
+		for b in 1 .. n {
+			if loads[b] < loads[best] {
+				best = b
+			}
+		}
+		buckets[best] << it
+		loads[best] += i64(it.cost) + 1
+	}
+	return buckets
+}
+
 // should_transform_fn reports whether should transform fn applies in transform.
 fn (t &Transformer) should_transform_fn(node flat.Node) bool {
 	if t.used_fns.len == 0 {
@@ -766,6 +1020,212 @@ fn (mut t Transformer) transform_const_string_interp(_id flat.NodeId, node flat.
 }
 
 // transform_fn_body transforms transform fn body data for transform.
+// try_heap_escaping_amp reports whether a `p := &v` decl is an escaping address of
+// a value local that must be heap-copied: `p` is in escaping_amp_ptrs (returned)
+// and `v` resolves to a non-reference value type.
+fn (t &Transformer) try_heap_escaping_amp(node flat.Node, rhs_id flat.NodeId) bool {
+	lhs := t.a.nodes[int(t.a.child(&node, 0))]
+	if lhs.kind != .ident || lhs.value !in t.escaping_amp_ptrs {
+		return false
+	}
+	rhs := t.a.nodes[int(rhs_id)]
+	if rhs.kind != .prefix || rhs.op != .amp || rhs.children_count == 0 {
+		return false
+	}
+	amp_child := t.a.child(&rhs, 0)
+	amp_node := t.a.nodes[int(amp_child)]
+	if amp_node.kind != .ident {
+		return false
+	}
+	// The source local was moved to the heap at its declaration: the alias is now just that
+	// `&T` pointer (handled below), regardless of its rewritten pointer type.
+	if amp_node.value in t.heaped_amp_locals {
+		return true
+	}
+	local_type := t.node_type(amp_child)
+	return local_type.len > 0 && !local_type.starts_with('&') && !local_type.starts_with('[]')
+		&& !local_type.starts_with('map[') && !local_type.starts_with('?')
+		&& !local_type.starts_with('!')
+}
+
+// heap_escaping_amp_rhs rewrites `&v` into `(&T)memdup(&v, sizeof(T))`, a heap copy
+// of the value local `v` so the escaping pointer outlives the stack frame. When `v` was
+// itself moved to the heap at its declaration, the alias is simply that pointer — copying
+// would resurrect the stale-mutation bug the move avoids.
+fn (mut t Transformer) heap_escaping_amp_rhs(rhs_id flat.NodeId) flat.NodeId {
+	rhs := t.a.nodes[int(rhs_id)]
+	amp_child := t.a.child(&rhs, 0)
+	amp_node := t.a.nodes[int(amp_child)]
+	if amp_node.kind == .ident && amp_node.value in t.heaped_amp_locals {
+		return t.transform_expr(amp_child)
+	}
+	local_type := t.node_type(amp_child)
+	addr := t.make_prefix(.amp, t.transform_expr(amp_child))
+	size := t.make_sizeof_type(local_type)
+	dup := t.make_call_typed('memdup', arr2(addr, size), 'voidptr')
+	return t.make_cast('&${local_type}', dup, '&${local_type}')
+}
+
+// heapable_value_type reports whether a local of this declared type can be moved to the heap
+// as a `&T` — a plain value type, not an already-reference / container / optional type (those
+// either carry their own indirection or are not addressable as a single `T`).
+fn (t &Transformer) heapable_value_type(typ string) bool {
+	return typ.len > 0 && !typ.starts_with('&') && !typ.starts_with('[]')
+		&& !typ.starts_with('map[') && !typ.starts_with('?') && !typ.starts_with('!')
+		&& !typ.starts_with('[') && typ != 'unknown' && typ != 'void'
+}
+
+// heap_escaping_source_decl rewrites `mut v := <init>` (where `&v` escapes) into a heap
+// allocation so `v` is a `&T` to a heap object. A struct literal becomes `&T{..}` (the cgen
+// memdup's it); any other initializer is copied into a stack temp and memdup'd. Subsequent
+// `v.field = ..` writes then mutate the heap object the returned pointer alias also sees.
+fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string, elem_typ string) []flat.NodeId {
+	rhs_id := t.a.child(&node, 1)
+	rhs := t.a.nodes[int(rhs_id)]
+	ptr_typ := '&${elem_typ}'
+	mut stmts := []flat.NodeId{}
+	transformed_init := t.transform_expr(rhs_id)
+	// Statements lifted out while transforming the initializer must precede the heap decl.
+	t.drain_pending(mut stmts)
+	mut heap_rhs := flat.NodeId(0)
+	if rhs.kind == .struct_init {
+		heap_rhs = t.make_prefix(.amp, transformed_init)
+	} else {
+		tmp := t.new_temp('esc')
+		stmts << t.make_decl_assign_typed(tmp, transformed_init, elem_typ)
+		addr := t.make_prefix(.amp, t.make_ident(tmp))
+		size := t.make_sizeof_type(elem_typ)
+		dup := t.make_call_typed('memdup', arr2(addr, size), 'voidptr')
+		heap_rhs = t.make_cast(ptr_typ, dup, ptr_typ)
+	}
+	t.heaped_amp_locals[var_name] = true
+	// The local is now a `&T`, so its compound/postfix mutations (`v += 1`, `v++`) must store
+	// through the pointer (`*v += 1`); mark it as a pointer-value lvalue so that lowering fires.
+	t.pointer_value_lvalues[var_name] = true
+	stmts << t.make_decl_assign_typed(var_name, heap_rhs, ptr_typ)
+	return stmts
+}
+
+// mark_escaping_amp_ptrs runs a structural pre-pass over a function body to find
+// `p := &v` declarations whose pointer `p` is later returned. Such a `v` is a local
+// value whose address escapes, so it must be heap-copied (V auto-heaps it); the
+// names are recorded in `escaping_amp_ptrs` and consumed by the decl-assign
+// transform. Purely structural (no type info needed here): the type check happens
+// at rewrite time when `v`'s type is known.
+fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
+	t.escaping_amp_ptrs = map[string]bool{}
+	t.escaping_amp_sources = map[string]bool{}
+	t.heaped_amp_locals = map[string]bool{}
+	// Cleared per function: heaped locals add their names below (in heap_escaping_source_decl);
+	// for-loop element vars set and restore their own entries within the loop body.
+	t.pointer_value_lvalues = map[string]bool{}
+	mut amp_ptrs := map[string]bool{}
+	mut amp_sources := map[string]string{} // pointer `p` -> source local `v`
+	mut ptr_aliases := map[string]string{} // copy `q := p` -> aliased pointer `p`
+	mut returned := map[string]bool{}
+	for id in body_ids {
+		t.scan_escape_pass(id, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut returned)
+	}
+	// A pointer may be returned through a copy (`p := &v; q := p; return q`): `q` is collected
+	// as returned but `p` is not, so propagate "returned" backward along the `q := p` aliases
+	// until a fixpoint. Then `p` (and its source `v`) is recognised as escaping below.
+	for _ in 0 .. ptr_aliases.len {
+		mut changed := false
+		for q, p in ptr_aliases {
+			if q in returned && p !in returned {
+				returned[p] = true
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	for name, _ in amp_ptrs {
+		if name in returned {
+			t.escaping_amp_ptrs[name] = true
+			if src := amp_sources[name] {
+				t.escaping_amp_sources[src] = true
+			}
+		}
+	}
+}
+
+// scan_escape_pass recursively collects, in a function-body subtree, (a) the LHS
+// names of `p := &ident` declarations into `amp_ptrs` (and the source `ident` into
+// `amp_sources[p]`), (b) plain pointer copies `q := p` into `ptr_aliases[q] = p`, and
+// (c) every ident name appearing inside a return statement into `returned`.
+fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string]string, mut ptr_aliases map[string]string, mut returned map[string]bool) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .decl_assign && node.children_count == 2 {
+		lhs := t.a.nodes[int(t.a.child(&node, 0))]
+		rhs := t.a.nodes[int(t.a.child(&node, 1))]
+		if lhs.kind == .ident && lhs.value.len > 0 && rhs.kind == .prefix && rhs.op == .amp
+			&& rhs.children_count > 0 {
+			amp_child := t.a.nodes[int(t.a.child(&rhs, 0))]
+			if amp_child.kind == .ident {
+				amp_ptrs[lhs.value] = true
+				amp_sources[lhs.value] = amp_child.value
+			}
+		} else if lhs.kind == .ident && lhs.value.len > 0 && rhs.kind == .ident && rhs.value.len > 0 {
+			// `q := p` aliases an existing pointer; recorded so a returned alias still marks the
+			// underlying `p := &v` as escaping.
+			ptr_aliases[lhs.value] = rhs.value
+		}
+	}
+	if node.kind == .return_stmt {
+		for i in 0 .. node.children_count {
+			t.collect_return_escape_idents(t.a.child(&node, i), mut returned)
+		}
+	}
+	for i in 0 .. node.children_count {
+		t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
+			returned)
+	}
+}
+
+// collect_return_escape_idents gathers the idents in a return-expression subtree that occupy an
+// actual escape position — the returned value itself, or a member of a returned aggregate
+// (struct/array/map literal, multi-return). It deliberately stops at operators that consume their
+// operands into a fresh value: infix (`==`, `&&`, arithmetic, …), postfix, `is`/`in`, and any
+// non-`&` prefix (deref `*p`, `!x`, `-x`). That way a pointer that is merely compared or
+// dereferenced in the return expression — e.g. `return p == p && v == 1` — is not mistaken for a
+// pointer that escapes, so its source local is not needlessly heap-moved (which would also make
+// later non-pointer uses of that local read through an `int*`).
+fn (mut t Transformer) collect_return_escape_idents(id flat.NodeId, mut names map[string]bool) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			if node.value.len > 0 {
+				names[node.value] = true
+			}
+			return
+		}
+		.infix, .postfix, .is_expr, .in_expr {
+			// These yield a new scalar/bool; their operands do not escape through the return.
+			return
+		}
+		.prefix {
+			// `&x` propagates an address (which may escape); any other prefix (`*x`, `!x`, `-x`)
+			// produces a fresh value, so its operand does not escape.
+			if node.op != .amp {
+				return
+			}
+		}
+		else {}
+	}
+
+	for i in 0 .. node.children_count {
+		t.collect_return_escape_idents(t.a.child(&node, i), mut names)
+	}
+}
+
 fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	fn_node := t.a.nodes[fn_idx]
 	t.cur_fn_name = fn_node.value
@@ -810,6 +1270,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			body_ids << child_id
 		}
 	}
+	t.mark_escaping_amp_ptrs(body_ids)
 	new_body := t.transform_stmts(body_ids)
 	// Rebuild function children: params then new body
 	start := t.a.children.len
@@ -1497,18 +1958,30 @@ fn (mut t Transformer) fixed_array_return_value(child_id flat.NodeId) ?flat.Node
 	if t.is_optional_type_name(ret_type) {
 		ret_type = t.optional_base_type(ret_type)
 	}
-	mut array_type := ret_type
-	if is_fixed_array_type(ret_type) {
-		array_type = '[]${fixed_array_elem_type(ret_type)}'
+	// A function whose declared return type is itself a fixed array keeps
+	// fixed-array (by-value) semantics; the C backend returns it via a wrapper
+	// struct. Only a *dynamic* array return needs a fixed→dynamic conversion of a
+	// fixed-array return value.
+	if t.is_fixed_array_type(ret_type) {
+		return none
 	}
+	return t.fixed_array_value_to_dynamic(child_id, ret_type)
+}
+
+// fixed_array_value_to_dynamic converts a fixed-array *value* (e.g. a fixed-array
+// const or variable, not a literal — those have their own lowering) to a dynamic
+// array when `target_type` is `[]T` with a matching element type. Returns none
+// when no conversion is needed/possible.
+fn (mut t Transformer) fixed_array_value_to_dynamic(value_id flat.NodeId, target_type string) ?flat.NodeId {
+	array_type := target_type
 	if !array_type.starts_with('[]') {
 		return none
 	}
-	child_type := t.node_type(child_id)
-	if !is_fixed_array_type(child_type) || fixed_array_elem_type(child_type) != array_type[2..] {
+	child_type := t.node_type(value_id)
+	if !t.is_fixed_array_type(child_type) || fixed_array_elem_type(child_type) != array_type[2..] {
 		return none
 	}
-	return t.fixed_array_value_to_array(child_id, child_type, array_type)
+	return t.fixed_array_value_to_array(value_id, child_type, array_type)
 }
 
 // transform_assign_stmt transforms transform assign stmt data for transform.
@@ -1553,6 +2026,13 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			}
 			if lhs_type.len == 0 {
 				lhs_type = t.lvalue_type(lhs_id)
+			}
+			// A value local moved to the heap (its type became `&T`) is assigned by storing a
+			// value through the pointer (cgen emits `*v = ...`), so coerce the RHS to the value
+			// type `T`, not `&T`. Otherwise a heaped-local RHS (`v = w`, both `&T`) is copied as a
+			// pointer — aliasing `w`'s object — instead of dereferenced to its value.
+			if lhs.kind == .ident && lhs.value in t.heaped_amp_locals && lhs_type.starts_with('&') {
+				lhs_type = lhs_type[1..]
 			}
 			sum_target := t.assignment_sum_target(lhs_id, child_id, lhs_type)
 			if node.op == .assign && sum_target.len > 0 {
@@ -1723,7 +2203,7 @@ fn (t &Transformer) assignment_sum_target(lhs_id flat.NodeId, rhs_id flat.NodeId
 	if lhs_type.starts_with('&') {
 		return ''
 	}
-	if lhs_type.starts_with('[]') || is_fixed_array_type(lhs_type) {
+	if lhs_type.starts_with('[]') || t.is_fixed_array_type(lhs_type) {
 		return ''
 	}
 	if t.is_sum_type_name(lhs_type) {
@@ -2318,7 +2798,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				}
 			}
 			if node.typ.len == 0 {
-				if rhs.kind == .array_literal && is_fixed_array_type(typ) {
+				if rhs.kind == .array_literal && t.is_fixed_array_type(typ) {
 					typ = '[]${fixed_array_elem_type(typ)}'
 					t.a.nodes[int(rhs_id)].typ = typ
 				}
@@ -2329,11 +2809,34 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			}
 		}
 	}
+	// A value local whose address escapes (`p := &v` with `p` returned) is moved to the heap
+	// at its own declaration so writes after the alias are visible to the caller. Must run
+	// before the `p := &v` alias is transformed (the source is declared first).
+	if node.children_count == 2 {
+		src := t.a.child_node(&node, 0)
+		if src.kind == .ident && src.value in t.escaping_amp_sources
+			&& src.value !in t.heaped_amp_locals && t.heapable_value_type(inferred_typ) {
+			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
+		}
+	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		if i == 0 || (node.children_count > 2 && i > 1) {
 			new_children << t.transform_lvalue(child_id)
+		} else if node.children_count == 2 && t.try_heap_escaping_amp(node, child_id) {
+			new_children << t.heap_escaping_amp_rhs(child_id)
+			// When `v` was heap-moved it is already a `&T`, so `p := &v` is really `p := v`
+			// (a `&T`), not `&&T` as the literal `&v` would infer. Adopt the source's pointer
+			// type for `p` so its declaration and later uses are consistent.
+			amp := t.a.nodes[int(child_id)]
+			if amp.children_count > 0 {
+				amp_src := t.a.nodes[int(t.a.child(&amp, 0))]
+				if amp_src.kind == .ident && amp_src.value in t.heaped_amp_locals {
+					inferred_typ = t.var_type(amp_src.value)
+					t.set_var_type(t.a.nodes[int(t.a.child(&node, 0))].value, inferred_typ)
+				}
+			}
 		} else {
 			lhs_id := t.a.child(&node, 0)
 			lhs_type := if inferred_typ.len > 0 {
@@ -3121,6 +3624,7 @@ fn (mut t Transformer) transform_children_expr(id flat.NodeId, node flat.Node) f
 		return id
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
+	mut changed := false
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		if int(child_id) < 0 {
@@ -3132,12 +3636,23 @@ fn (mut t Transformer) transform_children_expr(id flat.NodeId, node flat.Node) f
 			expanded := t.transform_stmt(child_id)
 			if expanded.len == 1 {
 				new_children << expanded[0]
+				if expanded[0] != child_id {
+					changed = true
+				}
 			} else {
 				new_children << t.make_block(expanded)
+				changed = true
 			}
 		} else {
-			new_children << t.transform_expr(child_id)
+			nc := t.transform_expr(child_id)
+			new_children << nc
+			if nc != child_id {
+				changed = true
+			}
 		}
+	}
+	if !changed {
+		return id
 	}
 	start := t.a.children.len
 	for nc in new_children {
@@ -3206,6 +3721,12 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 	new_rhs := t.transform_expr(rhs_id)
 	if struct_result := t.transform_transformed_struct_eq(node, new_lhs, new_rhs) {
 		return struct_result
+	}
+	if new_lhs == lhs_id && new_rhs == rhs_id {
+		// Nothing was lowered (the common case for plain arithmetic): reuse the original
+		// node instead of allocating an identical copy. Under -gc none these copies are
+		// never freed, so avoiding them cuts both transform time and peak RAM.
+		return id
 	}
 	start := t.a.children.len
 	t.a.children << new_lhs
@@ -3314,6 +3835,7 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 		return lowered
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
+	mut changed := false
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		mut new_child := t.transform_expr(child_id)
@@ -3327,7 +3849,18 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 				}
 			}
 		}
+		if new_child != child_id {
+			changed = true
+		}
 		new_children << new_child
+	}
+	// Children unchanged: update the type annotation in place (applying the same
+	// `typ = node.value when empty` fixup the rebuild would) instead of copying the node.
+	if !changed {
+		if node.typ.len == 0 && node.value.len > 0 {
+			t.a.nodes[int(id)].typ = node.value
+		}
+		return id
 	}
 	start := t.a.children.len
 	for nc in new_children {
@@ -3541,19 +4074,31 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		return t.lower_sum_shared_field_selector(new_base, base_type0, node.value, shared_typ)
 	}
 	new_base := t.transform_expr(base_id)
+	mut changed := new_base != base_id
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	new_children << new_base
 	for i in 1 .. node.children_count {
 		child_id := t.a.child(&node, i)
-		new_children << t.transform_expr(child_id)
+		nc := t.transform_expr(child_id)
+		if nc != child_id {
+			changed = true
+		}
+		new_children << nc
+	}
+	sel_typ := if node.typ.len > 0 { node.typ } else { t.resolve_selector_type(node) }
+	base_type := t.node_type(base_id)
+	sel_op := if node.op == .arrow || base_type.starts_with('&') { flat.Op.arrow } else { node.op }
+	if !changed && sel_op == node.op {
+		// Children and op unchanged; only the type annotation may differ. Update it in
+		// place rather than allocating an identical copy (cuts -gc none peak RAM). (`op`
+		// is an immutable Node field, so a differing op still needs a fresh node below.)
+		t.a.nodes[int(id)].typ = sel_typ
+		return id
 	}
 	start := t.a.children.len
 	for nc in new_children {
 		t.a.children << nc
 	}
-	sel_typ := if node.typ.len > 0 { node.typ } else { t.resolve_selector_type(node) }
-	base_type := t.node_type(base_id)
-	sel_op := if node.op == .arrow || base_type.starts_with('&') { flat.Op.arrow } else { node.op }
 	return t.a.add_node(flat.Node{
 		kind:           .selector
 		op:             sel_op
@@ -3767,7 +4312,12 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	if node.op == .amp && node.children_count == 1 {
 		child_id := t.a.child(&node, 0)
 		child := t.a.nodes[int(child_id)]
-		if t.in_return_expr && child.kind == .struct_init {
+		if child.kind == .struct_init {
+			// `&T{...}` (address of a struct literal) is ALWAYS a heap allocation in V,
+			// in any context — not just in a return. Keeping it as a `.prefix .amp`
+			// struct_init routes it through cgen's gen_heap_struct_init; otherwise the
+			// generic fall-through lowers it to `&<stack temp>`, which dangles once the
+			// frame dies (e.g. `arr << &T{...}` storing a stack pointer in the array).
 			if expr := t.transform_amp_struct_init_for_type(id, node, node.typ) {
 				return expr
 			}
@@ -4298,24 +4848,18 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 			if smartcasted := t.smartcast_ident_value(node.value) {
 				return smartcasted
 			}
+			// Idents are the most common node; re-annotating them in place (rather than
+			// allocating a fresh node) avoids cascading rebuilds of every enclosing
+			// expression and the associated allocations (critical under -gc none).
 			if !t.in_call_callee {
 				if fn_name := t.resolve_fn_value_ident(node.value) {
-					return t.a.add_node(flat.Node{
-						kind:  .ident
-						value: fn_name
-						typ:   node.typ
-						pos:   node.pos
-					})
+					t.a.nodes[int(id)].value = fn_name
+					return id
 				}
 			}
 			typ := t.var_type(node.value)
-			if typ.len > 0 {
-				return t.a.add_node(flat.Node{
-					kind:  .ident
-					value: node.value
-					typ:   typ
-					pos:   node.pos
-				})
+			if typ.len > 0 && typ != node.typ {
+				t.a.nodes[int(id)].typ = typ
 			}
 			return id
 		}
@@ -5059,7 +5603,7 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 					return typ
 				}
 			}
-			if is_fixed_array_type(node.value) {
+			if t.is_fixed_array_type(node.value) {
 				return node.value
 			}
 			if node.value.len > 0 {
@@ -5218,7 +5762,7 @@ fn (t &Transformer) const_type_key(name string) ?string {
 fn (t &Transformer) const_entry_type_name(name string, typ types.Type) ?string {
 	tname := t.normalize_type_alias(typ.name())
 	if tname.len > 0 && tname != 'unknown' {
-		if is_fixed_array_type(tname) {
+		if t.is_fixed_array_type(tname) {
 			if expr_id := t.tc.const_exprs[name] {
 				expr := t.a.nodes[int(expr_id)]
 				if expr.kind == .call {
@@ -5418,8 +5962,11 @@ fn (mut t Transformer) build_match_chain(match_expr_id flat.NodeId, orig_expr_id
 	branch := t.a.nodes[int(branches[idx])]
 	is_else := branch.value == 'else'
 
-	body_start_idx := if is_else { 0 } else { t.count_conds(branch) }
-	if !is_else && t.match_branch_all_type_patterns(branch) && t.count_conds(branch) > 1 {
+	// count_conds scans the branch's condition children; compute it once and reuse
+	// (build_match_chain runs per branch, and the compiler has very large matches).
+	n_conds := if is_else { 0 } else { t.count_conds(branch) }
+	body_start_idx := n_conds
+	if !is_else && n_conds > 1 && t.match_branch_all_type_patterns(branch) {
 		return t.build_match_type_branch_chain(match_expr_id, orig_expr_id, branch, branches, idx,
 			0)
 	}
@@ -5427,7 +5974,6 @@ fn (mut t Transformer) build_match_chain(match_expr_id flat.NodeId, orig_expr_id
 	// single sum-type variant, so selectors inside the body get narrowed.
 	mut sc_pushed := 0
 	if !is_else {
-		n_conds := t.count_conds(branch)
 		if n_conds == 1 {
 			cond_val_id := t.a.child(&branch, 0)
 			if variant_name := t.match_type_pattern(cond_val_id) {

@@ -518,7 +518,9 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) string {
 	base_type = t.normalize_type_alias(base_type)
 	if base_type.starts_with('&') {
 		ptr_elem_type := t.normalize_type_alias(base_type[1..])
-		if !ptr_elem_type.starts_with('[]') {
+		// A `mut map`/`mut []T` param is a pointer to the container; indexing it must
+		// still yield the element/value type, so fall through to the container cases.
+		if !ptr_elem_type.starts_with('[]') && !ptr_elem_type.starts_with('map[') {
 			return ptr_elem_type
 		}
 		base_type = ptr_elem_type
@@ -529,6 +531,11 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) string {
 		}
 		if base_type.starts_with('[]') {
 			return base_type
+		}
+		// A range/slice of a fixed array (`arr[..]`, `arr[a..b]`) yields a dynamic
+		// `[]T`, not the fixed array or a bogus `range` type.
+		if t.is_fixed_array_type(base_type) {
+			return '[]${fixed_array_elem_type(base_type)}'
 		}
 	}
 	if base_type.starts_with('[]') {

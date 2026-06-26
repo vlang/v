@@ -161,7 +161,13 @@ fn (mut g Gen) gen_boehm_gc_init() {
 	}
 	g.writeln('\tGC_set_pages_executable(0);')
 	if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
-		g.writeln('\tGC_set_free_space_divisor(2);')
+		// Let the heap grow to roughly the live set before collecting, instead of
+		// keeping it small. A smaller divisor means rarer stop-the-world pauses;
+		// with thread-local allocation those pauses (not the allocator lock) are
+		// what serializes worker threads on allocation-heavy multithreaded servers
+		// (issue #27555). Emitted before GC_INIT(), so a user `GC_FREE_SPACE_DIVISOR`
+		// env var still wins and memory-constrained programs can raise it again.
+		g.writeln('\tGC_set_free_space_divisor(1);')
 	}
 	if g.pref.use_coroutines {
 		g.writeln('\tGC_allow_register_threads();')
@@ -190,7 +196,15 @@ fn (mut g Gen) gen_shared_library_boehm_init() {
 	// equivalent restriction applies to Windows DLLs.
 	g.writeln('\tGC_set_pages_executable(0);')
 	if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
-		g.writeln('\tGC_set_free_space_divisor(2);')
+		// See gen_boehm_gc_init: rarer stop-the-world pauses for the opt modes,
+		// overridable via the `GC_FREE_SPACE_DIVISOR` env var (issue #27555).
+		// Only tune when this library is the one bringing up the collector. If the
+		// host process already initialized Boehm, the local GC_INIT() below is a
+		// no-op that will not re-read the env var, so setting the divisor here would
+		// silently override the host's process-wide value (and its env override).
+		g.writeln('\tif (!GC_is_init_called()) {')
+		g.writeln('\t\tGC_set_free_space_divisor(1);')
+		g.writeln('\t}')
 	}
 	g.writeln('\tGC_INIT();')
 	g.writeln('\tGC_register_displacement(sizeof(void*));')

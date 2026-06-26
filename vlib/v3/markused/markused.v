@@ -175,6 +175,11 @@ pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 	}
 	enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
 	enqueue_function_value_selectors(a, fn_decls, mut used, mut queue)
+	// Methods used as values (`recv.method` passed as a callback) are reachable only
+	// through a wrapper cgen generates later. The checker records them per enclosing
+	// function in `method_values_by_fn`; they are seeded inside the BFS below (only when
+	// that function is reached), so an unreachable function's method value never forces an
+	// otherwise-unused specialization to be transformed/emitted.
 	enqueue_initializer_calls(a, collector, imports, fn_decls, mut used, mut queue)
 	// Interface dispatch reachability: calling an interface method `Foo.m` may
 	// dispatch to any concrete `T.m` for a type `T` that implements `Foo`. Those
@@ -208,6 +213,26 @@ pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 			continue
 		}
 		processed_nodes[node_key] = true
+		// This function is reachable, so any methods it uses as *values* (recorded by
+		// the checker per enclosing function) are reachable too — mark them so they
+		// survive pruning (cgen emits a wrapper that calls them).
+		if mvs := tc.method_values_by_fn[node_key] {
+			for mkey in mvs {
+				enqueue(mkey, mut used, mut queue)
+				lowered_mv := markused_c_name(mkey)
+				if lowered_mv != mkey {
+					enqueue(lowered_mv, mut used, mut queue)
+				}
+				mv_short := mkey.all_after_last('.')
+				if cands := suffix_map[mv_short] {
+					for cand in cands {
+						if cand == mkey || cand.ends_with('.${mkey}') {
+							enqueue(cand, mut used, mut queue)
+						}
+					}
+				}
+			}
+		}
 		calls.clear()
 		node := a.node(fn_info.node_id)
 		receiver_name, receiver_struct := receiver_info(a, node)
@@ -532,6 +557,17 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			}
 			.map_init {
 				needs_new_map = true
+			}
+			.enum_decl {
+				// A `[flag]` enum's synthesized `<Enum>__autostr` helper (emitted
+				// unconditionally in cgen) builds its `Enum{.a | .b}` string with
+				// `string__plus`. markused never walks that generated body, so without
+				// seeding the helper here it can be pruned when the program has no other
+				// string concatenation, leaving the autostr calling an undefined
+				// `string__plus`.
+				if node.typ == 'flag' {
+					needs_string_plus_helper = true
+				}
 			}
 			else {}
 		}

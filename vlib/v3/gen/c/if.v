@@ -10,46 +10,105 @@ struct MultiReturnTailParts {
 
 // gen_if emits if output for c.
 fn (mut g FlatGen) gen_if(node flat.Node) {
-	if node.children_count < 2 {
-		return
-	}
-	cond_id := g.a.child(&node, 0)
-	if !g.valid_node_id(cond_id) {
-		return
-	}
-	cond := g.a.nodes[int(cond_id)]
-	if cond.kind == .decl_assign {
-		g.gen_if_guard(node, cond)
-		return
-	}
-	if cond.kind != .empty {
-		g.write('if (')
-		g.gen_expr(cond_id)
-		g.writeln(') {')
-	} else {
-		g.writeln('{')
-	}
-	g.tc.push_scope()
-	defer_start := g.defers.len
-	g.indent++
-	if cond.kind == .is_expr {
-		g.smartcast_is_expr(&cond)
-	}
-	then_id := g.a.child(&node, 1)
-	if g.valid_node_id(then_id) {
-		then_block := g.a.nodes[int(then_id)]
-		for i in 0 .. then_block.children_count {
-			child_id := g.a.child(&then_block, i)
-			if g.valid_node_id(child_id) {
-				g.gen_node(child_id)
+	// Iterate the `else if` chain rather than recursing through gen_if/gen_if_else for
+	// each link. A lowered match can produce hundreds of chained `if_expr` nodes (one
+	// per arm); recursing once per arm overflows the stack on big matches. The emitted
+	// C is identical — only the generation is flattened into a loop.
+	mut cur := node
+	for {
+		if cur.children_count < 2 {
+			return
+		}
+		cond_id := g.a.child(&cur, 0)
+		if !g.valid_node_id(cond_id) {
+			return
+		}
+		cond := g.a.nodes[int(cond_id)]
+		if cond.kind == .decl_assign {
+			g.gen_if_guard(cur, cond)
+			return
+		}
+		if cond.kind != .empty {
+			g.write('if (')
+			g.gen_expr(cond_id)
+			g.writeln(') {')
+		} else {
+			g.writeln('{')
+		}
+		g.tc.push_scope()
+		defer_start := g.defers.len
+		g.indent++
+		if cond.kind == .is_expr {
+			g.smartcast_is_expr(&cond)
+		}
+		then_id := g.a.child(&cur, 1)
+		if g.valid_node_id(then_id) {
+			then_block := g.a.nodes[int(then_id)]
+			for i in 0 .. then_block.children_count {
+				child_id := g.a.child(&then_block, i)
+				if g.valid_node_id(child_id) {
+					g.gen_node(child_id)
+				}
 			}
 		}
+		g.gen_defers_from(defer_start)
+		g.trim_defers(defer_start)
+		g.indent--
+		g.tc.pop_scope()
+		// else handling — continue the loop for a plain `else if`, recurse only for the
+		// rare guard-else (`else if x := ...`).
+		if cur.children_count <= 2 {
+			g.writeln('}')
+			return
+		}
+		else_id := g.a.child(&cur, 2)
+		if !g.valid_node_id(else_id) {
+			g.writeln('}')
+			return
+		}
+		else_node := g.a.nodes[int(else_id)]
+		if else_node.kind == .if_expr {
+			else_cond_id := g.a.child(&else_node, 0)
+			else_cond_is_guard := if g.valid_node_id(else_cond_id) {
+				g.a.nodes[int(else_cond_id)].kind == .decl_assign
+			} else {
+				false
+			}
+			if else_cond_is_guard {
+				g.writeln('} else {')
+				g.tc.push_scope()
+				g.indent++
+				g.gen_if(else_node)
+				g.indent--
+				g.tc.pop_scope()
+				g.writeln('}')
+				return
+			}
+			g.write('} else ')
+			cur = else_node
+			continue
+		} else if else_node.kind == .block {
+			g.writeln('} else {')
+			g.tc.push_scope()
+			else_defer_start := g.defers.len
+			g.indent++
+			for i in 0 .. else_node.children_count {
+				child_id := g.a.child(&else_node, i)
+				if g.valid_node_id(child_id) {
+					g.gen_node(child_id)
+				}
+			}
+			g.gen_defers_from(else_defer_start)
+			g.trim_defers(else_defer_start)
+			g.indent--
+			g.tc.pop_scope()
+			g.writeln('}')
+			return
+		} else {
+			g.writeln('}')
+			return
+		}
 	}
-	g.gen_defers_from(defer_start)
-	g.trim_defers(defer_start)
-	g.indent--
-	g.tc.pop_scope()
-	g.gen_if_else(node)
 }
 
 // smartcast_is_expr supports smartcast is expr handling for FlatGen.
@@ -467,24 +526,32 @@ fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
 	g.write('_ifexpr;})')
 }
 
-// gen_if_expr_else_if emits if expr else if output for c.
+// gen_if_expr_else_if emits if expr else if output for c. The `else if` chain is
+// iterated rather than recursed: a lowered match-expression can chain hundreds of
+// `if_expr` nodes (one per arm), and recursing once per arm — each frame copying a
+// `flat.Node` and a `Type` by value — overflows the stack. The emitted C is identical.
 fn (mut g FlatGen) gen_if_expr_else_if(node flat.Node, ret_type types.Type) {
-	then_block := g.a.child_node(&node, 1)
-	g.write('if (')
-	g.gen_expr(g.a.child(&node, 0))
-	g.writeln(') {')
-	g.gen_if_expr_block(then_block, ret_type)
-	g.write('} else ')
-	if node.children_count > 2 {
-		else_node := g.a.child_node(&node, 2)
-		if else_node.kind == .if_expr {
-			g.gen_if_expr_else_if(*else_node, ret_type)
-		} else if else_node.kind == .block {
-			g.writeln('{')
-			g.gen_if_expr_block(else_node, ret_type)
-			g.writeln('}')
+	mut cur := node
+	for {
+		then_block := g.a.child_node(&cur, 1)
+		g.write('if (')
+		g.gen_expr(g.a.child(&cur, 0))
+		g.writeln(') {')
+		g.gen_if_expr_block(then_block, ret_type)
+		g.write('} else ')
+		if cur.children_count > 2 {
+			else_node := g.a.child_node(&cur, 2)
+			if else_node.kind == .if_expr {
+				cur = *else_node
+				continue
+			} else if else_node.kind == .block {
+				g.writeln('{')
+				g.gen_if_expr_block(else_node, ret_type)
+				g.writeln('}')
+			}
+			return
 		}
-	} else {
 		g.writeln('{ _ifexpr = (typeof(_ifexpr)){0}; }')
+		return
 	}
 }

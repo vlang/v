@@ -6,6 +6,7 @@ import v3.eval
 import v3.flat
 import v3.gen.arm64
 import v3.gen.c as cgen
+import v3.gen.wasm
 import v3.markused
 import v3.parser
 import v3.pref
@@ -131,7 +132,10 @@ fn main() {
 	mut is_strict := false
 	mut is_selfhost := false
 	mut no_parallel := false
+	mut parallel_transform := false
 	mut building_v := false
+	mut all_backends := false
+	mut compile_backends := []string{}
 	mut user_defines := []string{}
 	mut i := 0
 	for i < args.len {
@@ -158,6 +162,15 @@ fn main() {
 		} else if args[i] == '-no-parallel' || args[i] == '--no-parallel' {
 			no_parallel = true
 			i++
+		} else if args[i] == '-parallel-transform' || args[i] == '--parallel-transform' {
+			parallel_transform = true
+			i++
+		} else if args[i] == '-all-backends' || args[i] == '--all-backends' {
+			all_backends = true
+			i++
+		} else if args[i] in ['-compile-backend', '--compile-backend'] && i + 1 < args.len {
+			compile_backends << args[i + 1]
+			i += 2
 		} else if args[i] == '-d' && i + 1 < args.len {
 			user_defines << args[i + 1]
 			i += 2
@@ -191,13 +204,58 @@ fn main() {
 	mut c_only := false
 	if output_file == '' {
 		bin_file = input_file.all_before_last('.v')
-		output_file = bin_file + '.c'
+		// The wasm backend writes the binary itself; default to <name>.wasm.
+		output_file = if backend == 'wasm' { bin_file + '.wasm' } else { bin_file + '.c' }
+	} else if backend == 'wasm' {
+		// Honor the exact -o path; the wasm backend writes output_file directly.
+		bin_file = output_file.all_before_last('.wasm')
 	} else if backend == 'c' && output_file.ends_with('.c') {
 		c_only = true
 		bin_file = output_file.all_before_last('.c')
 	} else {
 		bin_file = output_file
 		output_file = bin_file + '.c'
+	}
+
+	// Decide which backend modules to compile into the output. By default only the C
+	// backend is built; the arm64/wasm/eval backends (and the whole SSA pipeline that the
+	// arm64 backend pulls in: v3.ssa + v3.ssa.optimize) are skipped entirely. When compiling
+	// the V compiler itself this avoids parsing/checking/transforming/cgen-ing ~30k lines of
+	// unused backend code, which measurably speeds up the self-host build. The `skip_*`
+	// defines drive two things in lock-step: `$if !skip_* ?` gates in main() make the parser
+	// drop the dispatch blocks (so the backend symbols are never referenced), and
+	// resolve_imports skips parsing the corresponding module directories.
+	// `-all-backends` keeps everything; `-compile-backend <name>` opts a specific backend back
+	// in; the active `-b` target backend is always force-included.
+	mut include_arm64 := all_backends
+	mut include_wasm := all_backends
+	mut include_eval := all_backends
+	for cb in compile_backends {
+		for name in cb.split(',') {
+			match name.trim_space() {
+				'arm64', 'aarch64' { include_arm64 = true }
+				'wasm', 'wasm32' { include_wasm = true }
+				'eval' { include_eval = true }
+				// 'c' is always built; there is no native amd64 backend in v3 yet.
+				else {}
+			}
+		}
+	}
+	match backend {
+		'arm64' { include_arm64 = true }
+		'wasm' { include_wasm = true }
+		'eval' { include_eval = true }
+		else {}
+	}
+
+	if !include_arm64 {
+		user_defines << 'skip_arm64'
+	}
+	if !include_wasm {
+		user_defines << 'skip_wasm'
+	}
+	if !include_eval {
+		user_defines << 'skip_eval'
 	}
 
 	mut b := bench.new()
@@ -264,14 +322,16 @@ fn main() {
 	b.step('check')
 
 	if backend == 'eval' {
-		mut runner := eval.new(prefs)
-		runner.run_files(a) or {
-			eprintln('error: ${err.msg()}')
-			exit(1)
+		$if !skip_eval ? {
+			mut runner := eval.new(prefs)
+			runner.run_files(a) or {
+				eprintln('error: ${err.msg()}')
+				exit(1)
+			}
+			b.step('eval')
+			b.print_report()
+			return
 		}
-		b.step('eval')
-		b.print_report()
-		return
 	}
 
 	// Mark used functions (dead-code elimination). This is done before transform
@@ -279,9 +339,13 @@ fn main() {
 	mut used_fns := markused.mark_used(a, pre_tc)
 	b.step('markused')
 
-	// Transform (match lowering, string/in lowering, etc.)
-	used_fns = transform.transform_with_used(mut a, &pre_tc, used_fns)
-	b.step('transform')
+	// Transform (match lowering, string/in lowering, etc.). Parallel transform is an
+	// explicit opt-in (`-parallel-transform`), independent of `-no-parallel` (which
+	// gates the parallel C codegen): the two phases can be threaded independently.
+	mut transform_was_parallel := false
+	used_fns, transform_was_parallel = transform.transform_with_used_opt(mut a, &pre_tc, used_fns,
+		parallel_transform)
+	b.step_parallel('transform', transform_was_parallel)
 
 	// Reuse the pre-transform checker for metadata only. Transform does not add
 	// declarations, and v1/v2 do not run a second semantic checker after lowering.
@@ -292,6 +356,26 @@ fn main() {
 	pre_tc.annotate_types()
 	b.step('annotate types')
 
+	if backend == 'wasm' {
+		$if !skip_wasm ? {
+			// Direct flat-AST-to-WASM native backend. Runs before monomorphize (which
+			// targets generics, not yet supported here). output_file is the exact path
+			// requested via -o (or the <name>.wasm default).
+			mut g := wasm.Gen.new(a, pre_tc, used_fns)
+			g.gen()
+			g.write(output_file) or {
+				eprintln('error writing ${output_file}')
+				exit(1)
+			}
+			for w in g.warnings_list() {
+				eprintln('wasm: ${w}')
+			}
+			b.step('wasm gen')
+			b.print_report()
+			return
+		}
+	}
+
 	// Monomorphization only adds specialized generic instantiations to `used_fns`. The V
 	// compiler sources use no generics, so when building V we skip the pass entirely
 	// (`used_fns` passes through unchanged) instead of scanning the whole AST for nothing.
@@ -301,21 +385,23 @@ fn main() {
 	b.step('monomorphize')
 
 	if backend == 'arm64' {
-		// SSA + ARM64 native backend
-		mut m := ssa.build_with_used(a, used_fns, pre_tc)
-		b.step('ssa build')
+		$if !skip_arm64 ? {
+			// SSA + ARM64 native backend
+			mut m := ssa.build_with_used(a, used_fns, pre_tc)
+			b.step('ssa build')
 
-		if is_prod {
-			optimize.optimize(mut m)
-			b.step('optimize')
+			if is_prod {
+				optimize.optimize(mut m)
+				b.step('optimize')
+			}
+
+			mut g := arm64.Gen.new(m)
+			g.gen()
+			b.step('arm64 gen')
+
+			g.write_and_link(bin_file)
+			b.step('link')
 		}
-
-		mut g := arm64.Gen.new(m)
-		g.gen()
-		b.step('arm64 gen')
-
-		g.write_and_link(bin_file)
-		b.step('link')
 	} else {
 		// C backend (default)
 		mut g := cgen.FlatGen.new()
@@ -324,8 +410,7 @@ fn main() {
 			eprintln('error writing ${output_file}')
 			exit(1)
 		}
-		gen_step_name := if g.was_parallel() { 'gen C/write (parallel)' } else { 'gen C/write' }
-		b.step(gen_step_name)
+		b.step_parallel('cgen', g.was_parallel())
 		if c_only {
 			b.print_report()
 			return
@@ -536,11 +621,41 @@ fn path_is_in_dir(path string, dir string) bool {
 	return real_path == real_dir || real_path.starts_with(real_dir + os.path_separator)
 }
 
+// skipped_backend_modules lists the importable backend module names that the current
+// configuration excludes (driven by the same `skip_*` defines that gate the dispatch in
+// main()). The arm64 backend is the only consumer of the SSA pipeline, so skipping it also
+// skips v3.ssa and v3.ssa.optimize.
+fn skipped_backend_modules(prefs &pref.Preferences) []string {
+	mut skipped := []string{}
+	if 'skip_arm64' in prefs.user_defines {
+		skipped << 'v3.gen.arm64'
+		skipped << 'v3.ssa'
+		skipped << 'v3.ssa.optimize'
+	}
+	if 'skip_wasm' in prefs.user_defines {
+		skipped << 'v3.gen.wasm'
+	}
+	if 'skip_eval' in prefs.user_defines {
+		skipped << 'v3.eval'
+	}
+	return skipped
+}
+
 // resolve_imports resolves resolve imports information for v3 entry point.
 fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string) {
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
+
+	// Backend modules excluded by the active configuration are never parsed: their
+	// dispatch in main() is gated out by the matching `$if !skip_* ?`, so nothing
+	// references their symbols. Pre-seeding parsed_modules makes the loop below treat
+	// them as already handled, so neither v3.v's top-level imports nor any transitive
+	// import pulls them in. Skipping the arm64 group (v3.gen.arm64 + the v3.ssa SSA
+	// pipeline) and the wasm/eval backends avoids ~30k lines of work when self-hosting.
+	for skipped in skipped_backend_modules(prefs) {
+		parsed_modules[skipped] = true
+	}
 
 	mut first_file := ''
 	if initial_files.len > 0 {

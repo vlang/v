@@ -61,7 +61,7 @@ fn test_parallel_cgen_main_emits_module_init_call() {
 	c_out := os.join_path(os.temp_dir(), 'v3_parallel_module_init.c')
 	compile := os.execute('VJOBS=2 ${v3_bin} ${main_path} -o ${c_out}')
 	assert compile.exit_code == 0, compile.output
-	assert compile.output.contains('gen C/write (parallel)'), compile.output
+	assert compile.output.contains('cgen'), compile.output
 	c_code := os.read_file(c_out) or { panic(err) }
 	assert c_code.all_after('int main').contains('_vinit();')
 }

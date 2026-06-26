@@ -74,20 +74,36 @@ pub fn (mut b Builder) write_byte(data u8) {
 // write_decimal appends a decimal representation of the number `n` into the builder `b`,
 // without dynamic allocation. The higher order digits come first, i.e. 6123 will be written
 // with the digit `6` first, then `1`, then `2` and `3` last.
-@[direct_array_access]
 pub fn (mut b Builder) write_decimal(n i64) {
 	if n == 0 {
 		b.write_u8(0x30)
 		return
 	}
-	if n == min_i64 {
-		b.write_string(n.str())
+	mut mag := u64(n)
+	if n < 0 {
+		b.write_u8(`-`)
+		// Wrapping unsigned negation yields the correct magnitude even for `min_i64`,
+		// whose absolute value does not fit in an i64, so this stays allocation-free for
+		// every input without a special case for the signed 64-bit minimum.
+		mag = u64(0) - mag
+	}
+	b.write_u_decimal(mag)
+}
+
+// write_u_decimal appends a decimal representation of the unsigned number `n` into the
+// builder `b`, without dynamic allocation. Unlike `write_decimal`, it covers the entire
+// `u64` range (values above `max_i64`). The higher order digits come first, i.e. 6123
+// will be written with the digit `6` first, then `1`, then `2` and `3` last.
+@[direct_array_access]
+pub fn (mut b Builder) write_u_decimal(n u64) {
+	if n == 0 {
+		b.write_u8(0x30)
 		return
 	}
 
-	mut buf := [25]u8{}
-	mut x := if n < 0 { -n } else { n }
-	mut i := 24
+	mut buf := [20]u8{} // max_u64 == 18446744073709551615, i.e. 20 digits
+	mut x := n
+	mut i := 19
 	for x != 0 {
 		nextx := x / 10
 		r := x % 10
@@ -95,11 +111,7 @@ pub fn (mut b Builder) write_decimal(n i64) {
 		x = nextx
 		i--
 	}
-	if n < 0 {
-		buf[i] = `-`
-		i--
-	}
-	unsafe { b.write_ptr(&buf[i + 1], 24 - i) }
+	unsafe { b.write_ptr(&buf[i + 1], 19 - i) }
 }
 
 // write implements the io.Writer interface, that is why it returns how many bytes were written to the string builder.

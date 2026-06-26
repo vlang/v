@@ -8,60 +8,69 @@ import v3.types
 // FlatGen emits flat gen output used by c.
 pub struct FlatGen {
 mut:
-	sb                      strings.Builder
-	indent                  int
-	a                       &flat.FlatAst = unsafe { nil }
-	used_fns                map[string]bool
-	used_fn_names           []string
-	str_lits                []string
-	str_lit_ids             map[string]int
-	global_types            map[string]types.Type
-	enum_vals               map[string]int
-	defers                  []flat.NodeId
-	fn_defers               []flat.NodeId
-	fn_defer_counts         map[int]string
-	defer_capture_names     []string
-	defer_capture_types     map[string]types.Type
-	interfaces              map[string][]string
-	const_vals              map[string]flat.NodeId
-	const_modules           map[string]string
-	const_init_order        []string
-	global_modules          map[string]string
-	global_inits            map[string]flat.NodeId // qualified global name -> initializer value node
-	global_init_order       []string               // qualified global names, in declaration order
-	iface_impls             map[string][]string    // interface name -> implementing concrete type names
-	iface_type_ids          map[string]int         // "${iface}::${concrete}" -> 1-based type id
-	module_init_fns         []string               // C names of module-level `init()` fns, in source order
-	module_init_fn_modules  map[string]string      // C init fn name -> V module name
-	module_imports          map[string][]string    // module -> imported modules
-	c_includes              []string
-	c_flags                 []string
-	tc                      &types.TypeChecker = unsafe { nil }
-	has_builtins            bool
-	tmp_count               int
-	line_start              bool
-	modules                 map[string]string // alias -> full module name
-	fn_ptr_types            map[string]string // fn_ptr:ret|params -> typedef name
-	fn_decl_param_types     map[string][]types.Type
-	fn_decl_ret_types       map[string]types.Type // fn decl name (and qualified variants) -> return type
-	struct_decl_infos       map[string]StructDeclInfo
-	struct_decl_short_infos map[string]StructDeclInfo
-	runtime_inits           []string
-	compiler_vroot          string
-	cur_fn_name             string
-	cur_param_names         []string
-	cur_param_type_values   []types.Type
-	cur_param_types         map[string]types.Type
-	cur_fn_ret              types.Type = types.Type(types.void_)
-	cur_fn_ret_is_optional  bool
-	cur_fn_ret_base         types.Type = types.Type(types.void_)
+	sb                           strings.Builder
+	indent                       int
+	a                            &flat.FlatAst = unsafe { nil }
+	used_fns                     map[string]bool
+	used_fn_names                []string
+	str_lits                     []string
+	str_lit_ids                  map[string]int
+	global_types                 map[string]types.Type
+	enum_vals                    map[string]int
+	defers                       []flat.NodeId
+	fn_defers                    []flat.NodeId
+	fn_defer_counts              map[int]string
+	defer_capture_names          []string
+	defer_capture_types          map[string]types.Type
+	interfaces                   map[string][]string
+	const_vals                   map[string]flat.NodeId
+	const_modules                map[string]string
+	const_init_order             []string
+	global_modules               map[string]string
+	global_inits                 map[string]flat.NodeId // qualified global name -> initializer value node
+	global_init_order            []string               // qualified global names, in declaration order
+	iface_impls                  map[string][]string    // interface name -> implementing concrete type names
+	iface_type_ids               map[string]int         // "${iface}::${concrete}" -> 1-based type id
+	module_init_fns              []string               // C names of module-level `init()` fns, in source order
+	module_init_fn_modules       map[string]string      // C init fn name -> V module name
+	module_imports               map[string][]string    // module -> imported modules
+	c_includes                   []string
+	c_flags                      []string
+	tc                           &types.TypeChecker = unsafe { nil }
+	has_builtins                 bool
+	tmp_count                    int
+	line_start                   bool
+	field_name_set               map[string]bool   // every struct field's C name (lazy) — for const/field collision checks
+	modules                      map[string]string // alias -> full module name
+	fn_ptr_types                 map[string]string // fn_ptr:ret|params -> typedef name
+	fixed_array_ret_wrappers     map[string]bool   // bare fixed-array c_type name -> has a return wrapper struct
+	emitted_fixed_array_typedefs map[string]bool   // bare fixed-array typedefs already written (shared across passes)
+	fn_decl_param_types          map[string][]types.Type
+	fn_decl_ret_types            map[string]types.Type // fn decl name (and qualified variants) -> return type
+	struct_decl_infos            map[string]StructDeclInfo
+	struct_decl_short_infos      map[string]StructDeclInfo
+	runtime_inits                []string
+	compiler_vroot               string
+	cur_fn_name                  string
+	cur_param_names              []string
+	cur_param_type_values        []types.Type
+	cur_param_types              map[string]types.Type
+	cur_fn_ret                   types.Type = types.Type(types.void_)
+	cur_fn_ret_is_optional       bool
+	cur_fn_ret_base              types.Type = types.Type(types.void_)
+	// in_return is true only while generating a `return` statement's value, so a bare
+	// generic literal (`return Box{...}`) may adopt `cur_fn_ret`'s concrete instance —
+	// but a literal in a local decl / argument elsewhere in the body does not.
+	in_return               bool
 	expected_expr_type      types.Type = types.Type(types.void_)
 	expected_enum           string
 	needed_optional_types   map[string]string
 	emitted_optional_types  map[string]bool
 	emitted_fns             map[string]bool
 	array_method_cache      map[string]string
-	param_types_cache       map[string][]types.Type // (name|fallback) -> resolved param types
+	param_types_cache       map[string][]types.Type        // (name|fallback) -> resolved param types
+	embedded_fields_by_type map[string][]types.StructField // type name -> its embedded fields (usually empty)
+	param_types_by_short    map[string][]types.Type        // method short-name suffix -> param types (fallback index)
 	spawn_wrapper_names     map[string]string
 	spawn_wrapper_defs      []string
 	parallel_used           bool
@@ -84,50 +93,54 @@ pub fn (g &FlatGen) c_flags() []string {
 // new creates a FlatGen value for c.
 pub fn FlatGen.new() FlatGen {
 	return FlatGen{
-		sb:                      strings.new_builder(4096)
-		used_fns:                map[string]bool{}
-		str_lit_ids:             map[string]int{}
-		global_types:            map[string]types.Type{}
-		enum_vals:               map[string]int{}
-		interfaces:              map[string][]string{}
-		const_vals:              map[string]flat.NodeId{}
-		const_modules:           map[string]string{}
-		const_init_order:        []string{}
-		global_modules:          map[string]string{}
-		global_inits:            map[string]flat.NodeId{}
-		global_init_order:       []string{}
-		iface_impls:             map[string][]string{}
-		iface_type_ids:          map[string]int{}
-		module_init_fns:         []string{}
-		module_init_fn_modules:  map[string]string{}
-		module_imports:          map[string][]string{}
-		c_includes:              []string{}
-		c_flags:                 []string{}
-		modules:                 map[string]string{}
-		fn_ptr_types:            map[string]string{}
-		fn_decl_param_types:     map[string][]types.Type{}
-		fn_decl_ret_types:       map[string]types.Type{}
-		struct_decl_infos:       map[string]StructDeclInfo{}
-		struct_decl_short_infos: map[string]StructDeclInfo{}
-		cur_param_names:         []string{}
-		cur_param_type_values:   []types.Type{}
-		cur_param_types:         map[string]types.Type{}
-		needed_optional_types:   map[string]string{}
-		emitted_optional_types:  map[string]bool{}
-		emitted_fns:             map[string]bool{}
-		array_method_cache:      map[string]string{}
-		param_types_cache:       map[string][]types.Type{}
-		spawn_wrapper_names:     map[string]string{}
-		spawn_wrapper_defs:      []string{}
-		str_lits:                []string{}
-		defers:                  []flat.NodeId{}
-		fn_defers:               []flat.NodeId{}
-		fn_defer_counts:         map[int]string{}
-		defer_capture_names:     []string{}
-		defer_capture_types:     map[string]types.Type{}
-		runtime_inits:           []string{}
-		compiler_vroot:          ''
-		line_start:              true
+		sb:                           strings.new_builder(4096)
+		used_fns:                     map[string]bool{}
+		str_lit_ids:                  map[string]int{}
+		global_types:                 map[string]types.Type{}
+		enum_vals:                    map[string]int{}
+		interfaces:                   map[string][]string{}
+		const_vals:                   map[string]flat.NodeId{}
+		const_modules:                map[string]string{}
+		const_init_order:             []string{}
+		global_modules:               map[string]string{}
+		global_inits:                 map[string]flat.NodeId{}
+		global_init_order:            []string{}
+		iface_impls:                  map[string][]string{}
+		iface_type_ids:               map[string]int{}
+		module_init_fns:              []string{}
+		module_init_fn_modules:       map[string]string{}
+		module_imports:               map[string][]string{}
+		c_includes:                   []string{}
+		c_flags:                      []string{}
+		modules:                      map[string]string{}
+		fn_ptr_types:                 map[string]string{}
+		fixed_array_ret_wrappers:     map[string]bool{}
+		emitted_fixed_array_typedefs: map[string]bool{}
+		fn_decl_param_types:          map[string][]types.Type{}
+		fn_decl_ret_types:            map[string]types.Type{}
+		struct_decl_infos:            map[string]StructDeclInfo{}
+		struct_decl_short_infos:      map[string]StructDeclInfo{}
+		cur_param_names:              []string{}
+		cur_param_type_values:        []types.Type{}
+		cur_param_types:              map[string]types.Type{}
+		needed_optional_types:        map[string]string{}
+		emitted_optional_types:       map[string]bool{}
+		emitted_fns:                  map[string]bool{}
+		array_method_cache:           map[string]string{}
+		param_types_cache:            map[string][]types.Type{}
+		embedded_fields_by_type:      map[string][]types.StructField{}
+		param_types_by_short:         map[string][]types.Type{}
+		spawn_wrapper_names:          map[string]string{}
+		spawn_wrapper_defs:           []string{}
+		str_lits:                     []string{}
+		defers:                       []flat.NodeId{}
+		fn_defers:                    []flat.NodeId{}
+		fn_defer_counts:              map[int]string{}
+		defer_capture_names:          []string{}
+		defer_capture_types:          map[string]types.Type{}
+		runtime_inits:                []string{}
+		compiler_vroot:               ''
+		line_start:                   true
 	}
 }
 
@@ -174,6 +187,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.c_flags = []string{}
 	g.modules = map[string]string{}
 	g.fn_ptr_types = map[string]string{}
+	g.fixed_array_ret_wrappers = map[string]bool{}
+	g.emitted_fixed_array_typedefs = map[string]bool{}
 	g.fn_decl_param_types = map[string][]types.Type{}
 	g.fn_decl_ret_types = map[string]types.Type{}
 	g.struct_decl_infos = map[string]StructDeclInfo{}
@@ -186,6 +201,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.emitted_fns = map[string]bool{}
 	g.array_method_cache = map[string]string{}
 	g.param_types_cache = map[string][]types.Type{}
+	g.embedded_fields_by_type = map[string][]types.StructField{}
+	g.param_types_by_short = map[string][]types.Type{}
 	g.spawn_wrapper_names = map[string]string{}
 	g.spawn_wrapper_defs = []string{}
 	g.parallel_used = false
@@ -195,9 +212,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	g.has_builtins = g.tc.has_builtins
 	g.collect_gen_info()
+	g.precompute_embedded_fields()
+	g.precompute_param_type_index()
 	g.collect_interface_impls()
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
+	// Decide fixed-array return wrappers before generating function bodies, so
+	// signatures, returns and call sites all agree on the wrapped types.
+	g.populate_fixed_array_ret_wrappers()
 	const_code := g.precompute_consts()
 	orig_sb := g.sb
 	orig_line_start := g.line_start
@@ -211,6 +233,13 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.enum_decls()
 	g.type_alias_decls()
 	g.type_forward_decls()
+	// Forward-declare multi-return structs before fn-ptr typedefs, which may name a
+	// multi-return as a by-value return type (full bodies come after struct_decls).
+	g.multi_return_forward_decls()
+	// Bare typedefs for primitive-element fixed arrays and wrapper structs for
+	// fixed-array return types, before fn-ptr typedefs (which may name a fixed
+	// array in param or return position) and the function declarations.
+	g.fixed_array_early_typedefs()
 	g.fn_ptr_typedefs()
 	g.struct_decls()
 	g.fixed_array_typedefs()
@@ -219,10 +248,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.optional_typedefs()
 	g.global_decls()
 	g.forward_decls()
+	g.enum_str_forward_decls()
 	g.spawn_wrapper_decls()
 	g.register_interface_strings()
 	g.string_literals()
 	g.interface_method_stubs()
+	g.enum_str_defs()
 	g.sb.write_string(const_code)
 	if g.runtime_inits.len > 0 || g.module_init_fns.len > 0 || g.global_inits.len > 0 {
 		g.writeln('void _vinit() {')
@@ -316,6 +347,17 @@ fn (mut g FlatGen) collect_gen_info() {
 			include := '#include ${include_arg}'
 			if include !in g.c_includes {
 				g.c_includes << include
+			}
+			continue
+		}
+		if node.kind == .directive && node.value == 'define' && node.typ.len > 0 {
+			// `#define NAME [value]` from a `.c.v` file. Emit it into the same ordered
+			// include stream so a define that precedes an `#include` (e.g. viper's
+			// `#define GLFW_INCLUDE_GLCOREARB` before `<GLFW/glfw3.h>`, which selects the
+			// GL core-profile header that declares glGenVertexArrays/…) still does so.
+			define := '#define ${node.typ}'
+			if define !in g.c_includes {
+				g.c_includes << define
 			}
 			continue
 		}
@@ -560,7 +602,51 @@ fn c_flag_arg(raw string, vroot string, source_file string) string {
 	if clean.len == 0 {
 		return ''
 	}
-	return c_resolve_pseudo_paths(clean, vroot, source_file)
+	resolved := c_resolve_pseudo_paths(clean, vroot, source_file)
+	return c_resolve_relative_flag_paths(resolved, source_file)
+}
+
+// c_resolve_relative_flag_paths rewrites relative path arguments in a `#flag`
+// directive (e.g. `-I ./thirdparty`, or a bare `./foo.c`) to absolute paths,
+// resolved against the directory of the source file that carried the directive.
+// V1 does the same: a project's `#flag` paths are relative to its own module dir,
+// not to the compiler's build/working directory.
+fn c_resolve_relative_flag_paths(flag string, source_file string) string {
+	if source_file.len == 0 || !flag.contains('/') {
+		return flag
+	}
+	base_dir := os.dir(source_file)
+	if base_dir.len == 0 {
+		return flag
+	}
+	mut out := []string{}
+	for tok in flag.fields() {
+		out << c_resolve_flag_path_token(tok, base_dir)
+	}
+	return out.join(' ')
+}
+
+fn c_resolve_flag_path_token(tok string, base_dir string) string {
+	for prefix in ['-I', '-L'] {
+		if tok.starts_with(prefix) && tok.len > prefix.len {
+			path := tok[prefix.len..]
+			if c_flag_path_is_relative(path) {
+				return prefix + os.real_path(os.join_path_single(base_dir, path))
+			}
+			return tok
+		}
+	}
+	if !tok.starts_with('-') && c_flag_path_is_relative(tok) {
+		return os.real_path(os.join_path_single(base_dir, tok))
+	}
+	return tok
+}
+
+fn c_flag_path_is_relative(p string) bool {
+	if p.len == 0 || os.is_abs_path(p) {
+		return false
+	}
+	return p.starts_with('./') || p.starts_with('../') || p.contains('/')
 }
 
 fn c_directive_arg_for_target(raw string) ?string {
@@ -794,6 +880,40 @@ fn (mut g FlatGen) expr_to_string(id flat.NodeId) string {
 	g.sb = strings.new_builder(64)
 	g.line_start = true
 	g.gen_expr(id)
+	result := g.sb.str()
+	g.sb = orig
+	g.line_start = orig_line_start
+	return result
+}
+
+// interface_value_to_string captures, as a string, the boxed interface value the direct return
+// path emits (`(Iface){._typ = N, ._object = ...}`) — so a deferred return can save it into a
+// temp without dropping `_typ`/`_object`. Mirrors that path: box a concrete value, else (already
+// boxed by the transform) emit it as-is.
+fn (mut g FlatGen) interface_value_to_string(id flat.NodeId, expected types.Type) string {
+	orig := g.sb
+	orig_line_start := g.line_start
+	g.sb = strings.new_builder(64)
+	// Box mid-statement (no leading indent), matching the direct return path.
+	g.line_start = false
+	if !g.gen_interface_value_expr(id, expected) {
+		g.gen_expr(id)
+	}
+	result := g.sb.str()
+	g.sb = orig
+	g.line_start = orig_line_start
+	return result
+}
+
+// fixed_array_copy_source_string captures gen_fixed_array_copy_source as a string, so a deferred
+// optional/fixed-array return can embed the memcpy source when saving the value into a temp.
+fn (mut g FlatGen) fixed_array_copy_source_string(value_id flat.NodeId, field_type types.Type) string {
+	orig := g.sb
+	orig_line_start := g.line_start
+	g.sb = strings.new_builder(64)
+	// Emit mid-statement (no leading indent), matching the direct return path.
+	g.line_start = false
+	g.gen_fixed_array_copy_source(value_id, field_type)
 	result := g.sb.str()
 	g.sb = orig
 	g.line_start = orig_line_start
@@ -1448,6 +1568,11 @@ fn (mut g FlatGen) fixed_array_len_expr(type_name string, fallback int) string {
 
 // fixed_array_len_value supports fixed array len value handling for FlatGen.
 fn (mut g FlatGen) fixed_array_len_value(arr types.ArrayFixed) string {
+	// Prefer the evaluated integer length: a const-expression size (`[segs + 1]f32`)
+	// otherwise reaches the raw fallback and is c_name-mangled into garbage.
+	if v := g.tc.fixed_array_len_value(arr) {
+		return v.str()
+	}
 	return g.fixed_array_len_raw(arr.len_expr, arr.len)
 }
 
@@ -1463,6 +1588,13 @@ fn (mut g FlatGen) fixed_array_len_is_zero(arr types.ArrayFixed) bool {
 fn (mut g FlatGen) fixed_array_len_raw(raw_len string, fallback int) string {
 	if raw_len.len == 0 {
 		return '${fallback}'
+	}
+	// A literal or const-expression size (`8`, `SEGS + 1`, `1 << 2`, `8 >>> 1`) folds to an
+	// integer; emit that literal so the C dimension is always valid — `>>>` has no C form,
+	// so a digit-leading expression like `8 >>> 1` must not be passed through raw — and a
+	// non-numeric expr isn't c_name-mangled (`SEGS_+_1`) into an undeclared identifier.
+	if v := g.tc.const_int_value(raw_len, []string{}) {
+		return v.str()
 	}
 	clean_len := raw_len.replace('_', '')
 	if clean_len.len > 0 && clean_len[0] >= `0` && clean_len[0] <= `9` {
@@ -1486,6 +1618,79 @@ fn (mut g FlatGen) fixed_array_decl_parts(arr types.ArrayFixed) (string, string)
 		return base_ct, '[${len_expr}]${suffix}'
 	}
 	return g.tc.c_type(arr.elem_type), '[${len_expr}]'
+}
+
+// infix_can_skip_child_parens reports whether a child infix operand needs no
+// surrounding parentheses. For associative logical chains (`||`, `&&`) a child of
+// the same operator is safe unparenthesised; this keeps long lowered chains (e.g.
+// a `match` over hundreds of enum values → `a || b || c || ...`) from nesting
+// parentheses past the C compiler's bracket-depth limit.
+fn infix_can_skip_child_parens(parent_op flat.Op, child_op flat.Op) bool {
+	return (parent_op == .logical_or && child_op == .logical_or)
+		|| (parent_op == .logical_and && child_op == .logical_and)
+}
+
+// assoc_infix_chain_len counts how many same-operator infix nodes hang off the left
+// spine of `node` (its nesting depth). Capped early since only "very deep" matters.
+fn (g &FlatGen) assoc_infix_chain_len(node flat.Node) int {
+	op := node.op
+	mut cur := node
+	mut depth := 0
+	for {
+		if cur.children_count < 1 {
+			break
+		}
+		lhs_id := g.a.child(&cur, 0)
+		if !g.valid_node_id(lhs_id) {
+			break
+		}
+		lhs := g.a.nodes[int(lhs_id)]
+		if lhs.kind == .infix && lhs.op == op {
+			depth++
+			if depth > 101 {
+				break
+			}
+			cur = lhs
+		} else {
+			break
+		}
+	}
+	return depth
+}
+
+// gen_assoc_infix_chain emits a left-nested `||`/`&&` chain iteratively, producing the
+// same flat `a || b || c …` C as the recursive path but without growing the stack per
+// link (a big match's condition chain can be hundreds deep).
+fn (mut g FlatGen) gen_assoc_infix_chain(node flat.Node) {
+	op := node.op
+	op_s := g.op_str(op)
+	mut operands := []flat.NodeId{cap: 256}
+	mut cur := node
+	for {
+		operands << g.a.child(&cur, 1)
+		lhs_id := g.a.child(&cur, 0)
+		lhs := g.a.nodes[int(lhs_id)]
+		if lhs.kind == .infix && lhs.op == op && g.valid_node_id(g.a.child(&lhs, 0)) {
+			cur = lhs
+		} else {
+			operands << lhs_id
+			break
+		}
+	}
+	for i := operands.len - 1; i >= 0; i-- {
+		if i != operands.len - 1 {
+			g.write(' ${op_s} ')
+		}
+		oid := operands[i]
+		onode := g.a.nodes[int(oid)]
+		if onode.kind == .infix && !infix_can_skip_child_parens(op, onode.op) {
+			g.write('(')
+			g.gen_expr(oid)
+			g.write(')')
+		} else {
+			g.gen_expr(oid)
+		}
+	}
 }
 
 // gen_expr emits expr output for c.
@@ -1594,12 +1799,31 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			g.write('0')
 		}
 		.call {
-			g.gen_call(id, node)
+			// A call to a fixed-array-returning function yields the wrapper struct;
+			// unwrap `.ret_arr` so the result behaves as the array value everywhere
+			// (indexing, arg passing, memcpy into a destination).
+			ret_t := g.declared_call_return_type(id)
+			if ret_t is types.ArrayFixed && g.tc.c_type(ret_t) in g.fixed_array_ret_wrappers {
+				g.write('(')
+				g.gen_call(id, node)
+				g.write(').ret_arr')
+			} else {
+				g.gen_call(id, node)
+			}
 		}
 		.spawn_expr {
 			g.gen_spawn_expr(node)
 		}
 		.infix {
+			// A very long left-nested `||`/`&&` chain (e.g. from a big match condition or
+			// a `!in [...]` over many values) would recurse once per link and overflow the
+			// stack; emit those iteratively. Only pathologically long chains take this path,
+			// so ordinary code keeps the existing per-node generation unchanged.
+			if (node.op == .logical_or || node.op == .logical_and)
+				&& g.assoc_infix_chain_len(node) > 100 {
+				g.gen_assoc_infix_chain(node)
+				return
+			}
 			lhs_id := g.a.child(&node, 0)
 			rhs_id := g.a.child(&node, 1)
 			old_expected_enum := g.expected_enum
@@ -1651,7 +1875,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else {
 				lhs_node := g.a.nodes[int(lhs_id)]
 				rhs_node := g.a.nodes[int(rhs_id)]
-				if lhs_node.kind == .infix {
+				if lhs_node.kind == .infix && !infix_can_skip_child_parens(node.op, lhs_node.op) {
 					g.write('(')
 					g.gen_expr_with_possible_enum_type(lhs_id, rhs_type)
 					g.write(')')
@@ -1659,7 +1883,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.gen_expr_with_possible_enum_type(lhs_id, rhs_type)
 				}
 				g.write(' ${g.op_str(node.op)} ')
-				if rhs_node.kind == .infix {
+				if rhs_node.kind == .infix && !infix_can_skip_child_parens(node.op, rhs_node.op) {
 					g.write('(')
 					g.gen_expr_with_possible_enum_type(rhs_id, lhs_type)
 					g.write(')')
@@ -1850,6 +2074,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else {
 				false
 			}
+			// A method used as a value (e.g. `game.draw` passed as a callback) rather
+			// than a field access — bind the receiver and yield a wrapper function.
+			if g.gen_method_value_closure(base_id, base_type0, node.value) {
+				return
+			}
 			if base.kind == .ident && base.value == 'C' {
 				g.write(node.value)
 			} else if base.kind == .ident && !base_is_local && (base.value in g.tc.enum_names
@@ -1914,7 +2143,16 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					mod
 				}
-				g.write(c_name('${short_mod}.${node.value}'))
+				// A module-level const is stored under the importing module's full path
+				// (e.g. `v3.gen.wasm`), matching its function naming. Reference it by that
+				// exact storage name rather than the short alias, otherwise we'd emit an
+				// undeclared `wasm__x` for a const defined as `v3__gen__wasm__x`.
+				full_qname := g.const_storage_name(mod, node.value)
+				if full_qname in g.const_vals {
+					g.write(c_name(full_qname))
+				} else {
+					g.write(c_name('${short_mod}.${node.value}'))
+				}
 			} else if base.kind == .selector && base.children_count > 0
 				&& g.is_module_qualified_enum(base) {
 				inner_base := g.a.child_node(&base, 0)
@@ -2460,8 +2698,12 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#ifndef V_COMMIT_HASH')
 	g.writeln('#define V_COMMIT_HASH ""')
 	g.writeln('#endif')
-	g.writeln('static inline void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
-	g.writeln('static inline void vheap_free(void* p) { (void)p; }')
+	// Weak fallbacks for the heap-tracking hooks. A program that provides real
+	// implementations (e.g. a `vheap_alloc`/`vheap_free` from a linked C file, as
+	// some projects do) overrides these without a redefinition/static-vs-non-static
+	// clash against that file's own non-static prototype.
+	g.writeln('__attribute__((weak)) void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
+	g.writeln('__attribute__((weak)) void vheap_free(void* p) { (void)p; }')
 	// Atomic helpers. We use the C11 __atomic_* builtins (memory order 5 == __ATOMIC_SEQ_CST).
 	// clang/gcc inline the generic _n / RMW builtins. tcc only implements the inline
 	// __atomic_{add,sub,fetch}_* RMW builtins; for load/store/exchange/cas it has no generic
@@ -2547,7 +2789,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('')
 }
 
-fn (mut g FlatGen) fixed_array_typedefs() {
+fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTypedefInfo {
 	mut needed := map[string]FixedArrayTypedefInfo{}
 	old_module := g.tc.cur_module
 	for name, ret_type in g.tc.fn_ret_types {
@@ -2585,14 +2827,223 @@ fn (mut g FlatGen) fixed_array_typedefs() {
 		g.collect_fixed_array_typedef(typ, mut needed)
 	}
 	g.tc.cur_module = old_module
-	mut emitted := map[string]bool{}
+	return needed
+}
+
+fn (mut g FlatGen) fixed_array_typedefs() {
+	needed := g.collect_fixed_array_typedefs_needed()
+	old_len := g.emitted_fixed_array_typedefs.len
 	for name, info in needed {
-		g.emit_fixed_array_typedef(name, info, needed, mut emitted)
+		g.emit_fixed_array_typedef(name, info, needed, mut g.emitted_fixed_array_typedefs)
 	}
-	g.tc.cur_module = old_module
-	if emitted.len > 0 {
+	// Return wrappers for non-early element types (struct/`string`/nested fixed array):
+	// their bare typedef (above) and element definitions are available now, so a C
+	// function returning `[N]Foo`/`[N]string` can return the wrapper struct instead of the
+	// raw array type C rejects. Sorted for deterministic output.
+	mut wrapper_names := []string{}
+	for name, _ in needed {
+		wrapper_names << name
+	}
+	wrapper_names.sort()
+	mut emitted_wrapper := false
+	for name in wrapper_names {
+		if name !in g.fixed_array_ret_wrappers {
+			continue
+		}
+		info := needed[name] or { continue }
+		if fixed_array_typedef_is_early(info.arr) {
+			continue
+		}
+		// Completes the struct forward-declared in fixed_array_early_typedefs().
+		g.emit_fixed_array_ret_wrapper(name, info, true)
+		emitted_wrapper = true
+	}
+	if g.emitted_fixed_array_typedefs.len > old_len || emitted_wrapper {
 		g.writeln('')
 	}
+}
+
+// fixed_array_typedef_is_early reports whether a fixed array's bare typedef can be
+// emitted before struct definitions: its element chain must bottom out in a
+// primitive/pointer/enum (not a struct or `string`, whose definitions come later).
+fn fixed_array_typedef_is_early(arr types.ArrayFixed) bool {
+	elem := arr.elem_type
+	if elem is types.ArrayFixed {
+		return fixed_array_typedef_is_early(elem)
+	}
+	return fixed_array_elem_is_early_complete(elem)
+}
+
+// populate_fixed_array_ret_wrappers records which fixed-array types get a return
+// wrapper struct. It must run before function bodies are generated, so that fn
+// signatures, return statements and call sites all agree on whether a given
+// fixed-array return is wrapped. EVERY fixed-array type is wrapped, because C
+// functions and fn pointers cannot return a raw array type regardless of the element:
+// primitive/pointer/enum element wrappers are emitted early (before structs), while
+// struct/`string`/nested element wrappers are emitted by fixed_array_typedefs(), after
+// the element type is defined.
+fn (mut g FlatGen) populate_fixed_array_ret_wrappers() {
+	needed := g.collect_fixed_array_typedefs_needed()
+	for name, _ in needed {
+		g.fixed_array_ret_wrappers[name] = true
+	}
+}
+
+// emit_fixed_array_ret_wrapper writes the one-field `struct { T ret_arr[N]; }` wrapper
+// for a fixed-array return type. The element type's C definition must already be emitted.
+// `tagged` completes a previously forward-declared named struct (`struct X { ... };`),
+// used for non-early element types whose wrapper is referenced by an fn-pointer typedef
+// emitted earlier; otherwise a fresh anonymous typedef is written.
+fn (mut g FlatGen) emit_fixed_array_ret_wrapper(name string, info FixedArrayTypedefInfo, tagged bool) {
+	arr := info.arr
+	old_module := g.tc.cur_module
+	g.tc.cur_module = info.module
+	elem_ct := g.tc.c_type(arr.elem_type)
+	len_expr := g.fixed_array_len_value(arr)
+	g.tc.cur_module = old_module
+	wname := fixed_array_ret_wrapper_name(name)
+	if tagged {
+		g.writeln('struct ${wname} { ${elem_ct} ret_arr[${len_expr}]; };')
+	} else {
+		g.writeln('typedef struct { ${elem_ct} ret_arr[${len_expr}]; } ${wname};')
+	}
+}
+
+// emit_fixed_array_ret_wrapper_forward forward-declares a named return-wrapper struct so an
+// fn-pointer typedef can name it as a (by-value) return type before the wrapper's element
+// type is defined; the struct body is completed later by emit_fixed_array_ret_wrapper.
+fn (mut g FlatGen) emit_fixed_array_ret_wrapper_forward(name string) {
+	wname := fixed_array_ret_wrapper_name(name)
+	g.writeln('typedef struct ${wname} ${wname};')
+}
+
+// fixed_array_early_typedefs emits, before the fn-ptr typedef block, the bare
+// typedefs for fixed arrays whose element chain is a primitive/pointer/enum, plus
+// a one-field struct wrapper `struct { T ret_arr[N]; }` for each fixed-array
+// return type. fn-ptr typedefs may name a fixed array in param position (bare
+// typedef) or return position (wrapper); both must therefore be defined first. C
+// functions cannot return raw array types, hence the wrapper (as V1 does). Bare
+// typedefs of struct/`string`-element fixed arrays are deferred to
+// fixed_array_typedefs(), after the struct definitions.
+fn (mut g FlatGen) fixed_array_early_typedefs() {
+	needed := g.collect_fixed_array_typedefs_needed()
+	mut names := []string{}
+	for name, _ in needed {
+		names << name
+	}
+	names.sort()
+	mut emitted_any := false
+	for name in names {
+		info := needed[name] or { continue }
+		if !fixed_array_typedef_is_early(info.arr) {
+			continue
+		}
+		g.emit_fixed_array_typedef(name, info, needed, mut g.emitted_fixed_array_typedefs)
+		emitted_any = true
+	}
+	// Wrapper structs for fixed-array return types. Primitive/pointer/enum element wrappers
+	// are fully defined here. Struct/`string`/nested element wrappers can't be defined yet
+	// (their element type comes later), but an fn-pointer typedef in the next block may name
+	// one as a return type, so forward-declare the named struct now and complete it in
+	// fixed_array_typedefs(), after the element definitions.
+	for name in names {
+		if name !in g.fixed_array_ret_wrappers {
+			continue
+		}
+		info := needed[name] or { continue }
+		if fixed_array_typedef_is_early(info.arr) {
+			g.emit_fixed_array_ret_wrapper(name, info, false)
+		} else {
+			g.emit_fixed_array_ret_wrapper_forward(name)
+		}
+		emitted_any = true
+	}
+	if emitted_any {
+		g.writeln('')
+	}
+}
+
+// fixed_array_ret_wrapper_name is the struct name wrapping a fixed-array return.
+fn fixed_array_ret_wrapper_name(bare_c_name string) string {
+	return '_v_ret_${bare_c_name}'
+}
+
+// fixed_array_elem_is_early_complete reports whether a fixed-array element type's
+// C definition is available before the fn_ptr/return-wrapper typedef block (i.e.
+// it is a primitive, pointer, or enum — not a struct or nested fixed array, whose
+// bare typedefs/definitions are emitted later).
+fn fixed_array_elem_is_early_complete(elem types.Type) bool {
+	return elem is types.Primitive || elem is types.Pointer || elem is types.Enum
+}
+
+// fn_return_type_name is the C type to write for a function/fn-ptr return type,
+// substituting the fixed-array wrapper struct when one exists.
+fn (mut g FlatGen) fn_return_type_name(t types.Type) string {
+	if t is types.ArrayFixed {
+		bare := g.tc.c_type(t)
+		if bare in g.fixed_array_ret_wrappers {
+			return fixed_array_ret_wrapper_name(bare)
+		}
+	}
+	ct := g.optional_type_name(t)
+	// A function/fn-ptr-valued return (`fn f() fn () int`) has the internal `fn_ptr:...`
+	// encoding for its C type; map it to the shared `_fn_ptr_N` typedef, since a C function
+	// cannot be declared returning that raw encoding (it would emit invalid C).
+	if ct.starts_with('fn_ptr:') {
+		return g.resolve_fn_ptr_type(ct)
+	}
+	return ct
+}
+
+// fn_ptr_return_ct maps a fixed-array return c_type name (string form, used by the
+// fn-ptr typedef machinery) to its wrapper struct name when one exists.
+fn (g &FlatGen) fn_ptr_return_ct(ct string) string {
+	if ct.starts_with('Array_fixed_') && ct in g.fixed_array_ret_wrappers {
+		return fixed_array_ret_wrapper_name(ct)
+	}
+	return ct
+}
+
+// emit_ready_fixed_array_typedefs emits, during the topological struct emission,
+// any fixed-array bare typedef whose element type is now fully defined (i.e. its
+// element struct has been emitted). Struct fields reference the typedef name
+// (`Array_fixed_vec__Vec4_f32 x`), so the typedef must precede any struct that
+// uses it — which a single later pass cannot guarantee.
+fn (mut g FlatGen) emit_ready_fixed_array_typedefs(needed map[string]FixedArrayTypedefInfo, emitted_structs map[string]bool) {
+	for name, info in needed {
+		if g.emitted_fixed_array_typedefs[name] {
+			continue
+		}
+		if g.fixed_array_elem_defined(info.arr, emitted_structs) {
+			g.emit_fixed_array_typedef(name, info, needed, mut g.emitted_fixed_array_typedefs)
+		}
+	}
+}
+
+// fixed_array_elem_defined reports whether a fixed array's element type is fully
+// available: a primitive/pointer/enum (always), or a struct/`string` already
+// emitted. Aliases are unwrapped to their underlying type first (`SimdFloat4` ->
+// `vec.Vec4[f32]` struct), so an alias to a not-yet-emitted struct is not treated
+// as ready.
+fn (g &FlatGen) fixed_array_elem_defined(arr types.ArrayFixed, emitted_structs map[string]bool) bool {
+	return g.fixed_array_type_defined(arr.elem_type, emitted_structs)
+}
+
+fn (g &FlatGen) fixed_array_type_defined(typ0 types.Type, emitted_structs map[string]bool) bool {
+	mut typ := typ0
+	for typ is types.Alias {
+		typ = typ.base_type
+	}
+	if typ is types.ArrayFixed {
+		return g.fixed_array_type_defined(typ.elem_type, emitted_structs)
+	}
+	if typ is types.Struct {
+		return g.tc.c_type(typ) in emitted_structs
+	}
+	if typ is types.String {
+		return 'string' in emitted_structs
+	}
+	return true
 }
 
 fn module_from_qualified_name(name string) string {
@@ -2893,6 +3344,11 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		|| ct in ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'float', 'double', 'isize', 'usize'] {
 		if qname == 'max_len' && ct == 'int' {
 			g.writeln('enum { ${qname} = ${expr_str} };')
+		} else if g.name_collides_with_struct_field(qname) {
+			// A `#define` whose name matches a struct field would wrongly expand every
+			// `.field` access; emit a real `const` variable instead (C keeps member and
+			// ordinary-identifier namespaces separate, so there is no collision).
+			g.writeln('static const ${ct} ${qname} = ${expr_str};')
 		} else {
 			g.writeln('#define ${qname} (${expr_str})')
 		}
@@ -2900,6 +3356,21 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		g.writeln('const ${ct} ${qname} = ${expr_str};')
 	}
 	g.tc.cur_module = old_module
+}
+
+// name_collides_with_struct_field reports whether a name is the C name of any struct
+// field, building the set lazily on first use.
+fn (mut g FlatGen) name_collides_with_struct_field(name string) bool {
+	if g.field_name_set.len == 0 {
+		for _, fields in g.tc.structs {
+			for f in fields {
+				g.field_name_set[c_field_name(f.name)] = true
+			}
+		}
+		// Guard against an all-fieldless program re-scanning every call.
+		g.field_name_set[''] = true
+	}
+	return name in g.field_name_set
 }
 
 fn (g &FlatGen) const_expr_needs_runtime_storage(expr string) bool {

@@ -42,6 +42,23 @@ const c_reserved_words = {
 	'while':    true
 }
 
+// c_libc_collisions are libc function names that are not C keywords but clash at
+// link/declaration time when a user defines a plain (module `main`) function with
+// the same name (e.g. `fn rint(...)` vs libc's `double rint(double)`). They are
+// mangled to `v_<name>` consistently at definition and call sites. `C.<name>`
+// calls are unaffected (the `C.` prefix is stripped before this check).
+const c_libc_collisions = {
+	'rint':  true
+	'y0':    true
+	'y1':    true
+	'yn':    true
+	'j0':    true
+	'j1':    true
+	'jn':    true
+	'drem':  true
+	'scalb': true
+}
+
 // c_name converts c name data for c.
 fn c_name(name string) string {
 	if name.starts_with('C.') {
@@ -61,13 +78,13 @@ fn c_name(name string) string {
 		return 'v_exit'
 	}
 	if c_name_is_plain(name) {
-		if name in c_reserved_words {
+		if name in c_reserved_words || name in c_libc_collisions {
 			return 'v_${name}'
 		}
 		return name
 	}
 	n := c_name_sanitize(name)
-	if n in c_reserved_words {
+	if n in c_reserved_words || n in c_libc_collisions {
 		return 'v_${n}'
 	}
 	return n

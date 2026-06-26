@@ -91,6 +91,12 @@ pub fn (db DB) drop(table orm.Table) ! {
 	sqlite_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
+// execute runs a raw SQL query and returns result rows as driver-agnostic orm.Row values.
+pub fn (db DB) execute(query string) ![]orm.Row {
+	rows := db.exec(query)!
+	return rows.map(orm.Row{ vals: it.vals, names: it.names })
+}
+
 // orm_begin starts a transaction for ORM helpers.
 pub fn (mut db DB) orm_begin() ! {
 	db.begin()!

@@ -37,14 +37,21 @@ pub fn new() Bench {
 	}
 }
 
-// step supports step handling for Bench.
+// step records a serial pipeline step.
 pub fn (mut b Bench) step(name string) {
+	b.step_parallel(name, false)
+}
+
+// step_parallel records a pipeline step, appending "(parallel)" to its name
+// when the step actually ran across threads.
+pub fn (mut b Bench) step_parallel(name string, parallel bool) {
 	elapsed_us := b.step_sw.elapsed().microseconds()
 	ram_mb := f64(current_rss_kb()) / 1024.0
 	ms := f64(elapsed_us) / 1000.0
-	println('  ${name:-20s} ${ms:8.2f} ms   ${ram_mb:6.0f} MB resident RAM')
+	label := if parallel { '${name} (parallel)' } else { name }
+	println('  ${label:-20s} ${ms:8.2f} ms   ${ram_mb:6.0f} MB resident RAM')
 	b.steps << Step{
-		name:    name
+		name:    label
 		time_us: elapsed_us
 		ram_kb:  i64(ram_mb * 1024)
 	}
