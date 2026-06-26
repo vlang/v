@@ -1329,6 +1329,18 @@ fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
 		return c.check_unknown_stream(frame.stream_id)
 	}
 	s.mu.lock()
+	// RFC 9113 §5.1: a HEADERS frame after the stream has already ended (a prior
+	// END_STREAM, or RST/connection death that set s.ended) is a frame on a closed
+	// stream, not more trailers. Without this, back-to-back trailer + extra HEADERS
+	// in one read buffer would be appended to resp.headers before wait_response
+	// flushes, delivering fields the peer sent after closing the stream. Reset
+	// instead (the DATA path makes the same check via s.ended).
+	if s.ended {
+		s.mu.unlock()
+		c.reset_stream(frame.stream_id, .stream_closed,
+			'HEADERS frame after stream end on stream ${frame.stream_id}')
+		return
+	}
 	was_headers_done := s.headers_done
 	if !s.headers_done {
 		mut status := 0
