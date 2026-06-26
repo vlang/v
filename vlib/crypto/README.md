@@ -148,8 +148,10 @@ fn main() {
 
 ### scrypt
 
-`scrypt` is a memory-hard key derivation function (RFC 7914). `n` must be a power of two;
-`(n: 16384, r: 8, p: 1)` are common interactive parameters.
+`scrypt` is a memory-hard key derivation function (RFC 7914). `n` must be a power of two.
+For password storage OWASP recommends at least `(n: 2^17, r: 8, p: 1)` (or `(n: 2^14, r: 8, p: 5)`);
+tune the parameters for your hardware. Smaller values such as `(n: 16384, r: 8, p: 1)` are only a
+low-cost interactive/demo profile, not a password-storage profile.
 
 ```v
 import crypto.rand
@@ -159,7 +161,8 @@ fn main() {
 	password := 'correct horse battery staple'.bytes()
 	// generate and persist a unique random salt per password
 	salt := rand.bytes(16)!
-	key := scrypt.scrypt(password, salt, 16384, 8, 1, 32)!
+	// tune the work factor for your deployment (OWASP suggests n >= 2^17 for password storage)
+	key := scrypt.scrypt(password, salt, 131072, 8, 1, 32)!
 	assert key.len == 32
 }
 ```
