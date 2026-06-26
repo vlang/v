@@ -180,7 +180,20 @@ fn (g &Gen) enabled_wasm_features() []WasmFeature {
 			feats << feat
 		}
 	}
-	return feats
+	return apply_feature_implications(feats)
+}
+
+// apply_feature_implications expands `feats` with any feature implied by another.
+// Relaxed SIMD extends the SIMD/v128 feature, so requesting it must also enable
+// SIMD. Otherwise wabt_validate_args() emits `--disable-simd --enable-relaxed-simd`
+// and wasm-opt runs from `-mvp` without `--enable-simd`, so a `-d wasm_relaxed_simd`
+// build still fails under `-wasm-validate`/`-prod`.
+fn apply_feature_implications(feats []WasmFeature) []WasmFeature {
+	mut res := feats.clone()
+	if WasmFeature.relaxed_simd in res && WasmFeature.simd !in res {
+		res << .simd
+	}
+	return res
 }
 
 // binaryen_feature_flags renders the feature set into `wasm-opt` flags. It
