@@ -8,9 +8,11 @@ name: h2spec conformance
 on:
   push:
     paths: &h2paths
-      - 'vlib/net/http/h2_**'
-      - 'vlib/net/http/h2spec/**'
-      - 'vlib/net/mbedtls/**'
+      - 'vlib/net/http/h2_*.v'
+      - 'vlib/net/http/server*.v'
+      - 'vlib/net/http/http*.v'
+      - 'vlib/net/http/h2spec/*.v'
+      - 'vlib/net/mbedtls/*.v'
       - '.github/workflows/h2spec.yml'
   pull_request:
     paths: *h2paths
