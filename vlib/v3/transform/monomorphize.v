@@ -2193,12 +2193,11 @@ fn subst_generic_fn_type_text(clean string, args []string, params []string) ?str
 			} else if c == `)` || c == `]` {
 				pdepth--
 			} else if c == `,` && pdepth == 0 {
-				fn_parts << substitute_generic_type_text_with_params(params_str[start..i], args,
-					params)
+				fn_parts << subst_generic_fn_type_param_text(params_str[start..i], args, params)
 				start = i + 1
 			}
 		}
-		fn_parts << substitute_generic_type_text_with_params(params_str[start..], args, params)
+		fn_parts << subst_generic_fn_type_param_text(params_str[start..], args, params)
 	}
 	ret_str := clean[params_end + 1..].trim_space()
 	if ret_str.len > 0 {
@@ -2206,6 +2205,69 @@ fn subst_generic_fn_type_text(clean string, args []string, params []string) ?str
 			args, params)}'
 	}
 	return 'fn(${fn_parts.join(', ')})'
+}
+
+fn subst_generic_fn_type_param_text(param string, args []string, params []string) string {
+	mut text := param.trim_space()
+	mut is_mut := false
+	if text.starts_with('mut ') {
+		is_mut = true
+		text = text[4..].trim_space()
+	}
+	space := generic_top_level_space_index(text)
+	if space > 0 {
+		head := text[..space].trim_space()
+		tail := text[space + 1..].trim_space()
+		if generic_fn_type_param_head_is_name(head, tail) {
+			sub := substitute_generic_type_text_with_params(tail, args, params)
+			if is_mut && sub.len > 0 && !sub.starts_with('&') {
+				return '${head} &${sub}'
+			}
+			return '${head} ${sub}'
+		}
+	}
+	sub := substitute_generic_type_text_with_params(text, args, params)
+	if is_mut && sub.len > 0 && !sub.starts_with('&') {
+		return '&${sub}'
+	}
+	return sub
+}
+
+fn generic_top_level_space_index(s string) int {
+	mut depth := 0
+	for i := 0; i < s.len; i++ {
+		match s[i] {
+			`(`, `[` {
+				depth++
+			}
+			`)`, `]` {
+				depth--
+			}
+			` ` {
+				if depth == 0 {
+					return i
+				}
+			}
+			else {}
+		}
+	}
+	return -1
+}
+
+fn generic_fn_type_param_head_is_name(head string, tail string) bool {
+	if head.len == 0 || tail.len == 0 {
+		return false
+	}
+	if head.starts_with('fn') || head.starts_with('&') || head.starts_with('[') {
+		return false
+	}
+	if head in ['shared', 'atomic', 'chan', 'thread', 'map'] || head.contains('.') {
+		return false
+	}
+	if types.is_builtin_type_name(head) {
+		return false
+	}
+	return (head[0] >= `a` && head[0] <= `z`) || head[0] == `_`
 }
 
 // subst_type substitutes generic placeholders in a type-text using the currently

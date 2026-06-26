@@ -54,6 +54,40 @@ import sokol.c as _
 	return os.read_file(c_out) or { panic(err) }
 }
 
+fn directive_order_gen_c_dotted_collision(v3_bin string) string {
+	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_dotted_collision_project')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	directive_order_write_file(root, 'v.mod',
+		"Module { name: 'directive_order_dotted_collision' }\n")
+	directive_order_write_file(root, 'main.v', 'module main
+
+import foo.user as _
+import bar as _
+
+fn main() {}
+')
+	directive_order_write_file(root, 'bar/bar.v', 'module bar
+
+#define SHORT_BAR
+')
+	directive_order_write_file(root, 'foo/bar/bar.v', 'module bar
+
+#define FOO_BAR
+')
+	directive_order_write_file(root, 'foo/user/user.v', 'module user
+
+import foo.bar as _
+
+#define FOO_USER
+')
+	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_dotted_collision.c')
+	os.rm(c_out) or {}
+	result := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${c_out}')
+	assert result.exit_code == 0, result.output
+	return os.read_file(c_out) or { panic(err) }
+}
+
 fn directive_order_index(c_code string, needle string) int {
 	return c_code.index(needle) or { -1 }
 }
@@ -90,4 +124,15 @@ fn test_c_directives_follow_import_dependency_order() {
 	block_end := directive_order_index(block_tail, '#endif')
 	assert block_include >= 0, c_code
 	assert block_end > block_include, c_code
+}
+
+fn test_c_directives_preserve_dotted_import_module_identity() {
+	c_code := directive_order_gen_c_dotted_collision(directive_order_build_v3())
+	short_bar := directive_order_index(c_code, '#define SHORT_BAR')
+	foo_bar := directive_order_index(c_code, '#define FOO_BAR')
+	foo_user := directive_order_index(c_code, '#define FOO_USER')
+	assert short_bar >= 0, c_code
+	assert foo_bar >= 0, c_code
+	assert foo_user >= 0, c_code
+	assert foo_bar < foo_user, c_code
 }

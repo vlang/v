@@ -405,6 +405,33 @@ fn test_fn_arg_main() {
 	assert run.output.trim_space() == 'user-main'
 }
 
+fn test_v3_test_file_harness_does_not_rename_shadowed_main_fn_value_call() {
+	v3_bin := build_v3()
+	src := "fn call_shadowed(main fn ()) {
+	main()
+}
+
+fn local_cb() {
+	println('local-cb')
+}
+
+fn main() {
+	println('user-main')
+}
+
+fn test_shadowed_main() {
+	call_shadowed(local_cb)
+}
+"
+	c_code := gen_c(v3_bin, 'harness_shadowed_main_fn_value_call', '_test.v', src)
+	assert c_code.count('int main(') == 1, c_code
+	assert c_code.contains('main();'), c_code
+	assert !c_code.contains('main__user_main();'), c_code
+	run := compile_and_run(v3_bin, 'harness_shadowed_main_fn_value_call_run', '_test.v', src)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'local-cb'
+}
+
 fn test_v3_test_file_harness_finds_top_level_comptime_block_tests() {
 	v3_bin := build_v3()
 	src := "$if v3_nested_harness ? {

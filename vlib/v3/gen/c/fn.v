@@ -326,6 +326,18 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 	return c_name(name)
 }
 
+fn (mut g FlatGen) direct_call_name_for_call(id flat.NodeId, name string) string {
+	if g.test_files.len > 0 && (name == 'main' || name == 'main.main') {
+		if resolved := g.tc.resolved_call_name(id) {
+			if resolved == 'main' || resolved == 'main.main' {
+				return g.test_user_main_c_name()
+			}
+		}
+		return c_name(name)
+	}
+	return g.direct_call_name(name)
+}
+
 fn (mut g FlatGen) libc_compat_call_name(name string) ?string {
 	// `builtin.v_gettid()` reaches libc through `C.gettid()` on Linux/glibc, but
 	// that symbol is not declared by all usable C header sets. Route it through a
@@ -696,10 +708,13 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	mut arg_expr := 'NULL'
 	if fn_node.kind == .ident {
 		call_key := g.call_key(call_id, fn_node.value)
-		cfn := if call_key in g.tc.fn_ret_types || call_key in g.tc.fn_param_types {
-			g.direct_call_name(call_key)
+		looked_up := g.tc.cur_scope.lookup(fn_node.value) or { types.Type(types.void_) }
+		cfn := if looked_up !is types.Void && fn_type_from(looked_up) != none {
+			c_name(fn_node.value)
+		} else if call_key in g.tc.fn_ret_types || call_key in g.tc.fn_param_types {
+			g.direct_call_name_for_call(call_id, call_key)
 		} else {
-			g.direct_call_name(fn_node.value)
+			c_name(fn_node.value)
 		}
 		if call_node.children_count == 1 {
 			wrapper = g.ensure_noarg_spawn_wrapper(cfn, ret_ct)
@@ -2029,10 +2044,15 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						return
 					}
 					call_key := g.call_key(id, fn_ident.value)
-					if call_key in g.tc.fn_ret_types || call_key in g.tc.fn_param_types {
-						g.write(g.direct_call_name(call_key))
+					looked_up := g.tc.cur_scope.lookup(fn_ident.value) or {
+						types.Type(types.void_)
+					}
+					if looked_up !is types.Void && fn_type_from(looked_up) != none {
+						g.write(c_name(fn_ident.value))
+					} else if call_key in g.tc.fn_ret_types || call_key in g.tc.fn_param_types {
+						g.write(g.direct_call_name_for_call(id, call_key))
 					} else {
-						g.write(g.direct_call_name(fn_ident.value))
+						g.write(c_name(fn_ident.value))
 					}
 				} else {
 					g.gen_expr(fn_id)

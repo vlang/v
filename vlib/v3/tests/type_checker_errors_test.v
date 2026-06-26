@@ -3,12 +3,13 @@ import os
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
+const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
 // build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_type_checker_errors_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0
 	return v3_bin
 }
@@ -681,6 +682,11 @@ fn test_pr_review_codegen_batch_fourteen() {
 	apply := run_good(v3_bin, 'good_generic_method_fn_type_param',
 		"struct Box[T] {\n\tv T\n}\nfn (b Box[T]) apply(cb fn (T) int) int {\n\treturn cb(b.v)\n}\nfn slen(s string) int {\n\treturn s.len\n}\nfn main() {\n\tb := Box[string]{\n\t\tv: 'hello'\n\t}\n\tprintln(int_str(b.apply(slen)))\n}\n")
 	assert apply == '5'
+	// The same substitution also handles named parameters inside the callback type:
+	// `fn (x T) int` specializes the type part to `fn (int) int`.
+	named_cb := run_good(v3_bin, 'good_generic_fn_named_callback_param',
+		'fn run[T](cb fn (x T) int, v T) int {\n\treturn cb(v)\n}\nfn inc(x int) int {\n\treturn x + 1\n}\nfn main() {\n\tprintln(int_str(run(inc, 4)))\n}\n')
+	assert named_cb == '5'
 	// A method value that escapes its call site is rejected: returned from a factory, stored
 	// in a struct field, or put in a map (the per-site static receiver can't keep several
 	// instances distinct). Immediately-passed callbacks and local bindings still work.

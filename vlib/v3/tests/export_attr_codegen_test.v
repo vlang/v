@@ -190,6 +190,30 @@ fn main() {}
 	assert compile.output.contains('invalid export name `for`'), compile.output
 }
 
+fn test_invalid_imported_export_name_is_rejected_before_cgen() {
+	v3_bin := export_attr_build_v3()
+	root := export_attr_project('invalid_imported_name', {
+		'main.v':          'module main
+
+import badexp
+
+fn main() {
+	println(badexp.answer().str())
+}
+'
+		'badexp/badexp.v': "module badexp
+
+@[export: '1bad']
+pub fn answer() int {
+	return 1
+}
+"
+	})
+	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
+	assert compile.exit_code != 0
+	assert compile.output.contains('invalid export name `1bad` for `badexp.answer`'), compile.output
+}
+
 fn test_export_name_reserved_by_v3_c_preamble_is_rejected() {
 	v3_bin := export_attr_build_v3()
 	root := export_attr_project('preamble_reserved_name', {

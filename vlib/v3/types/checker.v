@@ -160,6 +160,7 @@ pub mut:
 	fn_param_types         map[string][]Type
 	fn_ret_type_texts      map[string]string   // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
 	fn_param_type_texts    map[string][]string // generic struct method key -> original param type texts (receiver first)
+	fn_generic_params      map[string][]string
 	fn_variadic            map[string]bool
 	c_variadic_fns         map[string]bool
 	fn_implicit_veb_ctx    map[string]bool
@@ -243,6 +244,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		fn_param_types:             map[string][]Type{}
 		fn_ret_type_texts:          map[string]string{}
 		fn_param_type_texts:        map[string][]string{}
+		fn_generic_params:          map[string][]string{}
 		fn_variadic:                map[string]bool{}
 		c_variadic_fns:             map[string]bool{}
 		fn_implicit_veb_ctx:        map[string]bool{}
@@ -570,11 +572,14 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				// so a concrete call must re-substitute the type arguments from the text to
 				// recover applications like the receiver type in the return position
 				// (`Box[T]` -> `Box[int]`). Only such methods carry `[` in their key.
-				if node.value.contains('[') {
-					tc.fn_ret_type_texts[qname] = node.typ
-					tc.fn_param_type_texts[qname] = param_texts.clone()
-					tc.fn_ret_type_texts[node.value] = node.typ
-					tc.fn_param_type_texts[node.value] = param_texts.clone()
+				if node.generic_params.len > 0 || node.value.contains('[') {
+					for name in [qname, node.value] {
+						tc.fn_ret_type_texts[name] = node.typ
+						tc.fn_param_type_texts[name] = param_texts.clone()
+						if node.generic_params.len > 0 {
+							tc.fn_generic_params[name] = node.generic_params.clone()
+						}
+					}
 				}
 			}
 			.struct_decl {
@@ -1687,28 +1692,28 @@ fn (mut tc TypeChecker) check_export_attrs() {
 				qname := export_qualified_fn_name(cur_module, node.value)
 				export_name := tc.a.export_fn_names[qname] or { continue }
 				if export_name.len == 0 {
-					tc.record_error(.unsupported_generic, 'empty export name for `${qname}`',
-						flat.NodeId(i))
+					tc.record_error_unfiltered(.unsupported_generic,
+						'empty export name for `${qname}`', flat.NodeId(i))
 					continue
 				}
 				if !is_valid_export_c_name(export_name) {
-					tc.record_error(.unsupported_generic,
+					tc.record_error_unfiltered(.unsupported_generic,
 						'invalid export name `${export_name}` for `${qname}`', flat.NodeId(i))
 				}
 				if node.generic_params.len > 0 {
-					tc.record_error(.unsupported_generic,
+					tc.record_error_unfiltered(.unsupported_generic,
 						'generic function `${qname}` cannot be exported', flat.NodeId(i))
 				}
 				for pi in 0 .. node.children_count {
 					p := tc.a.child_node(&node, pi)
 					if p.kind == .param && (p.value.len == 0 || p.typ.len == 0) {
-						tc.record_error(.unsupported_generic,
+						tc.record_error_unfiltered(.unsupported_generic,
 							'exported function `${qname}` must name all parameters', flat.NodeId(i))
 					}
 				}
 				if existing := export_symbols[export_name] {
 					if existing != qname {
-						tc.record_error(.unsupported_generic,
+						tc.record_error_unfiltered(.unsupported_generic,
 							'duplicate export name `${export_name}` for `${qname}` and `${existing}`',
 							flat.NodeId(i))
 					}
@@ -1716,7 +1721,7 @@ fn (mut tc TypeChecker) check_export_attrs() {
 					export_symbols[export_name] = qname
 				}
 				if existing := natural_symbols[export_name] {
-					tc.record_error(.unsupported_generic,
+					tc.record_error_unfiltered(.unsupported_generic,
 						'export name `${export_name}` for `${qname}` collides with `${existing}`',
 						flat.NodeId(i))
 				}
@@ -4085,7 +4090,8 @@ fn print_style_param_accepts_string(typ Type) bool {
 }
 
 // check_call_arg_types validates check call arg types state for types.
-fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, info CallInfo) {
+fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, info0 CallInfo) {
+	info := tc.specialized_plain_generic_call_info(node, info0)
 	if node.children_count == 0 {
 		return
 	}
@@ -4225,6 +4231,141 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				param_idx + 1} to `${tc.call_display_name(node)}`; expected `${expected.name()}`',
 				id)
 		}
+	}
+}
+
+fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info CallInfo) CallInfo {
+	generic_params := tc.fn_generic_params[info.name] or { return info }
+	param_texts := tc.fn_param_type_texts[info.name] or { return info }
+	if generic_params.len == 0 || node.children_count <= 1 {
+		return info
+	}
+	mut inferred := map[string]string{}
+	for i, param_text in param_texts {
+		arg_idx := i + 1
+		if arg_idx >= node.children_count {
+			break
+		}
+		arg_id := tc.call_arg_value(tc.a.child(&node, arg_idx))
+		actual := tc.resolve_type(arg_id)
+		tc.infer_generic_type_text_from_type(param_text, actual, generic_params, mut inferred)
+	}
+	mut concrete_args := []string{cap: generic_params.len}
+	for param in generic_params {
+		arg := inferred[param] or { return info }
+		concrete_args << arg
+	}
+	mut sub_params := []Type{}
+	for param_text in param_texts {
+		sub_params << tc.parse_type(subst_generic_text(param_text, concrete_args, generic_params))
+	}
+	ret_text := tc.fn_ret_type_texts[info.name] or { '' }
+	sub_ret := if ret_text.len > 0 {
+		tc.parse_type(subst_generic_text(ret_text, concrete_args, generic_params))
+	} else {
+		info.return_type
+	}
+	return CallInfo{
+		name:                 info.name
+		params:               sub_params
+		return_type:          sub_ret
+		has_receiver:         info.has_receiver
+		is_variadic:          info.is_variadic
+		is_c_variadic:        info.is_c_variadic
+		params_known:         true
+		has_implicit_veb_ctx: info.has_implicit_veb_ctx
+	}
+}
+
+fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, actual Type, generic_params []string, mut inferred map[string]string) {
+	clean := param_text.trim_space()
+	if clean.len == 0 {
+		return
+	}
+	if clean.starts_with('&') {
+		if actual is Pointer {
+			tc.infer_generic_type_text_from_type(clean[1..], actual.base_type, generic_params, mut
+				inferred)
+		} else {
+			tc.infer_generic_type_text_from_type(clean[1..], actual, generic_params, mut inferred)
+		}
+		return
+	}
+	if clean.starts_with('mut ') {
+		tc.infer_generic_type_text_from_type(clean[4..], actual, generic_params, mut inferred)
+		return
+	}
+	if clean.starts_with('...') {
+		if actual is Array {
+			tc.infer_generic_type_text_from_type(clean[3..], actual.elem_type, generic_params, mut
+				inferred)
+		}
+		return
+	}
+	if clean.starts_with('[]') {
+		if actual is Array {
+			tc.infer_generic_type_text_from_type(clean[2..], actual.elem_type, generic_params, mut
+				inferred)
+		}
+		return
+	}
+	if clean.starts_with('?') {
+		if actual is OptionType {
+			tc.infer_generic_type_text_from_type(clean[1..], actual.base_type, generic_params, mut
+				inferred)
+		}
+		return
+	}
+	if clean.starts_with('!') {
+		if actual is ResultType {
+			tc.infer_generic_type_text_from_type(clean[1..], actual.base_type, generic_params, mut
+				inferred)
+		}
+		return
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		if actual is FnType {
+			tc.infer_generic_fn_type_text_from_type(clean, actual, generic_params, mut inferred)
+		}
+		return
+	}
+	for param in generic_params {
+		if clean == param && param !in inferred {
+			inferred[param] = actual.name()
+			return
+		}
+	}
+}
+
+fn (mut tc TypeChecker) infer_generic_fn_type_text_from_type(param_text string, actual FnType, generic_params []string, mut inferred map[string]string) {
+	params_start := param_text.index_u8(`(`) + 1
+	mut depth := 1
+	mut params_end := params_start
+	for params_end < param_text.len {
+		if param_text[params_end] == `(` {
+			depth++
+		} else if param_text[params_end] == `)` {
+			depth--
+			if depth == 0 {
+				break
+			}
+		}
+		params_end++
+	}
+	if params_end >= param_text.len {
+		return
+	}
+	parts := split_params(param_text[params_start..params_end])
+	for i, part in parts {
+		if i >= actual.params.len {
+			break
+		}
+		tc.infer_generic_type_text_from_type(normalize_fn_type_param_text(part), fn_param_type(actual,
+			i), generic_params, mut inferred)
+	}
+	ret := param_text[params_end + 1..].trim_space()
+	if ret.len > 0 {
+		tc.infer_generic_type_text_from_type(ret, actual.return_type, generic_params, mut inferred)
 	}
 }
 

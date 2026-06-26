@@ -79,6 +79,14 @@ pub fn (mut p Parser) parse_files(paths []string) &flat.FlatAst {
 // parse_into reads parse into input for parser.
 pub fn (mut p Parser) parse_into(path string) {
 	p.cur_file = path
+	p.cur_module = ''
+	p.cur_fn = ''
+	p.pending_flag = false
+	p.pending_params = false
+	p.pending_export = ''
+	p.skip_next_decl = false
+	p.disable_fn_body = false
+	p.in_for_container = false
 	// File marker before content so import resolver can track source files
 	p.a.add_node(flat.Node{
 		kind:  .file
@@ -5317,6 +5325,9 @@ fn is_builtin_type(name string) bool {
 fn is_c_anon_simple_type_name(name string) bool {
 	if name.len == 0 {
 		return false
+	}
+	if name.ends_with('_t') {
+		return true
 	}
 	return name[0] >= `A` && name[0] <= `Z`
 }
