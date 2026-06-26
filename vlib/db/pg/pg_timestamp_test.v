@@ -153,6 +153,26 @@ fn test_out_of_range_via_val_to_primitive_errors() {
 	assert false, 'expected an error decoding an out-of-range timestamp'
 }
 
+fn test_offset_pushes_year_out_of_range_returns_error() {
+	// A valid local timestamp that normalizes to year 10000 in UTC must still error,
+	// not silently bypass the range guard via the offset shift.
+	pg_parse_timestamp('9999-12-31 23:30:00-01') or {
+		assert err.msg().contains('out of range')
+		return
+	}
+	assert false, 'expected an error when the UTC offset pushes the year out of range'
+}
+
+fn test_offset_within_range_still_decodes() {
+	// A near-boundary value that stays in range after normalization must succeed.
+	t := pg_parse_timestamp('9999-12-31 22:30:00-01')!
+	assert t.year == 9999
+	assert t.month == 12
+	assert t.day == 31
+	assert t.hour == 23
+	assert t.minute == 30
+}
+
 fn test_issue_27556_example() {
 	// The exact value from the issue: stored as '2024-01-15 14:00:00.123456+01:00'
 	// with the session in UTC, PostgreSQL returns it as below.

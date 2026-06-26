@@ -579,6 +579,12 @@ fn pg_parse_timestamp(value string) !time.Time {
 	if offset_seconds != 0 {
 		// Normalize to UTC by subtracting the parsed offset.
 		result = result.add_seconds(-offset_seconds)
+		// The offset can push a boundary value (e.g. `9999-12-31 23:30:00-01`) past the
+		// representable range, so re-check the normalized result; otherwise offset-bearing
+		// timestamps would silently bypass the range guard above.
+		if result.year < -9999 || result.year > 9999 {
+			return error('pg: year out of range in timestamp `${str}` after UTC normalization')
+		}
 	}
 	return result
 }
