@@ -103,6 +103,10 @@ pub fn (mut s SSLConn) shutdown() ! {
 		mut shutdown_done := false
 
 		for !shutdown_done {
+			// Clear the thread's OpenSSL error queue so ssl_error()/SSL_get_error()
+			// below reflect only this call and not a stale entry from an earlier
+			// operation, which could be misread as a fatal SSL_ERROR_SSL.
+			C.ERR_clear_error()
 			res := C.SSL_shutdown(voidptr(s.ssl))
 			if res == 1 {
 				shutdown_done = true
@@ -288,6 +292,8 @@ fn (mut s SSLConn) complete_connect() ! {
 
 	deadline := ssl_timeout_deadline(s.duration)
 	for {
+		// Clear the error queue so SSL_get_error() reflects only this call.
+		C.ERR_clear_error()
 		mut res := C.SSL_connect(voidptr(s.ssl))
 		if res == 1 {
 			break
@@ -308,6 +314,8 @@ fn (mut s SSLConn) complete_connect() ! {
 	if s.config.validate {
 		mut pcert := &C.X509(unsafe { nil })
 		for {
+			// Clear the error queue so SSL_get_error() reflects only this call.
+			C.ERR_clear_error()
 			mut res := C.SSL_do_handshake(voidptr(s.ssl))
 			if res == 1 {
 				break
@@ -370,6 +378,8 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 	deadline := ssl_timeout_deadline(s.duration)
 	// s.wait_for_read(deadline - time.now())!
 	for {
+		// Clear the error queue so SSL_get_error() reflects only this call.
+		C.ERR_clear_error()
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)
 		if res > 0 {
 			return res
@@ -440,6 +450,8 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 		for total_sent < len {
 			ptr := ptr_base + total_sent
 			remaining := len - total_sent
+			// Clear the error queue so SSL_get_error() reflects only this call.
+			C.ERR_clear_error()
 			mut sent := C.SSL_write(voidptr(s.ssl), ptr, remaining)
 			if sent <= 0 {
 				// SSL_write did not fully complete: OpenSSL may already have
