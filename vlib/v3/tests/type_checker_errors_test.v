@@ -817,3 +817,28 @@ fn test_pr_review_codegen_batch_twenty() {
 		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tmut cb := c.report\n\tcb = c.report\n\tprintln(int_str(invoke(cb)))\n}\n')
 	assert ok == '7'
 }
+
+fn test_pr_review_codegen_batch_twentyone() {
+	v3_bin := build_v3()
+	// An escaping pointer returned through a copy (`p := &v; q := p; return q`) must still move
+	// `v` to the heap, so a mutation after the alias is seen by the caller (not a dangling stack
+	// pointer). The pointer-alias chain is followed when deciding what escapes.
+	alias := run_good(v3_bin, 'good_returned_pointer_alias_heap',
+		'struct Box {\nmut:\n\tx int\n}\nfn make() &Box {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tp := &v\n\tq := p\n\tv.x = 2\n\treturn q\n}\nfn main() {\n\tb := make()\n\tprintln(int_str(b.x))\n}\n')
+	assert alias == '2'
+	// An interface method returning a fixed array gets its dispatch stub declared with the
+	// `_v_ret_*` wrapper, not a bare `Array_fixed_*` (a C function cannot return an array). This
+	// holds both when only the concrete implementer is called and through a real interface call.
+	iface_concrete := run_good(v3_bin, 'good_iface_fixed_array_concrete_only',
+		'interface I {\n\tmake() [3]int\n}\nstruct S {}\nfn (s S) make() [3]int {\n\treturn [1, 2, 3]!\n}\nfn main() {\n\ts := S{}\n\ta := s.make()\n\tprintln(int_str(a[0] + a[1] + a[2]))\n}\n')
+	assert iface_concrete == '6'
+	iface_dispatch := run_good(v3_bin, 'good_iface_fixed_array_dispatch',
+		'interface I {\n\tmake() [3]int\n}\nstruct S {}\nfn (s S) make() [3]int {\n\treturn [4, 5, 6]!\n}\nfn use_iface(i I) int {\n\ta := i.make()\n\treturn a[0] + a[1] + a[2]\n}\nfn main() {\n\ts := S{}\n\tprintln(int_str(use_iface(s)))\n}\n')
+	assert iface_dispatch == '15'
+	// A pointer-receiver method value taken on an rvalue base (`Foo{..}.tick`) copies the receiver
+	// into durable static storage instead of capturing `&(temporary)` that dies before the
+	// callback runs.
+	mv_rvalue := run_good(v3_bin, 'good_ptr_receiver_method_value_rvalue',
+		'struct Foo {\nmut:\n\tn int\n}\nfn (f &Foo) tick() int {\n\treturn f.n\n}\nfn run(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tprintln(int_str(run(Foo{\n\t\tn: 5\n\t}.tick)))\n}\n')
+	assert mv_rvalue == '5'
+}

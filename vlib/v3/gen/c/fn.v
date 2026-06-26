@@ -301,6 +301,24 @@ fn (mut g FlatGen) spawn_wrapper_decls() {
 	}
 }
 
+// expr_is_addressable reports whether an expression denotes a stable lvalue whose address
+// outlives the enclosing statement expression — a variable, a field/index access reaching one,
+// or a dereference. Rvalues (struct literals, calls, ...) only have temporary storage, so their
+// address must not be captured in a method value's static receiver slot.
+fn (g &FlatGen) expr_is_addressable(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	return match node.kind {
+		.ident { true }
+		.index { node.children_count > 0 && g.expr_is_addressable(g.a.child(&node, 0)) }
+		.selector { node.children_count > 0 && g.expr_is_addressable(g.a.child(&node, 0)) }
+		.prefix { node.op == .mul }
+		else { false }
+	}
+}
+
 // gen_method_value_closure handles a method used as a *value* (e.g. `game.draw`
 // passed where a `fn ()` callback is expected) rather than called. A plain struct
 // field access can't represent the bound receiver, so it binds the receiver into a
@@ -383,19 +401,30 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 	g.spawn_wrapper_defs << 'static ${recv_ct} ${ctx_name};'
 	ret_prefix := if ret_ct == 'void' { '' } else { 'return ' }
 	g.spawn_wrapper_defs << 'static ${ret_ct} ${wrap_name}(${wparam_str}) { ${ret_prefix}${cname}(${call_args.join(', ')}); }'
-	// Set the context global to the receiver, then yield the wrapper as the value.
-	g.write('({ ${ctx_name} = ')
 	base_is_ptr := base_type is types.Pointer
-	if recv_is_ptr && !base_is_ptr {
-		g.write('&(')
+	// Set the context global to the receiver, then yield the wrapper as the value.
+	if recv_is_ptr && !base_is_ptr && !g.expr_is_addressable(base_id) {
+		// Pointer receiver bound to an rvalue base (`Foo{..}.tick`, `make_foo().tick`): taking
+		// `&(rvalue)` captures a temporary that dies with the enclosing statement expression,
+		// before the callback runs. Copy the receiver into a durable static slot and point at it.
+		val_ct := g.tc.c_type(types.unwrap_pointer(params[0]))
+		g.spawn_wrapper_defs << 'static ${val_ct} ${ctx_name}_recv;'
+		g.write('({ ${ctx_name}_recv = ')
 		g.gen_expr(base_id)
-		g.write(')')
-	} else if !recv_is_ptr && base_is_ptr {
-		g.write('*(')
-		g.gen_expr(base_id)
-		g.write(')')
+		g.write('; ${ctx_name} = &${ctx_name}_recv')
 	} else {
-		g.gen_expr(base_id)
+		g.write('({ ${ctx_name} = ')
+		if recv_is_ptr && !base_is_ptr {
+			g.write('&(')
+			g.gen_expr(base_id)
+			g.write(')')
+		} else if !recv_is_ptr && base_is_ptr {
+			g.write('*(')
+			g.gen_expr(base_id)
+			g.write(')')
+		} else {
+			g.gen_expr(base_id)
+		}
 	}
 	// Yield the wrapper as the callback value. A V `fn (...) ...` parameter is a
 	// `_fn_ptr_*` typedef and needs the wrapper cast to that function-pointer type; only

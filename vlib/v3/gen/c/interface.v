@@ -365,7 +365,8 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name string, method string)
 		im := '${impl}.${method}'
 		short_im := '${impl.all_after_last('.')}.${method}'
 		if g.used_fn_contains(im) || g.used_fn_contains(c_name(im))
-			|| (short_im != im && (g.used_fn_contains(short_im) || g.used_fn_contains(c_name(short_im)))) {
+			|| (short_im != im && (g.used_fn_contains(short_im)
+			|| g.used_fn_contains(c_name(short_im)))) {
 			return true
 		}
 	}
@@ -446,7 +447,10 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 			types.Type(types.void_)
 		}
 	}
-	ret_ct := g.optional_type_name(ret_type)
+	// Use the ABI return type, not the bare value type: a fixed-array return is its `_v_ret_*`
+	// wrapper struct (a C function cannot return an array by value), matching what the concrete
+	// implementer's method returns and what the call site unwraps.
+	ret_ct := g.fn_return_type_name(ret_type)
 	mut sig_params := if sig_key.len > 0 {
 		g.tc.fn_param_types[sig_key] or { []types.Type{} }
 	} else {
