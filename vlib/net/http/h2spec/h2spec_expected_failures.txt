@@ -1,0 +1,54 @@
+# h2spec known-failure baseline for the net.http HTTP/2 server.
+#
+# One case ID per line, format "<package> :: <classname>" exactly as emitted by
+# the JUnit parser in run_h2spec.sh. Lines starting with # are comments.
+#
+# This is the set of h2spec cases the V server does NOT yet pass. CI fails only on
+# a REGRESSION (a case not listed here that newly fails). When a listed case starts
+# passing, run_h2spec.sh warns so the line can be removed and the gate tightened.
+#
+# Generated with h2spec v2.6.0 against the net.http server at this branch's base
+# (146 tests: 109 pass, 37 fail; the set was identical across repeated runs, i.e.
+# deterministic). These are genuine server-side conformance gaps: stricter request
+# validation (uppercase/duplicate/missing pseudo-headers, connection-specific & TE
+# headers, content-length vs DATA), HPACK decode error SCOPE (must be a
+# connection-level COMPRESSION_ERROR, not RST_STREAM), the stream state machine
+# (frames on idle/closed streams), CONTINUATION sequencing, and flow-control
+# overflow/zero-increment handling. Remove a line when the server is fixed to pass.
+generic/4 :: Sends a POST request with trailers
+hpack/2.3.3 :: Sends a indexed header field representation with invalid index
+hpack/2.3.3 :: Sends a literal header field representation with invalid index
+hpack/4.2 :: Sends a dynamic table size update at the end of header block
+hpack/5.2 :: Sends a Huffman-encoded string literal representation containing the EOS symbol
+hpack/5.2 :: Sends a Huffman-encoded string literal representation padded by zero
+hpack/5.2 :: Sends a Huffman-encoded string literal representation with padding longer than 7 bits
+hpack/6.1 :: Sends a indexed header field representation with index 0
+hpack/6.3 :: Sends a dynamic table size update larger than the value of SETTINGS_HEADER_TABLE_SIZE
+http2/4.3 :: Sends invalid header block fragment
+http2/5.1 :: closed: Sends a DATA frame
+http2/5.1 :: closed: Sends a DATA frame after sending RST_STREAM frame
+http2/5.1 :: half closed (remote): Sends a DATA frame
+http2/5.1 :: idle: Sends a DATA frame
+http2/5.1 :: idle: Sends a RST_STREAM frame
+http2/5.1 :: idle: Sends a WINDOW_UPDATE frame
+http2/5.1.2 :: Sends HEADERS frames that causes their advertised concurrent stream limit to be exceeded
+http2/5.3.1 :: Sends HEADERS frame that depends on itself
+http2/5.3.1 :: Sends PRIORITY frame that depend on itself
+http2/6.1 :: Sends a DATA frame on the stream that is not in "open" or "half-closed (local)" state
+http2/6.4 :: Sends a RST_STREAM frame on a idle stream
+http2/6.5.2 :: SETTINGS_ENABLE_PUSH (0x2): Sends the value other than 0 or 1
+http2/6.9 :: Sends a WINDOW_UPDATE frame with a flow control window increment of 0
+http2/6.9 :: Sends a WINDOW_UPDATE frame with a flow control window increment of 0 on a stream
+http2/6.9.1 :: Sends multiple WINDOW_UPDATE frames increasing the flow control window to above 2^31-1
+http2/6.9.1 :: Sends multiple WINDOW_UPDATE frames increasing the flow control window to above 2^31-1 on a stream
+http2/6.9.2 :: Sends a SETTINGS frame for window size to be negative
+http2/8.1.2 :: Sends a HEADERS frame that contains the header field name in uppercase letters
+http2/8.1.2.1 :: Sends a HEADERS frame that contains a pseudo-header field that appears in a header block after a regular header field
+http2/8.1.2.2 :: Sends a HEADERS frame that contains the TE header field with any value other than "trailers"
+http2/8.1.2.2 :: Sends a HEADERS frame that contains the connection-specific header field
+http2/8.1.2.3 :: Sends a HEADERS frame that omits ":scheme" pseudo-header field
+http2/8.1.2.3 :: Sends a HEADERS frame with duplicated ":method" pseudo-header field
+http2/8.1.2.3 :: Sends a HEADERS frame with duplicated ":path" pseudo-header field
+http2/8.1.2.3 :: Sends a HEADERS frame with duplicated ":scheme" pseudo-header field
+http2/8.1.2.6 :: Sends a HEADERS frame with the "content-length" header field which does not equal the DATA frame payload length
+http2/8.1.2.6 :: Sends a HEADERS frame with the "content-length" header field which does not equal the sum of the multiple DATA frames payload length

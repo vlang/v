@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# run_h2spec.sh — run the h2spec HTTP/2 conformance suite against the net.http
+# HTTP/2 server and gate on a known-failures baseline.
+#
+# h2spec (https://github.com/summerwind/h2spec) is the reference RFC 9113 / 7541
+# conformance tester. It connects as a client and runs ~146 cases. This harness:
+#   1. builds the V h2spec target server (h2spec_server.v),
+#   2. starts it on a free port (TLS + ALPN h2),
+#   3. runs a PINNED h2spec binary against it,
+#   4. compares the set of FAILED case IDs against h2spec_expected_failures.txt,
+#   5. fails only on a regression (a case that newly fails, or a recorded failure
+#      that now passes — so the baseline is kept honest and shrinks over time).
+#
+# h2spec is NOT installed here. Provide it via $H2SPEC_BIN or on PATH; CI fetches
+# a pinned release (see .github/workflows/h2spec.yml). This script never runs
+# `go install` — the version must be pinned and reproducible.
+#
+# Env:
+#   VEXE        path to the V compiler (default: ./v then ./vnew)
+#   H2SPEC_BIN  path to the h2spec binary (default: h2spec on PATH)
+#   H2SPEC_PORT port for the target server (default: 18443)
+#   VFLAGS_CC   extra V flags, e.g. '-cc gcc' (mbedtls needs a real C compiler)
+
+set -uo pipefail
+cd "$(dirname "$0")"
+here="$(pwd)"
+repo_root="$(cd ../../../.. && pwd)"
+
+VEXE="${VEXE:-}"
+if [ -z "$VEXE" ]; then
+    if [ -x "$repo_root/v" ]; then VEXE="$repo_root/v"; elif [ -x "$repo_root/vnew" ]; then VEXE="$repo_root/vnew"; else VEXE="v"; fi
+fi
+H2SPEC_BIN="${H2SPEC_BIN:-h2spec}"
+PORT="${H2SPEC_PORT:-18443}"
+SERVER_BIN="$here/h2spec_server.bin"
+EXPECTED="$here/h2spec_expected_failures.txt"
+
+if ! command -v "$H2SPEC_BIN" >/dev/null 2>&1 && [ ! -x "$H2SPEC_BIN" ]; then
+    echo "ERROR: h2spec not found (set H2SPEC_BIN or put it on PATH; CI fetches a pinned release)." >&2
+    exit 2
+fi
+
+echo "==> building h2spec target server with $VEXE ${VFLAGS_CC:-}"
+# shellcheck disable=SC2086
+"$VEXE" ${VFLAGS_CC:-} -o "$SERVER_BIN" "$here/h2spec_server.v" || { echo "build failed" >&2; exit 1; }
+
+cleanup() { [ -n "${SRV_PID:-}" ] && kill "$SRV_PID" 2>/dev/null; rm -f "$SERVER_BIN"; }
+trap cleanup EXIT
+
+echo "==> starting target on 127.0.0.1:$PORT"
+H2SPEC_PORT="$PORT" "$SERVER_BIN" &
+SRV_PID=$!
+
+# Wait for the port to accept connections (up to ~10s).
+for _ in $(seq 1 100); do
+    if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then exec 3>&- 3<&-; break; fi
+    kill -0 "$SRV_PID" 2>/dev/null || { echo "server exited early" >&2; exit 1; }
+    sleep 0.1
+done
+
+echo "==> running h2spec (TLS, insecure cert OK)"
+# -t TLS, -k skip cert verification (self-signed). Parse the JUnit XML report —
+# its <testcase classname="..." name="..."> identifiers are h2spec's stable
+# contract, unlike the pretty console output. A failing case has a <failure>
+# (or <error>) child; we use "classname :: name" as the stable case ID.
+report_xml="$here/h2spec_report.xml"
+"$H2SPEC_BIN" -t -k -h 127.0.0.1 -p "$PORT" --junit-report "$report_xml" 2>&1 | tail -40 || true
+if [ ! -s "$report_xml" ]; then
+    echo "ERROR: h2spec produced no JUnit report ($report_xml); check the flags/version." >&2
+    exit 2
+fi
+# One <testcase ...> ... </testcase> per line is not guaranteed, so track state.
+awk '
+    /<testcase /{ pkg=""; cls=""; fail=0
+        if (match($0, /package="[^"]*"/))   { pkg=substr($0,RSTART+9, RLENGTH-10) }
+        if (match($0, /classname="[^"]*"/)) { cls=substr($0,RSTART+11,RLENGTH-12) }
+        if ($0 ~ /<failure|<error/) fail=1 }
+    /<failure|<error/{ fail=1 }
+    /<\/testcase>/{ if (pkg!="" && fail) print pkg " :: " cls; pkg=""; cls=""; fail=0 }
+' "$report_xml" | sed 's/&#34;/"/g; s/&quot;/"/g; s/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g' \
+    | sort -u > "$here/h2spec_failed_now.txt"
+
+grep -vE '^\s*#|^\s*$' "$EXPECTED" 2>/dev/null | sort -u > "$here/h2spec_expected.norm.txt" || true
+
+new_failures="$(comm -23 "$here/h2spec_failed_now.txt" "$here/h2spec_expected.norm.txt" | grep -vE '^\s*$' || true)"
+now_passing="$(comm -13 "$here/h2spec_failed_now.txt" "$here/h2spec_expected.norm.txt" | grep -vE '^\s*$' || true)"
+
+rc=0
+if [ -n "$new_failures" ]; then
+    echo "::error:: h2spec REGRESSION — these cases newly fail:" >&2
+    echo "$new_failures" >&2
+    rc=1
+fi
+if [ -n "$now_passing" ]; then
+    echo "::warning:: these recorded failures now PASS — remove them from h2spec_expected_failures.txt:" >&2
+    echo "$now_passing" >&2
+    # Treat as a (soft) failure so the baseline is tightened; flip to rc=1 once green.
+fi
+[ "$rc" -eq 0 ] && echo "==> h2spec: no regressions vs baseline"
+exit "$rc"
