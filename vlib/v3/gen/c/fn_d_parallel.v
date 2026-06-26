@@ -434,9 +434,13 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		a:                             unsafe { g.tc.a }
 		fn_ret_types:                  g.tc.fn_ret_types
 		fn_param_types:                g.tc.fn_param_types
+		fn_ret_type_texts:             g.tc.fn_ret_type_texts
+		fn_param_type_texts:           g.tc.fn_param_type_texts
 		fn_variadic:                   g.tc.fn_variadic
+		fn_implicit_veb_ctx:           g.tc.fn_implicit_veb_ctx
 		c_variadic_fns:                g.tc.c_variadic_fns
 		structs:                       g.tc.structs
+		struct_generic_params:         g.tc.struct_generic_params
 		struct_field_c_abi_fns:        g.tc.struct_field_c_abi_fns
 		unions:                        g.tc.unions
 		type_aliases:                  g.tc.type_aliases

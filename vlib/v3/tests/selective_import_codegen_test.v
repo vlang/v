@@ -190,6 +190,130 @@ fn main() {
 	assert generated.contains('submodule__sub_xy(10, 7)'), generated
 }
 
+fn test_selective_import_inside_generic_clone_keeps_source_file_symbol() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin,
+		'generic_clone_selective_import', 'module main
+
+import worker
+
+fn main() {
+	println(int_str(worker.use_add[int](0, 2, 3)))
+}
+', {
+		'worker/worker.v': 'module worker
+
+import mymodules { add_xy }
+import other
+
+pub fn use_add[T](marker T, x int, y int) int {
+	_ = marker
+	return add_xy(x, y)
+}
+'
+		'other/other.v':   'module other
+
+pub fn add_xy(x int, y int) int {
+	return x * 100 + y
+}
+'
+	})
+	assert output == '5'
+	assert generated.contains('mymodules__add_xy(x, y)'), generated
+	assert !generated.contains('other__add_xy(x, y)'), generated
+}
+
+fn test_selective_import_fn_value_inside_generic_clone_keeps_source_file_symbol() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin,
+		'generic_clone_selective_import_fn_value', 'module main
+
+import worker
+
+fn main() {
+	println(int_str(worker.use_add_cb[int](0, 2, 3)))
+}
+', {
+		'worker/worker.v': 'module worker
+
+import mymodules { add_xy }
+import other
+
+fn takes(cb fn (int, int) int, x int, y int) int {
+	return cb(x, y)
+}
+
+pub fn use_add_cb[T](marker T, x int, y int) int {
+	_ = marker
+	return takes(add_xy, x, y)
+}
+'
+		'other/other.v':   'module other
+
+pub fn add_xy(x int, y int) int {
+	return x * 100 + y
+}
+'
+	})
+	assert output == '5'
+	assert generated.contains('worker__takes(mymodules__add_xy, x, y)'), generated
+	assert !generated.contains('worker__takes(add_xy, x, y)'), generated
+	assert !generated.contains('worker__takes(other__add_xy, x, y)'), generated
+}
+
+fn test_selective_import_type_inside_generic_clone_signature_keeps_source_file_symbol() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin,
+		'generic_clone_selective_import_type_signature', 'module main
+
+import worker
+
+fn main() {
+	p := worker.make_point[int](7)
+	println(int_str(worker.take_point[int](p, 2) + p.x))
+}
+', {
+		'worker/worker.v':     'module worker
+
+import geometry { Point }
+import pixels
+
+pub fn make_point[T](x T) Point {
+	_ = x
+	return Point{
+		x: 3
+	}
+}
+
+pub fn take_point[T](p Point, x T) int {
+	_ = x
+	return p.x + 4
+}
+'
+		'geometry/geometry.v': 'module geometry
+
+pub struct Point {
+pub:
+	x int
+}
+'
+		'pixels/pixels.v':     'module pixels
+
+pub struct Point {
+pub:
+	x int
+}
+'
+	})
+	assert output == '10'
+	assert generated.contains('geometry__Point worker__make_point_T_v_int(int x)'), generated
+	assert generated.contains('int worker__take_point_T_v_int(geometry__Point p, int x)'), generated
+	assert !generated.contains('\nPoint worker__make_point_T_v_int(int x)'), generated
+	assert !generated.contains('\npixels__Point worker__make_point_T_v_int(int x)'), generated
+	assert !generated.contains('\nint worker__take_point_T_v_int(Point p, int x)'), generated
+	assert !generated.contains('\nint worker__take_point_T_v_int(pixels__Point p, int x)'), generated
+}
+
 fn test_selective_import_symbol_can_be_used_as_function_value() {
 	v3_bin := selective_import_build_v3()
 	output, generated := selective_import_compile_run(v3_bin, 'fn_value', 'module main
@@ -355,6 +479,36 @@ fn main() {
 	assert generated.contains('int add_xy(int x, int y)'), generated
 	assert generated.contains('int__str(add_xy(2, 3))'), generated
 	assert !generated.contains('int__str(mymodules__add_xy(2, 3))'), generated
+}
+
+fn test_module_homonym_function_signature_uses_module_key() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin,
+		'module_homonym_signature', 'module main
+
+import foo
+
+fn value() int {
+	return 7
+}
+
+fn main() {
+	println(int_str(value()))
+	println(foo.value())
+}
+', {
+		'foo/foo.v': 'module foo
+
+pub fn value() string {
+	return "foo"
+}
+'
+	})
+	assert output == '7\nfoo'
+	assert generated.contains('int value(void);'), generated
+	assert generated.contains('string foo__value(void);'), generated
+	assert generated.contains('string foo__value(void) {'), generated
+	assert !generated.contains('int foo__value(void);'), generated
 }
 
 fn test_selective_import_with_module_alias_keeps_symbol_authority() {

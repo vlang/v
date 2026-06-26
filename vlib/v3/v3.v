@@ -740,6 +740,9 @@ fn test_file_module_name(a &flat.FlatAst, file_node flat.Node) string {
 }
 
 fn is_supported_test_harness_fn(a &flat.FlatAst, tc &types.TypeChecker, node &flat.Node) bool {
+	if node.generic_params.len > 0 {
+		return false
+	}
 	if test_harness_fn_param_count(a, node) != 0 {
 		return false
 	}
@@ -747,6 +750,9 @@ fn is_supported_test_harness_fn(a &flat.FlatAst, tc &types.TypeChecker, node &fl
 }
 
 fn is_supported_test_harness_hook(a &flat.FlatAst, tc &types.TypeChecker, node &flat.Node) bool {
+	if node.generic_params.len > 0 {
+		return false
+	}
 	return test_harness_fn_param_count(a, node) == 0 && tc.parse_type(node.typ) is types.Void
 }
 

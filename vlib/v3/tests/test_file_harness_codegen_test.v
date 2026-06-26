@@ -211,6 +211,11 @@ fn test_fail() ? {
 ')
 	assert invalid_param.output.contains('invalid test signature'), invalid_param.output
 
+	generic_test := compile_expect_failure(v3_bin, 'harness_generic_test', '_test.v', 'fn test_generic[T]() {
+}
+')
+	assert generic_test.output.contains('invalid test signature'), generic_test.output
+
 	invalid_return := compile_expect_failure(v3_bin, 'harness_invalid_return', '_test.v', 'fn test_bad() int {
 	return 1
 }
@@ -232,6 +237,14 @@ fn test_one() {
 }
 ')
 	assert result_hook.output.contains('invalid test hook signature'), result_hook.output
+
+	generic_hook := compile_expect_failure(v3_bin, 'harness_generic_hook', '_test.v', 'fn before_each[T]() {
+}
+
+fn test_one() {
+}
+')
+	assert generic_hook.output.contains('invalid test hook signature'), generic_hook.output
 
 	option_hook := compile_expect_failure(v3_bin, 'harness_option_hook', '_test.v', 'fn after_each() ? {
 	return
@@ -419,6 +432,19 @@ fn test_v3_test_file_harness_finds_top_level_comptime_block_tests() {
 ',
 		'-d v3_nested_harness')
 	assert invalid.output.contains('invalid test signature'), invalid.output
+
+	invalid_generic := compile_expect_failure_flags(v3_bin, 'harness_nested_generic_invalid',
+		'_test.v', '$if v3_nested_harness ? {
+	fn before_each[T]() {
+	}
+
+	fn test_nested[T]() {
+	}
+}
+',
+		'-d v3_nested_harness')
+	assert invalid_generic.output.contains('invalid test hook signature'), invalid_generic.output
+	assert invalid_generic.output.contains('invalid test signature'), invalid_generic.output
 }
 
 fn test_v3_top_level_main_preserves_file_import_alias_context() {

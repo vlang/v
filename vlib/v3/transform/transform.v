@@ -158,6 +158,7 @@ struct VarTypeBinding {
 struct GenericFnDecl {
 	id     flat.NodeId
 	node   flat.Node
+	file   string
 	module string
 	key    string
 }
