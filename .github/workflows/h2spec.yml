@@ -11,7 +11,7 @@ on:
       - 'vlib/net/http/h2_*.v'
       - 'vlib/net/http/server*.v'
       - 'vlib/net/http/http*.v'
-      - 'vlib/net/http/h2spec/*.v'
+      - 'vlib/net/http/h2spec/**'
       - 'vlib/net/mbedtls/*.v'
       - '.github/workflows/h2spec.yml'
   pull_request:
