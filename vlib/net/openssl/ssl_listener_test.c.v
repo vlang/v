@@ -72,6 +72,23 @@ fn test_ssl_listener_handshake_honors_timeout() ! {
 	assert false, 'TLS handshake unexpectedly succeeded without receiving client TLS data'
 }
 
+fn test_ssl_remaining_timeout_clamps_expired_finite_deadline() {
+	// A finite deadline that has already expired must report an immediate
+	// timeout (a minimal positive duration), not net.infinite_timeout, so that
+	// select()/wait_for() return net.err_timed_out instead of blocking forever
+	// after a peer stalls mid-handshake/read past the configured timeout.
+	expired := time.now().add(-time.second)
+	remaining := ssl_remaining_timeout(expired)
+	assert remaining > 0
+	assert remaining != net.infinite_timeout
+	// An unset deadline still means "wait forever".
+	assert ssl_remaining_timeout(time.unix(0)) == net.infinite_timeout
+	// A live finite deadline returns its actual remaining time.
+	live := ssl_remaining_timeout(time.now().add(5 * time.second))
+	assert live > 4 * time.second
+	assert live <= 5 * time.second
+}
+
 fn test_ssl_listener_loads_in_memory_credentials_without_temp_files() ! {
 	start := time.now().unix()
 	mut listener := new_ssl_listener('127.0.0.1:0', SSLConnectConfig{
