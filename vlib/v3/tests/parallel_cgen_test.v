@@ -12,7 +12,7 @@ fn build_parallel_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_cgen_test')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vexe} -d parallel -path "${parallel_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${parallel_v3_src}')
+		os.execute('${vexe} -d parallel -gc none -path "${parallel_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${parallel_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }

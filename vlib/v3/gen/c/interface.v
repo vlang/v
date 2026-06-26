@@ -357,19 +357,6 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name string, method string)
 	if g.used_interface_dispatch_key(name) {
 		return true
 	}
-	// If any concrete implementer's method is live, the dispatch is reachable even
-	// when the interface entry itself wasn't directly marked — markused's reachability
-	// can enqueue the implementers (via iface_impls) but miss the interface method when
-	// its short name is ambiguous (e.g. `resize` also on Camera/SamplingJobContext).
-	for impl in g.iface_impls[iface_name] or { []string{} } {
-		im := '${impl}.${method}'
-		short_im := '${impl.all_after_last('.')}.${method}'
-		if g.used_fn_contains(im) || g.used_fn_contains(c_name(im))
-			|| (short_im != im && (g.used_fn_contains(short_im)
-			|| g.used_fn_contains(c_name(short_im)))) {
-			return true
-		}
-	}
 	if decl_key := g.interface_method_signature_key(iface_name, method) {
 		if decl_key != name && g.used_interface_dispatch_key(decl_key) {
 			return true
@@ -391,22 +378,6 @@ fn (g &FlatGen) used_interface_dispatch_key(name string) bool {
 
 fn (g &FlatGen) interface_dispatch_short_name_allowed(iface_name string) bool {
 	return !iface_name.contains('.')
-}
-
-fn (g &FlatGen) interface_dispatch_short_name_is_unambiguous(short_name string, method string) bool {
-	mut matches := 0
-	for iface_name, methods in g.interfaces {
-		if method !in methods {
-			continue
-		}
-		if '${iface_name.all_after_last('.')}.${method}' == short_name {
-			matches++
-			if matches > 1 {
-				return false
-			}
-		}
-	}
-	return matches == 1
 }
 
 // gen_interface_dispatch emits interface dispatch output for c.

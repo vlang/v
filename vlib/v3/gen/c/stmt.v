@@ -1198,22 +1198,6 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			} else {
 				ct0
 			}
-			if v_type is types.ArrayFixed {
-				// A fixed array cannot be initialized from another array value
-				// (`T x[N] = expr` is illegal); declare then memcpy.
-				lhs_str := g.decl_lhs_str(lhs_id)
-				if !lhs_is_defer_capture {
-					g.writeln('${decl_prefix}${ct} ${lhs_str};')
-				}
-				g.write('memcpy(${lhs_str}, ')
-				g.gen_fixed_array_copy_source(rhs_id, v_type)
-				g.writeln(', sizeof(${lhs_str}));')
-				if lhs.kind == .ident {
-					g.tc.cur_scope.insert(lhs.value, v_type)
-				}
-				i += 2
-				continue
-			}
 			if ct.starts_with('fn_ptr:') {
 				fp_name := g.resolve_fn_ptr_type(ct)
 				if !lhs_is_defer_capture {

@@ -1365,8 +1365,8 @@ fn x11_get_clipboard_string() &char {
 		mut data := &u8(nil)
 		mut actual_type := Atom(0)
 		mut actual_format := 0
-		mut item_count := u64(0)
-		mut bytes_after := u64(0)
+		mut item_count := XlibULong(0)
+		mut bytes_after := XlibULong(0)
 		C.XGetWindowProperty(g_sapp_state.x11.display, event.xselection.requestor,
 			event.xselection.property, 0, 0x7fffffff, x_true, g_sapp_state.x11.utf8_string,
 			&actual_type, &actual_format, &item_count, &bytes_after, &&u8(&data))
@@ -1533,8 +1533,8 @@ fn x11_keyrelease_repeat(keycode int) {
 fn x11_get_window_property(window Window, property Atom, req_type Atom, value &&u8) usize {
 	mut actual_type := Atom(0)
 	mut actual_format := 0
-	mut item_count := u64(0)
-	mut bytes_after := u64(0)
+	mut item_count := XlibULong(0)
+	mut bytes_after := XlibULong(0)
 	C.XGetWindowProperty(g_sapp_state.x11.display, window, property, 0, 0x7fffffff, x_false,
 		req_type, &actual_type, &actual_format, &item_count, &bytes_after, value)
 	return usize(item_count)
