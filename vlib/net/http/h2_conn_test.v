@@ -576,3 +576,25 @@ fn test_h2_conn_rejects_malformed_response_fields() {
 		assert err.msg().contains('uppercase'), 'unexpected error: ${err.msg()}'
 	}
 }
+
+// RFC 9113 §6.5.2: the client honors the peer's advisory
+// SETTINGS_MAX_HEADER_LIST_SIZE and refuses an over-limit request rather than
+// emitting it. Conformance gap G4 (set white-box: on the sync path the peer's
+// SETTINGS arrive only with the response, after the request is built).
+fn test_h2_conn_respects_peer_max_header_list_size() {
+	mut c := new_h2_conn(&MockTransport{
+		inbound: build_server_stream([H2HeaderField{':status', '200'}], [])
+	})
+	c.peer.max_header_list_size = 40 // tiny: even the pseudo-headers exceed it
+	if _ := c.do(H2ClientRequest{
+		method:    'GET'
+		scheme:    'https'
+		authority: 'example.com'
+		path:      '/a-fairly-long-path-to-exceed-the-limit'
+	})
+	{
+		assert false, 'over-limit request was sent'
+	} else {
+		assert err.msg().contains('MAX_HEADER_LIST_SIZE'), 'unexpected error: ${err.msg()}'
+	}
+}

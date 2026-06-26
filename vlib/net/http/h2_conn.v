@@ -151,6 +151,15 @@ pub fn (mut c H2Conn) do(req H2ClientRequest) !H2ClientResponse {
 	for h in req.headers {
 		fields << h
 	}
+	// RFC 9113 §6.5.2: honor the peer's advisory SETTINGS_MAX_HEADER_LIST_SIZE —
+	// refuse an over-limit request locally instead of having the server reject it
+	// after the round trip.
+	if c.peer.max_header_list_size != max_u32 {
+		size := h2_header_list_size(fields)
+		if size > u64(c.peer.max_header_list_size) {
+			return error('h2: request header list (${size} bytes) exceeds peer SETTINGS_MAX_HEADER_LIST_SIZE (${c.peer.max_header_list_size})')
+		}
+	}
 	block := c.encoder.encode(fields)
 	has_body := req.body.len > 0
 	c.send_header_block(stream_id, block, !has_body)!

@@ -2082,3 +2082,42 @@ fn test_mux_trailers_reject_pseudo() {
 	assert peer.failure_msg() == ''
 	assert got.contains('malformed trailers'), 'trailers pseudo-header not rejected: ${got}'
 }
+
+// RFC 9113 §6.5.2: the client honors the peer's advisory
+// SETTINGS_MAX_HEADER_LIST_SIZE and refuses an over-limit request locally rather
+// than emitting it. Conformance gap G4. The peer sends no SETTINGS here, so the
+// reader never writes peer_max_header_list_size — setting it directly before the
+// request is race-free.
+fn test_mux_request_respects_peer_max_header_list_size() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_test_mux_conn(mut cend)
+	conn.peer_max_header_list_size = 40 // tiny: even the pseudo-headers exceed it
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		for {
+			peer.pump() or { return }
+		}
+	}(mut peer)
+	mut got := ''
+	if _ := conn.do(H2ClientRequest{
+		method:    'GET'
+		scheme:    'https'
+		authority: 'example.com'
+		path:      '/a-fairly-long-path-to-exceed-the-limit'
+	})
+	{
+		got = '<<accepted>>'
+	} else {
+		got = err.msg()
+	}
+	cend.close_both()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	assert got.contains('MAX_HEADER_LIST_SIZE'), 'over-limit request not rejected: ${got}'
+}

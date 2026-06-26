@@ -97,6 +97,17 @@ fn h2_response_field_error(name string) string {
 	return ''
 }
 
+// h2_header_list_size returns the RFC 9113 §6.5.2 size of a header list: the sum
+// over all fields of (name length + value length + 32 octets of per-field
+// overhead). Used to honor the peer's advisory SETTINGS_MAX_HEADER_LIST_SIZE.
+fn h2_header_list_size(fields []H2HeaderField) u64 {
+	mut total := u64(0)
+	for f in fields {
+		total += u64(f.name.len) + u64(f.value.len) + 32
+	}
+	return total
+}
+
 // H2MuxStream is the client-side state of one in-flight request stream.
 @[heap]
 struct H2MuxStream {
@@ -157,12 +168,13 @@ mut:
 	// panics on a nil closer.
 	close_transport fn () = unsafe { nil }
 	// --- guarded by wmu ---
-	wmu                   &sync.Mutex = sync.new_mutex()
-	encoder               H2HpackEncoder
-	next_stream_id        u32 = 1
-	handshaked            bool
-	pending_settings_acks int    // count of SETTINGS frames received before our preface; each needs one ACK
-	pending_ping_acks     [][]u8 // PING frames received before our preface; each needs an ACK with the same data
+	wmu                       &sync.Mutex = sync.new_mutex()
+	encoder                   H2HpackEncoder
+	next_stream_id            u32 = 1
+	handshaked                bool
+	pending_settings_acks     int    // count of SETTINGS frames received before our preface; each needs one ACK
+	pending_ping_acks         [][]u8 // PING frames received before our preface; each needs an ACK with the same data
+	peer_max_header_list_size u32 = max_u32 // peer SETTINGS_MAX_HEADER_LIST_SIZE (advisory, §6.5.2)
 	// --- guarded by fmu, fcv signals growth/death ---
 	fmu                 &sync.Mutex = unsafe { nil }
 	fcv                 &sync.Cond  = unsafe { nil }
@@ -378,6 +390,15 @@ fn (mut c H2MuxConn) do_on_stream(mut s H2MuxStream, req H2ClientRequest) !H2Cli
 		c.wmu.unlock()
 		c.note_write_failure()
 		return h2_retryable_error('connection handshake failed: ${err.msg()}')
+	}
+	// RFC 9113 §6.5.2: honor the peer's advisory SETTINGS_MAX_HEADER_LIST_SIZE.
+	// Refuse an over-limit request here rather than emit it and have the server
+	// reject it (e.g. 431). Not retryable: a fresh connection to the same peer
+	// carries the same limit. Read under wmu (apply_peer_settings sets it there).
+	peer_max_list := c.peer_max_header_list_size
+	if peer_max_list != max_u32 && h2_header_list_size(fields) > u64(peer_max_list) {
+		c.wmu.unlock()
+		return error('h2: request header list (${h2_header_list_size(fields)} bytes) exceeds peer SETTINGS_MAX_HEADER_LIST_SIZE (${peer_max_list})')
 	}
 	if c.next_stream_id > u32(0x7fff_ffff) {
 		// RFC 7540 §5.1.1: client stream IDs are odd and must not exceed 2^31-1.
@@ -1204,6 +1225,15 @@ fn (mut c H2MuxConn) apply_peer_settings(settings []H2Setting) ! {
 				c.smu.lock()
 				c.peer_max_streams = st.value
 				c.smu.unlock()
+			}
+			h2_settings_max_header_list_size {
+				// RFC 9113 §6.5.2: advisory cap on the size of the header list we
+				// send. Store it (under wmu, with the other send-side header state)
+				// so do_on_stream can refuse an over-limit request locally instead
+				// of having the server reject it after the round trip.
+				c.wmu.lock()
+				c.peer_max_header_list_size = st.value
+				c.wmu.unlock()
 			}
 			h2_settings_initial_window_size {
 				if st.value > u32(0x7fff_ffff) {
