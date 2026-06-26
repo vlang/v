@@ -117,9 +117,11 @@ fn (mut p Parser) is_following_concrete_types() bool {
 	return true
 }
 
+// is_anon_struct_generic_arg_at scans a generic argument list that starts at `offset`
+// and returns true when its closing `]` is followed by `next_kind`.
 @[direct_array_access]
-fn (p &Parser) is_anon_struct_generic_arg(next_kind token.Kind) bool {
-	mut i := 2
+fn (p &Parser) is_anon_struct_generic_arg_at(offset int, next_kind token.Kind) bool {
+	mut i := offset + 2
 	mut nested_sbr_count := 0
 	mut nested_cbr_count := 0
 	for {
@@ -148,6 +150,11 @@ fn (p &Parser) is_anon_struct_generic_arg(next_kind token.Kind) bool {
 		i++
 	}
 	return false
+}
+
+@[direct_array_access]
+fn (p &Parser) is_anon_struct_generic_arg(next_kind token.Kind) bool {
+	return p.is_anon_struct_generic_arg_at(0, next_kind)
 }
 
 @[direct_array_access]
@@ -202,15 +209,17 @@ fn (p &Parser) is_typename(t token.Token) bool {
 // 9. otherwise, it's not generic
 // see also test_generic_detection in vlib/v/tests/generics_test.v
 @[direct_array_access]
-fn (p &Parser) is_generic_call() bool {
-	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
-	if lit0_is_capital || p.peek_tok.kind != .lsbr {
+fn (p &Parser) is_generic_call_at(offset int) bool {
+	tok := if offset == 0 { p.tok } else { p.peek_token(offset) }
+	next_tok := if offset == 0 { p.peek_tok } else { p.peek_token(offset + 1) }
+	lit0_is_capital := tok.kind != .eof && tok.lit.len > 0 && tok.lit[0].is_capital()
+	if lit0_is_capital || next_tok.kind != .lsbr {
 		return false
 	}
-	mut tok2 := p.peek_token(2)
-	mut tok3 := p.peek_token(3)
-	mut tok4 := p.peek_token(4)
-	mut tok5 := p.peek_token(5)
+	mut tok2 := p.peek_token(offset + 2)
+	mut tok3 := p.peek_token(offset + 3)
+	mut tok4 := p.peek_token(offset + 4)
+	mut tok5 := p.peek_token(offset + 5)
 	mut kind2, mut kind3, mut kind4, mut kind5 := tok2.kind, tok3.kind, tok4.kind, tok5.kind
 	if kind2 == .amp { // if there is a & in front, shift everything left
 		tok2 = tok3
@@ -219,9 +228,11 @@ fn (p &Parser) is_generic_call() bool {
 		kind3 = kind4
 		tok4 = tok5
 		kind4 = kind5
-		tok5 = p.peek_token(6)
+		tok5 = p.peek_token(offset + 6)
 		kind5 = tok5.kind
 	}
+	// `?fn`, `shared fn`, and `atomic fn` are still function type arguments,
+	// so skip the qualifier and handle them like plain `fn` below.
 	if (kind2 == .question || kind2 in [.key_shared, .key_atomic]) && kind3 == .key_fn {
 		tok2 = tok3
 		kind2 = kind3
@@ -229,7 +240,7 @@ fn (p &Parser) is_generic_call() bool {
 		kind3 = kind4
 		tok4 = tok5
 		kind4 = kind5
-		tok5 = p.peek_token(6)
+		tok5 = p.peek_token(offset + 6)
 		kind5 = tok5.kind
 	}
 
@@ -237,11 +248,13 @@ fn (p &Parser) is_generic_call() bool {
 		// case 1 (array or fixed array type)
 		return tok3.kind == .rsbr || (tok4.kind == .rsbr && p.is_typename(tok5))
 	}
+	// Anonymous struct and function type arguments can contain nested `[]`,
+	// so scan forward to the matching closing `]` before checking for a call.
 	if kind2 == .key_struct {
-		return p.is_anon_struct_generic_arg(.lpar)
+		return p.is_anon_struct_generic_arg_at(offset, .lpar)
 	}
 	if kind2 == .key_fn {
-		mut i := 3
+		mut i := offset + 3
 		mut nested_sbr_count := 0
 		for {
 			cur_tok := p.peek_token(i)
@@ -267,8 +280,8 @@ fn (p &Parser) is_generic_call() bool {
 			// case 2
 			return true
 		}
-		if p.peek_tok.kind == .lsbr {
-			mut i := 3
+		if next_tok.kind == .lsbr {
+			mut i := offset + 3
 			mut nested_sbr_count := 0
 			for {
 				cur_tok := p.peek_token(i)
