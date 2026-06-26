@@ -568,13 +568,32 @@ fn test_server_tls_parallel_handshakes() {
 		assert false, 'pick_port: ${err}'
 		return
 	}
+	// Prove the handshakes actually run in parallel, not merely that the shared
+	// mbedtls config/RNG survives serial handoff. The handler is a width-2 barrier:
+	// every request signals `started` once its handshake has completed and the
+	// worker has entered the handler, then parks on `release`. The test refuses to
+	// release anyone until it has observed >= 2 handlers parked AT THE SAME TIME,
+	// which can only happen if >= 2 worker threads each finished a handshake and ran
+	// concurrently. With a single worker (serialized handshakes) only one handler is
+	// ever in flight — the second `started` never arrives and the overlap wait below
+	// times out, failing the test. (Verified locally: forcing worker_num:1 makes
+	// this fail on the overlap assert; worker_num:4 passes.) Parking in the handler
+	// frees the worker/CPU, so the second handshake can complete and park even on a
+	// single-core runner — the test distinguishes worker_num solely, not core count.
+	n := 4
+	started := chan bool{cap: n}
+	release := chan bool{cap: n}
 	mut srv := &http.Server{
 		addr:                   '127.0.0.1:${port}'
 		cert:                   server_tls_cert
 		cert_key:               server_tls_key
 		in_memory_verification: true
-		accept_timeout:         time.second
-		handler:                EchoHandler{}
+		accept_timeout:         5 * time.second
+		worker_num:             4
+		handler:                BlockingHandler{
+			started: started
+			release: release
+		}
 		show_startup_message:   false
 	}
 	t := spawn srv.listen_and_serve()
@@ -588,14 +607,6 @@ fn test_server_tls_parallel_handshakes() {
 		srv.close()
 		t.wait()
 	}
-	time.sleep(50 * time.millisecond)
-
-	// Fire many clients at once. Handshakes now run on the worker pool, so they
-	// proceed concurrently against the listener's shared mbedtls config/RNG (safe
-	// because MBEDTLS_THREADING_C is enabled on all platforms). Assert every
-	// round-trip succeeds with the correct body — a thread-safety regression in
-	// the shared handshake state would surface as a failed/garbled response.
-	n := 16
 	results := chan string{cap: n}
 	for i in 0 .. n {
 		spawn fn [results, port, i] () {
@@ -614,14 +625,31 @@ fn test_server_tls_parallel_handshakes() {
 			results <- resp.body
 		}()
 	}
-	// Results arrive in nondeterministic order, so match on the common prefix
-	// rather than a specific path index.
+	// Wait until at least two handlers are parked in the barrier simultaneously.
+	mut concurrent := 0
+	overlap_timeout := 8 * time.second
+	for concurrent < 2 {
+		select {
+			_ := <-started {
+				concurrent++
+			}
+			overlap_timeout {
+				break
+			}
+		}
+	}
+	// Release every parked handler (and any that arrive afterwards) so all the
+	// round-trips can finish, then drain the results. Do this BEFORE the overlap
+	// assert so a failure still unblocks the workers and the deferred close/wait
+	// cannot hang on a handler parked in the channel.
+	release.close()
 	mut ok := 0
 	for _ in 0 .. n {
 		body := <-results
-		assert body.starts_with('tls hello /p'), 'unexpected response: ${body}'
+		assert body == 'released', 'unexpected response: ${body}'
 		ok++
 	}
+	assert concurrent >= 2, 'parallel handshakes not observed: only ${concurrent} handler(s) ran concurrently within ${overlap_timeout} — handshakes appear serialized'
 	assert ok == n, 'expected ${n} successful concurrent handshakes, got ${ok}'
 }
 
