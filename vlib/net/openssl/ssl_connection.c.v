@@ -108,11 +108,14 @@ pub fn (mut s SSLConn) shutdown() ! {
 				shutdown_done = true
 				break
 			}
-			if res == 0 {
-				// Second SSL_shutdown() needed for full bidirectional shutdown.
-				continue
-			}
 
+			// res == 0 means our close_notify was sent, but the peer's has not
+			// been received yet, so another SSL_shutdown() call is needed to
+			// finish the bidirectional shutdown; res < 0 signals an error or a
+			// retryable condition. In both cases SSL_get_error() tells us whether
+			// the socket must first become readable/writable before retrying.
+			// Routing res == 0 through ssl_error() instead of looping immediately
+			// avoids busy-spinning on non-blocking sockets.
 			err_res := ssl_error(res, s.ssl) or { break }
 
 			match err_res {
