@@ -644,6 +644,12 @@ fn test_server_tls_parallel_handshakes() {
 				enable_http2: false
 				validate:     false
 				read_timeout: 4 * time.second
+				// Force a fresh TLS connection per live client. Without this, if one
+				// client finishes and returns its keep-alive connection to the shared
+				// pool before the other checks one out, the second reuses it and the
+				// test would pass after only a single live handshake — not two
+				// concurrent completing handshakes against the shared mbedtls state.
+				disable_connection_reuse: true
 			) or {
 				results <- 'error: ${err}'
 				return
