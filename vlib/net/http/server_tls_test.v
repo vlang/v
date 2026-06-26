@@ -629,12 +629,13 @@ fn test_server_tls_parallel_handshakes() {
 	// The discriminator is time-bounded on purpose: a serial-accept regression does
 	// eventually service the live clients — but only after the stalled handshakes hit
 	// their budget (handshake_timeout == accept_timeout == 10s here, x2 stalled), so
-	// without a bound the test would merely run ~20s slower, not fail. The whole live
-	// phase must finish under 6s, which is impossible unless handshakes run in
-	// parallel (a real local handshake is sub-second; the bound has a wide margin both
-	// ways). The per-client 4s read timeout is only a best-effort guard so a client
-	// that never gets serviced can't hang the suite indefinitely; the elapsed bound is
-	// the actual regression check.
+	// without a bound the test would merely run slower, not fail. The bound is on the
+	// WAIT itself (a select deadline below), not the client: http.fetch cannot bound
+	// this for us because Request.ssl_do dials and completes the TLS handshake before
+	// req.read_timeout applies (and retries on socket errors), so a read_timeout would
+	// not cap a regressed handshake. The select makes the regression fail promptly at
+	// ~6s; a real parallel handshake completes in well under a second.
+	live_budget := 6 * time.second
 	results := chan string{cap: live}
 	sw := time.new_stopwatch()
 	for i in 0 .. live {
@@ -643,7 +644,9 @@ fn test_server_tls_parallel_handshakes() {
 				url:          'https://127.0.0.1:${port}/live${i}'
 				enable_http2: false
 				validate:     false
-				read_timeout: 4 * time.second
+				// One attempt, no retries: a regressed handshake should surface as a
+				// single timed-out request, not retry-amplify the teardown.
+				max_retries: 1
 				// Force a fresh TLS connection per live client. Without this, if one
 				// client finishes and returns its keep-alive connection to the shared
 				// pool before the other checks one out, the second reuses it and the
@@ -661,15 +664,26 @@ fn test_server_tls_parallel_handshakes() {
 			results <- resp.body
 		}()
 	}
+	// Collect both live results within a single `live_budget`, bounding the wait so a
+	// serialized-handshake regression fails at ~6s instead of hanging on the client's
+	// own handshake timeout.
 	mut ok := 0
-	for _ in 0 .. live {
-		body := <-results
-		assert body.starts_with('tls hello /live'), 'live handshake failed while ${stall} workers were mid-handshake (handshakes appear serialized on the accept thread): ${body}'
-		ok++
+	for ok < live {
+		remaining := live_budget - sw.elapsed()
+		if remaining <= 0 {
+			break
+		}
+		select {
+			body := <-results {
+				assert body.starts_with('tls hello /live'), 'live handshake failed while ${stall} workers were mid-handshake (handshakes appear serialized on the accept thread): ${body}'
+				ok++
+			}
+			remaining {
+				break
+			}
+		}
 	}
-	elapsed := sw.elapsed()
-	assert ok == live, 'expected ${live} live handshakes to complete concurrently with ${stall} stalled handshakes; got ${ok}'
-	assert elapsed < 6 * time.second, 'live handshakes took ${elapsed} (>=6s) while ${stall} workers were mid-handshake — handshakes appear serialized on the accept thread, not parallel'
+	assert ok == live, 'expected ${live} live handshakes to complete within ${live_budget} while ${stall} workers were mid-handshake; got ${ok} — handshakes appear serialized on the accept thread, not parallel'
 	// Release the stalled sockets; srv.close() in the defer also force-closes any the
 	// worker is still blocked on via the idle tracker.
 	for mut c in stalled {
