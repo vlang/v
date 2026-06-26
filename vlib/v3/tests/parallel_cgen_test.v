@@ -17,6 +17,16 @@ fn build_parallel_v3() string {
 	return v3_bin
 }
 
+fn build_parallel_prod_v3() string {
+	vexe := @VEXE
+	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_prod_cgen_test_${os.getpid()}')
+	os.rm(v3_bin) or {}
+	build :=
+		os.execute('${vexe} -d parallel -gc none -prod -path "${parallel_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${parallel_v3_src}')
+	assert build.exit_code == 0, build.output
+	return v3_bin
+}
+
 // write_parallel_module_init_project writes parallel module init project output for v3 tests.
 fn write_parallel_module_init_project(name string) string {
 	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
@@ -259,4 +269,20 @@ fn test_parallel_transform_lowers_top_level_stmts_without_main_once() {
 	assert run.output.trim_space() == '51047'
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
 	assert c_code.all_after('int main').count('map__get_check') == 1, c_code
+}
+
+fn test_parallel_transform_selfhost_builds_v3() {
+	v3_bin := build_parallel_prod_v3()
+	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_selfhost_out_${os.getpid()}')
+	os.rm(bin_out) or {}
+	os.rm(bin_out + '.c') or {}
+	compile :=
+		os.execute('VJOBS=2 ${v3_bin} -building-v -parallel-transform -parallel -o ${bin_out} ${parallel_v3_src}')
+	assert compile.exit_code == 0, compile.output
+	assert compile.output.contains('transform (parallel)'), compile.output
+	assert compile.output.contains('cgen (parallel)'), compile.output
+	assert os.exists(bin_out), compile.output
+	c_code := os.read_file(bin_out + '.c') or { panic(err) }
+	assert c_code.contains('Array_u8__bytestr'), c_code
+	assert c_code.contains('Array_u8__hex'), c_code
 }

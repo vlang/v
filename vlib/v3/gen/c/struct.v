@@ -1066,7 +1066,10 @@ fn (g &FlatGen) struct_init_resolved_decl_name(type_name string) string {
 		return info.full_name
 	}
 	qname := g.tc.qualify_name(type_name)
-	return if qname in g.tc.structs { qname } else { type_name }
+	if qname in g.tc.structs {
+		return qname
+	}
+	return type_name
 }
 
 // struct_field_type supports struct field type handling for FlatGen.

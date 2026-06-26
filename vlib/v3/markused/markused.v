@@ -154,11 +154,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		'sync.Channel.close', 'sync.Channel.len', 'sync.Channel.closed', 'new_channel_st',
 		'Channel.push', 'Channel.pop', 'Channel.close', 'Channel.len', 'Channel.closed', 'panic',
 		'u8.is_letter', 'u8.is_capital', 'string.is_capital', 'string.to_lower_ascii',
-		'rune.to_lower', 'data_to_hex_string', 'map_hash_string', 'map_hash_int_1', 'map_hash_int_2',
-		'map_hash_int_4', 'map_hash_int_8', 'map_eq_string', 'map_eq_int_1', 'map_eq_int_2',
-		'map_eq_int_4', 'map_eq_int_8', 'map_clone_string', 'map_clone_int_1', 'map_clone_int_2',
-		'map_clone_int_4', 'map_clone_int_8', 'map_free_string', 'map_free_nop', '[]string.join',
-		'Array_string__join', 'exit', 'v_exit'] {
+		'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex', 'data_to_hex_string',
+		'map_hash_string', 'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_4', 'map_hash_int_8',
+		'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8',
+		'map_clone_string', 'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_4',
+		'map_clone_int_8', 'map_free_string', 'map_free_nop', '[]string.join', 'Array_string__join',
+		'exit', 'v_exit'] {
 		queue << seed
 		used[seed] = true
 	}
@@ -431,6 +432,17 @@ fn add_safe_decl_alias(callee string, callee_info FnDeclInfo, a &flat.FlatAst, m
 // valid_symbol_name supports valid symbol name handling for markused.
 fn valid_symbol_name(name string) bool {
 	return name.len > 0 && name.len < 512
+}
+
+// markused_clone_bool_map returns a value clone even when the source is passed
+// from a `mut map` parameter. v3 self-host cgen otherwise infers a `map*` local
+// for `param.clone()` in a few recursive markused scanners.
+fn markused_clone_bool_map(src map[string]bool) map[string]bool {
+	return src.clone()
+}
+
+fn markused_clone_string_map(src map[string]string) map[string]string {
+	return src.clone()
 }
 
 // enqueue_initializer_calls supports enqueue initializer calls handling for markused.
@@ -1505,7 +1517,7 @@ fn markused_scan_prior_local_value(a &flat.FlatAst, node &flat.Node, target flat
 				continue
 			}
 			.block, .if_expr, .match_stmt, .for_stmt, .for_in_stmt {
-				mut scoped := locals.clone()
+				mut scoped := markused_clone_bool_map(locals)
 				if found := markused_scan_prior_local_value(a, child, target, name, mut scoped) {
 					return found
 				}
@@ -1578,8 +1590,8 @@ fn (c &CallCollector) collect_top_level_stmt_calls(id flat.NodeId, cur_module st
 				local_types, mut calls)
 		}
 		.block, .for_stmt, .for_in_stmt {
-			mut nested_values := local_values.clone()
-			mut nested_types := local_types.clone()
+			mut nested_values := markused_clone_bool_map(local_values)
+			mut nested_types := markused_clone_string_map(local_types)
 			c.collect_top_level_child_calls(node, cur_module, imports, mut nested_values, mut
 				nested_types, mut calls)
 		}
@@ -1622,13 +1634,13 @@ fn (c &CallCollector) collect_top_level_assign_calls(node &flat.Node, cur_module
 		return
 	}
 	mut i := 0
-	pre_values := local_values.clone()
-	pre_types := local_types.clone()
+	pre_values := markused_clone_bool_map(local_values)
+	pre_types := markused_clone_string_map(local_types)
 	for i + 1 < node.children_count {
 		rhs_id := c.a.child(node, i + 1)
 		if int(rhs_id) >= 0 {
-			mut rhs_values := pre_values.clone()
-			mut rhs_types := pre_types.clone()
+			mut rhs_values := markused_clone_bool_map(pre_values)
+			mut rhs_types := markused_clone_string_map(pre_types)
 			c.collect_top_level_stmt_calls(rhs_id, cur_module, imports, mut rhs_values, mut
 				rhs_types, mut calls)
 		}
@@ -1656,8 +1668,8 @@ fn (c &CallCollector) collect_top_level_global_decl_calls(node &flat.Node, cur_m
 	if node.kind != .global_decl {
 		return
 	}
-	pre_values := local_values.clone()
-	pre_types := local_types.clone()
+	pre_values := markused_clone_bool_map(local_values)
+	pre_types := markused_clone_string_map(local_types)
 	for i in 0 .. node.children_count {
 		field := c.a.child_node(node, i)
 		if field.children_count == 0 {
@@ -1665,8 +1677,8 @@ fn (c &CallCollector) collect_top_level_global_decl_calls(node &flat.Node, cur_m
 		}
 		expr_id := c.a.child(field, 0)
 		if int(expr_id) >= 0 {
-			mut rhs_values := pre_values.clone()
-			mut rhs_types := pre_types.clone()
+			mut rhs_values := markused_clone_bool_map(pre_values)
+			mut rhs_types := markused_clone_string_map(pre_types)
 			c.collect_top_level_stmt_calls(expr_id, cur_module, imports, mut rhs_values, mut
 				rhs_types, mut calls)
 		}
