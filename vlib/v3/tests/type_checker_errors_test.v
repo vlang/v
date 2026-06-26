@@ -720,3 +720,16 @@ fn test_pr_review_codegen_batch_fifteen() {
 		'struct P {\n\tx int\n}\ntype MakeP = fn () [2]P\nfn mkp() [2]P {\n\treturn [P{\n\t\tx: 3\n\t}, P{\n\t\tx: 4\n\t}]!\n}\nfn runp(f MakeP) int {\n\tr := f()\n\treturn r[0].x + r[1].x\n}\nfn main() {\n\tprintln(int_str(runp(mkp)))\n}\n')
 	assert fp_struct == '7'
 }
+
+fn test_pr_review_codegen_batch_sixteen() {
+	v3_bin := build_v3()
+	// A bare generic struct literal (`Box{..}`) inside an array literal whose expected type is
+	// a concrete generic instance (`[]Box[int]`) must carry that concrete element type into the
+	// array storage AND each element: the array literal emitter passes the element type as the
+	// expected type per element so the element is emitted as `Box_int`, not the open `Box` (which
+	// has no C type), and the storage and element agree. Covers the reviewer's return example plus
+	// the argument and struct-field positions.
+	out := run_good(v3_bin, 'good_generic_struct_array_literal_positions',
+		"struct Box[T] {\n\tv T\n}\nfn first(a []Box[int]) int {\n\treturn a[0].v\n}\nstruct Holder {\n\titems []Box[int]\n}\nfn make() []Box[int] {\n\treturn [Box{\n\t\tv: 1\n\t}, Box{\n\t\tv: 2\n\t}]\n}\nfn main() {\n\tr := make()\n\ta := first([Box{\n\t\tv: 3\n\t}, Box{\n\t\tv: 4\n\t}])\n\th := Holder{\n\t\titems: [Box{\n\t\t\tv: 5\n\t\t}]\n\t}\n\tprintln(int_str(r[0].v + r[1].v) + ',' + int_str(a) + ',' + int_str(h.items[0].v))\n}\n")
+	assert out == '3,3,5'
+}

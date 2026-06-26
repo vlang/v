@@ -56,7 +56,12 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 		if i > 0 {
 			g.write(', ')
 		}
-		g.gen_expr(g.a.child(&node, i))
+		// Emit each element against the concrete element type, not the enclosing
+		// `expected_expr_type` (which is the whole array). A bare generic struct element
+		// (`Box{..}` in a `[]Box[int]` literal) otherwise sees the array type, fails the
+		// `generic_struct_init_instance_type` array skip, and is emitted as the bare `Box`
+		// while the array storage is `Box_int` — incompatible C.
+		g.gen_expr_with_expected_type(g.a.child(&node, i), elem_type)
 	}
 	g.write('})')
 }
