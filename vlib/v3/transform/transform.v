@@ -2941,7 +2941,17 @@ fn (t &Transformer) expr_can_take_address(id flat.NodeId) bool {
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
-		.ident, .index {
+		.ident {
+			return true
+		}
+		.index {
+			// `a[lo..hi]` (an index node tagged `range`) yields a fresh array value, not an
+			// addressable element, so its address can't be taken in place — runtime_addr
+			// must materialize it to a temp first. Only plain element indexing `a[i]` is an
+			// addressable lvalue.
+			if node.value == 'range' {
+				return false
+			}
 			return true
 		}
 		.selector {

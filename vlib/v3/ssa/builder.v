@@ -38,7 +38,8 @@ const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_
 	'_MTLCreateSystemDefaultDevice', '_dlopen', '_dlsym']
 
 const bench_runtime_stub_names = ['current_rss_kb', 'macos_peak_rss_kb', 'linux_rss_kb',
-	'bench.current_rss_kb', 'bench.macos_peak_rss_kb', 'bench.linux_rss_kb']
+	'bench.current_rss_kb', 'bench.macos_peak_rss_kb', 'bench.linux_rss_kb',
+	'v3.bench.current_rss_kb', 'v3.bench.macos_peak_rss_kb', 'v3.bench.linux_rss_kb']
 
 // Builder stores state for SSA construction.
 pub struct Builder {
@@ -49,6 +50,7 @@ mut:
 	used_fns           map[string]bool
 	cur_module         string
 	cur_func           int
+	cur_func_ret_type  string
 	cur_block          BlockID
 	vars               map[string]ValueID
 	var_type_names     map[string]string
@@ -182,9 +184,14 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 	mut str_fields := []TypeID{}
 	str_fields << b.m.type_store.get_ptr(b.i8_type)
 	str_fields << b.i32_type
+	// `is_lit` occupies the trailing 4-byte slot (offset 12) that the struct is padded
+	// to anyway. It must be a named field so `s.is_lit` (e.g. in `string.free`) resolves
+	// to offset 12 instead of defaulting to offset 0 (which would read `str`).
+	str_fields << b.i32_type
 	mut str_field_names := []string{}
 	str_field_names << 'str'
 	str_field_names << 'len'
+	str_field_names << 'is_lit'
 	b.str_type = b.m.type_store.register(Type{
 		kind:        .struct_t
 		fields:      str_fields
@@ -526,9 +533,8 @@ fn (mut b Builder) register_enum_values(node flat.Node, module_name string) {
 			continue
 		}
 		if field.children_count > 0 {
-			expr := b.a.child_node(field, 0)
-			if expr.kind == .int_literal {
-				value = parse_int_literal(expr.value)
+			if explicit := b.enum_field_expr_value(b.a.child(field, 0)) {
+				value = explicit
 			}
 		}
 		for enum_name in enum_names {
@@ -1069,6 +1075,253 @@ fn (mut b Builder) register_functions() {
 	b.register_array_string_stubs()
 	b.register_fixed_array_contains_stubs()
 	b.register_array_contains_stubs()
+	b.register_enum_autostr_fns()
+}
+
+// register_enum_autostr_fns synthesizes a `<Enum>__autostr` helper per enum decl,
+// mirroring cgen's enum_str_defs (gen/c/types.v). The transformer rewrites `${enum}`
+// interpolation (when no custom `.str()` exists) into a call to this helper, so the
+// ARM64/SSA path must provide it just like the C backend does. The body switches on the
+// value and returns the matching field NAME, falling back to the integer rendering.
+fn (mut b Builder) register_enum_autostr_fns() {
+	mut cur_module := ''
+	for node in b.a.nodes {
+		match node.kind {
+			.file {
+				cur_module = ''
+			}
+			.module_decl {
+				cur_module = node.value
+			}
+			.enum_decl {
+				qualified := if cur_module.len > 0 && cur_module != 'main'
+					&& cur_module != 'builtin' {
+					'${cur_module}.${node.value}'
+				} else {
+					node.value
+				}
+				fn_name := '${qualified.replace('.', '__')}__autostr'
+				if fn_name in b.fn_ids {
+					continue
+				}
+				is_flag := b.is_flag_enum_type_name(qualified)
+				mut names := []string{}
+				mut values := []int{}
+				mut val := 0
+				for i in 0 .. node.children_count {
+					field := b.a.child_node(&node, i)
+					if field.kind != .enum_field {
+						continue
+					}
+					if field.children_count > 0 {
+						if explicit := b.enum_field_expr_value(b.a.child(field, 0)) {
+							val = explicit
+						}
+					}
+					names << field.value
+					// Flag enums store one bit per field, matching `enum_value_for_type`.
+					values << if is_flag { 1 << val } else { val }
+					val++
+				}
+				mut p1 := []TypeID{}
+				p1 << b.i64_type
+				fid := b.register_synthetic_function(fn_name, b.str_type, p1)
+				if is_flag {
+					// `@[flag]` enums stringify as `Name{.a | .b}` (and `Name{}` for 0),
+					// matching the C backend, rather than a single field name.
+					b.generate_flag_enum_autostr_body(fid, node.value.all_after_last('.'), names,
+						values)
+				} else {
+					b.generate_enum_autostr_body(fid, names, values)
+				}
+			}
+			else {}
+		}
+	}
+}
+
+// enum_field_expr_value evaluates the constant integer value of an enum-field initializer
+// expression, mirroring cgen's enum_field_expr_value (gen/c/types.v). Without this the
+// autostr helpers above would only honour bare `.int_literal` initializers and leave a
+// field like `a = 1 << 3` / `a = -1` at the previous sequential value, so the generated
+// `<Enum>__autostr` would compare against the wrong number.
+fn (b &Builder) enum_field_expr_value(id flat.NodeId) ?int {
+	if int(id) < 0 {
+		return none
+	}
+	node := b.a.nodes[int(id)]
+	match node.kind {
+		.int_literal {
+			return parse_int_literal(node.value)
+		}
+		.paren {
+			if node.children_count == 0 {
+				return none
+			}
+			return b.enum_field_expr_value(b.a.child(&node, 0))
+		}
+		.prefix {
+			if node.children_count == 0 {
+				return none
+			}
+			value := b.enum_field_expr_value(b.a.child(&node, 0))?
+			return match node.op {
+				.plus { value }
+				.minus { -value }
+				.bit_not { ~value }
+				else { none }
+			}
+		}
+		.infix {
+			if node.children_count < 2 {
+				return none
+			}
+			left := b.enum_field_expr_value(b.a.child(&node, 0))?
+			right := b.enum_field_expr_value(b.a.child(&node, 1))?
+			return match node.op {
+				.plus {
+					left + right
+				}
+				.minus {
+					left - right
+				}
+				.mul {
+					left * right
+				}
+				.div {
+					if right == 0 {
+						none
+					} else {
+						left / right
+					}
+				}
+				.mod {
+					if right == 0 {
+						none
+					} else {
+						left % right
+					}
+				}
+				.amp {
+					left & right
+				}
+				.pipe {
+					left | right
+				}
+				.xor {
+					left ^ right
+				}
+				.left_shift {
+					int(u64(left) << right)
+				}
+				.right_shift, .right_shift_unsigned {
+					left >> right
+				}
+				else {
+					none
+				}
+			}
+		}
+		else {
+			return none
+		}
+	}
+}
+
+// generate_enum_autostr_body emits the body of a `<Enum>__autostr` helper: a chain of
+// equality tests returning each field's name as a string literal, with an `int_str`
+// fallback for out-of-range (or combined-flag) values.
+fn (mut b Builder) generate_enum_autostr_body(func_id int, field_names []string, field_values []int) {
+	entry := b.m.add_block(func_id, 'entry')
+	it := b.func_add_argument(func_id, b.i64_type, 'it')
+	mut cur_block := entry
+	mut seen := map[int]bool{}
+	for i, fname in field_names {
+		val := field_values[i]
+		// Duplicate values would create unreachable cases; keep the first name.
+		if val in seen {
+			continue
+		}
+		seen[val] = true
+		const_val := b.m.get_or_add_const(b.i64_type, val.str())
+		cmp := b.block_instr2(.eq, cur_block, b.i1_type, it, const_val)
+		match_block := b.m.add_block(func_id, 'autostr_match')
+		next_block := b.m.add_block(func_id, 'autostr_next')
+		b.block_instr3(.br, cur_block, b.void_type, cmp, ValueID(match_block), ValueID(next_block))
+		name_val := b.m.add_value(.string_literal, b.str_type, fname, 0)
+		b.block_instr1(.ret, match_block, b.void_type, name_val)
+		cur_block = next_block
+	}
+	int_str_ref := b.m.add_value(.func_ref, b.str_type, 'int_str', b.fn_ids['int_str'])
+	default_val := b.block_instr2(.call, cur_block, b.str_type, int_str_ref, it)
+	b.block_instr1(.ret, cur_block, b.void_type, default_val)
+}
+
+// generate_flag_enum_autostr_body emits the body of a `<FlagEnum>__autostr` helper that
+// renders a `@[flag]` value as `Name{.a | .b}` (and `Name{}` for 0), mirroring cgen's
+// emit_flag_enum_autostr: start with `Name{`, append `.field` for every set bit (joined
+// by ` | `), then append `}`. `field_values` holds each field's bit (1 << index).
+fn (mut b Builder) generate_flag_enum_autostr_body(func_id int, short_name string, field_names []string, field_values []int) {
+	ptr_string := b.m.type_store.get_ptr(b.str_type)
+	ptr_i1 := b.m.type_store.get_ptr(b.i1_type)
+	entry := b.m.add_block(func_id, 'entry')
+	it := b.func_add_argument(func_id, b.i64_type, 'it')
+
+	// res = "Name{"; first = true. Both live in stack slots so they can be updated
+	// across the per-field branches (this body uses plain control flow, not phis).
+	res_slot := b.block_instr0(.alloca, entry, ptr_string)
+	first_slot := b.block_instr0(.alloca, entry, ptr_i1)
+	open_lit := b.m.add_value(.string_literal, b.str_type, '${short_name}{', 0)
+	b.block_instr2(.store, entry, b.void_type, open_lit, res_slot)
+	true_const := b.m.get_or_add_const(b.i1_type, '1')
+	b.block_instr2(.store, entry, b.void_type, true_const, first_slot)
+	false_const := b.m.get_or_add_const(b.i1_type, '0')
+	plus_ref := b.m.add_value(.func_ref, b.str_type, 'string__plus', b.fn_ids['string__plus'])
+
+	mut cur_block := entry
+	mut seen := map[int]bool{}
+	for i, fname in field_names {
+		bit := field_values[i]
+		// A zero bit can never be "set" (matches the cgen `bit != 0` guard); skip it.
+		if bit == 0 || bit in seen {
+			continue
+		}
+		seen[bit] = true
+		bit_const := b.m.get_or_add_const(b.i64_type, bit.str())
+		masked := b.block_instr2(.and_, cur_block, b.i64_type, it, bit_const)
+		is_set := b.block_instr2(.eq, cur_block, b.i1_type, masked, bit_const)
+		append_block := b.m.add_block(func_id, 'fe_append')
+		after_block := b.m.add_block(func_id, 'fe_after')
+		b.block_instr3(.br, cur_block, b.void_type, is_set, ValueID(append_block),
+			ValueID(after_block))
+
+		// append_block: if not first, prepend the ` | ` separator first.
+		first := b.block_instr1(.load, append_block, b.i1_type, first_slot)
+		sep_block := b.m.add_block(func_id, 'fe_sep')
+		name_block := b.m.add_block(func_id, 'fe_name')
+		b.block_instr3(.br, append_block, b.void_type, first, ValueID(name_block),
+			ValueID(sep_block))
+
+		sep_res := b.block_instr1(.load, sep_block, b.str_type, res_slot)
+		sep_lit := b.m.add_value(.string_literal, b.str_type, ' | ', 0)
+		sep_joined := b.block_instr3(.call, sep_block, b.str_type, plus_ref, sep_res, sep_lit)
+		b.block_instr2(.store, sep_block, b.void_type, sep_joined, res_slot)
+		b.block_instr1(.jmp, sep_block, b.void_type, ValueID(name_block))
+
+		name_res := b.block_instr1(.load, name_block, b.str_type, res_slot)
+		name_lit := b.m.add_value(.string_literal, b.str_type, '.${fname}', 0)
+		name_joined := b.block_instr3(.call, name_block, b.str_type, plus_ref, name_res, name_lit)
+		b.block_instr2(.store, name_block, b.void_type, name_joined, res_slot)
+		b.block_instr2(.store, name_block, b.void_type, false_const, first_slot)
+		b.block_instr1(.jmp, name_block, b.void_type, ValueID(after_block))
+
+		cur_block = after_block
+	}
+
+	close_res := b.block_instr1(.load, cur_block, b.str_type, res_slot)
+	close_lit := b.m.add_value(.string_literal, b.str_type, '}', 0)
+	final_res := b.block_instr3(.call, cur_block, b.str_type, plus_ref, close_res, close_lit)
+	b.block_instr1(.ret, cur_block, b.void_type, final_res)
 }
 
 // ssa_fn_name_in_module supports ssa fn name in module handling for ssa.
@@ -1328,6 +1581,11 @@ fn (mut b Builder) block_struct_field_ptr(block_id BlockID, base_addr ValueID, t
 		} else if field_idx == 1 {
 			builtin_field_type = b.i32_type
 			builtin_offset = 8
+		} else if field_idx == 2 {
+			// is_lit (i32) shares the trailing word with len; it sits at offset 12,
+			// matching `struct_field_offset` used by the field readers.
+			builtin_field_type = b.i32_type
+			builtin_offset = 12
 		} else {
 			builtin_field_type = b.i64_type
 			builtin_offset = field_idx * 8
@@ -1380,9 +1638,9 @@ fn (mut b Builder) register_basic_format_stubs() {
 	mut p1_ptr := []TypeID{}
 	p1_ptr << ptr_i8
 	tos2_id := b.register_synthetic_function('tos2', b.str_type, p1_ptr)
-	b.generate_tos2_body(tos2_id)
+	b.generate_tos2_body(tos2_id, 0)
 	tos3_id := b.register_synthetic_function('tos3', b.str_type, p1_ptr)
-	b.generate_tos2_body(tos3_id)
+	b.generate_tos2_body(tos3_id, 0)
 	tos_clone_id := b.register_synthetic_function('tos_clone', b.str_type, p1_ptr)
 	b.generate_tos_clone_body(tos_clone_id)
 	b.register_pointer_string_stubs()
@@ -1429,7 +1687,9 @@ fn (mut b Builder) register_pointer_string_stubs() {
 		'u8.vstring_literal', 'char.vstring_literal', 'byteptr.vstring_literal',
 		'charptr.vstring_literal'] {
 		func_id := b.register_synthetic_function(name, b.str_type, p1_ptr)
-		b.generate_tos2_body(func_id)
+		// The `_literal` wrappers borrow static C data (is_lit=1, never freed); the plain
+		// ones return a non-copying view of a runtime buffer (is_lit=0), matching V.
+		b.generate_tos2_body(func_id, if name.contains('_literal') { 1 } else { 0 })
 	}
 
 	mut p2_ptr_len := []TypeID{}
@@ -1439,7 +1699,7 @@ fn (mut b Builder) register_pointer_string_stubs() {
 		'charptr.vstring_with_len', 'u8.vstring_literal_with_len', 'char.vstring_literal_with_len',
 		'byteptr.vstring_literal_with_len', 'charptr.vstring_literal_with_len'] {
 		func_id := b.register_synthetic_function(name, b.str_type, p2_ptr_len)
-		b.generate_vstring_with_len_body(func_id)
+		b.generate_vstring_with_len_body(func_id, if name.contains('_literal') { 1 } else { 0 })
 	}
 }
 
@@ -1565,7 +1825,14 @@ fn (mut b Builder) generate_int_format_body(func_id int, is_signed bool, has_rad
 
 	data := b.block_instr1(.load, done_block, ptr_i8, alloca_pos)
 	len := b.block_instr1(.load, done_block, b.i64_type, alloca_len)
-	result := b.emit_make_string(done_block, data, len)
+	// The digits were written backwards, so `data` points into the middle of `buf`.
+	// Shift them to the allocation start (memmove handles the overlap) and NUL-terminate,
+	// so the returned owned string's `str` is `buf` itself and free() gets a valid pointer.
+	memmove_ref := b.m.add_value(.func_ref, b.void_type, 'memmove', b.fn_ids['memmove'])
+	b.block_instr4(.call, done_block, ptr_i8, memmove_ref, buf, data, len)
+	buf_term := b.block_instr2(.add, done_block, ptr_i8, buf, len)
+	b.block_instr2(.store, done_block, b.void_type, nul, buf_term)
+	result := b.emit_make_string(done_block, buf, len, 0)
 	b.block_instr1(.ret, done_block, b.void_type, result)
 }
 
@@ -1645,14 +1912,16 @@ fn (mut b Builder) register_bench_runtime_stubs() {
 	}
 }
 
-// generate_tos2_body supports generate tos2 body handling for Builder.
-fn (mut b Builder) generate_tos2_body(func_id int) {
+// generate_tos2_body supports generate tos2 body handling for Builder. It backs both the
+// non-copying `tos2`/`vstring` wrappers (is_lit=0) and the `vstring_literal` wrappers
+// (is_lit=1, the borrowed pointer is static C data that must never be freed).
+fn (mut b Builder) generate_tos2_body(func_id int, is_lit int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	entry := b.m.add_block(func_id, 'entry')
 	s := b.func_add_argument(func_id, ptr_i8, 's')
 	strlen_ref := b.m.add_value(.func_ref, b.i64_type, 'strlen', b.fn_ids['strlen'])
 	len := b.block_instr2(.call, entry, b.i64_type, strlen_ref, s)
-	result := b.emit_make_string(entry, s, len)
+	result := b.emit_make_string(entry, s, len, is_lit)
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
@@ -1663,26 +1932,18 @@ fn (mut b Builder) generate_tos_clone_body(func_id int) {
 	s := b.func_add_argument(func_id, ptr_i8, 's')
 	strlen_ref := b.m.add_value(.func_ref, b.i64_type, 'strlen', b.fn_ids['strlen'])
 	len := b.block_instr2(.call, entry, b.i64_type, strlen_ref, s)
-	one := b.m.get_or_add_const(b.i64_type, '1')
-	alloc_len := b.block_instr2(.add, entry, b.i64_type, len, one)
-	malloc_ref := b.m.add_value(.func_ref, b.void_type, 'malloc', b.fn_ids['malloc'])
-	out_data := b.block_instr2(.call, entry, ptr_i8, malloc_ref, alloc_len)
-	memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.fn_ids['memcpy'])
-	b.block_instr4(.call, entry, ptr_i8, memcpy_ref, out_data, s, len)
-	zero8 := b.m.get_or_add_const(b.i8_type, '0')
-	term_ptr := b.block_instr2(.add, entry, ptr_i8, out_data, len)
-	b.block_instr2(.store, entry, b.void_type, zero8, term_ptr)
-	result := b.emit_make_string(entry, out_data, len)
+	result := b.emit_make_owned_string(entry, s, len)
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
-// generate_vstring_with_len_body supports generate vstring with len body handling for Builder.
-fn (mut b Builder) generate_vstring_with_len_body(func_id int) {
+// generate_vstring_with_len_body backs `vstring_with_len` (is_lit=0) and
+// `vstring_literal_with_len` (is_lit=1; borrowed static C data that must never be freed).
+fn (mut b Builder) generate_vstring_with_len_body(func_id int, is_lit int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	entry := b.m.add_block(func_id, 'entry')
 	s := b.func_add_argument(func_id, ptr_i8, 's')
 	len := b.func_add_argument(func_id, b.i64_type, 'len')
-	result := b.emit_make_string(entry, s, len)
+	result := b.emit_make_string(entry, s, len, is_lit)
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
@@ -1702,14 +1963,43 @@ fn (mut b Builder) register_string_plus_stubs() {
 }
 
 // emit_make_string emits emit make string output for ssa.
-fn (mut b Builder) emit_make_string(block_id BlockID, data ValueID, len64 ValueID) ValueID {
+// emit_make_string builds a `string{ str: data, len: len64, is_lit: is_lit }` value.
+// `is_lit` must be set explicitly because the field shares the trailing struct word and
+// is otherwise stack garbage that string.free could misread: pass 1 for a literal /
+// borrowed view of static data that must never be freed, and 0 for an owned heap string
+// whose `data` is an allocation start (so free() gets the right pointer). For an owned
+// copy of a borrowed/interior buffer use emit_make_owned_string.
+fn (mut b Builder) emit_make_string(block_id BlockID, data ValueID, len64 ValueID, is_lit int) ValueID {
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
 	alloca_out := b.block_instr0(.alloca, block_id, ptr_string)
 	data_ptr := b.block_struct_field_ptr(block_id, alloca_out, b.str_type, 0)
 	len_ptr := b.block_struct_field_ptr(block_id, alloca_out, b.str_type, 1)
+	is_lit_ptr := b.block_struct_field_ptr(block_id, alloca_out, b.str_type, 2)
 	b.block_instr2(.store, block_id, b.void_type, data, data_ptr)
 	b.block_instr2(.store, block_id, b.void_type, len64, len_ptr)
+	is_lit_const := b.m.get_or_add_const(b.i32_type, is_lit.str())
+	b.block_instr2(.store, block_id, b.void_type, is_lit_const, is_lit_ptr)
 	return b.block_instr1(.load, block_id, b.str_type, alloca_out)
+}
+
+// emit_make_owned_string allocates `len + 1` bytes, copies `len` bytes from `src`,
+// NUL-terminates, and returns an owned (non-literal, freeable) string. Use this where a
+// helper must return its own buffer rather than a view into a caller-owned one — e.g. a
+// substring of a strings.Builder. The returned string is marked non-literal by
+// emit_make_string, so returning an interior/aliased pointer here would later hand a
+// non-allocation-start pointer to free().
+fn (mut b Builder) emit_make_owned_string(block_id BlockID, src ValueID, len ValueID) ValueID {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	one := b.m.get_or_add_const(b.i64_type, '1')
+	alloc_len := b.block_instr2(.add, block_id, b.i64_type, len, one)
+	malloc_ref := b.m.add_value(.func_ref, b.void_type, 'malloc', b.fn_ids['malloc'])
+	out_data := b.block_instr2(.call, block_id, ptr_i8, malloc_ref, alloc_len)
+	memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.fn_ids['memcpy'])
+	b.block_instr4(.call, block_id, ptr_i8, memcpy_ref, out_data, src, len)
+	zero8 := b.m.get_or_add_const(b.i8_type, '0')
+	term_ptr := b.block_instr2(.add, block_id, ptr_i8, out_data, len)
+	b.block_instr2(.store, block_id, b.void_type, zero8, term_ptr)
+	return b.emit_make_string(block_id, out_data, len, 0)
 }
 
 // generate_string_plus_body supports generate string plus body handling for Builder.
@@ -1750,7 +2040,7 @@ fn (mut b Builder) generate_string_plus_body(func_id int) {
 	term_ptr := b.block_instr2(.add, entry, ptr_i8, out_data, total_len)
 	b.block_instr2(.store, entry, b.void_type, zero8, term_ptr)
 
-	result := b.emit_make_string(entry, out_data, total_len)
+	result := b.emit_make_string(entry, out_data, total_len, 0)
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
@@ -1830,7 +2120,7 @@ fn (mut b Builder) generate_string_plus_many_body(func_id int) {
 	zero8 := b.m.get_or_add_const(b.i8_type, '0')
 	term_ptr := b.block_instr2(.add, done, ptr_i8, out_data, total_len)
 	b.block_instr2(.store, done, b.void_type, zero8, term_ptr)
-	result := b.emit_make_string(done, out_data, total_len)
+	result := b.emit_make_string(done, out_data, total_len, 0)
 	b.block_instr1(.ret, done, b.void_type, result)
 }
 
@@ -1872,6 +2162,13 @@ fn (mut b Builder) register_array_runtime_stubs() {
 	array_push_many_id := b.register_synthetic_function('array.push_many', b.void_type,
 		p3_push_many)
 	b.generate_array_push_many_body(array_push_many_id)
+	// `array_push_many_ptr` is the C-macro name the transformer emits for
+	// `arr << ptr_value` / fixed-array appends; it has the same
+	// (ptr_array, ptr_value, count) signature as `array.push_many`. It needs its
+	// own definition so the native linker resolves the `_array_push_many_ptr` symbol.
+	array_push_many_ptr_id := b.register_synthetic_function('array_push_many_ptr', b.void_type,
+		p3_push_many)
+	b.generate_array_push_many_body(array_push_many_ptr_id)
 
 	mut p2_push_many := []TypeID{}
 	p2_push_many << ptr_array
@@ -1884,6 +2181,17 @@ fn (mut b Builder) register_array_runtime_stubs() {
 	p1 << b.array_type
 	array_clone_id := b.register_synthetic_function('array_clone', b.array_type, p1)
 	b.generate_array_clone_body(array_clone_id)
+
+	// The transformer lowers `arr.clone()` to `array__clone(&arr)` (a pointer arg, matching
+	// cgen's `array array__clone(array* a)`). Without a synthetic under this exact name, the
+	// `__`->`.` fallback resolves it to the builtin `array.clone`, which allocates data past
+	// an 8-byte header (alloc_array_data) — incompatible with the synthetic runtime that
+	// grows/frees buffers via `realloc(data)`/`free(data)` assuming no header. Provide a
+	// header-less (calloc-based) clone taking the array by pointer.
+	mut p1_ptr_arr := []TypeID{}
+	p1_ptr_arr << b.m.type_store.get_ptr(b.array_type)
+	array_clone_ptr_id := b.register_synthetic_function('array__clone', b.array_type, p1_ptr_arr)
+	b.generate_array_clone_ptr_body(array_clone_ptr_id)
 
 	mut p3_repeat := []TypeID{}
 	p3_repeat << b.array_type
@@ -2123,20 +2431,16 @@ fn (mut b Builder) generate_builder_write_u8_body(func_id int) {
 fn (mut b Builder) generate_builder_str_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_builder := b.m.type_store.get_ptr(b.array_type)
-	ptr_string := b.m.type_store.get_ptr(b.str_type)
 	entry := b.m.add_block(func_id, 'entry')
 	builder_ptr := b.func_add_argument(func_id, ptr_builder, 'builder')
-	alloca_s := b.block_instr0(.alloca, entry, ptr_string)
 	data_ptr := b.block_struct_field_ptr(entry, builder_ptr, b.array_type, 0)
 	len_ptr := b.block_struct_field_ptr(entry, builder_ptr, b.array_type, 2)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
 	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
-	out_data_ptr := b.block_struct_field_ptr(entry, alloca_s, b.str_type, 0)
-	out_len_ptr := b.block_struct_field_ptr(entry, alloca_s, b.str_type, 1)
-	b.block_instr2(.store, entry, b.void_type, data, out_data_ptr)
-	b.block_instr2(.store, entry, b.void_type, len, out_len_ptr)
-	result := b.block_instr1(.load, entry, b.str_type, alloca_s)
+	// Return an owned copy, not the builder's live buffer (matches strings.Builder.str,
+	// which memdups): the result is marked non-literal and may be freed independently.
+	result := b.emit_make_owned_string(entry, data, len)
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
@@ -2144,23 +2448,20 @@ fn (mut b Builder) generate_builder_str_body(func_id int) {
 fn (mut b Builder) generate_builder_last_n_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_builder := b.m.type_store.get_ptr(b.array_type)
-	ptr_string := b.m.type_store.get_ptr(b.str_type)
 	entry := b.m.add_block(func_id, 'entry')
 	builder_ptr := b.func_add_argument(func_id, ptr_builder, 'builder')
 	n := b.func_add_argument(func_id, b.i64_type, 'n')
-	alloca_s := b.block_instr0(.alloca, entry, ptr_string)
 	data_ptr := b.block_struct_field_ptr(entry, builder_ptr, b.array_type, 0)
 	len_ptr := b.block_struct_field_ptr(entry, builder_ptr, b.array_type, 2)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
 	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
 	start := b.block_instr2(.sub, entry, b.i64_type, len, n)
-	out_data := b.block_instr2(.add, entry, ptr_i8, data, start)
-	out_data_ptr := b.block_struct_field_ptr(entry, alloca_s, b.str_type, 0)
-	out_len_ptr := b.block_struct_field_ptr(entry, alloca_s, b.str_type, 1)
-	b.block_instr2(.store, entry, b.void_type, out_data, out_data_ptr)
-	b.block_instr2(.store, entry, b.void_type, n, out_len_ptr)
-	result := b.block_instr1(.load, entry, b.str_type, alloca_s)
+	src := b.block_instr2(.add, entry, ptr_i8, data, start)
+	// Copy out an owned substring (matches strings.Builder.last_n -> spart): the result
+	// must not alias the interior of the builder buffer, since string.free would later
+	// pass that non-allocation-start pointer to free().
+	result := b.emit_make_owned_string(entry, src, n)
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
@@ -2888,7 +3189,7 @@ fn (mut b Builder) generate_array_bytestr_body(func_id int) {
 	term_ptr := b.block_instr2(.add, entry, ptr_i8, out_data, len)
 	b.block_instr2(.store, entry, b.void_type, zero8, term_ptr)
 
-	result := b.emit_make_string(entry, out_data, len)
+	result := b.emit_make_string(entry, out_data, len, 0)
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
@@ -3680,6 +3981,42 @@ fn (mut b Builder) generate_array_clone_body(func_id int) {
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
+// generate_array_clone_ptr_body is generate_array_clone_body for the `array__clone(array* a)`
+// form the transformer emits: the argument is a pointer to the array, so its fields are read
+// directly off the pointer. The clone is allocated header-less via `array_new` (calloc).
+fn (mut b Builder) generate_array_clone_ptr_body(func_id int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	ptr_array := b.m.type_store.get_ptr(b.array_type)
+	entry := b.m.add_block(func_id, 'entry')
+	arr_ptr := b.func_add_argument(func_id, ptr_array, 'arr')
+
+	alloca_clone := b.block_instr0(.alloca, entry, ptr_array)
+
+	data_ptr := b.block_struct_field_ptr(entry, arr_ptr, b.array_type, 0)
+	len_ptr := b.block_struct_field_ptr(entry, arr_ptr, b.array_type, 2)
+	cap_ptr := b.block_struct_field_ptr(entry, arr_ptr, b.array_type, 3)
+	elem_size_ptr := b.block_struct_field_ptr(entry, arr_ptr, b.array_type, 5)
+	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
+	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len := b.block_instr1(.zext, entry, b.i64_type, len32)
+	cap32 := b.block_instr1(.load, entry, b.i32_type, cap_ptr)
+	cap := b.block_instr1(.zext, entry, b.i64_type, cap32)
+	elem_size32 := b.block_instr1(.load, entry, b.i32_type, elem_size_ptr)
+	elem_size := b.block_instr1(.zext, entry, b.i64_type, elem_size32)
+
+	new_ref := b.m.add_value(.func_ref, b.void_type, 'array_new', b.fn_ids['array_new'])
+	clone := b.block_instr4(.call, entry, b.array_type, new_ref, elem_size, len, cap)
+	b.block_instr2(.store, entry, b.void_type, clone, alloca_clone)
+
+	clone_data_ptr := b.block_struct_field_ptr(entry, alloca_clone, b.array_type, 0)
+	clone_data := b.block_instr1(.load, entry, ptr_i8, clone_data_ptr)
+	copy_size := b.block_instr2(.mul, entry, b.i64_type, len, elem_size)
+	memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.fn_ids['memcpy'])
+	b.block_instr4(.call, entry, ptr_i8, memcpy_ref, clone_data, data, copy_size)
+	result := b.block_instr1(.load, entry, b.array_type, alloca_clone)
+	b.block_instr1(.ret, entry, b.void_type, result)
+}
+
 // generate_array_repeat_to_depth_body converts generate array repeat to depth body data for ssa.
 fn (mut b Builder) generate_array_repeat_to_depth_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
@@ -3990,7 +4327,7 @@ fn (mut b Builder) generate_string_trim_right_body(func_id int) {
 		}
 	}
 	if result == ValueID(0) {
-		result = b.emit_make_string(done, s_data, final_len)
+		result = b.emit_make_owned_string(done, s_data, final_len)
 	}
 	b.block_instr1(.ret, done, b.void_type, result)
 }
@@ -4078,12 +4415,12 @@ fn (mut b Builder) generate_string_all_last_body(func_id int, before bool) {
 	b.block_instr3(.br, done, b.void_type, found, ValueID(return_match), ValueID(return_original))
 
 	result := if before {
-		b.emit_make_string(return_match, s_data, last)
+		b.emit_make_owned_string(return_match, s_data, last)
 	} else {
 		start := b.block_instr2(.add, return_match, b.i64_type, last, sub_len)
 		result_data := b.block_instr2(.add, return_match, ptr_i8, s_data, start)
 		result_len := b.block_instr2(.sub, return_match, b.i64_type, s_len, start)
-		b.emit_make_string(return_match, result_data, result_len)
+		b.emit_make_owned_string(return_match, result_data, result_len)
 	}
 	b.block_instr1(.ret, return_match, b.void_type, result)
 	b.block_instr1(.ret, return_original, b.void_type, s)
@@ -4589,6 +4926,7 @@ fn (mut b Builder) build_function(node flat.Node, module_name string) {
 	func_id := b.fn_ids[fn_name]
 	b.cur_module = module_name
 	b.cur_func = func_id
+	b.cur_func_ret_type = qualify_type_ref_name(node.typ, module_name)
 	b.vars = map[string]ValueID{}
 	b.var_type_names = map[string]string{}
 	b.label_blocks = map[string]BlockID{}
@@ -4646,6 +4984,7 @@ fn (mut b Builder) build_top_level_main() {
 	func_id := b.fn_ids['main'] or { return }
 	b.cur_module = 'main'
 	b.cur_func = func_id
+	b.cur_func_ret_type = ''
 	b.vars = map[string]ValueID{}
 	b.var_type_names = map[string]string{}
 	b.label_blocks = map[string]BlockID{}
@@ -4866,7 +5205,9 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 				mut val := if node.children_count > 1 && b.is_struct_type(ret_type) {
 					b.build_multi_return_value(ret_type, node)
 				} else {
-					b.build_expr(expr_id)
+					// Resolve `return .member` against the declared return type so a
+					// duplicated enum-member name is not built as 0 (see build_assign_rhs).
+					b.build_field_value(expr_id, b.cur_func_ret_type)
 				}
 				if b.is_option_type(ret_type) && b.value_type(val) != ret_type {
 					expr_node := b.a.nodes[int(expr_id)]
@@ -5018,6 +5359,24 @@ fn (mut b Builder) build_decl_assign(node flat.Node) {
 }
 
 // build_assign builds assign data for ssa.
+// build_assign_rhs builds an assignment RHS, resolving bare enum literals (`x = .member`)
+// against the LHS's declared type. Without this context a duplicated enum-member name
+// (e.g. `number`, which exists in several enums) is built as 0, because the checker types
+// the bare literal as `int` and the member lookup is ambiguous. Mirrors struct-init field
+// value resolution (`build_field_value`).
+fn (mut b Builder) build_assign_rhs(lhs flat.Node, rhs_id flat.NodeId) ValueID {
+	mut type_name := ''
+	if lhs.kind == .ident {
+		type_name = b.var_type_names[lhs.value] or { '' }
+	} else if lhs.kind == .selector {
+		type_name = b.selector_type_name(lhs) or { '' }
+	}
+	if type_name.len > 0 {
+		return b.build_field_value(rhs_id, type_name)
+	}
+	return b.build_expr(rhs_id)
+}
+
 fn (mut b Builder) build_assign(node flat.Node) {
 	mut i := 0
 	for i < node.children_count {
@@ -5033,7 +5392,7 @@ fn (mut b Builder) build_assign(node flat.Node) {
 		if lhs.kind == .ident {
 			if addr := b.vars[lhs.value] {
 				if node.op == .assign {
-					rhs_val := b.build_expr(rhs_id)
+					rhs_val := b.build_assign_rhs(lhs, rhs_id)
 					b.emit2(.store, b.void_type, rhs_val, addr)
 				} else {
 					cur := b.emit1(.load, b.deref_type(addr), addr)
@@ -5050,7 +5409,7 @@ fn (mut b Builder) build_assign(node flat.Node) {
 				b.build_lvalue_addr(lhs_id)
 			}
 			if node.op == .assign {
-				rhs_val := b.build_expr(rhs_id)
+				rhs_val := b.build_assign_rhs(lhs, rhs_id)
 				b.emit2(.store, b.void_type, rhs_val, addr)
 			} else {
 				field_type := b.deref_type(addr)
@@ -5076,7 +5435,7 @@ fn (mut b Builder) build_selector_assign(node flat.Node) {
 		if lhs.kind == .selector {
 			field_ptr := b.build_selector_addr(lhs)
 			if node.op == .assign {
-				rhs_val := b.build_expr(rhs_id)
+				rhs_val := b.build_assign_rhs(lhs, rhs_id)
 				b.emit2(.store, b.void_type, rhs_val, field_ptr)
 			} else {
 				field_type := b.deref_type(field_ptr)
@@ -7699,13 +8058,71 @@ fn (mut b Builder) build_selector_addr(node flat.Node) ValueID {
 	}
 	base_val := b.build_expr(base_id)
 	base_typ := b.value_type(base_val)
-	if base_typ > 0 && base_typ < b.m.type_store.types.len
-		&& b.m.type_store.types[base_typ].kind == .struct_t {
-		alloca := b.emit0(.alloca, b.m.type_store.get_ptr(base_typ))
-		b.emit2(.store, b.void_type, base_val, alloca)
-		return b.get_field_ptr(alloca, node.value)
+	if base_typ > 0 && base_typ < b.m.type_store.types.len {
+		base_type_kind := b.m.type_store.types[base_typ].kind
+		if base_type_kind == .struct_t {
+			alloca := b.emit0(.alloca, b.m.type_store.get_ptr(base_typ))
+			b.emit2(.store, b.void_type, base_val, alloca)
+			return b.get_field_ptr(alloca, node.value)
+		}
+		if base_type_kind == .ptr_t {
+			// The base is already a pointer to the struct, e.g. a `&Struct(ptr)` cast
+			// or `(&Struct(ptr)).field` lvalue. Index straight off the pointer; if the
+			// pointee struct type is known the cast keeps it, otherwise re-derive it.
+			ptr_val := b.coerce_struct_ptr_for_field(base_val, base_id)
+			return b.get_field_ptr(ptr_val, node.value)
+		}
 	}
 	return b.m.get_or_add_const(b.m.type_store.get_ptr(b.i8_type), '0')
+}
+
+// coerce_struct_ptr_for_field makes sure a pointer used as a selector base carries the
+// struct pointee type, so get_field_ptr can find field offsets. A bare `voidptr`/`&u8`
+// (e.g. from a `&Struct(rawptr)` cast that lowered to a generic pointer) is bitcast to a
+// pointer to the cast's struct type when that type can be recovered from the AST.
+fn (mut b Builder) coerce_struct_ptr_for_field(ptr_val ValueID, base_id flat.NodeId) ValueID {
+	ptr_typ := b.value_type(ptr_val)
+	if ptr_typ > 0 && ptr_typ < b.m.type_store.types.len {
+		elem := b.m.type_store.types[ptr_typ].elem_type
+		if elem > 0 && elem < b.m.type_store.types.len
+			&& b.m.type_store.types[elem].kind == .struct_t {
+			return ptr_val
+		}
+	}
+	struct_name := b.pointer_cast_struct_name(base_id) or { return ptr_val }
+	if struct_id := b.struct_types[struct_name] {
+		want := b.m.type_store.get_ptr(struct_id)
+		if want != ptr_typ {
+			return b.emit1(.bitcast, want, ptr_val)
+		}
+	}
+	return ptr_val
+}
+
+// pointer_cast_struct_name returns the struct type name targeted by a `&Struct(...)`
+// pointer cast expression, stripping the leading `&`.
+fn (b &Builder) pointer_cast_struct_name(id flat.NodeId) ?string {
+	if int(id) < 0 {
+		return none
+	}
+	node := b.a.nodes[int(id)]
+	mut name := ''
+	if node.kind == .cast_expr {
+		name = node.value
+	} else if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
+		child := b.a.nodes[int(b.a.child(&node, 0))]
+		if child.kind == .cast_expr {
+			name = child.value
+		}
+	}
+	if name.len == 0 {
+		return none
+	}
+	name = name.trim_left('&')
+	if name in b.struct_types {
+		return name
+	}
+	return none
 }
 
 fn (mut b Builder) build_arrow_selector_base_ptr(base_id flat.NodeId, base flat.Node) ValueID {
@@ -7983,6 +8400,20 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			if u8_name in b.fn_ids {
 				resolved_name = u8_name
 			}
+		}
+	}
+
+	// Final receiver classification: once the call target is resolved, trust the
+	// signature's parameter count. A `Type.method(args)` selector whose param count
+	// already equals the explicit arg count is a static type-function (no receiver),
+	// so the base must NOT be prepended. The early heuristics (and
+	// `resolved_selector_has_receiver`'s default-true) otherwise pass the type
+	// selector as a phantom receiver — e.g. cross-module
+	// `token.Token.from_string_tinyv(lit)` shifted its string arg into the wrong
+	// registers, corrupting `name.len`.
+	if fn_node.kind == .selector && !is_c_call {
+		if has_receiver := b.fn_signature_has_receiver(resolved_name, node.children_count - 1) {
+			is_method = has_receiver
 		}
 	}
 
@@ -9454,7 +9885,7 @@ fn (mut b Builder) build_index(id flat.NodeId, node flat.Node) ValueID {
 			data := b.load_struct_field_from_value(base, b.str_type, 'str')
 			slice_data := b.emit2(.add, b.m.type_store.get_ptr(b.i8_type), data, start)
 			slice_len := b.emit2(.sub, b.i64_type, end, start)
-			return b.emit_make_string(b.cur_block, slice_data, slice_len)
+			return b.emit_make_owned_string(b.cur_block, slice_data, slice_len)
 		}
 		fn_ref := b.m.add_value(.func_ref, b.array_type, 'array_slice', b.fn_ids['array_slice'])
 		return b.emit4(.call, b.array_type, fn_ref, base, start, end)
@@ -9530,6 +9961,17 @@ fn (mut b Builder) build_index(id flat.NodeId, node flat.Node) ValueID {
 fn (mut b Builder) build_index_addr(id flat.NodeId, node flat.Node) ValueID {
 	if node.children_count < 2 {
 		return b.m.get_or_add_const(b.m.type_store.get_ptr(b.i8_type), '0')
+	}
+	// `a[lo..hi]` (an index node tagged `range`) is a slice expression producing a fresh
+	// array value, not an addressable element. Its address must point at the materialized
+	// slice value; computing an element pointer would make the slice's fields read as
+	// garbage (len 0). Affects `&a[lo..hi]`, `array__clone(&a[lo..hi])`, `&[]T` args, etc.
+	if node.value == 'range' {
+		slice_val := b.build_expr(id)
+		slice_type := b.value_type(slice_val)
+		tmp := b.emit0(.alloca, b.m.type_store.get_ptr(slice_type))
+		b.emit2(.store, b.void_type, slice_val, tmp)
+		return tmp
 	}
 	base_id := b.a.child(&node, 0)
 	if base := b.build_const_i32_array_arg(base_id) {
