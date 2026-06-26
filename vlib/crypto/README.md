@@ -166,6 +166,11 @@ fn main() {
 
 ### PBKDF2
 
+`pbkdf2` derives a key from a password (RFC 8018). For password storage prefer a
+memory-hard function such as `argon2` or `scrypt`; if you must use PBKDF2, use a high
+iteration count and tune it for your hardware. OWASP currently recommends at least
+600_000 iterations for PBKDF2-HMAC-SHA256.
+
 ```v
 import crypto.pbkdf2
 import crypto.rand
@@ -175,7 +180,8 @@ fn main() {
 	password := 'correct horse battery staple'.bytes()
 	// generate and persist a unique random salt per password
 	salt := rand.bytes(16)!
-	key := pbkdf2.key(password, salt, 4096, 32, sha256.new())!
+	// tune the iteration count for your deployment (OWASP suggests 600_000+ for SHA-256)
+	key := pbkdf2.key(password, salt, 600_000, 32, sha256.new())!
 	assert key.len == 32
 }
 ```
