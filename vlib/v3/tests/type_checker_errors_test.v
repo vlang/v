@@ -794,3 +794,26 @@ fn test_pr_review_codegen_batch_nineteen() {
 		'struct Maker {}\nfn Maker.make() [3]int {\n\treturn [10, 20, 30]!\n}\nfn main() {\n\ta := Maker.make()\n\tprintln(int_str(a[0] + a[1] + a[2]))\n}\n')
 	assert static_fixed == '60'
 }
+
+fn test_pr_review_codegen_batch_twenty() {
+	v3_bin := build_v3()
+	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\n'
+	// Storing a method value into a struct field is an escape: the per-site static receiver slot
+	// is overwritten on the next evaluation, so previously-stored callbacks lose their receiver.
+	run_bad(v3_bin, 'bad_method_value_struct_field_assign', mv +
+		'struct Holder {\nmut:\n\tcb fn () int\n}\nfn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tmut h := Holder{}\n\th.cb = c.report\n\tprintln(int_str(h.cb()))\n}\n',
+		'cannot escape its call site')
+	// Same hazard storing into an array element.
+	run_bad(v3_bin, 'bad_method_value_index_assign', mv +
+		'fn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tmut cbs := []fn () int{len: 1}\n\tcbs[0] = c.report\n\tprintln(int_str(cbs[0]()))\n}\n',
+		'cannot escape its call site')
+	// A method value assigned to a local with `=` is still tracked, so a later escape is caught.
+	run_bad(v3_bin, 'bad_method_value_local_eq_then_return_escape', mv +
+		'fn dummy() int {\n\treturn 0\n}\nfn bind(c Counter) fn () int {\n\tmut cb := dummy\n\tcb = c.report\n\treturn cb\n}\nfn main() {\n\t_ := bind(Counter{\n\t\tid: 1\n\t})\n}\n',
+		'cannot escape its call site')
+	// Assigning a method value to a local (including reassignment) and passing it straight to a
+	// callback parameter does not escape, so it stays valid.
+	ok := run_good(v3_bin, 'good_method_value_local_assign_direct_use', mv +
+		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tmut cb := c.report\n\tcb = c.report\n\tprintln(int_str(invoke(cb)))\n}\n')
+	assert ok == '7'
+}

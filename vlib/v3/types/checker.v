@@ -2440,6 +2440,22 @@ fn (mut tc TypeChecker) track_method_value_local(lhs_id flat.NodeId, rhs_id flat
 	}
 }
 
+// lvalue_is_local_var reports whether an assignment target is a plain function-local variable —
+// bound under its bare name in the current scope. Non-local storage (a struct field `h.cb`, an
+// array/map element `cbs[i]`, or a module-level global, which lives in file_scope under its
+// qualified name and so misses a bare lookup) is not a local. A method value may alias a local
+// (tracked for a later escape) but must not be stored into anything that outlives the call site.
+fn (tc &TypeChecker) lvalue_is_local_var(lhs_id flat.NodeId) bool {
+	if int(lhs_id) < 0 {
+		return false
+	}
+	lhs := tc.a.nodes[int(lhs_id)]
+	if lhs.kind != .ident || lhs.value.len == 0 {
+		return false
+	}
+	return tc.cur_scope.lookup(lhs.value) != none
+}
+
 // check_multi_return_decl_assign validates check multi return decl assign state for types.
 fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat.Node) bool {
 	if node.children_count < 3 {
@@ -2522,8 +2538,16 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			tc.type_mismatch(.assignment_mismatch,
 				'cannot assign `${rhs_type.name()}` to `${lhs_type.name()}`', id)
 		}
-		if node.kind == .assign {
-			tc.track_method_value_local(lhs_id, rhs_id)
+		if node.kind in [.assign, .selector_assign, .index_assign] {
+			if tc.expr_is_method_value(rhs_id) && !tc.lvalue_is_local_var(lhs_id) {
+				// Storing a method value into a struct field (`h.cb = ..`), an array/map element
+				// (`cbs[i] = ..`), or a global lets it outlive the per-site static `_mvctx_N`
+				// receiver slot, which the next evaluation of the same site overwrites — so every
+				// stored callback would use the last receiver. Reject it like the other escapes.
+				tc.reject_stored_method_value(rhs_id)
+			} else {
+				tc.track_method_value_local(lhs_id, rhs_id)
+			}
 		}
 		i += 2
 	}
