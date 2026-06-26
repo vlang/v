@@ -568,32 +568,34 @@ fn test_server_tls_parallel_handshakes() {
 		assert false, 'pick_port: ${err}'
 		return
 	}
-	// Prove the handshakes actually run in parallel, not merely that the shared
-	// mbedtls config/RNG survives serial handoff. The handler is a width-2 barrier:
-	// every request signals `started` once its handshake has completed and the
-	// worker has entered the handler, then parks on `release`. The test refuses to
-	// release anyone until it has observed >= 2 handlers parked AT THE SAME TIME,
-	// which can only happen if >= 2 worker threads each finished a handshake and ran
-	// concurrently. With a single worker (serialized handshakes) only one handler is
-	// ever in flight — the second `started` never arrives and the overlap wait below
-	// times out, failing the test. (Verified locally: forcing worker_num:1 makes
-	// this fail on the overlap assert; worker_num:4 passes.) Parking in the handler
-	// frees the worker/CPU, so the second handshake can complete and park even on a
-	// single-core runner — the test distinguishes worker_num solely, not core count.
-	n := 4
-	started := chan bool{cap: n}
-	release := chan bool{cap: n}
+	// Prove handshakes run in parallel on the worker threads, not serially on the
+	// accept thread. The discriminator is placed at the HANDSHAKE layer, not at the
+	// request handler: a barrier inside the handler only proves two *handlers*
+	// overlapped, which a serial-accept-then-queue design also produces (the accept
+	// thread can complete two handshakes one after another and hand both completed
+	// connections to workers that then park together). Counting overlapping handlers
+	// would therefore miss exactly the regression we care about.
+	//
+	// Instead, occupy `stall` workers with raw TCP connections that complete the TCP
+	// connect but never send a ClientHello, so each one wedges a worker *inside*
+	// complete_handshake (blocked reading the handshake). Then fire `live` real HTTPS
+	// clients. If handshakes run per-worker in parallel, the remaining free workers
+	// service the live clients concurrently and they succeed. If the implementation
+	// regresses to handshaking serially on the accept thread, the very first stalled
+	// connection wedges that thread mid-handshake and no later connection — stalled or
+	// live — is ever accepted/serviced, so every live fetch fails. worker_num must be
+	// >= stall + live so a free worker exists for each live client.
+	worker_num := 4
+	stall := 2
+	live := 2
 	mut srv := &http.Server{
 		addr:                   '127.0.0.1:${port}'
 		cert:                   server_tls_cert
 		cert_key:               server_tls_key
 		in_memory_verification: true
-		accept_timeout:         5 * time.second
-		worker_num:             4
-		handler:                BlockingHandler{
-			started: started
-			release: release
-		}
+		accept_timeout:         10 * time.second
+		worker_num:             worker_num
+		handler:                EchoHandler{}
 		show_startup_message:   false
 	}
 	t := spawn srv.listen_and_serve()
@@ -607,13 +609,41 @@ fn test_server_tls_parallel_handshakes() {
 		srv.close()
 		t.wait()
 	}
-	results := chan string{cap: n}
-	for i in 0 .. n {
+	// Wedge `stall` workers mid-handshake with silent TCP connections.
+	mut stalled := []&net.TcpConn{}
+	for _ in 0 .. stall {
+		c := net.dial_tcp('127.0.0.1:${port}') or {
+			assert false, 'stall dial failed: ${err}'
+			return
+		}
+		stalled << c
+	}
+	// Give the accept loop time to hand each stalled connection to a worker (and, in
+	// a regressed serial-accept design, to become wedged on the first one) before the
+	// live clients connect.
+	time.sleep(500 * time.millisecond)
+	// Fire the live clients concurrently; with parallel per-worker handshakes the
+	// free workers service them in well under a second. This also exercises the
+	// shared mbedtls config/RNG under genuinely concurrent completing handshakes.
+	//
+	// The discriminator is time-bounded on purpose: a serial-accept regression does
+	// eventually service the live clients — but only after the stalled handshakes hit
+	// their budget (handshake_timeout == accept_timeout == 10s here, x2 stalled), so
+	// without a bound the test would merely run ~20s slower, not fail. The whole live
+	// phase must finish under 6s, which is impossible unless handshakes run in
+	// parallel (a real local handshake is sub-second; the bound has a wide margin both
+	// ways). The per-client 4s read timeout is only a best-effort guard so a client
+	// that never gets serviced can't hang the suite indefinitely; the elapsed bound is
+	// the actual regression check.
+	results := chan string{cap: live}
+	sw := time.new_stopwatch()
+	for i in 0 .. live {
 		spawn fn [results, port, i] () {
 			resp := http.fetch(
-				url:          'https://127.0.0.1:${port}/p${i}'
+				url:          'https://127.0.0.1:${port}/live${i}'
 				enable_http2: false
 				validate:     false
+				read_timeout: 4 * time.second
 			) or {
 				results <- 'error: ${err}'
 				return
@@ -625,32 +655,20 @@ fn test_server_tls_parallel_handshakes() {
 			results <- resp.body
 		}()
 	}
-	// Wait until at least two handlers are parked in the barrier simultaneously.
-	mut concurrent := 0
-	overlap_timeout := 8 * time.second
-	for concurrent < 2 {
-		select {
-			_ := <-started {
-				concurrent++
-			}
-			overlap_timeout {
-				break
-			}
-		}
-	}
-	// Release every parked handler (and any that arrive afterwards) so all the
-	// round-trips can finish, then drain the results. Do this BEFORE the overlap
-	// assert so a failure still unblocks the workers and the deferred close/wait
-	// cannot hang on a handler parked in the channel.
-	release.close()
 	mut ok := 0
-	for _ in 0 .. n {
+	for _ in 0 .. live {
 		body := <-results
-		assert body == 'released', 'unexpected response: ${body}'
+		assert body.starts_with('tls hello /live'), 'live handshake failed while ${stall} workers were mid-handshake (handshakes appear serialized on the accept thread): ${body}'
 		ok++
 	}
-	assert concurrent >= 2, 'parallel handshakes not observed: only ${concurrent} handler(s) ran concurrently within ${overlap_timeout} — handshakes appear serialized'
-	assert ok == n, 'expected ${n} successful concurrent handshakes, got ${ok}'
+	elapsed := sw.elapsed()
+	assert ok == live, 'expected ${live} live handshakes to complete concurrently with ${stall} stalled handshakes; got ${ok}'
+	assert elapsed < 6 * time.second, 'live handshakes took ${elapsed} (>=6s) while ${stall} workers were mid-handshake — handshakes appear serialized on the accept thread, not parallel'
+	// Release the stalled sockets; srv.close() in the defer also force-closes any the
+	// worker is still blocked on via the idle tracker.
+	for mut c in stalled {
+		c.close() or {}
+	}
 }
 
 fn test_server_tls_h2_negotiation() {
