@@ -269,6 +269,14 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'parent/child/child.v': 'module child\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
 	}, 'main.v')
 	assert hier_init_order_out == '41\n41'
+	dotted_collision_init_order_out := run_good_project(v3_bin,
+		'dotted_collision_module_init_order', {
+		'main.v':          'module main\n\nimport foo.user as user\nimport bar as shortbar\n\nfn main() {\n\tprintln(int_str(user.value()))\n\tprintln(int_str(shortbar.value()))\n}\n'
+		'foo/user/user.v': 'module user\n\nimport foo.bar as foobar\n\n__global seen int\n\nfn init() {\n\tseen = foobar.value() + 1\n}\n\npub fn value() int {\n\treturn seen\n}\n'
+		'foo/bar/bar.v':   'module bar\n\n__global flag int\n\nfn init() {\n\tflag = 40\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+		'bar/bar.v':       'module bar\n\n__global flag int\n\nfn init() {\n\tflag = 3\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+	}, 'main.v')
+	assert dotted_collision_init_order_out == '41\n3'
 	transitive_init_order_out := run_good_project(v3_bin, 'transitive_module_init_order', {
 		'main.v':      'module main\n\nimport moda\n\n__global seen int\n\nfn init() {\n\tseen = moda.value()\n}\n\nfn main() {\n\tprintln(int_str(seen))\n\tprintln(int_str(moda.value()))\n}\n'
 		'moda/moda.v': 'module moda\n\nimport modb\n\npub fn value() int {\n\treturn modb.value()\n}\n'
