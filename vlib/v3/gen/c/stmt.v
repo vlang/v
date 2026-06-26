@@ -261,7 +261,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 						raw_expr_type := g.tc.resolve_type(ret_id)
 						expr_type := g.usable_expr_type(ret_id)
 						call_ret_type := g.local_fn_call_return_type(ret_id, ret_node)
-						decl_ret_type := g.declared_call_return_type(ret_node)
+						decl_ret_type := g.declared_call_return_type(ret_id)
 						if g.optional_result_matches_base(raw_expr_type, base)
 							|| g.optional_result_matches_base(expr_type, base)
 							|| g.optional_result_matches_base(call_ret_type, base)
@@ -567,7 +567,7 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		raw_expr_type := g.tc.resolve_type(ret_id)
 		expr_type := g.usable_expr_type(ret_id)
 		call_ret_type := g.local_fn_call_return_type(ret_id, ret_node)
-		decl_ret_type := g.declared_call_return_type(ret_node)
+		decl_ret_type := g.declared_call_return_type(ret_id)
 		if g.optional_result_matches_base(raw_expr_type, base)
 			|| g.optional_result_matches_base(expr_type, base)
 			|| g.optional_result_matches_base(call_ret_type, base)
@@ -673,7 +673,11 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 // becomes `?int`), which makes the optional C type name appear to differ from
 // the callee's signature. The declared type read from `fn_ret_types`/the fn decl
 // keeps the alias, so propagating `return call()` is recognised as valid.
-fn (g &FlatGen) declared_call_return_type(call_node flat.Node) types.Type {
+fn (g &FlatGen) declared_call_return_type(call_id flat.NodeId) types.Type {
+	if int(call_id) < 0 {
+		return types.Type(types.void_)
+	}
+	call_node := g.a.nodes[int(call_id)]
 	if call_node.kind != .call || call_node.children_count == 0 {
 		return types.Type(types.void_)
 	}
@@ -716,6 +720,26 @@ fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
 		return none
 	}
 	base_id := g.a.child(&fn_node, 0)
+	base_node := g.a.nodes[int(base_id)]
+	// A selector whose base names a type or an imported module is not a receiver method but a
+	// static method (`Type.make()`) or import-qualified function (`mod.make()`); the base ident
+	// has no value type, so resolve it the same way gen_call does and read the declared return
+	// type. Without this a fixed-array such call's `_v_ret_*` wrapper is never unwrapped.
+	if base_node.kind == .ident && base_node.value.len > 0 {
+		base_is_local := g.tc.cur_scope.lookup(base_node.value) or { types.Type(types.void_) } !is types.Void
+		if !base_is_local {
+			if static_fn := g.static_method_fn_name(base_node.value, fn_node.value) {
+				if ret := g.tc.fn_ret_types[static_fn] {
+					return ret
+				}
+			}
+			if mod := g.import_alias_module(base_node.value) {
+				if ret := g.tc.fn_ret_types['${mod}.${fn_node.value}'] {
+					return ret
+				}
+			}
+		}
+	}
 	base_type := g.tc.resolve_type(base_id)
 	clean_type := types.unwrap_pointer(base_type)
 	mut receiver_name := clean_type.name()

@@ -96,6 +96,14 @@ mut:
 	// on return. Recomputed per function (structural pre-pass in transform_fn_body),
 	// consumed when the `p := &v` decl is transformed (RHS rewritten to a heap copy).
 	escaping_amp_ptrs map[string]bool
+	// escaping_amp_sources holds the source locals `v` of such `p := &v` escapes — the
+	// values whose address leaves the frame. The local itself is moved to the heap at its
+	// declaration (its type becomes `&T`) so a mutation between `p := &v` and `return p`
+	// is observed by the caller; copying eagerly at the alias would return stale data.
+	escaping_amp_sources map[string]bool
+	// heaped_amp_locals records which of those sources were actually moved to the heap, so
+	// the `p := &v` alias emits `p = v` (the heap pointer) instead of a fresh memdup copy.
+	heaped_amp_locals map[string]bool
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -1029,6 +1037,11 @@ fn (t &Transformer) try_heap_escaping_amp(node flat.Node, rhs_id flat.NodeId) bo
 	if amp_node.kind != .ident {
 		return false
 	}
+	// The source local was moved to the heap at its declaration: the alias is now just that
+	// `&T` pointer (handled below), regardless of its rewritten pointer type.
+	if amp_node.value in t.heaped_amp_locals {
+		return true
+	}
 	local_type := t.node_type(amp_child)
 	return local_type.len > 0 && !local_type.starts_with('&') && !local_type.starts_with('[]')
 		&& !local_type.starts_with('map[') && !local_type.starts_with('?')
@@ -1036,15 +1049,58 @@ fn (t &Transformer) try_heap_escaping_amp(node flat.Node, rhs_id flat.NodeId) bo
 }
 
 // heap_escaping_amp_rhs rewrites `&v` into `(&T)memdup(&v, sizeof(T))`, a heap copy
-// of the value local `v` so the escaping pointer outlives the stack frame.
+// of the value local `v` so the escaping pointer outlives the stack frame. When `v` was
+// itself moved to the heap at its declaration, the alias is simply that pointer — copying
+// would resurrect the stale-mutation bug the move avoids.
 fn (mut t Transformer) heap_escaping_amp_rhs(rhs_id flat.NodeId) flat.NodeId {
 	rhs := t.a.nodes[int(rhs_id)]
 	amp_child := t.a.child(&rhs, 0)
+	amp_node := t.a.nodes[int(amp_child)]
+	if amp_node.kind == .ident && amp_node.value in t.heaped_amp_locals {
+		return t.transform_expr(amp_child)
+	}
 	local_type := t.node_type(amp_child)
 	addr := t.make_prefix(.amp, t.transform_expr(amp_child))
 	size := t.make_sizeof_type(local_type)
 	dup := t.make_call_typed('memdup', arr2(addr, size), 'voidptr')
 	return t.make_cast('&${local_type}', dup, '&${local_type}')
+}
+
+// heapable_value_type reports whether a local of this declared type can be moved to the heap
+// as a `&T` — a plain value type, not an already-reference / container / optional type (those
+// either carry their own indirection or are not addressable as a single `T`).
+fn (t &Transformer) heapable_value_type(typ string) bool {
+	return typ.len > 0 && !typ.starts_with('&') && !typ.starts_with('[]')
+		&& !typ.starts_with('map[') && !typ.starts_with('?') && !typ.starts_with('!')
+		&& !typ.starts_with('[') && typ != 'unknown' && typ != 'void'
+}
+
+// heap_escaping_source_decl rewrites `mut v := <init>` (where `&v` escapes) into a heap
+// allocation so `v` is a `&T` to a heap object. A struct literal becomes `&T{..}` (the cgen
+// memdup's it); any other initializer is copied into a stack temp and memdup'd. Subsequent
+// `v.field = ..` writes then mutate the heap object the returned pointer alias also sees.
+fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string, elem_typ string) []flat.NodeId {
+	rhs_id := t.a.child(&node, 1)
+	rhs := t.a.nodes[int(rhs_id)]
+	ptr_typ := '&${elem_typ}'
+	mut stmts := []flat.NodeId{}
+	transformed_init := t.transform_expr(rhs_id)
+	// Statements lifted out while transforming the initializer must precede the heap decl.
+	t.drain_pending(mut stmts)
+	mut heap_rhs := flat.NodeId(0)
+	if rhs.kind == .struct_init {
+		heap_rhs = t.make_prefix(.amp, transformed_init)
+	} else {
+		tmp := t.new_temp('esc')
+		stmts << t.make_decl_assign_typed(tmp, transformed_init, elem_typ)
+		addr := t.make_prefix(.amp, t.make_ident(tmp))
+		size := t.make_sizeof_type(elem_typ)
+		dup := t.make_call_typed('memdup', arr2(addr, size), 'voidptr')
+		heap_rhs = t.make_cast(ptr_typ, dup, ptr_typ)
+	}
+	t.heaped_amp_locals[var_name] = true
+	stmts << t.make_decl_assign_typed(var_name, heap_rhs, ptr_typ)
+	return stmts
 }
 
 // mark_escaping_amp_ptrs runs a structural pre-pass over a function body to find
@@ -1055,22 +1111,29 @@ fn (mut t Transformer) heap_escaping_amp_rhs(rhs_id flat.NodeId) flat.NodeId {
 // at rewrite time when `v`'s type is known.
 fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	t.escaping_amp_ptrs = map[string]bool{}
+	t.escaping_amp_sources = map[string]bool{}
+	t.heaped_amp_locals = map[string]bool{}
 	mut amp_ptrs := map[string]bool{}
+	mut amp_sources := map[string]string{} // pointer `p` -> source local `v`
 	mut returned := map[string]bool{}
 	for id in body_ids {
-		t.scan_escape_pass(id, mut amp_ptrs, mut returned)
+		t.scan_escape_pass(id, mut amp_ptrs, mut amp_sources, mut returned)
 	}
 	for name, _ in amp_ptrs {
 		if name in returned {
 			t.escaping_amp_ptrs[name] = true
+			if src := amp_sources[name] {
+				t.escaping_amp_sources[src] = true
+			}
 		}
 	}
 }
 
 // scan_escape_pass recursively collects, in a function-body subtree, (a) the LHS
-// names of `p := &ident` declarations into `amp_ptrs`, and (b) every ident name
-// appearing inside a return statement into `returned`.
-fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut returned map[string]bool) {
+// names of `p := &ident` declarations into `amp_ptrs` (and the source `ident` into
+// `amp_sources[p]`), and (b) every ident name appearing inside a return statement
+// into `returned`.
+fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string]string, mut returned map[string]bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
@@ -1083,6 +1146,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 			amp_child := t.a.nodes[int(t.a.child(&rhs, 0))]
 			if amp_child.kind == .ident {
 				amp_ptrs[lhs.value] = true
+				amp_sources[lhs.value] = amp_child.value
 			}
 		}
 	}
@@ -1092,7 +1156,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		}
 	}
 	for i in 0 .. node.children_count {
-		t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut returned)
+		t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut returned)
 	}
 }
 
@@ -2687,6 +2751,16 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			}
 		}
 	}
+	// A value local whose address escapes (`p := &v` with `p` returned) is moved to the heap
+	// at its own declaration so writes after the alias are visible to the caller. Must run
+	// before the `p := &v` alias is transformed (the source is declared first).
+	if node.children_count == 2 {
+		src := t.a.child_node(&node, 0)
+		if src.kind == .ident && src.value in t.escaping_amp_sources
+			&& src.value !in t.heaped_amp_locals && t.heapable_value_type(inferred_typ) {
+			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
+		}
+	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
@@ -2694,6 +2768,17 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			new_children << t.transform_lvalue(child_id)
 		} else if node.children_count == 2 && t.try_heap_escaping_amp(node, child_id) {
 			new_children << t.heap_escaping_amp_rhs(child_id)
+			// When `v` was heap-moved it is already a `&T`, so `p := &v` is really `p := v`
+			// (a `&T`), not `&&T` as the literal `&v` would infer. Adopt the source's pointer
+			// type for `p` so its declaration and later uses are consistent.
+			amp := t.a.nodes[int(child_id)]
+			if amp.children_count > 0 {
+				amp_src := t.a.nodes[int(t.a.child(&amp, 0))]
+				if amp_src.kind == .ident && amp_src.value in t.heaped_amp_locals {
+					inferred_typ = t.var_type(amp_src.value)
+					t.set_var_type(t.a.nodes[int(t.a.child(&node, 0))].value, inferred_typ)
+				}
+			}
 		} else {
 			lhs_id := t.a.child(&node, 0)
 			lhs_type := if inferred_typ.len > 0 {

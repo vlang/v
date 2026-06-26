@@ -1768,7 +1768,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			// A call to a fixed-array-returning function yields the wrapper struct;
 			// unwrap `.ret_arr` so the result behaves as the array value everywhere
 			// (indexing, arg passing, memcpy into a destination).
-			ret_t := g.declared_call_return_type(node)
+			ret_t := g.declared_call_return_type(id)
 			if ret_t is types.ArrayFixed && g.tc.c_type(ret_t) in g.fixed_array_ret_wrappers {
 				g.write('(')
 				g.gen_call(id, node)

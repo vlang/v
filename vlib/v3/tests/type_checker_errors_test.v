@@ -778,3 +778,19 @@ fn test_pr_review_codegen_batch_eighteen() {
 		"fn work() [0x10]u8 {\n\tmut r := [0x10]u8{}\n\tr[0] = 42\n\tr[15] = 7\n\treturn r\n}\nfn main() {\n\tmut threads := []thread [0x10]u8{}\n\tthreads << spawn work()\n\tresults := threads.wait()\n\tprintln(int_str(results[0][0]) + ',' + int_str(results[0][15]))\n}\n")
 	assert thread_fixed == '42,7'
 }
+
+fn test_pr_review_codegen_batch_nineteen() {
+	v3_bin := build_v3()
+	// A value local whose address escapes (`p := &v` with `p` returned) is moved to the heap at
+	// its declaration, so a mutation between the alias and the return is observed by the caller —
+	// matching V's auto-heap semantics. Copying eagerly at `p := &v` returned stale data (x == 1).
+	escaped := run_good(v3_bin, 'good_escaped_pointer_alias_mutation',
+		'struct Box {\nmut:\n\tx int\n}\nfn make() &Box {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tp := &v\n\tv.x = 2\n\treturn p\n}\nfn main() {\n\tb := make()\n\tprintln(int_str(b.x))\n}\n')
+	assert escaped == '2'
+	// A static-method call returning a fixed array (`Type.make() [N]T`) is lowered to a selector
+	// whose base is a type, not a receiver value; its `_v_ret_*` wrapper must still be unwrapped to
+	// `.ret_arr`, so the assignment/indexing below sees the array, not the wrapper struct.
+	static_fixed := run_good(v3_bin, 'good_static_method_fixed_array_return',
+		'struct Maker {}\nfn Maker.make() [3]int {\n\treturn [10, 20, 30]!\n}\nfn main() {\n\ta := Maker.make()\n\tprintln(int_str(a[0] + a[1] + a[2]))\n}\n')
+	assert static_fixed == '60'
+}
