@@ -3,6 +3,21 @@
 // that can be found in the LICENSE file.
 module wasm
 
+// Memory contract for the native WebAssembly backend
+// ---------------------------------------------------
+// `-b wasm` selects `-gc none` automatically (every non-C backend defaults to
+// no_gc in v.pref.default), and autofree is off by default. Crucially, autofree
+// code generation lives only in the C backend (v/gen/c/autofree.v); this backend
+// never sees frontend-inserted free/drop calls, so the AST it lowers is "natural".
+//
+// Today the only memory mechanism is the shadow stack (__vsp, grows down).
+// `g.func.drop()` calls in this backend are WebAssembly operand-stack drops, not
+// memory frees. There is no malloc/free/GC.
+//
+// This invariant is load-bearing: a future manual allocator (__v_alloc/__v_free)
+// and explicit dispose() will be the sole heap-management entry points, and must
+// not collide with frontend-inserted frees. The no-frontend-free property is
+// regression-guarded by tests_decompile/no_frontend_free_under_wasm.vv.
 import wasm
 import v.ast
 import v.gen.wasm.serialise
