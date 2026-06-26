@@ -131,3 +131,60 @@ fn main() {
 	argon2.compare_hash_and_password('correct horse battery staple'.bytes(), hash.bytes())!
 }
 ```
+
+### bcrypt Password Hashing
+
+```v
+import crypto.bcrypt
+
+fn main() {
+	password := 'correct horse battery staple'.bytes()
+	hash := bcrypt.generate_from_password(password, bcrypt.default_cost)!
+	println(hash)
+
+	bcrypt.compare_hash_and_password(password, hash.bytes())!
+}
+```
+
+### scrypt
+
+`scrypt` is a memory-hard key derivation function (RFC 7914). `n` must be a power of two.
+For password storage OWASP recommends at least `(n: 2^17, r: 8, p: 1)` (or `(n: 2^14, r: 8, p: 5)`);
+tune the parameters for your hardware. Smaller values such as `(n: 16384, r: 8, p: 1)` are only a
+low-cost interactive/demo profile, not a password-storage profile.
+
+```v
+import crypto.rand
+import crypto.scrypt
+
+fn main() {
+	password := 'correct horse battery staple'.bytes()
+	// generate and persist a unique random salt per password
+	salt := rand.bytes(16)!
+	// tune the work factor for your deployment (OWASP suggests n >= 2^17 for password storage)
+	key := scrypt.scrypt(password, salt, 131072, 8, 1, 32)!
+	assert key.len == 32
+}
+```
+
+### PBKDF2
+
+`pbkdf2` derives a key from a password (RFC 8018). For password storage prefer a
+memory-hard function such as `argon2` or `scrypt`; if you must use PBKDF2, use a high
+iteration count and tune it for your hardware. OWASP currently recommends at least
+600_000 iterations for PBKDF2-HMAC-SHA256.
+
+```v
+import crypto.pbkdf2
+import crypto.rand
+import crypto.sha256
+
+fn main() {
+	password := 'correct horse battery staple'.bytes()
+	// generate and persist a unique random salt per password
+	salt := rand.bytes(16)!
+	// tune the iteration count for your deployment (OWASP suggests 600_000+ for SHA-256)
+	key := pbkdf2.key(password, salt, 600_000, 32, sha256.new())!
+	assert key.len == 32
+}
+```
