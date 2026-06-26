@@ -552,3 +552,27 @@ fn test_h2_stop_receiving_limit_breaks_early() {
 	}
 	assert false, 'expected error on reuse after early termination'
 }
+
+// RFC 9113 §8.2: the synchronous client must reject a response carrying a
+// malformed field (connection-specific header or uppercase field name) rather
+// than delivering it — parity with the mux path. Conformance gap G1.
+fn test_h2_conn_rejects_malformed_response_fields() {
+	// A connection-specific header (§8.2.2) is forbidden in HTTP/2.
+	inbound1 := build_server_stream([H2HeaderField{':status', '200'},
+		H2HeaderField{'transfer-encoding', 'chunked'}], [])
+	mut c1 := new_h2_conn(&MockTransport{ inbound: inbound1 })
+	if _ := c1.do(H2ClientRequest{ authority: 'h.example' }) {
+		assert false, 'connection-specific response header was accepted'
+	} else {
+		assert err.msg().contains('transfer-encoding'), 'unexpected error: ${err.msg()}'
+	}
+	// An uppercase field name (§8.2.1) is malformed.
+	inbound2 := build_server_stream([H2HeaderField{':status', '200'},
+		H2HeaderField{'Content-Type', 'text/plain'}], [])
+	mut c2 := new_h2_conn(&MockTransport{ inbound: inbound2 })
+	if _ := c2.do(H2ClientRequest{ authority: 'h.example' }) {
+		assert false, 'uppercase response header name was accepted'
+	} else {
+		assert err.msg().contains('uppercase'), 'unexpected error: ${err.msg()}'
+	}
+}

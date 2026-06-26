@@ -209,9 +209,17 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 						return error('h2: trailers HEADERS frame must carry END_STREAM')
 					}
 					for f in decoded {
-						if !f.name.starts_with(':') {
-							resp.headers << f
+						// RFC 9113 §8.1: trailers MUST NOT contain pseudo-header fields;
+						// the §8.2 field-name rules apply. A malformed field makes the
+						// response malformed — fail the request (mirrors the mux reset).
+						if f.name.starts_with(':') {
+							return error('h2: malformed trailers: pseudo-header ${f.name}')
 						}
+						reason := h2_response_field_error(f.name)
+						if reason != '' {
+							return error('h2: malformed trailers: ${reason}')
+						}
+						resp.headers << f
 					}
 					break
 				}
@@ -254,16 +262,34 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 				}
 				// Final response (status >= 200): populate, skipping pseudo-headers.
 				resp.status = status
+				mut seen_regular := false
+				mut seen_status := false
 				for f in decoded {
-					if !f.name.starts_with(':') {
-						resp.headers << f
-						if f.name == 'content-length' {
-							if all_digits(f.value) {
-								body_expected = f.value.u64()
-								has_content_length = true
-							} else {
-								return error('h2: malformed Content-Length: ${f.value}')
-							}
+					if f.name.starts_with(':') {
+						// RFC 9113 §8.3: in a response only :status is valid; pseudo-
+						// headers MUST precede regular fields and MUST NOT be duplicated.
+						// An undefined pseudo, :status after a regular field, or a
+						// second :status is malformed.
+						if f.name != ':status' || seen_regular || seen_status {
+							return error('h2: malformed response: invalid pseudo-header ${f.name}')
+						}
+						seen_status = true
+						continue
+					}
+					seen_regular = true
+					// RFC 9113 §8.2: reject uppercase/empty names and connection-specific
+					// fields rather than delivering a malformed response to the caller.
+					reason := h2_response_field_error(f.name)
+					if reason != '' {
+						return error('h2: malformed response: ${reason}')
+					}
+					resp.headers << f
+					if f.name == 'content-length' {
+						if all_digits(f.value) {
+							body_expected = f.value.u64()
+							has_content_length = true
+						} else {
+							return error('h2: malformed Content-Length: ${f.value}')
 						}
 					}
 				}

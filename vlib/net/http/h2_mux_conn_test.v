@@ -1931,10 +1931,11 @@ fn test_mux_response_trailers_preserved() {
 			peer.fail('data: ${err.msg()}')
 			return
 		}
-		// A trailing HEADERS block carrying END_STREAM. ':status' is a pseudo-header
-		// forbidden in trailers — it must be dropped, the rest preserved.
-		trailer_block := peer.encoder.encode([H2HeaderField{':status', '200'},
-			H2HeaderField{'grpc-status', '0'}, H2HeaderField{'grpc-message', 'ok'}])
+		// A trailing HEADERS block carrying END_STREAM, with valid (non-pseudo)
+		// trailer fields that must be preserved. (Pseudo-headers in trailers are
+		// malformed per §8.1 and are covered by the rejection test below.)
+		trailer_block := peer.encoder.encode([H2HeaderField{'grpc-status', '0'},
+			H2HeaderField{'grpc-message', 'ok'}])
 		peer.write_frame(H2HeadersFrame{
 			stream_id:   id
 			fragment:    trailer_block
@@ -1971,4 +1972,113 @@ fn test_mux_response_trailers_preserved() {
 	assert grpc_message == 'ok', 'trailer grpc-message missing from response headers: ${resp.headers}'
 	assert !pseudo_in_headers, 'pseudo-header field leaked into trailers: ${resp.headers}'
 	cend.close_both()
+}
+
+// mux_response_rejected runs one request whose response carries `resp_fields` and
+// asserts the request fails with an error containing `want` (the stream was reset
+// as malformed), rather than delivering the response.
+fn mux_response_rejected(resp_fields []H2HeaderField, want string) {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_test_mux_conn(mut cend)
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	peer_thread := spawn fn (mut peer MuxTestPeer, resp_fields []H2HeaderField) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		block := peer.encoder.encode(resp_fields)
+		peer.write_frame(H2HeadersFrame{
+			stream_id:   ids[0]
+			fragment:    block
+			end_headers: true
+			end_stream:  true
+		}) or {
+			peer.fail('resp: ${err.msg()}')
+			return
+		}
+		// Drain the client's RST_STREAM until the pipe closes.
+		for {
+			peer.pump() or { return }
+		}
+	}(mut peer, resp_fields)
+	mut got := ''
+	if resp := conn.do(H2ClientRequest{ authority: 't', path: '/x' }) {
+		got = '<<accepted: status=${resp.status} headers=${resp.headers}>>'
+	} else {
+		got = err.msg()
+	}
+	cend.close_both() // unblock the peer's pump loop so its thread exits
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	assert got.contains(want), 'expected "${want}" in the rejection, got: ${got}'
+}
+
+// RFC 9113 §8.2: a response carrying a malformed field — a connection-specific
+// header (transfer-encoding/connection/...) or an uppercase field name — is
+// malformed and must be rejected, not delivered to the caller. Regression for
+// the proactive RFC-conformance audit (gap G1): both client paths previously
+// appended received fields with only :status / content-length validation.
+fn test_mux_response_rejects_malformed_fields() {
+	mux_response_rejected([H2HeaderField{':status', '200'},
+		H2HeaderField{'transfer-encoding', 'chunked'}], 'transfer-encoding')
+	mux_response_rejected([H2HeaderField{':status', '200'},
+		H2HeaderField{'Content-Type', 'text/plain'}], 'uppercase')
+	// An undefined response pseudo-header is also malformed (§8.3.1).
+	mux_response_rejected([H2HeaderField{':status', '200'}, H2HeaderField{':custom', 'x'}],
+		'pseudo-header')
+}
+
+// RFC 9113 §8.1: a trailing HEADERS block carrying a pseudo-header (or any
+// malformed field) is malformed and must reset the stream, not be dropped.
+fn test_mux_trailers_reject_pseudo() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_test_mux_conn(mut cend)
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		id := ids[0]
+		peer.respond_headers(id, false) or {
+			peer.fail('respond: ${err.msg()}')
+			return
+		}
+		// Trailers must not contain a pseudo-header.
+		block := peer.encoder.encode([H2HeaderField{':status', '200'}])
+		peer.write_frame(H2HeadersFrame{
+			stream_id:   id
+			fragment:    block
+			end_headers: true
+			end_stream:  true
+		}) or {
+			peer.fail('trailers: ${err.msg()}')
+			return
+		}
+		for {
+			peer.pump() or { return }
+		}
+	}(mut peer)
+	mut got := ''
+	if resp := conn.do(H2ClientRequest{ authority: 't', path: '/g' }) {
+		got = '<<accepted: ${resp.headers}>>'
+	} else {
+		got = err.msg()
+	}
+	cend.close_both()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	assert got.contains('malformed trailers'), 'trailers pseudo-header not rejected: ${got}'
 }
