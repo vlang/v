@@ -1099,6 +1099,9 @@ fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string
 		heap_rhs = t.make_cast(ptr_typ, dup, ptr_typ)
 	}
 	t.heaped_amp_locals[var_name] = true
+	// The local is now a `&T`, so its compound/postfix mutations (`v += 1`, `v++`) must store
+	// through the pointer (`*v += 1`); mark it as a pointer-value lvalue so that lowering fires.
+	t.pointer_value_lvalues[var_name] = true
 	stmts << t.make_decl_assign_typed(var_name, heap_rhs, ptr_typ)
 	return stmts
 }
@@ -1113,6 +1116,9 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	t.escaping_amp_ptrs = map[string]bool{}
 	t.escaping_amp_sources = map[string]bool{}
 	t.heaped_amp_locals = map[string]bool{}
+	// Cleared per function: heaped locals add their names below (in heap_escaping_source_decl);
+	// for-loop element vars set and restore their own entries within the loop body.
+	t.pointer_value_lvalues = map[string]bool{}
 	mut amp_ptrs := map[string]bool{}
 	mut amp_sources := map[string]string{} // pointer `p` -> source local `v`
 	mut ptr_aliases := map[string]string{} // copy `q := p` -> aliased pointer `p`

@@ -612,7 +612,9 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		return '(${ct}){${g.expr_to_string(ret_id)}}'
 	}
 	if g.cur_fn_ret is types.Interface {
-		return '(${ct}){0}'
+		// Box the concrete value the same way the direct return path does, so a deferred return
+		// preserves `_typ`/`_object` instead of zeroing the interface.
+		return g.interface_value_to_string(ret_id, g.cur_fn_ret)
 	}
 	return g.expr_to_string(ret_id)
 }

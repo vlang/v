@@ -886,6 +886,25 @@ fn (mut g FlatGen) expr_to_string(id flat.NodeId) string {
 	return result
 }
 
+// interface_value_to_string captures, as a string, the boxed interface value the direct return
+// path emits (`(Iface){._typ = N, ._object = ...}`) — so a deferred return can save it into a
+// temp without dropping `_typ`/`_object`. Mirrors that path: box a concrete value, else (already
+// boxed by the transform) emit it as-is.
+fn (mut g FlatGen) interface_value_to_string(id flat.NodeId, expected types.Type) string {
+	orig := g.sb
+	orig_line_start := g.line_start
+	g.sb = strings.new_builder(64)
+	// Box mid-statement (no leading indent), matching the direct return path.
+	g.line_start = false
+	if !g.gen_interface_value_expr(id, expected) {
+		g.gen_expr(id)
+	}
+	result := g.sb.str()
+	g.sb = orig
+	g.line_start = orig_line_start
+	return result
+}
+
 // expr_to_string_with_expected_type converts expr to string with expected type data for c.
 fn (mut g FlatGen) expr_to_string_with_expected_type(id flat.NodeId, expected types.Type) string {
 	orig := g.sb

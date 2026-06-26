@@ -931,3 +931,21 @@ fn test_const_length_fixed_array() {
 		"const segs = 2\nfn f() [segs + 1]int {\n\tmut r := [segs + 1]int{}\n\tr[0] = 5\n\tr[1] = 6\n\tr[2] = 7\n\treturn r\n}\nfn main() {\n\ta := f()\n\tmut sum := 0\n\tfor x in a {\n\t\tsum += x\n\t}\n\tprintln(int_str(a.len) + ',' + int_str(a[1]) + ',' + int_str(sum))\n}\n")
 	assert expr == '3,6,18'
 }
+
+fn test_pr_review_codegen_batch_twentyfive() {
+	v3_bin := build_v3()
+	// An interface-returning function with a pending `defer` saves its return value into a temp
+	// before running the defers. That temp must hold the boxed interface value (`_typ`/`_object`),
+	// not a zeroed `(Iface){0}`; otherwise the later dynamic dispatch panics. The boxing must match
+	// the direct (defer-free) return path.
+	defer_iface := run_good(v3_bin, 'good_interface_return_with_defer',
+		'interface Speaker {\n\tspeak() int\n}\nstruct Dog {\n\tvolume int\n}\nfn (d Dog) speak() int {\n\treturn d.volume\n}\nfn make() Speaker {\n\tdefer {\n\t\t_ := 0\n\t}\n\treturn Dog{\n\t\tvolume: 42\n\t}\n}\nfn main() {\n\ts := make()\n\tprintln(int_str(s.speak()))\n}\n')
+	assert defer_iface == '42'
+	// A local whose address escapes (returned via a pointer) is moved to the heap, so the local is
+	// now a `&T`. Its compound (`v += 1`) and postfix (`v++`) mutations must store through the
+	// pointer (`*v += 1`, `(*v)++`), not perform pointer arithmetic; the returned pointer reflects
+	// the mutated value.
+	heap_compound := run_good(v3_bin, 'good_heaped_local_compound_mutation',
+		"fn compound() int {\n\tmut v := 1\n\tp := &v\n\tv += 1\n\treturn *p\n}\nfn postfix() int {\n\tmut v := 5\n\tp := &v\n\tv++\n\tv++\n\treturn *p\n}\nfn main() {\n\tprintln(int_str(compound()) + ',' + int_str(postfix()))\n}\n")
+	assert heap_compound == '2,7'
+}
