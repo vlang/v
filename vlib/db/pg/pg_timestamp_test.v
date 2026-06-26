@@ -173,6 +173,35 @@ fn test_offset_within_range_still_decodes() {
 	assert t.minute == 30
 }
 
+fn test_offset_normalizes_into_bc_returns_error() {
+	// `0001-01-01 00:30:00+01` normalizes to `0000-12-31 23:30:00` (year 0 == 1 BC),
+	// which is unrepresentable and must be rejected rather than silently accepted.
+	pg_parse_timestamp('0001-01-01 00:30:00+01') or {
+		assert err.msg().contains('BC')
+		return
+	}
+	assert false, 'expected an error when the UTC offset normalizes into a BC/year-0 date'
+}
+
+fn test_lower_boundary_offset_within_range_still_decodes() {
+	// `0001-01-01 01:30:00+01` normalizes to `0001-01-01 00:30:00` (year 1), still valid.
+	t := pg_parse_timestamp('0001-01-01 01:30:00+01')!
+	assert t.year == 1
+	assert t.month == 1
+	assert t.day == 1
+	assert t.hour == 0
+	assert t.minute == 30
+}
+
+fn test_year_zero_literal_returns_bc_error() {
+	// A direct year-0 value (no ` BC` suffix) is still unrepresentable.
+	pg_parse_timestamp('0000-01-01 00:00:00') or {
+		assert err.msg().contains('BC')
+		return
+	}
+	assert false, 'expected a BC/year-0 error for a literal year-0 timestamp'
+}
+
 fn test_issue_27556_example() {
 	// The exact value from the issue: stored as '2024-01-15 14:00:00.123456+01:00'
 	// with the session in UTC, PostgreSQL returns it as below.

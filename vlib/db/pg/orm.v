@@ -546,9 +546,14 @@ fn pg_parse_timestamp(value string) !time.Time {
 
 	// Validate the ranges up front: `time.new` *panics* on out-of-range fields, but
 	// PostgreSQL accepts values V cannot represent (e.g. years past 9999), so turn
-	// those into a clear error instead of aborting the process.
-	if year < -9999 || year > 9999 {
+	// those into a clear error instead of aborting the process. Supported AD years are
+	// 1..9999; year 0 / negative years are BC (proleptic Gregorian) and unrepresentable,
+	// matching the explicit ` BC` rejection above.
+	if year > 9999 {
 		return error('pg: year out of range in timestamp `${str}`')
+	}
+	if year < 1 {
+		return error('pg: cannot decode BC/year-0 timestamp `${str}` into time.Time')
 	}
 	if month < 1 || month > 12 {
 		return error('pg: month out of range in timestamp `${str}`')
@@ -579,11 +584,15 @@ fn pg_parse_timestamp(value string) !time.Time {
 	if offset_seconds != 0 {
 		// Normalize to UTC by subtracting the parsed offset.
 		result = result.add_seconds(-offset_seconds)
-		// The offset can push a boundary value (e.g. `9999-12-31 23:30:00-01`) past the
-		// representable range, so re-check the normalized result; otherwise offset-bearing
-		// timestamps would silently bypass the range guard above.
-		if result.year < -9999 || result.year > 9999 {
+		// The offset can push a boundary value past the representable range in either
+		// direction, so re-check the normalized result; otherwise offset-bearing
+		// timestamps would silently bypass the range guards above. Examples:
+		// `9999-12-31 23:30:00-01` -> year 10000, `0001-01-01 00:30:00+01` -> year 0 (BC).
+		if result.year > 9999 {
 			return error('pg: year out of range in timestamp `${str}` after UTC normalization')
+		}
+		if result.year < 1 {
+			return error('pg: timestamp `${str}` normalizes to a BC/year-0 date, which is unrepresentable')
 		}
 	}
 	return result
