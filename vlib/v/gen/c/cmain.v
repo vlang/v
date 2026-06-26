@@ -198,7 +198,13 @@ fn (mut g Gen) gen_shared_library_boehm_init() {
 	if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 		// See gen_boehm_gc_init: rarer stop-the-world pauses for the opt modes,
 		// overridable via the `GC_FREE_SPACE_DIVISOR` env var (issue #27555).
-		g.writeln('\tGC_set_free_space_divisor(1);')
+		// Only tune when this library is the one bringing up the collector. If the
+		// host process already initialized Boehm, the local GC_INIT() below is a
+		// no-op that will not re-read the env var, so setting the divisor here would
+		// silently override the host's process-wide value (and its env override).
+		g.writeln('\tif (!GC_is_init_called()) {')
+		g.writeln('\t\tGC_set_free_space_divisor(1);')
+		g.writeln('\t}')
 	}
 	g.writeln('\tGC_INIT();')
 	g.writeln('\tGC_register_displacement(sizeof(void*));')

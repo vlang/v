@@ -579,6 +579,10 @@ fn test_user_defined_windows_dllmain_disables_generated_entrypoint() {
 	ensure_compilation_succeeded(compilation, cmd)
 	assert compilation.output.contains('void _vinit_caller() {')
 	assert compilation.output.contains('GC_set_pages_executable(0);')
+	// The shared-library GC tuning (issue #27555) must stay guarded, so loading
+	// the library into an already-GC-initialized host does not clobber the host's
+	// process-wide free-space divisor (its local GC_INIT() would be a no-op).
+	assert compilation.output.contains('if (!GC_is_init_called()) {')
 	assert compilation.output.contains('GC_INIT();')
 	assert compilation.output.contains('DllMain(')
 	assert compilation.output.contains('_vinit_caller();')
