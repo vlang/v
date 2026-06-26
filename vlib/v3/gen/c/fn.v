@@ -105,8 +105,7 @@ fn (g &FlatGen) top_level_stmts() []TopLevelStmt {
 			if int(child_id) < g.a.user_code_start {
 				continue
 			}
-			child := g.a.nodes[int(child_id)]
-			if cgen_is_top_level_stmt(child) {
+			if g.cgen_is_top_level_stmt(child_id) {
 				stmts << TopLevelStmt{
 					id:     child_id
 					file:   file_node.value
@@ -136,11 +135,23 @@ fn (g &FlatGen) top_level_file_module_name(file_node flat.Node) string {
 	return ''
 }
 
-fn cgen_is_top_level_stmt(node flat.Node) bool {
+fn (g &FlatGen) cgen_is_top_level_stmt(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := g.a.nodes[int(id)]
 	return match node.kind {
 		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt,
-		.for_in_stmt, .if_expr, .assert_stmt, .block {
+		.for_in_stmt, .if_expr, .assert_stmt {
 			true
+		}
+		.block, .comptime_if {
+			for i in 0 .. node.children_count {
+				if g.cgen_is_top_level_stmt(g.a.child(&node, i)) {
+					return true
+				}
+			}
+			false
 		}
 		else {
 			false
@@ -959,7 +970,7 @@ fn (mut g FlatGen) gen_export_wrapper_for_fn(node flat.Node, module_name string)
 	export_name := g.export_fn_name_in_module(module_name, node.value) or { return }
 	canonical_name := g.fn_c_name_in_module(module_name, node.value)
 	ret_type := g.tc.parse_type(node.typ)
-	ret_ct := g.optional_type_name(ret_type)
+	ret_ct := g.fn_return_type_name(ret_type)
 	g.write(ret_ct)
 	g.write(' ')
 	g.write(export_name)
@@ -3733,7 +3744,7 @@ fn (mut g FlatGen) forward_decls() {
 			if export_name := g.export_fn_name_in_module(cur_module, node.value) {
 				if !forwarded[export_name] {
 					forwarded[export_name] = true
-					g.write(g.optional_type_name(ret_type))
+					g.write(g.fn_return_type_name(ret_type))
 					g.write(' ')
 					g.write(export_name)
 					g.write('(')

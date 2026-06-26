@@ -79,6 +79,19 @@ fn main() {
 	return os.read_file(c_path) or { panic(err) }
 }
 
+fn comptime_decl_gen_c_source(v3_bin string, name string, source string, flags string) string {
+	root := os.join_path(os.temp_dir(), 'v3_comptime_top_level_decl_${name}_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	main_path := os.join_path(root, 'main.v')
+	os.write_file(main_path, source) or { panic(err) }
+	c_path := os.join_path(root, 'out.c')
+	compile := os.execute('${v3_bin} ${main_path} ${flags} -b c -o ${c_path}')
+	assert compile.exit_code == 0, '${name}: C output failed: ${compile.output}'
+	assert os.exists(c_path), '${name}: missing generated C ${c_path}'
+	return os.read_file(c_path) or { panic(err) }
+}
+
 fn test_top_level_decls_inside_active_comptime_branch_are_codegen_visible() {
 	v3_bin := comptime_decl_build_v3()
 	else_c := comptime_decl_gen_c(v3_bin, 'else_branch', false)
@@ -92,4 +105,37 @@ fn test_top_level_decls_inside_active_comptime_branch_are_codegen_visible() {
 	assert comptime_decl_count(feature_c, 'struct Choice {') == 1, feature_c
 	assert feature_choice.contains('int x;'), feature_c
 	assert !feature_choice.contains('_dummy'), feature_c
+}
+
+fn test_declaration_only_top_level_comptime_block_does_not_synthesize_main() {
+	v3_bin := comptime_decl_build_v3()
+	c_code := comptime_decl_gen_c_source(v3_bin, 'decl_only_no_main', 'module main
+
+$if some_feature ? {
+	fn helper() int {
+		return 3
+	}
+} $else {
+	struct Helper {}
+}
+',
+		'-d some_feature')
+	assert !c_code.contains('int main('), c_code
+}
+
+fn test_top_level_comptime_block_with_statement_still_synthesizes_main() {
+	v3_bin := comptime_decl_build_v3()
+	c_code := comptime_decl_gen_c_source(v3_bin, 'stmt_synth_main', "module main
+
+$if some_feature ? {
+	println('active')
+} $else {
+	fn helper() int {
+		return 3
+	}
+}
+",
+		'-d some_feature')
+	assert c_code.contains('int main('), c_code
+	assert c_code.contains('active'), c_code
 }

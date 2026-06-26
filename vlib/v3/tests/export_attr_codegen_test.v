@@ -284,3 +284,94 @@ fn main() {}
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('must name all parameters'), compile.output
 }
+
+fn test_export_wrapper_fixed_array_return_uses_return_wrapper_type() {
+	v3_bin := export_attr_build_v3()
+	root := export_attr_project('fixed_array_return', {
+		'main.v': "module main
+
+@[export: 'raw_numbers']
+fn numbers() [3]int {
+	mut values := [3]int{}
+	values[0] = 1
+	values[1] = 2
+	values[2] = 3
+	return values
+}
+
+fn main() {}
+"
+	})
+	bin_path := os.join_path(root, 'app')
+	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
+	assert compile.exit_code == 0, compile.output
+	c_code := os.read_file(bin_path + '.c') or { panic(err) }
+	assert c_code.contains('_v_ret_Array_fixed_int_3 numbers(void);'), c_code
+	assert c_code.contains('_v_ret_Array_fixed_int_3 raw_numbers(void);'), c_code
+	assert c_code.contains('_v_ret_Array_fixed_int_3 numbers(void) {'), c_code
+	assert c_code.contains('_v_ret_Array_fixed_int_3 raw_numbers(void) {'), c_code
+	assert c_code.contains('return numbers();'), c_code
+	assert !c_code.contains('\nArray_fixed_int_3 raw_numbers(void)'), c_code
+}
+
+fn test_export_wrapper_fn_pointer_return_uses_fn_pointer_typedef() {
+	v3_bin := export_attr_build_v3()
+	root := export_attr_project('fn_pointer_return', {
+		'main.v': "module main
+
+type Callback = fn () int
+
+fn callback_value() int {
+	return 7
+}
+
+@[export: 'raw_callback']
+fn callback() Callback {
+	return callback_value
+}
+
+fn main() {}
+"
+	})
+	bin_path := os.join_path(root, 'app')
+	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
+	assert compile.exit_code == 0, compile.output
+	c_code := os.read_file(bin_path + '.c') or { panic(err) }
+	assert c_code.contains('typedef int (*_fn_ptr_'), c_code
+	assert c_code.contains(' callback(void);'), c_code
+	assert c_code.contains(' raw_callback(void);'), c_code
+	assert c_code.contains(' raw_callback(void) {'), c_code
+	assert c_code.contains('return callback();'), c_code
+	assert !c_code.contains('fn_ptr:'), c_code
+}
+
+fn test_export_wrapper_for_veb_handler_forwards_implicit_ctx() {
+	v3_bin := export_attr_build_v3()
+	root := export_attr_project('veb_implicit_ctx_export_wrapper', {
+		'main.v': "module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+@[export: 'raw_show']
+pub fn (app &App) show(id int) veb.Result {
+	_ = id
+	return veb.Result{}
+}
+
+fn main() {}
+"
+	})
+	c_path := os.join_path(root, 'app.c')
+	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), c_path)
+	assert compile.exit_code == 0, compile.output
+	c_code := os.read_file(c_path) or { panic(err) }
+	assert c_code.contains('veb__Result raw_show(App* app, Context* ctx, int id);'), c_code
+	assert c_code.contains('veb__Result raw_show(App* app, Context* ctx, int id) {'), c_code
+	assert c_code.contains('return App__show(app, ctx, id);'), c_code
+}
