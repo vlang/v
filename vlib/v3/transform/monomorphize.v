@@ -142,6 +142,13 @@ fn (mut t Transformer) specialize_generic_struct_methods(struct_decls map[string
 				if isnil(t.tc) || mvkey !in t.tc.generic_method_value_info {
 					continue
 				}
+				// Only specialize a method value the checker recorded inside a *reachable*
+				// function: markused seeds the concrete instance key (`Box[int].report`) into
+				// `used_fns` per reachable function, so one used only in dead code is skipped —
+				// its body may be invalid for that type argument and would fail C compilation.
+				if t.used_fns.len > 0 && mvkey !in t.used_fns && c_name(mvkey) !in t.used_fns {
+					continue
+				}
 			}
 			if decl.node.generic_params.len != 0 {
 				// Method has its own generic parameters beyond the struct's; leave it

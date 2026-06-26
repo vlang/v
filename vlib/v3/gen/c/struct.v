@@ -49,19 +49,20 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	if inst := g.generic_struct_init_instance_ct(node.value) {
 		name = inst
 	}
+	// A bare generic literal stores its fields under the concrete instance key (`Box[int]`);
+	// the bare `node.value` (`Box`) entry is removed by monomorphization, so resolve the
+	// instance for the fixed-array-field test, field-type lookups, and omitted-default emission.
+	lookup_name := g.struct_init_fields_key(node.value, node.value)
 	if node.children_count == 0 && g.is_scalar_zero_init_type(node.value, name) {
 		g.write(g.scalar_zero_init(name))
 		return
 	}
-	if !g.is_interface_type_name(node.value) && g.struct_init_has_fixed_array_field(node) {
+	if !g.is_interface_type_name(node.value)
+		&& g.struct_init_has_fixed_array_field(node, lookup_name) {
 		g.gen_struct_init_with_fixed_array_fields(node, name, init_module)
 		return
 	}
 	g.write('(${name}){')
-	// A bare generic literal stores its fields under the concrete instance key (`Box[int]`);
-	// the bare `node.value` (`Box`) entry is removed by monomorphization, so resolve the
-	// instance for field-type lookups and omitted-default emission below.
-	lookup_name := g.struct_init_fields_key(node.value, node.value)
 	mut allowed_fields := map[string]bool{}
 	if fields := g.struct_fields_for_type(lookup_name) {
 		for f in fields {
@@ -164,18 +165,18 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	g.write('}')
 }
 
-fn (mut g FlatGen) struct_init_has_fixed_array_field(node flat.Node) bool {
+fn (mut g FlatGen) struct_init_has_fixed_array_field(node flat.Node, type_name string) bool {
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
 		if field.value.len == 0 {
-			if sf := g.struct_field_at(node.value, i) {
+			if sf := g.struct_field_at(type_name, i) {
 				if sf.typ is types.ArrayFixed {
 					return true
 				}
 			}
 			continue
 		}
-		if ftyp := g.struct_field_type(node.value, field.value) {
+		if ftyp := g.struct_field_type(type_name, field.value) {
 			if ftyp is types.ArrayFixed {
 				return true
 			}
@@ -198,8 +199,12 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 		g.write('(${name}*)')
 	}
 	g.write('({${name} ${tmp} = (${name}){')
+	// A bare generic literal stores its fields under the concrete instance key (`Box[int]`);
+	// the bare `node.value` (`Box`) entry is removed by monomorphization, so resolve the
+	// instance for the field lookups and omitted-default emission below.
+	lookup_name := g.struct_init_fields_key(node.value, node.value)
 	mut allowed_fields := map[string]bool{}
-	if fields := g.struct_fields_for_type(node.value) {
+	if fields := g.struct_fields_for_type(lookup_name) {
 		for f in fields {
 			allowed_fields[f.name] = true
 		}
@@ -216,7 +221,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 		}
 		value_id := g.a.child(field, 0)
 		if field.value.len == 0 {
-			if sf := g.struct_field_at(node.value, i) {
+			if sf := g.struct_field_at(lookup_name, i) {
 				if sf.typ is types.ArrayFixed {
 					fixed_fields << sf.name
 					fixed_values << value_id
@@ -239,7 +244,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 				has_field = true
 			}
 		} else {
-			ftyp := g.struct_field_type(node.value, field.value) or { types.Type(types.void_) }
+			ftyp := g.struct_field_type(lookup_name, field.value) or { types.Type(types.void_) }
 			if ftyp is types.ArrayFixed {
 				fixed_fields << field.value
 				fixed_values << value_id
@@ -277,8 +282,9 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 	sname := if qname in g.tc.structs { qname } else { node.value }
 	g.tc.cur_module = after_fields_module
 	has_field = g.gen_struct_default_fields(sname, mut set_fields, has_field)
-	if sname in g.tc.structs {
-		for f in g.tc.structs[sname] {
+	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { sname }
+	if defaults_key in g.tc.structs {
+		for f in g.tc.structs[defaults_key] {
 			if f.name in set_fields {
 				continue
 			}
@@ -438,18 +444,18 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	}
 	sum_name := g.resolve_sum_name(node.value)
 	is_sum_literal := sum_name in g.tc.sum_types
+	// A bare generic literal stores its fields under the concrete instance key (`Box[int]`);
+	// the bare `node.value` (`Box`) entry is removed by monomorphization, so resolve the
+	// instance for the fixed-array-field test, field-type lookups, and omitted-default emission.
+	lookup_name := g.struct_init_fields_key(node.value, node.value)
 	if !is_sum_literal && !g.is_interface_type_name(node.value)
-		&& g.struct_init_has_fixed_array_field(node) {
+		&& g.struct_init_has_fixed_array_field(node, lookup_name) {
 		// Fixed-array fields can't be set in the `&(T){...}` compound literal; build
 		// via a temp + memcpy and memdup the result.
 		g.gen_struct_init_with_fixed_array_fields_impl(node, name, init_module, true)
 		return
 	}
 	g.write('(${name}*)memdup(&(${name}){')
-	// A bare generic literal stores its fields under the concrete instance key (`Box[int]`);
-	// the bare `node.value` (`Box`) entry is removed by monomorphization, so resolve the
-	// instance for field-type lookups and omitted-default emission below.
-	lookup_name := g.struct_init_fields_key(node.value, node.value)
 	mut allowed_fields := map[string]bool{}
 	if fields := g.struct_fields_for_type(lookup_name) {
 		for f in fields {

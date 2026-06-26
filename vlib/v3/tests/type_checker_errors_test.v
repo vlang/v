@@ -842,3 +842,28 @@ fn test_pr_review_codegen_batch_twentyone() {
 		'struct Foo {\nmut:\n\tn int\n}\nfn (f &Foo) tick() int {\n\treturn f.n\n}\nfn run(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tprintln(int_str(run(Foo{\n\t\tn: 5\n\t}.tick)))\n}\n')
 	assert mv_rvalue == '5'
 }
+
+fn test_pr_review_codegen_batch_twentytwo() {
+	v3_bin := build_v3()
+	// A bare generic literal retargeted to a concrete instance must run the fixed-array-field
+	// detection against that concrete key (the bare `Box` field table is dropped by
+	// monomorphization), so a `[N]T` field is filled by memcpy instead of the invalid C
+	// `(Box_int){.data = a}` (a C array member cannot be initialized from another array object).
+	fa := run_good(v3_bin, 'good_concrete_generic_fixed_array_field',
+		'struct Box[T] {\n\tdata [2]T\n}\nfn f(a [2]int) Box[int] {\n\treturn Box{\n\t\tdata: a\n\t}\n}\nfn main() {\n\tarr := [10, 20]!\n\tb := f(arr)\n\tprintln(int_str(b.data[0] + b.data[1]))\n}\n')
+	assert fa == '30'
+	// A generic method value used only in an unreachable function must not drive a concrete
+	// specialization: `Box[Pair].doubled` (here `Pair + Pair`) would emit an invalid body and
+	// fail C compilation. Only the reachable `Box[int].doubled` is specialized.
+	dead := run_good(v3_bin, 'good_dead_generic_method_value_not_specialized',
+		'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) doubled() T {\n\treturn b.v + b.v\n}\nstruct Pair {\n\ta int\n}\nfn run_int(cb fn () int) int {\n\treturn cb()\n}\nfn run_pair(cb fn () Pair) Pair {\n\treturn cb()\n}\nfn dead_fn() {\n\tp := Box[Pair]{\n\t\tv: Pair{\n\t\t\ta: 1\n\t\t}\n\t}\n\t_ := run_pair(p.doubled)\n}\nfn main() {\n\tb := Box[int]{\n\t\tv: 5\n\t}\n\tprintln(int_str(run_int(b.doubled)))\n}\n')
+	assert dead == '10'
+	// A reachable generic method value of any instance still specializes correctly.
+	live := run_good(v3_bin, 'good_reachable_generic_method_value_specialized',
+		'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) first() T {\n\treturn b.v\n}\nstruct Pair {\n\ta int\n}\nfn run_pair(cb fn () Pair) Pair {\n\treturn cb()\n}\nfn main() {\n\tp := Box[Pair]{\n\t\tv: Pair{\n\t\t\ta: 7\n\t\t}\n\t}\n\tr := run_pair(p.first)\n\tprintln(int_str(r.a))\n}\n')
+	assert live == '7'
+	// Discarding a method value with `_ =` stores nothing, so it is not an escape.
+	blank := run_good(v3_bin, 'good_method_value_blank_discard',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tcb := c.report\n\t_ = cb\n\tprintln(int_str(c.report()))\n}\n')
+	assert blank == '5'
+}

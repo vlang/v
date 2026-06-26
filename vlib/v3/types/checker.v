@@ -2440,11 +2440,12 @@ fn (mut tc TypeChecker) track_method_value_local(lhs_id flat.NodeId, rhs_id flat
 	}
 }
 
-// lvalue_is_local_var reports whether an assignment target is a plain function-local variable —
-// bound under its bare name in the current scope. Non-local storage (a struct field `h.cb`, an
-// array/map element `cbs[i]`, or a module-level global, which lives in file_scope under its
-// qualified name and so misses a bare lookup) is not a local. A method value may alias a local
-// (tracked for a later escape) but must not be stored into anything that outlives the call site.
+// lvalue_is_local_var reports whether an assignment target is safe to receive a method value:
+// the blank discard `_` (stores nothing) or a plain function-local variable bound under its bare
+// name in the current scope. Non-local storage (a struct field `h.cb`, an array/map element
+// `cbs[i]`, or a module-level global, which lives in file_scope under its qualified name and so
+// misses a bare lookup) is not. A method value may alias a local (tracked for a later escape) but
+// must not be stored into anything that outlives the call site.
 fn (tc &TypeChecker) lvalue_is_local_var(lhs_id flat.NodeId) bool {
 	if int(lhs_id) < 0 {
 		return false
@@ -2452,6 +2453,9 @@ fn (tc &TypeChecker) lvalue_is_local_var(lhs_id flat.NodeId) bool {
 	lhs := tc.a.nodes[int(lhs_id)]
 	if lhs.kind != .ident || lhs.value.len == 0 {
 		return false
+	}
+	if lhs.value == '_' {
+		return true
 	}
 	return tc.cur_scope.lookup(lhs.value) != none
 }
@@ -4727,6 +4731,14 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				// value can only appear inside a function body — escaping to a const/global
 				// is rejected elsewhere — so a non-fn context needs no recording here.
 				tc.method_values_by_fn[tc.cur_fn_node_id] << mkey
+				// Also record the concrete instance key (`Box[int].report`) — distinct from the
+				// open key (`Box[T].report`) above — so monomorphize can gate a generic method's
+				// specialization on *this* instance's method value being reachable (it shares the
+				// open key with every other instance, e.g. `Box[Pair]`).
+				concrete_mkey := '${clean_recv.name}.${node.value}'
+				if concrete_mkey != mkey {
+					tc.method_values_by_fn[tc.cur_fn_node_id] << concrete_mkey
+				}
 			}
 		}
 	}
