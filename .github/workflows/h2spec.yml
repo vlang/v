@@ -44,7 +44,7 @@ jobs:
 
       - name: Run h2spec conformance gate
         env:
-          VEXE: ./vnew
+          # VEXE: ./vnew
           VFLAGS_CC: -cc gcc # mbedtls needs a real C compiler, not tcc
         run: bash vlib/net/http/h2spec/run_h2spec.sh
 
