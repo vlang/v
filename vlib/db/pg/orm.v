@@ -80,6 +80,25 @@ pub fn (c &Conn) drop(table orm.Table) ! {
 	c.exec(query)!
 }
 
+// execute runs a raw SQL query and returns result rows as driver-agnostic orm.Row values,
+// with column names populated from the result metadata.
+pub fn (c &Conn) execute(query string) ![]orm.Row {
+	res := c.exec_result(query)!
+
+	mut orm_rows := []orm.Row{}
+	for r in res.rows {
+		mut vals := []string{}
+		for i in 0 .. r.vals.len {
+			vals << r.val(i)
+		}
+		orm_rows << orm.Row{
+			vals:  vals
+			names: res.names
+		}
+	}
+	return orm_rows
+}
+
 // orm_begin starts a transaction on this conn.
 pub fn (c &Conn) orm_begin() ! {
 	c.begin_on_conn()!
@@ -171,6 +190,13 @@ pub fn (mut db DB) drop(table orm.Table) ! {
 	c.drop(table)!
 }
 
+// execute runs a raw SQL query on a pooled conn and returns result rows.
+pub fn (mut db DB) execute(query string) ![]orm.Row {
+	mut c := db.pool.acquire()!
+	defer { c.close() or {} }
+	return c.execute(query)
+}
+
 // last_id returns the id stashed by this thread's most recent `DB.insert`
 // (or 0 if there is none). LASTVAL() itself is session-scoped, so calling
 // it on a freshly-checked-out pool conn would return the wrong value or 0;
@@ -216,6 +242,12 @@ pub fn (mut tx Tx) create(table orm.Table, fields []orm.TableField) ! {
 pub fn (mut tx Tx) drop(table orm.Table) ! {
 	tx.ensure_active()!
 	tx.conn.drop(table)!
+}
+
+// execute runs a raw SQL query on the pinned transaction conn and returns result rows.
+pub fn (mut tx Tx) execute(query string) ![]orm.Row {
+	tx.ensure_active()!
+	return tx.conn.execute(query)
 }
 
 // last_id returns the last inserted id on the pinned conn.
