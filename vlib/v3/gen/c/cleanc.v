@@ -2820,7 +2820,8 @@ fn (mut g FlatGen) fixed_array_typedefs() {
 		if fixed_array_typedef_is_early(info.arr) {
 			continue
 		}
-		g.emit_fixed_array_ret_wrapper(name, info)
+		// Completes the struct forward-declared in fixed_array_early_typedefs().
+		g.emit_fixed_array_ret_wrapper(name, info, true)
 		emitted_wrapper = true
 	}
 	if g.emitted_fixed_array_typedefs.len > old_len || emitted_wrapper {
@@ -2856,14 +2857,30 @@ fn (mut g FlatGen) populate_fixed_array_ret_wrappers() {
 
 // emit_fixed_array_ret_wrapper writes the one-field `struct { T ret_arr[N]; }` wrapper
 // for a fixed-array return type. The element type's C definition must already be emitted.
-fn (mut g FlatGen) emit_fixed_array_ret_wrapper(name string, info FixedArrayTypedefInfo) {
+// `tagged` completes a previously forward-declared named struct (`struct X { ... };`),
+// used for non-early element types whose wrapper is referenced by an fn-pointer typedef
+// emitted earlier; otherwise a fresh anonymous typedef is written.
+fn (mut g FlatGen) emit_fixed_array_ret_wrapper(name string, info FixedArrayTypedefInfo, tagged bool) {
 	arr := info.arr
 	old_module := g.tc.cur_module
 	g.tc.cur_module = info.module
 	elem_ct := g.tc.c_type(arr.elem_type)
 	len_expr := g.fixed_array_len_value(arr)
 	g.tc.cur_module = old_module
-	g.writeln('typedef struct { ${elem_ct} ret_arr[${len_expr}]; } ${fixed_array_ret_wrapper_name(name)};')
+	wname := fixed_array_ret_wrapper_name(name)
+	if tagged {
+		g.writeln('struct ${wname} { ${elem_ct} ret_arr[${len_expr}]; };')
+	} else {
+		g.writeln('typedef struct { ${elem_ct} ret_arr[${len_expr}]; } ${wname};')
+	}
+}
+
+// emit_fixed_array_ret_wrapper_forward forward-declares a named return-wrapper struct so an
+// fn-pointer typedef can name it as a (by-value) return type before the wrapper's element
+// type is defined; the struct body is completed later by emit_fixed_array_ret_wrapper.
+fn (mut g FlatGen) emit_fixed_array_ret_wrapper_forward(name string) {
+	wname := fixed_array_ret_wrapper_name(name)
+	g.writeln('typedef struct ${wname} ${wname};')
 }
 
 // fixed_array_early_typedefs emits, before the fn-ptr typedef block, the bare
@@ -2890,18 +2907,21 @@ fn (mut g FlatGen) fixed_array_early_typedefs() {
 		g.emit_fixed_array_typedef(name, info, needed, mut g.emitted_fixed_array_typedefs)
 		emitted_any = true
 	}
-	// Wrapper structs for fixed-array return types whose element chain is already complete
-	// here (primitive/pointer/enum). Struct/`string`/nested element wrappers are deferred
-	// to fixed_array_typedefs(), after the element definitions are emitted.
+	// Wrapper structs for fixed-array return types. Primitive/pointer/enum element wrappers
+	// are fully defined here. Struct/`string`/nested element wrappers can't be defined yet
+	// (their element type comes later), but an fn-pointer typedef in the next block may name
+	// one as a return type, so forward-declare the named struct now and complete it in
+	// fixed_array_typedefs(), after the element definitions.
 	for name in names {
 		if name !in g.fixed_array_ret_wrappers {
 			continue
 		}
 		info := needed[name] or { continue }
-		if !fixed_array_typedef_is_early(info.arr) {
-			continue
+		if fixed_array_typedef_is_early(info.arr) {
+			g.emit_fixed_array_ret_wrapper(name, info, false)
+		} else {
+			g.emit_fixed_array_ret_wrapper_forward(name)
 		}
-		g.emit_fixed_array_ret_wrapper(name, info)
 		emitted_any = true
 	}
 	if emitted_any {

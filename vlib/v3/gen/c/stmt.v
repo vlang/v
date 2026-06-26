@@ -682,22 +682,31 @@ fn (g &FlatGen) declared_call_return_type(call_node flat.Node) types.Type {
 		if ret := g.selector_call_return_type(fn_node) {
 			return ret
 		}
-		return types.Type(types.void_)
-	}
-	if fn_node.kind != .ident {
-		return types.Type(types.void_)
-	}
-	if ret := g.tc.fn_ret_types[fn_node.value] {
-		return ret
-	}
-	cfn := c_name(fn_node.value)
-	if cfn != fn_node.value {
-		if ret := g.tc.fn_ret_types[cfn] {
+	} else if fn_node.kind == .ident {
+		if ret := g.tc.fn_ret_types[fn_node.value] {
+			return ret
+		}
+		cfn := c_name(fn_node.value)
+		if cfn != fn_node.value {
+			if ret := g.tc.fn_ret_types[cfn] {
+				return ret
+			}
+		}
+		if ret := g.fn_decl_return_type_for_call_name(fn_node.value) {
 			return ret
 		}
 	}
-	if ret := g.fn_decl_return_type_for_call_name(fn_node.value) {
-		return ret
+	// Indirect call through an fn-pointer value (local var, param, or struct field
+	// like `h.f()`): the target isn't a declared function/method, so resolve its type
+	// and read the fn type's return. Unwrap alias (`type MakeArr = fn () [2]string`)
+	// and pointer layers first. Lets fixed-array-returning callbacks unwrap `.ret_arr`
+	// at the call site whether reached through a local, a param, or a struct field.
+	mut callee_t := types.unwrap_pointer(g.tc.resolve_type(g.a.child(&call_node, 0)))
+	for callee_t is types.Alias {
+		callee_t = types.unwrap_pointer((callee_t as types.Alias).base_type)
+	}
+	if callee_t is types.FnType {
+		return callee_t.return_type
 	}
 	return types.Type(types.void_)
 }

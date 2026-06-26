@@ -5436,11 +5436,16 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 	if const_expr_paren_wraps_whole(expr) {
 		return tc.const_int_value(expr[1..expr.len - 1].trim_space(), seen)
 	}
-	// Operators grouped by precedence level, lowest first: `+ - | ^` (additive/bitwise),
-	// then `* / % & << >> >>>` (multiplicative/shift), matching V/Go precedence. Split on
-	// the rightmost top-level operator of the lowest level present. Longer operators are
-	// matched first (`>>>` before `>>`, two-char before one); `idx + op.len` skips it.
-	for level in [['+', '-', '|', '^'], ['*', '/', '%', '&', '<<', '>>', '>>>']] {
+	// Operators grouped by precedence level, lowest first, MATCHING the v3 parser's binding
+	// power (token.left_binding_power) so a length text recovered from source folds to the
+	// same value as the AST const evaluator below: `|` < `^` < `<< >> >>>` < `+ -` <
+	// `* / % &`. The parser keeps shifts below additive operators (so `arr << a + b` appends
+	// `a + b`), hence `1 << 2 + 1` groups as `1 << (2 + 1)` — split on `<<` before `+` here
+	// too, not the reverse. Split on the rightmost top-level operator of the lowest level
+	// present; longer operators match first (`>>>` before `>>`, two-char before one) and
+	// `idx + op.len` skips the operator.
+	for level in [['|'], ['^'], ['<<', '>>', '>>>'], ['+', '-'],
+		['*', '/', '%', '&']] {
 		mut idx := -1
 		mut op := ''
 		mut depth := 0

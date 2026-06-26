@@ -691,3 +691,32 @@ fn test_pr_review_codegen_batch_fourteen() {
 		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nstruct Engine {\n\tcb fn () int\n}\nfn main() {\n\t_ := Engine{\n\t\tcb: Counter{\n\t\t\tid: 1\n\t\t}.report\n\t}\n}\n',
 		'cannot escape its call site')
 }
+
+fn test_pr_review_codegen_batch_fifteen() {
+	v3_bin := build_v3()
+	// The string length evaluator folds with the same operator precedence as the v3 parser
+	// and AST const evaluator: shifts bind looser than `+`, so `1 << 2 + 1` groups as
+	// `1 << (2 + 1)` = 8 (not `(1 << 2) + 1` = 5) whether the length is recovered from a
+	// const's source text (string evaluator) or a literal expression. Both must agree, else
+	// the literal length check and the generated C dimension would diverge.
+	prec := run_good(v3_bin, 'good_shift_add_precedence_fixed_array_len',
+		'const seg_count = 1 << 2 + 1\nfn main() {\n\ta := [1 << 2 + 1]u8{}\n\tb := [seg_count]u8{}\n\tc := [1 + 2 << 1]u8{}\n\tprintln(int_str(a.len + b.len + c.len))\n}\n')
+	// 8 + 8 + 6 = 22
+	assert prec == '22'
+	// The fixed-array literal-length guard uses the same folded length: a `[1 << 2 + 1]int`
+	// parameter (length 8) rejects a 5-element literal.
+	run_bad(v3_bin, 'bad_shift_add_precedence_literal_len',
+		'fn take(a [1 << 2 + 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2, 3, 4, 5]!)\n}\n',
+		'cannot use')
+	// An fn-pointer type whose return is a non-early fixed array (`string`/struct element) gets
+	// a return-wrapper struct. The wrapper is forward-declared before the fn-pointer typedef and
+	// completed after the element type, so the C compiles; the wrapped value is unwrapped to
+	// `.ret_arr` at the indirect call, whether the callback is reached through a param or a
+	// struct field.
+	fp_str := run_good(v3_bin, 'good_fn_ptr_returns_fixed_string_array',
+		"type MakeArr = fn () [2]string\nfn mk() [2]string {\n\treturn ['hi', 'there']!\n}\nfn run(f MakeArr) string {\n\tr := f()\n\treturn r[0]\n}\nstruct Holder {\n\tf MakeArr\n}\nfn main() {\n\th := Holder{\n\t\tf: mk\n\t}\n\tprintln(run(mk) + h.f()[1])\n}\n")
+	assert fp_str == 'hithere'
+	fp_struct := run_good(v3_bin, 'good_fn_ptr_returns_fixed_struct_array',
+		'struct P {\n\tx int\n}\ntype MakeP = fn () [2]P\nfn mkp() [2]P {\n\treturn [P{\n\t\tx: 3\n\t}, P{\n\t\tx: 4\n\t}]!\n}\nfn runp(f MakeP) int {\n\tr := f()\n\treturn r[0].x + r[1].x\n}\nfn main() {\n\tprintln(int_str(runp(mkp)))\n}\n')
+	assert fp_struct == '7'
+}
