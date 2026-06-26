@@ -566,6 +566,105 @@ fn main() {
 	assert generated.contains('pixels__Box_int p ='), generated
 }
 
+fn test_selective_import_resolves_generic_struct_field_from_decl_file() {
+	v3_bin := selective_import_build_v3()
+	extra := {
+		'types/types.v': 'module types
+
+pub struct Thing {
+pub:
+	v int
+}
+'
+		'other/other.v': 'module other
+
+pub struct Thing {
+pub:
+	v int
+}
+'
+		'box/box.v':     'module box
+
+import types { Thing }
+
+pub struct Box[T] {
+pub:
+	thing Thing
+	value T
+}
+'
+	}
+	output, generated := selective_import_compile_run_with_extra(v3_bin,
+		'generic_struct_field_selective_import', 'module main
+
+import box { Box }
+import other
+
+fn main() {
+	b := Box[int]{value: 7}
+	o := other.Thing{v: 8}
+	println(int_str(b.value + o.v))
+}
+',
+		extra)
+	assert output == '15'
+	assert generated.contains('struct box__Box_int'), generated
+	assert generated.contains('types__Thing thing;'), generated
+	assert !generated.contains('box__Thing thing;'), generated
+	assert !generated.contains('other__Thing thing;'), generated
+}
+
+fn test_selective_import_resolves_generic_struct_method_signature_from_decl_file() {
+	v3_bin := selective_import_build_v3()
+	extra := {
+		'types/types.v': 'module types
+
+pub struct Thing {
+pub:
+	v int
+}
+'
+		'other/other.v': 'module other
+
+pub struct Thing {
+pub:
+	v int
+}
+'
+		'box/box.v':     'module box
+
+import types { Thing }
+
+pub struct Box[T] {
+pub:
+	thing Thing
+	value T
+}
+
+pub fn (b Box[T]) combine(thing Thing) int {
+	return b.value + thing.v
+}
+'
+	}
+	output, generated := selective_import_compile_run_with_extra(v3_bin,
+		'generic_struct_method_signature_selective_import', 'module main
+
+import box { Box }
+import other
+
+fn main() {
+	b := Box[int]{value: 7}
+	_ := other.Thing{v: 1}
+	println(int_str(b.combine(b.thing)))
+}
+',
+		extra)
+	assert output == '7'
+	assert generated.contains('int box__Box_int__combine(box__Box_int b, types__Thing thing)'), generated
+	assert !generated.contains('int box__Box_int__combine(box__Box_int b, box__Thing thing)'), generated
+	assert !generated.contains('int box__Box_int__combine(box__Box_int b, other__Thing thing)'), generated
+}
+
 fn test_selective_import_resolves_alias_collision() {
 	v3_bin := selective_import_build_v3()
 	output, _ := selective_import_compile_run_with_extra(v3_bin, 'alias_collision', 'module main

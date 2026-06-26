@@ -160,6 +160,8 @@ pub mut:
 	fn_param_types         map[string][]Type
 	fn_ret_type_texts      map[string]string   // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
 	fn_param_type_texts    map[string][]string // generic struct method key -> original param type texts (receiver first)
+	fn_type_files          map[string]string
+	fn_type_modules        map[string]string
 	fn_generic_params      map[string][]string
 	fn_variadic            map[string]bool
 	c_variadic_fns         map[string]bool
@@ -244,6 +246,8 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		fn_param_types:             map[string][]Type{}
 		fn_ret_type_texts:          map[string]string{}
 		fn_param_type_texts:        map[string][]string{}
+		fn_type_files:              map[string]string{}
+		fn_type_modules:            map[string]string{}
 		fn_generic_params:          map[string][]string{}
 		fn_variadic:                map[string]bool{}
 		c_variadic_fns:             map[string]bool{}
@@ -576,6 +580,8 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 					for name in [qname, node.value] {
 						tc.fn_ret_type_texts[name] = node.typ
 						tc.fn_param_type_texts[name] = param_texts.clone()
+						tc.fn_type_files[name] = tc.cur_file
+						tc.fn_type_modules[name] = tc.cur_module
 						if node.generic_params.len > 0 {
 							tc.fn_generic_params[name] = node.generic_params.clone()
 						}
@@ -4257,11 +4263,13 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 	}
 	mut sub_params := []Type{}
 	for param_text in param_texts {
-		sub_params << tc.parse_type(subst_generic_text(param_text, concrete_args, generic_params))
+		sub_params << tc.parse_fn_signature_type(info.name, subst_generic_text(param_text,
+			concrete_args, generic_params))
 	}
 	ret_text := tc.fn_ret_type_texts[info.name] or { '' }
 	sub_ret := if ret_text.len > 0 {
-		tc.parse_type(subst_generic_text(ret_text, concrete_args, generic_params))
+		tc.parse_fn_signature_type(info.name, subst_generic_text(ret_text, concrete_args,
+			generic_params))
 	} else {
 		info.return_type
 	}
@@ -4275,6 +4283,25 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		params_known:         true
 		has_implicit_veb_ctx: info.has_implicit_veb_ctx
 	}
+}
+
+fn (tc &TypeChecker) parse_fn_signature_type(name string, typ string) Type {
+	decl_file := tc.fn_type_files[name] or { return tc.parse_type(typ) }
+	mut scoped := *tc
+	scoped.cur_file = decl_file
+	scoped.cur_module = tc.fn_type_modules[name] or {
+		tc.file_modules[decl_file] or { tc.cur_module }
+	}
+	scoped.type_cache = &TypeCache{
+		parse_enabled: if tc.type_cache != unsafe { nil } {
+			tc.type_cache.parse_enabled
+		} else {
+			false
+		}
+		parse_entries: map[string]Type{}
+		c_entries:     map[string]string{}
+	}
+	return scoped.parse_type(typ)
 }
 
 fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, actual Type, generic_params []string, mut inferred map[string]string) {
@@ -9015,12 +9042,14 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method 
 	// cannot recover `Box[int]`. Re-substituting the text and re-parsing does.
 	mut sub_ret := tc.substitute_generic_type(ret, concrete_args, params)
 	if ret_text := tc.fn_ret_type_texts[generic_key] {
-		sub_ret = tc.parse_type(subst_generic_text(ret_text, concrete_args, params))
+		sub_ret = tc.parse_fn_signature_type(generic_key, subst_generic_text(ret_text,
+			concrete_args, params))
 	}
 	mut sub_params := []Type{}
 	if param_texts := tc.fn_param_type_texts[generic_key] {
 		for pt in param_texts {
-			sub_params << tc.parse_type(subst_generic_text(pt, concrete_args, params))
+			sub_params << tc.parse_fn_signature_type(generic_key, subst_generic_text(pt,
+				concrete_args, params))
 		}
 	} else if ptypes := tc.fn_param_types[generic_key] {
 		for pt in ptypes {

@@ -3448,6 +3448,11 @@ fn (mut g FlatGen) emit_global_inits() {
 		if cqname == 'g_main_argc' || cqname == 'g_main_argv' {
 			continue
 		}
+		if mod := g.global_modules[qname] {
+			g.tc.cur_module = mod
+		} else {
+			g.tc.cur_module = old_module
+		}
 		if typ := g.global_types[qname] {
 			if typ is types.ArrayFixed {
 				target := c_name(qname)
@@ -3457,9 +3462,6 @@ fn (mut g FlatGen) emit_global_inits() {
 		}
 		if !g.is_safe_global_init(val_id) {
 			continue
-		}
-		if mod := g.global_modules[qname] {
-			g.tc.cur_module = mod
 		}
 		tmp_sb := g.sb
 		tmp_line_start := g.line_start

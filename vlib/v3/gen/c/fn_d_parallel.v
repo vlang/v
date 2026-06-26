@@ -436,6 +436,8 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		fn_param_types:                g.tc.fn_param_types
 		fn_ret_type_texts:             g.tc.fn_ret_type_texts
 		fn_param_type_texts:           g.tc.fn_param_type_texts
+		fn_type_files:                 g.tc.fn_type_files
+		fn_type_modules:               g.tc.fn_type_modules
 		fn_variadic:                   g.tc.fn_variadic
 		fn_implicit_veb_ctx:           g.tc.fn_implicit_veb_ctx
 		c_variadic_fns:                g.tc.c_variadic_fns

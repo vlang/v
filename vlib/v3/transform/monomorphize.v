@@ -400,9 +400,13 @@ fn (mut t Transformer) materialize_generic_struct_spec(spec_name string, decl Ge
 		return
 	}
 	old_module := t.cur_module
+	old_file := t.cur_file
 	old_tc_module := t.tc.cur_module
+	old_tc_file := t.tc.cur_file
 	t.cur_module = decl.module
+	t.cur_file = decl.file
 	t.tc.cur_module = decl.module
+	t.tc.cur_file = decl.file
 	mut fields := []types.StructField{}
 	for i in 0 .. decl.node.children_count {
 		field := t.a.child_node(&decl.node, i)
@@ -424,7 +428,9 @@ fn (mut t Transformer) materialize_generic_struct_spec(spec_name string, decl Ge
 		t.tc.params_structs[spec_name] = true
 	}
 	t.cur_module = old_module
+	t.cur_file = old_file
 	t.tc.cur_module = old_tc_module
+	t.tc.cur_file = old_tc_file
 }
 
 fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {

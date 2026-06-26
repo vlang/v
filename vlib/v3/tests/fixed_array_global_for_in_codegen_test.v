@@ -50,3 +50,41 @@ fn main() {
 	assert compact.contains('=gnums['), generated
 	assert !compact.contains('array_get(gnums,'), generated
 }
+
+fn test_imported_fixed_array_global_init_uses_imported_module_context() {
+	v3_bin := fixed_array_global_for_build_v3()
+	root := os.join_path(os.temp_dir(), 'v3_fixed_array_imported_global_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'm')) or { panic(err) }
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+
+import m
+
+fn main() {
+	println(int_str(m.sum()))
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'm', 'm.v'), 'module m
+
+const seed = 5
+__global table = [seed, 0]!
+
+pub fn sum() int {
+	return table[0]
+}
+') or {
+		panic(err)
+	}
+	bin := os.join_path(root, 'app')
+	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '5', run.output
+
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert compact.contains('memmove(m__table,'), generated
+}
