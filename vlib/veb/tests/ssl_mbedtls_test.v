@@ -1,4 +1,4 @@
-// vtest build: !sanitized_job?
+// vtest build: !sanitized_job? && !use_openssl?
 import net.http
 import net.mbedtls
 import os
