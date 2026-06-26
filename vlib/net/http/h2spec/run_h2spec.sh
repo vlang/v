@@ -16,22 +16,43 @@
 # `go install` — the version must be pinned and reproducible.
 #
 # Env:
-#   VEXE        path to the V compiler (default: ./v then ./vnew)
-#   H2SPEC_BIN  path to the h2spec binary (default: h2spec on PATH)
-#   H2SPEC_PORT port for the target server (default: 18443)
-#   VFLAGS_CC   extra V flags, e.g. '-cc gcc' (mbedtls needs a real C compiler)
+#   VEXE           path to the V compiler (default: ./v then ./vnew)
+#   H2SPEC_BIN     path to the h2spec binary (default: h2spec on PATH)
+#   H2SPEC_PORT    port for the target server (default: 18443)
+#   H2SPEC_TIMEOUT h2spec per-case timeout, seconds (default: 5). Several h2spec
+#                  cases wait for the server's GOAWAY/close and FLAKE at h2spec's
+#                  2s default under load; 5s is comfortably stable here. Raise it
+#                  if a timing case still flakes on a slow runner.
+#   VFLAGS_CC      extra V flags, e.g. '-cc gcc' (mbedtls needs a real C compiler)
 
 set -uo pipefail
+orig_pwd="$(pwd)" # the caller's cwd, captured BEFORE we cd into the script dir
 cd "$(dirname "$0")"
 here="$(pwd)"
 repo_root="$(cd ../../../.. && pwd)"
 
+# resolve a caller-supplied path argument: an absolute path or a bare command name
+# (PATH lookup, e.g. "h2spec") is used as-is; a relative path is resolved against
+# the caller's original cwd, since we cd'd into the script dir above. Without this,
+# a documented value like `VEXE=./vnew` (relative to the repo root) would wrongly
+# resolve to vlib/net/http/h2spec/vnew and the build would fail. (Codex P1/P3.)
+resolve_path() {
+    case "$1" in
+        /*) printf '%s' "$1" ;;            # absolute path
+        */*) printf '%s' "$orig_pwd/$1" ;; # relative path containing a slash
+        *) printf '%s' "$1" ;;             # bare name -> PATH lookup
+    esac
+}
+
 VEXE="${VEXE:-}"
 if [ -z "$VEXE" ]; then
     if [ -x "$repo_root/v" ]; then VEXE="$repo_root/v"; elif [ -x "$repo_root/vnew" ]; then VEXE="$repo_root/vnew"; else VEXE="v"; fi
+else
+    VEXE="$(resolve_path "$VEXE")"
 fi
-H2SPEC_BIN="${H2SPEC_BIN:-h2spec}"
+H2SPEC_BIN="$(resolve_path "${H2SPEC_BIN:-h2spec}")"
 PORT="${H2SPEC_PORT:-18443}"
+TIMEOUT="${H2SPEC_TIMEOUT:-5}"
 SERVER_BIN="$here/h2spec_server.bin"
 EXPECTED="$here/h2spec_expected_failures.txt"
 
@@ -64,7 +85,7 @@ echo "==> running h2spec (TLS, insecure cert OK)"
 # contract, unlike the pretty console output. A failing case has a <failure>
 # (or <error>) child; we use "classname :: name" as the stable case ID.
 report_xml="$here/h2spec_report.xml"
-"$H2SPEC_BIN" -t -k -h 127.0.0.1 -p "$PORT" --junit-report "$report_xml" 2>&1 | tail -40 || true
+"$H2SPEC_BIN" -t -k -h 127.0.0.1 -p "$PORT" --timeout "$TIMEOUT" --junit-report "$report_xml" 2>&1 | tail -40 || true
 if [ ! -s "$report_xml" ]; then
     echo "ERROR: h2spec produced no JUnit report ($report_xml); check the flags/version." >&2
     exit 2
@@ -92,9 +113,13 @@ if [ -n "$new_failures" ]; then
     rc=1
 fi
 if [ -n "$now_passing" ]; then
-    echo "::warning:: these recorded failures now PASS — remove them from h2spec_expected_failures.txt:" >&2
+    # Fail too (not just warn): a recorded failure that now passes must be removed
+    # from the baseline, otherwise the gate keeps allowing that case and a later
+    # PR can reintroduce the failure unnoticed. (Codex P2.) The 37 baseline cases
+    # are deterministic at H2SPEC_TIMEOUT=5, so this does not flap.
+    echo "::error:: these recorded failures now PASS — remove them from h2spec_expected_failures.txt to keep the gate honest:" >&2
     echo "$now_passing" >&2
-    # Treat as a (soft) failure so the baseline is tightened; flip to rc=1 once green.
+    rc=1
 fi
 [ "$rc" -eq 0 ] && echo "==> h2spec: no regressions vs baseline"
 exit "$rc"

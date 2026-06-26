@@ -43,9 +43,15 @@ runner never installs anything — it expects `h2spec` to be provided.
   server driver `test_server_tls_h2_negotiation` exercises end-to-end).
 - ✅ **The harness was run end-to-end with a pinned h2spec v2.6.0**: 146 tests,
   **109 pass / 37 fail** against the server at this branch's base. The 37-failure
-  set was **identical across repeated runs** (deterministic), and is recorded in
-  `h2spec_expected_failures.txt` as the gate baseline. The JUnit parser is
-  validated against that real report.
+  set was **identical across four runs** (`--timeout 2` and `--timeout 5`, two
+  each) and is recorded in `h2spec_expected_failures.txt` as the gate baseline.
+  The JUnit parser is validated against those real reports.
+- ⚠️ **Timing flakiness — handled.** A *separate* handful of h2spec cases
+  (CONTINUATION sequencing, unknown error codes) wait for the server's GOAWAY/close
+  and flake at h2spec's 2s default under load. The runner therefore uses
+  `--timeout 5` (`H2SPEC_TIMEOUT`). The lesson: always confirm the failure set is
+  stable across repeated runs before trusting a per-case h2spec gate — a single
+  run can mis-attribute a flaky timeout as a real failure (or regression).
 - The baseline reflects genuine server-side conformance gaps (see the file's
   header). Each is a tracked item; remove a line as the server is hardened.
 - The baseline was generated locally; the first CI run on Linux validates it. If

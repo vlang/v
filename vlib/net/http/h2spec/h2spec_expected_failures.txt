@@ -8,8 +8,13 @@
 # passing, run_h2spec.sh warns so the line can be removed and the gate tightened.
 #
 # Generated with h2spec v2.6.0 against the net.http server at this branch's base
-# (146 tests: 109 pass, 37 fail; the set was identical across repeated runs, i.e.
-# deterministic). These are genuine server-side conformance gaps: stricter request
+# (146 tests: 109 pass, 37 fail). The set was identical across four runs (h2spec
+# --timeout 2 and --timeout 5, two each) — stable. NOTE: a handful of OTHER h2spec
+# cases (CONTINUATION sequencing, unknown error codes) are timing-flaky at h2spec's
+# 2s default — they wait for the server's GOAWAY/close — so run_h2spec.sh uses
+# --timeout 5 (H2SPEC_TIMEOUT) to keep the gate stable. Do not add a flaky case to
+# this list; raise the timeout instead. These 37 are genuine server-side conformance
+# gaps: stricter request
 # validation (uppercase/duplicate/missing pseudo-headers, connection-specific & TE
 # headers, content-length vs DATA), HPACK decode error SCOPE (must be a
 # connection-level COMPRESSION_ERROR, not RST_STREAM), the stream state machine

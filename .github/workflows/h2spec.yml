@@ -12,7 +12,9 @@ on:
       - 'vlib/net/http/server*.v'
       - 'vlib/net/http/http*.v'
       - 'vlib/net/http/h2spec/**'
-      - 'vlib/net/mbedtls/*.v'
+      # `**` (not `*.v`): mbedtls.c.v #inserts mbedtls_helpers.h / mbedtls_threading.h,
+      # so TLS/ALPN behavior can change via the headers too (Codex P2).
+      - 'vlib/net/mbedtls/**'
       - '.github/workflows/h2spec.yml'
   pull_request:
     paths: *h2paths
