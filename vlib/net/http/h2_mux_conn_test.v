@@ -1896,3 +1896,79 @@ fn test_mux_release_wakes_reader_via_closer() {
 	}
 	assert woke, 'reader did not exit after release(): close_transport failed to wake it'
 }
+
+// A trailing HEADERS block (trailers) must surface its non-pseudo fields in the
+// response headers, matching the synchronous H2Conn.read_response. Regression for
+// Codex P2 (discussion_r3477245531): the mux path HPACK-decoded the trailer block
+// but dropped every field, only marking the stream ended — so callers lost
+// grpc-status, digest, etc. even though the stream completed normally.
+fn test_mux_response_trailers_preserved() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_test_mux_conn(mut cend)
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		id := ids[0]
+		// Final response headers (no END_STREAM: a body and trailers follow).
+		peer.respond_headers(id, false) or {
+			peer.fail('respond: ${err.msg()}')
+			return
+		}
+		peer.write_frame(H2DataFrame{
+			stream_id:  id
+			data:       'hi'.bytes()
+			end_stream: false
+		}) or {
+			peer.fail('data: ${err.msg()}')
+			return
+		}
+		// A trailing HEADERS block carrying END_STREAM. ':status' is a pseudo-header
+		// forbidden in trailers — it must be dropped, the rest preserved.
+		trailer_block := peer.encoder.encode([H2HeaderField{':status', '200'},
+			H2HeaderField{'grpc-status', '0'}, H2HeaderField{'grpc-message', 'ok'}])
+		peer.write_frame(H2HeadersFrame{
+			stream_id:   id
+			fragment:    trailer_block
+			end_headers: true
+			end_stream:  true
+		}) or {
+			peer.fail('trailers: ${err.msg()}')
+			return
+		}
+	}(mut peer)
+	resp := conn.do(H2ClientRequest{ authority: 't', path: '/g' }) or {
+		assert false, 'request failed: ${err}'
+		return
+	}
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	assert resp.status == 200
+	assert resp.body.bytestr() == 'hi'
+	mut grpc_status := ''
+	mut grpc_message := ''
+	mut pseudo_in_headers := false
+	for h in resp.headers {
+		match h.name {
+			'grpc-status' { grpc_status = h.value }
+			'grpc-message' { grpc_message = h.value }
+			else {}
+		}
+
+		if h.name.starts_with(':') {
+			pseudo_in_headers = true
+		}
+	}
+	assert grpc_status == '0', 'trailer grpc-status missing from response headers: ${resp.headers}'
+	assert grpc_message == 'ok', 'trailer grpc-message missing from response headers: ${resp.headers}'
+	assert !pseudo_in_headers, 'pseudo-header field leaked into trailers: ${resp.headers}'
+	cend.close_both()
+}

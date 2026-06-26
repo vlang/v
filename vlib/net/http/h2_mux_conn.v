@@ -74,19 +74,20 @@ struct H2MuxStream {
 mut:
 	id u32
 	// --- response state, guarded by mu, signaled via cv ---
-	mu           &sync.Mutex = unsafe { nil }
-	cv           &sync.Cond  = unsafe { nil }
-	status       int
-	resp_headers []H2HeaderField
-	headers_done bool
-	chunks       [][]u8 // DATA payloads appended by the reader, drained by the requester
-	body_rcvd    u64    // cumulative DATA bytes received
-	ended        bool   // END_STREAM, RST, or connection death
-	err          string // non-empty: the stream failed
-	retryable    bool   // the failure is safe to retry on a fresh connection
-	sent_headers bool   // the request HEADERS reached the transport
-	cancelled    bool   // requester abandoned the stream; drop+credit late DATA
-	send_closed  bool   // we closed our send side (sent END_STREAM or RST_STREAM)
+	mu            &sync.Mutex = unsafe { nil }
+	cv            &sync.Cond  = unsafe { nil }
+	status        int
+	resp_headers  []H2HeaderField
+	resp_trailers []H2HeaderField // non-pseudo fields from a trailing HEADERS block
+	headers_done  bool
+	chunks        [][]u8 // DATA payloads appended by the reader, drained by the requester
+	body_rcvd     u64    // cumulative DATA bytes received
+	ended         bool   // END_STREAM, RST, or connection death
+	err           string // non-empty: the stream failed
+	retryable     bool   // the failure is safe to retry on a fresh connection
+	sent_headers  bool   // the request HEADERS reached the transport
+	cancelled     bool   // requester abandoned the stream; drop+credit late DATA
+	send_closed   bool   // we closed our send side (sent END_STREAM or RST_STREAM)
 	// --- send state, guarded by the connection's fmu ---
 	send_window i64
 	send_dead   bool // RST/GOAWAY: wake a body sender blocked on flow-control credit
@@ -733,6 +734,12 @@ fn (mut c H2MuxConn) wait_response(mut s H2MuxStream, req H2ClientRequest) !H2Cl
 			}
 		}
 		if ended {
+			// Surface any trailers (a second HEADERS block) into the response
+			// headers, mirroring the synchronous H2Conn.read_response path. The
+			// stream has ended, so resp_trailers is complete; copy under the lock.
+			for f in s.resp_trailers {
+				resp.headers << f
+			}
 			s.mu.unlock()
 			if serr != '' {
 				if retryable {
@@ -1331,8 +1338,20 @@ fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
 		c.reset_stream(frame.stream_id, .protocol_error, '1xx response must not carry END_STREAM')
 		return
 	}
-	// A second HEADERS block on the stream carries trailers; only its
-	// END_STREAM matters for this client.
+	// A second HEADERS block on the stream carries trailers (RFC 9113 §8.1).
+	// Preserve its non-pseudo fields (grpc-status, digest, ...) so callers on
+	// the mux path keep the trailer metadata the synchronous
+	// H2Conn.read_response surfaces; pseudo-header fields are forbidden in
+	// trailers and dropped. wait_response flushes these into resp.headers when
+	// the stream ends. (The trailers-without-END_STREAM case was already reset
+	// above, so a trailer block reaching here always carries END_STREAM.)
+	if was_headers_done {
+		for f in fields {
+			if !f.name.starts_with(':') {
+				s.resp_trailers << f
+			}
+		}
+	}
 	if frame.end_stream {
 		s.ended = true
 	}
