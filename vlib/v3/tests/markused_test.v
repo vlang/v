@@ -10,6 +10,7 @@ import v3.types
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
+const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
 // parse_checked_source reads parse checked source input for v3 tests.
@@ -64,6 +65,30 @@ fn parse_checked_project(name string, files map[string]string, main_file string)
 	return a, &tc
 }
 
+fn parse_checked_project_in_order(name string, rels []string, sources []string) (&flat.FlatAst, &types.TypeChecker) {
+	root := os.join_path(os.temp_dir(), 'v3_markused_${name}')
+	os.rmdir_all(root) or {}
+	mut paths := []string{}
+	for i, rel in rels {
+		path := os.join_path(root, rel)
+		os.mkdir_all(os.dir(path)) or { panic(err) }
+		os.write_file(path, sources[i]) or { panic(err) }
+		paths << path
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_files(paths)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.diagnose_unknown_calls = true
+	for path in paths {
+		tc.diagnostic_files[path] = true
+	}
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	return a, &tc
+}
+
 // mark_used_source updates mark used source state for v3 tests.
 fn mark_used_source(name string, source string) map[string]bool {
 	a, tc := parse_checked_source(name, source)
@@ -73,7 +98,8 @@ fn mark_used_source(name string, source string) map[string]bool {
 // build_v3_bin builds v3 bin data for v3 tests.
 fn build_v3_bin(name string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_${name}')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -160,6 +186,24 @@ fn main() {
 }
 ')
 	assert used['string__plus']
+}
+
+fn test_moduleless_export_after_module_file_is_rooted() {
+	a, tc := parse_checked_project_in_order('moduleless_export_after_module', [
+		'helper/helper.v',
+		'lonely.v',
+	], ['module helper
+
+pub fn helper_marker() int {
+	return 1
+}
+', "@[export: 'raw_lonely']
+fn lonely() int {
+	return 7
+}
+"])
+	used := markused.mark_used(a, tc)
+	assert used['lonely']
 }
 
 fn test_receiver_method_call_in_selector_assign_rhs_is_used() {
@@ -318,6 +362,7 @@ fn (r Remote) read(path string) string {
 	mut used := markused.mark_used(a, tc)
 	assert used['Reader.read']
 	assert !used['moda.Reader.read']
+	assert !used['moda.Remote.read']
 	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
@@ -326,6 +371,144 @@ fn (r Remote) read(path string) string {
 	c_code := g.gen_with_used_options(a, used, tc, true)
 	assert c_code.contains('Reader__read(')
 	assert !c_code.contains('moda__Reader__read(')
+}
+
+fn test_local_receiver_method_does_not_root_imported_interface_by_short_name() {
+	mut a, mut tc := parse_checked_project('local_receiver_imported_interface_short_name', {
+		'main.v':      'module main
+
+import moda
+
+struct Reader {}
+
+fn (r Reader) read() int {
+	return 1
+}
+
+fn main() {
+	_ := Reader{}.read()
+}
+'
+		'moda/moda.v': 'module moda
+
+pub interface Reader {
+	read() int
+}
+
+pub struct Remote {}
+
+pub fn (r Remote) read() int {
+	return 2
+}
+'
+	}, 'main.v')
+	mut used := markused.mark_used(a, tc)
+	assert used['Reader.read']
+	assert !used['moda.Reader.read']
+	assert !used['moda.Remote.read']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('Reader__read(')
+	assert !c_code.contains('moda__Reader__read(')
+	assert !c_code.contains('moda__Remote__read(')
+}
+
+fn test_imported_interface_dispatch_is_emitted_when_exactly_used() {
+	mut a, mut tc := parse_checked_project('imported_interface_dispatch_used', {
+		'main.v':      'module main
+
+import moda
+
+fn call_reader(r moda.Reader) string {
+	return r.read("ok")
+}
+
+fn main() {
+	_ := call_reader(moda.Remote{})
+}
+'
+		'moda/moda.v': 'module moda
+
+pub interface Reader {
+	read(path string) string
+}
+
+pub struct Remote {}
+
+pub fn (r Remote) read(path string) string {
+	return path
+}
+'
+	}, 'main.v')
+	mut used := markused.mark_used(a, tc)
+	assert used['moda.Reader.read']
+	assert used['moda.Remote.read']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('moda__Reader__read(')
+	assert c_code.contains('moda__Remote__read(')
+}
+
+fn test_interface_dispatch_target_does_not_use_bare_method_key_for_imported_homonym() {
+	mut a, mut tc := parse_checked_project('interface_dispatch_target_homonym', {
+		'main.v':      'module main
+
+import moda
+
+interface Reader {
+	read() int
+}
+
+struct Local {}
+
+fn (l Local) read() int {
+	return 1
+}
+
+fn read() int {
+	return 9
+}
+
+fn call_reader(r Reader) int {
+	return r.read()
+}
+
+fn main() {
+	_ := read()
+	_ := call_reader(Local{})
+}
+'
+		'moda/moda.v': 'module moda
+
+pub struct Remote {}
+
+pub fn (r Remote) read() int {
+	return 2
+}
+'
+	}, 'main.v')
+	mut used := markused.mark_used(a, tc)
+	assert used['read']
+	assert used['Reader.read']
+	used.delete('moda.Remote.read')
+	used.delete('Remote.read')
+	used.delete('moda__Remote__read')
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('Reader__read(')
+	assert !c_code.contains('moda__Remote__read(')
 }
 
 fn test_unused_main_method_with_interface_dispatch_is_pruned_with_stub() {
@@ -390,6 +573,138 @@ fn test_reachable_main_fn_literal_is_emitted_after_used_filter_transform() {
 	c_code := g.gen_with_used_options(a, used, tc, true)
 	assert c_code.contains('int __anon_fn_')
 	assert c_code.contains('callback_value(__anon_fn_')
+}
+
+fn test_top_level_fn_value_roots_helper() {
+	mut a, mut tc := parse_checked_source('top_level_fn_value_helper_cgen',
+		'module main\n\nfn helper() int {\n\treturn 41\n}\n\nf := helper\nprintln(int_str(f() + 1))\n')
+	mut used := markused.mark_used(a, tc)
+	assert used['helper']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('helper(')
+}
+
+fn test_top_level_fn_value_compile_keeps_helper() {
+	v3_bin := build_v3_bin('top_level_fn_value_test')
+
+	src := os.join_path(os.temp_dir(), 'v3_markused_top_level_fn_value_input.v')
+	bin := os.join_path(os.temp_dir(), 'v3_markused_top_level_fn_value_input')
+	os.write_file(src, '
+fn helper() int {
+	return 41
+}
+
+f := helper
+println(int_str(f() + 1))
+') or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42'
+	c_code := os.read_file(bin + '.c') or { panic(err) }
+	assert c_code.contains('helper('), c_code
+}
+
+fn test_top_level_fn_value_respects_prior_local_shadow() {
+	used := mark_used_source('top_level_fn_value_prior_shadow', '
+fn helper() int {
+	return 1
+}
+
+helper := 10
+f := helper
+println(int_str(f))
+')
+	assert !used['helper']
+}
+
+fn test_local_fn_value_keeps_helper_before_future_local_shadow() {
+	used := mark_used_source('local_fn_value_future_shadow', '
+fn cb() int {
+	return 1
+}
+
+fn takes(f fn () int) int {
+	return f()
+}
+
+fn main() {
+	takes(cb)
+	cb := 0
+	_ = cb
+}
+')
+	assert used['cb']
+}
+
+fn test_local_ident_reference_does_not_root_dead_function() {
+	mut a, mut tc := parse_checked_source('local_ident_shadow_dead_fn_cgen', '
+fn C.v3_dead_local_shadow_should_not_link() int
+
+fn unused() int {
+	return C.v3_dead_local_shadow_should_not_link()
+}
+
+fn echo(unused int) int {
+	println(unused)
+	return unused
+}
+
+fn main() {
+	unused := 1
+	println(unused)
+	_ := echo(unused)
+}
+')
+	mut used := markused.mark_used(a, tc)
+	assert !used['unused']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert !c_code.contains('unused('), c_code
+	assert !c_code.contains('v3_dead_local_shadow_should_not_link'), c_code
+}
+
+fn test_local_fn_value_call_does_not_root_shadowed_dead_function() {
+	mut a, mut tc := parse_checked_source('local_fn_value_shadow_dead_fn_cgen', '
+fn C.v3_dead_local_fn_value_shadow_should_not_link() int
+
+fn unused() int {
+	return C.v3_dead_local_fn_value_shadow_should_not_link()
+}
+
+fn used() int {
+	return 7
+}
+
+fn main() {
+	unused := used
+	println(unused())
+}
+')
+	mut used := markused.mark_used(a, tc)
+	assert used['used']
+	assert !used['unused']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('used('), c_code
+	assert !c_code.contains('int unused(void)'), c_code
+	assert !c_code.contains('v3_dead_local_fn_value_shadow_should_not_link'), c_code
 }
 
 fn test_flag_default_value_lowering_keeps_escape_helper() {

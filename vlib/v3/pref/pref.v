@@ -233,6 +233,32 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 	return v_files
 }
 
+pub fn is_test_file_for_backend(path string, backend string) bool {
+	file := os.file_name(path)
+	if file.ends_with('_test.v') {
+		return true
+	}
+	if file.ends_with('_test.c.v') {
+		return backend == 'c'
+	}
+	if file.ends_with('_test.js.v') {
+		return backend == 'js'
+	}
+	if !file.ends_with('.v') {
+		return false
+	}
+	base := file[..file.len - 2]
+	if !base.contains('.') {
+		return false
+	}
+	backend_suffix := base.all_after_last('.')
+	test_base := base.all_before_last('.')
+	if !test_base.ends_with('_test') {
+		return false
+	}
+	return backend_suffix == backend
+}
+
 // default_file_base supports default file base handling for pref.
 fn default_file_base(file string) ?string {
 	for marker in ['_default.c.v', '_default.v'] {

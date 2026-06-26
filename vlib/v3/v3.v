@@ -294,6 +294,7 @@ fn main() {
 	for uf in user_files {
 		p.parse_into(uf)
 	}
+	test_files := test_input_files(user_files, backend)
 
 	// Resolve imports recursively
 	resolve_imports(mut a, mut p, prefs, user_files)
@@ -319,6 +320,13 @@ fn main() {
 		print_type_errors(pre_tc.errors)
 		exit(1)
 	}
+	test_harness_errors := validate_test_file_harness_inputs(a, pre_tc, test_files)
+	if test_harness_errors.len > 0 {
+		for msg in test_harness_errors {
+			eprintln(msg)
+		}
+		exit(1)
+	}
 	b.step('check')
 
 	if backend == 'eval' {
@@ -336,7 +344,11 @@ fn main() {
 
 	// Mark used functions (dead-code elimination). This is done before transform
 	// so the transformer can skip function bodies that the C backend will prune.
-	mut used_fns := markused.mark_used(a, pre_tc)
+	mut used_fns := if test_files.len > 0 {
+		markused.mark_used_for_tests(a, pre_tc, test_files)
+	} else {
+		markused.mark_used(a, pre_tc)
+	}
 	b.step('markused')
 
 	// Transform (match lowering, string/in lowering, etc.). Parallel transform is an
@@ -405,7 +417,7 @@ fn main() {
 	} else {
 		// C backend (default)
 		mut g := cgen.FlatGen.new()
-		c_code := g.gen_with_used_options(a, used_fns, &pre_tc, no_parallel)
+		c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, no_parallel, test_files)
 		if !write_text_file_raw(output_file, c_code) {
 			eprintln('error writing ${output_file}')
 			exit(1)
@@ -461,8 +473,13 @@ fn main() {
 			if result.exit_code != 0 && result.output.len > 0 {
 				eprintln('  tcc error: ${result.output.trim_space()}')
 			}
-			cc_cmd = 'cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion -Wl,-stack_size,0x4000000 -o ${bin_file} ${output_file} ${c_flags} -lm'
-			exec_cmd = 'cd ${cc_dir} && cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion -Wl,-stack_size,0x4000000 -o out src.c ${c_flags} -lm'
+			stack_flag := if prefs.normalized_target_os() == 'macos' {
+				' -Wl,-stack_size,0x4000000'
+			} else {
+				''
+			}
+			cc_cmd = 'cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o ${bin_file} ${output_file} ${c_flags} -lm'
+			exec_cmd = 'cd ${cc_dir} && cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o out src.c ${c_flags} -lm'
 			println('  > ${cc_cmd}')
 			result = run_compile_command(exec_cmd)
 			if result.exit_code != 0 {
@@ -593,6 +610,169 @@ fn diagnostic_root_for_input(input_file string, user_files []string) string {
 		return os.real_path(os.dir(user_files[0]))
 	}
 	return os.real_path(os.getwd())
+}
+
+fn test_input_files(user_files []string, backend string) []string {
+	mut files := []string{}
+	for file in user_files {
+		if pref.is_test_file_for_backend(file, backend) {
+			files << file
+		}
+	}
+	return files
+}
+
+fn validate_test_file_harness_inputs(a &flat.FlatAst, tc &types.TypeChecker, test_files []string) []string {
+	if test_files.len == 0 {
+		return []
+	}
+	mut selected_files := map[string]bool{}
+	for file in test_files {
+		selected_files[file] = true
+	}
+	mut errors := []string{}
+	for file_idx, file_node in a.nodes {
+		if !is_user_test_file_node(a, file_idx, file_node, selected_files) {
+			continue
+		}
+		module_name := test_file_module_name(a, file_node)
+		if module_name.len > 0 && module_name != 'main' {
+			errors << 'no runnable tests in ${file_node.value}: only module main test files are supported'
+			continue
+		}
+		if test_file_has_executable_top_level_stmt(a, file_node) {
+			errors << 'invalid test file ${file_node.value}: executable top-level statements are not supported in test files'
+			continue
+		}
+		mut runnable_tests := 0
+		mut invalid_items := 0
+		mut decl_ids := []flat.NodeId{}
+		collect_test_harness_decl_ids(a, file_node, mut decl_ids)
+		for child_id in decl_ids {
+			child := a.node(child_id)
+			if child.value.starts_with('test_') {
+				if is_supported_test_harness_fn(a, tc, child) {
+					runnable_tests++
+				} else {
+					invalid_items++
+					errors << 'invalid test signature: ${child.value} must be zero-arg and return void, ?, or !'
+				}
+			} else if is_test_harness_hook_name(child.value) {
+				if !is_supported_test_harness_hook(a, tc, child) {
+					invalid_items++
+					errors << 'invalid test hook signature: ${child.value} must be zero-arg void'
+				}
+			}
+		}
+		if runnable_tests == 0 && invalid_items == 0 {
+			errors << 'no runnable tests in ${file_node.value}'
+		}
+	}
+	return errors
+}
+
+fn test_file_has_executable_top_level_stmt(a &flat.FlatAst, node flat.Node) bool {
+	if node.kind != .file && node.kind != .block {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		child_id := a.child(&node, i)
+		if int(child_id) < a.user_code_start {
+			continue
+		}
+		child := a.node(child_id)
+		if child.kind == .block {
+			if test_file_has_executable_top_level_stmt(a, child) {
+				return true
+			}
+		} else if test_file_is_executable_top_level_stmt(child) {
+			return true
+		}
+	}
+	return false
+}
+
+fn test_file_is_executable_top_level_stmt(node flat.Node) bool {
+	return match node.kind {
+		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt,
+		.for_in_stmt, .if_expr, .match_stmt, .assert_stmt, .defer_stmt {
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn collect_test_harness_decl_ids(a &flat.FlatAst, node flat.Node, mut ids []flat.NodeId) {
+	if node.kind != .file && node.kind != .block {
+		return
+	}
+	for i in 0 .. node.children_count {
+		child_id := a.child(&node, i)
+		if int(child_id) < a.user_code_start {
+			continue
+		}
+		child := a.node(child_id)
+		if child.kind == .fn_decl {
+			ids << child_id
+		} else if child.kind == .block {
+			collect_test_harness_decl_ids(a, child, mut ids)
+		}
+	}
+}
+
+fn is_user_test_file_node(a &flat.FlatAst, file_idx int, file_node flat.Node, test_files map[string]bool) bool {
+	if file_idx < a.user_code_start || file_node.kind != .file || file_node.children_count == 0 {
+		return false
+	}
+	return test_files[file_node.value]
+}
+
+fn test_file_module_name(a &flat.FlatAst, file_node flat.Node) string {
+	for i in 0 .. file_node.children_count {
+		child := a.child_node(&file_node, i)
+		if child.kind == .module_decl {
+			return child.value
+		}
+	}
+	return ''
+}
+
+fn is_supported_test_harness_fn(a &flat.FlatAst, tc &types.TypeChecker, node &flat.Node) bool {
+	if node.generic_params.len > 0 {
+		return false
+	}
+	if test_harness_fn_param_count(a, node) != 0 {
+		return false
+	}
+	return test_harness_fn_return_supported(tc.parse_type(node.typ))
+}
+
+fn is_supported_test_harness_hook(a &flat.FlatAst, tc &types.TypeChecker, node &flat.Node) bool {
+	if node.generic_params.len > 0 {
+		return false
+	}
+	return test_harness_fn_param_count(a, node) == 0 && tc.parse_type(node.typ) is types.Void
+}
+
+fn test_harness_fn_param_count(a &flat.FlatAst, node &flat.Node) int {
+	mut count := 0
+	for i in 0 .. node.children_count {
+		child := a.child_node(node, i)
+		if child.kind == .param {
+			count++
+		}
+	}
+	return count
+}
+
+fn test_harness_fn_return_supported(ret types.Type) bool {
+	return ret is types.Void || ret is types.OptionType || ret is types.ResultType
+}
+
+fn is_test_harness_hook_name(name string) bool {
+	return name in ['testsuite_begin', 'testsuite_end', 'before_each', 'after_each']
 }
 
 fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {

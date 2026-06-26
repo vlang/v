@@ -161,14 +161,16 @@ pub mut:
 	children        []NodeId
 	user_code_start int
 	disabled_fns    map[string]bool
+	export_fn_names map[string]string
 }
 
 // new creates a FlatAst value for flat.
 pub fn FlatAst.new() FlatAst {
 	return FlatAst{
-		nodes:        []Node{cap: 256}
-		children:     []NodeId{cap: 512}
-		disabled_fns: map[string]bool{}
+		nodes:           []Node{cap: 256}
+		children:        []NodeId{cap: 512}
+		disabled_fns:    map[string]bool{}
+		export_fn_names: map[string]string{}
 	}
 }
 

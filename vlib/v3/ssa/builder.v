@@ -1217,7 +1217,7 @@ fn (b &Builder) top_level_stmt_ids() []flat.NodeId {
 fn (b &Builder) is_top_level_stmt(node flat.Node) bool {
 	return match node.kind {
 		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt,
-		.for_in_stmt, .if_expr, .assert_stmt, .block {
+		.for_in_stmt, .if_expr, .assert_stmt, .defer_stmt, .block {
 			true
 		}
 		else {

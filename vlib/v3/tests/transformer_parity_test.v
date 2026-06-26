@@ -466,7 +466,7 @@ fn main() {
 	mut left_shift_count := 0
 	for i in 0 .. main_fn.children_count {
 		child_id := a.child(&main_fn, i)
-		push_many_count += count_call_name(a, child_id, 'array_push_many')
+		push_many_count += count_call_name(a, child_id, 'array__push_many')
 		left_shift_count += count_infix_op(a, child_id, .left_shift)
 	}
 	assert push_many_count == 1
