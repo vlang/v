@@ -42,6 +42,10 @@ typedef struct alias_desc {
 	void (*cb)(const struct native_event*, void*);
 	void* user_data;
 } alias_desc;
+typedef struct late_alias_desc {
+	void (*cb)(const struct native_event*, void*);
+	void* user_data;
+} late_alias_desc;
 #endif
 '
 	os.write_file(os.join_path(root, 'native_callback.h'), header) or { panic(err) }
@@ -149,6 +153,67 @@ fn main() {
 	assert !generated.contains('concrete.cb = concrete_event;'), generated
 	assert !generated.contains('alias_desc.cb = concrete_event;'), generated
 	assert !generated.contains('.plain = plain_event_callback_adapter_'), generated
+}
+
+fn test_c_callback_c_alias_declared_after_field_codegen() {
+	v3_bin := const_cb_build_v3()
+	src := const_cb_write_project('module main
+
+#include "@DIR/native_callback.h"
+
+@[typedef]
+struct C.late_alias_desc {
+mut:
+	cb fn (&Event, voidptr) = unsafe { nil }
+	user_data voidptr
+}
+
+@[typedef]
+struct C.native_event {
+	value int
+}
+
+type Event = C.native_event
+
+struct App {
+mut:
+	hits int
+}
+
+fn late_alias_event(e &C.native_event, data voidptr) {
+	mut app := unsafe { &App(data) }
+	app.hits += e.value
+}
+
+fn main() {
+	mut app := App{}
+	event := C.native_event{value: 11}
+	mut desc := C.late_alias_desc{
+		cb: late_alias_event
+		user_data: voidptr(&app)
+	}
+	desc.cb(&event, desc.user_data)
+	desc.cb = late_alias_event
+	desc.cb(&event, desc.user_data)
+	println(int_str(app.hits))
+}
+')
+	out := os.join_path(os.temp_dir(), 'v3_const_callback_late_alias_out_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '22'
+	generated := os.read_file(out + '.c') or { panic(err) }
+	assert generated.contains('(const struct native_event*, void*)'), generated
+	assert generated.contains('late_alias_event_callback_adapter_'), generated
+	assert generated.contains('const struct native_event* arg0, void* arg1'), generated
+	assert generated.contains('late_alias_event((struct native_event*)arg0, arg1);'), generated
+	assert generated.contains('.cb = late_alias_event_callback_adapter_'), generated
+	assert generated.contains('desc.cb = late_alias_event_callback_adapter_'), generated
+	assert !generated.contains('main__Event*'), generated
+	assert !generated.contains('.cb = late_alias_event,'), generated
+	assert !generated.contains('desc.cb = late_alias_event;'), generated
 }
 
 fn test_c_callback_const_qualifier_parallel_worker_codegen() {

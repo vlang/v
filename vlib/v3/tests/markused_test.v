@@ -584,6 +584,68 @@ println(int_str(f))
 	assert !used['helper']
 }
 
+fn test_local_ident_reference_does_not_root_dead_function() {
+	mut a, mut tc := parse_checked_source('local_ident_shadow_dead_fn_cgen', '
+fn C.v3_dead_local_shadow_should_not_link() int
+
+fn unused() int {
+	return C.v3_dead_local_shadow_should_not_link()
+}
+
+fn echo(unused int) int {
+	println(unused)
+	return unused
+}
+
+fn main() {
+	unused := 1
+	println(unused)
+	_ := echo(unused)
+}
+')
+	mut used := markused.mark_used(a, tc)
+	assert !used['unused']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert !c_code.contains('unused('), c_code
+	assert !c_code.contains('v3_dead_local_shadow_should_not_link'), c_code
+}
+
+fn test_local_fn_value_call_does_not_root_shadowed_dead_function() {
+	mut a, mut tc := parse_checked_source('local_fn_value_shadow_dead_fn_cgen', '
+fn C.v3_dead_local_fn_value_shadow_should_not_link() int
+
+fn unused() int {
+	return C.v3_dead_local_fn_value_shadow_should_not_link()
+}
+
+fn used() int {
+	return 7
+}
+
+fn main() {
+	unused := used
+	println(unused())
+}
+')
+	mut used := markused.mark_used(a, tc)
+	assert used['used']
+	assert !used['unused']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('used('), c_code
+	assert !c_code.contains('int unused(void)'), c_code
+	assert !c_code.contains('v3_dead_local_fn_value_shadow_should_not_link'), c_code
+}
+
 fn test_flag_default_value_lowering_keeps_escape_helper() {
 	mut a, mut tc := parse_checked_source('flag_default_value_escape_helper_cgen',
 		'module main\n\nfn escape_default_string(value string) string {\n\treturn value\n}\n\nfn flag_default_value(value string) string {\n\treturn value\n}\n\nfn main() {\n\t_ := flag_default_value("abc")\n}\n')

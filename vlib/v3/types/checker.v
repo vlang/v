@@ -7837,7 +7837,34 @@ fn (tc &TypeChecker) c_abi_fn_param_type(param string) (string, bool) {
 		base_type := tc.parse_type(param_type[1..])
 		return 'const ${tc.c_type(base_type)}*', true
 	}
+	if param_type.starts_with('&') {
+		if ct := tc.c_abi_alias_pointer_param_c_type(param_type[1..]) {
+			if clean.starts_with('mut ') {
+				return '${ct}*', true
+			}
+			return 'const ${ct}*', true
+		}
+	}
 	return tc.c_type(tc.parse_type(param_type)), false
+}
+
+fn (tc &TypeChecker) c_abi_alias_pointer_param_c_type(typ string) ?string {
+	t := tc.parse_type(typ)
+	if t is Alias {
+		base := c_abi_alias_c_base_type(t.base_type) or { return none }
+		return tc.c_type(base)
+	}
+	return none
+}
+
+fn c_abi_alias_c_base_type(t Type) ?Type {
+	if t is Alias {
+		return c_abi_alias_c_base_type(t.base_type)
+	}
+	if t is Struct && t.name.starts_with('C.') {
+		return t
+	}
+	return none
 }
 
 fn c_abi_fn_param_name(param string) string {
