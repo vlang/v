@@ -506,7 +506,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 					g.gen_expr(value_id)
 					g.write(', sizeof(${inner_ct}))')
 				} else {
-					g.gen_expr_with_expected_type(value_id, sf.typ)
+					g.gen_struct_field_expr_for_field(value_id, node.value, sf.name, sf.typ)
 				}
 				set_fields[sf.name] = true
 			} else {

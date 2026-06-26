@@ -862,6 +862,7 @@ fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, n
 	if param_names.len == 0 {
 		return none
 	}
+	is_receiver := t.generic_decl_is_receiver_method(decl.node)
 	mut inferred := map[string]string{}
 	mut param_idx := 0
 	for i in 0 .. decl.node.children_count {
@@ -869,22 +870,10 @@ fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, n
 		if child.kind != .param {
 			continue
 		}
-		arg_idx := if t.generic_decl_is_receiver_method(decl.node) && param_idx == 0 {
-			0
-		} else {
-			param_idx + 1
-		}
-		if arg_idx >= int(node.children_count) {
+		is_recv_param := is_receiver && param_idx == 0
+		arg_id := t.generic_call_arg_id_for_param(node, param_idx, is_receiver) or {
 			param_idx++
 			continue
-		}
-		arg_id := if arg_idx == 0 {
-			t.generic_call_receiver_id(node) or {
-				param_idx++
-				continue
-			}
-		} else {
-			t.a.child(&node, arg_idx)
 		}
 		mut arg_type := t.node_type(arg_id)
 		if arg_type.len == 0 {
@@ -892,7 +881,7 @@ fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, n
 		}
 		if arg_type.len > 0 {
 			infer_generic_type_args(child.typ, arg_type, mut inferred)
-			if t.generic_decl_is_receiver_method(decl.node) && param_idx == 0 {
+			if is_recv_param {
 				t.infer_generic_receiver_suffix_args(child.typ, arg_type, mut inferred)
 				t.infer_generic_embedded_receiver_args(child.typ, arg_type, mut inferred)
 			}
@@ -1307,25 +1296,31 @@ fn (t &Transformer) explicit_generic_call_args(node flat.Node, module_name strin
 	return normalize_generic_args(split_generic_args(type_arg), module_name)
 }
 
+fn (t &Transformer) generic_call_arg_id_for_param(node flat.Node, param_idx int, is_receiver bool) ?flat.NodeId {
+	is_recv_param := is_receiver && param_idx == 0
+	selector_form := is_receiver && t.call_is_selector_form(node)
+	if is_recv_param {
+		if selector_form {
+			return t.generic_call_receiver_id(node)
+		}
+		if int(node.children_count) <= 1 {
+			return none
+		}
+		return t.a.child(&node, 1)
+	}
+	arg_idx := if selector_form { param_idx } else { param_idx + 1 }
+	if arg_idx >= int(node.children_count) {
+		return none
+	}
+	return t.a.child(&node, arg_idx)
+}
+
 fn (mut t Transformer) infer_generic_call_args(decl GenericFnDecl, _id flat.NodeId, node flat.Node) ?[]string {
 	param_names := t.generic_fn_param_names(decl.node, decl.module)
 	if param_names.len == 0 {
 		return none
 	}
 	is_receiver := t.generic_decl_is_receiver_method(decl.node)
-	// Determine the call form. The selector form (`recv.method(args)`) embeds the
-	// receiver in the callee, so explicit args begin at child index 1. The
-	// ident-lowered form (`Type__method(recv, args)`) passes the receiver as child
-	// 1, so explicit args begin at child index 2. Using the wrong offset misaligns
-	// every explicit param and makes method-level generic inference silently fail.
-	mut selector_form := false
-	if is_receiver {
-		mut callee := t.a.nodes[int(t.a.child(&node, 0))]
-		if callee.kind == .index && callee.children_count > 0 {
-			callee = t.a.nodes[int(t.a.child(&callee, 0))]
-		}
-		selector_form = callee.kind == .selector
-	}
 	mut inferred := map[string]string{}
 	mut param_idx := 0
 	for i in 0 .. decl.node.children_count {
@@ -1334,26 +1329,9 @@ fn (mut t Transformer) infer_generic_call_args(decl GenericFnDecl, _id flat.Node
 			continue
 		}
 		is_recv_param := is_receiver && param_idx == 0
-		arg_id := if is_recv_param {
-			if selector_form {
-				t.generic_call_receiver_id(node) or {
-					param_idx++
-					continue
-				}
-			} else {
-				if int(node.children_count) <= 1 {
-					param_idx++
-					continue
-				}
-				t.a.child(&node, 1)
-			}
-		} else {
-			arg_idx := if selector_form { param_idx } else { param_idx + 1 }
-			if arg_idx >= int(node.children_count) {
-				param_idx++
-				continue
-			}
-			t.a.child(&node, arg_idx)
+		arg_id := t.generic_call_arg_id_for_param(node, param_idx, is_receiver) or {
+			param_idx++
+			continue
 		}
 		mut arg_type := t.node_type(arg_id)
 		if arg_type.len == 0 {

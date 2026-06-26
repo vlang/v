@@ -92,6 +92,18 @@ fn comptime_decl_gen_c_source(v3_bin string, name string, source string, flags s
 	return os.read_file(c_path) or { panic(err) }
 }
 
+fn comptime_decl_compile_run_source(v3_bin string, name string, source string, flags string) os.Result {
+	root := os.join_path(os.temp_dir(), 'v3_comptime_top_level_decl_run_${name}_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	main_path := os.join_path(root, 'main.v')
+	os.write_file(main_path, source) or { panic(err) }
+	bin_path := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${main_path} ${flags} -o ${bin_path}')
+	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
+	return os.execute(bin_path)
+}
+
 fn test_top_level_decls_inside_active_comptime_branch_are_codegen_visible() {
 	v3_bin := comptime_decl_build_v3()
 	else_c := comptime_decl_gen_c(v3_bin, 'else_branch', false)
@@ -138,4 +150,23 @@ $if some_feature ? {
 		'-d some_feature')
 	assert c_code.contains('int main('), c_code
 	assert c_code.contains('active'), c_code
+}
+
+fn test_synthetic_top_level_block_keeps_main_scope_locals() {
+	v3_bin := comptime_decl_build_v3()
+	run := comptime_decl_compile_run_source(v3_bin, 'synthetic_block_main_scope', 'module main
+
+$if linux {
+	x := 1
+	y := 2
+}
+
+fn helper() int {
+	return 0
+}
+
+println(int_str(x + y))
+', '')
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '3'
 }

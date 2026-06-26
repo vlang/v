@@ -1224,7 +1224,9 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 		child := &c.a.nodes[int(child_id)]
 		match child.kind {
 			.ident {
-				c.collect_fn_value_ident(child_id, child.value, cur_module, imports, local_values, mut
+				ident_values := markused_local_values_for_ident(c.a, node, child_id, child.value,
+					local_values)
+				c.collect_fn_value_ident(child_id, child.value, cur_module, imports, ident_values, mut
 					calls)
 			}
 			.selector {
@@ -1335,8 +1337,10 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 					if int(arg_id) >= 0 {
 						arg := c.a.nodes[int(arg_id)]
 						if arg.kind == .ident && arg.value.len > 0 {
+							arg_values := markused_local_values_for_ident(c.a, node, arg_id,
+								arg.value, local_values)
 							c.collect_fn_value_ident(arg_id, arg.value, cur_module, imports,
-								local_values, mut calls)
+								arg_values, mut calls)
 						}
 					}
 				}
@@ -1401,6 +1405,10 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 		if child.children_count > 0 {
 			mut j := int(child.children_count) - 1
 			for j >= 0 {
+				if child.kind == .decl_assign && j % 2 == 0 {
+					j--
+					continue
+				}
 				next_id := c.a.child(child, j)
 				if int(next_id) >= 0 {
 					stack << next_id
@@ -1450,6 +1458,89 @@ fn markused_local_value_names(a &flat.FlatAst, node &flat.Node) map[string]bool 
 		}
 	}
 	return names
+}
+
+fn markused_local_values_for_ident(a &flat.FlatAst, root &flat.Node, id flat.NodeId, name string, local_values map[string]bool) map[string]bool {
+	if name.len == 0 || name !in local_values
+		|| markused_has_prior_visible_local_value(a, root, id, name) {
+		return local_values
+	}
+	mut values := local_values.clone()
+	values.delete(name)
+	return values
+}
+
+fn markused_has_prior_visible_local_value(a &flat.FlatAst, root &flat.Node, target flat.NodeId, name string) bool {
+	mut locals := map[string]bool{}
+	return markused_scan_prior_local_value(a, root, target, name, mut locals) or { false }
+}
+
+fn markused_scan_prior_local_value(a &flat.FlatAst, node &flat.Node, target flat.NodeId, name string, mut locals map[string]bool) ?bool {
+	if node.kind == .fn_decl {
+		for i in 0 .. node.children_count {
+			child := a.child_node(node, i)
+			if child.kind == .param && child.value.len > 0 {
+				locals[child.value] = true
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		child_id := a.child(node, i)
+		if int(child_id) < 0 {
+			continue
+		}
+		if child_id == target {
+			return name in locals
+		}
+		child := a.node(child_id)
+		match child.kind {
+			.fn_decl, .c_fn_decl, .fn_literal {
+				continue
+			}
+			.block, .if_expr, .match_stmt, .for_stmt, .for_in_stmt {
+				mut scoped := locals.clone()
+				if found := markused_scan_prior_local_value(a, child, target, name, mut scoped) {
+					return found
+				}
+			}
+			.decl_assign {
+				mut i2 := 1
+				for i2 < child.children_count {
+					rhs_id := a.child(child, i2)
+					if int(rhs_id) >= 0 {
+						if rhs_id == target {
+							return name in locals
+						}
+						rhs := a.node(rhs_id)
+						if found := markused_scan_prior_local_value(a, rhs, target, name, mut
+							locals)
+						{
+							return found
+						}
+					}
+					i2 += 2
+				}
+				i2 = 0
+				for i2 + 1 < child.children_count {
+					lhs_id := a.child(child, i2)
+					if lhs_id == target {
+						return name in locals
+					}
+					lhs := a.node(lhs_id)
+					if lhs.kind == .ident && lhs.value.len > 0 {
+						locals[lhs.value] = true
+					}
+					i2 += 2
+				}
+			}
+			else {
+				if found := markused_scan_prior_local_value(a, child, target, name, mut locals) {
+					return found
+				}
+			}
+		}
+	}
+	return none
 }
 
 fn (c &CallCollector) top_level_decl_rhs_type_name(rhs_id flat.NodeId, cur_module string, imports map[string]string) string {

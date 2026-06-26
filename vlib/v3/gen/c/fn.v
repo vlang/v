@@ -1049,7 +1049,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	for stmt in stmts {
 		g.tc.cur_file = stmt.file
 		g.tc.cur_module = stmt.module
-		g.gen_node(stmt.id)
+		g.gen_top_level_main_stmt(stmt.id)
 	}
 	g.gen_all_defers()
 	g.writeln('return 0;')
@@ -1063,6 +1063,23 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.tc.cur_file = old_tc_file
 	g.tc.cur_module = old_tc_module
 	g.tc.pop_scope()
+}
+
+fn (mut g FlatGen) gen_top_level_main_stmt(id flat.NodeId) {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .block {
+		for i in 0 .. node.children_count {
+			child_id := g.a.child(&node, i)
+			if g.cgen_is_top_level_stmt(child_id) {
+				g.gen_top_level_main_stmt(child_id)
+			}
+		}
+		return
+	}
+	g.gen_node(id)
 }
 
 fn (mut g FlatGen) gen_test_main() {

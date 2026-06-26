@@ -584,6 +584,25 @@ println(int_str(f))
 	assert !used['helper']
 }
 
+fn test_local_fn_value_keeps_helper_before_future_local_shadow() {
+	used := mark_used_source('local_fn_value_future_shadow', '
+fn cb() int {
+	return 1
+}
+
+fn takes(f fn () int) int {
+	return f()
+}
+
+fn main() {
+	takes(cb)
+	cb := 0
+	_ = cb
+}
+')
+	assert used['cb']
+}
+
 fn test_local_ident_reference_does_not_root_dead_function() {
 	mut a, mut tc := parse_checked_source('local_ident_shadow_dead_fn_cgen', '
 fn C.v3_dead_local_shadow_should_not_link() int

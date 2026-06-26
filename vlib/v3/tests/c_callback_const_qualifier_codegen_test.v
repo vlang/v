@@ -155,6 +155,65 @@ fn main() {
 	assert !generated.contains('.plain = plain_event_callback_adapter_'), generated
 }
 
+fn test_generic_heap_positional_c_callback_codegen() {
+	v3_bin := const_cb_build_v3()
+	src := const_cb_write_project('module main
+
+#include "@DIR/native_callback.h"
+
+@[typedef]
+struct C.native_event {
+	value int
+}
+
+@[typedef]
+struct C.native_desc {
+mut:
+	cb fn (const_event &C.native_event, voidptr) = unsafe { nil }
+	plain fn (&C.native_event, voidptr) = unsafe { nil }
+	user_data voidptr
+}
+
+struct App {
+mut:
+	hits int
+}
+
+fn concrete_event(e &C.native_event, data voidptr) {
+	mut app := unsafe { &App(data) }
+	app.hits += e.value
+}
+
+fn plain_event(e &C.native_event, data voidptr) {
+	mut app := unsafe { &App(data) }
+	app.hits += e.value * 10
+}
+
+fn make_desc[T](data T) &C.native_desc {
+	return &C.native_desc{concrete_event, plain_event, voidptr(data)}
+}
+
+fn main() {
+	mut app := App{}
+	event := C.native_event{value: 5}
+	desc := make_desc(&app)
+	desc.cb(&event, desc.user_data)
+	desc.plain(&event, desc.user_data)
+	println(int_str(app.hits))
+}
+')
+	out := os.join_path(os.temp_dir(), 'v3_const_callback_heap_positional_out_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '55'
+	generated := os.read_file(out + '.c') or { panic(err) }
+	assert generated.contains('concrete_event_callback_adapter_'), generated
+	assert generated.contains('.cb = concrete_event_callback_adapter_'), generated
+	assert !generated.contains('.cb = concrete_event,'), generated
+}
+
 fn test_c_callback_c_alias_declared_after_field_codegen() {
 	v3_bin := const_cb_build_v3()
 	src := const_cb_write_project('module main
