@@ -307,3 +307,669 @@ fn test_type_checker_reports_core_semantic_errors() {
 	assert !cross_module_array_append_c.contains('array_push_many(&xs')
 	assert cross_module_array_append_c.contains('array_push(&xs')
 }
+
+// Regression tests for the post-PR review fixes: fixed-array literals must match
+// the expected fixed length, and genuine fixed-array if-branches of different
+// lengths must mismatch — while bare array literals stay length-agnostic.
+fn test_fixed_array_length_checks() {
+	v3_bin := build_v3()
+	// A literal passed where a fixed array is expected must have the exact length.
+	run_bad(v3_bin, 'bad_fixed_array_arg_len',
+		'fn take4(a [4]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take4([1, 2])\n}\n',
+		'expected `int[4]`')
+	// Genuine fixed arrays of different lengths in if-branches must mismatch.
+	run_bad(v3_bin, 'bad_if_branch_fixed_array_len',
+		'fn main() {\n\ta := [2]int{}\n\tb := [3]int{}\n\tc := true\n\t_ := if c { a } else { b }\n}\n',
+		'if-expression branch type mismatch')
+	// Correct fixed-array length is accepted and round-trips.
+	good4 := run_good(v3_bin, 'good_fixed_array_arg_len',
+		'fn take4(a [4]int) int {\n\treturn a[0] + a[1] + a[2] + a[3]\n}\nfn main() {\n\tprintln(int_str(take4([10, 20, 30, 40])))\n}\n')
+	assert good4 == '100'
+	// Bare array literals are dynamic `[]T`, so different-length branches are fine.
+	good_lit := run_good(v3_bin, 'good_if_branch_array_literal_len',
+		'fn main() {\n\tc := true\n\tx := if c { [1, 2, 3] } else { [4, 5] }\n\tprintln(int_str(x.len))\n}\n')
+	assert good_lit == '3'
+	// `return if cond { ... } else { ... }` with fixed-array-const branches must
+	// coerce each branch to the dynamic `[]T` return type (like a plain return and
+	// the `return match` path), not return the bare C fixed array.
+	good_ret_const := run_good(v3_bin, 'good_return_if_fixed_const',
+		'const wp3 = [1, 2, 3]\nconst wp2 = [4, 5]\nfn pick(c bool) []int {\n\treturn if c { wp3 } else { wp2 }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n')
+	assert good_ret_const == '5'
+	good_ret_lit := run_good(v3_bin, 'good_return_if_array_literal',
+		'fn pick(c bool) []int {\n\treturn if c { [1, 2, 3] } else { [4, 5] }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n')
+	assert good_ret_lit == '5'
+}
+
+// Regression tests for the post-PR review fixes around generic struct receivers
+// and generic heap struct literals.
+fn test_generic_struct_receiver_and_heap_init() {
+	v3_bin := build_v3()
+	// Two *different concrete* instantiations are incompatible: `Box[string]` must
+	// not satisfy an expected `Box[int]` (value or pointer form).
+	run_bad(v3_bin, 'bad_generic_concrete_value_arg',
+		"struct Box[T] {\n\tval T\n}\nfn use_int(b Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n",
+		'expected `Box[int]`')
+	run_bad(v3_bin, 'bad_generic_concrete_ptr_arg',
+		"struct Box[T] {\n\tval T\n}\nfn use_int(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tbs := &Box[string]{\n\t\tval: 'hi'\n\t}\n\t_ := use_int(bs)\n}\n",
+		'expected `&Box[int]`')
+	// A generic method on the open `Box[T]` receiver works for every instantiation.
+	good_method := run_good(v3_bin, 'good_generic_method_instances',
+		"struct Box[T] {\n\tval T\n}\nfn (b Box[T]) get() T {\n\treturn b.val\n}\nfn main() {\n\tbi := Box[int]{\n\t\tval: 42\n\t}\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\tprintln(int_str(bi.get()))\n\tprintln(bs.get())\n}\n")
+	assert good_method == '42\nhi'
+	// A bare generic literal (`Box{..}` / `&Box{..}`) specializes to the expected
+	// concrete instance — and the heap literal must materialize the same concrete
+	// C type (`Box_int`) as the value literal, not the bare template.
+	good_heap := run_good(v3_bin, 'good_generic_bare_value_and_heap_args',
+		'struct Box[T] {\n\tval T\n}\nfn take_val(b Box[int]) int {\n\treturn b.val\n}\nfn take_heap(b &Box[int]) int {\n\treturn b.val\n}\nfn main() {\n\tprintln(int_str(take_val(Box{\n\t\tval: 7\n\t}) + take_heap(&Box{\n\t\tval: 9\n\t})))\n}\n')
+	assert good_heap == '16'
+}
+
+// Regression tests for the post-PR review fixes: const-expression fixed-array
+// lengths must be folded to a literal (not c_name-mangled into `segs_+_1`), and the
+// `[]thread T.wait()` helper name must sanitize a pointer payload C type (`Foo*`).
+fn test_const_expr_fixed_array_and_thread_ptr_wait() {
+	v3_bin := build_v3()
+	// `[segs + 1]f32` must emit `[5]` for both the array dimension and `.len`.
+	good_len := run_good(v3_bin, 'good_const_expr_fixed_array_len',
+		'const segs = 4\nfn main() {\n\tmut x := [segs + 1]f32{}\n\tx[0] = 1.5\n\tx[segs] = 2.5\n\tprintln(int_str(x.len))\n\tprintln(int_str(int(x[0] + x[segs])))\n}\n')
+	assert good_len == '5\n4'
+	// `[]thread &Foo.wait()` returns `[]&Foo`; the wait helper symbol must not contain
+	// the `*` from the `Foo*` payload C type.
+	good_thread := run_good(v3_bin, 'good_thread_ptr_payload_wait',
+		'struct Foo {\n\tx int\n}\nfn work(n int) &Foo {\n\treturn &Foo{\n\t\tx: n\n\t}\n}\nfn main() {\n\tmut threads := []thread &Foo{}\n\tthreads << spawn work(40)\n\tthreads << spawn work(2)\n\tresults := threads.wait()\n\tmut sum := 0\n\tfor r in results {\n\t\tsum += r.x\n\t}\n\tprintln(int_str(sum))\n}\n')
+	assert good_thread == '42'
+}
+
+// Regression tests: a const-expression fixed-array length must work as a STRUCT
+// FIELD type (not only as a literal) and must fold whether or not the operators
+// are spaced (`segs+1` as well as `segs + 1`).
+fn test_const_expr_fixed_array_field_and_spacing() {
+	v3_bin := build_v3()
+	// Struct field `[segs + 1]f32` was emitted as `void verts[4]` (element lost,
+	// size = segs); it must be `[5]f32` with `.len == 5`.
+	good_field := run_good(v3_bin, 'good_const_expr_fixed_array_field',
+		'const segs = 4\nstruct Mesh {\n\tverts [segs + 1]f32\n}\nfn main() {\n\tm := Mesh{}\n\tprintln(int_str(m.verts.len))\n}\n')
+	assert good_field == '5'
+	// Spaced, unspaced, and nested const-expression sizes all fold to a literal.
+	good_forms := run_good(v3_bin, 'good_const_expr_fixed_array_forms',
+		'const segs = 3\nconst mult = 2\nfn main() {\n\ta := [segs + 1]int{}\n\tb := [segs+1]int{}\n\tc := [segs * mult]int{}\n\td := [segs - 1]int{}\n\te := [segs * mult + 1]int{}\n\tprintln(int_str(a.len + b.len + c.len + d.len + e.len))\n}\n')
+	assert good_forms == '23'
+}
+
+// Regression tests for the second PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_two() {
+	v3_bin := build_v3()
+	// or-block binds `err` (IError) only inside the or-body; an outer `err` keeps its
+	// type afterwards (was emitted as `err.message` on an int).
+	or_err := run_good(v3_bin, 'good_or_block_err_scope',
+		'fn maybe() ?int {\n\treturn 1\n}\nfn main() {\n\terr := 7\n\t_ := maybe() or { 0 }\n\tprintln(int_str(err))\n}\n')
+	assert or_err == '7'
+	// Generic receiver params are substituted by declared name: `Pair[L, R].right()`
+	// returns `R` (int), not the first arg `L` (string).
+	pair := run_good(v3_bin, 'good_generic_receiver_param_by_name',
+		"struct Pair[L, R] {\n\tleft  L\n\tright R\n}\nfn (p Pair[L, R]) right_val() R {\n\treturn p.right\n}\nfn main() {\n\tp := Pair[string, int]{\n\t\tleft:  'hi'\n\t\tright: 42\n\t}\n\tprintln(int_str(p.right_val()))\n}\n")
+	assert pair == '42'
+	// `[flag]` enum stringification renders combined values as `Enum{.a | .b}`.
+	flag := run_good(v3_bin, 'good_flag_enum_str',
+		'@[flag]\nenum Perm {\n\tread\n\twrite\n\texec\n}\nfn main() {\n\ta := Perm.read | Perm.write\n\tprintln(a.str())\n\tb := Perm.read\n\tprintln(b.str())\n}\n')
+	assert flag == 'Perm{.read | .write}\nPerm{.read}'
+	// spawn of an option-returning fn stores/reads the `Optional_T` ABI layout.
+	spawn_opt := run_good(v3_bin, 'good_spawn_option_return',
+		"fn work() ?string {\n\treturn 'hello'\n}\nfn main() {\n\tmut ts := []thread ?string{}\n\tts << spawn work()\n\trs := ts.wait()\n\tx := rs[0] or { 'none' }\n\tprintln(x)\n}\n")
+	assert spawn_opt == 'hello'
+	// A global V function passed to a method `fn ()` param keeps the function-pointer
+	// typedef (not `(void*)`).
+	cb := run_good(v3_bin, 'good_method_fn_ptr_arg',
+		"struct S {\n\tn int\n}\nfn (s S) run(cb fn ()) {\n\tcb()\n}\nfn greet() {\n\tprintln('hi')\n}\nfn main() {\n\ts := S{\n\t\tn: 1\n\t}\n\ts.run(greet)\n}\n")
+	assert cb == 'hi'
+}
+
+// Regression tests for the third PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_three() {
+	v3_bin := build_v3()
+	// A `[flag]` enum match that lists only single-field branches is NOT exhaustive
+	// (combined/zero values fall through), so a non-void fn needs `else`/missing-return.
+	run_bad(v3_bin, 'bad_flag_enum_match_not_exhaustive',
+		'@[flag]\nenum Perm {\n\tread\n\twrite\n}\nfn f(p Perm) int {\n\tmatch p {\n\t\t.read { return 1 }\n\t\t.write { return 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(Perm.read)))\n}\n',
+		'missing return')
+	// A bound method value returning an option, passed to a V `fn () ?string`
+	// parameter, must emit a wrapper with the `Optional_string` ABI return and a
+	// function-pointer (not `(void*)`) cast.
+	mv := run_good(v3_bin, 'good_method_value_option_return',
+		"struct G {\n\tn int\n}\nfn (g G) make() ?string {\n\treturn 'hi'\n}\nfn run(cb fn () ?string) {\n\ts := cb() or { 'none' }\n\tprintln(s)\n}\nfn main() {\n\tg := G{\n\t\tn: 1\n\t}\n\trun(g.make)\n}\n")
+	assert mv == 'hi'
+}
+
+// Regression tests: a bare generic struct literal adopts a matching concrete
+// expected instance (value and heap), and a field-type mismatch is rejected.
+fn test_bare_generic_literal_adopts_expected_instance() {
+	v3_bin := build_v3()
+	val := run_good(v3_bin, 'good_bare_generic_literal_return',
+		'struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 7\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
+	assert val == '7'
+	heap := run_good(v3_bin, 'good_bare_generic_literal_heap_return',
+		'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 9\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
+	assert heap == '9'
+	pair := run_good(v3_bin, 'good_bare_generic_literal_multi_param',
+		"struct Pair[L, R] {\n\tl L\n\tr R\n}\nfn make() Pair[string, int] {\n\treturn Pair{\n\t\tl: 'hi'\n\t\tr: 5\n\t}\n}\nfn main() {\n\tp := make()\n\tprintln(p.l)\n\tprintln(int_str(p.r))\n}\n")
+	assert pair == 'hi\n5'
+	// A field whose type does not match the concrete instantiation is rejected by the
+	// checker (rather than adopting the type and emitting broken C).
+	run_bad(v3_bin, 'bad_bare_generic_literal_field_mismatch',
+		"struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{\n\t\tv: 'str'\n\t}\n}\nfn main() {\n\t_ := make()\n}\n",
+		'cannot return `Box` as `Box[int]`')
+}
+
+// Regression tests for the fourth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_four() {
+	v3_bin := build_v3()
+	// A `&Box{...}` value must not be accepted where a `Box[int]` value is expected
+	// (pointer shape must match in the generic-base relaxation).
+	run_bad(v3_bin, 'bad_generic_pointer_shape_arg',
+		'struct Box[T] {\n\tv T\n}\nfn take(b Box[int]) int {\n\treturn b.v\n}\nfn main() {\n\t_ := take(&Box{\n\t\tv: 1\n\t})\n}\n',
+		'cannot use')
+	// A method value on a concrete generic receiver resolves the open `Box[T].get`,
+	// types the value, and codegen materialises the `Box_int__get` wrapper.
+	mval := run_good(v3_bin, 'good_generic_receiver_method_value',
+		'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) get() T {\n\treturn b.v\n}\nfn run(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tb := Box[int]{\n\t\tv: 7\n\t}\n\tprintln(int_str(run(b.get)))\n}\n')
+	assert mval == '7'
+	// A V function passed to a parameter whose type is a `fn`-type *alias* keeps the
+	// function pointer (not `(void*)`).
+	alias_cb := run_good(v3_bin, 'good_fn_type_alias_callback',
+		'type Cb = fn () int\nfn run(cb Cb) int {\n\treturn cb()\n}\nfn five() int {\n\treturn 5\n}\nfn main() {\n\tprintln(int_str(run(five)))\n}\n')
+	assert alias_cb == '5'
+}
+
+// Regression tests for the fifth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_five() {
+	v3_bin := build_v3()
+	// A const-expression fixed-array length using `/` and `%` (and mixed precedence)
+	// must fold to the right literal, not mangle the raw expression into an identifier:
+	// `segs / 2` = 4, `segs % 3` = 2, `segs * 2 + 1` = 17, `segs / 2 * 2` = 8.
+	divmod := run_good(v3_bin, 'good_const_expr_fixed_array_divmod',
+		'const segs = 8\nstruct Buf {\n\ta [segs / 2]u8\n\tb [segs % 3]u8\n\tc [segs * 2 + 1]u8\n\td [segs / 2 * 2]u8\n}\nfn main() {\n\tx := Buf{}\n\tprintln(int_str(x.a.len + x.b.len + x.c.len + x.d.len))\n}\n')
+	// 4 + 2 + 17 + 8 = 31
+	assert divmod == '31'
+	// A bare `[]thread` (threads with no return value) joins to `void`: `.wait()` is a
+	// valid statement that runs every spawned thread to completion.
+	void_wait := run_good(v3_bin, 'good_bare_thread_void_wait',
+		"fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tthreads << spawn work()\n\tthreads.wait()\n\tprintln('done')\n}\n")
+	assert void_wait.contains('done')
+	// Because a bare `[]thread`.wait() is `void` (not the receiver `[]thread`), its
+	// result cannot be bound to a variable — guards against the old fallback that typed
+	// the call as the receiver array.
+	run_bad(v3_bin, 'bad_bare_thread_void_wait_assign',
+		"fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tx := threads.wait()\n\tprintln(x)\n}\n",
+		'unknown identifier `x`')
+}
+
+// Regression tests for the sixth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_six() {
+	v3_bin := build_v3()
+	// A bare generic struct literal with POSITIONAL fields (`Box{'str'}`) must validate
+	// each value against the struct field order before adopting the expected concrete
+	// instance; a wrong positional type is a definite mismatch, not a silent adoption
+	// that codegen would init an `int` field from a string.
+	run_bad(v3_bin, 'bad_positional_generic_literal_field_mismatch',
+		"struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{'str'}\n}\nfn main() {\n\t_ := make()\n}\n",
+		'cannot return `Box` as `Box[int]`')
+	// A positional bare generic literal whose value matches the concrete field type is
+	// accepted and round-trips.
+	pos_good := run_good(v3_bin, 'good_positional_generic_literal',
+		'struct Box[T] {\n\tv T\n}\nfn make() Box[int] {\n\treturn Box{5}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
+	assert pos_good == '5'
+	// A function returning a nested fixed array (`[2][3]int`, whose element is itself a
+	// fixed array) must get a C return wrapper (functions cannot return raw arrays) and
+	// the caller must type the result as the full nested array (`int[3][2]` round-trips
+	// through parse_type), so the values survive the wrapper memcpy.
+	nested_ret := run_good(v3_bin, 'good_nested_fixed_array_return',
+		'fn make() [2][3]int {\n\tmut m := [2][3]int{}\n\tm[0][0] = 1\n\tm[0][1] = 2\n\tm[0][2] = 3\n\tm[1][0] = 4\n\tm[1][1] = 5\n\tm[1][2] = 6\n\treturn m\n}\nfn main() {\n\tr := make()\n\tprintln(int_str(r[0][0] + r[0][1] + r[0][2] + r[1][0] + r[1][1] + r[1][2]))\n}\n')
+	assert nested_ret == '21'
+}
+
+// Regression tests for the seventh PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_seven() {
+	v3_bin := build_v3()
+	// A parenthesized const fixed-array length must fold by ignoring operators inside the
+	// parentheses: `2 * (segs + 1)` is 10 (not split at the inner `+`), `(segs + 2) / 2`
+	// is 5, so the array dimensions are real numbers, not mangled raw text.
+	paren := run_good(v3_bin, 'good_paren_const_fixed_array_len',
+		'const segs = 4\nfn main() {\n\ta := [2 * (segs + 1)]int{}\n\tb := [(segs + 2) / 2]int{}\n\tprintln(int_str(a.len + b.len))\n}\n')
+	// 10 + 3 = 13
+	assert paren == '13'
+	// A generic method whose signature mentions the receiver type (`Box[T].clone() Box[T]`)
+	// must resolve, on `Box[int]`, to the concrete `Box[int]` return (not the bare `Box`
+	// the collapsed open signature would yield), so the caller types and codegens correctly.
+	clone := run_good(v3_bin, 'good_generic_method_returns_receiver',
+		'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) clone() Box[T] {\n\treturn Box[T]{\n\t\tv: b.v\n\t}\n}\nfn (b Box[T]) get() T {\n\treturn b.v\n}\nfn main() {\n\tb := Box[int]{\n\t\tv: 9\n\t}\n\tc := b.clone()\n\tprintln(int_str(c.get()))\n}\n')
+	assert clone == '9'
+	// An operator overload on a generic struct is specialized only for instances whose
+	// operator is actually used: `Box[NoPlus]` is merely stored (its `+` is never applied),
+	// so the unused `Box_NoPlus__plus` body — which would do `NoPlus + NoPlus` — is not
+	// emitted, while `Box[int] + Box[int]` is.
+	op_gate := run_good(v3_bin, 'good_operator_specialization_gated',
+		"struct Box[T] {\n\tv T\n}\nfn (a Box[T]) + (b Box[T]) Box[T] {\n\treturn Box[T]{\n\t\tv: a.v + b.v\n\t}\n}\nstruct NoPlus {\n\tname string\n}\nfn main() {\n\tx := Box[int]{\n\t\tv: 1\n\t}\n\ty := Box[int]{\n\t\tv: 2\n\t}\n\tz := x + y\n\tprintln(int_str(z.v))\n\tw := Box[NoPlus]{\n\t\tv: NoPlus{\n\t\t\tname: 'hi'\n\t\t}\n\t}\n\tprintln(w.v.name)\n}\n")
+	assert op_gate == '3\nhi'
+}
+
+// Regression tests for the eighth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_eight() {
+	v3_bin := build_v3()
+	// A bare *value* generic literal must not adopt a *pointer* expectation: `&Box[int]`
+	// expected from a plain `Box{...}` is a definite mismatch (cgen would emit a `Box_int`
+	// value where a `Box_int*` is required), so it is rejected rather than silently typed
+	// as `&Box[int]`.
+	run_bad(v3_bin, 'bad_value_literal_pointer_expectation',
+		'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\t_ := make()\n}\n',
+		'cannot return `Box` as `&Box[int]`')
+	// The pointer form `&Box{...}` still adopts the `&Box[int]` expectation and round-trips.
+	heap := run_good(v3_bin, 'good_amp_generic_literal_pointer',
+		'struct Box[T] {\n\tv T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 7\n\t}\n}\nfn main() {\n\tprintln(int_str(make().v))\n}\n')
+	assert heap == '7'
+	// A method value passed through a function-type *alias* parameter (`type Cb = fn ()`)
+	// must be cast to the generated `_fn_ptr_*` typedef, not `(void*)` (which strict C
+	// rejects for a function pointer). `fn_type_from` unwraps the alias.
+	mv_alias := run_good(v3_bin, 'good_method_value_fn_alias',
+		"struct Game {\n\tscore int\n}\nfn (g Game) draw() {\n\tprintln('drawing')\n}\ntype Cb = fn ()\nfn run(cb Cb) {\n\tcb()\n}\nfn main() {\n\tg := Game{\n\t\tscore: 5\n\t}\n\trun(g.draw)\n}\n")
+	assert mv_alias == 'drawing'
+}
+
+// Regression tests for the tenth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_ten() {
+	v3_bin := build_v3()
+	// Const fixed-array lengths may use shifts and bitwise operators, in both the string
+	// evaluator (recovered length text) and the AST const evaluator (`const n = 1 << 2`).
+	// `1 << 2`=4, `8 >> 1`=4, `3 | 4`=7, `0xF & 6`=6, `(1 << 3) + 2`=10, `16 >> 2 << 1`=8.
+	shifts := run_good(v3_bin, 'good_shift_bitwise_fixed_array_len',
+		'const shift_amt = 1 << 2\nconst my_mask = 0xF & 6\nfn main() {\n\ta := [1 << 2]int{}\n\tb := [shift_amt]int{}\n\tc := [8 >> 1]int{}\n\td := [3 | 4]int{}\n\te := [my_mask]int{}\n\tf := [(1 << 3) + 2]int{}\n\tg := [16 >> 2 << 1]int{}\n\tprintln(int_str(a.len + b.len + c.len + d.len + e.len + f.len + g.len))\n}\n')
+	// 4 + 4 + 4 + 7 + 6 + 10 + 8 = 43
+	assert shifts == '43'
+	// The fixed-array literal length guard evaluates a shift length: `[1, 2]` (two
+	// elements) does not match an expected `[1 << 2]int` (four), so it is rejected.
+	run_bad(v3_bin, 'bad_shift_fixed_array_literal_len',
+		'fn take(a [1 << 2]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n',
+		'cannot use')
+	// A function returning a fixed array of structs gets a C return wrapper (emitted after
+	// the struct is defined), so it compiles and round-trips instead of emitting a raw
+	// `Array_fixed_Foo_2` return type C rejects.
+	fa_struct := run_good(v3_bin, 'good_fixed_array_struct_return',
+		'struct Foo {\n\tx int\n}\nfn make() [2]Foo {\n\treturn [Foo{\n\t\tx: 1\n\t}, Foo{\n\t\tx: 2\n\t}]!\n}\nfn main() {\n\tr := make()\n\tprintln(int_str(r[0].x + r[1].x))\n}\n')
+	assert fa_struct == '3'
+	// Likewise a fixed array of `string` returns through a wrapper.
+	fa_string := run_good(v3_bin, 'good_fixed_array_string_return',
+		"fn make() [2]string {\n\treturn ['hi', 'yo']!\n}\nfn main() {\n\tr := make()\n\tprintln(r[0] + r[1])\n}\n")
+	assert fa_string == 'hiyo'
+}
+
+// Regression tests for the eleventh PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_eleven() {
+	v3_bin := build_v3()
+	// A method value is backed by a per-evaluation-site static receiver, so storing it in
+	// an array (where several instances from one site would share that slot and every
+	// callback would use the last receiver) is rejected with a clear error instead of
+	// reaching cgen and emitting an undefined helper. Append form:
+	run_bad(v3_bin, 'bad_method_value_array_append',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\tmut cbs := []fn () int{}\n\tfor i in 0 .. 3 {\n\t\tc := Counter{\n\t\t\tid: i * 10\n\t\t}\n\t\tcbs << c.report\n\t}\n\tprintln(int_str(cbs.len))\n}\n',
+		'cannot escape its call site')
+	// Array-literal form is rejected too.
+	run_bad(v3_bin, 'bad_method_value_array_literal',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\ta := Counter{\n\t\tid: 1\n\t}\n\tb := Counter{\n\t\tid: 2\n\t}\n\tcbs := [a.report, b.report]\n\tprintln(int_str(cbs.len))\n}\n',
+		'cannot escape its call site')
+	// The supported single-use forms still work: a method value passed directly as a
+	// callback argument, and an `arr << int` append / `int << int` shift are not flagged.
+	imm := run_good(v3_bin, 'good_method_value_immediate_after_guard',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn run(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tmut xs := [1]\n\txs << (2 << 1)\n\tprintln(int_str(run(c.report) + xs.len))\n}\n')
+	// 7 + 2 (xs has [1, 4]) = 9
+	assert imm == '9'
+}
+
+// Regression tests for the twelfth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_twelve() {
+	v3_bin := build_v3()
+	// A heap struct literal with POSITIONAL fields must emit positional C values, not a
+	// `. = v` designator. For a *generic* heap literal the fields live under the concrete
+	// instance key (`Box[int]`), so the per-index field lookup must use that, not the bare
+	// `Box`; otherwise `arr << &Box[int]{1, 2}` generates invalid C like `(Box_int){. = 1}`.
+	gpos := run_good(v3_bin, 'good_positional_generic_heap_struct',
+		'struct Box[T] {\n\ta T\n\tb T\n}\nfn main() {\n\tmut arr := []&Box[int]{}\n\tarr << &Box[int]{1, 2}\n\tprintln(int_str(arr[0].a + arr[0].b))\n}\n')
+	assert gpos == '3'
+	// A positional generic heap literal that omits a default-initialized `[]T` field still
+	// gets that field's default (`array_new(...)`) alongside the positional value.
+	gposdef := run_good(v3_bin, 'good_positional_generic_heap_default',
+		'struct Box[T] {\n\tv     T\n\titems []T\n}\nfn main() {\n\tb := &Box[int]{5}\n\tmut its := b.items\n\tits << 10\n\tprintln(int_str(b.v))\n\tprintln(int_str(its.len))\n}\n')
+	assert gposdef == '5\n1'
+	// Non-generic positional heap literals keep working (no regression).
+	pos := run_good(v3_bin, 'good_positional_heap_struct',
+		'struct Point {\n\tx int\n\ty int\n}\nfn main() {\n\tmut arr := []&Point{}\n\tarr << &Point{1, 2}\n\tprintln(int_str(arr[0].x + arr[0].y))\n}\n')
+	assert pos == '3'
+}
+
+// Regression tests for the thirteenth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_thirteen() {
+	v3_bin := build_v3()
+	// V's unsigned right shift `>>>` is a valid constant-length operator. It must fold in
+	// the const evaluator (so the array dimension is emitted as a numeric literal, since
+	// `>>>` has no C form) and in the literal-length guard. `8 >>> 1` = 4, `16 >>> 2` = 4,
+	// `(1 << 5) >>> 2` = 8.
+	ushift := run_good(v3_bin, 'good_unsigned_shift_fixed_array_len',
+		'const shamt = 16 >>> 2\nfn main() {\n\ta := [8 >>> 1]int{}\n\tb := [shamt]int{}\n\tc := [(1 << 5) >>> 2]int{}\n\tprintln(int_str(a.len + b.len + c.len))\n}\n')
+	// 4 + 4 + 8 = 16
+	assert ushift == '16'
+	// The fixed-array literal-length guard evaluates `>>>` too: `[1, 2]` (two elements)
+	// does not match an expected `[8 >>> 1]int` (four), so it is rejected.
+	run_bad(v3_bin, 'bad_unsigned_shift_fixed_array_literal_len',
+		'fn take(a [8 >>> 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n',
+		'cannot use')
+}
+
+// Regression tests for the fourteenth PR-review batch (vlang/v#27557).
+fn test_pr_review_codegen_batch_fourteen() {
+	v3_bin := build_v3()
+	// Non-decimal integer literals (hex `0x`, octal `0o`, binary `0b`) fold in const
+	// fixed-array lengths: `0xF & 6` = 6, `0b1100 >> 1` = 6, `0o17 & 8` = 8.
+	nondec := run_good(v3_bin, 'good_non_decimal_const_fixed_array_len',
+		'const flags = 0b1010 | 0b0100\nfn main() {\n\ta := [0xF & 6]int{}\n\tb := [0b1100 >> 1]int{}\n\tc := [0o17 & 8]int{}\n\td := [flags]int{}\n\tprintln(int_str(a.len + b.len + c.len + d.len))\n}\n')
+	// 6 + 6 + 8 + 14 = 34
+	assert nondec == '34'
+	// The length guard evaluates non-decimal too: `[1, 2]` does not match `[0xF & 6]int`.
+	run_bad(v3_bin, 'bad_non_decimal_fixed_array_literal_len',
+		'fn take(a [0xF & 6]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n',
+		'cannot use')
+	// A generic-receiver method with a function-type parameter substitutes the type params
+	// inside the signature, so `Box[string].apply` expects `fn (string) int`, and a matching
+	// callback is accepted and emitted with the right fn-pointer type.
+	apply := run_good(v3_bin, 'good_generic_method_fn_type_param',
+		"struct Box[T] {\n\tv T\n}\nfn (b Box[T]) apply(cb fn (T) int) int {\n\treturn cb(b.v)\n}\nfn slen(s string) int {\n\treturn s.len\n}\nfn main() {\n\tb := Box[string]{\n\t\tv: 'hello'\n\t}\n\tprintln(int_str(b.apply(slen)))\n}\n")
+	assert apply == '5'
+	// A method value that escapes its call site is rejected: returned from a factory, stored
+	// in a struct field, or put in a map (the per-site static receiver can't keep several
+	// instances distinct). Immediately-passed callbacks and local bindings still work.
+	run_bad(v3_bin, 'bad_method_value_return_escape',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn bind(c Counter) fn () int {\n\treturn c.report\n}\nfn main() {\n\t_ := bind(Counter{\n\t\tid: 1\n\t})\n}\n',
+		'cannot escape its call site')
+	run_bad(v3_bin, 'bad_method_value_struct_field_escape',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nstruct Engine {\n\tcb fn () int\n}\nfn main() {\n\t_ := Engine{\n\t\tcb: Counter{\n\t\t\tid: 1\n\t\t}.report\n\t}\n}\n',
+		'cannot escape its call site')
+}
+
+fn test_pr_review_codegen_batch_fifteen() {
+	v3_bin := build_v3()
+	// The string length evaluator folds with the same operator precedence as the v3 parser
+	// and AST const evaluator: shifts bind looser than `+`, so `1 << 2 + 1` groups as
+	// `1 << (2 + 1)` = 8 (not `(1 << 2) + 1` = 5) whether the length is recovered from a
+	// const's source text (string evaluator) or a literal expression. Both must agree, else
+	// the literal length check and the generated C dimension would diverge.
+	prec := run_good(v3_bin, 'good_shift_add_precedence_fixed_array_len',
+		'const seg_count = 1 << 2 + 1\nfn main() {\n\ta := [1 << 2 + 1]u8{}\n\tb := [seg_count]u8{}\n\tc := [1 + 2 << 1]u8{}\n\tprintln(int_str(a.len + b.len + c.len))\n}\n')
+	// 8 + 8 + 6 = 22
+	assert prec == '22'
+	// The fixed-array literal-length guard uses the same folded length: a `[1 << 2 + 1]int`
+	// parameter (length 8) rejects a 5-element literal.
+	run_bad(v3_bin, 'bad_shift_add_precedence_literal_len',
+		'fn take(a [1 << 2 + 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2, 3, 4, 5]!)\n}\n',
+		'cannot use')
+	// An fn-pointer type whose return is a non-early fixed array (`string`/struct element) gets
+	// a return-wrapper struct. The wrapper is forward-declared before the fn-pointer typedef and
+	// completed after the element type, so the C compiles; the wrapped value is unwrapped to
+	// `.ret_arr` at the indirect call, whether the callback is reached through a param or a
+	// struct field.
+	fp_str := run_good(v3_bin, 'good_fn_ptr_returns_fixed_string_array',
+		"type MakeArr = fn () [2]string\nfn mk() [2]string {\n\treturn ['hi', 'there']!\n}\nfn run(f MakeArr) string {\n\tr := f()\n\treturn r[0]\n}\nstruct Holder {\n\tf MakeArr\n}\nfn main() {\n\th := Holder{\n\t\tf: mk\n\t}\n\tprintln(run(mk) + h.f()[1])\n}\n")
+	assert fp_str == 'hithere'
+	fp_struct := run_good(v3_bin, 'good_fn_ptr_returns_fixed_struct_array',
+		'struct P {\n\tx int\n}\ntype MakeP = fn () [2]P\nfn mkp() [2]P {\n\treturn [P{\n\t\tx: 3\n\t}, P{\n\t\tx: 4\n\t}]!\n}\nfn runp(f MakeP) int {\n\tr := f()\n\treturn r[0].x + r[1].x\n}\nfn main() {\n\tprintln(int_str(runp(mkp)))\n}\n')
+	assert fp_struct == '7'
+}
+
+fn test_pr_review_codegen_batch_sixteen() {
+	v3_bin := build_v3()
+	// A bare generic struct literal (`Box{..}`) inside an array literal whose expected type is
+	// a concrete generic instance (`[]Box[int]`) must carry that concrete element type into the
+	// array storage AND each element: the array literal emitter passes the element type as the
+	// expected type per element so the element is emitted as `Box_int`, not the open `Box` (which
+	// has no C type), and the storage and element agree. Covers the reviewer's return example plus
+	// the argument and struct-field positions.
+	out := run_good(v3_bin, 'good_generic_struct_array_literal_positions',
+		"struct Box[T] {\n\tv T\n}\nfn first(a []Box[int]) int {\n\treturn a[0].v\n}\nstruct Holder {\n\titems []Box[int]\n}\nfn make() []Box[int] {\n\treturn [Box{\n\t\tv: 1\n\t}, Box{\n\t\tv: 2\n\t}]\n}\nfn main() {\n\tr := make()\n\ta := first([Box{\n\t\tv: 3\n\t}, Box{\n\t\tv: 4\n\t}])\n\th := Holder{\n\t\titems: [Box{\n\t\t\tv: 5\n\t\t}]\n\t}\n\tprintln(int_str(r[0].v + r[1].v) + ',' + int_str(a) + ',' + int_str(h.items[0].v))\n}\n")
+	assert out == '3,3,5'
+}
+
+fn test_pr_review_codegen_batch_seventeen() {
+	v3_bin := build_v3()
+	// Static method `Type.method(...)` calls now lower their arguments through the ordinary
+	// argument path, so a parameter that needs coercion is emitted against its expected type.
+	// Here `Factory.describe` takes a sum type, so the bare `Circle{..}` argument is wrapped as
+	// a `Shape` variant instead of being passed as the raw struct (which would be wrong C).
+	// `Shader.build()` takes no parameters but shares the short name `build` with `Config.build`
+	// (a method, hence has params); the lowering must not adopt that unrelated signature and
+	// append a phantom argument to the 0-parameter static call.
+	out := run_good(v3_bin, 'good_static_method_arg_lowering',
+		"struct Config {\n\tlengths []int\n}\nfn (c Config) build() int {\n\treturn c.lengths.len\n}\nstruct Shader {\n\tid int\n}\nfn Shader.build() Shader {\n\treturn Shader{\n\t\tid: 42\n\t}\n}\ntype Shape = Circle | Square\nstruct Circle {\n\tr int\n}\nstruct Square {\n\ts int\n}\nstruct Factory {}\nfn Factory.describe(sh Shape) int {\n\treturn match sh {\n\t\tCircle { sh.r }\n\t\tSquare { sh.s }\n\t}\n}\nfn main() {\n\ts := Shader.build()\n\td := Factory.describe(Circle{r: 7})\n\tprintln(int_str(s.id) + ',' + int_str(d))\n}\n")
+	assert out == '42,7'
+}
+
+fn test_pr_review_codegen_batch_eighteen() {
+	v3_bin := build_v3()
+	// A method value bound to a local (`cb := c.report`) shares the same per-site static receiver
+	// as the bare selector, so aliasing it out — returned from a factory or appended to an array —
+	// escapes just like `return c.report` and is rejected, not only the direct selector form.
+	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\n'
+	run_bad(v3_bin, 'bad_method_value_local_return_escape', mv +
+		'fn bind(c Counter) fn () int {\n\tcb := c.report\n\treturn cb\n}\nfn main() {\n\t_ := bind(Counter{\n\t\tid: 1\n\t})\n}\n',
+		'cannot escape its call site')
+	run_bad(v3_bin, 'bad_method_value_local_append_escape', mv +
+		'fn collect(c Counter) []fn () int {\n\tmut arr := []fn () int{}\n\tcb := c.report\n\tarr << cb\n\treturn arr\n}\nfn main() {\n\t_ := collect(Counter{\n\t\tid: 1\n\t})\n}\n',
+		'cannot escape its call site')
+	// A method-value local passed straight to a callback parameter does not escape and stays valid.
+	direct := run_good(v3_bin, 'good_method_value_local_direct_use', mv +
+		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tcb := c.report\n\tprintln(int_str(invoke(cb)))\n}\n')
+	assert direct == '7'
+	// A bare heap generic literal (`&Box{v: 1}` where `&Box[int]` is expected) must read its
+	// omitted-field defaults from the concrete instance key: monomorphization drops the bare `Box`
+	// entry, so an omitted `items []T` needs its `array_new` default or the field has invalid
+	// zeroed array metadata (here a later append would silently drop the elements).
+	heap_default := run_good(v3_bin, 'good_heap_generic_omitted_array_default',
+		"struct Box[T] {\n\tv     T\n\titems []T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\tmut b := make()\n\tb.items << 10\n\tb.items << 20\n\tprintln(int_str(b.v) + ',' + int_str(b.items.len) + ',' + int_str(b.items[0]) + ',' + int_str(b.items[1]))\n}\n")
+	assert heap_default == '1,2,10,20'
+	// `[]thread T.wait()` recovers the spawned return type from the thread name; a fixed-array
+	// return with a non-decimal length (`[0x10]u8`) must reconstruct the same `_v_ret_*` wrapper
+	// ABI type the spawn wrapper stored, not a bogus generic application of `u8`.
+	thread_fixed := run_good(v3_bin, 'good_thread_wait_nondecimal_fixed_array',
+		"fn work() [0x10]u8 {\n\tmut r := [0x10]u8{}\n\tr[0] = 42\n\tr[15] = 7\n\treturn r\n}\nfn main() {\n\tmut threads := []thread [0x10]u8{}\n\tthreads << spawn work()\n\tresults := threads.wait()\n\tprintln(int_str(results[0][0]) + ',' + int_str(results[0][15]))\n}\n")
+	assert thread_fixed == '42,7'
+}
+
+fn test_pr_review_codegen_batch_nineteen() {
+	v3_bin := build_v3()
+	// A value local whose address escapes (`p := &v` with `p` returned) is moved to the heap at
+	// its declaration, so a mutation between the alias and the return is observed by the caller —
+	// matching V's auto-heap semantics. Copying eagerly at `p := &v` returned stale data (x == 1).
+	escaped := run_good(v3_bin, 'good_escaped_pointer_alias_mutation',
+		'struct Box {\nmut:\n\tx int\n}\nfn make() &Box {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tp := &v\n\tv.x = 2\n\treturn p\n}\nfn main() {\n\tb := make()\n\tprintln(int_str(b.x))\n}\n')
+	assert escaped == '2'
+	// A static-method call returning a fixed array (`Type.make() [N]T`) is lowered to a selector
+	// whose base is a type, not a receiver value; its `_v_ret_*` wrapper must still be unwrapped to
+	// `.ret_arr`, so the assignment/indexing below sees the array, not the wrapper struct.
+	static_fixed := run_good(v3_bin, 'good_static_method_fixed_array_return',
+		'struct Maker {}\nfn Maker.make() [3]int {\n\treturn [10, 20, 30]!\n}\nfn main() {\n\ta := Maker.make()\n\tprintln(int_str(a[0] + a[1] + a[2]))\n}\n')
+	assert static_fixed == '60'
+}
+
+fn test_pr_review_codegen_batch_twenty() {
+	v3_bin := build_v3()
+	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\n'
+	// Storing a method value into a struct field is an escape: the per-site static receiver slot
+	// is overwritten on the next evaluation, so previously-stored callbacks lose their receiver.
+	run_bad(v3_bin, 'bad_method_value_struct_field_assign', mv +
+		'struct Holder {\nmut:\n\tcb fn () int\n}\nfn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tmut h := Holder{}\n\th.cb = c.report\n\tprintln(int_str(h.cb()))\n}\n',
+		'cannot escape its call site')
+	// Same hazard storing into an array element.
+	run_bad(v3_bin, 'bad_method_value_index_assign', mv +
+		'fn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tmut cbs := []fn () int{len: 1}\n\tcbs[0] = c.report\n\tprintln(int_str(cbs[0]()))\n}\n',
+		'cannot escape its call site')
+	// A method value assigned to a local with `=` is still tracked, so a later escape is caught.
+	run_bad(v3_bin, 'bad_method_value_local_eq_then_return_escape', mv +
+		'fn dummy() int {\n\treturn 0\n}\nfn bind(c Counter) fn () int {\n\tmut cb := dummy\n\tcb = c.report\n\treturn cb\n}\nfn main() {\n\t_ := bind(Counter{\n\t\tid: 1\n\t})\n}\n',
+		'cannot escape its call site')
+	// Assigning a method value to a local (including reassignment) and passing it straight to a
+	// callback parameter does not escape, so it stays valid.
+	ok := run_good(v3_bin, 'good_method_value_local_assign_direct_use', mv +
+		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tmut cb := c.report\n\tcb = c.report\n\tprintln(int_str(invoke(cb)))\n}\n')
+	assert ok == '7'
+}
+
+fn test_pr_review_codegen_batch_twentyone() {
+	v3_bin := build_v3()
+	// An escaping pointer returned through a copy (`p := &v; q := p; return q`) must still move
+	// `v` to the heap, so a mutation after the alias is seen by the caller (not a dangling stack
+	// pointer). The pointer-alias chain is followed when deciding what escapes.
+	alias := run_good(v3_bin, 'good_returned_pointer_alias_heap',
+		'struct Box {\nmut:\n\tx int\n}\nfn make() &Box {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tp := &v\n\tq := p\n\tv.x = 2\n\treturn q\n}\nfn main() {\n\tb := make()\n\tprintln(int_str(b.x))\n}\n')
+	assert alias == '2'
+	// An interface method returning a fixed array gets its dispatch stub declared with the
+	// `_v_ret_*` wrapper, not a bare `Array_fixed_*` (a C function cannot return an array). This
+	// holds both when only the concrete implementer is called and through a real interface call.
+	iface_concrete := run_good(v3_bin, 'good_iface_fixed_array_concrete_only',
+		'interface I {\n\tmake() [3]int\n}\nstruct S {}\nfn (s S) make() [3]int {\n\treturn [1, 2, 3]!\n}\nfn main() {\n\ts := S{}\n\ta := s.make()\n\tprintln(int_str(a[0] + a[1] + a[2]))\n}\n')
+	assert iface_concrete == '6'
+	iface_dispatch := run_good(v3_bin, 'good_iface_fixed_array_dispatch',
+		'interface I {\n\tmake() [3]int\n}\nstruct S {}\nfn (s S) make() [3]int {\n\treturn [4, 5, 6]!\n}\nfn use_iface(i I) int {\n\ta := i.make()\n\treturn a[0] + a[1] + a[2]\n}\nfn main() {\n\ts := S{}\n\tprintln(int_str(use_iface(s)))\n}\n')
+	assert iface_dispatch == '15'
+	// A pointer-receiver method value taken on an rvalue base (`Foo{..}.tick`) copies the receiver
+	// into durable static storage instead of capturing `&(temporary)` that dies before the
+	// callback runs.
+	mv_rvalue := run_good(v3_bin, 'good_ptr_receiver_method_value_rvalue',
+		'struct Foo {\nmut:\n\tn int\n}\nfn (f &Foo) tick() int {\n\treturn f.n\n}\nfn run(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tprintln(int_str(run(Foo{\n\t\tn: 5\n\t}.tick)))\n}\n')
+	assert mv_rvalue == '5'
+}
+
+fn test_pr_review_codegen_batch_twentytwo() {
+	v3_bin := build_v3()
+	// A bare generic literal retargeted to a concrete instance must run the fixed-array-field
+	// detection against that concrete key (the bare `Box` field table is dropped by
+	// monomorphization), so a `[N]T` field is filled by memcpy instead of the invalid C
+	// `(Box_int){.data = a}` (a C array member cannot be initialized from another array object).
+	fa := run_good(v3_bin, 'good_concrete_generic_fixed_array_field',
+		'struct Box[T] {\n\tdata [2]T\n}\nfn f(a [2]int) Box[int] {\n\treturn Box{\n\t\tdata: a\n\t}\n}\nfn main() {\n\tarr := [10, 20]!\n\tb := f(arr)\n\tprintln(int_str(b.data[0] + b.data[1]))\n}\n')
+	assert fa == '30'
+	// A generic method value used only in an unreachable function must not drive a concrete
+	// specialization: `Box[Pair].doubled` (here `Pair + Pair`) would emit an invalid body and
+	// fail C compilation. Only the reachable `Box[int].doubled` is specialized.
+	dead := run_good(v3_bin, 'good_dead_generic_method_value_not_specialized',
+		'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) doubled() T {\n\treturn b.v + b.v\n}\nstruct Pair {\n\ta int\n}\nfn run_int(cb fn () int) int {\n\treturn cb()\n}\nfn run_pair(cb fn () Pair) Pair {\n\treturn cb()\n}\nfn dead_fn() {\n\tp := Box[Pair]{\n\t\tv: Pair{\n\t\t\ta: 1\n\t\t}\n\t}\n\t_ := run_pair(p.doubled)\n}\nfn main() {\n\tb := Box[int]{\n\t\tv: 5\n\t}\n\tprintln(int_str(run_int(b.doubled)))\n}\n')
+	assert dead == '10'
+	// A reachable generic method value of any instance still specializes correctly.
+	live := run_good(v3_bin, 'good_reachable_generic_method_value_specialized',
+		'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) first() T {\n\treturn b.v\n}\nstruct Pair {\n\ta int\n}\nfn run_pair(cb fn () Pair) Pair {\n\treturn cb()\n}\nfn main() {\n\tp := Box[Pair]{\n\t\tv: Pair{\n\t\t\ta: 7\n\t\t}\n\t}\n\tr := run_pair(p.first)\n\tprintln(int_str(r.a))\n}\n')
+	assert live == '7'
+	// Discarding a method value with `_ =` stores nothing, so it is not an escape.
+	blank := run_good(v3_bin, 'good_method_value_blank_discard',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn main() {\n\tc := Counter{\n\t\tid: 5\n\t}\n\tcb := c.report\n\t_ = cb\n\tprintln(int_str(c.report()))\n}\n')
+	assert blank == '5'
+}
+
+fn test_pr_review_codegen_batch_twentythree() {
+	v3_bin := build_v3()
+	// A concrete generic with multiple arguments including a later pointer argument
+	// (`Pair[int, &Node]`) must parse as a generic instance, not a fixed array: the `&` only
+	// leads a type argument because of the preceding comma, so a comma-bearing bracket is never
+	// a fixed-array length (which is always a single integer expression).
+	genptr := run_good(v3_bin, 'good_generic_multi_arg_pointer',
+		'struct Node {\n\tval int\n}\nstruct Pair[A, B] {\n\tfirst  A\n\tsecond B\n}\nfn main() {\n\tn := Node{\n\t\tval: 5\n\t}\n\tp := Pair[int, &Node]{\n\t\tfirst:  1\n\t\tsecond: &n\n\t}\n\tprintln(int_str(p.first + p.second.val))\n}\n')
+	assert genptr == '6'
+	// A whole-value assignment between two heaped locals (both moved to `&T` because their
+	// addresses escape) must copy the value through the pointers (`*v = *w`), not alias `w`'s
+	// object. Here `v = w` then mutating `w` must leave the first returned pointer at w's old value.
+	heap2 := run_good(v3_bin, 'good_heaped_local_whole_value_assign',
+		"struct Box {\nmut:\n\tx int\n}\nfn split() (&Box, &Box) {\n\tmut v := Box{\n\t\tx: 1\n\t}\n\tmut w := Box{\n\t\tx: 2\n\t}\n\tp := &v\n\tq := &w\n\tv = w\n\tw.x = 100\n\treturn p, q\n}\nfn main() {\n\ta, b := split()\n\tprintln(int_str(a.x) + ',' + int_str(b.x))\n}\n")
+	assert heap2 == '2,100'
+	// A method value bound to a local and reassigned only on one branch still escapes on the
+	// other path, so returning it is rejected (the marker survives a non-dominating reassignment).
+	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn plain() int {\n\treturn 0\n}\n'
+	run_bad(v3_bin, 'bad_method_value_conditional_reassign_escape', mv +
+		'fn build_cb(c Counter, cond bool) fn () int {\n\tmut cb := c.report\n\tif cond {\n\t\tcb = plain\n\t}\n\treturn cb\n}\nfn main() {\n\t_ := build_cb(Counter{\n\t\tid: 1\n\t}, false)\n}\n',
+		'cannot escape its call site')
+	// An unconditional reassignment to a non-method value dominates the later use, so the marker
+	// is cleared and the (now plain) callback is accepted.
+	uncond := run_good(v3_bin, 'good_method_value_unconditional_reassign', mv +
+		'fn build_cb(c Counter) int {\n\tmut cb := c.report\n\tcb = plain\n\treturn cb()\n}\nfn main() {\n\tprintln(int_str(build_cb(Counter{\n\t\tid: 1\n\t})))\n}\n')
+	assert uncond == '0'
+}
+
+fn test_fn_pointer_return_type() {
+	v3_bin := build_v3()
+	// A function whose return type is itself a function pointer (`fn () fn (int) int`) must be
+	// declared with the shared `_fn_ptr_N` typedef, not the internal `fn_ptr:...` encoding (which
+	// would emit invalid C). Covers a plain fn return and a method returning a fn pointer.
+	picker := run_good(v3_bin, 'good_fn_pointer_return',
+		'fn add_one(x int) int {\n\treturn x + 1\n}\nfn picker() fn (int) int {\n\treturn add_one\n}\nfn main() {\n\tf := picker()\n\tprintln(int_str(f(41)))\n}\n')
+	assert picker == '42'
+	method_ret := run_good(v3_bin, 'good_method_fn_pointer_return',
+		'struct Calc {\n\tbase int\n}\nfn dbl(x int) int {\n\treturn x * 2\n}\nfn (c Calc) op() fn (int) int {\n\treturn dbl\n}\nfn main() {\n\tc := Calc{\n\t\tbase: 5\n\t}\n\tf := c.op()\n\tprintln(int_str(f(21)))\n}\n')
+	assert method_ret == '42'
+	// A function returning a callback assembled from a reassigned method-value local compiles and
+	// returns the (plain) callback through the fn-pointer return type.
+	built := run_good(v3_bin, 'good_fn_pointer_return_reassigned_method_value',
+		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn plain() int {\n\treturn 7\n}\nfn build_cb(c Counter) fn () int {\n\tmut cb := c.report\n\tcb = plain\n\treturn cb\n}\nfn main() {\n\tf := build_cb(Counter{\n\t\tid: 1\n\t})\n\tprintln(int_str(f()))\n}\n')
+	assert built == '7'
+}
+
+fn test_const_length_fixed_array() {
+	v3_bin := build_v3()
+	// A fixed array whose length is a const round-trips through the checker as the postfix name
+	// `int[seg_count]`. The transform's fixed-array predicate (now const-aware) folds `.len` to the
+	// constant instead of emitting a struct field access on the C array, and parse_type treats the
+	// builtin-base postfix as a fixed array (not a bogus generic), so the decl uses memcpy.
+	direct := run_good(v3_bin, 'good_const_len_fixed_array_call_len',
+		'const seg_count = 3\nfn f() [seg_count]int {\n\tmut r := [seg_count]int{}\n\treturn r\n}\nfn main() {\n\tprintln(int_str(f().len))\n}\n')
+	assert direct == '3'
+	decl := run_good(v3_bin, 'good_const_len_fixed_array_decl_len',
+		"const seg_count = 3\nfn f() [seg_count]int {\n\tmut r := [seg_count]int{}\n\tr[0] = 10\n\treturn r\n}\nfn main() {\n\ta := f()\n\tprintln(int_str(a[0]) + ',' + int_str(a.len))\n}\n")
+	assert decl == '10,3'
+	// An expression length (`[segs + 1]int`) likewise folds, iterates, and indexes correctly.
+	expr := run_good(v3_bin, 'good_expr_len_fixed_array',
+		"const segs = 2\nfn f() [segs + 1]int {\n\tmut r := [segs + 1]int{}\n\tr[0] = 5\n\tr[1] = 6\n\tr[2] = 7\n\treturn r\n}\nfn main() {\n\ta := f()\n\tmut sum := 0\n\tfor x in a {\n\t\tsum += x\n\t}\n\tprintln(int_str(a.len) + ',' + int_str(a[1]) + ',' + int_str(sum))\n}\n")
+	assert expr == '3,6,18'
+}
+
+fn test_pr_review_codegen_batch_twentyfive() {
+	v3_bin := build_v3()
+	// An interface-returning function with a pending `defer` saves its return value into a temp
+	// before running the defers. That temp must hold the boxed interface value (`_typ`/`_object`),
+	// not a zeroed `(Iface){0}`; otherwise the later dynamic dispatch panics. The boxing must match
+	// the direct (defer-free) return path.
+	defer_iface := run_good(v3_bin, 'good_interface_return_with_defer',
+		'interface Speaker {\n\tspeak() int\n}\nstruct Dog {\n\tvolume int\n}\nfn (d Dog) speak() int {\n\treturn d.volume\n}\nfn make() Speaker {\n\tdefer {\n\t\t_ := 0\n\t}\n\treturn Dog{\n\t\tvolume: 42\n\t}\n}\nfn main() {\n\ts := make()\n\tprintln(int_str(s.speak()))\n}\n')
+	assert defer_iface == '42'
+	// A local whose address escapes (returned via a pointer) is moved to the heap, so the local is
+	// now a `&T`. Its compound (`v += 1`) and postfix (`v++`) mutations must store through the
+	// pointer (`*v += 1`, `(*v)++`), not perform pointer arithmetic; the returned pointer reflects
+	// the mutated value.
+	heap_compound := run_good(v3_bin, 'good_heaped_local_compound_mutation',
+		"fn compound() int {\n\tmut v := 1\n\tp := &v\n\tv += 1\n\treturn *p\n}\nfn postfix() int {\n\tmut v := 5\n\tp := &v\n\tv++\n\tv++\n\treturn *p\n}\nfn main() {\n\tprintln(int_str(compound()) + ',' + int_str(postfix()))\n}\n")
+	assert heap_compound == '2,7'
+}
+
+fn test_pr_review_codegen_batch_twentysix() {
+	v3_bin := build_v3()
+	// The escape prepass must only heap-move a local whose address is *actually returned*. A
+	// pointer that merely appears in a consuming expression (comparison/boolean here, or a deref)
+	// does not escape, so its source local must stay a plain value — otherwise codegen reads it as
+	// an `int*` in the integer comparison and the result is wrong. `return p == p && v == 1` and
+	// `return *p` both keep `v` on the stack.
+	no_escape := run_good(v3_bin, 'good_escape_only_returned_pointer',
+		"fn check() bool {\n\tmut v := 1\n\tp := &v\n\treturn p == p && v == 1\n}\nfn deref() int {\n\tmut v := 3\n\tp := &v\n\tv = 8\n\treturn *p\n}\nfn main() {\n\tprintln(check().str() + ',' + int_str(deref()))\n}\n")
+	assert no_escape == 'true,8'
+	// A pointer that *is* returned (directly, and inside a returned aggregate) must still heap-move
+	// its source local, so the returned pointer observes mutations made after the address was taken.
+	escapes := run_good(v3_bin, 'good_escape_returned_pointer_and_aggregate',
+		"fn direct() &int {\n\tmut v := 10\n\tp := &v\n\tv += 5\n\treturn p\n}\nfn aggregate() []&int {\n\tmut v := 7\n\tp := &v\n\tv = 9\n\treturn [p]\n}\nfn main() {\n\tarr := aggregate()\n\tprintln(int_str(*direct()) + ',' + int_str(*arr[0]))\n}\n")
+	assert escapes == '15,9'
+	// An optional fixed-array return (`?[N]T`) with a pending `defer` routes through the deferred
+	// return path; that path must apply the same temp + memcpy handling as the direct path (the
+	// `.value` member is a fixed array and cannot be set via a compound literal), so the array value
+	// is preserved instead of being dropped to `{.ok = false}`.
+	defer_opt_arr := run_good(v3_bin, 'good_optional_fixed_array_return_with_defer',
+		"fn f() ?[2]int {\n\tdefer {\n\t\t_ := 0\n\t}\n\treturn [1, 2]!\n}\nfn main() {\n\ta := f() or { [0, 0]! }\n\tprintln(int_str(a[0]) + ',' + int_str(a[1]))\n}\n")
+	assert defer_opt_arr == '1,2'
+}

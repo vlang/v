@@ -29,12 +29,10 @@ mut:
 	tok              token.Token
 	lit              string
 	tok_pos          int
-	tok_is_str_tail  bool
 	prev_tok         token.Token
 	peek_tok         token.Token = .eof
 	peek_lit         string
 	peek_pos         int
-	peek_is_str_tail bool
 	has_peek         bool
 	cur_file         string
 	cur_module       string
@@ -47,7 +45,6 @@ mut:
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
 	parsed_v_files int
-	parsed_v_lines int
 }
 
 // new creates a Parser value for parser.
@@ -87,12 +84,15 @@ pub fn (mut p Parser) parse_into(path string) {
 	})
 	src := read_source_file_raw(path)
 	if src.len == 0 {
-		eprintln('error reading ${path}')
+		// An empty but existing `.v` file is valid (declares nothing); only a
+		// genuine read failure (missing file) is an error worth reporting.
+		if !os.exists(path) {
+			eprintln('error reading ${path}')
+		}
 		return
 	}
 	if path.ends_with('.v') {
 		p.parsed_v_files++
-		p.parsed_v_lines += count_source_lines(src)
 	}
 	mut file_set := token.FileSet.new()
 	file := file_set.add_file(path, -1, src.len)
@@ -131,20 +131,6 @@ pub fn (mut p Parser) parse_into(path string) {
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
-}
-
-// count_source_lines supports count source lines handling for parser.
-fn count_source_lines(src string) int {
-	if src.len == 0 {
-		return 0
-	}
-	mut lines := 1
-	for i in 0 .. src.len {
-		if src[i] == `\n` && i + 1 < src.len {
-			lines++
-		}
-	}
-	return lines
 }
 
 // read_source_file_raw reads read source file raw input for parser.
@@ -211,39 +197,29 @@ fn (mut p Parser) next() {
 		p.tok = p.peek_tok
 		p.lit = p.peek_lit
 		p.tok_pos = p.peek_pos
-		p.tok_is_str_tail = p.peek_is_str_tail
 		p.has_peek = false
-		p.normalize_current_token()
 		return
 	}
-	p.tok_is_str_tail = p.s.in_str_incomplete
 	p.tok = p.s.scan()
 	p.lit = p.s.lit
 	p.tok_pos = p.s.pos
-	p.normalize_current_token()
 	for p.tok == .comment {
-		p.tok_is_str_tail = p.s.in_str_incomplete
 		p.tok = p.s.scan()
 		p.lit = p.s.lit
 		p.tok_pos = p.s.pos
-		p.normalize_current_token()
 	}
 }
 
 // peek supports peek handling for Parser.
 fn (mut p Parser) peek() token.Token {
 	if !p.has_peek {
-		p.peek_is_str_tail = p.s.in_str_incomplete
 		p.peek_tok = p.s.scan()
 		p.peek_lit = p.s.lit
 		p.peek_pos = p.s.pos
-		p.normalize_peek_token()
 		for p.peek_tok == .comment {
-			p.peek_is_str_tail = p.s.in_str_incomplete
 			p.peek_tok = p.s.scan()
 			p.peek_lit = p.s.lit
 			p.peek_pos = p.s.pos
-			p.normalize_peek_token()
 		}
 		p.has_peek = true
 	}
@@ -253,285 +229,6 @@ fn (mut p Parser) peek() token.Token {
 // peek_is supports peek is handling for Parser.
 fn (mut p Parser) peek_is(tok token.Token) bool {
 	return p.peek() == tok
-}
-
-// normalize_current_token transforms normalize current token data for parser.
-fn (mut p Parser) normalize_current_token() {
-	p.tok = normalize_scanned_token(p.tok, p.lit, p.s.src, p.tok_pos, p.tok_is_str_tail)
-}
-
-// normalize_peek_token transforms normalize peek token data for parser.
-fn (mut p Parser) normalize_peek_token() {
-	p.peek_tok = normalize_scanned_token(p.peek_tok, p.peek_lit, p.s.src, p.peek_pos,
-		p.peek_is_str_tail)
-}
-
-// token_from_id converts token from id data for parser.
-@[inline]
-fn token_from_id(id int) token.Token {
-	return unsafe { token.Token(id) }
-}
-
-// keyword_token_id supports keyword token id handling for parser.
-fn keyword_token_id(lit string) int {
-	return match lit {
-		'as' { 25 }
-		'asm' { 26 }
-		'assert' { 27 }
-		'atomic' { 28 }
-		'break' { 29 }
-		'const' { 30 }
-		'continue' { 31 }
-		'defer' { 32 }
-		'dump' { 33 }
-		'else' { 34 }
-		'enum' { 35 }
-		'false' { 36 }
-		'fn' { 37 }
-		'for' { 38 }
-		'__global' { 39 }
-		'go' { 40 }
-		'goto' { 41 }
-		'if' { 42 }
-		'import' { 43 }
-		'in' { 44 }
-		'interface' { 45 }
-		'is' { 46 }
-		'isreftype' { 47 }
-		'_likely_' { 48 }
-		'lock' { 49 }
-		'match' { 50 }
-		'module' { 51 }
-		'mut' { 52 }
-		'nil' { 53 }
-		'none' { 54 }
-		'__offsetof' { 55 }
-		'or' { 56 }
-		'pub' { 57 }
-		'return' { 58 }
-		'rlock' { 59 }
-		'select' { 60 }
-		'shared' { 61 }
-		'sizeof' { 62 }
-		'spawn' { 63 }
-		'static' { 64 }
-		'struct' { 65 }
-		'true' { 66 }
-		'type' { 67 }
-		'typeof' { 68 }
-		'union' { 69 }
-		'_unlikely_' { 70 }
-		'unsafe' { 71 }
-		'volatile' { 72 }
-		else { -1 }
-	}
-}
-
-// normalize_scanned_token transforms normalize scanned token data for parser.
-fn normalize_scanned_token(tok token.Token, lit string, src string, pos int, is_str_tail bool) token.Token {
-	if int(tok) == 19 || int(tok) == 105 || int(tok) == 106 {
-		return tok
-	}
-	if lit.len > 0 {
-		first := lit[0]
-		if int(tok) == 87 || int(tok) == 0 {
-			if is_str_tail && int(tok) == 0 {
-				return token_from_id(107)
-			}
-			if first >= `0` && first <= `9` {
-				return token_from_id(92)
-			}
-			if first == `.` && lit.len > 1 && lit[1] >= `0` && lit[1] <= `9` {
-				return token_from_id(92)
-			}
-			if first == `'` || first == `"`
-				|| (first == `r` && lit.len > 1 && (lit[1] == `'` || lit[1] == `"`)) {
-				return token_from_id(107)
-			}
-			if first == `\`` || lit.starts_with('c:') {
-				return token_from_id(7)
-			}
-		}
-		if first != `@` {
-			keyword_id := keyword_token_id(lit)
-			if keyword_id >= 0 {
-				return token_from_id(keyword_id)
-			}
-		}
-		if int(tok) == 0 {
-			return token_from_id(87)
-		}
-		return tok
-	}
-	if pos < 0 || pos >= src.len {
-		return tok
-	}
-	c := src[pos]
-	if c == `.` {
-		if pos + 1 < src.len && src[pos + 1] == `.` {
-			if pos + 2 < src.len && src[pos + 2] == `.` {
-				return token_from_id(18)
-			}
-			return token_from_id(17)
-		}
-		return token_from_id(16)
-	}
-	if c == `:` {
-		if pos + 1 < src.len && src[pos + 1] == `=` {
-			return token_from_id(12)
-		}
-		return token_from_id(8)
-	}
-	if int(tok) != 108 && int(tok) != 0 {
-		return tok
-	}
-	if c == `{` {
-		return token_from_id(73)
-	}
-	if c == `}` {
-		return token_from_id(98)
-	}
-	if c == `(` {
-		return token_from_id(78)
-	}
-	if c == `)` {
-		return token_from_id(103)
-	}
-	if c == `[` {
-		return token_from_id(79)
-	}
-	if c == `]` {
-		return token_from_id(104)
-	}
-	if c == `,` {
-		return token_from_id(9)
-	}
-	if c == `;` {
-		return token_from_id(105)
-	}
-	if c == `!` {
-		if pos + 1 < src.len && src[pos + 1] == `=` {
-			return token_from_id(88)
-		}
-		if pos + 3 < src.len && src[pos + 1] == `i` && src[pos + 2] == `n`
-			&& (src[pos + 3] == ` ` || src[pos + 3] == `\t`) {
-			return token_from_id(90)
-		}
-		if pos + 3 < src.len && src[pos + 1] == `i` && src[pos + 2] == `s`
-			&& (src[pos + 3] == ` ` || src[pos + 3] == `\t`) {
-			return token_from_id(91)
-		}
-		return token_from_id(89)
-	}
-	if c == `=` {
-		if pos + 1 < src.len && src[pos + 1] == `=` {
-			return token_from_id(20)
-		}
-		return token_from_id(4)
-	}
-	if c == `&` {
-		if pos + 1 < src.len && src[pos + 1] == `&` {
-			return token_from_id(1)
-		}
-		if pos + 1 < src.len && src[pos + 1] == `=` {
-			return token_from_id(2)
-		}
-		return token_from_id(0)
-	}
-	if c == `|` {
-		if pos + 1 < src.len && src[pos + 1] == `|` {
-			return token_from_id(77)
-		}
-		if pos + 1 < src.len && src[pos + 1] == `=` {
-			return token_from_id(93)
-		}
-		return token_from_id(94)
-	}
-	if c == `<` {
-		if pos + 1 < src.len && src[pos + 1] == `<` {
-			if pos + 2 < src.len && src[pos + 2] == `=` {
-				return token_from_id(76)
-			}
-			return token_from_id(75)
-		}
-		if pos + 1 < src.len && src[pos + 1] == `-` {
-			return token_from_id(3)
-		}
-		if pos + 1 < src.len && src[pos + 1] == `=` {
-			return token_from_id(74)
-		}
-		return token_from_id(80)
-	}
-	if c == `>` {
-		if pos + 1 < src.len && src[pos + 1] == `>` {
-			if pos + 2 < src.len && src[pos + 2] == `>` {
-				if pos + 3 < src.len && src[pos + 3] == `=` {
-					return token_from_id(102)
-				}
-				return token_from_id(101)
-			}
-			if pos + 2 < src.len && src[pos + 2] == `=` {
-				return token_from_id(100)
-			}
-			return token_from_id(99)
-		}
-		if pos + 1 < src.len && src[pos + 1] == `=` {
-			return token_from_id(21)
-		}
-		return token_from_id(22)
-	}
-	if c == `+` {
-		if pos + 1 < src.len && src[pos + 1] == `+` {
-			return token_from_id(24)
-		}
-		if pos + 1 < src.len && src[pos + 1] == `=` {
-			return token_from_id(96)
-		}
-		return token_from_id(95)
-	}
-	if c == `-` {
-		if pos + 1 < src.len && src[pos + 1] == `-` {
-			return token_from_id(11)
-		}
-		if pos + 1 < src.len && src[pos + 1] == `=` {
-			return token_from_id(82)
-		}
-		return token_from_id(81)
-	}
-	if c == `*` {
-		if pos + 1 < src.len && src[pos + 1] == `=` {
-			return token_from_id(86)
-		}
-		return token_from_id(85)
-	}
-	if c == `/` {
-		if pos + 1 < src.len && src[pos + 1] == `=` {
-			return token_from_id(14)
-		}
-		return token_from_id(13)
-	}
-	if c == `%` {
-		if pos + 1 < src.len && src[pos + 1] == `=` {
-			return token_from_id(84)
-		}
-		return token_from_id(83)
-	}
-	if c == `~` {
-		return token_from_id(6)
-	}
-	if c == `$` {
-		return token_from_id(15)
-	}
-	if c == `#` {
-		if pos + 1 < src.len && src[pos + 1] == `[` {
-			return token_from_id(79)
-		}
-		return token_from_id(23)
-	}
-	if c == `?` {
-		return token_from_id(97)
-	}
-	return tok
 }
 
 fn (mut p Parser) check(expected token.Token) {
@@ -2359,10 +2056,31 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		}
 		return p.a.add_val_id(3, 'false')
 	}
+	if p.tok == .name && p.lit == 'env' {
+		// $env('NAME') evaluates an environment variable at compile time and
+		// becomes a plain string literal (empty when the variable is unset).
+		p.next() // skip 'env'
+		mut env_val := ''
+		if p.tok == .lpar {
+			p.next() // skip (
+			if p.tok == .string {
+				env_val = os.getenv(strip_quotes(p.lit))
+				p.next()
+			}
+			for p.tok != .rpar && p.tok != .eof {
+				p.next()
+			}
+			p.check(.rpar)
+		}
+		return p.a.add_val_id(5, env_val)
+	}
 	for p.tok != .semicolon && p.tok != .eof {
 		p.next()
 	}
-	return flat.empty_node
+	// Unknown comptime expression: return an empty string literal rather than
+	// `empty_node`, so consumers (e.g. const initializers) never store an
+	// invalid (-1) child node.
+	return p.a.add_val_id(5, '')
 }
 
 fn (mut p Parser) parse_comptime_if_expr() flat.NodeId {
@@ -3665,12 +3383,10 @@ fn (mut p Parser) starts_sql_expr() bool {
 	saved_tok := p.tok
 	saved_lit := p.lit
 	saved_tok_pos := p.tok_pos
-	saved_tok_is_str_tail := p.tok_is_str_tail
 	saved_prev_tok := p.prev_tok
 	saved_peek_tok := p.peek_tok
 	saved_peek_lit := p.peek_lit
 	saved_peek_pos := p.peek_pos
-	saved_peek_is_str_tail := p.peek_is_str_tail
 	saved_has_peek := p.has_peek
 	p.next()
 	for p.tok == .dot {
@@ -3685,12 +3401,10 @@ fn (mut p Parser) starts_sql_expr() bool {
 	p.tok = saved_tok
 	p.lit = saved_lit
 	p.tok_pos = saved_tok_pos
-	p.tok_is_str_tail = saved_tok_is_str_tail
 	p.prev_tok = saved_prev_tok
 	p.peek_tok = saved_peek_tok
 	p.peek_lit = saved_peek_lit
 	p.peek_pos = saved_peek_pos
-	p.peek_is_str_tail = saved_peek_is_str_tail
 	p.has_peek = saved_has_peek
 	return ok
 }
@@ -4398,6 +4112,16 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 		})
 	}
 	idx := p.expr(.logical_or)
+	// fast path for the common simple index `arr[i]`: avoid the children array
+	if p.tok == .rsbr {
+		p.next()
+		istart := p.add_children2(lhs, idx)
+		return p.a.add_node(flat.Node{
+			kind:           .index
+			children_start: istart
+			children_count: 2
+		})
+	}
 	mut ids := []flat.NodeId{}
 	ids << lhs
 	ids << idx
@@ -4718,13 +4442,25 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	// array literal: [1, 2, 3]
 	// or fixed array type: [3]int
 	mut ids := []flat.NodeId{}
+	size_start := p.tok_pos
 	ids << p.expr(.lowest)
 	// check if it's [N]Type (fixed array type)
 	if p.tok == .rsbr {
+		size_end := p.tok_pos
 		p.next()
 		if p.tok == .name || p.tok == .amp || p.tok == .lsbr || p.tok == .question {
-			// fixed array type: [N]Type
-			size_str := p.a.nodes[int(ids[0])].value
+			// fixed array type: [N]Type. Use the literal node value for a plain integer
+			// size, but recover the full source text for a const expression (e.g.
+			// `[segs + 1]f32`) — an infix node has no `.value`, which would otherwise
+			// collapse the type to a dynamic `[]f32`.
+			lit_size := p.a.nodes[int(ids[0])].value
+			size_str := if lit_size.len > 0 {
+				lit_size
+			} else if size_start >= 0 && size_end > size_start && size_end <= p.s.src.len {
+				p.s.src[size_start..size_end].trim_space()
+			} else {
+				lit_size
+			}
 			elem_type := p.parse_type_name()
 			fixed_type := '[${size_str}]${elem_type}'
 			// may have init
@@ -4916,6 +4652,7 @@ fn (mut p Parser) select_expr() flat.NodeId {
 // select_branch resolves select branch information for parser.
 fn (mut p Parser) select_branch() flat.NodeId {
 	mut is_else := false
+	mut is_recv_decl := false
 	mut cond_ids := []flat.NodeId{}
 	if p.tok == .key_else {
 		is_else = true
@@ -4925,9 +4662,13 @@ fn (mut p Parser) select_branch() flat.NodeId {
 		// could be assignment: ch <- val or val := <-ch
 		if token_is_assignment(p.tok) || p.tok == .decl_assign {
 			op := p.tok
+			// Record `val := <-ch` so the type checker can bind `val` (the
+			// channel's element type) in the branch body's scope.
+			if op == .decl_assign {
+				is_recv_decl = true
+			}
 			p.next()
 			cond_ids << p.expr(.lowest)
-			_ = op
 		}
 	}
 	mut body_ids := []flat.NodeId{}
@@ -4939,9 +4680,16 @@ fn (mut p Parser) select_branch() flat.NodeId {
 		all_ids << id
 	}
 	start := p.add_children(all_ids)
+	branch_value := if is_else {
+		'else'
+	} else if is_recv_decl {
+		'recv'
+	} else {
+		''
+	}
 	return p.a.add_node(flat.Node{
 		kind:           .select_branch
-		value:          if is_else { 'else' } else { '' }
+		value:          branch_value
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
 	})
@@ -5164,11 +4912,22 @@ fn (mut p Parser) parse_type_name() string {
 			p.next()
 			return '[]' + p.parse_type_name()
 		}
-		// fixed array [N]T
-		mut len_lit := p.lit
-		p.next()
+		// fixed array [N]T — the size may be a const expression (`[segs + 1]f32`),
+		// not just a single token, so parse the whole expression and recover its
+		// source text when it is not a plain literal (mirrors the array-literal path).
+		size_start := p.tok_pos
+		size_node := p.expr(.lowest)
+		size_end := p.tok_pos
 		p.check(.rsbr)
-		return '[${len_lit}]' + p.parse_type_name()
+		lit_size := p.a.nodes[int(size_node)].value
+		size_str := if lit_size.len > 0 {
+			lit_size
+		} else if size_start >= 0 && size_end > size_start && size_end <= p.s.src.len {
+			p.s.src[size_start..size_end].trim_space()
+		} else {
+			lit_size
+		}
+		return '[${size_str}]' + p.parse_type_name()
 	}
 	// multi-return (T, U)
 	if p.tok == .lpar {

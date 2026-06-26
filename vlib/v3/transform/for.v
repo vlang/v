@@ -125,7 +125,7 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 		iter_type
 	}
 	if effective_iter.starts_with('[]') || effective_iter == 'string'
-		|| is_fixed_array_type(effective_iter) {
+		|| t.is_fixed_array_type(effective_iter) {
 		body_ids := t.a.children_of(&node)[header_count..].clone()
 		return t.lower_indexed_for_in(id, node, key_id, val_id, container_id, effective_iter,
 			has_index, body_ids)
@@ -317,7 +317,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	elem_needs_ref := elem_is_mut && !elem_type.starts_with('&')
 	elem_var_type := if elem_needs_ref { '&${elem_type}' } else { elem_type }
 	t.set_var_type(elem_name, elem_var_type)
-	len_expr := if is_fixed_array_type(actual_iter_type) {
+	len_expr := if t.is_fixed_array_type(actual_iter_type) {
 		t.make_fixed_array_len_expr(actual_iter_type)
 	} else {
 		t.make_selector(container, 'len', 'int')
@@ -433,7 +433,7 @@ fn (t &Transformer) infer_for_in_elem_type(iter_type string, node flat.Node) str
 	if iter_type == 'string' {
 		return 'u8'
 	}
-	if is_fixed_array_type(iter_type) {
+	if t.is_fixed_array_type(iter_type) {
 		return fixed_array_elem_type(iter_type)
 	}
 	// Check if the iterable is a range expression

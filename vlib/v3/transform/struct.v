@@ -77,7 +77,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 					}
 				}
 			}
-			if val_node.kind == .array_literal && is_fixed_array_type(field_type) {
+			if val_node.kind == .array_literal && t.is_fixed_array_type(field_type) {
 				t.a.nodes[int(val_id)].typ = field_type
 			}
 			value_type := t.node_type(val_id)
@@ -86,7 +86,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			// Check if the value is an enum shorthand and the field type is an enum
 			mut new_val := if val_node.kind == .enum_val && enum_field_type.len > 0 {
 				t.transform_enum_shorthand(val_id, val_node, enum_field_type)
-			} else if field_type.starts_with('[]') && is_fixed_array_type(value_type) {
+			} else if field_type.starts_with('[]') && t.is_fixed_array_type(value_type) {
 				t.fixed_array_value_to_array(val_id, value_type, field_type)
 			} else if sum_field_type.len > 0 {
 				t.wrap_sum_value(val_id, sum_field_type)
@@ -396,14 +396,14 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		value_id := t.a.child(&field, 0)
 		value_node := t.a.nodes[int(value_id)]
 		field_type := field_types[field.value] or { '' }
-		if value_node.kind == .array_literal && is_fixed_array_type(field_type) {
+		if value_node.kind == .array_literal && t.is_fixed_array_type(field_type) {
 			t.a.nodes[int(value_id)].typ = field_type
 		}
 		value_type := t.node_type(value_id)
 		enum_field_type := t.enum_type_name_for_expected(field_type, assoc_module)
 		value := if value_node.kind == .enum_val && enum_field_type.len > 0 {
 			t.transform_enum_shorthand(value_id, value_node, enum_field_type)
-		} else if field_type.starts_with('[]') && is_fixed_array_type(value_type) {
+		} else if field_type.starts_with('[]') && t.is_fixed_array_type(value_type) {
 			t.fixed_array_value_to_array(value_id, value_type, field_type)
 		} else if t.is_sum_type_name(field_type) {
 			t.wrap_sum_value(value_id, field_type)

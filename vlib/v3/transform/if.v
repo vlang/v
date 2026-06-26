@@ -408,11 +408,11 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) string {
 		}
 	}
 	branch_typ := t.if_expr_branch_result_type(node)
-	if branch_typ.starts_with('[]') && is_fixed_array_type(checked_typ)
+	if branch_typ.starts_with('[]') && t.is_fixed_array_type(checked_typ)
 		&& fixed_array_elem_type(checked_typ) == branch_typ[2..] {
 		return branch_typ
 	}
-	if branch_typ.starts_with('[]') && is_fixed_array_type(node_typ)
+	if branch_typ.starts_with('[]') && t.is_fixed_array_type(node_typ)
 		&& fixed_array_elem_type(node_typ) == branch_typ[2..] {
 		return branch_typ
 	}
@@ -455,8 +455,8 @@ fn (t &Transformer) if_expr_branch_type_overrides(branch_typ string, stale_typ s
 			return true
 		}
 	}
-	if stale_typ.starts_with('[]') || is_fixed_array_type(stale_typ) {
-		return !branch_typ.starts_with('[]') && !is_fixed_array_type(branch_typ)
+	if stale_typ.starts_with('[]') || t.is_fixed_array_type(stale_typ) {
+		return !branch_typ.starts_with('[]') && !t.is_fixed_array_type(branch_typ)
 	}
 	if stale_typ.starts_with('map[') {
 		return !branch_typ.starts_with('map[')
@@ -665,11 +665,11 @@ fn (t &Transformer) merge_if_expr_types(current string, next string) string {
 	if next == 'array' && current.starts_with('[]') {
 		return current
 	}
-	if current.starts_with('[]') && is_fixed_array_type(next)
+	if current.starts_with('[]') && t.is_fixed_array_type(next)
 		&& current[2..] == fixed_array_elem_type(next) {
 		return current
 	}
-	if next.starts_with('[]') && is_fixed_array_type(current)
+	if next.starts_with('[]') && t.is_fixed_array_type(current)
 		&& next[2..] == fixed_array_elem_type(current) {
 		return next
 	}
@@ -986,6 +986,9 @@ fn (mut t Transformer) if_value_branch_block(branch_id flat.NodeId, target_name 
 fn (mut t Transformer) transform_if_branch_value(id flat.NodeId, target_type string) flat.NodeId {
 	if t.is_sum_type_name(target_type) {
 		return t.wrap_sum_value(id, target_type)
+	}
+	if converted := t.fixed_array_value_to_dynamic(id, target_type) {
+		return converted
 	}
 	return t.transform_expr_for_type(id, target_type)
 }

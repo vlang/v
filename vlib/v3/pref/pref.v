@@ -72,15 +72,71 @@ pub fn (p &Preferences) get_vlib_module_path(mod string) string {
 // get_module_path returns get module path data for Preferences.
 pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) string {
 	mod_path := mod.replace('.', os.path_separator)
-	relative_path := os.join_path_single(os.dir(importing_file_path), mod_path)
-	if os.is_dir(relative_path) {
+	// Absolutize the importer like V1's Builder.find_module_path does
+	// (`os.real_path(fpath)`). When the input is given as a relative path (e.g.
+	// `v3 -o out .`), the parsed file paths are relative too (`./doka.v`), and a
+	// parent-directory walk starting from `.` could never climb above the project
+	// dir to find sibling modules.
+	abs_importer := os.real_path(importing_file_path)
+	importer_dir := os.dir(abs_importer)
+	// 1. relative to the importing file's directory
+	relative_path := os.join_path_single(importer_dir, mod_path)
+	if dir_is_module(relative_path) {
 		return relative_path
 	}
+	// 2. vlib
 	vlib_path := os.join_path_single(os.join_path_single(p.vroot, 'vlib'), mod_path)
-	if os.is_dir(vlib_path) {
+	if dir_is_module(vlib_path) {
 		return vlib_path
 	}
+	// 3. ~/.vmodules (or $VMODULES)
+	vmodules_path := os.join_path_single(vmodules_dir(), mod_path)
+	if dir_is_module(vmodules_path) {
+		return vmodules_path
+	}
+	// 4. walk up the parent directories of the importing file, like V1's
+	// Builder.find_module_path. This finds sibling projects: e.g. importing
+	// `viper` from ~/code/doka/doka.v resolves to ~/code/viper.
+	mut current_dir := importer_dir
+	for {
+		try_path := os.join_path_single(current_dir, mod_path)
+		if dir_is_module(try_path) {
+			return try_path
+		}
+		parent_dir := os.dir(current_dir)
+		if parent_dir == current_dir {
+			break
+		}
+		current_dir = parent_dir
+	}
 	return ''
+}
+
+// dir_is_module reports whether `dir` is a usable module directory: it must exist
+// and contain at least one `.v` source file. V1 applies the same `.v`-files guard
+// (`module_path_has_v_files`); without it the parent-directory walk could match an
+// unrelated directory that merely shares a module's name (e.g. `~/code/util`),
+// shadowing the real module.
+fn dir_is_module(dir string) bool {
+	if dir.len == 0 || !os.is_dir(dir) {
+		return false
+	}
+	entries := os.ls(dir) or { return false }
+	for entry in entries {
+		if entry.ends_with('.v') {
+			return true
+		}
+	}
+	return false
+}
+
+// vmodules_dir returns the user's global modules directory ($VMODULES or ~/.vmodules).
+fn vmodules_dir() string {
+	env_dir := os.getenv('VMODULES')
+	if env_dir.len > 0 {
+		return env_dir
+	}
+	return os.join_path_single(os.home_dir(), '.vmodules')
 }
 
 // file_has_incompatible_os_suffix converts file has incompatible os suffix data for pref.

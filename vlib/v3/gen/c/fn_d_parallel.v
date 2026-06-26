@@ -352,53 +352,54 @@ fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
 // worker and, under -gc none, never freed.
 fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 	return &FlatGen{
-		sb:                      strings.new_builder(64_000)
-		a:                       unsafe { g.a }
-		used_fns:                g.used_fns
-		used_fn_names:           g.used_fn_names
-		str_lits:                g.str_lits.clone()
-		str_lit_ids:             g.str_lit_ids.clone()
-		global_types:            g.global_types
-		enum_vals:               g.enum_vals
-		interfaces:              g.interfaces
-		const_vals:              g.const_vals
-		const_modules:           g.const_modules
-		const_init_order:        g.const_init_order
-		global_modules:          g.global_modules
-		global_inits:            g.global_inits
-		global_init_order:       g.global_init_order
-		iface_impls:             g.iface_impls
-		iface_type_ids:          g.iface_type_ids
-		module_init_fns:         g.module_init_fns
-		module_init_fn_modules:  g.module_init_fn_modules
-		module_imports:          g.module_imports
-		tc:                      g.clone_parallel_type_checker()
-		has_builtins:            g.has_builtins
-		tmp_count:               (worker_id + 1) * 100_000
-		line_start:              true
-		modules:                 g.modules
-		fn_ptr_types:            g.fn_ptr_types.clone()
-		fn_decl_param_types:     g.fn_decl_param_types
-		fn_decl_ret_types:       g.fn_decl_ret_types
-		struct_decl_infos:       g.struct_decl_infos
-		struct_decl_short_infos: g.struct_decl_short_infos
-		runtime_inits:           g.runtime_inits.clone()
-		compiler_vroot:          g.compiler_vroot
-		cur_param_names:         g.cur_param_names.clone()
-		cur_param_type_values:   g.cur_param_type_values.clone()
-		cur_param_types:         g.cur_param_types.clone()
-		cur_fn_ret:              g.cur_fn_ret
-		cur_fn_ret_is_optional:  g.cur_fn_ret_is_optional
-		cur_fn_ret_base:         g.cur_fn_ret_base
-		expected_expr_type:      g.expected_expr_type
-		expected_enum:           g.expected_enum
-		needed_optional_types:   g.needed_optional_types.clone()
-		emitted_optional_types:  g.emitted_optional_types.clone()
-		emitted_fns:             g.emitted_fns.clone()
-		array_method_cache:      g.array_method_cache.clone()
-		param_types_cache:       g.param_types_cache.clone()
-		embedded_fields_by_type: g.embedded_fields_by_type
-		param_types_by_short:    g.param_types_by_short
+		sb:                       strings.new_builder(64_000)
+		a:                        unsafe { g.a }
+		used_fns:                 g.used_fns
+		used_fn_names:            g.used_fn_names
+		str_lits:                 g.str_lits.clone()
+		str_lit_ids:              g.str_lit_ids.clone()
+		global_types:             g.global_types
+		enum_vals:                g.enum_vals
+		interfaces:               g.interfaces
+		const_vals:               g.const_vals
+		const_modules:            g.const_modules
+		const_init_order:         g.const_init_order
+		global_modules:           g.global_modules
+		global_inits:             g.global_inits
+		global_init_order:        g.global_init_order
+		iface_impls:              g.iface_impls
+		iface_type_ids:           g.iface_type_ids
+		module_init_fns:          g.module_init_fns
+		module_init_fn_modules:   g.module_init_fn_modules
+		module_imports:           g.module_imports
+		tc:                       g.clone_parallel_type_checker()
+		has_builtins:             g.has_builtins
+		tmp_count:                (worker_id + 1) * 100_000
+		line_start:               true
+		modules:                  g.modules
+		fn_ptr_types:             g.fn_ptr_types.clone()
+		fixed_array_ret_wrappers: g.fixed_array_ret_wrappers
+		fn_decl_param_types:      g.fn_decl_param_types
+		fn_decl_ret_types:        g.fn_decl_ret_types
+		struct_decl_infos:        g.struct_decl_infos
+		struct_decl_short_infos:  g.struct_decl_short_infos
+		runtime_inits:            g.runtime_inits.clone()
+		compiler_vroot:           g.compiler_vroot
+		cur_param_names:          g.cur_param_names.clone()
+		cur_param_type_values:    g.cur_param_type_values.clone()
+		cur_param_types:          g.cur_param_types.clone()
+		cur_fn_ret:               g.cur_fn_ret
+		cur_fn_ret_is_optional:   g.cur_fn_ret_is_optional
+		cur_fn_ret_base:          g.cur_fn_ret_base
+		expected_expr_type:       g.expected_expr_type
+		expected_enum:            g.expected_enum
+		needed_optional_types:    g.needed_optional_types.clone()
+		emitted_optional_types:   g.emitted_optional_types.clone()
+		emitted_fns:              g.emitted_fns.clone()
+		array_method_cache:       g.array_method_cache.clone()
+		param_types_cache:        g.param_types_cache.clone()
+		embedded_fields_by_type:  g.embedded_fields_by_type
+		param_types_by_short:     g.param_types_by_short
 	}
 }
 
@@ -460,6 +461,10 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		diagnostic_files:              g.tc.diagnostic_files
 		cur_fn_ret_type:               g.tc.cur_fn_ret_type
 		smartcasts:                    g.tc.smartcasts
+		// Read-only map cgen uses to recover substituted signatures for generic-receiver
+		// method values (`Box[int].method` as a callback); without it a parallel worker
+		// sees an empty map and gen_method_value_closure falls through.
+		generic_method_value_info: g.tc.generic_method_value_info
 	}
 }
 
@@ -476,6 +481,19 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	for encoded, name in w.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
 			g.fn_ptr_types[encoded] = name
+		}
+	}
+	// Spawn wrappers (thread arg structs + trampoline fns) are generated on demand
+	// inside fn bodies, so a worker that emits a `spawn` produces wrapper defs the
+	// master must also emit. Deduplicate by their deterministic key/def.
+	for key, name in w.spawn_wrapper_names {
+		if key !in g.spawn_wrapper_names {
+			g.spawn_wrapper_names[key] = name
+		}
+	}
+	for def in w.spawn_wrapper_defs {
+		if def !in g.spawn_wrapper_defs {
+			g.spawn_wrapper_defs << def
 		}
 	}
 }

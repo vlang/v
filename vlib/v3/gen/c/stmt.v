@@ -61,6 +61,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		return
 	}
 	node := g.a.nodes[int(id)]
+	g.in_return = false
 	match node.kind {
 		.fn_decl, .c_fn_decl {
 			return
@@ -184,6 +185,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.gen_index_assign(node)
 		}
 		.return_stmt {
+			g.in_return = true
 			if g.cur_fn_ret is types.Enum {
 				g.expected_enum = g.cur_fn_ret.name
 			}
@@ -249,11 +251,17 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					}
 					if base is types.Void {
 						g.writeln('return (${ct}){.ok = false};')
+					} else if base is types.ArrayFixed {
+						// The optional's `.value` is a fixed-array member, which can't be set
+						// in the compound literal; build via a temp + memcpy.
+						g.write('return ({ ${ct} __opt = {.ok = true}; memcpy(__opt.value, ')
+						g.gen_fixed_array_copy_source(ret_id, base)
+						g.writeln(', sizeof(__opt.value)); __opt; });')
 					} else {
 						raw_expr_type := g.tc.resolve_type(ret_id)
 						expr_type := g.usable_expr_type(ret_id)
 						call_ret_type := g.local_fn_call_return_type(ret_id, ret_node)
-						decl_ret_type := g.declared_call_return_type(ret_node)
+						decl_ret_type := g.declared_call_return_type(ret_id)
 						if g.optional_result_matches_base(raw_expr_type, base)
 							|| g.optional_result_matches_base(expr_type, base)
 							|| g.optional_result_matches_base(call_ret_type, base)
@@ -293,6 +301,34 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				} else if g.cur_fn_ret is types.MultiReturn {
 					if node.children_count > 1 {
 						ct := g.tc.c_type(g.cur_fn_ret)
+						mr_types := g.cur_fn_ret.types
+						mut has_fixed := false
+						for mt in mr_types {
+							if mt is types.ArrayFixed {
+								has_fixed = true
+								break
+							}
+						}
+						if has_fixed {
+							// A multi-return with a fixed-array member can't be built by a
+							// positional compound literal (array members need memcpy).
+							tmp := g.tmp_name()
+							g.write('return ({ ${ct} ${tmp} = {0};')
+							for i in 0 .. node.children_count {
+								if i < mr_types.len && mr_types[i] is types.ArrayFixed {
+									g.write(' memcpy(${tmp}.arg${i}, ')
+									g.gen_fixed_array_copy_source(g.a.child(&node, i), mr_types[i])
+									g.write(', sizeof(${tmp}.arg${i}));')
+								} else {
+									g.write(' ${tmp}.arg${i} = ')
+									g.gen_expr(g.a.child(&node, i))
+									g.write(';')
+								}
+							}
+							g.writeln(' ${tmp}; });')
+							g.expected_enum = ''
+							return
+						}
 						g.write('return (${ct}){')
 						for i in 0 .. node.children_count {
 							if i > 0 {
@@ -316,15 +352,28 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					}
 				} else if ret_node.kind == .assoc {
 					g.gen_return_assoc(ret_node)
+				} else if g.cur_fn_ret is types.ArrayFixed
+					&& g.tc.c_type(g.cur_fn_ret) in g.fixed_array_ret_wrappers {
+					g.write('return ')
+					g.gen_fixed_array_return_wrap(g.cur_fn_ret, ret_id)
+					g.writeln(';')
 				} else {
+					g.write('return ')
+					// Most interface returns are already boxed by the transform pass into
+					// a `(Iface){._typ = N, ._object = ...}` literal, in which case
+					// gen_interface_value_expr is a no-op (the value is already an
+					// interface) and we emit it directly. IError is intentionally left
+					// unboxed by the transform, so box the concrete error here. Never emit
+					// a zeroed `(Iface){0}` — that drops `_typ`/`_object` and makes every
+					// dispatch through the returned interface panic as "not implemented".
 					if g.cur_fn_ret is types.Interface {
-						ct := g.tc.c_type(g.cur_fn_ret)
-						g.writeln('return (${ct}){0};')
+						if !g.gen_interface_value_expr(ret_id, g.cur_fn_ret) {
+							g.gen_expr(ret_id)
+						}
 					} else {
-						g.write('return ')
 						g.gen_expr(ret_id)
-						g.writeln(';')
 					}
+					g.writeln(';')
 				}
 			} else {
 				g.gen_default_return_stmt()
@@ -428,12 +477,33 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 		g.writeln('return ${tmp};')
 		return
 	}
+	if g.cur_fn_ret is types.ArrayFixed && g.tc.c_type(g.cur_fn_ret) in g.fixed_array_ret_wrappers {
+		wrapper := fixed_array_ret_wrapper_name(g.tc.c_type(g.cur_fn_ret))
+		tmp := g.tmp_name()
+		g.write('${wrapper} ${tmp} = ')
+		g.gen_fixed_array_return_wrap(g.cur_fn_ret, ret_id)
+		g.writeln(';')
+		g.gen_all_defers()
+		g.writeln('return ${tmp};')
+		return
+	}
 	ct := g.return_c_type()
 	expr := g.return_expr_string(node, ret_id, ret_node, ct)
 	tmp := g.tmp_name()
 	g.writeln('${ct} ${tmp} = ${expr};')
 	g.gen_all_defers()
 	g.writeln('return ${tmp};')
+}
+
+// gen_fixed_array_return_wrap emits a fixed-array return value wrapped in its
+// return-wrapper struct: `({ Wrapper __fa_ret; memcpy(__fa_ret.ret_arr, <expr>,
+// sizeof(...)); __fa_ret; })`. C cannot return raw arrays, so the array is copied
+// into the wrapper's `ret_arr` field and the struct is returned by value.
+fn (mut g FlatGen) gen_fixed_array_return_wrap(ret_type types.Type, ret_id flat.NodeId) {
+	wrapper := fixed_array_ret_wrapper_name(g.tc.c_type(ret_type))
+	g.write('({ ${wrapper} __fa_ret; memcpy(__fa_ret.ret_arr, ')
+	g.gen_fixed_array_copy_source(ret_id, ret_type)
+	g.write(', sizeof(__fa_ret.ret_arr)); __fa_ret; })')
 }
 
 fn (mut g FlatGen) gen_default_return_stmt() {
@@ -494,10 +564,17 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		if base is types.Void {
 			return '(${ct}){.ok = false}'
 		}
+		if base is types.ArrayFixed {
+			// The optional's `.value` is a fixed-array member, which can't be set in a compound
+			// literal; build via a temp + memcpy (mirrors the direct return path) so a deferred
+			// return saves the array value instead of dropping it to `{.ok = false}`.
+			src := g.fixed_array_copy_source_string(ret_id, base)
+			return '({ ${ct} __opt = {.ok = true}; memcpy(__opt.value, ${src}, sizeof(__opt.value)); __opt; })'
+		}
 		raw_expr_type := g.tc.resolve_type(ret_id)
 		expr_type := g.usable_expr_type(ret_id)
 		call_ret_type := g.local_fn_call_return_type(ret_id, ret_node)
-		decl_ret_type := g.declared_call_return_type(ret_node)
+		decl_ret_type := g.declared_call_return_type(ret_id)
 		if g.optional_result_matches_base(raw_expr_type, base)
 			|| g.optional_result_matches_base(expr_type, base)
 			|| g.optional_result_matches_base(call_ret_type, base)
@@ -542,7 +619,9 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		return '(${ct}){${g.expr_to_string(ret_id)}}'
 	}
 	if g.cur_fn_ret is types.Interface {
-		return '(${ct}){0}'
+		// Box the concrete value the same way the direct return path does, so a deferred return
+		// preserves `_typ`/`_object` instead of zeroing the interface.
+		return g.interface_value_to_string(ret_id, g.cur_fn_ret)
 	}
 	return g.expr_to_string(ret_id)
 }
@@ -603,7 +682,11 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 // becomes `?int`), which makes the optional C type name appear to differ from
 // the callee's signature. The declared type read from `fn_ret_types`/the fn decl
 // keeps the alias, so propagating `return call()` is recognised as valid.
-fn (g &FlatGen) declared_call_return_type(call_node flat.Node) types.Type {
+fn (g &FlatGen) declared_call_return_type(call_id flat.NodeId) types.Type {
+	if int(call_id) < 0 {
+		return types.Type(types.void_)
+	}
+	call_node := g.a.nodes[int(call_id)]
 	if call_node.kind != .call || call_node.children_count == 0 {
 		return types.Type(types.void_)
 	}
@@ -612,22 +695,31 @@ fn (g &FlatGen) declared_call_return_type(call_node flat.Node) types.Type {
 		if ret := g.selector_call_return_type(fn_node) {
 			return ret
 		}
-		return types.Type(types.void_)
-	}
-	if fn_node.kind != .ident {
-		return types.Type(types.void_)
-	}
-	if ret := g.tc.fn_ret_types[fn_node.value] {
-		return ret
-	}
-	cfn := c_name(fn_node.value)
-	if cfn != fn_node.value {
-		if ret := g.tc.fn_ret_types[cfn] {
+	} else if fn_node.kind == .ident {
+		if ret := g.tc.fn_ret_types[fn_node.value] {
+			return ret
+		}
+		cfn := c_name(fn_node.value)
+		if cfn != fn_node.value {
+			if ret := g.tc.fn_ret_types[cfn] {
+				return ret
+			}
+		}
+		if ret := g.fn_decl_return_type_for_call_name(fn_node.value) {
 			return ret
 		}
 	}
-	if ret := g.fn_decl_return_type_for_call_name(fn_node.value) {
-		return ret
+	// Indirect call through an fn-pointer value (local var, param, or struct field
+	// like `h.f()`): the target isn't a declared function/method, so resolve its type
+	// and read the fn type's return. Unwrap alias (`type MakeArr = fn () [2]string`)
+	// and pointer layers first. Lets fixed-array-returning callbacks unwrap `.ret_arr`
+	// at the call site whether reached through a local, a param, or a struct field.
+	mut callee_t := types.unwrap_pointer(g.tc.resolve_type(g.a.child(&call_node, 0)))
+	for callee_t is types.Alias {
+		callee_t = types.unwrap_pointer((callee_t as types.Alias).base_type)
+	}
+	if callee_t is types.FnType {
+		return callee_t.return_type
 	}
 	return types.Type(types.void_)
 }
@@ -637,6 +729,26 @@ fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
 		return none
 	}
 	base_id := g.a.child(&fn_node, 0)
+	base_node := g.a.nodes[int(base_id)]
+	// A selector whose base names a type or an imported module is not a receiver method but a
+	// static method (`Type.make()`) or import-qualified function (`mod.make()`); the base ident
+	// has no value type, so resolve it the same way gen_call does and read the declared return
+	// type. Without this a fixed-array such call's `_v_ret_*` wrapper is never unwrapped.
+	if base_node.kind == .ident && base_node.value.len > 0 {
+		base_is_local := g.tc.cur_scope.lookup(base_node.value) or { types.Type(types.void_) } !is types.Void
+		if !base_is_local {
+			if static_fn := g.static_method_fn_name(base_node.value, fn_node.value) {
+				if ret := g.tc.fn_ret_types[static_fn] {
+					return ret
+				}
+			}
+			if mod := g.import_alias_module(base_node.value) {
+				if ret := g.tc.fn_ret_types['${mod}.${fn_node.value}'] {
+					return ret
+				}
+			}
+		}
+	}
 	base_type := g.tc.resolve_type(base_id)
 	clean_type := types.unwrap_pointer(base_type)
 	mut receiver_name := clean_type.name()
@@ -1042,6 +1154,22 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			} else {
 				ct0
 			}
+			if v_type is types.ArrayFixed {
+				// A fixed array cannot be initialized from another array value
+				// (`T x[N] = expr` is illegal); declare then memcpy.
+				lhs_str := g.decl_lhs_str(lhs_id)
+				if !lhs_is_defer_capture {
+					g.writeln('${decl_prefix}${ct} ${lhs_str};')
+				}
+				g.write('memcpy(${lhs_str}, ')
+				g.gen_fixed_array_copy_source(rhs_id, v_type)
+				g.writeln(', sizeof(${lhs_str}));')
+				if lhs.kind == .ident {
+					g.tc.cur_scope.insert(lhs.value, v_type)
+				}
+				i += 2
+				continue
+			}
 			if ct.starts_with('fn_ptr:') {
 				fp_name := g.resolve_fn_ptr_type(ct)
 				if !lhs_is_defer_capture {
@@ -1187,6 +1315,19 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 			lhs_id := g.a.child(&node, i)
 			if rhs_node.kind == .array_literal {
 				lhs_type := types.unwrap_pointer(g.tc.resolve_type(lhs_id))
+				if lhs_type is types.ArrayFixed {
+					// A fixed-array field/var can't be `=`-assigned an array literal (which
+					// lowers to a dynamic `Array`); memcpy the element bytes instead.
+					g.write('memcpy(')
+					g.gen_expr(lhs_id)
+					g.write(', ')
+					g.gen_fixed_array_data_arg(rhs_id, lhs_type)
+					g.write(', sizeof(')
+					g.gen_expr(lhs_id)
+					g.writeln('));')
+					i += 2
+					continue
+				}
 				elem_type := if rhs_node.children_count > 0 {
 					g.tc.resolve_type(g.a.child(&rhs_node, 0))
 				} else if lhs_arr := array_like_type(lhs_type) {
@@ -1201,6 +1342,18 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 			} else {
 				lhs_type := g.usable_expr_type(lhs_id)
 				rhs_type := g.usable_expr_type(rhs_id)
+				if node.op == .assign && lhs_type is types.ArrayFixed {
+					// A fixed array can't be assigned with `=`; copy element bytes.
+					g.write('memcpy(')
+					g.gen_expr(lhs_id)
+					g.write(', ')
+					g.gen_fixed_array_copy_source(rhs_id, lhs_type)
+					g.write(', sizeof(')
+					g.gen_expr(lhs_id)
+					g.writeln('));')
+					i += 2
+					continue
+				}
 				if node.op == .plus_assign && (lhs_type is types.String || rhs_type is types.String) {
 					g.gen_expr(g.a.child(&node, i))
 					g.write(' = string__plus(')
@@ -1532,7 +1685,15 @@ fn (mut g FlatGen) gen_or_expr(node flat.Node) {
 	g.write('({${opt_ct} ${tmp} = ')
 	g.gen_expr_with_expected_type(expr_id, expr_type)
 	g.write('; ${val_ct} ${val}; if (${tmp}.ok) { ${val} = ${tmp}.value; } else { IError err = ${tmp}.err; (void)err; ')
+	// Bind `err` (IError) in a *temporary* cgen scope so the or-body's own string
+	// interpolations and selector accesses resolve `err`'s type correctly (without this
+	// an `${err}` inside the or-body falls back to `int__str(err)`). The scope is popped
+	// afterwards so an outer local named `err` keeps its real type — e.g.
+	// `err := 1; _ := maybe() or { 0 }; println('${err}')` must still see `err` as int.
+	g.tc.push_scope()
+	g.tc.cur_scope.insert('err', g.tc.parse_type('IError'))
 	g.gen_or_body_value(or_body, val, val_type)
+	g.tc.pop_scope()
 	g.write(' } ${val};})')
 }
 
@@ -1573,6 +1734,11 @@ fn (mut g FlatGen) gen_or_body_value(or_body flat.Node, value_name string, value
 				fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
 				g.write('return ')
 				g.gen_optional_error_from_call(fn_opt_ct, g.a.nodes[int(expr_id)])
+				g.write(';')
+			} else if g.tc.resolve_type(expr_id) is types.Void {
+				// A diverging/void or-body tail (e.g. `panic(..)`/`exit(..)`) yields no
+				// value; emit it as a bare statement instead of assigning void.
+				g.gen_expr(expr_id)
 				g.write(';')
 			} else {
 				g.write('${value_name} = ')

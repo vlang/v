@@ -703,7 +703,7 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 	}
 	if param_type.starts_with('[]') {
 		arg_type := t.node_type(arg_id)
-		if is_fixed_array_type(arg_type) {
+		if t.is_fixed_array_type(arg_type) {
 			return t.fixed_array_value_to_array(arg_id, arg_type, param_type)
 		}
 		if const_arg := t.transform_const_array_arg_for_param(arg_id, param_type) {
@@ -1154,6 +1154,24 @@ fn (t &Transformer) enum_str_method_name(typ string) ?string {
 	return none
 }
 
+// enum_autostr_call builds a call to the compiler-synthesized `<Enum>__autostr` helper
+// (emitted by cgen's enum_str_defs) which returns the enum field NAME. Used as the default
+// `${enum}` stringification when the user has not defined a custom `.str()` — V auto-derives
+// one. Mirrors the struct-str qualification so the C name matches cgen's enum_decls naming.
+fn (mut t Transformer) enum_autostr_call(expr flat.NodeId, typ string) flat.NodeId {
+	mut qualified := typ
+	if qualified.starts_with('main.') {
+		qualified = qualified[5..]
+	} else if !typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		q := '${t.cur_module}.${typ}'
+		if q in t.enum_types {
+			qualified = q
+		}
+	}
+	return t.make_call_typed('${c_name(qualified)}__autostr', arr1(expr), 'string')
+}
+
 // wrap_string_conversion transforms wrap string conversion data for transform.
 fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat.NodeId {
 	mut clean_typ := typ
@@ -1197,8 +1215,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			if method := t.enum_str_method_name(clean_typ) {
 				return t.make_call_typed(method, arr1(expr), 'string')
 			}
-			return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
-				'string')
+			return t.enum_autostr_call(expr, clean_typ)
 		}
 		if qtyp != clean_typ {
 			qparsed := t.tc.parse_type(qtyp)
@@ -1206,8 +1223,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 				if method := t.enum_str_method_name(qtyp) {
 					return t.make_call_typed(method, arr1(expr), 'string')
 				}
-				return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
-					'string')
+				return t.enum_autostr_call(expr, qtyp)
 			}
 		}
 	}
@@ -1252,8 +1268,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 				if method := t.enum_str_method_name(clean_typ) {
 					return t.make_call_typed(method, arr1(expr), 'string')
 				}
-				return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
-					'string')
+				return t.enum_autostr_call(expr, clean_typ)
 			}
 			mut qenum := clean_typ
 			if !clean_typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
@@ -1264,8 +1279,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 				if method := t.enum_str_method_name(qenum) {
 					return t.make_call_typed(method, arr1(expr), 'string')
 				}
-				return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(10)),
-					'string')
+				return t.enum_autostr_call(expr, qenum)
 			}
 			if clean_typ in t.structs || clean_typ in t.sum_types {
 				mut qualified := clean_typ
@@ -1283,7 +1297,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 					return t.make_call_typed(str_fn, arr1(expr), 'string')
 				}
 				return t.make_string_literal('${qualified}{}')
-			} else if is_fixed_array_type(clean_typ) {
+			} else if t.is_fixed_array_type(clean_typ) {
 				elem_type := fixed_array_elem_type(clean_typ)
 				arr := t.fixed_array_value_to_array(expr, clean_typ, '[]${elem_type}')
 				return t.wrap_string_conversion(arr, '[]${elem_type}')
@@ -1506,12 +1520,12 @@ fn (mut t Transformer) try_lower_array_method_call(node flat.Node) ?flat.NodeId 
 	}
 	base_id := t.a.children[fn_node.children_start]
 	mut base_type := t.node_type(base_id)
-	if !base_type.starts_with('[]') && !is_fixed_array_type(base_type) {
+	if !base_type.starts_with('[]') && !t.is_fixed_array_type(base_type) {
 		base_node := t.a.nodes[int(base_id)]
 		if base_node.kind in [.call, .selector, .as_expr] {
 			new_base := t.transform_expr(base_id)
 			new_base_type := t.node_type(new_base)
-			if new_base_type.starts_with('[]') || is_fixed_array_type(new_base_type) {
+			if new_base_type.starts_with('[]') || t.is_fixed_array_type(new_base_type) {
 				selector := t.make_selector(new_base, fn_node.value, '')
 				mut children := []flat.NodeId{cap: int(node.children_count)}
 				children << selector
@@ -1534,7 +1548,7 @@ fn (mut t Transformer) try_lower_array_method_call(node flat.Node) ?flat.NodeId 
 		}
 	}
 	clean_base_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
-	if is_fixed_array_type(clean_base_type) {
+	if t.is_fixed_array_type(clean_base_type) {
 		elem_type := fixed_array_elem_type(clean_base_type)
 		array_type := '[]${elem_type}'
 		tmp_name := t.new_temp('fixed_arr')
@@ -2837,6 +2851,22 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) string 
 				key_type := t.map_key_type(clean_type)
 				if key_type.len > 0 {
 					return '[]${key_type}'
+				}
+			}
+		}
+		// A method on a concrete generic instance (`Box[int].clone`) is registered under
+		// the open form (`Box[T].clone`), whose stored return type collapsed `Box[T]` to
+		// the bare base. Resolve it through the checker, which re-substitutes the concrete
+		// arguments from the signature text, so the inferred decl type is `Box[int]`.
+		if !isnil(t.tc) && fn_node.kind == .selector && fn_node.children_count > 0 {
+			base_type := t.node_type(t.a.child(fn_node, 0))
+			clean_base := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+			if clean_base.contains('[') && clean_base.ends_with(']') {
+				if ci := t.tc.resolve_generic_struct_method(clean_base, fn_node.value) {
+					rn := ci.return_type.name()
+					if rn.len > 0 && rn != 'void' && rn != 'unknown' {
+						return t.normalize_type_alias(rn)
+					}
 				}
 			}
 		}

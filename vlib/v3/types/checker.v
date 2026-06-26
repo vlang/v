@@ -58,7 +58,8 @@ pub enum TypeErrorKind {
 }
 
 // CallInfo stores call info metadata used by types.
-struct CallInfo {
+pub struct CallInfo {
+pub:
 	name                 string
 	params               []Type
 	return_type          Type
@@ -86,12 +87,19 @@ mut:
 @[heap]
 pub struct TypeChecker {
 pub mut:
-	a                          &flat.FlatAst = unsafe { nil }
-	fn_ret_types               map[string]Type
-	fn_param_types             map[string][]Type
-	fn_variadic                map[string]bool
-	fn_implicit_veb_ctx        map[string]bool
-	structs                    map[string][]StructField
+	a                     &flat.FlatAst = unsafe { nil }
+	fn_ret_types          map[string]Type
+	fn_param_types        map[string][]Type
+	fn_ret_type_texts     map[string]string   // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
+	fn_param_type_texts   map[string][]string // generic struct method key -> original param type texts (receiver first)
+	fn_variadic           map[string]bool
+	fn_implicit_veb_ctx   map[string]bool
+	structs               map[string][]StructField
+	struct_generic_params map[string][]string // generic struct base name -> type-param names (e.g. Vec4 -> [T])
+	// concrete `Box[int].method` -> substituted CallInfo for a method *value* on a
+	// generic receiver. The open `Box[T].method` registration is gone by cgen time, so
+	// the checker stashes the resolved signature here for gen_method_value_closure.
+	generic_method_value_info  map[string]CallInfo
 	params_structs             map[string]bool
 	unions                     map[string]bool
 	type_aliases               map[string]string
@@ -104,24 +112,40 @@ pub mut:
 	interface_embeds           map[string][]string
 	interface_abstract_methods map[string][]string // iface -> abstract (declared) method names
 
-	c_globals                     map[string]Type
-	const_types                   map[string]Type
-	const_exprs                   map[string]flat.NodeId
-	const_modules                 map[string]string
-	const_suffixes                map[string]string // dot-suffix -> full const key (O(1) lookup; '' if ambiguous)
-	imports                       map[string]string // alias -> short module name
-	file_imports                  map[string]string
-	file_modules                  map[string]string
-	file_scope                    &Scope = unsafe { nil }
-	cur_scope                     &Scope = unsafe { nil }
-	scope_pool                    []&Scope
-	scope_pool_index              int
-	has_builtins                  bool
-	cur_module                    string
-	cur_file                      string
-	errors                        []TypeError
-	resolved_call_names           []string // node_id -> resolved function name
-	resolved_call_set             []bool
+	c_globals           map[string]Type
+	const_types         map[string]Type
+	const_exprs         map[string]flat.NodeId
+	const_modules       map[string]string
+	const_suffixes      map[string]string // dot-suffix -> full const key (O(1) lookup; '' if ambiguous)
+	imports             map[string]string // alias -> short module name
+	file_imports        map[string]string
+	file_modules        map[string]string
+	file_scope          &Scope = unsafe { nil }
+	cur_scope           &Scope = unsafe { nil }
+	scope_pool          []&Scope
+	scope_pool_index    int
+	has_builtins        bool
+	cur_module          string
+	cur_file            string
+	errors              []TypeError
+	resolved_call_names []string // node_id -> resolved function name
+	resolved_call_set   []bool
+	// Methods used as *values* (`recv.method` passed as a callback), recorded per enclosing
+	// function during semantic checking — which has full scope/type info, runs before
+	// markused, and (unlike a call) routes a value-context selector through check_selector.
+	// markused seeds these (keeping the wrapper-only method out of the dead-code pruner)
+	// only when their enclosing function is reachable.
+	method_values_by_fn map[int][]string // enclosing fn node id -> method-value `Type.method` keys
+	// Local variables bound to a method value (`cb := c.report`) in the current function.
+	// Such an alias shares the same per-site static receiver slot as the bare selector, so it
+	// escapes (and corrupts other live callbacks) just like `return c.report`; the escape
+	// checks below treat a reference to one of these locals as a method value. Reset per fn.
+	method_value_locals map[string]bool
+	// Scope depth at which each method-value local was marked, so a reassignment to a
+	// non-method value only clears the marker when it dominates later uses (same-or-shallower
+	// scope); a reassignment in a deeper conditional/loop scope keeps the maybe-method marker.
+	method_value_local_depth      map[string]int
+	cur_fn_node_id                int = -1
 	expr_type_values              []Type // node_id -> complex/contextual resolved type
 	expr_type_set                 []bool
 	checking_nodes                []bool
@@ -319,6 +343,12 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				if qname !in tc.structs {
 					tc.structs[qname] = []StructField{}
 				}
+				if node.generic_params.len > 0 {
+					tc.struct_generic_params[qname] = node.generic_params.clone()
+					if qname != node.value {
+						tc.struct_generic_params[node.value] = node.generic_params.clone()
+					}
+				}
 				if node.typ.contains('union') {
 					tc.unions[qname] = true
 				}
@@ -362,6 +392,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				qname := tc.qualify_fn_name(node.value)
 				ret_type := tc.parse_type(node.typ)
 				mut ptypes := []Type{}
+				mut param_texts := []string{}
 				mut is_variadic := false
 				for i in 0 .. node.children_count {
 					child := a.child_node(&node, i)
@@ -370,6 +401,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 							is_variadic = true
 						}
 						ptypes << tc.parse_type(child.typ)
+						param_texts << child.typ
 					}
 				}
 				needs_ctx := tc.fn_needs_implicit_veb_ctx(node)
@@ -378,6 +410,17 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				if tc.cur_module in ['', 'main', 'builtin'] && qname != node.value
 					&& node.value !in tc.fn_param_types {
 					tc.register_fn_signature(node.value, ret_type, ptypes, is_variadic, needs_ctx)
+				}
+				// A generic struct method (`Box[T].clone`) keeps its original signature
+				// TEXT: the parsed types collapse a non-concrete `Box[T]` to the bare base,
+				// so a concrete call must re-substitute the type arguments from the text to
+				// recover applications like the receiver type in the return position
+				// (`Box[T]` -> `Box[int]`). Only such methods carry `[` in their key.
+				if node.value.contains('[') {
+					tc.fn_ret_type_texts[qname] = node.typ
+					tc.fn_param_type_texts[qname] = param_texts.clone()
+					tc.fn_ret_type_texts[node.value] = node.typ
+					tc.fn_param_type_texts[node.value] = param_texts.clone()
 				}
 			}
 			.struct_decl {
@@ -575,6 +618,9 @@ fn (tc &TypeChecker) const_type_from_initializer(name string, typ Type) Type {
 		return typ
 	}
 	expr_id := tc.const_exprs[name] or { return typ }
+	if int(expr_id) < 0 || int(expr_id) >= tc.a.nodes.len {
+		return typ
+	}
 	expr := tc.a.nodes[int(expr_id)]
 	if expr.kind != .call || expr.children_count == 0 {
 		return typ
@@ -1120,6 +1166,9 @@ pub fn (mut tc TypeChecker) check_semantics() {
 			.fn_decl {
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 				tc.cur_fn_ret_type = tc.parse_type(node.typ)
+				tc.cur_fn_node_id = i
+				tc.method_value_locals = map[string]bool{}
+				tc.method_value_local_depth = map[string]int{}
 				tc.push_scope()
 				for pi in 0 .. node.children_count {
 					p := tc.a.child_node(&node, pi)
@@ -1129,6 +1178,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				}
 				tc.insert_implicit_veb_ctx(node)
 				tc.check_fn_body(node)
+				tc.cur_fn_node_id = -1
 				is_disabled_stub := node.value in tc.a.disabled_fns
 				if !type_allows_implicit_return(tc.cur_fn_ret_type)
 					&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub
@@ -1432,6 +1482,18 @@ fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ string, n
 		tc.check_type_string_for_unsupported_generics(clean[7..], node_id, generic_params)
 		return
 	}
+	if clean == 'thread' || clean == 'chan' {
+		return
+	}
+	if clean.starts_with('thread ') {
+		// `thread T` is a thread handle; only its element type T needs checking.
+		tc.check_type_string_for_unsupported_generics(clean[7..], node_id, generic_params)
+		return
+	}
+	if clean.starts_with('chan ') {
+		tc.check_type_string_for_unsupported_generics(clean[5..], node_id, generic_params)
+		return
+	}
 	if clean.starts_with('...') {
 		tc.check_type_string_for_unsupported_generics(clean[3..], node_id, generic_params)
 		return
@@ -1599,10 +1661,44 @@ fn generic_type_application_parts(typ string) (string, []string, bool) {
 		return '', []string{}, false
 	}
 	inner := typ[bracket + 1..bracket_end].trim_space()
-	if is_decimal_int_literal(inner) {
+	if is_fixed_array_len_text(inner) {
 		return '', []string{}, false
 	}
 	return typ[..bracket], split_params(inner), true
+}
+
+// is_fixed_array_len_text reports whether a postfix `Base[inner]` bracket holds a fixed-array
+// length rather than a generic type argument. `ArrayFixed.name()` renders the length as a decimal
+// (`u8[16]`), a non-decimal literal (`u8[0x10]`), or the source length expression (`u8[segs + 1]`);
+// a generic argument is always a type, never a number or arithmetic expression. Recognising all
+// three keeps such a postfix name parsing as a fixed array (e.g. when `[]thread T.wait()` recovers
+// the spawned return type) instead of a bogus generic application.
+fn is_fixed_array_len_text(inner string) bool {
+	s := inner.trim_space()
+	if s.len == 0 {
+		return false
+	}
+	// A fixed-array length is a single integer expression; a comma means the brackets hold a
+	// generic argument LIST (`Pair[int, &Node]`), not a length. Without this an `&` (or `-`)
+	// that merely leads a later pointer type argument would be read as a length operator.
+	if s.contains(',') {
+		return false
+	}
+	if v_int_literal_value(s) != none {
+		return true
+	}
+	for i in 0 .. s.len {
+		c := s[i]
+		if c in [`+`, `*`, `/`, `%`, `|`, `^`, `<`, `>`] {
+			return true
+		}
+		// A leading `-`/`&` is a negative literal / pointer-type argument; elsewhere they are the
+		// subtraction / bitwise-and operators of a length expression.
+		if (c == `-` || c == `&`) && i > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // is_decimal_int_literal reports whether is decimal int literal applies in types.
@@ -1616,6 +1712,56 @@ fn is_decimal_int_literal(s string) bool {
 		}
 	}
 	return true
+}
+
+// v_int_literal_value parses a complete V integer literal — decimal, hex (`0x`), octal
+// (`0o`), or binary (`0b`), with optional `_` digit separators — to its value. Returns
+// none when `s` is not a whole integer literal (a const name, an expression, etc.), so
+// const-length folding accepts `0xF & 6` / `[0b1100 >> 1]int`, not just decimal text.
+fn v_int_literal_value(s string) ?int {
+	if s.len == 0 {
+		return none
+	}
+	t := s.replace('_', '')
+	if t.len == 0 {
+		return none
+	}
+	mut base := 10
+	mut digits := t
+	if t.len >= 2 && t[0] == `0` {
+		c := t[1]
+		if c == `x` || c == `X` {
+			base = 16
+			digits = t[2..]
+		} else if c == `o` || c == `O` {
+			base = 8
+			digits = t[2..]
+		} else if c == `b` || c == `B` {
+			base = 2
+			digits = t[2..]
+		}
+	}
+	if digits.len == 0 {
+		return none
+	}
+	mut value := 0
+	for ch in digits {
+		mut d := 0
+		if ch >= `0` && ch <= `9` {
+			d = int(ch - `0`)
+		} else if ch >= `a` && ch <= `f` {
+			d = int(ch - `a`) + 10
+		} else if ch >= `A` && ch <= `F` {
+			d = int(ch - `A`) + 10
+		} else {
+			return none
+		}
+		if d >= base {
+			return none
+		}
+		value = value * base + d
+	}
+	return value
 }
 
 // is_bare_generic_param reports whether is bare generic param applies in types.
@@ -1844,12 +1990,63 @@ fn (tc &TypeChecker) stmt_definitely_returns(id flat.NodeId) bool {
 					return false
 				}
 			}
-			return has_else
+			// All branches return. An explicit `else` makes the match exhaustive;
+			// otherwise it is still exhaustive when it covers every variant of the
+			// subject enum (V requires match statements to be exhaustive).
+			return has_else || tc.match_covers_all_enum_variants(node)
 		}
 		else {
 			return false
 		}
 	}
+}
+
+// match_covers_all_enum_variants reports whether a `match` over an enum subject
+// lists every variant of that enum (so it is exhaustive without an `else`).
+fn (tc &TypeChecker) match_covers_all_enum_variants(node flat.Node) bool {
+	if node.children_count < 2 {
+		return false
+	}
+	subject_type := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
+	mut enum_name := ''
+	if subject_type is Enum {
+		enum_name = subject_type.name
+	} else {
+		return false
+	}
+	// A `[flag]` enum value can hold combined or zero bits (`.read | .write`, `0`) that
+	// no single-field branch covers, so listing every field is NOT exhaustive — such a
+	// match needs an explicit `else`.
+	if enum_name in tc.flag_enums {
+		return false
+	}
+	all_fields := tc.enum_fields[enum_name] or { return false }
+	if all_fields.len == 0 {
+		return false
+	}
+	mut covered := map[string]bool{}
+	for i in 1 .. node.children_count {
+		branch := tc.a.child_node(&node, i)
+		if branch.kind != .match_branch {
+			return false
+		}
+		if branch.value == 'else' {
+			return true
+		}
+		n_conds := branch.value.int()
+		for j in 0 .. n_conds {
+			cond := tc.a.child_node(branch, j)
+			if cond.kind == .enum_val {
+				covered[cond.value.all_after_last('.')] = true
+			}
+		}
+	}
+	for f in all_fields {
+		if f !in covered {
+			return false
+		}
+	}
+	return true
 }
 
 // match_branch_definitely_returns
@@ -1973,9 +2170,66 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		tc.check_array_init(node)
 		return
 	}
+	if node.kind == .select_stmt {
+		tc.check_select_stmt(node)
+		return
+	}
+	// A method value stored in a container escapes the single-use guarantee of its per-site
+	// static receiver, so reject `[obj.method]` / `arr << obj.method` / `{'k': obj.method}`.
+	if node.kind == .array_literal {
+		for i in 0 .. node.children_count {
+			tc.reject_stored_method_value(tc.a.child(&node, i))
+		}
+	} else if node.kind == .map_init {
+		// children alternate key, value, key, value, ...; check the value positions.
+		for j := 1; j < node.children_count; j += 2 {
+			tc.reject_stored_method_value(tc.a.child(&node, j))
+		}
+	} else if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
+		if unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) is Array {
+			tc.reject_stored_method_value(tc.a.child(&node, 1))
+		}
+	}
 
 	for i in 0 .. node.children_count {
 		tc.check_node(tc.a.child(&node, i))
+	}
+}
+
+// check_select_stmt validates a `select { ... }` statement. A receive branch
+// `val := <-ch` binds `val` (the channel's element type) in the branch body's
+// scope; other branches (sends, bare conditions, `else`) are checked as-is.
+fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
+	for i in 0 .. node.children_count {
+		branch_id := tc.a.child(&node, i)
+		if !tc.valid_node_id(branch_id) {
+			continue
+		}
+		branch := tc.a.nodes[int(branch_id)]
+		if branch.kind != .select_branch {
+			tc.check_node(branch_id)
+			continue
+		}
+		tc.push_scope()
+		mut body_start := 0
+		if branch.value == 'recv' && branch.children_count >= 2 {
+			// children[0] = bound var ident, children[1] = `<-ch` receive expr.
+			var_id := tc.a.child(&branch, 0)
+			recv_id := tc.a.child(&branch, 1)
+			tc.check_node(recv_id)
+			elem_type := tc.resolve_type(recv_id)
+			if tc.valid_node_id(var_id) {
+				var_node := tc.a.nodes[int(var_id)]
+				if var_node.kind == .ident && var_node.value.len > 0 {
+					tc.cur_scope.insert(var_node.value, elem_type)
+				}
+			}
+			body_start = 2
+		}
+		for j in body_start .. branch.children_count {
+			tc.check_node(tc.a.child(&branch, j))
+		}
+		tc.pop_scope()
 	}
 }
 
@@ -2173,8 +2427,69 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			}
 		}
 		tc.insert_decl_lhs(lhs_id, expected)
+		tc.track_method_value_local(lhs_id, rhs_id)
 		i += 2
 	}
+}
+
+// cur_scope_depth returns the number of enclosing scopes (the current scope's parent-chain
+// length), used to tell a dominating top-level reassignment from one nested in a branch/loop.
+fn (tc &TypeChecker) cur_scope_depth() int {
+	mut d := 0
+	mut s := tc.cur_scope
+	for s != unsafe { nil } {
+		d++
+		s = s.parent
+	}
+	return d
+}
+
+// track_method_value_local records (or clears) a local variable bound to a method value, so a
+// later `return cb` / `arr << cb` aliasing the same per-site static receiver is rejected as an
+// escape just like the bare `return c.report`.
+fn (mut tc TypeChecker) track_method_value_local(lhs_id flat.NodeId, rhs_id flat.NodeId) {
+	if int(lhs_id) < 0 {
+		return
+	}
+	lhs := tc.a.nodes[int(lhs_id)]
+	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+		return
+	}
+	if tc.expr_is_method_value(rhs_id) {
+		tc.method_value_locals[lhs.value] = true
+		tc.method_value_local_depth[lhs.value] = tc.cur_scope_depth()
+	} else if lhs.value in tc.method_value_locals {
+		// Reassigned to a non-method-value. Only clear the marker when this reassignment
+		// dominates later uses — at the same or a shallower scope than where the local was
+		// marked. A reassignment in a deeper conditional/loop scope does not run on every path
+		// (`mut cb := c.report; if x { cb = plain }; return cb`), so the local may still hold the
+		// method value; keep the maybe-method marker and let the later escape be rejected.
+		marked_depth := tc.method_value_local_depth[lhs.value] or { 0 }
+		if tc.cur_scope_depth() <= marked_depth {
+			tc.method_value_locals.delete(lhs.value)
+			tc.method_value_local_depth.delete(lhs.value)
+		}
+	}
+}
+
+// lvalue_is_local_var reports whether an assignment target is safe to receive a method value:
+// the blank discard `_` (stores nothing) or a plain function-local variable bound under its bare
+// name in the current scope. Non-local storage (a struct field `h.cb`, an array/map element
+// `cbs[i]`, or a module-level global, which lives in file_scope under its qualified name and so
+// misses a bare lookup) is not. A method value may alias a local (tracked for a later escape) but
+// must not be stored into anything that outlives the call site.
+fn (tc &TypeChecker) lvalue_is_local_var(lhs_id flat.NodeId) bool {
+	if int(lhs_id) < 0 {
+		return false
+	}
+	lhs := tc.a.nodes[int(lhs_id)]
+	if lhs.kind != .ident || lhs.value.len == 0 {
+		return false
+	}
+	if lhs.value == '_' {
+		return true
+	}
+	return tc.cur_scope.lookup(lhs.value) != none
 }
 
 // check_multi_return_decl_assign validates check multi return decl assign state for types.
@@ -2258,6 +2573,17 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		if !tc.type_compatible(rhs_type, lhs_type) {
 			tc.type_mismatch(.assignment_mismatch,
 				'cannot assign `${rhs_type.name()}` to `${lhs_type.name()}`', id)
+		}
+		if node.kind in [.assign, .selector_assign, .index_assign] {
+			if tc.expr_is_method_value(rhs_id) && !tc.lvalue_is_local_var(lhs_id) {
+				// Storing a method value into a struct field (`h.cb = ..`), an array/map element
+				// (`cbs[i] = ..`), or a global lets it outlive the per-site static `_mvctx_N`
+				// receiver slot, which the next evaluation of the same site overwrites — so every
+				// stored callback would use the last receiver. Reject it like the other escapes.
+				tc.reject_stored_method_value(rhs_id)
+			} else {
+				tc.track_method_value_local(lhs_id, rhs_id)
+			}
 		}
 		i += 2
 	}
@@ -2361,6 +2687,12 @@ fn (mut tc TypeChecker) resolve_lvalue_type(lhs_id flat.NodeId) Type {
 
 // check_return validates check return state for types.
 fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
+	// A returned method value escapes the function, where its per-site static receiver
+	// can't keep multiple returned callbacks distinct (a factory `fn bind(c) fn () int {
+	// return c.report }`); reject it rather than emitting invalid C.
+	for i in 0 .. node.children_count {
+		tc.reject_stored_method_value(tc.a.child(&node, i))
+	}
 	expected := tc.cur_fn_ret_type
 	if expected is Void {
 		if node.children_count > 0 && tc.should_diagnose(id) {
@@ -2522,7 +2854,9 @@ fn (mut tc TypeChecker) resolve_call_info(_id flat.NodeId, node flat.Node) ?Call
 			static_name := '${qbase}.${fn_node.value}'
 			if static_name in tc.fn_ret_types && (qbase in tc.structs
 				|| qbase in tc.enum_names || qbase in tc.sum_types
-				|| qbase in tc.interface_names) {
+				|| qbase in tc.interface_names || qbase in tc.type_aliases) {
+				// `qbase in tc.type_aliases` covers static methods on a type alias,
+				// e.g. `fn SimdFloat4.new()` for `type SimdFloat4 = vec.Vec4[f32]`.
 				return tc.call_info(static_name, false)
 			}
 			if fn_node.value == 'zero' && qbase in tc.flag_enums {
@@ -2751,6 +3085,9 @@ fn (mut tc TypeChecker) resolve_call_info(_id flat.NodeId, node flat.Node) ?Call
 				return tc.call_info(mname, true)
 			}
 			if info := tc.embedded_method_call_info(type_name, fn_node.value) {
+				return info
+			}
+			if info := tc.resolve_generic_struct_method(type_name, fn_node.value) {
 				return info
 			}
 			if fn_node.value == 'use' && clean is Struct
@@ -3296,6 +3633,12 @@ fn (tc &TypeChecker) receiver_compatible(actual Type, expected Type) bool {
 	if tc.type_compatible(actual, expected) {
 		return true
 	}
+	// Check the generic-base relaxation before the pointer fallbacks: it unwraps
+	// pointers itself, so a bare `&Box{...}` literal still matches an expected
+	// `&Box[int]` (while `&Box[string]` vs `&Box[int]` stays rejected).
+	if tc.generic_receiver_base_match(actual, expected) {
+		return true
+	}
 	if expected is Pointer {
 		return tc.type_compatible(actual, expected.base_type)
 	}
@@ -3303,6 +3646,141 @@ fn (tc &TypeChecker) receiver_compatible(actual Type, expected Type) bool {
 		return tc.type_compatible(actual.base_type, expected)
 	}
 	return false
+}
+
+// generic_receiver_base_match relaxes compatibility between two same-base generic
+// struct types when at least one side is the open/bare generic form — a bare
+// `Vec4{...}` literal specializing to the expected `Vec4[f32]`, or a concrete
+// `Vec4[f32]` value matching the open `Vec4` / `Vec4[T]` method-receiver form.
+//
+// It deliberately does NOT relax two *different concrete* instantiations. Because
+// `receiver_compatible` is also used for ordinary call arguments, field inits,
+// array literals, and expected-type propagation, conflating them would let
+// `Box[string]` satisfy an expected `Box[int]` and emit incompatible C structs.
+fn (tc &TypeChecker) generic_receiver_base_match(actual Type, expected Type) bool {
+	// Both sides must share pointer shape before unwrapping: a `&Box{...}` value must
+	// not satisfy an expected `Box[int]` value. The C argument path only
+	// auto-dereferences when the actual/expected type names match exactly, so the bare
+	// `Box` vs `Box[int]` mismatch would otherwise be emitted as a pointer where a value
+	// is required. (A pointer receiver on a value-receiver method is handled by
+	// receiver_compatible's pointer fallbacks, not here.)
+	if (actual is Pointer) != (expected is Pointer) {
+		return false
+	}
+	a_full := unwrap_pointer(actual).name()
+	e_full := unwrap_pointer(expected).name()
+	a := strip_generic_args_name(a_full)
+	if a.len == 0 || a != strip_generic_args_name(e_full) {
+		return false
+	}
+	if a !in tc.struct_generic_params {
+		return false
+	}
+	if a_full == e_full {
+		return false
+	}
+	// Reject two *different concrete* instantiations (`Box[string]` vs `Box[int]`),
+	// which produce incompatible C structs. Relax only when at least one side is
+	// the open/bare generic form: a bare `Box{...}` literal specializing to the
+	// expected `Box[int]`, or a concrete `Box[int]` value matching the open
+	// `Box`/`Box[T]` method-receiver form.
+	if tc.is_concrete_generic_instance(a_full) && tc.is_concrete_generic_instance(e_full) {
+		return false
+	}
+	return true
+}
+
+// is_concrete_generic_instance reports whether `name` is a fully concrete generic
+// instantiation (e.g. `Box[int]`), as opposed to the bare base (`Box`) or an open
+// parameter form (`Box[T]`).
+fn (tc &TypeChecker) is_concrete_generic_instance(name string) bool {
+	_, args, ok := generic_type_application_parts(name)
+	if !ok {
+		return false
+	}
+	return tc.generic_args_are_concrete(args)
+}
+
+// bare_generic_literal_adopts reports whether a struct literal written as the bare
+// generic base (`Box{...}`, no type args) should adopt the concrete `expected`
+// instance (`Box[int]`, optionally behind a pointer). The base short-names must match
+// and the base must be a known generic struct, so a non-generic same-named struct is
+// left to ordinary checking.
+fn (tc &TypeChecker) bare_generic_literal_adopts(lit_value string, expected Type) bool {
+	if lit_value.len == 0 || lit_value.contains('[') {
+		return false
+	}
+	e_base, _, e_ok := generic_type_application_parts(unwrap_pointer(expected).name())
+	if !e_ok || e_base.all_after_last('.') != lit_value.all_after_last('.') {
+		return false
+	}
+	return e_base in tc.struct_generic_params
+		|| e_base.all_after_last('.') in tc.struct_generic_params
+}
+
+// generic_literal_fields_compatible checks a bare generic struct literal's named
+// field initializers against the expected concrete instantiation (`Box[int]`),
+// substituting the struct's type parameters into each field's declared type. It
+// returns false only on a *definite* mismatch (e.g. `Box{v: 'str'}` for `Box[int]`),
+// so a clearly-unrelated literal yields a clean checker error instead of adopting the
+// type and emitting broken C; unresolvable fields stay lenient.
+fn (mut tc TypeChecker) generic_literal_fields_compatible(node flat.Node, expected Type) bool {
+	e_base, e_args, e_ok := generic_type_application_parts(unwrap_pointer(expected).name())
+	if !e_ok {
+		return true
+	}
+	params := tc.struct_generic_params[e_base] or {
+		tc.struct_generic_params[e_base.all_after_last('.')] or { return true }
+	}
+	if params.len != e_args.len {
+		return true
+	}
+	fields := tc.structs[e_base] or { tc.structs[e_base.all_after_last('.')] or { return true } }
+	for i in 0 .. node.children_count {
+		fi := tc.a.child_node(&node, i)
+		if fi.kind != .field_init || fi.children_count == 0 {
+			continue
+		}
+		mut decl_typ := Type(void_)
+		mut found := false
+		if fi.value.len > 0 {
+			// Named initializer (`Box{v: 'x'}`): match by field name.
+			for f in fields {
+				if f.name == fi.value {
+					decl_typ = f.typ
+					found = true
+					break
+				}
+			}
+		} else if i < fields.len {
+			// Positional initializer (`Box{'x'}`): the parser emits a `field_init` with
+			// an empty name, so match by field order like `check_struct_init` does.
+			decl_typ = fields[i].typ
+			found = true
+		}
+		if !found {
+			continue
+		}
+		sub := tc.substitute_generic_type(decl_typ, e_args, params)
+		if sub is Unknown || sub is Void {
+			continue
+		}
+		actual := tc.resolve_expr(tc.a.child(fi, 0), sub)
+		if !tc.receiver_compatible(actual, sub) {
+			return false
+		}
+	}
+	return true
+}
+
+// strip_generic_args_name returns the base name of a generic instance type
+// (`Box[int]` -> `Box`); array/map types (leading `[`) yield the name unchanged.
+fn strip_generic_args_name(name string) string {
+	bracket := name.index_u8(`[`)
+	if bracket <= 0 {
+		return name
+	}
+	return name[..bracket]
 }
 
 // is_zero_literal reports whether is zero literal applies in types.
@@ -3365,8 +3843,16 @@ fn (tc &TypeChecker) selector_fn_type(node flat.Node) ?FnType {
 
 fn (tc &TypeChecker) method_value_type(receiver_name string, method string) ?Type {
 	method_name := '${receiver_name}.${method}'
-	ret_type := tc.fn_ret_types[method_name] or { return none }
-	params := tc.fn_param_types[method_name] or { []Type{} }
+	mut ret_type := tc.fn_ret_types[method_name] or { Type(void_) }
+	mut params := tc.fn_param_types[method_name] or { []Type{} }
+	if method_name !in tc.fn_ret_types && method_name !in tc.fn_param_types {
+		// A concrete generic receiver (`Box[int]`) has its methods registered under the
+		// open key (`Box[T].method`); resolve and substitute so a method *value* on a
+		// generic struct is typed instead of reported as an unknown field.
+		ci := tc.resolve_generic_struct_method(receiver_name, method) or { return none }
+		ret_type = ci.return_type
+		params = ci.params.clone()
+	}
 	mut bound_params := []Type{}
 	if params.len > 1 {
 		bound_params = params[1..].clone()
@@ -3503,6 +3989,68 @@ fn clone_smartcasts(src map[string]Type) map[string]Type {
 // array_elem_type supports array elem type handling for types.
 fn array_elem_type(arr Array) Type {
 	return arr.elem_type
+}
+
+// array_like_elem_type returns the element type of an `Array` or `ArrayFixed`.
+fn array_like_elem_type(t Type) ?Type {
+	if t is Array {
+		return t.elem_type
+	}
+	if t is ArrayFixed {
+		return t.elem_type
+	}
+	return none
+}
+
+// if_branch_types_compatible reports whether two if-expression branch types are
+// compatible. Bare array literals (`[a, b, c]`) resolve to a fixed `T[n]`, but V
+// treats them as dynamic `[]T`; two *literal* branches with compatible element
+// types must therefore not be flagged as a mismatch merely because their lengths
+// differ. The length-agnostic relaxation is limited to literal tails: genuine
+// fixed-array values keep their length (handled by `type_compatible` above), so
+// e.g. `[2]int` vs `[3]int` branches still mismatch.
+fn (tc &TypeChecker) if_branch_types_compatible(a Type, b Type, a_is_array_lit bool, b_is_array_lit bool) bool {
+	if tc.type_compatible(a, b) || tc.type_compatible(b, a) {
+		return true
+	}
+	if !a_is_array_lit || !b_is_array_lit {
+		return false
+	}
+	a_elem := array_like_elem_type(a) or { return false }
+	b_elem := array_like_elem_type(b) or { return false }
+	return tc.type_compatible(a_elem, b_elem) || tc.type_compatible(b_elem, a_elem)
+}
+
+// branch_tail_is_array_literal reports whether a branch's value tail is a bare
+// array literal (`[a, b, c]`) — directly, or through a const whose initializer is
+// one. V types such values as dynamic `[]T` regardless of element count, so they
+// must not constrain if-branch length compatibility. Explicit fixed-array
+// initializers (`[N]T{...}`, parsed as `.array_init`) are genuine fixed arrays and
+// keep their length.
+fn (tc &TypeChecker) branch_tail_is_array_literal(id flat.NodeId) bool {
+	return tc.expr_is_bare_array_literal(tc.branch_tail_expr_id(id))
+}
+
+// expr_is_bare_array_literal reports whether `id` is a bare `[a, b, c]` literal,
+// directly or through a single const reference.
+fn (tc &TypeChecker) expr_is_bare_array_literal(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .array_literal {
+		return true
+	}
+	if node.kind == .ident {
+		for cand in [tc.qualify_name(node.value), node.value] {
+			if expr_id := tc.const_exprs[cand] {
+				if tc.valid_node_id(expr_id) {
+					return tc.a.nodes[int(expr_id)].kind == .array_literal
+				}
+			}
+		}
+	}
+	return false
 }
 
 // fixed_array_elem_type supports fixed array elem type handling for types.
@@ -3671,9 +4219,9 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		else_type = tc.branch_tail_type(else_id)
 	}
 	if then_type !is Void && else_type !is Void {
-		if tc.branch_has_value_tail(then_id) && tc.branch_has_value_tail(tc.a.child(&node, 2))
-			&& !tc.type_compatible(then_type, else_type)
-			&& !tc.type_compatible(else_type, then_type) {
+		else_id := tc.a.child(&node, 2)
+		if tc.branch_has_value_tail(then_id) && tc.branch_has_value_tail(else_id)
+			&& !tc.if_branch_types_compatible(then_type, else_type, tc.branch_tail_is_array_literal(then_id), tc.branch_tail_is_array_literal(else_id)) {
 			if tc.should_diagnose(id) {
 				tc.record_error(.if_branch_mismatch,
 					'if-expression branch type mismatch: then `${then_type.name()}` vs else `${else_type.name()}`',
@@ -3956,6 +4504,105 @@ fn choose_if_tail_type(current Type, next Type) Type {
 	return current
 }
 
+// branch_tail_expr_id returns the value-producing tail expression of a branch
+// body (a `block` or `match_branch`), unwrapping a trailing `expr_stmt`. Returns
+// `empty_node` when the branch has no expression tail.
+fn (tc &TypeChecker) branch_tail_expr_id(id flat.NodeId) flat.NodeId {
+	if !tc.valid_node_id(id) {
+		return flat.empty_node
+	}
+	node := tc.a.nodes[int(id)]
+	mut last_id := flat.empty_node
+	if node.kind == .block {
+		if node.children_count == 0 {
+			return flat.empty_node
+		}
+		last_id = tc.a.child(&node, node.children_count - 1)
+	} else if node.kind == .match_branch {
+		body_start := if node.value == 'else' { 0 } else { node.value.int() }
+		if node.children_count <= body_start {
+			return flat.empty_node
+		}
+		last_id = tc.a.child(&node, node.children_count - 1)
+	} else {
+		return id
+	}
+	if !tc.valid_node_id(last_id) {
+		return flat.empty_node
+	}
+	last := tc.a.nodes[int(last_id)]
+	if last.kind == .expr_stmt {
+		if last.children_count > 0 {
+			return tc.a.child(&last, 0)
+		}
+		return flat.empty_node
+	}
+	return last_id
+}
+
+// branches_compatible_with propagates `expected` into every value-producing tail
+// of a match/if expression (so context-dependent tails such as enum shorthand
+// `.foo`, `none`, or fn literals type against it instead of defaulting to e.g.
+// `int`). Returns true when the node is a match/if expression and every branch
+// tail is compatible with `expected`.
+fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .match_stmt {
+		mut saw_branch := false
+		for i in 1 .. node.children_count {
+			branch_id := tc.a.child(&node, i)
+			if !tc.valid_node_id(branch_id) {
+				continue
+			}
+			if tc.a.nodes[int(branch_id)].kind != .match_branch {
+				continue
+			}
+			tail := tc.branch_tail_expr_id(branch_id)
+			if !tc.valid_node_id(tail) {
+				return false
+			}
+			saw_branch = true
+			actual := tc.resolve_expr(tail, expected)
+			if !tc.receiver_compatible(actual, expected) {
+				return false
+			}
+		}
+		return saw_branch
+	}
+	if node.kind == .if_expr {
+		// A value if-expression needs an else branch (child 2). children: cond,
+		// then-block, else (block or nested if_expr).
+		if node.children_count <= 2 {
+			return false
+		}
+		then_tail := tc.branch_tail_expr_id(tc.a.child(&node, 1))
+		if !tc.valid_node_id(then_tail) {
+			return false
+		}
+		then_actual := tc.resolve_expr(then_tail, expected)
+		if !tc.receiver_compatible(then_actual, expected) {
+			return false
+		}
+		else_id := tc.a.child(&node, 2)
+		if !tc.valid_node_id(else_id) {
+			return false
+		}
+		if tc.a.nodes[int(else_id)].kind == .if_expr {
+			return tc.branches_compatible_with(else_id, expected)
+		}
+		else_tail := tc.branch_tail_expr_id(else_id)
+		if !tc.valid_node_id(else_tail) {
+			return false
+		}
+		else_actual := tc.resolve_expr(else_tail, expected)
+		return tc.receiver_compatible(else_actual, expected)
+	}
+	return false
+}
+
 // extract_smartcasts supports extract smartcasts handling for TypeChecker.
 fn (tc &TypeChecker) extract_smartcasts(cond_id flat.NodeId) []LocalBinding {
 	if int(cond_id) < 0 {
@@ -3995,6 +4642,9 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				continue
 			}
 			value_id := tc.a.child(&field, 0)
+			// A method value stored in a struct field escapes the evaluation site (several
+			// instances from the same `Foo{cb: obj.method}` site would share one receiver).
+			tc.reject_stored_method_value(value_id)
 			mut expected := Type(void_)
 			if field.value.len > 0 {
 				mut found := false
@@ -4027,6 +4677,56 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	_ = id
 }
 
+// expr_is_method_value reports whether `id` is a selector that resolves to a *method
+// value* — a struct method used as a value (`obj.draw`), not a field access or a method
+// call. cgen backs such a value with a per-evaluation-site static receiver slot, which is
+// only safe for an immediately-consumed callback; it cannot hold several live instances
+// from the same site at once (see gen_method_value_closure).
+fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	// A local bound to a method value (`cb := c.report`) carries the same escape hazard as the
+	// bare selector, so a reference to it counts as a method value here too.
+	if node.kind == .ident {
+		return node.value in tc.method_value_locals
+	}
+	if node.kind != .selector || node.children_count == 0 {
+		return false
+	}
+	clean := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
+	if clean !is Struct {
+		return false
+	}
+	sname := (clean as Struct).name
+	if tc.struct_field_type(sname, node.value) != none {
+		return false
+	}
+	if '${sname}.${node.value}' in tc.fn_param_types {
+		return true
+	}
+	if _ := tc.resolve_generic_struct_method(sname, node.value) {
+		return true
+	}
+	return false
+}
+
+// reject_stored_method_value reports a clear error when a method value escapes its
+// evaluation site — stored in an array/map/struct field or returned. The per-site static
+// receiver slot cannot keep several live instances distinct, so a factory like
+// `fn bind(c Counter) fn () int { return c.report }` (or storage in a loop) would make
+// every escaped callback use the last receiver; without this the value also reaches cgen
+// and emits C referencing an unsupported helper. Pass method values directly as a
+// callback argument instead (a real closure capture is not yet supported).
+fn (mut tc TypeChecker) reject_stored_method_value(id flat.NodeId) {
+	if tc.expr_is_method_value(id) && tc.should_diagnose(id) {
+		tc.record_error(.assignment_mismatch,
+			'a method value (`obj.method`) cannot escape its call site (no closure capture); pass it directly as a callback argument',
+			id)
+	}
+}
+
 // check_selector validates check selector state for types.
 fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
@@ -4040,6 +4740,40 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	tc.check_node(base_id)
 	base_type := tc.resolve_type(base_id)
 	tc.register_synth_type(base_id, base_type)
+	// A value-context selector whose name is a method (not a field) of a struct
+	// receiver is a method value; record the concrete `Type.method` so it survives
+	// dead-code elimination (cgen emits a wrapper that calls it).
+	clean_recv := unwrap_pointer(base_type)
+	if clean_recv is Struct {
+		if tc.struct_field_type(clean_recv.name, node.value) == none {
+			mut mkey := '${clean_recv.name}.${node.value}'
+			if mkey !in tc.fn_param_types {
+				// Generic receiver methods are registered under the open key
+				// (`Box[T].method`); mark that one reachable for the wrapper, and stash
+				// the substituted signature for cgen (the open form is gone by cgen time).
+				if ci := tc.resolve_generic_struct_method(clean_recv.name, node.value) {
+					tc.generic_method_value_info['${clean_recv.name}.${node.value}'] = ci
+					mkey = ci.name
+				}
+			}
+			if mkey in tc.fn_param_types && tc.cur_fn_node_id >= 0 {
+				// Record per enclosing function so markused marks it only when that
+				// function is reachable; over-marking an unreachable method value can pull
+				// in (and fail to compile) an otherwise-unused specialization. A method
+				// value can only appear inside a function body — escaping to a const/global
+				// is rejected elsewhere — so a non-fn context needs no recording here.
+				tc.method_values_by_fn[tc.cur_fn_node_id] << mkey
+				// Also record the concrete instance key (`Box[int].report`) — distinct from the
+				// open key (`Box[T].report`) above — so monomorphize can gate a generic method's
+				// specialization on *this* instance's method value being reachable (it shares the
+				// open key with every other instance, e.g. `Box[Pair]`).
+				concrete_mkey := '${clean_recv.name}.${node.value}'
+				if concrete_mkey != mkey {
+					tc.method_values_by_fn[tc.cur_fn_node_id] << concrete_mkey
+				}
+			}
+		}
+	}
 	if typ := tc.selector_type(id, node) {
 		tc.register_synth_type(id, typ)
 		return
@@ -4366,12 +5100,82 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			'unknown enum field `${node.value}` for `${expected.name}`', id)
 		return Type(int_)
 	}
-	if node.kind == .array_literal {
-		if expected is Array && node.children_count == 0 {
+	// A bare generic struct literal (`Box{...}` / `&Box{...}`) adopts a matching concrete
+	// expected instance (`Box[int]` / `&Box[int]`), so `fn make() Box[int] { return
+	// Box{...} }` and bare literals passed/assigned where a concrete instance is expected
+	// type-check and carry the concrete type into codegen. A *value* literal only adopts a
+	// *value* expectation: `bare_generic_literal_adopts` unwraps the pointer, so without
+	// the `expected !is Pointer` guard `return Box{...}` would be accepted for an expected
+	// `&Box[int]`, and cgen would emit a `Box_int` value where a `Box_int*` is required.
+	// The pointer case is the `prefix .amp` (`&Box{...}`) path below.
+	if node.kind == .struct_init && expected !is Pointer
+		&& tc.bare_generic_literal_adopts(node.value, expected)
+		&& tc.generic_literal_fields_compatible(node, expected) {
+		tc.register_synth_type(id, expected_raw)
+		return expected_raw
+	}
+	if node.kind == .prefix && node.op == .amp && node.children_count == 1 && expected is Pointer {
+		child := tc.a.nodes[int(tc.a.child(&node, 0))]
+		if child.kind == .struct_init && tc.bare_generic_literal_adopts(child.value, expected)
+			&& tc.generic_literal_fields_compatible(child, expected) {
 			tc.register_synth_type(id, expected_raw)
 			return expected_raw
 		}
-		if expected is ArrayFixed && node.children_count == 0 {
+	}
+	if node.kind == .array_literal {
+		mut elem_expected := Type(void_)
+		mut expected_is_array := false
+		if expected is Array {
+			elem_expected = array_elem_type(expected)
+			expected_is_array = true
+		} else if expected is ArrayFixed {
+			elem_expected = fixed_array_elem_type(expected)
+			expected_is_array = true
+		}
+		if expected_is_array {
+			// Empty literal `[]` simply adopts the expected array type.
+			if node.children_count == 0 {
+				tc.register_synth_type(id, expected_raw)
+				return expected_raw
+			}
+			// Non-empty literal: propagate the expected element type down to each
+			// element so context-dependent elements (enum shorthand `[.foo]`, `none`,
+			// fn literals) type against it instead of defaulting to a fixed `int[N]`.
+			// Adopt the expected array type when every element fits.
+			mut all_ok := true
+			for i in 0 .. node.children_count {
+				child_id := tc.a.child(&node, i)
+				elem_actual := tc.resolve_expr(child_id, elem_expected)
+				if !tc.receiver_compatible(elem_actual, elem_expected) {
+					all_ok = false
+					break
+				}
+			}
+			// A fixed-array expectation additionally requires the literal to have
+			// exactly the expected number of elements; otherwise `[1, 2]` would be
+			// accepted as e.g. `[4]int` and the C backend would copy/read past the
+			// compound literal. Element-type propagation above still happens either
+			// way; only the type adoption is gated. Unresolvable const lengths stay
+			// lenient (we cannot verify them here).
+			if all_ok && expected is ArrayFixed {
+				if expected_len := tc.fixed_array_len_value(expected) {
+					if node.children_count != expected_len {
+						all_ok = false
+					}
+				}
+			}
+			if all_ok {
+				tc.register_synth_type(id, expected_raw)
+				return expected_raw
+			}
+		}
+	}
+	if node.kind == .match_stmt || node.kind == .if_expr {
+		// Match/if used as a value expression: propagate the expected type into
+		// each branch tail so enum-shorthand / `none` / fn-literal tails type
+		// against it (e.g. `return match s { 'a' { .foo } ... }` with an enum
+		// return type), then adopt the expected type when every branch fits.
+		if expected !is Void && expected !is Unknown && tc.branches_compatible_with(id, expected) {
 			tc.register_synth_type(id, expected_raw)
 			return expected_raw
 		}
@@ -4704,8 +5508,29 @@ pub fn (tc &TypeChecker) fixed_array_len_value(arr ArrayFixed) ?int {
 	return tc.const_int_value(arr.len_expr, []string{})
 }
 
+// const_expr_paren_wraps_whole reports whether `s` is a single parenthesised group that
+// encloses the entire string (`(a + b)`), as opposed to one that only covers part of it
+// (`(a) + (b)`), so a const length wrapped in redundant parentheses can be unwrapped.
+fn const_expr_paren_wraps_whole(s string) bool {
+	if s.len < 2 || s[0] != `(` || s[s.len - 1] != `)` {
+		return false
+	}
+	mut depth := 0
+	for i := 0; i < s.len; i++ {
+		if s[i] == `(` {
+			depth++
+		} else if s[i] == `)` {
+			depth--
+			if depth == 0 {
+				return i == s.len - 1
+			}
+		}
+	}
+	return false
+}
+
 // const_int_value supports const int value handling for TypeChecker.
-fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
+pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 	if name in seen {
 		return none
 	}
@@ -4722,8 +5547,98 @@ fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 			return tc.const_int_expr(expr_id, next_seen)
 		}
 	}
-	if is_decimal_int_literal(name) {
-		return name.int()
+	if v := v_int_literal_value(name) {
+		return v
+	}
+	// Simple const arithmetic in string form, e.g. a fixed-array size `[SEGS + 1]`,
+	// `[SEGS+1]`, `[segs / 2]`, `[segs % 4]` or `[2 * (segs + 1)]`. A length wrapped
+	// wholly in parentheses is the inner expression, so strip the outer pair and
+	// re-evaluate. Otherwise split on the rightmost operator of the lowest precedence
+	// level present (`+ -`, then `* / %`) that sits OUTSIDE any parentheses, so a nested
+	// operator (the `+` inside `2 * (segs + 1)`) is not chosen; precedence and left
+	// associativity hold and each side is trimmed and resolved recursively. A leading `-`
+	// (unary) leaves an empty lhs and is skipped.
+	expr := name.trim_space()
+	if const_expr_paren_wraps_whole(expr) {
+		return tc.const_int_value(expr[1..expr.len - 1].trim_space(), seen)
+	}
+	// Operators grouped by precedence level, lowest first, MATCHING the v3 parser's binding
+	// power (token.left_binding_power) so a length text recovered from source folds to the
+	// same value as the AST const evaluator below: `|` < `^` < `<< >> >>>` < `+ -` <
+	// `* / % &`. The parser keeps shifts below additive operators (so `arr << a + b` appends
+	// `a + b`), hence `1 << 2 + 1` groups as `1 << (2 + 1)` — split on `<<` before `+` here
+	// too, not the reverse. Split on the rightmost top-level operator of the lowest level
+	// present; longer operators match first (`>>>` before `>>`, two-char before one) and
+	// `idx + op.len` skips the operator.
+	for level in [['|'], ['^'], ['<<', '>>', '>>>'], ['+', '-'],
+		['*', '/', '%', '&']] {
+		mut idx := -1
+		mut op := ''
+		mut depth := 0
+		mut i := 0
+		for i < expr.len {
+			ch := expr[i..i + 1]
+			if ch == '(' {
+				depth++
+				i++
+				continue
+			}
+			if ch == ')' {
+				depth--
+				i++
+				continue
+			}
+			if depth == 0 {
+				three := if i + 3 <= expr.len { expr[i..i + 3] } else { '' }
+				if three.len == 3 && three in level {
+					idx = i
+					op = three
+					i += 3
+					continue
+				}
+				two := if i + 2 <= expr.len { expr[i..i + 2] } else { '' }
+				if two.len == 2 && two in level {
+					idx = i
+					op = two
+					i += 2
+					continue
+				}
+				if ch in level {
+					idx = i
+					op = ch
+				}
+			}
+			i++
+		}
+		if idx <= 0 {
+			continue
+		}
+		lhs := expr[..idx].trim_space()
+		rhs := expr[idx + op.len..].trim_space()
+		if lhs.len == 0 || rhs.len == 0 {
+			continue
+		}
+		l := tc.const_int_value(lhs, seen) or { return none }
+		r := tc.const_int_value(rhs, seen) or { return none }
+		if (op == '/' || op == '%') && r == 0 {
+			return none
+		}
+		if (op == '<<' || op == '>>' || op == '>>>') && (r < 0 || r >= 64) {
+			return none
+		}
+		return match op {
+			'+' { l + r }
+			'-' { l - r }
+			'*' { l * r }
+			'/' { l / r }
+			'%' { l % r }
+			'|' { l | r }
+			'^' { l ^ r }
+			'&' { l & r }
+			'<<' { l << r }
+			'>>' { l >> r }
+			else { int(u64(l) >> r) }
+		}
 	}
 	return none
 }
@@ -4736,8 +5651,8 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, seen []string) ?int {
 	node := tc.a.nodes[int(id)]
 	match node.kind {
 		.int_literal {
-			if is_decimal_int_literal(node.value) {
-				return node.value.int()
+			if v := v_int_literal_value(node.value) {
+				return v
 			}
 		}
 		.ident {
@@ -4756,6 +5671,7 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, seen []string) ?int {
 			return match node.op {
 				.minus { -value }
 				.plus { value }
+				.bit_not { ~value }
 				else { none }
 			}
 		}
@@ -4786,6 +5702,33 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, seen []string) ?int {
 						return none
 					}
 					return left % right
+				}
+				.amp {
+					return left & right
+				}
+				.pipe {
+					return left | right
+				}
+				.xor {
+					return left ^ right
+				}
+				.left_shift {
+					if right < 0 || right >= 64 {
+						return none
+					}
+					return left << right
+				}
+				.right_shift {
+					if right < 0 || right >= 64 {
+						return none
+					}
+					return left >> right
+				}
+				.right_shift_unsigned {
+					if right < 0 || right >= 64 {
+						return none
+					}
+					return int(u64(left) >> right)
 				}
 				else {
 					return none
@@ -4992,13 +5935,17 @@ fn (tc &TypeChecker) struct_field_type_inner(struct_name string, field_name stri
 	for field in tc.structs[lookup_name] or { []StructField{} } {
 		if field.name == field_name {
 			if is_generic {
-				return tc.substitute_generic_type(field.typ, generic_args)
+				return tc.substitute_generic_type(field.typ, generic_args, tc.struct_generic_params[base_name] or {
+					[]string{}
+				})
 			}
 			return field.typ
 		}
 		mut embedded_type := embedded_field_type(field) or { continue }
 		embedded_type = if is_generic {
-			tc.substitute_generic_type(embedded_type, generic_args)
+			tc.substitute_generic_type(embedded_type, generic_args, tc.struct_generic_params[base_name] or {
+				[]string{}
+			})
 		} else {
 			embedded_type
 		}
@@ -5013,13 +5960,22 @@ fn (tc &TypeChecker) struct_field_type_inner(struct_name string, field_name stri
 	return none
 }
 
-fn (tc &TypeChecker) substitute_generic_type(typ Type, args []string) Type {
+// substitute_generic_type replaces generic placeholders in `typ` with the concrete
+// `args`. When `param_names` (the struct/fn's declared type parameters, e.g.
+// `['L', 'R']`) is provided, a placeholder is matched to its arg by its declared
+// position — so `Pair[L, R]`'s `R` resolves to `args[1]`, not the letter-based
+// `generic_param_index` guess (which maps any unrecognised name to 0). The
+// letter-based fallback is kept only for callers that have no declared names.
+fn (tc &TypeChecker) substitute_generic_type(typ Type, args []string, param_names []string) Type {
 	if args.len == 0 {
 		return typ
 	}
 	if typ is Unknown {
 		if name := generic_placeholder_from_unknown(typ) {
-			idx := generic_param_index(name)
+			mut idx := if param_names.len > 0 { param_names.index(name) } else { -1 }
+			if idx < 0 {
+				idx = generic_param_index(name)
+			}
 			if idx >= 0 && idx < args.len {
 				return tc.parse_type(args[idx].trim_space())
 			}
@@ -5028,51 +5984,51 @@ fn (tc &TypeChecker) substitute_generic_type(typ Type, args []string) Type {
 	}
 	if typ is Array {
 		return Type(Array{
-			elem_type: tc.substitute_generic_type(typ.elem_type, args)
+			elem_type: tc.substitute_generic_type(typ.elem_type, args, param_names)
 		})
 	}
 	if typ is ArrayFixed {
 		return Type(ArrayFixed{
-			elem_type: tc.substitute_generic_type(typ.elem_type, args)
+			elem_type: tc.substitute_generic_type(typ.elem_type, args, param_names)
 			len:       typ.len
 			len_expr:  typ.len_expr
 		})
 	}
 	if typ is Map {
 		return Type(Map{
-			key_type:   tc.substitute_generic_type(typ.key_type, args)
-			value_type: tc.substitute_generic_type(typ.value_type, args)
+			key_type:   tc.substitute_generic_type(typ.key_type, args, param_names)
+			value_type: tc.substitute_generic_type(typ.value_type, args, param_names)
 		})
 	}
 	if typ is Pointer {
 		return Type(Pointer{
-			base_type: tc.substitute_generic_type(typ.base_type, args)
+			base_type: tc.substitute_generic_type(typ.base_type, args, param_names)
 		})
 	}
 	if typ is OptionType {
 		return Type(OptionType{
-			base_type: tc.substitute_generic_type(typ.base_type, args)
+			base_type: tc.substitute_generic_type(typ.base_type, args, param_names)
 		})
 	}
 	if typ is ResultType {
 		return Type(ResultType{
-			base_type: tc.substitute_generic_type(typ.base_type, args)
+			base_type: tc.substitute_generic_type(typ.base_type, args, param_names)
 		})
 	}
 	if typ is FnType {
 		mut params := []Type{}
 		for param in typ.params {
-			params << tc.substitute_generic_type(param, args)
+			params << tc.substitute_generic_type(param, args, param_names)
 		}
 		return Type(FnType{
 			params:      params
-			return_type: tc.substitute_generic_type(typ.return_type, args)
+			return_type: tc.substitute_generic_type(typ.return_type, args, param_names)
 		})
 	}
 	if typ is MultiReturn {
 		mut parts := []Type{}
 		for part in typ.types {
-			parts << tc.substitute_generic_type(part, args)
+			parts << tc.substitute_generic_type(part, args, param_names)
 		}
 		return Type(MultiReturn{
 			types: parts
@@ -5384,6 +6340,14 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			elem_type: Type(void_)
 		})
 	}
+	if typ.starts_with('thread ') || typ == 'thread' {
+		// A thread handle. The element type (the spawned fn's return type) is kept
+		// in the struct name (`thread T`) so `array_of_threads.wait()` can recover
+		// `[]T`. The handle itself lowers to `void*` in C (see c_type).
+		return Type(Struct{
+			name: typ
+		})
+	}
 	if typ.starts_with('?') {
 		return Type(OptionType{
 			base_type: tc.parse_type(typ[1..])
@@ -5626,14 +6590,38 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 				name: base
 			})
 		}
+		if is_concrete_generic && !is_builtin_type_name(base) {
+			// A concrete generic instance (`Vec4[f32]`) is a monomorphized struct, even
+			// when the generic base decl has been erased after monomorphization. It is
+			// never a fixed array, so don't fall through to the `[N]T` handler below.
+			// Qualify an imported base (`Vec4` -> `vec.Vec4`) so its c_type matches the
+			// materialized struct (`vec__Vec4_f32`) everywhere it appears. A builtin base
+			// (`int[seg_count]`) cannot be a generic application, so let it fall through to
+			// the fixed-array handler — its bracket is a const/expression length.
+			mut full := typ
+			if !base.contains('.') {
+				if resolved := tc.unique_qualified_type_name(base) {
+					full = resolved + generic_suffix
+				}
+			}
+			return Type(Struct{
+				name: full
+			})
+		}
 	}
 	if is_generic_placeholder_type(typ) {
 		return unknown_type('generic type parameter `${typ}`')
 	}
 	if typ.contains('[') && !typ.starts_with('[') {
-		bracket := typ.index_u8(`[`)
-		bracket_end := typ.index_u8(`]`)
-		if bracket_end > bracket {
+		// Postfix fixed-array name (`ArrayFixed.name()`): the element comes first and
+		// each dimension is appended, so the OUTERMOST dimension is the trailing `[N]`
+		// (`int[3][2]` is `[2][3]int`). Split on the last bracket pair so a nested fixed
+		// array recovers the outer length and recurses into the inner element, instead of
+		// taking the first `[N]` and dropping the rest. For a single dimension the last
+		// and first brackets coincide, so this matches the previous behaviour.
+		bracket := typ.last_index_u8(`[`)
+		bracket_end := typ.last_index_u8(`]`)
+		if bracket >= 0 && bracket_end > bracket {
 			len_text := typ[bracket + 1..bracket_end].trim_space()
 			return Type(ArrayFixed{
 				elem_type: tc.parse_type(typ[..bracket])
@@ -6007,6 +6995,25 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 							})
 						})
 					}
+					if fn_node.value == 'wait' {
+						// `[]thread T`.wait() joins all threads and returns `[]T`. A bare
+						// `[]thread` (threads with no return value) joins to `void`. Any
+						// other array element type is not a thread and `.wait()` is
+						// unsupported, so reject it rather than mis-typing the call as the
+						// receiver array (which would emit invalid C joining non-handles).
+						elem := array_elem_type(clean_type)
+						if elem is Struct {
+							if elem.name == 'thread' {
+								return Type(void_)
+							}
+							if elem.name.starts_with('thread ') {
+								return Type(Array{
+									elem_type: tc.parse_type(elem.name[7..])
+								})
+							}
+						}
+						return unknown_type('`.wait()` requires an array of threads')
+					}
 					if fn_node.value == 'clone' {
 						return base_type
 					}
@@ -6078,6 +7085,13 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 						return tc.fn_ret_types[mname] or {
 							unknown_type('unknown return type for `${mname}`')
 						}
+					}
+					// A method on a concrete generic instance (`Box[int].clone`) is
+					// registered under the open form (`Box[T].clone`); resolve it so the
+					// call types as the substituted return (`Box[int]`) rather than the
+					// bare base the collapsed open signature would yield.
+					if ci := tc.resolve_generic_struct_method(clean_type.name, fn_node.value) {
+						return ci.return_type
 					}
 				}
 				if clean_type is Interface {
@@ -6486,6 +7500,11 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 		if inner0 is Alias {
 			inner = inner0.base_type
 		}
+		if inner is Map {
+			// `mut m map[K]V` params resolve to a pointer-to-map; indexing still
+			// yields the value type V, not the whole map.
+			return map_value_type(inner)
+		}
 		if inner is Array {
 			return array_elem_type(inner)
 		}
@@ -6554,8 +7573,16 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return 'Array'
 	}
 	if t is ArrayFixed {
-		len_text := if t.len_expr.len > 0 { t.len_expr } else { t.len.str() }
-		return 'Array_fixed_${c_type_name_part(tc.c_type(t.elem_type))}_${c_type_name_part(len_text)}'
+		// Prefer the evaluated length so a const-expression size (`[segs + 1]f32`)
+		// names the same type as its literal equivalent (`[5]f32`) and never leaks
+		// operators into the identifier; fall back to the sanitized raw expression.
+		len_name := if resolved := tc.fixed_array_len_value(t) {
+			resolved.str()
+		} else {
+			len_text := if t.len_expr.len > 0 { t.len_expr } else { t.len.str() }
+			c_type_name_part(len_text)
+		}
+		return 'Array_fixed_${c_type_name_part(tc.c_type(t.elem_type))}_${len_name}'
 	}
 	if t is Channel {
 		return 'chan'
@@ -6584,7 +7611,7 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return 'Optional'
 	}
 	if t is Struct {
-		if t.name == 'thread' || t.name.ends_with('.thread') {
+		if t.name == 'thread' || t.name.ends_with('.thread') || t.name.starts_with('thread ') {
 			return 'void*'
 		}
 		if t.name.starts_with('C.') {
@@ -6607,7 +7634,18 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return c_name(t.name)
 	}
 	if t is Alias {
-		return tc.c_type(t.base_type)
+		// Follow the alias chain iteratively. A self-referential / cyclic alias (whose
+		// base resolves back to itself) would otherwise recurse forever here — the cache
+		// is only populated after the recursive call returns — overflowing the stack.
+		mut cur := Type(t)
+		for _ in 0 .. 1000 {
+			if cur is Alias {
+				cur = cur.base_type
+			} else {
+				return tc.c_type(cur)
+			}
+		}
+		return 'void*'
 	}
 	if t is MultiReturn {
 		mut parts := []string{}
@@ -6640,14 +7678,198 @@ fn (tc &TypeChecker) optional_c_type_name(base_type Type) string {
 	return 'Optional_${inner_ct.replace('*', 'ptr').replace(' ', '_')}'
 }
 
-// c_type_name_part supports c type name part handling for types.
-fn c_type_name_part(s string) string {
-	return s.replace('*', 'ptr').replace(' ', '_').replace(',', '_').replace('|', '_').replace(':',
-		'_').replace('.', '_').replace('[', '_').replace(']', '_').replace('(', '_').replace(')',
-		'_').replace('-', '_')
+// c_type_name_part turns a C type or length expression into a fragment that is safe
+// to embed inside a C identifier: `*` becomes `ptr` (so pointer payloads stay
+// distinguishable), and every other character that is not a letter, digit, or `_`
+// becomes `_`. This keeps const-expression fixed-array lengths (e.g. `segs + 1`) and
+// pointer return types (`Foo*`) from producing invalid identifiers such as
+// `Array_fixed_f32_segs_+_1` or `__v_thread_arr_wait_Foo*`.
+pub fn c_type_name_part(s string) string {
+	mut b := []u8{cap: s.len + 2}
+	for i := 0; i < s.len; i++ {
+		c := s[i]
+		if c == `*` {
+			b << `p`
+			b << `t`
+			b << `r`
+		} else if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+			|| (c >= `0` && c <= `9`) || c == `_` {
+			b << c
+		} else {
+			b << `_`
+		}
+	}
+	return b.bytestr()
 }
 
 // resolve_type_name_for_method resolves resolve type name for method information for types.
+// resolve_generic_struct_method resolves a method call on a generic-struct
+// instance (e.g. `Vec4[f32].r_sqrt`). The method is registered against the
+// generic form (`Vec4[T].r_sqrt`); this maps the instance's concrete type
+// arguments onto the generic parameters and substitutes them into the method's
+// signature, so the pre-transform checker accepts the call. The transformer's
+// monomorphize pass later materialises the concrete method body.
+pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method string) ?CallInfo {
+	bracket := type_name.index_u8(`[`)
+	if bracket <= 0 || !type_name.ends_with(']') {
+		return none
+	}
+	base := type_name[..bracket]
+	args_str := type_name[bracket + 1..type_name.len - 1]
+	mut concrete_args := []string{}
+	for a in split_generic_arg_list(args_str) {
+		concrete_args << a.trim_space()
+	}
+	params := tc.struct_generic_params[base] or { return none }
+	if params.len == 0 || params.len != concrete_args.len {
+		return none
+	}
+	generic_key := '${base}[${params.join(', ')}].${method}'
+	ret := tc.fn_ret_types[generic_key] or { return none }
+	// Prefer substituting the original signature TEXT: parsing `Box[T]` collapses the
+	// non-concrete application to the bare `Box`, so substituting the already-parsed type
+	// cannot recover `Box[int]`. Re-substituting the text and re-parsing does.
+	mut sub_ret := tc.substitute_generic_type(ret, concrete_args, params)
+	if ret_text := tc.fn_ret_type_texts[generic_key] {
+		sub_ret = tc.parse_type(subst_generic_text(ret_text, concrete_args, params))
+	}
+	mut sub_params := []Type{}
+	if param_texts := tc.fn_param_type_texts[generic_key] {
+		for pt in param_texts {
+			sub_params << tc.parse_type(subst_generic_text(pt, concrete_args, params))
+		}
+	} else if ptypes := tc.fn_param_types[generic_key] {
+		for pt in ptypes {
+			sub_params << tc.substitute_generic_type(pt, concrete_args, params)
+		}
+	}
+	return CallInfo{
+		name:         generic_key
+		params:       sub_params
+		return_type:  sub_ret
+		has_receiver: true
+		is_variadic:  tc.fn_variadic[generic_key] or { false }
+		params_known: true
+	}
+}
+
+// subst_generic_text textually substitutes the generic parameter names `params` with the
+// concrete argument texts `args` inside a type text, preserving the generic application
+// form so a method signature mentioning the receiver type (`Box[T]`) becomes the concrete
+// instance (`Box[int]`) when re-parsed, instead of collapsing to the bare base. Prefix and
+// container forms (`&`, `mut`, `?`, `!`, `...`, `[]`, `map[`, `[N]`) recurse into the
+// element type; a bare parameter name is replaced with its argument.
+fn subst_generic_text(typ string, args []string, params []string) string {
+	clean := typ.trim_space()
+	if clean.len == 0 || args.len == 0 || params.len != args.len {
+		return clean
+	}
+	if clean.starts_with('&') {
+		return '&' + subst_generic_text(clean[1..], args, params)
+	}
+	if clean.starts_with('mut ') {
+		return 'mut ' + subst_generic_text(clean[4..], args, params)
+	}
+	if clean.starts_with('?') {
+		return '?' + subst_generic_text(clean[1..], args, params)
+	}
+	if clean.starts_with('!') {
+		return '!' + subst_generic_text(clean[1..], args, params)
+	}
+	if clean.starts_with('...') {
+		return '...' + subst_generic_text(clean[3..], args, params)
+	}
+	if clean.starts_with('[]') {
+		return '[]' + subst_generic_text(clean[2..], args, params)
+	}
+	if clean.starts_with('map[') {
+		bracket_end := find_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			key := subst_generic_text(clean[4..bracket_end], args, params)
+			val := subst_generic_text(clean[bracket_end + 1..], args, params)
+			return 'map[${key}]${val}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := find_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return clean[..bracket_end + 1] + subst_generic_text(clean[bracket_end +
+				1..], args, params)
+		}
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		// A function-type parameter (`fn (T) int`) carries the generic params in its own
+		// signature; substitute each parameter and the return type so a `Box[string].apply`
+		// callback is expected as `fn (string) int`, not the unsubstituted `fn (T) int`.
+		params_start := clean.index_u8(`(`) + 1
+		mut depth := 1
+		mut params_end := params_start
+		for params_end < clean.len {
+			if clean[params_end] == `(` {
+				depth++
+			} else if clean[params_end] == `)` {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+			params_end++
+		}
+		if params_end < clean.len {
+			mut fn_parts := []string{}
+			params_str := clean[params_start..params_end]
+			if params_str.trim_space().len > 0 {
+				for part in split_params(params_str) {
+					fn_parts << subst_generic_text(normalize_fn_type_param_text(part), args, params)
+				}
+			}
+			ret_str := clean[params_end + 1..].trim_space()
+			if ret_str.len > 0 {
+				return 'fn(${fn_parts.join(', ')}) ${subst_generic_text(ret_str, args, params)}'
+			}
+			return 'fn(${fn_parts.join(', ')})'
+		}
+	}
+	bracket := clean.index_u8(`[`)
+	if bracket > 0 {
+		bracket_end := find_matching_bracket(clean, bracket)
+		if bracket_end < clean.len {
+			mut parts := []string{}
+			for part in split_params(clean[bracket + 1..bracket_end]) {
+				parts << subst_generic_text(part, args, params)
+			}
+			return clean[..bracket] + '[' + parts.join(', ') + ']' + clean[bracket_end + 1..]
+		}
+	}
+	for i, p in params {
+		if clean == p {
+			return args[i]
+		}
+	}
+	return clean
+}
+
+// split_generic_arg_list splits a comma-separated generic argument list at the
+// top bracket level (so nested types like `map[int]string` stay intact).
+fn split_generic_arg_list(s string) []string {
+	mut parts := []string{}
+	mut depth := 0
+	mut start := 0
+	for i := 0; i < s.len; i++ {
+		c := s[i]
+		if c == `[` || c == `(` {
+			depth++
+		} else if c == `]` || c == `)` {
+			depth--
+		} else if c == `,` && depth == 0 {
+			parts << s[start..i]
+			start = i + 1
+		}
+	}
+	parts << s[start..]
+	return parts
+}
+
 fn resolve_type_name_for_method(t Type) string {
 	if t is Alias {
 		return t.name

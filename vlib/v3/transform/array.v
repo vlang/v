@@ -22,7 +22,7 @@ fn (mut t Transformer) make_array_clone_call(base_id flat.NodeId, base_type stri
 
 // lower_array_init_to_runtime converts lower array init to runtime data for transform.
 fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Node) flat.NodeId {
-	if node.value.len == 0 || is_fixed_array_type(node.value) {
+	if node.value.len == 0 || t.is_fixed_array_type(node.value) {
 		return id
 	}
 	elem_type := node.value
@@ -139,7 +139,7 @@ fn (mut t Transformer) transform_array_literal_for_type(_id flat.NodeId, node fl
 
 fn (mut t Transformer) transform_fixed_array_literal_for_type(_id flat.NodeId, node flat.Node, target_type string) ?flat.NodeId {
 	fixed_type := t.normalize_type_alias(target_type)
-	if !is_fixed_array_type(fixed_type) {
+	if !t.is_fixed_array_type(fixed_type) {
 		return none
 	}
 	elem_type := fixed_array_elem_type(fixed_type)
@@ -187,7 +187,17 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	mut rhs_type := t.normalize_type_alias(t.node_type(rhs_id))
 	rhs_node := t.a.nodes[int(rhs_id)]
 	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
-	if push_many && rhs_node.kind == .array_literal && !rhs_type.starts_with('[]') {
+	if rhs_node.kind == .array_literal && !elem_type.starts_with('[]')
+		&& !t.is_fixed_array_type(elem_type) {
+		// `[]scalar << [a, b, c]` always appends the literal's elements. Retype the
+		// literal from the destination so a mis-inferred element type (e.g. `[]int`
+		// for `[f32_expr, ..]`) is corrected and the append stays a clean push_many,
+		// instead of degrading to a single push of the whole array. (An array-typed
+		// element is genuinely ambiguous, so leave that to the inferred decision.)
+		push_many = true
+		t.a.nodes[int(rhs_id)].typ = array_type
+		rhs_type = array_type
+	} else if push_many && rhs_node.kind == .array_literal && !rhs_type.starts_with('[]') {
 		t.a.nodes[int(rhs_id)].typ = array_type
 		rhs_type = array_type
 	}
@@ -212,7 +222,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 
 	lhs_addr := t.runtime_addr(lhs, lhs_type)
 	if push_many {
-		call := if is_fixed_array_type(rhs_type) {
+		call := if t.is_fixed_array_type(rhs_type) {
 			t.make_call_typed('array_push_many_ptr', arr3(lhs_addr, rhs,
 				t.make_fixed_array_len_expr(rhs_type)), 'void')
 		} else {
@@ -366,7 +376,7 @@ fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id fla
 		}
 		return false
 	}
-	if is_fixed_array_type(clean_rhs_type) {
+	if t.is_fixed_array_type(clean_rhs_type) {
 		return t.array_append_elem_types_match(fixed_array_elem_type(clean_rhs_type), elem_type)
 	}
 	if !isnil(t.tc) {

@@ -174,11 +174,19 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	if lhs_type.starts_with('&') {
 		return none
 	}
-	struct_type := t.struct_lookup_name(lhs_type)
+	mut struct_type := t.struct_lookup_name(lhs_type)
+	if struct_type.len == 0 {
+		// Generic-struct instance operand (e.g. `Vec4[f32]`): keep the instance type
+		// so the operator lowers to the monomorphized method (`vec__Vec4_f32__plus`).
+		struct_type = t.generic_struct_instance_name(lhs_type)
+	}
 	if struct_type.len == 0 {
 		return none
 	}
-	if checker_lhs_type.len > 0 && !has_smartcast {
+	// Skip the checker/transformer agreement guard for generic-struct instances:
+	// they resolve reliably, and an alias name (`SimdFloat4`) vs the resolved form
+	// (`vec.Vec4[f32]`) would otherwise spuriously fail the comparison.
+	if checker_lhs_type.len > 0 && !has_smartcast && !struct_type.contains('[') {
 		checker_struct_type := t.struct_lookup_name(checker_lhs_type)
 		if checker_struct_type.len > 0 && checker_struct_type != struct_type {
 			return none
@@ -401,6 +409,52 @@ fn (t &Transformer) struct_operator_fn_name(struct_type string, op_name string) 
 	if t.is_known_operator_fn_name(cmethod_name, require_used) {
 		return cmethod_name
 	}
+	if name := t.generic_struct_operator_fn_name(struct_type, op_name) {
+		return name
+	}
+	return none
+}
+
+// generic_struct_instance_name returns the resolved generic-struct instance type
+// for `type_name` (its base is a known generic struct), else ''. A type alias to a
+// generic instance (`SimdFloat4` -> `vec.Vec4[f32]`) is normalized first, so an
+// operand typed by its alias still lowers to the monomorphized operator.
+fn (t &Transformer) generic_struct_instance_name(type_name string) string {
+	if isnil(t.tc) {
+		return ''
+	}
+	normalized := t.normalize_type_alias(type_name)
+	base, _, ok := generic_app_parts(normalized)
+	if !ok {
+		return ''
+	}
+	if base in t.tc.struct_generic_params {
+		return normalized
+	}
+	return ''
+}
+
+// generic_struct_operator_fn_name handles operator overloads on a generic-struct
+// instance (e.g. `Vec4[f32] + Vec4[f32]`). The operator is declared on the generic
+// form (`Vec4[T].+`) and specialized to `vec__Vec4_f32__plus` by the monomorphizer
+// (which runs after this lowering). When the generic operator exists, anticipate
+// the specialized C name so the infix lowers to that call.
+fn (t &Transformer) generic_struct_operator_fn_name(struct_type string, op_name string) ?string {
+	if isnil(t.tc) {
+		return none
+	}
+	base, _, ok := generic_app_parts(struct_type)
+	if !ok {
+		return none
+	}
+	params := t.tc.struct_generic_params[base] or { return none }
+	if params.len == 0 {
+		return none
+	}
+	generic_key := '${base}[${params.join(', ')}].${op_name}'
+	if generic_key in t.tc.fn_ret_types || generic_key in t.tc.fn_param_types {
+		return c_name('${struct_type}.${op_name}')
+	}
 	return none
 }
 
@@ -446,6 +500,14 @@ fn (t &Transformer) infix_struct_operator_result_type(node flat.Node, lhs_type_i
 	lhs_type := if lhs_type_in.starts_with('&') { lhs_type_in[1..] } else { lhs_type_in }
 	struct_type := t.struct_lookup_name(lhs_type)
 	if struct_type.len == 0 {
+		// Generic-struct instance (`Vec4[f32]`): the specialized operator method is
+		// not registered until monomorphization, so derive the result from the
+		// generic operator's (substituted) return type.
+		if rt := t.generic_struct_operator_return_type(t.generic_struct_instance_name(lhs_type),
+			node.op)
+		{
+			return rt
+		}
 		return ''
 	}
 	if call_info := t.struct_operator_call_info(struct_type, node.op) {
@@ -455,6 +517,40 @@ fn (t &Transformer) infix_struct_operator_result_type(node flat.Node, lhs_type_i
 		}
 	}
 	return ''
+}
+
+// generic_struct_operator_return_type returns the result type of an operator on a
+// generic-struct instance (`Vec4[f32]`), derived from the generic operator's
+// declared return type (`Vec4[T].- -> Vec4[T]`) with the instance's type arguments
+// substituted (`-> Vec4[f32]`), qualified with the struct's module so the outer
+// expression resolves to the monomorphized operator.
+fn (t &Transformer) generic_struct_operator_return_type(struct_type string, op flat.Op) ?string {
+	if struct_type.len == 0 || isnil(t.tc) {
+		return none
+	}
+	op_name := struct_operator_symbol(op) or { return none }
+	full_base, args, ok := generic_app_parts(struct_type)
+	if !ok {
+		return none
+	}
+	params := t.tc.struct_generic_params[full_base] or { return none }
+	generic_key := '${full_base}[${params.join(', ')}].${op_name}'
+	mut ret := ''
+	if r := t.fn_ret_types[generic_key] {
+		ret = r
+	} else if r := t.tc.fn_ret_types[generic_key] {
+		ret = r.name()
+	} else {
+		return none
+	}
+	substituted := substitute_generic_type_text_with_params(ret, args, params)
+	// Qualify a returned instance of the same struct family with the struct's module.
+	rbase, _, rok := generic_app_parts(substituted)
+	if rok && full_base.contains('.') && !rbase.contains('.')
+		&& rbase == full_base.all_after_last('.') {
+		return '${full_base.all_before_last('.')}.${substituted}'
+	}
+	return substituted
 }
 
 // transform_infix_sum_ops transforms transform infix sum ops data for transform.
@@ -675,7 +771,7 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 				fn_name := array_contains_fn_name(elem)
 				result = t.make_call_typed(fn_name, arr2(new_rhs, new_lhs), 'bool')
 			}
-		} else if is_fixed_array_type(clean_rhs_type) {
+		} else if t.is_fixed_array_type(clean_rhs_type) {
 			// fixed array membership -> fixed_array_contains_int/string(arr, len, val)
 			new_lhs := t.transform_expr(lhs_id)
 			new_rhs := t.transform_expr(rhs_id)
@@ -1096,7 +1192,7 @@ fn (mut t Transformer) transform_fixed_array_len(_id flat.NodeId, node flat.Node
 	}
 	base_id := t.a.children[node.children_start]
 	base_type := t.node_type(base_id)
-	if !is_fixed_array_type(base_type) {
+	if !t.is_fixed_array_type(base_type) {
 		return none
 	}
 	return t.make_fixed_array_len_expr(base_type)
@@ -1359,7 +1455,7 @@ pub fn (mut t Transformer) make_sizeof_type(type_name string) flat.NodeId {
 
 // is_fixed_array_type reports whether a v-type string denotes a fixed array
 // like `int[5]` (as opposed to a dynamic array `[]int` or a map `map[...]...`).
-fn is_fixed_array_type(s string) bool {
+fn (t &Transformer) is_fixed_array_type(s string) bool {
 	if s.starts_with('[]') || s.starts_with('map[') {
 		return false
 	}
@@ -1369,7 +1465,18 @@ fn is_fixed_array_type(s string) bool {
 	if !s.contains('[') || !s.ends_with(']') {
 		return false
 	}
-	return is_decimal_text(fixed_array_len_text(s))
+	len_text := fixed_array_len_text(s)
+	if is_decimal_text(len_text) {
+		return true
+	}
+	// A postfix fixed-array name (`ArrayFixed.name()`) can carry a non-decimal length — a const
+	// (`int[seg_count]`) or an expression (`int[segs + 1]`) — once the checker round-trips
+	// `[n]int` to `int[n]`. Accept it when the bracket text resolves to an integer constant,
+	// which distinguishes it from a generic instance (`vec.Vec4[f32]`, whose bracket is a type).
+	if len_text.contains(',') || isnil(t.tc) {
+		return false
+	}
+	return t.tc.const_int_value(len_text, []string{}) != none
 }
 
 // fixed_array_len supports fixed array len handling for transform.
@@ -1408,6 +1515,15 @@ fn (mut t Transformer) make_fixed_array_len_expr(s string) flat.NodeId {
 	len_text := fixed_array_len_text(s)
 	if is_decimal_text(len_text) {
 		return t.make_int_literal(len_text.int())
+	}
+	// Fold a const length — a bare const (`SEGS`) or an expression (`segs + 1`) — to
+	// its integer value. A fixed array's `.len` is a compile-time constant; emitting
+	// the raw expression as an ident would c_name-mangle it into an undeclared
+	// identifier such as `segs_+_1`.
+	if !isnil(t.tc) {
+		if v := t.tc.const_int_value(len_text, []string{}) {
+			return t.make_int_literal(v)
+		}
 	}
 	if len_text.contains('.') {
 		base := len_text.all_before_last('.')
