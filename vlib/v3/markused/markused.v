@@ -33,6 +33,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut fn_with_dot := 0
 	mut contains2_total := 0
 	for node_idx, node in a.nodes {
+		if node.kind == .file {
+			cur_module = ''
+			continue
+		}
 		if node.kind == .module_decl {
 			cur_module = node.value
 			continue
@@ -622,6 +626,9 @@ fn enqueue_export_roots(a &flat.FlatAst, mut used map[string]bool, mut queue []s
 	mut cur_module := ''
 	for node in a.nodes {
 		match node.kind {
+			.file {
+				cur_module = ''
+			}
 			.module_decl {
 				cur_module = node.value
 			}

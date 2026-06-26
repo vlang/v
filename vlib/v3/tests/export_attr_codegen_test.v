@@ -170,6 +170,31 @@ fn main() {}
 	assert compile.output.contains('export name `natural_name`'), compile.output
 }
 
+fn test_export_name_collision_with_libc_remapped_natural_symbol_is_rejected() {
+	v3_bin := export_attr_build_v3()
+	root := export_attr_project('libc_remapped_natural_collision', {
+		'main.v': "module main
+
+fn rint() int {
+	return 1
+}
+
+@[export: 'v_rint']
+fn exported_rint_collision() int {
+	return 2
+}
+
+fn main() {}
+"
+	})
+	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('export name `v_rint`'), compile.output
+	assert compile.output.contains('collides with `rint`'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	assert !compile.output.contains('redefinition'), compile.output
+}
+
 fn test_invalid_export_names_are_rejected() {
 	v3_bin := export_attr_build_v3()
 	root := export_attr_project('invalid_names', {
@@ -398,4 +423,35 @@ fn main() {}
 	assert c_code.contains('veb__Result raw_show(App* app, Context* ctx, int id);'), c_code
 	assert c_code.contains('veb__Result raw_show(App* app, Context* ctx, int id) {'), c_code
 	assert c_code.contains('return App__show(app, ctx, id);'), c_code
+}
+
+fn test_export_wrapper_for_veb_handler_underscore_param_matches_implicit_ctx_position() {
+	v3_bin := export_attr_build_v3()
+	root := export_attr_project('veb_implicit_ctx_underscore_export_wrapper', {
+		'main.v': "module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+@[export: 'raw_show_underscore']
+pub fn (app &App) show(_ int) veb.Result {
+	return veb.Result{}
+}
+
+fn main() {}
+"
+	})
+	c_path := os.join_path(root, 'app.c')
+	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), c_path)
+	assert compile.exit_code == 0, compile.output
+	c_code := os.read_file(c_path) or { panic(err) }
+	assert c_code.contains('veb__Result raw_show_underscore(App* app, Context* ctx, int _2);'), c_code
+	assert c_code.contains('veb__Result raw_show_underscore(App* app, Context* ctx, int _2) {'), c_code
+	assert c_code.contains('return App__show(app, ctx, _2);'), c_code
+	assert !c_code.contains('return App__show(app, ctx, _1);'), c_code
 }

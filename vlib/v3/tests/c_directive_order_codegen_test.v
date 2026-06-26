@@ -88,6 +88,50 @@ import foo.bar as _
 	return os.read_file(c_out) or { panic(err) }
 }
 
+fn directive_order_gen_and_run_importer_macro(v3_bin string) string {
+	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_importer_macro_project')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_importer_macro' }\n")
+	directive_order_write_file(root, 'main.v', 'module main
+
+#define USE_FOO
+
+import wrapper
+
+fn main() {
+	println(wrapper.value().str())
+}
+')
+	directive_order_write_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+#include "@DIR/foo.h"
+
+fn C.foo_value() int
+
+pub fn value() int {
+	return C.foo_value()
+}
+')
+	directive_order_write_file(root, 'wrapper/foo.h', '#ifndef USE_FOO
+#error "USE_FOO must be defined before foo.h"
+#endif
+
+static inline int foo_value(void) {
+	return 42;
+}
+')
+	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_importer_macro')
+	os.rm(bin_out) or {}
+	os.rm(bin_out + '.c') or {}
+	result := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin_out}')
+	assert result.exit_code == 0, result.output
+	run := os.execute(bin_out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42', run.output
+	return os.read_file(bin_out + '.c') or { panic(err) }
+}
+
 fn directive_order_index(c_code string, needle string) int {
 	return c_code.index(needle) or { -1 }
 }
@@ -135,4 +179,13 @@ fn test_c_directives_preserve_dotted_import_module_identity() {
 	assert foo_bar >= 0, c_code
 	assert foo_user >= 0, c_code
 	assert foo_bar < foo_user, c_code
+}
+
+fn test_importer_macro_is_emitted_before_dependency_include() {
+	c_code := directive_order_gen_and_run_importer_macro(directive_order_build_v3())
+	use_foo := directive_order_index(c_code, '#define USE_FOO')
+	foo_header := directive_order_index(c_code, 'foo.h"')
+	assert use_foo >= 0, c_code
+	assert foo_header >= 0, c_code
+	assert use_foo < foo_header, c_code
 }

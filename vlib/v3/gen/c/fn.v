@@ -1007,21 +1007,27 @@ fn (mut g FlatGen) gen_export_wrapper_for_fn(node flat.Node, module_name string)
 
 fn (mut g FlatGen) export_wrapper_arg_names(node flat.Node) []string {
 	mut args := []string{}
+	needs_implicit_ctx := g.fn_needs_implicit_veb_ctx(node)
+	insert_implicit_ctx_after_first := needs_implicit_ctx && g.fn_has_receiver_param(node)
+	mut written := 0
+	mut implicit_ctx_written := false
 	for i in 0 .. node.children_count {
 		param_id := g.a.child(&node, i)
 		p := g.a.node(param_id)
 		if p.kind != .param {
 			continue
 		}
-		param_name := if p.value == '_' { '_${args.len}' } else { c_name(p.value) }
+		param_name := if p.value == '_' { '_${written}' } else { c_name(p.value) }
 		args << param_name
-	}
-	if g.fn_needs_implicit_veb_ctx(node) {
-		if g.fn_has_receiver_param(node) && args.len > 0 {
-			args.insert(1, 'ctx')
-		} else {
+		written++
+		if insert_implicit_ctx_after_first && !implicit_ctx_written {
 			args << 'ctx'
+			written++
+			implicit_ctx_written = true
 		}
+	}
+	if needs_implicit_ctx && !implicit_ctx_written {
+		args << 'ctx'
 	}
 	return args
 }

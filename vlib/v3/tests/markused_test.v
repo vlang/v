@@ -65,6 +65,30 @@ fn parse_checked_project(name string, files map[string]string, main_file string)
 	return a, &tc
 }
 
+fn parse_checked_project_in_order(name string, rels []string, sources []string) (&flat.FlatAst, &types.TypeChecker) {
+	root := os.join_path(os.temp_dir(), 'v3_markused_${name}')
+	os.rmdir_all(root) or {}
+	mut paths := []string{}
+	for i, rel in rels {
+		path := os.join_path(root, rel)
+		os.mkdir_all(os.dir(path)) or { panic(err) }
+		os.write_file(path, sources[i]) or { panic(err) }
+		paths << path
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_files(paths)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.diagnose_unknown_calls = true
+	for path in paths {
+		tc.diagnostic_files[path] = true
+	}
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	return a, &tc
+}
+
 // mark_used_source updates mark used source state for v3 tests.
 fn mark_used_source(name string, source string) map[string]bool {
 	a, tc := parse_checked_source(name, source)
@@ -162,6 +186,24 @@ fn main() {
 }
 ')
 	assert used['string__plus']
+}
+
+fn test_moduleless_export_after_module_file_is_rooted() {
+	a, tc := parse_checked_project_in_order('moduleless_export_after_module', [
+		'helper/helper.v',
+		'lonely.v',
+	], ['module helper
+
+pub fn helper_marker() int {
+	return 1
+}
+', "@[export: 'raw_lonely']
+fn lonely() int {
+	return 7
+}
+"])
+	used := markused.mark_used(a, tc)
+	assert used['lonely']
 }
 
 fn test_receiver_method_call_in_selector_assign_rhs_is_used() {

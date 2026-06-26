@@ -69,6 +69,18 @@ const export_v3_reserved_c_symbols = {
 	'c_name':        true
 }
 
+const export_c_libc_collision_symbols = {
+	'rint':  true
+	'y0':    true
+	'y1':    true
+	'yn':    true
+	'j0':    true
+	'j1':    true
+	'jn':    true
+	'drem':  true
+	'scalb': true
+}
+
 // tarr1 supports tarr1 handling for types.
 fn tarr1(a Type) []Type {
 	mut r := []Type{}
@@ -1756,6 +1768,9 @@ fn export_natural_c_symbol(module_name string, name string) string {
 	}
 	if name == 'exit' {
 		return 'v_exit'
+	}
+	if name in export_c_libc_collision_symbols {
+		return 'v_${name}'
 	}
 	return c_name(name)
 }

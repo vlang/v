@@ -86,8 +86,9 @@ struct FixedArrayTypedefInfo {
 }
 
 struct CDirective {
-	module string
-	text   string
+	module        string
+	text          string
+	before_import bool
 }
 
 // was_parallel reports whether the last fn codegen actually ran across threads.
@@ -310,6 +311,7 @@ fn node_kind_id(node flat.Node) int {
 fn (mut g FlatGen) collect_gen_info() {
 	mut cur_module := ''
 	mut cur_file := ''
+	mut seen_import_in_file := false
 	for node_idx in 0 .. g.a.nodes.len {
 		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
@@ -319,6 +321,7 @@ fn (mut g FlatGen) collect_gen_info() {
 			g.tc.cur_file = cur_file
 			cur_module = ''
 			g.tc.cur_module = cur_module
+			seen_import_in_file = false
 			continue
 		}
 		if kind_id == 73 {
@@ -358,7 +361,7 @@ fn (mut g FlatGen) collect_gen_info() {
 			}
 			continue
 		}
-		if g.collect_c_directive(cur_module, node, cur_file) {
+		if g.collect_c_directive(cur_module, node, cur_file, !seen_import_in_file) {
 			continue
 		}
 		if node.kind == .directive && node.value == 'flag' && node.typ.len > 0 {
@@ -454,6 +457,7 @@ fn (mut g FlatGen) collect_gen_info() {
 			continue
 		}
 		if kind_id == 72 {
+			seen_import_in_file = true
 			alias := node.typ.clone()
 			mod_name := node.value.clone()
 			if alias.len > 0 && mod_name.len > 0 {
@@ -475,7 +479,7 @@ fn (mut g FlatGen) collect_gen_info() {
 	g.collect_const_init_order_from_files()
 }
 
-fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, source_file string) bool {
+fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, source_file string, before_import bool) bool {
 	if node.kind != .directive {
 		return false
 	}
@@ -493,24 +497,26 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		if include_arg.contains('prealloc_atomics.h') || include_arg.contains('stdatomic') {
 			return true
 		}
-		g.add_c_directive(module_name, '#include ${include_arg}')
+		g.add_c_directive(module_name, '#include ${include_arg}', before_import)
 		return true
 	}
 	if node.value in ['define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif', 'pragma',
 		'error', 'warning'] {
-		g.add_c_directive(module_name, c_preprocessor_directive_line(node.value, node.typ))
+		g.add_c_directive(module_name, c_preprocessor_directive_line(node.value, node.typ),
+			before_import)
 		return true
 	}
 	return false
 }
 
-fn (mut g FlatGen) add_c_directive(module_name string, text string) {
+fn (mut g FlatGen) add_c_directive(module_name string, text string, before_import bool) {
 	if text.len == 0 {
 		return
 	}
 	g.c_directives << CDirective{
-		module: module_name
-		text:   text
+		module:        module_name
+		text:          text
+		before_import: before_import
 	}
 }
 
@@ -612,14 +618,14 @@ fn (g &FlatGen) visit_module_init(mod string, module_to_init map[string]string, 
 }
 
 fn (g &FlatGen) ordered_c_directives() []string {
-	mut directives_by_module := map[string][]string{}
+	mut directives_by_module := map[string][]CDirective{}
 	mut module_order := []string{}
 	for directive in g.c_directives {
 		if directive.module !in directives_by_module {
-			directives_by_module[directive.module] = []string{}
+			directives_by_module[directive.module] = []CDirective{}
 			module_order << directive.module
 		}
-		directives_by_module[directive.module] << directive.text
+		directives_by_module[directive.module] << directive
 	}
 	mut result := []string{}
 	mut visiting := map[string]bool{}
@@ -630,11 +636,17 @@ fn (g &FlatGen) ordered_c_directives() []string {
 	return dedupe_top_level_c_includes(result)
 }
 
-fn (g &FlatGen) visit_c_directive_module(mod string, directives_by_module map[string][]string, mut visiting map[string]bool, mut visited map[string]bool, mut result []string) {
+fn (g &FlatGen) visit_c_directive_module(mod string, directives_by_module map[string][]CDirective, mut visiting map[string]bool, mut visited map[string]bool, mut result []string) {
 	if mod in visited || mod in visiting {
 		return
 	}
 	visiting[mod] = true
+	directives := directives_by_module[mod] or { []CDirective{} }
+	for directive in directives {
+		if directive.before_import {
+			result << directive.text
+		}
+	}
 	for dep in g.module_imports[mod] or { []string{} } {
 		if dep in directives_by_module {
 			g.visit_c_directive_module(dep, directives_by_module, mut visiting, mut visited, mut
@@ -643,8 +655,10 @@ fn (g &FlatGen) visit_c_directive_module(mod string, directives_by_module map[st
 	}
 	visiting.delete(mod)
 	visited[mod] = true
-	for directive in directives_by_module[mod] or { []string{} } {
-		result << directive
+	for directive in directives {
+		if !directive.before_import {
+			result << directive.text
+		}
 	}
 }
 
