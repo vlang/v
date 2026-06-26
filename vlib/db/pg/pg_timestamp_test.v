@@ -1,5 +1,6 @@
 module pg
 
+import orm
 import time
 
 // These tests exercise the PostgreSQL TIMESTAMP/TIMESTAMPTZ text decoder
@@ -93,6 +94,45 @@ fn test_negative_infinity_returns_clear_error() {
 		return
 	}
 	assert false, 'expected an error for the special value `-infinity`'
+}
+
+fn test_bc_suffix_returns_clear_error() {
+	pg_parse_timestamp('0001-01-01 00:00:00 BC') or {
+		assert err.msg().contains('BC')
+		return
+	}
+	assert false, 'expected an error for a BC timestamp value'
+}
+
+fn test_bc_suffix_with_offset_returns_clear_error() {
+	pg_parse_timestamp('0044-03-15 12:00:00+00 BC') or {
+		assert err.msg().contains('BC')
+		return
+	}
+	assert false, 'expected an error for a BC TIMESTAMPTZ value'
+}
+
+fn test_garbage_seconds_suffix_is_rejected() {
+	// `string.int()` would silently keep the `00` prefix; strict parsing must reject it.
+	pg_parse_timestamp('2024-01-15 14:00:00 XY') or { return }
+	assert false, 'expected an error for a trailing non-numeric suffix'
+}
+
+fn test_unix_timestamp_path_decodes_integer() {
+	// Mirror the ORM fallback: a bare integer string is a Unix timestamp.
+	p := val_to_primitive('1700000000', orm.time_)!
+	t := p as time.Time
+	assert t.unix() == 1700000000
+}
+
+fn test_infinity_via_val_to_primitive_errors() {
+	// `infinity` has no date/time punctuation; it must still reach the parser and
+	// error instead of decoding to the Unix epoch.
+	val_to_primitive('infinity', orm.time_) or {
+		assert err.msg().contains('infinity')
+		return
+	}
+	assert false, 'expected an error decoding `infinity` via val_to_primitive'
 }
 
 fn test_issue_27556_example() {

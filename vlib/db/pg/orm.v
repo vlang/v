@@ -2,6 +2,7 @@ module pg
 
 import orm
 import time
+import strconv
 import net.conv
 
 // ---- ORM on Conn (single pinned connection) ----
@@ -473,6 +474,12 @@ fn pg_parse_timestamp(value string) !time.Time {
 	if str == 'infinity' || str == '-infinity' {
 		return error('pg: cannot decode special timestamp value `${str}` into time.Time')
 	}
+	// PostgreSQL appends ` BC` for dates before year 1. `time.Time` cannot represent
+	// those unambiguously, so reject them with a clear error instead of silently
+	// constructing the corresponding AD instant.
+	if str.ends_with(' BC') || str.ends_with(' bc') {
+		return error('pg: cannot decode BC timestamp value `${str}` into time.Time')
+	}
 	space_pos := str.index(' ') or {
 		// Fall back to the generic parser for values without a date/time separator.
 		return time.parse(str)
@@ -510,10 +517,13 @@ fn pg_parse_timestamp(value string) !time.Time {
 		if frac.len > 9 {
 			frac = frac[..9]
 		}
-		for frac.len < 9 {
-			frac += '0'
+		// strconv.atoi is strict, so any non-digit (e.g. a stray suffix) errors out
+		// instead of being silently truncated by `string.int()`.
+		mut scaled := strconv.atoi(frac)!
+		for _ in 0 .. 9 - frac.len {
+			scaled *= 10
 		}
-		nanosecond = frac.int()
+		nanosecond = scaled
 	}
 
 	ymd := date_part.split('-')
@@ -525,13 +535,15 @@ fn pg_parse_timestamp(value string) !time.Time {
 		return error('pg: invalid timestamp time `${hms}`')
 	}
 
+	// Use strict numeric parsing so suffixes such as ` BC` or other malformed values
+	// are rejected rather than silently coerced (`string.int()` keeps the digit prefix).
 	mut result := time.new(
-		year:       ymd[0].int()
-		month:      ymd[1].int()
-		day:        ymd[2].int()
-		hour:       hms_parts[0].int()
-		minute:     hms_parts[1].int()
-		second:     hms_parts[2].int()
+		year:       strconv.atoi(ymd[0])!
+		month:      strconv.atoi(ymd[1])!
+		day:        strconv.atoi(ymd[2])!
+		hour:       strconv.atoi(hms_parts[0])!
+		minute:     strconv.atoi(hms_parts[1])!
+		second:     strconv.atoi(hms_parts[2])!
 		nanosecond: nanosecond
 		is_local:   false
 	)
@@ -550,12 +562,12 @@ fn pg_parse_offset(offset string) !int {
 	}
 	sign := if offset[0] == `-` { -1 } else { 1 }
 	parts := offset[1..].split(':')
-	mut seconds := parts[0].int() * 3600
+	mut seconds := strconv.atoi(parts[0])! * 3600
 	if parts.len > 1 {
-		seconds += parts[1].int() * 60
+		seconds += strconv.atoi(parts[1])! * 60
 	}
 	if parts.len > 2 {
-		seconds += parts[2].int()
+		seconds += strconv.atoi(parts[2])!
 	}
 	return sign * seconds
 }
@@ -615,13 +627,14 @@ fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 				return orm.Primitive(str)
 			}
 			orm.time_ {
-				if str.contains_any(' /:-') {
-					date_time_str := pg_parse_timestamp(str)!
-					return orm.Primitive(date_time_str)
+				// A bare (optionally signed) integer is a Unix timestamp; route every
+				// other value through the PostgreSQL-aware parser so textual timestamps
+				// and special values such as `infinity` are decoded (or rejected) there
+				// instead of silently falling through to `time.unix(0)`.
+				if timestamp := strconv.atoi64(str.trim_space()) {
+					return orm.Primitive(time.unix(timestamp))
 				}
-
-				timestamp := str.int()
-				return orm.Primitive(time.unix(timestamp))
+				return orm.Primitive(pg_parse_timestamp(str)!)
 			}
 			orm.enum_ {
 				return orm.Primitive(str.i64())
