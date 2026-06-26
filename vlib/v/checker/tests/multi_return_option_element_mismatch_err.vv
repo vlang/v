@@ -14,3 +14,13 @@ fn extract(s string) (string, ?string) {
 	}
 	return rawurl, description
 }
+
+// the same mismatch must be caught regardless of which branch is the optional one
+fn extract_rev(s string) (string, ?string) {
+	rawurl, description := if s.contains(' ') {
+		s, ?string(none)
+	} else {
+		s[..1], s[1..]
+	}
+	return rawurl, description
+}
