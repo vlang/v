@@ -355,7 +355,9 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			formats << 0
 		}
 		time.Time {
-			datetime := data.format_ss()
+			// Use a microsecond-precision representation so fractional seconds survive
+			// a write/read round-trip (relevant for TIMESTAMP/TIMESTAMPTZ columns).
+			datetime := data.format_ss_micro()
 			types << u32(0)
 			vals << &char(datetime.str)
 			lens << datetime.len
@@ -461,6 +463,103 @@ fn pg_type_from_v(typ int) !string {
 	return str
 }
 
+// pg_parse_timestamp parses a PostgreSQL `TIMESTAMP`/`TIMESTAMPTZ` text value into a
+// `time.Time`. It accepts the form `YYYY-MM-DD HH:mm:ss[.fraction][Z|±HH[:MM[:SS]]]`,
+// preserving up to nanosecond precision. When a timezone offset is present (as produced
+// by `TIMESTAMPTZ` columns, e.g. `+00`, `+02`, `+02:30`), the returned time is
+// normalized to UTC.
+fn pg_parse_timestamp(value string) !time.Time {
+	str := value.trim_space()
+	if str == 'infinity' || str == '-infinity' {
+		return error('pg: cannot decode special timestamp value `${str}` into time.Time')
+	}
+	space_pos := str.index(' ') or {
+		// Fall back to the generic parser for values without a date/time separator.
+		return time.parse(str)
+	}
+	date_part := str[..space_pos]
+	mut time_part := str[space_pos + 1..]
+
+	// Detect and strip an optional timezone designator.
+	mut offset_seconds := 0
+	if time_part.ends_with('Z') || time_part.ends_with('z') {
+		time_part = time_part[..time_part.len - 1]
+	} else {
+		// PostgreSQL appends the offset sign (`+`/`-`) directly after the time part.
+		// Scan past the leading hour so a negative hour can never be mistaken for a sign.
+		mut sign_pos := -1
+		for i := 1; i < time_part.len; i++ {
+			c := time_part[i]
+			if c == `+` || c == `-` {
+				sign_pos = i
+				break
+			}
+		}
+		if sign_pos != -1 {
+			offset_seconds = pg_parse_offset(time_part[sign_pos..])!
+			time_part = time_part[..sign_pos]
+		}
+	}
+
+	// Split the optional fractional seconds off the `HH:mm:ss` part.
+	mut nanosecond := 0
+	mut hms := time_part
+	if dot_pos := time_part.index('.') {
+		hms = time_part[..dot_pos]
+		mut frac := time_part[dot_pos + 1..]
+		if frac.len > 9 {
+			frac = frac[..9]
+		}
+		for frac.len < 9 {
+			frac += '0'
+		}
+		nanosecond = frac.int()
+	}
+
+	ymd := date_part.split('-')
+	if ymd.len != 3 {
+		return error('pg: invalid timestamp date `${date_part}`')
+	}
+	hms_parts := hms.split(':')
+	if hms_parts.len != 3 {
+		return error('pg: invalid timestamp time `${hms}`')
+	}
+
+	mut result := time.new(
+		year:       ymd[0].int()
+		month:      ymd[1].int()
+		day:        ymd[2].int()
+		hour:       hms_parts[0].int()
+		minute:     hms_parts[1].int()
+		second:     hms_parts[2].int()
+		nanosecond: nanosecond
+		is_local:   false
+	)
+	if offset_seconds != 0 {
+		// Normalize to UTC by subtracting the parsed offset.
+		result = result.add_seconds(-offset_seconds)
+	}
+	return result
+}
+
+// pg_parse_offset parses a PostgreSQL timezone offset such as `+02`, `-05`, `+02:30`
+// or `+02:30:00` and returns the offset in seconds (signed).
+fn pg_parse_offset(offset string) !int {
+	if offset.len < 3 {
+		return error('pg: invalid timezone offset `${offset}`')
+	}
+	sign := if offset[0] == `-` { -1 } else { 1 }
+	parts := offset[1..].split(':')
+	mut seconds := parts[0].int() * 3600
+	if parts.len > 1 {
+		seconds += parts[1].int() * 60
+	}
+	if parts.len > 2 {
+		seconds += parts[2].int()
+	}
+	return sign * seconds
+}
+
 fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 	if str := val {
 		match typ {
@@ -517,7 +616,7 @@ fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 			}
 			orm.time_ {
 				if str.contains_any(' /:-') {
-					date_time_str := time.parse(str)!
+					date_time_str := pg_parse_timestamp(str)!
 					return orm.Primitive(date_time_str)
 				}
 
