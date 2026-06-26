@@ -882,14 +882,23 @@ pub fn (mut g Gen) housekeeping() {
 	for g.pending_anon_fns.len > 0 {
 		g.fn_decl(g.pending_anon_fns.pop())
 	}
-	if g.fn_value_indices.len > 0 {
+	// Declare the indirect function table whenever a `call_indirect` was emitted,
+	// even if no function value was registered (e.g. a module that only consumes a
+	// callback), otherwise the emitted `call_indirect` references a table that does
+	// not exist and the module fails to validate.
+	if g.uses_call_indirect || g.fn_value_indices.len > 0 {
+		// names[i] holds the function for table slot `i + 1`; slot 0 is the
+		// reserved null/trap slot (left as `ref.null func`).
 		mut names := []string{len: g.fn_value_indices.len}
 		for name, idx in g.fn_value_indices {
-			names[idx] = name
+			names[idx - 1] = name
 		}
+		// +1 for the reserved null slot at index 0
 		t :=
-			g.mod.assign_table('__indirect_function_table', false, .funcref_t, u32(names.len), none)
-		g.mod.new_active_element(t, 0, names)
+			g.mod.assign_table('__indirect_function_table', false, .funcref_t, u32(names.len + 1), none)
+		if names.len > 0 {
+			g.mod.new_active_element(t, 1, names)
+		}
 	}
 
 	heap_base := calc_align(g.data_base + g.pool.buf.len, 16) // 16?

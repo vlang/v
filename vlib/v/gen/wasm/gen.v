@@ -48,9 +48,10 @@ mut:
 	is_direct_array_access bool // inside a `[direct_array_access]` function
 	// function values: fn name -> slot in the `__indirect_function_table`.
 	// Single owner of the indirect-call table population (reused by later phases).
-	fn_value_indices  map[string]int
-	pending_anon_fns  []ast.FnDecl    // non-capturing anon fns to compile after toplevel stmts
-	compiled_anon_fns map[string]bool // dedup for pending_anon_fns
+	fn_value_indices   map[string]int
+	pending_anon_fns   []ast.FnDecl    // non-capturing anon fns to compile after toplevel stmts
+	compiled_anon_fns  map[string]bool // dedup for pending_anon_fns
+	uses_call_indirect bool            // a `call_indirect` was emitted, so the table must exist
 }
 
 // fn_table_index returns the slot of `name` in the indirect function table,
@@ -59,7 +60,10 @@ pub fn (mut g Gen) fn_table_index(name string) int {
 	if idx := g.fn_value_indices[name] {
 		return idx
 	}
-	idx := g.fn_value_indices.len
+	// Slot 0 is reserved as the null/trap slot, so a real function value never
+	// collides with `unsafe { nil }` (which also lowers to `i32.const 0`). Real
+	// functions therefore start at index 1.
+	idx := g.fn_value_indices.len + 1
 	g.fn_value_indices[name] = idx
 	return idx
 }
@@ -933,6 +937,7 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 	mut fn_value_idx := Var{}
 	if is_fn_value {
 		g.is_leaf_function = false
+		g.uses_call_indirect = true
 		fn_value_idx = g.new_local('', fn_value_typ)
 		g.push_fn_value(node, fn_value_typ)
 		g.set(fn_value_idx)
