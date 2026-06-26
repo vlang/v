@@ -98,40 +98,46 @@ pub fn (mut s SSLConn) shutdown() ! {
 		eprintln(@METHOD)
 	}
 
+	// Always release the SSL object, its context and the underlying socket,
+	// even when the SSL_shutdown handshake below times out or errors. A peer
+	// that aborts the connection or never sends a close-notify (e.g. an idle
+	// TLS client during an `SSL_shutdown` WANT_READ/WANT_WRITE wait) must not
+	// leak the SSL handle or one TCP fd per connection.
+	defer {
+		if s.ssl != 0 {
+			C.SSL_free(voidptr(s.ssl))
+			s.ssl = unsafe { nil }
+		}
+		if s.sslctx != 0 {
+			C.SSL_CTX_free(s.sslctx)
+			s.sslctx = unsafe { nil }
+		}
+		if s.owns_socket {
+			net.shutdown(s.handle)
+			net.close(s.handle) or {}
+		}
+	}
+
 	if s.ssl != 0 {
 		deadline := ssl_timeout_deadline(s.duration)
 		for {
-			mut res := C.SSL_shutdown(voidptr(s.ssl))
+			res := C.SSL_shutdown(voidptr(s.ssl))
 			if res == 1 {
 				break
 			}
 
 			err_res := ssl_error(res, s.ssl) or {
-				break // We break to free rest of resources
+				break // give up on the graceful close, the defer frees the rest
 			}
 			if err_res == .ssl_error_want_read {
-				s.wait_for_read(ssl_remaining_timeout(deadline))!
+				s.wait_for_read(ssl_remaining_timeout(deadline)) or { break }
 				continue
 			} else if err_res == .ssl_error_want_write {
-				s.wait_for_write(ssl_remaining_timeout(deadline))!
+				s.wait_for_write(ssl_remaining_timeout(deadline)) or { break }
 				continue
 			}
-			if s.ssl != 0 {
-				unsafe { C.SSL_free(voidptr(s.ssl)) }
-			}
-			if s.sslctx != 0 {
-				C.SSL_CTX_free(s.sslctx)
-			}
-			return error('net.openssl Could not connect using SSL. (${err_res}),err')
+			break
 		}
-		C.SSL_free(voidptr(s.ssl))
-	}
-	if s.sslctx != 0 {
-		C.SSL_CTX_free(s.sslctx)
-	}
-	if s.owns_socket {
-		net.shutdown(s.handle)
-		net.close(s.handle)!
 	}
 }
 
