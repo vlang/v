@@ -6590,12 +6590,14 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 				name: base
 			})
 		}
-		if is_concrete_generic {
+		if is_concrete_generic && !is_builtin_type_name(base) {
 			// A concrete generic instance (`Vec4[f32]`) is a monomorphized struct, even
 			// when the generic base decl has been erased after monomorphization. It is
 			// never a fixed array, so don't fall through to the `[N]T` handler below.
 			// Qualify an imported base (`Vec4` -> `vec.Vec4`) so its c_type matches the
-			// materialized struct (`vec__Vec4_f32`) everywhere it appears.
+			// materialized struct (`vec__Vec4_f32`) everywhere it appears. A builtin base
+			// (`int[seg_count]`) cannot be a generic application, so let it fall through to
+			// the fixed-array handler — its bracket is a const/expression length.
 			mut full := typ
 			if !base.contains('.') {
 				if resolved := tc.unique_qualified_type_name(base) {

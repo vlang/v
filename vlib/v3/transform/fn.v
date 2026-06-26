@@ -703,7 +703,7 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 	}
 	if param_type.starts_with('[]') {
 		arg_type := t.node_type(arg_id)
-		if is_fixed_array_type(arg_type) {
+		if t.is_fixed_array_type(arg_type) {
 			return t.fixed_array_value_to_array(arg_id, arg_type, param_type)
 		}
 		if const_arg := t.transform_const_array_arg_for_param(arg_id, param_type) {
@@ -1297,7 +1297,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 					return t.make_call_typed(str_fn, arr1(expr), 'string')
 				}
 				return t.make_string_literal('${qualified}{}')
-			} else if is_fixed_array_type(clean_typ) {
+			} else if t.is_fixed_array_type(clean_typ) {
 				elem_type := fixed_array_elem_type(clean_typ)
 				arr := t.fixed_array_value_to_array(expr, clean_typ, '[]${elem_type}')
 				return t.wrap_string_conversion(arr, '[]${elem_type}')
@@ -1520,12 +1520,12 @@ fn (mut t Transformer) try_lower_array_method_call(node flat.Node) ?flat.NodeId 
 	}
 	base_id := t.a.children[fn_node.children_start]
 	mut base_type := t.node_type(base_id)
-	if !base_type.starts_with('[]') && !is_fixed_array_type(base_type) {
+	if !base_type.starts_with('[]') && !t.is_fixed_array_type(base_type) {
 		base_node := t.a.nodes[int(base_id)]
 		if base_node.kind in [.call, .selector, .as_expr] {
 			new_base := t.transform_expr(base_id)
 			new_base_type := t.node_type(new_base)
-			if new_base_type.starts_with('[]') || is_fixed_array_type(new_base_type) {
+			if new_base_type.starts_with('[]') || t.is_fixed_array_type(new_base_type) {
 				selector := t.make_selector(new_base, fn_node.value, '')
 				mut children := []flat.NodeId{cap: int(node.children_count)}
 				children << selector
@@ -1548,7 +1548,7 @@ fn (mut t Transformer) try_lower_array_method_call(node flat.Node) ?flat.NodeId 
 		}
 	}
 	clean_base_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
-	if is_fixed_array_type(clean_base_type) {
+	if t.is_fixed_array_type(clean_base_type) {
 		elem_type := fixed_array_elem_type(clean_base_type)
 		array_type := '[]${elem_type}'
 		tmp_name := t.new_temp('fixed_arr')

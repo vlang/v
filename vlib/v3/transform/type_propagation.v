@@ -534,7 +534,7 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) string {
 		}
 		// A range/slice of a fixed array (`arr[..]`, `arr[a..b]`) yields a dynamic
 		// `[]T`, not the fixed array or a bogus `range` type.
-		if is_fixed_array_type(base_type) {
+		if t.is_fixed_array_type(base_type) {
 			return '[]${fixed_array_elem_type(base_type)}'
 		}
 	}

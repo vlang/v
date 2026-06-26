@@ -913,3 +913,21 @@ fn test_fn_pointer_return_type() {
 		'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\nfn plain() int {\n\treturn 7\n}\nfn build_cb(c Counter) fn () int {\n\tmut cb := c.report\n\tcb = plain\n\treturn cb\n}\nfn main() {\n\tf := build_cb(Counter{\n\t\tid: 1\n\t})\n\tprintln(int_str(f()))\n}\n')
 	assert built == '7'
 }
+
+fn test_const_length_fixed_array() {
+	v3_bin := build_v3()
+	// A fixed array whose length is a const round-trips through the checker as the postfix name
+	// `int[seg_count]`. The transform's fixed-array predicate (now const-aware) folds `.len` to the
+	// constant instead of emitting a struct field access on the C array, and parse_type treats the
+	// builtin-base postfix as a fixed array (not a bogus generic), so the decl uses memcpy.
+	direct := run_good(v3_bin, 'good_const_len_fixed_array_call_len',
+		'const seg_count = 3\nfn f() [seg_count]int {\n\tmut r := [seg_count]int{}\n\treturn r\n}\nfn main() {\n\tprintln(int_str(f().len))\n}\n')
+	assert direct == '3'
+	decl := run_good(v3_bin, 'good_const_len_fixed_array_decl_len',
+		"const seg_count = 3\nfn f() [seg_count]int {\n\tmut r := [seg_count]int{}\n\tr[0] = 10\n\treturn r\n}\nfn main() {\n\ta := f()\n\tprintln(int_str(a[0]) + ',' + int_str(a.len))\n}\n")
+	assert decl == '10,3'
+	// An expression length (`[segs + 1]int`) likewise folds, iterates, and indexes correctly.
+	expr := run_good(v3_bin, 'good_expr_len_fixed_array',
+		"const segs = 2\nfn f() [segs + 1]int {\n\tmut r := [segs + 1]int{}\n\tr[0] = 5\n\tr[1] = 6\n\tr[2] = 7\n\treturn r\n}\nfn main() {\n\ta := f()\n\tmut sum := 0\n\tfor x in a {\n\t\tsum += x\n\t}\n\tprintln(int_str(a.len) + ',' + int_str(a[1]) + ',' + int_str(sum))\n}\n")
+	assert expr == '3,6,18'
+}

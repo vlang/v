@@ -771,7 +771,7 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 				fn_name := array_contains_fn_name(elem)
 				result = t.make_call_typed(fn_name, arr2(new_rhs, new_lhs), 'bool')
 			}
-		} else if is_fixed_array_type(clean_rhs_type) {
+		} else if t.is_fixed_array_type(clean_rhs_type) {
 			// fixed array membership -> fixed_array_contains_int/string(arr, len, val)
 			new_lhs := t.transform_expr(lhs_id)
 			new_rhs := t.transform_expr(rhs_id)
@@ -1192,7 +1192,7 @@ fn (mut t Transformer) transform_fixed_array_len(_id flat.NodeId, node flat.Node
 	}
 	base_id := t.a.children[node.children_start]
 	base_type := t.node_type(base_id)
-	if !is_fixed_array_type(base_type) {
+	if !t.is_fixed_array_type(base_type) {
 		return none
 	}
 	return t.make_fixed_array_len_expr(base_type)
@@ -1455,7 +1455,7 @@ pub fn (mut t Transformer) make_sizeof_type(type_name string) flat.NodeId {
 
 // is_fixed_array_type reports whether a v-type string denotes a fixed array
 // like `int[5]` (as opposed to a dynamic array `[]int` or a map `map[...]...`).
-fn is_fixed_array_type(s string) bool {
+fn (t &Transformer) is_fixed_array_type(s string) bool {
 	if s.starts_with('[]') || s.starts_with('map[') {
 		return false
 	}
@@ -1465,7 +1465,18 @@ fn is_fixed_array_type(s string) bool {
 	if !s.contains('[') || !s.ends_with(']') {
 		return false
 	}
-	return is_decimal_text(fixed_array_len_text(s))
+	len_text := fixed_array_len_text(s)
+	if is_decimal_text(len_text) {
+		return true
+	}
+	// A postfix fixed-array name (`ArrayFixed.name()`) can carry a non-decimal length — a const
+	// (`int[seg_count]`) or an expression (`int[segs + 1]`) — once the checker round-trips
+	// `[n]int` to `int[n]`. Accept it when the bracket text resolves to an integer constant,
+	// which distinguishes it from a generic instance (`vec.Vec4[f32]`, whose bracket is a type).
+	if len_text.contains(',') || isnil(t.tc) {
+		return false
+	}
+	return t.tc.const_int_value(len_text, []string{}) != none
 }
 
 // fixed_array_len supports fixed array len handling for transform.

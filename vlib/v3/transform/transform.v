@@ -1932,7 +1932,7 @@ fn (mut t Transformer) fixed_array_return_value(child_id flat.NodeId) ?flat.Node
 	// fixed-array (by-value) semantics; the C backend returns it via a wrapper
 	// struct. Only a *dynamic* array return needs a fixed→dynamic conversion of a
 	// fixed-array return value.
-	if is_fixed_array_type(ret_type) {
+	if t.is_fixed_array_type(ret_type) {
 		return none
 	}
 	return t.fixed_array_value_to_dynamic(child_id, ret_type)
@@ -1948,7 +1948,7 @@ fn (mut t Transformer) fixed_array_value_to_dynamic(value_id flat.NodeId, target
 		return none
 	}
 	child_type := t.node_type(value_id)
-	if !is_fixed_array_type(child_type) || fixed_array_elem_type(child_type) != array_type[2..] {
+	if !t.is_fixed_array_type(child_type) || fixed_array_elem_type(child_type) != array_type[2..] {
 		return none
 	}
 	return t.fixed_array_value_to_array(value_id, child_type, array_type)
@@ -2173,7 +2173,7 @@ fn (t &Transformer) assignment_sum_target(lhs_id flat.NodeId, rhs_id flat.NodeId
 	if lhs_type.starts_with('&') {
 		return ''
 	}
-	if lhs_type.starts_with('[]') || is_fixed_array_type(lhs_type) {
+	if lhs_type.starts_with('[]') || t.is_fixed_array_type(lhs_type) {
 		return ''
 	}
 	if t.is_sum_type_name(lhs_type) {
@@ -2768,7 +2768,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				}
 			}
 			if node.typ.len == 0 {
-				if rhs.kind == .array_literal && is_fixed_array_type(typ) {
+				if rhs.kind == .array_literal && t.is_fixed_array_type(typ) {
 					typ = '[]${fixed_array_elem_type(typ)}'
 					t.a.nodes[int(rhs_id)].typ = typ
 				}
@@ -5573,7 +5573,7 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 					return typ
 				}
 			}
-			if is_fixed_array_type(node.value) {
+			if t.is_fixed_array_type(node.value) {
 				return node.value
 			}
 			if node.value.len > 0 {
@@ -5732,7 +5732,7 @@ fn (t &Transformer) const_type_key(name string) ?string {
 fn (t &Transformer) const_entry_type_name(name string, typ types.Type) ?string {
 	tname := t.normalize_type_alias(typ.name())
 	if tname.len > 0 && tname != 'unknown' {
-		if is_fixed_array_type(tname) {
+		if t.is_fixed_array_type(tname) {
 			if expr_id := t.tc.const_exprs[name] {
 				expr := t.a.nodes[int(expr_id)]
 				if expr.kind == .call {
