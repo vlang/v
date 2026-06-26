@@ -168,6 +168,8 @@ fn test_write_decimal() {
 	assert sb_i64_str(9223372036854775807) == '9223372036854775807'
 	assert sb_i64_str(-9223372036854775807) == '-9223372036854775807'
 	assert sb_i64_str(min_i64) == '-9223372036854775808'
+	// runtime `min_i64` (parsed, not the constant), whose negation overflows i64:
+	assert sb_i64_str('-9223372036854775808'.i64()) == '-9223372036854775808'
 }
 
 @[manualfree]

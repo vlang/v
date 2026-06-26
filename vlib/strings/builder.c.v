@@ -74,32 +74,20 @@ pub fn (mut b Builder) write_byte(data u8) {
 // write_decimal appends a decimal representation of the number `n` into the builder `b`,
 // without dynamic allocation. The higher order digits come first, i.e. 6123 will be written
 // with the digit `6` first, then `1`, then `2` and `3` last.
-@[direct_array_access]
 pub fn (mut b Builder) write_decimal(n i64) {
 	if n == 0 {
 		b.write_u8(0x30)
 		return
 	}
-	if n == min_i64 {
-		b.write_string(n.str())
-		return
-	}
-
-	mut buf := [25]u8{}
-	mut x := if n < 0 { -n } else { n }
-	mut i := 24
-	for x != 0 {
-		nextx := x / 10
-		r := x % 10
-		buf[i] = u8(r) + 0x30
-		x = nextx
-		i--
-	}
+	mut mag := u64(n)
 	if n < 0 {
-		buf[i] = `-`
-		i--
+		b.write_u8(`-`)
+		// Wrapping unsigned negation yields the correct magnitude even for `min_i64`,
+		// whose absolute value does not fit in an i64, so this stays allocation-free for
+		// every input without a special case for the signed 64-bit minimum.
+		mag = u64(0) - mag
 	}
-	unsafe { b.write_ptr(&buf[i + 1], 24 - i) }
+	b.write_u_decimal(mag)
 }
 
 // write_u_decimal appends a decimal representation of the unsigned number `n` into the
