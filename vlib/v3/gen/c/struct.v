@@ -17,6 +17,21 @@ fn c_field_name(name string) string {
 	return c_name(name)
 }
 
+// struct_init_fields_key returns the key under which the initialized struct's checked fields
+// (and their concrete types) live. For a bare generic literal that adopts a concrete instance
+// (`Box{..}` where `Box[int]` is expected) that is the instance key `Box[int]`; the bare `Box`
+// entry is removed by monomorphization, so field-type lookups and omitted default-field
+// emission must use the instance key or they miss fields like `items []T` (leaving invalid
+// zeroed array/map metadata). Falls back to the given key for non-generic structs.
+fn (g &FlatGen) struct_init_fields_key(type_name string, fallback string) string {
+	if inst := g.generic_struct_init_instance_name(type_name) {
+		if inst in g.tc.structs {
+			return inst
+		}
+	}
+	return fallback
+}
+
 // gen_struct_init emits struct init output for c.
 fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	init_module := g.tc.cur_module
@@ -43,8 +58,12 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 		return
 	}
 	g.write('(${name}){')
+	// A bare generic literal stores its fields under the concrete instance key (`Box[int]`);
+	// the bare `node.value` (`Box`) entry is removed by monomorphization, so resolve the
+	// instance for field-type lookups and omitted-default emission below.
+	lookup_name := g.struct_init_fields_key(node.value, node.value)
 	mut allowed_fields := map[string]bool{}
-	if fields := g.struct_fields_for_type(node.value) {
+	if fields := g.struct_fields_for_type(lookup_name) {
 		for f in fields {
 			allowed_fields[f.name] = true
 		}
@@ -67,7 +86,7 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 		}
 		value_id := g.a.child(field, 0)
 		if field.value.len == 0 {
-			if sf := g.struct_field_at(node.value, i) {
+			if sf := g.struct_field_at(lookup_name, i) {
 				if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(node.value, sf.name,
 					value_id)
 				{
@@ -92,7 +111,7 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 				g.gen_expr(value_id)
 				g.write(', sizeof(${inner_ct}))')
 			} else {
-				if ftyp := g.struct_field_type(node.value, field.value) {
+				if ftyp := g.struct_field_type(lookup_name, field.value) {
 					if g.struct_field_value_is_plainly_incompatible(value_id, ftyp) {
 						g.gen_default_value_for_type(ftyp)
 					} else {
@@ -112,8 +131,9 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	sname := if qname in g.tc.structs { qname } else { node.value }
 	g.tc.cur_module = after_fields_module
 	has_field = g.gen_struct_default_fields(sname, mut set_fields, has_field)
-	if sname in g.tc.structs {
-		for f in g.tc.structs[sname] {
+	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { sname }
+	if defaults_key in g.tc.structs {
+		for f in g.tc.structs[defaults_key] {
 			if f.name in set_fields {
 				continue
 			}
@@ -428,10 +448,10 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	g.write('(${name}*)memdup(&(${name}){')
 	// A bare generic literal stores its fields under the concrete instance key (`Box[int]`);
 	// the bare `node.value` (`Box`) entry is removed by monomorphization, so resolve the
-	// instance name for the positional field lookup below.
-	lookup_name := g.generic_struct_init_instance_name(node.value) or { node.value }
+	// instance for field-type lookups and omitted-default emission below.
+	lookup_name := g.struct_init_fields_key(node.value, node.value)
 	mut allowed_fields := map[string]bool{}
-	if fields := g.struct_fields_for_type(node.value) {
+	if fields := g.struct_fields_for_type(lookup_name) {
 		for f in fields {
 			allowed_fields[f.name] = true
 		}
@@ -486,7 +506,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 			g.gen_expr(value_id)
 			g.write(', sizeof(${inner_ct}))')
 		} else {
-			if ftyp := g.struct_field_type(node.value, field.value) {
+			if ftyp := g.struct_field_type(lookup_name, field.value) {
 				if g.struct_field_value_is_plainly_incompatible(value_id, ftyp) {
 					g.gen_default_value_for_type(ftyp)
 				} else {
@@ -505,8 +525,9 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	sname := if qname in g.tc.structs { qname } else { node.value }
 	g.tc.cur_module = after_fields_module
 	has_field = g.gen_struct_default_fields(sname, mut set_fields, has_field)
-	if sname in g.tc.structs {
-		for f in g.tc.structs[sname] {
+	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { sname }
+	if defaults_key in g.tc.structs {
+		for f in g.tc.structs[defaults_key] {
 			if f.name in set_fields {
 				continue
 			}

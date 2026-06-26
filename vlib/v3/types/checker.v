@@ -135,7 +135,12 @@ pub mut:
 	// markused, and (unlike a call) routes a value-context selector through check_selector.
 	// markused seeds these (keeping the wrapper-only method out of the dead-code pruner)
 	// only when their enclosing function is reachable.
-	method_values_by_fn           map[int][]string // enclosing fn node id -> method-value `Type.method` keys
+	method_values_by_fn map[int][]string // enclosing fn node id -> method-value `Type.method` keys
+	// Local variables bound to a method value (`cb := c.report`) in the current function.
+	// Such an alias shares the same per-site static receiver slot as the bare selector, so it
+	// escapes (and corrupts other live callbacks) just like `return c.report`; the escape
+	// checks below treat a reference to one of these locals as a method value. Reset per fn.
+	method_value_locals           map[string]bool
 	cur_fn_node_id                int = -1
 	expr_type_values              []Type // node_id -> complex/contextual resolved type
 	expr_type_set                 []bool
@@ -1158,6 +1163,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 				tc.cur_fn_ret_type = tc.parse_type(node.typ)
 				tc.cur_fn_node_id = i
+				tc.method_value_locals = map[string]bool{}
 				tc.push_scope()
 				for pi in 0 .. node.children_count {
 					p := tc.a.child_node(&node, pi)
@@ -1650,10 +1656,38 @@ fn generic_type_application_parts(typ string) (string, []string, bool) {
 		return '', []string{}, false
 	}
 	inner := typ[bracket + 1..bracket_end].trim_space()
-	if is_decimal_int_literal(inner) {
+	if is_fixed_array_len_text(inner) {
 		return '', []string{}, false
 	}
 	return typ[..bracket], split_params(inner), true
+}
+
+// is_fixed_array_len_text reports whether a postfix `Base[inner]` bracket holds a fixed-array
+// length rather than a generic type argument. `ArrayFixed.name()` renders the length as a decimal
+// (`u8[16]`), a non-decimal literal (`u8[0x10]`), or the source length expression (`u8[segs + 1]`);
+// a generic argument is always a type, never a number or arithmetic expression. Recognising all
+// three keeps such a postfix name parsing as a fixed array (e.g. when `[]thread T.wait()` recovers
+// the spawned return type) instead of a bogus generic application.
+fn is_fixed_array_len_text(inner string) bool {
+	s := inner.trim_space()
+	if s.len == 0 {
+		return false
+	}
+	if v_int_literal_value(s) != none {
+		return true
+	}
+	for i in 0 .. s.len {
+		c := s[i]
+		if c in [`+`, `*`, `/`, `%`, `|`, `^`, `<`, `>`] {
+			return true
+		}
+		// A leading `-`/`&` is a negative literal / pointer-type argument; elsewhere they are the
+		// subtraction / bitwise-and operators of a length expression.
+		if (c == `-` || c == `&`) && i > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // is_decimal_int_literal reports whether is decimal int literal applies in types.
@@ -2382,7 +2416,27 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			}
 		}
 		tc.insert_decl_lhs(lhs_id, expected)
+		tc.track_method_value_local(lhs_id, rhs_id)
 		i += 2
+	}
+}
+
+// track_method_value_local records (or clears) a local variable bound to a method value, so a
+// later `return cb` / `arr << cb` aliasing the same per-site static receiver is rejected as an
+// escape just like the bare `return c.report`.
+fn (mut tc TypeChecker) track_method_value_local(lhs_id flat.NodeId, rhs_id flat.NodeId) {
+	if int(lhs_id) < 0 {
+		return
+	}
+	lhs := tc.a.nodes[int(lhs_id)]
+	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+		return
+	}
+	if tc.expr_is_method_value(rhs_id) {
+		tc.method_value_locals[lhs.value] = true
+	} else if lhs.value in tc.method_value_locals {
+		// Reassigned to a non-method-value: the alias no longer holds one.
+		tc.method_value_locals.delete(lhs.value)
 	}
 }
 
@@ -2467,6 +2521,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		if !tc.type_compatible(rhs_type, lhs_type) {
 			tc.type_mismatch(.assignment_mismatch,
 				'cannot assign `${rhs_type.name()}` to `${lhs_type.name()}`', id)
+		}
+		if node.kind == .assign {
+			tc.track_method_value_local(lhs_id, rhs_id)
 		}
 		i += 2
 	}
@@ -4570,6 +4627,11 @@ fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 		return false
 	}
 	node := tc.a.nodes[int(id)]
+	// A local bound to a method value (`cb := c.report`) carries the same escape hazard as the
+	// bare selector, so a reference to it counts as a method value here too.
+	if node.kind == .ident {
+		return node.value in tc.method_value_locals
+	}
 	if node.kind != .selector || node.children_count == 0 {
 		return false
 	}

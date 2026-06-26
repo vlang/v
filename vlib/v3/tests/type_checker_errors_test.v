@@ -747,3 +747,34 @@ fn test_pr_review_codegen_batch_seventeen() {
 		"struct Config {\n\tlengths []int\n}\nfn (c Config) build() int {\n\treturn c.lengths.len\n}\nstruct Shader {\n\tid int\n}\nfn Shader.build() Shader {\n\treturn Shader{\n\t\tid: 42\n\t}\n}\ntype Shape = Circle | Square\nstruct Circle {\n\tr int\n}\nstruct Square {\n\ts int\n}\nstruct Factory {}\nfn Factory.describe(sh Shape) int {\n\treturn match sh {\n\t\tCircle { sh.r }\n\t\tSquare { sh.s }\n\t}\n}\nfn main() {\n\ts := Shader.build()\n\td := Factory.describe(Circle{r: 7})\n\tprintln(int_str(s.id) + ',' + int_str(d))\n}\n")
 	assert out == '42,7'
 }
+
+fn test_pr_review_codegen_batch_eighteen() {
+	v3_bin := build_v3()
+	// A method value bound to a local (`cb := c.report`) shares the same per-site static receiver
+	// as the bare selector, so aliasing it out — returned from a factory or appended to an array —
+	// escapes just like `return c.report` and is rejected, not only the direct selector form.
+	mv := 'struct Counter {\n\tid int\n}\nfn (c Counter) report() int {\n\treturn c.id\n}\n'
+	run_bad(v3_bin, 'bad_method_value_local_return_escape', mv +
+		'fn bind(c Counter) fn () int {\n\tcb := c.report\n\treturn cb\n}\nfn main() {\n\t_ := bind(Counter{\n\t\tid: 1\n\t})\n}\n',
+		'cannot escape its call site')
+	run_bad(v3_bin, 'bad_method_value_local_append_escape', mv +
+		'fn collect(c Counter) []fn () int {\n\tmut arr := []fn () int{}\n\tcb := c.report\n\tarr << cb\n\treturn arr\n}\nfn main() {\n\t_ := collect(Counter{\n\t\tid: 1\n\t})\n}\n',
+		'cannot escape its call site')
+	// A method-value local passed straight to a callback parameter does not escape and stays valid.
+	direct := run_good(v3_bin, 'good_method_value_local_direct_use', mv +
+		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tcb := c.report\n\tprintln(int_str(invoke(cb)))\n}\n')
+	assert direct == '7'
+	// A bare heap generic literal (`&Box{v: 1}` where `&Box[int]` is expected) must read its
+	// omitted-field defaults from the concrete instance key: monomorphization drops the bare `Box`
+	// entry, so an omitted `items []T` needs its `array_new` default or the field has invalid
+	// zeroed array metadata (here a later append would silently drop the elements).
+	heap_default := run_good(v3_bin, 'good_heap_generic_omitted_array_default',
+		"struct Box[T] {\n\tv     T\n\titems []T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\tmut b := make()\n\tb.items << 10\n\tb.items << 20\n\tprintln(int_str(b.v) + ',' + int_str(b.items.len) + ',' + int_str(b.items[0]) + ',' + int_str(b.items[1]))\n}\n")
+	assert heap_default == '1,2,10,20'
+	// `[]thread T.wait()` recovers the spawned return type from the thread name; a fixed-array
+	// return with a non-decimal length (`[0x10]u8`) must reconstruct the same `_v_ret_*` wrapper
+	// ABI type the spawn wrapper stored, not a bogus generic application of `u8`.
+	thread_fixed := run_good(v3_bin, 'good_thread_wait_nondecimal_fixed_array',
+		"fn work() [0x10]u8 {\n\tmut r := [0x10]u8{}\n\tr[0] = 42\n\tr[15] = 7\n\treturn r\n}\nfn main() {\n\tmut threads := []thread [0x10]u8{}\n\tthreads << spawn work()\n\tresults := threads.wait()\n\tprintln(int_str(results[0][0]) + ',' + int_str(results[0][15]))\n}\n")
+	assert thread_fixed == '42,7'
+}
