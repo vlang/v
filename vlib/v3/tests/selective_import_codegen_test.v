@@ -223,6 +223,36 @@ pub fn add_xy(x int, y int) int {
 	assert !generated.contains('other__add_xy(x, y)'), generated
 }
 
+fn test_selective_import_explicit_generic_call_keeps_selected_symbol() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin,
+		'explicit_generic_selective_import', 'module main
+
+import util { id }
+import other
+
+fn main() {
+	println(int_str(id[int](1)))
+}
+', {
+		'util/util.v':   'module util
+
+pub fn id[T](x T) T {
+	return x
+}
+'
+		'other/other.v': 'module other
+
+pub fn id[T](x T) T {
+	return x
+}
+'
+	})
+	assert output == '1'
+	assert generated.contains('util__id_T_v_int(1)'), generated
+	assert !generated.contains('other__id_T_v_int(1)'), generated
+}
+
 fn test_selective_import_fn_value_inside_generic_clone_keeps_source_file_symbol() {
 	v3_bin := selective_import_build_v3()
 	output, generated := selective_import_compile_run_with_extra(v3_bin,

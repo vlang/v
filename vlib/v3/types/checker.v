@@ -1675,6 +1675,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 
 fn (mut tc TypeChecker) check_export_attrs() {
 	mut natural_symbols := map[string]string{}
+	synthetic_main_reserved := tc.has_synthetic_c_entry_main()
 	mut cur_module := ''
 	for node in tc.a.nodes {
 		match node.kind {
@@ -1718,6 +1719,11 @@ fn (mut tc TypeChecker) check_export_attrs() {
 					tc.record_error_unfiltered(.unsupported_generic,
 						'invalid export name `${export_name}` for `${qname}`', flat.NodeId(i))
 				}
+				if synthetic_main_reserved && export_name == 'main' {
+					tc.record_error_unfiltered(.unsupported_generic,
+						'export name `main` for `${qname}` collides with synthetic entry point `main`',
+						flat.NodeId(i))
+				}
 				if node.generic_params.len > 0 {
 					tc.record_error_unfiltered(.unsupported_generic,
 						'generic function `${qname}` cannot be exported', flat.NodeId(i))
@@ -1747,6 +1753,136 @@ fn (mut tc TypeChecker) check_export_attrs() {
 			else {}
 		}
 	}
+}
+
+fn (tc &TypeChecker) has_synthetic_c_entry_main() bool {
+	if tc.has_c_test_harness_main() {
+		return true
+	}
+	if tc.has_main_module_fn_main() {
+		return false
+	}
+	return tc.has_c_top_level_main()
+}
+
+fn (tc &TypeChecker) has_main_module_fn_main() bool {
+	mut cur_module := ''
+	for node in tc.a.nodes {
+		match node.kind {
+			.file {
+				cur_module = ''
+			}
+			.module_decl {
+				cur_module = node.value
+			}
+			.fn_decl {
+				if node.value == 'main' && (cur_module.len == 0 || cur_module == 'main') {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) has_c_test_harness_main() bool {
+	for file_idx, file_node in tc.a.nodes {
+		if file_idx < tc.a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
+			continue
+		}
+		if !tc.is_selected_input_file(file_node.value) {
+			continue
+		}
+		module_name := tc.top_level_file_module_name(file_node)
+		if is_c_backend_test_file(file_node.value)
+			&& (module_name.len == 0 || module_name == 'main') {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) has_c_top_level_main() bool {
+	for file_idx, file_node in tc.a.nodes {
+		if !tc.should_emit_c_top_level_file(file_idx, file_node) {
+			continue
+		}
+		for i in 0 .. file_node.children_count {
+			child_id := tc.a.child(&file_node, i)
+			if int(child_id) < tc.a.user_code_start {
+				continue
+			}
+			if tc.is_c_top_level_stmt(child_id) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) should_emit_c_top_level_file(file_idx int, file_node flat.Node) bool {
+	if file_idx < tc.a.user_code_start || file_node.kind != .file || file_node.children_count == 0 {
+		return false
+	}
+	module_name := tc.top_level_file_module_name(file_node)
+	return module_name.len == 0 || module_name == 'main'
+}
+
+fn (tc &TypeChecker) top_level_file_module_name(file_node flat.Node) string {
+	if module_name := tc.file_modules[file_node.value] {
+		return module_name
+	}
+	for i in 0 .. file_node.children_count {
+		child := tc.a.child_node(&file_node, i)
+		if child.kind == .module_decl {
+			return child.value
+		}
+	}
+	return ''
+}
+
+fn (tc &TypeChecker) is_c_top_level_stmt(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	return match node.kind {
+		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt,
+		.for_in_stmt, .if_expr, .match_stmt, .assert_stmt, .defer_stmt {
+			true
+		}
+		.block, .comptime_if {
+			for i in 0 .. node.children_count {
+				if tc.is_c_top_level_stmt(tc.a.child(&node, i)) {
+					return true
+				}
+			}
+			false
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (tc &TypeChecker) is_selected_input_file(file string) bool {
+	return tc.diagnostic_files.len == 0 || tc.diagnostic_files[file]
+}
+
+fn is_c_backend_test_file(path string) bool {
+	file := path.all_after_last('/').all_after_last('\\')
+	if file.ends_with('_test.v') || file.ends_with('_test.c.v') {
+		return true
+	}
+	if !file.ends_with('.v') {
+		return false
+	}
+	base := file[..file.len - 2]
+	if !base.contains('.') {
+		return false
+	}
+	return base.all_after_last('.') == 'c' && base.all_before_last('.').ends_with('_test')
 }
 
 fn export_qualified_fn_name(module_name string, name string) string {
@@ -3989,6 +4125,9 @@ fn (tc &TypeChecker) generic_call_base_name(base_node flat.Node) ?string {
 		if qfn in tc.fn_ret_types {
 			return qfn
 		}
+		if imported_name := tc.resolve_selective_import_symbol(base_node.value) {
+			return imported_name
+		}
 		if base_node.value in tc.fn_ret_types {
 			return base_node.value
 		}
@@ -5118,6 +5257,10 @@ fn (tc &TypeChecker) call_has_ambiguous_selective_import(node flat.Node) bool {
 		return false
 	}
 	fn_node := tc.a.child_node(&node, 0)
+	if fn_node.kind == .index && fn_node.children_count > 0 {
+		base := tc.a.child_node(fn_node, 0)
+		return base.kind == .ident && tc.selective_import_symbol_is_ambiguous(base.value)
+	}
 	return fn_node.kind == .ident && tc.selective_import_symbol_is_ambiguous(fn_node.value)
 }
 

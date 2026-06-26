@@ -195,6 +195,84 @@ fn main() {}
 	assert !compile.output.contains('redefinition'), compile.output
 }
 
+fn test_export_main_collision_with_top_level_script_entry_is_rejected() {
+	v3_bin := export_attr_build_v3()
+	root := export_attr_project('top_level_script_export_main_collision', {
+		'main.v': "
+@[export: 'main']
+fn exported_entry() {}
+
+println('script')
+"
+	})
+	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('export name `main` for `exported_entry`'), compile.output
+	assert compile.output.contains('synthetic entry point `main`'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	assert !compile.output.contains('redefinition'), compile.output
+}
+
+fn test_export_main_collision_with_top_level_match_entry_is_rejected() {
+	v3_bin := export_attr_build_v3()
+	root := export_attr_project('top_level_match_export_main_collision', {
+		'main.v': "
+@[export: 'main']
+fn exported_entry() {}
+
+match 1 {
+	1 { println('one') }
+	else { println('other') }
+}
+"
+	})
+	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), os.join_path(root, 'app'))
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('export name `main` for `exported_entry`'), compile.output
+	assert compile.output.contains('synthetic entry point `main`'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	assert !compile.output.contains('redefinition'), compile.output
+}
+
+fn test_export_main_collision_with_test_harness_entry_is_rejected() {
+	v3_bin := export_attr_build_v3()
+	root := export_attr_project('test_harness_export_main_collision', {
+		'main_test.v': "
+@[export: 'main']
+fn exported_entry() {}
+
+fn test_ok() {}
+"
+	})
+	compile := export_attr_compile(v3_bin, os.join_path(root, 'main_test.v'), os.join_path(root,
+		'app'))
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('export name `main` for `exported_entry`'), compile.output
+	assert compile.output.contains('synthetic entry point `main`'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	assert !compile.output.contains('redefinition'), compile.output
+}
+
+fn test_export_main_in_non_main_test_module_does_not_report_synthetic_collision() {
+	v3_bin := export_attr_build_v3()
+	root := export_attr_project('test_harness_non_main_module_export_main', {
+		'foo_test.v': "module foo
+
+@[export: 'main']
+fn exported_entry() {}
+
+fn test_ok() {}
+"
+	})
+	compile := export_attr_compile(v3_bin, os.join_path(root, 'foo_test.v'), os.join_path(root,
+		'app'))
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('only module main test files are supported'), compile.output
+	assert !compile.output.contains('synthetic entry point `main`'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	assert !compile.output.contains('redefinition'), compile.output
+}
+
 fn test_invalid_export_names_are_rejected() {
 	v3_bin := export_attr_build_v3()
 	root := export_attr_project('invalid_names', {

@@ -552,7 +552,7 @@ fn markused_top_level_file_imports(a &flat.FlatAst, file_node flat.Node) map[str
 fn markused_is_top_level_stmt(node flat.Node) bool {
 	return match node.kind {
 		.expr_stmt, .assign, .decl_assign, .global_decl, .selector_assign, .index_assign,
-		.for_stmt, .for_in_stmt, .if_expr, .match_stmt, .assert_stmt, .block {
+		.for_stmt, .for_in_stmt, .if_expr, .match_stmt, .assert_stmt, .defer_stmt, .block {
 			true
 		}
 		else {

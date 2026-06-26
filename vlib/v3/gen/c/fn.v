@@ -142,7 +142,7 @@ fn (g &FlatGen) cgen_is_top_level_stmt(id flat.NodeId) bool {
 	node := g.a.nodes[int(id)]
 	return match node.kind {
 		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt,
-		.for_in_stmt, .if_expr, .assert_stmt {
+		.for_in_stmt, .if_expr, .assert_stmt, .defer_stmt {
 			true
 		}
 		.block, .comptime_if {

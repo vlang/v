@@ -536,3 +536,19 @@ match 2 {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '7\ntwo'
 }
+
+fn test_v3_top_level_defer_runs_after_synthetic_main_body() {
+	v3_bin := build_v3()
+	run := compile_and_run(v3_bin, 'harness_top_level_defer', '.v', "fn deferred_msg() string {
+	return 'deferred'
+}
+
+defer {
+	println(deferred_msg())
+}
+
+println('body')
+")
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'body\ndeferred'
+}
