@@ -165,8 +165,9 @@ pub mut:
 
 // SSLListener listens on a TCP port and accepts connection secured with TLS
 pub struct SSLListener {
-	saddr  string
-	config SSLConnectConfig
+	saddr   string
+	config  SSLConnectConfig
+	options SSLListenerOptions
 mut:
 	server_fd C.mbedtls_net_context
 	ssl       C.mbedtls_ssl_context
@@ -183,11 +184,19 @@ mut:
 	// duration	time.Duration
 }
 
-// create a new SSLListener binding to `saddr`
-pub fn new_ssl_listener(saddr string, config SSLConnectConfig) !&SSLListener {
+// SSLListenerOptions configures the TCP listener used by an SSLListener.
+@[params]
+pub struct SSLListenerOptions {
+pub:
+	family net.AddrFamily = .ip
+}
+
+// new_ssl_listener creates a new SSLListener binding to `saddr`.
+pub fn new_ssl_listener(saddr string, config SSLConnectConfig, options SSLListenerOptions) !&SSLListener {
 	mut listener := &SSLListener{
-		saddr:  saddr
-		config: config
+		saddr:   saddr
+		config:  config
+		options: options
 	}
 	listener.init()!
 	listener.opened = true
@@ -222,7 +231,6 @@ fn (mut l SSLListener) init() ! {
 		eprintln(@METHOD)
 	}
 
-	lhost, lport := net.split_address(l.saddr)!
 	if l.config.cert == '' || l.config.cert_key == '' {
 		return error('net.mbedtls SSLListener.init, no certificate or key provided')
 	}
@@ -259,18 +267,10 @@ fn (mut l SSLListener) init() ! {
 		C.mbedtls_ssl_conf_authmode(&l.conf, C.MBEDTLS_SSL_VERIFY_REQUIRED)
 	}
 
-	mut bind_ip := unsafe { nil }
-	if lhost != '' {
-		bind_ip = voidptr(lhost.str)
-	}
-	bind_port := lport.str()
-
-	ret = C.mbedtls_net_bind(&l.server_fd, bind_ip, voidptr(bind_port.str), C.MBEDTLS_NET_PROTO_TCP)
-
-	if ret != 0 {
-		return error_with_code("net.mbedtls SSLListener.init, mbedtls_net_bind can't bind to ${l.saddr} error ret: ${ret}",
-			ret)
-	}
+	tcp_listener := net.listen_tcp(l.options.family, l.saddr, net.ListenOptions{
+		backlog: C.MBEDTLS_NET_LISTEN_BACKLOG
+	}) or { return error('net.mbedtls SSLListener.init, listen_tcp failed for ${l.saddr}: ${err}') }
+	l.server_fd.fd = tcp_listener.sock.handle
 
 	ret = C.mbedtls_ssl_config_defaults(&l.conf, C.MBEDTLS_SSL_IS_SERVER,
 		C.MBEDTLS_SSL_TRANSPORT_STREAM, C.MBEDTLS_SSL_PRESET_DEFAULT)
