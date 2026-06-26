@@ -949,3 +949,27 @@ fn test_pr_review_codegen_batch_twentyfive() {
 		"fn compound() int {\n\tmut v := 1\n\tp := &v\n\tv += 1\n\treturn *p\n}\nfn postfix() int {\n\tmut v := 5\n\tp := &v\n\tv++\n\tv++\n\treturn *p\n}\nfn main() {\n\tprintln(int_str(compound()) + ',' + int_str(postfix()))\n}\n")
 	assert heap_compound == '2,7'
 }
+
+fn test_pr_review_codegen_batch_twentysix() {
+	v3_bin := build_v3()
+	// The escape prepass must only heap-move a local whose address is *actually returned*. A
+	// pointer that merely appears in a consuming expression (comparison/boolean here, or a deref)
+	// does not escape, so its source local must stay a plain value — otherwise codegen reads it as
+	// an `int*` in the integer comparison and the result is wrong. `return p == p && v == 1` and
+	// `return *p` both keep `v` on the stack.
+	no_escape := run_good(v3_bin, 'good_escape_only_returned_pointer',
+		"fn check() bool {\n\tmut v := 1\n\tp := &v\n\treturn p == p && v == 1\n}\nfn deref() int {\n\tmut v := 3\n\tp := &v\n\tv = 8\n\treturn *p\n}\nfn main() {\n\tprintln(check().str() + ',' + int_str(deref()))\n}\n")
+	assert no_escape == 'true,8'
+	// A pointer that *is* returned (directly, and inside a returned aggregate) must still heap-move
+	// its source local, so the returned pointer observes mutations made after the address was taken.
+	escapes := run_good(v3_bin, 'good_escape_returned_pointer_and_aggregate',
+		"fn direct() &int {\n\tmut v := 10\n\tp := &v\n\tv += 5\n\treturn p\n}\nfn aggregate() []&int {\n\tmut v := 7\n\tp := &v\n\tv = 9\n\treturn [p]\n}\nfn main() {\n\tarr := aggregate()\n\tprintln(int_str(*direct()) + ',' + int_str(*arr[0]))\n}\n")
+	assert escapes == '15,9'
+	// An optional fixed-array return (`?[N]T`) with a pending `defer` routes through the deferred
+	// return path; that path must apply the same temp + memcpy handling as the direct path (the
+	// `.value` member is a fixed array and cannot be set via a compound literal), so the array value
+	// is preserved instead of being dropped to `{.ok = false}`.
+	defer_opt_arr := run_good(v3_bin, 'good_optional_fixed_array_return_with_defer',
+		"fn f() ?[2]int {\n\tdefer {\n\t\t_ := 0\n\t}\n\treturn [1, 2]!\n}\nfn main() {\n\ta := f() or { [0, 0]! }\n\tprintln(int_str(a[0]) + ',' + int_str(a[1]))\n}\n")
+	assert defer_opt_arr == '1,2'
+}

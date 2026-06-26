@@ -564,6 +564,13 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		if base is types.Void {
 			return '(${ct}){.ok = false}'
 		}
+		if base is types.ArrayFixed {
+			// The optional's `.value` is a fixed-array member, which can't be set in a compound
+			// literal; build via a temp + memcpy (mirrors the direct return path) so a deferred
+			// return saves the array value instead of dropping it to `{.ok = false}`.
+			src := g.fixed_array_copy_source_string(ret_id, base)
+			return '({ ${ct} __opt = {.ok = true}; memcpy(__opt.value, ${src}, sizeof(__opt.value)); __opt; })'
+		}
 		raw_expr_type := g.tc.resolve_type(ret_id)
 		expr_type := g.usable_expr_type(ret_id)
 		call_ret_type := g.local_fn_call_return_type(ret_id, ret_node)

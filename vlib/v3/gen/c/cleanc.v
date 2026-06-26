@@ -905,6 +905,21 @@ fn (mut g FlatGen) interface_value_to_string(id flat.NodeId, expected types.Type
 	return result
 }
 
+// fixed_array_copy_source_string captures gen_fixed_array_copy_source as a string, so a deferred
+// optional/fixed-array return can embed the memcpy source when saving the value into a temp.
+fn (mut g FlatGen) fixed_array_copy_source_string(value_id flat.NodeId, field_type types.Type) string {
+	orig := g.sb
+	orig_line_start := g.line_start
+	g.sb = strings.new_builder(64)
+	// Emit mid-statement (no leading indent), matching the direct return path.
+	g.line_start = false
+	g.gen_fixed_array_copy_source(value_id, field_type)
+	result := g.sb.str()
+	g.sb = orig
+	g.line_start = orig_line_start
+	return result
+}
+
 // expr_to_string_with_expected_type converts expr to string with expected type data for c.
 fn (mut g FlatGen) expr_to_string_with_expected_type(id flat.NodeId, expected types.Type) string {
 	orig := g.sb

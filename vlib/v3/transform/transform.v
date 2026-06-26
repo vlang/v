@@ -1178,7 +1178,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	}
 	if node.kind == .return_stmt {
 		for i in 0 .. node.children_count {
-			t.collect_subtree_idents(t.a.child(&node, i), mut returned)
+			t.collect_return_escape_idents(t.a.child(&node, i), mut returned)
 		}
 	}
 	for i in 0 .. node.children_count {
@@ -1187,18 +1187,42 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	}
 }
 
-// collect_subtree_idents gathers every ident name in a subtree (used to find which
-// names flow into a return statement).
-fn (mut t Transformer) collect_subtree_idents(id flat.NodeId, mut names map[string]bool) {
+// collect_return_escape_idents gathers the idents in a return-expression subtree that occupy an
+// actual escape position — the returned value itself, or a member of a returned aggregate
+// (struct/array/map literal, multi-return). It deliberately stops at operators that consume their
+// operands into a fresh value: infix (`==`, `&&`, arithmetic, …), postfix, `is`/`in`, and any
+// non-`&` prefix (deref `*p`, `!x`, `-x`). That way a pointer that is merely compared or
+// dereferenced in the return expression — e.g. `return p == p && v == 1` — is not mistaken for a
+// pointer that escapes, so its source local is not needlessly heap-moved (which would also make
+// later non-pointer uses of that local read through an `int*`).
+fn (mut t Transformer) collect_return_escape_idents(id flat.NodeId, mut names map[string]bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind == .ident && node.value.len > 0 {
-		names[node.value] = true
+	match node.kind {
+		.ident {
+			if node.value.len > 0 {
+				names[node.value] = true
+			}
+			return
+		}
+		.infix, .postfix, .is_expr, .in_expr {
+			// These yield a new scalar/bool; their operands do not escape through the return.
+			return
+		}
+		.prefix {
+			// `&x` propagates an address (which may escape); any other prefix (`*x`, `!x`, `-x`)
+			// produces a fresh value, so its operand does not escape.
+			if node.op != .amp {
+				return
+			}
+		}
+		else {}
 	}
+
 	for i in 0 .. node.children_count {
-		t.collect_subtree_idents(t.a.child(&node, i), mut names)
+		t.collect_return_escape_idents(t.a.child(&node, i), mut names)
 	}
 }
 
