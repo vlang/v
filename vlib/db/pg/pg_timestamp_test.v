@@ -135,6 +135,24 @@ fn test_infinity_via_val_to_primitive_errors() {
 	assert false, 'expected an error decoding `infinity` via val_to_primitive'
 }
 
+fn test_year_out_of_range_returns_error_not_panic() {
+	// PostgreSQL accepts years past 9999, which `time.new` cannot represent. The
+	// decoder must return an error rather than panicking.
+	pg_parse_timestamp('10000-01-01 00:00:00') or {
+		assert err.msg().contains('out of range')
+		return
+	}
+	assert false, "expected an error for a year beyond V's supported range"
+}
+
+fn test_out_of_range_via_val_to_primitive_errors() {
+	val_to_primitive('10000-01-01 00:00:00', orm.time_) or {
+		assert err.msg().contains('out of range')
+		return
+	}
+	assert false, 'expected an error decoding an out-of-range timestamp'
+}
+
 fn test_issue_27556_example() {
 	// The exact value from the issue: stored as '2024-01-15 14:00:00.123456+01:00'
 	// with the session in UTC, PostgreSQL returns it as below.

@@ -537,13 +537,42 @@ fn pg_parse_timestamp(value string) !time.Time {
 
 	// Use strict numeric parsing so suffixes such as ` BC` or other malformed values
 	// are rejected rather than silently coerced (`string.int()` keeps the digit prefix).
+	year := strconv.atoi(ymd[0])!
+	month := strconv.atoi(ymd[1])!
+	day := strconv.atoi(ymd[2])!
+	hour := strconv.atoi(hms_parts[0])!
+	minute := strconv.atoi(hms_parts[1])!
+	second := strconv.atoi(hms_parts[2])!
+
+	// Validate the ranges up front: `time.new` *panics* on out-of-range fields, but
+	// PostgreSQL accepts values V cannot represent (e.g. years past 9999), so turn
+	// those into a clear error instead of aborting the process.
+	if year < -9999 || year > 9999 {
+		return error('pg: year out of range in timestamp `${str}`')
+	}
+	if month < 1 || month > 12 {
+		return error('pg: month out of range in timestamp `${str}`')
+	}
+	if day < 1 || day > 31 {
+		return error('pg: day out of range in timestamp `${str}`')
+	}
+	if hour < 0 || hour > 23 {
+		return error('pg: hour out of range in timestamp `${str}`')
+	}
+	if minute < 0 || minute > 59 {
+		return error('pg: minute out of range in timestamp `${str}`')
+	}
+	if second < 0 || second > 59 {
+		return error('pg: second out of range in timestamp `${str}`')
+	}
+
 	mut result := time.new(
-		year:       strconv.atoi(ymd[0])!
-		month:      strconv.atoi(ymd[1])!
-		day:        strconv.atoi(ymd[2])!
-		hour:       strconv.atoi(hms_parts[0])!
-		minute:     strconv.atoi(hms_parts[1])!
-		second:     strconv.atoi(hms_parts[2])!
+		year:       year
+		month:      month
+		day:        day
+		hour:       hour
+		minute:     minute
+		second:     second
 		nanosecond: nanosecond
 		is_local:   false
 	)
