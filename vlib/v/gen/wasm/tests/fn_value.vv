@@ -14,6 +14,28 @@ fn apply(f fn (int) int, x int) int {
 	return f(x)
 }
 
+// a fn-typed const, called through the const name
+const cb = add1
+
+// make_cb returns a function value, so `make_cb()(x)` is an expression callee
+fn make_cb() fn (int) int {
+	return double
+}
+
+// logged_box / logged_arg make the evaluation order observable: the callee
+// (the receiver) must be evaluated before the argument.
+fn logged_box() Box {
+	println('callee')
+	return Box{
+		op: add1
+	}
+}
+
+fn logged_arg() int {
+	println('arg')
+	return 100
+}
+
 fn main() {
 	// a top-level fn taken as a local fn value, then called through the value
 	f := add1
@@ -39,4 +61,13 @@ fn main() {
 	println(g(0)) // 1
 	g = double
 	println(g(50)) // 100
+
+	// a fn-typed const, called through the const name
+	println(cb(99)) // 100
+
+	// an expression callee that evaluates to a function value
+	println(make_cb()(5)) // 10
+
+	// the callee is evaluated before the argument: prints `callee`, then `arg`
+	println(logged_box().op(logged_arg())) // 101
 }

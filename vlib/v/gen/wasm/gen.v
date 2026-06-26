@@ -809,10 +809,23 @@ fn (mut g Gen) push_fn_value(node ast.CallExpr, fn_typ ast.Type) {
 			typ:        fn_typ
 		}, fn_typ)
 	} else if node.name == '' {
-		// the callee is the expression itself, e.g. `(expr)(x)`
+		// the callee is the expression itself, e.g. `(expr)(x)` or `make_cb()(x)`
 		g.expr(node.left, fn_typ)
+	} else if node.is_fn_a_const {
+		// a const of function type. The const is registered in the global scope
+		// under its fully-qualified name (`node.const_name`, e.g. `main.cb`), not
+		// the lexical call name, so a plain `scope.find(node.name)` misses it.
+		obj := g.table.global_scope.find(node.const_name) or {
+			g.w_error('wasm: cannot resolve function const `${node.const_name}`')
+		}
+		v := g.get_var_from_ident(ast.Ident{
+			name:  node.const_name
+			scope: node.scope
+			obj:   obj
+		})
+		g.get(v)
 	} else {
-		// a named local/global variable or const of function type
+		// a named local/param variable of function type
 		obj := node.scope.find(node.name) or {
 			g.w_error('wasm: cannot resolve function value `${node.name}`')
 		}
@@ -830,8 +843,10 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 	mut name := node.name
 
 	// Detect a call to a function value: either a fn-typed local/param/const
-	// (is_fn_var/is_fn_a_const), or a fn-typed struct field, which the checker
-	// represents as a method call (`b.op()`).
+	// (is_fn_var/is_fn_a_const), a fn-typed struct field, which the checker
+	// represents as a method call (`b.op()`), or an expression callee that
+	// evaluates to a function (`make_cb()(x)`, `(expr)(x)`), which the checker
+	// leaves with an empty name and a fn-typed `left_type`.
 	mut is_fn_value := false
 	mut fn_value_typ := ast.void_type
 	if node.is_fn_var || node.is_fn_a_const {
@@ -843,6 +858,11 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 				is_fn_value = true
 				fn_value_typ = field.typ
 			}
+		}
+	} else if node.name == '' && node.left_type != 0 {
+		if g.table.final_sym(node.left_type).info is ast.FnType {
+			is_fn_value = true
+			fn_value_typ = node.left_type
 		}
 	}
 
@@ -902,6 +922,21 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 		}
 	}
 
+	// {callee}
+	//
+	// Evaluate the callee of a function-value call *before* its arguments, so a
+	// callee with side effects (e.g. `make_box().op(next())`) keeps V's
+	// left-to-right evaluation order. `call_indirect` wants the table index on
+	// top of the stack (after the args), so stash it in a temp and reload it
+	// once the arguments are in place.
+	mut fn_value_idx := Var{}
+	if is_fn_value {
+		g.is_leaf_function = false
+		fn_value_idx = g.new_local('', fn_value_typ)
+		g.push_fn_value(node, fn_value_typ)
+		g.set(fn_value_idx)
+	}
+
 	// {arguments}
 	//
 	for idx, arg in node.args {
@@ -935,11 +970,10 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 	}
 
 	if is_fn_value {
-		// args are already on the stack; push the callee's table index on top,
-		// then dispatch through the indirect function table
-		g.is_leaf_function = false
+		// args are already on the stack; reload the callee's table index (computed
+		// before the args, above) on top, then dispatch through the indirect table
 		typeidx := g.mod.new_functype(g.fn_value_functype(fn_value_typ))
-		g.push_fn_value(node, fn_value_typ)
+		g.get(fn_value_idx)
 		g.func.call_indirect(typeidx, 0)
 	} else if namespace := wasm_ns {
 		// import calls won't touch `__vsp` !
