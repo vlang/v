@@ -766,7 +766,8 @@ fn (mut g Gen) match_branch_exprs(node ast.MatchExpr, expected ast.Type, unpacke
 // (a non-pure return becomes a leading rvar pointer parameter), so the computed
 // type index matches the type the target function was committed with.
 fn (mut g Gen) fn_value_functype(fn_typ ast.Type) wasm.FuncType {
-	ts := g.table.sym(fn_typ)
+	// final_sym unwraps any alias layer (e.g. `type Callback = fn (int) int`)
+	ts := g.table.final_sym(fn_typ)
 	if ts.info !is ast.FnType {
 		g.w_error('fn_value_functype: `${ts.name}` is not a function type')
 	}
@@ -854,7 +855,7 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 		fn_value_typ = node.fn_var_type
 	} else if node.is_method && node.left_type != 0 {
 		if field := g.table.find_field(g.table.sym(node.left_type), node.name) {
-			if g.table.sym(field.typ).info is ast.FnType {
+			if g.table.final_sym(field.typ).info is ast.FnType {
 				is_fn_value = true
 				fn_value_typ = field.typ
 			}
@@ -1279,6 +1280,15 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			}
 
 			g.expr(node.expr, node.expr_type)
+
+			// A cast involving a function value (e.g. `type Alias = fn (...)`) is an
+			// i32 table index on both sides, so the value passes through unchanged.
+			// Return before the numeric-cast path, which would also mis-handle a
+			// function callee (`Alias(some_fn)`) as a variable in get_var_from_ident.
+			if g.table.final_sym(node.typ).info is ast.FnType
+				|| g.table.final_sym(node.expr_type).info is ast.FnType {
+				return
+			}
 
 			// TODO: unbelievable colossal hack
 			mut typ := node.expr_type

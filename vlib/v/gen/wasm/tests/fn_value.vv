@@ -1,3 +1,5 @@
+type Callback = fn (int) int
+
 fn add1(x int) int {
 	return x + 1
 }
@@ -11,6 +13,12 @@ struct Box {
 }
 
 fn apply(f fn (int) int, x int) int {
+	return f(x)
+}
+
+// apply_cb takes a function-type *alias* parameter, which must be unwrapped to
+// its underlying fn type for the indirect call.
+fn apply_cb(f Callback, x int) int {
 	return f(x)
 }
 
@@ -70,4 +78,9 @@ fn main() {
 
 	// the callee is evaluated before the argument: prints `callee`, then `arg`
 	println(logged_box().op(logged_arg())) // 101
+
+	// function type alias as a value: passed as a param, and cast into a local
+	println(apply_cb(add1, 5)) // 6
+	ac := Callback(double)
+	println(ac(6)) // 12
 }
