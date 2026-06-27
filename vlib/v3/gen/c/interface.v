@@ -195,6 +195,7 @@ fn (mut g FlatGen) register_interface_strings() {
 // type id. The id is stored in the boxed interface value's `_typ` field and is
 // what the generated method-dispatch switch matches on.
 fn (mut g FlatGen) collect_interface_impls() {
+	g.ierror_method_emit_names = map[string]bool{}
 	mut iface_names := []string{}
 	for name, _ in g.interfaces {
 		iface_names << name
@@ -206,12 +207,13 @@ fn (mut g FlatGen) collect_interface_impls() {
 	}
 	struct_names.sort()
 	for iface in iface_names {
-		if c_name(iface) == 'IError' {
-			continue
-		}
 		mut impls := []string{}
 		for concrete in struct_names {
-			if g.tc.named_type_implements_interface(concrete, iface) {
+			if g.is_ierror_type_name(iface) {
+				if g.type_can_box_as_ierror(concrete) {
+					impls << concrete
+				}
+			} else if g.tc.named_type_implements_interface(concrete, iface) {
 				impls << concrete
 			}
 		}
@@ -219,6 +221,29 @@ fn (mut g FlatGen) collect_interface_impls() {
 		for idx, concrete in impls {
 			g.iface_type_ids['${iface}::${concrete}'] = idx + 1
 		}
+		if g.is_ierror_type_name(iface) {
+			g.collect_ierror_method_emit_names(impls)
+		}
+	}
+}
+
+fn (mut g FlatGen) collect_ierror_method_emit_names(impls []string) {
+	for concrete in impls {
+		for method in ['msg', 'code'] {
+			method_name := g.ierror_direct_method_name(concrete, method) or { continue }
+			g.add_ierror_method_emit_name(method_name)
+		}
+	}
+}
+
+fn (mut g FlatGen) add_ierror_method_emit_name(name string) {
+	if name.len == 0 {
+		return
+	}
+	g.ierror_method_emit_names[name] = true
+	lowered := c_name(name)
+	if lowered != name {
+		g.ierror_method_emit_names[lowered] = true
 	}
 }
 
@@ -226,6 +251,102 @@ fn (mut g FlatGen) collect_interface_impls() {
 // interface `iface`, or 0 if `concrete` does not implement `iface`.
 fn (g &FlatGen) iface_type_id(iface string, concrete string) int {
 	return g.iface_type_ids['${iface}::${concrete}'] or { 0 }
+}
+
+fn (g &FlatGen) ierror_interface_name() ?string {
+	for name, _ in g.interfaces {
+		if g.is_ierror_type_name(name) {
+			return name
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) is_ierror_type_name(name string) bool {
+	_ = g
+	return name == 'IError' || name.ends_with('.IError') || c_name(name) == 'IError'
+}
+
+fn (g &FlatGen) ierror_direct_method_name(concrete string, method string) ?string {
+	direct := '${concrete}.${method}'
+	if direct in g.tc.fn_param_types {
+		return direct
+	}
+	qconcrete := g.tc.qualify_name(concrete)
+	if qconcrete != concrete {
+		qdirect := '${qconcrete}.${method}'
+		if qdirect in g.tc.fn_param_types {
+			return qdirect
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) type_can_box_as_ierror(concrete string) bool {
+	return g.tc.named_type_compatible_with_ierror(concrete)
+}
+
+fn (g &FlatGen) ierror_concrete_name(t types.Type) ?string {
+	clean0 := types.unwrap_pointer(t)
+	clean := if clean0 is types.Alias { clean0.base_type } else { clean0 }
+	if clean !is types.Struct {
+		return none
+	}
+	iface := g.ierror_interface_name() or { return none }
+	name := (clean as types.Struct).name
+	if g.iface_type_id(iface, name) != 0 {
+		return name
+	}
+	qname := g.tc.qualify_name(name)
+	if qname != name && g.iface_type_id(iface, qname) != 0 {
+		return qname
+	}
+	return none
+}
+
+fn (g &FlatGen) ierror_type_id_for_pattern(pattern string) int {
+	iface := g.ierror_interface_name() or { return 0 }
+	id := g.iface_type_id(iface, pattern)
+	if id != 0 {
+		return id
+	}
+	qpattern := g.tc.qualify_name(pattern)
+	if qpattern != pattern {
+		return g.iface_type_id(iface, qpattern)
+	}
+	return 0
+}
+
+fn (g &FlatGen) should_emit_ierror_method(name string, qname string) bool {
+	if name in g.ierror_method_emit_names || qname in g.ierror_method_emit_names {
+		return true
+	}
+	return c_name(qname) in g.ierror_method_emit_names
+}
+
+fn (mut g FlatGen) gen_ierror_from_expr(id flat.NodeId) bool {
+	s := g.ierror_from_expr_string(id) or { return false }
+	g.write(s)
+	return true
+}
+
+fn (mut g FlatGen) ierror_from_expr_string(id flat.NodeId) ?string {
+	actual := g.usable_expr_type(id)
+	concrete := g.ierror_concrete_name(actual) or { return none }
+	iface := g.ierror_interface_name() or { return none }
+	type_id := g.iface_type_id(iface, concrete)
+	if type_id == 0 {
+		return none
+	}
+	expr := g.expr_to_string(id)
+	concrete_ct := g.tc.c_type(g.tc.parse_type(concrete))
+	object := if actual is types.Pointer {
+		expr
+	} else {
+		'memdup((${concrete_ct}[]){${expr}}, sizeof(${concrete_ct}))'
+	}
+	empty_sid := g.intern_string('')
+	return '(IError){._typ = ${type_id}, ._object = ${object}, .message = _str_${empty_sid}, .code = 0}'
 }
 
 fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type) bool {
@@ -300,7 +421,7 @@ fn (g &FlatGen) is_interface_type_name(name string) bool {
 // has_ierror_interface reports whether has ierror interface applies in c.
 fn (g &FlatGen) has_ierror_interface() bool {
 	for name, _ in g.interfaces {
-		if c_name(name) == 'IError' {
+		if g.is_ierror_type_name(name) {
 			return true
 		}
 	}
@@ -389,6 +510,22 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 	if cn == 'IError' {
 		ret_ct := if method == 'code' { 'int' } else { 'string' }
 		g.writeln('${ret_ct} ${cn}__${method}(${cn}* i) {')
+		for concrete in impls {
+			id := g.iface_type_id(iface_name, concrete)
+			method_name := g.ierror_direct_method_name(concrete, method) or { continue }
+			if id == 0 {
+				continue
+			}
+			params := g.tc.fn_param_types[method_name] or { []types.Type{} }
+			recv_is_ptr := params.len > 0 && params[0] is types.Pointer
+			concrete_ct := g.tc.c_type(g.tc.parse_type(concrete))
+			recv := if recv_is_ptr {
+				'(${concrete_ct}*)i->_object'
+			} else {
+				'*(${concrete_ct}*)i->_object'
+			}
+			g.writeln('\tif (i->_typ == ${id}) return ${c_name(method_name)}(${recv});')
+		}
 		match method {
 			'msg' {
 				g.writeln('\treturn i->message;')

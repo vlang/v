@@ -940,11 +940,17 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 	if int(id) < 0 {
 		return ''
 	}
+	node := t.a.nodes[int(id)]
 	resolved := t.resolve_expr_type(id)
 	if resolved.len > 0 {
+		if t.generic_arg_is_unresolved(resolved) && node.typ.len > 0 {
+			node_typ := t.normalize_type_alias(node.typ)
+			if node_typ.len > 0 && !t.generic_arg_is_unresolved(node_typ) {
+				return node_typ
+			}
+		}
 		return resolved
 	}
-	node := t.a.nodes[int(id)]
 	mut deferred_call_typ := ''
 	if node.typ.len > 0 {
 		node_typ := t.normalize_type_alias(node.typ)

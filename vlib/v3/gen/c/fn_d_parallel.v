@@ -380,6 +380,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		global_init_order:            g.global_init_order
 		iface_impls:                  g.iface_impls
 		iface_type_ids:               g.iface_type_ids
+		ierror_method_emit_names:     g.ierror_method_emit_names
 		module_init_fns:              g.module_init_fns
 		module_init_fn_modules:       g.module_init_fn_modules
 		module_imports:               g.module_imports
@@ -391,6 +392,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		modules:                      g.modules
 		fn_ptr_types:                 g.fn_ptr_types.clone()
 		fixed_array_ret_wrappers:     g.fixed_array_ret_wrappers
+		concrete_optional_abi_fns:    g.concrete_optional_abi_fns
 		fn_decl_param_types:          g.fn_decl_param_types
 		fn_decl_ret_types:            g.fn_decl_ret_types
 		struct_decl_infos:            g.struct_decl_infos
@@ -450,6 +452,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		fn_param_type_texts:           g.tc.fn_param_type_texts
 		fn_type_files:                 g.tc.fn_type_files
 		fn_type_modules:               g.tc.fn_type_modules
+		specialized_generic_fns:       g.tc.specialized_generic_fns
 		fn_variadic:                   g.tc.fn_variadic
 		fn_implicit_veb_ctx:           g.tc.fn_implicit_veb_ctx
 		c_variadic_fns:                g.tc.c_variadic_fns

@@ -230,6 +230,24 @@ fn test_parallel_cgen_worker_resolves_generic_struct_method_signature() {
 	assert !c_code.contains('?T'), c_code
 }
 
+fn test_parallel_cgen_generic_optional_method_uses_concrete_optional_abi_in_calls() {
+	v3_bin := build_parallel_v3()
+	main_path :=
+		write_parallel_generic_struct_method_project('parallel_generic_struct_optional_abi')
+	c_out := os.join_path(os.temp_dir(), 'v3_parallel_generic_struct_optional_abi.c')
+	compile := os.execute('VJOBS=2 ${v3_bin} ${main_path} -o ${c_out}')
+	assert compile.exit_code == 0, compile.output
+	assert compile.output.contains('cgen (parallel)'), compile.output
+
+	c_code := os.read_file(c_out) or { panic(err) }
+	assert c_code.contains('Box_int__accept'), c_code
+	assert c_code.contains('Optional_int x'), c_code
+	assert c_code.contains('Box_int__accept(b, (Optional_int){.ok = true, .value = 7})'), c_code
+	assert c_code.contains('Box_int__accept(b, (Optional_int){.ok = true, .value = 8})'), c_code
+	assert !c_code.contains('Box_int__accept(b, (Optional){.ok = true, .value = 7})'), c_code
+	assert !c_code.contains('Box_int__accept(b, (Optional){.ok = true, .value = 8})'), c_code
+}
+
 fn write_parallel_top_level_no_main_project(name string) string {
 	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
 	os.rmdir_all(project_dir) or {}

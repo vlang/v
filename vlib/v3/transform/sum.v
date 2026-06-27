@@ -213,6 +213,17 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	}
 	if t.is_interface_type_name(clean_type0) {
 		new_expr := t.transform_expr(expr_id)
+		if t.match_pattern_implements_interface(node.value, clean_type0) {
+			is_start := t.a.children.len
+			t.a.children << new_expr
+			return t.a.add_node(flat.Node{
+				kind:           .is_expr
+				value:          node.value
+				children_start: is_start
+				children_count: 1
+				typ:            'bool'
+			})
+		}
 		object := t.make_selector_op(new_expr, '_object', 'voidptr', if expr_type.starts_with('&') {
 			.arrow
 		} else {

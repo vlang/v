@@ -11,6 +11,14 @@ struct GenericStructDecl {
 	key    string
 }
 
+struct GenericSumDecl {
+	id     flat.NodeId
+	node   flat.Node
+	file   string
+	module string
+	key    string
+}
+
 fn (mut t Transformer) is_generic_fn(name string) bool {
 	decls := t.cached_generic_fn_decls()
 	return name in decls || transform_qualified_fn_name(t.cur_module, name) in decls
@@ -200,13 +208,65 @@ fn (mut t Transformer) materialize_generic_structs() {
 		return
 	}
 	decls := t.collect_generic_struct_decls()
-	if decls.len == 0 {
+	sum_decls := t.collect_generic_sum_decls()
+	if decls.len == 0 && sum_decls.len == 0 {
 		return
 	}
+	specs, sum_specs := t.collect_generic_materialization_specs(decls, sum_decls)
+	for spec, base in sum_specs {
+		decl := sum_decls[base] or { continue }
+		t.materialize_generic_sum_spec(spec, decl)
+	}
+	for spec, base in specs {
+		decl := decls[base] or { continue }
+		t.materialize_generic_struct_spec(spec, decl)
+	}
+	t.erase_generic_sum_templates(sum_decls)
+	for _, decl in decls {
+		t.tc.structs.delete(decl.key)
+		t.tc.unions.delete(decl.key)
+		t.tc.params_structs.delete(decl.key)
+	}
+}
+
+fn (mut t Transformer) materialize_generic_sum_types(erase_templates bool) {
+	if isnil(t.tc) {
+		return
+	}
+	decls := t.collect_generic_struct_decls()
+	sum_decls := t.collect_generic_sum_decls()
+	if sum_decls.len == 0 {
+		return
+	}
+	_, sum_specs := t.collect_generic_materialization_specs(decls, sum_decls)
+	for spec, base in sum_specs {
+		decl := sum_decls[base] or { continue }
+		t.materialize_generic_sum_spec(spec, decl)
+	}
+	if erase_templates {
+		t.erase_generic_sum_templates(sum_decls)
+	}
+}
+
+fn (mut t Transformer) erase_generic_sum_templates(sum_decls map[string]GenericSumDecl) {
+	for _, decl in sum_decls {
+		t.tc.sum_types.delete(decl.key)
+		t.sum_types.delete(decl.key)
+		t.tc.sum_generic_params.delete(decl.key)
+		if decl.key != decl.node.value {
+			t.tc.sum_generic_params.delete(decl.node.value)
+		}
+	}
+}
+
+fn (mut t Transformer) collect_generic_materialization_specs(decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl) (map[string]string, map[string]string) {
 	mut specs := map[string]string{}
+	mut sum_specs := map[string]string{}
 	t.collect_generic_struct_specs(decls, mut specs)
-	for _ in 0 .. 20 {
+	t.collect_generic_sum_specs(sum_decls, mut sum_specs)
+	for _ in 0 .. 40 {
 		before := specs.len
+		before_sums := sum_specs.len
 		current := specs.clone()
 		for spec, base in current {
 			decl := decls[base] or { continue }
@@ -223,23 +283,32 @@ fn (mut t Transformer) materialize_generic_structs() {
 					decl.node.generic_params)
 				t.collect_generic_struct_spec_from_type(field_type, decl.module, decl.file, decls, mut
 					specs)
+				t.collect_generic_sum_spec_from_type(field_type, decl.module, decl.file, sum_decls, mut
+					sum_specs)
 			}
 		}
-		if specs.len == before {
+		current_sums := sum_specs.clone()
+		for spec, base in current_sums {
+			decl := sum_decls[base] or { continue }
+			_, args, ok := generic_app_parts(spec)
+			if !ok {
+				continue
+			}
+			for i in 0 .. decl.node.children_count {
+				variant := t.a.child_node(&decl.node, i)
+				variant_type := substitute_generic_type_text_with_params(variant.value, args,
+					decl.node.generic_params)
+				t.collect_generic_struct_spec_from_type(variant_type, decl.module, decl.file,
+					decls, mut specs)
+				t.collect_generic_sum_spec_from_type(variant_type, decl.module, decl.file,
+					sum_decls, mut sum_specs)
+			}
+		}
+		if specs.len == before && sum_specs.len == before_sums {
 			break
 		}
 	}
-	for spec, base in specs {
-		decl := decls[base] or { continue }
-		t.materialize_generic_struct_spec(spec, decl)
-	}
-	for _, decl in decls {
-		t.tc.structs.delete(decl.key)
-		t.tc.unions.delete(decl.key)
-		t.tc.params_structs.delete(decl.key)
-	}
-	t.clear_struct_field_type_cache()
-	t.tc.clear_field_lookup_cache()
+	return specs, sum_specs
 }
 
 fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDecl {
@@ -281,6 +350,43 @@ fn generic_struct_decl_key(name string, module_name string) string {
 		return name
 	}
 	return '${module_name}.${name}'
+}
+
+fn (mut t Transformer) collect_generic_sum_decls() map[string]GenericSumDecl {
+	mut decls := map[string]GenericSumDecl{}
+	t.ensure_node_module_map()
+	mut cur_file := ''
+	mut cur_module := ''
+	for i, node in t.a.nodes {
+		match node.kind {
+			.file {
+				cur_file = node.value
+			}
+			.module_decl {
+				cur_module = node.value
+			}
+			.type_decl {
+				if node.generic_params.len == 0 || node.children_count == 0 {
+					continue
+				}
+				module_name := t.node_module_map_cache[i] or { cur_module }
+				key := generic_type_decl_key(node.value, module_name)
+				decls[key] = GenericSumDecl{
+					id:     flat.NodeId(i)
+					node:   node
+					file:   cur_file
+					module: module_name
+					key:    key
+				}
+			}
+			else {}
+		}
+	}
+	return decls
+}
+
+fn generic_type_decl_key(name string, module_name string) string {
+	return generic_struct_decl_key(name, module_name)
 }
 
 fn (mut t Transformer) collect_generic_struct_specs(decls map[string]GenericStructDecl, mut specs map[string]string) {
@@ -378,6 +484,95 @@ fn (mut t Transformer) collect_generic_struct_spec_from_type(typ string, module_
 	specs[spec_name] = spec_base
 }
 
+fn (mut t Transformer) collect_generic_sum_specs(decls map[string]GenericSumDecl, mut specs map[string]string) {
+	for _, target in t.tc.type_aliases {
+		t.collect_generic_sum_spec_from_type(target, '', '', decls, mut specs)
+	}
+	mut file_name := ''
+	mut module_name := ''
+	for node in t.a.nodes {
+		match node.kind {
+			.file {
+				file_name = node.value
+				module_name = ''
+			}
+			.module_decl {
+				module_name = node.value
+			}
+			else {}
+		}
+
+		if node.typ.len > 0 {
+			t.collect_generic_sum_spec_from_type(node.typ, module_name, file_name, decls, mut specs)
+		}
+		match node.kind {
+			.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr, .is_expr {
+				t.collect_generic_sum_spec_from_type(node.value, module_name, file_name, decls, mut
+					specs)
+			}
+			else {}
+		}
+	}
+}
+
+fn (mut t Transformer) collect_generic_sum_spec_from_type(typ string, module_name string, file_name string, decls map[string]GenericSumDecl, mut specs map[string]string) {
+	clean := typ.trim_space()
+	if clean.len == 0 {
+		return
+	}
+	if clean.starts_with('&') {
+		t.collect_generic_sum_spec_from_type(clean[1..], module_name, file_name, decls, mut specs)
+		return
+	}
+	if clean.starts_with('mut ') {
+		t.collect_generic_sum_spec_from_type(clean[4..], module_name, file_name, decls, mut specs)
+		return
+	}
+	if clean.starts_with('?') || clean.starts_with('!') {
+		t.collect_generic_sum_spec_from_type(clean[1..], module_name, file_name, decls, mut specs)
+		return
+	}
+	if clean.starts_with('...') {
+		t.collect_generic_sum_spec_from_type(clean[3..], module_name, file_name, decls, mut specs)
+		return
+	}
+	if clean.starts_with('[]') {
+		t.collect_generic_sum_spec_from_type(clean[2..], module_name, file_name, decls, mut specs)
+		return
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			t.collect_generic_sum_spec_from_type(clean[4..bracket_end], module_name, file_name,
+				decls, mut specs)
+			t.collect_generic_sum_spec_from_type(clean[bracket_end + 1..], module_name, file_name,
+				decls, mut specs)
+		}
+		return
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			t.collect_generic_sum_spec_from_type(clean[bracket_end + 1..], module_name, file_name,
+				decls, mut specs)
+		}
+		return
+	}
+	base, args, ok := generic_app_parts(clean)
+	if !ok {
+		return
+	}
+	for arg in args {
+		t.collect_generic_sum_spec_from_type(arg, module_name, file_name, decls, mut specs)
+	}
+	if t.generic_args_have_placeholders(args) {
+		return
+	}
+	spec_base := t.generic_sum_spec_base_name(base, module_name, file_name, decls) or { return }
+	spec_name := '${spec_base}[${args.join(', ')}]'
+	specs[spec_name] = spec_base
+}
+
 fn (t &Transformer) generic_struct_spec_base_name(base string, module_name string, file_name string, decls map[string]GenericStructDecl) ?string {
 	if base in decls {
 		return base
@@ -409,6 +604,37 @@ fn (t &Transformer) generic_struct_spec_base_name(base string, module_name strin
 	return none
 }
 
+fn (t &Transformer) generic_sum_spec_base_name(base string, module_name string, file_name string, decls map[string]GenericSumDecl) ?string {
+	if base in decls {
+		return base
+	}
+	if base.contains('.') {
+		return none
+	}
+	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
+		qbase := '${module_name}.${base}'
+		if qbase in decls {
+			return qbase
+		}
+	}
+	if resolved := t.selective_import_generic_sum_base(base, file_name, decls) {
+		return resolved
+	}
+	mut found := ''
+	for key, _ in decls {
+		if key.all_after_last('.') == base {
+			if found.len > 0 && found != key {
+				return none
+			}
+			found = key
+		}
+	}
+	if found.len > 0 {
+		return found
+	}
+	return none
+}
+
 fn (t &Transformer) selective_import_generic_struct_base(base string, file_name string, decls map[string]GenericStructDecl) ?string {
 	if isnil(t.tc) || base.contains('.') || file_name.len == 0 {
 		return none
@@ -420,6 +646,51 @@ fn (t &Transformer) selective_import_generic_struct_base(base string, file_name 
 		}
 	}
 	return none
+}
+
+fn (t &Transformer) selective_import_generic_sum_base(base string, file_name string, decls map[string]GenericSumDecl) ?string {
+	if isnil(t.tc) || base.contains('.') || file_name.len == 0 {
+		return none
+	}
+	candidates := t.tc.file_selective_imports[file_import_key(file_name, base)] or { return none }
+	for candidate in candidates {
+		if candidate in decls {
+			return candidate
+		}
+	}
+	return none
+}
+
+fn (mut t Transformer) materialize_generic_sum_spec(spec_name string, decl GenericSumDecl) {
+	_, args, ok := generic_app_parts(spec_name)
+	if !ok || args.len == 0 {
+		return
+	}
+	old_module := t.cur_module
+	old_file := t.cur_file
+	old_tc_module := t.tc.cur_module
+	old_tc_file := t.tc.cur_file
+	t.cur_module = decl.module
+	t.cur_file = decl.file
+	t.tc.cur_module = decl.module
+	t.tc.cur_file = decl.file
+	mut variants := []string{}
+	for i in 0 .. decl.node.children_count {
+		variant := t.a.child_node(&decl.node, i)
+		variant_type := substitute_generic_type_text_with_params(variant.value, args,
+			decl.node.generic_params)
+		parsed := t.tc.parse_type(variant_type)
+		variants << if parsed is types.Unknown { variant_type } else { parsed.name() }
+	}
+	t.tc.sum_types[spec_name] = variants
+	t.sum_types[spec_name] = variants
+	if !isnil(t.sum_cache) {
+		t.sum_cache.entries.clear()
+	}
+	t.cur_module = old_module
+	t.cur_file = old_file
+	t.tc.cur_module = old_tc_module
+	t.tc.cur_file = old_tc_file
 }
 
 fn (mut t Transformer) materialize_generic_struct_spec(spec_name string, decl GenericStructDecl) {
@@ -570,6 +841,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	t.specialize_cloned_fn_signature(clone_id, decl, args)
 	clone := t.a.nodes[int(clone_id)]
 	t.register_specialized_fn_signature(decl, clone, args)
+	t.materialize_generic_sum_types(false)
 	t.active_generic_params = old_params
 	t.transform_specialized_fn_body(clone_id, decl.module, decl.file)
 	t.cur_module = old_module
@@ -694,6 +966,7 @@ fn (mut t Transformer) register_specialized_fn_signature(decl GenericFnDecl, clo
 			t.tc.fn_param_types[name] = params.clone()
 			t.tc.fn_variadic[name] = variadic
 			t.add_receiver_method_suffix_index(name)
+			t.tc.specialized_generic_fns[name] = true
 		}
 		t.tc.cur_module = old_tc_module
 		t.tc.cur_file = old_tc_file
@@ -2126,6 +2399,18 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	for child in children {
 		t.a.children << child
 	}
+	if node.kind == .call && children.len > 0
+		&& (node.typ.contains('[') || node.value.contains('[')) {
+		type_text := if node.typ.contains('[') { node.typ } else { node.value }
+		base, _, ok := generic_app_parts(type_text)
+		if ok {
+			callee_id := children[0]
+			mut callee := t.a.nodes[int(callee_id)]
+			if callee.kind in [.ident, .selector] && callee.value == base.all_after_last('.') {
+				t.a.nodes[int(callee_id)].value = t.subst_type(type_text, args)
+			}
+		}
+	}
 	cloned_value := if is_root {
 		specialized_generic_fn_value(node.value, args)
 	} else {
@@ -2817,6 +3102,32 @@ fn (t &Transformer) subst_type(typ string, args []string) string {
 // subst_node_value is the param-aware counterpart of substitute_generic_node_value.
 fn (t &Transformer) subst_node_value(node flat.Node, args []string) string {
 	match node.kind {
+		.ident {
+			if node.value.contains('[') {
+				return t.subst_type(node.value, args)
+			}
+			if node.typ.contains('[') {
+				base, _, ok := generic_app_parts(node.typ)
+				if ok && node.value == base.all_after_last('.') {
+					return t.subst_type(node.typ, args)
+				}
+			}
+			return node.value
+		}
+		.selector {
+			if node.value.contains('[') {
+				return t.subst_type(node.value, args)
+			}
+			if node.typ.contains('[') {
+				old_field_type := t.trim_pointer_type(node.typ)
+				new_field_type := t.trim_pointer_type(t.subst_type(node.typ, args))
+				if old_field_type != new_field_type
+					&& t.sum_field_name(old_field_type) == node.value {
+					return t.sum_field_name(new_field_type)
+				}
+			}
+			return node.value
+		}
 		.call, .array_init, .struct_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr,
 		.is_expr, .type_decl, .field_decl, .param {
 			return t.subst_type(node.value, args)

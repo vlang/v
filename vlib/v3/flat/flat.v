@@ -151,6 +151,7 @@ pub:
 	children_count i16
 	kind           NodeKind
 	op             Op
+	is_mut         bool
 }
 
 // FlatAst represents flat ast data used by flat.

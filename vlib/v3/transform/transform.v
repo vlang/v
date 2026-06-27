@@ -215,7 +215,10 @@ pub fn transform_with_used_opt(mut a flat.FlatAst, tc &types.TypeChecker, used_f
 		// next power of two, wasting ~40MB, and each doubling briefly holds both the old and
 		// new arrays — the dominant peak-RSS contributor under -gc none). The serial path is
 		// latency-sensitive and does not clone worker ASTs, so let it grow naturally.
-		reserve_nodes := a.nodes.len * 7 / 4 - a.nodes.cap
+		// Nodes grow a bit less than children on large compiler inputs. Keeping their
+		// reserve below the next power-of-two cliff avoids retaining a mostly-empty
+		// doubled nodes array through annotate/CGen.
+		reserve_nodes := a.nodes.len * 5 / 3 - a.nodes.cap
 		if reserve_nodes > 0 {
 			unsafe { a.nodes.grow_cap(reserve_nodes) }
 		}
@@ -4842,9 +4845,12 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 }
 
 // transform_string_interp transforms transform string interp data for transform.
-fn (mut t Transformer) transform_string_interp(_id flat.NodeId, node flat.Node) flat.NodeId {
+fn (mut t Transformer) transform_string_interp(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count == 0 {
 		return t.make_string_literal('')
+	}
+	if t.string_interp_has_unresolved_generic_part(node) {
+		return id
 	}
 	// Some parts (arrays, optionals) lower into a prelude pushed onto pending_stmts, which
 	// runs before the containing statement. If such a part follows a part with side effects,
@@ -4898,6 +4904,52 @@ fn (mut t Transformer) transform_string_interp(_id flat.NodeId, node flat.Node) 
 	}
 	t.a.nodes[int(result)].typ = 'string'
 	return result
+}
+
+fn (t &Transformer) string_interp_has_unresolved_generic_part(node flat.Node) bool {
+	for i in 0 .. node.children_count {
+		child_id := t.a.child(&node, i)
+		mut typ := t.node_type(child_id)
+		if typ.len == 0 {
+			typ = t.reliable_stringify_type(child_id)
+		}
+		if stringify_type_has_generic_placeholder(typ) {
+			return true
+		}
+	}
+	return false
+}
+
+fn stringify_type_has_generic_placeholder(typ string) bool {
+	clean := typ.trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	if is_generic_placeholder_type_name(clean) {
+		return true
+	}
+	if clean.starts_with('&') {
+		return stringify_type_has_generic_placeholder(clean[1..])
+	}
+	if clean.starts_with('?') || clean.starts_with('!') {
+		return stringify_type_has_generic_placeholder(clean[1..])
+	}
+	if clean.starts_with('...') {
+		return stringify_type_has_generic_placeholder(clean[3..])
+	}
+	if clean.starts_with('[]') {
+		return stringify_type_has_generic_placeholder(clean[2..])
+	}
+	if clean.starts_with('map[') {
+		bracket_end := clean.index(']') or { return false }
+		return stringify_type_has_generic_placeholder(clean[4..bracket_end])
+			|| stringify_type_has_generic_placeholder(clean[bracket_end + 1..])
+	}
+	if clean.starts_with('[') {
+		bracket_end := clean.index(']') or { return false }
+		return stringify_type_has_generic_placeholder(clean[bracket_end + 1..])
+	}
+	return false
 }
 
 // transform_selector_expr transforms transform selector expr data for transform.
@@ -6578,7 +6630,7 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 				}
 			}
 			if node.children_count > 0 {
-				elem_type := t.node_type(t.a.child(&node, 0))
+				elem_type := t.array_literal_elem_type(node)
 				if elem_type.len > 0 {
 					return '[]${elem_type}'
 				}
@@ -6751,6 +6803,51 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			return ''
 		}
 	}
+}
+
+fn (t &Transformer) array_literal_elem_type(node flat.Node) string {
+	if node.children_count == 0 {
+		return 'int'
+	}
+	mut elem_type := t.node_type(t.a.child(&node, 0))
+	if !is_numeric_type_name(elem_type) {
+		return elem_type
+	}
+	mut has_f32 := elem_type == 'f32'
+	mut has_f64 := elem_type == 'f64'
+	for i in 1 .. node.children_count {
+		child_type := t.node_type(t.a.child(&node, i))
+		if !is_numeric_type_name(child_type) {
+			return elem_type
+		}
+		if child_type == 'f32' {
+			has_f32 = true
+		}
+		if child_type == 'f64' {
+			has_f64 = true
+		}
+	}
+	if has_f64 {
+		return 'f64'
+	}
+	if has_f32 {
+		return 'f32'
+	}
+	return elem_type
+}
+
+fn is_numeric_type_name(name string) bool {
+	return is_integer_type_name(name) || is_float_type_name(name)
+}
+
+fn is_integer_type_name(name string) bool {
+	return name == 'int' || name == 'i8' || name == 'i16' || name == 'i64' || name == 'u8'
+		|| name == 'byte' || name == 'u16' || name == 'u32' || name == 'u64' || name == 'isize'
+		|| name == 'usize' || name == 'rune'
+}
+
+fn is_float_type_name(name string) bool {
+	return name == 'f32' || name == 'f64'
 }
 
 fn (t &Transformer) current_call_return_type(node flat.Node) string {
@@ -7048,7 +7145,7 @@ fn (mut t Transformer) build_match_chain(match_expr_id flat.NodeId, orig_expr_id
 	// (build_match_chain runs per branch, and the compiler has very large matches).
 	n_conds := if is_else { 0 } else { t.count_conds(branch) }
 	body_start_idx := n_conds
-	if !is_else && n_conds > 1 && t.match_branch_all_type_patterns(branch) {
+	if !is_else && n_conds > 1 && t.match_branch_all_type_patterns(match_expr_id, branch) {
 		return t.build_match_type_branch_chain(match_expr_id, orig_expr_id, branch, branches, idx,
 			0)
 	}
@@ -7058,7 +7155,7 @@ fn (mut t Transformer) build_match_chain(match_expr_id flat.NodeId, orig_expr_id
 	if !is_else {
 		if n_conds == 1 {
 			cond_val_id := t.a.child(&branch, 0)
-			if variant_name := t.match_type_pattern(cond_val_id) {
+			if variant_name := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) {
 				subj := t.expr_key(match_expr_id)
 				sum_name := t.sum_type_for_is_expr(t.original_expr_type(match_expr_id),
 					variant_name)
@@ -7157,7 +7254,8 @@ fn (mut t Transformer) build_match_value_chain(match_expr_id flat.NodeId, orig_e
 	branch := t.a.nodes[int(branches[idx])]
 	is_else := branch.value == 'else'
 	body_start_idx := if is_else { 0 } else { t.count_conds(branch) }
-	if !is_else && t.match_branch_all_type_patterns(branch) && t.count_conds(branch) > 1 {
+	if !is_else && t.match_branch_all_type_patterns(match_expr_id, branch)
+		&& t.count_conds(branch) > 1 {
 		return t.build_match_value_type_branch_chain(match_expr_id, orig_expr_id, branch, branches,
 			idx, 0, target_name, target_type)
 	}
@@ -7167,7 +7265,7 @@ fn (mut t Transformer) build_match_value_chain(match_expr_id flat.NodeId, orig_e
 		n_conds := t.count_conds(branch)
 		if n_conds == 1 {
 			cond_val_id := t.a.child(&branch, 0)
-			if variant_name := t.match_type_pattern(cond_val_id) {
+			if variant_name := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) {
 				subj := t.expr_key(match_expr_id)
 				sum_name := t.sum_type_for_is_expr(t.original_expr_type(match_expr_id),
 					variant_name)
@@ -7239,7 +7337,7 @@ fn (mut t Transformer) build_match_value_type_branch_chain(match_expr_id flat.No
 		}
 	}
 	cond_val_id := t.a.child(&branch, cond_idx)
-	variant_name := t.match_type_pattern(cond_val_id) or {
+	variant_name := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) or {
 		return t.build_match_value_chain(match_expr_id, orig_expr_id, branches, idx + 1,
 			target_name, target_type)
 	}
@@ -7300,7 +7398,7 @@ fn (mut t Transformer) build_match_type_branch_chain(match_expr_id flat.NodeId, 
 		}
 	}
 	cond_val_id := t.a.child(&branch, cond_idx)
-	variant_name := t.match_type_pattern(cond_val_id) or {
+	variant_name := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) or {
 		return t.build_match_chain(match_expr_id, orig_expr_id, branches, idx + 1)
 	}
 	is_start := t.a.children.len
@@ -7396,7 +7494,7 @@ fn (mut t Transformer) build_match_cond(match_expr_id flat.NodeId, branch flat.N
 	if n_conds == 1 {
 		cond_val_id := t.a.child(&branch, 0)
 		cond_val := t.a.nodes[int(cond_val_id)]
-		if variant_name := t.match_type_pattern(cond_val_id) {
+		if variant_name := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) {
 			is_start := t.a.children.len
 			t.a.children << match_expr_id
 			is_id := t.a.add_node(flat.Node{
@@ -7416,7 +7514,7 @@ fn (mut t Transformer) build_match_cond(match_expr_id flat.NodeId, branch flat.N
 	for i in 0 .. n_conds {
 		cond_val_id := t.a.child(&branch, i)
 		cond_val := t.a.nodes[int(cond_val_id)]
-		variant_name := t.match_type_pattern(cond_val_id) or { '' }
+		variant_name := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) or { '' }
 		cmp := if variant_name.len > 0 {
 			is_start := t.a.children.len
 			t.a.children << match_expr_id
@@ -7461,15 +7559,53 @@ fn (t &Transformer) match_type_pattern(cond_val_id flat.NodeId) ?string {
 	return none
 }
 
+fn (t &Transformer) match_type_pattern_for_subject(match_expr_id flat.NodeId, cond_val_id flat.NodeId) ?string {
+	if int(cond_val_id) < 0 {
+		return none
+	}
+	pattern := t.type_pattern_name(cond_val_id)
+	if pattern.len == 0 {
+		return none
+	}
+	if t.is_sum_variant(pattern) {
+		return pattern
+	}
+	subject_type := t.trim_pointer_type(t.original_expr_type(match_expr_id))
+	if t.is_interface_type_name(subject_type)
+		&& t.match_pattern_implements_interface(pattern, subject_type) {
+		return pattern
+	}
+	return none
+}
+
+fn (t &Transformer) match_pattern_implements_interface(pattern string, subject_type string) bool {
+	if !t.is_interface_type_name(subject_type) {
+		return false
+	}
+	resolved_iface := t.resolve_interface_type_name(subject_type)
+	iface := if resolved_iface.len > 0 { resolved_iface } else { subject_type }
+	if iface == 'IError' || iface.ends_with('.IError') {
+		return t.tc.named_type_compatible_with_ierror(pattern)
+	}
+	if t.tc.named_type_implements_interface(pattern, iface) {
+		return true
+	}
+	qpattern := t.tc.qualify_name(pattern)
+	if qpattern != pattern && t.tc.named_type_implements_interface(qpattern, iface) {
+		return true
+	}
+	return false
+}
+
 // match_branch_all_type_patterns supports match branch all type patterns handling for Transformer.
-fn (t &Transformer) match_branch_all_type_patterns(branch flat.Node) bool {
+fn (t &Transformer) match_branch_all_type_patterns(match_expr_id flat.NodeId, branch flat.Node) bool {
 	n_conds := t.count_conds(branch)
 	if n_conds == 0 {
 		return false
 	}
 	for i in 0 .. n_conds {
 		cond_val_id := t.a.child(&branch, i)
-		if _ := t.match_type_pattern(cond_val_id) {
+		if _ := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) {
 			continue
 		}
 		return false

@@ -240,6 +240,9 @@ fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int,
 		&& g.test_files[file_name] {
 		return true
 	}
+	if g.should_emit_ierror_method(node.value, qfn) {
+		return true
+	}
 	if g.has_used_fn_filter() && !g.used_fn_contains_in_module(node.value, module_name) {
 		return false
 	}
@@ -1295,39 +1298,31 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.cur_param_types = map[string]types.Type{}
 	g.cur_concrete_optional_params = map[string]bool{}
 	g.cur_mut_params = map[string]bool{}
+	typed_params := g.fn_node_param_types(node, module_name)
 	concrete_optional_params := g.is_specialized_generic_fn_node(node)
-	typed_params := if concrete_optional_params {
-		g.fn_node_param_types(node, module_name)
-	} else {
-		[]types.Type{}
-	}
 	mut param_idx := 0
 	for i in 0 .. node.children_count {
 		param_id := g.a.child(&node, i)
 		p := g.a.node(param_id)
-		if node_kind_id(p) == 75 {
+		if p.kind == .param {
 			param_type := if param_idx < typed_params.len {
 				typed_params[param_idx]
 			} else {
 				g.tc.parse_type(p.typ)
 			}
 			param_idx++
-			if p.value.len == 0 {
-				continue
+			if p.value.len > 0 {
+				g.cur_param_names << p.value
+				g.cur_param_type_values << param_type
+				g.cur_param_types[p.value] = param_type
+				if p.is_mut {
+					g.cur_mut_params[p.value] = true
+				}
+				if concrete_optional_params && type_is_optional_result(param_type) {
+					g.cur_concrete_optional_params[p.value] = true
+				}
+				g.tc.cur_scope.insert(p.value, param_type)
 			}
-			g.cur_param_names << p.value
-			g.cur_param_type_values << param_type
-			g.cur_param_types[p.value] = param_type
-			param_ct := g.tc.c_type(param_type)
-			if (concrete_optional_params && (param_type is types.OptionType
-				|| param_type is types.ResultType))
-				|| param_ct.starts_with('Optional_') {
-				g.cur_concrete_optional_params[p.value] = true
-			}
-			if p.op == .amp {
-				g.cur_mut_params[p.value] = true
-			}
-			g.tc.cur_scope.insert(p.value, param_type)
 		}
 	}
 	g.insert_cur_implicit_veb_ctx_param(node)
@@ -2080,6 +2075,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			mut is_c_call := false
 			mut method_name := ''
 			mut base_id := flat.NodeId(0)
+			mut emitted_callee_name := ''
 			if fn_node.kind == .selector {
 				base := g.a.child_node(fn_node, 0)
 				base_is_local := if base.kind == .ident {
@@ -2518,15 +2514,19 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						types.Type(types.void_)
 					}
 					if looked_up !is types.Void && fn_type_from(looked_up) != none {
-						g.write(c_name(fn_ident.value))
+						emitted_callee_name = c_name(fn_ident.value)
+						g.write(emitted_callee_name)
 					} else if call_key in g.tc.fn_ret_types || call_key in g.tc.fn_param_types {
-						g.write(g.direct_call_name_for_call(id, call_key))
+						emitted_callee_name = g.direct_call_name_for_call(id, call_key)
+						g.write(emitted_callee_name)
 					} else if specialized := g.specialized_generic_method_name_for_call_with_arg_count(id,
 						fn_ident.value, -1)
 					{
-						g.write(c_name(specialized))
+						emitted_callee_name = c_name(specialized)
+						g.write(emitted_callee_name)
 					} else {
-						g.write(c_name(fn_ident.value))
+						emitted_callee_name = c_name(fn_ident.value)
+						g.write(emitted_callee_name)
 					}
 				} else {
 					g.gen_expr(fn_id)
@@ -2541,6 +2541,13 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				g.call_key(id, fn_name)
 			}
 			mut param_types := g.param_types_for(actual_fn, fn_name)
+			callee_uses_specialized_generic_abi :=
+				g.call_callee_uses_specialized_generic_abi(g.a.child(&node, 0))
+			concrete_optional_args := g.call_uses_concrete_optional_params(actual_fn)
+				|| g.call_uses_concrete_optional_params(fn_name)
+				|| g.call_uses_concrete_optional_params(target_name)
+				|| g.call_uses_concrete_optional_params(emitted_callee_name)
+				|| (callee_uses_specialized_generic_abi && params_have_optional_result(param_types))
 			if param_types.len == 0 && !is_method {
 				// Calling through a function-typed value (a generic `f F` parameter or a
 				// local fn variable): the callee is not a named function, so recover the
@@ -2751,10 +2758,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					emitted_variant := !needs_addr && !is_c_call && arg_idx < param_types.len
 						&& g.gen_sum_variant_arg(arg_id, param_types[arg_idx])
 					if !emitted_variant {
-						concrete_optional_arg := !is_c_call && arg_idx < param_types.len
-							&& specialized_generic_fn_name(actual_fn)
 						if !is_c_call && arg_idx < param_types.len
-							&& g.gen_optional_arg_with_concrete_mode(arg_id, param_types[arg_idx], concrete_optional_arg) {
+							&& g.gen_optional_arg_with_abi(arg_id, param_types[arg_idx], concrete_optional_args) {
 							// handled
 						} else if !is_c_call && arg_idx < param_types.len {
 							g.gen_expr_with_expected_type(arg_id, param_types[arg_idx])
@@ -3207,6 +3212,196 @@ fn (g &FlatGen) current_param_type(name string) ?types.Type {
 		}
 	}
 	return none
+}
+
+fn (g &FlatGen) call_uses_concrete_optional_params(name string) bool {
+	if name in g.concrete_optional_abi_fns {
+		return true
+	}
+	return g.name_uses_specialized_generic_abi(name)
+}
+
+fn (g &FlatGen) name_uses_specialized_generic_abi(name string) bool {
+	if name.contains('[') && name.contains(']') {
+		return true
+	}
+	if _ := g.generic_receiver_method_call_info(name) {
+		return true
+	}
+	if name in g.tc.specialized_generic_fns {
+		return true
+	}
+	return false
+}
+
+fn (g &FlatGen) call_callee_uses_specialized_generic_abi(callee_id flat.NodeId) bool {
+	if int(callee_id) < 0 || int(callee_id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(callee_id)]
+	if node.kind == .index && node.children_count > 0 {
+		base_id := g.a.child(&node, 0)
+		base_name := g.call_target_name(base_id)
+		return g.name_uses_specialized_generic_abi(base_name) || g.generic_fn_base_known(base_name)
+	}
+	name := g.call_target_name(callee_id)
+	return g.name_uses_specialized_generic_abi(name)
+}
+
+fn (g &FlatGen) generic_fn_base_known(base string) bool {
+	mut candidates := []string{cap: 8}
+	candidates << base
+	if base.starts_with('main.') {
+		candidates << base.all_after('main.')
+	}
+	if !base.contains('.') {
+		candidates << 'main.${base}'
+	}
+	if !base.contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module !in ['', 'main', 'builtin'] {
+		candidates << '${g.tc.cur_module}.${base}'
+	}
+	short := base.all_after_last('.')
+	if short != base {
+		candidates << short
+	}
+	if base.contains('__') {
+		dotted := base.replace('__', '.')
+		candidates << dotted
+		candidates << dotted.all_after_last('.')
+		if !dotted.contains('.') {
+			candidates << 'main.${dotted}'
+		}
+	}
+	for candidate in candidates {
+		if candidate.len == 0 {
+			continue
+		}
+		if candidate in g.tc.fn_generic_params || candidate in g.tc.fn_param_type_texts
+			|| candidate in g.tc.fn_ret_type_texts {
+			return true
+		}
+	}
+	return false
+}
+
+fn type_is_optional_result(t types.Type) bool {
+	return t is types.OptionType || t is types.ResultType
+}
+
+fn params_have_optional_result(params []types.Type) bool {
+	for param in params {
+		if type_is_optional_result(param) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g FlatGen) precompute_concrete_optional_abi_fns() {
+	mut cur_module := ''
+	mut cur_file := ''
+	for node in g.a.nodes {
+		kind_id := node_kind_id(node)
+		if kind_id == 77 {
+			cur_file = node.value
+			g.tc.cur_file = cur_file
+			cur_module = ''
+			g.tc.cur_module = cur_module
+			continue
+		}
+		if kind_id == 73 {
+			cur_module = node.value
+			g.tc.cur_file = cur_file
+			g.tc.cur_module = cur_module
+			continue
+		}
+		if kind_id != 61 || !g.is_specialized_generic_fn_node(node) {
+			continue
+		}
+		params := g.fn_node_param_types_or_decl(node, cur_module)
+		if !params_have_optional_result(params) {
+			continue
+		}
+		g.register_concrete_optional_abi_fn(cur_module, node.value)
+	}
+}
+
+fn (mut g FlatGen) fn_node_param_types_or_decl(node flat.Node, module_name string) []types.Type {
+	params := g.fn_node_param_types(node, module_name)
+	if params.len > 0 {
+		return params
+	}
+	mut result := []types.Type{}
+	for i in 0 .. node.children_count {
+		child := g.a.child_node(&node, i)
+		if child.kind == .param {
+			result << g.tc.parse_type(child.typ)
+		}
+	}
+	return result
+}
+
+fn (mut g FlatGen) register_concrete_optional_abi_fn(module_name string, name string) {
+	for candidate in concrete_optional_abi_fn_name_candidates(module_name, name, g.fn_c_name_in_module(module_name,
+		name)) {
+		if candidate.len > 0 {
+			g.concrete_optional_abi_fns[candidate] = true
+		}
+	}
+}
+
+fn concrete_optional_abi_fn_name_candidates(module_name string, name string, emitted string) []string {
+	qname := qualify_name_in_module(module_name, name)
+	mut candidates := []string{cap: 8}
+	candidates << name
+	candidates << c_name(name)
+	candidates << qname
+	candidates << c_name(qname)
+	candidates << emitted
+	mut deduped := []string{cap: candidates.len}
+	for candidate in candidates {
+		if candidate.len > 0 && candidate !in deduped {
+			deduped << candidate
+		}
+	}
+	return deduped
+}
+
+fn (g &FlatGen) concrete_optional_param_type_for_expr(id flat.NodeId) ?types.Type {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return g.concrete_optional_param_type_for_expr(g.a.child(&node, 0))
+	}
+	if node.kind != .ident || node.value.len == 0 {
+		return none
+	}
+	if !(g.cur_concrete_optional_params[node.value] or { false }) {
+		return none
+	}
+	param_type := g.current_param_type(node.value) or { return none }
+	if type_is_optional_result(param_type) {
+		return param_type
+	}
+	return none
+}
+
+fn (g &FlatGen) optional_source_type_for_expr(id flat.NodeId, typ types.Type) types.Type {
+	if type_is_optional_result(typ) {
+		if param_type := g.concrete_optional_param_type_for_expr(id) {
+			return param_type
+		}
+	}
+	return typ
+}
+
+fn (mut g FlatGen) optional_type_name_for_expr(id flat.NodeId, typ types.Type) string {
+	if param_type := g.concrete_optional_param_type_for_expr(id) {
+		return g.concrete_optional_type_name(param_type)
+	}
+	return g.optional_type_name(typ)
 }
 
 // current_param_is_mut returns true when a current param originated from `mut name T`.
@@ -3758,10 +3953,10 @@ fn fn_type_param(typ types.FnType, idx int) types.Type {
 
 // gen_optional_arg emits optional arg output for c.
 fn (mut g FlatGen) gen_optional_arg(arg_id flat.NodeId, expected types.Type) bool {
-	return g.gen_optional_arg_with_concrete_mode(arg_id, expected, false)
+	return g.gen_optional_arg_with_abi(arg_id, expected, false)
 }
 
-fn (mut g FlatGen) gen_optional_arg_with_concrete_mode(arg_id flat.NodeId, expected types.Type, concrete_optional bool) bool {
+fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.Type, concrete_abi bool) bool {
 	mut base_type := types.Type(types.void_)
 	if expected is types.OptionType {
 		base_type = expected.base_type
@@ -3771,6 +3966,21 @@ fn (mut g FlatGen) gen_optional_arg_with_concrete_mode(arg_id flat.NodeId, expec
 		return false
 	}
 	if g.expr_is_optional_literal(arg_id, expected) {
+		if concrete_abi {
+			if value_id := g.optional_literal_value_id(g.collapsed_optional_literal(arg_id,
+				expected))
+			{
+				ct := g.concrete_optional_type_name(expected)
+				if base_type is types.Void {
+					g.write('(${ct}){.ok = true}')
+				} else {
+					g.write('(${ct}){.ok = true, .value = ')
+					g.gen_expr_with_expected_type(value_id, base_type)
+					g.write('}')
+				}
+				return true
+			}
+		}
 		g.gen_expr_with_expected_type(g.collapsed_optional_literal(arg_id, expected), expected)
 		return true
 	}
@@ -3786,7 +3996,11 @@ fn (mut g FlatGen) gen_optional_arg_with_concrete_mode(arg_id flat.NodeId, expec
 			return true
 		}
 	}
-	ct := g.optional_type_name_for_context(expected, concrete_optional)
+	ct := if concrete_abi {
+		g.concrete_optional_type_name(expected)
+	} else {
+		g.optional_type_name(expected)
+	}
 	if base_type is types.Void {
 		g.write('(${ct}){.ok = true}')
 		return true
@@ -3898,6 +4112,21 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		&& c_name(fn_name) !in g.tc.fn_param_types {
 		param_types = g.param_types_for(fn_name.all_after_last('.'), fn_name.all_after_last('.'))
 	}
+	callee_name := if node.children_count > 0 {
+		g.call_target_name(g.a.child(&node, 0))
+	} else {
+		''
+	}
+	callee_uses_specialized_generic_abi := if node.children_count > 0 {
+		g.call_callee_uses_specialized_generic_abi(g.a.child(&node, 0))
+	} else {
+		false
+	}
+	concrete_optional_args := g.call_uses_concrete_optional_params(fn_name)
+		|| g.call_uses_concrete_optional_params(g.direct_call_name(fn_name))
+		|| g.call_uses_concrete_optional_params(callee_name)
+		|| g.call_uses_concrete_optional_params(g.direct_call_name(callee_name))
+		|| (callee_uses_specialized_generic_abi && params_have_optional_result(param_types))
 	is_c_variadic_fn := g.tc.c_variadic_fns[fn_name] or { false }
 	is_variadic_fn := !is_c_variadic_fn && (g.tc.fn_variadic[fn_name] or { false })
 	variadic_idx := if is_variadic_fn && param_types.len > 0
@@ -4053,7 +4282,8 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			emitted_variant := !needs_addr && arg_idx < typed_param_count
 				&& g.gen_sum_variant_arg(arg_id, param_types[arg_idx])
 			if !emitted_variant {
-				if arg_idx < typed_param_count && g.gen_optional_arg(arg_id, param_types[arg_idx]) {
+				if arg_idx < typed_param_count
+					&& g.gen_optional_arg_with_abi(arg_id, param_types[arg_idx], concrete_optional_args) {
 					// handled
 				} else if arg_idx < typed_param_count {
 					g.gen_expr_with_expected_type(arg_id, param_types[arg_idx])
@@ -5102,6 +5332,9 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 			g.tc.parse_type(p.typ)
 		}
 		param_idx++
+		if concrete_optional_params && type_is_optional_result(pt) && p.value.len > 0 {
+			g.cur_concrete_optional_params[p.value] = true
+		}
 		ct := if concrete_optional_params && (pt is types.OptionType || pt is types.ResultType) {
 			g.concrete_optional_type_name(pt)
 		} else if pt is types.ArrayFixed {
@@ -5140,11 +5373,7 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 }
 
 fn (g &FlatGen) is_specialized_generic_fn_node(node flat.Node) bool {
-	return specialized_generic_fn_name(node.value)
-}
-
-fn specialized_generic_fn_name(name string) bool {
-	return name.contains('[') || name.contains('_T_')
+	return g.name_uses_specialized_generic_abi(node.value)
 }
 
 fn (mut g FlatGen) concrete_optional_type_name(t types.Type) string {

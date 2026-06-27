@@ -48,6 +48,7 @@ mut:
 	global_init_order            []string               // qualified global names, in declaration order
 	iface_impls                  map[string][]string    // interface name -> implementing concrete type names
 	iface_type_ids               map[string]int         // "${iface}::${concrete}" -> 1-based type id
+	ierror_method_emit_names     map[string]bool        // names/lowered names of concrete IError msg/code methods
 	module_init_fns              []string               // C names of module-level `init()` fns, in source order
 	module_init_fn_modules       map[string]string      // C init fn name -> V module name
 	module_imports               map[string][]string    // module -> imported modules
@@ -66,6 +67,7 @@ mut:
 	fn_ptr_types                 map[string]string // fn_ptr:ret|params -> typedef name
 	fixed_array_ret_wrappers     map[string]bool   // bare fixed-array c_type name -> has a return wrapper struct
 	emitted_fixed_array_typedefs map[string]bool   // bare fixed-array typedefs already written (shared across passes)
+	concrete_optional_abi_fns    map[string]bool   // emitted fn names whose option/result params use Optional_T ABI
 	fn_decl_param_types          map[string][]types.Type
 	fn_decl_ret_types            map[string]types.Type // fn decl name (and qualified variants) -> return type
 	struct_decl_infos            map[string]StructDeclInfo
@@ -163,6 +165,7 @@ pub fn FlatGen.new() FlatGen {
 		global_init_order:            []string{}
 		iface_impls:                  map[string][]string{}
 		iface_type_ids:               map[string]int{}
+		ierror_method_emit_names:     map[string]bool{}
 		module_init_fns:              []string{}
 		module_init_fn_modules:       map[string]string{}
 		module_imports:               map[string][]string{}
@@ -176,6 +179,7 @@ pub fn FlatGen.new() FlatGen {
 		fn_ptr_types:                 map[string]string{}
 		fixed_array_ret_wrappers:     map[string]bool{}
 		emitted_fixed_array_typedefs: map[string]bool{}
+		concrete_optional_abi_fns:    map[string]bool{}
 		fn_decl_param_types:          map[string][]types.Type{}
 		fn_decl_ret_types:            map[string]types.Type{}
 		struct_decl_infos:            map[string]StructDeclInfo{}
@@ -263,6 +267,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.global_init_order = []string{}
 	g.iface_impls = map[string][]string{}
 	g.iface_type_ids = map[string]int{}
+	g.ierror_method_emit_names = map[string]bool{}
 	g.module_init_fns = []string{}
 	g.module_init_fn_modules = map[string]string{}
 	g.module_imports = map[string][]string{}
@@ -276,6 +281,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fn_ptr_types = map[string]string{}
 	g.fixed_array_ret_wrappers = map[string]bool{}
 	g.emitted_fixed_array_typedefs = map[string]bool{}
+	g.concrete_optional_abi_fns = map[string]bool{}
 	g.fn_decl_param_types = map[string][]types.Type{}
 	g.fn_decl_ret_types = map[string]types.Type{}
 	g.struct_decl_infos = map[string]StructDeclInfo{}
@@ -314,6 +320,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.collect_shared_type_names()
 	g.precompute_embedded_fields()
 	g.precompute_param_type_index()
+	g.precompute_concrete_optional_abi_fns()
 	g.collect_interface_impls()
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
@@ -2373,6 +2380,11 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		g.expected_enum = old_expected_enum
 		return
 	}
+	if g.gen_sum_constructor_call_with_expected_type(id, node, expected) {
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
 	if g.gen_sum_value_expr(id, expected) {
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
@@ -2432,6 +2444,42 @@ fn (mut g FlatGen) gen_sum_pointer_value_expr(id flat.NodeId, expected types.Typ
 	g.gen_sum_cast_expr(sum_type, child_id)
 	g.write(', sizeof(${ct}))')
 	return true
+}
+
+fn (mut g FlatGen) gen_sum_constructor_call_with_expected_type(id flat.NodeId, node flat.Node, expected types.Type) bool {
+	_ = id
+	sum_type0 := if expected is types.Alias { expected.base_type } else { expected }
+	if sum_type0 !is types.SumType || node.kind != .call || node.children_count < 2 {
+		return false
+	}
+	sum_type := sum_type0 as types.SumType
+	callee := g.a.child_node(&node, 0)
+	if !g.call_callee_names_sum_base(callee, sum_type.name) {
+		return false
+	}
+	g.gen_sum_cast_expr(sum_type, g.a.child(&node, 1))
+	return true
+}
+
+fn (g &FlatGen) call_callee_names_sum_base(callee flat.Node, sum_name string) bool {
+	_ = g
+	base := generic_sum_base_name(sum_name)
+	short_base := base.all_after_last('.')
+	if callee.kind == .ident {
+		return callee.value == base || callee.value == short_base
+	}
+	if callee.kind == .selector {
+		return callee.value == short_base || callee.value == base
+	}
+	return false
+}
+
+fn generic_sum_base_name(name string) string {
+	bracket := name.index_u8(`[`)
+	if bracket > 0 {
+		return name[..bracket]
+	}
+	return name
 }
 
 // gen_sum_value_expr emits sum value expr output for c.
@@ -2949,7 +2997,7 @@ fn (g &FlatGen) const_ref_name(name string) string {
 		}
 		if name in g.const_vals {
 			mod := g.const_modules[name] or { '' }
-			if mod.len == 0 || mod == g.tc.cur_module
+			if mod.len == 0 || mod == g.tc.cur_module || mod == 'builtin'
 				|| (g.tc.cur_module in ['', 'main', 'builtin'] && mod in ['', 'main', 'builtin']) {
 				return g.const_primary_name(name)
 			}
@@ -3197,7 +3245,7 @@ fn (g &FlatGen) const_ident_c_name(name string) string {
 		return c_name(name)
 	}
 	mod := if name in g.const_modules { g.const_modules[name] } else { '' }
-	if mod.len > 0 && mod != 'main' && mod != 'builtin' {
+	if mod.len > 0 && mod != 'main' {
 		return c_name('${mod}.${name}')
 	}
 	if (mod == '' || mod == 'main') && name in g.const_modules {
@@ -4144,7 +4192,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.is_expr {
 			expr_id := g.a.child(&node, 0)
 			expr_type := g.tc.resolve_type(expr_id)
-			clean := types.unwrap_pointer(expr_type)
+			clean0 := types.unwrap_pointer(expr_type)
+			clean := if clean0 is types.Alias { clean0.base_type } else { clean0 }
 			if clean is types.SumType {
 				idx := g.sum_type_index(clean.name, node.value)
 				g.write('(')
@@ -4154,6 +4203,40 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					g.gen_expr(expr_id)
 					g.write('.typ == ${idx}')
+				}
+				g.write(')')
+			} else if clean is types.Interface {
+				idx := if g.is_ierror_type_name(clean.name) {
+					g.ierror_type_id_for_pattern(node.value)
+				} else {
+					g.iface_type_id(clean.name, node.value)
+				}
+				if idx == 0 {
+					g.write('0')
+					return
+				}
+				g.write('(')
+				if expr_type.is_pointer() {
+					g.gen_expr(expr_id)
+					g.write('->_typ == ${idx}')
+				} else {
+					g.gen_expr(expr_id)
+					g.write('._typ == ${idx}')
+				}
+				g.write(')')
+			} else if g.is_ierror_type_name(types.Type(clean).name()) {
+				idx := g.ierror_type_id_for_pattern(node.value)
+				if idx == 0 {
+					g.write('0')
+					return
+				}
+				g.write('(')
+				if expr_type.is_pointer() {
+					g.gen_expr(expr_id)
+					g.write('->_typ == ${idx}')
+				} else {
+					g.gen_expr(expr_id)
+					g.write('._typ == ${idx}')
 				}
 				g.write(')')
 			} else {

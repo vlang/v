@@ -2,8 +2,7 @@
 
 import os
 
-const total_steps = 7
-const temp_prefix = 'v3_test_all'
+const total_steps = 8
 const requested_vlib_tests = [
 	'vlib/builtin/string_test.v',
 	'vlib/math/math_test.v',
@@ -22,6 +21,7 @@ struct Config {
 	vexe         string
 	script_dir   string
 	repo_root    string
+	vlib_dir     string
 	tests_dir    string
 	v3_src       string
 	c99          bool
@@ -29,6 +29,20 @@ struct Config {
 	host_backend string
 	host_os      string
 	temp_prefix  string
+}
+
+struct ExampleCase {
+	path            string
+	args            []string
+	stdin           string
+	compile_flags   []string
+	mode            ExampleRunMode
+	timeout_seconds int
+}
+
+enum ExampleRunMode {
+	normal
+	gui_smoke
 }
 
 fn main() {
@@ -60,10 +74,10 @@ fn main() {
 	])
 
 	section(1, 'V3 unit tests')
-	run('${q(cfg.vexe)} -silent test ${q(cfg.script_dir)}')
+	run('${host_v_cmd(cfg)} -silent test ${q(cfg.script_dir)}')
 
 	section(2, 'Build v3')
-	run('${q(cfg.vexe)} -o ${q(v3_bin)} ${q(cfg.v3_src)}')
+	run('${host_v_cmd(cfg)} -o ${q(v3_bin)} ${q(cfg.v3_src)}')
 
 	section(3, 'Requested vlib tests')
 	for rel_path in requested_vlib_tests {
@@ -80,7 +94,10 @@ fn main() {
 	run(q(hello_c_bin))
 	cleanup_files([hello_c_bin, hello_c_bin + '.c'])
 
-	section(5, 'ARM64 self-host hello world')
+	section(5, 'Unlocked examples C oracle')
+	run_unlocked_examples(cfg, v3_bin)
+
+	section(6, 'ARM64 self-host hello world')
 	if cfg.c99 {
 		println('  Skipping ARM64 self-host in C99 mode (-c99 applies to the C backend)')
 	} else if cfg.host_backend == 'arm64' && cfg.host_os == 'macos' {
@@ -92,7 +109,7 @@ fn main() {
 		println('  Skipping ARM64 self-host on ${cfg.host_os}/${cfg.host_backend} host (Mach-O only)')
 	}
 
-	section(6, 'Self-host chain (v3->v4->v5->v6)')
+	section(7, 'Self-host chain (v3->v4->v5->v6)')
 	println('  Building v4 from v3...')
 	run('${q(v3_bin)} ${cfg.c99_flag} --no-parallel -selfhost -o ${q(v4_bin)} ${q(cfg.v3_src)}')
 	println('  Building v5 from v4...')
@@ -104,7 +121,7 @@ fn main() {
 	println('  v5.c=v6.c (${converged_size} bytes) - chain converged')
 	cleanup_files([v4_bin, v4_bin + '.c', v5_bin, v5_bin + '.c', v6_bin, v6_bin + '.c'])
 
-	section(7, 'Language feature parity')
+	section(8, 'Language feature parity')
 	lang_v := os.join_path(cfg.tests_dir, 'test_all_lang_features.v')
 	lang_out := os.join_path(cfg.tests_dir, 'test_all_lang_features.out')
 	run('${q(v3_bin)} ${cfg.c99_flag} ${q(lang_v)} -b c -o ${q(v3_lang_bin)}')
@@ -112,7 +129,7 @@ fn main() {
 	expected_out := read_text_file(lang_out)
 	assert_same_text('language feature output', v3_c_out, expected_out)
 	println('  v3 C OK (${v3_c_out.split_into_lines().len} lines)')
-	println('  ARM64 coverage is the one-generation macOS self-host smoke test in step 4')
+	println('  ARM64 coverage is the one-generation macOS self-host smoke test in the ARM64 step')
 	cleanup_files([v3_bin, v3_lang_bin, v3_lang_bin + '.c'])
 
 	println('')
@@ -132,6 +149,7 @@ fn parse_config() Config {
 		vexe:         vexe
 		script_dir:   script_dir
 		repo_root:    repo_root
+		vlib_dir:     os.join_path(repo_root, 'vlib')
 		tests_dir:    tests_dir
 		v3_src:       os.join_path(script_dir, 'v3.v')
 		c99:          c99
@@ -159,6 +177,10 @@ fn parse_args() bool {
 		}
 	}
 	return c99
+}
+
+fn host_v_cmd(cfg Config) string {
+	return '${q(cfg.vexe)} -path ${q(cfg.vlib_dir)}'
 }
 
 fn native_backend_arch() string {
@@ -213,6 +235,184 @@ fn run_output(cfg Config, cmd string) string {
 	content := read_text_file(stdout_path)
 	cleanup_files([stdout_path])
 	return content
+}
+
+fn unlocked_examples() []ExampleCase {
+	return [
+		example('examples/dump_factorial.v'),
+		example_args('examples/fibonacci.v', ['10']),
+		example('examples/fizz_buzz.v'),
+		example('examples/function_types.v'),
+		example_stdin('examples/get_raw_line.v', 'alpha\nbeta\n'),
+		example('examples/graphs/bellman-ford.v'),
+		example('examples/graphs/bfs.v'),
+		example('examples/graphs/bfs3.v'),
+		example('examples/graphs/dfs.v'),
+		example('examples/graphs/dfs2.v'),
+		example('examples/graphs/dijkstra.v'),
+		example('examples/graphs/minimal_spann_tree_prim.v'),
+		example('examples/graphs/topological_sorting_dfs.v'),
+		example('examples/graphs/topological_sorting_greedy.v'),
+		example('examples/hanoi.v'),
+		example('examples/hello_world.v'),
+		example('examples/js_hello_world.v'),
+		example_stdin('examples/mini_calculator.v', '2*(5-1)\nexit\n'),
+		example_stdin('examples/mini_calculator_recursive_descent.v', '2 * (5-1)\nexit\n'),
+		example_args('examples/primes.v', ['10']),
+		example('examples/quick_sort.v'),
+		example('examples/random_ips.v'),
+		example_args('examples/rule110.v', ['5']),
+		example('examples/rune.v'),
+		example_args('examples/spectral.v', ['10']),
+		example('examples/submodule/main.v'),
+		example('examples/sudoku.v'),
+		example('examples/tree_of_nodes.v'),
+		example('examples/vascii.v'),
+		example('examples/binary_search_tree.v'),
+		example('examples/custom_error.v'),
+		example('examples/errors.v'),
+		example_gui('examples/2048/2048.v', 5),
+		example_gui('examples/tetris/tetris.v', 5),
+		example_flags('vlib/v/tests/options/option_test.c.v', ['-autofree']),
+	]
+}
+
+fn example(path string) ExampleCase {
+	return ExampleCase{
+		path: path
+	}
+}
+
+fn example_args(path string, args []string) ExampleCase {
+	return ExampleCase{
+		path: path
+		args: args
+	}
+}
+
+fn example_stdin(path string, stdin string) ExampleCase {
+	return ExampleCase{
+		path:  path
+		stdin: stdin
+	}
+}
+
+fn example_flags(path string, flags []string) ExampleCase {
+	return ExampleCase{
+		path:          path
+		compile_flags: flags
+	}
+}
+
+fn example_gui(path string, timeout_seconds int) ExampleCase {
+	return ExampleCase{
+		path:            path
+		mode:            .gui_smoke
+		timeout_seconds: timeout_seconds
+	}
+}
+
+fn run_unlocked_examples(cfg Config, v3_bin string) {
+	examples := unlocked_examples()
+	for i, example_case in examples {
+		run_unlocked_example(cfg, v3_bin, example_case, i)
+	}
+	println('  ${examples.len} real C oracle cases compiled and ran/smoked through V3 C')
+}
+
+fn run_unlocked_example(cfg Config, v3_bin string, example_case ExampleCase, index int) {
+	src := os.join_path(cfg.repo_root, example_case.path)
+	bin := temp_path(cfg, 'example_${index}')
+	stdin_path := temp_path(cfg, 'example_${index}_stdin')
+	cleanup_files([bin, bin + '.c', stdin_path])
+	mut compile_cmd := q(v3_bin)
+	if cfg.c99_flag.len > 0 {
+		compile_cmd += ' ' + cfg.c99_flag
+	}
+	if example_case.compile_flags.len > 0 {
+		compile_cmd += ' ' + quote_args(example_case.compile_flags)
+	}
+	compile_cmd += ' ${q(src)} -b c -o ${q(bin)}'
+	compile := os.execute(compile_cmd)
+	if compile.exit_code != 0 {
+		cleanup_files([bin, bin + '.c', stdin_path])
+		print_command_failure('compile ${example_case.path}', compile_cmd, compile.output)
+	}
+	if example_case.mode == .gui_smoke {
+		run_gui_smoke_example(example_case, bin, stdin_path)
+		cleanup_files([bin, bin + '.c', stdin_path])
+		println('  OK ${example_case.path}')
+		return
+	}
+	mut run_cmd := q(bin)
+	if example_case.args.len > 0 {
+		run_cmd += ' ' + quote_args(example_case.args)
+	}
+	if example_case.stdin.len > 0 {
+		os.write_file(stdin_path, example_case.stdin) or {
+			cleanup_files([bin, bin + '.c', stdin_path])
+			fail('FAIL: failed to write stdin for ${example_case.path}: ${err}')
+		}
+		run_cmd += ' < ${q(stdin_path)}'
+	}
+	run_result := os.execute(run_cmd)
+	if run_result.exit_code != 0 {
+		cleanup_files([bin, bin + '.c', stdin_path])
+		print_command_failure('run ${example_case.path}', run_cmd, run_result.output)
+	}
+	cleanup_files([bin, bin + '.c', stdin_path])
+	println('  OK ${example_case.path}')
+}
+
+fn run_gui_smoke_example(example_case ExampleCase, bin string, stdin_path string) {
+	if example_case.args.len > 0 || example_case.stdin.len > 0 {
+		cleanup_files([bin, bin + '.c', stdin_path])
+		fail('FAIL: GUI smoke case ${example_case.path} cannot use args/stdin')
+	}
+	if example_case.timeout_seconds <= 0 {
+		cleanup_files([bin, bin + '.c', stdin_path])
+		fail('FAIL: GUI smoke case ${example_case.path} needs a positive timeout')
+	}
+	if !shell_command_exists('timeout') {
+		cleanup_files([bin, bin + '.c', stdin_path])
+		fail('FAIL: GUI smoke case ${example_case.path} requires `timeout`')
+	}
+	mut run_cmd := 'timeout ${example_case.timeout_seconds}s '
+	if os.getenv('DISPLAY').len == 0 && os.getenv('WAYLAND_DISPLAY').len == 0 {
+		if shell_command_exists('xvfb-run') {
+			run_cmd += 'xvfb-run -a '
+		} else {
+			cleanup_files([bin, bin + '.c', stdin_path])
+			fail('FAIL: GUI smoke case ${example_case.path} requires `xvfb-run` or an active display')
+		}
+	}
+	run_cmd += q(bin)
+	run_result := os.execute(run_cmd)
+	if run_result.exit_code != 0 && run_result.exit_code != 124 {
+		cleanup_files([bin, bin + '.c', stdin_path])
+		print_command_failure('run ${example_case.path}', run_cmd, run_result.output)
+	}
+}
+
+fn shell_command_exists(name string) bool {
+	return os.execute('command -v ${q(name)} >/dev/null 2>&1').exit_code == 0
+}
+
+fn quote_args(args []string) string {
+	mut quoted := []string{cap: args.len}
+	for arg in args {
+		quoted << q(arg)
+	}
+	return quoted.join(' ')
+}
+
+fn print_command_failure(label string, cmd string, output string) {
+	eprintln('FAIL: ${label}')
+	eprintln('> ${cmd}')
+	if output.len > 0 {
+		eprintln(output)
+	}
+	exit(1)
 }
 
 fn read_text_file(path string) string {

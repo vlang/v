@@ -347,7 +347,8 @@ fn (mut t Transformer) build_return_match_chain(match_expr_id flat.NodeId, orig_
 	branch := t.a.nodes[int(branches[idx])]
 	is_else := branch.value == 'else'
 	body_start_idx := if is_else { 0 } else { t.count_conds(branch) }
-	if !is_else && t.match_branch_all_type_patterns(branch) && t.count_conds(branch) > 1 {
+	if !is_else && t.match_branch_all_type_patterns(match_expr_id, branch)
+		&& t.count_conds(branch) > 1 {
 		return t.build_return_match_type_branch_chain(match_expr_id, orig_expr_id, branch,
 			branches, idx, 0, ret_typ)
 	}
@@ -357,7 +358,7 @@ fn (mut t Transformer) build_return_match_chain(match_expr_id flat.NodeId, orig_
 		n_conds := t.count_conds(branch)
 		if n_conds == 1 {
 			cond_val_id := t.a.child(&branch, 0)
-			if variant_name := t.match_type_pattern(cond_val_id) {
+			if variant_name := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) {
 				subj := t.expr_key(match_expr_id)
 				sum_name := t.find_sum_type_for_variant(variant_name)
 				if subj.len > 0 && sum_name.len > 0 {
@@ -411,7 +412,7 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 		}
 	}
 	cond_val_id := t.a.child(&branch, cond_idx)
-	variant_name := t.match_type_pattern(cond_val_id) or {
+	variant_name := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) or {
 		return t.build_return_match_chain(match_expr_id, orig_expr_id, branches, idx + 1, ret_typ)
 	}
 	is_start := t.a.children.len

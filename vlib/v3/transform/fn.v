@@ -214,6 +214,9 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type string, metho
 			}
 		}
 	} else {
+		if method_name := t.resolve_specialized_generic_receiver_method(clean_type, method) {
+			return method_name
+		}
 		direct := '${clean_type}.${method}'
 		if t.is_known_fn_name(direct) {
 			return direct
@@ -280,6 +283,33 @@ fn (t &Transformer) unique_receiver_method_suffix_match(candidates []string) ?st
 		return none
 	}
 	return found
+}
+
+fn (t &Transformer) resolve_specialized_generic_receiver_method(receiver_type string, method string) ?string {
+	base, args, ok := generic_app_parts(receiver_type)
+	if !ok || args.len == 0 {
+		return none
+	}
+	short_args := generic_type_args_short(args)
+	suffix := generic_type_suffixes(args)
+	mut candidates := []string{}
+	candidates << '${base}[${short_args}].${method}'
+	candidates << '${base}_${suffix}.${method}'
+	candidates << c_name('${base}_${suffix}.${method}')
+	if base.contains('.') {
+		module_name := base.all_before_last('.')
+		short_base := base.all_after_last('.')
+		candidates << '${short_base}[${short_args}].${method}'
+		candidates << '${short_base}_${suffix}.${method}'
+		candidates << '${module_name}.${short_base}_${suffix}.${method}'
+		candidates << c_name('${module_name}.${short_base}_${suffix}.${method}')
+	}
+	for candidate in candidates {
+		if t.is_known_fn_name(candidate) {
+			return candidate
+		}
+	}
+	return none
 }
 
 // resolve_alias_receiver_method converts resolve alias receiver method data for transform.
@@ -1600,6 +1630,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 				}
 				return t.enum_autostr_call(expr, qenum)
 			}
+			if generic_str := t.generic_struct_str_call(expr, clean_typ) {
+				return generic_str
+			}
 			if clean_typ in t.structs || clean_typ in t.sum_types {
 				mut qualified := clean_typ
 				if !clean_typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
@@ -1757,6 +1790,22 @@ fn zero_padded_decimal_width(format string) ?int {
 		return none
 	}
 	return width
+}
+
+fn (mut t Transformer) generic_struct_str_call(expr flat.NodeId, typ string) ?flat.NodeId {
+	if isnil(t.tc) || !typ.contains('[') {
+		return none
+	}
+	clean_typ := if typ.starts_with('&') { typ[1..] } else { typ }
+	if !clean_typ.ends_with(']') {
+		return none
+	}
+	info := t.tc.resolve_generic_struct_method(clean_typ, 'str') or { return none }
+	if info.return_type.name() != 'string' {
+		return none
+	}
+	selector := t.make_selector(expr, 'str', '')
+	return t.make_call_expr_typed(selector, []flat.NodeId{}, 'string')
 }
 
 // append_string builds `result = result + piece` using the runtime string concat helper.
@@ -3081,6 +3130,9 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		args := t.transform_receiver_method_args(node, base_id, method_name)
 		return t.make_call_typed(method_name, args, 'string')
 	}
+	if method == 'str' && stringify_type_has_generic_placeholder(base_type) {
+		return none
+	}
 	if base_type.starts_with('[]') && method == 'str' {
 		return t.wrap_string_conversion(t.transform_expr(base_id), base_type)
 	}
@@ -3126,12 +3178,18 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	}
 	method_name := t.resolve_receiver_method_name(base_id, method)
 	if method_name.len > 0 {
+		if t.receiver_method_name_is_open_generic(method_name) {
+			return none
+		}
 		args := t.transform_receiver_method_args(node, base_id, method_name)
 		ret_type := t.receiver_method_return_type(method_name, node.typ)
 		return t.make_call_typed(method_name, args, ret_type)
 	}
 	if !isnil(t.tc) {
 		if resolved_method := t.tc.resolved_call_name(id) {
+			if t.receiver_method_name_is_open_generic(resolved_method) {
+				return none
+			}
 			if t.is_known_fn_name(resolved_method) {
 				params := t.call_param_types(resolved_method)
 				if !t.resolved_call_uses_receiver_type(base_id, base_type, params) {
@@ -3151,6 +3209,20 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		return t.make_call_typed(sum_method, args, ret_type)
 	}
 	return none
+}
+
+fn (t &Transformer) receiver_method_name_is_open_generic(method_name string) bool {
+	if method_name.contains('.') {
+		receiver := method_name.all_before_last('.')
+		_, args, ok := generic_app_parts(receiver)
+		return ok && args.len > 0 && t.generic_args_have_placeholders(args)
+	}
+	for marker in ['_T__', '_U__', '_K__', '_V__', '_A__', '_B__', '_C__', '_X__', '_Y__', '_Z__'] {
+		if method_name.contains(marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // is_builder_receiver reports whether is builder receiver applies in transform.
