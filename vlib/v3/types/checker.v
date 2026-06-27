@@ -234,18 +234,23 @@ pub mut:
 	// Scope depth at which each method-value local was marked, so a reassignment to a
 	// non-method value only clears the marker when it dominates later uses (same-or-shallower
 	// scope); a reassignment in a deeper conditional/loop scope keeps the maybe-method marker.
-	method_value_local_depth      map[string]int
-	cur_fn_node_id                int = -1
-	expr_type_values              []Type // node_id -> complex/contextual resolved type
-	expr_type_set                 []bool
-	checking_nodes                []bool
-	diagnose_unknown_calls        bool
-	reject_unlowered_map_mutation bool
-	reject_unsupported_generics   bool
-	diagnostic_files              map[string]bool
-	cur_fn_ret_type               Type = Type(void_)
-	smartcasts                    map[string]Type
-	selfhost                      bool
+	method_value_local_depth map[string]int
+	// Local variables bound to a capturing fn literal (`cb := fn [x] () { ... }`) in the
+	// current function. v3 currently lowers captures through one global slot per literal site,
+	// so a stored/returned alias has the same escape hazard as a method value.
+	capturing_fn_literal_locals      map[string]bool
+	capturing_fn_literal_local_depth map[string]int
+	cur_fn_node_id                   int = -1
+	expr_type_values                 []Type // node_id -> complex/contextual resolved type
+	expr_type_set                    []bool
+	checking_nodes                   []bool
+	diagnose_unknown_calls           bool
+	reject_unlowered_map_mutation    bool
+	reject_unsupported_generics      bool
+	diagnostic_files                 map[string]bool
+	cur_fn_ret_type                  Type = Type(void_)
+	smartcasts                       map[string]Type
+	selfhost                         bool
 mut:
 	type_cache &TypeCache = unsafe { nil }
 }
@@ -254,58 +259,60 @@ mut:
 pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 	fs := new_scope(unsafe { nil })
 	return TypeChecker{
-		a:                          a
-		fn_ret_types:               map[string]Type{}
-		fn_param_types:             map[string][]Type{}
-		fn_ret_type_texts:          map[string]string{}
-		fn_param_type_texts:        map[string][]string{}
-		fn_type_files:              map[string]string{}
-		fn_type_modules:            map[string]string{}
-		fn_generic_params:          map[string][]string{}
-		fn_variadic:                map[string]bool{}
-		c_variadic_fns:             map[string]bool{}
-		fn_implicit_veb_ctx:        map[string]bool{}
-		structs:                    map[string][]StructField{}
-		struct_generic_params:      map[string][]string{}
-		struct_field_c_abi_fns:     map[string]string{}
-		generic_method_value_info:  map[string]CallInfo{}
-		params_structs:             map[string]bool{}
-		unions:                     map[string]bool{}
-		type_aliases:               map[string]string{}
-		type_alias_c_abi_fns:       map[string]string{}
-		sum_types:                  map[string][]string{}
-		enum_names:                 map[string]bool{}
-		enum_fields:                map[string][]string{}
-		flag_enums:                 map[string]bool{}
-		interface_names:            map[string]bool{}
-		interface_fields:           map[string][]StructField{}
-		interface_embeds:           map[string][]string{}
-		interface_abstract_methods: map[string][]string{}
-		c_globals:                  map[string]Type{}
-		const_types:                map[string]Type{}
-		const_exprs:                map[string]flat.NodeId{}
-		const_modules:              map[string]string{}
-		const_files:                map[string]string{}
-		const_suffixes:             map[string]string{}
-		imports:                    map[string]string{}
-		file_imports:               map[string]string{}
-		file_selective_imports:     map[string][]string{}
-		file_modules:               map[string]string{}
-		file_scope:                 fs
-		cur_scope:                  fs
-		resolved_call_names:        []string{len: a.nodes.len}
-		resolved_call_set:          []bool{len: a.nodes.len}
-		resolved_fn_value_names:    []string{len: a.nodes.len}
-		resolved_fn_value_set:      []bool{len: a.nodes.len}
-		method_values_by_fn:        map[int][]string{}
-		method_value_locals:        map[string]bool{}
-		method_value_local_depth:   map[string]int{}
-		expr_type_values:           []Type{len: a.nodes.len, init: Type(void_)}
-		expr_type_set:              []bool{len: a.nodes.len}
-		checking_nodes:             []bool{len: a.nodes.len}
-		diagnostic_files:           map[string]bool{}
-		smartcasts:                 map[string]Type{}
-		type_cache:                 &TypeCache{
+		a:                                a
+		fn_ret_types:                     map[string]Type{}
+		fn_param_types:                   map[string][]Type{}
+		fn_ret_type_texts:                map[string]string{}
+		fn_param_type_texts:              map[string][]string{}
+		fn_type_files:                    map[string]string{}
+		fn_type_modules:                  map[string]string{}
+		fn_generic_params:                map[string][]string{}
+		fn_variadic:                      map[string]bool{}
+		c_variadic_fns:                   map[string]bool{}
+		fn_implicit_veb_ctx:              map[string]bool{}
+		structs:                          map[string][]StructField{}
+		struct_generic_params:            map[string][]string{}
+		struct_field_c_abi_fns:           map[string]string{}
+		generic_method_value_info:        map[string]CallInfo{}
+		params_structs:                   map[string]bool{}
+		unions:                           map[string]bool{}
+		type_aliases:                     map[string]string{}
+		type_alias_c_abi_fns:             map[string]string{}
+		sum_types:                        map[string][]string{}
+		enum_names:                       map[string]bool{}
+		enum_fields:                      map[string][]string{}
+		flag_enums:                       map[string]bool{}
+		interface_names:                  map[string]bool{}
+		interface_fields:                 map[string][]StructField{}
+		interface_embeds:                 map[string][]string{}
+		interface_abstract_methods:       map[string][]string{}
+		c_globals:                        map[string]Type{}
+		const_types:                      map[string]Type{}
+		const_exprs:                      map[string]flat.NodeId{}
+		const_modules:                    map[string]string{}
+		const_files:                      map[string]string{}
+		const_suffixes:                   map[string]string{}
+		imports:                          map[string]string{}
+		file_imports:                     map[string]string{}
+		file_selective_imports:           map[string][]string{}
+		file_modules:                     map[string]string{}
+		file_scope:                       fs
+		cur_scope:                        fs
+		resolved_call_names:              []string{len: a.nodes.len}
+		resolved_call_set:                []bool{len: a.nodes.len}
+		resolved_fn_value_names:          []string{len: a.nodes.len}
+		resolved_fn_value_set:            []bool{len: a.nodes.len}
+		method_values_by_fn:              map[int][]string{}
+		method_value_locals:              map[string]bool{}
+		method_value_local_depth:         map[string]int{}
+		capturing_fn_literal_locals:      map[string]bool{}
+		capturing_fn_literal_local_depth: map[string]int{}
+		expr_type_values:                 []Type{len: a.nodes.len, init: Type(void_)}
+		expr_type_set:                    []bool{len: a.nodes.len}
+		checking_nodes:                   []bool{len: a.nodes.len}
+		diagnostic_files:                 map[string]bool{}
+		smartcasts:                       map[string]Type{}
+		type_cache:                       &TypeCache{
 			parse_entries: map[string]Type{}
 			c_entries:     map[string]string{}
 		}
@@ -1705,6 +1712,8 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				tc.cur_fn_node_id = i
 				tc.method_value_locals = map[string]bool{}
 				tc.method_value_local_depth = map[string]int{}
+				tc.capturing_fn_literal_locals = map[string]bool{}
+				tc.capturing_fn_literal_local_depth = map[string]int{}
 				tc.push_scope()
 				for pi in 0 .. node.children_count {
 					p := tc.a.child_node(&node, pi)
@@ -3043,15 +3052,18 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	if node.kind == .array_literal {
 		for i in 0 .. node.children_count {
 			tc.reject_stored_method_value(tc.a.child(&node, i))
+			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, i))
 		}
 	} else if node.kind == .map_init {
 		// children alternate key, value, key, value, ...; check the value positions.
 		for j := 1; j < node.children_count; j += 2 {
 			tc.reject_stored_method_value(tc.a.child(&node, j))
+			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, j))
 		}
 	} else if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
 		if unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) is Array {
 			tc.reject_stored_method_value(tc.a.child(&node, 1))
+			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, 1))
 		}
 	}
 
@@ -3105,6 +3117,10 @@ fn (mut tc TypeChecker) check_array_init(node flat.Node) {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.nodes[int(child_id)]
 		if child.kind == .field_init && child.value == 'init' {
+			if child.children_count > 0 {
+				tc.reject_stored_method_value(tc.a.child(&child, 0))
+				tc.reject_stored_capturing_fn_literal(tc.a.child(&child, 0))
+			}
 			tc.push_scope()
 			tc.cur_scope.insert('index', Type(int_))
 			tc.check_node(child_id)
@@ -3292,6 +3308,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		}
 		tc.insert_decl_lhs(lhs_id, expected)
 		tc.track_method_value_local(lhs_id, rhs_id)
+		tc.track_capturing_fn_literal_local(lhs_id, rhs_id)
 		i += 2
 	}
 }
@@ -3332,6 +3349,28 @@ fn (mut tc TypeChecker) track_method_value_local(lhs_id flat.NodeId, rhs_id flat
 		if tc.cur_scope_depth() <= marked_depth {
 			tc.method_value_locals.delete(lhs.value)
 			tc.method_value_local_depth.delete(lhs.value)
+		}
+	}
+}
+
+// track_capturing_fn_literal_local records (or clears) a local variable bound to a capturing
+// fn literal, so a later `return cb` / `arr << cb` alias is rejected like the bare literal.
+fn (mut tc TypeChecker) track_capturing_fn_literal_local(lhs_id flat.NodeId, rhs_id flat.NodeId) {
+	if int(lhs_id) < 0 {
+		return
+	}
+	lhs := tc.a.nodes[int(lhs_id)]
+	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+		return
+	}
+	if tc.expr_is_capturing_fn_literal_value(rhs_id) {
+		tc.capturing_fn_literal_locals[lhs.value] = true
+		tc.capturing_fn_literal_local_depth[lhs.value] = tc.cur_scope_depth()
+	} else if lhs.value in tc.capturing_fn_literal_locals {
+		marked_depth := tc.capturing_fn_literal_local_depth[lhs.value] or { 0 }
+		if tc.cur_scope_depth() <= marked_depth {
+			tc.capturing_fn_literal_locals.delete(lhs.value)
+			tc.capturing_fn_literal_local_depth.delete(lhs.value)
 		}
 	}
 }
@@ -3534,8 +3573,12 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 				// receiver slot, which the next evaluation of the same site overwrites — so every
 				// stored callback would use the last receiver. Reject it like the other escapes.
 				tc.reject_stored_method_value(rhs_id)
+			} else if tc.expr_is_capturing_fn_literal_value(rhs_id)
+				&& !tc.lvalue_is_local_var(lhs_id) {
+				tc.reject_stored_capturing_fn_literal(rhs_id)
 			} else {
 				tc.track_method_value_local(lhs_id, rhs_id)
+				tc.track_capturing_fn_literal_local(lhs_id, rhs_id)
 			}
 		}
 		i += 2
@@ -3645,6 +3688,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	// return c.report }`); reject it rather than emitting invalid C.
 	for i in 0 .. node.children_count {
 		tc.reject_stored_method_value(tc.a.child(&node, i))
+		tc.reject_stored_capturing_fn_literal(tc.a.child(&node, i))
 	}
 	expected := tc.cur_fn_ret_type
 	if expected is Void {
@@ -4342,9 +4386,8 @@ fn (mut tc TypeChecker) resolve_generic_call_info(fn_node flat.Node) ?CallInfo {
 		return none
 	}
 	base_id := tc.a.child(&fn_node, 0)
-	type_arg_id := tc.a.child(&fn_node, 1)
-	type_arg := tc.generic_call_type_arg_name(type_arg_id)
-	if type_arg.len == 0 {
+	type_args := tc.generic_call_type_arg_names(fn_node)
+	if type_args.len == 0 {
 		return none
 	}
 	base_node := tc.a.nodes[int(base_id)]
@@ -4356,7 +4399,7 @@ fn (mut tc TypeChecker) resolve_generic_call_info(fn_node flat.Node) ?CallInfo {
 		if type_name.len > 0 {
 			call_name := '${type_name}.${base_node.value}'
 			if call_name in tc.fn_ret_types {
-				if info := tc.explicit_generic_call_info(call_name, true, [type_arg]) {
+				if info := tc.explicit_generic_call_info(call_name, true, type_args) {
 					return info
 				}
 				return tc.call_info(call_name, true)
@@ -4382,7 +4425,7 @@ fn (mut tc TypeChecker) resolve_generic_call_info(fn_node flat.Node) ?CallInfo {
 			name:          call_name
 			params:        tc.fn_param_types[call_name] or { []Type{} }
 			return_type:   Type(ResultType{
-				base_type: tc.parse_type(type_arg)
+				base_type: tc.parse_type(type_args[0])
 			})
 			has_receiver:  false
 			is_variadic:   tc.fn_variadic[call_name] or { false }
@@ -4390,7 +4433,7 @@ fn (mut tc TypeChecker) resolve_generic_call_info(fn_node flat.Node) ?CallInfo {
 			params_known:  call_name in tc.fn_param_types
 		}
 	}
-	if info := tc.explicit_generic_call_info(call_name, false, [type_arg]) {
+	if info := tc.explicit_generic_call_info(call_name, false, type_args) {
 		return info
 	}
 	return tc.call_info(call_name, false)
@@ -4466,6 +4509,21 @@ fn (tc &TypeChecker) generic_call_base_name(base_node flat.Node) ?string {
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) generic_call_type_arg_names(index_node flat.Node) []string {
+	if index_node.kind != .index || index_node.children_count < 2 || index_node.value == 'range' {
+		return []string{}
+	}
+	mut args := []string{}
+	for i in 1 .. index_node.children_count {
+		arg := tc.generic_call_type_arg_name(tc.a.child(&index_node, i))
+		if arg.len == 0 {
+			return []string{}
+		}
+		args << arg
+	}
+	return args
 }
 
 fn (tc &TypeChecker) generic_call_type_arg_name(id flat.NodeId) string {
@@ -6345,6 +6403,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			// A method value stored in a struct field escapes the evaluation site (several
 			// instances from the same `Foo{cb: obj.method}` site would share one receiver).
 			tc.reject_stored_method_value(value_id)
+			tc.reject_stored_capturing_fn_literal(value_id)
 			mut expected := Type(void_)
 			if field.value.len > 0 {
 				mut found := false
@@ -6423,6 +6482,51 @@ fn (mut tc TypeChecker) reject_stored_method_value(id flat.NodeId) {
 	if tc.expr_is_method_value(id) && tc.should_diagnose(id) {
 		tc.record_error(.assignment_mismatch,
 			'a method value (`obj.method`) cannot escape its call site (no closure capture); pass it directly as a callback argument',
+			id)
+	}
+}
+
+fn (tc &TypeChecker) expr_is_capturing_fn_literal_value(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value in tc.capturing_fn_literal_locals
+		}
+		.fn_literal {
+			return tc.fn_literal_has_captures(node)
+		}
+		.cast_expr, .paren, .expr_stmt {
+			if node.children_count == 0 {
+				return false
+			}
+			return tc.expr_is_capturing_fn_literal_value(tc.a.child(&node, 0))
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (tc &TypeChecker) fn_literal_has_captures(node flat.Node) bool {
+	if node.kind != .fn_literal {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		child := tc.a.child_node(&node, i)
+		if child.kind == .ident && child.value.len > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut tc TypeChecker) reject_stored_capturing_fn_literal(id flat.NodeId) {
+	if tc.expr_is_capturing_fn_literal_value(id) && tc.should_diagnose(id) {
+		tc.record_error(.assignment_mismatch,
+			'a capturing fn literal cannot escape its call site (no closure capture); pass it directly as a callback argument',
 			id)
 	}
 }

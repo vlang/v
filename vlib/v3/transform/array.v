@@ -417,8 +417,9 @@ fn (mut t Transformer) transform_fixed_array_init_expr(node flat.Node) ?flat.Nod
 	}
 	elem_type := fixed_array_elem_type(fixed_type)
 	mut values := []flat.NodeId{cap: len_text.int()}
-	for _ in 0 .. len_text.int() {
-		values << t.transform_expr_for_type(init_id, elem_type)
+	for i in 0 .. len_text.int() {
+		indexed_init := t.substitute_ident_expr(init_id, 'index', t.make_int_literal(i))
+		values << t.transform_expr_for_type(indexed_init, elem_type)
 	}
 	return t.make_array_literal_typed(values, fixed_type)
 }
@@ -1093,11 +1094,51 @@ fn (mut t Transformer) substitute_ident(id flat.NodeId, name string, replacement
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
 		op:             node.op
+		kind_id:        node.kind_id
 		children_start: start
 		children_count: flat.child_count(new_children.len)
 		pos:            node.pos
 		value:          node.value
 		typ:            node.typ
+		generic_params: node.generic_params.clone()
+	})
+}
+
+fn (mut t Transformer) substitute_ident_expr(id flat.NodeId, name string, replacement flat.NodeId) flat.NodeId {
+	if int(id) < 0 || name.len == 0 || int(replacement) < 0 {
+		return id
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident && node.value == name {
+		return replacement
+	}
+	if node.kind == .lambda_expr && node.children_count > 1 {
+		first := t.a.child_node(&node, 0)
+		if first.kind == .ident && first.value == name {
+			return id
+		}
+	}
+	if node.children_count == 0 {
+		return id
+	}
+	mut new_children := []flat.NodeId{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		new_children << t.substitute_ident_expr(t.a.child(&node, i), name, replacement)
+	}
+	start := t.a.children.len
+	for child in new_children {
+		t.a.children << child
+	}
+	return t.a.add_node(flat.Node{
+		kind:           node.kind
+		op:             node.op
+		kind_id:        node.kind_id
+		children_start: start
+		children_count: flat.child_count(new_children.len)
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+		generic_params: node.generic_params.clone()
 	})
 }
 

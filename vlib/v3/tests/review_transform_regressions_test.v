@@ -46,6 +46,9 @@ fn test_reject_dynamic_arrays_for_fixed_array_expectations() {
 	out := run_good(v3_bin, 'good_exact_fixed_array_literal',
 		'fn take3(a [3]int) int {\n\treturn a[0] + a[1] + a[2]\n}\nfn main() {\n\tprintln(int_str(take3([1, 2, 3])))\n}\n')
 	assert out == '6'
+	indexed := run_good(v3_bin, 'good_fixed_array_init_index',
+		'fn main() {\n\ta := [4]int{init: index * index}\n\tprintln(int_str(a[0]) + "," + int_str(a[1]) + "," + int_str(a[2]) + "," + int_str(a[3]))\n}\n')
+	assert indexed == '0,1,4,9'
 }
 
 fn test_array_equality_uses_semantic_element_comparison() {

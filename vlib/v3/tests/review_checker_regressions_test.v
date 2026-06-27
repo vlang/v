@@ -57,3 +57,20 @@ fn test_restrict_synthetic_hex_fallback_receivers() {
 		"fn main() {\n\tprintln(u8(15).hex())\n\tprintln(i64(255).hex())\n\tprintln([u8(1), 15, 255].hex())\n\tprintln(char(65).hex())\n\tprintln(`A`.hex())\n\tprintln('abc'.hex())\n}\n")
 	assert out == '0f\nff\n010fff\n41\n41\n616263'
 }
+
+fn test_explicit_generic_calls_use_all_type_arguments() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_multi_explicit_generic_call',
+		"struct Pair[A, B] {\n\tleft  A\n\tright B\n}\n\nfn make_pair[A, B]() Pair[A, B] {\n\treturn Pair[A, B]{}\n}\n\nfn expect_pair(p Pair[int, string]) string {\n\treturn 'ok'\n}\n\nfn main() {\n\tp := make_pair[int, string]()\n\tprintln(expect_pair(p))\n}\n")
+	assert out == 'ok'
+}
+
+fn test_reject_escaping_capturing_fn_literals() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_return_capturing_fn_literal',
+		'fn make(x int) fn () int {\n\treturn fn [x] () int {\n\t\treturn x\n\t}\n}\nfn main() {}\n',
+		'capturing fn literal cannot escape')
+	run_bad(v3_bin, 'bad_store_capturing_fn_literal_alias',
+		'fn main() {\n\tx := 1\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\tmut cbs := []fn () int{}\n\tcbs << f\n}\n',
+		'capturing fn literal cannot escape')
+}
