@@ -1,0 +1,40 @@
+{
+   "title":"EdDSA-01: EdDSA - 25519",
+   "input":{
+      "plaintext":"This is the content.",
+      "sign":{
+         "protected":{
+            "ctyp":0
+         },
+         "signers":[
+            {
+               "key":{
+                  "kty":"OKP",
+                  "kid":"11",
+                  "crv":"Ed25519",
+                  "x_hex":"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+                  "d_hex":"9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
+               },
+               "unprotected":{
+                  "kid":"11"
+               },
+               "protected":{
+                  "alg":"EdDSA"
+               }
+            }
+         ]
+      },
+      "rng_description":"seed for signature"
+   },
+   "intermediates":{
+      "signers":[
+         {
+            "ToBeSign_hex":"85695369676E617475726543A1030043A101274054546869732069732074686520636F6E74656E742E"
+         }
+      ]
+   },
+   "output":{
+      "cbor_diag":"98([h'A10300', {}, h'546869732069732074686520636F6E74656E742E', [[h'A10127', {4: h'3131'}, h'77F3EACD11852C4BF9CB1D72FABE6B26FBA1D76092B2B5B7EC83B83557652264E69690DBC1172DDC0BF88411C0D25A507FDB247A20C40D5E245FABD3FC9EC106']]])",
+      "cbor":"D8628443A10300A054546869732069732074686520636F6E74656E742E818343A10127A104423131584077F3EACD11852C4BF9CB1D72FABE6B26FBA1D76092B2B5B7EC83B83557652264E69690DBC1172DDC0BF88411C0D25A507FDB247A20C40D5E245FABD3FC9EC106"
+   }
+}
