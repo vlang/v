@@ -718,6 +718,9 @@ fn (mut g Gen) alias_parent_concrete_types(info ast.Alias) []ast.Type {
 		ast.GenericInst {
 			return parent_sym.info.concrete_types.clone()
 		}
+		ast.Alias {
+			return g.alias_parent_concrete_types(parent_sym.info)
+		}
 		else {}
 	}
 
