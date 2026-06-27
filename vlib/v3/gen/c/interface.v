@@ -296,7 +296,7 @@ fn (g &FlatGen) ierror_interface_name() ?string {
 
 fn (g &FlatGen) is_ierror_type_name(name string) bool {
 	_ = g
-	return name == 'IError' || name.ends_with('.IError') || c_name(name) == 'IError'
+	return name == 'IError' || name == 'builtin.IError' || c_name(name) == 'IError'
 }
 
 fn (g &FlatGen) ierror_direct_method_name(concrete string, method string) ?string {

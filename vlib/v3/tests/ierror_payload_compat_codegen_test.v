@@ -112,6 +112,61 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
+fn test_selective_imported_ierror_payload_is_result_error() {
+	v3_bin := build_v3()
+
+	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_selective_custom_${os.getpid()}')
+	mod_dir := os.join_path(root, 'errmod')
+	os.mkdir_all(mod_dir) or { panic(err) }
+	os.write_file(os.join_path(mod_dir, 'errmod.v'), 'module errmod
+
+pub struct CustomError {
+	text string
+}
+
+pub fn (err CustomError) msg() string {
+	return err.text
+}
+
+pub fn (err CustomError) code() int {
+	return 77
+}
+	') or {
+		panic(err)
+	}
+
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, "import errmod { CustomError }
+
+fn fail() !int {
+	return CustomError{
+		text: 'imported'
+	}
+}
+
+fn main() {
+	fail() or {
+		assert err.msg() == 'imported'
+		assert err.code() == 77
+		println('ok')
+		return
+	}
+	println('bad')
+}
+	") or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_selective_custom_input')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}
+
 fn test_bare_ierror_payload_is_not_call_argument_result_value() {
 	v3_bin := build_v3()
 	run_bad_ierror_payload(v3_bin, 'bad_call_arg', "struct CustomError {

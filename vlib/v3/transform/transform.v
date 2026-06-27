@@ -3191,7 +3191,7 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 // is_ierror_type reports whether is ierror type applies in transform.
 fn (t &Transformer) is_ierror_type(name string) bool {
 	clean := t.trim_pointer_type(t.normalize_type_alias(name))
-	return clean == 'IError' || clean.ends_with('.IError')
+	return clean == 'IError' || clean == 'builtin.IError'
 }
 
 // expr_is_nil_like supports expr is nil like handling for Transformer.
@@ -5353,7 +5353,7 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 			// heap-allocated interface so the resulting pointer stays valid, rather
 			// than emitting a plain `(Interface*)x` reinterpret cast.
 			iface := t.resolve_interface_type_name(child.value)
-			if iface.len > 0 && iface.all_after_last('.') != 'IError' {
+			if iface.len > 0 && !t.is_builtin_ierror_interface_name(iface) {
 				if boxed := t.transform_interface_value_for_type(cast_arg_id, '&${child.value}') {
 					return boxed
 				}
@@ -7016,17 +7016,18 @@ fn (t &Transformer) match_branch_type_contexts(match_expr_id flat.NodeId, branch
 		return []SmartcastContext{}
 	}
 	cond_val_id := t.a.child(&branch, 0)
-	variant_name := t.match_type_pattern(cond_val_id) or { return []SmartcastContext{} }
 	subj := t.expr_key(match_expr_id)
-	sum_name := t.sum_type_for_is_expr(t.original_expr_type(match_expr_id), variant_name)
-	if subj.len == 0 || sum_name.len == 0 {
+	sc := t.match_type_smartcast_context(match_expr_id, cond_val_id) or {
+		return []SmartcastContext{}
+	}
+	if subj.len == 0 {
 		return []SmartcastContext{}
 	}
 	return [
 		SmartcastContext{
 			expr_name:     subj
-			variant_name:  variant_name
-			sum_type_name: sum_name
+			variant_name:  sc.variant_name
+			sum_type_name: sc.sum_type_name
 		},
 	]
 }
@@ -7160,17 +7161,15 @@ fn (mut t Transformer) build_match_chain(match_expr_id flat.NodeId, orig_expr_id
 	if !is_else {
 		if n_conds == 1 {
 			cond_val_id := t.a.child(&branch, 0)
-			if variant_name := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) {
+			if sc := t.match_type_smartcast_context(match_expr_id, cond_val_id) {
 				subj := t.expr_key(match_expr_id)
-				sum_name := t.sum_type_for_is_expr(t.original_expr_type(match_expr_id),
-					variant_name)
-				if subj.len > 0 && sum_name.len > 0 {
-					t.push_smartcast(subj, variant_name, sum_name)
+				if subj.len > 0 {
+					t.push_smartcast(subj, sc.variant_name, sc.sum_type_name)
 					sc_pushed++
 				}
 				orig_subj := t.expr_key(orig_expr_id)
-				if orig_subj.len > 0 && orig_subj != subj && sum_name.len > 0 {
-					t.push_smartcast(orig_subj, variant_name, sum_name)
+				if orig_subj.len > 0 && orig_subj != subj {
+					t.push_smartcast(orig_subj, sc.variant_name, sc.sum_type_name)
 					sc_pushed++
 				}
 			}
@@ -7270,17 +7269,15 @@ fn (mut t Transformer) build_match_value_chain(match_expr_id flat.NodeId, orig_e
 		n_conds := t.count_conds(branch)
 		if n_conds == 1 {
 			cond_val_id := t.a.child(&branch, 0)
-			if variant_name := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) {
+			if sc := t.match_type_smartcast_context(match_expr_id, cond_val_id) {
 				subj := t.expr_key(match_expr_id)
-				sum_name := t.sum_type_for_is_expr(t.original_expr_type(match_expr_id),
-					variant_name)
-				if subj.len > 0 && sum_name.len > 0 {
-					t.push_smartcast(subj, variant_name, sum_name)
+				if subj.len > 0 {
+					t.push_smartcast(subj, sc.variant_name, sc.sum_type_name)
 					sc_pushed++
 				}
 				orig_subj := t.expr_key(orig_expr_id)
-				if orig_subj.len > 0 && orig_subj != subj && sum_name.len > 0 {
-					t.push_smartcast(orig_subj, variant_name, sum_name)
+				if orig_subj.len > 0 && orig_subj != subj {
+					t.push_smartcast(orig_subj, sc.variant_name, sc.sum_type_name)
 					sc_pushed++
 				}
 			}
@@ -7357,15 +7354,20 @@ fn (mut t Transformer) build_match_value_type_branch_chain(match_expr_id flat.No
 	cond_id := t.transform_is_expr(is_id, t.a.nodes[int(is_id)])
 
 	mut sc_pushed := 0
+	sc := t.match_type_smartcast_context(match_expr_id, cond_val_id) or {
+		SmartcastContext{
+			variant_name:  variant_name
+			sum_type_name: ''
+		}
+	}
 	subj := t.expr_key(match_expr_id)
-	sum_name := t.sum_type_for_is_expr(t.original_expr_type(match_expr_id), variant_name)
-	if subj.len > 0 && sum_name.len > 0 {
-		t.push_smartcast(subj, variant_name, sum_name)
+	if subj.len > 0 && sc.sum_type_name.len > 0 {
+		t.push_smartcast(subj, sc.variant_name, sc.sum_type_name)
 		sc_pushed++
 	}
 	orig_subj := t.expr_key(orig_expr_id)
-	if orig_subj.len > 0 && orig_subj != subj && sum_name.len > 0 {
-		t.push_smartcast(orig_subj, variant_name, sum_name)
+	if orig_subj.len > 0 && orig_subj != subj && sc.sum_type_name.len > 0 {
+		t.push_smartcast(orig_subj, sc.variant_name, sc.sum_type_name)
 		sc_pushed++
 	}
 
@@ -7417,15 +7419,20 @@ fn (mut t Transformer) build_match_type_branch_chain(match_expr_id flat.NodeId, 
 	cond_id := t.transform_is_expr(is_id, t.a.nodes[int(is_id)])
 
 	mut sc_pushed := 0
+	sc := t.match_type_smartcast_context(match_expr_id, cond_val_id) or {
+		SmartcastContext{
+			variant_name:  variant_name
+			sum_type_name: ''
+		}
+	}
 	subj := t.expr_key(match_expr_id)
-	sum_name := t.sum_type_for_is_expr(t.original_expr_type(match_expr_id), variant_name)
-	if subj.len > 0 && sum_name.len > 0 {
-		t.push_smartcast(subj, variant_name, sum_name)
+	if subj.len > 0 && sc.sum_type_name.len > 0 {
+		t.push_smartcast(subj, sc.variant_name, sc.sum_type_name)
 		sc_pushed++
 	}
 	orig_subj := t.expr_key(orig_expr_id)
-	if orig_subj.len > 0 && orig_subj != subj && sum_name.len > 0 {
-		t.push_smartcast(orig_subj, variant_name, sum_name)
+	if orig_subj.len > 0 && orig_subj != subj && sc.sum_type_name.len > 0 {
+		t.push_smartcast(orig_subj, sc.variant_name, sc.sum_type_name)
 		sc_pushed++
 	}
 
@@ -7572,14 +7579,36 @@ fn (t &Transformer) match_type_pattern_for_subject(match_expr_id flat.NodeId, co
 	if pattern.len == 0 {
 		return none
 	}
-	if t.is_sum_variant(pattern) {
-		return pattern
-	}
 	subject_type := t.trim_pointer_type(t.original_expr_type(match_expr_id))
 	if t.is_interface_type_name(subject_type) {
 		return t.resolve_interface_pattern(pattern, subject_type)
 	}
+	if t.is_sum_variant(pattern) {
+		return pattern
+	}
 	return none
+}
+
+fn (t &Transformer) match_type_smartcast_context(match_expr_id flat.NodeId, cond_val_id flat.NodeId) ?SmartcastContext {
+	variant_name := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) or { return none }
+	subject_type := t.trim_pointer_type(t.original_expr_type(match_expr_id))
+	sum_name := if t.is_interface_type_name(subject_type) {
+		resolved := t.resolve_interface_type_name(subject_type)
+		if resolved.len > 0 {
+			resolved
+		} else {
+			subject_type
+		}
+	} else {
+		t.sum_type_for_is_expr(subject_type, variant_name)
+	}
+	if sum_name.len == 0 {
+		return none
+	}
+	return SmartcastContext{
+		variant_name:  variant_name
+		sum_type_name: sum_name
+	}
 }
 
 fn (t &Transformer) match_pattern_implements_interface(pattern string, subject_type string) bool {
@@ -7593,7 +7622,7 @@ fn (t &Transformer) resolve_interface_pattern(pattern string, subject_type strin
 	resolved_iface := t.resolve_interface_type_name(subject_type)
 	iface := if resolved_iface.len > 0 { resolved_iface } else { subject_type }
 	for candidate in t.interface_pattern_candidates(pattern) {
-		if iface == 'IError' || iface.ends_with('.IError') {
+		if t.is_builtin_ierror_interface_name(iface) {
 			if t.tc.named_type_compatible_with_ierror(candidate) {
 				return candidate
 			}

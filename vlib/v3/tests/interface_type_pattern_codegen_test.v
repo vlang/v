@@ -71,6 +71,44 @@ pub fn classify(x Thing) string {
 	os.write_file(src, 'import ifacepkg
 import ifacepkg { Foo }
 
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+fn describe_named(n Named) string {
+	return match n {
+		User { n.name + ":" + int_str(n.age) }
+		else { n.name }
+	}
+}
+
+interface Labelled {
+	label string
+}
+
+struct Box {
+	label string
+	size  int
+}
+
+struct Other {
+	label string
+}
+
+type BoxSum = Box | Other
+
+fn describe_labelled(x Labelled) string {
+	return match x {
+		Box { x.label + ":" + int_str(x.size) }
+		else { x.label }
+	}
+}
+
 fn main() {
 	foo := ifacepkg.make_foo()
 	bar := ifacepkg.make_bar()
@@ -82,6 +120,14 @@ fn main() {
 	println((bar is Foo).str())
 	println(ifacepkg.classify(foo))
 	println(ifacepkg.classify(bar))
+	println(describe_named(User{
+		name: "Ada"
+		age: 37
+	}))
+	println(describe_labelled(Box{
+		label: "b"
+		size: 4
+	}))
 }
 ') or {
 		panic(err)
@@ -97,8 +143,10 @@ fn main() {
 	assert !c_code.contains('return x._object != NULL;'), c_code
 	assert !c_code.contains('x == Foo'), c_code
 	assert !c_code.contains('x == Bar'), c_code
+	assert !c_code.contains('n.age'), c_code
+	assert !c_code.contains('x.Box'), c_code
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'true\nfalse\ntrue\nfalse\ntrue\nfalse\nfoo\nbar'
+	assert run.output.trim_space() == 'true\nfalse\ntrue\nfalse\ntrue\nfalse\nfoo\nbar\nAda:37\nb:4'
 }

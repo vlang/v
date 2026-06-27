@@ -1,6 +1,7 @@
 #!/usr/bin/env -S v
 
 import os
+import time
 
 const total_steps = 8
 const requested_vlib_tests = [
@@ -373,29 +374,61 @@ fn run_gui_smoke_example(example_case ExampleCase, bin string, stdin_path string
 		cleanup_files([bin, bin + '.c', stdin_path])
 		fail('FAIL: GUI smoke case ${example_case.path} needs a positive timeout')
 	}
-	if !shell_command_exists('timeout') {
-		cleanup_files([bin, bin + '.c', stdin_path])
-		fail('FAIL: GUI smoke case ${example_case.path} requires `timeout`')
-	}
-	mut run_cmd := 'timeout ${example_case.timeout_seconds}s '
+	mut command := bin
+	mut args := []string{}
 	if os.getenv('DISPLAY').len == 0 && os.getenv('WAYLAND_DISPLAY').len == 0 {
 		if shell_command_exists('xvfb-run') {
-			run_cmd += 'xvfb-run -a '
+			command = 'xvfb-run'
+			args = ['-a', bin]
 		} else {
 			cleanup_files([bin, bin + '.c', stdin_path])
 			fail('FAIL: GUI smoke case ${example_case.path} requires `xvfb-run` or an active display')
 		}
 	}
-	run_cmd += q(bin)
-	run_result := os.execute(run_cmd)
-	if run_result.exit_code != 0 && run_result.exit_code != 124 {
+	run_cmd := command_with_args(command, args)
+	exit_code, output := run_process_with_timeout(command, args, example_case.timeout_seconds)
+	if exit_code != 0 && exit_code != 124 {
 		cleanup_files([bin, bin + '.c', stdin_path])
-		print_command_failure('run ${example_case.path}', run_cmd, run_result.output)
+		print_command_failure('run ${example_case.path}', run_cmd, output)
 	}
 }
 
 fn shell_command_exists(name string) bool {
 	return os.execute('command -v ${q(name)} >/dev/null 2>&1').exit_code == 0
+}
+
+fn run_process_with_timeout(command string, args []string, seconds int) (int, string) {
+	mut process := os.new_process(command)
+	if args.len > 0 {
+		process.set_args(args)
+	}
+	process.set_redirect_stdio()
+	process.run()
+	mut elapsed_ms := 0
+	limit_ms := seconds * 1000
+	for process.is_alive() {
+		if elapsed_ms >= limit_ms {
+			process.signal_kill()
+			process.wait()
+			output := process.stdout_slurp() + process.stderr_slurp()
+			process.close()
+			return 124, output
+		}
+		time.sleep(50 * time.millisecond)
+		elapsed_ms += 50
+	}
+	process.wait()
+	output := process.stdout_slurp() + process.stderr_slurp()
+	exit_code := process.code
+	process.close()
+	return exit_code, output
+}
+
+fn command_with_args(command string, args []string) string {
+	if args.len == 0 {
+		return q(command)
+	}
+	return q(command) + ' ' + quote_args(args)
 }
 
 fn quote_args(args []string) string {

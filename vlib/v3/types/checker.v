@@ -4240,7 +4240,9 @@ fn (tc &TypeChecker) invalid_ierror_return_expr_type_name(id flat.NodeId, expect
 		}
 		.struct_init {
 			concrete := tc.resolve_unqualified_builtin_error_struct_name(node.value) or {
-				tc.qualify_name(node.value)
+				tc.resolve_selective_import_type_symbol(node.value) or {
+					tc.qualify_name(node.value)
+				}
 			}
 			if !tc.named_type_compatible_with_ierror(concrete) {
 				return concrete
@@ -4313,6 +4315,10 @@ fn multi_return_payload_type(typ Type) ?MultiReturn {
 
 // check_call validates check call state for types.
 fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
+	if sum_name := tc.sum_constructor_call_name(node) {
+		tc.check_sum_constructor_call(id, node, sum_name)
+		return
+	}
 	if info := tc.resolve_call_info(id, node) {
 		if info.name.len > 0 && !is_array_dsl_call_name(info.name) {
 			tc.remember_resolved_call(id, info.name)
@@ -4340,6 +4346,148 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 	for i in 1 .. node.children_count {
 		tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
 	}
+}
+
+fn (mut tc TypeChecker) check_sum_constructor_call(id flat.NodeId, node flat.Node, sum_name string) {
+	expected := Type(SumType{
+		name: sum_name
+	})
+	tc.remember_expr_type(id, expected)
+	actual_count := node.children_count - 1
+	if actual_count != 1 {
+		if tc.should_diagnose(id) {
+			tc.record_error(.call_arg_mismatch,
+				'argument count mismatch for `${tc.call_display_name(node)}`: expected 1, got ${actual_count}',
+				id)
+		}
+		for i in 1 .. node.children_count {
+			tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
+		}
+		return
+	}
+	arg_id := tc.call_arg_value(tc.a.child(&node, 1))
+	tc.check_node(arg_id)
+	arg_type := tc.resolve_expr(arg_id, expected)
+	if !tc.type_compatible(arg_type, expected) {
+		tc.type_mismatch(.call_arg_mismatch,
+			'cannot use `${arg_type.name()}` as sum constructor payload; expected variant of `${sum_name}`',
+			id)
+	}
+}
+
+fn (tc &TypeChecker) sum_constructor_call_name(node flat.Node) ?string {
+	if node.children_count == 0 {
+		return none
+	}
+	callee_id := tc.a.child(&node, 0)
+	callee := tc.a.nodes[int(callee_id)]
+	match callee.kind {
+		.ident {
+			if resolved := tc.resolve_selective_import_type_symbol(callee.value) {
+				if sum_name := tc.known_sum_constructor_name(resolved) {
+					return sum_name
+				}
+			}
+			return tc.known_sum_constructor_name(callee.value)
+		}
+		.selector {
+			base := tc.a.child_node(callee, 0)
+			if base.kind == .ident {
+				mod_name := tc.resolve_import_alias(base.value) or { base.value }
+				return tc.known_sum_constructor_name('${mod_name}.${callee.value}')
+			}
+		}
+		.index, .prefix, .array_init {
+			type_name := tc.type_expr_name(callee_id)
+			if type_name.len > 0 {
+				return tc.known_sum_constructor_name(type_name)
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (tc &TypeChecker) type_expr_name(id flat.NodeId) string {
+	if int(id) < 0 {
+		return ''
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value
+		}
+		.selector {
+			if node.children_count == 0 {
+				return node.value
+			}
+			base := tc.type_expr_name(tc.a.child(&node, 0))
+			if base.len == 0 {
+				return node.value
+			}
+			return '${base}.${node.value}'
+		}
+		.index {
+			if node.children_count < 2 || node.value == 'range' {
+				return ''
+			}
+			base := tc.type_expr_name(tc.a.child(&node, 0))
+			if base.len == 0 {
+				return ''
+			}
+			mut args := []string{}
+			for i in 1 .. node.children_count {
+				arg := tc.type_expr_name(tc.a.child(&node, i))
+				if arg.len == 0 {
+					return ''
+				}
+				args << arg
+			}
+			return '${base}[${args.join(', ')}]'
+		}
+		.array_init {
+			if node.value.len == 0 {
+				return ''
+			}
+			return '[]${node.value}'
+		}
+		.prefix {
+			if node.children_count == 0 {
+				return ''
+			}
+			child := tc.type_expr_name(tc.a.child(&node, 0))
+			if child.len == 0 {
+				return ''
+			}
+			if node.op == .amp {
+				return '&${child}'
+			}
+			return child
+		}
+		else {
+			return ''
+		}
+	}
+}
+
+fn (tc &TypeChecker) known_sum_constructor_name(name string) ?string {
+	if name in tc.sum_types {
+		return name
+	}
+	base_name := strip_generic_args_name(name)
+	if base_name in tc.sum_types {
+		return name
+	}
+	qname := tc.qualify_name(name)
+	if qname in tc.sum_types {
+		return qname
+	}
+	qbase := strip_generic_args_name(qname)
+	if qbase in tc.sum_types {
+		return qname
+	}
+	return none
 }
 
 // should_diagnose reports whether should diagnose applies in types.
@@ -6730,6 +6878,12 @@ fn (tc &TypeChecker) call_display_name(node flat.Node) string {
 			return '${base.value}.${fn_node.value}'
 		}
 	}
+	if fn_node.kind in [.index, .prefix, .array_init] {
+		type_name := tc.type_expr_name(tc.a.child(&node, 0))
+		if type_name.len > 0 {
+			return type_name
+		}
+	}
 	return fn_node.value
 }
 
@@ -7048,6 +7202,21 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 					}
 				}
 			}
+		} else if subject_type is Interface {
+			for j in 0 .. n_conds {
+				cond_id := tc.a.child(branch, j)
+				cond := tc.a.node(cond_id)
+				if pattern := tc.match_type_pattern(cond) {
+					if concrete := tc.resolve_interface_match_pattern(pattern) {
+						if !tc.named_type_implements_interface(concrete, subject_type.name)
+							&& tc.should_diagnose(cond_id) {
+							tc.record_error(.condition_mismatch,
+								'`${pattern}` is not compatible with interface `${subject_type.name}`',
+								cond_id)
+						}
+					}
+				}
+			}
 		}
 		saved_smartcasts := clone_smartcasts(tc.smartcasts)
 		if subject_key.len > 0 && valid_string_data(subject_key) && n_conds == 1
@@ -7068,6 +7237,42 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 		tc.pop_scope()
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
 	}
+}
+
+fn (tc &TypeChecker) resolve_interface_match_pattern(pattern string) ?string {
+	for candidate in tc.interface_match_pattern_candidates(pattern) {
+		if tc.type_symbol_known(candidate) {
+			return candidate
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) interface_match_pattern_candidates(pattern string) []string {
+	mut candidates := []string{}
+	candidates << pattern
+	if !pattern.contains('.') {
+		if resolved := tc.resolve_selective_import_type_symbol(pattern) {
+			candidates << resolved
+		}
+		if tc.cur_module.len > 0 && tc.cur_module != 'main' && tc.cur_module != 'builtin' {
+			candidates << '${tc.cur_module}.${pattern}'
+		}
+	}
+	qpattern := tc.qualify_name(pattern)
+	if qpattern != pattern {
+		candidates << qpattern
+	}
+	mut result := []string{}
+	mut seen := map[string]bool{}
+	for candidate in candidates {
+		if candidate.len == 0 || candidate in seen {
+			continue
+		}
+		seen[candidate] = true
+		result << candidate
+	}
+	return result
 }
 
 // check_is_expr validates check is expr state for types.
@@ -7094,7 +7299,19 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 		}
 		return
 	}
-	if expr_type is Interface || expr_type is Unknown {
+	if expr_type is Interface {
+		if node.value.len > 0 {
+			if concrete := tc.resolve_interface_match_pattern(node.value) {
+				if !tc.named_type_implements_interface(concrete, expr_type.name)
+					&& tc.should_diagnose(id) {
+					tc.record_error(.condition_mismatch,
+						'`${node.value}` is not compatible with interface `${expr_type.name}`', id)
+				}
+			}
+		}
+		return
+	}
+	if expr_type is Unknown {
 		return
 	}
 	if tc.should_diagnose(id) {
@@ -7591,7 +7808,7 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 			return typ
 		}
 	}
-	if clean_name == 'IError' || clean_name.ends_with('.IError') {
+	if is_builtin_ierror_name(clean_name) {
 		if node.value == 'message' {
 			return Type(String{})
 		}
@@ -8456,18 +8673,22 @@ fn fn_return_canonical_type_name(typ Type) string {
 }
 
 // is_ierror_type reports whether is ierror type applies in types.
+fn is_builtin_ierror_name(name string) bool {
+	return name == 'IError' || name == 'builtin.IError'
+}
+
 fn is_ierror_type(t Type) bool {
 	if t is Alias {
-		return t.name == 'IError' || t.name.ends_with('.IError') || is_ierror_type(t.base_type)
+		return is_builtin_ierror_name(t.name) || is_ierror_type(t.base_type)
 	}
 	if t is Pointer {
 		return is_ierror_type(t.base_type)
 	}
 	if t is Struct {
-		return t.name == 'IError' || t.name.ends_with('.IError')
+		return is_builtin_ierror_name(t.name)
 	}
 	if t is Interface {
-		return t.name == 'IError' || t.name.ends_with('.IError')
+		return is_builtin_ierror_name(t.name)
 	}
 	return false
 }
@@ -9927,14 +10148,14 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			base_type: tc.parse_type(tc.type_aliases[typ])
 		})
 	}
-	if typ in tc.interface_names {
-		return Type(Interface{
-			name: typ
-		})
-	}
 	if qtyp in tc.interface_names {
 		return Type(Interface{
 			name: qtyp
+		})
+	}
+	if typ in tc.interface_names {
+		return Type(Interface{
+			name: typ
 		})
 	}
 	if typ in tc.structs {
