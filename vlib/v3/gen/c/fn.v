@@ -174,6 +174,11 @@ fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int,
 	if module_name == 'builtin' && node.value == 'exit' {
 		return true
 	}
+	// `array.pointers` is emitted as an intrinsic at call sites; the raw
+	// builtin body has an erased `array` receiver and generates invalid C.
+	if module_name == 'builtin' && node.value == 'array.pointers' {
+		return false
+	}
 	if node.value.starts_with('__anon_fn_') || qfn.contains('__anon_fn_') {
 		return true
 	}
@@ -196,6 +201,16 @@ fn (g &FlatGen) used_fn_contains(name string) bool {
 }
 
 fn (g &FlatGen) used_fn_contains_in_module(name string, module_name string) bool {
+	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin'
+		&& name.starts_with('${module_name}.') {
+		if g.used_fn_contains(name) {
+			return true
+		}
+		cfn := c_name(name)
+		if cfn != name && g.used_fn_contains(cfn) {
+			return true
+		}
+	}
 	dfn := dotted_fn_name_in_module(module_name, name)
 	qfn := qualified_fn_name_in_module(module_name, name)
 	if g.used_fn_contains(dfn) || g.used_fn_contains(qfn) {
@@ -345,6 +360,10 @@ fn (mut g FlatGen) libc_compat_call_name(name string) ?string {
 	if name == 'C.gettid' {
 		g.libc_compat_fns['gettid'] = true
 		return 'v3_gettid'
+	}
+	if name in ['C.v_filelock_lock', 'C.v_filelock_unlock'] {
+		g.libc_compat_fns['filelock'] = true
+		return c_name(name)
 	}
 	return none
 }
@@ -546,11 +565,25 @@ fn (g &FlatGen) expr_is_addressable(id flat.NodeId) bool {
 	}
 	node := g.a.nodes[int(id)]
 	return match node.kind {
-		.ident { true }
-		.index { node.children_count > 0 && g.expr_is_addressable(g.a.child(&node, 0)) }
-		.selector { node.children_count > 0 && g.expr_is_addressable(g.a.child(&node, 0)) }
-		.prefix { node.op == .mul }
-		else { false }
+		.ident {
+			true
+		}
+		.index {
+			node.value != 'range' && node.children_count > 0
+				&& g.expr_is_addressable(g.a.child(&node, 0))
+		}
+		.selector {
+			node.children_count > 0 && g.expr_is_addressable(g.a.child(&node, 0))
+		}
+		.prefix {
+			node.op == .mul
+		}
+		.paren {
+			node.children_count > 0 && g.expr_is_addressable(g.a.child(&node, 0))
+		}
+		else {
+			false
+		}
 	}
 }
 
@@ -1500,6 +1533,15 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	fn_node := g.a.child_node(&node, 0)
 	fn_name := fn_node.value
 	target_name := g.call_target_name(g.a.child(&node, 0))
+	if target_name == 'array.pointers' || fn_name == 'array.pointers' {
+		if node.children_count > 1 {
+			arg_id := g.a.child(&node, 1)
+			g.gen_array_pointers_expr(arg_id, g.tc.resolve_type(arg_id) is types.Pointer)
+		} else {
+			g.write('array_new(sizeof(voidptr), 0, 0)')
+		}
+		return
+	}
 	if target_name in ['json.decode', 'json2.decode'] {
 		ret_type := g.json_decode_result_type(g.a.child(&node, 0)) or {
 			g.call_default_return_type(id)
@@ -1540,10 +1582,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		base_id := g.a.child(fn_node, 0)
 		base_type := g.tc.resolve_type(base_id)
 		if base_type is types.Channel {
-			g.write('sync__Channel__close(')
-			g.gen_expr(base_id)
-			g.write(', array_new(sizeof(IError), 0, 0))')
-			return
+			panic('channel close should be lowered by v3 transform')
 		}
 	}
 	match fn_name {
@@ -1689,31 +1728,15 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 							g.write(', ${len_expr})')
 							return
 						}
-						if clean_type is types.Map {
-							if fn_node.value == 'delete' {
-								g.gen_map_delete(node, fn_node, clean_type, base_type)
-								return
-							} else if fn_node.value == 'clone' {
-								g.write('map__clone(')
-								g.gen_map_ref_arg(g.a.child(fn_node, 0), base_type)
-								g.write(')')
-								return
-							} else if fn_node.value == 'clear' {
-								g.write('map__clear(')
-								g.gen_map_ref_arg(g.a.child(fn_node, 0), base_type)
-								g.write(')')
-								return
-							} else if fn_node.value == 'free' {
-								g.write('map__free(')
-								if base_type is types.Pointer {
-									g.gen_expr(g.a.child(fn_node, 0))
-								} else {
-									g.write('&')
-									g.gen_expr(g.a.child(fn_node, 0))
-								}
-								g.write(')')
-								return
-							}
+						if clean_type is types.Map && fn_node.value == 'clone' {
+							g.write('map__clone(')
+							g.gen_map_ref_arg(g.a.child(fn_node, 0), base_type)
+							g.write(')')
+							return
+						}
+						if clean_type is types.Map
+							&& fn_node.value in ['delete', 'clear', 'free', 'move', 'reserve'] {
+							panic('map method `${fn_node.value}` should be lowered by v3 transform')
 						}
 						if clean_type is types.String {
 							method_name = 'string.${fn_node.value}'
@@ -1844,31 +1867,15 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						g.write(', ${len_expr})')
 						return
 					}
-					if clean_type is types.Map {
-						if fn_node.value == 'delete' {
-							g.gen_map_delete(node, fn_node, clean_type, base_type)
-							return
-						} else if fn_node.value == 'clone' {
-							g.write('map__clone(')
-							g.gen_map_ref_arg(g.a.child(fn_node, 0), base_type)
-							g.write(')')
-							return
-						} else if fn_node.value == 'clear' {
-							g.write('map__clear(')
-							g.gen_map_ref_arg(g.a.child(fn_node, 0), base_type)
-							g.write(')')
-							return
-						} else if fn_node.value == 'free' {
-							g.write('map__free(')
-							if base_type is types.Pointer {
-								g.gen_expr(g.a.child(fn_node, 0))
-							} else {
-								g.write('&')
-								g.gen_expr(g.a.child(fn_node, 0))
-							}
-							g.write(')')
-							return
-						}
+					if clean_type is types.Map && fn_node.value == 'clone' {
+						g.write('map__clone(')
+						g.gen_map_ref_arg(g.a.child(fn_node, 0), base_type)
+						g.write(')')
+						return
+					}
+					if clean_type is types.Map
+						&& fn_node.value in ['delete', 'clear', 'free', 'move', 'reserve'] {
+						panic('map method `${fn_node.value}` should be lowered by v3 transform')
 					}
 					if clean_type is types.String {
 						method_name = 'string.${fn_node.value}'
@@ -3803,6 +3810,10 @@ fn (mut g FlatGen) forward_decls() {
 			}
 		} else if kind_id == 76
 			&& (node.value.starts_with('C.v_filelock_') || node.value.starts_with('v_filelock_')) {
+			if g.libc_compat_fns['filelock']
+				&& node.value in ['C.v_filelock_lock', 'C.v_filelock_unlock', 'v_filelock_lock', 'v_filelock_unlock'] {
+				continue
+			}
 			g.tc.cur_file = cur_file
 			g.tc.cur_module = cur_module
 			ret_type := g.tc.parse_type(node.typ)

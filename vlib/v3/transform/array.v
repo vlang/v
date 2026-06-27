@@ -10,12 +10,14 @@ fn (mut t Transformer) make_array_new_call(elem_type string, len_expr flat.NodeI
 }
 
 fn (mut t Transformer) make_array_push_many_call(lhs_addr flat.NodeId, rhs flat.NodeId, rhs_type string) flat.NodeId {
+	t.mark_fn_used('array__push_many')
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'push_many')
 	return t.make_call_typed('array__push_many', arr3(lhs_addr, t.make_selector(rhs_value, 'data',
 		'voidptr'), t.make_selector(rhs_value, 'len', 'int')), 'void')
 }
 
 fn (mut t Transformer) make_array_clone_call(base_id flat.NodeId, base_type string) flat.NodeId {
+	t.mark_fn_used('array__clone')
 	receiver := t.transform_expr(base_id)
 	return t.make_call_typed('array__clone', arr1(t.runtime_addr(receiver, base_type)), base_type)
 }
@@ -304,6 +306,9 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	}
 	value_name := t.new_temp('arr_val')
 	t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
+	t.mark_fn_used('array__prepend')
+	t.mark_fn_used('array__insert')
+	t.mark_fn_used('array__needs_unique_shift')
 	return t.make_call_typed('array__prepend', arr2(t.runtime_addr(base, base_type), t.make_prefix(.amp,
 		t.make_ident(value_name))), 'void')
 }
@@ -325,6 +330,8 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	}
 	value_name := t.new_temp('arr_val')
 	t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
+	t.mark_fn_used('array__insert')
+	t.mark_fn_used('array__needs_unique_shift')
 	return t.make_call_typed('array__insert', arr3(t.runtime_addr(base, base_type), index, t.make_prefix(.amp,
 		t.make_ident(value_name))), 'void')
 }
@@ -338,6 +345,7 @@ fn (mut t Transformer) lower_array_push_many_call(node flat.Node, fn_node flat.N
 	count_id := t.a.child(&node, 2)
 	base := t.transform_lvalue(base_id)
 	base_addr := t.runtime_addr(base, base_type)
+	t.mark_fn_used('array__push_many')
 	if t.push_many_count_is_type_name(count_id) {
 		value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
 			t.wrap_sum_value(value_id, elem_type)

@@ -200,6 +200,7 @@ pub fn transform_with_used_opt(mut a flat.FlatAst, tc &types.TypeChecker, used_f
 		}
 	}
 	was_parallel := t.transform_all_dispatch(want_parallel)
+	augmented_used_fns = t.used_fns.clone()
 	return augmented_used_fns, was_parallel
 }
 
@@ -855,14 +856,15 @@ fn (t &Transformer) clone_ast_base(base_nodes int, base_children int) &flat.Flat
 }
 
 // fork_worker builds a worker Transformer that shares this transformer's
-// read-only collected maps (structs, sum types, fn return types, used_fns, …)
-// and operates on its own cloned AST `ast` and forked TypeChecker `wtc`. All
-// per-function mutable state and memoization caches are reset/private so the
-// worker can run on its own thread.
+// read-only collected maps (structs, sum types, fn return types, …) and
+// operates on its own cloned AST `ast` and forked TypeChecker `wtc`. All
+// per-function mutable state, helper-root tracking, and memoization caches are
+// reset/private so the worker can run on its own thread.
 fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Transformer {
 	mut w := *t
 	w.a = ast
 	w.tc = wtc
+	w.used_fns = t.used_fns.clone()
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
@@ -919,6 +921,11 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			t.a.nodes[it.fn_idx] = n.with_shifted_children(child_shift)
 		} else {
 			t.a.nodes[it.fn_idx] = n
+		}
+	}
+	for name, used in w.used_fns {
+		if used {
+			t.used_fns[name] = true
 		}
 	}
 }
@@ -3090,6 +3097,10 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			rhs_id := t.a.child(&node, 1)
 			rhs := t.a.nodes[int(rhs_id)]
 			if rhs.kind == .call {
+				call_typ := t.get_call_return_type(rhs_id, rhs)
+				if call_typ.len > 0 {
+					typ = call_typ
+				}
 				generic_typ := t.concrete_generic_call_return_type(rhs_id, rhs)
 				if generic_typ.len > 0 {
 					typ = generic_typ
@@ -4100,10 +4111,10 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	mut call_node := t.a.nodes[int(call_id)]
 	mut resolved_typ := t.concrete_generic_call_return_type(call_id, call_node)
 	if resolved_typ.len == 0 {
-		resolved_typ = t.current_call_return_type(call_node)
+		resolved_typ = t.get_call_return_type(call_id, call_node)
 	}
 	if resolved_typ.len == 0 {
-		resolved_typ = t.get_call_return_type(call_id, call_node)
+		resolved_typ = t.current_call_return_type(call_node)
 	}
 	if resolved_typ.len > 0 {
 		t.a.nodes[int(call_id)].typ = resolved_typ
@@ -5928,9 +5939,9 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			if concrete_typ.len > 0 {
 				return concrete_typ
 			}
-			mut ret := t.current_call_return_type(node)
+			mut ret := t.get_call_return_type(id, node)
 			if ret.len == 0 {
-				ret = t.get_call_return_type(id, node)
+				ret = t.current_call_return_type(node)
 			}
 			if ret.len > 0 {
 				return ret
@@ -6078,6 +6089,25 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 				if node.op == .plus && rhs_type == 'string' {
 					return 'string'
 				}
+				if node.op in [.plus, .minus] && lhs_type.starts_with('&')
+					&& t.is_integer_type_name(rhs_type) {
+					return lhs_type
+				}
+				if node.op == .plus && rhs_type.starts_with('&') && t.is_integer_type_name(lhs_type) {
+					return rhs_type
+				}
+				if node.op in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor] {
+					if lhs_type.len > 0 && rhs_type.len > 0 && t.is_numeric_stringify_type(lhs_type)
+						&& t.is_numeric_stringify_type(rhs_type) {
+						return promote_numeric_stringify_type(lhs_type, rhs_type)
+					}
+					if lhs_type.len > 0 && t.is_numeric_stringify_type(lhs_type) {
+						return lhs_type
+					}
+					if rhs_type.len > 0 && t.is_numeric_stringify_type(rhs_type) {
+						return rhs_type
+					}
+				}
 			}
 			return ''
 		}
@@ -6107,6 +6137,9 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 }
 
 fn (t &Transformer) current_call_return_type(node flat.Node) string {
+	if t.is_local_fn_value_call(node) {
+		return ''
+	}
 	name := t.resolve_call_name(node)
 	if name.len == 0 {
 		return ''
@@ -6131,6 +6164,22 @@ fn (t &Transformer) current_call_return_type(node flat.Node) string {
 		}
 	}
 	return ''
+}
+
+fn (t &Transformer) is_local_fn_value_call(node flat.Node) bool {
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	fn_id := t.a.child(&node, 0)
+	if int(fn_id) < 0 {
+		return false
+	}
+	fn_node := t.a.nodes[int(fn_id)]
+	if fn_node.kind != .ident || fn_node.value.len == 0 {
+		return false
+	}
+	local_type := t.var_type(fn_node.value)
+	return local_type.starts_with('fn ') || t.is_fn_pointer_type_name(local_type)
 }
 
 // const_type_name supports const type name handling for Transformer.

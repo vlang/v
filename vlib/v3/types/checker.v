@@ -1469,7 +1469,7 @@ fn (mut tc TypeChecker) insert_loop_var(id flat.NodeId, typ Type) {
 pub fn (tc &TypeChecker) expr_type(id flat.NodeId) ?Type {
 	if int(id) >= 0 {
 		node := tc.a.nodes[int(id)]
-		if node.kind == .call && node.typ.len > 0 {
+		if node.kind == .call && node.typ.len > 0 && node.typ !in ['int', 'array', 'map', 'unknown'] {
 			return tc.parse_type(node.typ)
 		}
 	}
@@ -3741,7 +3741,7 @@ fn (tc &TypeChecker) should_diagnose_unknown_call(id flat.NodeId) bool {
 }
 
 // resolve_call_info resolves resolve call info information for types.
-fn (mut tc TypeChecker) resolve_call_info(_id flat.NodeId, node flat.Node) ?CallInfo {
+fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallInfo {
 	if node.children_count == 0 {
 		return none
 	}
@@ -3812,6 +3812,13 @@ fn (mut tc TypeChecker) resolve_call_info(_id flat.NodeId, node flat.Node) ?Call
 				return_type:  Type(void_)
 				has_receiver: true
 				params_known: true
+			}
+		}
+		if clean is Array {
+			for mname in exact_array_receiver_method_candidates(clean, fn_node.value, tc.cur_module) {
+				if mname in tc.fn_ret_types {
+					return tc.call_info(mname, true)
+				}
 			}
 		}
 		if clean is Array && fn_node.value == 'clone' {
@@ -3992,9 +3999,33 @@ fn (mut tc TypeChecker) resolve_call_info(_id flat.NodeId, node flat.Node) ?Call
 					params_known: true
 				}
 			}
-			mname := '${type_name}.${fn_node.value}'
-			if mname in tc.fn_ret_types {
-				return tc.call_info(mname, true)
+			for mname in receiver_method_name_candidates(clean, fn_node.value, tc.cur_module) {
+				if mname in tc.fn_ret_types {
+					if clean_map := map_type_from_receiver(clean) {
+						if info := tc.map_builtin_call_info(base_type, clean_map, fn_node.value,
+							mname)
+						{
+							return info
+						}
+					}
+					return tc.call_info(mname, true)
+				}
+			}
+			if fixed_array := fixed_array_type_from_receiver(clean) {
+				if fn_node.value == 'pointers' {
+					if info := tc.fixed_array_dynamic_receiver_call_info(base_type, fixed_array,
+						fn_node.value)
+					{
+						return info
+					}
+					if base_type !is Pointer && !tc.expr_can_take_address(base_id) {
+						tc.record_error(.call_arg_mismatch,
+							'fixed array receiver for `pointers` must be addressable', id)
+					}
+					if info := tc.fixed_array_pointers_call_info(base_type) {
+						return info
+					}
+				}
 			}
 			if info := tc.embedded_method_call_info(type_name, fn_node.value) {
 				return info
@@ -4252,6 +4283,174 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 	}
 }
 
+fn map_type_from_receiver(t Type) ?Map {
+	if t is Map {
+		return t
+	}
+	if t is Alias {
+		return map_type_from_receiver(t.base_type)
+	}
+	return none
+}
+
+fn fixed_array_type_from_receiver(t Type) ?ArrayFixed {
+	if t is ArrayFixed {
+		return t
+	}
+	if t is Alias {
+		return fixed_array_type_from_receiver(t.base_type)
+	}
+	return none
+}
+
+fn (tc &TypeChecker) fixed_array_dynamic_receiver_call_info(base_type Type, arr ArrayFixed, method string) ?CallInfo {
+	array_type := Array{
+		elem_type: arr.elem_type
+	}
+	mut candidates := []string{}
+	push_receiver_method_candidate(mut candidates,
+		'${resolve_type_name_for_method(Type(array_type))}.${method}')
+	append_array_receiver_method_candidates(mut candidates, array_type, method, tc.cur_module)
+	for mname in candidates {
+		if mname !in tc.fn_ret_types {
+			continue
+		}
+		info := tc.call_info(mname, true)
+		mut params := info.params.clone()
+		if params.len > 0 {
+			params[0] = base_type
+		}
+		return CallInfo{
+			name:                 info.name
+			params:               params
+			return_type:          info.return_type
+			has_receiver:         info.has_receiver
+			is_variadic:          info.is_variadic
+			is_c_variadic:        info.is_c_variadic
+			params_known:         info.params_known
+			has_implicit_veb_ctx: info.has_implicit_veb_ctx
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) fixed_array_pointers_call_info(base_type Type) ?CallInfo {
+	mname := 'array.pointers'
+	return_type := tc.fn_ret_types[mname] or { return none }
+	return CallInfo{
+		name:         mname
+		params:       tarr1(base_type)
+		return_type:  return_type
+		has_receiver: true
+		params_known: true
+	}
+}
+
+fn (tc &TypeChecker) expr_can_take_address(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return true
+		}
+		.index {
+			if node.value == 'range' {
+				return false
+			}
+			if node.children_count > 0 {
+				base_id := tc.a.child(&node, 0)
+				base_type0 := unwrap_pointer(tc.resolve_type(base_id))
+				mut base_type := base_type0
+				if base_type0 is Alias {
+					base_type = base_type0.base_type
+				}
+				if base_type is Map {
+					return false
+				}
+			}
+			return node.children_count > 0 && tc.expr_can_take_address(tc.a.child(&node, 0))
+		}
+		.selector {
+			if node.children_count == 0 {
+				return false
+			}
+			return tc.expr_can_take_address(tc.a.child(&node, 0))
+		}
+		.prefix {
+			return node.op == .mul
+		}
+		.paren {
+			if node.children_count == 0 {
+				return false
+			}
+			return tc.expr_can_take_address(tc.a.child(&node, 0))
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (tc &TypeChecker) map_builtin_call_info(base_type Type, m Map, method string, mname string) ?CallInfo {
+	if !checker_is_raw_collection_method_name(mname, 'map.') {
+		return none
+	}
+	params := match method {
+		'delete' {
+			tarr2(base_type, m.key_type)
+		}
+		'clear', 'free', 'keys', 'values' {
+			tarr1(base_type)
+		}
+		'move' {
+			tarr1(base_type)
+		}
+		'reserve' {
+			tarr2(base_type, Type(u32_))
+		}
+		else {
+			return none
+		}
+	}
+
+	return_type := match method {
+		'keys' {
+			Type(Array{
+				elem_type: m.key_type
+			})
+		}
+		'values' {
+			Type(Array{
+				elem_type: m.value_type
+			})
+		}
+		'move' {
+			Type(m)
+		}
+		else {
+			Type(void_)
+		}
+	}
+
+	return CallInfo{
+		name:         mname
+		params:       params
+		return_type:  return_type
+		has_receiver: true
+		params_known: true
+	}
+}
+
+fn checker_is_raw_collection_method_name(name string, prefix string) bool {
+	if !name.starts_with(prefix) {
+		return false
+	}
+	rest := name[prefix.len..]
+	return rest.len > 0 && !rest.contains('.')
+}
+
 // is_print_style_fn_name reports whether is print style fn name applies in types.
 fn is_print_style_fn_name(name string) bool {
 	return name in ['print', 'println', 'eprint', 'eprintln', 'builtin.print', 'builtin.println',
@@ -4275,12 +4474,6 @@ fn print_style_param_accepts_string(typ Type) bool {
 fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, info0 CallInfo) {
 	info := tc.specialized_plain_generic_call_info(node, info0)
 	if node.children_count == 0 {
-		return
-	}
-	if info.name.starts_with('map.') {
-		for i in 1 .. node.children_count {
-			tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
-		}
 		return
 	}
 	if !info.params_known {
@@ -5059,9 +5252,10 @@ fn (tc &TypeChecker) module_const_receiver_method_name(base_node flat.Node, meth
 	if type_name.len == 0 {
 		return none
 	}
-	method_name := '${type_name}.${method}'
-	if method_name in tc.fn_ret_types {
-		return method_name
+	for method_name in receiver_method_name_candidates(clean, method, mod_name) {
+		if method_name in tc.fn_ret_types {
+			return method_name
+		}
 	}
 	return none
 }
@@ -5235,7 +5429,12 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 			}
 			base_name := resolve_type_name_for_method(clean_type.base_type)
 			if base_name.len > 0 {
-				return '${base_name}.${fn_node.value}' in tc.fn_ret_types
+				for base_mname in receiver_method_name_candidates(clean_type.base_type,
+					fn_node.value, tc.cur_module) {
+					if base_mname in tc.fn_ret_types {
+						return true
+					}
+				}
 			}
 		}
 		if clean_type is Struct {
@@ -8272,7 +8471,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	if kind_id == 32 {
 		return tc.lambda_expr_type(node)
 	}
-	if kind_id == 12 && node.typ.len > 0 {
+	if kind_id == 12 && node.typ.len > 0 && node.typ !in ['int', 'array', 'map', 'unknown'] {
 		return tc.parse_type(node.typ)
 	}
 	if t := tc.resolved_call_type(id) {
@@ -8300,7 +8499,8 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			return typ
 		}
 	}
-	if node.typ.len > 0 && node.typ != 'unknown' {
+	if node.typ.len > 0 && node.typ != 'unknown' && !(kind_id == 12
+		&& node.typ in ['int', 'array', 'map']) {
 		return tc.parse_type(node.typ)
 	}
 	match node.kind {
@@ -8532,11 +8732,30 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 							unknown_type('unknown return type for `${arr_mname1}`')
 						}
 					}
+					array_mname := 'array.${fn_node.value}'
+					if array_mname in tc.fn_ret_types {
+						return tc.fn_ret_types[array_mname] or {
+							unknown_type('unknown return type for `${array_mname}`')
+						}
+					}
 					return unknown_type('unknown array method `${fn_node.value}`')
 				}
 				if clean_type is Map {
 					if fn_node.value == 'clone' {
 						return base_type
+					}
+					if fn_node.value in ['delete', 'clear', 'free'] {
+						return Type(void_)
+					}
+					if fn_node.value == 'keys' {
+						return Type(Array{
+							elem_type: clean_type.key_type
+						})
+					}
+					if fn_node.value == 'values' {
+						return Type(Array{
+							elem_type: clean_type.value_type
+						})
 					}
 					return unknown_type('unknown map method `${fn_node.value}`')
 				}
@@ -8564,10 +8783,12 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 					}
 					base_name := resolve_type_name_for_method(clean_type.base_type)
 					if base_name.len > 0 {
-						base_mname := '${base_name}.${fn_node.value}'
-						if base_mname in tc.fn_ret_types {
-							return tc.fn_ret_types[base_mname] or {
-								unknown_type('unknown return type for `${base_mname}`')
+						for base_mname in receiver_method_name_candidates(clean_type.base_type,
+							fn_node.value, tc.cur_module) {
+							if base_mname in tc.fn_ret_types {
+								return tc.fn_ret_types[base_mname] or {
+									unknown_type('unknown return type for `${base_mname}`')
+								}
 							}
 						}
 					}
@@ -9377,15 +9598,198 @@ fn resolve_type_name_for_method(t Type) string {
 		return 'string'
 	}
 	if t is Array {
-		return 'array'
+		return '[]${nested_type_name(t.elem_type)}'
+	}
+	if t is ArrayFixed {
+		mut len_text := t.len.str()
+		if t.len_expr.len > 0 {
+			len_text = t.len_expr
+		}
+		return '${nested_type_name(t.elem_type)}[${len_text}]'
 	}
 	if t is Map {
-		return 'map'
+		return 'map[${nested_type_name(t.key_type)}]${nested_type_name(t.value_type)}'
 	}
 	if t is Primitive {
 		return prim_c_type_from(t.props, t.size)
 	}
 	return ''
+}
+
+fn receiver_type_name_variant(t Type, fixed_array_prefix bool, shorten_modules bool) string {
+	if t is Alias {
+		return receiver_leaf_type_name(t.name, shorten_modules)
+	}
+	if t is Struct {
+		return receiver_leaf_type_name(t.name, shorten_modules)
+	}
+	if t is Interface {
+		return receiver_leaf_type_name(t.name, shorten_modules)
+	}
+	if t is SumType {
+		return receiver_leaf_type_name(t.name, shorten_modules)
+	}
+	if t is Enum {
+		return receiver_leaf_type_name(t.name, shorten_modules)
+	}
+	if t is String {
+		return 'string'
+	}
+	if t is Array {
+		return '[]${receiver_type_name_variant(t.elem_type, fixed_array_prefix, shorten_modules)}'
+	}
+	if t is ArrayFixed {
+		mut len_text := t.len.str()
+		if t.len_expr.len > 0 {
+			len_text = t.len_expr
+		}
+		elem := receiver_type_name_variant(t.elem_type, fixed_array_prefix, shorten_modules)
+		if fixed_array_prefix {
+			return '[${len_text}]${elem}'
+		}
+		return '${elem}[${len_text}]'
+	}
+	if t is Map {
+		key := receiver_type_name_variant(t.key_type, fixed_array_prefix, shorten_modules)
+		value := receiver_type_name_variant(t.value_type, fixed_array_prefix, shorten_modules)
+		return 'map[${key}]${value}'
+	}
+	if t is Primitive {
+		return prim_c_type_from(t.props, t.size)
+	}
+	return receiver_leaf_type_name(t.name(), shorten_modules)
+}
+
+fn receiver_leaf_type_name(name string, shorten_modules bool) string {
+	if shorten_modules && name.contains('.') {
+		return name.all_after_last('.')
+	}
+	return name
+}
+
+fn receiver_type_name_variants(t Type) []string {
+	mut names := []string{}
+	push_receiver_method_candidate(mut names, receiver_type_name_variant(t, false, false))
+	push_receiver_method_candidate(mut names, receiver_type_name_variant(t, false, true))
+	push_receiver_method_candidate(mut names, receiver_type_name_variant(t, true, false))
+	push_receiver_method_candidate(mut names, receiver_type_name_variant(t, true, true))
+	return names
+}
+
+fn receiver_type_module_names(t Type) []string {
+	mut names := []string{}
+	if t is Array {
+		for name in receiver_type_module_names(t.elem_type) {
+			push_receiver_method_candidate(mut names, name)
+		}
+	} else if t is ArrayFixed {
+		for name in receiver_type_module_names(t.elem_type) {
+			push_receiver_method_candidate(mut names, name)
+		}
+	} else if t is Map {
+		for name in receiver_type_module_names(t.key_type) {
+			push_receiver_method_candidate(mut names, name)
+		}
+		for name in receiver_type_module_names(t.value_type) {
+			push_receiver_method_candidate(mut names, name)
+		}
+	} else {
+		name := t.name()
+		if name.contains('.') {
+			push_receiver_method_candidate(mut names, name.all_before_last('.'))
+		}
+	}
+	return names
+}
+
+fn push_receiver_method_candidate(mut names []string, name string) {
+	if name.len > 0 && name !in names {
+		names << name
+	}
+}
+
+fn module_can_prefix_collection_receiver(module_name string) bool {
+	return module_name.len > 0 && module_name != 'main' && module_name != 'builtin'
+}
+
+fn exact_array_receiver_method_candidates(t Array, method string, module_name string) []string {
+	mut names := []string{}
+	append_array_receiver_method_candidates(mut names, t, method, module_name)
+	return names
+}
+
+fn append_array_receiver_method_candidates(mut names []string, t Array, method string, module_name string) {
+	elem_types := receiver_type_name_variants(t.elem_type)
+	if elem_types.len == 0 {
+		return
+	}
+	for elem_type in elem_types {
+		push_receiver_method_candidate(mut names, '[]${elem_type}.${method}')
+	}
+	mut module_names := receiver_type_module_names(t.elem_type)
+	if module_can_prefix_collection_receiver(module_name) {
+		push_receiver_method_candidate(mut module_names, module_name)
+	}
+	for mod_name in module_names {
+		for elem_type in elem_types {
+			push_receiver_method_candidate(mut names, '${mod_name}.[]${elem_type}.${method}')
+		}
+	}
+}
+
+fn append_map_receiver_method_candidates(mut names []string, t Map, method string, module_name string) {
+	key_types := receiver_type_name_variants(t.key_type)
+	value_types := receiver_type_name_variants(t.value_type)
+	if key_types.len == 0 || value_types.len == 0 {
+		return
+	}
+	mut map_types := []string{}
+	for key_type in key_types {
+		for value_type in value_types {
+			push_receiver_method_candidate(mut map_types, 'map[${key_type}]${value_type}')
+		}
+	}
+	for map_type in map_types {
+		push_receiver_method_candidate(mut names, '${map_type}.${method}')
+	}
+	mut module_names := []string{}
+	if module_can_prefix_collection_receiver(module_name) {
+		push_receiver_method_candidate(mut module_names, module_name)
+	}
+	for mod_name in receiver_type_module_names(t.key_type) {
+		push_receiver_method_candidate(mut module_names, mod_name)
+	}
+	for mod_name in receiver_type_module_names(t.value_type) {
+		push_receiver_method_candidate(mut module_names, mod_name)
+	}
+	for mod_name in module_names {
+		for map_type in map_types {
+			push_receiver_method_candidate(mut names, '${mod_name}.${map_type}.${method}')
+		}
+	}
+}
+
+fn receiver_method_name_candidates(t Type, method string, module_name string) []string {
+	mut names := []string{}
+	type_name := resolve_type_name_for_method(t)
+	if type_name.len > 0 {
+		push_receiver_method_candidate(mut names, '${type_name}.${method}')
+	}
+	mut clean := t
+	if clean is Alias {
+		clean = clean.base_type
+	}
+	if clean is Array {
+		append_array_receiver_method_candidates(mut names, clean, method, module_name)
+		array_name := 'array.${method}'
+		push_receiver_method_candidate(mut names, array_name)
+	}
+	if clean is Map {
+		append_map_receiver_method_candidates(mut names, clean, method, module_name)
+		map_name := 'map.${method}'
+		push_receiver_method_candidate(mut names, map_name)
+	}
+	return names
 }
 
 fn (tc &TypeChecker) infix_operator_return_type(op flat.Op, lhs Type, rhs Type) ?Type {

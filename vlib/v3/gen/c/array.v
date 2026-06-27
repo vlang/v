@@ -299,6 +299,9 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.gen_expr(base_id)
 			g.write(')')
 		}
+		'pointers' {
+			g.gen_array_pointers_expr(base_id, is_ptr)
+		}
 		'str' {
 			amp := if is_ptr { '' } else { '&' }
 			g.write('strings__Builder__str(${amp}')
@@ -390,6 +393,57 @@ fn (mut g FlatGen) gen_array_method_call_fallback(node flat.Node, mname string, 
 	}
 }
 
+// gen_array_pointers_expr emits `array.pointers()` without compiling the erased
+// raw `array` builtin body, which has no concrete element type in v3 Cgen.
+fn (mut g FlatGen) gen_array_pointers_expr(base_id flat.NodeId, is_ptr bool) {
+	base_type := types.unwrap_pointer(g.tc.resolve_type(base_id))
+	if fixed := array_fixed_type(base_type) {
+		g.gen_fixed_array_pointers_expr(base_id, is_ptr, fixed)
+		return
+	}
+	tmp := g.tmp_count
+	g.tmp_count++
+	src_name := '__arr_ptrs_src_${tmp}'
+	res_name := '__arr_ptrs_res_${tmp}'
+	idx_name := '__arr_ptrs_i_${tmp}'
+	g.write('({ Array ${src_name} = ')
+	if is_ptr {
+		g.write('*')
+	}
+	g.gen_expr(base_id)
+	g.write('; Array ${res_name} = array_new(sizeof(voidptr), ${src_name}.len, ${src_name}.len); for (int ${idx_name} = 0; ${idx_name} < ${src_name}.len; ${idx_name}++) { ((voidptr*)${res_name}.data)[${idx_name}] = (voidptr)((u8*)${src_name}.data + ((u64)${idx_name} * (u64)${src_name}.element_size)); } ${res_name}; })')
+}
+
+fn (mut g FlatGen) gen_fixed_array_pointers_expr(base_id flat.NodeId, is_ptr bool, fixed types.ArrayFixed) {
+	tmp := g.tmp_count
+	g.tmp_count++
+	src_name := '__arr_ptrs_fixed_src_${tmp}'
+	res_name := '__arr_ptrs_res_${tmp}'
+	idx_name := '__arr_ptrs_i_${tmp}'
+	len_text := g.fixed_array_len_value(fixed)
+	if !is_ptr && !g.expr_is_addressable(base_id) {
+		panic('fixed array .pointers receiver should be addressable after checking')
+	}
+	g.write('({ ')
+	g.write('typeof(')
+	if is_ptr {
+		g.gen_expr(base_id)
+	} else {
+		g.write('&(')
+		g.gen_expr(base_id)
+		g.write(')')
+	}
+	g.write(') ${src_name} = ')
+	if is_ptr {
+		g.gen_expr(base_id)
+	} else {
+		g.write('&(')
+		g.gen_expr(base_id)
+		g.write(')')
+	}
+	g.write('; Array ${res_name} = array_new(sizeof(voidptr), ${len_text}, ${len_text}); for (int ${idx_name} = 0; ${idx_name} < ${len_text}; ${idx_name}++) { ((voidptr*)${res_name}.data)[${idx_name}] = (voidptr)&((*${src_name})[${idx_name}]); } ${res_name}; })')
+}
+
 // gen_thread_array_wait emits a call to the (lazily generated) wait function for a
 // `[]thread T` receiver. The element type carries the thread's return type in its
 // name (`thread T`); a bare `thread` denotes a void payload.
@@ -475,16 +529,6 @@ fn (mut g FlatGen) gen_map_ref_arg(base_id flat.NodeId, base_type types.Type) {
 		g.write('&')
 		g.gen_expr(base_id)
 	}
-}
-
-// gen_map_delete emits map delete output for c.
-fn (mut g FlatGen) gen_map_delete(node flat.Node, fn_node &flat.Node, m types.Map, base_type types.Type) {
-	c_key := g.tc.c_type(m.key_type)
-	g.write('map__delete(')
-	g.gen_map_ref_arg(g.a.child(fn_node, 0), base_type)
-	g.write(', &(${c_key}[]){')
-	g.gen_expr(g.a.child(&node, 1))
-	g.write('})')
 }
 
 // gen_index_assign emits index assign output for c.
