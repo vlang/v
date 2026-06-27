@@ -719,6 +719,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			if node.is_used {
 				w.uses_asserts = true
 				w.expr(node.expr)
+				w.mark_assert_generic_str_methods(node)
 				if node.extra !is ast.EmptyExpr {
 					w.expr(node.extra)
 				}
@@ -2796,6 +2797,13 @@ fn (mut w Walker) mark_string_inter_literal_generic_str_methods(node ast.StringI
 			break
 		}
 		w.mark_generic_str_method_for_type(node.expr_types[i])
+	}
+}
+
+fn (mut w Walker) mark_assert_generic_str_methods(node ast.AssertStmt) {
+	if node.expr is ast.InfixExpr {
+		w.mark_generic_str_method_for_type(node.expr.left_type)
+		w.mark_generic_str_method_for_type(node.expr.right_type)
 	}
 }
 

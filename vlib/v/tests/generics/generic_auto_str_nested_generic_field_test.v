@@ -158,6 +158,14 @@ fn test_assert_auto_str_registers_nested_generic_field_str_method() {
 	assert left == right
 }
 
+fn test_assert_preserves_exact_generic_alias_str_method_under_skip_unused() {
+	left := InterpIntBox{
+		val: 741
+	}
+	right := left
+	assert left == right
+}
+
 fn test_auto_str_dependency_walk_ignores_str_skip_fields() {
 	c := SkipContainer{
 		bad: SkippedBad[[]int]{
