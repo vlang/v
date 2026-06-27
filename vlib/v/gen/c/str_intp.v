@@ -838,6 +838,21 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 
 const simple_string_interpolation_default_precision = 987698
 
+fn (mut g Gen) simple_string_interpolation_needs_str_intp(typ ast.Type, fmt u8) bool {
+	if g.is_builtin_mod {
+		return false
+	}
+	if fmt == `s` {
+		return false
+	}
+	if typ.has_option_or_result() {
+		return false
+	}
+	resolved_typ := g.unwrap_generic(typ).clear_flags()
+	return resolved_typ in [ast.i8_type, ast.i16_type, ast.i32_type, ast.int_type, ast.i64_type,
+		ast.isize_type, ast.u8_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.usize_type]
+}
+
 fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts []u8) bool {
 	if g.is_autofree || g.pref.gc_mode == .boehm_leak {
 		// The fast `string_plus_many` lowering can leave nested temporary
@@ -850,6 +865,9 @@ fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts
 	}
 	for i in 0 .. node.exprs.len {
 		if i >= node.need_fmts.len || node.need_fmts[i] || i >= fmts.len || fmts[i] == `_` {
+			return false
+		}
+		if g.simple_string_interpolation_needs_str_intp(node.expr_types[i], fmts[i]) {
 			return false
 		}
 		normalized_expr_type := g.table.fully_unaliased_type(g.unwrap_generic(node.expr_types[i]))

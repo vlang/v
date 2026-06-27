@@ -6,6 +6,7 @@ module markused
 // Unused functions can be safely skipped by the backends to save CPU time and space.
 import v.ast
 import v.pref
+import v.util
 
 const simple_string_interpolation_default_precision = 987698
 
@@ -48,6 +49,7 @@ mut:
 	all_structs   map[string]ast.StructDecl
 
 	cur_fn                      string
+	cur_mod                     string
 	cur_fn_concrete_types       []ast.Type
 	level                       int
 	is_builtin_mod              bool
@@ -1387,12 +1389,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.mark_by_type(node.typ)
 		}
 		ast.StringInterLiteral {
-			if w.string_inter_literal_needs_runtime(node) {
-				w.uses_interp = true
-				w.uses_interp_isnil = w.uses_interp_isnil || w.string_inter_literal_uses_isnil(node)
-			} else {
-				w.mark_simple_string_inter_literal(node)
-			}
+			w.mark_string_inter_literal(node)
 			w.exprs(node.exprs)
 			for expr in node.fwidth_exprs {
 				if expr !is ast.EmptyExpr {
@@ -1585,9 +1582,11 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 	w.is_direct_array_access = node.is_direct_arr || w.pref.no_bounds_checking
 	defer { w.is_direct_array_access = last_is_direct_array_access }
 	last_cur_fn := w.cur_fn
+	last_cur_mod := w.cur_mod
 	last_cur_fn_concrete_types := w.cur_fn_concrete_types.clone()
 	defer {
 		w.cur_fn = last_cur_fn
+		w.cur_mod = last_cur_mod
 		w.cur_fn_concrete_types = last_cur_fn_concrete_types
 	}
 	if w.trace_enabled {
@@ -1657,7 +1656,9 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 		}
 	}
 	prev_cur_fn := w.cur_fn
+	prev_cur_mod := w.cur_mod
 	w.cur_fn = fkey
+	w.cur_mod = node.mod
 	w.cur_fn_concrete_types = resolved_concrete_types
 	if node.mod == 'x.json2' && node.name == 'get_decoded_sumtype_workaround'
 		&& w.has_sumtype_generic_context(resolved_concrete_types) {
@@ -1772,6 +1773,7 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 	w.stmts(node.stmts)
 	w.defer_stmts(node.defer_stmts)
 	w.cur_fn = prev_cur_fn
+	w.cur_mod = prev_cur_mod
 }
 
 fn (mut w Walker) fn_decl_with_fkey(mut node ast.FnDecl, walk_fkey string) {
@@ -2715,6 +2717,16 @@ fn (w &Walker) infer_expr_type(expr ast.Expr) ast.Type {
 	}
 }
 
+fn (mut w Walker) mark_string_inter_literal(node ast.StringInterLiteral) {
+	if w.string_inter_literal_needs_runtime(node) {
+		w.uses_interp = true
+		w.uses_interp_isnil = w.uses_interp_isnil || w.string_inter_literal_uses_isnil(node)
+		w.mark_runtime_string_inter_literal_str_dependencies(node)
+	} else {
+		w.mark_simple_string_inter_literal(node)
+	}
+}
+
 fn (mut w Walker) string_inter_literal_needs_runtime(node ast.StringInterLiteral) bool {
 	if w.pref.autofree || w.pref.gc_mode == .boehm_leak {
 		return true
@@ -2734,6 +2746,9 @@ fn (mut w Walker) string_inter_literal_needs_runtime(node ast.StringInterLiteral
 		}
 		typ := w.resolve_current_generic_type(node.expr_types[i])
 		if typ == 0 || typ == ast.void_type || typ.has_flag(.generic) {
+			return true
+		}
+		if w.simple_string_interpolation_type_needs_runtime(typ, node.fmts[i]) {
 			return true
 		}
 		normalized_expr_type := w.table.fully_unaliased_type(typ)
@@ -2776,6 +2791,21 @@ fn (mut w Walker) string_inter_literal_needs_runtime(node ast.StringInterLiteral
 	return false
 }
 
+fn (w &Walker) simple_string_interpolation_type_needs_runtime(typ ast.Type, fmt u8) bool {
+	if util.module_is_builtin(w.cur_mod) {
+		return false
+	}
+	if fmt == `s` {
+		return false
+	}
+	if typ.has_option_or_result() {
+		return false
+	}
+	resolved_typ := typ.clear_flags()
+	return resolved_typ in [ast.i8_type, ast.i16_type, ast.i32_type, ast.int_type, ast.i64_type,
+		ast.isize_type, ast.u8_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.usize_type]
+}
+
 fn (mut w Walker) string_inter_literal_uses_isnil(node ast.StringInterLiteral) bool {
 	for typ in node.expr_types {
 		resolved_typ := w.table.fully_unaliased_type(w.resolve_current_generic_type(typ))
@@ -2794,6 +2824,18 @@ fn (mut w Walker) mark_simple_string_inter_literal(node ast.StringInterLiteral) 
 	for i in 0 .. node.exprs.len {
 		if i >= node.expr_types.len {
 			break
+		}
+		typ := w.resolve_current_generic_type(node.expr_types[i])
+		if typ != 0 && typ != ast.void_type && typ != ast.string_type {
+			w.uses_str[typ] = true
+		}
+	}
+}
+
+fn (mut w Walker) mark_runtime_string_inter_literal_str_dependencies(node ast.StringInterLiteral) {
+	for i in 0 .. node.exprs.len {
+		if i >= node.expr_types.len || i >= node.fmts.len || node.fmts[i] !in [`s`, `S`] {
+			continue
 		}
 		typ := w.resolve_current_generic_type(node.expr_types[i])
 		if typ != 0 && typ != ast.void_type && typ != ast.string_type {
@@ -3549,6 +3591,7 @@ fn (mut w Walker) mark_generic_body_dependencies_in_expr(expr_ ast.Expr) {
 			w.mark_generic_body_dependencies_in_expr(expr.right)
 		}
 		ast.StringInterLiteral {
+			w.mark_string_inter_literal(expr)
 			for sub_expr in expr.exprs {
 				w.mark_generic_body_dependencies_in_expr(sub_expr)
 			}
@@ -3628,7 +3671,7 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_interp_isnil || w.auto_str_needs_isnil() {
 		w.fn_by_name('isnil')
 	}
-	if w.auto_str_needs_str_intp() {
+	if w.uses_interp || w.auto_str_needs_str_intp() {
 		w.fn_by_name('str_intp')
 		w.mark_by_sym_name('StrIntpData')
 		w.mark_by_sym_name('StrIntpMem')
