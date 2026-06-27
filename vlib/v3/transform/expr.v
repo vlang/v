@@ -17,15 +17,28 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 
 	lhs_id := t.a.children[node.children_start]
 	rhs_id := t.a.children[node.children_start + 1]
+	lhs_raw_type := t.node_type(lhs_id)
+	rhs_raw_type := t.node_type(rhs_id)
+	lhs_clean_type := t.normalize_type_alias(lhs_raw_type)
+	rhs_clean_type := t.normalize_type_alias(rhs_raw_type)
 
-	is_string := t.is_string_type(lhs_id) || t.is_string_type(rhs_id)
+	is_string := t.is_string_type(lhs_id) || t.is_string_type(rhs_id) || lhs_clean_type == '&string'
+		|| rhs_clean_type == '&string'
 
 	if !is_string {
 		return none
 	}
 
-	new_lhs := t.transform_expr(lhs_id)
-	new_rhs := t.transform_expr(rhs_id)
+	mut new_lhs := t.transform_expr(lhs_id)
+	mut new_rhs := t.transform_expr(rhs_id)
+	if lhs_clean_type == '&string' {
+		new_lhs = t.make_prefix(.mul, new_lhs)
+		t.a.nodes[int(new_lhs)].typ = 'string'
+	}
+	if rhs_clean_type == '&string' {
+		new_rhs = t.make_prefix(.mul, new_rhs)
+		t.a.nodes[int(new_rhs)].typ = 'string'
+	}
 
 	match node.op {
 		.plus {
@@ -94,8 +107,10 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	}
 	lhs_id := t.a.children[node.children_start]
 	rhs_id := t.a.children[node.children_start + 1]
-	lhs_type := t.membership_container_type(t.node_type(lhs_id))
-	rhs_type := t.membership_container_type(t.node_type(rhs_id))
+	lhs_raw_type := t.node_type(lhs_id)
+	rhs_raw_type := t.node_type(rhs_id)
+	mut lhs_type := t.membership_container_type(lhs_raw_type)
+	mut rhs_type := t.membership_container_type(rhs_raw_type)
 	if !(lhs_type.starts_with('[]') || lhs_type == 'array') || !(rhs_type.starts_with('[]')
 		|| rhs_type == 'array') {
 		return none
@@ -109,9 +124,29 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	if elem_type.len == 0 {
 		elem_type = 'int'
 	}
-	new_lhs := t.transform_expr(lhs_id)
-	new_rhs := t.transform_expr(rhs_id)
-	eq_call := if elem_type == 'string' {
+	mut new_lhs := t.transform_expr(lhs_id)
+	mut new_rhs := t.transform_expr(rhs_id)
+	new_lhs_type := t.membership_container_type(t.node_type(new_lhs))
+	new_rhs_type := t.membership_container_type(t.node_type(new_rhs))
+	if new_lhs_type.starts_with('[]') {
+		elem_type = new_lhs_type[2..]
+		lhs_type = new_lhs_type
+	} else if new_rhs_type.starts_with('[]') {
+		elem_type = new_rhs_type[2..]
+		rhs_type = new_rhs_type
+	}
+	if t.membership_container_is_pointer_array(lhs_raw_type) {
+		new_lhs = t.make_prefix(.mul, new_lhs)
+	}
+	if t.membership_container_is_pointer_array(rhs_raw_type) {
+		new_rhs = t.make_prefix(.mul, new_rhs)
+	}
+	eq_call := if t.array_elem_needs_element_eq(elem_type) {
+		t.make_array_elementwise_eq_call(new_lhs, new_rhs, elem_type, lhs_type, rhs_type, node)
+	} else if elem_type.starts_with('[]') {
+		t.make_call_typed('array_eq_array', arr3(new_lhs, new_rhs,
+			t.make_int_literal(array_repeat_clone_depth(lhs_type))), 'bool')
+	} else if elem_type == 'string' {
 		t.make_call_typed('array_eq_string', arr2(new_lhs, new_rhs), 'bool')
 	} else {
 		t.make_call_typed('array_eq_raw', arr3(new_lhs, new_rhs, t.make_sizeof_type(elem_type)),
@@ -130,26 +165,69 @@ fn (mut t Transformer) transform_infix_map_ops(_id flat.NodeId, node flat.Node) 
 	}
 	lhs_id := t.a.children[node.children_start]
 	rhs_id := t.a.children[node.children_start + 1]
-	lhs_type := t.node_type(lhs_id)
-	rhs_type := t.node_type(rhs_id)
-	lhs_map_type := t.clean_map_type(lhs_type)
-	rhs_map_type := t.clean_map_type(rhs_type)
+	lhs_type := t.map_comparison_expr_type(lhs_id)
+	rhs_type := t.map_comparison_expr_type(rhs_id)
+	mut lhs_map_type := t.clean_map_type(lhs_type)
+	mut rhs_map_type := t.clean_map_type(rhs_type)
+	if !lhs_map_type.starts_with('map[') && rhs_map_type.starts_with('map[')
+		&& t.is_empty_map_init(lhs_id) {
+		lhs_map_type = rhs_map_type
+	}
+	if !rhs_map_type.starts_with('map[') && lhs_map_type.starts_with('map[')
+		&& t.is_empty_map_init(rhs_id) {
+		rhs_map_type = lhs_map_type
+	}
 	if !lhs_map_type.starts_with('map[') || !rhs_map_type.starts_with('map[') {
 		return none
 	}
-	mut new_lhs := t.transform_expr(lhs_id)
-	mut new_rhs := t.transform_expr(rhs_id)
+	map_type := lhs_map_type
+	mut new_lhs := t.transform_expr_for_type(lhs_id, map_type)
+	mut new_rhs := t.transform_expr_for_type(rhs_id, map_type)
 	if lhs_type.starts_with('&') {
 		new_lhs = t.make_prefix(.mul, new_lhs)
 	}
 	if rhs_type.starts_with('&') {
 		new_rhs = t.make_prefix(.mul, new_rhs)
 	}
-	eq_call := t.make_call_typed('map_map_eq', arr2(new_lhs, new_rhs), 'bool')
+	eq_call := t.make_call_typed('v3_map_map_eq', arr2(new_lhs, new_rhs), 'bool')
 	if node.op == .ne {
 		return t.make_prefix(.not, eq_call)
 	}
 	return eq_call
+}
+
+fn (mut t Transformer) map_comparison_expr_type(id flat.NodeId) string {
+	if int(id) < 0 {
+		return ''
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .call {
+		concrete := t.concrete_generic_call_return_type(id, node)
+		if concrete.len > 0 && t.clean_map_type(concrete).starts_with('map[') {
+			return concrete
+		}
+	}
+	if !isnil(t.tc) {
+		if typ := t.tc.expr_type(id) {
+			name := typ.name()
+			if name.len > 0 && t.clean_map_type(name).starts_with('map[') {
+				return name
+			}
+		}
+	}
+	mut typ := t.node_type(id)
+	if typ.len == 0 && node.kind == .map_init {
+		typ = if node.value.len > 0 { node.value } else { node.typ }
+	}
+	return typ
+}
+
+fn (t &Transformer) is_empty_map_init(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	return node.kind == .map_init && node.children_count == 0
 }
 
 // transform_infix_struct_ops transforms transform infix struct ops data for transform.
@@ -217,6 +295,7 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 		} else {
 			arr2(call_lhs, call_rhs)
 		}
+		t.mark_fn_used_name(call_info.name)
 		call := t.make_call_typed(call_info.name, args, node.typ)
 		if call_info.negate {
 			return t.make_prefix(.not, call)
@@ -239,6 +318,7 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 		}
 		lhs := t.transform_expr(lhs_id)
 		rhs := t.transform_expr(t.a.children[node.children_start + 1])
+		t.mark_fn_used_name(eq_fn)
 		eq_call := t.make_call_typed(eq_fn, arr2(lhs, rhs), 'bool')
 		if node.op == .ne {
 			return t.make_prefix(.not, eq_call)
@@ -282,6 +362,7 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 		} else {
 			arr2(call_lhs, call_rhs)
 		}
+		t.mark_fn_used_name(call_info.name)
 		call := t.make_call_typed(call_info.name, args, node.typ)
 		if call_info.negate {
 			return t.make_prefix(.not, call)
@@ -297,6 +378,7 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 		}
 		call_lhs := t.stable_transformed_expr_for_reuse(lhs, lhs_type, 'eq_lhs')
 		call_rhs := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'eq_rhs')
+		t.mark_fn_used_name(eq_fn)
 		eq_call := t.make_call_typed(eq_fn, arr2(call_lhs, call_rhs), 'bool')
 		if node.op == .ne {
 			return t.make_prefix(.not, eq_call)
@@ -1011,6 +1093,9 @@ fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId,
 	if clean == 'string' {
 		return t.make_call_typed('string__eq', arr2(lhs, rhs), 'bool')
 	}
+	if t.clean_map_type(clean).starts_with('map[') {
+		return t.make_call_typed('v3_map_map_eq', arr2(lhs, rhs), 'bool')
+	}
 	if clean.starts_with('[]') {
 		inner := clean[2..]
 		if inner == 'string' {
@@ -1024,11 +1109,63 @@ fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId,
 		if t.is_known_fn_name(method_name) {
 			return t.make_call(method_name, arr2(lhs, rhs))
 		}
+		if field_eq := t.make_struct_field_eq_expr(lhs, rhs, struct_type) {
+			return field_eq
+		}
 		cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
 			t.make_sizeof_type(struct_type)), 'int')
 		return t.make_infix(.eq, cmp, t.make_int_literal(0))
 	}
 	return t.make_infix(.eq, lhs, rhs)
+}
+
+fn (t &Transformer) array_elem_needs_element_eq(elem_type string) bool {
+	clean := t.membership_container_type(elem_type)
+	if t.clean_map_type(clean).starts_with('map[') {
+		return true
+	}
+	return t.struct_lookup_name(clean).len > 0
+}
+
+fn (mut t Transformer) make_array_elementwise_eq_call(lhs flat.NodeId, rhs flat.NodeId, elem_type string, lhs_type string, rhs_type string, src flat.Node) flat.NodeId {
+	clean_elem := t.membership_container_type(elem_type)
+	lhs_value := t.stable_transformed_expr_for_reuse(lhs, lhs_type, 'arr_eq_lhs')
+	rhs_value := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'arr_eq_rhs')
+	result_name := t.new_temp('arr_eq')
+	idx_name := t.new_temp('arr_eq_idx')
+	len_eq := t.make_infix(.eq, t.make_selector(lhs_value, 'len', 'int'), t.make_selector(rhs_value,
+		'len', 'int'))
+	t.pending_stmts << t.make_decl_assign_typed(result_name, len_eq, 'bool')
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	in_bounds := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(lhs_value, 'len', 'int'))
+	cond := t.make_infix(.logical_and, t.make_ident(result_name), in_bounds)
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	lhs_elem := t.array_get_value(lhs_value, t.make_ident(idx_name), clean_elem)
+	rhs_elem := t.array_get_value(rhs_value, t.make_ident(idx_name), clean_elem)
+	elem_eq := t.make_membership_eq_expr(lhs_elem, rhs_elem, clean_elem)
+	set_false := t.make_assign(t.make_ident(result_name), t.make_bool_literal(false))
+	body := arr1(t.make_if(t.make_prefix(.not, t.make_paren(elem_eq)),
+		t.make_block(arr1(set_false)), t.make_empty()))
+	t.pending_stmts << t.make_for_stmt(init, cond, post, body, src)
+	result := t.make_ident(result_name)
+	t.a.nodes[int(result)].typ = 'bool'
+	return result
+}
+
+fn (mut t Transformer) make_struct_field_eq_expr(lhs flat.NodeId, rhs flat.NodeId, struct_type string) ?flat.NodeId {
+	info := t.lookup_struct_info(struct_type) or { return none }
+	mut eq := flat.empty_node
+	for field in info.fields {
+		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
+		lhs_field := t.make_selector(lhs, field.name, field_type)
+		rhs_field := t.make_selector(rhs, field.name, field_type)
+		field_eq := t.make_membership_eq_expr(lhs_field, rhs_field, field_type)
+		eq = if int(eq) < 0 { field_eq } else { t.make_infix(.logical_and, eq, field_eq) }
+	}
+	if int(eq) < 0 {
+		return t.make_bool_literal(true)
+	}
+	return eq
 }
 
 // selector_field_type supports selector field type handling for Transformer.
@@ -1121,7 +1258,10 @@ fn (mut t Transformer) stable_expr_for_reuse(id flat.NodeId) flat.NodeId {
 		return expr
 	}
 	tmp_name := t.new_temp('in_lhs')
-	tmp_typ := t.node_type(id)
+	mut tmp_typ := t.node_type(expr)
+	if tmp_typ.len == 0 {
+		tmp_typ = t.node_type(id)
+	}
 	decl := t.make_decl_assign(tmp_name, expr)
 	if tmp_typ.len > 0 {
 		t.a.nodes[int(decl)].typ = tmp_typ
@@ -1442,9 +1582,25 @@ pub fn (mut t Transformer) make_int_literal(value int) flat.NodeId {
 	return t.a.add_val(.int_literal, '${value}')
 }
 
+pub fn (mut t Transformer) make_int_literal_typed(value string, typ string) flat.NodeId {
+	return t.a.add_node(flat.Node{
+		kind:  .int_literal
+		value: value
+		typ:   typ
+	})
+}
+
 // make_float_literal builds make float literal data for transform.
 pub fn (mut t Transformer) make_float_literal(value string) flat.NodeId {
 	return t.a.add_val(.float_literal, value)
+}
+
+pub fn (mut t Transformer) make_float_literal_typed(value string, typ string) flat.NodeId {
+	return t.a.add_node(flat.Node{
+		kind:  .float_literal
+		value: value
+		typ:   typ
+	})
 }
 
 // make_bool_literal builds make bool literal data for transform.

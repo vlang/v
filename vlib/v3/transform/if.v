@@ -61,7 +61,7 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 			}
 		}
 	}
-	if value_decls.len == 0 {
+	if value_decls.len == 0 && lhs.value != '_' && value_type != 'void' {
 		value_decls << t.make_decl_assign_typed(lhs.value, t.make_selector(t.make_ident(tmp_name),
 			'value', value_type), value_type)
 	}
@@ -78,7 +78,9 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 			}
 		}
 	} else {
-		t.set_var_type(lhs.value, value_type)
+		if lhs.value != '_' && value_type != 'void' {
+			t.set_var_type(lhs.value, value_type)
+		}
 	}
 	mut then_children := []flat.NodeId{}
 	for value_decl in value_decls {
@@ -107,13 +109,17 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 }
 
 // optional_result_expr_type_name supports optional result expr type name handling for Transformer.
-fn (t &Transformer) optional_result_expr_type_name(id flat.NodeId) string {
+fn (mut t Transformer) optional_result_expr_type_name(id flat.NodeId) string {
 	if int(id) < 0 {
 		return ''
 	}
 	if !isnil(t.tc) {
 		node := t.a.nodes[int(id)]
 		if node.kind == .call {
+			concrete_ret := t.concrete_generic_call_return_type(id, node)
+			if t.is_optional_type_name(concrete_ret) {
+				return concrete_ret
+			}
 			if name := t.tc.resolved_call_name(id) {
 				if ret := t.tc.fn_ret_types[name] {
 					ret_name := ret.name()

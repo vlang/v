@@ -2,8 +2,21 @@
 
 import os
 
-const total_steps = 6
+const total_steps = 7
 const temp_prefix = 'v3_test_all'
+const requested_vlib_tests = [
+	'vlib/builtin/string_test.v',
+	'vlib/math/math_test.v',
+	'vlib/builtin/array_test.v',
+	'vlib/math/complex/complex_test.v',
+	'vlib/builtin/map_test.v',
+	'vlib/crypto/hmac/hmac_test.v',
+	'vlib/crypto/sha3/sha3_test.v',
+	'vlib/time/time_test.v',
+	'vlib/os/process_test.v',
+	'vlib/os/file_test.v',
+	'vlib/arrays/arrays_test.v',
+]
 
 struct Config {
 	vexe         string
@@ -51,13 +64,22 @@ fn main() {
 	section(2, 'Build v3')
 	run('${q(cfg.vexe)} -o ${q(v3_bin)} ${q(cfg.v3_src)}')
 
-	section(3, 'C backend hello world')
+	section(3, 'Requested vlib tests')
+	for rel_path in requested_vlib_tests {
+		test_path := os.join_path(cfg.repo_root, rel_path)
+		test_bin := temp_path(rel_path.replace('/', '_').replace('.v', ''))
+		run('${q(v3_bin)} ${q(test_path)} -o ${q(test_bin)}')
+		run(q(test_bin))
+		cleanup_files([test_bin, test_bin + '.c'])
+	}
+
+	section(4, 'C backend hello world')
 	hello_v := os.join_path(cfg.tests_dir, 'hello.v')
 	run('${q(v3_bin)} ${cfg.c99_flag} ${q(hello_v)} -b c -o ${q(hello_c_bin)}')
 	run(q(hello_c_bin))
 	cleanup_files([hello_c_bin, hello_c_bin + '.c'])
 
-	section(4, 'ARM64 self-host hello world')
+	section(5, 'ARM64 self-host hello world')
 	if cfg.c99 {
 		println('  Skipping ARM64 self-host in C99 mode (-c99 applies to the C backend)')
 	} else if cfg.host_backend == 'arm64' && cfg.host_os == 'macos' {
@@ -69,7 +91,7 @@ fn main() {
 		println('  Skipping ARM64 self-host on ${cfg.host_os}/${cfg.host_backend} host (Mach-O only)')
 	}
 
-	section(5, 'Self-host chain (v3->v4->v5->v6)')
+	section(6, 'Self-host chain (v3->v4->v5->v6)')
 	println('  Building v4 from v3...')
 	run('${q(v3_bin)} ${cfg.c99_flag} --no-parallel -selfhost -o ${q(v4_bin)} ${q(cfg.v3_src)}')
 	println('  Building v5 from v4...')
@@ -81,7 +103,7 @@ fn main() {
 	println('  v5.c=v6.c (${converged_size} bytes) - chain converged')
 	cleanup_files([v4_bin, v4_bin + '.c', v5_bin, v5_bin + '.c', v6_bin, v6_bin + '.c'])
 
-	section(6, 'Language feature parity')
+	section(7, 'Language feature parity')
 	lang_v := os.join_path(cfg.tests_dir, 'test_all_lang_features.v')
 	lang_out := os.join_path(cfg.tests_dir, 'test_all_lang_features.out')
 	run('${q(v3_bin)} ${cfg.c99_flag} ${q(lang_v)} -b c -o ${q(v3_lang_bin)}')

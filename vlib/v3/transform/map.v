@@ -458,15 +458,15 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 	for i := 0; i + 1 < node.children_count; i += 2 {
 		key_name := t.new_temp('map_key')
 		value_name := t.new_temp('map_val')
-		t.pending_stmts << t.make_decl_assign_typed(key_name,
-			t.transform_expr(t.a.child(&node, i)), key_type)
+		t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(t.a.child(&node, i),
+			key_type), key_type)
 		value_id := t.a.child(&node, i + 1)
 		value := if value_type.starts_with('&') && t.is_sum_type_name(value_type[1..]) {
 			t.transform_expr_for_type(value_id, value_type)
 		} else if value_type in t.sum_types || t.resolve_sum_name(value_type) in t.sum_types {
 			t.wrap_sum_value(value_id, value_type)
 		} else {
-			t.transform_expr(value_id)
+			t.transform_expr_for_type(value_id, value_type)
 		}
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, value_type)
 		call := t.make_call_typed('map__set', arr3(t.make_prefix(.amp, t.make_ident(tmp_name)), t.make_prefix(.amp,

@@ -14,12 +14,15 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 		return g.tc.c_type(t)
 	}
 
-	if base_type is types.Void || base_type is types.Primitive || base_type is types.Enum {
+	if base_type is types.Void {
 		return 'Optional'
 	}
 	mut inner_ct := g.tc.c_type(base_type)
 	if inner_ct.starts_with('fn_ptr:') {
 		inner_ct = g.resolve_fn_ptr_type(inner_ct)
+	}
+	if inner_ct == 'int' {
+		return 'Optional'
 	}
 	safe_name := inner_ct.replace('*', 'ptr').replace(' ', '_')
 	opt_name := 'Optional_${safe_name}'
@@ -36,6 +39,14 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 		ct = g.resolve_fn_ptr_type(ct)
 	}
 	return ct
+}
+
+fn (mut g FlatGen) value_sizeof_target(t types.Type) string {
+	if fixed := array_fixed_type(t) {
+		c_elem, dims := g.fixed_array_decl_parts(fixed)
+		return '${c_elem}${dims}'
+	}
+	return g.value_c_type(t)
 }
 
 fn (mut g FlatGen) cast_c_type(t types.Type) string {

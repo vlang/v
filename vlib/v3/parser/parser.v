@@ -1772,9 +1772,9 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 	p.next() // skip 'if'
 	cond := p.parse_comptime_cond()
 	if comptime_cond_has_type_test(cond) {
-		p.skip_block()
-		p.skip_comptime_else()
-		return flat.empty_node
+		then_block := p.block_stmt()
+		else_block := p.parse_comptime_else()
+		return p.comptime_if_node(cond, then_block, else_block)
 	}
 	taken := eval_comptime_cond(p.prefs, cond)
 	if taken {
@@ -1810,9 +1810,9 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 	p.next() // skip 'if'
 	cond := p.parse_comptime_cond()
 	if comptime_cond_has_type_test(cond) {
-		p.skip_block()
-		p.skip_comptime_else()
-		return flat.empty_node
+		then_block := p.top_level_block_stmt()
+		else_block := p.parse_top_level_comptime_else()
+		return p.comptime_if_node(cond, then_block, else_block)
 	}
 	taken := eval_comptime_cond(p.prefs, cond)
 	if taken {
@@ -1822,6 +1822,23 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 	}
 	p.skip_block()
 	return p.parse_top_level_comptime_else()
+}
+
+fn (mut p Parser) comptime_if_node(cond string, then_block flat.NodeId, else_block flat.NodeId) flat.NodeId {
+	mut ids := []flat.NodeId{cap: 2}
+	if int(then_block) >= 0 {
+		ids << then_block
+	}
+	if int(else_block) >= 0 {
+		ids << else_block
+	}
+	start := p.add_children(ids)
+	return p.a.add_node(flat.Node{
+		kind:           .comptime_if
+		value:          cond
+		children_start: start
+		children_count: flat.child_count(ids.len)
+	})
 }
 
 fn (mut p Parser) top_level_block_stmt() flat.NodeId {
@@ -4542,14 +4559,28 @@ fn (mut p Parser) string_interp(first_part string, quote u8) flat.NodeId {
 	for int(p.tok) == 106 {
 		p.next() // skip $
 		p.check(.lcbr) // skip {
-		ids << p.expr(.lowest)
+		expr_id := p.expr(.lowest)
+		mut part_id := expr_id
 		// format spec: :fmt
 		if p.tok == .colon {
 			p.next()
+			mut fmt := ''
 			for p.tok != .rcbr && p.tok != .eof {
+				fmt += if p.lit.len > 0 { p.lit } else { p.tok.str() }
 				p.next()
 			}
+			if fmt.len > 0 {
+				start := p.add_child(expr_id)
+				part_id = p.a.add_node(flat.Node{
+					kind:           .directive
+					value:          'string_interp_format'
+					typ:            fmt
+					children_start: start
+					children_count: 1
+				})
+			}
 		}
+		ids << part_id
 		p.check(.rcbr) // skip }
 		if int(p.tok) == 107 {
 			part := strip_interp_quotes(p.lit, quote)
@@ -4639,7 +4670,8 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	if p.tok == .rsbr {
 		size_end := p.tok_pos
 		p.next()
-		if p.tok == .name || p.tok == .amp || p.tok == .lsbr || p.tok == .question {
+		if p.tok == .name || p.tok == .amp || p.tok == .question
+			|| (p.tok == .lsbr && p.current_lbr_starts_array_type()) {
 			// fixed array type: [N]Type. Use the literal node value for a plain integer
 			// size, but recover the full source text for a const expression (e.g.
 			// `[segs + 1]f32`) — an infix node has no `.value`, which would otherwise
@@ -4968,7 +5000,20 @@ fn (mut p Parser) peek_lbr_starts_array_type() bool {
 	if p.peek() != .lsbr {
 		return false
 	}
-	mut idx := p.s.offset
+	return p.lbr_starts_array_type_from_offset(p.s.offset)
+}
+
+// current_lbr_starts_array_type reports whether the current `[` starts a nested
+// array type, not an index expression.
+fn (mut p Parser) current_lbr_starts_array_type() bool {
+	if p.tok != .lsbr {
+		return false
+	}
+	return p.lbr_starts_array_type_from_offset(p.s.offset)
+}
+
+fn (mut p Parser) lbr_starts_array_type_from_offset(offset int) bool {
+	mut idx := offset
 	for idx < p.s.src.len && (p.s.src[idx] == ` ` || p.s.src[idx] == `\t`
 		|| p.s.src[idx] == `\n` || p.s.src[idx] == `\r`) {
 		idx++
@@ -4982,11 +5027,13 @@ fn (mut p Parser) peek_lbr_starts_array_type() bool {
 			depth--
 			if depth == 0 {
 				idx++
-				for idx < p.s.src.len && (p.s.src[idx] == ` ` || p.s.src[idx] == `\t`
-					|| p.s.src[idx] == `\n` || p.s.src[idx] == `\r`) {
+				for idx < p.s.src.len && (p.s.src[idx] == ` ` || p.s.src[idx] == `\t`) {
 					idx++
 				}
 				if idx >= p.s.src.len {
+					return false
+				}
+				if p.s.src[idx] == `\n` || p.s.src[idx] == `\r` || p.s.src[idx] == `;` {
 					return false
 				}
 				next := p.s.src[idx]
@@ -5279,6 +5326,44 @@ fn unescape_string(s string) string {
 	mut i := 0
 	for i < s.len {
 		if s[i] == `\\` && i + 1 < s.len {
+			if s[i + 1] == `\n` {
+				i += 2
+				for i < s.len && (s[i] == ` ` || s[i] == `\t` || s[i] == `\r`) {
+					i++
+				}
+				continue
+			}
+			if s[i + 1] == `\r` && i + 2 < s.len && s[i + 2] == `\n` {
+				i += 3
+				for i < s.len && (s[i] == ` ` || s[i] == `\t`) {
+					i++
+				}
+				continue
+			}
+			if s[i + 1] == `x` && i + 3 < s.len {
+				if code := parse_fixed_hex(s, i + 2, 2) {
+					unsafe {
+						buf[j] = u8(code)
+					}
+					j++
+					i += 4
+					continue
+				}
+			}
+			if s[i + 1] == `u` && i + 5 < s.len {
+				if code := parse_fixed_hex(s, i + 2, 4) {
+					j = write_utf8_codepoint(buf, j, u32(code))
+					i += 6
+					continue
+				}
+			}
+			if s[i + 1] == `U` && i + 9 < s.len {
+				if code := parse_fixed_hex(s, i + 2, 8) {
+					j = write_utf8_codepoint(buf, j, u32(code))
+					i += 10
+					continue
+				}
+			}
 			c := match s[i + 1] {
 				`n` { u8(`\n`) }
 				`t` { u8(`\t`) }
@@ -5319,6 +5404,56 @@ fn unescape_string(s string) string {
 	unsafe {
 		buf[j] = 0
 		return tos(buf, j)
+	}
+}
+
+fn parse_fixed_hex(s string, start int, len int) ?u32 {
+	mut code := u32(0)
+	for i in 0 .. len {
+		if start + i >= s.len {
+			return none
+		}
+		n := hex_digit_value(s[start + i]) or { return none }
+		code = (code << 4) | u32(n)
+	}
+	return code
+}
+
+fn hex_digit_value(c u8) ?int {
+	if c >= `0` && c <= `9` {
+		return int(c - `0`)
+	}
+	if c >= `a` && c <= `f` {
+		return int(c - `a`) + 10
+	}
+	if c >= `A` && c <= `F` {
+		return int(c - `A`) + 10
+	}
+	return none
+}
+
+fn write_utf8_codepoint(buf &u8, j int, code u32) int {
+	unsafe {
+		if code <= 0x7f {
+			buf[j] = u8(code)
+			return j + 1
+		}
+		if code <= 0x7ff {
+			buf[j] = u8(0xc0 | (code >> 6))
+			buf[j + 1] = u8(0x80 | (code & 0x3f))
+			return j + 2
+		}
+		if code <= 0xffff {
+			buf[j] = u8(0xe0 | (code >> 12))
+			buf[j + 1] = u8(0x80 | ((code >> 6) & 0x3f))
+			buf[j + 2] = u8(0x80 | (code & 0x3f))
+			return j + 3
+		}
+		buf[j] = u8(0xf0 | (code >> 18))
+		buf[j + 1] = u8(0x80 | ((code >> 12) & 0x3f))
+		buf[j + 2] = u8(0x80 | ((code >> 6) & 0x3f))
+		buf[j + 3] = u8(0x80 | (code & 0x3f))
+		return j + 4
 	}
 }
 

@@ -181,6 +181,7 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 // collect_fn_gen_items updates collect fn gen items state for c.
 fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	mut items := []FlatFnGenItem{}
+	preferred_fns := g.preferred_c_backend_fn_nodes()
 	mut cur_module := ''
 	mut cur_file := ''
 	for i in 0 .. g.a.nodes.len {
@@ -207,6 +208,11 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			continue
 		}
 		qfn := qualified_fn_name_in_module(cur_module, node.value)
+		if preferred_idx := preferred_fns[qfn] {
+			if preferred_idx != i {
+				continue
+			}
+		}
 		if g.emitted_fn_contains(qfn) {
 			continue
 		}
@@ -389,6 +395,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		fn_decl_ret_types:        g.fn_decl_ret_types
 		struct_decl_infos:        g.struct_decl_infos
 		struct_decl_short_infos:  g.struct_decl_short_infos
+		const_runtime_inits:      g.const_runtime_inits.clone()
 		runtime_inits:            g.runtime_inits.clone()
 		compiler_vroot:           g.compiler_vroot
 		cur_param_names:          g.cur_param_names.clone()

@@ -144,23 +144,26 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	queue << 'c.gen_assign'
 	used['c.gen_assign'] = true
 	for seed in ['__new_array', 'new_array_from_c_array', 'array.get', 'array.set', 'array.push',
-		'array.push_many', 'array.slice', 'array.clone', 'array.delete', 'array.ensure_cap',
+		'array.push_many', 'array.insert', 'array.insert_many', 'array.prepend', 'array.reverse',
+		'array.slice', 'array.pop_left', 'array.clone', 'array.delete', 'array.ensure_cap',
 		'string.==', 'string.<', 'string.free', 'string.all_before', 'string.all_before_last',
 		'string.all_after', 'string.all_after_last', 'string.substr', 'string__substr', 'u8.vstring',
-		'[]rune.string', 'map.set', 'map.exists', 'map.get', 'map.get_check', 'map.get_and_set',
-		'map.delete', 'map.clone', 'map.clear', 'memdup', 'strings.Builder.write_ptr',
+		'charptr.vstring', 'charptr.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len',
+		'byteptr.vbytes', 'voidptr.vbytes', '[]rune.string', 'map.set', 'map.exists', 'map.get',
+		'map.get_check', 'map.get_and_set', 'map.delete', 'map.clone', 'map.clear', 'map.keys',
+		'map.values', 'map.reserve', 'map_map_eq', 'memdup', 'strings.Builder.write_ptr',
 		'strings.Builder.write_runes', 'strings.Builder.free', 'strconv.format_int',
-		'strconv.format_uint', 'bool.str', 'ptr_str', 'strconv__f32_to_str_l',
-		'strconv__f64_to_str_l', 'sync.new_channel_st', 'sync.Channel.push', 'sync.Channel.pop',
-		'sync.Channel.close', 'sync.Channel.len', 'sync.Channel.closed', 'new_channel_st',
-		'Channel.push', 'Channel.pop', 'Channel.close', 'Channel.len', 'Channel.closed', 'panic',
-		'u8.is_letter', 'u8.is_capital', 'string.is_capital', 'string.to_lower_ascii',
-		'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex', 'data_to_hex_string',
-		'map_hash_string', 'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_4', 'map_hash_int_8',
-		'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8',
-		'map_clone_string', 'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_4',
-		'map_clone_int_8', 'map_free_string', 'map_free_nop', '[]string.join', 'Array_string__join',
-		'exit', 'v_exit'] {
+		'strconv.format_uint', 'bool.str', 'int.str', 'u64.str', 'f64.str', 'rune.str', 'string.+',
+		'ptr_str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l', 'sync.new_channel_st',
+		'sync.Channel.push', 'sync.Channel.pop', 'sync.Channel.close', 'sync.Channel.len',
+		'sync.Channel.closed', 'new_channel_st', 'Channel.push', 'Channel.pop', 'Channel.close',
+		'Channel.len', 'Channel.closed', 'os.join_path_single', 'panic', 'u8.is_letter',
+		'u8.is_capital', 'string.is_capital', 'string.to_lower_ascii', 'rune.to_lower',
+		'Array_u8__bytestr', 'Array_u8__hex', 'data_to_hex_string', 'map_hash_string',
+		'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_4', 'map_hash_int_8', 'map_eq_string',
+		'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8', 'map_clone_string',
+		'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_4', 'map_clone_int_8', 'map_free_string',
+		'map_free_nop', '[]string.join', 'Array_string__join', 'exit', 'v_exit'] {
 		queue << seed
 		used[seed] = true
 	}
@@ -739,9 +742,6 @@ fn enqueue_test_file_roots(a &flat.FlatAst, test_files map[string]bool, mut used
 			continue
 		}
 		module_name := test_file_module_name(a, file_node)
-		if module_name.len > 0 && module_name != 'main' {
-			continue
-		}
 		mut decl_ids := []flat.NodeId{}
 		markused_collect_test_harness_decl_ids(a, file_node, mut decl_ids)
 		for child_id in decl_ids {
@@ -816,6 +816,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	mut needs_string_plus_helper := false
 	mut needs_string_membership_helpers := false
 	mut needs_new_map := false
+	mut needs_map_iteration_snapshot := false
 	mut cur_module := ''
 	mut imports := map[string]string{}
 	for node in a.nodes {
@@ -872,6 +873,9 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 						enqueue('join_path_single', mut used, mut queue)
 						enqueue('os.join_path_single', mut used, mut queue)
 					}
+					if fn_node.kind == .selector && fn_node.value == 'runes_iterator' {
+						enqueue('RunesIterator.next', mut used, mut queue)
+					}
 					if fn_node.kind == .ident
 						&& fn_node.value in ['print', 'println', 'eprint', 'eprintln']
 						&& node.children_count >= 2 {
@@ -913,6 +917,15 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			.map_init {
 				needs_new_map = true
 			}
+			.for_in_stmt {
+				if node.value.int() == 3 && node.children_count > 2 {
+					container_id := a.child(&node, 2)
+					container_type := tc.resolve_type(container_id)
+					if types.unwrap_pointer(container_type) is types.Map {
+						needs_map_iteration_snapshot = true
+					}
+				}
+			}
 			.enum_decl {
 				// A `[flag]` enum's synthesized `<Enum>__autostr` helper (emitted
 				// unconditionally in cgen) builds its `Enum{.a | .b}` string with
@@ -948,6 +961,11 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	}
 	if needs_new_map {
 		enqueue('new_map', mut used, mut queue)
+	}
+	if needs_map_iteration_snapshot {
+		for helper in ['map.clone', 'map__clone', 'map.free', 'map__free'] {
+			enqueue(helper, mut used, mut queue)
+		}
 	}
 }
 
@@ -987,7 +1005,11 @@ fn enqueue_stringified_custom_str_method(expr_id flat.NodeId, cur_module string,
 		}
 		break
 	}
+	type_name := typ.name()
 	match typ {
+		types.Primitive, types.Rune, types.Char, types.ISize, types.USize, types.String {
+			enqueue_stringified_primitive_helpers(type_name, mut used, mut queue)
+		}
 		types.Enum {
 			enqueue_enum_str_method(typ.name, cur_module, tc, mut used, mut queue)
 		}
@@ -996,6 +1018,40 @@ fn enqueue_stringified_custom_str_method(expr_id flat.NodeId, cur_module string,
 		}
 		types.SumType {
 			enqueue_structlike_str_method(typ.name, cur_module, tc, mut used, mut queue)
+		}
+		else {}
+	}
+}
+
+fn enqueue_stringified_primitive_helpers(type_name string, mut used map[string]bool, mut queue []string) {
+	match type_name {
+		'bool' {
+			enqueue('bool.str', mut used, mut queue)
+		}
+		'rune', 'char' {
+			enqueue('rune.str', mut used, mut queue)
+		}
+		'int', 'i8', 'i16', 'i32', 'i64' {
+			enqueue('${type_name}.str', mut used, mut queue)
+			enqueue(markused_c_name('${type_name}.str'), mut used, mut queue)
+			enqueue('strconv__format_int', mut used, mut queue)
+		}
+		'isize' {
+			enqueue('strconv__format_int', mut used, mut queue)
+		}
+		'u8', 'byte', 'u16', 'u32', 'usize' {
+			enqueue('strconv__format_uint', mut used, mut queue)
+		}
+		'u64' {
+			enqueue('u64.str', mut used, mut queue)
+			enqueue(markused_c_name('u64.str'), mut used, mut queue)
+			enqueue('strconv__format_uint', mut used, mut queue)
+		}
+		'f32' {
+			enqueue('strconv__f32_to_str_l', mut used, mut queue)
+		}
+		'f64' {
+			enqueue('strconv__f64_to_str_l', mut used, mut queue)
 		}
 		else {}
 	}

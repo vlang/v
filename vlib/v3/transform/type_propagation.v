@@ -753,6 +753,10 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) string {
 }
 
 fn (t &Transformer) index_expr_type(id flat.NodeId, node flat.Node) string {
+	resolved_elem_type := t.resolve_index_elem_type(node)
+	if resolved_elem_type == 'u8' {
+		return resolved_elem_type
+	}
 	if !isnil(t.tc) {
 		if typ := t.tc.expr_type(id) {
 			name := typ.name()
@@ -761,7 +765,7 @@ fn (t &Transformer) index_expr_type(id flat.NodeId, node flat.Node) string {
 			}
 		}
 	}
-	return t.resolve_index_elem_type(node)
+	return resolved_elem_type
 }
 
 // node_type returns the v-type string for an expression node, preferring the
