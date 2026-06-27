@@ -43,16 +43,33 @@ fn h2_all_digits(s string) bool {
 	return true
 }
 
+// h2_field_value_has_forbidden_octet reports whether a field value contains an
+// octet RFC 9113 §8.2.1 forbids: NUL (0x00), LF (0x0a), or CR (0x0d). Such a
+// value makes the request malformed and, if the request were forwarded to an
+// HTTP/1.x peer, would be a header-injection / request-smuggling vector.
+fn h2_field_value_has_forbidden_octet(value string) bool {
+	for ch in value {
+		if ch == 0 || ch == 0x0a || ch == 0x0d {
+			return true
+		}
+	}
+	return false
+}
+
 // h2_request_field_error returns a non-empty reason when a regular (non-pseudo)
 // request header field is malformed per RFC 9113 §8.2: names must be lowercase
-// and non-empty, connection-specific fields are forbidden, and TE may only carry
-// the value "trailers". An empty return means the field is valid.
+// and non-empty, values must not contain NUL/CR/LF, connection-specific fields
+// are forbidden, and TE may only carry the value "trailers". An empty return
+// means the field is valid.
 fn h2_request_field_error(name string, value string) string {
 	if name.len == 0 {
 		return 'empty header field name'
 	}
 	if name != name.to_lower() {
 		return 'uppercase header field name "${name}"'
+	}
+	if h2_field_value_has_forbidden_octet(value) {
+		return 'forbidden NUL/CR/LF octet in value of "${name}"'
 	}
 	if name in h2_conn_specific_headers {
 		return 'connection-specific header field "${name}"'
@@ -78,6 +95,9 @@ fn h2_validate_request_pseudo(headers []H2HeaderField) ! {
 		if f.name.starts_with(':') {
 			if seen_regular {
 				return error('pseudo-header "${f.name}" after a regular field')
+			}
+			if h2_field_value_has_forbidden_octet(f.value) {
+				return error('forbidden NUL/CR/LF octet in pseudo-header "${f.name}"')
 			}
 			match f.name {
 				':method' {

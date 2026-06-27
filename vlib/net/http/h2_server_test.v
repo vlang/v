@@ -433,6 +433,14 @@ fn test_h2_server_rejects_duplicate_pseudo() {
 	}
 }
 
+// RFC 9113 §8.2.1: a field value containing NUL/CR/LF is malformed (and would be
+// a header-injection vector if forwarded to an HTTP/1.x peer).
+fn test_h2_server_rejects_control_char_in_value() {
+	mut fields := valid_get_pseudo.clone()
+	fields << H2HeaderField{'x-evil', 'a\r\nInjected: 1'}
+	assert_request_malformed(fields, 'CR/LF in field value')
+}
+
 // RFC 9113 §8.3.1: an empty :path pseudo-header is malformed for http/https.
 fn test_h2_server_rejects_empty_path() {
 	fields := [
