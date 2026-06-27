@@ -218,6 +218,11 @@ The table uses the first v3-generated C stage, `./v3 -parallel -o v4 v3.v`.
 Bundled TCC currently rejects the atomic helper shims on macOS and the driver
 falls back to `cc`.
 
+Pass `-c99` to the v3 C backend to compile generated C and support objects as
+C99 (`cc -std=c99`) instead of the default GNU11 mode. `test_all.vsh -c99`
+validates the C backend and self-host chain in that mode, and skips the ARM64
+native backend step because `-c99` only applies to generated C.
+
 | Phase          | Time      | Peak RSS |
 |----------------|----------:|---------:|
 | parse          | 59.47 ms  | 73 MB    |

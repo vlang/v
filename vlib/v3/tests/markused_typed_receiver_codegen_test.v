@@ -222,6 +222,40 @@ pub fn (s Series) measure(x int) int {
 	assert !used['othermod__Helper__secret'], used.str()
 }
 
+fn test_markused_prefers_scoped_node_type_for_shadowed_receiver_locals() {
+	used := typed_receiver_mark_used_project('shadowed_receiver_local_type', {
+		'main.v': 'module main
+
+struct Outer {}
+struct Inner {}
+
+fn (o Outer) score() int {
+	return 1
+}
+
+fn (i Inner) score() int {
+	return 2
+}
+
+fn run() int {
+	item := Outer{}
+	mut total := item.score()
+	if total > 0 {
+		item := Inner{}
+		total += item.score()
+	}
+	return total
+}
+
+fn main() {
+	assert run() == 3
+}
+'
+	}, 'main.v')
+	assert used['Outer.score'] || used['main.Outer.score'] || used['main__Outer__score'], used.str()
+	assert used['Inner.score'] || used['main.Inner.score'] || used['main__Inner__score'], used.str()
+}
+
 fn test_markused_roots_exact_typed_const_receiver_method() {
 	v3_bin := typed_receiver_build_v3()
 	main_path := typed_receiver_write_project()

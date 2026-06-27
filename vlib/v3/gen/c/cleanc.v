@@ -40,6 +40,8 @@ mut:
 	libc_compat_fns              map[string]bool
 	tc                           &types.TypeChecker = unsafe { nil }
 	has_builtins                 bool
+	has_stdatomic_header         bool
+	has_stdatomic_compat_header  bool
 	tmp_count                    int
 	line_start                   bool
 	field_name_set               map[string]bool   // every struct field's C name (lazy) — for const/field collision checks
@@ -53,6 +55,7 @@ mut:
 	struct_decl_short_infos      map[string]StructDeclInfo
 	runtime_inits                []string
 	compiler_vroot               string
+	c99_mode                     bool
 	cur_fn_name                  string
 	cur_param_names              []string
 	cur_param_type_values        []types.Type
@@ -98,6 +101,11 @@ pub fn (g &FlatGen) was_parallel() bool {
 
 pub fn (g &FlatGen) c_flags() []string {
 	return g.c_flags.clone()
+}
+
+// set_c99_mode configures whether generated C should support strict C99 builds.
+pub fn (mut g FlatGen) set_c99_mode(enabled bool) {
+	g.c99_mode = enabled
 }
 
 // new creates a FlatGen value for c.
@@ -208,6 +216,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.c_directives = []CDirective{}
 	g.c_flags = []string{}
 	g.libc_compat_fns = map[string]bool{}
+	g.has_stdatomic_header = false
+	g.has_stdatomic_compat_header = false
 	g.modules = map[string]string{}
 	g.fn_ptr_types = map[string]string{}
 	g.fixed_array_ret_wrappers = map[string]bool{}
@@ -499,11 +509,16 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		if include_arg.len == 0 {
 			return true
 		}
-		// The atomic helper headers are superseded by the inline C11 `__atomic_*`
-		// helpers emitted in builtin_abi_decls(); also including them would
-		// redefine `v_prealloc_atomic_*` and the `atomic_*` helpers.
-		if include_arg.contains('prealloc_atomics.h') || include_arg.contains('stdatomic') {
+		// These helper headers are superseded by the inline compiler helpers emitted in
+		// builtin_abi_decls(); also including them would redefine the helpers.
+		if include_arg.contains('prealloc_atomics.h') || include_arg.contains('filelock_helpers.h') {
 			return true
+		}
+		if is_stdatomic_header(include_arg) {
+			g.has_stdatomic_header = true
+		}
+		if is_stdatomic_compat_header(include_arg) {
+			g.has_stdatomic_compat_header = true
 		}
 		g.add_c_directive(module_name, '#include ${include_arg}', before_import)
 		return true
@@ -515,6 +530,17 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		return true
 	}
 	return false
+}
+
+fn is_stdatomic_header(include_arg string) bool {
+	normalized := include_arg.replace('\\', '/')
+	return normalized == '<stdatomic.h>' || normalized == '"stdatomic.h"'
+		|| normalized.ends_with('/stdatomic.h"') || is_stdatomic_compat_header(normalized)
+}
+
+fn is_stdatomic_compat_header(include_arg string) bool {
+	normalized := include_arg.replace('\\', '/')
+	return normalized.contains('/thirdparty/stdatomic/') && normalized.ends_with('/atomic.h"')
 }
 
 fn (mut g FlatGen) add_c_directive(module_name string, text string, before_import bool) {
@@ -2815,6 +2841,7 @@ fn (g &FlatGen) is_module_qualified_enum(base flat.Node) bool {
 }
 
 fn (mut g FlatGen) preamble() {
+	g.c99_feature_test_macros()
 	g.writeln('#include <stdio.h>')
 	g.writeln('#include <stdlib.h>')
 	g.writeln('#include <string.h>')
@@ -2823,6 +2850,7 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#include <stdint.h>') // guarantees UINTPTR_MAX for the pointer-width atomic helpers
 	g.writeln('#include <math.h>')
 	g.writeln('#include <unistd.h>')
+	g.c99_atomic_compat_decls()
 	if g.has_builtins {
 		g.writeln('#include <time.h>')
 		g.writeln('#include <sys/time.h>')
@@ -2836,7 +2864,6 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('#include <sys/utsname.h>')
 		g.writeln('#include <pthread.h>')
 		g.writeln('#include <semaphore.h>')
-		g.writeln('#include <stdatomic.h>')
 		g.writeln('#include <termios.h>')
 		g.writeln('#include <unistd.h>')
 		g.writeln('#include <arpa/inet.h>')
@@ -2904,6 +2931,36 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('')
 }
 
+fn (mut g FlatGen) c99_feature_test_macros() {
+	if !g.c99_mode {
+		return
+	}
+	g.writeln('#if defined(__linux__) && !defined(_GNU_SOURCE)')
+	g.writeln('#define _GNU_SOURCE')
+	g.writeln('#endif')
+	g.writeln('#if defined(__linux__) && !defined(_POSIX_C_SOURCE)')
+	g.writeln('#define _POSIX_C_SOURCE 200809L')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) c99_atomic_compat_decls() {
+	if g.has_stdatomic_header {
+		return
+	}
+	g.writeln('typedef volatile uintptr_t atomic_uintptr_t;')
+	g.writeln('#ifndef memory_order_relaxed')
+	g.writeln('#define memory_order_relaxed 0')
+	g.writeln('#define memory_order_consume 1')
+	g.writeln('#define memory_order_acquire 2')
+	g.writeln('#define memory_order_release 3')
+	g.writeln('#define memory_order_acq_rel 4')
+	g.writeln('#define memory_order_seq_cst 5')
+	g.writeln('#endif')
+	g.writeln('#ifndef atomic_thread_fence')
+	g.writeln('#define atomic_thread_fence(order) __sync_synchronize()')
+	g.writeln('#endif')
+}
+
 fn (mut g FlatGen) write_arch_macros() {
 	g.writeln('#ifndef __V_architecture')
 	g.writeln('#define __V_architecture 0')
@@ -2954,6 +3011,73 @@ fn (mut g FlatGen) libc_compat_decls() {
 	}
 }
 
+fn (mut g FlatGen) prealloc_atomic_compat_decls() {
+	g.writeln('static inline int v_prealloc_atomic_add_i32(int *ptr, int delta) { return __atomic_add_fetch(ptr, delta, 5); }')
+	g.writeln('static inline int v_prealloc_atomic_load_i32(int *ptr) { return __atomic_add_fetch(ptr, 0, 5); }')
+	g.writeln('#ifdef __TINYC__')
+	g.writeln('static inline int v_prealloc_atomic_store_i32(int *ptr, int val) { return (int)__atomic_exchange_4((u32*)ptr, (u32)val, 5); }')
+	g.writeln('static inline int v_prealloc_atomic_cas_i32(int *ptr, int expected, int desired) { u32 e = (u32)expected; return __atomic_compare_exchange_4((u32*)ptr, &e, (u32)desired, 5, 5); }')
+	g.writeln('#else')
+	g.writeln('static inline int v_prealloc_atomic_store_i32(int *ptr, int val) { return __atomic_exchange_n(ptr, val, 5); }')
+	g.writeln('static inline int v_prealloc_atomic_cas_i32(int *ptr, int expected, int desired) { return __atomic_compare_exchange_n(ptr, &expected, desired, 0, 5, 5); }')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) atomic_builtin_compat_decls() {
+	if g.has_stdatomic_compat_header {
+		return
+	}
+	// Atomic helpers. We use compiler __atomic_* builtins (memory order 5 == __ATOMIC_SEQ_CST).
+	// clang/gcc inline the generic _n / RMW builtins. tcc only implements the inline
+	// __atomic_{add,sub,fetch}_* RMW builtins; for load/store/exchange/cas it has no generic
+	// _n form, so we route those to the sized __atomic_*_N libcalls (resolved from libc).
+	g.writeln('static inline u32 atomic_fetch_add_u32(void* ptr, u32 delta) { return __atomic_fetch_add((u32*)ptr, delta, 5); }')
+	g.writeln('static inline u64 atomic_fetch_add_u64(void* ptr, u64 delta) { return __atomic_fetch_add((u64*)ptr, delta, 5); }')
+	g.writeln('static inline u64 atomic_fetch_sub_u64(void* ptr, u64 delta) { return __atomic_fetch_sub((u64*)ptr, delta, 5); }')
+	g.writeln('static inline byte atomic_load_byte(void* ptr) { return __atomic_fetch_add((byte*)ptr, 0, 5); }')
+	g.writeln('static inline u16 atomic_load_u16(void* ptr) { return __atomic_fetch_add((u16*)ptr, 0, 5); }')
+	g.writeln('static inline u32 atomic_load_u32(void* ptr) { return __atomic_fetch_add((u32*)ptr, 0, 5); }')
+	g.writeln('static inline u64 atomic_load_u64(void* ptr) { return __atomic_fetch_add((u64*)ptr, 0, 5); }')
+	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return *(void* volatile*)ptr; }')
+	g.writeln('#ifdef __TINYC__')
+	g.writeln('static inline void atomic_store_byte(void* ptr, byte val) { __atomic_store_1((byte*)ptr, val, 5); }')
+	g.writeln('static inline void atomic_store_u16(void* ptr, u16 val) { __atomic_store_2((u16*)ptr, val, 5); }')
+	g.writeln('static inline void atomic_store_u32(void* ptr, u32 val) { __atomic_store_4((u32*)ptr, val, 5); }')
+	g.writeln('static inline void atomic_store_u64(void* ptr, u64 val) { __atomic_store_8((u64*)ptr, val, 5); }')
+	g.writeln('#if UINTPTR_MAX == 0xFFFFFFFF')
+	g.writeln('static inline void atomic_store_ptr(void* ptr, void* val) { __atomic_store_4((u32*)ptr, (u32)(size_t)val, 5); }')
+	g.writeln('#else')
+	g.writeln('static inline void atomic_store_ptr(void* ptr, void* val) { __atomic_store_8((u64*)ptr, (u64)(size_t)val, 5); }')
+	g.writeln('#endif')
+	g.writeln('static inline bool atomic_compare_exchange_strong_u16(void* ptr, u16* expected, u16 desired) { return __atomic_compare_exchange_2((u16*)ptr, expected, desired, 5, 5); }')
+	g.writeln('static inline bool atomic_compare_exchange_strong_u32(void* ptr, u32* expected, u32 desired) { return __atomic_compare_exchange_4((u32*)ptr, expected, desired, 5, 5); }')
+	g.writeln('#if UINTPTR_MAX == 0xFFFFFFFF')
+	g.writeln('static inline bool atomic_compare_exchange_strong_ptr(void* ptr, void* expected, ptrdiff_t desired) { return __atomic_compare_exchange_4((u32*)ptr, (u32*)expected, (u32)desired, 5, 5); }')
+	g.writeln('#else')
+	g.writeln('static inline bool atomic_compare_exchange_strong_ptr(void* ptr, void* expected, ptrdiff_t desired) { return __atomic_compare_exchange_8((u64*)ptr, (u64*)expected, (u64)desired, 5, 5); }')
+	g.writeln('#endif')
+	g.writeln('static inline bool atomic_compare_exchange_weak_byte(void* ptr, byte* expected, byte desired) { return __atomic_compare_exchange_1((byte*)ptr, expected, desired, 5, 5); }')
+	g.writeln('static inline bool atomic_compare_exchange_weak_u16(void* ptr, u16* expected, u16 desired) { return __atomic_compare_exchange_2((u16*)ptr, expected, desired, 5, 5); }')
+	g.writeln('static inline bool atomic_compare_exchange_weak_u32(void* ptr, u32* expected, u32 desired) { return __atomic_compare_exchange_4((u32*)ptr, expected, desired, 5, 5); }')
+	g.writeln('static inline bool atomic_compare_exchange_weak_u64(void* ptr, u64* expected, u64 desired) { return __atomic_compare_exchange_8((u64*)ptr, expected, desired, 5, 5); }')
+	g.writeln('#else')
+	g.writeln('static inline void atomic_store_byte(void* ptr, byte val) { __atomic_store_n((byte*)ptr, val, 5); }')
+	g.writeln('static inline void atomic_store_u16(void* ptr, u16 val) { __atomic_store_n((u16*)ptr, val, 5); }')
+	g.writeln('static inline void atomic_store_u32(void* ptr, u32 val) { __atomic_store_n((u32*)ptr, val, 5); }')
+	g.writeln('static inline void atomic_store_u64(void* ptr, u64 val) { __atomic_store_n((u64*)ptr, val, 5); }')
+	g.writeln('static inline void atomic_store_ptr(void* ptr, void* val) { __atomic_store_n((void**)ptr, val, 5); }')
+	g.writeln('static inline bool atomic_compare_exchange_strong_u16(void* ptr, u16* expected, u16 desired) { return __atomic_compare_exchange_n((u16*)ptr, expected, desired, 0, 5, 5); }')
+	g.writeln('static inline bool atomic_compare_exchange_strong_u32(void* ptr, u32* expected, u32 desired) { return __atomic_compare_exchange_n((u32*)ptr, expected, desired, 0, 5, 5); }')
+	g.writeln('static inline bool atomic_compare_exchange_strong_ptr(void* ptr, void* expected, ptrdiff_t desired) { return __atomic_compare_exchange_n((void**)ptr, (void**)expected, (void*)desired, 0, 5, 5); }')
+	g.writeln('static inline bool atomic_compare_exchange_weak_byte(void* ptr, byte* expected, byte desired) { return __atomic_compare_exchange_n((byte*)ptr, expected, desired, 1, 5, 5); }')
+	g.writeln('static inline bool atomic_compare_exchange_weak_u16(void* ptr, u16* expected, u16 desired) { return __atomic_compare_exchange_n((u16*)ptr, expected, desired, 1, 5, 5); }')
+	g.writeln('static inline bool atomic_compare_exchange_weak_u32(void* ptr, u32* expected, u32 desired) { return __atomic_compare_exchange_n((u32*)ptr, expected, desired, 1, 5, 5); }')
+	g.writeln('static inline bool atomic_compare_exchange_weak_u64(void* ptr, u64* expected, u64 desired) { return __atomic_compare_exchange_n((u64*)ptr, expected, desired, 1, 5, 5); }')
+	g.writeln('#endif')
+	g.writeln('static inline bool atomic_compare_exchange_weak_ptr(void* ptr, void* expected, ptrdiff_t desired) { return atomic_compare_exchange_strong_ptr(ptr, expected, desired); }')
+	g.writeln('static inline void cpu_relax(void) { __asm__ __volatile__("" ::: "memory"); }')
+}
+
 fn (mut g FlatGen) builtin_abi_decls() {
 	if !g.has_builtins {
 		return
@@ -2979,61 +3103,9 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	// clash against that file's own non-static prototype.
 	g.writeln('__attribute__((weak)) void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
 	g.writeln('__attribute__((weak)) void vheap_free(void* p) { (void)p; }')
-	// Atomic helpers. We use the C11 __atomic_* builtins (memory order 5 == __ATOMIC_SEQ_CST).
-	// clang/gcc inline the generic _n / RMW builtins. tcc only implements the inline
-	// __atomic_{add,sub,fetch}_* RMW builtins; for load/store/exchange/cas it has no generic
-	// _n form, so we route those to the sized __atomic_*_N libcalls (resolved from libc).
-	g.writeln('static inline int v_prealloc_atomic_add_i32(int *ptr, int delta) { return __atomic_add_fetch(ptr, delta, 5); }')
-	g.writeln('static inline int v_prealloc_atomic_load_i32(int *ptr) { return __atomic_add_fetch(ptr, 0, 5); }')
-	g.writeln('static inline u32 atomic_fetch_add_u32(void* ptr, u32 delta) { return __atomic_fetch_add((u32*)ptr, delta, 5); }')
-	g.writeln('static inline u64 atomic_fetch_add_u64(void* ptr, u64 delta) { return __atomic_fetch_add((u64*)ptr, delta, 5); }')
-	g.writeln('static inline u64 atomic_fetch_sub_u64(void* ptr, u64 delta) { return __atomic_fetch_sub((u64*)ptr, delta, 5); }')
-	g.writeln('static inline byte atomic_load_byte(void* ptr) { return __atomic_fetch_add((byte*)ptr, 0, 5); }')
-	g.writeln('static inline u16 atomic_load_u16(void* ptr) { return __atomic_fetch_add((u16*)ptr, 0, 5); }')
-	g.writeln('static inline u32 atomic_load_u32(void* ptr) { return __atomic_fetch_add((u32*)ptr, 0, 5); }')
-	g.writeln('static inline u64 atomic_load_u64(void* ptr) { return __atomic_fetch_add((u64*)ptr, 0, 5); }')
-	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return *(void* volatile*)ptr; }')
-	g.writeln('#ifdef __TINYC__')
-	g.writeln('static inline int v_prealloc_atomic_store_i32(int *ptr, int val) { return (int)__atomic_exchange_4((u32*)ptr, (u32)val, 5); }')
-	g.writeln('static inline int v_prealloc_atomic_cas_i32(int *ptr, int expected, int desired) { u32 e = (u32)expected; return __atomic_compare_exchange_4((u32*)ptr, &e, (u32)desired, 5, 5); }')
-	g.writeln('static inline void atomic_store_byte(void* ptr, byte val) { __atomic_store_1((byte*)ptr, val, 5); }')
-	g.writeln('static inline void atomic_store_u16(void* ptr, u16 val) { __atomic_store_2((u16*)ptr, val, 5); }')
-	g.writeln('static inline void atomic_store_u32(void* ptr, u32 val) { __atomic_store_4((u32*)ptr, val, 5); }')
-	g.writeln('static inline void atomic_store_u64(void* ptr, u64 val) { __atomic_store_8((u64*)ptr, val, 5); }')
-	g.writeln('#if UINTPTR_MAX == 0xFFFFFFFF')
-	g.writeln('static inline void atomic_store_ptr(void* ptr, void* val) { __atomic_store_4((u32*)ptr, (u32)(size_t)val, 5); }')
-	g.writeln('#else')
-	g.writeln('static inline void atomic_store_ptr(void* ptr, void* val) { __atomic_store_8((u64*)ptr, (u64)(size_t)val, 5); }')
-	g.writeln('#endif')
-	g.writeln('static inline bool atomic_compare_exchange_strong_u16(void* ptr, u16* expected, u16 desired) { return __atomic_compare_exchange_2((u16*)ptr, expected, desired, 5, 5); }')
-	g.writeln('static inline bool atomic_compare_exchange_strong_u32(void* ptr, u32* expected, u32 desired) { return __atomic_compare_exchange_4((u32*)ptr, expected, desired, 5, 5); }')
-	g.writeln('#if UINTPTR_MAX == 0xFFFFFFFF')
-	g.writeln('static inline bool atomic_compare_exchange_strong_ptr(void* ptr, void* expected, ptrdiff_t desired) { return __atomic_compare_exchange_4((u32*)ptr, (u32*)expected, (u32)desired, 5, 5); }')
-	g.writeln('#else')
-	g.writeln('static inline bool atomic_compare_exchange_strong_ptr(void* ptr, void* expected, ptrdiff_t desired) { return __atomic_compare_exchange_8((u64*)ptr, (u64*)expected, (u64)desired, 5, 5); }')
-	g.writeln('#endif')
-	g.writeln('static inline bool atomic_compare_exchange_weak_byte(void* ptr, byte* expected, byte desired) { return __atomic_compare_exchange_1((byte*)ptr, expected, desired, 5, 5); }')
-	g.writeln('static inline bool atomic_compare_exchange_weak_u16(void* ptr, u16* expected, u16 desired) { return __atomic_compare_exchange_2((u16*)ptr, expected, desired, 5, 5); }')
-	g.writeln('static inline bool atomic_compare_exchange_weak_u32(void* ptr, u32* expected, u32 desired) { return __atomic_compare_exchange_4((u32*)ptr, expected, desired, 5, 5); }')
-	g.writeln('static inline bool atomic_compare_exchange_weak_u64(void* ptr, u64* expected, u64 desired) { return __atomic_compare_exchange_8((u64*)ptr, expected, desired, 5, 5); }')
-	g.writeln('#else')
-	g.writeln('static inline int v_prealloc_atomic_store_i32(int *ptr, int val) { return __atomic_exchange_n(ptr, val, 5); }')
-	g.writeln('static inline int v_prealloc_atomic_cas_i32(int *ptr, int expected, int desired) { return __atomic_compare_exchange_n(ptr, &expected, desired, 0, 5, 5); }')
-	g.writeln('static inline void atomic_store_byte(void* ptr, byte val) { __atomic_store_n((byte*)ptr, val, 5); }')
-	g.writeln('static inline void atomic_store_u16(void* ptr, u16 val) { __atomic_store_n((u16*)ptr, val, 5); }')
-	g.writeln('static inline void atomic_store_u32(void* ptr, u32 val) { __atomic_store_n((u32*)ptr, val, 5); }')
-	g.writeln('static inline void atomic_store_u64(void* ptr, u64 val) { __atomic_store_n((u64*)ptr, val, 5); }')
-	g.writeln('static inline void atomic_store_ptr(void* ptr, void* val) { __atomic_store_n((void**)ptr, val, 5); }')
-	g.writeln('static inline bool atomic_compare_exchange_strong_u16(void* ptr, u16* expected, u16 desired) { return __atomic_compare_exchange_n((u16*)ptr, expected, desired, 0, 5, 5); }')
-	g.writeln('static inline bool atomic_compare_exchange_strong_u32(void* ptr, u32* expected, u32 desired) { return __atomic_compare_exchange_n((u32*)ptr, expected, desired, 0, 5, 5); }')
-	g.writeln('static inline bool atomic_compare_exchange_strong_ptr(void* ptr, void* expected, ptrdiff_t desired) { return __atomic_compare_exchange_n((void**)ptr, (void**)expected, (void*)desired, 0, 5, 5); }')
-	g.writeln('static inline bool atomic_compare_exchange_weak_byte(void* ptr, byte* expected, byte desired) { return __atomic_compare_exchange_n((byte*)ptr, expected, desired, 1, 5, 5); }')
-	g.writeln('static inline bool atomic_compare_exchange_weak_u16(void* ptr, u16* expected, u16 desired) { return __atomic_compare_exchange_n((u16*)ptr, expected, desired, 1, 5, 5); }')
-	g.writeln('static inline bool atomic_compare_exchange_weak_u32(void* ptr, u32* expected, u32 desired) { return __atomic_compare_exchange_n((u32*)ptr, expected, desired, 1, 5, 5); }')
-	g.writeln('static inline bool atomic_compare_exchange_weak_u64(void* ptr, u64* expected, u64 desired) { return __atomic_compare_exchange_n((u64*)ptr, expected, desired, 1, 5, 5); }')
-	g.writeln('#endif')
-	g.writeln('static inline bool atomic_compare_exchange_weak_ptr(void* ptr, void* expected, ptrdiff_t desired) { return atomic_compare_exchange_strong_ptr(ptr, expected, desired); }')
-	g.writeln('static inline void cpu_relax(void) { __asm__ __volatile__("" ::: "memory"); }')
+	g.filelock_compat_decls()
+	g.prealloc_atomic_compat_decls()
+	g.atomic_builtin_compat_decls()
 	g.writeln('static inline double math__abs(double a) { return a < 0 ? -a : a; }')
 	g.writeln('static inline double math__min(double a, double b) { return a < b ? a : b; }')
 	g.writeln('static const u64 _wyp[4] = {0x2d358dccaa6c78a5ull, 0x8bb84b93962eacc9ull, 0x4b33a62ed433d4a3ull, 0x4d5a2da51de1aa47ull};')
@@ -3062,6 +3134,51 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#define min_int min_i32')
 	g.writeln('#endif')
 	g.writeln('')
+}
+
+fn (mut g FlatGen) filelock_compat_decls() {
+	g.writeln('#ifdef _WIN32')
+	g.writeln('#include <windows.h>')
+	g.writeln('int v_filelock_lock(void* handle, int exclusive, int immediate, u64 start, u64 len) {')
+	g.writeln('\tOVERLAPPED overlap;')
+	g.writeln('\tmemset(&overlap, 0, sizeof(overlap));')
+	g.writeln('\toverlap.Offset = (DWORD)(start & 0xffffffffULL);')
+	g.writeln('\toverlap.OffsetHigh = (DWORD)(start >> 32);')
+	g.writeln('\tDWORD flags = immediate ? LOCKFILE_FAIL_IMMEDIATELY : 0;')
+	g.writeln('\tif (exclusive) { flags |= LOCKFILE_EXCLUSIVE_LOCK; }')
+	g.writeln('\tDWORD low = len == 0 ? MAXDWORD : (DWORD)(len & 0xffffffffULL);')
+	g.writeln('\tDWORD high = len == 0 ? MAXDWORD : (DWORD)(len >> 32);')
+	g.writeln('\treturn LockFileEx((HANDLE)handle, flags, 0, low, high, &overlap) ? 0 : -1;')
+	g.writeln('}')
+	g.writeln('int v_filelock_unlock(void* handle, u64 start, u64 len) {')
+	g.writeln('\tOVERLAPPED overlap;')
+	g.writeln('\tmemset(&overlap, 0, sizeof(overlap));')
+	g.writeln('\toverlap.Offset = (DWORD)(start & 0xffffffffULL);')
+	g.writeln('\toverlap.OffsetHigh = (DWORD)(start >> 32);')
+	g.writeln('\tDWORD low = len == 0 ? MAXDWORD : (DWORD)(len & 0xffffffffULL);')
+	g.writeln('\tDWORD high = len == 0 ? MAXDWORD : (DWORD)(len >> 32);')
+	g.writeln('\treturn UnlockFileEx((HANDLE)handle, 0, low, high, &overlap) ? 0 : -1;')
+	g.writeln('}')
+	g.writeln('#else')
+	g.writeln('int v_filelock_lock(i32 fd, i32 exclusive, i32 immediate, u64 start, u64 len) {')
+	g.writeln('\tstruct flock fl;')
+	g.writeln('\tmemset(&fl, 0, sizeof(fl));')
+	g.writeln('\tfl.l_type = exclusive ? F_WRLCK : F_RDLCK;')
+	g.writeln('\tfl.l_whence = SEEK_SET;')
+	g.writeln('\tfl.l_start = (off_t)start;')
+	g.writeln('\tfl.l_len = len == 0 ? 0 : (off_t)len;')
+	g.writeln('\treturn fcntl(fd, immediate ? F_SETLK : F_SETLKW, &fl);')
+	g.writeln('}')
+	g.writeln('int v_filelock_unlock(i32 fd, u64 start, u64 len) {')
+	g.writeln('\tstruct flock fl;')
+	g.writeln('\tmemset(&fl, 0, sizeof(fl));')
+	g.writeln('\tfl.l_type = F_UNLCK;')
+	g.writeln('\tfl.l_whence = SEEK_SET;')
+	g.writeln('\tfl.l_start = (off_t)start;')
+	g.writeln('\tfl.l_len = len == 0 ? 0 : (off_t)len;')
+	g.writeln('\treturn fcntl(fd, F_SETLK, &fl);')
+	g.writeln('}')
+	g.writeln('#endif')
 }
 
 fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTypedefInfo {

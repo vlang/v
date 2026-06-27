@@ -23,13 +23,13 @@ fn run_compile_command(cmd string) os.Result {
 	}
 }
 
-fn prepare_c_flags_for_link(flags []string) ![]string {
+fn prepare_c_flags_for_link(flags []string, c99 bool) ![]string {
 	support_flags := c_object_compile_support_flags(flags)
 	mut prepared := []string{}
 	for flag in flags {
 		clean := flag.trim_space()
 		if c_flag_is_object_file(clean) {
-			prepared << ensure_c_object_file(clean, support_flags)!
+			prepared << ensure_c_object_file(clean, support_flags, c99)!
 		} else {
 			prepared << flag
 		}
@@ -54,7 +54,7 @@ fn c_object_compile_support_flags(flags []string) []string {
 	return support
 }
 
-fn ensure_c_object_file(obj_path string, support_flags []string) !string {
+fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool) !string {
 	if os.exists(obj_path) {
 		return obj_path
 	}
@@ -63,13 +63,13 @@ fn ensure_c_object_file(obj_path string, support_flags []string) !string {
 	}
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
-	cached_obj := os.join_path(cache_dir, c_object_cache_name(obj_path, support_flags))
+	std_flag := if source_file.ends_with('.cpp') { '-std=c++11' } else { c_standard_flag(c99) }
+	cached_obj := os.join_path(cache_dir, c_object_cache_name(obj_path, support_flags, std_flag))
 	if os.exists(cached_obj)
 		&& os.file_last_mod_unix(cached_obj) >= os.file_last_mod_unix(source_file) {
 		return cached_obj
 	}
 	compiler := if source_file.ends_with('.cpp') { 'c++' } else { 'cc' }
-	std_flag := if source_file.ends_with('.cpp') { '-std=c++11' } else { '-std=gnu11' }
 	cmd := '${compiler} ${std_flag} -w ${support_flags.join(' ')} -o ${os.quoted_path(cached_obj)} -c ${os.quoted_path(source_file)}'
 	res := os.execute(cmd)
 	if res.exit_code != 0 {
@@ -89,15 +89,14 @@ fn c_source_from_object_file(obj_path string) ?string {
 	return none
 }
 
-fn c_object_cache_name(path string, support_flags []string) string {
+fn c_object_cache_name(path string, support_flags []string, std_flag string) string {
 	base := path.replace_each(['/', '_', '\\', '_', ':', '_', '.', '_', ' ', '_'])
 	// The compile flags (`-D`/`-I`/...) change the object contents, so they must
 	// be part of the cache key; otherwise a rebuild with different `#flag` defines
 	// silently links the stale object built with the previous configuration.
-	if support_flags.len == 0 {
-		return base + '.o'
-	}
-	return '${base}_${c_flags_hash(support_flags)}.o'
+	mut cache_flags := [std_flag]
+	cache_flags << support_flags
+	return '${base}_${c_flags_hash(cache_flags)}.o'
 }
 
 fn c_flags_hash(flags []string) string {
@@ -117,11 +116,15 @@ fn c_flag_is_c_source_file(flag string) bool {
 	return flag.ends_with('.c') || flag.ends_with('.cc') || flag.ends_with('.cpp')
 }
 
+fn c_standard_flag(c99 bool) string {
+	return if c99 { '-std=c99' } else { '-std=gnu11' }
+}
+
 // main runs the v3 entry point.
 fn main() {
 	args := os.args[1..]
 	if args.len == 0 {
-		eprintln('usage: v3 <file.v> [-o output|file.c] [-b c|arm64|eval] [-d flag]')
+		eprintln('usage: v3 <file.v> [-o output|file.c] [-b c|arm64|eval] [-c99] [-d flag]')
 		exit(1)
 	}
 
@@ -134,6 +137,7 @@ fn main() {
 	mut no_parallel := false
 	mut parallel_transform := false
 	mut building_v := false
+	mut c99 := false
 	mut all_backends := false
 	mut compile_backends := []string{}
 	mut user_defines := []string{}
@@ -155,6 +159,12 @@ fn main() {
 			// The V compiler itself uses no generics, so monomorphization (and the rest
 			// of the generics machinery) is pure overhead when building it.
 			building_v = true
+			i++
+		} else if args[i] == '-c99' || args[i] == '--c99' {
+			c99 = true
+			if 'c99' !in user_defines {
+				user_defines << 'c99'
+			}
 			i++
 		} else if args[i] == '-strict' {
 			is_strict = true
@@ -264,6 +274,7 @@ fn main() {
 	// Parse directly to flat AST
 	mut prefs := pref.new_preferences()
 	prefs.backend = backend
+	prefs.c99 = c99
 	prefs.user_defines = user_defines
 	prefs.vroot = resolve_vroot(prefs.vroot)
 	prefs.selfhost = is_selfhost
@@ -416,7 +427,9 @@ fn main() {
 		}
 	} else {
 		// C backend (default)
+		c_standard := c_standard_flag(prefs.c99)
 		mut g := cgen.FlatGen.new()
+		g.set_c99_mode(prefs.c99)
 		c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, no_parallel, test_files)
 		if !write_text_file_raw(output_file, c_code) {
 			eprintln('error writing ${output_file}')
@@ -434,7 +447,7 @@ fn main() {
 		} else {
 			'-w'
 		}
-		resolved_c_flags := prepare_c_flags_for_link(g.c_flags()) or {
+		resolved_c_flags := prepare_c_flags_for_link(g.c_flags(), prefs.c99) or {
 			eprintln(err.msg())
 			exit(1)
 		}
@@ -464,8 +477,8 @@ fn main() {
 			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
-			cc_cmd = '${tcc_path} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file} ${c_flags} -lm'
-			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${tcc_includes} ${tcc_lib} ${warn_flags} -o out src.c ${c_flags} -lm'
+			cc_cmd = '${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file} ${c_flags} -lm'
+			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o out src.c ${c_flags} -lm'
 			println('  > ${cc_cmd}')
 			result = run_compile_command(exec_cmd)
 		}
@@ -478,8 +491,8 @@ fn main() {
 			} else {
 				''
 			}
-			cc_cmd = 'cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o ${bin_file} ${output_file} ${c_flags} -lm'
-			exec_cmd = 'cd ${cc_dir} && cc -std=gnu11 ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o out src.c ${c_flags} -lm'
+			cc_cmd = 'cc ${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o ${bin_file} ${output_file} ${c_flags} -lm'
+			exec_cmd = 'cd ${cc_dir} && cc ${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o out src.c ${c_flags} -lm'
 			println('  > ${cc_cmd}')
 			result = run_compile_command(exec_cmd)
 			if result.exit_code != 0 {
