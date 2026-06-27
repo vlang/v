@@ -515,6 +515,48 @@ fn test_h2_server_rejects_conflicting_content_length() {
 	assert code == i64(u32(H2ErrorCode.protocol_error)), 'conflicting content-length: expected RST_STREAM(PROTOCOL_ERROR), got ${code}'
 }
 
+// RFC 9113 §4.3: an HPACK decoding error is a CONNECTION error
+// (GOAWAY COMPRESSION_ERROR), not a stream reset — the decoder's dynamic table is
+// desynced, so the whole connection must close.
+fn test_h2_server_hpack_error_closes_connection() {
+	mut out := []u8{}
+	out << h2_client_preface.bytes()
+	out << H2Frame(H2SettingsFrame{}).encode()
+	// HEADERS with an invalid HPACK block: indexed header field with index 0
+	// (0x80), which RFC 7541 §6.1 forbids -> decode error.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    [u8(0x80)]
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'hpack error: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut code := i64(-1)
+	for _ in 0 .. 32 {
+		f := fr.next() or { break }
+		match f {
+			H2GoawayFrame {
+				code = i64(f.error_code)
+				break
+			}
+			H2RstStreamFrame {
+				// Wrong scope: a per-stream reset for an HPACK error.
+				code = -2
+				break
+			}
+			else {}
+		}
+	}
+	assert code == i64(u32(H2ErrorCode.compression_error)), 'HPACK decode error must be GOAWAY(COMPRESSION_ERROR), got ${code}'
+}
+
 // RFC 9113 §8.1: a trailer section that does not carry END_STREAM is malformed.
 // It must be a STREAM error (RST_STREAM) — the connection stays up — not a GOAWAY.
 fn test_h2_server_rejects_trailers_without_end_stream() {

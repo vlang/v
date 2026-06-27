@@ -448,15 +448,18 @@ fn (mut c H2ServerConn) on_continuation(frame H2ContinuationFrame, mut handler H
 }
 
 fn (mut c H2ServerConn) finalize_headers(mut s H2ServerStream, mut handler Handler) ! {
-	// Decode first (always, to keep the HPACK dynamic table in sync) then
-	// validate. A malformed request is a stream error (RFC 9113 §8.1.1) — reset
-	// just this stream and keep the connection alive.
+	// An HPACK decoding failure is a CONNECTION error (RFC 9113 §4.3): the decoder
+	// mutates the dynamic table as it runs, so a failure leaves our table out of
+	// sync with the peer and no later header block on this connection can be decoded
+	// reliably. Close the connection with COMPRESSION_ERROR rather than RST-ing one
+	// stream. (send_goaway sets c.closing, so serve()'s catch won't re-GOAWAY.)
 	s.headers = c.decoder.decode(s.hpack_block) or {
-		c.send_rst_stream(s.id, .compression_error)!
-		c.streams.delete(s.id)
-		return
+		c.send_goaway(.compression_error, 'HPACK decode error') or {}
+		return error('h2 server: HPACK decode error (COMPRESSION_ERROR)')
 	}
 	s.headers_done = true
+	// A well-decoded but malformed request is a STREAM error (RFC 9113 §8.1.1) —
+	// reset just this stream and keep the connection alive.
 	h2_validate_request_pseudo(s.headers) or {
 		c.send_rst_stream(s.id, .protocol_error)!
 		c.streams.delete(s.id)
@@ -469,10 +472,10 @@ fn (mut c H2ServerConn) finalize_headers(mut s H2ServerStream, mut handler Handl
 
 // on_trailers handles a second HEADERS block on an already-open stream: an
 // HTTP/2 trailer section (RFC 9113 §8.1). The block is always assembled and
-// decoded (to keep the HPACK table in sync); whether it is well-formed — it must
-// carry END_STREAM and no pseudo-headers — is decided in finalize_trailers, so a
-// malformed trailer section is reset as a stream error without desyncing HPACK or
-// tearing down the connection.
+// decoded; whether it is well-formed — it must carry END_STREAM and no
+// pseudo-headers — is decided in finalize_trailers. A well-decoded but malformed
+// trailer section is reset as a stream error; an HPACK decode failure is a
+// connection error (§4.3) since it desyncs the decoder.
 fn (mut c H2ServerConn) on_trailers(mut s H2ServerStream, frame H2HeadersFrame, mut handler Handler) ! {
 	s.in_trailers = true
 	s.end_stream = frame.end_stream
@@ -485,14 +488,14 @@ fn (mut c H2ServerConn) on_trailers(mut s H2ServerStream, frame H2HeadersFrame, 
 }
 
 fn (mut c H2ServerConn) finalize_trailers(mut s H2ServerStream, mut handler Handler) ! {
-	// Decode first (always, to keep the HPACK dynamic table in sync) then
-	// validate. Every trailer fault below is a stream error (RFC 9113 §8.1.1):
-	// reset just this stream and keep the connection alive.
+	// An HPACK decoding failure is a CONNECTION error (RFC 9113 §4.3): the decoder's
+	// dynamic table is now out of sync with the peer. Close the connection rather
+	// than RST one stream.
 	trailers := c.decoder.decode(s.trailer_block) or {
-		c.send_rst_stream(s.id, .compression_error)!
-		c.streams.delete(s.id)
-		return
+		c.send_goaway(.compression_error, 'HPACK decode error in trailers') or {}
+		return error('h2 server: HPACK decode error in trailers (COMPRESSION_ERROR)')
 	}
+	// A well-decoded but malformed trailer section is a STREAM error (§8.1.1).
 	mut reason := if !s.end_stream {
 		// A trailer section MUST terminate the stream (RFC 9113 §8.1).
 		'trailing HEADERS without END_STREAM'
