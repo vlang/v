@@ -724,6 +724,9 @@ fn (mut g Gen) alias_parent_concrete_types(info ast.Alias) []ast.Type {
 		ast.ArrayFixed {
 			return [parent_sym.info.elem_type]
 		}
+		ast.Chan {
+			return [parent_sym.info.elem_type]
+		}
 		ast.Map {
 			return [parent_sym.info.key_type, parent_sym.info.value_type]
 		}

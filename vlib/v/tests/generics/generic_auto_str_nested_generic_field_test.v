@@ -16,7 +16,13 @@ struct InterpBox[T] {
 	val T
 }
 
+struct OverrideBox[T] {
+	val T
+}
+
 type InterpIntBox = InterpBox[int]
+
+type OverrideIntBox = OverrideBox[[]int]
 
 type Ints = []int
 
@@ -54,6 +60,17 @@ fn (box Box[[]T]) str() string {
 
 fn (box InterpIntBox) str[T]() string {
 	return 'interp alias ${box.val}'
+}
+
+fn (box OverrideBox[[]T]) str() string {
+	$if T is int {
+		$compile_error('overridden parent str should not be registered')
+	}
+	return 'parent override ${box.val}'
+}
+
+fn (box OverrideIntBox) str[T]() string {
+	return 'override alias ${box.val[0]}'
 }
 
 fn (values Ints) str[T]() string {
@@ -95,6 +112,13 @@ fn test_interpolation_registers_exact_generic_alias_str_method() {
 		val: 987
 	}
 	assert '${box}' == 'interp alias 987'
+}
+
+fn test_interpolation_registers_only_overridden_alias_str_method() {
+	box := OverrideIntBox{
+		val: [246]
+	}
+	assert '${box}' == 'override alias 246'
 }
 
 fn test_auto_str_registers_container_alias_parent_str_method() {

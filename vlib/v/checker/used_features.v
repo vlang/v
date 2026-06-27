@@ -315,13 +315,13 @@ fn (mut c Checker) markused_generic_str_method(typ ast.Type, sym &ast.TypeSymbol
 	mut method := ast.Fn{}
 	mut concrete_types := []ast.Type{}
 	if structured_method := c.table.find_structured_receiver_method_with_types(typ, 'str') {
-		concrete_types = structured_method.concrete_types.map(c.unwrap_generic(it))
 		if exact_method := sym.find_method('str') {
 			method = exact_method
 		} else if exact_method := c.table.find_alias_parent_exact_method(typ, 'str') {
 			method = exact_method
 		} else {
 			method = structured_method.method
+			concrete_types = structured_method.concrete_types.map(c.unwrap_generic(it))
 		}
 	} else {
 		method = sym.find_method_with_generic_parent('str') or {
@@ -340,7 +340,7 @@ fn (mut c Checker) markused_generic_str_method(typ ast.Type, sym &ast.TypeSymbol
 	if decl_fkey != method.fkey() {
 		registered = c.register_auto_str_fn_concrete_types(decl_fkey, concrete_types) || registered
 	}
-	for resolved_decl_fkey in c.str_method_decl_fkeys_for_type(typ) {
+	for resolved_decl_fkey in c.str_method_decl_fkeys_for_type(typ, method) {
 		if resolved_decl_fkey != method.fkey() && resolved_decl_fkey != decl_fkey {
 			registered = c.register_auto_str_fn_concrete_types(resolved_decl_fkey, concrete_types)
 				|| registered
@@ -401,46 +401,62 @@ fn add_str_method_decl_fkey(mut fkeys []string, fkey string) {
 	}
 }
 
-fn (c &Checker) str_method_decl_fkeys_for_type(typ ast.Type) []string {
+fn add_matching_str_method_decl_fkeys(mut fkeys []string, candidate_fkeys []string, resolved_decl_fkey string) {
+	if resolved_decl_fkey in candidate_fkeys {
+		for fkey in candidate_fkeys {
+			add_str_method_decl_fkey(mut fkeys, fkey)
+		}
+	}
+}
+
+fn (c &Checker) str_method_decl_fkeys_for_type(typ ast.Type, method ast.Fn) []string {
 	mut fkeys := []string{}
-	mut candidate_types := []ast.Type{}
 	if typ == 0 {
 		return fkeys
 	}
-	candidate_types << typ
+	resolved_decl_fkey := method_decl_fkey(method)
+	for fkey in c.str_method_decl_fkeys_for_candidate(typ) {
+		add_str_method_decl_fkey(mut fkeys, fkey)
+	}
 	unaliased := c.table.unaliased_type(typ)
 	if unaliased != 0 && unaliased != typ {
-		candidate_types << unaliased
+		add_matching_str_method_decl_fkeys(mut fkeys,
+			c.str_method_decl_fkeys_for_candidate(unaliased), resolved_decl_fkey)
 	}
 	if !typ.is_ptr() {
 		ref_typ := typ.ref()
 		if ref_typ != 0 {
-			candidate_types << ref_typ
+			add_matching_str_method_decl_fkeys(mut fkeys,
+				c.str_method_decl_fkeys_for_candidate(ref_typ), resolved_decl_fkey)
 		}
 	} else {
 		deref_typ := typ.deref()
 		if deref_typ != 0 {
-			candidate_types << deref_typ
+			add_matching_str_method_decl_fkeys(mut fkeys,
+				c.str_method_decl_fkeys_for_candidate(deref_typ), resolved_decl_fkey)
 		}
 	}
-	for candidate in candidate_types {
-		sym := c.table.sym(candidate)
-		parent_fkey := c.generic_parent_str_method_fkey(sym)
-		if parent_fkey != '' {
-			add_str_method_decl_fkey(mut fkeys, parent_fkey)
-		}
-		if method := sym.find_method_with_generic_parent('str') {
-			add_str_method_decl_fkey(mut fkeys, method_decl_fkey(method))
-		}
-		if method := c.table.find_method(sym, 'str') {
-			add_str_method_decl_fkey(mut fkeys, method_decl_fkey(method))
-		}
-		method, embed_types := c.table.find_method_from_embeds(c.table.final_sym(candidate), 'str') or {
-			ast.Fn{}, []ast.Type{}
-		}
-		if embed_types.len != 0 {
-			add_str_method_decl_fkey(mut fkeys, method_decl_fkey(method))
-		}
+	return fkeys
+}
+
+fn (c &Checker) str_method_decl_fkeys_for_candidate(candidate ast.Type) []string {
+	mut fkeys := []string{}
+	sym := c.table.sym(candidate)
+	parent_fkey := c.generic_parent_str_method_fkey(sym)
+	if parent_fkey != '' {
+		add_str_method_decl_fkey(mut fkeys, parent_fkey)
+	}
+	if method := sym.find_method_with_generic_parent('str') {
+		add_str_method_decl_fkey(mut fkeys, method_decl_fkey(method))
+	}
+	if method := c.table.find_method(sym, 'str') {
+		add_str_method_decl_fkey(mut fkeys, method_decl_fkey(method))
+	}
+	method, embed_types := c.table.find_method_from_embeds(c.table.final_sym(candidate), 'str') or {
+		ast.Fn{}, []ast.Type{}
+	}
+	if embed_types.len != 0 {
+		add_str_method_decl_fkey(mut fkeys, method_decl_fkey(method))
 	}
 	return fkeys
 }
@@ -476,6 +492,9 @@ fn (c &Checker) alias_parent_concrete_types(info ast.Alias) []ast.Type {
 			return [parent_sym.info.elem_type]
 		}
 		ast.ArrayFixed {
+			return [parent_sym.info.elem_type]
+		}
+		ast.Chan {
 			return [parent_sym.info.elem_type]
 		}
 		ast.Map {
