@@ -306,17 +306,17 @@ fn (mut c Checker) markused_generic_str_method(typ ast.Type, sym &ast.TypeSymbol
 	if structured_method := c.table.find_structured_receiver_method_with_types(typ, 'str') {
 		if exact_method := sym.find_method('str') {
 			method = exact_method
-			concrete_types = c.concrete_types_for_type_symbol(sym)
 		} else if exact_method := c.table.find_alias_parent_exact_method(typ, 'str') {
 			method = exact_method
-			concrete_types = c.concrete_types_for_type_symbol(sym)
 		} else {
 			method = structured_method.method
 			concrete_types = structured_method.concrete_types.map(c.unwrap_generic(it))
 		}
 	} else {
 		method = sym.find_method_with_generic_parent('str') or { return }
-		concrete_types = c.concrete_types_for_type_symbol(sym)
+	}
+	if concrete_types.len == 0 {
+		concrete_types = c.concrete_types_for_generic_str_receiver(typ, sym, method)
 	}
 	if method.generic_names.len != concrete_types.len || concrete_types.len == 0
 		|| concrete_types.any(it.has_flag(.generic) || c.type_has_unresolved_generic_parts(it)) {
@@ -325,6 +325,34 @@ fn (mut c Checker) markused_generic_str_method(typ ast.Type, sym &ast.TypeSymbol
 	if c.table.register_fn_concrete_types(method.fkey(), concrete_types) {
 		c.need_recheck_generic_fns = true
 	}
+}
+
+fn (mut c Checker) concrete_types_for_generic_str_receiver(typ ast.Type, sym &ast.TypeSymbol, method ast.Fn) []ast.Type {
+	concrete_types := c.concrete_types_for_type_symbol(sym)
+	if concrete_types.len > 0 || method.generic_names.len == 0 {
+		return concrete_types
+	}
+	return c.infer_method_receiver_concrete_types(method, typ)
+}
+
+fn (mut c Checker) infer_method_receiver_concrete_types(method ast.Fn, typ ast.Type) []ast.Type {
+	mut concrete_types := []ast.Type{cap: method.generic_names.len}
+	for generic_name in method.generic_names {
+		mut concrete_type := c.infer_composite_generic_type(generic_name, method.receiver_type, typ)
+		if concrete_type == ast.void_type {
+			unaliased_receiver_type := c.table.fully_unaliased_type(method.receiver_type)
+			unaliased_typ := c.table.fully_unaliased_type(typ)
+			if unaliased_receiver_type != method.receiver_type || unaliased_typ != typ {
+				concrete_type = c.infer_composite_generic_type(generic_name,
+					unaliased_receiver_type, unaliased_typ)
+			}
+		}
+		if concrete_type == ast.void_type {
+			return []ast.Type{}
+		}
+		concrete_types << c.unwrap_generic(concrete_type)
+	}
+	return concrete_types
 }
 
 fn (mut c Checker) markused_array_method(check bool, method_name string) {
