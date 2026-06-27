@@ -1218,7 +1218,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			}
 			if !g.pref.new_generic_solver {
 				if str_method := sym.find_method_with_generic_parent('str') {
-					if str_method.generic_names.len > 0 {
+					if str_method.generic_names.len > 0 && !ftyp_noshared.has_flag(.option) {
 						match sym.info {
 							ast.Struct, ast.SumType, ast.Interface, ast.Alias {
 								field_fn_name = g.generic_fn_name(g.str_method_concrete_types(ftyp_noshared, sym),

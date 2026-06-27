@@ -6,6 +6,10 @@ struct MaybeContainer[T] {
 	value Maybe[T]
 }
 
+struct MaybeOptionalContainer[T] {
+	value ?Maybe[T]
+}
+
 pub fn (m Maybe[T]) str[T]() string {
 	return if m is T {
 		x := m as T
@@ -86,4 +90,11 @@ fn test_auto_str_struct_field_with_generic_sumtype_str() {
 		value: some(456)
 	}
 	assert '${c}'.contains('value: Some(456)')
+}
+
+fn test_auto_str_optional_field_with_generic_sumtype_str() {
+	c := MaybeOptionalContainer[int]{
+		value: some(789)
+	}
+	assert '${c}'.contains('Some(789)')
 }
