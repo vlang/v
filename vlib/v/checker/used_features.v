@@ -220,6 +220,7 @@ fn (mut c Checker) markused_string_inter_lit(mut _ ast.StringInterLiteral, ftyp 
 		c.table.used_features.auto_str = true
 		c.markused_auto_str_dependencies(ftyp)
 	} else {
+		c.markused_generic_str_method(ftyp, c.table.sym(ftyp))
 		c.mark_type_str_method_as_referenced(ftyp)
 		c.table.used_features.print_types[ftyp.idx()] = true
 	}
@@ -338,6 +339,12 @@ fn (mut c Checker) markused_generic_str_method(typ ast.Type, sym &ast.TypeSymbol
 	if decl_fkey != method.fkey() {
 		registered = c.register_auto_str_fn_concrete_types(decl_fkey, concrete_types) || registered
 	}
+	for resolved_decl_fkey in c.str_method_decl_fkeys_for_type(typ) {
+		if resolved_decl_fkey != method.fkey() && resolved_decl_fkey != decl_fkey {
+			registered = c.register_auto_str_fn_concrete_types(resolved_decl_fkey, concrete_types)
+				|| registered
+		}
+	}
 	if registered {
 		c.need_recheck_generic_fns = true
 	}
@@ -361,6 +368,80 @@ fn method_decl_fkey(method ast.Fn) string {
 		return fndecl.fkey()
 	}
 	return method.fkey()
+}
+
+fn (c &Checker) generic_parent_str_method_fkey(sym &ast.TypeSymbol) string {
+	match sym.info {
+		ast.Struct, ast.Interface, ast.SumType {
+			if sym.info.parent_type.has_flag(.generic) {
+				parent_sym := c.table.sym(sym.info.parent_type)
+				if method := parent_sym.find_method('str') {
+					return method_decl_fkey(method)
+				}
+			}
+		}
+		ast.GenericInst {
+			if sym.info.parent_idx > 0 {
+				parent_sym := c.table.sym(ast.idx_to_type(sym.info.parent_idx))
+				if method := parent_sym.find_method('str') {
+					return method_decl_fkey(method)
+				}
+			}
+		}
+		else {}
+	}
+
+	return ''
+}
+
+fn add_str_method_decl_fkey(mut fkeys []string, fkey string) {
+	if fkey != '' && fkey !in fkeys {
+		fkeys << fkey
+	}
+}
+
+fn (c &Checker) str_method_decl_fkeys_for_type(typ ast.Type) []string {
+	mut fkeys := []string{}
+	mut candidate_types := []ast.Type{}
+	if typ == 0 {
+		return fkeys
+	}
+	candidate_types << typ
+	unaliased := c.table.unaliased_type(typ)
+	if unaliased != 0 && unaliased != typ {
+		candidate_types << unaliased
+	}
+	if !typ.is_ptr() {
+		ref_typ := typ.ref()
+		if ref_typ != 0 {
+			candidate_types << ref_typ
+		}
+	} else {
+		deref_typ := typ.deref()
+		if deref_typ != 0 {
+			candidate_types << deref_typ
+		}
+	}
+	for candidate in candidate_types {
+		sym := c.table.sym(candidate)
+		parent_fkey := c.generic_parent_str_method_fkey(sym)
+		if parent_fkey != '' {
+			add_str_method_decl_fkey(mut fkeys, parent_fkey)
+		}
+		if method := sym.find_method_with_generic_parent('str') {
+			add_str_method_decl_fkey(mut fkeys, method_decl_fkey(method))
+		}
+		if method := c.table.find_method(sym, 'str') {
+			add_str_method_decl_fkey(mut fkeys, method_decl_fkey(method))
+		}
+		method, embed_types := c.table.find_method_from_embeds(c.table.final_sym(candidate), 'str') or {
+			ast.Fn{}, []ast.Type{}
+		}
+		if embed_types.len != 0 {
+			add_str_method_decl_fkey(mut fkeys, method_decl_fkey(method))
+		}
+	}
+	return fkeys
 }
 
 fn (mut c Checker) concrete_types_for_generic_str_receiver(typ ast.Type, sym &ast.TypeSymbol, method ast.Fn) []ast.Type {

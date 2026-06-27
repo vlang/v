@@ -12,6 +12,12 @@ struct Box[T] {
 	val T
 }
 
+struct InterpBox[T] {
+	val T
+}
+
+type InterpIntBox = InterpBox[int]
+
 struct StructuredContainer[T] {
 	box Box[[]T]
 }
@@ -40,6 +46,10 @@ fn (box Box[[]T]) str() string {
 	return 'structured box'
 }
 
+fn (box InterpIntBox) str[T]() string {
+	return 'interp alias ${box.val}'
+}
+
 fn (list AssertList[T]) str() string {
 	return 'assert list'
 }
@@ -62,6 +72,13 @@ fn test_auto_str_registers_structured_receiver_generic_str_method() {
 		}
 	}
 	assert '${c}'.contains('box: structured box')
+}
+
+fn test_interpolation_registers_exact_generic_alias_str_method() {
+	box := InterpIntBox{
+		val: 987
+	}
+	assert '${box}' == 'interp alias 987'
 }
 
 fn test_assert_auto_str_registers_nested_generic_field_str_method() {

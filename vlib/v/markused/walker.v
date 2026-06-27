@@ -1393,6 +1393,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			} else {
 				w.mark_simple_string_inter_literal(node)
 			}
+			w.mark_string_inter_literal_generic_str_methods(node)
 			w.exprs(node.exprs)
 			for expr in node.fwidth_exprs {
 				if expr !is ast.EmptyExpr {
@@ -2784,6 +2785,37 @@ fn (mut w Walker) string_inter_literal_uses_isnil(node ast.StringInterLiteral) b
 		}
 	}
 	return false
+}
+
+fn (mut w Walker) mark_string_inter_literal_generic_str_methods(node ast.StringInterLiteral) {
+	for i in 0 .. node.exprs.len {
+		if i >= node.expr_types.len {
+			break
+		}
+		typ := w.resolve_current_generic_type(node.expr_types[i])
+		if typ == 0 || typ == ast.void_type || typ == ast.string_type {
+			continue
+		}
+		fkey, _ := w.resolve_method_fkey_for_type(typ, 'str')
+		if fkey == '' {
+			continue
+		}
+		concrete_type_lists := w.table.fn_generic_types[fkey]
+		if concrete_type_lists.len == 0 {
+			continue
+		}
+		for concrete_types in concrete_type_lists {
+			if concrete_types.len == 0 {
+				continue
+			}
+			w.record_used_fn_generic_types(fkey, concrete_types)
+			if mut fn_decl := w.all_fns[fkey] {
+				w.fn_decl_with_concrete_types(mut fn_decl, concrete_types)
+			} else {
+				w.mark_fn_as_used(fkey)
+			}
+		}
+	}
 }
 
 fn (mut w Walker) mark_simple_string_inter_literal(node ast.StringInterLiteral) {
