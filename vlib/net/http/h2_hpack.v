@@ -205,12 +205,19 @@ fn h2_hpack_find_static(name string, value string) (int, bool) {
 // decoder state trivially in sync while remaining fully interoperable.
 pub struct H2HpackEncoder {
 pub mut:
-	dyn_table H2DynTable
+	dyn_table              H2DynTable
+	pending_max_table_size int = -1 // -1 = no pending update; ≥0 = emit size update on next encode
 }
 
 // encode returns the HPACK header block for `fields`.
 pub fn (mut e H2HpackEncoder) encode(fields []H2HeaderField) []u8 {
 	mut out := []u8{}
+	if e.pending_max_table_size >= 0 {
+		// RFC 7541 §6.3: emit Dynamic Table Size Update at the start of the
+		// first header block after a peer-requested table size change.
+		h2_hpack_write_int(mut out, u64(e.pending_max_table_size), 5, 0x20)
+		e.pending_max_table_size = -1
+	}
 	for f in fields {
 		e.encode_field(mut out, f)
 	}

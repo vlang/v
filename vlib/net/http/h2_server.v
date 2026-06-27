@@ -212,7 +212,11 @@ fn (mut c H2ServerConn) apply_settings(settings []H2Setting) ! {
 	for s in settings {
 		match s.id {
 			h2_settings_header_table_size {
+				// Constrains our *encoder* (the server's response-header encoder
+				// whose output the client decodes with its advertised table size).
 				c.peer.header_table_size = s.value
+				c.encoder.dyn_table.set_max_size(int(s.value))
+				c.encoder.pending_max_table_size = int(s.value)
 			}
 			h2_settings_enable_push {
 				c.peer.enable_push = s.value != 0
@@ -228,9 +232,17 @@ fn (mut c H2ServerConn) apply_settings(settings []H2Setting) ! {
 						'SETTINGS_INITIAL_WINDOW_SIZE ${s.value} exceeds 2^31-1') or {}
 					return error('h2 server: SETTINGS_INITIAL_WINDOW_SIZE ${s.value} exceeds 2^31-1 (FLOW_CONTROL_ERROR)')
 				}
-				// RFC 7540 §6.9.2: a change to the initial window size adjusts
-				// the send window of every active stream by the delta.
+				// RFC 7540 §6.9.2: validate ALL stream windows before mutating any
+				// so that a delta overflow on stream N does not leave streams 1..N-1
+				// partially updated. Send FLOW_CONTROL_ERROR (not PROTOCOL_ERROR).
 				delta := i64(s.value) - i64(c.peer.initial_window_size)
+				for _, st in c.streams {
+					if st.send_window + delta > i64(0x7fff_ffff) {
+						c.send_goaway(.flow_control_error,
+							'SETTINGS_INITIAL_WINDOW_SIZE delta overflows stream ${st.id} send window') or {}
+						return error('h2 server: SETTINGS_INITIAL_WINDOW_SIZE delta overflows stream ${st.id} send window (RFC 7540 §6.9.2 FLOW_CONTROL_ERROR)')
+					}
+				}
 				c.peer.initial_window_size = s.value
 				for _, mut st in c.streams {
 					st.send_window += delta
@@ -276,6 +288,9 @@ fn (mut c H2ServerConn) on_continuation(frame H2ContinuationFrame, mut handler H
 	mut s := c.streams[frame.stream_id] or {
 		return error('h2 server: CONTINUATION for unknown stream ${frame.stream_id}')
 	}
+	if s.hpack_block.len + frame.fragment.len > h2_max_recv_header_block {
+		return error('h2 server: request header block exceeds ${h2_max_recv_header_block} bytes')
+	}
 	s.hpack_block << frame.fragment
 	if frame.end_headers {
 		s.end_headers = true
@@ -299,9 +314,10 @@ fn (mut c H2ServerConn) finalize_headers(mut s H2ServerStream, mut handler Handl
 fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 	mut s := c.streams[frame.stream_id] or {
 		// DATA for an unknown stream (likely already RST'd); just drop and
-		// keep flow control consistent.
-		if frame.data.len > 0 {
-			c.send_window_update(0, u32(frame.data.len))!
+		// keep flow control consistent. Credit flow_size (full wire bytes
+		// including padding) per RFC 7540 §6.9.1.
+		if frame.flow_size > 0 {
+			c.send_window_update(0, u32(frame.flow_size))!
 		}
 		return
 	}
@@ -310,15 +326,23 @@ fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 	}
 	if frame.data.len > 0 {
 		if s.body.len + frame.data.len > h2_server_max_request_body {
+			// Credit the connection window before resetting so the peer is
+			// not penalised for bytes it legitimately sent within its window.
+			c.send_window_update(0, u32(frame.flow_size)) or {}
 			c.send_rst_stream(s.id, .refused_stream)!
 			c.streams.delete(s.id)
 			return
 		}
 		s.body << frame.data
-		// Replenish the connection window; per-stream we replenish on
-		// completion since we hold the body in memory.
-		c.send_window_update(0, u32(frame.data.len))!
-		c.send_window_update(s.id, u32(frame.data.len))!
+	}
+	// Replenish flow control using flow_size (full wire payload including padding),
+	// per RFC 7540 §6.9.1. Credit unconditionally when flow_size>0: a padding-only
+	// DATA frame (data.len==0, flow_size>0) still consumes the peer's send window
+	// and must be credited back. (Formerly inside the data.len>0 block — padding-only
+	// frames leaked window silently.)
+	if frame.flow_size > 0 {
+		c.send_window_update(0, u32(frame.flow_size))!
+		c.send_window_update(s.id, u32(frame.flow_size))!
 	}
 	if frame.end_stream {
 		s.end_stream = true
@@ -527,6 +551,10 @@ fn (mut c H2ServerConn) send_goaway(code H2ErrorCode, msg string) ! {
 fn (mut c H2ServerConn) read_frame() !H2Frame {
 	c.fill_at_least(h2_frame_header_len)!
 	header := h2_parse_frame_header(c.rbuf)!
+	// Check against our own advertised receive limit (sent in send_initial_settings).
+	// H2ServerConn always advertises h2_default_max_frame_size and never renegotiates
+	// it, so the constant is correct here. c.peer.max_frame_size is the client's
+	// receive limit (our outbound cap) and must not be used for inbound checking.
 	if header.length > h2_default_max_frame_size {
 		return error('h2 server: frame larger than SETTINGS_MAX_FRAME_SIZE (${header.length})')
 	}
