@@ -82,26 +82,28 @@ fn (g &Gen) int_ref_interpolates_as_value(expr ast.Expr, typ ast.Type, fmt u8) b
 	if g.expr_is_auto_deref_var(expr) {
 		return true
 	}
-	return match expr {
+	match expr {
 		ast.Ident {
 			obj := expr.obj
 			match obj {
 				ast.Var {
-					obj.is_arg || obj.expr is ast.AsCast
-						|| (obj.expr is ast.PrefixExpr && obj.expr.op == .amp)
+					if obj.is_arg || obj.expr is ast.AsCast {
+						return true
+					}
+					if obj.expr is ast.PrefixExpr {
+						return obj.expr.op == .amp
+					}
 				}
-				else {
-					false
-				}
+				else {}
 			}
 		}
 		ast.PrefixExpr {
-			expr.op == .amp
+			return expr.op == .amp
 		}
-		else {
-			false
-		}
+		else {}
 	}
+
+	return false
 }
 
 fn (mut g Gen) should_resolve_str_intp_expr_type(expr ast.Expr, typ ast.Type) bool {
@@ -597,8 +599,9 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut node_ := unsafe { node }
 	mut fmts := node_.fmts.clone()
 	for i, mut expr in node_.exprs {
-		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && !node_.need_fmts[i]
-			&& fmts[i] != `_` {
+		has_explicit_fmt := i < node_.has_fmts.len && node_.has_fmts[i]
+		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && !has_explicit_fmt
+			&& !node_.need_fmts[i] && fmts[i] != `_` {
 			fmts[i] = `_`
 		}
 		mut resolved_if_guard_typ := ast.Type(0)
@@ -667,8 +670,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 					ctyp = ctyp.clear_flag(.option)
 				}
 				node_.expr_types[i] = ctyp
-				if node_.fmts[i] == `_`
-					|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0) {
+				if !has_explicit_fmt && fmts[i] == `_` {
 					ftyp_sym := g.table.sym(ctyp)
 					typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
 						g.table.unalias_num_type(ctyp)
@@ -702,7 +704,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				node_.expr_types[i] = field_typ
 			}
 			// Update format specifier if it was auto-determined and the type changed
-			if !node_.need_fmts[i] && fmts[i] == `_` {
+			if !has_explicit_fmt && !node_.need_fmts[i] && fmts[i] == `_` {
 				ftyp_sym := g.table.sym(field_typ)
 				new_typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
 					g.table.unalias_num_type(field_typ)
@@ -722,7 +724,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 						&& g.table.final_sym(field_typ).kind != .interface {
 						field_typ = field_typ.deref()
 						node_.expr_types[i] = field_typ
-						if !node_.need_fmts[i] {
+						if !has_explicit_fmt && !node_.need_fmts[i] {
 							fmts[i] = g.get_default_fmt(field_typ, field_typ)
 						}
 					}
@@ -735,7 +737,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 					// instead of falling through to `%p`. The pointer type is
 					// preserved in expr_types so `str_val` still emits the
 					// required `*` when reading the value.
-					if !node_.need_fmts[i] {
+					if !has_explicit_fmt && !node_.need_fmts[i] {
 						deref_typ := field_typ.deref()
 						ftyp_sym := g.table.sym(deref_typ)
 						new_typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {

@@ -226,44 +226,55 @@ fn (mut c Checker) eval_comptime_type_selector_value(expr ast.SelectorExpr) ?ast
 }
 
 fn (c &Checker) comptime_expr_needs_multi_pass(expr ast.Expr) bool {
-	return match expr {
+	match expr {
 		ast.TypeOf {
-			true
+			return true
 		}
 		ast.Ident {
-			(c.table.cur_fn != unsafe { nil } && expr.name in c.table.cur_fn.generic_names)
-				|| (expr.obj is ast.Var && expr.obj.typ.has_flag(.generic))
-				|| expr.ct_expr
+			if c.table.cur_fn != unsafe { nil } && expr.name in c.table.cur_fn.generic_names {
+				return true
+			}
+			if expr.obj is ast.Var && expr.obj.typ.has_flag(.generic) {
+				return true
+			}
+			return expr.ct_expr
 		}
 		ast.SelectorExpr {
-			expr.expr is ast.TypeOf || (expr.expr is ast.Ident && c.table.cur_fn != unsafe { nil }
-				&& expr.expr.name in c.table.cur_fn.generic_names)
-				|| c.comptime_expr_needs_multi_pass(expr.expr)
+			if expr.expr is ast.TypeOf {
+				return true
+			}
+			if expr.expr is ast.Ident {
+				if c.table.cur_fn != unsafe { nil }
+					&& expr.expr.name in c.table.cur_fn.generic_names {
+					return true
+				}
+			}
+			return c.comptime_expr_needs_multi_pass(expr.expr)
 		}
 		ast.InfixExpr {
-			c.comptime_expr_needs_multi_pass(expr.left)
+			return c.comptime_expr_needs_multi_pass(expr.left)
 				|| c.comptime_expr_needs_multi_pass(expr.right)
 		}
 		ast.CastExpr {
-			c.comptime_expr_needs_multi_pass(expr.expr)
+			return c.comptime_expr_needs_multi_pass(expr.expr)
 		}
 		ast.IndexExpr {
-			c.comptime_expr_needs_multi_pass(expr.left)
+			return c.comptime_expr_needs_multi_pass(expr.left)
 				|| c.comptime_expr_needs_multi_pass(expr.index)
 		}
 		ast.ParExpr {
-			c.comptime_expr_needs_multi_pass(expr.expr)
+			return c.comptime_expr_needs_multi_pass(expr.expr)
 		}
 		ast.PostfixExpr {
-			c.comptime_expr_needs_multi_pass(expr.expr)
+			return c.comptime_expr_needs_multi_pass(expr.expr)
 		}
 		ast.PrefixExpr {
-			c.comptime_expr_needs_multi_pass(expr.right)
+			return c.comptime_expr_needs_multi_pass(expr.right)
 		}
-		else {
-			false
-		}
+		else {}
 	}
+
+	return false
 }
 
 fn (mut c Checker) try_eval_comptime_comparison(mut left ast.Expr, mut right ast.Expr, op token.Kind) ?ComptimeComparisonResult {
@@ -1056,6 +1067,50 @@ fn (mut c Checker) eval_comptime_fn_call_expr_with_locals(node ast.CallExpr, nle
 	return c.eval_comptime_fn_decl_value_with_locals(fn_decl, nlevel + 1, local_args)
 }
 
+fn (mut c Checker) eval_comptime_const_cast_value(value ast.ComptTimeConstValue, typ ast.Type) ?ast.ComptTimeConstValue {
+	cast_typ := c.table.fully_unaliased_type(typ).clear_flags()
+	if cast_typ == ast.i8_type {
+		return value.i8() or { return none }
+	}
+	if cast_typ == ast.i16_type {
+		return value.i16() or { return none }
+	}
+	if cast_typ == ast.i32_type {
+		return value.i32() or { return none }
+	}
+	if cast_typ == ast.i64_type {
+		return value.i64() or { return none }
+	}
+	if cast_typ == ast.int_type {
+		return value.i64() or { return none }
+	}
+	//
+	if cast_typ == ast.u8_type {
+		return value.u8() or { return none }
+	}
+	if cast_typ == ast.u16_type {
+		return value.u16() or { return none }
+	}
+	if cast_typ == ast.u32_type {
+		return value.u32() or { return none }
+	}
+	if cast_typ == ast.u64_type {
+		return value.u64() or { return none }
+	}
+	//
+	if cast_typ == ast.f32_type {
+		return value.f32() or { return none }
+	}
+	if cast_typ == ast.f64_type {
+		return value.f64() or { return none }
+	}
+	if cast_typ == ast.voidptr_type || cast_typ == ast.nil_type {
+		ptrvalue := value.voidptr() or { return none }
+		return ast.ComptTimeConstValue(ptrvalue)
+	}
+	return none
+}
+
 // comptime const eval
 fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.ComptTimeConstValue {
 	return c.eval_comptime_const_expr_with_locals(expr, nlevel,
@@ -1149,45 +1204,7 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 		ast.CastExpr {
 			cast_expr_value := c.eval_comptime_const_expr_with_locals(expr.expr, nlevel + 1,
 				local_values) or { return none }
-			if expr.typ == ast.i8_type {
-				return cast_expr_value.i8() or { return none }
-			}
-			if expr.typ == ast.i16_type {
-				return cast_expr_value.i16() or { return none }
-			}
-			if expr.typ == ast.i32_type {
-				return cast_expr_value.i32() or { return none }
-			}
-			if expr.typ == ast.i64_type {
-				return cast_expr_value.i64() or { return none }
-			}
-			if expr.typ == ast.int_type {
-				return cast_expr_value.i64() or { return none }
-			}
-			//
-			if expr.typ == ast.u8_type {
-				return cast_expr_value.u8() or { return none }
-			}
-			if expr.typ == ast.u16_type {
-				return cast_expr_value.u16() or { return none }
-			}
-			if expr.typ == ast.u32_type {
-				return cast_expr_value.u32() or { return none }
-			}
-			if expr.typ == ast.u64_type {
-				return cast_expr_value.u64() or { return none }
-			}
-			//
-			if expr.typ == ast.f32_type {
-				return cast_expr_value.f32() or { return none }
-			}
-			if expr.typ == ast.f64_type {
-				return cast_expr_value.f64() or { return none }
-			}
-			if expr.typ == ast.voidptr_type || expr.typ == ast.nil_type {
-				ptrvalue := cast_expr_value.voidptr() or { return none }
-				return ast.ComptTimeConstValue(ptrvalue)
-			}
+			return c.eval_comptime_const_cast_value(cast_expr_value, expr.typ)
 		}
 		ast.CallExpr {
 			return c.eval_comptime_fn_call_expr_with_locals(expr, nlevel, local_values)

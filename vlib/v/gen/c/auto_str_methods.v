@@ -440,6 +440,15 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 	fn_builder.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, ${ast.int_type_name} indent_count) { /* gen_str_for_interface */')
 	fn_builder.writeln('\tif (x._typ == 0 && x._object == NULL) return _S("nil");')
 	for typ in info.types {
+		// Skip unresolved generic struct variants (e.g. a leftover `Text[T]`
+		// registered when a generic struct is used as the default value of an
+		// interface-typed field in a generic wrapper). Only their concrete
+		// instantiations (`Text[int]`) are real runtime variants. This mirrors
+		// the same skip in interface_table().
+		type_sym := g.table.sym(typ)
+		if type_sym.info is ast.Struct && type_sym.info.is_unresolved_generic() {
+			continue
+		}
 		sub_sym := g.table.sym(ast.mktyp(typ))
 		if g.pref.skip_unused && sub_sym.idx !in g.table.used_features.used_syms {
 			continue

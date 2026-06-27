@@ -4826,10 +4826,11 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	}
 	unwrapped_left_type := c.unwrap_generic(left_type)
 	unaliased_left_type := c.table.unaliased_type(unwrapped_left_type)
-	array_info := if left_sym.info is ast.Array {
-		left_sym.info as ast.Array
+	mut array_info := ast.Array{}
+	if left_sym.info is ast.Array {
+		array_info = left_sym.info as ast.Array
 	} else {
-		c.table.sym(unaliased_left_type).info as ast.Array
+		array_info = c.table.sym(unaliased_left_type).info as ast.Array
 	}
 	elem_typ = array_info.elem_type
 	node_args_len := node.args.len
@@ -5225,10 +5226,11 @@ fn (mut c Checker) fixed_array_builtin_method_call(mut node ast.CallExpr, left_t
 	method_name := node.name
 	unwrapped_left_type := c.unwrap_generic(left_type)
 	unaliased_left_type := c.table.unaliased_type(unwrapped_left_type)
-	array_info := if left_sym.info is ast.ArrayFixed {
-		left_sym.info as ast.ArrayFixed
+	mut array_info := ast.ArrayFixed{}
+	if left_sym.info is ast.ArrayFixed {
+		array_info = left_sym.info as ast.ArrayFixed
 	} else {
-		c.table.sym(unaliased_left_type).info as ast.ArrayFixed
+		array_info = c.table.sym(unaliased_left_type).info as ast.ArrayFixed
 	}
 	node_args_len := node.args.len
 	mut arg0 := if node_args_len > 0 { node.args[0] } else { ast.CallArg{} }

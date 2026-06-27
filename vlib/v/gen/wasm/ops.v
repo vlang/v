@@ -79,6 +79,9 @@ pub fn (mut g Gen) get_wasm_type(typ_ ast.Type) wasm.ValType {
 		ast.Enum {
 			return g.get_wasm_type(ts.info.typ)
 		}
+		ast.FnType {
+			return wasm.ValType.i32_t // index into the indirect function table
+		}
 		else {}
 	}
 

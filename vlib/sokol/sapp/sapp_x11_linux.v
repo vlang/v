@@ -1365,20 +1365,21 @@ fn x11_get_clipboard_string() &char {
 		mut data := &u8(nil)
 		mut actual_type := Atom(0)
 		mut actual_format := 0
-		mut item_count := u64(0)
-		mut bytes_after := u64(0)
+		mut item_count := XlibULong(0)
+		mut bytes_after := XlibULong(0)
 		C.XGetWindowProperty(g_sapp_state.x11.display, event.xselection.requestor,
 			event.xselection.property, 0, 0x7fffffff, x_true, g_sapp_state.x11.utf8_string,
 			&actual_type, &actual_format, &item_count, &bytes_after, &&u8(&data))
 		if data == nil {
 			return nil
 		}
-		if item_count >= usize(g_sapp_state.clipboard.buf_size) {
+		item_size := usize(item_count)
+		if item_size >= usize(g_sapp_state.clipboard.buf_size) {
 			C.XFree(data)
 			return nil
 		}
-		C.memcpy(g_sapp_state.clipboard.buffer, data, usize(item_count))
-		g_sapp_state.clipboard.buffer[item_count] = 0
+		C.memcpy(g_sapp_state.clipboard.buffer, data, item_size)
+		g_sapp_state.clipboard.buffer[item_size] = 0
 		C.XFree(data)
 		return g_sapp_state.clipboard.buffer
 	}
@@ -1529,14 +1530,14 @@ fn x11_keyrelease_repeat(keycode int) {
 
 // === Window property helpers ===
 
-fn x11_get_window_property(window Window, property Atom, req_type Atom, value &&u8) u64 {
+fn x11_get_window_property(window Window, property Atom, req_type Atom, value &&u8) usize {
 	mut actual_type := Atom(0)
 	mut actual_format := 0
-	mut item_count := u64(0)
-	mut bytes_after := u64(0)
+	mut item_count := XlibULong(0)
+	mut bytes_after := XlibULong(0)
 	C.XGetWindowProperty(g_sapp_state.x11.display, window, property, 0, 0x7fffffff, x_false,
-		req_type, &actual_type, &actual_format, &item_count, &bytes_after, unsafe { &&&u8(value) })
-	return item_count
+		req_type, &actual_type, &actual_format, &item_count, &bytes_after, value)
+	return usize(item_count)
 }
 
 fn x11_get_window_state() int {
@@ -1610,7 +1611,7 @@ fn x11_parse_dropped_files_list(src &char) bool {
 					digits[1] = u8(*(p + 1))
 					digits[2] = 0
 					p = &char(usize(p) + 2)
-					dst_chr = u8(C.strtol(&char(&digits[0]), &char(0), 16))
+					dst_chr = u8(C.strtol(&char(&digits[0]), nil, 16))
 				}
 			}
 		} else {
@@ -1880,7 +1881,7 @@ fn x11_on_clientmessage(event &C.XEvent) {
 			if g_sapp_state.x11.xdnd.version > x11_xdnd_version {
 				return
 			}
-			mut count := u64(0)
+			mut count := usize(0)
 			mut formats := &Atom(nil)
 			if is_list {
 				count = x11_get_window_property(g_sapp_state.x11.xdnd.source,

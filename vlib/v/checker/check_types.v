@@ -577,6 +577,18 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 			return false
 		}
 		for i in 0 .. exp_types.len {
+			// Each multi-return element lowers to a distinct C struct field, so an
+			// optional/result element (`?T`/`!T`, a `_option_T`/`_result_T` struct) is
+			// not layout-compatible with a plain `T`. `check_types` below matches by type
+			// index and ignores these flags, which would let `(string, ?string)`
+			// masquerade as `(string, string)` and emit mismatched `multi_return_*`
+			// structs. Keep this a strict layout check (both directions): the safe
+			// `T` -> `?T` element promotion is opted into only where codegen wraps it (the
+			// `return` and `or {}` paths, via `can_use_expected_multi_return_*`).
+			if got_types[i].has_flag(.option) != exp_types[i].has_flag(.option)
+				|| got_types[i].has_flag(.result) != exp_types[i].has_flag(.result) {
+				return false
+			}
 			if !c.check_types(got_types[i], exp_types[i]) {
 				return false
 			}
@@ -833,7 +845,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 				}
 			}
 			if node.ct_right_value_evaled {
-				if node.ct_right_value !is ast.EmptyExpr {
+				if node.ct_right_value !is ast.EmptyComptimeConstValue {
 					ival := node.ct_right_value.i64() or { -999 }
 					if ival < 0 {
 						c.error('invalid negative shift count', node.right.pos())
@@ -1908,8 +1920,9 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 			s := c.table.type_to_str(typ)
 			println('inferred `${func.name}[${s}]`')
 		}
-		inferred_types << c.unwrap_generic(typ)
-		node.concrete_types << typ
+		concrete_typ := ast.mktyp(c.unwrap_generic(typ))
+		inferred_types << concrete_typ
+		node.concrete_types << concrete_typ
 	}
 
 	if c.table.register_fn_concrete_types(func.fkey(), inferred_types) {

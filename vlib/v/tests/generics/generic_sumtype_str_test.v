@@ -35,6 +35,17 @@ pub fn (m &Maybe[T]) as_ref[T]() Maybe[&T] {
 	}
 }
 
+fn generic_match_has_value[T](m Maybe[T]) bool {
+	return match m {
+		T {
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn test_generic_sumtype_str() {
 	a := some(123)
 	b := some('abc')
@@ -63,6 +74,11 @@ fn test_generic_sumtype_str_with_ref_variant() {
 	assert typeof(sum_ref).name == 'Maybe[&int]'
 	assert sum_ref.str() == 'Some(123)'
 	assert '${sum_ref}' == 'Some(123)'
+}
+
+fn test_generic_sumtype_match_resolves_variant_type() {
+	assert generic_match_has_value(some(123))
+	assert !generic_match_has_value(noth[int]())
 }
 
 fn test_auto_str_struct_field_with_generic_sumtype_str() {

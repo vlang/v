@@ -5,6 +5,7 @@ import time
 import veb
 
 const graceful_shutdown_host = '127.0.0.1'
+const graceful_shutdown_wait_timeout = 10 * time.second
 
 struct GracefulShutdownContext {
 	veb.Context
@@ -31,19 +32,6 @@ pub fn (mut app GracefulShutdownApp) slow(mut ctx GracefulShutdownContext) veb.R
 	return ctx.text('slow done')
 }
 
-pub fn (mut app GracefulShutdownApp) shutdown(mut ctx GracefulShutdownContext) veb.Result {
-	spawn app.shutdown_now()
-	return ctx.text('shutting down')
-}
-
-fn (app &GracefulShutdownApp) shutdown_now() {
-	mut server := app.server
-	if server == unsafe { nil } {
-		panic('veb server was not initialized')
-	}
-	server.shutdown(timeout: 5 * time.second) or { panic(err) }
-}
-
 fn run_graceful_shutdown_app(mut app GracefulShutdownApp, port int) {
 	veb.run_at[GracefulShutdownApp, GracefulShutdownContext](mut app,
 		host:                 graceful_shutdown_host
@@ -56,6 +44,51 @@ fn run_graceful_shutdown_app(mut app GracefulShutdownApp, port int) {
 fn send_slow_request(port int, responses chan http.Response) {
 	response := http.get('http://${graceful_shutdown_host}:${port}/slow') or { panic(err) }
 	responses <- response
+}
+
+fn shutdown_graceful_server(server &veb.Server, done chan string) {
+	server.shutdown(timeout: 5 * time.second) or {
+		done <- err.msg()
+		return
+	}
+	done <- ''
+}
+
+fn wait_for_slow_request(started chan bool) ! {
+	select {
+		_ := <-started {
+			return
+		}
+		graceful_shutdown_wait_timeout {
+			return error('slow request did not start')
+		}
+	}
+}
+
+fn wait_for_slow_response(responses chan http.Response) !http.Response {
+	select {
+		response := <-responses {
+			return response
+		}
+		graceful_shutdown_wait_timeout {
+			return error('slow request did not finish')
+		}
+	}
+	return error('slow request did not finish')
+}
+
+fn wait_for_shutdown(done chan string) ! {
+	select {
+		shutdown_error := <-done {
+			if shutdown_error != '' {
+				return error(shutdown_error)
+			}
+			return
+		}
+		graceful_shutdown_wait_timeout {
+			return error('server shutdown did not finish')
+		}
+	}
 }
 
 fn wait_for_server(port int) ! {
@@ -88,25 +121,30 @@ fn test_veb_graceful_shutdown_waits_for_in_flight_requests() {
 
 	slow_responses := chan http.Response{cap: 1}
 	spawn send_slow_request(int(port), slow_responses)
-	_ := <-app.slow_started or {
-		assert false, 'slow request did not start'
-		return
-	}
-
-	shutdown_response := http.get('http://${graceful_shutdown_host}:${port}/shutdown') or {
+	wait_for_slow_request(app.slow_started) or {
 		assert false, err.msg()
 		return
 	}
-	assert shutdown_response.status() == .ok
-	assert shutdown_response.body == 'shutting down'
 
-	slow_response := <-slow_responses or {
+	mut server := app.server
+	if server == unsafe { nil } {
+		assert false, 'veb server was not initialized'
+		return
+	}
+	shutdown_done := chan string{cap: 1}
+	spawn shutdown_graceful_server(server, shutdown_done)
+
+	slow_response := wait_for_slow_response(slow_responses) or {
 		assert false, err.msg()
 		return
 	}
 	assert slow_response.status() == .ok
 	assert slow_response.body == 'slow done'
 
+	wait_for_shutdown(shutdown_done) or {
+		assert false, err.msg()
+		return
+	}
 	server_thread.wait()
 
 	http.get('http://${graceful_shutdown_host}:${port}/') or {

@@ -215,7 +215,7 @@ pub const empty_expr = Expr(EmptyExpr(0))
 pub const empty_stmt = Stmt(EmptyStmt{})
 pub const empty_node = Node(EmptyNode{})
 pub const empty_scope_object = ScopeObject(EmptyScopeObject{'empty_scope_object', 0})
-pub const empty_comptime_const_value = ComptTimeConstValue(EmptyExpr(0))
+pub const empty_comptime_const_value = ComptTimeConstValue(EmptyComptimeConstValue{})
 
 // `{stmts}` or `unsafe {stmts}`
 pub struct Block {
@@ -276,7 +276,8 @@ pub mut:
 	fwidth_exprs    []Expr
 	precision_exprs []Expr
 	fmts            []u8
-	need_fmts       []bool // an explicit non-default fmt required, e.g. `x`
+	has_fmts        []bool // a fixed format was explicitly written in source
+	need_fmts       []bool // a non-default fmt is required, e.g. `x`
 }
 
 pub struct CharLiteral {

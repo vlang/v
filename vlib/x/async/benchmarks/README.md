@@ -7,7 +7,7 @@ claims.
 ## Available benchmark
 
 - `async_benchmark.v`: measures short default runs for `Group`, `Task[T]`,
-  `Pool`, `with_timeout()`, and `every()`.
+  `Pool`, bounded pool admission, `with_timeout()`, and `every()`.
 - `run_async_benchmark.sh`: builds and runs the benchmark with the local `./v`,
   isolated `VTMP`/`VCACHE`, and a temporary output binary.
 
@@ -32,9 +32,15 @@ The defaults are intentionally small. Tune them locally with:
 - `XASYNC_BENCH_TASK_ROUNDS`
 - `XASYNC_BENCH_POOL_JOBS`
 - `XASYNC_BENCH_POOL_WORKERS`
+- `XASYNC_BENCH_POOL_BOUNDED_ROUNDS`
+- `XASYNC_BENCH_POOL_BOUNDED_TIMEOUT_MS`
 - `XASYNC_BENCH_TIMEOUT_ROUNDS`
 - `XASYNC_BENCH_EVERY_ITERATIONS`
 - `XASYNC_BENCH_EVERY_INTERVAL_MS`
+
+The bounded pool admission case exercises `submit_with_timeout()` while the
+pool is full and `submit_with_context()` after capacity opens. The timeout only
+bounds admission; the benchmark does not make performance assertions.
 
 Do not commit machine-specific benchmark results as permanent truth. Tests
 remain the authority for functional and concurrency-safety validation.

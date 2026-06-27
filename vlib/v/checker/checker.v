@@ -2874,8 +2874,13 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, defa
 				}
 
 				c.expected_or_type = ast.void_type
-				type_fits := c.check_types(last_stmt_typ, ret_type)
-					&& last_stmt_typ.nr_muls() == ret_type.nr_muls()
+				// A multi-return `or {}` default may supply a plain `T` element where the
+				// expected slot is `?T`; the or-block codegen wraps it (see `concat_expr`'s
+				// `inside_or_block` path), so allow that promotion explicitly here. The
+				// strict `check_types` multi-return check above otherwise rejects it.
+				type_fits := (c.check_types(last_stmt_typ, ret_type)
+					&& last_stmt_typ.nr_muls() == ret_type.nr_muls())
+					|| c.can_use_expected_multi_return_expr_type(last_stmt_typ, ret_type, stmt.expr)
 				is_noreturn := is_noreturn_callexpr(stmt.expr)
 				if type_fits || is_noreturn {
 					return
@@ -3486,10 +3491,13 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		node.fields[i].typ = ast.mktyp(typ)
 		if mut field.expr is ast.IfExpr {
 			for branch in field.expr.branches {
-				if branch.stmts.len > 0 && branch.stmts.last() is ast.ExprStmt
-					&& branch.stmts.last().typ != ast.void_type {
+				if branch.stmts.len == 0 {
+					continue
+				}
+				last_stmt := branch.stmts[branch.stmts.len - 1]
+				if last_stmt is ast.ExprStmt && last_stmt.typ != ast.void_type {
 					field.expr.is_expr = true
-					field.expr.typ = (branch.stmts.last() as ast.ExprStmt).typ
+					field.expr.typ = last_stmt.typ
 					field.typ = field.expr.typ
 					// update ConstField object's type in table
 					if mut obj := c.file.global_scope.find_const(field.name) {

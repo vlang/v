@@ -984,8 +984,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				if typ_sym.kind == .placeholder {
 					c.error('${op}: type `${typ_sym.name}` does not exist', right_expr.pos())
 				}
+				mut left_sumtype_check_type := left_type
 				if mut left_sym.info is ast.Aggregate {
 					parent_left_type := left_sym.info.sum_type
+					left_sumtype_check_type = parent_left_type
 					left_sym = c.table.sym(parent_left_type)
 				}
 				if c.inside_sql {
@@ -1002,8 +1004,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					} else {
 						typ
 					}
-					if variant_typ !in left_sym.info.variants
-						&& c.unwrap_generic(variant_typ) !in left_sym.info.variants {
+					unwrapped_variant_typ := c.unwrap_generic(variant_typ)
+					if !c.table.sumtype_has_variant_recursive(left_sumtype_check_type, variant_typ, true)
+						&& !c.table.sumtype_has_variant_recursive(left_sumtype_check_type, unwrapped_variant_typ, true) {
 						c.error('`${left_sym.name}` has no variant `${typ_sym.name}`', right_pos)
 					}
 				} else if c.is_orig_sumtype(node.left) {
@@ -1013,8 +1016,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						orig_t := (node.left.obj as ast.Var).orig_type
 						orig_sym := c.table.sym(orig_t)
 						if orig_sym.info is ast.SumType {
-							if typ !in orig_sym.info.variants
-								&& c.unwrap_generic(typ) !in orig_sym.info.variants {
+							unwrapped_typ := c.unwrap_generic(typ)
+							if !c.table.sumtype_has_variant_recursive(orig_t, typ, true)
+								&& !c.table.sumtype_has_variant_recursive(orig_t, unwrapped_typ, true) {
 								c.error('`${orig_sym.name}` has no variant `${typ_sym.name}`',
 									right_pos)
 							}

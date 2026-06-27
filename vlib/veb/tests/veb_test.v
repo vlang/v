@@ -137,7 +137,15 @@ fn test_http_client_index() {
 	assert_common_http_headers(x)!
 	assert x.header.get(.content_type)? == 'text/plain'
 	assert x.body == 'Welcome to veb'
-	assert x.header.get(.connection)? == 'close'
+	// The default http client keeps connections alive (it no longer sends
+	// `Connection: close`), so veb must not answer with a close either.
+	if conn_header := x.header.get(.connection) {
+		assert conn_header != 'close'
+	}
+	// Opting out of connection reuse restores the historical behavior
+	// end-to-end: the client sends `Connection: close` and veb honors it.
+	y := http.fetch(url: 'http://${localserver}/', disable_connection_reuse: true) or { panic(err) }
+	assert y.header.get(.connection)? == 'close'
 }
 
 fn test_http_client_404() {

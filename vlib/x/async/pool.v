@@ -2,6 +2,7 @@ module async
 
 import context
 import sync
+import time
 
 // PoolConfig configures a fixed-size concurrency pool.
 //
@@ -23,11 +24,12 @@ pub:
 @[heap]
 pub struct Pool {
 mut:
-	ctx      context.Context
-	cancel   context.CancelFn = unsafe { nil }
-	tokens   chan bool
-	wg       &sync.WaitGroup = sync.new_waitgroup()
-	max_jobs int
+	ctx          context.Context
+	cancel       context.CancelFn = unsafe { nil }
+	tokens       chan bool
+	submit_ready chan int
+	wg           &sync.WaitGroup = sync.new_waitgroup()
+	max_jobs     int
 	// Protects lifecycle flags, accepted job count, WaitGroup.add(), and
 	// first_err. This lock is never held while a user JobFn runs.
 	mutex     &sync.Mutex = sync.new_mutex()
@@ -55,12 +57,13 @@ pub fn new_pool_with_context(parent context.Context, config PoolConfig) !&Pool {
 	}
 	ctx, cancel := new_cancel_context(parent)
 	mut pool := &Pool{
-		ctx:      context.Context(ctx)
-		cancel:   cancel
-		tokens:   chan bool{cap: config.workers}
-		wg:       sync.new_waitgroup()
-		max_jobs: config.workers + config.queue_size
-		mutex:    sync.new_mutex()
+		ctx:          context.Context(ctx)
+		cancel:       cancel
+		tokens:       chan bool{cap: config.workers}
+		submit_ready: chan int{cap: 1}
+		wg:           sync.new_waitgroup()
+		max_jobs:     config.workers + config.queue_size
+		mutex:        sync.new_mutex()
 	}
 	for _ in 0 .. config.workers {
 		pool.tokens <- true
@@ -85,15 +88,95 @@ pub fn (mut p Pool) try_submit(f JobFn) ! {
 		p.mutex.unlock()
 		return error(err_pool_queue_full)
 	}
-	p.accepted++
-	// add() is protected by the same mutex as wait(), so callers cannot race an
-	// accepted job against pool shutdown.
-	p.wg.add(1)
+	p.accept_job_locked()
 	p.mutex.unlock()
 	// The JobFn is passed directly to the spawned wrapper instead of being
 	// stored in a channel. That keeps closure ownership with V's normal spawn
 	// path while the token channel below still enforces the fixed worker limit.
 	spawn run_pool_job(mut p, f)
+}
+
+// submit_with_context waits until f can be accepted, parent is canceled, or the pool closes.
+//
+// The parent context bounds admission only. Once f is accepted, the job runs with
+// the pool's own context, matching try_submit() and preserving pool lifecycle ownership.
+pub fn (mut p Pool) submit_with_context(parent context.Context, f JobFn) ! {
+	if f == unsafe { nil } {
+		return error(err_nil_job)
+	}
+	mut submit_ctx := parent
+	initial_err := submit_ctx.err()
+	if initial_err !is none {
+		return initial_err
+	}
+	done := submit_ctx.done()
+	mut watch_done := true
+	select {
+		_ := <-done {
+			err := submit_ctx.err()
+			if err !is none {
+				return err
+			}
+			watch_done = false
+		}
+		else {}
+	}
+	for {
+		p.mutex.lock()
+		if p.closed {
+			p.mutex.unlock()
+			return error(err_pool_closed)
+		}
+		if watch_done {
+			err := submit_ctx.err()
+			if err !is none {
+				p.mutex.unlock()
+				return err
+			}
+		}
+		if p.accepted < p.max_jobs {
+			p.accept_job_locked()
+			p.mutex.unlock()
+			spawn run_pool_job(mut p, f)
+			return
+		}
+		submit_ready := p.submit_ready
+		p.mutex.unlock()
+		if !watch_done {
+			_ := <-submit_ready
+			continue
+		}
+		select {
+			_ := <-submit_ready {
+				continue
+			}
+			_ := <-done {
+				err := submit_ctx.err()
+				if err !is none {
+					return err
+				}
+				watch_done = false
+				continue
+			}
+		}
+	}
+}
+
+// submit_with_timeout waits up to timeout for f to be accepted by the pool.
+//
+// The timeout bounds admission only. Accepted jobs still receive the pool context.
+pub fn (mut p Pool) submit_with_timeout(timeout time.Duration, f JobFn) ! {
+	timeout_ctx, cancel := new_timeout_context(context.background(), timeout)
+	mut submit_ctx := context.Context(timeout_ctx)
+	defer {
+		cancel()
+	}
+	p.submit_with_context(submit_ctx, f) or {
+		if err.msg() == context_deadline_exceeded && timeout_ctx.was_canceled_by_timeout() {
+			return error(err_timeout)
+		}
+		return err
+	}
 }
 
 // wait closes the pool to new submissions, drains accepted jobs, and waits for completion.
@@ -107,6 +190,7 @@ pub fn (mut p Pool) wait() ! {
 	}
 	p.waited = true
 	p.closed = true
+	p.wake_submitters_locked()
 	p.mutex.unlock()
 
 	p.wg.wait()
@@ -142,7 +226,24 @@ fn run_pool_job(mut p Pool, f JobFn) {
 fn (mut p Pool) finish_accepted_job() {
 	p.mutex.lock()
 	p.accepted--
+	p.wake_submitters_locked()
 	p.mutex.unlock()
+}
+
+fn (mut p Pool) accept_job_locked() {
+	p.accepted++
+	// add() is protected by the same mutex as wait(), so callers cannot race an
+	// accepted job against pool shutdown.
+	p.wg.add(1)
+}
+
+fn (mut p Pool) wake_submitters_locked() {
+	if !p.submit_ready.closed {
+		p.submit_ready.close()
+	}
+	if !p.closed {
+		p.submit_ready = chan int{cap: 1}
+	}
 }
 
 fn (mut p Pool) set_first_error(err IError) {

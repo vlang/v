@@ -325,19 +325,72 @@ fn c_error_looks_like_missing_libatomic(c_output string) bool {
 	return c_error_missing_libatomic_marker(c_output) != ''
 }
 
+fn normalized_linker_library_file_name(lib_name string) string {
+	for suffix in ['.dll.a', '.lib', '.a', '.dll'] {
+		if lib_name.ends_with(suffix) {
+			mut normalized := lib_name[..lib_name.len - suffix.len]
+			if normalized.starts_with('lib') {
+				normalized = normalized[3..]
+			}
+			return normalized
+		}
+	}
+	return lib_name
+}
+
+fn normalized_missing_library_name(raw_name string, allow_plain_name bool) string {
+	mut lib_name := raw_name.trim_space().trim('`\'"')
+	if lib_name.len > 1 && lib_name[1] == `:` {
+		return ''
+	}
+	for delimiter in ['`', "'", '"', ' ', ':'] {
+		lib_name = lib_name.all_before(delimiter)
+	}
+	lib_name = lib_name.trim_space().trim('`\'"')
+	if lib_name.starts_with('-l') {
+		return normalized_linker_library_file_name(lib_name[2..])
+	}
+	normalized := normalized_linker_library_file_name(lib_name)
+	if normalized != lib_name {
+		return normalized
+	}
+	if allow_plain_name {
+		if lib_name.contains('/') || lib_name.contains('\\') || lib_name.contains('.')
+			|| lib_name.starts_with('-') {
+			return ''
+		}
+		return lib_name
+	}
+	return ''
+}
+
 fn c_error_missing_library_name(c_output string) string {
 	for line in c_output.split_into_lines() {
 		if line.contains("library '") && line.contains("' not found") {
-			return line.all_after("library '").all_before("' not found")
+			return normalized_missing_library_name(line.all_after("library '").all_before("' not found"),
+				true)
 		}
+		lower_line := line.to_lower()
 		for marker in [
 			'cannot find -l',
 			'unable to find library -l',
 			'library not found for -l',
 		] {
-			if line.contains(marker) {
-				lib_name := line.all_after(marker).trim_space()
-				return lib_name.all_before('`').all_before("'").all_before('"').all_before(' ').all_before(':')
+			if start := lower_line.index(marker) {
+				return normalized_missing_library_name(line[start + marker.len..], true)
+			}
+		}
+		if start := lower_line.index('cannot find ') {
+			lib_name := normalized_missing_library_name(line[start + 'cannot find '.len..], true)
+			if lib_name != '' {
+				return lib_name
+			}
+		}
+		if line.contains(': error: ') && lower_line.contains(': no such file or directory') {
+			lib_name := normalized_missing_library_name(line.all_after(': error: ').all_before(': No such file or directory'),
+				false)
+			if lib_name != '' {
+				return lib_name
 			}
 		}
 	}
@@ -2400,28 +2453,50 @@ fn (v &Builder) should_compile_bundled_thirdparty_object_from_source(obj_path st
 	return v.ccoptions.cc == .tcc && v.pref.os == .macos
 }
 
-// latest_thirdparty_header_mtime returns the most recent mtime among `.h` and
-// `.hpp` files in the directory of `source_file`. It is used as an extra cache
-// key for third-party object compilation, so that header-only patches (for
-// example to mbedtls/library/alignment.h) reliably invalidate stale `.o`
-// files that were produced before the header change.
-fn latest_thirdparty_header_mtime(source_file string) i64 {
+// thirdparty_module_root returns the `thirdparty/<module>` directory that
+// `source_file` belongs to, or its own directory when the path is not under a
+// `thirdparty/` tree (so the scan degrades to the old source-dir-only behavior).
+fn thirdparty_module_root(source_file string) string {
+	norm := source_file.replace('\\', '/')
+	marker := '/thirdparty/'
+	idx := norm.index(marker) or { return os.dir(source_file) }
+	rest := norm[idx + marker.len..]
+	mod_name := rest.all_before('/')
+	if mod_name == '' || mod_name == rest {
+		// No further path component after the module name: fall back.
+		return os.dir(source_file)
+	}
+	return norm[..idx] + marker + mod_name
+}
+
+// thirdparty_deps_mtime returns the newest mtime among `source_file` itself and
+// every `.h`/`.hpp` header under its thirdparty module root. It is the shared
+// cache key for third-party object compilation (both the C and MSVC paths), so
+// that header-only edits anywhere in the module — including config headers under
+// `include/`, e.g. mbedtls/include/mbedtls/mbedtls_config.h, not just siblings
+// of the `.c` — reliably invalidate stale objects built before the change. The
+// recursive header scan is memoized per module root.
+fn (mut v Builder) thirdparty_deps_mtime(source_file string) i64 {
 	if source_file == '' {
 		return 0
 	}
-	dir := os.dir(source_file)
-	entries := os.ls(dir) or { return 0 }
-	mut latest := i64(0)
-	for f in entries {
-		if !(f.ends_with('.h') || f.ends_with('.hpp')) {
-			continue
+	src_mtime := os.file_last_mod_unix(source_file)
+	root := thirdparty_module_root(source_file)
+	hdr_mtime := v.thirdparty_header_mtimes[root] or {
+		mut latest := i64(0)
+		for f in os.walk_ext(root, '') {
+			if !(f.ends_with('.h') || f.ends_with('.hpp')) {
+				continue
+			}
+			m := os.file_last_mod_unix(f)
+			if m > latest {
+				latest = m
+			}
 		}
-		m := os.file_last_mod_unix(os.join_path(dir, f))
-		if m > latest {
-			latest = m
-		}
+		v.thirdparty_header_mtimes[root] = latest
+		latest
 	}
-	return latest
+	return if hdr_mtime > src_mtime { hdr_mtime } else { src_mtime }
 }
 
 fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflags []cflag.CFlag) {
@@ -2472,14 +2547,12 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	}
 	if os.exists(opath) {
 		opath_mtime := os.file_last_mod_unix(opath)
-		src_mtime := os.file_last_mod_unix(source_file)
-		// Header-only edits in the source directory (e.g. mbedtls's
-		// alignment.h) leave every sibling `.c` untouched, so a pure
+		// Header-only edits (e.g. mbedtls's alignment.h, or a config header
+		// under include/) leave every `.c` untouched, so a pure
 		// `opath_mtime < src_mtime` test would silently reuse stale objects
-		// that still reference the old headers. Treat the newest sibling
-		// header as part of the cache key as well.
-		hdr_mtime := latest_thirdparty_header_mtime(source_file)
-		deps_mtime := if hdr_mtime > src_mtime { hdr_mtime } else { src_mtime }
+		// that still reference the old headers. Fold the newest module header
+		// into the cache key as well.
+		deps_mtime := v.thirdparty_deps_mtime(source_file)
 		if compile_bundled_source && !cached_object_was_built_from_source {
 			rebuild_reason_message = '${os.quoted_path(opath)} was copied from a bundled object, rebuilding it from ${os.quoted_path(source_file)} ...'
 		} else if opath_mtime < deps_mtime {
