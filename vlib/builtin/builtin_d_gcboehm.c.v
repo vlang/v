@@ -2,22 +2,24 @@ module builtin
 
 $if !no_gc_threads ? {
 	#flag -DGC_THREADS=1
-	// Enable Boehm's thread-local allocation: each registered thread gets its own
-	// small-object free lists, so concurrent `GC_malloc` on the fast path no longer
-	// serializes on the global allocator lock. Without it, allocation does not scale
-	// across cores (16 cores ≈ 1 core aggregate). V's spawned threads are registered
-	// via the `pthread_create` -> `GC_pthread_create` redirect, so their free lists
-	// are set up automatically. TLA requires GC_THREADS (defined just above).
-	//
-	// This flag only matters for the bundled `gc.c` that V compiles from source (the
-	// `-prod`/no-prebuilt-archive branches below): its amalgamation was generated with
-	// `--enable-thread-local-alloc=no` (see thirdparty/libgc/amalgamation.txt), so the
-	// flag turns TLA back on. The prebuilt `thirdparty/tcc/lib/libgc.a`/`.dylib` used by
-	// the default fast path is already built with TLA (bdwgc enables it by default with
-	// `--enable-threads=pthreads`; see thirdparty/build_scripts/*_bdwgc.sh), and a system
-	// libgc that V merely links against is unaffected. So both bundled GC paths end up
-	// thread-local-alloc enabled. See issues #27486 and #27488.
-	#flag -DTHREAD_LOCAL_ALLOC=1
+	$if !no_gc_thread_local_alloc ? {
+		// Enable Boehm's thread-local allocation: each registered thread gets
+		// its own small-object free lists, so concurrent `GC_malloc` on the fast
+		// path no longer serializes on the global allocator lock. Without it,
+		// allocation does not scale across cores. V's spawned threads are
+		// registered via the `pthread_create` -> `GC_pthread_create` redirect,
+		// so their free lists are set up automatically. TLA requires GC_THREADS.
+		//
+		// This flag only matters for the bundled `gc.c` that V compiles from
+		// source: its amalgamation was generated with
+		// `--enable-thread-local-alloc=no` (see thirdparty/libgc/amalgamation.txt),
+		// so the flag turns TLA back on. The prebuilt
+		// `thirdparty/tcc/lib/libgc.a`/`.dylib` archives are already built with
+		// TLA. `-d no_gc_thread_local_alloc` keeps GC_THREADS but omits this flag
+		// and makes the compiler prefer the source-built bundled libgc path.
+		// See issues #27486, #27488 and #27553.
+		#flag -DTHREAD_LOCAL_ALLOC=1
+	}
 }
 
 $if use_bundled_libgc ? {

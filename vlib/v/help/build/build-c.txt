@@ -233,6 +233,25 @@ see also `v help build`.
       collector is conservative, and it may affect program speed if it does many small
       allocations in a loop.
 
+      V enables Boehm thread-local allocation by default for better allocation
+      scaling on multi-threaded programs. It can increase RSS in long-running
+      services because each thread keeps local small-object free lists.
+
+      Boehm reads these environment variables during GC_INIT(), so they can be
+      set per run before the collector starts, without rebuilding the V program:
+        GC_MAXIMUM_HEAP_SIZE  Cap the heap size in bytes.
+        GC_FREE_SPACE_DIVISOR Higher values collect more often and can reduce
+                              spare heap; lower values favor throughput.
+        GC_MARKERS            Set the number of parallel marker threads.
+
+      To compile V's bundled source copy of Boehm without thread-local
+      allocation, use `-d no_gc_thread_local_alloc`. This keeps GC_THREADS
+      enabled, but skips THREAD_LOCAL_ALLOC. Since this requires compiling the
+      bundled libgc source, V uses the platform C compiler by default instead
+      of bundled TCC. An explicit `-cc` still wins. The option does not change
+      a system libgc selected with `-d dynamic_boehm`; use a system libgc built
+      without thread-local allocation for that case.
+
       The option `-gc boehm_leak` is intended for leak detection in
       manual memory management. The function `gc_check_leaks()`
       can be called to get detection results. This function is a no-op
