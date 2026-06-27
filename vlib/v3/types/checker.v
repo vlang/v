@@ -3714,6 +3714,22 @@ fn (tc &TypeChecker) return_type_compatible(actual Type, expected Type) bool {
 	return tc.type_compatible(actual, expected)
 }
 
+fn contextual_payload_type(typ Type) ?Type {
+	if typ is OptionType {
+		if typ.base_type is Void {
+			return none
+		}
+		return typ.base_type
+	}
+	if typ is ResultType {
+		if typ.base_type is Void {
+			return none
+		}
+		return typ.base_type
+	}
+	return none
+}
+
 fn multi_return_payload_type(typ Type) ?MultiReturn {
 	if typ is MultiReturn {
 		return typ
@@ -6788,6 +6804,14 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			return expected
 		}
 	}
+	if payload := contextual_payload_type(expected) {
+		if payload is Array || payload is ArrayFixed {
+			actual := tc.resolve_expr(id, payload)
+			if tc.type_compatible(actual, payload) {
+				return actual
+			}
+		}
+	}
 	if node.kind == .enum_val && expected is Enum {
 		if tc.enum_value_matches(node.value, expected.name) {
 			tc.register_synth_type(id, expected_raw)
@@ -6822,13 +6846,8 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 	if node.kind == .postfix && node.children_count == 1 {
 		child_id := tc.a.child(&node, 0)
 		child := tc.a.nodes[int(child_id)]
-		if child.kind == .array_literal {
+		if node.op == .not && child.kind == .array_literal {
 			actual := tc.resolve_expr(child_id, expected)
-			if expected is ArrayFixed && actual is Array
-				&& tc.type_compatible(actual.elem_type, expected.elem_type) {
-				tc.register_synth_type(id, expected_raw)
-				return expected_raw
-			}
 			if tc.receiver_compatible(actual, expected) {
 				tc.register_synth_type(id, expected_raw)
 				return expected_raw
@@ -7279,9 +7298,6 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 		if actual is ArrayFixed {
 			return tc.fixed_array_lengths_compatible(actual, expected)
 				&& tc.type_compatible(actual.elem_type, expected.elem_type)
-		}
-		if actual is Array {
-			return tc.type_compatible(actual.elem_type, expected.elem_type)
 		}
 	}
 	if expected is Channel {
@@ -9518,6 +9534,25 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			return Type(Array{
 				elem_type: Type(int_)
 			})
+		}
+		.postfix {
+			if node.children_count == 0 {
+				return unknown_type('missing postfix expression')
+			}
+			child_id := tc.a.child(&node, 0)
+			child := tc.a.nodes[int(child_id)]
+			if node.op == .not && child.kind == .array_literal {
+				elem_type := if child.children_count > 0 {
+					tc.resolve_type(tc.a.child(&child, 0))
+				} else {
+					Type(int_)
+				}
+				return Type(ArrayFixed{
+					elem_type: elem_type
+					len:       child.children_count
+				})
+			}
+			return tc.resolve_type(child_id)
 		}
 		.index {
 			return tc.resolve_index_type(node)

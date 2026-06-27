@@ -694,11 +694,6 @@ fn (g &FlatGen) visit_startup_module(mod string, startup_modules map[string]bool
 	visiting[mod] = true
 	for dep in g.module_imports[mod] or { []string{} } {
 		g.visit_startup_module(dep, startup_modules, mut visiting, mut visited, mut result)
-		short_dep := dep.all_after_last('.')
-		if short_dep != dep {
-			g.visit_startup_module(short_dep, startup_modules, mut visiting, mut visited, mut
-				result)
-		}
 	}
 	visiting.delete(mod)
 	visited[mod] = true
@@ -4411,12 +4406,6 @@ fn (g &FlatGen) visit_const_init_module(mod string, names_by_module map[string][
 	for dep in g.module_imports[mod] or { []string{} } {
 		if dep in names_by_module {
 			g.visit_const_init_module(dep, names_by_module, mut visiting, mut visited, mut result)
-			continue
-		}
-		short_dep := dep.all_after_last('.')
-		if short_dep in names_by_module {
-			g.visit_const_init_module(short_dep, names_by_module, mut visiting, mut visited, mut
-				result)
 		}
 	}
 	visiting.delete(mod)

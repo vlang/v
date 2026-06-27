@@ -4730,6 +4730,22 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			})
 		}
 		// single-element array: [expr]
+		if p.tok == .not {
+			p.next()
+			start := p.add_child(ids[0])
+			lit := p.a.add_node(flat.Node{
+				kind:           .array_literal
+				children_start: start
+				children_count: 1
+			})
+			pstart := p.add_child(lit)
+			return p.a.add_node(flat.Node{
+				kind:           .postfix
+				op:             .not
+				children_start: pstart
+				children_count: 1
+			})
+		}
 		start := p.add_children(ids)
 		return p.a.add_node(flat.Node{
 			kind:           .array_literal
@@ -4747,15 +4763,27 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	}
 	p.check(.rsbr)
 	// check for `!` (fixed array with values)
+	mut is_fixed_literal := false
 	if p.tok == .not {
 		p.next()
+		is_fixed_literal = true
 	}
 	start := p.add_children(ids)
-	return p.a.add_node(flat.Node{
+	lit := p.a.add_node(flat.Node{
 		kind:           .array_literal
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
+	if is_fixed_literal {
+		pstart := p.add_child(lit)
+		return p.a.add_node(flat.Node{
+			kind:           .postfix
+			op:             .not
+			children_start: pstart
+			children_count: 1
+		})
+	}
+	return lit
 }
 
 // fn_literal supports fn literal handling for Parser.

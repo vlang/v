@@ -1733,8 +1733,17 @@ fn map_str_kind_for_type(typ string) int {
 			return 7
 		}
 		else {
-			if clean.starts_with('[') && (clean.ends_with(']f32') || clean.ends_with(']f64')) {
+			if clean.starts_with('[]') && clean[2..] in ['f32', 'f64'] {
 				return 6
+			}
+			if transform_type_text_is_fixed_array(clean) {
+				elem := fixed_array_elem_type(clean)
+				if elem == 'f32' {
+					return 9
+				}
+				if elem == 'f64' {
+					return 6
+				}
 			}
 			return 0
 		}
@@ -1742,7 +1751,7 @@ fn map_str_kind_for_type(typ string) int {
 }
 
 fn map_str_fixed_len_for_type(typ string) int {
-	if typ.starts_with('[') && typ.contains(']') {
+	if transform_type_text_is_fixed_array(typ) {
 		return fixed_array_len(typ)
 	}
 	return 0
@@ -2062,6 +2071,14 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			}
 			receiver := t.transform_expr(base_id)
 			arg := t.transform_expr(t.a.children[node.children_start + 1])
+			if t.array_elem_needs_element_eq(elem_type) {
+				return t.make_array_elementwise_eq_call(receiver, arg, elem_type, clean_base_type,
+					clean_base_type, node)
+			}
+			if elem_type.starts_with('[]') {
+				return t.make_call_typed('array_eq_array', arr3(receiver, arg,
+					t.make_int_literal(array_repeat_clone_depth(clean_base_type))), 'bool')
+			}
 			if elem_type == 'string' {
 				return t.make_call_typed('array_eq_string', arr2(receiver, arg), 'bool')
 			}

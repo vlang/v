@@ -51,6 +51,9 @@ fn (mut t Transformer) try_expand_interface_array_literal_repeat(base_id flat.No
 	if count < 0 || count > 32 {
 		return none
 	}
+	if !t.array_repeat_literal_can_duplicate(base) {
+		return none
+	}
 	mut values := []flat.NodeId{cap: int(base.children_count) * count}
 	for _ in 0 .. count {
 		for i in 0 .. base.children_count {
@@ -59,6 +62,36 @@ fn (mut t Transformer) try_expand_interface_array_literal_repeat(base_id flat.No
 	}
 	lit := t.make_array_literal_typed(values, base_type)
 	return t.transform_array_literal(lit, t.a.nodes[int(lit)])
+}
+
+fn (t &Transformer) array_repeat_literal_can_duplicate(node flat.Node) bool {
+	for i in 0 .. node.children_count {
+		if !t.array_repeat_expr_can_duplicate(t.a.child(&node, i)) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (t &Transformer) array_repeat_expr_can_duplicate(id flat.NodeId) bool {
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .ident,
+		.enum_val, .nil_literal, .none_expr {
+			return true
+		}
+		.paren, .prefix, .postfix, .cast_expr, .as_expr, .field_init, .array_literal, .struct_init {
+			for i in 0 .. node.children_count {
+				if !t.array_repeat_expr_can_duplicate(t.a.child(&node, i)) {
+					return false
+				}
+			}
+			return true
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn array_repeat_clone_depth(typ string) int {

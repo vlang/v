@@ -2747,6 +2747,15 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 				return lowered
 			}
 		}
+		if node.kind == .postfix && node.op == .not && node.children_count == 1 {
+			child_id := t.a.child(&node, 0)
+			child := t.a.nodes[int(child_id)]
+			if child.kind == .array_literal {
+				if lowered := t.transform_fixed_array_literal_for_type(child_id, child, target_type) {
+					return lowered
+				}
+			}
+		}
 		if node.kind == .array_init {
 			if lowered := t.transform_empty_array_init_for_type(node, target_type) {
 				return lowered
@@ -4084,11 +4093,14 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 }
 
 fn transform_type_text_is_fixed_array(typ string) bool {
-	if !typ.starts_with('[') || typ.starts_with('[]') || typ.starts_with('[?') {
+	if typ.starts_with('[]') || typ.starts_with('[?') {
 		return false
 	}
-	end := typ.index_u8(`]`)
-	return end > 1
+	if typ.starts_with('[') {
+		end := typ.index_u8(`]`)
+		return end > 1
+	}
+	return typ.contains('[') && typ.ends_with(']') && is_decimal_text(fixed_array_len_text(typ))
 }
 
 // transform_block_expr transforms transform block expr data for transform.
@@ -5223,6 +5235,12 @@ fn (mut t Transformer) transform_postfix_expr(id flat.NodeId, node flat.Node) fl
 	}
 	child_id := t.a.child(&node, 0)
 	child := t.a.nodes[int(child_id)]
+	if node.op == .not && child.kind == .array_literal {
+		node_type := t.node_type(id)
+		if lowered := t.transform_fixed_array_literal_for_type(child_id, child, node_type) {
+			return lowered
+		}
+	}
 	new_child := if child.kind == .ident && t.pointer_value_lvalues[child.value] {
 		t.make_paren(t.make_prefix(.mul, t.make_ident(child.value)))
 	} else {
