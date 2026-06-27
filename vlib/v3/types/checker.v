@@ -3687,10 +3687,10 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
-	if tc.check_assignment_marker(id, node) {
+	if tc.check_multi_return_decl_assign(id, node) {
 		return
 	}
-	if tc.check_multi_return_decl_assign(id, node) {
+	if tc.check_assignment_marker(id, node) {
 		return
 	}
 	mut i := 0
@@ -3920,9 +3920,6 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	if node.children_count < 2 {
 		return
 	}
-	if tc.check_assignment_marker(id, node) {
-		return
-	}
 	if node.kind == .index_assign && tc.reject_unlowered_map_mutation
 		&& tc.index_assign_lhs_is_map(node) {
 		if tc.should_diagnose(id) {
@@ -3936,6 +3933,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if tc.check_multi_return_assign(id, node) {
+		return
+	}
+	if tc.check_assignment_marker(id, node) {
 		return
 	}
 	mut i := 0
@@ -4220,6 +4220,9 @@ fn (tc &TypeChecker) invalid_ierror_return_expr_type_name(id flat.NodeId, expect
 		return none
 	}
 	raw_type := tc.resolve_type(id)
+	if tc.type_compatible(raw_type, expected) {
+		return none
+	}
 	if tc.type_compatible(raw_type, expected.base_type) {
 		return none
 	}
@@ -4275,7 +4278,15 @@ fn (tc &TypeChecker) invalid_ierror_return_expr_type_name(id flat.NodeId, expect
 				}
 			}
 		}
-		else {}
+		else {
+			if is_ierror_type(raw_type) || tc.type_compatible_with_ierror_payload(raw_type) {
+				return none
+			}
+			if raw_type is Unknown || raw_type is Void {
+				return none
+			}
+			return raw_type.name()
+		}
 	}
 
 	return none

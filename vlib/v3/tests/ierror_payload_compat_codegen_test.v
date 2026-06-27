@@ -177,6 +177,38 @@ fn main() {
 		'cannot assign', 'CustomError')
 }
 
+fn test_result_error_match_rejects_non_ierror_branch() {
+	v3_bin := build_v3()
+	run_bad_ierror_payload(v3_bin, 'bad_match_branch', "struct CustomError {}
+
+fn (err CustomError) msg() string {
+	return 'custom'
+}
+
+fn (err CustomError) code() int {
+	return 77
+}
+
+struct Other {}
+
+fn other() Other {
+	return Other{}
+}
+
+fn fail_match(x int) !int {
+	return match x {
+		0 { CustomError{} }
+		else { other() }
+	}
+}
+
+fn main() {
+	fail_match(1) or { return }
+}
+",
+		'cannot return', 'Other')
+}
+
 fn test_unqualified_builtin_error_in_imported_module_is_result_payload() {
 	v3_bin := build_v3()
 

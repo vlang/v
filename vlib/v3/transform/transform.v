@@ -1613,6 +1613,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.invalidated_smartcasts.clear()
 	// Collect param types
 	mut param_idx := 0
+	mut source_mut_params := []string{}
 	for i in 0 .. fn_node.children_count {
 		child_id := t.a.children[fn_node.children_start + i]
 		if int(child_id) < 0 {
@@ -1631,13 +1632,14 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			if typ.starts_with('&') && raw_typ.len > 0 && !raw_typ.starts_with('&')
 				&& t.normalize_type_alias(typ[1..]) == raw_typ {
 				typ = raw_typ
+				}
+				t.set_var_type(child.value, typ)
+				if child.op == .amp {
+					t.mut_param_values[child.value] = true
+					source_mut_params << child.value
+				}
+				param_idx++
 			}
-			t.set_var_type(child.value, typ)
-			if child.op == .amp {
-				t.mut_param_values[child.value] = true
-			}
-			param_idx++
-		}
 	}
 	mut body_ids := []flat.NodeId{cap: int(fn_node.children_count)}
 	for i in 0 .. fn_node.children_count {
@@ -1654,6 +1656,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		t.reset_escaping_amp_state()
 	} else {
 		t.mark_escaping_amp_ptrs(body_ids)
+	}
+	for name in source_mut_params {
+		t.pointer_value_lvalues[name] = true
 	}
 	new_body := t.transform_stmts(body_ids)
 	// Rebuild function children: params then new body
