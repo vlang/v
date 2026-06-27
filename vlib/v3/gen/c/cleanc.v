@@ -36,12 +36,13 @@ mut:
 	module_init_fn_modules       map[string]string      // C init fn name -> V module name
 	module_imports               map[string][]string    // module -> imported modules
 	c_directives                 []CDirective
+	inlined_c_structs            map[string]bool
+	inlined_c_fns                map[string]bool
+	inlined_c_declared_fns       map[string]bool
 	c_flags                      []string
 	libc_compat_fns              map[string]bool
 	tc                           &types.TypeChecker = unsafe { nil }
 	has_builtins                 bool
-	has_stdatomic_header         bool
-	has_stdatomic_compat_header  bool
 	tmp_count                    int
 	line_start                   bool
 	field_name_set               map[string]bool   // every struct field's C name (lazy) — for const/field collision checks
@@ -94,6 +95,13 @@ struct CDirective {
 	before_import bool
 }
 
+struct CInlineHeader {
+	text                 string
+	preserved_directives []string
+	preserved_c_fns      []string
+	preserved_c_structs  []string
+}
+
 // was_parallel reports whether the last fn codegen actually ran across threads.
 pub fn (g &FlatGen) was_parallel() bool {
 	return g.parallel_used
@@ -130,6 +138,9 @@ pub fn FlatGen.new() FlatGen {
 		module_init_fn_modules:       map[string]string{}
 		module_imports:               map[string][]string{}
 		c_directives:                 []CDirective{}
+		inlined_c_structs:            map[string]bool{}
+		inlined_c_fns:                map[string]bool{}
+		inlined_c_declared_fns:       map[string]bool{}
 		c_flags:                      []string{}
 		libc_compat_fns:              map[string]bool{}
 		modules:                      map[string]string{}
@@ -214,10 +225,11 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.module_init_fn_modules = map[string]string{}
 	g.module_imports = map[string][]string{}
 	g.c_directives = []CDirective{}
+	g.inlined_c_structs = map[string]bool{}
+	g.inlined_c_fns = map[string]bool{}
+	g.inlined_c_declared_fns = map[string]bool{}
 	g.c_flags = []string{}
 	g.libc_compat_fns = map[string]bool{}
-	g.has_stdatomic_header = false
-	g.has_stdatomic_compat_header = false
 	g.modules = map[string]string{}
 	g.fn_ptr_types = map[string]string{}
 	g.fixed_array_ret_wrappers = map[string]bool{}
@@ -252,6 +264,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.collect_interface_impls()
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
+	g.preseed_c_extern_fn_ptr_types()
 	// Decide fixed-array return wrappers before generating function bodies, so
 	// signatures, returns and call sites all agree on the wrapped types.
 	g.populate_fixed_array_ret_wrappers()
@@ -266,7 +279,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	unsafe { g.sb.free() }
 	g.sb = orig_sb
 	g.line_start = orig_line_start
+	g.c99_feature_test_macros()
+	g.emit_preserved_c_directives()
 	g.preamble()
+	g.emit_c_directives()
 	g.enum_decls()
 	g.type_alias_decls()
 	g.type_forward_decls()
@@ -280,9 +296,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fn_ptr_typedefs()
 	g.struct_decls()
 	g.fixed_array_typedefs()
-	g.builtin_abi_decls()
 	g.multi_return_typedefs()
 	g.optional_typedefs()
+	g.c_extern_forward_decls()
+	g.builtin_abi_decls()
 	g.global_decls()
 	g.forward_decls()
 	g.enum_str_forward_decls()
@@ -327,6 +344,7 @@ fn node_kind_id(node flat.Node) int {
 
 // collect_gen_info updates collect gen info state for c.
 fn (mut g FlatGen) collect_gen_info() {
+	g.collect_c_flags_from_directives()
 	mut cur_module := ''
 	mut cur_file := ''
 	mut seen_import_in_file := false
@@ -382,19 +400,10 @@ fn (mut g FlatGen) collect_gen_info() {
 		if g.collect_c_directive(cur_module, node, cur_file, !seen_import_in_file) {
 			continue
 		}
-		if node.kind == .directive && node.value == 'flag' && node.typ.len > 0 {
-			flag := c_flag_arg(node.typ, g.compiler_vroot, cur_file)
-			if flag.len > 0 && flag !in g.c_flags {
-				g.c_flags << flag
-			}
+		if node.kind == .directive && node.value == 'flag' {
 			continue
 		}
-		if node.kind == .directive && node.value == 'pkgconfig' && node.typ.len > 0 {
-			for flag in c_pkgconfig_flags(node.typ) {
-				if flag.len > 0 && flag !in g.c_flags {
-					g.c_flags << flag
-				}
-			}
+		if node.kind == .directive && node.value == 'pkgconfig' {
 			continue
 		}
 		if kind_id == 62 {
@@ -497,6 +506,35 @@ fn (mut g FlatGen) collect_gen_info() {
 	g.collect_const_init_order_from_files()
 }
 
+fn (mut g FlatGen) collect_c_flags_from_directives() {
+	mut cur_file := ''
+	for node in g.a.nodes {
+		kind_id := node_kind_id(node)
+		if kind_id == 77 {
+			cur_file = node.value
+			g.note_compiler_source_file(node.value)
+			continue
+		}
+		if node.kind != .directive || node.typ.len == 0 {
+			continue
+		}
+		if node.value == 'flag' {
+			flag := c_flag_arg(node.typ, g.compiler_vroot, cur_file)
+			if flag.len > 0 && flag !in g.c_flags {
+				g.c_flags << flag
+			}
+			continue
+		}
+		if node.value == 'pkgconfig' {
+			for flag in c_pkgconfig_flags(node.typ) {
+				if flag.len > 0 && flag !in g.c_flags {
+					g.c_flags << flag
+				}
+			}
+		}
+	}
+}
+
 fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, source_file string, before_import bool) bool {
 	if node.kind != .directive {
 		return false
@@ -511,16 +549,29 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		}
 		// These helper headers are superseded by the inline compiler helpers emitted in
 		// builtin_abi_decls(); also including them would redefine the helpers.
-		if include_arg.contains('prealloc_atomics.h') || include_arg.contains('filelock_helpers.h') {
+		if include_arg.contains('prealloc_atomics.h') || include_arg.contains('filelock_helpers.h')
+			|| include_arg.contains('stdatomic') {
 			return true
 		}
-		if is_stdatomic_header(include_arg) {
-			g.has_stdatomic_header = true
+		include_dirs := c_flag_include_dirs(g.c_flags)
+		if header := c_inline_header_text(include_arg, g.compiler_vroot, source_file, include_dirs) {
+			header_text := header.text
+			g.collect_inlined_c_structs(header_text)
+			g.collect_inlined_c_fns(header_text)
+			g.collect_inlined_c_declared_fns(header_text)
+			g.collect_preserved_c_fns(header.preserved_c_fns)
+			g.collect_preserved_c_structs(header.preserved_c_structs)
+			for directive in header.preserved_directives {
+				g.add_c_directive(module_name, directive, before_import)
+			}
+			if header_text.len > 0 {
+				g.add_c_directive(module_name, header_text, before_import)
+			}
+		} else if c_should_preserve_uninlined_include(include_arg) {
+			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
+			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
 		}
-		if is_stdatomic_compat_header(include_arg) {
-			g.has_stdatomic_compat_header = true
-		}
-		g.add_c_directive(module_name, '#include ${include_arg}', before_import)
 		return true
 	}
 	if node.value in ['define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif', 'pragma',
@@ -532,15 +583,683 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 	return false
 }
 
-fn is_stdatomic_header(include_arg string) bool {
-	normalized := include_arg.replace('\\', '/')
-	return normalized == '<stdatomic.h>' || normalized == '"stdatomic.h"'
-		|| normalized.ends_with('/stdatomic.h"') || is_stdatomic_compat_header(normalized)
+fn c_inline_header_text(include_arg string, vroot string, source_file string, include_dirs []string) ?CInlineHeader {
+	if replacement := c_system_include_replacement(include_arg) {
+		return CInlineHeader{
+			text: replacement
+		}
+	}
+	mut seen := map[string]bool{}
+	for path in c_include_file_paths(include_arg, vroot, source_file, include_dirs) {
+		if header := c_inline_header_file(path, vroot, include_dirs, mut seen) {
+			return header
+		}
+	}
+	return none
 }
 
-fn is_stdatomic_compat_header(include_arg string) bool {
-	normalized := include_arg.replace('\\', '/')
-	return normalized.contains('/thirdparty/stdatomic/') && normalized.ends_with('/atomic.h"')
+fn c_inline_header_file(path string, vroot string, include_dirs []string, mut seen map[string]bool) ?CInlineHeader {
+	if path.len == 0 || !os.exists(path) {
+		return none
+	}
+	real_path := os.real_path(path)
+	if seen[real_path] {
+		return CInlineHeader{}
+	}
+	seen[real_path] = true
+	text := os.read_file(real_path) or { return none }
+	return c_inline_header_file_text(text, vroot, real_path, include_dirs, mut seen)
+}
+
+fn c_inline_header_file_text(text string, vroot string, source_file string, include_dirs []string, mut seen map[string]bool) CInlineHeader {
+	mut lines := []string{}
+	mut preserved_directives := []string{}
+	mut preserved_c_fns := []string{}
+	mut preserved_c_structs := []string{}
+	mut include_context := []string{}
+	mut include_prefix := []string{}
+	for line in text.split_into_lines() {
+		clean := line.trim_space()
+		if c_directive_name(clean) == 'include' {
+			include_arg := c_include_arg(c_directive_arg(clean), vroot, source_file)
+			if replacement := c_system_include_replacement(include_arg) {
+				lines << replacement
+				continue
+			}
+			mut inlined := false
+			for path in c_include_file_paths(include_arg, vroot, source_file, include_dirs) {
+				if nested := c_inline_header_file(path, vroot, include_dirs, mut seen) {
+					if nested.text.len > 0 {
+						lines << nested.text
+					}
+					preserved_directives << nested.preserved_directives
+					preserved_c_fns << nested.preserved_c_fns
+					preserved_c_structs << nested.preserved_c_structs
+					inlined = true
+					break
+				}
+			}
+			if !inlined && c_should_preserve_uninlined_include(include_arg) {
+				preserved_directives << c_preserved_nested_include_directive(include_arg,
+					include_context, include_prefix)
+				preserved_c_fns << c_preserved_system_include_declared_fns(include_arg)
+				preserved_c_structs << c_preserved_system_include_struct_names(include_arg)
+			}
+			continue
+		}
+		lines << line
+		c_update_nested_include_context(clean, line, mut include_context)
+		c_update_nested_include_prefix(clean, line, mut include_prefix)
+	}
+	return CInlineHeader{
+		text:                 lines.join('\n')
+		preserved_directives: preserved_directives
+		preserved_c_fns:      preserved_c_fns
+		preserved_c_structs:  preserved_c_structs
+	}
+}
+
+fn c_update_nested_include_context(clean string, line string, mut context []string) {
+	match c_directive_name(clean) {
+		'if', 'ifdef', 'ifndef', 'elif', 'else' {
+			context << line
+		}
+		'endif' {
+			for context.len > 0 {
+				name := c_directive_name(context[context.len - 1].trim_space())
+				context.delete_last()
+				if name in ['if', 'ifdef', 'ifndef'] {
+					break
+				}
+			}
+		}
+		else {}
+	}
+}
+
+fn c_update_nested_include_prefix(clean string, line string, mut prefix []string) {
+	match c_directive_name(clean) {
+		'define', 'undef' {
+			prefix << line
+		}
+		else {
+			prefix.clear()
+		}
+	}
+}
+
+fn c_preserved_nested_include_directive(include_arg string, context []string, prefix []string) string {
+	if context.len == 0 && prefix.len == 0 {
+		return '#include ${include_arg}'
+	}
+	mut lines := context.clone()
+	lines << prefix
+	lines << '#include ${include_arg}'
+	for _ in 0 .. c_nested_include_context_depth(context) {
+		lines << '#endif'
+	}
+	return lines.join('\n')
+}
+
+fn c_nested_include_context_depth(context []string) int {
+	mut depth := 0
+	for line in context {
+		if c_directive_name(line.trim_space()) in ['if', 'ifdef', 'ifndef'] {
+			depth++
+		}
+	}
+	return depth
+}
+
+fn c_flag_include_dirs(flags []string) []string {
+	mut dirs := []string{}
+	for flag in flags {
+		tokens := flag.fields()
+		mut i := 0
+		for i < tokens.len {
+			tok := tokens[i]
+			mut dir := ''
+			if tok == '-I' {
+				if i + 1 < tokens.len {
+					dir = tokens[i + 1]
+					i++
+				}
+			} else if tok.starts_with('-I') && tok.len > 2 {
+				dir = tok[2..]
+			}
+			if dir.len > 0 && dir !in dirs {
+				dirs << dir
+			}
+			i++
+		}
+	}
+	return dirs
+}
+
+fn c_system_include_replacement(include_arg string) ?string {
+	match include_arg.trim_space() {
+		'<stdint.h>' {
+			return c_stdint_header_text()
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn c_should_preserve_uninlined_include(include_arg string) bool {
+	clean := include_arg.trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	if clean[0] == `<` {
+		return !c_headerless_system_include_is_handled(clean)
+	}
+	return true
+}
+
+fn c_preserved_system_include_declared_fns(include_arg string) []string {
+	match include_arg.trim_space() {
+		'<bcrypt.h>' {
+			return ['BCryptGenRandom']
+		}
+		'<dlfcn.h>' {
+			return ['dlopen', 'dlsym', 'dlclose', 'dlerror']
+		}
+		else {
+			return []string{}
+		}
+	}
+}
+
+fn c_preserved_system_include_struct_names(include_arg string) []string {
+	match include_arg.trim_space() {
+		'<X11/Xlib.h>', '<X11/Xutil.h>', '<X11/Xresource.h>', '<X11/XKBlib.h>',
+		'<X11/extensions/XInput2.h>', '<X11/Xcursor/Xcursor.h>' {
+			return c_x11_preserved_struct_names.clone()
+		}
+		else {
+			return []string{}
+		}
+	}
+}
+
+const c_x11_preserved_struct_names = [
+	'Display',
+	'Screen',
+	'Visual',
+	'XButtonEvent',
+	'XClientMessageData',
+	'XClientMessageEvent',
+	'XCrossingEvent',
+	'XcursorImage',
+	'XDestroyWindowEvent',
+	'XEvent',
+	'XFocusChangeEvent',
+	'XGenericEventCookie',
+	'XIEventMask',
+	'XIRawEvent',
+	'XIValuatorState',
+	'XkbDescRec',
+	'XkbKeyAliasRec',
+	'XkbKeyNameRec',
+	'XkbNamesRec',
+	'XKeyEvent',
+	'XMotionEvent',
+	'XPropertyEvent',
+	'XrmValue',
+	'XSelectionClearEvent',
+	'XSelectionEvent',
+	'XSelectionRequestEvent',
+	'XSetWindowAttributes',
+	'XSizeHints',
+	'XVisualInfo',
+	'XWindowAttributes',
+]
+
+fn c_headerless_system_include_is_handled(include_arg string) bool {
+	if include_arg.len < 3 || include_arg[0] != `<` || include_arg[include_arg.len - 1] != `>` {
+		return false
+	}
+	name := include_arg[1..include_arg.len - 1]
+	return name in c_headerless_handled_system_headers
+}
+
+const c_headerless_handled_system_headers = {
+	'arpa/inet.h':     true
+	'conio.h':         true
+	'dirent.h':        true
+	'errno.h':         true
+	'execinfo.h':      true
+	'fcntl.h':         true
+	'float.h':         true
+	'io.h':            true
+	'math.h':          true
+	'netdb.h':         true
+	'netinet/in.h':    true
+	'netinet/tcp.h':   true
+	'poll.h':          true
+	'process.h':       true
+	'pthread.h':       true
+	'pthread_np.h':    true
+	'semaphore.h':     true
+	'signal.h':        true
+	'stdarg.h':        true
+	'stdatomic.h':     true
+	'stdbool.h':       true
+	'stddef.h':        true
+	'stdint.h':        true
+	'stdio.h':         true
+	'stdlib.h':        true
+	'string.h':        true
+	'synchapi.h':      true
+	'sys/epoll.h':     true
+	'sys/event.h':     true
+	'sys/file.h':      true
+	'sys/ioctl.h':     true
+	'sys/mman.h':      true
+	'sys/ptrace.h':    true
+	'sys/random.h':    true
+	'sys/resource.h':  true
+	'sys/select.h':    true
+	'sys/sendfile.h':  true
+	'sys/socket.h':    true
+	'sys/stat.h':      true
+	'sys/statvfs.h':   true
+	'sys/syscall.h':   true
+	'sys/sysctl.h':    true
+	'sys/syslimits.h': true
+	'sys/time.h':      true
+	'sys/types.h':     true
+	'sys/uio.h':       true
+	'sys/utime.h':     true
+	'sys/utsname.h':   true
+	'sys/wait.h':      true
+	'termios.h':       true
+	'time.h':          true
+	'unistd.h':        true
+	'utime.h':         true
+	'wchar.h':         true
+	'windows.h':       true
+	'winsock2.h':      true
+	'ws2tcpip.h':      true
+}
+
+fn c_stdint_header_text() string {
+	return '#if !defined(__V_HEADERLESS_STDINT_H) && !defined(_STDINT_H) && !defined(_STDINT_H_) && !defined(_STDINT) && !defined(_STDINT_H_INCLUDED) && !defined(_GCC_STDINT_H) && !defined(_MSC_STDINT_H_)
+#define __V_HEADERLESS_STDINT_H
+typedef signed char int8_t;
+typedef short int16_t;
+typedef int int32_t;
+typedef long long int64_t;
+typedef unsigned char uint8_t;
+typedef unsigned short uint16_t;
+typedef unsigned int uint32_t;
+typedef unsigned long long uint64_t;
+#ifndef INT8_MIN
+#define INT8_MIN (-128)
+#endif
+#ifndef INT16_MIN
+#define INT16_MIN (-32767 - 1)
+#endif
+#ifndef INT32_MIN
+#define INT32_MIN (-2147483647 - 1)
+#endif
+#ifndef INT64_MIN
+#define INT64_MIN (-9223372036854775807LL - 1)
+#endif
+#ifndef INT8_MAX
+#define INT8_MAX 127
+#endif
+#ifndef INT16_MAX
+#define INT16_MAX 32767
+#endif
+#ifndef INT32_MAX
+#define INT32_MAX 2147483647
+#endif
+#ifndef INT64_MAX
+#define INT64_MAX 9223372036854775807LL
+#endif
+#ifndef UINT8_MAX
+#define UINT8_MAX 255U
+#endif
+#ifndef UINT16_MAX
+#define UINT16_MAX 65535U
+#endif
+#ifndef UINT32_MAX
+#define UINT32_MAX 4294967295U
+#endif
+#ifndef UINT64_MAX
+#define UINT64_MAX 18446744073709551615ULL
+#endif
+#ifndef INT32_C
+#define INT32_C(c) c
+#endif
+#ifndef UINT32_C
+#define UINT32_C(c) c ## U
+#endif
+#ifndef INT64_C
+#define INT64_C(c) c ## LL
+#endif
+#ifndef UINT64_C
+#define UINT64_C(c) c ## ULL
+#endif
+#endif'
+}
+
+fn (mut g FlatGen) collect_inlined_c_structs(text string) {
+	for line in text.split_into_lines() {
+		clean := line.trim_space()
+		mut rest := ''
+		if clean.starts_with('typedef struct ') {
+			rest = clean['typedef struct '.len..]
+		} else if clean.starts_with('typedef union ') {
+			rest = clean['typedef union '.len..]
+		} else if clean.starts_with('struct ') {
+			rest = clean['struct '.len..]
+		} else if clean.starts_with('union ') {
+			rest = clean['union '.len..]
+		} else {
+			continue
+		}
+		tag := c_header_struct_tag(rest)
+		if tag.len > 0 {
+			g.inlined_c_structs[tag] = true
+		}
+	}
+	for alias in c_typedef_struct_aliases(text) {
+		g.inlined_c_structs[alias] = true
+	}
+	for alias in c_typedef_union_aliases(text) {
+		g.inlined_c_structs[alias] = true
+	}
+}
+
+fn (mut g FlatGen) collect_inlined_c_fns(text string) {
+	mut pending_static := false
+	for line in text.split_into_lines() {
+		clean := line.trim_space()
+		if clean.len == 0 {
+			continue
+		}
+		if clean.starts_with('static ') {
+			name := c_header_fn_name(clean)
+			if name.len > 0 {
+				g.inlined_c_fns[name] = true
+				pending_static = false
+			} else {
+				pending_static = c_static_fn_prefix_can_continue(clean)
+			}
+			continue
+		}
+		if pending_static {
+			name := c_header_fn_name(clean)
+			if name.len > 0 {
+				g.inlined_c_fns[name] = true
+				pending_static = false
+				continue
+			}
+			if clean.ends_with(';') || clean.contains('{') || clean.starts_with('#') {
+				pending_static = false
+			}
+		}
+	}
+}
+
+fn (mut g FlatGen) collect_inlined_c_declared_fns(text string) {
+	for line in text.split_into_lines() {
+		name := c_header_declared_fn_name(line.trim_space())
+		if name.len > 0 {
+			g.inlined_c_declared_fns[name] = true
+		}
+	}
+}
+
+fn (mut g FlatGen) collect_preserved_c_fns(names []string) {
+	for name in names {
+		g.inlined_c_declared_fns[name] = true
+	}
+}
+
+fn (mut g FlatGen) collect_preserved_c_structs(names []string) {
+	for name in names {
+		g.inlined_c_structs[name] = true
+	}
+}
+
+fn c_static_fn_prefix_can_continue(line string) bool {
+	return line in ['static', 'static inline', 'static __inline', 'static __inline__']
+		|| line.starts_with('static inline ') || line.starts_with('static __inline ')
+		|| line.starts_with('static __inline__ ')
+}
+
+fn c_header_struct_tag(rest string) string {
+	mut end := 0
+	for end < rest.len {
+		c := rest[end]
+		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_` {
+			end++
+			continue
+		}
+		break
+	}
+	return rest[..end]
+}
+
+fn c_typedef_struct_aliases(text string) []string {
+	return c_typedef_aggregate_aliases(text, 'struct')
+}
+
+fn c_typedef_union_aliases(text string) []string {
+	return c_typedef_aggregate_aliases(text, 'union')
+}
+
+fn c_typedef_aggregate_aliases(text string, kind string) []string {
+	mut aliases := []string{}
+	prefix := 'typedef ${kind}'
+	mut start := 0
+	for start < text.len {
+		rel_idx := text[start..].index(prefix) or { break }
+		idx := start + rel_idx
+		mut pos := idx + prefix.len
+		if pos < text.len && c_ident_char(text[pos]) {
+			start = pos + 1
+			continue
+		}
+		for pos < text.len && text[pos].is_space() {
+			pos++
+		}
+		if pos < text.len && text[pos] != `{` {
+			tag := c_header_struct_tag(text[pos..])
+			if tag.len == 0 {
+				start = pos + 1
+				continue
+			}
+			pos += tag.len
+			for pos < text.len && text[pos].is_space() {
+				pos++
+			}
+		}
+		if pos >= text.len || text[pos] != `{` {
+			start = pos + 1
+			continue
+		}
+		close_idx := c_matching_brace_end(text, pos)
+		if close_idx < 0 {
+			break
+		}
+		semi_rel_idx := text[close_idx + 1..].index_u8(`;`)
+		if semi_rel_idx < 0 {
+			break
+		}
+		semi_idx := close_idx + 1 + semi_rel_idx
+		for alias in c_typedef_declarator_aliases(text[close_idx + 1..semi_idx]) {
+			aliases << alias
+		}
+		start = semi_idx + 1
+	}
+	return aliases
+}
+
+fn c_matching_brace_end(text string, open_idx int) int {
+	mut depth := 0
+	for i in open_idx .. text.len {
+		if text[i] == `{` {
+			depth++
+		} else if text[i] == `}` {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+fn c_typedef_declarator_aliases(decl string) []string {
+	mut aliases := []string{}
+	for part in decl.split(',') {
+		alias := c_last_ident(part)
+		if alias.len > 0 {
+			aliases << alias
+		}
+	}
+	return aliases
+}
+
+fn c_last_ident(text string) string {
+	mut end := text.len
+	for end > 0 && !c_ident_char(text[end - 1]) {
+		end--
+	}
+	mut start := end
+	for start > 0 && c_ident_char(text[start - 1]) {
+		start--
+	}
+	if start == end {
+		return ''
+	}
+	return text[start..end]
+}
+
+fn c_header_fn_name(line string) string {
+	paren := line.index_u8(`(`)
+	if paren < 0 {
+		return ''
+	}
+	mut end := paren
+	for end > 0 && line[end - 1].is_space() {
+		end--
+	}
+	mut start := end
+	for start > 0 && c_ident_char(line[start - 1]) {
+		start--
+	}
+	if start == end {
+		return ''
+	}
+	name := line[start..end]
+	if name in ['if', 'for', 'while', 'switch'] {
+		return ''
+	}
+	return name
+}
+
+fn c_header_declared_fn_name(line string) string {
+	if line.len == 0 || line[0] == `#` || !line.ends_with(';') || !line.contains('(') {
+		return ''
+	}
+	if line.starts_with('typedef ') || line.contains('(*') || line.contains('=')
+		|| line.contains('{') || line.contains('}') {
+		return ''
+	}
+	for prefix in ['return ', 'if ', 'if(', 'for ', 'for(', 'while ', 'while(', 'switch ', 'switch(',
+		'case ', 'do ', 'else '] {
+		if line.starts_with(prefix) {
+			return ''
+		}
+	}
+	paren := line.index_u8(`(`)
+	mut end := paren
+	for end > 0 && line[end - 1].is_space() {
+		end--
+	}
+	mut start := end
+	for start > 0 && c_ident_char(line[start - 1]) {
+		start--
+	}
+	if start == 0 {
+		return ''
+	}
+	return c_header_fn_name(line)
+}
+
+fn c_ident_char(ch u8) bool {
+	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
+		|| (ch >= `0` && ch <= `9`) || ch == `_`
+}
+
+fn c_include_file_path(include_arg string, vroot string, source_file string) string {
+	clean := include_arg.trim_space()
+	if clean.len < 2 {
+		return ''
+	}
+	if clean[0] == `<` {
+		return ''
+	}
+	mut path := ''
+	if clean[0] == `"` && clean[clean.len - 1] == `"` {
+		path = clean[1..clean.len - 1]
+	} else {
+		path = clean
+	}
+	path = c_resolve_pseudo_paths(path, vroot, source_file)
+	if path.len == 0 || os.is_abs_path(path) {
+		return path
+	}
+	if source_file.len == 0 {
+		return path
+	}
+	return os.join_path_single(os.dir(source_file), path)
+}
+
+fn c_include_file_paths(include_arg string, vroot string, source_file string, include_dirs []string) []string {
+	clean := include_arg.trim_space()
+	if clean.len < 2 {
+		return []string{}
+	}
+	mut raw_path := clean
+	mut search_source_dir := true
+	if clean[0] == `"` && clean[clean.len - 1] == `"` {
+		raw_path = clean[1..clean.len - 1]
+	} else if clean[0] == `<` && clean[clean.len - 1] == `>` {
+		raw_path = clean[1..clean.len - 1]
+		search_source_dir = false
+	}
+	mut paths := []string{}
+	if search_source_dir {
+		first := c_include_file_path(include_arg, vroot, source_file)
+		if first.len > 0 {
+			paths << first
+		}
+	}
+	resolved_path := c_resolve_pseudo_paths(raw_path, vroot, source_file)
+	if os.is_abs_path(resolved_path) {
+		if resolved_path !in paths {
+			paths << resolved_path
+		}
+		return paths
+	}
+	for dir in include_dirs {
+		if dir.len == 0 {
+			continue
+		}
+		path := os.join_path_single(dir, resolved_path)
+		if path !in paths {
+			paths << path
+		}
+	}
+	return paths
 }
 
 fn (mut g FlatGen) add_c_directive(module_name string, text string, before_import bool) {
@@ -670,6 +1389,122 @@ fn (g &FlatGen) ordered_c_directives() []string {
 	return dedupe_top_level_c_includes(result)
 }
 
+fn (mut g FlatGen) emit_c_directives() {
+	mut emitted := false
+	for directive in g.ordered_c_directives() {
+		if c_contains_preserved_system_include_directive(directive) {
+			continue
+		}
+		g.writeln(directive)
+		emitted = true
+	}
+	if emitted {
+		g.writeln('')
+	}
+}
+
+fn (mut g FlatGen) emit_preserved_c_directives() {
+	mut emitted := false
+	directives := g.ordered_c_directives()
+	for i, directive in directives {
+		if !c_contains_preserved_system_include_directive(directive) {
+			continue
+		}
+		if directive.contains('\n') {
+			g.emit_preserved_c_directive(directive)
+			emitted = true
+			continue
+		}
+		prefix := c_lifted_include_context_prefix(directives, i)
+		for line in prefix {
+			g.writeln(line)
+			emitted = true
+		}
+		g.emit_preserved_c_directive(directive)
+		emitted = true
+		for _ in 0 .. c_lifted_include_context_depth(prefix) {
+			g.writeln('#endif')
+		}
+	}
+	if emitted {
+		g.writeln('')
+	}
+}
+
+fn (mut g FlatGen) emit_preserved_c_directive(directive string) {
+	if c_preserved_directive_needs_mach_panic_alias(directive) {
+		g.writeln('#define panic mach_panic')
+		g.writeln(directive)
+		g.writeln('#undef panic')
+		return
+	}
+	g.writeln(directive)
+}
+
+fn c_preserved_directive_needs_mach_panic_alias(directive string) bool {
+	for line in directive.split_into_lines() {
+		clean := line.trim_space()
+		if clean == '#include <mach/mach.h>' || clean == '#include <mach/mach_time.h>' {
+			return true
+		}
+	}
+	return false
+}
+
+fn c_lifted_include_context_prefix(directives []string, include_index int) []string {
+	mut prefix := []string{}
+	for i := include_index - 1; i >= 0; i-- {
+		clean := directives[i].trim_space()
+		if c_is_preserved_system_include_directive(clean) {
+			continue
+		}
+		if !c_is_liftable_include_context_directive(clean) {
+			break
+		}
+		prefix << directives[i]
+	}
+	prefix.reverse_in_place()
+	return prefix
+}
+
+fn c_lifted_include_context_depth(prefix []string) int {
+	mut depth := 0
+	for directive in prefix {
+		clean := directive.trim_space()
+		if clean.starts_with('#ifdef') || clean.starts_with('#ifndef') || clean.starts_with('#if ') {
+			depth++
+		}
+	}
+	return depth
+}
+
+fn c_is_liftable_include_context_directive(directive string) bool {
+	clean := directive.trim_space()
+	if clean.len == 0 || clean.contains('\n') || clean.starts_with('#endif') {
+		return false
+	}
+	return clean.starts_with('#define') || clean.starts_with('#undef')
+		|| clean.starts_with('#ifdef') || clean.starts_with('#ifndef') || clean.starts_with('#if ')
+		|| clean.starts_with('#elif') || clean.starts_with('#else')
+}
+
+fn c_is_preserved_system_include_directive(directive string) bool {
+	clean := directive.trim_space()
+	return clean.starts_with('#include <') && clean.ends_with('>') && !clean.contains('\n')
+}
+
+fn c_contains_preserved_system_include_directive(directive string) bool {
+	if c_is_preserved_system_include_directive(directive) {
+		return true
+	}
+	for line in directive.split_into_lines() {
+		if c_is_preserved_system_include_directive(line) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (g &FlatGen) visit_c_directive_module(mod string, directives_by_module map[string][]CDirective, mut visiting map[string]bool, mut visited map[string]bool, mut result []string) {
 	if mod in visited || mod in visiting {
 		return
@@ -732,6 +1567,21 @@ fn c_directive_name(text string) string {
 		return body
 	}
 	return body[..idx]
+}
+
+fn c_directive_arg(text string) string {
+	if text.len == 0 || text[0] != `#` {
+		return ''
+	}
+	body := text[1..].trim_space()
+	mut idx := 0
+	for idx < body.len && !body[idx].is_space() {
+		idx++
+	}
+	if idx >= body.len {
+		return ''
+	}
+	return body[idx..].trim_space()
 }
 
 fn c_include_arg(raw string, vroot string, source_file string) string {
@@ -2322,6 +3172,14 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(', ${len_expr}, ')
 				g.gen_expr(lhs_id)
 				g.write(')')
+			} else if clean_rhs is types.Struct && clean_rhs.name == 'array' {
+				lhs_type := g.usable_expr_type(lhs_id)
+				fn_name := array_membership_fn_name(lhs_type, false)
+				g.write('${fn_name}(')
+				g.gen_expr(rhs_id)
+				g.write(', ')
+				g.gen_expr(lhs_id)
+				g.write(')')
 			} else {
 				panic('internal error: non-map membership reached C backend in ${g.cur_fn_name}: rhs=${rhs_type.name()} kind=${rhs.kind} value=${rhs.value}')
 			}
@@ -2367,7 +3225,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				''
 			}
 			if base.kind == .ident && base.value == 'C' {
-				g.write(node.value)
+				g.write(c_winapi_wide_export_name(node.value))
 			} else if enum_selector_qbase.len > 0 {
 				ekey := '${enum_selector_qbase}.${node.value}'
 				if eval := g.enum_vals[ekey] {
@@ -2841,58 +3699,6 @@ fn (g &FlatGen) is_module_qualified_enum(base flat.Node) bool {
 }
 
 fn (mut g FlatGen) preamble() {
-	g.c99_feature_test_macros()
-	g.writeln('#include <stdio.h>')
-	g.writeln('#include <stdlib.h>')
-	g.writeln('#include <string.h>')
-	g.writeln('#include <stddef.h>')
-	g.writeln('#include <float.h>')
-	g.writeln('#include <stdint.h>') // guarantees UINTPTR_MAX for the pointer-width atomic helpers
-	g.writeln('#include <math.h>')
-	g.writeln('#include <unistd.h>')
-	g.c99_atomic_compat_decls()
-	if g.has_builtins {
-		g.writeln('#include <time.h>')
-		g.writeln('#include <sys/time.h>')
-		g.writeln('#include <errno.h>')
-		g.writeln('#include <signal.h>')
-		g.writeln('#include <execinfo.h>')
-		g.writeln('#include <dirent.h>')
-		g.writeln('#include <sys/stat.h>')
-		g.writeln('#include <fcntl.h>')
-		g.writeln('#include <sys/ioctl.h>')
-		g.writeln('#include <sys/utsname.h>')
-		g.writeln('#include <pthread.h>')
-		g.writeln('#include <semaphore.h>')
-		g.writeln('#include <termios.h>')
-		g.writeln('#include <unistd.h>')
-		g.writeln('#include <arpa/inet.h>')
-		g.writeln('#include <netdb.h>')
-		g.writeln('#include <netinet/in.h>')
-		g.writeln('#include <netinet/tcp.h>')
-		g.writeln('#include <sys/socket.h>')
-		g.writeln('#ifdef __APPLE__')
-		g.writeln('#define panic mach_panic')
-		g.writeln('#include <mach/mach.h>')
-		g.writeln('#include <mach/task.h>')
-		g.writeln('#include <mach/mach_time.h>')
-		g.writeln('#include <mach-o/dyld.h>')
-		g.writeln('#undef panic')
-		g.writeln('#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP')
-		g.writeln('#define PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP 0')
-		g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) 0')
-		g.writeln('#endif')
-		g.writeln('#endif')
-	}
-	if g.libc_compat_fns['gettid'] {
-		g.writeln('#ifdef __linux__')
-		g.writeln('#include <sys/syscall.h>')
-		g.writeln('#endif')
-	}
-	for directive in g.ordered_c_directives() {
-		g.writeln(directive)
-	}
-	g.writeln('')
 	g.writeln('typedef signed char i8;')
 	g.writeln('typedef short i16;')
 	g.writeln('typedef int i32;')
@@ -2902,16 +3708,47 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('typedef unsigned short u16;')
 	g.writeln('typedef unsigned int u32;')
 	g.writeln('typedef unsigned long long u64;')
+	g.writeln('#ifdef _MSC_VER')
+	g.writeln('#ifdef _WIN64')
+	g.writeln('typedef unsigned __int64 size_t;')
+	g.writeln('typedef __int64 ptrdiff_t;')
+	g.writeln('typedef unsigned __int64 uintptr_t;')
+	g.writeln('typedef __int64 intptr_t;')
+	g.writeln('#else')
+	g.writeln('typedef unsigned int size_t;')
+	g.writeln('typedef int ptrdiff_t;')
+	g.writeln('typedef unsigned int uintptr_t;')
+	g.writeln('typedef int intptr_t;')
+	g.writeln('#endif')
+	g.writeln('#else')
+	g.writeln('typedef __SIZE_TYPE__ size_t;')
+	g.writeln('typedef __PTRDIFF_TYPE__ ptrdiff_t;')
+	g.writeln('typedef __UINTPTR_TYPE__ uintptr_t;')
+	g.writeln('typedef __INTPTR_TYPE__ intptr_t;')
+	g.writeln('#endif')
+	g.writeln('#if !defined(_TIME_T) && !defined(_TIME_T_DEFINED) && !defined(__time_t_defined) && !defined(_BSD_TIME_T_DEFINED_) && !defined(_TIME_T_DECLARED)')
+	g.writeln('typedef long long time_t;')
+	g.writeln('#endif')
 	g.writeln('#ifndef __bool_true_false_are_defined')
-	g.writeln('typedef int bool;')
+	g.writeln('#ifdef _MSC_VER')
+	g.writeln('typedef unsigned char bool;')
+	g.writeln('#else')
+	g.writeln('typedef _Bool bool;')
+	g.writeln('#endif')
+	g.writeln('#define __bool_true_false_are_defined 1')
 	g.writeln('#endif')
 	g.writeln('typedef void* voidptr;')
 	g.writeln('typedef int int_literal;')
 	g.writeln('typedef double float_literal;')
 	g.writeln('struct sync__Channel;')
 	g.writeln('typedef struct sync__Channel* chan;')
+	g.writeln('#ifndef true')
 	g.writeln('#define true 1')
+	g.writeln('#endif')
+	g.writeln('#ifndef false')
 	g.writeln('#define false 0')
+	g.writeln('#endif')
+	g.headerless_libc_preamble()
 	g.write_arch_macros()
 	g.writeln('')
 	if !g.has_builtins {
@@ -2943,22 +3780,1582 @@ fn (mut g FlatGen) c99_feature_test_macros() {
 	g.writeln('#endif')
 }
 
-fn (mut g FlatGen) c99_atomic_compat_decls() {
-	if g.has_stdatomic_header {
-		return
+fn (mut g FlatGen) headerless_libc_preamble() {
+	g.writeln('#ifndef NULL')
+	g.writeln('#define NULL ((void*)0)')
+	g.writeln('#endif')
+	g.writeln('#ifndef offsetof')
+	g.writeln('#if defined(_MSC_VER) && !defined(__clang__)')
+	g.writeln('#define offsetof(type, member) ((size_t)&(((type*)0)->member))')
+	g.writeln('#else')
+	g.writeln('#define offsetof(type, member) __builtin_offsetof(type, member)')
+	g.writeln('#endif')
+	g.writeln('#endif')
+	g.writeln('#ifndef UINTPTR_MAX')
+	g.writeln('#if defined(__LP64__) || defined(_WIN64)')
+	g.writeln('#define UINTPTR_MAX 18446744073709551615ULL')
+	g.writeln('#else')
+	g.writeln('#define UINTPTR_MAX 4294967295U')
+	g.writeln('#endif')
+	g.writeln('#endif')
+	g.writeln('#ifndef EOF')
+	g.writeln('#define EOF (-1)')
+	g.writeln('#endif')
+	g.writeln('#ifndef RAND_MAX')
+	g.writeln('#define RAND_MAX 2147483647')
+	g.writeln('#endif')
+	g.writeln('#ifndef FLT_EPSILON')
+	g.writeln('#define FLT_EPSILON 1.19209290e-7F')
+	g.writeln('#endif')
+	g.writeln('#ifndef DBL_EPSILON')
+	g.writeln('#define DBL_EPSILON 2.2204460492503131e-16')
+	g.writeln('#endif')
+	g.writeln('#ifndef FLT_MAX')
+	g.writeln('#ifdef __FLT_MAX__')
+	g.writeln('#define FLT_MAX __FLT_MAX__')
+	g.writeln('#else')
+	g.writeln('#define FLT_MAX 3.4028234663852886e+38F')
+	g.writeln('#endif')
+	g.writeln('#endif')
+	g.writeln('#ifndef DBL_MAX')
+	g.writeln('#ifdef __DBL_MAX__')
+	g.writeln('#define DBL_MAX __DBL_MAX__')
+	g.writeln('#else')
+	g.writeln('#define DBL_MAX 1.7976931348623158e+308')
+	g.writeln('#endif')
+	g.writeln('#endif')
+	g.writeln('#ifndef SEEK_SET')
+	g.writeln('#define SEEK_SET 0')
+	g.writeln('#endif')
+	g.writeln('#ifndef SEEK_CUR')
+	g.writeln('#define SEEK_CUR 1')
+	g.writeln('#endif')
+	g.writeln('#ifndef SEEK_END')
+	g.writeln('#define SEEK_END 2')
+	g.writeln('#endif')
+	g.writeln('#ifndef _IOFBF')
+	g.writeln('#define _IOFBF 0')
+	g.writeln('#endif')
+	g.writeln('#ifndef _IOLBF')
+	g.writeln('#define _IOLBF 1')
+	g.writeln('#endif')
+	g.writeln('#ifndef _IONBF')
+	g.writeln('#define _IONBF 2')
+	g.writeln('#endif')
+	g.headerless_windows_sdk_types()
+	g.writeln('#if !defined(__FILE_defined) && !defined(_FILE_DEFINED) && !defined(_FILEDEFED) && !defined(__DEFINED_FILE) && !defined(_FILE_DECLARED) && !defined(__FILE_DECLARED)')
+	g.writeln('typedef struct FILE FILE;')
+	g.writeln('#endif')
+	g.writeln('typedef struct DIR DIR;')
+	g.writeln('#if !defined(_SSIZE_T) && !defined(_SSIZE_T_DEFINED) && !defined(__ssize_t_defined) && !defined(_SSIZE_T_DECLARED)')
+	g.writeln('typedef intptr_t ssize_t;')
+	g.writeln('#endif')
+	g.writeln('extern char** environ;')
+	g.writeln('char* getenv(const char* name);')
+	g.writeln('int setenv(const char* name, const char* value, int overwrite);')
+	g.writeln('void abort(void);')
+	g.writeln('void* memset(void* s, int c, size_t n);')
+	g.writeln('void* memcpy(void* dest, const void* src, size_t n);')
+	g.writeln('void* memmove(void* dest, const void* src, size_t n);')
+	g.writeln('int memcmp(const void* s1, const void* s2, size_t n);')
+	g.writeln('size_t strlen(const char* s);')
+	g.writeln('int strcmp(const char* s1, const char* s2);')
+	g.writeln('int strncmp(const char* s1, const char* s2, size_t n);')
+	g.writeln('char* strncpy(char* dest, const char* src, size_t n);')
+	g.writeln('double floor(double x);')
+	g.writeln('double ceil(double x);')
+	g.writeln('float floorf(float x);')
+	g.writeln('float ceilf(float x);')
+	g.writeln('double sqrt(double x);')
+	g.writeln('double pow(double x, double y);')
+	g.writeln('double ldexp(double x, int exp);')
+	g.writeln('double fmod(double x, double y);')
+	g.writeln('double cos(double x);')
+	g.writeln('double acos(double x);')
+	g.writeln('double fabs(double x);')
+	g.writeln('#ifndef _WIN32')
+	g.writeln('int open(const char* path, int flags, ...);')
+	g.writeln('ssize_t read(int fd, void* buf, size_t count);')
+	g.writeln('int fork(void);')
+	g.writeln('int dup2(int oldfd, int newfd);')
+	g.writeln('int execlp(const char* file, const char* arg, ...);')
+	g.writeln('int execvp(const char* file, char* const argv[]);')
+	g.writeln('void _exit(int status);')
+	g.writeln('#endif')
+	g.writeln('int access(const char* path, int mode);')
+	g.writeln('char* realpath(const char* path, char* resolved_path);')
+	g.writeln('char* strrchr(const char* s, int c);')
+	g.writeln('char* strstr(const char* haystack, const char* needle);')
+	g.writeln('int snprintf(char* str, size_t size, const char* format, ...);')
+	g.writeln('int fcntl(int fd, int cmd, ...);')
+	g.writeln('int pipe(int* pipefds);')
+	g.writeln('int close(int fd);')
+	g.writeln('void* signal(int sig, void* handler);')
+	g.writeln('int atexit(void (*f)(void));')
+	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)')
+	g.writeln('extern FILE* __stdinp;')
+	g.writeln('extern FILE* __stdoutp;')
+	g.writeln('extern FILE* __stderrp;')
+	g.writeln('#define stdin __stdinp')
+	g.writeln('#define stdout __stdoutp')
+	g.writeln('#define stderr __stderrp')
+	g.writeln('int* __error(void);')
+	g.writeln('#define errno (*__error())')
+	g.writeln('#elif defined(__OpenBSD__)')
+	g.writeln('struct __sFstub { long _stub; };')
+	g.writeln('extern struct __sFstub __stdin[];')
+	g.writeln('extern struct __sFstub __stdout[];')
+	g.writeln('extern struct __sFstub __stderr[];')
+	g.writeln('#define stdin ((FILE*)__stdin)')
+	g.writeln('#define stdout ((FILE*)__stdout)')
+	g.writeln('#define stderr ((FILE*)__stderr)')
+	g.writeln('extern int errno;')
+	g.writeln('#elif defined(__NetBSD__)')
+	g.writeln('#if defined(__LP64__) || defined(_LP64)')
+	g.writeln('struct __netbsd_FILE_stub { unsigned char _opaque[152]; };')
+	g.writeln('#else')
+	g.writeln('struct __netbsd_FILE_stub { unsigned char _opaque[88]; };')
+	g.writeln('#endif')
+	g.writeln('extern struct __netbsd_FILE_stub __sF[];')
+	g.writeln('#define stdin ((FILE*)&__sF[0])')
+	g.writeln('#define stdout ((FILE*)&__sF[1])')
+	g.writeln('#define stderr ((FILE*)&__sF[2])')
+	g.writeln('extern int errno;')
+	g.writeln('#elif defined(__ANDROID__)')
+	g.writeln('extern FILE* stdin;')
+	g.writeln('extern FILE* stdout;')
+	g.writeln('extern FILE* stderr;')
+	g.writeln('int* __errno(void);')
+	g.writeln('#define errno (*__errno())')
+	g.writeln('#elif defined(__linux__)')
+	g.writeln('extern FILE* stdin;')
+	g.writeln('extern FILE* stdout;')
+	g.writeln('extern FILE* stderr;')
+	g.writeln('int* __errno_location(void);')
+	g.writeln('#define errno (*__errno_location())')
+	g.writeln('#elif defined(_WIN32)')
+	g.writeln('extern FILE* stdin;')
+	g.writeln('extern FILE* stdout;')
+	g.writeln('extern FILE* stderr;')
+	g.writeln('int* _errno(void);')
+	g.writeln('#define errno (*_errno())')
+	g.writeln('#else')
+	g.writeln('extern FILE* stdin;')
+	g.writeln('extern FILE* stdout;')
+	g.writeln('extern FILE* stderr;')
+	g.writeln('extern int errno;')
+	g.writeln('#endif')
+	g.writeln('typedef int pid_t;')
+	g.writeln('#if !defined(_OFF_T) && !defined(_OFF_T_DEFINED) && !defined(__off_t_defined) && !defined(_BSD_OFF_T_DEFINED_) && !defined(_OFF_T_DECLARED)')
+	g.writeln('typedef long long off_t;')
+	g.writeln('#endif')
+	g.writeln('typedef void* pthread_t;')
+	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_attr_t;')
+	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } pthread_mutex_t;')
+	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } pthread_cond_t;')
+	g.writeln('typedef union { unsigned char _opaque[256]; long long _align; } pthread_rwlock_t;')
+	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_rwlockattr_t;')
+	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_condattr_t;')
+	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sem_t;')
+	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sigset_t;')
+	g.headerless_stdarg_decls()
+	g.writeln('#ifndef PTHREAD_MUTEX_INITIALIZER')
+	g.writeln('#ifdef __APPLE__')
+	g.writeln('#define PTHREAD_MUTEX_INITIALIZER { ._opaque = { 0xa7, 0xab, 0xaa, 0x32 } }')
+	g.writeln('#else')
+	g.writeln('#define PTHREAD_MUTEX_INITIALIZER { 0 }')
+	g.writeln('#endif')
+	g.writeln('#endif')
+	g.writeln('int pthread_mutex_init(void* mutex, void* attr);')
+	g.writeln('int pthread_mutex_lock(void* mutex);')
+	g.writeln('int pthread_mutex_unlock(void* mutex);')
+	g.writeln('int pthread_mutex_destroy(void* mutex);')
+	g.writeln('typedef struct SRWLOCK { void* Ptr; } SRWLOCK;')
+	g.writeln('typedef struct CONDITION_VARIABLE { void* Ptr; } CONDITION_VARIABLE;')
+	g.writeln('typedef void* atomic_uintptr_t;')
+	g.writeln('#if !defined(__cplusplus) && !defined(_WCHAR_T) && !defined(_WCHAR_T_DEFINED) && !defined(__WCHAR_T) && !defined(__wchar_t_defined) && !defined(_BSD_WCHAR_T_DEFINED_) && !defined(_WCHAR_T_DECLARED)')
+	g.writeln('#ifdef _WIN32')
+	g.writeln('typedef unsigned short wchar_t;')
+	g.writeln('#else')
+	g.writeln('typedef unsigned int wchar_t;')
+	g.writeln('#endif')
+	g.writeln('#endif')
+	g.writeln('#ifndef FD_SET')
+	g.writeln('#ifndef FD_SETSIZE')
+	g.writeln('#define FD_SETSIZE 1024')
+	g.writeln('#endif')
+	g.headerless_fd_set_struct()
+	g.writeln('#endif')
+	g.headerless_windows_console_structs()
+	g.headerless_winsize_struct()
+	g.headerless_addrinfo_struct()
+	g.headerless_sockaddr_structs()
+	g.headerless_epoll_structs()
+	g.headerless_kevent_struct()
+	g.headerless_dirent_struct()
+	g.headerless_statvfs_struct()
+	g.headerless_timeval_struct()
+	g.headerless_rusage_struct()
+	g.headerless_timespec_struct()
+	g.headerless_utsname_struct()
+	g.headerless_stat_struct()
+	g.headerless_tm_struct()
+	g.headerless_termios_struct()
+	g.headerless_platform_constants()
+}
+
+fn (mut g FlatGen) headerless_windows_sdk_types() {
+	g.writeln('#ifndef WINAPI')
+	g.writeln('#if defined(_WIN32) && (defined(__i386__) || defined(_M_IX86))')
+	g.writeln('#define WINAPI __stdcall')
+	g.writeln('#else')
+	g.writeln('#define WINAPI')
+	g.writeln('#endif')
+	g.writeln('#endif')
+	g.writeln('#ifdef _WIN32')
+	g.writeln('#if !defined(_WINDEF_) && !defined(_MINWINDEF_)')
+	g.writeln('typedef unsigned long DWORD;')
+	g.writeln('typedef int BOOL;')
+	g.writeln('typedef void* HANDLE;')
+	g.writeln('#endif')
+	g.writeln('#if !defined(_SECURITY_ATTRIBUTES_DEFINED) && !defined(_SECURITY_ATTRIBUTES)')
+	g.writeln('#define _SECURITY_ATTRIBUTES_DEFINED')
+	g.writeln('typedef struct SECURITY_ATTRIBUTES { DWORD nLength; void* lpSecurityDescriptor; BOOL bInheritHandle; } SECURITY_ATTRIBUTES;')
+	g.writeln('#endif')
+	g.writeln('#if !defined(_OVERLAPPED_) && !defined(_OVERLAPPED_DECLARED)')
+	g.writeln('#define _OVERLAPPED_DECLARED')
+	g.writeln('typedef struct OVERLAPPED { uintptr_t Internal; uintptr_t InternalHigh; union { struct { DWORD Offset; DWORD OffsetHigh; }; void* Pointer; }; HANDLE hEvent; } OVERLAPPED;')
+	g.writeln('#endif')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_stdarg_decls() {
+	g.writeln('#ifndef va_start')
+	g.writeln('#if defined(_MSC_VER) && !defined(__clang__)')
+	g.writeln('typedef char* va_list;')
+	g.writeln('#define __V_VA_ALIGN(type) ((sizeof(type) + sizeof(void*) - 1) & ~(sizeof(void*) - 1))')
+	g.writeln('#define va_start(ap, last) ((void)((ap) = (va_list)&(last) + __V_VA_ALIGN(last)))')
+	g.writeln('#define va_arg(ap, type) (*(type*)(((ap) += __V_VA_ALIGN(type)) - __V_VA_ALIGN(type)))')
+	g.writeln('#define va_end(ap) ((void)((ap) = (va_list)0))')
+	g.writeln('#define va_copy(dst, src) ((void)((dst) = (src)))')
+	g.writeln('#else')
+	g.writeln('typedef __builtin_va_list va_list;')
+	g.writeln('#define va_start(ap, last) __builtin_va_start(ap, last)')
+	g.writeln('#define va_arg(ap, type) __builtin_va_arg(ap, type)')
+	g.writeln('#define va_end(ap) __builtin_va_end(ap)')
+	g.writeln('#define va_copy(dst, src) __builtin_va_copy(dst, src)')
+	g.writeln('#endif')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_fd_set_struct() {
+	g.writeln('#ifdef _WIN32')
+	g.writeln('typedef uintptr_t SOCKET;')
+	g.writeln('struct fd_set { unsigned int fd_count; SOCKET fd_array[FD_SETSIZE]; };')
+	g.writeln('typedef struct fd_set fd_set;')
+	g.writeln('static inline void v_fd_zero(fd_set* set) { set->fd_count = 0; }')
+	g.writeln('static inline void v_fd_set(SOCKET fd, fd_set* set) { for (unsigned int i = 0; i < set->fd_count; i++) { if (set->fd_array[i] == fd) { return; } } if (set->fd_count < FD_SETSIZE) { set->fd_array[set->fd_count++] = fd; } }')
+	g.writeln('static inline int v_fd_isset(SOCKET fd, fd_set* set) { for (unsigned int i = 0; i < set->fd_count; i++) { if (set->fd_array[i] == fd) { return 1; } } return 0; }')
+	g.writeln('#define FD_ZERO(set) v_fd_zero(set)')
+	g.writeln('#define FD_SET(fd, set) v_fd_set((SOCKET)(fd), set)')
+	g.writeln('#define FD_ISSET(fd, set) v_fd_isset((SOCKET)(fd), set)')
+	g.writeln('#elif defined(__APPLE__)')
+	g.writeln('#define __V_FD_BITS 32')
+	g.writeln('struct fd_set { unsigned int fds_bits[FD_SETSIZE / __V_FD_BITS]; };')
+	g.writeln('typedef struct fd_set fd_set;')
+	g.writeln('#define FD_ZERO(set) memset((set), 0, sizeof(*(set)))')
+	g.writeln('#define FD_SET(fd, set) ((set)->fds_bits[(fd) / __V_FD_BITS] |= (1U << ((fd) % __V_FD_BITS)))')
+	g.writeln('#define FD_ISSET(fd, set) (((set)->fds_bits[(fd) / __V_FD_BITS] & (1U << ((fd) % __V_FD_BITS))) != 0)')
+	g.writeln('#else')
+	g.writeln('#define __V_FD_BITS (8 * (int)sizeof(unsigned long))')
+	g.writeln('struct fd_set { unsigned long fds_bits[FD_SETSIZE / __V_FD_BITS]; };')
+	g.writeln('typedef struct fd_set fd_set;')
+	g.writeln('#define FD_ZERO(set) memset((set), 0, sizeof(*(set)))')
+	g.writeln('#define FD_SET(fd, set) ((set)->fds_bits[(fd) / __V_FD_BITS] |= (1UL << ((fd) % __V_FD_BITS)))')
+	g.writeln('#define FD_ISSET(fd, set) (((set)->fds_bits[(fd) / __V_FD_BITS] & (1UL << ((fd) % __V_FD_BITS))) != 0)')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_windows_console_structs() {
+	g.writeln('#if defined(_WIN32)')
+	g.writeln('typedef struct COORD { i16 X; i16 Y; } COORD;')
+	g.writeln('typedef struct SMALL_RECT { u16 Left; u16 Top; u16 Right; u16 Bottom; } SMALL_RECT;')
+	g.writeln('typedef union uChar { u16 UnicodeChar; u8 AsciiChar; } uChar;')
+	g.writeln('typedef struct KEY_EVENT_RECORD { int bKeyDown; u16 wRepeatCount; u16 wVirtualKeyCode; u16 wVirtualScanCode; uChar uChar; u32 dwControlKeyState; } KEY_EVENT_RECORD;')
+	g.writeln('typedef struct MOUSE_EVENT_RECORD { COORD dwMousePosition; u32 dwButtonState; u32 dwControlKeyState; u32 dwEventFlags; } MOUSE_EVENT_RECORD;')
+	g.writeln('typedef struct WINDOW_BUFFER_SIZE_RECORD { COORD dwSize; } WINDOW_BUFFER_SIZE_RECORD;')
+	g.writeln('typedef struct MENU_EVENT_RECORD { u32 dwCommandId; } MENU_EVENT_RECORD;')
+	g.writeln('typedef struct FOCUS_EVENT_RECORD { int bSetFocus; } FOCUS_EVENT_RECORD;')
+	g.writeln('typedef union Event { KEY_EVENT_RECORD KeyEvent; MOUSE_EVENT_RECORD MouseEvent; WINDOW_BUFFER_SIZE_RECORD WindowBufferSizeEvent; MENU_EVENT_RECORD MenuEvent; FOCUS_EVENT_RECORD FocusEvent; } Event;')
+	g.writeln('typedef struct INPUT_RECORD { u16 EventType; Event Event; } INPUT_RECORD;')
+	g.writeln('typedef struct CONSOLE_SCREEN_BUFFER_INFO { COORD dwSize; COORD dwCursorPosition; u16 wAttributes; SMALL_RECT srWindow; COORD dwMaximumWindowSize; } CONSOLE_SCREEN_BUFFER_INFO;')
+	g.writeln('typedef struct CHAR_INFO { uChar Char; u16 Attributes; } CHAR_INFO;')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_winsize_struct() {
+	g.writeln('struct winsize { unsigned short ws_row; unsigned short ws_col; unsigned short ws_xpixel; unsigned short ws_ypixel; };')
+}
+
+fn (mut g FlatGen) headerless_addrinfo_struct() {
+	g.writeln('#if defined(_WIN32)')
+	g.writeln('struct addrinfo { int ai_flags; int ai_family; int ai_socktype; int ai_protocol; size_t ai_addrlen; char* ai_canonname; void* ai_addr; struct addrinfo* ai_next; };')
+	g.writeln('#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
+	g.writeln('struct addrinfo { int ai_flags; int ai_family; int ai_socktype; int ai_protocol; unsigned int ai_addrlen; char* ai_canonname; void* ai_addr; struct addrinfo* ai_next; };')
+	g.writeln('#else')
+	g.writeln('struct addrinfo { int ai_flags; int ai_family; int ai_socktype; int ai_protocol; unsigned int ai_addrlen; void* ai_addr; char* ai_canonname; struct addrinfo* ai_next; };')
+	g.writeln('#endif')
+	g.writeln('typedef struct addrinfo addrinfo;')
+}
+
+fn (mut g FlatGen) headerless_sockaddr_structs() {
+	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
+	g.writeln('struct sockaddr { u8 sa_len; u8 sa_family; char sa_data[14]; };')
+	g.writeln('struct sockaddr_in { u8 sin_len; u8 sin_family; u16 sin_port; u32 sin_addr; char sin_zero[8]; };')
+	g.writeln('struct sockaddr_in6 { u8 sin6_len; u8 sin6_family; u16 sin6_port; u32 sin6_flowinfo; u8 sin6_addr[16]; u32 sin6_scope_id; };')
+	g.writeln('struct sockaddr_un { u8 sun_len; u8 sun_family; char sun_path[104]; };')
+	g.writeln('#else')
+	g.writeln('struct sockaddr { u16 sa_family; char sa_data[14]; };')
+	g.writeln('struct sockaddr_in { u16 sin_family; u16 sin_port; u32 sin_addr; char sin_zero[8]; };')
+	g.writeln('struct sockaddr_in6 { u16 sin6_family; u16 sin6_port; u32 sin6_flowinfo; u8 sin6_addr[16]; u32 sin6_scope_id; };')
+	g.writeln('struct sockaddr_un { u16 sun_family; char sun_path[108]; };')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_epoll_structs() {
+	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
+	g.writeln('typedef union epoll_data { void* ptr; int fd; u32 u32; u64 u64; } epoll_data_t;')
+	g.writeln('struct epoll_event { u32 events; epoll_data_t data; } __attribute__((packed));')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_kevent_struct() {
+	g.writeln('#if defined(__NetBSD__)')
+	g.writeln('struct kevent { uintptr_t ident; u32 filter; u32 flags; u32 fflags; i64 data; void* udata; u64 ext[4]; };')
+	g.writeln('#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)')
+	g.writeln('struct kevent { uintptr_t ident; i16 filter; u16 flags; u32 fflags; intptr_t data; void* udata; };')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_dirent_struct() {
+	g.writeln('#if defined(__APPLE__)')
+	g.writeln('struct dirent { u64 d_ino; u64 d_seekoff; u16 d_reclen; u16 d_namlen; u8 d_type; char d_name[1024]; };')
+	g.writeln('#elif defined(__FreeBSD__)')
+	g.writeln('struct dirent { u64 d_ino; i64 d_seekoff; u16 d_reclen; u8 d_type; u8 __pad0; u16 d_namlen; u16 __pad1; char d_name[256]; };')
+	g.writeln('#elif defined(__OpenBSD__)')
+	g.writeln('struct dirent { u64 d_ino; i64 d_seekoff; u16 d_reclen; u8 d_type; u8 d_namlen; u8 __d_padding[4]; char d_name[256]; };')
+	g.writeln('#elif defined(__NetBSD__)')
+	g.writeln('struct dirent { u64 d_ino; u16 d_reclen; u16 d_namlen; u8 d_type; char d_name[512]; };')
+	g.writeln('#elif defined(__DragonFly__)')
+	g.writeln('struct dirent { u64 d_ino; u16 d_namlen; u8 d_type; u8 __unused1; u32 __unused2; char d_name[256]; };')
+	g.writeln('#elif defined(__linux__) && (defined(__i386__) || defined(__arm__))')
+	g.writeln('struct dirent { unsigned long d_ino; long d_off; unsigned short d_reclen; unsigned char d_type; char d_name[256]; };')
+	g.writeln('#else')
+	g.writeln('struct dirent { u64 d_ino; i64 d_off; unsigned short d_reclen; unsigned char d_type; char d_name[256]; };')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_statvfs_struct() {
+	g.writeln('#ifdef __NetBSD__')
+	g.writeln('struct statvfs { unsigned long f_flag; unsigned long f_bsize; unsigned long f_frsize; unsigned long f_iosize; u64 f_blocks; u64 f_bfree; u64 f_bavail; u64 f_bresvd; u64 f_files; u64 f_ffree; u64 f_favail; u64 f_fresvd; u64 f_syncreads; u64 f_syncwrites; u64 f_asyncreads; u64 f_asyncwrites; struct { i32 __fsid_val[2]; } f_fsidx; unsigned long f_fsid; unsigned long f_namemax; u32 f_owner; u64 f_spare[4]; char f_fstypename[32]; char f_mntonname[1024]; char f_mntfromname[1024]; char f_mntfromlabel[1024]; };')
+	g.writeln('#else')
+	g.writeln('struct statvfs { unsigned long f_bsize; unsigned long f_frsize; unsigned long f_blocks; unsigned long f_bfree; unsigned long f_bavail; unsigned long f_files; unsigned long f_ffree; unsigned long f_favail; unsigned long f_fsid; unsigned long f_flag; unsigned long f_namemax; int __f_spare[6]; };')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_timeval_struct() {
+	g.writeln('#ifdef _WIN32')
+	g.writeln('struct timeval { long tv_sec; long tv_usec; };')
+	g.writeln('#else')
+	g.writeln('struct timeval { long tv_sec; long tv_usec; };')
+	g.writeln('#endif')
+	g.writeln('typedef struct timeval timeval;')
+}
+
+fn (mut g FlatGen) headerless_rusage_struct() {
+	g.writeln('struct rusage { struct timeval ru_utime; struct timeval ru_stime; long ru_maxrss; long ru_ixrss; long ru_idrss; long ru_isrss; long ru_minflt; long ru_majflt; long ru_nswap; long ru_inblock; long ru_oublock; long ru_msgsnd; long ru_msgrcv; long ru_nsignals; long ru_nvcsw; long ru_nivcsw; };')
+}
+
+fn (mut g FlatGen) headerless_timespec_struct() {
+	g.writeln('#if !defined(_STRUCT_TIMESPEC) && !defined(_TIMESPEC_DEFINED) && !defined(_TIMESPEC_DECLARED) && !defined(__timespec_defined)')
+	g.writeln('#ifdef _WIN32')
+	g.writeln('struct timespec { i64 tv_sec; long tv_nsec; };')
+	g.writeln('#else')
+	g.writeln('struct timespec { long tv_sec; long tv_nsec; };')
+	g.writeln('#endif')
+	g.writeln('#endif')
+	g.writeln('typedef struct timespec timespec;')
+}
+
+fn (mut g FlatGen) headerless_tm_struct() {
+	g.writeln('#ifdef _WIN32')
+	g.writeln('struct tm { int tm_sec; int tm_min; int tm_hour; int tm_mday; int tm_mon; int tm_year; int tm_wday; int tm_yday; int tm_isdst; };')
+	g.writeln('#else')
+	g.writeln('struct tm { int tm_sec; int tm_min; int tm_hour; int tm_mday; int tm_mon; int tm_year; int tm_wday; int tm_yday; int tm_isdst; long tm_gmtoff; const char* tm_zone; };')
+	g.writeln('#endif')
+	g.writeln('typedef struct tm tm;')
+}
+
+fn (mut g FlatGen) headerless_termios_struct() {
+	g.writeln('#if defined(__APPLE__)')
+	g.writeln('struct termios { size_t c_iflag; size_t c_oflag; size_t c_cflag; size_t c_lflag; u8 c_cc[20]; size_t c_ispeed; size_t c_ospeed; };')
+	g.writeln('#elif defined(__linux__) || defined(__ANDROID__)')
+	g.writeln('struct termios { int c_iflag; int c_oflag; int c_cflag; int c_lflag; u8 c_line; u8 c_cc[32]; int c_ispeed; int c_ospeed; };')
+	g.writeln('#elif defined(__sun)')
+	g.writeln('struct termios { int c_iflag; int c_oflag; int c_cflag; int c_lflag; u8 c_cc[20]; };')
+	g.writeln('#elif defined(__QNX__) || defined(__QNXNTO__)')
+	g.writeln('struct termios { int c_iflag; int c_oflag; int c_cflag; int c_lflag; u8 c_cc[20]; u32 reserved[3]; int c_ispeed; int c_ospeed; };')
+	g.writeln('#else')
+	g.writeln('struct termios { int c_iflag; int c_oflag; int c_cflag; int c_lflag; u8 c_cc[20]; int c_ispeed; int c_ospeed; };')
+	g.writeln('#endif')
+	g.writeln('typedef struct termios termios;')
+}
+
+fn (mut g FlatGen) headerless_utsname_struct() {
+	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)')
+	g.writeln('struct utsname { char sysname[256]; char nodename[256]; char release[256]; char version[256]; char machine[256]; };')
+	g.writeln('#else')
+	g.writeln('struct utsname { char sysname[65]; char nodename[65]; char release[65]; char version[65]; char machine[65]; char domainname[65]; };')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_stat_struct() {
+	g.writeln('#ifdef __APPLE__')
+	g.writeln('struct stat { int st_dev; unsigned short st_mode; unsigned short st_nlink; u64 st_ino; u32 st_uid; u32 st_gid; int st_rdev; i64 st_atime; i64 st_atimensec; i64 st_mtime; i64 st_mtimensec; i64 st_ctime; i64 st_ctimensec; i64 st_birthtime; i64 st_birthtimensec; i64 st_size; i64 st_blocks; int st_blksize; u32 st_flags; u32 st_gen; int st_lspare; i64 st_qspare[2]; };')
+	g.writeln('#elif defined(__linux__)')
+	g.headerless_linux_stat_struct()
+	g.writeln('#elif defined(_WIN32)')
+	g.writeln('struct stat { u64 st_dev; u64 st_ino; u32 st_mode; u64 st_nlink; u32 st_uid; u32 st_gid; u64 st_rdev; u64 st_size; int st_atime; int st_mtime; int st_ctime; };')
+	g.writeln('#elif defined(__FreeBSD__)')
+	g.headerless_freebsd_stat_struct()
+	g.writeln('#elif defined(__OpenBSD__)')
+	g.headerless_openbsd_stat_struct()
+	g.writeln('#elif defined(__NetBSD__)')
+	g.headerless_netbsd_stat_struct()
+	g.writeln('#elif defined(__DragonFly__)')
+	g.headerless_dragonfly_stat_struct()
+	g.writeln('#elif defined(__sun)')
+	g.headerless_solaris_stat_struct()
+	g.writeln('#elif defined(__QNX__) || defined(__QNXNTO__)')
+	g.headerless_qnx_stat_struct()
+	g.writeln('#else')
+	g.writeln('#error unsupported headerless Unix struct stat layout for this platform')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_freebsd_stat_struct() {
+	g.writeln('#if defined(__i386__)')
+	g.writeln('struct stat { u64 st_dev; u64 st_ino; u64 st_nlink; u16 st_mode; i16 st_bsdflags; u32 st_uid; u32 st_gid; i32 st_padding1; u64 st_rdev; i32 st_atim_ext; i64 st_atime; long st_atimensec; i32 st_mtim_ext; i64 st_mtime; long st_mtimensec; i32 st_ctim_ext; i64 st_ctime; long st_ctimensec; i32 st_btim_ext; i64 st_birthtime; long st_birthtimensec; i64 st_size; i64 st_blocks; i32 st_blksize; u32 st_flags; u64 st_gen; u64 st_filerev; u64 st_spare[9]; };')
+	g.writeln('#else')
+	g.writeln('struct stat { u64 st_dev; u64 st_ino; u64 st_nlink; u16 st_mode; i16 st_bsdflags; u32 st_uid; u32 st_gid; i32 st_padding1; u64 st_rdev; i64 st_atime; long st_atimensec; i64 st_mtime; long st_mtimensec; i64 st_ctime; long st_ctimensec; i64 st_birthtime; long st_birthtimensec; i64 st_size; i64 st_blocks; i32 st_blksize; u32 st_flags; u64 st_gen; u64 st_filerev; u64 st_spare[9]; };')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_openbsd_stat_struct() {
+	g.writeln('struct stat { u32 st_mode; i32 st_dev; u64 st_ino; u32 st_nlink; u32 st_uid; u32 st_gid; i32 st_rdev; i64 st_atime; long st_atimensec; i64 st_mtime; long st_mtimensec; i64 st_ctime; long st_ctimensec; i64 __st_birthtime; long __st_birthtimensec; i64 st_size; i64 st_blocks; i32 st_blksize; u32 st_flags; u32 st_gen; };')
+}
+
+fn (mut g FlatGen) headerless_netbsd_stat_struct() {
+	g.writeln('struct stat { u64 st_dev; u32 st_mode; u64 st_ino; u32 st_nlink; u32 st_uid; u32 st_gid; u64 st_rdev; i64 st_atime; long st_atimensec; i64 st_mtime; long st_mtimensec; i64 st_ctime; long st_ctimensec; i64 st_birthtime; long st_birthtimensec; i64 st_size; i64 st_blocks; i32 st_blksize; u32 st_flags; u32 st_gen; u32 st_spare[2]; };')
+}
+
+fn (mut g FlatGen) headerless_dragonfly_stat_struct() {
+	g.writeln('struct stat { u64 st_ino; u32 st_nlink; u32 st_dev; u16 st_mode; u16 st_padding1; u32 st_uid; u32 st_gid; u32 st_rdev; i64 st_atime; long st_atimensec; i64 st_mtime; long st_mtimensec; i64 st_ctime; long st_ctimensec; i64 st_size; i64 st_blocks; u32 __old_st_blksize; u32 st_flags; u32 st_gen; i32 st_lspare; i64 st_blksize; i64 st_qspare2; };')
+}
+
+fn (mut g FlatGen) headerless_solaris_stat_struct() {
+	g.writeln('#if defined(_LP64)')
+	g.writeln('struct stat { u64 st_dev; u64 st_ino; u32 st_mode; u32 st_nlink; u32 st_uid; u32 st_gid; u64 st_rdev; i64 st_size; long st_atime; long st_atimensec; long st_mtime; long st_mtimensec; long st_ctime; long st_ctimensec; long st_blksize; i64 st_blocks; char st_fstype[16]; };')
+	g.writeln('#else')
+	g.writeln('struct stat { unsigned long st_dev; long st_pad1[3]; unsigned long st_ino; u32 st_mode; u32 st_nlink; u32 st_uid; u32 st_gid; unsigned long st_rdev; long st_pad2[2]; long st_size; long st_pad3; long st_atime; long st_atimensec; long st_mtime; long st_mtimensec; long st_ctime; long st_ctimensec; long st_blksize; long st_blocks; char st_fstype[16]; long st_pad4[8]; };')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_qnx_stat_struct() {
+	g.writeln('#if _FILE_OFFSET_BITS - 0 == 64')
+	g.writeln('struct stat { u64 st_ino; i64 st_size; u64 st_dev; u64 st_rdev; u32 st_uid; u32 st_gid; long st_mtime; long st_atime; long st_ctime; u32 st_mode; u32 st_nlink; long st_blocksize; i32 st_nblocks; long st_blksize; i64 st_blocks; };')
+	g.writeln('#elif defined(__BIGENDIAN__)')
+	g.writeln('struct stat { unsigned long st_ino_hi; unsigned long st_ino; long st_size_hi; long st_size; unsigned long st_dev; unsigned long st_rdev; u32 st_uid; u32 st_gid; long st_mtime; long st_atime; long st_ctime; u32 st_mode; u32 st_nlink; long st_blocksize; i32 st_nblocks; long st_blksize; long st_blocks_hi; long st_blocks; };')
+	g.writeln('#else')
+	g.writeln('struct stat { unsigned long st_ino; unsigned long st_ino_hi; long st_size; long st_size_hi; unsigned long st_dev; unsigned long st_rdev; u32 st_uid; u32 st_gid; long st_mtime; long st_atime; long st_ctime; u32 st_mode; u32 st_nlink; long st_blocksize; i32 st_nblocks; long st_blksize; long st_blocks; long st_blocks_hi; };')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_linux_stat_struct() {
+	g.writeln('#if defined(__x86_64__) && !defined(__ILP32__)')
+	g.writeln('struct stat { u64 st_dev; u64 st_ino; u64 st_nlink; u32 st_mode; u32 st_uid; u32 st_gid; int __pad0; u64 st_rdev; i64 st_size; i64 st_blksize; i64 st_blocks; i64 st_atime; i64 st_atimensec; i64 st_mtime; i64 st_mtimensec; i64 st_ctime; i64 st_ctimensec; i64 __glibc_reserved[3]; };')
+	g.writeln('#elif defined(__aarch64__) || (defined(__riscv) && __riscv_xlen == 64) || defined(__loongarch_lp64)')
+	g.writeln('struct stat { u64 st_dev; u64 st_ino; u32 st_mode; u32 st_nlink; u32 st_uid; u32 st_gid; u64 st_rdev; unsigned long __pad1; i64 st_size; int st_blksize; int __pad2; i64 st_blocks; i64 st_atime; i64 st_atimensec; i64 st_mtime; i64 st_mtimensec; i64 st_ctime; i64 st_ctimensec; unsigned int __glibc_reserved[2]; };')
+	g.writeln('#elif defined(__i386__) || defined(__arm__)')
+	g.writeln('struct stat { u64 st_dev; unsigned short __pad1; unsigned long st_ino; u32 st_mode; unsigned long st_nlink; u32 st_uid; u32 st_gid; u64 st_rdev; unsigned short __pad2; long st_size; long st_blksize; long st_blocks; long st_atime; unsigned long st_atimensec; long st_mtime; unsigned long st_mtimensec; long st_ctime; unsigned long st_ctimensec; unsigned long __glibc_reserved4; unsigned long __glibc_reserved5; };')
+	g.writeln('#else')
+	g.writeln('#error unsupported Linux struct stat layout for this architecture')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_platform_constants() {
+	g.writeln('#define STDIN_FILENO 0')
+	g.writeln('#define STDOUT_FILENO 1')
+	g.writeln('#define STDERR_FILENO 2')
+	g.writeln('#define F_OK 0')
+	g.writeln('#define WEXITSTATUS(status) (((status) >> 8) & 0xff)')
+	g.writeln('#define WTERMSIG(status) ((status) & 0x7f)')
+	g.writeln('#define WIFEXITED(status) (WTERMSIG(status) == 0)')
+	g.writeln('#define WIFSIGNALED(status) ((((status) & 0x7f) + 1) >= 2)')
+	g.writeln('#define WNOHANG 1')
+	g.writeln('#define LOCK_SH 1')
+	g.writeln('#define LOCK_EX 2')
+	g.writeln('#define LOCK_NB 4')
+	g.writeln('#define LOCK_UN 8')
+	g.writeln('#define ENOENT 2')
+	g.writeln('#define RUSAGE_SELF 0')
+	g.writeln('#ifdef __APPLE__')
+	g.headerless_darwin_constants()
+	g.writeln('#elif defined(_WIN32)')
+	g.headerless_windows_constants()
+	g.writeln('#elif defined(__FreeBSD__)')
+	g.headerless_bsd_constants('0x00100000', '12', '13', '4', '47', '28', '0x00020000', '0x0800',
+		true)
+	g.writeln('#elif defined(__OpenBSD__)')
+	g.headerless_bsd_constants('0x10000', '8', '9', '3', '28', '24', '0x0400', '', false)
+	g.writeln('#elif defined(__NetBSD__)')
+	g.headerless_bsd_constants('0x00400000', '8', '9', '3', '28', '24', '0x0400', '0x0800', false)
+	g.writeln('#elif defined(__DragonFly__)')
+	g.headerless_bsd_constants('0x00020000', '8', '9', '4', '47', '28', '0x0400', '0x0800', false)
+	g.writeln('#elif defined(__sun)')
+	g.headerless_solaris_constants()
+	g.writeln('#elif defined(__QNX__) || defined(__QNXNTO__)')
+	g.headerless_qnx_constants()
+	g.writeln('#elif defined(__linux__) || defined(__ANDROID__)')
+	g.headerless_linux_constants()
+	g.writeln('#else')
+	g.writeln('#error unsupported headerless C platform constants')
+	g.writeln('#endif')
+	g.headerless_signal_constants()
+	g.headerless_ptrace_constants()
+	g.headerless_sysctl_constants()
+	g.writeln('#ifndef MSG_NOSIGNAL')
+	g.writeln('#define MSG_NOSIGNAL 0')
+	g.writeln('#endif')
+	g.writeln('#ifndef SO_NOSIGPIPE')
+	g.writeln('#define SO_NOSIGPIPE 0')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_signal_constants() {
+	g.writeln('#define SIGKILL 9')
+	g.writeln('#define SIGTERM 15')
+	g.writeln('#define SIGPIPE 13')
+	g.writeln('#define SIG_IGN ((void*)1)')
+	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
+	g.writeln('#define SIGSTOP 19')
+	g.writeln('#define SIGCONT 18')
+	g.writeln('#define SIG_BLOCK 0')
+	g.writeln('#else')
+	g.writeln('#define SIGSTOP 17')
+	g.writeln('#define SIGCONT 19')
+	g.writeln('#define SIG_BLOCK 1')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_ptrace_constants() {
+	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
+	g.writeln('#define PTRACE_ATTACH 16')
+	g.writeln('#define PTRACE_DETACH 17')
+	g.writeln('#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
+	g.writeln('#define PT_TRACE_ME 0')
+	g.writeln('#define PT_ATTACH 10')
+	g.writeln('#define PT_DETACH 11')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_sysctl_constants() {
+	g.writeln('#if defined(__FreeBSD__)')
+	g.writeln('#define CTL_KERN 1')
+	g.writeln('#define CTL_VM 2')
+	g.writeln('#define KERN_PROC 14')
+	g.writeln('#define KERN_PROC_PID 1')
+	g.writeln('#define KERN_PROC_ARGS 7')
+	g.writeln('#define KERN_PROC_PATHNAME 12')
+	g.writeln('#define KERN_PROC_INC_THREAD 0x10')
+	g.writeln('#elif defined(__OpenBSD__)')
+	g.writeln('#define CTL_KERN 1')
+	g.writeln('#define CTL_VM 2')
+	g.writeln('#define KERN_PROC 66')
+	g.writeln('#define KERN_PROC_PID 1')
+	g.writeln('#define KERN_PROC_ARGS 55')
+	g.writeln('#define KERN_PROC_ARGV 1')
+	g.writeln('#define VM_UVMEXP 4')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_mmap_constants(map_anonymous string) {
+	g.writeln('#define PROT_READ 0x1')
+	g.writeln('#define PROT_WRITE 0x2')
+	g.writeln('#define PROT_EXEC 0x4')
+	g.writeln('#define MAP_PRIVATE 0x0002')
+	g.writeln('#define MAP_ANONYMOUS ${map_anonymous}')
+	g.writeln('#define MAP_ANON MAP_ANONYMOUS')
+	g.writeln('#define MAP_FAILED ((void*)-1)')
+}
+
+fn (mut g FlatGen) headerless_linux_syscall_constants() {
+	g.writeln('#ifndef SYS_getrandom')
+	g.writeln('#if defined(__x86_64__)')
+	g.writeln('#define SYS_getrandom 318')
+	g.writeln('#elif defined(__i386__)')
+	g.writeln('#define SYS_getrandom 355')
+	g.writeln('#elif defined(__arm__)')
+	g.writeln('#define SYS_getrandom 384')
+	g.writeln('#elif defined(__aarch64__) || (defined(__riscv) && __riscv_xlen == 64) || defined(__loongarch_lp64)')
+	g.writeln('#define SYS_getrandom 278')
+	g.writeln('#else')
+	g.writeln('#define SYS_getrandom 278')
+	g.writeln('#endif')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_linux_sysconf_constants() {
+	g.writeln('#if defined(__ANDROID__)')
+	g.writeln('#define _SC_PAGESIZE 0x0027')
+	g.writeln('#define _SC_NPROCESSORS_ONLN 0x0061')
+	g.writeln('#define _SC_PHYS_PAGES 0x0062')
+	g.writeln('#define _SC_AVPHYS_PAGES 0x0063')
+	g.writeln('#else')
+	g.writeln('#define _SC_PAGESIZE 30')
+	g.writeln('#define _SC_NPROCESSORS_ONLN 84')
+	g.writeln('#define _SC_PHYS_PAGES 85')
+	g.writeln('#define _SC_AVPHYS_PAGES 86')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) headerless_kqueue_common_constants() {
+	g.writeln('#define EVFILT_READ (-1)')
+	g.writeln('#define EVFILT_WRITE (-2)')
+	g.writeln('#define EV_ADD 0x0001')
+	g.writeln('#define EV_DELETE 0x0002')
+	g.writeln('#define EV_ENABLE 0x0004')
+	g.writeln('#define EV_DISABLE 0x0008')
+	g.writeln('#define EV_ONESHOT 0x0010')
+	g.writeln('#define EV_CLEAR 0x0020')
+	g.writeln('#define EV_RECEIPT 0x0040')
+	g.writeln('#define EV_DISPATCH 0x0080')
+	g.writeln('#define EV_EOF 0x8000')
+	g.writeln('#define EV_ERROR 0x4000')
+	g.writeln('#define EV_SET(kevp, a, b, c, d, e, f) do { struct kevent* __kevp = (struct kevent*)(kevp); __kevp->ident = (uintptr_t)(a); __kevp->filter = (b); __kevp->flags = (c); __kevp->fflags = (d); __kevp->data = (intptr_t)(e); __kevp->udata = (void*)(f); } while (0)')
+}
+
+fn (mut g FlatGen) headerless_darwin_kqueue_constants() {
+	g.headerless_kqueue_common_constants()
+	g.writeln('#define EVFILT_AIO (-3)')
+	g.writeln('#define EVFILT_VNODE (-4)')
+	g.writeln('#define EVFILT_PROC (-5)')
+	g.writeln('#define EVFILT_SIGNAL (-6)')
+	g.writeln('#define EVFILT_TIMER (-7)')
+	g.writeln('#define EVFILT_MACHPORT (-8)')
+	g.writeln('#define EVFILT_FS (-9)')
+	g.writeln('#define EVFILT_USER (-10)')
+	g.writeln('#define EVFILT_VM (-12)')
+	g.writeln('#define EVFILT_EXCEPT (-15)')
+	g.writeln('#define EVFILT_SYSCOUNT 18')
+	g.writeln('#define EV_UDATA_SPECIFIC 0x0100')
+	g.writeln('#define EV_DISPATCH2 (EV_DISPATCH | EV_UDATA_SPECIFIC)')
+	g.writeln('#define EV_VANISHED 0x0200')
+	g.writeln('#define EV_SYSFLAGS 0xF000')
+	g.writeln('#define EV_FLAG0 0x1000')
+	g.writeln('#define EV_FLAG1 0x2000')
+}
+
+fn (mut g FlatGen) headerless_darwin_constants() {
+	g.writeln('#define O_RDONLY 0x0000')
+	g.writeln('#define O_WRONLY 0x0001')
+	g.writeln('#define O_RDWR 0x0002')
+	g.writeln('#define O_NONBLOCK 0x0004')
+	g.writeln('#define O_APPEND 0x0008')
+	g.writeln('#define O_SYNC 0x0080')
+	g.writeln('#define O_CREAT 0x0200')
+	g.writeln('#define O_TRUNC 0x0400')
+	g.writeln('#define O_EXCL 0x0800')
+	g.writeln('#define O_NOCTTY 0x20000')
+	g.writeln('#define O_CLOEXEC 0x01000000')
+	g.writeln('#define F_GETFD 1')
+	g.writeln('#define F_SETFD 2')
+	g.writeln('#define F_GETFL 3')
+	g.writeln('#define F_SETFL 4')
+	g.writeln('#define F_SETLK 8')
+	g.writeln('#define F_SETLKW 9')
+	g.writeln('#define FD_CLOEXEC 1')
+	g.writeln('#define F_RDLCK 1')
+	g.writeln('#define F_UNLCK 2')
+	g.writeln('#define F_WRLCK 3')
+	g.writeln('#define EACCES 13')
+	g.writeln('#define EFAULT 14')
+	g.writeln('#define EINTR 4')
+	g.writeln('#define EINVAL 22')
+	g.writeln('#define EAGAIN 35')
+	g.writeln('#define EWOULDBLOCK 35')
+	g.writeln('#define EINPROGRESS 36')
+	g.writeln('#define EBUSY 16')
+	g.writeln('#define EDEADLK 11')
+	g.writeln('#define ETIMEDOUT 60')
+	g.writeln('#define EPROTONOSUPPORT 43')
+	g.writeln('#define EAFNOSUPPORT 47')
+	g.writeln('#define EADDRNOTAVAIL 49')
+	g.writeln('#define EAI_SYSTEM 11')
+	g.writeln('#define CLOCK_REALTIME 0')
+	g.writeln('#define CLOCK_MONOTONIC 6')
+	g.writeln('#define _SC_PAGESIZE 29')
+	g.headerless_mmap_constants('0x1000')
+	g.headerless_darwin_kqueue_constants()
+	g.writeln('#define FIONREAD 0x4004667f')
+	g.writeln('#define TIOCGWINSZ 0x40087468')
+	g.writeln('#define TCSANOW 0')
+	g.writeln('#define TCSADRAIN 1')
+	g.writeln('#define TCSAFLUSH 2')
+	g.writeln('#define IGNBRK 1')
+	g.writeln('#define BRKINT 2')
+	g.writeln('#define PARMRK 8')
+	g.writeln('#define INPCK 16')
+	g.writeln('#define ISTRIP 32')
+	g.writeln('#define ICRNL 256')
+	g.writeln('#define IXON 512')
+	g.writeln('#define OPOST 1')
+	g.writeln('#define CS8 768')
+	g.writeln('#define ISIG 128')
+	g.writeln('#define ICANON 256')
+	g.writeln('#define ECHO 8')
+	g.writeln('#define IEXTEN 1024')
+	g.writeln('#define TOSTOP 4194304')
+	g.writeln('#define VMIN 16')
+	g.writeln('#define VTIME 17')
+	g.writeln('#define PTHREAD_PROCESS_PRIVATE 2')
+	g.writeln('#define PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP 0')
+	g.writeln('#define S_IFMT 0170000')
+	g.writeln('#define S_IFIFO 0010000')
+	g.writeln('#define S_IFCHR 0020000')
+	g.writeln('#define S_IFDIR 0040000')
+	g.writeln('#define S_IFBLK 0060000')
+	g.writeln('#define S_IFREG 0100000')
+	g.writeln('#define S_IFLNK 0120000')
+	g.writeln('#define S_IFSOCK 0140000')
+	g.writeln('#define S_IRUSR 0000400')
+	g.writeln('#define S_IWUSR 0000200')
+	g.writeln('#define S_IXUSR 0000100')
+	g.writeln('#define S_IRGRP 0000040')
+	g.writeln('#define S_IWGRP 0000020')
+	g.writeln('#define S_IXGRP 0000010')
+	g.writeln('#define S_IROTH 0000004')
+	g.writeln('#define S_IWOTH 0000002')
+	g.writeln('#define S_IXOTH 0000001')
+	g.headerless_darwin_net_constants()
+	g.writeln('#define SIG_ERR ((void (*)(int))-1)')
+	g.writeln('struct flock { off_t l_start; off_t l_len; pid_t l_pid; short l_type; short l_whence; };')
+}
+
+fn (mut g FlatGen) headerless_bsd_constants(o_cloexec string, f_setlk string, f_setlkw string, clock_monotonic string, sc_pagesize string, af_inet6 string, msg_nosignal string, so_nosigpipe string, flock_sysid bool) {
+	g.writeln('#define O_RDONLY 0x0000')
+	g.writeln('#define O_WRONLY 0x0001')
+	g.writeln('#define O_RDWR 0x0002')
+	g.writeln('#define O_NONBLOCK 0x0004')
+	g.writeln('#define O_APPEND 0x0008')
+	g.writeln('#define O_SYNC 0x0080')
+	g.writeln('#define O_CREAT 0x0200')
+	g.writeln('#define O_TRUNC 0x0400')
+	g.writeln('#define O_EXCL 0x0800')
+	g.writeln('#define O_NOCTTY 0x8000')
+	g.writeln('#define O_CLOEXEC ${o_cloexec}')
+	g.writeln('#define F_GETFD 1')
+	g.writeln('#define F_SETFD 2')
+	g.writeln('#define F_GETFL 3')
+	g.writeln('#define F_SETFL 4')
+	g.writeln('#define F_SETLK ${f_setlk}')
+	g.writeln('#define F_SETLKW ${f_setlkw}')
+	g.writeln('#define FD_CLOEXEC 1')
+	g.writeln('#define F_RDLCK 1')
+	g.writeln('#define F_UNLCK 2')
+	g.writeln('#define F_WRLCK 3')
+	g.writeln('#define EACCES 13')
+	g.writeln('#define EFAULT 14')
+	g.writeln('#define EINTR 4')
+	g.writeln('#define EINVAL 22')
+	g.writeln('#define EAGAIN 35')
+	g.writeln('#define EWOULDBLOCK 35')
+	g.writeln('#define EINPROGRESS 36')
+	g.writeln('#define EBUSY 16')
+	g.writeln('#define EDEADLK 11')
+	g.writeln('#define ETIMEDOUT 60')
+	g.writeln('#define EPROTONOSUPPORT 43')
+	g.writeln('#define EAFNOSUPPORT 47')
+	g.writeln('#define EADDRNOTAVAIL 49')
+	g.writeln('#define EAI_SYSTEM 11')
+	g.writeln('#define CLOCK_REALTIME 0')
+	g.writeln('#define CLOCK_MONOTONIC ${clock_monotonic}')
+	g.writeln('#define _SC_PAGESIZE ${sc_pagesize}')
+	g.headerless_mmap_constants('0x1000')
+	g.headerless_kqueue_common_constants()
+	g.writeln('#define FIONREAD 0x4004667f')
+	g.writeln('#define TIOCGWINSZ 0x40087468')
+	g.writeln('#define TCSANOW 0')
+	g.writeln('#define TCSADRAIN 1')
+	g.writeln('#define TCSAFLUSH 2')
+	g.writeln('#define IGNBRK 1')
+	g.writeln('#define BRKINT 2')
+	g.writeln('#define PARMRK 8')
+	g.writeln('#define INPCK 16')
+	g.writeln('#define ISTRIP 32')
+	g.writeln('#define ICRNL 256')
+	g.writeln('#define IXON 512')
+	g.writeln('#define OPOST 1')
+	g.writeln('#define CS8 768')
+	g.writeln('#define ISIG 128')
+	g.writeln('#define ICANON 256')
+	g.writeln('#define ECHO 8')
+	g.writeln('#define IEXTEN 1024')
+	g.writeln('#define TOSTOP 4194304')
+	g.writeln('#define VMIN 16')
+	g.writeln('#define VTIME 17')
+	g.writeln('#define PTHREAD_PROCESS_PRIVATE 0')
+	g.writeln('#define PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP 0')
+	g.writeln('#define S_IFMT 0170000')
+	g.writeln('#define S_IFIFO 0010000')
+	g.writeln('#define S_IFCHR 0020000')
+	g.writeln('#define S_IFDIR 0040000')
+	g.writeln('#define S_IFBLK 0060000')
+	g.writeln('#define S_IFREG 0100000')
+	g.writeln('#define S_IFLNK 0120000')
+	g.writeln('#define S_IFSOCK 0140000')
+	g.writeln('#define S_IRUSR 0000400')
+	g.writeln('#define S_IWUSR 0000200')
+	g.writeln('#define S_IXUSR 0000100')
+	g.writeln('#define S_IRGRP 0000040')
+	g.writeln('#define S_IWGRP 0000020')
+	g.writeln('#define S_IXGRP 0000010')
+	g.writeln('#define S_IROTH 0000004')
+	g.writeln('#define S_IWOTH 0000002')
+	g.writeln('#define S_IXOTH 0000001')
+	g.headerless_bsd_net_constants(af_inet6, msg_nosignal, so_nosigpipe)
+	g.writeln('#define SIG_ERR ((void (*)(int))-1)')
+	if flock_sysid {
+		g.writeln('struct flock { off_t l_start; off_t l_len; pid_t l_pid; short l_type; short l_whence; int l_sysid; };')
+	} else {
+		g.writeln('struct flock { off_t l_start; off_t l_len; pid_t l_pid; short l_type; short l_whence; };')
 	}
-	g.writeln('typedef volatile uintptr_t atomic_uintptr_t;')
-	g.writeln('#ifndef memory_order_relaxed')
-	g.writeln('#define memory_order_relaxed 0')
-	g.writeln('#define memory_order_consume 1')
-	g.writeln('#define memory_order_acquire 2')
-	g.writeln('#define memory_order_release 3')
-	g.writeln('#define memory_order_acq_rel 4')
-	g.writeln('#define memory_order_seq_cst 5')
+}
+
+fn (mut g FlatGen) headerless_solaris_constants() {
+	g.writeln('#define O_RDONLY 0')
+	g.writeln('#define O_WRONLY 1')
+	g.writeln('#define O_RDWR 2')
+	g.writeln('#define O_APPEND 0x08')
+	g.writeln('#define O_SYNC 0x10')
+	g.writeln('#define O_NONBLOCK 0x80')
+	g.writeln('#define O_CREAT 0x100')
+	g.writeln('#define O_TRUNC 0x200')
+	g.writeln('#define O_EXCL 0x400')
+	g.writeln('#define O_NOCTTY 0x800')
+	g.writeln('#define O_CLOEXEC 0x800000')
+	g.writeln('#define F_GETFD 1')
+	g.writeln('#define F_SETFD 2')
+	g.writeln('#define F_GETFL 3')
+	g.writeln('#define F_SETFL 4')
+	g.writeln('#define F_SETLK 6')
+	g.writeln('#define F_SETLKW 7')
+	g.writeln('#define FD_CLOEXEC 1')
+	g.writeln('#define F_RDLCK 1')
+	g.writeln('#define F_WRLCK 2')
+	g.writeln('#define F_UNLCK 3')
+	g.writeln('#define EINTR 4')
+	g.writeln('#define EINVAL 22')
+	g.writeln('#define EAGAIN 11')
+	g.writeln('#define EWOULDBLOCK EAGAIN')
+	g.writeln('#define EINPROGRESS 150')
+	g.writeln('#define EBUSY 16')
+	g.writeln('#define EDEADLK 45')
+	g.writeln('#define ETIMEDOUT 145')
+	g.writeln('#define EPROTONOSUPPORT 120')
+	g.writeln('#define EAFNOSUPPORT 124')
+	g.writeln('#define EADDRNOTAVAIL 126')
+	g.writeln('#define EAI_SYSTEM 11')
+	g.writeln('#define CLOCK_REALTIME 0')
+	g.writeln('#define CLOCK_MONOTONIC 4')
+	g.writeln('#define _SC_PAGESIZE 11')
+	g.headerless_mmap_constants('0x100')
+	g.writeln('#define FIONREAD 0x4004667f')
+	g.writeln("#define TIOCGWINSZ (('T' << 8) | 104)")
+	g.writeln("#define TCSANOW (('T' << 8) | 14)")
+	g.writeln("#define TCSADRAIN (('T' << 8) | 15)")
+	g.writeln("#define TCSAFLUSH (('T' << 8) | 16)")
+	g.writeln('#define IGNBRK 0000001')
+	g.writeln('#define BRKINT 0000002')
+	g.writeln('#define PARMRK 0000010')
+	g.writeln('#define INPCK 0000020')
+	g.writeln('#define ISTRIP 0000040')
+	g.writeln('#define ICRNL 0000400')
+	g.writeln('#define IXON 0002000')
+	g.writeln('#define OPOST 0000001')
+	g.writeln('#define CS8 0000060')
+	g.writeln('#define ISIG 0000001')
+	g.writeln('#define ICANON 0000002')
+	g.writeln('#define ECHO 0000010')
+	g.writeln('#define IEXTEN 0100000')
+	g.writeln('#define TOSTOP 0000400')
+	g.writeln('#define VMIN 4')
+	g.writeln('#define VTIME 5')
+	g.writeln('#define PTHREAD_PROCESS_PRIVATE 0')
+	g.writeln('#define PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP 0')
+	g.writeln('#define S_IFMT 0170000')
+	g.writeln('#define S_IFIFO 0010000')
+	g.writeln('#define S_IFCHR 0020000')
+	g.writeln('#define S_IFDIR 0040000')
+	g.writeln('#define S_IFBLK 0060000')
+	g.writeln('#define S_IFREG 0100000')
+	g.writeln('#define S_IFLNK 0120000')
+	g.writeln('#define S_IFSOCK 0140000')
+	g.writeln('#define S_IRUSR 0000400')
+	g.writeln('#define S_IWUSR 0000200')
+	g.writeln('#define S_IXUSR 0000100')
+	g.writeln('#define S_IRGRP 0000040')
+	g.writeln('#define S_IWGRP 0000020')
+	g.writeln('#define S_IXGRP 0000010')
+	g.writeln('#define S_IROTH 0000004')
+	g.writeln('#define S_IWOTH 0000002')
+	g.writeln('#define S_IXOTH 0000001')
+	g.headerless_solaris_net_constants()
+	g.writeln('#define SIG_ERR ((void (*)(int))-1)')
+	g.writeln('struct flock { short l_type; short l_whence; off_t l_start; off_t l_len; int l_sysid; pid_t l_pid; long l_pad[4]; };')
+}
+
+fn (mut g FlatGen) headerless_qnx_constants() {
+	g.writeln('#define O_RDONLY 000000')
+	g.writeln('#define O_WRONLY 000001')
+	g.writeln('#define O_RDWR 000002')
+	g.writeln('#define O_APPEND 000010')
+	g.writeln('#define O_SYNC 000040')
+	g.writeln('#define O_NONBLOCK 000200')
+	g.writeln('#define O_CREAT 000400')
+	g.writeln('#define O_TRUNC 001000')
+	g.writeln('#define O_EXCL 002000')
+	g.writeln('#define O_NOCTTY 004000')
+	g.writeln('#define O_CLOEXEC 020000')
+	g.writeln('#define F_GETFD 1')
+	g.writeln('#define F_SETFD 2')
+	g.writeln('#define F_GETFL 3')
+	g.writeln('#define F_SETFL 4')
+	g.writeln('#define F_SETLK 6')
+	g.writeln('#define F_SETLKW 7')
+	g.writeln('#define FD_CLOEXEC 1')
+	g.writeln('#define F_RDLCK 1')
+	g.writeln('#define F_WRLCK 2')
+	g.writeln('#define F_UNLCK 3')
+	g.writeln('#define EINTR 4')
+	g.writeln('#define EINVAL 22')
+	g.writeln('#define EAGAIN 11')
+	g.writeln('#define EWOULDBLOCK EAGAIN')
+	g.writeln('#define EINPROGRESS 236')
+	g.writeln('#define EBUSY 16')
+	g.writeln('#define EDEADLK 45')
+	g.writeln('#define ETIMEDOUT 260')
+	g.writeln('#define EPROTONOSUPPORT 243')
+	g.writeln('#define EAFNOSUPPORT 247')
+	g.writeln('#define EADDRNOTAVAIL 249')
+	g.writeln('#define EAI_SYSTEM 11')
+	g.writeln('#define CLOCK_REALTIME 0')
+	g.writeln('#define CLOCK_MONOTONIC 2')
+	g.writeln('#define _SC_PAGESIZE 11')
+	g.headerless_mmap_constants('0x00080000')
+	g.writeln('#define FIONREAD 0x4004667f')
+	g.writeln('#define TIOCGWINSZ 0x40087468')
+	g.writeln('#define TCSANOW 0x0001')
+	g.writeln('#define TCSADRAIN 0x0002')
+	g.writeln('#define TCSAFLUSH 0x0004')
+	g.writeln('#define IGNBRK 0x00000001')
+	g.writeln('#define BRKINT 0x00000002')
+	g.writeln('#define PARMRK 0x00000008')
+	g.writeln('#define INPCK 0x00000010')
+	g.writeln('#define ISTRIP 0x00000020')
+	g.writeln('#define ICRNL 0x00000100')
+	g.writeln('#define IXON 0x00000400')
+	g.writeln('#define OPOST 0x00000001')
+	g.writeln('#define CS8 0x30')
+	g.writeln('#define ISIG 0x00000001')
+	g.writeln('#define ICANON 0x00000002')
+	g.writeln('#define ECHO 0x00000008')
+	g.writeln('#define IEXTEN 0x00008000')
+	g.writeln('#define TOSTOP 0x00000100')
+	g.writeln('#define VMIN 16')
+	g.writeln('#define VTIME 17')
+	g.writeln('#define PTHREAD_PROCESS_PRIVATE 0')
+	g.writeln('#define PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP 0')
+	g.writeln('#define S_IFMT 0170000')
+	g.writeln('#define S_IFIFO 0010000')
+	g.writeln('#define S_IFCHR 0020000')
+	g.writeln('#define S_IFDIR 0040000')
+	g.writeln('#define S_IFBLK 0060000')
+	g.writeln('#define S_IFREG 0100000')
+	g.writeln('#define S_IFLNK 0120000')
+	g.writeln('#define S_IFSOCK 0140000')
+	g.writeln('#define S_IRUSR 0000400')
+	g.writeln('#define S_IWUSR 0000200')
+	g.writeln('#define S_IXUSR 0000100')
+	g.writeln('#define S_IRGRP 0000040')
+	g.writeln('#define S_IWGRP 0000020')
+	g.writeln('#define S_IXGRP 0000010')
+	g.writeln('#define S_IROTH 0000004')
+	g.writeln('#define S_IWOTH 0000002')
+	g.writeln('#define S_IXOTH 0000001')
+	g.headerless_qnx_net_constants()
+	g.writeln('#define SIG_ERR ((void (*)(int))-1)')
+	g.writeln('struct flock { short l_type; short l_whence; int l_zero1; off_t l_start; off_t l_len; pid_t l_pid; unsigned int l_sysid; };')
+}
+
+fn (mut g FlatGen) headerless_windows_constants() {
+	g.writeln('#define O_RDONLY 0x0000')
+	g.writeln('#define O_WRONLY 0x0001')
+	g.writeln('#define O_RDWR 0x0002')
+	g.writeln('#define O_APPEND 0x0008')
+	g.writeln('#define O_CREAT 0x0100')
+	g.writeln('#define O_TRUNC 0x0200')
+	g.writeln('#define O_EXCL 0x0400')
+	g.writeln('#define O_BINARY 0x8000')
+	g.writeln('#define _O_BINARY 0x8000')
+	g.writeln('#define F_GETFD 1')
+	g.writeln('#define F_SETFD 2')
+	g.writeln('#define F_GETFL 3')
+	g.writeln('#define F_SETFL 4')
+	g.writeln('#define FD_CLOEXEC 1')
+	g.writeln('#define EINTR 4')
+	g.writeln('#define EINVAL 22')
+	g.writeln('#define EAGAIN 11')
+	g.writeln('#define EWOULDBLOCK 11')
+	g.writeln('#define EINPROGRESS 10036')
+	g.writeln('#define EBUSY 16')
+	g.writeln('#define EDEADLK 36')
+	g.writeln('#define ETIMEDOUT 10060')
+	g.writeln('#define EPROTONOSUPPORT 10043')
+	g.writeln('#define EAFNOSUPPORT 10047')
+	g.writeln('#define EADDRNOTAVAIL 10049')
+	g.writeln('#define EAI_SYSTEM 11')
+	g.writeln('#define CLOCK_REALTIME 0')
+	g.writeln('#define CLOCK_MONOTONIC 1')
+	g.writeln('#define _SC_PAGESIZE 30')
+	g.writeln('#define FIONREAD 0x4004667f')
+	g.writeln('#define FIONBIO 0x8004667eU')
+	g.writeln('#define TCSANOW 0')
+	g.writeln('#define TCSADRAIN 1')
+	g.writeln('#define TCSAFLUSH 2')
+	g.writeln('#define PTHREAD_PROCESS_PRIVATE 0')
+	g.writeln('#define PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP 0')
+	g.writeln('#define S_IFMT 0170000')
+	g.writeln('#define S_IFIFO 0010000')
+	g.writeln('#define S_IFCHR 0020000')
+	g.writeln('#define S_IFDIR 0040000')
+	g.writeln('#define S_IFBLK 0060000')
+	g.writeln('#define S_IFREG 0100000')
+	g.writeln('#define S_IFLNK 0120000')
+	g.writeln('#define S_IFSOCK 0140000')
+	g.writeln('#define S_IREAD 0000400')
+	g.writeln('#define S_IWRITE 0000200')
+	g.writeln('#define S_IEXEC 0000100')
+	g.writeln('#define S_IRUSR 0000400')
+	g.writeln('#define S_IWUSR 0000200')
+	g.writeln('#define S_IXUSR 0000100')
+	g.headerless_windows_net_constants()
+	g.writeln('#define SIG_ERR ((void (*)(int))-1)')
+	g.writeln('#define GENERIC_READ 0x80000000U')
+	g.writeln('#define GENERIC_WRITE 0x40000000U')
+	g.writeln('#define FILE_SHARE_READ 0x00000001U')
+	g.writeln('#define FILE_SHARE_WRITE 0x00000002U')
+	g.writeln('#define FILE_SHARE_DELETE 0x00000004U')
+	g.writeln('#define OPEN_EXISTING 3')
+	g.writeln('#define OPEN_ALWAYS 4')
+	g.writeln('#define FILE_ATTRIBUTE_NORMAL 0x00000080U')
+	g.writeln('#define FILE_ATTRIBUTE_DIRECTORY 0x00000010U')
+	g.writeln('#define INVALID_FILE_ATTRIBUTES 0xffffffffU')
+	g.writeln('#define LOCKFILE_FAIL_IMMEDIATELY 0x00000001U')
+	g.writeln('#define LOCKFILE_EXCLUSIVE_LOCK 0x00000002U')
+	g.writeln('#define MAXDWORD 0xffffffffU')
+	g.writeln('#define MEM_COMMIT 0x00001000U')
+	g.writeln('#define MEM_RESERVE 0x00002000U')
+	g.writeln('#define PAGE_READWRITE 0x04U')
+	g.writeln('#define PAGE_EXECUTE_READ 0x20U')
+	g.writeln('#define TLS_OUT_OF_INDEXES 0xffffffffU')
+	g.writeln('#define TRUE 1')
+	g.writeln('#define FALSE 0')
+	g.writeln('#define INFINITE 0xffffffffU')
+	g.writeln('#define INVALID_HANDLE_VALUE ((void*)-1)')
+	g.writeln('#define STD_INPUT_HANDLE 0xfffffff6U')
+	g.writeln('#define STD_OUTPUT_HANDLE 0xfffffff5U')
+	g.writeln('#define STD_ERROR_HANDLE 0xfffffff4U')
+	g.writeln('#define ENABLE_PROCESSED_INPUT 0x0001')
+	g.writeln('#define ENABLE_LINE_INPUT 0x0002')
+	g.writeln('#define ENABLE_ECHO_INPUT 0x0004')
+	g.writeln('#define ENABLE_WINDOW_INPUT 0x0008')
+	g.writeln('#define ENABLE_MOUSE_INPUT 0x0010')
+	g.writeln('#define ENABLE_EXTENDED_FLAGS 0x0080')
+	g.writeln('#define STARTF_USESTDHANDLES 0x00000100U')
+	g.writeln('#define CREATE_NEW_PROCESS_GROUP 0x00000200U')
+	g.writeln('#define CREATE_UNICODE_ENVIRONMENT 0x00000400U')
+	g.writeln('#define NORMAL_PRIORITY_CLASS 0x00000020U')
+	g.writeln('#define CREATE_NO_WINDOW 0x08000000U')
+	g.writeln('#define HANDLE_FLAG_INHERIT 0x00000001U')
+	g.writeln('#define CTRL_BREAK_EVENT 1')
+	g.writeln('#define STILL_ACTIVE 259')
+	g.writeln('#define KEY_EVENT 0x0001')
+	g.writeln('#define MOUSE_EVENT 0x0002')
+	g.writeln('#define WINDOW_BUFFER_SIZE_EVENT 0x0004')
+	g.writeln('#define MENU_EVENT 0x0008')
+	g.writeln('#define FOCUS_EVENT 0x0010')
+	g.writeln('#define MOUSE_MOVED 0x0001')
+	g.writeln('#define DOUBLE_CLICK 0x0002')
+	g.writeln('#define MOUSE_WHEELED 0x0004')
+	g.writeln('#define VK_BACK 0x08')
+	g.writeln('#define VK_RETURN 0x0d')
+	g.writeln('#define VK_PRIOR 0x21')
+	g.writeln('#define VK_NEXT 0x22')
+	g.writeln('#define VK_END 0x23')
+	g.writeln('#define VK_HOME 0x24')
+	g.writeln('#define VK_LEFT 0x25')
+	g.writeln('#define VK_UP 0x26')
+	g.writeln('#define VK_RIGHT 0x27')
+	g.writeln('#define VK_DOWN 0x28')
+	g.writeln('#define VK_INSERT 0x2d')
+	g.writeln('#define VK_DELETE 0x2e')
+	g.writeln('#define ERROR_ACCESS_DENIED 5')
+	g.writeln('#define ERROR_CLASS_ALREADY_EXISTS 1410')
+	g.writeln('#define HWND_MESSAGE ((void*)-3)')
+	g.writeln('#define MB_ERR_INVALID_CHARS 0x00000008U')
+	g.writeln('#define GMEM_MOVEABLE 0x0002U')
+	g.writeln('#define CF_UNICODETEXT 13')
+}
+
+fn (mut g FlatGen) headerless_linux_constants() {
+	g.writeln('#define O_RDONLY 0')
+	g.writeln('#define O_WRONLY 1')
+	g.writeln('#define O_RDWR 2')
+	g.writeln('#define O_CREAT 0100')
+	g.writeln('#define O_EXCL 0200')
+	g.writeln('#define O_NOCTTY 0400')
+	g.writeln('#define O_TRUNC 01000')
+	g.writeln('#define O_APPEND 02000')
+	g.writeln('#define O_NONBLOCK 04000')
+	g.writeln('#define O_SYNC 04010000')
+	g.writeln('#define O_CLOEXEC 02000000')
+	g.writeln('#define F_GETFD 1')
+	g.writeln('#define F_SETFD 2')
+	g.writeln('#define F_GETFL 3')
+	g.writeln('#define F_SETFL 4')
+	g.writeln('#define F_SETLK 6')
+	g.writeln('#define F_SETLKW 7')
+	g.writeln('#define FD_CLOEXEC 1')
+	g.writeln('#define F_RDLCK 0')
+	g.writeln('#define F_WRLCK 1')
+	g.writeln('#define F_UNLCK 2')
+	g.writeln('#define EINTR 4')
+	g.writeln('#define EIO 5')
+	g.writeln('#define EBADF 9')
+	g.writeln('#define EINVAL 22')
+	g.writeln('#define EAGAIN 11')
+	g.writeln('#define EWOULDBLOCK 11')
+	g.writeln('#define ENOMEM 12')
+	g.writeln('#define EFAULT 14')
+	g.writeln('#define EINPROGRESS 115')
+	g.writeln('#define ESPIPE 29')
+	g.writeln('#define EBUSY 16')
+	g.writeln('#define EDEADLK 35')
+	g.writeln('#define ETIMEDOUT 110')
+	g.writeln('#define EOVERFLOW 75')
+	g.writeln('#define EPROTONOSUPPORT 93')
+	g.writeln('#define EAFNOSUPPORT 97')
+	g.writeln('#define EADDRNOTAVAIL 99')
+	g.writeln('#define EAI_SYSTEM -11')
+	g.writeln('#define CLOCK_REALTIME 0')
+	g.writeln('#define CLOCK_MONOTONIC 1')
+	g.headerless_linux_sysconf_constants()
+	g.headerless_mmap_constants('0x20')
+	g.headerless_linux_syscall_constants()
+	g.writeln('#define FIONREAD 0x541b')
+	g.writeln('#define TIOCGWINSZ 0x5413')
+	g.writeln('#define EPOLLIN 0x001')
+	g.writeln('#define EPOLLPRI 0x002')
+	g.writeln('#define EPOLLOUT 0x004')
+	g.writeln('#define EPOLLERR 0x008')
+	g.writeln('#define EPOLLHUP 0x010')
+	g.writeln('#define EPOLLRDHUP 0x2000')
+	g.writeln('#define EPOLLEXCLUSIVE (1U << 28)')
+	g.writeln('#define EPOLLWAKEUP (1U << 29)')
+	g.writeln('#define EPOLLONESHOT (1U << 30)')
+	g.writeln('#define EPOLLET (1U << 31)')
+	g.writeln('#define EPOLL_CTL_ADD 1')
+	g.writeln('#define EPOLL_CTL_DEL 2')
+	g.writeln('#define EPOLL_CTL_MOD 3')
+	g.writeln('#define TCSANOW 0')
+	g.writeln('#define TCSADRAIN 1')
+	g.writeln('#define TCSAFLUSH 2')
+	g.writeln('#define IGNBRK 0000001')
+	g.writeln('#define BRKINT 0000002')
+	g.writeln('#define PARMRK 0000010')
+	g.writeln('#define INPCK 0000020')
+	g.writeln('#define ISTRIP 0000040')
+	g.writeln('#define ICRNL 0000400')
+	g.writeln('#define IXON 0002000')
+	g.writeln('#define OPOST 0000001')
+	g.writeln('#define CS8 0000060')
+	g.writeln('#define ISIG 0000001')
+	g.writeln('#define ICANON 0000002')
+	g.writeln('#define ECHO 0000010')
+	g.writeln('#define IEXTEN 0100000')
+	g.writeln('#define TOSTOP 0000400')
+	g.writeln('#define VMIN 6')
+	g.writeln('#define VTIME 5')
+	g.writeln('#define PTHREAD_PROCESS_PRIVATE 0')
+	g.writeln('#define PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP 2')
+	g.writeln('#define S_IFMT 00170000')
+	g.writeln('#define S_IFIFO 0010000')
+	g.writeln('#define S_IFCHR 0020000')
+	g.writeln('#define S_IFDIR 0040000')
+	g.writeln('#define S_IFBLK 0060000')
+	g.writeln('#define S_IFREG 0100000')
+	g.writeln('#define S_IFLNK 0120000')
+	g.writeln('#define S_IFSOCK 0140000')
+	g.writeln('#define S_IRUSR 0000400')
+	g.writeln('#define S_IWUSR 0000200')
+	g.writeln('#define S_IXUSR 0000100')
+	g.writeln('#define S_IRGRP 0000040')
+	g.writeln('#define S_IWGRP 0000020')
+	g.writeln('#define S_IXGRP 0000010')
+	g.writeln('#define S_IROTH 0000004')
+	g.writeln('#define S_IWOTH 0000002')
+	g.writeln('#define S_IXOTH 0000001')
+	g.headerless_linux_net_constants()
+	g.writeln('#define SIG_ERR ((void (*)(int))-1)')
+	g.writeln('struct flock { short l_type; short l_whence; off_t l_start; off_t l_len; pid_t l_pid; };')
+}
+
+fn (mut g FlatGen) headerless_darwin_net_constants() {
+	g.writeln('#define AF_UNSPEC 0')
+	g.writeln('#define AF_UNIX 1')
+	g.writeln('#define AF_INET 2')
+	g.writeln('#define AF_INET6 30')
+	g.writeln('#define SOCK_STREAM 1')
+	g.writeln('#define SOCK_DGRAM 2')
+	g.writeln('#define SOCK_RAW 3')
+	g.writeln('#define SOCK_SEQPACKET 5')
+	g.writeln('#define IPPROTO_IP 0')
+	g.writeln('#define IPPROTO_ICMP 1')
+	g.writeln('#define IPPROTO_TCP 6')
+	g.writeln('#define IPPROTO_UDP 17')
+	g.writeln('#define IPPROTO_IPV6 41')
+	g.writeln('#define IPPROTO_ICMPV6 58')
+	g.writeln('#define IPPROTO_RAW 255')
+	g.writeln('#define SOL_SOCKET 0xffff')
+	g.writeln('#define SO_DEBUG 0x0001')
+	g.writeln('#define SO_REUSEADDR 0x0004')
+	g.writeln('#define SO_KEEPALIVE 0x0008')
+	g.writeln('#define SO_DONTROUTE 0x0010')
+	g.writeln('#define SO_BROADCAST 0x0020')
+	g.writeln('#define SO_LINGER 0x0080')
+	g.writeln('#define SO_OOBINLINE 0x0100')
+	g.writeln('#define SO_SNDBUF 0x1001')
+	g.writeln('#define SO_RCVBUF 0x1002')
+	g.writeln('#define SO_SNDLOWAT 0x1003')
+	g.writeln('#define SO_RCVLOWAT 0x1004')
+	g.writeln('#define SO_SNDTIMEO 0x1005')
+	g.writeln('#define SO_RCVTIMEO 0x1006')
+	g.writeln('#define SO_ERROR 0x1007')
+	g.writeln('#define SO_TYPE 0x1008')
+	g.writeln('#define SO_NOSIGPIPE 0x1022')
+	g.writeln('#define TCP_NODELAY 1')
+	g.writeln('#define IP_HDRINCL 2')
+	g.writeln('#define IP_MULTICAST_IF 9')
+	g.writeln('#define IP_MULTICAST_TTL 10')
+	g.writeln('#define IP_MULTICAST_LOOP 11')
+	g.writeln('#define IP_ADD_MEMBERSHIP 12')
+	g.writeln('#define IP_DROP_MEMBERSHIP 13')
+	g.writeln('#define IPV6_MULTICAST_IF 9')
+	g.writeln('#define IPV6_MULTICAST_HOPS 10')
+	g.writeln('#define IPV6_MULTICAST_LOOP 11')
+	g.writeln('#define IPV6_ADD_MEMBERSHIP 12')
+	g.writeln('#define IPV6_JOIN_GROUP 12')
+	g.writeln('#define IPV6_DROP_MEMBERSHIP 13')
+	g.writeln('#define IPV6_LEAVE_GROUP 13')
+	g.writeln('#define IPV6_V6ONLY 27')
+	g.writeln('#define AI_PASSIVE 0x00000001')
+	g.writeln('#define MSG_DONTWAIT 0x80')
+}
+
+fn (mut g FlatGen) headerless_bsd_net_constants(af_inet6 string, msg_nosignal string, so_nosigpipe string) {
+	g.writeln('#define AF_UNSPEC 0')
+	g.writeln('#define AF_UNIX 1')
+	g.writeln('#define AF_INET 2')
+	g.writeln('#define AF_INET6 ${af_inet6}')
+	g.writeln('#define SOCK_STREAM 1')
+	g.writeln('#define SOCK_DGRAM 2')
+	g.writeln('#define SOCK_RAW 3')
+	g.writeln('#define SOCK_SEQPACKET 5')
+	g.writeln('#if defined(__FreeBSD__)')
+	g.writeln('#define SOCK_NONBLOCK 0x20000000')
 	g.writeln('#endif')
-	g.writeln('#ifndef atomic_thread_fence')
-	g.writeln('#define atomic_thread_fence(order) __sync_synchronize()')
-	g.writeln('#endif')
+	g.writeln('#define IPPROTO_IP 0')
+	g.writeln('#define IPPROTO_ICMP 1')
+	g.writeln('#define IPPROTO_TCP 6')
+	g.writeln('#define IPPROTO_UDP 17')
+	g.writeln('#define IPPROTO_IPV6 41')
+	g.writeln('#define IPPROTO_ICMPV6 58')
+	g.writeln('#define IPPROTO_RAW 255')
+	g.writeln('#define SOL_SOCKET 0xffff')
+	g.writeln('#define SO_DEBUG 0x0001')
+	g.writeln('#define SO_REUSEADDR 0x0004')
+	g.writeln('#define SO_KEEPALIVE 0x0008')
+	g.writeln('#define SO_DONTROUTE 0x0010')
+	g.writeln('#define SO_BROADCAST 0x0020')
+	g.writeln('#define SO_LINGER 0x0080')
+	g.writeln('#define SO_OOBINLINE 0x0100')
+	g.writeln('#define SO_REUSEPORT 0x0200')
+	if so_nosigpipe.len > 0 {
+		g.writeln('#define SO_NOSIGPIPE ${so_nosigpipe}')
+	}
+	g.writeln('#define SO_SNDBUF 0x1001')
+	g.writeln('#define SO_RCVBUF 0x1002')
+	g.writeln('#define SO_SNDLOWAT 0x1003')
+	g.writeln('#define SO_RCVLOWAT 0x1004')
+	g.writeln('#define SO_SNDTIMEO 0x1005')
+	g.writeln('#define SO_RCVTIMEO 0x1006')
+	g.writeln('#define SO_ERROR 0x1007')
+	g.writeln('#define SO_TYPE 0x1008')
+	g.writeln('#define TCP_NODELAY 1')
+	g.writeln('#define IP_HDRINCL 2')
+	g.writeln('#define IP_MULTICAST_IF 9')
+	g.writeln('#define IP_MULTICAST_TTL 10')
+	g.writeln('#define IP_MULTICAST_LOOP 11')
+	g.writeln('#define IP_ADD_MEMBERSHIP 12')
+	g.writeln('#define IP_DROP_MEMBERSHIP 13')
+	g.writeln('#define IPV6_MULTICAST_IF 9')
+	g.writeln('#define IPV6_MULTICAST_HOPS 10')
+	g.writeln('#define IPV6_MULTICAST_LOOP 11')
+	g.writeln('#define IPV6_ADD_MEMBERSHIP 12')
+	g.writeln('#define IPV6_JOIN_GROUP 12')
+	g.writeln('#define IPV6_DROP_MEMBERSHIP 13')
+	g.writeln('#define IPV6_LEAVE_GROUP 13')
+	g.writeln('#define IPV6_V6ONLY 27')
+	g.writeln('#define AI_PASSIVE 0x00000001')
+	g.writeln('#define MSG_DONTWAIT 0x80')
+	g.writeln('#define MSG_NOSIGNAL ${msg_nosignal}')
+}
+
+fn (mut g FlatGen) headerless_solaris_net_constants() {
+	g.writeln('#define AF_UNSPEC 0')
+	g.writeln('#define AF_UNIX 1')
+	g.writeln('#define AF_INET 2')
+	g.writeln('#define AF_INET6 26')
+	g.writeln('#define SOCK_STREAM 2')
+	g.writeln('#define SOCK_DGRAM 1')
+	g.writeln('#define SOCK_RAW 4')
+	g.writeln('#define SOCK_SEQPACKET 6')
+	g.writeln('#define IPPROTO_IP 0')
+	g.writeln('#define IPPROTO_ICMP 1')
+	g.writeln('#define IPPROTO_TCP 6')
+	g.writeln('#define IPPROTO_UDP 17')
+	g.writeln('#define IPPROTO_IPV6 41')
+	g.writeln('#define IPPROTO_ICMPV6 58')
+	g.writeln('#define IPPROTO_RAW 255')
+	g.writeln('#define SOL_SOCKET 0xffff')
+	g.writeln('#define SO_DEBUG 0x0001')
+	g.writeln('#define SO_REUSEADDR 0x0004')
+	g.writeln('#define SO_KEEPALIVE 0x0008')
+	g.writeln('#define SO_DONTROUTE 0x0010')
+	g.writeln('#define SO_BROADCAST 0x0020')
+	g.writeln('#define SO_LINGER 0x0080')
+	g.writeln('#define SO_OOBINLINE 0x0100')
+	g.writeln('#define SO_SNDBUF 0x1001')
+	g.writeln('#define SO_RCVBUF 0x1002')
+	g.writeln('#define SO_SNDLOWAT 0x1003')
+	g.writeln('#define SO_RCVLOWAT 0x1004')
+	g.writeln('#define SO_SNDTIMEO 0x1005')
+	g.writeln('#define SO_RCVTIMEO 0x1006')
+	g.writeln('#define SO_ERROR 0x1007')
+	g.writeln('#define SO_TYPE 0x1008')
+	g.writeln('#define TCP_NODELAY 1')
+	g.writeln('#define IP_HDRINCL 2')
+	g.writeln('#define IP_MULTICAST_IF 0x10')
+	g.writeln('#define IP_MULTICAST_TTL 0x11')
+	g.writeln('#define IP_MULTICAST_LOOP 0x12')
+	g.writeln('#define IP_ADD_MEMBERSHIP 0x13')
+	g.writeln('#define IP_DROP_MEMBERSHIP 0x14')
+	g.writeln('#define IPV6_MULTICAST_IF 0x6')
+	g.writeln('#define IPV6_MULTICAST_HOPS 0x7')
+	g.writeln('#define IPV6_MULTICAST_LOOP 0x8')
+	g.writeln('#define IPV6_ADD_MEMBERSHIP 0x9')
+	g.writeln('#define IPV6_JOIN_GROUP 0x9')
+	g.writeln('#define IPV6_DROP_MEMBERSHIP 0xa')
+	g.writeln('#define IPV6_LEAVE_GROUP 0xa')
+	g.writeln('#define IPV6_V6ONLY 0x27')
+	g.writeln('#define AI_PASSIVE 0x0008')
+	g.writeln('#define MSG_DONTWAIT 0x80')
+	g.writeln('#define MSG_NOSIGNAL 0x200')
+}
+
+fn (mut g FlatGen) headerless_qnx_net_constants() {
+	g.writeln('#define AF_UNSPEC 0')
+	g.writeln('#define AF_UNIX 1')
+	g.writeln('#define AF_INET 2')
+	g.writeln('#define AF_INET6 24')
+	g.writeln('#define SOCK_STREAM 1')
+	g.writeln('#define SOCK_DGRAM 2')
+	g.writeln('#define SOCK_RAW 3')
+	g.writeln('#define SOCK_SEQPACKET 5')
+	g.writeln('#define IPPROTO_IP 0')
+	g.writeln('#define IPPROTO_ICMP 1')
+	g.writeln('#define IPPROTO_TCP 6')
+	g.writeln('#define IPPROTO_UDP 17')
+	g.writeln('#define IPPROTO_IPV6 41')
+	g.writeln('#define IPPROTO_ICMPV6 58')
+	g.writeln('#define IPPROTO_RAW 255')
+	g.writeln('#define SOL_SOCKET 0xffff')
+	g.writeln('#define SO_DEBUG 0x0001')
+	g.writeln('#define SO_REUSEADDR 0x0004')
+	g.writeln('#define SO_KEEPALIVE 0x0008')
+	g.writeln('#define SO_DONTROUTE 0x0010')
+	g.writeln('#define SO_BROADCAST 0x0020')
+	g.writeln('#define SO_LINGER 0x0080')
+	g.writeln('#define SO_OOBINLINE 0x0100')
+	g.writeln('#define SO_SNDBUF 0x1001')
+	g.writeln('#define SO_RCVBUF 0x1002')
+	g.writeln('#define SO_SNDLOWAT 0x1003')
+	g.writeln('#define SO_RCVLOWAT 0x1004')
+	g.writeln('#define SO_SNDTIMEO 0x1005')
+	g.writeln('#define SO_RCVTIMEO 0x1006')
+	g.writeln('#define SO_ERROR 0x1007')
+	g.writeln('#define SO_TYPE 0x1008')
+	g.writeln('#define TCP_NODELAY 1')
+	g.writeln('#define IP_HDRINCL 2')
+	g.writeln('#define IP_MULTICAST_IF 9')
+	g.writeln('#define IP_MULTICAST_TTL 10')
+	g.writeln('#define IP_MULTICAST_LOOP 11')
+	g.writeln('#define IP_ADD_MEMBERSHIP 12')
+	g.writeln('#define IP_DROP_MEMBERSHIP 13')
+	g.writeln('#define IPV6_MULTICAST_IF 9')
+	g.writeln('#define IPV6_MULTICAST_HOPS 10')
+	g.writeln('#define IPV6_MULTICAST_LOOP 11')
+	g.writeln('#define IPV6_ADD_MEMBERSHIP 12')
+	g.writeln('#define IPV6_JOIN_GROUP 12')
+	g.writeln('#define IPV6_DROP_MEMBERSHIP 13')
+	g.writeln('#define IPV6_LEAVE_GROUP 13')
+	g.writeln('#define IPV6_V6ONLY 27')
+	g.writeln('#define AI_PASSIVE 0x00000001')
+	g.writeln('#define MSG_DONTWAIT 0x80')
+	g.writeln('#define MSG_NOSIGNAL 0x0800')
+}
+
+fn (mut g FlatGen) headerless_linux_net_constants() {
+	g.writeln('#define AF_UNSPEC 0')
+	g.writeln('#define AF_UNIX 1')
+	g.writeln('#define AF_INET 2')
+	g.writeln('#define AF_INET6 10')
+	g.writeln('#define SOCK_STREAM 1')
+	g.writeln('#define SOCK_DGRAM 2')
+	g.writeln('#define SOCK_RAW 3')
+	g.writeln('#define SOCK_SEQPACKET 5')
+	g.writeln('#define SOCK_NONBLOCK 04000')
+	g.writeln('#define IPPROTO_IP 0')
+	g.writeln('#define IPPROTO_ICMP 1')
+	g.writeln('#define IPPROTO_TCP 6')
+	g.writeln('#define IPPROTO_UDP 17')
+	g.writeln('#define IPPROTO_IPV6 41')
+	g.writeln('#define IPPROTO_ICMPV6 58')
+	g.writeln('#define IPPROTO_RAW 255')
+	g.writeln('#define SOL_SOCKET 1')
+	g.writeln('#define SO_DEBUG 1')
+	g.writeln('#define SO_REUSEADDR 2')
+	g.writeln('#define SO_TYPE 3')
+	g.writeln('#define SO_ERROR 4')
+	g.writeln('#define SO_DONTROUTE 5')
+	g.writeln('#define SO_BROADCAST 6')
+	g.writeln('#define SO_SNDBUF 7')
+	g.writeln('#define SO_RCVBUF 8')
+	g.writeln('#define SO_KEEPALIVE 9')
+	g.writeln('#define SO_OOBINLINE 10')
+	g.writeln('#define SO_LINGER 13')
+	g.writeln('#define SO_REUSEPORT 15')
+	g.writeln('#define SO_RCVLOWAT 18')
+	g.writeln('#define SO_SNDLOWAT 19')
+	g.writeln('#define SO_RCVTIMEO 20')
+	g.writeln('#define SO_SNDTIMEO 21')
+	g.writeln('#define TCP_NODELAY 1')
+	g.writeln('#define TCP_DEFER_ACCEPT 9')
+	g.writeln('#define TCP_QUICKACK 12')
+	g.writeln('#define TCP_FASTOPEN 23')
+	g.writeln('#define IP_HDRINCL 3')
+	g.writeln('#define IP_MULTICAST_IF 32')
+	g.writeln('#define IP_MULTICAST_TTL 33')
+	g.writeln('#define IP_MULTICAST_LOOP 34')
+	g.writeln('#define IP_ADD_MEMBERSHIP 35')
+	g.writeln('#define IP_DROP_MEMBERSHIP 36')
+	g.writeln('#define IPV6_MULTICAST_IF 17')
+	g.writeln('#define IPV6_MULTICAST_HOPS 18')
+	g.writeln('#define IPV6_MULTICAST_LOOP 19')
+	g.writeln('#define IPV6_ADD_MEMBERSHIP 20')
+	g.writeln('#define IPV6_JOIN_GROUP 20')
+	g.writeln('#define IPV6_DROP_MEMBERSHIP 21')
+	g.writeln('#define IPV6_LEAVE_GROUP 21')
+	g.writeln('#define IPV6_V6ONLY 26')
+	g.writeln('#define AI_PASSIVE 0x0001')
+	g.writeln('#define SOMAXCONN 4096')
+	g.writeln('#define MSG_DONTWAIT 0x40')
+	g.writeln('#define MSG_NOSIGNAL 0x4000')
+}
+
+fn (mut g FlatGen) headerless_windows_net_constants() {
+	g.writeln('#define AF_UNSPEC 0')
+	g.writeln('#define AF_UNIX 1')
+	g.writeln('#define AF_INET 2')
+	g.writeln('#define AF_INET6 23')
+	g.writeln('#define SOCK_STREAM 1')
+	g.writeln('#define SOCK_DGRAM 2')
+	g.writeln('#define SOCK_RAW 3')
+	g.writeln('#define SOCK_SEQPACKET 5')
+	g.writeln('#define SOCKET_ERROR (-1)')
+	g.writeln('#define WSAEWOULDBLOCK 10035')
+	g.writeln('#define IPPROTO_IP 0')
+	g.writeln('#define IPPROTO_ICMP 1')
+	g.writeln('#define IPPROTO_TCP 6')
+	g.writeln('#define IPPROTO_UDP 17')
+	g.writeln('#define IPPROTO_IPV6 41')
+	g.writeln('#define IPPROTO_ICMPV6 58')
+	g.writeln('#define IPPROTO_RAW 255')
+	g.writeln('#define SOL_SOCKET 0xffff')
+	g.writeln('#define SO_DEBUG 0x0001')
+	g.writeln('#define SO_REUSEADDR 0x0004')
+	g.writeln('#define SO_KEEPALIVE 0x0008')
+	g.writeln('#define SO_DONTROUTE 0x0010')
+	g.writeln('#define SO_BROADCAST 0x0020')
+	g.writeln('#define SO_LINGER 0x0080')
+	g.writeln('#define SO_OOBINLINE 0x0100')
+	g.writeln('#define SO_SNDBUF 0x1001')
+	g.writeln('#define SO_RCVBUF 0x1002')
+	g.writeln('#define SO_SNDLOWAT 0x1003')
+	g.writeln('#define SO_RCVLOWAT 0x1004')
+	g.writeln('#define SO_SNDTIMEO 0x1005')
+	g.writeln('#define SO_RCVTIMEO 0x1006')
+	g.writeln('#define SO_ERROR 0x1007')
+	g.writeln('#define SO_TYPE 0x1008')
+	g.writeln('#define TCP_NODELAY 1')
+	g.writeln('#define IP_HDRINCL 2')
+	g.writeln('#define IP_MULTICAST_IF 9')
+	g.writeln('#define IP_MULTICAST_TTL 10')
+	g.writeln('#define IP_MULTICAST_LOOP 11')
+	g.writeln('#define IP_ADD_MEMBERSHIP 12')
+	g.writeln('#define IP_DROP_MEMBERSHIP 13')
+	g.writeln('#define IPV6_MULTICAST_IF 9')
+	g.writeln('#define IPV6_MULTICAST_HOPS 10')
+	g.writeln('#define IPV6_MULTICAST_LOOP 11')
+	g.writeln('#define IPV6_ADD_MEMBERSHIP 12')
+	g.writeln('#define IPV6_JOIN_GROUP 12')
+	g.writeln('#define IPV6_DROP_MEMBERSHIP 13')
+	g.writeln('#define IPV6_LEAVE_GROUP 13')
+	g.writeln('#define IPV6_V6ONLY 27')
+	g.writeln('#define AI_PASSIVE 0x00000001')
+	g.writeln('#define MSG_DONTWAIT 0')
+	g.writeln('#define MSG_NOSIGNAL 0')
 }
 
 fn (mut g FlatGen) write_arch_macros() {
@@ -3001,7 +5398,21 @@ fn (mut g FlatGen) libc_compat_decls() {
 	if g.libc_compat_fns['gettid'] {
 		g.writeln('#ifdef __linux__')
 		g.writeln('#ifndef SYS_gettid')
-		g.writeln('#define SYS_gettid __NR_gettid')
+		g.writeln('#if defined(__x86_64__)')
+		g.writeln('#define SYS_gettid 186')
+		g.writeln('#elif defined(__aarch64__)')
+		g.writeln('#define SYS_gettid 178')
+		g.writeln('#elif defined(__i386__)')
+		g.writeln('#define SYS_gettid 224')
+		g.writeln('#elif defined(__arm__)')
+		g.writeln('#define SYS_gettid 224')
+		g.writeln('#elif defined(__riscv) && __riscv_xlen == 64')
+		g.writeln('#define SYS_gettid 178')
+		g.writeln('#elif defined(__loongarch_lp64)')
+		g.writeln('#define SYS_gettid 178')
+		g.writeln('#else')
+		g.writeln('#error unsupported Linux gettid syscall number for this architecture')
+		g.writeln('#endif')
 		g.writeln('#endif')
 		g.writeln('static inline u32 v3_gettid(void) {')
 		g.writeln('\treturn (u32)syscall(SYS_gettid);')
@@ -3024,33 +5435,49 @@ fn (mut g FlatGen) prealloc_atomic_compat_decls() {
 }
 
 fn (mut g FlatGen) atomic_builtin_compat_decls() {
-	if g.has_stdatomic_compat_header {
-		return
-	}
 	// Atomic helpers. We use compiler __atomic_* builtins (memory order 5 == __ATOMIC_SEQ_CST).
 	// clang/gcc inline the generic _n / RMW builtins. tcc only implements the inline
 	// __atomic_{add,sub,fetch}_* RMW builtins; for load/store/exchange/cas it has no generic
 	// _n form, so we route those to the sized __atomic_*_N libcalls (resolved from libc).
+	g.writeln('static inline byte atomic_fetch_add_byte(void* ptr, byte delta) { return __atomic_fetch_add((byte*)ptr, delta, 5); }')
+	g.writeln('static inline u16 atomic_fetch_add_u16(void* ptr, u16 delta) { return __atomic_fetch_add((u16*)ptr, delta, 5); }')
 	g.writeln('static inline u32 atomic_fetch_add_u32(void* ptr, u32 delta) { return __atomic_fetch_add((u32*)ptr, delta, 5); }')
 	g.writeln('static inline u64 atomic_fetch_add_u64(void* ptr, u64 delta) { return __atomic_fetch_add((u64*)ptr, delta, 5); }')
+	g.writeln('static inline void* atomic_fetch_add_ptr(void* ptr, void* delta) { return (void*)(uintptr_t)__atomic_fetch_add((uintptr_t*)ptr, (uintptr_t)delta, 5); }')
+	g.writeln('static inline byte atomic_fetch_sub_byte(void* ptr, byte delta) { return __atomic_fetch_sub((byte*)ptr, delta, 5); }')
+	g.writeln('static inline u16 atomic_fetch_sub_u16(void* ptr, u16 delta) { return __atomic_fetch_sub((u16*)ptr, delta, 5); }')
+	g.writeln('static inline u32 atomic_fetch_sub_u32(void* ptr, u32 delta) { return __atomic_fetch_sub((u32*)ptr, delta, 5); }')
 	g.writeln('static inline u64 atomic_fetch_sub_u64(void* ptr, u64 delta) { return __atomic_fetch_sub((u64*)ptr, delta, 5); }')
+	g.writeln('static inline void* atomic_fetch_sub_ptr(void* ptr, void* delta) { return (void*)(uintptr_t)__atomic_fetch_sub((uintptr_t*)ptr, (uintptr_t)delta, 5); }')
 	g.writeln('static inline byte atomic_load_byte(void* ptr) { return __atomic_fetch_add((byte*)ptr, 0, 5); }')
 	g.writeln('static inline u16 atomic_load_u16(void* ptr) { return __atomic_fetch_add((u16*)ptr, 0, 5); }')
 	g.writeln('static inline u32 atomic_load_u32(void* ptr) { return __atomic_fetch_add((u32*)ptr, 0, 5); }')
 	g.writeln('static inline u64 atomic_load_u64(void* ptr) { return __atomic_fetch_add((u64*)ptr, 0, 5); }')
-	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return *(void* volatile*)ptr; }')
 	g.writeln('#ifdef __TINYC__')
+	g.writeln('#if UINTPTR_MAX == 0xFFFFFFFF')
+	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return (void*)(size_t)__atomic_load_4((u32*)ptr, 5); }')
+	g.writeln('#else')
+	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return (void*)(size_t)__atomic_load_8((u64*)ptr, 5); }')
+	g.writeln('#endif')
+	g.writeln('static inline byte atomic_exchange_byte(void* ptr, byte val) { return __atomic_exchange_1((byte*)ptr, val, 5); }')
+	g.writeln('static inline u16 atomic_exchange_u16(void* ptr, u16 val) { return __atomic_exchange_2((u16*)ptr, val, 5); }')
+	g.writeln('static inline u32 atomic_exchange_u32(void* ptr, u32 val) { return __atomic_exchange_4((u32*)ptr, val, 5); }')
+	g.writeln('static inline u64 atomic_exchange_u64(void* ptr, u64 val) { return __atomic_exchange_8((u64*)ptr, val, 5); }')
 	g.writeln('static inline void atomic_store_byte(void* ptr, byte val) { __atomic_store_1((byte*)ptr, val, 5); }')
 	g.writeln('static inline void atomic_store_u16(void* ptr, u16 val) { __atomic_store_2((u16*)ptr, val, 5); }')
 	g.writeln('static inline void atomic_store_u32(void* ptr, u32 val) { __atomic_store_4((u32*)ptr, val, 5); }')
 	g.writeln('static inline void atomic_store_u64(void* ptr, u64 val) { __atomic_store_8((u64*)ptr, val, 5); }')
 	g.writeln('#if UINTPTR_MAX == 0xFFFFFFFF')
+	g.writeln('static inline void* atomic_exchange_ptr(void* ptr, void* val) { return (void*)(size_t)__atomic_exchange_4((u32*)ptr, (u32)(size_t)val, 5); }')
 	g.writeln('static inline void atomic_store_ptr(void* ptr, void* val) { __atomic_store_4((u32*)ptr, (u32)(size_t)val, 5); }')
 	g.writeln('#else')
+	g.writeln('static inline void* atomic_exchange_ptr(void* ptr, void* val) { return (void*)(size_t)__atomic_exchange_8((u64*)ptr, (u64)(size_t)val, 5); }')
 	g.writeln('static inline void atomic_store_ptr(void* ptr, void* val) { __atomic_store_8((u64*)ptr, (u64)(size_t)val, 5); }')
 	g.writeln('#endif')
+	g.writeln('static inline bool atomic_compare_exchange_strong_byte(void* ptr, byte* expected, byte desired) { return __atomic_compare_exchange_1((byte*)ptr, expected, desired, 5, 5); }')
 	g.writeln('static inline bool atomic_compare_exchange_strong_u16(void* ptr, u16* expected, u16 desired) { return __atomic_compare_exchange_2((u16*)ptr, expected, desired, 5, 5); }')
 	g.writeln('static inline bool atomic_compare_exchange_strong_u32(void* ptr, u32* expected, u32 desired) { return __atomic_compare_exchange_4((u32*)ptr, expected, desired, 5, 5); }')
+	g.writeln('static inline bool atomic_compare_exchange_strong_u64(void* ptr, u64* expected, u64 desired) { return __atomic_compare_exchange_8((u64*)ptr, expected, desired, 5, 5); }')
 	g.writeln('#if UINTPTR_MAX == 0xFFFFFFFF')
 	g.writeln('static inline bool atomic_compare_exchange_strong_ptr(void* ptr, void* expected, ptrdiff_t desired) { return __atomic_compare_exchange_4((u32*)ptr, (u32*)expected, (u32)desired, 5, 5); }')
 	g.writeln('#else')
@@ -3061,13 +5488,21 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	g.writeln('static inline bool atomic_compare_exchange_weak_u32(void* ptr, u32* expected, u32 desired) { return __atomic_compare_exchange_4((u32*)ptr, expected, desired, 5, 5); }')
 	g.writeln('static inline bool atomic_compare_exchange_weak_u64(void* ptr, u64* expected, u64 desired) { return __atomic_compare_exchange_8((u64*)ptr, expected, desired, 5, 5); }')
 	g.writeln('#else')
+	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return __atomic_load_n((void**)ptr, 5); }')
+	g.writeln('static inline byte atomic_exchange_byte(void* ptr, byte val) { return __atomic_exchange_n((byte*)ptr, val, 5); }')
+	g.writeln('static inline u16 atomic_exchange_u16(void* ptr, u16 val) { return __atomic_exchange_n((u16*)ptr, val, 5); }')
+	g.writeln('static inline u32 atomic_exchange_u32(void* ptr, u32 val) { return __atomic_exchange_n((u32*)ptr, val, 5); }')
+	g.writeln('static inline u64 atomic_exchange_u64(void* ptr, u64 val) { return __atomic_exchange_n((u64*)ptr, val, 5); }')
+	g.writeln('static inline void* atomic_exchange_ptr(void* ptr, void* val) { return __atomic_exchange_n((void**)ptr, val, 5); }')
 	g.writeln('static inline void atomic_store_byte(void* ptr, byte val) { __atomic_store_n((byte*)ptr, val, 5); }')
 	g.writeln('static inline void atomic_store_u16(void* ptr, u16 val) { __atomic_store_n((u16*)ptr, val, 5); }')
 	g.writeln('static inline void atomic_store_u32(void* ptr, u32 val) { __atomic_store_n((u32*)ptr, val, 5); }')
 	g.writeln('static inline void atomic_store_u64(void* ptr, u64 val) { __atomic_store_n((u64*)ptr, val, 5); }')
 	g.writeln('static inline void atomic_store_ptr(void* ptr, void* val) { __atomic_store_n((void**)ptr, val, 5); }')
+	g.writeln('static inline bool atomic_compare_exchange_strong_byte(void* ptr, byte* expected, byte desired) { return __atomic_compare_exchange_n((byte*)ptr, expected, desired, 0, 5, 5); }')
 	g.writeln('static inline bool atomic_compare_exchange_strong_u16(void* ptr, u16* expected, u16 desired) { return __atomic_compare_exchange_n((u16*)ptr, expected, desired, 0, 5, 5); }')
 	g.writeln('static inline bool atomic_compare_exchange_strong_u32(void* ptr, u32* expected, u32 desired) { return __atomic_compare_exchange_n((u32*)ptr, expected, desired, 0, 5, 5); }')
+	g.writeln('static inline bool atomic_compare_exchange_strong_u64(void* ptr, u64* expected, u64 desired) { return __atomic_compare_exchange_n((u64*)ptr, expected, desired, 0, 5, 5); }')
 	g.writeln('static inline bool atomic_compare_exchange_strong_ptr(void* ptr, void* expected, ptrdiff_t desired) { return __atomic_compare_exchange_n((void**)ptr, (void**)expected, (void*)desired, 0, 5, 5); }')
 	g.writeln('static inline bool atomic_compare_exchange_weak_byte(void* ptr, byte* expected, byte desired) { return __atomic_compare_exchange_n((byte*)ptr, expected, desired, 1, 5, 5); }')
 	g.writeln('static inline bool atomic_compare_exchange_weak_u16(void* ptr, u16* expected, u16 desired) { return __atomic_compare_exchange_n((u16*)ptr, expected, desired, 1, 5, 5); }')
@@ -3083,6 +5518,20 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		return
 	}
 	g.libc_compat_decls()
+	g.writeln('#ifndef __linux__')
+	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) 0')
+	g.writeln('#endif')
+	g.writeln('#ifndef V_OS_FILELOCK_HELPERS_H')
+	g.writeln('#ifdef _WIN32')
+	g.writeln('BOOL LockFileEx(HANDLE handle, DWORD flags, DWORD reserved, DWORD low, DWORD high, OVERLAPPED* overlap);')
+	g.writeln('BOOL UnlockFileEx(HANDLE handle, DWORD reserved, DWORD low, DWORD high, OVERLAPPED* overlap);')
+	g.writeln('static inline int v_filelock_lock(HANDLE handle, int exclusive, int immediate, u64 start, u64 len) { OVERLAPPED overlap; memset(&overlap, 0, sizeof(overlap)); overlap.Offset = (DWORD)(start & 0xffffffffULL); overlap.OffsetHigh = (DWORD)(start >> 32); DWORD flags = immediate ? LOCKFILE_FAIL_IMMEDIATELY : 0; if (exclusive) { flags |= LOCKFILE_EXCLUSIVE_LOCK; } DWORD low = len == 0 ? MAXDWORD : (DWORD)(len & 0xffffffffULL); DWORD high = len == 0 ? MAXDWORD : (DWORD)(len >> 32); return LockFileEx(handle, flags, 0, low, high, &overlap) ? 0 : -1; }')
+	g.writeln('static inline int v_filelock_unlock(HANDLE handle, u64 start, u64 len) { OVERLAPPED overlap; memset(&overlap, 0, sizeof(overlap)); overlap.Offset = (DWORD)(start & 0xffffffffULL); overlap.OffsetHigh = (DWORD)(start >> 32); DWORD low = len == 0 ? MAXDWORD : (DWORD)(len & 0xffffffffULL); DWORD high = len == 0 ? MAXDWORD : (DWORD)(len >> 32); return UnlockFileEx(handle, 0, low, high, &overlap) ? 0 : -1; }')
+	g.writeln('#else')
+	g.writeln('static inline int v_filelock_lock(int fd, int exclusive, int immediate, u64 start, u64 len) { struct flock fl; memset(&fl, 0, sizeof(fl)); fl.l_type = exclusive ? F_WRLCK : F_RDLCK; fl.l_whence = SEEK_SET; fl.l_start = (off_t)start; fl.l_len = len == 0 ? 0 : (off_t)len; return fcntl(fd, immediate ? F_SETLK : F_SETLKW, &fl); }')
+	g.writeln('static inline int v_filelock_unlock(int fd, u64 start, u64 len) { struct flock fl; memset(&fl, 0, sizeof(fl)); fl.l_type = F_UNLCK; fl.l_whence = SEEK_SET; fl.l_start = (off_t)start; fl.l_len = len == 0 ? 0 : (off_t)len; return fcntl(fd, F_SETLK, &fl); }')
+	g.writeln('#endif')
+	g.writeln('#endif')
 	g.writeln('#define array_new(elem_size, len, cap) __new_array((len), (cap), (elem_size))')
 	g.writeln('#define array_push array__push')
 	g.writeln('void array__push_many(array* a, void* val, int size);')
@@ -3097,13 +5546,20 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#ifndef V_COMMIT_HASH')
 	g.writeln('#define V_COMMIT_HASH ""')
 	g.writeln('#endif')
+	g.writeln('#ifndef memory_order_relaxed')
+	g.writeln('#define memory_order_relaxed 0')
+	g.writeln('#define memory_order_acquire 2')
+	g.writeln('#define memory_order_release 3')
+	g.writeln('#define memory_order_acq_rel 4')
+	g.writeln('#define memory_order_seq_cst 5')
+	g.writeln('#endif')
+	g.writeln('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 	// Weak fallbacks for the heap-tracking hooks. A program that provides real
 	// implementations (e.g. a `vheap_alloc`/`vheap_free` from a linked C file, as
 	// some projects do) overrides these without a redefinition/static-vs-non-static
 	// clash against that file's own non-static prototype.
 	g.writeln('__attribute__((weak)) void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
 	g.writeln('__attribute__((weak)) void vheap_free(void* p) { (void)p; }')
-	g.filelock_compat_decls()
 	g.prealloc_atomic_compat_decls()
 	g.atomic_builtin_compat_decls()
 	g.writeln('static inline double math__abs(double a) { return a < 0 ? -a : a; }')
@@ -3134,59 +5590,6 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#define min_int min_i32')
 	g.writeln('#endif')
 	g.writeln('')
-}
-
-fn (mut g FlatGen) filelock_compat_decls() {
-	if !g.libc_compat_fns['filelock'] {
-		return
-	}
-	g.writeln('#ifndef V_OS_FILELOCK_HELPERS_H')
-	g.writeln('#define V_OS_FILELOCK_HELPERS_H')
-	g.writeln('#ifdef _WIN32')
-	g.writeln('#include <windows.h>')
-	g.writeln('static int v_filelock_lock(HANDLE handle, int exclusive, int immediate, unsigned long long start, unsigned long long len) {')
-	g.writeln('\tOVERLAPPED overlap;')
-	g.writeln('\tmemset(&overlap, 0, sizeof(overlap));')
-	g.writeln('\toverlap.Offset = (DWORD)(start & 0xffffffffULL);')
-	g.writeln('\toverlap.OffsetHigh = (DWORD)(start >> 32);')
-	g.writeln('\tDWORD flags = immediate ? LOCKFILE_FAIL_IMMEDIATELY : 0;')
-	g.writeln('\tif (exclusive) { flags |= LOCKFILE_EXCLUSIVE_LOCK; }')
-	g.writeln('\tDWORD low = len == 0 ? MAXDWORD : (DWORD)(len & 0xffffffffULL);')
-	g.writeln('\tDWORD high = len == 0 ? MAXDWORD : (DWORD)(len >> 32);')
-	g.writeln('\treturn LockFileEx(handle, flags, 0, low, high, &overlap) ? 0 : -1;')
-	g.writeln('}')
-	g.writeln('static int v_filelock_unlock(HANDLE handle, unsigned long long start, unsigned long long len) {')
-	g.writeln('\tOVERLAPPED overlap;')
-	g.writeln('\tmemset(&overlap, 0, sizeof(overlap));')
-	g.writeln('\toverlap.Offset = (DWORD)(start & 0xffffffffULL);')
-	g.writeln('\toverlap.OffsetHigh = (DWORD)(start >> 32);')
-	g.writeln('\tDWORD low = len == 0 ? MAXDWORD : (DWORD)(len & 0xffffffffULL);')
-	g.writeln('\tDWORD high = len == 0 ? MAXDWORD : (DWORD)(len >> 32);')
-	g.writeln('\treturn UnlockFileEx(handle, 0, low, high, &overlap) ? 0 : -1;')
-	g.writeln('}')
-	g.writeln('#else')
-	g.writeln('#include <fcntl.h>')
-	g.writeln('#include <unistd.h>')
-	g.writeln('static int v_filelock_lock(int fd, int exclusive, int immediate, unsigned long long start, unsigned long long len) {')
-	g.writeln('\tstruct flock fl;')
-	g.writeln('\tmemset(&fl, 0, sizeof(fl));')
-	g.writeln('\tfl.l_type = exclusive ? F_WRLCK : F_RDLCK;')
-	g.writeln('\tfl.l_whence = SEEK_SET;')
-	g.writeln('\tfl.l_start = (off_t)start;')
-	g.writeln('\tfl.l_len = len == 0 ? 0 : (off_t)len;')
-	g.writeln('\treturn fcntl(fd, immediate ? F_SETLK : F_SETLKW, &fl);')
-	g.writeln('}')
-	g.writeln('static int v_filelock_unlock(int fd, unsigned long long start, unsigned long long len) {')
-	g.writeln('\tstruct flock fl;')
-	g.writeln('\tmemset(&fl, 0, sizeof(fl));')
-	g.writeln('\tfl.l_type = F_UNLCK;')
-	g.writeln('\tfl.l_whence = SEEK_SET;')
-	g.writeln('\tfl.l_start = (off_t)start;')
-	g.writeln('\tfl.l_len = len == 0 ? 0 : (off_t)len;')
-	g.writeln('\treturn fcntl(fd, F_SETLK, &fl);')
-	g.writeln('}')
-	g.writeln('#endif')
-	g.writeln('#endif')
 }
 
 fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTypedefInfo {

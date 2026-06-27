@@ -3,15 +3,8 @@ module bench
 import os
 import time
 
-#include <sys/resource.h>
-
-// C.rusage declares C rusage data used by bench.
-struct C.rusage {
-	ru_maxrss i64
-}
-
 // C.getrusage declares the C getrusage symbol used by bench.
-fn C.getrusage(who int, usage &C.rusage) int
+fn C.getrusage(who int, usage voidptr) int
 
 // Step represents step data used by bench.
 pub struct Step {
@@ -78,9 +71,10 @@ fn current_rss_kb() i64 {
 
 // macos_peak_rss_kb supports macos peak rss kb handling for bench.
 fn macos_peak_rss_kb() i64 {
-	mut usage := C.rusage{}
-	if C.getrusage(0, &usage) == 0 {
-		return usage.ru_maxrss / 1024
+	mut usage := [256]u8{}
+	if C.getrusage(0, &usage[0]) == 0 {
+		ru_maxrss := unsafe { *(&i64(&usage[32])) }
+		return ru_maxrss / 1024
 	}
 	return 0
 }

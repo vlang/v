@@ -22,6 +22,14 @@ fn gen_c(v3_bin string, name string, src string) string {
 	return os.read_file(c_out) or { '' }
 }
 
+fn assert_spawn_pthread_decls(c_code string) {
+	assert c_code.contains('i32 pthread_attr_init(void* attr);'), c_code
+	assert c_code.contains('i32 pthread_attr_setstacksize(void* attr, size_t stacksize);'), c_code
+	assert c_code.contains('i32 pthread_create(void* thread, void* attr, void* start_routine, void* arg);'), c_code
+	assert c_code.contains('i32 pthread_attr_destroy(void* attr);'), c_code
+	assert c_code.contains('i32 pthread_join(void* thread, void* retval);'), c_code
+}
+
 // A `spawn` of a free function with arguments must pack the arguments into a heap
 // struct and run the real function through a wrapper, instead of emitting a
 // `(void*)0` no-op that silently drops the call and its arguments.
@@ -45,6 +53,7 @@ fn main() {
 ')
 	assert c_code.contains('add_thread_args'), c_code
 	assert c_code.contains('pthread_create'), c_code
+	assert_spawn_pthread_decls(c_code)
 	assert c_code.contains('add(p->a0, p->a1, p->a2)'), c_code
 }
 

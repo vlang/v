@@ -285,4 +285,6 @@ fn test_parallel_transform_selfhost_builds_v3() {
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
 	assert c_code.contains('Array_u8__bytestr'), c_code
 	assert c_code.contains('Array_u8__hex'), c_code
+	assert c_code.contains('typedef void* pthread_t;'), c_code
+	assert !c_code.contains('typedef struct pthread_t pthread_t;'), c_code
 }

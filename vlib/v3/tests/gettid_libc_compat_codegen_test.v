@@ -39,7 +39,13 @@ fn main() {
 	assert !compile.output.contains('implicit declaration'), compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert generated.contains('static inline u32 v3_gettid(void)'), generated
+	assert generated.contains('#elif defined(__arm__)'), generated
+	assert generated.contains('#elif defined(__riscv) && __riscv_xlen == 64'), generated
+	assert generated.contains('#elif defined(__loongarch_lp64)'), generated
+	assert generated.contains('#error unsupported Linux gettid syscall number for this architecture'), generated
 	assert generated.contains('syscall(SYS_gettid)'), generated
+	assert !generated.contains('#include <sys/syscall.h>'), generated
+	assert !generated.contains('__NR_gettid'), generated
 	assert !generated.contains(' gettid('), generated
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output

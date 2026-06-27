@@ -6137,8 +6137,18 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 }
 
 fn (t &Transformer) current_call_return_type(node flat.Node) string {
-	if t.is_local_fn_value_call(node) {
-		return ''
+	if node.children_count > 0 {
+		fn_node := t.a.child_node(&node, 0)
+		if fn_node.kind == .ident {
+			if ret := t.local_fn_value_return_type(fn_node.value) {
+				return t.call_return_type_name(ret, node)
+			}
+			if t.var_type(fn_node.value).len == 0 {
+				if ret := t.local_fn_decl_return_type(fn_node.value) {
+					return t.call_return_type_name(ret, node)
+				}
+			}
+		}
 	}
 	name := t.resolve_call_name(node)
 	if name.len == 0 {
