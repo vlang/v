@@ -1,0 +1,34 @@
+module main
+
+// Regression test for https://github.com/vlang/v/issues/27354
+// An anon fn passed to a C callback inside a method that is reached only via
+// interface dispatch on a `mut` receiver must be marked used by markused,
+// otherwise -skip-unused (the default) drops its definition and the generated
+// C fails with `use of undeclared identifier 'anon_fn_...'`.
+
+fn C.atexit(cb voidptr) int
+
+interface Handler {
+	setup()
+}
+
+struct Impl {
+mut:
+	n int
+}
+
+fn (mut i Impl) setup() {
+	C.atexit(fn () {})
+}
+
+fn run(mut h Handler) {
+	h.setup()
+}
+
+fn main() {
+	mut impl := Impl{
+		n: 99
+	}
+	run(mut impl)
+	println('done')
+}

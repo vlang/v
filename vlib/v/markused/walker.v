@@ -3177,6 +3177,11 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 			}
 		}
 		ast.Interface {
+			// Include implementors that require a mutable receiver (stored in
+			// `mut_types`, not `types`); otherwise interface methods reached only
+			// via dispatch on a `mut` receiver are never walked, and symbols they
+			// reference (e.g. an anon fn passed to a C callback) get pruned by
+			// -skip-unused. See https://github.com/vlang/v/issues/27354
 			for typ in isym.info.implementor_types(true) {
 				if typ == ast.map_type {
 					w.features.used_maps++
