@@ -246,9 +246,14 @@ fn (mut c Checker) markused_auto_str_dependencies_for_type(typ ast.Type, mut vis
 		return
 	}
 	visited[base_typ] = true
-	sym := c.table.final_sym(base_typ)
+	mut sym := c.table.sym(base_typ)
 	if sym.has_method_with_generic_parent('str') {
-		c.markused_generic_str_method(sym)
+		c.markused_generic_str_method(base_typ, sym)
+		return
+	}
+	sym = c.table.final_sym(base_typ)
+	if sym.has_method_with_generic_parent('str') {
+		c.markused_generic_str_method(ast.idx_to_type(sym.idx), sym)
 		return
 	}
 	match sym.info {
@@ -295,17 +300,20 @@ fn (mut c Checker) markused_auto_str_dependencies_for_type(typ ast.Type, mut vis
 	}
 }
 
-fn (mut c Checker) markused_generic_str_method(sym &ast.TypeSymbol) {
+fn (mut c Checker) markused_generic_str_method(typ ast.Type, sym &ast.TypeSymbol) {
 	mut method := ast.Fn{}
 	mut concrete_types := []ast.Type{}
-	if exact_method := sym.find_method('str') {
-		method = exact_method
-		concrete_types = c.concrete_types_for_type_symbol(sym)
-	} else if structured_method := c.table.find_structured_receiver_method_with_types(ast.idx_to_type(sym.idx),
-		'str')
-	{
-		method = structured_method.method
-		concrete_types = structured_method.concrete_types.map(c.unwrap_generic(it))
+	if structured_method := c.table.find_structured_receiver_method_with_types(typ, 'str') {
+		if exact_method := sym.find_method('str') {
+			method = exact_method
+			concrete_types = c.concrete_types_for_type_symbol(sym)
+		} else if exact_method := c.table.find_alias_parent_exact_method(typ, 'str') {
+			method = exact_method
+			concrete_types = c.concrete_types_for_type_symbol(sym)
+		} else {
+			method = structured_method.method
+			concrete_types = structured_method.concrete_types.map(c.unwrap_generic(it))
+		}
 	} else {
 		method = sym.find_method_with_generic_parent('str') or { return }
 		concrete_types = c.concrete_types_for_type_symbol(sym)
