@@ -472,6 +472,15 @@ fn (c &Checker) alias_parent_concrete_types(info ast.Alias) []ast.Type {
 		ast.GenericInst {
 			return parent_sym.info.concrete_types.clone()
 		}
+		ast.Array {
+			return [parent_sym.info.elem_type]
+		}
+		ast.ArrayFixed {
+			return [parent_sym.info.elem_type]
+		}
+		ast.Map {
+			return [parent_sym.info.key_type, parent_sym.info.value_type]
+		}
 		ast.Alias {
 			return c.alias_parent_concrete_types(parent_sym.info)
 		}

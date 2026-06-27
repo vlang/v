@@ -18,8 +18,14 @@ struct InterpBox[T] {
 
 type InterpIntBox = InterpBox[int]
 
+type Ints = []int
+
 struct StructuredContainer[T] {
 	box Box[[]T]
+}
+
+struct IntsContainer {
+	values Ints
 }
 
 struct AssertNode[T] {
@@ -50,12 +56,22 @@ fn (box InterpIntBox) str[T]() string {
 	return 'interp alias ${box.val}'
 }
 
+fn (values Ints) str[T]() string {
+	return 'ints ${values[0]}'
+}
+
 fn (list AssertList[T]) str() string {
 	return 'assert list'
 }
 
 fn (bad SkippedBad[[]T]) str() string {
 	return bad.val[0].len.str()
+}
+
+fn maybe_panic_auto_str_container(should_panic bool) {
+	if should_panic {
+		panic(MyContainer[string]{})
+	}
 }
 
 fn test_auto_str_registers_nested_generic_field_str_method() {
@@ -81,12 +97,29 @@ fn test_interpolation_registers_exact_generic_alias_str_method() {
 	assert '${box}' == 'interp alias 987'
 }
 
+fn test_auto_str_registers_container_alias_parent_str_method() {
+	c := IntsContainer{
+		values: Ints([654])
+	}
+	assert '${c}'.contains('values: ints 654')
+}
+
+fn test_interpolation_registers_container_alias_parent_str_method() {
+	values := Ints([321])
+	assert '${values}' == 'ints 321'
+}
+
 fn test_dump_registers_exact_generic_alias_str_method() {
 	box := InterpIntBox{
 		val: 654
 	}
 	dumped := dump(box)
 	assert dumped.val == 654
+}
+
+fn test_panic_marks_auto_str_dependencies_under_skip_unused() {
+	maybe_panic_auto_str_container(false)
+	assert true
 }
 
 fn test_assert_auto_str_registers_nested_generic_field_str_method() {

@@ -962,13 +962,15 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.mark_by_type(w.table.find_or_register_array(sym.info.key_type))
 				}
 			} else if !node.is_method && node.args.len == 1
-				&& node.name in ['println', 'print', 'eprint', 'eprintln'] {
+				&& node.name in ['println', 'print', 'eprint', 'eprintln', 'panic'] {
 				if f := w.table.find_fn(node.name) {
 					if f.mod == 'builtin' {
 						if node.args[0].typ != ast.string_type {
 							w.uses_str[node.args[0].typ] = true
+							w.mark_generic_str_method_for_type(node.args[0].typ)
 						}
-						if w.pref.gc_mode == .boehm_leak && (node.args[0].typ != ast.string_type
+						if node.name != 'panic' && w.pref.gc_mode == .boehm_leak
+							&& (node.args[0].typ != ast.string_type
 							|| node.args[0].expr !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector]) {
 							w.uses_free[ast.string_type] = true
 						}
