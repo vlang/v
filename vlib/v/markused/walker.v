@@ -719,6 +719,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			if node.is_used {
 				w.uses_asserts = true
 				w.expr(node.expr)
+				w.mark_assert_generic_str_methods(node)
 				if node.extra !is ast.EmptyExpr {
 					w.expr(node.extra)
 				}
@@ -962,13 +963,15 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					w.mark_by_type(w.table.find_or_register_array(sym.info.key_type))
 				}
 			} else if !node.is_method && node.args.len == 1
-				&& node.name in ['println', 'print', 'eprint', 'eprintln'] {
+				&& node.name in ['println', 'print', 'eprint', 'eprintln', 'panic'] {
 				if f := w.table.find_fn(node.name) {
 					if f.mod == 'builtin' {
 						if node.args[0].typ != ast.string_type {
 							w.uses_str[node.args[0].typ] = true
+							w.mark_generic_str_method_for_type(node.args[0].typ)
 						}
-						if w.pref.gc_mode == .boehm_leak && (node.args[0].typ != ast.string_type
+						if node.name != 'panic' && w.pref.gc_mode == .boehm_leak
+							&& (node.args[0].typ != ast.string_type
 							|| node.args[0].expr !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector]) {
 							w.uses_free[ast.string_type] = true
 						}
@@ -1055,6 +1058,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 			w.features.dump = true
 			w.mark_by_type(node.expr_type)
+			w.mark_generic_str_method_for_type(node.expr_type)
 		}
 		ast.SpawnExpr {
 			if node.is_expr {
@@ -1393,6 +1397,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			} else {
 				w.mark_simple_string_inter_literal(node)
 			}
+			w.mark_string_inter_literal_generic_str_methods(node)
 			w.exprs(node.exprs)
 			for expr in node.fwidth_exprs {
 				if expr !is ast.EmptyExpr {
@@ -2784,6 +2789,48 @@ fn (mut w Walker) string_inter_literal_uses_isnil(node ast.StringInterLiteral) b
 		}
 	}
 	return false
+}
+
+fn (mut w Walker) mark_string_inter_literal_generic_str_methods(node ast.StringInterLiteral) {
+	for i in 0 .. node.exprs.len {
+		if i >= node.expr_types.len {
+			break
+		}
+		w.mark_generic_str_method_for_type(node.expr_types[i])
+	}
+}
+
+fn (mut w Walker) mark_assert_generic_str_methods(node ast.AssertStmt) {
+	if node.expr is ast.InfixExpr {
+		w.mark_generic_str_method_for_type(node.expr.left_type)
+		w.mark_generic_str_method_for_type(node.expr.right_type)
+	}
+}
+
+fn (mut w Walker) mark_generic_str_method_for_type(source_typ ast.Type) {
+	typ := w.resolve_current_generic_type(source_typ)
+	if typ == 0 || typ == ast.void_type || typ == ast.string_type {
+		return
+	}
+	fkey, _ := w.resolve_method_fkey_for_type(typ, 'str')
+	if fkey == '' {
+		return
+	}
+	concrete_type_lists := w.table.fn_generic_types[fkey]
+	if concrete_type_lists.len == 0 {
+		return
+	}
+	for concrete_types in concrete_type_lists {
+		if concrete_types.len == 0 {
+			continue
+		}
+		w.record_used_fn_generic_types(fkey, concrete_types)
+		if mut fn_decl := w.all_fns[fkey] {
+			w.fn_decl_with_concrete_types(mut fn_decl, concrete_types)
+		} else {
+			w.mark_fn_as_used(fkey)
+		}
+	}
 }
 
 fn (mut w Walker) mark_simple_string_inter_literal(node ast.StringInterLiteral) {
