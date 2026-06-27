@@ -1411,7 +1411,13 @@ fn (mut g Gen) materialize_string(val_id int, reg int) {
 	g.macho.add_reloc(g.macho.text_data.len, str_sym_idx, arm64_reloc_pageoff12, false)
 	g.emit32(asm_add_pageoff(Reg(reg)))
 
-	g.emit_mov_imm(10, i64(str_len))
+	// x10 holds the string struct's second 8-byte word: `len` in the low 32 bits and
+	// `is_lit` in the high 32 bits (matching `string{ str, len int, is_lit int }`).
+	// Every caller stores/moves x10 as that whole word, so set is_lit=1 here: string
+	// literals point at static data and must NOT be passed to free() (`string.free`
+	// returns early only when is_lit==1). Without this, freeing a literal (e.g. the
+	// `mut res := ''` in os.real_path) aborts with a libmalloc "pointer not allocated".
+	g.emit_mov_imm(10, i64(str_len) | (i64(1) << 32))
 }
 
 // ==================== Global access ====================
