@@ -163,6 +163,18 @@ fn backtrace_addr2line_executable(executable string, current_executable_name str
 	return executable
 }
 
+fn backtrace_shell_quote(s string) string {
+	mut quoted := "'"
+	for i in 0 .. s.len {
+		if s[i] == `'` {
+			quoted += "'\\''"
+		} else {
+			quoted += s[i].ascii_str()
+		}
+	}
+	return quoted + "'"
+}
+
 @[direct_array_access]
 fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	$if android {
@@ -199,7 +211,8 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 						current_executable_name)
 					addr := sframe.all_after('[').all_before(']')
 					beforeaddr := sframe.all_before('[')
-					cmd := 'addr2line -e ' + addr2line_executable + ' ' + addr
+					cmd := 'addr2line -e ' + backtrace_shell_quote(addr2line_executable) + ' ' +
+						backtrace_shell_quote(addr)
 					// taken from os, to avoid depending on the os module inside builtin.v
 					f := C.popen(&char(cmd.str), c'r')
 					if f == unsafe { nil } {
