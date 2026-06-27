@@ -633,7 +633,7 @@ fn (t &Transformer) call_param_types(call_name string) []types.Type {
 		return []types.Type{}
 	}
 	params := t.tc.fn_param_types[call_name] or { return []types.Type{} }
-	return params.clone()
+	return params
 }
 
 // call_is_variadic updates call is variadic state for Transformer.

@@ -184,17 +184,20 @@ pub fn transform_with_used_opt(mut a flat.FlatAst, tc &types.TypeChecker, used_f
 	mut augmented_used_fns := used_fns.clone()
 	mut t := new_transformer(mut a, tc, augmented_used_fns)
 	t.prepare()
-	// Transform roughly grows the node/children arrays by ~75%. Reserve that capacity
-	// up front so they don't double past it (the parsed AST already overshoots to the
-	// next power of two, wasting ~40MB, and each doubling briefly holds both the old and
-	// new arrays — the dominant peak-RSS contributor under -gc none).
-	reserve_nodes := a.nodes.len * 7 / 4 - a.nodes.cap
-	if reserve_nodes > 0 {
-		unsafe { a.nodes.grow_cap(reserve_nodes) }
-	}
-	reserve_children := a.children.len * 7 / 4 - a.children.cap
-	if reserve_children > 0 {
-		unsafe { a.children.grow_cap(reserve_children) }
+	if want_parallel {
+		// Transform roughly grows the node/children arrays by ~75%. Reserve that capacity
+		// up front so they don't double past it (the parsed AST already overshoots to the
+		// next power of two, wasting ~40MB, and each doubling briefly holds both the old and
+		// new arrays — the dominant peak-RSS contributor under -gc none). The serial path is
+		// latency-sensitive and does not clone worker ASTs, so let it grow naturally.
+		reserve_nodes := a.nodes.len * 7 / 4 - a.nodes.cap
+		if reserve_nodes > 0 {
+			unsafe { a.nodes.grow_cap(reserve_nodes) }
+		}
+		reserve_children := a.children.len * 7 / 4 - a.children.cap
+		if reserve_children > 0 {
+			unsafe { a.children.grow_cap(reserve_children) }
+		}
 	}
 	was_parallel := t.transform_all_dispatch(want_parallel)
 	return augmented_used_fns, was_parallel
@@ -219,6 +222,9 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		a:                     a
 		tc:                    unsafe { tc }
 		pointer_value_lvalues: map[string]bool{}
+		escaping_amp_ptrs:     map[string]bool{}
+		escaping_amp_sources:  map[string]bool{}
+		heaped_amp_locals:     map[string]bool{}
 		used_fns:              used_fns.clone()
 	}
 }
@@ -864,6 +870,9 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.smartcast_stack = []SmartcastContext{}
 	w.pending_stmts = []flat.NodeId{}
 	w.pointer_value_lvalues = map[string]bool{}
+	w.escaping_amp_ptrs = map[string]bool{}
+	w.escaping_amp_sources = map[string]bool{}
+	w.heaped_amp_locals = map[string]bool{}
 	w.temp_counter = 0
 	w.cur_file = ''
 	w.cur_module = ''
@@ -1266,12 +1275,7 @@ fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string
 // transform. Purely structural (no type info needed here): the type check happens
 // at rewrite time when `v`'s type is known.
 fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
-	t.escaping_amp_ptrs = map[string]bool{}
-	t.escaping_amp_sources = map[string]bool{}
-	t.heaped_amp_locals = map[string]bool{}
-	// Cleared per function: heaped locals add their names below (in heap_escaping_source_decl);
-	// for-loop element vars set and restore their own entries within the loop body.
-	t.pointer_value_lvalues = map[string]bool{}
+	t.reset_escaping_amp_state()
 	mut amp_ptrs := map[string]bool{}
 	mut amp_sources := map[string]string{} // pointer `p` -> source local `v`
 	mut ptr_aliases := map[string]string{} // copy `q := p` -> aliased pointer `p`
@@ -1302,6 +1306,15 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 			}
 		}
 	}
+}
+
+fn (mut t Transformer) reset_escaping_amp_state() {
+	t.escaping_amp_ptrs.clear()
+	t.escaping_amp_sources.clear()
+	t.heaped_amp_locals.clear()
+	// Cleared per function: heaped locals add their names below (in heap_escaping_source_decl);
+	// for-loop element vars set and restore their own entries within the loop body.
+	t.pointer_value_lvalues.clear()
 }
 
 // scan_escape_pass recursively collects, in a function-body subtree, (a) the LHS
@@ -1423,7 +1436,11 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			body_ids << child_id
 		}
 	}
-	t.mark_escaping_amp_ptrs(body_ids)
+	if t.cur_fn_ret_type == 'void' {
+		t.reset_escaping_amp_state()
+	} else {
+		t.mark_escaping_amp_ptrs(body_ids)
+	}
 	new_body := t.transform_stmts(body_ids)
 	// Rebuild function children: params then new body
 	start := t.a.children.len
@@ -5895,6 +5912,10 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			return ''
 		}
 		.call {
+			concrete_typ := t.concrete_node_type_name(node)
+			if concrete_typ.len > 0 {
+				return concrete_typ
+			}
 			mut ret := t.current_call_return_type(node)
 			if ret.len == 0 {
 				ret = t.get_call_return_type(id, node)
@@ -5963,6 +5984,12 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			return ''
 		}
 		.selector {
+			if t.smartcast_stack.len == 0 {
+				typ := t.concrete_node_type_name(node)
+				if typ.len > 0 {
+					return typ
+				}
+			}
 			if !isnil(t.tc) && node.children_count > 0 {
 				base := t.a.child_node(&node, 0)
 				if base.kind == .ident {

@@ -92,6 +92,93 @@ fn fn_value_type_name_from_type(typ types.Type) ?string {
 	return none
 }
 
+fn (t &Transformer) concrete_node_type_name(node flat.Node) string {
+	if node.typ.len == 0 {
+		return ''
+	}
+	typ := t.normalize_type_alias(node.typ)
+	if typ.len == 0 || typ in ['array', 'map', 'unknown'] {
+		return ''
+	}
+	if type_text_has_unresolved_generic_placeholder(typ) {
+		return ''
+	}
+	return typ
+}
+
+fn type_text_has_unresolved_generic_placeholder(typ string) bool {
+	clean := typ.trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	if is_generic_fn_placeholder_name(clean) {
+		return true
+	}
+	if clean.starts_with('&') {
+		return type_text_has_unresolved_generic_placeholder(clean[1..])
+	}
+	if clean.starts_with('mut ') {
+		return type_text_has_unresolved_generic_placeholder(clean[4..])
+	}
+	if clean.starts_with('?') || clean.starts_with('!') {
+		return type_text_has_unresolved_generic_placeholder(clean[1..])
+	}
+	if clean.starts_with('...') {
+		return type_text_has_unresolved_generic_placeholder(clean[3..])
+	}
+	if clean.starts_with('[]') {
+		return type_text_has_unresolved_generic_placeholder(clean[2..])
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			return type_text_has_unresolved_generic_placeholder(clean[4..bracket_end])
+				|| type_text_has_unresolved_generic_placeholder(clean[bracket_end + 1..])
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return type_text_has_unresolved_generic_placeholder(clean[bracket_end + 1..])
+		}
+	}
+	if !type_text_has_generic_placeholder_token(clean) {
+		return false
+	}
+	if !clean.contains('[') {
+		return true
+	}
+	_, args, ok := generic_app_parts(clean)
+	if ok {
+		for arg in args {
+			if type_text_has_unresolved_generic_placeholder(arg) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn type_text_has_generic_placeholder_token(text string) bool {
+	for i := 0; i < text.len; i++ {
+		ch := text[i]
+		if ch < `A` || ch > `Z` {
+			continue
+		}
+		prev_is_ident := i > 0 && type_text_ident_char(text[i - 1])
+		next_is_ident := i + 1 < text.len && type_text_ident_char(text[i + 1])
+		if !prev_is_ident && !next_is_ident {
+			return true
+		}
+	}
+	return false
+}
+
+fn type_text_ident_char(ch u8) bool {
+	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
+		|| (ch >= `0` && ch <= `9`) || ch == `_`
+}
+
 // resolve_selector_type resolves the type of a .selector node (e.g. `obj.field`).
 // Looks up the base expression type, then finds the field in the struct definition.
 fn (t &Transformer) resolve_selector_type(node flat.Node) string {
@@ -124,15 +211,20 @@ fn (t &Transformer) resolve_selector_type(node flat.Node) string {
 	if field_name.len == 0 {
 		return ''
 	}
-	if enum_type := t.enum_type_name_from_expr(base_id) {
-		if fields := t.enum_types[enum_type] {
-			if field_name in fields {
-				return enum_type
+	base_selector_name := t.selector_expr_name(base_id)
+	if base_selector_name.len > 0 {
+		if enum_type := t.enum_type_name_from_selector_name(base_selector_name) {
+			if fields := t.enum_types[enum_type] {
+				if field_name in fields {
+					return enum_type
+				}
 			}
 		}
-	}
-	if type_name := t.qualified_enum_type_selector_name(base_id, field_name) {
-		return type_name
+		if type_name := t.qualified_enum_type_selector_name_from_selector_name(base_selector_name,
+			field_name)
+		{
+			return type_name
+		}
 	}
 	if base_node.kind == .ident {
 		if typ := t.const_type_name('${base_node.value}.${field_name}') {
@@ -223,6 +315,10 @@ fn (t &Transformer) selector_expr_name(id flat.NodeId) string {
 // enum_type_name_from_expr converts enum type name from expr data for transform.
 fn (t &Transformer) enum_type_name_from_expr(id flat.NodeId) ?string {
 	name := t.selector_expr_name(id)
+	return t.enum_type_name_from_selector_name(name)
+}
+
+fn (t &Transformer) enum_type_name_from_selector_name(name string) ?string {
 	if name.len == 0 {
 		return none
 	}
@@ -243,6 +339,10 @@ fn (t &Transformer) enum_type_name_from_expr(id flat.NodeId) ?string {
 // supports helper handling in transform.
 fn (t &Transformer) qualified_enum_type_selector_name(base_id flat.NodeId, field_name string) ?string {
 	base := t.selector_expr_name(base_id)
+	return t.qualified_enum_type_selector_name_from_selector_name(base, field_name)
+}
+
+fn (t &Transformer) qualified_enum_type_selector_name_from_selector_name(base string, field_name string) ?string {
 	if base.len == 0 || field_name.len == 0 {
 		return none
 	}
@@ -265,6 +365,9 @@ fn (t &Transformer) lookup_struct_field_type(type_name string, field_name string
 	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
 	for f in lookup.info.fields {
 		if f.name == field_name {
+			if !lookup.owner_type.contains('[') {
+				return f.typ
+			}
 			return t.normalize_field_type(f.typ, lookup.owner_type)
 		}
 	}
