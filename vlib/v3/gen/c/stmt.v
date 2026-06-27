@@ -631,14 +631,6 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 							} else {
 								''
 							}
-							if g.cur_fn_ret is types.ResultType {
-								if _ := g.ierror_concrete_name(expr_type) {
-									g.write('return (${ct}){.ok = false, .err = ')
-									g.gen_ierror_from_expr(ret_id)
-									g.writeln('};')
-									return
-								}
-							}
 							if expr_ct != base_ct && struct_init_ct != base_ct
 								&& !g.type_names_match(expr_value_type, base)
 								&& !g.expr_is_nil_pointer_payload(ret_id, base)
@@ -1015,11 +1007,6 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		} else {
 			''
 		}
-		if g.cur_fn_ret is types.ResultType {
-			if err := g.ierror_from_expr_string(ret_id) {
-				return '(${ct}){.ok = false, .err = ${err}}'
-			}
-		}
 		if expr_ct != base_ct && struct_init_ct != base_ct
 			&& !g.type_names_match(expr_value_type, base)
 			&& !g.expr_is_nil_pointer_payload(ret_id, base)
@@ -1060,11 +1047,18 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 }
 
 fn (mut g FlatGen) optional_error_return_expr(ret_id flat.NodeId, expr_type types.Type, ct string) ?string {
+	if err := g.ierror_from_expr_string(ret_id) {
+		return '(${ct}){.ok = false, .err = ${err}}'
+	}
+	if g.is_ierror_type_name(expr_type.name()) {
+		return '(${ct}){.ok = false, .err = ${g.expr_to_string(ret_id)}}'
+	}
 	if !g.type_can_return_as_ierror(expr_type) {
 		return none
 	}
+	iface := g.ierror_interface_name() or { return none }
 	err := g.interface_value_to_string(ret_id, types.Type(types.Interface{
-		name: 'IError'
+		name: iface
 	}))
 	return '(${ct}){.ok = false, .err = ${err}}'
 }

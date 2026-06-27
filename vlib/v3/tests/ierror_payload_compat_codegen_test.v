@@ -14,6 +14,19 @@ fn build_v3() string {
 	return v3_bin
 }
 
+fn run_bad_ierror_payload(v3_bin string, name string, source string, expected string, detail string) {
+	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_${name}_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, source) or { panic(err) }
+	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_${name}_out_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains(expected), compile.output
+	assert compile.output.contains(detail), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+}
+
 fn test_ierror_method_implementers_can_be_result_payloads() {
 	v3_bin := build_v3()
 
@@ -67,6 +80,101 @@ fn main() {
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
+}
+
+fn test_ierror_values_can_be_returned_as_result_errors() {
+	v3_bin := build_v3()
+
+	root := os.join_path(os.temp_dir(), 'v3_ierror_return_value_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, "fn direct() !int {
+	return error('direct boom')
+}
+
+fn main() {
+	direct() or {
+		assert err.msg() == 'direct boom'
+	}
+	println('ok')
+}
+") or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_ierror_return_value_input')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}
+
+fn test_bare_ierror_payload_is_not_call_argument_result_value() {
+	v3_bin := build_v3()
+	run_bad_ierror_payload(v3_bin, 'bad_call_arg', "struct CustomError {
+	text string
+}
+
+fn (err CustomError) msg() string {
+	return err.text
+}
+
+fn (err CustomError) code() int {
+	return 77
+}
+
+fn takes(x !int) {
+	_ = x
+}
+
+fn main() {
+	takes(CustomError{
+		text: 'payload'
+	})
+}
+",
+		'cannot use', 'CustomError')
+	run_bad_ierror_payload(v3_bin, 'bad_ierror_call_arg', "fn takes(x !int) {
+	_ = x
+}
+
+fn main() {
+	err := error('boom')
+	takes(err)
+}
+",
+		'cannot use', 'IError')
+}
+
+fn test_bare_ierror_payload_is_not_assigned_to_result_value() {
+	v3_bin := build_v3()
+	run_bad_ierror_payload(v3_bin, 'bad_assignment', "struct CustomError {
+	text string
+}
+
+fn (err CustomError) msg() string {
+	return err.text
+}
+
+fn (err CustomError) code() int {
+	return 77
+}
+
+fn ok() !int {
+	return 1
+}
+
+fn main() {
+	mut value := ok()
+	value = CustomError{
+		text: 'payload'
+	}
+}
+",
+		'cannot assign', 'CustomError')
 }
 
 fn test_unqualified_builtin_error_in_imported_module_is_result_payload() {

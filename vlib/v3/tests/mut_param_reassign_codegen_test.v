@@ -105,6 +105,78 @@ fn main() {
 	assert out == 'ok'
 }
 
+fn test_multi_return_assign_to_mut_array_param_uses_base_type() {
+	v3_bin := mut_param_reassign_build_v3()
+	out := mut_param_reassign_run_good(v3_bin, 'mut_array_param_multi_return_reassign', 'fn pair() ([]int, int) {
+	return [1, 2], 7
+}
+
+fn replace(mut xs []int) {
+	xs, _ = pair()
+}
+
+fn main() {
+	mut xs := [0]
+	replace(mut xs)
+	assert xs.len == 2
+	assert xs[0] == 1
+	assert xs[1] == 2
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
+fn test_multi_return_assign_to_mut_param_after_inner_shadow() {
+	v3_bin := mut_param_reassign_build_v3()
+	out := mut_param_reassign_run_good(v3_bin, 'mut_array_param_after_inner_shadow', 'fn pair() ([]int, int) {
+	return [1], 0
+}
+
+fn replace(mut xs []int) {
+	if true {
+		mut xs := 0
+		_ = xs
+	}
+	if true {
+		xs, _ = pair()
+	}
+}
+
+fn main() {
+	mut xs := [0]
+	replace(mut xs)
+	assert xs.len == 1
+	assert xs[0] == 1
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
+fn test_pointer_local_shadow_of_mut_param_uses_local_binding() {
+	v3_bin := mut_param_reassign_build_v3()
+	out := mut_param_reassign_run_good(v3_bin, 'mut_array_param_pointer_shadow', 'fn f(mut xs []int) {
+	mut local := []int{}
+	mut other := []int{}
+	{
+		xs := &local
+		xs = &other
+		_ = xs
+	}
+}
+
+fn main() {
+	mut xs := [0]
+	f(mut xs)
+	assert xs.len == 1
+	assert xs[0] == 0
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {
 	v3_bin := mut_param_reassign_build_v3()
 	mut_param_reassign_run_bad(v3_bin, 'bad_mut_array_param_reassign_elem', "fn bad(mut xs []int) {
@@ -137,4 +209,20 @@ fn main() {
 }
 ',
 		'cannot assign `[]int` to `&[]int`')
+	mut_param_reassign_run_bad(v3_bin, 'bad_shadowed_mut_param_multi_return', 'fn pair() ([]int, int) {
+	mut xs := []int{}
+	return xs, 7
+}
+
+fn replace(mut xs []int) {
+	mut xs := 0
+	xs, _ = pair()
+}
+
+fn main() {
+	mut xs := []int{}
+	replace(mut xs)
+}
+',
+		'cannot assign `[]int` to `int`')
 }

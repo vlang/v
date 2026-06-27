@@ -9,6 +9,10 @@ pub mut:
 	types  []Type
 }
 
+struct ScopeBindingOwner {
+	scope &Scope = unsafe { nil }
+}
+
 // new_scope returns a reusable type-checker scope with an optional parent.
 pub fn new_scope(parent &Scope) &Scope {
 	unsafe {
@@ -40,6 +44,24 @@ pub fn (s &Scope) lookup(name string) ?Type {
 	}
 	if s.parent != unsafe { nil } {
 		return s.parent.lookup(name)
+	}
+	return none
+}
+
+// lookup_owner returns the nearest scope that owns a visible binding for `name`.
+fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
+	if name.len == 0 {
+		return none
+	}
+	for i := s.names.len - 1; i >= 0; i-- {
+		if s.names[i] == name {
+			return ScopeBindingOwner{
+				scope: s
+			}
+		}
+	}
+	if s.parent != unsafe { nil } {
+		return s.parent.lookup_owner(name)
 	}
 	return none
 }

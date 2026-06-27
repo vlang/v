@@ -244,19 +244,20 @@ pub mut:
 	// Scope depth at which each method-value local was marked, so a reassignment to a
 	// non-method value only clears the marker when it dominates later uses (same-or-shallower
 	// scope); a reassignment in a deeper conditional/loop scope keeps the maybe-method marker.
-	method_value_local_depth      map[string]int
-	cur_fn_node_id                int = -1
-	cur_fn_mut_param_base_types   map[string]Type
-	expr_type_values              []Type // node_id -> complex/contextual resolved type
-	expr_type_set                 []bool
-	checking_nodes                []bool
-	diagnose_unknown_calls        bool
-	reject_unlowered_map_mutation bool
-	reject_unsupported_generics   bool
-	diagnostic_files              map[string]bool
-	cur_fn_ret_type               Type = Type(void_)
-	smartcasts                    map[string]Type
-	selfhost                      bool
+	method_value_local_depth        map[string]int
+	cur_fn_node_id                  int = -1
+	cur_fn_mut_param_base_types     map[string]Type
+	cur_fn_mut_param_binding_owners map[string]ScopeBindingOwner
+	expr_type_values                []Type // node_id -> complex/contextual resolved type
+	expr_type_set                   []bool
+	checking_nodes                  []bool
+	diagnose_unknown_calls          bool
+	reject_unlowered_map_mutation   bool
+	reject_unsupported_generics     bool
+	diagnostic_files                map[string]bool
+	cur_fn_ret_type                 Type = Type(void_)
+	smartcasts                      map[string]Type
+	selfhost                        bool
 mut:
 	type_cache &TypeCache = unsafe { nil }
 }
@@ -319,6 +320,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		method_value_locals:          map[string]bool{}
 		method_value_local_depth:     map[string]int{}
 		cur_fn_mut_param_base_types:  map[string]Type{}
+		cur_fn_mut_param_binding_owners: map[string]ScopeBindingOwner{}
 		expr_type_values:             []Type{len: a.nodes.len, init: Type(void_)}
 		expr_type_set:                []bool{len: a.nodes.len}
 		checking_nodes:               []bool{len: a.nodes.len}
@@ -1322,6 +1324,9 @@ fn (mut tc TypeChecker) insert_fn_param_binding(p flat.Node) {
 	tc.cur_scope.insert(p.value, typ)
 	if p.is_mut {
 		tc.cur_fn_mut_param_base_types[p.value] = mut_param_base_type(typ)
+		tc.cur_fn_mut_param_binding_owners[p.value] = ScopeBindingOwner{
+			scope: tc.cur_scope
+		}
 	}
 }
 
@@ -1362,7 +1367,9 @@ pub fn (mut tc TypeChecker) annotate_types_with_used(used_fns map[string]bool) {
 				continue
 			}
 			mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
+			mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
 			tc.cur_fn_mut_param_base_types = map[string]Type{}
+			tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 			tc.cur_scope = tc.file_scope
 			tc.push_scope()
 			for pi in 0 .. node.children_count {
@@ -1378,6 +1385,7 @@ pub fn (mut tc TypeChecker) annotate_types_with_used(used_fns map[string]bool) {
 			}
 			tc.pop_scope()
 			tc.cur_fn_mut_param_base_types = saved_mut_params.move()
+			tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
 		}
 	}
 }
@@ -1865,7 +1873,9 @@ pub fn (mut tc TypeChecker) check_semantics() {
 			}
 			.fn_decl {
 				mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
+				mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
 				tc.cur_fn_mut_param_base_types = map[string]Type{}
+				tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 				tc.cur_fn_ret_type = tc.parse_type(node.typ)
 				tc.cur_fn_node_id = i
@@ -1891,6 +1901,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				tc.pop_scope()
 				tc.cur_fn_ret_type = Type(void_)
 				tc.cur_fn_mut_param_base_types = saved_mut_params.move()
+				tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
 			}
 			.c_fn_decl {
 				if tc.reject_unsupported_generics {
@@ -3530,7 +3541,9 @@ fn (mut tc TypeChecker) check_or_expr(node flat.Node) {
 fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	saved_ret := tc.cur_fn_ret_type
 	mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
+	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
 	tc.cur_fn_mut_param_base_types = map[string]Type{}
+	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_fn_ret_type = tc.parse_type(node.typ)
 	tc.push_scope()
 	for i in 0 .. node.children_count {
@@ -3548,6 +3561,7 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	tc.pop_scope()
 	tc.cur_fn_ret_type = saved_ret
 	tc.cur_fn_mut_param_base_types = saved_mut_params.move()
+	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
 }
 
 // check_lambda_expr validates check lambda expr state for types.
@@ -3984,9 +3998,10 @@ fn (mut tc TypeChecker) check_multi_return_assign(id flat.NodeId, node flat.Node
 		}
 		for i, lhs_id in lhs_ids {
 			lhs_type := tc.resolve_lvalue_type(lhs_id)
-			if !tc.type_compatible(rhs_type.types[i], lhs_type) {
+			expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
+			if !tc.type_compatible(rhs_type.types[i], expected_type) {
 				tc.type_mismatch(.assignment_mismatch,
-					'cannot assign `${rhs_type.types[i].name()}` to `${lhs_type.name()}`', id)
+					'cannot assign `${rhs_type.types[i].name()}` to `${expected_type.name()}`', id)
 			}
 		}
 		return true
@@ -4020,10 +4035,33 @@ fn (tc &TypeChecker) assignment_expected_type(lhs_id flat.NodeId, lhs_type Type)
 	lhs := tc.a.nodes[int(lhs_id)]
 	if lhs.kind == .ident {
 		if base := tc.cur_fn_mut_param_base_types[lhs.value] {
-			return base
+			if tc.lvalue_matches_mut_param(lhs_type, base)
+				&& tc.mut_param_binding_matches_lvalue(lhs.value) {
+				return base
+			}
 		}
 	}
 	return lhs_type
+}
+
+fn (tc &TypeChecker) lvalue_matches_mut_param(lhs_type Type, base_type Type) bool {
+	if lhs_type is Pointer {
+		return tc.type_compatible(lhs_type.base_type, base_type)
+			&& tc.type_compatible(base_type, lhs_type.base_type)
+	}
+	return false
+}
+
+fn (tc &TypeChecker) mut_param_binding_matches_lvalue(name string) bool {
+	if tc.cur_scope == unsafe { nil } {
+		return false
+	}
+	if param_owner := tc.cur_fn_mut_param_binding_owners[name] {
+		if owner := tc.cur_scope.lookup_owner(name) {
+			return owner.scope == param_owner.scope
+		}
+	}
+	return false
 }
 
 // resolve_lvalue_type resolves resolve lvalue type information for types.
@@ -4136,6 +4174,14 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 }
 
 fn (tc &TypeChecker) return_type_compatible(actual Type, expected Type) bool {
+	if expected is ResultType {
+		if is_ierror_type(actual) || tc.type_embeds_error(actual) {
+			return true
+		}
+		if tc.type_compatible_with_ierror_payload(actual) {
+			return true
+		}
+	}
 	return tc.type_compatible(actual, expected)
 }
 
@@ -8188,12 +8234,6 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 		return tc.type_compatible(actual, expected.base_type)
 	}
 	if expected is ResultType {
-		if is_ierror_type(actual) || tc.type_embeds_error(actual) {
-			return true
-		}
-		if tc.type_compatible_with_ierror_payload(actual) {
-			return true
-		}
 		if actual is ResultType {
 			return tc.type_compatible(actual.base_type, expected.base_type)
 		}
