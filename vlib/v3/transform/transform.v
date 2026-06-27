@@ -7647,6 +7647,8 @@ fn (t &Transformer) interface_pattern_candidates(pattern string) []string {
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 			candidates << '${t.cur_module}.${pattern}'
 		}
+	} else if resolved := t.resolve_import_alias_pattern(pattern) {
+		candidates << resolved
 	}
 	qpattern := t.tc.qualify_name(pattern)
 	if qpattern != pattern {
@@ -7662,6 +7664,19 @@ fn (t &Transformer) interface_pattern_candidates(pattern string) []string {
 		result << candidate
 	}
 	return result
+}
+
+fn (t &Transformer) resolve_import_alias_pattern(pattern string) ?string {
+	if t.cur_file.len == 0 {
+		return none
+	}
+	dot := pattern.index_u8(`.`)
+	if dot <= 0 {
+		return none
+	}
+	alias := pattern[..dot]
+	resolved := t.tc.file_imports[file_import_key(t.cur_file, alias)] or { return none }
+	return '${resolved}.${pattern[dot + 1..]}'
 }
 
 // match_branch_all_type_patterns supports match branch all type patterns handling for Transformer.

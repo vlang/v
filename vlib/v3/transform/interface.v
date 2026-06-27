@@ -22,6 +22,15 @@ fn (t &Transformer) resolve_interface_type_name(name string) string {
 	if clean in t.tc.interface_names {
 		return clean
 	}
+	if !clean.contains('.') && t.cur_file.len > 0 {
+		for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {
+			[]string{}
+		} {
+			if candidate in t.tc.interface_names {
+				return candidate
+			}
+		}
+	}
 	if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
 		qname := '${t.cur_module}.${clean}'

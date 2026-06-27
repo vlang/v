@@ -4416,13 +4416,22 @@ fn (tc &TypeChecker) type_expr_name(id flat.NodeId) string {
 	node := tc.a.nodes[int(id)]
 	match node.kind {
 		.ident {
+			if resolved := tc.resolve_selective_import_type_symbol(node.value) {
+				return resolved
+			}
 			return node.value
 		}
 		.selector {
 			if node.children_count == 0 {
 				return node.value
 			}
-			base := tc.type_expr_name(tc.a.child(&node, 0))
+			base_id := tc.a.child(&node, 0)
+			base_node := tc.a.nodes[int(base_id)]
+			base := if base_node.kind == .ident {
+				tc.resolve_import_alias(base_node.value) or { tc.type_expr_name(base_id) }
+			} else {
+				tc.type_expr_name(base_id)
+			}
 			if base.len == 0 {
 				return node.value
 			}
@@ -7258,6 +7267,8 @@ fn (tc &TypeChecker) interface_match_pattern_candidates(pattern string) []string
 		if tc.cur_module.len > 0 && tc.cur_module != 'main' && tc.cur_module != 'builtin' {
 			candidates << '${tc.cur_module}.${pattern}'
 		}
+	} else if resolved := tc.resolve_import_alias_pattern(pattern) {
+		candidates << resolved
 	}
 	qpattern := tc.qualify_name(pattern)
 	if qpattern != pattern {
@@ -7273,6 +7284,16 @@ fn (tc &TypeChecker) interface_match_pattern_candidates(pattern string) []string
 		result << candidate
 	}
 	return result
+}
+
+fn (tc &TypeChecker) resolve_import_alias_pattern(pattern string) ?string {
+	dot := pattern.index_u8(`.`)
+	if dot <= 0 {
+		return none
+	}
+	alias := pattern[..dot]
+	resolved := tc.resolve_import_alias(alias) or { return none }
+	return '${resolved}.${pattern[dot + 1..]}'
 }
 
 // check_is_expr validates check is expr state for types.

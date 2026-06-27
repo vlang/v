@@ -182,6 +182,14 @@ fn test_type_checker_reports_core_semantic_errors() {
 	run_bad(v3_bin, 'bad_sum_constructor_extra_arg_as_call_arg',
 		'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn use(t Tree[int]) {}\nfn main() {\n\tuse(Tree[int](Empty{}, side_effect()))\n}\n',
 		'argument count mismatch for `Tree[int]`: expected 1, got 2')
+	run_bad_project(v3_bin, 'bad_imported_sum_constructor_extra_arg', {
+		'trees/trees.v': 'module trees\n\npub struct Empty {}\n\npub struct Node[T] {\n\tpub:\n\tvalue T\n}\n\npub type Tree[T] = Empty | Node[T]\n\npub fn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\n'
+		'main.v':        'import trees { Empty, Tree, side_effect }\n\nfn main() {\n\t_ := Tree[int](Empty{}, side_effect())\n}\n'
+	}, 'main.v', 'argument count mismatch for `trees.Tree[int]`: expected 1, got 2')
+	run_bad_project(v3_bin, 'bad_aliased_sum_constructor_extra_arg', {
+		'trees/trees.v': 'module trees\n\npub struct Empty {}\n\npub struct Node[T] {\n\tpub:\n\tvalue T\n}\n\npub type Tree[T] = Empty | Node[T]\n\npub fn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\n'
+		'main.v':        'import trees as tr\n\nfn main() {\n\t_ := tr.Tree[int](tr.Empty{}, tr.side_effect())\n}\n'
+	}, 'main.v', 'argument count mismatch for `trees.Tree[int]`: expected 1, got 2')
 	run_bad(v3_bin, 'bad_unknown_decl_type', 'fn f(x Missing) {}\nfn main() {}\n',
 		'unknown type `Missing`')
 	run_bad(v3_bin, 'bad_unknown_generic_application_base',

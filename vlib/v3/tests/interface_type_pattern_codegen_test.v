@@ -150,3 +150,91 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true\nfalse\ntrue\nfalse\ntrue\nfalse\nfoo\nbar\nAda:37\nb:4'
 }
+
+fn test_interface_type_patterns_resolve_import_aliases() {
+	v3_bin := build_v3()
+
+	root := os.join_path(os.temp_dir(), 'v3_interface_type_pattern_alias_${os.getpid()}')
+	mod_dir := os.join_path(root, 'shapes')
+	os.mkdir_all(mod_dir) or { panic(err) }
+	os.write_file(os.join_path(mod_dir, 'shapes.v'), 'module shapes
+
+pub interface Shape {
+	area() int
+}
+
+pub struct Rect {
+pub:
+	w int
+}
+
+pub fn (r Rect) area() int {
+	return r.w
+}
+
+pub struct Circle {
+pub:
+	r int
+}
+
+pub fn (c Circle) area() int {
+	return c.r
+}
+
+pub fn make_rect() Shape {
+	return Rect{
+		w: 3
+	}
+}
+
+pub fn make_circle() Shape {
+	return Circle{
+		r: 4
+	}
+}
+') or {
+		panic(err)
+	}
+
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, 'import shapes as sh
+import shapes { Shape }
+
+fn is_rect(s Shape) bool {
+	return s is sh.Rect
+}
+
+fn classify(s Shape) string {
+	return match s {
+		sh.Rect { "rect" }
+		else { "other" }
+	}
+}
+
+fn main() {
+	rect := sh.make_rect()
+	circle := sh.make_circle()
+	println(is_rect(rect).str())
+	println(is_rect(circle).str())
+	println(classify(rect))
+	println(classify(circle))
+}
+') or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_interface_type_pattern_alias_out_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	c_code := os.read_file('${bin}.c') or { '' }
+	assert c_code.contains('._typ =='), c_code
+	assert !c_code.contains('return true;\\n}\\n\\nstring classify'), c_code
+	assert !c_code.contains('s == shapes__Rect'), c_code
+	assert !c_code.contains('s == sh__Rect'), c_code
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'true\nfalse\nrect\nother'
+}

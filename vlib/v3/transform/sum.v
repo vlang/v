@@ -132,15 +132,7 @@ fn (t &Transformer) is_interface_type_name(name string) bool {
 	if name.len == 0 || isnil(t.tc) {
 		return false
 	}
-	clean := t.trim_pointer_type(t.normalize_type_alias(name))
-	if clean == 'IError' || clean in t.tc.interface_names {
-		return true
-	}
-	if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
-		&& t.cur_module != 'builtin' {
-		return '${t.cur_module}.${clean}' in t.tc.interface_names
-	}
-	return false
+	return t.resolve_interface_type_name(name).len > 0
 }
 
 // interface_variant_type supports interface variant type handling for Transformer.
