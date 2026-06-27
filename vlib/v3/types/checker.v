@@ -1718,7 +1718,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				is_disabled_stub := node.value in tc.a.disabled_fns
 				if !type_allows_implicit_return(tc.cur_fn_ret_type)
 					&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub
-					&& node.generic_params.len == 0 && tc.should_diagnose(flat.NodeId(i)) {
+					&& tc.should_diagnose(flat.NodeId(i)) {
 					tc.record_error(.return_mismatch,
 						'missing return at end of function `${node.value}`; expected `${tc.cur_fn_ret_type.name()}`',
 						flat.NodeId(i))

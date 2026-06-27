@@ -74,3 +74,9 @@ fn test_reject_escaping_capturing_fn_literals() {
 		'fn main() {\n\tx := 1\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\tmut cbs := []fn () int{}\n\tcbs << f\n}\n',
 		'capturing fn literal cannot be stored or returned')
 }
+
+fn test_generic_functions_report_missing_return() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_generic_missing_return', 'fn f[T]() int {\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+}
