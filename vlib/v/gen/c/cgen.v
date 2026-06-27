@@ -78,6 +78,7 @@ mut:
 	pcs_declarations                     strings.Builder            // -prof profile counter declarations for each function
 	cov_declarations                     strings.Builder            // -cov coverage
 	embedded_data                        strings.Builder            // data to embed in the executable/binary
+	interface_index_definitions          strings.Builder            // real interface index symbols for -parallel-cc helpers
 	shared_types                         strings.Builder            // shared/lock types
 	shared_functions                     strings.Builder            // shared constructors
 	out_options_forward                  strings.Builder            // forward `option_xxxx` types
@@ -399,6 +400,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		pcs_declarations:              strings.new_builder(100)
 		cov_declarations:              strings.new_builder(100)
 		embedded_data:                 strings.new_builder(1000)
+		interface_index_definitions:   strings.new_builder(100)
 		out_options_forward:           strings.new_builder(100)
 		out_options:                   strings.new_builder(100)
 		out_results_forward:           strings.new_builder(100)
@@ -899,6 +901,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	if g.embedded_data.len > 0 {
 		helpers.write_string2('\n// V embedded data:\n', g.embedded_data.str())
 	}
+	if g.interface_index_definitions.len > 0 {
+		helpers.write_string2('\n// V interface index definitions:\n',
+			g.interface_index_definitions.str())
+	}
 	if g.pref.parallel_cc {
 		helpers.writeln('\n// V global/const non-precomputed definitions:')
 		for var_name in g.sorted_global_const_names {
@@ -1036,6 +1042,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		cov_declarations:                   strings.new_builder(100)
 		hotcode_definitions:                strings.new_builder(100)
 		embedded_data:                      strings.new_builder(1000)
+		interface_index_definitions:        strings.new_builder(100)
 		out_options_forward:                strings.new_builder(100)
 		out_options:                        strings.new_builder(100)
 		out_results_forward:                strings.new_builder(100)
@@ -1124,6 +1131,7 @@ pub fn (mut g Gen) free_builders() {
 		g.cov_declarations.free()
 		g.hotcode_definitions.free()
 		g.embedded_data.free()
+		g.interface_index_definitions.free()
 		g.shared_types.free()
 		g.shared_functions.free()
 		g.channel_definitions.free()
@@ -14147,6 +14155,11 @@ fn (mut g Gen) interface_table() string {
 			// That keeps stray bytes from overlapping storage, like unions, from
 			// aliasing a valid concrete interface variant.
 			interface_index_name := '_${interface_name}_${cctype}_index'
+			interface_index_case_name := if g.pref.use_cache {
+				'${interface_index_name}_enum'
+			} else {
+				interface_index_name
+			}
 			if already_generated_mwrappers[interface_index_name] > 0 {
 				continue
 			}
@@ -14236,8 +14249,15 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 return ${cast_shared_struct_str};
 }')
 				if shared_interface_mtx_helper_needed {
-					shared_interface_mtx_cases.writeln('\t\tcase ${interface_index_name}:')
-					shared_interface_mtx_cases.writeln('\t\t\treturn &(((__shared__${cctype}*)((char*)x->val._${cctype} - __offsetof(__shared__${cctype}, val)))->mtx);')
+					mtx_expr := '&(((__shared__${cctype}*)((char*)x->val._${cctype} - __offsetof(__shared__${cctype}, val)))->mtx)'
+					if g.pref.build_mode == .build_module {
+						shared_interface_mtx_cases.writeln('\tif (x->val._typ == ${interface_index_name}) {')
+						shared_interface_mtx_cases.writeln('\t\treturn ${mtx_expr};')
+						shared_interface_mtx_cases.writeln('\t}')
+					} else {
+						shared_interface_mtx_cases.writeln('\t\tcase ${interface_index_case_name}:')
+						shared_interface_mtx_cases.writeln('\t\t\treturn ${mtx_expr};')
+					}
 				}
 			}
 
@@ -14501,7 +14521,24 @@ return ${cast_shared_struct_str};
 			}
 			iin_idx := already_generated_mwrappers[interface_index_name] - iinidx_minimum_base + 1
 			if g.pref.build_mode != .build_module {
-				sb.writeln('enum { ${interface_index_name} = ${iin_idx} };')
+				if g.pref.use_cache {
+					// With -usecache, modules like `builtin` are compiled separately
+					// in build_module mode, where the index is emitted as
+					// `extern const u32 ..._index;` and referenced. The main program
+					// must therefore provide a real, externally-linked definition
+					// (not a compile-time `enum` constant, which has no linker
+					// symbol), otherwise the reference is undefined at link time -
+					// e.g. `undefined symbol: _IError_None___index` on FreeBSD/clang.
+					sb.writeln('enum { ${interface_index_case_name} = ${iin_idx} };')
+					if g.pref.parallel_cc {
+						sb.writeln('extern const u32 ${interface_index_name};')
+						g.interface_index_definitions.writeln('const u32 ${interface_index_name} = ${interface_index_case_name};')
+					} else {
+						sb.writeln('const u32 ${interface_index_name} = ${interface_index_case_name};')
+					}
+				} else {
+					sb.writeln('enum { ${interface_index_name} = ${iin_idx} };')
+				}
 			} else {
 				sb.writeln('extern const u32 ${interface_index_name};')
 			}
@@ -14566,11 +14603,16 @@ return ${cast_shared_struct_str};
 			cast_functions.writeln('
 static inline sync__RwMutex* ${shared_interface_mtx_helper_name}(__shared__${interface_name}* x) {')
 			if shared_interface_mtx_cases.len > 0 {
-				cast_functions.writeln('\tswitch (x->val._typ) {')
-				cast_functions.write_string(shared_interface_mtx_cases.str())
-				cast_functions.writeln('\t\tdefault:')
-				cast_functions.writeln('\t\t\treturn &x->mtx;')
-				cast_functions.writeln('\t}')
+				if g.pref.build_mode == .build_module {
+					cast_functions.write_string(shared_interface_mtx_cases.str())
+					cast_functions.writeln('\treturn &x->mtx;')
+				} else {
+					cast_functions.writeln('\tswitch (x->val._typ) {')
+					cast_functions.write_string(shared_interface_mtx_cases.str())
+					cast_functions.writeln('\t\tdefault:')
+					cast_functions.writeln('\t\t\treturn &x->mtx;')
+					cast_functions.writeln('\t}')
+				}
 			} else {
 				cast_functions.writeln('\treturn &x->mtx;')
 			}
