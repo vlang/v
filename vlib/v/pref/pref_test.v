@@ -383,6 +383,35 @@ fn test_prealloc_overrides_explicit_gc_selection() {
 	assert prefs.build_options.join(' ').contains('-gc none')
 }
 
+fn test_no_gc_thread_local_alloc_prefers_source_bundled_boehm() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-d', 'no_gc_thread_local_alloc', target],
+		false)
+	assert prefs.gc_mode == .boehm_full_opt
+	assert 'no_gc_thread_local_alloc' in prefs.compile_defines_all
+	assert 'use_bundled_libgc' in prefs.compile_defines_all
+	assert !prefs.ccompiler.contains('tcc')
+	assert prefs.build_options.contains('-d use_bundled_libgc')
+}
+
+fn test_no_gc_thread_local_alloc_does_not_force_boehm_with_gc_none() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'none', '-d',
+		'no_gc_thread_local_alloc', target], false)
+	assert prefs.gc_mode == .no_gc
+	assert 'no_gc_thread_local_alloc' in prefs.compile_defines_all
+	assert 'use_bundled_libgc' !in prefs.compile_defines_all
+}
+
+fn test_no_gc_thread_local_alloc_keeps_explicit_dynamic_boehm() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-d', 'dynamic_boehm', '-d',
+		'no_gc_thread_local_alloc', target], false)
+	assert prefs.gc_mode == .boehm_full_opt
+	assert 'dynamic_boehm' in prefs.compile_defines_all
+	assert 'use_bundled_libgc' !in prefs.compile_defines_all
+}
+
 fn stale_windows_gc_prefs(gc_set_by_flag bool) pref.Preferences {
 	mut prefs := pref.Preferences{
 		os:                  .windows
