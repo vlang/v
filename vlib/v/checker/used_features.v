@@ -53,6 +53,7 @@ fn (mut c Checker) markused_dumpexpr(mut node ast.DumpExpr) {
 			c.table.used_features.auto_str_arr = c.table.final_sym(unwrapped_type).kind == .array
 		}
 	} else {
+		c.markused_generic_str_method(unwrapped_type, c.table.sym(unwrapped_type))
 		c.table.used_features.print_types[node.expr_type.idx()] = true
 	}
 	c.table.used_features.print_types[ast.int_type_idx] = true

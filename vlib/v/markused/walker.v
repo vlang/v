@@ -1055,6 +1055,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 			w.features.dump = true
 			w.mark_by_type(node.expr_type)
+			w.mark_generic_str_method_for_type(node.expr_type)
 		}
 		ast.SpawnExpr {
 			if node.is_expr {
@@ -2792,28 +2793,32 @@ fn (mut w Walker) mark_string_inter_literal_generic_str_methods(node ast.StringI
 		if i >= node.expr_types.len {
 			break
 		}
-		typ := w.resolve_current_generic_type(node.expr_types[i])
-		if typ == 0 || typ == ast.void_type || typ == ast.string_type {
+		w.mark_generic_str_method_for_type(node.expr_types[i])
+	}
+}
+
+fn (mut w Walker) mark_generic_str_method_for_type(source_typ ast.Type) {
+	typ := w.resolve_current_generic_type(source_typ)
+	if typ == 0 || typ == ast.void_type || typ == ast.string_type {
+		return
+	}
+	fkey, _ := w.resolve_method_fkey_for_type(typ, 'str')
+	if fkey == '' {
+		return
+	}
+	concrete_type_lists := w.table.fn_generic_types[fkey]
+	if concrete_type_lists.len == 0 {
+		return
+	}
+	for concrete_types in concrete_type_lists {
+		if concrete_types.len == 0 {
 			continue
 		}
-		fkey, _ := w.resolve_method_fkey_for_type(typ, 'str')
-		if fkey == '' {
-			continue
-		}
-		concrete_type_lists := w.table.fn_generic_types[fkey]
-		if concrete_type_lists.len == 0 {
-			continue
-		}
-		for concrete_types in concrete_type_lists {
-			if concrete_types.len == 0 {
-				continue
-			}
-			w.record_used_fn_generic_types(fkey, concrete_types)
-			if mut fn_decl := w.all_fns[fkey] {
-				w.fn_decl_with_concrete_types(mut fn_decl, concrete_types)
-			} else {
-				w.mark_fn_as_used(fkey)
-			}
+		w.record_used_fn_generic_types(fkey, concrete_types)
+		if mut fn_decl := w.all_fns[fkey] {
+			w.fn_decl_with_concrete_types(mut fn_decl, concrete_types)
+		} else {
+			w.mark_fn_as_used(fkey)
 		}
 	}
 }

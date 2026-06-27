@@ -81,6 +81,14 @@ fn test_interpolation_registers_exact_generic_alias_str_method() {
 	assert '${box}' == 'interp alias 987'
 }
 
+fn test_dump_registers_exact_generic_alias_str_method() {
+	box := InterpIntBox{
+		val: 654
+	}
+	dumped := dump(box)
+	assert dumped.val == 654
+}
+
 fn test_assert_auto_str_registers_nested_generic_field_str_method() {
 	left := AssertContainer[string]{
 		list: AssertList[AssertNode[string]]{
