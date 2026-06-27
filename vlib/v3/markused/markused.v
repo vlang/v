@@ -817,10 +817,18 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	mut needs_string_membership_helpers := false
 	mut needs_new_map := false
 	mut cur_module := ''
+	mut imports := map[string]string{}
 	for node in a.nodes {
 		match node.kind {
+			.file {
+				cur_module = ''
+				imports = map[string]string{}
+			}
 			.module_decl {
 				cur_module = node.value
+			}
+			.import_decl {
+				imports[node.typ] = node.value
 			}
 			.fn_decl {
 				ret_type := tc.parse_type(node.typ)
@@ -859,6 +867,10 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 					if fn_node.kind == .selector
 						&& fn_node.value in ['trim_space', 'trim_space_left', 'trim_space_right', 'to_upper', 'to_upper_ascii', 'to_lower', 'to_lower_ascii'] {
 						enqueue('string.${fn_node.value}', mut used, mut queue)
+					}
+					if markused_call_lowers_to_join_path_single(a, fn_node, imports) {
+						enqueue('join_path_single', mut used, mut queue)
+						enqueue('os.join_path_single', mut used, mut queue)
 					}
 					if fn_node.kind == .ident
 						&& fn_node.value in ['print', 'println', 'eprint', 'eprintln']
@@ -937,6 +949,24 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	if needs_new_map {
 		enqueue('new_map', mut used, mut queue)
 	}
+}
+
+fn markused_call_lowers_to_join_path_single(a &flat.FlatAst, fn_node flat.Node, imports map[string]string) bool {
+	if fn_node.kind == .ident {
+		return fn_node.value == 'join_path'
+	}
+	if fn_node.kind != .selector || fn_node.value != 'join_path' || fn_node.children_count == 0 {
+		return false
+	}
+	base_id := a.child(&fn_node, 0)
+	if int(base_id) < 0 {
+		return false
+	}
+	base := a.node(base_id)
+	if base.kind != .ident {
+		return false
+	}
+	return base.value == 'os' || imports[base.value] == 'os'
 }
 
 // enqueue_stringified_custom_str_method supports enqueue_stringified_custom_str_method handling.
@@ -1310,6 +1340,7 @@ fn receiver_info(a &flat.FlatAst, node &flat.Node) (string, string) {
 // collect_calls updates collect calls state for markused.
 fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports map[string]string, receiver_name string, receiver_struct string, mut calls []string) {
 	local_values := c.local_value_names(node)
+	local_types := c.local_value_type_names(node, cur_module, imports)
 	visible_local_idents := markused_visible_local_idents(c.a, node, local_values)
 	mut stack := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
@@ -1362,7 +1393,8 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 								if int(base_id) >= 0 {
 									base := c.a.nodes[int(base_id)]
 									has_exact_selector_call = c.collect_typed_receiver_method(base_id,
-										callee.value, cur_module, imports, local_values, mut calls)
+										callee.value, cur_module, imports, local_values,
+										local_types, mut calls)
 									if !has_exact_selector_call && base.kind == .ident
 										&& base.value in imports && base.value !in local_values {
 										calls << imports[base.value] + '.' + callee.value
@@ -1520,6 +1552,51 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 
 fn (c &CallCollector) local_value_names(node &flat.Node) map[string]bool {
 	return markused_local_value_names(c.a, node)
+}
+
+fn (c &CallCollector) local_value_type_names(node &flat.Node, cur_module string, imports map[string]string) map[string]string {
+	mut result := map[string]string{}
+	mut stack := []flat.NodeId{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		child_id := c.a.child(node, i)
+		if int(child_id) >= 0 {
+			stack << child_id
+		}
+	}
+	for stack.len > 0 {
+		id := stack.pop()
+		child := c.a.node(id)
+		if child.kind == .param && child.value.len > 0 && child.typ.len > 0 {
+			result[child.value] = markused_resolve_imported_type_name(child.typ, imports)
+		} else if child.kind == .decl_assign {
+			mut i := 0
+			for i + 1 < child.children_count {
+				lhs_id := c.a.child(child, i)
+				rhs_id := c.a.child(child, i + 1)
+				if int(lhs_id) >= 0 && int(rhs_id) >= 0 {
+					lhs := c.a.node(lhs_id)
+					if lhs.kind == .ident && lhs.value.len > 0 {
+						type_name := if child.children_count == 2 && child.typ.len > 0 {
+							child.typ
+						} else {
+							c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports)
+						}
+						if type_name.len > 0 {
+							result[lhs.value] = type_name
+						}
+					}
+				}
+				i += 2
+			}
+		}
+		for i in 0 .. child.children_count {
+			next_id := c.a.child(child, i)
+			if int(next_id) >= 0 {
+				stack << next_id
+			}
+		}
+	}
+	return result
 }
 
 fn markused_local_value_names(a &flat.FlatAst, node &flat.Node) map[string]bool {
@@ -2011,25 +2088,6 @@ fn (c &CallCollector) collect_top_level_typed_receiver_method(base_id flat.NodeI
 
 fn (c &CallCollector) top_level_receiver_type_name(base_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) string {
 	base := c.a.node(base_id)
-	if base.kind == .ident && base.value.len > 0 {
-		if local_type := local_types[base.value] {
-			return local_type
-		}
-		if base.value in local_values {
-			type_name := resolve_type_name(c.node_type(base_id))
-			if type_name.len > 0 {
-				struct_type := c.struct_lookup_name(type_name, cur_module)
-				if struct_type.len > 0 {
-					return struct_type
-				}
-				return type_name
-			}
-			return ''
-		}
-		if base.value in imports {
-			return ''
-		}
-	}
 	type_name := resolve_type_name(c.node_type(base_id))
 	if type_name.len > 0 {
 		struct_type := c.struct_lookup_name(type_name, cur_module)
@@ -2037,6 +2095,17 @@ fn (c &CallCollector) top_level_receiver_type_name(base_id flat.NodeId, cur_modu
 			return struct_type
 		}
 		return type_name
+	}
+	if base.kind == .ident && base.value.len > 0 {
+		if local_type := local_types[base.value] {
+			return local_type
+		}
+		if base.value in local_values {
+			return ''
+		}
+		if base.value in imports {
+			return ''
+		}
 	}
 	if base.kind == .ident && base.value.len > 0 {
 		return c.value_type_name(base.value, cur_module, imports)
@@ -2361,8 +2430,8 @@ fn (c &CallCollector) node_type(id flat.NodeId) types.Type {
 	return c.tc.resolve_type(id)
 }
 
-fn (c &CallCollector) collect_typed_receiver_method(base_id flat.NodeId, method string, cur_module string, imports map[string]string, local_values map[string]bool, mut calls []string) bool {
-	type_name := c.receiver_type_name(base_id, cur_module, imports, local_values)
+fn (c &CallCollector) collect_typed_receiver_method(base_id flat.NodeId, method string, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string, mut calls []string) bool {
+	type_name := c.receiver_type_name(base_id, cur_module, imports, local_values, local_types)
 	if type_name.len == 0 {
 		return false
 	}
@@ -2371,13 +2440,18 @@ fn (c &CallCollector) collect_typed_receiver_method(base_id flat.NodeId, method 
 	return true
 }
 
-fn (c &CallCollector) receiver_type_name(base_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool) string {
+fn (c &CallCollector) receiver_type_name(base_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) string {
+	base := c.a.node(base_id)
 	base_type := c.node_type(base_id)
 	type_name := resolve_type_name(base_type)
 	if type_name.len > 0 {
 		return type_name
 	}
-	base := c.a.node(base_id)
+	if base.kind == .ident && base.value.len > 0 {
+		if local_type := local_types[base.value] {
+			return local_type
+		}
+	}
 	if base.kind == .ident && base.value.len > 0 {
 		if base.value in local_values {
 			return ''
@@ -2398,7 +2472,9 @@ fn (c &CallCollector) typed_receiver_method_name(type_name string, method string
 		return none
 	}
 	mut candidates := []string{cap: 4}
-	if type_name.contains('.') {
+	if type_name.starts_with('map[') {
+		candidates << markused_map_receiver_method_candidates(type_name, method, cur_module)
+	} else if type_name.contains('.') {
 		candidates << '${type_name}.${method}'
 	} else {
 		if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
@@ -2416,6 +2492,71 @@ fn (c &CallCollector) typed_receiver_method_name(type_name string, method string
 		}
 	}
 	return none
+}
+
+fn markused_map_receiver_method_candidates(receiver_type string, method string, cur_module string) []string {
+	clean_type := markused_clean_map_type(receiver_type)
+	key_type := markused_map_key_type(clean_type)
+	value_type := markused_map_value_type(clean_type)
+	mut candidates := []string{}
+	candidates << '${clean_type}.${method}'
+	if key_type.len == 0 || value_type.len == 0 {
+		return candidates
+	}
+	short_value := if value_type.contains('.') {
+		value_type.all_after_last('.')
+	} else {
+		value_type
+	}
+	short_map := 'map[${key_type}]${short_value}'
+	if short_map != clean_type {
+		candidates << '${short_map}.${method}'
+	}
+	if value_type.contains('.') {
+		mod_name := value_type.all_before_last('.')
+		candidates << '${mod_name}.${short_map}.${method}'
+	} else if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
+		candidates << '${cur_module}.${short_map}.${method}'
+	}
+	return candidates
+}
+
+fn markused_clean_map_type(receiver_type string) string {
+	mut clean := receiver_type.trim_space()
+	for {
+		if clean.starts_with('shared ') {
+			clean = clean[7..].trim_space()
+			continue
+		}
+		if clean.starts_with('&') {
+			clean = clean[1..].trim_space()
+			continue
+		}
+		break
+	}
+	return clean
+}
+
+fn markused_map_key_type(type_str string) string {
+	if !type_str.starts_with('map[') {
+		return ''
+	}
+	bracket_end := type_str.index(']') or { return '' }
+	if bracket_end > 4 {
+		return type_str[4..bracket_end]
+	}
+	return ''
+}
+
+fn markused_map_value_type(type_str string) string {
+	if !type_str.starts_with('map[') {
+		return ''
+	}
+	bracket_end := type_str.index(']') or { return '' }
+	if bracket_end + 1 < type_str.len {
+		return type_str[bracket_end + 1..]
+	}
+	return ''
 }
 
 fn (c &CallCollector) add_typed_receiver_method_name(method_name string, mut calls []string) {
@@ -2581,7 +2722,7 @@ fn resolve_type_name(t types.Type) string {
 	} else if t is types.Array {
 		return 'Array'
 	} else if t is types.Map {
-		return 'map'
+		return 'map[${t.key_type.name()}]${t.value_type.name()}'
 	} else if t is types.Pointer {
 		return resolve_type_name(t.base_type)
 	} else if t is types.Primitive {

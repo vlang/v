@@ -10,6 +10,7 @@ pub mut:
 	target_os    string = os.user_os()
 	user_defines []string
 	backend      string = 'c'
+	c99          bool
 	vroot        string = detect_vroot()
 	selfhost     bool
 	building_v   bool // compiling the V compiler itself: no generics, skip monomorphization

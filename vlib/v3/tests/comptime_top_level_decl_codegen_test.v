@@ -156,7 +156,7 @@ fn test_synthetic_top_level_block_keeps_main_scope_locals() {
 	v3_bin := comptime_decl_build_v3()
 	run := comptime_decl_compile_run_source(v3_bin, 'synthetic_block_main_scope', 'module main
 
-$if linux {
+$if some_feature ? {
 	x := 1
 	y := 2
 }
@@ -166,7 +166,8 @@ fn helper() int {
 }
 
 println(int_str(x + y))
-', '')
+',
+		'-d some_feature')
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '3'
 }

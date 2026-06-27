@@ -389,17 +389,18 @@ fn (mut t Transformer) collect_types() {
 			.fn_decl {
 				if node.typ.len > 0 {
 					ret_typ := t.normalize_type_in_module(node.typ, cur_mod)
-					t.fn_ret_types[node.value] = ret_typ
-					lowered := c_name(node.value)
-					if lowered != node.value {
-						t.fn_ret_types[lowered] = ret_typ
-					}
 					if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
 						qname := '${cur_mod}.${node.value}'
 						t.fn_ret_types[qname] = ret_typ
 						qlowered := c_name(qname)
 						if qlowered != qname {
 							t.fn_ret_types[qlowered] = ret_typ
+						}
+					} else {
+						t.fn_ret_types[node.value] = ret_typ
+						lowered := c_name(node.value)
+						if lowered != node.value {
+							t.fn_ret_types[lowered] = ret_typ
 						}
 					}
 				}
@@ -3505,7 +3506,8 @@ fn (t &Transformer) block_multi_return_types(node flat.Node, expected_count int)
 fn multi_return_types_from_type(typ types.Type, expected_count int) ?[]types.Type {
 	if typ is types.MultiReturn {
 		if expected_count <= 0 || typ.types.len == expected_count {
-			return typ.types.clone()
+			items := typ.types.clone()
+			return items
 		}
 		return none
 	}

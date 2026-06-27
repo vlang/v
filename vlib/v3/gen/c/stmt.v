@@ -289,6 +289,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 								&& !g.type_can_wrap_as_sum(expr_value_type, base)
 								&& !g.types_numeric_compatible(expr_value_type, base)
 								&& !g.call_constructs_type(ret_id, base)
+								&& !g.clone_call_matches_base(ret_node, base)
 								&& expr_value_type !is types.Primitive
 								&& expr_value_type !is types.Unknown {
 								g.writeln('return (${ct}){.ok = false};')
@@ -586,8 +587,8 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 			&& !g.expr_is_nil_pointer_payload(ret_id, base)
 			&& !g.type_can_wrap_as_sum(expr_value_type, base)
 			&& !g.types_numeric_compatible(expr_value_type, base)
-			&& !g.call_constructs_type(ret_id, base) && expr_value_type !is types.Primitive
-			&& expr_value_type !is types.Unknown {
+			&& !g.call_constructs_type(ret_id, base) && !g.clone_call_matches_base(ret_node, base)
+			&& expr_value_type !is types.Primitive && expr_value_type !is types.Unknown {
 			return '(${ct}){.ok = false}'
 		}
 		return '(${ct}){.ok = true, .value = ${g.expr_to_string_with_expected_type(ret_id, base)}}'
@@ -737,8 +738,16 @@ fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
 			}
 		}
 	}
-	base_type := g.tc.resolve_type(base_id)
+	base_type0 := g.usable_expr_type(base_id)
+	base_type := if base_type0 is types.Unknown || base_type0 is types.Void {
+		g.tc.resolve_type(base_id)
+	} else {
+		base_type0
+	}
 	clean_type := types.unwrap_pointer(base_type)
+	if fn_node.value == 'clone' && (clean_type is types.Array || clean_type is types.Map) {
+		return base_type
+	}
 	mut receiver_name := clean_type.name()
 	if clean_type is types.Struct {
 		receiver_name = clean_type.name
@@ -848,6 +857,67 @@ fn (g &FlatGen) optional_result_matches_base(expr_type types.Type, base types.Ty
 	return g.option_c_name_for_base(inner) == g.option_c_name_for_base(base)
 }
 
+fn (g &FlatGen) clone_call_matches_base(call_node flat.Node, base types.Type) bool {
+	mut node := call_node
+	for node.kind in [.expr_stmt, .paren] && node.children_count > 0 {
+		node = *g.a.child_node(&node, 0)
+	}
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	fn_node := g.a.child_node(&node, 0)
+	if fn_node.kind == .ident {
+		base_ct := g.tc.c_type(types.unwrap_pointer(base))
+		return (fn_node.value == 'array__clone' && base_ct == 'Array')
+			|| (fn_node.value == 'map__clone' && base_ct == 'map')
+	}
+	if fn_node.kind != .selector || fn_node.value != 'clone' || fn_node.children_count == 0 {
+		return false
+	}
+	base_id := g.a.child(fn_node, 0)
+	receiver_type0 := g.usable_expr_type(base_id)
+	receiver_type := if receiver_type0 is types.Unknown || receiver_type0 is types.Void {
+		g.tc.resolve_type(base_id)
+	} else {
+		receiver_type0
+	}
+	clean_receiver := types.unwrap_pointer(receiver_type)
+	clean_base := types.unwrap_pointer(base)
+	if g.type_names_match(clean_receiver, clean_base) {
+		return true
+	}
+	receiver_ct0 := g.tc.c_type(clean_receiver)
+	base_ct0 := g.tc.c_type(clean_base)
+	if receiver_ct0.len > 0 && base_ct0.len > 0 && receiver_ct0 == base_ct0 {
+		return true
+	}
+	receiver := if clean_receiver is types.Alias {
+		clean_receiver.base_type
+	} else {
+		clean_receiver
+	}
+	expected := if clean_base is types.Alias {
+		clean_base.base_type
+	} else {
+		clean_base
+	}
+	if expected is types.Array || expected is types.Map {
+		receiver_ct := g.tc.c_type(receiver)
+		expected_ct := g.tc.c_type(expected)
+		if receiver_ct.len > 0 && receiver_ct == expected_ct {
+			return true
+		}
+	}
+	if receiver is types.Array && expected is types.Array {
+		return g.type_names_match(receiver.elem_type, expected.elem_type)
+	}
+	if receiver is types.Map && expected is types.Map {
+		return g.type_names_match(receiver.key_type, expected.key_type)
+			&& g.type_names_match(receiver.value_type, expected.value_type)
+	}
+	return false
+}
+
 // option_c_name_for_base returns the C optional type name used for a `?base`/`!base`
 // value, mirroring optional_type_name without its side effects.
 fn (g &FlatGen) option_c_name_for_base(base types.Type) string {
@@ -911,6 +981,9 @@ fn (g &FlatGen) expr_is_nil_value(id flat.NodeId) bool {
 fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
 		node := g.a.nodes[int(id)]
+		if node.kind in [.expr_stmt, .paren] && node.children_count > 0 {
+			return g.usable_expr_type(g.a.child(&node, 0))
+		}
 		if node.kind == .ident {
 			if typ := g.cur_param_types[node.value] {
 				return typ
@@ -950,6 +1023,22 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 			}
 			if base_type is types.String {
 				return types.Type(types.u8_)
+			}
+		}
+		if node.kind == .call && node.children_count > 0 {
+			fn_node := g.a.child_node(&node, 0)
+			if fn_node.kind == .ident {
+				if typ := g.tc.cur_scope.lookup(fn_node.value) {
+					ret := fn_type_return_type(typ)
+					if ret !is types.Unknown && ret !is types.Void {
+						return ret
+					}
+				}
+				if ret := g.fn_decl_return_type_for_call_name(fn_node.value) {
+					if ret !is types.Unknown && ret !is types.Void {
+						return ret
+					}
+				}
 			}
 		}
 	}
@@ -1041,11 +1130,22 @@ fn (g &FlatGen) is_runtime_array_flags_stmt(id flat.NodeId) bool {
 	return owner_type is types.Array || owner_type.name() == 'strings.Builder'
 }
 
+fn (g &FlatGen) multi_return_expr_type(id flat.NodeId) ?types.MultiReturn {
+	rtype := g.tc.resolve_type(id)
+	if rtype is types.MultiReturn {
+		return rtype
+	}
+	utype := g.usable_expr_type(id)
+	if utype is types.MultiReturn {
+		return utype
+	}
+	return none
+}
+
 // gen_decl_assign emits decl assign output for c.
 fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 	if node.children_count >= 3 {
-		rhs_type := g.tc.resolve_type(g.a.child(&node, 1))
-		if rhs_type is types.MultiReturn {
+		if _ := g.multi_return_expr_type(g.a.child(&node, 1)) {
 			g.gen_multi_return_decl(node)
 			return
 		}
@@ -1325,17 +1425,15 @@ fn (mut g FlatGen) gen_fixed_array_copy_from_node(dst string, rhs_id flat.NodeId
 
 fn (mut g FlatGen) gen_multi_return_decl(node flat.Node) {
 	rhs_id := g.a.child(&node, 1)
-	rhs_type := g.tc.resolve_type(rhs_id)
+	rhs_multi := g.multi_return_expr_type(rhs_id) or { return }
+	rhs_type := types.Type(rhs_multi)
 	ct := g.tc.c_type(rhs_type)
 	tmp := g.tmp_name()
 	g.write('${ct} ${tmp} = ')
 	g.gen_expr_with_expected_type(rhs_id, rhs_type)
 	g.writeln(';')
 	num_lhs := node.children_count - 1
-	mut multi_types := []types.Type{}
-	if rhs_type is types.MultiReturn {
-		multi_types = rhs_type.types.clone()
-	}
+	multi_types := rhs_multi.types.clone()
 	for j in 0 .. num_lhs {
 		lhs_idx := if j == 0 { 0 } else { j + 1 }
 		lhs_id := g.a.child(&node, lhs_idx)
@@ -1376,8 +1474,7 @@ fn (mut g FlatGen) gen_multi_return_decl(node flat.Node) {
 fn (mut g FlatGen) gen_assign(node flat.Node) {
 	if node.children_count >= 3 {
 		rhs_id := g.a.child(&node, 1)
-		rhs_type := g.tc.resolve_type(rhs_id)
-		if rhs_type is types.MultiReturn {
+		if _ := g.multi_return_expr_type(rhs_id) {
 			g.gen_multi_return_assign(node)
 			return
 		}
@@ -1427,6 +1524,11 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					g.gen_expr(g.a.child(&node, i + 1))
 					g.writeln(';')
 				}
+			} else {
+				g.gen_expr(g.a.child(&node, i))
+				g.write(' <<= ')
+				g.gen_expr(g.a.child(&node, i + 1))
+				g.writeln(';')
 			}
 		} else {
 			rhs_id := g.a.child(&node, i + 1)
@@ -1601,17 +1703,15 @@ fn (g &FlatGen) assign_lhs_needs_deref(lhs_id flat.NodeId, lhs_type types.Type, 
 // gen_multi_return_assign emits multi return assign output for c.
 fn (mut g FlatGen) gen_multi_return_assign(node flat.Node) {
 	rhs_id := g.a.child(&node, 1)
-	rhs_type := g.tc.resolve_type(rhs_id)
+	rhs_multi := g.multi_return_expr_type(rhs_id) or { return }
+	rhs_type := types.Type(rhs_multi)
 	ct := g.tc.c_type(rhs_type)
 	tmp := g.tmp_name()
 	g.write('${ct} ${tmp} = ')
 	g.gen_expr_with_expected_type(rhs_id, rhs_type)
 	g.writeln(';')
 	num_lhs := node.children_count - 1
-	mut multi_types := []types.Type{}
-	if rhs_type is types.MultiReturn {
-		multi_types = rhs_type.types.clone()
-	}
+	multi_types := rhs_multi.types.clone()
 	for j in 0 .. num_lhs {
 		lhs_idx := if j == 0 { 0 } else { j + 1 }
 		lhs_id := g.a.child(&node, lhs_idx)
