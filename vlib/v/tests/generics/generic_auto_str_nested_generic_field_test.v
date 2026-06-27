@@ -28,12 +28,24 @@ struct AssertContainer[T] {
 	list AssertList[AssertNode[T]]
 }
 
+struct SkippedBad[T] {
+	val T
+}
+
+struct SkipContainer {
+	bad SkippedBad[[]int] @[str: skip]
+}
+
 fn (box Box[[]T]) str() string {
 	return 'structured box'
 }
 
 fn (list AssertList[T]) str() string {
 	return 'assert list'
+}
+
+fn (bad SkippedBad[[]T]) str() string {
+	return bad.val[0].len.str()
 }
 
 fn test_auto_str_registers_nested_generic_field_str_method() {
@@ -62,4 +74,14 @@ fn test_assert_auto_str_registers_nested_generic_field_str_method() {
 	}
 	right := left
 	assert left == right
+}
+
+fn test_auto_str_dependency_walk_ignores_str_skip_fields() {
+	c := SkipContainer{
+		bad: SkippedBad[[]int]{
+			val: [123]
+		}
+	}
+	assert '${c}'.contains('SkipContainer')
+	assert !'${c}'.contains('bad:')
 }

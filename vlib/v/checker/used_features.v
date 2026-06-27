@@ -247,19 +247,23 @@ fn (mut c Checker) markused_auto_str_dependencies_for_type(typ ast.Type, mut vis
 	}
 	visited[base_typ] = true
 	mut sym := c.table.sym(base_typ)
-	if sym.has_method_with_generic_parent('str') {
+	has_parent_str := sym.has_method_with_generic_parent('str')
+	has_exact_str := sym.has_method('str')
+	if has_parent_str || has_exact_str {
 		c.markused_generic_str_method(base_typ, sym)
 		return
 	}
+	if sym.info is ast.Alias {
+		c.markused_auto_str_dependencies_for_type(sym.info.parent_type.derive(base_typ), mut
+			visited)
+		return
+	}
 	sym = c.table.final_sym(base_typ)
-	if sym.has_method_with_generic_parent('str') {
+	if sym.has_method_with_generic_parent('str') || sym.has_method('str') {
 		c.markused_generic_str_method(ast.idx_to_type(sym.idx), sym)
 		return
 	}
 	match sym.info {
-		ast.Alias {
-			c.markused_auto_str_dependencies_for_type(sym.info.parent_type, mut visited)
-		}
 		ast.Array {
 			c.markused_auto_str_dependencies_for_type(sym.info.elem_type, mut visited)
 		}
@@ -285,6 +289,11 @@ fn (mut c Checker) markused_auto_str_dependencies_for_type(typ ast.Type, mut vis
 		}
 		ast.Struct {
 			for field in sym.info.fields {
+				if attr := field.attrs.find_first('str') {
+					if attr.arg == 'skip' {
+						continue
+					}
+				}
 				c.markused_auto_str_dependencies_for_type(field.typ, mut visited)
 			}
 		}
@@ -304,16 +313,18 @@ fn (mut c Checker) markused_generic_str_method(typ ast.Type, sym &ast.TypeSymbol
 	mut method := ast.Fn{}
 	mut concrete_types := []ast.Type{}
 	if structured_method := c.table.find_structured_receiver_method_with_types(typ, 'str') {
+		concrete_types = structured_method.concrete_types.map(c.unwrap_generic(it))
 		if exact_method := sym.find_method('str') {
 			method = exact_method
 		} else if exact_method := c.table.find_alias_parent_exact_method(typ, 'str') {
 			method = exact_method
 		} else {
 			method = structured_method.method
-			concrete_types = structured_method.concrete_types.map(c.unwrap_generic(it))
 		}
 	} else {
-		method = sym.find_method_with_generic_parent('str') or { return }
+		method = sym.find_method_with_generic_parent('str') or {
+			sym.find_method('str') or { return }
+		}
 	}
 	if concrete_types.len == 0 {
 		concrete_types = c.concrete_types_for_generic_str_receiver(typ, sym, method)
@@ -322,17 +333,70 @@ fn (mut c Checker) markused_generic_str_method(typ ast.Type, sym &ast.TypeSymbol
 		|| concrete_types.any(it.has_flag(.generic) || c.type_has_unresolved_generic_parts(it)) {
 		return
 	}
-	if c.table.register_fn_concrete_types(method.fkey(), concrete_types) {
+	mut registered := c.register_auto_str_fn_concrete_types(method.fkey(), concrete_types)
+	decl_fkey := method_decl_fkey(method)
+	if decl_fkey != method.fkey() {
+		registered = c.register_auto_str_fn_concrete_types(decl_fkey, concrete_types) || registered
+	}
+	if registered {
 		c.need_recheck_generic_fns = true
 	}
 }
 
+fn (mut c Checker) register_auto_str_fn_concrete_types(fkey string, concrete_types []ast.Type) bool {
+	if fkey == '' {
+		return false
+	}
+	if _ := c.table.fn_generic_types[fkey] {
+		// The generic function key is already registered.
+	} else {
+		c.table.register_fn_generic_types(fkey)
+	}
+	return c.table.register_fn_concrete_types(fkey, concrete_types)
+}
+
+fn method_decl_fkey(method ast.Fn) string {
+	if method.source_fn != unsafe { nil } {
+		fndecl := unsafe { &ast.FnDecl(method.source_fn) }
+		return fndecl.fkey()
+	}
+	return method.fkey()
+}
+
 fn (mut c Checker) concrete_types_for_generic_str_receiver(typ ast.Type, sym &ast.TypeSymbol, method ast.Fn) []ast.Type {
-	concrete_types := c.concrete_types_for_type_symbol(sym)
-	if concrete_types.len > 0 || method.generic_names.len == 0 {
+	mut concrete_types := c.concrete_types_for_type_symbol(sym)
+	if concrete_types.len == 0 && sym.info is ast.Alias {
+		concrete_types = c.alias_parent_concrete_types(sym.info)
+	}
+	if method.generic_names.len == 0
+		|| (concrete_types.len > 0 && concrete_types.len == method.generic_names.len) {
 		return concrete_types
 	}
 	return c.infer_method_receiver_concrete_types(method, typ)
+}
+
+fn (c &Checker) alias_parent_concrete_types(info ast.Alias) []ast.Type {
+	parent_sym := c.table.sym(info.parent_type)
+	match parent_sym.info {
+		ast.Struct, ast.SumType, ast.Interface {
+			mut concrete_types := parent_sym.info.concrete_types.clone()
+			if concrete_types.len == 0
+				&& parent_sym.generic_types.len == parent_sym.info.generic_types.len
+				&& parent_sym.generic_types != parent_sym.info.generic_types {
+				concrete_types = parent_sym.generic_types.clone()
+			}
+			return concrete_types
+		}
+		ast.GenericInst {
+			return parent_sym.info.concrete_types.clone()
+		}
+		ast.Alias {
+			return c.alias_parent_concrete_types(parent_sym.info)
+		}
+		else {}
+	}
+
+	return []ast.Type{}
 }
 
 fn (mut c Checker) infer_method_receiver_concrete_types(method ast.Fn, typ ast.Type) []ast.Type {
