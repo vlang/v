@@ -213,17 +213,26 @@ fn (mut c Checker) markused_method_call(mut node ast.CallExpr, mut left_expr ast
 	}
 }
 
-fn (mut c Checker) markused_string_inter_lit(mut _ ast.StringInterLiteral, ftyp ast.Type) {
+fn string_inter_lit_format_uses_str(fmt u8) bool {
+	return fmt == `s`
+}
+
+fn (mut c Checker) markused_string_inter_lit(mut _ ast.StringInterLiteral, ftyp ast.Type, fmt u8) {
 	if c.is_builtin_mod {
 		return
 	}
+	uses_str_format := string_inter_lit_format_uses_str(fmt)
 	if !c.table.sym(ftyp).has_method('str') {
-		c.table.used_features.auto_str = true
-		c.markused_auto_str_dependencies(ftyp)
+		if uses_str_format {
+			c.table.used_features.auto_str = true
+			c.markused_auto_str_dependencies(ftyp)
+		}
 	} else {
-		c.markused_generic_str_method(ftyp, c.table.sym(ftyp))
-		c.mark_type_str_method_as_referenced(ftyp)
-		c.table.used_features.print_types[ftyp.idx()] = true
+		if uses_str_format {
+			c.markused_generic_str_method(ftyp, c.table.sym(ftyp))
+			c.mark_type_str_method_as_referenced(ftyp)
+			c.table.used_features.print_types[ftyp.idx()] = true
+		}
 	}
 	if ftyp.is_ptr() {
 		c.table.used_features.auto_str_ptr = true

@@ -20,11 +20,17 @@ struct OverrideBox[T] {
 	val T
 }
 
+struct PointerInterpBad[T] {
+	val T
+}
+
 type InterpIntBox = InterpBox[int]
 
 type OverrideIntBox = OverrideBox[[]int]
 
 type Ints = []int
+
+type Parser[T] = fn (string) T
 
 struct StructuredContainer[T] {
 	box Box[[]T]
@@ -32,6 +38,10 @@ struct StructuredContainer[T] {
 
 struct IntsContainer {
 	values Ints
+}
+
+struct ParserContainer {
+	parser Parser[int] @[required]
 }
 
 struct AssertNode[T] {
@@ -73,8 +83,25 @@ fn (box OverrideIntBox) str[T]() string {
 	return 'override alias ${box.val[0]}'
 }
 
+fn (bad &PointerInterpBad[[]T]) str() string {
+	$if T is int {
+		$compile_error('pointer interpolation should not register str')
+	}
+	return 'bad pointer ${bad.val}'
+}
+
 fn (values Ints) str[T]() string {
 	return 'ints ${values[0]}'
+}
+
+fn (p Parser[T]) str[T]() string {
+	return 'parser'
+}
+
+fn new_int_parser() Parser[int] {
+	return fn (input string) int {
+		return input.int()
+	}
 }
 
 fn (list AssertList[T]) str() string {
@@ -121,6 +148,14 @@ fn test_interpolation_registers_only_overridden_alias_str_method() {
 	assert '${box}' == 'override alias 246'
 }
 
+fn test_pointer_interpolation_does_not_register_generic_str_method() {
+	mut value := PointerInterpBad[[]int]{
+		val: [135]
+	}
+	ptr := &value
+	assert '${ptr:p}'.len > 0
+}
+
 fn test_auto_str_registers_container_alias_parent_str_method() {
 	c := IntsContainer{
 		values: Ints([654])
@@ -131,6 +166,18 @@ fn test_auto_str_registers_container_alias_parent_str_method() {
 fn test_interpolation_registers_container_alias_parent_str_method() {
 	values := Ints([321])
 	assert '${values}' == 'ints 321'
+}
+
+fn test_auto_str_registers_generic_fn_type_alias_str_method() {
+	c := ParserContainer{
+		parser: new_int_parser()
+	}
+	assert '${c}'.contains('parser: parser')
+}
+
+fn test_interpolation_registers_generic_fn_type_alias_str_method() {
+	parser := new_int_parser()
+	assert '${parser}' == 'parser'
 }
 
 fn test_dump_registers_exact_generic_alias_str_method() {
