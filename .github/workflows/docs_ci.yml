@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make
@@ -42,14 +42,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
-      MOPTIONS: --diff --deprecated --relative-paths --exclude /vlib/v/ --exclude /vlib/v2/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/ --exclude /vlib/sokol/ --exclude /vlib/x/
+      MOPTIONS: --diff --deprecated --relative-paths --exclude /vlib/v/ --exclude /vlib/v2_toberemoved/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/ --exclude /vlib/sokol/ --exclude /vlib/x/
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build V
         run: make
 
       - name: Checkout previous v
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: vlang/v
           ref: master
@@ -64,7 +64,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build V
         run: make
       - name: Check doc comment dots for some key modules
@@ -79,7 +79,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build V
         run: make
       - name: Check examples in the doc comments for all vlib modules

@@ -80,6 +80,12 @@ fn (mut db Database) drop(table orm.Table) ! {
 	db.query(query)!
 }
 
+// execute is used internally by V's ORM for executing raw SQL queries
+fn (mut db Database) execute(query string) ![]orm.Row {
+	db.query(query)!
+	return []orm.Row{}
+}
+
 fn test_orm_mut_connection() {
 	mut db := Database{}
 
@@ -104,4 +110,12 @@ fn test_orm_mut_connection() {
 	}!
 
 	assert db.last_query == 'DROP TABLE user;'
+}
+
+fn test_orm_execute_on_mock() {
+	mut db := Database{}
+
+	result := db.execute('SELECT 1 AS test_val')!
+	assert db.last_query == 'SELECT 1 AS test_val'
+	assert result.len == 0
 }

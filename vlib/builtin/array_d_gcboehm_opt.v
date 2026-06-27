@@ -50,7 +50,7 @@ fn __new_array_noscan(mylen int, cap int, elm_size int) array {
 	mut data := unsafe { nil }
 	if cap_ > 0 && mylen == 0 {
 		data = alloc_array_data_noscan_uninit(total_size)
-	} else {
+	} else if cap_ > 0 {
 		data = alloc_array_data_noscan(total_size)
 	}
 	arr := array{
@@ -69,10 +69,12 @@ fn __new_array_with_default_noscan(mylen int, cap int, elm_size int, val voidptr
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data:         alloc_array_data_noscan(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
 		flags:        .managed | .noscan_data
+	}
+	if cap_ > 0 {
+		arr.data = alloc_array_data_noscan(u64(cap_) * u64(elm_size))
 	}
 	if val != 0 && arr.data != unsafe { nil } {
 		if elm_size == 1 {
@@ -98,10 +100,12 @@ fn __new_array_with_multi_default_noscan(mylen int, cap int, elm_size int, val v
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data:         alloc_array_data_noscan(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
 		flags:        .managed | .noscan_data
+	}
+	if cap_ > 0 {
+		arr.data = alloc_array_data_noscan(u64(cap_) * u64(elm_size))
 	}
 	if val != 0 && arr.data != unsafe { nil } {
 		for i in 0 .. arr.len {
@@ -117,10 +121,12 @@ fn __new_array_with_array_default_noscan(mylen int, cap int, elm_size int, val a
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data:         alloc_array_data_noscan(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
 		flags:        .managed | .noscan_data
+	}
+	if cap_ > 0 {
+		arr.data = alloc_array_data_noscan(u64(cap_) * u64(elm_size))
 	}
 	for i in 0 .. arr.len {
 		val_clone := val.clone()
@@ -369,12 +375,15 @@ fn (mut a array) push_noscan(val voidptr) {
 		panic('array.push_noscan: len bigger than max_int')
 	}
 	required := a.len + 1
-	if a.needs_unique_append(required) {
-		a.clone_shallow_to_cap_noscan(a.cap)
-	} else if required > a.cap {
+	if required > a.cap {
 		a.ensure_cap_noscan(required)
+	} else if a.flags.has(.is_slice) {
+		// `required <= a.cap` here, so this is the `needs_unique_append` case
+		a.clone_shallow_to_cap_noscan(a.cap)
 	}
-	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size) }
+	unsafe {
+		copy_element_to(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size)
+	}
 	a.len++
 }
 

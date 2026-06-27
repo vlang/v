@@ -116,9 +116,11 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 			ftyp
 		}
 		mut fmt := node.fmts[i]
+		has_explicit_fmt := i < node.has_fmts.len && node.has_fmts[i]
 		// During generic recheck, reset auto-determined format specifiers
 		// since the type may have changed between instantiations
-		if c.table.cur_concrete_types.len > 0 && !node.need_fmts[i] && fmt != `_` {
+		if c.table.cur_concrete_types.len > 0 && !has_explicit_fmt && !node.need_fmts[i]
+			&& fmt != `_` {
 			fmt = `_`
 		}
 		// analyze and validate format specifier

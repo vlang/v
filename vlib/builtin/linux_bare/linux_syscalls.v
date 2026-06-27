@@ -330,116 +330,137 @@ $if !i386 {
 		}
 	}
 
+	// The syscall primitives stay defined for every non-i386 arch so the wrappers
+	// above remain resolvable; only the inline asm is amd64-gated. On a non-amd64
+	// target each returns -ENOSYS (38) -- a failed syscall rather than a fake
+	// success -- so e.g. mm_alloc sees the mmap error instead of dereferencing 0.
+	// A real non-x86 freestanding build must supply its own syscall + startup layer.
 	fn sys_call0(scn u64) u64 {
-		mut res := u64(0)
-		asm amd64 {
-			syscall
-			; =a (res)
-			; 0 (scn)
+		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64
+		$if amd64 {
+			asm amd64 {
+				syscall
+				; =a (res)
+				; 0 (scn)
+			}
 		}
 		return res
 	}
 
 	fn sys_call1(scn u64, arg1 u64) u64 {
-		mut res := u64(0)
-		asm amd64 {
-			syscall
-			; =a (res)
-			; 0 (scn)
-			  D (arg1)
+		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64
+		$if amd64 {
+			asm amd64 {
+				syscall
+				; =a (res)
+				; 0 (scn)
+				  D (arg1)
+			}
 		}
 		return res
 	}
 
 	fn sys_call2(scn u64, arg1 u64, arg2 u64) u64 {
-		mut res := u64(0)
-		asm amd64 {
-			syscall
-			; =a (res)
-			; 0 (scn)
-			  D (arg1)
-			  S (arg2)
+		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64
+		$if amd64 {
+			asm amd64 {
+				syscall
+				; =a (res)
+				; 0 (scn)
+				  D (arg1)
+				  S (arg2)
+			}
 		}
 		return res
 	}
 
 	fn sys_call3(scn u64, arg1 u64, arg2 u64, arg3 u64) u64 {
-		mut res := u64(0)
-		asm amd64 {
-			syscall
-			; =a (res)
-			; 0 (scn)
-			  D (arg1)
-			  S (arg2)
-			  d (arg3)
+		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64
+		$if amd64 {
+			asm amd64 {
+				syscall
+				; =a (res)
+				; 0 (scn)
+				  D (arg1)
+				  S (arg2)
+				  d (arg3)
+			}
 		}
 		return res
 	}
 
 	fn sys_call4(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64) u64 {
-		mut res := u64(0)
-		asm amd64 {
-			mov r10, arg4
-			syscall
-			; =a (res)
-			; 0 (scn)
-			  D (arg1)
-			  S (arg2)
-			  d (arg3)
-			  g (arg4)
-			; r10
+		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64
+		$if amd64 {
+			asm amd64 {
+				mov r10, arg4
+				syscall
+				; =a (res)
+				; 0 (scn)
+				  D (arg1)
+				  S (arg2)
+				  d (arg3)
+				  g (arg4)
+				; r10
+			}
 		}
 		return res
 	}
 
 	fn sys_call5(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64) u64 {
-		mut res := u64(0)
-		asm amd64 {
-			mov r10, arg4
-			mov r8, arg5
-			syscall
-			; =a (res)
-			; 0 (scn)
-			  D (arg1)
-			  S (arg2)
-			  d (arg3)
-			  g (arg4)
-			  g (arg5)
-			; r10
-			  r8
+		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64
+		$if amd64 {
+			asm amd64 {
+				mov r10, arg4
+				mov r8, arg5
+				syscall
+				; =a (res)
+				; 0 (scn)
+				  D (arg1)
+				  S (arg2)
+				  d (arg3)
+				  g (arg4)
+				  g (arg5)
+				; r10
+				  r8
+			}
 		}
 		return res
 	}
 
 	fn sys_call6(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 i64, arg6 u64) u64 {
-		mut res := u64(0)
-		asm amd64 {
-			mov r10, arg4
-			mov r8, arg5
-			mov r9, arg6
-			syscall
-			; =a (res)
-			; 0 (scn)
-			  D (arg1)
-			  S (arg2)
-			  d (arg3)
-			  g (arg4)
-			  g (arg5)
-			  g (arg6)
-			; r10
-			  r8
-			  r9
+		mut res := u64(-i64(38)) // -ENOSYS, overwritten by the syscall on amd64
+		$if amd64 {
+			asm amd64 {
+				mov r10, arg4
+				mov r8, arg5
+				mov r9, arg6
+				syscall
+				; =a (res)
+				; 0 (scn)
+				  D (arg1)
+				  S (arg2)
+				  d (arg3)
+				  g (arg4)
+				  g (arg5)
+				  g (arg6)
+				; r10
+				  r8
+				  r9
+			}
 		}
 		return res
 	}
 
-	asm amd64 {
-		.globl _start
-		_start:
-		call main
-		mov rax, 60
-		xor rdi, rdi
-		syscall
-		ret
+	$if amd64 {
+		asm amd64 {
+			.globl _start
+			_start:
+			call main
+			mov rax, 60
+			xor rdi, rdi
+			syscall
+			ret
+		}
 	}
 }

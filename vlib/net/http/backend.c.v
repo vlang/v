@@ -21,10 +21,12 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 		eprint(req_headers)
 		eprintln('')
 	}
-	// Advertise ALPN `h2` (with an `http/1.1` fallback) only when HTTP/2 is
-	// requested, so existing callers see no change on the wire. The HTTP/2 read
-	// path now feeds the same streaming callbacks and honors the stop limits,
-	// so they no longer force HTTP/1.1.
+	// Advertise ALPN `h2` (with an `http/1.1` fallback) when HTTP/2 is enabled.
+	// This is the default for https requests, so ordinary get()/fetch() calls
+	// advertise ALPN and use HTTP/2 when the server selects it; callers can opt
+	// out with `enable_http2: false`. The HTTP/2 read path feeds the same
+	// streaming callbacks and honors the stop limits, so they do not force
+	// HTTP/1.1.
 	alpn := if req.enable_http2 { ['h2', 'http/1.1'] } else { []string{} }
 	for {
 		mut ssl_conn := ssl.new_ssl_conn(
@@ -69,6 +71,17 @@ fn (req &Request) h2_do(mut ssl_conn ssl.SSLConn, method Method, host_name strin
 	defer {
 		ssl_conn.shutdown() or {}
 	}
+	mut conn := new_h2_conn(ssl_conn)
+	return req.h2_exchange(mut conn, method, host_name, port, path, data, header)!
+}
+
+// h2_exchange runs a single request over an already-established H2Conn and
+// converts the result to a net.http Response. It is transport-agnostic: the
+// caller is responsible for building the H2Conn over whatever ALPN-negotiated
+// `h2` transport (net.ssl on most platforms, SChannel on default Windows) and
+// for tearing it down afterwards. The request's streaming callbacks and stop
+// limits are adapted onto the H2 chunk hook, as documented on h2_do.
+fn (req &Request) h2_exchange(mut conn H2Conn, method Method, host_name string, port int, path string, data string, header Header) !Response {
 	base := req.to_h2_request(method, h2_authority(host_name, port), path, data, header)
 	on_progress := req.on_progress
 	on_progress_body := req.on_progress_body
@@ -94,7 +107,6 @@ fn (req &Request) h2_do(mut ssl_conn ssl.SSLConn, method Method, host_name strin
 		stop_copying_limit:   req.stop_copying_limit
 		stop_receiving_limit: req.stop_receiving_limit
 	}
-	mut conn := new_h2_conn(ssl_conn)
 	h2resp := conn.do(h2req)!
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(h2resp.body.len))!
@@ -125,4 +137,29 @@ fn (req &Request) do_request(req_headers string, mut ssl_conn ssl.SSLConn) !Resp
 		req.on_finish(req, u64(response_text.len))!
 	}
 	return parse_received_response(response_text, response_info)
+}
+
+// h1_exchange_ssl sends an already-built HTTP/1.x request over an open TLS
+// connection and reads one response, leaving the connection open (unlike
+// do_request, which shuts the connection down). The bool result reports
+// whether the response was precisely framed, so the connection can safely
+// carry another request (see ReceivedResponseInfo.reusable).
+fn (req &Request) h1_exchange_ssl(mut ssl_conn ssl.SSLConn, raw string) !(Response, bool) {
+	ssl_conn.write_string(raw) or {
+		return error('http.transport: TLS connection write failed: ${err.msg()}')
+	}
+	mut content := strings.new_builder(4096)
+	response_info := req.receive_all_data_from_cb_in_builder(mut content, voidptr(ssl_conn),
+		read_from_ssl_connection_cb)!
+	response_text := content.str()
+	$if trace_http_response ? {
+		eprint('< ')
+		eprint(response_text)
+		eprintln('')
+	}
+	if req.on_finish != unsafe { nil } {
+		req.on_finish(req, u64(response_text.len))!
+	}
+	resp := parse_received_response(response_text, response_info)!
+	return resp, response_info.reusable
 }

@@ -20,6 +20,14 @@ fn server() ! {
 	}
 	eprintln('[+] Accepted connection')
 	cli.shutdown()!
+	// A second shutdown must be a harmless no-op (idempotent): SSLConn.shutdown
+	// marks the conn closed before freeing, so this returns the "not open" error
+	// here rather than double-freeing the mbedtls contexts (which would abort the
+	// process). This guards the worker-defer-vs-close_idle double-shutdown race.
+	mut second_shutdown_errored := false
+	cli.shutdown() or { second_shutdown_errored = true }
+	assert second_shutdown_errored, 'second shutdown should be a no-op returning an error, not a double-free'
+	eprintln('[+] Second shutdown was a clean no-op')
 }
 
 @[if network ?]

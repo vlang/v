@@ -144,7 +144,11 @@ fn (mut mcache ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 		if mcache.check_for_stop(files) {
 			break
 		}
-		cfolder = os.dir(cfolder)
+		next := os.dir(cfolder)
+		if next == cfolder {
+			break
+		}
+		cfolder = next
 		folders_so_far << cfolder
 		levels++
 	}

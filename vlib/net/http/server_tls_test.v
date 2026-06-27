@@ -1,3 +1,4 @@
+// vtest build: !sanitize-memory-clang
 // Hermetic TLS-termination test for net.http.Server: spin up a local HTTPS
 // server with an in-memory cert/key, hit it with http.fetch (validate: false),
 // and assert the round-trip.
@@ -6,6 +7,7 @@ module main
 
 import net
 import net.http
+import net.mbedtls
 import time
 
 const server_tls_cert = '-----BEGIN CERTIFICATE-----\nMIIEOTCCAyECFG64Q2g46jZb3kRbDOJWX/BwjSp6MA0GCSqGSIb3DQEBCwUAMEUx\nCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRl\ncm5ldCBXaWRnaXRzIFB0eSBMdGQwIBcNMjMwODAyMTcyOTQyWhgPMjA1MDEyMTcx\nNzI5NDJaMGsxCzAJBgNVBAYTAlVTMRMwEQYDVQQIDApDYWxpZm9ybmlhMRQwEgYD\nVQQHDAtMb3MgQW5nZWxlczEdMBsGA1UECgwUQ2F0YWx5c3QgRGV2ZWxvcG1lbnQx\nEjAQBgNVBAMMCWxvY2FsaG9zdDCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoC\nggIBALqAI4fqUi+QBVWcsXglouLdOML5+w0+1hSR1KdO0Q5XPdQAs/yYWJ+KUkDw\nG++rfy9DUPq7FNRBVurXQkcAtn6gXdllGUSjwUiDo/N4mMOyS/2sufBuaeww7jVi\nrppH+zwP1tUnjRd6khl6bi1Ian9VSzr3Iy9CkXIg1GU4CPXkOydLeoQfepXxWoK1\nOUNwT3VKC/stAfY3j/NIIeiJYkyuRGFCkxn/BUjN+AsXiTugRcYKEFHdIPkOuCXp\nYbhf+lLsczpxCs3rdZG9b/N6mEDCzXTmeHkmsjdPTf+1k5DZZvKzVBBrgdxCgBb7\n5RwjF5v9WmnIc33wWgfJC6FaUzj9NYxYUbPHD+jTz0rJB/jj4u/xJlM/e5NRmXdW\n70pOMKXtWjRSolLOFIPKLY1qs3KMTAZxKKWPDDF7WlMJxMRt7nnnks5yw43Nog4C\njDLk1ZgETnPpLgo3jbmJdIv+OHKTJrBlVvDq7VTyixCoS5G8KoOmyQJhaXG6NwE2\niVhH5JIKgzgCfetfDsnjxqJ/qtrFXPa8FF2TsomD0NK/GZmIcs+9OeVB75Jn5uhF\nfLHScpiTbuu5w3P/LI/MqihLRB6RRNnRzPH8fIg5bYC9b770ta/8GcFRuYE8t+UR\nGtqXJoIKixbDlqV54kal8FQzYzhETf9+NM6Kb/lKEfG/pslvAgMBAAEwDQYJKoZI\nhvcNAQELBQADggEBALI3uNiNO0QE1brA3QYFK+d9ZroB72NrJ0UNkzYHDg2Fc6xg\n4aVVfaxY08+TmKc0JlMOW+pUxeCW/+UBSngdQiR9EE9xm0k0XIrAsy9RXxRvEtPu\nM1VI2h7ayp1Y2BrnQinevTSgtqLRyS1VbOFRl1FiyVvinw2I0KsDdAMNevAPXcOa\nQ8pUgUq6f56DkhocQaj+hxD/uV8HryNxuoSXnPhvfTN3z4YRGzsaWevJ9EYJliOM\n+XugcqfFJ+W7/QCEcAHCL+Bw6OydG5NFORr3p57PXjjcL/uKmxPBrWg2Bz6uT4uR\nMhj0zttiFHLAt9jGfyk6W57UNUja1e1ggftJJhs=\n-----END CERTIFICATE-----\n'
@@ -22,6 +24,25 @@ fn (mut h EchoHandler) handle(req http.Request) http.Response {
 	return http.Response{
 		status_code: 200
 		body:        'tls hello ${req.url}'
+	}
+}
+
+struct BlockingHandler {
+	started chan bool
+	release chan bool
+}
+
+fn testsuite_end() {
+	http.close_idle_connections()
+}
+
+fn (mut h BlockingHandler) handle(req http.Request) http.Response {
+	h.started <- true
+	_ := <-h.release
+	return http.Response{
+		status_code: 200
+		header:      http.new_header(key: .connection, value: 'close')
+		body:        'released'
 	}
 }
 
@@ -50,17 +71,20 @@ fn test_server_tls_round_trip() {
 		cert:                   server_tls_cert
 		cert_key:               server_tls_key
 		in_memory_verification: true
+		accept_timeout:         time.second
 		handler:                EchoHandler{}
 		show_startup_message:   false
 	}
-	spawn srv.listen_and_serve()
+	t := spawn srv.listen_and_serve()
 	srv.wait_till_running() or {
 		srv.close()
+		t.wait()
 		assert false, 'server failed to start: ${err}'
 		return
 	}
 	defer {
 		srv.close()
+		t.wait()
 	}
 	// Give the listener a beat to come up.
 	time.sleep(50 * time.millisecond)
@@ -74,4 +98,590 @@ fn test_server_tls_round_trip() {
 	}
 	assert resp.status_code == 200
 	assert resp.body == 'tls hello /hello'
+}
+
+fn test_server_tls_stop() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         100 * time.millisecond
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	srv.stop()
+	assert srv.status() == .stopped
+	t.wait()
+	assert srv.status() == .closed
+}
+
+fn test_server_tls_close_caps_default_accept_poll() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	sw := time.new_stopwatch()
+	srv.close()
+	t.wait()
+	assert sw.elapsed() < time.second
+	assert srv.status() == .closed
+}
+
+fn test_server_tls_close_waits_for_active_request() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	started := chan bool{cap: 1}
+	release := chan bool{cap: 1}
+	done := chan string{cap: 1}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         time.second
+		handler:                BlockingHandler{
+			started: started
+			release: release
+		}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	spawn fn [done, port] () {
+		resp := http.fetch(
+			url:          'https://127.0.0.1:${port}/blocked'
+			enable_http2: false
+			validate:     false
+		) or {
+			done <- 'error: ${err}'
+			return
+		}
+		done <- resp.body
+	}()
+	select {
+		_ := <-started {}
+		msg := <-done {
+			srv.close()
+			t.wait()
+			assert false, 'client finished before handler started: ${msg}'
+			return
+		}
+		2 * time.second {
+			srv.close()
+			t.wait()
+			assert false, 'timed out waiting for handler to start'
+			return
+		}
+	}
+	srv.close()
+	time.sleep(50 * time.millisecond)
+	release <- true
+	assert (<-done) == 'released'
+	t.wait()
+	assert srv.status() == .closed
+}
+
+fn test_server_tls_close_during_silent_handshake() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         100 * time.millisecond
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	mut client := net.dial_tcp('127.0.0.1:${port}') or {
+		srv.close()
+		t.wait()
+		assert false, 'tcp dial failed: ${err}'
+		return
+	}
+	defer {
+		client.close() or {}
+	}
+	time.sleep(50 * time.millisecond)
+	sw := time.new_stopwatch()
+	srv.close()
+	t.wait()
+	assert sw.elapsed() < time.second
+	assert srv.status() == .closed
+}
+
+// test_server_tls_close_under_handshake_flood guards the case where every worker
+// is stuck in a slow TLS handshake AND the channel buffer is full of untracked
+// raw conns, so the accept thread parks on `ch <- conn`. If the accept thread
+// could not poll s.state during that send it would never reach close_idle(), and
+// close() would hang until a worker handshake timed out. Each client sends a
+// valid ClientHello then stalls, so the server's handshake blocks waiting for the
+// client's next flight (a bare connect would instead fail the handshake fast and
+// free the worker). With one worker and a one-slot buffer this fills: conn 0 ->
+// the worker, conn 1 -> the buffer, conn 2 -> the blocked send.
+fn test_server_tls_close_under_handshake_flood() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	// A real 165-byte TLS 1.2 ClientHello captured from V's own mbedtls client.
+	// The exact bytes (random/session id) are irrelevant; the server only needs a
+	// structurally valid first flight to start the handshake and then block
+	// waiting for the client's ClientKeyExchange, which never arrives.
+	client_hello := [u8(0x16), 0x03, 0x03, 0x00, 0xa0, 0x01, 0x00, 0x00, 0x9c, 0x03, 0x03, 0x6a,
+		0x3d, 0x34, 0x4c, 0x8f, 0x46, 0x64, 0xd8, 0xe9, 0x2d, 0x46, 0x16, 0xd3, 0xf2, 0x87, 0xe4,
+		0xee, 0xc5, 0x57, 0x6c, 0x8e, 0xd7, 0x36, 0x19, 0x3b, 0x35, 0x7a, 0x01, 0x03, 0xde, 0x6e,
+		0x64, 0x00, 0x00, 0x24, 0xc0, 0x2c, 0xc0, 0x2b, 0xc0, 0x30, 0xc0, 0x2f, 0xc0, 0x24, 0xc0,
+		0x23, 0xc0, 0x28, 0xc0, 0x27, 0xc0, 0x0a, 0xc0, 0x09, 0xc0, 0x14, 0xc0, 0x13, 0x00, 0x9d,
+		0x00, 0x9c, 0x00, 0x3d, 0x00, 0x3c, 0x00, 0x35, 0x00, 0x2f, 0x01, 0x00, 0x00, 0x4f, 0x00,
+		0x0a, 0x00, 0x08, 0x00, 0x06, 0x00, 0x1d, 0x00, 0x17, 0x00, 0x18, 0x00, 0x0b, 0x00, 0x02,
+		0x01, 0x00, 0x00, 0x0d, 0x00, 0x1a, 0x00, 0x18, 0x08, 0x04, 0x08, 0x05, 0x08, 0x06, 0x04,
+		0x01, 0x05, 0x01, 0x02, 0x01, 0x04, 0x03, 0x05, 0x03, 0x02, 0x03, 0x02, 0x02, 0x06, 0x01,
+		0x06, 0x03, 0x00, 0x23, 0x00, 0x00, 0x00, 0x10, 0x00, 0x0e, 0x00, 0x0c, 0x02, 0x68, 0x32,
+		0x08, 0x68, 0x74, 0x74, 0x70, 0x2f, 0x31, 0x2e, 0x31, 0x00, 0x17, 0x00, 0x00, 0xff, 0x01,
+		0x00, 0x01, 0x00]
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		// A finite accept_timeout doubles as the handshake budget (see
+		// tls_accept_timeouts), so use a large one: each stalled handshake must
+		// stay stuck long enough to keep the worker busy and form the wedge,
+		// rather than time out in milliseconds. The accept loop still polls at the
+		// 100ms tls_accept_poll_timeout cap regardless.
+		accept_timeout:       8 * time.second
+		worker_num:           1
+		pool_channel_slots:   1
+		handler:              EchoHandler{}
+		show_startup_message: false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	mut clients := []&net.TcpConn{}
+	for _ in 0 .. 4 {
+		mut c := net.dial_tcp('127.0.0.1:${port}') or { continue }
+		c.write(client_hello) or {}
+		clients << c
+	}
+	defer {
+		for mut c in clients {
+			c.close() or {}
+		}
+	}
+	// Let the accept thread occupy the worker and buffer and park on the send.
+	time.sleep(400 * time.millisecond)
+	sw := time.new_stopwatch()
+	srv.close()
+	t.wait()
+	// close_idle() force-closes the stuck handshake fds, so close() returns well
+	// before the 8s handshake timeout — but only if the accept thread escaped the
+	// blocked send to reach it.
+	assert sw.elapsed() < 2 * time.second
+	assert srv.status() == .closed
+}
+
+fn test_server_tls_close_interrupts_idle_keep_alive() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         time.second
+		read_timeout:           5 * time.second
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	mut client := mbedtls.new_ssl_conn(mbedtls.SSLConnectConfig{}) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl client init failed: ${err}'
+		return
+	}
+	defer {
+		client.shutdown() or {}
+	}
+	client.dial('127.0.0.1', port) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl dial failed: ${err}'
+		return
+	}
+	request := 'GET /idle HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nConnection: keep-alive\r\n\r\n'
+	client.write_string(request) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl write failed: ${err}'
+		return
+	}
+	mut buf := []u8{len: 4096}
+	n := client.read(mut buf) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl read failed: ${err}'
+		return
+	}
+	response := buf[..n].bytestr()
+	assert response.to_lower().contains('connection: keep-alive')
+	assert response.contains('tls hello /idle')
+
+	sw := time.new_stopwatch()
+	srv.close()
+	t.wait()
+	assert sw.elapsed() < 2 * time.second
+	assert srv.status() == .closed
+}
+
+fn test_server_tls_close_interrupts_idle_h2() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         time.second
+		read_timeout:           5 * time.second
+		enable_http2:           true
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	mut client := mbedtls.new_ssl_conn(mbedtls.SSLConnectConfig{
+		alpn_protocols: ['h2']
+	}) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl client init failed: ${err}'
+		return
+	}
+	defer {
+		client.shutdown() or {}
+	}
+	client.dial('127.0.0.1', port) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl dial failed: ${err}'
+		return
+	}
+	assert client.negotiated_alpn() == 'h2'
+	mut h2 := http.new_h2_conn(client)
+	resp := h2.do(http.H2ClientRequest{
+		method:    'GET'
+		scheme:    'https'
+		authority: '127.0.0.1:${port}'
+		path:      '/h2-idle'
+	}) or {
+		srv.close()
+		t.wait()
+		assert false, 'h2 request failed: ${err}'
+		return
+	}
+	assert resp.status == 200
+	assert resp.body.bytestr() == 'tls hello /h2-idle'
+
+	sw := time.new_stopwatch()
+	srv.close()
+	t.wait()
+	assert sw.elapsed() < 2 * time.second
+	assert srv.status() == .closed
+}
+
+fn test_server_tls_close_interrupts_incomplete_h2_request() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         time.second
+		read_timeout:           2 * time.second
+		enable_http2:           true
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	mut client := mbedtls.new_ssl_conn(mbedtls.SSLConnectConfig{
+		alpn_protocols: ['h2']
+	}) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl client init failed: ${err}'
+		return
+	}
+	defer {
+		client.shutdown() or {}
+	}
+	client.dial('127.0.0.1', port) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl dial failed: ${err}'
+		return
+	}
+	assert client.negotiated_alpn() == 'h2'
+	mut enc := http.H2HpackEncoder{}
+	block := enc.encode([
+		http.H2HeaderField{':method', 'POST'},
+		http.H2HeaderField{':scheme', 'https'},
+		http.H2HeaderField{':authority', '127.0.0.1:${port}'},
+		http.H2HeaderField{':path', '/h2-incomplete'},
+	])
+	mut out := []u8{}
+	out << http.h2_client_preface.bytes()
+	out << http.H2Frame(http.H2SettingsFrame{}).encode()
+	out << http.H2Frame(http.H2HeadersFrame{
+		stream_id:   1
+		fragment:    block
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	written := client.write(out) or {
+		srv.close()
+		t.wait()
+		assert false, 'ssl write failed: ${err}'
+		return
+	}
+	assert written == out.len
+	time.sleep(100 * time.millisecond)
+
+	sw := time.new_stopwatch()
+	srv.close()
+	t.wait()
+	assert sw.elapsed() < time.second
+	assert srv.status() == .closed
+}
+
+fn test_server_tls_parallel_handshakes() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         time.second
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	defer {
+		srv.close()
+		t.wait()
+	}
+	time.sleep(50 * time.millisecond)
+
+	// Fire many clients at once. Handshakes now run on the worker pool, so they
+	// proceed concurrently against the listener's shared mbedtls config/RNG (safe
+	// because MBEDTLS_THREADING_C is enabled on all platforms). Assert every
+	// round-trip succeeds with the correct body — a thread-safety regression in
+	// the shared handshake state would surface as a failed/garbled response.
+	n := 16
+	results := chan string{cap: n}
+	for i in 0 .. n {
+		spawn fn [results, port, i] () {
+			resp := http.fetch(
+				url:          'https://127.0.0.1:${port}/p${i}'
+				enable_http2: false
+				validate:     false
+			) or {
+				results <- 'error: ${err}'
+				return
+			}
+			if resp.status_code != 200 {
+				results <- 'bad status: ${resp.status_code}'
+				return
+			}
+			results <- resp.body
+		}()
+	}
+	// Results arrive in nondeterministic order, so match on the common prefix
+	// rather than a specific path index.
+	mut ok := 0
+	for _ in 0 .. n {
+		body := <-results
+		assert body.starts_with('tls hello /p'), 'unexpected response: ${body}'
+		ok++
+	}
+	assert ok == n, 'expected ${n} successful concurrent handshakes, got ${ok}'
+}
+
+fn test_server_tls_h2_negotiation() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         time.second
+		enable_http2:           true
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	defer {
+		srv.close()
+		t.wait()
+	}
+	time.sleep(50 * time.millisecond)
+
+	// Client opts into HTTP/2; server must select `h2` via ALPN and serve the
+	// request through its HTTP/2 driver.
+	resp := http.fetch(
+		url:          'https://127.0.0.1:${port}/h2'
+		enable_http2: true
+		validate:     false
+	) or {
+		assert false, 'h2 fetch failed: ${err}'
+		return
+	}
+	assert resp.version() == .v2_0
+	assert resp.status_code == 200
+	assert resp.body == 'tls hello /h2'
+
+	// With HTTP/2 disabled on the client, the server must keep speaking
+	// HTTP/1.1 to the same listener. (enable_http2 defaults to true since
+	// vlang/v#27384, so it must be opted out of explicitly here.)
+	resp_h1 := http.fetch(
+		url:          'https://127.0.0.1:${port}/h1'
+		enable_http2: false
+		validate:     false
+	) or {
+		assert false, 'h1 fetch failed: ${err}'
+		return
+	}
+	assert resp_h1.version() == .v1_1
+	assert resp_h1.status_code == 200
 }

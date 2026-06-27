@@ -16,6 +16,12 @@ pub mut:
 	duration time.Duration
 
 	owns_socket bool
+	// last_write_sent reports the most recent write_ptr's progress for retry
+	// decisions: 0 = provably nothing was sent (safe to replay), or -1 = the
+	// count is indeterminate because a failed/retryable write may have already
+	// flushed complete records to the peer (TLS cannot prove zero). On full
+	// success it equals the bytes written.
+	last_write_sent int
 }
 
 @[params]
@@ -92,37 +98,55 @@ pub fn (mut s SSLConn) shutdown() ! {
 		eprintln(@METHOD)
 	}
 
-	if s.ssl != 0 {
+	if s.ssl != unsafe { nil } {
 		deadline := ssl_timeout_deadline(s.duration)
-		for {
-			mut res := C.SSL_shutdown(voidptr(s.ssl))
+		mut shutdown_done := false
+
+		for !shutdown_done {
+			// Clear the thread's OpenSSL error queue so ssl_error()/SSL_get_error()
+			// below reflect only this call and not a stale entry from an earlier
+			// operation, which could be misread as a fatal SSL_ERROR_SSL.
+			C.ERR_clear_error()
+			res := C.SSL_shutdown(voidptr(s.ssl))
 			if res == 1 {
+				shutdown_done = true
 				break
 			}
 
-			err_res := ssl_error(res, s.ssl) or {
-				break // We break to free rest of resources
+			// res == 0 means our close_notify was sent, but the peer's has not
+			// been received yet, so another SSL_shutdown() call is needed to
+			// finish the bidirectional shutdown; res < 0 signals an error or a
+			// retryable condition. In both cases SSL_get_error() tells us whether
+			// the socket must first become readable/writable before retrying.
+			// Routing res == 0 through ssl_error() instead of looping immediately
+			// avoids busy-spinning on non-blocking sockets.
+			err_res := ssl_error(res, s.ssl) or { break }
+
+			match err_res {
+				.ssl_error_want_read {
+					s.wait_for_read(ssl_remaining_timeout(deadline)) or { break }
+				}
+				.ssl_error_want_write {
+					s.wait_for_write(ssl_remaining_timeout(deadline)) or { break }
+				}
+				else {
+					break
+				}
 			}
-			if err_res == .ssl_error_want_read {
-				s.wait_for_read(ssl_remaining_timeout(deadline))!
-				continue
-			} else if err_res == .ssl_error_want_write {
-				s.wait_for_write(ssl_remaining_timeout(deadline))!
-				continue
-			}
-			if s.ssl != 0 {
-				unsafe { C.SSL_free(voidptr(s.ssl)) }
-			}
-			if s.sslctx != 0 {
-				C.SSL_CTX_free(s.sslctx)
-			}
-			return error('net.openssl Could not connect using SSL. (${err_res}),err')
 		}
-		C.SSL_free(voidptr(s.ssl))
+
+		// Always free SSL object first.
+		if s.ssl != unsafe { nil } {
+			unsafe { C.SSL_free(voidptr(s.ssl)) }
+			s.ssl = unsafe { nil }
+		}
 	}
-	if s.sslctx != 0 {
+
+	if s.sslctx != unsafe { nil } {
 		C.SSL_CTX_free(s.sslctx)
+		s.sslctx = unsafe { nil }
 	}
+
 	if s.owns_socket {
 		net.shutdown(s.handle)
 		net.close(s.handle)!
@@ -268,6 +292,8 @@ fn (mut s SSLConn) complete_connect() ! {
 
 	deadline := ssl_timeout_deadline(s.duration)
 	for {
+		// Clear the error queue so SSL_get_error() reflects only this call.
+		C.ERR_clear_error()
 		mut res := C.SSL_connect(voidptr(s.ssl))
 		if res == 1 {
 			break
@@ -288,6 +314,8 @@ fn (mut s SSLConn) complete_connect() ! {
 	if s.config.validate {
 		mut pcert := &C.X509(unsafe { nil })
 		for {
+			// Clear the error queue so SSL_get_error() reflects only this call.
+			C.ERR_clear_error()
 			mut res := C.SSL_do_handshake(voidptr(s.ssl))
 			if res == 1 {
 				break
@@ -350,6 +378,8 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 	deadline := ssl_timeout_deadline(s.duration)
 	// s.wait_for_read(deadline - time.now())!
 	for {
+		// Clear the error queue so SSL_get_error() reflects only this call.
+		C.ERR_clear_error()
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)
 		if res > 0 {
 			return res
@@ -413,14 +443,23 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 		}
 	}
 
+	s.last_write_sent = 0
 	deadline := ssl_timeout_deadline(s.duration)
 	unsafe {
 		mut ptr_base := bytes
 		for total_sent < len {
 			ptr := ptr_base + total_sent
 			remaining := len - total_sent
+			// Clear the error queue so SSL_get_error() reflects only this call.
+			C.ERR_clear_error()
 			mut sent := C.SSL_write(voidptr(s.ssl), ptr, remaining)
 			if sent <= 0 {
+				// SSL_write did not fully complete: OpenSSL may already have
+				// flushed one or more complete records (which the peer can
+				// decrypt and act on) before returning a retryable error, so the
+				// sent count is no longer provable. Mark it indeterminate; a
+				// later full success below resets it to the exact length.
+				s.last_write_sent = -1
 				err_res := ssl_error(sent, s.ssl)!
 				if err_res == .ssl_error_want_read {
 					s.wait_for_read(ssl_remaining_timeout(deadline))!
@@ -441,6 +480,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 					int(err_res))
 			}
 			total_sent += sent
+			s.last_write_sent = total_sent
 		}
 	}
 	return total_sent

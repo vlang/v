@@ -90,6 +90,9 @@ fn (mut g Gen) prepare_array_init_exprs(exprs []ast.Expr, expr_types []ast.Type,
 		g.write(' ')
 	} else {
 		g.write(stmt_str)
+		if g.pref.is_vlines && stmt_str.contains('#line') {
+			g.writeln('')
+		}
 	}
 	return prepared
 }
@@ -951,7 +954,10 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	if mut expr is ast.AnonFn {
 		if expr.inherited_vars.len > 0 {
 			closure_var = g.new_tmp_var()
+			prev_track_closure_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+			g.track_lambda_autofree_tmp_arg_vars = false
 			g.declare_closure_fn(mut expr, closure_var)
+			g.track_lambda_autofree_tmp_arg_vars = prev_track_closure_tmp_arg_vars
 		}
 	}
 
@@ -967,6 +973,11 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		is_auto_heap)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
+	lambda_autofree_tmp_arg_vars_start := g.lambda_autofree_tmp_arg_vars.len
+	prev_inside_lambda_autofree_tmp := g.inside_lambda_autofree_tmp
+	prev_track_lambda_autofree_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+	g.inside_lambda_autofree_tmp = true
+	g.track_lambda_autofree_tmp_arg_vars = true
 	match mut expr {
 		ast.AnonFn {
 			g.write('${ret_elem_styp} ${tmp_map_expr_result_name} = ')
@@ -978,7 +989,10 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 			if expr.inherited_vars.len > 0 {
 				g.write_closure_fn(mut expr, var_name, closure_var)
 			} else {
+				prev_track_anon_fn_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+				g.track_lambda_autofree_tmp_arg_vars = false
 				g.gen_anon_fn_decl(mut expr)
+				g.track_lambda_autofree_tmp_arg_vars = prev_track_anon_fn_tmp_arg_vars
 				g.write('${expr.decl.name}(${var_name})')
 			}
 			if ret_elem_sym.kind == .array_fixed {
@@ -1069,11 +1083,17 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		}
 	}
 
+	g.inside_lambda_autofree_tmp = prev_inside_lambda_autofree_tmp
+	g.track_lambda_autofree_tmp_arg_vars = prev_track_lambda_autofree_tmp_arg_vars
+
 	if left_is_array {
-		g.writeln2(';',
-			'builtin__array_push${noscan}((array*)&${past.tmp_var}, &${tmp_map_expr_result_name});')
+		g.writeln(';')
+		g.write_lambda_autofree_tmp_arg_vars(lambda_autofree_tmp_arg_vars_start)
+		g.writeln('builtin__array_push${noscan}((array*)&${past.tmp_var}, &${tmp_map_expr_result_name});')
 	} else {
-		g.writeln2(';', '${past.tmp_var}[${i}] = ${tmp_map_expr_result_name};')
+		g.writeln(';')
+		g.write_lambda_autofree_tmp_arg_vars(lambda_autofree_tmp_arg_vars_start)
+		g.writeln('${past.tmp_var}[${i}] = ${tmp_map_expr_result_name};')
 	}
 	g.indent--
 	g.writeln('}')
@@ -1084,6 +1104,16 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		g.indent--
 		g.writeln('}')
 	}
+}
+
+fn (mut g Gen) write_lambda_autofree_tmp_arg_vars(start int) {
+	if g.lambda_autofree_tmp_arg_vars.len <= start {
+		return
+	}
+	for var_name in g.lambda_autofree_tmp_arg_vars[start..] {
+		g.writeln('builtin__string_free(&${var_name});')
+	}
+	g.lambda_autofree_tmp_arg_vars = g.lambda_autofree_tmp_arg_vars[..start].clone()
 }
 
 @[inline]
@@ -1199,6 +1229,17 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 	g.writeln(';')
 }
 
+// array_sort_expr_key returns a C-identifier-safe, lossless key for a sort expression.
+fn array_sort_expr_key(expr_key string) string {
+	hex_digits := '0123456789abcdef'
+	mut b := strings.new_builder(expr_key.len * 2)
+	for ch in expr_key.bytes() {
+		b.write_u8(hex_digits[int(ch >> 4)])
+		b.write_u8(hex_digits[int(ch & 0x0f)])
+	}
+	return b.str()
+}
+
 // `users.sort(a.age < b.age)`
 fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// println('filter s="${s}"')
@@ -1221,7 +1262,8 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// `users.sort(a.age > b.age)`
 	// Generate a comparison function for a custom type
 	elem_stype := g.styp(elem_type)
-	mut compare_fn := 'compare_${g.unique_file_path_hash}_${elem_stype.replace('*', '_ptr')}'
+	mut compare_fn := 'compare_${g.stable_type_symbol_hash(elem_type)}_${elem_stype.replace('*',
+		'_ptr')}'
 	mut comparison_type := g.unwrap(ast.void_type)
 	mut left_expr, mut right_expr := '', ''
 	mut use_lambda := false
@@ -1229,13 +1271,6 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// the only argument can only be an infix expression like `a < b` or `b.field > a.field`
 	if node.args.len == 0 {
 		comparison_type = g.unwrap(elem_type.set_nr_muls(0))
-		rlock g.array_sort_fn {
-			if compare_fn in g.array_sort_fn {
-				g.gen_array_sort_call(node,
-					g.ensure_array_sort_qsort_adapter(compare_fn, elem_type), left_is_array)
-				return
-			}
-		}
 		left_expr = '*a'
 		right_expr = '*b'
 	} else if node.args[0].expr is ast.LambdaExpr {
@@ -1258,22 +1293,17 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		}
 		comparison_type = g.unwrap(comparison_left_type.set_nr_muls(0))
 		left_name := infix_expr.left.str()
+		expr_key := '${left_name}\n${infix_expr.op.str()}\n${infix_expr.right.str()}'
 		if left_name.len > 1 {
 			compare_fn += '_by' +
 				left_name[1..].replace_each(['.', '_', '[', '_', ']', '_', "'", '_', '"', '_', '(', '', ')', '', ',', '', '/', '_'])
 		}
+		compare_fn += '_expr_${array_sort_expr_key(expr_key)}'
 		// is_reverse is `true` for `.sort(a > b)` and `.sort(b < a)`
 		is_reverse := (left_name.starts_with('a') && infix_expr.op == .gt)
 			|| (left_name.starts_with('b') && infix_expr.op == .lt)
 		if is_reverse {
 			compare_fn += '_reverse'
-		}
-		rlock g.array_sort_fn {
-			if compare_fn in g.array_sort_fn {
-				g.gen_array_sort_call(node,
-					g.ensure_array_sort_qsort_adapter(compare_fn, elem_type), left_is_array)
-				return
-			}
 		}
 		if left_name.starts_with('a') != is_reverse {
 			left_expr = g.expr_string(infix_expr.left)
@@ -1298,8 +1328,16 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 
 	// Register a new custom `compare_xxx` function for qsort()
 	// TODO: move to checker
+	mut already_generated := false
 	lock g.array_sort_fn {
-		g.array_sort_fn << compare_fn
+		already_generated = compare_fn in g.array_sort_fn
+		if !already_generated {
+			g.array_sort_fn << compare_fn
+		}
+	}
+	if already_generated {
+		g.gen_array_sort_call(node, '${compare_fn}_qsort_adapter', left_is_array)
+		return
 	}
 
 	stype_arg := g.styp(elem_type)
@@ -1350,13 +1388,15 @@ fn (g &Gen) array_sort_fn_visibility() string {
 
 fn (mut g Gen) ensure_array_sort_qsort_adapter(compare_fn string, elem_type ast.Type) string {
 	qsort_compare_fn := '${compare_fn}_qsort_adapter'
-	rlock g.array_sort_wrappers {
-		if qsort_compare_fn in g.array_sort_wrappers {
-			return qsort_compare_fn
+	mut already_generated := false
+	lock g.array_sort_wrappers {
+		already_generated = qsort_compare_fn in g.array_sort_wrappers
+		if !already_generated {
+			g.array_sort_wrappers << qsort_compare_fn
 		}
 	}
-	lock g.array_sort_wrappers {
-		g.array_sort_wrappers << qsort_compare_fn
+	if already_generated {
+		return qsort_compare_fn
 	}
 	elem_stype := g.styp(elem_type)
 	g.sort_fn_definitions.writeln('${g.array_sort_fn_visibility()}int ${qsort_compare_fn}(const void* a, const void* b) {')
@@ -1632,7 +1672,10 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	if mut expr is ast.AnonFn {
 		if expr.inherited_vars.len > 0 {
 			closure_var = g.new_tmp_var()
+			prev_track_closure_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+			g.track_lambda_autofree_tmp_arg_vars = false
 			g.declare_closure_fn(mut expr, closure_var)
+			g.track_lambda_autofree_tmp_arg_vars = prev_track_closure_tmp_arg_vars
 		}
 	}
 
@@ -1643,13 +1686,17 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		left_is_array, false)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
+	lambda_autofree_tmp_arg_vars_start := g.lambda_autofree_tmp_arg_vars.len
 	match mut expr {
 		ast.AnonFn {
 			g.write('if (')
 			if expr.inherited_vars.len > 0 {
 				g.write_closure_fn(mut expr, var_name, closure_var)
 			} else {
+				prev_track_anon_fn_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+				g.track_lambda_autofree_tmp_arg_vars = false
 				g.gen_anon_fn_decl(mut expr)
+				g.track_lambda_autofree_tmp_arg_vars = prev_track_anon_fn_tmp_arg_vars
 				g.write('${expr.decl.name}(${var_name})')
 			}
 		}
@@ -1689,6 +1736,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 
 	g.writeln2(') {', '\tbuiltin__array_push${noscan}((array*)&${past.tmp_var}, &${var_name});')
 	g.writeln('}')
+	g.write_lambda_autofree_tmp_arg_vars(lambda_autofree_tmp_arg_vars_start)
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {
@@ -2229,7 +2277,10 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	if mut expr is ast.AnonFn {
 		if expr.inherited_vars.len > 0 {
 			closure_var = g.new_tmp_var()
+			prev_track_closure_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+			g.track_lambda_autofree_tmp_arg_vars = false
 			g.declare_closure_fn(mut expr, closure_var)
+			g.track_lambda_autofree_tmp_arg_vars = prev_track_closure_tmp_arg_vars
 		}
 	}
 	i := g.new_tmp_var()
@@ -2239,13 +2290,17 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array, false)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
+	lambda_autofree_tmp_arg_vars_start := g.lambda_autofree_tmp_arg_vars.len
 	match mut expr {
 		ast.AnonFn {
 			g.write('if (')
 			if expr.inherited_vars.len > 0 {
 				g.write_closure_fn(mut expr, var_name, closure_var)
 			} else {
+				prev_track_anon_fn_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+				g.track_lambda_autofree_tmp_arg_vars = false
 				g.gen_anon_fn_decl(mut expr)
+				g.track_lambda_autofree_tmp_arg_vars = prev_track_anon_fn_tmp_arg_vars
 				g.write('${expr.decl.name}(${var_name})')
 			}
 		}
@@ -2284,7 +2339,11 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	}
 
 	g.writeln2(') {', '\t${past.tmp_var} = true;')
-	g.writeln2('\tbreak;', '}')
+	g.writeln('}')
+	g.write_lambda_autofree_tmp_arg_vars(lambda_autofree_tmp_arg_vars_start)
+	g.writeln('if (${past.tmp_var}) {')
+	g.writeln('\tbreak;')
+	g.writeln('}')
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {
@@ -2323,7 +2382,10 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 	if mut expr is ast.AnonFn {
 		if expr.inherited_vars.len > 0 {
 			closure_var = g.new_tmp_var()
+			prev_track_closure_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+			g.track_lambda_autofree_tmp_arg_vars = false
 			g.declare_closure_fn(mut expr, closure_var)
+			g.track_lambda_autofree_tmp_arg_vars = prev_track_closure_tmp_arg_vars
 		}
 	}
 	i := g.new_tmp_var()
@@ -2333,13 +2395,17 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 	g.write_prepared_var(var_name, elem_type, elem_type_str, past.tmp_var, i, left_is_array, false)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
+	lambda_autofree_tmp_arg_vars_start := g.lambda_autofree_tmp_arg_vars.len
 	match mut expr {
 		ast.AnonFn {
 			g.write('if (')
 			if expr.inherited_vars.len > 0 {
 				g.write_closure_fn(mut expr, var_name, closure_var)
 			} else {
+				prev_track_anon_fn_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+				g.track_lambda_autofree_tmp_arg_vars = false
 				g.gen_anon_fn_decl(mut expr)
+				g.track_lambda_autofree_tmp_arg_vars = prev_track_anon_fn_tmp_arg_vars
 				g.write('${expr.decl.name}(${var_name})')
 			}
 		}
@@ -2379,6 +2445,7 @@ fn (mut g Gen) gen_array_count(node ast.CallExpr) {
 
 	g.writeln2(') {', '\t++${past.tmp_var};')
 	g.writeln('}')
+	g.write_lambda_autofree_tmp_arg_vars(lambda_autofree_tmp_arg_vars_start)
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {
@@ -2418,7 +2485,10 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	if mut expr is ast.AnonFn {
 		if expr.inherited_vars.len > 0 {
 			closure_var = g.new_tmp_var()
+			prev_track_closure_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+			g.track_lambda_autofree_tmp_arg_vars = false
 			g.declare_closure_fn(mut expr, closure_var)
+			g.track_lambda_autofree_tmp_arg_vars = prev_track_closure_tmp_arg_vars
 		}
 	}
 
@@ -2428,13 +2498,17 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	g.empty_line = true
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
+	lambda_autofree_tmp_arg_vars_start := g.lambda_autofree_tmp_arg_vars.len
 	match mut expr {
 		ast.AnonFn {
 			g.write('if (!(')
 			if expr.inherited_vars.len > 0 {
 				g.write_closure_fn(mut expr, var_name, closure_var)
 			} else {
+				prev_track_anon_fn_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
+				g.track_lambda_autofree_tmp_arg_vars = false
 				g.gen_anon_fn_decl(mut expr)
+				g.track_lambda_autofree_tmp_arg_vars = prev_track_anon_fn_tmp_arg_vars
 				g.write('${expr.decl.name}(${var_name})')
 			}
 		}
@@ -2473,7 +2547,11 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	}
 
 	g.writeln2(')) {', '\t${past.tmp_var} = false;')
-	g.writeln2('\tbreak;', '}')
+	g.writeln('}')
+	g.write_lambda_autofree_tmp_arg_vars(lambda_autofree_tmp_arg_vars_start)
+	g.writeln('if (!${past.tmp_var}) {')
+	g.writeln('\tbreak;')
+	g.writeln('}')
 	g.indent--
 	g.writeln('}')
 	if !is_embed_map_filter {

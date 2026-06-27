@@ -510,7 +510,7 @@ fn (mut w Walker) record_used_fn_generic_types(fkey string, concrete_types []ast
 fn (w &Walker) fn_generic_types_key(fkey string, concrete_types []ast.Type) string {
 	mut parts := []string{cap: concrete_types.len}
 	for typ in concrete_types {
-		parts << w.table.type_to_str(typ)
+		parts << u32(typ).str()
 	}
 	return '${fkey}:${parts.join('|')}'
 }
@@ -3187,9 +3187,9 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 					w.features.used_maps++
 				}
 				w.mark_by_type(typ)
-				for method in isym.info.methods {
+				for method_name in isym.info.get_methods() {
 					for ityp in [typ.set_nr_muls(1), typ.set_nr_muls(0)] {
-						mname := int(ityp.clear_flags()).str() + '.' + method.name
+						mname := int(ityp.clear_flags()).str() + '.' + method_name
 						w.fn_by_name(mname)
 					}
 				}

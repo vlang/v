@@ -572,6 +572,14 @@ pub fn (ctx &Context) user_agent() string {
 	return ctx.req.header.get(.user_agent) or { '' }
 }
 
+fn peer_ip_from_socket_handle(handle int) string {
+	address := net.peer_addr_from_socket_handle(handle) or { return '' }.str()
+	if address.contains(']:') {
+		return address.all_before(']:').all_after('[')
+	}
+	return address.all_before(':')
+}
+
 // Returns the ip address from the current user
 pub fn (ctx &Context) ip() string {
 	mut ip := ctx.req.header.get_custom('CF-Connecting-IP') or { '' }
@@ -589,6 +597,9 @@ pub fn (ctx &Context) ip() string {
 	}
 	if ip == '' && ctx.conn != unsafe { nil } {
 		ip = ctx.conn.peer_ip() or { '' }
+	}
+	if ip == '' && ctx.client_fd >= 0 {
+		ip = peer_ip_from_socket_handle(ctx.client_fd)
 	}
 	return ip
 }

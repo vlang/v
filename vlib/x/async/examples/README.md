@@ -23,6 +23,8 @@ validation script to avoid bit rot, but the regression guarantees live in the
   cancellation.
 - `basic_task.v`: one value-returning task consumed with `wait()`.
 - `worker_pool.v`: fixed concurrency and explicit `try_submit()` backpressure.
+- `bounded_pool_submit.v`: wait for pool admission with a timeout or context
+  while jobs keep using the pool context.
 - `periodic.v`: a blocking `every()` loop stopped by context cancellation.
 - `timeout.v`: one cooperative job bounded by `with_timeout()`.
 - `net_http/`: synthetic `net.http` request/response processing with `Pool`.
@@ -39,6 +41,7 @@ From the repository root:
 ./v run vlib/x/async/examples/basic_group.v
 ./v run vlib/x/async/examples/basic_task.v
 ./v run vlib/x/async/examples/worker_pool.v
+./v run vlib/x/async/examples/bounded_pool_submit.v
 ./v run vlib/x/async/examples/periodic.v
 ./v run vlib/x/async/examples/timeout.v
 ./v run vlib/x/async/examples/net_http/request_batch.v

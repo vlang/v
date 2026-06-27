@@ -21,10 +21,13 @@ context and function-type helpers:
   sibling jobs cooperatively.
 - `Task[T]`: run one value-returning job and wait for its result once.
 - `Pool`: run accepted jobs with a fixed concurrency limit and bounded backlog.
-- `every`: run a periodic job without overlapping iterations.
+- periodic jobs: run a blocking `every()` loop or a detached
+  `PeriodicHandle` without overlapping iterations.
 - `with_timeout` / `with_timeout_context`: run one job with a bounded deadline.
 
 Ticker objects and server-specific helpers are not part of this API.
+`PeriodicHandle` is only an explicit `stop()` / `wait()` lifecycle handle for
+one detached periodic loop.
 
 ## Why
 
@@ -137,9 +140,9 @@ fn worker(mut ctx context.Context) ! {
 ```
 
 If a job ignores `ctx.done()`, `Group.wait()` will still wait for it to return.
-`Pool.close()` and `every()` also wait for running non-cooperative jobs to return.
-`with_timeout()` returns when the timeout expires, but the ignored job may keep
-running until it finishes naturally.
+`Pool.close()`, `every()`, and `PeriodicHandle.wait()` also wait for running
+non-cooperative jobs to return. `with_timeout()` returns when the timeout
+expires, but the ignored job may keep running until it finishes naturally.
 
 ## Group
 
@@ -174,6 +177,20 @@ Guarantees:
 `wait()` is a one-shot operation. Calling it a second time returns an error. This
 keeps the lifecycle simple: create a group, submit jobs, wait once, then discard
 the group.
+
+Use `new_group_with_config()` only when callers need a bounded snapshot of job
+errors in addition to the first error returned by `wait()`:
+
+```v ignore
+mut group := async.new_group_with_config(parent, collect_errors: true, max_errors: 8)!
+```
+
+Error collection is opt-in. `new_group()` does not collect errors, and
+`errors()` returns an empty array for that default mode. When collection is
+enabled, `max_errors` must be positive; collection stores at most `max_errors`
+observed job errors and `errors()` returns a copy of that bounded snapshot.
+`wait()` still returns only the first observed error and never returns an
+aggregate. Concurrent error order is not guaranteed.
 
 ## Task
 
@@ -252,6 +269,35 @@ Backpressure is explicit. `try_submit()` never waits for backlog space:
 - if the pool is closed or already waiting, it returns `async: pool is closed`;
 - if the job function is nil, it returns `async: job function is nil`.
 
+Use `submit_with_context()` when the caller should wait for backlog space, but
+only while a parent context remains active:
+
+```v ignore
+parent_ctx, cancel := async.with_cancel()
+defer {
+	cancel()
+}
+pool.submit_with_context(parent_ctx, fn (mut ctx context.Context) ! {
+	process_message(mut ctx)!
+})!
+```
+
+Use `submit_with_timeout()` when admission should wait only up to a fixed
+duration:
+
+```v ignore
+pool.submit_with_timeout(250 * time.millisecond, fn (mut ctx context.Context) ! {
+	process_message(mut ctx)!
+})!
+```
+
+The context or timeout bounds admission only. Once the job is accepted, it
+receives the pool's context, the same as `try_submit()`. If the parent context is
+canceled before acceptance, `submit_with_context()` returns that parent context
+error. If the timeout expires before acceptance, `submit_with_timeout()` returns
+`async: timeout`. If `wait()` or `close()` starts while a caller is waiting for
+admission, the submit call returns `async: pool is closed`.
+
 Lifecycle:
 
 - `workers` and `queue_size` must be positive and are fixed at creation.
@@ -273,7 +319,7 @@ held.
 ## Periodic Jobs
 
 `every()` runs a job repeatedly until its context is canceled or the job returns
-an error.
+an error. It is blocking and does not start background work:
 
 ```v ignore
 ctx, cancel := async.with_cancel()
@@ -296,9 +342,56 @@ Guarantees:
 - a job error stops the loop and is returned unchanged.
 - context cancellation stops the loop and returns the context error.
 
-`every()` is not a scheduler and does not expose a ticker handle. If a running
-job ignores cancellation, `every()` cannot return until that job returns
+Use `start_every()` when the periodic loop should run in the background with an
+explicit lifecycle handle:
+
+```v ignore
+ctx, cancel := async.with_cancel()
+defer {
+	cancel()
+}
+
+mut handle := async.start_every(ctx, 5 * time.second, fn (mut ctx context.Context) ! {
+	cleanup_stale_clients(mut ctx)!
+})!
+defer {
+	handle.stop()
+	handle.wait() or {}
+}
+```
+
+`start_every()` has the same interval, nil-job, first-tick, no-overlap, and job
+error rules as `every()`, but returns immediately after starting one detached
+loop. If the parent context is already canceled, it returns the parent context
+error and does not start a worker.
+
+`PeriodicHandle` lifecycle:
+
+- `stop()` is idempotent and requests cooperative shutdown of the detached loop;
+- `stop()` is non-blocking and does not kill a running job;
+- `wait()` blocks until the detached loop exits;
+- `wait()` is one-shot; a second call returns
+  `async: periodic wait was already called`;
+- a normal `stop()` makes `wait()` return successfully;
+- a job error is returned unchanged by `wait()`, even if its message matches
+  `context canceled`;
+- parent cancellation is returned by `wait()` as the parent context error.
+
+The detached loop publishes its final result through a bounded channel with
+capacity 1, so it can exit even if the owner has not called `wait()` yet.
+
+A normal stop is recognized only when the loop itself observes the handle-owned
+context cancellation outside a user job error. If parent cancellation is already
+observable when `stop()` is called, parent cancellation wins and `wait()` returns
+the parent context error.
+
+If the owner never calls `stop()` or the parent context is never canceled, the
+detached loop can keep running. If the owner calls `stop()` but never calls
+`wait()`, a running non-cooperative job may still continue until it returns
 naturally.
+
+Periodic helpers are not schedulers and do not expose ticker objects. They run
+one serial loop; a slow iteration delays the next one.
 
 ## Timeout
 
@@ -329,12 +422,19 @@ async.with_timeout_context(parent, 250 * time.millisecond, fn (mut ctx context.C
 
 Error behavior:
 
-- if the job returns first, the job error is returned unchanged;
+- if the job finishes before the effective timeout deadline, the job error is
+  returned unchanged;
 - if the timeout expires first, the public error is `async: timeout`;
 - if the parent context is canceled first, including when the parent's own
   deadline expires first, the parent context error is returned;
 - a job that observes the local `x.async` timeout by returning
   `context deadline exceeded` is normalized to `async: timeout`.
+
+Timeout ownership matters at the deadline boundary. If the job result is received
+first but the job finished at or after an `x.async`-owned timeout deadline,
+`with_timeout_context()` still returns `async: timeout`. That normalization is
+not applied to a shorter parent-owned deadline; parent cancellation keeps the
+parent context error path.
 
 The result channel used internally is buffered so the spawned job can finish and
 publish its result even if the caller has already returned on timeout.
@@ -352,8 +452,10 @@ publish its result even if the caller has already returned on timeout.
 - `Pool.close()` drains accepted jobs before returning and reports the first
   job error.
 - `every()` is blocking and serial, so periodic iterations cannot overlap.
+- `PeriodicHandle.stop()` is cooperative, and `PeriodicHandle.wait()` is
+  one-shot so detached periodic lifecycle ownership is explicit.
 - It uses `sync.Mutex` to protect mutable lifecycle/result state in `Group`,
-  `Task[T]`, and `Pool`.
+  `Task[T]`, `Pool`, and `PeriodicHandle`.
 - It keeps `sync.WaitGroup.add()` and `sync.WaitGroup.wait()` separated by a
   lifecycle mutex for `Group` and `Pool` where accepted work can race with
   shutdown.
@@ -365,8 +467,8 @@ validation and resource limits for that domain.
 
 This milestone does not include:
 
-- blocking pool submission;
-- ticker objects or detached periodic handles;
+- unbounded blocking pool submission without a context or timeout;
+- ticker objects;
 - multi-consumer futures or promise chaining;
 - panic recovery;
 - scheduler changes;
@@ -379,17 +481,11 @@ replace them with a new runtime.
 Possible future additions, if accepted by the project maintainers and backed by
 tests, could still fit the current philosophy:
 
-- blocking or timeout-based pool submission, built on existing channels;
-- detached periodic handles with explicit `stop()` / `wait()` lifecycle;
-- helpers that combine `Group`, `Pool`, `Task[T]`, and timeout for server-style
-  code;
 - more examples and integration tests for other V modules that already use
   concurrency;
 - careful rewrites of existing V modules that need concurrency, if maintainers
   decide `x.async` makes their lifecycle, cancellation, or backpressure simpler
   and safer without breaking compatibility;
-- optional error collection helpers, as long as first-error behavior stays
-  simple and documented;
 - more benchmarks and stress tests that remain bounded and reproducible.
 
 Other ideas would require a separate design because they move beyond this
@@ -413,6 +509,7 @@ Small runnable examples live in `vlib/x/async/examples/`:
 - `basic_group.v`: first error propagation and cooperative sibling cancellation.
 - `basic_task.v`: run one value-returning task and consume it with `wait()`.
 - `worker_pool.v`: fixed concurrency with explicit `try_submit()` backpressure.
+- `bounded_pool_submit.v`: context/timeout-bounded `Pool` admission.
 - `periodic.v`: a blocking `every()` loop stopped by context cancellation.
 - `timeout.v`: run one cooperative job with a bounded timeout.
 - `net_http/`: synthetic `net.http` request/response work through `Pool`.
@@ -446,13 +543,15 @@ V build artefact collisions; it is separate from the runtime guarantees of
 `x.async`.
 
 The tests cover successful groups, first-error propagation, empty waits,
-rejected submissions after `wait()`, one-shot task waits, task values and
-errors, pool worker limits, pool queue backpressure, pool close/wait behavior,
-periodic execution, periodic cancellation, non-overlapping periodic iterations,
+rejected submissions after `wait()`, optional bounded group error collection,
+one-shot task waits, task values and errors, pool worker limits, pool queue
+backpressure, pool close/wait behavior, bounded pool submission with context
+cancellation and timeout, periodic execution, detached periodic handle stop/wait
+lifecycle, periodic cancellation, non-overlapping periodic iterations,
 cooperative cancellation, timeout errors, parent cancellation, nil job rejection,
 parent deadline preservation, invalid intervals, zero/already-expired timeouts,
-stress cases, and jobs that ignore cancellation. Internal tests also verify
-that the derived `AsyncContext` closes `done()` and propagates parent
+stress cases, and jobs that ignore cancellation. Internal tests also verify that
+the derived `AsyncContext` closes `done()` and propagates parent
 cancellation.
 
 Module-oriented integration tests live in `vlib/x/async/tests/`. They are
@@ -470,11 +569,13 @@ sh vlib/x/async/benchmarks/run_async_benchmark.sh
 
 The script uses the local `./v`, runs serially, and isolates `VTMP`, `VCACHE`,
 and the benchmark executable output. It measures short default runs for
-`Group`, `Task[T]`, `Pool`, `with_timeout()`, and `every()`.
+`Group`, `Task[T]`, `Pool`, bounded pool admission, `with_timeout()`, and
+`every()`.
 
 The default sizes are intentionally modest. They can be changed with
 `XASYNC_BENCH_GROUP_ROUNDS`, `XASYNC_BENCH_GROUP_JOBS`,
 `XASYNC_BENCH_TASK_ROUNDS`, `XASYNC_BENCH_POOL_JOBS`,
-`XASYNC_BENCH_POOL_WORKERS`, `XASYNC_BENCH_TIMEOUT_ROUNDS`,
+`XASYNC_BENCH_POOL_WORKERS`, `XASYNC_BENCH_POOL_BOUNDED_ROUNDS`,
+`XASYNC_BENCH_POOL_BOUNDED_TIMEOUT_MS`, `XASYNC_BENCH_TIMEOUT_ROUNDS`,
 `XASYNC_BENCH_EVERY_ITERATIONS`, and `XASYNC_BENCH_EVERY_INTERVAL_MS`.
 Benchmark output is local diagnostic data, not a portable performance claim.

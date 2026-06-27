@@ -2695,7 +2695,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		}
 		fwidths << fwidth
 		fwidth_exprs << fwidth_expr
-		has_fmts << has_fmt
+		has_fmts << (has_fmt && fmt != `_`)
 		precisions << precision
 		precision_exprs << precision_expr
 		visible_pluss << visible_plus
@@ -2707,6 +2707,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	node = ast.StringInterLiteral{
 		vals:            vals
 		exprs:           exprs
+		has_fmts:        has_fmts.clone()
 		need_fmts:       has_fmts
 		fwidths:         fwidths
 		fwidth_exprs:    fwidth_exprs

@@ -147,6 +147,73 @@ fn c_output_suggests_missing_sokol_shader_symbol(c_output string) string {
 	return ''
 }
 
+fn is_c_identifier_start(ch u8) bool {
+	return ch.is_letter() || ch == `_`
+}
+
+fn is_c_identifier_continue(ch u8) bool {
+	return ch.is_letter() || ch.is_digit() || ch == `_`
+}
+
+fn extract_c_identifier_after_marker(line string, lower_line string, marker string) string {
+	marker_start := lower_line.index(marker) or { return '' }
+	start_search := marker_start + marker.len
+	mut start := start_search
+	for start < line.len {
+		if is_c_identifier_start(line[start]) {
+			break
+		}
+		start++
+	}
+	if start >= line.len {
+		return ''
+	}
+	mut end := start + 1
+	for end < line.len && is_c_identifier_continue(line[end]) {
+		end++
+	}
+	return line[start..end]
+}
+
+fn extract_undeclared_c_function_name(line string) string {
+	lower_line := line.to_lower()
+	for marker in ['call to undeclared function', 'implicit declaration of function'] {
+		name := extract_c_identifier_after_marker(line, lower_line, marker)
+		if name != '' {
+			return name
+		}
+	}
+	return ''
+}
+
+fn c_output_suggests_missing_c_function(c_output string, known_c_functions map[string]string) string {
+	if known_c_functions.len == 0 {
+		return ''
+	}
+	for line in c_output.split_into_lines() {
+		name := extract_undeclared_c_function_name(line)
+		if name in known_c_functions {
+			return known_c_functions[name]
+		}
+	}
+	return ''
+}
+
+fn (v &Builder) known_c_functions() map[string]string {
+	mut names := map[string]string{}
+	for _, func in v.table.fns {
+		if func.language != .c || !func.name.starts_with('C.') {
+			continue
+		}
+		c_name := util.no_dots(func.name[2..])
+		names[c_name] = func.name
+		if cattr := func.attrs.find_first('c') {
+			names[cattr.arg] = func.name
+		}
+	}
+	return names
+}
+
 fn (v &Builder) known_non_typedef_c_structs() map[string]bool {
 	mut names := map[string]bool{}
 	for sym in v.table.type_symbols {
@@ -258,19 +325,72 @@ fn c_error_looks_like_missing_libatomic(c_output string) bool {
 	return c_error_missing_libatomic_marker(c_output) != ''
 }
 
+fn normalized_linker_library_file_name(lib_name string) string {
+	for suffix in ['.dll.a', '.lib', '.a', '.dll'] {
+		if lib_name.ends_with(suffix) {
+			mut normalized := lib_name[..lib_name.len - suffix.len]
+			if normalized.starts_with('lib') {
+				normalized = normalized[3..]
+			}
+			return normalized
+		}
+	}
+	return lib_name
+}
+
+fn normalized_missing_library_name(raw_name string, allow_plain_name bool) string {
+	mut lib_name := raw_name.trim_space().trim('`\'"')
+	if lib_name.len > 1 && lib_name[1] == `:` {
+		return ''
+	}
+	for delimiter in ['`', "'", '"', ' ', ':'] {
+		lib_name = lib_name.all_before(delimiter)
+	}
+	lib_name = lib_name.trim_space().trim('`\'"')
+	if lib_name.starts_with('-l') {
+		return normalized_linker_library_file_name(lib_name[2..])
+	}
+	normalized := normalized_linker_library_file_name(lib_name)
+	if normalized != lib_name {
+		return normalized
+	}
+	if allow_plain_name {
+		if lib_name.contains('/') || lib_name.contains('\\') || lib_name.contains('.')
+			|| lib_name.starts_with('-') {
+			return ''
+		}
+		return lib_name
+	}
+	return ''
+}
+
 fn c_error_missing_library_name(c_output string) string {
 	for line in c_output.split_into_lines() {
 		if line.contains("library '") && line.contains("' not found") {
-			return line.all_after("library '").all_before("' not found")
+			return normalized_missing_library_name(line.all_after("library '").all_before("' not found"),
+				true)
 		}
+		lower_line := line.to_lower()
 		for marker in [
 			'cannot find -l',
 			'unable to find library -l',
 			'library not found for -l',
 		] {
-			if line.contains(marker) {
-				lib_name := line.all_after(marker).trim_space()
-				return lib_name.all_before('`').all_before("'").all_before('"').all_before(' ').all_before(':')
+			if start := lower_line.index(marker) {
+				return normalized_missing_library_name(line[start + marker.len..], true)
+			}
+		}
+		if start := lower_line.index('cannot find ') {
+			lib_name := normalized_missing_library_name(line[start + 'cannot find '.len..], true)
+			if lib_name != '' {
+				return lib_name
+			}
+		}
+		if line.contains(': error: ') && lower_line.contains(': no such file or directory') {
+			lib_name := normalized_missing_library_name(line.all_after(': error: ').all_before(': No such file or directory'),
+				false)
+			if lib_name != '' {
+				return lib_name
 			}
 		}
 	}
@@ -396,7 +516,10 @@ fn (mut v Builder) post_process_c_compiler_output_with_report(ccompiler string, 
 		}
 	}
 	if c_error_should_send_bug_report(report_res.output) {
-		v.submit_c_error_bug_report(report_ccompiler, report_res.output)
+		known_c_functions := v.known_c_functions()
+		if c_output_suggests_missing_c_function(report_res.output, known_c_functions) == '' {
+			v.submit_c_error_bug_report(report_ccompiler, report_res.output)
+		}
 	}
 	if v.pref.is_quiet {
 		exit(1)
@@ -419,6 +542,16 @@ fn (mut v Builder) post_process_c_compiler_output_with_report(ccompiler string, 
 	missing_shader_symbol := c_output_suggests_missing_sokol_shader_symbol(res.output)
 	if missing_shader_symbol != '' {
 		more_suggestions += '\n${highlight_word('Suggestion')}: `${missing_shader_symbol}` looks like a sokol shader symbol generated by `v shader`/`sokol-shdc`. If you renamed `C.${missing_shader_symbol}` in V, make the same change in the matching `.glsl` file and regenerate the header with `v shader .`.'
+	}
+	missing_c_function := c_output_suggests_missing_c_function(res.output, v.known_c_functions())
+	if missing_c_function != '' {
+		c_name := missing_c_function[2..]
+		verror('
+==================
+C function `${missing_c_function}` was declared in V, but the C compiler did not see a matching C declaration for `${c_name}`.
+A declaration like `fn ${missing_c_function}()` only tells V about an external C symbol; it does not define that symbol or include its header.
+Include the C header that declares `${c_name}` and add any needed `#flag -I`, `#flag -l`, or C source file.
+If there is no header but the symbol is provided by a linked library/object, mark the V declaration with `@[c_extern]`.${more_suggestions}')
 	}
 	if c_error_looks_like_cpp_header(res.output) {
 		verror('
@@ -2320,28 +2453,50 @@ fn (v &Builder) should_compile_bundled_thirdparty_object_from_source(obj_path st
 	return v.ccoptions.cc == .tcc && v.pref.os == .macos
 }
 
-// latest_thirdparty_header_mtime returns the most recent mtime among `.h` and
-// `.hpp` files in the directory of `source_file`. It is used as an extra cache
-// key for third-party object compilation, so that header-only patches (for
-// example to mbedtls/library/alignment.h) reliably invalidate stale `.o`
-// files that were produced before the header change.
-fn latest_thirdparty_header_mtime(source_file string) i64 {
+// thirdparty_module_root returns the `thirdparty/<module>` directory that
+// `source_file` belongs to, or its own directory when the path is not under a
+// `thirdparty/` tree (so the scan degrades to the old source-dir-only behavior).
+fn thirdparty_module_root(source_file string) string {
+	norm := source_file.replace('\\', '/')
+	marker := '/thirdparty/'
+	idx := norm.index(marker) or { return os.dir(source_file) }
+	rest := norm[idx + marker.len..]
+	mod_name := rest.all_before('/')
+	if mod_name == '' || mod_name == rest {
+		// No further path component after the module name: fall back.
+		return os.dir(source_file)
+	}
+	return norm[..idx] + marker + mod_name
+}
+
+// thirdparty_deps_mtime returns the newest mtime among `source_file` itself and
+// every `.h`/`.hpp` header under its thirdparty module root. It is the shared
+// cache key for third-party object compilation (both the C and MSVC paths), so
+// that header-only edits anywhere in the module — including config headers under
+// `include/`, e.g. mbedtls/include/mbedtls/mbedtls_config.h, not just siblings
+// of the `.c` — reliably invalidate stale objects built before the change. The
+// recursive header scan is memoized per module root.
+fn (mut v Builder) thirdparty_deps_mtime(source_file string) i64 {
 	if source_file == '' {
 		return 0
 	}
-	dir := os.dir(source_file)
-	entries := os.ls(dir) or { return 0 }
-	mut latest := i64(0)
-	for f in entries {
-		if !(f.ends_with('.h') || f.ends_with('.hpp')) {
-			continue
+	src_mtime := os.file_last_mod_unix(source_file)
+	root := thirdparty_module_root(source_file)
+	hdr_mtime := v.thirdparty_header_mtimes[root] or {
+		mut latest := i64(0)
+		for f in os.walk_ext(root, '') {
+			if !(f.ends_with('.h') || f.ends_with('.hpp')) {
+				continue
+			}
+			m := os.file_last_mod_unix(f)
+			if m > latest {
+				latest = m
+			}
 		}
-		m := os.file_last_mod_unix(os.join_path(dir, f))
-		if m > latest {
-			latest = m
-		}
+		v.thirdparty_header_mtimes[root] = latest
+		latest
 	}
-	return latest
+	return if hdr_mtime > src_mtime { hdr_mtime } else { src_mtime }
 }
 
 fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflags []cflag.CFlag) {
@@ -2392,14 +2547,12 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	}
 	if os.exists(opath) {
 		opath_mtime := os.file_last_mod_unix(opath)
-		src_mtime := os.file_last_mod_unix(source_file)
-		// Header-only edits in the source directory (e.g. mbedtls's
-		// alignment.h) leave every sibling `.c` untouched, so a pure
+		// Header-only edits (e.g. mbedtls's alignment.h, or a config header
+		// under include/) leave every `.c` untouched, so a pure
 		// `opath_mtime < src_mtime` test would silently reuse stale objects
-		// that still reference the old headers. Treat the newest sibling
-		// header as part of the cache key as well.
-		hdr_mtime := latest_thirdparty_header_mtime(source_file)
-		deps_mtime := if hdr_mtime > src_mtime { hdr_mtime } else { src_mtime }
+		// that still reference the old headers. Fold the newest module header
+		// into the cache key as well.
+		deps_mtime := v.thirdparty_deps_mtime(source_file)
 		if compile_bundled_source && !cached_object_was_built_from_source {
 			rebuild_reason_message = '${os.quoted_path(opath)} was copied from a bundled object, rebuilding it from ${os.quoted_path(source_file)} ...'
 		} else if opath_mtime < deps_mtime {

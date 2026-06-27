@@ -84,6 +84,10 @@ fn test_delete_last_uses_in_place_fast_path_for_unique_arrays() {
 	a.delete(a.len - 1)
 	assert a == [1, 2, 3]
 	assert a.data == old_data
+	assert a.cap == 4
+	unsafe {
+		assert (&int(a.data))[a.len] == 0
+	}
 }
 
 fn test_delete_last_detaches_when_a_slice_exists() {
@@ -94,6 +98,18 @@ fn test_delete_last_detaches_when_a_slice_exists() {
 	assert a == [1, 2, 3]
 	assert b == [1, 2, 3, 4]
 	assert a.data != old_data
+}
+
+fn test_delete_last_clears_removed_slot_for_unique_arrays() {
+	mut a := [1, 2, 3, 4]
+	old_data := a.data
+	a.delete_last()
+	assert a == [1, 2, 3]
+	assert a.data == old_data
+	assert a.cap == 4
+	unsafe {
+		assert (&int(a.data))[a.len] == 0
+	}
 }
 
 fn test_delete_many() {
@@ -125,7 +141,11 @@ fn test_delete_many_unique_arrays_use_in_place_fast_path() {
 	a.delete_many(1, 2)
 	assert a == [1, 4, 5]
 	assert a.data == old_data
-	assert a.cap == 3
+	assert a.cap == 8
+	unsafe {
+		assert (&int(a.data))[a.len] == 0
+		assert (&int(a.data))[a.len + 1] == 0
+	}
 }
 
 fn test_insert_detaches_parent_with_existing_slice() {

@@ -168,6 +168,29 @@ fn test_write_decimal() {
 	assert sb_i64_str(9223372036854775807) == '9223372036854775807'
 	assert sb_i64_str(-9223372036854775807) == '-9223372036854775807'
 	assert sb_i64_str(min_i64) == '-9223372036854775808'
+	// runtime `min_i64` (parsed, not the constant), whose negation overflows i64:
+	assert sb_i64_str('-9223372036854775808'.i64()) == '-9223372036854775808'
+}
+
+@[manualfree]
+fn sb_u64_str(n u64) string {
+	mut sb := strings.new_builder(24)
+	defer {
+		unsafe { sb.free() }
+	}
+	sb.write_u_decimal(n)
+	return sb.str()
+}
+
+fn test_write_u_decimal() {
+	assert sb_u64_str(0) == '0'
+	assert sb_u64_str(1) == '1'
+	assert sb_u64_str(1001) == '1001'
+	assert sb_u64_str(1234567890) == '1234567890'
+	assert sb_u64_str(u64(9223372036854775807)) == '9223372036854775807'
+	// values above max_i64, which write_decimal(i64) cannot represent:
+	assert sb_u64_str(u64(9223372036854775807) + 1) == '9223372036854775808'
+	assert sb_u64_str(max_u64) == '18446744073709551615'
 }
 
 fn test_grow_len() {

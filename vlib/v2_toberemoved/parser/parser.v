@@ -1,0 +1,4038 @@
+// Copyright (c) 2020-2024 Joe Conigliaro. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+module parser
+
+import os
+import time
+import v2.ast
+import v2.errors
+import v2.pref
+import v2.scanner
+import v2.token
+
+pub struct Parser {
+	pref &pref.Preferences
+mut:
+	file    &token.File = &token.File{}
+	scanner &scanner.Scanner
+	// track state
+	exp_lcbr               bool // expecting `{` parsing `x` in `for|if|match x {` etc
+	allow_init_in_exp_lcbr bool
+	exp_pt                 bool // expecting (p)ossible (t)ype from `p.expr()`
+	in_top_level           bool // inside top-level context (file scope / top-level comptime block)
+	stop_line_leading_dot  bool
+	selector_names         map[int]string
+	// token info : start
+	line      int
+	lit       string
+	pos       token.Pos
+	tok       token.Token = .unknown
+	tok_next_ token.Token = .unknown // DO NOT access directly, use `p.peek()`
+	// token info : end
+}
+
+pub fn Parser.new(prefs &pref.Preferences) &Parser {
+	return &Parser{
+		pref:    unsafe { prefs }
+		scanner: scanner.new_scanner(prefs, .normal)
+		// scanner: scanner.new_scanner(prefs, .skip_interpolation)
+	}
+}
+
+fn expr_infix_payload(expr ast.Expr) ast.InfixExpr {
+	slot0 := unsafe { (&u64(&expr))[0] }
+	slot1 := unsafe { (&u64(&expr))[1] }
+	data := sumtype_payload_slot(slot0, slot1)
+	if data == 0 {
+		return ast.InfixExpr{}
+	}
+	return unsafe { *(&ast.InfixExpr(voidptr(data))) }
+}
+
+fn expr_infix_payload_checked(expr ast.Expr) ?ast.InfixExpr {
+	slot0 := unsafe { (&u64(&expr))[0] }
+	slot1 := unsafe { (&u64(&expr))[1] }
+	tag := sumtype_tag_slot(slot0, slot1)
+	if tag == u64(17) {
+		data := sumtype_payload_slot(slot0, slot1)
+		if data == 0 {
+			return none
+		}
+		return unsafe { *(&ast.InfixExpr(voidptr(data))) }
+	}
+
+	match expr {
+		ast.InfixExpr {
+			return expr
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn expr_ident_payload_checked(expr ast.Expr) ?ast.Ident {
+	slot0 := unsafe { (&u64(&expr))[0] }
+	slot1 := unsafe { (&u64(&expr))[1] }
+	tag := sumtype_tag_slot(slot0, slot1)
+	if tag == u64(13) {
+		data := sumtype_payload_slot(slot0, slot1)
+		if data == 0 {
+			return none
+		}
+		return unsafe { *(&ast.Ident(voidptr(data))) }
+	}
+
+	match expr {
+		ast.Ident {
+			return expr
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn ast_expr_infix_tag() u64 {
+	expr := ast.Expr(ast.InfixExpr{})
+	slot0 := unsafe { (&u64(&expr))[0] }
+	slot1 := unsafe { (&u64(&expr))[1] }
+	return sumtype_tag_slot(slot0, slot1)
+}
+
+fn ast_expr_ident_tag() u64 {
+	expr := ast.Expr(ast.Ident{})
+	slot0 := unsafe { (&u64(&expr))[0] }
+	slot1 := unsafe { (&u64(&expr))[1] }
+	return sumtype_tag_slot(slot0, slot1)
+}
+
+fn sumtype_tag_slot(slot0 u64, slot1 u64) u64 {
+	if sumtype_slot_is_payload(slot0) {
+		return slot1
+	}
+	return slot0
+}
+
+fn sumtype_payload_slot(slot0 u64, slot1 u64) u64 {
+	if sumtype_slot_is_payload(slot0) {
+		return slot0
+	}
+	if sumtype_slot_is_payload(slot1) {
+		return slot1
+	}
+	return 0
+}
+
+fn sumtype_slot_is_payload(slot u64) bool {
+	return slot >= 4096 && slot < 281474976710656
+}
+
+fn (mut p Parser) init(filename string, src string, mut file_set token.FileSet) {
+	// reset since parser instance may be reused
+	p.exp_lcbr = false
+	p.allow_init_in_exp_lcbr = false
+	p.exp_pt = false
+	p.in_top_level = false
+	p.stop_line_leading_dot = false
+	p.line = 0
+	p.lit = ''
+	p.pos = token.Pos{}
+	p.tok = .unknown
+	p.tok_next_ = .unknown
+	p.selector_names = map[int]string{}
+	// init
+	// TODO: consider another way to pass in file set?
+	p.file = file_set.add_file(filename, -1, src.len)
+	p.scanner.init(p.file, src)
+}
+
+pub fn (mut p Parser) parse_files(files []string, mut file_set token.FileSet) []ast.File {
+	mut ast_files := []ast.File{}
+	for file in files {
+		if file == '' {
+			continue
+		}
+		ast_files << p.parse_file(file, mut file_set)
+	}
+	return ast_files
+}
+
+// parse_files_to_flat parses each input file, immediately appends it to a
+// FlatBuilder, and drops the legacy File. This is the Phase 2 entry point:
+// it produces the same FlatAst that `ast.flatten_files(p.parse_files(...))`
+// would produce, but never holds more than one file's legacy AST resident.
+// The result is signature-equivalent to the two-step path (regression-tested).
+pub fn (mut p Parser) parse_files_to_flat(files []string, mut file_set token.FileSet) ast.FlatAst {
+	mut total_bytes := i64(0)
+	for file in files {
+		if file == '' {
+			continue
+		}
+		total_bytes += os.file_size(file)
+	}
+	nodes_cap, edges_cap, strings_cap := ast.arena_caps_for_bytes(total_bytes)
+	mut builder := ast.new_flat_builder_with_capacity(nodes_cap, edges_cap, strings_cap)
+	p.parse_files_into_flat(files, mut file_set, mut builder)
+	return builder.flat
+}
+
+// parse_files_into_flat streams files into a caller-owned FlatBuilder.
+// Used by the builder to accumulate a single FlatAst across multiple
+// parse batches (core, user, imports) without throwing away the builder
+// between calls.
+pub fn (mut p Parser) parse_files_into_flat(files []string, mut file_set token.FileSet, mut builder ast.FlatBuilder) {
+	for file in files {
+		if file == '' {
+			continue
+		}
+		legacy := p.parse_file(file, mut file_set)
+		builder.append_file(legacy)
+	}
+}
+
+pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) ast.File {
+	if filename == '' {
+		panic('parser.parse_file empty filename')
+	}
+	mut src := ''
+	mut sw := time.StopWatch{}
+	if !p.pref.verbose {
+		unsafe {
+			goto start_no_time
+		}
+	}
+	sw = time.new_stopwatch()
+	start_no_time:
+	src = os.read_file(filename) or { p.error('error reading `' + filename + '`') }
+	p.init(filename, src, mut file_set)
+	// start
+	p.next()
+	mut top_stmts := []ast.Stmt{}
+	// mut decls := []ast.Decl{}
+	mut imports := []ast.ImportStmt{}
+	mut mod := 'main'
+	// file level attributes
+	// or we are missing a stmt which supports attributes in this match
+	mut attributes := []ast.Attribute{}
+	if p.tok in [.attribute, .lsbr] {
+		attribute_stmt := p.attribute_stmt()
+		top_stmts << attribute_stmt
+		match attribute_stmt {
+			[]ast.Attribute {
+				attrs := attribute_stmt as []ast.Attribute
+				for attribute in attrs {
+					attributes << attribute
+					if attribute.value is ast.Ident {
+						if attribute.value.name.len > 0 && attribute.value.name.len < 256
+							&& attribute.value.name !in ['has_globals', 'generated', 'manualfree', 'translated'] {
+							p.warn('invalid file level attribute `${attribute.name}` (or should `${p.tok}` support attributes)')
+						}
+					}
+				}
+			}
+			else {}
+		}
+	}
+	// TODO: script mode support?
+	// I really hope it gets dropped.
+	if p.tok == .key_module {
+		p.next()
+		module_stmt := ast.ModuleStmt{
+			name: p.expect_name()
+		}
+		p.expect(.semicolon)
+		top_stmts << module_stmt
+		mod = module_stmt.name
+	} else {
+		// TODO: set is_test somewhre, probably work it out in builder
+		// and pass it to parser, or in prefs. (check current v)
+		// if !p.file.name.contains('_test.') {
+		// 	p.error('expectng module')
+		// }
+		// NOTE: allowing no moule for now
+		// need to verify rules
+	}
+	for p.tok == .key_import {
+		import_stmt := p.import_stmt()
+		p.expect(.semicolon)
+		imports << import_stmt
+		top_stmts << import_stmt
+	}
+	p.in_top_level = true
+	// Script-mode: when in `main` module, top-level statements that are not
+	// declarations are collected into a synthesized `fn main()`, allowing
+	// programs without an explicit `fn main` (matching v1 behavior).
+	mut script_stmts := []ast.Stmt{}
+	mut main_already_defined := false
+	// Once the first script statement is seen, the rest of the file is
+	// parsed in function-body context (in_top_level=false). This matches
+	// v1's "all definitions must occur before code in script mode" — a
+	// `const`/`fn`/etc. that appears after a script stmt then surfaces as
+	// a parse error rather than being silently kept as a file-scope decl.
+	mut script_started := false
+	for p.tok != .eof {
+		// `import` is only allowed in the initial import section at the
+		// top of the file. A late `import` would otherwise (in script mode)
+		// be routed through `p.stmt()` into the synthesized `fn main()` —
+		// reject it with a clear error matching v1's behavior.
+		if p.tok == .key_import {
+			p.error('`import x` can only be declared at the beginning of the file')
+		}
+		if mod == 'main' && (script_started || !p.is_top_stmt_start()) {
+			// Script-mode statements parse as if inside a function body
+			// (no top-level decl dispatch), since they will be wrapped
+			// into the synthesized `fn main()`.
+			p.in_top_level = false
+			stmt := p.stmt()
+			p.in_top_level = true
+			script_stmts << stmt
+			script_started = true
+			continue
+		}
+		top_stmt := p.top_stmt()
+		// if top_stmt is ast.Decl {
+		// 	decls << top_stmt
+		// }
+		if top_stmt is ast.FnDecl {
+			if !top_stmt.is_method && top_stmt.name == 'main' {
+				main_already_defined = true
+			}
+		}
+		// Script-mode: a top-level `$if cond { ... }` whose body contains
+		// runtime statements (e.g. `println(...)`) needs to be wrapped into
+		// the synthesized `fn main()` so it actually executes. Comptime $if
+		// blocks containing only declarations (e.g. `$if !macos { fn C.x() }`)
+		// stay at file scope. A `fn main` nested inside any branch counts
+		// as user-defined main and suppresses script-main synthesis.
+		if mod == 'main' && top_stmt is ast.ExprStmt {
+			inner := unwrap_comptime_expr(top_stmt.expr)
+			if inner is ast.IfExpr {
+				if comptime_if_expr_contains_fn_main(inner) {
+					main_already_defined = true
+				}
+				if !comptime_if_expr_contains_top_stmt(inner) {
+					script_stmts << top_stmt
+					script_started = true
+					continue
+				}
+			}
+		}
+		top_stmts << top_stmt
+	}
+	p.in_top_level = false
+	if script_stmts.len > 0 {
+		if main_already_defined {
+			p.error('function `main` is already defined, put your script statements inside it')
+		}
+		top_stmts << ast.FnDecl{
+			name:  'main'
+			typ:   fn_type_with_return_type([]ast.Expr{}, []ast.Parameter{}, ast.empty_expr)
+			stmts: script_stmts
+		}
+	}
+	if p.pref.verbose {
+		parse_time := sw.elapsed()
+		println('scan & parse ${filename} (${p.file.line_count()} LOC): ${parse_time.milliseconds()}ms (${parse_time.microseconds()}µs)')
+	}
+	return ast.File{
+		attributes:     attributes
+		mod:            mod
+		name:           filename
+		imports:        imports
+		selector_names: p.selector_names.clone()
+		// decls: decls
+		stmts: top_stmts
+	}
+}
+
+// unwrap_comptime_expr returns the inner expression of a `$expr` wrapper,
+// or the expression itself when it is not a ComptimeExpr.
+fn unwrap_comptime_expr(expr ast.Expr) ast.Expr {
+	if expr is ast.ComptimeExpr {
+		return expr.expr
+	}
+	return expr
+}
+
+// comptime_if_expr_contains_top_stmt reports whether every branch of a
+// comptime `$if` chain contains only top-level statements (declarations,
+// directives, or nested top-level `$if`s). Returns false if any branch
+// contains a runtime CallExpr / CallOrCastExpr / AssignStmt — in script
+// mode such blocks are wrapped into the synthesized `fn main()`.
+// Ported from v1 `vlib/v/parser/parser.v::comptime_if_expr_contains_top_stmt`.
+fn comptime_if_expr_contains_top_stmt(if_expr ast.IfExpr) bool {
+	for stmt in if_expr.stmts {
+		if stmt is ast.ExprStmt {
+			inner := unwrap_comptime_expr(stmt.expr)
+			if inner is ast.IfExpr {
+				if !comptime_if_expr_contains_top_stmt(inner) {
+					return false
+				}
+			} else if inner is ast.CallExpr || inner is ast.CallOrCastExpr {
+				return false
+			}
+		} else if stmt is ast.AssignStmt {
+			return false
+		}
+		// `ast.Directive` (e.g. `#flag`, `#include`) is only valid at file
+		// scope — it does not by itself prove the branch is declaration-only,
+		// so we keep scanning the remaining stmts (and the `$else` chain
+		// below) instead of short-circuiting. A runtime stmt found later
+		// still disqualifies the branch and forces script-main wrapping.
+	}
+	if if_expr.else_expr is ast.IfExpr {
+		else_ie := if_expr.else_expr as ast.IfExpr
+		if !comptime_if_expr_contains_top_stmt(else_ie) {
+			return false
+		}
+	}
+	return true
+}
+
+// comptime_if_expr_contains_fn_main reports whether any branch of a
+// comptime `$if` chain declares `fn main`. Used to suppress synthesis
+// of a script `main` when a user-defined `main` is hidden behind a
+// platform-conditional block (e.g. `$if windows { fn main() {} }`).
+fn comptime_if_expr_contains_fn_main(if_expr ast.IfExpr) bool {
+	for stmt in if_expr.stmts {
+		if stmt is ast.FnDecl {
+			if !stmt.is_method && stmt.name == 'main' {
+				return true
+			}
+		} else if stmt is ast.ExprStmt {
+			inner := unwrap_comptime_expr(stmt.expr)
+			if inner is ast.IfExpr {
+				if comptime_if_expr_contains_fn_main(inner) {
+					return true
+				}
+			}
+		}
+	}
+	if if_expr.else_expr is ast.IfExpr {
+		else_ie := if_expr.else_expr as ast.IfExpr
+		if comptime_if_expr_contains_fn_main(else_ie) {
+			return true
+		}
+	}
+	return false
+}
+
+// is_top_stmt_start reports whether the current token can start a top-level
+// declaration. Used to detect script-mode statements (e.g. bare `println(...)`
+// in `main` module) which are wrapped into a synthesized `fn main()`.
+fn (p &Parser) is_top_stmt_start() bool {
+	return match p.tok {
+		.dollar, .hash, .key_asm, .key_const, .key_enum, .key_fn, .key_global, .key_interface,
+		.key_pub, .key_struct, .key_union, .key_type, .attribute, .lsbr {
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut p Parser) top_stmt() ast.Stmt {
+	match p.tok {
+		.dollar {
+			return p.comptime_stmt()
+		}
+		.hash {
+			return p.directive()
+		}
+		.key_asm {
+			return p.asm_stmt()
+		}
+		.key_const {
+			return p.const_decl(false)
+		}
+		.key_enum {
+			return p.enum_decl(false, [])
+		}
+		.key_fn {
+			return p.fn_decl(false, [])
+		}
+		.key_global {
+			return p.global_decl(false, [])
+		}
+		// NOTE: handling moved to parse_file
+		// .key_import {
+		// 	return p.import_stmt()
+		// }
+		.key_interface {
+			return p.interface_decl(false, [])
+		}
+		// NOTE: handling moved to parse_file
+		// .key_module {
+		// 	p.next()
+		// 	name := p.expect_name()
+		// 	p.expect(.semicolon)
+		// 	return ast.ModuleStmt{
+		// 		name: name
+		// 	}
+		// }
+		.key_pub {
+			p.next()
+			match p.tok {
+				.key_const { return p.const_decl(true) }
+				.key_enum { return p.enum_decl(true, []) }
+				.key_fn { return p.fn_decl(true, []) }
+				.key_global { return p.global_decl(true, []) }
+				.key_interface { return p.interface_decl(true, []) }
+				.key_struct, .key_union { return p.struct_decl(true, []) }
+				.key_type { return p.type_decl(true) }
+				else { p.error('not implemented: pub ${p.tok}') }
+			}
+		}
+		.key_struct, .key_union {
+			return p.struct_decl(false, [])
+		}
+		.key_type {
+			return p.type_decl(false)
+		}
+		.attribute, .lsbr {
+			return p.attribute_stmt()
+		}
+		else {
+			p.error('unknown top stmt: ${p.tok} - ${p.file.name}:${p.line}')
+		}
+	}
+}
+
+fn (mut p Parser) stmt() ast.Stmt {
+	// p.log('STMT: ${p.tok} - ${p.file.name}:${p.line}')
+	// Top-level declarations that can appear inside comptime $if blocks at
+	// file scope. Only parsed when in_top_level is set (file-level context),
+	// not inside regular function bodies where they would be invalid.
+	if p.in_top_level {
+		match p.tok {
+			.attribute, .lsbr {
+				return p.attribute_stmt()
+			}
+			.key_const {
+				return p.const_decl(false)
+			}
+			.key_enum {
+				return p.enum_decl(false, [])
+			}
+			.key_fn {
+				// `fn name(...)` or `fn C.name(...)` is a declaration;
+				// `fn (recv Type) method(...)` is a method declaration.
+				next := p.peek()
+				if next == .name || next == .lpar {
+					return p.fn_decl(false, [])
+				}
+			}
+			.key_global {
+				return p.global_decl(false, [])
+			}
+			.key_interface {
+				return p.interface_decl(false, [])
+			}
+			.key_pub {
+				p.next()
+				match p.tok {
+					.key_const { return p.const_decl(true) }
+					.key_enum { return p.enum_decl(true, []) }
+					.key_fn { return p.fn_decl(true, []) }
+					.key_global { return p.global_decl(true, []) }
+					.key_interface { return p.interface_decl(true, []) }
+					.key_struct, .key_union { return p.struct_decl(true, []) }
+					.key_type { return p.type_decl(true) }
+					else { p.error('not implemented: pub ${p.tok}') }
+				}
+			}
+			.key_struct, .key_union {
+				return p.struct_decl(false, [])
+			}
+			.key_type {
+				return p.type_decl(false)
+			}
+			else {}
+		}
+	}
+	match p.tok {
+		.dollar {
+			return p.comptime_stmt()
+		}
+		.hash {
+			return p.directive()
+		}
+		.key_asm {
+			return p.asm_stmt()
+		}
+		.key_assert {
+			p.next()
+			expr := p.expr(.lowest)
+			stmt := ast.AssertStmt{
+				expr:  expr
+				extra: if p.tok == .comma {
+					p.next()
+					p.expr(.lowest)
+				} else {
+					ast.empty_expr
+				}
+			}
+			p.expect_semi()
+			return stmt
+		}
+		.key_break, .key_continue, .key_goto {
+			op := p.tok()
+			if p.tok == .name {
+				label := p.lit()
+				p.expect_semi()
+				return ast.FlowControlStmt{
+					op:    op
+					label: label
+				}
+			} else {
+				p.expect_semi()
+				return ast.FlowControlStmt{
+					op: op
+				}
+			}
+		}
+		.key_defer {
+			p.next()
+			mut defer_mode := ast.DeferMode.scoped
+			if p.tok == .lpar {
+				p.next()
+				if p.tok == .key_fn {
+					defer_mode = .function
+					p.next()
+				} else {
+					mode := p.expect_name()
+					p.error('unknown `defer` mode: `${mode}`')
+				}
+				p.expect(.rpar)
+			}
+			stmts := p.block()
+			p.expect(.semicolon)
+			return ast.DeferStmt{
+				mode:  defer_mode
+				stmts: stmts
+			}
+		}
+		.key_for {
+			return p.for_stmt()
+		}
+		.key_import {
+			import_stmt := p.import_stmt()
+			p.expect(.semicolon)
+			return import_stmt
+		}
+		.key_return {
+			return p.return_stmt()
+		}
+		.lcbr {
+			// anonymous / scoped block `{ a := 1 }`
+			stmts := p.block()
+			p.expect_semi()
+			return ast.BlockStmt{
+				stmts: stmts
+			}
+		}
+		.semicolon {
+			// empty statement (e.g., auto-inserted semicolon after asm block)
+			p.next()
+			return ast.empty_stmt
+		}
+		else {
+			expr := p.expr(.lowest)
+			// label `start:`
+			if p.tok == .colon {
+				mut name := ''
+				if expr is ast.Ident {
+					name = expr.name
+				} else {
+					p.error('expecting identifier')
+				}
+				p.next()
+				return ast.LabelStmt{
+					name: name
+					stmt: if p.tok == .key_for { ast.Stmt(p.for_stmt()) } else { ast.empty_stmt }
+				}
+			}
+			return p.complete_simple_stmt(expr, false)
+		}
+	}
+
+	p.error('unknown stmt: ${p.tok}')
+}
+
+fn (mut p Parser) attribute_stmt() ast.Stmt {
+	// NOTE: could also return AttributeStmt{attributes: attributes, stmt: stmt}
+	attributes := p.attributes()
+	mut is_pub := false
+	if p.tok == .key_pub {
+		p.next()
+		is_pub = true
+	}
+	match p.tok {
+		.key_enum {
+			return p.enum_decl(is_pub, attributes)
+		}
+		.key_fn {
+			return p.fn_decl(is_pub, attributes)
+		}
+		.key_global {
+			return p.global_decl(is_pub, attributes)
+		}
+		.key_interface {
+			return p.interface_decl(is_pub, attributes)
+		}
+		.key_struct, .key_union {
+			return p.struct_decl(is_pub, attributes)
+		}
+		else {
+			return attributes
+		}
+	}
+}
+
+@[inline]
+fn (mut p Parser) simple_stmt() ast.Stmt {
+	expr := p.expr(.lowest)
+	return p.complete_simple_stmt(expr, false)
+}
+
+fn (mut p Parser) return_stmt() ast.ReturnStmt {
+	return_pos := p.pos
+	p.next()
+	if p.return_has_indented_expr_continuation(return_pos) {
+		p.next()
+	}
+	if p.tok in [.semicolon, .rcbr] {
+		if p.tok == .semicolon {
+			p.next()
+		}
+		return ast.ReturnStmt{}
+	}
+	exp_pt := p.exp_pt
+	p.exp_pt = false
+	return_exprs := p.expr_list()
+	p.exp_pt = exp_pt
+	rs := ast.ReturnStmt{
+		exprs: return_exprs
+	}
+	p.expect_semi()
+	return rs
+}
+
+fn token_can_start_expr(tok token.Token) bool {
+	return
+		tok in [.name, .number, .string, .char, .key_true, .key_false, .key_nil, .key_none, .key_if, .key_match, .key_lock, .key_rlock, .key_select, .key_sizeof, .key_typeof, .key_offsetof, .key_unsafe, .lpar, .lsbr, .lcbr, .dollar]
+		|| tok.is_prefix()
+}
+
+fn (mut p Parser) return_has_indented_expr_continuation(return_pos token.Pos) bool {
+	if p.tok != .semicolon {
+		return false
+	}
+	next_tok := p.peek()
+	if !token_can_start_expr(next_tok) {
+		return false
+	}
+	return_position := p.file.position(return_pos)
+	next_line, next_column := p.file.find_line_and_column(p.scanner.pos)
+	return next_line > return_position.line && next_column > return_position.column
+}
+
+fn (mut p Parser) complete_simple_stmt(expr ast.Expr, expecting_semi bool) ast.Stmt {
+	// stand alone expression in a statement list
+	// eg: `if x == 1 {`, `x++`, `mut x := 1`, `a,`b := 1,2`
+	// multi assign from match/if `a, b := if x == 1 { 1,2 } else { 3,4 }
+	if p.tok == .comma {
+		tuple_pos := p.pos
+		p.next()
+		// a little extra code, but also a little more efficient
+		mut exprs := [expr]
+		exprs << p.expr(.lowest)
+		for p.tok == .comma {
+			p.next()
+			exprs << p.expr(.lowest)
+		}
+		// TODO: can we get rid of this dupe code?
+		if p.tok.is_assignment() {
+			assign_stmt := p.assign_stmt(exprs)
+			// TODO: best way? decide if we will force them
+			// NOTE: allow multiple exprs on single line without `;` should be removed
+			if p.tok == .semicolon && !expecting_semi {
+				p.next()
+			}
+			return assign_stmt
+		}
+		// multi return values (last statement, no return keyword)
+		return ast.ExprStmt{
+			expr: ast.Expr(ast.Tuple{
+				exprs: exprs
+				pos:   tuple_pos
+			})
+		}
+	} else if p.tok.is_assignment() {
+		assign_stmt := p.assign_stmt([expr])
+		// TODO: best way? decide if we will force them
+		// NOTE: allow multiple exprs on single line without `;` should be removed
+		if p.tok == .semicolon && !expecting_semi {
+			p.next()
+		}
+		return assign_stmt
+	}
+	// TODO: best way? decide if we will force them
+	// NOTE: allow multiple exprs on single line without `;` should be removed
+	if p.tok == .semicolon && !expecting_semi {
+		p.next()
+	}
+	// TODO: add check for all ExprStmt eg.
+	// if expr is ast.ArrayInitExpr {
+	// 	p.error('UNUSED')
+	// }
+	return ast.ExprStmt{
+		expr: expr
+	}
+}
+
+fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
+	// p.log('EXPR: ${p.tok} - ${p.line}')
+	if p.tok == .xor {
+		lifetime_pos := p.pos
+		p.next()
+		return p.finish_expr(ast.Expr(ast.LifetimeExpr{
+			name: p.expect_name()
+			pos:  lifetime_pos
+		}), min_bp)
+	}
+	if p.tok == .mul {
+		prefix_pos := p.pos
+		p.next()
+		mut prefix_rhs := ast.empty_expr
+		if p.tok == .name {
+			prefix_rhs = p.ident_or_named_type()
+			if p.tok == .lcbr && p.can_parse_init_expr(prefix_rhs) {
+				prefix_rhs = p.assoc_or_init_expr(prefix_rhs)
+			}
+			prefix_rhs = p.finish_expr(prefix_rhs, .highest)
+		} else {
+			prefix_rhs = p.expr(.highest)
+		}
+		return p.finish_expr(ast.Expr(ast.PrefixExpr{
+			pos:  prefix_pos
+			op:   .mul
+			expr: prefix_rhs
+		}), min_bp)
+	}
+	mut lhs := ast.empty_expr
+	match p.tok {
+		.key_false, .key_true, .number {
+			lhs = ast.Expr(ast.BasicLiteral{
+				kind:  p.tok
+				value: p.lit()
+				pos:   p.pos
+			})
+		}
+		.char {
+			lhs = ast.Expr(ast.BasicLiteral{
+				kind:  .char
+				value: p.lit()
+				pos:   p.pos
+			})
+		}
+		.string {
+			lhs = p.string_literal(.v)
+		}
+		.key_fn {
+			fn_pos := p.pos
+			p.next()
+			// TODO: closure variable capture syntax is the same as generic param syntax. IMO This should change.
+			// If we have both a capture list and generic params, we can always assume that the capture list comes
+			// first. However if we only have one or the other we will need to work out what we have. the only way
+			// to currently do this is to check for an ident where the name's first char is a capital, this is not
+			// great at all, and would be the only place in the parser where a capital letter is relied upon, or even
+			// the name at all is relied upon. imo this is context the parser should not need, and we should either
+			// change the variable capture syntax, or move the position of the capture list, for example:
+			// change syntax: `fn <var_a, var_b> [T] () { ... }`, move position: `fn [T] () { ... } [var_a, var_b]`
+			// personally I think `fn <var_a, var_b> [T] () { ... }` is a great option.
+			mut captured_vars := []ast.Expr{}
+			mut generic_params := []ast.Expr{}
+			if p.tok == .lsbr {
+				p.next()
+				captured_vars = p.expr_list()
+				p.expect(.rsbr)
+			}
+			// we have generic params after capture list
+			if p.tok == .lsbr {
+				generic_params = p.generic_list()
+			}
+			// if we had one or the other determine what it is
+			else if captured_vars.len > 0 {
+				expr_0 := captured_vars[0]
+				if expr_0 is ast.Ident {
+					if u8(expr_0.name[0]).is_capital() {
+						generic_params = captured_vars.clone()
+						captured_vars = []
+					}
+				}
+			}
+			mut typ := p.fn_type()
+			// if we had generic params update the fn type / sig (params are stored here)
+			if generic_params.len > 0 {
+				typ = ast.FnType{
+					...typ
+					generic_params: generic_params
+				}
+			}
+			if p.exp_pt && (p.tok != .lcbr || p.exp_lcbr) {
+				return ast.Type(typ)
+			}
+			lhs = ast.Expr(ast.FnLiteral{
+				typ:           typ
+				stmts:         p.block()
+				captured_vars: captured_vars
+				pos:           fn_pos
+			})
+		}
+		.key_if {
+			lhs = ast.Expr(p.if_expr(false))
+		}
+		// NOTE: I would much rather dump, likely, and unlikely were
+		// some type of comptime fn/macro's which come as part of the
+		// v stdlib, as apposed to being language keywords.
+		// TODO: should these be replaced with something
+		// like `CallExpr{lhs: KeywordOperator}` ?
+		.key_isreftype, .key_sizeof, .key_typeof {
+			kw_pos := p.pos
+			op := p.tok()
+			// p.expect(.lpar)
+			if p.tok == .lpar {
+				p.next()
+				lhs = ast.Expr(ast.KeywordOperator{
+					op:    op
+					exprs: []ast.Expr{len: 1, init: p.expr_or_type(.lowest)}
+					pos:   kw_pos
+				})
+				p.expect(.rpar)
+			} else {
+				// TODO: is this the best way to handle this? (prob not :D)
+				// this allows `typeof[type]()` to work
+				lhs = ast.Expr(ident_with_name(kw_pos, op.str()))
+			}
+		}
+		.key_dump, .key_likely, .key_unlikely {
+			kw_pos := p.pos
+			op := p.tok()
+			p.expect(.lpar)
+			lhs = ast.Expr(ast.KeywordOperator{
+				op:    op
+				exprs: []ast.Expr{len: 1, init: p.expr(.lowest)}
+				pos:   kw_pos
+			})
+			p.expect(.rpar)
+		}
+		.key_offsetof {
+			kw_pos := p.pos
+			op := p.tok()
+			p.expect(.lpar)
+			expr := p.expr(.lowest)
+			p.expect(.comma)
+			lhs = ast.Expr(ast.KeywordOperator{
+				op:    op
+				exprs: [expr, p.expr(.lowest)]
+				pos:   kw_pos
+			})
+			p.expect(.rpar)
+		}
+		.key_go, .key_spawn {
+			kw_pos := p.pos
+			op := p.tok()
+			lhs = ast.Expr(ast.KeywordOperator{
+				op:    op
+				exprs: []ast.Expr{len: 1, init: p.expr(.lowest)}
+				pos:   kw_pos
+			})
+		}
+		.key_nil {
+			p.next()
+			return ast.Type(ast.NilType{})
+		}
+		.key_none {
+			p.next()
+			return ast.Type(ast.NoneType{})
+		}
+		.key_lock, .key_rlock {
+			lock_pos := p.pos
+			mut kind := p.tok()
+			// `lock { stmts... }`
+			if p.tok == .lcbr {
+				return ast.LockExpr{
+					stmts: p.block()
+					pos:   lock_pos
+				}
+			}
+			mut lock_exprs := []ast.Expr{}
+			mut rlock_exprs := []ast.Expr{}
+			exp_lcbr := p.exp_lcbr
+			p.exp_lcbr = true
+			// `r?lock exprs { stmts... }`
+			// NOTE/TODO: `lock a; rlock c; lock b; rlock d {` will become
+			// `lock a, b; rlock c, d` unlike in the main parser, where it remains
+			// the same. this may need to be changed to match the current behaviour.
+			for p.tok != .lcbr {
+				if kind == .key_lock {
+					lock_exprs << p.expr_list()
+				} else if kind == .key_rlock {
+					rlock_exprs << p.expr_list()
+				}
+				if p.tok != .semicolon {
+					break
+				}
+				p.next()
+				kind = p.tok()
+			}
+			p.exp_lcbr = exp_lcbr
+			return ast.LockExpr{
+				lock_exprs:  lock_exprs
+				rlock_exprs: rlock_exprs
+				stmts:       p.block()
+				pos:         lock_pos
+			}
+		}
+		.key_struct {
+			p.next()
+			typ := ast.Keyword{
+				tok: .key_struct
+			}
+			if p.exp_pt && p.tok != .lcbr {
+				return typ
+			}
+			lhs = p.assoc_or_init_expr(typ)
+		}
+		.key_select {
+			if p.peek() == .lpar {
+				// `select(...)` - treat as function call, not select statement
+				lhs = ast.Expr(ident_with_name(p.pos, 'select'))
+				p.next()
+			} else {
+				p.next()
+				p.expect(.lcbr)
+				se := p.select_expr()
+				p.expect(.rcbr)
+				return se
+			}
+		}
+		.dollar {
+			p.next()
+			return p.comptime_expr()
+		}
+		// enum value `.green`
+		// TODO: use ast.EnumValue{} or stick with SelectorExpr?
+		// .dot {}
+		.lpar {
+			paren_pos := p.pos
+			p.next()
+			exp_lcbr := p.exp_lcbr
+			p.exp_lcbr = false
+			mut inner_expr := ast.empty_expr
+			if p.tok.is_prefix() {
+				prefix_pos := p.pos
+				prefix_op := p.tok()
+				prefix_rhs := p.expr(.highest)
+				inner_prefix := ast.Expr(ast.PrefixExpr{
+					pos:  prefix_pos
+					op:   prefix_op
+					expr: prefix_rhs
+				})
+				inner_expr = p.finish_expr(inner_prefix, .lowest)
+			} else {
+				inner_expr = p.expr(.lowest)
+			}
+			// p.log('ast.ParenExpr:')
+			lhs = ast.Expr(ast.ParenExpr{
+				expr: inner_expr
+				pos:  paren_pos
+			})
+			p.exp_lcbr = exp_lcbr
+			p.expect(.rpar)
+		}
+		.lcbr {
+			// if p.exp_lcbr {
+			// 	p.error('unexpected `{`')
+			// }
+			// shorthand map / struct init
+			// NOTE: config syntax handled in `p.fn_arguments()`
+			// which afaik is the only place it's supported
+			// lhs = p.struct_init()
+			p.next()
+			if p.tok == .ellipsis {
+				p.error('this assoc syntax is no longer supported `{...`. You must explicitly specify a type `MyType{...`')
+			}
+			// empty map init `{}`
+			if p.tok == .rcbr {
+				p.next()
+				return ast.MapInitExpr{
+					pos: p.pos
+				}
+			}
+			// map init
+			pos := p.pos
+			mut keys := []ast.Expr{}
+			mut vals := []ast.Expr{}
+			for p.tok != .rcbr {
+				key := if p.tok == .dot {
+					dot_pos := p.pos
+					p.next()
+					rhs_pos := p.pos
+					rhs_name := p.expect_name_or_keyword()
+					selector_expr_with_rhs_name(ast.empty_expr, rhs_pos, rhs_name, dot_pos)
+				} else {
+					p.expr(.lowest)
+				}
+				if key_infix := expr_infix_payload_checked(key) {
+					if key_infix.op == .pipe {
+						p.error('this assoc syntax is no longer supported `{MyType|`. Use `MyType{...` instead')
+					}
+				}
+				keys << key
+				p.expect(.colon)
+				old_stop_line_leading_dot := p.stop_line_leading_dot
+				p.stop_line_leading_dot = true
+				val := p.expr(.lowest)
+				p.stop_line_leading_dot = old_stop_line_leading_dot
+				vals << val
+				// if p.tok == .comma {
+				if p.tok in [.comma, .semicolon] {
+					p.next()
+				}
+			}
+			p.next()
+			lhs = ast.Expr(ast.MapInitExpr{
+				keys: keys
+				vals: vals
+				pos:  pos
+			})
+		}
+		.lsbr {
+			// ArrayInitExpr: `[1,2,3,4]` | `[]type{}` | `[]type{len: 4}` | `[2]type{init: 0}` etc...
+			// ArrayInitExpr->IndexExpr: `[1,2,3,4][0]` handled here for reasons listed in comment below
+			// ArrayType in CastExpr: `[]type` in `[]type(x)` set lhs to type, cast handled later
+			pos := p.pos
+			p.next()
+			// Spread syntax `[...base, e1, e2]` — parsed before regular elements.
+			mut update_expr := ast.empty_expr
+			if p.tok == .ellipsis {
+				p.next()
+				update_expr = p.expr(.lowest)
+				if p.tok == .comma || p.tok == .semicolon {
+					p.next()
+				}
+			}
+			// exprs in first `[]` eg. (`1,2,3,4` in `[1,2,3,4]) | (`2` in `[2]int{}`)
+			mut exprs := []ast.Expr{}
+			for p.tok != .rsbr {
+				exprs << p.expr(.lowest)
+				if p.tok == .comma {
+					p.next()
+				}
+				// `[
+				//    1,
+				//    2
+				//  ]`
+				// In V, trailing commas are optional in array literals.
+				// Semicolons (auto-inserted newlines) act as separators.
+				else if p.tok == .semicolon {
+					p.next()
+				}
+			}
+			p.next()
+			// (`[2]type{}` | `[2][2]type{}` | `[2][]type{}`) | `[1,2,3,4][0]` | `[2]type`
+			// NOTE: it's tricky to differentiate between a fixed array of fixed array(s)
+			// and an index directly after initialization. for example, the following:
+			// a) fixed array of fixed array(s): `[2][2]type{}` | `[2][2][2]type{}`
+			// b) index directly after init: `[1][0]` | `[x][2][2]` <- vs (a) above
+			// only in this case collect exprs in following `[x][x]` then decide what to do
+			if exprs.len > 0 && p.tok == .lsbr {
+				// collect exprs in all the following `[x][x]`
+				mut exprs_arr := [exprs]
+				// NOTE: checking line here for this case:
+				// `pub const const_a = ['a', 'b', 'c', 'd']`
+				// '[attribute_a; attribute_b]''
+				for p.tok == .lsbr {
+					p.next()
+					mut exprs2 := []ast.Expr{}
+					for p.tok != .rsbr {
+						index_expr := p.expr(.lowest)
+						exprs2 << p.range_expr(index_expr)
+						if p.tok == .comma {
+							p.next()
+						}
+					}
+					p.next()
+					exprs_arr << exprs2
+				}
+				// (`[2]type{}` | `[2][]type{}` | `[2]&type{init: Foo{}}`) | `[2]type`
+				if p.tok in [.amp, .key_struct, .name] {
+					elem_type := p.expect_type()
+					// Build nested type from innermost to outermost dimension.
+					// For `[3][3]int`, exprs_arr = [[3], [3]], and we iterate
+					// from the last (innermost) to first (outermost), nesting
+					// each dimension around the previous one.
+					mut inner_type := ast.Expr(elem_type)
+					for i := exprs_arr.len - 1; i >= 0; i-- {
+						exprs2 := exprs_arr[i]
+						if exprs2.len == 0 {
+							inner_type = ast.Expr(ast.Type(ast.ArrayType{
+								elem_type: inner_type
+							}))
+						} else if exprs2.len == 1 {
+							inner_type = ast.Expr(ast.Type(ast.ArrayFixedType{
+								elem_type: inner_type
+								len:       exprs2[0]
+							}))
+						} else {
+							// TODO: use same error message as typ() `expect(.rsbr)`
+							p.error('expecting single expr for fixed array length')
+						}
+					}
+					lhs = inner_type
+					// `[2]type{}`
+					if p.tok == .lcbr && !p.exp_lcbr {
+						p.next()
+						mut init := ast.empty_expr
+						if p.tok != .rcbr {
+							key := p.expect_name()
+							p.expect(.colon)
+							match key {
+								'init' { init = p.expr(.lowest) }
+								else { p.error('expecting `init`, got `${key}`') }
+							}
+						}
+						p.next()
+						lhs = array_init_expr_with_parts(lhs, []ast.Expr{}, init, ast.empty_expr,
+							ast.empty_expr, pos)
+					}
+					// `[2]type`
+					// casts are completed in expr loop
+					else if p.tok != .lpar {
+						if !p.exp_pt {
+							p.error('unexpected type')
+						}
+						// no need to chain here
+						return lhs
+					}
+				}
+				// `[1][0]` | `[1,2,3,4][0]` | `[[1,2,3,4]][0][1]` <-- index directly after init
+				else {
+					lhs = array_init_expr_with_parts(ast.empty_expr, exprs, ast.empty_expr,
+						ast.empty_expr, ast.empty_expr, pos)
+					if update_expr !is ast.EmptyExpr {
+						mut arr_init := lhs as ast.ArrayInitExpr
+						arr_init.update_expr = update_expr
+						lhs = ast.Expr(arr_init)
+					}
+					for i := 1; i < exprs_arr.len; i++ {
+						exprs2 := exprs_arr[i]
+						if exprs2.len != 1 {
+							// TODO: use same error message as IndexExpr in expr loop `expect(.rsbr)`
+							p.error('invalid index expr')
+						}
+						lhs = index_expr_with_parts(lhs, exprs2[0], false, pos)
+					}
+				}
+			}
+			// (`[n]type{}` | `[n]type`) - single-dimensional fixed array with one size expr
+			else if exprs.len == 1 && p.tok in [.amp, .key_struct, .name] {
+				lhs = ast.Expr(ast.Type(ast.ArrayFixedType{
+					elem_type: p.expect_type()
+					len:       exprs[0]
+				}))
+				// `[n]type{}`
+				if p.tok == .lcbr && p.can_parse_init_expr(lhs) {
+					p.next()
+					mut init := ast.empty_expr
+					if p.tok != .rcbr {
+						key := p.expect_name()
+						p.expect(.colon)
+						match key {
+							'init' { init = p.expr(.lowest) }
+							else { p.error('expecting `init`, got `${key}`') }
+						}
+					}
+					p.next()
+					lhs = array_init_expr_with_parts(lhs, []ast.Expr{}, init, ast.empty_expr,
+						ast.empty_expr, pos)
+				}
+				// `[n]type`
+				// casts are completed in expr loop
+				else if p.tok != .lpar {
+					if !p.exp_pt {
+						p.error('unexpected type')
+					}
+					// no need to chain here
+					return lhs
+				}
+			}
+			// (`[]type{}` | `[][]type{}` | `[]&type{len: 2}`) | `[]type`
+			else if p.tok in [.amp, .key_struct, .lsbr, .name] {
+				lhs = ast.Expr(ast.Type(ast.ArrayType{
+					elem_type: p.expect_type()
+				}))
+				// `[]type{}`
+				if p.tok == .lcbr && !p.exp_lcbr {
+					p.next()
+					mut cap, mut init, mut len := ast.empty_expr, ast.empty_expr, ast.empty_expr
+					for p.tok != .rcbr {
+						key := p.expect_name()
+						p.expect(.colon)
+						match key {
+							'cap' { cap = p.expr(.lowest) }
+							'init' { init = p.expr(.lowest) }
+							'len' { len = p.expr(.lowest) }
+							else { p.error('expecting one of `cap, init, len`, got `${key}`') }
+						}
+
+						if p.tok == .comma {
+							p.next()
+						}
+					}
+					p.next()
+					lhs = array_init_expr_with_parts(lhs, []ast.Expr{}, init, cap, len, pos)
+				}
+				// `[]type`
+				// casts are completed in expr loop
+				else if p.tok != .lpar {
+					if !p.exp_pt {
+						p.error('unexpected type')
+					}
+					// no need to chain here
+					return lhs
+				}
+			}
+			// `[1,2,3,4]!`
+			else if p.tok == .not {
+				if exprs.len == 0 {
+					p.error('expecting at least one initialization expr: `[expr, expr2]!`')
+				}
+				p.next()
+				lhs = array_init_expr_with_parts(ast.empty_expr, exprs, ast.empty_expr,
+					ast.empty_expr, ast.Expr(ast.PostfixExpr{
+					op:   .not
+					expr: ast.empty_expr
+					pos:  pos
+				}), pos)
+				// `[]` | `[1,2,3,4]`
+			} else {
+				lhs = array_init_expr_with_parts(ast.empty_expr, exprs, ast.empty_expr,
+					ast.empty_expr, ast.empty_expr, pos)
+				if update_expr !is ast.EmptyExpr {
+					mut arr_init := lhs as ast.ArrayInitExpr
+					arr_init.update_expr = update_expr
+					lhs = ast.Expr(arr_init)
+				}
+			}
+		}
+		.key_match {
+			match_pos := p.pos
+			p.next()
+			mut exp_lcbr := p.exp_lcbr
+			p.exp_lcbr = true
+			expr := p.expr(.lowest)
+			p.exp_lcbr = exp_lcbr
+			p.expect(.lcbr)
+			mut branches := []ast.MatchBranch{}
+			for p.tok != .rcbr {
+				exp_lcbr = p.exp_lcbr
+				branch_pos := p.pos
+				p.exp_lcbr = true
+				first_cond_expr := p.expr_or_type(.lowest)
+				mut cond := [p.range_expr(first_cond_expr)]
+				for p.tok == .comma {
+					p.next()
+					next_cond_expr := p.expr_or_type(.lowest)
+					cond << p.range_expr(next_cond_expr)
+				}
+				p.exp_lcbr = exp_lcbr
+				branches << ast.MatchBranch{
+					cond:  cond
+					stmts: p.block()
+					pos:   branch_pos
+				}
+				p.expect_semi()
+				if p.tok == .key_else {
+					p.next()
+					branches << ast.MatchBranch{
+						stmts: p.block()
+						pos:   branch_pos
+					}
+					p.expect_semi()
+				}
+			}
+			// rcbr
+			p.next()
+			lhs = ast.Expr(ast.MatchExpr{
+				expr:     expr
+				branches: branches
+				pos:      match_pos
+			})
+		}
+		.key_atomic, .key_mut, .key_shared, .key_static, .key_volatile {
+			mod_pos := p.pos
+			mod_kind := p.tok()
+			mod_expr := p.expr(.highest)
+			lhs = modifier_expr_with_expr(mod_kind, mod_expr, mod_pos)
+		}
+		.key_unsafe {
+			// p.log('ast.UnsafeExpr')
+			unsafe_pos := p.pos
+			p.next()
+			// exp_lcbr := p.exp_lcbr
+			// p.exp_lcbr = false
+			lhs = ast.Expr(ast.UnsafeExpr{
+				stmts: p.block()
+				pos:   unsafe_pos
+			})
+			// p.exp_lcbr = exp_lcbr
+		}
+		.name {
+			sql_pos := p.pos
+			lit := p.lit
+			lhs = p.ident_or_named_type()
+			// `sql x {}` otherwise ident named `sql`
+			if lit == 'sql' && p.tok == .name {
+				exp_lcbr := p.exp_lcbr
+				p.exp_lcbr = true
+				expr := p.expr(.lowest)
+				p.exp_lcbr = exp_lcbr
+				table_name, is_count, is_create := p.skip_sql_block_metadata()
+				lhs = ast.Expr(ast.SqlExpr{
+					expr:       expr
+					table_name: table_name
+					is_count:   is_count
+					is_create:  is_create
+					pos:        sql_pos
+				})
+			}
+			// raw/c/js string: `r'hello'`
+			else if p.tok == .string {
+				lhs = p.string_literal(ast.StringLiteralKind.from_string_tinyv(lit))
+			}
+			// `ident{}`
+			else if p.tok == .lcbr && p.can_parse_init_expr(lhs) {
+				// TODO: move inits to expr loop? currently just handled where needed
+				// since this is not very many places. consider if it should be moved
+				// TODO: consider the following (tricky to parse)
+				// `if err == IError(Eof{}) {`
+				// `if Foo{} == Foo{} {`
+				lhs = p.assoc_or_init_expr(lhs)
+			}
+		}
+		// native optionals `x := ?mod_a.StructA{}`
+		// could also simply be handled by `Token.is_prefix()` below
+		.question {
+			lhs = p.expect_type()
+			// only handle where actually needed instead of expr loop
+			// I may change my mind, however for now this seems best
+			if p.tok == .lcbr && p.can_parse_init_expr(lhs) {
+				lhs = p.assoc_or_init_expr(lhs)
+			} else if !p.exp_pt && p.tok != .lpar {
+				p.error('unexpected type')
+			}
+		}
+		// selector handled in expr chaining loop below
+		// range handled in `p.range_expr()`
+		.dot, .dotdot, .ellipsis {}
+		else {
+			if p.tok.is_prefix() {
+				prefix_pos := p.pos
+				prefix_op := p.tok()
+				prefix_expr := p.prefix_rhs_expr(prefix_op)
+				lhs = ast.Expr(ast.PrefixExpr{
+					pos:  prefix_pos
+					op:   prefix_op
+					expr: prefix_expr
+				})
+			} else {
+				p.error('expr: unexpected token `${p.tok}`')
+			}
+		}
+	}
+
+	return p.finish_expr(lhs, min_bp)
+}
+
+fn (mut p Parser) prefix_rhs_expr(prefix_op token.Token) ast.Expr {
+	if prefix_op == .not && p.tok == .name {
+		mut rhs := p.ident_or_named_type()
+		if p.tok == .lcbr && p.can_parse_init_expr(rhs) {
+			rhs = p.assoc_or_init_expr(rhs)
+		}
+		return p.finish_expr(rhs, .highest)
+	}
+	return p.expr(.highest)
+}
+
+fn expr_looks_like_type_init(expr ast.Expr) bool {
+	match expr {
+		ast.GenericArgs {
+			return expr_looks_like_type_init(expr.lhs)
+		}
+		ast.Ident {
+			return expr.name.len > 0 && u8(expr.name[0]).is_capital()
+		}
+		ast.SelectorExpr {
+			return expr.rhs.name.len > 0 && u8(expr.rhs.name[0]).is_capital()
+		}
+		ast.Type {
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut p Parser) can_parse_init_expr(expr ast.Expr) bool {
+	return !p.exp_lcbr
+		|| (p.allow_init_in_exp_lcbr && expr_looks_like_type_init(expr)
+		&& p.peek_allows_init_in_exp_lcbr())
+}
+
+fn (mut p Parser) peek_allows_init_in_exp_lcbr() bool {
+	next_tok := p.peek()
+	if next_tok == .rcbr || next_tok == .ellipsis {
+		return true
+	}
+	if next_tok != .name && !next_tok.is_keyword() {
+		return false
+	}
+	mut offset := p.scanner.offset
+	for offset < p.scanner.src.len {
+		ch := p.scanner.src[offset]
+		if ch in [` `, `\t`, `\r`, `\n`] {
+			offset++
+			continue
+		}
+		return ch == `:` && (offset + 1 >= p.scanner.src.len || p.scanner.src[offset + 1] != `=`)
+	}
+	return false
+}
+
+fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast.Expr {
+	mut lhs := input_lhs
+	mut lhs_name := ''
+	if lhs is ast.Ident {
+		lhs_name = lhs.name
+	} else if lhs is ast.SelectorExpr {
+		lhs_name = p.selector_names[lhs.pos.id] or { '' }
+	}
+	for {
+		if p.tok == .semicolon && p.peek() == .dot {
+			p.next()
+			continue
+		}
+		if p.tok == .dot && p.stop_line_leading_dot && p.token_starts_after_line_break() {
+			break
+		}
+		if p.tok == .key_as {
+			p.next()
+			lhs = ast.Expr(ast.AsCastExpr{
+				expr: lhs
+				typ:  p.expect_type()
+			})
+			lhs_name = ''
+		} else if p.tok == .lpar {
+			pos := p.pos
+			exp_lcbr := p.exp_lcbr
+			p.exp_lcbr = false
+			args := p.fn_arguments()
+			p.exp_lcbr = exp_lcbr
+			if p.tok in [.not, .question] {
+				lhs = call_expr_with_lhs(lhs, args, pos)
+			} else if args.len == 1 {
+				if lhs is ast.Type {
+					lhs_type := lhs as ast.Type
+					lhs = cast_expr_with_type(ast.Expr(lhs_type), args[0], pos)
+				} else {
+					lhs = call_or_cast_expr_with_lhs(lhs, args[0], pos)
+				}
+			} else {
+				lhs = call_expr_with_lhs(lhs, args, pos)
+			}
+			lhs_name = ''
+		} else if p.tok in [.hash, .lsbr] {
+			idx_pos := p.pos
+			if p.tok == .hash {
+				p.next()
+				p.expect(.lsbr)
+				gated_expr := p.expr(.lowest)
+				lhs = index_expr_with_parts(lhs, p.range_expr(gated_expr), true, idx_pos)
+				p.expect(.rsbr)
+			} else {
+				p.next()
+				first_index_expr := p.expr_or_type(.lowest)
+				expr := p.range_expr(first_index_expr)
+				mut exprs := [expr]
+				for p.tok == .comma {
+					p.next()
+					exprs << p.expr_or_type(.lowest)
+				}
+				p.expect(.rsbr)
+				if p.tok == .lcbr && !p.exp_lcbr {
+					lhs = p.assoc_or_init_expr(ast.GenericArgs{
+						lhs:  lhs
+						args: exprs
+						pos:  idx_pos
+					})
+				} else if p.tok == .lpar {
+					if exprs.len > 1 || expr is ast.GenericArgs || expr is ast.LifetimeExpr {
+						lhs = ast.Expr(ast.GenericArgs{
+							lhs:  lhs
+							args: exprs
+							pos:  idx_pos
+						})
+					} else if expr is ast.Ident || expr is ast.SelectorExpr {
+						lhs = ast.Expr(ast.GenericArgOrIndexExpr{
+							lhs:  lhs
+							expr: expr
+							pos:  idx_pos
+						})
+					} else if expr is ast.Type {
+						lhs = ast.Expr(ast.GenericArgs{
+							lhs:  lhs
+							args: exprs
+							pos:  idx_pos
+						})
+					} else {
+						lhs = index_expr_with_parts(lhs, expr, false, idx_pos)
+					}
+				} else {
+					if exprs.len > 1 || (p.exp_pt && (expr is ast.GenericArgs
+						|| expr is ast.Ident || expr is ast.SelectorExpr
+						|| expr is ast.LifetimeExpr)) {
+						lhs = ast.Expr(ast.GenericArgs{
+							lhs:  lhs
+							args: exprs
+							pos:  idx_pos
+						})
+					} else {
+						lhs = index_expr_with_parts(lhs, expr, false, idx_pos)
+					}
+				}
+			}
+			lhs_name = ''
+		} else if p.tok == .dot {
+			dot_pos := p.pos
+			p.next()
+			if p.tok == .dollar {
+				p.next()
+				inner := if p.tok == .lpar {
+					p.next()
+					expr := p.expr(.lowest)
+					p.expect(.rpar)
+					expr
+				} else {
+					p.expr(.lowest)
+				}
+				rhs_pos := p.pos
+				rhs_name := '__comptime_selector__'
+				full_name := if lhs_name == '' { rhs_name } else { lhs_name + '.' + rhs_name }
+				if dot_pos.is_valid() {
+					p.selector_names[dot_pos.id] = full_name
+				}
+				lhs = selector_expr_with_rhs_name(lhs, rhs_pos, rhs_name, dot_pos)
+				// `app.$method(args)` - inner parses as CallExpr or CallOrCastExpr;
+				// lift its args onto our SelectorExpr so the call form is preserved.
+				if inner is ast.CallExpr {
+					lhs = ast.Expr(ast.CallExpr{
+						lhs:  lhs
+						args: inner.args
+						pos:  dot_pos
+					})
+				} else if inner is ast.CallOrCastExpr {
+					lhs = ast.Expr(ast.CallExpr{
+						lhs:  lhs
+						args: [inner.expr]
+						pos:  dot_pos
+					})
+				}
+				lhs_name = full_name
+			} else {
+				rhs_pos := p.pos
+				rhs_name := p.expect_name_or_keyword()
+				full_name := if lhs_name == '' { rhs_name } else { lhs_name + '.' + rhs_name }
+				if dot_pos.is_valid() {
+					p.selector_names[dot_pos.id] = full_name
+				}
+				lhs = selector_expr_with_rhs_name(lhs, rhs_pos, rhs_name, dot_pos)
+				lhs_name = full_name
+			}
+		} else if p.tok in [.not, .question] {
+			postfix_pos := p.pos
+			postfix_op := p.tok()
+			lhs = ast.Expr(ast.PostfixExpr{
+				op:   postfix_op
+				expr: lhs
+				pos:  postfix_pos
+			})
+			lhs_name = ''
+		} else if p.tok == .key_or {
+			pos := p.pos
+			p.next()
+			lhs = ast.Expr(ast.OrExpr{
+				expr:  lhs
+				stmts: p.block()
+				pos:   pos
+			})
+			lhs_name = ''
+		} else if min_bp == .lowest && p.tok in [.dotdot, .ellipsis] {
+			range_pos := p.pos
+			range_op := p.tok()
+			range_end := if p.tok == .rsbr { ast.empty_expr } else { p.expr(.lowest) }
+			return ast.RangeExpr{
+				op:    range_op
+				start: lhs
+				end:   range_end
+				pos:   range_pos
+			}
+		} else {
+			break
+		}
+	}
+	for int(min_bp) <= int(p.tok.left_binding_power())
+		|| (p.tok == .semicolon && p.peek().is_infix() && !p.peek().is_prefix()
+		&& int(min_bp) <= int(p.peek().left_binding_power())) {
+		if p.tok == .semicolon && p.peek().is_infix() && !p.peek().is_prefix() {
+			p.next()
+		}
+		if p.tok.is_infix() {
+			pos := p.pos
+			op := p.tok()
+			rhs := if op in [.key_in, .not_in] {
+				range_rhs := p.expr(op.right_binding_power())
+				p.range_expr(range_rhs)
+			} else if op in [.key_is, .not_is] {
+				p.expect_type()
+			} else {
+				p.expr(op.right_binding_power())
+			}
+			lhs = infix_expr_with_parts(op, lhs, rhs, pos)
+		} else if p.tok.is_postfix() {
+			postfix_pos := p.pos
+			postfix_op := p.tok()
+			lhs = ast.Expr(ast.PostfixExpr{
+				op:   postfix_op
+				expr: lhs
+				pos:  postfix_pos
+			})
+		} else {
+			break
+		}
+	}
+	return lhs
+}
+
+fn call_expr_with_lhs(lhs ast.Expr, args []ast.Expr, pos token.Pos) ast.Expr {
+	mut call_expr := ast.CallExpr{
+		lhs:  ast.empty_expr
+		args: args
+		pos:  pos
+	}
+	call_expr.lhs = lhs
+	return ast.Expr(call_expr)
+}
+
+fn call_or_cast_expr_with_lhs(lhs ast.Expr, expr ast.Expr, pos token.Pos) ast.Expr {
+	mut call_or_cast_expr := ast.CallOrCastExpr{
+		lhs:  ast.empty_expr
+		expr: ast.empty_expr
+		pos:  pos
+	}
+	call_or_cast_expr.lhs = lhs
+	call_or_cast_expr.expr = expr
+	return ast.Expr(call_or_cast_expr)
+}
+
+fn cast_expr_with_type(typ ast.Expr, expr ast.Expr, pos token.Pos) ast.Expr {
+	mut cast_expr := ast.CastExpr{
+		typ:  ast.empty_expr
+		expr: ast.empty_expr
+		pos:  pos
+	}
+	cast_expr.typ = typ
+	cast_expr.expr = expr
+	return ast.Expr(cast_expr)
+}
+
+fn infix_expr_with_parts(op token.Token, lhs ast.Expr, rhs ast.Expr, pos token.Pos) ast.Expr {
+	mut infix_expr := ast.InfixExpr{
+		op:  op
+		lhs: ast.empty_expr
+		rhs: ast.empty_expr
+		pos: pos
+	}
+	infix_expr.lhs = lhs
+	infix_expr.rhs = rhs
+	return ast.Expr(infix_expr)
+}
+
+fn index_expr_with_parts(lhs ast.Expr, expr ast.Expr, is_gated bool, pos token.Pos) ast.Expr {
+	mut index_expr := ast.IndexExpr{
+		lhs:      ast.empty_expr
+		expr:     ast.empty_expr
+		is_gated: is_gated
+		pos:      pos
+	}
+	index_expr.lhs = lhs
+	index_expr.expr = expr
+	return ast.Expr(index_expr)
+}
+
+fn selector_expr_with_lhs(lhs ast.Expr, rhs ast.Ident, pos token.Pos) ast.Expr {
+	mut selector_expr := ast.SelectorExpr{
+		lhs: ast.empty_expr
+		rhs: ast.Ident{}
+		pos: pos
+	}
+	selector_expr.lhs = lhs
+	selector_expr.rhs.name = rhs.name
+	selector_expr.rhs.pos = rhs.pos
+	return ast.Expr(selector_expr)
+}
+
+fn selector_expr_with_rhs_name(lhs ast.Expr, rhs_pos token.Pos, rhs_name string, pos token.Pos) ast.Expr {
+	mut selector_expr := ast.SelectorExpr{
+		lhs: ast.empty_expr
+		rhs: ast.Ident{}
+		pos: pos
+	}
+	selector_expr.lhs = lhs
+	selector_expr.rhs.pos = rhs_pos
+	selector_expr.rhs.name = rhs_name
+	return ast.Expr(selector_expr)
+}
+
+fn modifier_expr_with_expr(kind token.Token, expr ast.Expr, pos token.Pos) ast.Expr {
+	mut modifier_expr := ast.ModifierExpr{
+		kind: kind
+		expr: ast.empty_expr
+		pos:  pos
+	}
+	modifier_expr.expr = expr
+	return ast.Expr(modifier_expr)
+}
+
+fn parameter_with_type(name string, typ ast.Expr, is_mut bool, pos token.Pos) ast.Parameter {
+	mut param := ast.Parameter{
+		name:   name
+		typ:    ast.empty_expr
+		is_mut: is_mut
+		pos:    pos
+	}
+	param.typ = typ
+	return param
+}
+
+fn for_in_stmt_with_parts(key ast.Expr, value ast.Expr, expr ast.Expr) ast.ForInStmt {
+	mut stmt := ast.ForInStmt{
+		key:   ast.empty_expr
+		value: ast.empty_expr
+		expr:  ast.empty_expr
+	}
+	stmt.key = key
+	stmt.value = value
+	stmt.expr = expr
+	return stmt
+}
+
+fn for_stmt_with_parts(init ast.Stmt, cond ast.Expr, post ast.Stmt, stmts []ast.Stmt) ast.ForStmt {
+	mut stmt := ast.ForStmt{
+		init:  ast.empty_stmt
+		cond:  ast.empty_expr
+		post:  ast.empty_stmt
+		stmts: stmts
+	}
+	stmt.init = init
+	stmt.cond = cond
+	stmt.post = post
+	return stmt
+}
+
+fn if_expr_with_parts(cond ast.Expr, else_expr ast.Expr, stmts []ast.Stmt, pos token.Pos) ast.IfExpr {
+	mut expr := ast.IfExpr{
+		cond:      ast.empty_expr
+		else_expr: ast.empty_expr
+		stmts:     stmts
+		pos:       pos
+	}
+	expr.cond = cond
+	expr.else_expr = else_expr
+	return expr
+}
+
+fn field_init_with_value(name string, value ast.Expr) ast.FieldInit {
+	mut field := ast.FieldInit{
+		name:  name
+		value: ast.empty_expr
+	}
+	field.value = value
+	return field
+}
+
+fn init_expr_with_type(typ ast.Expr, fields []ast.FieldInit, pos token.Pos) ast.InitExpr {
+	mut init_expr := ast.InitExpr{
+		typ:    ast.empty_expr
+		fields: fields
+		pos:    pos
+	}
+	init_expr.typ = typ
+	return init_expr
+}
+
+fn array_init_expr_with_parts(typ ast.Expr, exprs []ast.Expr, init ast.Expr, cap ast.Expr, len ast.Expr, pos token.Pos) ast.Expr {
+	mut array_init_expr := ast.ArrayInitExpr{
+		typ:   ast.empty_expr
+		exprs: exprs
+		init:  ast.empty_expr
+		cap:   ast.empty_expr
+		len:   ast.empty_expr
+		pos:   pos
+	}
+	array_init_expr.typ = typ
+	array_init_expr.init = init
+	array_init_expr.cap = cap
+	array_init_expr.len = len
+	return ast.Expr(array_init_expr)
+}
+
+fn (p &Parser) token_starts_after_line_break() bool {
+	mut idx := p.pos.offset - p.file.base - 1
+	for idx >= 0 {
+		ch := p.scanner.src[idx]
+		if ch == `\n` || ch == `\r` {
+			return true
+		}
+		if !ch.is_space() {
+			return false
+		}
+		idx--
+	}
+	return false
+}
+
+// parse and return `ast.RangeExpr` if found, otherwise return `lhs_expr`
+@[inline]
+fn (mut p Parser) range_expr(lhs_expr ast.Expr) ast.Expr {
+	if p.tok in [.dotdot, .ellipsis] {
+		range_pos := p.pos
+		return ast.RangeExpr{
+			op:    p.tok()
+			start: lhs_expr
+			end:   if p.tok == .rsbr { ast.empty_expr } else { p.expr(.lowest) }
+			pos:   range_pos
+		}
+	}
+	return lhs_expr
+}
+
+// parse type or expr, eg. `typeof(expr|type)` | `array_or_generic_call[expr|type]()`
+@[inline]
+fn (mut p Parser) expr_or_type(min_bp token.BindingPower) ast.Expr {
+	// TODO: is there a better way to do this? see uses of `p.exp_pt`
+	exp_pt := p.exp_pt
+	p.exp_pt = true
+	expr := p.expr(min_bp)
+	p.exp_pt = exp_pt
+	return expr
+}
+
+// use peek() over always keeping next_tok one token ahead.
+// I have done it this way to keep scanner & parser in sync.
+// this simplifies getting any extra information from scanner
+// as I can retrieve it directly, no need to store somewhere.
+// this also help enforce the hard 1 token look ahead limit.
+@[inline]
+fn (mut p Parser) peek() token.Token {
+	if p.tok_next_ == .unknown {
+		p.tok_next_ = p.scanner.scan()
+		// Keep parser/scanner file state synchronized for backends without pointer aliasing.
+		p.file = p.scanner.current_file()
+	}
+	return p.tok_next_
+}
+
+@[inline]
+fn (mut p Parser) next() {
+	if p.tok_next_ != .unknown {
+		p.tok = p.tok_next_
+		p.tok_next_ = .unknown
+	} else {
+		p.tok = p.scanner.scan()
+	}
+	// Keep parser/scanner file state synchronized for backends without pointer aliasing.
+	p.file = p.scanner.current_file()
+	p.line = p.file.line_count()
+	p.lit = p.scanner.lit
+	p.pos = p.file.pos(p.scanner.pos)
+}
+
+// expect `tok` & go to next token
+@[inline]
+fn (mut p Parser) expect(tok token.Token) {
+	if p.tok != tok {
+		p.error_expected(tok, p.tok)
+	}
+	p.next()
+}
+
+@[inline]
+pub fn (mut p Parser) expect_semi() {
+	match p.tok {
+		// semicolon is optional before a closing ')' or '}'
+		.rpar, .rcbr {}
+		.semicolon {
+			p.next()
+		}
+		else {
+			p.error_expected(.semicolon, p.tok)
+		}
+	}
+}
+
+// expect `.name` & return `p.lit` & go to next token
+@[inline]
+fn (mut p Parser) expect_name() string {
+	if p.tok != .name {
+		p.error_expected(.name, p.tok)
+	}
+	name := p.lit
+	p.next()
+	return name
+}
+
+// expect `.name` or keyword & return `p.lit` & go to next token
+// used for C/JS function names where keywords are allowed (e.g. `C.select`)
+@[inline]
+fn (mut p Parser) expect_name_or_keyword() string {
+	if p.tok != .name && !p.tok.is_keyword() {
+		p.error_expected(.name, p.tok)
+	}
+	name := p.lit
+	p.next()
+	return name
+}
+
+// return `p.lit` & go to next token
+@[inline]
+fn (mut p Parser) lit() string {
+	// TODO: check if there is a better way to handle this?
+	// we should never use lit() in cases where p.lit is empty anyway
+	// lit := if p.lit.len == 0 { p.tok.str() } else { p.lit }
+	lit := p.lit
+	p.next()
+	return lit
+}
+
+// return `p.tok` & go to next token
+@[inline]
+fn (mut p Parser) tok() token.Token {
+	tok := p.tok
+	p.next()
+	return tok
+}
+
+@[inline]
+fn (mut p Parser) block() []ast.Stmt {
+	mut stmts := []ast.Stmt{}
+	p.expect(.lcbr)
+	for p.tok != .rcbr {
+		stmts << p.stmt()
+	}
+	// rcbr
+	p.next()
+	// TODO: correct way to error on `if x == Type{} {`
+	// is this the correct place for this, will it work in every case?
+	// if p.tok == .lcbr {
+	// 	// TODO: better error message
+	// 	p.error('init must be in parens when `{` is expected, eg. `if x == (Type{}) {`')
+	// }
+	return stmts
+}
+
+fn (mut p Parser) skip_balanced_brace_block() {
+	p.expect(.lcbr)
+	mut depth := 1
+	for depth > 0 {
+		match p.tok {
+			.eof {
+				p.error('unexpected eof while parsing block')
+			}
+			.lcbr {
+				depth++
+				p.next()
+			}
+			.rcbr {
+				depth--
+				p.next()
+			}
+			// Consume the full string/interpolation so braces inside `${...}` do
+			// not interfere with raw block skipping.
+			.string {
+				_ = p.string_literal(.v)
+			}
+			else {
+				p.next()
+			}
+		}
+	}
+}
+
+fn (mut p Parser) skip_sql_block_metadata() (string, bool, bool) {
+	p.expect(.lcbr)
+	mut depth := 1
+	mut saw_select := false
+	mut saw_from := false
+	mut saw_create := false
+	mut saw_create_table := false
+	mut is_count := false
+	mut is_create := false
+	mut table_name := ''
+	for depth > 0 {
+		match p.tok {
+			.eof {
+				p.error('unexpected eof while parsing block')
+			}
+			.lcbr {
+				depth++
+				p.next()
+			}
+			.rcbr {
+				depth--
+				p.next()
+			}
+			.string {
+				_ = p.string_literal(.v)
+			}
+			.key_select {
+				if depth == 1 {
+					saw_select = true
+				}
+				p.next()
+			}
+			.name {
+				if depth == 1 && table_name == '' {
+					if !saw_select && p.lit == 'select' {
+						saw_select = true
+					} else if p.lit == 'create' {
+						saw_create = true
+					} else if saw_create && p.lit == 'table' {
+						saw_create_table = true
+					} else if saw_select && !saw_from && p.lit == 'count' {
+						is_count = true
+					} else if saw_select && p.lit == 'from' {
+						saw_from = true
+					} else if saw_create_table {
+						is_create = true
+						table_name = p.lit
+					} else if saw_from {
+						table_name = p.lit
+					}
+				}
+				p.next()
+			}
+			else {
+				p.next()
+			}
+		}
+	}
+	return table_name, is_count, is_create
+}
+
+@[inline]
+fn (mut p Parser) expr_list() []ast.Expr {
+	mut exprs := []ast.Expr{}
+	for {
+		expr := p.expr(.lowest)
+		exprs << expr
+		// TODO: was this just for previous generics impl or was there another need?
+		// expr := p.expr(.lowest)
+		// // TODO: is this the best place/way to handle this?
+		// if expr is ast.EmptyExpr {
+		// 	p.error('expecting expr, got `${p.tok}`')
+		// }
+		// exprs << expr
+		if p.tok != .comma {
+			break
+		}
+		p.next()
+	}
+	return exprs
+}
+
+// @[attribute] | [attribute]
+fn (mut p Parser) attributes() []ast.Attribute {
+	p.next()
+	mut attributes := []ast.Attribute{}
+	for {
+		// TODO: perhaps attrs with `.name` token before `:` we can set name
+		// as apposed to value of `Ident{name}`
+		mut name := ''
+		mut value := ast.empty_expr
+		mut comptime_cond := ast.empty_expr
+		attr_pos := p.pos
+		// since unsafe is a keyword
+		if p.tok == .key_unsafe {
+			p.next()
+			// name = 'unsafe'
+			value = ast.Expr(ident_with_name(p.pos, 'unsafe'))
+		}
+		// TODO: properly
+		// consider using normal if expr
+		else if p.tok == .key_if {
+			p.next()
+			comptime_cond = p.expr(.lowest)
+			// if p.tok == .question {
+			// 	p.next()
+			// 	comptime_cond = ast.PostfixExpr{
+			// 		op: .question
+			// 		expr: comptime_cond
+			// 	}
+			// }
+		} else {
+			// name = p.expect_name()
+			value = p.expr(.lowest)
+			if p.tok == .colon {
+				if mut value is ast.Ident {
+					name = value.name
+				} else {
+					p.error('expecting identifier')
+				}
+				p.next() // ;
+				// NOTE: use tok instead of defining AttributeKind
+				// kind := p.tok
+				// TODO: do we need the match below or should we use:
+				// if p.tok in [.semicolon, .rsbr] { p.error('...') }
+				value = p.expr(.lowest)
+				// value = match p.tok {
+				// 	.name, .number, .string { p.lit() }
+				// 	else { p.error('unexpected ${p.tok}, an argument is expected after `:`') }
+				// }
+			}
+		}
+		attributes << ast.Attribute{
+			name:          name
+			value:         value
+			comptime_cond: comptime_cond
+			pos:           attr_pos
+		}
+		if p.tok == .semicolon {
+			p.next()
+			continue
+		}
+		p.expect(.rsbr)
+		p.expect_semi()
+		// @[attribute_a]
+		// [attribute_a]
+		if p.tok in [.attribute, .lsbr] {
+			p.next()
+			continue
+		}
+		break
+	}
+	// p.log('ast.Attribute: ${name}')
+	return attributes
+}
+
+// TODO:
+fn (mut p Parser) asm_stmt() ast.AsmStmt {
+	p.next()
+	_ = if p.tok == .key_volatile {
+		p.next()
+		true
+	} else {
+		false
+	}
+	arch := p.expect_name()
+	p.expect(.lcbr)
+	for p.tok != .rcbr {
+		p.next()
+	}
+	p.expect(.rcbr)
+	return ast.AsmStmt{
+		arch: arch
+	}
+}
+
+@[inline]
+fn (mut p Parser) assign_stmt(lhs []ast.Expr) ast.AssignStmt {
+	return ast.AssignStmt{
+		pos: p.pos
+		op:  p.tok()
+		lhs: lhs
+		rhs: p.expr_list()
+	}
+}
+
+@[inline]
+fn (mut p Parser) comptime_expr() ast.Expr {
+	pos := p.pos
+	match p.tok {
+		.key_if {
+			return ast.ComptimeExpr{
+				expr: ast.Expr(p.if_expr(true))
+				pos:  pos
+			}
+		}
+		else {
+			return ast.ComptimeExpr{
+				expr: p.expr(.lowest)
+				pos:  p.pos
+			}
+		}
+	}
+}
+
+@[inline]
+fn (mut p Parser) comptime_stmt() ast.Stmt {
+	p.next()
+	match p.tok {
+		.key_for {
+			return ast.ComptimeStmt{
+				stmt: ast.Stmt(p.for_stmt())
+			}
+		}
+		.key_if {
+			expr := p.comptime_expr()
+			// semicolon may already be consumed by if_expr when checking for $else
+			if p.tok == .semicolon {
+				p.next()
+			}
+			return ast.ExprStmt{
+				expr: expr
+			}
+		}
+		.key_match {
+			// $match T.unaliased_typ { ... $else { ... } }
+			return ast.ComptimeStmt{
+				stmt: ast.Stmt(ast.ExprStmt{
+					expr: p.comptime_match_expr()
+				})
+			}
+		}
+		else {
+			expr := p.comptime_expr()
+			p.expect_semi()
+			return ast.ExprStmt{
+				expr: expr
+			}
+		}
+	}
+}
+
+fn (mut p Parser) comptime_match_expr() ast.Expr {
+	match_pos := p.pos
+	p.next() // skip 'match'
+	mut exp_lcbr := p.exp_lcbr
+	p.exp_lcbr = true
+	expr := p.expr_or_type(.lowest)
+	p.exp_lcbr = exp_lcbr
+	p.expect(.lcbr)
+	mut branches := []ast.MatchBranch{}
+	for p.tok != .rcbr {
+		// $else branch
+		if p.tok == .dollar && p.peek_dollar_keyword() == 'else' {
+			branch_pos := p.pos
+			p.next() // skip $
+			p.next() // skip else
+			branches << ast.MatchBranch{
+				stmts: p.block()
+				pos:   branch_pos
+			}
+			p.expect_semi()
+			continue
+		}
+		exp_lcbr = p.exp_lcbr
+		branch_pos := p.pos
+		p.exp_lcbr = true
+		first_cond_expr := p.expr_or_type(.lowest)
+		mut cond := [p.range_expr(first_cond_expr)]
+		for p.tok == .comma {
+			p.next()
+			next_cond_expr := p.expr_or_type(.lowest)
+			cond << p.range_expr(next_cond_expr)
+		}
+		p.exp_lcbr = exp_lcbr
+		branches << ast.MatchBranch{
+			cond:  cond
+			stmts: p.block()
+			pos:   branch_pos
+		}
+		p.expect_semi()
+	}
+	// rcbr
+	p.next()
+	return ast.Expr(ast.ComptimeExpr{
+		expr: ast.Expr(ast.MatchExpr{
+			expr:     expr
+			branches: branches
+			pos:      match_pos
+		})
+		pos:  match_pos
+	})
+}
+
+fn is_for_in_binding_expr(expr ast.Expr) bool {
+	if _ := expr_ident_payload_checked(expr) {
+		return true
+	}
+	return match expr {
+		ast.Ident {
+			true
+		}
+		ast.ModifierExpr {
+			expr.kind == .key_mut && is_for_in_binding_expr(expr.expr)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut p Parser) for_stmt() ast.ForStmt {
+	p.next()
+	exp_lcbr := p.exp_lcbr
+	p.exp_lcbr = true
+	mut init, mut cond, mut post := ast.empty_stmt, ast.empty_expr, ast.empty_stmt
+	// `for x < y {` | `for x:=1; x<=10; x++ {`
+	if p.tok != .lcbr {
+		mut expr := if p.tok != .semicolon { p.expr(.lowest) } else { ast.empty_expr }
+		// `x, y` in (`for mut x, y in z {` | `for x, y := 1, 2; ; {`)
+		expr2 := if p.tok == .comma {
+			p.next()
+			p.expr(.highest)
+		} else {
+			ast.empty_expr
+		}
+		// `for x in {`
+		if p.tok == .key_in {
+			// p.expect(.key_in)
+			p.next()
+			init = ast.Stmt(for_in_stmt_with_parts(expr, expr2, p.expr(.lowest)))
+		} else if p.tok == .lcbr {
+			// `for x in y {`
+			// TODO: maybe handle this differently
+			mut is_for_in := false
+			if infix := expr_infix_payload_checked(expr) {
+				if infix.op == .key_in && is_for_in_binding_expr(infix.lhs) {
+					init = ast.Stmt(for_in_stmt_with_parts(ast.empty_expr, infix.lhs, infix.rhs))
+					is_for_in = true
+				}
+			}
+			// `for x < y {`
+			if !is_for_in {
+				cond = expr
+			}
+		}
+		// `for x:=1; x<=10; x++ {`
+		else {
+			if p.tok != .semicolon {
+				// init = p.complete_simple_stmt(expr, true)
+				if expr2 is ast.EmptyExpr {
+					init = p.complete_simple_stmt(expr, true)
+				} else {
+					mut exprs := [expr, expr2]
+					for p.tok == .comma {
+						p.next()
+						exprs << p.expr(.lowest)
+					}
+					if !p.tok.is_assignment() {
+						p.error('expecting assignment `for a, b, c := 1, 2, 3; ... {`')
+					}
+					init = ast.Stmt(p.assign_stmt(exprs))
+				}
+			}
+			p.expect(.semicolon)
+			if p.tok != .semicolon {
+				cond = p.expr(.lowest)
+			}
+			p.expect(.semicolon)
+			if p.tok != .lcbr {
+				post_expr := p.expr(.lowest)
+				post = p.complete_simple_stmt(post_expr, false)
+			}
+		}
+	}
+	p.exp_lcbr = exp_lcbr
+	stmts := p.block()
+	p.expect_semi()
+	return for_stmt_with_parts(init, cond, post, stmts)
+}
+
+fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
+	// p.log('ast.IfExpr')
+	pos := p.pos
+	p.next()
+	// else if
+	// NOTE: it's a bit weird to parse because of the way comptime has
+	// `$` on every branch. Removing this would simplify things
+	if p.tok == .key_if || (p.tok == .dollar && p.peek() == .key_if) {
+		if is_comptime {
+			p.expect(.dollar)
+		}
+		// p.expect(.key_if)
+		p.next()
+	}
+	exp_lcbr := p.exp_lcbr
+	allow_init_in_exp_lcbr := p.allow_init_in_exp_lcbr
+	p.exp_lcbr = true
+	p.allow_init_in_exp_lcbr = true
+	// mut cond := p.expr(.lowest)
+	// NOTE: the line above works, but avoid calling p.expr()
+	mut cond := if p.tok == .lcbr {
+		ast.empty_expr
+	} else {
+		// eg. `$if T in [?int, ?int] {`
+		if is_comptime { p.expr_or_type(.lowest) } else { p.expr(.lowest) }
+	}
+	p.allow_init_in_exp_lcbr = allow_init_in_exp_lcbr
+	mut else_expr := ast.empty_expr
+	// if p.tok == .question {
+	// 	// TODO: handle individual cases like this or globally
+	// 	// use postfix for this and add to token.is_postfix()?
+	// 	cond = ast.PostfixExpr{
+	// 		expr: cond
+	// 		op: p.tok
+	// 	}
+	// 	p.next()
+	// }
+	// if guard
+	guard_pos := cond.pos()
+	if p.tok == .comma {
+		s := p.complete_simple_stmt(cond, false)
+		if s is ast.AssignStmt {
+			cond = ast.Expr(ast.IfGuardExpr{
+				stmt: s
+				pos:  guard_pos
+			})
+		} else {
+			p.error('expecting assignment `if a, b := c {`')
+		}
+	} else if p.tok in [.assign, .decl_assign] {
+		cond = ast.Expr(ast.IfGuardExpr{
+			stmt: p.assign_stmt([cond])
+			pos:  guard_pos
+		})
+	}
+	p.exp_lcbr = exp_lcbr
+	// Allow `{` on next line after if condition (skip semicolon)
+	if p.tok == .semicolon && p.peek() == .lcbr {
+		p.next()
+	}
+	stmts := p.block()
+	// this is because semis get inserted after branches (same in Go)
+	// only consume semicolon if there's a non-comptime else following
+	// (for comptime $else, there should be no semicolon between } and $)
+	if p.tok == .semicolon && (p.peek() == .key_else || (is_comptime && p.peek() == .dollar
+		&& p.peek_dollar_keyword() == 'else')) {
+		p.next()
+	}
+	// else
+	if p.tok == .key_else || (p.tok == .dollar && is_comptime && p.peek_dollar_keyword() == 'else') {
+		// we are using expect instead of next to ensure we error when `is_comptime`
+		// and not all branches have `$`, or `!is_comptime` and any branches have `$`.
+		// the same applies for the `else if` condition directly below.
+		if is_comptime {
+			p.expect(.dollar)
+		}
+		// p.expect(.key_else)
+		// p.next()
+		else_expr = ast.Expr(p.if_expr(is_comptime))
+	}
+	return if_expr_with_parts(cond, else_expr, stmts, pos)
+}
+
+fn (p &Parser) peek_dollar_keyword() string {
+	if p.scanner.offset >= p.scanner.src.len {
+		return ''
+	}
+	mut idx := p.scanner.offset
+	for idx < p.scanner.src.len && p.scanner.src[idx].is_space() {
+		idx++
+	}
+	start := idx
+	for idx < p.scanner.src.len && p.scanner.src[idx].is_letter() {
+		idx++
+	}
+	if start == idx {
+		return ''
+	}
+	return p.scanner.src[start..idx]
+}
+
+fn (mut p Parser) import_stmt() ast.ImportStmt {
+	p.next()
+	// NOTE: we can also use SelectorExpr if we like
+	// mod := p.expr(.lowest)
+	mut name := p.expect_name()
+	mut alias := name
+	for p.tok == .dot {
+		p.next()
+		alias = p.expect_name()
+		name += '.' + alias
+	}
+	is_aliased := p.tok == .key_as
+	if is_aliased {
+		p.next()
+		alias = p.expect_name()
+	}
+	mut symbols := []ast.Expr{}
+	// `import mod { sym1, sym2 }`
+	if p.tok == .lcbr {
+		p.next()
+		for p.tok == .name {
+			// symbols << p.expr_or_type(.lowest)
+			symbols << p.ident_or_type()
+			if p.tok == .comma {
+				p.next()
+			} else {
+				break
+			}
+		}
+		p.expect(.rcbr)
+	}
+	// p.log('ast.ImportStmt: ${name} as ${alias}')
+	return ast.ImportStmt{
+		name:       name
+		alias:      alias
+		is_aliased: is_aliased
+		symbols:    symbols
+	}
+}
+
+fn (mut p Parser) directive() ast.Directive {
+	line := p.line
+	// value := p.lit() // if we scan whole line see scanner
+	p.next()
+	name := p.expect_name()
+	mut value := ''
+	if p.tok != .eof && p.line == line {
+		start := p.scanner.pos
+		mut end := start
+		for end < p.scanner.src.len && p.scanner.src[end] !in [`\n`, `\r`] {
+			end++
+		}
+		value = p.scanner.src[start..end].trim_space()
+		for p.tok != .eof && p.line == line {
+			p.next()
+		}
+	}
+	mut ct_cond := ''
+	if name in ['include', 'preinclude', 'postinclude', 'insert'] {
+		leading := directive_leading_name(value)
+		if leading != '' {
+			rest := value[leading.len..].trim_space()
+			if rest.starts_with('<') || rest.starts_with('"') {
+				ct_cond = leading
+				value = rest
+			}
+		}
+	}
+	return ast.Directive{
+		name:    name
+		value:   value
+		ct_cond: ct_cond
+	}
+}
+
+fn directive_leading_name(value string) string {
+	if value == '' || !(value[0].is_letter() || value[0] == `_`) {
+		return ''
+	}
+	mut end := 1
+	for end < value.len && (value[end].is_alnum() || value[end] == `_`) {
+		end++
+	}
+	return value[..end]
+}
+
+fn (mut p Parser) const_decl(is_public bool) ast.ConstDecl {
+	p.next()
+	is_grouped := p.tok == .lpar
+	is_v_header := p.file.name.ends_with('.vh')
+	if is_grouped {
+		p.next()
+	}
+	mut fields := []ast.FieldInit{}
+	for {
+		mut name := p.expect_name()
+		mut value := ast.empty_expr
+		// C.NAME type - extern C constant declaration (no value)
+		if name == 'C' && p.tok == .dot {
+			p.next() // skip .
+			c_name := p.expect_name_or_keyword()
+			name = 'C.${c_name}'
+			// Type follows directly (e.g., `pub const C.AF_INET u8`)
+			value = p.expect_type()
+		} else if p.tok == .assign {
+			p.next()
+			value = p.expr(.lowest)
+		} else if is_v_header {
+			value = p.expect_type()
+		} else {
+			p.error('expecting `=` in const declaration')
+		}
+		fields << ast.FieldInit{
+			name:  name
+			value: value
+		}
+		p.expect(.semicolon)
+		if !is_grouped {
+			break
+		} else if p.tok == .rpar {
+			p.next()
+			p.expect(.semicolon)
+			break
+		}
+	}
+	return ast.ConstDecl{
+		is_public: is_public
+		fields:    fields
+	}
+}
+
+fn (mut p Parser) fn_decl(is_public bool, attributes []ast.Attribute) ast.FnDecl {
+	pos := p.pos
+	p.next()
+	// method
+	mut is_method := false
+	mut receiver := ast.Parameter{}
+	if p.tok == .lpar {
+		is_method = true
+		p.next()
+		// TODO: use parse_ident & type
+		// receiver := p.ident() ?
+		is_mut := p.tok == .key_mut
+		is_shared := p.tok == .key_shared
+		if is_mut || is_shared {
+			p.next()
+		}
+		// // TODO: clean up, will this be done here or in checker
+		// receiver_name := p.expect_name()
+		// mut receiver_type := p.expect_type()
+		// if is_mut {
+		// 	if mut receiver_type is ast.PrefixExpr {
+		// 		if receiver_type.op == .amp {
+		// 			p.error('use `mut Type` not `mut &Type`. TODO: proper error message')
+		// 		}
+		// 	}
+		// 	receiver_type = ast.PrefixExpr{op: .amp, expr: receiver_type}
+		// }
+		receiver_pos := p.pos
+		receiver_name := p.expect_name()
+		receiver = parameter_with_type(receiver_name, p.expect_type(), is_mut, receiver_pos)
+		p.expect(.rpar)
+		// operator overload
+		if p.tok.is_overloadable() {
+			op_name := p.tok.str() // e.g., '+', '-', etc.
+			p.next()
+			p.expect(.lpar)
+			is_mut2 := p.tok == .key_mut
+			if is_mut2 {
+				p.next()
+			}
+			param_name := p.expect_name()
+			param_typ := p.expect_type()
+			param := parameter_with_type(param_name, param_typ, is_mut2, token.Pos{})
+			p.expect(.rpar)
+			mut return_type := ast.empty_expr
+			if p.tok != .lcbr {
+				return_type = p.expect_type()
+			}
+			prev_top_level := p.in_top_level
+			p.in_top_level = false
+			stmts := if p.tok == .lcbr {
+				p.block()
+			} else {
+				[]ast.Stmt{}
+			}
+			p.in_top_level = prev_top_level
+			p.expect(.semicolon)
+			return ast.FnDecl{
+				attributes: attributes
+				is_public:  is_public
+				is_method:  true
+				receiver:   receiver
+				name:       op_name
+				typ:        fn_type_with_return_type([]ast.Expr{}, [param], return_type)
+				stmts:      stmts
+				pos:        pos
+			}
+		}
+	}
+	language := p.decl_language()
+	// Allow keywords as function/method names (e.g. `lock`, `select`)
+	name_ident := p.ident_or_keyword()
+	mut name := name_ident.name
+	mut is_static := false
+	if p.tok == .dot {
+		p.next()
+		// static method `Type.name`
+		if language == .v {
+			name = p.expect_name()
+			is_method = true
+			is_static = true
+			receiver = parameter_with_type('', name_ident, false, token.Pos{})
+		}
+		// eg. `Promise.resolve` in `JS.Promise.resolve`
+		// use expect_name_or_keyword() to allow keywords as names (e.g. `C.select`)
+		else {
+			name += '.' + p.expect_name_or_keyword()
+			for p.tok == .dot {
+				p.next()
+				name += '.' + p.expect_name_or_keyword()
+			}
+		}
+	}
+	typ := p.fn_type()
+	// p.log('ast.FnDecl: ${name} ${p.lit} - ${p.tok} (${p.lit}) - ${p.tok_next_}')
+	// also check line for better error detection
+	prev_top_level := p.in_top_level
+	p.in_top_level = false
+	stmts := if p.tok == .lcbr {
+		p.block()
+	} else {
+		[]ast.Stmt{}
+	}
+	p.in_top_level = prev_top_level
+	p.expect(.semicolon)
+	return ast.FnDecl{
+		attributes: attributes
+		is_public:  is_public
+		is_method:  is_method
+		is_static:  is_static
+		receiver:   receiver
+		name:       name
+		language:   language
+		typ:        typ
+		stmts:      stmts
+		pos:        pos
+	}
+}
+
+fn (mut p Parser) fn_parameters() []ast.Parameter {
+	p.expect(.lpar)
+	mut params := []ast.Parameter{}
+	for p.tok != .rpar {
+		// TODO: parse all modifiers (shared)
+		pos := p.pos
+		is_mut := p.tok == .key_mut
+		if is_mut {
+			p.next()
+		}
+		// NOTE: case documented in `p.try_type()` todo
+		mut typ := p.expect_type()
+		mut name := ''
+		if p.tok !in [.comma, .rpar] {
+			if typ is ast.Ident {
+				name = (typ as ast.Ident).name
+				typ = p.expect_type()
+			}
+		}
+		params << parameter_with_type(name, typ, is_mut, pos)
+		if p.tok == .comma {
+			p.next()
+		}
+	}
+	p.next()
+	return params
+}
+
+fn (mut p Parser) fn_arguments() []ast.Expr {
+	p.expect(.lpar)
+	// args := if p.tok == .rpar { []ast.Expr{} } else { p.expr_list() }
+	// NOTE: not using p.expr_list() as I need to support some special
+	// things like varg, lambda expression, and struct config syntax
+	// TODO: config syntax is getting deprecated, will become maps
+	// eventually use named default params instead (once implemented)
+	mut args := []ast.Expr{}
+	for p.tok != .rpar {
+		// NOTE: since these are only supported in fn arguments
+		// we will only handle them here, rather than in `p.expr`
+		expr := match p.tok {
+			// `...varg`
+			.ellipsis {
+				prefix_pos := p.pos
+				prefix_op := p.tok()
+				prefix_expr := p.expr(.lowest)
+				ast.Expr(ast.PrefixExpr{
+					pos:  prefix_pos
+					op:   prefix_op
+					expr: prefix_expr
+				})
+			}
+			// lambda expression - no args
+			.logical_or {
+				lambda_pos := p.pos
+				p.next()
+				ast.Expr(ast.LambdaExpr{
+					expr: p.expr(.lowest)
+					pos:  lambda_pos
+				})
+			}
+			// lambda expression - with args
+			.pipe {
+				lambda_pos := p.pos
+				p.next()
+				mut le_args := [p.ident()]
+				for p.tok == .comma {
+					p.next()
+					le_args << p.ident()
+				}
+				p.expect(.pipe)
+				ast.Expr(ast.LambdaExpr{
+					args: le_args
+					expr: p.expr(.lowest)
+					pos:  lambda_pos
+				})
+			}
+			else {
+				if p.tok == .lsbr && p.peek() == .rsbr {
+					// Type literals are accepted as metadata arguments in calls
+					// like json.decode([]User, data). Keep this narrow so
+					// ordinary calls such as foo(arr[i]) still parse `arr[i]`
+					// as an index expression, not as generic arguments.
+					p.expr_or_type(.lowest)
+				} else {
+					p.expr(.lowest)
+				}
+			}
+		}
+
+		// short struct config syntax
+		// TODO: if also supported anywhere else it can be moved to `p.expr()`
+		if p.tok == .colon {
+			p.next()
+			// println('looks like config syntax')
+			if expr !is ast.Ident {
+				p.error('expecting ident for struct config syntax?')
+			}
+			args << ast.FieldInit{
+				name:  (expr as ast.Ident).name
+				value: p.expr(.lowest)
+			}
+			if p.tok == .semicolon {
+				p.next()
+			}
+		} else {
+			args << expr
+		}
+		// args << expr
+		if p.tok == .comma {
+			p.next()
+		}
+	}
+	p.next()
+	return args
+}
+
+fn (mut p Parser) enum_decl(is_public bool, attributes []ast.Attribute) ast.EnumDecl {
+	p.next()
+	name := p.expect_name()
+	as_type := if p.tok == .key_as {
+		p.next()
+		p.expect_type()
+	} else {
+		ast.empty_expr
+	}
+	// p.log('ast.EnumDecl: ${name}')
+	p.expect(.lcbr)
+	mut fields := []ast.FieldDecl{}
+	for p.tok != .rcbr {
+		// Allow keywords as enum field names (e.g., `select`)
+		field_name := p.expect_name_or_keyword()
+		mut value := ast.empty_expr
+		if p.tok == .assign {
+			p.next()
+			value = p.expr(.lowest)
+		}
+		field_attributes := if p.tok in [.attribute, .lsbr] {
+			p.attributes()
+		} else {
+			[]ast.Attribute{}
+		}
+		// p.expect_semi()
+		// p.expect(.semicolon)
+		if p.tok == .semicolon {
+			p.next()
+		}
+		fields << ast.FieldDecl{
+			name:       field_name
+			value:      value
+			attributes: field_attributes
+		}
+	}
+	p.next()
+	// p.expect_semi()
+	p.expect(.semicolon)
+	return ast.EnumDecl{
+		attributes: attributes
+		is_public:  is_public
+		name:       name
+		as_type:    as_type
+		fields:     fields
+	}
+}
+
+fn (mut p Parser) global_decl(is_public bool, attributes []ast.Attribute) ast.GlobalDecl {
+	p.next()
+	// NOTE: this got changed at some stage (or perhaps was never forced)
+	// if p.tok != .lpar {
+	//     p.error('globals must be grouped, e.g. `__global ( a = int(1) )`')
+	// }
+	// p.next()
+	is_grouped := p.tok == .lpar
+	if is_grouped {
+		p.next()
+	}
+	mut fields := []ast.FieldDecl{}
+	for {
+		mut field_is_public := is_public
+		if p.tok == .key_pub {
+			p.next()
+			field_is_public = true
+		}
+		field_is_mut := p.tok == .key_mut
+		if field_is_mut {
+			p.next()
+		}
+		mut name := p.expect_name()
+		// Handle qualified names like C.errno, C.stdin, etc.
+		for p.tok == .dot {
+			p.next()
+			name += '.' + p.expect_name_or_keyword()
+		}
+		if p.tok == .assign {
+			p.next()
+			prev_top_level := p.in_top_level
+			p.in_top_level = false
+			value := p.expr(.lowest)
+			p.in_top_level = prev_top_level
+			fields << ast.FieldDecl{
+				name:      name
+				value:     value
+				is_public: field_is_public
+				is_mut:    field_is_mut
+			}
+		} else {
+			fields << ast.FieldDecl{
+				name:      name
+				typ:       p.expect_type()
+				is_public: field_is_public
+				is_mut:    field_is_mut
+			}
+		}
+		p.expect(.semicolon)
+		if !is_grouped {
+			break
+		} else if p.tok == .rpar {
+			p.next()
+			p.expect(.semicolon)
+			break
+		}
+	}
+	return ast.GlobalDecl{
+		attributes: attributes
+		fields:     fields
+		is_public:  is_public
+	}
+}
+
+fn (mut p Parser) interface_decl(is_public bool, attributes []ast.Attribute) ast.InterfaceDecl {
+	p.next()
+	mut name := p.expect_name()
+	for p.tok == .dot {
+		p.next()
+		name += p.expect_name()
+	}
+	generic_params := if p.tok == .lsbr { p.generic_list() } else { []ast.Expr{} }
+	p.expect(.lcbr)
+	mut fields := []ast.FieldDecl{}
+	mut embedded := []ast.Expr{}
+	mut block_is_mut := false
+	for p.tok != .rcbr {
+		if p.tok == .key_mut {
+			p.next()
+			p.expect(.colon)
+			block_is_mut = true
+		}
+		if p.tok.is_keyword() && p.peek() == .lpar {
+			field_name := p.expect_name_or_keyword()
+			fields << ast.FieldDecl{
+				name:                field_name
+				typ:                 ast.Expr(ast.Type(p.fn_type()))
+				is_mut:              block_is_mut
+				is_interface_method: true
+			}
+			p.expect(.semicolon)
+			continue
+		}
+		mut field_name := ''
+		mut field_type := p.expect_type()
+		// `field type`
+		if p.tok != .semicolon {
+			mut method_generic_params := []ast.Expr{}
+			if mut field_type is ast.Ident {
+				field_name = field_type.name
+			} else if field_type is ast.Type && field_type is ast.GenericType {
+				generic_type := field_type as ast.GenericType
+				if generic_type.name is ast.Ident {
+					field_name = generic_type.name.name
+					method_generic_params = generic_type.params.clone()
+				} else {
+					p.error('expecting field name')
+				}
+			} else {
+				p.error('expecting field name')
+			}
+			mut is_interface_method := false
+			field_typ := if p.tok == .lpar {
+				is_interface_method = true
+				mut typ := p.fn_type()
+				if method_generic_params.len > 0 {
+					typ = ast.FnType{
+						...typ
+						generic_params: method_generic_params
+					}
+				}
+				ast.Expr(ast.Type(typ))
+			} else {
+				p.expect_type()
+			}
+			fields << ast.FieldDecl{
+				name:                field_name
+				typ:                 field_typ
+				is_mut:              block_is_mut
+				is_interface_method: is_interface_method
+			}
+		}
+		// embedded interface
+		else {
+			embedded << field_type
+		}
+		// p.expect_semi()
+		p.expect(.semicolon)
+	}
+	// rcbr
+	p.next()
+	p.expect(.semicolon)
+	return ast.InterfaceDecl{
+		is_public:      is_public
+		attributes:     attributes
+		name:           name
+		generic_params: generic_params
+		embedded:       embedded
+		fields:         fields
+	}
+}
+
+fn (mut p Parser) struct_decl(is_public bool, attributes []ast.Attribute) ast.StructDecl {
+	is_union := p.tok == .key_union
+	pos := p.pos
+	p.next()
+	language := p.decl_language()
+	name := p.expect_name()
+	// p.log('ast.StructDecl: ${name}')
+	mut generic_params := []ast.Expr{}
+	mut impl_types := []ast.Expr{}
+	if p.tok == .lsbr {
+		generic_params = p.generic_list()
+	}
+	if p.tok == .name && p.lit == 'implements' {
+		p.next()
+		impl_types << p.expect_type()
+		for p.tok == .comma {
+			p.next()
+			impl_types << p.expect_type()
+		}
+	}
+	// probably C struct decl with no body or {}
+	if p.tok != .lcbr {
+		if language == .v {
+			p.error('v struct decl must have a body')
+		}
+		return ast.StructDecl{
+			is_public:      is_public
+			is_union:       is_union
+			implements:     impl_types
+			language:       language
+			name:           name
+			generic_params: generic_params
+			pos:            pos
+		}
+	}
+	embedded, fields := p.struct_decl_fields(language, is_union, true)
+	return ast.StructDecl{
+		attributes:     attributes
+		is_public:      is_public
+		is_union:       is_union
+		implements:     impl_types
+		embedded:       embedded
+		language:       language
+		name:           name
+		generic_params: generic_params
+		fields:         fields
+		pos:            pos
+	}
+}
+
+// returns (embedded_types, fields)
+fn (mut p Parser) struct_decl_fields(language ast.Language, is_union bool, expect_semi bool) ([]ast.Expr, []ast.FieldDecl) {
+	p.expect(.lcbr)
+	mut embedded := []ast.Expr{}
+	mut fields := []ast.FieldDecl{}
+	_ = p.parse_struct_field_list(language, is_union, StructFieldAccessState{}, mut embedded, mut
+		fields)
+	p.next() // rcbr
+	if expect_semi {
+		p.expect(.semicolon)
+	}
+	return embedded, fields
+}
+
+struct StructFieldAccessState {
+	is_public     bool
+	is_mut        bool
+	is_module_mut bool
+}
+
+// parse_struct_field_list parses fields until it hits `}`. Handles `$if` blocks
+// and `@[if cond ?]` field attributes by evaluating the condition at parse time
+// and omitting non-selected fields from the AST.
+fn (mut p Parser) parse_struct_field_list(language ast.Language, is_union bool, start_access StructFieldAccessState, mut embedded []ast.Expr, mut fields []ast.FieldDecl) StructFieldAccessState {
+	mut access := start_access
+	for p.tok != .rcbr {
+		// `$if cond { ... } $else { ... }` block grouping a set of fields.
+		if p.tok == .dollar && p.peek() == .key_if {
+			access = p.parse_comptime_struct_field_branch(language, is_union, access, false, mut
+				embedded, mut fields)
+			continue
+		}
+		leading_attributes := if p.tok in [.attribute, .lsbr] {
+			p.attributes()
+		} else {
+			[]ast.Attribute{}
+		}
+		if leading_attributes.len > 0 {
+			p.error_with_pos('attributes on struct fields must be placed after the field declaration',
+				leading_attributes[0].pos)
+		}
+		is_pub := p.tok == .key_pub
+		if is_pub {
+			p.next()
+		}
+		is_mut := p.tok == .key_mut
+		if is_mut {
+			p.next()
+		}
+		mut module_mut_access := false
+		if is_pub && !is_mut && p.tok == .name && p.lit == 'module_mut' {
+			module_mut_access = true
+			p.next()
+			if p.tok == .key_mut {
+				p.error('`pub module_mut mut:` is invalid; use `pub module_mut:`')
+			}
+		}
+		if is_mut && p.tok == .name && p.lit == 'module_mut' {
+			if is_pub {
+				p.error('`pub mut module_mut:` is invalid; use `pub module_mut:`')
+			}
+			p.error('`mut module_mut:` is invalid; use `pub module_mut:`')
+		}
+		if is_pub || is_mut {
+			if module_mut_access {
+				if language != .v || is_union {
+					p.error('`pub module_mut:` is only supported on V struct fields')
+				}
+			}
+			p.expect(.colon)
+			access = StructFieldAccessState{
+				is_public:     is_pub
+				is_mut:        is_mut || module_mut_access
+				is_module_mut: module_mut_access
+			}
+			continue
+		}
+		if p.tok == .name && p.lit == 'module_mut' && p.peek() == .colon {
+			p.error('`module_mut:` must be written as `pub module_mut:`')
+		}
+		// C interop structs can use keywords as field names (e.g. `type int`).
+		if p.tok.is_keyword() {
+			field_name := p.expect_name_or_keyword()
+			field_type := p.expect_type()
+			field_value := if p.tok == .assign {
+				p.next()
+				p.expr(.lowest)
+			} else {
+				ast.empty_expr
+			}
+			field_attributes := if p.tok in [.attribute, .lsbr] {
+				p.attributes()
+			} else {
+				[]ast.Attribute{}
+			}
+			if p.tok == .semicolon {
+				p.next()
+			}
+			field_elided := attributes_elide_field(field_attributes, mut p)
+			if !field_elided {
+				fields << ast.FieldDecl{
+					name:          field_name
+					typ:           field_type
+					value:         field_value
+					attributes:    field_attributes
+					is_public:     access.is_public
+					is_mut:        access.is_mut
+					is_module_mut: access.is_module_mut
+				}
+			}
+			continue
+		}
+		// NOTE: case documented in `p.try_type()` todo
+		embed_or_name := p.expect_type()
+		// embedded struct
+		if p.tok == .semicolon {
+			if language != .v {
+				p.error('${language} structs do not support embedding')
+			}
+			if access.is_module_mut {
+				p.error_with_pos('`pub module_mut:` cannot be applied to embedded struct fields',
+					embed_or_name.pos())
+			}
+			p.next()
+			embedded << embed_or_name
+			continue
+		}
+		// field
+		mut field_name := ''
+		if embed_or_name is ast.Ident {
+			field_name = embed_or_name.name
+		} else {
+			p.error('invalid field name')
+		}
+		field_type := p.expect_type()
+		// field - default value
+		field_value := if p.tok == .assign {
+			p.next()
+			p.expr(.lowest)
+		} else {
+			ast.empty_expr
+		}
+		field_attributes := if p.tok in [.attribute, .lsbr] {
+			p.attributes()
+		} else {
+			[]ast.Attribute{}
+		}
+		if p.tok == .semicolon {
+			p.next()
+		}
+		field_elided := attributes_elide_field(field_attributes, mut p)
+		if !field_elided {
+			fields << ast.FieldDecl{
+				name:          field_name
+				typ:           field_type
+				value:         field_value
+				attributes:    field_attributes
+				is_public:     access.is_public
+				is_mut:        access.is_mut
+				is_module_mut: access.is_module_mut
+			}
+		}
+	}
+	return access
+}
+
+// attributes_elide_field returns true if any `@[if cond ?]` attribute evaluates
+// to false, meaning the field should be omitted from the struct. Conditions
+// that aren't shaped like flag expressions (e.g. type checks) are rejected
+// rather than silently dropped — see `can_eval_comptime_cond`.
+fn attributes_elide_field(attributes []ast.Attribute, mut p Parser) bool {
+	for attr in attributes {
+		if attr.comptime_cond !is ast.EmptyExpr {
+			if !p.can_eval_comptime_cond(attr.comptime_cond) {
+				p.error_with_pos('@[if ...] struct-field condition must be a compile-time flag expression (no type checks)',
+					attr.comptime_cond.pos())
+			}
+			if !p.eval_comptime_cond(attr.comptime_cond) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// parse_comptime_struct_field_branch parses a `$if cond { ... } $else ...`
+// block in a struct field position. Only the matched branch's fields are added
+// to `embedded`/`fields`; other branches are parsed and discarded so token
+// positions stay correct. `force_skip` propagates "already matched" through
+// `$else $if` chains so at most one branch contributes fields.
+fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, is_union bool, access StructFieldAccessState, force_skip bool, mut embedded []ast.Expr, mut fields []ast.FieldDecl) StructFieldAccessState {
+	p.next() // $
+	p.next() // if
+	// `p.expr` would otherwise greedily parse `linux { ... }` as a struct init.
+	exp_lcbr := p.exp_lcbr
+	allow_init_in_exp_lcbr := p.allow_init_in_exp_lcbr
+	p.exp_lcbr = true
+	p.allow_init_in_exp_lcbr = true
+	cond := p.expr(.lowest)
+	p.exp_lcbr = exp_lcbr
+	p.allow_init_in_exp_lcbr = allow_init_in_exp_lcbr
+	if !p.can_eval_comptime_cond(cond) {
+		p.error_with_pos('\$if struct-field condition must be a compile-time flag expression (no type checks)',
+			cond.pos())
+	}
+	cond_matches := !force_skip && p.eval_comptime_cond(cond)
+	// Allow `{` on next line after `cond ?` — scanner inserts `;` after `?`.
+	if p.tok == .semicolon && p.peek() == .lcbr {
+		p.next()
+	}
+	p.expect(.lcbr)
+	mut selected_access := access
+	if cond_matches {
+		selected_access = p.parse_struct_field_list(language, is_union, access, mut embedded, mut
+			fields)
+	} else {
+		mut tmp_emb := []ast.Expr{}
+		mut tmp_flds := []ast.FieldDecl{}
+		_ = p.parse_struct_field_list(language, is_union, access, mut tmp_emb, mut tmp_flds)
+	}
+	p.next() // rcbr
+	// `};\n$else` — auto-inserted `;` sits between `}` and `$`. Consume it so
+	// `peek_dollar_keyword` (which reads the source bytes at the scanner offset
+	// for the *current* token) sees the `else` letters past `$`.
+	if p.tok == .semicolon && p.peek() == .dollar {
+		p.next()
+	}
+	if !(p.tok == .dollar && p.peek_dollar_keyword() == 'else') {
+		if p.tok == .semicolon {
+			p.next()
+		}
+		return selected_access
+	}
+	p.next() // $
+	p.next() // else
+	// `else` may be followed by auto-inserted `;` if `$if` / `{` is on the next line.
+	if p.tok == .semicolon && p.peek() == .dollar {
+		p.next()
+	}
+	if p.tok == .dollar && p.peek() == .key_if {
+		// `$else $if` — propagate match status so at most one branch fires.
+		new_force_skip := force_skip || cond_matches
+		else_if_access := p.parse_comptime_struct_field_branch(language, is_union, access,
+			new_force_skip, mut embedded, mut fields)
+		return if cond_matches { selected_access } else { else_if_access }
+	}
+	if p.tok == .semicolon && p.peek() == .lcbr {
+		p.next()
+	}
+	p.expect(.lcbr)
+	else_matches := !force_skip && !cond_matches
+	if else_matches {
+		selected_access = p.parse_struct_field_list(language, is_union, access, mut embedded, mut
+			fields)
+	} else {
+		mut tmp_emb := []ast.Expr{}
+		mut tmp_flds := []ast.FieldDecl{}
+		_ = p.parse_struct_field_list(language, is_union, access, mut tmp_emb, mut tmp_flds)
+	}
+	p.next() // rcbr
+	if p.tok == .semicolon {
+		p.next()
+	}
+	return selected_access
+}
+
+fn (mut p Parser) select_expr() ast.SelectExpr {
+	if p.tok == .key_else {
+		pos := p.pos
+		p.next()
+		mut stmts := []ast.Stmt{}
+		if p.tok == .lcbr {
+			stmts = p.block()
+			p.expect_semi()
+		}
+		return ast.SelectExpr{
+			pos:   pos
+			stmt:  ast.empty_stmt
+			stmts: stmts
+		}
+	}
+	exp_lcbr := p.exp_lcbr
+	p.exp_lcbr = true
+	stmt_expr := p.expr(.lowest)
+	stmt := p.complete_simple_stmt(stmt_expr, false)
+	p.exp_lcbr = exp_lcbr
+	mut stmts := []ast.Stmt{}
+	if p.tok == .lcbr {
+		stmts = p.block()
+		p.expect_semi()
+	}
+	select_expr := ast.SelectExpr{
+		pos:   p.pos
+		stmt:  stmt
+		stmts: stmts
+		next:  if p.tok != .rcbr { ast.Expr(p.select_expr()) } else { ast.empty_expr }
+	}
+	return select_expr
+}
+
+fn (mut p Parser) assoc_or_init_expr(typ ast.Expr) ast.Expr {
+	init_pos := p.pos
+	p.next() // .lcbr
+	// assoc
+	if p.tok == .ellipsis {
+		p.next()
+		lx := p.expr(.lowest)
+		if p.tok == .comma || p.tok == .semicolon {
+			p.next()
+		} else if p.tok != .rcbr {
+			p.expect(.semicolon)
+		}
+		mut fields := []ast.FieldInit{}
+		for p.tok != .rcbr {
+			if p.tok == .comma {
+				p.next()
+			}
+			field_name := p.expect_name_or_keyword()
+			p.expect(.colon)
+			fields << ast.FieldInit{
+				name:  field_name
+				value: p.expr(.lowest)
+			}
+			p.expect_semi()
+		}
+		p.next()
+		return ast.AssocExpr{
+			typ:    typ
+			expr:   lx
+			fields: fields
+			pos:    init_pos
+		}
+	}
+	// struct init
+	mut fields := []ast.FieldInit{}
+	mut prev_has_name := false
+	for p.tok != .rcbr {
+		// could be name or init without field name
+		mut field_name := ''
+		mut value := ast.empty_expr
+		if (p.tok == .name || p.tok.is_keyword()) && p.peek() == .colon {
+			field_name = p.expect_name_or_keyword()
+			p.expect(.colon)
+			value = p.expr(.lowest)
+		} else {
+			value = p.expr(.lowest)
+		}
+		// name / value
+		if p.tok == .colon {
+			match mut value {
+				// ast.BasicLiteral { field_name = value.value }
+				// ast.StringLiteral { field_name = value.value }
+				ast.Ident { field_name = value.name }
+				else { p.error('expected field name, got ${value.name()}') }
+			}
+
+			p.next()
+			value = p.expr(.lowest)
+		}
+		has_name := field_name.len > 0
+		if fields.len > 0 && has_name != prev_has_name {
+			p.error('cant mix & match name & no name')
+		}
+		prev_has_name = has_name
+		if p.tok == .comma {
+			p.next()
+		}
+		fields << field_init_with_value(field_name, value)
+		if p.tok == .semicolon {
+			p.next()
+		}
+		// p.expect(.semicolon)
+	}
+	p.next()
+	return init_expr_with_type(typ, fields, init_pos)
+}
+
+fn (mut p Parser) string_literal(kind ast.StringLiteralKind) ast.Expr {
+	pos := p.pos
+	value0 := p.lit()
+	if p.tok != .str_dollar {
+		return ast.StringLiteral{
+			kind:  kind
+			value: value0
+			pos:   pos
+		}
+	}
+	mut values := []string{}
+	mut inters := []ast.StringInter{}
+	values << value0
+	p.next()
+	p.expect(.lcbr)
+	inters << p.string_inter()
+	p.expect(.rcbr)
+	for p.tok == .string {
+		value := p.lit()
+		values << value
+		if p.tok == .str_dollar {
+			p.next()
+			p.expect(.lcbr)
+			inters << p.string_inter()
+			p.expect(.rcbr)
+		}
+	}
+	return ast.StringInterLiteral{
+		kind:   kind
+		values: values
+		inters: inters
+		pos:    pos
+	}
+}
+
+// TODO: finish
+fn (mut p Parser) string_inter() ast.StringInter {
+	expr := p.expr(.lowest)
+	mut format := ast.StringInterFormat.unformatted
+	mut format_expr := ast.empty_expr
+	// TODO: proper
+	if p.tok == .colon {
+		p.next()
+		// temp
+		if p.tok in [.number, .minus, .plus] {
+			format_expr = p.expr(.lowest)
+		}
+		// TODO
+		// if p.tok == .minus {
+		// 	p.next()
+		// }
+		// else if p.tok == .plus {
+		// 	p.next()
+		// }
+		// if p.tok == .number {
+		// 	_ = p.lit()
+		// }
+		if p.tok == .name {
+			lit := p.lit
+			format = ast.StringInterFormat.from_u8(lit[0])
+			p.next()
+		}
+	}
+	return ast.StringInter{
+		format:      format
+		format_expr: format_expr
+		expr:        expr
+	}
+}
+
+@[inline]
+fn (mut p Parser) generic_list() []ast.Expr {
+	p.next()
+	mut generic_list := [p.expect_type()]
+	for p.tok == .comma {
+		p.next()
+		generic_list << p.expect_type()
+	}
+	p.expect(.rsbr)
+	return generic_list
+}
+
+@[direct_array_access]
+fn (mut p Parser) decl_language() ast.Language {
+	mut language := ast.Language.v
+	lit := p.lit
+	if lit.len == 1 && lit[0] == `C` {
+		language = .c
+	} else if lit.len == 2 && lit[0] == `J` && lit[1] == `S` {
+		language = .js
+	} else {
+		return language
+	}
+	p.next()
+	p.expect(.dot)
+	return language
+}
+
+fn (mut p Parser) type_decl(is_public bool) ast.TypeDecl {
+	p.next()
+	language := p.decl_language()
+	name := p.expect_name()
+	generic_params := if p.tok == .lsbr { p.generic_list() } else { []ast.Expr{} }
+
+	// p.log('ast.TypeDecl: ${name}')
+	p.expect(.assign)
+	typ := p.expect_type()
+
+	// alias `type MyType = int`
+	// check for multi-line sum type: semicolon followed by pipe
+	if p.tok != .pipe && !(p.tok == .semicolon && p.peek() == .pipe) {
+		p.expect(.semicolon)
+		return ast.TypeDecl{
+			is_public:      is_public
+			language:       language
+			name:           name
+			generic_params: generic_params
+			base_type:      typ
+		}
+	}
+	// sum type `type MyType = int | string`
+	// skip semicolon if present (multi-line case)
+	if p.tok == .semicolon {
+		p.next()
+	}
+	p.next() // skip pipe
+	mut variants := [typ, p.expect_type()]
+	for p.tok == .pipe || (p.tok == .semicolon && p.peek() == .pipe) {
+		if p.tok == .semicolon {
+			p.next()
+		}
+		p.next() // skip pipe
+		variants << p.expect_type()
+	}
+	p.expect(.semicolon)
+	// TODO: consider separate node for alias / sum type ?
+	return ast.TypeDecl{
+		is_public:      is_public
+		language:       language
+		name:           name
+		generic_params: generic_params
+		variants:       variants
+	}
+}
+
+@[inline]
+fn ident_with_name(pos token.Pos, name string) ast.Ident {
+	mut ident := ast.Ident{}
+	ident.pos = pos
+	ident.name = name
+	return ident
+}
+
+@[inline]
+fn (mut p Parser) ident() ast.Ident {
+	pos := p.pos
+	name := p.expect_name()
+	mut ident := ast.Ident{}
+	ident.pos = pos
+	ident.name = name
+	return ident
+}
+
+// like ident() but allows keywords as names (for C/JS function names like `C.select`)
+@[inline]
+fn (mut p Parser) ident_or_keyword() ast.Ident {
+	pos := p.pos
+	name := p.expect_name_or_keyword()
+	mut ident := ast.Ident{}
+	ident.pos = pos
+	ident.name = name
+	return ident
+}
+
+@[inline]
+fn (mut p Parser) ident_or_selector_expr() ast.Expr {
+	base := ast.Expr(p.ident())
+	mut full_name := base.name()
+	if p.tok != .dot {
+		return base
+	}
+	dot_pos := p.pos
+	p.next()
+	mut rhs_pos := p.pos
+	mut rhs_name := ''
+	mut comptime_inner := ast.Expr(ast.empty_expr)
+	mut is_comptime_selector := false
+	if p.tok == .dollar {
+		p.next()
+		if p.tok == .lpar {
+			p.next()
+			comptime_inner = p.expr(.lowest)
+			p.expect(.rpar)
+		} else {
+			comptime_inner = p.expr(.lowest)
+		}
+		rhs_pos = p.pos
+		rhs_name = '__comptime_selector__'
+		is_comptime_selector = true
+	} else {
+		rhs_name = p.expect_name_or_keyword()
+	}
+	full_name += '.' + rhs_name
+	if dot_pos.is_valid() {
+		p.selector_names[dot_pos.id] = full_name
+	}
+	mut lhs := selector_expr_with_rhs_name(base, rhs_pos, rhs_name, dot_pos)
+	// `app.$method(args)` - inner parses as CallExpr or CallOrCastExpr;
+	// lift its args onto our SelectorExpr so the call form is preserved.
+	if is_comptime_selector {
+		if comptime_inner is ast.CallExpr {
+			lhs = ast.Expr(ast.CallExpr{
+				lhs:  lhs
+				args: comptime_inner.args
+				pos:  dot_pos
+			})
+		} else if comptime_inner is ast.CallOrCastExpr {
+			lhs = ast.Expr(ast.CallExpr{
+				lhs:  lhs
+				args: [comptime_inner.expr]
+				pos:  dot_pos
+			})
+		}
+	}
+	for p.tok == .dot {
+		next_dot_pos := p.pos
+		p.next()
+		rhs_pos = p.pos
+		mut inner_comptime := ast.Expr(ast.empty_expr)
+		mut inner_is_comptime := false
+		if p.tok == .dollar {
+			p.next()
+			if p.tok == .lpar {
+				p.next()
+				inner_comptime = p.expr(.lowest)
+				p.expect(.rpar)
+			} else {
+				inner_comptime = p.expr(.lowest)
+			}
+			rhs_pos = p.pos
+			rhs_name = '__comptime_selector__'
+			inner_is_comptime = true
+		} else {
+			rhs_name = p.expect_name_or_keyword()
+		}
+		full_name += '.' + rhs_name
+		if next_dot_pos.is_valid() {
+			p.selector_names[next_dot_pos.id] = full_name
+		}
+		lhs = selector_expr_with_rhs_name(lhs, rhs_pos, rhs_name, next_dot_pos)
+		if inner_is_comptime {
+			if inner_comptime is ast.CallExpr {
+				lhs = ast.Expr(ast.CallExpr{
+					lhs:  lhs
+					args: inner_comptime.args
+					pos:  next_dot_pos
+				})
+			} else if inner_comptime is ast.CallOrCastExpr {
+				lhs = ast.Expr(ast.CallExpr{
+					lhs:  lhs
+					args: [inner_comptime.expr]
+					pos:  next_dot_pos
+				})
+			}
+		}
+	}
+	return lhs
+}
+
+fn (mut p Parser) selector_rhs_ident() ast.Ident {
+	if p.tok == .dollar {
+		p.next()
+		p.expr(.lowest)
+		return ident_with_name(p.pos, 'TODO: comptime selector')
+	}
+	// Allow keywords as names for:
+	// - C/JS calls (e.g. `C.select`)
+	// - method calls (e.g. `mutex.lock()`)
+	// - enum values (e.g. `.select`)
+	return p.ident_or_keyword()
+}
+
+fn (mut p Parser) log(msg string) {
+	if p.pref.verbose {
+		println(msg)
+	}
+}
+
+// TODO/NOTE: this can be completely replaced with token.File.position()
+// I was only using this since it skips the binary search and is slightly
+// faster, howevrer if only used in error conditions this is irrelevant.
+fn (mut p Parser) current_position() token.Position {
+	offset := p.pos.offset - p.file.base
+	return token.Position{
+		filename: p.file.name
+		line:     p.line
+		offset:   offset
+		column:   offset - p.file.line_start(p.line) + 1
+	}
+}
+
+fn (mut p Parser) error_expected(exp token.Token, got token.Token) {
+	p.error('unexpected token. expecting `${exp}`, got `${got}`')
+}
+
+// so we can customize the error message used by warn & error
+fn (mut p Parser) error_message(msg string, kind errors.Kind, pos token.Position) {
+	errors.error(msg, errors.details(p.file, pos, 2), kind, pos)
+}
+
+fn (mut p Parser) warn(msg string) {
+	p.error_message(msg, .warning, p.current_position())
+}
+
+@[noreturn]
+fn (mut p Parser) error(msg string) {
+	p.error_with_position(msg, p.current_position())
+	// p.error_with_position(msg, p.file.position(p.pos))
+}
+
+@[noreturn]
+fn (mut p Parser) error_with_pos(msg string, pos token.Pos) {
+	p.error_with_position(msg, p.file.position(pos))
+}
+
+@[noreturn]
+fn (mut p Parser) error_with_position(msg string, pos token.Position) {
+	p.error_message(msg, .error, pos)
+	exit(1)
+}
+
+// can_eval_comptime_cond reports whether `cond` is shaped like a flag
+// expression decidable at parse time (idents, `!`, `&&`, `||`, postfix `?`,
+// parens). Anything else — notably type checks like `T is string` — is left
+// for a later stage. Struct field parsing rejects non-evaluable conditions
+// with a parse error rather than silently choosing a branch, because the
+// field set affects layout / type checking.
+fn (p &Parser) can_eval_comptime_cond(cond ast.Expr) bool {
+	match cond {
+		ast.Ident {
+			return true
+		}
+		ast.ComptimeExpr {
+			return p.can_eval_comptime_cond(cond.expr)
+		}
+		ast.CallExpr {
+			return parser_pkgconfig_call_name(cond) != none
+		}
+		ast.CallOrCastExpr {
+			return parser_pkgconfig_call_name(cond) != none
+		}
+		ast.PrefixExpr {
+			if cond.op != .not {
+				return false
+			}
+			return p.can_eval_comptime_cond(cond.expr)
+		}
+		ast.InfixExpr {
+			if cond.op != .and && cond.op != .logical_or {
+				return false
+			}
+			return p.can_eval_comptime_cond(cond.lhs) && p.can_eval_comptime_cond(cond.rhs)
+		}
+		ast.PostfixExpr {
+			if cond.op != .question {
+				return false
+			}
+			// `feature?` is a flag wrapped in `?`; the inner expression follows
+			// the same shape rules (e.g. `(!feature)?` is allowed).
+			return p.can_eval_comptime_cond(cond.expr)
+		}
+		ast.ParenExpr {
+			return p.can_eval_comptime_cond(cond.expr)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+// eval_comptime_cond evaluates a compile-time condition expression at parse
+// time. Callers must have checked `can_eval_comptime_cond` first; this
+// function assumes the condition is in the supported shape.
+fn (p &Parser) eval_comptime_cond(cond ast.Expr) bool {
+	match cond {
+		ast.Ident {
+			return p.eval_comptime_flag(cond.name)
+		}
+		ast.ComptimeExpr {
+			return p.eval_comptime_cond(cond.expr)
+		}
+		ast.CallExpr {
+			if pkg_name := parser_pkgconfig_call_name(cond) {
+				return p.eval_pkgconfig_cond(pkg_name)
+			}
+		}
+		ast.CallOrCastExpr {
+			if pkg_name := parser_pkgconfig_call_name(cond) {
+				return p.eval_pkgconfig_cond(pkg_name)
+			}
+		}
+		ast.PrefixExpr {
+			if cond.op == .not {
+				return !p.eval_comptime_cond(cond.expr)
+			}
+		}
+		ast.InfixExpr {
+			if cond.op == .and {
+				return p.eval_comptime_cond(cond.lhs) && p.eval_comptime_cond(cond.rhs)
+			}
+			if cond.op == .logical_or {
+				return p.eval_comptime_cond(cond.lhs) || p.eval_comptime_cond(cond.rhs)
+			}
+		}
+		ast.PostfixExpr {
+			if cond.op == .question {
+				if cond.expr is ast.Ident {
+					return pref.comptime_optional_flag_value(p.pref, cond.expr.name)
+				}
+			}
+		}
+		ast.ParenExpr {
+			return p.eval_comptime_cond(cond.expr)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (p &Parser) eval_pkgconfig_cond(pkg_name string) bool {
+	if p.pref.is_cross_target() {
+		return false
+	}
+	return pref.comptime_pkgconfig_value(pkg_name)
+}
+
+// eval_comptime_flag delegates to the shared `pref.comptime_flag_value` so
+// the parser and the transformer recognize exactly the same flag names.
+fn (p &Parser) eval_comptime_flag(name string) bool {
+	return pref.comptime_flag_value(p.pref, name)
+}
+
+fn parser_pkgconfig_call_name(expr ast.Expr) ?string {
+	match expr {
+		ast.CallExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == 'pkgconfig' && expr.args.len == 1 {
+				return parser_string_literal_value(expr.args[0])
+			}
+		}
+		ast.CallOrCastExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == 'pkgconfig' {
+				return parser_string_literal_value(expr.expr)
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn parser_string_literal_value(expr ast.Expr) ?string {
+	if expr is ast.StringLiteral {
+		return parser_unquote_string_literal_value(expr.value)
+	}
+	return none
+}
+
+fn parser_unquote_string_literal_value(value string) string {
+	if value.len >= 2 && ((value[0] == `"` && value[value.len - 1] == `"`)
+		|| (value[0] == `'` && value[value.len - 1] == `'`)) {
+		return value[1..value.len - 1]
+	}
+	return value
+}

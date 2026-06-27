@@ -23,8 +23,8 @@ pub:
 @[flag]
 pub enum ArrayFlags {
 	noslices    // when <<, `.noslices` will free the old data block immediately (you have to be sure, that there are *no slices* to that specific array). TODO: integrate with reference counting/compiler support for the static cases.
-	noshrink    // when `.noslices` and `.noshrink` are *both set*, .delete(x) will NOT allocate new memory and free the old. It will just move the elements in place, and adjust .len.
-	nogrow      // the array will never be allowed to grow past `.cap`. set `.nogrow` and `.noshrink` for a truly fixed heap array
+	noshrink    // kept for compatibility; shrinking array operations preserve capacity by default
+	nogrow      // the array will never be allowed to grow past `.cap`
 	nofree      // `.data` will never be freed
 	managed     // `.data` uses the builtin managed array allocation with a metadata header
 	noscan_data // `.data` was allocated in a no-scan heap block and can stay atomic when cloned or resized
@@ -118,9 +118,15 @@ fn (mut a array) mark_buffer_has_slices() {
 	if !a.flags.has(.managed) || a.data == unsafe { nil } {
 		return
 	}
+	// Compute the data-header pointer inline. `data_header()` would redundantly
+	// re-check `.managed`/`nil` (already guaranteed above), so skip the call and
+	// the now-dead `header != nil` test. Only store when the flag is not already
+	// set, to avoid dirtying the buffer's header cache line on every transient
+	// slice of the same buffer in a hot loop. See issue #27507.
 	unsafe {
-		header := a.data_header()
-		if header != nil {
+		base_data := &u8(a.data) - u64(a.offset)
+		header := &ArrayDataHeader(base_data - array_data_header_size())
+		if !header.has_slices {
 			header.has_slices = true
 		}
 	}
@@ -181,7 +187,7 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 	mut data := unsafe { nil }
 	if cap_ > 0 && mylen == 0 {
 		data = alloc_array_data_uninit(total_size)
-	} else {
+	} else if cap_ > 0 {
 		data = alloc_array_data(total_size)
 	}
 	arr := array{
@@ -211,7 +217,7 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	total_size := u64(cap_) * u64(elm_size)
 	if cap_ > 0 && mylen == 0 {
 		arr.data = alloc_array_data_uninit(total_size)
-	} else {
+	} else if cap_ > 0 {
 		arr.data = alloc_array_data(total_size)
 	}
 	if val != 0 {
@@ -250,7 +256,9 @@ fn __new_array_with_multi_default(mylen int, cap int, elm_size int, val voidptr)
 	//    -> total_size == 0 -> malloc(0) -> panic;
 	//    to avoid it, just allocate a single byte
 	total_size := u64(cap_) * u64(elm_size)
-	arr.data = alloc_array_data(total_size)
+	if cap_ > 0 {
+		arr.data = alloc_array_data(total_size)
+	}
 	if val != 0 {
 		mut eptr := &u8(arr.data)
 		unsafe {
@@ -271,10 +279,12 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, d
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data:         alloc_array_data(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
 		flags:        .managed
+	}
+	if cap_ > 0 {
+		arr.data = alloc_array_data(u64(cap_) * u64(elm_size))
 	}
 	mut eptr := &u8(arr.data)
 	unsafe {
@@ -295,10 +305,12 @@ fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data:         alloc_array_data(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
 		flags:        .managed
+	}
+	if cap_ > 0 {
+		arr.data = alloc_array_data(u64(cap_) * u64(elm_size))
 	}
 	mut eptr := &u8(arr.data)
 	unsafe {
@@ -560,12 +572,11 @@ fn (mut a array) prepend_many(val voidptr, size int) {
 	unsafe { a.insert_many(0, val, size) }
 }
 
-// delete deletes array element at index `i`.
-// Deleting the last element uses the same in-place fast path as `.delete_last()`.
-// NOTE: When deleting the last element, this operates in-place.
-// Other positions create a copy of the array, skipping over the
-// element at `i`, and then point the original variable to the new
-// memory location.
+// delete deletes array element at index `i`, preserving element order.
+// For unique arrays, it shifts elements left in-place, preserves spare
+// capacity, and clears the obsolete tail slot.
+// If the backing buffer is shared with slices, delete creates a detached
+// array, so existing slices keep their view of the old contents.
 //
 // Example:
 // ```v
@@ -578,16 +589,19 @@ pub fn (mut a array) delete(i int) {
 	}
 	if i == a.len - 1 && !a.needs_unique_shrink() {
 		a.len--
+		unsafe {
+			vmemset(&u8(a.data) + u64(a.len) * u64(a.element_size), 0, u64(a.element_size))
+		}
 		return
 	}
 	a.delete_many(i, 1)
 }
 
 // delete_many deletes `size` elements beginning with index `i`
-// NOTE: This function does NOT operate in-place. Internally, it
-// creates a copy of the array, skipping over `size` elements
-// starting at `i`, and then points the original variable
-// to the new memory location.
+// For unique arrays, it shifts elements left in-place, preserves spare
+// capacity, and clears the obsolete tail range.
+// If the backing buffer is shared with slices, delete_many creates a
+// detached array, so existing slices keep their view of the old contents.
 //
 // Example:
 // ```v
@@ -611,21 +625,15 @@ pub fn (mut a array) delete_many(i int, size int) {
 		}
 		return
 	}
-	if a.flags.all(.noshrink | .noslices) && !a.needs_unique_shrink() {
-		unsafe {
-			vmemmove(&u8(a.data) + u64(i) * u64(a.element_size), &u8(a.data) + u64(i +
-				size) * u64(a.element_size), u64(a.len - i - size) * u64(a.element_size))
-		}
-		a.len -= size
-		return
-	}
 	if !a.needs_unique_shrink() {
+		new_len := a.len - size
 		unsafe {
 			vmemmove(&u8(a.data) + u64(i) * u64(a.element_size), &u8(a.data) + u64(i +
 				size) * u64(a.element_size), u64(a.len - i - size) * u64(a.element_size))
+			vmemset(&u8(a.data) + u64(new_len) * u64(a.element_size), 0,
+				u64(size) * u64(a.element_size))
 		}
-		a.len -= size
-		a.cap = a.len
+		a.len = new_len
 		return
 	}
 	// Note: if a is [12,34], a.len = 2, a.delete(0)
@@ -913,6 +921,7 @@ pub fn (mut a array) pop() voidptr {
 // delete_last efficiently deletes the last element of the array.
 // It does it simply by reducing the length of the array by 1.
 // If the array is empty, this will panic.
+// For unique arrays, it also clears the obsolete tail slot.
 // See also: [trim](#array.trim)
 pub fn (mut a array) delete_last() {
 	if a.len == 0 {
@@ -923,6 +932,9 @@ pub fn (mut a array) delete_last() {
 		return
 	}
 	a.len--
+	unsafe {
+		vmemset(&u8(a.data) + u64(a.len) * u64(a.element_size), 0, u64(a.element_size))
+	}
 }
 
 // slice returns an array using the same buffer as original array
@@ -1050,10 +1062,12 @@ pub fn (a &array) clone_to_depth(depth int) array {
 	source_capacity_in_bytes := u64(a.cap) * u64(a.element_size)
 	use_noscan_data := depth == 0 && a.uses_noscan_data()
 	mut data := unsafe { nil }
-	if use_noscan_data {
-		data = a.alloc_array_data_like(source_capacity_in_bytes)
-	} else {
-		data = alloc_array_data(source_capacity_in_bytes)
+	if a.cap > 0 {
+		if use_noscan_data {
+			data = a.alloc_array_data_like(source_capacity_in_bytes)
+		} else {
+			data = alloc_array_data(source_capacity_in_bytes)
+		}
 	}
 	mut arr := array{
 		element_size: a.element_size
@@ -1128,6 +1142,27 @@ fn (mut a array) set_ni(i int, val voidptr) {
 	a.set(v_ni_index(i, a.len), val)
 }
 
+// copy_element_to copies a single `element_size` byte element from `src` to `dest`.
+// It dispatches the common small element sizes to `vmemcpy` with a *compile time constant*
+// size: since `vmemcpy` is inlined and forwards to `C.memcpy`, a literal size lets the C
+// backend inline the copy as plain loads/stores instead of a `memcpy` library call, which
+// otherwise dominates the cost of single element pushes (`a << x`) in hot loops.
+// The copy semantics stay exactly those of `memcpy`, so it is safe for arbitrary element
+// types regardless of their alignment, padding or aliasing.
+@[inline; unsafe]
+fn copy_element_to(dest voidptr, src voidptr, element_size int) {
+	unsafe {
+		match element_size {
+			1 { vmemcpy(dest, src, 1) }
+			2 { vmemcpy(dest, src, 2) }
+			4 { vmemcpy(dest, src, 4) }
+			8 { vmemcpy(dest, src, 8) }
+			16 { vmemcpy(dest, src, 16) }
+			else { vmemcpy(dest, src, element_size) }
+		}
+	}
+}
+
 fn (mut a array) push(val voidptr) {
 	$if !no_bounds_checking {
 		if a.len < 0 {
@@ -1138,12 +1173,15 @@ fn (mut a array) push(val voidptr) {
 		panic('array.push: len bigger than max_int')
 	}
 	required := a.len + 1
-	if a.needs_unique_append(required) {
-		a.clone_shallow_to_cap(a.cap)
-	} else if required > a.cap {
+	if required > a.cap {
 		a.ensure_cap(required)
+	} else if a.flags.has(.is_slice) {
+		// `required <= a.cap` here, so this is the `needs_unique_append` case
+		a.clone_shallow_to_cap(a.cap)
 	}
-	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size) }
+	unsafe {
+		copy_element_to(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size)
+	}
 	a.len++
 }
 

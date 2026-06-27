@@ -14,3 +14,8 @@ pub fn panic(s string) {
 pub fn println(s string) {
 	JS.__writeln(s.str, s.len)
 }
+
+// eprintln prints a message with a line end, to the browser output host.
+pub fn eprintln(s string) {
+	JS.__writeln(s.str, s.len)
+}

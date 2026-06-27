@@ -76,6 +76,13 @@ pub type Primitive = Null
 
 pub struct Null {}
 
+// Row represents a single result row from a raw SQL exec query.
+pub struct Row {
+pub mut:
+	vals  []string
+	names []string // column names; populated by drivers that provide them
+}
+
 pub enum OperationKind {
 	neq         // !=
 	eq          // ==
@@ -227,8 +234,20 @@ pub:
 
 pub struct Table {
 pub mut:
-	name  string
-	attrs []VAttribute
+	name    string
+	attrs   []VAttribute
+	fields  []string // struct field names, used to skip scope filters that don't apply
+	columns []string // SQL column names (parallel to fields), used for SQL generation
+}
+
+// new_table creates a Table with the given name and attributes.
+// Prefer using this constructor over positional initialization,
+// as new fields may be added to Table in future versions.
+pub fn new_table(name string, attrs []VAttribute) Table {
+	return Table{
+		name:  name
+		attrs: attrs
+	}
 }
 
 pub struct TableField {
@@ -286,6 +305,8 @@ struct TenantFilterScopeState {
 	current_tenant     Primitive
 }
 
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub struct TenantFilterConfig {
 pub:
 	enabled    bool   = true
@@ -316,6 +337,7 @@ mut:
 	create(table Table, fields []TableField) !
 	drop(table Table) !
 	last_id() int
+	execute(query string) ![]Row
 }
 
 // TransactionalConnection extends Connection with transaction primitives.
@@ -331,17 +353,23 @@ mut:
 }
 
 // configure_tenant_filter configures the global ORM tenant filter behavior.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn configure_tenant_filter(config TenantFilterConfig) {
 	tenant_filter_state.enabled = config.enabled
 	tenant_filter_state.field_name = normalize_tenant_filter_field_name(config.field_name)
 }
 
 // set_tenant_filter_enabled enables or disables global tenant filtering.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn set_tenant_filter_enabled(enabled bool) {
 	tenant_filter_state.enabled = enabled
 }
 
 // set_current_tenant_id sets the current tenant id used by global tenant filtering.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn set_current_tenant_id(tenant_id Primitive) {
 	if tenant_id is Null {
 		clear_current_tenant_id()
@@ -352,12 +380,16 @@ pub fn set_current_tenant_id(tenant_id Primitive) {
 }
 
 // clear_current_tenant_id clears the current tenant id used by global tenant filtering.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn clear_current_tenant_id() {
 	tenant_filter_state.has_current_tenant = false
 	tenant_filter_state.current_tenant = null_primitive
 }
 
 // with_tenant executes `callback` with a temporary tenant id and enabled tenant filtering.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn with_tenant[T](tenant_id Primitive, callback fn () !T) !T {
 	saved := tenant_filter_scope_snapshot()
 	tenant_filter_state.enabled = true
@@ -370,6 +402,8 @@ pub fn with_tenant[T](tenant_id Primitive, callback fn () !T) !T {
 }
 
 // with_tenant_value executes `callback` with a temporary tenant id and enabled tenant filtering.
+@[deprecated: 'use `orm.DataScope` and `orm.new_db()` for per-instance request-level filtering']
+@[deprecated_after: '2027-06-08']
 pub fn with_tenant_value[T](tenant_id Primitive, callback fn () T) T {
 	saved := tenant_filter_scope_snapshot()
 	tenant_filter_state.enabled = true
@@ -382,6 +416,8 @@ pub fn with_tenant_value[T](tenant_id Primitive, callback fn () T) T {
 }
 
 // without_tenant_filter executes `callback` with tenant filtering temporarily disabled.
+@[deprecated: 'use `orm.DB.unscoped()` for per-instance scope bypass']
+@[deprecated_after: '2027-06-08']
 pub fn without_tenant_filter[T](callback fn () !T) !T {
 	saved := tenant_filter_scope_snapshot()
 	tenant_filter_state.enabled = false
@@ -392,6 +428,8 @@ pub fn without_tenant_filter[T](callback fn () !T) !T {
 }
 
 // without_tenant_filter_value executes `callback` with tenant filtering temporarily disabled.
+@[deprecated: 'use `orm.DB.unscoped()` for per-instance scope bypass']
+@[deprecated_after: '2027-06-08']
 pub fn without_tenant_filter_value[T](callback fn () T) T {
 	saved := tenant_filter_scope_snapshot()
 	tenant_filter_state.enabled = false
@@ -615,6 +653,162 @@ fn parse_bool_attr(raw string) ?bool {
 		}
 		else {
 			none
+		}
+	}
+}
+
+// primitive_type returns the type index for a Primitive value.
+fn primitive_type(value Primitive) int {
+	return match value {
+		bool {
+			type_idx['bool']
+		}
+		i8 {
+			type_idx['i8']
+		}
+		i16 {
+			type_idx['i16']
+		}
+		int {
+			type_idx['int']
+		}
+		i64 {
+			type_idx['i64']
+		}
+		u8 {
+			type_idx['u8']
+		}
+		u16 {
+			type_idx['u16']
+		}
+		u32 {
+			type_idx['u32']
+		}
+		u64 {
+			type_idx['u64']
+		}
+		f32 {
+			type_idx['f32']
+		}
+		f64 {
+			type_idx['f64']
+		}
+		string {
+			type_string
+		}
+		time.Time {
+			time_
+		}
+		Null {
+			type_idx['int']
+		}
+		InfixType {
+			primitive_type(value.right)
+		}
+		[]Primitive {
+			if value.len > 0 {
+				primitive_type(value[0])
+			} else {
+				type_idx['int']
+			}
+		}
+		[]bool {
+			if value.len > 0 {
+				type_idx['bool']
+			} else {
+				type_idx['int']
+			}
+		}
+		[]f32 {
+			if value.len > 0 {
+				type_idx['f32']
+			} else {
+				type_idx['int']
+			}
+		}
+		[]f64 {
+			if value.len > 0 {
+				type_idx['f64']
+			} else {
+				type_idx['int']
+			}
+		}
+		[]i16 {
+			if value.len > 0 {
+				type_idx['i16']
+			} else {
+				type_idx['int']
+			}
+		}
+		[]i64 {
+			if value.len > 0 {
+				type_idx['i64']
+			} else {
+				type_idx['int']
+			}
+		}
+		[]i8 {
+			if value.len > 0 {
+				type_idx['i8']
+			} else {
+				type_idx['int']
+			}
+		}
+		[]int {
+			if value.len > 0 {
+				type_idx['int']
+			} else {
+				type_idx['int']
+			}
+		}
+		[]string {
+			if value.len > 0 {
+				type_string
+			} else {
+				type_idx['int']
+			}
+		}
+		[]time.Time {
+			if value.len > 0 {
+				time_
+			} else {
+				type_idx['int']
+			}
+		}
+		[]u16 {
+			if value.len > 0 {
+				type_idx['u16']
+			} else {
+				type_idx['int']
+			}
+		}
+		[]u32 {
+			if value.len > 0 {
+				type_idx['u32']
+			} else {
+				type_idx['int']
+			}
+		}
+		[]u64 {
+			if value.len > 0 {
+				type_idx['u32']
+			} else {
+				type_idx['int']
+			}
+		}
+		[]u8 {
+			if value.len > 0 {
+				type_idx['u8']
+			} else {
+				type_idx['int']
+			}
+		}
+		[]InfixType {
+			if value.len > 0 {
+				primitive_type(value[0].right)
+			} else {
+				type_idx['int']
+			}
 		}
 	}
 }
@@ -1059,9 +1253,15 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 	return str
 }
 
+const table_qualified_field_separator = '::v_orm_table::'
+
+fn table_qualified_field(table_name string, column_name string) string {
+	return '${table_name}${table_qualified_field_separator}${column_name}'
+}
+
 fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) string {
 	mut str := ''
-
+	mut data_idx := 0
 	for i, field in where.fields {
 		current_pre_par := where.parentheses.count(it[0] == i)
 		current_post_par := where.parentheses.count(it[1] == i)
@@ -1069,12 +1269,16 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 		if current_pre_par > 0 {
 			str += ' ( '.repeat(current_pre_par)
 		}
-		str += '${q}${field}${q} ${where.kinds[i].to_str()}'
+		str += gen_qualified_field(field, q) + ' ${where.kinds[i].to_str()}'
 		if !where.kinds[i].is_unary() {
-			if where.data.len > i && where.data[i] is []Primitive {
-				len := (where.data[i] as []Primitive).len
-				mut tmp := []string{len: len}
-				for j in 0 .. len {
+			array_len := if where.data.len > data_idx {
+				primitive_array_len(where.data[data_idx])
+			} else {
+				-1
+			}
+			if array_len >= 0 {
+				mut tmp := []string{len: array_len}
+				for j in 0 .. array_len {
 					tmp[j] = '${qm}'
 					if num {
 						tmp[j] += '${c}'
@@ -1089,6 +1293,7 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 					c++
 				}
 			}
+			data_idx++
 		}
 		if current_post_par > 0 {
 			str += ' ) '.repeat(current_post_par)
@@ -1102,6 +1307,17 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 		}
 	}
 	return str
+}
+
+// gen_qualified_field renders a field name with the given quote character q.
+// Table-qualified fields use an internal marker so embedded ORM column names
+// containing dots (e.g. `Coordinates.latitude`) stay single quoted identifiers.
+fn gen_qualified_field(field string, q string) string {
+	if idx := field.index(table_qualified_field_separator) {
+		column_start := idx + table_qualified_field_separator.len
+		return '${q}${field[..idx]}${q}.${q}${field[column_start..]}${q}'
+	}
+	return '${q}${field}${q}'
 }
 
 // Generates an sql table stmt, from universal parameter

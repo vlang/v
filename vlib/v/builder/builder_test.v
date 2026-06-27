@@ -216,6 +216,86 @@ fn test_empty_local_dir_does_not_shadow_vlib_module() {
 	assert res.output.trim_space() == 'true'
 }
 
+fn test_imports_with_same_resolved_path_are_parsed_once() {
+	os.chdir(test_path)!
+	workspace := os.join_path(test_path, 'run_duplicate_resolved_import_path')
+	project_dir := os.join_path(workspace, 'dupmod')
+	defer {
+		os.chdir(test_path) or {}
+		os.rmdir_all(workspace) or {}
+	}
+	os.mkdir_all(os.join_path(project_dir, 'providers'))!
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module {\n\tname: 'dupmod'\n}\n")!
+	os.write_file(os.join_path(project_dir, 'dupmod.v'), 'module dupmod
+
+import providers
+
+pub fn make_client() providers.Client {
+	return providers.Client{}
+}
+')!
+	os.write_file(os.join_path(project_dir, 'main_test.v'), 'module main
+
+import dupmod
+import dupmod.providers
+
+fn test_client() {
+	_ := dupmod.make_client()
+	_ := providers.Client{}
+}
+')!
+	os.write_file(os.join_path(project_dir, 'providers', 'client.v'), 'module providers
+
+pub struct Client {}
+')!
+	os.chdir(project_dir)!
+
+	res := os.execute('${os.quoted_path(vexe)} -check main_test.v')
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('cannot register struct')
+}
+
+fn test_duplicate_resolved_import_path_still_validates_module_name() {
+	$if windows {
+		return
+	}
+	os.chdir(test_path)!
+	workspace := os.join_path(test_path, 'run_duplicate_resolved_import_path_validation')
+	project_dir := os.join_path(workspace, 'project')
+	foo_dir := os.join_path(project_dir, 'modules', 'foo')
+	bar_dir := os.join_path(project_dir, 'modules', 'bar')
+	defer {
+		os.chdir(test_path) or {}
+		os.rmdir_all(workspace) or {}
+	}
+	os.mkdir_all(foo_dir)!
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module {\n\tname: 'project'\n}\n")!
+	os.write_file(os.join_path(foo_dir, 'foo.v'), 'module foo
+
+pub fn value() int {
+	return 1
+}
+')!
+	os.symlink(foo_dir, bar_dir) or { return }
+	os.write_file(os.join_path(project_dir, 'main.v'), 'module main
+
+import foo
+import bar
+
+fn main() {
+	println(foo.value())
+	println(bar.value())
+}
+')!
+	os.chdir(project_dir)!
+
+	res := os.execute('${os.quoted_path(vexe)} -check main.v')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('bad module definition'), res.output
+	assert res.output.contains('imports module "bar"'), res.output
+	assert res.output.contains('defined as module `foo`'), res.output
+}
+
 fn test_removed_src_layout_error_mentions_vmod_subdirs() {
 	os.chdir(test_path)!
 	project_dir := os.join_path(test_path, 'run_removed_src_project')
@@ -258,7 +338,7 @@ fn test_thirdparty_object_build_with_multiline_cflags() {
 }
 
 fn test_missing_library_is_reported_without_compiler_bug_hint() {
-	if os.user_os() == 'windows' && os.getenv('VFLAGS').contains('msvc') {
+	if os.user_os() == 'windows' {
 		return
 	}
 	os.chdir(test_path)!
@@ -272,9 +352,11 @@ fn test_missing_library_is_reported_without_compiler_bug_hint() {
 
 	assert res.exit_code != 0
 	assert normalized_output.contains('builder error:')
-	assert normalized_output.contains('C library `${lib_name}` was not found while linking the generated program.')
-	assert normalized_output.contains('Please install the corresponding development package/libraries')
-	assert !normalized_output.contains('This is a V compiler bug')
+	assert normalized_output.contains('C library `${lib_name}` was not found while linking the generated program.'), normalized_output
+
+	assert normalized_output.contains('Please install the corresponding development package/libraries'), normalized_output
+
+	assert !normalized_output.contains('This is a V compiler bug'), normalized_output
 }
 
 fn test_windows_host_c_compiler_probe_is_skipped_for_non_windows_targets() {

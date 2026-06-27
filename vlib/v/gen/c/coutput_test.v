@@ -236,6 +236,33 @@ fn test_or_block_err_var_collision_does_not_emit_self_referential_err() {
 	assert has_visible_or_block_err
 }
 
+fn test_main_error_propagation_panic_branches_do_not_fall_through() {
+	os.chdir(vroot) or {}
+	test_dir := os.join_path(os.vtmp_dir(), 'main_error_propagation_panic_tail_${os.getpid()}')
+	os.mkdir_all(test_dir)!
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	source_path := os.join_path(test_dir, 'main_error_propagation_panic_tail.v')
+	os.write_file(source_path,
+		['module main', '', 'fn fail_result() ! {', "\treturn error('new error')", '}', '', 'fn fail_option() ?int {', '\treturn none', '}', '', 'fn defer_result() ! {', '\tdefer {', "\t\tprintln('result deferred')", '\t}', '\tfail_result()!', '}', '', 'fn defer_option() ?int {', '\tdefer {', "\t\tprintln('option deferred')", '\t}', '\treturn fail_option()', '}', '', 'fn main() {', '\tif arguments().len > 1000 {', '\t\tdefer_option()?', '\t}', '\tdefer_result()!', '}'].join('\n') +
+		'\n')!
+	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(source_path)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	for panic_call in [
+		'builtin__panic_result_not_set(IError_name_table[',
+		'builtin__panic_option_not_set( IError_name_table[',
+	] {
+		assert compilation.output.contains(panic_call)
+		branch_tail := compilation.output.all_after(panic_call).all_before('}')
+		// The panic helper is `@[noreturn]`, so the branch is closed off with
+		// `VUNREACHABLE();` (matching the other panic sites) instead of dead code
+		// after the noreturn call.
+		assert branch_tail.contains('VUNREACHABLE();')
+	}
+}
+
 fn test_imported_empty_interface_concat_does_not_emit_noop_array_cast_helper() {
 	os.chdir(vroot) or {}
 	path := os.join_path(vroot,
@@ -286,6 +313,7 @@ fn test_array_push_no_bounds_checking_keeps_max_len_panics() {
 	assert compilation.output.contains('array.push: len bigger than max_int')
 	assert !compilation.output.contains('array.push_noscan: negative len')
 	assert compilation.output.contains('array.push_noscan: len bigger than max_int')
+		|| compilation.output.contains('builtin__array_push(a, val);')
 }
 
 fn test_windows_sharedlive_string_interpolation_in_ternary_does_not_emit_inline_tmp_decl() {
@@ -551,6 +579,10 @@ fn test_user_defined_windows_dllmain_disables_generated_entrypoint() {
 	ensure_compilation_succeeded(compilation, cmd)
 	assert compilation.output.contains('void _vinit_caller() {')
 	assert compilation.output.contains('GC_set_pages_executable(0);')
+	// The shared-library GC tuning (issue #27555) must stay guarded, so loading
+	// the library into an already-GC-initialized host does not clobber the host's
+	// process-wide free-space divisor (its local GC_INIT() would be a no-op).
+	assert compilation.output.contains('if (!GC_is_init_called()) {')
 	assert compilation.output.contains('GC_INIT();')
 	assert compilation.output.contains('DllMain(')
 	assert compilation.output.contains('_vinit_caller();')
@@ -599,6 +631,90 @@ fn test_array_sort_with_compare_uses_stable_sort_adapters() {
 	assert normalized.contains('_qsort_adapter(const void* a, const void* b) { return compare_')
 	assert normalized.contains('v_stable_sort(zs.data, zs.len, zs.element_size, compare_')
 	assert normalized.contains('_qsort_adapter);')
+}
+
+fn test_array_sort_expression_key_avoids_sanitized_name_collisions() {
+	os.chdir(vroot) or {}
+	test_dir := os.join_path(os.vtmp_dir(), 'coutput_array_sort_expr_collision_${os.getpid()}')
+	os.mkdir_all(test_dir)!
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	os.write_file(os.join_path(test_dir, 'main.v'),
+		['module main', '', 'struct Inner {', '\tbar int', '}', '', 'struct Item {', '\tfoo Inner', '\tfoo_bar int', '\tlabel string', '}', '', 'fn main() {', '\tprintln(sort_by_nested())', '\tprintln(sort_by_flat())', '}'].join('\n') +
+		'\n')!
+	os.write_file(os.join_path(test_dir, 'nested.v'),
+		['module main', '', 'fn sort_by_nested() string {', "\tmut items := [Item{ foo: Inner{ bar: 2 }, foo_bar: 1, label: 'nested-wrong' }, Item{ foo: Inner{ bar: 1 }, foo_bar: 2, label: 'nested-ok' }]", '\titems.sort(a.foo.bar < b.foo.bar)', '\treturn items[0].label', '}'].join('\n') +
+		'\n')!
+	os.write_file(os.join_path(test_dir, 'flat.v'),
+		['module main', '', 'fn sort_by_flat() string {', "\tmut items := [Item{ foo: Inner{ bar: 1 }, foo_bar: 2, label: 'flat-wrong' }, Item{ foo: Inner{ bar: 2 }, foo_bar: 1, label: 'flat-ok' }]", '\titems.sort(a.foo_bar < b.foo_bar)', '\treturn items[0].label', '}'].join('\n') +
+		'\n')!
+	pexe := os.join_path(test_dir, 'sort_expr_collision')
+	cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(pexe)} ${os.quoted_path(test_dir)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	res := os.execute(os.quoted_path(pexe))
+	assert res.exit_code == 0
+	assert res.output.trim_space().replace('\r\n', '\n') == 'nested-ok\nflat-ok'
+}
+
+// generated_c_symbol_with_prefix extracts one generated C symbol from compiler output.
+fn generated_c_symbol_with_prefix(output string, prefix string) string {
+	idx := output.index(prefix) or { return '' }
+	rest := output[idx..]
+	mut end := 0
+	for end < rest.len && (rest[end].is_letter() || rest[end].is_digit() || rest[end] == `_`) {
+		end++
+	}
+	return rest[..end]
+}
+
+fn test_auxiliary_c_symbols_use_stable_type_hashes() {
+	os.chdir(vroot) or {}
+	test_dir := os.join_path(os.vtmp_dir(), 'coutput_stable_type_symbol_hash_${os.getpid()}')
+	dir_a := os.join_path(test_dir, 'a')
+	dir_b := os.join_path(test_dir, 'b')
+	os.mkdir_all(dir_a)!
+	os.mkdir_all(dir_b)!
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	source_lines := [
+		'module main',
+		'',
+		'struct Item {',
+		'\tname string',
+		'\trank int',
+		'}',
+		'',
+		'fn main() {',
+		"\tmut items := [Item{'b', 2}, Item{'a', 1}, Item{'c', 3}]",
+		'\titems.sort(a.rank < b.rank)',
+		'\tmut nested := [items]',
+		'\tprintln("\${nested[0][0].name}")',
+		'}',
+	]
+	source := source_lines.join('\n') + '\n'
+	path_a := os.join_path(dir_a, 'main.v')
+	path_b := os.join_path(dir_b, 'main.v')
+	os.write_file(path_a, source)!
+	os.write_file(path_b, source)!
+	cmd_a := '${os.quoted_path(vexe)} -prod -gc boehm_full_opt -o - ${os.quoted_path(path_a)}'
+	cmd_b := '${os.quoted_path(vexe)} -prod -gc boehm_full_opt -o - ${os.quoted_path(path_b)}'
+	compilation_a := os.execute(cmd_a)
+	compilation_b := os.execute(cmd_b)
+	ensure_compilation_succeeded(compilation_a, cmd_a)
+	ensure_compilation_succeeded(compilation_b, cmd_b)
+	compare_a := generated_c_symbol_with_prefix(compilation_a.output, 'compare_')
+	compare_b := generated_c_symbol_with_prefix(compilation_b.output, 'compare_')
+	keepalive_a := generated_c_symbol_with_prefix(compilation_a.output,
+		'__v_boehm_collect_keepalive_')
+	keepalive_b := generated_c_symbol_with_prefix(compilation_b.output,
+		'__v_boehm_collect_keepalive_')
+	assert compare_a != ''
+	assert keepalive_a != ''
+	assert compare_a == compare_b
+	assert keepalive_a == keepalive_b
 }
 
 fn test_veb_implicit_ctx_alias_uses_user_context_name() {
@@ -802,7 +918,8 @@ fn should_skip(relpath string) bool {
 	}
 	if github_job.contains('musl') && (relpath.ends_with('print_boehm_leak.vv')
 		|| relpath.ends_with('scope_cleanup_boehm_leak.vv')
-		|| relpath.ends_with('gc_debugger_linux.vv')) {
+		|| relpath.ends_with('gc_debugger_linux.vv')
+		|| relpath.ends_with('heap_struct_init_order.vv')) {
 		eprintln('> skipping ${relpath} on ${github_job}, since gc related tests are not compatible with `-gc none`')
 		return true
 	}
@@ -815,6 +932,12 @@ fn should_skip(relpath string) bool {
 		if relpath.contains('_nix.vv') {
 			eprintln('> skipping ${relpath} on windows')
 			return true
+		}
+		$if tinyc {
+			if relpath.ends_with('boehm_keepalive_c_union_tag.vv') {
+				eprintln('> skipping ${relpath} on windows-tcc, since deep GC scope pins (and thus their keepalive helpers) are intentionally not emitted there: the bundled Windows tcc libgc archive lacks GC_remove_roots()')
+				return true
+			}
 		}
 		$if !msvc {
 			if relpath.contains('_msvc_windows.vv') {

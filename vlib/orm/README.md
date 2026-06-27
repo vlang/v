@@ -93,6 +93,65 @@ sql db {
 }!
 ```
 
+### Data Scope
+
+`orm.DB` can wrap an `orm.Connection` with automatic scope filters. Scope filters
+are useful for request-level tenancy, soft deletes, and row-level access checks.
+
+```v ignore
+mut db := orm.new_db(raw_db, orm.DataScope{
+    filters: [
+        orm.QueryFilter{
+            field: 'tenant_id'
+            value: orm.Primitive(tenant_id)
+            mode:  .dynamic
+        },
+        orm.QueryFilter{
+            field: 'shop_id'
+            value: orm.Primitive(shop_id)
+            mode:  .dynamic
+        },
+        orm.QueryFilter{
+            field:    'deleted_at'
+            operator: .is_null
+            mode:     .dynamic
+        },
+    ]
+})
+
+users := sql db {
+    select from User
+}!
+```
+
+`QueryFilter.mode` must be explicitly set to `.static` or `.dynamic` (there is
+no default — `.unset` causes a runtime error). Static filters are reserved for
+future compiler-generated scope clauses. The runtime `orm.DB` wrapper applies
+only filters explicitly marked with `mode: .dynamic`. Invalid dynamic filters
+return an error instead of being silently skipped.
+
+Call `db.unscoped()` to return a new `orm.DB` value that skips all scope filters.
+Call `db.unscoped('tenant_id')` to skip only selected fields.
+
+### Raw SQL Execute
+
+Use `execute(query string) ![]orm.Row` when you need a driver-agnostic raw SQL
+escape hatch outside the `sql db {}` DSL. It is part of the public
+`orm.Connection` interface, and both `orm.DB.execute` and `orm.Tx.execute`
+forward to the wrapped connection.
+
+```v ignore
+rows := db.execute("SELECT 1 AS answer, 'ok' AS status")!
+assert rows[0].names == ['answer', 'status']
+assert rows[0].vals == ['1', 'ok']
+```
+
+Each `orm.Row` stores column values in `vals` and column names in `names`; both
+arrays use the same column order. Queries that do not return a result set, such
+as DDL or DML statements, return an empty row array. Custom `orm.Connection`
+implementers must implement `execute` and should populate `Row.names` whenever
+the backend exposes result column metadata.
+
 > [!TIP]
 > This guide uses the built-in `db.sqlite` module. If you want SQLite without first installing
 > system-level SQLite development files, the V team also maintains the

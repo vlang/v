@@ -295,7 +295,13 @@ fn C.CreateFile(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurit
 fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32,
 	dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
-fn C.GetFinalPathNameByHandleW(hFile voidptr, lpFilePath &u16, nSize u32, dwFlags u32) u32
+$if windows {
+	// The TCC-only declaration is guarded with `#ifdef __TINYC__` in the
+	// header, so it survives cross compilation; GCC/MSVC use the SDK header.
+	#insert "@VEXEROOT/vlib/builtin/cfns_windows_tcc.h"
+
+	fn C.GetFinalPathNameByHandleW(hFile voidptr, lpFilePath &u16, nSize u32, dwFlags u32) u32
+}
 
 fn C.CreatePipe(hReadPipe &voidptr, hWritePipe &voidptr, lpPipeAttributes voidptr, nSize u32) bool
 

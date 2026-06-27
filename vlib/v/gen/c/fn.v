@@ -34,16 +34,21 @@ fn (g &Gen) receiver_exact_method_for_type(typ ast.Type, method_name string) ?as
 		return none
 	}
 	sym := g.table.sym(typ)
+	// A `mut` receiver is stored as a pointer (`&T`), so compare the base types
+	// (ignoring the pointer level) to match such a method against both the value
+	// and pointer forms of `typ`. See #27465.
+	typ_base := typ.set_nr_muls(0)
 	for method in sym.methods {
-		if method.name == method_name && method.receiver_type == typ {
+		if method.name == method_name && method.receiver_type.set_nr_muls(0) == typ_base {
 			return method
 		}
 	}
 	if sym.info is ast.Alias {
 		parent_type := sym.info.parent_type.derive(typ)
+		parent_base := parent_type.set_nr_muls(0)
 		parent_sym := g.table.sym(parent_type)
 		for method in parent_sym.methods {
-			if method.name == method_name && method.receiver_type == parent_type {
+			if method.name == method_name && method.receiver_type.set_nr_muls(0) == parent_base {
 				return method
 			}
 		}
@@ -405,8 +410,9 @@ fn (mut g Gen) resolve_current_fn_generic_type(typ ast.Type) ast.Type {
 	if generic_names.len == 0 || g.cur_concrete_types.len == 0 {
 		return g.unwrap_generic(typ)
 	}
+	concrete_types := g.cur_concrete_types.map(ast.mktyp(it))
 	mut muttable := unsafe { &ast.Table(g.table) }
-	if resolved := muttable.convert_generic_type(typ, generic_names, g.cur_concrete_types) {
+	if resolved := muttable.convert_generic_type(typ, generic_names, concrete_types) {
 		return g.unwrap_generic(resolved)
 	}
 	return g.unwrap_generic(g.recheck_concrete_type(typ))
@@ -1805,7 +1811,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	ctx_struct := g.closure_ctx(node.decl)
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
 	// TODO: in case of an assignment, this should only call "closure_set_data" and "closure_set_function" (and free the former data)
-	g.write('builtin__closure__closure_create(${fn_name}, (${ctx_struct}*) builtin__memdup_uncollectable(&(${ctx_struct}){')
+	g.write('builtin__closure__closure_create_with_data(${fn_name}, (${ctx_struct}*) builtin__memdup(&(${ctx_struct}){')
 	g.indent++
 	for var in node.inherited_vars {
 		mut has_inherited := false
@@ -1874,7 +1880,8 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 				if obj := node.decl.scope.parent.find(var.name) {
 					if obj is ast.Var {
 						is_auto_heap = !obj.is_stack_obj && obj.is_auto_heap
-						is_auto_deref_capture = obj.is_auto_deref && !var.is_mut
+						is_auto_deref_capture = obj.is_auto_deref
+							&& (!var.is_mut || g.table.sym(obj.typ).kind == .alias)
 							&& (is_ptr || obj.typ.is_ptr())
 						if obj.smartcasts.len > 0 {
 							if g.table.type_kind(obj.typ) == .sum_type {
@@ -1893,7 +1900,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		}
 	}
 	g.indent--
-	g.write('}, sizeof(${ctx_struct})))')
+	g.write('}, sizeof(${ctx_struct})), true)')
 
 	g.empty_line = false
 }
@@ -1917,12 +1924,15 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 				// so strip one pointer level from the field type.
 				// Similarly, when a `mut` parameter (is_auto_deref) is captured
 				// without `mut`, the closure stores the dereferenced value.
+				// For alias types (`type AppRef = &App`), the deref is needed for
+				// `mut` captures too, since the alias adds an indirection level.
 				if node.decl.scope != unsafe { nil } && node.decl.scope.parent != unsafe { nil } {
 					if scope_var := node.decl.scope.parent.find_var(var.name) {
 						if scope_var.is_auto_heap && !scope_var.is_stack_obj
 							&& resolved_var_typ.is_ptr() {
 							resolved_var_typ = resolved_var_typ.deref()
-						} else if scope_var.is_auto_deref && !var.is_mut
+						} else if scope_var.is_auto_deref
+							&& (!var.is_mut || g.table.sym(scope_var.typ).kind == .alias)
 							&& resolved_var_typ.is_ptr() {
 							resolved_var_typ = resolved_var_typ.deref()
 						}
@@ -1959,9 +1969,18 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	g.anon_fn = node
 	old_inside_return := g.inside_return
 	old_inside_return_expr := g.inside_return_expr
+	old_inside_lambda := g.inside_lambda
+	old_inside_lambda_autofree_tmp := g.inside_lambda_autofree_tmp
+	old_track_lambda_autofree_tmp_arg_vars := g.track_lambda_autofree_tmp_arg_vars
 	g.inside_return = false
 	g.inside_return_expr = false
+	g.inside_lambda = false
+	g.inside_lambda_autofree_tmp = false
+	g.track_lambda_autofree_tmp_arg_vars = false
 	g.fn_decl(decl)
+	g.track_lambda_autofree_tmp_arg_vars = old_track_lambda_autofree_tmp_arg_vars
+	g.inside_lambda_autofree_tmp = old_inside_lambda_autofree_tmp
+	g.inside_lambda = old_inside_lambda
 	g.inside_return_expr = old_inside_return_expr
 	g.inside_return = old_inside_return
 	g.anon_fn = was_anon_fn
@@ -1999,12 +2018,23 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		if i >= param_count {
 			break
 		}
-		mut typ := g.unwrap_generic(param.typ)
+		mut typ := if !param.typ.has_flag(.variadic) && g.cur_concrete_types.len > 0
+			&& param.orig_typ != 0 && (param.orig_typ.has_flag(.generic)
+			|| g.type_has_unresolved_generic_parts(param.orig_typ)) {
+			g.resolve_current_fn_generic_type(param.orig_typ)
+		} else {
+			g.unwrap_generic(param.typ)
+		}
 		if g.pref.translated && g.file.is_translated && param.typ.has_flag(.variadic) {
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
 		}
+		// A `mut x T` parameter is passed by reference, so its C type must be a pointer to
+		// the concrete type. The normal solver keeps `.generic` on `param.typ` here, but the
+		// new generic solver pre-resolves `param.typ` to the concrete type (dropping the flag),
+		// so it would otherwise miss the indirection. `param.orig_typ` still carries the
+		// generic `T`, which resolves correctly via `cur_concrete_types`.
 		if param.is_mut && param.orig_typ != 0 && param.orig_typ.has_flag(.generic)
-			&& param.typ.has_flag(.generic) {
+			&& (param.typ.has_flag(.generic) || g.pref.new_generic_solver) {
 			mut surface_typ := g.unwrap_generic(param.orig_typ)
 			// Only use ref() when the pointer comes from the generic type argument
 			// (T=&int), not from the param signature (&T / ?&T).
@@ -2299,6 +2329,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			return
 		}
 	}
+	closure_frame_arg_tmps := g.prepare_closure_lifetime_arg_tmps(node)
+	defer {
+		for pos in closure_frame_arg_tmps.keys() {
+			g.closure_frame_arg_tmps.delete(pos)
+		}
+	}
 	old_inside_call := g.inside_call
 	g.inside_call = true
 	// Reset inside_selector_lhs so that receiver expressions inside method
@@ -2431,6 +2467,13 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	} else {
 		g.fn_call(node)
 	}
+	if closure_frame_arg_tmps.len > 0 {
+		g.writeln(';')
+		for _, tmp in closure_frame_arg_tmps {
+			g.writeln('builtin__closure__closure_try_destroy((voidptr)${tmp});')
+		}
+		g.set_current_pos_as_last_stmt_pos()
+	}
 	if needs_tmp_fn_result_cleanup && !gen_or && !gen_keep_alive && !g.inside_curry_call {
 		if node.return_type == ast.void_type {
 			g.writeln(';')
@@ -2512,6 +2555,105 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			}
 		}
 	}
+}
+
+fn (mut g Gen) is_closure_lifetime_callback_call(node ast.CallExpr) bool {
+	method_name := node.name.all_after_last('.')
+	if !node.is_method || method_name !in ['frame', 'suspend', 'untracked'] || node.args.len != 1 {
+		return false
+	}
+	mut receiver_type := g.unwrap_generic(node.receiver_type)
+	if receiver_type == 0 {
+		receiver_type = g.unwrap_generic(node.left_type)
+	}
+	if receiver_type == 0 {
+		return false
+	}
+	if receiver_type.is_ptr() {
+		receiver_type = receiver_type.deref()
+	}
+	return g.table.sym(receiver_type).name == 'builtin.closure.Lifetime'
+}
+
+fn (mut g Gen) closure_lifetime_arg_needs_tmp(expr ast.Expr) bool {
+	unwrapped_expr := expr.remove_par()
+	return match unwrapped_expr {
+		ast.AnonFn {
+			unwrapped_expr.inherited_vars.len > 0
+		}
+		ast.SelectorExpr {
+			unwrapped_expr.has_hidden_receiver
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut g Gen) call_needs_closure_lifetime_arg_tmp(node ast.CallExpr) bool {
+	return g.is_closure_lifetime_callback_call(node)
+		&& g.closure_lifetime_arg_needs_tmp(node.args[0].expr)
+}
+
+fn (mut g Gen) closure_lifetime_fn_type_tmp_signature(fn_types []ast.Type, tmp string) ?string {
+	for raw_fn_typ in fn_types {
+		fn_typ := g.unwrap_generic(g.recheck_concrete_type(raw_fn_typ))
+		if fn_typ == 0 {
+			continue
+		}
+		fn_sym := g.table.final_sym(fn_typ)
+		if fn_sym.info is ast.FnType {
+			func := fn_sym.info.func
+			return g.fn_var_signature(ast.void_type, func.return_type, func.params.map(it.typ), tmp)
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) closure_lifetime_arg_tmp_signature(node ast.CallExpr, arg ast.CallArg, tmp string) ?string {
+	unwrapped_expr := arg.expr.remove_par()
+	match unwrapped_expr {
+		ast.AnonFn {
+			return g.fn_var_signature(ast.void_type, unwrapped_expr.decl.return_type,
+				unwrapped_expr.decl.params.map(it.typ), tmp)
+		}
+		ast.SelectorExpr {
+			mut fn_types := []ast.Type{}
+			if arg.typ != 0 {
+				fn_types << arg.typ
+			}
+			if unwrapped_expr.typ != 0 {
+				fn_types << unwrapped_expr.typ
+			}
+			if node.expected_arg_types.len > 0 && node.expected_arg_types[0] != 0 {
+				fn_types << node.expected_arg_types[0]
+			}
+			return g.closure_lifetime_fn_type_tmp_signature(fn_types, tmp)
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (mut g Gen) prepare_closure_lifetime_arg_tmps(node ast.CallExpr) map[int]string {
+	mut tmps := map[int]string{}
+	if !g.call_needs_closure_lifetime_arg_tmp(node) {
+		return tmps
+	}
+	arg := node.args[0]
+	tmp := g.new_tmp_var()
+	fn_type := g.closure_lifetime_arg_tmp_signature(node, arg, tmp) or { return tmps }
+	line := g.go_before_last_stmt().trim_space()
+	g.empty_line = true
+	g.write('${fn_type} = ')
+	g.expr(ast.Expr(arg.expr))
+	g.writeln(';')
+	g.set_current_pos_as_last_stmt_pos()
+	g.write(line)
+	tmps[arg.pos.pos] = tmp
+	g.closure_frame_arg_tmps[arg.pos.pos] = tmp
+	return tmps
 }
 
 fn (mut g Gen) conversion_function_call(prefix string, postfix string, node ast.CallExpr) {
@@ -3395,9 +3537,17 @@ fn (mut g Gen) receiver_generic_call_context(left_type ast.Type, method_name str
 	rec_sym := g.table.final_sym(left_type)
 	mut receiver_concrete_types := []ast.Type{}
 	mut parent_method := ast.Fn{}
-	if has_structured_method_for_exact {
+	// A method defined directly on an alias type (e.g. `fn (c Candidates) set()` where
+	// `type Candidates = BitSet[u32]`) takes priority over the generic parent method
+	// inherited from the aliased type. Treat it as the resolved (non-generic) method so
+	// no generic instantiation suffix (`_T_u32`) is appended to its C name. See #27465.
+	exact_method_on_alias := exact_method_exists && exact_method.receiver_type != 0
+		&& g.table.sym(left_type).info is ast.Alias
+		&& g.unwrap_generic(exact_method.receiver_type).set_nr_muls(0) == g.unwrap_generic(left_type).set_nr_muls(0)
+	if has_structured_method_for_exact || exact_method_on_alias {
 		parent_method = exact_method
 	}
+	keep_alias_method := exact_method_on_alias && exact_method.generic_names.len == 0
 	match rec_sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
 			if rec_sym.info.concrete_types.len > 0 {
@@ -3409,7 +3559,7 @@ fn (mut g Gen) receiver_generic_call_context(left_type ast.Type, method_name str
 			if rec_sym.info.parent_type.has_flag(.generic) {
 				parent_sym := g.table.sym(rec_sym.info.parent_type)
 				if m := parent_sym.find_method(method_name) {
-					if !has_structured_method_for_exact {
+					if !has_structured_method_for_exact && !keep_alias_method {
 						parent_method = m
 					}
 				}
@@ -3420,7 +3570,7 @@ fn (mut g Gen) receiver_generic_call_context(left_type ast.Type, method_name str
 			if rec_sym.info.parent_idx > 0 {
 				parent_sym := g.table.sym(ast.idx_to_type(rec_sym.info.parent_idx))
 				if m := parent_sym.find_method(method_name) {
-					if !has_structured_method_for_exact {
+					if !has_structured_method_for_exact && !keep_alias_method {
 						parent_method = m
 					}
 				}
@@ -5360,7 +5510,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 
-	if g.is_autofree && node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {
+	if g.is_autofree && node.free_receiver && (!g.inside_lambda || g.inside_lambda_autofree_tmp)
+		&& !g.is_builtin_mod {
 		// The receiver expression needs to be freed, use the temp var.
 		fn_name := node.name.replace('.', '_')
 		arg_name := '_arg_expr_${fn_name}_0_${node.pos.pos}'
@@ -6129,7 +6280,11 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		g.is_autofree = old_is_autofree
 		g.is_autofree_tmp = false
 		g.strs_to_free0 << tmp_arg_init
-		// This tmp arg var will be freed with the rest of the vars at the end of the scope.
+		if g.track_lambda_autofree_tmp_arg_vars {
+			g.lambda_autofree_tmp_arg_vars << t
+		}
+		// This tmp arg var will be freed with the rest of the vars at the end of the scope,
+		// or explicitly after an inline lambda expression that does not run scope cleanup.
 	}
 }
 
@@ -6392,6 +6547,13 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		if is_variadic && i == expected_types.len - 1 {
 			break
 		}
+		if tmp := g.closure_frame_arg_tmps[arg.pos.pos] {
+			g.write(tmp)
+			if i < args.len - 1 || is_variadic {
+				g.write(', ')
+			}
+			continue
+		}
 		mut is_smartcast := false
 		if arg.expr is ast.Ident {
 			if arg.expr.obj is ast.Var {
@@ -6554,7 +6716,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				// name := '_tt${g.tmp_count_af}_arg_expr_${fn_name}_${i}'
 				name := '_arg_expr_${fn_name}_${i + 1}_${node.pos.pos}'
 				scope := g.file.scope.innermost(node.pos.pos)
-				if !g.is_autofree_tmp || scope.known_var(name) {
+				if (!g.is_autofree_tmp && (!g.inside_lambda || g.inside_lambda_autofree_tmp))
+					|| scope.known_var(name) {
 					tmp_arg := ast.CallArg{
 						typ:    arg.typ
 						is_mut: effective_arg.is_mut
@@ -7102,6 +7265,19 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 	}
 	if arg.is_mut && !exp_is_ptr {
 		g.write('&/*mut*/')
+	} else if arg.is_mut && arg_typ.is_ptr() && expected_type.is_ptr() && exp_sym.kind == .alias
+		&& g.table.unaliased_type(expected_type) == arg_typ {
+		if arg.expr is ast.PrefixExpr && arg.expr.op == .amp {
+			g.write('&(${exp_sym.cname}[]){')
+			g.arg_no_auto_deref = true
+			g.expr(ast.Expr(arg.expr))
+			g.arg_no_auto_deref = false
+			g.write('}[0]')
+		} else {
+			g.write('&/*mut alias*/')
+			g.expr(arg.expr)
+		}
+		return
 	} else if arg.is_mut && arg_typ.is_ptr() && expected_type.is_ptr()
 		&& g.table.sym(arg_typ).kind == .struct && expected_type == arg_typ.ref() {
 		if arg.expr is ast.PrefixExpr && arg.expr.op == .amp {

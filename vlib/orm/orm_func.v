@@ -31,7 +31,7 @@ pub fn new_query[T](conn Connection) &QueryBuilder[T] {
 		valid_sql_field_names: meta.map(sql_field_name(it))
 		conn:                  conn
 		config:                SelectConfig{
-			table: table_from_struct[T]()
+			table: table_from_struct[T](meta)
 		}
 		data:                  QueryData{}
 		where:                 QueryData{}
@@ -420,7 +420,7 @@ pub fn (qb_ &QueryBuilder[T]) set(assign string, values ...Primitive) !&QueryBui
 }
 
 // table_from_struct get table from struct
-fn table_from_struct[T]() Table {
+fn table_from_struct[T](meta []TableField) Table {
 	mut table_name := T.name
 	// Strip generic parameters from type name (e.g., Message[Payload] -> Message)
 	if bracket_pos := table_name.index('[') {
@@ -440,8 +440,10 @@ fn table_from_struct[T]() Table {
 		table_name = table_name.to_lower()
 	}
 	return Table{
-		name:  table_name
-		attrs: attrs
+		name:    table_name
+		attrs:   attrs
+		fields:  meta.map(it.name)
+		columns: meta.map(sql_field_name(it))
 	}
 }
 

@@ -395,6 +395,14 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			if branch.stmts.len > 0 {
 				mut stmt := branch.stmts.last()
 				if mut stmt is ast.ExprStmt {
+					// A trailing `spawn`/`go` is the value of this if-expression branch,
+					// so it must produce a usable thread handle (waiter, no detach),
+					// like the assignment form `t := spawn f()`. See issue #27485.
+					if mut stmt.expr is ast.SpawnExpr {
+						stmt.expr.is_expr = true
+					} else if mut stmt.expr is ast.GoExpr {
+						stmt.expr.is_expr = true
+					}
 					if mut stmt.expr is ast.ConcatExpr {
 						for mut val in stmt.expr.vals {
 							c.check_expr_option_or_result_call(val, c.expr(mut val))

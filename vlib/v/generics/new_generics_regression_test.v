@@ -68,16 +68,21 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 		&& summary_lines.any(it.contains(actual_clean_summary))
 	if !found_expected_summary && !found_clean_summary {
 		// Before failing, check if the actual failure count falls within an acceptable range.
-		// Different compilers (gcc, tcc, clang, msvc) may produce slightly different failure
-		// counts due to compiler-specific C code generation differences.
+		// Different compilers (gcc, tcc, clang, msvc) and host platforms (linux vs macos)
+		// produce different failure counts, both due to compiler-specific C codegen and because
+		// the per-platform test set differs slightly. The `-new-generic-solver` is also still in
+		// flux, so the absolute count drifts as it improves. The per-test `expected_failures`
+		// list below is the precise regression guard; this count band only catches gross moves.
+		acceptable_delta := 15
 		mut found_acceptable := false
 		for sline in summary_lines {
 			count_str := sline.all_after('files: ').all_before(' failed')
 			actual_count := count_str.int()
 			expected_str := actual_expected_summary.all_after('files: ').all_before(' failed')
 			expected_count := expected_str.int()
-			if actual_count > 0 && expected_count > 0 && actual_count >= expected_count - 2
-				&& actual_count <= expected_count + 2 {
+			if actual_count > 0 && expected_count > 0
+				&& actual_count >= expected_count - acceptable_delta
+				&& actual_count <= expected_count + acceptable_delta {
 				found_acceptable = true
 				break
 			}

@@ -18,7 +18,7 @@ diff -ur mbedtls.orig/include/mbedtls/check_config.h mbedtls/include/mbedtls/che
 diff -ur mbedtls.orig/include/mbedtls/mbedtls_config.h mbedtls/include/mbedtls/mbedtls_config.h
 --- mbedtls.orig/include/mbedtls/mbedtls_config.h	2026-04-02 17:26:31.910276365 +0200
 +++ mbedtls/include/mbedtls/mbedtls_config.h	2026-04-02 17:27:29.374384448 +0200
-@@ -4435,3 +4435,22 @@
+@@ -4435,3 +4435,28 @@
  //#define MBEDTLS_X509_MAX_FILE_PATH_LEN     512 /**< Maximum length of a path/filename string in bytes including the null terminator character ('\0'). */
  
  /** \} name SECTION: Module configuration options */
@@ -34,13 +34,43 @@ diff -ur mbedtls.orig/include/mbedtls/mbedtls_config.h mbedtls/include/mbedtls/m
 +#define MBEDTLS_PADLOCK_C
 +#endif // __TINYC__
 +
-+#if ( defined(__linux__) || defined(__FreeBSD__) ) || defined (__OpenBSD__)
++#if ( defined(__linux__) || defined(__FreeBSD__) ) || defined (__OpenBSD__) || defined(__APPLE__)
 +#define MBEDTLS_THREADING_PTHREAD
++#define MBEDTLS_THREADING_C
++#elif defined(_WIN32)
++// Windows has no pthreads; the mutex callbacks are provided via
++// MBEDTLS_THREADING_ALT (see vlib/net/mbedtls/mbedtls_threading.h, installed by
++// mbedtls_threading_set_alt() from the net.mbedtls module init()).
++#define MBEDTLS_THREADING_ALT
 +#define MBEDTLS_THREADING_C
 +#else
 +#undef MBEDTLS_THREADING_PTHREAD
 +#undef MBEDTLS_THREADING_C
 +#endif
+diff -ur mbedtls.orig/include/mbedtls/threading_alt.h mbedtls/include/mbedtls/threading_alt.h
+--- mbedtls.orig/include/mbedtls/threading_alt.h	1970-01-01 00:00:00.000000000 +0000
++++ mbedtls/include/mbedtls/threading_alt.h	2026-06-12 00:00:00.000000000 +0000
+@@ -0,0 +1,20 @@
++/*
++ * threading_alt.h - mbedtls_threading_mutex_t for MBEDTLS_THREADING_ALT.
++ *
++ * V provides this on Windows (which has no pthreads) so that
++ * MBEDTLS_THREADING_C can be enabled. The mutex is a Win32 CRITICAL_SECTION;
++ * the callbacks that operate on it live in
++ * vlib/net/mbedtls/mbedtls_threading.h and are installed once at startup via
++ * mbedtls_threading_set_alt() from the net.mbedtls module init().
++ */
++#ifndef MBEDTLS_THREADING_ALT_H
++#define MBEDTLS_THREADING_ALT_H
++
++#include <windows.h>
++
++typedef struct mbedtls_threading_mutex_t {
++    CRITICAL_SECTION cs;
++    char is_valid;
++} mbedtls_threading_mutex_t;
++
++#endif /* MBEDTLS_THREADING_ALT_H */
 diff -ur mbedtls.orig/library/alignment.h mbedtls/library/alignment.h
 --- mbedtls.orig/library/alignment.h	2026-04-02 17:26:31.918276380 +0200
 +++ mbedtls/library/alignment.h	2026-04-02 17:30:51.350689732 +0200

@@ -7,6 +7,7 @@ import time
 const mbedtls_client_read_timeout_ms = $d('mbedtls_client_read_timeout_ms', 10_000)
 const mbedtls_server_read_timeout_ms = $d('mbedtls_server_read_timeout_ms', 41_000)
 const default_mbedtls_client_read_timeout = mbedtls_client_read_timeout_ms * time.millisecond
+const default_mbedtls_server_read_timeout = mbedtls_server_read_timeout_ms * time.millisecond
 
 fn init_rng(mut ctr_drbg C.mbedtls_ctr_drbg_context, mut entropy C.mbedtls_entropy_context) ! {
 	$if trace_ssl ? {
@@ -154,6 +155,12 @@ pub mut:
 	// strings in config.alpn_protocols. mbedtls stores this pointer without
 	// copying, so it must outlive the SSL config; it is freed in shutdown().
 	alpn_list &&char = unsafe { nil }
+	// last_write_sent reports the most recent write_ptr's progress for retry
+	// decisions: 0 = provably nothing was sent (safe to replay), or -1 = the
+	// count is indeterminate because a failed/retryable write may have already
+	// flushed a record to the peer (TLS cannot prove zero). On full success it
+	// equals the bytes written.
+	last_write_sent int
 }
 
 // SSLListener listens on a TCP port and accepts connection secured with TLS
@@ -226,10 +233,6 @@ fn (mut l SSLListener) init() ! {
 	C.mbedtls_ssl_init(&l.ssl)
 	C.mbedtls_ssl_config_init(&l.conf)
 	init_rng(mut l.ctr_drbg, mut l.entropy)!
-	$if trace_mbedtls_timeouts ? {
-		dump(mbedtls_server_read_timeout_ms)
-	}
-	C.mbedtls_ssl_conf_read_timeout(&l.conf, mbedtls_server_read_timeout_ms)
 	l.certs = &SSLCerts{}
 	C.mbedtls_x509_crt_init(&l.certs.client_cert)
 	C.mbedtls_pk_init(&l.certs.client_key)
@@ -275,6 +278,11 @@ fn (mut l SSLListener) init() ! {
 		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_config_defaults can't set config defaults ret: ${ret}",
 			ret)
 	}
+	listener_read_timeout := ssl_listener_read_timeout(l.config)
+	$if trace_mbedtls_timeouts ? {
+		dump(listener_read_timeout)
+	}
+	C.mbedtls_ssl_conf_read_timeout(&l.conf, ssl_read_timeout_ms(listener_read_timeout))
 
 	C.mbedtls_ssl_conf_ca_chain(&l.conf, &l.certs.cacert, unsafe { nil })
 	ret = C.mbedtls_ssl_conf_own_cert(&l.conf, &l.certs.client_cert, &l.certs.client_key)
@@ -320,8 +328,8 @@ fn (mut l SSLListener) init_sni(get_cert_callback fn (mut SSLListener, string) !
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
-	C.mbedtls_ssl_conf_sni(&l.conf, fn [get_cert_callback, mut l] (p_info voidptr, ssl &C.mbedtls_ssl_context, name &char, lng int) int {
-		host := unsafe { name.vstring_literal_with_len(lng) }
+	C.mbedtls_ssl_conf_sni(&l.conf, fn [get_cert_callback, mut l] (p_info voidptr, ssl &C.mbedtls_ssl_context, name &u8, lng usize) int {
+		host := unsafe { name.vstring_literal_with_len(int(lng)) }
 		if certs := get_cert_callback(mut l, host) {
 			return C.mbedtls_ssl_set_hs_own_cert(ssl, &certs.client_cert, &certs.client_key)
 		} else {
@@ -332,15 +340,34 @@ fn (mut l SSLListener) init_sni(get_cert_callback fn (mut SSLListener, string) !
 
 // accepts a new connection and returns a SSLConn of the connected client
 pub fn (mut l SSLListener) accept() !&SSLConn {
-	mut conn := &SSLConn{
-		config: l.config
-		opened: true
+	mut conn := l.accept_tcp_connection()!
+
+	C.mbedtls_ssl_init(&conn.ssl)
+	C.mbedtls_ssl_config_init(&conn.conf)
+	ret := C.mbedtls_ssl_setup(&conn.ssl, &l.conf)
+	if ret != 0 {
+		conn.shutdown() or {}
+		return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_setup SSL setup failed ret: ${ret}',
+			ret)
 	}
 
+	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
+		C.mbedtls_net_recv_timeout)
+	conn.server_handshake(net.infinite_timeout)!
+	return conn
+}
+
+fn (mut l SSLListener) accept_tcp_connection() !&SSLConn {
+	mut conn := &SSLConn{
+		config:       l.config
+		duration:     ssl_listener_read_timeout(l.config)
+		read_timeout: ssl_listener_read_timeout(l.config)
+		opened:       true
+	}
 	ip := [16]u8{}
 	iplen := usize(0)
 
-	mut ret := C.mbedtls_net_accept(&l.server_fd, &conn.server_fd, &ip, 16, &iplen)
+	ret := C.mbedtls_net_accept(&l.server_fd, &conn.server_fd, &ip, 16, &iplen)
 	if ret != 0 {
 		return error_with_code("net.mbedtls SSLListener.accept, mbedtls_net_accept can't accept connection ret: ${ret}",
 			ret)
@@ -350,32 +377,97 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 	if iplen == 4 {
 		conn.ip = '${ip[0]}.${ip[1]}.${ip[2]}.${ip[3]}'
 	}
+	return conn
+}
+
+// do_handshake_loop drives the non-blocking TLS server handshake to completion
+// (or `deadline`). It never calls shutdown: on any error it just returns, leaving
+// cleanup to the caller. server_handshake wraps it for the synchronous accept
+// path (self-shutdown on error); the threaded server path (complete_handshake)
+// lets its worker defer own the single shutdown instead.
+fn (mut conn SSLConn) do_handshake_loop(deadline time.Time) ! {
+	mut ret := C.mbedtls_ssl_handshake(&conn.ssl)
+	for ret != 0 {
+		match ret {
+			C.MBEDTLS_ERR_SSL_WANT_READ {
+				conn.wait_for_read(ssl_remaining_timeout(deadline))!
+			}
+			C.MBEDTLS_ERR_SSL_WANT_WRITE {
+				conn.wait_for_write(ssl_remaining_timeout(deadline))!
+			}
+			else {
+				return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_handshake failed 1; handshake ret: ${ret}',
+					ret)
+			}
+		}
+
+		ret = C.mbedtls_ssl_handshake(&conn.ssl)
+	}
+}
+
+fn (mut conn SSLConn) server_handshake(timeout time.Duration) ! {
+	deadline := ssl_timeout_deadline(timeout)
+	conn.do_handshake_loop(deadline) or {
+		conn.shutdown() or {
+			$if trace_ssl ? {
+				eprintln('${@METHOD} shutdown ---> res: ${err}')
+			}
+		}
+		return err
+	}
+}
+
+// accept_with_timeout waits up to `timeout` for a new client before accepting it.
+pub fn (mut l SSLListener) accept_with_timeout(timeout time.Duration) !&SSLConn {
+	return l.accept_with_timeouts(timeout, timeout)
+}
+
+// accept_raw_with_timeout waits up to `accept_timeout` for a new client, accepts
+// the raw TCP connection and sets up its (non-blocking) SSL context, but does NOT
+// perform the TLS handshake. The returned conn is non-blocking with a non-blocking
+// bio; the caller must run conn.complete_handshake to finish negotiation. This lets
+// the threaded server accept on one thread and handshake on a worker thread.
+pub fn (mut l SSLListener) accept_raw_with_timeout(accept_timeout time.Duration) !&SSLConn {
+	wait_for(l.server_fd.fd, .read, accept_timeout)!
+	mut conn := l.accept_tcp_connection()!
 
 	C.mbedtls_ssl_init(&conn.ssl)
 	C.mbedtls_ssl_config_init(&conn.conf)
-	ret = C.mbedtls_ssl_setup(&conn.ssl, &l.conf)
+	net.set_blocking(conn.handle, false) or {
+		conn.shutdown() or {}
+		return err
+	}
+	ret := C.mbedtls_ssl_setup(&conn.ssl, &l.conf)
 	if ret != 0 {
+		conn.shutdown() or {}
 		return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_setup SSL setup failed ret: ${ret}',
 			ret)
 	}
 
+	C.v_mbedtls_ssl_set_bio_nonblocking(&conn.ssl, &conn.server_fd)
+	return conn
+}
+
+// complete_handshake finishes the TLS server handshake on a conn returned by
+// accept_raw_with_timeout, waiting up to `timeout`, then restores blocking mode
+// and the blocking bio. It never calls shutdown: on any error it returns and the
+// caller owns cleanup (so the conn is shut down exactly once, by the caller).
+pub fn (mut conn SSLConn) complete_handshake(timeout time.Duration) ! {
+	deadline := ssl_timeout_deadline(timeout)
+	conn.do_handshake_loop(deadline)!
+	net.set_blocking(conn.handle, true)!
 	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
 		C.mbedtls_net_recv_timeout)
+}
 
-	ret = C.mbedtls_ssl_handshake(&conn.ssl)
-	for ret != 0 {
-		if ret != C.MBEDTLS_ERR_SSL_WANT_READ && ret != C.MBEDTLS_ERR_SSL_WANT_WRITE {
-			conn.shutdown() or {
-				$if trace_ssl ? {
-					eprintln('${@METHOD} shutdown ---> res: ${err}')
-				}
-			}
-			return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_handshake failed 1; handshake ret: ${ret}',
-				ret)
-		}
-		ret = C.mbedtls_ssl_handshake(&conn.ssl)
+// accept_with_timeouts waits up to `accept_timeout` for a new client, then
+// waits up to `handshake_timeout` for the TLS server handshake to complete.
+pub fn (mut l SSLListener) accept_with_timeouts(accept_timeout time.Duration, handshake_timeout time.Duration) !&SSLConn {
+	mut conn := l.accept_raw_with_timeout(accept_timeout)!
+	conn.complete_handshake(handshake_timeout) or {
+		conn.shutdown() or {}
+		return err
 	}
-
 	return conn
 }
 
@@ -407,6 +499,13 @@ fn ssl_read_timeout_ms(timeout time.Duration) u32 {
 	return u32(timeout_ms)
 }
 
+fn ssl_listener_read_timeout(config SSLConnectConfig) time.Duration {
+	if config.read_timeout == default_mbedtls_client_read_timeout {
+		return default_mbedtls_server_read_timeout
+	}
+	return config.read_timeout
+}
+
 fn ssl_timeout_deadline(timeout time.Duration) time.Time {
 	if timeout <= 0 || timeout == net.infinite_timeout {
 		return time.unix(0)
@@ -418,7 +517,11 @@ fn ssl_remaining_timeout(deadline time.Time) time.Duration {
 	if deadline.unix() == 0 {
 		return net.infinite_timeout
 	}
-	return deadline - time.now()
+	remaining := deadline - time.now()
+	if remaining <= 0 {
+		return time.nanosecond
+	}
+	return remaining
 }
 
 // read_timeout returns the current SSL read timeout.
@@ -467,6 +570,10 @@ pub fn (mut s SSLConn) shutdown() ! {
 	if !s.opened {
 		return error('net.mbedtls SSLConn.shutdown, connection was not open')
 	}
+	// Mark closed before freeing so a second shutdown (e.g. a worker defer racing
+	// close_idle) is a harmless no-op rather than a double-free of the mbedtls
+	// contexts below.
+	s.opened = false
 	if unsafe { s.certs != nil } {
 		C.mbedtls_x509_crt_free(&s.certs.cacert)
 		C.mbedtls_x509_crt_free(&s.certs.client_cert)
@@ -785,6 +892,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 		}
 	}
 
+	s.last_write_sent = 0
 	deadline := ssl_timeout_deadline(s.duration)
 	unsafe {
 		mut ptr_base := bytes
@@ -793,6 +901,11 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 			remaining := len - total_sent
 			mut sent := C.mbedtls_ssl_write(&s.ssl, ptr, remaining)
 			if sent <= 0 {
+				// The write did not fully complete; a retryable error can leave a
+				// record partially flushed, so the sent count is no longer
+				// provable. Mark it indeterminate (a later full success below
+				// resets it to the exact length).
+				s.last_write_sent = -1
 				match sent {
 					C.MBEDTLS_ERR_SSL_WANT_READ {
 						s.wait_for_read(ssl_remaining_timeout(deadline))!
@@ -812,6 +925,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 				}
 			}
 			total_sent += sent
+			s.last_write_sent = total_sent
 		}
 	}
 	return total_sent

@@ -19,7 +19,12 @@ fn (mut g Gen) profile_fn(fn_decl ast.FnDecl) {
 		g.defer_profile_code = ''
 	} else {
 		measure_fn_name := if g.pref.os == .macos { 'time__vpc_now_darwin' } else { 'time__vpc_now' }
-		fn_profile_counter_name := 'vpc_${cfn_name}'
+		// Prefix the counter names with a unique per-function index. Without it the derived
+		// names collide: a function `…__lower`'s call counter is `vpc_…__lower_calls` (u64),
+		// which is identical to a function `…__lower_calls`'s time accumulator `vpc_…__lower_calls`
+		// (double) — a "redefinition with a different type" C error. The same holds for the
+		// `_only_current` suffix. The index makes every base name unambiguous.
+		fn_profile_counter_name := 'vpc_${g.pcs.len}_${cfn_name}'
 		fn_profile_counter_name_calls := '${fn_profile_counter_name}_calls'
 		g.writeln('')
 		should_restore_v__profile_enabled := g.pref.profile_fns.len > 0
