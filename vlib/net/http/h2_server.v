@@ -448,14 +448,14 @@ fn (mut c H2ServerConn) finalize_headers(mut s H2ServerStream, mut handler Handl
 }
 
 // on_trailers handles a second HEADERS block on an already-open stream: an
-// HTTP/2 trailer section (RFC 9113 §8.1). It must carry END_STREAM and, once
-// assembled, completes the request.
+// HTTP/2 trailer section (RFC 9113 §8.1). The block is always assembled and
+// decoded (to keep the HPACK table in sync); whether it is well-formed — it must
+// carry END_STREAM and no pseudo-headers — is decided in finalize_trailers, so a
+// malformed trailer section is reset as a stream error without desyncing HPACK or
+// tearing down the connection.
 fn (mut c H2ServerConn) on_trailers(mut s H2ServerStream, frame H2HeadersFrame, mut handler Handler) ! {
-	if !frame.end_stream {
-		return error('h2 server: trailing HEADERS without END_STREAM on stream ${frame.stream_id}')
-	}
 	s.in_trailers = true
-	s.end_stream = true
+	s.end_stream = frame.end_stream
 	s.trailer_block << frame.fragment
 	if !frame.end_headers {
 		c.awaiting_cont = frame.stream_id
@@ -465,27 +465,38 @@ fn (mut c H2ServerConn) on_trailers(mut s H2ServerStream, frame H2HeadersFrame, 
 }
 
 fn (mut c H2ServerConn) finalize_trailers(mut s H2ServerStream, mut handler Handler) ! {
-	// Decode (to keep the HPACK table in sync) and validate. Trailers carry no
-	// pseudo-headers and follow the §8.2 field rules; a violation is a stream
-	// error, a bad HPACK block a connection-level COMPRESSION_ERROR.
+	// Decode first (always, to keep the HPACK dynamic table in sync) then
+	// validate. Every trailer fault below is a stream error (RFC 9113 §8.1.1):
+	// reset just this stream and keep the connection alive.
 	trailers := c.decoder.decode(s.trailer_block) or {
 		c.send_rst_stream(s.id, .compression_error)!
 		c.streams.delete(s.id)
 		return
 	}
-	for f in trailers {
-		reason := if f.name.starts_with(':') {
-			'pseudo-header "${f.name}" in trailers'
-		} else {
-			h2_request_field_error(f.name, f.value)
-		}
-		if reason != '' {
-			c.send_rst_stream(s.id, .protocol_error)!
-			c.streams.delete(s.id)
-			return
+	mut reason := if !s.end_stream {
+		// A trailer section MUST terminate the stream (RFC 9113 §8.1).
+		'trailing HEADERS without END_STREAM'
+	} else {
+		''
+	}
+	if reason == '' {
+		for f in trailers {
+			// Trailers carry no pseudo-headers and follow the §8.2 field rules.
+			reason = if f.name.starts_with(':') {
+				'pseudo-header "${f.name}" in trailers'
+			} else {
+				h2_request_field_error(f.name, f.value)
+			}
+			if reason != '' {
+				break
+			}
 		}
 	}
-	c.awaiting_cont = 0
+	if reason != '' {
+		c.send_rst_stream(s.id, .protocol_error)!
+		c.streams.delete(s.id)
+		return
+	}
 	c.run_request(mut s, mut handler)!
 }
 
@@ -573,7 +584,14 @@ fn (mut c H2ServerConn) build_request(s &H2ServerStream) !Request {
 					if !h2_all_digits(f.value) {
 						return error('h2 server: malformed content-length "${f.value}"')
 					}
-					content_length = f.value.int()
+					cl := f.value.int()
+					// Multiple content-length fields with differing values are a
+					// malformed request (RFC 9110 §8.6); validate every occurrence,
+					// not just the last.
+					if content_length >= 0 && content_length != cl {
+						return error('h2 server: conflicting content-length values ${content_length} and ${cl}')
+					}
+					content_length = cl
 				}
 				req.header.add_custom(f.name, f.value) or {}
 			}

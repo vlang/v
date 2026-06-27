@@ -481,6 +481,71 @@ fn test_h2_server_rejects_content_length_mismatch() {
 	assert code == i64(u32(H2ErrorCode.protocol_error)), 'content-length mismatch: expected RST_STREAM(PROTOCOL_ERROR), got ${code}'
 }
 
+// RFC 9110 §8.6: conflicting duplicate content-length fields are malformed —
+// every occurrence is validated, not just the last.
+fn test_h2_server_rejects_conflicting_content_length() {
+	mut enc := H2HpackEncoder{}
+	block := enc.encode([
+		H2HeaderField{':method', 'POST'},
+		H2HeaderField{':scheme', 'https'},
+		H2HeaderField{':authority', 'h.example'},
+		H2HeaderField{':path', '/upload'},
+		H2HeaderField{'content-length', '5'},
+		H2HeaderField{'content-length', '0'},
+	])
+	mut out := []u8{}
+	out << h2_client_preface.bytes()
+	out << H2Frame(H2SettingsFrame{}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    block
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_rst_or_response(mut client_end, out, 'conflicting content-length')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'conflicting content-length: expected RST_STREAM(PROTOCOL_ERROR), got ${code}'
+}
+
+// RFC 9113 §8.1: a trailer section that does not carry END_STREAM is malformed.
+// It must be a STREAM error (RST_STREAM) — the connection stays up — not a GOAWAY.
+fn test_h2_server_rejects_trailers_without_end_stream() {
+	mut enc := H2HpackEncoder{}
+	req_block := enc.encode([
+		H2HeaderField{':method', 'POST'},
+		H2HeaderField{':scheme', 'https'},
+		H2HeaderField{':authority', 'h.example'},
+		H2HeaderField{':path', '/upload'},
+	])
+	trailer_block := enc.encode([
+		H2HeaderField{'x-checksum', 'abc123'},
+	])
+	mut out := []u8{}
+	out << h2_client_preface.bytes()
+	out << H2Frame(H2SettingsFrame{}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    req_block
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	out << H2Frame(H2DataFrame{
+		stream_id:  1
+		data:       'hi'.bytes()
+		end_stream: false
+	}).encode()
+	// Trailer HEADERS missing END_STREAM.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    trailer_block
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_rst_or_response(mut client_end, out, 'trailers without END_STREAM')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'trailers without END_STREAM: expected RST_STREAM(PROTOCOL_ERROR), got ${code}'
+}
+
 // RFC 9113 §8.1: a POST with a trailer section (a 2nd HEADERS block ending the
 // stream) is accepted and dispatched.
 fn test_h2_server_accepts_post_with_trailers() {
