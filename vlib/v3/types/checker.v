@@ -3711,13 +3711,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 }
 
 fn (tc &TypeChecker) return_type_compatible(actual Type, expected Type) bool {
-	if tc.type_compatible(actual, expected) {
-		return true
-	}
-	if actual is Pointer {
-		return tc.type_compatible(actual.base_type, expected)
-	}
-	return false
+	return tc.type_compatible(actual, expected)
 }
 
 fn multi_return_payload_type(typ Type) ?MultiReturn {
@@ -3749,6 +3743,12 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			tc.remember_expr_type(id, info.return_type)
 		}
 		tc.check_call_arg_types(id, node, info)
+		return
+	}
+	if tc.is_unsupported_hex_call(node) {
+		if tc.should_diagnose(id) {
+			tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
+		}
 		return
 	}
 	if tc.call_has_ambiguous_selective_import(node) {
@@ -3971,12 +3971,14 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 					}
 				}
 				'hex' {
-					return CallInfo{
-						name:         '[]u8.hex'
-						params:       tarr1(base_type)
-						return_type:  Type(string_)
-						has_receiver: true
-						params_known: true
+					if tc.is_builtin_hex_receiver(base_type) {
+						return CallInfo{
+							name:         '[]u8.hex'
+							params:       tarr1(base_type)
+							return_type:  Type(string_)
+							has_receiver: true
+							params_known: true
+						}
 					}
 				}
 				'repeat' {
@@ -4228,7 +4230,8 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				return tc.call_info(mname, true)
 			}
 		}
-		if fn_node.value in ['str', 'hex'] {
+		if fn_node.value == 'str'
+			|| (fn_node.value == 'hex' && tc.is_builtin_hex_receiver(base_type)) {
 			return CallInfo{
 				name:         ''
 				params:       tarr1(base_type)
@@ -4294,6 +4297,28 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) is_builtin_hex_receiver(typ Type) bool {
+	clean := unwrap_pointer(typ)
+	if clean is Alias {
+		return tc.is_builtin_hex_receiver(clean.base_type)
+	}
+	if clean is Array {
+		return is_byte_type(clean.elem_type)
+	}
+	if clean is Primitive {
+		return prim_c_type_from(clean.props, clean.size) in ['u8', 'i8', 'u16', 'i16', 'u32', 'int',
+			'u64', 'i64']
+	}
+	return clean is Rune || clean is Char
+}
+
+fn is_byte_type(typ Type) bool {
+	if typ is Alias {
+		return is_byte_type(typ.base_type)
+	}
+	return typ is Primitive && typ.props.has(.integer) && typ.props.has(.unsigned) && typ.size == 8
 }
 
 fn (mut tc TypeChecker) resolve_generic_call_info(fn_node flat.Node) ?CallInfo {
@@ -5744,6 +5769,9 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 		base_type := tc.resolve_type(tc.a.child(fn_node, 0))
 		clean_type := unwrap_pointer(base_type)
 		if clean_type is Array || clean_type is ArrayFixed || clean_type is Map {
+			if fn_node.value == 'hex' {
+				return tc.is_builtin_hex_receiver(base_type)
+			}
 			return true
 		}
 		if clean_type is String {
@@ -5798,6 +5826,18 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 		}
 	}
 	return false
+}
+
+fn (tc &TypeChecker) is_unsupported_hex_call(node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	fn_node := tc.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.value != 'hex' || fn_node.children_count == 0 {
+		return false
+	}
+	base_type := tc.resolve_type(tc.a.child(fn_node, 0))
+	return !tc.is_builtin_hex_receiver(base_type)
 }
 
 fn (tc &TypeChecker) call_has_ambiguous_selective_import(node flat.Node) bool {
