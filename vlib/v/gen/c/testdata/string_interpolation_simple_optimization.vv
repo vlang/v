@@ -10,8 +10,13 @@ fn interp_static(n int, suffix string) string {
 	return 'n=${n}:${suffix}'
 }
 
+fn interp_large_literal() string {
+	return '${2147483648}'
+}
+
 fn main() {
 	assert interp_number(42) == '42'
 	assert interp_chain('a', 7, 'b') == 'a7b'
 	assert interp_static(9, 'z') == 'n=9:z'
+	assert interp_large_literal() == '2147483648'
 }

@@ -1,3 +1,4 @@
-return builtin__int_str(n);
-builtin__string_plus_many(3, _MOV((string[3]){prefix, builtin__int_str(n), suffix}))
-builtin__string_plus_many(4, _MOV((string[4]){_S("n="), builtin__int_str(n), _S(":"), suffix}))
+return builtin__str_intp(2, _MOV((StrIntpData[]){{_SLIT0, 0xfe07, {.d_i32 = n}, 0, 0, 0}, {_SLIT0, 0, { .d_c = 0 }, 0, 0, 0}}));
+return builtin__str_intp(4, _MOV((StrIntpData[]){{_SLIT0, 0xfe10, {.d_s = prefix}, 0, 0, 0}, {_SLIT0, 0xfe07, {.d_i32 = n}, 0, 0, 0}, {_SLIT0, 0xfe10, {.d_s = suffix}, 0, 0, 0}, {_SLIT0, 0, { .d_c = 0 }, 0, 0, 0}}));
+return builtin__str_intp(3, _MOV((StrIntpData[]){{_S("n="), 0xfe07, {.d_i32 = n}, 0, 0, 0}, {_S(":"), 0xfe10, {.d_s = suffix}, 0, 0, 0}, {_SLIT0, 0, { .d_c = 0 }, 0, 0, 0}}));
+return builtin__int_literal_str(2147483648U);

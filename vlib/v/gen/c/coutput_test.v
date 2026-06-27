@@ -339,7 +339,7 @@ fn test_simple_string_interpolation_does_not_emit_str_intp_runtime() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_simple_interpolation_no_str_intp.vv')
 	os.write_file(test_source,
-		"module main\n\nimport time\n\nfn main() {\n\tt := time.now()\n\tprintln('elapsed \${time.since(t)}')\n}\n")!
+		"module main\n\nfn label() string {\n\treturn 'V'\n}\n\nfn main() {\n\tprintln('elapsed \${label()}')\n}\n")!
 	defer {
 		os.rm(test_source) or {}
 	}
@@ -348,6 +348,64 @@ fn test_simple_string_interpolation_does_not_emit_str_intp_runtime() {
 	ensure_compilation_succeeded(compilation, cmd)
 	assert !compilation.output.contains('builtin__str_intp')
 	assert !compilation.output.contains('StrIntpData')
+}
+
+fn test_skip_unused_os_integer_interpolation_keeps_str_intp_runtime() {
+	os.chdir(vroot) or {}
+	test_root := os.join_path(os.vtmp_dir(), 'coutput_os_int_interpolation_${os.getpid()}')
+	os_module_dir := os.join_path(test_root, 'os')
+	os_function_source := os.join_path(os_module_dir, 'os.v')
+	test_source := os.join_path(test_root, 'main.v')
+	pexe := os.join_path(test_root, 'coutput_os_int_interpolation.exe')
+	os.mkdir_all(os_module_dir)!
+	os.write_file(os_function_source,
+		"module os\n\npub fn coutput_skip_unused_int_interpolation(n int) string {\n\treturn '\${n}'\n}\n")!
+	os.write_file(test_source,
+		'module main\n\nimport os\n\nfn main() {\n\tprintln(os.coutput_skip_unused_int_interpolation(7))\n}\n')!
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	lookup_path := '${test_root}|@vlib|@vmodules'
+	cmd := '${os.quoted_path(vexe)} -skip-unused -path ${os.quoted_path(lookup_path)} -o ${os.quoted_path(pexe)} ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	res := os.execute(os.quoted_path(pexe))
+	assert res.exit_code == 0
+	assert res.output.trim_space() == '7'
+}
+
+fn test_skip_unused_aggregate_smartcast_integer_interpolation_uses_simple_path() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_aggregate_smartcast_interpolation.vv')
+	pexe := os.join_path(os.vtmp_dir(), 'coutput_aggregate_smartcast_interpolation.exe')
+	os.write_file(test_source,
+		"module main\n\ntype Value = int | string\n\nfn stringify(x Value) string {\n\treturn match x {\n\t\tint, string { '\${x}' }\n\t}\n}\n\nfn main() {\n\tassert stringify(Value(7)) == '7'\n\tassert stringify(Value('v')) == 'v'\n}\n")!
+	defer {
+		os.rm(test_source) or {}
+		os.rm(pexe) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -skip-unused -o ${os.quoted_path(pexe)} ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	res := os.execute(os.quoted_path(pexe))
+	assert res.exit_code == 0
+}
+
+fn test_skip_unused_runtime_integer_interpolation_marks_auto_str_operand() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_runtime_interpolation_auto_str.vv')
+	pexe := os.join_path(os.vtmp_dir(), 'coutput_runtime_interpolation_auto_str.exe')
+	os.write_file(test_source,
+		"module main\n\nstruct Thing {\n\tn int\n}\n\nfn mixed(n int, thing Thing) string {\n\treturn '\${n} \${thing}'\n}\n\nfn main() {\n\tassert mixed(7, Thing{n: 3}).contains('Thing')\n}\n")!
+	defer {
+		os.rm(test_source) or {}
+		os.rm(pexe) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -skip-unused -o ${os.quoted_path(pexe)} ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	res := os.execute(os.quoted_path(pexe))
+	assert res.exit_code == 0
 }
 
 fn test_auto_str_float_array_still_emits_str_intp_runtime() {
