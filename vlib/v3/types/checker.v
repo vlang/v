@@ -234,23 +234,18 @@ pub mut:
 	// Scope depth at which each method-value local was marked, so a reassignment to a
 	// non-method value only clears the marker when it dominates later uses (same-or-shallower
 	// scope); a reassignment in a deeper conditional/loop scope keeps the maybe-method marker.
-	method_value_local_depth map[string]int
-	// Local variables bound to a capturing fn literal (`cb := fn [x] () { ... }`) in the
-	// current function. v3 currently lowers captures through one global slot per literal site,
-	// so a stored/returned alias has the same escape hazard as a method value.
-	capturing_fn_literal_locals      map[string]bool
-	capturing_fn_literal_local_depth map[string]int
-	cur_fn_node_id                   int = -1
-	expr_type_values                 []Type // node_id -> complex/contextual resolved type
-	expr_type_set                    []bool
-	checking_nodes                   []bool
-	diagnose_unknown_calls           bool
-	reject_unlowered_map_mutation    bool
-	reject_unsupported_generics      bool
-	diagnostic_files                 map[string]bool
-	cur_fn_ret_type                  Type = Type(void_)
-	smartcasts                       map[string]Type
-	selfhost                         bool
+	method_value_local_depth      map[string]int
+	cur_fn_node_id                int = -1
+	expr_type_values              []Type // node_id -> complex/contextual resolved type
+	expr_type_set                 []bool
+	checking_nodes                []bool
+	diagnose_unknown_calls        bool
+	reject_unlowered_map_mutation bool
+	reject_unsupported_generics   bool
+	diagnostic_files              map[string]bool
+	cur_fn_ret_type               Type = Type(void_)
+	smartcasts                    map[string]Type
+	selfhost                      bool
 mut:
 	type_cache &TypeCache = unsafe { nil }
 }
@@ -259,60 +254,58 @@ mut:
 pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 	fs := new_scope(unsafe { nil })
 	return TypeChecker{
-		a:                                a
-		fn_ret_types:                     map[string]Type{}
-		fn_param_types:                   map[string][]Type{}
-		fn_ret_type_texts:                map[string]string{}
-		fn_param_type_texts:              map[string][]string{}
-		fn_type_files:                    map[string]string{}
-		fn_type_modules:                  map[string]string{}
-		fn_generic_params:                map[string][]string{}
-		fn_variadic:                      map[string]bool{}
-		c_variadic_fns:                   map[string]bool{}
-		fn_implicit_veb_ctx:              map[string]bool{}
-		structs:                          map[string][]StructField{}
-		struct_generic_params:            map[string][]string{}
-		struct_field_c_abi_fns:           map[string]string{}
-		generic_method_value_info:        map[string]CallInfo{}
-		params_structs:                   map[string]bool{}
-		unions:                           map[string]bool{}
-		type_aliases:                     map[string]string{}
-		type_alias_c_abi_fns:             map[string]string{}
-		sum_types:                        map[string][]string{}
-		enum_names:                       map[string]bool{}
-		enum_fields:                      map[string][]string{}
-		flag_enums:                       map[string]bool{}
-		interface_names:                  map[string]bool{}
-		interface_fields:                 map[string][]StructField{}
-		interface_embeds:                 map[string][]string{}
-		interface_abstract_methods:       map[string][]string{}
-		c_globals:                        map[string]Type{}
-		const_types:                      map[string]Type{}
-		const_exprs:                      map[string]flat.NodeId{}
-		const_modules:                    map[string]string{}
-		const_files:                      map[string]string{}
-		const_suffixes:                   map[string]string{}
-		imports:                          map[string]string{}
-		file_imports:                     map[string]string{}
-		file_selective_imports:           map[string][]string{}
-		file_modules:                     map[string]string{}
-		file_scope:                       fs
-		cur_scope:                        fs
-		resolved_call_names:              []string{len: a.nodes.len}
-		resolved_call_set:                []bool{len: a.nodes.len}
-		resolved_fn_value_names:          []string{len: a.nodes.len}
-		resolved_fn_value_set:            []bool{len: a.nodes.len}
-		method_values_by_fn:              map[int][]string{}
-		method_value_locals:              map[string]bool{}
-		method_value_local_depth:         map[string]int{}
-		capturing_fn_literal_locals:      map[string]bool{}
-		capturing_fn_literal_local_depth: map[string]int{}
-		expr_type_values:                 []Type{len: a.nodes.len, init: Type(void_)}
-		expr_type_set:                    []bool{len: a.nodes.len}
-		checking_nodes:                   []bool{len: a.nodes.len}
-		diagnostic_files:                 map[string]bool{}
-		smartcasts:                       map[string]Type{}
-		type_cache:                       &TypeCache{
+		a:                          a
+		fn_ret_types:               map[string]Type{}
+		fn_param_types:             map[string][]Type{}
+		fn_ret_type_texts:          map[string]string{}
+		fn_param_type_texts:        map[string][]string{}
+		fn_type_files:              map[string]string{}
+		fn_type_modules:            map[string]string{}
+		fn_generic_params:          map[string][]string{}
+		fn_variadic:                map[string]bool{}
+		c_variadic_fns:             map[string]bool{}
+		fn_implicit_veb_ctx:        map[string]bool{}
+		structs:                    map[string][]StructField{}
+		struct_generic_params:      map[string][]string{}
+		struct_field_c_abi_fns:     map[string]string{}
+		generic_method_value_info:  map[string]CallInfo{}
+		params_structs:             map[string]bool{}
+		unions:                     map[string]bool{}
+		type_aliases:               map[string]string{}
+		type_alias_c_abi_fns:       map[string]string{}
+		sum_types:                  map[string][]string{}
+		enum_names:                 map[string]bool{}
+		enum_fields:                map[string][]string{}
+		flag_enums:                 map[string]bool{}
+		interface_names:            map[string]bool{}
+		interface_fields:           map[string][]StructField{}
+		interface_embeds:           map[string][]string{}
+		interface_abstract_methods: map[string][]string{}
+		c_globals:                  map[string]Type{}
+		const_types:                map[string]Type{}
+		const_exprs:                map[string]flat.NodeId{}
+		const_modules:              map[string]string{}
+		const_files:                map[string]string{}
+		const_suffixes:             map[string]string{}
+		imports:                    map[string]string{}
+		file_imports:               map[string]string{}
+		file_selective_imports:     map[string][]string{}
+		file_modules:               map[string]string{}
+		file_scope:                 fs
+		cur_scope:                  fs
+		resolved_call_names:        []string{len: a.nodes.len}
+		resolved_call_set:          []bool{len: a.nodes.len}
+		resolved_fn_value_names:    []string{len: a.nodes.len}
+		resolved_fn_value_set:      []bool{len: a.nodes.len}
+		method_values_by_fn:        map[int][]string{}
+		method_value_locals:        map[string]bool{}
+		method_value_local_depth:   map[string]int{}
+		expr_type_values:           []Type{len: a.nodes.len, init: Type(void_)}
+		expr_type_set:              []bool{len: a.nodes.len}
+		checking_nodes:             []bool{len: a.nodes.len}
+		diagnostic_files:           map[string]bool{}
+		smartcasts:                 map[string]Type{}
+		type_cache:                 &TypeCache{
 			parse_entries: map[string]Type{}
 			c_entries:     map[string]string{}
 		}
@@ -1712,8 +1705,6 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				tc.cur_fn_node_id = i
 				tc.method_value_locals = map[string]bool{}
 				tc.method_value_local_depth = map[string]int{}
-				tc.capturing_fn_literal_locals = map[string]bool{}
-				tc.capturing_fn_literal_local_depth = map[string]int{}
 				tc.push_scope()
 				for pi in 0 .. node.children_count {
 					p := tc.a.child_node(&node, pi)
@@ -3308,7 +3299,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		}
 		tc.insert_decl_lhs(lhs_id, expected)
 		tc.track_method_value_local(lhs_id, rhs_id)
-		tc.track_capturing_fn_literal_local(lhs_id, rhs_id)
+		tc.reject_stored_capturing_fn_literal(rhs_id)
 		i += 2
 	}
 }
@@ -3349,28 +3340,6 @@ fn (mut tc TypeChecker) track_method_value_local(lhs_id flat.NodeId, rhs_id flat
 		if tc.cur_scope_depth() <= marked_depth {
 			tc.method_value_locals.delete(lhs.value)
 			tc.method_value_local_depth.delete(lhs.value)
-		}
-	}
-}
-
-// track_capturing_fn_literal_local records (or clears) a local variable bound to a capturing
-// fn literal, so a later `return cb` / `arr << cb` alias is rejected like the bare literal.
-fn (mut tc TypeChecker) track_capturing_fn_literal_local(lhs_id flat.NodeId, rhs_id flat.NodeId) {
-	if int(lhs_id) < 0 {
-		return
-	}
-	lhs := tc.a.nodes[int(lhs_id)]
-	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
-		return
-	}
-	if tc.expr_is_capturing_fn_literal_value(rhs_id) {
-		tc.capturing_fn_literal_locals[lhs.value] = true
-		tc.capturing_fn_literal_local_depth[lhs.value] = tc.cur_scope_depth()
-	} else if lhs.value in tc.capturing_fn_literal_locals {
-		marked_depth := tc.capturing_fn_literal_local_depth[lhs.value] or { 0 }
-		if tc.cur_scope_depth() <= marked_depth {
-			tc.capturing_fn_literal_locals.delete(lhs.value)
-			tc.capturing_fn_literal_local_depth.delete(lhs.value)
 		}
 	}
 }
@@ -3573,13 +3542,10 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 				// receiver slot, which the next evaluation of the same site overwrites — so every
 				// stored callback would use the last receiver. Reject it like the other escapes.
 				tc.reject_stored_method_value(rhs_id)
-			} else if tc.expr_is_capturing_fn_literal_value(rhs_id)
-				&& !tc.lvalue_is_local_var(lhs_id) {
-				tc.reject_stored_capturing_fn_literal(rhs_id)
 			} else {
 				tc.track_method_value_local(lhs_id, rhs_id)
-				tc.track_capturing_fn_literal_local(lhs_id, rhs_id)
 			}
+			tc.reject_stored_capturing_fn_literal(rhs_id)
 		}
 		i += 2
 	}
@@ -6492,9 +6458,6 @@ fn (tc &TypeChecker) expr_is_capturing_fn_literal_value(id flat.NodeId) bool {
 	}
 	node := tc.a.nodes[int(id)]
 	match node.kind {
-		.ident {
-			return node.value in tc.capturing_fn_literal_locals
-		}
 		.fn_literal {
 			return tc.fn_literal_has_captures(node)
 		}
@@ -6526,7 +6489,7 @@ fn (tc &TypeChecker) fn_literal_has_captures(node flat.Node) bool {
 fn (mut tc TypeChecker) reject_stored_capturing_fn_literal(id flat.NodeId) {
 	if tc.expr_is_capturing_fn_literal_value(id) && tc.should_diagnose(id) {
 		tc.record_error(.assignment_mismatch,
-			'a capturing fn literal cannot escape its call site (no closure capture); pass it directly as a callback argument',
+			'a capturing fn literal cannot be stored or returned (no closure capture); pass it directly as a callback argument',
 			id)
 	}
 }

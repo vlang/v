@@ -69,8 +69,8 @@ fn test_reject_escaping_capturing_fn_literals() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_return_capturing_fn_literal',
 		'fn make(x int) fn () int {\n\treturn fn [x] () int {\n\t\treturn x\n\t}\n}\nfn main() {}\n',
-		'capturing fn literal cannot escape')
+		'capturing fn literal cannot be stored or returned')
 	run_bad(v3_bin, 'bad_store_capturing_fn_literal_alias',
 		'fn main() {\n\tx := 1\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\tmut cbs := []fn () int{}\n\tcbs << f\n}\n',
-		'capturing fn literal cannot escape')
+		'capturing fn literal cannot be stored or returned')
 }
