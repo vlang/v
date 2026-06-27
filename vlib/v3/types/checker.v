@@ -349,46 +349,30 @@ fn (mut tc TypeChecker) extend_node_caches(n int) {
 		&& n <= tc.expr_type_values.len && n <= tc.checking_nodes.len {
 		return
 	}
-	old_resolved_call_names := tc.resolved_call_names.clone()
-	old_resolved_call_set := tc.resolved_call_set.clone()
-	old_resolved_fn_value_names := tc.resolved_fn_value_names.clone()
-	old_resolved_fn_value_set := tc.resolved_fn_value_set.clone()
-	old_expr_type_values := tc.expr_type_values.clone()
-	old_expr_type_set := tc.expr_type_set.clone()
-	old_checking_nodes := tc.checking_nodes.clone()
-	tc.resolved_call_names = []string{len: n}
-	tc.resolved_call_set = []bool{len: n}
-	tc.resolved_fn_value_names = []string{len: n}
-	tc.resolved_fn_value_set = []bool{len: n}
-	tc.expr_type_values = []Type{len: n, init: Type(void_)}
-	tc.expr_type_set = []bool{len: n}
-	tc.checking_nodes = []bool{len: n}
-	for i in 0 .. old_resolved_call_names.len {
-		if i >= n {
-			break
-		}
-		tc.resolved_call_names[i] = old_resolved_call_names[i]
-		tc.resolved_call_set[i] = old_resolved_call_set[i]
+	extend_string_cache(mut tc.resolved_call_names, n)
+	extend_bool_cache(mut tc.resolved_call_set, n)
+	extend_string_cache(mut tc.resolved_fn_value_names, n)
+	extend_bool_cache(mut tc.resolved_fn_value_set, n)
+	extend_type_cache(mut tc.expr_type_values, n)
+	extend_bool_cache(mut tc.expr_type_set, n)
+	extend_bool_cache(mut tc.checking_nodes, n)
+}
+
+fn extend_string_cache(mut values []string, n int) {
+	if n > values.len {
+		values << []string{len: n - values.len}
 	}
-	for i in 0 .. old_resolved_fn_value_names.len {
-		if i >= n {
-			break
-		}
-		tc.resolved_fn_value_names[i] = old_resolved_fn_value_names[i]
-		tc.resolved_fn_value_set[i] = old_resolved_fn_value_set[i]
+}
+
+fn extend_bool_cache(mut values []bool, n int) {
+	if n > values.len {
+		values << []bool{len: n - values.len}
 	}
-	for i in 0 .. old_expr_type_values.len {
-		if i >= n {
-			break
-		}
-		tc.expr_type_values[i] = old_expr_type_values[i]
-		tc.expr_type_set[i] = old_expr_type_set[i]
-	}
-	for i in 0 .. old_checking_nodes.len {
-		if i >= n {
-			break
-		}
-		tc.checking_nodes[i] = old_checking_nodes[i]
+}
+
+fn extend_type_cache(mut values []Type, n int) {
+	if n > values.len {
+		values << []Type{len: n - values.len, init: Type(void_)}
 	}
 }
 
@@ -1188,6 +1172,13 @@ fn (mut tc TypeChecker) register_c_variadic_fn(name string) {
 // visible after its block ends), which is harmless for type lookup since variable
 // names are effectively unique within a function.
 pub fn (mut tc TypeChecker) annotate_types() {
+	tc.annotate_types_with_used(map[string]bool{})
+}
+
+// annotate_types_with_used annotates only functions that can be emitted when
+// `used_fns` is non-empty. This mirrors transform/cgen pruning and avoids
+// resolving types in dead, untransformed function bodies after markused.
+pub fn (mut tc TypeChecker) annotate_types_with_used(used_fns map[string]bool) {
 	tc.extend_node_caches(tc.a.nodes.len)
 	tc.cur_module = ''
 	for node in tc.a.nodes {
@@ -1196,6 +1187,9 @@ pub fn (mut tc TypeChecker) annotate_types() {
 		} else if node.kind == .module_decl {
 			tc.enter_module(node.value)
 		} else if node.kind == .fn_decl {
+			if !tc.should_annotate_fn(node, used_fns) {
+				continue
+			}
 			tc.cur_scope = tc.file_scope
 			tc.push_scope()
 			for pi in 0 .. node.children_count {
@@ -1214,6 +1208,34 @@ pub fn (mut tc TypeChecker) annotate_types() {
 			tc.pop_scope()
 		}
 	}
+}
+
+fn (tc &TypeChecker) should_annotate_fn(node flat.Node, used_fns map[string]bool) bool {
+	if used_fns.len == 0 {
+		return true
+	}
+	qname := checker_qualified_fn_name(tc.cur_module, node.value)
+	if qname in tc.a.export_fn_names || tc.fn_needs_implicit_veb_ctx(node) {
+		return true
+	}
+	if node.value in used_fns {
+		return true
+	}
+	if qname in used_fns {
+		return true
+	}
+	cname := c_name(qname)
+	if cname != qname && cname in used_fns {
+		return true
+	}
+	return false
+}
+
+fn checker_qualified_fn_name(mod string, name string) string {
+	if mod.len == 0 || mod == 'main' || mod == 'builtin' {
+		return name
+	}
+	return '${mod}.${name}'
 }
 
 // annotate_node supports annotate node handling for TypeChecker.
@@ -1536,7 +1558,7 @@ fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 		return
 	}
 	if idx >= tc.resolved_call_names.len {
-		tc.reset_node_caches(tc.a.nodes.len)
+		tc.extend_node_caches(tc.a.nodes.len)
 	}
 	if idx < tc.resolved_call_names.len {
 		tc.resolved_call_names[idx] = name
@@ -1551,7 +1573,7 @@ fn (mut tc TypeChecker) remember_resolved_fn_value(id flat.NodeId, name string) 
 		return
 	}
 	if idx >= tc.resolved_fn_value_names.len {
-		tc.reset_node_caches(tc.a.nodes.len)
+		tc.extend_node_caches(tc.a.nodes.len)
 	}
 	if idx < tc.resolved_fn_value_names.len {
 		tc.resolved_fn_value_names[idx] = name
@@ -1584,7 +1606,7 @@ fn (mut tc TypeChecker) remember_expr_type(id flat.NodeId, typ Type) {
 	if should_cache_expr_type(kind, typ) {
 		idx := int(id)
 		if idx >= tc.expr_type_values.len {
-			tc.reset_node_caches(tc.a.nodes.len)
+			tc.extend_node_caches(tc.a.nodes.len)
 		}
 		if idx < tc.expr_type_values.len {
 			tc.expr_type_values[idx] = typ
@@ -2873,7 +2895,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		return
 	}
 	if idx >= tc.checking_nodes.len {
-		tc.reset_node_caches(tc.a.nodes.len)
+		tc.extend_node_caches(tc.a.nodes.len)
 	}
 	if idx < tc.checking_nodes.len {
 		if tc.checking_nodes[idx] {

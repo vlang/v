@@ -613,13 +613,25 @@ fn (mut g FlatGen) gen_struct_default_fields(type_name string, mut set_fields ma
 			g.write(', ')
 		}
 		g.write('.${c_name(field.value)} = ')
-		g.gen_struct_field_expr_for_field(g.a.child(field, 0), info.full_name, field.value,
-			g.tc.parse_type(field.typ))
+		g.gen_struct_field_expr_for_field(g.a.child(field, 0), info.full_name, field.value, g.struct_default_field_type(info,
+			field))
 		set_fields[field.value] = true
 		has = true
 	}
 	g.tc.cur_module = old_module
 	return has
+}
+
+fn (mut g FlatGen) struct_default_field_type(info StructDeclInfo, field flat.Node) types.Type {
+	if field.typ.len > 0 && !field.typ.contains('.') && info.module.len > 0 && info.module != 'main'
+		&& info.module != 'builtin' {
+		qtyp := '${info.module}.${field.typ}'
+		if qtyp in g.tc.enum_names || qtyp in g.tc.structs || qtyp in g.tc.sum_types
+			|| qtyp in g.tc.interface_names {
+			return g.tc.parse_type(qtyp)
+		}
+	}
+	return g.tc.parse_type(field.typ)
 }
 
 // gen_default_value_for_type emits default value for type output for c.

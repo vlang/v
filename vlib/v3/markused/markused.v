@@ -130,6 +130,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	enqueue_main_module_roots(fn_decls, mut used, mut queue)
 	enqueue_auto_roots(fn_decls, mut used, mut queue)
 	enqueue_export_roots(a, mut used, mut queue)
+	enqueue_veb_handler_roots(a, tc, mut used, mut queue)
 	enqueue_test_file_roots(a, test_files, mut used, mut queue)
 	queue << 'time.Time.new'
 	used['time.Time.new'] = true
@@ -478,6 +479,9 @@ fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, imports m
 }
 
 fn enqueue_top_level_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
+	if markused_has_entry_main(a) {
+		return
+	}
 	mut calls := []string{cap: 32}
 	for file_idx, file_node in a.nodes {
 		if !markused_should_scan_top_level_file(a, file_idx, file_node) {
@@ -655,6 +659,77 @@ fn enqueue_export_roots(a &flat.FlatAst, mut used map[string]bool, mut queue []s
 	}
 }
 
+fn enqueue_veb_handler_roots(a &flat.FlatAst, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+	mut cur_module := ''
+	for node in a.nodes {
+		match node.kind {
+			.file {
+				cur_module = ''
+			}
+			.module_decl {
+				cur_module = node.value
+			}
+			.fn_decl {
+				if markused_fn_needs_implicit_veb_ctx(a, tc, cur_module, node) {
+					enqueue(qualify_fn(cur_module, node.value), mut used, mut queue)
+				}
+			}
+			else {}
+		}
+	}
+}
+
+fn markused_fn_needs_implicit_veb_ctx(a &flat.FlatAst, tc &types.TypeChecker, cur_module string, node flat.Node) bool {
+	return markused_fn_returns_veb_result(tc, node) && markused_fn_has_receiver_param(a, node)
+		&& !markused_fn_receiver_type_is_context(a, node) && !markused_fn_has_param(a, node, 'ctx')
+		&& markused_type_name_known_in_module(tc, cur_module, 'Context')
+}
+
+fn markused_fn_returns_veb_result(tc &types.TypeChecker, node flat.Node) bool {
+	if node.typ == 'veb.Result' {
+		return true
+	}
+	ret := tc.parse_type(node.typ)
+	return ret.name() == 'veb.Result'
+}
+
+fn markused_fn_has_receiver_param(a &flat.FlatAst, node flat.Node) bool {
+	if !node.value.contains('.') || node.children_count == 0 {
+		return false
+	}
+	first := a.child_node(&node, 0)
+	if first.kind != .param || first.typ.len == 0 {
+		return false
+	}
+	receiver := node.value.all_before_last('.').all_after_last('.')
+	param_type := first.typ.trim_left('&').all_after_last('.')
+	return receiver == param_type
+}
+
+fn markused_fn_receiver_type_is_context(a &flat.FlatAst, node flat.Node) bool {
+	if !markused_fn_has_receiver_param(a, node) {
+		return false
+	}
+	first := a.child_node(&node, 0)
+	return first.typ.trim_left('&').all_after_last('.') == 'Context'
+}
+
+fn markused_fn_has_param(a &flat.FlatAst, node flat.Node, name string) bool {
+	for i in 0 .. node.children_count {
+		param := a.child_node(&node, i)
+		if param.kind == .param && param.value == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn markused_type_name_known_in_module(tc &types.TypeChecker, module_name string, typ string) bool {
+	qtyp := qualify_fn(module_name, typ)
+	return qtyp in tc.type_aliases || qtyp in tc.structs || qtyp in tc.interface_names
+		|| qtyp in tc.enum_names || qtyp in tc.sum_types
+}
+
 fn enqueue_test_file_roots(a &flat.FlatAst, test_files map[string]bool, mut used map[string]bool, mut queue []string) {
 	if test_files.len == 0 {
 		return
@@ -780,6 +855,10 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 					}
 					if fn_node.kind == .ident && fn_node.value == 'flag_default_value' {
 						enqueue('escape_default_string', mut used, mut queue)
+					}
+					if fn_node.kind == .selector
+						&& fn_node.value in ['trim_space', 'trim_space_left', 'trim_space_right', 'to_upper', 'to_upper_ascii', 'to_lower', 'to_lower_ascii'] {
+						enqueue('string.${fn_node.value}', mut used, mut queue)
 					}
 					if fn_node.kind == .ident
 						&& fn_node.value in ['print', 'println', 'eprint', 'eprintln']
@@ -943,6 +1022,9 @@ fn enqueue_function_value_selectors(a &flat.FlatAst, collector CallCollector, fn
 		if node_idx < ignored_fn_decl_nodes.len && ignored_fn_decl_nodes[node_idx] {
 			continue
 		}
+		if node_idx < ignored_top_level_nodes.len && ignored_top_level_nodes[node_idx] {
+			continue
+		}
 		if node.kind == .ident && node.value.len > 0 {
 			node_id := flat.NodeId(node_idx)
 			is_shadowed := node_idx < shadowed_value_idents.len && shadowed_value_idents[node_idx]
@@ -956,9 +1038,6 @@ fn enqueue_function_value_selectors(a &flat.FlatAst, collector CallCollector, fn
 			if node.value in fn_decls && collector.node_is_fn_value(node_id) {
 				enqueue(node.value, mut used, mut queue)
 			}
-			continue
-		}
-		if node_idx < ignored_top_level_nodes.len && ignored_top_level_nodes[node_idx] {
 			continue
 		}
 		if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
@@ -1570,7 +1649,11 @@ fn (c &CallCollector) top_level_decl_rhs_type_name(rhs_id flat.NodeId, cur_modul
 	}
 	type_name := resolve_type_name(c.node_type(rhs_id))
 	if type_name.len > 0 {
-		return c.struct_lookup_name(type_name, cur_module)
+		struct_type := c.struct_lookup_name(type_name, cur_module)
+		if struct_type.len > 0 {
+			return struct_type
+		}
+		return type_name
 	}
 	return ''
 }

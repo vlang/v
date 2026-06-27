@@ -731,7 +731,8 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	// contains a function literal (the only construct that lifts new top-level
 	// declarations and mutates the shared TypeChecker). Collect the remaining,
 	// closure-free functions as parallelizable work items.
-	pure_items := t.transform_serial_then_collect_pure()
+	has_fn_literals := t.has_fn_literal_nodes()
+	pure_items := t.transform_serial_then_collect_pure(has_fn_literals)
 	base_nodes := t.a.nodes.len
 	base_children := t.a.children.len
 	was_parallel := t.run_parallel_transform(pure_items, base_nodes, base_children)
@@ -741,10 +742,19 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	return was_parallel
 }
 
+fn (t &Transformer) has_fn_literal_nodes() bool {
+	for node in t.a.nodes {
+		if node.kind == .fn_literal || node.kind == .lambda_expr {
+			return true
+		}
+	}
+	return false
+}
+
 // transform_serial_then_collect_pure walks the top level once: it transforms
 // const/global declarations and closure-bearing functions in place (serially),
 // and returns work items for the closure-free functions left to transform.
-fn (mut t Transformer) transform_serial_then_collect_pure() []FnWorkItem {
+fn (mut t Transformer) transform_serial_then_collect_pure(scan_fn_literals bool) []FnWorkItem {
 	mut pure := []FnWorkItem{}
 	original_len := t.a.nodes.len
 	for i in 0 .. original_len {
@@ -758,7 +768,11 @@ fn (mut t Transformer) transform_serial_then_collect_pure() []FnWorkItem {
 			if !t.should_transform_fn(node) {
 				continue
 			}
-			has_literal, cost := t.fn_subtree_scan(i)
+			mut has_literal := false
+			mut cost := int(node.children_count) + 1
+			if scan_fn_literals {
+				has_literal, cost = t.fn_subtree_scan(i)
+			}
 			if has_literal {
 				t.transform_fn_body(i)
 			} else {

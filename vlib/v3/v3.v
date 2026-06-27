@@ -365,7 +365,7 @@ fn main() {
 	pre_tc.reject_unlowered_map_mutation = true
 	set_diagnostic_files(mut pre_tc, user_files)
 	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
-	pre_tc.annotate_types()
+	pre_tc.annotate_types_with_used(used_fns)
 	b.step('annotate types')
 
 	if backend == 'wasm' {

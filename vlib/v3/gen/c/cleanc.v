@@ -252,6 +252,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.line_start = true
 	g.gen_fns_dispatch(no_parallel)
 	fn_code := g.sb.str()
+	// `.str()` copies out of the builder; free the emptied backing array under -gc none.
+	unsafe { g.sb.free() }
 	g.sb = orig_sb
 	g.line_start = orig_line_start
 	g.preamble()
@@ -281,6 +283,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.interface_method_stubs()
 	g.enum_str_defs()
 	g.sb.write_string(const_code)
+	// The final builder now owns a copy of the const code.
+	unsafe { const_code.free() }
 	if g.runtime_inits.len > 0 || g.module_init_fns.len > 0 || g.global_inits.len > 0 {
 		g.writeln('void _vinit() {')
 		for ri in g.runtime_inits {
@@ -294,7 +298,11 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.writeln('')
 	}
 	g.sb.write_string(fn_code)
+	// The final builder now owns a copy of the function code.
+	unsafe { fn_code.free() }
 	result := g.sb.str()
+	// Keep only the returned C string, not the builder's copied backing array.
+	unsafe { g.sb.free() }
 	return result
 }
 
@@ -3812,6 +3820,8 @@ fn (mut g FlatGen) precompute_consts() string {
 		g.writeln('')
 	}
 	result := g.sb.str()
+	// `.str()` copies out of the temporary const builder.
+	unsafe { g.sb.free() }
 	g.sb = old_sb
 	g.line_start = old_line_start
 	return result

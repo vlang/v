@@ -5,7 +5,7 @@ import strings
 import v3.flat
 import v3.types
 
-const max_flat_cgen_jobs = 3
+const max_flat_cgen_jobs = 2
 const min_flat_cgen_parallel_items = 1024
 
 // FlatFnGenItem represents flat fn gen item data used by c.
@@ -496,6 +496,11 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	worker_output := ww.sb.str()
 	if worker_output.len > 0 {
 		g.sb.write_string(worker_output)
+	}
+	// The master builder has copied the worker output; release the worker buffers.
+	unsafe {
+		worker_output.free()
+		ww.sb.free()
 	}
 	for opt_name, val_type in w.needed_optional_types {
 		g.needed_optional_types[opt_name] = val_type
