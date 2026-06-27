@@ -66,6 +66,8 @@ fn v_segmentation_fault_handler(signal_number i32) {
 			} $else {
 				eprint_libbacktrace(1)
 			}
+		} $else $if tinyc && glibc {
+			print_backtrace_skipping_top_frames(1)
 		} $else {
 			print_backtrace()
 		}
