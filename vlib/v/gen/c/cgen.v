@@ -140,9 +140,7 @@ mut:
 	tmp_var_ptr                          map[string]bool   // indicates if the tmp var passed to or_block() is a ptr
 	labeled_loops                        map[string]&ast.Stmt
 	contains_ptr_cache                   map[ast.Type]bool
-	boehm_keep_decl                      map[string]bool
-	boehm_keep_gen                       map[string]bool
-	boehm_keep_busy                      map[string]bool
+	boehm_keep_gen                       shared map[string]bool
 	inner_loop                           &ast.Stmt = unsafe { nil }
 	cur_indexexpr                        []int          // list of nested indexexpr which generates array_set/map_set
 	shareds                              map[int]string // types with hidden mutex for which decl has been emitted
@@ -433,9 +431,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		has_debugger:                  'v.debug' in table.modules
 		reflection_strings:            &reflection_strings
 		generated_map_key_fns:         map[ast.Type]bool{}
-		boehm_keep_decl:               map[string]bool{}
 		boehm_keep_gen:                map[string]bool{}
-		boehm_keep_busy:               map[string]bool{}
 		closure_frame_arg_tmps:        map[int]string{}
 		generic_parts_cache:           []i8{len: table.type_symbols.len}
 		unwrap_generic_cache:          map[u64]ast.Type{}
@@ -1092,9 +1088,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		has_debugger:                       'v.debug' in global_g.table.modules
 		reflection_strings:                 global_g.reflection_strings
 		generated_map_key_fns:              map[ast.Type]bool{}
-		boehm_keep_decl:                    map[string]bool{}
-		boehm_keep_gen:                     map[string]bool{}
-		boehm_keep_busy:                    map[string]bool{}
+		boehm_keep_gen:                     global_g.boehm_keep_gen
 		closure_frame_arg_tmps:             map[int]string{}
 		generic_parts_cache:                []i8{len: global_g.table.type_symbols.len}
 		unwrap_generic_cache:               map[u64]ast.Type{}
@@ -8681,18 +8675,19 @@ fn (mut g Gen) boehm_collect_keep_alive_helper_name(typ ast.Type) string {
 	if styp.ends_with('_ptr') {
 		return ''
 	}
-	fn_name := '__v_boehm_collect_keepalive_${g.unique_file_path_hash}_${styp.replace('*', '_ptr').replace(' ', '_')}'
-	if g.boehm_keep_gen[fn_name] {
+	fn_name := '__v_boehm_collect_keepalive_${g.stable_type_symbol_hash(resolved_typ)}_${styp.replace('*',
+		'_ptr').replace(' ', '_')}'
+	mut should_generate := false
+	lock g.boehm_keep_gen {
+		if fn_name !in g.boehm_keep_gen {
+			g.boehm_keep_gen[fn_name] = true
+			should_generate = true
+		}
+	}
+	if !should_generate {
 		return fn_name
 	}
-	if !g.boehm_keep_decl[fn_name] {
-		g.definitions.writeln('static inline int ${fn_name}(${styp}* it, voidptr* out, int idx);')
-		g.boehm_keep_decl[fn_name] = true
-	}
-	if g.boehm_keep_busy[fn_name] {
-		return fn_name
-	}
-	g.boehm_keep_busy[fn_name] = true
+	g.definitions.writeln('static inline int ${fn_name}(${styp}* it, voidptr* out, int idx);')
 	mut sb := strings.new_builder(256)
 	sb.writeln('static inline int ${fn_name}(${styp}* it, voidptr* out, int idx) {')
 	match sym.kind {
@@ -8776,8 +8771,6 @@ fn (mut g Gen) boehm_collect_keep_alive_helper_name(typ ast.Type) string {
 
 	sb.writeln('}')
 	g.auto_fn_definitions << sb.str()
-	g.boehm_keep_gen[fn_name] = true
-	g.boehm_keep_busy.delete(fn_name)
 	return fn_name
 }
 
