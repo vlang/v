@@ -22,11 +22,10 @@ const h2_server_default_window = u32(65535)
 // rejected with RST_STREAM(REFUSED_STREAM).
 const h2_server_max_request_body = 8 * 1024 * 1024
 
-// h2_conn_specific_headers are the HTTP/1.x connection-specific header fields
-// that RFC 9113 §8.2.2 forbids in HTTP/2: a request carrying one is malformed,
-// and the server must never echo one in a response.
-const h2_conn_specific_headers = ['connection', 'proxy-connection', 'keep-alive', 'transfer-encoding',
-	'upgrade']
+// The connection-specific header fields RFC 9113 §8.2.2 forbids in HTTP/2 (a
+// request carrying one is malformed; the server must never echo one in a
+// response) are the module-level `h2_conn_specific_headers` const defined in
+// h2_mux_conn.v — shared with the client path rather than redefined here.
 
 // h2_all_digits reports whether s is a non-empty run of ASCII digits. A value
 // that parses with `.int()` is NOT proof of a valid number — `'12x'.int()` is 12
