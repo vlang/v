@@ -54,7 +54,9 @@ mut:
 	struct_decl_infos            map[string]StructDeclInfo
 	struct_decl_short_infos      map[string]StructDeclInfo
 	const_runtime_inits          []string
+	const_runtime_init_modules   []string
 	runtime_inits                []string
+	runtime_init_modules         []string
 	compiler_vroot               string
 	c99_mode                     bool
 	cur_fn_name                  string
@@ -162,7 +164,9 @@ pub fn FlatGen.new() FlatGen {
 		defer_capture_names:          []string{}
 		defer_capture_types:          map[string]types.Type{}
 		const_runtime_inits:          []string{}
+		const_runtime_init_modules:   []string{}
 		runtime_inits:                []string{}
+		runtime_init_modules:         []string{}
 		compiler_vroot:               ''
 		line_start:                   true
 	}
@@ -199,7 +203,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.defer_capture_names = []string{}
 	g.defer_capture_types = map[string]types.Type{}
 	g.const_runtime_inits = []string{}
+	g.const_runtime_init_modules = []string{}
 	g.runtime_inits = []string{}
+	g.runtime_init_modules = []string{}
 	g.compiler_vroot = ''
 	g.str_lit_ids = map[string]int{}
 	g.global_types = map[string]types.Type{}
@@ -301,18 +307,16 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	if g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
 		|| g.global_inits.len > 0 {
 		g.writeln('void _vinit() {')
-		// Module init functions must be available before runtime const/global
-		// expressions in the main module call into imported modules (for example
-		// a top-level const using rand.string()).
-		for init_fn in g.ordered_module_init_fns() {
-			g.writeln('\t${init_fn}();')
+		mut emitted_const := []bool{len: g.const_runtime_inits.len}
+		mut emitted_runtime := []bool{len: g.runtime_inits.len}
+		init_fns := g.module_init_fn_map()
+		for mod in g.ordered_startup_modules(init_fns) {
+			g.emit_runtime_inits_for_module(mod, mut emitted_const, mut emitted_runtime)
+			if init_fn := init_fns[mod] {
+				g.writeln('\t${init_fn}();')
+			}
 		}
-		for ri in g.const_runtime_inits {
-			g.writeln(ri)
-		}
-		for ri in g.runtime_inits {
-			g.writeln(ri)
-		}
+		g.emit_remaining_runtime_inits(mut emitted_const, mut emitted_runtime)
 		g.writeln('}')
 		g.writeln('')
 	}
@@ -629,11 +633,7 @@ fn (mut g FlatGen) collect_const_init_order_from_files() {
 
 // ordered_module_init_fns supports ordered module init fns handling for FlatGen.
 fn (g &FlatGen) ordered_module_init_fns() []string {
-	mut module_to_init := map[string]string{}
-	for init_fn in g.module_init_fns {
-		mod := g.module_init_fn_modules[init_fn] or { '' }
-		module_to_init[mod] = init_fn
-	}
+	module_to_init := g.module_init_fn_map()
 	mut result := []string{}
 	mut visiting := map[string]bool{}
 	mut visited := map[string]bool{}
@@ -642,6 +642,110 @@ fn (g &FlatGen) ordered_module_init_fns() []string {
 		g.visit_module_init(mod, module_to_init, mut visiting, mut visited, mut result)
 	}
 	return result
+}
+
+fn (g &FlatGen) module_init_fn_map() map[string]string {
+	mut module_to_init := map[string]string{}
+	for init_fn in g.module_init_fns {
+		mod := g.module_init_fn_modules[init_fn] or { '' }
+		module_to_init[mod] = init_fn
+	}
+	return module_to_init
+}
+
+fn (g &FlatGen) ordered_startup_modules(module_to_init map[string]string) []string {
+	mut module_order := []string{}
+	for init_fn in g.module_init_fns {
+		mod := g.module_init_fn_modules[init_fn] or { '' }
+		if mod !in module_order {
+			module_order << mod
+		}
+	}
+	for mod in g.const_runtime_init_modules {
+		if mod !in module_order {
+			module_order << mod
+		}
+	}
+	for mod in g.runtime_init_modules {
+		if mod !in module_order {
+			module_order << mod
+		}
+	}
+	mut startup_modules := map[string]bool{}
+	for mod in module_order {
+		startup_modules[mod] = true
+	}
+	for mod, _ in module_to_init {
+		startup_modules[mod] = true
+	}
+	mut result := []string{}
+	mut visiting := map[string]bool{}
+	mut visited := map[string]bool{}
+	for mod in module_order {
+		g.visit_startup_module(mod, startup_modules, mut visiting, mut visited, mut result)
+	}
+	return result
+}
+
+fn (g &FlatGen) visit_startup_module(mod string, startup_modules map[string]bool, mut visiting map[string]bool, mut visited map[string]bool, mut result []string) {
+	if mod in visited || mod in visiting {
+		return
+	}
+	visiting[mod] = true
+	for dep in g.module_imports[mod] or { []string{} } {
+		g.visit_startup_module(dep, startup_modules, mut visiting, mut visited, mut result)
+		short_dep := dep.all_after_last('.')
+		if short_dep != dep {
+			g.visit_startup_module(short_dep, startup_modules, mut visiting, mut visited, mut
+				result)
+		}
+	}
+	visiting.delete(mod)
+	visited[mod] = true
+	if mod in startup_modules {
+		result << mod
+	}
+}
+
+fn (mut g FlatGen) emit_runtime_inits_for_module(mod string, mut emitted_const []bool, mut emitted_runtime []bool) {
+	for i, ri in g.const_runtime_inits {
+		if !emitted_const[i] && i < g.const_runtime_init_modules.len
+			&& g.const_runtime_init_modules[i] == mod {
+			g.writeln(ri)
+			emitted_const[i] = true
+		}
+	}
+	for i, ri in g.runtime_inits {
+		if !emitted_runtime[i] && i < g.runtime_init_modules.len && g.runtime_init_modules[i] == mod {
+			g.writeln(ri)
+			emitted_runtime[i] = true
+		}
+	}
+}
+
+fn (mut g FlatGen) emit_remaining_runtime_inits(mut emitted_const []bool, mut emitted_runtime []bool) {
+	for i, ri in g.const_runtime_inits {
+		if !emitted_const[i] {
+			g.writeln(ri)
+			emitted_const[i] = true
+		}
+	}
+	for i, ri in g.runtime_inits {
+		if !emitted_runtime[i] {
+			g.writeln(ri)
+			emitted_runtime[i] = true
+		}
+	}
+}
+
+fn (mut g FlatGen) queue_const_runtime_init(line string) {
+	g.const_runtime_inits << line
+	g.const_runtime_init_modules << g.tc.cur_module
+}
+
+fn (mut g FlatGen) queue_runtime_init(line string) {
+	g.runtime_inits << line
+	g.runtime_init_modules << g.tc.cur_module
 }
 
 // visit_module_init updates visit module init state for FlatGen.
@@ -1201,7 +1305,10 @@ fn (mut g FlatGen) gen_map_str_expr(id flat.NodeId, typ types.Type) bool {
 			val := g.expr_to_string_with_expected_type(g.a.child(&node, i + 1), clean.value_type)
 			g.write(' map__set(&${tmp}, &(${c_key}[]){${key}}, &(${c_val}[]){${val}});')
 		}
-		g.write(' v3_map_str(${tmp}, ${map_str_kind(clean.key_type)}, ${map_str_kind(clean.value_type)}, ${map_str_fixed_len(clean.value_type)}); })')
+		key_kind := map_str_kind(g.tc, clean.key_type)
+		val_kind := map_str_kind(g.tc, clean.value_type)
+		fixed_len := map_str_fixed_len(clean.value_type)
+		g.write(' v3_map_str(${tmp}, ${key_kind}, ${val_kind}, ${fixed_len}); })')
 		return true
 	}
 	g.write('v3_map_str(')
@@ -1218,7 +1325,10 @@ fn (mut g FlatGen) gen_map_str_expr(id flat.NodeId, typ types.Type) bool {
 	} else {
 		g.gen_expr(id)
 	}
-	g.write(', ${map_str_kind(clean.key_type)}, ${map_str_kind(clean.value_type)}, ${map_str_fixed_len(clean.value_type)})')
+	key_kind := map_str_kind(g.tc, clean.key_type)
+	val_kind := map_str_kind(g.tc, clean.value_type)
+	fixed_len := map_str_fixed_len(clean.value_type)
+	g.write(', ${key_kind}, ${val_kind}, ${fixed_len})')
 	return true
 }
 
@@ -1230,7 +1340,7 @@ fn map_str_clean_type(typ types.Type) types.Type {
 	return clean
 }
 
-fn map_str_kind(typ types.Type) int {
+fn map_str_kind(tc &types.TypeChecker, typ types.Type) int {
 	clean := if typ is types.Alias { typ.base_type } else { typ }
 	if clean is types.String {
 		return 1
@@ -1245,6 +1355,9 @@ fn map_str_kind(typ types.Type) int {
 		return 3
 	}
 	if clean is types.Primitive {
+		if clean.props.has(.float) {
+			return if tc.c_type(types.Type(clean)) == 'float' { 8 } else { 5 }
+		}
 		name := types.Type(clean).name()
 		if name in ['i8', 'i16', 'i32', 'i64', 'int'] {
 			return 2
@@ -1254,9 +1367,6 @@ fn map_str_kind(typ types.Type) int {
 		}
 		if name in ['u16', 'u32', 'u64'] {
 			return 3
-		}
-		if name in ['f32', 'f64'] {
-			return 5
 		}
 		if name == 'bool' {
 			return 7
@@ -1268,8 +1378,8 @@ fn map_str_kind(typ types.Type) int {
 		} else {
 			fixed.elem_type
 		}
-		if elem is types.Primitive && types.Type(elem).name() in ['f32', 'f64'] {
-			return 6
+		if elem is types.Primitive && elem.props.has(.float) {
+			return if tc.c_type(types.Type(elem)) == 'float' { 9 } else { 6 }
 		}
 	}
 	return 0
@@ -3366,13 +3476,17 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static inline string v3_int_zpad(int n, int width) { string s = int__str(n); if (n < 0) return s; while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
 	g.writeln('static inline i64 v3_map_signed(void* p, int bytes) { if (bytes == 1) return *(signed char*)p; if (bytes == 2) return *(short*)p; if (bytes == 8) return *(long long*)p; return *(int*)p; }')
 	g.writeln('static inline u64 v3_map_unsigned(void* p, int bytes) { if (bytes == 1) return *(unsigned char*)p; if (bytes == 2) return *(unsigned short*)p; if (bytes == 8) return *(unsigned long long*)p; return *(unsigned int*)p; }')
+	g.writeln('static inline string v3_f32_array_str(float* vals, int n) { string out = v3_c_lit("[", 1); for (int i = 0; i < n; ++i) { if (i > 0) out = string__plus(out, v3_c_lit(", ", 2)); out = string__plus(out, f64__str((double)vals[i])); } return string__plus(out, v3_c_lit("]", 1)); }')
+	g.writeln('static inline string v3_f64_array_str(double* vals, int n) { string out = v3_c_lit("[", 1); for (int i = 0; i < n; ++i) { if (i > 0) out = string__plus(out, v3_c_lit(", ", 2)); out = string__plus(out, f64__str(vals[i])); } return string__plus(out, v3_c_lit("]", 1)); }')
 	g.writeln('static inline string v3_map_str_piece(void* p, int kind, int bytes, int fixed_len) {')
 	g.writeln('\tif (kind == 1) { return string__plus(string__plus(v3_c_lit("\'", 1), *(string*)p), v3_c_lit("\'", 1)); }')
 	g.writeln('\tif (kind == 2) { return int__str((int)v3_map_signed(p, bytes)); }')
 	g.writeln('\tif (kind == 3) { return u64__str(v3_map_unsigned(p, bytes)); }')
 	g.writeln('\tif (kind == 4) { i32 r = bytes == 1 ? (i32)(*(u8*)p) : *(i32*)p; return string__plus(string__plus(v3_c_lit("`", 1), rune__str(r)), v3_c_lit("`", 1)); }')
-	g.writeln('\tif (kind == 5) { return f64__str(*(double*)p); }')
-	g.writeln('\tif (kind == 6) { double* vals = (double*)p; int n = fixed_len > 0 ? fixed_len : bytes / (int)sizeof(double); string out = v3_c_lit("[", 1); for (int i = 0; i < n; ++i) { if (i > 0) out = string__plus(out, v3_c_lit(", ", 2)); out = string__plus(out, f64__str(vals[i])); } return string__plus(out, v3_c_lit("]", 1)); }')
+	g.writeln('\tif (kind == 5) { if (bytes == (int)sizeof(float)) return f64__str((double)*(float*)p); return f64__str(*(double*)p); }')
+	g.writeln('\tif (kind == 6) { if (fixed_len == 0 && bytes == (int)sizeof(Array)) { Array a = *(Array*)p; if (a.element_size == (int)sizeof(float)) return v3_f32_array_str((float*)a.data, a.len); if (a.element_size == (int)sizeof(double)) return v3_f64_array_str((double*)a.data, a.len); } if (fixed_len > 0 && bytes == fixed_len * (int)sizeof(float)) return v3_f32_array_str((float*)p, fixed_len); int n = fixed_len > 0 ? fixed_len : bytes / (int)sizeof(double); return v3_f64_array_str((double*)p, n); }')
+	g.writeln('\tif (kind == 8) { return f64__str((double)*(float*)p); }')
+	g.writeln('\tif (kind == 9) { int n = fixed_len > 0 ? fixed_len : bytes / (int)sizeof(float); return v3_f32_array_str((float*)p, n); }')
 	g.writeln('\tif (kind == 7) { return *(bool*)p ? v3_c_lit("true", 4) : v3_c_lit("false", 5); }')
 	g.writeln('\treturn v3_c_lit("<map value>", 11);')
 	g.writeln('}')
@@ -3907,7 +4021,7 @@ fn (mut g FlatGen) emit_global_inits() {
 			continue
 		}
 		target := c_name(qname)
-		g.runtime_inits << '\t${target} = ${expr_str};'
+		g.queue_runtime_init('\t${target} = ${expr_str};')
 		if typ := g.global_types[qname] {
 			if typ is types.Map {
 				g.queue_map_literal_sets(target, val_id, typ)
@@ -4031,7 +4145,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 			// The initializer is not a compile-time constant (e.g. `os.args =
 			// arguments()`), so it cannot be a C static initializer. Run it at startup
 			// in _vinit; otherwise the const stays zero/empty and first use is wrong.
-			g.const_runtime_inits << '\t${qname} = ${expr_str};'
+			g.queue_const_runtime_init('\t${qname} = ${expr_str};')
 			if v_type is types.Map {
 				g.queue_const_map_literal_sets(qname, val_id, v_type)
 			}
@@ -4096,7 +4210,7 @@ fn (mut g FlatGen) queue_map_literal_sets(target string, val_id flat.NodeId, map
 	for i := 0; i + 1 < node.children_count; i += 2 {
 		key := g.expr_to_string_with_expected_type(g.a.child(&node, i), map_type.key_type)
 		val := g.expr_to_string_with_expected_type(g.a.child(&node, i + 1), map_type.value_type)
-		g.runtime_inits << '\tmap__set(&${target}, &(${c_key}[]){${key}}, &(${c_val}[]){${val}});'
+		g.queue_runtime_init('\tmap__set(&${target}, &(${c_key}[]){${key}}, &(${c_val}[]){${val}});')
 	}
 }
 
@@ -4113,7 +4227,7 @@ fn (mut g FlatGen) queue_const_map_literal_sets(target string, val_id flat.NodeI
 	for i := 0; i + 1 < node.children_count; i += 2 {
 		key := g.expr_to_string_with_expected_type(g.a.child(&node, i), map_type.key_type)
 		val := g.expr_to_string_with_expected_type(g.a.child(&node, i + 1), map_type.value_type)
-		g.const_runtime_inits << '\tmap__set(&${target}, &(${c_key}[]){${key}}, &(${c_val}[]){${val}});'
+		g.queue_const_runtime_init('\tmap__set(&${target}, &(${c_key}[]){${key}}, &(${c_val}[]){${val}});')
 	}
 }
 
@@ -4122,7 +4236,7 @@ fn (mut g FlatGen) queue_fixed_array_runtime_init(target string, val_id flat.Nod
 	if expr.trim_space().len == 0 {
 		return false
 	}
-	g.runtime_inits << '\tmemmove(${target}, ${expr}, sizeof(${target}));'
+	g.queue_runtime_init('\tmemmove(${target}, ${expr}, sizeof(${target}));')
 	return true
 }
 
@@ -4131,7 +4245,7 @@ fn (mut g FlatGen) queue_const_fixed_array_runtime_init(target string, val_id fl
 	if expr.trim_space().len == 0 {
 		return false
 	}
-	g.const_runtime_inits << '\tmemmove(${target}, ${expr}, sizeof(${target}));'
+	g.queue_const_runtime_init('\tmemmove(${target}, ${expr}, sizeof(${target}));')
 	return true
 }
 

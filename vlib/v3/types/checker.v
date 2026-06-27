@@ -9652,7 +9652,7 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 		return inner
 	}
 	if base_type is String {
-		return Type(Rune{})
+		return Type(u8_)
 	}
 	return unknown_type('cannot index `${base_type.name()}`')
 }

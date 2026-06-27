@@ -285,3 +285,26 @@ fn test_map_builtin_method_fallback_checks_arguments() {
 	}, 'main.v')
 	assert module_collection_out == '31\n42\n53'
 }
+
+fn test_runtime_inits_run_before_module_init() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'runtime_inits_before_module_init', {
+		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\tprintln(int_str(moda.const_seen()))\n\tprintln(int_str(moda.global_seen()))\n}\n'
+		'moda/moda.v': "module moda\n\nconst const_map = map[string]int{\n\t'const': 5\n}\n\n__global (\n\tglobal_map = map[string]int{\n\t\t'global': 7\n\t}\n\tseen_const int\n\tseen_global int\n)\n\nfn init() {\n\tseen_const = const_map['const']\n\tseen_global = global_map['global']\n}\n\npub fn const_seen() int {\n\treturn seen_const\n}\n\npub fn global_seen() int {\n\treturn seen_global\n}\n"
+	}, 'main.v')
+	assert out == '5\n7'
+}
+
+fn test_string_index_type_is_u8() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'string_index_type_is_u8',
+		"fn main() {\n\ts := 'ABC'\n\tprintln(typeof(s[0]).name)\n\tprintln('\${s[2]}')\n}\n")
+	assert out == 'u8\n67'
+}
+
+fn test_f32_map_and_fixed_array_stringification() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'f32_map_stringification',
+		"fn main() {\n\tm := {\n\t\t'a': f32(1.5)\n\t}\n\tprintln(m)\n\tfixed := [f32(1.5), f32(2.25)]!\n\tmf := {\n\t\t'x': fixed\n\t}\n\tprintln(mf)\n}\n")
+	assert out == "{'a': 1.5}\n{'x': [1.5, 2.25]}"
+}
