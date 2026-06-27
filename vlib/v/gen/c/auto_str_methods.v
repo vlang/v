@@ -90,13 +90,17 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 	if sym.is_builtin() && !str_fn_name.starts_with('builtin__') {
 		str_fn_name = 'builtin__${str_fn_name}'
 	}
-	if sym.has_method_with_generic_parent('str') && !g.pref.new_generic_solver {
-		match mut sym.info {
-			ast.Struct, ast.SumType, ast.Interface {
-				str_fn_name = g.generic_fn_name(g.str_method_concrete_types(unwrapped, sym),
-					str_fn_name)
+	if !g.pref.new_generic_solver {
+		if str_method := sym.find_method_with_generic_parent('str') {
+			if str_method.generic_names.len > 0 {
+				match mut sym.info {
+					ast.Struct, ast.SumType, ast.Interface, ast.Alias {
+						str_fn_name = g.generic_fn_name(g.str_method_concrete_types(unwrapped, sym),
+							str_fn_name)
+					}
+					else {}
+				}
 			}
-			else {}
 		}
 	}
 	if sym.language == .c && !typ.has_flag(.option) && sym.has_method('str') {
@@ -677,6 +681,9 @@ fn (mut g Gen) str_method_concrete_types(typ ast.Type, sym &ast.TypeSymbol) []as
 			ast.Struct, ast.SumType, ast.Interface {
 				return sym.info.concrete_types.clone()
 			}
+			ast.Alias {
+				return g.alias_parent_concrete_types(sym.info)
+			}
 			else {}
 		}
 	}
@@ -686,6 +693,30 @@ fn (mut g Gen) str_method_concrete_types(typ ast.Type, sym &ast.TypeSymbol) []as
 	match sym.info {
 		ast.Struct, ast.SumType, ast.Interface {
 			return sym.info.concrete_types.clone()
+		}
+		ast.Alias {
+			return g.alias_parent_concrete_types(sym.info)
+		}
+		else {}
+	}
+
+	return []ast.Type{}
+}
+
+fn (mut g Gen) alias_parent_concrete_types(info ast.Alias) []ast.Type {
+	parent_sym := g.table.sym(info.parent_type)
+	match parent_sym.info {
+		ast.Struct, ast.SumType, ast.Interface {
+			mut concrete_types := parent_sym.info.concrete_types.clone()
+			if concrete_types.len == 0
+				&& parent_sym.generic_types.len == parent_sym.info.generic_types.len
+				&& parent_sym.generic_types != parent_sym.info.generic_types {
+				concrete_types = parent_sym.generic_types.clone()
+			}
+			return concrete_types
+		}
+		ast.GenericInst {
+			return parent_sym.info.concrete_types.clone()
 		}
 		else {}
 	}
@@ -1183,12 +1214,16 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 				'${left_fn_name}_str'
 			}
 			if !g.pref.new_generic_solver {
-				match sym.info {
-					ast.Struct, ast.SumType, ast.Interface {
-						field_fn_name = g.generic_fn_name(g.str_method_concrete_types(ftyp_noshared, sym),
-							field_fn_name)
+				if str_method := sym.find_method_with_generic_parent('str') {
+					if str_method.generic_names.len > 0 {
+						match sym.info {
+							ast.Struct, ast.SumType, ast.Interface, ast.Alias {
+								field_fn_name = g.generic_fn_name(g.str_method_concrete_types(ftyp_noshared, sym),
+									field_fn_name)
+							}
+							else {}
+						}
 					}
-					else {}
 				}
 			}
 			if sym.is_builtin() && !field_fn_name.starts_with('builtin__') {

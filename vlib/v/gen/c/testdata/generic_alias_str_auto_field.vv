@@ -1,0 +1,22 @@
+struct GenericAliasStrBox[T] {
+	val T
+}
+
+type GenericAliasStrIntBox = GenericAliasStrBox[int]
+
+struct GenericAliasStrContainer {
+	b GenericAliasStrIntBox
+}
+
+fn (b GenericAliasStrIntBox) str[T]() string {
+	return 'alias generic str'
+}
+
+fn main() {
+	c := GenericAliasStrContainer{
+		b: GenericAliasStrIntBox{
+			val: 1
+		}
+	}
+	println(c)
+}
