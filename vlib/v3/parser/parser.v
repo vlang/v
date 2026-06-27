@@ -150,10 +150,16 @@ fn read_source_file_raw(path string) string {
 	if fd < 0 {
 		return ''
 	}
-	buf := C.malloc(max_source_file_size + 1)
+	size := os.file_size(path)
+	if size == 0 {
+		C.close(fd)
+		return ''
+	}
+	expected := if size > max_source_file_size { max_source_file_size } else { int(size) }
+	buf := C.malloc(expected + 1)
 	mut total := 0
-	for total < max_source_file_size {
-		nread := C.read(fd, unsafe { buf + total }, max_source_file_size - total)
+	for total < expected {
+		nread := C.read(fd, unsafe { buf + total }, expected - total)
 		if nread <= 0 {
 			break
 		}
