@@ -1357,8 +1357,8 @@ fn map_str_kind(tc &types.TypeChecker, typ types.Type) int {
 		if name in ['i8', 'i16', 'i32', 'i64', 'int'] {
 			return 2
 		}
-		if name == 'u8' {
-			return 4
+		if name in ['u8', 'byte'] {
+			return 3
 		}
 		if name in ['u16', 'u32', 'u64'] {
 			return 3

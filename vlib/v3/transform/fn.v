@@ -1717,13 +1717,13 @@ fn map_str_kind_for_type(typ string) int {
 		'string' {
 			return 1
 		}
-		'rune', 'u8', 'byte' {
+		'rune' {
 			return 4
 		}
 		'isize', 'char', 'i8', 'i16', 'i32', 'i64', 'int' {
 			return 2
 		}
-		'usize', 'u16', 'u32', 'u64' {
+		'usize', 'u8', 'byte', 'u16', 'u32', 'u64' {
 			return 3
 		}
 		'f32', 'f64' {

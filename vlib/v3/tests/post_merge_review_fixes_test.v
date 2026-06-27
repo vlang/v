@@ -306,5 +306,26 @@ fn test_f32_map_and_fixed_array_stringification() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'f32_map_stringification',
 		"fn main() {\n\tm := {\n\t\t'a': f32(1.5)\n\t}\n\tprintln(m)\n\tfixed := [f32(1.5), f32(2.25)]!\n\tmf := {\n\t\t'x': fixed\n\t}\n\tprintln(mf)\n}\n")
-	assert out == "{'a': 1.5}\n{'x': [1.5, 2.25]}"
+assert out == "{'a': 1.5}\n{'x': [1.5, 2.25]}"
+}
+
+fn test_u8_map_stringification_is_numeric() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'u8_map_stringification',
+		"fn main() {\n\tkeys := {\n\t\tu8(23): 'x'\n\t}\n\tvals := {\n\t\t'x': u8(23)\n\t}\n\tboth := {\n\t\tu8(65): u8(10)\n\t}\n\tprintln(keys)\n\tprintln(vals)\n\tprintln(both)\n}\n")
+	assert out == "{23: 'x'}\n{'x': 23}\n{65: 10}"
+}
+
+fn test_map_equality_uses_semantic_value_comparison() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'map_semantic_value_equality',
+		"struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := {\n\t\t'x': Item{\n\t\t\tname: 'hello'.clone()\n\t\t\tparts: ['ab'.clone()]\n\t\t}\n\t}\n\tright := {\n\t\t'x': Item{\n\t\t\tname: join('he', 'llo')\n\t\t\tparts: [join('a', 'b')]\n\t\t}\n\t}\n\tarr_left := {\n\t\t'y': ['cd'.clone()]\n\t}\n\tarr_right := {\n\t\t'y': [join('c', 'd')]\n\t}\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(arr_left == arr_right)\n}\n")
+	assert out == 'true\nfalse\ntrue'
+}
+
+fn test_zero_padded_interpolation_preserves_wide_integers() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'wide_zero_padded_interpolation',
+		"fn main() {\n\tbig := i64(5000000000)\n\tubig := u64(18446744073709551615)\n\tsmall := u64(42)\n\tprintln('\${big:012d}')\n\tprintln('\${ubig:020d}')\n\tprintln('\${small:08d}')\n}\n")
+	assert out == '005000000000\n18446744073709551615\n00000042'
 }
