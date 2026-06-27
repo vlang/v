@@ -4209,7 +4209,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				idx := if g.is_ierror_type_name(clean.name) {
 					g.ierror_type_id_for_pattern(node.value)
 				} else {
-					g.iface_type_id(clean.name, node.value)
+					g.iface_type_id_for_pattern(clean.name, node.value)
 				}
 				if idx == 0 {
 					g.write('0')

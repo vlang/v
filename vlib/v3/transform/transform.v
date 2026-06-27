@@ -7571,30 +7571,63 @@ fn (t &Transformer) match_type_pattern_for_subject(match_expr_id flat.NodeId, co
 		return pattern
 	}
 	subject_type := t.trim_pointer_type(t.original_expr_type(match_expr_id))
-	if t.is_interface_type_name(subject_type)
-		&& t.match_pattern_implements_interface(pattern, subject_type) {
-		return pattern
+	if t.is_interface_type_name(subject_type) {
+		return t.resolve_interface_pattern(pattern, subject_type)
 	}
 	return none
 }
 
 fn (t &Transformer) match_pattern_implements_interface(pattern string, subject_type string) bool {
+	return t.resolve_interface_pattern(pattern, subject_type) != none
+}
+
+fn (t &Transformer) resolve_interface_pattern(pattern string, subject_type string) ?string {
 	if !t.is_interface_type_name(subject_type) {
-		return false
+		return none
 	}
 	resolved_iface := t.resolve_interface_type_name(subject_type)
 	iface := if resolved_iface.len > 0 { resolved_iface } else { subject_type }
-	if iface == 'IError' || iface.ends_with('.IError') {
-		return t.tc.named_type_compatible_with_ierror(pattern)
+	for candidate in t.interface_pattern_candidates(pattern) {
+		if iface == 'IError' || iface.ends_with('.IError') {
+			if t.tc.named_type_compatible_with_ierror(candidate) {
+				return candidate
+			}
+		} else if t.tc.named_type_implements_interface(candidate, iface) {
+			return candidate
+		}
 	}
-	if t.tc.named_type_implements_interface(pattern, iface) {
-		return true
+	return none
+}
+
+fn (t &Transformer) interface_pattern_candidates(pattern string) []string {
+	mut candidates := []string{}
+	candidates << pattern
+	if !pattern.contains('.') {
+		if t.cur_file.len > 0 {
+			for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, pattern)] or {
+				[]string{}
+			} {
+				candidates << candidate
+			}
+		}
+		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+			candidates << '${t.cur_module}.${pattern}'
+		}
 	}
 	qpattern := t.tc.qualify_name(pattern)
-	if qpattern != pattern && t.tc.named_type_implements_interface(qpattern, iface) {
-		return true
+	if qpattern != pattern {
+		candidates << qpattern
 	}
-	return false
+	mut result := []string{}
+	mut seen := map[string]bool{}
+	for candidate in candidates {
+		if candidate.len == 0 || candidate in seen {
+			continue
+		}
+		seen[candidate] = true
+		result << candidate
+	}
+	return result
 }
 
 // match_branch_all_type_patterns supports match branch all type patterns handling for Transformer.

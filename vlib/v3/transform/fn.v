@@ -1630,7 +1630,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 				}
 				return t.enum_autostr_call(expr, qenum)
 			}
-			if generic_str := t.generic_struct_str_call(expr, clean_typ) {
+			if generic_str := t.generic_receiver_str_call(expr, clean_typ) {
 				return generic_str
 			}
 			if clean_typ in t.structs || clean_typ in t.sum_types {
@@ -1792,7 +1792,7 @@ fn zero_padded_decimal_width(format string) ?int {
 	return width
 }
 
-fn (mut t Transformer) generic_struct_str_call(expr flat.NodeId, typ string) ?flat.NodeId {
+fn (mut t Transformer) generic_receiver_str_call(expr flat.NodeId, typ string) ?flat.NodeId {
 	if isnil(t.tc) || !typ.contains('[') {
 		return none
 	}
@@ -1800,7 +1800,9 @@ fn (mut t Transformer) generic_struct_str_call(expr flat.NodeId, typ string) ?fl
 	if !clean_typ.ends_with(']') {
 		return none
 	}
-	info := t.tc.resolve_generic_struct_method(clean_typ, 'str') or { return none }
+	info := t.tc.resolve_generic_struct_method(clean_typ, 'str') or {
+		t.tc.resolve_generic_sum_method(clean_typ, 'str') or { return none }
+	}
 	if info.return_type.name() != 'string' {
 		return none
 	}

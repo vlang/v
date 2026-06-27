@@ -1120,13 +1120,23 @@ fn generic_stringification_type_candidates(type_name string, cur_module string, 
 	}
 	mut candidates := []string{}
 	for base_candidate in stringification_type_candidates(base, cur_module) {
-		params := tc.struct_generic_params[base_candidate] or { continue }
+		params := generic_stringification_params(base_candidate, tc) or { continue }
 		if params.len != args.len {
 			continue
 		}
 		candidates << '${base_candidate}[${params.join(', ')}]'
 	}
 	return candidates
+}
+
+fn generic_stringification_params(base_candidate string, tc &types.TypeChecker) ?[]string {
+	if params := tc.struct_generic_params[base_candidate] {
+		return params
+	}
+	if params := tc.sum_generic_params[base_candidate] {
+		return params
+	}
+	return none
 }
 
 fn markused_generic_app_parts(typ string) (string, []string, bool) {

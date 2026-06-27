@@ -1,0 +1,74 @@
+import os
+
+const vexe = @VEXE
+const tests_dir = os.dir(@FILE)
+const v3_dir = os.dir(tests_dir)
+const vlib_dir = os.dir(v3_dir)
+const v3_src = os.join_path(v3_dir, 'v3.v')
+
+fn build_v3() string {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_test')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+	return v3_bin
+}
+
+fn test_ierror_dispatch_uses_promoted_embedded_methods() {
+	v3_bin := build_v3()
+
+	root := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, "struct BaseErr {
+	text string
+}
+
+fn helper_msg(s string) string {
+	return s
+}
+
+fn (err BaseErr) msg() string {
+	return helper_msg(err.text)
+}
+
+fn (err BaseErr) code() int {
+	return 42
+}
+
+struct WrapErr {
+	BaseErr
+}
+
+fn fail() !int {
+	return WrapErr{
+		BaseErr: BaseErr{
+			text: 'promoted'
+		}
+	}
+}
+
+fn main() {
+	fail() or {
+		println(err.msg() + ':' + err.code().str())
+		return
+	}
+	println('bad')
+}
+") or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_out_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	c_code := os.read_file('${bin}.c') or { '' }
+	assert c_code.contains('BaseErr__msg(((WrapErr*)i->_object)->BaseErr)'), c_code
+	assert c_code.contains('helper_msg'), c_code
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'promoted:42'
+}

@@ -213,12 +213,12 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	}
 	if t.is_interface_type_name(clean_type0) {
 		new_expr := t.transform_expr(expr_id)
-		if t.match_pattern_implements_interface(node.value, clean_type0) {
+		if pattern := t.resolve_interface_pattern(node.value, clean_type0) {
 			is_start := t.a.children.len
 			t.a.children << new_expr
 			return t.a.add_node(flat.Node{
 				kind:           .is_expr
-				value:          node.value
+				value:          pattern
 				children_start: is_start
 				children_count: 1
 				typ:            'bool'

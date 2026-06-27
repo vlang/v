@@ -3687,6 +3687,9 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
+	if tc.check_assignment_marker(id, node) {
+		return
+	}
 	if tc.check_multi_return_decl_assign(id, node) {
 		return
 	}
@@ -3917,6 +3920,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	if node.children_count < 2 {
 		return
 	}
+	if tc.check_assignment_marker(id, node) {
+		return
+	}
 	if node.kind == .index_assign && tc.reject_unlowered_map_mutation
 		&& tc.index_assign_lhs_is_map(node) {
 		if tc.should_diagnose(id) {
@@ -3958,6 +3964,14 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		}
 		i += 2
 	}
+}
+
+fn (mut tc TypeChecker) check_assignment_marker(id flat.NodeId, node flat.Node) bool {
+	if node.value.starts_with('for init assignment mismatch:') {
+		tc.record_error(.assignment_mismatch, node.value, id)
+		return true
+	}
+	return false
 }
 
 // index_assign_lhs_is_map supports index assign lhs is map handling for TypeChecker.
@@ -11456,7 +11470,7 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method 
 	}
 }
 
-fn (tc &TypeChecker) resolve_generic_sum_method(type_name string, method string) ?CallInfo {
+pub fn (tc &TypeChecker) resolve_generic_sum_method(type_name string, method string) ?CallInfo {
 	mut base := type_name
 	mut concrete_args := []string{}
 	parsed_base, parsed_args, is_generic := generic_type_application_parts(type_name)

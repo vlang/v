@@ -2910,9 +2910,15 @@ fn (mut p Parser) for_c_style_multi(lhs_ids []flat.NodeId) flat.NodeId {
 			all_ids << rhs_ids[i]
 		}
 	}
+	arity_msg := if lhs_ids.len == rhs_ids.len {
+		''
+	} else {
+		'for init assignment mismatch: ${lhs_ids.len} variables but ${rhs_ids.len} values'
+	}
 	init_start := p.add_children(all_ids)
 	init_id := p.a.add_node(flat.Node{
 		kind:           if is_decl { flat.NodeKind.decl_assign } else { flat.NodeKind.assign }
+		value:          arity_msg
 		op:             if is_decl { .assign } else { token_id_to_op(op_id) }
 		children_start: init_start
 		children_count: flat.child_count(all_ids.len)

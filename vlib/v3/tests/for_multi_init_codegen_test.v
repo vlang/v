@@ -15,6 +15,18 @@ fn for_multi_init_build_v3() string {
 	return v3_bin
 }
 
+fn for_multi_init_run_bad(v3_bin string, name string, source string, expected string) {
+	src := os.join_path(os.temp_dir(), 'v3_for_multi_init_${name}_${os.getpid()}.v')
+	os.write_file(src, source) or { panic(err) }
+	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_${name}_${os.getpid()}')
+	os.rm(bin) or {}
+	os.rm(bin + '.c') or {}
+	result := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains(expected), result.output
+	assert !result.output.contains('C compilation failed'), result.output
+}
+
 fn test_c_style_for_multi_init_does_not_swallow_following_fn() {
 	v3_bin := for_multi_init_build_v3()
 	src := os.join_path(os.temp_dir(), 'v3_for_multi_init_input_${os.getpid()}.v')
@@ -77,4 +89,33 @@ fn main() {
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
+}
+
+fn test_c_style_for_multi_init_rejects_extra_rhs() {
+	v3_bin := for_multi_init_build_v3()
+	for_multi_init_run_bad(v3_bin, 'extra_rhs', 'fn bump(n int) int {
+	println(n.str())
+	return n
+}
+
+fn main() {
+	for a, b := bump(1), bump(2), bump(3); false; {
+		println(a)
+		println(b)
+	}
+}
+',
+		'for init assignment mismatch: 2 variables but 3 values')
+}
+
+fn test_c_style_for_multi_init_rejects_missing_rhs() {
+	v3_bin := for_multi_init_build_v3()
+	for_multi_init_run_bad(v3_bin, 'missing_rhs', 'fn main() {
+	for a, b := 1; false; {
+		println(a)
+		println(b)
+	}
+}
+',
+		'for init assignment mismatch: 2 variables but 1 values')
 }
