@@ -127,6 +127,13 @@ fn test_comptime_type_conditions_handle_logical_ops() {
 	assert out == '2\n2\n2\n1\n2\n2'
 }
 
+fn test_comptime_type_conditions_keep_prefix_types_compact() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'comptime_type_condition_prefix_types',
+		'struct Foo {}\n\nfn main() {\n\t\$if ?int is ?int {\n\t\tprintln("opt")\n\t} \$else {\n\t\tprintln("badopt")\n\t}\n\t\$if !Foo is !Foo {\n\t\tprintln("res")\n\t} \$else {\n\t\tprintln("badres")\n\t}\n}\n')
+	assert out == 'opt\nres'
+}
+
 fn test_struct_equality_compares_pointer_fields_as_pointers() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'struct_eq_pointer_field',

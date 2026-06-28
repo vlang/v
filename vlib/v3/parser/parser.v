@@ -1959,6 +1959,9 @@ fn comptime_cond_needs_space(prev string, cur string) bool {
 	if prev == 'is' || prev == '!is' {
 		return true
 	}
+	if prev == '?' || prev == '!' {
+		return false
+	}
 	if cur == '?' || cur == ']' || cur == '[' || cur == '.' || cur == ',' {
 		return false
 	}
