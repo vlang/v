@@ -365,7 +365,11 @@ fn ensure_iface_impls(recv string, cur_module string, tc &types.TypeChecker, mut
 	}
 	mut impls := []string{}
 	for struct_name, _ in tc.structs {
-		if tc.named_type_implements_interface(struct_name, iface_name) {
+		if markused_is_ierror_interface_name(iface_name) {
+			if tc.named_type_compatible_with_ierror(struct_name) {
+				impls << struct_name
+			}
+		} else if tc.named_type_implements_interface(struct_name, iface_name) {
 			impls << struct_name
 		}
 	}
@@ -390,6 +394,10 @@ fn interface_name_for_receiver(recv string, cur_module string, tc &types.TypeChe
 		}
 	}
 	return none
+}
+
+fn markused_is_ierror_interface_name(name string) bool {
+	return name == 'IError' || name == 'builtin.IError'
 }
 
 // add_suffix_candidate updates add suffix candidate state for markused.

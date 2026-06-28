@@ -161,3 +161,53 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
+
+fn test_ierror_embed_compatible_method_dependencies_are_marked_used() {
+	v3_bin := build_v3()
+
+	root := os.join_path(os.temp_dir(), 'v3_ierror_embed_method_deps_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, "struct GhostError {
+	Error
+	text string
+}
+
+fn ghost_msg_part(text string) string {
+	return text
+}
+
+fn (err GhostError) msg() string {
+	return ghost_msg_part(err.text)
+}
+
+fn fail() !int {
+	return GhostError{
+		text: 'ghost'
+	}
+}
+
+fn main() {
+	fail() or {
+		println('ok')
+		return
+	}
+	println('bad')
+}
+") or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_ierror_embed_method_deps_out_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	c_code := os.read_file('${bin}.c') or { '' }
+	assert c_code.contains('GhostError__msg'), c_code
+	assert c_code.contains('string ghost_msg_part('), c_code
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}

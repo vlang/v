@@ -4212,7 +4212,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	tc.check_node(child_id)
 	if expected is ResultType {
 		if bad_type := tc.invalid_ierror_return_expr_type_name(child_id, expected) {
-			tc.record_error_unfiltered(.return_mismatch,
+			tc.record_error(.return_mismatch,
 				'cannot return `${bad_type}` as `${Type(expected).name()}`', id)
 			return
 		}
