@@ -1867,11 +1867,115 @@ fn (mut t Transformer) lower_map_str(map_expr flat.NodeId, map_type string) flat
 	if key_type.len == 0 || value_type.len == 0 {
 		return map_expr
 	}
+	key_kind := t.map_str_kind_for_type(key_type)
+	value_kind := t.map_str_kind_for_type(value_type)
+	if key_kind == 0 || value_kind == 0 {
+		key_has_conversion := key_kind != 0 || t.map_str_type_has_transform_conversion(key_type)
+		value_has_conversion := value_kind != 0
+			|| t.map_str_type_has_transform_conversion(value_type)
+		if key_has_conversion && value_has_conversion {
+			return t.lower_typed_map_str(map_expr, map_type, key_type, value_type)
+		}
+	}
 	lowered := t.transform_expr_for_type(map_expr, map_type)
-	return t.make_call_typed('v3_map_str', arr4(lowered,
-		t.make_int_literal(t.map_str_kind_for_type(key_type)),
-		t.make_int_literal(t.map_str_kind_for_type(value_type)),
+	return t.make_call_typed('v3_map_str', arr4(lowered, t.make_int_literal(key_kind),
+		t.make_int_literal(value_kind),
 		t.make_int_literal(t.map_str_fixed_len_for_type(value_type))), 'string')
+}
+
+// lower_typed_map_str handles map interpolation when v3_map_str cannot stringify a typed
+// key/value directly. It mirrors lower_array_str by recursing through wrap_string_conversion.
+fn (mut t Transformer) lower_typed_map_str(map_expr flat.NodeId, map_type string, key_type string, value_type string) flat.NodeId {
+	src := t.a.nodes[int(map_expr)]
+	base := t.stable_expr_for_reuse(map_expr)
+	mut prefix := []flat.NodeId{}
+	t.drain_pending(mut prefix)
+	result_name := t.new_temp('map_str')
+	keys_name := t.new_temp('map_str_keys')
+	idx_name := t.new_temp('map_str_idx')
+	key_name := t.new_temp('map_str_key')
+	zero_name := t.new_temp('map_str_zero')
+	value_name := t.new_temp('map_str_value')
+	key_kind := t.map_str_kind_for_type(key_type)
+	value_kind := t.map_str_kind_for_type(value_type)
+	keys_type := '[]${key_type}'
+	keys_call := t.make_call_typed('map__keys', arr1(t.runtime_addr(base, map_type)), keys_type)
+	prefix << t.make_decl_assign_typed(result_name, t.make_string_literal('{'), 'string')
+	prefix << t.make_decl_assign_typed(keys_name, keys_call, keys_type)
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(t.make_ident(keys_name),
+		'len', 'int'))
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	key_expr := t.array_get_value(t.make_ident(keys_name), t.make_ident(idx_name), key_type)
+	key_decl := t.make_decl_assign_typed(key_name, key_expr, key_type)
+	zero_decl := t.make_decl_assign_typed(zero_name, t.zero_value_for_type(value_type), value_type)
+	value_expr := t.make_map_get_expr(base, map_type, key_name, zero_name, value_type)
+	value_decl := t.make_decl_assign_typed(value_name, value_expr, value_type)
+	mut loop_body := []flat.NodeId{}
+	loop_body << key_decl
+	loop_body << zero_decl
+	loop_body << value_decl
+	sep_cond := t.make_infix(.gt, t.make_ident(idx_name), t.make_int_literal(0))
+	sep_stmt := t.append_string(result_name, t.make_string_literal(', '))
+	loop_body << t.make_if(sep_cond, t.make_block(arr1(sep_stmt)), t.make_empty())
+	key_str := t.map_str_loop_piece(key_name, key_type, key_kind, 0)
+	t.drain_pending(mut loop_body)
+	loop_body << t.append_string(result_name, key_str)
+	loop_body << t.append_string(result_name, t.make_string_literal(': '))
+	value_str := t.map_str_loop_piece(value_name, value_type, value_kind,
+		t.map_str_fixed_len_for_type(value_type))
+	t.drain_pending(mut loop_body)
+	loop_body << t.append_string(result_name, value_str)
+	prefix << t.make_for_stmt(init, cond, post, loop_body, src)
+	prefix << t.append_string(result_name, t.make_string_literal('}'))
+	for stmt in prefix {
+		t.pending_stmts << stmt
+	}
+	return t.make_ident(result_name)
+}
+
+fn (mut t Transformer) map_str_loop_piece(name string, typ string, kind int, fixed_len int) flat.NodeId {
+	if kind != 0 {
+		return t.make_call_typed('v3_map_str_piece', arr4(t.make_prefix(.amp, t.make_ident(name)),
+			t.make_int_literal(kind), t.make_sizeof_type(typ), t.make_int_literal(fixed_len)),
+			'string')
+	}
+	t.set_var_type(name, typ)
+	piece := t.wrap_string_conversion(t.make_ident(name), typ)
+	t.unset_var_type(name)
+	return piece
+}
+
+fn (t &Transformer) map_str_type_has_transform_conversion(typ string) bool {
+	mut clean := t.normalize_type_alias(typ).trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	if clean.starts_with('&') {
+		return true
+	}
+	if clean.starts_with('builtin.') {
+		clean = clean.all_after_last('.')
+	}
+	if t.is_optional_type_name(clean) {
+		return true
+	}
+	if clean in ['string', 'rune', 'bool', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'u8', 'byte',
+		'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'int literal', 'float literal', 'voidptr',
+		'byteptr', 'charptr', 'IError'] {
+		return true
+	}
+	if clean in t.enum_types || clean in t.structs || clean in t.sum_types {
+		return true
+	}
+	if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		qname := '${t.cur_module}.${clean}'
+		if qname in t.enum_types || qname in t.structs || qname in t.sum_types {
+			return true
+		}
+	}
+	return t.is_fixed_array_type(clean) || clean.starts_with('[]') || clean.starts_with('map[')
 }
 
 fn (t &Transformer) map_str_kind_for_type(typ string) int {

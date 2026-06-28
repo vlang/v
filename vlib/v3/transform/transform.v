@@ -1386,6 +1386,7 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 	if typ.len == 0 {
 		typ = 'string'
 	}
+	t.ensure_stringify_generic_instances_for_type(typ)
 	return t.wrap_formatted_string_conversion(transformed, typ, format)
 }
 
@@ -4914,12 +4915,178 @@ fn (mut t Transformer) transform_string_interp(id flat.NodeId, node flat.Node) f
 fn (t &Transformer) string_interp_has_unresolved_generic_part(node flat.Node) bool {
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
-		mut typ := t.node_type(child_id)
-		if typ.len == 0 {
-			typ = t.reliable_stringify_type(child_id)
-		}
-		if stringify_type_has_generic_placeholder(typ) {
+		if t.string_interp_child_has_unresolved_generic_part(child_id) {
 			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) string_interp_child_has_unresolved_generic_part(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	mut candidates := []string{cap: 5}
+	candidates << t.node_type(id)
+	if node.typ.len > 0 {
+		candidates << t.normalize_type_alias(node.typ)
+	}
+	if node.kind == .ident {
+		candidates << t.var_type(node.value)
+	}
+	candidates << t.lvalue_type(id)
+	candidates << t.reliable_stringify_type(id)
+	for typ in candidates {
+		if t.stringify_type_has_generic_placeholder(typ) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) ensure_stringify_generic_instances_for_type(typ string) {
+	clean := typ.trim_space()
+	if clean.len == 0 || t.stringify_type_has_generic_placeholder(clean) {
+		return
+	}
+	if clean.starts_with('&') {
+		t.ensure_stringify_generic_instances_for_type(clean[1..])
+		return
+	}
+	if clean.starts_with('mut ') {
+		t.ensure_stringify_generic_instances_for_type(clean[4..])
+		return
+	}
+	if clean.starts_with('?') || clean.starts_with('!') {
+		t.ensure_stringify_generic_instances_for_type(clean[1..])
+		return
+	}
+	if clean.starts_with('...') {
+		t.ensure_stringify_generic_instances_for_type(clean[3..])
+		return
+	}
+	if clean.starts_with('[]') {
+		t.ensure_stringify_generic_instances_for_type(clean[2..])
+		return
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			t.ensure_stringify_generic_instances_for_type(clean[4..bracket_end])
+			t.ensure_stringify_generic_instances_for_type(clean[bracket_end + 1..])
+		}
+		return
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			t.ensure_stringify_generic_instances_for_type(clean[bracket_end + 1..])
+		}
+		return
+	}
+	base, args, ok := generic_app_parts(clean)
+	if !ok {
+		return
+	}
+	for arg in args {
+		t.ensure_stringify_generic_instances_for_type(arg)
+	}
+	if clean in t.structs {
+		return
+	}
+	base_info := t.lookup_struct_info_direct(base) or { return }
+	params := t.generic_struct_params_for_stringify(base)
+	mut fields := []FieldInfo{cap: base_info.fields.len}
+	for field in base_info.fields {
+		field_typ := if params.len > 0 {
+			substitute_generic_type_text_with_params(field.typ, args, params)
+		} else {
+			substitute_generic_type_text(field.typ, args)
+		}
+		fields << FieldInfo{
+			name:         field.name
+			typ:          field_typ
+			raw_typ:      field.raw_typ
+			default_expr: field.default_expr
+		}
+	}
+	t.structs[clean] = StructInfo{
+		name:      clean
+		module:    base_info.module
+		is_params: base_info.is_params
+		fields:    fields
+	}
+}
+
+fn (t &Transformer) generic_struct_params_for_stringify(base string) []string {
+	if isnil(t.tc) {
+		return []string{}
+	}
+	if params := t.tc.struct_generic_params[base] {
+		return params
+	}
+	if !base.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		if params := t.tc.struct_generic_params['${t.cur_module}.${base}'] {
+			return params
+		}
+	}
+	if base.contains('.') {
+		if params := t.tc.struct_generic_params[base.all_after_last('.')] {
+			return params
+		}
+	}
+	return []string{}
+}
+
+fn (t &Transformer) stringify_type_has_generic_placeholder(typ string) bool {
+	clean := typ.trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	if clean == 'generic' {
+		return true
+	}
+	if is_generic_fn_placeholder_name(clean) {
+		return !t.is_known_concrete_type_name(clean)
+	}
+	if clean.starts_with('&') {
+		return t.stringify_type_has_generic_placeholder(clean[1..])
+	}
+	if clean.starts_with('mut ') {
+		return t.stringify_type_has_generic_placeholder(clean[4..])
+	}
+	if clean.starts_with('?') || clean.starts_with('!') {
+		return t.stringify_type_has_generic_placeholder(clean[1..])
+	}
+	if clean.starts_with('...') {
+		return t.stringify_type_has_generic_placeholder(clean[3..])
+	}
+	if clean.starts_with('[]') {
+		return t.stringify_type_has_generic_placeholder(clean[2..])
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			return t.stringify_type_has_generic_placeholder(clean[4..bracket_end])
+				|| t.stringify_type_has_generic_placeholder(clean[bracket_end + 1..])
+		}
+		return false
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return t.stringify_type_has_generic_placeholder(clean[bracket_end + 1..])
+		}
+		return false
+	}
+	_, args, ok := generic_app_parts(clean)
+	if ok {
+		for arg in args {
+			if t.stringify_type_has_generic_placeholder(arg) {
+				return true
+			}
 		}
 	}
 	return false
@@ -4946,13 +5113,27 @@ fn stringify_type_has_generic_placeholder(typ string) bool {
 		return stringify_type_has_generic_placeholder(clean[2..])
 	}
 	if clean.starts_with('map[') {
-		bracket_end := clean.index(']') or { return false }
-		return stringify_type_has_generic_placeholder(clean[4..bracket_end])
-			|| stringify_type_has_generic_placeholder(clean[bracket_end + 1..])
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			return stringify_type_has_generic_placeholder(clean[4..bracket_end])
+				|| stringify_type_has_generic_placeholder(clean[bracket_end + 1..])
+		}
+		return false
 	}
 	if clean.starts_with('[') {
-		bracket_end := clean.index(']') or { return false }
-		return stringify_type_has_generic_placeholder(clean[bracket_end + 1..])
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return stringify_type_has_generic_placeholder(clean[bracket_end + 1..])
+		}
+		return false
+	}
+	_, args, ok := generic_app_parts(clean)
+	if ok {
+		for arg in args {
+			if stringify_type_has_generic_placeholder(arg) {
+				return true
+			}
+		}
 	}
 	return false
 }

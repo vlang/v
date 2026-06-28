@@ -641,6 +641,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 								&& !g.type_names_match(expr_value_type, base)
 								&& !g.expr_is_nil_pointer_payload(ret_id, base)
 								&& !g.type_can_wrap_as_sum(expr_value_type, base)
+								&& !g.type_can_wrap_as_ierror_payload(expr_value_type, base)
 								&& !g.types_numeric_compatible(expr_value_type, base)
 								&& !g.call_constructs_type(ret_id, base)
 								&& !g.clone_call_matches_base(ret_node, base)
@@ -1022,6 +1023,7 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 			&& !g.type_names_match(expr_value_type, base)
 			&& !g.expr_is_nil_pointer_payload(ret_id, base)
 			&& !g.type_can_wrap_as_sum(expr_value_type, base)
+			&& !g.type_can_wrap_as_ierror_payload(expr_value_type, base)
 			&& !g.types_numeric_compatible(expr_value_type, base)
 			&& !g.call_constructs_type(ret_id, base) && !g.clone_call_matches_base(ret_node, base)
 			&& expr_value_type !is types.Primitive && expr_value_type !is types.Unknown {
@@ -1665,6 +1667,23 @@ fn (g &FlatGen) type_can_wrap_as_sum(actual types.Type, expected types.Type) boo
 	variant := g.resolve_variant(sum_name, actual0.name())
 	variants := g.tc.sum_types[sum_name] or { return false }
 	return variant in variants
+}
+
+fn (g &FlatGen) type_can_wrap_as_ierror_payload(actual types.Type, expected types.Type) bool {
+	expected0 := if expected is types.Alias { expected.base_type } else { expected }
+	if expected0 !is types.Interface || !g.is_ierror_type_name(expected0.name()) {
+		return false
+	}
+	actual0 := types.unwrap_pointer(actual)
+	actual_base := if actual0 is types.Alias { actual0.base_type } else { actual0 }
+	if actual_base is types.Interface {
+		return false
+	}
+	concrete := actual_base.name()
+	if concrete.len == 0 {
+		return false
+	}
+	return g.type_can_box_as_ierror(concrete)
 }
 
 // types_numeric_compatible supports types numeric compatible handling for FlatGen.

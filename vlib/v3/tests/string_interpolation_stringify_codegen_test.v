@@ -73,6 +73,67 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
+fn test_defer_string_interpolation_with_generic_type_arguments() {
+	v3_bin := string_interp_build_v3()
+	src := "struct Box[T] {
+	value T
+}
+
+fn (b Box[T]) str() string {
+	return 'box:' + '\${b.value}'
+}
+
+struct PlainBox[T] {
+	value T
+}
+
+fn show_box[T](b Box[T]) {
+	defer {
+		println('box \${b}')
+	}
+	println('body-box')
+}
+
+fn show_plain_box[T](b PlainBox[T]) {
+	list := [b]
+	mut lookup := map[string]PlainBox[T]{}
+	lookup['one'] = b
+	mut rune_lookup := map[rune]PlainBox[T]{}
+	rune_lookup[`x`] = b
+	mut rune_value_lookup := map[PlainBox[T]]rune{}
+	rune_value_lookup[b] = `y`
+	defer {
+		println('plain \${b} \${list} \${lookup} \${rune_lookup} \${rune_value_lookup}')
+	}
+	println('body-plain')
+}
+
+fn show_value[D](value D) {
+	defer {
+		println('value \${value}')
+	}
+	println('body-d')
+}
+
+fn main() {
+	show_box(Box[int]{
+		value: 7
+	})
+	show_plain_box(PlainBox[int]{
+		value: 8
+	})
+	show_value(9)
+}
+"
+	bin := os.join_path(os.temp_dir(), 'v3_defer_generic_string_interp_${os.getpid()}')
+	compile := compile_v3_input(v3_bin, 'v3_defer_generic_string_interp', src, bin)
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == "body-box\nbox box:7\nbody-plain\nplain PlainBox[int]{} [PlainBox[int]{}] {'one': PlainBox[int]{}} {`x`: PlainBox[int]{}} {PlainBox[int]{}: `y`}\nbody-d\nvalue 9"
+}
+
 fn test_string_plus_accepts_string_aliases() {
 	v3_bin := string_interp_build_v3()
 	src := "type MyString = string

@@ -14,6 +14,13 @@ fn build_v3() string {
 	return v3_bin
 }
 
+fn c_fn_body(c_code string, header string) string {
+	start := c_code.index(header) or { return '' }
+	tail := c_code[start..]
+	end := tail.index('\n}\n') or { return tail }
+	return tail[..end + 3]
+}
+
 fn test_ierror_shaped_result_payload_returns_success_before_error_boxing() {
 	v3_bin := build_v3()
 
@@ -44,6 +51,21 @@ fn payload_defer() !MyErr {
 	}
 	return MyErr{
 		label: 'payload-defer'
+	}
+}
+
+fn payload_ierror() !IError {
+	return MyErr{
+		label: 'payload-ierror'
+	}
+}
+
+fn payload_ierror_defer() !IError {
+	defer {
+		assert true
+	}
+	return MyErr{
+		label: 'payload-ierror-defer'
 	}
 }
 
@@ -81,6 +103,18 @@ fn main() {
 	}
 	println('OK:' + y.msg())
 
+	i := payload_ierror() or {
+		println('IERR_PAYLOAD_ERR:' + err.msg())
+		return
+	}
+	println('IERR_OK:' + i.msg())
+
+	j := payload_ierror_defer() or {
+		println('IERR_DEFER_PAYLOAD_ERR:' + err.msg())
+		return
+	}
+	println('IERR_DEFER_OK:' + j.msg())
+
 	fail() or {
 		println('ERR:' + err.msg() + ':' + err.code().str())
 	}
@@ -106,5 +140,16 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'OK:payload\nOK:payload-defer\nERR:real-error:7\nIERR:boom\nIERR_DEFER:boom'
+	assert run.output.trim_space() == 'OK:payload\nOK:payload-defer\nIERR_OK:payload-ierror\nIERR_DEFER_OK:payload-ierror-defer\nERR:real-error:7\nIERR:boom\nIERR_DEFER:boom'
+
+	c_code := os.read_file(bin + '.c') or { panic(err) }
+	payload_ierror_body := c_fn_body(c_code, 'Optional_IError payload_ierror(void) {')
+	assert payload_ierror_body.contains('.ok = true, .value = (IError){._typ = '), payload_ierror_body
+	assert !payload_ierror_body.contains('.ok = false'), payload_ierror_body
+
+	payload_ierror_defer_body := c_fn_body(c_code, 'Optional_IError payload_ierror_defer(void) {')
+	assert payload_ierror_defer_body.contains('= (Optional_IError){.ok = true, .value = '), payload_ierror_defer_body
+
+	assert payload_ierror_defer_body.contains('(IError){._typ = '), payload_ierror_defer_body
+	assert !payload_ierror_defer_body.contains('= (Optional_IError){.ok = false'), payload_ierror_defer_body
 }
