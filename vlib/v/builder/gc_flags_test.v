@@ -46,3 +46,15 @@ fn test_linux_musl_tcc_boehm_uses_system_libgc() {
 	assert res.output.contains('-lgc')
 	assert !res.output.contains('thirdparty/tcc/lib/libgc.a')
 }
+
+fn test_no_gc_thread_local_alloc_uses_source_libgc_without_tla_define() {
+	source_path := os.join_path(@VEXEROOT, 'examples', 'hello_world.v')
+	cmd := '${os.quoted_path(@VEXE)} -dump-c-flags - -d no_gc_thread_local_alloc ${os.quoted_path(source_path)}'
+	res := execute_without_vflags(cmd)
+	assert res.exit_code == 0, res.output
+	normalized := res.output.replace('\\', '/')
+	assert !normalized.contains('thirdparty/tcc/lib/libgc')
+	assert !normalized.contains('\n-lgc\n')
+	assert normalized.contains('-D GC_THREADS=1')
+	assert !normalized.contains('THREAD_LOCAL_ALLOC')
+}

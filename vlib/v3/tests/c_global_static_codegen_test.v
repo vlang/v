@@ -175,7 +175,7 @@ fn main() {}
 	assert c_code.contains('\nZeroLeading zero;\n')
 	assert c_code.contains('\nNestedZeroLeading nested;\n')
 	assert c_code.contains('\nZeroLeading zero_slots[2];\n')
-	assert c_code.contains('\nint const_empty[(1) - (1)];\n')
+	assert c_code.contains('\nint const_empty[0];\n')
 	assert c_code.contains('\nZeroLeadingConst const_zero;\n')
 	assert c_code.contains('\nZeroLeadingConst const_zero_slots[2];\n')
 	assert !c_code.contains('Array names = 0;')
@@ -185,7 +185,7 @@ fn main() {}
 	assert !c_code.contains('ZeroLeading zero = {0};')
 	assert !c_code.contains('NestedZeroLeading nested = {0};')
 	assert !c_code.contains('ZeroLeading zero_slots[2] = {0};')
-	assert !c_code.contains('int const_empty[(1) - (1)] = {0};')
+	assert !c_code.contains('\nint const_empty[0] = {0};\n')
 	assert !c_code.contains('ZeroLeadingConst const_zero = {0};')
 	assert !c_code.contains('ZeroLeadingConst const_zero_slots[2] = {0};')
 }

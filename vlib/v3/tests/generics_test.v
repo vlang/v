@@ -3,13 +3,14 @@ import os
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
+const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
 // build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_generics_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
-	assert build.exit_code == 0
+	build := os.execute('${vexe} -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
 	return v3_bin
 }
 
@@ -72,6 +73,17 @@ fn run_generic_ok(v3_bin string, name string, src string, expected string) {
 	if expected.len > 0 {
 		assert c_content.len > 0, '${name}: empty C file'
 	}
+}
+
+fn run_generic_exec(v3_bin string, name string, src string) string {
+	src_file := os.join_path(os.temp_dir(), 'v3_gen_${name}.v')
+	os.write_file(src_file, src) or { panic(err) }
+	bin_file := os.join_path(os.temp_dir(), 'v3_gen_${name}')
+	compile := os.execute('${v3_bin} ${src_file} -b c -o ${bin_file}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin_file)
+	assert run.exit_code == 0, run.output
+	return run.output.trim_space()
 }
 
 // test_generics_rejected_when_building_v validates this v3 regression case.
@@ -409,4 +421,20 @@ fn main() {
 }
 ',
 		'3')
+
+	selector_convert_out := run_generic_exec(v3_bin, 'selector_method_arg_infer', '
+struct Box[T] {
+	value T
+}
+
+fn (b Box[T]) convert[U](value U) U {
+	return value
+}
+
+fn main() {
+	b := Box[int]{value: 1}
+	println(b.convert("ok"))
+}
+')
+	assert selector_convert_out == 'ok'
 }

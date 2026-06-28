@@ -78,6 +78,7 @@ mut:
 	pcs_declarations                     strings.Builder            // -prof profile counter declarations for each function
 	cov_declarations                     strings.Builder            // -cov coverage
 	embedded_data                        strings.Builder            // data to embed in the executable/binary
+	interface_index_definitions          strings.Builder            // real interface index symbols for -parallel-cc helpers
 	shared_types                         strings.Builder            // shared/lock types
 	shared_functions                     strings.Builder            // shared constructors
 	out_options_forward                  strings.Builder            // forward `option_xxxx` types
@@ -140,9 +141,7 @@ mut:
 	tmp_var_ptr                          map[string]bool   // indicates if the tmp var passed to or_block() is a ptr
 	labeled_loops                        map[string]&ast.Stmt
 	contains_ptr_cache                   map[ast.Type]bool
-	boehm_keep_decl                      map[string]bool
-	boehm_keep_gen                       map[string]bool
-	boehm_keep_busy                      map[string]bool
+	boehm_keep_gen                       shared map[string]bool
 	inner_loop                           &ast.Stmt = unsafe { nil }
 	cur_indexexpr                        []int          // list of nested indexexpr which generates array_set/map_set
 	shareds                              map[int]string // types with hidden mutex for which decl has been emitted
@@ -401,6 +400,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		pcs_declarations:              strings.new_builder(100)
 		cov_declarations:              strings.new_builder(100)
 		embedded_data:                 strings.new_builder(1000)
+		interface_index_definitions:   strings.new_builder(100)
 		out_options_forward:           strings.new_builder(100)
 		out_options:                   strings.new_builder(100)
 		out_results_forward:           strings.new_builder(100)
@@ -433,9 +433,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		has_debugger:                  'v.debug' in table.modules
 		reflection_strings:            &reflection_strings
 		generated_map_key_fns:         map[ast.Type]bool{}
-		boehm_keep_decl:               map[string]bool{}
 		boehm_keep_gen:                map[string]bool{}
-		boehm_keep_busy:               map[string]bool{}
 		closure_frame_arg_tmps:        map[int]string{}
 		generic_parts_cache:           []i8{len: table.type_symbols.len}
 		unwrap_generic_cache:          map[u64]ast.Type{}
@@ -903,6 +901,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	if g.embedded_data.len > 0 {
 		helpers.write_string2('\n// V embedded data:\n', g.embedded_data.str())
 	}
+	if g.interface_index_definitions.len > 0 {
+		helpers.write_string2('\n// V interface index definitions:\n',
+			g.interface_index_definitions.str())
+	}
 	if g.pref.parallel_cc {
 		helpers.writeln('\n// V global/const non-precomputed definitions:')
 		for var_name in g.sorted_global_const_names {
@@ -1040,6 +1042,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		cov_declarations:                   strings.new_builder(100)
 		hotcode_definitions:                strings.new_builder(100)
 		embedded_data:                      strings.new_builder(1000)
+		interface_index_definitions:        strings.new_builder(100)
 		out_options_forward:                strings.new_builder(100)
 		out_options:                        strings.new_builder(100)
 		out_results_forward:                strings.new_builder(100)
@@ -1092,9 +1095,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		has_debugger:                       'v.debug' in global_g.table.modules
 		reflection_strings:                 global_g.reflection_strings
 		generated_map_key_fns:              map[ast.Type]bool{}
-		boehm_keep_decl:                    map[string]bool{}
-		boehm_keep_gen:                     map[string]bool{}
-		boehm_keep_busy:                    map[string]bool{}
+		boehm_keep_gen:                     global_g.boehm_keep_gen
 		closure_frame_arg_tmps:             map[int]string{}
 		generic_parts_cache:                []i8{len: global_g.table.type_symbols.len}
 		unwrap_generic_cache:               map[u64]ast.Type{}
@@ -1130,6 +1131,7 @@ pub fn (mut g Gen) free_builders() {
 		g.cov_declarations.free()
 		g.hotcode_definitions.free()
 		g.embedded_data.free()
+		g.interface_index_definitions.free()
 		g.shared_types.free()
 		g.shared_functions.free()
 		g.channel_definitions.free()
@@ -8681,18 +8683,19 @@ fn (mut g Gen) boehm_collect_keep_alive_helper_name(typ ast.Type) string {
 	if styp.ends_with('_ptr') {
 		return ''
 	}
-	fn_name := '__v_boehm_collect_keepalive_${g.unique_file_path_hash}_${styp.replace('*', '_ptr').replace(' ', '_')}'
-	if g.boehm_keep_gen[fn_name] {
+	fn_name := '__v_boehm_collect_keepalive_${g.stable_type_symbol_hash(resolved_typ)}_${styp.replace('*',
+		'_ptr').replace(' ', '_')}'
+	mut should_generate := false
+	lock g.boehm_keep_gen {
+		if fn_name !in g.boehm_keep_gen {
+			g.boehm_keep_gen[fn_name] = true
+			should_generate = true
+		}
+	}
+	if !should_generate {
 		return fn_name
 	}
-	if !g.boehm_keep_decl[fn_name] {
-		g.definitions.writeln('static inline int ${fn_name}(${styp}* it, voidptr* out, int idx);')
-		g.boehm_keep_decl[fn_name] = true
-	}
-	if g.boehm_keep_busy[fn_name] {
-		return fn_name
-	}
-	g.boehm_keep_busy[fn_name] = true
+	g.definitions.writeln('static inline int ${fn_name}(${styp}* it, voidptr* out, int idx);')
 	mut sb := strings.new_builder(256)
 	sb.writeln('static inline int ${fn_name}(${styp}* it, voidptr* out, int idx) {')
 	match sym.kind {
@@ -8776,8 +8779,6 @@ fn (mut g Gen) boehm_collect_keep_alive_helper_name(typ ast.Type) string {
 
 	sb.writeln('}')
 	g.auto_fn_definitions << sb.str()
-	g.boehm_keep_gen[fn_name] = true
-	g.boehm_keep_busy.delete(fn_name)
 	return fn_name
 }
 
@@ -14154,6 +14155,11 @@ fn (mut g Gen) interface_table() string {
 			// That keeps stray bytes from overlapping storage, like unions, from
 			// aliasing a valid concrete interface variant.
 			interface_index_name := '_${interface_name}_${cctype}_index'
+			interface_index_case_name := if g.pref.use_cache {
+				'${interface_index_name}_enum'
+			} else {
+				interface_index_name
+			}
 			if already_generated_mwrappers[interface_index_name] > 0 {
 				continue
 			}
@@ -14243,8 +14249,15 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 return ${cast_shared_struct_str};
 }')
 				if shared_interface_mtx_helper_needed {
-					shared_interface_mtx_cases.writeln('\t\tcase ${interface_index_name}:')
-					shared_interface_mtx_cases.writeln('\t\t\treturn &(((__shared__${cctype}*)((char*)x->val._${cctype} - __offsetof(__shared__${cctype}, val)))->mtx);')
+					mtx_expr := '&(((__shared__${cctype}*)((char*)x->val._${cctype} - __offsetof(__shared__${cctype}, val)))->mtx)'
+					if g.pref.build_mode == .build_module {
+						shared_interface_mtx_cases.writeln('\tif (x->val._typ == ${interface_index_name}) {')
+						shared_interface_mtx_cases.writeln('\t\treturn ${mtx_expr};')
+						shared_interface_mtx_cases.writeln('\t}')
+					} else {
+						shared_interface_mtx_cases.writeln('\t\tcase ${interface_index_case_name}:')
+						shared_interface_mtx_cases.writeln('\t\t\treturn ${mtx_expr};')
+					}
 				}
 			}
 
@@ -14508,7 +14521,24 @@ return ${cast_shared_struct_str};
 			}
 			iin_idx := already_generated_mwrappers[interface_index_name] - iinidx_minimum_base + 1
 			if g.pref.build_mode != .build_module {
-				sb.writeln('enum { ${interface_index_name} = ${iin_idx} };')
+				if g.pref.use_cache {
+					// With -usecache, modules like `builtin` are compiled separately
+					// in build_module mode, where the index is emitted as
+					// `extern const u32 ..._index;` and referenced. The main program
+					// must therefore provide a real, externally-linked definition
+					// (not a compile-time `enum` constant, which has no linker
+					// symbol), otherwise the reference is undefined at link time -
+					// e.g. `undefined symbol: _IError_None___index` on FreeBSD/clang.
+					sb.writeln('enum { ${interface_index_case_name} = ${iin_idx} };')
+					if g.pref.parallel_cc {
+						sb.writeln('extern const u32 ${interface_index_name};')
+						g.interface_index_definitions.writeln('const u32 ${interface_index_name} = ${interface_index_case_name};')
+					} else {
+						sb.writeln('const u32 ${interface_index_name} = ${interface_index_case_name};')
+					}
+				} else {
+					sb.writeln('enum { ${interface_index_name} = ${iin_idx} };')
+				}
 			} else {
 				sb.writeln('extern const u32 ${interface_index_name};')
 			}
@@ -14573,11 +14603,16 @@ return ${cast_shared_struct_str};
 			cast_functions.writeln('
 static inline sync__RwMutex* ${shared_interface_mtx_helper_name}(__shared__${interface_name}* x) {')
 			if shared_interface_mtx_cases.len > 0 {
-				cast_functions.writeln('\tswitch (x->val._typ) {')
-				cast_functions.write_string(shared_interface_mtx_cases.str())
-				cast_functions.writeln('\t\tdefault:')
-				cast_functions.writeln('\t\t\treturn &x->mtx;')
-				cast_functions.writeln('\t}')
+				if g.pref.build_mode == .build_module {
+					cast_functions.write_string(shared_interface_mtx_cases.str())
+					cast_functions.writeln('\treturn &x->mtx;')
+				} else {
+					cast_functions.writeln('\tswitch (x->val._typ) {')
+					cast_functions.write_string(shared_interface_mtx_cases.str())
+					cast_functions.writeln('\t\tdefault:')
+					cast_functions.writeln('\t\t\treturn &x->mtx;')
+					cast_functions.writeln('\t}')
+				}
 			} else {
 				cast_functions.writeln('\treturn &x->mtx;')
 			}

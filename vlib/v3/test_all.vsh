@@ -11,6 +11,8 @@ struct Config {
 	repo_root    string
 	tests_dir    string
 	v3_src       string
+	c99          bool
+	c99_flag     string
 	host_backend string
 	host_os      string
 }
@@ -51,12 +53,14 @@ fn main() {
 
 	section(3, 'C backend hello world')
 	hello_v := os.join_path(cfg.tests_dir, 'hello.v')
-	run('${q(v3_bin)} ${q(hello_v)} -b c -o ${q(hello_c_bin)}')
+	run('${q(v3_bin)} ${cfg.c99_flag} ${q(hello_v)} -b c -o ${q(hello_c_bin)}')
 	run(q(hello_c_bin))
 	cleanup_files([hello_c_bin, hello_c_bin + '.c'])
 
 	section(4, 'ARM64 self-host hello world')
-	if cfg.host_backend == 'arm64' && cfg.host_os == 'macos' {
+	if cfg.c99 {
+		println('  Skipping ARM64 self-host in C99 mode (-c99 applies to the C backend)')
+	} else if cfg.host_backend == 'arm64' && cfg.host_os == 'macos' {
 		run('${q(v3_bin)} --no-parallel -selfhost -b arm64 -o ${q(v4_arm_bin)} ${q(cfg.v3_src)}')
 		run('${q(v4_arm_bin)} --no-parallel -b arm64 -o ${q(hello_arm_bin)} ${q(hello_v)}')
 		run(q(hello_arm_bin))
@@ -67,11 +71,11 @@ fn main() {
 
 	section(5, 'Self-host chain (v3->v4->v5->v6)')
 	println('  Building v4 from v3...')
-	run('${q(v3_bin)} --no-parallel -selfhost -o ${q(v4_bin)} ${q(cfg.v3_src)}')
+	run('${q(v3_bin)} ${cfg.c99_flag} --no-parallel -selfhost -o ${q(v4_bin)} ${q(cfg.v3_src)}')
 	println('  Building v5 from v4...')
-	run('${q(v4_bin)} --no-parallel -selfhost -o ${q(v5_bin)} ${q(cfg.v3_src)}')
+	run('${q(v4_bin)} ${cfg.c99_flag} --no-parallel -selfhost -o ${q(v5_bin)} ${q(cfg.v3_src)}')
 	println('  Building v6 from v5...')
-	run('${q(v5_bin)} --no-parallel -selfhost -o ${q(v6_bin)} ${q(cfg.v3_src)}')
+	run('${q(v5_bin)} ${cfg.c99_flag} --no-parallel -selfhost -o ${q(v6_bin)} ${q(cfg.v3_src)}')
 	converged_size := assert_same_file_bytes('v5/v6 generated C output', v5_bin + '.c', v6_bin +
 		'.c')
 	println('  v5.c=v6.c (${converged_size} bytes) - chain converged')
@@ -80,7 +84,7 @@ fn main() {
 	section(6, 'Language feature parity')
 	lang_v := os.join_path(cfg.tests_dir, 'test_all_lang_features.v')
 	lang_out := os.join_path(cfg.tests_dir, 'test_all_lang_features.out')
-	run('${q(v3_bin)} ${q(lang_v)} -b c -o ${q(v3_lang_bin)}')
+	run('${q(v3_bin)} ${cfg.c99_flag} ${q(lang_v)} -b c -o ${q(v3_lang_bin)}')
 	v3_c_out := run_output(q(v3_lang_bin))
 	expected_out := read_text_file(lang_out)
 	assert_same_text('language feature output', v3_c_out, expected_out)
@@ -93,6 +97,7 @@ fn main() {
 }
 
 fn parse_config() Config {
+	c99 := parse_args()
 	script_dir := os.real_path(@DIR)
 	repo_root := os.real_path(os.join_path(script_dir, '..', '..'))
 	tests_dir := os.join_path(script_dir, 'tests')
@@ -106,9 +111,30 @@ fn parse_config() Config {
 		repo_root:    repo_root
 		tests_dir:    tests_dir
 		v3_src:       os.join_path(script_dir, 'v3.v')
+		c99:          c99
+		c99_flag:     if c99 { '-c99' } else { '' }
 		host_backend: native_backend_arch()
 		host_os:      os.user_os()
 	}
+}
+
+fn parse_args() bool {
+	mut c99 := false
+	for arg in os.args[1..] {
+		match arg {
+			'-c99', '--c99' {
+				c99 = true
+			}
+			'-h', '--help' {
+				println('usage: test_all.vsh [-c99]')
+				exit(0)
+			}
+			else {
+				fail('unknown argument: ${arg}')
+			}
+		}
+	}
+	return c99
 }
 
 fn native_backend_arch() string {

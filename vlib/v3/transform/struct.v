@@ -293,6 +293,33 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 
 // lookup_struct_info resolves lookup struct info information for transform.
 fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
+	if info := t.lookup_struct_info_preferred(name) {
+		return info
+	}
+	normalized := t.normalize_type_alias(name)
+	if normalized != name {
+		return t.lookup_struct_info_direct(normalized)
+	}
+	return none
+}
+
+fn (t &Transformer) lookup_struct_info_preferred(name string) ?StructInfo {
+	if name.contains('.') {
+		if name in t.structs {
+			return t.structs[name]
+		}
+	} else if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		qname := '${t.cur_module}.${name}'
+		if qname in t.structs {
+			return t.structs[qname]
+		}
+	} else if name in t.structs {
+		return t.structs[name]
+	}
+	return none
+}
+
+fn (t &Transformer) lookup_struct_info_direct(name string) ?StructInfo {
 	if name.contains('.') {
 		if name in t.structs {
 			return t.structs[name]

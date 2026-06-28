@@ -10,6 +10,7 @@ pub mut:
 	target_os    string = os.user_os()
 	user_defines []string
 	backend      string = 'c'
+	c99          bool
 	vroot        string = detect_vroot()
 	selfhost     bool
 	building_v   bool // compiling the V compiler itself: no generics, skip monomorphization
@@ -231,6 +232,32 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 		v_files << os.join_path_single(dir, file)
 	}
 	return v_files
+}
+
+pub fn is_test_file_for_backend(path string, backend string) bool {
+	file := os.file_name(path)
+	if file.ends_with('_test.v') {
+		return true
+	}
+	if file.ends_with('_test.c.v') {
+		return backend == 'c'
+	}
+	if file.ends_with('_test.js.v') {
+		return backend == 'js'
+	}
+	if !file.ends_with('.v') {
+		return false
+	}
+	base := file[..file.len - 2]
+	if !base.contains('.') {
+		return false
+	}
+	backend_suffix := base.all_after_last('.')
+	test_base := base.all_before_last('.')
+	if !test_base.ends_with('_test') {
+		return false
+	}
+	return backend_suffix == backend
 }
 
 // default_file_base supports default file base handling for pref.

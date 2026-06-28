@@ -42,3 +42,11 @@ fn test_optional_if_expr_codegen_initializes_optional_temp() {
 		"fn none_int() ?int {\n\treturn none\n}\n\nfn some_int() ?int {\n\treturn 7\n}\n\nfn choose(flag bool) ?int {\n\tvalue := if flag {\n\t\tnone_int()\n\t} else {\n\t\tsome_int()\n\t}\n\treturn value\n}\n\nfn main() {\n\tgood := choose(false) or { 0 }\n\tnone_value := choose(true) or { -1 }\n\tassert good == 7\n\tassert none_value == -1\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
 }
+
+// test_optional_clone_return_wraps_payload validates this v3 regression case.
+fn test_optional_clone_return_wraps_payload() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'optional_clone_return_codegen_input',
+		"fn clone_array(src []int) ?[]int {\n\treturn src.clone()\n}\n\nfn clone_array_defer(src []int) ?[]int {\n\tdefer {}\n\treturn src.clone()\n}\n\nfn clone_map(src map[string]int) ?map[string]int {\n\treturn src.clone()\n}\n\nfn clone_map_defer(src map[string]int) ?map[string]int {\n\tdefer {}\n\treturn src.clone()\n}\n\nfn array_sum(values []int) int {\n\tmut total := 0\n\tfor value in values {\n\t\ttotal += value\n\t}\n\treturn total\n}\n\nfn main() {\n\tmut values := []int{}\n\tvalues << 2\n\tvalues << 5\n\tarr := clone_array(values) or { []int{} }\n\tarr_defer := clone_array_defer(values) or { []int{} }\n\tmut lookup := map[string]int{}\n\tlookup['a'] = 3\n\tlookup['b'] = 4\n\tcloned := clone_map(lookup) or { map[string]int{} }\n\tcloned_defer := clone_map_defer(lookup) or { map[string]int{} }\n\tassert array_sum(arr) == 7\n\tassert array_sum(arr_defer) == 7\n\tassert cloned['a'] + cloned['b'] == 7\n\tassert cloned_defer['a'] + cloned_defer['b'] == 7\n\tprintln('ok')\n}\n")
+	assert out == 'ok'
+}

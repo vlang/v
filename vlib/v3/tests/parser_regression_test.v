@@ -2,6 +2,7 @@ import os
 import v3.flat
 import v3.parser
 import v3.pref
+import v3.types
 
 // parse_parser_regression_source reads parse parser regression source input for v3 tests.
 fn parse_parser_regression_source(name string, source string) &flat.FlatAst {
@@ -10,6 +11,17 @@ fn parse_parser_regression_source(name string, source string) &flat.FlatAst {
 	mut prefs := pref.new_preferences()
 	mut p := parser.Parser.new(prefs)
 	p.parse_into(src)
+	return p.a
+}
+
+fn parse_parser_regression_sources(name string, sources []string) &flat.FlatAst {
+	mut prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	for i, source in sources {
+		src := os.join_path(os.temp_dir(), 'v3_${name}_${i}.v')
+		os.write_file(src, source) or { panic(err) }
+		p.parse_into(src)
+	}
 	return p.a
 }
 
@@ -37,6 +49,23 @@ fn interface_method_param_types(a &flat.FlatAst, iface string, method string) []
 	return []string{}
 }
 
+fn fn_decl_param_pairs(a &flat.FlatAst, kind flat.NodeKind, name string) []string {
+	for node in a.nodes {
+		if node.kind != kind || node.value != name {
+			continue
+		}
+		mut pairs := []string{}
+		for i in 0 .. node.children_count {
+			param := a.child_node(&node, i)
+			if param.kind == .param {
+				pairs << '${param.value}:${param.typ}'
+			}
+		}
+		return pairs
+	}
+	return []string{}
+}
+
 // test_interface_method_generic_type_only_param_is_not_parsed_as_name
 // validates this v3 regression case.
 fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
@@ -46,6 +75,73 @@ fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
 	assert interface_method_param_types(a, 'Sink', 'append') == ['[]int']
 	assert interface_method_param_types(a, 'Sink', 'visit') == ['&Node']
 	assert interface_method_param_types(a, 'Sink', 'read') == ['[max_len]u8']
+}
+
+fn test_c_function_anonymous_params_are_parsed_as_types() {
+	a := parse_parser_regression_source('c_anon_params',
+		'struct T {}\nstruct C.FILE {}\nstruct C.Widget {}\nstruct C.Node {}\ntype MyHandle = voidptr\n\nfn C.anon(&C.FILE, voidptr, int, &&T, [4]&C.Widget, ?&C.Node, !&C.Node, fn (&C.Node) int) int\nfn C.custom(MyHandle, int, MyHandle) int\nfn C.lower(size_t, int, pthread_t) int\nfn C.named(stream &C.FILE, a, b int) int\nfn C.named_custom(handle MyHandle, a, b int) int\nfn C.named_arrays(m [16]f32, r []rune) int\nfn C.variadic(...int) int\nfn JS.js_anon(JS.Number) JS.Number\nfn JS.js_named(x JS.Number) JS.Number\nfn JS.setInterval(any, int, ...any) int\nfn JS.console.dir(any, any)\nfn JS.named_any(x any) any\nfn ordinary(int) {}\n')
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'anon') == [
+		':&C.FILE',
+		':voidptr',
+		':int',
+		':&&T',
+		':[4]&C.Widget',
+		':?&C.Node',
+		':!&C.Node',
+		':fn(&C.Node) int',
+	]
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'custom') == [
+		':MyHandle',
+		':int',
+		':MyHandle',
+	]
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'lower') == [
+		':size_t',
+		':int',
+		':pthread_t',
+	]
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'named') == [
+		'stream:&C.FILE',
+		'a:int',
+		'b:int',
+	]
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'named_custom') == [
+		'handle:MyHandle',
+		'a:int',
+		'b:int',
+	]
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'named_arrays') == [
+		'm:[16]f32',
+		'r:[]rune',
+	]
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'variadic') == [':...int']
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'js_anon') == [':JS.Number']
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'js_named') == ['x:JS.Number']
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'setInterval') == [
+		':any',
+		':int',
+		':...any',
+	]
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'console.dir') == [
+		':any',
+		':any',
+	]
+	assert fn_decl_param_pairs(a, .c_fn_decl, 'named_any') == ['x:any']
+	assert fn_decl_param_pairs(a, .fn_decl, 'ordinary') == ['int:']
+}
+
+fn test_moduleless_file_does_not_inherit_previous_parser_module() {
+	a := parse_parser_regression_sources('moduleless_export', [
+		'module expmod\n\nfn helper() {}\n',
+		"@[export: '1bad']\nfn lonely() {}\n",
+	])
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 1, tc.errors.str()
+	assert tc.errors[0].msg.contains('for `lonely`'), tc.errors.str()
+	assert !tc.errors[0].msg.contains('expmod.lonely'), tc.errors.str()
+	assert fn_decl_param_pairs(a, .fn_decl, 'lonely') == []
 }
 
 fn test_sql_identifier_calls_are_not_parsed_as_sql_expr() {

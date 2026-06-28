@@ -65,6 +65,16 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.src = src
 }
 
+@[inline]
+fn (s &Scanner) source_lit(start int, end int) string {
+	if end <= start {
+		return ''
+	}
+	unsafe {
+		return tos(s.src.str + start, end - start)
+	}
+}
+
 // scan_char_literal reads scan char literal input for scanner.
 fn (mut s Scanner) scan_char_literal(quote u8) token.Token {
 	s.offset++
@@ -84,7 +94,7 @@ fn (mut s Scanner) scan_char_literal(quote u8) token.Token {
 		end = s.offset
 		s.offset++
 	}
-	s.lit = s.src[s.pos + 1..end]
+	s.lit = s.source_lit(s.pos + 1, end)
 	s.insert_semi = true
 	return .char
 }
@@ -101,7 +111,7 @@ pub fn (mut s Scanner) scan() token.Token {
 		s.in_str_incomplete = false
 		s.pos = s.offset
 		s.string_literal(false, s.str_quote)
-		s.lit = s.src[s.pos..s.offset]
+		s.lit = s.source_lit(s.pos, s.offset)
 		return .string
 	}
 	start:
@@ -135,7 +145,7 @@ pub fn (mut s Scanner) scan() token.Token {
 					goto start
 				}
 			}
-			s.lit = s.src[s.pos..s.offset]
+			s.lit = s.source_lit(s.pos, s.offset)
 			return .comment
 		} else if c2 == `=` {
 			s.offset += 2
@@ -145,7 +155,7 @@ pub fn (mut s Scanner) scan() token.Token {
 		return .div
 	} else if c >= `0` && c <= `9` {
 		s.number()
-		s.lit = s.src[s.pos..s.offset]
+		s.lit = s.source_lit(s.pos, s.offset)
 		s.insert_semi = true
 		return .number
 	} else if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` || c == `@` {
@@ -162,7 +172,7 @@ pub fn (mut s Scanner) scan() token.Token {
 			}
 			break
 		}
-		s.lit = s.src[s.pos..s.offset]
+		s.lit = s.source_lit(s.pos, s.offset)
 		if s.lit == 'c' && s.offset < s.src.len && s.src[s.offset] == `'` {
 			s.pos = s.offset
 			tok := s.scan_char_literal(`'`)
@@ -177,7 +187,7 @@ pub fn (mut s Scanner) scan() token.Token {
 				s.str_quote = quote
 			}
 			s.string_literal(true, quote)
-			s.lit = s.src[s.pos..s.offset]
+			s.lit = s.source_lit(s.pos, s.offset)
 			s.insert_semi = true
 			return .string
 		}
@@ -193,7 +203,7 @@ pub fn (mut s Scanner) scan() token.Token {
 			s.str_quote = c
 		}
 		s.string_literal(s.in_str_inter || (s.offset >= 2 && s.src[s.offset - 2] == `r`), c)
-		s.lit = s.src[s.pos..s.offset]
+		s.lit = s.source_lit(s.pos, s.offset)
 		s.insert_semi = true
 		return .string
 	} else if c == `\`` {
@@ -206,7 +216,7 @@ pub fn (mut s Scanner) scan() token.Token {
 			c2 := s.peek_byte(0)
 			if c2 >= `0` && c2 <= `9` {
 				s.number()
-				s.lit = s.src[s.pos..s.offset]
+				s.lit = s.source_lit(s.pos, s.offset)
 				return .number
 			} else if c2 == `.` {
 				s.offset++
@@ -375,7 +385,7 @@ pub fn (mut s Scanner) scan() token.Token {
 			for s.offset < s.src.len && s.src[s.offset] != `\n` {
 				s.offset++
 			}
-			s.lit = s.src[start..s.offset].trim_space()
+			s.lit = s.source_lit(start, s.offset).trim_space()
 			s.insert_semi = true
 			return .hash
 		}

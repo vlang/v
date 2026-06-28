@@ -17,8 +17,7 @@ fn (t &Transformer) resolve_call_name(node flat.Node) string {
 	match fn_node.kind {
 		.ident {
 			name := fn_node.value
-			// Try unqualified name first
-			if t.is_known_fn_name(name) {
+			if t.var_type(name).len > 0 {
 				return name
 			}
 			// Try qualified with current module
@@ -27,6 +26,10 @@ fn (t &Transformer) resolve_call_name(node flat.Node) string {
 				if t.is_known_fn_name(qname) {
 					return qname
 				}
+			}
+			// Try unqualified name after current-module authority.
+			if t.is_known_fn_name(name) {
+				return name
 			}
 			return name
 		}
@@ -630,12 +633,15 @@ fn (t &Transformer) call_param_types(call_name string) []types.Type {
 		return []types.Type{}
 	}
 	params := t.tc.fn_param_types[call_name] or { return []types.Type{} }
-	return params.clone()
+	return params
 }
 
 // call_is_variadic updates call is variadic state for Transformer.
 fn (t &Transformer) call_is_variadic(call_name string) bool {
 	if call_name.len == 0 || isnil(t.tc) {
+		return false
+	}
+	if t.tc.c_variadic_fns[call_name] {
 		return false
 	}
 	return t.tc.fn_variadic[call_name] or { false }
@@ -709,9 +715,6 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		if const_arg := t.transform_const_array_arg_for_param(arg_id, param_type) {
 			return const_arg
 		}
-	}
-	if t.is_fn_pointer_type_name(param_type) && t.is_named_fn_value_arg(arg_id) {
-		return t.make_cast(param_type, t.transform_expr(arg_id), param_type)
 	}
 	return t.transform_expr_for_type(arg_id, param_type)
 }
@@ -1233,17 +1236,8 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	if is_ref || clean_typ in ['voidptr', 'byteptr', 'charptr'] {
 		return t.make_call_typed('ptr_str', arr1(expr), 'string')
 	}
-	if clean_typ == 'IError' || clean_typ.ends_with('.IError') {
-		start := t.a.children.len
-		t.a.children << expr
-		return t.a.add_node(flat.Node{
-			kind:           .selector
-			op:             .dot
-			children_start: start
-			children_count: 1
-			value:          'message'
-			typ:            'string'
-		})
+	if clean_typ == 'IError' || clean_typ == 'builtin.IError' {
+		return t.make_call_typed('IError.str', arr1(expr), 'string')
 	}
 	match clean_typ {
 		'bool' {

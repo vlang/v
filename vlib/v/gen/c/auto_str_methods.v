@@ -90,12 +90,17 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 	if sym.is_builtin() && !str_fn_name.starts_with('builtin__') {
 		str_fn_name = 'builtin__${str_fn_name}'
 	}
-	if sym.has_method_with_generic_parent('str') && !g.pref.new_generic_solver {
-		match mut sym.info {
-			ast.Struct, ast.SumType, ast.Interface {
-				str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
+	if !g.pref.new_generic_solver {
+		if str_method := sym.find_method_with_generic_parent('str') {
+			if method_has_generic_source(str_method) {
+				match mut sym.info {
+					ast.Struct, ast.SumType, ast.Interface, ast.Alias, ast.GenericInst, ast.FnType {
+						str_fn_name = g.generic_fn_name(g.str_method_concrete_types(unwrapped, sym),
+							str_fn_name)
+					}
+					else {}
+				}
 			}
-			else {}
 		}
 	}
 	if sym.language == .c && !typ.has_flag(.option) && sym.has_method('str') {
@@ -670,6 +675,102 @@ fn styp_to_str_fn_name(styp string) string {
 	return styp.replace_each(['*', '', '.', '__', ' ', '__']) + '_str'
 }
 
+fn method_has_generic_source(method ast.Fn) bool {
+	if method.generic_names.len > 0 {
+		return true
+	}
+	if method.source_fn != unsafe { nil } {
+		fndecl := unsafe { &ast.FnDecl(method.source_fn) }
+		return fndecl.generic_names.len > 0
+	}
+	return false
+}
+
+fn (mut g Gen) str_method_concrete_types(typ ast.Type, sym &ast.TypeSymbol) []ast.Type {
+	if _ := g.receiver_exact_method_for_type(typ, 'str') {
+		match sym.info {
+			ast.Struct, ast.SumType, ast.Interface {
+				return sym.info.concrete_types.clone()
+			}
+			ast.GenericInst {
+				return sym.info.concrete_types.clone()
+			}
+			ast.FnType {
+				return g.concrete_types_for_fn_type_symbol(sym)
+			}
+			ast.Alias {
+				return g.alias_parent_concrete_types(sym.info)
+			}
+			else {}
+		}
+	}
+	if structured_method := g.table.find_structured_receiver_method_with_types(typ, 'str') {
+		return structured_method.concrete_types.map(g.unwrap_generic(it))
+	}
+	match sym.info {
+		ast.Struct, ast.SumType, ast.Interface {
+			return sym.info.concrete_types.clone()
+		}
+		ast.GenericInst {
+			return sym.info.concrete_types.clone()
+		}
+		ast.FnType {
+			return g.concrete_types_for_fn_type_symbol(sym)
+		}
+		ast.Alias {
+			return g.alias_parent_concrete_types(sym.info)
+		}
+		else {}
+	}
+
+	return []ast.Type{}
+}
+
+fn (mut g Gen) concrete_types_for_fn_type_symbol(sym &ast.TypeSymbol) []ast.Type {
+	if sym.info is ast.FnType && sym.generic_types.len > 0
+		&& !sym.generic_types.any(it.has_flag(.generic)
+		|| g.table.generic_type_names(it).len > 0) {
+		return sym.generic_types.clone()
+	}
+	return []ast.Type{}
+}
+
+fn (mut g Gen) alias_parent_concrete_types(info ast.Alias) []ast.Type {
+	parent_sym := g.table.sym(info.parent_type)
+	match parent_sym.info {
+		ast.Struct, ast.SumType, ast.Interface {
+			mut concrete_types := parent_sym.info.concrete_types.clone()
+			if concrete_types.len == 0
+				&& parent_sym.generic_types.len == parent_sym.info.generic_types.len
+				&& parent_sym.generic_types != parent_sym.info.generic_types {
+				concrete_types = parent_sym.generic_types.clone()
+			}
+			return concrete_types
+		}
+		ast.GenericInst {
+			return parent_sym.info.concrete_types.clone()
+		}
+		ast.Array {
+			return [parent_sym.info.elem_type]
+		}
+		ast.ArrayFixed {
+			return [parent_sym.info.elem_type]
+		}
+		ast.Chan {
+			return [parent_sym.info.elem_type]
+		}
+		ast.Map {
+			return [parent_sym.info.key_type, parent_sym.info.value_type]
+		}
+		ast.Alias {
+			return g.alias_parent_concrete_types(parent_sym.info)
+		}
+		else {}
+	}
+
+	return []ast.Type{}
+}
+
 // deref_kind returns deref, deref_label
 fn deref_kind(str_method_expects_ptr bool, is_elem_ptr bool, typ ast.Type) (string, string) {
 	if typ.has_flag(.option) {
@@ -1159,8 +1260,19 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 				left_fn_name := util.no_dots(left_cc_type)
 				'${left_fn_name}_str'
 			}
-			if sym.info is ast.Struct && !g.pref.new_generic_solver {
-				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name)
+			if !g.pref.new_generic_solver {
+				if str_method := sym.find_method_with_generic_parent('str') {
+					if method_has_generic_source(str_method) && !ftyp_noshared.has_flag(.option) {
+						match sym.info {
+							ast.Struct, ast.SumType, ast.Interface, ast.Alias, ast.GenericInst,
+							ast.FnType {
+								field_fn_name = g.generic_fn_name(g.str_method_concrete_types(ftyp_noshared, sym),
+									field_fn_name)
+							}
+							else {}
+						}
+					}
+				}
 			}
 			if sym.is_builtin() && !field_fn_name.starts_with('builtin__') {
 				field_fn_name = 'builtin__${field_fn_name}'
@@ -1357,6 +1469,9 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		}
 		return 'indent_${fn_name}(${obj}, indent_count + 1)', true
 	} else if sym.kind == .function {
+		if has_custom_str {
+			return '${fn_name}(${prefix}it${op}${final_field_name}${sufix})', true
+		}
 		return '${fn_name}()', true
 	} else if sym.kind == .chan {
 		return '${fn_name}(${deref}it${op}${final_field_name}${sufix})', true

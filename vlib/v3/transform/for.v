@@ -285,7 +285,8 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	t.drain_pending(mut prefix)
 	mut actual_iter_type := iter_type
 	container_type := t.node_type(container)
-	if container_type.len > 0 && !for_iter_type_has_generic_placeholder(actual_iter_type) {
+	if container_type.len > 0 && !for_iter_type_has_generic_placeholder(actual_iter_type)
+		&& !(t.is_fixed_array_type(actual_iter_type) && !t.is_fixed_array_type(container_type)) {
 		actual_iter_type = container_type
 	}
 	if actual_iter_type.starts_with('&[]') {
@@ -318,7 +319,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	elem_var_type := if elem_needs_ref { '&${elem_type}' } else { elem_type }
 	t.set_var_type(elem_name, elem_var_type)
 	len_expr := if t.is_fixed_array_type(actual_iter_type) {
-		t.make_fixed_array_len_expr(actual_iter_type)
+		t.make_for_in_fixed_array_len_expr(actual_iter_type)
 	} else {
 		t.make_selector(container, 'len', 'int')
 	}
@@ -383,9 +384,45 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 	container_idx := if header_count >= 3 { header_count - 1 } else { 2 }
 	if node.children_count > container_idx {
 		iter_id := t.a.child(&node, container_idx)
+		if fixed_array_type := t.detect_for_in_global_fixed_array_type(iter_id) {
+			return fixed_array_type
+		}
 		return t.node_type(iter_id)
 	}
 	return ''
+}
+
+fn (t &Transformer) detect_for_in_global_fixed_array_type(id flat.NodeId) ?string {
+	if int(id) < 0 {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .ident || node.value.len == 0 {
+		return none
+	}
+	if t.var_type(node.value).len > 0 {
+		return none
+	}
+	mut candidates := []string{}
+	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		candidates << '${t.cur_module}.${node.value}'
+	}
+	candidates << node.value
+	for candidate in candidates {
+		if typ := t.globals[candidate] {
+			normalized := t.normalize_type_alias(typ)
+			if t.is_fixed_array_type(normalized) {
+				return normalized
+			}
+		}
+	}
+	if !isnil(t.tc) {
+		checker_type := t.normalize_type_alias(t.tc.resolve_type(id).name())
+		if t.is_fixed_array_type(checker_type) {
+			return checker_type
+		}
+	}
+	return none
 }
 
 fn for_iter_type_has_generic_placeholder(iter_type string) bool {
@@ -434,7 +471,7 @@ fn (t &Transformer) infer_for_in_elem_type(iter_type string, node flat.Node) str
 		return 'u8'
 	}
 	if t.is_fixed_array_type(iter_type) {
-		return fixed_array_elem_type(iter_type)
+		return for_in_fixed_array_elem_type(iter_type)
 	}
 	// Check if the iterable is a range expression
 	if node.children_count > 0 {
@@ -445,4 +482,50 @@ fn (t &Transformer) infer_for_in_elem_type(iter_type string, node flat.Node) str
 		}
 	}
 	return ''
+}
+
+fn (mut t Transformer) make_for_in_fixed_array_len_expr(s string) flat.NodeId {
+	len_text := for_in_fixed_array_len_text(s)
+	if is_decimal_text(len_text) {
+		return t.make_int_literal(len_text.int())
+	}
+	if !isnil(t.tc) {
+		if v := t.tc.const_int_value(len_text, []string{}) {
+			return t.make_int_literal(v)
+		}
+	}
+	if len_text.contains('.') {
+		base := len_text.all_before_last('.')
+		field := len_text.all_after_last('.')
+		return t.make_selector(t.make_ident(base), field, 'int')
+	}
+	return t.make_ident(len_text)
+}
+
+fn for_in_fixed_array_elem_type(s string) string {
+	clean := s.trim_space()
+	if clean.starts_with('[') {
+		return clean.all_after(']')
+	}
+	open := clean.last_index_u8(`[`)
+	if open < 0 {
+		return ''
+	}
+	return clean[..open]
+}
+
+fn for_in_fixed_array_len_text(s string) string {
+	clean := s.trim_space()
+	if clean.starts_with('[') {
+		return clean.all_after('[').all_before(']').trim_space()
+	}
+	open := clean.last_index_u8(`[`)
+	if open < 0 {
+		return ''
+	}
+	close_rel := clean[open + 1..].index_u8(`]`)
+	if close_rel < 0 {
+		return ''
+	}
+	return clean[open + 1..open + 1 + close_rel].trim_space()
 }
