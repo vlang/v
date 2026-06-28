@@ -897,8 +897,8 @@ fn (t &Transformer) clone_ast_base(base_nodes int, base_children int) &flat.Flat
 // fork_worker builds a worker Transformer that shares this transformer's
 // read-only collected maps (structs, sum types, fn return types, …) and
 // operates on its own cloned AST `ast` and forked TypeChecker `wtc`. All
-// per-function mutable state, helper-root tracking, and memoization caches are
-// reset/private so the worker can run on its own thread.
+// per-function mutable state, helper-root tracking, used-fn additions, and
+// memoization caches are reset/private so the worker can run on its own thread.
 fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Transformer {
 	mut w := *t
 	w.a = ast
@@ -915,6 +915,7 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.escaping_amp_ptrs = map[string]bool{}
 	w.escaping_amp_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
+	w.used_fns = t.used_fns.clone()
 	w.temp_counter = 0
 	w.cur_file = ''
 	w.cur_module = ''
@@ -924,6 +925,14 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.in_const_init = false
 	w.in_return_expr = false
 	return &w
+}
+
+fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
+	for name, used in w.used_fns {
+		if used {
+			t.used_fns[name] = true
+		}
+	}
 }
 
 // merge_worker folds a finished worker's transformed output back into the master

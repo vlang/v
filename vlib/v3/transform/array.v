@@ -400,7 +400,11 @@ fn (mut t Transformer) transform_fixed_array_init_expr(node flat.Node) ?flat.Nod
 		return none
 	}
 	len_text := fixed_array_len_text(fixed_type)
-	if !is_decimal_text(len_text) {
+	len := if is_decimal_text(len_text) {
+		len_text.int()
+	} else if !isnil(t.tc) {
+		t.tc.const_int_value_in_module(len_text, t.cur_module, []string{}) or { return none }
+	} else {
 		return none
 	}
 	mut init_id := flat.empty_node
@@ -416,8 +420,8 @@ fn (mut t Transformer) transform_fixed_array_init_expr(node flat.Node) ?flat.Nod
 		return none
 	}
 	elem_type := fixed_array_elem_type(fixed_type)
-	mut values := []flat.NodeId{cap: len_text.int()}
-	for i in 0 .. len_text.int() {
+	mut values := []flat.NodeId{cap: len}
+	for i in 0 .. len {
 		indexed_init := t.substitute_ident_expr(init_id, 'index', t.make_int_literal(i))
 		values << t.transform_expr_for_type(indexed_init, elem_type)
 	}

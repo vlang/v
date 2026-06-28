@@ -74,6 +74,9 @@ fn test_reject_dynamic_arrays_for_fixed_array_expectations() {
 	indexed := run_good(v3_bin, 'good_fixed_array_init_index',
 		'fn main() {\n\ta := [4]int{init: index * index}\n\tprintln(int_str(a[0]) + "," + int_str(a[1]) + "," + int_str(a[2]) + "," + int_str(a[3]))\n}\n')
 	assert indexed == '0,1,4,9'
+	const_indexed := run_good(v3_bin, 'good_fixed_array_const_init_index',
+		'const n = 4\n\nfn main() {\n\ta := [n]int{init: index * index}\n\tprintln(int_str(a[0]) + "," + int_str(a[1]) + "," + int_str(a[2]) + "," + int_str(a[3]))\n}\n')
+	assert const_indexed == '0,1,4,9'
 }
 
 fn test_array_equality_uses_semantic_element_comparison() {
