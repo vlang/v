@@ -315,9 +315,11 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
 	prefix << t.make_decl_assign_typed(iter_name, iter_expr, iter_type)
-	if has_index {
-		prefix << t.make_decl_assign_typed(key.value, t.make_int_literal(0), 'int')
+	init := if has_index {
 		t.set_var_type(key.value, 'int')
+		t.make_decl_assign_typed(key.value, t.make_int_literal(0), 'int')
+	} else {
+		t.make_empty()
 	}
 	t.set_var_type(elem_name, elem_type)
 	next_call := t.make_call_typed('RunesIterator.next', arr1(t.make_prefix(.amp,
@@ -337,7 +339,7 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	} else {
 		t.make_empty()
 	}
-	prefix << t.make_for_stmt(t.make_empty(), t.make_bool_literal(true), post, loop_body, node)
+	prefix << t.make_for_stmt(init, t.make_bool_literal(true), post, loop_body, node)
 	return prefix
 }
 

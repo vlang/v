@@ -1484,6 +1484,13 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 			} else {
 				tc.insert_loop_var(key_id, Type(u8_))
 			}
+		} else if elem_type := iterator_for_in_elem_type(clean) {
+			if has_val {
+				tc.insert_loop_var(key_id, Type(int_))
+				tc.insert_loop_var(val_id, elem_type)
+			} else {
+				tc.insert_loop_var(key_id, elem_type)
+			}
 		} else {
 			container := tc.a.nodes[int(container_id)]
 			if container.kind == .range {
@@ -1494,6 +1501,14 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 	for i in header .. node.children_count {
 		tc.annotate_node(tc.a.child(&node, i))
 	}
+}
+
+fn iterator_for_in_elem_type(typ Type) ?Type {
+	name := typ.name()
+	if name == 'RunesIterator' || name == 'builtin.RunesIterator' {
+		return Type(rune_)
+	}
+	return none
 }
 
 // insert_loop_var updates insert loop var state for types.
@@ -3480,6 +3495,13 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 				tc.insert_loop_var(val_id, Type(u8_))
 			} else {
 				tc.insert_loop_var(key_id, Type(u8_))
+			}
+		} else if elem_type := iterator_for_in_elem_type(clean) {
+			if has_val {
+				tc.insert_loop_var(key_id, Type(int_))
+				tc.insert_loop_var(val_id, elem_type)
+			} else {
+				tc.insert_loop_var(key_id, elem_type)
 			}
 		} else {
 			container := tc.a.nodes[int(container_id)]

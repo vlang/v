@@ -355,12 +355,20 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.write(')')
 		}
 		'last_index' {
-			index_fn := 'array_last_index_${array_lookup_suffix(arr.elem_type)}'
-			g.write('${index_fn}(')
-			g.gen_expr(base_id)
-			g.write(', ')
-			g.gen_expr(g.a.child(&node, 1))
-			g.write(')')
+			if suffix := array_last_index_suffix(arr.elem_type) {
+				index_fn := 'array_last_index_${suffix}'
+				g.write('${index_fn}(')
+				g.gen_expr(base_id)
+				g.write(', ')
+				g.gen_expr(g.a.child(&node, 1))
+				g.write(')')
+			} else {
+				g.write('array_last_index_raw(')
+				g.gen_expr(base_id)
+				g.write(', &(${c_elem}[]){')
+				g.gen_expr_with_expected_type(g.a.child(&node, 1), arr.elem_type)
+				g.write('})')
+			}
 		}
 		'hex' {
 			g.write('Array_u8__hex(')
@@ -536,6 +544,16 @@ fn array_lookup_suffix(elem_type types.Type) string {
 		}
 	}
 	return 'int'
+}
+
+fn array_last_index_suffix(elem_type types.Type) ?string {
+	elem_name := elem_type.name()
+	return match elem_name {
+		'string' { 'string' }
+		'u8', 'byte' { 'u8' }
+		'int' { 'int' }
+		else { none }
+	}
 }
 
 // array_method_fallback supports array method fallback handling for FlatGen.

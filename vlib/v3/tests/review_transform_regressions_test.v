@@ -149,3 +149,17 @@ fn test_map_str_preserves_signed_wide_entries() {
 		"fn main() {\n\tvalue_map := {\n\t\t'x': i64(5000000000)\n\t}\n\tkey_map := {\n\t\ti64(-5000000000): 'x'\n\t}\n\tprintln(value_map.str())\n\tprintln(key_map.str())\n}\n")
 	assert out == "{'x': 5000000000}\n{-5000000000: 'x'}"
 }
+
+fn test_runes_iterator_index_is_loop_scoped() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'runes_iterator_index_scope',
+		"fn main() {\n\tfor i, r in 'ab'.runes_iterator() {\n\t\t_ := r\n\t\tprintln(int_str(i))\n\t}\n\ti := 9\n\tprintln(int_str(i))\n}\n")
+	assert out == '0\n1\n9'
+}
+
+fn test_array_last_index_uses_element_width() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_last_index_element_width',
+		'fn main() {\n\twide := [i64(1), i64(5000000000), i64(2), i64(5000000000)]\n\tfloats := [1.25, 2.5, 1.25]\n\tflags := [true, false, true]\n\tprintln(int_str(wide.last_index(i64(5000000000))))\n\tprintln(int_str(floats.last_index(1.25)))\n\tprintln(int_str(flags.last_index(true)))\n}\n')
+	assert out == '3\n2\n2'
+}
