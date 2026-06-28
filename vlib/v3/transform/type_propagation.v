@@ -778,8 +778,14 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 		return resolved
 	}
 	node := t.a.nodes[int(id)]
+	mut deferred_call_typ := ''
 	if node.typ.len > 0 {
-		return t.normalize_type_alias(node.typ)
+		node_typ := t.normalize_type_alias(node.typ)
+		if node.kind == .call && node_typ in ['int', 'array', 'map', 'unknown'] {
+			deferred_call_typ = node_typ
+		} else {
+			return node_typ
+		}
 	}
 	if node.kind == .selector {
 		sel_type := t.resolve_selector_type(node)
@@ -808,13 +814,20 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 		return node.value
 	}
 	if !isnil(t.tc) {
+		mut name := ''
 		if typ := t.tc.expr_type(id) {
-			name := typ.name()
-			if name.len > 0 && name != 'void' && (name != 'int'
-				|| node.kind in [.ident, .int_literal, .infix, .prefix, .paren, .selector, .index, .call]) {
-				return name
-			}
+			name = typ.name()
 		}
+		if name.len == 0 || name == 'unknown' {
+			name = t.tc.resolve_type(id).name()
+		}
+		if name.len > 0 && name != 'void' && (name != 'int'
+			|| node.kind in [.ident, .int_literal, .infix, .prefix, .paren, .selector, .index, .call]) {
+			return t.normalize_type_alias(name)
+		}
+	}
+	if deferred_call_typ.len > 0 {
+		return deferred_call_typ
 	}
 	return ''
 }
@@ -893,7 +906,7 @@ fn (t &Transformer) map_value_type(type_str string) string {
 	if !type_str.starts_with('map[') {
 		return ''
 	}
-	bracket_end := type_str.index(']') or { return '' }
+	bracket_end := generic_matching_bracket(type_str, 3)
 	if bracket_end + 1 < type_str.len {
 		return type_str[bracket_end + 1..]
 	}
@@ -906,7 +919,7 @@ fn (t &Transformer) map_key_type(type_str string) string {
 	if !type_str.starts_with('map[') {
 		return ''
 	}
-	bracket_end := type_str.index(']') or { return '' }
+	bracket_end := generic_matching_bracket(type_str, 3)
 	if bracket_end > 4 {
 		return type_str[4..bracket_end]
 	}

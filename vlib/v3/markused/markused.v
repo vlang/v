@@ -1392,9 +1392,13 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 								base_id := c.a.child(&callee, 0)
 								if int(base_id) >= 0 {
 									base := c.a.nodes[int(base_id)]
-									has_exact_selector_call = c.collect_typed_receiver_method(base_id,
-										callee.value, cur_module, imports, local_values,
-										local_types, mut calls)
+									has_exact_selector_call = c.collect_checker_selected_call(resolved_call, mut
+										calls)
+									if !has_exact_selector_call {
+										has_exact_selector_call = c.collect_typed_receiver_method(base_id,
+											callee.value, cur_module, imports, local_values,
+											local_types, mut calls)
+									}
 									if !has_exact_selector_call && base.kind == .ident
 										&& base.value in imports && base.value !in local_values {
 										calls << imports[base.value] + '.' + callee.value
@@ -2022,8 +2026,11 @@ fn (c &CallCollector) collect_top_level_selector_call(callee &flat.Node, method 
 		base_id := c.a.child(callee, 0)
 		if int(base_id) >= 0 {
 			base := c.a.node(base_id)
-			has_exact_selector_call = c.collect_top_level_typed_receiver_method(base_id, method,
-				cur_module, imports, local_values, local_types, mut calls)
+			has_exact_selector_call = c.collect_checker_selected_call(resolved_call, mut calls)
+			if !has_exact_selector_call {
+				has_exact_selector_call = c.collect_top_level_typed_receiver_method(base_id,
+					method, cur_module, imports, local_values, local_types, mut calls)
+			}
 			if !has_exact_selector_call && base.kind == .ident && base.value in imports
 				&& base.value !in local_values {
 				calls << imports[base.value] + '.' + method
@@ -2039,6 +2046,36 @@ fn (c &CallCollector) collect_top_level_selector_call(callee &flat.Node, method 
 			}
 		}
 	}
+}
+
+fn (c &CallCollector) collect_checker_selected_call(resolved_call string, mut calls []string) bool {
+	if resolved_call.len == 0 || markused_is_builtin_collection_resolved_call(resolved_call)
+		|| !c.is_known_fn_name(resolved_call) {
+		return false
+	}
+	c.add_typed_receiver_method_name(resolved_call, mut calls)
+	return true
+}
+
+fn markused_is_builtin_collection_resolved_call(name string) bool {
+	return name.len == 0 || markused_is_raw_collection_method_name(name, 'array.')
+		|| name == 'array_clone' || markused_is_runtime_collection_helper_name(name)
+		|| markused_is_raw_collection_method_name(name, 'map.')
+}
+
+fn markused_is_raw_collection_method_name(name string, prefix string) bool {
+	if !name.starts_with(prefix) {
+		return false
+	}
+	rest := name[prefix.len..]
+	return rest.len > 0 && !rest.contains('.')
+}
+
+fn markused_is_runtime_collection_helper_name(name string) bool {
+	return name in ['array__clone', 'array__reverse', 'array__prepend', 'array__insert',
+		'array__push_many', 'array__needs_unique_shift', 'map__delete', 'map__move', 'map__reserve',
+		'map__keys', 'map__values', 'map__clear', 'map__free', 'map__get', 'map__get_check',
+		'map__exists', 'map__set']
 }
 
 fn (c &CallCollector) collect_top_level_selector_fallback(base &flat.Node, method string, cur_module string, imports map[string]string, local_values map[string]bool, mut calls []string) {
@@ -2474,6 +2511,8 @@ fn (c &CallCollector) typed_receiver_method_name(type_name string, method string
 	mut candidates := []string{cap: 4}
 	if type_name.starts_with('map[') {
 		candidates << markused_map_receiver_method_candidates(type_name, method, cur_module)
+	} else if type_name.starts_with('[]') {
+		candidates << markused_array_receiver_method_candidates(type_name, method, cur_module)
 	} else if type_name.contains('.') {
 		candidates << '${type_name}.${method}'
 	} else {
@@ -2494,31 +2533,196 @@ fn (c &CallCollector) typed_receiver_method_name(type_name string, method string
 	return none
 }
 
+fn markused_can_prefix_collection_receiver(cur_module string) bool {
+	return cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin'
+}
+
+fn markused_push_receiver_candidate(mut candidates []string, candidate string) {
+	if candidate.len > 0 && candidate !in candidates {
+		candidates << candidate
+	}
+}
+
+fn markused_array_receiver_method_candidates(receiver_type string, method string, cur_module string) []string {
+	mut clean_type := receiver_type.trim_space()
+	for {
+		if clean_type.starts_with('&') {
+			clean_type = clean_type[1..].trim_space()
+			continue
+		}
+		break
+	}
+	mut candidates := []string{}
+	markused_push_receiver_candidate(mut candidates, '${clean_type}.${method}')
+	if !clean_type.starts_with('[]') || clean_type.len <= 2 {
+		return candidates
+	}
+	elem_type := clean_type[2..]
+	short_elem := if elem_type.contains('.') { elem_type.all_after_last('.') } else { elem_type }
+	markused_push_receiver_candidate(mut candidates, '[]${short_elem}.${method}')
+	if elem_type.contains('.') {
+		markused_push_receiver_candidate(mut candidates,
+			'${elem_type.all_before_last('.')}.[]${short_elem}.${method}')
+	} else if markused_can_prefix_collection_receiver(cur_module) {
+		markused_push_receiver_candidate(mut candidates, '${cur_module}.[]${short_elem}.${method}')
+	}
+	return candidates
+}
+
 fn markused_map_receiver_method_candidates(receiver_type string, method string, cur_module string) []string {
 	clean_type := markused_clean_map_type(receiver_type)
 	key_type := markused_map_key_type(clean_type)
 	value_type := markused_map_value_type(clean_type)
 	mut candidates := []string{}
-	candidates << '${clean_type}.${method}'
 	if key_type.len == 0 || value_type.len == 0 {
+		markused_push_receiver_candidate(mut candidates, '${clean_type}.${method}')
 		return candidates
 	}
-	short_value := if value_type.contains('.') {
-		value_type.all_after_last('.')
-	} else {
-		value_type
+	key_types := markused_receiver_type_text_variants(key_type)
+	value_types := markused_receiver_type_text_variants(value_type)
+	mut map_types := []string{}
+	for key in key_types {
+		for value in value_types {
+			markused_push_receiver_candidate(mut map_types, 'map[${key}]${value}')
+		}
 	}
-	short_map := 'map[${key_type}]${short_value}'
-	if short_map != clean_type {
-		candidates << '${short_map}.${method}'
+	for map_type in map_types {
+		markused_push_receiver_candidate(mut candidates, '${map_type}.${method}')
 	}
-	if value_type.contains('.') {
-		mod_name := value_type.all_before_last('.')
-		candidates << '${mod_name}.${short_map}.${method}'
-	} else if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
-		candidates << '${cur_module}.${short_map}.${method}'
+	mut module_names := []string{}
+	if markused_can_prefix_collection_receiver(cur_module) {
+		markused_push_receiver_candidate(mut module_names, cur_module)
+	}
+	for mod_name in markused_receiver_type_text_module_names(key_type) {
+		markused_push_receiver_candidate(mut module_names, mod_name)
+	}
+	for mod_name in markused_receiver_type_text_module_names(value_type) {
+		markused_push_receiver_candidate(mut module_names, mod_name)
+	}
+	for mod_name in module_names {
+		for map_type in map_types {
+			markused_push_receiver_candidate(mut candidates, '${mod_name}.${map_type}.${method}')
+		}
 	}
 	return candidates
+}
+
+fn markused_receiver_type_text_variants(type_text string) []string {
+	clean := type_text.trim_space()
+	mut names := []string{}
+	markused_push_receiver_candidate(mut names, clean)
+	markused_push_receiver_candidate(mut names, markused_receiver_type_text_short_spelling(clean))
+	if markused_type_text_is_fixed_array(clean) {
+		source := markused_receiver_type_text_source_fixed_spelling(clean)
+		markused_push_receiver_candidate(mut names, source)
+		markused_push_receiver_candidate(mut names,
+			markused_receiver_type_text_short_spelling(source))
+	}
+	return names
+}
+
+fn markused_receiver_type_text_source_fixed_spelling(type_text string) string {
+	clean := type_text.trim_space()
+	if clean.len == 0 || clean.starts_with('[') || !markused_type_text_is_fixed_array(clean) {
+		return clean
+	}
+	elem, dims := markused_postfix_fixed_array_parts(clean)
+	if elem.len == 0 || dims.len == 0 {
+		return clean
+	}
+	mut source := elem
+	for i := dims.len; i > 0; i-- {
+		source = '[${dims[i - 1]}]${source}'
+	}
+	return source
+}
+
+fn markused_postfix_fixed_array_parts(type_text string) (string, []string) {
+	clean := type_text.trim_space()
+	mut end := clean.len
+	mut dims := []string{}
+	for end > 0 && clean[end - 1] == `]` {
+		start := markused_trailing_matching_bracket_start(clean, end)
+		if start < 0 {
+			break
+		}
+		dims << clean[start + 1..end - 1].trim_space()
+		end = start
+	}
+	return clean[..end], dims
+}
+
+fn markused_trailing_matching_bracket_start(s string, end int) int {
+	mut depth := 0
+	for i := end - 1; i >= 0; i-- {
+		if s[i] == `]` {
+			depth++
+		} else if s[i] == `[` {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+fn markused_receiver_type_text_short_spelling(type_text string) string {
+	clean := type_text.trim_space()
+	if clean.starts_with('[]') {
+		return '[]' + markused_receiver_type_text_short_spelling(clean[2..])
+	}
+	if clean.starts_with('[') {
+		bracket_end := markused_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return clean[..bracket_end + 1] +
+				markused_receiver_type_text_short_spelling(clean[bracket_end + 1..])
+		}
+	}
+	if clean.starts_with('map[') {
+		bracket_end := markused_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			key := markused_receiver_type_text_short_spelling(clean[4..bracket_end])
+			value := markused_receiver_type_text_short_spelling(clean[bracket_end + 1..])
+			return 'map[${key}]${value}'
+		}
+	}
+	if clean.contains('.') {
+		return clean.all_after_last('.')
+	}
+	return clean
+}
+
+fn markused_receiver_type_text_module_names(type_text string) []string {
+	clean := type_text.trim_space()
+	mut names := []string{}
+	if clean.starts_with('[]') {
+		return markused_receiver_type_text_module_names(clean[2..])
+	}
+	if clean.starts_with('[') {
+		bracket_end := markused_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return markused_receiver_type_text_module_names(clean[bracket_end + 1..])
+		}
+	}
+	if clean.starts_with('map[') {
+		key_type := markused_map_key_type(clean)
+		value_type := markused_map_value_type(clean)
+		for name in markused_receiver_type_text_module_names(key_type) {
+			markused_push_receiver_candidate(mut names, name)
+		}
+		for name in markused_receiver_type_text_module_names(value_type) {
+			markused_push_receiver_candidate(mut names, name)
+		}
+		return names
+	}
+	if markused_type_text_is_fixed_array(clean) {
+		return markused_receiver_type_text_module_names(markused_fixed_array_elem_type(clean))
+	}
+	if clean.contains('.') {
+		markused_push_receiver_candidate(mut names, clean.all_before_last('.'))
+	}
+	return names
 }
 
 fn markused_clean_map_type(receiver_type string) string {
@@ -2537,11 +2741,42 @@ fn markused_clean_map_type(receiver_type string) string {
 	return clean
 }
 
+fn markused_type_text_is_fixed_array(type_text string) bool {
+	clean := type_text.trim_space()
+	if clean.len == 0 || clean.starts_with('[]') || clean.starts_with('map[') {
+		return false
+	}
+	if clean.starts_with('[') {
+		bracket_end := markused_matching_bracket(clean, 0)
+		return bracket_end < clean.len
+	}
+	if !clean.contains('[') || !clean.ends_with(']') {
+		return false
+	}
+	len_text := markused_fixed_array_len_text(clean)
+	return len_text.len > 0 && !len_text.contains(',')
+}
+
+fn markused_fixed_array_len_text(type_text string) string {
+	return type_text.all_after('[').all_before(']').trim_space()
+}
+
+fn markused_fixed_array_elem_type(type_text string) string {
+	if type_text.starts_with('[') {
+		bracket_end := markused_matching_bracket(type_text, 0)
+		if bracket_end < type_text.len {
+			return type_text[bracket_end + 1..]
+		}
+		return ''
+	}
+	return type_text.all_before('[')
+}
+
 fn markused_map_key_type(type_str string) string {
 	if !type_str.starts_with('map[') {
 		return ''
 	}
-	bracket_end := type_str.index(']') or { return '' }
+	bracket_end := markused_matching_bracket(type_str, 3)
 	if bracket_end > 4 {
 		return type_str[4..bracket_end]
 	}
@@ -2552,11 +2787,26 @@ fn markused_map_value_type(type_str string) string {
 	if !type_str.starts_with('map[') {
 		return ''
 	}
-	bracket_end := type_str.index(']') or { return '' }
+	bracket_end := markused_matching_bracket(type_str, 3)
 	if bracket_end + 1 < type_str.len {
 		return type_str[bracket_end + 1..]
 	}
 	return ''
+}
+
+fn markused_matching_bracket(s string, start int) int {
+	mut depth := 0
+	for i in start .. s.len {
+		if s[i] == `[` {
+			depth++
+		} else if s[i] == `]` {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return s.len
 }
 
 fn (c &CallCollector) add_typed_receiver_method_name(method_name string, mut calls []string) {
@@ -2720,9 +2970,15 @@ fn resolve_type_name(t types.Type) string {
 	} else if t is types.String {
 		return 'string'
 	} else if t is types.Array {
-		return 'Array'
+		return '[]${markused_nested_type_name(t.elem_type)}'
+	} else if t is types.ArrayFixed {
+		mut len_text := t.len.str()
+		if t.len_expr.len > 0 {
+			len_text = t.len_expr
+		}
+		return '${markused_nested_type_name(t.elem_type)}[${len_text}]'
 	} else if t is types.Map {
-		return 'map[${t.key_type.name()}]${t.value_type.name()}'
+		return 'map[${markused_nested_type_name(t.key_type)}]${markused_nested_type_name(t.value_type)}'
 	} else if t is types.Pointer {
 		return resolve_type_name(t.base_type)
 	} else if t is types.Primitive {
@@ -2766,6 +3022,10 @@ fn resolve_type_name(t types.Type) string {
 		return 'rune'
 	}
 	return ''
+}
+
+fn markused_nested_type_name(t types.Type) string {
+	return t.name()
 }
 
 // markused_c_name converts markused c name data for markused.

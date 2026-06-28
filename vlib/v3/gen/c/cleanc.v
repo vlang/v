@@ -3137,9 +3137,14 @@ fn (mut g FlatGen) builtin_abi_decls() {
 }
 
 fn (mut g FlatGen) filelock_compat_decls() {
+	if !g.libc_compat_fns['filelock'] {
+		return
+	}
+	g.writeln('#ifndef V_OS_FILELOCK_HELPERS_H')
+	g.writeln('#define V_OS_FILELOCK_HELPERS_H')
 	g.writeln('#ifdef _WIN32')
 	g.writeln('#include <windows.h>')
-	g.writeln('int v_filelock_lock(void* handle, int exclusive, int immediate, u64 start, u64 len) {')
+	g.writeln('static int v_filelock_lock(HANDLE handle, int exclusive, int immediate, unsigned long long start, unsigned long long len) {')
 	g.writeln('\tOVERLAPPED overlap;')
 	g.writeln('\tmemset(&overlap, 0, sizeof(overlap));')
 	g.writeln('\toverlap.Offset = (DWORD)(start & 0xffffffffULL);')
@@ -3148,19 +3153,21 @@ fn (mut g FlatGen) filelock_compat_decls() {
 	g.writeln('\tif (exclusive) { flags |= LOCKFILE_EXCLUSIVE_LOCK; }')
 	g.writeln('\tDWORD low = len == 0 ? MAXDWORD : (DWORD)(len & 0xffffffffULL);')
 	g.writeln('\tDWORD high = len == 0 ? MAXDWORD : (DWORD)(len >> 32);')
-	g.writeln('\treturn LockFileEx((HANDLE)handle, flags, 0, low, high, &overlap) ? 0 : -1;')
+	g.writeln('\treturn LockFileEx(handle, flags, 0, low, high, &overlap) ? 0 : -1;')
 	g.writeln('}')
-	g.writeln('int v_filelock_unlock(void* handle, u64 start, u64 len) {')
+	g.writeln('static int v_filelock_unlock(HANDLE handle, unsigned long long start, unsigned long long len) {')
 	g.writeln('\tOVERLAPPED overlap;')
 	g.writeln('\tmemset(&overlap, 0, sizeof(overlap));')
 	g.writeln('\toverlap.Offset = (DWORD)(start & 0xffffffffULL);')
 	g.writeln('\toverlap.OffsetHigh = (DWORD)(start >> 32);')
 	g.writeln('\tDWORD low = len == 0 ? MAXDWORD : (DWORD)(len & 0xffffffffULL);')
 	g.writeln('\tDWORD high = len == 0 ? MAXDWORD : (DWORD)(len >> 32);')
-	g.writeln('\treturn UnlockFileEx((HANDLE)handle, 0, low, high, &overlap) ? 0 : -1;')
+	g.writeln('\treturn UnlockFileEx(handle, 0, low, high, &overlap) ? 0 : -1;')
 	g.writeln('}')
 	g.writeln('#else')
-	g.writeln('int v_filelock_lock(i32 fd, i32 exclusive, i32 immediate, u64 start, u64 len) {')
+	g.writeln('#include <fcntl.h>')
+	g.writeln('#include <unistd.h>')
+	g.writeln('static int v_filelock_lock(int fd, int exclusive, int immediate, unsigned long long start, unsigned long long len) {')
 	g.writeln('\tstruct flock fl;')
 	g.writeln('\tmemset(&fl, 0, sizeof(fl));')
 	g.writeln('\tfl.l_type = exclusive ? F_WRLCK : F_RDLCK;')
@@ -3169,7 +3176,7 @@ fn (mut g FlatGen) filelock_compat_decls() {
 	g.writeln('\tfl.l_len = len == 0 ? 0 : (off_t)len;')
 	g.writeln('\treturn fcntl(fd, immediate ? F_SETLK : F_SETLKW, &fl);')
 	g.writeln('}')
-	g.writeln('int v_filelock_unlock(i32 fd, u64 start, u64 len) {')
+	g.writeln('static int v_filelock_unlock(int fd, unsigned long long start, unsigned long long len) {')
 	g.writeln('\tstruct flock fl;')
 	g.writeln('\tmemset(&fl, 0, sizeof(fl));')
 	g.writeln('\tfl.l_type = F_UNLCK;')
@@ -3178,6 +3185,7 @@ fn (mut g FlatGen) filelock_compat_decls() {
 	g.writeln('\tfl.l_len = len == 0 ? 0 : (off_t)len;')
 	g.writeln('\treturn fcntl(fd, F_SETLK, &fl);')
 	g.writeln('}')
+	g.writeln('#endif')
 	g.writeln('#endif')
 }
 

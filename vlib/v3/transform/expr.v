@@ -1296,6 +1296,14 @@ pub fn (mut t Transformer) make_call_typed(fn_name string, args []flat.NodeId, t
 	return t.make_call_expr_typed(fn_ident, args, typ)
 }
 
+fn (mut t Transformer) mark_fn_used(fn_name string) {
+	if fn_name.len == 0 || t.used_fns.len == 0 {
+		return
+	}
+	t.used_fns[fn_name] = true
+	t.used_fns[c_name(fn_name)] = true
+}
+
 // make_call_expr_typed builds make call expr typed data for transform.
 pub fn (mut t Transformer) make_call_expr_typed(fn_expr flat.NodeId, args []flat.NodeId, typ string) flat.NodeId {
 	start := t.a.children.len

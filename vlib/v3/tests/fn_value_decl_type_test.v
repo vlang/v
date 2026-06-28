@@ -287,11 +287,28 @@ fn main() {
 }
 '
 
+const local_fn_call_shadow_global_return_src = 'fn f() string {
+	return "global"
+}
+
+fn make_int() int {
+	return 12
+}
+
+fn main() {
+	f := make_int
+	x := f()
+	println(int_str(x))
+}
+'
+
 fn test_local_fn_literal_decl_types_are_callable() {
 	v3_bin := build_v3()
 	assert run_good(v3_bin, 'fn_value_optional_void_local', optional_fn_src) == 'optional-ok'
 	assert run_good(v3_bin, 'fn_value_plain_int_local', plain_fn_src) == '7'
 	assert run_good(v3_bin, 'fn_value_local_ident_shadow', local_ident_shadow_src) == '10'
+	assert run_good(v3_bin, 'fn_value_local_call_shadows_global_return',
+		local_fn_call_shadow_global_return_src) == '12'
 	assert run_good(v3_bin, 'fn_value_named_local', 'fn add_one(i int) int {
 	return i + 1
 }
@@ -354,6 +371,11 @@ fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	shadow_c := gen_c(v3_bin, 'fn_value_local_ident_shadow_c', local_ident_shadow_src)
 	assert shadow_c.contains('int foo = 10'), shadow_c
 	assert shadow_c.contains('int f = foo'), shadow_c
+
+	shadow_call_c := gen_c(v3_bin, 'fn_value_local_call_shadows_global_return_c',
+		local_fn_call_shadow_global_return_src)
+	assert shadow_call_c.contains('int x ='), shadow_call_c
+	assert !shadow_call_c.contains('string x ='), shadow_call_c
 
 	imported_c := gen_project_c(v3_bin, 'fn_value_imported_selector_local_c',
 		imported_fn_value_project_files())

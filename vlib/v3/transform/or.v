@@ -45,6 +45,9 @@ fn (mut t Transformer) array_index_info(index_id flat.NodeId) ?ArrayIndexInfo {
 	if value_type.len == 0 {
 		return none
 	}
+	if t.is_optional_type_name(value_type) {
+		return none
+	}
 	return ArrayIndexInfo{
 		base_id:    base_id
 		index_id:   index_expr_id

@@ -24,6 +24,22 @@ fn parse_transform_file(src string, source string) &flat.FlatAst {
 	return a
 }
 
+// parse_checked_transform_source reads parse checked transform source input for v3 tests.
+fn parse_checked_transform_source(source string) &flat.FlatAst {
+	src := os.join_path(os.temp_dir(), 'v3_transformer_checked_parity_test.v')
+	os.write_file(src, source) or { panic(err) }
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(src)
+	mut tc := types.TypeChecker.new(a)
+	tc.diagnose_unknown_calls = true
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	transform.transform(mut a, &tc)
+	return a
+}
+
 // find_fn resolves find fn information for v3 tests.
 fn find_fn(a &flat.FlatAst, name string) flat.Node {
 	for node in a.nodes {
@@ -107,6 +123,25 @@ fn count_call_name(a &flat.FlatAst, id flat.NodeId, name string) int {
 		total += count_call_name(a, a.child(&node, i), name)
 	}
 	return total
+}
+
+fn first_call_arg_opt(a &flat.FlatAst, id flat.NodeId, name string, arg_idx int) ?flat.Node {
+	if int(id) < 0 {
+		return none
+	}
+	node := a.nodes[int(id)]
+	if node.kind == .call && node.children_count > arg_idx + 1 {
+		fn_node := a.child_node(&node, 0)
+		if fn_node.kind == .ident && fn_node.value == name {
+			return *a.child_node(&node, arg_idx + 1)
+		}
+	}
+	for i in 0 .. node.children_count {
+		if found := first_call_arg_opt(a, a.child(&node, i), name, arg_idx) {
+			return found
+		}
+	}
+	return none
 }
 
 // count_infix_op supports count infix op handling for v3 tests.
@@ -600,4 +635,355 @@ fn main() {
 	}
 	assert or_count == 0
 	assert get_check_count == 1
+}
+
+fn test_map_methods_lower_to_runtime_calls() {
+	a := parse_transform_source('
+fn main() {
+	mut m := map[string]int{}
+	m.delete("a")
+	m.clear()
+	m.free()
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut delete_count := 0
+	mut clear_count := 0
+	mut free_count := 0
+	mut selector_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		delete_count += count_call_name(a, child_id, 'map__delete')
+		clear_count += count_call_name(a, child_id, 'map__clear')
+		free_count += count_call_name(a, child_id, 'map__free')
+		selector_count += count_selector_value(a, child_id, 'delete')
+		selector_count += count_selector_value(a, child_id, 'clear')
+		selector_count += count_selector_value(a, child_id, 'free')
+	}
+	assert delete_count == 1
+	assert clear_count == 1
+	assert free_count == 1
+	assert selector_count == 0
+}
+
+fn test_map_delete_fixed_array_key_uses_full_key_type() {
+	a := parse_transform_source('
+fn main() {
+	mut m := map[[2]string]int{}
+	key := ["foo", "bar"]!
+	m[key] = 5
+	m.delete(key)
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut key_tmp := ''
+	mut delete_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		delete_count += count_call_name(a, child_id, 'map__delete')
+		if arg := first_call_arg_opt(a, child_id, 'map__delete', 1) {
+			assert arg.kind == .prefix
+			assert arg.op == .amp
+			ident := a.child_node(&arg, 0)
+			assert ident.kind == .ident
+			key_tmp = ident.value
+		}
+	}
+	assert delete_count == 1
+	assert key_tmp.len > 0
+	mut found_key_decl := false
+	for i in 0 .. main_fn.children_count {
+		stmt := a.child_node(&main_fn, i)
+		if stmt.kind == .decl_assign && stmt.children_count >= 2 {
+			lhs := a.child_node(stmt, 0)
+			if lhs.kind == .ident && lhs.value == key_tmp {
+				assert stmt.typ == '[2]string'
+				found_key_decl = true
+			}
+		}
+	}
+	assert found_key_decl
+}
+
+fn test_exact_map_receiver_method_wins_over_builtin_lowering() {
+	a := parse_checked_transform_source('
+fn (m map[string]int) keys() int {
+	return 7
+}
+
+fn main() {
+	mut m := map[string]int{}
+	n := m.keys()
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut exact_count := 0
+	mut builtin_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		exact_count += count_call_name(a, child_id, 'map[string]int.keys')
+		exact_count += count_call_name(a, child_id, 'main.map[string]int.keys')
+		builtin_count += count_call_name(a, child_id, 'map__keys')
+		builtin_count += count_call_name(a, child_id, 'map.keys')
+	}
+	assert exact_count == 1
+	assert builtin_count == 0
+}
+
+fn test_channel_close_lowers_to_runtime_call() {
+	a := parse_transform_source('
+fn main() {
+	ch := chan bool{cap: 1}
+	ch.close()
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut close_count := 0
+	mut selector_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		close_count += count_call_name(a, child_id, 'sync__Channel__close')
+		close_count += count_selector_value(a, child_id, 'sync__Channel__close')
+		selector_count += count_selector_value(a, child_id, 'close')
+	}
+	assert close_count == 1
+	assert selector_count == 0
+}
+
+fn test_static_assoc_call_lowers_to_direct_call() {
+	a := parse_checked_transform_source('
+struct Tool {}
+
+fn Tool.make(x int) int {
+	return x
+}
+
+fn main() {
+	n := Tool.make(7)
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut direct_count := 0
+	mut selector_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		direct_count += count_call_name(a, child_id, 'Tool.make')
+		selector_count += count_selector_value(a, child_id, 'make')
+	}
+	assert direct_count == 1
+	assert selector_count == 0
+}
+
+fn test_array_builtin_method_fallback_lowers_to_direct_call() {
+	a := parse_checked_transform_source('
+@[unsafe]
+fn (a array) pointers() []voidptr {
+	return []voidptr{}
+}
+
+fn main() {
+	nums := [1, 2, 3]
+	unsafe {
+		ptrs := nums.pointers()
+	}
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut direct_count := 0
+	mut selector_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		direct_count += count_call_name(a, child_id, 'array.pointers')
+		selector_count += count_selector_value(a, child_id, 'pointers')
+	}
+	assert direct_count == 1
+	assert selector_count == 0
+}
+
+fn test_array_reverse_pointer_receiver_derefs_before_runtime_call() {
+	a := parse_transform_source('
+fn main() {
+	mut nums := []int{}
+	nums << 1
+	p := &nums
+	rev := p.reverse()
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut direct_count := 0
+	mut selector_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		direct_count += count_call_name(a, child_id, 'array__reverse')
+		selector_count += count_selector_value(a, child_id, 'reverse')
+	}
+	assert direct_count == 1
+	assert selector_count == 0
+	mut arg := flat.Node{}
+	mut found_arg := false
+	for i in 0 .. main_fn.children_count {
+		if candidate := first_call_arg_opt(a, a.child(&main_fn, i), 'array__reverse', 0) {
+			arg = candidate
+			found_arg = true
+			break
+		}
+	}
+	assert found_arg
+	assert arg.kind == .prefix
+	assert arg.op == .mul
+	assert arg.children_count == 1
+	ident := a.child_node(&arg, 0)
+	assert ident.kind == .ident
+	assert ident.value == 'p'
+}
+
+fn test_fixed_array_pointers_uses_intrinsic_without_copy() {
+	a := parse_checked_transform_source('
+@[unsafe]
+fn (a array) pointers() []voidptr {
+	return []voidptr{}
+}
+
+fn main() {
+	mut fixed := [3]int{}
+	unsafe {
+		ptrs := fixed.pointers()
+	}
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut direct_count := 0
+	mut copy_count := 0
+	mut selector_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		direct_count += count_call_name(a, child_id, 'array.pointers')
+		copy_count += count_call_name(a, child_id, 'new_array_from_c_array')
+		selector_count += count_selector_value(a, child_id, 'pointers')
+	}
+	assert direct_count == 1
+	assert copy_count == 0
+	assert selector_count == 0
+}
+
+fn test_fixed_array_dynamic_receiver_method_wins_over_array_builtin() {
+	a := parse_checked_transform_source('
+@[unsafe]
+fn (a array) pointers() []voidptr {
+	return []voidptr{}
+}
+
+fn (a []int) pointers() int {
+	return 7
+}
+
+fn main() {
+	mut fixed := [3]int{}
+	n := fixed.pointers()
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut dynamic_count := 0
+	mut builtin_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		dynamic_count += count_call_name(a, child_id, '[]int.pointers')
+		dynamic_count += count_call_name(a, child_id, 'main.[]int.pointers')
+		builtin_count += count_call_name(a, child_id, 'array.pointers')
+	}
+	assert dynamic_count == 1
+	assert builtin_count == 0
+}
+
+fn test_exact_array_receiver_method_wins_over_builtin_fallback() {
+	a := parse_checked_transform_source('
+@[unsafe]
+fn (a array) pointers() []voidptr {
+	return []voidptr{}
+}
+
+fn (a []int) pointers() []int {
+	return a
+}
+
+fn main() {
+	mut nums := []int{}
+	nums << 1
+	nums << 2
+	nums << 3
+	ptrs := nums.pointers()
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut exact_count := 0
+	mut builtin_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		exact_count += count_call_name(a, child_id, '[]int.pointers')
+		exact_count += count_call_name(a, child_id, 'main.[]int.pointers')
+		builtin_count += count_call_name(a, child_id, 'array.pointers')
+	}
+	assert exact_count == 1
+	assert builtin_count == 0
+}
+
+fn test_pointer_rvalue_arg_lowers_to_temp_address() {
+	a := parse_checked_transform_source('
+fn make_int() int {
+	return 7
+}
+
+fn takes_ptr(x &int) int {
+	return *x
+}
+
+fn main() {
+	y := takes_ptr(make_int())
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut call_count := 0
+	mut make_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		call_count += count_call_name(a, child_id, 'takes_ptr')
+		make_count += count_call_name(a, child_id, 'make_int')
+	}
+	assert call_count == 1
+	assert make_count == 1
+	mut arg := flat.Node{}
+	mut found_arg := false
+	for i in 0 .. main_fn.children_count {
+		if candidate := first_call_arg_opt(a, a.child(&main_fn, i), 'takes_ptr', 0) {
+			arg = candidate
+			found_arg = true
+			break
+		}
+	}
+	assert found_arg
+	assert arg.kind == .prefix
+	assert arg.op == .amp
+	assert arg.children_count == 1
+	ident := a.child_node(&arg, 0)
+	assert ident.kind == .ident
+	assert ident.value.starts_with('__ptr_arg_')
+}
+
+fn test_map_values_membership_lowers_without_type_annotation() {
+	a := parse_checked_transform_source('
+fn main() {
+	mut names := map[string]string{}
+	found := "alex" in names.values()
+}
+')
+	main_fn := find_fn(a, 'main')
+	mut in_count := 0
+	mut for_count := 0
+	for i in 0 .. main_fn.children_count {
+		child_id := a.child(&main_fn, i)
+		in_count += count_kind(a, child_id, .in_expr)
+		for_count += count_kind(a, child_id, .for_stmt)
+	}
+	assert in_count == 0
+	assert for_count == 1
 }
