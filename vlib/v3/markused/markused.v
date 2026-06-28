@@ -169,6 +169,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	queue << 'array.delete_last'
 	used['array.delete_last'] = true
+	for seed in ['i8.str', 'i16.str', 'i32.str', 'i64.str'] {
+		queue << seed
+		used[seed] = true
+	}
 
 	if trace_markused {
 		eprintln('markused: fn_count:')
