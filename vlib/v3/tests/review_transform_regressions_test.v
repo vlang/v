@@ -242,6 +242,15 @@ fn test_map_literal_stringification_evaluates_entries_once() {
 	assert out == "{'k1': 10}\n1,1"
 }
 
+fn test_shadowed_minmaxof_calls_are_not_rewritten() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'shadowed_minmaxof_calls', {
+		'main.v':          'module main\n\nimport shadow { maxof, minof }\n\nfn main() {\n\tprintln(int_str(maxof[int]()))\n\tprintln(int_str(minof[int]()))\n}\n'
+		'shadow/shadow.v': 'module shadow\n\npub fn maxof[T]() int {\n\treturn 7\n}\n\npub fn minof[T]() int {\n\treturn -7\n}\n'
+	}, 'main.v')
+	assert out == '7\n-7'
+}
+
 fn test_runes_iterator_index_is_loop_scoped() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'runes_iterator_index_scope',

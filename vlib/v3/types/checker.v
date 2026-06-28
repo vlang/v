@@ -4040,9 +4040,6 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		if base_node.kind == .ident && base_node.value == 'C' {
 			return none
 		}
-		if fn_node.value == 'hex' && tc.receiver_expr_is_pointer(base_id) {
-			return none
-		}
 		if base_node.kind == .ident {
 			if resolved_mod := tc.resolve_import_alias(base_node.value) {
 				mod_name := '${resolved_mod}.${fn_node.value}'
@@ -4394,6 +4391,9 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 			}
 			for mname in receiver_method_name_candidates(clean, fn_node.value, tc.cur_module) {
 				if mname in tc.fn_ret_types {
+					if !tc.method_can_be_called_on_receiver(base_type, fn_node.value, mname) {
+						continue
+					}
 					if clean_map := map_type_from_receiver(clean) {
 						if info := tc.map_builtin_call_info(base_type, clean_map, fn_node.value,
 							mname)
@@ -4570,6 +4570,17 @@ fn (tc &TypeChecker) type_is_pointer_receiver(typ Type) bool {
 		return tc.type_is_pointer_receiver(typ.base_type)
 	}
 	return false
+}
+
+fn (tc &TypeChecker) method_can_be_called_on_receiver(receiver Type, method string, method_name string) bool {
+	if method != 'hex' || !tc.type_is_pointer_receiver(receiver) {
+		return true
+	}
+	params := tc.fn_param_types[method_name] or { return false }
+	if params.len == 0 {
+		return false
+	}
+	return tc.type_is_pointer_receiver(params[0])
 }
 
 fn (tc &TypeChecker) receiver_expr_is_pointer(id flat.NodeId) bool {

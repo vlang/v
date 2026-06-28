@@ -70,6 +70,13 @@ fn test_auto_str_rejects_arguments() {
 		'argument count mismatch')
 }
 
+fn test_pointer_hex_receiver_methods_are_allowed() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_pointer_hex_receiver_method',
+		"struct S {\n\tvalue int\n}\n\nfn (s &S) hex() string {\n\treturn 'ptr:' + int_str(s.value)\n}\n\nfn main() {\n\ts := S{\n\t\tvalue: 7\n\t}\n\tp := &s\n\tprintln(p.hex())\n}\n")
+	assert out == 'ptr:7'
+}
+
 fn test_map_keys_and_values_reject_arguments() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_map_keys_arg',

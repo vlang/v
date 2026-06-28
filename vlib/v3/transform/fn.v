@@ -2556,7 +2556,8 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 		return none
 	}
 	name := fn_node.value
-	if name in ['maxof', 'minof'] && node.value.len > 0 && node.children_count == 1 {
+	if name in ['maxof', 'minof'] && node.value.len > 0 && node.children_count == 1
+		&& t.is_std_minmaxof_call(_id, name) {
 		if value := t.try_lower_minmaxof_call(name, node.value) {
 			return value
 		}
@@ -2594,6 +2595,14 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 			return none
 		}
 	}
+}
+
+fn (t &Transformer) is_std_minmaxof_call(id flat.NodeId, name string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	resolved := t.tc.resolved_call_name(id) or { return false }
+	return resolved == 'math.${name}'
 }
 
 fn (mut t Transformer) try_lower_minmaxof_call(name string, raw_type string) ?flat.NodeId {
@@ -2911,6 +2920,7 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	if base_type.len == 0 {
 		base_type = t.lvalue_type(base_id)
 	}
+	base_is_pointer := base_type.starts_with('&')
 	if base_type.starts_with('&') {
 		base_type = base_type[1..]
 	}
@@ -2949,7 +2959,7 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		if method == 'bytestr' {
 			return t.make_call_typed('Array_u8__bytestr', arr1(t.transform_expr(base_id)), 'string')
 		}
-		if method == 'hex' {
+		if method == 'hex' && !base_is_pointer {
 			return t.make_call_typed('Array_u8__hex', arr1(t.transform_expr(base_id)), 'string')
 		}
 	}
@@ -2965,7 +2975,8 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	if builtin_base_type == 'u8' && method in ['is_space', 'is_digit', 'is_hex_digit', 'is_letter'] {
 		return t.make_call_typed('u8__${method}', arr1(t.transform_expr(base_id)), 'bool')
 	}
-	if builtin_base_type in ['u8', 'i8', 'u16', 'i16', 'u32', 'int', 'u64', 'i64', 'rune']
+	if !base_is_pointer
+		&& builtin_base_type in ['u8', 'i8', 'u16', 'i16', 'u32', 'int', 'u64', 'i64', 'rune']
 		&& method in ['hex', 'hex_full'] {
 		return t.make_call_typed('${builtin_base_type}__${method}',
 			arr1(t.transform_expr(base_id)), 'string')
