@@ -6330,10 +6330,25 @@ fn (t &Transformer) variant_names_match(a string, b string) bool {
 	if a == b || t.variant_short_name(a) == t.variant_short_name(b) {
 		return true
 	}
-	a_base := generic_base_name_text(a)
-	b_base := generic_base_name_text(b)
-	if a_base != a || b_base != b {
-		return t.variant_short_name(a_base) == t.variant_short_name(b_base)
+	a_base, a_args, a_generic := generic_app_parts(a)
+	b_base, b_args, b_generic := generic_app_parts(b)
+	if a_generic || b_generic {
+		a_match_base := if a_generic { a_base } else { a }
+		b_match_base := if b_generic { b_base } else { b }
+		if a_generic && b_generic && !t.generic_variant_args_are_open(a_args)
+			&& !t.generic_variant_args_are_open(b_args) {
+			return false
+		}
+		return t.variant_short_name(a_match_base) == t.variant_short_name(b_match_base)
+	}
+	return false
+}
+
+fn (t &Transformer) generic_variant_args_are_open(args []string) bool {
+	for arg in args {
+		if t.generic_arg_is_unresolved(arg) {
+			return true
+		}
 	}
 	return false
 }

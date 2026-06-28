@@ -72,3 +72,92 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'promoted:42'
 }
+
+fn test_ierror_dispatch_uses_promoted_embedded_pointer_methods() {
+	v3_bin := build_v3()
+
+	root := os.join_path(os.temp_dir(), 'v3_ierror_promoted_pointer_methods_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, "struct PtrErr {
+	text string
+}
+
+fn (err &PtrErr) msg() string {
+	return err.text
+}
+
+fn (err &PtrErr) code() int {
+	return 7
+}
+
+struct PointerWrapErr {
+	PtrErr &PtrErr
+}
+
+fn fail_pointer() !int {
+	return PointerWrapErr{
+		PtrErr: &PtrErr{
+			text: 'pointer'
+		}
+	}
+}
+
+struct InnerErr {
+	text string
+}
+
+fn (err InnerErr) msg() string {
+	return err.text
+}
+
+fn (err InnerErr) code() int {
+	return 8
+}
+
+struct PointerInner {
+	InnerErr &InnerErr
+}
+
+struct NestedWrapErr {
+	PointerInner
+}
+
+fn fail_nested() !int {
+	return NestedWrapErr{
+		PointerInner: PointerInner{
+			InnerErr: &InnerErr{
+				text: 'nested'
+			}
+		}
+	}
+}
+
+fn main() {
+	fail_pointer() or {
+		assert err.msg() == 'pointer'
+		assert err.code() == 7
+	}
+	fail_nested() or {
+		assert err.msg() == 'nested'
+		assert err.code() == 8
+	}
+	println('ok')
+}
+") or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_pointer_methods_out_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	c_code := os.read_file('${bin}.c') or { '' }
+	assert c_code.contains('PtrErr__msg(((PointerWrapErr*)i->_object)->PtrErr)'), c_code
+	assert c_code.contains('InnerErr__msg(*((((NestedWrapErr*)i->_object)->PointerInner).InnerErr))'), c_code
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}

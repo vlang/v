@@ -2425,6 +2425,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		children_count: flat.child_count(children.len)
 		typ:            cloned_typ
 		value:          cloned_value
+		is_mut:         node.is_mut
 	})
 }
 

@@ -186,21 +186,17 @@ fn (t &Transformer) sum_type_index(sum_name string, variant string) int {
 	variants := t.sum_types[resolved_sum] or {
 		if !isnil(t.tc) {
 			tc_variants := t.tc.sum_types[resolved_sum] or { return 0 }
-			return sum_type_index_in_variants(tc_variants, variant)
+			return t.sum_type_index_in_variants(tc_variants, variant)
 		}
 		return 0
 	}
-	return sum_type_index_in_variants(variants, variant)
+	return t.sum_type_index_in_variants(variants, variant)
 }
 
 // sum_type_index_in_variants supports sum type index in variants handling for transform.
-fn sum_type_index_in_variants(variants []string, variant string) int {
-	short_variant := variant_short_name_text(variant)
-	short_variant_base := variant_short_name_text(generic_base_name_text(variant))
+fn (t &Transformer) sum_type_index_in_variants(variants []string, variant string) int {
 	for i, v in variants {
-		short_v := variant_short_name_text(v)
-		short_v_base := variant_short_name_text(generic_base_name_text(v))
-		if v == variant || short_v == short_variant || short_v_base == short_variant_base {
+		if t.variant_names_match(v, variant) {
 			return i + 1
 		}
 	}

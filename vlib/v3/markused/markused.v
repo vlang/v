@@ -278,6 +278,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				if !valid_symbol_name(callee) {
 					continue
 				}
+				if callee == 'string__plus' {
+					enqueue(callee, mut used, mut queue)
+					continue
+				}
 				mut found_direct := false
 				if callee_info := fn_decls[callee] {
 					found_direct = true
@@ -994,6 +998,29 @@ fn markused_call_lowers_to_join_path_single(a &flat.FlatAst, fn_node flat.Node, 
 	return base.value == 'os' || imports[base.value] == 'os'
 }
 
+fn markused_type_name_lowers_to_map_str(type_name string, tc &types.TypeChecker) bool {
+	if markused_clean_map_type(type_name).starts_with('map[') {
+		return true
+	}
+	return markused_type_lowers_to_map_str(tc.parse_type(type_name))
+}
+
+fn markused_type_lowers_to_map_str(typ0 types.Type) bool {
+	mut typ := typ0
+	for _ in 0 .. 8 {
+		if typ is types.Alias {
+			typ = typ.base_type
+			continue
+		}
+		if typ is types.Pointer {
+			typ = typ.base_type
+			continue
+		}
+		break
+	}
+	return typ is types.Map || markused_clean_map_type(typ.name()).starts_with('map[')
+}
+
 // enqueue_stringified_custom_str_method supports enqueue_stringified_custom_str_method handling.
 fn enqueue_stringified_custom_str_method(expr_id flat.NodeId, cur_module string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
 	mut typ := tc.expr_type(expr_id) or { tc.resolve_type(expr_id) }
@@ -1533,6 +1560,13 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 							if resolved_call.len > 0 {
 								calls << resolved_call
 							}
+							if callee.value in ['print', 'println', 'eprint', 'eprintln']
+								&& child.children_count >= 2 {
+								arg_id := c.a.child(child, 1)
+								if c.expr_lowers_to_map_str(arg_id, local_values, local_types) {
+									calls << 'string__plus'
+								}
+							}
 							if callee.value !in local_values {
 								calls << callee.value
 								qcallee := qualify_fn(cur_module, callee.value)
@@ -1548,6 +1582,10 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 									base := c.a.nodes[int(base_id)]
 									has_exact_selector_call = c.collect_checker_selected_call(resolved_call, mut
 										calls)
+									if callee.value == 'str'
+										&& c.expr_lowers_to_map_str(base_id, local_values, local_types) {
+										calls << 'string__plus'
+									}
 									if !has_exact_selector_call {
 										has_exact_selector_call = c.collect_typed_receiver_method(base_id,
 											callee.value, cur_module, imports, local_values,
@@ -2137,6 +2175,34 @@ fn (c &CallCollector) selector_base_is_local(node &flat.Node, local_values map[s
 	return base.kind == .ident && base.value in local_values
 }
 
+fn (c &CallCollector) expr_lowers_to_map_str(id flat.NodeId, local_values map[string]bool, local_types map[string]string) bool {
+	if int(id) < 0 {
+		return false
+	}
+	if markused_type_lowers_to_map_str(c.node_type(id)) {
+		return true
+	}
+	expr := c.a.node(id)
+	if expr.kind == .ident && expr.value.len > 0 && expr.value in local_values {
+		if type_name := local_types[expr.value] {
+			return markused_type_name_lowers_to_map_str(type_name, c.tc)
+		}
+	}
+	return false
+}
+
+fn (c &CallCollector) top_level_expr_lowers_to_map_str(id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) bool {
+	if int(id) < 0 {
+		return false
+	}
+	if markused_type_lowers_to_map_str(c.node_type(id)) {
+		return true
+	}
+	type_name := c.top_level_expr_type_name(id, cur_module, imports, local_values, local_types,
+		false)
+	return type_name.len > 0 && markused_type_name_lowers_to_map_str(type_name, c.tc)
+}
+
 fn (c &CallCollector) collect_top_level_call(call_id flat.NodeId, call &flat.Node, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string, mut calls []string) {
 	mut resolved_call := ''
 	if resolved := c.tc.resolved_call_name(call_id) {
@@ -2157,6 +2223,14 @@ fn (c &CallCollector) collect_top_level_call(call_id flat.NodeId, call &flat.Nod
 	if callee.kind == .ident && callee.value.len > 0 {
 		if resolved_call.len > 0 {
 			calls << resolved_call
+		}
+		if callee.value in ['print', 'println', 'eprint', 'eprintln'] && call.children_count >= 2 {
+			arg_id := c.a.child(call, 1)
+			if c.top_level_expr_lowers_to_map_str(arg_id, cur_module, imports, local_values,
+				local_types)
+			{
+				calls << 'string__plus'
+			}
 		}
 		if callee.value !in local_values {
 			calls << callee.value
@@ -2192,6 +2266,10 @@ fn (c &CallCollector) collect_top_level_selector_call(callee &flat.Node, method 
 		if int(base_id) >= 0 {
 			base := c.a.node(base_id)
 			has_exact_selector_call = c.collect_checker_selected_call(resolved_call, mut calls)
+			if method == 'str'
+				&& c.top_level_expr_lowers_to_map_str(base_id, cur_module, imports, local_values, local_types) {
+				calls << 'string__plus'
+			}
 			if !has_exact_selector_call {
 				has_exact_selector_call = c.collect_top_level_typed_receiver_method(base_id,
 					method, cur_module, imports, local_values, local_types, mut calls)

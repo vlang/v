@@ -363,11 +363,17 @@ fn (g &FlatGen) ierror_method_receiver_expr(concrete string, path []types.Struct
 	if path.len == 0 {
 		return if recv_is_ptr { object } else { '*${object}' }
 	}
-	mut access := '(${object})->${c_field_name(path[0].name)}'
-	for i in 1 .. path.len {
-		access += '.${c_field_name(path[i].name)}'
+	mut access := object
+	mut access_is_ptr := true
+	for field in path {
+		op := if access_is_ptr { '->' } else { '.' }
+		access = '(${access})${op}${c_field_name(field.name)}'
+		access_is_ptr = field.typ is types.Pointer
 	}
-	return if recv_is_ptr { '&(${access})' } else { access }
+	if access_is_ptr == recv_is_ptr {
+		return access
+	}
+	return if recv_is_ptr { '&(${access})' } else { '*(${access})' }
 }
 
 fn (g &FlatGen) type_can_box_as_ierror(concrete string) bool {

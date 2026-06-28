@@ -172,3 +172,54 @@ fn main() {}
 
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
+
+fn test_generic_sum_concrete_generic_variants_keep_distinct_tags() {
+	v3_bin := generic_sum_type_build_v3()
+	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_distinct_tags_${os.getpid()}.v')
+	os.write_file(src, '
+struct Box[T] {
+	value T
+}
+
+type S = Box[int] | Box[string]
+
+fn score(s S) int {
+	return match s {
+		Box[int] { 10 + s.value }
+		Box[string] { 100 + s.value.len }
+	}
+}
+
+fn main() {
+	s := S(Box[string]{
+		value: "ok"
+	})
+	assert s is Box[string]
+	assert !(s is Box[int])
+	b := s as Box[string]
+	assert b.value == "ok"
+	assert score(s) == 102
+
+	i := S(Box[int]{
+		value: 7
+	})
+	assert i is Box[int]
+	assert !(i is Box[string])
+	assert score(i) == 17
+	println("ok")
+}
+	') or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_distinct_tags_${os.getpid()}')
+	os.rm(bin) or {}
+	os.rm(bin + '.c') or {}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}
