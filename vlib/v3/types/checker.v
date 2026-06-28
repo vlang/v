@@ -4135,28 +4135,6 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 						params_known: true
 					}
 				}
-				'keys' {
-					return CallInfo{
-						name:         'map.keys'
-						params:       tarr1(base_type)
-						return_type:  Type(Array{
-							elem_type: clean.key_type
-						})
-						has_receiver: true
-						params_known: true
-					}
-				}
-				'values' {
-					return CallInfo{
-						name:         'map.values'
-						params:       tarr1(base_type)
-						return_type:  Type(Array{
-							elem_type: clean.value_type
-						})
-						has_receiver: true
-						params_known: true
-					}
-				}
 				else {}
 			}
 		}
@@ -5059,7 +5037,7 @@ fn print_style_param_accepts_string(typ Type) bool {
 
 // array_insert_prepend_many_arg_compatible reports whether an insert/prepend
 // value argument is a many-element operand for the receiver array.
-fn (tc &TypeChecker) array_insert_prepend_many_arg_compatible(info CallInfo, param_idx int, actual Type) bool {
+fn (tc &TypeChecker) array_insert_prepend_many_arg_compatible(node flat.Node, info CallInfo, param_idx int, actual Type) bool {
 	if info.name !in ['array.insert', 'array.prepend'] {
 		return false
 	}
@@ -5070,7 +5048,17 @@ fn (tc &TypeChecker) array_insert_prepend_many_arg_compatible(info CallInfo, par
 	if info.params.len == 0 {
 		return false
 	}
-	elem_type := array_like_elem_type(unwrap_pointer(info.params[0])) or { return false }
+	mut receiver_type := info.params[0]
+	if node.children_count > 0 {
+		fn_node := tc.a.child_node(&node, 0)
+		if fn_node.kind == .selector && fn_node.children_count > 0 {
+			receiver_id := tc.a.child(fn_node, 0)
+			receiver_type = tc.cached_expr_type(receiver_id) or { tc.resolve_type(receiver_id) }
+		}
+	}
+	elem_type := array_like_elem_type(unwrap_pointer(receiver_type)) or {
+		array_like_elem_type(unwrap_pointer(info.params[0])) or { return false }
+	}
 	mut clean := actual
 	for _ in 0 .. 8 {
 		if clean is Alias {
@@ -5103,12 +5091,6 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			tc.record_error(.call_arg_mismatch,
 				'argument count mismatch for `${tc.call_display_name(node)}`: expected 0, got ${arg_count}',
 				id)
-		}
-		return
-	}
-	if info.name.starts_with('map.') {
-		for i in 1 .. node.children_count {
-			tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
 		}
 		return
 	}
@@ -5236,7 +5218,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			actual = tc.resolve_expr(arg_id, expected)
 		}
 		if !tc.receiver_compatible(actual, expected) {
-			if tc.array_insert_prepend_many_arg_compatible(info, param_idx, actual) {
+			if tc.array_insert_prepend_many_arg_compatible(node, info, param_idx, actual) {
 				continue
 			}
 			if tc.array_dsl_fn_arg_compatible(node, info, param_idx, actual) {

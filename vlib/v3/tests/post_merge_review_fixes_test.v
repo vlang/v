@@ -240,7 +240,7 @@ fn test_map_builtin_method_fallback_checks_arguments() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'map_keys_rejects_extra_arg',
 		'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\t_ := m.keys(extra_arg())\n}\n',
-		'argument count mismatch for `m.keys`: expected 1, got 2')
+		'argument count mismatch for `m.keys`: expected 0, got 1')
 	run_bad(v3_bin, 'map_delete_rejects_bad_key_type',
 		'fn main() {\n\tmut m := map[string]int{}\n\tm.delete(123)\n}\n',
 		'cannot use `int` as argument 2 to `m.delete`; expected `string`')

@@ -190,7 +190,12 @@ fn (mut t Transformer) transform_infix_map_ops(_id flat.NodeId, node flat.Node) 
 	if rhs_type.starts_with('&') {
 		new_rhs = t.make_prefix(.mul, new_rhs)
 	}
-	eq_call := t.make_call_typed('v3_map_map_eq', arr2(new_lhs, new_rhs), 'bool')
+	_, value_type := t.map_type_parts(map_type)
+	eq_call := if value_type.len > 0 && t.map_value_needs_element_eq(value_type) {
+		t.make_map_elementwise_eq_call(new_lhs, new_rhs, map_type, node)
+	} else {
+		t.make_call_typed('v3_map_map_eq', arr2(new_lhs, new_rhs), 'bool')
+	}
 	if node.op == .ne {
 		return t.make_prefix(.not, eq_call)
 	}
@@ -1149,6 +1154,10 @@ fn (mut t Transformer) stable_array_expr_for_membership(id flat.NodeId, raw_type
 
 // make_membership_eq_expr builds make membership eq expr data for transform.
 fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId, elem_type string) flat.NodeId {
+	return t.make_membership_eq_expr_with_seen(lhs, rhs, elem_type, []string{})
+}
+
+fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, elem_type string, seen []string) flat.NodeId {
 	if t.membership_type_is_pointer(elem_type) {
 		return t.make_infix(.eq, lhs, rhs)
 	}
@@ -1165,7 +1174,7 @@ fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId,
 			} else {
 				flat.Node{}
 			}
-			return t.make_map_elementwise_eq_call(lhs, rhs, map_type, src)
+			return t.make_map_elementwise_eq_call_with_seen(lhs, rhs, map_type, src, seen)
 		}
 		return t.make_call_typed('v3_map_map_eq', arr2(lhs, rhs), 'bool')
 	}
@@ -1180,7 +1189,8 @@ fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId,
 			} else {
 				flat.Node{}
 			}
-			return t.make_array_elementwise_eq_call(lhs, rhs, inner, clean, clean, src)
+			return t.make_array_elementwise_eq_call_with_seen(lhs, rhs, inner, clean, clean, src,
+				seen)
 		}
 		if inner.starts_with('[]') {
 			return t.make_call_typed('array_eq_array', arr3(lhs, rhs,
@@ -1191,7 +1201,7 @@ fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId,
 	if t.is_fixed_array_type(clean) {
 		clean = t.resolved_fixed_array_canonical_type(clean)
 		if t.type_needs_semantic_eq(clean) {
-			if fixed_eq := t.make_fixed_array_elementwise_eq_expr(lhs, rhs, clean) {
+			if fixed_eq := t.make_fixed_array_elementwise_eq_expr_with_seen(lhs, rhs, clean, seen) {
 				return fixed_eq
 			}
 		}
@@ -1205,7 +1215,12 @@ fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId,
 		if t.is_known_fn_name(method_name) {
 			return t.make_call(method_name, arr2(lhs, rhs))
 		}
-		if field_eq := t.make_struct_field_eq_expr(lhs, rhs, struct_type) {
+		if struct_type in seen {
+			cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs),
+				t.make_prefix(.amp, rhs), t.make_sizeof_type(struct_type)), 'int')
+			return t.make_infix(.eq, cmp, t.make_int_literal(0))
+		}
+		if field_eq := t.make_struct_field_eq_expr_with_seen(lhs, rhs, struct_type, seen) {
 			return field_eq
 		}
 		cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
@@ -1256,6 +1271,11 @@ fn (t &Transformer) type_needs_semantic_eq(typ string) bool {
 }
 
 fn (mut t Transformer) make_array_elementwise_eq_call(lhs flat.NodeId, rhs flat.NodeId, elem_type string, lhs_type string, rhs_type string, src flat.Node) flat.NodeId {
+	return t.make_array_elementwise_eq_call_with_seen(lhs, rhs, elem_type, lhs_type, rhs_type, src,
+		[]string{})
+}
+
+fn (mut t Transformer) make_array_elementwise_eq_call_with_seen(lhs flat.NodeId, rhs flat.NodeId, elem_type string, lhs_type string, rhs_type string, src flat.Node, seen []string) flat.NodeId {
 	mut clean_elem := t.membership_container_type(elem_type)
 	if t.is_fixed_array_type(clean_elem) {
 		clean_elem = t.resolved_fixed_array_canonical_type(clean_elem)
@@ -1274,7 +1294,7 @@ fn (mut t Transformer) make_array_elementwise_eq_call(lhs flat.NodeId, rhs flat.
 	lhs_elem := t.array_get_value(lhs_value, t.make_ident(idx_name), clean_elem)
 	rhs_elem := t.array_get_value(rhs_value, t.make_ident(idx_name), clean_elem)
 	pending_start := t.pending_stmts.len
-	elem_eq := t.make_membership_eq_expr(lhs_elem, rhs_elem, clean_elem)
+	elem_eq := t.make_membership_eq_expr_with_seen(lhs_elem, rhs_elem, clean_elem, seen)
 	mut body_stmts := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	set_false := t.make_assign(t.make_ident(result_name), t.make_bool_literal(false))
@@ -1287,6 +1307,10 @@ fn (mut t Transformer) make_array_elementwise_eq_call(lhs flat.NodeId, rhs flat.
 }
 
 fn (mut t Transformer) make_fixed_array_elementwise_eq_expr(lhs flat.NodeId, rhs flat.NodeId, fixed_type string) ?flat.NodeId {
+	return t.make_fixed_array_elementwise_eq_expr_with_seen(lhs, rhs, fixed_type, []string{})
+}
+
+fn (mut t Transformer) make_fixed_array_elementwise_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, fixed_type string, seen []string) ?flat.NodeId {
 	clean_fixed_type := t.resolved_fixed_array_canonical_type(fixed_type)
 	elem_type := fixed_array_elem_type(clean_fixed_type)
 	if elem_type.len == 0 {
@@ -1303,7 +1327,7 @@ fn (mut t Transformer) make_fixed_array_elementwise_eq_expr(lhs flat.NodeId, rhs
 	lhs_elem := t.make_index(lhs_value, t.make_ident(idx_name), elem_type)
 	rhs_elem := t.make_index(rhs_value, t.make_ident(idx_name), elem_type)
 	pending_start := t.pending_stmts.len
-	elem_eq := t.make_membership_eq_expr(lhs_elem, rhs_elem, elem_type)
+	elem_eq := t.make_membership_eq_expr_with_seen(lhs_elem, rhs_elem, elem_type, seen)
 	mut body_stmts := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	set_false := t.make_assign(t.make_ident(result_name), t.make_bool_literal(false))
@@ -1317,6 +1341,10 @@ fn (mut t Transformer) make_fixed_array_elementwise_eq_expr(lhs flat.NodeId, rhs
 }
 
 fn (mut t Transformer) make_map_elementwise_eq_call(lhs flat.NodeId, rhs flat.NodeId, map_type string, src flat.Node) flat.NodeId {
+	return t.make_map_elementwise_eq_call_with_seen(lhs, rhs, map_type, src, []string{})
+}
+
+fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, rhs flat.NodeId, map_type string, src flat.Node, seen []string) flat.NodeId {
 	key_type, raw_value_type := t.map_type_parts(map_type)
 	value_type := if t.is_fixed_array_type(raw_value_type) {
 		t.resolved_fixed_array_canonical_type(raw_value_type)
@@ -1344,7 +1372,8 @@ fn (mut t Transformer) make_map_elementwise_eq_call(lhs flat.NodeId, rhs flat.No
 	rhs_exists := t.make_map_exists_expr(rhs_value, map_type, key_name)
 	rhs_val := t.make_map_get_expr(rhs_value, map_type, key_name, zero_name, value_type)
 	pending_start := t.pending_stmts.len
-	value_eq := t.make_membership_eq_expr(t.make_ident(lhs_val_name), rhs_val, value_type)
+	value_eq := t.make_membership_eq_expr_with_seen(t.make_ident(lhs_val_name), rhs_val,
+		value_type, seen)
 	mut body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	missing := t.make_prefix(.not, t.make_paren(rhs_exists))
@@ -1373,7 +1402,13 @@ fn (mut t Transformer) make_map_elementwise_eq_call(lhs flat.NodeId, rhs flat.No
 }
 
 fn (mut t Transformer) make_struct_field_eq_expr(lhs flat.NodeId, rhs flat.NodeId, struct_type string) ?flat.NodeId {
+	return t.make_struct_field_eq_expr_with_seen(lhs, rhs, struct_type, []string{})
+}
+
+fn (mut t Transformer) make_struct_field_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, struct_type string, seen []string) ?flat.NodeId {
 	info := t.lookup_struct_info(struct_type) or { return none }
+	mut next_seen := seen.clone()
+	next_seen << struct_type
 	mut eq := flat.empty_node
 	for field in info.fields {
 		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
@@ -1382,7 +1417,7 @@ fn (mut t Transformer) make_struct_field_eq_expr(lhs flat.NodeId, rhs flat.NodeI
 		field_eq := if t.membership_type_is_pointer(field_type) {
 			t.make_infix(.eq, lhs_field, rhs_field)
 		} else {
-			t.make_membership_eq_expr(lhs_field, rhs_field, field_type)
+			t.make_membership_eq_expr_with_seen(lhs_field, rhs_field, field_type, next_seen)
 		}
 		eq = if int(eq) < 0 { field_eq } else { t.make_infix(.logical_and, eq, field_eq) }
 	}

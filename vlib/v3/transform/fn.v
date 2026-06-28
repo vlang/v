@@ -1586,12 +1586,25 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 	if width := zero_padded_decimal_width(format) {
 		if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
 			'u32', 'u64'] {
-			arg := if clean_typ == 'int' {
-				expr
-			} else {
-				t.make_cast('int', expr, 'int')
+			if clean_typ in ['u64', 'usize', 'u32', 'u16', 'u8', 'byte'] {
+				arg := if clean_typ == 'u64' {
+					expr
+				} else {
+					t.make_cast('u64', expr, 'u64')
+				}
+				return t.make_call_typed('v3_u64_zpad', arr2(arg, t.make_int_literal(width)),
+					'string')
 			}
-			return t.make_call_typed('v3_int_zpad', arr2(arg, t.make_int_literal(width)), 'string')
+			if clean_typ in ['i64', 'isize', 'i32', 'i16', 'i8'] {
+				arg := if clean_typ == 'i64' {
+					expr
+				} else {
+					t.make_cast('i64', expr, 'i64')
+				}
+				return t.make_call_typed('v3_i64_zpad', arr2(arg, t.make_int_literal(width)),
+					'string')
+			}
+			return t.make_call_typed('v3_int_zpad', arr2(expr, t.make_int_literal(width)), 'string')
 		}
 	}
 	return t.wrap_string_conversion(expr, typ)
