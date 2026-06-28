@@ -114,3 +114,10 @@ fn test_delete_last_empty_array_panics_before_tail_clear() {
 	assert run.exit_code != 0, run.output
 	assert run.output.contains('array.delete_last: array is empty'), run.output
 }
+
+fn test_string_pointer_comparisons_keep_pointer_semantics() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'string_pointer_comparison',
+		"fn main() {\n\tleft := 'same'.clone()\n\tright := 'same'.clone()\n\tpleft := &left\n\tpright := &right\n\tprintln(pleft == pright)\n\tprintln(pleft != pright)\n\tprintln(*pleft == *pright)\n}\n")
+	assert out == 'false\ntrue\ntrue'
+}

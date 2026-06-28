@@ -21,9 +21,11 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 	rhs_raw_type := t.node_type(rhs_id)
 	lhs_clean_type := t.normalize_type_alias(lhs_raw_type)
 	rhs_clean_type := t.normalize_type_alias(rhs_raw_type)
+	if lhs_clean_type == '&string' || rhs_clean_type == '&string' {
+		return none
+	}
 
-	is_string := t.is_string_type(lhs_id) || t.is_string_type(rhs_id) || lhs_clean_type == '&string'
-		|| rhs_clean_type == '&string'
+	is_string := t.is_string_type(lhs_id) || t.is_string_type(rhs_id)
 
 	if !is_string {
 		return none
@@ -31,14 +33,6 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 
 	mut new_lhs := t.transform_expr(lhs_id)
 	mut new_rhs := t.transform_expr(rhs_id)
-	if lhs_clean_type == '&string' {
-		new_lhs = t.make_prefix(.mul, new_lhs)
-		t.a.nodes[int(new_lhs)].typ = 'string'
-	}
-	if rhs_clean_type == '&string' {
-		new_rhs = t.make_prefix(.mul, new_rhs)
-		t.a.nodes[int(new_rhs)].typ = 'string'
-	}
 
 	match node.op {
 		.plus {
