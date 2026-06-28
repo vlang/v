@@ -222,6 +222,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 		'delete_last' {
 			tmp := g.tmp_count
 			g.tmp_count++
+			panic_msg := g.intern_string('array.delete_last: array is empty')
 			g.write('({ array* _a${tmp} = ')
 			if is_ptr {
 				g.gen_expr(base_id)
@@ -229,7 +230,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 				g.write('&')
 				g.gen_expr(base_id)
 			}
-			g.write('; _a${tmp}->len--; memset((u8*)_a${tmp}->data + ((u64)_a${tmp}->element_size * (u64)_a${tmp}->len), 0, _a${tmp}->element_size); })')
+			g.write('; if (_a${tmp}->len == 0) { panic(_str_${panic_msg}); } _a${tmp}->len--; memset((u8*)_a${tmp}->data + ((u64)_a${tmp}->element_size * (u64)_a${tmp}->len), 0, _a${tmp}->element_size); })')
 		}
 		'pop' {
 			g.write('({ ${c_elem} _pop${g.tmp_count} = *(${c_elem}*)array_get(')

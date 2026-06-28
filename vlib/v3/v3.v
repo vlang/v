@@ -578,9 +578,40 @@ fn append_unique_file(mut files []string, mut seen map[string]bool, file string)
 
 fn declared_module_in_file(path string) string {
 	content := os.read_file(path) or { return '' }
+	mut in_block_comment := false
+	mut in_attr := false
 	for raw_line in content.split_into_lines() {
-		line := raw_line.trim_space()
+		mut line := raw_line.trim_space()
+		if in_block_comment {
+			if end := line.index('*/') {
+				line = line[end + 2..].trim_space()
+				in_block_comment = false
+			} else {
+				continue
+			}
+		}
+		if in_attr {
+			if line.contains(']') {
+				in_attr = false
+			}
+			continue
+		}
+		for line.starts_with('/*') {
+			if end := line.index('*/') {
+				line = line[end + 2..].trim_space()
+			} else {
+				in_block_comment = true
+				line = ''
+				break
+			}
+		}
 		if line.len == 0 || line.starts_with('//') {
+			continue
+		}
+		if line.starts_with('@[') || line.starts_with('[') {
+			if !line.contains(']') {
+				in_attr = true
+			}
 			continue
 		}
 		if line.starts_with('module ') {

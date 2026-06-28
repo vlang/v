@@ -78,3 +78,39 @@ fn test_struct_equality_compares_pointer_fields_as_pointers() {
 		'struct Node {\n\tvalue int\n\tnext &Node\n}\n\nfn main() {\n\tleft := Node{\n\t\tvalue: 7\n\t\tnext: unsafe { nil }\n\t}\n\tright := Node{\n\t\tvalue: 7\n\t\tnext: unsafe { nil }\n\t}\n\tprintln([left] == [right])\n}\n')
 	assert out == 'true'
 }
+
+fn test_single_module_test_file_skips_premodule_attributes() {
+	v3_bin := build_v3_review_transform()
+	root := os.join_path(os.temp_dir(), 'v3_premodule_attr_module_test')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'tar')) or { panic(err) }
+	os.write_file(os.join_path(root, 'v.mod'), 'Module { name: "premodule_attr_module_test" }\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'tar', 'reader.v'),
+		'module tar\n\nfn reader_value() string {\n\treturn "reader"\n}\n') or { panic(err) }
+	test_file := os.join_path(root, 'tar', 'reader_test.v')
+	os.write_file(test_file,
+		'@[has_globals]\n/* block comment before module */\nmodule tar\n\nfn test_reader_value() {\n\tprintln(reader_value())\n}\n') or {
+		panic(err)
+	}
+	bin_path := os.join_path(root, 'reader_test_bin')
+	compile := os.execute('${v3_bin} ${test_file} -b c -o ${bin_path}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin_path)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'reader'
+}
+
+fn test_delete_last_empty_array_panics_before_tail_clear() {
+	v3_bin := build_v3_review_transform()
+	src := 'fn main() {\n\tmut values := []int{}\n\tvalues.delete_last()\n\tprintln("after")\n}\n'
+	good_src := os.join_path(os.temp_dir(), 'v3_delete_last_empty.v')
+	os.write_file(good_src, src) or { panic(err) }
+	good_bin := os.join_path(os.temp_dir(), 'v3_delete_last_empty')
+	compile := os.execute('${v3_bin} ${good_src} -b c -o ${good_bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(good_bin)
+	assert run.exit_code != 0, run.output
+	assert run.output.contains('array.delete_last: array is empty'), run.output
+}
