@@ -95,6 +95,7 @@ fn main() {
 	assert with_os.c_code.contains('void* memmove(void* dest, const void* src, size_t n);'), with_os.c_code
 	assert with_os.c_code.contains('int memcmp(const void* s1, const void* s2, size_t n);'), with_os.c_code
 	assert with_os.c_code.contains('size_t strlen(const char* s);'), with_os.c_code
+	assert !with_os.c_code.contains('i32 strlen(char* s);'), with_os.c_code
 	assert with_os.c_code.contains('int strcmp(const char* s1, const char* s2);'), with_os.c_code
 	assert with_os.c_code.contains('int strncmp(const char* s1, const char* s2, size_t n);'), with_os.c_code
 	assert with_os.c_code.contains('char* strncpy(char* dest, const char* src, size_t n);'), with_os.c_code

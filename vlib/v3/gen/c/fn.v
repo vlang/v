@@ -4217,6 +4217,9 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 	if cfn.contains('.') {
 		return false
 	}
+	if cfn in c_preamble_declared_extern_symbols {
+		return false
+	}
 	if cfn in c_static_helper_symbols {
 		return false
 	}
@@ -4227,6 +4230,55 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 		return false
 	}
 	return true
+}
+
+const c_preamble_declared_extern_symbols = {
+	'_exit':                 true
+	'__errno':               true
+	'__errno_location':      true
+	'__error':               true
+	'_errno':                true
+	'abort':                 true
+	'access':                true
+	'atexit':                true
+	'ceil':                  true
+	'ceilf':                 true
+	'close':                 true
+	'cos':                   true
+	'dup2':                  true
+	'execlp':                true
+	'execvp':                true
+	'fabs':                  true
+	'fcntl':                 true
+	'floor':                 true
+	'floorf':                true
+	'fmod':                  true
+	'fork':                  true
+	'getenv':                true
+	'ldexp':                 true
+	'memcmp':                true
+	'memcpy':                true
+	'memmove':               true
+	'memset':                true
+	'open':                  true
+	'pipe':                  true
+	'pow':                   true
+	'pthread_mutex_destroy': true
+	'pthread_mutex_init':    true
+	'pthread_mutex_lock':    true
+	'pthread_mutex_unlock':  true
+	'read':                  true
+	'realpath':              true
+	'setenv':                true
+	'signal':                true
+	'snprintf':              true
+	'sqrt':                  true
+	'strcmp':                true
+	'strlen':                true
+	'strncmp':               true
+	'strncpy':               true
+	'strrchr':               true
+	'strstr':                true
 }
 
 const c_static_helper_symbols = {

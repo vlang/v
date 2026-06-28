@@ -8084,7 +8084,7 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 			'|' { l | r }
 			'^' { l ^ r }
 			'&' { l & r }
-			'<<' { l << r }
+			'<<' { int(u64(l) << r) }
 			'>>' { l >> r }
 			else { int(u64(l) >> r) }
 		}
@@ -8165,7 +8165,7 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, module_name string, seen []s
 					if right < 0 || right >= 64 {
 						return none
 					}
-					return left << right
+					return int(u64(left) << right)
 				}
 				.right_shift {
 					if right < 0 || right >= 64 {
