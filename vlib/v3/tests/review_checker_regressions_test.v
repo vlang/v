@@ -81,6 +81,12 @@ fn test_array_insert_and_prepend_reject_wrong_arity() {
 	run_bad(v3_bin, 'bad_array_insert_extra_arg',
 		'fn side_effect() int {\n\treturn 3\n}\nfn main() {\n\tmut a := [1, 2]\n\ta.insert(0, 1, side_effect())\n}\n',
 		'argument count mismatch')
+	run_bad(v3_bin, 'bad_array_prepend_arg_type',
+		"fn main() {\n\tmut a := [1, 2]\n\ta.prepend('x')\n}\n", 'cannot use')
+	run_bad(v3_bin, 'bad_array_insert_index_type',
+		"fn main() {\n\tmut a := [1, 2]\n\ta.insert('0', 3)\n}\n", 'cannot use')
+	run_bad(v3_bin, 'bad_array_insert_value_type',
+		"fn main() {\n\tmut a := [1, 2]\n\ta.insert(0, 'x')\n}\n", 'cannot use')
 }
 
 fn test_comptime_if_selected_bodies_are_checked() {
@@ -88,9 +94,9 @@ fn test_comptime_if_selected_bodies_are_checked() {
 	run_bad(v3_bin, 'bad_concrete_comptime_if_selected_call',
 		'fn main() {\n\t$if int is int {\n\t\tmissing_selected_symbol()\n\t}\n}\n',
 		'unknown function `missing_selected_symbol`')
-	run_bad(v3_bin, 'bad_generic_comptime_if_preserved_call',
-		'fn f[T]() {\n\t$if T is int {\n\t\tmissing_generic_symbol()\n\t}\n}\nfn main() {\n\tf[int]()\n}\n',
-		'unknown function `missing_generic_symbol`')
+	out := run_good(v3_bin, 'good_generic_comptime_if_unselected_branch_is_not_checked',
+		"fn ok() {}\n\nfn f[T]() {\n\t$if T is int {\n\t\tok()\n\t} $else {\n\t\tonly_for_other_t()\n\t}\n}\n\nfn main() {\n\tf[int]()\n\tprintln('ok')\n}\n")
+	assert out == 'ok'
 }
 
 fn test_explicit_generic_calls_use_all_type_arguments() {
@@ -101,6 +107,9 @@ fn test_explicit_generic_calls_use_all_type_arguments() {
 	nested := run_good(v3_bin, 'good_nested_explicit_generic_call',
 		"struct Pair[A, B] {\n\tleft  A\n\tright B\n}\n\nstruct Box[T] {\n\tvalue T\n}\n\nfn wrap[T]() Box[T] {\n\treturn Box[T]{}\n}\n\nfn expect_box(b Box[Pair[int, string]]) string {\n\treturn 'ok'\n}\n\nfn main() {\n\tb := wrap[Pair[int, string]]()\n\tprintln(expect_box(b))\n}\n")
 	assert nested == 'ok'
+	run_bad(v3_bin, 'bad_explicit_generic_too_many_type_args',
+		'fn id[T](x T) T {\n\treturn x\n}\n\nfn main() {\n\t_ := id[int, string](1)\n}\n',
+		'generic argument count mismatch')
 }
 
 fn test_reject_escaping_capturing_fn_literals() {

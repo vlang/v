@@ -3079,55 +3079,13 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	}
 }
 
-fn (mut tc TypeChecker) check_comptime_if(id flat.NodeId, node flat.Node) {
-	take_then := tc.comptime_type_condition_value(node.value) or {
-		for i in 0 .. node.children_count {
-			tc.check_preserved_comptime_if_plain_calls(tc.a.child(&node, i))
-		}
-		return
-	}
+fn (mut tc TypeChecker) check_comptime_if(_id flat.NodeId, node flat.Node) {
+	take_then := tc.comptime_type_condition_value(node.value) or { return }
 	branch_index := if take_then { 0 } else { 1 }
 	if branch_index >= node.children_count {
 		return
 	}
 	tc.check_node(tc.a.child(&node, branch_index))
-}
-
-fn (mut tc TypeChecker) check_preserved_comptime_if_plain_calls(id flat.NodeId) {
-	if int(id) < 0 {
-		return
-	}
-	node := tc.a.nodes[int(id)]
-	if node.kind == .call && node.children_count > 0 {
-		fn_node := tc.a.child_node(&node, 0)
-		if fn_node.kind == .ident && !tc.plain_call_known_in_preserved_comptime_if(fn_node.value) {
-			if tc.should_diagnose(id) {
-				tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
-			}
-		}
-	}
-	for i in 0 .. node.children_count {
-		tc.check_preserved_comptime_if_plain_calls(tc.a.child(&node, i))
-	}
-}
-
-fn (tc &TypeChecker) plain_call_known_in_preserved_comptime_if(name string) bool {
-	if name in ['print', 'println', 'eprint', 'eprintln', 'panic'] {
-		return true
-	}
-	if typ := tc.cur_scope.lookup(name) {
-		if _ := fn_type_from_type(typ) {
-			return true
-		}
-	}
-	qfn := tc.qualify_fn_name(name)
-	if qfn in tc.fn_ret_types || name in tc.fn_ret_types {
-		return true
-	}
-	if _ := tc.resolve_selective_import_symbol(name) {
-		return true
-	}
-	return false
 }
 
 fn (mut tc TypeChecker) comptime_type_condition_value(cond string) ?bool {
@@ -4073,7 +4031,7 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		return none
 	}
 	fn_node := tc.a.child_node(&node, 0)
-	if info := tc.resolve_generic_call_info(fn_node) {
+	if info := tc.resolve_generic_call_info(id, fn_node) {
 		return info
 	}
 	if fn_node.kind == .selector {
@@ -4306,7 +4264,7 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 						params:       params
 						return_type:  Type(void_)
 						has_receiver: true
-						params_known: false
+						params_known: true
 					}
 				}
 				'filter' {
@@ -4629,7 +4587,7 @@ fn is_byte_type(typ Type) bool {
 	return typ is Primitive && typ.props.has(.integer) && typ.props.has(.unsigned) && typ.size == 8
 }
 
-fn (mut tc TypeChecker) resolve_generic_call_info(fn_node flat.Node) ?CallInfo {
+fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.Node) ?CallInfo {
 	if fn_node.kind != .index || fn_node.children_count < 2 || fn_node.value == 'range' {
 		return none
 	}
@@ -4647,6 +4605,9 @@ fn (mut tc TypeChecker) resolve_generic_call_info(fn_node flat.Node) ?CallInfo {
 		if type_name.len > 0 {
 			call_name := '${type_name}.${base_node.value}'
 			if call_name in tc.fn_ret_types {
+				if tc.explicit_generic_arg_count_mismatch(call_name, type_args, id) {
+					return tc.failed_explicit_generic_call_info(call_name)
+				}
 				if info := tc.explicit_generic_call_info(call_name, true, type_args) {
 					return info
 				}
@@ -4681,16 +4642,41 @@ fn (mut tc TypeChecker) resolve_generic_call_info(fn_node flat.Node) ?CallInfo {
 			params_known:  call_name in tc.fn_param_types
 		}
 	}
+	if tc.explicit_generic_arg_count_mismatch(call_name, type_args, id) {
+		return tc.failed_explicit_generic_call_info(call_name)
+	}
 	if info := tc.explicit_generic_call_info(call_name, false, type_args) {
 		return info
 	}
 	return tc.call_info(call_name, false)
 }
 
+fn (mut tc TypeChecker) explicit_generic_arg_count_mismatch(name string, type_args []string, id flat.NodeId) bool {
+	generic_params := tc.fn_generic_params[name] or { return false }
+	if type_args.len == generic_params.len {
+		return false
+	}
+	if tc.should_diagnose(id) {
+		tc.record_error(.call_arg_mismatch,
+			'generic argument count mismatch for `${name}`: expected ${generic_params.len}, got ${type_args.len}',
+			id)
+	}
+	return true
+}
+
+fn (tc &TypeChecker) failed_explicit_generic_call_info(name string) CallInfo {
+	return CallInfo{
+		name:         name
+		params:       []Type{}
+		return_type:  unknown_type('invalid explicit generic call `${name}`')
+		params_known: false
+	}
+}
+
 fn (mut tc TypeChecker) explicit_generic_call_info(name string, has_receiver bool, type_args []string) ?CallInfo {
 	generic_params := tc.fn_generic_params[name] or { return none }
 	param_texts := tc.fn_param_type_texts[name] or { return none }
-	if generic_params.len == 0 || type_args.len < generic_params.len {
+	if generic_params.len == 0 || type_args.len != generic_params.len {
 		return none
 	}
 	mut concrete_args := []string{cap: generic_params.len}
@@ -5073,20 +5059,6 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	if info.name.starts_with('map.') {
 		for i in 1 .. node.children_count {
 			tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
-		}
-		return
-	}
-	if info.name in ['array.insert', 'array.prepend'] {
-		for i in 1 .. node.children_count {
-			tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
-		}
-		explicit_count := node.children_count - 1
-		receiver_count := if info.has_receiver { 1 } else { 0 }
-		expected_count := info.params.len - receiver_count
-		if explicit_count != expected_count && tc.should_diagnose(id) {
-			tc.record_error(.call_arg_mismatch,
-				'argument count mismatch for `${tc.call_display_name(node)}`: expected ${expected_count}, got ${explicit_count}',
-				id)
 		}
 		return
 	}
