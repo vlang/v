@@ -12,7 +12,7 @@ struct GenericStructDecl {
 }
 
 fn (mut t Transformer) is_generic_fn(name string) bool {
-	decls := t.collect_generic_fn_decls()
+	decls := t.cached_generic_fn_decls()
 	return name in decls || transform_qualified_fn_name(t.cur_module, name) in decls
 }
 
@@ -28,7 +28,7 @@ fn (mut t Transformer) is_generic_struct(name string) bool {
 }
 
 fn (mut t Transformer) monomorphize_pass() []string {
-	decls := t.collect_generic_fn_decls()
+	decls := t.cached_generic_fn_decls()
 	if decls.len == 0 {
 		return []string{}
 	}
@@ -39,7 +39,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	mut changed := true
 	for changed {
 		changed = false
-		node_modules := t.node_module_map()
+		t.ensure_node_module_map()
 		mut cur_module := ''
 		node_count := t.a.nodes.len
 		for i in 0 .. node_count {
@@ -57,7 +57,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 					// callee so `specialize_generic_struct_methods` emits an operator
 					// overload only for instances whose operator is actually called.
 					t.record_called_fn_name(node)
-					call_module := node_modules[i] or { cur_module }
+					call_module := t.node_module_map_cache[i] or { cur_module }
 					decl_key, args := t.generic_call_specialization(flat.NodeId(i), node,
 						call_module, decls) or { continue }
 					spec_key := generic_fn_spec_key(decl_key, args)
@@ -216,7 +216,7 @@ fn (mut t Transformer) materialize_generic_structs() {
 
 fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDecl {
 	mut decls := map[string]GenericStructDecl{}
-	node_modules := t.node_module_map()
+	t.ensure_node_module_map()
 	mut cur_file := ''
 	mut cur_module := ''
 	for i, node in t.a.nodes {
@@ -231,7 +231,7 @@ fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDe
 				if node.generic_params.len == 0 && !node.typ.contains('generic') {
 					continue
 				}
-				module_name := node_modules[i] or { cur_module }
+				module_name := t.node_module_map_cache[i] or { cur_module }
 				key := generic_struct_decl_key(node.value, module_name)
 				decls[key] = GenericStructDecl{
 					id:     flat.NodeId(i)
@@ -435,7 +435,7 @@ fn (mut t Transformer) materialize_generic_struct_spec(spec_name string, decl Ge
 
 fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 	mut decls := map[string]GenericFnDecl{}
-	node_modules := t.node_module_map()
+	t.ensure_node_module_map()
 	mut cur_file := ''
 	mut cur_module := ''
 	for i, node in t.a.nodes {
@@ -447,7 +447,7 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 				cur_module = node.value
 			}
 			.fn_decl {
-				fn_module := node_modules[i] or { cur_module }
+				fn_module := t.node_module_map_cache[i] or { cur_module }
 				if !t.fn_decl_has_unresolved_generics(node, fn_module) {
 					continue
 				}
@@ -474,7 +474,10 @@ fn (mut t Transformer) generic_decl_template_nodes(decls map[string]GenericFnDec
 	return nodes
 }
 
-fn (mut t Transformer) node_module_map() map[int]string {
+fn (mut t Transformer) ensure_node_module_map() {
+	if t.node_module_map_nodes == t.a.nodes.len {
+		return
+	}
 	mut modules := map[int]string{}
 	mut cur_module := ''
 	for i, node in t.a.nodes {
@@ -489,7 +492,8 @@ fn (mut t Transformer) node_module_map() map[int]string {
 			else {}
 		}
 	}
-	return modules
+	t.node_module_map_cache = modules.move()
+	t.node_module_map_nodes = t.a.nodes.len
 }
 
 fn (mut t Transformer) mark_node_module(id flat.NodeId, module_name string, mut modules map[int]string) {
@@ -799,7 +803,7 @@ fn specialized_generic_fn_signature_aliases(decl GenericFnDecl, args []string) [
 }
 
 fn (mut t Transformer) rewrite_generic_calls(decls map[string]GenericFnDecl, template_nodes map[int]bool) {
-	node_modules := t.node_module_map()
+	t.ensure_node_module_map()
 	mut cur_module := ''
 	for i in 0 .. t.a.nodes.len {
 		if template_nodes[i] {
@@ -811,7 +815,7 @@ fn (mut t Transformer) rewrite_generic_calls(decls map[string]GenericFnDecl, tem
 				cur_module = node.value
 			}
 			.call {
-				call_module := node_modules[i] or { cur_module }
+				call_module := t.node_module_map_cache[i] or { cur_module }
 				decl_key, args := t.generic_call_specialization(flat.NodeId(i), node, call_module,
 					decls) or { continue }
 				decl := decls[decl_key] or { continue }

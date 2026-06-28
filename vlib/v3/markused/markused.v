@@ -1047,7 +1047,7 @@ fn stringification_type_candidates(type_name string, cur_module string) []string
 fn enqueue_function_value_selectors(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
 	ignored_top_level_nodes := markused_ignored_top_level_nodes(a)
 	ignored_fn_decl_nodes := markused_ignored_fn_decl_nodes(a)
-	shadowed_value_idents := markused_shadowed_value_idents(collector)
+	shadowed_value_idents := markused_shadowed_value_idents(a)
 	for node_idx, node in a.nodes {
 		if node_idx < ignored_fn_decl_nodes.len && ignored_fn_decl_nodes[node_idx] {
 			continue
@@ -1121,19 +1121,8 @@ fn markused_ignored_top_level_nodes(a &flat.FlatAst) []bool {
 	return ignored
 }
 
-fn markused_shadowed_value_idents(collector CallCollector) []bool {
-	a := collector.a
+fn markused_shadowed_value_idents(a &flat.FlatAst) []bool {
 	mut shadowed := []bool{len: a.nodes.len}
-	for node in a.nodes {
-		if node.kind != .fn_decl {
-			continue
-		}
-		local_values := markused_local_value_names(a, &node)
-		if local_values.len == 0 {
-			continue
-		}
-		markused_mark_shadowed_idents(a, &node, local_values, mut shadowed)
-	}
 	for file_idx, file_node in a.nodes {
 		if !markused_should_scan_top_level_file(a, file_idx, file_node) {
 			continue

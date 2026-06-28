@@ -106,6 +106,8 @@ mut:
 	heaped_amp_locals      map[string]bool
 	generic_fn_decls_cache map[string]GenericFnDecl
 	generic_fn_decls_ready bool
+	node_module_map_cache  map[int]string
+	node_module_map_nodes  int = -1
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -869,6 +871,8 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.sum_cache = &AliasCache{}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
+	w.node_module_map_cache = map[int]string{}
+	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
 	w.smartcast_stack = []SmartcastContext{}
 	w.pending_stmts = []flat.NodeId{}
