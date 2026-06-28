@@ -148,6 +148,15 @@ fn test_comptime_type_conditions_keep_prefix_types_compact() {
 	assert out == 'opt\nres'
 }
 
+fn test_comptime_type_conditions_qualify_module_aliases() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'comptime_type_condition_module_alias', {
+		'main.v':    'module main\n\nimport foo\n\nfn main() {\n\tprintln(foo.check())\n}\n'
+		'foo/foo.v': "module foo\n\ntype ID = int\n\npub fn check() string {\n\t\$if ID is \$alias {\n\t\treturn 'alias'\n\t} \$else {\n\t\treturn 'not alias'\n\t}\n}\n"
+	}, 'main.v')
+	assert out == 'alias'
+}
+
 fn test_struct_equality_compares_pointer_fields_as_pointers() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'struct_eq_pointer_field',

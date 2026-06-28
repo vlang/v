@@ -4167,7 +4167,17 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 			return !isnil(t.tc) && normalized in t.tc.enum_names
 		}
 		'$alias' {
-			return !isnil(t.tc) && clean_actual in t.tc.type_aliases
+			if isnil(t.tc) {
+				return false
+			}
+			if clean_actual in t.tc.type_aliases {
+				return true
+			}
+			if !clean_actual.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+				&& t.cur_module != 'builtin' {
+				return '${t.cur_module}.${clean_actual}' in t.tc.type_aliases
+			}
+			return false
 		}
 		'$sumtype' {
 			return !isnil(t.tc) && normalized in t.tc.sum_types
