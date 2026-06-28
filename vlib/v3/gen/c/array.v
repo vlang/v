@@ -220,17 +220,12 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.write(', 0)')
 		}
 		'delete_last' {
-			tmp := g.tmp_count
-			g.tmp_count++
-			panic_msg := g.intern_string('array.delete_last: array is empty')
-			g.write('({ array* _a${tmp} = ')
-			if is_ptr {
-				g.gen_expr(base_id)
-			} else {
+			g.write('array__delete_last(')
+			if !is_ptr {
 				g.write('&')
-				g.gen_expr(base_id)
 			}
-			g.write('; if (_a${tmp}->len == 0) { panic(_str_${panic_msg}); } _a${tmp}->len--; memset((u8*)_a${tmp}->data + ((u64)_a${tmp}->element_size * (u64)_a${tmp}->len), 0, _a${tmp}->element_size); })')
+			g.gen_expr(base_id)
+			g.write(')')
 		}
 		'pop' {
 			g.write('({ ${c_elem} _pop${g.tmp_count} = *(${c_elem}*)array_get(')
@@ -680,9 +675,6 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			}
 			g.write('; int _i${tmp} = ')
 			g.gen_expr(g.a.child(&lhs, 1))
-			if base_type !is types.Pointer {
-				g.write('; if ((_a${tmp}->flags & 64) != 0) array__clone_shallow_to_cap(_a${tmp}, _a${tmp}->cap)')
-			}
 			g.write('; array__set(_a${tmp}, _i${tmp}, &(${c_elem}[]){')
 			if op := compound_assign_to_infix_op(node.op) {
 				if arr_type.elem_type is types.String && op == .plus {

@@ -170,6 +170,20 @@ fn test_delete_last_empty_array_panics_before_tail_clear() {
 	assert run.output.contains('array.delete_last: array is empty'), run.output
 }
 
+fn test_delete_last_preserves_shared_slice_buffer() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'delete_last_preserves_shared_slice_buffer',
+		"fn main() {\n\tmut a := [1, 2, 3, 4]\n\tb := unsafe { a[..a.len] }\n\told_data := a.data\n\ta.delete_last()\n\tassert a == [1, 2, 3]\n\tassert b == [1, 2, 3, 4]\n\tassert a.data != old_data\n\tprintln('ok')\n}\n")
+	assert out == 'ok'
+}
+
+fn test_slice_element_assignment_writes_through() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'slice_element_assignment_writes_through',
+		"fn main() {\n\tmut a := [1, 2, 3, 4]\n\tmut s := unsafe { a[1..3] }\n\ts[0] = 42\n\ts[1] += 5\n\tassert a == [1, 42, 8, 4]\n\tassert s == [42, 8]\n\tprintln('ok')\n}\n")
+	assert out == 'ok'
+}
+
 fn test_string_pointer_comparisons_keep_pointer_semantics() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'string_pointer_comparison',
