@@ -2,18 +2,25 @@ module main
 
 import os
 import v3.bench
-import v3.eval
 import v3.flat
-import v3.gen.arm64
 import v3.gen.c as cgen
-import v3.gen.wasm
 import v3.markused
 import v3.parser
 import v3.pref
-import v3.ssa
-import v3.ssa.optimize
 import v3.transform
 import v3.types
+
+$if !skip_eval ? {
+	import v3.eval
+}
+$if !skip_arm64 ? {
+	import v3.gen.arm64
+	import v3.ssa
+	import v3.ssa.optimize
+}
+$if !skip_wasm ? {
+	import v3.gen.wasm
+}
 
 // run_compile_command supports run compile command handling for v3 entry point.
 fn run_compile_command(cmd string) os.Result {
