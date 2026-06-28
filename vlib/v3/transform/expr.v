@@ -1023,10 +1023,13 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(base, 'len', 'int'))
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	elem_expr := t.array_get_value(base, t.make_ident(idx_name), elem_type)
+	pending_start := t.pending_stmts.len
 	eq_expr := t.make_membership_eq_expr(elem_expr, needle, elem_type)
+	mut loop_body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	assign_true := t.make_assign(t.make_ident(result_name), t.make_bool_literal(true))
 	then_block := t.make_block(arr1(assign_true))
-	loop_body := arr1(t.make_if(eq_expr, then_block, t.make_empty()))
+	loop_body << t.make_if(eq_expr, then_block, t.make_empty())
 	prefix << t.make_for_stmt(init, cond, post, loop_body, src)
 	for stmt in prefix {
 		t.pending_stmts << stmt
@@ -1065,11 +1068,14 @@ fn (mut t Transformer) lower_array_index_expr(base_id flat.NodeId, needle_id fla
 	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(base, 'len', 'int'))
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	elem_expr := t.array_get_value(base, t.make_ident(idx_name), elem_type)
+	pending_start := t.pending_stmts.len
 	eq_expr := t.make_membership_eq_expr(elem_expr, needle, elem_type)
+	mut loop_body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	not_found := t.make_infix(.lt, t.make_ident(result_name), t.make_int_literal(0))
 	found_cond := t.make_infix(.logical_and, not_found, eq_expr)
 	assign_idx := t.make_assign(t.make_ident(result_name), t.make_ident(idx_name))
-	loop_body := arr1(t.make_if(found_cond, t.make_block(arr1(assign_idx)), t.make_empty()))
+	loop_body << t.make_if(found_cond, t.make_block(arr1(assign_idx)), t.make_empty())
 	prefix << t.make_for_stmt(init, cond, post, loop_body, src)
 	for stmt in prefix {
 		t.pending_stmts << stmt
