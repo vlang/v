@@ -286,6 +286,52 @@ fn test_comptime_for_empty_attrs_does_not_emit_new_array_calls() {
 	assert !compilation.output.contains('.args = builtin____new_array_with_default(0, 0, sizeof(FunctionParam), 0)')
 }
 
+fn assert_function_body_contains(output string, signature string, expected_lines []string) {
+	assert output.contains(signature), 'missing generated function: ${signature}'
+	body := output.all_after(signature).all_before('\n}')
+	for expected_line in expected_lines {
+		assert body.contains(expected_line), 'missing expected C line in ${signature}: ${expected_line}'
+	}
+}
+
+fn test_heap_struct_init_order_ternary_helpers_have_branch_allocs() {
+	os.chdir(vroot) or {}
+	path := os.join_path(testdata_folder, 'heap_struct_init_order.vv')
+	relpath := vroot_relative(path)
+	if should_skip(relpath) {
+		return
+	}
+	file_options := get_file_options(path)
+	cmd := '${os.quoted_path(vexe)} -o - ${file_options.vflags} ${os.quoted_path(path)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	alloc := '(main__Issue27329Object*)builtin___v_malloc(sizeof(main__Issue27329Object) == 0 ? 1 : sizeof(main__Issue27329Object));'
+	assert_function_body_contains(compilation.output,
+		'VV_LOC main__Issue27329Object* main__issue_27329_if_expr_assignment(bool flag) {', [
+		'main__Issue27329Object* _t1 = ${alloc}',
+		'_t1->ival = 4;',
+		'main__Issue27329Object* _t2 = ${alloc}',
+		'_t2->ival = 5;',
+		'main__Issue27329Object* object = (flag ? ( _t1) : ( _t2));',
+	])
+	assert_function_body_contains(compilation.output,
+		'VV_LOC main__Issue27329Object* main__issue_27329_if_expr_return(bool flag) {', [
+		'main__Issue27329Object* _t2 = ${alloc}',
+		'_t2->ival = 6;',
+		'main__Issue27329Object* _t3 = ${alloc}',
+		'_t3->ival = 7;',
+		'return (flag ? ( _t2) : ( _t3));',
+	])
+	assert_function_body_contains(compilation.output,
+		'VV_LOC main__Issue27329Object* main__issue_27329_match_expr(bool flag) {', [
+		'main__Issue27329Object* _t1 = ${alloc}',
+		'_t1->ival = 8;',
+		'main__Issue27329Object* _t2 = ${alloc}',
+		'_t2->ival = 9;',
+		'main__Issue27329Object* object = ((flag == (true))? ( _t1) : ( _t2));',
+	])
+}
+
 fn test_array_push_no_bounds_checking_keeps_max_len_panics() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_array_push_no_bounds_checking.vv')

@@ -57,13 +57,79 @@ fn issue_27329_nested() &Issue27329Object {
 	}
 }
 
+fn issue_27329_if_expr_assignment(flag bool) &Issue27329Object {
+	object := if flag {
+		&Issue27329Object{
+			kind:    issue_27329_kind_true
+			ival:    4
+			len_val: 0
+			child:   unsafe { nil }
+		}
+	} else {
+		&Issue27329Object{
+			kind:    issue_27329_kind_false
+			ival:    5
+			len_val: 0
+			child:   unsafe { nil }
+		}
+	}
+	return object
+}
+
+fn issue_27329_if_expr_return(flag bool) &Issue27329Object {
+	return if flag {
+		&Issue27329Object{
+			kind:    issue_27329_kind_true
+			ival:    6
+			len_val: 0
+			child:   unsafe { nil }
+		}
+	} else {
+		&Issue27329Object{
+			kind:    issue_27329_kind_false
+			ival:    7
+			len_val: 0
+			child:   unsafe { nil }
+		}
+	}
+}
+
+fn issue_27329_match_expr(flag bool) &Issue27329Object {
+	object := match flag {
+		true {
+			&Issue27329Object{
+				kind:    issue_27329_kind_true
+				ival:    8
+				len_val: 0
+				child:   unsafe { nil }
+			}
+		}
+		false {
+			&Issue27329Object{
+				kind:    issue_27329_kind_false
+				ival:    9
+				len_val: 0
+				child:   unsafe { nil }
+			}
+		}
+	}
+
+	return object
+}
+
 fn main() {
 	objects := issue_27329_objects()
 	nested := issue_27329_nested()
+	if_object := issue_27329_if_expr_assignment(true)
+	return_object := issue_27329_if_expr_return(false)
+	match_object := issue_27329_match_expr(true)
 	assert !objects[0].truthy()
 	assert objects[1].truthy()
 	assert objects[2].truthy()
 	assert nested.truthy()
 	assert !nested.child.truthy()
+	assert if_object.truthy()
+	assert !return_object.truthy()
+	assert match_object.truthy()
 	println('ok')
 }

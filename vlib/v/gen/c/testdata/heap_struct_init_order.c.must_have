@@ -5,4 +5,22 @@ builtin___v_malloc(sizeof(main__Issue27329Object) == 0 ? 1 : sizeof(main__Issue2
 volatile main__Issue27329Object*
 return builtin__new_array_from_c_array(3, 3, sizeof(main__Issue27329Object*)
 ->child = _t
+VV_LOC main__Issue27329Object* main__issue_27329_if_expr_assignment(bool flag) {
+main__Issue27329Object* _t1 = (main__Issue27329Object*)builtin___v_malloc(sizeof(main__Issue27329Object) == 0 ? 1 : sizeof(main__Issue27329Object));
+_t1->ival = 4;
+main__Issue27329Object* _t2 = (main__Issue27329Object*)builtin___v_malloc(sizeof(main__Issue27329Object) == 0 ? 1 : sizeof(main__Issue27329Object));
+_t2->ival = 5;
+main__Issue27329Object* object = (flag ? (
+VV_LOC main__Issue27329Object* main__issue_27329_if_expr_return(bool flag) {
+main__Issue27329Object* _t2 = (main__Issue27329Object*)builtin___v_malloc(sizeof(main__Issue27329Object) == 0 ? 1 : sizeof(main__Issue27329Object));
+_t2->ival = 6;
+main__Issue27329Object* _t3 = (main__Issue27329Object*)builtin___v_malloc(sizeof(main__Issue27329Object) == 0 ? 1 : sizeof(main__Issue27329Object));
+_t3->ival = 7;
+return (flag ? (
+VV_LOC main__Issue27329Object* main__issue_27329_match_expr(bool flag) {
+main__Issue27329Object* _t1 = (main__Issue27329Object*)builtin___v_malloc(sizeof(main__Issue27329Object) == 0 ? 1 : sizeof(main__Issue27329Object));
+_t1->ival = 8;
+main__Issue27329Object* _t2 = (main__Issue27329Object*)builtin___v_malloc(sizeof(main__Issue27329Object) == 0 ? 1 : sizeof(main__Issue27329Object));
+_t2->ival = 9;
+main__Issue27329Object* object = ((flag == (true))? (
 // THE END.
