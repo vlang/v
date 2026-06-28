@@ -4473,7 +4473,7 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				params:       tarr1(base_type)
 				return_type:  Type(string_)
 				has_receiver: true
-				params_known: false
+				params_known: true
 			}
 		}
 		if fn_node.value == 'hex' && tc.is_builtin_hex_receiver(base_type) {

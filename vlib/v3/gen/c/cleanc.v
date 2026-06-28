@@ -1279,16 +1279,9 @@ fn (mut g FlatGen) gen_map_str_expr(id flat.NodeId, typ types.Type) bool {
 	if node.kind == .map_init && typ !is types.Pointer {
 		tmp := '__map_str_tmp_${g.tmp_count}'
 		g.tmp_count++
-		c_key := g.tc.c_type(clean.key_type)
-		c_val := g.tc.c_type(clean.value_type)
 		g.write('({ map ${tmp} = ')
 		g.gen_expr_with_expected_type(id, clean)
 		g.write(';')
-		for i := 0; i + 1 < node.children_count; i += 2 {
-			key := g.expr_to_string_with_expected_type(g.a.child(&node, i), clean.key_type)
-			val := g.expr_to_string_with_expected_type(g.a.child(&node, i + 1), clean.value_type)
-			g.write(' map__set(&${tmp}, &(${c_key}[]){${key}}, &(${c_val}[]){${val}});')
-		}
 		key_kind := map_str_kind(g.tc, clean.key_type)
 		val_kind := map_str_kind(g.tc, clean.value_type)
 		fixed_len := map_str_fixed_len(clean.value_type)

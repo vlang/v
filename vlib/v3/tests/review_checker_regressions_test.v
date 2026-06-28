@@ -63,6 +63,13 @@ fn test_restrict_synthetic_hex_fallback_receivers() {
 	assert out == '0f\nff\n010fff\n41\n41\n616263'
 }
 
+fn test_auto_str_rejects_arguments() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_auto_str_arg',
+		'struct S {\n\tx int\n}\n\nfn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := S{\n\t\tx: 1\n\t}.str(side_effect())\n}\n',
+		'argument count mismatch')
+}
+
 fn test_map_keys_and_values_reject_arguments() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_map_keys_arg',

@@ -214,6 +214,13 @@ fn test_map_str_preserves_signed_wide_entries() {
 	assert out == "{'x': 5000000000}\n{-5000000000: 'x'}"
 }
 
+fn test_map_literal_stringification_evaluates_entries_once() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'map_literal_str_side_effects',
+		"__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'k' + int_str(key_calls)\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tprintln({\n\t\tnext_key(): next_val()\n\t})\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n")
+	assert out == "{'k1': 10}\n1,1"
+}
+
 fn test_runes_iterator_index_is_loop_scoped() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'runes_iterator_index_scope',
