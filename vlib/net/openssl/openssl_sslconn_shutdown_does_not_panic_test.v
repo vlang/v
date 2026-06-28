@@ -1,3 +1,4 @@
+// vtest build: present_openssl? && !(windows && tinyc)
 import time
 import context
 import net.openssl

@@ -1,19 +1,15 @@
-// vtest build: present_openssl? && !(windows && tinyc)
-// vtest vflags: -d use_openssl
 module main
 
-import net.ssl
+import net.mbedtls
 import os
 
-fn test_net_ssl_openssl_listener_preserves_ipv6_options() ! {
+fn test_mbedtls_ssl_listener_preserves_ipv6_literal_by_default() ! {
 	$if macos || linux {
 		cert_path := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.crt')
 		key_path := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.key')
-		mut listener := ssl.new_ssl_listener('[::1]:0', ssl.SSLConnectConfig{
+		mut listener := mbedtls.new_ssl_listener('[::1]:0', mbedtls.SSLConnectConfig{
 			cert:     cert_path
 			cert_key: key_path
-		}, ssl.SSLListenerOptions{
-			family: .ip6
 		})!
 		listener.shutdown()!
 	}

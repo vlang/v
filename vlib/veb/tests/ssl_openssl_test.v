@@ -1,4 +1,4 @@
-// vtest build: !sanitized_job?
+// vtest build: present_openssl? && !sanitized_job? && !(windows && tinyc)
 // vtest vflags: -d use_openssl
 import net.http
 import net.openssl

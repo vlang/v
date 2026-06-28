@@ -1,3 +1,4 @@
+// vtest build: present_openssl? && !(windows && tinyc)
 module openssl
 
 import net

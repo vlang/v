@@ -188,7 +188,7 @@ mut:
 @[params]
 pub struct SSLListenerOptions {
 pub:
-	family net.AddrFamily = .ip
+	family net.AddrFamily = .unspec
 }
 
 // new_ssl_listener creates a new SSLListener binding to `saddr`.
@@ -223,6 +223,17 @@ pub fn (mut l SSLListener) shutdown() ! {
 	if l.opened {
 		C.mbedtls_net_free(&l.server_fd)
 	}
+}
+
+fn ssl_listener_family(saddr string, family net.AddrFamily) net.AddrFamily {
+	if family != .unspec {
+		return family
+	}
+	address, _ := net.split_address(saddr) or { return .ip }
+	if address == '::' || address.contains(':') {
+		return .ip6
+	}
+	return .ip
 }
 
 // internal function to init and bind the listener
@@ -267,7 +278,7 @@ fn (mut l SSLListener) init() ! {
 		C.mbedtls_ssl_conf_authmode(&l.conf, C.MBEDTLS_SSL_VERIFY_REQUIRED)
 	}
 
-	tcp_listener := net.listen_tcp(l.options.family, l.saddr, net.ListenOptions{
+	tcp_listener := net.listen_tcp(ssl_listener_family(l.saddr, l.options.family), l.saddr, net.ListenOptions{
 		backlog: C.MBEDTLS_NET_LISTEN_BACKLOG
 	}) or { return error('net.mbedtls SSLListener.init, listen_tcp failed for ${l.saddr}: ${err}') }
 	l.server_fd.fd = tcp_listener.sock.handle
