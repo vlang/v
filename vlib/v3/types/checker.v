@@ -4296,9 +4296,14 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 					}
 				}
 				'insert', 'prepend' {
+					params := if fn_node.value == 'insert' {
+						tarr3(base_type, Type(int_), clean.elem_type)
+					} else {
+						tarr2(base_type, clean.elem_type)
+					}
 					return CallInfo{
 						name:         'array.${fn_node.value}'
-						params:       []Type{}
+						params:       params
 						return_type:  Type(void_)
 						has_receiver: true
 						params_known: false
@@ -5068,6 +5073,20 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	if info.name.starts_with('map.') {
 		for i in 1 .. node.children_count {
 			tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
+		}
+		return
+	}
+	if info.name in ['array.insert', 'array.prepend'] {
+		for i in 1 .. node.children_count {
+			tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
+		}
+		explicit_count := node.children_count - 1
+		receiver_count := if info.has_receiver { 1 } else { 0 }
+		expected_count := info.params.len - receiver_count
+		if explicit_count != expected_count && tc.should_diagnose(id) {
+			tc.record_error(.call_arg_mismatch,
+				'argument count mismatch for `${tc.call_display_name(node)}`: expected ${expected_count}, got ${explicit_count}',
+				id)
 		}
 		return
 	}

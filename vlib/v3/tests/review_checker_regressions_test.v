@@ -69,6 +69,20 @@ fn test_map_keys_and_values_reject_arguments() {
 		'argument count mismatch')
 }
 
+fn test_array_insert_and_prepend_reject_wrong_arity() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_array_prepend_missing_arg',
+		'fn main() {\n\tmut a := [1, 2]\n\ta.prepend()\n}\n', 'argument count mismatch')
+	run_bad(v3_bin, 'bad_array_prepend_extra_arg',
+		'fn side_effect() int {\n\treturn 3\n}\nfn main() {\n\tmut a := [1, 2]\n\ta.prepend(0, side_effect())\n}\n',
+		'argument count mismatch')
+	run_bad(v3_bin, 'bad_array_insert_missing_arg',
+		'fn main() {\n\tmut a := [1, 2]\n\ta.insert(0)\n}\n', 'argument count mismatch')
+	run_bad(v3_bin, 'bad_array_insert_extra_arg',
+		'fn side_effect() int {\n\treturn 3\n}\nfn main() {\n\tmut a := [1, 2]\n\ta.insert(0, 1, side_effect())\n}\n',
+		'argument count mismatch')
+}
+
 fn test_comptime_if_selected_bodies_are_checked() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_concrete_comptime_if_selected_call',
