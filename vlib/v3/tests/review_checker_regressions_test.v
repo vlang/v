@@ -90,6 +90,17 @@ fn test_array_insert_and_prepend_reject_wrong_arity() {
 		"fn main() {\n\tmut a := [1, 2]\n\ta.insert('0', 3)\n}\n", 'cannot use')
 	run_bad(v3_bin, 'bad_array_insert_value_type',
 		"fn main() {\n\tmut a := [1, 2]\n\ta.insert(0, 'x')\n}\n", 'cannot use')
+	run_bad(v3_bin, 'bad_array_prepend_many_arg_type',
+		"fn main() {\n\tmut a := [1, 2]\n\ta.prepend(['x'])\n}\n", 'cannot use')
+	run_bad(v3_bin, 'bad_array_insert_many_arg_type',
+		"fn main() {\n\tmut a := [1, 2]\n\ta.insert(0, ['x'])\n}\n", 'cannot use')
+}
+
+fn test_array_insert_and_prepend_accept_many_operands() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_array_insert_prepend_many_operands',
+		"type Strings = []string\n\nfn main() {\n\tmut a := [3, 4]\n\ta.insert(0, [1, 2])\n\tb := [5, 6]\n\ta.insert(1, b)\n\ta.prepend([0])\n\tfixed := [7, 8]!\n\ta.insert(a.len, fixed)\n\tassert a == [0, 1, 5, 6, 2, 3, 4, 7, 8]\n\tmut strs := Strings(['hi'])\n\tstrs.insert(0, ['there'])\n\tstrs.prepend(['hello'])\n\tassert strs == ['hello', 'there', 'hi']\n\tprintln('ok')\n}\n")
+	assert out == 'ok'
 }
 
 fn test_comptime_if_selected_bodies_are_checked() {

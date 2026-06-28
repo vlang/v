@@ -5046,6 +5046,33 @@ fn print_style_param_accepts_string(typ Type) bool {
 	return clean is String
 }
 
+// array_insert_prepend_many_arg_compatible reports whether an insert/prepend
+// value argument is a many-element operand for the receiver array.
+fn (tc &TypeChecker) array_insert_prepend_many_arg_compatible(info CallInfo, param_idx int, actual Type, elem_type Type) bool {
+	if info.name !in ['array.insert', 'array.prepend'] {
+		return false
+	}
+	if (info.name == 'array.insert' && param_idx != 2)
+		|| (info.name == 'array.prepend' && param_idx != 1) {
+		return false
+	}
+	mut clean := actual
+	for _ in 0 .. 8 {
+		if clean is Alias {
+			clean = clean.base_type
+			continue
+		}
+		break
+	}
+	if clean is Array {
+		return tc.receiver_compatible(clean.elem_type, elem_type)
+	}
+	if clean is ArrayFixed {
+		return tc.receiver_compatible(clean.elem_type, elem_type)
+	}
+	return false
+}
+
 // check_call_arg_types validates check call arg types state for types.
 fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, info0 CallInfo) {
 	info := tc.specialized_plain_generic_call_info(node, info0)
@@ -5194,6 +5221,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			actual = tc.resolve_expr(arg_id, expected)
 		}
 		if !tc.receiver_compatible(actual, expected) {
+			if tc.array_insert_prepend_many_arg_compatible(info, param_idx, actual, expected) {
+				continue
+			}
 			if tc.array_dsl_fn_arg_compatible(node, info, param_idx, actual) {
 				continue
 			}
