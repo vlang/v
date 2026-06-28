@@ -1101,6 +1101,18 @@ fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId,
 		if inner == 'string' {
 			return t.make_call_typed('array_eq_string', arr2(lhs, rhs), 'bool')
 		}
+		if t.array_elem_needs_element_eq(inner) {
+			src := if int(lhs) >= 0 && int(lhs) < t.a.nodes.len {
+				t.a.nodes[int(lhs)]
+			} else {
+				flat.Node{}
+			}
+			return t.make_array_elementwise_eq_call(lhs, rhs, inner, clean, clean, src)
+		}
+		if inner.starts_with('[]') {
+			return t.make_call_typed('array_eq_array', arr3(lhs, rhs,
+				t.make_int_literal(array_repeat_clone_depth(clean))), 'bool')
+		}
 		return t.make_call_typed('array_eq_raw', arr3(lhs, rhs, t.make_sizeof_type(inner)), 'bool')
 	}
 	struct_type := t.struct_lookup_name(clean)
@@ -1121,8 +1133,24 @@ fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId,
 
 fn (t &Transformer) array_elem_needs_element_eq(elem_type string) bool {
 	clean := t.membership_container_type(elem_type)
+	return clean != 'string' && t.type_needs_semantic_eq(clean)
+}
+
+fn (t &Transformer) map_value_needs_element_eq(value_type string) bool {
+	clean := t.membership_container_type(value_type)
+	return t.type_needs_semantic_eq(clean)
+}
+
+fn (t &Transformer) type_needs_semantic_eq(typ string) bool {
+	clean := t.membership_container_type(typ)
+	if clean == 'string' {
+		return true
+	}
 	if t.clean_map_type(clean).starts_with('map[') {
 		return true
+	}
+	if clean.starts_with('[]') {
+		return t.type_needs_semantic_eq(clean[2..])
 	}
 	return t.struct_lookup_name(clean).len > 0
 }
@@ -1142,11 +1170,65 @@ fn (mut t Transformer) make_array_elementwise_eq_call(lhs flat.NodeId, rhs flat.
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	lhs_elem := t.array_get_value(lhs_value, t.make_ident(idx_name), clean_elem)
 	rhs_elem := t.array_get_value(rhs_value, t.make_ident(idx_name), clean_elem)
+	pending_start := t.pending_stmts.len
 	elem_eq := t.make_membership_eq_expr(lhs_elem, rhs_elem, clean_elem)
+	mut body_stmts := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	set_false := t.make_assign(t.make_ident(result_name), t.make_bool_literal(false))
-	body := arr1(t.make_if(t.make_prefix(.not, t.make_paren(elem_eq)),
-		t.make_block(arr1(set_false)), t.make_empty()))
-	t.pending_stmts << t.make_for_stmt(init, cond, post, body, src)
+	body_stmts << t.make_if(t.make_prefix(.not, t.make_paren(elem_eq)),
+		t.make_block(arr1(set_false)), t.make_empty())
+	t.pending_stmts << t.make_for_stmt(init, cond, post, body_stmts, src)
+	result := t.make_ident(result_name)
+	t.a.nodes[int(result)].typ = 'bool'
+	return result
+}
+
+fn (mut t Transformer) make_map_elementwise_eq_call(lhs flat.NodeId, rhs flat.NodeId, map_type string, src flat.Node) flat.NodeId {
+	key_type, value_type := t.map_type_parts(map_type)
+	if key_type.len == 0 || value_type.len == 0 {
+		return t.make_call_typed('v3_map_map_eq', arr2(lhs, rhs), 'bool')
+	}
+	lhs_value := t.stable_transformed_expr_for_reuse(lhs, map_type, 'map_eq_lhs')
+	rhs_value := t.stable_transformed_expr_for_reuse(rhs, map_type, 'map_eq_rhs')
+	result_name := t.new_temp('map_eq')
+	zero_name := t.new_temp('map_eq_zero')
+	key_name := t.new_temp('map_eq_key')
+	lhs_val_name := t.new_temp('map_eq_val')
+	len_eq := t.make_infix(.eq, t.make_selector(lhs_value, 'len', 'int'), t.make_selector(rhs_value,
+		'len', 'int'))
+	t.pending_stmts << t.make_decl_assign_typed(result_name, len_eq, 'bool')
+	t.pending_stmts << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(value_type),
+		value_type)
+	t.set_var_type(key_name, key_type)
+	t.set_var_type(lhs_val_name, value_type)
+	key_ident := t.make_ident(key_name)
+	val_ident := t.make_ident(lhs_val_name)
+	rhs_exists := t.make_map_exists_expr(rhs_value, map_type, key_name)
+	rhs_val := t.make_map_get_expr(rhs_value, map_type, key_name, zero_name, value_type)
+	pending_start := t.pending_stmts.len
+	value_eq := t.make_membership_eq_expr(t.make_ident(lhs_val_name), rhs_val, value_type)
+	mut body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	missing := t.make_prefix(.not, t.make_paren(rhs_exists))
+	value_diff := t.make_prefix(.not, t.make_paren(value_eq))
+	failed := t.make_infix(.logical_or, missing, value_diff)
+	active := t.make_infix(.logical_and, t.make_ident(result_name), failed)
+	set_false := t.make_assign(t.make_ident(result_name), t.make_bool_literal(false))
+	body << t.make_if(active, t.make_block(arr1(set_false)), t.make_empty())
+	start := t.a.children.len
+	t.a.children << key_ident
+	t.a.children << val_ident
+	t.a.children << lhs_value
+	for stmt in body {
+		t.a.children << stmt
+	}
+	t.pending_stmts << t.a.add_node(flat.Node{
+		kind:           .for_in_stmt
+		children_start: start
+		children_count: flat.child_count(3 + body.len)
+		pos:            src.pos
+		value:          '3'
+	})
 	result := t.make_ident(result_name)
 	t.a.nodes[int(result)].typ = 'bool'
 	return result
