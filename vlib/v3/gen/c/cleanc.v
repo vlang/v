@@ -3592,6 +3592,16 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		g.collect_fixed_array_typedef(typ, mut needed)
 	}
 	g.tc.cur_module = old_module
+	for node in g.a.nodes {
+		g.collect_fixed_array_typedef_text(node.typ, mut needed)
+		match node.kind {
+			.array_init, .array_literal, .cast_expr, .sizeof_expr, .typeof_expr {
+				g.collect_fixed_array_typedef_text(node.value, mut needed)
+			}
+			else {}
+		}
+	}
+	g.tc.cur_module = old_module
 	return needed
 }
 
@@ -3881,6 +3891,62 @@ fn (mut g FlatGen) collect_fixed_array_typedef(typ types.Type, mut needed map[st
 			g.collect_fixed_array_typedef(item, mut needed)
 		}
 	}
+}
+
+fn (mut g FlatGen) collect_fixed_array_typedef_text(type_text string, mut needed map[string]FixedArrayTypedefInfo) {
+	clean := type_text.trim_space()
+	if clean.len == 0 {
+		return
+	}
+	typ := g.tc.parse_type(clean)
+	if fixed_array_typedef_has_non_decimal_len(typ) {
+		return
+	}
+	g.collect_fixed_array_typedef(typ, mut needed)
+}
+
+fn fixed_array_typedef_has_non_decimal_len(typ types.Type) bool {
+	if typ is types.ArrayFixed {
+		if typ.len_expr.len > 0 {
+			return true
+		}
+		return fixed_array_typedef_has_non_decimal_len(typ.elem_type)
+	}
+	if typ is types.Pointer {
+		return fixed_array_typedef_has_non_decimal_len(typ.base_type)
+	}
+	if typ is types.Alias {
+		return fixed_array_typedef_has_non_decimal_len(typ.base_type)
+	}
+	if typ is types.OptionType {
+		return fixed_array_typedef_has_non_decimal_len(typ.base_type)
+	}
+	if typ is types.ResultType {
+		return fixed_array_typedef_has_non_decimal_len(typ.base_type)
+	}
+	if typ is types.Array {
+		return fixed_array_typedef_has_non_decimal_len(typ.elem_type)
+	}
+	if typ is types.Map {
+		return fixed_array_typedef_has_non_decimal_len(typ.key_type)
+			|| fixed_array_typedef_has_non_decimal_len(typ.value_type)
+	}
+	if typ is types.FnType {
+		for param in typ.params {
+			if fixed_array_typedef_has_non_decimal_len(param) {
+				return true
+			}
+		}
+		return fixed_array_typedef_has_non_decimal_len(typ.return_type)
+	}
+	if typ is types.MultiReturn {
+		for item in typ.types {
+			if fixed_array_typedef_has_non_decimal_len(item) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (mut g FlatGen) emit_fixed_array_typedef(name string, info FixedArrayTypedefInfo, needed map[string]FixedArrayTypedefInfo, mut emitted map[string]bool) {

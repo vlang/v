@@ -1089,6 +1089,9 @@ fn (mut t Transformer) stable_array_expr_for_membership(id flat.NodeId, raw_type
 
 // make_membership_eq_expr builds make membership eq expr data for transform.
 fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId, elem_type string) flat.NodeId {
+	if t.membership_type_is_pointer(elem_type) {
+		return t.make_infix(.eq, lhs, rhs)
+	}
 	mut clean := t.membership_container_type(elem_type)
 	if clean == 'string' {
 		return t.make_call_typed('string__eq', arr2(lhs, rhs), 'bool')
@@ -1115,6 +1118,17 @@ fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId,
 		}
 		return t.make_call_typed('array_eq_raw', arr3(lhs, rhs, t.make_sizeof_type(inner)), 'bool')
 	}
+	if t.is_fixed_array_type(clean) {
+		clean = fixed_array_canonical_type(clean)
+		if t.type_needs_semantic_eq(clean) {
+			if fixed_eq := t.make_fixed_array_elementwise_eq_expr(lhs, rhs, clean) {
+				return fixed_eq
+			}
+		}
+		cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
+			t.make_sizeof_type(clean)), 'int')
+		return t.make_infix(.eq, cmp, t.make_int_literal(0))
+	}
 	struct_type := t.struct_lookup_name(clean)
 	if struct_type.len > 0 {
 		method_name := '${struct_type}.=='
@@ -1132,16 +1146,25 @@ fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId,
 }
 
 fn (t &Transformer) array_elem_needs_element_eq(elem_type string) bool {
+	if t.membership_type_is_pointer(elem_type) {
+		return false
+	}
 	clean := t.membership_container_type(elem_type)
 	return clean != 'string' && t.type_needs_semantic_eq(clean)
 }
 
 fn (t &Transformer) map_value_needs_element_eq(value_type string) bool {
+	if t.membership_type_is_pointer(value_type) {
+		return false
+	}
 	clean := t.membership_container_type(value_type)
 	return t.type_needs_semantic_eq(clean)
 }
 
 fn (t &Transformer) type_needs_semantic_eq(typ string) bool {
+	if t.membership_type_is_pointer(typ) {
+		return false
+	}
 	clean := t.membership_container_type(typ)
 	if clean == 'string' {
 		return true
@@ -1152,11 +1175,18 @@ fn (t &Transformer) type_needs_semantic_eq(typ string) bool {
 	if clean.starts_with('[]') {
 		return t.type_needs_semantic_eq(clean[2..])
 	}
+	if t.is_fixed_array_type(clean) {
+		elem_type := fixed_array_elem_type(clean)
+		return elem_type.len > 0 && t.type_needs_semantic_eq(elem_type)
+	}
 	return t.struct_lookup_name(clean).len > 0
 }
 
 fn (mut t Transformer) make_array_elementwise_eq_call(lhs flat.NodeId, rhs flat.NodeId, elem_type string, lhs_type string, rhs_type string, src flat.Node) flat.NodeId {
-	clean_elem := t.membership_container_type(elem_type)
+	mut clean_elem := t.membership_container_type(elem_type)
+	if t.is_fixed_array_type(clean_elem) {
+		clean_elem = fixed_array_canonical_type(clean_elem)
+	}
 	lhs_value := t.stable_transformed_expr_for_reuse(lhs, lhs_type, 'arr_eq_lhs')
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'arr_eq_rhs')
 	result_name := t.new_temp('arr_eq')
@@ -1183,8 +1213,43 @@ fn (mut t Transformer) make_array_elementwise_eq_call(lhs flat.NodeId, rhs flat.
 	return result
 }
 
+fn (mut t Transformer) make_fixed_array_elementwise_eq_expr(lhs flat.NodeId, rhs flat.NodeId, fixed_type string) ?flat.NodeId {
+	clean_fixed_type := fixed_array_canonical_type(fixed_type)
+	elem_type := fixed_array_elem_type(clean_fixed_type)
+	if elem_type.len == 0 {
+		return none
+	}
+	lhs_value := t.stable_transformed_expr_for_reuse(lhs, clean_fixed_type, 'fixed_eq_lhs')
+	rhs_value := t.stable_transformed_expr_for_reuse(rhs, clean_fixed_type, 'fixed_eq_rhs')
+	result_name := t.new_temp('fixed_eq')
+	idx_name := t.new_temp('fixed_eq_idx')
+	t.pending_stmts << t.make_decl_assign_typed(result_name, t.make_bool_literal(true), 'bool')
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_fixed_array_len_expr(clean_fixed_type))
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	lhs_elem := t.make_index(lhs_value, t.make_ident(idx_name), elem_type)
+	rhs_elem := t.make_index(rhs_value, t.make_ident(idx_name), elem_type)
+	pending_start := t.pending_stmts.len
+	elem_eq := t.make_membership_eq_expr(lhs_elem, rhs_elem, elem_type)
+	mut body_stmts := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	set_false := t.make_assign(t.make_ident(result_name), t.make_bool_literal(false))
+	body_stmts << t.make_if(t.make_prefix(.not, t.make_paren(elem_eq)),
+		t.make_block(arr1(set_false)), t.make_empty())
+	t.pending_stmts << t.make_for_stmt(init,
+		t.make_infix(.logical_and, t.make_ident(result_name), cond), post, body_stmts, flat.Node{})
+	result := t.make_ident(result_name)
+	t.a.nodes[int(result)].typ = 'bool'
+	return result
+}
+
 fn (mut t Transformer) make_map_elementwise_eq_call(lhs flat.NodeId, rhs flat.NodeId, map_type string, src flat.Node) flat.NodeId {
-	key_type, value_type := t.map_type_parts(map_type)
+	key_type, raw_value_type := t.map_type_parts(map_type)
+	value_type := if t.is_fixed_array_type(raw_value_type) {
+		fixed_array_canonical_type(raw_value_type)
+	} else {
+		raw_value_type
+	}
 	if key_type.len == 0 || value_type.len == 0 {
 		return t.make_call_typed('v3_map_map_eq', arr2(lhs, rhs), 'bool')
 	}
@@ -1761,6 +1826,15 @@ fn fixed_array_elem_type(s string) string {
 		return s.all_after(']')
 	}
 	return s.all_before('[')
+}
+
+fn fixed_array_canonical_type(s string) string {
+	if !s.starts_with('[') {
+		return s
+	}
+	elem_type := fixed_array_canonical_type(fixed_array_elem_type(s))
+	len_text := fixed_array_len_text(s)
+	return '${elem_type}[${len_text}]'
 }
 
 // is_decimal_text reports whether is decimal text applies in transform.

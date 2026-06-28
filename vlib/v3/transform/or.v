@@ -440,6 +440,18 @@ fn (mut t Transformer) zero_value_for_type(typ string) flat.NodeId {
 	if clean.starts_with('map[') {
 		return t.make_map_init(clean)
 	}
+	if t.is_fixed_array_type(clean) {
+		fixed_type := fixed_array_canonical_type(clean)
+		len_text := fixed_array_len_text(fixed_type)
+		if is_decimal_text(len_text) {
+			elem_type := fixed_array_elem_type(fixed_type)
+			mut values := []flat.NodeId{cap: len_text.int()}
+			for _ in 0 .. len_text.int() {
+				values << t.zero_value_for_type(elem_type)
+			}
+			return t.make_array_literal_typed(values, fixed_type)
+		}
+	}
 	if clean == 'string' {
 		return t.make_string_literal('')
 	}

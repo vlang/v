@@ -58,6 +58,20 @@ fn test_array_equality_uses_semantic_element_comparison() {
 	assert out == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\n0'
 }
 
+fn test_pointer_array_equality_uses_pointer_identity() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'pointer_array_equality',
+		'struct Node {\n\tvalue int\n}\n\nfn main() {\n\tleft_node := Node{\n\t\tvalue: 5\n\t}\n\tright_node := Node{\n\t\tvalue: 5\n\t}\n\tleft_ptr := &left_node\n\tright_ptr := &right_node\n\tleft := [left_ptr]\n\tright := [right_ptr]\n\tsame := [left_ptr]\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == same)\n\tprintln(right_ptr in left)\n\tprintln(int_str(left.index(right_ptr)))\n}\n')
+	assert out == 'false\ntrue\ntrue\nfalse\n-1'
+}
+
+fn test_fixed_array_values_compare_semantically() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'fixed_array_semantic_equality',
+		"fn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := [[1]string{init: 'ab'.clone()}]\n\tright := [[1]string{init: join('a', 'b')}]\n\tmut map_left := map[string][1]string{}\n\tmap_left['k'] = [1]string{init: 'cd'.clone()}\n\tmut map_right := map[string][1]string{}\n\tmap_right['k'] = [1]string{init: join('c', 'd')}\n\tprintln(left == right)\n\tprintln(left.equals(right))\n\tprintln(map_left == map_right)\n}\n")
+	assert out == 'true\ntrue\ntrue'
+}
+
 fn test_interface_array_repeat_evaluates_receiver_once() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'interface_repeat_side_effects',

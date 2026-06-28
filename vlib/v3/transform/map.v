@@ -91,9 +91,14 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 
 // make_map_get_expr builds make map get expr data for transform.
 fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type string, key_name string, zero_name string, value_type string) flat.NodeId {
+	clean_value_type := if t.is_fixed_array_type(value_type) {
+		fixed_array_canonical_type(value_type)
+	} else {
+		value_type
+	}
 	call := t.make_call_typed('map__get', arr3(t.runtime_addr(map_expr, base_type), t.make_prefix(.amp,
 		t.make_ident(key_name)), t.make_prefix(.amp, t.make_ident(zero_name))), 'voidptr')
-	cast := t.make_cast('&${value_type}', call, '&${value_type}')
+	cast := t.make_cast('&${clean_value_type}', call, '&${clean_value_type}')
 	return t.make_prefix(.mul, cast)
 }
 

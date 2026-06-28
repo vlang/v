@@ -107,8 +107,22 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.writeln('for (int ${iter_var} = 0; ${iter_var} < ${key_values}.len; ${iter_var}++) {')
 				g.indent++
 				g.writeln('if (${key_values}.all_deleted && ${key_values}.all_deleted[${iter_var}]) continue;')
-				g.writeln('${c_key} ${key_var} = *(${c_key}*)(${key_values}.keys + ${iter_var} * ${key_values}.key_bytes);')
-				g.writeln('${c_val} ${val_var_} = *(${c_val}*)(${key_values}.values + ${iter_var} * ${key_values}.value_bytes);')
+				key_slot := '${key_values}.keys + ${iter_var} * ${key_values}.key_bytes'
+				if key_fixed := array_fixed_type(clean_container_type.key_type) {
+					c_elem, dims := g.fixed_array_decl_parts(key_fixed)
+					g.writeln('${c_elem} ${key_var}${dims};')
+					g.writeln('memmove(${key_var}, ${key_slot}, sizeof(${key_var}));')
+				} else {
+					g.writeln('${c_key} ${key_var} = *(${c_key}*)(${key_slot});')
+				}
+				val_slot := '${key_values}.values + ${iter_var} * ${key_values}.value_bytes'
+				if val_fixed := array_fixed_type(clean_container_type.value_type) {
+					c_elem, dims := g.fixed_array_decl_parts(val_fixed)
+					g.writeln('${c_elem} ${val_var_}${dims};')
+					g.writeln('memmove(${val_var_}, ${val_slot}, sizeof(${val_var_}));')
+				} else {
+					g.writeln('${c_val} ${val_var_} = *(${c_val}*)(${val_slot});')
+				}
 				if has_index {
 					g.tc.cur_scope.insert(key_var, clean_container_type.key_type)
 				}
