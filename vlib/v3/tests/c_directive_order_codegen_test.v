@@ -677,7 +677,18 @@ fn directive_order_gen_c_preserved_mach_headers(v3_bin string) string {
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 
-fn main() {}
+@[typedef]
+struct C.mach_timebase_info_data_t {
+	numer u32
+	denom u32
+}
+
+fn C.mach_timebase_info(&C.mach_timebase_info_data_t)
+
+fn main() {
+	mut tb := C.mach_timebase_info_data_t{}
+	C.mach_timebase_info(&tb)
+}
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_mach.c')
 	os.rm(c_out) or {}
@@ -1013,6 +1024,9 @@ fn test_preserved_mach_headers_are_wrapped_with_panic_alias() {
 	assert c_code.contains('#define panic mach_panic\n#include <mach/mach.h>\n#undef panic'), c_code
 	assert c_code.contains('#define panic mach_panic\n#include <mach/mach_time.h>\n#undef panic'), c_code
 	assert directive_order_index(c_code, '#undef panic') < preamble_idx, c_code
+	assert !c_code.contains('typedef struct mach_timebase_info_data_t mach_timebase_info_data_t;'), c_code
+
+	assert directive_order_count(c_code, 'mach_timebase_info(') == 1, c_code
 }
 
 fn test_stdarg_in_inlined_header_uses_headerless_va_defs() {

@@ -766,6 +766,9 @@ fn c_preserved_system_include_declared_fns(include_arg string) []string {
 		'<dlfcn.h>' {
 			return ['dlopen', 'dlsym', 'dlclose', 'dlerror']
 		}
+		'<mach/mach_time.h>' {
+			return ['mach_absolute_time', 'mach_timebase_info']
+		}
 		else {
 			return []string{}
 		}
@@ -774,6 +777,9 @@ fn c_preserved_system_include_declared_fns(include_arg string) []string {
 
 fn c_preserved_system_include_struct_names(include_arg string) []string {
 	match include_arg.trim_space() {
+		'<mach/mach_time.h>' {
+			return ['mach_timebase_info_data_t']
+		}
 		'<X11/Xlib.h>', '<X11/Xutil.h>', '<X11/Xresource.h>', '<X11/XKBlib.h>',
 		'<X11/extensions/XInput2.h>', '<X11/Xcursor/Xcursor.h>' {
 			return c_x11_preserved_struct_names.clone()
