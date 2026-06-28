@@ -103,6 +103,10 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	rhs_id := t.a.children[node.children_start + 1]
 	lhs_raw_type := t.node_type(lhs_id)
 	rhs_raw_type := t.node_type(rhs_id)
+	if t.equality_type_is_array_pointer(lhs_raw_type)
+		|| t.equality_type_is_array_pointer(rhs_raw_type) {
+		return none
+	}
 	mut lhs_type := t.membership_container_type(lhs_raw_type)
 	mut rhs_type := t.membership_container_type(rhs_raw_type)
 	if !(lhs_type.starts_with('[]') || lhs_type == 'array') || !(rhs_type.starts_with('[]')
@@ -161,6 +165,9 @@ fn (mut t Transformer) transform_infix_map_ops(_id flat.NodeId, node flat.Node) 
 	rhs_id := t.a.children[node.children_start + 1]
 	lhs_type := t.map_comparison_expr_type(lhs_id)
 	rhs_type := t.map_comparison_expr_type(rhs_id)
+	if t.equality_type_is_map_pointer(lhs_type) || t.equality_type_is_map_pointer(rhs_type) {
+		return none
+	}
 	mut lhs_map_type := t.clean_map_type(lhs_type)
 	mut rhs_map_type := t.clean_map_type(rhs_type)
 	if !lhs_map_type.starts_with('map[') && rhs_map_type.starts_with('map[')
@@ -1451,6 +1458,40 @@ fn (t &Transformer) membership_type_is_pointer(typ string) bool {
 		break
 	}
 	return clean.starts_with('&')
+}
+
+fn (t &Transformer) equality_type_is_array_pointer(typ string) bool {
+	mut clean := typ.trim_space()
+	for clean.starts_with('shared ') {
+		clean = clean[7..].trim_space()
+	}
+	if clean.starts_with('mut ') {
+		return false
+	}
+	clean = t.normalize_type_alias(clean).trim_space()
+	for clean.starts_with('shared ') {
+		clean = clean[7..].trim_space()
+	}
+	if !clean.starts_with('&') {
+		return false
+	}
+	container := t.membership_container_type(clean)
+	return container.starts_with('[]') || container == 'array'
+}
+
+fn (t &Transformer) equality_type_is_map_pointer(typ string) bool {
+	mut clean := typ.trim_space()
+	for clean.starts_with('shared ') {
+		clean = clean[7..].trim_space()
+	}
+	if clean.starts_with('mut ') {
+		return false
+	}
+	clean = t.normalize_type_alias(clean).trim_space()
+	for clean.starts_with('shared ') {
+		clean = clean[7..].trim_space()
+	}
+	return clean.starts_with('&') && t.clean_map_type(clean).starts_with('map[')
 }
 
 // membership_container_is_pointer_array supports membership_container_is_pointer_array handling.

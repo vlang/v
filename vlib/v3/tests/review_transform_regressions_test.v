@@ -97,6 +97,20 @@ fn test_pointer_array_equality_uses_pointer_identity() {
 	assert out == 'false\ntrue\ntrue\nfalse\n-1'
 }
 
+fn test_array_pointer_equality_uses_pointer_identity() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_pointer_equality',
+		'fn main() {\n\tleft := [1, 2]\n\tright := [1, 2]\n\tleft_ptr := &left\n\tright_ptr := &right\n\tsame_ptr := left_ptr\n\tprintln(left_ptr == right_ptr)\n\tprintln(left_ptr != right_ptr)\n\tprintln(left_ptr == same_ptr)\n\tprintln(*left_ptr == *right_ptr)\n}\n')
+	assert out == 'false\ntrue\ntrue\ntrue'
+}
+
+fn test_map_pointer_equality_uses_pointer_identity() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'map_pointer_equality',
+		"fn main() {\n\tleft := {\n\t\t'x': 1\n\t}\n\tright := {\n\t\t'x': 1\n\t}\n\tleft_ptr := &left\n\tright_ptr := &right\n\tsame_ptr := left_ptr\n\tprintln(left_ptr == right_ptr)\n\tprintln(left_ptr != right_ptr)\n\tprintln(left_ptr == same_ptr)\n\tprintln(*left_ptr == *right_ptr)\n}\n")
+	assert out == 'false\ntrue\ntrue\ntrue'
+}
+
 fn test_fixed_array_values_compare_semantically() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'fixed_array_semantic_equality',
@@ -212,6 +226,13 @@ fn test_map_str_preserves_signed_wide_entries() {
 	out := run_good(v3_bin, 'map_str_signed_wide_entries',
 		"fn main() {\n\tvalue_map := {\n\t\t'x': i64(5000000000)\n\t}\n\tkey_map := {\n\t\ti64(-5000000000): 'x'\n\t}\n\tprintln(value_map.str())\n\tprintln(key_map.str())\n}\n")
 	assert out == "{'x': 5000000000}\n{-5000000000: 'x'}"
+}
+
+fn test_map_str_normalizes_alias_key_and_value_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'map_str_alias_kinds',
+		"type ID = int\n\ntype Amount = f64\n\nfn main() {\n\tids := {\n\t\tID(23): 'id'\n\t}\n\tamounts := {\n\t\t'price': Amount(1.25)\n\t}\n\tprintln('\${ids}')\n\tprintln('\${amounts}')\n}\n")
+	assert out == "{23: 'id'}\n{'price': 1.25}"
 }
 
 fn test_map_literal_stringification_evaluates_entries_once() {

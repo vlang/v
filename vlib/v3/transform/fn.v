@@ -1713,13 +1713,16 @@ fn (mut t Transformer) lower_map_str(map_expr flat.NodeId, map_type string) flat
 	}
 	lowered := t.transform_expr_for_type(map_expr, map_type)
 	return t.make_call_typed('v3_map_str', arr4(lowered,
-		t.make_int_literal(map_str_kind_for_type(key_type)),
-		t.make_int_literal(map_str_kind_for_type(value_type)),
-		t.make_int_literal(map_str_fixed_len_for_type(value_type))), 'string')
+		t.make_int_literal(t.map_str_kind_for_type(key_type)),
+		t.make_int_literal(t.map_str_kind_for_type(value_type)),
+		t.make_int_literal(t.map_str_fixed_len_for_type(value_type))), 'string')
 }
 
-fn map_str_kind_for_type(typ string) int {
-	clean := if typ.starts_with('builtin.') { typ.all_after_last('.') } else { typ }
+fn (t &Transformer) map_str_kind_for_type(typ string) int {
+	mut clean := t.normalize_type_alias(typ).trim_space()
+	if clean.starts_with('builtin.') {
+		clean = clean.all_after_last('.')
+	}
 	match clean {
 		'string' {
 			return 1
@@ -1744,7 +1747,7 @@ fn map_str_kind_for_type(typ string) int {
 				return 6
 			}
 			if transform_type_text_is_fixed_array(clean) {
-				elem := fixed_array_elem_type(clean)
+				elem := t.normalize_type_alias(fixed_array_elem_type(clean))
 				if elem == 'f32' {
 					return 9
 				}
@@ -1757,9 +1760,10 @@ fn map_str_kind_for_type(typ string) int {
 	}
 }
 
-fn map_str_fixed_len_for_type(typ string) int {
-	if transform_type_text_is_fixed_array(typ) {
-		return fixed_array_len(typ)
+fn (t &Transformer) map_str_fixed_len_for_type(typ string) int {
+	clean := t.normalize_type_alias(typ).trim_space()
+	if transform_type_text_is_fixed_array(clean) {
+		return fixed_array_len(clean)
 	}
 	return 0
 }

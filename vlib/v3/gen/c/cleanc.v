@@ -3106,6 +3106,9 @@ fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id
 	if node.op !in [.eq, .ne] {
 		return false
 	}
+	if lhs_type is types.Pointer || rhs_type is types.Pointer {
+		return false
+	}
 	lhs_arr := array_like_type(types.unwrap_pointer(lhs_type)) or { return false }
 	rhs_arr := array_like_type(types.unwrap_pointer(rhs_type)) or { return false }
 	elem_type := if lhs_arr.elem_type.name() != 'unknown' {
