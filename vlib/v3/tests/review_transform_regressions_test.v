@@ -142,3 +142,10 @@ fn test_map_keys_and_values_lower_to_runtime_methods() {
 		"fn make_lookup() map[string]int {\n\treturn {\n\t\t'one': 1\n\t\t'two': 2\n\t}\n}\n\nfn main() {\n\tlookup := make_lookup()\n\tkeys := lookup.keys()\n\tvalues := make_lookup().values()\n\tmut total := 0\n\tfor value in values {\n\t\ttotal += value\n\t}\n\tprintln(int_str(keys.len))\n\tprintln(int_str(values.len))\n\tprintln(int_str(total))\n}\n")
 	assert out == '2\n2\n3'
 }
+
+fn test_map_str_preserves_signed_wide_entries() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'map_str_signed_wide_entries',
+		"fn main() {\n\tvalue_map := {\n\t\t'x': i64(5000000000)\n\t}\n\tkey_map := {\n\t\ti64(-5000000000): 'x'\n\t}\n\tprintln(value_map.str())\n\tprintln(key_map.str())\n}\n")
+	assert out == "{'x': 5000000000}\n{-5000000000: 'x'}"
+}

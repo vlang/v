@@ -53,9 +53,30 @@ fn test_restrict_synthetic_hex_fallback_receivers() {
 		'fn main() {\n\tm := map[string]int{}\n\t_ := m.hex()\n}\n', 'unknown function')
 	run_bad(v3_bin, 'bad_float_hex_method', 'fn main() {\n\t_ := f32(1.5).hex()\n}\n',
 		'unknown function')
+	run_bad(v3_bin, 'bad_pointer_hex_method',
+		'fn main() {\n\tx := 1\n\tp := &x\n\t_ := p.hex()\n}\n', 'unknown function')
 	out := run_good(v3_bin, 'supported_hex_methods',
 		"fn main() {\n\tprintln(u8(15).hex())\n\tprintln(i64(255).hex())\n\tprintln([u8(1), 15, 255].hex())\n\tprintln(char(65).hex())\n\tprintln(`A`.hex())\n\tprintln('abc'.hex())\n}\n")
 	assert out == '0f\nff\n010fff\n41\n41\n616263'
+}
+
+fn test_map_keys_and_values_reject_arguments() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_map_keys_arg',
+		'fn main() {\n\tm := map[string]int{}\n\t_ := m.keys(123)\n}\n', 'argument count mismatch')
+	run_bad(v3_bin, 'bad_map_values_arg',
+		"fn main() {\n\tm := map[string]int{}\n\t_ := m.values('x')\n}\n",
+		'argument count mismatch')
+}
+
+fn test_comptime_if_selected_bodies_are_checked() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_concrete_comptime_if_selected_call',
+		'fn main() {\n\t$if int is int {\n\t\tmissing_selected_symbol()\n\t}\n}\n',
+		'unknown function `missing_selected_symbol`')
+	run_bad(v3_bin, 'bad_generic_comptime_if_preserved_call',
+		'fn f[T]() {\n\t$if T is int {\n\t\tmissing_generic_symbol()\n\t}\n}\nfn main() {\n\tf[int]()\n}\n',
+		'unknown function `missing_generic_symbol`')
 }
 
 fn test_explicit_generic_calls_use_all_type_arguments() {

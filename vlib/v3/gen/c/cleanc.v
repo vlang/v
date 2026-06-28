@@ -3449,7 +3449,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static inline string v3_f64_array_str(double* vals, int n) { string out = v3_c_lit("[", 1); for (int i = 0; i < n; ++i) { if (i > 0) out = string__plus(out, v3_c_lit(", ", 2)); out = string__plus(out, f64__str(vals[i])); } return string__plus(out, v3_c_lit("]", 1)); }')
 	g.writeln('static inline string v3_map_str_piece(void* p, int kind, int bytes, int fixed_len) {')
 	g.writeln('\tif (kind == 1) { return string__plus(string__plus(v3_c_lit("\'", 1), *(string*)p), v3_c_lit("\'", 1)); }')
-	g.writeln('\tif (kind == 2) { return int__str((int)v3_map_signed(p, bytes)); }')
+	g.writeln('\tif (kind == 2) { return v3_i64_zpad(v3_map_signed(p, bytes), 0); }')
 	g.writeln('\tif (kind == 3) { return u64__str(v3_map_unsigned(p, bytes)); }')
 	g.writeln('\tif (kind == 4) { i32 r = bytes == 1 ? (i32)(*(u8*)p) : *(i32*)p; return string__plus(string__plus(v3_c_lit("`", 1), rune__str(r)), v3_c_lit("`", 1)); }')
 	g.writeln('\tif (kind == 5) { if (bytes == (int)sizeof(float)) return f64__str((double)*(float*)p); return f64__str(*(double*)p); }')
