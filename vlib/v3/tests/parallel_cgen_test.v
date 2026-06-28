@@ -9,7 +9,7 @@ const parallel_v3_src = os.join_path(parallel_v3_dir, 'v3.v')
 // build_parallel_v3 builds parallel v3 data for v3 tests.
 fn build_parallel_v3() string {
 	vexe := @VEXE
-	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_cgen_test')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_cgen_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
 		os.execute('${vexe} -d parallel -gc none -path "${parallel_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${parallel_v3_src}')
@@ -246,6 +246,66 @@ fn test_parallel_cgen_generic_optional_method_uses_concrete_optional_abi_in_call
 	assert c_code.contains('Box_int__accept(b, (Optional_int){.ok = true, .value = 8})'), c_code
 	assert !c_code.contains('Box_int__accept(b, (Optional){.ok = true, .value = 7})'), c_code
 	assert !c_code.contains('Box_int__accept(b, (Optional){.ok = true, .value = 8})'), c_code
+}
+
+fn write_parallel_ierror_payload_success_project(name string) string {
+	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(os.join_path(project_dir, 'payloadmod')) or { panic(err) }
+
+	mut main_src := strings.new_builder(128_000)
+	main_src.writeln('module main')
+	main_src.writeln('')
+	main_src.writeln('import payloadmod')
+	main_src.writeln('')
+	for i in 0 .. 1300 {
+		main_src.writeln('fn helper_${i}() int {')
+		main_src.writeln('\treturn ${i}')
+		main_src.writeln('}')
+		main_src.writeln('')
+	}
+	main_src.writeln('fn main() {')
+	main_src.writeln('\tmut total := 0')
+	for i in 0 .. 1300 {
+		main_src.writeln('\ttotal += helper_${i}()')
+	}
+	main_src.writeln('\tpayload := payloadmod.payload() or {')
+	main_src.writeln("\t\tprintln('ERR:' + err.msg() + ':' + int_str(err.code()))")
+	main_src.writeln('\t\treturn')
+	main_src.writeln('\t}')
+	main_src.writeln("\tprintln('OK:' + payload.msg() + ':' + int_str(payload.code()))")
+	main_src.writeln('\tprintln(int_str(total))')
+	main_src.writeln('}')
+	os.write_file(os.join_path(project_dir, 'main.v'), main_src.str()) or { panic(err) }
+
+	os.write_file(os.join_path(project_dir, 'payloadmod', 'payloadmod.v'), 'module payloadmod
+
+pub struct WrappedBuiltinError {
+	Error
+}
+
+pub fn payload() !IError {
+	return WrappedBuiltinError{}
+}
+') or {
+		panic(err)
+	}
+	return os.join_path(project_dir, 'main.v')
+}
+
+fn test_parallel_cgen_worker_preserves_ierror_payload_success_with_builtin_error_embed() {
+	v3_bin := build_parallel_v3()
+	main_path :=
+		write_parallel_ierror_payload_success_project('parallel_ierror_payload_success_${os.getpid()}')
+	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_ierror_payload_success_out_${os.getpid()}')
+	compile := os.execute('VJOBS=2 ${v3_bin} ${main_path} -b c -o ${bin_out}')
+	assert compile.exit_code == 0, compile.output
+	assert compile.output.contains('cgen (parallel)'), compile.output
+	run := os.execute(bin_out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'OK::0\n844350'
+	c_code := os.read_file(bin_out + '.c') or { panic(err) }
+	assert c_code.contains('return (Optional_IError){.ok = true, .value = (IError){._typ ='), c_code
 }
 
 fn write_parallel_top_level_no_main_project(name string) string {

@@ -211,3 +211,68 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
+
+fn test_ierror_direct_bad_signature_falls_back_to_promoted_method() {
+	v3_bin := build_v3()
+
+	root := os.join_path(os.temp_dir(), 'v3_ierror_bad_direct_promoted_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, "struct BaseErr {
+	text string
+}
+
+fn (err BaseErr) msg() string {
+	return err.text
+}
+
+fn (err BaseErr) code() int {
+	return 7
+}
+
+struct WrapErr {
+	BaseErr
+}
+
+fn (err WrapErr) msg(extra int) string {
+	return err.BaseErr.text + ':' + extra.str()
+}
+
+fn (err WrapErr) code(extra int) int {
+	return extra
+}
+
+fn fail() !int {
+	return WrapErr{
+		BaseErr: BaseErr{
+			text: 'embedded'
+		}
+	}
+}
+
+fn main() {
+	fail() or {
+		println(err.msg() + ':' + err.code().str())
+		return
+	}
+	println('bad')
+}
+") or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_ierror_bad_direct_promoted_out_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	c_code := os.read_file('${bin}.c') or { '' }
+	assert c_code.contains('BaseErr__msg(((WrapErr*)i->_object)->BaseErr)'), c_code
+	assert c_code.contains('BaseErr__code(((WrapErr*)i->_object)->BaseErr)'), c_code
+	assert !c_code.contains('return WrapErr__msg(*(WrapErr*)i->_object)'), c_code
+	assert !c_code.contains('return WrapErr__code(*(WrapErr*)i->_object)'), c_code
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'embedded:7'
+}

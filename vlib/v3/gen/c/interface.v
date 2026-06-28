@@ -301,17 +301,45 @@ fn (g &FlatGen) is_ierror_type_name(name string) bool {
 
 fn (g &FlatGen) ierror_direct_method_name(concrete string, method string) ?string {
 	direct := '${concrete}.${method}'
-	if direct in g.tc.fn_param_types {
+	if g.ierror_method_signature_matches(direct, concrete, method) {
 		return direct
 	}
 	qconcrete := g.tc.qualify_name(concrete)
 	if qconcrete != concrete {
 		qdirect := '${qconcrete}.${method}'
-		if qdirect in g.tc.fn_param_types {
+		if g.ierror_method_signature_matches(qdirect, qconcrete, method) {
 			return qdirect
 		}
 	}
 	return none
+}
+
+fn (g &FlatGen) ierror_method_signature_matches(name string, concrete string, method string) bool {
+	params := g.tc.fn_param_types[name] or { return false }
+	if params.len != 1 {
+		return false
+	}
+	ret := g.tc.fn_ret_types[name] or { return false }
+	if !g.ierror_method_return_matches(method, ret) {
+		return false
+	}
+	receiver := g.ierror_clean_type(params[0])
+	expected := g.ierror_clean_type(g.tc.parse_type(concrete))
+	return g.type_names_match(receiver, expected)
+}
+
+fn (g &FlatGen) ierror_method_return_matches(method string, ret types.Type) bool {
+	clean := if ret is types.Alias { ret.base_type } else { ret }
+	return match method {
+		'msg' { clean is types.String }
+		'code' { clean.name() == 'int' }
+		else { false }
+	}
+}
+
+fn (g &FlatGen) ierror_clean_type(typ types.Type) types.Type {
+	clean0 := types.unwrap_pointer(typ)
+	return if clean0 is types.Alias { clean0.base_type } else { clean0 }
 }
 
 struct IErrorMethodCall {
@@ -417,7 +445,20 @@ fn (mut g FlatGen) gen_ierror_from_expr(id flat.NodeId) bool {
 }
 
 fn (mut g FlatGen) ierror_from_expr_string(id flat.NodeId) ?string {
-	actual := g.usable_expr_type(id)
+	node := g.a.nodes[int(id)]
+	mut actual := g.usable_expr_type(id)
+	if node.kind == .ident {
+		if param_type := g.current_param_type(node.value) {
+			actual = param_type
+		} else if param_type := g.cur_param_types[node.value] {
+			actual = param_type
+		}
+	}
+	return g.ierror_from_expr_string_with_type(id, actual)
+}
+
+fn (mut g FlatGen) ierror_from_expr_string_with_type(id flat.NodeId, actual types.Type) ?string {
+	node := g.a.nodes[int(id)]
 	concrete := g.ierror_concrete_name(actual) or { return none }
 	iface := g.ierror_interface_name() or { return none }
 	type_id := g.iface_type_id(iface, concrete)
@@ -427,12 +468,37 @@ fn (mut g FlatGen) ierror_from_expr_string(id flat.NodeId) ?string {
 	expr := g.expr_to_string(id)
 	concrete_ct := g.tc.c_type(g.tc.parse_type(concrete))
 	object := if actual is types.Pointer {
-		expr
+		if g.ierror_pointer_payload_needs_heap_copy(node) {
+			'memdup(${expr}, sizeof(${concrete_ct}))'
+		} else {
+			expr
+		}
 	} else {
 		'memdup((${concrete_ct}[]){${expr}}, sizeof(${concrete_ct}))'
 	}
 	empty_sid := g.intern_string('')
 	return '(IError){._typ = ${type_id}, ._object = ${object}, .message = _str_${empty_sid}, .code = 0}'
+}
+
+fn (g &FlatGen) ierror_pointer_payload_needs_heap_copy(node flat.Node) bool {
+	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
+		return false
+	}
+	child_id := g.a.child(&node, 0)
+	child := g.a.nodes[int(child_id)]
+	if child.kind != .ident {
+		return false
+	}
+	if param_type := g.current_param_type(child.value) {
+		return param_type !is types.Pointer
+	}
+	if param_type := g.cur_param_types[child.value] {
+		return param_type !is types.Pointer
+	}
+	if _ := g.tc.cur_scope.lookup(child.value) {
+		return true
+	}
+	return false
 }
 
 fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type) bool {
@@ -441,6 +507,12 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 		return false
 	}
 	iface := iface_type as types.Interface
+	if g.is_ierror_type_name(iface.name) {
+		if s := g.ierror_from_expr_string(id) {
+			g.write(s)
+			return true
+		}
+	}
 	node := g.a.nodes[int(id)]
 	mut actual := g.usable_expr_type(id)
 	if node.kind == .ident {
