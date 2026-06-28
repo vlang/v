@@ -1062,26 +1062,23 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 	if expr := g.heap_local_address_expr(ret_id, g.cur_fn_ret) {
 		return expr
 	}
-	if expr := g.sum_constructor_call_with_expected_type_string(ret_id, ret_node, g.cur_fn_ret) {
+	if expr := g.sum_constructor_return_expr_string(ret_id, ret_node, g.cur_fn_ret) {
 		return expr
 	}
 	return g.expr_to_string(ret_id)
 }
 
-fn (mut g FlatGen) sum_constructor_call_with_expected_type_string(id flat.NodeId, node flat.Node, expected types.Type) ?string {
-	orig := g.sb
-	orig_line_start := g.line_start
-	g.sb = strings.new_builder(64)
-	g.line_start = false
-	if !g.gen_sum_constructor_call_with_expected_type(id, node, expected) {
-		g.sb = orig
-		g.line_start = orig_line_start
+fn (mut g FlatGen) sum_constructor_return_expr_string(ret_id flat.NodeId, ret_node flat.Node, expected types.Type) ?string {
+	sum_type0 := if expected is types.Alias { expected.base_type } else { expected }
+	if sum_type0 !is types.SumType || ret_node.kind != .call || ret_node.children_count < 2 {
 		return none
 	}
-	result := g.sb.str()
-	g.sb = orig
-	g.line_start = orig_line_start
-	return result
+	sum_type := sum_type0 as types.SumType
+	callee := g.a.child_node(&ret_node, 0)
+	if !g.call_callee_names_sum_base(callee, sum_type.name) {
+		return none
+	}
+	return g.expr_to_string_with_expected_type(ret_id, expected)
 }
 
 fn (g &FlatGen) type_can_return_as_ierror(typ types.Type) bool {

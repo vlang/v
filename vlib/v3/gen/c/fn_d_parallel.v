@@ -186,24 +186,26 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	mut cur_file := ''
 	for i in 0 .. g.a.nodes.len {
 		node := g.a.nodes[i]
-		kind_id := node_kind_id(node)
-		if kind_id == 77 {
-			cur_file = node.value
-			g.tc.cur_file = cur_file
-			cur_module = ''
-			g.tc.cur_module = cur_module
-			continue
-		}
-		if kind_id == 73 {
-			cur_module = node.value
-			g.tc.cur_file = cur_file
-			g.tc.cur_module = cur_module
-			continue
+		match node.kind {
+			.file {
+				cur_file = node.value
+				g.tc.cur_file = cur_file
+				cur_module = ''
+				g.tc.cur_module = cur_module
+				continue
+			}
+			.module_decl {
+				cur_module = node.value
+				g.tc.cur_file = cur_file
+				g.tc.cur_module = cur_module
+				continue
+			}
+			.fn_decl {}
+			else {
+				continue
+			}
 		}
 
-		if kind_id != 61 {
-			continue
-		}
 		if !g.should_emit_fn_node_in_module(node, i, cur_module, cur_file) {
 			continue
 		}
@@ -246,6 +248,9 @@ fn (mut g FlatGen) prepare_parallel_items(items []FlatFnGenItem) {
 		g.tc.cur_file = item.file
 		g.tc.cur_module = item.module
 		g.prepare_parallel_node(item.node_id)
+	}
+	if _ := g.ierror_interface_name() {
+		g.intern_string('')
 	}
 	g.register_interface_strings()
 }
@@ -506,6 +511,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		diagnose_unknown_calls:             g.tc.diagnose_unknown_calls
 		reject_unlowered_map_mutation:      g.tc.reject_unlowered_map_mutation
 		diagnostic_files:                   g.tc.diagnostic_files
+		selected_file_called_fns:           g.tc.selected_file_called_fns
 		cur_fn_ret_type:                    g.tc.cur_fn_ret_type
 		smartcasts:                         g.tc.smartcasts
 		// Read-only map cgen uses to recover substituted signatures for generic-receiver

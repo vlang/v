@@ -159,7 +159,7 @@ fn empty_tree() Tree[int] {
 	return Tree[int](Empty{})
 }
 
-fn defer_tree() Tree[int] {
+fn empty_tree_defer() Tree[int] {
 	defer {
 		_ := 1
 	}
@@ -169,8 +169,8 @@ fn defer_tree() Tree[int] {
 fn main() {
 	tree := empty_tree()
 	assert tree is Empty
-	deferred := defer_tree()
-	assert deferred is Empty
+	tree_defer := empty_tree_defer()
+	assert tree_defer is Empty
 	println("ok")
 }
 ') or {
@@ -189,7 +189,6 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert !c_code.contains('return Tree((Empty){})'), c_code
 	assert !c_code.contains('Tree((Empty){})'), c_code
 	assert c_code.contains('return (Tree_int){'), c_code
 }

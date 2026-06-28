@@ -322,13 +322,16 @@ fn example_gui(path string, timeout_seconds int) ExampleCase {
 
 fn run_unlocked_examples(cfg Config, v3_bin string) {
 	examples := unlocked_examples()
+	mut ran := 0
 	for i, example_case in examples {
-		run_unlocked_example(cfg, v3_bin, example_case, i)
+		if run_unlocked_example(cfg, v3_bin, example_case, i) {
+			ran++
+		}
 	}
-	println('  ${examples.len} real C oracle cases compiled and ran/smoked through V3 C')
+	println('  ${ran}/${examples.len} real C oracle cases compiled and ran/smoked through V3 C')
 }
 
-fn run_unlocked_example(cfg Config, v3_bin string, example_case ExampleCase, index int) {
+fn run_unlocked_example(cfg Config, v3_bin string, example_case ExampleCase, index int) bool {
 	src := os.join_path(cfg.repo_root, example_case.path)
 	bin := temp_path(cfg, 'example_${index}')
 	stdin_path := temp_path(cfg, 'example_${index}_stdin')
@@ -347,10 +350,12 @@ fn run_unlocked_example(cfg Config, v3_bin string, example_case ExampleCase, ind
 		print_command_failure('compile ${example_case.path}', compile_cmd, compile.output)
 	}
 	if example_case.mode == .gui_smoke {
-		run_gui_smoke_example(example_case, bin, stdin_path)
+		ran := run_gui_smoke_example(example_case, bin, stdin_path)
 		cleanup_files([bin, bin + '.c', stdin_path])
-		println('  OK ${example_case.path}')
-		return
+		if ran {
+			println('  OK ${example_case.path}')
+		}
+		return ran
 	}
 	mut run_cmd := q(bin)
 	if example_case.args.len > 0 {
@@ -370,9 +375,10 @@ fn run_unlocked_example(cfg Config, v3_bin string, example_case ExampleCase, ind
 	}
 	cleanup_files([bin, bin + '.c', stdin_path])
 	println('  OK ${example_case.path}')
+	return true
 }
 
-fn run_gui_smoke_example(example_case ExampleCase, bin string, stdin_path string) {
+fn run_gui_smoke_example(example_case ExampleCase, bin string, stdin_path string) bool {
 	if example_case.args.len > 0 || example_case.stdin.len > 0 {
 		cleanup_files([bin, bin + '.c', stdin_path])
 		fail('FAIL: GUI smoke case ${example_case.path} cannot use args/stdin')
@@ -390,7 +396,7 @@ fn run_gui_smoke_example(example_case ExampleCase, bin string, stdin_path string
 		} else {
 			cleanup_files([bin, bin + '.c', stdin_path])
 			println('  SKIP ${example_case.path} (requires `xvfb-run` or an active display)')
-			return
+			return false
 		}
 	}
 	run_cmd := command_with_args(command, args)
@@ -399,6 +405,7 @@ fn run_gui_smoke_example(example_case ExampleCase, bin string, stdin_path string
 		cleanup_files([bin, bin + '.c', stdin_path])
 		print_command_failure('run ${example_case.path}', run_cmd, run_result.output)
 	}
+	return true
 }
 
 fn gui_smoke_run_succeeded(result ProcessRunResult) bool {

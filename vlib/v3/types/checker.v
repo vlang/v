@@ -255,6 +255,7 @@ pub mut:
 	reject_unlowered_map_mutation   bool
 	reject_unsupported_generics     bool
 	diagnostic_files                map[string]bool
+	selected_file_called_fns        map[string]bool
 	cur_fn_ret_type                 Type = Type(void_)
 	smartcasts                      map[string]Type
 	selfhost                        bool
@@ -325,6 +326,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		expr_type_set:                []bool{len: a.nodes.len}
 		checking_nodes:               []bool{len: a.nodes.len}
 		diagnostic_files:             map[string]bool{}
+		selected_file_called_fns:     map[string]bool{}
 		smartcasts:                   map[string]Type{}
 		type_cache:                   &TypeCache{
 			parse_entries:        map[string]Type{}
@@ -1845,6 +1847,7 @@ fn should_cache_expr_type(kind flat.NodeKind, typ Type) bool {
 
 // check_semantics validates check semantics state for types.
 pub fn (mut tc TypeChecker) check_semantics() {
+	tc.collect_selected_file_called_fns()
 	tc.check_export_attrs()
 	tc.cur_module = ''
 	tc.cur_file = ''
@@ -1911,6 +1914,234 @@ pub fn (mut tc TypeChecker) check_semantics() {
 
 		_ = i
 	}
+}
+
+fn (mut tc TypeChecker) collect_selected_file_called_fns() {
+	tc.selected_file_called_fns = map[string]bool{}
+	if tc.diagnostic_files.len == 0 {
+		return
+	}
+	saved_file := tc.cur_file
+	saved_module := tc.cur_module
+	saved_scope := tc.cur_scope
+	saved_scope_pool_index := tc.scope_pool_index
+	tc.cur_file = ''
+	tc.cur_module = ''
+	tc.cur_scope = tc.file_scope
+	for i, node in tc.a.nodes {
+		match node.kind {
+			.file {
+				tc.enter_file(node.value)
+				if i >= tc.a.user_code_start && tc.diagnostic_files[tc.cur_file] {
+					tc.collect_selected_file_top_level_called_fns(node)
+				}
+			}
+			.module_decl {
+				tc.enter_module(node.value)
+			}
+			.fn_decl {
+				if i < tc.a.user_code_start || !tc.diagnostic_files[tc.cur_file] {
+					continue
+				}
+				tc.collect_selected_file_fn_body_called_fns(node)
+			}
+			else {}
+		}
+	}
+	tc.cur_file = saved_file
+	tc.cur_module = saved_module
+	tc.cur_scope = saved_scope
+	tc.scope_pool_index = saved_scope_pool_index
+}
+
+fn (mut tc TypeChecker) collect_selected_file_top_level_called_fns(node flat.Node) {
+	tc.push_scope()
+	for i in 0 .. node.children_count {
+		child_id := tc.a.child(&node, i)
+		child := tc.a.nodes[int(child_id)]
+		match child.kind {
+			.fn_decl, .struct_decl, .type_decl, .interface_decl, .enum_decl, .c_fn_decl,
+			.import_decl, .module_decl, .directive {
+				continue
+			}
+			else {
+				tc.collect_selected_file_node_called_fns(child_id)
+			}
+		}
+	}
+	tc.pop_scope()
+}
+
+fn (mut tc TypeChecker) collect_selected_file_fn_body_called_fns(node flat.Node) {
+	tc.push_scope()
+	for i in 0 .. node.children_count {
+		child := tc.a.child_node(&node, i)
+		if child.kind == .param && child.value.len > 0 {
+			tc.cur_scope.insert(child.value, tc.parse_type(child.typ))
+		}
+	}
+	for i in 0 .. node.children_count {
+		child_id := tc.a.child(&node, i)
+		child := tc.a.nodes[int(child_id)]
+		if child.kind != .param {
+			tc.collect_selected_file_node_called_fns(child_id)
+		}
+	}
+	tc.pop_scope()
+}
+
+fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.block {
+			tc.push_scope()
+			for i in 0 .. node.children_count {
+				tc.collect_selected_file_node_called_fns(tc.a.child(&node, i))
+			}
+			tc.pop_scope()
+			return
+		}
+		.decl_assign {
+			tc.collect_selected_file_decl_assign_called_fns(node)
+			return
+		}
+		.call {
+			if name := tc.selected_file_call_name(node) {
+				tc.selected_file_called_fns[name] = true
+			}
+		}
+		else {}
+	}
+
+	for i in 0 .. node.children_count {
+		tc.collect_selected_file_node_called_fns(tc.a.child(&node, i))
+	}
+}
+
+fn (mut tc TypeChecker) collect_selected_file_decl_assign_called_fns(node flat.Node) {
+	mut i := 0
+	for i + 1 < node.children_count {
+		lhs_id := tc.a.child(&node, i)
+		rhs_id := tc.a.child(&node, i + 1)
+		tc.collect_selected_file_node_called_fns(rhs_id)
+		tc.insert_selected_file_decl_binding(lhs_id, rhs_id, node)
+		i += 2
+	}
+}
+
+fn (mut tc TypeChecker) insert_selected_file_decl_binding(lhs_id flat.NodeId, rhs_id flat.NodeId, node flat.Node) {
+	if int(lhs_id) < 0 || int(lhs_id) >= tc.a.nodes.len {
+		return
+	}
+	lhs := tc.a.nodes[int(lhs_id)]
+	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+		return
+	}
+	mut typ := if node.children_count == 2 && node.typ.len > 0 {
+		tc.parse_type(node.typ)
+	} else {
+		tc.decl_assign_inferred_type(rhs_id)
+	}
+	if typ is MultiReturn || typ is Void || typ is Unknown {
+		return
+	}
+	tc.cur_scope.insert(lhs.value, typ)
+}
+
+fn (tc &TypeChecker) selected_file_call_name(node flat.Node) ?string {
+	if node.children_count == 0 {
+		return none
+	}
+	fn_node := tc.a.child_node(&node, 0)
+	if fn_node.kind == .index && fn_node.children_count > 0 {
+		return tc.selected_file_call_base_name(tc.a.child_node(fn_node, 0))
+	}
+	return tc.selected_file_call_base_name(fn_node)
+}
+
+fn (tc &TypeChecker) selected_file_call_base_name(fn_node flat.Node) ?string {
+	match fn_node.kind {
+		.ident {
+			qfn := tc.qualify_fn_name(fn_node.value)
+			if tc.fn_signature_known(qfn) {
+				return qfn
+			}
+			if imported_name := tc.resolve_selective_import_symbol(fn_node.value) {
+				return imported_name
+			}
+			if tc.fn_signature_known(fn_node.value) {
+				return fn_node.value
+			}
+		}
+		.selector {
+			if fn_node.children_count == 0 {
+				return none
+			}
+			base_id := tc.a.child(&fn_node, 0)
+			base_node := tc.a.nodes[int(base_id)]
+			if base_node.kind == .ident {
+				if _ := tc.cur_scope.lookup(base_node.value) {
+					if name := tc.selected_file_receiver_method_name(base_id, fn_node.value) {
+						return name
+					}
+					return none
+				}
+				if resolved_mod := tc.resolve_import_alias(base_node.value) {
+					mod_name := '${resolved_mod}.${fn_node.value}'
+					if tc.fn_signature_known(mod_name) {
+						return mod_name
+					}
+				}
+				if base_node.value == tc.cur_module {
+					mod_name := '${tc.cur_module}.${fn_node.value}'
+					if tc.fn_signature_known(mod_name) {
+						return mod_name
+					}
+				}
+			}
+			if name := tc.selected_file_receiver_method_name(base_id, fn_node.value) {
+				return name
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, method string) ?string {
+	if method.len == 0 {
+		return none
+	}
+	base_type := tc.resolve_type(base_id)
+	clean := unwrap_pointer(base_type)
+	type_name := resolve_type_name_for_method(clean)
+	if type_name.len == 0 {
+		return none
+	}
+	for method_name in receiver_method_name_candidates(clean, method, tc.cur_module) {
+		if !tc.fn_signature_known(method_name) {
+			continue
+		}
+		if !tc.method_can_be_called_on_receiver(base_type, method, method_name) {
+			continue
+		}
+		return method_name
+	}
+	if info := tc.embedded_method_call_info(type_name, method) {
+		if info.name.len > 0 {
+			return info.name
+		}
+	}
+	if info := tc.resolve_generic_struct_method(type_name, method) {
+		if info.name.len > 0 {
+			return info.name
+		}
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) check_export_attrs() {
@@ -4212,8 +4443,10 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	tc.check_node(child_id)
 	if expected is ResultType {
 		if bad_type := tc.invalid_ierror_return_expr_type_name(child_id, expected) {
-			tc.record_error_unfiltered(.return_mismatch,
-				'cannot return `${bad_type}` as `${Type(expected).name()}`', id)
+			if tc.should_diagnose_invalid_ierror_return(id) {
+				tc.record_error_unfiltered(.return_mismatch,
+					'cannot return `${bad_type}` as `${Type(expected).name()}`', id)
+			}
 			return
 		}
 	}
@@ -4234,6 +4467,20 @@ fn (tc &TypeChecker) return_type_compatible(actual Type, expected Type) bool {
 		}
 	}
 	return tc.type_compatible(actual, expected)
+}
+
+fn (tc &TypeChecker) should_diagnose_invalid_ierror_return(id flat.NodeId) bool {
+	if tc.should_diagnose(id) {
+		return true
+	}
+	if tc.cur_fn_node_id < 0 || tc.cur_fn_node_id >= tc.a.nodes.len {
+		return false
+	}
+	fn_node := tc.a.nodes[tc.cur_fn_node_id]
+	if fn_node.kind != .fn_decl || fn_node.value.len == 0 {
+		return false
+	}
+	return checker_qualified_fn_name(tc.cur_module, fn_node.value) in tc.selected_file_called_fns
 }
 
 fn contextual_payload_type(typ Type) ?Type {

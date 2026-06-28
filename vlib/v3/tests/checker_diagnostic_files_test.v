@@ -49,6 +49,10 @@ const invalid_ierror_return_project = {
 
 pub struct NotError {}
 
+pub fn ok() int {
+	return 1
+}
+
 pub fn fail() !int {
 	return NotError{}
 }
@@ -58,7 +62,139 @@ pub fn fail() !int {
 import bad
 
 fn main() {
-	_ := 1
+	_ := bad.ok()
+}
+	'
+}
+
+const called_invalid_ierror_return_project = {
+	'bad/bad.v': 'module bad
+
+pub struct NotError {}
+
+pub fn fail() !int {
+	return NotError{}
+}
+'
+	'main.v':    'module main
+
+import bad
+
+fn main() {
+	_ := bad.fail() or { 0 }
+}
+'
+}
+
+const called_invalid_ierror_method_return_project = {
+	'bad/bad.v': 'module bad
+
+pub struct NotError {}
+
+pub struct Worker {}
+
+pub fn make() Worker {
+	return Worker{}
+}
+
+pub fn (w Worker) fail() !int {
+	return NotError{}
+}
+'
+	'main.v':    'module main
+
+import bad
+
+fn main() {
+	_ := bad.make().fail() or { 0 }
+}
+'
+}
+
+const called_invalid_ierror_local_method_return_project = {
+	'bad/bad.v': 'module bad
+
+pub struct NotError {}
+
+pub struct Worker {}
+
+pub fn make() Worker {
+	return Worker{}
+}
+
+pub fn (w Worker) fail() !int {
+	return NotError{}
+}
+'
+	'main.v':    'module main
+
+import bad
+
+fn main() {
+	b := bad.make()
+	_ := b.fail() or { 0 }
+}
+'
+}
+
+const uncalled_invalid_ierror_local_method_return_project = {
+	'bad/bad.v': 'module bad
+
+pub struct NotError {}
+
+pub struct Worker {}
+
+pub struct Good {}
+
+pub fn make_good() Good {
+	return Good{}
+}
+
+pub fn (w Worker) fail() !int {
+	return NotError{}
+}
+
+pub fn (g Good) fail() int {
+	return 1
+}
+'
+	'main.v':    'module main
+
+import bad
+
+fn main() {
+	b := bad.make_good()
+	_ := b.fail()
+}
+'
+}
+
+const local_receiver_shadows_import_alias_project = {
+	'bad/bad.v': 'module bad
+
+pub struct NotError {}
+
+pub struct Good {}
+
+pub fn fail() !int {
+	return NotError{}
+}
+
+pub fn make_good() Good {
+	return Good{}
+}
+
+pub fn (g Good) fail() int {
+	return 1
+}
+'
+	'main.v':    'module main
+
+import bad
+
+fn main() {
+	bad := bad.make_good()
+	_ := bad.fail()
 }
 '
 }
@@ -74,4 +210,43 @@ fn test_invalid_ierror_result_return_respects_diagnostic_files() {
 	main_errors := check_diagnostic_project('ierror_return_filtered',
 		invalid_ierror_return_project, ['main.v'])
 	assert main_errors.len == 0, main_errors.str()
+}
+
+fn test_selected_file_calling_invalid_ierror_result_return_reports_dependency_error() {
+	main_errors := check_diagnostic_project('ierror_return_called_from_main',
+		called_invalid_ierror_return_project, ['main.v'])
+	assert main_errors.len == 1, main_errors.str()
+	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('bad.NotError')
+	assert main_errors[0].msg.contains('as `int`')
+}
+
+fn test_selected_file_calling_invalid_ierror_local_method_return_reports_dependency_error() {
+	main_errors := check_diagnostic_project('ierror_local_method_return_called_from_main',
+		called_invalid_ierror_local_method_return_project, ['main.v'])
+	assert main_errors.len == 1, main_errors.str()
+	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('bad.NotError')
+	assert main_errors[0].msg.contains('as `int`')
+}
+
+fn test_selected_file_local_receiver_different_method_receiver_stays_filtered() {
+	main_errors := check_diagnostic_project('ierror_local_method_return_not_called_from_main',
+		uncalled_invalid_ierror_local_method_return_project, ['main.v'])
+	assert main_errors.len == 0, main_errors.str()
+}
+
+fn test_selected_file_local_receiver_shadows_import_alias() {
+	main_errors := check_diagnostic_project('ierror_import_alias_shadowed_by_local_receiver',
+		local_receiver_shadows_import_alias_project, ['main.v'])
+	assert main_errors.len == 0, main_errors.str()
+}
+
+fn test_selected_file_calling_invalid_ierror_method_return_reports_dependency_error() {
+	main_errors := check_diagnostic_project('ierror_method_return_called_from_main',
+		called_invalid_ierror_method_return_project, ['main.v'])
+	assert main_errors.len == 1, main_errors.str()
+	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('bad.NotError')
+	assert main_errors[0].msg.contains('as `int`')
 }
