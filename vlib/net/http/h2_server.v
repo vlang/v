@@ -22,17 +22,147 @@ const h2_server_default_window = u32(65535)
 // rejected with RST_STREAM(REFUSED_STREAM).
 const h2_server_max_request_body = 8 * 1024 * 1024
 
+// The connection-specific header fields RFC 9113 §8.2.2 forbids in HTTP/2 (a
+// request carrying one is malformed; the server must never echo one in a
+// response) are the module-level `h2_conn_specific_headers` const defined in
+// h2_mux_conn.v — shared with the client path rather than redefined here.
+
+// h2_all_digits reports whether s is a non-empty run of ASCII digits. A value
+// that parses with `.int()` is NOT proof of a valid number — `'12x'.int()` is 12
+// — so wire-derived numerics (content-length) must be charset-checked first.
+fn h2_all_digits(s string) bool {
+	if s.len == 0 {
+		return false
+	}
+	for ch in s {
+		if ch < `0` || ch > `9` {
+			return false
+		}
+	}
+	return true
+}
+
+// h2_field_value_has_forbidden_octet reports whether a field value contains an
+// octet RFC 9113 §8.2.1 forbids: NUL (0x00), LF (0x0a), or CR (0x0d). Such a
+// value makes the request malformed and, if the request were forwarded to an
+// HTTP/1.x peer, would be a header-injection / request-smuggling vector.
+fn h2_field_value_has_forbidden_octet(value string) bool {
+	for ch in value {
+		if ch == 0 || ch == 0x0a || ch == 0x0d {
+			return true
+		}
+	}
+	return false
+}
+
+// h2_request_field_error returns a non-empty reason when a regular (non-pseudo)
+// request header field is malformed per RFC 9113 §8.2: names must be lowercase
+// and non-empty, values must not contain NUL/CR/LF, connection-specific fields
+// are forbidden, and TE may only carry the value "trailers". An empty return
+// means the field is valid.
+fn h2_request_field_error(name string, value string) string {
+	if name.len == 0 {
+		return 'empty header field name'
+	}
+	if name != name.to_lower() {
+		return 'uppercase header field name "${name}"'
+	}
+	if h2_field_value_has_forbidden_octet(value) {
+		return 'forbidden NUL/CR/LF octet in value of "${name}"'
+	}
+	if name in h2_conn_specific_headers {
+		return 'connection-specific header field "${name}"'
+	}
+	if name == 'te' && value.trim_space().to_lower() != 'trailers' {
+		return 'TE header field with a value other than "trailers"'
+	}
+	return ''
+}
+
+// h2_validate_request_pseudo enforces the RFC 9113 §8.1.2/§8.3 rules a request
+// header list must satisfy: only the request pseudo-headers, each at most once,
+// all appearing before any regular field, with :method, :path and :scheme
+// present; every regular field must pass h2_request_field_error. A non-ok return
+// means the request is malformed (a stream error at the call site).
+fn h2_validate_request_pseudo(headers []H2HeaderField) ! {
+	mut seen_regular := false
+	mut has_method := false
+	mut has_path := false
+	mut has_scheme := false
+	mut has_authority := false
+	for f in headers {
+		if f.name.starts_with(':') {
+			if seen_regular {
+				return error('pseudo-header "${f.name}" after a regular field')
+			}
+			if h2_field_value_has_forbidden_octet(f.value) {
+				return error('forbidden NUL/CR/LF octet in pseudo-header "${f.name}"')
+			}
+			match f.name {
+				':method' {
+					if has_method {
+						return error('duplicate :method pseudo-header')
+					}
+					if f.value == '' {
+						return error('empty :method pseudo-header')
+					}
+					has_method = true
+				}
+				':path' {
+					if has_path {
+						return error('duplicate :path pseudo-header')
+					}
+					// RFC 9113 §8.3.1: :path must not be empty for http/https.
+					if f.value == '' {
+						return error('empty :path pseudo-header')
+					}
+					has_path = true
+				}
+				':scheme' {
+					if has_scheme {
+						return error('duplicate :scheme pseudo-header')
+					}
+					if f.value == '' {
+						return error('empty :scheme pseudo-header')
+					}
+					has_scheme = true
+				}
+				':authority' {
+					if has_authority {
+						return error('duplicate :authority pseudo-header')
+					}
+					has_authority = true
+				}
+				else {
+					return error('unknown request pseudo-header "${f.name}"')
+				}
+			}
+		} else {
+			seen_regular = true
+			reason := h2_request_field_error(f.name, f.value)
+			if reason != '' {
+				return error(reason)
+			}
+		}
+	}
+	if !has_method || !has_path || !has_scheme {
+		return error('request omits a mandatory pseudo-header (:method/:path/:scheme)')
+	}
+}
+
 // H2ServerStream holds the state of one in-flight server-side stream.
 struct H2ServerStream {
 mut:
-	id           u32
-	hpack_block  []u8 // assembled HEADERS + CONTINUATION fragments
-	headers      []H2HeaderField
-	body         []u8
-	end_headers  bool
-	end_stream   bool
-	headers_done bool // set once we've decoded the HPACK block
-	send_window  i64
+	id            u32
+	hpack_block   []u8 // assembled HEADERS + CONTINUATION fragments
+	headers       []H2HeaderField
+	body          []u8
+	end_headers   bool
+	end_stream    bool
+	headers_done  bool // set once we've decoded the HPACK block
+	send_window   i64
+	trailer_block []u8 // assembled trailer HEADERS + CONTINUATION fragments
+	in_trailers   bool // set once a trailer section (a 2nd HEADERS block) begins
 }
 
 // H2ServerConn drives one server-side HTTP/2 connection over a transport.
@@ -264,6 +394,12 @@ fn (mut c H2ServerConn) apply_settings(settings []H2Setting) ! {
 }
 
 fn (mut c H2ServerConn) on_headers(frame H2HeadersFrame, mut handler Handler) ! {
+	// A HEADERS block for a stream that is already open is a trailer section
+	// (RFC 9113 §8.1), not a new request.
+	if mut existing := c.streams[frame.stream_id] {
+		c.on_trailers(mut existing, frame, mut handler)!
+		return
+	}
 	// Stream ids from the client must be odd and strictly increasing.
 	if frame.stream_id & 1 == 0 || frame.stream_id <= c.last_stream_id {
 		return error('h2 server: invalid client stream id ${frame.stream_id}')
@@ -288,6 +424,17 @@ fn (mut c H2ServerConn) on_continuation(frame H2ContinuationFrame, mut handler H
 	mut s := c.streams[frame.stream_id] or {
 		return error('h2 server: CONTINUATION for unknown stream ${frame.stream_id}')
 	}
+	if s.in_trailers {
+		if s.trailer_block.len + frame.fragment.len > h2_max_recv_header_block {
+			return error('h2 server: trailer block exceeds ${h2_max_recv_header_block} bytes')
+		}
+		s.trailer_block << frame.fragment
+		if frame.end_headers {
+			c.awaiting_cont = 0
+			c.finalize_trailers(mut s, mut handler)!
+		}
+		return
+	}
 	if s.hpack_block.len + frame.fragment.len > h2_max_recv_header_block {
 		return error('h2 server: request header block exceeds ${h2_max_recv_header_block} bytes')
 	}
@@ -300,15 +447,79 @@ fn (mut c H2ServerConn) on_continuation(frame H2ContinuationFrame, mut handler H
 }
 
 fn (mut c H2ServerConn) finalize_headers(mut s H2ServerStream, mut handler Handler) ! {
+	// An HPACK decoding failure is a CONNECTION error (RFC 9113 §4.3): the decoder
+	// mutates the dynamic table as it runs, so a failure leaves our table out of
+	// sync with the peer and no later header block on this connection can be decoded
+	// reliably. Close the connection with COMPRESSION_ERROR rather than RST-ing one
+	// stream. (send_goaway sets c.closing, so serve()'s catch won't re-GOAWAY.)
 	s.headers = c.decoder.decode(s.hpack_block) or {
-		c.send_rst_stream(s.id, .compression_error)!
+		c.send_goaway(.compression_error, 'HPACK decode error') or {}
+		return error('h2 server: HPACK decode error (COMPRESSION_ERROR)')
+	}
+	s.headers_done = true
+	// A well-decoded but malformed request is a STREAM error (RFC 9113 §8.1.1) —
+	// reset just this stream and keep the connection alive.
+	h2_validate_request_pseudo(s.headers) or {
+		c.send_rst_stream(s.id, .protocol_error)!
 		c.streams.delete(s.id)
 		return
 	}
-	s.headers_done = true
 	if s.end_stream {
 		c.run_request(mut s, mut handler)!
 	}
+}
+
+// on_trailers handles a second HEADERS block on an already-open stream: an
+// HTTP/2 trailer section (RFC 9113 §8.1). The block is always assembled and
+// decoded; whether it is well-formed — it must carry END_STREAM and no
+// pseudo-headers — is decided in finalize_trailers. A well-decoded but malformed
+// trailer section is reset as a stream error; an HPACK decode failure is a
+// connection error (§4.3) since it desyncs the decoder.
+fn (mut c H2ServerConn) on_trailers(mut s H2ServerStream, frame H2HeadersFrame, mut handler Handler) ! {
+	s.in_trailers = true
+	s.end_stream = frame.end_stream
+	s.trailer_block << frame.fragment
+	if !frame.end_headers {
+		c.awaiting_cont = frame.stream_id
+		return
+	}
+	c.finalize_trailers(mut s, mut handler)!
+}
+
+fn (mut c H2ServerConn) finalize_trailers(mut s H2ServerStream, mut handler Handler) ! {
+	// An HPACK decoding failure is a CONNECTION error (RFC 9113 §4.3): the decoder's
+	// dynamic table is now out of sync with the peer. Close the connection rather
+	// than RST one stream.
+	trailers := c.decoder.decode(s.trailer_block) or {
+		c.send_goaway(.compression_error, 'HPACK decode error in trailers') or {}
+		return error('h2 server: HPACK decode error in trailers (COMPRESSION_ERROR)')
+	}
+	// A well-decoded but malformed trailer section is a STREAM error (§8.1.1).
+	mut reason := if !s.end_stream {
+		// A trailer section MUST terminate the stream (RFC 9113 §8.1).
+		'trailing HEADERS without END_STREAM'
+	} else {
+		''
+	}
+	if reason == '' {
+		for f in trailers {
+			// Trailers carry no pseudo-headers and follow the §8.2 field rules.
+			reason = if f.name.starts_with(':') {
+				'pseudo-header "${f.name}" in trailers'
+			} else {
+				h2_request_field_error(f.name, f.value)
+			}
+			if reason != '' {
+				break
+			}
+		}
+	}
+	if reason != '' {
+		c.send_rst_stream(s.id, .protocol_error)!
+		c.streams.delete(s.id)
+		return
+	}
+	c.run_request(mut s, mut handler)!
 }
 
 fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
@@ -366,10 +577,12 @@ fn (mut c H2ServerConn) build_request(s &H2ServerStream) !Request {
 		version: .v2_0
 		header:  new_header()
 	}
+	// Pseudo-headers were already validated in h2_validate_request_pseudo
+	// (presence, no duplicates, ordering, allowed set); here we only extract.
 	mut method := ''
 	mut path := ''
 	mut authority := ''
-	mut scheme := 'https'
+	mut content_length := -1
 	for f in s.headers {
 		match f.name {
 			':method' {
@@ -382,18 +595,34 @@ fn (mut c H2ServerConn) build_request(s &H2ServerStream) !Request {
 				authority = f.value
 			}
 			':scheme' {
-				scheme = f.value
+				// Validated already; handlers infer the scheme from Host, matching
+				// the HTTP/1.1 path.
 			}
 			else {
 				if f.name.starts_with(':') {
-					return error('h2 server: unknown pseudo-header ${f.name}')
+					continue
+				}
+				if f.name == 'content-length' {
+					if !h2_all_digits(f.value) {
+						return error('h2 server: malformed content-length "${f.value}"')
+					}
+					cl := f.value.int()
+					// Multiple content-length fields with differing values are a
+					// malformed request (RFC 9110 §8.6); validate every occurrence,
+					// not just the last.
+					if content_length >= 0 && content_length != cl {
+						return error('h2 server: conflicting content-length values ${content_length} and ${cl}')
+					}
+					content_length = cl
 				}
 				req.header.add_custom(f.name, f.value) or {}
 			}
 		}
 	}
-	if method == '' || path == '' {
-		return error('h2 server: missing :method or :path')
+	// RFC 9113 §8.1.2.6: a declared content-length MUST equal the sum of the DATA
+	// payload lengths; a mismatch is a malformed request (stream error).
+	if content_length >= 0 && content_length != s.body.len {
+		return error('h2 server: content-length ${content_length} != DATA length ${s.body.len}')
 	}
 	req.method = method_from_str(method)
 	if authority != '' && !req.header.contains(.host) {
@@ -401,7 +630,6 @@ fn (mut c H2ServerConn) build_request(s &H2ServerStream) !Request {
 	}
 	// Match the HTTP/1.1 path: req.url is the request-target (the :path
 	// pseudo-header), so handlers see the same shape on both transports.
-	_ = scheme // :scheme is parsed and discarded; handlers infer it from Host
 	req.url = path
 	req.data = s.body.bytestr()
 	req.host = authority
@@ -413,8 +641,8 @@ fn (mut c H2ServerConn) send_response(stream_id u32, resp Response) ! {
 	mut fields := [H2HeaderField{':status', status.str()}]
 	for key in resp.header.keys() {
 		lkey := key.to_lower()
-		// Drop hop-by-hop headers; HTTP/2 forbids them (RFC 7540 §8.1.2.2).
-		if lkey in ['connection', 'keep-alive', 'transfer-encoding', 'upgrade', 'proxy-connection'] {
+		// Drop hop-by-hop headers; HTTP/2 forbids them (RFC 9113 §8.2.2).
+		if lkey in h2_conn_specific_headers {
 			continue
 		}
 		for val in resp.header.custom_values(key) {
