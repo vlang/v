@@ -693,7 +693,7 @@ fn (g &FlatGen) visit_startup_module(mod string, startup_modules map[string]bool
 	}
 	visiting[mod] = true
 	for dep in g.module_imports[mod] or { []string{} } {
-		dep_module := startup_module_key(dep)
+		dep_module := g.startup_dependency_module(dep, startup_modules)
 		g.visit_startup_module(dep_module, startup_modules, mut visiting, mut visited, mut result)
 	}
 	visiting.delete(mod)
@@ -701,6 +701,17 @@ fn (g &FlatGen) visit_startup_module(mod string, startup_modules map[string]bool
 	if mod in startup_modules {
 		result << mod
 	}
+}
+
+fn (g &FlatGen) startup_dependency_module(dep string, startup_modules map[string]bool) string {
+	if dep in startup_modules || dep in g.module_imports {
+		return dep
+	}
+	short := startup_module_key(dep)
+	if short in startup_modules || short in g.module_imports {
+		return short
+	}
+	return dep
 }
 
 fn (mut g FlatGen) emit_runtime_inits_for_module(mod string, mut emitted_const []bool, mut emitted_runtime []bool) {

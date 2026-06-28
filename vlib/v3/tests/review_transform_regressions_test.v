@@ -215,9 +215,10 @@ fn test_array_last_index_uses_semantic_element_comparison() {
 fn test_hierarchical_import_runtime_inits_before_importer_init() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'hierarchical_runtime_init_order', {
-		'main.v':            'module main\n\nimport foo.user\n\nfn main() {\n\tprintln(int_str(user.value()))\n}\n'
+		'main.v':            'module main\n\nimport foo.user\nimport bar as shortbar\n\nfn main() {\n\t_ := shortbar.value()\n\tprintln(int_str(user.value()))\n}\n'
 		'foo/user/user.v':   'module user\n\nimport foo.bar as foobar\n\n__global seen int\n\nfn init() {\n\tseen = foobar.value() + 1\n}\n\npub fn value() int {\n\treturn seen\n}\n'
 		'foo/bar/bar.v':     'module bar\n\n__global flag = make_flag()\n\nfn make_flag() int {\n\treturn 40\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+		'bar/bar.v':         'module bar\n\n__global flag = make_flag()\n\nfn make_flag() int {\n\treturn 3\n}\n\npub fn value() int {\n\treturn flag\n}\n'
 		'unrelated/other.v': 'module other\n\npub fn value() int {\n\treturn 0\n}\n'
 	}, 'main.v')
 	assert out == '41'
