@@ -21,7 +21,7 @@ pub const path_devnull = r'\\.\nul'
 fn C.CreateSymbolicLinkW(&u16, &u16, u32) i32
 
 // See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createhardlinkw
-fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) i32
+fn C.CreateHardLinkW(&u16, &u16, &C.SECURITY_ATTRIBUTES) i32
 
 // See https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getshortpathnamew
 fn C.GetShortPathNameW(&u16, &u16, u32) u32
