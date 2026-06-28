@@ -187,8 +187,10 @@ mut:
 // RFC 9113 §5.1 frame-acceptance rules. An open or half-closed stream is kept
 // in c.streams until its response is sent, so:
 //   - active: present in c.streams (open / half-closed local)
-//   - idle:   never opened (id higher than any stream we have accepted)
-//   - closed: opened earlier and already finished or reset (id <= last_stream_id)
+//   - idle:   never opened — an odd id above any we have accepted, OR any even
+//             (server-initiated) id, since this server never opens push streams
+//   - closed: a client (odd) id at or below the highest we have accepted that is
+//             no longer in the map (already finished or reset)
 enum H2StreamState {
 	active
 	idle
@@ -196,16 +198,20 @@ enum H2StreamState {
 }
 
 // classify_stream maps a stream id to its §5.1 state from the server's side.
-// id 0 (the connection control stream) is never a request stream; callers that
-// can receive it (WINDOW_UPDATE) handle id 0 before calling this.
+// `last_stream_id` tracks only client-initiated (odd) ids, so "closed" applies
+// ONLY to an odd id <= last_stream_id; an even id was never opened by this
+// server (it initiates no streams) and is therefore idle, not closed — a frame
+// on it is a connection PROTOCOL_ERROR, not STREAM_CLOSED. id 0 (the connection
+// control stream) is never a request stream; callers that can receive it
+// (WINDOW_UPDATE) handle id 0 before calling this.
 fn (c &H2ServerConn) classify_stream(stream_id u32) H2StreamState {
 	if stream_id in c.streams {
 		return .active
 	}
-	if stream_id > c.last_stream_id {
-		return .idle
+	if stream_id & 1 == 1 && stream_id <= c.last_stream_id {
+		return .closed
 	}
-	return .closed
+	return .idle
 }
 
 // serve_h2_conn drives a single HTTP/2 server-side connection until the

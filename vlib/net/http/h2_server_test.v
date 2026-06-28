@@ -810,3 +810,30 @@ fn test_h2_server_refuses_stream_over_concurrency_limit() {
 	}
 	assert code == i64(u32(H2ErrorCode.refused_stream)), 'over-limit stream: expected RST_STREAM(REFUSED_STREAM) on stream 3, got ${code}'
 }
+
+// RFC 9113 §5.1: an even (server-initiated) stream id is never opened by this
+// server — it is idle, NOT closed, even after the client has opened a higher odd
+// stream. A DATA frame on it must be a connection error PROTOCOL_ERROR, not a
+// STREAM_CLOSED stream error. Regression for the last_stream_id-parity miss
+// (Codex, #27589 discussion_r3488271404).
+fn test_h2_server_data_on_even_stream_is_connection_error() {
+	mut enc := H2HpackEncoder{}
+	mut out := preface_and_settings()
+	// Client opens odd stream 3 (served, advancing last_stream_id to 3)...
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   3
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// ...then sends DATA on even stream 2, which is below last_stream_id but was
+	// never opened (even ids are server-initiated). It is idle, so -> conn error.
+	out << H2Frame(H2DataFrame{
+		stream_id:  2
+		data:       'x'.bytes()
+		end_stream: true
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_goaway_or_close(mut client_end, out, 'DATA on even idle stream')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'DATA on even idle stream: expected GOAWAY(PROTOCOL_ERROR), got ${code}'
+}
