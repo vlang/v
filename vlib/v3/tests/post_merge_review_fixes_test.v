@@ -329,3 +329,10 @@ fn test_zero_padded_interpolation_preserves_wide_integers() {
 		"fn main() {\n\tbig := i64(5000000000)\n\tubig := u64(18446744073709551615)\n\tsmall := u64(42)\n\tprintln('\${big:012d}')\n\tprintln('\${ubig:020d}')\n\tprintln('\${small:08d}')\n}\n")
 	assert out == '005000000000\n18446744073709551615\n00000042'
 }
+
+fn test_formatted_interpolation_rune_and_long_float() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'formatted_interpolation_rune_and_long_float',
+		"fn main() {\n\tr := '\${rune(0x20ac):c}'\n\tprintln(int_str(r.len))\n\tprintln(int_str(int(r[0])) + ',' + int_str(int(r[1])) + ',' + int_str(int(r[2])))\n\tlong := '\${1.0:.200f}'\n\tprintln(int_str(long.len))\n\tprintln(int_str(int(long[0])) + ',' + int_str(int(long[1])) + ',' + int_str(int(long[2])) + ',' + int_str(int(long[long.len - 1])))\n}\n")
+	assert out == '3\n226,130,172\n202\n49,46,48,48'
+}
