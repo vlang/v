@@ -7183,7 +7183,7 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 			'|' { l | r }
 			'^' { l ^ r }
 			'&' { l & r }
-			'<<' { l << r }
+			'<<' { int(u64(l) << r) }
 			'>>' { l >> r }
 			else { int(u64(l) >> r) }
 		}
@@ -7264,7 +7264,7 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, seen []string) ?int {
 					if right < 0 || right >= 64 {
 						return none
 					}
-					return left << right
+					return int(u64(left) << right)
 				}
 				.right_shift {
 					if right < 0 || right >= 64 {

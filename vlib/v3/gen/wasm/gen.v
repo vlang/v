@@ -1770,7 +1770,7 @@ fn (g &Gen) fold_const_infix(n flat.Node) i64 {
 			a ^ b
 		}
 		.left_shift {
-			a << b
+			i64(u64(a) << b)
 		}
 		.right_shift {
 			if unsigned {
