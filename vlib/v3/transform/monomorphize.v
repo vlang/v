@@ -2772,7 +2772,14 @@ fn (t &Transformer) subst_node_value(node flat.Node, args []string) string {
 }
 
 fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) string {
-	clean := comptime_condition_strip_outer_parens(cond)
+	clean := cond.trim_space()
+	if clean.starts_with('(') {
+		end := comptime_condition_matching_paren(clean, 0)
+		if end == clean.len - 1 {
+			inner := t.subst_comptime_type_condition(clean[1..clean.len - 1], args)
+			return '(${inner})'
+		}
+	}
 	or_idx := comptime_condition_top_level_index(clean, '||')
 	if or_idx >= 0 {
 		left := t.subst_comptime_type_condition(clean[..or_idx], args)

@@ -1913,6 +1913,12 @@ fn (p &Parser) comptime_cond_token_text() string {
 	if tok == .not {
 		return '!'
 	}
+	if tok == .lpar {
+		return '('
+	}
+	if tok == .rpar {
+		return ')'
+	}
 	if tok == .key_is {
 		return 'is'
 	}

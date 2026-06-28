@@ -55,6 +55,9 @@ fn test_restrict_synthetic_hex_fallback_receivers() {
 		'unknown function')
 	run_bad(v3_bin, 'bad_pointer_hex_method',
 		'fn main() {\n\tx := 1\n\tp := &x\n\t_ := p.hex()\n}\n', 'unknown function')
+	run_bad(v3_bin, 'bad_numeric_hex_arg',
+		'fn side_effect() int {\n\treturn 1\n}\n\nfn main() {\n\t_ := u8(1).hex(side_effect())\n}\n',
+		'argument count mismatch')
 	out := run_good(v3_bin, 'supported_hex_methods',
 		"fn main() {\n\tprintln(u8(15).hex())\n\tprintln(i64(255).hex())\n\tprintln([u8(1), 15, 255].hex())\n\tprintln(char(65).hex())\n\tprintln(`A`.hex())\n\tprintln('abc'.hex())\n}\n")
 	assert out == '0f\nff\n010fff\n41\n41\n616263'

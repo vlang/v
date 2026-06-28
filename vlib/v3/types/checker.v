@@ -4467,14 +4467,22 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				return tc.call_info(mname, true)
 			}
 		}
-		if fn_node.value == 'str'
-			|| (fn_node.value == 'hex' && tc.is_builtin_hex_receiver(base_type)) {
+		if fn_node.value == 'str' {
 			return CallInfo{
 				name:         ''
 				params:       tarr1(base_type)
 				return_type:  Type(string_)
 				has_receiver: true
 				params_known: false
+			}
+		}
+		if fn_node.value == 'hex' && tc.is_builtin_hex_receiver(base_type) {
+			return CallInfo{
+				name:         ''
+				params:       tarr1(base_type)
+				return_type:  Type(string_)
+				has_receiver: true
+				params_known: true
 			}
 		}
 		return none
