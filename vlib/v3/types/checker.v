@@ -7895,20 +7895,36 @@ fn const_expr_paren_wraps_whole(s string) bool {
 
 // const_int_value supports const int value handling for TypeChecker.
 pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
+	return tc.const_int_value_in_module(name, tc.cur_module, seen)
+}
+
+// const_int_value_in_module supports const int value handling for a specific module.
+pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name string, seen []string) ?int {
 	if name in seen {
 		return none
 	}
 	mut candidates := []string{}
 	candidates << name
+	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin'
+		&& !name.contains('.') {
+		candidates << '${module_name}.${name}'
+	}
 	qname := tc.qualify_name(name)
 	if qname != name {
 		candidates << qname
 	}
+	if key := tc.const_key_for_suffix(name) {
+		candidates << key
+	}
 	for key in candidates {
+		if key in seen {
+			continue
+		}
 		if expr_id := tc.const_exprs[key] {
 			mut next_seen := seen.clone()
 			next_seen << key
-			return tc.const_int_expr(expr_id, next_seen)
+			const_module := tc.const_modules[key] or { module_name }
+			return tc.const_int_expr(expr_id, const_module, next_seen)
 		}
 	}
 	if v := v_int_literal_value(name) {
@@ -7982,8 +7998,8 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 		if lhs.len == 0 || rhs.len == 0 {
 			continue
 		}
-		l := tc.const_int_value(lhs, seen) or { return none }
-		r := tc.const_int_value(rhs, seen) or { return none }
+		l := tc.const_int_value_in_module(lhs, module_name, seen) or { return none }
+		r := tc.const_int_value_in_module(rhs, module_name, seen) or { return none }
 		if (op == '/' || op == '%') && r == 0 {
 			return none
 		}
@@ -8008,7 +8024,7 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 }
 
 // const_int_expr supports const int expr handling for TypeChecker.
-fn (tc &TypeChecker) const_int_expr(id flat.NodeId, seen []string) ?int {
+fn (tc &TypeChecker) const_int_expr(id flat.NodeId, module_name string, seen []string) ?int {
 	if int(id) < 0 {
 		return none
 	}
@@ -8020,18 +8036,18 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, seen []string) ?int {
 			}
 		}
 		.ident {
-			return tc.const_int_value(node.value, seen)
+			return tc.const_int_value_in_module(node.value, module_name, seen)
 		}
 		.paren {
 			if node.children_count > 0 {
-				return tc.const_int_expr(tc.a.child(&node, 0), seen)
+				return tc.const_int_expr(tc.a.child(&node, 0), module_name, seen)
 			}
 		}
 		.prefix {
 			if node.children_count == 0 {
 				return none
 			}
-			value := tc.const_int_expr(tc.a.child(&node, 0), seen) or { return none }
+			value := tc.const_int_expr(tc.a.child(&node, 0), module_name, seen) or { return none }
 			return match node.op {
 				.minus { -value }
 				.plus { value }
@@ -8043,8 +8059,8 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, seen []string) ?int {
 			if node.children_count < 2 {
 				return none
 			}
-			left := tc.const_int_expr(tc.a.child(&node, 0), seen) or { return none }
-			right := tc.const_int_expr(tc.a.child(&node, 1), seen) or { return none }
+			left := tc.const_int_expr(tc.a.child(&node, 0), module_name, seen) or { return none }
+			right := tc.const_int_expr(tc.a.child(&node, 1), module_name, seen) or { return none }
 			match node.op {
 				.plus {
 					return left + right

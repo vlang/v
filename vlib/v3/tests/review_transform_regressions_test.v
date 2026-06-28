@@ -97,6 +97,15 @@ fn test_fixed_array_values_compare_semantically() {
 	assert out == 'true\ntrue\ntrue\nfalse'
 }
 
+fn test_const_length_fixed_array_map_values_compare_semantically() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'const_len_fixed_array_map_equality', {
+		'main.v':        'module main\n\nimport store\n\nfn main() {\n\tprintln(store.check())\n}\n'
+		'store/store.v': "module store\n\nconst n = 2\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\npub fn check() bool {\n\tmut left := map[string][n]string{}\n\tleft['k'] = [n]string{init: 'ab'.clone()}\n\tmut right := map[string][n]string{}\n\tright['k'] = [n]string{init: join('a', 'b')}\n\treturn left == right\n}\n"
+	}, 'main.v')
+	assert out == 'true'
+}
+
 fn test_interface_array_repeat_evaluates_receiver_once() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'interface_repeat_side_effects',

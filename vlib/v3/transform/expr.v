@@ -1119,7 +1119,7 @@ fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId,
 		return t.make_call_typed('array_eq_raw', arr3(lhs, rhs, t.make_sizeof_type(inner)), 'bool')
 	}
 	if t.is_fixed_array_type(clean) {
-		clean = fixed_array_canonical_type(clean)
+		clean = t.resolved_fixed_array_canonical_type(clean)
 		if t.type_needs_semantic_eq(clean) {
 			if fixed_eq := t.make_fixed_array_elementwise_eq_expr(lhs, rhs, clean) {
 				return fixed_eq
@@ -1188,7 +1188,7 @@ fn (t &Transformer) type_needs_semantic_eq(typ string) bool {
 fn (mut t Transformer) make_array_elementwise_eq_call(lhs flat.NodeId, rhs flat.NodeId, elem_type string, lhs_type string, rhs_type string, src flat.Node) flat.NodeId {
 	mut clean_elem := t.membership_container_type(elem_type)
 	if t.is_fixed_array_type(clean_elem) {
-		clean_elem = fixed_array_canonical_type(clean_elem)
+		clean_elem = t.resolved_fixed_array_canonical_type(clean_elem)
 	}
 	lhs_value := t.stable_transformed_expr_for_reuse(lhs, lhs_type, 'arr_eq_lhs')
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'arr_eq_rhs')
@@ -1217,7 +1217,7 @@ fn (mut t Transformer) make_array_elementwise_eq_call(lhs flat.NodeId, rhs flat.
 }
 
 fn (mut t Transformer) make_fixed_array_elementwise_eq_expr(lhs flat.NodeId, rhs flat.NodeId, fixed_type string) ?flat.NodeId {
-	clean_fixed_type := fixed_array_canonical_type(fixed_type)
+	clean_fixed_type := t.resolved_fixed_array_canonical_type(fixed_type)
 	elem_type := fixed_array_elem_type(clean_fixed_type)
 	if elem_type.len == 0 {
 		return none
@@ -1249,7 +1249,7 @@ fn (mut t Transformer) make_fixed_array_elementwise_eq_expr(lhs flat.NodeId, rhs
 fn (mut t Transformer) make_map_elementwise_eq_call(lhs flat.NodeId, rhs flat.NodeId, map_type string, src flat.Node) flat.NodeId {
 	key_type, raw_value_type := t.map_type_parts(map_type)
 	value_type := if t.is_fixed_array_type(raw_value_type) {
-		fixed_array_canonical_type(raw_value_type)
+		t.resolved_fixed_array_canonical_type(raw_value_type)
 	} else {
 		raw_value_type
 	}
@@ -1810,7 +1810,7 @@ fn (t &Transformer) is_fixed_array_type(s string) bool {
 	if len_text.contains(',') || isnil(t.tc) {
 		return false
 	}
-	return t.tc.const_int_value(len_text, []string{}) != none
+	return t.tc.const_int_value_in_module(len_text, t.cur_module, []string{}) != none
 }
 
 // fixed_array_len supports fixed array len handling for transform.
@@ -1840,6 +1840,27 @@ fn fixed_array_canonical_type(s string) string {
 	return '${elem_type}[${len_text}]'
 }
 
+fn (t &Transformer) resolved_fixed_array_canonical_type(s string) string {
+	clean := fixed_array_canonical_type(s)
+	if !t.is_fixed_array_type(clean) {
+		return clean
+	}
+	elem_type := fixed_array_elem_type(clean)
+	resolved_elem := if t.is_fixed_array_type(elem_type) {
+		t.resolved_fixed_array_canonical_type(elem_type)
+	} else {
+		elem_type
+	}
+	len_text := fixed_array_len_text(clean)
+	if is_decimal_text(len_text) || isnil(t.tc) {
+		return '${resolved_elem}[${len_text}]'
+	}
+	if v := t.tc.const_int_value_in_module(len_text, t.cur_module, []string{}) {
+		return '${resolved_elem}[${v}]'
+	}
+	return '${resolved_elem}[${len_text}]'
+}
+
 // is_decimal_text reports whether is decimal text applies in transform.
 fn is_decimal_text(s string) bool {
 	if s.len == 0 {
@@ -1864,7 +1885,7 @@ fn (mut t Transformer) make_fixed_array_len_expr(s string) flat.NodeId {
 	// the raw expression as an ident would c_name-mangle it into an undeclared
 	// identifier such as `segs_+_1`.
 	if !isnil(t.tc) {
-		if v := t.tc.const_int_value(len_text, []string{}) {
+		if v := t.tc.const_int_value_in_module(len_text, t.cur_module, []string{}) {
 			return t.make_int_literal(v)
 		}
 	}
