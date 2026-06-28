@@ -5059,7 +5059,7 @@ fn print_style_param_accepts_string(typ Type) bool {
 
 // array_insert_prepend_many_arg_compatible reports whether an insert/prepend
 // value argument is a many-element operand for the receiver array.
-fn (tc &TypeChecker) array_insert_prepend_many_arg_compatible(info CallInfo, param_idx int, actual Type, elem_type Type) bool {
+fn (tc &TypeChecker) array_insert_prepend_many_arg_compatible(info CallInfo, param_idx int, actual Type) bool {
 	if info.name !in ['array.insert', 'array.prepend'] {
 		return false
 	}
@@ -5067,6 +5067,10 @@ fn (tc &TypeChecker) array_insert_prepend_many_arg_compatible(info CallInfo, par
 		|| (info.name == 'array.prepend' && param_idx != 1) {
 		return false
 	}
+	if info.params.len == 0 {
+		return false
+	}
+	elem_type := array_like_elem_type(unwrap_pointer(info.params[0])) or { return false }
 	mut clean := actual
 	for _ in 0 .. 8 {
 		if clean is Alias {
@@ -5232,7 +5236,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			actual = tc.resolve_expr(arg_id, expected)
 		}
 		if !tc.receiver_compatible(actual, expected) {
-			if tc.array_insert_prepend_many_arg_compatible(info, param_idx, actual, expected) {
+			if tc.array_insert_prepend_many_arg_compatible(info, param_idx, actual) {
 				continue
 			}
 			if tc.array_dsl_fn_arg_compatible(node, info, param_idx, actual) {
@@ -6026,6 +6030,9 @@ fn array_like_elem_type(t Type) ?Type {
 	}
 	if t is ArrayFixed {
 		return t.elem_type
+	}
+	if t is Alias {
+		return array_like_elem_type(t.base_type)
 	}
 	return none
 }
