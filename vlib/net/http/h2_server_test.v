@@ -653,3 +653,160 @@ fn test_h2_server_accepts_post_with_trailers() {
 	}
 	assert status == 200, 'trailers POST should succeed, got status ${status}'
 }
+
+// drive_until_goaway_or_close writes `out`, then reads frames until it sees a
+// GOAWAY (returns its error code) or the connection closes (returns -1). A
+// RST_STREAM on any stream is a wrong-scope answer for a connection error and
+// returns -2.
+fn drive_until_goaway_or_close(mut client_end PipeEnd, out []u8, label string) i64 {
+	client_end.write(out) or {
+		assert false, '${label}: client write failed: ${err}'
+		return -3
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	for _ in 0 .. 32 {
+		f := fr.next() or { return -1 }
+		match f {
+			H2GoawayFrame {
+				return i64(f.error_code)
+			}
+			H2RstStreamFrame {
+				return -2
+			}
+			else {}
+		}
+	}
+	assert false, '${label}: server sent neither GOAWAY nor closed'
+	return -3
+}
+
+// preface_and_settings returns the client preface followed by an empty SETTINGS
+// frame — the start of every scripted session.
+fn preface_and_settings() []u8 {
+	mut out := []u8{}
+	out << h2_client_preface.bytes()
+	out << H2Frame(H2SettingsFrame{}).encode()
+	return out
+}
+
+// RFC 9113 §5.1: a DATA frame on an idle stream (one never opened) is a
+// connection error of type PROTOCOL_ERROR.
+fn test_h2_server_data_on_idle_stream_is_connection_error() {
+	mut out := preface_and_settings()
+	out << H2Frame(H2DataFrame{
+		stream_id:  1
+		data:       'x'.bytes()
+		end_stream: true
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_goaway_or_close(mut client_end, out, 'DATA on idle stream')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'DATA on idle: expected GOAWAY(PROTOCOL_ERROR), got ${code}'
+}
+
+// RFC 9113 §5.1/§6.4: a RST_STREAM on an idle stream is a connection error of
+// type PROTOCOL_ERROR.
+fn test_h2_server_rst_on_idle_stream_is_connection_error() {
+	mut out := preface_and_settings()
+	out << H2Frame(H2RstStreamFrame{
+		stream_id:  1
+		error_code: u32(H2ErrorCode.cancel)
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_goaway_or_close(mut client_end, out, 'RST on idle stream')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'RST on idle: expected GOAWAY(PROTOCOL_ERROR), got ${code}'
+}
+
+// RFC 9113 §5.1: a WINDOW_UPDATE on an idle stream is a connection error of type
+// PROTOCOL_ERROR.
+fn test_h2_server_window_update_on_idle_stream_is_connection_error() {
+	mut out := preface_and_settings()
+	out << H2Frame(H2WindowUpdateFrame{
+		stream_id:             1
+		window_size_increment: 100
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_goaway_or_close(mut client_end, out, 'WINDOW_UPDATE on idle stream')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'WINDOW_UPDATE on idle: expected GOAWAY(PROTOCOL_ERROR), got ${code}'
+}
+
+// RFC 9113 §5.1/§6.1: a DATA frame on a closed stream (one already served and
+// removed) is a STREAM error of type STREAM_CLOSED — the connection stays up.
+fn test_h2_server_data_on_closed_stream_is_stream_closed() {
+	mut enc := H2HpackEncoder{}
+	block := enc.encode(valid_get_pseudo)
+	mut out := preface_and_settings()
+	// Open and immediately close stream 1 (HEADERS + END_STREAM -> served).
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    block
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// Then DATA on the now-closed stream 1.
+	out << H2Frame(H2DataFrame{
+		stream_id:  1
+		data:       'x'.bytes()
+		end_stream: true
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'DATA on closed stream: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut code := i64(-1)
+	for _ in 0 .. 32 {
+		f := fr.next() or { break }
+		if f is H2RstStreamFrame {
+			if f.stream_id == 1 {
+				code = i64(f.error_code)
+				break
+			}
+		}
+	}
+	assert code == i64(u32(H2ErrorCode.stream_closed)), 'DATA on closed: expected RST_STREAM(STREAM_CLOSED), got ${code}'
+}
+
+// RFC 9113 §5.1.2: a HEADERS frame opening a stream beyond the advertised
+// SETTINGS_MAX_CONCURRENT_STREAMS (1) is refused with RST_STREAM(REFUSED_STREAM).
+// Both streams omit END_STREAM so the first stays parked (open) when the second
+// arrives, exercising the concurrency check rather than serial processing.
+fn test_h2_server_refuses_stream_over_concurrency_limit() {
+	mut enc := H2HpackEncoder{}
+	mut out := preface_and_settings()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   3
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'concurrency limit: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut code := i64(-1)
+	for _ in 0 .. 32 {
+		f := fr.next() or { break }
+		if f is H2RstStreamFrame {
+			if f.stream_id == 3 {
+				code = i64(f.error_code)
+				break
+			}
+		}
+	}
+	assert code == i64(u32(H2ErrorCode.refused_stream)), 'over-limit stream: expected RST_STREAM(REFUSED_STREAM) on stream 3, got ${code}'
+}

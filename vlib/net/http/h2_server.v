@@ -163,6 +163,7 @@ mut:
 	send_window   i64
 	trailer_block []u8 // assembled trailer HEADERS + CONTINUATION fragments
 	in_trailers   bool // set once a trailer section (a 2nd HEADERS block) begins
+	refused       bool // §5.1.2: over the concurrency limit — decode then RST(REFUSED_STREAM)
 }
 
 // H2ServerConn drives one server-side HTTP/2 connection over a transport.
@@ -180,6 +181,31 @@ mut:
 	closing        bool
 	idle_conns     &TlsIdleConnTracker = unsafe { nil }
 	idle_handle    int
+}
+
+// H2StreamState is the server's view of a client-initiated stream for the
+// RFC 9113 §5.1 frame-acceptance rules. An open or half-closed stream is kept
+// in c.streams until its response is sent, so:
+//   - active: present in c.streams (open / half-closed local)
+//   - idle:   never opened (id higher than any stream we have accepted)
+//   - closed: opened earlier and already finished or reset (id <= last_stream_id)
+enum H2StreamState {
+	active
+	idle
+	closed
+}
+
+// classify_stream maps a stream id to its §5.1 state from the server's side.
+// id 0 (the connection control stream) is never a request stream; callers that
+// can receive it (WINDOW_UPDATE) handle id 0 before calling this.
+fn (c &H2ServerConn) classify_stream(stream_id u32) H2StreamState {
+	if stream_id in c.streams {
+		return .active
+	}
+	if stream_id > c.last_stream_id {
+		return .idle
+	}
+	return .closed
 }
 
 // serve_h2_conn drives a single HTTP/2 server-side connection until the
@@ -280,6 +306,12 @@ fn (mut c H2ServerConn) dispatch_frame(frame H2Frame, mut handler Handler) ! {
 			c.closing = true
 		}
 		H2RstStreamFrame {
+			// RFC 9113 §5.1/§6.4: RST_STREAM on the connection stream (id 0) or an
+			// idle stream is a connection error PROTOCOL_ERROR. On an open stream it
+			// cancels it; on an already-closed stream it is ignored.
+			if frame.stream_id == 0 || c.classify_stream(frame.stream_id) == .idle {
+				return error('h2 server: RST_STREAM on idle stream ${frame.stream_id}')
+			}
 			c.streams.delete(frame.stream_id)
 		}
 		H2PriorityFrame {
@@ -332,6 +364,10 @@ fn (mut c H2ServerConn) handle_control_frame(frame H2Frame) ! {
 				c.send_window += i64(frame.window_size_increment)
 			} else if mut s := c.streams[frame.stream_id] {
 				s.send_window += i64(frame.window_size_increment)
+			} else if c.classify_stream(frame.stream_id) == .idle {
+				// RFC 9113 §5.1: a WINDOW_UPDATE on an idle stream is a connection
+				// error PROTOCOL_ERROR. On a closed stream it is ignored.
+				return error('h2 server: WINDOW_UPDATE on idle stream ${frame.stream_id}')
 			}
 		}
 		else {}
@@ -412,6 +448,14 @@ fn (mut c H2ServerConn) on_headers(frame H2HeadersFrame, mut handler Handler) ! 
 		end_stream:  frame.end_stream
 		send_window: i64(c.peer.initial_window_size)
 	}
+	// RFC 9113 §5.1.2: a stream that would exceed the concurrency limit we
+	// advertised is refused. We still assemble and HPACK-decode its header block
+	// (the decoder is stateful — skipping it would desync the dynamic table) but
+	// answer with RST_STREAM(REFUSED_STREAM) instead of serving it; see
+	// finalize_headers. The just-created stream is not yet counted in c.streams.
+	if u32(c.streams.len) >= h2_server_max_concurrent_streams {
+		s.refused = true
+	}
 	c.streams[frame.stream_id] = s
 	if !frame.end_headers {
 		c.awaiting_cont = frame.stream_id
@@ -457,6 +501,13 @@ fn (mut c H2ServerConn) finalize_headers(mut s H2ServerStream, mut handler Handl
 		return error('h2 server: HPACK decode error (COMPRESSION_ERROR)')
 	}
 	s.headers_done = true
+	// §5.1.2: an over-limit stream was decoded only to keep HPACK in sync; refuse
+	// it now without validating or running the request.
+	if s.refused {
+		c.send_rst_stream(s.id, .refused_stream)!
+		c.streams.delete(s.id)
+		return
+	}
 	// A well-decoded but malformed request is a STREAM error (RFC 9113 §8.1.1) —
 	// reset just this stream and keep the connection alive.
 	h2_validate_request_pseudo(s.headers) or {
@@ -524,12 +575,19 @@ fn (mut c H2ServerConn) finalize_trailers(mut s H2ServerStream, mut handler Hand
 
 fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 	mut s := c.streams[frame.stream_id] or {
-		// DATA for an unknown stream (likely already RST'd); just drop and
-		// keep flow control consistent. Credit flow_size (full wire bytes
-		// including padding) per RFC 7540 §6.9.1.
-		if frame.flow_size > 0 {
-			c.send_window_update(0, u32(frame.flow_size))!
+		// RFC 9113 §5.1/§6.1: DATA is only valid on an open or half-closed (local)
+		// stream. On an idle stream (never opened) it is a connection error
+		// PROTOCOL_ERROR; on a closed stream (already finished or reset) it is a
+		// STREAM_CLOSED stream error.
+		if c.classify_stream(frame.stream_id) == .idle {
+			return error('h2 server: DATA on idle stream ${frame.stream_id}')
 		}
+		// Closed stream: credit the connection window (the peer spent it on bytes
+		// sent legitimately within its window) before RST-ing just this stream.
+		if frame.flow_size > 0 {
+			c.send_window_update(0, u32(frame.flow_size)) or {}
+		}
+		c.send_rst_stream(frame.stream_id, .stream_closed)!
 		return
 	}
 	if !s.headers_done {
