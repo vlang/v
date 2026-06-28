@@ -1205,30 +1205,6 @@ fn (mut g FlatGen) interface_value_to_string(id flat.NodeId, expected types.Type
 	return result
 }
 
-fn (mut g FlatGen) gen_pointer_param_address_cast(node flat.Node, ct string) bool {
-	if ct != 'void*' || node.children_count == 0 {
-		return false
-	}
-	child_id := g.a.child(&node, 0)
-	child := g.a.nodes[int(child_id)]
-	if child.kind != .prefix || child.op != .amp || child.children_count == 0 {
-		return false
-	}
-	ident_id := g.a.child(&child, 0)
-	ident := g.a.nodes[int(ident_id)]
-	if ident.kind != .ident {
-		return false
-	}
-	typ := g.current_param_type(ident.value) or { return false }
-	if typ !is types.Pointer {
-		return false
-	}
-	g.write('(${ct})(')
-	g.gen_expr(ident_id)
-	g.write(')')
-	return true
-}
-
 // fixed_array_copy_source_string captures gen_fixed_array_copy_source as a string, so a deferred
 // optional/fixed-array return can embed the memcpy source when saving the value into a temp.
 fn (mut g FlatGen) fixed_array_copy_source_string(value_id flat.NodeId, field_type types.Type) string {
@@ -2938,8 +2914,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write('(${ct}){0}')
 			} else if target_type is types.SumType {
 				g.gen_sum_cast_expr(target_type, g.a.child(&node, 0))
-			} else if g.gen_pointer_param_address_cast(node, ct) {
-				return
 			} else {
 				g.write('(${ct})(')
 				g.gen_expr(g.a.child(&node, 0))

@@ -49,6 +49,7 @@ fn main() {
 	_ = C.take_ptr(&native)
 	_ = C.take_named(ptr)
 	_ = C.take_void(voidptr(ptr))
+	_ = C.take_void(voidptr(&ptr))
 	_ = C.take_primitive(1, u64(2))
 	_ = C.take_multi(pptr)
 	_ = C.take_mixed(ptr, voidptr(ptr), 3, pptr)
@@ -70,6 +71,7 @@ fn main() {
 	assert generated.contains('take_ptr(&native)'), generated
 	assert generated.contains('take_named(ptr)'), generated
 	assert generated.contains('take_void((void*)(ptr))'), generated
+	assert generated.contains('take_void((void*)(&ptr))'), generated
 	assert generated.contains('take_multi(pptr)'), generated
 	assert generated.contains('take_mixed(ptr, (void*)(ptr), 3, pptr)'), generated
 	assert generated.contains('load_matrix(matrix)'), generated
