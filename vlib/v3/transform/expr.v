@@ -1159,7 +1159,11 @@ fn (mut t Transformer) make_struct_field_eq_expr(lhs flat.NodeId, rhs flat.NodeI
 		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
 		lhs_field := t.make_selector(lhs, field.name, field_type)
 		rhs_field := t.make_selector(rhs, field.name, field_type)
-		field_eq := t.make_membership_eq_expr(lhs_field, rhs_field, field_type)
+		field_eq := if t.membership_type_is_pointer(field_type) {
+			t.make_infix(.eq, lhs_field, rhs_field)
+		} else {
+			t.make_membership_eq_expr(lhs_field, rhs_field, field_type)
+		}
 		eq = if int(eq) < 0 { field_eq } else { t.make_infix(.logical_and, eq, field_eq) }
 	}
 	if int(eq) < 0 {
@@ -1218,6 +1222,22 @@ fn (t &Transformer) membership_container_type(typ string) string {
 		break
 	}
 	return t.normalize_type_alias(clean)
+}
+
+fn (t &Transformer) membership_type_is_pointer(typ string) bool {
+	mut clean := t.normalize_type_alias(typ).trim_space()
+	for {
+		if clean.starts_with('shared ') {
+			clean = clean[7..].trim_space()
+			continue
+		}
+		if clean.starts_with('mut ') {
+			clean = clean[4..].trim_space()
+			continue
+		}
+		break
+	}
+	return clean.starts_with('&')
 }
 
 // membership_container_is_pointer_array supports membership_container_is_pointer_array handling.

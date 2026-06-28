@@ -4015,25 +4015,114 @@ fn (mut t Transformer) transform_comptime_if_stmt(_id flat.NodeId, node flat.Nod
 	return t.transform_stmt(branch_id)
 }
 
+fn comptime_condition_matching_paren(s string, start int) int {
+	mut paren_depth := 0
+	mut bracket_depth := 0
+	for i in start .. s.len {
+		match s[i] {
+			`(` {
+				paren_depth++
+			}
+			`)` {
+				paren_depth--
+				if paren_depth == 0 && bracket_depth == 0 {
+					return i
+				}
+			}
+			`[` {
+				bracket_depth++
+			}
+			`]` {
+				bracket_depth--
+			}
+			else {}
+		}
+	}
+	return s.len
+}
+
+fn comptime_condition_strip_outer_parens(cond string) string {
+	mut clean := cond.trim_space()
+	for clean.len >= 2 && clean.starts_with('(') {
+		end := comptime_condition_matching_paren(clean, 0)
+		if end != clean.len - 1 {
+			break
+		}
+		clean = clean[1..clean.len - 1].trim_space()
+	}
+	return clean
+}
+
+fn comptime_condition_top_level_index(s string, needle string) int {
+	if needle.len == 0 || s.len < needle.len {
+		return -1
+	}
+	mut paren_depth := 0
+	mut bracket_depth := 0
+	for i := 0; i <= s.len - needle.len; i++ {
+		match s[i] {
+			`(` {
+				paren_depth++
+			}
+			`)` {
+				if paren_depth > 0 {
+					paren_depth--
+				}
+			}
+			`[` {
+				bracket_depth++
+			}
+			`]` {
+				if bracket_depth > 0 {
+					bracket_depth--
+				}
+			}
+			else {}
+		}
+
+		if paren_depth == 0 && bracket_depth == 0 && s[i..i + needle.len] == needle {
+			return i
+		}
+	}
+	return -1
+}
+
 fn (mut t Transformer) comptime_type_condition_value(cond string) ?bool {
-	clean := cond.trim_space()
+	clean := comptime_condition_strip_outer_parens(cond)
 	if clean == 'true' {
 		return true
 	}
 	if clean == 'false' {
 		return false
 	}
-	if clean.starts_with('!') {
-		value := t.comptime_type_condition_value(clean[1..]) or { return none }
-		return !value
+	or_idx := comptime_condition_top_level_index(clean, '||')
+	if or_idx >= 0 {
+		left := t.comptime_type_condition_value(clean[..or_idx]) or { return none }
+		if left {
+			return true
+		}
+		return t.comptime_type_condition_value(clean[or_idx + 2..])
+	}
+	and_idx := comptime_condition_top_level_index(clean, '&&')
+	if and_idx >= 0 {
+		left := t.comptime_type_condition_value(clean[..and_idx]) or { return none }
+		if !left {
+			return false
+		}
+		return t.comptime_type_condition_value(clean[and_idx + 2..])
 	}
 	for op in [' !is ', ' is '] {
-		if clean.contains(op) {
-			left := clean.all_before(op).trim_space()
-			right := clean.all_after(op).trim_space()
+		op_idx := comptime_condition_top_level_index(clean, op)
+		if op_idx >= 0 {
+			left := clean[..op_idx].trim_space()
+			right := clean[op_idx + op.len..].trim_space()
 			matches := t.comptime_type_matches(left, right) or { return none }
 			return if op == ' is ' { matches } else { !matches }
 		}
+	}
+	if clean.starts_with('!') {
+		value := t.comptime_type_condition_value(clean[1..]) or { return none }
+		return !value
 	}
 	return none
 }

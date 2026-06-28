@@ -2772,14 +2772,36 @@ fn (t &Transformer) subst_node_value(node flat.Node, args []string) string {
 }
 
 fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) string {
+	clean := comptime_condition_strip_outer_parens(cond)
+	or_idx := comptime_condition_top_level_index(clean, '||')
+	if or_idx >= 0 {
+		left := t.subst_comptime_type_condition(clean[..or_idx], args)
+		right := t.subst_comptime_type_condition(clean[or_idx + 2..], args)
+		return '${left} || ${right}'
+	}
+	and_idx := comptime_condition_top_level_index(clean, '&&')
+	if and_idx >= 0 {
+		left := t.subst_comptime_type_condition(clean[..and_idx], args)
+		right := t.subst_comptime_type_condition(clean[and_idx + 2..], args)
+		return '${left} && ${right}'
+	}
 	for op in [' !is ', ' is '] {
-		if cond.contains(op) {
-			left := cond.all_before(op).trim_space()
-			right := cond.all_after(op).trim_space()
+		op_idx := comptime_condition_top_level_index(clean, op)
+		if op_idx >= 0 {
+			left := clean[..op_idx].trim_space()
+			right := clean[op_idx + op.len..].trim_space()
 			return '${t.subst_type(left, args)}${op}${t.subst_type(right, args)}'
 		}
 	}
-	return cond
+	if clean.starts_with('!') {
+		inner_raw := clean[1..].trim_space()
+		inner := t.subst_comptime_type_condition(inner_raw, args)
+		if inner_raw.starts_with('(') {
+			return '!(${inner})'
+		}
+		return '!${inner}'
+	}
+	return clean
 }
 
 // active_generic_param_index returns the position of a placeholder name within the

@@ -1870,21 +1870,20 @@ fn (mut p Parser) parse_top_level_block_body() []flat.NodeId {
 
 fn (mut p Parser) parse_comptime_cond() string {
 	mut cond := strings.new_builder(64)
+	mut prev_tok_str := ''
 	for p.tok != .lcbr && p.tok != .eof {
 		tok_str := p.comptime_cond_token_text()
-		if cond.len > 0 && tok_str != '?' {
+		if cond.len > 0 && comptime_cond_needs_space(prev_tok_str, tok_str) {
 			cond.write_string(' ')
 		}
 		cond.write_string(tok_str)
+		prev_tok_str = tok_str
 		p.next()
 	}
 	return cond.str()
 }
 
 fn (p &Parser) comptime_cond_token_text() string {
-	if p.lit.len > 0 {
-		return p.lit
-	}
 	if p.s.pos >= 0 && p.s.pos < p.s.src.len {
 		c := p.s.src[p.s.pos]
 		if c == `&` && p.s.pos + 1 < p.s.src.len && p.s.src[p.s.pos + 1] == `&` {
@@ -1892,6 +1891,10 @@ fn (p &Parser) comptime_cond_token_text() string {
 		}
 		if c == `|` && p.s.pos + 1 < p.s.src.len && p.s.src[p.s.pos + 1] == `|` {
 			return '||'
+		}
+		if c == `!` && p.s.pos + 2 < p.s.src.len && p.s.src[p.s.pos + 1] == `i`
+			&& p.s.src[p.s.pos + 2] == `s` {
+			return '!is'
 		}
 		if c == `!` {
 			return '!'
@@ -1910,6 +1913,27 @@ fn (p &Parser) comptime_cond_token_text() string {
 	if tok == .not {
 		return '!'
 	}
+	if tok == .key_is {
+		return 'is'
+	}
+	if tok == .not_is {
+		return '!is'
+	}
+	if tok == .dollar {
+		return '$'
+	}
+	if tok == .lsbr {
+		return '['
+	}
+	if tok == .rsbr {
+		return ']'
+	}
+	if tok == .dot {
+		return '.'
+	}
+	if tok == .comma {
+		return ','
+	}
 	if tok == .question {
 		return '?'
 	}
@@ -1919,7 +1943,23 @@ fn (p &Parser) comptime_cond_token_text() string {
 	if tok == .key_false {
 		return 'false'
 	}
+	if p.lit.len > 0 {
+		return p.lit
+	}
 	return ''
+}
+
+fn comptime_cond_needs_space(prev string, cur string) bool {
+	if prev == 'is' || prev == '!is' {
+		return true
+	}
+	if cur == '?' || cur == ']' || cur == '[' || cur == '.' || cur == ',' {
+		return false
+	}
+	if prev == '$' || prev == '[' || prev == ']' || prev == '.' {
+		return false
+	}
+	return true
 }
 
 fn comptime_cond_has_type_test(cond string) bool {

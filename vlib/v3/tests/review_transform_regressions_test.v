@@ -64,3 +64,17 @@ fn test_interface_array_repeat_evaluates_receiver_once() {
 		'interface Thing {\n\tvalue() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) value() int {\n\treturn i.n\n}\n\n__global calls int\n\nfn make_item() Thing {\n\tcalls++\n\treturn Item{\n\t\tn: calls\n\t}\n}\n\nfn main() {\n\titems := [make_item()].repeat(3)\n\tprintln(int_str(calls))\n\tprintln(int_str(items[0].value() + items[1].value() + items[2].value()))\n}\n')
 	assert out == '1\n3'
 }
+
+fn test_comptime_type_conditions_handle_logical_ops() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'comptime_type_condition_logical_ops',
+		"fn classify[T](x T) int {\n\t_ := x\n\t\$if T !is string && T !is \$int && T !is []u8 {\n\t\treturn 1\n\t} \$else {\n\t\treturn 2\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(int_str(classify('abc')))\n\tprintln(int_str(classify(3)))\n\tprintln(int_str(classify([u8(1)])))\n\tprintln(int_str(classify(1.5)))\n}\n")
+	assert out == '2\n2\n2\n1'
+}
+
+fn test_struct_equality_compares_pointer_fields_as_pointers() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'struct_eq_pointer_field',
+		'struct Node {\n\tvalue int\n\tnext &Node\n}\n\nfn main() {\n\tleft := Node{\n\t\tvalue: 7\n\t\tnext: unsafe { nil }\n\t}\n\tright := Node{\n\t\tvalue: 7\n\t\tnext: unsafe { nil }\n\t}\n\tprintln([left] == [right])\n}\n')
+	assert out == 'true'
+}
