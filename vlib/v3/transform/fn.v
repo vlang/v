@@ -2202,7 +2202,10 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		return none
 	}
 	base_id := t.a.children[fn_node.children_start]
-	base_type := t.node_type(base_id)
+	mut base_type := t.node_type(base_id)
+	if base_type.len == 0 {
+		base_type = t.checker_node_type(base_id)
+	}
 	clean_type := t.clean_map_type(base_type)
 	if !clean_type.starts_with('map[') {
 		return none
@@ -3788,7 +3791,10 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) string 
 		if fn_node.kind == .selector && fn_node.value in ['keys', 'values']
 			&& fn_node.children_count > 0 {
 			base_id := t.a.child(fn_node, 0)
-			base_type := t.node_type(base_id)
+			mut base_type := t.node_type(base_id)
+			if base_type.len == 0 {
+				base_type = t.checker_node_type(base_id)
+			}
 			clean_type := t.clean_map_type(base_type)
 			if clean_type.starts_with('map[') {
 				elem_type := if fn_node.value == 'keys' {

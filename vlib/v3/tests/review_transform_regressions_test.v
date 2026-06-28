@@ -121,3 +121,10 @@ fn test_string_pointer_comparisons_keep_pointer_semantics() {
 		"fn main() {\n\tleft := 'same'.clone()\n\tright := 'same'.clone()\n\tpleft := &left\n\tpright := &right\n\tprintln(pleft == pright)\n\tprintln(pleft != pright)\n\tprintln(*pleft == *pright)\n}\n")
 	assert out == 'false\ntrue\ntrue'
 }
+
+fn test_map_keys_and_values_lower_to_runtime_methods() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'map_keys_values_lowering',
+		"fn make_lookup() map[string]int {\n\treturn {\n\t\t'one': 1\n\t\t'two': 2\n\t}\n}\n\nfn main() {\n\tlookup := make_lookup()\n\tkeys := lookup.keys()\n\tvalues := make_lookup().values()\n\tmut total := 0\n\tfor value in values {\n\t\ttotal += value\n\t}\n\tprintln(int_str(keys.len))\n\tprintln(int_str(values.len))\n\tprintln(int_str(total))\n}\n")
+	assert out == '2\n2\n3'
+}
