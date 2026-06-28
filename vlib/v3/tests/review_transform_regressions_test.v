@@ -150,10 +150,12 @@ fn test_single_module_test_file_skips_premodule_attributes() {
 		panic(err)
 	}
 	os.write_file(os.join_path(root, 'tar', 'reader.v'),
-		'module tar\n\nfn reader_value() string {\n\treturn "reader"\n}\n') or { panic(err) }
+		'module tar /* implementation module */\n\nfn reader_value() string {\n\treturn "reader"\n}\n') or {
+		panic(err)
+	}
 	test_file := os.join_path(root, 'tar', 'reader_test.v')
 	os.write_file(test_file,
-		'@[has_globals]\n/* block comment before module */\nmodule tar\n\nfn test_reader_value() {\n\tprintln(reader_value())\n}\n') or {
+		'@[has_globals]\n/* block comment before module */\nmodule tar // test module\n\nfn test_reader_value() {\n\tprintln(reader_value())\n}\n') or {
 		panic(err)
 	}
 	bin_path := os.join_path(root, 'reader_test_bin')

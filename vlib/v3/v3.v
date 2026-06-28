@@ -615,7 +615,14 @@ fn declared_module_in_file(path string) string {
 			continue
 		}
 		if line.starts_with('module ') {
-			return line[7..].trim_space()
+			mut module_name := line[7..]
+			if comment := module_name.index('//') {
+				module_name = module_name[..comment]
+			}
+			if comment := module_name.index('/*') {
+				module_name = module_name[..comment]
+			}
+			return module_name.trim_space()
 		}
 		return ''
 	}
