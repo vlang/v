@@ -84,6 +84,9 @@ fn test_explicit_generic_calls_use_all_type_arguments() {
 	out := run_good(v3_bin, 'good_multi_explicit_generic_call',
 		"struct Pair[A, B] {\n\tleft  A\n\tright B\n}\n\nfn make_pair[A, B]() Pair[A, B] {\n\treturn Pair[A, B]{}\n}\n\nfn expect_pair(p Pair[int, string]) string {\n\treturn 'ok'\n}\n\nfn main() {\n\tp := make_pair[int, string]()\n\tprintln(expect_pair(p))\n}\n")
 	assert out == 'ok'
+	nested := run_good(v3_bin, 'good_nested_explicit_generic_call',
+		"struct Pair[A, B] {\n\tleft  A\n\tright B\n}\n\nstruct Box[T] {\n\tvalue T\n}\n\nfn wrap[T]() Box[T] {\n\treturn Box[T]{}\n}\n\nfn expect_box(b Box[Pair[int, string]]) string {\n\treturn 'ok'\n}\n\nfn main() {\n\tb := wrap[Pair[int, string]]()\n\tprintln(expect_box(b))\n}\n")
+	assert nested == 'ok'
 }
 
 fn test_reject_escaping_capturing_fn_literals() {

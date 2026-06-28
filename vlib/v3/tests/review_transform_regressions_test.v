@@ -35,6 +35,31 @@ fn run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
+fn write_project_file(root string, rel string, src string) {
+	path := os.join_path(root, rel)
+	os.mkdir_all(os.dir(path)) or { panic(err) }
+	os.write_file(path, src) or { panic(err) }
+}
+
+fn run_good_project(v3_bin string, name string, files map[string]string, input string) string {
+	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
+	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	compile := os.execute('${v3_bin} ${input_path} -b c -o ${good_bin}')
+	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
+	run := os.execute(good_bin)
+	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
+	return run.output.trim_space()
+}
+
 fn test_reject_dynamic_arrays_for_fixed_array_expectations() {
 	v3_bin := build_v3_review_transform()
 	run_bad(v3_bin, 'bad_fixed_array_literal_len',
@@ -162,4 +187,15 @@ fn test_array_last_index_uses_element_width() {
 	out := run_good(v3_bin, 'array_last_index_element_width',
 		'fn main() {\n\twide := [i64(1), i64(5000000000), i64(2), i64(5000000000)]\n\tfloats := [1.25, 2.5, 1.25]\n\tflags := [true, false, true]\n\tprintln(int_str(wide.last_index(i64(5000000000))))\n\tprintln(int_str(floats.last_index(1.25)))\n\tprintln(int_str(flags.last_index(true)))\n}\n')
 	assert out == '3\n2\n2'
+}
+
+fn test_hierarchical_import_runtime_inits_before_importer_init() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'hierarchical_runtime_init_order', {
+		'main.v':            'module main\n\nimport foo.user\n\nfn main() {\n\tprintln(int_str(user.value()))\n}\n'
+		'foo/user/user.v':   'module user\n\nimport foo.bar as foobar\n\n__global seen int\n\nfn init() {\n\tseen = foobar.value() + 1\n}\n\npub fn value() int {\n\treturn seen\n}\n'
+		'foo/bar/bar.v':     'module bar\n\n__global flag = make_flag()\n\nfn make_flag() int {\n\treturn 40\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+		'unrelated/other.v': 'module other\n\npub fn value() int {\n\treturn 0\n}\n'
+	}, 'main.v')
+	assert out == '41'
 }

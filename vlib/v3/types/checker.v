@@ -4793,11 +4793,18 @@ fn (tc &TypeChecker) generic_call_type_arg_name(id flat.NodeId) string {
 				return ''
 			}
 			base := tc.generic_call_type_arg_name(tc.a.child(&node, 0))
-			arg := tc.generic_call_type_arg_name(tc.a.child(&node, 1))
-			if base.len == 0 || arg.len == 0 {
+			if base.len == 0 {
 				return ''
 			}
-			return '${base}[${arg}]'
+			mut args := []string{}
+			for i in 1 .. node.children_count {
+				arg := tc.generic_call_type_arg_name(tc.a.child(&node, i))
+				if arg.len == 0 {
+					return ''
+				}
+				args << arg
+			}
+			return '${base}[${args.join(', ')}]'
 		}
 		.array_init {
 			if node.value.len > 0 {
