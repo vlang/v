@@ -712,7 +712,8 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 						if !g.gen_interface_value_expr(ret_id, g.cur_fn_ret) {
 							g.gen_expr(ret_id)
 						}
-					} else if !g.gen_heap_local_address_expr(ret_id, g.cur_fn_ret) {
+					} else if !g.gen_heap_local_address_expr(ret_id, g.cur_fn_ret)
+						&& !g.gen_sum_constructor_call_with_expected_type(ret_id, ret_node, g.cur_fn_ret) {
 						g.gen_expr(ret_id)
 					}
 					g.writeln(';')
@@ -1058,7 +1059,29 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		// preserves `_typ`/`_object` instead of zeroing the interface.
 		return g.interface_value_to_string(ret_id, g.cur_fn_ret)
 	}
-	return g.heap_local_address_expr(ret_id, g.cur_fn_ret) or { g.expr_to_string(ret_id) }
+	if expr := g.heap_local_address_expr(ret_id, g.cur_fn_ret) {
+		return expr
+	}
+	if expr := g.sum_constructor_call_with_expected_type_string(ret_id, ret_node, g.cur_fn_ret) {
+		return expr
+	}
+	return g.expr_to_string(ret_id)
+}
+
+fn (mut g FlatGen) sum_constructor_call_with_expected_type_string(id flat.NodeId, node flat.Node, expected types.Type) ?string {
+	orig := g.sb
+	orig_line_start := g.line_start
+	g.sb = strings.new_builder(64)
+	g.line_start = false
+	if !g.gen_sum_constructor_call_with_expected_type(id, node, expected) {
+		g.sb = orig
+		g.line_start = orig_line_start
+		return none
+	}
+	result := g.sb.str()
+	g.sb = orig
+	g.line_start = orig_line_start
+	return result
 }
 
 fn (g &FlatGen) type_can_return_as_ierror(typ types.Type) bool {

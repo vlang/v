@@ -4212,7 +4212,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	tc.check_node(child_id)
 	if expected is ResultType {
 		if bad_type := tc.invalid_ierror_return_expr_type_name(child_id, expected) {
-			tc.record_error(.return_mismatch,
+			tc.record_error_unfiltered(.return_mismatch,
 				'cannot return `${bad_type}` as `${Type(expected).name()}`', id)
 			return
 		}
@@ -7951,14 +7951,16 @@ fn (tc &TypeChecker) lowered_sum_selector_type(sum SumType, field string) ?Type 
 
 // sum_shared_field_type supports sum shared field type handling for TypeChecker.
 fn (tc &TypeChecker) sum_shared_field_type(sum SumType, field string) ?Type {
-	variants := tc.sum_types[sum.name] or { return none }
+	base := tc.sum_base_name(sum.name)
+	variants := tc.sum_types[base] or { return none }
 	if variants.len == 0 {
 		return none
 	}
 	mut has_common := false
 	mut common_typ := Type(void_)
 	for variant in variants {
-		variant_field := tc.struct_field_type(variant, field) or { return none }
+		concrete := tc.concrete_sum_variant_name(sum.name, variant)
+		variant_field := tc.struct_field_type(concrete, field) or { return none }
 		if !has_common {
 			common_typ = variant_field
 			has_common = true
@@ -9204,10 +9206,20 @@ fn (tc &TypeChecker) named_type_compatible_with_ierror_inner(concrete_name strin
 	if tc.named_type_implements_ierror_methods(lookup) {
 		return true
 	}
+	struct_module := tc.struct_modules[lookup] or { tc.cur_module }
+	struct_file := tc.struct_files[lookup] or { tc.cur_file }
 	for field in tc.structs[lookup] or { []StructField{} } {
 		embedded_type := embedded_field_type(field) or { continue }
 		embedded_name := method_type_name(unwrap_pointer(embedded_type))
 		if embedded_name.len == 0 {
+			continue
+		}
+		if tc.embedded_field_is_scoped_builtin_error(field, embedded_name, struct_file,
+			struct_module)
+		{
+			return true
+		}
+		if embedded_name in ['Error', 'MessageError'] && field.name == embedded_name {
 			continue
 		}
 		if tc.is_builtin_error_struct_name(embedded_name) {
@@ -9226,12 +9238,19 @@ fn (tc &TypeChecker) named_type_implements_ierror_methods(concrete_name string) 
 }
 
 fn (tc &TypeChecker) named_type_has_non_builtin_error_embed(concrete_name string) bool {
-	if tc.struct_error_embeds_shadow_builtin[concrete_name] {
+	mut lookup := concrete_name
+	if lookup !in tc.structs {
+		qname := tc.qualify_name(lookup)
+		if qname in tc.structs {
+			lookup = qname
+		}
+	}
+	if tc.struct_error_embeds_shadow_builtin[lookup] {
 		return true
 	}
-	struct_module := tc.struct_modules[concrete_name] or { tc.cur_module }
-	struct_file := tc.struct_files[concrete_name] or { tc.cur_file }
-	for field in tc.structs[concrete_name] or { []StructField{} } {
+	struct_module := tc.struct_modules[lookup] or { tc.cur_module }
+	struct_file := tc.struct_files[lookup] or { tc.cur_file }
+	for field in tc.structs[lookup] or { []StructField{} } {
 		if field.name in ['Error', 'MessageError']
 			&& tc.unqualified_type_name_shadows_builtin_in_scope(field.name, struct_file, struct_module) {
 			return true
@@ -9241,12 +9260,28 @@ fn (tc &TypeChecker) named_type_has_non_builtin_error_embed(concrete_name string
 		if embedded_name.len == 0 {
 			continue
 		}
+		if tc.embedded_field_is_scoped_builtin_error(field, embedded_name, struct_file,
+			struct_module)
+		{
+			continue
+		}
+		if embedded_name in ['Error', 'MessageError'] && field.name == embedded_name {
+			return true
+		}
 		if embedded_name.all_after_last('.') in ['Error', 'MessageError']
 			&& !tc.is_builtin_error_struct_name(embedded_name) {
 			return true
 		}
 	}
 	return false
+}
+
+fn (tc &TypeChecker) embedded_field_is_scoped_builtin_error(field StructField, embedded_name string, struct_file string, struct_module string) bool {
+	if embedded_name !in ['Error', 'MessageError'] || field.name != embedded_name {
+		return false
+	}
+	return !tc.unqualified_type_name_shadows_builtin_in_scope(embedded_name, struct_file,
+		struct_module)
 }
 
 fn (tc &TypeChecker) resolve_unqualified_builtin_error_struct_name(name string) ?string {
@@ -9260,7 +9295,6 @@ fn (tc &TypeChecker) resolve_unqualified_builtin_error_struct_name(name string) 
 		if mod_name == 'builtin' {
 			return name
 		}
-		return none
 	}
 	if tc.has_builtins {
 		return name
@@ -9286,6 +9320,9 @@ fn (tc &TypeChecker) unqualified_type_name_shadows_builtin_in_scope(name string,
 			return !tc.is_builtin_error_struct_name(resolved)
 		}
 		return true
+	}
+	if local_name != name {
+		return false
 	}
 	if name in tc.structs {
 		return tc.struct_modules[name] or { '' } != 'builtin'

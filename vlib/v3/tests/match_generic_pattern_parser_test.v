@@ -216,6 +216,27 @@ struct Other[T] {
 type Tree[T] = Empty | Node[T]
 '
 
+fn test_generic_sum_type_checker_accepts_shared_field_on_concrete_sum() {
+	if proxy_to_local_v3_if_needed() {
+		return
+	}
+	assert_checker_ok('generic_sum_shared_field', '
+struct A[T] {
+	x T
+}
+
+struct B[T] {
+	x T
+}
+
+type S[T] = A[T] | B[T]
+
+fn get(s S[int]) int {
+	return s.x
+}
+')
+}
+
 fn test_generic_sum_type_checker_accepts_methods_returns_and_smartcasts() {
 	if proxy_to_local_v3_if_needed() {
 		return

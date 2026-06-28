@@ -631,6 +631,53 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
+fn test_main_error_does_not_shadow_imported_builtin_error_embed() {
+	v3_bin := build_v3()
+
+	root := os.join_path(os.temp_dir(), 'v3_ierror_payload_imported_builtin_embed_${os.getpid()}')
+	mod_dir := os.join_path(root, 'payloadmod')
+	os.mkdir_all(mod_dir) or { panic(err) }
+	os.write_file(os.join_path(mod_dir, 'payloadmod.v'), 'module payloadmod
+
+pub struct EmbeddedBuiltinError {
+	Error
+}
+
+pub fn payload() !IError {
+	return EmbeddedBuiltinError{}
+}
+	') or {
+		panic(err)
+	}
+
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, "import payloadmod
+
+struct Error {}
+
+fn main() {
+	value := payloadmod.payload() or {
+		println('bad error: ' + err.msg())
+		return
+	}
+	assert value.msg() == ''
+	assert value.code() == 0
+	println('ok')
+}
+	") or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_imported_builtin_embed_input')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}
+
 fn test_main_local_error_embed_is_not_result_payload() {
 	v3_bin := build_v3()
 

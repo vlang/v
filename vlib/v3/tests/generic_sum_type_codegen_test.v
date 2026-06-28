@@ -143,6 +143,57 @@ fn main() {
 	assert !c_code.contains('tree == Node'), c_code
 }
 
+fn test_generic_sum_constructor_return_uses_concrete_c_type() {
+	v3_bin := generic_sum_type_build_v3()
+	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_return_ctor_${os.getpid()}.v')
+	os.write_file(src, '
+struct Empty {}
+
+struct Node[T] {
+	value T
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn empty_tree() Tree[int] {
+	return Tree[int](Empty{})
+}
+
+fn defer_tree() Tree[int] {
+	defer {
+		_ := 1
+	}
+	return Tree[int](Empty{})
+}
+
+fn main() {
+	tree := empty_tree()
+	assert tree is Empty
+	deferred := defer_tree()
+	assert deferred is Empty
+	println("ok")
+}
+') or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_return_ctor_${os.getpid()}')
+	os.rm(bin) or {}
+	os.rm(bin + '.c') or {}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+
+	c_code := os.read_file(bin + '.c') or { panic(err) }
+	assert !c_code.contains('return Tree((Empty){})'), c_code
+	assert !c_code.contains('Tree((Empty){})'), c_code
+	assert c_code.contains('return (Tree_int){'), c_code
+}
+
 fn test_generic_sum_rejects_mismatched_concrete_variant() {
 	v3_bin := generic_sum_type_build_v3()
 	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_negative_${os.getpid()}.v')

@@ -2505,6 +2505,9 @@ fn (g &FlatGen) call_callee_names_sum_base(callee flat.Node, sum_name string) bo
 	if callee.kind == .selector {
 		return callee.value == short_base || callee.value == base
 	}
+	if callee.kind == .index && callee.children_count > 0 {
+		return g.call_callee_names_sum_base(g.a.child_node(&callee, 0), sum_name)
+	}
 	return false
 }
 
