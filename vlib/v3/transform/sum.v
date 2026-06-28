@@ -12,6 +12,11 @@ fn (t &Transformer) trim_pointer_type(typ string) string {
 
 // resolve_variant resolves resolve variant information for transform.
 fn (t &Transformer) resolve_variant(sum_name string, variant string) string {
+	if !isnil(t.tc) {
+		if resolved := t.tc.sum_variant_type_for_pattern(sum_name, variant) {
+			return resolved
+		}
+	}
 	if variant.contains('.') {
 		return variant
 	}
@@ -53,6 +58,16 @@ fn (t &Transformer) resolve_sum_name(sum_name string) string {
 fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 	if sum_name in t.sum_types {
 		return sum_name
+	}
+	generic_base := generic_base_name_text(sum_name)
+	if generic_base != sum_name {
+		resolved_base := t.resolve_sum_name_uncached(generic_base)
+		if resolved_base in t.sum_types {
+			return resolved_base
+		}
+		if !isnil(t.tc) && resolved_base in t.tc.sum_types {
+			return resolved_base
+		}
 	}
 	if sum_name.contains('.') {
 		short_sum := sum_name.all_after_last('.')
@@ -181,9 +196,11 @@ fn (t &Transformer) sum_type_index(sum_name string, variant string) int {
 // sum_type_index_in_variants supports sum type index in variants handling for transform.
 fn sum_type_index_in_variants(variants []string, variant string) int {
 	short_variant := variant_short_name_text(variant)
+	short_variant_base := variant_short_name_text(generic_base_name_text(variant))
 	for i, v in variants {
 		short_v := variant_short_name_text(v)
-		if v == variant || short_v == short_variant {
+		short_v_base := variant_short_name_text(generic_base_name_text(v))
+		if v == variant || short_v == short_variant || short_v_base == short_variant_base {
 			return i + 1
 		}
 	}
@@ -199,6 +216,8 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	expr_type := t.node_type(expr_id)
 	clean_type0 := t.trim_pointer_type(expr_type)
 	clean_type := if clean_type0 in t.sum_types {
+		clean_type0
+	} else if _ := t.resolve_sum_variant_pattern_for_subject(clean_type0, node.value) {
 		clean_type0
 	} else {
 		t.find_sum_type_for_variant(node.value)
@@ -223,7 +242,8 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 		})
 		return t.make_infix(.ne, object, t.a.add(.nil_literal))
 	}
-	if clean_type.len == 0 || clean_type !in t.sum_types {
+	resolved_clean_type := t.resolve_sum_name(clean_type)
+	if clean_type.len == 0 || resolved_clean_type !in t.sum_types {
 		return t.make_bool_literal(true)
 	}
 	new_expr := t.transform_expr(expr_id)
@@ -252,7 +272,13 @@ fn (t &Transformer) sum_variant_path(sum_name string, variant string) []string {
 
 // sum_variant_path_inner supports sum variant path inner handling for Transformer.
 fn (t &Transformer) sum_variant_path_inner(sum_name string, variant string, mut visited map[string]bool) []string {
-	resolved_sum := t.resolve_sum_name(t.trim_pointer_type(sum_name))
+	clean_sum := t.trim_pointer_type(sum_name)
+	if !isnil(t.tc) {
+		if resolved := t.tc.sum_variant_type_for_pattern(clean_sum, variant) {
+			return [resolved]
+		}
+	}
+	resolved_sum := t.resolve_sum_name(clean_sum)
 	if resolved_sum.len == 0 || resolved_sum in visited {
 		return []string{}
 	}
@@ -280,14 +306,14 @@ fn (t &Transformer) sum_variant_path_inner(sum_name string, variant string, mut 
 
 // make_sum_type_pattern_check builds make sum type pattern check data for transform.
 fn (mut t Transformer) make_sum_type_pattern_check(expr flat.NodeId, expr_type string, sum_name string, variant string) ?flat.NodeId {
-	resolved_sum := t.resolve_sum_name(t.trim_pointer_type(sum_name))
-	path := t.sum_variant_path(resolved_sum, variant)
+	clean_sum := t.trim_pointer_type(sum_name)
+	path := t.sum_variant_path(clean_sum, variant)
 	if path.len == 0 {
 		return none
 	}
 	mut current := expr
 	mut current_type := expr_type
-	mut current_sum := resolved_sum
+	mut current_sum := clean_sum
 	mut chain := flat.empty_node
 	for i, path_variant in path {
 		cmp := t.make_sum_is_check(current, current_type, current_sum, path_variant)
@@ -308,7 +334,7 @@ fn (mut t Transformer) make_sum_type_pattern_check(expr flat.NodeId, expr_type s
 			.dot
 		})
 		current_type = field_type
-		current_sum = t.resolve_sum_name(t.trim_pointer_type(qv))
+		current_sum = t.trim_pointer_type(qv)
 	}
 	return chain
 }

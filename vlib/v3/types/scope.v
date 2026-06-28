@@ -4,13 +4,17 @@ module types
 @[heap]
 pub struct Scope {
 pub mut:
-	parent &Scope = unsafe { nil }
-	names  []string
-	types  []Type
+	parent          &Scope = unsafe { nil }
+	names           []string
+	types           []Type
+	generations     []int
+	next_generation int
 }
 
-struct ScopeBindingOwner {
-	scope &Scope = unsafe { nil }
+pub struct ScopeBindingOwner {
+	scope      &Scope = unsafe { nil }
+	index      int    = -1
+	generation int
 }
 
 // new_scope returns a reusable type-checker scope with an optional parent.
@@ -30,6 +34,8 @@ pub fn (mut s Scope) reset(parent &Scope) {
 	s.parent = parent
 	s.names.clear()
 	s.types.clear()
+	s.generations.clear()
+	s.next_generation = 0
 }
 
 // lookup returns the nearest visible type binding for `name`.
@@ -56,7 +62,9 @@ fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 	for i := s.names.len - 1; i >= 0; i-- {
 		if s.names[i] == name {
 			return ScopeBindingOwner{
-				scope: s
+				scope:      s
+				index:      i
+				generation: s.generations[i]
 			}
 		}
 	}
@@ -66,14 +74,50 @@ fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 	return none
 }
 
+// nearest_binding_owned_by reports whether the nearest visible binding for
+// `name` belongs to `owner`.
+pub fn (s &Scope) nearest_binding_owned_by(name string, owner ScopeBindingOwner) bool {
+	if name.len == 0 || owner.scope == unsafe { nil } || owner.index < 0 {
+		return false
+	}
+	for i := s.names.len - 1; i >= 0; i-- {
+		if s.names[i] == name {
+			return s == owner.scope && i == owner.index && s.generations[i] == owner.generation
+		}
+	}
+	if s.parent != unsafe { nil } {
+		return s.parent.nearest_binding_owned_by(name, owner)
+	}
+	return false
+}
+
 // insert records or updates a type binding in this scope.
 pub fn (mut s Scope) insert(name string, typ Type) {
+	_ := s.insert_with_owner(name, typ)
+}
+
+// insert_with_owner records or updates a type binding and returns the exact
+// binding identity now visible for `name`.
+pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner {
 	for i := s.names.len - 1; i >= 0; i-- {
 		if s.names[i] == name {
 			s.types[i] = typ
-			return
+			s.next_generation++
+			s.generations[i] = s.next_generation
+			return ScopeBindingOwner{
+				scope:      s
+				index:      i
+				generation: s.generations[i]
+			}
 		}
 	}
+	s.next_generation++
 	s.names << name
 	s.types << typ
+	s.generations << s.next_generation
+	return ScopeBindingOwner{
+		scope:      s
+		index:      s.names.len - 1
+		generation: s.next_generation
+	}
 }

@@ -86,6 +86,7 @@ mut:
 	cur_param_types              map[string]types.Type
 	cur_concrete_optional_params map[string]bool
 	cur_mut_params               map[string]bool
+	cur_mut_param_owners         map[string]types.ScopeBindingOwner
 	cur_fn_ret                   types.Type = types.Type(types.void_)
 	cur_fn_ret_is_optional       bool
 	cur_fn_ret_base              types.Type = types.Type(types.void_)
@@ -190,6 +191,7 @@ pub fn FlatGen.new() FlatGen {
 		cur_param_types:              map[string]types.Type{}
 		cur_concrete_optional_params: map[string]bool{}
 		cur_mut_params:               map[string]bool{}
+		cur_mut_param_owners:         map[string]types.ScopeBindingOwner{}
 		active_locks:                 []ActiveLock{}
 		loop_label_depths:            map[string]int{}
 		goto_label_lock_scopes:       map[string][]int{}
@@ -293,6 +295,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cur_param_types = map[string]types.Type{}
 	g.cur_concrete_optional_params = map[string]bool{}
 	g.cur_mut_params = map[string]bool{}
+	g.cur_mut_param_owners = map[string]types.ScopeBindingOwner{}
 	g.active_locks = []ActiveLock{}
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
@@ -2176,6 +2179,11 @@ fn (mut g FlatGen) gen_expr_as_string(id flat.NodeId) {
 	if g.gen_map_str_expr(id, typ) {
 		return
 	}
+	if typ is types.Pointer && typ.base_type is types.String {
+		if g.gen_current_mut_param_value_read(id, typ.base_type) {
+			return
+		}
+	}
 	g.gen_expr(id)
 }
 
@@ -2305,6 +2313,27 @@ fn (mut g FlatGen) gen_cast_from_mut_param_address(id flat.NodeId, ct string) bo
 	return true
 }
 
+fn (mut g FlatGen) gen_current_mut_param_value_read(id flat.NodeId, expected types.Type) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind != .ident || !g.current_param_is_mut(node.value) {
+		return false
+	}
+	param_type := g.current_param_type(node.value) or { return false }
+	if param_type is types.Pointer {
+		if !g.type_names_match(param_type.base_type, expected) {
+			return false
+		}
+	} else {
+		return false
+	}
+	g.write('*')
+	g.gen_expr(id)
+	return true
+}
+
 // gen_expr_with_expected_type emits expr with expected type output for c.
 fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Type) {
 	old_expected := g.expected_expr_type
@@ -2331,6 +2360,11 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		}
 	}
 	if expected is types.String && g.gen_map_str_expr(id, actual) {
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
+	if g.gen_current_mut_param_value_read(id, expected) {
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
@@ -2537,7 +2571,7 @@ fn (g &FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 		if param_type := g.current_param_type(node.value) {
 			return param_type
 		}
-		if param_type := g.cur_param_types[node.value] {
+		if param_type := g.current_param_map_type(node.value) {
 			return param_type
 		}
 	}
@@ -2624,7 +2658,7 @@ fn (g &FlatGen) pointer_variant_arg_needs_heap_copy(node flat.Node) bool {
 	if _ := g.current_param_type(child.value) {
 		return true
 	}
-	if child.value in g.cur_param_types {
+	if _ := g.current_param_map_type(child.value) {
 		return true
 	}
 	if _ := g.tc.cur_scope.lookup(child.value) {
@@ -3647,7 +3681,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						g.gen_expr(child_id)
 						return
 					}
-				} else if typ := g.cur_param_types[child.value] {
+				} else if typ := g.current_param_map_type(child.value) {
 					if typ !is types.Pointer {
 						g.gen_expr(child_id)
 						return

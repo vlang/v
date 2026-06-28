@@ -59,6 +59,20 @@ fn main() {
 	assert out == 'ok'
 }
 
+fn test_mut_string_param_concat_reads_as_string() {
+	v3_bin := mut_param_reassign_build_v3()
+	out := mut_param_reassign_run_good(v3_bin, 'mut_string_param_concat', "fn add(mut s string) string {
+	return s + '!'
+}
+
+fn main() {
+	mut s := 'hi'
+	println(add(mut s))
+}
+")
+	assert out == 'hi!'
+}
+
 fn test_generic_mut_array_param_reassigns_to_base_type() {
 	v3_bin := mut_param_reassign_build_v3()
 	out := mut_param_reassign_run_good(v3_bin, 'generic_mut_array_param_reassign', 'struct Item {
@@ -127,9 +141,9 @@ fn main() {
 	assert out == 'ok'
 }
 
-fn test_multi_return_assign_to_mut_param_after_inner_shadow() {
+fn test_inner_scope_redefinition_of_mut_param_is_rejected_before_c_compile() {
 	v3_bin := mut_param_reassign_build_v3()
-	out := mut_param_reassign_run_good(v3_bin, 'mut_array_param_after_inner_shadow', 'fn pair() ([]int, int) {
+	mut_param_reassign_run_bad(v3_bin, 'bad_mut_array_param_inner_scope_redefinition', 'fn pair() ([]int, int) {
 	return [1], 0
 }
 
@@ -150,13 +164,13 @@ fn main() {
 	assert xs[0] == 1
 	println("ok")
 }
-')
-	assert out == 'ok'
+',
+		'redefinition of xs')
 }
 
-fn test_pointer_local_shadow_of_mut_param_uses_local_binding() {
+fn test_pointer_local_redefinition_of_mut_param_is_rejected_before_c_compile() {
 	v3_bin := mut_param_reassign_build_v3()
-	out := mut_param_reassign_run_good(v3_bin, 'mut_array_param_pointer_shadow', 'fn f(mut xs []int) {
+	mut_param_reassign_run_bad(v3_bin, 'bad_mut_array_param_pointer_redefinition', 'fn f(mut xs []int) {
 	mut local := []int{}
 	mut other := []int{}
 	{
@@ -173,8 +187,8 @@ fn main() {
 	assert xs[0] == 0
 	println("ok")
 }
-')
-	assert out == 'ok'
+',
+		'redefinition of xs')
 }
 
 fn test_mut_param_compound_assign_and_postfix_store_through_pointer() {
@@ -196,6 +210,17 @@ fn main() {
 
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {
 	v3_bin := mut_param_reassign_build_v3()
+	mut_param_reassign_run_bad(v3_bin, 'bad_same_scope_mut_string_param_redeclare', "fn shadow_read(mut s string) string {
+	mut s := 'local'
+	return s + '!'
+}
+
+fn main() {
+	mut s := 'param'
+	_ = shadow_read(mut s)
+}
+",
+		'redefinition of s')
 	mut_param_reassign_run_bad(v3_bin, 'bad_mut_array_param_reassign_elem', "fn bad(mut xs []int) {
 	mut ys := []string{}
 	ys << 'bad'
@@ -232,8 +257,10 @@ fn main() {
 }
 
 fn replace(mut xs []int) {
-	mut xs := 0
-	xs, _ = pair()
+	if true {
+		mut xs := 0
+		xs, _ = pair()
+	}
 }
 
 fn main() {
@@ -241,5 +268,5 @@ fn main() {
 	replace(mut xs)
 }
 ',
-		'cannot assign `[]int` to `int`')
+		'redefinition of xs')
 }

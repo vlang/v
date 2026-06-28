@@ -406,6 +406,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		cur_param_types:              g.cur_param_types.clone()
 		cur_concrete_optional_params: g.cur_concrete_optional_params.clone()
 		cur_mut_params:               g.cur_mut_params.clone()
+		cur_mut_param_owners:         g.cur_mut_param_owners.clone()
 		cur_fn_ret:                   g.cur_fn_ret
 		cur_fn_ret_is_optional:       g.cur_fn_ret_is_optional
 		cur_fn_ret_base:              g.cur_fn_ret_base
@@ -444,6 +445,8 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 	mut fs := types.new_scope(unsafe { nil })
 	fs.names = g.tc.file_scope.names.clone()
 	fs.types = g.tc.file_scope.types.clone()
+	fs.generations = g.tc.file_scope.generations.clone()
+	fs.next_generation = g.tc.file_scope.next_generation
 	return &types.TypeChecker{
 		a:                             unsafe { g.tc.a }
 		fn_ret_types:                  g.tc.fn_ret_types

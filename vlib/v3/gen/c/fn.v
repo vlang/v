@@ -1293,11 +1293,13 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	old_param_types := g.cur_param_types.clone()
 	old_concrete_optional_params := g.cur_concrete_optional_params.clone()
 	old_mut_params := g.cur_mut_params.clone()
+	old_mut_param_owners := g.cur_mut_param_owners.clone()
 	g.cur_param_names = []string{}
 	g.cur_param_type_values = []types.Type{}
 	g.cur_param_types = map[string]types.Type{}
 	g.cur_concrete_optional_params = map[string]bool{}
 	g.cur_mut_params = map[string]bool{}
+	g.cur_mut_param_owners = map[string]types.ScopeBindingOwner{}
 	typed_params := g.fn_node_param_types(node, module_name)
 	concrete_optional_params := g.is_specialized_generic_fn_node(node)
 	mut param_idx := 0
@@ -1315,13 +1317,14 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 				g.cur_param_names << p.value
 				g.cur_param_type_values << param_type
 				g.cur_param_types[p.value] = param_type
+				owner := g.tc.cur_scope.insert_with_owner(p.value, param_type)
 				if p.is_mut {
 					g.cur_mut_params[p.value] = true
+					g.cur_mut_param_owners[p.value] = owner
 				}
 				if concrete_optional_params && type_is_optional_result(param_type) {
 					g.cur_concrete_optional_params[p.value] = true
 				}
-				g.tc.cur_scope.insert(p.value, param_type)
 			}
 		}
 	}
@@ -1379,6 +1382,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.cur_param_types = old_param_types.clone()
 	g.cur_concrete_optional_params = old_concrete_optional_params.clone()
 	g.cur_mut_params = old_mut_params.clone()
+	g.cur_mut_param_owners = old_mut_param_owners.clone()
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
 	g.goto_label_lock_scopes = map[string][]int{}
@@ -1459,11 +1463,13 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	old_param_types := g.cur_param_types.clone()
 	old_concrete_optional_params := g.cur_concrete_optional_params.clone()
 	old_mut_params := g.cur_mut_params.clone()
+	old_mut_param_owners := g.cur_mut_param_owners.clone()
 	g.cur_param_names = []string{}
 	g.cur_param_type_values = []types.Type{}
 	g.cur_param_types = map[string]types.Type{}
 	g.cur_concrete_optional_params = map[string]bool{}
 	g.cur_mut_params = map[string]bool{}
+	g.cur_mut_param_owners = map[string]types.ScopeBindingOwner{}
 	mut fn_defer_ids := []flat.NodeId{}
 	for stmt in stmts {
 		g.collect_function_defer_ids_from(stmt.id, mut fn_defer_ids)
@@ -1496,6 +1502,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.cur_param_types = old_param_types.clone()
 	g.cur_concrete_optional_params = old_concrete_optional_params.clone()
 	g.cur_mut_params = old_mut_params.clone()
+	g.cur_mut_param_owners = old_mut_param_owners.clone()
 	g.cur_fn_name = old_fn_name
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
@@ -2813,7 +2820,7 @@ fn (g &FlatGen) receiver_base_type(base_id flat.NodeId) types.Type {
 		if typ := g.current_param_type(base.value) {
 			return typ
 		}
-		if typ := g.cur_param_types[base.value] {
+		if typ := g.current_param_map_type(base.value) {
 			return typ
 		}
 		if typ := g.tc.cur_scope.lookup(base.value) {
@@ -3206,10 +3213,23 @@ fn (g &FlatGen) embedded_receiver_field_for_expected(base_type types.Type, expec
 
 // current_param_type returns current param type data for FlatGen.
 fn (g &FlatGen) current_param_type(name string) ?types.Type {
+	if g.current_mut_param_binding_is_shadowed(name) {
+		return none
+	}
 	for i in 0 .. g.cur_param_names.len {
 		if g.cur_param_names[i] == name {
 			return g.cur_param_type_values[i]
 		}
+	}
+	return none
+}
+
+fn (g &FlatGen) current_param_map_type(name string) ?types.Type {
+	if g.current_mut_param_binding_is_shadowed(name) {
+		return none
+	}
+	if typ := g.cur_param_types[name] {
+		return typ
 	}
 	return none
 }
@@ -3406,7 +3426,25 @@ fn (mut g FlatGen) optional_type_name_for_expr(id flat.NodeId, typ types.Type) s
 
 // current_param_is_mut returns true when a current param originated from `mut name T`.
 fn (g &FlatGen) current_param_is_mut(name string) bool {
-	return g.cur_mut_params[name] or { false }
+	if !(g.cur_mut_params[name] or { false }) {
+		return false
+	}
+	owner := g.cur_mut_param_owners[name] or { return false }
+	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
+		return false
+	}
+	return g.tc.cur_scope.nearest_binding_owned_by(name, owner)
+}
+
+fn (g &FlatGen) current_mut_param_binding_is_shadowed(name string) bool {
+	if !(g.cur_mut_params[name] or { false }) {
+		return false
+	}
+	owner := g.cur_mut_param_owners[name] or { return false }
+	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
+		return false
+	}
+	return !g.tc.cur_scope.nearest_binding_owned_by(name, owner)
 }
 
 // gen_enum_str_call emits an explicit `enum_val.str()` (with no user-defined `str`)

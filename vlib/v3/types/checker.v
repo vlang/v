@@ -1321,12 +1321,10 @@ fn (mut tc TypeChecker) insert_fn_param_binding(p flat.Node) {
 		return
 	}
 	typ := tc.parse_type(p.typ)
-	tc.cur_scope.insert(p.value, typ)
+	owner := tc.cur_scope.insert_with_owner(p.value, typ)
 	if p.is_mut {
 		tc.cur_fn_mut_param_base_types[p.value] = mut_param_base_type(typ)
-		tc.cur_fn_mut_param_binding_owners[p.value] = ScopeBindingOwner{
-			scope: tc.cur_scope
-		}
+		tc.cur_fn_mut_param_binding_owners[p.value] = owner
 	}
 }
 
@@ -3440,8 +3438,10 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	if node.op != .plus || node.children_count < 2 || !tc.should_diagnose(id) {
 		return
 	}
-	lhs_type := tc.resolve_type(tc.a.child(&node, 0))
-	rhs_type := tc.resolve_type(tc.a.child(&node, 1))
+	lhs_id := tc.a.child(&node, 0)
+	rhs_id := tc.a.child(&node, 1)
+	lhs_type := tc.infix_read_type(lhs_id)
+	rhs_type := tc.infix_read_type(rhs_id)
 	lhs_is_string := type_is_string_like(lhs_type)
 	rhs_is_string := type_is_string_like(rhs_type)
 	if lhs_is_string == rhs_is_string {
@@ -3452,6 +3452,22 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	}
 	tc.record_error(.assignment_mismatch,
 		'operator `+` cannot concatenate `${lhs_type.name()}` and `${rhs_type.name()}`', id)
+}
+
+fn (tc &TypeChecker) infix_read_type(id flat.NodeId) Type {
+	typ := tc.resolve_type(id)
+	if int(id) < 0 {
+		return typ
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .ident {
+		if base := tc.cur_fn_mut_param_base_types[node.value] {
+			if tc.mut_param_binding_matches_lvalue(node.value) {
+				return base
+			}
+		}
+	}
+	return typ
 }
 
 fn type_is_string_like(typ Type) bool {
@@ -3910,9 +3926,29 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type) {
 	}
 	lhs := tc.a.nodes[int(lhs_id)]
 	if lhs.kind == .ident && lhs.value.len > 0 {
+		if lhs.value != '_' && tc.visible_local_scope_owns_name(lhs.value) {
+			tc.record_error(.assignment_mismatch, 'redefinition of ${lhs.value}', lhs_id)
+			return
+		}
 		tc.cur_scope.insert(lhs.value, typ)
 		tc.register_synth_type(lhs_id, typ)
 	}
+}
+
+fn (tc &TypeChecker) visible_local_scope_owns_name(name string) bool {
+	if name.len == 0 || tc.cur_scope == unsafe { nil } {
+		return false
+	}
+	mut scope := tc.cur_scope
+	for scope != unsafe { nil } && scope != tc.file_scope {
+		for i := scope.names.len - 1; i >= 0; i-- {
+			if scope.names[i] == name {
+				return true
+			}
+		}
+		scope = scope.parent
+	}
+	return false
 }
 
 // check_assign validates check assign state for types.
@@ -4072,7 +4108,8 @@ fn (tc &TypeChecker) mut_param_binding_matches_lvalue(name string) bool {
 	}
 	if param_owner := tc.cur_fn_mut_param_binding_owners[name] {
 		if owner := tc.cur_scope.lookup_owner(name) {
-			return owner.scope == param_owner.scope
+			return owner.scope == param_owner.scope && owner.index == param_owner.index
+				&& owner.generation == param_owner.generation
 		}
 	}
 	return false
@@ -7205,7 +7242,8 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 				cond_id := tc.a.child(branch, j)
 				cond := tc.a.node(cond_id)
 				if pattern := tc.match_type_pattern(cond) {
-					if !tc.named_type_compatible_with_ierror(pattern) && tc.should_diagnose(cond_id) {
+					if _ := tc.resolve_ierror_match_pattern(pattern) {
+					} else if tc.should_diagnose(cond_id) {
 						tc.record_error(.condition_mismatch,
 							'`${pattern}` is not compatible with `IError`', cond_id)
 					}
@@ -7223,6 +7261,8 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 								'`${pattern}` is not compatible with interface `${subject_type.name}`',
 								cond_id)
 						}
+					} else if tc.should_diagnose(cond_id) {
+						tc.record_error(.condition_mismatch, 'unknown type `${pattern}`', cond_id)
 					}
 				}
 			}
@@ -7235,6 +7275,10 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			if pattern := tc.match_type_pattern(cond) {
 				smartcast_type := if subject_type is SumType {
 					tc.sum_variant_type_for_pattern(subject_type.name, pattern) or { pattern }
+				} else if is_ierror_type(subject_type) {
+					tc.resolve_ierror_match_pattern(pattern) or { pattern }
+				} else if subject_type is Interface {
+					tc.resolve_interface_match_pattern(pattern) or { pattern }
 				} else {
 					pattern
 				}
@@ -7251,6 +7295,15 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 fn (tc &TypeChecker) resolve_interface_match_pattern(pattern string) ?string {
 	for candidate in tc.interface_match_pattern_candidates(pattern) {
 		if tc.type_symbol_known(candidate) {
+			return candidate
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) resolve_ierror_match_pattern(pattern string) ?string {
+	for candidate in tc.interface_match_pattern_candidates(pattern) {
+		if tc.named_type_compatible_with_ierror(candidate) {
 			return candidate
 		}
 	}
@@ -7313,10 +7366,12 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if is_ierror_type(expr_type) {
-		if node.value.len > 0 && !tc.named_type_compatible_with_ierror(node.value)
-			&& tc.should_diagnose(id) {
-			tc.record_error(.condition_mismatch, '`${node.value}` is not compatible with `IError`',
-				id)
+		if node.value.len > 0 {
+			if _ := tc.resolve_ierror_match_pattern(node.value) {
+			} else if tc.should_diagnose(id) {
+				tc.record_error(.condition_mismatch,
+					'`${node.value}` is not compatible with `IError`', id)
+			}
 		}
 		return
 	}
@@ -7328,6 +7383,8 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 					tc.record_error(.condition_mismatch,
 						'`${node.value}` is not compatible with interface `${expr_type.name}`', id)
 				}
+			} else if tc.should_diagnose(id) {
+				tc.record_error(.condition_mismatch, 'unknown type `${node.value}`', id)
 			}
 		}
 		return
@@ -9910,7 +9967,7 @@ fn (tc &TypeChecker) sum_has_variant(sum_name string, variant_name string) bool 
 	return tc.sum_variant_type_for_pattern(sum_name, variant_name) != none
 }
 
-fn (tc &TypeChecker) sum_variant_type_for_pattern(sum_name string, variant_name string) ?string {
+pub fn (tc &TypeChecker) sum_variant_type_for_pattern(sum_name string, variant_name string) ?string {
 	base := tc.sum_base_name(sum_name)
 	variants := tc.sum_types[base] or { return none }
 	mut candidates := [variant_name]

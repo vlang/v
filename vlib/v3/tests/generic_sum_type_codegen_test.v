@@ -93,6 +93,56 @@ fn main() {
 	assert !c_code.contains('Tree_f64 floats = (Tree){'), c_code
 }
 
+fn test_generic_sum_bare_variant_match_lowers_to_tag_check() {
+	v3_bin := generic_sum_type_build_v3()
+	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_bare_match_${os.getpid()}.v')
+	os.write_file(src, '
+struct Empty {}
+
+struct Node[T] {
+	value T
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn value(tree Tree[int]) int {
+	return match tree {
+		Node {
+			tree.value
+		}
+		else {
+			0
+		}
+	}
+}
+
+fn main() {
+	tree := Tree[int](Node[int]{
+		value: 42
+	})
+	println(value(tree).str())
+	println(value(Tree[int](Empty{})).str())
+}
+') or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_bare_match_${os.getpid()}')
+	os.rm(bin) or {}
+	os.rm(bin + '.c') or {}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42\n0'
+
+	c_code := os.read_file(bin + '.c') or { panic(err) }
+	assert !c_code.contains('if (true)'), c_code
+	assert !c_code.contains('tree == Node'), c_code
+}
+
 fn test_generic_sum_rejects_mismatched_concrete_variant() {
 	v3_bin := generic_sum_type_build_v3()
 	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_negative_${os.getpid()}.v')

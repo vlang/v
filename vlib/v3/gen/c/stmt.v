@@ -598,6 +598,12 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 						return
 					}
 					if base is types.Void {
+						if g.cur_fn_ret is types.ResultType {
+							if err := g.result_error_from_expr_string(ret_id) {
+								g.writeln('return (${ct}){.ok = false, .err = ${err}};')
+								return
+							}
+						}
 						g.writeln('return (${ct}){.ok = false};')
 					} else if base is types.ArrayFixed {
 						// The optional's `.value` is a fixed-array member, which can't be set
@@ -640,13 +646,13 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 								&& !g.clone_call_matches_base(ret_node, base)
 								&& expr_value_type !is types.Primitive
 								&& expr_value_type !is types.Unknown {
-								if err_expr := g.optional_error_return_expr(ret_id,
-									expr_value_type, ct)
-								{
-									g.writeln('return ${err_expr};')
-								} else {
-									g.writeln('return (${ct}){.ok = false};')
+								if g.cur_fn_ret is types.ResultType {
+									if err := g.result_error_from_expr_string(ret_id) {
+										g.writeln('return (${ct}){.ok = false, .err = ${err}};')
+										return
+									}
 								}
+								g.writeln('return (${ct}){.ok = false};')
 							} else {
 								g.write('return (${ct}){.ok = true, .value = ')
 								if !g.gen_heap_local_address_expr(ret_id, base) {
@@ -887,7 +893,7 @@ fn (g &FlatGen) local_ident_type(name string) ?types.Type {
 	if typ := g.current_param_type(name) {
 		return typ
 	}
-	if typ := g.cur_param_types[name] {
+	if typ := g.current_param_map_type(name) {
 		return typ
 	}
 	if g.cur_scope_has_local_name(name) {
@@ -975,6 +981,11 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 			return '(${ct}){.ok = false}'
 		}
 		if base is types.Void {
+			if g.cur_fn_ret is types.ResultType {
+				if err := g.result_error_from_expr_string(ret_id) {
+					return '(${ct}){.ok = false, .err = ${err}}'
+				}
+			}
 			return '(${ct}){.ok = false}'
 		}
 		if base is types.ArrayFixed {
@@ -1014,8 +1025,10 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 			&& !g.types_numeric_compatible(expr_value_type, base)
 			&& !g.call_constructs_type(ret_id, base) && !g.clone_call_matches_base(ret_node, base)
 			&& expr_value_type !is types.Primitive && expr_value_type !is types.Unknown {
-			if err_expr := g.optional_error_return_expr(ret_id, expr_value_type, ct) {
-				return err_expr
+			if g.cur_fn_ret is types.ResultType {
+				if err := g.result_error_from_expr_string(ret_id) {
+					return '(${ct}){.ok = false, .err = ${err}}'
+				}
 			}
 			return '(${ct}){.ok = false}'
 		}
@@ -1044,23 +1057,6 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		return g.interface_value_to_string(ret_id, g.cur_fn_ret)
 	}
 	return g.heap_local_address_expr(ret_id, g.cur_fn_ret) or { g.expr_to_string(ret_id) }
-}
-
-fn (mut g FlatGen) optional_error_return_expr(ret_id flat.NodeId, expr_type types.Type, ct string) ?string {
-	if err := g.ierror_from_expr_string(ret_id) {
-		return '(${ct}){.ok = false, .err = ${err}}'
-	}
-	if g.is_ierror_type_name(expr_type.name()) {
-		return '(${ct}){.ok = false, .err = ${g.expr_to_string(ret_id)}}'
-	}
-	if !g.type_can_return_as_ierror(expr_type) {
-		return none
-	}
-	iface := g.ierror_interface_name() or { return none }
-	err := g.interface_value_to_string(ret_id, types.Type(types.Interface{
-		name: iface
-	}))
-	return '(${ct}){.ok = false, .err = ${err}}'
 }
 
 fn (g &FlatGen) type_can_return_as_ierror(typ types.Type) bool {
@@ -1097,6 +1093,29 @@ fn (g &FlatGen) struct_type_embeds_error(type_name string) bool {
 		}
 	}
 	return false
+}
+
+fn (mut g FlatGen) result_error_from_expr_string(id flat.NodeId) ?string {
+	if err := g.ierror_from_expr_string(id) {
+		return err
+	}
+	expr_type := g.usable_expr_type(id)
+	mut expr_value_type := expr_type
+	if expr_type is types.OptionType {
+		expr_value_type = expr_type.base_type
+	} else if expr_type is types.ResultType {
+		expr_value_type = expr_type.base_type
+	}
+	if g.is_ierror_type_name(expr_value_type.name()) {
+		return g.expr_to_string(id)
+	}
+	if !g.type_can_return_as_ierror(expr_value_type) {
+		return none
+	}
+	iface := g.ierror_interface_name() or { return none }
+	return g.interface_value_to_string(id, types.Type(types.Interface{
+		name: iface
+	}))
 }
 
 fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.Node) types.Type {
@@ -1485,7 +1504,7 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 			}
 		}
 		if node.kind == .ident {
-			if typ := g.cur_param_types[node.value] {
+			if typ := g.current_param_map_type(node.value) {
 				return typ
 			}
 			if typ := g.tc.cur_scope.lookup(node.value) {

@@ -151,6 +151,122 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
+fn test_ierror_patterns_resolve_nested_alias_and_selective_imports() {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+
+	root := os.join_path(os.temp_dir(), 'v3_ierror_alias_match_codegen_${os.getpid()}')
+	alias_dir := os.join_path(root, 'nested', 'aliaserrs')
+	selective_dir := os.join_path(root, 'nested', 'selecterrs')
+	os.mkdir_all(alias_dir) or { panic(err) }
+	os.mkdir_all(selective_dir) or { panic(err) }
+	os.write_file(os.join_path(alias_dir, 'aliaserrs.v'), "module aliaserrs
+
+pub struct AliasError {
+	Error
+pub:
+	label string
+}
+
+pub fn (err AliasError) msg() string {
+	return 'alias ' + err.label
+}
+
+pub fn (err AliasError) code() int {
+	return 31
+}
+
+pub fn fail_alias() !int {
+	return &AliasError{
+		label: 'nested'
+	}
+}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(selective_dir, 'selecterrs.v'), "module selecterrs
+
+pub struct SelectiveError {
+	Error
+pub:
+	label string
+}
+
+pub fn (err SelectiveError) msg() string {
+	return 'selective ' + err.label
+}
+
+pub fn (err SelectiveError) code() int {
+	return 41
+}
+
+pub fn fail_selective() !int {
+	return &SelectiveError{
+		label: 'nested'
+	}
+}
+") or {
+		panic(err)
+	}
+
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, "import nested.aliaserrs as aliased
+import nested.selecterrs { SelectiveError, fail_selective }
+
+fn classify_alias(err IError) string {
+	return match err {
+		aliased.AliasError {
+			'alias'
+		}
+		else {
+			'other'
+		}
+	}
+}
+
+fn classify_selective(err IError) string {
+	return match err {
+		SelectiveError {
+			'selective'
+		}
+		else {
+			'other'
+		}
+	}
+}
+
+fn main() {
+	aliased.fail_alias() or {
+		assert err.msg() == 'alias nested'
+		assert classify_alias(err) == 'alias'
+		assert classify_selective(err) == 'other'
+		assert err is aliased.AliasError
+	}
+
+	fail_selective() or {
+		assert err.msg() == 'selective nested'
+		assert classify_alias(err) == 'other'
+		assert classify_selective(err) == 'selective'
+		assert err is SelectiveError
+	}
+	println('ok')
+}
+") or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_ierror_alias_match_codegen_input')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}
+
 fn test_msg_only_struct_is_not_ierror_pattern() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
 	build :=

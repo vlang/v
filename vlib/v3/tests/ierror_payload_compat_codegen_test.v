@@ -112,6 +112,78 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
+fn test_ierror_payloads_are_preserved_for_void_results() {
+	v3_bin := build_v3()
+
+	root := os.join_path(os.temp_dir(), 'v3_ierror_void_return_payload_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, "struct CustomError {
+	text string
+}
+
+fn (err CustomError) msg() string {
+	return err.text
+}
+
+fn (err CustomError) code() int {
+	return 77
+}
+
+fn custom_error() ! {
+	return CustomError{
+		text: 'void payload'
+	}
+}
+
+fn custom_error_with_defer() ! {
+	defer {
+		_ := 1
+	}
+	return CustomError{
+		text: 'void defer payload'
+	}
+}
+
+fn builtin_error() ! {
+	return error('builtin void')
+}
+
+fn main() {
+	custom_error() or {
+		assert err.msg() == 'void payload'
+		assert err.code() == 77
+	}
+	custom_error_with_defer() or {
+		assert err.msg() == 'void defer payload'
+		assert err.code() == 77
+	}
+	builtin_error() or {
+		assert err.msg() == 'builtin void'
+		assert err.code() == 0
+	}
+	println('ok')
+}
+") or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_ierror_void_return_payload_input')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+
+	c_code := os.read_file(bin + '.c') or { panic(err) }
+	assert c_code.contains('Optional custom_error(void)'), c_code
+	assert c_code.contains('Optional custom_error_with_defer(void)'), c_code
+	assert c_code.contains('.err = (IError){._typ = '), c_code
+	assert !c_code.contains('Optional custom_error(void) {\n\treturn (Optional){.ok = false};'), c_code
+}
+
 fn test_selective_imported_ierror_payload_is_result_error() {
 	v3_bin := build_v3()
 

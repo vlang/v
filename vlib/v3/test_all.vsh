@@ -41,12 +41,19 @@ struct ExampleCase {
 	timeout_seconds int
 }
 
+struct ProcessRunResult {
+	exit_code int
+	output    string
+	timed_out bool
+}
+
 enum ExampleRunMode {
 	normal
 	gui_smoke
 }
 
 fn main() {
+	self_check_gui_smoke_timeout_status()
 	cfg := parse_config()
 	os.chdir(cfg.repo_root) or { fail('failed to enter ${cfg.repo_root}: ${err}') }
 
@@ -386,18 +393,38 @@ fn run_gui_smoke_example(example_case ExampleCase, bin string, stdin_path string
 		}
 	}
 	run_cmd := command_with_args(command, args)
-	exit_code, output := run_process_with_timeout(command, args, example_case.timeout_seconds)
-	if exit_code != 0 && exit_code != 124 {
+	run_result := run_process_with_timeout(command, args, example_case.timeout_seconds)
+	if !gui_smoke_run_succeeded(run_result) {
 		cleanup_files([bin, bin + '.c', stdin_path])
-		print_command_failure('run ${example_case.path}', run_cmd, output)
+		print_command_failure('run ${example_case.path}', run_cmd, run_result.output)
 	}
+}
+
+fn gui_smoke_run_succeeded(result ProcessRunResult) bool {
+	return result.exit_code == 0 || result.timed_out
+}
+
+fn self_check_gui_smoke_timeout_status() {
+	assert gui_smoke_run_succeeded(ProcessRunResult{
+		exit_code: 0
+	})
+	assert gui_smoke_run_succeeded(ProcessRunResult{
+		exit_code: 124
+		timed_out: true
+	})
+	assert !gui_smoke_run_succeeded(ProcessRunResult{
+		exit_code: 124
+	})
+	assert !gui_smoke_run_succeeded(ProcessRunResult{
+		exit_code: 1
+	})
 }
 
 fn shell_command_exists(name string) bool {
 	return os.execute('command -v ${q(name)} >/dev/null 2>&1').exit_code == 0
 }
 
-fn run_process_with_timeout(command string, args []string, seconds int) (int, string) {
+fn run_process_with_timeout(command string, args []string, seconds int) ProcessRunResult {
 	mut process := os.new_process(command)
 	if args.len > 0 {
 		process.set_args(args)
@@ -412,7 +439,11 @@ fn run_process_with_timeout(command string, args []string, seconds int) (int, st
 			process.wait()
 			output := process.stdout_slurp() + process.stderr_slurp()
 			process.close()
-			return 124, output
+			return ProcessRunResult{
+				exit_code: 124
+				output:    output
+				timed_out: true
+			}
 		}
 		time.sleep(50 * time.millisecond)
 		elapsed_ms += 50
@@ -421,7 +452,10 @@ fn run_process_with_timeout(command string, args []string, seconds int) (int, st
 	output := process.stdout_slurp() + process.stderr_slurp()
 	exit_code := process.code
 	process.close()
-	return exit_code, output
+	return ProcessRunResult{
+		exit_code: exit_code
+		output:    output
+	}
 }
 
 fn command_with_args(command string, args []string) string {

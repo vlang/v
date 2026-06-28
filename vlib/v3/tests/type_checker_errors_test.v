@@ -164,6 +164,12 @@ fn test_type_checker_reports_core_semantic_errors() {
 	run_bad(v3_bin, 'bad_interface_is_unrelated_sum_variant',
 		'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nstruct Other {\n\tx int\n}\ntype Unrelated = Other\nfn check(s Shape) bool {\n\treturn s is Other\n}\nfn main() {}\n',
 		'`Other` is not compatible with interface `Shape`')
+	run_bad(v3_bin, 'bad_interface_match_unresolved_pattern',
+		'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nfn describe(s Shape) int {\n\treturn match s {\n\t\tMissingType { 1 }\n\t\telse { 0 }\n\t}\n}\nfn main() {}\n',
+		'unknown type `MissingType`')
+	run_bad(v3_bin, 'bad_interface_is_unresolved_pattern',
+		'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nfn check(s Shape) bool {\n\treturn s is MissingType\n}\nfn main() {}\n',
+		'unknown type `MissingType`')
 	run_bad(v3_bin, 'bad_sum_missing_shared_field',
 		'struct A {\n\tid int\n}\nstruct B {\n\tname string\n}\ntype Node = A | B\nfn main() {\n\tn := Node(A{\n\t\tid: 1\n\t})\n\t_ := n.id\n}\n',
 		'unknown field `id` on `Node`')

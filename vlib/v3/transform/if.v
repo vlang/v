@@ -1394,6 +1394,9 @@ fn (t &Transformer) extract_is_expr(cond_id flat.NodeId) IsExprInfo {
 // sum_type_for_is_expr supports sum type for is expr handling for Transformer.
 fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) string {
 	clean_expr_type := t.trim_pointer_type(expr_type)
+	if _ := t.resolve_sum_variant_pattern_for_subject(clean_expr_type, variant) {
+		return clean_expr_type
+	}
 	resolved_expr_sum := t.resolve_sum_name(clean_expr_type)
 	if resolved_expr_sum in t.sum_types {
 		if _ := t.sum_variant_name(resolved_expr_sum, variant) {

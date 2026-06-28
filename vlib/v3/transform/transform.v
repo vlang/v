@@ -6327,7 +6327,15 @@ fn (t &Transformer) sum_variant_name(sum_name string, variant string) ?string {
 }
 
 fn (t &Transformer) variant_names_match(a string, b string) bool {
-	return a == b || t.variant_short_name(a) == t.variant_short_name(b)
+	if a == b || t.variant_short_name(a) == t.variant_short_name(b) {
+		return true
+	}
+	a_base := generic_base_name_text(a)
+	b_base := generic_base_name_text(b)
+	if a_base != a || b_base != b {
+		return t.variant_short_name(a_base) == t.variant_short_name(b_base)
+	}
+	return false
 }
 
 fn (t &Transformer) variant_short_name(name string) string {
@@ -6341,6 +6349,17 @@ fn (t &Transformer) variant_short_name(name string) string {
 	short := variant_short_name_text(name)
 	cache.entries[name] = short
 	return short
+}
+
+fn generic_base_name_text(name string) string {
+	if name.starts_with('[') {
+		return name
+	}
+	bracket := name.index_u8(`[`)
+	if bracket <= 0 {
+		return name
+	}
+	return name[..bracket]
 }
 
 fn variant_short_name_text(name string) string {
@@ -7583,10 +7602,26 @@ fn (t &Transformer) match_type_pattern_for_subject(match_expr_id flat.NodeId, co
 	if t.is_interface_type_name(subject_type) {
 		return t.resolve_interface_pattern(pattern, subject_type)
 	}
+	if resolved_variant := t.resolve_sum_variant_pattern_for_subject(subject_type, pattern) {
+		return resolved_variant
+	}
 	if t.is_sum_variant(pattern) {
 		return pattern
 	}
 	return none
+}
+
+fn (t &Transformer) resolve_sum_variant_pattern_for_subject(subject_type string, pattern string) ?string {
+	if pattern.len == 0 {
+		return none
+	}
+	if !isnil(t.tc) {
+		if resolved := t.tc.sum_variant_type_for_pattern(subject_type, pattern) {
+			return resolved
+		}
+	}
+	resolved_sum := t.resolve_sum_name(subject_type)
+	return t.sum_variant_name(resolved_sum, pattern)
 }
 
 fn (t &Transformer) match_type_smartcast_context(match_expr_id flat.NodeId, cond_val_id flat.NodeId) ?SmartcastContext {
