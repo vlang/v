@@ -484,19 +484,26 @@ fn (g &FlatGen) ierror_pointer_payload_needs_heap_copy(node flat.Node) bool {
 	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
 		return false
 	}
-	child_id := g.a.child(&node, 0)
-	child := g.a.nodes[int(child_id)]
-	if child.kind != .ident {
+	mut child_id := g.a.child(&node, 0)
+	for {
+		child := g.a.nodes[int(child_id)]
+		if child.kind !in [.selector, .index] || child.children_count == 0 {
+			break
+		}
+		child_id = g.a.child(&child, 0)
+	}
+	root := g.a.nodes[int(child_id)]
+	if root.kind != .ident {
 		return false
 	}
-	if param_type := g.current_param_type(child.value) {
+	if param_type := g.current_param_type(root.value) {
 		return param_type !is types.Pointer
 	}
-	if param_type := g.cur_param_types[child.value] {
+	if param_type := g.cur_param_types[root.value] {
 		return param_type !is types.Pointer
 	}
-	if _ := g.tc.cur_scope.lookup(child.value) {
-		return true
+	if local_type := g.tc.cur_scope.lookup(root.value) {
+		return local_type !is types.Pointer
 	}
 	return false
 }

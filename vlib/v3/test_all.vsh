@@ -389,7 +389,8 @@ fn run_gui_smoke_example(example_case ExampleCase, bin string, stdin_path string
 			args = ['-a', bin]
 		} else {
 			cleanup_files([bin, bin + '.c', stdin_path])
-			fail('FAIL: GUI smoke case ${example_case.path} requires `xvfb-run` or an active display')
+			println('  SKIP ${example_case.path} (requires `xvfb-run` or an active display)')
+			return
 		}
 	}
 	run_cmd := command_with_args(command, args)

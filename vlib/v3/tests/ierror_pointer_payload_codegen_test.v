@@ -39,6 +39,10 @@ fn (err &PtrErr) code() int {
 	return 7
 }
 
+struct Holder {
+	err PtrErr
+}
+
 fn local_ptr() !int {
 	err := PtrErr{
 		text: 'stack error'
@@ -57,6 +61,23 @@ fn from_param(err PtrErr) !int {
 	return &err
 }
 
+fn local_field() !int {
+	holder := Holder{
+		err: PtrErr{
+			text: 'local field error'
+		}
+	}
+	return &holder.err
+}
+
+fn from_param_field(holder Holder) !int {
+	return &holder.err
+}
+
+fn from_pointer_param_field(holder &Holder) !int {
+	return &holder.err
+}
+
 fn main() {
 	local_ptr() or {
 		assert err.msg() == 'stack error'
@@ -69,6 +90,27 @@ fn main() {
 		text: 'param error'
 	}) or {
 		assert err.msg() == 'param error'
+		assert err.code() == 7
+	}
+	local_field() or {
+		assert err.msg() == 'local field error'
+		assert err.code() == 7
+	}
+	from_param_field(Holder{
+		err: PtrErr{
+			text: 'param field error'
+		}
+	}) or {
+		assert err.msg() == 'param field error'
+		assert err.code() == 7
+	}
+	stable := Holder{
+		err: PtrErr{
+			text: 'pointer field error'
+		}
+	}
+	from_pointer_param_field(&stable) or {
+		assert err.msg() == 'pointer field error'
 		assert err.code() == 7
 	}
 	println('ok')
@@ -101,4 +143,18 @@ fn main() {
 	assert param_body.contains('._object = memdup('), param_body
 	assert param_body.contains('sizeof(PtrErr)'), param_body
 	assert !param_body.contains('._object = &err'), param_body
+
+	local_field_body := c_fn_body(c_code, 'Optional local_field(void) {')
+	assert local_field_body.contains('._object = memdup('), local_field_body
+	assert local_field_body.contains('sizeof(PtrErr)'), local_field_body
+	assert !local_field_body.contains('._object = &holder.err'), local_field_body
+
+	param_field_body := c_fn_body(c_code, 'Optional from_param_field(Holder holder) {')
+	assert param_field_body.contains('._object = memdup('), param_field_body
+	assert param_field_body.contains('sizeof(PtrErr)'), param_field_body
+	assert !param_field_body.contains('._object = &holder.err'), param_field_body
+
+	pointer_param_field_body := c_fn_body(c_code,
+		'Optional from_pointer_param_field(Holder* holder) {')
+	assert !pointer_param_field_body.contains('._object = memdup('), pointer_param_field_body
 }
