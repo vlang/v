@@ -80,3 +80,10 @@ fn test_generic_functions_report_missing_return() {
 	run_bad(v3_bin, 'bad_generic_missing_return', 'fn f[T]() int {\n}\nfn main() {}\n',
 		'missing return at end of function `f`')
 }
+
+fn test_local_identifiers_shadow_module_consts() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_const_shadowed_by_param_and_local',
+		"const shadowed_value = 'const'\n\nfn param_shadow(shadowed_value int) int {\n\treturn shadowed_value + 1\n}\n\nfn local_shadow() int {\n\tshadowed_value := 2\n\treturn shadowed_value + 1\n}\n\nfn main() {\n\tprintln(int_str(param_shadow(1)))\n\tprintln(int_str(local_shadow()))\n\tprintln(shadowed_value)\n}\n")
+	assert out == '2\n3\nconst'
+}

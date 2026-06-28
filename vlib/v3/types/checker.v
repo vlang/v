@@ -9034,11 +9034,6 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			return typ
 		}
 	}
-	if node.kind == .ident {
-		if typ := tc.const_type_for_name(node.value) {
-			return typ
-		}
-	}
 	if node.kind == .selector {
 		if typ := tc.const_type_for_selector(node) {
 			return typ
