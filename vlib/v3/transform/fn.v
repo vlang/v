@@ -1914,8 +1914,8 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		return none
 	}
 	array_builtin_method := t.array_builtin_method_name(fn_node.value) or { '' }
-	if fn_node.value !in ['clone', 'reverse', 'contains', 'index', 'join', 'any', 'all', 'count',
-		'equals', 'prepend', 'insert', 'push_many', 'str'] {
+	if fn_node.value !in ['clone', 'reverse', 'contains', 'index', 'last_index', 'join', 'any',
+		'all', 'count', 'equals', 'prepend', 'insert', 'push_many', 'str'] {
 		if fn_node.value !in ['filter', 'map', 'sort', 'sorted', 'sort_with_compare',
 			'sorted_with_compare'] && array_builtin_method.len == 0 {
 			return none
@@ -2144,6 +2144,16 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			arg := t.transform_expr(arg_id)
 			fn_name := if elem_type == 'string' { 'array_index_string' } else { 'array_index_int' }
 			return t.make_call_typed(fn_name, arr2(receiver, arg), 'int')
+		}
+		'last_index' {
+			if node.children_count < 2 {
+				return none
+			}
+			arg_id := t.a.children[node.children_start + 1]
+			if lowered := t.lower_array_last_index_expr(base_id, arg_id, base_type, true, node) {
+				return lowered
+			}
+			return none
 		}
 		'join' {
 			if node.children_count < 2 {

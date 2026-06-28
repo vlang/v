@@ -83,6 +83,13 @@ fn test_array_equality_uses_semantic_element_comparison() {
 	assert out == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\n0'
 }
 
+fn test_nested_map_equality_uses_declared_value_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'nested_map_semantic_equality',
+		"struct Item {\n\tname string\n\tparts []string\n}\n\nstruct Holder {\n\titems map[string][]Item\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tmut left_map := map[string][]Item{}\n\tleft_map['items'] = [Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}]\n\tmut right_map := map[string][]Item{}\n\tright_map['items'] = [Item{\n\t\tname: join('a', 'b')\n\t\tparts: [join('x', 'y')]\n\t}]\n\tleft_arr := [left_map]\n\tright_arr := [right_map]\n\tleft_holder := Holder{\n\t\titems: left_map\n\t}\n\tright_holder := Holder{\n\t\titems: right_map\n\t}\n\tprintln(left_arr == right_arr)\n\tprintln(left_holder == right_holder)\n}\n")
+	assert out == 'true\ntrue'
+}
+
 fn test_pointer_array_equality_uses_pointer_identity() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'pointer_array_equality',
@@ -196,6 +203,13 @@ fn test_array_last_index_uses_element_width() {
 	out := run_good(v3_bin, 'array_last_index_element_width',
 		'fn main() {\n\twide := [i64(1), i64(5000000000), i64(2), i64(5000000000)]\n\tfloats := [1.25, 2.5, 1.25]\n\tflags := [true, false, true]\n\tprintln(int_str(wide.last_index(i64(5000000000))))\n\tprintln(int_str(floats.last_index(1.25)))\n\tprintln(int_str(flags.last_index(true)))\n}\n')
 	assert out == '3\n2\n2'
+}
+
+fn test_array_last_index_uses_semantic_element_comparison() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_last_index_semantic_equality',
+		"struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tnested := [['ab'.clone()], [join('x', 'y')], [join('a', 'b')]]\n\tnested_needle := ['ab'.clone()]\n\titems := [Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}, Item{\n\t\tname: join('a', 'b')\n\t\tparts: [join('x', 'y')]\n\t}]\n\tneedle := Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}\n\tprintln(int_str(nested.last_index(nested_needle)))\n\tprintln(int_str(items.last_index(needle)))\n}\n")
+	assert out == '2\n1'
 }
 
 fn test_hierarchical_import_runtime_inits_before_importer_init() {
