@@ -1158,6 +1158,9 @@ fn (t &Transformer) map_value_needs_element_eq(value_type string) bool {
 		return false
 	}
 	clean := t.membership_container_type(value_type)
+	if t.is_fixed_array_type(clean) {
+		return true
+	}
 	return t.type_needs_semantic_eq(clean)
 }
 
