@@ -461,6 +461,17 @@ const map_private = 2
 #include <X11/extensions/XInput2.h>
 #include <X11/Xcursor/Xcursor.h>
 
+// X11 C typedefs are unsigned long based. Define them locally so V1 can
+// type-check scalar operations while keeping the public aliases C-backed.
+pub type C.XID = usize
+pub type C.Atom = C.XID
+pub type C.Window = C.XID
+pub type C.Colormap = C.XID
+pub type C.Cursor = C.XID
+pub type C.KeySym = C.XID
+pub type C.Time = C.XID
+pub type C.VisualID = C.XID
+
 // X11 types
 pub type XID = C.XID
 pub type Atom = C.Atom
@@ -914,6 +925,9 @@ fn C.strncmp(s1 &char, s2 &char, n usize) int
 const x_false = 0
 const x_true = 1
 const x_none = Atom(0)
+const x_window_none = Window(0)
+const x_colormap_none = Colormap(0)
+const x_cursor_none = Cursor(0)
 const xa_atom = Atom(4)
 const xa_cardinal = Atom(6)
 const alloc_none = 0
