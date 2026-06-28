@@ -31,6 +31,6 @@ fn run_good(v3_bin string, name string, source string) string {
 fn test_union_aliasing_and_byte_array_contains_codegen() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'union_byte_contains_codegen_input',
-		"union Bits {\nmut:\n\tf f64\n\tu u64\n}\n\nfn main() {\n\tmut u := Bits{}\n\tu.f = 12.5\n\tif u.u != u64(0) {\n\t\tprintln('union ok')\n\t} else {\n\t\tprintln('union bad')\n\t}\n\tmut bytes := []u8{len: 4, init: 0}\n\tbytes[1] = `.`\n\tif `.` in bytes {\n\t\tprintln('byte contains ok')\n\t} else {\n\t\tprintln('byte contains bad')\n\t}\n\tprintln('${12.5}')\n}\n")
+		"union Bits {\nmut:\n\tf f64\n\tu u64\n}\n\nfn main() {\n\tmut u := Bits{}\n\tu.f = 12.5\n\tif u.u != u64(0) {\n\t\tprintln('union ok')\n\t} else {\n\t\tprintln('union bad')\n\t}\n\tmut bytes := []u8{len: 4, init: 0}\n\tbytes[1] = `.`\n\tif `.` in bytes {\n\t\tprintln('byte contains ok')\n\t} else {\n\t\tprintln('byte contains bad')\n\t}\n\tprintln(12.5.str())\n}\n")
 	assert out == 'union ok\nbyte contains ok\n12.5'
 }

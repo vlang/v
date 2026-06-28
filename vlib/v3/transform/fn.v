@@ -59,6 +59,69 @@ fn (t &Transformer) resolve_call_name(node flat.Node) string {
 	}
 }
 
+fn (t &Transformer) local_fn_decl_return_type(name string) ?string {
+	if name.len == 0 {
+		return none
+	}
+	mut cur_module := ''
+	for node in t.a.nodes {
+		match node.kind {
+			.file {
+				cur_module = ''
+			}
+			.module_decl {
+				cur_module = node.value
+			}
+			.fn_decl {
+				if node.value == name && transform_same_module(cur_module, t.cur_module) {
+					return node.typ
+				}
+			}
+			else {}
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) local_fn_value_return_type(name string) ?string {
+	typ := t.normalize_type_alias(t.var_type(name))
+	return fn_type_return_type_text(typ)
+}
+
+fn fn_type_return_type_text(typ string) ?string {
+	clean := typ.trim_space()
+	if !(clean.starts_with('fn(') || clean.starts_with('fn (')) {
+		return none
+	}
+	open_idx := clean.index_u8(`(`)
+	if open_idx < 0 {
+		return none
+	}
+	mut depth := 0
+	for i in open_idx .. clean.len {
+		if clean[i] == `(` {
+			depth++
+		} else if clean[i] == `)` {
+			depth--
+			if depth == 0 {
+				ret := clean[i + 1..].trim_space()
+				if ret.len == 0 {
+					return 'void'
+				}
+				return ret
+			}
+		}
+	}
+	return none
+}
+
+fn transform_same_module(a string, b string) bool {
+	if a == b {
+		return true
+	}
+	return a in ['', 'main'] && b in ['', 'main']
+}
+
 // is_known_fn_name reports whether is known fn name applies in transform.
 fn (t &Transformer) is_known_fn_name(name string) bool {
 	if name in t.fn_ret_types {
@@ -3809,6 +3872,16 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) string 
 	}
 	if node.children_count > 0 {
 		fn_node := t.a.child_node(&node, 0)
+		if fn_node.kind == .ident {
+			if ret := t.local_fn_value_return_type(fn_node.value) {
+				return t.call_return_type_name(ret, node)
+			}
+			if t.var_type(fn_node.value).len == 0 {
+				if ret := t.local_fn_decl_return_type(fn_node.value) {
+					return t.call_return_type_name(ret, node)
+				}
+			}
+		}
 		if fn_node.kind == .selector
 			&& fn_node.value in ['clone', 'reverse', 'repeat', 'repeat_to_depth']
 			&& fn_node.children_count > 0 {

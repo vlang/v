@@ -1,4 +1,5 @@
 import os
+import rand
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
@@ -8,14 +9,15 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 
 // build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
-	v3_bin := tmp_test_path('type_checker_errors_test')
+	v3_bin := os.join_path(os.temp_dir(),
+		'v3_type_checker_errors_test_${os.getpid()}_${rand.ulid()}')
 	build := os.execute('${vexe} -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0
 	return v3_bin
 }
 
-fn tmp_test_path(name string) string {
-	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
+fn unique_temp_path(name string) string {
+	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}_${rand.ulid()}')
 }
 
 // run_bad supports run bad handling for v3 tests.
@@ -28,9 +30,10 @@ fn run_bad_selfhost(v3_bin string, name string, src string, expected string) {
 }
 
 fn run_bad_with_flags(v3_bin string, name string, src string, expected string, flags string) {
-	bad_src := '${tmp_test_path(name)}.v'
+	out := unique_temp_path(name)
+	bad_src := out + '.v'
 	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := tmp_test_path(name)
+	bad_bin := out
 	result := os.execute('${v3_bin} ${bad_src} ${flags} -b c -o ${bad_bin}')
 	assert result.exit_code != 0
 	assert result.output.contains(expected)
@@ -39,9 +42,10 @@ fn run_bad_with_flags(v3_bin string, name string, src string, expected string, f
 
 // run_good supports run good handling for v3 tests.
 fn run_good(v3_bin string, name string, src string) string {
-	good_src := '${tmp_test_path(name)}.v'
+	out := unique_temp_path(name)
+	good_src := out + '.v'
 	os.write_file(good_src, src) or { panic(err) }
-	good_bin := tmp_test_path(name)
+	good_bin := out
 	compile := os.execute('${v3_bin} ${good_src} -b c -o ${good_bin}')
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
@@ -59,7 +63,7 @@ fn write_project_file(root string, rel string, src string) {
 
 // run_bad_project supports run bad project handling for v3 tests.
 fn run_bad_project(v3_bin string, name string, files map[string]string, input string, expected string) {
-	root := '${tmp_test_path(name)}_project'
+	root := unique_temp_path('${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
 	}
@@ -68,7 +72,7 @@ fn run_bad_project(v3_bin string, name string, files map[string]string, input st
 		write_project_file(root, rel, src)
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
-	bad_bin := tmp_test_path(name)
+	bad_bin := unique_temp_path(name)
 	result := os.execute('${v3_bin} ${input_path} -b c -o ${bad_bin}')
 	assert result.exit_code != 0
 	assert result.output.contains(expected)
@@ -77,7 +81,7 @@ fn run_bad_project(v3_bin string, name string, files map[string]string, input st
 
 // run_good_project supports run good project handling for v3 tests.
 fn run_good_project(v3_bin string, name string, files map[string]string, input string) string {
-	root := '${tmp_test_path(name)}_project'
+	root := unique_temp_path('${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
 	}
@@ -86,7 +90,7 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 		write_project_file(root, rel, src)
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
-	good_bin := tmp_test_path(name)
+	good_bin := unique_temp_path(name)
 	compile := os.execute('${v3_bin} ${input_path} -b c -o ${good_bin}')
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
@@ -97,7 +101,7 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 
 // gen_c_project emits c project output for v3 tests.
 fn gen_c_project(v3_bin string, name string, files map[string]string, input string) string {
-	root := '${tmp_test_path(name)}_project'
+	root := unique_temp_path('${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
 	}
@@ -106,7 +110,7 @@ fn gen_c_project(v3_bin string, name string, files map[string]string, input stri
 		write_project_file(root, rel, src)
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
-	c_out := '${tmp_test_path(name)}.c'
+	c_out := unique_temp_path(name) + '.c'
 	os.rm(c_out) or {}
 	compile := os.execute('${v3_bin} ${input_path} -o ${c_out}')
 	assert compile.exit_code == 0

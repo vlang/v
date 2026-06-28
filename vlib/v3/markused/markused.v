@@ -2578,6 +2578,10 @@ fn (c &CallCollector) typed_receiver_method_name(type_name string, method string
 		candidates << markused_array_receiver_method_candidates(type_name, method, cur_module)
 	} else if type_name.contains('.') {
 		candidates << '${type_name}.${method}'
+		unqualified_type := markused_unqualified_receiver_type_name(type_name)
+		if unqualified_type != type_name {
+			candidates << '${unqualified_type}.${method}'
+		}
 	} else {
 		if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
 			candidates << '${cur_module}.${type_name}.${method}'
@@ -2637,6 +2641,8 @@ fn markused_map_receiver_method_candidates(receiver_type string, method string, 
 	key_type := markused_map_key_type(clean_type)
 	value_type := markused_map_value_type(clean_type)
 	mut candidates := []string{}
+	candidates << '${clean_type}.${method}'
+	candidates << 'map.${method}'
 	if key_type.len == 0 || value_type.len == 0 {
 		markused_push_receiver_candidate(mut candidates, '${clean_type}.${method}')
 		return candidates
@@ -2870,6 +2876,20 @@ fn markused_matching_bracket(s string, start int) int {
 		}
 	}
 	return s.len
+}
+
+fn markused_unqualified_receiver_type_name(type_name string) string {
+	if !type_name.starts_with('map[') {
+		return type_name.all_after_last('.')
+	}
+	key_start := 'map['.len
+	key_end := type_name.index_u8(`]`)
+	if key_end < key_start {
+		return type_name
+	}
+	key := type_name[key_start..key_end].all_after_last('.')
+	value := type_name[key_end + 1..].all_after_last('.')
+	return 'map[${key}]${value}'
 }
 
 fn (c &CallCollector) add_typed_receiver_method_name(method_name string, mut calls []string) {

@@ -1,5 +1,6 @@
 module c
 
+import strings
 import v3.flat
 import v3.types
 
@@ -409,6 +410,13 @@ fn (mut g FlatGen) direct_call_name_for_call(id flat.NodeId, name string) string
 }
 
 fn (mut g FlatGen) libc_compat_call_name(name string) ?string {
+	if name.starts_with('C.') {
+		cfn := c_name(name)
+		wide_cfn := c_winapi_wide_export_name(cfn)
+		if wide_cfn != cfn {
+			return wide_cfn
+		}
+	}
 	// `builtin.v_gettid()` reaches libc through `C.gettid()` on Linux/glibc, but
 	// that symbol is not declared by all usable C header sets. Route it through a
 	// tiny runtime compatibility helper instead of emitting an undeclared call.
@@ -1313,7 +1321,7 @@ fn (mut g FlatGen) gen_top_level_main_stmt(id flat.NodeId) {
 		return
 	}
 	node := g.a.nodes[int(id)]
-	if node.kind == .block {
+	if node.kind in [.block, .comptime_if] {
 		for i in 0 .. node.children_count {
 			child_id := g.a.child(&node, i)
 			if g.cgen_is_top_level_stmt(child_id) {
@@ -4118,29 +4126,428 @@ fn (mut g FlatGen) forward_decls() {
 					g.writeln(');')
 				}
 			}
-		} else if kind_id == 76
-			&& (node.value.starts_with('C.v_filelock_') || node.value.starts_with('v_filelock_')) {
-			if g.libc_compat_fns['filelock']
-				&& node.value in ['C.v_filelock_lock', 'C.v_filelock_unlock', 'v_filelock_lock', 'v_filelock_unlock'] {
-				continue
-			}
-			g.tc.cur_file = cur_file
-			g.tc.cur_module = cur_module
-			ret_type := g.tc.parse_type(node.typ)
-			cfn := c_name(node.value)
-			if forwarded[cfn] {
-				continue
-			}
-			forwarded[cfn] = true
-			g.write(g.optional_type_name(ret_type))
-			g.write(' ')
-			g.write(cfn)
-			g.write('(')
-			g.write_c_fn_node_params(node)
-			g.writeln(');')
 		}
 	}
 	g.writeln('')
+}
+
+fn (mut g FlatGen) c_extern_forward_decls() {
+	mut cur_module := ''
+	mut cur_file := ''
+	mut decls := map[string]string{}
+	mut names := []string{}
+	for i in 0 .. g.a.nodes.len {
+		node := g.a.nodes[i]
+		kind_id := node_kind_id(node)
+		if kind_id == 77 {
+			cur_file = node.value
+			cur_module = ''
+			g.tc.cur_file = cur_file
+			g.tc.cur_module = cur_module
+			continue
+		}
+		if kind_id == 73 {
+			cur_module = node.value
+			g.tc.cur_file = cur_file
+			g.tc.cur_module = cur_module
+			continue
+		}
+		if kind_id != 76 {
+			continue
+		}
+		raw_name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
+		raw_cfn := c_name(raw_name)
+		cfn := c_winapi_wide_export_name(raw_cfn)
+		if g.has_used_fn_filter() && !(g.spawn_wrapper_defs.len > 0
+			&& cfn in c_spawn_runtime_extern_symbols) && !g.used_fn_contains(raw_name)
+			&& !g.used_fn_contains(raw_cfn) && !g.used_fn_contains(cfn) {
+			continue
+		}
+		if !g.should_emit_c_extern_decl(cfn) {
+			continue
+		}
+		g.tc.cur_file = cur_file
+		g.tc.cur_module = cur_module
+		if cfn !in decls {
+			names << cfn
+		}
+		decls[cfn] = g.c_extern_decl_line(node, cfn)
+	}
+	names.sort()
+	for name in names {
+		g.writeln(decls[name])
+	}
+	if names.len > 0 {
+		g.writeln('')
+	}
+}
+
+fn (mut g FlatGen) preseed_c_extern_fn_ptr_types() {
+	for i in 0 .. g.a.nodes.len {
+		node := g.a.nodes[i]
+		if node_kind_id(node) != 76 {
+			continue
+		}
+		ret_type := g.tc.parse_type(node.typ)
+		g.preseed_fn_ptr_type(ret_type)
+		for j in 0 .. node.children_count {
+			param_id := g.a.child(&node, j)
+			p := g.a.node(param_id)
+			if p.kind != .param {
+				continue
+			}
+			raw_typ := if p.typ.len > 0 { p.typ } else { p.value }
+			if raw_typ.len == 0 || raw_typ.starts_with('...') {
+				continue
+			}
+			g.preseed_fn_ptr_type(g.tc.parse_type(raw_typ))
+		}
+	}
+}
+
+const c_spawn_runtime_extern_symbols = {
+	'pthread_attr_destroy':      true
+	'pthread_attr_init':         true
+	'pthread_attr_setstacksize': true
+	'pthread_create':            true
+	'pthread_join':              true
+}
+
+fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
+	if cfn.contains('.') {
+		return false
+	}
+	if cfn in c_static_helper_symbols {
+		return false
+	}
+	if cfn in g.inlined_c_fns {
+		return false
+	}
+	if cfn in g.inlined_c_declared_fns {
+		return false
+	}
+	return true
+}
+
+const c_static_helper_symbols = {
+	'EV_SET':                              true
+	'FD_ISSET':                            true
+	'FD_SET':                              true
+	'FD_ZERO':                             true
+	'WEXITSTATUS':                         true
+	'WIFEXITED':                           true
+	'WIFSIGNALED':                         true
+	'WTERMSIG':                            true
+	'access':                              true
+	'atexit':                              true
+	'atomic_compare_exchange_strong_byte': true
+	'atomic_compare_exchange_strong_ptr':  true
+	'atomic_compare_exchange_strong_u16':  true
+	'atomic_compare_exchange_strong_u32':  true
+	'atomic_compare_exchange_strong_u64':  true
+	'atomic_compare_exchange_weak_byte':   true
+	'atomic_compare_exchange_weak_ptr':    true
+	'atomic_compare_exchange_weak_u16':    true
+	'atomic_compare_exchange_weak_u32':    true
+	'atomic_compare_exchange_weak_u64':    true
+	'atomic_exchange_byte':                true
+	'atomic_exchange_ptr':                 true
+	'atomic_exchange_u16':                 true
+	'atomic_exchange_u32':                 true
+	'atomic_exchange_u64':                 true
+	'atomic_fetch_add_byte':               true
+	'atomic_fetch_add_ptr':                true
+	'atomic_fetch_add_u16':                true
+	'atomic_fetch_add_u32':                true
+	'atomic_fetch_add_u64':                true
+	'atomic_fetch_sub_byte':               true
+	'atomic_fetch_sub_ptr':                true
+	'atomic_fetch_sub_u16':                true
+	'atomic_fetch_sub_u32':                true
+	'atomic_fetch_sub_u64':                true
+	'atomic_load_byte':                    true
+	'atomic_load_ptr':                     true
+	'atomic_load_u16':                     true
+	'atomic_load_u32':                     true
+	'atomic_load_u64':                     true
+	'atomic_store_byte':                   true
+	'atomic_store_ptr':                    true
+	'atomic_store_u16':                    true
+	'atomic_store_u32':                    true
+	'atomic_store_u64':                    true
+	'close':                               true
+	'cpu_relax':                           true
+	'dup2':                                true
+	'execlp':                              true
+	'execvp':                              true
+	'fcntl':                               true
+	'fork':                                true
+	'getenv':                              true
+	'open':                                true
+	'pipe':                                true
+	'posix_spawn':                         true
+	'posix_spawnp':                        true
+	'read':                                true
+	'realpath':                            true
+	'setenv':                              true
+	'signal':                              true
+	'snprintf':                            true
+	'strrchr':                             true
+	'strstr':                              true
+	'v_filelock_lock':                     true
+	'v_filelock_unlock':                   true
+	'v_os_exec_capture_start':             true
+	'v_os_execute_capture_start':          true
+	'vschannel_cleanup':                   true
+	'vschannel_init':                      true
+	'v_prealloc_atomic_add_i32':           true
+	'v_prealloc_atomic_cas_i32':           true
+	'v_prealloc_atomic_load_i32':          true
+	'v_prealloc_atomic_store_i32':         true
+	'v_signal_with_handler_cast':          true
+	'wyhash':                              true
+	'wyhash64':                            true
+	'_exit':                               true
+	'_wymix':                              true
+	'_vcleanup':                           true
+	'_vinit':                              true
+}
+
+fn (mut g FlatGen) c_extern_decl_line(node flat.Node, cfn string) string {
+	mut sb := strings.new_builder(96)
+	ret_type := g.tc.parse_type(node.typ)
+	sb.write_string(g.fn_return_type_name(ret_type))
+	sb.write_string(' ')
+	call_conv := c_extern_calling_convention(cfn)
+	if call_conv.len > 0 {
+		sb.write_string(call_conv)
+		sb.write_u8(` `)
+	}
+	sb.write_string(cfn)
+	sb.write_u8(`(`)
+	sb.write_string(g.c_extern_decl_params(node))
+	sb.write_string(');')
+	return sb.str()
+}
+
+fn c_extern_calling_convention(cfn string) string {
+	if cfn in c_winapi_extern_symbols {
+		return 'WINAPI'
+	}
+	return ''
+}
+
+fn c_winapi_wide_export_name(cfn string) string {
+	match cfn {
+		'CopyFile' { return 'CopyFileW' }
+		'CreateDirectory' { return 'CreateDirectoryW' }
+		'CreateFile' { return 'CreateFileW' }
+		'CreateWindowEx' { return 'CreateWindowExW' }
+		'DefWindowProc' { return 'DefWindowProcW' }
+		'FindFirstFile' { return 'FindFirstFileW' }
+		'FindNextFile' { return 'FindNextFileW' }
+		'GetCommandLine' { return 'GetCommandLineW' }
+		'GetFullPathName' { return 'GetFullPathNameW' }
+		'GetLongPathName' { return 'GetLongPathNameW' }
+		'GetModuleFileName' { return 'GetModuleFileNameW' }
+		'LoadLibrary' { return 'LoadLibraryW' }
+		'ReadConsole' { return 'ReadConsoleW' }
+		'RegOpenKeyEx' { return 'RegOpenKeyExW' }
+		'RegQueryValueEx' { return 'RegQueryValueExW' }
+		'RegSetValueEx' { return 'RegSetValueExW' }
+		'RegisterClassEx' { return 'RegisterClassExW' }
+		'RemoveDirectory' { return 'RemoveDirectoryW' }
+		'SendMessageTimeout' { return 'SendMessageTimeoutW' }
+		'SetConsoleTitle' { return 'SetConsoleTitleW' }
+		'WriteConsole' { return 'WriteConsoleW' }
+		else { return cfn }
+	}
+}
+
+const c_winapi_extern_symbols = {
+	'AddVectoredExceptionHandler':   true
+	'CaptureStackBackTrace':         true
+	'CloseClipboard':                true
+	'CloseHandle':                   true
+	'CopyFile':                      true
+	'CopyFileW':                     true
+	'CreateDirectory':               true
+	'CreateDirectoryW':              true
+	'CreateFile':                    true
+	'CreateFileW':                   true
+	'CreateHardLinkW':               true
+	'CreatePipe':                    true
+	'CreateProcessW':                true
+	'CreateSymbolicLinkW':           true
+	'CreateWindowEx':                true
+	'CreateWindowExW':               true
+	'DefWindowProc':                 true
+	'DefWindowProcW':                true
+	'DeleteFileW':                   true
+	'DestroyWindow':                 true
+	'EmptyClipboard':                true
+	'ExpandEnvironmentStringsW':     true
+	'FindClose':                     true
+	'FindFirstFile':                 true
+	'FindFirstFileW':                true
+	'FindNextFile':                  true
+	'FindNextFileW':                 true
+	'FormatMessageW':                true
+	'FreeEnvironmentStringsW':       true
+	'GenerateConsoleCtrlEvent':      true
+	'GetClipboardData':              true
+	'GetClipboardOwner':             true
+	'GetCommandLine':                true
+	'GetCommandLineW':               true
+	'GetComputerNameW':              true
+	'GetConsoleMode':                true
+	'GetConsoleScreenBufferInfo':    true
+	'GetCurrentDirectoryW':          true
+	'GetCurrentProcess':             true
+	'GetCurrentThreadId':            true
+	'GetEnvironmentStringsW':        true
+	'GetExitCodeProcess':            true
+	'GetFinalPathNameByHandleW':     true
+	'GetFileAttributesW':            true
+	'GetFileSizeEx':                 true
+	'GetFileType':                   true
+	'GetFullPathName':               true
+	'GetFullPathNameW':              true
+	'GetLastError':                  true
+	'GetLongPathName':               true
+	'GetLongPathNameW':              true
+	'GetModuleFileName':             true
+	'GetModuleFileNameW':            true
+	'GetModuleHandleA':              true
+	'GetNumberOfConsoleInputEvents': true
+	'GetProcAddress':                true
+	'GetProcessHeap':                true
+	'GetShortPathNameW':             true
+	'GetStdHandle':                  true
+	'GetSystemTimeAsFileTime':       true
+	'GetTempFileNameW':              true
+	'GetTempPathW':                  true
+	'GetTickCount':                  true
+	'GetUserNameW':                  true
+	'GlobalAlloc':                   true
+	'GlobalFree':                    true
+	'GlobalLock':                    true
+	'GlobalUnlock':                  true
+	'HeapAlloc':                     true
+	'HeapFree':                      true
+	'InitializeConditionVariable':   true
+	'IsDebuggerPresent':             true
+	'LoadLibrary':                   true
+	'LoadLibraryW':                  true
+	'LocalFree':                     true
+	'MoveFileW':                     true
+	'MultiByteToWideChar':           true
+	'OpenClipboard':                 true
+	'PeekNamedPipe':                 true
+	'ReadConsole':                   true
+	'ReadConsoleInput':              true
+	'ReadConsoleW':                  true
+	'ReadFile':                      true
+	'RegCloseKey':                   true
+	'RegOpenKeyEx':                  true
+	'RegOpenKeyExW':                 true
+	'RegQueryValueEx':               true
+	'RegQueryValueExW':              true
+	'RegSetValueEx':                 true
+	'RegSetValueExW':                true
+	'RegisterClassEx':               true
+	'RegisterClassExW':              true
+	'RemoveDirectory':               true
+	'RemoveDirectoryW':              true
+	'ScrollConsoleScreenBuffer':     true
+	'SetClipboardData':              true
+	'SetConsoleCursorPosition':      true
+	'SetConsoleMode':                true
+	'SetConsoleTitle':               true
+	'SetConsoleTitleW':              true
+	'SetCurrentDirectoryW':          true
+	'SetEndOfFile':                  true
+	'SetFileAttributesW':            true
+	'SetFilePointerEx':              true
+	'SetHandleInformation':          true
+	'SetLastError':                  true
+	'SetUnhandledExceptionFilter':   true
+	'Sleep':                         true
+	'SleepConditionVariableSRW':     true
+	'SendMessageTimeout':            true
+	'SendMessageTimeoutW':           true
+	'SymCleanup':                    true
+	'SymFromAddr':                   true
+	'SymGetLineFromAddr64':          true
+	'SymInitialize':                 true
+	'SymSetOptions':                 true
+	'TerminateProcess':              true
+	'TlsAlloc':                      true
+	'TlsFree':                       true
+	'TlsGetValue':                   true
+	'TlsSetValue':                   true
+	'TryAcquireSRWLockExclusive':    true
+	'TryAcquireSRWLockShared':       true
+	'VirtualAlloc':                  true
+	'VirtualFree':                   true
+	'VirtualProtect':                true
+	'WSAAddressToStringA':           true
+	'WaitForSingleObject':           true
+	'WakeConditionVariable':         true
+	'WriteConsole':                  true
+	'WriteConsoleW':                 true
+	'WriteFile':                     true
+}
+
+fn (mut g FlatGen) c_extern_decl_params(node flat.Node) string {
+	if node.children_count == 0 {
+		return 'void'
+	}
+	mut parts := []string{}
+	for i in 0 .. node.children_count {
+		param_id := g.a.child(&node, i)
+		p := g.a.node(param_id)
+		if p.kind != .param {
+			continue
+		}
+		raw_typ := if p.typ.len > 0 { p.typ } else { p.value }
+		if raw_typ.len == 0 {
+			continue
+		}
+		if raw_typ.starts_with('...') {
+			if parts.len > 0 {
+				parts << '...'
+			}
+			continue
+		}
+		pt := g.tc.parse_type(raw_typ)
+		mut ct := if pt is types.OptionType || pt is types.ResultType {
+			g.optional_type_name(pt)
+		} else {
+			g.tc.c_type(pt)
+		}
+		if ct.starts_with('fn_ptr:') {
+			ct = g.resolve_fn_ptr_type(ct)
+		}
+		if c_extern_param_needs_const_prefix(p.value, raw_typ, pt) {
+			ct = 'const ${ct}'
+		}
+		if p.typ.len > 0 && p.value.len > 0 {
+			param_name := if p.value == '_' { '_${parts.len}' } else { c_name(p.value) }
+			parts << '${ct} ${param_name}'
+		} else {
+			parts << ct
+		}
+	}
+	if parts.len == 0 {
+		return 'void'
+	}
+	return parts.join(', ')
+}
+
+fn c_extern_param_needs_const_prefix(param_name string, raw_typ string, pt types.Type) bool {
+	return param_name.starts_with('const_') && !raw_typ.trim_space().starts_with('mut ')
+		&& pt is types.Pointer
 }
 
 fn (mut g FlatGen) insert_cur_implicit_veb_ctx_param(node flat.Node) {

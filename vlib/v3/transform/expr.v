@@ -1213,6 +1213,7 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 	if struct_type.len > 0 {
 		method_name := '${struct_type}.=='
 		if t.is_known_fn_name(method_name) {
+			t.mark_fn_used_name(method_name)
 			return t.make_call(method_name, arr2(lhs, rhs))
 		}
 		if struct_type in seen {

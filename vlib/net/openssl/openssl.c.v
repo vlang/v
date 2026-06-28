@@ -103,7 +103,7 @@ fn C.SSL_CTX_set_options(ctx &C.SSL_CTX, options i32)
 
 fn C.SSL_CTX_set_verify_depth(s &C.SSL_CTX, depth i32)
 
-fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, const_file &char, ca_path &char) i32
+fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, const_file &char, const_ca_path &char) i32
 
 fn C.SSL_CTX_free(ctx &C.SSL_CTX)
 

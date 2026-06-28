@@ -4125,6 +4125,15 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 			}
 		}
 		if clean is Map {
+			for mname in receiver_method_name_candidates(clean, fn_node.value, tc.cur_module) {
+				if checker_is_raw_collection_method_name(mname, 'map.') || mname !in tc.fn_ret_types {
+					continue
+				}
+				if !tc.method_can_be_called_on_receiver(base_type, fn_node.value, mname) {
+					continue
+				}
+				return tc.call_info(mname, true)
+			}
 			match fn_node.value {
 				'clone' {
 					return CallInfo{
@@ -4136,6 +4145,37 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 					}
 				}
 				else {}
+			}
+		}
+		if clean is Map {
+			if fn_node.value == 'keys' {
+				return CallInfo{
+					name:         'map.keys'
+					params:       tarr1(base_type)
+					return_type:  Type(Array{
+						elem_type: clean.key_type
+					})
+					has_receiver: true
+					params_known: true
+				}
+			}
+			if fn_node.value == 'values' {
+				return CallInfo{
+					name:         'map.values'
+					params:       tarr1(base_type)
+					return_type:  Type(Array{
+						elem_type: clean.value_type
+					})
+					has_receiver: true
+					params_known: true
+				}
+			}
+			map_method := 'map.${fn_node.value}'
+			if map_method in tc.fn_ret_types {
+				if info := tc.map_builtin_call_info(base_type, clean, fn_node.value, map_method) {
+					return info
+				}
+				return tc.call_info(map_method, true)
 			}
 		}
 		if clean is Array {
@@ -9650,6 +9690,12 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 						return Type(Array{
 							elem_type: clean_type.value_type
 						})
+					}
+					map_mname := 'map.${fn_node.value}'
+					if map_mname in tc.fn_ret_types {
+						return tc.fn_ret_types[map_mname] or {
+							unknown_type('unknown return type for `${map_mname}`')
+						}
 					}
 					return unknown_type('unknown map method `${fn_node.value}`')
 				}

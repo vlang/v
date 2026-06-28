@@ -100,17 +100,16 @@ fn test_filelock_helpers_are_inlined_in_generated_c() {
 	c_source := gen_c(v3_bin, 'filelock_helpers_inline',
 		'import os.filelock\n\nfn C.v_filelock_lock(i32, i32, i32, u64, u64) i32\nfn C.v_filelock_unlock(i32, u64, u64) i32\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(i32(-1), 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_unlock(i32(-1), u64(0), u64(0))\n}\n')
 	assert !c_source.contains('filelock_helpers.h')
-	assert c_source.contains('static int v_filelock_lock(')
-	assert c_source.contains('static int v_filelock_unlock(')
+	assert c_source.contains('static inline int v_filelock_lock(')
+	assert c_source.contains('static inline int v_filelock_unlock(')
 	assert c_source.contains('#ifndef V_OS_FILELOCK_HELPERS_H')
 	assert !c_source.contains('v_filelock_status')
 	status_source := gen_c(v3_bin, 'filelock_custom_prefix_decl',
 		'import os.filelock\n\nfn C.v_filelock_lock(i32, i32, i32, u64, u64) i32\nfn C.v_filelock_unlock(i32, u64, u64) i32\nfn C.v_filelock_status() int\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(i32(-1), 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_status()\n}\n')
 	assert status_source.contains('int v_filelock_status(')
-	user_name_source := gen_c(v3_bin, 'filelock_user_names_not_helpers',
+	out := run_good(v3_bin, 'filelock_user_names_not_helpers',
 		'fn v_filelock_lock() int {\n\treturn 3\n}\n\nfn v_filelock_unlock() int {\n\treturn 4\n}\n\nfn main() {\n\tprintln(int_str(v_filelock_lock() + v_filelock_unlock()))\n}\n')
-	assert !user_name_source.contains('static int v_filelock_lock(')
-	assert !user_name_source.contains('static int v_filelock_unlock(')
+	assert out == '7'
 }
 
 fn test_assoc_return_runs_defers() {
@@ -321,6 +320,13 @@ fn test_map_equality_uses_semantic_value_comparison() {
 	out := run_good(v3_bin, 'map_semantic_value_equality',
 		"struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := {\n\t\t'x': Item{\n\t\t\tname: 'hello'.clone()\n\t\t\tparts: ['ab'.clone()]\n\t\t}\n\t}\n\tright := {\n\t\t'x': Item{\n\t\t\tname: join('he', 'llo')\n\t\t\tparts: [join('a', 'b')]\n\t\t}\n\t}\n\tarr_left := {\n\t\t'y': ['cd'.clone()]\n\t}\n\tarr_right := {\n\t\t'y': [join('c', 'd')]\n\t}\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(arr_left == arr_right)\n}\n")
 	assert out == 'true\nfalse\ntrue'
+}
+
+fn test_array_equality_marks_struct_operator_used() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'array_eq_struct_operator_used',
+		'struct Item {\n\tvalue int\n}\n\nfn (a Item) == (b Item) bool {\n\treturn a.value % 10 == b.value % 10\n}\n\nfn main() {\n\tleft := [Item{value: 12}]\n\tright := [Item{value: 2}]\n\tprintln(left == right)\n}\n')
+	assert out == 'true'
 }
 
 fn test_zero_padded_interpolation_preserves_wide_integers() {
