@@ -1961,8 +1961,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 								g.gen_map_ref_arg(g.a.child(fn_node, 0), base_type)
 								g.write(')')
 								return
-							} else if fn_node.value in ['keys', 'values', 'delete', 'clear', 'free', 'move',
-								'reserve'] {
+							} else if fn_node.value in ['keys', 'values', 'delete', 'clear', 'free',
+								'move', 'reserve'] {
 								panic('map method `${fn_node.value}` should be lowered by v3 transform')
 							}
 						}
@@ -2107,8 +2107,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 							g.gen_map_ref_arg(g.a.child(fn_node, 0), base_type)
 							g.write(')')
 							return
-						} else if fn_node.value in ['keys', 'values', 'delete', 'clear', 'free', 'move',
-							'reserve'] {
+						} else if fn_node.value in ['keys', 'values', 'delete', 'clear', 'free',
+							'move', 'reserve'] {
 							panic('map method `${fn_node.value}` should be lowered by v3 transform')
 						}
 					}

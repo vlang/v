@@ -1920,8 +1920,8 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 	array_builtin_method := t.array_builtin_method_name(fn_node.value) or { '' }
 	if fn_node.value !in ['clone', 'reverse', 'contains', 'index', 'last_index', 'join', 'any',
 		'all', 'count', 'equals', 'prepend', 'insert', 'push_many', 'str'] {
-		if fn_node.value !in ['filter', 'map', 'sort', 'sorted', 'sort_with_compare',
-			'sorted_with_compare'] && array_builtin_method.len == 0 {
+		if fn_node.value !in ['filter', 'map', 'sort', 'sorted', 'sort_with_compare', 'sorted_with_compare']
+			&& array_builtin_method.len == 0 {
 			return none
 		}
 	}

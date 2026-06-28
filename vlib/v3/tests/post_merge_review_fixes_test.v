@@ -306,7 +306,7 @@ fn test_f32_map_and_fixed_array_stringification() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'f32_map_stringification',
 		"fn main() {\n\tm := {\n\t\t'a': f32(1.5)\n\t}\n\tprintln(m)\n\tfixed := [f32(1.5), f32(2.25)]!\n\tmf := {\n\t\t'x': fixed\n\t}\n\tprintln(mf)\n}\n")
-assert out == "{'a': 1.5}\n{'x': [1.5, 2.25]}"
+	assert out == "{'a': 1.5}\n{'x': [1.5, 2.25]}"
 }
 
 fn test_u8_map_stringification_is_numeric() {
