@@ -74,11 +74,7 @@ fn (mut g FlatGen) optional_value_ct(t types.Type) (string, types.Type) {
 
 // optional_typedefs supports optional typedefs handling for FlatGen.
 fn (mut g FlatGen) optional_typedefs() {
-	for _, ret in g.tc.fn_ret_types {
-		if ret is types.OptionType || ret is types.ResultType {
-			g.optional_type_name(ret)
-		}
-	}
+	g.collect_optional_typedefs()
 	mut wrote := false
 	for opt_name, val_type in g.needed_optional_types {
 		if g.emit_optional_typedef(opt_name, val_type) {
@@ -87,6 +83,82 @@ fn (mut g FlatGen) optional_typedefs() {
 	}
 	if wrote {
 		g.writeln('')
+	}
+}
+
+fn (mut g FlatGen) collect_optional_typedefs() {
+	for _, ret in g.tc.fn_ret_types {
+		g.collect_optional_typedef_type(ret)
+	}
+	for _, params in g.tc.fn_param_types {
+		for param in params {
+			g.collect_optional_typedef_type(param)
+		}
+	}
+	for _, fields in g.tc.structs {
+		for field in fields {
+			g.collect_optional_typedef_type(field.typ)
+		}
+	}
+	for _, fields in g.tc.interface_fields {
+		for field in fields {
+			g.collect_optional_typedef_type(field.typ)
+		}
+	}
+	for _, typ in g.tc.c_globals {
+		g.collect_optional_typedef_type(typ)
+	}
+	for _, typ in g.tc.const_types {
+		g.collect_optional_typedef_type(typ)
+	}
+	for idx, _ in g.a.nodes {
+		if typ := g.tc.expr_type(flat.NodeId(idx)) {
+			g.collect_optional_typedef_type(typ)
+		}
+	}
+}
+
+fn (mut g FlatGen) collect_optional_typedef_type(t types.Type) {
+	match t {
+		types.OptionType {
+			g.optional_type_name(t)
+			g.collect_optional_typedef_type(t.base_type)
+		}
+		types.ResultType {
+			g.optional_type_name(t)
+			g.collect_optional_typedef_type(t.base_type)
+		}
+		types.Array {
+			g.collect_optional_typedef_type(t.elem_type)
+		}
+		types.ArrayFixed {
+			g.collect_optional_typedef_type(t.elem_type)
+		}
+		types.Channel {
+			g.collect_optional_typedef_type(t.elem_type)
+		}
+		types.Map {
+			g.collect_optional_typedef_type(t.key_type)
+			g.collect_optional_typedef_type(t.value_type)
+		}
+		types.Pointer {
+			g.collect_optional_typedef_type(t.base_type)
+		}
+		types.FnType {
+			for param in t.params {
+				g.collect_optional_typedef_type(param)
+			}
+			g.collect_optional_typedef_type(t.return_type)
+		}
+		types.Alias {
+			g.collect_optional_typedef_type(t.base_type)
+		}
+		types.MultiReturn {
+			for typ in t.types {
+				g.collect_optional_typedef_type(typ)
+			}
+		}
+		else {}
 	}
 }
 
