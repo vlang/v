@@ -675,12 +675,15 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						continue
 					}
 					field_typ := if f.typ.len > 0 { f.typ } else { f.value }
-					if f.value == field_typ && field_typ in ['Error', 'MessageError']
-						&& tc.unqualified_type_name_shadows_builtin_in_scope(field_typ, tc.cur_file, tc.cur_module) {
+					field_is_embed := source_field_decl_is_embed(f, field_typ)
+					shadows_builtin_error := field_is_embed
+						&& field_typ in ['Error', 'MessageError']
+						&& tc.unqualified_type_name_shadows_builtin_in_scope(field_typ, tc.cur_file, tc.cur_module)
+					if shadows_builtin_error {
 						shadows_builtin_error_embed = true
 					}
 					mut typ := tc.parse_type(field_typ)
-					if f.value == field_typ {
+					if f.value == field_typ || shadows_builtin_error {
 						typ = tc.resolve_known_field_type(field_typ, typ)
 					}
 					if c_abi_fn := tc.c_abi_fn_ptr_type_for_type_text(field_typ) {
@@ -3692,13 +3695,22 @@ fn (tc &TypeChecker) infix_read_type(id flat.NodeId) Type {
 	}
 	node := tc.a.nodes[int(id)]
 	if node.kind == .ident {
-		if base := tc.cur_fn_mut_param_base_types[node.value] {
-			if tc.mut_param_binding_matches_lvalue(node.value) {
-				return base
-			}
+		if base := tc.mut_param_base_for_current_ident(node.value, typ) {
+			return base
 		}
 	}
 	return typ
+}
+
+fn (tc &TypeChecker) mut_param_base_for_current_ident(name string, typ Type) ?Type {
+	base := tc.cur_fn_mut_param_base_types[name] or { return none }
+	if !tc.lvalue_matches_mut_param(typ, base) {
+		return none
+	}
+	if !tc.mut_param_binding_matches_lvalue(name) {
+		return none
+	}
+	return base
 }
 
 fn type_is_string_like(typ Type) bool {
@@ -4315,11 +4327,8 @@ fn (tc &TypeChecker) assignment_expected_type(lhs_id flat.NodeId, lhs_type Type)
 	}
 	lhs := tc.a.nodes[int(lhs_id)]
 	if lhs.kind == .ident {
-		if base := tc.cur_fn_mut_param_base_types[lhs.value] {
-			if tc.lvalue_matches_mut_param(lhs_type, base)
-				&& tc.mut_param_binding_matches_lvalue(lhs.value) {
-				return base
-			}
+		if base := tc.mut_param_base_for_current_ident(lhs.value, lhs_type) {
+			return base
 		}
 	}
 	return lhs_type
@@ -7559,16 +7568,31 @@ fn (tc &TypeChecker) resolve_ierror_match_pattern(pattern string) ?string {
 
 fn (tc &TypeChecker) interface_match_pattern_candidates(pattern string) []string {
 	mut candidates := []string{}
-	candidates << pattern
 	if !pattern.contains('.') {
+		mut has_scoped_candidate := false
 		if resolved := tc.resolve_selective_import_type_symbol(pattern) {
 			candidates << resolved
+			has_scoped_candidate = true
+		}
+		if tc.source_declares_type_in_scope(pattern, tc.cur_file, tc.cur_module) {
+			candidates << pattern
+			has_scoped_candidate = true
 		}
 		if tc.cur_module.len > 0 && tc.cur_module != 'main' && tc.cur_module != 'builtin' {
-			candidates << '${tc.cur_module}.${pattern}'
+			local := '${tc.cur_module}.${pattern}'
+			if tc.type_symbol_known(local) {
+				candidates << local
+				has_scoped_candidate = true
+			}
+		}
+		if !has_scoped_candidate {
+			candidates << pattern
 		}
 	} else if resolved := tc.resolve_import_alias_pattern(pattern) {
 		candidates << resolved
+		candidates << pattern
+	} else {
+		candidates << pattern
 	}
 	qpattern := tc.qualify_name(pattern)
 	if qpattern != pattern {
@@ -9440,6 +9464,9 @@ fn (tc &TypeChecker) named_type_compatible_with_ierror_inner(concrete_name strin
 			lookup = qname
 		}
 	}
+	if lookup in ['Error', 'MessageError'] && tc.unqualified_type_name_shadows_builtin(lookup) {
+		return false
+	}
 	if lookup in seen {
 		return false
 	}
@@ -9497,6 +9524,9 @@ fn (tc &TypeChecker) named_type_has_non_builtin_error_embed(concrete_name string
 	}
 	struct_module := tc.struct_modules[lookup] or { tc.cur_module }
 	struct_file := tc.struct_files[lookup] or { tc.cur_file }
+	if tc.source_struct_has_non_builtin_error_embed(lookup, struct_file, struct_module) {
+		return true
+	}
 	for field in tc.structs[lookup] or { []StructField{} } {
 		if field.name in ['Error', 'MessageError']
 			&& tc.unqualified_type_name_shadows_builtin_in_scope(field.name, struct_file, struct_module) {
@@ -9521,6 +9551,70 @@ fn (tc &TypeChecker) named_type_has_non_builtin_error_embed(concrete_name string
 		}
 	}
 	return false
+}
+
+fn (tc &TypeChecker) source_struct_has_non_builtin_error_embed(concrete_name string, file string, mod_name string) bool {
+	if isnil(tc.a) {
+		return false
+	}
+	target := concrete_name.all_after_last('.')
+	target_module := if concrete_name.contains('.') {
+		concrete_name.all_before_last('.')
+	} else {
+		mod_name
+	}
+	mut cur_file := ''
+	mut cur_module := ''
+	for node in tc.a.nodes {
+		match node.kind {
+			.file {
+				cur_file = node.value
+				cur_module = ''
+			}
+			.module_decl {
+				cur_module = node.value
+			}
+			.struct_decl {
+				if node.value != target {
+					continue
+				}
+				if target_module.len > 0 {
+					if !module_names_match(cur_module, target_module) {
+						continue
+					}
+				} else if file.len == 0 || cur_file != file
+					|| !module_names_match(cur_module, mod_name) {
+					continue
+				}
+				for i in 0 .. node.children_count {
+					field := tc.a.child_node(&node, i)
+					if field.kind != .field_decl {
+						continue
+					}
+					field_typ := if field.typ.len > 0 { field.typ } else { field.value }
+					if !source_field_decl_is_embed(field, field_typ) {
+						continue
+					}
+					if field_typ in ['Error', 'MessageError']
+						&& tc.unqualified_type_name_shadows_builtin_in_scope(field_typ, cur_file, cur_module) {
+						return true
+					}
+					resolved := tc.resolve_imported_type_text_in_file(field_typ, cur_file)
+					if resolved.all_after_last('.') in ['Error', 'MessageError']
+						&& !tc.is_builtin_error_struct_name(resolved) {
+						return true
+					}
+				}
+			}
+			else {}
+		}
+	}
+	return false
+}
+
+fn source_field_decl_is_embed(field flat.Node, field_typ string) bool {
+	return field.typ.len == 0 || field.value.len == 0 || field.value == field_typ
+		|| (field_typ.contains('.') && field.value == field_typ.all_after_last('.'))
 }
 
 fn (tc &TypeChecker) embedded_field_is_scoped_builtin_error(field StructField, embedded_name string, struct_file string, struct_module string) bool {
@@ -9559,6 +9653,10 @@ fn (tc &TypeChecker) unqualified_type_name_shadows_builtin_in_scope(name string,
 	} else {
 		name
 	}
+	if local_name == name && mod_name != 'builtin'
+		&& tc.source_declares_type_in_scope(name, file, mod_name) {
+		return true
+	}
 	if local_name != name && tc.type_symbol_known(local_name) {
 		return true
 	}
@@ -9581,6 +9679,37 @@ fn (tc &TypeChecker) unqualified_type_name_shadows_builtin_in_scope(name string,
 	return false
 }
 
+fn (tc &TypeChecker) source_declares_type_in_scope(name string, file string, mod_name string) bool {
+	if file.len == 0 || isnil(tc.a) {
+		return false
+	}
+	mut cur_file := ''
+	mut cur_module := ''
+	for node in tc.a.nodes {
+		match node.kind {
+			.file {
+				cur_file = node.value
+				cur_module = ''
+			}
+			.module_decl {
+				cur_module = node.value
+			}
+			.struct_decl, .type_decl, .interface_decl, .enum_decl {
+				if cur_file == file && module_names_match(cur_module, mod_name)
+					&& node.value == name {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	return false
+}
+
+fn module_names_match(a string, b string) bool {
+	return a == b || (a in ['', 'main'] && b in ['', 'main'])
+}
+
 fn (tc &TypeChecker) resolve_selective_import_type_symbol_in_file(name string, file string) ?string {
 	candidates := tc.file_selective_imports[file_import_key(file, name)] or { return none }
 	for candidate in candidates {
@@ -9591,11 +9720,31 @@ fn (tc &TypeChecker) resolve_selective_import_type_symbol_in_file(name string, f
 	return none
 }
 
+fn (tc &TypeChecker) resolve_imported_type_text_in_file(typ string, file string) string {
+	if !typ.contains('.') || typ.starts_with('C.') {
+		return typ
+	}
+	dot := typ.index_u8(`.`)
+	if dot <= 0 {
+		return typ
+	}
+	alias := typ[..dot]
+	if resolved := tc.file_imports[file_import_key(file, alias)] {
+		if resolved != alias {
+			return resolved + typ[dot..]
+		}
+	}
+	return typ
+}
+
 fn (tc &TypeChecker) is_builtin_error_struct_name(name string) bool {
 	if name in ['builtin.Error', 'builtin.MessageError'] {
 		return true
 	}
 	if name in ['Error', 'MessageError'] {
+		if tc.unqualified_type_name_shadows_builtin(name) {
+			return false
+		}
 		return tc.struct_modules[name] or { '' } == 'builtin'
 	}
 	return false
@@ -9951,6 +10100,9 @@ fn embedded_field_type(field StructField) ?Type {
 	field_type_name := method_type_name(unwrap_pointer(field.typ))
 	if field_type_name.len == 0 {
 		return none
+	}
+	if field.name.len == 0 {
+		return field.typ
 	}
 	mut names := [field_type_name]
 	base_name, _, is_generic := generic_type_application_parts(field_type_name)

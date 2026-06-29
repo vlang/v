@@ -7866,20 +7866,33 @@ fn (t &Transformer) resolve_interface_pattern(pattern string, subject_type strin
 
 fn (t &Transformer) interface_pattern_candidates(pattern string) []string {
 	mut candidates := []string{}
-	candidates << pattern
 	if !pattern.contains('.') {
+		mut has_scoped_candidate := false
 		if t.cur_file.len > 0 {
 			for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, pattern)] or {
 				[]string{}
 			} {
-				candidates << candidate
+				if t.interface_pattern_candidate_known(candidate) {
+					candidates << candidate
+					has_scoped_candidate = true
+				}
 			}
 		}
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-			candidates << '${t.cur_module}.${pattern}'
+			local := '${t.cur_module}.${pattern}'
+			if t.interface_pattern_candidate_known(local) {
+				candidates << local
+				has_scoped_candidate = true
+			}
+		}
+		if !has_scoped_candidate {
+			candidates << pattern
 		}
 	} else if resolved := t.resolve_import_alias_pattern(pattern) {
 		candidates << resolved
+		candidates << pattern
+	} else {
+		candidates << pattern
 	}
 	qpattern := t.tc.qualify_name(pattern)
 	if qpattern != pattern {
@@ -7895,6 +7908,12 @@ fn (t &Transformer) interface_pattern_candidates(pattern string) []string {
 		result << candidate
 	}
 	return result
+}
+
+fn (t &Transformer) interface_pattern_candidate_known(candidate string) bool {
+	return candidate in t.tc.type_aliases || candidate in t.tc.structs
+		|| candidate in t.tc.interface_names || candidate in t.tc.flag_enums
+		|| candidate in t.tc.enum_names || candidate in t.tc.sum_types
 }
 
 fn (t &Transformer) resolve_import_alias_pattern(pattern string) ?string {

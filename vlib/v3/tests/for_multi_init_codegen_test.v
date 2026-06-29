@@ -140,6 +140,44 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
+fn test_c_style_for_multi_init_allows_selector_lhs_after_comma() {
+	v3_bin := for_multi_init_build_v3()
+	src := os.join_path(os.temp_dir(), 'v3_for_multi_init_selector_lhs_${os.getpid()}.v')
+	os.write_file(src, 'struct Pair {
+mut:
+	x int
+	y int
+}
+
+fn main() {
+	mut a := Pair{}
+	mut total := 0
+	for a.x, a.y = 0, 1; a.x < 3; {
+		total += a.x + a.y
+		a.x += 1
+		a.y += 2
+	}
+	assert total == 12
+	assert a.x == 3
+	assert a.y == 7
+	println("ok")
+}
+') or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_selector_lhs_${os.getpid()}')
+	os.rm(bin) or {}
+	os.rm(bin + '.c') or {}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}
+
 fn test_c_style_for_multi_init_rejects_missing_rhs() {
 	v3_bin := for_multi_init_build_v3()
 	for_multi_init_run_bad(v3_bin, 'missing_rhs', 'fn main() {
@@ -150,4 +188,22 @@ fn test_c_style_for_multi_init_rejects_missing_rhs() {
 }
 ',
 		'for init assignment mismatch: 2 variables but 1 values')
+}
+
+fn test_for_in_rejects_selector_value_var_after_comma() {
+	v3_bin := for_multi_init_build_v3()
+	for_multi_init_run_bad(v3_bin, 'for_in_selector_value', 'struct Box {
+mut:
+	x int
+}
+
+fn main() {
+	xs := [1, 2]
+	mut b := Box{}
+	for i, b.x in xs {
+		println(i)
+	}
+}
+',
+		'invalid for-in header: expected identifiers before `in`')
 }

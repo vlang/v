@@ -267,6 +267,153 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
+fn test_selective_imported_error_pattern_prefers_scoped_error() {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+
+	root := os.join_path(os.temp_dir(), 'v3_ierror_selective_error_pattern_${os.getpid()}')
+	mod_dir := os.join_path(root, 'fake')
+	os.mkdir_all(mod_dir) or { panic(err) }
+	os.write_file(os.join_path(mod_dir, 'fake.v'), "module fake
+
+pub struct Error {
+	MessageError
+pub:
+	label string
+}
+
+pub fn fail() !int {
+	return Error{
+		label: 'selective'
+	}
+}
+") or {
+		panic(err)
+	}
+
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, "import fake { Error, fail }
+
+fn matches_fake(err IError) bool {
+	if err is Error {
+		assert err.label == 'selective'
+		return true
+	}
+	return false
+}
+
+fn classify(err IError) string {
+	return match err {
+		Error {
+			assert err.label == 'selective'
+			err.label
+		}
+		else {
+			'other'
+		}
+	}
+}
+
+fn main() {
+	fail() or {
+		assert matches_fake(err)
+		assert classify(err) == 'selective'
+		println('ok')
+		return
+	}
+	assert false
+}
+") or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_ierror_selective_error_pattern_input')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}
+
+fn test_scoped_error_pattern_does_not_fallback_to_builtin_error() {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+
+	root := os.join_path(os.temp_dir(), 'v3_ierror_scoped_error_no_fallback_${os.getpid()}')
+	mod_dir := os.join_path(root, 'fake')
+	os.mkdir_all(mod_dir) or { panic(err) }
+	os.write_file(os.join_path(mod_dir, 'fake.v'), 'module fake
+
+pub struct Error {}
+
+pub fn fail() !int {
+	return Error{}
+}
+') or {
+		panic(err)
+	}
+
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, 'import fake { Error, fail }
+
+fn is_fake(err IError) bool {
+	return err is Error
+}
+
+fn main() {
+	fail() or {
+		_ := is_fake(err)
+		return
+	}
+}
+') or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_ierror_scoped_error_no_fallback_input')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('fake.Error') || compile.output.contains('Error'), compile.output
+	assert compile.output.contains('IError') || compile.output.contains('cannot return'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+}
+
+fn test_local_error_pattern_does_not_fallback_to_builtin_error() {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+
+	root := os.join_path(os.temp_dir(), 'v3_ierror_local_error_no_fallback_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, 'struct Error {}
+
+fn is_local(err IError) bool {
+	return err is Error
+}
+
+fn main() {
+	err := error("plain")
+	_ := is_local(err)
+}
+') or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_ierror_local_error_no_fallback_input')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('Error') && compile.output.contains('IError'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+}
+
 fn test_msg_only_struct_is_not_ierror_pattern() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
 	build :=
@@ -413,7 +560,8 @@ fn test_module_local_error_embeds_are_not_boxed_as_ierror() {
 	root := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_box_${os.getpid()}')
 	mod_dir := os.join_path(root, 'fakebox')
 	os.mkdir_all(mod_dir) or { panic(err) }
-	os.write_file(os.join_path(mod_dir, 'fakebox.v'), "module fakebox
+	mod_src := os.join_path(mod_dir, 'fakebox.v')
+	os.write_file(mod_src, "module fakebox
 
 pub struct Error {}
 
@@ -467,7 +615,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_box_input')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.execute('${v3_bin} ${mod_src} -b c -o ${bin}')
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot return'), compile.output
 	assert compile.output.contains('fakebox.FalseError')

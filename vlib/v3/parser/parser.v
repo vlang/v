@@ -2871,11 +2871,7 @@ fn (mut p Parser) for_comma_header(first_expr flat.NodeId, first_is_mut bool) fl
 			p.next()
 			value_is_mut = true
 		}
-		next_lhs := if p.tok == .name {
-			p.a.add_val(.ident, p.expect_name())
-		} else {
-			p.expr(.lowest)
-		}
+		next_lhs := p.expr(.bit_or)
 		lhs_ids << next_lhs
 		if lhs_ids.len == 2 {
 			val_id = next_lhs
@@ -2885,12 +2881,42 @@ fn (mut p Parser) for_comma_header(first_expr flat.NodeId, first_is_mut bool) fl
 		if lhs_ids.len != 2 {
 			return flat.empty_node
 		}
+		if !p.for_in_var_is_ident(first_expr) || !p.for_in_var_is_ident(val_id) {
+			for_id := p.for_in_parts(first_expr, val_id, value_is_mut)
+			return p.invalid_for_in_header(for_id)
+		}
 		return p.for_in_parts(first_expr, val_id, value_is_mut)
 	}
 	if p.tok == .decl_assign || token_is_assignment(p.tok) {
 		return p.for_c_style_multi(lhs_ids)
 	}
 	return flat.empty_node
+}
+
+fn (mut p Parser) for_in_var_is_ident(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	return p.a.nodes[int(id)].kind == .ident
+}
+
+fn (mut p Parser) invalid_for_in_header(for_id flat.NodeId) flat.NodeId {
+	lhs := p.a.add(flat.NodeKind.empty)
+	rhs := p.a.add(flat.NodeKind.empty)
+	marker_start := p.add_children2(lhs, rhs)
+	marker_id := p.a.add_node(flat.Node{
+		kind:           .assign
+		value:          'for init assignment mismatch: invalid for-in header: expected identifiers before `in`'
+		op:             .assign
+		children_start: marker_start
+		children_count: 2
+	})
+	block_start := p.add_children2(marker_id, for_id)
+	return p.a.add_node(flat.Node{
+		kind:           .block
+		children_start: block_start
+		children_count: 2
+	})
 }
 
 fn (mut p Parser) for_c_style_multi(lhs_ids []flat.NodeId) flat.NodeId {

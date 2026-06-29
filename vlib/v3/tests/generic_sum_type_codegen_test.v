@@ -223,6 +223,62 @@ fn main() {}
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
+fn test_generic_sum_rejects_mismatched_qualified_generic_variant_pattern() {
+	v3_bin := generic_sum_type_build_v3()
+	root := os.join_path(os.temp_dir(), 'v3_generic_sum_type_qualified_negative_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	left_dir := os.join_path(root, 'left')
+	right_dir := os.join_path(root, 'right')
+	os.mkdir_all(left_dir) or { panic(err) }
+	os.mkdir_all(right_dir) or { panic(err) }
+	os.write_file(os.join_path(left_dir, 'left.v'), 'module left
+
+pub struct Foo {}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(right_dir, 'right.v'), 'module right
+
+pub struct Foo {}
+') or {
+		panic(err)
+	}
+
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, 'module main
+
+import left
+import right
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn bad(tree Tree[left.Foo]) int {
+	return match tree {
+		Node[right.Foo] { 1 }
+		else { 0 }
+	}
+}
+
+fn main() {}
+') or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_qualified_negative_${os.getpid()}')
+	os.rm(bin) or {}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('Node[right.Foo]'), compile.output
+	assert compile.output.contains('Tree[left.Foo]'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+}
+
 fn test_generic_sum_concrete_generic_variants_keep_distinct_tags() {
 	v3_bin := generic_sum_type_build_v3()
 	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_distinct_tags_${os.getpid()}.v')
