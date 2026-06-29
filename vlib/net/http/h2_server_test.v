@@ -917,3 +917,111 @@ fn test_h2_server_refuses_over_limit_stream_during_window_stall() {
 	assert s1_status == 200, 'stalled stream 1 should still complete with 200, got ${s1_status}'
 	assert s1_ended, 'stalled stream 1 response should complete after WINDOW_UPDATE'
 }
+
+// RFC 9113 §5.1 / RFC 7541 §2.2: a HEADERS block arriving on a half-closed
+// (remote) stream must be HPACK-decoded before the server sends
+// RST_STREAM(STREAM_CLOSED). The HPACK dynamic table is connection-wide; skipping
+// the decode desyncs it, so a subsequent request that uses an indexed reference to
+// an entry from the skipped block gets GOAWAY(COMPRESSION_ERROR) instead of a 200.
+//
+// Setup: zero initial window stalls stream 1's response body, keeping stream 1 in
+// c.streams while we inject a post-END_STREAM HEADERS for it. That block carries a
+// literal-with-incremental-indexing entry ("x-sync: 1" → dynamic index 62). Stream
+// 3 then references that entry via 0xBE. If the decode was skipped, 0xBE is
+// unresolvable and the connection closes with COMPRESSION_ERROR.
+//
+// HPACK bytes used (RFC 7541 static table indices):
+//   0x82 = indexed(2)  → :method: GET
+//   0x84 = indexed(4)  → :path: /
+//   0x87 = indexed(7)  → :scheme: https
+//   0x01 0x09 ...      → :authority: h.example (literal-without-indexing, name idx 1)
+//   0x40 0x06 x-sync 0x01 1 → literal-incremental "x-sync: 1" → dynamic index 62
+//   0xBE = indexed(62) → x-sync: 1  (fails with COMPRESSION_ERROR if table desynced)
+fn test_h2_server_hpack_sync_after_post_end_stream_headers() {
+	// All-manual HPACK: no H2HpackEncoder so the dynamic table stays predictable.
+	// Static-table references only for the base pseudo-headers; no new entries.
+	base_block := [u8(0x82), 0x84, 0x87, 0x01, 0x09, 0x68, 0x2e, 0x65, 0x78, 0x61, 0x6d, 0x70,
+		0x6c, 0x65]
+	// Literal-with-incremental-indexing: adds "x-sync: 1" to the dynamic table.
+	invalid_block := [u8(0x40), 0x06, 0x78, 0x2d, 0x73, 0x79, 0x6e, 0x63, 0x01, 0x31]
+	// Same pseudo-headers plus indexed(62) = "x-sync: 1" from the dynamic table.
+	mut s3_block := base_block.clone()
+	s3_block << u8(0xBE)
+
+	mut out := []u8{}
+	out << h2_client_preface.bytes()
+	// Zero initial window → stream 1's response body cannot be sent; the server
+	// parks in pump_for_window with stream 1 still in c.streams.
+	out << H2Frame(H2SettingsFrame{
+		settings: [H2Setting{h2_settings_initial_window_size, 0}]
+	}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    base_block
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// Post-END_STREAM HEADERS on stream 1 containing the HPACK incremental entry.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    invalid_block
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	// Stream 3 references the entry from the invalid block (dynamic index 62).
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   3
+		fragment:    s3_block
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// Unblock stream 3's stalled response body.
+	out << H2Frame(H2WindowUpdateFrame{
+		stream_id:             3
+		window_size_increment: 1000
+	}).encode()
+
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'HPACK sync: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut dec := H2HpackDecoder{}
+	mut rst1 := i64(-1)
+	mut s3_status := 0
+	mut goaway_code := i64(-1)
+	for _ in 0 .. 64 {
+		f := fr.next() or { break }
+		match f {
+			H2GoawayFrame {
+				goaway_code = i64(f.error_code)
+				break
+			}
+			H2RstStreamFrame {
+				if f.stream_id == 1 {
+					rst1 = i64(f.error_code)
+				}
+			}
+			H2HeadersFrame {
+				if f.stream_id == 3 {
+					for hf in dec.decode(f.fragment) or { []H2HeaderField{} } {
+						if hf.name == ':status' {
+							s3_status = hf.value.int()
+						}
+					}
+				}
+			}
+			else {}
+		}
+
+		if s3_status != 0 && rst1 >= 0 {
+			break
+		}
+	}
+	assert goaway_code == -1, 'HPACK sync: unexpected GOAWAY (code ${goaway_code}) — post-END_STREAM block was not decoded'
+	assert rst1 == i64(u32(H2ErrorCode.stream_closed)), 'HPACK sync: expected RST_STREAM(STREAM_CLOSED) on stream 1, got ${rst1}'
+	assert s3_status == 200, 'HPACK sync: stream 3 should get 200 (dynamic table intact), got ${s3_status}'
+}

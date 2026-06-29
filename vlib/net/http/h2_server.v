@@ -164,6 +164,7 @@ mut:
 	trailer_block []u8 // assembled trailer HEADERS + CONTINUATION fragments
 	in_trailers   bool // set once a trailer section (a 2nd HEADERS block) begins
 	refused       bool // §5.1.2: over the concurrency limit — decode then RST(REFUSED_STREAM)
+	over_end      bool // §5.1: HEADERS after END_STREAM — decoded for HPACK sync, then RST(STREAM_CLOSED)
 }
 
 // H2ServerConn drives one server-side HTTP/2 connection over a transport.
@@ -300,6 +301,12 @@ fn (mut c H2ServerConn) dispatch_frame(frame H2Frame, mut handler Handler) ! {
 			if frame.stream_id != c.awaiting_cont {
 				return error('h2 server: CONTINUATION on the wrong stream')
 			}
+		} else if frame is H2RstStreamFrame && frame.stream_id == c.awaiting_cont {
+			// RFC 9113 §6.4: RST_STREAM is legal at any point including mid-CONTINUATION.
+			// Cancel the stream and clear the CONTINUATION wait without a connection error.
+			c.awaiting_cont = 0
+			c.streams.delete(frame.stream_id)
+			return
 		} else {
 			return error('h2 server: expected CONTINUATION after HEADERS without END_HEADERS')
 		}
@@ -440,12 +447,13 @@ fn (mut c H2ServerConn) on_headers(frame H2HeadersFrame, mut handler Handler) ! 
 	// (RFC 9113 §8.1), not a new request.
 	if mut existing := c.streams[frame.stream_id] {
 		if existing.end_stream {
-			// Half-closed (remote): the stream already delivered END_STREAM (its
-			// response may still be in flight). A further HEADERS block cannot open
-			// a trailer section — RFC 9113 §5.1, STREAM_CLOSED stream error.
-			c.send_rst_stream(frame.stream_id, .stream_closed)!
-			c.streams.delete(frame.stream_id)
-			return
+			// Half-closed (remote): the stream already delivered END_STREAM.
+			// The further HEADERS block is invalid (RFC 9113 §5.1, STREAM_CLOSED),
+			// but we must still route it through on_trailers → finalize_trailers so
+			// the HPACK block is decoded: the decoder is stateful and connection-wide
+			// (RFC 7541 §2.2) — skipping a block desyncs all future requests.
+			// finalize_trailers RSTs on over_end after the decode.
+			existing.over_end = true
 		}
 		c.on_trailers(mut existing, frame, mut handler)!
 		return
@@ -558,6 +566,13 @@ fn (mut c H2ServerConn) finalize_trailers(mut s H2ServerStream, mut handler Hand
 	trailers := c.decoder.decode(s.trailer_block) or {
 		c.send_goaway(.compression_error, 'HPACK decode error in trailers') or {}
 		return error('h2 server: HPACK decode error in trailers (COMPRESSION_ERROR)')
+	}
+	// A HEADERS block received after END_STREAM (RFC 9113 §5.1): decoded above for
+	// HPACK sync; now RST the stream with STREAM_CLOSED and stop.
+	if s.over_end {
+		c.send_rst_stream(s.id, .stream_closed)!
+		c.streams.delete(s.id)
+		return
 	}
 	// A well-decoded but malformed trailer section is a STREAM error (§8.1.1).
 	mut reason := if !s.end_stream {
