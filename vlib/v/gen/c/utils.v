@@ -30,6 +30,12 @@ fn (mut g Gen) stable_type_symbol_key(typ ast.Type, mut seen map[string]bool) st
 		return '0'
 	}
 	sym := g.table.final_sym(resolved_typ)
+	if sym.info is ast.Alias {
+		parent_type := sym.info.parent_type.derive(resolved_typ)
+		if parent_type.idx() != resolved_typ.idx() {
+			return g.stable_type_symbol_key(parent_type, mut seen)
+		}
+	}
 	flags := stable_type_symbol_flags(resolved_typ)
 	base := '${sym.kind}:${stable_type_symbol_nominal_name(sym)}:${flags}'
 	if seen[base] {
@@ -38,9 +44,6 @@ fn (mut g Gen) stable_type_symbol_key(typ ast.Type, mut seen map[string]bool) st
 	seen[base] = true
 	mut parts := [base]
 	match sym.info {
-		ast.Alias {
-			parts << 'alias:${sym.info.language}:${g.stable_type_symbol_key(sym.info.parent_type, mut seen)}'
-		}
 		ast.Array {
 			parts << 'array:${sym.info.nr_dims}:${g.stable_type_symbol_key(sym.info.elem_type, mut seen)}'
 		}

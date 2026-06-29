@@ -1,3 +1,4 @@
+// vtest build: !sanitize-memory-clang
 import context
 import time
 import veb

@@ -455,14 +455,6 @@ fn (mut p Preferences) find_cc_if_cross_compiling() {
 	p.ccompiler = p.vcross_compiler_name()
 }
 
-fn (p &Preferences) macos_default_tcc_output_needs_system_cc() bool {
-	if get_host_os() != .macos {
-		return false
-	}
-	return p.vroot.contains(' ') || p.vroot.contains('\t') || p.out_name.contains(' ')
-		|| p.out_name.contains('\t')
-}
-
 fn (mut p Preferences) try_to_use_tcc_by_default() {
 	preferred_tcc := default_tcc_compiler()
 	if p.ccompiler == 'tcc' {
@@ -485,10 +477,10 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 		if p.is_prod {
 			return
 		}
-		// The macOS bundled tcc invokes codesign for the produced executable.
-		// It does not quote that output path internally, so use the platform cc
-		// by default when the output path needs quoting.
-		if p.macos_default_tcc_output_needs_system_cc() {
+		// The macOS bundled tcc is sensitive to Apple SDK/header changes and
+		// app/framework includes. Keep it available through explicit `-cc tcc`,
+		// but default to the platform compiler on macOS.
+		if get_host_os() == .macos {
 			return
 		}
 		p.ccompiler = preferred_tcc

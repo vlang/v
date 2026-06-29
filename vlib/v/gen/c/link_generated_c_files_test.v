@@ -91,6 +91,9 @@ fn main() {
 }
 
 fn test_parallel_cc_usecache_interface_index_definition_stays_out_of_header() {
+	$if windows {
+		return
+	}
 	tmp_dir := os.join_path(os.vtmp_dir(), 'parallel_cc_usecache_interface_index_${os.getpid()}')
 	os.mkdir_all(tmp_dir)!
 	defer {

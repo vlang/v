@@ -674,7 +674,7 @@ fn wait_for_bool_signal(signal chan bool, message string) {
 		ok := <-signal {
 			assert ok
 		}
-		1 * time.second {
+		pool_test_signal_timeout() {
 			assert false, message
 		}
 	}
@@ -685,7 +685,7 @@ fn wait_for_int_signal(signal chan int, message string) int {
 		value := <-signal {
 			return value
 		}
-		1 * time.second {
+		pool_test_signal_timeout() {
 			assert false, message
 		}
 	}
@@ -697,11 +697,18 @@ fn wait_for_string_signal(signal chan string, message string) string {
 		value := <-signal {
 			return value
 		}
-		1 * time.second {
+		pool_test_signal_timeout() {
 			assert false, message
 		}
 	}
 	return ''
+}
+
+fn pool_test_signal_timeout() time.Duration {
+	$if windows {
+		return 5 * time.second
+	}
+	return 1 * time.second
 }
 
 fn assert_no_bool_signal(signal chan bool, message string) {

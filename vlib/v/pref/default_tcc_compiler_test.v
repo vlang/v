@@ -134,11 +134,11 @@ fn test_try_to_use_tcc_by_default_skips_tcc_for_prealloc() {
 	assert prefs.ccompiler == ''
 }
 
-fn test_try_to_use_tcc_by_default_skips_bundled_tcc_for_macos_space_output() {
+fn test_try_to_use_tcc_by_default_skips_bundled_tcc_on_macos() {
 	$if !macos {
 		return
 	}
-	test_root := os.join_path(os.vtmp_dir(), 'v pref default tcc compiler test')
+	test_root := os.join_path(os.vtmp_dir(), 'v_pref_default_tcc_compiler_test')
 	prepare_test_tcc_binary(test_root, 'exit 0')
 	fake_vexe := os.join_path(test_root, 'v')
 	old_vexe := os.getenv('VEXE')
