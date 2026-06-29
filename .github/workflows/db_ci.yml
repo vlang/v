@@ -6,6 +6,7 @@ on:
     branches:
       - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/db_ci.yml'
@@ -13,6 +14,7 @@ on:
       - 'doc/**'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/db_ci.yml'

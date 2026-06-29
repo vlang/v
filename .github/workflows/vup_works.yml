@@ -5,6 +5,7 @@ on:
     branches:
       - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '**.vv'
@@ -14,6 +15,7 @@ on:
       - 'cmd/tools/vrepl.v'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '**.vv'
