@@ -71,8 +71,8 @@ pub fn (mut b Builder) write_byte(data u8) {
 	b << data
 }
 
-// write_decimal appends a decimal representation of the number `n` into the builder `b`,
-// without dynamic allocation. The higher order digits come first, i.e. 6123 will be written
+// write_decimal appends a decimal representation of `n` without dynamic allocation.
+// The higher order digits come first, i.e. 6123 will be written
 // with the digit `6` first, then `1`, then `2` and `3` last.
 pub fn (mut b Builder) write_decimal(n i64) {
 	if n == 0 {

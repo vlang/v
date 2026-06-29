@@ -462,8 +462,9 @@ const map_private = 2
 #include <X11/Xcursor/Xcursor.h>
 
 // X11 C typedefs are unsigned long based. Define them locally so V1 can
-// type-check scalar operations while keeping the public aliases C-backed.
-pub type C.XID = usize
+// type-check scalar operations while keeping the public aliases compatible
+// with the shared x11 modules.
+pub type C.XID = u64
 pub type C.Atom = C.XID
 pub type C.Window = C.XID
 pub type C.Colormap = C.XID

@@ -46,8 +46,8 @@ pub fn (mut b Builder) write_decimal(n i64) {
 	b.write_u_decimal(mag)
 }
 
-// write_u_decimal appends a decimal representation of the unsigned number `n` into the
-// builder `b`. Unlike `write_decimal`, it covers the entire `u64` range (values above
+// write_u_decimal appends a decimal representation of unsigned `n` to the builder.
+// Unlike `write_decimal`, it covers the entire `u64` range (values above
 // `max_i64`). The higher order digits come first.
 pub fn (mut b Builder) write_u_decimal(n u64) {
 	if n == 0 {
