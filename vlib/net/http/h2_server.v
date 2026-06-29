@@ -177,6 +177,7 @@ mut:
 	rbuf           []u8
 	send_window    i64 = i64(h2_server_default_window)
 	streams        map[u32]&H2ServerStream
+	locally_reset  map[u32]bool // stream ids for which we sent RST_STREAM; drain in-flight frames per RFC 9113 §6.4
 	last_stream_id u32
 	awaiting_cont  u32 // non-zero when mid-CONTINUATION on this stream
 	closing        bool
@@ -461,6 +462,13 @@ fn (mut c H2ServerConn) on_headers(frame H2HeadersFrame, mut handler Handler) ! 
 		return error('h2 server: invalid client stream id ${frame.stream_id}')
 	}
 	c.last_stream_id = frame.stream_id
+	// Prune locally_reset: TCP ordering guarantees all in-flight frames for
+	// streams below the new stream_id have already been delivered.
+	for id in c.locally_reset.keys() {
+		if id < frame.stream_id {
+			c.locally_reset.delete(id)
+		}
+	}
 	mut s := &H2ServerStream{
 		id:          frame.stream_id
 		hpack_block: frame.fragment.clone()
@@ -525,6 +533,7 @@ fn (mut c H2ServerConn) finalize_headers(mut s H2ServerStream, mut handler Handl
 	// it now without validating or running the request.
 	if s.refused {
 		c.send_rst_stream(s.id, .refused_stream)!
+		c.locally_reset[s.id] = true
 		c.streams.delete(s.id)
 		return
 	}
@@ -532,6 +541,7 @@ fn (mut c H2ServerConn) finalize_headers(mut s H2ServerStream, mut handler Handl
 	// reset just this stream and keep the connection alive.
 	h2_validate_request_pseudo(s.headers) or {
 		c.send_rst_stream(s.id, .protocol_error)!
+		c.locally_reset[s.id] = true
 		c.streams.delete(s.id)
 		return
 	}
@@ -569,6 +579,7 @@ fn (mut c H2ServerConn) finalize_trailers(mut s H2ServerStream, mut handler Hand
 	// HPACK sync; now RST the stream with STREAM_CLOSED and stop.
 	if s.over_end {
 		c.send_rst_stream(s.id, .stream_closed)!
+		c.locally_reset[s.id] = true
 		c.streams.delete(s.id)
 		return
 	}
@@ -594,6 +605,7 @@ fn (mut c H2ServerConn) finalize_trailers(mut s H2ServerStream, mut handler Hand
 	}
 	if reason != '' {
 		c.send_rst_stream(s.id, .protocol_error)!
+		c.locally_reset[s.id] = true
 		c.streams.delete(s.id)
 		return
 	}
@@ -609,12 +621,16 @@ fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 		if c.classify_stream(frame.stream_id) == .idle {
 			return error('h2 server: DATA on idle stream ${frame.stream_id}')
 		}
-		// Closed stream: credit the connection window (the peer spent it on bytes
-		// sent legitimately within its window) before RST-ing just this stream.
+		// Credit the connection window (the peer spent it within its window).
 		if frame.flow_size > 0 {
 			c.send_window_update(0, u32(frame.flow_size)) or {}
 		}
-		c.send_rst_stream(frame.stream_id, .stream_closed)!
+		// If we already sent RST_STREAM for this stream, the DATA was in-flight
+		// before the client received the RST. Drain it silently (RFC 9113 §6.4).
+		if frame.stream_id !in c.locally_reset {
+			c.send_rst_stream(frame.stream_id, .stream_closed)!
+			c.locally_reset[frame.stream_id] = true
+		}
 		return
 	}
 	if !s.headers_done {
@@ -629,6 +645,7 @@ fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 			c.send_window_update(0, u32(frame.flow_size)) or {}
 		}
 		c.send_rst_stream(s.id, .stream_closed)!
+		c.locally_reset[s.id] = true
 		c.streams.delete(s.id)
 		return
 	}
@@ -638,6 +655,7 @@ fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 			// not penalised for bytes it legitimately sent within its window.
 			c.send_window_update(0, u32(frame.flow_size)) or {}
 			c.send_rst_stream(s.id, .refused_stream)!
+			c.locally_reset[s.id] = true
 			c.streams.delete(s.id)
 			return
 		}
@@ -661,6 +679,7 @@ fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 fn (mut c H2ServerConn) run_request(mut s H2ServerStream, mut handler Handler) ! {
 	req := c.build_request(s) or {
 		c.send_rst_stream(s.id, .protocol_error)!
+		c.locally_reset[s.id] = true
 		c.streams.delete(s.id)
 		return
 	}
