@@ -1,14 +1,8 @@
 module main
 
-import json
 import net.http
 import os
 import vshare
-
-struct Response {
-	hash  string
-	error string
-}
 
 fn main() {
 	if os.args.len < 3 {
@@ -35,10 +29,15 @@ fn main() {
 
 	share := http.post_form('https://play.vlang.io/share', {
 		'code': content
-	})!
+	}) or {
+		eprintln('Failed to share code: ${err.msg()}')
+		exit(1)
+	}
 
-	response := json.decode(Response, share.body)!
-	url := 'https://play.vlang.io/p/${response.hash}'
+	url := vshare.share_url_from_response(share.status_code, share.body) or {
+		eprintln(err.msg())
+		exit(1)
+	}
 
 	println(url)
 	if vshare.copy_to_clipboard(url) {
