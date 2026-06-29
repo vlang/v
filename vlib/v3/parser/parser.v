@@ -143,6 +143,20 @@ pub fn (mut p Parser) parse_into(path string) {
 	})
 }
 
+fn (mut p Parser) reserve_for_source(src_len int) {
+	if src_len <= 0 {
+		return
+	}
+	node_cap := p.a.nodes.len + src_len / 6 + 64
+	if node_cap > p.a.nodes.cap {
+		p.a.nodes.ensure_cap(node_cap)
+	}
+	child_cap := p.a.children.len + src_len / 10 + 64
+	if child_cap > p.a.children.cap {
+		p.a.children.ensure_cap(child_cap)
+	}
+}
+
 // read_source_file_raw reads read source file raw input for parser.
 fn read_source_file_raw(path string) string {
 	cpath := cstring_from_vstring(path)

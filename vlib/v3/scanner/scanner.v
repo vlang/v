@@ -122,7 +122,6 @@ pub fn (mut s Scanner) scan() token.Token {
 			s.insert_semi = false
 			return .semicolon
 		}
-		s.file.add_line(s.offset)
 		return .eof
 	}
 	c := s.src[s.offset]
@@ -166,7 +165,8 @@ pub fn (mut s Scanner) scan() token.Token {
 		}
 		for s.offset < s.src.len {
 			c3 := s.src[s.offset]
-			if c3.is_alnum() || c3 == `_` {
+			if (c3 >= `a` && c3 <= `z`) || (c3 >= `A` && c3 <= `Z`)
+				|| (c3 >= `0` && c3 <= `9`) || c3 == `_` {
 				s.offset++
 				continue
 			}
@@ -457,7 +457,6 @@ fn (mut s Scanner) whitespace() {
 				return
 			}
 			s.offset++
-			s.file.add_line(s.offset)
 			continue
 		}
 		break
@@ -491,7 +490,6 @@ fn (mut s Scanner) comment() {
 			c3 := s.peek_byte(1)
 			if c2 == `\n` {
 				s.offset++
-				s.file.add_line(s.offset)
 			} else if c2 == `/` && c3 == `*` {
 				s.offset += 2
 				ml_comment_depth++
@@ -518,7 +516,6 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 			}
 			if c == `\n` {
 				s.offset++
-				s.file.add_line(s.offset)
 				continue
 			}
 			s.offset++
@@ -535,7 +532,6 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 			continue
 		} else if c == `\n` {
 			s.offset++
-			s.file.add_line(s.offset)
 			continue
 		} else if c == `$` && s.peek_byte(1) == `{` {
 			s.in_str_inter = true
