@@ -204,7 +204,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 		if kind_id != 61 {
 			continue
 		}
-		if !g.should_emit_fn_node_in_module(node, i, cur_module) {
+		if !g.should_emit_fn_node_in_module(node, i, cur_module, cur_file) {
 			continue
 		}
 		qfn := qualified_fn_name_in_module(cur_module, node.value)
@@ -401,6 +401,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		cur_param_names:          g.cur_param_names.clone()
 		cur_param_type_values:    g.cur_param_type_values.clone()
 		cur_param_types:          g.cur_param_types.clone()
+		cur_mut_params:           g.cur_mut_params.clone()
 		cur_fn_ret:               g.cur_fn_ret
 		cur_fn_ret_is_optional:   g.cur_fn_ret_is_optional
 		cur_fn_ret_base:          g.cur_fn_ret_base

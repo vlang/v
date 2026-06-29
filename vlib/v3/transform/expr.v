@@ -21,11 +21,14 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 	rhs_raw_type := t.node_type(rhs_id)
 	lhs_clean_type := t.normalize_type_alias(lhs_raw_type)
 	rhs_clean_type := t.normalize_type_alias(rhs_raw_type)
-	if lhs_clean_type == '&string' || rhs_clean_type == '&string' {
+	lhs_is_string_ptr := lhs_clean_type == '&string'
+	rhs_is_string_ptr := rhs_clean_type == '&string'
+	if node.op == .plus && (lhs_is_string_ptr || rhs_is_string_ptr) {
 		return none
 	}
 
-	is_string := t.is_string_type(lhs_id) || t.is_string_type(rhs_id)
+	is_string := t.is_string_type(lhs_id) || t.is_string_type(rhs_id) || lhs_is_string_ptr
+		|| rhs_is_string_ptr
 
 	if !is_string {
 		return none
@@ -33,6 +36,12 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 
 	mut new_lhs := t.transform_expr(lhs_id)
 	mut new_rhs := t.transform_expr(rhs_id)
+	if lhs_is_string_ptr {
+		new_lhs = t.make_prefix(.mul, new_lhs)
+	}
+	if rhs_is_string_ptr {
+		new_rhs = t.make_prefix(.mul, new_rhs)
+	}
 
 	match node.op {
 		.plus {
@@ -103,12 +112,23 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	rhs_id := t.a.children[node.children_start + 1]
 	lhs_raw_type := t.node_type(lhs_id)
 	rhs_raw_type := t.node_type(rhs_id)
-	if t.equality_type_is_array_pointer(lhs_raw_type)
-		|| t.equality_type_is_array_pointer(rhs_raw_type) {
-		return none
-	}
 	mut lhs_type := t.membership_container_type(lhs_raw_type)
 	mut rhs_type := t.membership_container_type(rhs_raw_type)
+	lhs_is_fixed := t.is_fixed_array_type(lhs_type)
+	rhs_is_fixed := t.is_fixed_array_type(rhs_type)
+	if lhs_is_fixed || rhs_is_fixed {
+		if !lhs_is_fixed || !rhs_is_fixed {
+			return none
+		}
+		fixed_type := t.resolved_fixed_array_canonical_type(lhs_type)
+		new_lhs := t.transform_expr_for_type(lhs_id, fixed_type)
+		new_rhs := t.transform_expr_for_type(rhs_id, fixed_type)
+		eq_call := t.make_membership_eq_expr(new_lhs, new_rhs, fixed_type)
+		if node.op == .ne {
+			return t.make_prefix(.not, eq_call)
+		}
+		return eq_call
+	}
 	if !(lhs_type.starts_with('[]') || lhs_type == 'array') || !(rhs_type.starts_with('[]')
 		|| rhs_type == 'array') {
 		return none
@@ -143,7 +163,7 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 		t.make_array_elementwise_eq_call(new_lhs, new_rhs, elem_type, lhs_type, rhs_type, node)
 	} else if elem_type.starts_with('[]') {
 		t.make_call_typed('array_eq_array', arr3(new_lhs, new_rhs,
-			t.make_int_literal(array_repeat_clone_depth(lhs_type))), 'bool')
+			t.make_int_literal(array_nested_eq_depth(lhs_type))), 'bool')
 	} else if elem_type == 'string' {
 		t.make_call_typed('array_eq_string', arr2(new_lhs, new_rhs), 'bool')
 	} else {
@@ -264,13 +284,21 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 		// so the operator lowers to the monomorphized method (`vec__Vec4_f32__plus`).
 		struct_type = t.generic_struct_instance_name(lhs_type)
 	}
+	mut is_alias_operator := false
+	if struct_type.len == 0 {
+		if _ := t.struct_operator_call_info(lhs_type, node.op) {
+			struct_type = lhs_type
+			is_alias_operator = true
+		}
+	}
 	if struct_type.len == 0 {
 		return none
 	}
 	// Skip the checker/transformer agreement guard for generic-struct instances:
 	// they resolve reliably, and an alias name (`SimdFloat4`) vs the resolved form
 	// (`vec.Vec4[f32]`) would otherwise spuriously fail the comparison.
-	if checker_lhs_type.len > 0 && !has_smartcast && !struct_type.contains('[') {
+	if checker_lhs_type.len > 0 && !has_smartcast && !struct_type.contains('[')
+		&& !is_alias_operator {
 		checker_struct_type := t.struct_lookup_name(checker_lhs_type)
 		if checker_struct_type.len > 0 && checker_struct_type != struct_type {
 			return none
@@ -494,19 +522,34 @@ fn struct_operator_symbol(op flat.Op) ?string {
 
 // struct_operator_fn_name supports struct operator fn name handling for Transformer.
 fn (t &Transformer) struct_operator_fn_name(struct_type string, op_name string) ?string {
-	method_name := '${struct_type}.${op_name}'
 	require_used := op_name in ['==', '!=']
-	if t.is_known_operator_fn_name(method_name, require_used) {
-		return method_name
-	}
-	cmethod_name := c_name(method_name)
-	if t.is_known_operator_fn_name(cmethod_name, require_used) {
-		return cmethod_name
-	}
-	if name := t.generic_struct_operator_fn_name(struct_type, op_name) {
-		return name
+	for receiver in t.operator_receiver_candidates(struct_type) {
+		method_name := '${receiver}.${op_name}'
+		if t.is_known_operator_fn_name(method_name, require_used) {
+			return method_name
+		}
+		cmethod_name := c_name(method_name)
+		if t.is_known_operator_fn_name(cmethod_name, require_used) {
+			return cmethod_name
+		}
+		if name := t.generic_struct_operator_fn_name(receiver, op_name) {
+			return name
+		}
 	}
 	return none
+}
+
+fn (t &Transformer) operator_receiver_candidates(struct_type string) []string {
+	mut candidates := []string{cap: 2}
+	if struct_type.len == 0 {
+		return candidates
+	}
+	candidates << struct_type
+	if !struct_type.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		candidates << '${t.cur_module}.${struct_type}'
+	}
+	return candidates
 }
 
 // generic_struct_instance_name returns the resolved generic-struct instance type
@@ -1194,7 +1237,7 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 		}
 		if inner.starts_with('[]') {
 			return t.make_call_typed('array_eq_array', arr3(lhs, rhs,
-				t.make_int_literal(array_repeat_clone_depth(clean))), 'bool')
+				t.make_int_literal(array_nested_eq_depth(clean))), 'bool')
 		}
 		return t.make_call_typed('array_eq_raw', arr3(lhs, rhs, t.make_sizeof_type(inner)), 'bool')
 	}
@@ -1205,8 +1248,10 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 				return fixed_eq
 			}
 		}
-		cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
-			t.make_sizeof_type(clean)), 'int')
+		lhs_value := t.stable_transformed_expr_for_reuse(lhs, clean, 'fixed_eq_lhs')
+		rhs_value := t.stable_transformed_expr_for_reuse(rhs, clean, 'fixed_eq_rhs')
+		cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs_value), t.make_prefix(.amp,
+			rhs_value), t.make_sizeof_type(clean)), 'int')
 		return t.make_infix(.eq, cmp, t.make_int_literal(0))
 	}
 	struct_type := t.struct_lookup_name(clean)
@@ -1960,6 +2005,12 @@ fn fixed_array_len(s string) int {
 
 // fixed_array_len_text supports fixed array len text handling for transform.
 fn fixed_array_len_text(s string) string {
+	if !s.starts_with('[') {
+		_, dims := transform_postfix_fixed_array_parts(s)
+		if dims.len > 0 {
+			return dims[0]
+		}
+	}
 	return s.all_after('[').all_before(']').trim_space()
 }
 
@@ -1968,7 +2019,15 @@ fn fixed_array_elem_type(s string) string {
 	if s.starts_with('[') {
 		return s.all_after(']')
 	}
-	return s.all_before('[')
+	elem, dims := transform_postfix_fixed_array_parts(s)
+	if dims.len == 0 {
+		return s.all_before('[')
+	}
+	mut out := elem
+	for i := dims.len - 1; i > 0; i-- {
+		out += '[${dims[i]}]'
+	}
+	return out
 }
 
 fn fixed_array_canonical_type(s string) string {

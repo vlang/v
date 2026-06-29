@@ -3245,9 +3245,14 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			rhs_id := t.a.child(&node, 1)
 			rhs := t.a.nodes[int(rhs_id)]
 			if rhs.kind == .call {
-				call_typ := t.get_call_return_type(rhs_id, rhs)
-				if call_typ.len > 0 {
+				call_typ := t.node_type(rhs_id)
+				if decl_type_is_usable(call_typ) {
 					typ = call_typ
+				} else if !decl_type_is_usable(typ) {
+					raw_call_typ := t.get_call_return_type(rhs_id, rhs)
+					if raw_call_typ.len > 0 {
+						typ = raw_call_typ
+					}
 				}
 				generic_typ := t.concrete_generic_call_return_type(rhs_id, rhs)
 				if generic_typ.len > 0 {
@@ -3348,7 +3353,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			}
 		}
 	}
-	if node.children_count == 2 && node.typ.len == 0 {
+	if node.children_count == 2 && !decl_type_is_usable(node.typ) {
 		lhs := t.a.nodes[int(new_children[0])]
 		if lhs.kind == .ident && lhs.value.len > 0 {
 			rhs_typ := t.node_type(new_children[1])
@@ -4459,6 +4464,15 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	call_id := t.normalize_generic_call_expr(id, node)
 	mut call_node := t.a.nodes[int(call_id)]
 	mut resolved_typ := t.concrete_generic_call_return_type(call_id, call_node)
+	if resolved_typ.len == 0 && call_node.typ.len > 0 {
+		call_typ := t.normalize_type_alias(call_node.typ)
+		if call_typ !in ['array', 'map', 'unknown'] {
+			resolved_typ = call_typ
+		}
+	}
+	if resolved_typ.len == 0 {
+		resolved_typ = t.new_map_call_type(call_node)
+	}
 	if resolved_typ.len == 0 {
 		resolved_typ = t.get_call_return_type(call_id, call_node)
 	}
@@ -6297,18 +6311,22 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			if concrete_typ.len > 0 {
 				return concrete_typ
 			}
+			new_map_typ := t.new_map_call_type(node)
+			if new_map_typ.len > 0 {
+				return new_map_typ
+			}
+			if node.typ.len > 0 {
+				typ := t.normalize_type_alias(node.typ)
+				if typ !in ['array', 'map', 'unknown'] {
+					return typ
+				}
+			}
 			mut ret := t.get_call_return_type(id, node)
 			if ret.len == 0 {
 				ret = t.current_call_return_type(node)
 			}
 			if ret.len > 0 {
 				return ret
-			}
-			if node.typ.len > 0 {
-				typ := t.normalize_type_alias(node.typ)
-				if typ !in ['array', 'map'] {
-					return typ
-				}
 			}
 			return ''
 		}

@@ -82,11 +82,11 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 
 // transform_for_in_body transforms transform for in body data for transform.
 fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []flat.NodeId {
-	if t.cur_fn_is_generic {
-		return arr1(id)
-	}
 	header_count := node.value.int()
 	if header_count < 3 || node.children_count < 3 {
+		return arr1(id)
+	}
+	if t.cur_fn_is_generic {
 		return arr1(id)
 	}
 	key_id := t.a.child(&node, 0) // loop var ident — pass through (do not transform a binding)
@@ -187,11 +187,17 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		false
 	}
 	if header_count == 4 || container_is_range {
-		// range `for i in 0 .. n`: single loop var (child0) is an int
+		// range `for i in 0 .. n`: single loop var (child0) follows the lower bound
 		if int(key_id) >= 0 {
 			key_name := t.a.nodes[int(key_id)].value
 			if key_name.len > 0 {
-				t.set_var_type(key_name, 'int')
+				low_id := if container_is_range {
+					range_node := t.a.nodes[int(container_id)]
+					t.a.child(&range_node, 0)
+				} else {
+					container_id
+				}
+				t.set_var_type(key_name, t.range_loop_var_type_name(low_id))
 			}
 		}
 	} else if has_index {
@@ -277,17 +283,30 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 	if key.kind != .ident || key.value.len == 0 {
 		return arr1(id)
 	}
-	t.set_var_type(key.value, 'int')
+	range_type := t.range_loop_var_type_name(low_id)
+	t.set_var_type(key.value, range_type)
 	low := t.transform_expr(low_id)
 	high := t.stable_expr_for_reuse(high_id)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
-	init := t.make_decl_assign_typed(key.value, low, 'int')
+	init := t.make_decl_assign_typed(key.value, low, range_type)
 	cond := t.make_infix(.lt, t.make_ident(key.value), high)
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(key.value), .inc))
 	new_body := t.transform_stmts(body_ids)
 	prefix << t.make_for_stmt(init, cond, post, new_body, node)
 	return prefix
+}
+
+fn (t &Transformer) range_loop_var_type_name(low_id flat.NodeId) string {
+	typ := t.node_type(low_id)
+	if typ.len == 0 {
+		return 'int'
+	}
+	clean := t.normalize_type_alias(typ)
+	if t.is_integer_type_name(clean) {
+		return typ
+	}
+	return 'int'
 }
 
 fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, iter_type string, elem_type string, has_index bool, body_ids []flat.NodeId) []flat.NodeId {
@@ -357,7 +376,9 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	t.drain_pending(mut prefix)
 	mut actual_iter_type := iter_type
 	container_type := t.node_type(container)
-	if container_type.len > 0 && !for_iter_type_has_generic_placeholder(actual_iter_type)
+	if container_type.len > 0 && container_type !in ['array', 'map', 'unknown']
+		&& for_iter_type_is_container(container_type)
+		&& !for_iter_type_has_generic_placeholder(actual_iter_type)
 		&& !(t.is_fixed_array_type(actual_iter_type) && !t.is_fixed_array_type(container_type)) {
 		actual_iter_type = container_type
 	}

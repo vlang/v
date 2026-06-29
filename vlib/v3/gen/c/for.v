@@ -213,6 +213,9 @@ fn (g &FlatGen) node_contains_delete_call(id flat.NodeId) bool {
 		if fn_node.kind == .selector && fn_node.value == 'delete' {
 			return true
 		}
+		if fn_node.kind == .ident && fn_node.value in ['map.delete', 'map__delete'] {
+			return true
+		}
 	}
 	for i in 0 .. node.children_count {
 		if g.node_contains_delete_call(g.a.child(&node, i)) {

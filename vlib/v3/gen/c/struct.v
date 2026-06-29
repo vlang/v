@@ -351,6 +351,10 @@ fn (mut g FlatGen) gen_fixed_array_copy_source(value_id flat.NodeId, field_type 
 		g.gen_expr(value_id)
 		return
 	}
+	if val_node.kind == .paren && val_node.children_count > 0 {
+		g.gen_fixed_array_copy_source(g.a.child(val_node, 0), field_type)
+		return
+	}
 	val_type := types.unwrap_pointer(g.usable_expr_type(value_id))
 	if val_type is types.Array {
 		g.write('(')

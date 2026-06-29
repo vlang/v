@@ -47,7 +47,7 @@ fn (mut g FlatGen) gen_fns() {
 		}
 
 		if kind_id == 61 {
-			if !g.should_emit_fn_node_in_module(node, i, cur_module) {
+			if !g.should_emit_fn_node_in_module(node, i, cur_module, cur_file) {
 				continue
 			}
 			qfn := g.fn_c_name_in_module(cur_module, node.value)
@@ -205,11 +205,11 @@ fn (g &FlatGen) cgen_is_top_level_stmt(id flat.NodeId) bool {
 
 // should_emit_fn_node reports whether should emit fn node applies in c.
 fn (mut g FlatGen) should_emit_fn_node(node flat.Node, node_index int) bool {
-	return g.should_emit_fn_node_in_module(node, node_index, g.tc.cur_module)
+	return g.should_emit_fn_node_in_module(node, node_index, g.tc.cur_module, g.tc.cur_file)
 }
 
 // should_emit_fn_node_in_module reports whether should emit fn node in module applies in c.
-fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int, module_name string) bool {
+fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int, module_name string, file_name string) bool {
 	_ = node_index
 	qfn := qualified_fn_name_in_module(module_name, node.value)
 	if g.should_rename_user_main_for_tests(module_name, node.value) {
@@ -226,10 +226,22 @@ fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int,
 	if node.value.starts_with('__anon_fn_') || qfn.contains('__anon_fn_') {
 		return true
 	}
+	if node.generic_params.len == 0 && cgen_is_operator_overload_fn(node.value)
+		&& g.test_files[file_name] {
+		return true
+	}
 	if g.has_used_fn_filter() && !g.used_fn_contains_in_module(node.value, module_name) {
 		return false
 	}
 	return true
+}
+
+fn cgen_is_operator_overload_fn(name string) bool {
+	if !name.contains('.') {
+		return false
+	}
+	method := name.all_after_last('.')
+	return method in ['+', '-', '*', '/', '%', '==', '!=', '<', '>', '<=', '>=']
 }
 
 fn is_generated_fn_after_markused(name string) bool {
@@ -1141,9 +1153,11 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	old_param_names := g.cur_param_names.clone()
 	old_param_type_values := g.cur_param_type_values.clone()
 	old_param_types := g.cur_param_types.clone()
+	old_mut_params := g.cur_mut_params.clone()
 	g.cur_param_names = []string{}
 	g.cur_param_type_values = []types.Type{}
 	g.cur_param_types = map[string]types.Type{}
+	g.cur_mut_params = map[string]bool{}
 	for i in 0 .. node.children_count {
 		param_id := g.a.child(&node, i)
 		p := g.a.node(param_id)
@@ -1152,6 +1166,9 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 			g.cur_param_names << p.value
 			g.cur_param_type_values << param_type
 			g.cur_param_types[p.value] = param_type
+			if p.op == .amp {
+				g.cur_mut_params[p.value] = true
+			}
 			g.tc.cur_scope.insert(p.value, param_type)
 		}
 	}
@@ -1207,6 +1224,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.cur_param_names = old_param_names.clone()
 	g.cur_param_type_values = old_param_type_values.clone()
 	g.cur_param_types = old_param_types.clone()
+	g.cur_mut_params = old_mut_params.clone()
 	g.tc.pop_scope()
 }
 
@@ -1277,9 +1295,11 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	old_param_names := g.cur_param_names.clone()
 	old_param_type_values := g.cur_param_type_values.clone()
 	old_param_types := g.cur_param_types.clone()
+	old_mut_params := g.cur_mut_params.clone()
 	g.cur_param_names = []string{}
 	g.cur_param_type_values = []types.Type{}
 	g.cur_param_types = map[string]types.Type{}
+	g.cur_mut_params = map[string]bool{}
 	mut fn_defer_ids := []flat.NodeId{}
 	for stmt in stmts {
 		g.collect_function_defer_ids_from(stmt.id, mut fn_defer_ids)
@@ -1310,6 +1330,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.cur_param_names = old_param_names.clone()
 	g.cur_param_type_values = old_param_type_values.clone()
 	g.cur_param_types = old_param_types.clone()
+	g.cur_mut_params = old_mut_params.clone()
 	g.cur_fn_name = old_fn_name
 	g.tc.cur_file = old_tc_file
 	g.tc.cur_module = old_tc_module
@@ -2983,6 +3004,11 @@ fn (g &FlatGen) current_param_type(name string) ?types.Type {
 	return none
 }
 
+// current_param_is_mut returns true when a current param originated from `mut name T`.
+fn (g &FlatGen) current_param_is_mut(name string) bool {
+	return g.cur_mut_params[name] or { false }
+}
+
 // gen_enum_str_call emits an explicit `enum_val.str()` (with no user-defined `str`)
 // by routing to the compiler-synthesized `<Enum>__autostr`, so it matches `${enum}`
 // interpolation exactly — including `[flag]` enums' `Enum{.a | .b}` form, which the
@@ -4093,7 +4119,7 @@ fn (mut g FlatGen) forward_decls() {
 
 		is_entry_main := is_main_fn_in_main_module(cur_module, node.value) && g.test_files.len == 0
 		if kind_id == 61 && !is_entry_main {
-			if !g.should_emit_fn_node_in_module(node, i, cur_module) {
+			if !g.should_emit_fn_node_in_module(node, i, cur_module, cur_file) {
 				continue
 			}
 			qfn := g.fn_c_name_in_module(cur_module, node.value)

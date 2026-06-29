@@ -603,6 +603,7 @@ fn (mut t Transformer) specialize_cloned_fn_signature(clone_id flat.NodeId, decl
 	params := t.generic_fn_param_names(decl.node, decl.module)
 	t.a.nodes[int(clone_id)].typ = t.specialized_signature_type_text(decl, decl.node.typ, args,
 		params)
+	t.a.nodes[int(clone_id)].generic_params = []string{}
 	mut dst_params := []flat.NodeId{}
 	clone := t.a.nodes[int(clone_id)]
 	for i in 0 .. clone.children_count {
@@ -1805,6 +1806,12 @@ fn (t &Transformer) generic_call_arg_type_for_inference(id flat.NodeId) string {
 			return typ
 		}
 	}
+	if node.typ.len > 0 {
+		typ := t.normalize_type_alias(node.typ)
+		if typ.len > 0 && !t.generic_arg_is_unresolved(typ) {
+			return typ
+		}
+	}
 	mut typ := t.node_type(id)
 	if typ.len == 0 {
 		typ = t.generic_arg_expr_type(id)
@@ -2137,7 +2144,8 @@ fn (mut t Transformer) copy_cloned_resolution(src_id flat.NodeId, dst_id flat.No
 	if src_idx < 0 || dst_idx < 0 {
 		return
 	}
-	if src_idx < t.tc.resolved_call_set.len && t.tc.resolved_call_set[src_idx] {
+	if src_idx < t.tc.resolved_call_set.len && t.tc.resolved_call_set[src_idx]
+		&& !t.resolved_call_is_generic_fn(t.tc.resolved_call_names[src_idx]) {
 		for t.tc.resolved_call_names.len <= dst_idx {
 			t.tc.resolved_call_names << ''
 			t.tc.resolved_call_set << false
@@ -2153,6 +2161,26 @@ fn (mut t Transformer) copy_cloned_resolution(src_id flat.NodeId, dst_id flat.No
 		t.tc.resolved_fn_value_names[dst_idx] = t.tc.resolved_fn_value_names[src_idx]
 		t.tc.resolved_fn_value_set[dst_idx] = true
 	}
+}
+
+fn (t &Transformer) resolved_call_is_generic_fn(name string) bool {
+	if name.len == 0 || isnil(t.tc) {
+		return false
+	}
+	if name in t.tc.fn_generic_params {
+		return true
+	}
+	base := generic_fn_decl_base_value(name)
+	if base in t.tc.fn_generic_params {
+		return true
+	}
+	if name.contains('.') {
+		short := name.all_after_last('.')
+		if short in t.tc.fn_generic_params {
+			return true
+		}
+	}
+	return false
 }
 
 fn substitute_generic_node_value(node flat.Node, args []string) string {

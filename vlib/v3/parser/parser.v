@@ -625,6 +625,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 	mut name := ''
 	mut receiver_name := ''
 	mut receiver_type := ''
+	mut receiver_is_mut := false
 	mut is_method := false
 
 	// method receiver: fn (mut r Type) name()
@@ -634,6 +635,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 		mut is_mut := false
 		if p.tok == .key_mut || p.tok == .key_shared {
 			is_mut = p.tok == .key_mut
+			receiver_is_mut = is_mut
 			p.next()
 		}
 		receiver_name = p.expect_name()
@@ -648,7 +650,8 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 			if p.tok.is_overloadable() {
 				op_name := overload_token_name(p.tok)
 				p.next()
-				return p.fn_operator_overload(receiver_name, receiver_type, op_name)
+				return p.fn_operator_overload(receiver_name, receiver_type, receiver_is_mut,
+					op_name)
 			}
 		}
 	}
@@ -669,7 +672,8 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 					clean_type := receiver_type.trim_left('&')
 					name = '${clean_type}.${name}'
 				}
-				return p.fn_decl_body(name, receiver_name, receiver_type, is_method, true)
+				return p.fn_decl_body(name, receiver_name, receiver_type, receiver_is_mut,
+					is_method, true)
 			}
 			// module.func or Type.static_method
 			second := p.expect_name_or_keyword()
@@ -690,10 +694,10 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 		name = '${clean_type}.${name}'
 	}
 
-	return p.fn_decl_body(name, receiver_name, receiver_type, is_method, false)
+	return p.fn_decl_body(name, receiver_name, receiver_type, receiver_is_mut, is_method, false)
 }
 
-fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type string, op_name string) flat.NodeId {
+fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type string, receiver_is_mut bool, op_name string) flat.NodeId {
 	disable_body := p.disable_fn_body
 	p.disable_fn_body = false
 	// parse parameter
@@ -704,6 +708,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		kind:  .param
 		value: receiver_name
 		typ:   receiver_type
+		op:    if receiver_is_mut { .amp } else { .none }
 	})
 	// operator param
 	if p.tok == .key_mut {
@@ -765,7 +770,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 	return id
 }
 
-fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type string, is_method bool, is_c_decl bool) flat.NodeId {
+fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type string, receiver_is_mut bool, is_method bool, is_c_decl bool) flat.NodeId {
 	// Capture & clear here so it applies only to this function (not nested closures
 	// or a following declaration), and is cleared even on the extern/no-body path.
 	disable_body := p.disable_fn_body
@@ -784,6 +789,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			kind:  .param
 			value: receiver_name
 			typ:   receiver_type
+			op:    if receiver_is_mut { .amp } else { .none }
 		})
 	}
 	for p.tok != .rpar && p.tok != .eof {
@@ -908,6 +914,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 			kind:  .param
 			value: ''
 			typ:   typ
+			op:    if is_mut { .amp } else { .none }
 		})
 		if p.tok == .comma {
 			p.next()
@@ -923,6 +930,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 			kind:  .param
 			value: ''
 			typ:   typ
+			op:    if is_mut { .amp } else { .none }
 		})
 		if p.tok == .comma {
 			p.next()
@@ -950,6 +958,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 			kind:  .param
 			value: name
 			typ:   typ
+			op:    if is_mut { .amp } else { .none }
 		})
 	}
 	if p.tok == .comma {

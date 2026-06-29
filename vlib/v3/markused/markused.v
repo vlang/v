@@ -1546,6 +1546,9 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 			.string_interp {
 				calls << 'string_plus_many'
 			}
+			.assign, .selector_assign, .index_assign {
+				c.collect_assign_operator_call(child, cur_module, mut calls)
+			}
 			.infix {
 				if child.op == .plus {
 					calls << 'string__plus'
@@ -1953,6 +1956,9 @@ fn (c &CallCollector) collect_top_level_expr_calls(id flat.NodeId, cur_module st
 			.string_interp {
 				calls << 'string_plus_many'
 			}
+			.assign, .selector_assign, .index_assign {
+				c.collect_assign_operator_call(child, cur_module, mut calls)
+			}
 			.infix {
 				if child.op == .plus {
 					calls << 'string__plus'
@@ -2220,6 +2226,19 @@ fn (c &CallCollector) collect_struct_operator_call(lhs_id flat.NodeId, op flat.O
 	c.add_operator_call_name(method_name, mut calls)
 }
 
+// collect_assign_operator_call adds operator overloads used through assignment operators.
+fn (c &CallCollector) collect_assign_operator_call(node &flat.Node, cur_module string, mut calls []string) {
+	op := markused_assign_operator_symbol(node.op) or { return }
+	mut i := 0
+	for i + 1 < node.children_count {
+		lhs_id := c.a.child(node, i)
+		if int(lhs_id) >= 0 {
+			c.collect_struct_operator_call(lhs_id, op, cur_module, mut calls)
+		}
+		i += 2
+	}
+}
+
 // struct_operator_call_name supports struct operator call name handling for CallCollector.
 fn (c &CallCollector) struct_operator_call_name(struct_type string, op flat.Op) ?string {
 	if op_name := markused_struct_operator_symbol(op) {
@@ -2238,6 +2257,20 @@ fn (c &CallCollector) struct_operator_call_name(struct_type string, op flat.Op) 
 				return method_name
 			}
 		}
+		else {}
+	}
+
+	return none
+}
+
+// markused_assign_operator_symbol maps assignment operators to their binary operator.
+fn markused_assign_operator_symbol(op flat.Op) ?flat.Op {
+	match op {
+		.plus_assign { return .plus }
+		.minus_assign { return .minus }
+		.mul_assign { return .mul }
+		.div_assign { return .div }
+		.mod_assign { return .mod }
 		else {}
 	}
 

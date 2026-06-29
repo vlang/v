@@ -64,6 +64,7 @@ mut:
 	cur_param_names              []string
 	cur_param_type_values        []types.Type
 	cur_param_types              map[string]types.Type
+	cur_mut_params               map[string]bool
 	cur_fn_ret                   types.Type = types.Type(types.void_)
 	cur_fn_ret_is_optional       bool
 	cur_fn_ret_base              types.Type = types.Type(types.void_)
@@ -157,6 +158,7 @@ pub fn FlatGen.new() FlatGen {
 		cur_param_names:              []string{}
 		cur_param_type_values:        []types.Type{}
 		cur_param_types:              map[string]types.Type{}
+		cur_mut_params:               map[string]bool{}
 		needed_optional_types:        map[string]string{}
 		emitted_optional_types:       map[string]bool{}
 		emitted_fns:                  map[string]bool{}
@@ -250,6 +252,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cur_param_names = []string{}
 	g.cur_param_type_values = []types.Type{}
 	g.cur_param_types = map[string]types.Type{}
+	g.cur_mut_params = map[string]bool{}
 	g.needed_optional_types = map[string]string{}
 	g.emitted_optional_types = map[string]bool{}
 	g.emitted_fns = map[string]bool{}
@@ -2230,6 +2233,28 @@ fn map_str_fixed_len(typ types.Type) int {
 	return 0
 }
 
+// gen_cast_from_mut_param_address emits pointer casts for `&param` where `param`
+// is a mutable V parameter already represented as a C pointer.
+fn (mut g FlatGen) gen_cast_from_mut_param_address(id flat.NodeId, ct string) bool {
+	node := g.a.nodes[int(id)]
+	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+		return false
+	}
+	child_id := g.a.child(&node, 0)
+	child := g.a.nodes[int(child_id)]
+	if child.kind != .ident || !g.current_param_is_mut(child.value) {
+		return false
+	}
+	param_type := g.current_param_type(child.value) or { return false }
+	if param_type !is types.Pointer {
+		return false
+	}
+	g.write('(${ct})(')
+	g.gen_expr(child_id)
+	g.write(')')
+	return true
+}
+
 // gen_expr_with_expected_type emits expr with expected type output for c.
 fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Type) {
 	old_expected := g.expected_expr_type
@@ -2279,7 +2304,8 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		g.expected_enum = old_expected_enum
 		return
 	}
-	if expected !is types.Pointer && expected !is types.Void && actual is types.Pointer
+	if expected !is types.Pointer && expected !is types.Void && expected !is types.OptionType
+		&& expected !is types.ResultType && actual is types.Pointer
 		&& g.type_names_match(actual.base_type, expected) {
 		needs_paren := node.kind !in [.ident, .selector, .call, .index]
 		g.write('*')
@@ -3784,6 +3810,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write('(${ct}){0}')
 			} else if target_type is types.SumType {
 				g.gen_sum_cast_expr(target_type, g.a.child(&node, 0))
+			} else if target_type is types.Pointer
+				&& g.gen_cast_from_mut_param_address(g.a.child(&node, 0), ct) {
+				return
 			} else {
 				g.write('(${ct})(')
 				g.gen_expr(g.a.child(&node, 0))
@@ -5905,17 +5934,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#ifndef __linux__')
 	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) 0')
 	g.writeln('#endif')
-	g.writeln('#ifndef V_OS_FILELOCK_HELPERS_H')
-	g.writeln('#ifdef _WIN32')
-	g.writeln('BOOL LockFileEx(HANDLE handle, DWORD flags, DWORD reserved, DWORD low, DWORD high, OVERLAPPED* overlap);')
-	g.writeln('BOOL UnlockFileEx(HANDLE handle, DWORD reserved, DWORD low, DWORD high, OVERLAPPED* overlap);')
-	g.writeln('static inline int v_filelock_lock(HANDLE handle, int exclusive, int immediate, u64 start, u64 len) { OVERLAPPED overlap; memset(&overlap, 0, sizeof(overlap)); overlap.Offset = (DWORD)(start & 0xffffffffULL); overlap.OffsetHigh = (DWORD)(start >> 32); DWORD flags = immediate ? LOCKFILE_FAIL_IMMEDIATELY : 0; if (exclusive) { flags |= LOCKFILE_EXCLUSIVE_LOCK; } DWORD low = len == 0 ? MAXDWORD : (DWORD)(len & 0xffffffffULL); DWORD high = len == 0 ? MAXDWORD : (DWORD)(len >> 32); return LockFileEx(handle, flags, 0, low, high, &overlap) ? 0 : -1; }')
-	g.writeln('static inline int v_filelock_unlock(HANDLE handle, u64 start, u64 len) { OVERLAPPED overlap; memset(&overlap, 0, sizeof(overlap)); overlap.Offset = (DWORD)(start & 0xffffffffULL); overlap.OffsetHigh = (DWORD)(start >> 32); DWORD low = len == 0 ? MAXDWORD : (DWORD)(len & 0xffffffffULL); DWORD high = len == 0 ? MAXDWORD : (DWORD)(len >> 32); return UnlockFileEx(handle, 0, low, high, &overlap) ? 0 : -1; }')
-	g.writeln('#else')
-	g.writeln('static inline int v_filelock_lock(int fd, int exclusive, int immediate, u64 start, u64 len) { struct flock fl; memset(&fl, 0, sizeof(fl)); fl.l_type = exclusive ? F_WRLCK : F_RDLCK; fl.l_whence = SEEK_SET; fl.l_start = (off_t)start; fl.l_len = len == 0 ? 0 : (off_t)len; return fcntl(fd, immediate ? F_SETLK : F_SETLKW, &fl); }')
-	g.writeln('static inline int v_filelock_unlock(int fd, u64 start, u64 len) { struct flock fl; memset(&fl, 0, sizeof(fl)); fl.l_type = F_UNLCK; fl.l_whence = SEEK_SET; fl.l_start = (off_t)start; fl.l_len = len == 0 ? 0 : (off_t)len; return fcntl(fd, F_SETLK, &fl); }')
-	g.writeln('#endif')
-	g.writeln('#endif')
+	g.filelock_compat_decls()
 	g.writeln('#define array_new(elem_size, len, cap) __new_array((len), (cap), (elem_size))')
 	g.writeln('#define array_push array__push')
 	g.writeln('void array__push_many(array* a, void* val, int size);')
@@ -6010,7 +6029,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static inline int array_last_index_raw(Array a, const void* val) { for (int i = a.len - 1; i >= 0; i--) if (memcmp((u8*)a.data + (size_t)i * (size_t)a.element_size, val, (size_t)a.element_size) == 0) return i; return -1; }')
 	g.writeln('static inline bool array_eq_raw(Array a, Array b, int elem_size) { return a.len == b.len && (a.len == 0 || memcmp(a.data, b.data, (size_t)a.len * elem_size) == 0); }')
 	g.writeln('static inline bool array_eq_string(Array a, Array b) { if (a.len != b.len) return false; string* ad = (string*)a.data; string* bd = (string*)b.data; for (int i = 0; i < a.len; i++) if (ad[i].len != bd[i].len || memcmp(ad[i].str, bd[i].str, ad[i].len) != 0) return false; return true; }')
-	g.writeln('static inline bool array_eq_array(Array a, Array b, int depth) { if (a.len != b.len) return false; Array* ad = (Array*)a.data; Array* bd = (Array*)b.data; for (int i = 0; i < a.len; i++) { if (depth > 1) { if (!array_eq_array(ad[i], bd[i], depth - 1)) return false; } else if (ad[i].element_size == sizeof(string)) { if (!array_eq_string(ad[i], bd[i])) return false; } else if (!array_eq_raw(ad[i], bd[i], ad[i].element_size)) return false; } return true; }')
+	g.writeln('static inline bool array_eq_array(Array a, Array b, int depth) { if (a.len != b.len || a.element_size != b.element_size) return false; if (depth <= 1 || a.element_size != sizeof(Array)) { if (a.element_size == sizeof(string)) return array_eq_string(a, b); return array_eq_raw(a, b, a.element_size); } Array* ad = (Array*)a.data; Array* bd = (Array*)b.data; for (int i = 0; i < a.len; i++) { if (!array_eq_array(ad[i], bd[i], depth - 1)) return false; } return true; }')
 	g.writeln('static inline bool v3_map_map_eq(map a, map b);')
 	g.writeln('static inline bool v3_map_value_eq(void* a, void* b, int value_bytes) { if (value_bytes == sizeof(string)) { string sa = *(string*)a; string sb = *(string*)b; return sa.len == sb.len && (sa.len == 0 || memcmp(sa.str, sb.str, sa.len) == 0); } if (value_bytes == sizeof(map)) { return v3_map_map_eq(*(map*)a, *(map*)b); } if (value_bytes == sizeof(string) + sizeof(map)) { string sa = *(string*)a; string sb = *(string*)b; if (!(sa.len == sb.len && (sa.len == 0 || memcmp(sa.str, sb.str, sa.len) == 0))) return false; map ma = *(map*)((u8*)a + sizeof(string)); map mb = *(map*)((u8*)b + sizeof(string)); return v3_map_map_eq(ma, mb); } if (value_bytes == sizeof(Array)) { Array aa = *(Array*)a; Array bb = *(Array*)b; if (aa.element_size != bb.element_size) return false; if (aa.element_size == sizeof(string)) return array_eq_string(aa, bb); if (aa.element_size == sizeof(Array)) return array_eq_array(aa, bb, 8); return array_eq_raw(aa, bb, aa.element_size); } return memcmp(a, b, value_bytes) == 0; }')
 	g.writeln('static inline bool v3_map_map_eq(map a, map b) { if (a.len != b.len) return false; for (int i = 0; i < a.key_values.len; ++i) { if (a.key_values.deletes != 0 && a.key_values.all_deleted != 0 && a.key_values.all_deleted[i] != 0) continue; void* ak = (void*)(a.key_values.keys + i * a.key_values.key_bytes); void* av = (void*)(a.key_values.values + i * a.key_values.value_bytes); bool found = false; for (int j = 0; j < b.key_values.len; ++j) { if (b.key_values.deletes != 0 && b.key_values.all_deleted != 0 && b.key_values.all_deleted[j] != 0) continue; void* bk = (void*)(b.key_values.keys + j * b.key_values.key_bytes); if (a.key_eq_fn(ak, bk)) { void* bv = (void*)(b.key_values.values + j * b.key_values.value_bytes); if (!v3_map_value_eq(av, bv, a.value_bytes)) return false; found = true; break; } } if (!found) return false; } return true; }')
@@ -6025,6 +6044,23 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#define min_int min_i32')
 	g.writeln('#endif')
 	g.writeln('')
+}
+
+fn (mut g FlatGen) filelock_compat_decls() {
+	if !g.libc_compat_fns['filelock'] {
+		return
+	}
+	g.writeln('#ifndef V_OS_FILELOCK_HELPERS_H')
+	g.writeln('#ifdef _WIN32')
+	g.writeln('BOOL LockFileEx(HANDLE handle, DWORD flags, DWORD reserved, DWORD low, DWORD high, OVERLAPPED* overlap);')
+	g.writeln('BOOL UnlockFileEx(HANDLE handle, DWORD reserved, DWORD low, DWORD high, OVERLAPPED* overlap);')
+	g.writeln('static inline int v_filelock_lock(HANDLE handle, int exclusive, int immediate, u64 start, u64 len) { OVERLAPPED overlap; memset(&overlap, 0, sizeof(overlap)); overlap.Offset = (DWORD)(start & 0xffffffffULL); overlap.OffsetHigh = (DWORD)(start >> 32); DWORD flags = immediate ? LOCKFILE_FAIL_IMMEDIATELY : 0; if (exclusive) { flags |= LOCKFILE_EXCLUSIVE_LOCK; } DWORD low = len == 0 ? MAXDWORD : (DWORD)(len & 0xffffffffULL); DWORD high = len == 0 ? MAXDWORD : (DWORD)(len >> 32); return LockFileEx(handle, flags, 0, low, high, &overlap) ? 0 : -1; }')
+	g.writeln('static inline int v_filelock_unlock(HANDLE handle, u64 start, u64 len) { OVERLAPPED overlap; memset(&overlap, 0, sizeof(overlap)); overlap.Offset = (DWORD)(start & 0xffffffffULL); overlap.OffsetHigh = (DWORD)(start >> 32); DWORD low = len == 0 ? MAXDWORD : (DWORD)(len & 0xffffffffULL); DWORD high = len == 0 ? MAXDWORD : (DWORD)(len >> 32); return UnlockFileEx(handle, 0, low, high, &overlap) ? 0 : -1; }')
+	g.writeln('#else')
+	g.writeln('static inline int v_filelock_lock(int fd, int exclusive, int immediate, u64 start, u64 len) { struct flock fl; memset(&fl, 0, sizeof(fl)); fl.l_type = exclusive ? F_WRLCK : F_RDLCK; fl.l_whence = SEEK_SET; fl.l_start = (off_t)start; fl.l_len = len == 0 ? 0 : (off_t)len; return fcntl(fd, immediate ? F_SETLK : F_SETLKW, &fl); }')
+	g.writeln('static inline int v_filelock_unlock(int fd, u64 start, u64 len) { struct flock fl; memset(&fl, 0, sizeof(fl)); fl.l_type = F_UNLCK; fl.l_whence = SEEK_SET; fl.l_start = (off_t)start; fl.l_len = len == 0 ? 0 : (off_t)len; return fcntl(fd, F_SETLK, &fl); }')
+	g.writeln('#endif')
+	g.writeln('#endif')
 }
 
 fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTypedefInfo {

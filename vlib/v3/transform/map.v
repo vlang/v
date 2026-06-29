@@ -34,6 +34,23 @@ fn (mut t Transformer) make_new_map_call(map_type string) flat.NodeId {
 	return t.make_call_typed('new_map', args, map_type)
 }
 
+fn (t &Transformer) new_map_call_type(node flat.Node) string {
+	if node.kind != .call || node.children_count < 3 {
+		return ''
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .ident || callee.value != 'new_map' {
+		return ''
+	}
+	key_size := t.a.child_node(&node, 1)
+	value_size := t.a.child_node(&node, 2)
+	if key_size.kind != .sizeof_expr || value_size.kind != .sizeof_expr || key_size.value.len == 0
+		|| value_size.value.len == 0 {
+		return ''
+	}
+	return 'map[${key_size.value}]${value_size.value}'
+}
+
 // map_callback_names supports map callback names handling for transform.
 fn map_callback_names(key_type string) (string, string, string, string) {
 	if key_type == 'string' {

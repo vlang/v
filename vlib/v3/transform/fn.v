@@ -739,12 +739,12 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 	if _ := t.static_assoc_fn_name(base_id, fn_node.value) {
 		return 0
 	}
-	if t.receiver_method_param_offset(base_id, node, params) == 1 {
-		return 1
-	}
 	method_name := t.resolve_receiver_method_name(base_id, fn_node.value)
 	if method_name.len == 0 {
 		return 0
+	}
+	if t.receiver_method_param_offset(base_id, node, params) == 1 {
+		return 1
 	}
 	if call_name.len == 0 || call_name == method_name || call_name == c_name(method_name) {
 		return 1
@@ -2004,7 +2004,8 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 	base_id := t.a.children[fn_node.children_start]
 	mut base_type := t.node_type(base_id)
 	base_node := t.a.nodes[int(base_id)]
-	if array_type_has_generic_placeholder(base_type) && base_node.kind == .call {
+	if (array_type_has_generic_placeholder(base_type) || base_type.contains('unknown'))
+		&& base_node.kind == .call {
 		concrete_base_type := t.concrete_generic_call_return_type(base_id, base_node)
 		if concrete_base_type.starts_with('[]') {
 			base_type = concrete_base_type
@@ -2040,6 +2041,16 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 				}
 				return t.try_lower_array_method_call(call_id, new_node)
 			}
+		}
+	}
+	if fn_node.value == 'str' && base_node.kind == .call {
+		new_base := t.transform_expr(base_id)
+		new_base_type := t.node_type(new_base)
+		if new_base_type.starts_with('[]') {
+			return t.lower_array_str(new_base, new_base_type)
+		}
+		if new_base_type.starts_with('map[') {
+			return t.lower_map_str(new_base, new_base_type)
 		}
 	}
 	clean_base_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
@@ -2164,7 +2175,7 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			}
 			if elem_type.starts_with('[]') {
 				return t.make_call_typed('array_eq_array', arr3(receiver, arg,
-					t.make_int_literal(array_repeat_clone_depth(clean_base_type))), 'bool')
+					t.make_int_literal(array_nested_eq_depth(clean_base_type))), 'bool')
 			}
 			if elem_type == 'string' {
 				return t.make_call_typed('array_eq_string', arr2(receiver, arg), 'bool')
@@ -2254,6 +2265,9 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 					t.mark_fn_used(method_name)
 					return t.make_call_typed(method_name, args, ret_type)
 				}
+				if fn_node.value in ['pop', 'clear', 'trim'] {
+					t.mark_fn_used('array__${fn_node.value}')
+				}
 				return none
 			}
 			if array_builtin_method.len > 0 {
@@ -2283,8 +2297,8 @@ fn (t &Transformer) array_builtin_method_name(method string) ?string {
 }
 
 fn array_method_stays_in_cgen(method string) bool {
-	return method in ['last', 'first', 'delete_last', 'pop', 'clear', 'repeat', 'repeat_to_depth',
-		'trim', 'ensure_cap', 'delete', 'free', 'str', 'bytestr', 'wait']
+	return method in ['last', 'first', 'delete_last', 'pop', 'pop_left', 'clear', 'repeat',
+		'repeat_to_depth', 'trim', 'ensure_cap', 'delete', 'free', 'str', 'bytestr', 'wait']
 }
 
 // try_lower_map_method_call supports try lower map method call handling for Transformer.
@@ -3030,6 +3044,9 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			return none
 		}
 		return t.wrap_string_conversion(t.transform_expr(base_id), base_type)
+	}
+	if builtin_base_type == 'string' && method == 'hex' && !base_is_pointer {
+		return t.make_call_typed('string.hex', arr1(t.transform_expr(base_id)), 'string')
 	}
 	if base_type == '[]u8' || base_type == '[]byte' {
 		if method == 'bytestr' {

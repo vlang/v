@@ -54,6 +54,17 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 	if fn_type := t.fn_value_type_name(id) {
 		return fn_type
 	}
+	if int(id) >= 0 {
+		node := t.a.nodes[int(id)]
+		if node.kind == .map_init {
+			if node.typ.starts_with('map[') {
+				return node.typ
+			}
+			if node.value.starts_with('map[') {
+				return node.value
+			}
+		}
+	}
 	return t.node_type(id)
 }
 
@@ -576,6 +587,14 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 	if typ.starts_with('[]') {
 		return '[]' + t.normalize_type_alias(typ[2..])
 	}
+	if typ.starts_with('map[') {
+		bracket_end := generic_matching_bracket(typ, 3)
+		if bracket_end < typ.len {
+			key := t.normalize_type_alias(typ[4..bracket_end])
+			value := t.normalize_type_alias(typ[bracket_end + 1..])
+			return 'map[${key}]${value}'
+		}
+	}
 	if typ.starts_with('?') {
 		return '?' + t.normalize_type_alias(typ[1..])
 	}
@@ -720,7 +739,9 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) string {
 		}
 		base_type = ptr_elem_type
 	}
-	if node.value == 'range' {
+	is_slice := node.value == 'range'
+		|| (node.children_count > 1 && t.a.child_node(&node, 1).kind == .range)
+	if is_slice {
 		if base_type == 'string' {
 			return 'string'
 		}

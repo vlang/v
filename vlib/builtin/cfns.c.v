@@ -99,7 +99,11 @@ fn C.fputs(msg &char, fstream &C.FILE) i32
 fn C.fflush(fstream &C.FILE) i32
 
 // TODO: define args in these functions
-fn C.fseek(stream &C.FILE, offset i32, whence i32) i32
+$if windows {
+	fn C.fseek(stream &C.FILE, offset i32, whence i32) i32
+} $else {
+	fn C.fseek(stream &C.FILE, offset isize, whence i32) i32
+}
 
 fn C.fopen(filename &char, mode &char) &C.FILE
 

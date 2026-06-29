@@ -110,6 +110,22 @@ fn array_repeat_clone_depth(typ string) int {
 	return depth - 1
 }
 
+fn array_nested_eq_depth(typ string) int {
+	mut clean := typ
+	if clean.starts_with('&') {
+		clean = clean[1..]
+	}
+	mut depth := 0
+	for clean.starts_with('[]') {
+		depth++
+		clean = clean[2..]
+	}
+	if depth <= 1 {
+		return 1
+	}
+	return depth
+}
+
 fn (mut t Transformer) make_array_push_many_call(lhs_addr flat.NodeId, rhs flat.NodeId, rhs_type string) flat.NodeId {
 	t.mark_fn_used('array__push_many')
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'push_many')

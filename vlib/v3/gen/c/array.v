@@ -108,6 +108,10 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 		g.write('}')
 		return
 	}
+	if node.kind == .paren && node.children_count > 0 {
+		g.gen_fixed_array_data_arg(g.a.child(&node, 0), arr)
+		return
+	}
 	if node.kind == .postfix && node.children_count > 0 {
 		child_id := g.a.child(&node, 0)
 		child := g.a.nodes[int(child_id)]
@@ -228,14 +232,10 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.write(')')
 		}
 		'pop' {
-			g.write('({ ${c_elem} _pop${g.tmp_count} = *(${c_elem}*)array_get(')
+			amp := if is_ptr { '' } else { '&' }
+			g.write('*(${c_elem}*)array__pop(${amp}')
 			g.gen_expr(base_id)
-			g.write(', ')
-			g.gen_expr(base_id)
-			g.write('${dot}len - 1); ')
-			g.gen_expr(base_id)
-			g.write('${dot}len--; _pop${g.tmp_count}; })')
-			g.tmp_count++
+			g.write(')')
 		}
 		'pop_left' {
 			amp := if is_ptr { '' } else { '&' }
@@ -244,8 +244,10 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.write(')')
 		}
 		'clear' {
+			amp := if is_ptr { '' } else { '&' }
+			g.write('array__clear(${amp}')
 			g.gen_expr(base_id)
-			g.write('${dot}len = 0')
+			g.write(')')
 		}
 		'push_many' {
 			amp := if is_ptr { '' } else { '&' }
@@ -274,9 +276,12 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.write(')')
 		}
 		'trim' {
+			amp := if is_ptr { '' } else { '&' }
+			g.write('array__trim(${amp}')
 			g.gen_expr(base_id)
-			g.write('${dot}len = ')
+			g.write(', ')
 			g.gen_expr(g.a.child(&node, 1))
+			g.write(')')
 		}
 		'ensure_cap' {
 			amp := if is_ptr { '' } else { '&' }
