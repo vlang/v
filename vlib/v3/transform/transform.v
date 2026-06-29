@@ -2729,6 +2729,9 @@ fn (mut t Transformer) try_lower_pointer_value_assign(node flat.Node) ?[]flat.No
 fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type string) flat.NodeId {
 	if int(id) >= 0 && target_type.len > 0 {
 		node := t.a.nodes[int(id)]
+		if node.kind == .none_expr && t.is_optional_type_name(target_type) {
+			return t.make_optional_none(t.qualify_optional_type(target_type))
+		}
 		if node.kind == .none_expr && t.is_ierror_type(target_type) {
 			return t.make_struct_init('IError')
 		}

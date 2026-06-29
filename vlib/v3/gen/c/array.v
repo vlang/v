@@ -622,7 +622,7 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 	lhs := g.a.nodes[int(lhs_id)]
 	if lhs.kind == .index {
 		base_id := g.a.child(&lhs, 0)
-		base_type := g.tc.resolve_type(base_id)
+		base_type := g.usable_expr_type(base_id)
 		clean_base := types.unwrap_pointer(base_type)
 		if clean_base is types.Map {
 			c_key := g.value_c_type(clean_base.key_type)

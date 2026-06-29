@@ -782,12 +782,6 @@ fn (mut tc TypeChecker) resolve_const_types() {
 			if new_type is Unknown {
 				continue
 			}
-			expr := tc.a.nodes[int(expr_id)]
-			if new_type is ArrayFixed && expr.kind == .call {
-				new_type = Type(Array{
-					elem_type: new_type.elem_type
-				})
-			}
 			old_type := tc.const_types[name] or { Type(void_) }
 			if old_type.name() != new_type.name() {
 				tc.const_types[name] = new_type
@@ -873,6 +867,11 @@ fn (tc &TypeChecker) const_type_for_selector(node flat.Node) ?Type {
 		return tc.const_type_from_initializer(key, typ)
 	}
 	return none
+}
+
+// selector_const_type returns the declared type for a selector const expression.
+pub fn (tc &TypeChecker) selector_const_type(node flat.Node) ?Type {
+	return tc.const_type_for_selector(node)
 }
 
 // qualify_fn_name supports qualify fn name handling for TypeChecker.
@@ -4146,11 +4145,15 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 			}
 		}
 		if clean_array := array_type_from_receiver(clean) {
-			for mname in exact_array_receiver_method_candidates(clean_array, fn_node.value,
-				tc.cur_module) {
+			array_candidates := exact_array_receiver_method_candidates(clean_array, fn_node.value,
+				tc.cur_module)
+			for mname in array_candidates {
 				if mname in tc.fn_ret_types {
 					return tc.call_info(mname, true)
 				}
+			}
+			if mname := tc.unique_receiver_method_suffix_match(array_candidates) {
+				return tc.call_info(mname, true)
 			}
 			if fn_node.value in ['clone', 'reverse'] {
 				return CallInfo{
@@ -10849,6 +10852,26 @@ fn push_receiver_method_candidate(mut names []string, name string) {
 	if name.len > 0 && name !in names {
 		names << name
 	}
+}
+
+fn (tc &TypeChecker) unique_receiver_method_suffix_match(candidates []string) ?string {
+	mut found := ''
+	for candidate in candidates {
+		suffix := '.${candidate}'
+		for name, _ in tc.fn_ret_types {
+			if name != candidate && !name.ends_with(suffix) {
+				continue
+			}
+			if found.len > 0 && found != name {
+				return none
+			}
+			found = name
+		}
+	}
+	if found.len == 0 {
+		return none
+	}
+	return found
 }
 
 fn module_can_prefix_collection_receiver(module_name string) bool {

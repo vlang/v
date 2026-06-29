@@ -282,6 +282,9 @@ fn (t &Transformer) resolve_selector_type(node flat.Node) string {
 	}
 	// Strip pointer prefix if present (e.g. "&MyStruct" -> "MyStruct")
 	lookup_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+	if ftyp := t.lookup_sum_variant_field_type(lookup_type, field_name) {
+		return ftyp
+	}
 	if ftyp := t.lookup_struct_field_type(lookup_type, field_name) {
 		return ftyp
 	}
@@ -298,6 +301,40 @@ fn (t &Transformer) resolve_selector_type(node flat.Node) string {
 		return ftyp
 	}
 	return ''
+}
+
+fn (t &Transformer) lookup_sum_variant_field_type(sum_type string, field_name string) ?string {
+	return t.lookup_sum_variant_field_type_seen(sum_type, field_name, []string{})
+}
+
+fn (t &Transformer) lookup_sum_variant_field_type_seen(sum_type string, field_name string, seen []string) ?string {
+	resolved := t.resolve_sum_name(t.trim_pointer_type(t.normalize_type_alias(sum_type)))
+	if resolved.len == 0 || resolved in seen {
+		return none
+	}
+	variants := t.sum_types[resolved] or { return none }
+	mut next_seen := seen.clone()
+	next_seen << resolved
+	mut found := ''
+	for variant in variants {
+		mut ftyp := ''
+		if vt := t.lookup_struct_field_type(variant, field_name) {
+			ftyp = t.normalize_type_alias(vt)
+		} else if nested := t.lookup_sum_variant_field_type_seen(variant, field_name, next_seen) {
+			ftyp = t.normalize_type_alias(nested)
+		}
+		if ftyp.len == 0 {
+			continue
+		}
+		if found.len > 0 && found != ftyp {
+			return none
+		}
+		found = ftyp
+	}
+	if found.len == 0 {
+		return none
+	}
+	return found
 }
 
 // is_c_int_selector reports whether is c int selector applies in transform.
@@ -824,6 +861,11 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 			return elem_type
 		}
 	}
+	if node.kind == .call {
+		if map_type := t.array_map_call_type_name(node) {
+			return map_type
+		}
+	}
 	// NOTE: infix is intentionally not handled here — resolve_expr_type() (called at the top
 	// of node_type) already resolves infix types, including struct operator overloads.
 	if node.kind == .struct_init && node.value.len > 0 {
@@ -855,6 +897,30 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 		return deferred_call_typ
 	}
 	return ''
+}
+
+fn (t &Transformer) array_map_call_type_name(node flat.Node) ?string {
+	if node.children_count < 2 {
+		return none
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.value != 'map' || fn_node.children_count == 0 {
+		return none
+	}
+	base_type0 := t.node_type(t.a.child(fn_node, 0))
+	base_type := if base_type0.starts_with('&') { base_type0[1..] } else { base_type0 }
+	if !base_type.starts_with('[]') {
+		return none
+	}
+	map_expr_id := t.a.child(&node, 1)
+	mut elem_type := t.node_type(map_expr_id)
+	if elem_type.len == 0 || elem_type in ['array', 'map', 'unknown'] {
+		elem_type = t.reliable_stringify_type(map_expr_id)
+	}
+	if elem_type.len == 0 || elem_type in ['array', 'map', 'unknown', 'void'] {
+		return none
+	}
+	return '[]${elem_type}'
 }
 
 // lvalue_type returns the v-type string for an assignable expression, handling

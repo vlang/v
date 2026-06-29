@@ -327,7 +327,41 @@ fn (t &Transformer) array_literal_checker_alias_type(id flat.NodeId) ?string {
 	if !t.generic_arg_is_alias_name(elem, t.cur_module) {
 		return none
 	}
-	return '[]${elem.all_after_last('.')}'
+	return '[]${t.array_literal_qualified_alias_name(elem)}'
+}
+
+fn (t &Transformer) array_literal_qualified_alias_name(name string) string {
+	clean := name.trim_space()
+	if clean.len == 0 || isnil(t.tc) {
+		return clean
+	}
+	if clean in t.tc.type_aliases {
+		return clean
+	}
+	if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		qname := '${t.cur_module}.${clean}'
+		if qname in t.tc.type_aliases {
+			return qname
+		}
+	}
+	if clean.contains('.') {
+		return clean
+	}
+	mut found := ''
+	for alias, _ in t.tc.type_aliases {
+		if alias.all_after_last('.') != clean {
+			continue
+		}
+		if found.len > 0 && found != alias {
+			return clean
+		}
+		found = alias
+	}
+	if found.len > 0 {
+		return found
+	}
+	return clean
 }
 
 fn (t &Transformer) array_literal_alias_type(node flat.Node) ?string {
@@ -351,7 +385,7 @@ fn (t &Transformer) array_literal_alias_type(node flat.Node) ?string {
 	if !t.generic_arg_is_alias_name(alias_name, t.cur_module) {
 		return none
 	}
-	return '[]${alias_name}'
+	return '[]${t.array_literal_qualified_alias_name(alias_name)}'
 }
 
 // transform_array_literal_for_type transforms transform array literal for type data for transform.
@@ -521,6 +555,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		} else {
 			t.make_array_push_many_call(lhs_addr, rhs, rhs_type)
 		}
+		t.drain_pending(mut result)
 		result << t.make_expr_stmt(call)
 		return result
 	}

@@ -30,6 +30,13 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	return opt_name
 }
 
+fn (mut g FlatGen) optional_type_name_for_context(t types.Type, concrete_optional bool) string {
+	if concrete_optional && (t is types.OptionType || t is types.ResultType) {
+		return g.concrete_optional_type_name(t)
+	}
+	return g.optional_type_name(t)
+}
+
 fn (mut g FlatGen) value_c_type(t types.Type) string {
 	if t is types.OptionType || t is types.ResultType {
 		return g.optional_type_name(t)
@@ -176,6 +183,7 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 // enum_decls supports enum decls handling for FlatGen.
 fn (mut g FlatGen) enum_decls() {
 	mut cur_module := ''
+	mut emitted := map[string]bool{}
 	for node in g.a.nodes {
 		match node.kind {
 			.file {
@@ -191,6 +199,10 @@ fn (mut g FlatGen) enum_decls() {
 					node.value
 				}
 				cn := c_name(name)
+				if emitted[cn] {
+					continue
+				}
+				emitted[cn] = true
 				g.writeln('typedef enum {')
 				is_flag := node.typ == 'flag'
 				mut val := 0
@@ -222,6 +234,7 @@ fn (mut g FlatGen) enum_decls() {
 // enum_str_defs (after `string` and `strconv__format_int` are available).
 fn (mut g FlatGen) enum_str_forward_decls() {
 	mut cur_module := ''
+	mut emitted := map[string]bool{}
 	for node in g.a.nodes {
 		match node.kind {
 			.file {
@@ -237,6 +250,10 @@ fn (mut g FlatGen) enum_str_forward_decls() {
 					node.value
 				}
 				cn := c_name(name)
+				if emitted[cn] {
+					continue
+				}
+				emitted[cn] = true
 				g.writeln('string ${cn}__autostr(${cn} it);')
 			}
 			else {}
@@ -251,6 +268,7 @@ fn (mut g FlatGen) enum_str_forward_decls() {
 // the user has not defined a custom `.str()`.
 fn (mut g FlatGen) enum_str_defs() {
 	mut cur_module := ''
+	mut emitted := map[string]bool{}
 	for node in g.a.nodes {
 		match node.kind {
 			.file {
@@ -266,6 +284,10 @@ fn (mut g FlatGen) enum_str_defs() {
 					node.value
 				}
 				cn := c_name(name)
+				if emitted[cn] {
+					continue
+				}
+				emitted[cn] = true
 				if node.typ == 'flag' {
 					// `[flag]` enum: a value can combine several bits, so build the V
 					// `Enum{.a | .b}` form by testing each field bit instead of matching a

@@ -29,7 +29,6 @@ mut:
 	tok              token.Token
 	lit              string
 	tok_pos          int
-	prev_tok         token.Token
 	peek_tok         token.Token = .eof
 	peek_lit         string
 	peek_pos         int
@@ -104,6 +103,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	if path.ends_with('.v') {
 		p.parsed_v_files++
 	}
+	p.reserve_for_source(src.len)
 	mut file_set := token.FileSet.new()
 	file := file_set.add_file(path, -1, src.len)
 	p.s.init(file, src)
@@ -221,8 +221,8 @@ fn vmod_root_for_file(path string) string {
 }
 
 // next supports next handling for Parser.
+@[inline]
 fn (mut p Parser) next() {
-	p.prev_tok = p.tok
 	if p.has_peek {
 		p.tok = p.peek_tok
 		p.lit = p.peek_lit
@@ -233,34 +233,27 @@ fn (mut p Parser) next() {
 	p.tok = p.s.scan()
 	p.lit = p.s.lit
 	p.tok_pos = p.s.pos
-	for p.tok == .comment {
-		p.tok = p.s.scan()
-		p.lit = p.s.lit
-		p.tok_pos = p.s.pos
-	}
 }
 
 // peek supports peek handling for Parser.
+@[inline]
 fn (mut p Parser) peek() token.Token {
 	if !p.has_peek {
 		p.peek_tok = p.s.scan()
 		p.peek_lit = p.s.lit
 		p.peek_pos = p.s.pos
-		for p.peek_tok == .comment {
-			p.peek_tok = p.s.scan()
-			p.peek_lit = p.s.lit
-			p.peek_pos = p.s.pos
-		}
 		p.has_peek = true
 	}
 	return p.peek_tok
 }
 
 // peek_is supports peek is handling for Parser.
+@[inline]
 fn (mut p Parser) peek_is(tok token.Token) bool {
 	return p.peek() == tok
 }
 
+@[inline]
 fn (mut p Parser) check(expected token.Token) {
 	if p.tok == expected {
 		p.next()
@@ -291,6 +284,7 @@ fn (mut p Parser) expect_name_or_keyword() string {
 	return name
 }
 
+@[inline]
 fn token_id_is_infix(tv int) bool {
 	return tv == 0 || tv == 1 || tv == 3 || tv == 13 || tv == 20 || tv == 21 || tv == 22 || tv == 44
 		|| tv == 46 || tv == 74 || tv == 75 || tv == 77 || tv == 80 || tv == 81 || tv == 83
@@ -298,27 +292,33 @@ fn token_id_is_infix(tv int) bool {
 		|| tv == 101 || tv == 109
 }
 
+@[inline]
 fn token_is_infix(tok token.Token) bool {
 	return token_id_is_infix(int(tok))
 }
 
+@[inline]
 fn token_id_is_postfix(tv int) bool {
 	return tv == 11 || tv == 24
 }
 
+@[inline]
 fn token_is_postfix(tok token.Token) bool {
 	return token_id_is_postfix(int(tok))
 }
 
+@[inline]
 fn token_id_is_assignment(tv int) bool {
 	return tv == 2 || tv == 4 || tv == 12 || tv == 14 || tv == 76 || tv == 82 || tv == 84
 		|| tv == 86 || tv == 93 || tv == 96 || tv == 100 || tv == 102 || tv == 110
 }
 
+@[inline]
 fn token_is_assignment(tok token.Token) bool {
 	return token_id_is_assignment(int(tok))
 }
 
+@[inline]
 fn token_id_left_binding_power(tv int) token.BindingPower {
 	if tv == 77 {
 		return token.BindingPower.logical_or
@@ -348,10 +348,12 @@ fn token_id_left_binding_power(tv int) token.BindingPower {
 	return token.BindingPower.lowest
 }
 
+@[inline]
 fn token_left_binding_power(tok token.Token) token.BindingPower {
 	return token_id_left_binding_power(int(tok))
 }
 
+@[inline]
 fn token_id_right_binding_power(tv int) token.BindingPower {
 	bp := token_id_left_binding_power(tv)
 	if bp == .logical_or {
@@ -381,10 +383,12 @@ fn token_id_right_binding_power(tv int) token.BindingPower {
 	return token.BindingPower.lowest
 }
 
+@[inline]
 fn token_right_binding_power(tok token.Token) token.BindingPower {
 	return token_id_right_binding_power(int(tok))
 }
 
+@[inline]
 fn token_id_to_op(tv int) flat.Op {
 	if tv == 95 {
 		return flat.Op.plus
@@ -513,12 +517,14 @@ fn (mut p Parser) add_children(ids []flat.NodeId) int {
 	return start
 }
 
+@[inline]
 fn (mut p Parser) add_child(id flat.NodeId) int {
 	start := p.a.children.len
 	p.a.children << id
 	return start
 }
 
+@[inline]
 fn (mut p Parser) add_children2(a flat.NodeId, b flat.NodeId) int {
 	start := p.a.children.len
 	p.a.children << a
@@ -3663,7 +3669,6 @@ fn (mut p Parser) starts_sql_expr() bool {
 	saved_tok := p.tok
 	saved_lit := p.lit
 	saved_tok_pos := p.tok_pos
-	saved_prev_tok := p.prev_tok
 	saved_peek_tok := p.peek_tok
 	saved_peek_lit := p.peek_lit
 	saved_peek_pos := p.peek_pos
@@ -3681,7 +3686,6 @@ fn (mut p Parser) starts_sql_expr() bool {
 	p.tok = saved_tok
 	p.lit = saved_lit
 	p.tok_pos = saved_tok_pos
-	p.prev_tok = saved_prev_tok
 	p.peek_tok = saved_peek_tok
 	p.peek_lit = saved_peek_lit
 	p.peek_pos = saved_peek_pos

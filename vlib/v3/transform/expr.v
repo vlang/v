@@ -1259,6 +1259,9 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 			rhs_value), t.make_sizeof_type(clean)), 'int')
 		return t.make_infix(.eq, cmp, t.make_int_literal(0))
 	}
+	if t.is_optional_type_name(clean) || t.is_sum_type_name(clean) {
+		return t.make_memcmp_eq_expr(lhs, rhs, clean, 'eq')
+	}
 	struct_type := t.struct_lookup_name(clean)
 	if struct_type.len > 0 {
 		method_name := '${struct_type}.=='
@@ -1279,6 +1282,14 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 		return t.make_infix(.eq, cmp, t.make_int_literal(0))
 	}
 	return t.make_infix(.eq, lhs, rhs)
+}
+
+fn (mut t Transformer) make_memcmp_eq_expr(lhs flat.NodeId, rhs flat.NodeId, typ string, prefix string) flat.NodeId {
+	lhs_value := t.stable_transformed_expr_for_reuse(lhs, typ, '${prefix}_lhs')
+	rhs_value := t.stable_transformed_expr_for_reuse(rhs, typ, '${prefix}_rhs')
+	cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs_value), t.make_prefix(.amp,
+		rhs_value), t.make_sizeof_type(typ)), 'int')
+	return t.make_infix(.eq, cmp, t.make_int_literal(0))
 }
 
 fn (t &Transformer) array_elem_needs_element_eq(elem_type string) bool {

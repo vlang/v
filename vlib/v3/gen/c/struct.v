@@ -1471,6 +1471,7 @@ const c_preamble_defined_structs = {
 	'C.kevent':                     true
 	'C.MENU_EVENT_RECORD':          true
 	'C.MOUSE_EVENT_RECORD':         true
+	'C.host_t':                     true
 	'C.pthread_t':                  true
 	'C.pthread_cond_t':             true
 	'C.pthread_condattr_t':         true
@@ -1490,12 +1491,16 @@ const c_preamble_defined_structs = {
 	'C.sockaddr_un':                true
 	'C.stat':                       true
 	'C.statvfs':                    true
+	'C.task_basic_info':            true
+	'C.task_t':                     true
 	'C.termios':                    true
 	'C.timeval':                    true
 	'C.timespec':                   true
 	'C.tm':                         true
 	'C.uChar':                      true
 	'C.utsname':                    true
+	'C.vm_size_t':                  true
+	'C.vm_statistics64_data_t':     true
 	'C.wchar_t':                    true
 	'C.WINDOW_BUFFER_SIZE_RECORD':  true
 	'C.winsize':                    true

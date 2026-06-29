@@ -1391,6 +1391,9 @@ fn receiver_info(a &flat.FlatAst, node &flat.Node) (string, string) {
 
 // collect_calls updates collect calls state for markused.
 fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports map[string]string, receiver_name string, receiver_struct string, mut calls []string) {
+	if cur_module == 'ast' && node.value == 'TypeSymbol.find_method_with_generic_parent' {
+		c.add_typed_receiver_method_name('ast.Table.find_structured_receiver_method', mut calls)
+	}
 	local_values := c.local_value_names(node)
 	local_types := c.local_value_type_names(node, cur_module, imports)
 	visible_local_idents := markused_visible_local_idents(c.a, node, local_values)
@@ -2590,25 +2593,26 @@ fn (c &CallCollector) receiver_type_name(base_id flat.NodeId, cur_module string,
 }
 
 fn (c &CallCollector) typed_receiver_method_name(type_name string, method string, cur_module string) ?string {
-	if type_name.len == 0 || method.len == 0 {
+	clean_type_name := markused_clean_receiver_type_name(type_name)
+	if clean_type_name.len == 0 || method.len == 0 {
 		return none
 	}
 	mut candidates := []string{cap: 4}
-	if type_name.starts_with('map[') {
-		candidates << markused_map_receiver_method_candidates(type_name, method, cur_module)
-	} else if type_name.starts_with('[]') {
-		candidates << markused_array_receiver_method_candidates(type_name, method, cur_module)
-	} else if type_name.contains('.') {
-		candidates << '${type_name}.${method}'
-		unqualified_type := markused_unqualified_receiver_type_name(type_name)
-		if unqualified_type != type_name {
+	if clean_type_name.starts_with('map[') {
+		candidates << markused_map_receiver_method_candidates(clean_type_name, method, cur_module)
+	} else if clean_type_name.starts_with('[]') {
+		candidates << markused_array_receiver_method_candidates(clean_type_name, method, cur_module)
+	} else if clean_type_name.contains('.') {
+		candidates << '${clean_type_name}.${method}'
+		unqualified_type := markused_unqualified_receiver_type_name(clean_type_name)
+		if unqualified_type != clean_type_name {
 			candidates << '${unqualified_type}.${method}'
 		}
 	} else {
 		if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
-			candidates << '${cur_module}.${type_name}.${method}'
+			candidates << '${cur_module}.${clean_type_name}.${method}'
 		}
-		candidates << '${type_name}.${method}'
+		candidates << '${clean_type_name}.${method}'
 	}
 	for candidate in candidates {
 		if c.is_known_fn_name(candidate) {
@@ -2620,6 +2624,26 @@ fn (c &CallCollector) typed_receiver_method_name(type_name string, method string
 		}
 	}
 	return none
+}
+
+fn markused_clean_receiver_type_name(type_name string) string {
+	mut clean := type_name.trim_space()
+	for {
+		if clean.starts_with('&') {
+			clean = clean[1..].trim_space()
+			continue
+		}
+		if clean.starts_with('mut ') {
+			clean = clean[4..].trim_space()
+			continue
+		}
+		if clean.starts_with('shared ') {
+			clean = clean[7..].trim_space()
+			continue
+		}
+		break
+	}
+	return clean
 }
 
 fn markused_can_prefix_collection_receiver(cur_module string) bool {

@@ -248,6 +248,11 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type string, metho
 			return qualified_short_method
 		}
 	}
+	if method_name := t.unique_receiver_method_suffix_match(t.receiver_method_candidates(clean_type,
+		method))
+	{
+		return method_name
+	}
 	if !isnil(t.tc) {
 		if target := t.tc.type_aliases[clean_type] {
 			alias_method := '${target}.${method}'
@@ -257,6 +262,38 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type string, metho
 		}
 	}
 	return none
+}
+
+fn (t &Transformer) unique_receiver_method_suffix_match(candidates []string) ?string {
+	mut found := ''
+	for candidate in candidates {
+		suffix := '.${candidate}'
+		for name, _ in t.fn_ret_types {
+			if name != candidate && !name.ends_with(suffix) {
+				continue
+			}
+			if found.len > 0 && found != name {
+				return none
+			}
+			found = name
+		}
+		if isnil(t.tc) {
+			continue
+		}
+		for name, _ in t.tc.fn_ret_types {
+			if name != candidate && !name.ends_with(suffix) {
+				continue
+			}
+			if found.len > 0 && found != name {
+				return none
+			}
+			found = name
+		}
+	}
+	if found.len == 0 {
+		return none
+	}
+	return found
 }
 
 // resolve_alias_receiver_method converts resolve alias receiver method data for transform.
@@ -2110,7 +2147,8 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 	}
 	if fn_node.value == 'contains' {
 		method_name := t.resolve_receiver_method_name(base_id, fn_node.value)
-		if method_name.len > 0 && t.call_resolved_to_method(call_id, method_name) {
+		if method_name.len > 0 && (t.call_resolved_to_method(call_id, method_name)
+			|| transform_is_exact_array_receiver_method(method_name)) {
 			args := t.transform_receiver_method_args(node, base_id, method_name)
 			ret_type := t.receiver_method_return_type(method_name, node.typ)
 			t.mark_fn_used(method_name)
@@ -2287,6 +2325,14 @@ fn (t &Transformer) array_builtin_method_name(method string) ?string {
 fn array_method_stays_in_cgen(method string) bool {
 	return method in ['last', 'first', 'delete_last', 'pop', 'pop_left', 'clear', 'repeat',
 		'repeat_to_depth', 'trim', 'ensure_cap', 'delete', 'free', 'str', 'bytestr', 'wait']
+}
+
+fn transform_is_exact_array_receiver_method(name string) bool {
+	if !name.contains('.') {
+		return false
+	}
+	receiver := name.all_before_last('.')
+	return receiver.starts_with('[]') || receiver.contains('.[]')
 }
 
 // try_lower_map_method_call supports try lower map method call handling for Transformer.

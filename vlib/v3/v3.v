@@ -949,36 +949,43 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		first_file = initial_files[0]
 	}
 	project_root := project_root_for_files(initial_files)
+	mut module_path_cache := map[string]string{}
+	mut module_identity_cache := map[string]string{}
 
-	mut changed := true
-	for changed {
-		changed = false
-		mut cur_file := first_file
-		scan_len := a.nodes.len
-		for node_idx in 0 .. scan_len {
-			node := a.nodes[node_idx]
-			if node.kind == .file && node.value.len > 0 {
-				cur_file = node.value
-				continue
-			}
-			if node.kind != .import_decl {
-				continue
-			}
-			mod_name := node.value
-			if mod_name in parsed_modules {
-				continue
-			}
-			parsed_modules[mod_name] = true
-			changed = true
+	mut cur_file := first_file
+	mut node_idx := 0
+	for node_idx < a.nodes.len {
+		node := a.nodes[node_idx]
+		if node.kind == .file && node.value.len > 0 {
+			cur_file = node.value
+			node_idx++
+			continue
+		}
+		if node.kind != .import_decl {
+			node_idx++
+			continue
+		}
+		mod_name := node.value
 
-			importing_file := if cur_file.len > 0 { cur_file } else { first_file }
-			mod_dir := resolve_project_or_pref_module_path(prefs, mod_name, importing_file,
-				project_root)
-			if mod_dir == '' || !os.is_dir(mod_dir) {
-				continue
-			}
-			module_identity := import_module_identity(prefs, mod_name, importing_file,
-				project_root, mod_dir)
+		importing_file := if cur_file.len > 0 { cur_file } else { first_file }
+		mod_dir := resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file,
+			project_root, mut module_path_cache)
+		module_identity := import_module_identity_cached(prefs, mod_name, importing_file,
+			project_root, mod_dir, mut module_path_cache, mut module_identity_cache)
+		if module_identity.len > 0 {
+			a.nodes[node_idx].value = module_identity
+		}
+		mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
+		if mod_name in parsed_modules || (mod_dir_exists && module_identity in parsed_modules) {
+			node_idx++
+			continue
+		}
+		parsed_modules[mod_name] = true
+		if mod_dir_exists && module_identity.len > 0 {
+			parsed_modules[module_identity] = true
+		}
+
+		if mod_dir_exists {
 			mod_files := pref.get_v_files_from_dir(mod_dir, prefs.user_defines, prefs.target_os)
 			for mf in mod_files {
 				first_node := a.nodes.len
@@ -988,8 +995,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 			}
 		}
+		node_idx++
 	}
-	normalize_import_module_identities(mut a, prefs, first_file, project_root)
 }
 
 fn seed_initial_modules(a &flat.FlatAst, initial_files []string, mut parsed_modules map[string]bool) {
@@ -1024,37 +1031,39 @@ fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, import_
 	}
 }
 
-fn normalize_import_module_identities(mut a flat.FlatAst, prefs &pref.Preferences, first_file string, project_root string) {
-	mut cur_file := first_file
-	for i in 0 .. a.nodes.len {
-		node := a.nodes[i]
-		if node.kind == .file && node.value.len > 0 {
-			cur_file = node.value
-			continue
-		}
-		if node.kind != .import_decl {
-			continue
-		}
-		importing_file := if cur_file.len > 0 { cur_file } else { first_file }
-		mod_dir := resolve_project_or_pref_module_path(prefs, node.value, importing_file,
-			project_root)
-		a.nodes[i].value = import_module_identity(prefs, node.value, importing_file, project_root,
-			mod_dir)
+fn import_module_identity_cached(prefs &pref.Preferences, import_path string, importing_file string, project_root string, import_dir string, mut path_cache map[string]string, mut identity_cache map[string]string) string {
+	key := '${importing_file}\n${import_path}\n${import_dir}'
+	if identity := identity_cache[key] {
+		return identity
 	}
+	identity := import_module_identity_with_path_cache(prefs, import_path, importing_file,
+		project_root, import_dir, mut path_cache)
+	identity_cache[key] = identity
+	return identity
 }
 
-fn import_module_identity(prefs &pref.Preferences, import_path string, importing_file string, project_root string, import_dir string) string {
+fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path string, importing_file string, project_root string, import_dir string, mut path_cache map[string]string) string {
 	if !import_path.contains('.') {
 		return import_path
 	}
 	short_name := import_path.all_after_last('.')
-	short_dir := resolve_project_or_pref_module_path(prefs, short_name, importing_file,
-		project_root)
+	short_dir := resolve_project_or_pref_module_path_cached(prefs, short_name, importing_file,
+		project_root, mut path_cache)
 	if short_dir.len > 0 && import_dir.len > 0 && os.is_dir(short_dir)
 		&& os.real_path(short_dir) != os.real_path(import_dir) {
 		return import_path
 	}
 	return short_name
+}
+
+fn resolve_project_or_pref_module_path_cached(prefs &pref.Preferences, mod_name string, importing_file string, project_root string, mut cache map[string]string) string {
+	key := '${importing_file}\n${mod_name}'
+	if path := cache[key] {
+		return path
+	}
+	path := resolve_project_or_pref_module_path(prefs, mod_name, importing_file, project_root)
+	cache[key] = path
+	return path
 }
 
 fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string, importing_file string, project_root string) string {
