@@ -1026,12 +1026,13 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		generic_params = p.parse_generic_param_names()
 	}
 	// implements clause
+	mut implements_types := []string{}
 	if p.tok == .name && p.lit == 'implements' {
 		p.next()
-		p.parse_type_name()
+		implements_types << p.parse_type_name()
 		for p.tok == .comma {
 			p.next()
-			p.parse_type_name()
+			implements_types << p.parse_type_name()
 		}
 	}
 	// no body (C struct forward decl)
@@ -1042,7 +1043,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		return p.a.add_node(flat.Node{
 			kind:           .struct_decl
 			value:          name
-			typ:            struct_decl_typ(is_union, is_generic, is_params)
+			typ:            struct_decl_typ(is_union, is_generic, is_params, implements_types)
 			generic_params: generic_params
 		})
 	}
@@ -1177,14 +1178,14 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	return p.a.add_node(flat.Node{
 		kind:           .struct_decl
 		value:          name
-		typ:            struct_decl_typ(is_union, is_generic, is_params)
+		typ:            struct_decl_typ(is_union, is_generic, is_params, implements_types)
 		generic_params: generic_params
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
 }
 
-fn struct_decl_typ(is_union bool, is_generic bool, is_params bool) string {
+fn struct_decl_typ(is_union bool, is_generic bool, is_params bool, implements_types []string) string {
 	mut parts := []string{}
 	if is_union {
 		parts << 'union'
@@ -1194,6 +1195,11 @@ fn struct_decl_typ(is_union bool, is_generic bool, is_params bool) string {
 	}
 	if is_params {
 		parts << 'params'
+	}
+	$if ownership ? {
+		if implements_types.len > 0 {
+			parts << 'implements=' + implements_types.join('|')
+		}
 	}
 	return parts.join(',')
 }

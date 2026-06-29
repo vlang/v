@@ -1795,11 +1795,11 @@ fn (mut g FlatGen) emit_struct(name string) {
 // is_generic_struct reports whether is generic struct applies in c.
 fn (g &FlatGen) is_generic_struct(name string) bool {
 	if info := g.struct_decl_infos[name] {
-		return info.node.typ.contains('generic')
+		return 'generic' in info.node.typ.split(',')
 	}
 	short_name := if name.contains('.') { name.all_after_last('.') } else { name }
 	if info := g.struct_decl_short_infos[short_name] {
-		return info.full_name == name && info.node.typ.contains('generic')
+		return info.full_name == name && 'generic' in info.node.typ.split(',')
 	}
 	return false
 }

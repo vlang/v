@@ -232,7 +232,7 @@ fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDe
 				cur_module = node.value
 			}
 			.struct_decl {
-				if node.generic_params.len == 0 && !node.typ.contains('generic') {
+				if node.generic_params.len == 0 && 'generic' !in node.typ.split(',') {
 					continue
 				}
 				module_name := t.node_module_map_cache[i] or { cur_module }
