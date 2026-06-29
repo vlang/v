@@ -534,9 +534,11 @@ fn (g &FlatGen) local_ident_type(name string) ?types.Type {
 	if typ := g.cur_param_types[name] {
 		return typ
 	}
-	if typ := g.tc.cur_scope.lookup(name) {
-		if typ !is types.Void {
-			return typ
+	if g.cur_scope_has_local_name(name) {
+		if typ := g.tc.cur_scope.lookup(name) {
+			if typ !is types.Void {
+				return typ
+			}
 		}
 	}
 	return none
