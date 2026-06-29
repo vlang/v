@@ -279,6 +279,186 @@ fn main() {}
 	assert !compile.output.contains('C compilation failed'), compile.output
 }
 
+fn test_generic_sum_rejects_qualified_generic_variant_from_other_module() {
+	v3_bin := generic_sum_type_build_v3()
+	root := os.join_path(os.temp_dir(),
+		'v3_generic_sum_type_qualified_variant_negative_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	left_dir := os.join_path(root, 'left')
+	right_dir := os.join_path(root, 'right')
+	os.mkdir_all(left_dir) or { panic(err) }
+	os.mkdir_all(right_dir) or { panic(err) }
+	os.write_file(os.join_path(left_dir, 'left.v'), 'module left
+
+pub struct Foo {}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(right_dir, 'right.v'), 'module right
+
+pub struct Node[T] {
+	pub:
+	value T
+}
+') or {
+		panic(err)
+	}
+
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, 'module main
+
+import left
+import right
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn bad(tree Tree[left.Foo]) int {
+	return match tree {
+		right.Node[left.Foo] { 1 }
+		else { 0 }
+	}
+}
+
+fn main() {}
+') or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(),
+		'v3_generic_sum_type_qualified_variant_negative_${os.getpid()}')
+	os.rm(bin) or {}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('right.Node[left.Foo]'), compile.output
+	assert compile.output.contains('Tree[left.Foo]'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+}
+
+fn test_generic_sum_rejects_qualified_bare_variants_from_other_module() {
+	v3_bin := generic_sum_type_build_v3()
+	root := os.join_path(os.temp_dir(),
+		'v3_generic_sum_type_qualified_bare_variant_negative_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	left_dir := os.join_path(root, 'left')
+	right_dir := os.join_path(root, 'right')
+	os.mkdir_all(left_dir) or { panic(err) }
+	os.mkdir_all(right_dir) or { panic(err) }
+	os.write_file(os.join_path(left_dir, 'left.v'), 'module left
+
+pub struct Foo {}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(right_dir, 'right.v'), 'module right
+
+pub struct Empty {}
+
+pub struct Node[T] {
+	pub:
+	value T
+}
+') or {
+		panic(err)
+	}
+
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, 'module main
+
+import left
+import right
+
+struct Empty {}
+
+struct Node[T] {
+	value T
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn bad_node(tree Tree[left.Foo]) int {
+	return match tree {
+		right.Node { 1 }
+		else { 0 }
+	}
+}
+
+fn bad_empty(tree Tree[left.Foo]) int {
+	return match tree {
+		right.Empty { 1 }
+		else { 0 }
+	}
+}
+
+fn main() {}
+') or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(),
+		'v3_generic_sum_type_qualified_bare_variant_negative_${os.getpid()}')
+	os.rm(bin) or {}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('right.Node'), compile.output
+	assert compile.output.contains('right.Empty'), compile.output
+	assert compile.output.contains('Tree[left.Foo]'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+}
+
+fn test_generic_sum_accepts_declared_qualified_bare_variant_pattern() {
+	v3_bin := generic_sum_type_build_v3()
+	root := os.join_path(os.temp_dir(),
+		'v3_generic_sum_type_declared_qualified_bare_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	foo_dir := os.join_path(root, 'foo')
+	os.mkdir_all(foo_dir) or { panic(err) }
+	os.write_file(os.join_path(foo_dir, 'foo.v'), 'module foo
+
+pub struct Node[T] {
+	pub:
+	value T
+}
+') or {
+		panic(err)
+	}
+
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, 'module main
+
+import foo
+
+struct Empty {}
+
+type Tree[T] = Empty | foo.Node[T]
+
+fn value(tree Tree[int]) int {
+	return match tree {
+		foo.Node { tree.value }
+		Empty { 0 }
+	}
+}
+
+fn main() {}
+') or {
+		panic(err)
+	}
+
+	c_out := os.join_path(os.temp_dir(),
+		'v3_generic_sum_type_declared_qualified_bare_${os.getpid()}.c')
+	os.rm(c_out) or {}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${c_out}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('tcc.exe'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	assert os.exists(c_out)
+}
+
 fn test_generic_sum_concrete_generic_variants_keep_distinct_tags() {
 	v3_bin := generic_sum_type_build_v3()
 	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_distinct_tags_${os.getpid()}.v')
