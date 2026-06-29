@@ -141,7 +141,7 @@ jobs:
         include:
           - id: freebsd-amd64
             operating_system: freebsd
-            version: '15.0'
+            version: '15.1'
             branch: thirdparty-freebsd-amd64
             script: thirdparty/build_scripts/thirdparty-freebsd-amd64_tcc.sh
             install: sudo pkg install -y bash git gmake rsync
