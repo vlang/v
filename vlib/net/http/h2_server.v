@@ -301,12 +301,6 @@ fn (mut c H2ServerConn) dispatch_frame(frame H2Frame, mut handler Handler) ! {
 			if frame.stream_id != c.awaiting_cont {
 				return error('h2 server: CONTINUATION on the wrong stream')
 			}
-		} else if frame is H2RstStreamFrame && frame.stream_id == c.awaiting_cont {
-			// RFC 9113 §6.4: RST_STREAM is legal at any point including mid-CONTINUATION.
-			// Cancel the stream and clear the CONTINUATION wait without a connection error.
-			c.awaiting_cont = 0
-			c.streams.delete(frame.stream_id)
-			return
 		} else {
 			return error('h2 server: expected CONTINUATION after HEADERS without END_HEADERS')
 		}
@@ -453,6 +447,10 @@ fn (mut c H2ServerConn) on_headers(frame H2HeadersFrame, mut handler Handler) ! 
 			// the HPACK block is decoded: the decoder is stateful and connection-wide
 			// (RFC 7541 §2.2) — skipping a block desyncs all future requests.
 			// finalize_trailers RSTs on over_end after the decode.
+			// If the block is fragmented (END_HEADERS=false), on_trailers sets
+			// awaiting_cont; the client must then complete the CONTINUATION sequence
+			// before the RST fires. Per RFC 9113 §6.10, any non-CONTINUATION frame
+			// during that wait is a connection PROTOCOL_ERROR.
 			existing.over_end = true
 		}
 		c.on_trailers(mut existing, frame, mut handler)!
