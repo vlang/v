@@ -307,6 +307,7 @@ fn complete_response(server &Server, kq int, c_ptr voidptr, mut clients map[int]
 	}
 	c.read_start = 0
 	c.should_close = false
+	add_event(kq, u64(c.fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR), c)
 }
 
 // process_request handles a complete HTTP request: decodes, calls the handler,
@@ -352,7 +353,8 @@ fn process_request(server &Server, kq int, c_ptr voidptr, mut clients map[int]vo
 	match resp.takeover_mode {
 		.manual {
 			// The handler has taken ownership of the connection.
-			// Remove from kqueue and tracking, but do NOT close the fd.
+			// Remove from kqueue and tracking before ending the request, but do
+			// NOT close the fd.
 			clients.delete(c.fd)
 			delete_event(kq, u64(c.fd), i16(C.EVFILT_READ), c)
 			delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)

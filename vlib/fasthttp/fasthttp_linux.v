@@ -424,7 +424,6 @@ fn arm_epollout(epoll_fd int, client_fd int) int {
 fn complete_write(server &Server, epoll_fd int, client_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
 	state := client_write_states[client_fd] or { return }
 	should_close := state.should_close
-	epollout_was_armed := state.epollout_armed
 	free_write_state(server, client_fd, mut client_write_states)
 	client_buffers.delete(client_fd)
 	if server.is_shutting_down() || should_close {
@@ -432,17 +431,17 @@ fn complete_write(server &Server, epoll_fd int, client_fd int, mut client_fds ma
 			client_read_starts, mut closing_client_fds, mut client_write_states)
 		return
 	}
-	// Keep-alive: if EPOLLOUT was registered for the write, drop the fd from
-	// epoll and re-add it with the original EPOLLIN|EPOLLET mask. The re-add
-	// causes the kernel to fire a fresh edge for any pipelined request bytes
-	// that piled up in the recv buffer while we were write-blocked; a plain
-	// EPOLL_CTL_MOD would not generate that edge.
-	if epollout_was_armed {
-		remove_fd_from_epoll(epoll_fd, client_fd)
-		if add_fd_to_epoll(epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
-			handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-				client_read_starts, mut closing_client_fds, mut client_write_states)
-		}
+	// Keep-alive: drop the fd from epoll and re-add it with the original
+	// EPOLLIN|EPOLLET mask. The re-add causes the kernel to fire a fresh edge
+	// for any pipelined request bytes that piled up in the recv buffer while the
+	// response was being written; a plain EPOLL_CTL_MOD would not generate that
+	// edge. Do this even when EPOLLOUT was never armed, because the inline write
+	// path can also consume the current EPOLLIN edge before pipelined bytes are
+	// observed by the loop again.
+	remove_fd_from_epoll(epoll_fd, client_fd)
+	if add_fd_to_epoll(epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
+		handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+			client_read_starts, mut closing_client_fds, mut client_write_states)
 	}
 }
 
@@ -511,7 +510,8 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 	match response.takeover_mode {
 		.manual {
 			// The handler has taken ownership of the connection.
-			// Remove from epoll and tracking, but do NOT close the fd.
+			// Remove from epoll and tracking before ending the request, but do
+			// NOT close the fd.
 			client_fds.delete(client_fd)
 			client_buffers.delete(client_fd)
 			client_read_starts.delete(client_fd)
@@ -521,6 +521,7 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 			response.free_owned_content()
 			if request_active {
 				server.end_request()
+				request_active = false
 			}
 			return
 		}
