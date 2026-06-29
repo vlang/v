@@ -21,9 +21,9 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 	rhs_raw_type := t.node_type(rhs_id)
 	lhs_clean_type := t.normalize_type_alias(lhs_raw_type)
 	rhs_clean_type := t.normalize_type_alias(rhs_raw_type)
-	lhs_is_string_ptr := lhs_clean_type == '&string'
-	rhs_is_string_ptr := rhs_clean_type == '&string'
-	if node.op == .plus && (lhs_is_string_ptr || rhs_is_string_ptr) {
+	lhs_is_string_ptr := t.equality_expr_is_string_pointer(lhs_id, lhs_clean_type)
+	rhs_is_string_ptr := t.equality_expr_is_string_pointer(rhs_id, rhs_clean_type)
+	if node.op in [.plus, .eq, .ne] && (lhs_is_string_ptr || rhs_is_string_ptr) {
 		return none
 	}
 
@@ -112,6 +112,11 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	rhs_id := t.a.children[node.children_start + 1]
 	lhs_raw_type := t.node_type(lhs_id)
 	rhs_raw_type := t.node_type(rhs_id)
+	lhs_is_array_ptr := t.equality_type_is_array_pointer(lhs_raw_type)
+	rhs_is_array_ptr := t.equality_type_is_array_pointer(rhs_raw_type)
+	if lhs_is_array_ptr && rhs_is_array_ptr {
+		return none
+	}
 	mut lhs_type := t.membership_container_type(lhs_raw_type)
 	mut rhs_type := t.membership_container_type(rhs_raw_type)
 	lhs_is_fixed := t.is_fixed_array_type(lhs_type)
@@ -153,10 +158,10 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 		elem_type = new_rhs_type[2..]
 		rhs_type = new_rhs_type
 	}
-	if t.membership_container_is_pointer_array(lhs_raw_type) {
+	if lhs_is_array_ptr {
 		new_lhs = t.make_prefix(.mul, new_lhs)
 	}
-	if t.membership_container_is_pointer_array(rhs_raw_type) {
+	if rhs_is_array_ptr {
 		new_rhs = t.make_prefix(.mul, new_rhs)
 	}
 	eq_call := if t.array_elem_needs_element_eq(elem_type) {
@@ -1558,6 +1563,28 @@ fn (t &Transformer) equality_type_is_array_pointer(typ string) bool {
 	}
 	container := t.membership_container_type(clean)
 	return container.starts_with('[]') || container == 'array'
+}
+
+fn (t &Transformer) equality_expr_is_string_pointer(id flat.NodeId, typ string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.string_literal, .string_interp] {
+		return false
+	}
+	mut clean := typ.trim_space()
+	for clean.starts_with('shared ') {
+		clean = clean[7..].trim_space()
+	}
+	if clean.starts_with('mut ') {
+		return false
+	}
+	clean = t.normalize_type_alias(clean).trim_space()
+	for clean.starts_with('shared ') {
+		clean = clean[7..].trim_space()
+	}
+	return clean == '&string'
 }
 
 fn (t &Transformer) equality_type_is_map_pointer(typ string) bool {
