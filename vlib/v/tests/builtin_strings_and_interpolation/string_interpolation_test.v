@@ -296,3 +296,9 @@ fn test_float_exponent_sign() {
 	assert '${a:6.2e}' == '1.23e+09'
 	assert '${a:6.5e}' == '1.23457e+09'
 }
+
+const float_literal_zero_for_interpolation = 0.0
+
+fn test_const_float_literal_string_interpolation() {
+	assert '${float_literal_zero_for_interpolation}' == '0.0'
+}

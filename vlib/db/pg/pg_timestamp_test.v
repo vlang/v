@@ -1,3 +1,4 @@
+// vtest build: !windows && !musl?
 module pg
 
 import orm

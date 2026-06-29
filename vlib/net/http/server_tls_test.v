@@ -398,13 +398,32 @@ fn test_server_tls_close_interrupts_idle_keep_alive() {
 		return
 	}
 	mut buf := []u8{len: 4096}
-	n := client.read(mut buf) or {
+	mut response_bytes := []u8{cap: 4096}
+	mut last_read_err := ''
+	read_sw := time.new_stopwatch()
+	for read_sw.elapsed() < 2 * time.second {
+		n := client.read(mut buf) or {
+			last_read_err = err.msg()
+			time.sleep(20 * time.millisecond)
+			continue
+		}
+		if n <= 0 {
+			time.sleep(20 * time.millisecond)
+			continue
+		}
+		response_bytes << buf[..n]
+		response_so_far := response_bytes.bytestr()
+		if response_so_far.contains('\r\n\r\n') && response_so_far.contains('tls hello /idle') {
+			break
+		}
+	}
+	if response_bytes.len == 0 {
 		srv.close()
 		t.wait()
-		assert false, 'ssl read failed: ${err}'
+		assert false, 'ssl read failed: ${last_read_err}'
 		return
 	}
-	response := buf[..n].bytestr()
+	response := response_bytes.bytestr()
 	assert response.to_lower().contains('connection: keep-alive')
 	assert response.contains('tls hello /idle')
 

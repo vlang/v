@@ -38,6 +38,12 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		g.expr(call_expr.left)
 		g.write(', ')
 		typ := node.expr_types[i]
+		if typ == ast.float_literal_type {
+			g.write('builtin__f64_str((f64)(')
+			g.expr(node.exprs[i])
+			g.writeln('));')
+			continue
+		}
 		g.write2(g.styp(typ), '_str(')
 		sym := g.table.sym(typ)
 		if sym.kind != .function {
@@ -180,6 +186,10 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.write('${str_fn_name}(')
 		g.expr(expr)
 		g.write(')')
+	} else if typ == ast.float_literal_type {
+		g.write('builtin__f64_str((f64)(')
+		g.expr(expr)
+		g.write('))')
 	} else if typ == ast.string_type {
 		if expr_type.is_ptr() {
 			g.write('*')

@@ -30,14 +30,8 @@ fn (mut g Gen) stable_type_symbol_key(typ ast.Type, mut seen map[string]bool) st
 		return '0'
 	}
 	sym := g.table.final_sym(resolved_typ)
-	type_name := g.table.type_to_str(resolved_typ)
-	styp := g.styp(resolved_typ)
 	flags := stable_type_symbol_flags(resolved_typ)
-	base := '${sym.kind}:${type_name}:${styp}:${flags}'
-	if resolved_typ.nr_muls() > 0 || resolved_typ.is_any_kind_of_pointer()
-		|| resolved_typ.has_option_or_result() {
-		return base
-	}
+	base := '${sym.kind}:${stable_type_symbol_nominal_name(sym)}:${flags}'
 	if seen[base] {
 		return 'recursive:${base}'
 	}
@@ -66,8 +60,8 @@ fn (mut g Gen) stable_type_symbol_key(typ ast.Type, mut seen map[string]bool) st
 			}
 		}
 		ast.GenericInst {
-			parent_name := g.table.type_to_str(ast.new_type(sym.info.parent_idx))
-			parts << 'generic_inst:${parent_name}'
+			parent_sym := g.table.sym(ast.new_type(sym.info.parent_idx))
+			parts << 'generic_inst:${parent_sym.kind}:${stable_type_symbol_nominal_name(parent_sym)}'
 			for concrete_type in sym.info.concrete_types {
 				parts << g.stable_type_symbol_key(concrete_type, mut seen)
 			}
@@ -117,6 +111,21 @@ fn (mut g Gen) stable_type_symbol_key(typ ast.Type, mut seen map[string]bool) st
 	}
 
 	return parts.join('|')
+}
+
+// stable_type_symbol_nominal_name serializes source-level identity for named types.
+fn stable_type_symbol_nominal_name(sym &ast.TypeSymbol) string {
+	if sym.name.starts_with('_VAnonStruct') || sym.name.starts_with('_VAnonUnion') {
+		return ''
+	}
+	return match sym.kind {
+		.alias, .enum, .interface, .struct, .sum_type, .aggregate {
+			'${sym.language}:${sym.mod}:${sym.name}'
+		}
+		else {
+			''
+		}
+	}
 }
 
 // stable_type_symbol_flags serializes the type flags that affect generated helper identity.

@@ -670,6 +670,12 @@ fn generated_c_symbol_with_prefix(output string, prefix string) string {
 }
 
 fn test_auxiliary_c_symbols_use_stable_type_hashes() {
+	$if windows {
+		$if tinyc {
+			eprintln('> skipping ${@FN} on windows-tcc, since deep GC scope pins (and thus their keepalive helpers) are intentionally not emitted there: the bundled Windows tcc libgc archive lacks GC_remove_roots()')
+			return
+		}
+	}
 	os.chdir(vroot) or {}
 	test_dir := os.join_path(os.vtmp_dir(), 'coutput_stable_type_symbol_hash_${os.getpid()}')
 	dir_a := os.join_path(test_dir, 'a')

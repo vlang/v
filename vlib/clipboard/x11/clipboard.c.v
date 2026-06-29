@@ -30,6 +30,7 @@ pub mut:
 // Local type aliases for convenience
 type Window = u64
 type Atom = u64
+type Time = u64
 
 // Forward declarations for V type checking (actual types from X11 headers)
 @[typedef]
@@ -79,7 +80,7 @@ fn C.XDestroyWindow(d &C.Display, w Window)
 
 fn C.XNextEvent(d &C.Display, e &C.XEvent)
 
-fn C.XSetSelectionOwner(d &C.Display, a Atom, w Window, time i32)
+fn C.XSetSelectionOwner(d &C.Display, a Atom, w Window, time Time)
 
 fn C.XGetSelectionOwner(d &C.Display, a Atom) Window
 
@@ -95,7 +96,7 @@ fn C.XCreateSimpleWindow(d &C.Display, root Window, x i32, y i32, width u32, hei
 
 fn C.XOpenDisplay(name &u8) &C.Display
 
-fn C.XConvertSelection(d &C.Display, selection Atom, target Atom, property Atom, requestor Window, time i32) i32
+fn C.XConvertSelection(d &C.Display, selection Atom, target Atom, property Atom, requestor Window, time Time) i32
 
 fn C.XSync(d &C.Display, discard i32) i32
 
@@ -240,7 +241,7 @@ pub fn (mut cb Clipboard) free() {
 // clear clears the clipboard (sets it to an empty string).
 pub fn (mut cb Clipboard) clear() {
 	cb.mutex.lock()
-	C.XSetSelectionOwner(cb.display, cb.selection, Window(0), C.CurrentTime)
+	C.XSetSelectionOwner(cb.display, cb.selection, Window(0), Time(C.CurrentTime))
 	C.XFlush(cb.display)
 	cb.is_owner = false
 	cb.text = ''
@@ -253,7 +254,7 @@ pub fn (cb &Clipboard) has_ownership() bool {
 }
 
 fn (cb &Clipboard) take_ownership() {
-	C.XSetSelectionOwner(cb.display, cb.selection, cb.window, C.CurrentTime)
+	C.XSetSelectionOwner(cb.display, cb.selection, cb.window, Time(C.CurrentTime))
 	C.XFlush(cb.display)
 }
 
@@ -285,7 +286,7 @@ pub fn (mut cb Clipboard) get_text() string {
 
 	// Request a list of possible conversions, if we're pasting.
 	C.XConvertSelection(cb.display, cb.selection, cb.get_atom(.targets), cb.selection, cb.window,
-		C.CurrentTime)
+		Time(C.CurrentTime))
 
 	// wait for the text to arrive
 	mut retries := 5
@@ -381,7 +382,7 @@ fn (mut cb Clipboard) start_listener() {
 							to_be_requested = cb.pick_target(prop)
 							if to_be_requested != Atom(0) {
 								C.XConvertSelection(cb.display, cb.selection, to_be_requested,
-									cb.selection, cb.window, C.CurrentTime)
+									cb.selection, cb.window, Time(C.CurrentTime))
 							}
 						} else if event.xselection.target == to_be_requested {
 							sent_request = false
