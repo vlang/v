@@ -100,17 +100,16 @@ fn test_filelock_helpers_are_inlined_in_generated_c() {
 	c_source := gen_c(v3_bin, 'filelock_helpers_inline',
 		'import os.filelock\n\nfn C.v_filelock_lock(i32, i32, i32, u64, u64) i32\nfn C.v_filelock_unlock(i32, u64, u64) i32\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(i32(-1), 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_unlock(i32(-1), u64(0), u64(0))\n}\n')
 	assert !c_source.contains('filelock_helpers.h')
-	assert c_source.contains('static int v_filelock_lock(')
-	assert c_source.contains('static int v_filelock_unlock(')
+	assert c_source.contains('static inline int v_filelock_lock(')
+	assert c_source.contains('static inline int v_filelock_unlock(')
 	assert c_source.contains('#ifndef V_OS_FILELOCK_HELPERS_H')
 	assert !c_source.contains('v_filelock_status')
 	status_source := gen_c(v3_bin, 'filelock_custom_prefix_decl',
 		'import os.filelock\n\nfn C.v_filelock_lock(i32, i32, i32, u64, u64) i32\nfn C.v_filelock_unlock(i32, u64, u64) i32\nfn C.v_filelock_status() int\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(i32(-1), 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_status()\n}\n')
 	assert status_source.contains('int v_filelock_status(')
-	user_name_source := gen_c(v3_bin, 'filelock_user_names_not_helpers',
+	out := run_good(v3_bin, 'filelock_user_names_not_helpers',
 		'fn v_filelock_lock() int {\n\treturn 3\n}\n\nfn v_filelock_unlock() int {\n\treturn 4\n}\n\nfn main() {\n\tprintln(int_str(v_filelock_lock() + v_filelock_unlock()))\n}\n')
-	assert !user_name_source.contains('static int v_filelock_lock(')
-	assert !user_name_source.contains('static int v_filelock_unlock(')
+	assert out == '7'
 }
 
 fn test_assoc_return_runs_defers() {
@@ -240,7 +239,7 @@ fn test_map_builtin_method_fallback_checks_arguments() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'map_keys_rejects_extra_arg',
 		'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\t_ := m.keys(extra_arg())\n}\n',
-		'argument count mismatch for `m.keys`: expected 1, got 2')
+		'argument count mismatch for `m.keys`: expected 0, got 1')
 	run_bad(v3_bin, 'map_delete_rejects_bad_key_type',
 		'fn main() {\n\tmut m := map[string]int{}\n\tm.delete(123)\n}\n',
 		'cannot use `int` as argument 2 to `m.delete`; expected `string`')
@@ -284,4 +283,62 @@ fn test_map_builtin_method_fallback_checks_arguments() {
 		'thing/mod.v': 'module thing\n\nstruct Foo {}\nstruct Key {}\n\nfn (m map[string]Foo) keys() int {\n\treturn 31\n}\n\nfn (a []Foo) pointers() int {\n\treturn 42\n}\n\nfn (m map[Key]int) keys() int {\n\treturn 53\n}\n\npub fn run() string {\n\tmut m := map[string]Foo{}\n\tm["x"] = Foo{}\n\titems := [Foo{}]\n\tkeyed := map[Key]int{}\n\treturn int_str(m.keys()) + "\\n" + int_str(items.pointers()) + "\\n" + int_str(keyed.keys())\n}\n'
 	}, 'main.v')
 	assert module_collection_out == '31\n42\n53'
+}
+
+fn test_runtime_inits_run_before_module_init() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'runtime_inits_before_module_init', {
+		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\tprintln(int_str(moda.const_seen()))\n\tprintln(int_str(moda.global_seen()))\n}\n'
+		'moda/moda.v': "module moda\n\nconst const_map = map[string]int{\n\t'const': 5\n}\n\n__global (\n\tglobal_map = map[string]int{\n\t\t'global': 7\n\t}\n\tseen_const int\n\tseen_global int\n)\n\nfn init() {\n\tseen_const = const_map['const']\n\tseen_global = global_map['global']\n}\n\npub fn const_seen() int {\n\treturn seen_const\n}\n\npub fn global_seen() int {\n\treturn seen_global\n}\n"
+	}, 'main.v')
+	assert out == '5\n7'
+}
+
+fn test_string_index_type_is_u8() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'string_index_type_is_u8',
+		"fn main() {\n\ts := 'ABC'\n\tprintln(typeof(s[0]).name)\n\tprintln('\${s[2]}')\n}\n")
+	assert out == 'u8\n67'
+}
+
+fn test_f32_map_and_fixed_array_stringification() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'f32_map_stringification',
+		"fn main() {\n\tm := {\n\t\t'a': f32(1.5)\n\t}\n\tprintln(m)\n\tfixed := [f32(1.5), f32(2.25)]!\n\tmf := {\n\t\t'x': fixed\n\t}\n\tprintln(mf)\n}\n")
+	assert out == "{'a': 1.5}\n{'x': [1.5, 2.25]}"
+}
+
+fn test_u8_map_stringification_is_numeric() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'u8_map_stringification',
+		"fn main() {\n\tkeys := {\n\t\tu8(23): 'x'\n\t}\n\tvals := {\n\t\t'x': u8(23)\n\t}\n\tboth := {\n\t\tu8(65): u8(10)\n\t}\n\tprintln(keys)\n\tprintln(vals)\n\tprintln(both)\n}\n")
+	assert out == "{23: 'x'}\n{'x': 23}\n{65: 10}"
+}
+
+fn test_map_equality_uses_semantic_value_comparison() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'map_semantic_value_equality',
+		"struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := {\n\t\t'x': Item{\n\t\t\tname: 'hello'.clone()\n\t\t\tparts: ['ab'.clone()]\n\t\t}\n\t}\n\tright := {\n\t\t'x': Item{\n\t\t\tname: join('he', 'llo')\n\t\t\tparts: [join('a', 'b')]\n\t\t}\n\t}\n\tarr_left := {\n\t\t'y': ['cd'.clone()]\n\t}\n\tarr_right := {\n\t\t'y': [join('c', 'd')]\n\t}\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(arr_left == arr_right)\n}\n")
+	assert out == 'true\nfalse\ntrue'
+}
+
+fn test_array_equality_marks_struct_operator_used() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'array_eq_struct_operator_used',
+		'struct Item {\n\tvalue int\n}\n\nfn (a Item) == (b Item) bool {\n\treturn a.value % 10 == b.value % 10\n}\n\nfn main() {\n\tleft := [Item{value: 12}]\n\tright := [Item{value: 2}]\n\tprintln(left == right)\n}\n')
+	assert out == 'true'
+}
+
+fn test_zero_padded_interpolation_preserves_wide_integers() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'wide_zero_padded_interpolation',
+		"fn main() {\n\tbig := i64(5000000000)\n\tubig := u64(18446744073709551615)\n\tsmall := u64(42)\n\tprintln('\${big:012d}')\n\tprintln('\${ubig:020d}')\n\tprintln('\${small:08d}')\n}\n")
+	assert out == '005000000000\n18446744073709551615\n00000042'
+}
+
+fn test_formatted_interpolation_rune_and_long_float() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'formatted_interpolation_rune_and_long_float',
+		"fn main() {\n\tr := '\${rune(0x20ac):c}'\n\tprintln(int_str(r.len))\n\tprintln(int_str(int(r[0])) + ',' + int_str(int(r[1])) + ',' + int_str(int(r[2])))\n\tlong := '\${1.0:.200f}'\n\tprintln(int_str(long.len))\n\tprintln(int_str(int(long[0])) + ',' + int_str(int(long[1])) + ',' + int_str(int(long[2])) + ',' + int_str(int(long[long.len - 1])))\n}\n")
+	assert out == '3\n226,130,172\n202\n49,46,48,48'
 }

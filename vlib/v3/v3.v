@@ -299,6 +299,7 @@ fn main() {
 	mut user_files := []string{}
 	if input_file.ends_with('.v') {
 		user_files << input_file
+		user_files = expand_single_test_file_inputs(user_files, prefs)
 	} else if os.is_dir(input_file) {
 		user_files = pref.get_v_files_from_dir(input_file, prefs.user_defines, prefs.target_os)
 		for subdir in vmod_subdirs(input_file) {
@@ -545,6 +546,96 @@ fn vmod_subdirs(dir string) []string {
 	return subdirs
 }
 
+fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) []string {
+	mut expanded := []string{}
+	mut seen := map[string]bool{}
+	for file in user_files {
+		if pref.is_test_file_for_backend(file, prefs.backend) {
+			module_name := declared_module_in_file(file)
+			if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
+				for module_file in same_dir_module_source_files(file, module_name, prefs) {
+					append_unique_file(mut expanded, mut seen, module_file)
+				}
+			}
+		}
+		append_unique_file(mut expanded, mut seen, file)
+	}
+	return expanded
+}
+
+fn same_dir_module_source_files(test_file string, module_name string, prefs &pref.Preferences) []string {
+	dir := os.dir(test_file)
+	mut files := []string{}
+	for file in pref.get_v_files_from_dir(dir, prefs.user_defines, prefs.target_os) {
+		if declared_module_in_file(file) == module_name {
+			files << file
+		}
+	}
+	return files
+}
+
+fn append_unique_file(mut files []string, mut seen map[string]bool, file string) {
+	key := os.real_path(file)
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	files << file
+}
+
+fn declared_module_in_file(path string) string {
+	content := os.read_file(path) or { return '' }
+	mut in_block_comment := false
+	mut in_attr := false
+	for raw_line in content.split_into_lines() {
+		mut line := raw_line.trim_space()
+		if in_block_comment {
+			if end := line.index('*/') {
+				line = line[end + 2..].trim_space()
+				in_block_comment = false
+			} else {
+				continue
+			}
+		}
+		if in_attr {
+			if line.contains(']') {
+				in_attr = false
+			}
+			continue
+		}
+		for line.starts_with('/*') {
+			if end := line.index('*/') {
+				line = line[end + 2..].trim_space()
+			} else {
+				in_block_comment = true
+				line = ''
+				break
+			}
+		}
+		if line.len == 0 || line.starts_with('//') {
+			continue
+		}
+		if line.starts_with('@[') || line.starts_with('[') {
+			if !line.contains(']') {
+				in_attr = true
+			}
+			continue
+		}
+		if line.starts_with('module ') {
+			mut module_name := line[7..]
+			if comment := module_name.index('//') {
+				module_name = module_name[..comment]
+			}
+			if comment := module_name.index('/*') {
+				module_name = module_name[..comment]
+			}
+			return module_name.trim_space()
+		}
+		return ''
+	}
+	return ''
+}
+
 fn project_root_for_files(files []string) string {
 	for file in files {
 		root := nearest_vmod_root_for_file(file)
@@ -653,11 +744,6 @@ fn validate_test_file_harness_inputs(a &flat.FlatAst, tc &types.TypeChecker, tes
 	mut errors := []string{}
 	for file_idx, file_node in a.nodes {
 		if !is_user_test_file_node(a, file_idx, file_node, selected_files) {
-			continue
-		}
-		module_name := test_file_module_name(a, file_node)
-		if module_name.len > 0 && module_name != 'main' {
-			errors << 'no runnable tests in ${file_node.value}: only module main test files are supported'
 			continue
 		}
 		if test_file_has_executable_top_level_stmt(a, file_node) {
@@ -846,6 +932,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
+	seed_initial_modules(a, initial_files, mut parsed_modules)
 
 	// Backend modules excluded by the active configuration are never parsed: their
 	// dispatch in main() is gated out by the matching `$if !skip_* ?`, so nothing
@@ -903,6 +990,26 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		}
 	}
 	normalize_import_module_identities(mut a, prefs, first_file, project_root)
+}
+
+fn seed_initial_modules(a &flat.FlatAst, initial_files []string, mut parsed_modules map[string]bool) {
+	mut selected_files := map[string]bool{}
+	for file in initial_files {
+		selected_files[file] = true
+		selected_files[os.real_path(file)] = true
+	}
+	for file_idx, file_node in a.nodes {
+		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
+			continue
+		}
+		if !selected_files[file_node.value] && !selected_files[os.real_path(file_node.value)] {
+			continue
+		}
+		module_name := test_file_module_name(a, file_node)
+		if module_name.len > 0 {
+			parsed_modules[module_name] = true
+		}
+	}
 }
 
 fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, import_path string) {

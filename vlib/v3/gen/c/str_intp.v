@@ -38,6 +38,8 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 			typ_name := types.Type(typ).name()
 			if typ is types.String {
 				g.gen_expr(child_id)
+			} else if g.gen_map_str_expr(child_id, typ) {
+				// emitted by gen_map_str_expr
 			} else if typ_name == 'IError' || typ_name.ends_with('.IError') {
 				// IError may resolve as Interface/Alias/Struct depending on context; match by
 				// name and interpolate its `.message` (mirrors the transformer's IError path).

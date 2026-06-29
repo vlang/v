@@ -351,6 +351,10 @@ fn (mut g FlatGen) gen_fixed_array_copy_source(value_id flat.NodeId, field_type 
 		g.gen_expr(value_id)
 		return
 	}
+	if val_node.kind == .paren && val_node.children_count > 0 {
+		g.gen_fixed_array_copy_source(g.a.child(val_node, 0), field_type)
+		return
+	}
 	val_type := types.unwrap_pointer(g.usable_expr_type(value_id))
 	if val_type is types.Array {
 		g.write('(')
@@ -1414,14 +1418,8 @@ fn (mut g FlatGen) gen_map_init(id flat.NodeId, node flat.Node) {
 
 // write_new_map writes new map output for c.
 fn (mut g FlatGen) write_new_map(key_type types.Type, value_type types.Type) {
-	mut c_key := g.tc.c_type(key_type)
-	mut c_val := g.tc.c_type(value_type)
-	if c_key.starts_with('fn_ptr:') {
-		c_key = g.resolve_fn_ptr_type(c_key)
-	}
-	if c_val.starts_with('fn_ptr:') {
-		c_val = g.resolve_fn_ptr_type(c_val)
-	}
+	c_key := g.value_sizeof_target(key_type)
+	c_val := g.value_sizeof_target(value_type)
 	hash_fn, eq_fn, clone_fn, free_fn := g.map_callback_names(key_type)
 	g.write('new_map(sizeof(${c_key}), sizeof(${c_val}), ${hash_fn}, ${eq_fn}, ${clone_fn}, ${free_fn})')
 }
