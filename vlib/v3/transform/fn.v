@@ -267,28 +267,14 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type string, metho
 fn (t &Transformer) unique_receiver_method_suffix_match(candidates []string) ?string {
 	mut found := ''
 	for candidate in candidates {
-		suffix := '.${candidate}'
-		for name, _ in t.fn_ret_types {
-			if name != candidate && !name.ends_with(suffix) {
-				continue
-			}
-			if found.len > 0 && found != name {
-				return none
-			}
-			found = name
+		name := t.receiver_method_suffix_index[candidate] or { continue }
+		if name == receiver_method_suffix_ambiguous {
+			return none
 		}
-		if isnil(t.tc) {
-			continue
+		if found.len > 0 && found != name {
+			return none
 		}
-		for name, _ in t.tc.fn_ret_types {
-			if name != candidate && !name.ends_with(suffix) {
-				continue
-			}
-			if found.len > 0 && found != name {
-				return none
-			}
-			found = name
-		}
+		found = name
 	}
 	if found.len == 0 {
 		return none
@@ -2588,11 +2574,13 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		t.tc.fn_ret_types[name] = ret
 		t.tc.fn_param_types[name] = param_types.clone()
 		t.tc.fn_variadic[name] = false
+		t.add_receiver_method_suffix_index(name)
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 			qname := '${t.cur_module}.${name}'
 			t.tc.fn_ret_types[qname] = ret
 			t.tc.fn_param_types[qname] = param_types.clone()
 			t.tc.fn_variadic[qname] = false
+			t.add_receiver_method_suffix_index(qname)
 		}
 	}
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {

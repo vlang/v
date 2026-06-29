@@ -47,7 +47,25 @@ fn (mut t Transformer) propagate_decl_pair_type(node flat.Node, lhs_idx int, rhs
 }
 
 fn decl_type_is_usable(typ string) bool {
-	return typ.len > 0 && typ !in ['unknown', 'array', 'map']
+	if typ.len == 0 || typ in ['unknown', 'array', 'map'] {
+		return false
+	}
+	clean := typ.replace(' ', '')
+	return clean !in ['Option', 'Optional', 'Result'] && !clean.starts_with('Option_')
+		&& !clean.starts_with('Optional_') && !clean.starts_with('Result_')
+}
+
+fn (t &Transformer) checker_expr_type_name(id flat.NodeId) ?string {
+	if isnil(t.tc) || int(id) < 0 {
+		return none
+	}
+	if typ := t.tc.expr_type(id) {
+		name := t.normalize_type_alias(typ.name())
+		if decl_type_is_usable(name) && name != 'void' {
+			return name
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
@@ -413,6 +431,11 @@ fn (t &Transformer) lookup_struct_field_type(type_name string, field_name string
 	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
 	for f in lookup.info.fields {
 		if f.name == field_name {
+			if checker_typ := t.checker_struct_field_type_name(lookup.owner_type, field_name) {
+				if field_type_needs_checker_authority(f.typ) {
+					return checker_typ
+				}
+			}
 			if !lookup.owner_type.contains('[') {
 				return f.typ
 			}
@@ -431,6 +454,39 @@ fn (t &Transformer) lookup_struct_field_raw_type(type_name string, field_name st
 				return f.raw_typ
 			}
 			return f.typ
+		}
+	}
+	return none
+}
+
+fn field_type_needs_checker_authority(typ string) bool {
+	return typ in ['Option', 'Result', 'Optional'] || typ.starts_with('Option_')
+		|| typ.starts_with('Result_') || typ.starts_with('Optional_')
+}
+
+fn (t &Transformer) checker_struct_field_type_name(type_name string, field_name string) ?string {
+	if isnil(t.tc) {
+		return none
+	}
+	mut lookup_type := if type_name.starts_with('&') { type_name[1..] } else { type_name }
+	if checker_typ := t.tc.struct_field_type_name(lookup_type, field_name) {
+		return t.normalize_type_alias(checker_typ)
+	}
+	if lookup_type.contains('.') {
+		short := lookup_type.all_after_last('.')
+		if checker_typ := t.tc.struct_field_type_name(short, field_name) {
+			return t.normalize_type_alias(checker_typ)
+		}
+	} else if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		qtype := '${t.cur_module}.${lookup_type}'
+		if checker_typ := t.tc.struct_field_type_name(qtype, field_name) {
+			return t.normalize_type_alias(checker_typ)
+		}
+	}
+	normalized := t.normalize_type_alias(lookup_type)
+	if normalized != lookup_type {
+		if checker_typ := t.tc.struct_field_type_name(normalized, field_name) {
+			return t.normalize_type_alias(checker_typ)
 		}
 	}
 	return none
@@ -862,8 +918,8 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 		}
 	}
 	if node.kind == .call {
-		if map_type := t.array_map_call_type_name(node) {
-			return map_type
+		if array_type := t.array_call_type_name(node) {
+			return array_type
 		}
 	}
 	// NOTE: infix is intentionally not handled here — resolve_expr_type() (called at the top
@@ -899,6 +955,39 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 	return ''
 }
 
+fn (t &Transformer) array_call_type_name(node flat.Node) ?string {
+	if map_type := t.array_map_call_type_name(node) {
+		return map_type
+	}
+	if node.children_count == 0 {
+		return none
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.children_count == 0 {
+		return none
+	}
+	base_type0 := t.node_type(t.a.child(fn_node, 0))
+	base_type := if base_type0.starts_with('&') { base_type0[1..] } else { base_type0 }
+	if !base_type.starts_with('[]') {
+		return none
+	}
+	elem_type := base_type[2..]
+	if elem_type.len == 0 {
+		return none
+	}
+	match fn_node.value {
+		'filter', 'clone', 'reverse', 'sorted', 'repeat', 'repeat_to_depth' {
+			return base_type
+		}
+		'first', 'last', 'pop', 'pop_left' {
+			return elem_type
+		}
+		else {
+			return none
+		}
+	}
+}
+
 fn (t &Transformer) array_map_call_type_name(node flat.Node) ?string {
 	if node.children_count < 2 {
 		return none
@@ -913,7 +1002,11 @@ fn (t &Transformer) array_map_call_type_name(node flat.Node) ?string {
 		return none
 	}
 	map_expr_id := t.a.child(&node, 1)
-	mut elem_type := t.node_type(map_expr_id)
+	mut elem_type := if checker_type := t.checker_expr_type_name(map_expr_id) {
+		checker_type
+	} else {
+		t.node_type(map_expr_id)
+	}
 	if elem_type.len == 0 || elem_type in ['array', 'map', 'unknown'] {
 		elem_type = t.reliable_stringify_type(map_expr_id)
 	}

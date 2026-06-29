@@ -3889,11 +3889,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					is_array_index, is_ptr, arr_type := array_index_info(index_base_type)
 					if is_array_index {
-						index_type := if g.expected_expr_type is types.OptionType
-							|| g.expected_expr_type is types.ResultType
-							|| g.expected_expr_is_optional_struct() {
-							g.expected_expr_type
-						} else if node.typ.starts_with('?') || node.typ.starts_with('!') {
+						index_type := if node.typ.starts_with('?') || node.typ.starts_with('!') {
 							g.tc.parse_type(node.typ)
 						} else {
 							arr_type.elem_type

@@ -945,7 +945,12 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	old_elem := t.var_type(elem_name)
 	t.set_var_type(elem_name, elem_type)
 	mapped_source := t.substitute_ident(map_expr_id, 'it', elem_name)
-	mut result_elem_type := t.node_type(map_expr_id)
+	checker_result_elem_type := t.checker_expr_type_name(map_expr_id) or { '' }
+	mut result_elem_type := if checker_result_elem_type.len > 0 {
+		checker_result_elem_type
+	} else {
+		t.node_type(map_expr_id)
+	}
 	mut direct_selector_type := ''
 	mut mapped_source_node := t.a.nodes[int(mapped_source)]
 	if mapped_source_node.kind == .map_init {
@@ -1011,7 +1016,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		t.unset_var_type(elem_name)
 	}
 	mapped_type := t.node_type(mapped_expr)
-	if mapped_type.len > 0 && mapped_type != 'unknown' {
+	if checker_result_elem_type.len == 0 && mapped_type.len > 0 && mapped_type != 'unknown' {
 		result_elem_type = mapped_type
 	}
 	if direct_selector_type.len > 0 {

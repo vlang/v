@@ -1662,7 +1662,7 @@ fn (mut g FlatGen) add_function_defer_capture(id flat.NodeId, name string) {
 	if typ is types.Void || typ is types.Unknown || typ is types.FnType {
 		return
 	}
-	ct := g.tc.c_type(typ)
+	ct := g.value_c_type(typ)
 	if ct.len == 0 || ct == 'void' || ct.starts_with('fn_ptr:') {
 		return
 	}
@@ -1677,7 +1677,7 @@ fn (mut g FlatGen) gen_function_defer_prelude() {
 	}
 	for name in g.defer_capture_names {
 		typ := g.defer_capture_types[name] or { continue }
-		ct := g.tc.c_type(typ)
+		ct := g.value_c_type(typ)
 		g.write('${ct} ${c_name(name)} = ')
 		g.gen_default_value_for_type(typ)
 		g.writeln(';')
@@ -2029,7 +2029,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						}
 					}
 					{
-						base_type := g.tc.resolve_type(g.a.child(fn_node, 0))
+						base_type := g.usable_expr_type(g.a.child(fn_node, 0))
 						clean_type := concrete_receiver_type(base_type)
 						if g.gen_interface_method_call(node, fn_node, base_type) {
 							return
@@ -2175,7 +2175,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					g.write(')')
 					return
 				} else {
-					base_type := g.tc.resolve_type(g.a.child(fn_node, 0))
+					base_type := g.usable_expr_type(g.a.child(fn_node, 0))
 					clean_type := concrete_receiver_type(base_type)
 					if g.gen_interface_method_call(node, fn_node, base_type) {
 						return

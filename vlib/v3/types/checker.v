@@ -8559,6 +8559,12 @@ fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?T
 	return tc.struct_field_type_inner(struct_name, field_name, mut seen)
 }
 
+// struct_field_type_name returns the canonical type name for a struct field.
+pub fn (tc &TypeChecker) struct_field_type_name(struct_name string, field_name string) ?string {
+	typ := tc.struct_field_type(struct_name, field_name) or { return none }
+	return typ.name()
+}
+
 fn (tc &TypeChecker) struct_field_type_inner(struct_name string, field_name string, mut seen map[string]bool) ?Type {
 	base_name, generic_args, is_generic := generic_type_application_parts(struct_name)
 	lookup_name := if is_generic { base_name } else { struct_name }

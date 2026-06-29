@@ -1129,13 +1129,19 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 			base_type0 := g.usable_expr_type(g.a.child(&node, 0))
 			base_type := types.unwrap_pointer(base_type0)
 			if base_type is types.Struct {
-				if typ := g.struct_field_type(base_type.name, node.value) {
+				if typ := g.usable_struct_field_type(base_type.name, node.value) {
+					return typ
+				}
+				if typ := g.checker_struct_field_type(base_type.name, node.value) {
 					return typ
 				}
 			}
 			if base_type is types.Alias {
 				if base_type.base_type is types.Struct {
-					if typ := g.struct_field_type(base_type.base_type.name, node.value) {
+					if typ := g.usable_struct_field_type(base_type.base_type.name, node.value) {
+						return typ
+					}
+					if typ := g.checker_struct_field_type(base_type.base_type.name, node.value) {
 						return typ
 					}
 				}
@@ -1180,12 +1186,8 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 			if map_return_type := g.array_map_call_return_type(node, fn_node) {
 				return map_return_type
 			}
-			if fn_node.kind == .selector && fn_node.value in ['first', 'last']
-				&& fn_node.children_count > 0 {
-				receiver_type := types.unwrap_pointer(g.usable_expr_type(g.a.child(fn_node, 0)))
-				if receiver_arr := array_like_type(receiver_type) {
-					return receiver_arr.elem_type
-				}
+			if arr_return_type := g.array_method_call_return_type(fn_node) {
+				return arr_return_type
 			}
 			if fn_node.kind == .ident {
 				if typ := g.tc.cur_scope.lookup(fn_node.value) {
@@ -1208,6 +1210,25 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 		}
 	}
 	return g.tc.resolve_type(id)
+}
+
+fn (g &FlatGen) array_method_call_return_type(fn_node &flat.Node) ?types.Type {
+	if fn_node.kind != .selector || fn_node.children_count == 0 {
+		return none
+	}
+	receiver_type := types.unwrap_pointer(g.usable_expr_type(g.a.child(fn_node, 0)))
+	receiver_arr := array_like_type(receiver_type) or { return none }
+	match fn_node.value {
+		'first', 'last', 'pop', 'pop_left' {
+			return receiver_arr.elem_type
+		}
+		'filter', 'clone', 'reverse', 'sort', 'sorted', 'repeat', 'repeat_to_depth' {
+			return types.Type(receiver_arr)
+		}
+		else {
+			return none
+		}
+	}
 }
 
 fn (g &FlatGen) array_map_call_return_type(node flat.Node, fn_node &flat.Node) ?types.Type {
@@ -1578,6 +1599,48 @@ fn (g &FlatGen) decl_rhs_fallback_type(rhs_id flat.NodeId, rhs flat.Node) types.
 	return g.usable_expr_type(rhs_id)
 }
 
+fn (g &FlatGen) usable_struct_field_type(type_name string, field_name string) ?types.Type {
+	typ := g.struct_field_type(type_name, field_name) or { return none }
+	if field_type_needs_checker_authority(typ.name()) {
+		if checker_typ := g.checker_struct_field_type(type_name, field_name) {
+			return checker_typ
+		}
+	}
+	return typ
+}
+
+fn (g &FlatGen) checker_struct_field_type(type_name string, field_name string) ?types.Type {
+	mut names := []string{}
+	if type_name.len > 0 {
+		names << type_name
+	}
+	if info := g.find_struct_decl(type_name) {
+		names << info.full_name
+	}
+	if type_name.contains('.') {
+		names << type_name.all_after_last('.')
+	} else {
+		qname := g.tc.qualify_name(type_name)
+		if qname != type_name {
+			names << qname
+		}
+	}
+	for name in names {
+		raw := g.tc.struct_field_type_name(name, field_name) or { continue }
+		typ := g.tc.parse_type(raw)
+		if typ !is types.Unknown && typ !is types.Void {
+			return typ
+		}
+	}
+	return none
+}
+
+fn field_type_needs_checker_authority(raw string) bool {
+	clean_raw := raw.replace(' ', '')
+	return clean_raw in ['Option', 'Optional', 'Result'] || clean_raw.starts_with('Option_')
+		|| clean_raw.starts_with('Optional_') || clean_raw.starts_with('Result_')
+}
+
 fn (mut g FlatGen) fixed_array_decl_is_unusable(typ types.ArrayFixed) bool {
 	c_elem, _ := g.fixed_array_decl_parts(typ)
 	return c_elem == 'void'
@@ -1588,6 +1651,9 @@ fn decl_annotation_is_unusable(typ types.Type, raw string) bool {
 		return true
 	}
 	clean_raw := raw.replace(' ', '')
+	if field_type_needs_checker_authority(clean_raw) {
+		return true
+	}
 	return clean_raw == 'void' || clean_raw.starts_with('void[') || clean_raw.ends_with(']void')
 		|| clean_raw.contains(']void[')
 }

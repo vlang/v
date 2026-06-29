@@ -57,35 +57,37 @@ pub:
 // Transformer represents transformer data used by transform.
 pub struct Transformer {
 mut:
-	a                     &flat.FlatAst      = unsafe { nil }
-	tc                    &types.TypeChecker = unsafe { nil }
-	structs               map[string]StructInfo
-	unique_fields         map[string]string
-	alias_methods         map[string]string
-	globals               map[string]string
-	sum_types             map[string][]string
-	sum_variant_parents   map[string][]string
-	sum_variant_fields    map[string]string
-	qualified_types       map[string]string
-	fn_ret_types          map[string]string
-	const_suffixes        map[string]string
-	enum_types            map[string][]string
-	cur_file              string
-	cur_module            string
-	cur_fn_name           string
-	cur_fn_ret_type       string
-	cur_fn_is_generic     bool
-	var_types             []VarTypeBinding
-	pointer_value_lvalues map[string]bool
-	temp_counter          int
-	pending_stmts         []flat.NodeId
-	smartcast_stack       []SmartcastContext
-	in_call_callee        bool
-	in_const_init         bool
-	in_return_expr        bool
-	alias_cache           &AliasCache = unsafe { nil }
-	sum_cache             &AliasCache = unsafe { nil }
-	used_fns              map[string]bool
+	a                            &flat.FlatAst      = unsafe { nil }
+	tc                           &types.TypeChecker = unsafe { nil }
+	structs                      map[string]StructInfo
+	unique_fields                map[string]string
+	alias_methods                map[string]string
+	globals                      map[string]string
+	sum_types                    map[string][]string
+	sum_variant_parents          map[string][]string
+	sum_variant_fields           map[string]string
+	qualified_types              map[string]string
+	fn_ret_types                 map[string]string
+	receiver_method_suffix_index map[string]string
+	const_suffixes               map[string]string
+	enum_types                   map[string][]string
+	cur_file                     string
+	cur_module                   string
+	cur_fn_name                  string
+	cur_fn_ret_type              string
+	cur_fn_is_generic            bool
+	var_types                    []VarTypeBinding
+	pointer_value_lvalues        map[string]bool
+	temp_counter                 int
+	pending_stmts                []flat.NodeId
+	smartcast_stack              []SmartcastContext
+	invalidated_smartcasts       map[string]bool
+	in_call_callee               bool
+	in_const_init                bool
+	in_return_expr               bool
+	alias_cache                  &AliasCache = unsafe { nil }
+	sum_cache                    &AliasCache = unsafe { nil }
+	used_fns                     map[string]bool
 	// used_struct_operator_fns holds the callee names of direct calls seen during
 	// monomorphize. Infix operators on generic instances are lowered to direct calls
 	// (`Vec_int__plus(a, b)`) before this pass, so an operator overload is specialized for
@@ -233,13 +235,14 @@ pub fn monomorphize_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fn
 
 fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) Transformer {
 	return Transformer{
-		a:                     a
-		tc:                    unsafe { tc }
-		pointer_value_lvalues: map[string]bool{}
-		escaping_amp_ptrs:     map[string]bool{}
-		escaping_amp_sources:  map[string]bool{}
-		heaped_amp_locals:     map[string]bool{}
-		used_fns:              used_fns.clone()
+		a:                      a
+		tc:                     unsafe { tc }
+		pointer_value_lvalues:  map[string]bool{}
+		invalidated_smartcasts: map[string]bool{}
+		escaping_amp_ptrs:      map[string]bool{}
+		escaping_amp_sources:   map[string]bool{}
+		heaped_amp_locals:      map[string]bool{}
+		used_fns:               used_fns.clone()
 	}
 }
 
@@ -275,11 +278,52 @@ fn (mut t Transformer) prepare() {
 	t.collect_types()
 	t.collect_const_suffixes()
 	t.collect_alias_methods()
+	t.rebuild_receiver_method_suffix_index()
 	// Enable the alias cache only now that the type maps are fully populated.
 	// During collection those maps are incomplete, so caching there would poison
 	// entries with results computed against a partial view.
 	t.alias_cache = &AliasCache{}
 	t.sum_cache = &AliasCache{}
+}
+
+const receiver_method_suffix_ambiguous = '__v_receiver_method_suffix_ambiguous__'
+
+fn (mut t Transformer) rebuild_receiver_method_suffix_index() {
+	t.receiver_method_suffix_index.clear()
+	for name, _ in t.fn_ret_types {
+		t.add_receiver_method_suffix_index(name)
+	}
+	if isnil(t.tc) {
+		return
+	}
+	for name, _ in t.tc.fn_ret_types {
+		t.add_receiver_method_suffix_index(name)
+	}
+}
+
+fn (mut t Transformer) add_receiver_method_suffix_index(name string) {
+	if name.len == 0 {
+		return
+	}
+	t.set_receiver_method_suffix_index(name, name)
+	for i in 0 .. name.len {
+		if name[i] == `.` && i + 1 < name.len {
+			t.set_receiver_method_suffix_index(name[i + 1..], name)
+		}
+	}
+}
+
+fn (mut t Transformer) set_receiver_method_suffix_index(key string, name string) {
+	if key.len == 0 {
+		return
+	}
+	if existing := t.receiver_method_suffix_index[key] {
+		if existing != name {
+			t.receiver_method_suffix_index[key] = receiver_method_suffix_ambiguous
+		}
+		return
+	}
+	t.receiver_method_suffix_index[key] = name
 }
 
 // reset_var_types updates reset var types state for transform.
@@ -914,6 +958,7 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
 	w.smartcast_stack = []SmartcastContext{}
+	w.invalidated_smartcasts = map[string]bool{}
 	w.pending_stmts = []flat.NodeId{}
 	w.pointer_value_lvalues = map[string]bool{}
 	w.escaping_amp_ptrs = map[string]bool{}
@@ -1479,6 +1524,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.cur_fn_ret_type = t.fn_body_return_type(fn_node)
 	t.reset_var_types()
 	t.smartcast_stack.clear()
+	t.invalidated_smartcasts.clear()
 	// Collect param types
 	mut param_idx := 0
 	for i in 0 .. fn_node.children_count {
@@ -1549,6 +1595,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		generic_params: fn_node.generic_params
 	}
 	t.smartcast_stack.clear()
+	t.invalidated_smartcasts.clear()
 	t.cur_fn_is_generic = old_is_generic
 }
 
@@ -1641,11 +1688,9 @@ fn (t &Transformer) fn_return_type_for_name(name string) ?string {
 // transform_stmts transforms transform stmts data for transform.
 pub fn (mut t Transformer) transform_stmts(ids []flat.NodeId) []flat.NodeId {
 	mut result := []flat.NodeId{cap: ids.len}
-	mut post_if_smartcasts := 0
+	base_smartcasts := t.smartcast_stack.clone()
 	defer {
-		for _ in 0 .. post_if_smartcasts {
-			t.pop_smartcast()
-		}
+		t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
 	}
 	mut i := 0
 	for i < ids.len {
@@ -1696,12 +1741,33 @@ pub fn (mut t Transformer) transform_stmts(ids []flat.NodeId) []flat.NodeId {
 		}
 		for info in t.post_if_exit_smartcasts(id) {
 			t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
-			post_if_smartcasts++
 		}
 		i++
 	}
 	t.drain_pending(mut result)
 	return result
+}
+
+fn (t &Transformer) non_invalidated_smartcasts(contexts []SmartcastContext) []SmartcastContext {
+	mut keep := []SmartcastContext{cap: contexts.len}
+	for sc in contexts {
+		if !t.smartcast_context_invalidated(sc.expr_name) {
+			keep << sc
+		}
+	}
+	return keep
+}
+
+fn (t &Transformer) smartcast_context_invalidated(expr_name string) bool {
+	if expr_name.len == 0 || t.invalidated_smartcasts.len == 0 {
+		return false
+	}
+	for key, _ in t.invalidated_smartcasts {
+		if expr_name == key || expr_name.starts_with('${key}.') {
+			return true
+		}
+	}
+	return false
 }
 
 // transform_labeled_loop transforms transform labeled loop data for transform.
@@ -2350,7 +2416,29 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	if node.kind == .assign && node.op == .left_shift_assign {
 		t.annotate_left_shift_assign(new_id)
 	}
+	if node.op == .assign {
+		for i := 0; i < node.children_count; i += 2 {
+			t.invalidate_smartcast_for_lvalue(t.a.child(&node, i))
+		}
+	}
 	return t.with_pending_before(new_id)
+}
+
+fn (mut t Transformer) invalidate_smartcast_for_lvalue(id flat.NodeId) {
+	key := t.expr_key(id)
+	if key.len == 0 || t.smartcast_stack.len == 0 {
+		return
+	}
+	t.invalidated_smartcasts[key] = true
+	prefix := '${key}.'
+	mut keep := []SmartcastContext{cap: t.smartcast_stack.len}
+	for sc in t.smartcast_stack {
+		if sc.expr_name == key || sc.expr_name.starts_with(prefix) {
+			continue
+		}
+		keep << sc
+	}
+	t.smartcast_stack = keep
 }
 
 fn (mut t Transformer) try_lower_optional_selector_lvalue_assign(node flat.Node) ?[]flat.NodeId {
@@ -3353,7 +3441,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			lhs_id := t.a.child(&node, 0)
 			lhs_type := if inferred_typ.len > 0 {
 				inferred_typ
-			} else if node.typ.len > 0 {
+			} else if decl_type_is_usable(node.typ) {
 				node.typ
 			} else {
 				t.lvalue_type(lhs_id)
@@ -4477,6 +4565,11 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	call_id := t.normalize_generic_call_expr(id, node)
 	mut call_node := t.a.nodes[int(call_id)]
 	mut resolved_typ := t.concrete_generic_call_return_type(call_id, call_node)
+	if resolved_typ.len == 0 {
+		if array_typ := t.array_call_type_name(call_node) {
+			resolved_typ = array_typ
+		}
+	}
 	if resolved_typ.len == 0 && call_node.typ.len > 0 {
 		call_typ := t.normalize_type_alias(call_node.typ)
 		if call_typ !in ['array', 'map', 'unknown'] {
@@ -5957,6 +6050,7 @@ pub fn (mut t Transformer) make_if(cond flat.NodeId, then_block flat.NodeId, els
 
 // push_smartcast updates push smartcast state for Transformer.
 pub fn (mut t Transformer) push_smartcast(expr_name string, variant string, sum_type string) {
+	t.invalidated_smartcasts.delete(expr_name)
 	t.smartcast_stack << SmartcastContext{
 		expr_name:     expr_name
 		variant_name:  variant
@@ -6272,7 +6366,7 @@ fn (t &Transformer) is_stmt_kind(kind flat.NodeKind) bool {
 
 // infer_decl_type resolves infer decl type information for transform.
 fn (t &Transformer) infer_decl_type(node &flat.Node) string {
-	if node.typ.len > 0 {
+	if decl_type_is_usable(node.typ) {
 		return node.typ
 	}
 	if node.children_count >= 2 {
@@ -6327,6 +6421,9 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			new_map_typ := t.new_map_call_type(node)
 			if new_map_typ.len > 0 {
 				return new_map_typ
+			}
+			if array_typ := t.array_call_type_name(node) {
+				return array_typ
 			}
 			if node.typ.len > 0 {
 				typ := t.normalize_type_alias(node.typ)
@@ -6396,6 +6493,10 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			return ''
 		}
 		.selector {
+			resolved_selector_type := t.resolve_selector_type(node)
+			if resolved_selector_type.len > 0 {
+				return resolved_selector_type
+			}
 			if t.smartcast_stack.len == 0 {
 				typ := t.concrete_node_type_name(node)
 				if typ.len > 0 {
@@ -6411,7 +6512,7 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 					}
 				}
 			}
-			return t.resolve_selector_type(node)
+			return ''
 		}
 		.index {
 			return t.index_expr_type(id, node)

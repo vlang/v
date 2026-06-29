@@ -659,6 +659,8 @@ fn (mut t Transformer) register_specialized_fn_signature(decl GenericFnDecl, clo
 	qname := transform_qualified_fn_name(decl.module, clone.value)
 	t.fn_ret_types[clone.value] = ret_name
 	t.fn_ret_types[qname] = ret_name
+	t.add_receiver_method_suffix_index(clone.value)
+	t.add_receiver_method_suffix_index(qname)
 	if !isnil(t.tc) {
 		mut names := [clone.value, qname, c_name(clone.value),
 			c_name(qname)]
@@ -667,6 +669,7 @@ fn (mut t Transformer) register_specialized_fn_signature(decl GenericFnDecl, clo
 			t.tc.fn_ret_types[name] = ret
 			t.tc.fn_param_types[name] = params.clone()
 			t.tc.fn_variadic[name] = variadic
+			t.add_receiver_method_suffix_index(name)
 		}
 		t.tc.cur_module = old_tc_module
 		t.tc.cur_file = old_tc_file
@@ -1279,6 +1282,7 @@ fn (mut t Transformer) unregister_generic_fn_signature(decl GenericFnDecl) {
 		t.tc.fn_param_types.delete(name)
 		t.tc.fn_variadic.delete(name)
 	}
+	t.rebuild_receiver_method_suffix_index()
 }
 
 fn (mut t Transformer) generic_call_specialization(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?(string, []string) {

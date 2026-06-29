@@ -127,6 +127,12 @@ fn c_standard_flag(c99 bool) string {
 	return if c99 { '-std=c99' } else { '-std=gnu11' }
 }
 
+fn input_implies_building_v(input_file string) bool {
+	normalized := input_file.replace('\\', '/').trim_right('/')
+	return normalized.all_after_last('/') == 'v3.v' || normalized == 'cmd/v'
+		|| normalized.ends_with('/cmd/v') || normalized.ends_with('/cmd/v/v.v')
+}
+
 // main runs the v3 entry point.
 fn main() {
 	args := os.args[1..]
@@ -211,9 +217,9 @@ fn main() {
 		exit(1)
 	}
 
-	// Compiling the V compiler itself (v3.v) implies building_v: it uses no generics, so
-	// the monomorphization pass is pure overhead. -building-v can force this for any input.
-	if input_file.all_after_last('/') == 'v3.v' {
+	// Compiling the V compiler itself implies building_v: it uses no generics, so the
+	// monomorphization pass is pure overhead. -building-v can force this for any input.
+	if input_implies_building_v(input_file) {
 		building_v = true
 	}
 
@@ -949,6 +955,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		first_file = initial_files[0]
 	}
 	project_root := project_root_for_files(initial_files)
+	mut parsed_module_identities := map[string]string{}
 	mut module_path_cache := map[string]string{}
 	mut module_identity_cache := map[string]string{}
 
@@ -966,6 +973,17 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			continue
 		}
 		mod_name := node.value
+		if module_identity := parsed_module_identities[mod_name] {
+			if module_identity.len > 0 {
+				a.nodes[node_idx].value = module_identity
+			}
+			node_idx++
+			continue
+		}
+		if mod_name in parsed_modules {
+			node_idx++
+			continue
+		}
 
 		importing_file := if cur_file.len > 0 { cur_file } else { first_file }
 		mod_dir := resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file,
@@ -983,6 +1001,11 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		parsed_modules[mod_name] = true
 		if mod_dir_exists && module_identity.len > 0 {
 			parsed_modules[module_identity] = true
+		}
+		parsed_module_identities[mod_name] = if module_identity.len > 0 {
+			module_identity
+		} else {
+			mod_name
 		}
 
 		if mod_dir_exists {

@@ -193,8 +193,13 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 
 // gen_array_method_call emits array method call output for c.
 fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr types.Array) {
-	c_elem := g.value_c_type(arr.elem_type)
 	base_id := g.a.child(fn_node, 0)
+	mut elem_type := arr.elem_type
+	receiver_type := types.unwrap_pointer(g.usable_expr_type(base_id))
+	if receiver_arr := array_like_type(receiver_type) {
+		elem_type = receiver_arr.elem_type
+	}
+	c_elem := g.value_c_type(elem_type)
 	base_node := g.a.nodes[int(base_id)]
 	is_ptr := if base_node.kind == .ident {
 		g.tc.resolve_type(base_id) is types.Pointer
