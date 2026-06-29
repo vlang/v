@@ -439,6 +439,14 @@ fn (mut c H2ServerConn) on_headers(frame H2HeadersFrame, mut handler Handler) ! 
 	// A HEADERS block for a stream that is already open is a trailer section
 	// (RFC 9113 §8.1), not a new request.
 	if mut existing := c.streams[frame.stream_id] {
+		if existing.end_stream {
+			// Half-closed (remote): the stream already delivered END_STREAM (its
+			// response may still be in flight). A further HEADERS block cannot open
+			// a trailer section — RFC 9113 §5.1, STREAM_CLOSED stream error.
+			c.send_rst_stream(frame.stream_id, .stream_closed)!
+			c.streams.delete(frame.stream_id)
+			return
+		}
 		c.on_trailers(mut existing, frame, mut handler)!
 		return
 	}
@@ -599,6 +607,18 @@ fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 	if !s.headers_done {
 		return error('h2 server: DATA before END_HEADERS')
 	}
+	if s.end_stream {
+		// Half-closed (remote): the stream already delivered END_STREAM (its
+		// response may still be in flight while we are blocked on flow control).
+		// Further DATA is a STREAM_CLOSED stream error (RFC 9113 §5.1). Credit the
+		// connection window first, then reset just this stream.
+		if frame.flow_size > 0 {
+			c.send_window_update(0, u32(frame.flow_size)) or {}
+		}
+		c.send_rst_stream(s.id, .stream_closed)!
+		c.streams.delete(s.id)
+		return
+	}
 	if frame.data.len > 0 {
 		if s.body.len + frame.data.len > h2_server_max_request_body {
 			// Credit the connection window before resetting so the peer is
@@ -632,7 +652,7 @@ fn (mut c H2ServerConn) run_request(mut s H2ServerStream, mut handler Handler) !
 		return
 	}
 	resp := handler.handle(req)
-	c.send_response(s.id, resp)!
+	c.send_response(s.id, resp, mut handler)!
 	c.streams.delete(s.id)
 }
 
@@ -700,7 +720,7 @@ fn (mut c H2ServerConn) build_request(s &H2ServerStream) !Request {
 	return req
 }
 
-fn (mut c H2ServerConn) send_response(stream_id u32, resp Response) ! {
+fn (mut c H2ServerConn) send_response(stream_id u32, resp Response, mut handler Handler) ! {
 	status := if resp.status_code == 0 { 200 } else { resp.status_code }
 	mut fields := [H2HeaderField{':status', status.str()}]
 	for key in resp.header.keys() {
@@ -718,7 +738,7 @@ fn (mut c H2ServerConn) send_response(stream_id u32, resp Response) ! {
 	block := c.encoder.encode(fields)
 	c.send_header_block(stream_id, block, !has_body)!
 	if has_body {
-		c.send_body(stream_id, body)!
+		c.send_body(stream_id, body, mut handler)!
 	}
 }
 
@@ -754,7 +774,7 @@ fn (mut c H2ServerConn) send_header_block(stream_id u32, block []u8, end_stream 
 	}
 }
 
-fn (mut c H2ServerConn) send_body(stream_id u32, body []u8) ! {
+fn (mut c H2ServerConn) send_body(stream_id u32, body []u8, mut handler Handler) ! {
 	max := int(c.peer.max_frame_size)
 	mut off := 0
 	for off < body.len {
@@ -762,7 +782,15 @@ fn (mut c H2ServerConn) send_body(stream_id u32, body []u8) ! {
 		// (RFC 7540 Section 6.9). When either is exhausted, read frames until
 		// the peer grows a window with WINDOW_UPDATE.
 		for c.send_window <= 0 || c.stream_send_window(stream_id) <= 0 {
-			c.pump_for_window(stream_id)!
+			c.pump_for_window(mut handler)!
+			// pump_for_window dispatches inbound frames; if the peer reset this
+			// stream (RST_STREAM, or an illegal frame on the now half-closed
+			// stream), it is gone from the map. Stop writing its response, but do
+			// NOT error — a single stream's reset is a stream-scoped event and must
+			// not tear down the whole connection.
+			if stream_id !in c.streams {
+				return
+			}
 		}
 		avail := if c.send_window < c.stream_send_window(stream_id) {
 			c.send_window
@@ -799,19 +827,19 @@ fn (c &H2ServerConn) stream_send_window(stream_id u32) i64 {
 	return 0
 }
 
-// pump_for_window reads one frame while a response is blocked on flow control,
-// servicing control frames (SETTINGS / PING / WINDOW_UPDATE) via
-// handle_control_frame and aborting on RST_STREAM for the active stream.
-fn (mut c H2ServerConn) pump_for_window(stream_id u32) ! {
+// pump_for_window reads one frame while a response is blocked on flow control and
+// routes it through the SAME dispatch path as the main loop. Delegating to
+// dispatch_frame (rather than re-implementing a subset) means every rule applies
+// here too: a HEADERS frame arriving before the unblocking WINDOW_UPDATE is
+// HPACK-decoded and — being over the concurrency limit — answered with
+// RST_STREAM(REFUSED_STREAM), instead of being silently dropped (which desynced
+// the HPACK decoder and skipped the required reset). dispatch_frame does not
+// re-enter run_request from here: a new stream is refused (never served), and the
+// active stream is half-closed (remote) so its further DATA/HEADERS are
+// STREAM_CLOSED — the caller (send_body) detects the resulting reset and stops.
+fn (mut c H2ServerConn) pump_for_window(mut handler Handler) ! {
 	frame := c.read_frame()!
-	c.handle_control_frame(frame)!
-	if frame is H2RstStreamFrame {
-		if frame.stream_id == stream_id {
-			return error('h2 server: stream reset by peer while writing response')
-		}
-	}
-	// With SETTINGS_MAX_CONCURRENT_STREAMS=1 no other stream frames are
-	// expected mid-response; ignore anything else defensively.
+	c.dispatch_frame(frame, mut handler)!
 }
 
 fn (mut c H2ServerConn) send_window_update(stream_id u32, inc u32) ! {

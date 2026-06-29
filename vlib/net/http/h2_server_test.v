@@ -837,3 +837,83 @@ fn test_h2_server_data_on_even_stream_is_connection_error() {
 	code := drive_until_goaway_or_close(mut client_end, out, 'DATA on even idle stream')
 	assert code == i64(u32(H2ErrorCode.protocol_error)), 'DATA on even idle stream: expected GOAWAY(PROTOCOL_ERROR), got ${code}'
 }
+
+// RFC 9113 §5.1.2: an over-limit stream opened while the server is blocked writing
+// a stalled response (flow control) must still be HPACK-decoded and refused — the
+// stall path (send_body -> pump_for_window) routes frames through the same dispatch
+// as the main loop. Regression for the divergent-reader miss (Codex, #27589
+// discussion_r3488302384): set the initial window to 0 so stream 1's response body
+// stalls, then send HEADERS for stream 3 before the WINDOW_UPDATE that unblocks it.
+fn test_h2_server_refuses_over_limit_stream_during_window_stall() {
+	mut enc := H2HpackEncoder{}
+	mut out := []u8{}
+	out << h2_client_preface.bytes()
+	// Zero initial window -> stream 1's response body cannot be sent until a
+	// WINDOW_UPDATE arrives, parking the server in pump_for_window.
+	out << H2Frame(H2SettingsFrame{
+		settings: [H2Setting{h2_settings_initial_window_size, 0}]
+	}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// Over-limit stream 3 arrives while stream 1's response is stalled.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   3
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// Unblock stream 1 so its response completes after the refusal.
+	out << H2Frame(H2WindowUpdateFrame{
+		stream_id:             1
+		window_size_increment: 1000
+	}).encode()
+
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'window-stall refusal: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut dec := H2HpackDecoder{}
+	mut rst3 := i64(-1)
+	mut s1_status := 0
+	mut s1_ended := false
+	for _ in 0 .. 64 {
+		f := fr.next() or { break }
+		match f {
+			H2RstStreamFrame {
+				if f.stream_id == 3 {
+					rst3 = i64(f.error_code)
+				}
+			}
+			H2HeadersFrame {
+				if f.stream_id == 1 {
+					for hf in dec.decode(f.fragment) or { []H2HeaderField{} } {
+						if hf.name == ':status' {
+							s1_status = hf.value.int()
+						}
+					}
+				}
+			}
+			H2DataFrame {
+				if f.stream_id == 1 && f.end_stream {
+					s1_ended = true
+				}
+			}
+			else {}
+		}
+
+		if rst3 >= 0 && s1_ended {
+			break
+		}
+	}
+	assert rst3 == i64(u32(H2ErrorCode.refused_stream)), 'over-limit stream during stall: expected RST_STREAM(REFUSED_STREAM) on stream 3, got ${rst3}'
+	assert s1_status == 200, 'stalled stream 1 should still complete with 200, got ${s1_status}'
+	assert s1_ended, 'stalled stream 1 response should complete after WINDOW_UPDATE'
+}

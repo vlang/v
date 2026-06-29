@@ -12,17 +12,16 @@
 # plus HPACK decode-error scope (§4.3: a decode failure is a connection-level
 # COMPRESSION_ERROR, not RST_STREAM) closed 21; the §5.1/§6.1/§6.4 stream-state
 # rules (frames on idle streams are connection errors, on closed streams are
-# STREAM_CLOSED) closed 8 more — 137 pass, 8 fail — verified stable at --timeout 5.
-# NOTE: a handful of h2spec cases (CONTINUATION sequencing, unknown error codes)
-# are timing-flaky at h2spec's 2s default — they wait for the server's GOAWAY/close
-# — so run_h2spec.sh uses --timeout 5 (H2SPEC_TIMEOUT) to keep the gate stable. Do
-# not add a flaky case to this list; raise the timeout instead. The remaining 8 are
-# genuine server-side conformance gaps: the concurrency limit (§5.1.2 needs true
-# concurrent stream handling — this server is serial, so it processes and closes a
-# stream before the excess one is read), PRIORITY self-dependency, SETTINGS_ENABLE_PUSH
-# validation, and flow-control zero-increment/overflow handling. Remove a line when
-# the server is fixed to pass.
-http2/5.1.2 :: Sends HEADERS frames that causes their advertised concurrent stream limit to be exceeded
+# STREAM_CLOSED) closed 8 more; routing the flow-control stall path
+# (pump_for_window) through the same dispatch closed §5.1.2 (an over-limit stream
+# opened while a response is stalled is now refused) — 138 pass, 7 fail — verified
+# stable at --timeout 5. NOTE: a handful of h2spec cases (CONTINUATION sequencing,
+# unknown error codes) are timing-flaky at h2spec's 2s default — they wait for the
+# server's GOAWAY/close — so run_h2spec.sh uses --timeout 5 (H2SPEC_TIMEOUT) to keep
+# the gate stable. Do not add a flaky case to this list; raise the timeout instead.
+# The remaining 7 are genuine server-side conformance gaps: PRIORITY self-dependency,
+# SETTINGS_ENABLE_PUSH validation, and flow-control zero-increment/overflow handling.
+# Remove a line when the server is fixed to pass.
 http2/5.3.1 :: Sends HEADERS frame that depends on itself
 http2/5.3.1 :: Sends PRIORITY frame that depend on itself
 http2/6.5.2 :: SETTINGS_ENABLE_PUSH (0x2): Sends the value other than 0 or 1
