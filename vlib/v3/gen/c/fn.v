@@ -24,6 +24,12 @@ struct TopLevelStmt {
 	module string
 }
 
+struct GenericMethodCandidate {
+	name   string
+	ret    types.Type
+	params []types.Type
+}
+
 // gen_fns emits fns output for c.
 fn (mut g FlatGen) gen_fns() {
 	preferred_fns := g.preferred_c_backend_fn_nodes()
@@ -292,6 +298,45 @@ fn (g &FlatGen) emitted_fn_contains(name string) bool {
 	return name.len > 0 && g.emitted_fns[name]
 }
 
+fn generic_method_candidate_key(receiver string, method string) string {
+	return '${receiver}\n${method}'
+}
+
+fn (mut g FlatGen) precompute_generic_method_candidate_index() {
+	g.generic_method_candidates = map[string][]GenericMethodCandidate{}
+	for name, ret in g.tc.fn_ret_types {
+		if !name.contains('[') || !name.contains('.') {
+			continue
+		}
+		method := name.all_after_last('.')
+		receiver := name.all_before_last('.')
+		if method.len == 0 || !receiver.contains('[') {
+			continue
+		}
+		base_receiver := receiver.all_before('[')
+		if base_receiver.len == 0 {
+			continue
+		}
+		candidate := GenericMethodCandidate{
+			name:   name
+			ret:    ret
+			params: g.tc.fn_param_types[name] or { []types.Type{} }
+		}
+		g.add_generic_method_candidate(base_receiver, method, candidate)
+		short_receiver := base_receiver.all_after_last('.')
+		if short_receiver != base_receiver {
+			g.add_generic_method_candidate(short_receiver, method, candidate)
+		}
+	}
+}
+
+fn (mut g FlatGen) add_generic_method_candidate(receiver string, method string, candidate GenericMethodCandidate) {
+	key := generic_method_candidate_key(receiver, method)
+	mut candidates := g.generic_method_candidates[key] or { []GenericMethodCandidate{} }
+	candidates << candidate
+	g.generic_method_candidates[key] = candidates
+}
+
 // qualified_fn_name supports qualified fn name handling for FlatGen.
 fn (g &FlatGen) qualified_fn_name(name string) string {
 	return qualified_fn_name_in_module(g.tc.cur_module, name)
@@ -545,25 +590,20 @@ fn (g &FlatGen) specialized_generic_method_name_for_call_with_arg_count(id flat.
 			}
 		}
 	}
-	for allow_short_receiver in [false, true] {
-		for candidate, ret in g.tc.fn_ret_types {
-			if !candidate.contains('[') || candidate.all_after_last('.') != method {
+	for lookup_receiver in [receiver, receiver.all_after_last('.')] {
+		candidates := g.generic_method_candidates[generic_method_candidate_key(lookup_receiver,
+			method)] or { continue }
+		for candidate in candidates {
+			if arg_count >= 0 && candidate.params.len != arg_count {
 				continue
 			}
-			candidate_receiver := candidate.all_before_last('.')
-			base_receiver := candidate_receiver.all_before('[')
-			receiver_matches := base_receiver == receiver || (allow_short_receiver
-				&& base_receiver.all_after_last('.') == receiver.all_after_last('.'))
-			if !receiver_matches {
-				continue
+			if g.type_names_match(call_ret, candidate.ret)
+				|| call_ret.name() == candidate.ret.name() {
+				return candidate.name
 			}
-			params := g.tc.fn_param_types[candidate] or { []types.Type{} }
-			if arg_count >= 0 && params.len != arg_count {
-				continue
-			}
-			if g.type_names_match(call_ret, ret) || call_ret.name() == ret.name() {
-				return candidate
-			}
+		}
+		if lookup_receiver == receiver.all_after_last('.') {
+			break
 		}
 	}
 	return none

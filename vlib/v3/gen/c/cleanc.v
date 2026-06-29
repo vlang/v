@@ -71,21 +71,22 @@ mut:
 	// in_return is true only while generating a `return` statement's value, so a bare
 	// generic literal (`return Box{...}`) may adopt `cur_fn_ret`'s concrete instance —
 	// but a literal in a local decl / argument elsewhere in the body does not.
-	in_return               bool
-	expected_expr_type      types.Type = types.Type(types.void_)
-	expected_enum           string
-	needed_optional_types   map[string]string
-	emitted_optional_types  map[string]bool
-	emitted_fns             map[string]bool
-	array_method_cache      map[string]string
-	param_types_cache       map[string][]types.Type        // (name|fallback) -> resolved param types
-	embedded_fields_by_type map[string][]types.StructField // type name -> its embedded fields (usually empty)
-	param_types_by_short    map[string][]types.Type        // method short-name suffix -> param types (fallback index)
-	spawn_wrapper_names     map[string]string
-	spawn_wrapper_defs      []string
-	callback_wrapper_names  map[string]string
-	callback_wrapper_defs   []string
-	parallel_used           bool
+	in_return                 bool
+	expected_expr_type        types.Type = types.Type(types.void_)
+	expected_enum             string
+	needed_optional_types     map[string]string
+	emitted_optional_types    map[string]bool
+	emitted_fns               map[string]bool
+	array_method_cache        map[string]string
+	param_types_cache         map[string][]types.Type        // (name|fallback) -> resolved param types
+	embedded_fields_by_type   map[string][]types.StructField // type name -> its embedded fields (usually empty)
+	param_types_by_short      map[string][]types.Type        // method short-name suffix -> param types (fallback index)
+	generic_method_candidates map[string][]GenericMethodCandidate
+	spawn_wrapper_names       map[string]string
+	spawn_wrapper_defs        []string
+	callback_wrapper_names    map[string]string
+	callback_wrapper_defs     []string
+	parallel_used             bool
 }
 
 struct FixedArrayTypedefInfo {
@@ -166,6 +167,7 @@ pub fn FlatGen.new() FlatGen {
 		param_types_cache:            map[string][]types.Type{}
 		embedded_fields_by_type:      map[string][]types.StructField{}
 		param_types_by_short:         map[string][]types.Type{}
+		generic_method_candidates:    map[string][]GenericMethodCandidate{}
 		spawn_wrapper_names:          map[string]string{}
 		spawn_wrapper_defs:           []string{}
 		callback_wrapper_names:       map[string]string{}
@@ -260,6 +262,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.param_types_cache = map[string][]types.Type{}
 	g.embedded_fields_by_type = map[string][]types.StructField{}
 	g.param_types_by_short = map[string][]types.Type{}
+	g.generic_method_candidates = map[string][]GenericMethodCandidate{}
 	g.spawn_wrapper_names = map[string]string{}
 	g.spawn_wrapper_defs = []string{}
 	g.callback_wrapper_names = map[string]string{}
@@ -277,6 +280,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
 	g.preseed_c_extern_fn_ptr_types()
+	g.precompute_generic_method_candidate_index()
 	// Decide fixed-array return wrappers before generating function bodies, so
 	// signatures, returns and call sites all agree on the wrapped types.
 	g.populate_fixed_array_ret_wrappers()
