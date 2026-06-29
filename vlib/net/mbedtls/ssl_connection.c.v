@@ -2,6 +2,7 @@ module mbedtls
 
 import io
 import net
+import sync
 import time
 
 const mbedtls_client_read_timeout_ms = $d('mbedtls_client_read_timeout_ms', 10_000)
@@ -174,6 +175,7 @@ mut:
 	certs     &SSLCerts = unsafe { nil }
 	ctr_drbg  C.mbedtls_ctr_drbg_context
 	entropy   C.mbedtls_entropy_context
+	rng_mutex &sync.Mutex = sync.new_mutex()
 	opened    bool
 	// alpn_list is a NUL-terminated C array of pointers to the protocol
 	// strings in config.alpn_protocols, advertised by accepted connections.
@@ -238,7 +240,7 @@ fn (mut l SSLListener) init() ! {
 	C.mbedtls_pk_init(&l.certs.client_key)
 
 	unsafe {
-		C.mbedtls_ssl_conf_rng(&l.conf, C.mbedtls_ctr_drbg_random, &l.ctr_drbg)
+		C.mbedtls_ssl_conf_rng(&l.conf, tls_listener_rng, l)
 	}
 
 	mut ret := 0
@@ -321,6 +323,15 @@ fn (mut l SSLListener) init() ! {
 	if get_cert_callback := l.config.get_certificate {
 		l.init_sni(get_cert_callback)
 	}
+}
+
+fn tls_listener_rng(p_rng voidptr, output &u8, output_len usize) int {
+	mut listener := unsafe { &SSLListener(p_rng) }
+	listener.rng_mutex.lock()
+	defer {
+		listener.rng_mutex.unlock()
+	}
+	return C.mbedtls_ctr_drbg_random(&listener.ctr_drbg, output, output_len)
 }
 
 // setup SNI callback
