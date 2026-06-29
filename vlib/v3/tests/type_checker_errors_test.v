@@ -357,6 +357,16 @@ fn test_fixed_array_length_checks() {
 	assert good_ret_lit == '5'
 }
 
+fn test_statement_if_branch_tails_are_not_value_checked() {
+	v3_bin := build_v3()
+	statement_if := run_good(v3_bin, 'statement_if_mixed_tail_exprs',
+		"fn main() {\n\tmut n := 0\n\tmut errors := []string{}\n\tif true {\n\t\tn++\n\t} else {\n\t\terrors << 'bad'\n\t}\n\tprintln(int_str(n + errors.len))\n}\n")
+	assert statement_if == '1'
+	run_bad(v3_bin, 'bad_if_branch_primitive_mismatch',
+		"fn main() {\n\tc := true\n\t_ := if c { 1 } else { 'bad' }\n}\n",
+		'if-expression branch type mismatch')
+}
+
 // Regression tests for the post-PR review fixes around generic struct receivers
 // and generic heap struct literals.
 fn test_generic_struct_receiver_and_heap_init() {

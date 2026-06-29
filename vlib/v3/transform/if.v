@@ -1208,6 +1208,110 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 	return new_if
 }
 
+fn (t &Transformer) post_if_exit_smartcasts(id flat.NodeId) []IsExprInfo {
+	if int(id) < 0 {
+		return []IsExprInfo{}
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .if_expr || node.children_count < 2 {
+		return []IsExprInfo{}
+	}
+	cond_id := t.a.child(&node, 0)
+	then_id := t.a.child(&node, 1)
+	if info := t.negated_is_expr_info(cond_id) {
+		if t.stmt_definitely_exits(then_id) {
+			return [info]
+		}
+	}
+	if node.children_count >= 3 {
+		else_id := t.a.child(&node, 2)
+		if t.stmt_definitely_exits(else_id) {
+			return t.extract_all_is_exprs(cond_id)
+		}
+	}
+	return []IsExprInfo{}
+}
+
+fn (t &Transformer) negated_is_expr_info(cond_id flat.NodeId) ?IsExprInfo {
+	if int(cond_id) < 0 {
+		return none
+	}
+	cond := t.a.nodes[int(cond_id)]
+	if cond.kind != .prefix || cond.op != .not || cond.children_count == 0 {
+		return none
+	}
+	inner_id := t.a.child(&cond, 0)
+	if int(inner_id) < 0 {
+		return none
+	}
+	inner := t.a.nodes[int(inner_id)]
+	if inner.kind != .is_expr {
+		return none
+	}
+	info := t.extract_is_expr(inner_id)
+	if info.expr_name.len == 0 || info.sum_type_name.len == 0 || info.variant_name.len == 0 {
+		return none
+	}
+	return info
+}
+
+fn (t &Transformer) stmt_definitely_exits(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.return_stmt {
+			return true
+		}
+		.block {
+			for i in 0 .. node.children_count {
+				if t.stmt_definitely_exits(t.a.child(&node, i)) {
+					return true
+				}
+			}
+			return false
+		}
+		.if_expr {
+			if node.children_count < 3 {
+				return false
+			}
+			return t.stmt_definitely_exits(t.a.child(&node, 1))
+				&& t.stmt_definitely_exits(t.a.child(&node, 2))
+		}
+		.match_stmt {
+			if node.children_count < 2 {
+				return false
+			}
+			mut has_else := false
+			for i in 1 .. node.children_count {
+				branch := t.a.child_node(&node, i)
+				if branch.kind != .match_branch {
+					return false
+				}
+				if branch.value == 'else' {
+					has_else = true
+				}
+				body_start := if branch.value == 'else' { 0 } else { branch.value.int() }
+				mut branch_exits := false
+				for j in body_start .. branch.children_count {
+					if t.stmt_definitely_exits(t.a.child(branch, j)) {
+						branch_exits = true
+						break
+					}
+				}
+				if !branch_exits {
+					return false
+				}
+			}
+			return has_else
+		}
+		else {
+			return false
+		}
+	}
+}
+
 // --- helpers ---
 
 // IsExprInfo stores is expr info metadata used by transform.

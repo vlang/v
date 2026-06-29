@@ -137,6 +137,13 @@ fn test_interface_array_repeat_evaluates_receiver_once() {
 	assert out == '1\n3'
 }
 
+fn test_negative_is_return_smartcasts_following_statements() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'negative_is_return_smartcast',
+		'struct MapKind {\n\tkey_type int\n\tvalue_type int\n}\nstruct OtherKind {}\ntype Kind = MapKind | OtherKind\n\nfn passthrough(k Kind) Kind {\n\treturn k\n}\n\nfn score(k Kind) int {\n\tclean := passthrough(k)\n\tif clean !is MapKind {\n\t\treturn 0\n\t}\n\treturn clean.key_type + clean.value_type\n}\n\nfn main() {\n\tprintln(int_str(score(Kind(MapKind{\n\t\tkey_type: 2\n\t\tvalue_type: 5\n\t}))))\n\tprintln(int_str(score(Kind(OtherKind{}))))\n}\n')
+	assert out == '7\n0'
+}
+
 fn test_comptime_type_conditions_handle_logical_ops() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'comptime_type_condition_logical_ops',

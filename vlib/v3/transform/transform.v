@@ -1641,6 +1641,12 @@ fn (t &Transformer) fn_return_type_for_name(name string) ?string {
 // transform_stmts transforms transform stmts data for transform.
 pub fn (mut t Transformer) transform_stmts(ids []flat.NodeId) []flat.NodeId {
 	mut result := []flat.NodeId{cap: ids.len}
+	mut post_if_smartcasts := 0
+	defer {
+		for _ in 0 .. post_if_smartcasts {
+			t.pop_smartcast()
+		}
+	}
 	mut i := 0
 	for i < ids.len {
 		id := ids[i]
@@ -1687,6 +1693,10 @@ pub fn (mut t Transformer) transform_stmts(ids []flat.NodeId) []flat.NodeId {
 		t.drain_pending(mut result)
 		for eid in expanded {
 			result << eid
+		}
+		for info in t.post_if_exit_smartcasts(id) {
+			t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
+			post_if_smartcasts++
 		}
 		i++
 	}

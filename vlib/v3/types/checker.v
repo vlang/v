@@ -220,6 +220,7 @@ pub mut:
 	resolved_call_set       []bool
 	resolved_fn_value_names []string // node_id -> resolved function value name
 	resolved_fn_value_set   []bool
+	statement_nodes         []bool
 	// Methods used as *values* (`recv.method` passed as a callback), recorded per enclosing
 	// function during semantic checking — which has full scope/type info, runs before
 	// markused, and (unlike a call) routes a value-context selector through check_selector.
@@ -297,6 +298,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		resolved_call_set:          []bool{len: a.nodes.len}
 		resolved_fn_value_names:    []string{len: a.nodes.len}
 		resolved_fn_value_set:      []bool{len: a.nodes.len}
+		statement_nodes:            []bool{len: a.nodes.len}
 		method_values_by_fn:        map[int][]string{}
 		method_value_locals:        map[string]bool{}
 		method_value_local_depth:   map[string]int{}
@@ -341,6 +343,7 @@ fn (mut tc TypeChecker) reset_node_caches(n int) {
 	tc.resolved_call_set = []bool{len: n}
 	tc.resolved_fn_value_names = []string{len: n}
 	tc.resolved_fn_value_set = []bool{len: n}
+	tc.statement_nodes = []bool{len: n}
 	tc.expr_type_values = []Type{len: n, init: Type(void_)}
 	tc.expr_type_set = []bool{len: n}
 	tc.checking_nodes = []bool{len: n}
@@ -348,13 +351,14 @@ fn (mut tc TypeChecker) reset_node_caches(n int) {
 
 fn (mut tc TypeChecker) extend_node_caches(n int) {
 	if n <= tc.resolved_call_names.len && n <= tc.resolved_fn_value_names.len
-		&& n <= tc.expr_type_values.len && n <= tc.checking_nodes.len {
+		&& n <= tc.statement_nodes.len && n <= tc.expr_type_values.len && n <= tc.checking_nodes.len {
 		return
 	}
 	extend_string_cache(mut tc.resolved_call_names, n)
 	extend_bool_cache(mut tc.resolved_call_set, n)
 	extend_string_cache(mut tc.resolved_fn_value_names, n)
 	extend_bool_cache(mut tc.resolved_fn_value_set, n)
+	extend_bool_cache(mut tc.statement_nodes, n)
 	extend_type_cache(mut tc.expr_type_values, n)
 	extend_bool_cache(mut tc.expr_type_set, n)
 	extend_bool_cache(mut tc.checking_nodes, n)
@@ -2107,13 +2111,18 @@ fn (tc &TypeChecker) fn_returns_veb_result(node flat.Node) bool {
 
 // check_fn_body validates check fn body state for types.
 fn (mut tc TypeChecker) check_fn_body(node flat.Node) {
+	saved_smartcasts := clone_smartcasts(tc.smartcasts)
+	defer {
+		tc.smartcasts = clone_smartcasts(saved_smartcasts)
+	}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.child_node(&node, i)
 		if child.kind == .param {
 			continue
 		}
-		tc.check_node(child_id)
+		tc.check_stmt_node(child_id)
+		tc.apply_post_if_exit_smartcasts(child_id)
 	}
 }
 
@@ -3298,9 +3307,7 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 			}
 			body_start = 2
 		}
-		for j in body_start .. branch.children_count {
-			tc.check_node(tc.a.child(&branch, j))
-		}
+		tc.check_statement_sequence(branch, body_start, false)
 		tc.pop_scope()
 	}
 }
@@ -3339,7 +3346,7 @@ fn (mut tc TypeChecker) check_or_expr(node flat.Node) {
 	}
 	tc.push_scope()
 	tc.cur_scope.insert('err', tc.parse_type('IError'))
-	tc.check_node(tc.a.child(&node, 1))
+	tc.check_branch_node(tc.a.child(&node, 1), true)
 	tc.pop_scope()
 }
 
@@ -3360,7 +3367,7 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 		if child.kind == .param || child.kind == .ident {
 			continue
 		}
-		tc.check_node(child_id)
+		tc.check_stmt_node(child_id)
 	}
 	tc.pop_scope()
 	tc.cur_fn_ret_type = saved_ret
@@ -3385,9 +3392,7 @@ fn (mut tc TypeChecker) check_lambda_expr(node flat.Node) {
 // check_block validates check block state for types.
 fn (mut tc TypeChecker) check_block(node flat.Node) {
 	tc.push_scope()
-	for i in 0 .. node.children_count {
-		tc.check_node(tc.a.child(&node, i))
-	}
+	tc.check_statement_sequence(node, 0, false)
 	tc.pop_scope()
 }
 
@@ -3413,7 +3418,7 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 		}
 	}
 	for i in 3 .. node.children_count {
-		tc.check_node(tc.a.child(&node, i))
+		tc.check_stmt_node(tc.a.child(&node, i))
 	}
 	tc.pop_scope()
 }
@@ -3481,7 +3486,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		}
 	}
 	for i in header .. node.children_count {
-		tc.check_node(tc.a.child(&node, i))
+		tc.check_stmt_node(tc.a.child(&node, i))
 	}
 	tc.pop_scope()
 }
@@ -6351,6 +6356,7 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	if node.children_count < 2 {
 		return
 	}
+	value_context := !tc.is_statement_node(id)
 	cond_id := tc.a.child(&node, 0)
 	guard_bindings := tc.check_condition(cond_id)
 	smartcasts := tc.extract_smartcasts(cond_id)
@@ -6365,14 +6371,20 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	for binding in guard_bindings {
 		tc.cur_scope.insert(binding.name, binding.typ)
 	}
-	tc.check_node(then_id)
-	then_type := tc.branch_tail_type(then_id)
+	tc.check_branch_node(then_id, value_context)
 	tc.pop_scope()
 	tc.smartcasts = clone_smartcasts(saved_smartcasts)
+	if node.children_count > 2 {
+		else_id := tc.a.child(&node, 2)
+		tc.check_branch_node(else_id, value_context)
+	}
+	if !value_context {
+		return
+	}
+	then_type := tc.branch_tail_type(then_id)
 	mut else_type := Type(void_)
 	if node.children_count > 2 {
 		else_id := tc.a.child(&node, 2)
-		tc.check_node(else_id)
 		else_type = tc.branch_tail_type(else_id)
 	}
 	if then_type !is Void && else_type !is Void {
@@ -6385,6 +6397,119 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 					id)
 			}
 		}
+	}
+}
+
+fn (mut tc TypeChecker) check_stmt_node(id flat.NodeId) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	idx := int(id)
+	if idx >= tc.statement_nodes.len {
+		tc.extend_node_caches(tc.a.nodes.len)
+	}
+	if idx < tc.statement_nodes.len {
+		tc.statement_nodes[idx] = true
+	}
+	tc.check_node(id)
+}
+
+fn (tc &TypeChecker) is_statement_node(id flat.NodeId) bool {
+	idx := int(id)
+	return idx >= 0 && idx < tc.statement_nodes.len && tc.statement_nodes[idx]
+}
+
+fn (mut tc TypeChecker) check_statement_sequence(node flat.Node, body_start int, value_tail bool) {
+	saved_smartcasts := clone_smartcasts(tc.smartcasts)
+	defer {
+		tc.smartcasts = clone_smartcasts(saved_smartcasts)
+	}
+	last_idx := int(node.children_count) - 1
+	for i in body_start .. node.children_count {
+		child_id := tc.a.child(&node, i)
+		if value_tail && i == last_idx {
+			tc.check_node(child_id)
+		} else {
+			tc.check_stmt_node(child_id)
+		}
+		tc.apply_post_if_exit_smartcasts(child_id)
+	}
+}
+
+fn (mut tc TypeChecker) check_branch_node(id flat.NodeId, value_tail bool) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .block {
+		tc.push_scope()
+		tc.check_statement_sequence(node, 0, value_tail)
+		tc.pop_scope()
+		return
+	}
+	if value_tail {
+		tc.check_node(id)
+	} else {
+		tc.check_stmt_node(id)
+	}
+}
+
+fn (mut tc TypeChecker) apply_post_if_exit_smartcasts(id flat.NodeId) {
+	for binding in tc.post_if_exit_smartcasts(id) {
+		if valid_string_data(binding.name) {
+			tc.smartcasts[binding.name] = binding.typ
+		}
+	}
+}
+
+fn (tc &TypeChecker) post_if_exit_smartcasts(id flat.NodeId) []LocalBinding {
+	if !tc.valid_node_id(id) {
+		return []LocalBinding{}
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .if_expr || node.children_count < 2 {
+		return []LocalBinding{}
+	}
+	cond_id := tc.a.child(&node, 0)
+	then_id := tc.a.child(&node, 1)
+	if binding := tc.negated_is_smartcast(cond_id) {
+		if tc.stmt_definitely_returns(then_id) {
+			return [binding]
+		}
+	}
+	if node.children_count >= 3 {
+		else_id := tc.a.child(&node, 2)
+		if tc.stmt_definitely_returns(else_id) {
+			return tc.extract_smartcasts(cond_id)
+		}
+	}
+	return []LocalBinding{}
+}
+
+fn (tc &TypeChecker) negated_is_smartcast(cond_id flat.NodeId) ?LocalBinding {
+	if !tc.valid_node_id(cond_id) {
+		return none
+	}
+	cond := tc.a.nodes[int(cond_id)]
+	if cond.kind != .prefix || cond.op != .not || cond.children_count == 0 {
+		return none
+	}
+	inner_id := tc.a.child(&cond, 0)
+	if !tc.valid_node_id(inner_id) {
+		return none
+	}
+	inner := tc.a.nodes[int(inner_id)]
+	if inner.kind != .is_expr || inner.children_count == 0 {
+		return none
+	}
+	expr_id := tc.a.child(&inner, 0)
+	key := tc.expr_key(expr_id)
+	if key.len == 0 || !valid_string_data(key) || inner.value.len == 0 {
+		return none
+	}
+	return LocalBinding{
+		name: key
+		typ:  tc.parse_type(inner.value)
 	}
 }
 
@@ -6501,10 +6626,11 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 }
 
 // check_match_stmt validates check match stmt state for types.
-fn (mut tc TypeChecker) check_match_stmt(_id flat.NodeId, node flat.Node) {
+fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
+	value_context := !tc.is_statement_node(id)
 	subject_id := tc.a.child(&node, 0)
 	tc.check_node(subject_id)
 	subject_key := tc.expr_key(subject_id)
@@ -6541,9 +6667,7 @@ fn (mut tc TypeChecker) check_match_stmt(_id flat.NodeId, node flat.Node) {
 			}
 		}
 		tc.push_scope()
-		for j in n_conds .. branch.children_count {
-			tc.check_node(tc.a.child(branch, j))
-		}
+		tc.check_statement_sequence(branch, n_conds, value_context)
 		tc.pop_scope()
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
 	}
