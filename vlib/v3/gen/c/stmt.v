@@ -559,7 +559,7 @@ fn (mut g FlatGen) heap_local_address_expr(ret_id flat.NodeId, expected types.Ty
 	ptr := expected as types.Pointer
 	child_id := g.a.child(&node, 0)
 	child := g.a.nodes[int(child_id)]
-	if child.kind != .ident || child.value.len == 0 || child.value in g.global_modules {
+	if child.kind != .ident || child.value.len == 0 {
 		return none
 	}
 	local_type := g.local_ident_type(child.value) or { return none }
