@@ -6144,10 +6144,12 @@ fn (t &Transformer) current_call_return_type(node flat.Node) string {
 	if node.children_count > 0 {
 		fn_node := t.a.child_node(&node, 0)
 		if fn_node.kind == .ident {
-			if ret := t.local_fn_value_return_type(fn_node.value) {
-				return t.call_return_type_name(ret, node)
-			}
-			if t.var_type(fn_node.value).len == 0 {
+			local_type := t.var_type(fn_node.value)
+			if local_type.len > 0 {
+				if ret := t.local_fn_value_return_type_from_type(local_type) {
+					return t.call_return_type_name(ret, node)
+				}
+			} else {
 				if ret := t.local_fn_decl_return_type(fn_node.value) {
 					return t.call_return_type_name(ret, node)
 				}

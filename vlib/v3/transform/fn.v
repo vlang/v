@@ -63,29 +63,24 @@ fn (t &Transformer) local_fn_decl_return_type(name string) ?string {
 	if name.len == 0 {
 		return none
 	}
-	mut cur_module := ''
-	for node in t.a.nodes {
-		match node.kind {
-			.file {
-				cur_module = ''
-			}
-			.module_decl {
-				cur_module = node.value
-			}
-			.fn_decl {
-				if node.value == name && transform_same_module(cur_module, t.cur_module) {
-					return node.typ
-				}
-			}
-			else {}
+	qname := transform_qualified_fn_name(t.cur_module, name)
+	if ret := t.fn_ret_types[qname] {
+		return ret
+	}
+	if !isnil(t.tc) {
+		if ret := t.tc.fn_ret_types[qname] {
+			return ret.name()
 		}
 	}
 	return none
 }
 
-fn (t &Transformer) local_fn_value_return_type(name string) ?string {
-	typ := t.normalize_type_alias(t.var_type(name))
-	return fn_type_return_type_text(typ)
+fn (t &Transformer) local_fn_value_return_type_from_type(typ string) ?string {
+	if typ.len == 0 {
+		return none
+	}
+	normalized := t.normalize_type_alias(typ)
+	return fn_type_return_type_text(normalized)
 }
 
 fn fn_type_return_type_text(typ string) ?string {
@@ -113,13 +108,6 @@ fn fn_type_return_type_text(typ string) ?string {
 		}
 	}
 	return none
-}
-
-fn transform_same_module(a string, b string) bool {
-	if a == b {
-		return true
-	}
-	return a in ['', 'main'] && b in ['', 'main']
 }
 
 // is_known_fn_name reports whether is known fn name applies in transform.
@@ -3475,10 +3463,12 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) string 
 	if node.children_count > 0 {
 		fn_node := t.a.child_node(&node, 0)
 		if fn_node.kind == .ident {
-			if ret := t.local_fn_value_return_type(fn_node.value) {
-				return t.call_return_type_name(ret, node)
-			}
-			if t.var_type(fn_node.value).len == 0 {
+			local_type := t.var_type(fn_node.value)
+			if local_type.len > 0 {
+				if ret := t.local_fn_value_return_type_from_type(local_type) {
+					return t.call_return_type_name(ret, node)
+				}
+			} else {
 				if ret := t.local_fn_decl_return_type(fn_node.value) {
 					return t.call_return_type_name(ret, node)
 				}
