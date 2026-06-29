@@ -4704,6 +4704,14 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 		return none
 	}
 	if is_decode_call_name(call_name) {
+		if type_args.len != 1 {
+			if tc.should_diagnose(id) {
+				tc.record_error(.call_arg_mismatch,
+					'generic argument count mismatch for `${call_name}`: expected 1, got ${type_args.len}',
+					id)
+			}
+			return tc.failed_explicit_generic_call_info(call_name)
+		}
 		return CallInfo{
 			name:          call_name
 			params:        tc.fn_param_types[call_name] or { []Type{} }
