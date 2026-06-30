@@ -5,6 +5,13 @@ import strings
 import v3.flat
 import v3.types
 
+struct ActiveLock {
+	mutexes_var string
+	lock_count  int
+	unlock_fn   string
+	loop_depth  int
+}
+
 // FlatGen emits flat gen output used by c.
 pub struct FlatGen {
 mut:
@@ -71,7 +78,8 @@ mut:
 	cur_fn_ret                   types.Type = types.Type(types.void_)
 	cur_fn_ret_is_optional       bool
 	cur_fn_ret_base              types.Type = types.Type(types.void_)
-	active_locks                 []flat.Node
+	active_locks                 []ActiveLock
+	loop_depth                   int
 	// in_return is true only while generating a `return` statement's value, so a bare
 	// generic literal (`return Box{...}`) may adopt `cur_fn_ret`'s concrete instance —
 	// but a literal in a local decl / argument elsewhere in the body does not.
@@ -166,7 +174,7 @@ pub fn FlatGen.new() FlatGen {
 		cur_param_types:              map[string]types.Type{}
 		cur_concrete_optional_params: map[string]bool{}
 		cur_mut_params:               map[string]bool{}
-		active_locks:                 []flat.Node{}
+		active_locks:                 []ActiveLock{}
 		needed_optional_types:        map[string]string{}
 		emitted_optional_types:       map[string]bool{}
 		emitted_fns:                  map[string]bool{}
@@ -265,7 +273,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cur_param_types = map[string]types.Type{}
 	g.cur_concrete_optional_params = map[string]bool{}
 	g.cur_mut_params = map[string]bool{}
-	g.active_locks = []flat.Node{}
+	g.active_locks = []ActiveLock{}
+	g.loop_depth = 0
 	g.needed_optional_types = map[string]string{}
 	g.emitted_optional_types = map[string]bool{}
 	g.emitted_fns = map[string]bool{}

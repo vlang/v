@@ -55,42 +55,91 @@ fn (mut g FlatGen) gen_split_array_append_expr_stmt(node flat.Node) bool {
 	return true
 }
 
-fn (mut g FlatGen) gen_lock_enter(node flat.Node) {
-	lock_count := int(node.children_count) - 1
-	if lock_count <= 0 {
-		return
+fn (mut g FlatGen) gen_lock_mutex_addr(lock_id flat.NodeId) {
+	g.write('(uintptr_t)&')
+	if !g.gen_shared_storage_expr(lock_id) {
+		g.gen_expr(lock_id)
 	}
-	lock_fn := if node.value == 'rlock' { 'sync__RwMutex__rlock' } else { 'sync__RwMutex__lock' }
-	for i in 0 .. lock_count {
-		g.write('${lock_fn}(&')
-		lock_id := g.a.child(&node, i)
-		if !g.gen_shared_storage_expr(lock_id) {
-			g.gen_expr(lock_id)
-		}
-		g.writeln('->mtx);')
-	}
+	g.write('->mtx')
 }
 
-fn (mut g FlatGen) gen_lock_leave(node flat.Node) {
-	lock_count := int(node.children_count) - 1
-	if lock_count <= 0 {
+fn (mut g FlatGen) gen_sort_lock_mutexes(mutexes_var string, lock_count int) {
+	if lock_count < 2 {
 		return
 	}
+	if lock_count == 2 {
+		g.writeln('if (${mutexes_var}[0] > ${mutexes_var}[1]) {')
+		g.indent++
+		g.writeln('uintptr_t ${mutexes_var}_tmp = ${mutexes_var}[0];')
+		g.writeln('${mutexes_var}[0] = ${mutexes_var}[1];')
+		g.writeln('${mutexes_var}[1] = ${mutexes_var}_tmp;')
+		g.indent--
+		g.writeln('}')
+		return
+	}
+	g.writeln('for (int ${mutexes_var}_i = 1; ${mutexes_var}_i < ${lock_count}; ${mutexes_var}_i++) {')
+	g.indent++
+	g.writeln('uintptr_t ${mutexes_var}_key = ${mutexes_var}[${mutexes_var}_i];')
+	g.writeln('int ${mutexes_var}_j = ${mutexes_var}_i - 1;')
+	g.writeln('while (${mutexes_var}_j >= 0 && ${mutexes_var}[${mutexes_var}_j] > ${mutexes_var}_key) {')
+	g.indent++
+	g.writeln('${mutexes_var}[${mutexes_var}_j + 1] = ${mutexes_var}[${mutexes_var}_j];')
+	g.writeln('${mutexes_var}_j--;')
+	g.indent--
+	g.writeln('}')
+	g.writeln('${mutexes_var}[${mutexes_var}_j + 1] = ${mutexes_var}_key;')
+	g.indent--
+	g.writeln('}')
+}
+
+fn (mut g FlatGen) gen_lock_enter(node flat.Node) ?ActiveLock {
+	lock_count := int(node.children_count) - 1
+	if lock_count <= 0 {
+		return none
+	}
+	lock_fn := if node.value == 'rlock' { 'sync__RwMutex__rlock' } else { 'sync__RwMutex__lock' }
 	unlock_fn := if node.value == 'rlock' {
 		'sync__RwMutex__runlock'
 	} else {
 		'sync__RwMutex__unlock'
 	}
-	mut i := lock_count - 1
-	for i >= 0 {
-		g.write('${unlock_fn}(&')
+	mutexes_var := g.tmp_name()
+	g.writeln('uintptr_t ${mutexes_var}[${lock_count}];')
+	for i in 0 .. lock_count {
 		lock_id := g.a.child(&node, i)
-		if !g.gen_shared_storage_expr(lock_id) {
-			g.gen_expr(lock_id)
-		}
-		g.writeln('->mtx);')
-		i--
+		g.write('${mutexes_var}[${i}] = ')
+		g.gen_lock_mutex_addr(lock_id)
+		g.writeln(';')
 	}
+	g.gen_sort_lock_mutexes(mutexes_var, lock_count)
+	g.writeln('for (int ${mutexes_var}_i = 0; ${mutexes_var}_i < ${lock_count}; ${mutexes_var}_i++) {')
+	g.indent++
+	g.writeln('if (${mutexes_var}_i > 0 && ${mutexes_var}[${mutexes_var}_i] == ${mutexes_var}[${mutexes_var}_i - 1]) continue;')
+	g.writeln('${lock_fn}((sync__RwMutex*)${mutexes_var}[${mutexes_var}_i]);')
+	g.indent--
+	g.writeln('}')
+	return ActiveLock{
+		mutexes_var: mutexes_var
+		lock_count:  lock_count
+		unlock_fn:   unlock_fn
+		loop_depth:  g.loop_depth
+	}
+}
+
+fn (mut g FlatGen) gen_lock_leave(active ActiveLock) {
+	if active.lock_count <= 0 {
+		return
+	}
+	if active.lock_count == 1 {
+		g.writeln('${active.unlock_fn}((sync__RwMutex*)${active.mutexes_var}[0]);')
+		return
+	}
+	g.writeln('for (int ${active.mutexes_var}_i = ${active.lock_count - 1}; ${active.mutexes_var}_i >= 0; ${active.mutexes_var}_i--) {')
+	g.indent++
+	g.writeln('if (${active.mutexes_var}_i > 0 && ${active.mutexes_var}[${active.mutexes_var}_i] == ${active.mutexes_var}[${active.mutexes_var}_i - 1]) continue;')
+	g.writeln('${active.unlock_fn}((sync__RwMutex*)${active.mutexes_var}[${active.mutexes_var}_i]);')
+	g.indent--
+	g.writeln('}')
 }
 
 fn (mut g FlatGen) gen_active_lock_leaves() {
@@ -101,14 +150,25 @@ fn (mut g FlatGen) gen_active_lock_leaves() {
 	}
 }
 
+fn (mut g FlatGen) gen_branch_lock_leaves() {
+	mut i := g.active_locks.len - 1
+	for i >= 0 {
+		active := g.active_locks[i]
+		if active.loop_depth == g.loop_depth {
+			g.gen_lock_leave(active)
+		}
+		i--
+	}
+}
+
 fn (mut g FlatGen) gen_return_cleanup() {
 	g.gen_all_defers()
 	g.gen_active_lock_leaves()
 }
 
 fn (mut g FlatGen) gen_lock_stmt(node flat.Node) {
-	g.gen_lock_enter(node)
-	g.active_locks << node
+	active := g.gen_lock_enter(node) or { return }
+	g.active_locks << active
 	if node.children_count > 0 {
 		body_id := g.a.child(&node, node.children_count - 1)
 		if int(body_id) >= 0 {
@@ -124,7 +184,7 @@ fn (mut g FlatGen) gen_lock_stmt(node flat.Node) {
 		}
 	}
 	g.active_locks.delete_last()
-	g.gen_lock_leave(node)
+	g.gen_lock_leave(active)
 }
 
 fn (g &FlatGen) lock_expr_result_type(node flat.Node) types.Type {
@@ -160,8 +220,11 @@ fn (mut g FlatGen) gen_lock_expr(node flat.Node) {
 	result_type := g.lock_expr_result_type(node)
 	if result_type is types.Void || result_type is types.Unknown {
 		g.write('({')
-		g.gen_lock_enter(node)
-		g.active_locks << node
+		active := g.gen_lock_enter(node) or {
+			g.write('0;})')
+			return
+		}
+		g.active_locks << active
 		if node.children_count > 0 {
 			body_id := g.a.child(&node, node.children_count - 1)
 			if int(body_id) >= 0 {
@@ -175,15 +238,19 @@ fn (mut g FlatGen) gen_lock_expr(node flat.Node) {
 			}
 		}
 		g.active_locks.delete_last()
-		g.gen_lock_leave(node)
+		g.gen_lock_leave(active)
 		g.write('0;})')
 		return
 	}
 	ct := g.value_c_type(result_type)
 	tmp := g.tmp_name()
 	g.write('({ ${ct} ${tmp};')
-	g.gen_lock_enter(node)
-	g.active_locks << node
+	active := g.gen_lock_enter(node) or {
+		g.gen_default_value_for_type(result_type)
+		g.write(';})')
+		return
+	}
+	g.active_locks << active
 	if node.children_count > 0 {
 		body_id := g.a.child(&node, node.children_count - 1)
 		if int(body_id) >= 0 {
@@ -216,7 +283,7 @@ fn (mut g FlatGen) gen_lock_expr(node flat.Node) {
 		}
 	}
 	g.active_locks.delete_last()
-	g.gen_lock_leave(node)
+	g.gen_lock_leave(active)
 	g.write('${tmp};})')
 }
 
@@ -552,6 +619,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.gen_lock_stmt(node)
 		}
 		.break_stmt {
+			g.gen_branch_lock_leaves()
 			if node.value.len > 0 {
 				g.writeln('goto ${c_name(node.value)}_break;')
 			} else {
@@ -559,6 +627,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			}
 		}
 		.continue_stmt {
+			g.gen_branch_lock_leaves()
 			if node.value.len > 0 {
 				g.writeln('goto ${c_name(node.value)}_continue;')
 			} else {

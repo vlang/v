@@ -34,9 +34,11 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 		g.writeln(') {')
 	}
 	g.indent++
+	g.loop_depth++
 	for i in 3 .. node.children_count {
 		g.gen_node(g.a.child(&node, i))
 	}
+	g.loop_depth--
 	g.gen_defers_from(defer_start)
 	g.trim_defers(defer_start)
 	g.indent--
@@ -173,9 +175,11 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			if has_index && container_type !is types.Map {
 				g.tc.cur_scope.insert(idx_var, types.Type(types.int_))
 			}
+			g.loop_depth++
 			for i in body_start .. node.children_count {
 				g.gen_node(g.a.child(&node, i))
 			}
+			g.loop_depth--
 			g.indent--
 			g.writeln('}')
 			if map_snapshot_var.len > 0 {
@@ -189,9 +193,11 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 		return
 	}
 	g.indent++
+	g.loop_depth++
 	for i in body_start .. node.children_count {
 		g.gen_node(g.a.child(&node, i))
 	}
+	g.loop_depth--
 	g.indent--
 	g.writeln('}')
 	g.tc.pop_scope()
