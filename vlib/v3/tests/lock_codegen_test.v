@@ -91,6 +91,16 @@ fn assert_lock_cleanup_before_branch(c_code string, name string, branch string) 
 	assert lock_idx < unlock_idx, fragment
 }
 
+fn assert_no_lock_cleanup_before_branch(c_code string, name string, branch string) {
+	fragment := lock_codegen_fn_fragment(c_code, name)
+	assert fragment.len > 0, c_code
+	branch_idx := fragment.last_index(branch) or { -1 }
+	assert branch_idx >= 0, fragment
+	before_branch := fragment[..branch_idx]
+	unlock_idx := before_branch.last_index('sync__RwMutex__unlock((sync__RwMutex*)') or { -1 }
+	assert unlock_idx < 0, fragment
+}
+
 fn assert_return_read_before_lock_cleanup(c_code string, name string) {
 	fragment := lock_codegen_counter_fn_fragment(c_code, name, 'int')
 	assert fragment.len > 0, c_code
@@ -204,6 +214,24 @@ fn defer_after_lock(mut c Counter) int {
 	return 0
 }
 
+fn goto_out_of_lock(mut c Counter) {
+	lock c.a {
+		goto done
+	}
+done:
+	lock c.a {
+		_ := c.a
+	}
+}
+
+fn goto_inside_lock(mut c Counter) {
+	lock c.a {
+		goto inside
+	inside:
+		_ := c.a
+	}
+}
+
 fn main() {
 	mut c := Counter{}
 	multi_lock(mut c)
@@ -214,6 +242,8 @@ fn main() {
 	_ = lock_if_tail(mut c, true)
 	_ = return_shared(mut c)
 	_ = defer_after_lock(mut c)
+	goto_out_of_lock(mut c)
+	goto_inside_lock(mut c)
 }
 ')
 	assert c_code.contains('uintptr_t _t'), c_code
@@ -227,6 +257,8 @@ fn main() {
 	assert_lock_cleanup_before_branch(c_code, 'branch_break', 'break;')
 	assert_lock_cleanup_before_branch(c_code, 'branch_labeled_break', 'goto outer_break;')
 	assert_lock_cleanup_before_branch(c_code, 'branch_labeled_continue', 'goto outer_continue;')
+	assert_lock_cleanup_before_branch(c_code, 'goto_out_of_lock', 'goto done;')
+	assert_no_lock_cleanup_before_branch(c_code, 'goto_inside_lock', 'goto inside;')
 	assert c_code.contains(' = (cond ? 1 : 2);'), c_code
 	assert_return_read_before_lock_cleanup(c_code, 'return_shared')
 	assert_outer_defer_runs_after_lock_cleanup(c_code, 'defer_after_lock')

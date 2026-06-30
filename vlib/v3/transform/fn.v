@@ -2531,6 +2531,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	saved_fn_name := t.cur_fn_name
 	saved_ret_type := t.cur_fn_ret_type
 	saved_vars := t.var_types.clone()
+	saved_mut_param_values := t.mut_param_values.clone()
 	t.cur_fn_name = name
 	t.cur_fn_ret_type = ret_type
 	t.reset_var_types()
@@ -2561,6 +2562,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	new_body := t.transform_stmts(lifted_body)
 	t.pending_stmts = outer_pending
 	t.restore_var_types(saved_vars)
+	t.mut_param_values = saved_mut_param_values.clone()
 	t.cur_fn_name = saved_fn_name
 	t.cur_fn_ret_type = saved_ret_type
 	mut all_ids := []flat.NodeId{cap: param_ids.len + new_body.len}

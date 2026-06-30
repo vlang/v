@@ -89,6 +89,7 @@ mut:
 	active_locks                 []ActiveLock
 	loop_depth                   int
 	loop_label_depths            map[string]int
+	goto_label_lock_depths       map[string]int
 	pending_loop_label           string
 	// in_return is true only while generating a `return` statement's value, so a bare
 	// generic literal (`return Box{...}`) may adopt `cur_fn_ret`'s concrete instance —
@@ -186,6 +187,7 @@ pub fn FlatGen.new() FlatGen {
 		cur_mut_params:               map[string]bool{}
 		active_locks:                 []ActiveLock{}
 		loop_label_depths:            map[string]int{}
+		goto_label_lock_depths:       map[string]int{}
 		needed_optional_types:        map[string]string{}
 		emitted_optional_types:       map[string]bool{}
 		emitted_fns:                  map[string]bool{}
@@ -287,6 +289,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.active_locks = []ActiveLock{}
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
+	g.goto_label_lock_depths = map[string]int{}
 	g.pending_loop_label = ''
 	g.needed_optional_types = map[string]string{}
 	g.emitted_optional_types = map[string]bool{}

@@ -261,6 +261,13 @@ fn test_map_literal_stringification_evaluates_entries_once() {
 	assert out == "{'k1': 10}\n1,1"
 }
 
+fn test_fn_literal_preserves_mut_param_string_interpolation() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'fn_literal_mut_param_interp',
+		"fn show(mut x int) {\n\t_ := fn () {}\n\tprintln('\${x}')\n}\n\nfn main() {\n\tmut n := 42\n\tshow(mut n)\n}\n")
+	assert out == '42'
+}
+
 fn test_shadowed_minmaxof_calls_are_not_rewritten() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'shadowed_minmaxof_calls', {

@@ -1276,6 +1276,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.cur_fn_name = node.value
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
+	g.goto_label_lock_depths = g.collect_fn_goto_label_lock_depths(node)
 	g.pending_loop_label = ''
 	g.tc.push_scope()
 	g.defers = []flat.NodeId{}
@@ -1385,6 +1386,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.cur_mut_params = old_mut_params.clone()
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
+	g.goto_label_lock_depths = map[string]int{}
 	g.pending_loop_label = ''
 	g.tc.pop_scope()
 }
@@ -1448,6 +1450,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.cur_fn_name = 'main'
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
+	g.goto_label_lock_depths = g.collect_top_level_goto_label_lock_depths(stmts)
 	g.pending_loop_label = ''
 	g.tc.push_scope()
 	g.defers = []flat.NodeId{}
@@ -1501,6 +1504,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.cur_fn_name = old_fn_name
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
+	g.goto_label_lock_depths = map[string]int{}
 	g.pending_loop_label = ''
 	g.tc.cur_file = old_tc_file
 	g.tc.cur_module = old_tc_module
