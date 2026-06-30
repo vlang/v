@@ -68,7 +68,7 @@ fn main() {
 	section(3, 'Requested vlib tests')
 	for rel_path in requested_vlib_tests {
 		test_path := os.join_path(cfg.repo_root, rel_path)
-		test_bin := temp_path(rel_path.replace('/', '_').replace('.v', ''))
+		test_bin := temp_path(cfg, rel_path.replace('/', '_').replace('.v', ''))
 		run('${q(v3_bin)} ${q(test_path)} -o ${q(test_bin)}')
 		run(q(test_bin))
 		cleanup_files([test_bin, test_bin + '.c'])
@@ -138,7 +138,7 @@ fn parse_config() Config {
 		c99_flag:     if c99 { '-c99' } else { '' }
 		host_backend: native_backend_arch()
 		host_os:      os.user_os()
-		temp_prefix:  'v3_test_all_${os.getpid()}'
+		temp_prefix:  '${temp_prefix}_${os.getpid()}'
 	}
 }
 
