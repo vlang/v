@@ -224,6 +224,10 @@ fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int,
 	if module_name == 'builtin' && node.value == 'exit' {
 		return true
 	}
+	if module_name == 'sync' && g.needs_shared_runtime
+		&& node.value in ['should_be_zero', 'RwMutex.init', 'RwMutex.lazy_init', 'RwMutex.lock', 'RwMutex.unlock', 'RwMutex.rlock', 'RwMutex.runlock'] {
+		return true
+	}
 	// `array.pointers` is emitted as an intrinsic at call sites; the raw
 	// builtin body has an erased `array` receiver and generates invalid C.
 	if module_name == 'builtin' && node.value == 'array.pointers' {
@@ -835,6 +839,90 @@ fn (g &FlatGen) expr_is_addressable(id flat.NodeId) bool {
 			false
 		}
 	}
+}
+
+fn (mut g FlatGen) gen_mut_sum_lvalue_arg(arg_id flat.NodeId, expected types.Type) bool {
+	mut lvalue_id := arg_id
+	if int(arg_id) >= 0 && int(arg_id) < g.a.nodes.len {
+		arg_node := g.a.nodes[int(arg_id)]
+		if arg_node.kind == .prefix && arg_node.op == .amp && arg_node.children_count > 0 {
+			lvalue_id = g.a.child(&arg_node, 0)
+		}
+	}
+	base0 := if expected is types.Pointer {
+		expected.base_type
+	} else {
+		return false
+	}
+	base := if base0 is types.Alias { base0.base_type } else { base0 }
+	if base !is types.SumType {
+		return false
+	}
+	if !g.expr_is_addressable(lvalue_id) {
+		return false
+	}
+	actual0 := g.tc.resolve_type(lvalue_id)
+	if actual0 is types.Pointer {
+		return false
+	}
+	storage0 := if declared := g.selector_declared_type(lvalue_id) { declared } else { actual0 }
+	storage := if storage0 is types.Alias { storage0.base_type } else { storage0 }
+	if storage !is types.SumType || !g.type_names_match(storage, base) {
+		return false
+	}
+	g.write('&')
+	if !g.gen_sum_storage_lvalue_arg(lvalue_id) {
+		g.gen_expr(lvalue_id)
+	}
+	return true
+}
+
+fn (mut g FlatGen) gen_sum_storage_lvalue_arg(arg_id flat.NodeId) bool {
+	if int(arg_id) < 0 || int(arg_id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(arg_id)]
+	if node.kind != .selector || node.children_count == 0 {
+		return false
+	}
+	if _ := g.selector_declared_type(arg_id) {
+		// handled below
+	} else {
+		return false
+	}
+	base_id := g.a.child(&node, 0)
+	base := g.a.nodes[int(base_id)]
+	needs_paren := base.kind !in [.ident, .selector]
+	if needs_paren {
+		g.write('(')
+	}
+	g.gen_expr(base_id)
+	if needs_paren {
+		g.write(')')
+	}
+	mut is_ptr := false
+	if base.kind == .ident {
+		if typ := g.tc.cur_scope.lookup(base.value) {
+			is_ptr = typ is types.Pointer
+		}
+	} else if base.kind == .selector {
+		if declared := g.selector_declared_type(base_id) {
+			is_ptr = declared is types.Pointer
+		} else {
+			resolved := g.tc.resolve_type(base_id)
+			is_ptr = resolved is types.Pointer
+		}
+	} else {
+		resolved := g.tc.resolve_type(base_id)
+		is_ptr = resolved is types.Pointer
+	}
+	if node.op == .arrow || is_ptr {
+		g.write('->')
+	} else {
+		g.write('.')
+	}
+	g.write(c_name(node.value))
+	return true
 }
 
 // gen_method_value_closure handles a method used as a *value* (e.g. `game.draw`
@@ -1817,8 +1905,12 @@ fn (mut g FlatGen) gen_optional_error_from_call(ct string, node flat.Node) {
 // gen_call emits call output for c.
 fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	fn_node := g.a.child_node(&node, 0)
-	fn_name := fn_node.value
 	target_name := g.call_target_name(g.a.child(&node, 0))
+	fn_name := if fn_node.kind == .selector && fn_node.value in ['error', 'error_with_code'] {
+		target_name
+	} else {
+		fn_node.value
+	}
 	if target_name == 'array.pointers' || fn_name == 'array.pointers' {
 		if node.children_count > 1 {
 			arg_id := g.a.child(&node, 1)
@@ -2584,6 +2676,11 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						g.expected_enum = pt.name
 					}
 				}
+				if !is_c_call && arg_idx < param_types.len
+					&& g.gen_mut_sum_lvalue_arg(arg_id, param_types[arg_idx]) {
+					g.expected_enum = ''
+					continue
+				}
 				if !is_c_call && arg_idx < param_types.len {
 					if child_id := g.addressed_rvalue_arg(arg_node) {
 						pt := param_types[arg_idx]
@@ -2614,6 +2711,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					g.gen_expr_with_expected_type(arg_id, types.unwrap_pointer(pt))
 					g.write('; &_t${g.tmp_count};})')
 					g.tmp_count++
+				} else if needs_addr && g.gen_mut_sum_lvalue_arg(arg_id, param_types[arg_idx]) {
+					// handled
 				} else {
 					if needs_addr {
 						g.write('&')
@@ -2761,6 +2860,9 @@ fn (mut g FlatGen) gen_interface_method_call(node flat.Node, fn_node flat.Node, 
 				continue
 			}
 			if g.gen_pointer_arg_from_array_literal(arg_node, param_types[param_idx]) {
+				continue
+			}
+			if g.gen_mut_sum_lvalue_arg(arg_id, param_types[param_idx]) {
 				continue
 			}
 			if child_id := g.addressed_rvalue_arg(arg_node) {
@@ -3333,6 +3435,9 @@ fn short_receiver_method_name(name string) string {
 // gen_arg_for_expected_type emits arg for expected type output for c.
 fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.Type) {
 	arg_node := g.a.nodes[int(arg_id)]
+	if g.gen_mut_sum_lvalue_arg(arg_id, expected) {
+		return
+	}
 	mut needs_addr := false
 	if expected is types.Pointer && !(arg_node.kind == .prefix && arg_node.op == .amp) {
 		arg_type := g.tc.resolve_type(arg_id)
@@ -3341,6 +3446,9 @@ fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.
 		}
 	}
 	if needs_addr {
+		if g.gen_mut_sum_lvalue_arg(arg_id, expected) {
+			return
+		}
 		g.write('&')
 	}
 	if !needs_addr && g.gen_sum_variant_arg(arg_id, expected) {
@@ -3818,6 +3926,9 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			&& g.gen_pointer_arg_from_array_literal(arg_node, param_types[arg_idx]) {
 			continue
 		}
+		if arg_idx < typed_param_count && g.gen_mut_sum_lvalue_arg(arg_id, param_types[arg_idx]) {
+			continue
+		}
 		cb_param := if arg_idx >= 0 && arg_idx < param_types.len {
 			param_types[arg_idx]
 		} else {
@@ -3889,6 +4000,8 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			g.gen_expr_with_expected_type(arg_id, types.unwrap_pointer(pt))
 			g.write('; &_t${g.tmp_count};})')
 			g.tmp_count++
+		} else if needs_addr && g.gen_mut_sum_lvalue_arg(arg_id, param_types[arg_idx]) {
+			// handled
 		} else {
 			if arg_idx < typed_param_count {
 				if child_id := g.addressed_rvalue_arg(arg_node) {
@@ -4260,9 +4373,11 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		raw_name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
 		raw_cfn := c_name(raw_name)
 		cfn := c_winapi_wide_export_name(raw_cfn)
+		shared_runtime_extern := g.needs_shared_runtime && cfn in c_shared_runtime_extern_symbols
 		if g.has_used_fn_filter() && !(g.spawn_wrapper_defs.len > 0
-			&& cfn in c_spawn_runtime_extern_symbols) && !g.used_fn_contains(raw_name)
-			&& !g.used_fn_contains(raw_cfn) && !g.used_fn_contains(cfn) {
+			&& cfn in c_spawn_runtime_extern_symbols) && !shared_runtime_extern
+			&& !g.used_fn_contains(raw_name) && !g.used_fn_contains(raw_cfn)
+			&& !g.used_fn_contains(cfn) {
 			continue
 		}
 		if !g.should_emit_c_extern_decl(cfn) {
@@ -4313,6 +4428,12 @@ const c_spawn_runtime_extern_symbols = {
 	'pthread_attr_setstacksize': true
 	'pthread_create':            true
 	'pthread_join':              true
+}
+
+const c_shared_runtime_extern_symbols = {
+	'pthread_rwlock_rdlock': true
+	'pthread_rwlock_wrlock': true
+	'pthread_rwlock_unlock': true
 }
 
 fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {

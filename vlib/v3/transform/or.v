@@ -655,7 +655,7 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 		}
 	}
 	_ = target_type
-	t.var_types = saved_var_types
+	t.restore_var_types(saved_var_types)
 	return result
 }
 
@@ -664,7 +664,8 @@ fn (t &Transformer) is_error_call(node flat.Node) bool {
 		return false
 	}
 	fn_node := t.a.child_node(&node, 0)
-	return fn_node.value == 'error' || fn_node.value == 'error_with_code'
+	return fn_node.kind == .ident
+		&& (fn_node.value == 'error' || fn_node.value == 'error_with_code')
 }
 
 // is_noreturn_call reports whether is noreturn call applies in transform.

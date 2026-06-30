@@ -32,6 +32,8 @@ fn (mut t Transformer) propagate_decl_pair_type(node flat.Node, lhs_idx int, rhs
 	rhs_authority := t.decl_rhs_type(rhs_id)
 	if t.is_fn_pointer_type_name(rhs_authority) {
 		typ = rhs_authority
+	} else if decl_type_should_override_fallback(rhs_authority, fallback_type) {
+		typ = rhs_authority
 	} else if decl_type_is_usable(fallback_type) {
 		typ = fallback_type
 	} else {
@@ -44,6 +46,16 @@ fn (mut t Transformer) propagate_decl_pair_type(node flat.Node, lhs_idx int, rhs
 	if typ.len > 0 {
 		t.set_var_type(lhs.value, t.normalize_type_alias(typ))
 	}
+}
+
+fn decl_type_should_override_fallback(authority string, fallback string) bool {
+	if !decl_type_is_usable(authority) {
+		return false
+	}
+	if !decl_type_is_usable(fallback) {
+		return true
+	}
+	return authority.starts_with('&') && !fallback.starts_with('&')
 }
 
 fn decl_type_is_usable(typ string) bool {
@@ -74,6 +86,11 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 	}
 	if int(id) >= 0 {
 		node := t.a.nodes[int(id)]
+		if node.kind == .call {
+			if ret := t.checker_resolved_non_builtin_return_type(id, node) {
+				return ret
+			}
+		}
 		if node.kind == .map_init {
 			if node.typ.starts_with('map[') {
 				return node.typ
@@ -428,6 +445,38 @@ fn (t &Transformer) qualified_enum_type_selector_name_from_selector_name(base st
 
 // lookup_struct_field_type resolves lookup struct field type information for transform.
 fn (t &Transformer) lookup_struct_field_type(type_name string, field_name string) ?string {
+	if type_name.len == 0 || field_name.len == 0 {
+		return none
+	}
+	key := t.struct_field_type_cache_key(type_name, field_name)
+	if !isnil(t.struct_field_type_cache) {
+		mut cache := t.struct_field_type_cache
+		if cached := cache.entries[key] {
+			return cached
+		}
+		if cache.misses[key] {
+			return none
+		}
+	}
+	resolved := t.lookup_struct_field_type_uncached(type_name, field_name) or {
+		if !isnil(t.struct_field_type_cache) {
+			mut cache := t.struct_field_type_cache
+			cache.misses[key] = true
+		}
+		return none
+	}
+	if !isnil(t.struct_field_type_cache) {
+		mut cache := t.struct_field_type_cache
+		cache.entries[key] = resolved
+	}
+	return resolved
+}
+
+fn (t &Transformer) struct_field_type_cache_key(type_name string, field_name string) string {
+	return '${t.cur_module}\n${type_name}\n${field_name}'
+}
+
+fn (t &Transformer) lookup_struct_field_type_uncached(type_name string, field_name string) ?string {
 	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
 	for f in lookup.info.fields {
 		if f.name == field_name {

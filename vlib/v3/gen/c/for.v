@@ -114,6 +114,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					g.writeln('memmove(${key_var}, ${key_slot}, sizeof(${key_var}));')
 				} else {
 					g.writeln('${c_key} ${key_var} = *(${c_key}*)(${key_slot});')
+					if clean_container_type.key_type is types.String {
+						g.writeln('${key_var} = string__clone(${key_var});')
+					}
 				}
 				val_slot := '${key_values}.values + ${iter_var} * ${key_values}.value_bytes'
 				if val_fixed := array_fixed_type(clean_container_type.value_type) {

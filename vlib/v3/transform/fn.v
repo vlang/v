@@ -923,17 +923,35 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 	}
 	if param_type.starts_with('&') && t.is_sum_type_name(param_type[1..]) {
 		target_sum := param_type[1..]
+		resolved_target_sum := t.resolve_sum_name(target_sum)
 		arg_type := t.node_type(arg_id)
 		arg_key := t.expr_key(arg_id)
 		has_smartcast := t.has_smartcast(arg_key)
+		if has_smartcast {
+			raw_arg_type := t.raw_expr_type_without_smartcast(arg_id)
+			if t.resolve_sum_name(t.trim_pointer_type(raw_arg_type)) == resolved_target_sum {
+				return t.make_plain_expr_for_smartcast(arg_id)
+			}
+		}
 		if !has_smartcast
-			&& t.resolve_sum_name(t.trim_pointer_type(arg_type)) == t.resolve_sum_name(target_sum) {
+			&& t.resolve_sum_name(t.trim_pointer_type(arg_type)) == resolved_target_sum {
 			return t.transform_expr(arg_id)
 		}
 		if arg_node.kind == .prefix && arg_node.op == .amp && arg_node.children_count > 0 {
 			inner_id := t.a.child(arg_node, 0)
+			inner_key := t.expr_key(inner_id)
+			inner_has_smartcast := t.has_smartcast(inner_key)
+			if inner_has_smartcast {
+				raw_inner_type := t.raw_expr_type_without_smartcast(inner_id)
+				if t.resolve_sum_name(t.trim_pointer_type(raw_inner_type)) == resolved_target_sum {
+					inner := t.make_plain_expr_for_smartcast(inner_id)
+					addr := t.make_prefix(.amp, inner)
+					t.a.nodes[int(addr)].typ = param_type
+					return addr
+				}
+			}
 			inner_type := t.node_type(inner_id)
-			if t.resolve_sum_name(t.trim_pointer_type(inner_type)) == t.resolve_sum_name(target_sum) {
+			if t.resolve_sum_name(t.trim_pointer_type(inner_type)) == resolved_target_sum {
 				return t.transform_expr(arg_id)
 			}
 		}
@@ -2542,7 +2560,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	t.pending_stmts.clear()
 	new_body := t.transform_stmts(lifted_body)
 	t.pending_stmts = outer_pending
-	t.var_types = saved_vars
+	t.restore_var_types(saved_vars)
 	t.cur_fn_name = saved_fn_name
 	t.cur_fn_ret_type = saved_ret_type
 	mut all_ids := []flat.NodeId{cap: param_ids.len + new_body.len}
@@ -2881,7 +2899,7 @@ fn (mut t Transformer) try_lower_sum_type_name_method_call(node flat.Node) ?flat
 	resolved_sum := t.resolve_sum_name(clean_type)
 	variants := t.sum_types[resolved_sum] or { return none }
 	base := t.stable_transformed_expr_for_reuse(t.transform_expr(base_id), base_type, 'sum_type')
-	tag := t.make_selector_op(base, 'typ', 'int', if base_type.starts_with('&') {
+	tag := t.make_sum_tag_selector(base, if base_type.starts_with('&') {
 		.arrow
 	} else {
 		.dot

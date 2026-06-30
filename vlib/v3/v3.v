@@ -414,9 +414,11 @@ fn main() {
 	}
 
 	// Monomorphization only adds specialized generic instantiations to `used_fns`. The V
-	// compiler sources use no generics, so when building V we skip the pass entirely
-	// (`used_fns` passes through unchanged) instead of scanning the whole AST for nothing.
-	if !building_v {
+	// compiler sources use no generics, so when building V we skip specialization and
+	// only erase generic templates that otherwise generate invalid raw C declarations.
+	if building_v {
+		used_fns = transform.erase_generic_templates(mut a, &pre_tc, used_fns)
+	} else {
 		used_fns = transform.monomorphize_with_used(mut a, &pre_tc, used_fns)
 	}
 	b.step('monomorphize')

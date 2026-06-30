@@ -369,11 +369,15 @@ fn (t &Transformer) embedded_field_for_promoted_field(info StructInfo, field_nam
 
 // is_embedded_field reports whether is embedded field applies in transform.
 fn (t &Transformer) is_embedded_field(field FieldInfo) bool {
-	if field.name.len == 0 || field.typ.len == 0 {
+	return field.is_embedded
+}
+
+fn field_decl_is_embedded(name string, typ string) bool {
+	if name.len == 0 || typ.len == 0 {
 		return false
 	}
-	short_typ := if field.typ.contains('.') { field.typ.all_after_last('.') } else { field.typ }
-	short_name := if field.name.contains('.') { field.name.all_after_last('.') } else { field.name }
+	short_typ := if typ.contains('.') { typ.all_after_last('.') } else { typ }
+	short_name := if name.contains('.') { name.all_after_last('.') } else { name }
 	return short_name == short_typ
 }
 

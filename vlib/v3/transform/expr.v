@@ -267,6 +267,11 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 		return none
 	}
 	lhs_id := t.a.children[node.children_start]
+	rhs_id := t.a.children[node.children_start + 1]
+	if node.op in [.eq, .ne]
+		&& (t.infix_operand_is_pointer(lhs_id) || t.infix_operand_is_pointer(rhs_id)) {
+		return none
+	}
 	mut lhs_type := t.node_type(lhs_id)
 	checker_lhs_type := t.checker_node_type(lhs_id)
 	lhs_key := t.expr_key(lhs_id)
@@ -346,7 +351,7 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	}
 	if !t.has_struct_operator_fn(struct_type, '==') {
 		lhs := t.stable_expr_for_reuse(lhs_id)
-		rhs := t.stable_expr_for_reuse(t.a.children[node.children_start + 1])
+		rhs := t.stable_expr_for_reuse(rhs_id)
 		if field_eq := t.make_struct_field_eq_expr(lhs, rhs, struct_type) {
 			if node.op == .ne {
 				return t.make_prefix(.not, field_eq)
@@ -374,6 +379,9 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 }
 
 fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.NodeId, rhs flat.NodeId) ?flat.NodeId {
+	if node.op in [.eq, .ne] && (t.infix_operand_is_pointer(lhs) || t.infix_operand_is_pointer(rhs)) {
+		return none
+	}
 	mut lhs_type := t.node_type(lhs)
 	if lhs_type.starts_with('&') {
 		lhs_type = lhs_type[1..]
@@ -435,6 +443,30 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 	cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, cmp_lhs), t.make_prefix(.amp,
 		cmp_rhs), t.make_sizeof_type(struct_type)), 'int')
 	return t.make_infix(node.op, cmp, t.make_int_literal(0))
+}
+
+fn (t &Transformer) infix_operand_is_pointer(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .nil_literal || node.typ.starts_with('&') {
+		return true
+	}
+	if node.kind == .ident && t.var_type(node.value).starts_with('&') {
+		return true
+	}
+	if !isnil(t.tc) {
+		if typ := t.tc.expr_type(id) {
+			if typ is types.Pointer {
+				return true
+			}
+		}
+		if t.tc.resolve_type(id) is types.Pointer {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) checker_node_type(id flat.NodeId) string {
@@ -737,8 +769,8 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 		rhs = t.make_prefix(.mul, rhs)
 		t.a.nodes[int(rhs)].typ = rhs_type
 	}
-	tag_eq := t.make_infix(.eq, t.make_selector(lhs, 'typ', 'int'), t.make_selector(rhs, 'typ',
-		'int'))
+	tag_eq := t.make_infix(.eq, t.make_sum_tag_selector(lhs, .dot),
+		t.make_sum_tag_selector(rhs, .dot))
 	cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
 		t.make_sizeof_type(sum_type)), 'int')
 	value_eq := t.make_infix(.eq, cmp, t.make_int_literal(0))
@@ -1898,6 +1930,11 @@ pub fn (mut t Transformer) make_selector_op(base flat.NodeId, field string, typ 
 		value:          field
 		typ:            typ
 	})
+}
+
+// make_sum_tag_selector builds an internal selector for a sumtype discriminator.
+pub fn (mut t Transformer) make_sum_tag_selector(base flat.NodeId, op flat.Op) flat.NodeId {
+	return t.make_selector_op(base, sum_type_tag_selector_field, 'int', op)
 }
 
 // make_index builds make index data for transform.
