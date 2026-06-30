@@ -353,6 +353,7 @@ fn (mut g FlatGen) gen_lock_expr(node flat.Node) {
 		if int(body_id) >= 0 {
 			body := g.a.nodes[int(body_id)]
 			if body.kind == .block {
+				defer_start := g.defers.len
 				last_idx := int(body.children_count) - 1
 				for i in 0 .. last_idx {
 					g.gen_node(g.a.child(&body, i))
@@ -361,6 +362,8 @@ fn (mut g FlatGen) gen_lock_expr(node flat.Node) {
 					last_id := g.a.child(&body, last_idx)
 					g.gen_lock_expr_result_assign(tmp, result_type, last_id)
 				}
+				g.gen_defers_from(defer_start)
+				g.trim_defers(defer_start)
 			} else {
 				g.gen_lock_expr_result_assign(tmp, result_type, body_id)
 			}
