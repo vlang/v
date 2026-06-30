@@ -657,7 +657,16 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 					if decls != '' {
 						init = '\t${decls}'
 					}
-					init += '\t${final_c_name} = *(${styp}*)&((${styp}[]){${default_initializer}}[0]); // global 5'
+					// Fixed-size C arrays (`[N]T`) are not assignable with `=`, so
+					// the `dst = *(T*)&((T[]){..}[0])` form emits illegal C ("array
+					// type ... is not assignable") when this runs in `_vinit` rather
+					// than at declaration — the path taken under `-usecache`/build_module.
+					// memcpy the default in, mirroring the `{E_STRUCT}` path above.
+					if g.table.final_sym(field.typ).kind == .array_fixed {
+						init += '\tmemcpy(${final_c_name}, (${styp}[]){${default_initializer}}, sizeof(${styp})); // global 5'
+					} else {
+						init += '\t${final_c_name} = *(${styp}*)&((${styp}[]){${default_initializer}}[0]); // global 5'
+					}
 				}
 			}
 		} else {
