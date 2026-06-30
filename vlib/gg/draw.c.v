@@ -538,7 +538,7 @@ pub fn (ctx &Context) draw_rounded_rect_border(x f32, y f32, w f32, h f32, r f32
 	bw = bw * ctx.scale
 
 	// draw background
-	ctx.draw_rounded_rect_filled(sx, sy, width, height, r, bg)
+	ctx.draw_rounded_rect_filled(x, y, w, h, r, bg)
 
 	// draw border
 	if bw == 0 || border_c.a == 0 {
