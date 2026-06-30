@@ -1933,8 +1933,8 @@ fn (tc &TypeChecker) has_c_test_harness_main() bool {
 			continue
 		}
 		module_name := tc.top_level_file_module_name(file_node)
-		if is_c_backend_test_file(file_node.value)
-			&& (module_name.len == 0 || module_name == 'main') {
+		if is_c_backend_test_file(file_node.value) && (is_regular_v_test_file(file_node.value)
+			|| module_name.len == 0 || module_name == 'main') {
 			return true
 		}
 	}
@@ -2021,6 +2021,10 @@ fn is_c_backend_test_file(path string) bool {
 		return false
 	}
 	return base.all_after_last('.') == 'c' && base.all_before_last('.').ends_with('_test')
+}
+
+fn is_regular_v_test_file(path string) bool {
+	return path.all_after_last('/').all_after_last('\\').ends_with('_test.v')
 }
 
 fn export_qualified_fn_name(module_name string, name string) string {

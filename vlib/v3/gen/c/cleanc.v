@@ -29,6 +29,7 @@ mut:
 	a                            &flat.FlatAst = unsafe { nil }
 	used_fns                     map[string]bool
 	used_fn_names                []string
+	fn_gen_items                 []FlatFnGenItem
 	test_files                   map[string]bool
 	str_lits                     []string
 	str_lit_ids                  map[string]int
@@ -66,6 +67,8 @@ mut:
 	fn_ptr_types                 map[string]string // fn_ptr:ret|params -> typedef name
 	fixed_array_ret_wrappers     map[string]bool   // bare fixed-array c_type name -> has a return wrapper struct
 	emitted_fixed_array_typedefs map[string]bool   // bare fixed-array typedefs already written (shared across passes)
+	fixed_array_typedefs_needed  map[string]FixedArrayTypedefInfo
+	fixed_array_typedefs_ready   bool
 	fn_decl_param_types          map[string][]types.Type
 	fn_decl_ret_types            map[string]types.Type // fn decl name (and qualified variants) -> return type
 	struct_decl_infos            map[string]StructDeclInfo
@@ -150,6 +153,7 @@ pub fn FlatGen.new() FlatGen {
 	return FlatGen{
 		sb:                           strings.new_builder(4096)
 		used_fns:                     map[string]bool{}
+		fn_gen_items:                 []FlatFnGenItem{}
 		test_files:                   map[string]bool{}
 		str_lit_ids:                  map[string]int{}
 		global_types:                 map[string]types.Type{}
@@ -176,6 +180,7 @@ pub fn FlatGen.new() FlatGen {
 		fn_ptr_types:                 map[string]string{}
 		fixed_array_ret_wrappers:     map[string]bool{}
 		emitted_fixed_array_typedefs: map[string]bool{}
+		fixed_array_typedefs_needed:  map[string]FixedArrayTypedefInfo{}
 		fn_decl_param_types:          map[string][]types.Type{}
 		fn_decl_ret_types:            map[string]types.Type{}
 		struct_decl_infos:            map[string]StructDeclInfo{}
@@ -240,6 +245,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.a = a
 	g.used_fns = used_fns.clone()
 	g.used_fn_names = []string{}
+	g.fn_gen_items = []FlatFnGenItem{}
 	g.str_lits = []string{}
 	g.defers = []flat.NodeId{}
 	g.fn_defers = []flat.NodeId{}
@@ -276,6 +282,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fn_ptr_types = map[string]string{}
 	g.fixed_array_ret_wrappers = map[string]bool{}
 	g.emitted_fixed_array_typedefs = map[string]bool{}
+	g.fixed_array_typedefs_needed = map[string]FixedArrayTypedefInfo{}
+	g.fixed_array_typedefs_ready = false
 	g.fn_decl_param_types = map[string][]types.Type{}
 	g.fn_decl_ret_types = map[string]types.Type{}
 	g.struct_decl_infos = map[string]StructDeclInfo{}
@@ -899,6 +907,7 @@ const c_headerless_handled_system_headers = {
 	'fcntl.h':         true
 	'float.h':         true
 	'io.h':            true
+	'mach-o/dyld.h':   true
 	'math.h':          true
 	'netdb.h':         true
 	'netinet/in.h':    true
@@ -937,6 +946,7 @@ const c_headerless_handled_system_headers = {
 	'sys/time.h':      true
 	'sys/types.h':     true
 	'sys/uio.h':       true
+	'sys/un.h':        true
 	'sys/utime.h':     true
 	'sys/utsname.h':   true
 	'sys/wait.h':      true
@@ -1543,7 +1553,7 @@ fn (g &FlatGen) visit_module_init(mod string, module_to_init map[string]string, 
 	}
 }
 
-fn (g &FlatGen) ordered_c_directives() []string {
+fn (mut g FlatGen) ordered_c_directives() []string {
 	mut directives_by_module := map[string][]CDirective{}
 	mut module_order := []string{}
 	for directive in g.c_directives {
@@ -2387,9 +2397,11 @@ fn (mut g FlatGen) gen_sum_pointer_value_expr(id flat.NodeId, expected types.Typ
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
-	mut sum_type0 := match expected {
-		types.Pointer { expected.base_type }
-		else { return false }
+	mut sum_type0 := types.Type(types.void_)
+	if expected is types.Pointer {
+		sum_type0 = expected.base_type
+	} else {
+		return false
 	}
 
 	if sum_type0 is types.Alias {
@@ -4530,6 +4542,9 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('int close(int fd);')
 	g.writeln('void* signal(int sig, void* handler);')
 	g.writeln('int atexit(void (*f)(void));')
+	g.writeln('#ifdef __APPLE__')
+	g.writeln('const char* _dyld_get_image_name(unsigned int image_index);')
+	g.writeln('#endif')
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)')
 	g.writeln('extern FILE* __stdinp;')
 	g.writeln('extern FILE* __stdoutp;')
@@ -4697,6 +4712,7 @@ const c_headerless_libc_declared_fns = [
 	'close',
 	'signal',
 	'atexit',
+	'_dyld_get_image_name',
 	'__error',
 	'__errno',
 	'__errno_location',
@@ -6356,6 +6372,9 @@ fn (mut g FlatGen) filelock_compat_decls() {
 }
 
 fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTypedefInfo {
+	if g.fixed_array_typedefs_ready {
+		return g.fixed_array_typedefs_needed
+	}
 	mut needed := map[string]FixedArrayTypedefInfo{}
 	old_module := g.tc.cur_module
 	for name, ret_type in g.tc.fn_ret_types {
@@ -6403,7 +6422,9 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		}
 	}
 	g.tc.cur_module = old_module
-	return needed
+	g.fixed_array_typedefs_needed = needed.move()
+	g.fixed_array_typedefs_ready = true
+	return g.fixed_array_typedefs_needed
 }
 
 fn (mut g FlatGen) fixed_array_typedefs() {

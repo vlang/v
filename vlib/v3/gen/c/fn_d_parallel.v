@@ -8,14 +8,6 @@ import v3.types
 const max_flat_cgen_jobs = 2
 const min_flat_cgen_parallel_items = 1024
 
-// FlatFnGenItem represents flat fn gen item data used by c.
-struct FlatFnGenItem {
-	node_id flat.NodeId
-	file    string
-	module  string
-	cost    int
-}
-
 $if !windows {
 	// FlatCgenChunkArgs represents flat cgen chunk args data used by c.
 	struct FlatCgenChunkArgs {
@@ -59,7 +51,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		g.gen_synthetic_main_after_fns()
 		return
 	}
-	items := g.collect_fn_gen_items()
+	items := g.ensure_fn_gen_items()
 	n_items := items.len
 	n_jobs := flat_cgen_job_count(runtime.nr_jobs(), n_items)
 	$if windows {
@@ -176,68 +168,6 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 		chunks << current
 	}
 	return chunks
-}
-
-// collect_fn_gen_items updates collect fn gen items state for c.
-fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
-	mut items := []FlatFnGenItem{}
-	preferred_fns := g.preferred_c_backend_fn_nodes()
-	mut cur_module := ''
-	mut cur_file := ''
-	for i in 0 .. g.a.nodes.len {
-		node := g.a.nodes[i]
-		kind_id := node_kind_id(node)
-		if kind_id == 77 {
-			cur_file = node.value
-			g.tc.cur_file = cur_file
-			cur_module = ''
-			g.tc.cur_module = cur_module
-			continue
-		}
-		if kind_id == 73 {
-			cur_module = node.value
-			g.tc.cur_file = cur_file
-			g.tc.cur_module = cur_module
-			continue
-		}
-
-		if kind_id != 61 {
-			continue
-		}
-		if !g.should_emit_fn_node_in_module(node, i, cur_module, cur_file) {
-			continue
-		}
-		qfn := qualified_fn_name_in_module(cur_module, node.value)
-		if preferred_idx := preferred_fns[qfn] {
-			if preferred_idx != i {
-				continue
-			}
-		}
-		if g.emitted_fn_contains(qfn) {
-			continue
-		}
-		g.emitted_fns[qfn] = true
-		items << FlatFnGenItem{
-			node_id: flat.NodeId(i)
-			file:    cur_file
-			module:  cur_module
-			cost:    node.children_count + 1
-		}
-	}
-	return items
-}
-
-// gen_fn_items emits fn items output for c.
-fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
-	for item in items {
-		if int(item.node_id) < 0 || int(item.node_id) >= g.a.nodes.len {
-			continue
-		}
-		g.tc.cur_file = item.file
-		g.tc.cur_module = item.module
-		node := g.a.nodes[int(item.node_id)]
-		g.gen_fn_in_module(node, item.module)
-	}
 }
 
 // prepare_parallel_items supports prepare parallel items handling for FlatGen.
