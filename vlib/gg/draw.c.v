@@ -496,6 +496,190 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 	}
 }
 
+// draw_rounded_rect_border  draws a rounded rectangle with a border using the given parameters.
+// when border width < 1 or the color is transparent, draws a borderless filled rounded rectangle.
+// when the background is transparent, draws a hollow rounded rectangle with only a border.
+// `x`,`y` is the top-left corner of the rectangle.
+// `w` is the width, `h` is the height.
+// `r` is the radius of the corner-rounding in pixels.
+// `border_w` is the width of the border,This implementation uses the mainstream inner border scheme (extending inward).
+// `border_c` is the color of the border.
+// `bg` is the background or fill color of the rounded rectangle,supporting transparent colors.
+pub fn (ctx &Context) draw_rounded_rect_border(x f32, y f32, w f32, h f32, r f32, border_w f32, border_c Color, bg Color) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+
+	mut new_r := r
+	if r < 1 {
+		new_r = 0
+	}
+	if w >= h && r > h / 2 {
+		new_r = h / 2
+	} else if r > w / 2 {
+		new_r = w / 2
+	}
+
+	mut bw := border_w
+	if border_w < 1 {
+		bw = 0
+	}
+	if w >= h && border_w > h / 2 {
+		bw = h / 2
+	} else if border_w > w / 2 {
+		bw = w / 2
+	}
+
+	sx := x * ctx.scale // start point x
+	sy := y * ctx.scale
+	width := w * ctx.scale
+	height := h * ctx.scale
+	new_r = new_r * ctx.scale
+	bw = bw * ctx.scale
+
+	// draw background
+	ctx.draw_rounded_rect_filled(sx, sy, width, height, r, bg)
+
+	// draw border
+	if bw == 0 || border_c.a == 0 {
+		return
+	}
+	if border_c.a != 255 {
+		sgl.load_pipeline(ctx.pipeline.alpha)
+	}
+	sgl.c4b(border_c.r, border_c.g, border_c.b, border_c.a)
+
+	// circle center coordinates
+	ltx := sx + new_r
+	lty := sy + new_r
+	rtx := sx + width - new_r
+	rty := sy + new_r
+	rbx := sx + width - new_r
+	rby := sy + height - new_r
+	lbx := sx + new_r
+	lby := sy + height - new_r
+
+	offset := math.abs(bw - new_r)
+	mut rad := f32(0)
+	mut dx := f32(0)
+	mut dy := f32(0)
+
+	sgl.begin_triangle_strip()
+
+	if new_r == 0 {
+		// top
+		sgl.v2f(ltx, lty)
+		sgl.v2f(ltx + offset, lty + offset)
+		sgl.v2f(rtx, rty)
+		sgl.v2f(rtx - offset, rty + offset)
+		// right
+		sgl.v2f(rbx, rby)
+		sgl.v2f(rbx - offset, rby - offset)
+		// bottom
+		sgl.v2f(lbx, lby)
+		sgl.v2f(lbx + offset, lby - offset)
+		// left
+		sgl.v2f(ltx, lty)
+		sgl.v2f(ltx + offset, lty + offset)
+		sgl.end()
+		return
+	}
+
+	if bw < new_r {
+		// left top
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.cosf(rad)
+			dy = new_r * math.sinf(rad)
+			sgl.v2f(ltx - dx, lty - dy)
+			dx = offset * math.cosf(rad)
+			dy = offset * math.sinf(rad)
+			sgl.v2f(ltx - dx, lty - dy)
+		}
+
+		// right top
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.sinf(rad)
+			dy = new_r * math.cosf(rad)
+			sgl.v2f(rtx + dx, rty - dy)
+			dx = offset * math.sinf(rad)
+			dy = offset * math.cosf(rad)
+			sgl.v2f(rtx + dx, rty - dy)
+		}
+		// right bottom
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.cosf(rad)
+			dy = new_r * math.sinf(rad)
+			sgl.v2f(rbx + dx, rby + dy)
+			dx = offset * math.cosf(rad)
+			dy = offset * math.sinf(rad)
+			sgl.v2f(rbx + dx, rby + dy)
+		}
+		// left bottom
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.sinf(rad)
+			dy = new_r * math.cosf(rad)
+			sgl.v2f(lbx - dx, lby + dy)
+			dx = offset * math.sinf(rad)
+			dy = offset * math.cosf(rad)
+			sgl.v2f(lbx - dx, lby + dy)
+		}
+		// close
+		sgl.v2f(ltx - new_r, lty)
+		sgl.v2f(ltx - offset, lty)
+	} else {
+		// left top
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.cosf(rad)
+			dy = new_r * math.sinf(rad)
+			sgl.v2f(ltx - dx, lty - dy)
+			dx = offset * math.cosf(rad)
+			dy = offset * math.sinf(rad)
+			sgl.v2f(ltx + offset, lty + offset)
+		}
+
+		// right top
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.sinf(rad)
+			dy = new_r * math.cosf(rad)
+			sgl.v2f(rtx + dx, rty - dy)
+			dx = offset * math.sinf(rad)
+			dy = offset * math.cosf(rad)
+			sgl.v2f(rtx - offset, rty + offset)
+		}
+		// right bottom
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.cosf(rad)
+			dy = new_r * math.sinf(rad)
+			sgl.v2f(rbx + dx, rby + dy)
+			dx = offset * math.cosf(rad)
+			dy = offset * math.sinf(rad)
+			sgl.v2f(rbx - offset, rby - offset)
+		}
+		// left bottom
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = new_r * math.sinf(rad)
+			dy = new_r * math.cosf(rad)
+			sgl.v2f(lbx - dx, lby + dy)
+			dx = offset * math.sinf(rad)
+			dy = offset * math.cosf(rad)
+			sgl.v2f(lbx + offset, lby - offset)
+		}
+		// close
+		sgl.v2f(ltx - new_r, lty)
+		sgl.v2f(ltx + offset, lty + offset)
+	}
+
+	sgl.end()
+}
+
 // draw_triangle_empty draws the outline of a triangle.
 // `x`,`y` defines the first point
 // `x2`,`y2` defines the second point
