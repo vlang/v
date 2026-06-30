@@ -353,3 +353,25 @@ fn main() {
 	assert !c_code.contains('\tint item;'), c_code
 	assert c_code.contains('b->item->val'), c_code
 }
+
+fn test_shared_option_payload_wrappers_are_unique() {
+	c_code := lock_codegen_gen_c('shared_option_payload_wrapper', 'struct Holder {
+mut:
+	a shared ?int
+	b shared ?string
+	c shared !string
+}
+
+fn main() {
+	_ := Holder{}
+}
+')
+	assert c_code.contains('struct __shared__Optional {'), c_code
+	assert c_code.contains('\tOptional val;'), c_code
+	assert c_code.contains('struct __shared__Optional_string {'), c_code
+	assert c_code.contains('\tOptional_string val;'), c_code
+	assert c_code.contains('\t__shared__Optional* a;'), c_code
+	assert c_code.contains('\t__shared__Optional_string* b;'), c_code
+	assert c_code.contains('\t__shared__Optional_string* c;'), c_code
+	assert !c_code.contains('struct __shared__Optional {\n\tsync__RwMutex mtx;\n\tOptional_string val;'), c_code
+}

@@ -1118,6 +1118,9 @@ fn (mut g FlatGen) shared_value_type_name(inner string) string {
 		val := types.c_type_name_part(g.tc.c_type(typ.value_type))
 		return 'Map_${key}_${val}'
 	}
+	if typ is types.OptionType || typ is types.ResultType {
+		return types.c_type_name_part(g.optional_type_name(typ))
+	}
 	mut ct := g.tc.c_type(typ)
 	if ct.starts_with('fn_ptr:') {
 		ct = g.resolve_fn_ptr_type(ct)
