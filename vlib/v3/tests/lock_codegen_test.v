@@ -163,6 +163,19 @@ fn assert_lock_expr_defer_runs_before_unlock(c_code string, name string) {
 	assert unlock_idx < return_idx, fragment
 }
 
+fn assert_lock_question_defer_runs_before_error_return(c_code string, name string) {
+	fragment := lock_codegen_counter_fn_fragment(c_code, name, 'Optional')
+	assert fragment.len > 0, c_code
+	defer_idx := fragment.index('->val = 2;') or { -1 }
+	assert defer_idx >= 0, fragment
+	unlock_idx := fragment.index('sync__RwMutex__unlock((sync__RwMutex*)') or { -1 }
+	assert unlock_idx >= 0, fragment
+	return_idx := fragment.index('return _t') or { -1 }
+	assert return_idx >= 0, fragment
+	assert defer_idx < unlock_idx, fragment
+	assert unlock_idx < return_idx, fragment
+}
+
 fn test_lock_codegen_sorts_deduplicates_and_cleans_branch_exits() {
 	c_code := lock_codegen_gen_c('lock_codegen_regression', 'struct Counter {
 mut:
@@ -281,6 +294,20 @@ fn lock_expr_defer_tail(mut c Counter) int {
 	return value
 }
 
+fn may_fail() !int {
+	return error("fail")
+}
+
+fn lock_question_defer(mut c Counter) !int {
+	lock c.a {
+		defer {
+			c.a = 2
+		}
+		may_fail()?
+	}
+	return 0
+}
+
 fn main() {
 	mut c := Counter{}
 	multi_lock(mut c)
@@ -295,6 +322,7 @@ fn main() {
 	goto_inside_lock(mut c)
 	goto_into_different_lock(mut c)
 	_ = lock_expr_defer_tail(mut c)
+	_ = lock_question_defer(mut c) or { 0 }
 }
 ')
 	assert c_code.contains('uintptr_t _t'), c_code
@@ -315,6 +343,7 @@ fn main() {
 	assert_return_read_before_lock_cleanup(c_code, 'return_shared')
 	assert_outer_defer_runs_after_lock_cleanup(c_code, 'defer_after_lock')
 	assert_lock_expr_defer_runs_before_unlock(c_code, 'lock_expr_defer_tail')
+	assert_lock_question_defer_runs_before_error_return(c_code, 'lock_question_defer')
 }
 
 fn test_shared_wrapper_value_type_uses_declaring_module() {

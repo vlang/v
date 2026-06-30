@@ -64,6 +64,9 @@ fn (g &FlatGen) string_interp_child_type(child_id flat.NodeId, child flat.Node) 
 	if child.kind == .ident && g.current_param_is_mut(child.value) {
 		if param_type := g.current_param_type(child.value) {
 			if param_type is types.Pointer {
+				if map_str_clean_type(param_type.base_type) is types.Map {
+					return param_type
+				}
 				return param_type.base_type
 			}
 			return param_type

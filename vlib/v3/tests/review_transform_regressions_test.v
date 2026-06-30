@@ -261,6 +261,13 @@ fn test_map_str_normalizes_alias_key_and_value_types() {
 	assert out == "{23: 'id'}\n{'price': 1.25}"
 }
 
+fn test_mut_map_param_interpolation_preserves_pointer() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'mut_map_param_interpolation',
+		"type Scores = map[string]int\n\nfn show(mut m map[string]int) {\n\tprintln('\${m}')\n}\n\nfn show_alias(mut m Scores) {\n\tprintln('\${m}')\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm['x'] = 3\n\tshow(mut m)\n\tmut scores := Scores(map[string]int{})\n\tscores['y'] = 4\n\tshow_alias(mut scores)\n}\n")
+	assert out == "{'x': 3}\n{'y': 4}"
+}
+
 fn test_map_literal_stringification_evaluates_entries_once() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'map_literal_str_side_effects',

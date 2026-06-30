@@ -2509,7 +2509,7 @@ fn (mut g FlatGen) gen_assign_or_expr(node flat.Node, lhs_idx int, or_node flat.
 	if or_node.value == '!' || or_node.value == '?' {
 		if g.cur_fn_ret_is_optional {
 			fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
-			g.gen_active_lock_leaves()
+			g.gen_return_cleanup()
 			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
 			g.writeln('panic(IError__str(err));')
@@ -2566,7 +2566,7 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 	if or_node.value == '!' || or_node.value == '?' {
 		if g.cur_fn_ret_is_optional {
 			fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
-			g.gen_active_lock_leaves()
+			g.gen_return_cleanup()
 			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
 			g.writeln('panic(IError__str(err));')
@@ -2773,7 +2773,7 @@ fn (mut g FlatGen) gen_or_body_value(or_body flat.Node, value_name string, value
 			expr_id := g.a.child(&child, 0)
 			if g.expr_is_error_call(expr_id) && g.cur_fn_ret_is_optional {
 				fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
-				g.gen_active_lock_leaves()
+				g.gen_return_cleanup()
 				g.write('return ')
 				g.gen_optional_error_from_call(fn_opt_ct, g.a.nodes[int(expr_id)])
 				g.write(';')
@@ -2843,7 +2843,7 @@ fn (mut g FlatGen) gen_or_expr_stmt(node flat.Node) {
 	if node.value == '!' || node.value == '?' {
 		if g.cur_fn_ret_is_optional {
 			fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
-			g.gen_active_lock_leaves()
+			g.gen_return_cleanup()
 			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
 			g.writeln('panic(IError__str(err));')
