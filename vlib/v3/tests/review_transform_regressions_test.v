@@ -67,6 +67,23 @@ fn test_lifted_fn_literal_mut_param_interpolation_derefs_value() {
 	assert out == '7'
 }
 
+fn test_shared_field_without_sync_import_compiles_and_locks() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'shared_field_without_sync_import',
+		'struct S {\nmut:\n\ta shared int\n}\n\nfn main() {\n\tmut s := S{}\n\tlock s.a {\n\t\ts.a = 7\n\t\tprintln(int_str(s.a))\n\t}\n}\n')
+	assert out == '7'
+}
+
+fn test_imported_shared_field_without_sync_import_compiles_and_locks() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'imported_shared_field_without_sync_import', {
+		'v.mod':     'Module { name: "imported_shared_field_without_sync_import" }\n'
+		'main.v':    'module main\n\nimport bag\n\nfn main() {\n\tprintln(int_str(bag.value()))\n}\n'
+		'bag/bag.v': 'module bag\n\nstruct S {\nmut:\n\ta shared int\n}\n\npub fn value() int {\n\tmut s := S{}\n\tmut out := 0\n\tlock s.a {\n\t\ts.a = 9\n\t\tout = s.a\n\t}\n\treturn out\n}\n'
+	}, 'main.v')
+	assert out == '9'
+}
+
 fn test_reject_dynamic_arrays_for_fixed_array_expectations() {
 	v3_bin := build_v3_review_transform()
 	run_bad(v3_bin, 'bad_fixed_array_literal_len',

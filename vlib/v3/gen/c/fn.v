@@ -225,7 +225,7 @@ fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int,
 		return true
 	}
 	if module_name == 'sync' && g.needs_shared_runtime
-		&& node.value in ['should_be_zero', 'RwMutex.init', 'RwMutex.lazy_init', 'RwMutex.lock', 'RwMutex.unlock', 'RwMutex.rlock', 'RwMutex.runlock'] {
+		&& node.value in ['cpanic', 'cpanic_errno', 'should_be_zero', 'RwMutex.init', 'RwMutex.lazy_init', 'RwMutex.lock', 'RwMutex.unlock', 'RwMutex.rlock', 'RwMutex.runlock'] {
 		return true
 	}
 	// `array.pointers` is emitted as an intrinsic at call sites; the raw
