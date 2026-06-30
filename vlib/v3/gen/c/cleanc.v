@@ -10,6 +10,7 @@ struct ActiveLock {
 	lock_count  int
 	unlock_fn   string
 	loop_depth  int
+	defer_depth int
 }
 
 struct LoopLabelState {

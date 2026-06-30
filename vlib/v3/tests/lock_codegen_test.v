@@ -59,11 +59,22 @@ fn lock_codegen_gen_c_sources(name string, files map[string]string) string {
 }
 
 fn lock_codegen_fn_fragment(c_code string, name string) string {
-	start := c_code.index('\nvoid ${name}(Counter* c) {') or { return '' }
+	return lock_codegen_counter_fn_fragment(c_code, name, 'void')
+}
+
+fn lock_codegen_counter_fn_fragment(c_code string, name string, return_type string) string {
+	start := c_code.index('\n${return_type} ${name}(Counter* c) {') or { return '' }
 	rest := c_code[start + 1..]
 	body_start := rest.index(') {') or { return rest }
 	after_body_start := rest[body_start + 3..]
-	next_fn := after_body_start.index('\nvoid ') or { return rest }
+	mut next_fn := after_body_start.len
+	for marker in ['\nvoid ', '\nint ', '\nstring ', '\nArray_', '\nOptional_'] {
+		if idx := after_body_start.index(marker) {
+			if idx < next_fn {
+				next_fn = idx
+			}
+		}
+	}
 	return rest[..body_start + 3 + next_fn]
 }
 
@@ -78,6 +89,39 @@ fn assert_lock_cleanup_before_branch(c_code string, name string, branch string) 
 	lock_idx := before_branch.last_index('sync__RwMutex__lock((sync__RwMutex*)') or { -1 }
 	assert lock_idx >= 0, fragment
 	assert lock_idx < unlock_idx, fragment
+}
+
+fn assert_return_read_before_lock_cleanup(c_code string, name string) {
+	fragment := lock_codegen_counter_fn_fragment(c_code, name, 'int')
+	assert fragment.len > 0, c_code
+	read_idx := fragment.index('->val') or { -1 }
+	assert read_idx >= 0, fragment
+	unlock_idx := fragment.index('sync__RwMutex__unlock((sync__RwMutex*)') or { -1 }
+	assert unlock_idx >= 0, fragment
+	return_idx := fragment.last_index('return ') or { -1 }
+	assert return_idx >= 0, fragment
+	assert read_idx < unlock_idx, fragment
+	assert unlock_idx < return_idx, fragment
+}
+
+fn assert_outer_defer_runs_after_lock_cleanup(c_code string, name string) {
+	fragment := lock_codegen_counter_fn_fragment(c_code, name, 'int')
+	assert fragment.len > 0, c_code
+	first_lock_idx := fragment.index('sync__RwMutex__lock((sync__RwMutex*)') or { -1 }
+	assert first_lock_idx >= 0, fragment
+	read_idx := fragment.index('->val') or { -1 }
+	assert read_idx >= 0, fragment
+	after_read := fragment[read_idx..]
+	unlock_rel := after_read.index('sync__RwMutex__unlock((sync__RwMutex*)') or { -1 }
+	assert unlock_rel >= 0, fragment
+	unlock_idx := read_idx + unlock_rel
+	after_unlock := fragment[unlock_idx + 1..]
+	defer_lock_rel := after_unlock.index('sync__RwMutex__lock((sync__RwMutex*)') or { -1 }
+	assert defer_lock_rel >= 0, fragment
+	defer_lock_idx := unlock_idx + 1 + defer_lock_rel
+	assert first_lock_idx < read_idx, fragment
+	assert read_idx < unlock_idx, fragment
+	assert unlock_idx < defer_lock_idx, fragment
 }
 
 fn test_lock_codegen_sorts_deduplicates_and_cleans_branch_exits() {
@@ -141,6 +185,25 @@ fn lock_if_tail(mut c Counter, cond bool) int {
 	}
 }
 
+fn return_shared(mut c Counter) int {
+	lock c.a {
+		return c.a
+	}
+	return 0
+}
+
+fn defer_after_lock(mut c Counter) int {
+	defer {
+		lock c.a {
+			_ := c.a
+		}
+	}
+	lock c.a {
+		return c.a
+	}
+	return 0
+}
+
 fn main() {
 	mut c := Counter{}
 	multi_lock(mut c)
@@ -149,6 +212,8 @@ fn main() {
 	branch_labeled_break(mut c)
 	branch_labeled_continue(mut c)
 	_ = lock_if_tail(mut c, true)
+	_ = return_shared(mut c)
+	_ = defer_after_lock(mut c)
 }
 ')
 	assert c_code.contains('uintptr_t _t'), c_code
@@ -163,6 +228,8 @@ fn main() {
 	assert_lock_cleanup_before_branch(c_code, 'branch_labeled_break', 'goto outer_break;')
 	assert_lock_cleanup_before_branch(c_code, 'branch_labeled_continue', 'goto outer_continue;')
 	assert c_code.contains(' = (cond ? 1 : 2);'), c_code
+	assert_return_read_before_lock_cleanup(c_code, 'return_shared')
+	assert_outer_defer_runs_after_lock_cleanup(c_code, 'defer_after_lock')
 }
 
 fn test_shared_wrapper_value_type_uses_declaring_module() {

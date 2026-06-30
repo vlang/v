@@ -123,6 +123,7 @@ fn (mut g FlatGen) gen_lock_enter(node flat.Node) ?ActiveLock {
 		lock_count:  lock_count
 		unlock_fn:   unlock_fn
 		loop_depth:  g.loop_depth
+		defer_depth: g.defers.len
 	}
 }
 
@@ -170,8 +171,28 @@ fn (mut g FlatGen) gen_branch_lock_leaves(label string) {
 }
 
 fn (mut g FlatGen) gen_return_cleanup() {
-	g.gen_all_defers()
-	g.gen_active_lock_leaves()
+	if g.active_locks.len == 0 {
+		g.gen_all_defers()
+		return
+	}
+	mut defer_end := g.defers.len
+	mut i := g.active_locks.len - 1
+	for i >= 0 {
+		active := g.active_locks[i]
+		mut defer_start := active.defer_depth
+		if defer_start < 0 {
+			defer_start = 0
+		}
+		if defer_start > defer_end {
+			defer_start = defer_end
+		}
+		g.gen_defers_range(defer_start, defer_end)
+		defer_end = defer_start
+		g.gen_lock_leave(active)
+		i--
+	}
+	g.gen_defers_range(0, defer_end)
+	g.gen_fn_defers()
 }
 
 fn (mut g FlatGen) gen_lock_stmt(node flat.Node) {
@@ -439,7 +460,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			if g.cur_fn_ret is types.Enum {
 				g.expected_enum = g.cur_fn_ret.name
 			}
-			if node.children_count > 0 && g.has_pending_defers() {
+			if node.children_count > 0 && (g.has_pending_defers() || g.active_locks.len > 0) {
 				g.gen_return_with_defers(node)
 				g.expected_enum = ''
 				return

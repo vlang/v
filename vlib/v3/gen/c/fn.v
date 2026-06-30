@@ -1841,11 +1841,26 @@ fn (mut g FlatGen) gen_all_defers() {
 
 // gen_defers_from emits defers from output for c.
 fn (mut g FlatGen) gen_defers_from(start int) {
+	g.gen_defers_range(start, g.defers.len)
+}
+
+fn (mut g FlatGen) gen_defers_range(start int, end int) {
 	if g.defers.len == 0 {
 		return
 	}
-	mut i := g.defers.len
-	for i > start {
+	mut defer_start := start
+	if defer_start < 0 {
+		defer_start = 0
+	}
+	mut defer_end := end
+	if defer_end > g.defers.len {
+		defer_end = g.defers.len
+	}
+	if defer_start >= defer_end {
+		return
+	}
+	mut i := defer_end
+	for i > defer_start {
 		i--
 		defer_body := g.a.nodes[int(g.defers[i])]
 		g.writeln('{')
