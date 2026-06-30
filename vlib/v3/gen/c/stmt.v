@@ -144,6 +144,19 @@ fn (mut g FlatGen) gen_lock_leave(active ActiveLock) {
 	g.writeln('}')
 }
 
+fn (mut g FlatGen) gen_lock_scope_cleanup(active ActiveLock, defer_end int) int {
+	mut defer_start := active.defer_depth
+	if defer_start < 0 {
+		defer_start = 0
+	}
+	if defer_start > defer_end {
+		defer_start = defer_end
+	}
+	g.gen_defers_range(defer_start, defer_end)
+	g.gen_lock_leave(active)
+	return defer_start
+}
+
 fn (mut g FlatGen) gen_active_lock_leaves() {
 	mut i := g.active_locks.len - 1
 	for i >= 0 {
@@ -159,13 +172,14 @@ fn (g &FlatGen) branch_target_loop_depth(label string) int {
 	return g.loop_label_depths[label] or { g.loop_depth }
 }
 
-fn (mut g FlatGen) gen_branch_lock_leaves(label string) {
+fn (mut g FlatGen) gen_branch_lock_cleanup(label string) {
 	target_depth := g.branch_target_loop_depth(label)
+	mut defer_end := g.defers.len
 	mut i := g.active_locks.len - 1
 	for i >= 0 {
 		active := g.active_locks[i]
 		if active.loop_depth >= target_depth {
-			g.gen_lock_leave(active)
+			defer_end = g.gen_lock_scope_cleanup(active, defer_end)
 		}
 		i--
 	}
@@ -229,9 +243,10 @@ fn (mut g FlatGen) gen_goto_lock_leaves(label string) bool {
 		}
 	}
 	mut i := g.active_locks.len - 1
+	mut defer_end := g.defers.len
 	for i >= 0 {
 		if i >= target_scopes.len {
-			g.gen_lock_leave(g.active_locks[i])
+			defer_end = g.gen_lock_scope_cleanup(g.active_locks[i], defer_end)
 		}
 		i--
 	}
@@ -247,16 +262,7 @@ fn (mut g FlatGen) gen_return_cleanup() {
 	mut i := g.active_locks.len - 1
 	for i >= 0 {
 		active := g.active_locks[i]
-		mut defer_start := active.defer_depth
-		if defer_start < 0 {
-			defer_start = 0
-		}
-		if defer_start > defer_end {
-			defer_start = defer_end
-		}
-		g.gen_defers_range(defer_start, defer_end)
-		defer_end = defer_start
-		g.gen_lock_leave(active)
+		defer_end = g.gen_lock_scope_cleanup(active, defer_end)
 		i--
 	}
 	g.gen_defers_range(0, defer_end)
@@ -729,7 +735,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.gen_lock_stmt(id, node)
 		}
 		.break_stmt {
-			g.gen_branch_lock_leaves(node.value)
+			g.gen_branch_lock_cleanup(node.value)
 			if node.value.len > 0 {
 				g.writeln('goto ${c_name(node.value)}_break;')
 			} else {
@@ -737,7 +743,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			}
 		}
 		.continue_stmt {
-			g.gen_branch_lock_leaves(node.value)
+			g.gen_branch_lock_cleanup(node.value)
 			if node.value.len > 0 {
 				g.writeln('goto ${c_name(node.value)}_continue;')
 			} else {

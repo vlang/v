@@ -93,6 +93,20 @@ fn assert_lock_cleanup_before_branch(c_code string, name string, branch string) 
 	assert lock_idx < unlock_idx, fragment
 }
 
+fn assert_lock_defer_runs_before_branch(c_code string, name string, branch string) {
+	fragment := lock_codegen_fn_fragment(c_code, name)
+	assert fragment.len > 0, c_code
+	branch_idx := fragment.last_index(branch) or { -1 }
+	assert branch_idx >= 0, fragment
+	before_branch := fragment[..branch_idx]
+	defer_idx := before_branch.last_index('->val = 2;') or { -1 }
+	assert defer_idx >= 0, fragment
+	unlock_idx := before_branch.last_index('sync__RwMutex__unlock((sync__RwMutex*)') or { -1 }
+	assert unlock_idx >= 0, fragment
+	assert defer_idx < unlock_idx, fragment
+	assert unlock_idx < branch_idx, fragment
+}
+
 fn assert_no_lock_cleanup_before_branch(c_code string, name string, branch string) {
 	fragment := lock_codegen_fn_fragment(c_code, name)
 	assert fragment.len > 0, c_code
@@ -192,6 +206,9 @@ fn multi_lock(mut c Counter) {
 fn branch_continue(mut c Counter) {
 	for {
 		lock c.a {
+			defer {
+				c.a = 2
+			}
 			continue
 		}
 	}
@@ -200,6 +217,9 @@ fn branch_continue(mut c Counter) {
 fn branch_break(mut c Counter) {
 	for {
 		lock c.a {
+			defer {
+				c.a = 2
+			}
 			break
 		}
 	}
@@ -258,6 +278,9 @@ fn defer_after_lock(mut c Counter) int {
 
 fn goto_out_of_lock(mut c Counter) {
 	lock c.a {
+		defer {
+			c.a = 2
+		}
 		goto done
 	}
 done:
@@ -337,6 +360,9 @@ fn main() {
 	assert_lock_cleanup_before_branch(c_code, 'branch_labeled_break', 'goto outer_break;')
 	assert_lock_cleanup_before_branch(c_code, 'branch_labeled_continue', 'goto outer_continue;')
 	assert_lock_cleanup_before_branch(c_code, 'goto_out_of_lock', 'goto done;')
+	assert_lock_defer_runs_before_branch(c_code, 'branch_continue', 'continue;')
+	assert_lock_defer_runs_before_branch(c_code, 'branch_break', 'break;')
+	assert_lock_defer_runs_before_branch(c_code, 'goto_out_of_lock', 'goto done;')
 	assert_no_lock_cleanup_before_branch(c_code, 'goto_inside_lock', 'goto inside;')
 	assert_lock_scope_goto_rejected(c_code, 'goto_into_different_lock', 'goto other;')
 	assert c_code.contains(' = (cond ? 1 : 2);'), c_code
