@@ -16,7 +16,7 @@ mut:
 @[params]
 pub struct SSLListenerOptions {
 pub:
-	family net.AddrFamily = .ip
+	family net.AddrFamily = .unspec
 }
 
 // new_ssl_listener creates a new SSLListener binding to `saddr` with `config`.
@@ -30,6 +30,17 @@ pub fn new_ssl_listener(saddr string, config SSLConnectConfig, options SSLListen
 	return listener
 }
 
+fn ssl_listener_family(saddr string, family net.AddrFamily) net.AddrFamily {
+	if family != .unspec {
+		return family
+	}
+	address, _ := net.split_address(saddr) or { return .ip }
+	if address == '::' || address.contains(':') {
+		return .ip6
+	}
+	return .ip
+}
+
 fn (mut l SSLListener) init() ! {
 	if l.config.cert == '' || l.config.cert_key == '' {
 		return error('net.openssl SSLListener.init, no certificate or key provided')
@@ -38,7 +49,8 @@ fn (mut l SSLListener) init() ! {
 		return error('net.openssl SSLListener.init, no root CA provided')
 	}
 
-	l.tcp_listener = net.listen_tcp(l.options.family, l.saddr, net.ListenOptions{})!
+	l.tcp_listener =
+		net.listen_tcp(ssl_listener_family(l.saddr, l.options.family), l.saddr, net.ListenOptions{})!
 
 	l.sslctx = unsafe { C.SSL_CTX_new(C.v_net_openssl_TLS_server_method()) }
 	if l.sslctx == 0 {

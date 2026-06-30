@@ -49,6 +49,19 @@ fn test_ssl_listener_honors_ipv6_family() ! {
 	}
 }
 
+fn test_ssl_listener_infers_ipv6_family_from_address() ! {
+	$if macos || linux {
+		mut listener := new_ssl_listener('[::1]:0', SSLConnectConfig{
+			cert:     os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.crt')
+			cert_key: os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.key')
+		})!
+		defer {
+			listener.shutdown() or {}
+		}
+		assert listener.tcp_listener.addr()!.family() == .ip6
+	}
+}
+
 fn test_ssl_listener_handshake_honors_timeout() ! {
 	mut listener := new_test_ssl_listener('127.0.0.1:0', .ip)!
 	defer {

@@ -1,22 +1,26 @@
 // vtest build: !docker-ubuntu-musl && !windows // !windows: fasthttp.Server.run not implemented; !docker-ubuntu-musl: readonly-permission assertions can fail there
+// vtest vflags: -enable-globals
 import veb
+import net
 import net.http
 import os
 import time
 import compress.gzip
 import compress.zstd
 
-const port = 14013
-const port_no_auto = 14014 // Port for static_compression_max_size = 0 test
-const port_gzip_only = 14015 // Port for enable_static_gzip only test
-const port_zstd_only = 14016 // Port for enable_static_zstd only test
-const port_filtered_mimes = 14017 // Port for static_compression_mime_types test
-
-const localserver = 'http://127.0.0.1:${port}'
-const localserver_no_auto = 'http://127.0.0.1:${port_no_auto}'
-const localserver_gzip_only = 'http://127.0.0.1:${port_gzip_only}'
-const localserver_zstd_only = 'http://127.0.0.1:${port_zstd_only}'
-const localserver_filtered_mimes = 'http://127.0.0.1:${port_filtered_mimes}'
+@[has_globals]
+__global (
+	port                       int
+	port_no_auto               int
+	port_gzip_only             int
+	port_zstd_only             int
+	port_filtered_mimes        int
+	localserver                string
+	localserver_no_auto        string
+	localserver_gzip_only      string
+	localserver_zstd_only      string
+	localserver_filtered_mimes string
+)
 
 const exit_after = time.second * 30
 
@@ -77,9 +81,27 @@ fn find_cached_static_file(file_name string, ext string) string {
 	return ''
 }
 
+fn unused_tcp_port() int {
+	mut listener := net.listen_tcp(.ip, '127.0.0.1:0') or { panic(err) }
+	defer {
+		listener.close() or {}
+	}
+	return listener.addr() or { panic(err) }.port() or { panic(err) }
+}
+
 fn testsuite_begin() {
 	os.chdir(os.dir(@FILE))!
 	reset_test_static_cache()
+	port = unused_tcp_port()
+	port_no_auto = unused_tcp_port()
+	port_gzip_only = unused_tcp_port()
+	port_zstd_only = unused_tcp_port()
+	port_filtered_mimes = unused_tcp_port()
+	localserver = 'http://127.0.0.1:${port}'
+	localserver_no_auto = 'http://127.0.0.1:${port_no_auto}'
+	localserver_gzip_only = 'http://127.0.0.1:${port_gzip_only}'
+	localserver_zstd_only = 'http://127.0.0.1:${port_zstd_only}'
+	localserver_filtered_mimes = 'http://127.0.0.1:${port_filtered_mimes}'
 
 	// Create test directory and files
 	os.mkdir_all('testdata_compression')!
@@ -146,7 +168,11 @@ fn run_app_test() {
 	// Add compression middleware (gzip for this test app)
 	app.use(veb.encode_gzip[Context]())
 
-	spawn veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 25, family: .ip)
+	spawn veb.run_at[App, Context](mut app,
+		port:               port
+		timeout_in_seconds: 25
+		family:             .ip
+	)
 	_ := <-app.started
 }
 
