@@ -20,7 +20,8 @@ fn lock_codegen_gen_c(name string, source string) string {
 	assert tc.errors.len == 0, tc.errors.str()
 	transform.transform(mut a, &tc)
 	tc.annotate_types()
-	used_fns := markused.mark_used(a, tc)
+	mut used_fns := markused.mark_used(a, tc)
+	used_fns = transform.monomorphize_with_used(mut a, &tc, used_fns)
 	mut g := cgen.FlatGen.new()
 	return g.gen_with_used_options(a, used_fns, &tc, true)
 }
@@ -53,7 +54,8 @@ fn lock_codegen_gen_c_sources(name string, files map[string]string) string {
 	assert tc.errors.len == 0, tc.errors.str()
 	transform.transform(mut a, &tc)
 	tc.annotate_types()
-	used_fns := markused.mark_used(a, tc)
+	mut used_fns := markused.mark_used(a, tc)
+	used_fns = transform.monomorphize_with_used(mut a, &tc, used_fns)
 	mut g := cgen.FlatGen.new()
 	return g.gen_with_used_options(a, used_fns, &tc, true)
 }
@@ -322,4 +324,32 @@ pub mut:
 	assert c_code.contains('struct __shared__m__Foo {'), c_code
 	assert c_code.contains('\tm__Foo val;'), c_code
 	assert !c_code.contains('\tFoo val;'), c_code
+}
+
+fn test_generic_shared_field_uses_concrete_wrapper() {
+	c_code := lock_codegen_gen_c('generic_shared_field_wrapper', 'struct Box[T] {
+mut:
+	item shared T
+}
+
+fn read_box(mut b Box[int]) int {
+	lock b.item {
+		return b.item
+	}
+	return 0
+}
+
+fn main() {
+	mut b := Box[int]{
+		item: 1
+	}
+	_ := read_box(mut b)
+}
+')
+	assert c_code.contains('struct __shared__int {'), c_code
+	assert c_code.contains('\tint val;'), c_code
+	assert c_code.contains('struct Box_int {'), c_code
+	assert c_code.contains('\t__shared__int* item;'), c_code
+	assert !c_code.contains('\tint item;'), c_code
+	assert c_code.contains('b->item->val'), c_code
 }

@@ -921,27 +921,182 @@ fn shared_inner_type_text(raw string) ?string {
 	return none
 }
 
+fn shared_generic_app_parts(typ string) (string, []string, bool) {
+	if typ.starts_with('fn(') || typ.starts_with('fn (') {
+		return '', []string{}, false
+	}
+	bracket := typ.index_u8(`[`)
+	if bracket <= 0 {
+		return '', []string{}, false
+	}
+	bracket_end := shared_generic_matching_bracket(typ, bracket)
+	if bracket_end <= bracket || bracket_end >= typ.len {
+		return '', []string{}, false
+	}
+	return typ[..bracket], shared_split_generic_args(typ[bracket + 1..bracket_end]), true
+}
+
+fn shared_generic_matching_bracket(s string, start int) int {
+	mut depth := 0
+	for i in start .. s.len {
+		if s[i] == `[` {
+			depth++
+		} else if s[i] == `]` {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return s.len
+}
+
+fn shared_split_generic_args(s string) []string {
+	mut parts := []string{}
+	mut bracket_depth := 0
+	mut paren_depth := 0
+	mut start := 0
+	for i in 0 .. s.len {
+		match s[i] {
+			`[` {
+				bracket_depth++
+			}
+			`]` {
+				bracket_depth--
+			}
+			`(` {
+				paren_depth++
+			}
+			`)` {
+				paren_depth--
+			}
+			`,` {
+				if bracket_depth == 0 && paren_depth == 0 {
+					parts << s[start..i].trim_space()
+					start = i + 1
+				}
+			}
+			else {}
+		}
+	}
+	parts << s[start..].trim_space()
+	return parts
+}
+
+fn substitute_shared_generic_type_text(typ string, params []string, args []string) string {
+	clean := typ.trim_space()
+	if clean.len == 0 || args.len == 0 {
+		return typ
+	}
+	for i, param in params {
+		if clean == param {
+			if i < args.len {
+				return args[i]
+			}
+			return clean
+		}
+	}
+	if clean.starts_with('&') {
+		return '&' + substitute_shared_generic_type_text(clean[1..], params, args)
+	}
+	if clean.starts_with('mut ') {
+		return 'mut ' + substitute_shared_generic_type_text(clean[4..], params, args)
+	}
+	if clean.starts_with('?') {
+		return '?' + substitute_shared_generic_type_text(clean[1..], params, args)
+	}
+	if clean.starts_with('!') {
+		return '!' + substitute_shared_generic_type_text(clean[1..], params, args)
+	}
+	if clean.starts_with('...') {
+		return '...' + substitute_shared_generic_type_text(clean[3..], params, args)
+	}
+	if clean.starts_with('shared ') {
+		return 'shared ' + substitute_shared_generic_type_text(clean[7..], params, args)
+	}
+	if clean.starts_with('[]') {
+		return '[]' + substitute_shared_generic_type_text(clean[2..], params, args)
+	}
+	if clean.starts_with('map[') {
+		bracket_end := shared_generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			key := substitute_shared_generic_type_text(clean[4..bracket_end], params, args)
+			val := substitute_shared_generic_type_text(clean[bracket_end + 1..], params, args)
+			return 'map[${key}]${val}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := shared_generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return clean[..bracket_end + 1] +
+				substitute_shared_generic_type_text(clean[bracket_end + 1..], params, args)
+		}
+	}
+	if clean.starts_with('(') && clean.ends_with(')') && clean.contains(',') {
+		mut parts := []string{}
+		for part in shared_split_generic_args(clean[1..clean.len - 1]) {
+			parts << substitute_shared_generic_type_text(part, params, args)
+		}
+		return '(' + parts.join(', ') + ')'
+	}
+	base, nested_args, ok := shared_generic_app_parts(clean)
+	if ok {
+		mut resolved_args := []string{}
+		for arg in nested_args {
+			resolved_args << substitute_shared_generic_type_text(arg, params, args)
+		}
+		return '${base}[${resolved_args.join(', ')}]'
+	}
+	return clean
+}
+
+fn shared_generic_base_matches_decl(base string, info StructDeclInfo) bool {
+	if base == info.full_name {
+		return true
+	}
+	return !info.full_name.contains('.') && base == info.node.value
+}
+
 fn (mut g FlatGen) collect_shared_type_names() {
 	g.shared_type_names = map[string]SharedTypeInfo{}
 	g.needs_shared_runtime = false
 	old_module := g.tc.cur_module
 	for _, info in g.struct_decl_infos {
 		g.tc.cur_module = info.module
-		for i in 0 .. info.node.children_count {
-			field := g.a.child_node(&info.node, i)
-			if field.kind != .field_decl {
-				continue
-			}
-			inner := shared_inner_type_text(field.typ) or { continue }
-			wrapper := g.shared_wrapper_c_name(inner)
-			g.shared_type_names[wrapper] = SharedTypeInfo{
-				inner:  inner
-				module: info.module
-			}
-			g.needs_shared_runtime = true
+		if info.node.generic_params.len > 0 || info.node.typ.contains('generic') {
+			g.collect_generic_shared_type_names(info)
+			continue
 		}
+		g.collect_shared_type_names_from_info(info, []string{})
 	}
 	g.tc.cur_module = old_module
+}
+
+fn (mut g FlatGen) collect_generic_shared_type_names(info StructDeclInfo) {
+	for type_name, _ in g.tc.structs {
+		base, args, ok := shared_generic_app_parts(type_name)
+		if !ok || !shared_generic_base_matches_decl(base, info) {
+			continue
+		}
+		g.collect_shared_type_names_from_info(info, args)
+	}
+}
+
+fn (mut g FlatGen) collect_shared_type_names_from_info(info StructDeclInfo, args []string) {
+	for i in 0 .. info.node.children_count {
+		field := g.a.child_node(&info.node, i)
+		if field.kind != .field_decl {
+			continue
+		}
+		inner := shared_inner_type_text(field.typ) or { continue }
+		concrete_inner := substitute_shared_generic_type_text(inner, info.node.generic_params, args)
+		wrapper := g.shared_wrapper_c_name(concrete_inner)
+		g.shared_type_names[wrapper] = SharedTypeInfo{
+			inner:  concrete_inner
+			module: info.module
+		}
+		g.needs_shared_runtime = true
+	}
 }
 
 fn (g &FlatGen) sorted_shared_wrapper_names() []string {
@@ -993,8 +1148,37 @@ fn (mut g FlatGen) shared_wrapper_c_name(inner string) string {
 	return '__shared__${g.shared_value_type_name(inner)}'
 }
 
+fn (mut g FlatGen) generic_shared_field_info(type_name string, field_name string) ?SharedFieldInfo {
+	base, args, ok := shared_generic_app_parts(type_name)
+	if !ok {
+		return none
+	}
+	info := g.find_struct_decl(base) or { return none }
+	old_module := g.tc.cur_module
+	g.tc.cur_module = info.module
+	defer {
+		g.tc.cur_module = old_module
+	}
+	for i in 0 .. info.node.children_count {
+		field := g.a.child_node(&info.node, i)
+		if field.kind != .field_decl || field.value != field_name {
+			continue
+		}
+		inner := shared_inner_type_text(field.typ) or { return none }
+		concrete_inner := substitute_shared_generic_type_text(inner, info.node.generic_params, args)
+		return SharedFieldInfo{
+			inner:   concrete_inner
+			wrapper: g.shared_wrapper_c_name(concrete_inner)
+			module:  info.module
+		}
+	}
+	return none
+}
+
 fn (mut g FlatGen) shared_field_info(type_name string, field_name string) ?SharedFieldInfo {
-	info := g.find_struct_decl(type_name) or { return none }
+	info := g.find_struct_decl(type_name) or {
+		return g.generic_shared_field_info(type_name, field_name)
+	}
 	old_module := g.tc.cur_module
 	g.tc.cur_module = info.module
 	defer {
