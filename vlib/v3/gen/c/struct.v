@@ -152,7 +152,7 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 		value_id := g.a.child(field, 0)
 		if field.value.len == 0 {
 			if sf := g.struct_field_at(lookup_name, i) {
-				if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(node.value, sf.name,
+				if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(lookup_name, sf.name,
 					value_id)
 				{
 					inner_ct := g.tc.c_type(heap_copy_type)
@@ -160,7 +160,7 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 					g.gen_expr(value_id)
 					g.write(', sizeof(${inner_ct}))')
 				} else {
-					g.gen_struct_field_expr_for_field(value_id, node.value, sf.name, sf.typ)
+					g.gen_struct_field_expr_for_field(value_id, lookup_name, sf.name, sf.typ)
 				}
 				set_fields[sf.name] = true
 			} else {
@@ -168,7 +168,7 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 			}
 		} else {
 			g.write('.${c_field_name(field.value)} = ')
-			if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(node.value, field.value,
+			if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(lookup_name, field.value,
 				value_id)
 			{
 				inner_ct := g.tc.c_type(heap_copy_type)
@@ -180,7 +180,7 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 					if g.struct_field_value_is_plainly_incompatible(value_id, ftyp) {
 						g.gen_default_value_for_type(ftyp)
 					} else {
-						g.gen_struct_field_expr_for_field(value_id, node.value, field.value, ftyp)
+						g.gen_struct_field_expr_for_field(value_id, lookup_name, field.value, ftyp)
 					}
 				} else {
 					g.gen_expr(value_id)
@@ -276,7 +276,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 					g.write(', ')
 				}
 				g.write('.${c_field_name(sf.name)} = ')
-				g.gen_struct_field_expr_for_field(value_id, node.value, sf.name, sf.typ)
+				g.gen_struct_field_expr_for_field(value_id, lookup_name, sf.name, sf.typ)
 				set_fields[sf.name] = true
 				has_field = true
 			} else {
@@ -299,7 +299,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 				g.write(', ')
 			}
 			g.write('.${c_field_name(field.value)} = ')
-			if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(node.value, field.value,
+			if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(lookup_name, field.value,
 				value_id)
 			{
 				inner_ct := g.tc.c_type(heap_copy_type)
@@ -310,7 +310,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 				if g.struct_field_value_is_plainly_incompatible(value_id, ftyp) {
 					g.gen_default_value_for_type(ftyp)
 				} else {
-					g.gen_struct_field_expr_for_field(value_id, node.value, field.value, ftyp)
+					g.gen_struct_field_expr_for_field(value_id, lookup_name, field.value, ftyp)
 				}
 			} else {
 				g.gen_expr(value_id)
@@ -518,7 +518,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 					g.gen_expr(value_id)
 					g.write(', sizeof(${inner_ct}))')
 				} else {
-					g.gen_struct_field_expr_for_field(value_id, node.value, sf.name, sf.typ)
+					g.gen_struct_field_expr_for_field(value_id, lookup_name, sf.name, sf.typ)
 				}
 				set_fields[sf.name] = true
 			} else {
@@ -530,8 +530,8 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		g.write('.${c_field_name(field.value)} = ')
 		if is_sum_literal {
 			g.gen_lowered_sum_field_value(sum_name, field)
-		} else if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(node.value, field.value,
-			value_id)
+		} else if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(lookup_name,
+			field.value, value_id)
 		{
 			inner_ct := g.tc.c_type(heap_copy_type)
 			g.write('(${inner_ct}*)memdup(')
@@ -542,7 +542,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 				if g.struct_field_value_is_plainly_incompatible(value_id, ftyp) {
 					g.gen_default_value_for_type(ftyp)
 				} else {
-					g.gen_struct_field_expr_for_field(value_id, node.value, field.value, ftyp)
+					g.gen_struct_field_expr_for_field(value_id, lookup_name, field.value, ftyp)
 				}
 			} else {
 				g.gen_expr(value_id)

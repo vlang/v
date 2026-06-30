@@ -339,10 +339,14 @@ fn read_box(mut b Box[int]) int {
 	return 0
 }
 
-fn main() {
-	mut b := Box[int]{
+fn make_box() Box[int] {
+	return Box{
 		item: 1
 	}
+}
+
+fn main() {
+	mut b := make_box()
 	_ := read_box(mut b)
 }
 ')
@@ -351,6 +355,7 @@ fn main() {
 	assert c_code.contains('struct Box_int {'), c_code
 	assert c_code.contains('\t__shared__int* item;'), c_code
 	assert !c_code.contains('\tint item;'), c_code
+	assert !c_code.contains('__shared__T'), c_code
 	assert c_code.contains('b->item->val'), c_code
 }
 
