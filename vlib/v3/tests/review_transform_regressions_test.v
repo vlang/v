@@ -60,6 +60,13 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	return run.output.trim_space()
 }
 
+fn test_lifted_fn_literal_mut_param_interpolation_derefs_value() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'lifted_literal_mut_param_interpolation',
+		'fn main() {\n\tmut n := 7\n\tf := fn (mut x int) {\n\t\tprintln("\${x}")\n\t}\n\tf(mut n)\n}\n')
+	assert out == '7'
+}
+
 fn test_reject_dynamic_arrays_for_fixed_array_expectations() {
 	v3_bin := build_v3_review_transform()
 	run_bad(v3_bin, 'bad_fixed_array_literal_len',

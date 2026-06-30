@@ -103,6 +103,17 @@ fn assert_no_lock_cleanup_before_branch(c_code string, name string, branch strin
 	assert unlock_idx < 0, fragment
 }
 
+fn assert_lock_scope_goto_rejected(c_code string, name string, branch string) {
+	fragment := lock_codegen_fn_fragment(c_code, name)
+	assert fragment.len > 0, c_code
+	error_idx := fragment.index('#error goto into a different lock scope is not supported') or {
+		-1
+	}
+	assert error_idx >= 0, fragment
+	branch_idx := fragment.index(branch) or { -1 }
+	assert branch_idx < 0, fragment
+}
+
 fn assert_return_read_before_lock_cleanup(c_code string, name string) {
 	fragment := lock_codegen_counter_fn_fragment(c_code, name, 'int')
 	assert fragment.len > 0, c_code
@@ -250,6 +261,16 @@ fn goto_inside_lock(mut c Counter) {
 	}
 }
 
+fn goto_into_different_lock(mut c Counter) {
+	lock c.a {
+		goto other
+	}
+	lock c.b {
+	other:
+		_ := c.b
+	}
+}
+
 fn lock_expr_defer_tail(mut c Counter) int {
 	value := lock c.a {
 		defer {
@@ -272,6 +293,7 @@ fn main() {
 	_ = defer_after_lock(mut c)
 	goto_out_of_lock(mut c)
 	goto_inside_lock(mut c)
+	goto_into_different_lock(mut c)
 	_ = lock_expr_defer_tail(mut c)
 }
 ')
@@ -288,6 +310,7 @@ fn main() {
 	assert_lock_cleanup_before_branch(c_code, 'branch_labeled_continue', 'goto outer_continue;')
 	assert_lock_cleanup_before_branch(c_code, 'goto_out_of_lock', 'goto done;')
 	assert_no_lock_cleanup_before_branch(c_code, 'goto_inside_lock', 'goto inside;')
+	assert_lock_scope_goto_rejected(c_code, 'goto_into_different_lock', 'goto other;')
 	assert c_code.contains(' = (cond ? 1 : 2);'), c_code
 	assert_return_read_before_lock_cleanup(c_code, 'return_shared')
 	assert_outer_defer_runs_after_lock_cleanup(c_code, 'defer_after_lock')

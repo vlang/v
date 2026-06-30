@@ -92,7 +92,7 @@ fn (mut g FlatGen) gen_sort_lock_mutexes(mutexes_var string, lock_count int) {
 	g.writeln('}')
 }
 
-fn (mut g FlatGen) gen_lock_enter(node flat.Node) ?ActiveLock {
+fn (mut g FlatGen) gen_lock_enter(scope_id int, node flat.Node) ?ActiveLock {
 	lock_count := int(node.children_count) - 1
 	if lock_count <= 0 {
 		return none
@@ -122,6 +122,7 @@ fn (mut g FlatGen) gen_lock_enter(node flat.Node) ?ActiveLock {
 		mutexes_var: mutexes_var
 		lock_count:  lock_count
 		unlock_fn:   unlock_fn
+		scope_id:    scope_id
 		loop_depth:  g.loop_depth
 		defer_depth: g.defers.len
 	}
@@ -170,52 +171,71 @@ fn (mut g FlatGen) gen_branch_lock_leaves(label string) {
 	}
 }
 
-fn (g &FlatGen) collect_fn_goto_label_lock_depths(node flat.Node) map[string]int {
-	mut depths := map[string]int{}
+fn (g &FlatGen) collect_fn_goto_label_lock_scopes(node flat.Node) map[string][]int {
+	mut scopes := map[string][]int{}
 	for i in 0 .. node.children_count {
-		g.collect_goto_label_lock_depths_from(g.a.child(&node, i), 0, mut depths)
+		g.collect_goto_label_lock_scopes_from(g.a.child(&node, i), []int{}, mut scopes)
 	}
-	return depths
+	return scopes
 }
 
-fn (g &FlatGen) collect_top_level_goto_label_lock_depths(stmts []TopLevelStmt) map[string]int {
-	mut depths := map[string]int{}
+fn (g &FlatGen) collect_top_level_goto_label_lock_scopes(stmts []TopLevelStmt) map[string][]int {
+	mut scopes := map[string][]int{}
 	for stmt in stmts {
-		g.collect_goto_label_lock_depths_from(stmt.id, 0, mut depths)
+		g.collect_goto_label_lock_scopes_from(stmt.id, []int{}, mut scopes)
 	}
-	return depths
+	return scopes
 }
 
-fn (g &FlatGen) collect_goto_label_lock_depths_from(id flat.NodeId, lock_depth int, mut depths map[string]int) {
+fn (g &FlatGen) collect_goto_label_lock_scopes_from(id flat.NodeId, lock_scopes []int, mut scopes map[string][]int) {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return
 	}
 	node := g.a.nodes[int(id)]
 	if node.kind == .label_stmt && node.value.len > 0 {
-		depths[node.value] = lock_depth
+		scopes[node.value] = lock_scopes.clone()
 	}
-	child_lock_depth := if node.kind == .lock_expr { lock_depth + 1 } else { lock_depth }
+	mut child_lock_scopes := lock_scopes.clone()
+	if node.kind == .lock_expr {
+		child_lock_scopes << int(id)
+	}
 	for i in 0 .. node.children_count {
-		g.collect_goto_label_lock_depths_from(g.a.child(&node, i), child_lock_depth, mut depths)
+		g.collect_goto_label_lock_scopes_from(g.a.child(&node, i), child_lock_scopes, mut scopes)
 	}
 }
 
-fn (g &FlatGen) goto_target_lock_depth(label string) int {
+fn (g &FlatGen) active_lock_scope_ids() []int {
+	mut scopes := []int{cap: g.active_locks.len}
+	for active in g.active_locks {
+		scopes << active.scope_id
+	}
+	return scopes
+}
+
+fn (g &FlatGen) goto_target_lock_scopes(label string) []int {
 	if label.len == 0 {
-		return g.active_locks.len
+		return g.active_lock_scope_ids()
 	}
-	return g.goto_label_lock_depths[label] or { 0 }
+	return g.goto_label_lock_scopes[label] or { []int{} }
 }
 
-fn (mut g FlatGen) gen_goto_lock_leaves(label string) {
-	target_depth := g.goto_target_lock_depth(label)
+fn (mut g FlatGen) gen_goto_lock_leaves(label string) bool {
+	target_scopes := g.goto_target_lock_scopes(label)
+	active_scopes := g.active_lock_scope_ids()
+	for i, target_scope in target_scopes {
+		if i >= active_scopes.len || active_scopes[i] != target_scope {
+			g.writeln('#error goto into a different lock scope is not supported')
+			return false
+		}
+	}
 	mut i := g.active_locks.len - 1
 	for i >= 0 {
-		if i >= target_depth {
+		if i >= target_scopes.len {
 			g.gen_lock_leave(g.active_locks[i])
 		}
 		i--
 	}
+	return true
 }
 
 fn (mut g FlatGen) gen_return_cleanup() {
@@ -243,8 +263,8 @@ fn (mut g FlatGen) gen_return_cleanup() {
 	g.gen_fn_defers()
 }
 
-fn (mut g FlatGen) gen_lock_stmt(node flat.Node) {
-	active := g.gen_lock_enter(node) or { return }
+fn (mut g FlatGen) gen_lock_stmt(id flat.NodeId, node flat.Node) {
+	active := g.gen_lock_enter(int(id), node) or { return }
 	g.active_locks << active
 	if node.children_count > 0 {
 		body_id := g.a.child(&node, node.children_count - 1)
@@ -313,11 +333,11 @@ fn (mut g FlatGen) gen_lock_expr_result_assign(tmp string, result_type types.Typ
 	g.gen_node(id)
 }
 
-fn (mut g FlatGen) gen_lock_expr(node flat.Node) {
+fn (mut g FlatGen) gen_lock_expr(id flat.NodeId, node flat.Node) {
 	result_type := g.lock_expr_result_type(node)
 	if result_type is types.Void || result_type is types.Unknown {
 		g.write('({')
-		active := g.gen_lock_enter(node) or {
+		active := g.gen_lock_enter(int(id), node) or {
 			g.write('0;})')
 			return
 		}
@@ -342,7 +362,7 @@ fn (mut g FlatGen) gen_lock_expr(node flat.Node) {
 	ct := g.value_c_type(result_type)
 	tmp := g.tmp_name()
 	g.write('({ ${ct} ${tmp};')
-	active := g.gen_lock_enter(node) or {
+	active := g.gen_lock_enter(int(id), node) or {
 		g.gen_default_value_for_type(result_type)
 		g.write(';})')
 		return
@@ -706,7 +726,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.gen_for_in(node)
 		}
 		.lock_expr {
-			g.gen_lock_stmt(node)
+			g.gen_lock_stmt(id, node)
 		}
 		.break_stmt {
 			g.gen_branch_lock_leaves(node.value)
@@ -752,8 +772,9 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.writeln('}')
 		}
 		.goto_stmt {
-			g.gen_goto_lock_leaves(node.value)
-			g.writeln('goto ${c_name(node.value)};')
+			if g.gen_goto_lock_leaves(node.value) {
+				g.writeln('goto ${c_name(node.value)};')
+			}
 		}
 		.label_stmt {
 			old_indent := g.indent

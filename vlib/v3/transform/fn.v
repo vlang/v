@@ -2539,6 +2539,9 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		param := t.a.nodes[int(param_id)]
 		if param.value.len > 0 && param.typ.len > 0 {
 			t.set_var_type(param.value, param.typ)
+			if param.op == .amp {
+				t.mut_param_values[param.value] = true
+			}
 		}
 	}
 	mut lifted_body := []flat.NodeId{cap: capture_names.len + body_ids.len}
