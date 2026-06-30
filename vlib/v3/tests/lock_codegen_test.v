@@ -131,6 +131,16 @@ outer:
 	}
 }
 
+fn lock_if_tail(mut c Counter, cond bool) int {
+	return lock c.a {
+		if cond {
+			1
+		} else {
+			2
+		}
+	}
+}
+
 fn main() {
 	mut c := Counter{}
 	multi_lock(mut c)
@@ -138,6 +148,7 @@ fn main() {
 	branch_break(mut c)
 	branch_labeled_break(mut c)
 	branch_labeled_continue(mut c)
+	_ = lock_if_tail(mut c, true)
 }
 ')
 	assert c_code.contains('uintptr_t _t'), c_code
@@ -151,6 +162,7 @@ fn main() {
 	assert_lock_cleanup_before_branch(c_code, 'branch_break', 'break;')
 	assert_lock_cleanup_before_branch(c_code, 'branch_labeled_break', 'goto outer_break;')
 	assert_lock_cleanup_before_branch(c_code, 'branch_labeled_continue', 'goto outer_continue;')
+	assert c_code.contains(' = (cond ? 1 : 2);'), c_code
 }
 
 fn test_shared_wrapper_value_type_uses_declaring_module() {

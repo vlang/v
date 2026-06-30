@@ -224,6 +224,26 @@ fn (g &FlatGen) lock_expr_result_type(node flat.Node) types.Type {
 	return g.usable_expr_type(body_id)
 }
 
+fn (mut g FlatGen) gen_lock_expr_result_assign(tmp string, result_type types.Type, id flat.NodeId) {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .expr_stmt && node.children_count > 0 {
+		g.write('${tmp} = ')
+		g.gen_expr_with_expected_type(g.a.child(&node, 0), result_type)
+		g.writeln(';')
+		return
+	}
+	if g.is_expr_kind(node.kind) {
+		g.write('${tmp} = ')
+		g.gen_expr_with_expected_type(id, result_type)
+		g.writeln(';')
+		return
+	}
+	g.gen_node(id)
+}
+
 fn (mut g FlatGen) gen_lock_expr(node flat.Node) {
 	result_type := g.lock_expr_result_type(node)
 	if result_type is types.Void || result_type is types.Unknown {
@@ -270,23 +290,10 @@ fn (mut g FlatGen) gen_lock_expr(node flat.Node) {
 				}
 				if last_idx >= 0 {
 					last_id := g.a.child(&body, last_idx)
-					last := g.a.nodes[int(last_id)]
-					if last.kind == .expr_stmt && last.children_count > 0 {
-						g.write('${tmp} = ')
-						g.gen_expr_with_expected_type(g.a.child(&last, 0), result_type)
-						g.writeln(';')
-					} else {
-						g.gen_node(last_id)
-					}
+					g.gen_lock_expr_result_assign(tmp, result_type, last_id)
 				}
-			} else if body.kind == .expr_stmt && body.children_count > 0 {
-				g.write('${tmp} = ')
-				g.gen_expr_with_expected_type(g.a.child(&body, 0), result_type)
-				g.writeln(';')
 			} else {
-				g.write('${tmp} = ')
-				g.gen_expr_with_expected_type(body_id, result_type)
-				g.writeln(';')
+				g.gen_lock_expr_result_assign(tmp, result_type, body_id)
 			}
 		}
 	}

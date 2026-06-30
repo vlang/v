@@ -4443,9 +4443,13 @@ const c_spawn_runtime_extern_symbols = {
 }
 
 const c_shared_runtime_extern_symbols = {
-	'pthread_rwlock_rdlock': true
-	'pthread_rwlock_wrlock': true
-	'pthread_rwlock_unlock': true
+	'pthread_rwlock_rdlock':         true
+	'pthread_rwlock_wrlock':         true
+	'pthread_rwlock_unlock':         true
+	'pthread_rwlockattr_init':       true
+	'pthread_rwlockattr_setkind_np': true
+	'pthread_rwlock_init':           true
+	'pthread_rwlockattr_destroy':    true
 }
 
 fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
