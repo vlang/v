@@ -86,14 +86,9 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 	if header_count < 3 || node.children_count < 3 {
 		return arr1(id)
 	}
-	if t.cur_fn_is_generic {
-		return arr1(id)
-	}
 	key_id := t.a.child(&node, 0) // loop var ident — pass through (do not transform a binding)
 	val_id := t.a.child(&node, 1) // may be flat.empty_node (-1)
 	container_id := t.a.child(&node, 2)
-	iter_type := t.detect_for_in_type(node)
-	has_index := int(val_id) >= 0
 	container_is_range := if int(container_id) >= 0 {
 		t.a.nodes[int(container_id)].kind == .range
 	} else {
@@ -112,6 +107,11 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 				1), body_ids)
 		}
 	}
+	if t.cur_fn_is_generic {
+		return t.rebuild_for_in_stmt(id, node)
+	}
+	iter_type := t.detect_for_in_type(node)
+	has_index := int(val_id) >= 0
 	if iter_type.starts_with('map[') {
 		return t.rebuild_for_in_stmt(id, node)
 	}

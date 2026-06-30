@@ -321,6 +321,8 @@ fn main() {
 	}
 	test_files := test_input_files(user_files, backend)
 
+	seed_implicit_sync_import(mut a)
+
 	// Resolve imports recursively
 	resolve_imports(mut a, mut p, prefs, user_files)
 	diagnostic_root := if is_selfhost {
@@ -414,9 +416,11 @@ fn main() {
 	}
 
 	// Monomorphization only adds specialized generic instantiations to `used_fns`. The V
-	// compiler sources use no generics, so when building V we skip the pass entirely
-	// (`used_fns` passes through unchanged) instead of scanning the whole AST for nothing.
-	if !building_v {
+	// compiler sources use no generics, so when building V we skip specialization and
+	// only erase generic templates that otherwise generate invalid raw C declarations.
+	if building_v {
+		used_fns = transform.erase_generic_templates(mut a, &pre_tc, used_fns)
+	} else {
 		used_fns = transform.monomorphize_with_used(mut a, &pre_tc, used_fns)
 	}
 	b.step('monomorphize')
@@ -933,6 +937,42 @@ fn skipped_backend_modules(prefs &pref.Preferences) []string {
 	return skipped
 }
 
+fn seed_implicit_sync_import(mut a flat.FlatAst) {
+	if !ast_needs_sync_import(a) || ast_has_import(a, 'sync') {
+		return
+	}
+	a.add_node(flat.Node{
+		kind:  .import_decl
+		value: 'sync'
+		typ:   'sync'
+	})
+}
+
+fn ast_needs_sync_import(a &flat.FlatAst) bool {
+	for node in a.nodes {
+		if node.kind == .lock_expr {
+			return true
+		}
+		if node.kind == .field_decl && type_text_is_shared(node.typ) {
+			return true
+		}
+	}
+	return false
+}
+
+fn ast_has_import(a &flat.FlatAst, name string) bool {
+	for node in a.nodes {
+		if node.kind == .import_decl && node.value == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn type_text_is_shared(raw string) bool {
+	return raw.trim_space().starts_with('shared ')
+}
+
 // resolve_imports resolves resolve imports information for v3 entry point.
 fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string) {
 	mut parsed_modules := map[string]bool{}
@@ -1017,6 +1057,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					canonicalize_imported_module_name(mut a, first_node, mod_name)
 				}
 			}
+			seed_implicit_sync_import(mut a)
 		}
 		node_idx++
 	}

@@ -232,7 +232,7 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 
 // make_sum_is_check builds make sum is check data for transform.
 fn (mut t Transformer) make_sum_is_check(expr flat.NodeId, expr_type string, sum_name string, variant string) flat.NodeId {
-	tag := t.make_selector_op(expr, 'typ', 'int', if expr_type.starts_with('&') {
+	tag := t.make_sum_tag_selector(expr, if expr_type.starts_with('&') {
 		.arrow
 	} else {
 		.dot

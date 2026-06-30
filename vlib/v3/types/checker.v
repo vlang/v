@@ -158,29 +158,32 @@ struct LocalBinding {
 // TypeCache represents type cache data used by types.
 struct TypeCache {
 mut:
-	parse_enabled bool
-	parse_entries map[string]Type
-	c_entries     map[string]string
+	parse_enabled        bool
+	parse_entries        map[string]Type
+	c_entries            map[string]string
+	struct_field_entries map[string]Type
+	struct_field_misses  map[string]bool
 }
 
 // TypeChecker represents type checker data used by types.
 @[heap]
 pub struct TypeChecker {
 pub mut:
-	a                      &flat.FlatAst = unsafe { nil }
-	fn_ret_types           map[string]Type
-	fn_param_types         map[string][]Type
-	fn_ret_type_texts      map[string]string   // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
-	fn_param_type_texts    map[string][]string // generic struct method key -> original param type texts (receiver first)
-	fn_type_files          map[string]string
-	fn_type_modules        map[string]string
-	fn_generic_params      map[string][]string
-	fn_variadic            map[string]bool
-	c_variadic_fns         map[string]bool
-	fn_implicit_veb_ctx    map[string]bool
-	structs                map[string][]StructField
-	struct_generic_params  map[string][]string // generic struct base name -> type-param names (e.g. Vec4 -> [T])
-	struct_field_c_abi_fns map[string]string
+	a                            &flat.FlatAst = unsafe { nil }
+	fn_ret_types                 map[string]Type
+	fn_param_types               map[string][]Type
+	fn_ret_type_texts            map[string]string   // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
+	fn_param_type_texts          map[string][]string // generic struct method key -> original param type texts (receiver first)
+	fn_type_files                map[string]string
+	fn_type_modules              map[string]string
+	fn_generic_params            map[string][]string
+	fn_variadic                  map[string]bool
+	c_variadic_fns               map[string]bool
+	fn_implicit_veb_ctx          map[string]bool
+	receiver_method_suffix_index map[string]string
+	structs                      map[string][]StructField
+	struct_generic_params        map[string][]string // generic struct base name -> type-param names (e.g. Vec4 -> [T])
+	struct_field_c_abi_fns       map[string]string
 	// concrete `Box[int].method` -> substituted CallInfo for a method *value* on a
 	// generic receiver. The open `Box[T].method` registration is gone by cgen time, so
 	// the checker stashes the resolved signature here for gen_method_value_closure.
@@ -255,61 +258,64 @@ mut:
 pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 	fs := new_scope(unsafe { nil })
 	return TypeChecker{
-		a:                          a
-		fn_ret_types:               map[string]Type{}
-		fn_param_types:             map[string][]Type{}
-		fn_ret_type_texts:          map[string]string{}
-		fn_param_type_texts:        map[string][]string{}
-		fn_type_files:              map[string]string{}
-		fn_type_modules:            map[string]string{}
-		fn_generic_params:          map[string][]string{}
-		fn_variadic:                map[string]bool{}
-		c_variadic_fns:             map[string]bool{}
-		fn_implicit_veb_ctx:        map[string]bool{}
-		structs:                    map[string][]StructField{}
-		struct_generic_params:      map[string][]string{}
-		struct_field_c_abi_fns:     map[string]string{}
-		generic_method_value_info:  map[string]CallInfo{}
-		params_structs:             map[string]bool{}
-		unions:                     map[string]bool{}
-		type_aliases:               map[string]string{}
-		type_alias_c_abi_fns:       map[string]string{}
-		sum_types:                  map[string][]string{}
-		enum_names:                 map[string]bool{}
-		enum_fields:                map[string][]string{}
-		flag_enums:                 map[string]bool{}
-		interface_names:            map[string]bool{}
-		interface_fields:           map[string][]StructField{}
-		interface_embeds:           map[string][]string{}
-		interface_abstract_methods: map[string][]string{}
-		c_globals:                  map[string]Type{}
-		const_types:                map[string]Type{}
-		const_exprs:                map[string]flat.NodeId{}
-		const_modules:              map[string]string{}
-		const_files:                map[string]string{}
-		const_suffixes:             map[string]string{}
-		imports:                    map[string]string{}
-		file_imports:               map[string]string{}
-		file_selective_imports:     map[string][]string{}
-		file_modules:               map[string]string{}
-		file_scope:                 fs
-		cur_scope:                  fs
-		resolved_call_names:        []string{len: a.nodes.len}
-		resolved_call_set:          []bool{len: a.nodes.len}
-		resolved_fn_value_names:    []string{len: a.nodes.len}
-		resolved_fn_value_set:      []bool{len: a.nodes.len}
-		statement_nodes:            []bool{len: a.nodes.len}
-		method_values_by_fn:        map[int][]string{}
-		method_value_locals:        map[string]bool{}
-		method_value_local_depth:   map[string]int{}
-		expr_type_values:           []Type{len: a.nodes.len, init: Type(void_)}
-		expr_type_set:              []bool{len: a.nodes.len}
-		checking_nodes:             []bool{len: a.nodes.len}
-		diagnostic_files:           map[string]bool{}
-		smartcasts:                 map[string]Type{}
-		type_cache:                 &TypeCache{
-			parse_entries: map[string]Type{}
-			c_entries:     map[string]string{}
+		a:                            a
+		fn_ret_types:                 map[string]Type{}
+		fn_param_types:               map[string][]Type{}
+		fn_ret_type_texts:            map[string]string{}
+		fn_param_type_texts:          map[string][]string{}
+		fn_type_files:                map[string]string{}
+		fn_type_modules:              map[string]string{}
+		fn_generic_params:            map[string][]string{}
+		fn_variadic:                  map[string]bool{}
+		c_variadic_fns:               map[string]bool{}
+		fn_implicit_veb_ctx:          map[string]bool{}
+		receiver_method_suffix_index: map[string]string{}
+		structs:                      map[string][]StructField{}
+		struct_generic_params:        map[string][]string{}
+		struct_field_c_abi_fns:       map[string]string{}
+		generic_method_value_info:    map[string]CallInfo{}
+		params_structs:               map[string]bool{}
+		unions:                       map[string]bool{}
+		type_aliases:                 map[string]string{}
+		type_alias_c_abi_fns:         map[string]string{}
+		sum_types:                    map[string][]string{}
+		enum_names:                   map[string]bool{}
+		enum_fields:                  map[string][]string{}
+		flag_enums:                   map[string]bool{}
+		interface_names:              map[string]bool{}
+		interface_fields:             map[string][]StructField{}
+		interface_embeds:             map[string][]string{}
+		interface_abstract_methods:   map[string][]string{}
+		c_globals:                    map[string]Type{}
+		const_types:                  map[string]Type{}
+		const_exprs:                  map[string]flat.NodeId{}
+		const_modules:                map[string]string{}
+		const_files:                  map[string]string{}
+		const_suffixes:               map[string]string{}
+		imports:                      map[string]string{}
+		file_imports:                 map[string]string{}
+		file_selective_imports:       map[string][]string{}
+		file_modules:                 map[string]string{}
+		file_scope:                   fs
+		cur_scope:                    fs
+		resolved_call_names:          []string{len: a.nodes.len}
+		resolved_call_set:            []bool{len: a.nodes.len}
+		resolved_fn_value_names:      []string{len: a.nodes.len}
+		resolved_fn_value_set:        []bool{len: a.nodes.len}
+		statement_nodes:              []bool{len: a.nodes.len}
+		method_values_by_fn:          map[int][]string{}
+		method_value_locals:          map[string]bool{}
+		method_value_local_depth:     map[string]int{}
+		expr_type_values:             []Type{len: a.nodes.len, init: Type(void_)}
+		expr_type_set:                []bool{len: a.nodes.len}
+		checking_nodes:               []bool{len: a.nodes.len}
+		diagnostic_files:             map[string]bool{}
+		smartcasts:                   map[string]Type{}
+		type_cache:                   &TypeCache{
+			parse_entries:        map[string]Type{}
+			c_entries:            map[string]string{}
+			struct_field_entries: map[string]Type{}
+			struct_field_misses:  map[string]bool{}
 		}
 	}
 }
@@ -326,15 +332,26 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 	mut forked := *tc
 	forked.a = ast
 	forked.type_cache = &TypeCache{
-		parse_enabled: if tc.type_cache != unsafe { nil } {
+		parse_enabled:        if tc.type_cache != unsafe { nil } {
 			tc.type_cache.parse_enabled
 		} else {
 			false
 		}
-		parse_entries: map[string]Type{}
-		c_entries:     map[string]string{}
+		parse_entries:        map[string]Type{}
+		c_entries:            map[string]string{}
+		struct_field_entries: map[string]Type{}
+		struct_field_misses:  map[string]bool{}
 	}
 	return &forked
+}
+
+pub fn (tc &TypeChecker) clear_field_lookup_cache() {
+	if isnil(tc.type_cache) {
+		return
+	}
+	mut cache := tc.type_cache
+	cache.struct_field_entries.clear()
+	cache.struct_field_misses.clear()
 }
 
 // reset_node_caches updates reset node caches state for types.
@@ -455,8 +472,10 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.scope_pool_index = 0
 	tc.reset_node_caches(a.nodes.len)
 	tc.type_cache = &TypeCache{
-		parse_entries: map[string]Type{}
-		c_entries:     map[string]string{}
+		parse_entries:        map[string]Type{}
+		c_entries:            map[string]string{}
+		struct_field_entries: map[string]Type{}
+		struct_field_misses:  map[string]bool{}
 	}
 	for node in a.nodes {
 		if node.kind == .struct_decl && node.value == 'string' {
@@ -660,7 +679,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						mut absm := tc.interface_abstract_methods[iface_name] or { []string{} }
 						absm << f.value
 						tc.interface_abstract_methods[iface_name] = absm
-						tc.fn_ret_types[mname] = tc.parse_type(f.typ)
+						ret_type := tc.parse_type(f.typ)
 						mut ptypes := []Type{}
 						mut is_variadic := false
 						ptypes << Type(Pointer{
@@ -677,8 +696,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 								ptypes << tc.parse_type(child.typ)
 							}
 						}
-						tc.fn_param_types[mname] = ptypes
-						tc.fn_variadic[mname] = is_variadic
+						tc.register_fn_name_alias(mname, ret_type, ptypes, is_variadic, false)
 					} else if f.typ.len > 0 {
 						mut fields := tc.interface_fields[iface_name] or { []StructField{} }
 						fields << StructField{
@@ -1168,6 +1186,8 @@ fn (tc &TypeChecker) has_active_import(alias string) bool {
 	return file_import_key(tc.cur_file, alias) in tc.file_imports
 }
 
+const receiver_method_suffix_ambiguous = '__v_receiver_method_suffix_ambiguous__'
+
 // register_fn_signature updates register fn signature state for types.
 fn (mut tc TypeChecker) register_fn_signature(name string, ret_type Type, params []Type, is_variadic bool, implicit_veb_ctx bool) {
 	tc.register_fn_name_alias(name, ret_type, params, is_variadic, implicit_veb_ctx)
@@ -1190,6 +1210,32 @@ fn (mut tc TypeChecker) register_fn_name_alias(name string, ret_type Type, param
 	tc.fn_param_types[name] = params.clone()
 	tc.fn_variadic[name] = is_variadic
 	tc.fn_implicit_veb_ctx[name] = implicit_veb_ctx
+	tc.add_receiver_method_suffix_index(name)
+}
+
+fn (mut tc TypeChecker) add_receiver_method_suffix_index(name string) {
+	if name.len == 0 {
+		return
+	}
+	tc.set_receiver_method_suffix_index(name, name)
+	for i in 0 .. name.len {
+		if name[i] == `.` && i + 1 < name.len {
+			tc.set_receiver_method_suffix_index(name[i + 1..], name)
+		}
+	}
+}
+
+fn (mut tc TypeChecker) set_receiver_method_suffix_index(key string, name string) {
+	if key.len == 0 {
+		return
+	}
+	if existing := tc.receiver_method_suffix_index[key] {
+		if existing != name {
+			tc.receiver_method_suffix_index[key] = receiver_method_suffix_ambiguous
+		}
+		return
+	}
+	tc.receiver_method_suffix_index[key] = name
 }
 
 fn (mut tc TypeChecker) register_c_variadic_fn(name string) {
@@ -5120,6 +5166,7 @@ fn checker_is_raw_collection_method_name(name string, prefix string) bool {
 }
 
 // is_print_style_fn_name reports whether is print style fn name applies in types.
+// XTODO perf
 fn is_print_style_fn_name(name string) bool {
 	return name in ['print', 'println', 'eprint', 'eprintln', 'builtin.print', 'builtin.println',
 		'builtin.eprint', 'builtin.eprintln']
@@ -5402,13 +5449,15 @@ fn (tc &TypeChecker) parse_fn_signature_type(name string, typ string) Type {
 		tc.file_modules[decl_file] or { tc.cur_module }
 	}
 	scoped.type_cache = &TypeCache{
-		parse_enabled: if tc.type_cache != unsafe { nil } {
+		parse_enabled:        if tc.type_cache != unsafe { nil } {
 			tc.type_cache.parse_enabled
 		} else {
 			false
 		}
-		parse_entries: map[string]Type{}
-		c_entries:     map[string]string{}
+		parse_entries:        map[string]Type{}
+		c_entries:            map[string]string{}
+		struct_field_entries: map[string]Type{}
+		struct_field_misses:  map[string]bool{}
 	}
 	return scoped.parse_type(typ)
 }
@@ -8555,8 +8604,28 @@ fn (tc &TypeChecker) interface_field_type(iface_name string, field_name string) 
 
 // struct_field_type supports struct field type handling for TypeChecker.
 fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?Type {
+	cache_key := '${struct_name}\n${field_name}'
+	if !isnil(tc.type_cache) {
+		if typ := tc.type_cache.struct_field_entries[cache_key] {
+			return typ
+		}
+		if tc.type_cache.struct_field_misses[cache_key] {
+			return none
+		}
+	}
 	mut seen := map[string]bool{}
-	return tc.struct_field_type_inner(struct_name, field_name, mut seen)
+	if typ := tc.struct_field_type_inner(struct_name, field_name, mut seen) {
+		if !isnil(tc.type_cache) {
+			mut cache := tc.type_cache
+			cache.struct_field_entries[cache_key] = typ
+		}
+		return typ
+	}
+	if !isnil(tc.type_cache) {
+		mut cache := tc.type_cache
+		cache.struct_field_misses[cache_key] = true
+	}
+	return none
 }
 
 // struct_field_type_name returns the canonical type name for a struct field.
@@ -10863,16 +10932,14 @@ fn push_receiver_method_candidate(mut names []string, name string) {
 fn (tc &TypeChecker) unique_receiver_method_suffix_match(candidates []string) ?string {
 	mut found := ''
 	for candidate in candidates {
-		suffix := '.${candidate}'
-		for name, _ in tc.fn_ret_types {
-			if name != candidate && !name.ends_with(suffix) {
-				continue
-			}
-			if found.len > 0 && found != name {
-				return none
-			}
-			found = name
+		name := tc.receiver_method_suffix_index[candidate] or { continue }
+		if name == receiver_method_suffix_ambiguous {
+			return none
 		}
+		if found.len > 0 && found != name {
+			return none
+		}
+		found = name
 	}
 	if found.len == 0 {
 		return none
@@ -11186,6 +11253,7 @@ const c_reserved_words = ['auto', 'break', 'case', 'char', 'const', 'continue', 
 	'typedef', 'union', 'unsigned', 'void', 'volatile', 'while']
 
 // c_name converts c name data for types.
+// XTODO garbage. remove this
 fn c_name(name string) string {
 	if name.starts_with('C.') {
 		return name[2..]

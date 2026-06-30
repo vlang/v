@@ -60,6 +60,30 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	return run.output.trim_space()
 }
 
+fn test_lifted_fn_literal_mut_param_interpolation_derefs_value() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'lifted_literal_mut_param_interpolation',
+		'fn main() {\n\tmut n := 7\n\tf := fn (mut x int) {\n\t\tprintln("\${x}")\n\t}\n\tf(mut n)\n}\n')
+	assert out == '7'
+}
+
+fn test_shared_field_without_sync_import_compiles_and_locks() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'shared_field_without_sync_import',
+		'struct S {\nmut:\n\ta shared int\n}\n\nfn main() {\n\tmut s := S{}\n\tlock s.a {\n\t\ts.a = 7\n\t\tprintln(int_str(s.a))\n\t}\n}\n')
+	assert out == '7'
+}
+
+fn test_imported_shared_field_without_sync_import_compiles_and_locks() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'imported_shared_field_without_sync_import', {
+		'v.mod':     'Module { name: "imported_shared_field_without_sync_import" }\n'
+		'main.v':    'module main\n\nimport bag\n\nfn main() {\n\tprintln(int_str(bag.value()))\n}\n'
+		'bag/bag.v': 'module bag\n\nstruct S {\nmut:\n\ta shared int\n}\n\npub fn value() int {\n\tmut s := S{}\n\tmut out := 0\n\tlock s.a {\n\t\ts.a = 9\n\t\tout = s.a\n\t}\n\treturn out\n}\n'
+	}, 'main.v')
+	assert out == '9'
+}
+
 fn test_reject_dynamic_arrays_for_fixed_array_expectations() {
 	v3_bin := build_v3_review_transform()
 	run_bad(v3_bin, 'bad_fixed_array_literal_len',
@@ -254,11 +278,25 @@ fn test_map_str_normalizes_alias_key_and_value_types() {
 	assert out == "{23: 'id'}\n{'price': 1.25}"
 }
 
+fn test_mut_map_param_interpolation_preserves_pointer() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'mut_map_param_interpolation',
+		"type Scores = map[string]int\n\nfn show(mut m map[string]int) {\n\tprintln('\${m}')\n}\n\nfn show_alias(mut m Scores) {\n\tprintln('\${m}')\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm['x'] = 3\n\tshow(mut m)\n\tmut scores := Scores(map[string]int{})\n\tscores['y'] = 4\n\tshow_alias(mut scores)\n}\n")
+	assert out == "{'x': 3}\n{'y': 4}"
+}
+
 fn test_map_literal_stringification_evaluates_entries_once() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'map_literal_str_side_effects',
 		"__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'k' + int_str(key_calls)\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tprintln({\n\t\tnext_key(): next_val()\n\t})\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n")
 	assert out == "{'k1': 10}\n1,1"
+}
+
+fn test_fn_literal_preserves_mut_param_string_interpolation() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'fn_literal_mut_param_interp',
+		"fn show(mut x int) {\n\t_ := fn () {}\n\tprintln('\${x}')\n}\n\nfn main() {\n\tmut n := 42\n\tshow(mut n)\n}\n")
+	assert out == '42'
 }
 
 fn test_shadowed_minmaxof_calls_are_not_rewritten() {

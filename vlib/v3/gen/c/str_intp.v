@@ -21,55 +21,84 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 		if child.kind == .string_literal {
 			sid := g.intern_string(child.value)
 			g.write('_str_${sid}')
-		} else if child.typ == 'string' {
-			g.gen_expr(child_id)
 		} else {
-			mut typ := g.tc.resolve_type(child_id)
-			// For a bare ident, prefer the live cgen scope binding when present: it reflects
-			// locals introduced during generation (e.g. the `err` of an or-body lowered here,
-			// or for-loop vars) that resolve_type may stale-cache as `int`.
-			if child.kind == .ident {
-				if scope_typ := g.tc.cur_scope.lookup(child.value) {
-					if scope_typ !is types.Void {
-						typ = scope_typ
-					}
-				}
-			}
+			typ := g.string_interp_child_type(child_id, child)
 			typ_name := types.Type(typ).name()
-			if typ is types.String {
-				g.gen_expr(child_id)
+			if child.typ == 'string' || typ is types.String {
+				g.gen_string_interp_child_expr(child_id)
 			} else if g.gen_map_str_expr(child_id, typ) {
 				// emitted by gen_map_str_expr
 			} else if typ_name == 'IError' || typ_name.ends_with('.IError') {
 				// IError may resolve as Interface/Alias/Struct depending on context; match by
 				// name and interpolate its `.message` (mirrors the transformer's IError path).
-				g.gen_expr(child_id)
+				g.gen_string_interp_child_expr(child_id)
 				g.write('.message')
 			} else if typ is types.Primitive {
 				prim_name := types.Type(typ).name()
 				g.write('${c_name('${prim_name}.str')}(')
-				g.gen_expr(child_id)
+				g.gen_string_interp_child_expr(child_id)
 				g.write(')')
 			} else if typ is types.ISize || typ is types.USize {
 				g.write('${c_name('${typ.name()}.str')}(')
-				g.gen_expr(child_id)
+				g.gen_string_interp_child_expr(child_id)
 				g.write(')')
 			} else if typ is types.Struct {
 				g.write('${c_name(typ.name)}__str(')
-				g.gen_expr(child_id)
+				g.gen_string_interp_child_expr(child_id)
 				g.write(')')
 			} else if typ is types.SumType {
 				g.write('${c_name(typ.name)}__str(')
-				g.gen_expr(child_id)
+				g.gen_string_interp_child_expr(child_id)
 				g.write(')')
 			} else {
 				g.write('int__str(')
-				g.gen_expr(child_id)
+				g.gen_string_interp_child_expr(child_id)
 				g.write(')')
 			}
 		}
 	}
 	g.write('})')
+}
+
+fn (g &FlatGen) string_interp_child_type(child_id flat.NodeId, child flat.Node) types.Type {
+	if child.kind == .ident && g.current_param_is_mut(child.value) {
+		if param_type := g.current_param_type(child.value) {
+			if param_type is types.Pointer {
+				if map_str_clean_type(param_type.base_type) is types.Map {
+					return param_type
+				}
+				return param_type.base_type
+			}
+			return param_type
+		}
+	}
+	mut typ := g.tc.resolve_type(child_id)
+	// For a bare ident, prefer the live cgen scope binding when present: it reflects
+	// locals introduced during generation (e.g. the `err` of an or-body lowered here,
+	// or for-loop vars) that resolve_type may stale-cache as `int`.
+	if child.kind == .ident {
+		if scope_typ := g.tc.cur_scope.lookup(child.value) {
+			if scope_typ !is types.Void {
+				typ = scope_typ
+			}
+		}
+	}
+	return typ
+}
+
+fn (mut g FlatGen) gen_string_interp_child_expr(child_id flat.NodeId) {
+	child := g.a.nodes[int(child_id)]
+	if child.kind == .ident && g.current_param_is_mut(child.value) {
+		if param_type := g.current_param_type(child.value) {
+			if param_type is types.Pointer {
+				g.write('(*')
+				g.gen_expr(child_id)
+				g.write(')')
+				return
+			}
+		}
+	}
+	g.gen_expr(child_id)
 }
 
 // is_string_node reports whether is string node applies in c.

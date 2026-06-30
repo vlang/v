@@ -89,6 +89,28 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	return generated
 }
 
+pub fn erase_generic_templates(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) map[string]bool {
+	mut t := new_transformer(mut a, tc, used_fns)
+	t.prepare()
+	decls := t.cached_generic_fn_decls()
+	if decls.len != 0 {
+		mut erased := map[string]GenericFnDecl{}
+		for key, decl in decls {
+			if building_v_keeps_type_erased_generic_template(key) {
+				continue
+			}
+			erased[key] = decl
+		}
+		t.erase_generic_fn_decls(erased)
+	}
+	t.materialize_generic_structs()
+	return t.used_fns
+}
+
+fn building_v_keeps_type_erased_generic_template(key string) bool {
+	return key in ['token.new_keywords_matcher_trie', 'sync.pool.PoolProcessor.work_on_items']
+}
+
 // is_operator_method_name reports whether a method-name part is an overloaded
 // operator symbol (`+`, `-`, `*`, `/`, `%`, `==`, `<`, `>`, `<=`, `>=`).
 fn is_operator_method_name(name string) bool {
@@ -216,6 +238,8 @@ fn (mut t Transformer) materialize_generic_structs() {
 		t.tc.unions.delete(decl.key)
 		t.tc.params_structs.delete(decl.key)
 	}
+	t.clear_struct_field_type_cache()
+	t.tc.clear_field_lookup_cache()
 }
 
 fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDecl {
@@ -581,7 +605,7 @@ fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, modul
 	}
 	t.cur_fn_name = old_fn_name
 	t.cur_fn_ret_type = old_ret_type
-	t.var_types = old_var_types
+	t.restore_var_types(old_var_types)
 	t.cur_fn_is_generic = old_is_generic
 }
 
@@ -1282,7 +1306,6 @@ fn (mut t Transformer) unregister_generic_fn_signature(decl GenericFnDecl) {
 		t.tc.fn_param_types.delete(name)
 		t.tc.fn_variadic.delete(name)
 	}
-	t.rebuild_receiver_method_suffix_index()
 }
 
 fn (mut t Transformer) generic_call_specialization(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?(string, []string) {
