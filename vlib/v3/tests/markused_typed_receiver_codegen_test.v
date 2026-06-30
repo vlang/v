@@ -158,6 +158,26 @@ fn typed_receiver_mark_used_project(name string, files map[string]string, main_f
 	return markused.mark_used(a, tc)
 }
 
+fn test_builtin_map_receiver_methods_keep_plain_map_lookup() {
+	used := typed_receiver_mark_used_project('builtin_map_methods', {
+		'main.v': 'module main
+
+fn main() {
+	mut m := map[int]int{}
+	m[1] = 1
+	keys := m.keys()
+	values := m.values()
+	assert keys.len == 1
+	assert values.len == 1
+	m.clear()
+	assert m.len == 0
+}
+'
+	}, 'main.v')
+	assert used['map.clear'], used.keys().str()
+	assert !used['map[int]int.clear'], used.keys().str()
+}
+
 fn test_markused_used_map_does_not_traverse_unused_homonym_method_body() {
 	used := typed_receiver_mark_used_project('homonym_secret', {
 		'main.v':             'module main

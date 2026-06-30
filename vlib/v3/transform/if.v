@@ -61,7 +61,7 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 			}
 		}
 	}
-	if value_decls.len == 0 {
+	if value_decls.len == 0 && lhs.value != '_' && value_type != 'void' {
 		value_decls << t.make_decl_assign_typed(lhs.value, t.make_selector(t.make_ident(tmp_name),
 			'value', value_type), value_type)
 	}
@@ -78,7 +78,9 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 			}
 		}
 	} else {
-		t.set_var_type(lhs.value, value_type)
+		if lhs.value != '_' && value_type != 'void' {
+			t.set_var_type(lhs.value, value_type)
+		}
 	}
 	mut then_children := []flat.NodeId{}
 	for value_decl in value_decls {
@@ -107,13 +109,17 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 }
 
 // optional_result_expr_type_name supports optional result expr type name handling for Transformer.
-fn (t &Transformer) optional_result_expr_type_name(id flat.NodeId) string {
+fn (mut t Transformer) optional_result_expr_type_name(id flat.NodeId) string {
 	if int(id) < 0 {
 		return ''
 	}
 	if !isnil(t.tc) {
 		node := t.a.nodes[int(id)]
 		if node.kind == .call {
+			concrete_ret := t.concrete_generic_call_return_type(id, node)
+			if t.is_optional_type_name(concrete_ret) {
+				return concrete_ret
+			}
 			if name := t.tc.resolved_call_name(id) {
 				if ret := t.tc.fn_ret_types[name] {
 					ret_name := ret.name()
@@ -1200,6 +1206,110 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 		t.pending_stmts << pending
 	}
 	return new_if
+}
+
+fn (t &Transformer) post_if_exit_smartcasts(id flat.NodeId) []IsExprInfo {
+	if int(id) < 0 {
+		return []IsExprInfo{}
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .if_expr || node.children_count < 2 {
+		return []IsExprInfo{}
+	}
+	cond_id := t.a.child(&node, 0)
+	then_id := t.a.child(&node, 1)
+	if info := t.negated_is_expr_info(cond_id) {
+		if t.stmt_definitely_exits(then_id) {
+			return [info]
+		}
+	}
+	if node.children_count >= 3 {
+		else_id := t.a.child(&node, 2)
+		if t.stmt_definitely_exits(else_id) {
+			return t.extract_all_is_exprs(cond_id)
+		}
+	}
+	return []IsExprInfo{}
+}
+
+fn (t &Transformer) negated_is_expr_info(cond_id flat.NodeId) ?IsExprInfo {
+	if int(cond_id) < 0 {
+		return none
+	}
+	cond := t.a.nodes[int(cond_id)]
+	if cond.kind != .prefix || cond.op != .not || cond.children_count == 0 {
+		return none
+	}
+	inner_id := t.a.child(&cond, 0)
+	if int(inner_id) < 0 {
+		return none
+	}
+	inner := t.a.nodes[int(inner_id)]
+	if inner.kind != .is_expr {
+		return none
+	}
+	info := t.extract_is_expr(inner_id)
+	if info.expr_name.len == 0 || info.sum_type_name.len == 0 || info.variant_name.len == 0 {
+		return none
+	}
+	return info
+}
+
+fn (t &Transformer) stmt_definitely_exits(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.return_stmt {
+			return true
+		}
+		.block {
+			for i in 0 .. node.children_count {
+				if t.stmt_definitely_exits(t.a.child(&node, i)) {
+					return true
+				}
+			}
+			return false
+		}
+		.if_expr {
+			if node.children_count < 3 {
+				return false
+			}
+			return t.stmt_definitely_exits(t.a.child(&node, 1))
+				&& t.stmt_definitely_exits(t.a.child(&node, 2))
+		}
+		.match_stmt {
+			if node.children_count < 2 {
+				return false
+			}
+			mut has_else := false
+			for i in 1 .. node.children_count {
+				branch := t.a.child_node(&node, i)
+				if branch.kind != .match_branch {
+					return false
+				}
+				if branch.value == 'else' {
+					has_else = true
+				}
+				body_start := if branch.value == 'else' { 0 } else { branch.value.int() }
+				mut branch_exits := false
+				for j in body_start .. branch.children_count {
+					if t.stmt_definitely_exits(t.a.child(branch, j)) {
+						branch_exits = true
+						break
+					}
+				}
+				if !branch_exits {
+					return false
+				}
+			}
+			return has_else
+		}
+		else {
+			return false
+		}
+	}
 }
 
 // --- helpers ---

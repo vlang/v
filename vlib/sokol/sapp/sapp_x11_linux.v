@@ -967,22 +967,24 @@ fn x11_query_system_dpi() {
 // === Keysym to unicode ===
 
 fn x11_keysym_to_unicode(keysym KeySym) i32 {
+	keysym_value := u64(keysym)
 	// Latin-1 characters (1:1 mapping)
-	if (keysym >= 0x0020 && keysym <= 0x007e) || (keysym >= 0x00a0 && keysym <= 0x00ff) {
-		return i32(keysym)
+	if (keysym_value >= 0x0020 && keysym_value <= 0x007e)
+		|| (keysym_value >= 0x00a0 && keysym_value <= 0x00ff) {
+		return i32(keysym_value)
 	}
 	// Directly encoded 24-bit UCS characters
-	if (keysym & 0xff000000) == 0x01000000 {
-		return i32(keysym & 0x00ffffff)
+	if (keysym_value & 0xff000000) == 0x01000000 {
+		return i32(keysym_value & 0x00ffffff)
 	}
 	// Binary search in table
 	mut min := 0
 	mut max := x11_keysymtab.len - 1
 	for max >= min {
 		mid := (min + max) / 2
-		if u64(x11_keysymtab[mid].keysym) < keysym {
+		if u64(x11_keysymtab[mid].keysym) < keysym_value {
 			min = mid + 1
-		} else if u64(x11_keysymtab[mid].keysym) > keysym {
+		} else if u64(x11_keysymtab[mid].keysym) > keysym_value {
 			max = mid - 1
 		} else {
 			return i32(x11_keysymtab[mid].ucs)
@@ -1090,7 +1092,7 @@ pub fn set_resizable(resizable bool) {
 }
 
 fn x11_set_resizable(resizable bool) {
-	if g_sapp_state.x11.display == unsafe { nil } || g_sapp_state.x11.window == 0 {
+	if g_sapp_state.x11.display == unsafe { nil } || g_sapp_state.x11.window == x_window_none {
 		return
 	}
 	mut hints := C.XAllocSizeHints()
@@ -1144,7 +1146,7 @@ fn x11_create_window(visual_ &C.Visual, depth int) {
 	g_sapp_state.x11.window = C.XCreateWindow(g_sapp_state.x11.display, g_sapp_state.x11.root, 0,
 		0, u32(x11_window_width), u32(x11_window_height), 0, dep, input_output, vis, wamask, &wa)
 	x11_release_error_handler()
-	if g_sapp_state.x11.window == 0 {
+	if g_sapp_state.x11.window == x_window_none {
 		eprintln('sokol_app: X11: failed to create window')
 		return
 	}
@@ -1168,14 +1170,14 @@ fn x11_create_window(visual_ &C.Visual, depth int) {
 }
 
 fn x11_destroy_window() {
-	if g_sapp_state.x11.window != 0 {
+	if g_sapp_state.x11.window != x_window_none {
 		C.XUnmapWindow(g_sapp_state.x11.display, g_sapp_state.x11.window)
 		C.XDestroyWindow(g_sapp_state.x11.display, g_sapp_state.x11.window)
-		g_sapp_state.x11.window = 0
+		g_sapp_state.x11.window = x_window_none
 	}
-	if g_sapp_state.x11.colormap != 0 {
+	if g_sapp_state.x11.colormap != x_colormap_none {
 		C.XFreeColormap(g_sapp_state.x11.display, g_sapp_state.x11.colormap)
-		g_sapp_state.x11.colormap = 0
+		g_sapp_state.x11.colormap = x_colormap_none
 	}
 	C.XFlush(g_sapp_state.x11.display)
 }
@@ -1233,7 +1235,7 @@ fn x11_create_standard_cursor(cursor MouseCursor, name &char, theme &char, size 
 			C.XcursorImageDestroy(img)
 		}
 	}
-	if g_sapp_state.x11.standard_cursors[idx] == 0 && fallback_native != 0 {
+	if g_sapp_state.x11.standard_cursors[idx] == x_cursor_none && fallback_native != 0 {
 		g_sapp_state.x11.standard_cursors[idx] = C.XCreateFontCursor(g_sapp_state.x11.display,
 			fallback_native)
 	}
@@ -1256,14 +1258,14 @@ fn x11_create_standard_cursors() {
 }
 
 fn x11_destroy_standard_cursors() {
-	if g_sapp_state.x11.hidden_cursor != 0 {
+	if g_sapp_state.x11.hidden_cursor != x_cursor_none {
 		C.XFreeCursor(g_sapp_state.x11.display, g_sapp_state.x11.hidden_cursor)
-		g_sapp_state.x11.hidden_cursor = 0
+		g_sapp_state.x11.hidden_cursor = x_cursor_none
 	}
 	for i in 0 .. mousecursor_num {
-		if g_sapp_state.x11.standard_cursors[i] != 0 {
+		if g_sapp_state.x11.standard_cursors[i] != x_cursor_none {
 			C.XFreeCursor(g_sapp_state.x11.display, g_sapp_state.x11.standard_cursors[i])
-			g_sapp_state.x11.standard_cursors[i] = 0
+			g_sapp_state.x11.standard_cursors[i] = x_cursor_none
 		}
 	}
 }
@@ -1279,10 +1281,10 @@ fn x11_update_cursor(cursor MouseCursor, shown bool) {
 	if shown {
 		if g_sapp_state.custom_cursor_bound[idx] {
 			xcursor := g_sapp_state.x11.custom_cursors[idx]
-			if xcursor != 0 {
+			if xcursor != x_cursor_none {
 				C.XDefineCursor(g_sapp_state.x11.display, g_sapp_state.x11.window, xcursor)
 			}
-		} else if g_sapp_state.x11.standard_cursors[idx] != 0 {
+		} else if g_sapp_state.x11.standard_cursors[idx] != x_cursor_none {
 			C.XDefineCursor(g_sapp_state.x11.display, g_sapp_state.x11.window,
 				g_sapp_state.x11.standard_cursors[idx])
 		} else {

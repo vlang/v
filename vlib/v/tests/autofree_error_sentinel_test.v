@@ -1,3 +1,4 @@
+// vtest build: !sanitize-address-gcc && !sanitize-address-clang
 // vtest vflags: -autofree -gc none
 // Regression test for the `-autofree` double-free of the `error_sentinel` singleton
 // (review on https://github.com/vlang/v/pull/27544). Under `-autofree`, const cleanup

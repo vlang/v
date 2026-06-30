@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.vv'
       - '**.out'
       - '**.md'
@@ -15,6 +16,7 @@ on:
     branches:
       - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.vv'
       - '**.out'
       - '**.md'

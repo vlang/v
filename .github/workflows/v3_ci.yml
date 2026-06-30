@@ -1,0 +1,27 @@
+name: V3 CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - 'vlib/v3/**'
+  pull_request:
+    paths:
+      - 'vlib/v3/**'
+
+concurrency:
+  group: v3-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  v3:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build V
+        run: make -j4
+      - name: Test v3
+        run: ./v run vlib/v3/test_all.vsh

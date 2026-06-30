@@ -1417,7 +1417,7 @@ fn (mut g Gen) materialize_string(val_id int, reg int) {
 	// literals point at static data and must NOT be passed to free() (`string.free`
 	// returns early only when is_lit==1). Without this, freeing a literal (e.g. the
 	// `mut res := ''` in os.real_path) aborts with a libmalloc "pointer not allocated".
-	g.emit_mov_imm(10, i64(str_len) | (i64(1) << 32))
+	g.emit_mov_imm(10, i64(str_len) | i64(u64(1) << 32))
 }
 
 // ==================== Global access ====================

@@ -9,4 +9,12 @@ fn process_keyholder2(super_long_argument1 string, super_long_argument2 string, 
 	return ''
 }
 
+fn this_function_has_an_excessively_long_name(total_minutes_v_made_me_cry i32,
+	minutes_cried_today i32) !i32 {
+	if minutes_cried_today < 1 {
+		return error('do not lie to me')
+	}
+	return total_minutes_v_made_me_cry + minutes_cried_today
+}
+
 fn main() {}

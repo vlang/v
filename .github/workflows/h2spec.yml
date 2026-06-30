@@ -30,7 +30,7 @@ jobs:
       H2SPEC_VERSION: v2.6.0
       H2SPEC_SHA256: 157ee0de702e01ad40e752dbf074b366027e550c8e7504f9450da2809e279318
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build the V compiler
         run: |
@@ -54,7 +54,7 @@ jobs:
 
       - name: Upload h2spec report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: h2spec-report
           path: |

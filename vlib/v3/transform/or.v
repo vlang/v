@@ -11,6 +11,13 @@ struct ArrayIndexInfo {
 	value_type string
 }
 
+struct StringSliceInfo {
+	base_id  flat.NodeId
+	start_id flat.NodeId
+	end_id   flat.NodeId
+	has_end  bool
+}
+
 // EnumFromStringInfo stores enum from string info metadata used by transform.
 struct EnumFromStringInfo {
 	enum_type string
@@ -45,6 +52,9 @@ fn (mut t Transformer) array_index_info(index_id flat.NodeId) ?ArrayIndexInfo {
 	if value_type.len == 0 {
 		return none
 	}
+	if t.is_optional_type_name(value_type) {
+		return none
+	}
 	return ArrayIndexInfo{
 		base_id:    base_id
 		index_id:   index_expr_id
@@ -60,6 +70,81 @@ fn (mut t Transformer) is_array_index_or_expr(node flat.Node) bool {
 	}
 	_ := t.array_index_info(t.a.child(&node, 0)) or { return false }
 	return true
+}
+
+fn (mut t Transformer) string_slice_info(index_id flat.NodeId) ?StringSliceInfo {
+	if int(index_id) < 0 {
+		return none
+	}
+	expr := t.a.nodes[int(index_id)]
+	if expr.kind != .index || expr.children_count < 2 || expr.value != 'range' {
+		return none
+	}
+	base_id := t.a.child(&expr, 0)
+	base_type := t.resolve_expr_type(base_id)
+	if t.normalize_type_alias(base_type) != 'string' {
+		return none
+	}
+	return StringSliceInfo{
+		base_id:  base_id
+		start_id: t.a.child(&expr, 1)
+		end_id:   if expr.children_count > 2 { t.a.child(&expr, 2) } else { flat.empty_node }
+		has_end:  expr.children_count > 2
+	}
+}
+
+fn (mut t Transformer) is_string_slice_or_expr(node flat.Node) bool {
+	if node.kind != .or_expr || node.children_count < 2 {
+		return false
+	}
+	_ := t.string_slice_info(t.a.child(&node, 0)) or { return false }
+	return true
+}
+
+fn (mut t Transformer) transform_string_slice_or_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	if node.children_count < 2 {
+		return id
+	}
+	expr_id := t.a.child(&node, 0)
+	body_id := t.a.child(&node, 1)
+	info := t.string_slice_info(expr_id) or { return id }
+	base_expr := t.stable_expr_for_reuse(info.base_id)
+	start_name := t.new_temp('str_start')
+	end_name := t.new_temp('str_end')
+	val_name := t.new_temp('str_slice')
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	start_expr := if int(info.start_id) >= 0 && t.a.nodes[int(info.start_id)].kind != .empty {
+		t.transform_expr(info.start_id)
+	} else {
+		t.make_int_literal(0)
+	}
+	end_expr := if info.has_end {
+		t.transform_expr(info.end_id)
+	} else {
+		t.make_selector(base_expr, 'len', 'int')
+	}
+	mut prelude := []flat.NodeId{}
+	t.drain_pending(mut prelude)
+	prelude << t.make_decl_assign_typed(start_name, start_expr, 'int')
+	prelude << t.make_decl_assign_typed(end_name, end_expr, 'int')
+	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type('string'), 'string')
+	start_ident := t.make_ident(start_name)
+	lower_ok := t.make_infix(.ge, start_ident, t.make_int_literal(0))
+	ordered := t.make_infix(.le, t.make_ident(start_name), t.make_ident(end_name))
+	upper_ok := t.make_infix(.le, t.make_ident(end_name), t.make_selector(base_expr, 'len', 'int'))
+	bounds_ok := t.make_infix(.logical_and, t.make_infix(.logical_and, lower_ok, ordered), upper_ok)
+	slice_call := t.make_call_typed('string__substr', arr3(base_expr, t.make_ident(start_name),
+		t.make_ident(end_name)), 'string')
+	then_block := t.make_block(arr1(t.make_assign(t.make_ident(val_name), slice_call)))
+	else_block :=
+		t.make_block(t.lower_or_body_to_stmts(body_id, val_name, 'string', node.value, ''))
+	t.pending_stmts = outer_pending
+	for stmt in prelude {
+		t.pending_stmts << stmt
+	}
+	t.pending_stmts << t.make_if(bounds_ok, then_block, else_block)
+	return t.make_ident(val_name)
 }
 
 // transform_array_index_or_expr transforms transform array index or expr data for transform.
@@ -226,8 +311,23 @@ fn (mut t Transformer) transform_enum_from_string_or_expr(id flat.NodeId, node f
 }
 
 // or_expr_types supports or expr types handling for Transformer.
-fn (t &Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) (string, string) {
+fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) (string, string) {
+	expr_node := if int(expr_id) >= 0 && int(expr_id) < t.a.nodes.len {
+		t.a.nodes[int(expr_id)]
+	} else {
+		flat.Node{}
+	}
 	if !isnil(t.tc) {
+		if expr_node.kind == .call {
+			concrete_ret := t.concrete_generic_call_return_type(expr_id, expr_node)
+			if t.is_optional_type_name(concrete_ret) {
+				return concrete_ret, t.optional_base_type(concrete_ret)
+			}
+			call_ret := t.get_call_return_type(expr_id, expr_node)
+			if t.is_optional_type_name(call_ret) {
+				return call_ret, t.optional_base_type(call_ret)
+			}
+		}
 		if typ := t.tc.expr_type(expr_id) {
 			if typ is types.OptionType {
 				base_name := t.value_type_name(typ.base_type)
@@ -339,6 +439,18 @@ fn (mut t Transformer) zero_value_for_type(typ string) flat.NodeId {
 	}
 	if clean.starts_with('map[') {
 		return t.make_map_init(clean)
+	}
+	if t.is_fixed_array_type(clean) {
+		fixed_type := fixed_array_canonical_type(clean)
+		len_text := fixed_array_len_text(fixed_type)
+		if is_decimal_text(len_text) {
+			elem_type := fixed_array_elem_type(fixed_type)
+			mut values := []flat.NodeId{cap: len_text.int()}
+			for _ in 0 .. len_text.int() {
+				values << t.zero_value_for_type(elem_type)
+			}
+			return t.make_array_literal_typed(values, fixed_type)
+		}
 	}
 	if clean == 'string' {
 		return t.make_string_literal('')

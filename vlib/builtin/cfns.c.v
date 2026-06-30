@@ -99,7 +99,11 @@ fn C.fputs(msg &char, fstream &C.FILE) i32
 fn C.fflush(fstream &C.FILE) i32
 
 // TODO: define args in these functions
-fn C.fseek(stream &C.FILE, offset i32, whence i32) i32
+$if windows {
+	fn C.fseek(stream &C.FILE, offset i32, whence i32) i32
+} $else {
+	fn C.fseek(stream &C.FILE, offset isize, whence i32) i32
+}
 
 fn C.fopen(filename &char, mode &char) &C.FILE
 
@@ -476,6 +480,17 @@ $if windows {
 
 // pthread.h
 fn C.pthread_self() usize
+
+fn C.pthread_create(thread voidptr, attr voidptr, start_routine voidptr, arg voidptr) i32
+
+fn C.pthread_join(thread voidptr, retval voidptr) i32
+
+fn C.pthread_attr_init(attr voidptr) i32
+
+fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) i32
+
+fn C.pthread_attr_destroy(attr voidptr) i32
+
 fn C.pthread_mutex_init(voidptr, voidptr) i32
 
 fn C.pthread_mutex_lock(voidptr) i32
@@ -550,6 +565,14 @@ fn C.close(fd i32) i32
 fn C.pipe(pipefds &int) i32
 
 fn C.dup2(oldfd i32, newfd i32) i32
+
+fn C.fcntl(fd i32, cmd i32, arg ...voidptr) i32
+
+fn C.execlp(file &char, arg &char, va ...voidptr) i32
+
+fn C._exit(code i32)
+
+fn C.signal(sig i32, handler voidptr) voidptr
 
 // used by gl, stbi, freetype
 fn C.glTexImage2D()

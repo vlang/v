@@ -113,6 +113,7 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		// node numbering stays deterministic for reproducible builds.
 		for ci in 0 .. thread_count {
 			ww := unsafe { &Transformer(workers[ci]) }
+			t.merge_worker_used_fns(ww)
 			t.merge_worker(ww, chunks[ci + 1], base_nodes, base_children)
 			// The worker's cloned base AST is no longer needed after merge.
 			unsafe {

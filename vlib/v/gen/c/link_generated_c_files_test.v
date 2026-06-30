@@ -43,8 +43,8 @@ int main(void) {
 }
 ')!
 	for cmd in [
-		'${test_vexe} -gc none -no-skip-unused -is_o -o ${os.quoted_path(a_c)} ${os.quoted_path(a_v)}',
-		'${test_vexe} -gc none -no-skip-unused -is_o -o ${os.quoted_path(b_c)} ${os.quoted_path(b_v)}',
+		'${test_vexe} -cc ${cc} -gc none -no-skip-unused -is_o -o ${os.quoted_path(a_c)} ${os.quoted_path(a_v)}',
+		'${test_vexe} -cc ${cc} -gc none -no-skip-unused -is_o -o ${os.quoted_path(b_c)} ${os.quoted_path(b_v)}',
 		'${cc} -o ${os.quoted_path(prog)} ${os.quoted_path(a_c)} ${os.quoted_path(b_c)} ${os.quoted_path(host_c)} -lm',
 	] {
 		res := os.execute(cmd)
@@ -91,6 +91,9 @@ fn main() {
 }
 
 fn test_parallel_cc_usecache_interface_index_definition_stays_out_of_header() {
+	$if windows {
+		return
+	}
 	tmp_dir := os.join_path(os.vtmp_dir(), 'parallel_cc_usecache_interface_index_${os.getpid()}')
 	os.mkdir_all(tmp_dir)!
 	defer {

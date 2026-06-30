@@ -2,8 +2,21 @@
 
 import os
 
-const total_steps = 6
+const total_steps = 7
 const temp_prefix = 'v3_test_all'
+const requested_vlib_tests = [
+	'vlib/builtin/string_test.v',
+	'vlib/math/math_test.v',
+	'vlib/builtin/array_test.v',
+	'vlib/math/complex/complex_test.v',
+	'vlib/builtin/map_test.v',
+	'vlib/crypto/hmac/hmac_test.v',
+	'vlib/crypto/sha3/sha3_test.v',
+	'vlib/time/time_test.v',
+	'vlib/os/process_test.v',
+	'vlib/os/file_test.v',
+	'vlib/arrays/arrays_test.v',
+]
 
 struct Config {
 	vexe         string
@@ -15,20 +28,21 @@ struct Config {
 	c99_flag     string
 	host_backend string
 	host_os      string
+	temp_prefix  string
 }
 
 fn main() {
 	cfg := parse_config()
 	os.chdir(cfg.repo_root) or { fail('failed to enter ${cfg.repo_root}: ${err}') }
 
-	v3_bin := temp_path('v3')
-	hello_c_bin := temp_path('hello_c')
-	hello_arm_bin := temp_path('hello_arm64')
-	v4_arm_bin := temp_path('v4_arm64')
-	v3_lang_bin := temp_path('v3_lang')
-	v4_bin := temp_path('v4_chain')
-	v5_bin := temp_path('v5_chain')
-	v6_bin := temp_path('v6_chain')
+	v3_bin := temp_path(cfg, 'v3')
+	hello_c_bin := temp_path(cfg, 'hello_c')
+	hello_arm_bin := temp_path(cfg, 'hello_arm64')
+	v4_arm_bin := temp_path(cfg, 'v4_arm64')
+	v3_lang_bin := temp_path(cfg, 'v3_lang')
+	v4_bin := temp_path(cfg, 'v4_chain')
+	v5_bin := temp_path(cfg, 'v5_chain')
+	v6_bin := temp_path(cfg, 'v6_chain')
 	cleanup_files([
 		v3_bin,
 		hello_c_bin,
@@ -51,13 +65,22 @@ fn main() {
 	section(2, 'Build v3')
 	run('${q(cfg.vexe)} -o ${q(v3_bin)} ${q(cfg.v3_src)}')
 
-	section(3, 'C backend hello world')
+	section(3, 'Requested vlib tests')
+	for rel_path in requested_vlib_tests {
+		test_path := os.join_path(cfg.repo_root, rel_path)
+		test_bin := temp_path(cfg, rel_path.replace('/', '_').replace('.v', ''))
+		run('${q(v3_bin)} ${q(test_path)} -o ${q(test_bin)}')
+		run(q(test_bin))
+		cleanup_files([test_bin, test_bin + '.c'])
+	}
+
+	section(4, 'C backend hello world')
 	hello_v := os.join_path(cfg.tests_dir, 'hello.v')
 	run('${q(v3_bin)} ${cfg.c99_flag} ${q(hello_v)} -b c -o ${q(hello_c_bin)}')
 	run(q(hello_c_bin))
 	cleanup_files([hello_c_bin, hello_c_bin + '.c'])
 
-	section(4, 'ARM64 self-host hello world')
+	section(5, 'ARM64 self-host hello world')
 	if cfg.c99 {
 		println('  Skipping ARM64 self-host in C99 mode (-c99 applies to the C backend)')
 	} else if cfg.host_backend == 'arm64' && cfg.host_os == 'macos' {
@@ -69,7 +92,7 @@ fn main() {
 		println('  Skipping ARM64 self-host on ${cfg.host_os}/${cfg.host_backend} host (Mach-O only)')
 	}
 
-	section(5, 'Self-host chain (v3->v4->v5->v6)')
+	section(6, 'Self-host chain (v3->v4->v5->v6)')
 	println('  Building v4 from v3...')
 	run('${q(v3_bin)} ${cfg.c99_flag} --no-parallel -selfhost -o ${q(v4_bin)} ${q(cfg.v3_src)}')
 	println('  Building v5 from v4...')
@@ -81,11 +104,11 @@ fn main() {
 	println('  v5.c=v6.c (${converged_size} bytes) - chain converged')
 	cleanup_files([v4_bin, v4_bin + '.c', v5_bin, v5_bin + '.c', v6_bin, v6_bin + '.c'])
 
-	section(6, 'Language feature parity')
+	section(7, 'Language feature parity')
 	lang_v := os.join_path(cfg.tests_dir, 'test_all_lang_features.v')
 	lang_out := os.join_path(cfg.tests_dir, 'test_all_lang_features.out')
 	run('${q(v3_bin)} ${cfg.c99_flag} ${q(lang_v)} -b c -o ${q(v3_lang_bin)}')
-	v3_c_out := run_output(q(v3_lang_bin))
+	v3_c_out := run_output(cfg, q(v3_lang_bin))
 	expected_out := read_text_file(lang_out)
 	assert_same_text('language feature output', v3_c_out, expected_out)
 	println('  v3 C OK (${v3_c_out.split_into_lines().len} lines)')
@@ -115,6 +138,7 @@ fn parse_config() Config {
 		c99_flag:     if c99 { '-c99' } else { '' }
 		host_backend: native_backend_arch()
 		host_os:      os.user_os()
+		temp_prefix:  '${temp_prefix}_${os.getpid()}'
 	}
 }
 
@@ -152,8 +176,8 @@ fn native_backend_arch() string {
 	}
 }
 
-fn temp_path(name string) string {
-	return os.join_path(os.temp_dir(), '${temp_prefix}_${name}')
+fn temp_path(cfg Config, name string) string {
+	return os.join_path(os.temp_dir(), '${cfg.temp_prefix}_${name}')
 }
 
 fn absolute_path(path string) string {
@@ -178,8 +202,8 @@ fn run(cmd string) {
 	}
 }
 
-fn run_output(cmd string) string {
-	stdout_path := temp_path('stdout')
+fn run_output(cfg Config, cmd string) string {
+	stdout_path := temp_path(cfg, 'stdout')
 	cleanup_files([stdout_path])
 	println('> ${cmd}')
 	code := os.system('${cmd} > ${q(stdout_path)}')

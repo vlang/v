@@ -32,6 +32,8 @@ fn C.take_primitive(int, u64) int
 fn C.take_multi(&&C.AnonNative) int
 fn C.take_mixed(&C.AnonNative, voidptr, int, &&C.AnonNative) int
 fn C.take_fn(fn (&C.AnonNative) int) int
+fn C.XLookupString(event &C.AnonNative) int
+fn C.SSL_new() voidptr
 fn C.load_matrix(m [16]f32) int
 fn C.width_runes(r []rune) int
 
@@ -49,10 +51,15 @@ fn main() {
 	_ = C.take_ptr(&native)
 	_ = C.take_named(ptr)
 	_ = C.take_void(voidptr(ptr))
+	_ = C.take_void(voidptr(&ptr))
 	_ = C.take_primitive(1, u64(2))
 	_ = C.take_multi(pptr)
 	_ = C.take_mixed(ptr, voidptr(ptr), 3, pptr)
 	_ = C.take_fn(callback)
+	_ = C.XLookupString(ptr)
+	ssl := C.SSL_new()
+	if ssl == unsafe { nil } {
+	}
 	mut matrix := [16]f32{}
 	_ = C.load_matrix(matrix)
 	runes := []rune{}
@@ -70,8 +77,16 @@ fn main() {
 	assert generated.contains('take_ptr(&native)'), generated
 	assert generated.contains('take_named(ptr)'), generated
 	assert generated.contains('take_void((void*)(ptr))'), generated
+	assert generated.contains('take_void((void*)(&ptr))'), generated
 	assert generated.contains('take_multi(pptr)'), generated
 	assert generated.contains('take_mixed(ptr, (void*)(ptr), 3, pptr)'), generated
+	fn_ptr_idx := generated.index('typedef int (*_fn_ptr_') or { -1 }
+	take_fn_proto_idx := generated.index('int take_fn(_fn_ptr_') or { -1 }
+	assert fn_ptr_idx >= 0, generated
+	assert take_fn_proto_idx >= 0, generated
+	assert fn_ptr_idx < take_fn_proto_idx, generated
+	assert generated.contains('int XLookupString(AnonNative* event);'), generated
+	assert generated.contains('void* SSL_new(void);'), generated
 	assert generated.contains('load_matrix(matrix)'), generated
 	assert generated.contains('width_runes(runes)'), generated
 	assert !generated.contains('take_ptr(*'), generated

@@ -34,6 +34,23 @@ fn (mut t Transformer) make_new_map_call(map_type string) flat.NodeId {
 	return t.make_call_typed('new_map', args, map_type)
 }
 
+fn (t &Transformer) new_map_call_type(node flat.Node) string {
+	if node.kind != .call || node.children_count < 3 {
+		return ''
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .ident || callee.value != 'new_map' {
+		return ''
+	}
+	key_size := t.a.child_node(&node, 1)
+	value_size := t.a.child_node(&node, 2)
+	if key_size.kind != .sizeof_expr || value_size.kind != .sizeof_expr || key_size.value.len == 0
+		|| value_size.value.len == 0 {
+		return ''
+	}
+	return 'map[${key_size.value}]${value_size.value}'
+}
+
 // map_callback_names supports map callback names handling for transform.
 fn map_callback_names(key_type string) (string, string, string, string) {
 	if key_type == 'string' {
@@ -91,9 +108,14 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 
 // make_map_get_expr builds make map get expr data for transform.
 fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type string, key_name string, zero_name string, value_type string) flat.NodeId {
+	clean_value_type := if t.is_fixed_array_type(value_type) {
+		fixed_array_canonical_type(value_type)
+	} else {
+		value_type
+	}
 	call := t.make_call_typed('map__get', arr3(t.runtime_addr(map_expr, base_type), t.make_prefix(.amp,
 		t.make_ident(key_name)), t.make_prefix(.amp, t.make_ident(zero_name))), 'voidptr')
-	cast := t.make_cast('&${value_type}', call, '&${value_type}')
+	cast := t.make_cast('&${clean_value_type}', call, '&${clean_value_type}')
 	return t.make_prefix(.mul, cast)
 }
 
@@ -458,15 +480,15 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 	for i := 0; i + 1 < node.children_count; i += 2 {
 		key_name := t.new_temp('map_key')
 		value_name := t.new_temp('map_val')
-		t.pending_stmts << t.make_decl_assign_typed(key_name,
-			t.transform_expr(t.a.child(&node, i)), key_type)
+		t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(t.a.child(&node, i),
+			key_type), key_type)
 		value_id := t.a.child(&node, i + 1)
 		value := if value_type.starts_with('&') && t.is_sum_type_name(value_type[1..]) {
 			t.transform_expr_for_type(value_id, value_type)
 		} else if value_type in t.sum_types || t.resolve_sum_name(value_type) in t.sum_types {
 			t.wrap_sum_value(value_id, value_type)
 		} else {
-			t.transform_expr(value_id)
+			t.transform_expr_for_type(value_id, value_type)
 		}
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, value_type)
 		call := t.make_call_typed('map__set', arr3(t.make_prefix(.amp, t.make_ident(tmp_name)), t.make_prefix(.amp,

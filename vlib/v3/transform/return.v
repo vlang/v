@@ -54,12 +54,18 @@ fn (t &Transformer) branch_tail_expr(block_id flat.NodeId) flat.NodeId {
 
 // make_return builds a `return <val>` statement node with the given type.
 fn (mut t Transformer) make_return(val flat.NodeId, ret_typ string) flat.NodeId {
+	return t.make_return_values(arr1(val), ret_typ)
+}
+
+fn (mut t Transformer) make_return_values(vals []flat.NodeId, ret_typ string) flat.NodeId {
 	start := t.a.children.len
-	t.a.children << val
+	for val in vals {
+		t.a.children << val
+	}
 	return t.a.add_node(flat.Node{
 		kind:           .return_stmt
 		children_start: start
-		children_count: 1
+		children_count: flat.child_count(vals.len)
 		typ:            ret_typ
 	})
 }
@@ -135,7 +141,8 @@ fn (mut t Transformer) try_expand_return_optional_expr(node flat.Node) ?[]flat.N
 	ok_cond := t.make_selector(tmp_ident, 'ok', 'bool')
 	value := t.make_selector(t.make_ident(tmp_name), 'value', t.optional_base_type(expr_type))
 	then_block := t.make_block(arr1(t.make_return(value, ret_type)))
-	else_block := t.make_block(arr1(t.make_none_return_stmt()))
+	err_expr := t.make_selector(t.make_ident(tmp_name), 'err', 'IError')
+	else_block := t.make_block(arr1(t.make_none_return_stmt_with_err_expr(err_expr)))
 	result << t.make_if(ok_cond, then_block, else_block)
 	return result
 }
@@ -166,7 +173,7 @@ fn (t &Transformer) return_expr_is_optional_result(id flat.NodeId) bool {
 
 // return_block_from_branch builds a block that keeps leading statements
 // (transformed) and turns the tail expression of the branch into a `return`.
-fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ string) flat.NodeId {
+fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ string, extra_return_vals []flat.NodeId) flat.NodeId {
 	branch := t.a.nodes[int(branch_id)]
 	if branch.kind == .return_stmt {
 		mut all := []flat.NodeId{}
@@ -180,16 +187,9 @@ fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ s
 	if branch.kind != .block {
 		// single expression branch: just `return <expr>`
 		mut all := []flat.NodeId{}
-		// Convert a fixed-array branch value (e.g. a fixed-array const) to a dynamic
-		// array when the function returns `[]T`, matching a plain `return <expr>` and
-		// the `return match {...}` path (match_branch_return_block).
-		ret_val := if converted := t.fixed_array_return_value(branch_id) {
-			converted
-		} else {
-			t.wrap_sum_return_expr(branch_id)
-		}
+		ret_vals := t.return_values_with_extra(branch_id, extra_return_vals)
 		t.drain_pending(mut all)
-		all << t.make_return(ret_val, ret_typ)
+		all << t.make_return_values(ret_vals, ret_typ)
 		return t.make_block(all)
 	}
 	mut stmt_ids := []flat.NodeId{}
@@ -217,20 +217,16 @@ fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ s
 		}
 		return t.make_block(all)
 	}
-	ret_val := if converted := t.fixed_array_return_value(tail_expr) {
-		converted
-	} else {
-		t.wrap_sum_return_expr(tail_expr)
-	}
+	ret_vals := t.return_values_with_extra(tail_expr, extra_return_vals)
 	t.drain_pending(mut all)
-	ret := t.make_return(ret_val, ret_typ)
+	ret := t.make_return_values(ret_vals, ret_typ)
 	all << ret
 	return t.make_block(all)
 }
 
 // build_return_if_chain recursively converts an if_expr (possibly an else-if
 // chain) into an if-statement whose branch tails are `return` statements.
-fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string) flat.NodeId {
+fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string, extra_return_vals []flat.NodeId) flat.NodeId {
 	if_node := t.a.nodes[int(if_id)]
 	cond_id := t.a.child(&if_node, 0)
 	cond_smartcasts := t.extract_all_is_exprs(cond_id)
@@ -239,7 +235,7 @@ fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string) 
 	for info in cond_smartcasts {
 		t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
 	}
-	then_block := t.return_block_from_branch(then_id, ret_typ)
+	then_block := t.return_block_from_branch(then_id, ret_typ, extra_return_vals)
 	for _ in cond_smartcasts {
 		t.pop_smartcast()
 	}
@@ -249,10 +245,10 @@ fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string) 
 		else_node := t.a.nodes[int(else_id)]
 		if else_node.kind == .if_expr {
 			// else-if chain: recurse, wrap resulting if-stmt in a block
-			inner := t.build_return_if_chain(else_id, ret_typ)
+			inner := t.build_return_if_chain(else_id, ret_typ, extra_return_vals)
 			else_block = t.make_block(arr1(inner))
 		} else {
-			else_block = t.return_block_from_branch(else_id, ret_typ)
+			else_block = t.return_block_from_branch(else_id, ret_typ, extra_return_vals)
 		}
 	}
 	return t.make_if(new_cond, then_block, else_block)
@@ -281,7 +277,11 @@ fn (mut t Transformer) try_expand_return_if(_id flat.NodeId, node flat.Node) ?[]
 	if val_node.kind != .if_expr || val_node.children_count < 3 {
 		return none
 	}
-	return arr1(t.build_return_if_chain(val_id, node.typ))
+	mut extra_return_vals := []flat.NodeId{}
+	for i in 1 .. node.children_count {
+		extra_return_vals << t.a.child(&node, i)
+	}
+	return arr1(t.build_return_if_chain(val_id, node.typ, extra_return_vals))
 }
 
 // match_branch_return_block supports match branch return block handling for Transformer.

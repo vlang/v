@@ -552,6 +552,9 @@ fn (mut t Transformer) fixed_array_value_to_array(value_id flat.NodeId, fixed_ty
 // transform_array_init_expr transforms .array_init nodes (e.g. `[]int{len: n}`).
 // Recursively transforms any child expressions (len, cap, init values).
 fn (mut t Transformer) transform_array_init_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	if fixed := t.transform_fixed_array_init_expr(node) {
+		return fixed
+	}
 	lowered := t.lower_array_init_to_runtime(id, node)
 	if lowered != id {
 		return lowered

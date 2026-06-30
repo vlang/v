@@ -2,18 +2,25 @@ module main
 
 import os
 import v3.bench
-import v3.eval
 import v3.flat
-import v3.gen.arm64
 import v3.gen.c as cgen
-import v3.gen.wasm
 import v3.markused
 import v3.parser
 import v3.pref
-import v3.ssa
-import v3.ssa.optimize
 import v3.transform
 import v3.types
+
+$if !skip_eval ? {
+	import v3.eval
+}
+$if !skip_arm64 ? {
+	import v3.gen.arm64
+	import v3.ssa
+	import v3.ssa.optimize
+}
+$if !skip_wasm ? {
+	import v3.gen.wasm
+}
 
 // run_compile_command supports run compile command handling for v3 entry point.
 fn run_compile_command(cmd string) os.Result {
@@ -120,6 +127,12 @@ fn c_standard_flag(c99 bool) string {
 	return if c99 { '-std=c99' } else { '-std=gnu11' }
 }
 
+fn input_implies_building_v(input_file string) bool {
+	normalized := input_file.replace('\\', '/').trim_right('/')
+	return normalized.all_after_last('/') == 'v3.v' || normalized == 'cmd/v'
+		|| normalized.ends_with('/cmd/v') || normalized.ends_with('/cmd/v/v.v')
+}
+
 // main runs the v3 entry point.
 fn main() {
 	args := os.args[1..]
@@ -204,9 +217,9 @@ fn main() {
 		exit(1)
 	}
 
-	// Compiling the V compiler itself (v3.v) implies building_v: it uses no generics, so
-	// the monomorphization pass is pure overhead. -building-v can force this for any input.
-	if input_file.all_after_last('/') == 'v3.v' {
+	// Compiling the V compiler itself implies building_v: it uses no generics, so the
+	// monomorphization pass is pure overhead. -building-v can force this for any input.
+	if input_implies_building_v(input_file) {
 		building_v = true
 	}
 
@@ -292,6 +305,7 @@ fn main() {
 	mut user_files := []string{}
 	if input_file.ends_with('.v') {
 		user_files << input_file
+		user_files = expand_single_test_file_inputs(user_files, prefs)
 	} else if os.is_dir(input_file) {
 		user_files = pref.get_v_files_from_dir(input_file, prefs.user_defines, prefs.target_os)
 		for subdir in vmod_subdirs(input_file) {
@@ -538,6 +552,96 @@ fn vmod_subdirs(dir string) []string {
 	return subdirs
 }
 
+fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) []string {
+	mut expanded := []string{}
+	mut seen := map[string]bool{}
+	for file in user_files {
+		if pref.is_test_file_for_backend(file, prefs.backend) {
+			module_name := declared_module_in_file(file)
+			if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
+				for module_file in same_dir_module_source_files(file, module_name, prefs) {
+					append_unique_file(mut expanded, mut seen, module_file)
+				}
+			}
+		}
+		append_unique_file(mut expanded, mut seen, file)
+	}
+	return expanded
+}
+
+fn same_dir_module_source_files(test_file string, module_name string, prefs &pref.Preferences) []string {
+	dir := os.dir(test_file)
+	mut files := []string{}
+	for file in pref.get_v_files_from_dir(dir, prefs.user_defines, prefs.target_os) {
+		if declared_module_in_file(file) == module_name {
+			files << file
+		}
+	}
+	return files
+}
+
+fn append_unique_file(mut files []string, mut seen map[string]bool, file string) {
+	key := os.real_path(file)
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	files << file
+}
+
+fn declared_module_in_file(path string) string {
+	content := os.read_file(path) or { return '' }
+	mut in_block_comment := false
+	mut in_attr := false
+	for raw_line in content.split_into_lines() {
+		mut line := raw_line.trim_space()
+		if in_block_comment {
+			if end := line.index('*/') {
+				line = line[end + 2..].trim_space()
+				in_block_comment = false
+			} else {
+				continue
+			}
+		}
+		if in_attr {
+			if line.contains(']') {
+				in_attr = false
+			}
+			continue
+		}
+		for line.starts_with('/*') {
+			if end := line.index('*/') {
+				line = line[end + 2..].trim_space()
+			} else {
+				in_block_comment = true
+				line = ''
+				break
+			}
+		}
+		if line.len == 0 || line.starts_with('//') {
+			continue
+		}
+		if line.starts_with('@[') || line.starts_with('[') {
+			if !line.contains(']') {
+				in_attr = true
+			}
+			continue
+		}
+		if line.starts_with('module ') {
+			mut module_name := line[7..]
+			if comment := module_name.index('//') {
+				module_name = module_name[..comment]
+			}
+			if comment := module_name.index('/*') {
+				module_name = module_name[..comment]
+			}
+			return module_name.trim_space()
+		}
+		return ''
+	}
+	return ''
+}
+
 fn project_root_for_files(files []string) string {
 	for file in files {
 		root := nearest_vmod_root_for_file(file)
@@ -646,11 +750,6 @@ fn validate_test_file_harness_inputs(a &flat.FlatAst, tc &types.TypeChecker, tes
 	mut errors := []string{}
 	for file_idx, file_node in a.nodes {
 		if !is_user_test_file_node(a, file_idx, file_node, selected_files) {
-			continue
-		}
-		module_name := test_file_module_name(a, file_node)
-		if module_name.len > 0 && module_name != 'main' {
-			errors << 'no runnable tests in ${file_node.value}: only module main test files are supported'
 			continue
 		}
 		if test_file_has_executable_top_level_stmt(a, file_node) {
@@ -839,6 +938,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
+	seed_initial_modules(a, initial_files, mut parsed_modules)
 
 	// Backend modules excluded by the active configuration are never parsed: their
 	// dispatch in main() is gated out by the matching `$if !skip_* ?`, so nothing
@@ -855,36 +955,60 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		first_file = initial_files[0]
 	}
 	project_root := project_root_for_files(initial_files)
+	mut parsed_module_identities := map[string]string{}
+	mut module_path_cache := map[string]string{}
+	mut module_identity_cache := map[string]string{}
 
-	mut changed := true
-	for changed {
-		changed = false
-		mut cur_file := first_file
-		scan_len := a.nodes.len
-		for node_idx in 0 .. scan_len {
-			node := a.nodes[node_idx]
-			if node.kind == .file && node.value.len > 0 {
-				cur_file = node.value
-				continue
+	mut cur_file := first_file
+	mut node_idx := 0
+	for node_idx < a.nodes.len {
+		node := a.nodes[node_idx]
+		if node.kind == .file && node.value.len > 0 {
+			cur_file = node.value
+			node_idx++
+			continue
+		}
+		if node.kind != .import_decl {
+			node_idx++
+			continue
+		}
+		mod_name := node.value
+		if module_identity := parsed_module_identities[mod_name] {
+			if module_identity.len > 0 {
+				a.nodes[node_idx].value = module_identity
 			}
-			if node.kind != .import_decl {
-				continue
-			}
-			mod_name := node.value
-			if mod_name in parsed_modules {
-				continue
-			}
-			parsed_modules[mod_name] = true
-			changed = true
+			node_idx++
+			continue
+		}
+		if mod_name in parsed_modules {
+			node_idx++
+			continue
+		}
 
-			importing_file := if cur_file.len > 0 { cur_file } else { first_file }
-			mod_dir := resolve_project_or_pref_module_path(prefs, mod_name, importing_file,
-				project_root)
-			if mod_dir == '' || !os.is_dir(mod_dir) {
-				continue
-			}
-			module_identity := import_module_identity(prefs, mod_name, importing_file,
-				project_root, mod_dir)
+		importing_file := if cur_file.len > 0 { cur_file } else { first_file }
+		mod_dir := resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file,
+			project_root, mut module_path_cache)
+		module_identity := import_module_identity_cached(prefs, mod_name, importing_file,
+			project_root, mod_dir, mut module_path_cache, mut module_identity_cache)
+		if module_identity.len > 0 {
+			a.nodes[node_idx].value = module_identity
+		}
+		mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
+		if mod_name in parsed_modules || (mod_dir_exists && module_identity in parsed_modules) {
+			node_idx++
+			continue
+		}
+		parsed_modules[mod_name] = true
+		if mod_dir_exists && module_identity.len > 0 {
+			parsed_modules[module_identity] = true
+		}
+		parsed_module_identities[mod_name] = if module_identity.len > 0 {
+			module_identity
+		} else {
+			mod_name
+		}
+
+		if mod_dir_exists {
 			mod_files := pref.get_v_files_from_dir(mod_dir, prefs.user_defines, prefs.target_os)
 			for mf in mod_files {
 				first_node := a.nodes.len
@@ -894,8 +1018,28 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 			}
 		}
+		node_idx++
 	}
-	normalize_import_module_identities(mut a, prefs, first_file, project_root)
+}
+
+fn seed_initial_modules(a &flat.FlatAst, initial_files []string, mut parsed_modules map[string]bool) {
+	mut selected_files := map[string]bool{}
+	for file in initial_files {
+		selected_files[file] = true
+		selected_files[os.real_path(file)] = true
+	}
+	for file_idx, file_node in a.nodes {
+		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
+			continue
+		}
+		if !selected_files[file_node.value] && !selected_files[os.real_path(file_node.value)] {
+			continue
+		}
+		module_name := test_file_module_name(a, file_node)
+		if module_name.len > 0 {
+			parsed_modules[module_name] = true
+		}
+	}
 }
 
 fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, import_path string) {
@@ -910,37 +1054,39 @@ fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, import_
 	}
 }
 
-fn normalize_import_module_identities(mut a flat.FlatAst, prefs &pref.Preferences, first_file string, project_root string) {
-	mut cur_file := first_file
-	for i in 0 .. a.nodes.len {
-		node := a.nodes[i]
-		if node.kind == .file && node.value.len > 0 {
-			cur_file = node.value
-			continue
-		}
-		if node.kind != .import_decl {
-			continue
-		}
-		importing_file := if cur_file.len > 0 { cur_file } else { first_file }
-		mod_dir := resolve_project_or_pref_module_path(prefs, node.value, importing_file,
-			project_root)
-		a.nodes[i].value = import_module_identity(prefs, node.value, importing_file, project_root,
-			mod_dir)
+fn import_module_identity_cached(prefs &pref.Preferences, import_path string, importing_file string, project_root string, import_dir string, mut path_cache map[string]string, mut identity_cache map[string]string) string {
+	key := '${importing_file}\n${import_path}\n${import_dir}'
+	if identity := identity_cache[key] {
+		return identity
 	}
+	identity := import_module_identity_with_path_cache(prefs, import_path, importing_file,
+		project_root, import_dir, mut path_cache)
+	identity_cache[key] = identity
+	return identity
 }
 
-fn import_module_identity(prefs &pref.Preferences, import_path string, importing_file string, project_root string, import_dir string) string {
+fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path string, importing_file string, project_root string, import_dir string, mut path_cache map[string]string) string {
 	if !import_path.contains('.') {
 		return import_path
 	}
 	short_name := import_path.all_after_last('.')
-	short_dir := resolve_project_or_pref_module_path(prefs, short_name, importing_file,
-		project_root)
+	short_dir := resolve_project_or_pref_module_path_cached(prefs, short_name, importing_file,
+		project_root, mut path_cache)
 	if short_dir.len > 0 && import_dir.len > 0 && os.is_dir(short_dir)
 		&& os.real_path(short_dir) != os.real_path(import_dir) {
 		return import_path
 	}
 	return short_name
+}
+
+fn resolve_project_or_pref_module_path_cached(prefs &pref.Preferences, mod_name string, importing_file string, project_root string, mut cache map[string]string) string {
+	key := '${importing_file}\n${mod_name}'
+	if path := cache[key] {
+		return path
+	}
+	path := resolve_project_or_pref_module_path(prefs, mod_name, importing_file, project_root)
+	cache[key] = path
+	return path
 }
 
 fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string, importing_file string, project_root string) string {

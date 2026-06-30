@@ -153,7 +153,7 @@ jobs:
         uses: cross-platform-actions/action@v1.3.0
         with:
           operating_system: freebsd
-          version: '15.0'
+          version: '15.1'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm

@@ -193,8 +193,10 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 		return []string{}
 	}
 	all_files := os.ls(dir) or { return []string{} }
+	mut sorted_files := all_files.clone()
+	sorted_files.sort()
 	mut has_os_specific := map[string]bool{}
-	for file in all_files {
+	for file in sorted_files {
 		if !file.ends_with('.v') || file.ends_with('.js.v') || file.contains('_test.') {
 			continue
 		}
@@ -206,30 +208,35 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 		}
 	}
 	mut v_files := []string{}
-	for file in all_files {
-		if !file.ends_with('.v') || file.ends_with('.js.v') || file.contains('_test.') {
-			continue
-		}
-		if file_has_incompatible_os_suffix(file, target_os) {
-			continue
-		}
-		if base := default_file_base(file) {
-			if has_os_specific[base] {
+	for backend_specific in [false, true] {
+		for file in sorted_files {
+			if file.ends_with('.c.v') != backend_specific {
 				continue
 			}
-		}
-		if file.contains('_notd_') {
-			feature := extract_define_feature(file, '_notd_')
-			if feature.len > 0 && feature in user_defines {
+			if !file.ends_with('.v') || file.ends_with('.js.v') || file.contains('_test.') {
 				continue
 			}
-		} else if file.contains('_d_') {
-			feature := extract_define_feature(file, '_d_')
-			if feature.len == 0 || feature !in user_defines {
+			if file_has_incompatible_os_suffix(file, target_os) {
 				continue
 			}
+			if base := default_file_base(file) {
+				if has_os_specific[base] {
+					continue
+				}
+			}
+			if file.contains('_notd_') {
+				feature := extract_define_feature(file, '_notd_')
+				if feature.len > 0 && feature in user_defines {
+					continue
+				}
+			} else if file.contains('_d_') {
+				feature := extract_define_feature(file, '_d_')
+				if feature.len == 0 || feature !in user_defines {
+					continue
+				}
+			}
+			v_files << os.join_path_single(dir, file)
 		}
-		v_files << os.join_path_single(dir, file)
 	}
 	return v_files
 }
@@ -397,7 +404,19 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 			return tos == 'macos' || tos == 'freebsd' || tos == 'openbsd' || tos == 'netbsd'
 				|| tos == 'dragonfly'
 		}
-		'x64', 'amd64' {
+		'x64' {
+			$if x64 {
+				return true
+			}
+			return false
+		}
+		'x32' {
+			$if x32 {
+				return true
+			}
+			return false
+		}
+		'amd64' {
 			$if amd64 {
 				return true
 			}

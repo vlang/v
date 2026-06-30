@@ -477,6 +477,12 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 		if p.is_prod {
 			return
 		}
+		// The macOS bundled tcc is sensitive to Apple SDK/header changes and
+		// app/framework includes. Keep it available through explicit `-cc tcc`,
+		// but default to the platform compiler on macOS.
+		if get_host_os() == .macos {
+			return
+		}
 		p.ccompiler = preferred_tcc
 		return
 	}

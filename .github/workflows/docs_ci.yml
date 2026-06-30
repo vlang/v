@@ -9,11 +9,13 @@ on:
     branches:
       - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.yml'
       - '!**/docs_ci.yml'
       - 'cmd/tools/vrepl.v'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.yml'
       - '!**/docs_ci.yml'
       - 'cmd/tools/vrepl.v'

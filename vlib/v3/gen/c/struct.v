@@ -351,6 +351,10 @@ fn (mut g FlatGen) gen_fixed_array_copy_source(value_id flat.NodeId, field_type 
 		g.gen_expr(value_id)
 		return
 	}
+	if val_node.kind == .paren && val_node.children_count > 0 {
+		g.gen_fixed_array_copy_source(g.a.child(val_node, 0), field_type)
+		return
+	}
 	val_type := types.unwrap_pointer(g.usable_expr_type(value_id))
 	if val_type is types.Array {
 		g.write('(')
@@ -1414,14 +1418,8 @@ fn (mut g FlatGen) gen_map_init(id flat.NodeId, node flat.Node) {
 
 // write_new_map writes new map output for c.
 fn (mut g FlatGen) write_new_map(key_type types.Type, value_type types.Type) {
-	mut c_key := g.tc.c_type(key_type)
-	mut c_val := g.tc.c_type(value_type)
-	if c_key.starts_with('fn_ptr:') {
-		c_key = g.resolve_fn_ptr_type(c_key)
-	}
-	if c_val.starts_with('fn_ptr:') {
-		c_val = g.resolve_fn_ptr_type(c_val)
-	}
+	c_key := g.value_sizeof_target(key_type)
+	c_val := g.value_sizeof_target(value_type)
 	hash_fn, eq_fn, clone_fn, free_fn := g.map_callback_names(key_type)
 	g.write('new_map(sizeof(${c_key}), sizeof(${c_val}), ${hash_fn}, ${eq_fn}, ${clone_fn}, ${free_fn})')
 }
@@ -1444,11 +1442,79 @@ fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string,
 
 // skip_builtin_struct supports skip builtin struct handling for FlatGen.
 fn (g &FlatGen) skip_builtin_struct(name string) bool {
-	_ = g
-	if name.starts_with('C.') {
+	if name.starts_with('C.') && g.inlined_c_structs[name[2..]] {
 		return true
 	}
-	return false
+	return name in c_preamble_defined_structs
+}
+
+const c_preamble_defined_structs = {
+	'C.DIR':                        true
+	'C.FILE':                       true
+	'C.CONDITION_VARIABLE':         true
+	'C.IError':                     true
+	'C.SRWLOCK':                    true
+	'C.addrinfo':                   true
+	'C.atomic_uintptr_t':           true
+	'C.dirent':                     true
+	'C.epoll_data':                 true
+	'C.epoll_data_t':               true
+	'C.epoll_event':                true
+	'C.Event':                      true
+	'C.fd_set':                     true
+	'C.CHAR_INFO':                  true
+	'C.CONSOLE_SCREEN_BUFFER_INFO': true
+	'C.COORD':                      true
+	'C.FOCUS_EVENT_RECORD':         true
+	'C.INPUT_RECORD':               true
+	'C.KEY_EVENT_RECORD':           true
+	'C.kevent':                     true
+	'C.MENU_EVENT_RECORD':          true
+	'C.MOUSE_EVENT_RECORD':         true
+	'C.host_t':                     true
+	'C.pthread_t':                  true
+	'C.pthread_cond_t':             true
+	'C.pthread_condattr_t':         true
+	'C.pthread_attr_t':             true
+	'C.pthread_mutex_t':            true
+	'C.pthread_rwlock_t':           true
+	'C.pthread_rwlockattr_t':       true
+	'C.rusage':                     true
+	'C.sem_t':                      true
+	'C.SECURITY_ATTRIBUTES':        true
+	'C.sigset_t':                   true
+	'C.SMALL_RECT':                 true
+	'C.OVERLAPPED':                 true
+	'C.sockaddr':                   true
+	'C.sockaddr_in':                true
+	'C.sockaddr_in6':               true
+	'C.sockaddr_un':                true
+	'C.stat':                       true
+	'C.statvfs':                    true
+	'C.task_basic_info':            true
+	'C.task_t':                     true
+	'C.termios':                    true
+	'C.timeval':                    true
+	'C.timespec':                   true
+	'C.tm':                         true
+	'C.uChar':                      true
+	'C.utsname':                    true
+	'C.vm_size_t':                  true
+	'C.vm_statistics64_data_t':     true
+	'C.wchar_t':                    true
+	'C.WINDOW_BUFFER_SIZE_RECORD':  true
+	'C.winsize':                    true
+}
+
+fn c_struct_needs_typedef(name string) bool {
+	if !name.starts_with('C.') {
+		return true
+	}
+	raw := name[2..]
+	if raw.len > 0 && raw[0] >= `a` && raw[0] <= `z` && !raw.ends_with('_t') {
+		return false
+	}
+	return true
 }
 
 // emit_interface_struct emits emit interface struct output for c.
@@ -1480,6 +1546,9 @@ fn (mut g FlatGen) struct_decls() {
 	fixed_array_needed := g.collect_fixed_array_typedefs_needed()
 	for name, _ in g.tc.structs {
 		if g.skip_builtin_struct(name) {
+			continue
+		}
+		if !c_struct_needs_typedef(name) {
 			continue
 		}
 		tag := if name in g.tc.unions { 'union' } else { 'struct' }
@@ -1685,6 +1754,9 @@ fn (mut g FlatGen) type_forward_decls() {
 		if g.skip_builtin_struct(name) {
 			continue
 		}
+		if !c_struct_needs_typedef(name) {
+			continue
+		}
 		tag := if name in g.tc.unions { 'union' } else { 'struct' }
 		g.writeln('typedef ${tag} ${c_name(name)} ${c_name(name)};')
 	}
@@ -1703,7 +1775,7 @@ fn (mut g FlatGen) type_forward_decls() {
 // emit_struct emits emit struct output for c.
 fn (mut g FlatGen) emit_struct(name string) {
 	old_module := g.tc.cur_module
-	g.tc.cur_module = module_from_qualified_name(name)
+	g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
 	if name in g.tc.structs {
 		fields := g.tc.structs[name]
 		tag := if name in g.tc.unions { 'union' } else { 'struct' }

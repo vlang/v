@@ -78,6 +78,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				var_name
 			}
 			clean_container_type := types.unwrap_pointer(container_type)
+			mut map_snapshot_var := ''
 			if clean_container_type is types.Map {
 				c_key := g.value_c_type(clean_container_type.key_type)
 				c_val := g.value_c_type(clean_container_type.value_type)
@@ -86,13 +87,42 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.tmp_count++
 				key_var := if has_index { idx_var } else { '__mk_${g.tmp_count}' }
 				val_var_ := if has_index { elem_var } else { var_name }
-				access := if container_type is types.Pointer { '->' } else { '.' }
-				key_values := '(${container_str})${access}key_values'
+				use_snapshot := g.for_in_body_contains_delete_call(node, body_start)
+				key_values := if use_snapshot {
+					map_snapshot_var = '__for_map_${g.tmp_count}'
+					g.tmp_count++
+					if container_type is types.Pointer {
+						g.writeln('map ${map_snapshot_var} = map__clone(${container_str});')
+					} else {
+						map_src := '__for_map_src_${g.tmp_count}'
+						g.tmp_count++
+						g.writeln('map ${map_src} = ${container_str};')
+						g.writeln('map ${map_snapshot_var} = map__clone(&${map_src});')
+					}
+					'${map_snapshot_var}.key_values'
+				} else {
+					access := if container_type is types.Pointer { '->' } else { '.' }
+					'(${container_str})${access}key_values'
+				}
 				g.writeln('for (int ${iter_var} = 0; ${iter_var} < ${key_values}.len; ${iter_var}++) {')
 				g.indent++
 				g.writeln('if (${key_values}.all_deleted && ${key_values}.all_deleted[${iter_var}]) continue;')
-				g.writeln('${c_key} ${key_var} = *(${c_key}*)(${key_values}.keys + ${iter_var} * ${key_values}.key_bytes);')
-				g.writeln('${c_val} ${val_var_} = *(${c_val}*)(${key_values}.values + ${iter_var} * ${key_values}.value_bytes);')
+				key_slot := '${key_values}.keys + ${iter_var} * ${key_values}.key_bytes'
+				if key_fixed := array_fixed_type(clean_container_type.key_type) {
+					c_elem, dims := g.fixed_array_decl_parts(key_fixed)
+					g.writeln('${c_elem} ${key_var}${dims};')
+					g.writeln('memmove(${key_var}, ${key_slot}, sizeof(${key_var}));')
+				} else {
+					g.writeln('${c_key} ${key_var} = *(${c_key}*)(${key_slot});')
+				}
+				val_slot := '${key_values}.values + ${iter_var} * ${key_values}.value_bytes'
+				if val_fixed := array_fixed_type(clean_container_type.value_type) {
+					c_elem, dims := g.fixed_array_decl_parts(val_fixed)
+					g.writeln('${c_elem} ${val_var_}${dims};')
+					g.writeln('memmove(${val_var_}, ${val_slot}, sizeof(${val_var_}));')
+				} else {
+					g.writeln('${c_val} ${val_var_} = *(${c_val}*)(${val_slot});')
+				}
 				if has_index {
 					g.tc.cur_scope.insert(key_var, clean_container_type.key_type)
 				}
@@ -145,6 +175,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			}
 			g.indent--
 			g.writeln('}')
+			if map_snapshot_var.len > 0 {
+				g.writeln('map__free(&${map_snapshot_var});')
+			}
 			g.tc.pop_scope()
 			return
 		}
@@ -159,6 +192,37 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	g.indent--
 	g.writeln('}')
 	g.tc.pop_scope()
+}
+
+fn (g &FlatGen) for_in_body_contains_delete_call(node flat.Node, body_start int) bool {
+	for i in body_start .. node.children_count {
+		if g.node_contains_delete_call(g.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &FlatGen) node_contains_delete_call(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .call && node.children_count > 0 {
+		fn_node := g.a.child_node(&node, 0)
+		if fn_node.kind == .selector && fn_node.value == 'delete' {
+			return true
+		}
+		if fn_node.kind == .ident && fn_node.value in ['map.delete', 'map__delete'] {
+			return true
+		}
+	}
+	for i in 0 .. node.children_count {
+		if g.node_contains_delete_call(g.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (g &FlatGen) c_loop_local_name(name string) string {

@@ -43,6 +43,14 @@ fn test_optional_if_expr_codegen_initializes_optional_temp() {
 	assert out == 'ok'
 }
 
+// test_nested_local_optional_primitive_typedef validates this v3 regression case.
+fn test_nested_local_optional_primitive_typedef() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'nested_local_optional_primitive_typedef_input',
+		"fn main() {\n\txs := [?f32(1.5)]\n\tassert xs.len == 1\n\tprintln('ok')\n}\n")
+	assert out == 'ok'
+}
+
 // test_optional_clone_return_wraps_payload validates this v3 regression case.
 fn test_optional_clone_return_wraps_payload() {
 	v3_bin := build_v3()

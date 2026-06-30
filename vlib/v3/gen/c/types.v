@@ -14,17 +14,27 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 		return g.tc.c_type(t)
 	}
 
-	if base_type is types.Void || base_type is types.Primitive || base_type is types.Enum {
+	if base_type is types.Void {
 		return 'Optional'
 	}
 	mut inner_ct := g.tc.c_type(base_type)
 	if inner_ct.starts_with('fn_ptr:') {
 		inner_ct = g.resolve_fn_ptr_type(inner_ct)
 	}
+	if inner_ct == 'int' {
+		return 'Optional'
+	}
 	safe_name := inner_ct.replace('*', 'ptr').replace(' ', '_')
 	opt_name := 'Optional_${safe_name}'
 	g.needed_optional_types[opt_name] = inner_ct
 	return opt_name
+}
+
+fn (mut g FlatGen) optional_type_name_for_context(t types.Type, concrete_optional bool) string {
+	if concrete_optional && (t is types.OptionType || t is types.ResultType) {
+		return g.concrete_optional_type_name(t)
+	}
+	return g.optional_type_name(t)
 }
 
 fn (mut g FlatGen) value_c_type(t types.Type) string {
@@ -36,6 +46,14 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 		ct = g.resolve_fn_ptr_type(ct)
 	}
 	return ct
+}
+
+fn (mut g FlatGen) value_sizeof_target(t types.Type) string {
+	if fixed := array_fixed_type(t) {
+		c_elem, dims := g.fixed_array_decl_parts(fixed)
+		return '${c_elem}${dims}'
+	}
+	return g.value_c_type(t)
 }
 
 fn (mut g FlatGen) cast_c_type(t types.Type) string {
@@ -63,11 +81,7 @@ fn (mut g FlatGen) optional_value_ct(t types.Type) (string, types.Type) {
 
 // optional_typedefs supports optional typedefs handling for FlatGen.
 fn (mut g FlatGen) optional_typedefs() {
-	for _, ret in g.tc.fn_ret_types {
-		if ret is types.OptionType || ret is types.ResultType {
-			g.optional_type_name(ret)
-		}
-	}
+	g.collect_optional_typedefs()
 	mut wrote := false
 	for opt_name, val_type in g.needed_optional_types {
 		if g.emit_optional_typedef(opt_name, val_type) {
@@ -76,6 +90,82 @@ fn (mut g FlatGen) optional_typedefs() {
 	}
 	if wrote {
 		g.writeln('')
+	}
+}
+
+fn (mut g FlatGen) collect_optional_typedefs() {
+	for _, ret in g.tc.fn_ret_types {
+		g.collect_optional_typedef_type(ret)
+	}
+	for _, params in g.tc.fn_param_types {
+		for param in params {
+			g.collect_optional_typedef_type(param)
+		}
+	}
+	for _, fields in g.tc.structs {
+		for field in fields {
+			g.collect_optional_typedef_type(field.typ)
+		}
+	}
+	for _, fields in g.tc.interface_fields {
+		for field in fields {
+			g.collect_optional_typedef_type(field.typ)
+		}
+	}
+	for _, typ in g.tc.c_globals {
+		g.collect_optional_typedef_type(typ)
+	}
+	for _, typ in g.tc.const_types {
+		g.collect_optional_typedef_type(typ)
+	}
+	for idx, _ in g.a.nodes {
+		if typ := g.tc.expr_type(flat.NodeId(idx)) {
+			g.collect_optional_typedef_type(typ)
+		}
+	}
+}
+
+fn (mut g FlatGen) collect_optional_typedef_type(t types.Type) {
+	match t {
+		types.OptionType {
+			g.optional_type_name(t)
+			g.collect_optional_typedef_type(t.base_type)
+		}
+		types.ResultType {
+			g.optional_type_name(t)
+			g.collect_optional_typedef_type(t.base_type)
+		}
+		types.Array {
+			g.collect_optional_typedef_type(t.elem_type)
+		}
+		types.ArrayFixed {
+			g.collect_optional_typedef_type(t.elem_type)
+		}
+		types.Channel {
+			g.collect_optional_typedef_type(t.elem_type)
+		}
+		types.Map {
+			g.collect_optional_typedef_type(t.key_type)
+			g.collect_optional_typedef_type(t.value_type)
+		}
+		types.Pointer {
+			g.collect_optional_typedef_type(t.base_type)
+		}
+		types.FnType {
+			for param in t.params {
+				g.collect_optional_typedef_type(param)
+			}
+			g.collect_optional_typedef_type(t.return_type)
+		}
+		types.Alias {
+			g.collect_optional_typedef_type(t.base_type)
+		}
+		types.MultiReturn {
+			for typ in t.types {
+				g.collect_optional_typedef_type(typ)
+			}
+		}
+		else {}
 	}
 }
 
@@ -93,6 +183,7 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 // enum_decls supports enum decls handling for FlatGen.
 fn (mut g FlatGen) enum_decls() {
 	mut cur_module := ''
+	mut emitted := map[string]bool{}
 	for node in g.a.nodes {
 		match node.kind {
 			.file {
@@ -108,6 +199,10 @@ fn (mut g FlatGen) enum_decls() {
 					node.value
 				}
 				cn := c_name(name)
+				if emitted[cn] {
+					continue
+				}
+				emitted[cn] = true
 				g.writeln('typedef enum {')
 				is_flag := node.typ == 'flag'
 				mut val := 0
@@ -139,6 +234,7 @@ fn (mut g FlatGen) enum_decls() {
 // enum_str_defs (after `string` and `strconv__format_int` are available).
 fn (mut g FlatGen) enum_str_forward_decls() {
 	mut cur_module := ''
+	mut emitted := map[string]bool{}
 	for node in g.a.nodes {
 		match node.kind {
 			.file {
@@ -154,6 +250,10 @@ fn (mut g FlatGen) enum_str_forward_decls() {
 					node.value
 				}
 				cn := c_name(name)
+				if emitted[cn] {
+					continue
+				}
+				emitted[cn] = true
 				g.writeln('string ${cn}__autostr(${cn} it);')
 			}
 			else {}
@@ -168,6 +268,7 @@ fn (mut g FlatGen) enum_str_forward_decls() {
 // the user has not defined a custom `.str()`.
 fn (mut g FlatGen) enum_str_defs() {
 	mut cur_module := ''
+	mut emitted := map[string]bool{}
 	for node in g.a.nodes {
 		match node.kind {
 			.file {
@@ -183,6 +284,10 @@ fn (mut g FlatGen) enum_str_defs() {
 					node.value
 				}
 				cn := c_name(name)
+				if emitted[cn] {
+					continue
+				}
+				emitted[cn] = true
 				if node.typ == 'flag' {
 					// `[flag]` enum: a value can combine several bits, so build the V
 					// `Enum{.a | .b}` form by testing each field bit instead of matching a

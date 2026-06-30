@@ -989,6 +989,31 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 }
 
+// test_print_signed_width_compile_keeps_str_runtime_helpers validates this v3 regression case.
+fn test_print_signed_width_compile_keeps_str_runtime_helpers() {
+	v3_bin := build_v3_bin('print_signed_width_test')
+
+	src := os.join_path(os.temp_dir(), 'v3_markused_print_signed_width_input.v')
+	bin := os.join_path(os.temp_dir(), 'v3_markused_print_signed_width_input')
+	os.write_file(src, "
+fn main() {
+	println(i8(-5))
+	println(i16(-300))
+	println(i32(-70000))
+	println(i64(-5000000000))
+	println('\${i64(42)}')
+}
+") or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('implicit declaration'), compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '-5\n-300\n-70000\n-5000000000\n42', run.output
+}
+
 // test_string_plus_compile_keeps_plus_runtime_helper validates this v3 regression case.
 fn test_string_plus_compile_keeps_plus_runtime_helper() {
 	v3_bin := build_v3_bin('string_plus_test')

@@ -176,7 +176,7 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 	defer_start := g.defers.len
 	if rhs.kind == .index {
 		base_id := g.a.child(rhs, 0)
-		base_type := g.tc.resolve_type(base_id)
+		base_type := g.usable_expr_type(base_id)
 		if base_type is types.Map {
 			c_val_type := g.tc.c_type(base_type.value_type)
 			c_key_type := g.tc.c_type(base_type.key_type)
