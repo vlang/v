@@ -3,8 +3,41 @@ module c
 import v3.flat
 import v3.types
 
+fn (mut g FlatGen) take_pending_loop_label() string {
+	label := g.pending_loop_label
+	g.pending_loop_label = ''
+	return label
+}
+
+fn (mut g FlatGen) push_loop_label_depth(label string) LoopLabelState {
+	if label.len == 0 {
+		return LoopLabelState{}
+	}
+	mut state := LoopLabelState{
+		label: label
+	}
+	if prev_depth := g.loop_label_depths[label] {
+		state.had_prev = true
+		state.prev_depth = prev_depth
+	}
+	g.loop_label_depths[label] = g.loop_depth + 1
+	return state
+}
+
+fn (mut g FlatGen) pop_loop_label_depth(state LoopLabelState) {
+	if state.label.len == 0 {
+		return
+	}
+	if state.had_prev {
+		g.loop_label_depths[state.label] = state.prev_depth
+	} else {
+		g.loop_label_depths.delete(state.label)
+	}
+}
+
 // gen_for emits for output for c.
 fn (mut g FlatGen) gen_for(node flat.Node) {
+	label_state := g.push_loop_label_depth(g.take_pending_loop_label())
 	g.tc.push_scope()
 	defer_start := g.defers.len
 	init_node := g.a.child_node(&node, 0)
@@ -44,10 +77,15 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.indent--
 	g.writeln('}')
 	g.tc.pop_scope()
+	g.pop_loop_label_depth(label_state)
 }
 
 // gen_for_in emits for in output for c.
 fn (mut g FlatGen) gen_for_in(node flat.Node) {
+	label_state := g.push_loop_label_depth(g.take_pending_loop_label())
+	defer {
+		g.pop_loop_label_depth(label_state)
+	}
 	g.tc.push_scope()
 	header_count := node.value.int()
 	val_id := g.a.child(&node, 1)

@@ -12,6 +12,13 @@ struct ActiveLock {
 	loop_depth  int
 }
 
+struct LoopLabelState {
+	label string
+mut:
+	had_prev   bool
+	prev_depth int
+}
+
 // FlatGen emits flat gen output used by c.
 pub struct FlatGen {
 mut:
@@ -61,7 +68,7 @@ mut:
 	fn_decl_ret_types            map[string]types.Type // fn decl name (and qualified variants) -> return type
 	struct_decl_infos            map[string]StructDeclInfo
 	struct_decl_short_infos      map[string]StructDeclInfo
-	shared_type_names            map[string]string // __shared__ wrapper name -> wrapped V type text
+	shared_type_names            map[string]SharedTypeInfo // __shared__ wrapper name -> wrapped type metadata
 	needs_shared_runtime         bool
 	const_runtime_inits          []string
 	const_runtime_init_modules   []string
@@ -80,6 +87,8 @@ mut:
 	cur_fn_ret_base              types.Type = types.Type(types.void_)
 	active_locks                 []ActiveLock
 	loop_depth                   int
+	loop_label_depths            map[string]int
+	pending_loop_label           string
 	// in_return is true only while generating a `return` statement's value, so a bare
 	// generic literal (`return Box{...}`) may adopt `cur_fn_ret`'s concrete instance —
 	// but a literal in a local decl / argument elsewhere in the body does not.
@@ -168,13 +177,14 @@ pub fn FlatGen.new() FlatGen {
 		fn_decl_ret_types:            map[string]types.Type{}
 		struct_decl_infos:            map[string]StructDeclInfo{}
 		struct_decl_short_infos:      map[string]StructDeclInfo{}
-		shared_type_names:            map[string]string{}
+		shared_type_names:            map[string]SharedTypeInfo{}
 		cur_param_names:              []string{}
 		cur_param_type_values:        []types.Type{}
 		cur_param_types:              map[string]types.Type{}
 		cur_concrete_optional_params: map[string]bool{}
 		cur_mut_params:               map[string]bool{}
 		active_locks:                 []ActiveLock{}
+		loop_label_depths:            map[string]int{}
 		needed_optional_types:        map[string]string{}
 		emitted_optional_types:       map[string]bool{}
 		emitted_fns:                  map[string]bool{}
@@ -266,7 +276,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fn_decl_ret_types = map[string]types.Type{}
 	g.struct_decl_infos = map[string]StructDeclInfo{}
 	g.struct_decl_short_infos = map[string]StructDeclInfo{}
-	g.shared_type_names = map[string]string{}
+	g.shared_type_names = map[string]SharedTypeInfo{}
 	g.needs_shared_runtime = false
 	g.cur_param_names = []string{}
 	g.cur_param_type_values = []types.Type{}
@@ -275,6 +285,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cur_mut_params = map[string]bool{}
 	g.active_locks = []ActiveLock{}
 	g.loop_depth = 0
+	g.loop_label_depths = map[string]int{}
+	g.pending_loop_label = ''
 	g.needed_optional_types = map[string]string{}
 	g.emitted_optional_types = map[string]bool{}
 	g.emitted_fns = map[string]bool{}

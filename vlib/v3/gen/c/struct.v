@@ -908,6 +908,11 @@ struct SharedFieldInfo {
 	module  string
 }
 
+struct SharedTypeInfo {
+	inner  string
+	module string
+}
+
 fn shared_inner_type_text(raw string) ?string {
 	clean := raw.trim_space()
 	if clean.starts_with('shared ') {
@@ -917,7 +922,7 @@ fn shared_inner_type_text(raw string) ?string {
 }
 
 fn (mut g FlatGen) collect_shared_type_names() {
-	g.shared_type_names = map[string]string{}
+	g.shared_type_names = map[string]SharedTypeInfo{}
 	g.needs_shared_runtime = false
 	old_module := g.tc.cur_module
 	for _, info in g.struct_decl_infos {
@@ -929,7 +934,10 @@ fn (mut g FlatGen) collect_shared_type_names() {
 			}
 			inner := shared_inner_type_text(field.typ) or { continue }
 			wrapper := g.shared_wrapper_c_name(inner)
-			g.shared_type_names[wrapper] = inner
+			g.shared_type_names[wrapper] = SharedTypeInfo{
+				inner:  inner
+				module: info.module
+			}
 			g.needs_shared_runtime = true
 		}
 	}
@@ -1022,8 +1030,9 @@ fn (mut g FlatGen) shared_struct_decls() {
 	g.writeln('// V shared types:')
 	old_module := g.tc.cur_module
 	for name in names {
-		inner := g.shared_type_names[name] or { continue }
-		val_ct := g.shared_value_c_type(inner)
+		info := g.shared_type_names[name] or { continue }
+		g.tc.cur_module = info.module
+		val_ct := g.shared_value_c_type(info.inner)
 		g.writeln('struct ${name} {')
 		g.writeln('\tsync__RwMutex mtx;')
 		g.writeln('\t${val_ct} val;')

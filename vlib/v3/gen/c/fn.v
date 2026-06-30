@@ -1274,6 +1274,9 @@ fn (g &FlatGen) resolved_method_name_for_spawn(clean_type types.Type, method str
 fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.tc.cur_module = module_name
 	g.cur_fn_name = node.value
+	g.loop_depth = 0
+	g.loop_label_depths = map[string]int{}
+	g.pending_loop_label = ''
 	g.tc.push_scope()
 	g.defers = []flat.NodeId{}
 	g.fn_defers = []flat.NodeId{}
@@ -1380,6 +1383,9 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.cur_param_types = old_param_types.clone()
 	g.cur_concrete_optional_params = old_concrete_optional_params.clone()
 	g.cur_mut_params = old_mut_params.clone()
+	g.loop_depth = 0
+	g.loop_label_depths = map[string]int{}
+	g.pending_loop_label = ''
 	g.tc.pop_scope()
 }
 
@@ -1440,6 +1446,9 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.tc.cur_module = 'main'
 	old_fn_name := g.cur_fn_name
 	g.cur_fn_name = 'main'
+	g.loop_depth = 0
+	g.loop_label_depths = map[string]int{}
+	g.pending_loop_label = ''
 	g.tc.push_scope()
 	g.defers = []flat.NodeId{}
 	g.fn_defers = []flat.NodeId{}
@@ -1490,6 +1499,9 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.cur_concrete_optional_params = old_concrete_optional_params.clone()
 	g.cur_mut_params = old_mut_params.clone()
 	g.cur_fn_name = old_fn_name
+	g.loop_depth = 0
+	g.loop_label_depths = map[string]int{}
+	g.pending_loop_label = ''
 	g.tc.cur_file = old_tc_file
 	g.tc.cur_module = old_tc_module
 	g.tc.pop_scope()

@@ -395,6 +395,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		fn_decl_ret_types:            g.fn_decl_ret_types
 		struct_decl_infos:            g.struct_decl_infos
 		struct_decl_short_infos:      g.struct_decl_short_infos
+		shared_type_names:            g.shared_type_names
 		const_runtime_inits:          g.const_runtime_inits.clone()
 		runtime_inits:                g.runtime_inits.clone()
 		compiler_vroot:               g.compiler_vroot
@@ -406,6 +407,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		cur_fn_ret:                   g.cur_fn_ret
 		cur_fn_ret_is_optional:       g.cur_fn_ret_is_optional
 		cur_fn_ret_base:              g.cur_fn_ret_base
+		loop_label_depths:            map[string]int{}
 		expected_expr_type:           g.expected_expr_type
 		expected_enum:                g.expected_enum
 		needed_optional_types:        g.needed_optional_types.clone()
