@@ -2295,7 +2295,7 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 					t.mark_fn_used(method_name)
 					return t.make_call_typed(method_name, args, ret_type)
 				}
-				if fn_node.value in ['pop', 'clear', 'trim'] {
+				if array_method_stays_in_cgen_needs_runtime_mark(fn_node.value) {
 					t.mark_fn_used('array__${fn_node.value}')
 				}
 				return none
@@ -2327,8 +2327,26 @@ fn (t &Transformer) array_builtin_method_name(method string) ?string {
 }
 
 fn array_method_stays_in_cgen(method string) bool {
-	return method in ['last', 'first', 'delete_last', 'pop', 'pop_left', 'clear', 'repeat',
-		'repeat_to_depth', 'trim', 'ensure_cap', 'delete', 'free', 'str', 'bytestr', 'wait']
+	return match method.len {
+		3 { method == 'pop' || method == 'str' }
+		4 { method == 'last' || method == 'trim' || method == 'free' || method == 'wait' }
+		5 { method == 'first' || method == 'clear' }
+		6 { method == 'repeat' || method == 'delete' || method == 'bytestr' }
+		8 { method == 'pop_left' }
+		10 { method == 'ensure_cap' }
+		11 { method == 'delete_last' }
+		15 { method == 'repeat_to_depth' }
+		else { false }
+	}
+}
+
+fn array_method_stays_in_cgen_needs_runtime_mark(method string) bool {
+	return match method.len {
+		3 { method == 'pop' }
+		4 { method == 'trim' }
+		5 { method == 'clear' }
+		else { false }
+	}
 }
 
 fn transform_is_exact_array_receiver_method(name string) bool {
@@ -2346,8 +2364,8 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 	}
 	fn_id := t.a.children[node.children_start]
 	fn_node := t.a.nodes[int(fn_id)]
-	if fn_node.kind != .selector || fn_node.children_count == 0
-		|| fn_node.value !in ['keys', 'values', 'delete', 'clear', 'free', 'move', 'reserve'] {
+	is_lowered_map_method := map_method_is_lowered_by_transform(fn_node.value)
+	if fn_node.kind != .selector || fn_node.children_count == 0 || !is_lowered_map_method {
 		return none
 	}
 	base_id := t.a.children[fn_node.children_start]
@@ -2374,7 +2392,7 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		return t.make_call_typed(method_name, args, ret_type)
 	}
 	base := t.transform_expr(base_id)
-	if fn_node.value in ['clear', 'free'] {
+	if map_method_needs_runtime_addr_only(fn_node.value) {
 		t.mark_fn_used('map__${fn_node.value}')
 		return t.make_call_typed('map__${fn_node.value}', arr1(t.runtime_addr(base, base_type)),
 			'void')
@@ -2418,6 +2436,24 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 	t.mark_fn_used('map__${fn_node.value}')
 	return t.make_call_typed('map__${fn_node.value}', arr1(t.runtime_addr(base, base_type)),
 		'[]${elem_type}')
+}
+
+fn map_method_is_lowered_by_transform(method string) bool {
+	return match method.len {
+		4 { method == 'keys' || method == 'free' || method == 'move' }
+		5 { method == 'clear' }
+		6 { method == 'values' || method == 'delete' }
+		7 { method == 'reserve' }
+		else { false }
+	}
+}
+
+fn map_method_needs_runtime_addr_only(method string) bool {
+	return match method.len {
+		4 { method == 'free' }
+		5 { method == 'clear' }
+		else { false }
+	}
 }
 
 // try_lower_channel_method_call lowers channel source methods to runtime calls before
@@ -3408,10 +3444,73 @@ fn is_raw_collection_method_name(name string, prefix string) bool {
 }
 
 fn is_runtime_collection_helper_name(name string) bool {
-	return name in ['array__clone', 'array__reverse', 'array__prepend', 'array__insert',
-		'array__push_many', 'array__needs_unique_shift', 'map__delete', 'map__move', 'map__reserve',
-		'map__keys', 'map__values', 'map__clear', 'map__free', 'map__get', 'map__get_check',
-		'map__exists', 'map__set']
+	if name.len > 'array__'.len && has_array_runtime_prefix(name) {
+		return is_array_runtime_helper_method_name(name, 'array__'.len, name.len - 'array__'.len)
+	}
+	if name.len > 'map__'.len && has_map_runtime_prefix(name) {
+		return is_map_runtime_helper_method_name(name, 'map__'.len, name.len - 'map__'.len)
+	}
+	return false
+}
+
+fn has_array_runtime_prefix(name string) bool {
+	return name[0] == `a` && name[1] == `r` && name[2] == `r` && name[3] == `a` && name[4] == `y`
+		&& name[5] == `_` && name[6] == `_`
+}
+
+fn has_map_runtime_prefix(name string) bool {
+	return name[0] == `m` && name[1] == `a` && name[2] == `p` && name[3] == `_` && name[4] == `_`
+}
+
+fn is_array_runtime_helper_method_name(name string, start int, len int) bool {
+	return match len {
+		5 { name_part_eq(name, start, 'clone') }
+		6 { name_part_eq(name, start, 'insert') }
+		7 { name_part_eq(name, start, 'reverse') || name_part_eq(name, start, 'prepend') }
+		9 { name_part_eq(name, start, 'push_many') }
+		18 { name_part_eq(name, start, 'needs_unique_shift') }
+		else { false }
+	}
+}
+
+fn is_map_runtime_helper_method_name(name string, start int, len int) bool {
+	return match len {
+		3 {
+			name_part_eq(name, start, 'get') || name_part_eq(name, start, 'set')
+		}
+		4 {
+			name_part_eq(name, start, 'keys') || name_part_eq(name, start, 'move')
+				|| name_part_eq(name, start, 'free')
+		}
+		5 {
+			name_part_eq(name, start, 'clear')
+		}
+		6 {
+			name_part_eq(name, start, 'delete') || name_part_eq(name, start, 'values')
+				|| name_part_eq(name, start, 'exists')
+		}
+		7 {
+			name_part_eq(name, start, 'reserve')
+		}
+		9 {
+			name_part_eq(name, start, 'get_check')
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn name_part_eq(name string, start int, expected string) bool {
+	if name.len - start != expected.len {
+		return false
+	}
+	for i in 0 .. expected.len {
+		if name[start + i] != expected[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // resolve_smartcast_sum_receiver_method supports resolve_smartcast_sum_receiver_method handling.
