@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module http
 
+import compress.brotli
 import compress.gzip
 import compress.zlib
 import net.http.chunked
@@ -112,6 +113,9 @@ fn decode_response_body(body string, content_encoding string) string {
 		decoded = match encoding {
 			'gzip', 'x-gzip' {
 				gzip.decompress(decoded) or { return body }
+			}
+			'br' {
+				brotli.decompress(decoded) or { return body }
 			}
 			'deflate' {
 				zlib.decompress(decoded) or { return body }
