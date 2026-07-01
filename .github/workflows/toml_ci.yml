@@ -6,11 +6,13 @@ on:
       - master
     paths:
       - 'vlib/**'
+      - '!vlib/v3/**'
       - '**/toml_ci.yml'
       - '!**.md'
   pull_request:
     paths:
       - 'vlib/**'
+      - '!vlib/v3/**'
       - '**/toml_ci.yml'
       - '!**.md'
 
