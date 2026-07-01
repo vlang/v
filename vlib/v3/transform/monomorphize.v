@@ -51,11 +51,12 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	mut generic_call_sites := []GenericCallSite{}
 	mut recorded_call_sites := map[int]bool{}
 	mut changed := true
+	mut scan_start := 0
 	for changed {
 		changed = false
 		t.ensure_node_module_map()
 		node_count := t.a.nodes.len
-		for i in 0 .. node_count {
+		for i in scan_start .. node_count {
 			if (i < template_nodes.len && template_nodes[i])
 				|| (i < ignored_nodes.len && ignored_nodes[i]) {
 				continue
@@ -95,6 +96,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 				else {}
 			}
 		}
+		scan_start = node_count
 		// Specialize methods of instantiated generic structs that are never reached
 		// through an explicit call node — notably operator overloads (`a + b`), which
 		// are infix expressions lowered to method calls only later in the pipeline.

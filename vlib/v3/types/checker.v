@@ -165,6 +165,13 @@ mut:
 	struct_field_misses  map[string]bool
 }
 
+@[heap]
+struct FileImportInfo {
+mut:
+	imports           map[string]string
+	selective_imports map[string][]string
+}
+
 // TypeChecker represents type checker data used by types.
 @[heap]
 pub struct TypeChecker {
@@ -210,6 +217,7 @@ pub mut:
 	imports                 map[string]string // alias -> short module name
 	file_imports            map[string]string
 	file_selective_imports  map[string][]string
+	file_imports_by_file    map[string]&FileImportInfo
 	file_modules            map[string]string
 	file_scope              &Scope = unsafe { nil }
 	cur_scope               &Scope = unsafe { nil }
@@ -295,6 +303,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		imports:                      map[string]string{}
 		file_imports:                 map[string]string{}
 		file_selective_imports:       map[string][]string{}
+		file_imports_by_file:         map[string]&FileImportInfo{}
 		file_modules:                 map[string]string{}
 		file_scope:                   fs
 		cur_scope:                    fs
@@ -494,7 +503,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 			}
 			.import_decl {
 				tc.imports[node.typ] = node.value
-				tc.file_imports[file_import_key(tc.cur_file, node.typ)] = node.value
+				tc.register_file_import(node.typ, node.value)
 				tc.register_selective_imports(node)
 			}
 			.enum_decl {
@@ -1046,6 +1055,24 @@ fn file_import_key(file string, alias string) string {
 	return '${file}\n${alias}'
 }
 
+fn (mut tc TypeChecker) file_import_info() &FileImportInfo {
+	if info := tc.file_imports_by_file[tc.cur_file] {
+		return info
+	}
+	info := &FileImportInfo{
+		imports:           map[string]string{}
+		selective_imports: map[string][]string{}
+	}
+	tc.file_imports_by_file[tc.cur_file] = info
+	return info
+}
+
+fn (mut tc TypeChecker) register_file_import(alias string, module_name string) {
+	tc.file_imports[file_import_key(tc.cur_file, alias)] = module_name
+	mut info := tc.file_import_info()
+	info.imports[alias] = module_name
+}
+
 // enter_file supports enter file handling for TypeChecker.
 fn (mut tc TypeChecker) enter_file(file string) {
 	tc.cur_file = file
@@ -1064,6 +1091,7 @@ fn (mut tc TypeChecker) register_selective_imports(node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
+	mut info := tc.file_import_info()
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.nodes[int(child_id)]
@@ -1071,8 +1099,9 @@ fn (mut tc TypeChecker) register_selective_imports(node flat.Node) {
 			continue
 		}
 		key := file_import_key(tc.cur_file, child.value)
-		if key in tc.file_selective_imports {
+		if child.value in info.selective_imports {
 			tc.file_selective_imports[key] = []string{}
+			info.selective_imports[child.value] = []string{}
 			tc.record_error_unfiltered(.unknown_fn, 'ambiguous selective import `${child.value}`',
 				child_id)
 			continue
@@ -1087,19 +1116,21 @@ fn (mut tc TypeChecker) register_selective_imports(node flat.Node) {
 			candidates << alias_name
 		}
 		tc.file_selective_imports[key] = candidates
+		info.selective_imports[child.value] = candidates
 	}
 }
 
 // resolve_import_alias resolves resolve import alias information for types.
 fn (tc &TypeChecker) resolve_import_alias(alias string) ?string {
-	if mod := tc.file_imports[file_import_key(tc.cur_file, alias)] {
+	info := tc.file_imports_by_file[tc.cur_file] or { return none }
+	if mod := info.imports[alias] {
 		return mod
 	}
 	return none
 }
 
 fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
-	candidates := tc.file_selective_imports[file_import_key(tc.cur_file, name)] or { return none }
+	candidates := tc.selective_import_candidates(name) or { return none }
 	for candidate in candidates {
 		if tc.fn_signature_known(candidate) {
 			return candidate
@@ -1109,13 +1140,18 @@ fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
 }
 
 fn (tc &TypeChecker) resolve_selective_import_type_symbol(name string) ?string {
-	candidates := tc.file_selective_imports[file_import_key(tc.cur_file, name)] or { return none }
+	candidates := tc.selective_import_candidates(name) or { return none }
 	for candidate in candidates {
 		if tc.type_symbol_known(candidate) {
 			return candidate
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) selective_import_candidates(name string) ?[]string {
+	info := tc.file_imports_by_file[tc.cur_file] or { return none }
+	return info.selective_imports[name] or { return none }
 }
 
 fn (tc &TypeChecker) type_symbol_known(name string) bool {
@@ -1160,7 +1196,7 @@ fn (tc &TypeChecker) type_from_known_symbol(name string) ?Type {
 }
 
 fn (tc &TypeChecker) selective_import_symbol_is_ambiguous(name string) bool {
-	candidates := tc.file_selective_imports[file_import_key(tc.cur_file, name)] or { return false }
+	candidates := tc.selective_import_candidates(name) or { return false }
 	return candidates.len == 0
 }
 
@@ -1183,7 +1219,8 @@ fn (tc &TypeChecker) resolve_imported_type_text(typ string) string {
 
 // has_active_import reports whether has active import applies in types.
 fn (tc &TypeChecker) has_active_import(alias string) bool {
-	return file_import_key(tc.cur_file, alias) in tc.file_imports
+	info := tc.file_imports_by_file[tc.cur_file] or { return false }
+	return alias in info.imports
 }
 
 const receiver_method_suffix_ambiguous = '__v_receiver_method_suffix_ambiguous__'
