@@ -181,6 +181,7 @@ pub fn (mut conn SSLConn) accept_handshake() ! {
 	// 执行 SSL 握手过程
 	deadline := ssl_timeout_deadline(conn.duration)
 	for {
+		C.ERR_clear_error()
 		res := C.SSL_accept(voidptr(conn.ssl))
 		if res == 1 {
 			break
@@ -188,11 +189,19 @@ pub fn (mut conn SSLConn) accept_handshake() ! {
 
 		err_res := ssl_error(res, conn.ssl)!
 		if err_res == .ssl_error_want_read {
-			conn.wait_for_read(ssl_remaining_timeout(deadline))!
+			timeout := ssl_remaining_timeout(deadline)
+			if timeout <= 0 {
+				return net.err_timed_out
+			}
+			conn.wait_for_read(timeout)!
 			continue
 		}
 		if err_res == .ssl_error_want_write {
-			conn.wait_for_write(ssl_remaining_timeout(deadline))!
+			timeout := ssl_remaining_timeout(deadline)
+			if timeout <= 0 {
+				return net.err_timed_out
+			}
+			conn.wait_for_write(timeout)!
 			continue
 		}
 

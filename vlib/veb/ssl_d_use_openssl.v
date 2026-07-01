@@ -5,6 +5,7 @@ import net
 import net.http
 import net.openssl
 import os
+import sync
 import time
 
 @[params]
@@ -49,21 +50,33 @@ fn run_at_with_ssl[A, X](mut global_app A, params RunParams) ! {
 	$if A is BeforeAcceptApp {
 		global_app.before_accept_loop()
 	}
+	mut handshake_limit := sync.new_semaphore_init(u32(if params.nr_workers > 0 {
+		params.nr_workers
+	} else {
+		1
+	}))
 	for {
 		mut ssl_conn := ssl_listener.accept_without_handshake() or {
 			eprintln('[veb] accept() failed, reason: ${err}; skipping')
 			continue
 		}
 		ssl_conn.duration = params.timeout_in_seconds * time.second
-		spawn handle_ssl_connection[A, X](mut ssl_conn, ssl_params)
+		handshake_limit.wait()
+		spawn handle_ssl_connection[A, X](mut ssl_conn, ssl_params, mut handshake_limit)
 	}
 }
 
-fn handle_ssl_connection[A, X](mut ssl_conn openssl.SSLConn, params &SslRequestParams) {
+fn handle_ssl_connection[A, X](mut ssl_conn openssl.SSLConn, params &SslRequestParams, mut handshake_limit sync.Semaphore) {
+	mut handshake_slot_held := true
 	defer {
+		if handshake_slot_held {
+			handshake_limit.post()
+		}
 		ssl_conn.shutdown() or {}
 	}
 	ssl_conn.accept_handshake() or { return }
+	handshake_limit.post()
+	handshake_slot_held = false
 	mut reader := io.new_buffered_reader(
 		reader: ssl_conn
 		cap:    params.max_request_buffer_size

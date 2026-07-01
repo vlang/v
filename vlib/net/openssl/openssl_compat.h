@@ -172,6 +172,7 @@ static int v_net_openssl_alpn_select_cb(SSL *ssl, const unsigned char **out,
 
 static int v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX *ctx,
 		const unsigned char *protos, unsigned int protos_len) {
+	static int state_index = -1;
 	v_net_openssl_alpn_select_state *selection =
 		(v_net_openssl_alpn_select_state *)malloc(sizeof(*selection));
 	if (selection == NULL) {
@@ -184,8 +185,10 @@ static int v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX *ctx,
 	}
 	memcpy(selection->protos, protos, protos_len);
 	selection->protos_len = protos_len;
-	int state_index = SSL_CTX_get_ex_new_index(0, NULL, NULL, NULL,
-		v_net_openssl_free_alpn_select_state);
+	if (state_index < 0) {
+		state_index = SSL_CTX_get_ex_new_index(0, NULL, NULL, NULL,
+			v_net_openssl_free_alpn_select_state);
+	}
 	if (state_index < 0 || SSL_CTX_set_ex_data(ctx, state_index, selection) != 1) {
 		free(selection->protos);
 		free(selection);
