@@ -205,15 +205,16 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		struct_decls: struct_decls
 		const_decls:  const_decls
 	}
+	has_entry_main := markused_has_entry_main(a)
 	enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
-	enqueue_function_value_selectors(a, collector, fn_decls, mut used, mut queue)
+	enqueue_function_value_selectors(a, collector, fn_decls, has_entry_main, mut used, mut queue)
 	// Methods used as values (`recv.method` passed as a callback) are reachable only
 	// through a wrapper cgen generates later. The checker records them per enclosing
 	// function in `method_values_by_fn`; they are seeded inside the BFS below (only when
 	// that function is reached), so an unreachable function's method value never forces an
 	// otherwise-unused specialization to be transformed/emitted.
 	enqueue_initializer_calls(a, collector, imports, fn_decls, mut used, mut queue)
-	enqueue_top_level_calls(a, collector, fn_decls, mut used, mut queue)
+	enqueue_top_level_calls(a, collector, fn_decls, has_entry_main, mut used, mut queue)
 	// Interface dispatch reachability: calling an interface method `Foo.m` may
 	// dispatch to any concrete `T.m` for a type `T` that implements `Foo`. Those
 	// concrete methods are only referenced from the generated dispatch switch, so
@@ -488,8 +489,8 @@ fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, imports m
 	}
 }
 
-fn enqueue_top_level_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
-	if markused_has_entry_main(a) {
+fn enqueue_top_level_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, has_entry_main bool, mut used map[string]bool, mut queue []string) {
+	if has_entry_main {
 		return
 	}
 	mut calls := []string{cap: 32}
@@ -1106,8 +1107,8 @@ fn stringification_type_candidates(type_name string, cur_module string) []string
 }
 
 // enqueue_function_value_selectors supports enqueue function value selectors handling for markused.
-fn enqueue_function_value_selectors(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
-	if markused_has_entry_main(a) {
+fn enqueue_function_value_selectors(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, has_entry_main bool, mut used map[string]bool, mut queue []string) {
+	if has_entry_main {
 		enqueue_function_value_selectors_with_entry_main(a, collector, fn_decls, mut used, mut
 			queue)
 		return
