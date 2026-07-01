@@ -609,12 +609,7 @@ fn (mut t Transformer) ensure_node_module_map() {
 		t.node_module_map_cache = []string{len: t.a.nodes.len}
 		t.node_module_map_nodes = 0
 	} else if t.node_module_map_cache.len < t.a.nodes.len {
-		old := t.node_module_map_cache
-		mut expanded := []string{len: t.a.nodes.len}
-		for i in 0 .. old.len {
-			expanded[i] = old[i]
-		}
-		t.node_module_map_cache = expanded
+		t.node_module_map_cache << []string{len: t.a.nodes.len - t.node_module_map_cache.len}
 	}
 	mut cur_module := ''
 	for i := t.node_module_map_nodes; i < t.a.nodes.len; i++ {
