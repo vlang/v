@@ -9743,8 +9743,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	if kind_id == 14 {
 		return tc.resolve_index_type(node)
 	}
-	if kind_id != 7 && kind_id != 8 && kind_id != 13 && !(tc.smartcasts.len > 0
-		&& (kind_id == 7 || kind_id == 13)) {
+	if !(tc.smartcasts.len > 0 && (kind_id == 7 || kind_id == 13)) {
 		if typ := tc.cached_expr_type(id) {
 			return typ
 		}
