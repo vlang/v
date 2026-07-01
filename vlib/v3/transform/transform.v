@@ -65,6 +65,7 @@ mut:
 	globals                      map[string]string
 	sum_types                    map[string][]string
 	sum_variant_parents          map[string][]string
+	sum_variant_names            map[string]bool
 	sum_variant_fields           map[string]string
 	qualified_types              map[string]string
 	fn_ret_types                 map[string]string
@@ -270,6 +271,7 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		generic_receiver_methods_by_name: map[string][]string{}
 		generic_call_spec_cache:          map[int]GenericCallSpec{}
 		generic_call_spec_misses:         map[int]bool{}
+		sum_variant_names:                map[string]bool{}
 		used_fns:                         used_fns.clone()
 	}
 }
@@ -569,6 +571,8 @@ fn (mut t Transformer) add_sum_variant_parent(variant string, sum_name string) {
 	if field_name.contains('__') && field_name !in t.sum_variant_fields {
 		t.sum_variant_fields[field_name] = variant
 	}
+	t.sum_variant_names[variant] = true
+	t.sum_variant_names[t.variant_short_name(variant)] = true
 	t.add_sum_variant_parent_key(variant, sum_name)
 	if variant.contains('.') {
 		t.add_sum_variant_parent_key(variant.all_after_last('.'), sum_name)
@@ -7533,16 +7537,7 @@ fn (t &Transformer) count_conds(branch flat.Node) int {
 
 // is_sum_variant reports whether is sum variant applies in transform.
 pub fn (t &Transformer) is_sum_variant(name string) bool {
-	short_name := t.variant_short_name(name)
-	for _, variants in t.sum_types {
-		for v in variants {
-			short_v := t.variant_short_name(v)
-			if v == name || short_v == short_name {
-				return true
-			}
-		}
-	}
-	return false
+	return name in t.sum_variant_names || t.variant_short_name(name) in t.sum_variant_names
 }
 
 // --- array append lowering (existing, will move to expr.v later) ---
