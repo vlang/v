@@ -25,6 +25,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut fn_decl_lists := map[string][]FnDeclInfo{}
 	mut struct_decls := map[string]StructDeclInfo{}
 	mut const_decls := map[string]ConstDeclInfo{}
+	mut fn_name_suffixes := map[string]bool{}
+	mut const_name_suffixes := map[string]bool{}
 
 	// Reverse index: short name (after last '.') -> list of full qualified names
 	mut suffix_map := map[string][]string{}
@@ -69,9 +71,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					module:  cur_module
 				}
 				const_decls[field.value] = info
+				add_candidate_suffix(mut const_name_suffixes, field.value)
 				full_name := qualify_fn(cur_module, field.value)
 				if full_name != field.value {
 					const_decls[full_name] = info
+					add_candidate_suffix(mut const_name_suffixes, full_name)
 				}
 			}
 			continue
@@ -92,16 +96,20 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				module:  cur_module
 			}
 			add_fn_decl_info(mut fn_decls, mut fn_decl_lists, node.value, info)
+			add_candidate_suffix(mut fn_name_suffixes, node.value)
 			lowered_name := markused_c_name(node.value)
 			if lowered_name != node.value {
 				add_fn_decl_info(mut fn_decls, mut fn_decl_lists, lowered_name, info)
+				add_candidate_suffix(mut fn_name_suffixes, lowered_name)
 			}
 			qname := qualify_fn(cur_module, node.value)
 			if qname != node.value {
 				add_fn_decl_info(mut fn_decls, mut fn_decl_lists, qname, info)
+				add_candidate_suffix(mut fn_name_suffixes, qname)
 				lowered_qname := markused_c_name(qname)
 				if lowered_qname != qname {
 					add_fn_decl_info(mut fn_decls, mut fn_decl_lists, lowered_qname, info)
+					add_candidate_suffix(mut fn_name_suffixes, lowered_qname)
 				}
 			}
 			// Build suffix_map entries
@@ -199,11 +207,13 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut not_in_cg := 0
 	mut total_callees := 0
 	collector := CallCollector{
-		a:            a
-		tc:           tc
-		fn_decls:     fn_decls
-		struct_decls: struct_decls
-		const_decls:  const_decls
+		a:              a
+		tc:             tc
+		fn_decls:       fn_decls
+		fn_suffixes:    fn_name_suffixes
+		struct_decls:   struct_decls
+		const_decls:    const_decls
+		const_suffixes: const_name_suffixes
 	}
 	has_entry_main := markused_has_entry_main(a)
 	enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
@@ -397,6 +407,13 @@ fn add_suffix_candidate(mut suffix_map map[string][]string, short string, name s
 	mut candidates := suffix_map[short] or { []string{} }
 	candidates << name
 	suffix_map[short] = candidates
+}
+
+fn add_candidate_suffix(mut suffixes map[string]bool, name string) {
+	if !valid_symbol_name(name) {
+		return
+	}
+	suffixes[name.all_after_last('.')] = true
 }
 
 fn add_fn_decl_info(mut fn_decls map[string]FnDeclInfo, mut fn_decl_lists map[string][]FnDeclInfo, name string, info FnDeclInfo) {
@@ -621,11 +638,13 @@ struct ConstDeclInfo {
 
 // CallCollector represents call collector data used by markused.
 struct CallCollector {
-	a            &flat.FlatAst      = unsafe { nil }
-	tc           &types.TypeChecker = unsafe { nil }
-	fn_decls     map[string]FnDeclInfo
-	struct_decls map[string]StructDeclInfo
-	const_decls  map[string]ConstDeclInfo
+	a              &flat.FlatAst      = unsafe { nil }
+	tc             &types.TypeChecker = unsafe { nil }
+	fn_decls       map[string]FnDeclInfo
+	fn_suffixes    map[string]bool
+	struct_decls   map[string]StructDeclInfo
+	const_decls    map[string]ConstDeclInfo
+	const_suffixes map[string]bool
 }
 
 // enqueue_auto_roots supports enqueue auto roots handling for markused.
@@ -2510,6 +2529,9 @@ fn (c &CallCollector) name_has_fn_decl(name string, cur_module string, imports m
 
 // name_has_candidate_decl returns name has candidate decl data for CallCollector.
 fn (c &CallCollector) name_has_candidate_decl(name string, cur_module string, imports map[string]string, include_consts bool) bool {
+	if !name.contains('.') && !c.fn_suffixes[name] && !(include_consts && c.const_suffixes[name]) {
+		return false
+	}
 	if c.candidate_matches_decl(name, include_consts) {
 		return true
 	}

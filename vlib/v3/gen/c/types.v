@@ -118,9 +118,23 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 	for _, typ in g.tc.const_types {
 		g.collect_optional_typedef_type(typ)
 	}
-	for idx, _ in g.a.nodes {
-		if typ := g.tc.expr_type(flat.NodeId(idx)) {
-			g.collect_optional_typedef_type(typ)
+	for idx, is_set in g.tc.expr_type_set {
+		if !is_set || idx >= g.tc.expr_type_values.len {
+			continue
+		}
+		g.collect_optional_typedef_type(g.tc.expr_type_values[idx])
+	}
+	for idx, node in g.a.nodes {
+		if node.kind != .call || (idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx]) {
+			continue
+		}
+		if node.typ.len > 0 && node.typ !in ['int', 'array', 'map', 'unknown'] {
+			g.collect_optional_typedef_type(g.tc.parse_type(node.typ))
+		} else if idx < g.tc.resolved_call_set.len && g.tc.resolved_call_set[idx] {
+			name := g.tc.resolved_call_names[idx]
+			if typ := g.tc.fn_ret_types[name] {
+				g.collect_optional_typedef_type(typ)
+			}
 		}
 	}
 }
