@@ -30,6 +30,12 @@ struct GenericMethodCandidate {
 	params []types.Type
 }
 
+struct SpawnPackedArg {
+	field_ct    string
+	assign_expr string
+	call_expr   string
+}
+
 // FlatFnGenItem represents one top-level function selected for C emission.
 struct FlatFnGenItem {
 	node_id flat.NodeId
@@ -1126,15 +1132,13 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 			// spawned thread receives them, instead of silently dropping them.
 			param_types := g.param_types_for(call_key, fn_node.value)
 			if param_types.len > 0 && param_types.len == int(call_node.children_count) - 1 {
-				mut param_cts := []string{}
-				mut arg_exprs := []string{}
+				mut packed_args := []SpawnPackedArg{}
 				for i, pt in param_types {
 					param_ct := g.tc.c_type(pt)
 					arg_id := g.a.child(&call_node, i + 1)
-					param_cts << param_ct
-					arg_exprs << g.spawn_arg_expr_for_param(arg_id, pt, param_ct)
+					packed_args << g.spawn_packed_arg_for_param(arg_id, pt, param_ct, i)
 				}
-				g.emit_args_spawn_expr(cfn, param_cts, arg_exprs, ret_ct)
+				g.emit_args_spawn_expr(cfn, packed_args, ret_ct)
 				return
 			}
 		}
@@ -1148,40 +1152,48 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 			if param_types.len > 0 {
 				receiver_type := param_types[0]
 				receiver_ct := g.tc.c_type(receiver_type)
-				base_expr := g.expr_to_string(base_id)
 				if call_node.children_count == 1 {
 					if receiver_type is types.Pointer {
-						wrapper = g.ensure_receiver_spawn_wrapper(c_name(method_name), receiver_ct,
-							ret_ct)
 						if base_type is types.Pointer {
+							wrapper = g.ensure_receiver_spawn_wrapper(c_name(method_name),
+								receiver_ct, ret_ct)
+							base_expr := g.expr_to_string(base_id)
 							arg_expr = '(${receiver_ct})(${base_expr})'
-						} else {
+						} else if g.expr_is_addressable(base_id) {
+							wrapper = g.ensure_receiver_spawn_wrapper(c_name(method_name),
+								receiver_ct, ret_ct)
+							base_expr := g.expr_to_string(base_id)
 							arg_expr = '(${receiver_ct})(&(${base_expr}))'
+						} else {
+							receiver_value := g.spawn_packed_arg_for_param(base_id, receiver_type,
+								receiver_ct, 0)
+							g.emit_args_spawn_expr(c_name(method_name), [
+								receiver_value,
+							], ret_ct)
+							return
 						}
 					} else {
 						// Casting the void* thread argument straight to a struct type
 						// is invalid C, so copy the value receiver into the heap arg
 						// struct and dispatch through the argument-packing path.
-						receiver_value := g.spawn_arg_expr_for_param(base_id, receiver_type,
-							receiver_ct)
-						g.emit_args_spawn_expr(c_name(method_name), [receiver_ct], [
-							receiver_value,
-						], ret_ct)
+						receiver_value := g.spawn_packed_arg_for_param(base_id, receiver_type,
+							receiver_ct, 0)
+						g.emit_args_spawn_expr(c_name(method_name), [receiver_value], ret_ct)
 						return
 					}
 				} else if param_types.len == int(call_node.children_count) {
 					// `spawn recv.method(a, b)` packs the receiver and arguments
 					// into a heap struct rather than dropping the call.
-					receiver_expr := g.spawn_arg_expr_for_param(base_id, receiver_type, receiver_ct)
-					mut param_cts := [receiver_ct]
-					mut arg_exprs := [receiver_expr]
+					receiver_arg := g.spawn_packed_arg_for_param(base_id, receiver_type,
+						receiver_ct, 0)
+					mut packed_args := [receiver_arg]
 					for i in 1 .. param_types.len {
 						param_ct := g.tc.c_type(param_types[i])
 						arg_id := g.a.child(&call_node, i)
-						param_cts << param_ct
-						arg_exprs << g.spawn_arg_expr_for_param(arg_id, param_types[i], param_ct)
+						packed_args << g.spawn_packed_arg_for_param(arg_id, param_types[i],
+							param_ct, i)
 					}
-					g.emit_args_spawn_expr(c_name(method_name), param_cts, arg_exprs, ret_ct)
+					g.emit_args_spawn_expr(c_name(method_name), packed_args, ret_ct)
 					return
 				}
 			}
@@ -1234,38 +1246,45 @@ fn (mut g FlatGen) ensure_receiver_spawn_wrapper(cfn string, receiver_ct string,
 	return name
 }
 
-// ensure_args_spawn_wrapper registers (once per callee) a heap-arg struct plus a
-// thread wrapper that unpacks the struct, calls the function with all arguments,
-// and frees the struct. Returns the wrapper name and the arg struct name.
-fn (mut g FlatGen) ensure_args_spawn_wrapper(cfn string, param_cts []string, ret_ct string) (string, string) {
-	struct_name := c_name('${cfn}_thread_args')
-	key := 'args|${cfn}'
+// ensure_args_spawn_wrapper registers a heap-arg struct plus a thread wrapper
+// that unpacks the struct, calls the function with all arguments, and frees the
+// struct. Pointer rvalues are stored by value in the heap struct and passed as
+// `&p->field`, so the wrapper shape is part of the cache key.
+fn (mut g FlatGen) ensure_args_spawn_wrapper(cfn string, args []SpawnPackedArg, ret_ct string) (string, string) {
+	signature := spawn_packed_args_signature(args)
+	mut struct_name := c_name('${cfn}_thread_args')
+	mut wrapper_name := c_name('${cfn}_args_thread_wrapper')
+	if !spawn_packed_args_are_direct(args) {
+		suffix := spawn_packed_args_name_suffix(args)
+		struct_name = c_name('${cfn}_thread_args_${suffix}')
+		wrapper_name = c_name('${cfn}_args_thread_wrapper_${suffix}')
+	}
+	key := 'args|${cfn}|${signature}'
 	if name := g.spawn_wrapper_names[key] {
 		return name, struct_name
 	}
-	name := c_name('${cfn}_args_thread_wrapper')
-	g.spawn_wrapper_names[key] = name
+	g.spawn_wrapper_names[key] = wrapper_name
 	mut fields := ''
 	mut call_args := []string{}
-	for i, ct in param_cts {
-		fields += '${ct} a${i}; '
-		call_args << 'p->a${i}'
+	for i, arg in args {
+		fields += '${arg.field_ct} a${i}; '
+		call_args << arg.call_expr
 	}
 	g.spawn_wrapper_defs << 'typedef struct { ${fields}} ${struct_name};'
 	body := spawn_wrapper_body('${cfn}(${call_args.join(', ')})', ret_ct, 'free(p); ')
-	g.spawn_wrapper_defs << 'static void* ${name}(void* arg) { ${struct_name}* p = (${struct_name}*)arg; ${body} }'
-	return name, struct_name
+	g.spawn_wrapper_defs << 'static void* ${wrapper_name}(void* arg) { ${struct_name}* p = (${struct_name}*)arg; ${body} }'
+	return wrapper_name, struct_name
 }
 
 // emit_args_spawn_expr writes a statement-expression that heap-allocates the arg
 // struct, populates it, and starts the thread on the packing wrapper.
-fn (mut g FlatGen) emit_args_spawn_expr(cfn string, param_cts []string, arg_exprs []string, ret_ct string) {
-	wrapper, struct_name := g.ensure_args_spawn_wrapper(cfn, param_cts, ret_ct)
+fn (mut g FlatGen) emit_args_spawn_expr(cfn string, args []SpawnPackedArg, ret_ct string) {
+	wrapper, struct_name := g.ensure_args_spawn_wrapper(cfn, args, ret_ct)
 	tmp := g.tmp_count
 	g.tmp_count++
 	g.write('({ ${struct_name}* _sa${tmp} = (${struct_name}*)malloc(sizeof(${struct_name})); ')
-	for i, e in arg_exprs {
-		g.write('_sa${tmp}->a${i} = ${e}; ')
+	for i, arg in args {
+		g.write('_sa${tmp}->a${i} = ${arg.assign_expr}; ')
 	}
 	g.write('pthread_t _t${tmp}; pthread_attr_t _at${tmp}; pthread_attr_init(&_at${tmp}); ')
 	g.write('pthread_attr_setstacksize(&_at${tmp}, 8388608); ')
@@ -1273,18 +1292,79 @@ fn (mut g FlatGen) emit_args_spawn_expr(cfn string, param_cts []string, arg_expr
 	g.write('pthread_attr_destroy(&_at${tmp}); (void)_r${tmp}; (void*)_t${tmp}; })')
 }
 
-fn (mut g FlatGen) spawn_arg_expr_for_param(arg_id flat.NodeId, expected types.Type, expected_ct string) string {
+fn (mut g FlatGen) spawn_packed_arg_for_param(arg_id flat.NodeId, expected types.Type, expected_ct string, field_idx int) SpawnPackedArg {
 	if spawn_c_type_is_pointer(expected_ct) {
+		arg_node := g.a.nodes[int(arg_id)]
+		if child_id := g.spawn_materialized_pointer_rvalue_arg(arg_node) {
+			value_type := types.unwrap_pointer(expected)
+			return SpawnPackedArg{
+				field_ct:    g.tc.c_type(value_type)
+				assign_expr: g.expr_to_string_with_expected_type(child_id, value_type)
+				call_expr:   '&p->a${field_idx}'
+			}
+		}
+		if child_id := g.addressed_rvalue_arg(arg_node) {
+			value_type := types.unwrap_pointer(expected)
+			return SpawnPackedArg{
+				field_ct:    g.tc.c_type(value_type)
+				assign_expr: g.expr_to_string_with_expected_type(child_id, value_type)
+				call_expr:   '&p->a${field_idx}'
+			}
+		}
 		if g.spawn_arg_expr_is_pointer_value(arg_id) {
-			return g.expr_to_string(arg_id)
+			return SpawnPackedArg{
+				field_ct:    expected_ct
+				assign_expr: g.expr_to_string(arg_id)
+				call_expr:   'p->a${field_idx}'
+			}
 		}
-		expr := g.expr_to_string(arg_id)
 		if g.expr_is_addressable(arg_id) {
-			return '&${expr}'
+			expr := g.expr_to_string(arg_id)
+			return SpawnPackedArg{
+				field_ct:    expected_ct
+				assign_expr: '&${expr}'
+				call_expr:   'p->a${field_idx}'
+			}
 		}
-		return expr
+		value_type := types.unwrap_pointer(expected)
+		return SpawnPackedArg{
+			field_ct:    g.tc.c_type(value_type)
+			assign_expr: g.expr_to_string_with_expected_type(arg_id, value_type)
+			call_expr:   '&p->a${field_idx}'
+		}
 	}
-	return g.expr_to_string_with_expected_type(arg_id, expected)
+	return SpawnPackedArg{
+		field_ct:    expected_ct
+		assign_expr: g.expr_to_string_with_expected_type(arg_id, expected)
+		call_expr:   'p->a${field_idx}'
+	}
+}
+
+fn spawn_packed_args_signature(args []SpawnPackedArg) string {
+	mut parts := []string{}
+	for i, arg in args {
+		parts << '${i}:${arg.field_ct}:${arg.call_expr}'
+	}
+	return parts.join('|')
+}
+
+fn spawn_packed_args_are_direct(args []SpawnPackedArg) bool {
+	for i, arg in args {
+		if arg.call_expr != 'p->a${i}' {
+			return false
+		}
+	}
+	return true
+}
+
+fn spawn_packed_args_name_suffix(args []SpawnPackedArg) string {
+	mut parts := []string{}
+	for i, arg in args {
+		field := arg.field_ct.replace('*', 'ptr').replace(' ', '_')
+		mode := if arg.call_expr == 'p->a${i}' { 'value' } else { 'addr' }
+		parts << '${field}_${mode}'
+	}
+	return parts.join('_')
 }
 
 fn spawn_c_type_is_pointer(ct string) bool {
@@ -1297,14 +1377,39 @@ fn (g &FlatGen) spawn_arg_expr_is_pointer_value(arg_id flat.NodeId) bool {
 	}
 	node := g.a.nodes[int(arg_id)]
 	if node.kind == .prefix && node.op == .amp {
-		return true
+		if node.children_count == 0 {
+			return false
+		}
+		return g.expr_is_addressable(g.a.child(&node, 0))
 	}
 	if node.kind == .ident {
 		if typ := g.current_param_type(node.value) {
 			return typ is types.Pointer
 		}
 	}
+	if node.kind == .call {
+		if fname := g.tc.resolved_call_name(arg_id) {
+			ret_type := g.tc.fn_ret_types[fname] or { return false }
+			return ret_type is types.Pointer
+		}
+		return false
+	}
 	return g.tc.resolve_type(arg_id) is types.Pointer
+}
+
+fn (g &FlatGen) spawn_materialized_pointer_rvalue_arg(arg_node flat.Node) ?flat.NodeId {
+	if arg_node.kind != .prefix || arg_node.op != .amp || arg_node.children_count == 0 {
+		return none
+	}
+	child_id := g.a.child(&arg_node, 0)
+	if int(child_id) < 0 || int(child_id) >= g.a.nodes.len {
+		return none
+	}
+	child := g.a.nodes[int(child_id)]
+	if child.kind == .ident && child.value.starts_with('__ptr_arg_') {
+		return child_id
+	}
+	return none
 }
 
 fn (g &FlatGen) resolved_method_name_for_spawn(clean_type types.Type, method string) string {
@@ -4161,13 +4266,22 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 		g.gen_expr_with_expected_type(g.collapsed_optional_literal(arg_id, expected), expected)
 		return true
 	}
+	arg_node := g.a.nodes[int(arg_id)]
+	if concrete_abi && arg_node.kind == .none_expr {
+		ct := g.concrete_optional_type_name(expected)
+		g.write('(${ct}){.ok = false}')
+		return true
+	}
 	arg_type := g.usable_expr_type(arg_id)
 	if arg_type is types.OptionType || arg_type is types.ResultType {
+		if concrete_abi {
+			g.gen_concrete_optional_arg_from_optional_expr(arg_id, arg_type, expected, base_type)
+			return true
+		}
 		if g.type_names_match(arg_type, expected) {
 			g.gen_expr_with_expected_type(arg_id, expected)
 			return true
 		}
-		arg_node := g.a.nodes[int(arg_id)]
 		if arg_node.kind == .none_expr || g.expr_really_returns_optional(arg_id) {
 			g.gen_expr_with_expected_type(arg_id, expected)
 			return true
@@ -4186,6 +4300,24 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 	g.gen_expr_with_expected_type(arg_id, base_type)
 	g.write('}')
 	return true
+}
+
+fn (mut g FlatGen) gen_concrete_optional_arg_from_optional_expr(arg_id flat.NodeId, arg_type types.Type, expected types.Type, base_type types.Type) {
+	dest_ct := g.concrete_optional_type_name(expected)
+	source_ct := g.optional_type_name_for_expr(arg_id, arg_type)
+	if source_ct == dest_ct {
+		g.gen_expr_with_expected_type(arg_id, expected)
+		return
+	}
+	tmp := g.tmp_count
+	g.tmp_count++
+	g.write('({ ${source_ct} _opt${tmp} = ')
+	g.gen_expr_with_expected_type(arg_id, arg_type)
+	g.write('; _opt${tmp}.ok ? (${dest_ct}){.ok = true')
+	if base_type !is types.Void {
+		g.write(', .value = _opt${tmp}.value')
+	}
+	g.write('} : (${dest_ct}){.ok = false, .err = _opt${tmp}.err}; })')
 }
 
 // expr_is_optional_literal supports expr is optional literal handling for FlatGen.

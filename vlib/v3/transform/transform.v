@@ -85,6 +85,7 @@ mut:
 	smartcast_stack              []SmartcastContext
 	invalidated_smartcasts       map[string]bool
 	in_call_callee               bool
+	in_spawn_expr                bool
 	in_const_init                bool
 	in_return_expr               bool
 	alias_cache                  &AliasCache  = unsafe { nil }
@@ -2225,7 +2226,10 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 		.fn_literal {
 			return t.lift_fn_literal(id, node)
 		}
-		.lambda_expr, .spawn_expr, .dump_expr, .range, .select_stmt, .select_branch {
+		.spawn_expr {
+			return t.transform_spawn_expr(id, node)
+		}
+		.lambda_expr, .dump_expr, .range, .select_stmt, .select_branch {
 			return t.transform_children_expr(id, node)
 		}
 		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .nil_literal,
@@ -2237,6 +2241,14 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 			return id
 		}
 	}
+}
+
+fn (mut t Transformer) transform_spawn_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	old_in_spawn_expr := t.in_spawn_expr
+	t.in_spawn_expr = true
+	result := t.transform_children_expr(id, node)
+	t.in_spawn_expr = old_in_spawn_expr
+	return result
 }
 
 // transform_lvalue transforms transform lvalue data for transform.
@@ -7198,13 +7210,14 @@ fn (t &Transformer) array_literal_elem_type(node flat.Node) string {
 	if node.children_count == 0 {
 		return 'int'
 	}
-	mut elem_type := t.node_type(t.a.child(&node, 0))
+	elem_type := t.node_type(t.a.child(&node, 0))
 	if !is_numeric_type_name(elem_type) {
 		return elem_type
 	}
-	mut has_f32 := elem_type == 'f32'
-	mut has_f64 := elem_type == 'f64'
-	for i in 1 .. node.children_count {
+	mut has_f32 := false
+	mut has_f64 := false
+	mut has_explicit_f64 := false
+	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		child := t.a.nodes[int(child_id)]
 		child_type := t.node_type(child_id)
@@ -7214,15 +7227,21 @@ fn (t &Transformer) array_literal_elem_type(node flat.Node) string {
 		if child_type == 'f32' {
 			has_f32 = true
 		}
-		if child_type == 'f64' && !(has_f32 && child.kind == .float_literal) {
+		if child_type == 'f64' {
 			has_f64 = true
+			if child.kind != .float_literal {
+				has_explicit_f64 = true
+			}
 		}
 	}
-	if has_f64 {
+	if has_explicit_f64 {
 		return 'f64'
 	}
 	if has_f32 {
 		return 'f32'
+	}
+	if has_f64 {
+		return 'f64'
 	}
 	return elem_type
 }

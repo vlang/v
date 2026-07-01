@@ -106,5 +106,44 @@ fn main() {
 	assert !compact.contains('bump(xs);'), generated
 	assert !compact.contains('u32main__vals[3]'), generated
 	assert !compact.contains('array__clone(&main__vals)') || generated.contains('Array main__vals'), generated
-	assert !deparenthesized.contains('array__clone&main__vals') || generated.contains('Array main__vals'), generated
+	assert !deparenthesized.contains('array__clone&main__vals')
+		|| generated.contains('Array main__vals'), generated
+}
+
+fn test_indexed_const_array_with_dynamic_use_stays_dynamic() {
+	v3_bin := fixed_array_const_build_v3()
+	src := os.join_path(os.temp_dir(), 'v3_fixed_array_const_dynamic_use_${os.getpid()}.v')
+	os.write_file(src, 'module main
+
+const vals = [u32(1), 2, 3]
+const fixed_only = [u32(4), 5, 6]
+
+fn take(xs []u32) u32 {
+	return xs[2]
+}
+
+fn score() u32 {
+	xs := vals
+	return vals[1] + xs[0] + take(vals) + fixed_only[1]
+}
+
+fn main() {
+	println(score().str())
+}
+') or {
+		panic(err)
+	}
+	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_const_dynamic_use_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '11', run.output
+
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert generated.contains('Array main__vals'), generated
+	assert !compact.contains('constu32main__vals[3]'), generated
+	assert !compact.contains('Arrayxs=main__vals;') || generated.contains('Array main__vals'), generated
+	assert compact.contains('constu32main__fixed_only[3]'), generated
 }

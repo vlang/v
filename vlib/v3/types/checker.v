@@ -2018,10 +2018,50 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns() {
 			else {}
 		}
 	}
+	tc.collect_selected_file_called_fns_transitively()
 	tc.cur_file = saved_file
 	tc.cur_module = saved_module
 	tc.cur_scope = saved_scope
 	tc.scope_pool_index = saved_scope_pool_index
+}
+
+fn (mut tc TypeChecker) collect_selected_file_called_fns_transitively() {
+	mut visited := map[string]bool{}
+	for {
+		mut found_new := false
+		tc.cur_file = ''
+		tc.cur_module = ''
+		tc.cur_scope = tc.file_scope
+		for i, node in tc.a.nodes {
+			match node.kind {
+				.file {
+					tc.enter_file(node.value)
+				}
+				.module_decl {
+					tc.enter_module(node.value)
+				}
+				.fn_decl {
+					if i < tc.a.user_code_start || node.value.len == 0 {
+						continue
+					}
+					qname := checker_qualified_fn_name(tc.cur_module, node.value)
+					if qname !in tc.selected_file_called_fns || qname in visited {
+						continue
+					}
+					before := tc.selected_file_called_fns.len
+					tc.collect_selected_file_fn_body_called_fns(node)
+					visited[qname] = true
+					if tc.selected_file_called_fns.len > before {
+						found_new = true
+					}
+				}
+				else {}
+			}
+		}
+		if !found_new {
+			return
+		}
+	}
 }
 
 fn (mut tc TypeChecker) collect_selected_file_top_level_called_fns(node flat.Node) {
@@ -11435,11 +11475,12 @@ fn (tc &TypeChecker) array_literal_elem_type(node flat.Node) Type {
 	if node.children_count == 0 {
 		return Type(int_)
 	}
-	mut elem_type := tc.resolve_type(tc.a.child(&node, 0))
-	mut all_numeric := elem_type.is_integer() || elem_type.is_float()
-	mut has_f32 := elem_type.name() == 'f32'
-	mut has_f64 := elem_type.name() == 'f64'
-	for i in 1 .. node.children_count {
+	elem_type := tc.resolve_type(tc.a.child(&node, 0))
+	mut all_numeric := true
+	mut has_f32 := false
+	mut has_f64 := false
+	mut has_explicit_f64 := false
+	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.nodes[int(child_id)]
 		child_type := tc.resolve_type(child_id)
@@ -11449,15 +11490,21 @@ fn (tc &TypeChecker) array_literal_elem_type(node flat.Node) Type {
 		if child_type.name() == 'f32' {
 			has_f32 = true
 		}
-		if child_type.name() == 'f64' && !(has_f32 && child.kind == .float_literal) {
+		if child_type.name() == 'f64' {
 			has_f64 = true
+			if child.kind != .float_literal {
+				has_explicit_f64 = true
+			}
 		}
 	}
-	if all_numeric && has_f64 {
+	if all_numeric && has_explicit_f64 {
 		return Type(f64_)
 	}
 	if all_numeric && has_f32 {
 		return tc.parse_type('f32')
+	}
+	if all_numeric && has_f64 {
+		return Type(f64_)
 	}
 	return elem_type
 }

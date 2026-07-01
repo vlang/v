@@ -86,6 +86,37 @@ fn main() {
 '
 }
 
+const called_transitive_invalid_ierror_return_project = {
+	'bad/bad.v': 'module bad
+
+pub struct NotError {}
+
+pub fn fail() !int {
+	return NotError{}
+}
+
+pub fn unused_fail() !int {
+	return NotError{}
+}
+
+pub fn wrapper() int {
+	return fail() or { 0 }
+}
+
+pub fn outer_wrapper() int {
+	return wrapper()
+}
+'
+	'main.v':    'module main
+
+import bad
+
+fn main() {
+	_ := bad.outer_wrapper()
+}
+'
+}
+
 const called_invalid_ierror_method_return_project = {
 	'bad/bad.v': 'module bad
 
@@ -269,6 +300,15 @@ fn test_invalid_ierror_result_return_respects_diagnostic_files() {
 fn test_selected_file_calling_invalid_ierror_result_return_reports_dependency_error() {
 	main_errors := check_diagnostic_project('ierror_return_called_from_main',
 		called_invalid_ierror_return_project, ['main.v'])
+	assert main_errors.len == 1, main_errors.str()
+	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('bad.NotError')
+	assert main_errors[0].msg.contains('as `int`')
+}
+
+fn test_selected_file_calling_transitive_invalid_ierror_result_return_reports_dependency_error() {
+	main_errors := check_diagnostic_project('ierror_return_transitive_called_from_main',
+		called_transitive_invalid_ierror_return_project, ['main.v'])
 	assert main_errors.len == 1, main_errors.str()
 	assert main_errors[0].msg.contains('cannot return')
 	assert main_errors[0].msg.contains('bad.NotError')

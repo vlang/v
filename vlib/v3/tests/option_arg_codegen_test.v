@@ -61,6 +61,22 @@ fn test_optional_abi_distinguishes_plain_t_name_from_specialized_generic() {
 	assert c_code.contains('(Optional_int){.ok = true, .value = 7}'), c_code
 }
 
+fn test_optional_generic_concrete_abi_converts_optional_args() {
+	v3_bin := build_v3()
+	source := 'fn maybe() ?int {\n\treturn 5\n}\n\nfn maybe_or_none(flag bool) ?int {\n\tif flag {\n\t\treturn 6\n\t}\n\treturn none\n}\n\nfn take[T](x ?T, fallback T) T {\n\treturn x or { fallback }\n}\n\nfn main() {\n\tx := maybe()\n\tassert take[int](maybe(), 0) == 5\n\tassert take[int](x, 0) == 5\n\tassert take[int](maybe_or_none(false), 9) == 9\n\tprintln("ok")\n}\n'
+	out := run_good(v3_bin, 'optional_generic_concrete_abi_run', source)
+	assert out == 'ok'
+	c_code := generated_c(v3_bin, 'optional_generic_concrete_abi_c', source)
+	assert c_code.contains('int take_T_v_int(Optional_int x, int fallback)')
+		|| c_code.contains('int take_T_int(Optional_int x, int fallback)'), c_code
+	assert c_code.contains('Optional _opt'), c_code
+	assert c_code.contains('(Optional_int){.ok = true, .value = _opt'), c_code
+	assert !c_code.contains('take_T_v_int(maybe(), 0)'), c_code
+	assert !c_code.contains('take_T_int(maybe(), 0)'), c_code
+	assert !c_code.contains('take_T_v_int(x, 0)'), c_code
+	assert !c_code.contains('take_T_int(x, 0)'), c_code
+}
+
 // test_optional_if_expr_codegen_initializes_optional_temp validates this v3 regression case.
 fn test_optional_if_expr_codegen_initializes_optional_temp() {
 	v3_bin := build_v3()

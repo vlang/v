@@ -3434,7 +3434,16 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 	mut cur_file := ''
 	mut fixed_candidates := map[string]bool{}
 	mut dynamic_uses := map[string]bool{}
-	for node in g.a.nodes {
+	mut fixed_safe_refs := map[int]bool{}
+	for _, node in g.a.nodes {
+		if node.kind == .index && node.children_count > 0 {
+			g.mark_const_ref_descendants(mut fixed_safe_refs, g.a.child(&node, 0))
+		}
+		if node.kind == .selector && node.value == 'len' && node.children_count > 0 {
+			g.mark_const_ref_descendants(mut fixed_safe_refs, g.a.child(&node, 0))
+		}
+	}
+	for idx, node in g.a.nodes {
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
 			cur_file = node.value
@@ -3457,6 +3466,12 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 				if const_name.len > 0 && g.const_ref_has_fixed_array_literal_storage(const_name) {
 					dynamic_uses[g.const_primary_name(const_name)] = true
 				}
+			}
+		}
+		if !(fixed_safe_refs[idx] or { false }) {
+			const_name := g.const_ref_name_from_node(node)
+			if const_name.len > 0 && g.const_ref_has_fixed_array_literal_storage(const_name) {
+				dynamic_uses[g.const_primary_name(const_name)] = true
 			}
 		}
 		if node.kind != .index || node.children_count == 0 {
@@ -3484,6 +3499,17 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 	}
 	g.tc.cur_module = old_module
 	g.tc.cur_file = old_file
+}
+
+fn (mut g FlatGen) mark_const_ref_descendants(mut ids map[int]bool, id flat.NodeId) {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return
+	}
+	ids[int(id)] = true
+	node := g.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		g.mark_const_ref_descendants(mut ids, g.a.child(&node, 0))
+	}
 }
 
 fn (mut g FlatGen) const_storage_type_from_node(node flat.Node) ?types.Type {

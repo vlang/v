@@ -61,6 +61,34 @@ fn main() {
 	}
 	assert fmin == f32(1.1)
 
+	gs := [1.0, f32(2.0)]
+	mut gsum := f32(0)
+	for g in gs {
+		gsum += g
+	}
+	assert gsum > f32(2.99) && gsum < f32(3.01)
+
+	hs := [f32(2.0), 1.0]
+	mut hsum := f32(0)
+	for h in hs {
+		hsum += h
+	}
+	assert hsum > f32(2.99) && hsum < f32(3.01)
+
+	ds := [1.0, 2.0]
+	mut dsum := 0.0
+	for d in ds {
+		dsum += d
+	}
+	assert dsum > 2.99 && dsum < 3.01
+
+	es := [f64(1.0), f32(2.0)]
+	mut esum := 0.0
+	for e in es {
+		esum += e
+	}
+	assert esum > 2.99 && esum < 3.01
+
 	alias_sum := add_all([MyAlias(5), MyAlias(7), MyAlias(3)])
 	assert alias_sum == MyAlias((5 * 10 + 7 * 10) * 10 + 3 * 10)
 	println('ok')
@@ -111,12 +139,15 @@ fn add_all[T](items []T) T {
 	assert c_code.contains('float w = *(float*)(array_get(ws,'), c_code
 	assert c_compact.contains('array_new(sizeof(float),0,4)'), c_code
 	assert c_code.contains('float f = *(float*)(array_get(fs,'), c_code
+	assert c_code.contains('float g = *(float*)(array_get(gs,'), c_code
+	assert c_code.contains('float h = *(float*)(array_get(hs,'), c_code
+	assert c_code.contains('double d = *(double*)(array_get(ds,'), c_code
+	assert c_code.contains('double e = *(double*)(array_get(es,'), c_code
 	assert c_code.contains('add_all_T_MyAlias'), c_code
 	assert !c_code.contains('add_all_T_i64'), c_code
 	assert c_code.contains('MyAlias__plus'), c_code
 	assert c_code.contains('head = MyAlias__plus(head, item);'), c_code
 	assert !c_code.contains('head += item;'), c_code
 	assert !c_code.contains('UnusedAlias__plus'), c_code
-	assert !c_compact.contains('array_new(sizeof(double),0,2)'), c_code
 	assert !c_compact.contains('array_new(sizeof(double),0,4)'), c_code
 }

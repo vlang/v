@@ -126,3 +126,46 @@ fn main() {
 	assert c_code.contains('Greeter__greet(p->a0)'), c_code
 	assert !c_code.contains('(Greeter)arg'), c_code
 }
+
+// A pointer receiver/argument whose source is a rvalue must be stored by value in
+// the heap argument packet, then passed to the spawned call as `&p->field`.
+// Capturing the address of a stack temporary would race the caller's frame, and
+// assigning the rvalue directly into a pointer field is invalid C.
+fn test_spawn_pointer_rvalues_store_value_in_heap_packet() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_pointer_rvalue_receiver', '
+struct Box {
+	x int
+}
+
+fn make_box() Box {
+	return Box{x: 7}
+}
+
+fn (b &Box) show() {
+	println(b.x)
+}
+
+fn make_int() int {
+	return 9
+}
+
+fn takes_ptr(p &int) {
+	println(*p)
+}
+
+fn main() {
+	_ := spawn make_box().show()
+	_ := spawn takes_ptr(make_int())
+	println("ok")
+}
+	')
+	c_compact := compact_c(c_code)
+	assert c_code.contains('pthread_create'), c_code
+	assert c_compact.contains('typedefstruct{Boxa0;}Box__show_thread_args'), c_code
+	assert c_compact.contains('Box__show(&p->a0)'), c_code
+	assert !c_compact.contains('typedefstruct{Box*a0;}Box__show_thread_args'), c_code
+	assert c_compact.contains('typedefstruct{inta0;}takes_ptr_thread_args'), c_code
+	assert c_compact.contains('takes_ptr(&p->a0)'), c_code
+	assert !c_compact.contains('typedefstruct{int*a0;}takes_ptr_thread_args'), c_code
+}

@@ -995,8 +995,10 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, wrapped, target_sum)
 		return t.make_prefix(.amp, t.make_ident(tmp_name))
 	}
-	if ptr_arg := t.transform_pointer_rvalue_arg(arg_id, *arg_node, param_type) {
-		return ptr_arg
+	if !t.in_spawn_expr {
+		if ptr_arg := t.transform_pointer_rvalue_arg(arg_id, *arg_node, param_type) {
+			return ptr_arg
+		}
 	}
 	if t.is_sum_type_name(param_type) {
 		return t.wrap_sum_value(arg_id, param_type)
