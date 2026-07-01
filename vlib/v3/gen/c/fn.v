@@ -831,8 +831,7 @@ fn (mut g FlatGen) gen_special_c_callback_arg(fn_name string, arg_idx int, arg_i
 		arg_node := g.a.nodes[int(arg_id)]
 		if arg_node.kind == .ident {
 			looked_up := g.tc.cur_scope.lookup(arg_node.value) or { types.Type(types.void_) }
-			is_local := looked_up !is types.Void && fn_type_from(looked_up) == none
-			if !is_local {
+			if looked_up is types.Void {
 				call_name := g.call_key(arg_id, arg_node.value)
 				fn_key := if call_name in g.tc.fn_ret_types {
 					call_name
@@ -3617,7 +3616,7 @@ fn (g &FlatGen) direct_callback_ident_name(id flat.NodeId) ?string {
 		return none
 	}
 	looked_up := g.tc.cur_scope.lookup(node.value) or { types.Type(types.void_) }
-	if looked_up !is types.Void && fn_type_from(looked_up) == none {
+	if looked_up !is types.Void {
 		return none
 	}
 	call_key := g.call_key(id, node.value)
@@ -3635,7 +3634,7 @@ fn (mut g FlatGen) ident_fn_value_c_name(id flat.NodeId, node flat.Node) ?string
 		return none
 	}
 	looked_up := g.tc.cur_scope.lookup(node.value) or { types.Type(types.void_) }
-	if looked_up !is types.Void && fn_type_from(looked_up) == none {
+	if looked_up !is types.Void {
 		return none
 	}
 	call_key := g.call_key(id, node.value)
