@@ -924,7 +924,25 @@ fn (mut g Gen) resolved_scope_var_type_uncached(expr ast.Ident) ast.Type {
 					v.orig_type = refreshed_expr_type
 					v.typ = refreshed_expr_type.clear_option_and_result()
 				} else {
-					v.typ = refreshed_expr_type
+					// When v.generic_typ was resolved to a concrete type (no generic
+					// parts remaining) and the expression-based resolution produces a
+					// different concrete type, prefer the generic_typ result. The
+					// expression AST node's type may be stale if the checker mutated
+					// it to a concrete type from a previous generic specialization.
+					mut overwrite := true
+					if v.generic_typ != 0 && g.cur_concrete_types.len > 0
+						&& refreshed_expr_type != 0 && v.typ != 0 {
+						resolved_from_generic :=
+							g.unwrap_generic(g.recheck_concrete_type(v.generic_typ))
+						if resolved_from_generic != 0
+							&& !g.type_has_unresolved_generic_parts(resolved_from_generic)
+							&& refreshed_expr_type.clear_option_and_result() != resolved_from_generic.clear_option_and_result() {
+							overwrite = false
+						}
+					}
+					if overwrite {
+						v.typ = refreshed_expr_type
+					}
 					if !v.is_unwrapped && v.smartcasts.len == 0 {
 						v.orig_type = ast.no_type
 					}
