@@ -1,5 +1,6 @@
 module types
 
+import strings
 import v3.flat
 
 const export_c_reserved_words = {
@@ -5170,10 +5171,16 @@ fn checker_is_raw_collection_method_name(name string, prefix string) bool {
 }
 
 // is_print_style_fn_name reports whether is print style fn name applies in types.
-// XTODO perf
 fn is_print_style_fn_name(name string) bool {
-	return name in ['print', 'println', 'eprint', 'eprintln', 'builtin.print', 'builtin.println',
-		'builtin.eprint', 'builtin.eprintln']
+	return match name {
+		'print', 'println', 'eprint', 'eprintln', 'builtin.print', 'builtin.println',
+		'builtin.eprint', 'builtin.eprintln' {
+			true
+		}
+		else {
+			false
+		}
+	}
 }
 
 // print_style_param_accepts_string updates print style param accepts string state for types.
@@ -11251,13 +11258,7 @@ fn fn_type_param_head_is_name(head string, tail string) bool {
 	return (head[0] >= `a` && head[0] <= `z`) || head[0] == `_`
 }
 
-const c_reserved_words = ['auto', 'break', 'case', 'char', 'const', 'continue', 'copy', 'default',
-	'do', 'double', 'else', 'enum', 'extern', 'float', 'for', 'goto', 'if', 'inline', 'int', 'long',
-	'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct', 'switch',
-	'typedef', 'union', 'unsigned', 'void', 'volatile', 'while']
-
-// c_name converts c name data for types.
-// XTODO garbage. remove this
+// c_name returns the C identifier used for a V symbol or type name.
 fn c_name(name string) string {
 	if name.starts_with('C.') {
 		return name[2..]
@@ -11268,13 +11269,145 @@ fn c_name(name string) string {
 	if name == 'int_str' {
 		return 'int__str'
 	}
-	n := name.replace('[]', 'Array_').replace('.-', '__minus').replace('.+', '__plus').replace('.==',
-		'__eq').replace('.!=', '__ne').replace('.<=', '__le').replace('.>=', '__ge').replace('.<',
-		'__lt').replace('.>', '__gt').replace('.*', '__mul').replace('./', '__div').replace('.%',
-		'__mod').replace('.&', '__and').replace('.|', '__or').replace('.^', '__xor').replace('.<<',
-		'__left_shift').replace('.>>', '__right_shift').replace('&', 'ptr').replace('[', '_').replace(']', '').replace(',', '_').replace(' ', '_').replace('.', '__')
-	if n in c_reserved_words {
+	if c_name_is_plain(name) {
+		if c_name_is_reserved(name) {
+			return 'v_${name}'
+		}
+		return name
+	}
+	n := c_name_sanitize(name)
+	if c_name_is_reserved(n) {
 		return 'v_${n}'
 	}
 	return n
+}
+
+fn c_name_is_reserved(name string) bool {
+	return name == 'copy' || name in export_c_reserved_words
+}
+
+fn c_name_sanitize(name string) string {
+	mut b := strings.new_builder(name.len + 8)
+	mut i := 0
+	for i < name.len {
+		c := name[i]
+		if c == `[` {
+			if i + 1 < name.len && name[i + 1] == `]` {
+				b.write_string('Array_')
+				i += 2
+				continue
+			}
+			b.write_u8(`_`)
+		} else if c == `]` {
+			i++
+			continue
+		} else if c == `.` {
+			if i + 1 < name.len {
+				next := name[i + 1]
+				if next == `-` {
+					b.write_string('__minus')
+					i += 2
+					continue
+				}
+				if next == `+` {
+					b.write_string('__plus')
+					i += 2
+					continue
+				}
+				if next == `*` {
+					b.write_string('__mul')
+					i += 2
+					continue
+				}
+				if next == `/` {
+					b.write_string('__div')
+					i += 2
+					continue
+				}
+				if next == `%` {
+					b.write_string('__mod')
+					i += 2
+					continue
+				}
+				if next == `&` {
+					b.write_string('__and')
+					i += 2
+					continue
+				}
+				if next == `|` {
+					b.write_string('__or')
+					i += 2
+					continue
+				}
+				if next == `^` {
+					b.write_string('__xor')
+					i += 2
+					continue
+				}
+				if i + 2 < name.len {
+					op := name[i + 2]
+					if next == `=` && op == `=` {
+						b.write_string('__eq')
+						i += 3
+						continue
+					}
+					if next == `!` && op == `=` {
+						b.write_string('__ne')
+						i += 3
+						continue
+					}
+					if next == `<` && op == `=` {
+						b.write_string('__le')
+						i += 3
+						continue
+					}
+					if next == `>` && op == `=` {
+						b.write_string('__ge')
+						i += 3
+						continue
+					}
+					if next == `<` && op == `<` {
+						b.write_string('__left_shift')
+						i += 3
+						continue
+					}
+					if next == `>` && op == `>` {
+						b.write_string('__right_shift')
+						i += 3
+						continue
+					}
+				}
+				if next == `<` {
+					b.write_string('__lt')
+					i += 2
+					continue
+				}
+				if next == `>` {
+					b.write_string('__gt')
+					i += 2
+					continue
+				}
+			}
+			b.write_string('__')
+		} else if c == `&` {
+			b.write_string('ptr')
+		} else if c == `,` || c == ` ` {
+			b.write_u8(`_`)
+		} else {
+			b.write_u8(c)
+		}
+		i++
+	}
+	return b.str()
+}
+
+fn c_name_is_plain(name string) bool {
+	for i in 0 .. name.len {
+		c := name[i]
+		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_` {
+			continue
+		}
+		return false
+	}
+	return true
 }
