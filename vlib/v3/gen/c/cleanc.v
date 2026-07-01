@@ -49,6 +49,7 @@ mut:
 	global_init_order            []string               // qualified global names, in declaration order
 	iface_impls                  map[string][]string    // interface name -> implementing concrete type names
 	iface_type_ids               map[string]int         // "${iface}::${concrete}" -> 1-based type id
+	sum_name_lookup              map[string]string      // full/short sum type name -> canonical sum type name
 	module_init_fns              []string               // C names of module-level `init()` fns, in source order
 	module_init_fn_modules       map[string]string      // C init fn name -> V module name
 	module_imports               map[string][]string    // module -> imported modules
@@ -167,6 +168,7 @@ pub fn FlatGen.new() FlatGen {
 		global_init_order:            []string{}
 		iface_impls:                  map[string][]string{}
 		iface_type_ids:               map[string]int{}
+		sum_name_lookup:              map[string]string{}
 		module_init_fns:              []string{}
 		module_init_fn_modules:       map[string]string{}
 		module_imports:               map[string][]string{}
@@ -269,6 +271,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.global_init_order = []string{}
 	g.iface_impls = map[string][]string{}
 	g.iface_type_ids = map[string]int{}
+	g.sum_name_lookup = map[string]string{}
 	g.module_init_fns = []string{}
 	g.module_init_fn_modules = map[string]string{}
 	g.module_imports = map[string][]string{}
@@ -323,6 +326,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.precompute_embedded_fields()
 	g.precompute_param_type_index()
 	g.collect_interface_impls()
+	g.precompute_sum_name_lookup()
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
 	g.preseed_c_extern_fn_ptr_types()
