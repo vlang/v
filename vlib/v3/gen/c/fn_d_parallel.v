@@ -2,7 +2,6 @@ module c
 
 import runtime
 import strings
-import v3.flat
 import v3.types
 
 const max_flat_cgen_jobs = 8
@@ -65,7 +64,6 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			return
 		}
 		g.parallel_used = true
-		g.prepare_parallel_items(items)
 		mut chunk_items := split_flat_cgen_items(items, n_jobs)
 		chunk_count := chunk_items.len
 		// chunk[0] is emitted by the master (this thread) directly into its own builder
@@ -168,33 +166,6 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 		chunks << current
 	}
 	return chunks
-}
-
-// prepare_parallel_items supports prepare parallel items handling for FlatGen.
-fn (mut g FlatGen) prepare_parallel_items(items []FlatFnGenItem) {
-	for item in items {
-		g.tc.cur_file = item.file
-		g.tc.cur_module = item.module
-		g.prepare_parallel_node(item.node_id)
-	}
-	g.register_interface_strings()
-}
-
-// prepare_parallel_node supports prepare parallel node handling for FlatGen.
-fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId) {
-	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return
-	}
-	node := g.a.nodes[int(id)]
-	if node.kind == .string_literal {
-		g.intern_string(node.value)
-	}
-	if node.kind == .string_interp && node.children_count == 0 {
-		g.intern_string('')
-	}
-	for i in 0 .. node.children_count {
-		g.prepare_parallel_node(g.a.child(&node, i))
-	}
 }
 
 // new_parallel_worker builds a per-worker FlatGen for parallel codegen.
