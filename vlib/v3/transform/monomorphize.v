@@ -11,6 +11,11 @@ struct GenericStructDecl {
 	key    string
 }
 
+struct GenericCallSite {
+	id     flat.NodeId
+	module string
+}
+
 fn (mut t Transformer) is_generic_fn(name string) bool {
 	if t.skip_generics {
 		return false
@@ -43,6 +48,8 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	ignored_nodes := t.unused_fn_subtree_nodes()
 	mut emitted := map[string]bool{}
 	mut generated := []string{}
+	mut generic_call_sites := []GenericCallSite{}
+	mut recorded_call_sites := map[int]bool{}
 	mut changed := true
 	for changed {
 		changed = false
@@ -69,6 +76,13 @@ fn (mut t Transformer) monomorphize_pass() []string {
 						&& t.generic_args_contain_alias(args, decl.module) {
 						t.a.nodes[i].value = args.join(', ')
 					}
+					if i !in recorded_call_sites {
+						generic_call_sites << GenericCallSite{
+							id:     flat.NodeId(i)
+							module: call_module
+						}
+						recorded_call_sites[i] = true
+					}
 					spec_key := generic_fn_spec_key(decl_key, args)
 					if emitted[spec_key] {
 						continue
@@ -88,7 +102,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			changed = true
 		}
 	}
-	t.rewrite_generic_calls(decls, template_nodes, ignored_nodes)
+	t.rewrite_generic_call_sites(decls, generic_call_sites)
 	t.erase_generic_fn_decls(decls)
 	return generated
 }
@@ -968,35 +982,27 @@ fn specialized_generic_fn_signature_aliases(decl GenericFnDecl, args []string) [
 	]
 }
 
-fn (mut t Transformer) rewrite_generic_calls(decls map[string]GenericFnDecl, template_nodes []bool, ignored_nodes []bool) {
-	t.ensure_node_module_map()
-	mut cur_module := ''
-	for i in 0 .. t.a.nodes.len {
-		if (i < template_nodes.len && template_nodes[i])
-			|| (i < ignored_nodes.len && ignored_nodes[i]) {
+fn (mut t Transformer) rewrite_generic_call_sites(decls map[string]GenericFnDecl, call_sites []GenericCallSite) {
+	for site in call_sites {
+		i := int(site.id)
+		if i < 0 || i >= t.a.nodes.len {
 			continue
 		}
 		node := t.a.nodes[i]
-		match node.kind {
-			.module_decl {
-				cur_module = node.value
-			}
-			.call {
-				call_module := t.node_module_or(i, cur_module)
-				decl_key, args := t.cached_generic_call_specialization(flat.NodeId(i), node,
-					call_module, decls) or { continue }
-				decl := decls[decl_key] or { continue }
-				if !t.call_has_source_generic_args(node)
-					&& t.generic_args_contain_alias(args, decl.module) {
-					t.a.nodes[i].value = args.join(', ')
-				}
-				if t.generic_decl_is_receiver_method(decl.node) {
-					t.rewrite_generic_method_call(flat.NodeId(i), node, decl, args)
-				} else {
-					t.rewrite_generic_plain_call(flat.NodeId(i), node, decl, args)
-				}
-			}
-			else {}
+		if node.kind != .call {
+			continue
+		}
+		decl_key, args := t.cached_generic_call_specialization(site.id, node, site.module, decls) or {
+			continue
+		}
+		decl := decls[decl_key] or { continue }
+		if !t.call_has_source_generic_args(node) && t.generic_args_contain_alias(args, decl.module) {
+			t.a.nodes[i].value = args.join(', ')
+		}
+		if t.generic_decl_is_receiver_method(decl.node) {
+			t.rewrite_generic_method_call(site.id, node, decl, args)
+		} else {
+			t.rewrite_generic_plain_call(site.id, node, decl, args)
 		}
 	}
 }
