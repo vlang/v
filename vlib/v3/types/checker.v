@@ -585,7 +585,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 					mut variants := []string{}
 					for i in 0 .. node.children_count {
 						v := a.child_node(&node, i)
-						variants << tc.qualify_name(v.value)
+						variants << tc.qualify_sum_variant_name(v.value, node.generic_params)
 					}
 					qname := tc.qualify_name(node.value)
 					tc.sum_types[qname] = variants
@@ -1011,6 +1011,62 @@ pub fn (tc &TypeChecker) qualify_name(name string) string {
 		return name
 	}
 	return tc.cur_module + '.' + name
+}
+
+fn (tc &TypeChecker) qualify_sum_variant_name(name string, generic_params []string) string {
+	if generic_params.len == 0 {
+		return tc.qualify_name(name)
+	}
+	clean := name.trim_space()
+	if clean.len == 0 {
+		return clean
+	}
+	if clean in generic_params {
+		return clean
+	}
+	if clean.starts_with('&') {
+		return '&' + tc.qualify_sum_variant_name(clean[1..], generic_params)
+	}
+	if clean.starts_with('?') {
+		return '?' + tc.qualify_sum_variant_name(clean[1..], generic_params)
+	}
+	if clean.starts_with('!') {
+		return '!' + tc.qualify_sum_variant_name(clean[1..], generic_params)
+	}
+	if clean.starts_with('...') {
+		return '...' + tc.qualify_sum_variant_name(clean[3..], generic_params)
+	}
+	if clean.starts_with('[]') {
+		return '[]' + tc.qualify_sum_variant_name(clean[2..], generic_params)
+	}
+	if clean.starts_with('map[') {
+		bracket_end := find_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			key := tc.qualify_sum_variant_name(clean[4..bracket_end], generic_params)
+			val := tc.qualify_sum_variant_name(clean[bracket_end + 1..], generic_params)
+			return 'map[${key}]${val}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := find_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return clean[..bracket_end + 1] + tc.qualify_sum_variant_name(clean[bracket_end +
+				1..], generic_params)
+		}
+	}
+	bracket := clean.index_u8(`[`)
+	if bracket > 0 {
+		bracket_end := find_matching_bracket(clean, bracket)
+		if bracket_end < clean.len {
+			mut parts := []string{}
+			for part in split_params(clean[bracket + 1..bracket_end]) {
+				parts << tc.qualify_sum_variant_name(part, generic_params)
+			}
+			return tc.qualify_name(clean[..bracket]) + '[' + parts.join(', ') + ']' +
+				clean[bracket_end + 1..]
+		}
+	}
+	return tc.qualify_name(clean)
 }
 
 // qualify_type_text supports qualify type text handling for TypeChecker.
@@ -2031,6 +2087,20 @@ fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
 }
 
 fn (mut tc TypeChecker) collect_selected_file_decl_assign_called_fns(node flat.Node) {
+	if node.children_count >= 3 {
+		rhs_id := tc.a.child(&node, 1)
+		rhs_type := tc.decl_assign_inferred_type(rhs_id)
+		if rhs_type is MultiReturn {
+			tc.collect_selected_file_node_called_fns(rhs_id)
+			lhs_ids := tc.multi_assign_lhs_ids(node)
+			for i, lhs_id in lhs_ids {
+				if i < rhs_type.types.len {
+					tc.insert_selected_file_decl_binding_type(lhs_id, rhs_type.types[i])
+				}
+			}
+			return
+		}
+	}
 	mut i := 0
 	for i + 1 < node.children_count {
 		lhs_id := tc.a.child(&node, i)
@@ -2049,10 +2119,21 @@ fn (mut tc TypeChecker) insert_selected_file_decl_binding(lhs_id flat.NodeId, rh
 	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
 		return
 	}
-	mut typ := if node.children_count == 2 && node.typ.len > 0 {
+	typ := if node.children_count == 2 && node.typ.len > 0 {
 		tc.parse_type(node.typ)
 	} else {
 		tc.decl_assign_inferred_type(rhs_id)
+	}
+	tc.insert_selected_file_decl_binding_type(lhs_id, typ)
+}
+
+fn (mut tc TypeChecker) insert_selected_file_decl_binding_type(lhs_id flat.NodeId, typ Type) {
+	if int(lhs_id) < 0 || int(lhs_id) >= tc.a.nodes.len {
+		return
+	}
+	lhs := tc.a.nodes[int(lhs_id)]
+	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+		return
 	}
 	if typ is MultiReturn || typ is Void || typ is Unknown {
 		return
@@ -6396,8 +6477,8 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_text(param_text string, act
 		return
 	}
 	if clean.starts_with('mut ') {
-		tc.infer_generic_type_text_from_text(clean[4..], actual.trim_left('&'), generic_params,
-			mut inferred)
+		tc.infer_generic_type_text_from_text(clean[4..], actual.trim_left('&'), generic_params, mut
+			inferred)
 		return
 	}
 	if clean.starts_with('...') || actual.starts_with('...') {
@@ -6465,8 +6546,8 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_text(param_text string, act
 			return
 		}
 		for i in 0 .. param_args.len {
-			tc.infer_generic_type_text_from_text(param_args[i], actual_args[i], generic_params,
-				mut inferred)
+			tc.infer_generic_type_text_from_text(param_args[i], actual_args[i], generic_params, mut
+				inferred)
 		}
 	}
 }

@@ -8,9 +8,11 @@ const generic_sum_type_v3_src = os.join_path(generic_sum_type_v3_dir, 'v3.v')
 
 fn generic_sum_type_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.exists(v3_bin) {
+		return v3_bin
+	}
 	build :=
-		os.execute('${generic_sum_type_vexe} -gc none -path "${generic_sum_type_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${generic_sum_type_v3_src}')
+		os.execute('${generic_sum_type_vexe} -gc none -no-parallel -path "${generic_sum_type_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${generic_sum_type_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -665,4 +667,64 @@ fn main() {
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
+}
+
+fn test_generic_sum_type_param_variant_in_imported_module() {
+	v3_bin := generic_sum_type_build_v3()
+	root := os.join_path(os.temp_dir(), 'v3_generic_sum_type_param_variant_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	maybe_dir := os.join_path(root, 'maybe')
+	os.mkdir_all(maybe_dir) or { panic(err) }
+	os.write_file(os.join_path(maybe_dir, 'maybe.v'), 'module maybe
+
+pub struct Err {}
+
+pub type Maybe[T] = T | Err
+
+pub fn wrap_int(v int) Maybe[int] {
+	return Maybe[int](v)
+}
+
+pub fn wrap_err() Maybe[int] {
+	return Maybe[int](Err{})
+}
+
+pub fn describe(x Maybe[int]) string {
+	return match x {
+		int { "int" }
+		Err { "err" }
+	}
+}
+') or {
+		panic(err)
+	}
+
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, 'module main
+
+import maybe
+
+fn main() {
+	println(maybe.describe(maybe.wrap_int(7)))
+	println(maybe.describe(maybe.wrap_err()))
+}
+') or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_param_variant_bin_${os.getpid()}')
+	os.rm(bin) or {}
+	os.rm(bin + '.c') or {}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'int\nerr'
+
+	c_code := os.read_file(bin + '.c') or { panic(err) }
+	assert c_code.contains('maybe__Err'), c_code
+	assert !c_code.contains('maybe__T'), c_code
+	assert !c_code.contains('x == v_int'), c_code
 }

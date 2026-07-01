@@ -59,8 +59,16 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 	if sum_name in t.sum_types {
 		return sum_name
 	}
-	generic_base := generic_base_name_text(sum_name)
-	if generic_base != sum_name {
+	if !isnil(t.tc) && sum_name in t.tc.sum_types {
+		return sum_name
+	}
+	generic_base, generic_args, is_generic := generic_app_parts(sum_name)
+	if is_generic {
+		concrete_sum := t.resolve_concrete_generic_sum_name(sum_name, generic_base,
+			generic_args)
+		if concrete_sum.len > 0 {
+			return concrete_sum
+		}
 		resolved_base := t.resolve_sum_name_uncached(generic_base)
 		if resolved_base in t.sum_types {
 			return resolved_base
@@ -131,6 +139,95 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 		}
 	}
 	return sum_name
+}
+
+fn (t &Transformer) resolve_concrete_generic_sum_name(sum_name string, base string, args []string) string {
+	args_text := args.join(', ')
+	if !base.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		qspec := '${t.cur_module}.${base}[${args_text}]'
+		if qspec in t.sum_types || (!isnil(t.tc) && qspec in t.tc.sum_types) {
+			return qspec
+		}
+	}
+	if !sum_name.contains('.') {
+		short_spec := t.find_sum_type_with_short_name(sum_name)
+		if short_spec.len > 0 {
+			return short_spec
+		}
+	}
+	resolved_base := t.resolve_sum_name_uncached(base)
+	if resolved_base.len > 0 && resolved_base != base {
+		resolved_spec := '${resolved_base}[${args_text}]'
+		if resolved_spec in t.sum_types || (!isnil(t.tc) && resolved_spec in t.tc.sum_types) {
+			return resolved_spec
+		}
+	}
+	return ''
+}
+
+fn (t &Transformer) find_sum_type_with_short_name(short_name string) string {
+	mut found := ''
+	for key, _ in t.sum_types {
+		if key.contains('.') && key.all_after_last('.') == short_name {
+			if found.len > 0 && found != key {
+				return ''
+			}
+			found = key
+		}
+	}
+	if !isnil(t.tc) {
+		for key, _ in t.tc.sum_types {
+			if key.contains('.') && key.all_after_last('.') == short_name {
+				if found.len > 0 && found != key {
+					return ''
+				}
+				found = key
+			}
+		}
+	}
+	return found
+}
+
+fn (t &Transformer) sum_subject_type_candidates(subject_type string) []string {
+	clean := t.trim_pointer_type(t.normalize_type_alias(subject_type)).trim_space()
+	if clean.len == 0 {
+		return []string{}
+	}
+	mut candidates := []string{}
+	mut seen := map[string]bool{}
+	push_sum_subject_type_candidate(mut candidates, mut seen, clean)
+	base, args, is_generic := generic_app_parts(clean)
+	if is_generic {
+		args_text := args.join(', ')
+		if !base.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+			&& t.cur_module != 'builtin' {
+			push_sum_subject_type_candidate(mut candidates, mut seen,
+				'${t.cur_module}.${base}[${args_text}]')
+		}
+		resolved_base := t.resolve_sum_name(base)
+		if resolved_base.len > 0 && resolved_base != base {
+			push_sum_subject_type_candidate(mut candidates, mut seen,
+				'${resolved_base}[${args_text}]')
+		}
+	} else if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		push_sum_subject_type_candidate(mut candidates, mut seen, '${t.cur_module}.${clean}')
+	}
+	resolved := t.resolve_sum_name(clean)
+	if resolved.len > 0 {
+		push_sum_subject_type_candidate(mut candidates, mut seen, resolved)
+	}
+	return candidates
+}
+
+fn push_sum_subject_type_candidate(mut candidates []string, mut seen map[string]bool, candidate string) {
+	clean := candidate.trim_space()
+	if clean.len == 0 || clean in seen {
+		return
+	}
+	seen[clean] = true
+	candidates << clean
 }
 
 // is_sum_type_name reports whether is sum type name applies in transform.
@@ -210,15 +307,82 @@ fn (t &Transformer) smartcast_target_type(sc SmartcastContext) string {
 
 // sum_type_index supports sum type index handling for Transformer.
 fn (t &Transformer) sum_type_index(sum_name string, variant string) int {
-	resolved_sum := t.resolve_sum_name(sum_name)
-	variants := t.sum_types[resolved_sum] or {
-		if !isnil(t.tc) {
-			tc_variants := t.tc.sum_types[resolved_sum] or { return 0 }
-			return t.sum_type_index_in_variants(tc_variants, variant)
-		}
+	variants := t.sum_type_variants_for_index(sum_name)
+	if variants.len == 0 {
 		return 0
 	}
 	return t.sum_type_index_in_variants(variants, variant)
+}
+
+fn (t &Transformer) sum_type_variants_for_index(sum_name string) []string {
+	for candidate in t.sum_subject_type_candidates(sum_name) {
+		variants := t.concrete_sum_variants_for_candidate(candidate)
+		if variants.len > 0 {
+			return variants
+		}
+	}
+	resolved_sum := t.resolve_sum_name(sum_name)
+	if variants := t.sum_types[resolved_sum] {
+		return variants
+	}
+	if !isnil(t.tc) {
+		if variants := t.tc.sum_types[resolved_sum] {
+			return variants
+		}
+	}
+	return []string{}
+}
+
+fn (t &Transformer) concrete_sum_variants_for_candidate(sum_name string) []string {
+	if variants := t.sum_types[sum_name] {
+		return variants
+	}
+	if !isnil(t.tc) {
+		if variants := t.tc.sum_types[sum_name] {
+			return variants
+		}
+	}
+	base, args, is_generic := generic_app_parts(sum_name)
+	if !is_generic {
+		return []string{}
+	}
+	for base_candidate in t.sum_subject_type_candidates(base) {
+		params := t.sum_generic_params_for_base(base_candidate)
+		if params.len == 0 || params.len != args.len {
+			continue
+		}
+		if variants := t.sum_types[base_candidate] {
+			return substitute_sum_variant_list(variants, args, params)
+		}
+		if !isnil(t.tc) {
+			if variants := t.tc.sum_types[base_candidate] {
+				return substitute_sum_variant_list(variants, args, params)
+			}
+		}
+	}
+	return []string{}
+}
+
+fn (t &Transformer) sum_generic_params_for_base(base string) []string {
+	if isnil(t.tc) {
+		return []string{}
+	}
+	if params := t.tc.sum_generic_params[base] {
+		return params
+	}
+	short := base.all_after_last('.')
+	if params := t.tc.sum_generic_params[short] {
+		return params
+	}
+	return []string{}
+}
+
+fn substitute_sum_variant_list(variants []string, args []string, params []string) []string {
+	mut concrete := []string{cap: variants.len}
+	for variant in variants {
+		concrete << substitute_generic_type_text_with_params(variant, args, params)
+	}
+	return concrete
 }
 
 // sum_type_index_in_variants supports sum type index in variants handling for transform.
@@ -297,9 +461,11 @@ fn (t &Transformer) sum_variant_path(sum_name string, variant string) []string {
 // sum_variant_path_inner supports sum variant path inner handling for Transformer.
 fn (t &Transformer) sum_variant_path_inner(sum_name string, variant string, mut visited map[string]bool) []string {
 	clean_sum := t.trim_pointer_type(sum_name)
-	if !isnil(t.tc) {
-		if resolved := t.tc.sum_variant_type_for_pattern(clean_sum, variant) {
-			return [resolved]
+	for candidate in t.sum_subject_type_candidates(clean_sum) {
+		if !isnil(t.tc) {
+			if resolved := t.tc.sum_variant_type_for_pattern(candidate, variant) {
+				return [resolved]
+			}
 		}
 	}
 	resolved_sum := t.resolve_sum_name(clean_sum)

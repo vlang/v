@@ -477,7 +477,8 @@ fn (mut t Transformer) collect_types() {
 					mut variants := []string{}
 					for i in 0 .. node.children_count {
 						v := t.a.child_node(&node, i)
-						variants << t.normalize_sum_variant_type(v.value, cur_mod)
+						variants << t.normalize_sum_variant_type(v.value, cur_mod,
+							node.generic_params)
 					}
 					t.sum_types[node.value] = variants
 					for variant in variants {
@@ -656,36 +657,59 @@ fn (mut t Transformer) collect_alias_methods() {
 }
 
 // normalize_sum_variant_type transforms normalize sum variant type data for transform.
-fn (t &Transformer) normalize_sum_variant_type(typ string, mod string) string {
+fn (t &Transformer) normalize_sum_variant_type(typ string, mod string, generic_params []string) string {
 	clean := typ.trim_space()
 	if clean.len == 0 {
 		return clean
 	}
+	if clean in generic_params {
+		return clean
+	}
 	if clean.starts_with('&') {
-		return '&' + t.normalize_sum_variant_type(clean[1..], mod)
+		return '&' + t.normalize_sum_variant_type(clean[1..], mod, generic_params)
 	}
 	if clean.starts_with('mut ') {
-		return '&' + t.normalize_sum_variant_type(clean[4..], mod)
+		return '&' + t.normalize_sum_variant_type(clean[4..], mod, generic_params)
 	}
 	if clean.starts_with('?') {
-		return '?' + t.normalize_sum_variant_type(clean[1..], mod)
+		return '?' + t.normalize_sum_variant_type(clean[1..], mod, generic_params)
 	}
 	if clean.starts_with('!') {
-		return '!' + t.normalize_sum_variant_type(clean[1..], mod)
+		return '!' + t.normalize_sum_variant_type(clean[1..], mod, generic_params)
+	}
+	if clean.starts_with('...') {
+		return '...' + t.normalize_sum_variant_type(clean[3..], mod, generic_params)
 	}
 	if clean.starts_with('[]') {
-		return '[]' + t.normalize_sum_variant_type(clean[2..], mod)
+		return '[]' + t.normalize_sum_variant_type(clean[2..], mod, generic_params)
 	}
 	if clean.starts_with('map[') {
-		bracket_end := clean.index(']') or { return clean }
-		key := t.normalize_sum_variant_type(clean[4..bracket_end], mod)
-		value := t.normalize_sum_variant_type(clean[bracket_end + 1..], mod)
-		return 'map[${key}]${value}'
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			key := t.normalize_sum_variant_type(clean[4..bracket_end], mod, generic_params)
+			value := t.normalize_sum_variant_type(clean[bracket_end + 1..], mod, generic_params)
+			return 'map[${key}]${value}'
+		}
 	}
 	if clean.starts_with('[') {
-		bracket_end := clean.index(']') or { return clean }
-		return clean[..bracket_end + 1] + t.normalize_sum_variant_type(clean[bracket_end +
-			1..], mod)
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return clean[..bracket_end + 1] + t.normalize_sum_variant_type(clean[bracket_end +
+				1..], mod, generic_params)
+		}
+	}
+	bracket := clean.index_u8(`[`)
+	if bracket > 0 {
+		bracket_end := generic_matching_bracket(clean, bracket)
+		if bracket_end < clean.len {
+			mut args := []string{}
+			for arg in split_generic_args(clean[bracket + 1..bracket_end]) {
+				args << t.normalize_sum_variant_type(arg, mod, generic_params)
+			}
+			base := clean[..bracket]
+			qbase := t.normalize_sum_variant_type(base, mod, generic_params)
+			return qbase + '[' + args.join(', ') + ']' + clean[bracket_end + 1..]
+		}
 	}
 	if clean.contains('.') || mod.len == 0 || mod == 'main' || mod == 'builtin'
 		|| types.is_builtin_type_name(clean) {
@@ -8001,13 +8025,18 @@ fn (t &Transformer) resolve_sum_variant_pattern_for_subject(subject_type string,
 	if pattern.len == 0 {
 		return none
 	}
-	if !isnil(t.tc) {
-		if resolved := t.tc.sum_variant_type_for_pattern(subject_type, pattern) {
-			return resolved
+	for candidate in t.sum_subject_type_candidates(subject_type) {
+		if !isnil(t.tc) {
+			if resolved := t.tc.sum_variant_type_for_pattern(candidate, pattern) {
+				return resolved
+			}
+		}
+		resolved_sum := t.resolve_sum_name(candidate)
+		if resolved_variant := t.sum_variant_name(resolved_sum, pattern) {
+			return resolved_variant
 		}
 	}
-	resolved_sum := t.resolve_sum_name(subject_type)
-	return t.sum_variant_name(resolved_sum, pattern)
+	return none
 }
 
 fn (t &Transformer) match_type_smartcast_context(match_expr_id flat.NodeId, cond_val_id flat.NodeId) ?SmartcastContext {

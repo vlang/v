@@ -7,9 +7,12 @@ const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
 fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_test')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_test_${os.getpid()}')
+	if os.exists(v3_bin) {
+		return v3_bin
+	}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.execute('${vexe} -gc none -no-parallel -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -206,6 +209,63 @@ fn main() {
 	c_code := os.read_file('${bin}.c') or { '' }
 	assert c_code.contains('GhostError__msg'), c_code
 	assert c_code.contains('string ghost_msg_part('), c_code
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}
+
+fn test_unused_ierror_compatible_method_dependencies_are_marked_used_without_unpruning_dead_fns() {
+	v3_bin := build_v3()
+
+	root := os.join_path(os.temp_dir(), 'v3_ierror_unused_method_deps_${os.getpid()}')
+	dead_dir := os.join_path(root, 'dead')
+	os.mkdir_all(dead_dir) or { panic(err) }
+	os.write_file(os.join_path(dead_dir, 'dead.v'), "module dead
+
+pub struct Helper {}
+
+pub fn (h Helper) text() string {
+	return 'dead'
+}
+
+pub struct DeadErr {}
+
+pub fn (err DeadErr) msg() string {
+	return Helper{}.text()
+}
+
+pub fn (err DeadErr) code() int {
+	return 17
+}
+
+pub fn unrelated_dead_fn() string {
+	return 'pruned'
+}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'main.v'), "module main
+
+import dead
+
+fn main() {
+	println('ok')
+}
+") or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_ierror_unused_method_deps_out_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	c_code := os.read_file('${bin}.c') or { '' }
+	assert c_code.contains('string dead__DeadErr__msg(dead__DeadErr err)'), c_code
+	assert c_code.contains('string dead__Helper__text(dead__Helper h)'), c_code
+	assert c_code.contains('return dead__Helper__text((dead__Helper){});'), c_code
+	assert !c_code.contains('dead__unrelated_dead_fn'), c_code
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output

@@ -137,6 +137,32 @@ fn main() {
 '
 }
 
+const called_invalid_ierror_multi_return_local_method_project = {
+	'bad/bad.v': 'module bad
+
+pub struct NotError {}
+
+pub struct Worker {}
+
+pub fn make_dep() (int, Worker) {
+	return 0, Worker{}
+}
+
+pub fn (w Worker) fail() !int {
+	return NotError{}
+}
+'
+	'main.v':    'module main
+
+import bad
+
+fn main() {
+	_, dep := bad.make_dep()
+	_ := dep.fail() or { 0 }
+}
+'
+}
+
 const uncalled_invalid_ierror_local_method_return_project = {
 	'bad/bad.v': 'module bad
 
@@ -224,6 +250,15 @@ fn test_selected_file_calling_invalid_ierror_result_return_reports_dependency_er
 fn test_selected_file_calling_invalid_ierror_local_method_return_reports_dependency_error() {
 	main_errors := check_diagnostic_project('ierror_local_method_return_called_from_main',
 		called_invalid_ierror_local_method_return_project, ['main.v'])
+	assert main_errors.len == 1, main_errors.str()
+	assert main_errors[0].msg.contains('cannot return')
+	assert main_errors[0].msg.contains('bad.NotError')
+	assert main_errors[0].msg.contains('as `int`')
+}
+
+fn test_selected_file_multi_return_local_receiver_reports_dependency_error() {
+	main_errors := check_diagnostic_project('ierror_multi_return_method_called_from_main',
+		called_invalid_ierror_multi_return_local_method_project, ['main.v'])
 	assert main_errors.len == 1, main_errors.str()
 	assert main_errors[0].msg.contains('cannot return')
 	assert main_errors[0].msg.contains('bad.NotError')
