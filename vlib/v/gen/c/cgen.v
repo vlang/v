@@ -11648,10 +11648,24 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				if expr.is_auto_deref_var() {
 					g.write('*')
 				}
+				mut resolved_ret_type := ret_expr_types[i]
+				if g.cur_concrete_types.len > 0 {
+					if expr is ast.Ident {
+						resolved_type := g.resolved_scope_var_type_uncached(expr)
+						if resolved_type != 0 {
+							resolved_ret_type = resolved_type
+						}
+					} else {
+						resolved_type := g.resolved_expr_type(expr, resolved_ret_type)
+						if resolved_type != 0 && !g.type_has_unresolved_generic_parts(resolved_type) {
+							resolved_ret_type = resolved_type
+						}
+					}
+				}
 				if mr_info.types[i].has_flag(.option) {
-					g.expr_with_opt(expr, ret_expr_types[i], mr_info.types[i])
+					g.expr_with_opt(expr, resolved_ret_type, mr_info.types[i])
 				} else if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface] {
-					g.expr_with_cast(expr, ret_expr_types[i], mr_info.types[i])
+					g.expr_with_cast(expr, resolved_ret_type, mr_info.types[i])
 				} else {
 					g.expr(expr)
 				}
