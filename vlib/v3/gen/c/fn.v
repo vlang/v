@@ -3240,8 +3240,7 @@ fn (g &FlatGen) embedded_receiver_field_for_expected(base_type types.Type, expec
 	if base_name.len == 0 || expected_name.len == 0 {
 		return none
 	}
-	fields := g.struct_fields_for_type(base_name) or { return none }
-	for field in fields {
+	for field in g.struct_embedded_fields(base_name) {
 		embedded_type_name := g.embedded_field_type_name(field)
 		if embedded_type_name == expected_name {
 			return field
