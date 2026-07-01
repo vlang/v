@@ -231,6 +231,11 @@ fn main() {
 		building_v = true
 	}
 	cmd_v_build := input_is_cmd_v(input_file)
+	if no_parallel {
+		user_defines = user_defines.filter(it != 'parallel')
+	} else if (building_v || cmd_v_build) && 'parallel' !in user_defines {
+		user_defines << 'parallel'
+	}
 
 	mut bin_file := ''
 	mut c_only := false
