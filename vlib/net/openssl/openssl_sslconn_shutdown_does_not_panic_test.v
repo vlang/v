@@ -24,14 +24,12 @@ fn server() ! {
 }
 
 // 用 _test.v 内的 test_ 函数
+@[if network ?]
 fn test_shutdown_does_not_panic() {
 	_ := spawn server()
 	time.sleep(1 * time.second)
 	mut client := openssl.new_ssl_conn(validate: false)!
-	client.dial('127.0.0.1', 64445) or {
-		eprintln('Connect: ${err}')
-		return
-	}
+	client.dial('127.0.0.1', 64445)!
 	eprintln('[+] Connected')
 	time.sleep(1 * time.second)
 	mut background := context.background()

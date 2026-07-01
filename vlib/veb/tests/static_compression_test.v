@@ -92,16 +92,6 @@ fn unused_tcp_port() int {
 fn testsuite_begin() {
 	os.chdir(os.dir(@FILE))!
 	reset_test_static_cache()
-	port = unused_tcp_port()
-	port_no_auto = unused_tcp_port()
-	port_gzip_only = unused_tcp_port()
-	port_zstd_only = unused_tcp_port()
-	port_filtered_mimes = unused_tcp_port()
-	localserver = 'http://127.0.0.1:${port}'
-	localserver_no_auto = 'http://127.0.0.1:${port_no_auto}'
-	localserver_gzip_only = 'http://127.0.0.1:${port_gzip_only}'
-	localserver_zstd_only = 'http://127.0.0.1:${port_zstd_only}'
-	localserver_filtered_mimes = 'http://127.0.0.1:${port_filtered_mimes}'
 
 	// Create test directory and files
 	os.mkdir_all('testdata_compression')!
@@ -158,6 +148,8 @@ fn testsuite_end() {
 
 fn run_app_test() {
 	mut app := &App{}
+	port = unused_tcp_port()
+	localserver = 'http://127.0.0.1:${port}'
 
 	// Enable static compression (zstd/gzip)
 	app.enable_static_compression = true
@@ -178,6 +170,8 @@ fn run_app_test() {
 
 fn run_no_auto_compression_test() {
 	mut app := &App{}
+	port_no_auto = unused_tcp_port()
+	localserver_no_auto = 'http://127.0.0.1:${port_no_auto}'
 
 	// Enable static compression but disable auto-compression (max_size = 0)
 	app.enable_static_compression = true
@@ -198,6 +192,8 @@ fn run_no_auto_compression_test() {
 
 fn run_gzip_only_test() {
 	mut app := &App{}
+	port_gzip_only = unused_tcp_port()
+	localserver_gzip_only = 'http://127.0.0.1:${port_gzip_only}'
 
 	// Enable ONLY gzip compression (not zstd, not auto)
 	app.enable_static_gzip = true
@@ -215,6 +211,8 @@ fn run_gzip_only_test() {
 
 fn run_zstd_only_test() {
 	mut app := &App{}
+	port_zstd_only = unused_tcp_port()
+	localserver_zstd_only = 'http://127.0.0.1:${port_zstd_only}'
 
 	// Enable ONLY zstd compression (not gzip, not auto)
 	app.enable_static_zstd = true
@@ -232,6 +230,8 @@ fn run_zstd_only_test() {
 
 fn run_filtered_mime_test() {
 	mut app := &App{}
+	port_filtered_mimes = unused_tcp_port()
+	localserver_filtered_mimes = 'http://127.0.0.1:${port_filtered_mimes}'
 
 	app.enable_static_compression = true
 	app.static_compression_max_size = 1048576

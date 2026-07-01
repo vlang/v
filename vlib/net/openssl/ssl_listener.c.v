@@ -57,6 +57,7 @@ fn (mut l SSLListener) init() ! {
 		l.tcp_listener.close() or {}
 		return error('net.openssl SSLListener.init, could not get ssl context')
 	}
+	C.SSL_CTX_set_options(l.sslctx, C.SSL_OP_NO_COMPRESSION | C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3)
 
 	if l.config.in_memory_verification {
 		mut res := C.v_net_openssl_SSL_CTX_use_certificate_chain_memory(l.sslctx,

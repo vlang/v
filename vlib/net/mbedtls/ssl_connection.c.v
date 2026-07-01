@@ -284,6 +284,9 @@ fn (mut l SSLListener) init() ! {
 		backlog: C.MBEDTLS_NET_LISTEN_BACKLOG
 	}) or { return error('net.mbedtls SSLListener.init, listen_tcp failed for ${l.saddr}: ${err}') }
 	l.server_fd.fd = tcp_listener.sock.handle
+	net.set_blocking(l.server_fd.fd, true) or {
+		return error('net.mbedtls SSLListener.init, could not make listener socket blocking: ${err}')
+	}
 
 	ret = C.mbedtls_ssl_config_defaults(&l.conf, C.MBEDTLS_SSL_IS_SERVER,
 		C.MBEDTLS_SSL_TRANSPORT_STREAM, C.MBEDTLS_SSL_PRESET_DEFAULT)
