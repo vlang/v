@@ -309,3 +309,51 @@ fn test_no_parallel_selfhost_omits_parallel_support() {
 	assert !c_code.contains('transform_chunk_thread'), c_code
 	assert !c_code.contains('transform_job_count'), c_code
 }
+
+fn write_no_parallel_user_define_project(name string) string {
+	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(project_dir) or { panic(err) }
+
+	os.write_file(os.join_path(project_dir, 'main.v'), "module main
+
+fn parallel_if_value() string {
+\t\$if parallel ? {
+\t\treturn 'if'
+\t} \$else {
+\t\treturn 'no-if'
+\t}
+}
+
+fn main() {
+\tprintln(parallel_file_value() + ':' + parallel_if_value())
+}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(project_dir, 'feature_d_parallel.v'), "module main
+
+fn parallel_file_value() string {
+\treturn 'file'
+}
+") or {
+		panic(err)
+	}
+	return project_dir
+}
+
+fn test_no_parallel_preserves_user_parallel_define_for_project() {
+	v3_bin := build_parallel_prod_v3()
+	project_dir := write_no_parallel_user_define_project('no_parallel_user_define')
+	bin_out := os.join_path(os.temp_dir(), 'v3_no_parallel_user_define_out_${os.getpid()}')
+	os.rm(bin_out) or {}
+	os.rm(bin_out + '.c') or {}
+	compile :=
+		os.execute('VJOBS=2 ${v3_bin} --no-parallel -d parallel -b c -o ${bin_out} ${project_dir}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('transform (parallel)'), compile.output
+	assert !compile.output.contains('cgen (parallel)'), compile.output
+	run := os.execute(bin_out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'file:if'
+}
