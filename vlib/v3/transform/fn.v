@@ -2117,6 +2117,7 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			base_type = lvalue_base_type
 		}
 	}
+	base_type = t.normalize_type_alias(base_type)
 	if !base_type.starts_with('[]') && !t.is_fixed_array_type(base_type) {
 		if base_node.kind in [.call, .selector, .as_expr] {
 			new_base := t.transform_expr(base_id)

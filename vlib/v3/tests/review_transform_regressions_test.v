@@ -168,6 +168,13 @@ fn test_negative_is_return_smartcasts_following_statements() {
 	assert out == '7\n0'
 }
 
+fn test_if_expr_smartcast_selector_decl_does_not_smartcast_local() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'if_expr_selector_decl_smartcast_local',
+		'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\ntype Animal = Cat | Dog\n\nstruct Ident {\n\tobj Animal\n}\n\nfn has_age(cat Cat) bool {\n\treturn cat.age == 3\n}\n\nfn main() {\n\tleft := Ident{\n\t\tobj: Animal(Cat{\n\t\t\tage: 2\n\t\t})\n\t}\n\tmut obj := if left.obj is Cat {\n\t\tleft.obj\n\t} else {\n\t\tCat{}\n\t}\n\tif true {\n\t\tobj = Cat{\n\t\t\tage: 3\n\t\t}\n\t}\n\tprintln(has_age(obj))\n}\n')
+	assert out == 'true'
+}
+
 fn test_comptime_type_conditions_handle_logical_ops() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'comptime_type_condition_logical_ops',

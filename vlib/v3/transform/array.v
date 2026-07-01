@@ -168,21 +168,23 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 	mut len_expr := t.make_int_literal(0)
 	mut cap_expr := t.make_int_literal(0)
 	mut init_expr := flat.empty_node
+	mut init_expr_id := flat.empty_node
 	for i in 0 .. node.children_count {
 		child := t.a.child_node(&node, i)
 		if child.kind == .field_init && child.children_count > 0 {
-			val := t.transform_expr(t.a.child(child, 0))
 			if child.value == 'len' {
+				val := t.transform_expr(t.a.child(child, 0))
 				len_expr = val
 			} else if child.value == 'cap' {
+				val := t.transform_expr(t.a.child(child, 0))
 				cap_expr = val
 			} else if child.value == 'init' {
-				init_expr = val
+				init_expr_id = t.a.child(child, 0)
 			}
 		}
 	}
 	new_call := t.make_array_new_call(elem_type, len_expr, cap_expr)
-	if int(init_expr) < 0 {
+	if int(init_expr_id) < 0 {
 		clean_elem_type := t.normalize_type_alias(elem_type)
 		if clean_elem_type.starts_with('[]') {
 			init_expr = t.make_array_new_call(clean_elem_type[2..], t.make_int_literal(0),
@@ -207,6 +209,17 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 	index_decl := t.make_decl_assign_typed('index', t.make_ident(idx_name), 'int')
 	mut loop_body := []flat.NodeId{}
 	loop_body << index_decl
+	if int(init_expr_id) >= 0 {
+		saved_pending := t.pending_stmts.clone()
+		t.pending_stmts.clear()
+		indexed_init := t.substitute_ident_expr(init_expr_id, 'index', t.make_ident(idx_name))
+		init_expr = t.transform_expr(indexed_init)
+		init_pending := t.pending_stmts.clone()
+		t.pending_stmts = saved_pending
+		for stmt in init_pending {
+			loop_body << stmt
+		}
+	}
 	mut assign_value := init_expr
 	clean_elem_type := t.normalize_type_alias(elem_type)
 	if clean_elem_type.starts_with('[]') {
@@ -1230,7 +1243,7 @@ fn (t &Transformer) is_array_transform_call(id flat.NodeId) bool {
 	if fn_node.value !in ['filter', 'map', 'sorted'] {
 		return false
 	}
-	base_type := t.node_type(t.a.child(&fn_node, 0))
+	base_type := t.normalize_type_alias(t.node_type(t.a.child(&fn_node, 0)))
 	return base_type.starts_with('[]')
 }
 

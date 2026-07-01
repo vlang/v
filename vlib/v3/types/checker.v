@@ -1552,7 +1552,8 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 		tc.insert_loop_var(key_id, tc.range_loop_var_type(container_id))
 		tc.annotate_node(tc.a.child(&node, 3))
 	} else {
-		clean := unwrap_pointer(tc.resolve_type(container_id))
+		clean0 := unwrap_pointer(tc.resolve_type(container_id))
+		clean := if clean0 is Alias { clean0.base_type } else { clean0 }
 		if clean is Array {
 			if has_val {
 				tc.insert_loop_var(key_id, Type(int_))
@@ -3543,7 +3544,8 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		tc.insert_loop_var(key_id, tc.range_loop_var_type(container_id))
 		tc.check_node(tc.a.child(&node, 3))
 	} else {
-		clean := unwrap_pointer(tc.resolve_type(container_id))
+		clean0 := unwrap_pointer(tc.resolve_type(container_id))
+		clean := if clean0 is Alias { clean0.base_type } else { clean0 }
 		if clean is Array {
 			if has_val {
 				tc.insert_loop_var(key_id, Type(int_))
@@ -3678,6 +3680,9 @@ fn (mut tc TypeChecker) decl_assign_inferred_type(rhs_id flat.NodeId) Type {
 	}
 	if typ := tc.infer_fn_value_decl_type(rhs_id) {
 		return typ
+	}
+	if rhs.kind == .if_expr {
+		return tc.if_expr_tail_type(rhs_id)
 	}
 	return tc.resolve_type(rhs_id)
 }
@@ -5843,7 +5848,8 @@ fn (tc &TypeChecker) call_receiver_array_type(node flat.Node) ?Array {
 	if fn_node.kind != .selector || fn_node.children_count == 0 {
 		return none
 	}
-	base_type := unwrap_pointer(tc.resolve_type(tc.a.child(fn_node, 0)))
+	base_type0 := unwrap_pointer(tc.resolve_type(tc.a.child(fn_node, 0)))
+	base_type := if base_type0 is Alias { base_type0.base_type } else { base_type0 }
 	if base_type is Array {
 		return base_type
 	}
@@ -6512,7 +6518,13 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	if !value_context {
 		return
 	}
+	for sc in smartcasts {
+		if valid_string_data(sc.name) {
+			tc.smartcasts[sc.name] = sc.typ
+		}
+	}
 	then_type := tc.branch_tail_type(then_id)
+	tc.smartcasts = clone_smartcasts(saved_smartcasts)
 	mut else_type := Type(void_)
 	if node.children_count > 2 {
 		else_id := tc.a.child(&node, 2)
@@ -6879,6 +6891,20 @@ fn (tc &TypeChecker) branch_tail_type(id flat.NodeId) Type {
 	return tc.resolve_type(id)
 }
 
+fn (tc &TypeChecker) branch_tail_type_with_smartcasts(id flat.NodeId, smartcasts []LocalBinding) Type {
+	if smartcasts.len == 0 {
+		return tc.branch_tail_type(id)
+	}
+	mut scoped := *tc
+	scoped.smartcasts = clone_smartcasts(tc.smartcasts)
+	for sc in smartcasts {
+		if valid_string_data(sc.name) {
+			scoped.smartcasts[sc.name] = sc.typ
+		}
+	}
+	return scoped.branch_tail_type(id)
+}
+
 // if_expr_tail_type supports if expr tail type handling for TypeChecker.
 fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 	mut cur_id := id
@@ -6889,7 +6915,8 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 			return choose_if_tail_type(result, tc.branch_tail_type(cur_id))
 		}
 		if node.children_count > 1 {
-			then_type := tc.branch_tail_type(tc.a.child(&node, 1))
+			smartcasts := tc.extract_smartcasts(tc.a.child(&node, 0))
+			then_type := tc.branch_tail_type_with_smartcasts(tc.a.child(&node, 1), smartcasts)
 			result = choose_if_tail_type(result, then_type)
 		}
 		if node.children_count <= 2 {
@@ -7668,6 +7695,28 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			}
 		}
 	}
+	if node.kind == .map_init {
+		if expected_map := map_type_from_receiver(expected) {
+			if node.children_count == 0 {
+				tc.register_synth_type(id, expected_raw)
+				return expected_raw
+			}
+			mut all_ok := true
+			for i := 0; i + 1 < node.children_count; i += 2 {
+				key_actual := tc.resolve_expr(tc.a.child(&node, i), expected_map.key_type)
+				value_actual := tc.resolve_expr(tc.a.child(&node, i + 1), expected_map.value_type)
+				if !tc.receiver_compatible(key_actual, expected_map.key_type)
+					|| !tc.receiver_compatible(value_actual, expected_map.value_type) {
+					all_ok = false
+					break
+				}
+			}
+			if all_ok {
+				tc.register_synth_type(id, expected_raw)
+				return expected_raw
+			}
+		}
+	}
 	if node.kind == .match_stmt || node.kind == .if_expr {
 		// Match/if used as a value expression: propagate the expected type into
 		// each branch tail so enum-shorthand / `none` / fn-literal tails type
@@ -7888,6 +7937,9 @@ pub fn (tc &TypeChecker) struct_field_c_abi_fn_ptr_type(struct_name string, fiel
 
 // enum_value_matches supports enum value matches handling for TypeChecker.
 fn (tc &TypeChecker) enum_value_matches(value string, enum_name string) bool {
+	if value.starts_with('.') {
+		return tc.enum_has_field(enum_name, value[1..])
+	}
 	if value.contains('.') {
 		prefix := value.all_before_last('.')
 		field := value.all_after_last('.')
@@ -9108,6 +9160,9 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.len == 0 {
 		return Type(void_)
 	}
+	if typ.ends_with('.typ') {
+		return tc.parse_type(typ[..typ.len - 4])
+	}
 	if is_generic_placeholder_type(typ) && !tc.is_known_type_text(typ) {
 		return unknown_type('generic placeholder `${typ}`')
 	}
@@ -9239,35 +9294,10 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			base_type: tc.parse_type(tc.type_aliases[qtyp])
 		})
 	}
-	if qtyp in tc.structs {
-		return Type(Struct{
-			name: qtyp
-		})
-	}
 	if typ in tc.type_aliases {
 		return Type(Alias{
 			name:      typ
 			base_type: tc.parse_type(tc.type_aliases[typ])
-		})
-	}
-	if typ in tc.interface_names {
-		return Type(Interface{
-			name: typ
-		})
-	}
-	if qtyp in tc.interface_names {
-		return Type(Interface{
-			name: qtyp
-		})
-	}
-	if typ in tc.structs {
-		return Type(Struct{
-			name: typ
-		})
-	}
-	if qtyp in tc.structs {
-		return Type(Struct{
-			name: qtyp
 		})
 	}
 	if typ in tc.flag_enums {
@@ -9289,6 +9319,31 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	}
 	if qtyp in tc.enum_names {
 		return Type(Enum{
+			name: qtyp
+		})
+	}
+	if qtyp in tc.structs {
+		return Type(Struct{
+			name: qtyp
+		})
+	}
+	if typ in tc.interface_names {
+		return Type(Interface{
+			name: typ
+		})
+	}
+	if qtyp in tc.interface_names {
+		return Type(Interface{
+			name: qtyp
+		})
+	}
+	if typ in tc.structs {
+		return Type(Struct{
+			name: typ
+		})
+	}
+	if qtyp in tc.structs {
+		return Type(Struct{
 			name: qtyp
 		})
 	}

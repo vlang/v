@@ -796,7 +796,16 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 	} else if rhs.kind == .none_expr {
 		opt_id = lhs_id
 	} else {
-		return none
+		lhs_type := t.node_type(lhs_id)
+		rhs_type := t.node_type(rhs_id)
+		if !t.is_optional_type_name(lhs_type) || !t.is_optional_type_name(rhs_type) {
+			return none
+		}
+		lhs_value := t.stable_expr_for_reuse(lhs_id)
+		rhs_value := t.stable_expr_for_reuse(rhs_id)
+		cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs_value),
+			t.make_prefix(.amp, rhs_value), t.make_sizeof_type(lhs_type)), 'int')
+		return t.make_infix(node.op, cmp, t.make_int_literal(0))
 	}
 	opt_type := t.node_type(opt_id)
 	if !t.is_optional_type_name(opt_type) {

@@ -5373,7 +5373,9 @@ fn (mut p Parser) parse_type_name() string {
 		if p.tok == .dot {
 			p.next()
 			if p.tok == .name {
-				name += '.' + p.lit
+				if p.lit != 'typ' {
+					name += '.' + p.lit
+				}
 				p.next()
 			}
 		}
