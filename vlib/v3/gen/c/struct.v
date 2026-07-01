@@ -1596,11 +1596,23 @@ fn (g &FlatGen) embedded_field_type_name(field types.StructField) string {
 	short_field := if field.name.contains('.') { field.name.all_after_last('.') } else { field.name }
 	for name in names {
 		short_type := if name.contains('.') { name.all_after_last('.') } else { name }
-		if field.name == name || short_field == short_type || c_name(field.name) == c_name(name) {
+		if field.name == name || short_field == short_type
+			|| embedded_field_c_names_match(field.name, name) {
 			return field_type_name
 		}
 	}
 	return ''
+}
+
+fn embedded_field_c_names_match(field_name string, type_name string) bool {
+	field_plain := c_name_is_plain(field_name)
+	type_plain := c_name_is_plain(type_name)
+	if field_plain && type_plain && field_name !in c_reserved_words
+		&& type_name !in c_reserved_words && field_name !in c_libc_collisions
+		&& type_name !in c_libc_collisions {
+		return false
+	}
+	return c_name(field_name) == c_name(type_name)
 }
 
 fn (g &FlatGen) direct_struct_field_exists(type_name string, field_name string) bool {
