@@ -30,9 +30,37 @@ struct GenericMethodCandidate {
 	params []types.Type
 }
 
+// FlatFnGenItem represents one top-level function selected for C emission.
+struct FlatFnGenItem {
+	node_id flat.NodeId
+	file    string
+	module  string
+	c_name  string
+	cost    int
+}
+
+struct FlatFnGenCandidate {
+	preferred_name string
+	item           FlatFnGenItem
+}
+
 // gen_fns emits fns output for c.
 fn (mut g FlatGen) gen_fns() {
-	preferred_fns := g.preferred_c_backend_fn_nodes()
+	g.gen_fn_items(g.ensure_fn_gen_items())
+}
+
+fn (mut g FlatGen) ensure_fn_gen_items() []FlatFnGenItem {
+	if g.fn_gen_items.len == 0 {
+		g.fn_gen_items = g.collect_fn_gen_items()
+	}
+	return g.fn_gen_items
+}
+
+// collect_fn_gen_items updates collect fn gen items state for c.
+fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
+	mut candidates := []FlatFnGenCandidate{}
+	mut preferred_fns := map[string]int{}
+	mut ranks := map[string]int{}
 	mut cur_module := ''
 	mut cur_file := ''
 	for i in 0 .. g.a.nodes.len {
@@ -56,51 +84,52 @@ fn (mut g FlatGen) gen_fns() {
 			if !g.should_emit_fn_node_in_module(node, i, cur_module, cur_file) {
 				continue
 			}
-			qfn := g.fn_c_name_in_module(cur_module, node.value)
-			if preferred_idx := preferred_fns[qfn] {
-				if preferred_idx != i {
-					continue
+			preferred_name := qualified_fn_name_in_module(cur_module, node.value)
+			rank := c_backend_fn_file_rank(cur_file)
+			if preferred_name !in preferred_fns || rank > ranks[preferred_name] {
+				preferred_fns[preferred_name] = i
+				ranks[preferred_name] = rank
+			}
+			candidates << FlatFnGenCandidate{
+				preferred_name: preferred_name
+				item:           FlatFnGenItem{
+					node_id: flat.NodeId(i)
+					file:    cur_file
+					module:  cur_module
+					c_name:  g.fn_c_name_in_module(cur_module, node.value)
+					cost:    node.children_count + 1
 				}
 			}
-			if g.emitted_fn_contains(qfn) {
+		}
+	}
+	mut items := []FlatFnGenItem{cap: candidates.len}
+	for candidate in candidates {
+		if preferred_idx := preferred_fns[candidate.preferred_name] {
+			if preferred_idx != int(candidate.item.node_id) {
 				continue
 			}
-			g.emitted_fns[qfn] = true
-			g.tc.cur_file = cur_file
-			g.tc.cur_module = cur_module
-			g.gen_fn_in_module(node, cur_module)
 		}
+		qfn := candidate.item.c_name
+		if g.emitted_fn_contains(qfn) {
+			continue
+		}
+		g.emitted_fns[qfn] = true
+		items << candidate.item
 	}
+	return items
 }
 
-fn (g &FlatGen) preferred_c_backend_fn_nodes() map[string]int {
-	mut preferred := map[string]int{}
-	mut ranks := map[string]int{}
-	mut cur_module := ''
-	mut cur_file := ''
-	for i in 0 .. g.a.nodes.len {
-		node := g.a.nodes[i]
-		kind_id := node_kind_id(node)
-		if kind_id == 77 {
-			cur_file = node.value
-			cur_module = ''
+// gen_fn_items emits fn items output for c.
+fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
+	for item in items {
+		if int(item.node_id) < 0 || int(item.node_id) >= g.a.nodes.len {
 			continue
 		}
-		if kind_id == 73 {
-			cur_module = node.value
-			continue
-		}
-		if kind_id != 61 {
-			continue
-		}
-		qfn := qualified_fn_name_in_module(cur_module, node.value)
-		rank := c_backend_fn_file_rank(cur_file)
-		if qfn !in preferred || rank > ranks[qfn] {
-			preferred[qfn] = i
-			ranks[qfn] = rank
-		}
+		g.tc.cur_file = item.file
+		g.tc.cur_module = item.module
+		node := g.a.nodes[int(item.node_id)]
+		g.gen_fn_in_module(node, item.module)
 	}
-	return preferred
 }
 
 fn c_backend_fn_file_rank(file string) int {
@@ -4316,61 +4345,35 @@ fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) 
 
 // forward_decls supports forward decls handling for FlatGen.
 fn (mut g FlatGen) forward_decls() {
-	preferred_fns := g.preferred_c_backend_fn_nodes()
-	mut cur_module := ''
-	mut cur_file := ''
 	mut forwarded := map[string]bool{}
-	for i in 0 .. g.a.nodes.len {
-		node := g.a.nodes[i]
-		kind_id := node_kind_id(node)
-		if kind_id == 77 {
-			cur_file = node.value
-			g.tc.cur_file = cur_file
-			cur_module = ''
-			g.tc.cur_module = cur_module
+	for item in g.ensure_fn_gen_items() {
+		node := g.a.nodes[int(item.node_id)]
+		if is_main_fn_in_main_module(item.module, node.value) && g.test_files.len == 0 {
 			continue
 		}
-		if kind_id == 73 {
-			cur_module = node.value
-			g.tc.cur_file = cur_file
-			g.tc.cur_module = cur_module
+		qfn := item.c_name
+		if forwarded[qfn] {
 			continue
 		}
-
-		is_entry_main := is_main_fn_in_main_module(cur_module, node.value) && g.test_files.len == 0
-		if kind_id == 61 && !is_entry_main {
-			if !g.should_emit_fn_node_in_module(node, i, cur_module, cur_file) {
-				continue
-			}
-			qfn := g.fn_c_name_in_module(cur_module, node.value)
-			if preferred_idx := preferred_fns[qfn] {
-				if preferred_idx != i {
-					continue
-				}
-			}
-			if forwarded[qfn] {
-				continue
-			}
-			forwarded[qfn] = true
-			g.tc.cur_file = cur_file
-			g.tc.cur_module = cur_module
-			ret_type := g.fn_node_return_type(node, cur_module)
-			g.write(g.fn_return_type_name(ret_type))
-			g.write(' ')
-			g.write(qfn)
-			g.write('(')
-			g.write_fn_node_params(node)
-			g.writeln(');')
-			if export_name := g.export_fn_name_in_module(cur_module, node.value) {
-				if !forwarded[export_name] {
-					forwarded[export_name] = true
-					g.write(g.fn_return_type_name(ret_type))
-					g.write(' ')
-					g.write(export_name)
-					g.write('(')
-					g.write_fn_node_params(node)
-					g.writeln(');')
-				}
+		forwarded[qfn] = true
+		g.tc.cur_file = item.file
+		g.tc.cur_module = item.module
+		ret_type := g.fn_node_return_type(node, item.module)
+		g.write(g.fn_return_type_name(ret_type))
+		g.write(' ')
+		g.write(qfn)
+		g.write('(')
+		g.write_fn_node_params(node)
+		g.writeln(');')
+		if export_name := g.export_fn_name_in_module(item.module, node.value) {
+			if !forwarded[export_name] {
+				forwarded[export_name] = true
+				g.write(g.fn_return_type_name(ret_type))
+				g.write(' ')
+				g.write(export_name)
+				g.write('(')
+				g.write_fn_node_params(node)
+				g.writeln(');')
 			}
 		}
 	}

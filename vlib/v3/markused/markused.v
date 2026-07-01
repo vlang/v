@@ -839,8 +839,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 				imports[node.typ] = node.value
 			}
 			.fn_decl {
-				ret_type := tc.parse_type(node.typ)
-				if ret_type is types.OptionType || ret_type is types.ResultType {
+				if type_string_needs_optional_helpers(node.typ) {
 					needs_optional_helpers = true
 				}
 			}
@@ -1108,6 +1107,11 @@ fn stringification_type_candidates(type_name string, cur_module string) []string
 
 // enqueue_function_value_selectors supports enqueue function value selectors handling for markused.
 fn enqueue_function_value_selectors(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
+	if markused_has_entry_main(a) {
+		enqueue_function_value_selectors_with_entry_main(a, collector, fn_decls, mut used, mut
+			queue)
+		return
+	}
 	ignored_top_level_nodes := markused_ignored_top_level_nodes(a)
 	ignored_fn_decl_nodes := markused_ignored_fn_decl_nodes(a)
 	shadowed_value_idents := markused_shadowed_value_idents(a)
@@ -1147,6 +1151,61 @@ fn enqueue_function_value_selectors(a &flat.FlatAst, collector CallCollector, fn
 				}
 			}
 		}
+	}
+}
+
+fn enqueue_function_value_selectors_with_entry_main(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
+	for file_idx, file_node in a.nodes {
+		if file_node.kind != .file {
+			continue
+		}
+		for i in 0 .. file_node.children_count {
+			child_id := a.child(&file_node, i)
+			child := a.node(child_id)
+			if child.kind == .fn_decl {
+				continue
+			}
+			if file_idx >= a.user_code_start && int(child_id) >= a.user_code_start
+				&& markused_is_top_level_stmt(child) {
+				continue
+			}
+			enqueue_function_value_selectors_in_node(a, collector, fn_decls, child_id, mut used, mut
+				queue)
+		}
+	}
+}
+
+fn enqueue_function_value_selectors_in_node(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, id flat.NodeId, mut used map[string]bool, mut queue []string) {
+	if int(id) < 0 || int(id) >= a.nodes.len {
+		return
+	}
+	node := a.node(id)
+	if node.kind == .fn_decl {
+		return
+	}
+	if node.kind == .ident && node.value.len > 0 {
+		if resolved := collector.tc.resolved_fn_value_name(id) {
+			enqueue(resolved, mut used, mut queue)
+			return
+		}
+		if node.value in fn_decls && collector.node_is_fn_value(id) {
+			enqueue(node.value, mut used, mut queue)
+		}
+		return
+	}
+	if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
+		base_id := a.child(node, 0)
+		base := a.node(base_id)
+		if base.kind == .ident && base.value.len > 0 {
+			name := '${base.value}.${node.value}'
+			if name in fn_decls {
+				enqueue(name, mut used, mut queue)
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		enqueue_function_value_selectors_in_node(a, collector, fn_decls, a.child(node, i), mut
+			used, mut queue)
 	}
 }
 
