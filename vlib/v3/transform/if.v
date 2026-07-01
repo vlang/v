@@ -390,6 +390,9 @@ fn (t &Transformer) if_expr_branch_overrides_sum_target(branch_type string, targ
 		return false
 	}
 	clean_branch := t.trim_pointer_type(branch_type)
+	if t.sum_target_accepts_variant_type(resolved_target, clean_branch) {
+		return false
+	}
 	branch_sum := t.resolve_sum_name(clean_branch)
 	variant_sum := t.resolve_sum_name(t.find_sum_type_for_variant(clean_branch))
 	return branch_sum != resolved_target && variant_sum != resolved_target

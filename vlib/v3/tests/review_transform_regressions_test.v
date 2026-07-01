@@ -110,6 +110,13 @@ fn test_array_equality_uses_semantic_element_comparison() {
 	assert out == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\n0'
 }
 
+fn test_array_map_fn_value_uses_callback_return_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_map_fn_value_return_type',
+		"fn main() {\n\ti_to_str := fn (i int) string {\n\t\treturn int_str(i)\n\t}\n\ta := [1, 2, 3].map(i_to_str)\n\tassert a == ['1', '2', '3']\n\tprintln(a[0] + a[1] + a[2])\n}\n")
+	assert out == '123'
+}
+
 fn test_nested_map_equality_uses_declared_value_type() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'nested_map_semantic_equality',
@@ -260,8 +267,8 @@ fn test_string_pointer_comparisons_keep_pointer_semantics() {
 fn test_map_keys_and_values_lower_to_runtime_methods() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'map_keys_values_lowering',
-		"fn make_lookup() map[string]int {\n\treturn {\n\t\t'one': 1\n\t\t'two': 2\n\t}\n}\n\nfn main() {\n\tlookup := make_lookup()\n\tkeys := lookup.keys()\n\tvalues := make_lookup().values()\n\tmut total := 0\n\tfor value in values {\n\t\ttotal += value\n\t}\n\tprintln(int_str(keys.len))\n\tprintln(int_str(values.len))\n\tprintln(int_str(total))\n}\n")
-	assert out == '2\n2\n3'
+		"fn make_lookup() map[string]int {\n\treturn {\n\t\t'one': 1\n\t\t'two': 2\n\t}\n}\n\nfn main() {\n\tlookup := make_lookup()\n\tkeys := lookup.keys()\n\tvalues := make_lookup().values()\n\tmut total := 0\n\tfor value in values {\n\t\ttotal += value\n\t}\n\tsingle := {\n\t\t'only': 7\n\t}\n\tprintln(int_str(keys.len))\n\tprintln(int_str(values.len))\n\tprintln(int_str(total))\n\tprintln(int_str(single.keys().len))\n\tprintln(single.keys()[0])\n\tprintln(int_str(single.values().len))\n\tprintln(int_str(single.values()[0]))\n}\n")
+	assert out == '2\n2\n3\n1\nonly\n1\n7'
 }
 
 fn test_map_str_preserves_signed_wide_entries() {

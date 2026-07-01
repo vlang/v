@@ -15,6 +15,10 @@ fn numeric_array_literal_build_v3() string {
 	return v3_bin
 }
 
+fn numeric_array_literal_compact_c(c_code string) string {
+	return c_code.replace(' ', '').replace('\t', '')
+}
+
 fn test_numeric_array_literals_keep_float_common_type() {
 	v3_bin := numeric_array_literal_build_v3()
 	src := os.join_path(os.temp_dir(), 'v3_numeric_array_literal_input_${os.getpid()}.v')
@@ -47,7 +51,39 @@ fn main() {
 		wsum += w
 	}
 	assert wsum > f32(3.24) && wsum < f32(3.26)
+
+	fs := [f32(5.1), 3.1, 1.1, 9.1]
+	mut fmin := fs[0]
+	for f in fs {
+		if f < fmin {
+			fmin = f
+		}
+	}
+	assert fmin == f32(1.1)
+
+	alias_sum := add_all([MyAlias(5), MyAlias(7), MyAlias(3)])
+	assert alias_sum == MyAlias((5 * 10 + 7 * 10) * 10 + 3 * 10)
 	println('ok')
+}
+
+type MyAlias = i64
+
+fn (a MyAlias) + (b MyAlias) MyAlias {
+	return MyAlias(i64(a) * 10 + i64(b) * 10)
+}
+
+type UnusedAlias = i64
+
+fn (a UnusedAlias) + (b UnusedAlias) UnusedAlias {
+	return UnusedAlias(i64(a) + i64(b))
+}
+
+fn add_all[T](items []T) T {
+	mut head := items[0]
+	for item in items[1..] {
+		head += item
+	}
+	return head
 }
 ") or {
 		panic(err)
@@ -65,12 +101,22 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert c_code.contains('array_new(sizeof(double), 0, 6)'), c_code
+	c_compact := numeric_array_literal_compact_c(c_code)
+	assert c_compact.contains('array_new(sizeof(double),0,6)'), c_code
 	assert c_code.contains('double x = *(double*)(array_get(xs,'), c_code
-	assert c_code.contains('array_new(sizeof(int), 0, 3)'), c_code
+	assert c_compact.contains('array_new(sizeof(int),0,3)'), c_code
 	assert !c_code.contains('int x = *(int*)(array_get(xs,'), c_code
-	assert c_code.contains('array_new(sizeof(float), 0, 2)'), c_code
+	assert c_compact.contains('array_new(sizeof(float),0,2)'), c_code
 	assert c_code.contains('float z = *(float*)(array_get(zs,'), c_code
 	assert c_code.contains('float w = *(float*)(array_get(ws,'), c_code
-	assert !c_code.contains('array_new(sizeof(double), 0, 2)'), c_code
+	assert c_compact.contains('array_new(sizeof(float),0,4)'), c_code
+	assert c_code.contains('float f = *(float*)(array_get(fs,'), c_code
+	assert c_code.contains('add_all_T_MyAlias'), c_code
+	assert !c_code.contains('add_all_T_i64'), c_code
+	assert c_code.contains('MyAlias__plus'), c_code
+	assert c_code.contains('head = MyAlias__plus(head, item);'), c_code
+	assert !c_code.contains('head += item;'), c_code
+	assert !c_code.contains('UnusedAlias__plus'), c_code
+	assert !c_compact.contains('array_new(sizeof(double),0,2)'), c_code
+	assert !c_compact.contains('array_new(sizeof(double),0,4)'), c_code
 }

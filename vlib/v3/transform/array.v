@@ -374,10 +374,7 @@ fn (t &Transformer) array_literal_alias_type(node flat.Node) ?string {
 	if first.kind in [.cast_expr, .as_expr] && first.value.len > 0 {
 		alias_name = first.value
 	} else if first.kind == .call && first.children_count > 0 {
-		callee := t.a.child_node(&first, 0)
-		if callee.kind == .ident {
-			alias_name = callee.value
-		}
+		alias_name = t.generic_call_type_arg_name(t.a.child(&first, 0))
 	}
 	if alias_name.len == 0 {
 		return none

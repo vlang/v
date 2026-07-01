@@ -86,6 +86,19 @@ fn test_map_keys_and_values_reject_arguments() {
 		'argument count mismatch')
 }
 
+fn test_array_to_void_array_is_not_implicitly_compatible() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_array_to_void_array_param',
+		'fn take(xs []void) {\n\t_ = xs\n}\n\nfn main() {\n\ttake([1, 2, 3])\n}\n',
+		'cannot use `[]int` as argument 1 to `take`; expected `[]void`')
+	run_bad(v3_bin, 'bad_array_to_void_array_user_receiver',
+		'fn (xs []void) touch() int {\n\treturn xs.len\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tprintln(nums.touch().str())\n}\n',
+		'unknown function `nums.touch`')
+	out := run_good(v3_bin, 'good_array_clone_ignores_void_array_receiver',
+		'fn (xs []void) clone() int {\n\treturn 7\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tcloned := nums.clone()\n\tprintln(int_str(cloned.len + cloned[2]))\n}\n')
+	assert out == '6'
+}
+
 fn test_array_insert_and_prepend_reject_wrong_arity() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_array_prepend_missing_arg',
@@ -161,4 +174,11 @@ fn test_local_identifiers_shadow_module_consts() {
 	out := run_good(v3_bin, 'good_const_shadowed_by_param_and_local',
 		"const shadowed_value = 'const'\n\nfn param_shadow(shadowed_value int) int {\n\treturn shadowed_value + 1\n}\n\nfn local_shadow() int {\n\tshadowed_value := 2\n\treturn shadowed_value + 1\n}\n\nfn main() {\n\tprintln(int_str(param_shadow(1)))\n\tprintln(int_str(local_shadow()))\n\tprintln(shadowed_value)\n}\n")
 	assert out == '2\n3\nconst'
+}
+
+fn test_match_const_int_does_not_narrow_subject_type() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'match_const_int_no_subject_narrow',
+		'const size_224 = 28\n\nstruct E {\n\tsize int\n}\n\nfn check(hash_size int) !E {\n\tmatch hash_size {\n\t\tsize_224 {\n\t\t\treturn E{\n\t\t\t\tsize: hash_size\n\t\t\t}\n\t\t}\n\t\telse {}\n\t}\n\treturn E{\n\t\tsize: 0\n\t}\n}\n\nfn main() {\n\tprintln(int_str(check(28)!.size))\n}\n')
+	assert out == '28'
 }

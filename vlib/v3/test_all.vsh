@@ -4,6 +4,7 @@ import os
 import time
 
 const total_steps = 8
+const temp_prefix = 'v3_test_all'
 const requested_vlib_tests = [
 	'vlib/builtin/string_test.v',
 	'vlib/math/math_test.v',
@@ -188,7 +189,7 @@ fn parse_args() bool {
 }
 
 fn host_v_cmd(cfg Config) string {
-	return '${q(cfg.vexe)} -path ${q(cfg.vlib_dir)}'
+	return '${q(cfg.vexe)} -gc none -path ${q(cfg.vlib_dir)}'
 }
 
 fn native_backend_arch() string {

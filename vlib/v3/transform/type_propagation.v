@@ -84,6 +84,9 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 	if fn_type := t.fn_value_type_name(id) {
 		return fn_type
 	}
+	if map_type := t.map_expr_decl_type(id) {
+		return map_type
+	}
 	if int(id) >= 0 {
 		node := t.a.nodes[int(id)]
 		if node.kind == .call {
@@ -91,16 +94,32 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 				return ret
 			}
 		}
-		if node.kind == .map_init {
-			if node.typ.starts_with('map[') {
-				return node.typ
-			}
-			if node.value.starts_with('map[') {
-				return node.value
+	}
+	return t.node_type(id)
+}
+
+fn (t &Transformer) map_expr_decl_type(id flat.NodeId) ?string {
+	if int(id) < 0 {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .map_init {
+		for candidate in [node.value, node.typ] {
+			if candidate.starts_with('map[') {
+				return candidate
 			}
 		}
 	}
-	return t.node_type(id)
+	if node.kind == .call {
+		map_type := t.new_map_call_type(node)
+		if map_type.len > 0 {
+			return map_type
+		}
+		if node.typ.starts_with('map[') {
+			return node.typ
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) fn_value_type_name(id flat.NodeId) ?string {
@@ -1057,7 +1076,9 @@ fn (t &Transformer) array_map_call_type_name(node flat.Node) ?string {
 		return none
 	}
 	map_expr_id := t.a.child(&node, 1)
-	mut elem_type := if checker_type := t.checker_expr_type_name(map_expr_id) {
+	mut elem_type := if callback_ret := t.array_map_callback_return_type_name(map_expr_id) {
+		callback_ret
+	} else if checker_type := t.checker_expr_type_name(map_expr_id) {
 		checker_type
 	} else {
 		t.node_type(map_expr_id)
@@ -1069,6 +1090,32 @@ fn (t &Transformer) array_map_call_type_name(node flat.Node) ?string {
 		return none
 	}
 	return '[]${elem_type}'
+}
+
+fn (t &Transformer) array_map_callback_return_type_name(map_expr_id flat.NodeId) ?string {
+	if int(map_expr_id) < 0 {
+		return none
+	}
+	map_expr := t.a.nodes[int(map_expr_id)]
+	if map_expr.kind == .ident {
+		if fn_name := t.resolve_fn_value_ident(map_expr.value) {
+			if ret := t.fn_ret_types[fn_name] {
+				return t.normalize_type_alias(ret)
+			}
+			if !isnil(t.tc) {
+				if ret_type := t.tc.fn_ret_types[fn_name] {
+					return t.normalize_type_alias(ret_type.name())
+				}
+			}
+		} else if ret_type := t.fn_value_return_type_name(map_expr_id) {
+			return ret_type
+		}
+	} else if map_expr.kind == .fn_literal || map_expr.kind == .lambda_expr {
+		if ret_type := t.fn_value_return_type_name(map_expr_id) {
+			return ret_type
+		}
+	}
+	return none
 }
 
 // lvalue_type returns the v-type string for an assignable expression, handling

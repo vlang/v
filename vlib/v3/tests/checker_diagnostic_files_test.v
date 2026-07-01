@@ -242,6 +242,28 @@ fn test_selected_file_local_receiver_shadows_import_alias() {
 	assert main_errors.len == 0, main_errors.str()
 }
 
+fn test_local_shadowing_in_child_scope_and_fn_literal_is_allowed() {
+	errors := check_diagnostic_project('ordinary_local_child_shadow', {
+		'main.v': 'module main
+
+fn main() {
+	timers := 1
+	if true {
+		timers := 2
+		_ = timers
+	}
+	cb := fn () {
+		timers := 3
+		_ = timers
+	}
+	cb()
+	_ = timers
+}
+'
+	}, ['main.v'])
+	assert errors.len == 0, errors.str()
+}
+
 fn test_selected_file_calling_invalid_ierror_method_return_reports_dependency_error() {
 	main_errors := check_diagnostic_project('ierror_method_return_called_from_main',
 		called_invalid_ierror_method_return_project, ['main.v'])

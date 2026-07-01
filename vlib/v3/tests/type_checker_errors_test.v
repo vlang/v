@@ -381,6 +381,38 @@ fn test_fixed_array_length_checks() {
 	good_ret_lit := run_good(v3_bin, 'good_return_if_array_literal',
 		'fn pick(c bool) []int {\n\treturn if c { [1, 2, 3] } else { [4, 5] }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n')
 	assert good_ret_lit == '5'
+	mixed_const_src := 'const xs = [1, 2, 3]\nfn first() int {\n\treturn xs[0]\n}\nfn length_score() int {\n\treturn xs.len\n}\nfn all() []int {\n\treturn xs\n}\nfn main() {\n\tys := all()\n\tprintln(int_str(first() + length_score() + ys.len + ys[2]))\n}\n'
+	mixed_const := run_good(v3_bin, 'good_indexed_const_returned_dynamic_array',
+		mixed_const_src)
+	assert mixed_const == '10'
+	mixed_const_c := gen_c_project(v3_bin, 'good_indexed_const_returned_dynamic_array_c',
+		{
+			'main.v': mixed_const_src
+		}, 'main.v')
+	mixed_const_compact := mixed_const_c.replace('\t', '').replace(' ', '').replace('\n',
+		'')
+	assert mixed_const_compact.contains('intmain__xs[3]'), mixed_const_c
+	assert mixed_const_compact.contains('returnmain__xs[0];'), mixed_const_c
+	assert mixed_const_compact.contains('intlength_score(void){return3;}'), mixed_const_c
+	assert mixed_const_compact.contains('returnnew_array_from_c_array(3,3,sizeof(int),&main__xs);'),
+		mixed_const_c
+	assert !mixed_const_c.contains('main__xs.len'), mixed_const_c
+	shadowed := run_good_project(v3_bin, 'good_shadowed_const_fixed_storage',
+		{
+			'main.v':        'module main\n\nimport fixture\n\nconst xs = [10, 20, 30]\n\nfn all() []int {\n\treturn xs\n}\n\nfn main() {\n\tys := all()\n\tprintln(int_str(fixture.first() + ys.len + ys[2]))\n}\n'
+			'fixture/fi.v': 'module fixture\n\npub const xs = [1, 2, 3]\n\npub fn first() int {\n\treturn xs[0]\n}\n'
+		}, 'main.v')
+	assert shadowed == '34'
+	shadowed_c := gen_c_project(v3_bin, 'good_shadowed_const_fixed_storage_c',
+		{
+			'main.v':        'module main\n\nimport fixture\n\nconst xs = [10, 20, 30]\n\nfn all() []int {\n\treturn xs\n}\n\nfn main() {\n\tys := all()\n\tprintln(int_str(fixture.first() + ys.len + ys[2]))\n}\n'
+			'fixture/fi.v': 'module fixture\n\npub const xs = [1, 2, 3]\n\npub fn first() int {\n\treturn xs[0]\n}\n'
+		}, 'main.v')
+	shadowed_compact := shadowed_c.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert shadowed_compact.contains('Arraymain__xs;'), shadowed_c
+	assert shadowed_compact.contains('returnmain__xs;'), shadowed_c
+	assert shadowed_compact.contains('fixture__xs[3]'), shadowed_c
+	assert shadowed_compact.contains('returnfixture__xs[0];'), shadowed_c
 }
 
 fn test_statement_if_branch_tails_are_not_value_checked() {

@@ -129,8 +129,13 @@ fn c_standard_flag(c99 bool) string {
 
 fn input_implies_building_v(input_file string) bool {
 	normalized := input_file.replace('\\', '/').trim_right('/')
-	return normalized.all_after_last('/') == 'v3.v' || normalized == 'cmd/v'
-		|| normalized.ends_with('/cmd/v') || normalized.ends_with('/cmd/v/v.v')
+	return normalized.all_after_last('/') == 'v3.v'
+}
+
+fn input_is_cmd_v(input_file string) bool {
+	normalized := input_file.replace('\\', '/').trim_right('/')
+	return normalized == 'cmd/v' || normalized.ends_with('/cmd/v')
+		|| normalized.ends_with('/cmd/v/v.v')
 }
 
 // main runs the v3 entry point.
@@ -217,11 +222,12 @@ fn main() {
 		exit(1)
 	}
 
-	// Compiling the V compiler itself implies building_v: it uses no generics, so the
-	// monomorphization pass is pure overhead. -building-v can force this for any input.
+	// Compiling v3 itself implies building_v: it uses no generics, so the monomorphization
+	// pass is pure overhead. -building-v can force this for any input.
 	if input_implies_building_v(input_file) {
 		building_v = true
 	}
+	cmd_v_build := input_is_cmd_v(input_file)
 
 	mut bin_file := ''
 	mut c_only := false
@@ -382,8 +388,9 @@ fn main() {
 	// explicit opt-in (`-parallel-transform`), independent of `-no-parallel` (which
 	// gates the parallel C codegen): the two phases can be threaded independently.
 	mut transform_was_parallel := false
-	used_fns, transform_was_parallel = transform.transform_with_used_opt(mut a, &pre_tc, used_fns,
-		parallel_transform)
+	skip_transform_generics := building_v || cmd_v_build
+	used_fns, transform_was_parallel = transform.transform_with_used_opt_config(mut a, &pre_tc,
+		used_fns, parallel_transform, skip_transform_generics)
 	b.step_parallel('transform', transform_was_parallel)
 
 	// Reuse the pre-transform checker for metadata only. Transform does not add
@@ -392,7 +399,9 @@ fn main() {
 	pre_tc.reject_unlowered_map_mutation = true
 	set_diagnostic_files(mut pre_tc, user_files)
 	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
-	pre_tc.annotate_types_with_used(used_fns)
+	if !building_v && !cmd_v_build {
+		pre_tc.annotate_types_with_used(used_fns)
+	}
 	b.step('annotate types')
 
 	if backend == 'wasm' {
@@ -756,6 +765,11 @@ fn validate_test_file_harness_inputs(a &flat.FlatAst, tc &types.TypeChecker, tes
 		if !is_user_test_file_node(a, file_idx, file_node, selected_files) {
 			continue
 		}
+		module_name := test_file_module_name(a, file_node)
+		if module_name.len > 0 && module_name != 'main' && !file_node.value.ends_with('_test.v') {
+			errors << 'no runnable tests in ${file_node.value}'
+			continue
+		}
 		if test_file_has_executable_top_level_stmt(a, file_node) {
 			errors << 'invalid test file ${file_node.value}: executable top-level statements are not supported in test files'
 			continue
@@ -1111,6 +1125,21 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 		return import_path
 	}
 	short_name := import_path.all_after_last('.')
+	if import_dir.len > 0 {
+		module_root := module_root_for_import_dir(import_path, import_dir)
+		short_sibling_dir := os.join_path_single(module_root, short_name)
+		if os.is_dir(short_sibling_dir)
+			&& os.real_path(short_sibling_dir) != os.real_path(import_dir) {
+			return import_path
+		}
+	}
+	if project_root.len > 0 && import_dir.len > 0 {
+		short_project_dir := os.join_path_single(project_root, short_name)
+		if os.is_dir(short_project_dir)
+			&& os.real_path(short_project_dir) != os.real_path(import_dir) {
+			return import_path
+		}
+	}
 	short_dir := resolve_project_or_pref_module_path_cached(prefs, short_name, importing_file,
 		project_root, mut path_cache)
 	if short_dir.len > 0 && import_dir.len > 0 && os.is_dir(short_dir)
@@ -1118,6 +1147,18 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 		return import_path
 	}
 	return short_name
+}
+
+fn module_root_for_import_dir(import_path string, import_dir string) string {
+	mut root := import_dir
+	for _ in import_path.split('.') {
+		parent := os.dir(root)
+		if parent == root {
+			return root
+		}
+		root = parent
+	}
+	return root
 }
 
 fn resolve_project_or_pref_module_path_cached(prefs &pref.Preferences, mod_name string, importing_file string, project_root string, mut cache map[string]string) string {

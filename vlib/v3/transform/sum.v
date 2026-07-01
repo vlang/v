@@ -142,6 +142,34 @@ fn (t &Transformer) is_sum_type_name(name string) bool {
 	return resolved in t.sum_types
 }
 
+fn (t &Transformer) sum_target_accepts_variant_type(target_type string, variant_type string) bool {
+	if target_type.len == 0 || variant_type.len == 0 {
+		return false
+	}
+	clean_target := t.trim_pointer_type(t.normalize_type_alias(target_type))
+	clean_variant := t.trim_pointer_type(t.normalize_type_alias(variant_type))
+	if clean_target.len == 0 || clean_variant.len == 0 {
+		return false
+	}
+	resolved_target := t.resolve_sum_name(clean_target)
+	if resolved_target.len == 0 || resolved_target !in t.sum_types {
+		return false
+	}
+	if t.resolve_sum_name(clean_variant) == resolved_target {
+		return true
+	}
+	if _ := t.resolve_sum_variant_pattern_for_subject(clean_target, clean_variant) {
+		return true
+	}
+	if clean_target != resolved_target {
+		if _ := t.resolve_sum_variant_pattern_for_subject(resolved_target, clean_variant) {
+			return true
+		}
+	}
+	variant_sum := t.resolve_sum_name(t.find_sum_type_for_variant(clean_variant))
+	return variant_sum == resolved_target
+}
+
 // is_interface_type_name reports whether is interface type name applies in transform.
 fn (t &Transformer) is_interface_type_name(name string) bool {
 	if name.len == 0 || isnil(t.tc) {

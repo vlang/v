@@ -48,8 +48,8 @@ fn main() {
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	assert !c_code.contains('filelock_helpers.h'), c_code
-	assert c_code.contains('\nint v_filelock_lock('), c_code
-	assert c_code.contains('\nint v_filelock_unlock('), c_code
+	assert c_code.contains('\nstatic inline int v_filelock_lock('), c_code
+	assert c_code.contains('\nstatic inline int v_filelock_unlock('), c_code
 	assert !c_code.contains('\ni32 v_filelock_lock('), c_code
 	assert !c_code.contains('\ni32 v_filelock_unlock('), c_code
 

@@ -66,3 +66,45 @@ fn main() {
 	deparenthesized := compact.replace('(', '').replace(')', '')
 	assert deparenthesized.contains('returnmain__items[0]->value+main__items[1]->value;'), generated
 }
+
+fn test_fixed_array_pointer_arg_and_dynamic_const_clone() {
+	v3_bin := fixed_array_const_build_v3()
+	src := os.join_path(os.temp_dir(), 'v3_fixed_array_arg_const_clone_${os.getpid()}.v')
+	os.write_file(src, 'module main
+
+const vals = [u32(1), 2, 3]
+
+fn bump(mut xs [3]u32) {
+	xs[0] += vals[1]
+}
+
+fn score() int {
+	mut xs := [u32(10), 20, 30]!
+	bump(mut xs)
+	cloned := vals.clone()
+	cloned_paren := (vals).clone()
+	return int(xs[0] + cloned[2] + cloned_paren[1])
+}
+
+fn main() {
+	println(score().str())
+}
+') or {
+		panic(err)
+	}
+	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_arg_const_clone_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '17', run.output
+
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
+	deparenthesized := compact.replace('(', '').replace(')', '')
+	assert compact.contains('bump(&xs);'), generated
+	assert !compact.contains('bump(xs);'), generated
+	assert !compact.contains('u32main__vals[3]'), generated
+	assert !compact.contains('array__clone(&main__vals)') || generated.contains('Array main__vals'), generated
+	assert !deparenthesized.contains('array__clone&main__vals') || generated.contains('Array main__vals'), generated
+}

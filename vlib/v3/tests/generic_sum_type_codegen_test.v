@@ -15,6 +15,43 @@ fn generic_sum_type_build_v3() string {
 	return v3_bin
 }
 
+fn generic_sum_type_compile_run_source(name string, source string) string {
+	v3_bin := generic_sum_type_build_v3()
+	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_${name}_${os.getpid()}.v')
+	os.write_file(src, source) or { panic(err) }
+
+	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_${name}_${os.getpid()}')
+	os.rm(bin) or {}
+	os.rm(bin + '.c') or {}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+
+	return os.read_file(bin + '.c') or { panic(err) }
+}
+
+fn generic_sum_type_assert_no_bst_branch_wrap_leaks(c_code string) {
+	assert c_code.contains('struct Node_int {'), c_code
+	assert c_code.contains('struct Node_f64 {'), c_code
+	assert c_code.contains('struct Tree_int {'), c_code
+	assert c_code.contains('struct Tree_f64 {'), c_code
+	assert !c_code.contains('Tree_unknown'), c_code
+	assert !c_code.contains('Node_unknown'), c_code
+	assert !c_code.contains('\nNode '), c_code
+	assert !c_code.contains(' Node '), c_code
+	assert !c_code.contains('Node[T]'), c_code
+	assert !c_code.contains('[T]'), c_code
+	assert !c_code.contains('return (Node_f64)'), c_code
+	assert !c_code.contains('return ((Node_f64)'), c_code
+	assert !c_code.contains('return Node_f64'), c_code
+	assert !c_code.contains('Node_int main__insert_'), c_code
+	assert !c_code.contains('Node_f64 main__insert_'), c_code
+}
+
 fn test_generic_sum_instances_emit_concrete_c_types() {
 	v3_bin := generic_sum_type_build_v3()
 	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_input_${os.getpid()}.v')
@@ -91,6 +128,126 @@ fn main() {
 	assert !c_code.contains('Array_fixed_Node_T'), c_code
 	assert !c_code.contains('Tree_int ints = (Tree){'), c_code
 	assert !c_code.contains('Tree_f64 floats = (Tree){'), c_code
+}
+
+fn test_generic_sum_match_bst_branches_wrap_node_after_monomorphization() {
+	c_code := generic_sum_type_compile_run_source('bst_match_branch_wrap', '
+struct Empty {}
+
+struct Node[T] {
+	value T
+	left  Tree[T]
+	right Tree[T]
+}
+
+type Tree[T] = Empty | Node[T]
+
+enum Direction {
+	left
+	right
+	same
+}
+
+fn direction[T](tree Node[T], value T) Direction {
+	if value < tree.value {
+		return .left
+	}
+	if tree.value < value {
+		return .right
+	}
+	return .same
+}
+
+fn (tree Tree[T]) size[T]() int {
+	return match tree {
+		Empty { 0 }
+		Node[T] { 1 + tree.left.size() + tree.right.size() }
+	}
+}
+
+fn (tree Tree[T]) insert[T](value T) Tree[T] {
+	return match tree {
+		Empty {
+			Node[T]{value, tree, tree}
+		}
+		Node[T] {
+			if value < tree.value {
+				Node[T]{
+					...tree
+					left: tree.left.insert(value)
+				}
+			} else if tree.value < value {
+				Node[T]{
+					...tree
+					right: tree.right.insert(value)
+				}
+			} else {
+				tree
+			}
+		}
+	}
+}
+
+fn insert_match[T](tree Tree[T], value T) Tree[T] {
+	return match tree {
+		Empty {
+			Node[T]{value, tree, tree}
+		}
+		Node[T] {
+			match direction(tree, value) {
+				.left {
+					Node[T]{
+						...tree
+						left: insert_match(tree.left, value)
+					}
+				}
+				.right {
+					Node[T]{
+						...tree
+						right: insert_match(tree.right, value)
+					}
+				}
+				.same {
+					tree
+				}
+			}
+		}
+	}
+}
+
+fn main() {
+	mut ints := Tree[int](Empty{})
+	ints = insert_match(ints, 4)
+	ints = insert_match(ints, 2)
+	ints = insert_match(ints, 6)
+	ints = insert_match(ints, 2)
+	assert ints.size() == 3
+
+	mut floats := Tree[f64](Empty{})
+	floats = insert_match(floats, 4.0)
+	floats = insert_match(floats, 2.0)
+	floats = insert_match(floats, 6.0)
+	floats = insert_match(floats, 6.0)
+	assert floats.size() == 3
+
+	mut ints_method := Tree[int](Empty{})
+	ints_method = ints_method.insert(4)
+	ints_method = ints_method.insert(2)
+	ints_method = ints_method.insert(6)
+	ints_method = ints_method.insert(2)
+	assert ints_method.size() == 3
+
+	mut floats_method := Tree[f64](Empty{})
+	floats_method = floats_method.insert(4.0)
+	floats_method = floats_method.insert(2.0)
+	floats_method = floats_method.insert(6.0)
+	floats_method = floats_method.insert(6.0)
+	assert floats_method.size() == 3
+
+	println("ok")
+}
+')
+	generic_sum_type_assert_no_bst_branch_wrap_leaks(c_code)
 }
 
 fn test_generic_sum_bare_variant_match_lowers_to_tag_check() {

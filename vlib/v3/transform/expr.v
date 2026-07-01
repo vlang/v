@@ -2171,15 +2171,54 @@ fn (mut t Transformer) make_fixed_array_len_expr(s string) flat.NodeId {
 	return t.make_ident(len_text)
 }
 
-const c_reserved_words = ['auto', 'break', 'case', 'char', 'const', 'continue', 'copy', 'default',
-	'do', 'double', 'else', 'enum', 'extern', 'float', 'for', 'goto', 'if', 'inline', 'int', 'long',
-	'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct', 'switch',
-	'typedef', 'union', 'unsigned', 'void', 'volatile', 'while']
+const c_reserved_words = {
+	'auto':     true
+	'break':    true
+	'case':     true
+	'char':     true
+	'const':    true
+	'continue': true
+	'copy':     true
+	'default':  true
+	'do':       true
+	'double':   true
+	'else':     true
+	'enum':     true
+	'extern':   true
+	'float':    true
+	'for':      true
+	'goto':     true
+	'if':       true
+	'inline':   true
+	'int':      true
+	'long':     true
+	'register': true
+	'restrict': true
+	'return':   true
+	'short':    true
+	'signed':   true
+	'sizeof':   true
+	'static':   true
+	'struct':   true
+	'switch':   true
+	'typedef':  true
+	'union':    true
+	'unsigned': true
+	'void':     true
+	'volatile': true
+	'while':    true
+}
 
 // c_name converts c name data for transform.
 fn c_name(name string) string {
 	if name.starts_with('C.') {
 		return name[2..]
+	}
+	if c_name_is_plain(name) {
+		if name in c_reserved_words {
+			return 'v_${name}'
+		}
+		return name
 	}
 	n := name.replace('[]', 'Array_').replace('.-', '__minus').replace('.+', '__plus').replace('.==',
 		'__eq').replace('.!=', '__ne').replace('.<=', '__le').replace('.>=', '__ge').replace('.<',
@@ -2190,4 +2229,13 @@ fn c_name(name string) string {
 		return 'v_${n}'
 	}
 	return n
+}
+
+fn c_name_is_plain(name string) bool {
+	for c in name {
+		if !((c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_`) {
+			return false
+		}
+	}
+	return true
 }

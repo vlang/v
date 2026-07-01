@@ -1593,6 +1593,13 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 		}
 		if node.kind == .call && node.children_count > 0 {
 			fn_node := g.a.child_node(&node, 0)
+			if node.typ.len > 0 && node.typ !in ['int', 'array', 'map', 'unknown'] {
+				typ := g.tc.parse_type(node.typ)
+				if !decl_annotation_is_unusable(typ, node.typ) && typ !is types.Unknown
+					&& typ !is types.Void {
+					return typ
+				}
+			}
 			if map_return_type := g.array_map_call_return_type(node, fn_node) {
 				return map_return_type
 			}
@@ -1952,6 +1959,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				}
 			}
 			v_type = g.optional_source_type_for_expr(rhs_id, v_type)
+			v_type = g.preserve_specialized_alias_decl_type(rhs_id, rhs, v_type)
 			if fixed := array_fixed_type(v_type) {
 				lhs_str := g.decl_lhs_str(lhs_id)
 				if !lhs_is_defer_capture {
@@ -2012,6 +2020,9 @@ fn (g &FlatGen) decl_rhs_fallback_type(rhs_id flat.NodeId, rhs flat.Node) types.
 			return index_type
 		}
 	}
+	if alias_type := g.index_rhs_alias_elem_type(rhs) {
+		return alias_type
+	}
 	if rhs.typ.len > 0 {
 		rhs_type := g.tc.parse_type(rhs.typ)
 		if !decl_annotation_is_unusable(rhs_type, rhs.typ) {
@@ -2031,6 +2042,44 @@ fn (g &FlatGen) decl_rhs_fallback_type(rhs_id flat.NodeId, rhs flat.Node) types.
 		}
 	}
 	return g.usable_expr_type(rhs_id)
+}
+
+fn (g &FlatGen) index_rhs_alias_elem_type(rhs flat.Node) ?types.Type {
+	if rhs.kind != .index || rhs.children_count == 0 {
+		return none
+	}
+	base_type := types.unwrap_pointer(g.usable_expr_type(g.a.child(&rhs, 0)))
+	if arr := array_like_type(base_type) {
+		if arr.elem_type is types.Alias {
+			return arr.elem_type
+		}
+	}
+	if base_type is types.Map {
+		if base_type.value_type is types.Alias {
+			return base_type.value_type
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) preserve_specialized_alias_decl_type(rhs_id flat.NodeId, rhs flat.Node, v_type types.Type) types.Type {
+	if v_type is types.Alias || !g.name_uses_specialized_generic_abi(g.cur_fn_name) {
+		return v_type
+	}
+	rhs_type := g.decl_rhs_fallback_type(rhs_id, rhs)
+	if rhs_type is types.Alias && g.alias_base_matches_type(rhs_type, v_type) {
+		return rhs_type
+	}
+	return v_type
+}
+
+fn (g &FlatGen) alias_base_matches_type(alias_type types.Alias, typ types.Type) bool {
+	base := types.unwrap_pointer(alias_type.base_type)
+	clean := types.unwrap_pointer(typ)
+	if g.type_names_match(base, clean) {
+		return true
+	}
+	return g.tc.c_type(base) == g.tc.c_type(clean)
 }
 
 fn (g &FlatGen) usable_struct_field_type(type_name string, field_name string) ?types.Type {
@@ -2440,19 +2489,34 @@ fn (g &FlatGen) assign_lhs_c_abi_fn_ptr_type(lhs_id flat.NodeId) ?string {
 
 fn (g &FlatGen) assign_struct_operator_method(lhs_type types.Type, op flat.Op) ?string {
 	clean := types.unwrap_pointer(lhs_type)
-	if clean !is types.Struct {
+	if clean !is types.Struct && clean !is types.Alias {
 		return none
 	}
 	op_symbol := assign_struct_operator_symbol(op) or { return none }
-	method_name := '${clean.name()}.${op_symbol}'
-	if method_name in g.tc.fn_param_types || method_name in g.tc.fn_ret_types {
-		return method_name
-	}
-	cmethod_name := c_name(method_name)
-	if cmethod_name in g.tc.fn_param_types || cmethod_name in g.tc.fn_ret_types {
-		return cmethod_name
+	for receiver in g.assign_struct_operator_receivers(clean.name()) {
+		method_name := '${receiver}.${op_symbol}'
+		if method_name in g.tc.fn_param_types || method_name in g.tc.fn_ret_types {
+			return method_name
+		}
+		cmethod_name := c_name(method_name)
+		if cmethod_name in g.tc.fn_param_types || cmethod_name in g.tc.fn_ret_types {
+			return cmethod_name
+		}
 	}
 	return none
+}
+
+fn (g &FlatGen) assign_struct_operator_receivers(type_name string) []string {
+	mut receivers := []string{cap: 2}
+	if type_name.len == 0 {
+		return receivers
+	}
+	receivers << type_name
+	if !type_name.contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module != 'main'
+		&& g.tc.cur_module != 'builtin' {
+		receivers << '${g.tc.cur_module}.${type_name}'
+	}
+	return receivers
 }
 
 fn assign_struct_operator_symbol(op flat.Op) ?string {
