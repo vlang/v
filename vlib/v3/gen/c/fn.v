@@ -808,7 +808,8 @@ fn (mut g FlatGen) gen_special_c_callback_arg(fn_name string, arg_idx int, arg_i
 	if int(arg_id) >= 0 {
 		arg_node := g.a.nodes[int(arg_id)]
 		if arg_node.kind == .ident {
-			is_local := (g.tc.cur_scope.lookup(arg_node.value) or { types.Type(types.void_) }) !is types.Void
+			looked_up := g.tc.cur_scope.lookup(arg_node.value) or { types.Type(types.void_) }
+			is_local := looked_up !is types.Void && fn_type_from(looked_up) == none
 			if !is_local {
 				call_name := g.call_key(arg_id, arg_node.value)
 				fn_key := if call_name in g.tc.fn_ret_types {
@@ -3572,12 +3573,57 @@ fn (mut g FlatGen) callback_direct_fn_value_name(id flat.NodeId, expected types.
 
 fn (mut g FlatGen) callback_direct_fn_value_name_for_c_abi(id flat.NodeId, expected types.Type, expected_c_abi string) ?string {
 	expected_fn := fn_type_from(expected) or { return none }
-	actual_name := g.callback_fn_value_name(id, expected) or { return none }
+	actual_name := g.callback_fn_value_name(id, expected) or {
+		g.direct_callback_ident_name(id) or { return none }
+	}
 	actual_fn := g.callback_fn_value_type(actual_name) or { return none }
 	if !g.callback_fn_types_direct_compatible(actual_fn, expected_fn, expected_c_abi) {
 		return none
 	}
 	return actual_name
+}
+
+fn (g &FlatGen) direct_callback_ident_name(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind in [.cast_expr, .paren, .expr_stmt] && node.children_count > 0 {
+		return g.direct_callback_ident_name(g.a.child(&node, 0))
+	}
+	if node.kind != .ident || node.value.len == 0 {
+		return none
+	}
+	looked_up := g.tc.cur_scope.lookup(node.value) or { types.Type(types.void_) }
+	if looked_up !is types.Void && fn_type_from(looked_up) == none {
+		return none
+	}
+	call_key := g.call_key(id, node.value)
+	if call_key in g.tc.fn_param_types && call_key in g.tc.fn_ret_types {
+		return call_key
+	}
+	if node.value in g.tc.fn_param_types && node.value in g.tc.fn_ret_types {
+		return node.value
+	}
+	return none
+}
+
+fn (mut g FlatGen) ident_fn_value_c_name(id flat.NodeId, node flat.Node) ?string {
+	if node.kind != .ident || node.value.len == 0 {
+		return none
+	}
+	looked_up := g.tc.cur_scope.lookup(node.value) or { types.Type(types.void_) }
+	if looked_up !is types.Void && fn_type_from(looked_up) == none {
+		return none
+	}
+	call_key := g.call_key(id, node.value)
+	if call_key in g.tc.fn_param_types && call_key in g.tc.fn_ret_types {
+		return g.direct_call_name_for_call(id, call_key)
+	}
+	if node.value in g.tc.fn_param_types && node.value in g.tc.fn_ret_types {
+		return g.direct_call_name_for_call(id, node.value)
+	}
+	return none
 }
 
 fn (mut g FlatGen) callback_fn_value_type(name string) ?types.FnType {
@@ -4998,15 +5044,68 @@ fn (mut g FlatGen) implicit_veb_ctx_type() types.Type {
 }
 
 fn (mut g FlatGen) fn_node_return_type(node flat.Node, module_name string) types.Type {
-	for candidate in g.fn_node_signature_names(node, module_name) {
-		if rt := g.tc.fn_ret_types[candidate] {
-			return rt
-		}
+	if rt := g.fn_node_return_type_from_signatures(node, module_name) {
+		return rt
 	}
 	if info := g.generic_receiver_method_call_info(node.value) {
 		return info.return_type
 	}
 	return g.tc.parse_type(node.typ)
+}
+
+fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_name string) ?types.Type {
+	dotted_name := qualify_name_in_module(module_name, node.value)
+	cname := g.fn_c_name_in_module(module_name, node.value)
+	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
+		if rt := g.tc.fn_ret_types[dotted_name] {
+			return rt
+		}
+		c_dotted_name := c_name(dotted_name)
+		if c_dotted_name != dotted_name {
+			if rt := g.tc.fn_ret_types[c_dotted_name] {
+				return rt
+			}
+		}
+		if rt := g.tc.fn_ret_types[cname] {
+			return rt
+		}
+		if rt := g.tc.fn_ret_types[node.value] {
+			return rt
+		}
+		c_value := c_name(node.value)
+		if c_value != node.value {
+			if rt := g.tc.fn_ret_types[c_value] {
+				return rt
+			}
+		}
+		return none
+	}
+	if rt := g.tc.fn_ret_types[node.value] {
+		return rt
+	}
+	c_value := c_name(node.value)
+	if c_value != node.value {
+		if rt := g.tc.fn_ret_types[c_value] {
+			return rt
+		}
+	}
+	if dotted_name != node.value {
+		if rt := g.tc.fn_ret_types[dotted_name] {
+			return rt
+		}
+		c_dotted_name := c_name(dotted_name)
+		if c_dotted_name != dotted_name {
+			if rt := g.tc.fn_ret_types[c_dotted_name] {
+				return rt
+			}
+		}
+	}
+	if cname != node.value && cname != c_value {
+		if rt := g.tc.fn_ret_types[cname] {
+			return rt
+		}
+	}
+	return none
 }
 
 fn (mut g FlatGen) fn_node_param_types(node flat.Node, module_name string) []types.Type {
@@ -5019,12 +5118,8 @@ fn (mut g FlatGen) fn_node_param_types(node flat.Node, module_name string) []typ
 			explicit_params++
 		}
 	}
-	for candidate in g.fn_node_signature_names(node, module_name) {
-		if params := g.tc.fn_param_types[candidate] {
-			if params.len == explicit_params {
-				return params
-			}
-		}
+	if params := g.fn_node_param_types_from_signatures(node, module_name, explicit_params) {
+		return params
 	}
 	if info := g.generic_receiver_method_call_info(node.value) {
 		if info.params.len == explicit_params {
@@ -5032,6 +5127,72 @@ fn (mut g FlatGen) fn_node_param_types(node flat.Node, module_name string) []typ
 		}
 	}
 	return []types.Type{}
+}
+
+fn (mut g FlatGen) fn_node_param_types_from_signatures(node flat.Node, module_name string, explicit_params int) ?[]types.Type {
+	dotted_name := qualify_name_in_module(module_name, node.value)
+	cname := g.fn_c_name_in_module(module_name, node.value)
+	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
+		if params := g.matching_fn_param_types(dotted_name, explicit_params) {
+			return params
+		}
+		c_dotted_name := c_name(dotted_name)
+		if c_dotted_name != dotted_name {
+			if params := g.matching_fn_param_types(c_dotted_name, explicit_params) {
+				return params
+			}
+		}
+		if params := g.matching_fn_param_types(cname, explicit_params) {
+			return params
+		}
+		if params := g.matching_fn_param_types(node.value, explicit_params) {
+			return params
+		}
+		c_value := c_name(node.value)
+		if c_value != node.value {
+			if params := g.matching_fn_param_types(c_value, explicit_params) {
+				return params
+			}
+		}
+		return none
+	}
+	if params := g.matching_fn_param_types(node.value, explicit_params) {
+		return params
+	}
+	c_value := c_name(node.value)
+	if c_value != node.value {
+		if params := g.matching_fn_param_types(c_value, explicit_params) {
+			return params
+		}
+	}
+	if dotted_name != node.value {
+		if params := g.matching_fn_param_types(dotted_name, explicit_params) {
+			return params
+		}
+		c_dotted_name := c_name(dotted_name)
+		if c_dotted_name != dotted_name {
+			if params := g.matching_fn_param_types(c_dotted_name, explicit_params) {
+				return params
+			}
+		}
+	}
+	if cname != node.value && cname != c_value {
+		if params := g.matching_fn_param_types(cname, explicit_params) {
+			return params
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) matching_fn_param_types(name string, explicit_params int) ?[]types.Type {
+	if name.len == 0 {
+		return none
+	}
+	params := g.tc.fn_param_types[name] or { return none }
+	if params.len != explicit_params {
+		return none
+	}
+	return params
 }
 
 fn (g &FlatGen) generic_receiver_method_call_info(name string) ?types.CallInfo {

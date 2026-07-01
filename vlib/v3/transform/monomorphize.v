@@ -63,8 +63,8 @@ fn (mut t Transformer) monomorphize_pass() []string {
 					// callee so `specialize_generic_struct_methods` emits an operator
 					// overload only for instances whose operator is actually called.
 					t.record_called_fn_name(node)
-					call_module := t.node_module_map_cache[i] or { cur_module }
-					decl_key, args := t.generic_call_specialization(flat.NodeId(i), node,
+					call_module := t.node_module_or(i, cur_module)
+					decl_key, args := t.cached_generic_call_specialization(flat.NodeId(i), node,
 						call_module, decls) or { continue }
 					decl := decls[decl_key] or { continue }
 					if !t.call_has_source_generic_args(node)
@@ -307,7 +307,7 @@ fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDe
 				if node.generic_params.len == 0 && !node.typ.contains('generic') {
 					continue
 				}
-				module_name := t.node_module_map_cache[i] or { cur_module }
+				module_name := t.node_module_or(i, cur_module)
 				key := generic_struct_decl_key(node.value, module_name)
 				decls[key] = GenericStructDecl{
 					id:     flat.NodeId(i)
@@ -523,7 +523,7 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 				cur_module = node.value
 			}
 			.fn_decl {
-				fn_module := t.node_module_map_cache[i] or { cur_module }
+				fn_module := t.node_module_or(i, cur_module)
 				if !t.fn_decl_has_unresolved_generics(node, fn_module) {
 					continue
 				}
@@ -555,8 +555,15 @@ fn (mut t Transformer) ensure_node_module_map() {
 		return
 	}
 	if t.node_module_map_nodes < 0 || t.node_module_map_nodes > t.a.nodes.len {
-		t.node_module_map_cache = map[int]string{}
+		t.node_module_map_cache = []string{len: t.a.nodes.len}
 		t.node_module_map_nodes = 0
+	} else if t.node_module_map_cache.len < t.a.nodes.len {
+		old := t.node_module_map_cache
+		mut expanded := []string{len: t.a.nodes.len}
+		for i in 0 .. old.len {
+			expanded[i] = old[i]
+		}
+		t.node_module_map_cache = expanded
 	}
 	mut cur_module := ''
 	for i := t.node_module_map_nodes; i < t.a.nodes.len; i++ {
@@ -567,7 +574,7 @@ fn (mut t Transformer) ensure_node_module_map() {
 			}
 			.fn_decl, .const_decl, .global_decl, .struct_decl, .type_decl, .enum_decl,
 			.interface_decl {
-				t.mark_node_module(flat.NodeId(i), cur_module, mut t.node_module_map_cache)
+				t.mark_node_module(flat.NodeId(i), cur_module)
 			}
 			else {}
 		}
@@ -575,15 +582,41 @@ fn (mut t Transformer) ensure_node_module_map() {
 	t.node_module_map_nodes = t.a.nodes.len
 }
 
-fn (mut t Transformer) mark_node_module(id flat.NodeId, module_name string, mut modules map[int]string) {
-	idx := int(id)
-	if idx < 0 || idx >= t.a.nodes.len || idx in modules {
-		return
+fn (t &Transformer) node_module_or(idx int, fallback string) string {
+	if idx >= 0 && idx < t.node_module_map_cache.len {
+		module_name := t.node_module_map_cache[idx]
+		if module_name.len > 0 {
+			return module_name
+		}
 	}
-	modules[idx] = module_name
-	node := t.a.nodes[idx]
-	for i in 0 .. node.children_count {
-		t.mark_node_module(t.a.child(&node, i), module_name, mut modules)
+	return fallback
+}
+
+fn (mut t Transformer) mark_node_module(id flat.NodeId, module_name string) {
+	mut stack := [id]
+	for stack.len > 0 {
+		cur := stack.pop()
+		idx := int(cur)
+		if idx < 0 || idx >= t.a.nodes.len {
+			continue
+		}
+		if idx < t.node_module_map_cache.len && t.node_module_map_cache[idx].len > 0 {
+			continue
+		}
+		t.node_module_map_cache[idx] = module_name
+		node := t.a.nodes[idx]
+		start := node.children_start
+		end := start + int(node.children_count)
+		if start < 0 || end > t.a.children.len {
+			continue
+		}
+		for i in start .. end {
+			// The child range is checked above; avoid per-child bounds checks while mapping modules.
+			child_id := unsafe { t.a.children[i] }
+			if int(child_id) >= 0 {
+				stack << child_id
+			}
+		}
 	}
 }
 
@@ -900,9 +933,9 @@ fn (mut t Transformer) rewrite_generic_calls(decls map[string]GenericFnDecl, tem
 				cur_module = node.value
 			}
 			.call {
-				call_module := t.node_module_map_cache[i] or { cur_module }
-				decl_key, args := t.generic_call_specialization(flat.NodeId(i), node, call_module,
-					decls) or { continue }
+				call_module := t.node_module_or(i, cur_module)
+				decl_key, args := t.cached_generic_call_specialization(flat.NodeId(i), node,
+					call_module, decls) or { continue }
 				decl := decls[decl_key] or { continue }
 				if !t.call_has_source_generic_args(node)
 					&& t.generic_args_contain_alias(args, decl.module) {
@@ -1384,6 +1417,25 @@ fn (mut t Transformer) unregister_generic_fn_signature(decl GenericFnDecl) {
 		t.tc.fn_param_types.delete(name)
 		t.tc.fn_variadic.delete(name)
 	}
+}
+
+fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?(string, []string) {
+	idx := int(id)
+	if spec := t.generic_call_spec_cache[idx] {
+		return spec.decl_key, spec.args
+	}
+	if t.generic_call_spec_misses[idx] {
+		return none
+	}
+	decl_key, args := t.generic_call_specialization(id, node, module_name, decls) or {
+		t.generic_call_spec_misses[idx] = true
+		return none
+	}
+	t.generic_call_spec_cache[idx] = GenericCallSpec{
+		decl_key: decl_key
+		args:     args
+	}
+	return decl_key, args
 }
 
 fn (mut t Transformer) generic_call_specialization(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?(string, []string) {

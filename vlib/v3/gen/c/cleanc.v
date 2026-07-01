@@ -3447,6 +3447,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					g.write(c_name(node.value))
 				}
+			} else if fn_c_name := g.ident_fn_value_c_name(id, node) {
+				g.write(fn_c_name)
 			} else {
 				g.write(c_name(node.value))
 			}
