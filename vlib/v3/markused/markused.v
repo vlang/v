@@ -1,6 +1,7 @@
 module markused
 
 import v3.flat
+import v3.gen.c.naming
 import v3.types
 
 const trace_markused = false
@@ -3216,7 +3217,7 @@ fn markused_nested_type_name(t types.Type) string {
 	return t.name()
 }
 
-// markused_c_name converts markused c name data for markused.
+// markused_c_name returns the C identifier used for a V symbol or type name.
 fn markused_c_name(name string) string {
 	if name.starts_with('C.') {
 		return name[2..]
@@ -3227,23 +3228,8 @@ fn markused_c_name(name string) string {
 	if name == 'exit' {
 		return 'v_exit'
 	}
-	if markused_c_name_is_plain(name) {
+	if naming.is_plain_identifier(name) {
 		return name
 	}
-	return name.replace('[]', 'Array_').replace('.-', '__minus').replace('.+', '__plus').replace('.==',
-		'__eq').replace('.!=', '__ne').replace('.<=', '__le').replace('.>=', '__ge').replace('.<',
-		'__lt').replace('.>', '__gt').replace('&', 'ptr').replace('[', '_').replace(']', '').replace(',',
-		'_').replace(' ', '_').replace('.', '__')
-}
-
-// markused_c_name_is_plain converts markused c name is plain data for markused.
-fn markused_c_name_is_plain(name string) bool {
-	for i in 0 .. name.len {
-		c := name[i]
-		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_` {
-			continue
-		}
-		return false
-	}
-	return true
+	return naming.sanitize(name)
 }

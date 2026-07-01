@@ -131,6 +131,13 @@ fn test_array_pointer_equality_uses_pointer_identity() {
 	assert out == 'false\ntrue\ntrue\ntrue'
 }
 
+fn test_pointer_u8_array_bytestr_stays_in_cgen() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'pointer_u8_array_bytestr',
+		'fn show(data &[]u8) string {\n\treturn data.bytestr()\n}\n\nfn main() {\n\tbytes := [u8(104), u8(105)]\n\tprintln(show(&bytes))\n}\n')
+	assert out == 'hi'
+}
+
 fn test_map_pointer_equality_uses_pointer_identity() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'map_pointer_equality',
