@@ -251,6 +251,12 @@ pub mut:
 	expr_type_values              []Type // node_id -> complex/contextual resolved type
 	expr_type_set                 []bool
 	checking_nodes                []bool
+	parallel_check_sparse         bool
+	sparse_resolved_call_names    map[int]string
+	sparse_resolved_fn_values     map[int]string
+	sparse_statement_nodes        map[int]bool
+	sparse_expr_type_values       map[int]Type
+	sparse_checking_nodes         map[int]bool
 	diagnose_unknown_calls        bool
 	reject_unlowered_map_mutation bool
 	reject_unsupported_generics   bool
@@ -373,9 +379,13 @@ fn (mut tc TypeChecker) reset_node_caches(n int) {
 	tc.expr_type_values = []Type{len: n, init: Type(void_)}
 	tc.expr_type_set = []bool{len: n}
 	tc.checking_nodes = []bool{len: n}
+	tc.parallel_check_sparse = false
 }
 
 fn (mut tc TypeChecker) extend_node_caches(n int) {
+	if tc.parallel_check_sparse {
+		return
+	}
 	if n <= tc.resolved_call_names.len && n <= tc.resolved_fn_value_names.len
 		&& n <= tc.statement_nodes.len && n <= tc.expr_type_values.len && n <= tc.checking_nodes.len {
 		return
@@ -1657,6 +1667,9 @@ fn (tc &TypeChecker) resolved_call_type(id flat.NodeId) ?Type {
 // cached_expr_type supports cached expr type handling for TypeChecker.
 fn (tc &TypeChecker) cached_expr_type(id flat.NodeId) ?Type {
 	idx := int(id)
+	if tc.parallel_check_sparse {
+		return tc.sparse_expr_type_values[idx] or { none }
+	}
 	if idx >= 0 && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 		return tc.expr_type_values[idx]
 	}
@@ -1666,6 +1679,9 @@ fn (tc &TypeChecker) cached_expr_type(id flat.NodeId) ?Type {
 // cached_resolved_call supports cached resolved call handling for TypeChecker.
 fn (tc &TypeChecker) cached_resolved_call(id flat.NodeId) ?string {
 	idx := int(id)
+	if tc.parallel_check_sparse {
+		return tc.sparse_resolved_call_names[idx] or { none }
+	}
 	if idx >= 0 && idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
 		return tc.resolved_call_names[idx]
 	}
@@ -1680,6 +1696,9 @@ pub fn (tc &TypeChecker) resolved_call_name(id flat.NodeId) ?string {
 // resolved_fn_value_name returns the checker-resolved function name for a function value node.
 pub fn (tc &TypeChecker) resolved_fn_value_name(id flat.NodeId) ?string {
 	idx := int(id)
+	if tc.parallel_check_sparse {
+		return tc.sparse_resolved_fn_values[idx] or { none }
+	}
 	if idx >= 0 && idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
 		return tc.resolved_fn_value_names[idx]
 	}
@@ -1709,6 +1728,10 @@ fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 	if idx < 0 {
 		return
 	}
+	if tc.parallel_check_sparse {
+		tc.sparse_resolved_call_names[idx] = name
+		return
+	}
 	if idx >= tc.resolved_call_names.len {
 		tc.extend_node_caches(tc.a.nodes.len)
 	}
@@ -1722,6 +1745,10 @@ fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 fn (mut tc TypeChecker) remember_resolved_fn_value(id flat.NodeId, name string) {
 	idx := int(id)
 	if idx < 0 {
+		return
+	}
+	if tc.parallel_check_sparse {
+		tc.sparse_resolved_fn_values[idx] = name
 		return
 	}
 	if idx >= tc.resolved_fn_value_names.len {
@@ -1757,6 +1784,10 @@ fn (mut tc TypeChecker) remember_expr_type(id flat.NodeId, typ Type) {
 	kind := if int(id) < tc.a.nodes.len { tc.a.nodes[int(id)].kind } else { flat.NodeKind.empty }
 	if should_cache_expr_type(kind, typ) {
 		idx := int(id)
+		if tc.parallel_check_sparse {
+			tc.sparse_expr_type_values[idx] = typ
+			return
+		}
 		if idx >= tc.expr_type_values.len {
 			tc.extend_node_caches(tc.a.nodes.len)
 		}
@@ -1810,31 +1841,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 			}
 			.fn_decl {
 				tc.check_decl_type_strings(flat.NodeId(i), node)
-				tc.cur_fn_ret_type = tc.parse_type(node.typ)
-				tc.cur_fn_node_id = i
-				tc.method_value_locals = map[string]bool{}
-				tc.method_value_local_depth = map[string]int{}
-				tc.push_scope()
-				for pi in 0 .. node.children_count {
-					p := tc.a.child_node(&node, pi)
-					if p.kind == .param && p.value.len > 0 {
-						tc.cur_scope.insert(p.value, tc.parse_type(p.typ))
-					}
-				}
-				tc.insert_implicit_veb_ctx(node)
-				tc.check_fn_body(node)
-				tc.cur_fn_node_id = -1
-				is_disabled_stub := node.value in tc.a.disabled_fns
-				if tc.cur_fn_ret_type !is Unknown
-					&& !type_allows_implicit_return(tc.cur_fn_ret_type)
-					&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub
-					&& tc.should_diagnose(flat.NodeId(i)) {
-					tc.record_error(.return_mismatch,
-						'missing return at end of function `${node.value}`; expected `${tc.cur_fn_ret_type.name()}`',
-						flat.NodeId(i))
-				}
-				tc.pop_scope()
-				tc.cur_fn_ret_type = Type(void_)
+				tc.check_fn_decl_semantics(i, node, tc.cur_file, tc.cur_module)
 			}
 			.c_fn_decl {
 				if tc.reject_unsupported_generics {
@@ -3056,16 +3063,26 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	if idx < 0 {
 		return
 	}
-	if idx >= tc.checking_nodes.len {
-		tc.extend_node_caches(tc.a.nodes.len)
-	}
-	if idx < tc.checking_nodes.len {
-		if tc.checking_nodes[idx] {
+	if tc.parallel_check_sparse {
+		if tc.sparse_checking_nodes[idx] {
 			return
 		}
-		tc.checking_nodes[idx] = true
+		tc.sparse_checking_nodes[idx] = true
 		defer {
-			tc.checking_nodes[idx] = false
+			tc.sparse_checking_nodes.delete(idx)
+		}
+	} else {
+		if idx >= tc.checking_nodes.len {
+			tc.extend_node_caches(tc.a.nodes.len)
+		}
+		if idx < tc.checking_nodes.len {
+			if tc.checking_nodes[idx] {
+				return
+			}
+			tc.checking_nodes[idx] = true
+			defer {
+				tc.checking_nodes[idx] = false
+			}
 		}
 	}
 	node := tc.a.nodes[idx]
@@ -6518,6 +6535,11 @@ fn (mut tc TypeChecker) check_stmt_node(id flat.NodeId) {
 		return
 	}
 	idx := int(id)
+	if tc.parallel_check_sparse {
+		tc.sparse_statement_nodes[idx] = true
+		tc.check_node(id)
+		return
+	}
 	if idx >= tc.statement_nodes.len {
 		tc.extend_node_caches(tc.a.nodes.len)
 	}
@@ -6529,6 +6551,9 @@ fn (mut tc TypeChecker) check_stmt_node(id flat.NodeId) {
 
 fn (tc &TypeChecker) is_statement_node(id flat.NodeId) bool {
 	idx := int(id)
+	if tc.parallel_check_sparse {
+		return tc.sparse_statement_nodes[idx]
+	}
 	return idx >= 0 && idx < tc.statement_nodes.len && tc.statement_nodes[idx]
 }
 

@@ -370,7 +370,7 @@ fn main() {
 	pre_tc.diagnose_unknown_calls = true
 	set_diagnostic_files(mut pre_tc, user_files)
 	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
-	pre_tc.check_semantics()
+	check_was_parallel := pre_tc.check_semantics_opt(parallel_transform)
 	if pre_tc.errors.len > 0 {
 		print_type_errors(pre_tc.errors)
 		exit(1)
@@ -382,7 +382,7 @@ fn main() {
 		}
 		exit(1)
 	}
-	b.step('check')
+	b.step_parallel('check', check_was_parallel)
 
 	if backend == 'eval' {
 		$if !skip_eval ? {
