@@ -112,3 +112,54 @@ fn main() {
 	assert shape_c.contains('typedef int Array_fixed_int_cols[16];'), shape_c
 	assert shape_c.contains('typedef Array_fixed_int_cols Array_fixed_Array_fixed_int_cols_rows[6];'), shape_c
 }
+
+fn test_fixed_array_typedefs_keep_declaring_module_with_unrelated_math_import() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('module_authority', 'module fixture
+
+pub struct Image {
+pub mut:
+	id int
+}
+
+pub struct TouchCore {
+pub mut:
+	x int
+}
+
+pub type TouchPoint = TouchCore
+
+pub struct Holder {
+pub mut:
+	images  [12]Image
+	touches [8]TouchPoint
+}
+
+pub fn score() int {
+	mut h := Holder{}
+	h.images[0].id = 4
+	h.touches[0].x = 5
+	return h.images[0].id + h.touches[0].x
+}
+', 'module main
+
+import math
+import fixture
+
+fn main() {
+	println(int_str(fixture.score() + int(math.sqrt(4))))
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '11', run.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert generated.contains('Array_fixed_fixture__Image_12'), generated
+	assert generated.contains('Array_fixed_fixture__TouchCore_8'), generated
+	assert !generated.contains('math__Image'), generated
+	assert !generated.contains('math__TouchPoint'), generated
+	assert !generated.contains('Array_fixed_math__'), generated
+}

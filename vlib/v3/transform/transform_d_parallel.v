@@ -115,6 +115,7 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 			ww := unsafe { &Transformer(workers[ci]) }
 			t.merge_worker_used_fns(ww)
 			t.merge_worker(ww, chunks[ci + 1], base_nodes, base_children)
+			ww.tc.free_parallel_transform_caches()
 			// The worker's cloned base AST is no longer needed after merge.
 			unsafe {
 				mut wast := &flat.FlatAst(worker_asts[ci])

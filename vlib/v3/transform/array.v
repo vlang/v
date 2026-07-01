@@ -374,10 +374,7 @@ fn (t &Transformer) array_literal_alias_type(node flat.Node) ?string {
 	if first.kind in [.cast_expr, .as_expr] && first.value.len > 0 {
 		alias_name = first.value
 	} else if first.kind == .call && first.children_count > 0 {
-		callee := t.a.child_node(&first, 0)
-		if callee.kind == .ident {
-			alias_name = callee.value
-		}
+		alias_name = t.generic_call_type_arg_name(t.a.child(&first, 0))
 	}
 	if alias_name.len == 0 {
 		return none
@@ -788,10 +785,32 @@ fn (t &Transformer) array_append_elem_types_match(rhs_elem_type string, lhs_elem
 	if rhs_clean == lhs_clean {
 		return true
 	}
+	if array_append_type_is_container_shape(rhs_clean)
+		|| array_append_type_is_container_shape(lhs_clean) {
+		return false
+	}
 	if isnil(t.tc) {
 		return false
 	}
 	return t.array_append_elem_c_type(rhs_clean) == t.array_append_elem_c_type(lhs_clean)
+}
+
+fn array_append_type_is_container_shape(typ string) bool {
+	clean := typ.trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	if clean.starts_with('&') {
+		return array_append_type_is_container_shape(clean[1..])
+	}
+	if clean.starts_with('shared ') {
+		return array_append_type_is_container_shape(clean[7..])
+	}
+	if clean.starts_with('atomic ') {
+		return array_append_type_is_container_shape(clean[7..])
+	}
+	return clean.starts_with('[]') || clean.starts_with('map[')
+		|| (clean.starts_with('[') && clean.contains(']'))
 }
 
 // array_append_ident_type supports array append ident type handling for Transformer.

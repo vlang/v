@@ -3,13 +3,16 @@ import os
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
+const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
 // build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_option_arg_codegen_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
-	assert build.exit_code == 0
+	os.rm(v3_bin) or {}
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
 	return v3_bin
 }
 
@@ -27,12 +30,51 @@ fn run_good(v3_bin string, name string, source string) string {
 	return run.output.trim_space()
 }
 
+fn generated_c(v3_bin string, name string, source string) string {
+	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(src, source) or { panic(err) }
+	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${c_path}')
+	assert compile.exit_code == 0, compile.output
+	return os.read_file(c_path) or { panic(err) }
+}
+
 // test_optional_argument_codegen_wraps_values_and_none validates this v3 regression case.
 fn test_optional_argument_codegen_wraps_values_and_none() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'option_arg_codegen_input',
 		"struct Info {\n\tvalue int\n}\n\nfn pass_int(x ?int) int {\n\treturn 1\n}\n\nfn pass_info(x ?Info) int {\n\treturn 1\n}\n\nfn main() {\n\tassert pass_int(3) == 1\n\tassert pass_int(none) == 1\n\tassert pass_info(Info{value: 4}) == 1\n\tassert pass_info(none) == 1\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
+}
+
+fn test_optional_abi_distinguishes_plain_t_name_from_specialized_generic() {
+	v3_bin := build_v3()
+	c_code := generated_c(v3_bin, 'optional_plain_t_name_abi',
+		'fn plain[T](x T) T {\n\treturn x\n}\n\nfn plain_T_name(x ?int) int {\n\treturn x or { 0 }\n}\n\nfn maybe() ?int {\n\treturn 3\n}\n\nfn use_fn(f fn (?int) int) int {\n\treturn f(maybe())\n}\n\nfn take[T](x ?T, fallback T) T {\n\treturn x or { fallback }\n}\n\nfn main() {\n\tprintln(plain_T_name(maybe()) + use_fn(plain_T_name) + take[int](7, 0) + plain[int](4))\n}\n')
+	assert c_code.contains('int plain_T_name(Optional x)'), c_code
+	assert !c_code.contains('int plain_T_name(Optional_int x)'), c_code
+	assert c_code.contains(')(struct Optional);'), c_code
+	assert !c_code.contains(')(Optional_int);'), c_code
+	assert c_code.contains('plain_T_v_int(') || c_code.contains('plain_T_int('), c_code
+	assert c_code.contains('int take_T_v_int(Optional_int x, int fallback)')
+		|| c_code.contains('int take_T_int(Optional_int x, int fallback)'), c_code
+	assert c_code.contains('(Optional_int){.ok = true, .value = 7}'), c_code
+}
+
+fn test_optional_generic_concrete_abi_converts_optional_args() {
+	v3_bin := build_v3()
+	source := 'fn maybe() ?int {\n\treturn 5\n}\n\nfn maybe_or_none(flag bool) ?int {\n\tif flag {\n\t\treturn 6\n\t}\n\treturn none\n}\n\nfn take[T](x ?T, fallback T) T {\n\treturn x or { fallback }\n}\n\nfn main() {\n\tx := maybe()\n\tassert take[int](maybe(), 0) == 5\n\tassert take[int](x, 0) == 5\n\tassert take[int](maybe_or_none(false), 9) == 9\n\tprintln("ok")\n}\n'
+	out := run_good(v3_bin, 'optional_generic_concrete_abi_run', source)
+	assert out == 'ok'
+	c_code := generated_c(v3_bin, 'optional_generic_concrete_abi_c', source)
+	assert c_code.contains('int take_T_v_int(Optional_int x, int fallback)')
+		|| c_code.contains('int take_T_int(Optional_int x, int fallback)'), c_code
+	assert c_code.contains('Optional _opt'), c_code
+	assert c_code.contains('(Optional_int){.ok = true, .value = _opt'), c_code
+	assert !c_code.contains('take_T_v_int(maybe(), 0)'), c_code
+	assert !c_code.contains('take_T_int(maybe(), 0)'), c_code
+	assert !c_code.contains('take_T_v_int(x, 0)'), c_code
+	assert !c_code.contains('take_T_int(x, 0)'), c_code
 }
 
 // test_optional_if_expr_codegen_initializes_optional_temp validates this v3 regression case.

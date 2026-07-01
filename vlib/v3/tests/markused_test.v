@@ -188,6 +188,31 @@ fn main() {
 	assert used['string__plus']
 }
 
+fn test_map_str_seeds_string_plus_runtime_helper() {
+	used := mark_used_source('map_str_string_plus', '
+fn render(m map[string]int) string {
+	return m.str()
+}
+
+fn main() {
+	_ := render(map[string]int{})
+}
+')
+	assert used['string__plus']
+}
+
+fn test_print_map_seeds_string_plus_runtime_helper() {
+	used := mark_used_source('print_map_string_plus', '
+fn main() {
+	m := {
+		"a": 1
+	}
+	println(m)
+}
+')
+	assert used['string__plus']
+}
+
 fn test_moduleless_export_after_module_file_is_rooted() {
 	a, tc := parse_checked_project_in_order('moduleless_export_after_module', [
 		'helper/helper.v',

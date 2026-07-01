@@ -22,6 +22,12 @@ fn struct_alias_write_project() string {
 	sgl_dir := os.join_path(root, 'sgl_like')
 	os.mkdir_all(gg_dir) or { panic(err) }
 	os.mkdir_all(sgl_dir) or { panic(err) }
+	os.write_file(os.join_path(root, 'v.mod'), 'Module {
+	name: "v3_struct_alias_fixture"
+}
+') or {
+		panic(err)
+	}
 	os.write_file(os.join_path(gg_dir, 'gg.v'), 'module gg
 
 pub struct Context {

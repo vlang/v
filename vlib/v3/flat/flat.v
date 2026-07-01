@@ -151,6 +151,7 @@ pub:
 	children_count i16
 	kind           NodeKind
 	op             Op
+	is_mut         bool
 }
 
 // FlatAst represents flat ast data used by flat.
@@ -237,6 +238,7 @@ pub fn (n Node) with_shifted_children(shift i32) Node {
 		children_count: n.children_count
 		kind:           n.kind
 		op:             n.op
+		is_mut:         n.is_mut
 	}
 }
 

@@ -214,6 +214,9 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type string, metho
 			}
 		}
 	} else {
+		if method_name := t.resolve_specialized_generic_receiver_method(clean_type, method) {
+			return method_name
+		}
 		direct := '${clean_type}.${method}'
 		if t.is_known_fn_name(direct) {
 			return direct
@@ -280,6 +283,33 @@ fn (t &Transformer) unique_receiver_method_suffix_match(candidates []string) ?st
 		return none
 	}
 	return found
+}
+
+fn (t &Transformer) resolve_specialized_generic_receiver_method(receiver_type string, method string) ?string {
+	base, args, ok := generic_app_parts(receiver_type)
+	if !ok || args.len == 0 {
+		return none
+	}
+	short_args := generic_type_args_short(args)
+	suffix := generic_type_suffixes(args)
+	mut candidates := []string{}
+	candidates << '${base}[${short_args}].${method}'
+	candidates << '${base}_${suffix}.${method}'
+	candidates << c_name('${base}_${suffix}.${method}')
+	if base.contains('.') {
+		module_name := base.all_before_last('.')
+		short_base := base.all_after_last('.')
+		candidates << '${short_base}[${short_args}].${method}'
+		candidates << '${short_base}_${suffix}.${method}'
+		candidates << '${module_name}.${short_base}_${suffix}.${method}'
+		candidates << c_name('${module_name}.${short_base}_${suffix}.${method}')
+	}
+	for candidate in candidates {
+		if t.is_known_fn_name(candidate) {
+			return candidate
+		}
+	}
+	return none
 }
 
 // resolve_alias_receiver_method converts resolve alias receiver method data for transform.
@@ -620,6 +650,11 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	for nc in new_children {
 		t.a.children << nc
 	}
+	mut typ := node.typ
+	concrete_ret := t.concrete_generic_call_return_type(id, node)
+	if concrete_ret.len > 0 {
+		typ = concrete_ret
+	}
 	return t.a.add_node(flat.Node{
 		kind:           .call
 		op:             node.op
@@ -627,7 +662,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		children_count: flat.child_count(new_children.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            node.typ
+		typ:            typ
 	})
 }
 
@@ -960,8 +995,10 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, wrapped, target_sum)
 		return t.make_prefix(.amp, t.make_ident(tmp_name))
 	}
-	if ptr_arg := t.transform_pointer_rvalue_arg(arg_id, *arg_node, param_type) {
-		return ptr_arg
+	if !t.in_spawn_expr {
+		if ptr_arg := t.transform_pointer_rvalue_arg(arg_id, *arg_node, param_type) {
+			return ptr_arg
+		}
 	}
 	if t.is_sum_type_name(param_type) {
 		return t.wrap_sum_value(arg_id, param_type)
@@ -1492,6 +1529,13 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	if clean_typ.starts_with('builtin.') {
 		clean_typ = clean_typ.all_after_last('.')
 	}
+	if source_typ := t.source_type_name_from_c_name(clean_typ) {
+		return t.wrap_string_conversion(expr, source_typ)
+	}
+	normalized_stringify_type := t.normalize_runtime_array_stringify_type(clean_typ)
+	if normalized_stringify_type != clean_typ {
+		return t.wrap_string_conversion(expr, normalized_stringify_type)
+	}
 	if t.is_optional_type_name(clean_typ) {
 		return t.wrap_optional_string_conversion(expr, clean_typ)
 	}
@@ -1539,6 +1583,12 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	}
 	if clean_typ == 'string' {
 		return expr
+	}
+	if is_ref {
+		expr_node := t.a.nodes[int(expr)]
+		if expr_node.kind == .ident && t.string_interp_needs_value_read(expr_node.value, typ) {
+			return t.wrap_string_conversion(t.make_prefix(.mul, expr), clean_typ)
+		}
 	}
 	if is_ref || clean_typ in ['voidptr', 'byteptr', 'charptr'] {
 		return t.make_call_typed('ptr_str', arr1(expr), 'string')
@@ -1600,15 +1650,11 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 				}
 				return t.enum_autostr_call(expr, qenum)
 			}
-			if clean_typ in t.structs || clean_typ in t.sum_types {
-				mut qualified := clean_typ
-				if !clean_typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
-					&& t.cur_module != 'builtin' {
-					q := '${t.cur_module}.${clean_typ}'
-					if q in t.structs || q in t.sum_types {
-						qualified = q
-					}
-				}
+			if generic_str := t.generic_receiver_str_call(expr, clean_typ) {
+				return generic_str
+			}
+			if aggregate_type := t.stringify_aggregate_type_name(clean_typ) {
+				qualified := aggregate_type
 				str_fn := '${c_name(qualified)}__str'
 				known_str := str_fn in t.fn_ret_types
 					|| (!isnil(t.tc) && str_fn in t.tc.fn_ret_types)
@@ -1631,6 +1677,102 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			}
 		}
 	}
+}
+
+fn (t &Transformer) stringify_aggregate_type_name(typ string) ?string {
+	clean := typ.trim_space()
+	if clean.len == 0 {
+		return none
+	}
+	if clean in t.structs || clean in t.sum_types {
+		return clean
+	}
+	if clean.contains('.') {
+		if !isnil(t.tc) && (clean in t.tc.structs || clean in t.tc.sum_types) {
+			return clean
+		}
+		return none
+	}
+	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		qname := '${t.cur_module}.${clean}'
+		if qname in t.structs || qname in t.sum_types {
+			return qname
+		}
+		if !isnil(t.tc) && (qname in t.tc.structs || qname in t.tc.sum_types) {
+			return qname
+		}
+	}
+	if !isnil(t.tc) && (clean in t.tc.structs || clean in t.tc.sum_types) {
+		return clean
+	}
+	return none
+}
+
+fn (t &Transformer) source_type_name_from_c_name(typ string) ?string {
+	clean := typ.trim_space()
+	if clean.len == 0 || !clean.contains('__') || t.type_name_is_declared(clean) {
+		return none
+	}
+	for name, _ in t.structs {
+		if source_type_name_matches_c_name(name, clean) {
+			return name
+		}
+	}
+	for name, _ in t.sum_types {
+		if source_type_name_matches_c_name(name, clean) {
+			return name
+		}
+	}
+	for name, _ in t.enum_types {
+		if source_type_name_matches_c_name(name, clean) {
+			return name
+		}
+	}
+	if isnil(t.tc) {
+		return none
+	}
+	for name, _ in t.tc.structs {
+		if source_type_name_matches_c_name(name, clean) {
+			return name
+		}
+	}
+	for name, _ in t.tc.sum_types {
+		if source_type_name_matches_c_name(name, clean) {
+			return name
+		}
+	}
+	for name, _ in t.tc.enum_names {
+		if source_type_name_matches_c_name(name, clean) {
+			return name
+		}
+	}
+	for name, _ in t.tc.type_aliases {
+		if source_type_name_matches_c_name(name, clean) {
+			return name
+		}
+	}
+	return none
+}
+
+fn source_type_name_matches_c_name(name string, cname string) bool {
+	return name.contains('.') && c_name(name) == cname
+}
+
+fn (t &Transformer) normalize_runtime_array_stringify_type(typ string) string {
+	clean := typ.trim_space()
+	if clean.starts_with('Array_') && !clean.starts_with('Array_fixed_') {
+		if clean in t.structs || clean in t.sum_types || clean in t.enum_types {
+			return typ
+		}
+		if !isnil(t.tc) && clean in t.tc.type_aliases {
+			return typ
+		}
+		decoded := t.generic_type_arg_from_suffix(clean)
+		if decoded.len > 0 {
+			return decoded
+		}
+	}
+	return typ
 }
 
 fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ string, format string) flat.NodeId {
@@ -1759,6 +1901,24 @@ fn zero_padded_decimal_width(format string) ?int {
 	return width
 }
 
+fn (mut t Transformer) generic_receiver_str_call(expr flat.NodeId, typ string) ?flat.NodeId {
+	if isnil(t.tc) || !typ.contains('[') {
+		return none
+	}
+	clean_typ := if typ.starts_with('&') { typ[1..] } else { typ }
+	if !clean_typ.ends_with(']') {
+		return none
+	}
+	info := t.tc.resolve_generic_struct_method(clean_typ, 'str') or {
+		t.tc.resolve_generic_sum_method(clean_typ, 'str') or { return none }
+	}
+	if info.return_type.name() != 'string' {
+		return none
+	}
+	selector := t.make_selector(expr, 'str', '')
+	return t.make_call_expr_typed(selector, []flat.NodeId{}, 'string')
+}
+
 // append_string builds `result = result + piece` using the runtime string concat helper.
 // Using string__plus directly (instead of `+=`) keeps the synthesized node independent of
 // type resolution for the freshly-introduced temp.
@@ -1772,7 +1932,10 @@ fn (mut t Transformer) append_string(result_name string, piece flat.NodeId) flat
 // correctly. Produces `[e0, e1, ...]`; string elements are wrapped in single quotes to match V.
 fn (mut t Transformer) lower_array_str(arr_expr flat.NodeId, base_type string) flat.NodeId {
 	src := t.a.nodes[int(arr_expr)]
-	elem_type := base_type[2..]
+	mut elem_type := base_type[2..]
+	if recorded_elem_type := t.recorded_array_call_elem_type(arr_expr) {
+		elem_type = recorded_elem_type
+	}
 	base := t.stable_expr_for_reuse(arr_expr)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
@@ -1811,16 +1974,221 @@ fn (mut t Transformer) lower_array_str(arr_expr flat.NodeId, base_type string) f
 	return t.make_ident(result_name)
 }
 
+fn (t &Transformer) recorded_array_call_elem_type(call_id flat.NodeId) ?string {
+	if int(call_id) < 0 || int(call_id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(call_id)]
+	if node.kind != .call || node.children_count == 0 {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind == .ident && callee.value.contains('__') {
+		if !callee.value.ends_with('__array') {
+			return none
+		}
+		receiver := callee.value.all_before_last('__')
+		if args := t.recorded_generic_specialization_args(receiver) {
+			if args.len == 1 {
+				return args[0]
+			}
+		}
+	}
+	if callee.kind == .selector && callee.children_count > 0 {
+		if callee.value != 'array' {
+			return none
+		}
+		base_id := t.a.child(callee, 0)
+		mut receiver_type := t.node_type(base_id)
+		if receiver_type.starts_with('&') {
+			receiver_type = receiver_type[1..]
+		}
+		if args := t.current_specialized_receiver_args(receiver_type) {
+			if args.len == 1 {
+				return args[0]
+			}
+		}
+		if args := t.recorded_generic_specialization_args(receiver_type) {
+			if args.len == 1 {
+				return args[0]
+			}
+		}
+		_, generic_args, is_generic_receiver := generic_app_parts(receiver_type)
+		if is_generic_receiver && generic_args.len == 1 {
+			if stringify_type_has_generic_placeholder(generic_args[0]) {
+				return none
+			}
+			return generic_args[0]
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) current_specialized_receiver_args(receiver_type string) ?[]string {
+	base, args, ok := generic_app_parts(receiver_type)
+	if !ok || args.len == 0 || !t.generic_args_have_placeholders(args) {
+		return none
+	}
+	current_receiver := t.current_fn_receiver_type()
+	if current_receiver.len == 0
+		|| !current_receiver_matches_open_generic_base(current_receiver, base) {
+		return none
+	}
+	if recorded := t.recorded_generic_specialization_args(current_receiver) {
+		if t.generic_args_have_placeholders(recorded) {
+			return none
+		}
+		return recorded
+	}
+	_, current_args, current_ok := generic_app_parts(current_receiver)
+	if current_ok && current_args.len == args.len {
+		canonical_args := canonical_generic_specialization_args(current_args)
+		if t.generic_args_have_placeholders(canonical_args) {
+			return none
+		}
+		return canonical_args
+	}
+	return none
+}
+
+fn (t &Transformer) current_fn_receiver_type() string {
+	name := t.cur_fn_name.trim_space()
+	if name.len == 0 {
+		return ''
+	}
+	if name.contains('.') {
+		return name.all_before_last('.')
+	}
+	if name.contains('__') {
+		return name.all_before_last('__')
+	}
+	return ''
+}
+
+fn current_receiver_matches_open_generic_base(receiver string, base string) bool {
+	receiver_base, _, receiver_is_generic := generic_app_parts(receiver)
+	clean_receiver := if receiver_is_generic { receiver_base } else { receiver }
+	short_base := base.all_after_last('.')
+	short_receiver := clean_receiver.all_after_last('.')
+	return short_receiver == short_base || short_receiver.starts_with('${short_base}_')
+		|| c_name(short_receiver).starts_with('${c_name(short_base)}_')
+		|| short_receiver.contains('__${short_base}_')
+}
+
 fn (mut t Transformer) lower_map_str(map_expr flat.NodeId, map_type string) flat.NodeId {
 	key_type, value_type := t.map_type_parts(map_type)
 	if key_type.len == 0 || value_type.len == 0 {
 		return map_expr
 	}
+	key_kind := t.map_str_kind_for_type(key_type)
+	value_kind := t.map_str_kind_for_type(value_type)
+	if key_kind == 0 || value_kind == 0 {
+		key_has_conversion := key_kind != 0 || t.map_str_type_has_transform_conversion(key_type)
+		value_has_conversion := value_kind != 0
+			|| t.map_str_type_has_transform_conversion(value_type)
+		if key_has_conversion && value_has_conversion {
+			return t.lower_typed_map_str(map_expr, map_type, key_type, value_type)
+		}
+	}
 	lowered := t.transform_expr_for_type(map_expr, map_type)
-	return t.make_call_typed('v3_map_str', arr4(lowered,
-		t.make_int_literal(t.map_str_kind_for_type(key_type)),
-		t.make_int_literal(t.map_str_kind_for_type(value_type)),
+	return t.make_call_typed('v3_map_str', arr4(lowered, t.make_int_literal(key_kind),
+		t.make_int_literal(value_kind),
 		t.make_int_literal(t.map_str_fixed_len_for_type(value_type))), 'string')
+}
+
+// lower_typed_map_str handles map interpolation when v3_map_str cannot stringify a typed
+// key/value directly. It mirrors lower_array_str by recursing through wrap_string_conversion.
+fn (mut t Transformer) lower_typed_map_str(map_expr flat.NodeId, map_type string, key_type string, value_type string) flat.NodeId {
+	src := t.a.nodes[int(map_expr)]
+	base := t.stable_expr_for_reuse(map_expr)
+	mut prefix := []flat.NodeId{}
+	t.drain_pending(mut prefix)
+	result_name := t.new_temp('map_str')
+	keys_name := t.new_temp('map_str_keys')
+	idx_name := t.new_temp('map_str_idx')
+	key_name := t.new_temp('map_str_key')
+	zero_name := t.new_temp('map_str_zero')
+	value_name := t.new_temp('map_str_value')
+	key_kind := t.map_str_kind_for_type(key_type)
+	value_kind := t.map_str_kind_for_type(value_type)
+	keys_type := '[]${key_type}'
+	keys_call := t.make_call_typed('map__keys', arr1(t.runtime_addr(base, map_type)), keys_type)
+	prefix << t.make_decl_assign_typed(result_name, t.make_string_literal('{'), 'string')
+	prefix << t.make_decl_assign_typed(keys_name, keys_call, keys_type)
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(t.make_ident(keys_name),
+		'len', 'int'))
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	key_expr := t.array_get_value(t.make_ident(keys_name), t.make_ident(idx_name), key_type)
+	key_decl := t.make_decl_assign_typed(key_name, key_expr, key_type)
+	zero_decl := t.make_decl_assign_typed(zero_name, t.zero_value_for_type(value_type), value_type)
+	value_expr := t.make_map_get_expr(base, map_type, key_name, zero_name, value_type)
+	value_decl := t.make_decl_assign_typed(value_name, value_expr, value_type)
+	mut loop_body := []flat.NodeId{}
+	loop_body << key_decl
+	loop_body << zero_decl
+	loop_body << value_decl
+	sep_cond := t.make_infix(.gt, t.make_ident(idx_name), t.make_int_literal(0))
+	sep_stmt := t.append_string(result_name, t.make_string_literal(', '))
+	loop_body << t.make_if(sep_cond, t.make_block(arr1(sep_stmt)), t.make_empty())
+	key_str := t.map_str_loop_piece(key_name, key_type, key_kind, 0)
+	t.drain_pending(mut loop_body)
+	loop_body << t.append_string(result_name, key_str)
+	loop_body << t.append_string(result_name, t.make_string_literal(': '))
+	value_str := t.map_str_loop_piece(value_name, value_type, value_kind,
+		t.map_str_fixed_len_for_type(value_type))
+	t.drain_pending(mut loop_body)
+	loop_body << t.append_string(result_name, value_str)
+	prefix << t.make_for_stmt(init, cond, post, loop_body, src)
+	prefix << t.append_string(result_name, t.make_string_literal('}'))
+	for stmt in prefix {
+		t.pending_stmts << stmt
+	}
+	return t.make_ident(result_name)
+}
+
+fn (mut t Transformer) map_str_loop_piece(name string, typ string, kind int, fixed_len int) flat.NodeId {
+	if kind != 0 {
+		return t.make_call_typed('v3_map_str_piece', arr4(t.make_prefix(.amp, t.make_ident(name)),
+			t.make_int_literal(kind), t.make_sizeof_type(typ), t.make_int_literal(fixed_len)),
+			'string')
+	}
+	t.set_var_type(name, typ)
+	piece := t.wrap_string_conversion(t.make_ident(name), typ)
+	t.unset_var_type(name)
+	return piece
+}
+
+fn (t &Transformer) map_str_type_has_transform_conversion(typ string) bool {
+	mut clean := t.normalize_type_alias(typ).trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	if clean.starts_with('&') {
+		return true
+	}
+	if clean.starts_with('builtin.') {
+		clean = clean.all_after_last('.')
+	}
+	if t.is_optional_type_name(clean) {
+		return true
+	}
+	if clean in ['string', 'rune', 'bool', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'u8', 'byte',
+		'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'int literal', 'float literal', 'voidptr',
+		'byteptr', 'charptr', 'IError'] {
+		return true
+	}
+	if clean in t.enum_types || clean in t.structs || clean in t.sum_types {
+		return true
+	}
+	if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		qname := '${t.cur_module}.${clean}'
+		if qname in t.enum_types || qname in t.structs || qname in t.sum_types {
+			return true
+		}
+	}
+	return t.is_fixed_array_type(clean) || clean.starts_with('[]') || clean.starts_with('map[')
 }
 
 fn (t &Transformer) map_str_kind_for_type(typ string) int {
@@ -2074,11 +2442,21 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 	}
 	if fn_node.value == 'str' && base_node.kind == .call {
 		new_base := t.transform_expr(base_id)
-		new_base_type := t.node_type(new_base)
+		mut new_base_type := t.node_type(new_base)
+		if recorded_elem_type := t.recorded_array_call_elem_type(base_id) {
+			new_base_type = '[]${recorded_elem_type}'
+			t.a.nodes[int(new_base)].typ = new_base_type
+		}
 		if new_base_type.starts_with('[]') {
+			if stringify_type_has_generic_placeholder(new_base_type) {
+				return none
+			}
 			return t.lower_array_str(new_base, new_base_type)
 		}
 		if new_base_type.starts_with('map[') {
+			if stringify_type_has_generic_placeholder(new_base_type) {
+				return none
+			}
 			return t.lower_map_str(new_base, new_base_type)
 		}
 	}
@@ -2138,6 +2516,9 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		array_builtin_method)
 	{
 		return exact_call
+	}
+	if fn_node.value == 'str' && stringify_type_has_generic_placeholder(clean_base_type) {
+		return none
 	}
 	elem_type := clean_base_type[2..]
 	if fn_node.value == 'prepend' {
@@ -2576,7 +2957,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		param := t.a.nodes[int(param_id)]
 		if param.value.len > 0 && param.typ.len > 0 {
 			t.set_var_type(param.value, param.typ)
-			if param.op == .amp {
+			if param.is_mut || param.op == .amp || param.typ.starts_with('mut ') {
 				t.mut_param_values[param.value] = true
 			}
 		}
@@ -3118,6 +3499,9 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		args := t.transform_receiver_method_args(node, base_id, method_name)
 		return t.make_call_typed(method_name, args, 'string')
 	}
+	if method == 'str' && stringify_type_has_generic_placeholder(base_type) {
+		return none
+	}
 	if base_type.starts_with('[]') && method == 'str' {
 		return t.wrap_string_conversion(t.transform_expr(base_id), base_type)
 	}
@@ -3137,6 +3521,12 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		if method == 'hex' && !base_is_pointer {
 			return t.make_call_typed('Array_u8__hex', arr1(t.transform_expr(base_id)), 'string')
 		}
+	}
+	if pointer_method := t.pointer_builtin_vbytes_method(base_is_pointer, builtin_base_type, method) {
+		args := t.transform_receiver_method_args(node, base_id, pointer_method)
+		ret_type := t.receiver_method_return_type(pointer_method, node.typ)
+		t.mark_fn_used(pointer_method)
+		return t.make_call_typed(pointer_method, args, ret_type)
 	}
 	if t.is_builder_receiver(base_id, base_type) {
 		for method_name in ['strings.Builder.${method}', 'Builder.${method}'] {
@@ -3163,12 +3553,18 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	}
 	method_name := t.resolve_receiver_method_name(base_id, method)
 	if method_name.len > 0 {
+		if t.receiver_method_name_is_open_generic(method_name) {
+			return none
+		}
 		args := t.transform_receiver_method_args(node, base_id, method_name)
 		ret_type := t.receiver_method_return_type(method_name, node.typ)
 		return t.make_call_typed(method_name, args, ret_type)
 	}
 	if !isnil(t.tc) {
 		if resolved_method := t.tc.resolved_call_name(id) {
+			if t.receiver_method_name_is_open_generic(resolved_method) {
+				return none
+			}
 			if t.is_known_fn_name(resolved_method) {
 				params := t.call_param_types(resolved_method)
 				if !t.resolved_call_uses_receiver_type(base_id, base_type, params) {
@@ -3188,6 +3584,33 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		return t.make_call_typed(sum_method, args, ret_type)
 	}
 	return none
+}
+
+fn (t &Transformer) pointer_builtin_vbytes_method(base_is_pointer bool, builtin_base_type string, method string) ?string {
+	if method != 'vbytes' {
+		return none
+	}
+	if base_is_pointer && builtin_base_type == 'u8' {
+		return 'byteptr.vbytes'
+	}
+	if builtin_base_type in ['byteptr', 'voidptr'] {
+		return '${builtin_base_type}.vbytes'
+	}
+	return none
+}
+
+fn (t &Transformer) receiver_method_name_is_open_generic(method_name string) bool {
+	if method_name.contains('.') {
+		receiver := method_name.all_before_last('.')
+		_, args, ok := generic_app_parts(receiver)
+		return ok && args.len > 0 && t.generic_args_have_placeholders(args)
+	}
+	for marker in ['_T__', '_U__', '_K__', '_V__', '_A__', '_B__', '_C__', '_X__', '_Y__', '_Z__'] {
+		if method_name.contains(marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // is_builder_receiver reports whether is builder receiver applies in transform.
@@ -4149,6 +4572,11 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type(id flat.NodeId, nod
 	name := t.tc.resolved_call_name(id) or { return none }
 	if is_builtin_collection_resolved_call(name) {
 		return none
+	}
+	if typ := t.tc.expr_type(id) {
+		if typ !is types.Unknown && typ !is types.Void {
+			return t.call_return_type_name(typ.name(), node)
+		}
 	}
 	ret := t.tc.fn_ret_types[name] or { return none }
 	return t.call_return_type_name(ret.name(), node)

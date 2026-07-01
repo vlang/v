@@ -686,61 +686,66 @@ fn (g &FlatGen) struct_field_value_is_plainly_incompatible(value_id flat.NodeId,
 }
 
 // field_needs_default_init reports whether an unset field of type `typ` must be
-// explicitly default-initialized in a struct literal — i.e. it is a by-value
-// struct whose type carries field defaults that C's `{0}` would not apply
-// (e.g. `min_len int = 999999`).
+// explicitly default-initialized in a struct literal: either because the by-value
+// struct has source defaults, or because its own omitted fields need runtime
+// metadata defaults such as dynamic arrays/maps.
 fn (mut g FlatGen) field_needs_default_init(typ types.Type) bool {
 	clean_type := default_init_unalias_type(typ)
 	if clean_type is types.Struct && !clean_type.name.starts_with('C.') {
-		return g.struct_has_field_defaults(clean_type.name)
+		return g.struct_needs_default_init(clean_type.name)
 	}
 	return false
 }
 
-// struct_has_field_defaults reports whether building `type_name` as a struct
-// literal would set any non-zero field: a field with an explicit default
-// (`x int = 5`), or a by-value struct field whose own type has such defaults.
+// struct_needs_default_init reports whether building `type_name` as a struct
+// literal would set any field that C's `{0}` would not: a field with an explicit
+// default (`x int = 5`), an omitted dynamic array/map, or a by-value struct field
+// whose own type needs those defaults.
 // Returns false for structs with interface/sum-typed field defaults, since the
 // codegen default path cannot box those values.
-fn (mut g FlatGen) struct_has_field_defaults(type_name string) bool {
+fn (mut g FlatGen) struct_needs_default_init(type_name string) bool {
 	mut visited := map[string]bool{}
-	return g.struct_has_field_defaults_inner(type_name, mut visited)
+	return g.struct_needs_default_init_inner(type_name, mut visited)
 }
 
-// struct_has_field_defaults_inner converts struct has field defaults inner data for c.
-fn (mut g FlatGen) struct_has_field_defaults_inner(type_name string, mut visited map[string]bool) bool {
+fn (mut g FlatGen) struct_needs_default_init_inner(type_name string, mut visited map[string]bool) bool {
 	if type_name in visited {
 		return false
 	}
 	visited[type_name] = true
-	info := g.find_struct_decl(type_name) or { return false }
-	old_module := g.tc.cur_module
-	g.tc.cur_module = info.module
-	defer {
-		g.tc.cur_module = old_module
-	}
 	mut found := false
-	for i in 0 .. info.node.children_count {
-		field := g.a.child_node(&info.node, i)
-		if field.kind != .field_decl {
-			continue
-		}
-		ftyp := g.tc.parse_type(field.typ)
-		clean_ftyp := default_init_unalias_type(ftyp)
-		if field.children_count > 0 {
+	if info := g.find_struct_decl(type_name) {
+		old_module := g.tc.cur_module
+		g.tc.cur_module = info.module
+		for i in 0 .. info.node.children_count {
+			field := g.a.child_node(&info.node, i)
+			if field.kind != .field_decl || field.children_count == 0 {
+				continue
+			}
+			ftyp := g.struct_default_field_type(info, field)
+			clean_ftyp := default_init_unalias_type(ftyp)
 			// Defaults for interface/sum-typed fields require boxing the value into
 			// the interface/sum representation, which the codegen default path cannot
 			// do. Treat the whole struct as unsafe to default-emit (leave it
 			// zero-initialized, as before) rather than emit an unboxed value.
 			if clean_ftyp is types.SumType || clean_ftyp is types.Interface {
+				g.tc.cur_module = old_module
 				return false
 			}
 			found = true
 		}
-		if clean_ftyp is types.Struct && !clean_ftyp.name.starts_with('C.') {
-			if g.struct_has_field_defaults_inner(clean_ftyp.name, mut visited) {
-				found = true
-			}
+		g.tc.cur_module = old_module
+	}
+	fields := g.struct_fields_for_type(type_name) or { return found }
+	for field in fields {
+		clean_ftyp := default_init_unalias_type(field.typ)
+		if clean_ftyp is types.Array || clean_ftyp is types.Map {
+			found = true
+			continue
+		}
+		if clean_ftyp is types.Struct && !clean_ftyp.name.starts_with('C.')
+			&& g.struct_needs_default_init_inner(clean_ftyp.name, mut visited) {
+			found = true
 		}
 	}
 	return found
