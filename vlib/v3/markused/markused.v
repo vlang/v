@@ -1,5 +1,6 @@
 module markused
 
+import strings
 import v3.flat
 import v3.types
 
@@ -3250,10 +3251,125 @@ fn markused_c_name(name string) string {
 	if markused_c_name_is_plain(name) {
 		return name
 	}
-	return name.replace('[]', 'Array_').replace('.-', '__minus').replace('.+', '__plus').replace('.==',
-		'__eq').replace('.!=', '__ne').replace('.<=', '__le').replace('.>=', '__ge').replace('.<',
-		'__lt').replace('.>', '__gt').replace('&', 'ptr').replace('[', '_').replace(']', '').replace(',',
-		'_').replace(' ', '_').replace('.', '__')
+	return markused_c_name_sanitize(name)
+}
+
+fn markused_c_name_sanitize(name string) string {
+	mut b := strings.new_builder(name.len + 8)
+	mut i := 0
+	for i < name.len {
+		c := name[i]
+		if c == `[` {
+			if i + 1 < name.len && name[i + 1] == `]` {
+				b.write_string('Array_')
+				i += 2
+				continue
+			}
+			b.write_u8(`_`)
+		} else if c == `]` {
+			i++
+			continue
+		} else if c == `.` {
+			if i + 1 < name.len {
+				next := name[i + 1]
+				if next == `-` {
+					b.write_string('__minus')
+					i += 2
+					continue
+				}
+				if next == `+` {
+					b.write_string('__plus')
+					i += 2
+					continue
+				}
+				if next == `*` {
+					b.write_string('__mul')
+					i += 2
+					continue
+				}
+				if next == `/` {
+					b.write_string('__div')
+					i += 2
+					continue
+				}
+				if next == `%` {
+					b.write_string('__mod')
+					i += 2
+					continue
+				}
+				if next == `&` {
+					b.write_string('__and')
+					i += 2
+					continue
+				}
+				if next == `|` {
+					b.write_string('__or')
+					i += 2
+					continue
+				}
+				if next == `^` {
+					b.write_string('__xor')
+					i += 2
+					continue
+				}
+				if i + 2 < name.len {
+					op := name[i + 2]
+					if next == `=` && op == `=` {
+						b.write_string('__eq')
+						i += 3
+						continue
+					}
+					if next == `!` && op == `=` {
+						b.write_string('__ne')
+						i += 3
+						continue
+					}
+					if next == `<` && op == `=` {
+						b.write_string('__le')
+						i += 3
+						continue
+					}
+					if next == `>` && op == `=` {
+						b.write_string('__ge')
+						i += 3
+						continue
+					}
+					if next == `<` && op == `<` {
+						b.write_string('__left_shift')
+						i += 3
+						continue
+					}
+					if next == `>` && op == `>` {
+						b.write_string('__right_shift')
+						i += 3
+						continue
+					}
+				}
+				if next == `<` {
+					b.write_string('__lt')
+					i += 2
+					continue
+				}
+				if next == `>` {
+					b.write_string('__gt')
+					i += 2
+					continue
+				}
+			}
+			b.write_string('__')
+		} else if c == `&` {
+			b.write_string('ptr')
+		} else if c == `@` {
+			i++
+			continue
+		} else if c == `,` || c == ` ` {
+			b.write_u8(`_`)
+		} else {
+			b.write_u8(c)
+		}
+		i++
+	}
+	return b.str()
 }
 
 // markused_c_name_is_plain converts markused c name is plain data for markused.
