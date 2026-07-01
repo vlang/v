@@ -1454,7 +1454,7 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 	if cur_module == 'ast' && node.value == 'TypeSymbol.find_method_with_generic_parent' {
 		c.add_typed_receiver_method_name('ast.Table.find_structured_receiver_method', mut calls)
 	}
-	local_values, local_types := c.local_value_info(node, cur_module, imports)
+	local_values, local_types := c.local_value_info(node, imports)
 	visible_local_idents := markused_visible_local_idents(c.a, node, local_values)
 	mut stack := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
@@ -1671,7 +1671,7 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 	}
 }
 
-fn (c &CallCollector) local_value_info(node &flat.Node, cur_module string, imports map[string]string) (map[string]bool, map[string]string) {
+fn (c &CallCollector) local_value_info(node &flat.Node, imports map[string]string) (map[string]bool, map[string]string) {
 	mut names := map[string]bool{}
 	mut type_names := map[string]string{}
 	mut stack := []flat.NodeId{cap: int(node.children_count)}
@@ -1696,16 +1696,8 @@ fn (c &CallCollector) local_value_info(node &flat.Node, cur_module string, impor
 					if lhs.kind == .ident && lhs.value.len > 0 {
 						names[lhs.value] = true
 						if i + 1 < child.children_count {
-							rhs_id := c.a.child(child, i + 1)
-							if int(rhs_id) >= 0 {
-								type_name := if child.children_count == 2 && child.typ.len > 0 {
-									child.typ
-								} else {
-									c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports)
-								}
-								if type_name.len > 0 {
-									type_names[lhs.value] = type_name
-								}
+							if child.children_count == 2 && child.typ.len > 0 {
+								type_names[lhs.value] = child.typ
 							}
 						}
 					}
