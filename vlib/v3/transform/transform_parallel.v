@@ -3,11 +3,10 @@ module transform
 import runtime
 import v3.flat
 
-// Parallel function-body transform. Compiled only when the build defines
-// `parallel` (i.e. `-d parallel`), matching the parallel C codegen path. Each
-// worker transforms a disjoint set of closure-free functions on its own cloned
-// AST + forked TypeChecker, and the master folds the results back together in a
-// fixed order so the build stays deterministic.
+// Parallel function-body transform. Each worker transforms a disjoint set of
+// closure-free functions on its own cloned AST + forked TypeChecker, and the
+// master folds the results back together in a fixed order so the build stays
+// deterministic.
 
 const min_parallel_transform_items = 256
 const max_parallel_transform_jobs = 8
