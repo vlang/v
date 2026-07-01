@@ -90,6 +90,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 				preferred_fns[preferred_name] = i
 				ranks[preferred_name] = rank
 			}
+			cost := flat_fn_gen_item_cost(g.a, flat.NodeId(i))
 			candidates << FlatFnGenCandidate{
 				preferred_name: preferred_name
 				item:           FlatFnGenItem{
@@ -97,7 +98,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 					file:    cur_file
 					module:  cur_module
 					c_name:  g.fn_c_name_in_module(cur_module, node.value)
-					cost:    node.children_count + 1
+					cost:    cost
 				}
 			}
 		}
@@ -117,6 +118,27 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 		items << candidate.item
 	}
 	return items
+}
+
+fn flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId) int {
+	mut cost := 0
+	mut stack := [node_id]
+	for stack.len > 0 {
+		id := stack.pop()
+		idx := int(id)
+		if idx < 0 || idx >= a.nodes.len {
+			continue
+		}
+		node := a.nodes[idx]
+		cost++
+		for i in 0 .. node.children_count {
+			child_id := a.children[node.children_start + i]
+			if int(child_id) >= 0 {
+				stack << child_id
+			}
+		}
+	}
+	return cost
 }
 
 // gen_fn_items emits fn items output for c.
@@ -5603,7 +5625,15 @@ fn (mut g FlatGen) resolve_fn_ptr_type(typ string) string {
 	if typ in g.fn_ptr_types {
 		return g.fn_ptr_types[typ]
 	}
-	name := '_fn_ptr_${g.fn_ptr_types.len}'
+	name := fn_ptr_type_name(typ)
 	g.fn_ptr_types[typ] = name
 	return name
+}
+
+fn fn_ptr_type_name(typ string) string {
+	mut h := u64(1469598103934665603)
+	for c in typ.bytes() {
+		h = (h ^ u64(c)) * u64(1099511628211)
+	}
+	return '_fn_ptr_${h.hex()}'
 }

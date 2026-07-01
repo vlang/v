@@ -40,30 +40,28 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	}
 	struct_decls := t.collect_generic_struct_decls()
 	template_nodes := t.generic_decl_template_nodes(decls)
+	ignored_nodes := t.unused_fn_subtree_nodes()
 	mut emitted := map[string]bool{}
 	mut generated := []string{}
 	mut changed := true
 	for changed {
 		changed = false
 		t.ensure_node_module_map()
-		mut cur_module := ''
 		node_count := t.a.nodes.len
 		for i in 0 .. node_count {
-			if template_nodes[i] {
+			if (i < template_nodes.len && template_nodes[i])
+				|| (i < ignored_nodes.len && ignored_nodes[i]) {
 				continue
 			}
 			node := t.a.nodes[i]
 			match node.kind {
-				.module_decl {
-					cur_module = node.value
-				}
 				.call {
 					// An infix operator on a generic instance was already lowered to a
 					// direct call (`Vec_int__plus(a, b)`) before this pass. Record the
 					// callee so `specialize_generic_struct_methods` emits an operator
 					// overload only for instances whose operator is actually called.
 					t.record_called_fn_name(node)
-					call_module := t.node_module_or(i, cur_module)
+					call_module := t.node_module_or(i, '')
 					decl_key, args := t.cached_generic_call_specialization(flat.NodeId(i), node,
 						call_module, decls) or { continue }
 					decl := decls[decl_key] or { continue }
@@ -90,7 +88,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			changed = true
 		}
 	}
-	t.rewrite_generic_calls(decls, template_nodes)
+	t.rewrite_generic_calls(decls, template_nodes, ignored_nodes)
 	t.erase_generic_fn_decls(decls)
 	return generated
 }
@@ -542,11 +540,35 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 	return decls
 }
 
-fn (mut t Transformer) generic_decl_template_nodes(decls map[string]GenericFnDecl) map[int]bool {
-	mut nodes := map[int]bool{}
+fn (mut t Transformer) generic_decl_template_nodes(decls map[string]GenericFnDecl) []bool {
+	mut nodes := []bool{len: t.a.nodes.len}
 	for _, decl in decls {
-		t.collect_node_subtree_ids(decl.id, mut nodes)
+		t.collect_node_subtree_flags(decl.id, mut nodes)
 	}
+	return nodes
+}
+
+fn (mut t Transformer) unused_fn_subtree_nodes() []bool {
+	mut nodes := []bool{len: t.a.nodes.len}
+	if !t.has_used_fn_filter() {
+		return nodes
+	}
+	old_module := t.cur_module
+	t.cur_module = ''
+	for i, node in t.a.nodes {
+		match node.kind {
+			.module_decl {
+				t.cur_module = node.value
+			}
+			.fn_decl {
+				if !t.should_transform_fn(node) {
+					t.collect_node_subtree_flags(flat.NodeId(i), mut nodes)
+				}
+			}
+			else {}
+		}
+	}
+	t.cur_module = old_module
 	return nodes
 }
 
@@ -628,6 +650,17 @@ fn (mut t Transformer) collect_node_subtree_ids(id flat.NodeId, mut nodes map[in
 	node := t.a.nodes[int(id)]
 	for i in 0 .. node.children_count {
 		t.collect_node_subtree_ids(t.a.child(&node, i), mut nodes)
+	}
+}
+
+fn (mut t Transformer) collect_node_subtree_flags(id flat.NodeId, mut nodes []bool) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len || int(id) >= nodes.len || nodes[int(id)] {
+		return
+	}
+	nodes[int(id)] = true
+	node := t.a.nodes[int(id)]
+	for i in 0 .. node.children_count {
+		t.collect_node_subtree_flags(t.a.child(&node, i), mut nodes)
 	}
 }
 
@@ -920,11 +953,12 @@ fn specialized_generic_fn_signature_aliases(decl GenericFnDecl, args []string) [
 	]
 }
 
-fn (mut t Transformer) rewrite_generic_calls(decls map[string]GenericFnDecl, template_nodes map[int]bool) {
+fn (mut t Transformer) rewrite_generic_calls(decls map[string]GenericFnDecl, template_nodes []bool, ignored_nodes []bool) {
 	t.ensure_node_module_map()
 	mut cur_module := ''
 	for i in 0 .. t.a.nodes.len {
-		if template_nodes[i] {
+		if (i < template_nodes.len && template_nodes[i])
+			|| (i < ignored_nodes.len && ignored_nodes[i]) {
 			continue
 		}
 		node := t.a.nodes[i]

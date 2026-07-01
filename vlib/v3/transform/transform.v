@@ -867,6 +867,7 @@ struct FnWorkItem {
 	file   string
 	module string
 	cost   int
+	rank   i64
 }
 
 // transform_all_dispatch runs the main transform pass either serially (the
@@ -933,6 +934,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(scan_fn_literals bool)
 					file:   t.cur_file
 					module: t.cur_module
 					cost:   cost
+					rank:   i64(cost) * 1_000_000_000 - i64(i)
 				}
 			}
 		} else if kind_id == 65 {
@@ -1103,7 +1105,9 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 fn split_work_items(items []FnWorkItem, n int) [][]FnWorkItem {
 	mut buckets := [][]FnWorkItem{len: n, init: []FnWorkItem{}}
 	mut loads := []i64{len: n}
-	for it in items {
+	mut sorted := items.clone()
+	sorted.sort(a.rank > b.rank)
+	for it in sorted {
 		mut best := 0
 		for b in 1 .. n {
 			if loads[b] < loads[best] {
