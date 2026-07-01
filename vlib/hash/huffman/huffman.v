@@ -82,6 +82,9 @@ fn next_codes(lengths []int, max_bits int) !([]u32, bool) {
 		return error('huffman: max_bits ${max_bits} exceeds 32 (u32 code storage)')
 	}
 	mut bl_count := []int{len: max_bits + 1}
+	defer {
+		unsafe { bl_count.free() }
+	}
 	for sym, l in lengths {
 		if l < 0 {
 			return error('huffman: negative length ${l} for symbol ${sym}')
@@ -121,6 +124,9 @@ fn next_codes(lengths []int, max_bits int) !([]u32, bool) {
 // codes array. See next_codes() for the validation rules.
 pub fn build(cfg Config) !Table {
 	mut next_code, _ := next_codes(cfg.lengths, cfg.max_bits)!
+	defer {
+		unsafe { next_code.free() }
+	}
 	mut codes := []u32{len: cfg.lengths.len}
 	for sym, l in cfg.lengths {
 		if l == 0 {
@@ -154,6 +160,9 @@ pub fn flat_table(cfg Config) ![]u32 {
 		return error('huffman: max_bits ${cfg.max_bits} > max_flat_bits ${max_flat_bits}; use build() + decode_map()')
 	}
 	mut next_code, complete := next_codes(cfg.lengths, cfg.max_bits)!
+	defer {
+		unsafe { next_code.free() }
+	}
 	table_size := 1 << cfg.max_bits
 	// A complete code writes every table slot, so the invalid pre-fill is dead
 	// work; allocate zeroed (vcalloc) and skip it. An incomplete code leaves

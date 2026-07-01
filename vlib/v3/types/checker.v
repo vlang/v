@@ -1,6 +1,7 @@
 module types
 
 import v3.flat
+import v3.gen.c.naming
 
 const export_c_reserved_words = {
 	'auto':     true
@@ -911,7 +912,7 @@ fn (tc &TypeChecker) const_type_from_initializer(name string, typ Type) Type {
 		candidates << '${mod_name}.${fn_node.value}'
 	}
 	candidates << fn_node.value
-	candidates << c_name(fn_node.value)
+	candidates << naming.c_name(fn_node.value)
 	for candidate in candidates {
 		if ret := tc.fn_ret_types[candidate] {
 			return ret
@@ -1265,7 +1266,7 @@ const receiver_method_suffix_ambiguous = '__v_receiver_method_suffix_ambiguous__
 // register_fn_signature updates register fn signature state for types.
 fn (mut tc TypeChecker) register_fn_signature(name string, ret_type Type, params []Type, is_variadic bool, implicit_veb_ctx bool) {
 	tc.register_fn_name_alias(name, ret_type, params, is_variadic, implicit_veb_ctx)
-	lowered_name := c_name(name)
+	lowered_name := naming.c_name(name)
 	if lowered_name != name {
 		tc.register_fn_name_alias(lowered_name, ret_type, params, is_variadic, implicit_veb_ctx)
 	}
@@ -1317,7 +1318,7 @@ fn (mut tc TypeChecker) register_c_variadic_fn(name string) {
 		return
 	}
 	tc.c_variadic_fns[name] = true
-	lowered_name := c_name(name)
+	lowered_name := naming.c_name(name)
 	if lowered_name != name {
 		tc.c_variadic_fns[lowered_name] = true
 	}
@@ -1412,7 +1413,7 @@ fn (tc &TypeChecker) should_annotate_fn(node flat.Node, used_fns map[string]bool
 	if qname in used_fns {
 		return true
 	}
-	cname := c_name(qname)
+	cname := naming.c_name(qname)
 	if cname != qname && cname in used_fns {
 		return true
 	}
@@ -2380,7 +2381,7 @@ fn export_natural_c_symbol(module_name string, name string) string {
 		return 'v_free'
 	}
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
-		return c_name('${module_name}.${name}')
+		return naming.c_name('${module_name}.${name}')
 	}
 	if name == 'free' {
 		return 'v_free'
@@ -2391,7 +2392,7 @@ fn export_natural_c_symbol(module_name string, name string) string {
 	if name in export_c_libc_collision_symbols {
 		return 'v_${name}'
 	}
-	return c_name(name)
+	return naming.c_name(name)
 }
 
 fn is_valid_export_c_name(name string) bool {
@@ -5389,7 +5390,7 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		if fn_node.value in tc.fn_ret_types {
 			return tc.call_info(fn_node.value, false)
 		}
-		if fn_node.value in ['print', 'println', 'eprint', 'eprintln', 'panic'] {
+		if is_builtin_void_call_name(fn_node.value) {
 			return CallInfo{
 				name:         fn_node.value
 				params:       []Type{}
@@ -5631,7 +5632,11 @@ fn (tc &TypeChecker) generic_call_base_type_name(base_node flat.Node) ?string {
 }
 
 fn is_decode_call_name(name string) bool {
-	return name in ['json.decode', 'json2.decode']
+	return match name.len {
+		11 { name == 'json.decode' }
+		12 { name == 'json2.decode' }
+		else { false }
+	}
 }
 
 fn is_veb_run_at_call_name(name string) bool {
@@ -5756,7 +5761,7 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 		params = p.clone()
 		params_known = true
 	}
-	if is_print_style_fn_name(name) && params.len == 1
+	if params.len == 1 && is_print_style_fn_name(name)
 		&& print_style_param_accepts_string(params[0]) {
 		params[0] = unknown_type('print argument')
 	}
@@ -5953,10 +5958,56 @@ fn checker_is_raw_collection_method_name(name string, prefix string) bool {
 }
 
 // is_print_style_fn_name reports whether is print style fn name applies in types.
-// XTODO perf
 fn is_print_style_fn_name(name string) bool {
-	return name in ['print', 'println', 'eprint', 'eprintln', 'builtin.print', 'builtin.println',
-		'builtin.eprint', 'builtin.eprintln']
+	mut start := 0
+	mut len := name.len
+	if len > 8 {
+		if len < 13 || len > 16 || !has_builtin_dot_prefix(name) {
+			return false
+		}
+		start = 'builtin.'.len
+		len -= start
+	}
+	return is_short_print_style_fn_name(name, start, len)
+}
+
+fn has_builtin_dot_prefix(name string) bool {
+	return name[0] == `b` && name[1] == `u` && name[2] == `i` && name[3] == `l` && name[4] == `t`
+		&& name[5] == `i` && name[6] == `n` && name[7] == `.`
+}
+
+fn is_short_print_style_fn_name(name string, start int, len int) bool {
+	return match len {
+		5 {
+			name[start] == `p` && name[start + 1] == `r` && name[start + 2] == `i`
+				&& name[start + 3] == `n` && name[start + 4] == `t`
+		}
+		6 {
+			name[start] == `e` && name[start + 1] == `p` && name[start + 2] == `r`
+				&& name[start + 3] == `i` && name[start + 4] == `n` && name[start + 5] == `t`
+		}
+		7 {
+			name[start] == `p` && name[start + 1] == `r` && name[start + 2] == `i`
+				&& name[start + 3] == `n` && name[start + 4] == `t` && name[start + 5] == `l`
+				&& name[start + 6] == `n`
+		}
+		8 {
+			name[start] == `e` && name[start + 1] == `p` && name[start + 2] == `r`
+				&& name[start + 3] == `i` && name[start + 4] == `n` && name[start + 5] == `t`
+				&& name[start + 6] == `l` && name[start + 7] == `n`
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn is_builtin_void_call_name(name string) bool {
+	if is_short_print_style_fn_name(name, 0, name.len) {
+		return true
+	}
+	return name.len == 5 && name[0] == `p` && name[1] == `a` && name[2] == `n` && name[3] == `i`
+		&& name[4] == `c`
 }
 
 // print_style_param_accepts_string updates print style param accepts string state for types.
@@ -5975,11 +6026,8 @@ fn print_style_param_accepts_string(typ Type) bool {
 // array_insert_prepend_many_arg_compatible reports whether an insert/prepend
 // value argument is a many-element operand for the receiver array.
 fn (tc &TypeChecker) array_insert_prepend_many_arg_compatible(node flat.Node, info CallInfo, param_idx int, actual Type) bool {
-	if info.name !in ['array.insert', 'array.prepend'] {
-		return false
-	}
-	if (info.name == 'array.insert' && param_idx != 2)
-		|| (info.name == 'array.prepend' && param_idx != 1) {
+	many_param_idx := array_insert_prepend_many_param_idx(info.name)
+	if many_param_idx < 0 || param_idx != many_param_idx {
 		return false
 	}
 	if info.params.len == 0 {
@@ -6019,7 +6067,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	if node.children_count == 0 {
 		return
 	}
-	if info.name in ['map.keys', 'map.values'] {
+	if is_map_keys_values_call_name(info.name) {
 		for i in 1 .. node.children_count {
 			tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
 		}
@@ -6604,7 +6652,7 @@ fn (tc &TypeChecker) call_arg_needs_array_dsl_scope(name string, param_idx int) 
 }
 
 fn (tc &TypeChecker) array_dsl_fn_arg_compatible(node flat.Node, info CallInfo, param_idx int, actual Type) bool {
-	if param_idx != 1 || info.name !in ['array.filter', 'array.map'] {
+	if param_idx != 1 || !is_array_filter_or_map_call_name(info.name) {
 		return false
 	}
 	fn_typ := fn_type_from_type(actual) or { return false }
@@ -6617,7 +6665,7 @@ fn (tc &TypeChecker) array_dsl_fn_arg_compatible(node flat.Node, info CallInfo, 
 		&& !tc.receiver_compatible(arr.elem_type, param) {
 		return false
 	}
-	if info.name == 'array.filter' {
+	if is_array_filter_call_name(info.name) {
 		return tc.type_compatible(fn_typ.return_type, Type(bool_))
 	}
 	return true
@@ -6625,8 +6673,101 @@ fn (tc &TypeChecker) array_dsl_fn_arg_compatible(node flat.Node, info CallInfo, 
 
 // is_array_dsl_call_name reports whether is array dsl call name applies in types.
 fn is_array_dsl_call_name(name string) bool {
-	return name in ['array.filter', 'array.any', 'array.all', 'array.count', 'array.map',
-		'array.sort', 'array.sorted']
+	if name.len < 9 || name.len > 12 || !has_array_dot_prefix(name) {
+		return false
+	}
+	start := 'array.'.len
+	len := name.len - start
+	return match len {
+		3 {
+			(name[start] == `a` && ((name[start + 1] == `n` && name[start + 2] == `y`)
+				|| (name[start + 1] == `l` && name[start + 2] == `l`)))
+				|| (name[start] == `m` && name[start + 1] == `a` && name[start + 2] == `p`)
+		}
+		4 {
+			name[start] == `s` && name[start + 1] == `o` && name[start + 2] == `r`
+				&& name[start + 3] == `t`
+		}
+		5 {
+			name[start] == `c` && name[start + 1] == `o` && name[start + 2] == `u`
+				&& name[start + 3] == `n` && name[start + 4] == `t`
+		}
+		6 {
+			(name[start] == `f` && name[start + 1] == `i` && name[start + 2] == `l`
+				&& name[start + 3] == `t` && name[start + 4] == `e` && name[start + 5] == `r`)
+				|| (name[start] == `s` && name[start + 1] == `o` && name[start + 2] == `r`
+				&& name[start + 3] == `t` && name[start + 4] == `e` && name[start + 5] == `d`)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn has_array_dot_prefix(name string) bool {
+	return name[0] == `a` && name[1] == `r` && name[2] == `r` && name[3] == `a` && name[4] == `y`
+		&& name[5] == `.`
+}
+
+fn is_array_filter_or_map_call_name(name string) bool {
+	if name.len != 9 && name.len != 12 {
+		return false
+	}
+	if !has_array_dot_prefix(name) {
+		return false
+	}
+	start := 'array.'.len
+	if name.len == 9 {
+		return name[start] == `m` && name[start + 1] == `a` && name[start + 2] == `p`
+	}
+	return is_array_filter_method_name(name, start)
+}
+
+fn is_array_filter_call_name(name string) bool {
+	return name.len == 12 && has_array_dot_prefix(name)
+		&& is_array_filter_method_name(name, 'array.'.len)
+}
+
+fn is_array_filter_method_name(name string, start int) bool {
+	return name[start] == `f` && name[start + 1] == `i` && name[start + 2] == `l`
+		&& name[start + 3] == `t` && name[start + 4] == `e` && name[start + 5] == `r`
+}
+
+fn array_insert_prepend_many_param_idx(name string) int {
+	if name.len != 12 && name.len != 13 {
+		return -1
+	}
+	if !has_array_dot_prefix(name) {
+		return -1
+	}
+	start := 'array.'.len
+	if name.len == 12 {
+		if name[start] == `i` && name[start + 1] == `n` && name[start + 2] == `s`
+			&& name[start + 3] == `e` && name[start + 4] == `r` && name[start + 5] == `t` {
+			return 2
+		}
+		return -1
+	}
+	if name[start] == `p` && name[start + 1] == `r` && name[start + 2] == `e`
+		&& name[start + 3] == `p` && name[start + 4] == `e` && name[start + 5] == `n`
+		&& name[start + 6] == `d` {
+		return 1
+	}
+	return -1
+}
+
+fn is_map_keys_values_call_name(name string) bool {
+	if name.len != 8 && name.len != 10 {
+		return false
+	}
+	if name[0] != `m` || name[1] != `a` || name[2] != `p` || name[3] != `.` {
+		return false
+	}
+	if name.len == 8 {
+		return name[4] == `k` && name[5] == `e` && name[6] == `y` && name[7] == `s`
+	}
+	return name[4] == `v` && name[5] == `a` && name[6] == `l` && name[7] == `u` && name[8] == `e`
+		&& name[9] == `s`
 }
 
 // call_explicit_arg_count updates call explicit arg count state for types.
@@ -6648,12 +6789,27 @@ fn call_explicit_arg_count(node flat.Node) int {
 fn (mut tc TypeChecker) push_array_dsl_scope(node flat.Node, name string) {
 	tc.push_scope()
 	arr := tc.call_receiver_array_type(node) or { return }
-	if name in ['array.sort', 'array.sorted'] {
+	if is_array_sort_dsl_call_name(name) {
 		tc.cur_scope.insert('a', arr.elem_type)
 		tc.cur_scope.insert('b', arr.elem_type)
 		return
 	}
 	tc.cur_scope.insert('it', arr.elem_type)
+}
+
+fn is_array_sort_dsl_call_name(name string) bool {
+	if name.len != 10 && name.len != 12 {
+		return false
+	}
+	if !has_array_dot_prefix(name) {
+		return false
+	}
+	start := 'array.'.len
+	if name[start] != `s` || name[start + 1] != `o` || name[start + 2] != `r`
+		|| name[start + 3] != `t` {
+		return false
+	}
+	return name.len == 10 || (name[start + 4] == `e` && name[start + 5] == `d`)
 }
 
 // call_receiver_array_type updates call receiver array type state for TypeChecker.
@@ -8384,7 +8540,7 @@ fn (tc &TypeChecker) lowered_sum_selector_type(sum SumType, field string) ?Type 
 	variants := tc.sum_types[sum.name] or { return none }
 	for variant in variants {
 		short := if variant.contains('.') { variant.all_after_last('.') } else { variant }
-		if field == variant || field == short || field == c_name(variant) {
+		if field == variant || field == short || field == naming.c_name(variant) {
 			return tc.parse_type(variant)
 		}
 	}
@@ -12264,8 +12420,8 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		// The typedef name preserves the source length text while
 		// the emitted C dimension is folded separately by fixed_array_len_value.
 		len_text := if t.len_expr.len > 0 { t.len_expr } else { t.len.str() }
-		len_name := c_type_name_part(len_text)
-		return 'Array_fixed_${c_type_name_part(tc.c_type(t.elem_type))}_${len_name}'
+		len_name := naming.type_name_part(len_text)
+		return 'Array_fixed_${naming.type_name_part(tc.c_type(t.elem_type))}_${len_name}'
 	}
 	if t is Channel {
 		return 'chan'
@@ -12305,16 +12461,16 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 			}
 			return raw
 		}
-		return c_name(t.name)
+		return naming.c_name(t.name)
 	}
 	if t is Interface {
-		return c_name(t.name)
+		return naming.c_name(t.name)
 	}
 	if t is Enum {
 		return 'int'
 	}
 	if t is SumType {
-		return c_name(t.name)
+		return naming.c_name(t.name)
 	}
 	if t is Alias {
 		// Follow the alias chain iteratively. A self-referential / cyclic alias (whose
@@ -12333,7 +12489,7 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 	if t is MultiReturn {
 		mut parts := []string{}
 		for ty in t.types {
-			parts << c_type_name_part(tc.c_type(ty))
+			parts << naming.type_name_part(tc.c_type(ty))
 		}
 		return 'multi_return_${parts.join('_')}'
 	}
@@ -12362,30 +12518,6 @@ fn (tc &TypeChecker) optional_c_type_name(base_type Type) string {
 		return 'Optional'
 	}
 	return 'Optional_${inner_ct.replace('*', 'ptr').replace(' ', '_')}'
-}
-
-// c_type_name_part turns a C type or length expression into a fragment that is safe
-// to embed inside a C identifier: `*` becomes `ptr` (so pointer payloads stay
-// distinguishable), and every other character that is not a letter, digit, or `_`
-// becomes `_`. This keeps const-expression fixed-array lengths (e.g. `segs + 1`) and
-// pointer return types (`Foo*`) from producing invalid identifiers such as
-// `Array_fixed_f32_segs_+_1` or `__v_thread_arr_wait_Foo*`.
-pub fn c_type_name_part(s string) string {
-	mut b := []u8{cap: s.len + 2}
-	for i := 0; i < s.len; i++ {
-		c := s[i]
-		if c == `*` {
-			b << `p`
-			b << `t`
-			b << `r`
-		} else if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
-			|| (c >= `0` && c <= `9`) || c == `_` {
-			b << c
-		} else {
-			b << `_`
-		}
-	}
-	return b.bytestr()
 }
 
 // resolve_type_name_for_method resolves resolve type name for method information for types.
@@ -12839,7 +12971,7 @@ fn (tc &TypeChecker) infix_operator_return_type(op flat.Op, lhs Type, rhs Type) 
 		return none
 	}
 	method_name := '${lhs_name}.${op_name}'
-	for candidate in [method_name, c_name(method_name)] {
+	for candidate in [method_name, naming.c_name(method_name)] {
 		ret := tc.fn_ret_types[candidate] or { continue }
 		params := tc.fn_param_types[candidate] or { continue }
 		if params.len < 2 {
@@ -13046,32 +13178,4 @@ fn fn_type_param_head_is_name(head string, tail string) bool {
 		return false
 	}
 	return (head[0] >= `a` && head[0] <= `z`) || head[0] == `_`
-}
-
-const c_reserved_words = ['auto', 'break', 'case', 'char', 'const', 'continue', 'copy', 'default',
-	'do', 'double', 'else', 'enum', 'extern', 'float', 'for', 'goto', 'if', 'inline', 'int', 'long',
-	'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct', 'switch',
-	'typedef', 'union', 'unsigned', 'void', 'volatile', 'while']
-
-// c_name converts c name data for types.
-// XTODO garbage. remove this
-fn c_name(name string) string {
-	if name.starts_with('C.') {
-		return name[2..]
-	}
-	if name == 'malloc' {
-		return 'v_malloc'
-	}
-	if name == 'int_str' {
-		return 'int__str'
-	}
-	n := name.replace('[]', 'Array_').replace('.-', '__minus').replace('.+', '__plus').replace('.==',
-		'__eq').replace('.!=', '__ne').replace('.<=', '__le').replace('.>=', '__ge').replace('.<',
-		'__lt').replace('.>', '__gt').replace('.*', '__mul').replace('./', '__div').replace('.%',
-		'__mod').replace('.&', '__and').replace('.|', '__or').replace('.^', '__xor').replace('.<<',
-		'__left_shift').replace('.>>', '__right_shift').replace('&', 'ptr').replace('[', '_').replace(']', '').replace(',', '_').replace(' ', '_').replace('.', '__')
-	if n in c_reserved_words {
-		return 'v_${n}'
-	}
-	return n
 }

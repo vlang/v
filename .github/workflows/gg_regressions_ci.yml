@@ -6,6 +6,7 @@ on:
       - master
     paths:
       - 'vlib/**'
+      - '!vlib/v3/**'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - '**/gg_regressions_ci.yml'
@@ -13,6 +14,7 @@ on:
   pull_request:
     paths:
       - 'vlib/**'
+      - '!vlib/v3/**'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - '**/gg_regressions_ci.yml'

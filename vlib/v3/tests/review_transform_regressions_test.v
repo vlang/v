@@ -8,7 +8,7 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 
 fn build_v3_review_transform() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_review_transform_regressions_test')
-	build := os.execute('${vexe} -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -136,6 +136,13 @@ fn test_array_pointer_equality_uses_pointer_identity() {
 	out := run_good(v3_bin, 'array_pointer_equality',
 		'fn main() {\n\tleft := [1, 2]\n\tright := [1, 2]\n\tleft_ptr := &left\n\tright_ptr := &right\n\tsame_ptr := left_ptr\n\tprintln(left_ptr == right_ptr)\n\tprintln(left_ptr != right_ptr)\n\tprintln(left_ptr == same_ptr)\n\tprintln(*left_ptr == *right_ptr)\n}\n')
 	assert out == 'false\ntrue\ntrue\ntrue'
+}
+
+fn test_pointer_u8_array_bytestr_stays_in_cgen() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'pointer_u8_array_bytestr',
+		'fn show(data &[]u8) string {\n\treturn data.bytestr()\n}\n\nfn main() {\n\tbytes := [u8(104), u8(105)]\n\tprintln(show(&bytes))\n}\n')
+	assert out == 'hi'
 }
 
 fn test_map_pointer_equality_uses_pointer_identity() {

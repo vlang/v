@@ -1,6 +1,7 @@
 module transform
 
 import v3.flat
+import v3.gen.c.naming
 import v3.types
 
 // transform_infix_string_ops transforms transform infix string ops data for transform.
@@ -2209,33 +2210,20 @@ const c_reserved_words = {
 	'while':    true
 }
 
-// c_name converts c name data for transform.
+// c_name returns the C identifier used for a V symbol or type name.
 fn c_name(name string) string {
 	if name.starts_with('C.') {
 		return name[2..]
 	}
-	if c_name_is_plain(name) {
+	if naming.is_plain_identifier(name) {
 		if name in c_reserved_words {
 			return 'v_${name}'
 		}
 		return name
 	}
-	n := name.replace('[]', 'Array_').replace('.-', '__minus').replace('.+', '__plus').replace('.==',
-		'__eq').replace('.!=', '__ne').replace('.<=', '__le').replace('.>=', '__ge').replace('.<',
-		'__lt').replace('.>', '__gt').replace('.*', '__mul').replace('./', '__div').replace('.%',
-		'__mod').replace('.&', '__and').replace('.|', '__or').replace('.^', '__xor').replace('.<<',
-		'__left_shift').replace('.>>', '__right_shift').replace('&', 'ptr').replace('[', '_').replace(']', '').replace(',', '_').replace(' ', '_').replace('.', '__')
+	n := naming.sanitize(name)
 	if n in c_reserved_words {
 		return 'v_${n}'
 	}
 	return n
-}
-
-fn c_name_is_plain(name string) bool {
-	for c in name {
-		if !((c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_`) {
-			return false
-		}
-	}
-	return true
 }

@@ -1,6 +1,7 @@
 module c
 
 import v3.flat
+import v3.gen.c.naming
 import v3.types
 
 // c_field_name supports c field name handling for c.
@@ -1116,15 +1117,15 @@ fn (g &FlatGen) sorted_shared_wrapper_names() []string {
 fn (mut g FlatGen) shared_value_type_name(inner string) string {
 	typ := g.tc.parse_type(inner)
 	if typ is types.Array {
-		return 'Array_${types.c_type_name_part(g.tc.c_type(typ.elem_type))}'
+		return 'Array_${naming.type_name_part(g.tc.c_type(typ.elem_type))}'
 	}
 	if typ is types.Map {
-		key := types.c_type_name_part(g.tc.c_type(typ.key_type))
-		val := types.c_type_name_part(g.tc.c_type(typ.value_type))
+		key := naming.type_name_part(g.tc.c_type(typ.key_type))
+		val := naming.type_name_part(g.tc.c_type(typ.value_type))
 		return 'Map_${key}_${val}'
 	}
 	if typ is types.OptionType || typ is types.ResultType {
-		return types.c_type_name_part(g.optional_type_name(typ))
+		return naming.type_name_part(g.optional_type_name(typ))
 	}
 	mut ct := g.tc.c_type(typ)
 	if ct.starts_with('fn_ptr:') {
@@ -1133,7 +1134,7 @@ fn (mut g FlatGen) shared_value_type_name(inner string) string {
 	if ct == 'void' {
 		ct = 'int'
 	}
-	return types.c_type_name_part(ct)
+	return naming.type_name_part(ct)
 }
 
 fn (mut g FlatGen) shared_value_c_type(inner string) string {
