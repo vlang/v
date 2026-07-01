@@ -363,7 +363,7 @@ fn (mut t Transformer) collect_generic_struct_specs(decls map[string]GenericStru
 
 fn (mut t Transformer) collect_generic_struct_spec_from_type(typ string, module_name string, file_name string, decls map[string]GenericStructDecl, mut specs map[string]string) {
 	clean := typ.trim_space()
-	if clean.len == 0 {
+	if clean.len == 0 || !clean.contains('[') {
 		return
 	}
 	if clean.starts_with('&') {
