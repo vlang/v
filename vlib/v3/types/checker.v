@@ -4485,6 +4485,17 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 						params_known: true
 					}
 				}
+				'pointers' {
+					return CallInfo{
+						name:         'array.pointers'
+						params:       tarr1(base_type)
+						return_type:  Type(Array{
+							elem_type: Type(voidptr_)
+						})
+						has_receiver: true
+						params_known: true
+					}
+				}
 				else {}
 			}
 		}
