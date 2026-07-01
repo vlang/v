@@ -328,6 +328,14 @@ fn test_local_fn_literal_decl_types_are_callable() {
 	assert run_good(v3_bin, 'fn_value_local_call_shadows_global_return',
 		local_fn_call_shadow_global_return_src) == '12'
 	assert run_good(v3_bin, 'fn_value_call_return_shadow', local_fn_value_call_return_shadow_src) == 'ok'
+	assert run_good(v3_bin, 'fn_value_array_map_result_type', 'fn main() {
+	i_to_str := fn (i int) string {
+		return i.str()
+	}
+	a := [1, 2, 3].map(i_to_str)
+	println(a == ["1", "2", "3"])
+}
+') == 'true'
 	assert run_good(v3_bin, 'fn_value_named_local', 'fn add_one(i int) int {
 	return i + 1
 }
