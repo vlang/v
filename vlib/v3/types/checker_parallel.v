@@ -4,7 +4,7 @@ import runtime
 import v3.flat
 
 const min_parallel_check_items = 256
-const max_parallel_check_jobs = 6
+const max_parallel_check_jobs = 8
 
 struct CheckWorkItem {
 	fn_idx int
