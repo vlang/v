@@ -1,7 +1,7 @@
 module markused
 
-import strings
 import v3.flat
+import v3.gen.c.naming
 import v3.types
 
 const trace_markused = false
@@ -3228,134 +3228,8 @@ fn markused_c_name(name string) string {
 	if name == 'exit' {
 		return 'v_exit'
 	}
-	if markused_c_name_is_plain(name) {
+	if naming.is_plain_identifier(name) {
 		return name
 	}
-	return markused_c_name_sanitize(name)
-}
-
-fn markused_c_name_sanitize(name string) string {
-	mut b := strings.new_builder(name.len + 8)
-	mut i := 0
-	for i < name.len {
-		c := name[i]
-		if c == `[` {
-			if i + 1 < name.len && name[i + 1] == `]` {
-				b.write_string('Array_')
-				i += 2
-				continue
-			}
-			b.write_u8(`_`)
-		} else if c == `]` {
-			i++
-			continue
-		} else if c == `.` {
-			if i + 1 < name.len {
-				next := name[i + 1]
-				if next == `-` {
-					b.write_string('__minus')
-					i += 2
-					continue
-				}
-				if next == `+` {
-					b.write_string('__plus')
-					i += 2
-					continue
-				}
-				if next == `*` {
-					b.write_string('__mul')
-					i += 2
-					continue
-				}
-				if next == `/` {
-					b.write_string('__div')
-					i += 2
-					continue
-				}
-				if next == `%` {
-					b.write_string('__mod')
-					i += 2
-					continue
-				}
-				if next == `&` {
-					b.write_string('__and')
-					i += 2
-					continue
-				}
-				if next == `|` {
-					b.write_string('__or')
-					i += 2
-					continue
-				}
-				if next == `^` {
-					b.write_string('__xor')
-					i += 2
-					continue
-				}
-				if i + 2 < name.len {
-					op := name[i + 2]
-					if next == `=` && op == `=` {
-						b.write_string('__eq')
-						i += 3
-						continue
-					}
-					if next == `!` && op == `=` {
-						b.write_string('__ne')
-						i += 3
-						continue
-					}
-					if next == `<` && op == `=` {
-						b.write_string('__le')
-						i += 3
-						continue
-					}
-					if next == `>` && op == `=` {
-						b.write_string('__ge')
-						i += 3
-						continue
-					}
-					if next == `<` && op == `<` {
-						b.write_string('__left_shift')
-						i += 3
-						continue
-					}
-					if next == `>` && op == `>` {
-						b.write_string('__right_shift')
-						i += 3
-						continue
-					}
-				}
-				if next == `<` {
-					b.write_string('__lt')
-					i += 2
-					continue
-				}
-				if next == `>` {
-					b.write_string('__gt')
-					i += 2
-					continue
-				}
-			}
-			b.write_string('__')
-		} else if c == `&` {
-			b.write_string('ptr')
-		} else if c == `,` || c == ` ` {
-			b.write_u8(`_`)
-		} else {
-			b.write_u8(c)
-		}
-		i++
-	}
-	return b.str()
-}
-
-fn markused_c_name_is_plain(name string) bool {
-	for i in 0 .. name.len {
-		c := name[i]
-		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_` {
-			continue
-		}
-		return false
-	}
-	return true
+	return naming.sanitize(name)
 }

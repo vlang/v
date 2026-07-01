@@ -79,7 +79,7 @@ pub fn c_name(name string) string {
 	if name == 'exit' {
 		return 'v_exit'
 	}
-	if is_plain(name) {
+	if is_plain_identifier(name) {
 		if name in reserved_words || name in libc_collisions {
 			return 'v_${name}'
 		}
@@ -92,7 +92,9 @@ pub fn c_name(name string) string {
 	return n
 }
 
-fn sanitize(name string) string {
+// sanitize converts a V symbol or type spelling into a C identifier spelling
+// without applying reserved-word or libc collision prefixes.
+pub fn sanitize(name string) string {
 	mut b := strings.new_builder(name.len + 8)
 	mut i := 0
 	for i < name.len {
@@ -210,7 +212,9 @@ fn sanitize(name string) string {
 	return b.str()
 }
 
-fn is_plain(name string) bool {
+// is_plain_identifier reports whether name already contains only C identifier
+// characters.
+pub fn is_plain_identifier(name string) bool {
 	for i in 0 .. name.len {
 		c := name[i]
 		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_` {
