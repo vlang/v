@@ -1703,11 +1703,18 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 }
 
 fn fixed_decimal_precision(format string) ?int {
-	if format.len < 3 || format[0] != `.` || format[format.len - 1] != `f` {
+	if format.len < 3 || format[format.len - 1] != `f` {
+		return none
+	}
+	start := if format[0] == `.` {
+		1
+	} else if format.len >= 4 && format[0] == `0` && format[1] == `.` {
+		2
+	} else {
 		return none
 	}
 	mut n := 0
-	for i in 1 .. format.len - 1 {
+	for i in start .. format.len - 1 {
 		ch := format[i]
 		if ch < `0` || ch > `9` {
 			return none

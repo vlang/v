@@ -1,0 +1,10 @@
+cmd/v2/big_struct_test.v
+cmd/v2/enum_test.v
+cmd/v2/run_math_test.v
+vlib/builtin/array_test.v
+vlib/builtin/byte_test.v
+vlib/builtin/float_test.v
+vlib/builtin/hex_test.v
+vlib/builtin/int_test.v
+vlib/builtin/map_test.v
+vlib/builtin/string_test.v

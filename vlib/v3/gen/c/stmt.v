@@ -1562,6 +1562,12 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 			}
 		}
 		if node.kind == .call && node.children_count > 0 {
+			if node.typ.len > 0 {
+				node_type := g.tc.parse_type(node.typ)
+				if !decl_annotation_is_unusable(node_type, node.typ) {
+					return node_type
+				}
+			}
 			fn_node := g.a.child_node(&node, 0)
 			if map_return_type := g.array_map_call_return_type(node, fn_node) {
 				return map_return_type
