@@ -1,6 +1,8 @@
 cmd/v2/big_struct_test.v
 cmd/v2/enum_test.v
 cmd/v2/run_math_test.v
+examples/password/password_test.v
+vlib/benchmark/benchmark_test.v
 vlib/builtin/array_test.v
 vlib/builtin/array_push_element_sizes_test.v
 vlib/builtin/builtin_unbuffer_stdout_test.v
@@ -18,3 +20,11 @@ vlib/builtin/string_test.v
 vlib/builtin/string_iterator_test.v
 vlib/builtin/string_match_glob_test.v
 vlib/builtin/string_strip_margin_test.v
+vlib/builtin/string_trim_indent_test.v
+vlib/builtin/utf8_test.v
+vlib/compress/deflate/deflate_test.v
+vlib/compress/snappy/snappy_block_test.v
+vlib/crypto/bcrypt/bcrypt_test.v
+vlib/crypto/blake2b/blake2b_block_test.v
+vlib/crypto/blake2s/blake2s_block_test.v
+vlib/crypto/blowfish/blowfish_test.v

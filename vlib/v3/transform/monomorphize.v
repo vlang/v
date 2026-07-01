@@ -1587,6 +1587,7 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 				}
 			}
 		}
+		method_keys := t.generic_receiver_methods_by_name[callee.value] or { return none }
 		mut base_type := t.node_type(base_id)
 		if base_type.starts_with('&') {
 			base_type = base_type[1..]
@@ -1601,7 +1602,7 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 				return key
 			}
 		}
-		for key in t.generic_receiver_methods_by_name[callee.value] or { []string{} } {
+		for key in method_keys {
 			if decl := decls[key] {
 				if !t.generic_call_arg_count_matches_decl(node, decl) {
 					continue

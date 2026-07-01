@@ -54,7 +54,6 @@ cmd/v2/a_test.v
 cmd/v2/ownership_test.v
 examples/dynamic_library_loader/use_test.v
 examples/dynamic_library_loading/use_library_test.v
-examples/password/password_test.v
 examples/pendulum-simulation/modules/sim/params_test.v
 examples/pendulum-simulation/modules/sim/sim_test.v
 examples/pendulum-simulation/modules/sim/vec_test.v
@@ -67,7 +66,6 @@ vlib/arrays/diff/diff_test.v
 vlib/arrays/parallel/parallel_test.v
 vlib/arrays/reverse_iterator_test.v
 vlib/arrays/uniq_test.v
-vlib/benchmark/benchmark_test.v
 vlib/bitfield/bitfield_test.v
 vlib/builtin/array_flags_test.v
 vlib/builtin/builtin_print_write_error_test.v
@@ -81,8 +79,6 @@ vlib/builtin/map_of_floats_test.v
 vlib/builtin/rune_test.v
 vlib/builtin/sorted_lambda_expr_test.v
 vlib/builtin/string_int_test.v
-vlib/builtin/string_trim_indent_test.v
-vlib/builtin/utf8_test.v
 vlib/builtin/wchar/wchar_test.v
 vlib/cli/cli_test.v
 vlib/cli/command_test.v
@@ -91,10 +87,8 @@ vlib/cli/help_test.v
 vlib/cli/man_test.v
 vlib/clipboard/clipboard_test.v
 vlib/compress/bzip2/bzip2_test.v
-vlib/compress/deflate/deflate_test.v
 vlib/compress/gzip/gzip_test.v
 vlib/compress/lz/lz_test.v
-vlib/compress/snappy/snappy_block_test.v
 vlib/compress/snappy/snappy_framing_test.v
 vlib/compress/snappy/snappy_samples_test.v
 vlib/compress/szip/szip_test.v
@@ -111,15 +105,11 @@ vlib/crypto/aes/aes_gcm_test.v
 vlib/crypto/aes/aes_test.v
 vlib/crypto/aes/block_generic_test.v
 vlib/crypto/argon2/argon2_test.v
-vlib/crypto/bcrypt/bcrypt_test.v
-vlib/crypto/blake2b/blake2b_block_test.v
 vlib/crypto/blake2b/blake2b_test.v
-vlib/crypto/blake2s/blake2s_block_test.v
 vlib/crypto/blake2s/blake2s_test.v
 vlib/crypto/blake3/blake3_block_test.v
 vlib/crypto/blake3/blake3_chunk_test.v
 vlib/crypto/blake3/blake3_test.v
-vlib/crypto/blowfish/blowfish_test.v
 vlib/crypto/cipher/aes_cbc_test.v
 vlib/crypto/cipher/aes_cfb_test.v
 vlib/crypto/cipher/aes_ctr_test.v

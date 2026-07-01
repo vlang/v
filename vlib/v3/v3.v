@@ -127,6 +127,18 @@ fn c_standard_flag(c99 bool) string {
 	return if c99 { '-std=c99' } else { '-std=gnu11' }
 }
 
+fn run_test_binary(bin_file string) int {
+	return os.system(executable_command_for_path(bin_file))
+}
+
+fn executable_command_for_path(path string) string {
+	mut run_path := path
+	if !os.is_abs_path(path) && !path.contains('/') && !path.contains('\\') {
+		run_path = '.' + os.path_separator + path
+	}
+	return os.quoted_path(run_path)
+}
+
 fn input_implies_building_v(input_file string) bool {
 	normalized := input_file.replace('\\', '/').trim_right('/')
 	return normalized.all_after_last('/') == 'v3.v'
@@ -545,6 +557,13 @@ fn main() {
 		os.rm(cc_src) or {}
 		os.rmdir(cc_dir) or {}
 		b.step('cc')
+		if test_files.len > 0 {
+			test_result := run_test_binary(bin_file)
+			if test_result != 0 {
+				exit(test_result)
+			}
+			b.step('test')
+		}
 	}
 
 	b.print_report()

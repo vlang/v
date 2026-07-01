@@ -1455,7 +1455,11 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 		c.add_typed_receiver_method_name('ast.Table.find_structured_receiver_method', mut calls)
 	}
 	local_values, local_types := c.local_value_info(node, imports)
-	visible_local_idents := markused_visible_local_idents(c.a, node, local_values)
+	visible_local_idents := if c.local_values_need_visibility(local_values, cur_module, imports) {
+		markused_visible_local_idents(c.a, node, local_values)
+	} else {
+		map[int]bool{}
+	}
 	mut stack := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_id := c.a.child(node, i)
@@ -1713,6 +1717,15 @@ fn (c &CallCollector) local_value_info(node &flat.Node, imports map[string]strin
 		}
 	}
 	return names, type_names
+}
+
+fn (c &CallCollector) local_values_need_visibility(local_values map[string]bool, cur_module string, imports map[string]string) bool {
+	for name, _ in local_values {
+		if c.name_may_reference_fn(name, cur_module, imports) {
+			return true
+		}
+	}
+	return false
 }
 
 fn markused_visible_local_idents(a &flat.FlatAst, root &flat.Node, local_values map[string]bool) map[int]bool {
