@@ -2331,7 +2331,8 @@ fn array_method_stays_in_cgen(method string) bool {
 		3 { method == 'pop' || method == 'str' }
 		4 { method == 'last' || method == 'trim' || method == 'free' || method == 'wait' }
 		5 { method == 'first' || method == 'clear' }
-		6 { method == 'repeat' || method == 'delete' || method == 'bytestr' }
+		6 { method == 'repeat' || method == 'delete' }
+		7 { method == 'bytestr' }
 		8 { method == 'pop_left' }
 		10 { method == 'ensure_cap' }
 		11 { method == 'delete_last' }
