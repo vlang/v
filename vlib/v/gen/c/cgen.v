@@ -11645,15 +11645,16 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				final_assignments += g.go_before_last_stmt() + '\t'
 				g.write2(line, '{0}')
 			} else {
-				if expr.is_auto_deref_var() {
-					g.write('*')
-				}
+				is_auto_deref := expr.is_auto_deref_var()
 				mut resolved_ret_type := ret_expr_types[i]
 				if g.cur_concrete_types.len > 0 {
 					if expr is ast.Ident {
 						resolved_type := g.resolved_scope_var_type_uncached(expr)
 						if resolved_type != 0 {
 							resolved_ret_type = resolved_type
+							if is_auto_deref {
+								resolved_ret_type = resolved_ret_type.deref()
+							}
 						}
 					} else {
 						resolved_type := g.resolved_expr_type(expr, resolved_ret_type)
@@ -11663,10 +11664,21 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					}
 				}
 				if mr_info.types[i].has_flag(.option) {
+					if is_auto_deref {
+						g.write('*')
+					}
 					g.expr_with_opt(expr, resolved_ret_type, mr_info.types[i])
 				} else if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface] {
-					g.expr_with_cast(expr, resolved_ret_type, mr_info.types[i])
+					if is_auto_deref {
+						g.expr_with_cast(ast.PrefixExpr{ op: .mul, right: expr },
+							resolved_ret_type, mr_info.types[i])
+					} else {
+						g.expr_with_cast(expr, resolved_ret_type, mr_info.types[i])
+					}
 				} else {
+					if is_auto_deref {
+						g.write('*')
+					}
 					g.expr(expr)
 				}
 			}

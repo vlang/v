@@ -45,3 +45,25 @@ fn test_generic_multi_return_interface_cast() {
 	assert i2.f() == 220
 	assert extra2 == 42
 }
+
+// Regression test: generic multi-return with mut param and interface cast
+// The resolved type from scope needs to be dereferenced when auto-deref is active.
+@[heap]
+struct HeapStruct {
+	x int
+}
+
+fn (h HeapStruct) f() int {
+	return h.x
+}
+
+fn get_mut[T](mut x T) (Getter, int) {
+	return x, 42
+}
+
+fn test_generic_multi_return_mut_param_interface_cast() {
+	mut h := HeapStruct{7}
+	g, extra := get_mut[HeapStruct](mut h)
+	assert g.f() == 7
+	assert extra == 42
+}
