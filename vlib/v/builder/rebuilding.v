@@ -227,7 +227,15 @@ fn (mut b Builder) handle_usecache(vexe string) {
 	builtin_obj_path := b.rebuild_cached_module(vexe, 'vlib/builtin')
 	libs << builtin_obj_path
 	for ast_file in b.parsed_files {
-		if b.pref.is_test && ast_file.mod.name != 'main' {
+		// Cache the test's own non-main modules. Apply the same guards as the import
+		// loop below: builtin (and its parts: strconv/strings/math.bits/...) are already
+		// inside builtin.o, and a module already queued must not be built again — without
+		// these guards a test build caches builtin a SECOND time via its absolute path
+		// (a086..module.builtin.o AND 7c16..module.<abspath>.builtin.o), linking both and
+		// duplicating every builtin symbol (~9000 "duplicate symbol" errors at link).
+		if b.pref.is_test && ast_file.mod.name != 'main' && ast_file.mod.name != 'help'
+			&& !util.module_is_builtin(ast_file.mod.name) && ast_file.mod.name !in built_modules
+			&& !util.should_bundle_module(ast_file.mod.name) {
 			imp_path := b.find_module_path(ast_file.mod.name, ast_file.path) or {
 				verror('cannot import module "${ast_file.mod.name}" (not found)')
 				break

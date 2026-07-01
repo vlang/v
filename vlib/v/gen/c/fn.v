@@ -1010,6 +1010,22 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		if g.is_builtin_mod && g.module_built == 'builtin' && node.mod == 'builtin' {
 			skip = false
 		}
+		// `node.mod` is mis-attributed to the module being built for some
+		// interface-implementor methods pulled in via the name_table (e.g. os/io
+		// `NotExpected.code`), so the check above fails to skip them and their body
+		// is emitted into this cached object as well as the owner's -> duplicate
+		// symbol. The source FILE's declared module is reliable; if it names another
+		// module, this body belongs to that module's cached object -> skip it here.
+		if !skip && node.is_method && node.generic_names.len == 0 && !should_bundle_module
+			&& !g.is_builtin_mod && node.source_file != unsafe { nil } {
+			// Skip only in non-builtin builds: the builtin object bundles several
+			// low-level modules (strings, strconv, ...) as its own definitions, so a
+			// file_mod != 'builtin' there is expected and must NOT be skipped.
+			file_mod := node.source_file.mod.name
+			if file_mod != '' && file_mod != g.module_built && file_mod != module_built_short {
+				skip = true
+			}
+		}
 		if !skip && g.pref.is_verbose {
 			println('build module `${g.module_built}` fn `${node.name}`')
 		}
@@ -1017,7 +1033,17 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if g.pref.use_cache {
 		// We are using prebuilt modules, we do not need to generate
 		// their functions in main.c.
-		if node.mod != 'main' && node.mod != 'help' && !should_bundle_module && !g.pref.is_test
+		// The body lives in the cached `.o` for every non-main/non-bundled module
+		// (builtin + imports + each non-main `_test.v` module — see
+		// Builder.handle_usecache), so the program TU emits only the declaration;
+		// re-emitting the body would duplicate the symbol at link. EXCEPTION:
+		// functions defined in a `_test.v` file — `v build-module` does not compile
+		// `_test.v`, so those bodies exist ONLY in the program TU. (This used to be a
+		// blanket `!is_test` over the whole compile, which made test builds re-emit
+		// every used body — duplicating the tested module's own cached `.o` and
+		// bloating the program TU so caching saved nothing.)
+		fn_in_test_file := node.file.ends_with('_test.v')
+		if node.mod != 'main' && node.mod != 'help' && !should_bundle_module && !fn_in_test_file
 			&& node.generic_names.len == 0 {
 			skip = true
 		}
@@ -1430,8 +1456,13 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		}
 	}
 	arg_str := g.out.after(arg_start_pos)
+	// Bundled modules (util.bundle_modules, e.g. builtin.closure) are skipped in
+	// EVERY build-module compile, so no cached object carries their bodies; the
+	// program TU must emit them even though they are `is_builtin` — otherwise e.g.
+	// builtin__closure__closure_create_with_data is undefined at link for any
+	// non-test -usecache build that uses closures.
 	if node.no_body || ((g.pref.use_cache && g.pref.build_mode != .build_module) && node.is_builtin
-		&& !g.pref.is_test) || skip {
+		&& !g.pref.is_test && !util.should_bundle_module(node.mod)) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');') // NO BODY')
 		if g.inside_c_extern {

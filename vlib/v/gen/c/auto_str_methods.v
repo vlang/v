@@ -31,8 +31,8 @@ fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name stri
 	} else {
 		verror('could not generate string method for type `${styp}`')
 	}
-	g.definitions.writeln('string ${str_fn_name}(${styp} it);')
-	g.auto_str_funcs.writeln('string ${str_fn_name}(${styp} it) {')
+	g.definitions.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} it);')
+	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} it) {')
 	if convertor == 'bool' {
 		g.auto_str_funcs.writeln('\tstring tmp1 = builtin__string__plus(_S("${styp}("), ((${convertor})it ? _S("true") : _S("false")));')
 	} else {
@@ -226,10 +226,10 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string,
 	parent_str_fn_name := g.get_str_fn(parent_type)
 	parent_cast_type := g.auto_str_storage_cast_type(parent_type)
 
-	g.definitions.writeln('string ${str_fn_name}(${styp} it);')
-	g.auto_str_funcs.writeln('string ${str_fn_name}(${styp} it) { return indent_${str_fn_name}(it, 0); }')
-	g.definitions.writeln('string indent_${str_fn_name}(${styp} it, ${ast.int_type_name} indent_count);')
-	g.auto_str_funcs.writeln('string indent_${str_fn_name}(${styp} it, ${ast.int_type_name} indent_count) {')
+	g.definitions.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} it);')
+	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} it) { return indent_${str_fn_name}(it, 0); }')
+	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} it, ${ast.int_type_name} indent_count);')
+	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} it, ${ast.int_type_name} indent_count) {')
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (it.state == 0) {')
 	deref := if typ.is_ptr() && !typ.has_flag(.option_mut_param_t) {
@@ -276,10 +276,10 @@ fn (mut g Gen) gen_str_for_result(typ ast.Type, styp string, str_fn_name string)
 	parent_str_fn_name := g.get_str_fn(parent_type)
 	parent_cast_type := g.auto_str_storage_cast_type(parent_type)
 
-	g.definitions.writeln('string ${str_fn_name}(${styp} it);')
-	g.auto_str_funcs.writeln('string ${str_fn_name}(${styp} it) { return indent_${str_fn_name}(it, 0); }')
-	g.definitions.writeln('string indent_${str_fn_name}(${styp} it, ${ast.int_type_name} indent_count);')
-	g.auto_str_funcs.writeln('string indent_${str_fn_name}(${styp} it, ${ast.int_type_name} indent_count) {')
+	g.definitions.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} it);')
+	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} it) { return indent_${str_fn_name}(it, 0); }')
+	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} it, ${ast.int_type_name} indent_count);')
+	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} it, ${ast.int_type_name} indent_count) {')
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (!it.is_error) {')
 	if sym.kind == .string {
