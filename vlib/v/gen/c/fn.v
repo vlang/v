@@ -5547,31 +5547,30 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.expr(ast.Expr(node.left))
 			}
 		} else if is_interface && node.from_embed_types.len > 0 {
+			// Calling a method defined on an embedded interface. The embedded
+			// interface has a different C struct layout than the outer interface,
+			// so we must convert (not reinterpret-cast) the receiver.
 			if g.out.last_n(1) == '&' {
 				g.go_back(1)
 			}
-			if receiver_type.is_ptr() && left_type.is_ptr() {
-				// (main__IFoo*)bar
-				g.write2('(', g.table.sym(node.from_embed_types.last()).cname)
-				g.write('*)')
-				g.expr(ast.Expr(node.left))
-			} else if receiver_type.is_ptr() && !left_type.is_ptr() {
-				// (main__IFoo*)&bar
-				g.write2('(', g.table.sym(node.from_embed_types.last()).cname)
-				g.write('*)&')
-				g.expr(ast.Expr(node.left))
-			} else if !receiver_type.is_ptr() && left_type.is_ptr() {
-				// *((main__IFoo*)bar)
-				g.write2('*((', g.table.sym(node.from_embed_types.last()).cname)
-				g.write('*)')
-				g.expr(ast.Expr(node.left))
-				g.write(')')
+			embed_type := node.from_embed_types.last()
+			embed_value_type := embed_type.set_nr_muls(0)
+			if receiver_needs_ref {
+				// Mutating receiver: create a temporary converted interface value,
+				// whose field pointers refer to the same underlying object, and pass
+				// its address. Modifications through those pointers are visible.
+				stmt_str := g.go_before_last_stmt()
+				g.empty_line = true
+				tmp := g.new_tmp_var()
+				g.write('${g.styp(embed_value_type)} ${tmp} = ')
+				g.gen_interface_to_interface_conversion(ast.Expr(node.left), left_type,
+					embed_value_type)
+				g.writeln(';')
+				g.write(stmt_str)
+				g.write('&${tmp}')
 			} else {
-				// *((main__IFoo*)&bar)
-				g.write2('*((', g.table.sym(node.from_embed_types.last()).cname)
-				g.write('*)&')
-				g.expr(node.left)
-				g.write(')')
+				g.gen_interface_to_interface_conversion(ast.Expr(node.left), left_type,
+					embed_value_type)
 			}
 		} else {
 			if is_free_method && !receiver_type.is_ptr() {
