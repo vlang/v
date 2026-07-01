@@ -4485,18 +4485,13 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 						params_known: true
 					}
 				}
-				'pointers' {
-					return CallInfo{
-						name:         'array.pointers'
-						params:       tarr1(base_type)
-						return_type:  Type(Array{
-							elem_type: Type(voidptr_)
-						})
-						has_receiver: true
-						params_known: true
-					}
-				}
 				else {}
+			}
+		}
+		mut array_pointers_fallback := false
+		if fn_node.value == 'pointers' {
+			if _ := array_type_from_receiver(clean) {
+				array_pointers_fallback = true
 			}
 		}
 		type_name := resolve_type_name_for_method(clean)
@@ -4512,6 +4507,9 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 			}
 			for mname in receiver_method_name_candidates(clean, fn_node.value, tc.cur_module) {
 				if mname in tc.fn_ret_types {
+					if array_pointers_fallback && mname == 'array.pointers' {
+						continue
+					}
 					if !tc.method_can_be_called_on_receiver(base_type, fn_node.value, mname) {
 						continue
 					}
@@ -4523,6 +4521,17 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 						}
 					}
 					return tc.call_info(mname, true)
+				}
+			}
+			if array_pointers_fallback {
+				return CallInfo{
+					name:         'array.pointers'
+					params:       tarr1(base_type)
+					return_type:  Type(Array{
+						elem_type: Type(voidptr_)
+					})
+					has_receiver: true
+					params_known: true
 				}
 			}
 			if fixed_array := fixed_array_type_from_receiver(clean) {
