@@ -4643,7 +4643,7 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		if fn_node.value in tc.fn_ret_types {
 			return tc.call_info(fn_node.value, false)
 		}
-		if fn_node.value in ['print', 'println', 'eprint', 'eprintln', 'panic'] {
+		if is_builtin_void_call_name(fn_node.value) {
 			return CallInfo{
 				name:         fn_node.value
 				params:       []Type{}
@@ -4849,7 +4849,11 @@ fn (mut tc TypeChecker) explicit_generic_call_info(name string, has_receiver boo
 }
 
 fn is_decode_call_name(name string) bool {
-	return name in ['json.decode', 'json2.decode']
+	return match name.len {
+		11 { name == 'json.decode' }
+		12 { name == 'json2.decode' }
+		else { false }
+	}
 }
 
 fn is_veb_run_at_call_name(name string) bool {
@@ -4974,7 +4978,7 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 		params = p.clone()
 		params_known = true
 	}
-	if is_print_style_fn_name(name) && params.len == 1
+	if params.len == 1 && is_print_style_fn_name(name)
 		&& print_style_param_accepts_string(params[0]) {
 		params[0] = unknown_type('print argument')
 	}
@@ -5172,15 +5176,55 @@ fn checker_is_raw_collection_method_name(name string, prefix string) bool {
 
 // is_print_style_fn_name reports whether is print style fn name applies in types.
 fn is_print_style_fn_name(name string) bool {
-	return match name {
-		'print', 'println', 'eprint', 'eprintln', 'builtin.print', 'builtin.println',
-		'builtin.eprint', 'builtin.eprintln' {
-			true
+	mut start := 0
+	mut len := name.len
+	if len > 8 {
+		if len < 13 || len > 16 || !has_builtin_dot_prefix(name) {
+			return false
+		}
+		start = 'builtin.'.len
+		len -= start
+	}
+	return is_short_print_style_fn_name(name, start, len)
+}
+
+fn has_builtin_dot_prefix(name string) bool {
+	return name[0] == `b` && name[1] == `u` && name[2] == `i` && name[3] == `l` && name[4] == `t`
+		&& name[5] == `i` && name[6] == `n` && name[7] == `.`
+}
+
+fn is_short_print_style_fn_name(name string, start int, len int) bool {
+	return match len {
+		5 {
+			name[start] == `p` && name[start + 1] == `r` && name[start + 2] == `i`
+				&& name[start + 3] == `n` && name[start + 4] == `t`
+		}
+		6 {
+			name[start] == `e` && name[start + 1] == `p` && name[start + 2] == `r`
+				&& name[start + 3] == `i` && name[start + 4] == `n` && name[start + 5] == `t`
+		}
+		7 {
+			name[start] == `p` && name[start + 1] == `r` && name[start + 2] == `i`
+				&& name[start + 3] == `n` && name[start + 4] == `t` && name[start + 5] == `l`
+				&& name[start + 6] == `n`
+		}
+		8 {
+			name[start] == `e` && name[start + 1] == `p` && name[start + 2] == `r`
+				&& name[start + 3] == `i` && name[start + 4] == `n` && name[start + 5] == `t`
+				&& name[start + 6] == `l` && name[start + 7] == `n`
 		}
 		else {
 			false
 		}
 	}
+}
+
+fn is_builtin_void_call_name(name string) bool {
+	if is_short_print_style_fn_name(name, 0, name.len) {
+		return true
+	}
+	return name.len == 5 && name[0] == `p` && name[1] == `a` && name[2] == `n` && name[3] == `i`
+		&& name[4] == `c`
 }
 
 // print_style_param_accepts_string updates print style param accepts string state for types.
@@ -5199,11 +5243,8 @@ fn print_style_param_accepts_string(typ Type) bool {
 // array_insert_prepend_many_arg_compatible reports whether an insert/prepend
 // value argument is a many-element operand for the receiver array.
 fn (tc &TypeChecker) array_insert_prepend_many_arg_compatible(node flat.Node, info CallInfo, param_idx int, actual Type) bool {
-	if info.name !in ['array.insert', 'array.prepend'] {
-		return false
-	}
-	if (info.name == 'array.insert' && param_idx != 2)
-		|| (info.name == 'array.prepend' && param_idx != 1) {
+	many_param_idx := array_insert_prepend_many_param_idx(info.name)
+	if many_param_idx < 0 || param_idx != many_param_idx {
 		return false
 	}
 	if info.params.len == 0 {
@@ -5243,7 +5284,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	if node.children_count == 0 {
 		return
 	}
-	if info.name in ['map.keys', 'map.values'] {
+	if is_map_keys_values_call_name(info.name) {
 		for i in 1 .. node.children_count {
 			tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
 		}
@@ -5714,7 +5755,7 @@ fn (tc &TypeChecker) call_arg_needs_array_dsl_scope(name string, param_idx int) 
 }
 
 fn (tc &TypeChecker) array_dsl_fn_arg_compatible(node flat.Node, info CallInfo, param_idx int, actual Type) bool {
-	if param_idx != 1 || info.name !in ['array.filter', 'array.map'] {
+	if param_idx != 1 || !is_array_filter_or_map_call_name(info.name) {
 		return false
 	}
 	fn_typ := fn_type_from_type(actual) or { return false }
@@ -5727,7 +5768,7 @@ fn (tc &TypeChecker) array_dsl_fn_arg_compatible(node flat.Node, info CallInfo, 
 		&& !tc.receiver_compatible(arr.elem_type, param) {
 		return false
 	}
-	if info.name == 'array.filter' {
+	if is_array_filter_call_name(info.name) {
 		return tc.type_compatible(fn_typ.return_type, Type(bool_))
 	}
 	return true
@@ -5735,8 +5776,101 @@ fn (tc &TypeChecker) array_dsl_fn_arg_compatible(node flat.Node, info CallInfo, 
 
 // is_array_dsl_call_name reports whether is array dsl call name applies in types.
 fn is_array_dsl_call_name(name string) bool {
-	return name in ['array.filter', 'array.any', 'array.all', 'array.count', 'array.map',
-		'array.sort', 'array.sorted']
+	if name.len < 9 || name.len > 12 || !has_array_dot_prefix(name) {
+		return false
+	}
+	start := 'array.'.len
+	len := name.len - start
+	return match len {
+		3 {
+			(name[start] == `a` && ((name[start + 1] == `n` && name[start + 2] == `y`)
+				|| (name[start + 1] == `l` && name[start + 2] == `l`)))
+				|| (name[start] == `m` && name[start + 1] == `a` && name[start + 2] == `p`)
+		}
+		4 {
+			name[start] == `s` && name[start + 1] == `o` && name[start + 2] == `r`
+				&& name[start + 3] == `t`
+		}
+		5 {
+			name[start] == `c` && name[start + 1] == `o` && name[start + 2] == `u`
+				&& name[start + 3] == `n` && name[start + 4] == `t`
+		}
+		6 {
+			(name[start] == `f` && name[start + 1] == `i` && name[start + 2] == `l`
+				&& name[start + 3] == `t` && name[start + 4] == `e` && name[start + 5] == `r`)
+				|| (name[start] == `s` && name[start + 1] == `o` && name[start + 2] == `r`
+				&& name[start + 3] == `t` && name[start + 4] == `e` && name[start + 5] == `d`)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn has_array_dot_prefix(name string) bool {
+	return name[0] == `a` && name[1] == `r` && name[2] == `r` && name[3] == `a` && name[4] == `y`
+		&& name[5] == `.`
+}
+
+fn is_array_filter_or_map_call_name(name string) bool {
+	if name.len != 9 && name.len != 12 {
+		return false
+	}
+	if !has_array_dot_prefix(name) {
+		return false
+	}
+	start := 'array.'.len
+	if name.len == 9 {
+		return name[start] == `m` && name[start + 1] == `a` && name[start + 2] == `p`
+	}
+	return is_array_filter_method_name(name, start)
+}
+
+fn is_array_filter_call_name(name string) bool {
+	return name.len == 12 && has_array_dot_prefix(name)
+		&& is_array_filter_method_name(name, 'array.'.len)
+}
+
+fn is_array_filter_method_name(name string, start int) bool {
+	return name[start] == `f` && name[start + 1] == `i` && name[start + 2] == `l`
+		&& name[start + 3] == `t` && name[start + 4] == `e` && name[start + 5] == `r`
+}
+
+fn array_insert_prepend_many_param_idx(name string) int {
+	if name.len != 12 && name.len != 13 {
+		return -1
+	}
+	if !has_array_dot_prefix(name) {
+		return -1
+	}
+	start := 'array.'.len
+	if name.len == 12 {
+		if name[start] == `i` && name[start + 1] == `n` && name[start + 2] == `s`
+			&& name[start + 3] == `e` && name[start + 4] == `r` && name[start + 5] == `t` {
+			return 2
+		}
+		return -1
+	}
+	if name[start] == `p` && name[start + 1] == `r` && name[start + 2] == `e`
+		&& name[start + 3] == `p` && name[start + 4] == `e` && name[start + 5] == `n`
+		&& name[start + 6] == `d` {
+		return 1
+	}
+	return -1
+}
+
+fn is_map_keys_values_call_name(name string) bool {
+	if name.len != 8 && name.len != 10 {
+		return false
+	}
+	if name[0] != `m` || name[1] != `a` || name[2] != `p` || name[3] != `.` {
+		return false
+	}
+	if name.len == 8 {
+		return name[4] == `k` && name[5] == `e` && name[6] == `y` && name[7] == `s`
+	}
+	return name[4] == `v` && name[5] == `a` && name[6] == `l` && name[7] == `u` && name[8] == `e`
+		&& name[9] == `s`
 }
 
 // call_explicit_arg_count updates call explicit arg count state for types.
@@ -5758,12 +5892,27 @@ fn call_explicit_arg_count(node flat.Node) int {
 fn (mut tc TypeChecker) push_array_dsl_scope(node flat.Node, name string) {
 	tc.push_scope()
 	arr := tc.call_receiver_array_type(node) or { return }
-	if name in ['array.sort', 'array.sorted'] {
+	if is_array_sort_dsl_call_name(name) {
 		tc.cur_scope.insert('a', arr.elem_type)
 		tc.cur_scope.insert('b', arr.elem_type)
 		return
 	}
 	tc.cur_scope.insert('it', arr.elem_type)
+}
+
+fn is_array_sort_dsl_call_name(name string) bool {
+	if name.len != 10 && name.len != 12 {
+		return false
+	}
+	if !has_array_dot_prefix(name) {
+		return false
+	}
+	start := 'array.'.len
+	if name[start] != `s` || name[start + 1] != `o` || name[start + 2] != `r`
+		|| name[start + 3] != `t` {
+		return false
+	}
+	return name.len == 10 || (name[start + 4] == `e` && name[start + 5] == `d`)
 }
 
 // call_receiver_array_type updates call receiver array type state for TypeChecker.
