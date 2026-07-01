@@ -1,7 +1,7 @@
 module types
 
-import strings
 import v3.flat
+import v3.gen.c.naming
 
 const export_c_reserved_words = {
 	'auto':     true
@@ -838,7 +838,7 @@ fn (tc &TypeChecker) const_type_from_initializer(name string, typ Type) Type {
 		candidates << '${mod_name}.${fn_node.value}'
 	}
 	candidates << fn_node.value
-	candidates << c_name(fn_node.value)
+	candidates << naming.c_name(fn_node.value)
 	for candidate in candidates {
 		if ret := tc.fn_ret_types[candidate] {
 			return ret
@@ -1192,7 +1192,7 @@ const receiver_method_suffix_ambiguous = '__v_receiver_method_suffix_ambiguous__
 // register_fn_signature updates register fn signature state for types.
 fn (mut tc TypeChecker) register_fn_signature(name string, ret_type Type, params []Type, is_variadic bool, implicit_veb_ctx bool) {
 	tc.register_fn_name_alias(name, ret_type, params, is_variadic, implicit_veb_ctx)
-	lowered_name := c_name(name)
+	lowered_name := naming.c_name(name)
 	if lowered_name != name {
 		tc.register_fn_name_alias(lowered_name, ret_type, params, is_variadic, implicit_veb_ctx)
 	}
@@ -1244,7 +1244,7 @@ fn (mut tc TypeChecker) register_c_variadic_fn(name string) {
 		return
 	}
 	tc.c_variadic_fns[name] = true
-	lowered_name := c_name(name)
+	lowered_name := naming.c_name(name)
 	if lowered_name != name {
 		tc.c_variadic_fns[lowered_name] = true
 	}
@@ -1316,7 +1316,7 @@ fn (tc &TypeChecker) should_annotate_fn(node flat.Node, used_fns map[string]bool
 	if qname in used_fns {
 		return true
 	}
-	cname := c_name(qname)
+	cname := naming.c_name(qname)
 	if cname != qname && cname in used_fns {
 		return true
 	}
@@ -2040,7 +2040,7 @@ fn export_natural_c_symbol(module_name string, name string) string {
 		return 'v_free'
 	}
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
-		return c_name('${module_name}.${name}')
+		return naming.c_name('${module_name}.${name}')
 	}
 	if name == 'free' {
 		return 'v_free'
@@ -2051,7 +2051,7 @@ fn export_natural_c_symbol(module_name string, name string) string {
 	if name in export_c_libc_collision_symbols {
 		return 'v_${name}'
 	}
-	return c_name(name)
+	return naming.c_name(name)
 }
 
 fn is_valid_export_c_name(name string) bool {
@@ -7454,7 +7454,7 @@ fn (tc &TypeChecker) lowered_sum_selector_type(sum SumType, field string) ?Type 
 	variants := tc.sum_types[sum.name] or { return none }
 	for variant in variants {
 		short := if variant.contains('.') { variant.all_after_last('.') } else { variant }
-		if field == variant || field == short || field == c_name(variant) {
+		if field == variant || field == short || field == naming.c_name(variant) {
 			return tc.parse_type(variant)
 		}
 	}
@@ -10671,8 +10671,8 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		// The typedef name preserves the source length text while
 		// the emitted C dimension is folded separately by fixed_array_len_value.
 		len_text := if t.len_expr.len > 0 { t.len_expr } else { t.len.str() }
-		len_name := c_type_name_part(len_text)
-		return 'Array_fixed_${c_type_name_part(tc.c_type(t.elem_type))}_${len_name}'
+		len_name := naming.type_name_part(len_text)
+		return 'Array_fixed_${naming.type_name_part(tc.c_type(t.elem_type))}_${len_name}'
 	}
 	if t is Channel {
 		return 'chan'
@@ -10712,16 +10712,16 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 			}
 			return raw
 		}
-		return c_name(t.name)
+		return naming.c_name(t.name)
 	}
 	if t is Interface {
-		return c_name(t.name)
+		return naming.c_name(t.name)
 	}
 	if t is Enum {
 		return 'int'
 	}
 	if t is SumType {
-		return c_name(t.name)
+		return naming.c_name(t.name)
 	}
 	if t is Alias {
 		// Follow the alias chain iteratively. A self-referential / cyclic alias (whose
@@ -10740,7 +10740,7 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 	if t is MultiReturn {
 		mut parts := []string{}
 		for ty in t.types {
-			parts << c_type_name_part(tc.c_type(ty))
+			parts << naming.type_name_part(tc.c_type(ty))
 		}
 		return 'multi_return_${parts.join('_')}'
 	}
@@ -10769,30 +10769,6 @@ fn (tc &TypeChecker) optional_c_type_name(base_type Type) string {
 		return 'Optional'
 	}
 	return 'Optional_${inner_ct.replace('*', 'ptr').replace(' ', '_')}'
-}
-
-// c_type_name_part turns a C type or length expression into a fragment that is safe
-// to embed inside a C identifier: `*` becomes `ptr` (so pointer payloads stay
-// distinguishable), and every other character that is not a letter, digit, or `_`
-// becomes `_`. This keeps const-expression fixed-array lengths (e.g. `segs + 1`) and
-// pointer return types (`Foo*`) from producing invalid identifiers such as
-// `Array_fixed_f32_segs_+_1` or `__v_thread_arr_wait_Foo*`.
-pub fn c_type_name_part(s string) string {
-	mut b := []u8{cap: s.len + 2}
-	for i := 0; i < s.len; i++ {
-		c := s[i]
-		if c == `*` {
-			b << `p`
-			b << `t`
-			b << `r`
-		} else if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
-			|| (c >= `0` && c <= `9`) || c == `_` {
-			b << c
-		} else {
-			b << `_`
-		}
-	}
-	return b.bytestr()
 }
 
 // resolve_type_name_for_method resolves resolve type name for method information for types.
@@ -11198,7 +11174,7 @@ fn (tc &TypeChecker) infix_operator_return_type(op flat.Op, lhs Type, rhs Type) 
 		return none
 	}
 	method_name := '${lhs_name}.${op_name}'
-	for candidate in [method_name, c_name(method_name)] {
+	for candidate in [method_name, naming.c_name(method_name)] {
 		ret := tc.fn_ret_types[candidate] or { continue }
 		params := tc.fn_param_types[candidate] or { continue }
 		if params.len < 2 {
@@ -11405,158 +11381,4 @@ fn fn_type_param_head_is_name(head string, tail string) bool {
 		return false
 	}
 	return (head[0] >= `a` && head[0] <= `z`) || head[0] == `_`
-}
-
-// c_name returns the C identifier used for a V symbol or type name.
-fn c_name(name string) string {
-	if name.starts_with('C.') {
-		return name[2..]
-	}
-	if name == 'malloc' {
-		return 'v_malloc'
-	}
-	if name == 'int_str' {
-		return 'int__str'
-	}
-	if c_name_is_plain(name) {
-		if c_name_is_reserved(name) {
-			return 'v_${name}'
-		}
-		return name
-	}
-	n := c_name_sanitize(name)
-	if c_name_is_reserved(n) {
-		return 'v_${n}'
-	}
-	return n
-}
-
-fn c_name_is_reserved(name string) bool {
-	return name == 'copy' || name in export_c_reserved_words
-}
-
-fn c_name_sanitize(name string) string {
-	mut b := strings.new_builder(name.len + 8)
-	mut i := 0
-	for i < name.len {
-		c := name[i]
-		if c == `[` {
-			if i + 1 < name.len && name[i + 1] == `]` {
-				b.write_string('Array_')
-				i += 2
-				continue
-			}
-			b.write_u8(`_`)
-		} else if c == `]` {
-			i++
-			continue
-		} else if c == `.` {
-			if i + 1 < name.len {
-				next := name[i + 1]
-				if next == `-` {
-					b.write_string('__minus')
-					i += 2
-					continue
-				}
-				if next == `+` {
-					b.write_string('__plus')
-					i += 2
-					continue
-				}
-				if next == `*` {
-					b.write_string('__mul')
-					i += 2
-					continue
-				}
-				if next == `/` {
-					b.write_string('__div')
-					i += 2
-					continue
-				}
-				if next == `%` {
-					b.write_string('__mod')
-					i += 2
-					continue
-				}
-				if next == `&` {
-					b.write_string('__and')
-					i += 2
-					continue
-				}
-				if next == `|` {
-					b.write_string('__or')
-					i += 2
-					continue
-				}
-				if next == `^` {
-					b.write_string('__xor')
-					i += 2
-					continue
-				}
-				if i + 2 < name.len {
-					op := name[i + 2]
-					if next == `=` && op == `=` {
-						b.write_string('__eq')
-						i += 3
-						continue
-					}
-					if next == `!` && op == `=` {
-						b.write_string('__ne')
-						i += 3
-						continue
-					}
-					if next == `<` && op == `=` {
-						b.write_string('__le')
-						i += 3
-						continue
-					}
-					if next == `>` && op == `=` {
-						b.write_string('__ge')
-						i += 3
-						continue
-					}
-					if next == `<` && op == `<` {
-						b.write_string('__left_shift')
-						i += 3
-						continue
-					}
-					if next == `>` && op == `>` {
-						b.write_string('__right_shift')
-						i += 3
-						continue
-					}
-				}
-				if next == `<` {
-					b.write_string('__lt')
-					i += 2
-					continue
-				}
-				if next == `>` {
-					b.write_string('__gt')
-					i += 2
-					continue
-				}
-			}
-			b.write_string('__')
-		} else if c == `&` {
-			b.write_string('ptr')
-		} else if c == `,` || c == ` ` {
-			b.write_u8(`_`)
-		} else {
-			b.write_u8(c)
-		}
-		i++
-	}
-	return b.str()
-}
-
-fn c_name_is_plain(name string) bool {
-	for i in 0 .. name.len {
-		c := name[i]
-		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_` {
-			continue
-		}
-		return false
-	}
-	return true
 }
