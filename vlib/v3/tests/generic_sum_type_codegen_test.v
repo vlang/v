@@ -128,6 +128,8 @@ fn main() {
 	assert c_code.contains('struct Tree_int {'), c_code
 	assert c_code.contains('struct Tree_f64 {'), c_code
 	assert !c_code.contains('Array_fixed_Node_T'), c_code
+	assert !c_code.contains('Node_T'), c_code
+	assert !c_code.contains('tree.Node_T'), c_code
 	assert !c_code.contains('Tree_int ints = (Tree){'), c_code
 	assert !c_code.contains('Tree_f64 floats = (Tree){'), c_code
 }
@@ -695,6 +697,13 @@ pub fn describe(x Maybe[int]) string {
 		Err { "err" }
 	}
 }
+
+pub fn unwrap_int(x Maybe[int]) int {
+	assert x is int
+	y := x as int
+	assert y == 7
+	return y
+}
 ') or {
 		panic(err)
 	}
@@ -707,6 +716,7 @@ import maybe
 fn main() {
 	println(maybe.describe(maybe.wrap_int(7)))
 	println(maybe.describe(maybe.wrap_err()))
+	println(maybe.unwrap_int(maybe.wrap_int(7)))
 }
 ') or {
 		panic(err)
@@ -721,10 +731,142 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'int\nerr'
+	assert run.output.trim_space() == 'int\nerr\n7'
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	assert c_code.contains('maybe__Err'), c_code
+	assert !c_code.contains('maybe__Maybe_int y = x'), c_code
 	assert !c_code.contains('maybe__T'), c_code
 	assert !c_code.contains('x == v_int'), c_code
+}
+
+fn test_generic_sum_type_args_keep_non_main_caller_scope_and_selective_imports() {
+	v3_bin := generic_sum_type_build_v3()
+	root := os.join_path(os.temp_dir(), 'v3_generic_sum_type_caller_scope_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	maybe_dir := os.join_path(root, 'maybe')
+	payload_dir := os.join_path(root, 'payload')
+	client_dir := os.join_path(root, 'client')
+	os.mkdir_all(maybe_dir) or { panic(err) }
+	os.mkdir_all(payload_dir) or { panic(err) }
+	os.mkdir_all(client_dir) or { panic(err) }
+	os.write_file(os.join_path(maybe_dir, 'maybe.v'), 'module maybe
+
+pub struct Err {}
+
+pub type Maybe[T] = T | Err
+
+pub fn wrap[T](v T) Maybe[T] {
+	return Maybe[T](v)
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(payload_dir, 'payload.v'), 'module payload
+
+pub struct Payload {
+pub:
+	name string
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(client_dir, 'client.v'), 'module client
+
+import maybe
+import payload { Payload }
+
+pub struct Local {
+pub:
+	value int
+}
+
+pub fn make() maybe.Maybe[Local] {
+	return maybe.wrap(Local{
+		value: 7
+	})
+}
+
+pub fn make_payload() maybe.Maybe[Payload] {
+	return maybe.wrap(Payload{
+		name: "payload"
+	})
+}
+
+pub fn describe_local(x maybe.Maybe[Local]) int {
+	return match x {
+		Local { x.value }
+		maybe.Err { -1 }
+	}
+}
+
+pub fn describe_payload(x maybe.Maybe[Payload]) string {
+	return match x {
+		Payload { x.name }
+		maybe.Err { "err" }
+	}
+}
+
+pub fn unwrap_local(x maybe.Maybe[Local]) Local {
+	assert x is Local
+	y := x as Local
+	assert y.value == 7
+	return y
+}
+
+pub fn unwrap_payload(x maybe.Maybe[Payload]) Payload {
+	assert x is Payload
+	y := x as Payload
+	assert y.name == "payload"
+	return y
+}
+') or {
+		panic(err)
+	}
+
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, 'module main
+
+import client
+
+fn main() {
+	local_sum := client.make()
+	assert client.describe_local(local_sum) == 7
+	local := client.unwrap_local(local_sum)
+	assert local.value == 7
+	payload_sum := client.make_payload()
+	assert client.describe_payload(payload_sum) == "payload"
+	payload := client.unwrap_payload(payload_sum)
+	assert payload.name == "payload"
+	println("ok")
+}
+') or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_caller_scope_bin_${os.getpid()}')
+	os.rm(bin) or {}
+	os.rm(bin + '.c') or {}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+
+	c_code := os.read_file(bin + '.c') or { panic(err) }
+	assert c_code.contains('maybe__Maybe_client__Local'), c_code
+	assert c_code.contains('maybe__Maybe_payload__Payload'), c_code
+	assert c_code.contains('payload__Payload'), c_code
+	assert c_code.contains('_payload__Payload'), c_code
+	assert !c_code.contains('maybe__Maybe_Local'), c_code
+	assert !c_code.contains('maybe__Maybe_Payload'), c_code
+	assert !c_code.contains('maybe__Payload'), c_code
+	assert !c_code.contains('x.Local'), c_code
+	assert !c_code.contains('x.Payload'), c_code
+	assert !c_code.contains('x.maybe__Local'), c_code
+	assert !c_code.contains('x.maybe__Payload'), c_code
+	assert !c_code.contains('x == Local'), c_code
+	assert !c_code.contains('x == Payload'), c_code
 }

@@ -6655,6 +6655,11 @@ fn (t &Transformer) qualify_variant(variant string, sum_type_name string) string
 
 // sum_variant_name supports sum variant name handling for Transformer.
 fn (t &Transformer) sum_variant_name(sum_name string, variant string) ?string {
+	for v in t.concrete_sum_variants_for_candidate(sum_name) {
+		if t.variant_names_match(v, variant) {
+			return v
+		}
+	}
 	resolved_sum := t.resolve_sum_name(sum_name)
 	variants := t.sum_types[resolved_sum] or { return none }
 	for v in variants {
@@ -8026,14 +8031,14 @@ fn (t &Transformer) resolve_sum_variant_pattern_for_subject(subject_type string,
 		return none
 	}
 	for candidate in t.sum_subject_type_candidates(subject_type) {
+		resolved_sum := t.resolve_sum_name(candidate)
+		if resolved_variant := t.sum_variant_name(resolved_sum, pattern) {
+			return resolved_variant
+		}
 		if !isnil(t.tc) {
 			if resolved := t.tc.sum_variant_type_for_pattern(candidate, pattern) {
 				return resolved
 			}
-		}
-		resolved_sum := t.resolve_sum_name(candidate)
-		if resolved_variant := t.sum_variant_name(resolved_sum, pattern) {
-			return resolved_variant
 		}
 	}
 	return none

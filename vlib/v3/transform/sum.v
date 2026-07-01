@@ -12,6 +12,14 @@ fn (t &Transformer) trim_pointer_type(typ string) string {
 
 // resolve_variant resolves resolve variant information for transform.
 fn (t &Transformer) resolve_variant(sum_name string, variant string) string {
+	for candidate in t.sum_subject_type_candidates(sum_name) {
+		if resolved := t.generic_sum_arg_variant_for_pattern(candidate, variant) {
+			return resolved
+		}
+		if resolved_variant := t.sum_variant_name(candidate, variant) {
+			return resolved_variant
+		}
+	}
 	if !isnil(t.tc) {
 		if resolved := t.tc.sum_variant_type_for_pattern(sum_name, variant) {
 			return resolved
@@ -31,6 +39,19 @@ fn (t &Transformer) resolve_variant(sum_name string, variant string) string {
 		return '${sum_name.all_before_last('.')}.${variant}'
 	}
 	return variant
+}
+
+fn (t &Transformer) generic_sum_arg_variant_for_pattern(sum_name string, variant string) ?string {
+	_, args, ok := generic_app_parts(sum_name)
+	if !ok {
+		return none
+	}
+	for arg in args {
+		if t.variant_names_match(arg, variant) {
+			return arg
+		}
+	}
+	return none
 }
 
 // resolve_sum_name resolves resolve sum name information for transform.
@@ -196,29 +217,120 @@ fn (t &Transformer) sum_subject_type_candidates(subject_type string) []string {
 	}
 	mut candidates := []string{}
 	mut seen := map[string]bool{}
-	push_sum_subject_type_candidate(mut candidates, mut seen, clean)
 	base, args, is_generic := generic_app_parts(clean)
 	if is_generic {
 		args_text := args.join(', ')
+		scoped_args := t.sum_subject_type_args_in_scope(args)
+		scoped_args_text := scoped_args.join(', ')
+		if scoped_args_text != args_text {
+			push_sum_subject_type_candidate(mut candidates, mut seen,
+				'${base}[${scoped_args_text}]')
+		}
+		push_sum_subject_type_candidate(mut candidates, mut seen, clean)
 		if !base.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 			&& t.cur_module != 'builtin' {
 			push_sum_subject_type_candidate(mut candidates, mut seen,
 				'${t.cur_module}.${base}[${args_text}]')
+			if scoped_args_text != args_text {
+				push_sum_subject_type_candidate(mut candidates, mut seen,
+					'${t.cur_module}.${base}[${scoped_args_text}]')
+			}
 		}
 		resolved_base := t.resolve_sum_name(base)
 		if resolved_base.len > 0 && resolved_base != base {
 			push_sum_subject_type_candidate(mut candidates, mut seen,
 				'${resolved_base}[${args_text}]')
+			if scoped_args_text != args_text {
+				push_sum_subject_type_candidate(mut candidates, mut seen,
+					'${resolved_base}[${scoped_args_text}]')
+			}
 		}
-	} else if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
-		&& t.cur_module != 'builtin' {
-		push_sum_subject_type_candidate(mut candidates, mut seen, '${t.cur_module}.${clean}')
+	} else {
+		push_sum_subject_type_candidate(mut candidates, mut seen, clean)
+		if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+			&& t.cur_module != 'builtin' {
+			push_sum_subject_type_candidate(mut candidates, mut seen, '${t.cur_module}.${clean}')
+		}
 	}
 	resolved := t.resolve_sum_name(clean)
 	if resolved.len > 0 {
 		push_sum_subject_type_candidate(mut candidates, mut seen, resolved)
 	}
 	return candidates
+}
+
+fn (t &Transformer) sum_subject_type_args_in_scope(args []string) []string {
+	mut scoped := []string{cap: args.len}
+	for arg in args {
+		scoped << t.sum_subject_type_arg_in_scope(arg)
+	}
+	return scoped
+}
+
+fn (t &Transformer) sum_subject_type_arg_in_scope(arg string) string {
+	clean := arg.trim_space()
+	if clean.len == 0 {
+		return clean
+	}
+	if clean.starts_with('&') {
+		return '&' + t.sum_subject_type_arg_in_scope(clean[1..])
+	}
+	if clean.starts_with('mut ') {
+		return '&' + t.sum_subject_type_arg_in_scope(clean[4..])
+	}
+	if clean.starts_with('?') {
+		return '?' + t.sum_subject_type_arg_in_scope(clean[1..])
+	}
+	if clean.starts_with('!') {
+		return '!' + t.sum_subject_type_arg_in_scope(clean[1..])
+	}
+	if clean.starts_with('...') {
+		return '...' + t.sum_subject_type_arg_in_scope(clean[3..])
+	}
+	if clean.starts_with('[]') {
+		return '[]' + t.sum_subject_type_arg_in_scope(clean[2..])
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			key := t.sum_subject_type_arg_in_scope(clean[4..bracket_end])
+			value := t.sum_subject_type_arg_in_scope(clean[bracket_end + 1..])
+			return 'map[${key}]${value}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return clean[..bracket_end + 1] +
+				t.sum_subject_type_arg_in_scope(clean[bracket_end + 1..])
+		}
+	}
+	base, nested_args, ok := generic_app_parts(clean)
+	if ok {
+		mut scoped_args := []string{cap: nested_args.len}
+		for nested in nested_args {
+			scoped_args << t.sum_subject_type_arg_in_scope(nested)
+		}
+		qbase := t.sum_subject_type_arg_base_in_scope(base)
+		return '${qbase}[${scoped_args.join(', ')}]'
+	}
+	return t.sum_subject_type_arg_base_in_scope(clean)
+}
+
+fn (t &Transformer) sum_subject_type_arg_base_in_scope(name string) string {
+	if name.contains('.') || isnil(t.tc) {
+		return t.normalize_sum_variant_type(name, t.cur_module, [])
+	}
+	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
+		[]string{}
+	} {
+		if candidate in t.tc.type_aliases || candidate in t.tc.structs
+			|| candidate in t.tc.interface_names || candidate in t.tc.flag_enums
+			|| candidate in t.tc.enum_names || candidate in t.tc.sum_types {
+			return candidate
+		}
+	}
+	return t.normalize_sum_variant_type(name, t.cur_module, [])
 }
 
 fn push_sum_subject_type_candidate(mut candidates []string, mut seen map[string]bool, candidate string) {
@@ -539,10 +651,13 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 	clean_type0 := t.trim_pointer_type(expr_type)
 	clean_type := if clean_type0 in t.sum_types {
 		clean_type0
+	} else if _ := t.resolve_sum_variant_pattern_for_subject(clean_type0, node.value) {
+		clean_type0
 	} else {
 		t.find_sum_type_for_variant(node.value)
 	}
-	if clean_type.len == 0 || clean_type !in t.sum_types {
+	resolved_clean_type := t.resolve_sum_name(clean_type)
+	if clean_type.len == 0 || resolved_clean_type !in t.sum_types {
 		return t.transform_expr(expr_id)
 	}
 	qv := t.resolve_variant(clean_type, node.value)

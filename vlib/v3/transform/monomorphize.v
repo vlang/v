@@ -19,6 +19,12 @@ struct GenericSumDecl {
 	key    string
 }
 
+struct GenericSpecContext {
+	base   string
+	file   string
+	module string
+}
+
 fn (mut t Transformer) is_generic_fn(name string) bool {
 	if t.skip_generics {
 		return false
@@ -276,9 +282,9 @@ fn (mut t Transformer) materialize_generic_structs() {
 		return
 	}
 	specs, sum_specs := t.collect_generic_materialization_specs(decls, sum_decls)
-	for spec, base in sum_specs {
-		decl := sum_decls[base] or { continue }
-		t.materialize_generic_sum_spec(spec, decl)
+	for spec, context in sum_specs {
+		decl := sum_decls[context.base] or { continue }
+		t.materialize_generic_sum_spec(spec, decl, context)
 	}
 	for spec, base in specs {
 		decl := decls[base] or { continue }
@@ -302,9 +308,9 @@ fn (mut t Transformer) materialize_generic_sum_types(erase_templates bool) {
 		return
 	}
 	_, sum_specs := t.collect_generic_materialization_specs(decls, sum_decls)
-	for spec, base in sum_specs {
-		decl := sum_decls[base] or { continue }
-		t.materialize_generic_sum_spec(spec, decl)
+	for spec, context in sum_specs {
+		decl := sum_decls[context.base] or { continue }
+		t.materialize_generic_sum_spec(spec, decl, context)
 	}
 	if erase_templates {
 		t.erase_generic_sum_templates(sum_decls)
@@ -322,9 +328,9 @@ fn (mut t Transformer) erase_generic_sum_templates(sum_decls map[string]GenericS
 	}
 }
 
-fn (mut t Transformer) collect_generic_materialization_specs(decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl) (map[string]string, map[string]string) {
+fn (mut t Transformer) collect_generic_materialization_specs(decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl) (map[string]string, map[string]GenericSpecContext) {
 	mut specs := map[string]string{}
-	mut sum_specs := map[string]string{}
+	mut sum_specs := map[string]GenericSpecContext{}
 	t.collect_generic_struct_specs(decls, mut specs)
 	t.collect_generic_sum_specs(sum_decls, mut sum_specs)
 	for _ in 0 .. 40 {
@@ -351,8 +357,8 @@ fn (mut t Transformer) collect_generic_materialization_specs(decls map[string]Ge
 			}
 		}
 		current_sums := sum_specs.clone()
-		for spec, base in current_sums {
-			decl := sum_decls[base] or { continue }
+		for spec, context in current_sums {
+			decl := sum_decls[context.base] or { continue }
 			_, args, ok := generic_app_parts(spec)
 			if !ok {
 				continue
@@ -549,7 +555,7 @@ fn (mut t Transformer) collect_generic_struct_spec_from_type(typ string, module_
 	t.record_generic_specialization_args_in_module(spec_base, spec_module, args)
 }
 
-fn (mut t Transformer) collect_generic_sum_specs(decls map[string]GenericSumDecl, mut specs map[string]string) {
+fn (mut t Transformer) collect_generic_sum_specs(decls map[string]GenericSumDecl, mut specs map[string]GenericSpecContext) {
 	for _, target in t.tc.type_aliases {
 		t.collect_generic_sum_spec_from_type(target, '', '', decls, mut specs)
 	}
@@ -580,7 +586,7 @@ fn (mut t Transformer) collect_generic_sum_specs(decls map[string]GenericSumDecl
 	}
 }
 
-fn (mut t Transformer) collect_generic_sum_spec_from_type(typ string, module_name string, file_name string, decls map[string]GenericSumDecl, mut specs map[string]string) {
+fn (mut t Transformer) collect_generic_sum_spec_from_type(typ string, module_name string, file_name string, decls map[string]GenericSumDecl, mut specs map[string]GenericSpecContext) {
 	clean := typ.trim_space()
 	if clean.len == 0 {
 		return
@@ -634,8 +640,12 @@ fn (mut t Transformer) collect_generic_sum_spec_from_type(typ string, module_nam
 		return
 	}
 	spec_base := t.generic_sum_spec_base_name(base, module_name, file_name, decls) or { return }
-	spec_name := '${spec_base}[${args.join(', ')}]'
-	specs[spec_name] = spec_base
+	spec_name := t.generic_sum_spec_name_in_scope(spec_base, args, module_name, file_name)
+	specs[spec_name] = GenericSpecContext{
+		base:   spec_base
+		file:   file_name
+		module: module_name
+	}
 }
 
 fn (t &Transformer) generic_struct_spec_base_name(base string, module_name string, file_name string, decls map[string]GenericStructDecl) ?string {
@@ -700,6 +710,33 @@ fn (t &Transformer) generic_sum_spec_base_name(base string, module_name string, 
 	return none
 }
 
+fn (mut t Transformer) generic_sum_spec_name_in_scope(base string, args []string, module_name string, file_name string) string {
+	scoped_args := t.generic_sum_args_in_scope(args, module_name, file_name)
+	return '${base}[${scoped_args.join(', ')}]'
+}
+
+fn (mut t Transformer) generic_sum_args_in_scope(args []string, module_name string, file_name string) []string {
+	if isnil(t.tc) {
+		return args.clone()
+	}
+	old_module := t.tc.cur_module
+	old_file := t.tc.cur_file
+	t.tc.cur_module = module_name
+	t.tc.cur_file = file_name
+	mut scoped := []string{cap: args.len}
+	for arg in args {
+		parsed := t.tc.parse_type(arg)
+		scoped << if parsed is types.Unknown {
+			t.normalize_sum_variant_type(arg, module_name, [])
+		} else {
+			parsed.name()
+		}
+	}
+	t.tc.cur_module = old_module
+	t.tc.cur_file = old_file
+	return scoped
+}
+
 fn (t &Transformer) selective_import_generic_struct_base(base string, file_name string, decls map[string]GenericStructDecl) ?string {
 	if isnil(t.tc) || base.contains('.') || file_name.len == 0 {
 		return none
@@ -726,7 +763,7 @@ fn (t &Transformer) selective_import_generic_sum_base(base string, file_name str
 	return none
 }
 
-fn (mut t Transformer) materialize_generic_sum_spec(spec_name string, decl GenericSumDecl) {
+fn (mut t Transformer) materialize_generic_sum_spec(spec_name string, decl GenericSumDecl, context GenericSpecContext) {
 	_, args, ok := generic_app_parts(spec_name)
 	if !ok || args.len == 0 {
 		return
@@ -735,6 +772,7 @@ fn (mut t Transformer) materialize_generic_sum_spec(spec_name string, decl Gener
 	old_file := t.cur_file
 	old_tc_module := t.tc.cur_module
 	old_tc_file := t.tc.cur_file
+	scoped_args := t.generic_sum_args_in_scope(args, context.module, context.file)
 	t.cur_module = decl.module
 	t.cur_file = decl.file
 	t.tc.cur_module = decl.module
@@ -742,7 +780,7 @@ fn (mut t Transformer) materialize_generic_sum_spec(spec_name string, decl Gener
 	mut variants := []string{}
 	for i in 0 .. decl.node.children_count {
 		variant := t.a.child_node(&decl.node, i)
-		variant_type := substitute_generic_type_text_with_params(variant.value, args,
+		variant_type := substitute_generic_type_text_with_params(variant.value, scoped_args,
 			decl.node.generic_params)
 		parsed := t.tc.parse_type(variant_type)
 		variants << if parsed is types.Unknown { variant_type } else { parsed.name() }

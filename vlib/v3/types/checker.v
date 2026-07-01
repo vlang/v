@@ -1139,6 +1139,11 @@ fn (tc &TypeChecker) qualify_type_text(typ string) string {
 				clean[bracket_end + 1..]
 		}
 	}
+	if !clean.contains('.') {
+		if resolved := tc.resolve_selective_import_type_symbol(clean) {
+			return resolved
+		}
+	}
 	return tc.qualify_name(clean)
 }
 
@@ -2073,6 +2078,10 @@ fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
 			tc.collect_selected_file_decl_assign_called_fns(node)
 			return
 		}
+		.for_in_stmt {
+			tc.collect_selected_file_for_in_called_fns(node)
+			return
+		}
 		.call {
 			if name := tc.selected_file_call_name(node) {
 				tc.selected_file_called_fns[name] = true
@@ -2084,6 +2093,74 @@ fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
 	for i in 0 .. node.children_count {
 		tc.collect_selected_file_node_called_fns(tc.a.child(&node, i))
 	}
+}
+
+fn (mut tc TypeChecker) collect_selected_file_for_in_called_fns(node flat.Node) {
+	header := node.value.int()
+	if header < 3 || node.children_count < 3 {
+		for i in 0 .. node.children_count {
+			tc.collect_selected_file_node_called_fns(tc.a.child(&node, i))
+		}
+		return
+	}
+	tc.push_scope()
+	key_id := tc.a.child(&node, 0)
+	val_id := tc.a.child(&node, 1)
+	container_id := tc.a.child(&node, 2)
+	tc.collect_selected_file_node_called_fns(container_id)
+	has_val := int(val_id) >= 0
+	if header == 4 {
+		tc.insert_selected_file_decl_binding_type(key_id, tc.range_loop_var_type(container_id))
+		tc.collect_selected_file_node_called_fns(tc.a.child(&node, 3))
+	} else {
+		clean := unwrap_pointer(tc.resolve_type(container_id))
+		if clean is Array {
+			if has_val {
+				tc.insert_selected_file_decl_binding_type(key_id, Type(int_))
+				tc.insert_selected_file_decl_binding_type(val_id, clean.elem_type)
+			} else {
+				tc.insert_selected_file_decl_binding_type(key_id, clean.elem_type)
+			}
+		} else if clean is ArrayFixed {
+			if has_val {
+				tc.insert_selected_file_decl_binding_type(key_id, Type(int_))
+				tc.insert_selected_file_decl_binding_type(val_id, clean.elem_type)
+			} else {
+				tc.insert_selected_file_decl_binding_type(key_id, clean.elem_type)
+			}
+		} else if clean is Map {
+			if has_val {
+				tc.insert_selected_file_decl_binding_type(key_id, clean.key_type)
+				tc.insert_selected_file_decl_binding_type(val_id, clean.value_type)
+			} else {
+				tc.insert_selected_file_decl_binding_type(key_id, clean.value_type)
+			}
+		} else if clean is String {
+			if has_val {
+				tc.insert_selected_file_decl_binding_type(key_id, Type(int_))
+				tc.insert_selected_file_decl_binding_type(val_id, Type(u8_))
+			} else {
+				tc.insert_selected_file_decl_binding_type(key_id, Type(u8_))
+			}
+		} else if elem_type := iterator_for_in_elem_type(clean) {
+			if has_val {
+				tc.insert_selected_file_decl_binding_type(key_id, Type(int_))
+				tc.insert_selected_file_decl_binding_type(val_id, elem_type)
+			} else {
+				tc.insert_selected_file_decl_binding_type(key_id, elem_type)
+			}
+		} else {
+			container := tc.a.nodes[int(container_id)]
+			if container.kind == .range {
+				tc.insert_selected_file_decl_binding_type(key_id,
+					tc.range_loop_var_type(tc.a.child(&container, 0)))
+			}
+		}
+	}
+	for i in header .. node.children_count {
+		tc.collect_selected_file_node_called_fns(tc.a.child(&node, i))
+	}
+	tc.pop_scope()
 }
 
 fn (mut tc TypeChecker) collect_selected_file_decl_assign_called_fns(node flat.Node) {
@@ -11223,6 +11300,11 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		generic_suffix := typ[bracket..]
 		_, generic_args, _ := generic_type_application_parts(typ)
 		is_concrete_generic := tc.generic_args_are_concrete(generic_args)
+		sum_generic_suffix := if is_concrete_generic {
+			tc.qualified_generic_suffix(generic_args)
+		} else {
+			generic_suffix
+		}
 		qbase := tc.qualify_name(base)
 		if qbase in tc.type_aliases {
 			return Type(Alias{
@@ -11242,7 +11324,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		}
 		if qbase in tc.sum_types {
 			return Type(SumType{
-				name: qbase + generic_suffix
+				name: qbase + sum_generic_suffix
 			})
 		}
 		if !base.contains('.') {
@@ -11265,7 +11347,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 				}
 				if resolved in tc.sum_types {
 					return Type(SumType{
-						name: resolved + generic_suffix
+						name: resolved + sum_generic_suffix
 					})
 				}
 			}
@@ -11288,7 +11370,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		}
 		if base in tc.sum_types {
 			return Type(SumType{
-				name: base + generic_suffix
+				name: base + sum_generic_suffix
 			})
 		}
 		if is_concrete_generic && !is_builtin_type_name(base) {
@@ -11339,6 +11421,14 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	return Type(Struct{
 		name: typ
 	})
+}
+
+fn (tc &TypeChecker) qualified_generic_suffix(args []string) string {
+	mut qualified_args := []string{cap: args.len}
+	for arg in args {
+		qualified_args << tc.qualify_type_text(arg)
+	}
+	return '[' + qualified_args.join(', ') + ']'
 }
 
 fn (tc &TypeChecker) array_literal_elem_type(node flat.Node) Type {
