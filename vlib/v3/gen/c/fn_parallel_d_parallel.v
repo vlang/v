@@ -4,7 +4,7 @@ import runtime
 import strings
 import v3.types
 
-const max_flat_cgen_jobs = 8
+const max_flat_cgen_jobs = 10
 const min_flat_cgen_parallel_items = 1024
 
 $if !windows {
