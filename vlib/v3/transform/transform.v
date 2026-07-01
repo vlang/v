@@ -5288,6 +5288,12 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	if node.children_count == 0 {
 		return id
 	}
+	if node.op in [.plus, .minus] && node.children_count == 1 {
+		child_id := t.a.child(&node, 0)
+		if signed_str_call := t.rewrite_signed_literal_str_call(node.op, child_id) {
+			return t.transform_expr(signed_str_call)
+		}
+	}
 	if node.op == .mul && node.children_count == 1 {
 		child_id := t.a.child(&node, 0)
 		child := t.a.nodes[int(child_id)]
@@ -5444,6 +5450,25 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		}
 	}
 	return new_id
+}
+
+fn (mut t Transformer) rewrite_signed_literal_str_call(op flat.Op, child_id flat.NodeId) ?flat.NodeId {
+	child := t.a.nodes[int(child_id)]
+	if child.kind != .call || child.children_count != 1 {
+		return none
+	}
+	callee_id := t.a.child(&child, 0)
+	callee := t.a.nodes[int(callee_id)]
+	if callee.kind != .selector || callee.value != 'str' || callee.children_count != 1 {
+		return none
+	}
+	base_id := t.a.child(&callee, 0)
+	base := t.a.nodes[int(base_id)]
+	if base.kind !in [.int_literal, .float_literal] {
+		return none
+	}
+	signed_base := t.make_prefix(op, base_id)
+	return t.make_method_call(signed_base, 'str', []flat.NodeId{})
 }
 
 // transform_amp_sum_cast_from_as_expr supports transform_amp_sum_cast_from_as_expr handling.
@@ -5772,6 +5797,9 @@ fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) fla
 	}
 	if typ.len == 0 {
 		typ = 'unknown'
+	}
+	if t.cur_fn_is_generic && is_generic_fn_placeholder_name(typ) {
+		return t.make_string_literal(generic_type_name_marker(typ))
 	}
 	return t.make_string_literal(typ)
 }
@@ -6753,6 +6781,11 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 				if node.op in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor] {
 					if lhs_type.len > 0 && rhs_type.len > 0 && t.is_numeric_stringify_type(lhs_type)
 						&& t.is_numeric_stringify_type(rhs_type) {
+						if promoted := promote_numeric_literal_infix_type(t.a.nodes[int(t.a.child(&node,
+							0))], lhs_type, t.a.nodes[int(t.a.child(&node, 1))], rhs_type)
+						{
+							return promoted
+						}
 						return promote_numeric_stringify_type(lhs_type, rhs_type)
 					}
 					if lhs_type.len > 0 && t.is_numeric_stringify_type(lhs_type) {

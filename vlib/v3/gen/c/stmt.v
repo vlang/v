@@ -810,7 +810,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.gen_expr(g.a.child(&node, 0))
 			g.writeln(')) {')
 			g.indent++
-			g.writeln('fprintf(stderr, "assert failed\\n");')
+			g.writeln('v3_eprint_lit("assert failed\\n");')
 			g.writeln('exit(1);')
 			g.indent--
 			g.writeln('}')

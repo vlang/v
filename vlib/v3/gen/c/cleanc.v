@@ -366,6 +366,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.optional_typedefs()
 	g.c_extern_forward_decls()
 	g.builtin_abi_decls()
+	g.test_failure_helpers()
 	g.global_decls()
 	g.forward_decls()
 	g.shared_dup_fns()
@@ -6916,6 +6917,13 @@ fn (mut g FlatGen) global_decls() {
 		g.writeln('')
 	}
 	g.emit_global_inits()
+}
+
+fn (mut g FlatGen) test_failure_helpers() {
+	g.writeln('static void v3_eprint_lit(const char* s) {')
+	g.writeln('\tfprintf(stderr, "%s", s);')
+	g.writeln('}')
+	g.writeln('')
 }
 
 // emit_global_inits queues assignments for `__global x = expr` declarations into

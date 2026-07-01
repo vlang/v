@@ -1618,7 +1618,7 @@ fn (mut g FlatGen) gen_test_fn_call(test_fn TestHarnessFn, hooks TestHarnessHook
 		g.writeln('${ct} ${tmp_name} = ${test_fn.c_name}();')
 		g.writeln('if (!${tmp_name}.ok) {')
 		g.indent++
-		g.writeln('fprintf(stderr, "test failed: ${c_escape(test_fn.name)}\\n");')
+		g.writeln('v3_eprint_lit("test failed: ${c_escape(test_fn.name)}\\n");')
 		if hooks.after_each.len > 0 {
 			g.writeln('${hooks.after_each}();')
 		}

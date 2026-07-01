@@ -358,8 +358,8 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 			}
 			return field_eq
 		}
-		cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
-			t.make_sizeof_type(struct_type)), 'int')
+		cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs),
+			t.make_prefix(.amp, rhs), t.make_sizeof_type(struct_type)), 'int')
 		return t.make_infix(node.op, cmp, t.make_int_literal(0))
 	}
 	if eq_fn := t.struct_operator_fn_name(struct_type, '==') {
@@ -440,7 +440,7 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 	}
 	cmp_lhs := t.stable_transformed_expr_for_reuse(lhs, lhs_type, 'eq_lhs')
 	cmp_rhs := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'eq_rhs')
-	cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, cmp_lhs), t.make_prefix(.amp,
+	cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, cmp_lhs), t.make_prefix(.amp,
 		cmp_rhs), t.make_sizeof_type(struct_type)), 'int')
 	return t.make_infix(node.op, cmp, t.make_int_literal(0))
 }
@@ -771,7 +771,7 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 	}
 	tag_eq := t.make_infix(.eq, t.make_sum_tag_selector(lhs, .dot),
 		t.make_sum_tag_selector(rhs, .dot))
-	cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
+	cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
 		t.make_sizeof_type(sum_type)), 'int')
 	value_eq := t.make_infix(.eq, cmp, t.make_int_literal(0))
 	eq := t.make_infix(.logical_and, tag_eq, value_eq)
@@ -1287,7 +1287,7 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 		}
 		lhs_value := t.stable_transformed_expr_for_reuse(lhs, clean, 'fixed_eq_lhs')
 		rhs_value := t.stable_transformed_expr_for_reuse(rhs, clean, 'fixed_eq_rhs')
-		cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs_value), t.make_prefix(.amp,
+		cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs_value), t.make_prefix(.amp,
 			rhs_value), t.make_sizeof_type(clean)), 'int')
 		return t.make_infix(.eq, cmp, t.make_int_literal(0))
 	}
@@ -1302,15 +1302,15 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 			return t.make_call(method_name, arr2(lhs, rhs))
 		}
 		if struct_type in seen {
-			cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs),
+			cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs),
 				t.make_prefix(.amp, rhs), t.make_sizeof_type(struct_type)), 'int')
 			return t.make_infix(.eq, cmp, t.make_int_literal(0))
 		}
 		if field_eq := t.make_struct_field_eq_expr_with_seen(lhs, rhs, struct_type, seen) {
 			return field_eq
 		}
-		cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
-			t.make_sizeof_type(struct_type)), 'int')
+		cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs),
+			t.make_prefix(.amp, rhs), t.make_sizeof_type(struct_type)), 'int')
 		return t.make_infix(.eq, cmp, t.make_int_literal(0))
 	}
 	return t.make_infix(.eq, lhs, rhs)
@@ -1319,7 +1319,7 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 fn (mut t Transformer) make_memcmp_eq_expr(lhs flat.NodeId, rhs flat.NodeId, typ string, prefix string) flat.NodeId {
 	lhs_value := t.stable_transformed_expr_for_reuse(lhs, typ, '${prefix}_lhs')
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, typ, '${prefix}_rhs')
-	cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs_value), t.make_prefix(.amp,
+	cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs_value), t.make_prefix(.amp,
 		rhs_value), t.make_sizeof_type(typ)), 'int')
 	return t.make_infix(.eq, cmp, t.make_int_literal(0))
 }
@@ -2176,6 +2176,7 @@ const c_reserved_words = {
 	'break':    true
 	'case':     true
 	'char':     true
+	'asm':      true
 	'const':    true
 	'continue': true
 	'copy':     true
@@ -2202,11 +2203,67 @@ const c_reserved_words = {
 	'struct':   true
 	'switch':   true
 	'typedef':  true
+	'false':    true
+	'typeof':   true
+	'stdin':    true
+	'stderr':   true
+	'stdout':   true
+	'true':     true
 	'union':    true
 	'unsigned': true
 	'void':     true
 	'volatile': true
 	'while':    true
+}
+
+const c_libc_collisions = {
+	'abort':    true
+	'access':   true
+	'acos':     true
+	'atexit':   true
+	'ceil':     true
+	'ceilf':    true
+	'close':    true
+	'cos':      true
+	'drem':     true
+	'dup2':     true
+	'execlp':   true
+	'execvp':   true
+	'fabs':     true
+	'fcntl':    true
+	'floor':    true
+	'floorf':   true
+	'fmod':     true
+	'fork':     true
+	'getenv':   true
+	'j0':       true
+	'j1':       true
+	'jn':       true
+	'ldexp':    true
+	'memcmp':   true
+	'memcpy':   true
+	'memmove':  true
+	'memset':   true
+	'open':     true
+	'pipe':     true
+	'pow':      true
+	'read':     true
+	'realpath': true
+	'rint':     true
+	'scalb':    true
+	'setenv':   true
+	'signal':   true
+	'snprintf': true
+	'sqrt':     true
+	'strcmp':   true
+	'strlen':   true
+	'strncmp':  true
+	'strncpy':  true
+	'strrchr':  true
+	'strstr':   true
+	'y0':       true
+	'y1':       true
+	'yn':       true
 }
 
 // c_name converts c name data for transform.
@@ -2215,7 +2272,7 @@ fn c_name(name string) string {
 		return name[2..]
 	}
 	if c_name_is_plain(name) {
-		if name in c_reserved_words {
+		if name in c_reserved_words || name in c_libc_collisions {
 			return 'v_${name}'
 		}
 		return name
@@ -2225,7 +2282,10 @@ fn c_name(name string) string {
 		'__lt').replace('.>', '__gt').replace('.*', '__mul').replace('./', '__div').replace('.%',
 		'__mod').replace('.&', '__and').replace('.|', '__or').replace('.^', '__xor').replace('.<<',
 		'__left_shift').replace('.>>', '__right_shift').replace('&', 'ptr').replace('[', '_').replace(']', '').replace(',', '_').replace(' ', '_').replace('.', '__')
-	if n in c_reserved_words {
+	if n in c_reserved_words || n in c_libc_collisions {
+		if name.contains('@') {
+			return '_v_${n}'
+		}
 		return 'v_${n}'
 	}
 	return n

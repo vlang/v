@@ -2287,12 +2287,20 @@ fn (mut t Transformer) clone_generic_node(id flat.NodeId, args []string) flat.No
 }
 
 fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is_root bool) flat.NodeId {
+	if node.kind == .string_literal {
+		if typ := generic_type_name_from_marker(node.value) {
+			idx := t.active_generic_param_index(typ)
+			if idx < args.len {
+				return t.make_string_literal(generic_type_name_display(args[idx]))
+			}
+		}
+	}
 	if node.kind == .selector && node.value == 'name' && node.children_count > 0 {
 		base := t.a.child_node(&node, 0)
 		if base.kind == .ident && is_generic_fn_placeholder_name(base.value) {
 			idx := t.active_generic_param_index(base.value)
 			if idx < args.len {
-				return t.make_string_literal(args[idx])
+				return t.make_string_literal(generic_type_name_display(args[idx]))
 			}
 		}
 	}
@@ -2321,6 +2329,26 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		typ:            cloned_typ
 		value:          cloned_value
 	})
+}
+
+const generic_type_name_marker_prefix = '__v3_generic_type_name:'
+
+fn generic_type_name_marker(typ string) string {
+	return generic_type_name_marker_prefix + typ
+}
+
+fn generic_type_name_from_marker(value string) ?string {
+	if value.starts_with(generic_type_name_marker_prefix) {
+		return value[generic_type_name_marker_prefix.len..]
+	}
+	return none
+}
+
+fn generic_type_name_display(typ string) string {
+	if typ.starts_with('fn(') {
+		return 'fn ' + typ[2..]
+	}
+	return typ
 }
 
 fn (mut t Transformer) retarget_cloned_new_map_call(node flat.Node, mut children []flat.NodeId, map_type string) {

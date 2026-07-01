@@ -3908,6 +3908,12 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			if name == '@LINE' {
 				return p.a.add_val_id(1, '0')
 			}
+			if name == '@MOD' {
+				if p.cur_module.len == 0 {
+					return p.a.add_val_id(5, 'main')
+				}
+				return p.a.add_val_id(5, p.cur_module)
+			}
 			if name == '@FN' || name == '@METHOD' {
 				return p.a.add_val_id(5, p.cur_fn)
 			}

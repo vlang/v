@@ -10152,9 +10152,11 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
 				return Type(bool_)
 			}
-			lt := tc.resolve_type(tc.a.child(&node, 0))
+			lhs_id := tc.a.child(&node, 0)
+			rhs_id := tc.a.child(&node, 1)
+			lt := tc.resolve_type(lhs_id)
 			lt_raw := lt
-			rt := tc.resolve_type(tc.a.child(&node, 1))
+			rt := tc.resolve_type(rhs_id)
 			rt_raw := rt
 			if operator_ret := tc.infix_operator_return_type(node.op, lt, rt) {
 				return operator_ret
@@ -10165,7 +10167,21 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			if rt is String {
 				return rt_raw
 			}
+			lhs := tc.a.nodes[int(lhs_id)]
+			rhs := tc.a.nodes[int(rhs_id)]
+			if int_promoted := int_literal_promoted_infix_type(lhs, rhs, rt) {
+				return int_promoted
+			}
+			if int_promoted := int_literal_promoted_infix_type(rhs, lhs, lt) {
+				return int_promoted
+			}
 			if lt.is_float() || rt.is_float() {
+				if type_is_f32(lt) && rhs.kind == .float_literal {
+					return Type(f32_)
+				}
+				if type_is_f32(rt) && lhs.kind == .float_literal {
+					return Type(f32_)
+				}
 				return Type(f64_)
 			}
 			return lt
@@ -11139,6 +11155,43 @@ fn (tc &TypeChecker) infix_operator_return_type(op flat.Op, lhs Type, rhs Type) 
 		return ret
 	}
 	return none
+}
+
+fn int_literal_promoted_infix_type(lit flat.Node, other flat.Node, other_type Type) ?Type {
+	if lit.kind != .int_literal || other.kind == .int_literal {
+		return none
+	}
+	value := v_int_literal_value(lit.value) or { return none }
+	if unsigned_type_accepts_int_literal(other_type, value) {
+		return other_type
+	}
+	return none
+}
+
+fn unsigned_type_accepts_int_literal(t Type, value int) bool {
+	if value < 0 {
+		return false
+	}
+	if t is Primitive {
+		if !t.props.has(.integer) || !t.props.has(.unsigned) {
+			return false
+		}
+		max := match t.size {
+			8 { 255 }
+			16 { 65535 }
+			else { return true }
+		}
+
+		return value <= max
+	}
+	return false
+}
+
+fn type_is_f32(t Type) bool {
+	if t is Primitive {
+		return t.props.has(.float) && t.size == 32
+	}
+	return false
 }
 
 fn infix_operator_name(op flat.Op) ?string {

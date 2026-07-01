@@ -2,6 +2,7 @@
 .github/workflows/make_sure_ci_run_with_64bit_compiler_test.v
 cmd/tools/modules/vbugreport/c_error_storage_test.v
 cmd/tools/modules/vbugreport/report_test.v
+cmd/tools/translate_test.v
 cmd/tools/vbump_test.v
 cmd/tools/vcheck_test.v
 cmd/tools/vcover/cover_test.v
@@ -21,6 +22,7 @@ examples/readline/readline_test.v
 vlib/benchmark/benchmark_test.v
 vlib/builtin/array_push_element_sizes_test.v
 vlib/builtin/array_test.v
+vlib/builtin/builtin_print_write_error_test.v
 vlib/builtin/builtin_unbuffer_stdout_test.v
 vlib/builtin/byte_test.v
 vlib/builtin/character_inout_test.v
@@ -57,6 +59,7 @@ vlib/crypto/sha3/sha3_test.v
 vlib/crypto/sha3/xof_test.v
 vlib/crypto/sha512/sha512_test.v
 vlib/dl/dl_test.v
+vlib/encoding/base58/base58_usage_test.v
 vlib/encoding/csv/csv_reader_eol_test.v
 vlib/encoding/csv/writer_test.v
 vlib/encoding/utf8/validate/encoding_utf8_test.v
@@ -96,6 +99,7 @@ vlib/os/command_test.v
 vlib/os/dir_expansions_test.v
 vlib/os/environment_test.v
 vlib/os/file_buffering_test.v
+vlib/os/filelock/filelock_test.v
 vlib/os/find_abs_path_of_executable_test.v
 vlib/os/glob_test.v
 vlib/os/os_args_autofree_test.v
@@ -109,6 +113,7 @@ vlib/rand/random_identifiers_test.v
 vlib/regex/regex_complex_test.v
 vlib/semver/semver_test.v
 vlib/strconv/converter_test.v
+vlib/strconv/f32_f64_to_string_test.v
 vlib/strconv/f32_ten_pow_table_range_test.v
 vlib/strconv/number_to_base_test.v
 vlib/strconv/write_dec_test.v
@@ -117,9 +122,11 @@ vlib/strings/similarity_test.v
 vlib/strings/textscanner/textscanner_test.v
 vlib/time/Y2K38_test.v
 vlib/time/misc/misc_test.v
+vlib/time/parse_test.v
 vlib/time/relative_test.v
 vlib/time/stopwatch_test.v
 vlib/time/time_addition_test.v
+vlib/time/time_format_test.v
 vlib/time/time_test.v
 vlib/time/utc_vs_local_time_test.v
 vlib/v/ast/cflags_test.v
@@ -161,6 +168,7 @@ vlib/v/slow_tests/crun_mode/crun_test.v
 vlib/v/slow_tests/map_issue_16285_test.v
 vlib/v/slow_tests/map_issue_22139_clear_test.v
 vlib/v/slow_tests/map_issue_22143_clear_test.v
+vlib/v/slow_tests/map_issue_22145_clear_test.v
 vlib/v/slow_tests/map_issue_22148_clear_test.v
 vlib/v/slow_tests/repl/import_vmodules_submodule_test.v
 vlib/v/slow_tests/repl/repl_time_state_test.v
@@ -220,6 +228,7 @@ vlib/v/tests/backtrace_addr2line_path_test.v
 vlib/v/tests/backtrace_test.v
 vlib/v/tests/bool_cast_int_test.v
 vlib/v/tests/builtin_arrays/array_2d_append_empty_array_test.v
+vlib/v/tests/builtin_arrays/array_access_optimisation_test.v
 vlib/v/tests/builtin_arrays/array_append_map_with_or_expr_test.v
 vlib/v/tests/builtin_arrays/array_as_interface_test.v
 vlib/v/tests/builtin_arrays/array_clear_test.v
@@ -264,6 +273,7 @@ vlib/v/tests/builtin_arrays/fixed_array_of_option_test.v
 vlib/v/tests/builtin_arrays/fixed_array_return_decl_test.v
 vlib/v/tests/builtin_arrays/fixed_array_to_string_test.v
 vlib/v/tests/builtin_arrays/generic_direct_array_access_compound_assign_test.v
+vlib/v/tests/builtin_arrays/sorting_by_references_test.v
 vlib/v/tests/builtin_arrays/static_arrays_using_const_for_size_test.v
 vlib/v/tests/builtin_arrays/unsafe_fixed_array_test.v
 vlib/v/tests/builtin_maps/complex_map_op_test.v
@@ -274,6 +284,7 @@ vlib/v/tests/builtin_maps/map_complex_array_test.v
 vlib/v/tests/builtin_maps/map_equality_test.v
 vlib/v/tests/builtin_maps/map_fixed_array_if_guard_test.v
 vlib/v/tests/builtin_maps/map_fixed_array_keys_test.v
+vlib/v/tests/builtin_maps/map_generic_keys_with_in_op_test.v
 vlib/v/tests/builtin_maps/map_get_assign_blank_test.v
 vlib/v/tests/builtin_maps/map_key_expr_test.v
 vlib/v/tests/builtin_maps/map_literals_method_call_test.v
@@ -284,6 +295,7 @@ vlib/v/tests/builtin_maps/map_sumtype_values_test.v
 vlib/v/tests/builtin_maps/maps_equal_test.v
 vlib/v/tests/builtin_maps/unsafe_pointers_to_map_values_test.v
 vlib/v/tests/builtin_strings_and_interpolation/high_ascii_const_rune_test.v
+vlib/v/tests/builtin_strings_and_interpolation/num_lit_call_method_test.v
 vlib/v/tests/builtin_strings_and_interpolation/raw_string_test.v
 vlib/v/tests/builtin_strings_and_interpolation/str_circular_test.v
 vlib/v/tests/builtin_strings_and_interpolation/string_alias_test.v
@@ -329,6 +341,7 @@ vlib/v/tests/comptime/comptime_for_empty_loop_eval_stmts_test.v
 vlib/v/tests/comptime/comptime_for_in_fields_FieldData_test.v
 vlib/v/tests/comptime/comptime_for_method_call_with_args_test.v
 vlib/v/tests/comptime/comptime_for_over_struct_with_C_reserved_word_fields_test.v
+vlib/v/tests/comptime/comptime_generic_map_test.v
 vlib/v/tests/comptime/comptime_generic_test.v
 vlib/v/tests/comptime/comptime_if_assign_test.v
 vlib/v/tests/comptime/comptime_if_bsd_family_test.v
@@ -653,6 +666,7 @@ vlib/v/tests/interfaces/interface_value_semantics_test.v
 vlib/v/tests/interfaces/interface_with_multi_nested_embed_3_test.v
 vlib/v/tests/interfaces/interfaces_map_test.v
 vlib/v/tests/keyword_as_params_field_test.v
+vlib/v/tests/keyword_escaping_test.v
 vlib/v/tests/known_errors/known_errors_test.v
 vlib/v/tests/last_stmt_fn_call_or_expr_test.v
 vlib/v/tests/last_stmt_semicolon_or_expr_test.v
@@ -786,10 +800,14 @@ vlib/v/tests/project_issue_27078_run_test.v
 vlib/v/tests/project_with_c_code_3/main3_test.v
 vlib/v/tests/project_with_modules_having_submodules/bin/a_program_under_bin_can_find_mod1_test.v
 vlib/v/tests/project_with_modules_having_submodules/tests/submodule_test.v
+vlib/v/tests/projects_that_should_compile_test.v
 vlib/v/tests/range_expr_with_int_test.v
 vlib/v/tests/raw_string_ending_withs_backslash_test.v
 vlib/v/tests/relative_nested_module_lookup_test.v
 vlib/v/tests/repeated_multiret_values_test.v
+vlib/v/tests/reserved_keyword_asm_test.v
+vlib/v/tests/reserved_keywords_can_be_escaped_with_at_test.v
+vlib/v/tests/results_test.v
 vlib/v/tests/return_match_expr_with_custom_error_test.v
 vlib/v/tests/return_option_call_in_non_option_fn_test.v
 vlib/v/tests/return_option_test.v
@@ -834,6 +852,7 @@ vlib/v/tests/structs/struct_field_default_value_interface_cast_test.v
 vlib/v/tests/structs/struct_field_default_value_sumtype_cast_test.v
 vlib/v/tests/structs/struct_field_fixed_array_init_test.v
 vlib/v/tests/structs/struct_field_fn_call_test.v
+vlib/v/tests/structs/struct_field_name_using_c_keyword_test.v
 vlib/v/tests/structs/struct_field_named_as_c_keyword_test.v
 vlib/v/tests/structs/struct_fields_required_test.v
 vlib/v/tests/structs/struct_fields_storing_functions_test.v
@@ -869,9 +888,13 @@ vlib/v/tests/supports__likely__test.v
 vlib/v/tests/test_global_init_test.v
 vlib/v/tests/trace_calls_test.v
 vlib/v/tests/type_name_in_if_test.v
+vlib/v/tests/type_name_test.v
+vlib/v/tests/type_promotion_test.v
+vlib/v/tests/type_voidptr_test.v
 vlib/v/tests/typeof_name_test.v
 vlib/v/tests/unicode_escape_test.v
 vlib/v/tests/unreachable_code_paths_test.v
+vlib/v/tests/usecache_interface_index_symbol_test.v
 vlib/v/tests/var_name_using_reserved_test.v
 vlib/v/tests/var_type_is_checking2_test.v
 vlib/v/tests/vargs_empty_param_test.v
