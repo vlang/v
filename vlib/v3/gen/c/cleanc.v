@@ -6797,8 +6797,11 @@ fn (mut g FlatGen) collect_fixed_array_typedef(typ types.Type, mut needed map[st
 }
 
 fn (mut g FlatGen) collect_fixed_array_typedef_text(type_text string, mut needed map[string]FixedArrayTypedefInfo) {
+	if type_text.len == 0 || !fixed_array_type_text_may_need_typedef(type_text) {
+		return
+	}
 	clean := type_text.trim_space()
-	if clean.len == 0 || !fixed_array_type_text_may_need_typedef(clean) {
+	if clean.len == 0 {
 		return
 	}
 	typ := g.tc.parse_type(clean)
