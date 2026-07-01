@@ -183,6 +183,9 @@ fn (mut t Transformer) record_called_fn_name(node flat.Node) {
 // exactly the struct's parameters (no extra method-level `[U]`); those are left to
 // the call-driven path. Returns whether any new specialization was emitted.
 fn (mut t Transformer) specialize_generic_struct_methods(struct_decls map[string]GenericStructDecl, decls map[string]GenericFnDecl, mut emitted map[string]bool, mut generated []string) bool {
+	if !t.needs_generic_struct_method_specialization(decls) {
+		return false
+	}
 	mut specs := map[string]string{}
 	t.collect_generic_struct_specs(struct_decls, mut specs)
 	mut any := false
@@ -239,6 +242,18 @@ fn (mut t Transformer) specialize_generic_struct_methods(struct_decls map[string
 		}
 	}
 	return any
+}
+
+fn (t &Transformer) needs_generic_struct_method_specialization(decls map[string]GenericFnDecl) bool {
+	if !isnil(t.tc) && t.tc.generic_method_value_info.len > 0 {
+		return true
+	}
+	for decl_key, _ in decls {
+		if decl_key.contains('.') && is_operator_method_name(decl_key.all_after_last('.')) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) materialize_generic_structs() {
