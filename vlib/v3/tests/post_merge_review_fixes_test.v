@@ -123,6 +123,32 @@ fn test_imported_module_call_in_struct_default_has_no_receiver_arg() {
 	assert out == '42'
 }
 
+fn test_multi_return_assignment_requires_option_result_handling() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unhandled_result_multi_decl_assign',
+		"fn pair() !(int, string) {\n\treturn 3, 'ok'\n}\n\nfn main() {\n\ta, b := pair()\n\tprintln(int_str(a) + b)\n}\n",
+		'requires `or {}`, `!`, or `?` handling')
+	run_bad(v3_bin, 'unhandled_result_multi_assign',
+		"fn pair() !(int, string) {\n\treturn 4, 'ok'\n}\n\nfn main() {\n\tmut a := 0\n\tmut b := ''\n\ta, b = pair()\n\tprintln(int_str(a) + b)\n}\n",
+		'requires `or {}`, `!`, or `?` handling')
+	out := run_good(v3_bin, 'handled_result_multi_decl_assign',
+		"fn pair() !(int, string) {\n\treturn 5, 'ok'\n}\n\nfn main() {\n\ta, b := pair() or { panic(err) }\n\tprintln(int_str(a) + b)\n}\n")
+	assert out == '5ok'
+}
+
+fn test_context_dependent_if_branches_infer_wrapper_types() {
+	v3_bin := build_v3()
+	opt_out := run_good(v3_bin, 'if_none_branch_infers_option',
+		'fn maybe(flag bool) ?int {\n\treturn if flag { none } else { 3 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n')
+	assert opt_out == '3\n-1'
+	res_out := run_good(v3_bin, 'if_error_branch_infers_result',
+		"fn maybe(flag bool) !int {\n\treturn if flag { error('bad') } else { 4 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n")
+	assert res_out == '4\n-1'
+	run_bad(v3_bin, 'if_none_branch_without_context_rejected',
+		'fn main() {\n\tx := if true { none } else { 1 }\n\tprintln(x)\n}\n',
+		'if-expression branch type mismatch')
+}
+
 fn test_assoc_return_runs_defers() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'assoc_return_runs_defers',
