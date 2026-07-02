@@ -6904,6 +6904,9 @@ fn array_like_elem_type(t Type) ?Type {
 // fixed-array values keep their length (handled by `type_compatible` above), so
 // e.g. `[2]int` vs `[3]int` branches still mismatch.
 fn (tc &TypeChecker) if_branch_types_compatible(a Type, b Type, a_is_array_lit bool, b_is_array_lit bool) bool {
+	if (a is None && b is ResultType) || (b is None && a is ResultType) {
+		return false
+	}
 	if tc.type_compatible(a, b) || tc.type_compatible(b, a) {
 		return true
 	}
@@ -7041,10 +7044,7 @@ fn optional_if_type_from_value(value Type) ?Type {
 		return value
 	}
 	if value is ResultType {
-		if value.base_type is Void {
-			return none
-		}
-		return value
+		return none
 	}
 	if if_branch_type_needs_context(value) || value is Void || value is Unknown {
 		return none
