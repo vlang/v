@@ -144,6 +144,12 @@ fn test_context_dependent_if_branches_infer_wrapper_types() {
 	res_out := run_good(v3_bin, 'if_error_branch_infers_result',
 		"fn maybe(flag bool) !int {\n\treturn if flag { error('bad') } else { 4 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n")
 	assert res_out == '4\n-1'
+	code_out := run_good(v3_bin, 'if_error_with_code_branch_infers_result',
+		"fn maybe(flag bool) !int {\n\treturn if flag { error_with_code('bad', 1) } else { 6 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n")
+	assert code_out == '6\n-1'
+	match_code_out := run_good(v3_bin, 'match_error_with_code_branch_infers_result',
+		"fn maybe(n int) !int {\n\treturn match n {\n\t\t0 { error_with_code('bad', 2) }\n\t\telse { 7 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(maybe(1) or { -1 }))\n\tprintln(int_str(maybe(0) or { -1 }))\n}\n")
+	assert match_code_out == '7\n-1'
 	run_bad(v3_bin, 'if_none_branch_without_context_rejected',
 		'fn main() {\n\tx := if true { none } else { 1 }\n\tprintln(x)\n}\n',
 		'if-expression branch type mismatch')

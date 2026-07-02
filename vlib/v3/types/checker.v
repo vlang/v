@@ -6946,7 +6946,7 @@ fn (tc &TypeChecker) branch_tail_is_failure_literal(id flat.NodeId) bool {
 		return true
 	}
 	if node.kind == .call {
-		return tc.call_display_name(node) == 'error'
+		return tc.call_display_name(node) in ['error', 'error_with_code']
 	}
 	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
 		return tc.branch_tail_is_failure_literal(tc.a.child(&node, 0))
