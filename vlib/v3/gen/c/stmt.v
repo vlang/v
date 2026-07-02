@@ -588,12 +588,12 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					g.expected_enum = ''
 					return
 				}
-				ret_node := g.a.nodes[int(ret_id)]
-				if ret_node.kind == .call && g.is_noreturn_call(ret_id) {
+				if g.is_noreturn_call(ret_id) {
 					g.gen_noreturn_return(ret_id)
 					g.expected_enum = ''
 					return
 				}
+				ret_node := g.a.nodes[int(ret_id)]
 				if ret_node.kind == .call {
 					fn_n := g.a.child_node(&ret_node, 0)
 					if fn_n.value == 'error' || fn_n.value == 'error_with_code' {
@@ -855,11 +855,11 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 		g.gen_default_return_stmt()
 		return
 	}
-	ret_node := g.a.nodes[int(ret_id)]
-	if ret_node.kind == .call && g.is_noreturn_call(ret_id) {
+	if g.is_noreturn_call(ret_id) {
 		g.gen_noreturn_return(ret_id)
 		return
 	}
+	ret_node := g.a.nodes[int(ret_id)]
 	if ret_node.kind == .assoc {
 		tmp := g.tmp_name()
 		g.gen_assoc_return_tmp(ret_node, tmp)
@@ -2660,8 +2660,7 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 			child := g.a.nodes[int(child_id)]
 			if i == or_body.children_count - 1 && child.kind == .expr_stmt {
 				inner_id := g.a.child(&child, 0)
-				inner := g.a.nodes[int(inner_id)]
-				if inner.kind == .call && g.is_noreturn_call(inner_id) {
+				if g.is_noreturn_call(inner_id) {
 					g.gen_node(child_id)
 				} else {
 					g.write('${c_name(lhs.value)} = ')
@@ -2702,8 +2701,7 @@ fn (mut g FlatGen) gen_decl_or_map_index(lhs flat.Node, expr_node flat.Node, m t
 			child := g.a.nodes[int(child_id)]
 			if i == or_body.children_count - 1 && child.kind == .expr_stmt {
 				inner_id := g.a.child(&child, 0)
-				inner := g.a.nodes[int(inner_id)]
-				if inner.kind == .call && g.is_noreturn_call(inner_id) {
+				if g.is_noreturn_call(inner_id) {
 					g.gen_node(child_id)
 				} else {
 					g.write('${c_name(lhs.value)} = ')
@@ -2741,16 +2739,34 @@ fn (g &FlatGen) is_json_decode_call_expr(id flat.NodeId) bool {
 	return false
 }
 
-// is_noreturn_call reports whether is noreturn call applies in c.
-fn (g &FlatGen) is_noreturn_call(id flat.NodeId) bool {
+fn (g &FlatGen) noreturn_call_id(id flat.NodeId) ?flat.NodeId {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return false
+		return none
 	}
 	node := g.a.nodes[int(id)]
-	if node.kind != .call || node.children_count == 0 {
-		return false
+	match node.kind {
+		.expr_stmt, .paren {
+			if node.children_count == 0 {
+				return none
+			}
+			return g.noreturn_call_id(g.a.child(&node, 0))
+		}
+		.call {
+			if node.children_count == 0 {
+				return none
+			}
+			return id
+		}
+		else {
+			return none
+		}
 	}
-	return g.tc.resolved_call_never_returns(id)
+}
+
+// is_noreturn_call reports whether is noreturn call applies in c.
+fn (g &FlatGen) is_noreturn_call(id flat.NodeId) bool {
+	call_id := g.noreturn_call_id(id) or { return false }
+	return g.tc.resolved_call_never_returns(call_id)
 }
 
 // tmp_name supports tmp name handling for FlatGen.

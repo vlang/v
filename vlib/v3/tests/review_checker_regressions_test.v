@@ -175,6 +175,13 @@ fn test_no_return_calls_satisfy_return_analysis() {
 	assert out == 'ok\n7'
 }
 
+fn test_parenthesized_no_return_return_uses_cgen_fallback() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_parenthesized_panic_satisfies_return_codegen',
+		"fn f(ok bool) int {\n\tif ok {\n\t\treturn 9\n\t}\n\treturn (panic('x'))\n}\nfn main() {\n\tprintln(int_str(f(true)))\n}\n")
+	assert out == '9'
+}
+
 fn test_return_panic_with_defer_evaluates_call_before_cleanup() {
 	v3_bin := build_v3_review_checker()
 	out := run_runtime_bad(v3_bin, 'bad_return_panic_defer_order',
