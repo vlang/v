@@ -281,6 +281,17 @@ pub fn (t Type) name() string {
 		return 'map[${nested_type_name(t.key_type)}]${nested_type_name(t.value_type)}'
 	}
 	if t is Pointer {
+		base := t.base_type
+		if base is Void {
+			return 'voidptr'
+		}
+		if base is Char {
+			return 'charptr'
+		}
+		if base is Primitive && base.props.has(.integer) && base.props.has(.unsigned)
+			&& base.size == 8 {
+			return 'byteptr'
+		}
 		return '&${nested_type_name(t.base_type)}'
 	}
 	if t is FnType {

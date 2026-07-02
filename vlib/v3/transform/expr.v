@@ -204,10 +204,10 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 		elem_type = new_rhs_type[2..]
 		rhs_type = new_rhs_type
 	}
-	if lhs_is_array_ptr {
+	if lhs_is_array_ptr && t.node_type(new_lhs).starts_with('&') {
 		new_lhs = t.make_prefix(.mul, new_lhs)
 	}
-	if rhs_is_array_ptr {
+	if rhs_is_array_ptr && t.node_type(new_rhs).starts_with('&') {
 		new_rhs = t.make_prefix(.mul, new_rhs)
 	}
 	eq_call := if t.array_elem_needs_element_eq(elem_type) {

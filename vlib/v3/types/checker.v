@@ -5490,7 +5490,7 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				return tc.call_info(map_method, true)
 			}
 		}
-		if clean_array := array_type_from_receiver(clean) {
+		if clean_array := array_like_type_from_receiver(clean) {
 			match fn_node.value {
 				'first', 'last', 'pop', 'pop_left' {
 					return CallInfo{
@@ -6345,6 +6345,40 @@ fn (tc &TypeChecker) thread_wait_return_type(t Type) ?Type {
 	return none
 }
 
+// fixed_array_lowered_methods lists the builtin array methods the transform
+// actually lowers for fixed-array receivers (it copies the fixed array into a
+// dynamic temp and re-dispatches).
+const fixed_array_lowered_methods = ['contains', 'index', 'last_index', 'any', 'all', 'count',
+	'map', 'filter', 'str']
+
+fn receiver_is_fixed_array(t Type) bool {
+	if t is ArrayFixed {
+		return true
+	}
+	if t is Alias {
+		return receiver_is_fixed_array(t.base_type)
+	}
+	return false
+}
+
+fn array_like_type_for_method(t Type, method string) ?Array {
+	if t is Array {
+		return t
+	}
+	if t is ArrayFixed {
+		if method in fixed_array_lowered_methods {
+			return Array{
+				elem_type: t.elem_type
+			}
+		}
+		return none
+	}
+	if t is Alias {
+		return array_like_type_for_method(t.base_type, method)
+	}
+	return none
+}
+
 fn map_type_from_receiver(t Type) ?Map {
 	if t is Map {
 		return t
@@ -6729,7 +6763,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 						tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
 							param_idx + 1} to `${tc.call_display_name(node)}`; expected `${elem_type.name()}`',
 							id)
-					} else if !tc.receiver_compatible(actual, elem_type) {
+					} else if !tc.receiver_compatible(actual, elem_type)
+						&& !tc.type_compatible(actual, elem_type) {
 						tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
 							param_idx + 1} to `${tc.call_display_name(node)}`; expected `${elem_type.name()}`',
 							id)
@@ -6759,10 +6794,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			actual := tc.resolve_expr(arg_id, elem_type)
 			actual_name := actual.name()
+			expected_name := elem_type.name()
 			actual_raw := actual
 			if variadic_elem_accepts_any(elem_type) && !variadic_any_arg_has_value(actual) {
 				tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual_name}` as argument ${
-					param_idx + 1} to `${tc.call_display_name(node)}`; expected `${elem_type.name()}`',
+					param_idx + 1} to `${tc.call_display_name(node)}`; expected `${expected_name}`',
 					id)
 				if has_dsl_scope {
 					tc.pop_scope()
@@ -6771,9 +6807,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			if actual is Array {
 				if !tc.receiver_compatible(actual_raw, elem_type)
-					&& !tc.receiver_compatible(actual_raw, expected) {
+					&& !tc.receiver_compatible(actual_raw, expected)
+					&& !tc.type_compatible(actual_raw, elem_type)
+					&& !tc.type_compatible(actual_raw, expected) {
 					tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual_name}` as argument ${
-						param_idx + 1} to `${tc.call_display_name(node)}`; expected `${expected.name()}`',
+						param_idx + 1} to `${tc.call_display_name(node)}`; expected `${expected_name}`',
 						id)
 				}
 				if has_dsl_scope {
@@ -6790,7 +6828,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		} else {
 			actual = tc.resolve_expr(arg_id, expected)
 		}
-		if !tc.receiver_compatible(actual, expected) {
+		if !tc.receiver_compatible(actual, expected) && !tc.type_compatible(actual, expected) {
 			if json_encode_accepts_arg(info.name, param_idx, expected, actual) {
 				continue
 			}
@@ -7373,6 +7411,11 @@ fn (tc &TypeChecker) call_receiver_array_type(node flat.Node) ?Array {
 	base_type := if base_type0 is Alias { base_type0.base_type } else { base_type0 }
 	if base_type is Array {
 		return base_type
+	}
+	if base_type is ArrayFixed {
+		return Array{
+			elem_type: base_type.elem_type
+		}
 	}
 	return none
 }
@@ -10401,10 +10444,7 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, i
 	// Methods defined directly on the interface (default implementations) are
 	// inherited and need not be reimplemented.
 	for method in tc.interface_abstract_method_names(iface_name) {
-		concrete_key := '${concrete_name}.${method}'
-		if concrete_key !in tc.fn_param_types {
-			return false
-		}
+		concrete_key := tc.concrete_method_signature_key(concrete_name, method) or { return false }
 		expected_key := tc.interface_method_signature_key(iface_name, method) or {
 			'${iface_name}.${method}'
 		}
@@ -10420,6 +10460,19 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, i
 		}
 	}
 	return true
+}
+
+fn (tc &TypeChecker) concrete_method_signature_key(concrete_name string, method string) ?string {
+	key := '${concrete_name}.${method}'
+	if key in tc.fn_param_types || key in tc.fn_ret_types {
+		return key
+	}
+	if indexed := tc.receiver_method_suffix_index[key] {
+		if indexed != receiver_method_suffix_ambiguous {
+			return indexed
+		}
+	}
+	return none
 }
 
 // interface_method_names supports interface method names handling for TypeChecker.
@@ -10826,43 +10879,20 @@ fn (tc &TypeChecker) method_signature_compatible(actual_key string, expected_key
 }
 
 fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Type) bool {
-	if tc.type_compatible(actual, expected) && tc.type_compatible(expected, actual) {
-		return true
+	if type_pointer_depth(actual) != type_pointer_depth(expected) {
+		return false
 	}
-	return tc.interface_pointer_signature_equivalent(actual, expected)
+	return tc.type_compatible(actual, expected) && tc.type_compatible(expected, actual)
 }
 
-fn (tc &TypeChecker) interface_pointer_signature_equivalent(a Type, b Type) bool {
-	if a is Pointer {
-		a_iface := tc.interface_name_from_signature_type(a.base_type)
-		b_iface := tc.interface_name_from_signature_type(b)
-		if a_iface.len > 0 && a_iface == b_iface {
-			return true
-		}
+fn type_pointer_depth(t Type) int {
+	if t is Pointer {
+		return 1 + type_pointer_depth(t.base_type)
 	}
-	if b is Pointer {
-		a_iface := tc.interface_name_from_signature_type(a)
-		b_iface := tc.interface_name_from_signature_type(b.base_type)
-		if a_iface.len > 0 && a_iface == b_iface {
-			return true
-		}
+	if t is Alias {
+		return type_pointer_depth(t.base_type)
 	}
-	return false
-}
-
-fn (tc &TypeChecker) interface_name_from_signature_type(typ Type) string {
-	if typ is Interface {
-		return typ.name
-	}
-	name := typ.name()
-	if name in tc.interface_names {
-		return name
-	}
-	qname := tc.qualify_name(name)
-	if qname in tc.interface_names {
-		return qname
-	}
-	return ''
+	return 0
 }
 
 // method_type_name supports method type name handling for types.
@@ -11986,11 +12016,16 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 						elem_type: clean_type.elem_type
 					})
 				}
-				if clean_type is Array {
+				if clean_array := array_like_type_for_method(clean_type, fn_node.value) {
 					if fn_node.value == 'clone' || fn_node.value == 'reverse' {
 						return base_type
 					}
 					if fn_node.value == 'filter' || fn_node.value == 'sorted' {
+						if receiver_is_fixed_array(clean_type) {
+							return Type(Array{
+								elem_type: clean_array.elem_type
+							})
+						}
 						return base_type
 					}
 					if fn_node.value in ['any', 'all'] {
@@ -12003,7 +12038,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 						return Type(void_)
 					}
 					if fn_node.value == 'last' || fn_node.value == 'first' || fn_node.value == 'pop' {
-						return array_elem_type(clean_type)
+						return array_elem_type(clean_array)
 					}
 					if fn_node.value == 'contains' {
 						return Type(bool_)
@@ -12030,7 +12065,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 						// other array element type is not a thread and `.wait()` is
 						// unsupported, so reject it rather than mis-typing the call as the
 						// receiver array (which would emit invalid C joining non-handles).
-						elem := array_elem_type(clean_type)
+						elem := array_elem_type(clean_array)
 						if elem is Struct {
 							if elem.name == 'thread' {
 								return Type(void_)
@@ -12046,7 +12081,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 					if fn_node.value == 'clone' {
 						return base_type
 					}
-					elem_type := array_elem_type(clean_type)
+					elem_type := array_elem_type(clean_array)
 					elem_name := elem_type.name()
 					mut short_elem := elem_name
 					mut mod_prefix := ''

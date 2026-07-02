@@ -378,9 +378,31 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name string, method string)
 			return true
 		}
 	}
+	for alias in g.interface_alias_names(iface_name) {
+		alias_name := '${alias}.${method}'
+		if g.used_interface_dispatch_key(alias_name) {
+			return true
+		}
+		short_alias_name := '${alias.all_after_last('.')}.${method}'
+		if short_alias_name != alias_name && g.interface_dispatch_short_name_allowed(alias)
+			&& g.used_interface_dispatch_key(short_alias_name) {
+			return true
+		}
+	}
 	short_name := '${iface_name.all_after_last('.')}.${method}'
 	return short_name != name && g.interface_dispatch_short_name_allowed(iface_name)
 		&& g.used_interface_dispatch_key(short_name)
+}
+
+fn (g &FlatGen) interface_alias_names(iface_name string) []string {
+	mut aliases := []string{}
+	for alias, target in g.tc.type_aliases {
+		qtarget := g.tc.qualify_name(target)
+		if target == iface_name || qtarget == iface_name {
+			aliases << alias
+		}
+	}
+	return aliases
 }
 
 fn (g &FlatGen) used_interface_dispatch_key(name string) bool {
@@ -440,10 +462,17 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 	// wrapper struct (a C function cannot return an array by value), matching what the concrete
 	// implementer's method returns and what the call site unwraps.
 	ret_ct := g.fn_return_type_name(ret_type)
-	mut sig_params := if sig_key.len > 0 {
+	decl_params := g.tc.fn_param_types[decl_key] or { []types.Type{} }
+	concrete_sig_params := if sig_key.len > 0 {
 		g.tc.fn_param_types[sig_key] or { []types.Type{} }
 	} else {
-		g.tc.fn_param_types[decl_key] or { []types.Type{} }
+		[]types.Type{}
+	}
+	mut sig_params := if decl_params.len > 0
+		&& (concrete_sig_params.len == 0 || decl_params.len == concrete_sig_params.len) {
+		decl_params.clone()
+	} else {
+		concrete_sig_params.clone()
 	}
 	mut arg_names := []string{}
 	g.write('${ret_ct} ${cn}__${method}(${cn}* i')
@@ -478,8 +507,25 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 			}
 			g.write('\t\tcase ${id}: ')
 			mut call := '${c_name(concrete_key)}(${recv}'
-			for an in arg_names {
-				call += ', ${an}'
+			for ai, an in arg_names {
+				arg_idx := ai + 1
+				concrete_param := if arg_idx < concrete_params.len {
+					concrete_params[arg_idx]
+				} else {
+					types.Type(types.void_)
+				}
+				dispatch_param := if arg_idx < sig_params.len {
+					sig_params[arg_idx]
+				} else {
+					concrete_param
+				}
+				if concrete_param is types.Pointer && dispatch_param !is types.Pointer {
+					call += ', &${an}'
+				} else if concrete_param !is types.Pointer && dispatch_param is types.Pointer {
+					call += ', *${an}'
+				} else {
+					call += ', ${an}'
+				}
 			}
 			call += ')'
 			if ret_ct == 'void' {

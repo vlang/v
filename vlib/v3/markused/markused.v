@@ -326,9 +326,13 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 						}
 					}
 				}
-				if callee.contains('.') {
-					recv := callee.all_before_last('.')
-					method := callee.all_after_last('.')
+				mut iface_callee := callee
+				if normalized := interface_dispatch_dotted_name(callee, tc) {
+					iface_callee = normalized
+				}
+				if iface_callee.contains('.') {
+					recv := iface_callee.all_before_last('.')
+					method := iface_callee.all_after_last('.')
 					ensure_iface_impls(recv, fn_info.module, tc, mut iface_impls, mut
 						checked_iface_impls)
 					if impls := iface_impls[recv] {
@@ -410,6 +414,15 @@ fn interface_name_for_receiver(recv string, cur_module string, tc &types.TypeChe
 	if recv in tc.interface_names {
 		return recv
 	}
+	if target := tc.type_aliases[recv] {
+		if target in tc.interface_names {
+			return target
+		}
+		qtarget := tc.qualify_name(target)
+		if qtarget in tc.interface_names {
+			return qtarget
+		}
+	}
 	if recv.contains('.') {
 		return none
 	}
@@ -417,6 +430,43 @@ fn interface_name_for_receiver(recv string, cur_module string, tc &types.TypeChe
 		qname := '${cur_module}.${recv}'
 		if qname in tc.interface_names {
 			return qname
+		}
+		if target := tc.type_aliases[qname] {
+			if target in tc.interface_names {
+				return target
+			}
+			qtarget := tc.qualify_name(target)
+			if qtarget in tc.interface_names {
+				return qtarget
+			}
+		}
+	}
+	return none
+}
+
+fn interface_dispatch_dotted_name(name string, tc &types.TypeChecker) ?string {
+	if name.contains('.') {
+		return name
+	}
+	if !name.contains('__') {
+		return none
+	}
+	recv_c := name.all_before_last('__')
+	method := name.all_after_last('__')
+	if recv_c.len == 0 || method.len == 0 {
+		return none
+	}
+	recv := recv_c.replace('__', '.')
+	if recv in tc.interface_names {
+		return '${recv}.${method}'
+	}
+	if target := tc.type_aliases[recv] {
+		if target in tc.interface_names {
+			return '${target}.${method}'
+		}
+		qtarget := tc.qualify_name(target)
+		if qtarget in tc.interface_names {
+			return '${qtarget}.${method}'
 		}
 	}
 	return none

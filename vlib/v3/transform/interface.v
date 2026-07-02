@@ -51,7 +51,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		&& t.resolve_interface_type_name(source_type[1..]) == iface_name {
 		return t.transform_expr(id)
 	}
-	literal := t.make_interface_literal_from_expr(id, iface_name) or { return none }
+	literal := t.make_interface_literal_from_expr(id, iface_name, target_is_ptr) or { return none }
 	if !target_is_ptr {
 		return literal
 	}
@@ -85,7 +85,7 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 	}
 	old_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	literal := t.make_interface_literal_from_expr(t.a.child(&child, 0), iface_name) or {
+	literal := t.make_interface_literal_from_expr(t.a.child(&child, 0), iface_name, true) or {
 		t.pending_stmts = old_pending
 		return none
 	}
@@ -110,7 +110,7 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 }
 
 // make_interface_literal_from_expr converts make interface literal from expr data for transform.
-fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string) ?flat.NodeId {
+fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string, prefer_ref bool) ?flat.NodeId {
 	fields := t.tc.interface_fields[iface_name] or { []types.StructField{} }
 	source_type := t.node_type(id)
 	if source_type.len == 0 {
@@ -127,6 +127,10 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	// concrete type and emit the matching `_typ` dispatch id.
 	object_expr := if is_ptr {
 		source
+	} else if prefer_ref && t.expr_can_take_address(source) {
+		addr := t.make_prefix(.amp, source)
+		t.a.nodes[int(addr)].typ = '&${concrete_type}'
+		addr
 	} else {
 		addr := t.make_prefix(.amp, source)
 		size := t.make_sizeof_type(concrete_type)

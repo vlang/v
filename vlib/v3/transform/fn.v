@@ -984,6 +984,11 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		return arg_id
 	}
 	mut arg_node := &t.a.nodes[int(arg_id)]
+	if arg_node.kind == .lambda_expr {
+		if lifted := t.lift_lambda_expr_for_fn_param(arg_id, *arg_node, param_type) {
+			return lifted
+		}
+	}
 	if arg_node.kind == .array_literal && arg_node.typ.len == 0 && param_type.starts_with('[]') {
 		arg_node.typ = param_type
 	}
@@ -1060,6 +1065,63 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		return t.transform_expr(arg_id)
 	}
 	return t.transform_expr_for_type(arg_id, param_type)
+}
+
+fn (mut t Transformer) lift_lambda_expr_for_fn_param(_id flat.NodeId, node flat.Node, param_type string) ?flat.NodeId {
+	if node.kind != .lambda_expr || node.children_count == 0 || param_type.len == 0 || isnil(t.tc) {
+		return none
+	}
+	fn_type := t.fn_type_from_type_text(param_type) or { return none }
+	body_id := t.a.child(&node, node.children_count - 1)
+	lambda_param_count := int(node.children_count) - 1
+	if lambda_param_count != fn_type.params.len {
+		return none
+	}
+	mut children := []flat.NodeId{cap: fn_type.params.len + 1}
+	for i in 0 .. lambda_param_count {
+		param_id := t.a.child(&node, i)
+		param_node := t.a.nodes[int(param_id)]
+		param_type_name := fn_type.params[i].name()
+		children << t.a.add_node(flat.Node{
+			kind:  .param
+			value: param_node.value
+			typ:   param_type_name
+			op:    if param_type_name.starts_with('&') { .amp } else { .none }
+		})
+	}
+	ret_type := fn_type.return_type.name()
+	if ret_type.len > 0 && ret_type != 'void' {
+		children << t.make_return(body_id, ret_type)
+	} else {
+		children << t.make_expr_stmt(body_id)
+	}
+	start := t.a.children.len
+	for child in children {
+		t.a.children << child
+	}
+	fn_id := t.a.add_node(flat.Node{
+		kind:           .fn_literal
+		typ:            ret_type
+		children_start: start
+		children_count: flat.child_count(children.len)
+		pos:            node.pos
+	})
+	return t.lift_fn_literal(fn_id, t.a.nodes[int(fn_id)])
+}
+
+fn (t &Transformer) fn_type_from_type_text(type_text string) ?types.FnType {
+	typ := t.tc.parse_type(type_text)
+	return fn_type_from_type(typ)
+}
+
+fn fn_type_from_type(typ types.Type) ?types.FnType {
+	if typ is types.FnType {
+		return typ
+	}
+	if typ is types.Alias {
+		return fn_type_from_type(typ.base_type)
+	}
+	return none
 }
 
 fn (mut t Transformer) transform_pointer_rvalue_arg(arg_id flat.NodeId, arg_node flat.Node, param_type string) ?flat.NodeId {
@@ -1793,6 +1855,15 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	if clean_typ == 'IError' || clean_typ == 'builtin.IError' {
 		return t.make_call_typed('IError.str', arr1(expr), 'string')
 	}
+	iface_name := t.resolve_interface_type_name(clean_typ)
+	if iface_name.len > 0 {
+		str_key := '${iface_name}.str'
+		known_str := str_key in t.fn_ret_types || (!isnil(t.tc) && str_key in t.tc.fn_ret_types)
+		if known_str {
+			return t.make_call_typed(str_key, arr1(expr), 'string')
+		}
+		return t.make_string_literal('${iface_name.all_after_last('.')}{}')
+	}
 	match clean_typ {
 		'bool' {
 			return t.make_call_typed('bool.str', arr1(expr), 'string')
@@ -2029,6 +2100,23 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 			return t.make_call_typed('v3_int_zpad', arr2(expr, t.make_int_literal(width)), 'string')
 		}
 	}
+	if width := static_format_width(format) {
+		mut converted := if base := integer_format_base_suffix(format) {
+			if clean_typ in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
+				t.make_call_typed('strconv__format_uint', arr2(expr, t.make_int_literal(base)),
+					'string')
+			} else if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize'] {
+				t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(base)),
+					'string')
+			} else {
+				t.wrap_string_conversion(expr, typ)
+			}
+		} else {
+			t.wrap_string_conversion(expr, typ)
+		}
+		return t.make_call_typed('v3_string_pad', arr2(converted, t.make_int_literal(width)),
+			'string')
+	}
 	return t.wrap_string_conversion(expr, typ)
 }
 
@@ -2099,6 +2187,49 @@ fn integer_format_base(format string) ?int {
 		else {}
 	}
 
+	return none
+}
+
+fn integer_format_base_suffix(format string) ?int {
+	if format.len == 0 {
+		return none
+	}
+	match format[format.len - 1] {
+		`x` { return 16 }
+		`o` { return 8 }
+		else {}
+	}
+
+	return none
+}
+
+fn static_format_width(format string) ?int {
+	if format.len == 0 || format[0] == `0` {
+		return none
+	}
+	mut i := 0
+	mut sign := 1
+	if format[i] == `-` {
+		sign = -1
+		i++
+	}
+	if i >= format.len || format[i] < `0` || format[i] > `9` {
+		return none
+	}
+	mut width := 0
+	for i < format.len && format[i] >= `0` && format[i] <= `9` {
+		width = width * 10 + int(format[i] - `0`)
+		i++
+	}
+	if width <= 0 {
+		return none
+	}
+	if i == format.len {
+		return sign * width
+	}
+	if i == format.len - 1 && format[i] in [`s`, `d`, `x`, `o`, `p`] {
+		return sign * width
+	}
 	return none
 }
 
