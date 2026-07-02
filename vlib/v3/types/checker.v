@@ -4790,17 +4790,17 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 				tc.check_node(child_id)
 			}
 			child := tc.a.nodes[int(child_id)]
-			if child.kind == .match_stmt {
-				if tc.should_diagnose(id) {
-					tc.record_error(.return_mismatch,
-						'match expression branches cannot produce multiple return values', id)
-				}
-				return
-			}
 			actual := tc.resolve_expr(child_id, expected)
 			if tc.type_compatible(actual, expected) {
 				$if ownership ? {
 					tc.ownership_after_return(id, node)
+				}
+				return
+			}
+			if child.kind == .match_stmt {
+				if tc.should_diagnose(id) {
+					tc.record_error(.return_mismatch,
+						'match expression branches cannot produce multiple return values', id)
 				}
 				return
 			}

@@ -421,6 +421,9 @@ fn test_multi_rhs_if_expr_is_not_multi_return() {
 
 fn test_match_tuple_tail_multi_return_is_rejected() {
 	v3_bin := build_v3()
+	match_call := run_good(v3_bin, 'good_multi_return_match_call_return',
+		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn pick(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pick(false)\n\tprintln(int_str(a + b))\n}\n')
+	assert match_call == '7'
 	run_bad(v3_bin, 'bad_multi_return_match_tail_decl_assign',
 		'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n',
 		'match expression branches cannot produce multiple assignment values')
