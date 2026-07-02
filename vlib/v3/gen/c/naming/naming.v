@@ -10,6 +10,7 @@ const reserved_words = {
 	'break':    true
 	'case':     true
 	'char':     true
+	'asm':      true
 	'const':    true
 	'continue': true
 	'copy':     true
@@ -36,6 +37,12 @@ const reserved_words = {
 	'struct':   true
 	'switch':   true
 	'typedef':  true
+	'false':    true
+	'typeof':   true
+	'stdin':    true
+	'stderr':   true
+	'stdout':   true
+	'true':     true
 	'union':    true
 	'unsigned': true
 	'void':     true
@@ -50,15 +57,53 @@ const reserved_words = {
 // mangled to `v_<name>` consistently at definition and call sites. `C.<name>`
 // calls are unaffected (the `C.` prefix is stripped before this check).
 const libc_collisions = {
-	'rint':  true
-	'y0':    true
-	'y1':    true
-	'yn':    true
-	'j0':    true
-	'j1':    true
-	'jn':    true
-	'drem':  true
-	'scalb': true
+	'abort':    true
+	'access':   true
+	'acos':     true
+	'atexit':   true
+	'ceil':     true
+	'ceilf':    true
+	'close':    true
+	'cos':      true
+	'drem':     true
+	'dup2':     true
+	'execlp':   true
+	'execvp':   true
+	'fabs':     true
+	'fcntl':    true
+	'floor':    true
+	'floorf':   true
+	'fmod':     true
+	'fork':     true
+	'getenv':   true
+	'j0':       true
+	'j1':       true
+	'jn':       true
+	'ldexp':    true
+	'memcmp':   true
+	'memcpy':   true
+	'memmove':  true
+	'memset':   true
+	'open':     true
+	'pipe':     true
+	'pow':      true
+	'read':     true
+	'realpath': true
+	'rint':     true
+	'scalb':    true
+	'setenv':   true
+	'signal':   true
+	'snprintf': true
+	'sqrt':     true
+	'strcmp':   true
+	'strlen':   true
+	'strncmp':  true
+	'strncpy':  true
+	'strrchr':  true
+	'strstr':   true
+	'y0':       true
+	'y1':       true
+	'yn':       true
 }
 
 // c_name returns the C identifier used for a V symbol or type name.
@@ -87,6 +132,9 @@ pub fn c_name(name string) string {
 	}
 	n := sanitize(name)
 	if n in reserved_words || n in libc_collisions {
+		if name.contains('@') {
+			return '_v_${n}'
+		}
 		return 'v_${n}'
 	}
 	return n
@@ -223,6 +271,16 @@ pub fn is_plain_identifier(name string) bool {
 		return false
 	}
 	return true
+}
+
+// is_reserved_word reports whether name needs a prefix to avoid a C reserved word.
+pub fn is_reserved_word(name string) bool {
+	return name in reserved_words
+}
+
+// is_libc_collision reports whether name needs a prefix to avoid a libc symbol.
+pub fn is_libc_collision(name string) bool {
+	return name in libc_collisions
 }
 
 // type_name_part turns a C type or length expression into a fragment that is safe

@@ -1321,8 +1321,10 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) string {
 	if node.children_count < 2 {
 		return ''
 	}
-	lhs_type := t.reliable_stringify_type(t.a.child(&node, 0))
-	rhs_type := t.reliable_stringify_type(t.a.child(&node, 1))
+	lhs_id := t.a.child(&node, 0)
+	rhs_id := t.a.child(&node, 1)
+	lhs_type := t.reliable_stringify_type(lhs_id)
+	rhs_type := t.reliable_stringify_type(rhs_id)
 	if lhs_type == 'string' || rhs_type == 'string' {
 		return 'string'
 	}
@@ -1339,6 +1341,11 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) string {
 		.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor {
 			if lhs_type.len > 0 && rhs_type.len > 0 && t.is_numeric_stringify_type(lhs_type)
 				&& t.is_numeric_stringify_type(rhs_type) {
+				if promoted := promote_numeric_literal_infix_type(t.a.nodes[int(lhs_id)], lhs_type,
+					t.a.nodes[int(rhs_id)], rhs_type)
+				{
+					return promoted
+				}
 				// Use the promoted result type, not the lhs, so e.g.
 				// `1 + u64(x)` formats as unsigned rather than signed int.
 				return promote_numeric_stringify_type(lhs_type, rhs_type)
@@ -1348,6 +1355,63 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) string {
 	}
 
 	return ''
+}
+
+fn promote_numeric_literal_infix_type(lhs flat.Node, lhs_type string, rhs flat.Node, rhs_type string) ?string {
+	if promoted := promote_int_literal_infix_type(lhs, rhs, rhs_type) {
+		return promoted
+	}
+	if promoted := promote_int_literal_infix_type(rhs, lhs, lhs_type) {
+		return promoted
+	}
+	if lhs_type == 'f32' && rhs.kind == .float_literal {
+		return 'f32'
+	}
+	if rhs_type == 'f32' && lhs.kind == .float_literal {
+		return 'f32'
+	}
+	return none
+}
+
+fn promote_int_literal_infix_type(lit flat.Node, other flat.Node, other_type string) ?string {
+	if lit.kind != .int_literal || other.kind == .int_literal {
+		return none
+	}
+	value := decimal_int_literal_value(lit.value) or { return none }
+	if unsigned_type_text_accepts_int_literal(other_type, value) {
+		return other_type
+	}
+	return none
+}
+
+fn decimal_int_literal_value(text string) ?int {
+	if text.len == 0 {
+		return none
+	}
+	clean := text.replace('_', '')
+	if clean.len == 0 {
+		return none
+	}
+	for ch in clean {
+		if ch < `0` || ch > `9` {
+			return none
+		}
+	}
+	return clean.int()
+}
+
+fn unsigned_type_text_accepts_int_literal(typ string, value int) bool {
+	if value < 0 {
+		return false
+	}
+	max := match typ {
+		'u8', 'byte' { 255 }
+		'u16' { 65535 }
+		'u32', 'u64', 'usize' { return true }
+		else { return false }
+	}
+
+	return value <= max
 }
 
 // promote_numeric_stringify_type returns the result type of a binary numeric
@@ -1577,10 +1641,10 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 				'string')
 		}
 		'f32' {
-			return t.make_call_typed('strconv__f32_to_str_l', arr1(expr), 'string')
+			return t.make_call_typed('f32.str', arr1(expr), 'string')
 		}
 		'f64', 'float literal' {
-			return t.make_call_typed('strconv__f64_to_str_l', arr1(expr), 'string')
+			return t.make_call_typed('f64.str', arr1(expr), 'string')
 		}
 		else {
 			if clean_typ in t.enum_types {
@@ -1703,11 +1767,18 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 }
 
 fn fixed_decimal_precision(format string) ?int {
-	if format.len < 3 || format[0] != `.` || format[format.len - 1] != `f` {
+	if format.len < 3 || format[format.len - 1] != `f` {
+		return none
+	}
+	start := if format[0] == `.` {
+		1
+	} else if format.len >= 4 && format[0] == `0` && format[1] == `.` {
+		2
+	} else {
 		return none
 	}
 	mut n := 0
-	for i in 1 .. format.len - 1 {
+	for i in start .. format.len - 1 {
 		ch := format[i]
 		if ch < `0` || ch > `9` {
 			return none
@@ -2046,6 +2117,7 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			base_type = lvalue_base_type
 		}
 	}
+	base_type = t.normalize_type_alias(base_type)
 	if !base_type.starts_with('[]') && !t.is_fixed_array_type(base_type) {
 		if base_node.kind in [.call, .selector, .as_expr] {
 			new_base := t.transform_expr(base_id)

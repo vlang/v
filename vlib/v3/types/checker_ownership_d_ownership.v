@@ -1,6 +1,7 @@
 module types
 
 import v3.flat
+import v3.gen.c.naming
 
 struct MovedVar {
 	moved_to      string
@@ -1310,7 +1311,7 @@ fn (tc &TypeChecker) ownership_param_mut_with_implicit_veb_ctx(node flat.Node, p
 
 fn (mut tc TypeChecker) ownership_register_fn_param_mut(name string, params []bool) {
 	tc.ownership_register_fn_param_mut_alias(name, params)
-	lowered_name := c_name(name)
+	lowered_name := naming.c_name(name)
 	if lowered_name != name {
 		tc.ownership_register_fn_param_mut_alias(lowered_name, params)
 	}

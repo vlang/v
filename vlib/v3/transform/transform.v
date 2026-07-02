@@ -65,6 +65,7 @@ mut:
 	globals                      map[string]string
 	sum_types                    map[string][]string
 	sum_variant_parents          map[string][]string
+	sum_variant_names            map[string]bool
 	sum_variant_fields           map[string]string
 	qualified_types              map[string]string
 	fn_ret_types                 map[string]string
@@ -270,6 +271,7 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		generic_receiver_methods_by_name: map[string][]string{}
 		generic_call_spec_cache:          map[int]GenericCallSpec{}
 		generic_call_spec_misses:         map[int]bool{}
+		sum_variant_names:                map[string]bool{}
 		used_fns:                         used_fns.clone()
 	}
 }
@@ -569,6 +571,8 @@ fn (mut t Transformer) add_sum_variant_parent(variant string, sum_name string) {
 	if field_name.contains('__') && field_name !in t.sum_variant_fields {
 		t.sum_variant_fields[field_name] = variant
 	}
+	t.sum_variant_names[variant] = true
+	t.sum_variant_names[t.variant_short_name(variant)] = true
 	t.add_sum_variant_parent_key(variant, sum_name)
 	if variant.contains('.') {
 		t.add_sum_variant_parent_key(variant.all_after_last('.'), sum_name)
@@ -5284,6 +5288,12 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	if node.children_count == 0 {
 		return id
 	}
+	if node.op in [.plus, .minus] && node.children_count == 1 {
+		child_id := t.a.child(&node, 0)
+		if signed_str_call := t.rewrite_signed_literal_str_call(node.op, child_id) {
+			return t.transform_expr(signed_str_call)
+		}
+	}
 	if node.op == .mul && node.children_count == 1 {
 		child_id := t.a.child(&node, 0)
 		child := t.a.nodes[int(child_id)]
@@ -5440,6 +5450,25 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		}
 	}
 	return new_id
+}
+
+fn (mut t Transformer) rewrite_signed_literal_str_call(op flat.Op, child_id flat.NodeId) ?flat.NodeId {
+	child := t.a.nodes[int(child_id)]
+	if child.kind != .call || child.children_count != 1 {
+		return none
+	}
+	callee_id := t.a.child(&child, 0)
+	callee := t.a.nodes[int(callee_id)]
+	if callee.kind != .selector || callee.value != 'str' || callee.children_count != 1 {
+		return none
+	}
+	base_id := t.a.child(&callee, 0)
+	base := t.a.nodes[int(base_id)]
+	if base.kind !in [.int_literal, .float_literal] {
+		return none
+	}
+	signed_base := t.make_prefix(op, base_id)
+	return t.make_method_call(signed_base, 'str', []flat.NodeId{})
 }
 
 // transform_amp_sum_cast_from_as_expr supports transform_amp_sum_cast_from_as_expr handling.
@@ -5768,6 +5797,14 @@ fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) fla
 	}
 	if typ.len == 0 {
 		typ = 'unknown'
+	}
+	if t.cur_fn_is_generic && is_generic_fn_placeholder_name(typ) {
+		return t.a.add_node(flat.Node{
+			kind:  .typeof_expr
+			value: generic_type_name_marker(typ)
+			typ:   'string'
+			pos:   node.pos
+		})
 	}
 	return t.make_string_literal(typ)
 }
@@ -6749,6 +6786,11 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 				if node.op in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor] {
 					if lhs_type.len > 0 && rhs_type.len > 0 && t.is_numeric_stringify_type(lhs_type)
 						&& t.is_numeric_stringify_type(rhs_type) {
+						if promoted := promote_numeric_literal_infix_type(t.a.nodes[int(t.a.child(&node,
+							0))], lhs_type, t.a.nodes[int(t.a.child(&node, 1))], rhs_type)
+						{
+							return promoted
+						}
 						return promote_numeric_stringify_type(lhs_type, rhs_type)
 					}
 					if lhs_type.len > 0 && t.is_numeric_stringify_type(lhs_type) {
@@ -7533,16 +7575,7 @@ fn (t &Transformer) count_conds(branch flat.Node) int {
 
 // is_sum_variant reports whether is sum variant applies in transform.
 pub fn (t &Transformer) is_sum_variant(name string) bool {
-	short_name := t.variant_short_name(name)
-	for _, variants in t.sum_types {
-		for v in variants {
-			short_v := t.variant_short_name(v)
-			if v == name || short_v == short_name {
-				return true
-			}
-		}
-	}
-	return false
+	return name in t.sum_variant_names || t.variant_short_name(name) in t.sum_variant_names
 }
 
 // --- array append lowering (existing, will move to expr.v later) ---

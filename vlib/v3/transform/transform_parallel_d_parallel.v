@@ -9,7 +9,7 @@ import v3.flat
 // deterministic.
 
 const min_parallel_transform_items = 256
-const max_parallel_transform_jobs = 8
+const max_parallel_transform_jobs = 6
 
 $if !windows {
 	// TransformChunkArgs is the payload handed to each worker thread.

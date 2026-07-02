@@ -49,6 +49,7 @@ mut:
 	global_init_order            []string               // qualified global names, in declaration order
 	iface_impls                  map[string][]string    // interface name -> implementing concrete type names
 	iface_type_ids               map[string]int         // "${iface}::${concrete}" -> 1-based type id
+	sum_name_lookup              map[string]string      // full/short sum type name -> canonical sum type name
 	module_init_fns              []string               // C names of module-level `init()` fns, in source order
 	module_init_fn_modules       map[string]string      // C init fn name -> V module name
 	module_imports               map[string][]string    // module -> imported modules
@@ -167,6 +168,7 @@ pub fn FlatGen.new() FlatGen {
 		global_init_order:            []string{}
 		iface_impls:                  map[string][]string{}
 		iface_type_ids:               map[string]int{}
+		sum_name_lookup:              map[string]string{}
 		module_init_fns:              []string{}
 		module_init_fn_modules:       map[string]string{}
 		module_imports:               map[string][]string{}
@@ -269,6 +271,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.global_init_order = []string{}
 	g.iface_impls = map[string][]string{}
 	g.iface_type_ids = map[string]int{}
+	g.sum_name_lookup = map[string]string{}
 	g.module_init_fns = []string{}
 	g.module_init_fn_modules = map[string]string{}
 	g.module_imports = map[string][]string{}
@@ -323,6 +326,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.precompute_embedded_fields()
 	g.precompute_param_type_index()
 	g.collect_interface_impls()
+	g.precompute_sum_name_lookup()
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
 	g.preseed_c_extern_fn_ptr_types()
@@ -362,6 +366,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.optional_typedefs()
 	g.c_extern_forward_decls()
 	g.builtin_abi_decls()
+	g.test_failure_helpers()
 	g.global_decls()
 	g.forward_decls()
 	g.shared_dup_fns()
@@ -6298,7 +6303,8 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('u8* malloc_noscan(ptrdiff_t n);')
 	g.writeln('static inline string v3_c_lit(const char* s, int len) { return (string){.str = (u8*)s, .len = len, .is_lit = 1}; }')
 	g.writeln('static inline string v3_char_string(int c) { return rune__str((i32)c); }')
-	g.writeln('static inline string v3_f64_fixed(double x, int precision) { char tmp[128]; int n = snprintf(tmp, sizeof(tmp), "%.*f", precision, x); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); snprintf((char*)out, (size_t)n + 1, "%.*f", precision, x); return (string){.str = out, .len = n, .is_lit = 0}; }')
+	g.writeln('static inline double v3_f64_fixed_value(double x, int precision) { if (precision == 0) return x < 0.0 ? ceil(x - 0.5) : floor(x + 0.5); if (precision == 6) { double scale = 1000000.0; double ax = fabs(x) * scale; double base = floor(ax); double frac = ax - base; if (frac == 0.5) { double rounded = floor(ax + 0.5) / scale; return x < 0.0 ? -rounded : rounded; } } return x; }')
+	g.writeln('static inline string v3_f64_fixed(double x, int precision) { double y = v3_f64_fixed_value(x, precision); char tmp[128]; int n = snprintf(tmp, sizeof(tmp), "%.*f", precision, y); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); snprintf((char*)out, (size_t)n + 1, "%.*f", precision, y); return (string){.str = out, .len = n, .is_lit = 0}; }')
 	g.writeln('static inline string v3_int_zpad(int n, int width) { string s = int__str(n); if (n < 0) return s; while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
 	g.writeln('static inline string v3_i64_zpad(i64 n, int width) { string s = i64__str(n); if (n < 0) return s; while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
 	g.writeln('static inline string v3_u64_zpad(u64 n, int width) { string s = u64__str(n); while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
@@ -6792,8 +6798,11 @@ fn (mut g FlatGen) collect_fixed_array_typedef(typ types.Type, mut needed map[st
 }
 
 fn (mut g FlatGen) collect_fixed_array_typedef_text(type_text string, mut needed map[string]FixedArrayTypedefInfo) {
+	if type_text.len == 0 || !fixed_array_type_text_may_need_typedef(type_text) {
+		return
+	}
 	clean := type_text.trim_space()
-	if clean.len == 0 || !fixed_array_type_text_may_need_typedef(clean) {
+	if clean.len == 0 {
 		return
 	}
 	typ := g.tc.parse_type(clean)
@@ -6908,6 +6917,13 @@ fn (mut g FlatGen) global_decls() {
 		g.writeln('')
 	}
 	g.emit_global_inits()
+}
+
+fn (mut g FlatGen) test_failure_helpers() {
+	g.writeln('static void v3_eprint_lit(const char* s) {')
+	g.writeln('\tfprintf(stderr, "%s", s);')
+	g.writeln('}')
+	g.writeln('')
 }
 
 // emit_global_inits queues assignments for `__global x = expr` declarations into
