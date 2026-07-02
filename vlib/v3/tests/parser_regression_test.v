@@ -231,3 +231,28 @@ fn test_local_sibling_types_are_predeclared_before_fields() {
 	assert a_fields == ['b:&${local_b}']
 	assert b_fields == ['a:&${local_a}']
 }
+
+fn test_multiline_keyword_infix_expressions_continue_after_semicolon() {
+	a := parse_parser_regression_source('multiline_keyword_infix',
+		'module main\n\nstruct Foo {}\n\nfn main() {\n\tvalue := Foo{}\n\tif value\n\t\tis Foo {}\n\txs := [1, 2]\n\tok := 1\n\t\tin xs\n\t_ := value\n\t\tas Foo\n\t_ = ok\n}\n')
+	mut is_count := 0
+	mut in_count := 0
+	mut as_count := 0
+	for node in a.nodes {
+		match node.kind {
+			.is_expr {
+				is_count++
+			}
+			.in_expr {
+				in_count++
+			}
+			.as_expr {
+				as_count++
+			}
+			else {}
+		}
+	}
+	assert is_count == 1
+	assert in_count == 1
+	assert as_count == 1
+}

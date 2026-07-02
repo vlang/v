@@ -3797,9 +3797,10 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 		// skip auto-semicolons before infix operators (multi-line expressions)
 		if p.tok == .semicolon {
 			peek_tok := p.peek()
-			if token_is_infix(peek_tok) && peek_tok !in [.key_as, .key_in, .key_is]
-				&& int(peek_tok) != 85 && int(peek_tok) != 0 {
+			if (token_is_infix(peek_tok) || peek_tok == .key_as) && int(peek_tok) != 85
+				&& int(peek_tok) != 0 {
 				p.next()
+				continue
 			}
 		}
 		if token_is_assignment(p.tok) {
