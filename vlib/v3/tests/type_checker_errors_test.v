@@ -419,6 +419,9 @@ fn test_multi_return_if_assignment_uses_lhs_context() {
 	enum_tail := run_good(v3_bin, 'good_multi_return_if_assign_enum_and_none_tail',
 		"enum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tcond := false\n\tmut c := Color.red\n\tmut n := 0\n\tc, n = if cond {\n\t\t.red\n\t\t1\n\t} else {\n\t\t.blue\n\t\t2\n\t}\n\tmut opt := ?int(0)\n\tmut label := ''\n\topt, label = if cond {\n\t\tnone\n\t\t'none'\n\t} else {\n\t\t?int(7)\n\t\t'some'\n\t}\n\tvalue := opt or { 0 }\n\tif c == .blue && label == 'some' {\n\t\tprintln(int_str(n + value))\n\t}\n}\n")
 	assert enum_tail == '9'
+	swap_tail := run_good(v3_bin, 'good_multi_return_if_assign_stages_tail_values',
+		"fn main() {\n\tcond := true\n\tmut a := 1\n\tmut b := 2\n\ta, b = if cond {\n\t\tb\n\t\ta\n\t} else {\n\t\ta\n\t\tb\n\t}\n\tprintln(int_str(a) + ':' + int_str(b))\n}\n")
+	assert swap_tail == '2:1'
 }
 
 fn test_nested_if_tuple_tail_multi_return_lowers_each_value() {

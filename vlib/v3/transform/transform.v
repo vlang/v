@@ -4229,20 +4229,30 @@ fn (mut t Transformer) multi_if_assign_block(block_id flat.NodeId, lhs_ids []fla
 
 fn (mut t Transformer) multi_if_assign_stmts(parts TupleBlockParts, lhs_ids []flat.NodeId) []flat.NodeId {
 	mut stmts := t.transform_stmts(parts.prefix)
+	mut tmp_names := []string{cap: parts.values.len}
 	for i, value_id in parts.values {
-		value := t.transform_expr(value_id)
+		target_type := if i < lhs_ids.len { t.lvalue_type(lhs_ids[i]) } else { '' }
+		value := if target_type.len > 0 {
+			t.transform_expr_for_type(value_id, target_type)
+		} else {
+			t.transform_expr(value_id)
+		}
 		t.drain_pending(mut stmts)
+		tmp_name := t.new_temp('multi_if')
+		tmp_type := if target_type.len > 0 { target_type } else { t.node_type(value_id) }
+		stmts << t.make_decl_assign_typed(tmp_name, value, tmp_type)
+		tmp_names << tmp_name
+	}
+	for i, tmp_name in tmp_names {
 		if i >= lhs_ids.len {
-			stmts << t.make_expr_stmt(value)
 			continue
 		}
 		lhs_id := lhs_ids[i]
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind == .ident && lhs.value == '_' {
-			stmts << t.make_expr_stmt(value)
 			continue
 		}
-		stmts << t.make_assign(t.transform_lvalue(lhs_id), value)
+		stmts << t.make_assign(t.transform_lvalue(lhs_id), t.make_ident(tmp_name))
 	}
 	return stmts
 }
