@@ -141,7 +141,14 @@ fn executable_command_for_path(path string) string {
 
 fn input_implies_building_v(input_file string) bool {
 	normalized := input_file.replace('\\', '/').trim_right('/')
-	return normalized.all_after_last('/') == 'v3.v'
+	if normalized.all_after_last('/') == 'v3.v' {
+		return true
+	}
+	if os.is_dir(input_file) {
+		normalized_dir := os.real_path(input_file).replace('\\', '/').trim_right('/')
+		return normalized_dir.ends_with('/vlib/v3')
+	}
+	return false
 }
 
 fn input_is_cmd_v(input_file string) bool {
