@@ -358,8 +358,8 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 			}
 			return field_eq
 		}
-		cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
-			t.make_sizeof_type(struct_type)), 'int')
+		cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs),
+			t.make_prefix(.amp, rhs), t.make_sizeof_type(struct_type)), 'int')
 		return t.make_infix(node.op, cmp, t.make_int_literal(0))
 	}
 	if eq_fn := t.struct_operator_fn_name(struct_type, '==') {
@@ -440,7 +440,7 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 	}
 	cmp_lhs := t.stable_transformed_expr_for_reuse(lhs, lhs_type, 'eq_lhs')
 	cmp_rhs := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'eq_rhs')
-	cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, cmp_lhs), t.make_prefix(.amp,
+	cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, cmp_lhs), t.make_prefix(.amp,
 		cmp_rhs), t.make_sizeof_type(struct_type)), 'int')
 	return t.make_infix(node.op, cmp, t.make_int_literal(0))
 }
@@ -771,7 +771,7 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 	}
 	tag_eq := t.make_infix(.eq, t.make_sum_tag_selector(lhs, .dot),
 		t.make_sum_tag_selector(rhs, .dot))
-	cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
+	cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
 		t.make_sizeof_type(sum_type)), 'int')
 	value_eq := t.make_infix(.eq, cmp, t.make_int_literal(0))
 	eq := t.make_infix(.logical_and, tag_eq, value_eq)
@@ -796,7 +796,18 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 	} else if rhs.kind == .none_expr {
 		opt_id = lhs_id
 	} else {
-		return none
+		lhs_type := t.node_type(lhs_id)
+		rhs_type := t.node_type(rhs_id)
+		if !t.is_optional_type_name(lhs_type) || !t.is_optional_type_name(rhs_type) {
+			return none
+		}
+		lhs_value := t.stable_expr_for_reuse(lhs_id)
+		rhs_value := t.stable_expr_for_reuse(rhs_id)
+		eq := t.make_optional_semantic_eq_expr(lhs_value, rhs_value, lhs_type, rhs_type, []string{})
+		if node.op == .ne {
+			return t.make_prefix(.not, t.make_paren(eq))
+		}
+		return eq
 	}
 	opt_type := t.node_type(opt_id)
 	if !t.is_optional_type_name(opt_type) {
@@ -1287,11 +1298,14 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 		}
 		lhs_value := t.stable_transformed_expr_for_reuse(lhs, clean, 'fixed_eq_lhs')
 		rhs_value := t.stable_transformed_expr_for_reuse(rhs, clean, 'fixed_eq_rhs')
-		cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs_value), t.make_prefix(.amp,
+		cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs_value), t.make_prefix(.amp,
 			rhs_value), t.make_sizeof_type(clean)), 'int')
 		return t.make_infix(.eq, cmp, t.make_int_literal(0))
 	}
-	if t.is_optional_type_name(clean) || t.is_sum_type_name(clean) {
+	if t.is_optional_type_name(clean) {
+		return t.make_optional_semantic_eq_expr(lhs, rhs, clean, clean, seen)
+	}
+	if t.is_sum_type_name(clean) {
 		return t.make_memcmp_eq_expr(lhs, rhs, clean, 'eq')
 	}
 	struct_type := t.struct_lookup_name(clean)
@@ -1302,15 +1316,15 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 			return t.make_call(method_name, arr2(lhs, rhs))
 		}
 		if struct_type in seen {
-			cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs),
+			cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs),
 				t.make_prefix(.amp, rhs), t.make_sizeof_type(struct_type)), 'int')
 			return t.make_infix(.eq, cmp, t.make_int_literal(0))
 		}
 		if field_eq := t.make_struct_field_eq_expr_with_seen(lhs, rhs, struct_type, seen) {
 			return field_eq
 		}
-		cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
-			t.make_sizeof_type(struct_type)), 'int')
+		cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs),
+			t.make_prefix(.amp, rhs), t.make_sizeof_type(struct_type)), 'int')
 		return t.make_infix(.eq, cmp, t.make_int_literal(0))
 	}
 	return t.make_infix(.eq, lhs, rhs)
@@ -1319,9 +1333,46 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 fn (mut t Transformer) make_memcmp_eq_expr(lhs flat.NodeId, rhs flat.NodeId, typ string, prefix string) flat.NodeId {
 	lhs_value := t.stable_transformed_expr_for_reuse(lhs, typ, '${prefix}_lhs')
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, typ, '${prefix}_rhs')
-	cmp := t.make_call_typed('memcmp', arr3(t.make_prefix(.amp, lhs_value), t.make_prefix(.amp,
+	cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs_value), t.make_prefix(.amp,
 		rhs_value), t.make_sizeof_type(typ)), 'int')
 	return t.make_infix(.eq, cmp, t.make_int_literal(0))
+}
+
+fn (mut t Transformer) make_optional_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, lhs_opt_type string, rhs_opt_type string, seen []string) flat.NodeId {
+	lhs_value := t.stable_transformed_expr_for_reuse(lhs, lhs_opt_type, 'opt_eq_lhs')
+	rhs_value := t.stable_transformed_expr_for_reuse(rhs, rhs_opt_type, 'opt_eq_rhs')
+	lhs_ok := t.make_selector(lhs_value, 'ok', 'bool')
+	rhs_ok := t.make_selector(rhs_value, 'ok', 'bool')
+	ok_same := t.make_infix(.eq, lhs_ok, rhs_ok)
+	lhs_value_type := t.optional_base_type(lhs_opt_type)
+	rhs_value_type := t.optional_base_type(rhs_opt_type)
+	if lhs_value_type.len == 0 || lhs_value_type == 'void' {
+		return ok_same
+	}
+	rhs_field_type := if rhs_value_type.len == 0 { lhs_value_type } else { rhs_value_type }
+	lhs_value_field := t.make_selector(lhs_value, 'value', lhs_value_type)
+	rhs_value_field := t.make_selector(rhs_value, 'value', rhs_field_type)
+	pending_start := t.pending_stmts.len
+	value_eq := t.make_membership_eq_expr_with_seen(lhs_value_field, rhs_value_field,
+		lhs_value_type, seen)
+	mut body_stmts := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	if body_stmts.len == 0 {
+		ok_or_value_eq := t.make_infix(.logical_or, t.make_prefix(.not, t.make_selector(lhs_value,
+			'ok', 'bool')), value_eq)
+		return t.make_infix(.logical_and, ok_same, ok_or_value_eq)
+	}
+	result_name := t.new_temp('opt_eq')
+	t.pending_stmts << t.make_decl_assign_typed(result_name, ok_same, 'bool')
+	compare_values := t.make_infix(.logical_and, t.make_ident(result_name), t.make_selector(lhs_value,
+		'ok', 'bool'))
+	set_false := t.make_assign(t.make_ident(result_name), t.make_bool_literal(false))
+	body_stmts << t.make_if(t.make_prefix(.not, t.make_paren(value_eq)),
+		t.make_block(arr1(set_false)), t.make_empty())
+	t.pending_stmts << t.make_if(compare_values, t.make_block(body_stmts), t.make_empty())
+	result := t.make_ident(result_name)
+	t.a.nodes[int(result)].typ = 'bool'
+	return result
 }
 
 fn (t &Transformer) array_elem_needs_element_eq(elem_type string) bool {
@@ -1360,6 +1411,9 @@ fn (t &Transformer) type_needs_semantic_eq(typ string) bool {
 	if t.is_fixed_array_type(clean) {
 		elem_type := fixed_array_elem_type(clean)
 		return elem_type.len > 0 && t.type_needs_semantic_eq(elem_type)
+	}
+	if t.is_optional_type_name(clean) {
+		return true
 	}
 	return t.struct_lookup_name(clean).len > 0
 }
@@ -2176,6 +2230,7 @@ const c_reserved_words = {
 	'break':    true
 	'case':     true
 	'char':     true
+	'asm':      true
 	'const':    true
 	'continue': true
 	'copy':     true
@@ -2202,11 +2257,67 @@ const c_reserved_words = {
 	'struct':   true
 	'switch':   true
 	'typedef':  true
+	'false':    true
+	'typeof':   true
+	'stdin':    true
+	'stderr':   true
+	'stdout':   true
+	'true':     true
 	'union':    true
 	'unsigned': true
 	'void':     true
 	'volatile': true
 	'while':    true
+}
+
+const c_libc_collisions = {
+	'abort':    true
+	'access':   true
+	'acos':     true
+	'atexit':   true
+	'ceil':     true
+	'ceilf':    true
+	'close':    true
+	'cos':      true
+	'drem':     true
+	'dup2':     true
+	'execlp':   true
+	'execvp':   true
+	'fabs':     true
+	'fcntl':    true
+	'floor':    true
+	'floorf':   true
+	'fmod':     true
+	'fork':     true
+	'getenv':   true
+	'j0':       true
+	'j1':       true
+	'jn':       true
+	'ldexp':    true
+	'memcmp':   true
+	'memcpy':   true
+	'memmove':  true
+	'memset':   true
+	'open':     true
+	'pipe':     true
+	'pow':      true
+	'read':     true
+	'realpath': true
+	'rint':     true
+	'scalb':    true
+	'setenv':   true
+	'signal':   true
+	'snprintf': true
+	'sqrt':     true
+	'strcmp':   true
+	'strlen':   true
+	'strncmp':  true
+	'strncpy':  true
+	'strrchr':  true
+	'strstr':   true
+	'y0':       true
+	'y1':       true
+	'yn':       true
 }
 
 // c_name converts c name data for transform.
@@ -2215,7 +2326,7 @@ fn c_name(name string) string {
 		return name[2..]
 	}
 	if c_name_is_plain(name) {
-		if name in c_reserved_words {
+		if name in c_reserved_words || name in c_libc_collisions {
 			return 'v_${name}'
 		}
 		return name
@@ -2225,7 +2336,10 @@ fn c_name(name string) string {
 		'__lt').replace('.>', '__gt').replace('.*', '__mul').replace('./', '__div').replace('.%',
 		'__mod').replace('.&', '__and').replace('.|', '__or').replace('.^', '__xor').replace('.<<',
 		'__left_shift').replace('.>>', '__right_shift').replace('&', 'ptr').replace('[', '_').replace(']', '').replace(',', '_').replace(' ', '_').replace('.', '__')
-	if n in c_reserved_words {
+	if n in c_reserved_words || n in c_libc_collisions {
+		if name.contains('@') {
+			return '_v_${n}'
+		}
 		return 'v_${n}'
 	}
 	return n

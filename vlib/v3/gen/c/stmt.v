@@ -185,54 +185,74 @@ fn (mut g FlatGen) gen_branch_lock_cleanup(label string) {
 	}
 }
 
-fn (g &FlatGen) collect_fn_goto_label_lock_scopes(node flat.Node) map[string][]int {
-	mut scopes := map[string][]int{}
-	mut lock_scopes := []int{}
+struct FnPreludeScan {
+mut:
+	defer_ids              []flat.NodeId
+	lock_scopes            []int
+	goto_label_lock_scopes map[string][]int
+}
+
+fn new_fn_prelude_scan() FnPreludeScan {
+	return FnPreludeScan{
+		defer_ids:              []flat.NodeId{}
+		lock_scopes:            []int{}
+		goto_label_lock_scopes: map[string][]int{}
+	}
+}
+
+fn (g &FlatGen) collect_fn_prelude_scan(node flat.Node) FnPreludeScan {
+	mut scan := new_fn_prelude_scan()
 	start := node.children_start
 	end := start + int(node.children_count)
 	if start >= 0 && end <= g.a.children.len {
 		for i in start .. end {
 			// The child range is checked above; avoid per-child bounds checks in this hot walk.
-			g.collect_goto_label_lock_scopes_from(unsafe { g.a.children[i] }, mut lock_scopes, mut
-				scopes)
+			g.collect_prelude_scan_from(unsafe { g.a.children[i] }, mut scan, true)
 		}
 	}
-	return scopes
+	return scan
 }
 
-fn (g &FlatGen) collect_top_level_goto_label_lock_scopes(stmts []TopLevelStmt) map[string][]int {
-	mut scopes := map[string][]int{}
-	mut lock_scopes := []int{}
+fn (g &FlatGen) collect_top_level_prelude_scan(stmts []TopLevelStmt) FnPreludeScan {
+	mut scan := new_fn_prelude_scan()
 	for stmt in stmts {
-		g.collect_goto_label_lock_scopes_from(stmt.id, mut lock_scopes, mut scopes)
+		g.collect_prelude_scan_from(stmt.id, mut scan, true)
 	}
-	return scopes
+	return scan
 }
 
-fn (g &FlatGen) collect_goto_label_lock_scopes_from(id flat.NodeId, mut lock_scopes []int, mut scopes map[string][]int) {
+fn (g &FlatGen) collect_prelude_scan_from(id flat.NodeId, mut scan FnPreludeScan, collect_defers bool) {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return
 	}
 	node := g.a.nodes[int(id)]
+	mut child_collect_defers := collect_defers
+	if collect_defers
+		&& (node.kind == .fn_decl || node.kind == .c_fn_decl || node.kind == .fn_literal) {
+		child_collect_defers = false
+	}
+	if collect_defers && node.kind == .defer_stmt && node.value == 'function' {
+		scan.defer_ids << id
+		child_collect_defers = false
+	}
 	mut pushed_lock := false
 	if node.kind == .lock_expr {
-		lock_scopes << int(id)
+		scan.lock_scopes << int(id)
 		pushed_lock = true
 	}
 	if node.kind == .label_stmt && node.value.len > 0 {
-		scopes[node.value] = lock_scopes.clone()
+		scan.goto_label_lock_scopes[node.value] = scan.lock_scopes.clone()
 	}
 	start := node.children_start
 	end := start + int(node.children_count)
 	if start >= 0 && end <= g.a.children.len {
 		for i in start .. end {
 			// The child range is checked above; avoid per-child bounds checks in this hot walk.
-			g.collect_goto_label_lock_scopes_from(unsafe { g.a.children[i] }, mut lock_scopes, mut
-				scopes)
+			g.collect_prelude_scan_from(unsafe { g.a.children[i] }, mut scan, child_collect_defers)
 		}
 	}
 	if pushed_lock {
-		lock_scopes.delete_last()
+		scan.lock_scopes.delete_last()
 	}
 }
 
@@ -790,7 +810,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.gen_expr(g.a.child(&node, 0))
 			g.writeln(')) {')
 			g.indent++
-			g.writeln('fprintf(stderr, "assert failed\\n");')
+			g.writeln('v3_eprint_lit("assert failed\\n");')
 			g.writeln('exit(1);')
 			g.indent--
 			g.writeln('}')
@@ -1562,6 +1582,12 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 			}
 		}
 		if node.kind == .call && node.children_count > 0 {
+			if node.typ.len > 0 {
+				node_type := g.tc.parse_type(node.typ)
+				if !decl_annotation_is_unusable(node_type, node.typ) {
+					return node_type
+				}
+			}
 			fn_node := g.a.child_node(&node, 0)
 			if map_return_type := g.array_map_call_return_type(node, fn_node) {
 				return map_return_type

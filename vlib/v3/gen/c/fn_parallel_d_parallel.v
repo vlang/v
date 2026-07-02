@@ -4,7 +4,7 @@ import runtime
 import strings
 import v3.types
 
-const max_flat_cgen_jobs = 8
+const max_flat_cgen_jobs = 10
 const min_flat_cgen_parallel_items = 1024
 
 $if !windows {
@@ -200,6 +200,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		global_init_order:            g.global_init_order
 		iface_impls:                  g.iface_impls
 		iface_type_ids:               g.iface_type_ids
+		sum_name_lookup:              g.sum_name_lookup
 		module_init_fns:              g.module_init_fns
 		module_init_fn_modules:       g.module_init_fn_modules
 		module_imports:               g.module_imports

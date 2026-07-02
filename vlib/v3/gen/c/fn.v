@@ -1327,7 +1327,8 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.cur_fn_name = node.value
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
-	g.goto_label_lock_scopes = g.collect_fn_goto_label_lock_scopes(node)
+	mut prelude_scan := g.collect_fn_prelude_scan(node)
+	g.goto_label_lock_scopes = prelude_scan.goto_label_lock_scopes.move()
 	g.pending_loop_label = ''
 	g.tc.push_scope()
 	g.defers = []flat.NodeId{}
@@ -1382,8 +1383,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 		}
 	}
 	g.insert_cur_implicit_veb_ctx_param(node)
-	fn_defer_ids := g.collect_function_defer_ids(node)
-	g.prepare_function_defers(fn_defer_ids)
+	g.prepare_function_defers(prelude_scan.defer_ids)
 	is_entry_main := is_main_fn_in_main_module(module_name, node.value) && g.test_files.len == 0
 	if is_entry_main {
 		g.writeln('int main(int argc, char** argv) {')
@@ -1501,7 +1501,8 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.cur_fn_name = 'main'
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
-	g.goto_label_lock_scopes = g.collect_top_level_goto_label_lock_scopes(stmts)
+	mut prelude_scan := g.collect_top_level_prelude_scan(stmts)
+	g.goto_label_lock_scopes = prelude_scan.goto_label_lock_scopes.move()
 	g.pending_loop_label = ''
 	g.tc.push_scope()
 	g.defers = []flat.NodeId{}
@@ -1520,11 +1521,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.cur_param_types = map[string]types.Type{}
 	g.cur_concrete_optional_params = map[string]bool{}
 	g.cur_mut_params = map[string]bool{}
-	mut fn_defer_ids := []flat.NodeId{}
-	for stmt in stmts {
-		g.collect_function_defer_ids_from(stmt.id, mut fn_defer_ids)
-	}
-	g.prepare_function_defers(fn_defer_ids)
+	g.prepare_function_defers(prelude_scan.defer_ids)
 	g.writeln('int main(int argc, char** argv) {')
 	if g.has_builtins {
 		g.writeln('\tg_main_argc = argc;')
@@ -1621,7 +1618,7 @@ fn (mut g FlatGen) gen_test_fn_call(test_fn TestHarnessFn, hooks TestHarnessHook
 		g.writeln('${ct} ${tmp_name} = ${test_fn.c_name}();')
 		g.writeln('if (!${tmp_name}.ok) {')
 		g.indent++
-		g.writeln('fprintf(stderr, "test failed: ${c_escape(test_fn.name)}\\n");')
+		g.writeln('v3_eprint_lit("test failed: ${c_escape(test_fn.name)}\\n");')
 		if hooks.after_each.len > 0 {
 			g.writeln('${hooks.after_each}();')
 		}
@@ -3240,8 +3237,7 @@ fn (g &FlatGen) embedded_receiver_field_for_expected(base_type types.Type, expec
 	if base_name.len == 0 || expected_name.len == 0 {
 		return none
 	}
-	fields := g.struct_fields_for_type(base_name) or { return none }
-	for field in fields {
+	for field in g.struct_embedded_fields(base_name) {
 		embedded_type_name := g.embedded_field_type_name(field)
 		if embedded_type_name == expected_name {
 			return field
