@@ -13,7 +13,7 @@ sides that internal round-trip tests cannot.
 |------|---------|
 | `h2spec_server.v` | Minimal HTTP/2 target server (TLS + ALPN `h2`, answers 200). The thing h2spec connects to. |
 | `run_h2spec.sh` | Builds the target, starts it, runs a **pinned** h2spec, diffs failures against the baseline. |
-| `h2spec_expected_failures.txt` | Known-failure baseline — currently EMPTY (146/146 pass as of #27627). CI fails on any h2spec failure (mechanically: a regression against an empty baseline). |
+| `h2spec_expected_failures.txt` | Known-failure baseline — currently empty (146/146 pass). |
 | `.github/workflows/h2spec.yml` | CI job: fetches a pinned h2spec release (sha256-verified) and runs the gate. |
 
 ## Running locally
@@ -44,7 +44,7 @@ runner never installs anything — it expects `h2spec` to be provided.
 - ✅ **The harness was run end-to-end with a pinned h2spec v2.6.0**: originally
   146 tests, **109 pass / 37 fail**, identical across four runs (`--timeout 2`
   and `--timeout 5`, two each); the JUnit parser was validated against those real
-  reports. Four follow-up PRs (#27569, #27589, #27627) closed every baselined
+  reports. Three follow-up PRs (#27569, #27589, #27627) closed every baselined
   case; as of #27627 the server passes **all 146 h2spec cases** and
   `h2spec_expected_failures.txt` is empty.
 - ⚠️ **Timing flakiness — handled.** A *separate* handful of h2spec cases
@@ -53,11 +53,11 @@ runner never installs anything — it expects `h2spec` to be provided.
   `--timeout 5` (`H2SPEC_TIMEOUT`). The lesson: always confirm the failure set is
   stable across repeated runs before trusting a per-case h2spec gate — a single
   run can mis-attribute a flaky timeout as a real failure (or regression).
-- The baseline reflects genuine server-side conformance gaps (see the file's
-  header). Each is a tracked item; remove a line as the server is hardened.
-- The baseline was generated locally; the first CI run on Linux validates it. If
-  a case drifts by platform, the harness's "now passing" / regression messages
-  make the one-line fix obvious.
+- The baseline is currently empty, but the mechanism stays in place: a future
+  conformance gap is recorded as a new line and tracked until the server is
+  hardened to pass it, exactly as the original 37-case baseline was closed out.
+- If a case ever drifts by platform, the harness's "now passing" / regression
+  messages make the one-line fix obvious.
 
 ## Expected value
 
