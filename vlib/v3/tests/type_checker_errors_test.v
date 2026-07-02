@@ -412,6 +412,9 @@ fn test_multi_return_if_tail_infers_common_type() {
 	run_bad(v3_bin, 'bad_multi_return_if_call_mixed_tuple_tail_decl_assign',
 		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n',
 		'multi-return assignment mismatch')
+	run_bad(v3_bin, 'bad_multi_return_if_void_tail_decl_assign',
+		'fn side() {}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tside()\n\t\t1\n\t} else {\n\t\tside()\n\t\t2\n\t}\n\tprintln(int_str(b))\n}\n',
+		'multi-return assignment mismatch')
 }
 
 fn test_multi_return_if_assignment_uses_lhs_context() {
@@ -468,6 +471,9 @@ fn test_match_tuple_tail_multi_return_is_rejected() {
 	match_assign := run_good(v3_bin, 'good_multi_return_match_call_assign',
 		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n')
 	assert match_assign == '7'
+	run_bad(v3_bin, 'bad_multi_return_match_call_mixed_item_types',
+		'fn pair_int() (int, int) {\n\treturn 1, 2\n}\nfn pair_f64() (f64, int) {\n\treturn 1.5, 2\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair_int()\n\t\t}\n\t\tfalse {\n\t\t\tpair_f64()\n\t\t}\n\t}\n\tprintln(int_str(b))\n\tprintln(a)\n}\n',
+		'multi-return assignment mismatch')
 	run_bad(v3_bin, 'bad_multi_return_match_tail_decl_assign',
 		'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n',
 		'match expression branches cannot produce multiple assignment values')

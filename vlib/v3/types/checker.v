@@ -4304,7 +4304,11 @@ fn (tc &TypeChecker) multi_expr_tail_types(expr_id flat.NodeId, count int) ?[]Ty
 	}
 	mut types := []Type{cap: count}
 	for value_id in groups[0] {
-		types << tc.resolve_type(value_id)
+		typ := tc.resolve_type(value_id)
+		if !type_has_runtime_value(typ) {
+			return none
+		}
+		types << typ
 	}
 	for i in 1 .. groups.len {
 		group := groups[i]
@@ -4313,6 +4317,9 @@ fn (tc &TypeChecker) multi_expr_tail_types(expr_id flat.NodeId, count int) ?[]Ty
 		}
 		for j, value_id in group {
 			actual := tc.resolve_type(value_id)
+			if !type_has_runtime_value(actual) {
+				return none
+			}
 			promoted := tc.promoted_multi_tail_type(types[j], actual) or { return none }
 			types[j] = promoted
 		}
@@ -4375,14 +4382,20 @@ fn (tc &TypeChecker) match_multi_return_types(expr_id flat.NodeId, count int) ?[
 		if multi.types.len != count {
 			return none
 		}
+		for typ in multi.types {
+			if !type_has_runtime_value(typ) {
+				return none
+			}
+		}
 		if !saw_value_branch {
 			types = multi.types.clone()
 			saw_value_branch = true
 			continue
 		}
 		for j, actual in multi.types {
-			promoted := tc.promoted_multi_tail_type(types[j], actual) or { return none }
-			types[j] = promoted
+			if actual.name() != types[j].name() {
+				return none
+			}
 		}
 	}
 	if !saw_value_branch {
@@ -6631,6 +6644,10 @@ fn variadic_elem_accepts_any(typ Type) bool {
 }
 
 fn variadic_any_arg_has_value(typ Type) bool {
+	return type_has_runtime_value(typ)
+}
+
+fn type_has_runtime_value(typ Type) bool {
 	if typ is OptionType {
 		return typ.base_type !is Void
 	}
