@@ -4346,26 +4346,6 @@ fn (tc &TypeChecker) multi_expr_tail_value_groups(expr_id flat.NodeId, count int
 			}
 			return groups
 		}
-		.match_stmt {
-			mut groups := [][]flat.NodeId{}
-			for i in 1 .. node.children_count {
-				branch_id := tc.a.child(&node, i)
-				if !tc.valid_node_id(branch_id) {
-					return none
-				}
-				branch := tc.a.nodes[int(branch_id)]
-				if branch.kind == .match_branch {
-					branch_groups := tc.tuple_tail_value_groups(branch_id, count) or { return none }
-					for group in branch_groups {
-						groups << group
-					}
-				}
-			}
-			if groups.len == 0 {
-				return none
-			}
-			return groups
-		}
 		.block, .match_branch {
 			return tc.tuple_tail_value_groups(expr_id, count)
 		}
@@ -4396,7 +4376,7 @@ fn (tc &TypeChecker) tuple_tail_value_groups(body_id flat.NodeId, count int) ?[]
 	last_id := tc.a.child(&body, body.children_count - 1)
 	if tc.valid_node_id(last_id) {
 		last := tc.a.nodes[int(last_id)]
-		if last.kind in [.block, .match_branch, .if_expr, .match_stmt] {
+		if last.kind in [.block, .match_branch, .if_expr] {
 			return tc.multi_expr_tail_value_groups(last_id, count)
 		}
 		if last.kind == .return_stmt && last.children_count == count {
@@ -4809,6 +4789,14 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			} $else {
 				tc.check_node(child_id)
 			}
+			child := tc.a.nodes[int(child_id)]
+			if child.kind == .match_stmt {
+				if tc.should_diagnose(id) {
+					tc.record_error(.return_mismatch,
+						'match expression branches cannot produce multiple return values', id)
+				}
+				return
+			}
 			actual := tc.resolve_expr(child_id, expected)
 			if tc.type_compatible(actual, expected) {
 				$if ownership ? {
@@ -4816,8 +4804,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 				}
 				return
 			}
-			child := tc.a.nodes[int(child_id)]
-			if child.kind in [.if_expr, .match_stmt] {
+			if child.kind == .if_expr {
 				if item_types := tc.multi_expr_tail_types(child_id, multi.types.len) {
 					mut all_ok := item_types.len == multi.types.len
 					if all_ok {

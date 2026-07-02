@@ -412,6 +412,16 @@ fn test_multi_rhs_if_expr_is_not_multi_return() {
 	assert assign_out == '5'
 }
 
+fn test_match_tuple_tail_multi_return_is_rejected() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_multi_return_match_tail_decl_assign',
+		'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n',
+		'match expression branches cannot produce multiple assignment values')
+	run_bad(v3_bin, 'bad_multi_return_match_tail_return',
+		'fn pair(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n',
+		'match expression branches cannot produce multiple return values')
+}
+
 fn test_bool_match_single_branch_is_exhaustive() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'good_bool_match_single_branch_exhaustive',
