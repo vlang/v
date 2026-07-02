@@ -177,6 +177,27 @@ fn test_returning_receiver_method_named_exit_keeps_value() {
 	assert out == '9'
 }
 
+fn test_imported_module_name_shadowed_by_receiver_for_no_return_analysis() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_shadowed_import_os_exit_missing_return',
+		'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) {}\nfn f(os OsLike) int {\n\tos.exit(0)\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+}
+
+fn test_returning_shadowed_os_exit_receiver_keeps_value() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_shadowed_os_exit_return_value',
+		'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) int {\n\treturn code + 1\n}\nfn f(os OsLike) int {\n\treturn os.exit(4)\n}\nfn main() {\n\tprintln(int_str(f(OsLike{})))\n}\n')
+	assert out == '5'
+}
+
+fn test_no_return_fixed_array_return_uses_abi_wrapper() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_fixed_array_return_panic_abi_wrapper',
+		"import os\nfn f() [3]int {\n\treturn panic('x')\n}\nfn main() {\n\tif os.args.len == -1 {\n\t\tarr := f()\n\t\tprintln(int_str(arr[0]))\n\t}\n}\n")
+	assert out == ''
+}
+
 fn test_local_identifiers_shadow_module_consts() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_const_shadowed_by_param_and_local',

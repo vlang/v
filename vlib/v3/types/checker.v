@@ -4491,6 +4491,13 @@ fn (tc &TypeChecker) should_diagnose_unknown_call(id flat.NodeId) bool {
 	return tc.diagnose_unknown_calls && tc.should_diagnose(id)
 }
 
+fn (tc &TypeChecker) ident_resolves_to_value(name string) bool {
+	if _ := tc.cur_scope.lookup(name) {
+		return true
+	}
+	return false
+}
+
 // resolve_call_info resolves resolve call info information for types.
 fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallInfo {
 	if node.children_count == 0 {
@@ -4507,36 +4514,39 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 			return none
 		}
 		if base_node.kind == .ident {
-			if resolved_mod := tc.resolve_import_alias(base_node.value) {
-				mod_name := '${resolved_mod}.${fn_node.value}'
-				if mod_name in tc.fn_ret_types {
-					return tc.call_info(mod_name, false)
+			base_is_value := tc.ident_resolves_to_value(base_node.value)
+			if !base_is_value {
+				if resolved_mod := tc.resolve_import_alias(base_node.value) {
+					mod_name := '${resolved_mod}.${fn_node.value}'
+					if mod_name in tc.fn_ret_types {
+						return tc.call_info(mod_name, false)
+					}
 				}
-			}
-			if base_node.value == tc.cur_module {
-				mod_name := '${tc.cur_module}.${fn_node.value}'
-				if mod_name in tc.fn_ret_types {
-					return tc.call_info(mod_name, false)
+				if base_node.value == tc.cur_module {
+					mod_name := '${tc.cur_module}.${fn_node.value}'
+					if mod_name in tc.fn_ret_types {
+						return tc.call_info(mod_name, false)
+					}
 				}
-			}
-			qbase := tc.qualify_name(base_node.value)
-			static_name := '${qbase}.${fn_node.value}'
-			if static_name in tc.fn_ret_types && (qbase in tc.structs
-				|| qbase in tc.enum_names || qbase in tc.sum_types
-				|| qbase in tc.interface_names || qbase in tc.type_aliases) {
-				// `qbase in tc.type_aliases` covers static methods on a type alias,
-				// e.g. `fn SimdFloat4.new()` for `type SimdFloat4 = vec.Vec4[f32]`.
-				return tc.call_info(static_name, false)
-			}
-			if fn_node.value == 'zero' && qbase in tc.flag_enums {
-				return CallInfo{
-					name:         ''
-					params:       []Type{}
-					return_type:  Type(Enum{
-						name:    qbase
-						is_flag: true
-					})
-					params_known: true
+				qbase := tc.qualify_name(base_node.value)
+				static_name := '${qbase}.${fn_node.value}'
+				if static_name in tc.fn_ret_types && (qbase in tc.structs
+					|| qbase in tc.enum_names || qbase in tc.sum_types
+					|| qbase in tc.interface_names || qbase in tc.type_aliases) {
+					// `qbase in tc.type_aliases` covers static methods on a type alias,
+					// e.g. `fn SimdFloat4.new()` for `type SimdFloat4 = vec.Vec4[f32]`.
+					return tc.call_info(static_name, false)
+				}
+				if fn_node.value == 'zero' && qbase in tc.flag_enums {
+					return CallInfo{
+						name:         ''
+						params:       []Type{}
+						return_type:  Type(Enum{
+							name:    qbase
+							is_flag: true
+						})
+						params_known: true
+					}
 				}
 			}
 		} else if base_node.kind == .selector {

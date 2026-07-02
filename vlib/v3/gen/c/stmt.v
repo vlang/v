@@ -909,6 +909,15 @@ fn (mut g FlatGen) gen_fixed_array_return_wrap(ret_type types.Type, ret_id flat.
 fn (mut g FlatGen) gen_noreturn_return(ret_id flat.NodeId) {
 	g.gen_expr(ret_id)
 	g.writeln(';')
+	g.gen_noreturn_default_return_stmt()
+}
+
+fn (mut g FlatGen) gen_noreturn_default_return_stmt() {
+	if g.cur_fn_ret is types.ArrayFixed && g.tc.c_type(g.cur_fn_ret) in g.fixed_array_ret_wrappers {
+		wrapper := fixed_array_ret_wrapper_name(g.tc.c_type(g.cur_fn_ret))
+		g.writeln('return (${wrapper}){0};')
+		return
+	}
 	g.gen_default_return_stmt()
 }
 
