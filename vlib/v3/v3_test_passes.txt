@@ -461,7 +461,6 @@ vlib/v/tests/conditions/ifs/if_assign_test.v
 vlib/v/tests/conditions/ifs/if_cond_with_alias_test.v
 vlib/v/tests/conditions/ifs/if_cond_with_option_test.v
 vlib/v/tests/conditions/ifs/if_expr_of_multi_stmts_test.v
-vlib/v/tests/conditions/ifs/if_expr_of_option_test.v
 vlib/v/tests/conditions/ifs/if_expr_with_array_call_test.v
 vlib/v/tests/conditions/ifs/if_expr_with_compound_conds_1_test.v
 vlib/v/tests/conditions/ifs/if_expr_with_compound_conds_2_test.v

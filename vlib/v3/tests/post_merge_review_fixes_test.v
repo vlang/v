@@ -153,6 +153,12 @@ fn test_context_dependent_if_branches_infer_wrapper_types() {
 	run_bad(v3_bin, 'if_none_branch_without_context_rejected',
 		'fn main() {\n\tx := if true { none } else { 1 }\n\tprintln(x)\n}\n',
 		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'if_error_branch_rejected_for_option_payload',
+		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := f(false) or { 0 }\n}\n",
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'if_none_branch_rejected_for_result_payload',
+		'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n',
+		'if-expression branch type mismatch')
 	run_bad(v3_bin, 'if_option_void_branch_rejected_for_payload',
 		'fn maybe_void() ? {\n\treturn\n}\n\nfn f(ok bool) ?int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n',
 		'if-expression branch type mismatch')

@@ -6924,20 +6924,23 @@ fn (tc &TypeChecker) if_branch_types_compatible_with_expected(a Type, a_tail fla
 }
 
 fn (tc &TypeChecker) if_branch_type_compatible_with_context(actual Type, tail_id flat.NodeId, expected Type) bool {
+	if actual is None {
+		return expected is OptionType && tc.branch_tail_is_none_literal(tail_id)
+	}
 	if is_option_void_type(actual) {
-		return expected is OptionType && tc.branch_tail_is_failure_literal(tail_id)
+		return expected is OptionType && tc.branch_tail_is_none_literal(tail_id)
 	}
 	if is_result_void_type(actual) {
-		return expected is ResultType && tc.branch_tail_is_failure_literal(tail_id)
+		return expected is ResultType && tc.branch_tail_is_error_literal(tail_id)
 	}
 	if is_ierror_type(actual) {
-		return (expected is OptionType || expected is ResultType || is_ierror_type(expected))
-			&& tc.branch_tail_is_failure_literal(tail_id)
+		return (expected is ResultType || is_ierror_type(expected))
+			&& tc.branch_tail_is_error_literal(tail_id)
 	}
 	return tc.type_compatible(actual, expected)
 }
 
-fn (tc &TypeChecker) branch_tail_is_failure_literal(id flat.NodeId) bool {
+fn (tc &TypeChecker) branch_tail_is_none_literal(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
@@ -6945,11 +6948,22 @@ fn (tc &TypeChecker) branch_tail_is_failure_literal(id flat.NodeId) bool {
 	if node.kind == .none_expr {
 		return true
 	}
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return tc.branch_tail_is_none_literal(tc.a.child(&node, 0))
+	}
+	return false
+}
+
+fn (tc &TypeChecker) branch_tail_is_error_literal(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
 	if node.kind == .call {
 		return tc.call_display_name(node) in ['error', 'error_with_code']
 	}
 	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
-		return tc.branch_tail_is_failure_literal(tc.a.child(&node, 0))
+		return tc.branch_tail_is_error_literal(tc.a.child(&node, 0))
 	}
 	return false
 }
