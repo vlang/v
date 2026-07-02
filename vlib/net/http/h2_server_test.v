@@ -1490,6 +1490,54 @@ fn test_h2_server_data_after_priority_self_dep_reset_is_drained() {
 	assert got_response7, 'DATA after PRIORITY self-dep reset: connection should stay usable (stream 7 served)'
 }
 
+// RFC 7540 §5.3.1 / RFC 9113 §5.1.2: a HEADERS frame that is BOTH over the
+// concurrency limit AND self-dependent must be reported as a malformed request
+// (PROTOCOL_ERROR), not REFUSED_STREAM — REFUSED_STREAM tells the client the
+// request is safe to retry as-is, but a self-dependent request will always be
+// malformed, retry or not. Regression for Codex P2 on #27627
+// (pullrequestreview-4620412384).
+fn test_h2_server_self_dep_headers_over_concurrency_limit_is_protocol_error() {
+	mut enc := H2HpackEncoder{}
+	mut out := preface_and_settings()
+	// Stream 1 stays open (no END_STREAM) so it occupies the single concurrency
+	// slot (h2_server_max_concurrent_streams == 1) when stream 3 arrives.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	// Stream 3: over the concurrency limit AND self-dependent.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:    3
+		fragment:     enc.encode(valid_get_pseudo)
+		end_headers:  true
+		end_stream:   true
+		has_priority: true
+		stream_dep:   3
+		weight:       15
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'self-dep + over-limit HEADERS: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut code := i64(-1)
+	for _ in 0 .. 32 {
+		f := fr.next() or { break }
+		if f is H2RstStreamFrame {
+			if f.stream_id == 3 {
+				code = i64(f.error_code)
+				break
+			}
+		}
+	}
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'self-dep + over-limit: expected RST_STREAM(PROTOCOL_ERROR), got ${code}'
+}
+
 // A repeated self-dependent PRIORITY on the same id must produce exactly ONE
 // RST_STREAM: after the first reset the stream is closed, and RFC 9113 §5.1
 // forbids sending further non-PRIORITY frames (a second RST) on it.

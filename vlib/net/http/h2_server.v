@@ -678,19 +678,23 @@ fn (mut c H2ServerConn) finalize_headers(mut s H2ServerStream, mut handler Handl
 		return error('h2 server: HPACK decode error (COMPRESSION_ERROR)')
 	}
 	s.headers_done = true
-	// §5.1.2: an over-limit stream was decoded only to keep HPACK in sync; refuse
-	// it now without validating or running the request.
-	if s.refused {
-		c.send_rst_stream(s.id, .refused_stream)!
+	// RFC 7540 §5.3.1: a stream cannot depend on itself; a HEADERS priority
+	// self-dependency is a STREAM error PROTOCOL_ERROR. Checked BEFORE the
+	// concurrency-limit refusal below: REFUSED_STREAM tells the client the
+	// request is safe to retry unchanged, but a self-dependent request is
+	// malformed regardless of the concurrency limit — retrying it would only
+	// repeat the same error, so a stream that is both over-limit and
+	// self-dependent must be reported as PROTOCOL_ERROR, not REFUSED_STREAM.
+	if s.self_dep {
+		c.send_rst_stream(s.id, .protocol_error)!
 		c.mark_locally_reset(s.id)
 		c.streams.delete(s.id)
 		return
 	}
-	// RFC 7540 §5.3.1: a stream cannot depend on itself; a HEADERS priority
-	// self-dependency is a STREAM error PROTOCOL_ERROR. Decoded above for HPACK
-	// sync, refused now.
-	if s.self_dep {
-		c.send_rst_stream(s.id, .protocol_error)!
+	// §5.1.2: an over-limit stream was decoded only to keep HPACK in sync; refuse
+	// it now without validating or running the request.
+	if s.refused {
+		c.send_rst_stream(s.id, .refused_stream)!
 		c.mark_locally_reset(s.id)
 		c.streams.delete(s.id)
 		return
