@@ -10475,6 +10475,29 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, i
 	return true
 }
 
+// interface_impl_names returns the concrete type names (structs and type
+// aliases) that implement `iface_name`, sorted by name. The 1-based position
+// in this list is the interface's `_typ` dispatch id; cgen (boxing, method
+// dispatch) and the transform (`iface is Concrete` checks) must both derive
+// ids from this single list so they stay in sync.
+pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
+	mut candidates := []string{}
+	for name, _ in tc.structs {
+		candidates << name
+	}
+	for name, _ in tc.type_aliases {
+		candidates << name
+	}
+	candidates.sort()
+	mut impls := []string{}
+	for name in candidates {
+		if tc.named_type_implements_interface(name, iface_name) {
+			impls << name
+		}
+	}
+	return impls
+}
+
 fn (tc &TypeChecker) concrete_method_signature_key(concrete_name string, method string) ?string {
 	key := '${concrete_name}.${method}'
 	if key in tc.fn_param_types || key in tc.fn_ret_types {

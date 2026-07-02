@@ -242,40 +242,39 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 	if iface.len == 0 {
 		return none
 	}
-	concrete := t.interface_concrete_struct_name(concrete_name) or { return none }
-	mut struct_names := []string{}
-	for name, _ in t.tc.structs {
-		struct_names << name
-	}
-	struct_names.sort()
-	mut idx := 1
-	for struct_name in struct_names {
-		if !t.tc.named_type_implements_interface(struct_name, iface) {
-			continue
-		}
-		if struct_name == concrete
-			|| struct_name.all_after_last('.') == concrete.all_after_last('.') {
+	concrete := t.interface_concrete_impl_name(concrete_name) or { return none }
+	// The 1-based position in tc.interface_impl_names is the `_typ` id cgen
+	// assigns when boxing; deriving it from the same list keeps `is` checks
+	// and dispatch in sync (aliases included).
+	mut idx := 0
+	for impl_name in t.tc.interface_impl_names(iface) {
+		idx++
+		if impl_name == concrete || impl_name.all_after_last('.') == concrete.all_after_last('.') {
 			return idx
 		}
-		idx++
 	}
 	return none
 }
 
-fn (t &Transformer) interface_concrete_struct_name(name string) ?string {
-	if name in t.tc.structs {
+fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
+	if name in t.tc.structs || name in t.tc.type_aliases {
 		return name
 	}
 	if !name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
 		qname := '${t.cur_module}.${name}'
-		if qname in t.tc.structs {
+		if qname in t.tc.structs || qname in t.tc.type_aliases {
 			return qname
 		}
 	}
 	for struct_name, _ in t.tc.structs {
 		if struct_name.all_after_last('.') == name {
 			return struct_name
+		}
+	}
+	for alias_name, _ in t.tc.type_aliases {
+		if alias_name.all_after_last('.') == name {
+			return alias_name
 		}
 	}
 	return none

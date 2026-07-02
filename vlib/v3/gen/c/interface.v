@@ -206,29 +206,14 @@ fn (mut g FlatGen) collect_interface_impls() {
 		iface_names << name
 	}
 	iface_names.sort()
-	mut struct_names := []string{}
-	for name, _ in g.tc.structs {
-		struct_names << name
-	}
-	// Type aliases can implement an interface through methods declared on the
-	// alias itself; register them alongside structs so a boxed alias value gets
-	// a nonzero `_typ` dispatch id.
-	for name, _ in g.tc.type_aliases {
-		if name !in struct_names {
-			struct_names << name
-		}
-	}
-	struct_names.sort()
 	for iface in iface_names {
 		if c_name(iface) == 'IError' {
 			continue
 		}
-		mut impls := []string{}
-		for concrete in struct_names {
-			if g.tc.named_type_implements_interface(concrete, iface) {
-				impls << concrete
-			}
-		}
+		// Structs plus type aliases with their own implementing methods; ids
+		// must come from tc.interface_impl_names so the transform's `is`
+		// checks agree with the dispatch ids assigned here.
+		impls := g.tc.interface_impl_names(iface)
 		g.iface_impls[iface] = impls
 		for idx, concrete in impls {
 			g.iface_type_ids['${iface}::${concrete}'] = idx + 1

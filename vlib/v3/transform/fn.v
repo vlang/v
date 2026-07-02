@@ -3359,7 +3359,14 @@ fn (mut t Transformer) try_lower_copy_call(node flat.Node) ?flat.NodeId {
 		return t.make_call_typed('copy', arr2(t.make_prefix(.amp, t.make_ident(tmp_name)), src),
 			'int')
 	}
-	dst := t.make_prefix(.amp, t.transform_expr(dst_id))
+	dst_expr := t.transform_expr(dst_id)
+	// a `mut` param destination is already a pointer; taking its address again
+	// would hand v_copy an Array** and corrupt the caller's frame
+	dst := if t.node_type(dst_id).starts_with('&') {
+		dst_expr
+	} else {
+		t.make_prefix(.amp, dst_expr)
+	}
 	return t.make_call_typed('copy', arr2(dst, src), 'int')
 }
 

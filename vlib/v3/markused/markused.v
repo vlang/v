@@ -399,19 +399,9 @@ fn ensure_iface_impls(recv string, cur_module string, tc &types.TypeChecker, mut
 	if recv != iface_name {
 		checked[recv] = true
 	}
-	mut impls := []string{}
-	for struct_name, _ in tc.structs {
-		if tc.named_type_implements_interface(struct_name, iface_name) {
-			impls << struct_name
-		}
-	}
-	// Aliases can implement an interface through methods declared on the alias
-	// itself; keep their methods reachable so dispatch stubs can call them.
-	for alias_name, _ in tc.type_aliases {
-		if alias_name !in impls && tc.named_type_implements_interface(alias_name, iface_name) {
-			impls << alias_name
-		}
-	}
+	// Structs plus alias implementers, from the same list cgen assigns
+	// dispatch ids over.
+	impls := tc.interface_impl_names(iface_name)
 	iface_impls[recv] = impls
 	if iface_name != recv {
 		iface_impls[iface_name] = impls
