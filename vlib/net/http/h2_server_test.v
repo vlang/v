@@ -1027,6 +1027,112 @@ fn test_h2_server_goaway_last_stream_id_includes_mid_continuation_stream() {
 	assert goaway_last_id == u32(1), 'GOAWAY mid-continuation: expected 1 (stream 1 was being acted on), got ${goaway_last_id}'
 }
 
+// RFC 9113 §6.10: a standalone CONTINUATION frame with no preceding HEADERS
+// block lacking END_HEADERS is invalid, even on a stream id the server has
+// already RST'd itself. Regression for Codex, #27589 pullrequestreview-4613845079
+// ("Reject orphan CONTINUATION frames on reset streams"): before the fix,
+// on_continuation's locally_reset branch accepted ANY CONTINUATION for a
+// previously-reset stream id and fed it straight into the stateful HPACK
+// decoder, regardless of whether a discard block was actually in progress.
+//
+// Setup: stream 1 is malformed (missing :scheme) with END_HEADERS already set
+// on its one HEADERS frame, so the server RSTs it immediately and
+// c.awaiting_cont never becomes 1. A lone CONTINUATION frame for stream 1 then
+// arrives out of nowhere. It must be rejected as a connection error
+// (GOAWAY PROTOCOL_ERROR), not silently decoded and discarded.
+fn test_h2_server_rejects_orphan_continuation_on_reset_stream() {
+	// Malformed: :method + :path only, no :scheme -> immediate RST(protocol_error).
+	malformed_block := [u8(0x82), 0x84, 0x01, 0x09, 0x68, 0x2e, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c,
+		0x65]
+
+	mut enc := H2HpackEncoder{}
+	stream3_block := enc.encode(valid_get_pseudo)
+	mut out := preface_and_settings()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    malformed_block
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// Orphan CONTINUATION: no preceding HEADERS without END_HEADERS on stream 1.
+	out << H2Frame(H2ContinuationFrame{
+		stream_id:   1
+		fragment:    [u8(0x40), 0x06, 0x78, 0x2d, 0x73, 0x79, 0x6e, 0x63, 0x01, 0x31]
+		end_headers: true
+	}).encode()
+	// A valid, complete request on stream 3 follows. If the server incorrectly
+	// treats the orphan CONTINUATION as an accepted discard-continuation instead
+	// of a connection error, it keeps serving and answers this one with 200 — the
+	// bug manifests as a response here rather than the frame reader blocking
+	// forever waiting for a GOAWAY that never comes.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   3
+		fragment:    stream3_block
+		end_headers: true
+		end_stream:  true
+	}).encode()
+
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'orphan CONTINUATION: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut goaway_code := i64(-1)
+	mut s3_status := 0
+	mut dec := H2HpackDecoder{}
+	for _ in 0 .. 32 {
+		f := fr.next() or { break }
+		match f {
+			H2GoawayFrame {
+				goaway_code = i64(f.error_code)
+			}
+			H2HeadersFrame {
+				if f.stream_id == 3 {
+					for hf in dec.decode(f.fragment) or { []H2HeaderField{} } {
+						if hf.name == ':status' {
+							s3_status = hf.value.int()
+						}
+					}
+				}
+			}
+			else {}
+		}
+
+		if goaway_code >= 0 || s3_status != 0 {
+			break
+		}
+	}
+	assert s3_status == 0, 'orphan CONTINUATION on reset stream: server kept serving after an illegal CONTINUATION (stream 3 got ${s3_status})'
+	assert goaway_code == i64(u32(H2ErrorCode.protocol_error)), 'orphan CONTINUATION on reset stream: expected GOAWAY(PROTOCOL_ERROR), got ${goaway_code}'
+}
+
+// RFC 9113 §6.4: the locally_reset drain-tracking set must be bounded — an
+// unbounded set lets a peer that keeps the connection open while sending an
+// endless stream of malformed requests grow server memory without limit.
+// Regression for Codex, #27589 pullrequestreview-4613845079 ("Bound
+// locally_reset tracking for reset streams"): before the fix, c.locally_reset
+// grew by one entry per malformed stream id forever. This is a white-box unit
+// test of mark_locally_reset directly (no I/O) since the bound is an internal
+// invariant, not something a black-box frame exchange can assert cleanly.
+fn test_h2_server_locally_reset_tracking_is_bounded() {
+	_, mut server_end := new_pipe()
+	mut c := &H2ServerConn{
+		transport: H2Transport(server_end)
+	}
+	for i in 0 .. h2_server_max_locally_reset_tracked + 10 {
+		c.mark_locally_reset(u32(2 * i + 1))
+	}
+	assert c.locally_reset.len <= h2_server_max_locally_reset_tracked, 'locally_reset grew unbounded: len=${c.locally_reset.len}'
+	assert c.locally_reset_order.len == c.locally_reset.len
+	// The most recent id must survive eviction; an early one must be gone.
+	last_id := u32(2 * (h2_server_max_locally_reset_tracked + 9) + 1)
+	assert last_id in c.locally_reset, 'most recently reset stream was evicted'
+	assert u32(1) !in c.locally_reset, 'oldest reset stream should have been evicted'
+}
+
 // RFC 9113 §6.4 / RFC 7541 §2.2: a HEADERS block arriving on a stream the
 // server has already RST'd itself (locally_reset) must still be HPACK-decoded
 // before being discarded — the dynamic table is connection-wide, so skipping

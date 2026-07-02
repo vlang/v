@@ -22,6 +22,13 @@ const h2_server_default_window = u32(65535)
 // rejected with RST_STREAM(REFUSED_STREAM).
 const h2_server_max_request_body = 8 * 1024 * 1024
 
+// h2_server_max_locally_reset_tracked bounds the locally_reset drain-tracking
+// set (RFC 9113 §6.4). A peer that keeps the connection open while sending an
+// unbounded stream of malformed/refused requests must not be able to grow this
+// set without limit; once full, the oldest entry is evicted (still-open drain
+// windows race against network RTT, so the newest entries matter most).
+const h2_server_max_locally_reset_tracked = 128
+
 // The connection-specific header fields RFC 9113 §8.2.2 forbids in HTTP/2 (a
 // request carrying one is malformed; the server must never echo one in a
 // response) are the module-level `h2_conn_specific_headers` const defined in
@@ -170,16 +177,17 @@ mut:
 // H2ServerConn drives one server-side HTTP/2 connection over a transport.
 struct H2ServerConn {
 mut:
-	transport      H2Transport
-	encoder        H2HpackEncoder
-	decoder        H2HpackDecoder
-	peer           H2PeerSettings
-	rbuf           []u8
-	send_window    i64 = i64(h2_server_default_window)
-	streams        map[u32]&H2ServerStream
-	locally_reset  map[u32]bool // stream ids for which we sent RST_STREAM; drain in-flight frames per RFC 9113 §6.4
-	discard_block  []u8         // accumulates a HEADERS/CONTINUATION block for a locally-reset stream, decoded then discarded
-	last_stream_id u32
+	transport           H2Transport
+	encoder             H2HpackEncoder
+	decoder             H2HpackDecoder
+	peer                H2PeerSettings
+	rbuf                []u8
+	send_window         i64 = i64(h2_server_default_window)
+	streams             map[u32]&H2ServerStream
+	locally_reset       map[u32]bool // stream ids for which we sent RST_STREAM; drain in-flight frames per RFC 9113 §6.4
+	locally_reset_order []u32        // insertion order of locally_reset keys, oldest first, for bounded eviction
+	discard_block       []u8         // accumulates a HEADERS/CONTINUATION block for a locally-reset stream, decoded then discarded
+	last_stream_id      u32
 	// last_processed_stream_id is the highest stream id the server has actually
 	// acted on (RFC 9113 §6.8), used for GOAWAY. Bumped in on_headers at stream
 	// creation — the same moment refused is decided — so it correctly includes a
@@ -195,6 +203,27 @@ mut:
 	closing                  bool
 	idle_conns               &TlsIdleConnTracker = unsafe { nil }
 	idle_handle              int
+}
+
+// mark_locally_reset records that id has been RST_STREAM'd by the server so any
+// in-flight frame for it is drained rather than re-RST (RFC 9113 §6.4). Bounded
+// per h2_server_max_locally_reset_tracked; never evicts the id whose discard
+// block is still being assembled (c.awaiting_cont).
+fn (mut c H2ServerConn) mark_locally_reset(id u32) {
+	if id in c.locally_reset {
+		return
+	}
+	c.locally_reset[id] = true
+	c.locally_reset_order << id
+	for c.locally_reset_order.len > h2_server_max_locally_reset_tracked {
+		mut evict_idx := 0
+		if c.locally_reset_order[evict_idx] == c.awaiting_cont && c.locally_reset_order.len > 1 {
+			evict_idx = 1
+		}
+		evicted := c.locally_reset_order[evict_idx]
+		c.locally_reset_order.delete(evict_idx)
+		c.locally_reset.delete(evicted)
+	}
 }
 
 // H2StreamState is the server's view of a client-initiated stream for the
@@ -317,6 +346,14 @@ fn (mut c H2ServerConn) dispatch_frame(frame H2Frame, mut handler Handler) ! {
 		} else {
 			return error('h2 server: expected CONTINUATION after HEADERS without END_HEADERS')
 		}
+	} else if frame is H2ContinuationFrame {
+		// A CONTINUATION is only legal immediately after a HEADERS/PUSH_PROMISE/
+		// CONTINUATION block that ended without END_HEADERS (RFC 9113 §6.10). With
+		// no block in progress, this is an orphan CONTINUATION — a connection error
+		// even if frame.stream_id was previously locally_reset (the discard path in
+		// on_continuation relies on this gate to guarantee awaiting_cont ==
+		// frame.stream_id before it ever runs).
+		return error('h2 server: unexpected CONTINUATION frame')
 	}
 	match frame {
 		H2SettingsFrame, H2PingFrame, H2WindowUpdateFrame {
@@ -525,6 +562,9 @@ fn (mut c H2ServerConn) on_headers(frame H2HeadersFrame, mut handler Handler) ! 
 fn (mut c H2ServerConn) on_continuation(frame H2ContinuationFrame, mut handler Handler) ! {
 	mut s := c.streams[frame.stream_id] or {
 		// Continuing a discard block for a stream we already RST'd (see on_headers).
+		// Only valid while a discard block on THIS id is actually mid-assembly
+		// (RFC 9113 §6.10): a standalone CONTINUATION with no preceding HEADERS
+		// lacking END_HEADERS is a connection error even if the id was once reset.
 		if frame.stream_id in c.locally_reset {
 			if c.discard_block.len + frame.fragment.len > h2_max_recv_header_block {
 				return error('h2 server: discarded header block exceeds ${h2_max_recv_header_block} bytes')
@@ -579,7 +619,7 @@ fn (mut c H2ServerConn) finalize_headers(mut s H2ServerStream, mut handler Handl
 	// it now without validating or running the request.
 	if s.refused {
 		c.send_rst_stream(s.id, .refused_stream)!
-		c.locally_reset[s.id] = true
+		c.mark_locally_reset(s.id)
 		c.streams.delete(s.id)
 		return
 	}
@@ -587,7 +627,7 @@ fn (mut c H2ServerConn) finalize_headers(mut s H2ServerStream, mut handler Handl
 	// reset just this stream and keep the connection alive.
 	h2_validate_request_pseudo(s.headers) or {
 		c.send_rst_stream(s.id, .protocol_error)!
-		c.locally_reset[s.id] = true
+		c.mark_locally_reset(s.id)
 		c.streams.delete(s.id)
 		return
 	}
@@ -625,7 +665,7 @@ fn (mut c H2ServerConn) finalize_trailers(mut s H2ServerStream, mut handler Hand
 	// HPACK sync; now RST the stream with STREAM_CLOSED and stop.
 	if s.over_end {
 		c.send_rst_stream(s.id, .stream_closed)!
-		c.locally_reset[s.id] = true
+		c.mark_locally_reset(s.id)
 		c.streams.delete(s.id)
 		return
 	}
@@ -651,7 +691,7 @@ fn (mut c H2ServerConn) finalize_trailers(mut s H2ServerStream, mut handler Hand
 	}
 	if reason != '' {
 		c.send_rst_stream(s.id, .protocol_error)!
-		c.locally_reset[s.id] = true
+		c.mark_locally_reset(s.id)
 		c.streams.delete(s.id)
 		return
 	}
@@ -675,7 +715,7 @@ fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 		// before the client received the RST. Drain it silently (RFC 9113 §6.4).
 		if frame.stream_id !in c.locally_reset {
 			c.send_rst_stream(frame.stream_id, .stream_closed)!
-			c.locally_reset[frame.stream_id] = true
+			c.mark_locally_reset(frame.stream_id)
 		}
 		return
 	}
@@ -691,7 +731,7 @@ fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 			c.send_window_update(0, u32(frame.flow_size)) or {}
 		}
 		c.send_rst_stream(s.id, .stream_closed)!
-		c.locally_reset[s.id] = true
+		c.mark_locally_reset(s.id)
 		c.streams.delete(s.id)
 		return
 	}
@@ -701,7 +741,7 @@ fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 			// not penalised for bytes it legitimately sent within its window.
 			c.send_window_update(0, u32(frame.flow_size)) or {}
 			c.send_rst_stream(s.id, .refused_stream)!
-			c.locally_reset[s.id] = true
+			c.mark_locally_reset(s.id)
 			c.streams.delete(s.id)
 			return
 		}
@@ -725,7 +765,7 @@ fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 fn (mut c H2ServerConn) run_request(mut s H2ServerStream, mut handler Handler) ! {
 	req := c.build_request(s) or {
 		c.send_rst_stream(s.id, .protocol_error)!
-		c.locally_reset[s.id] = true
+		c.mark_locally_reset(s.id)
 		c.streams.delete(s.id)
 		return
 	}
