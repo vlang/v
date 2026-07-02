@@ -183,6 +183,13 @@ fn test_return_panic_with_defer_evaluates_call_before_cleanup() {
 	assert !out.contains('cleanup-ran')
 }
 
+fn test_declared_c_exit_satisfies_return_analysis() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_declared_c_exit_satisfies_return_analysis',
+		'fn C.exit(code int)\nfn f(ok bool) int {\n\tif ok {\n\t\treturn 7\n\t}\n\treturn C.exit(1)\n}\nfn main() {\n\tprintln(int_str(f(true)))\n}\n')
+	assert out == '7'
+}
+
 fn test_no_return_analysis_requires_resolved_builtin_target() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_shadowed_os_exit_missing_return',

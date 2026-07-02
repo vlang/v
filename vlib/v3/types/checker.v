@@ -4511,6 +4511,9 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		base_id := tc.a.child(fn_node, 0)
 		base_node := tc.a.nodes[int(base_id)]
 		if base_node.kind == .ident && base_node.value == 'C' {
+			if fn_node.value == 'exit' && 'C.exit' in tc.fn_ret_types {
+				return tc.call_info('C.exit', false)
+			}
 			return none
 		}
 		if base_node.kind == .ident {
