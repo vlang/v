@@ -1005,7 +1005,11 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 		clean_rhs_type := t.membership_container_type(rhs_type)
 		rhs_is_ptr_array := t.membership_container_is_pointer_array(rhs_type)
 		if clean_rhs_type.starts_with('[]') || clean_rhs_type == 'array' {
-			if lowered := t.lower_array_membership_expr(rhs_id, lhs_id, rhs_type, false, node) {
+			if lowered_const := t.lower_const_string_array_membership_expr(rhs_id, lhs_id) {
+				result = lowered_const
+			} else if lowered := t.lower_array_membership_expr(rhs_id, lhs_id, rhs_type, false,
+				node)
+			{
 				result = lowered
 			} else {
 				// dynamic array membership -> array_contains_int/string(arr, val)
@@ -1088,6 +1092,28 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 		})
 	}
 	return result
+}
+
+// lower_const_string_array_membership_expr lowers `needle in const_string_array` without
+// materializing the const array as a dynamic heap array for each membership test.
+fn (mut t Transformer) lower_const_string_array_membership_expr(base_id flat.NodeId, needle_id flat.NodeId) ?flat.NodeId {
+	expr_id := t.const_expr_for_arg(base_id) or { return none }
+	expr := t.a.nodes[int(expr_id)]
+	if expr.kind != .array_literal || expr.children_count == 0 {
+		return none
+	}
+	for i in 0 .. expr.children_count {
+		child := t.a.nodes[int(t.a.child(&expr, i))]
+		if child.kind != .string_literal {
+			return none
+		}
+	}
+	needle := t.transform_expr(needle_id)
+	base_value := t.transform_expr(base_id)
+	base_data := t.make_cast('&string', t.make_selector(base_value, 'data', 'voidptr'), '&string')
+	len_expr := t.make_int_literal(expr.children_count)
+	return t.make_call_typed('fixed_array_contains_string', arr3(base_data, len_expr, needle),
+		'bool')
 }
 
 // lower_type_pattern_membership builds lower type pattern membership data for transform.

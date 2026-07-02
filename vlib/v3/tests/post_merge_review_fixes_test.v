@@ -21,10 +21,14 @@ fn build_v3() string {
 }
 
 fn run_good(v3_bin string, name string, src string) string {
+	return run_good_backend(v3_bin, name, 'c', src)
+}
+
+fn run_good_backend(v3_bin string, name string, backend string, src string) string {
 	good_src := '${tmp_test_path(name)}.v'
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := tmp_test_path(name)
-	compile := os.execute('${v3_bin} ${good_src} -b c -o ${good_bin}')
+	compile := os.execute('${v3_bin} ${good_src} -b ${backend} -o ${good_bin}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(good_bin)
@@ -316,6 +320,9 @@ fn test_map_builtin_method_fallback_checks_arguments() {
 	out := run_good(v3_bin, 'map_builtin_method_fallback',
 		'fn main() {\n\tmut m := map[string]int{}\n\tm["abc"] = 42\n\tmut moved := m.move()\n\tprintln(int_str(m.len))\n\tmoved.clear()\n\tmoved.reserve(6)\n\tmoved.delete("x")\n\tkeys := moved.keys()\n\tvalues := moved.values()\n\tcloned := moved.clone()\n\tprintln(int_str(keys.len + values.len + cloned.len))\n}\n')
 	assert out == '0\n0'
+	empty_arrays_out := run_good(v3_bin, 'map_empty_keys_values_keep_elem_size',
+		"struct State {\n\tlabels map[string]string\n}\n\nfn main() {\n\ts := State{}\n\tmut keys := s.labels.keys()\n\tkeys << 'abc'\n\tprintln(keys[0])\n\tmut values := s.labels.values()\n\tvalues << 'def'\n\tprintln(values[0])\n}\n")
+	assert empty_arrays_out == 'abc\ndef'
 	pointer_out := run_good(v3_bin, 'map_move_pointer_receiver_returns_map',
 		'fn take(m map[string]int) int {\n\treturn m.len\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm["abc"] = 42\n\tp := &m\n\tprintln(int_str(take(p.move())))\n\tprintln(int_str(m.len))\n}\n')
 	assert pointer_out == '1\n0'
@@ -350,6 +357,20 @@ fn test_map_builtin_method_fallback_checks_arguments() {
 		'thing/mod.v': 'module thing\n\nstruct Foo {}\nstruct Key {}\n\nfn (m map[string]Foo) keys() int {\n\treturn 31\n}\n\nfn (a []Foo) pointers() int {\n\treturn 42\n}\n\nfn (m map[Key]int) keys() int {\n\treturn 53\n}\n\npub fn run() string {\n\tmut m := map[string]Foo{}\n\tm["x"] = Foo{}\n\titems := [Foo{}]\n\tkeyed := map[Key]int{}\n\treturn int_str(m.keys()) + "\\n" + int_str(items.pointers()) + "\\n" + int_str(keyed.keys())\n}\n'
 	}, 'main.v')
 	assert module_collection_out == '31\n42\n53'
+}
+
+fn test_arm64_string_roundtrip_preserves_literal_flag() {
+	$if macos && arm64 {
+		v3_bin := build_v3()
+		out := run_good_backend(v3_bin, 'arm64_string_roundtrip_preserves_literal_flag', 'arm64',
+			"fn literal_local() string {\n\ts := 'literal-static'\n\treturn s\n}\n\nfn arg_local(s string) string {\n\tlocal := s\n\treturn local\n}\n\nfn main() {\n\ta := literal_local()\n\tb := arg_local('argument-static')\n\tunsafe {\n\t\ta.free()\n\t\tb.free()\n\t}\n\tprintln('ok')\n}\n")
+		assert out == 'ok'
+		map_out := run_good_backend(v3_bin, 'arm64_map_empty_arrays_keep_elem_size', 'arm64',
+			"struct State {\n\tlabels map[string]string\n}\n\nfn main() {\n\ts := State{}\n\tmut keys := s.labels.keys()\n\tkeys << 'abc'\n\tprintln(keys[0])\n\tmut values := s.labels.values()\n\tvalues << 'def'\n\tprintln(values[0])\n}\n")
+		assert map_out == 'abc\ndef'
+	} $else {
+		assert true
+	}
 }
 
 fn test_runtime_inits_run_before_module_init() {
