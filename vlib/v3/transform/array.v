@@ -165,10 +165,12 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 		return id
 	}
 	clean_value := t.normalize_type_alias(node.value)
-	if t.is_fixed_array_type(clean_value) {
+	if t.is_fixed_array_type(clean_value) && !node.typ.starts_with('[]') {
 		return id
 	}
-	elem_type := if !node.value.starts_with('[]') && clean_value.starts_with('[]') {
+	elem_type := if node.typ.starts_with('[]') {
+		node.typ[2..]
+	} else if !node.value.starts_with('[]') && clean_value.starts_with('[]') {
 		clean_value[2..]
 	} else {
 		node.value
@@ -476,7 +478,7 @@ fn (mut t Transformer) transform_fixed_array_literal_for_type(_id flat.NodeId, n
 }
 
 fn (mut t Transformer) transform_fixed_array_init_expr(node flat.Node) ?flat.NodeId {
-	fixed_type := t.normalize_type_alias(if node.value.len > 0 { node.value } else { node.typ })
+	fixed_type := t.normalize_type_alias(if node.typ.len > 0 { node.typ } else { node.value })
 	if !t.is_fixed_array_type(fixed_type) || node.children_count == 0 {
 		return none
 	}

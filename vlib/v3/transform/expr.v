@@ -126,25 +126,47 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	}
 	mut lhs_type := t.membership_container_type(lhs_raw_type)
 	mut rhs_type := t.membership_container_type(rhs_raw_type)
-	lhs_is_fixed := t.is_fixed_array_type(lhs_type)
-	rhs_is_fixed := t.is_fixed_array_type(rhs_type)
+	mut lhs_is_fixed := t.is_fixed_array_type(lhs_type)
+	mut rhs_is_fixed := t.is_fixed_array_type(rhs_type)
+	mut fixed_lhs_as_array := flat.empty_node
+	mut fixed_rhs_as_array := flat.empty_node
 	if lhs_is_fixed || rhs_is_fixed {
-		if (!lhs_is_fixed && !t.expr_can_be_fixed_array_literal(lhs_id))
-			|| (!rhs_is_fixed && !t.expr_can_be_fixed_array_literal(rhs_id)) {
+		if (lhs_is_fixed && rhs_is_fixed)
+			|| (lhs_is_fixed && t.expr_can_be_fixed_array_literal(rhs_id))
+			|| (rhs_is_fixed && t.expr_can_be_fixed_array_literal(lhs_id)) {
+			mut fixed_type := t.resolved_fixed_array_canonical_type(lhs_type)
+			if !lhs_is_fixed {
+				fixed_type = t.resolved_fixed_array_canonical_type(rhs_type)
+			}
+			new_lhs := t.transform_expr_for_type(lhs_id, fixed_type)
+			new_rhs := t.transform_expr_for_type(rhs_id, fixed_type)
+			eq_call := t.make_membership_eq_expr(new_lhs, new_rhs, fixed_type)
+			if node.op == .ne {
+				return t.make_prefix(.not, eq_call)
+			}
+			return eq_call
+		}
+		if lhs_is_fixed && rhs_type.starts_with('[]') {
+			fixed_type := t.resolved_fixed_array_canonical_type(lhs_type)
+			if fixed_array_elem_type(fixed_type) == rhs_type[2..] {
+				fixed_lhs_as_array = t.fixed_array_value_to_array(lhs_id, fixed_type, rhs_type)
+				lhs_type = rhs_type
+				lhs_is_fixed = false
+			} else {
+				return none
+			}
+		} else if rhs_is_fixed && lhs_type.starts_with('[]') {
+			fixed_type := t.resolved_fixed_array_canonical_type(rhs_type)
+			if fixed_array_elem_type(fixed_type) == lhs_type[2..] {
+				fixed_rhs_as_array = t.fixed_array_value_to_array(rhs_id, fixed_type, lhs_type)
+				rhs_type = lhs_type
+				rhs_is_fixed = false
+			} else {
+				return none
+			}
+		} else {
 			return none
 		}
-		fixed_type := t.resolved_fixed_array_canonical_type(if lhs_is_fixed {
-			lhs_type
-		} else {
-			rhs_type
-		})
-		new_lhs := t.transform_expr_for_type(lhs_id, fixed_type)
-		new_rhs := t.transform_expr_for_type(rhs_id, fixed_type)
-		eq_call := t.make_membership_eq_expr(new_lhs, new_rhs, fixed_type)
-		if node.op == .ne {
-			return t.make_prefix(.not, eq_call)
-		}
-		return eq_call
 	}
 	if !(lhs_type.starts_with('[]') || lhs_type == 'array') || !(rhs_type.starts_with('[]')
 		|| rhs_type == 'array') {
@@ -159,8 +181,20 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	if elem_type.len == 0 {
 		elem_type = 'int'
 	}
-	mut new_lhs := t.transform_expr(lhs_id)
-	mut new_rhs := t.transform_expr(rhs_id)
+	mut new_lhs := if int(fixed_lhs_as_array) >= 0 {
+		fixed_lhs_as_array
+	} else if lhs_type.starts_with('[]') {
+		t.transform_expr_for_type(lhs_id, lhs_type)
+	} else {
+		t.transform_expr(lhs_id)
+	}
+	mut new_rhs := if int(fixed_rhs_as_array) >= 0 {
+		fixed_rhs_as_array
+	} else if rhs_type.starts_with('[]') {
+		t.transform_expr_for_type(rhs_id, rhs_type)
+	} else {
+		t.transform_expr(rhs_id)
+	}
 	new_lhs_type := t.membership_container_type(t.node_type(new_lhs))
 	new_rhs_type := t.membership_container_type(t.node_type(new_rhs))
 	if new_lhs_type.starts_with('[]') {

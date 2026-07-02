@@ -2697,7 +2697,11 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.asm_stmt()
 		}
 		.dollar {
-			return p.parse_comptime_if()
+			pk := p.peek()
+			if pk == .key_if || pk == .key_for || (pk == .name && p.peek_lit in ['if', 'for']) {
+				return p.parse_comptime_if()
+			}
+			return p.assign_or_expr_stmt()
 		}
 		.hash {
 			return p.directive()
