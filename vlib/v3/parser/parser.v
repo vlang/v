@@ -186,7 +186,9 @@ fn read_source_file_raw(path string) string {
 			}
 			mut new_buf := C.realloc(buf, new_cap + 1)
 			if isnil(new_buf) {
-				break
+				C.close(fd)
+				unsafe { C.free(buf) }
+				return ''
 			}
 			buf = new_buf
 			cap = new_cap
