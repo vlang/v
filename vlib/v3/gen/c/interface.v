@@ -10,7 +10,7 @@ fn (mut g FlatGen) emit_sum_type(name string) {
 	g.writeln('\tint typ;')
 	g.writeln('\tunion {')
 	for v in variants {
-		ct := g.tc.c_type(g.tc.parse_type(v))
+		ct := g.value_c_type(g.tc.parse_type(v))
 		field := g.sum_field_name(v)
 		g.writeln('\t\t${ct}* ${field};')
 	}

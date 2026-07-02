@@ -2606,7 +2606,14 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						g.write(c_name(fn_ident.value))
 					}
 				} else {
+					needs_callee_parens := fn_ident.kind !in [.ident, .selector]
+					if needs_callee_parens {
+						g.write('(')
+					}
 					g.gen_expr(fn_id)
+					if needs_callee_parens {
+						g.write(')')
+					}
 				}
 			}
 			g.write('(')
@@ -2715,6 +2722,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					}
 					g.gen_params_struct_arg(ptyp, node, i)
 					break
+				}
+				if arg_node.kind == .sizeof_expr {
+					g.write('sizeof(${g.sizeof_target(arg_node.value)})')
+					continue
 				}
 				if fixed := array_fixed_type(g.tc.resolve_type(arg_id)) {
 					g.gen_fixed_array_data_arg(arg_id, fixed)
@@ -3652,6 +3663,19 @@ fn (g &FlatGen) direct_callback_ident_name(id flat.NodeId) ?string {
 	if node.kind in [.cast_expr, .paren, .expr_stmt] && node.children_count > 0 {
 		return g.direct_callback_ident_name(g.a.child(&node, 0))
 	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := g.a.child_node(&node, 0)
+		if base.kind == .ident {
+			name := '${base.value}.${node.value}'
+			if name in g.tc.fn_param_types && name in g.tc.fn_ret_types {
+				return name
+			}
+			qname := '${g.tc.cur_module}.${name}'
+			if qname in g.tc.fn_param_types && qname in g.tc.fn_ret_types {
+				return qname
+			}
+		}
+	}
 	if node.kind != .ident || node.value.len == 0 {
 		return none
 	}
@@ -4201,6 +4225,10 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			}
 			g.gen_params_struct_arg(ptyp, node, i)
 			break
+		}
+		if arg_node.kind == .sizeof_expr {
+			g.write('sizeof(${g.sizeof_target(arg_node.value)})')
+			continue
 		}
 		if fixed := array_fixed_type(g.tc.resolve_type(arg_id)) {
 			g.gen_fixed_array_data_arg(arg_id, fixed)

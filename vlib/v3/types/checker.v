@@ -4626,6 +4626,36 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 	if info := tc.resolve_generic_call_info(id, fn_node) {
 		return info
 	}
+	if fn_node.kind == .ident {
+		fn_id := tc.a.child(&node, 0)
+		mut fn_type := Type(void_)
+		if smart_type := tc.smartcast_type(fn_id) {
+			fn_type = smart_type
+		} else if typ := tc.cur_scope.lookup(fn_node.value) {
+			fn_type = typ
+		} else if typ := tc.file_scope.lookup(fn_node.value) {
+			fn_type = typ
+		}
+		if fn_typ := fn_type_from_type(fn_type) {
+			return CallInfo{
+				name:         ''
+				params:       fn_typ.params.clone()
+				return_type:  fn_typ.return_type
+				params_known: true
+			}
+		}
+	}
+	if fn_node.kind !in [.ident, .selector] {
+		fn_type := tc.resolve_type(tc.a.child(&node, 0))
+		if fn_typ := fn_type_from_type(fn_type) {
+			return CallInfo{
+				name:         ''
+				params:       fn_typ.params.clone()
+				return_type:  fn_typ.return_type
+				params_known: true
+			}
+		}
+	}
 	if fn_node.kind == .selector {
 		base_id := tc.a.child(fn_node, 0)
 		base_node := tc.a.nodes[int(base_id)]

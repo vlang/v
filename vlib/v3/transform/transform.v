@@ -181,8 +181,9 @@ struct StructFieldLookup {
 
 // VarTypeBinding represents var type binding data used by transform.
 struct VarTypeBinding {
-	name string
-	typ  string
+	name    string
+	typ     string
+	raw_typ string
 }
 
 struct GenericFnDecl {
@@ -382,21 +383,28 @@ fn (mut t Transformer) reset_var_types() {
 
 // set_var_type updates set var type state for transform.
 fn (mut t Transformer) set_var_type(name string, typ string) {
+	t.set_var_type_with_raw(name, typ, typ)
+}
+
+fn (mut t Transformer) set_var_type_with_raw(name string, typ string, raw_typ string) {
 	if name.len == 0 {
 		return
 	}
+	raw := if raw_typ.len > 0 { raw_typ } else { typ }
 	for i, binding in t.var_types {
 		if binding.name == name {
 			t.var_types[i] = VarTypeBinding{
-				name: name
-				typ:  typ
+				name:    name
+				typ:     typ
+				raw_typ: raw
 			}
 			return
 		}
 	}
 	t.var_types << VarTypeBinding{
-		name: name
-		typ:  typ
+		name:    name
+		typ:     typ
+		raw_typ: raw
 	}
 }
 
@@ -414,6 +422,18 @@ fn (mut t Transformer) unset_var_type(name string) {
 fn (t &Transformer) var_type(name string) string {
 	for binding in t.var_types {
 		if binding.name == name {
+			return binding.typ
+		}
+	}
+	return ''
+}
+
+fn (t &Transformer) raw_var_type(name string) string {
+	for binding in t.var_types {
+		if binding.name == name {
+			if binding.raw_typ.len > 0 {
+				return binding.raw_typ
+			}
 			return binding.typ
 		}
 	}
@@ -1212,7 +1232,8 @@ fn (mut t Transformer) transform_const_decl(node flat.Node) {
 				const_typ := t.const_field_type_name(cf)
 				new_val := t.transform_const_or_expr(val_id, val, const_typ)
 				t.a.children[cf.children_start] = new_val
-			} else if val.kind == .struct_init || val.kind == .cast_expr || val.kind == .call {
+			} else if val.kind in [.struct_init, .cast_expr, .call, .array_literal, .fn_literal,
+				.lambda_expr] {
 				new_val := t.transform_expr(val_id)
 				t.a.children[cf.children_start] = new_val
 			} else if val.kind == .infix && val.children_count >= 2 {
@@ -1341,6 +1362,9 @@ fn (mut t Transformer) transform_const_value(id flat.NodeId) flat.NodeId {
 	if block_val := t.const_block_value(node) {
 		return t.transform_const_value(block_val)
 	}
+	if node.kind == .map_init {
+		return id
+	}
 	return t.transform_expr(id)
 }
 
@@ -1398,7 +1422,10 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 		format = child.typ
 	}
 	mut transformed := t.transform_expr(expr_id)
-	mut typ := t.node_type(transformed)
+	mut typ := t.raw_alias_type_for_expr(expr_id)
+	if typ.len == 0 {
+		typ = t.node_type(transformed)
+	}
 	if typ.len == 0 {
 		typ = t.reliable_stringify_type(transformed)
 	}
@@ -1654,7 +1681,11 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		}
 		child := t.a.nodes[int(child_id)]
 		if node_kind_id(child) == 75 && child.value.len > 0 && child.typ.len > 0 {
-			raw_typ := t.normalize_type_alias(child.typ)
+			raw_typ := if child.typ.starts_with('...') {
+				'[]' + t.normalize_type_alias(child.typ[3..])
+			} else {
+				t.normalize_type_alias(child.typ)
+			}
 			mut typ := if raw_typ.len > 0 {
 				raw_typ
 			} else if param_idx < param_types.len {
@@ -3531,7 +3562,14 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				}
 			}
 			if typ.len > 0 {
-				t.set_var_type(lhs.value, typ)
+				mut raw_typ := t.raw_decl_type_for_rhs(rhs, typ)
+				if rhs.kind == .call {
+					generic_raw_typ := t.raw_generic_call_return_type(rhs_id, rhs)
+					if generic_raw_typ.len > 0 {
+						raw_typ = generic_raw_typ
+					}
+				}
+				t.set_var_type_with_raw(lhs.value, typ, raw_typ)
 				inferred_typ = typ
 			}
 		}
@@ -5788,7 +5826,13 @@ fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) fla
 	if expr.kind == .int_literal {
 		return t.make_string_literal('int literal')
 	}
-	mut typ := t.node_type(expr_id)
+	mut typ := ''
+	if expr.kind == .ident {
+		typ = t.raw_var_type(expr.value)
+	}
+	if typ.len == 0 {
+		typ = t.node_type(expr_id)
+	}
 	if typ.len == 0 {
 		typ = t.reliable_stringify_type(expr_id)
 	}
@@ -5822,7 +5866,14 @@ fn (t &Transformer) typeof_type_name(node flat.Node) string {
 		return ''
 	}
 	expr_id := t.a.child(&node, 0)
-	mut typ := t.node_type(expr_id)
+	expr := t.a.nodes[int(expr_id)]
+	mut typ := ''
+	if expr.kind == .ident {
+		typ = t.raw_var_type(expr.value)
+	}
+	if typ.len == 0 {
+		typ = t.node_type(expr_id)
+	}
 	if typ.len == 0 {
 		typ = t.reliable_stringify_type(expr_id)
 	}
@@ -6570,6 +6621,22 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 	return ''
 }
 
+fn (t &Transformer) raw_decl_type_for_rhs(rhs flat.Node, fallback string) string {
+	if rhs.kind == .struct_init && rhs.value.len > 0 && !isnil(t.tc) {
+		if rhs.value in t.tc.type_aliases {
+			return rhs.value
+		}
+		if !rhs.value.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+			&& t.cur_module != 'builtin' {
+			qname := '${t.cur_module}.${rhs.value}'
+			if qname in t.tc.type_aliases {
+				return qname
+			}
+		}
+	}
+	return fallback
+}
+
 // resolve_expr_type resolves resolve expr type information for transform.
 fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 	if int(id) < 0 {
@@ -6641,6 +6708,12 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			return node.typ
 		}
 		.array_literal {
+			if node.children_count > 0 {
+				elem_type := t.node_type(t.a.child(&node, 0))
+				if t.is_fn_pointer_type_name(elem_type) {
+					return '[]${elem_type}'
+				}
+			}
 			if node.typ.len > 0 {
 				typ := t.normalize_type_alias(node.typ)
 				if typ != 'array' {
