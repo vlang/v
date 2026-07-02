@@ -653,3 +653,579 @@ fn test_h2_server_accepts_post_with_trailers() {
 	}
 	assert status == 200, 'trailers POST should succeed, got status ${status}'
 }
+
+// drive_until_goaway_or_close writes `out`, then reads frames until it sees a
+// GOAWAY (returns its error code) or the connection closes (returns -1). A
+// RST_STREAM on any stream is a wrong-scope answer for a connection error and
+// returns -2.
+fn drive_until_goaway_or_close(mut client_end PipeEnd, out []u8, label string) i64 {
+	client_end.write(out) or {
+		assert false, '${label}: client write failed: ${err}'
+		return -3
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	for _ in 0 .. 32 {
+		f := fr.next() or { return -1 }
+		match f {
+			H2GoawayFrame {
+				return i64(f.error_code)
+			}
+			H2RstStreamFrame {
+				return -2
+			}
+			else {}
+		}
+	}
+	assert false, '${label}: server sent neither GOAWAY nor closed'
+	return -3
+}
+
+// preface_and_settings returns the client preface followed by an empty SETTINGS
+// frame — the start of every scripted session.
+fn preface_and_settings() []u8 {
+	mut out := []u8{}
+	out << h2_client_preface.bytes()
+	out << H2Frame(H2SettingsFrame{}).encode()
+	return out
+}
+
+// RFC 9113 §5.1: a DATA frame on an idle stream (one never opened) is a
+// connection error of type PROTOCOL_ERROR.
+fn test_h2_server_data_on_idle_stream_is_connection_error() {
+	mut out := preface_and_settings()
+	out << H2Frame(H2DataFrame{
+		stream_id:  1
+		data:       'x'.bytes()
+		end_stream: true
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_goaway_or_close(mut client_end, out, 'DATA on idle stream')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'DATA on idle: expected GOAWAY(PROTOCOL_ERROR), got ${code}'
+}
+
+// RFC 9113 §5.1/§6.4: a RST_STREAM on an idle stream is a connection error of
+// type PROTOCOL_ERROR.
+fn test_h2_server_rst_on_idle_stream_is_connection_error() {
+	mut out := preface_and_settings()
+	out << H2Frame(H2RstStreamFrame{
+		stream_id:  1
+		error_code: u32(H2ErrorCode.cancel)
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_goaway_or_close(mut client_end, out, 'RST on idle stream')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'RST on idle: expected GOAWAY(PROTOCOL_ERROR), got ${code}'
+}
+
+// RFC 9113 §5.1: a WINDOW_UPDATE on an idle stream is a connection error of type
+// PROTOCOL_ERROR.
+fn test_h2_server_window_update_on_idle_stream_is_connection_error() {
+	mut out := preface_and_settings()
+	out << H2Frame(H2WindowUpdateFrame{
+		stream_id:             1
+		window_size_increment: 100
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_goaway_or_close(mut client_end, out, 'WINDOW_UPDATE on idle stream')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'WINDOW_UPDATE on idle: expected GOAWAY(PROTOCOL_ERROR), got ${code}'
+}
+
+// RFC 9113 §5.1/§6.1: a DATA frame on a closed stream (one already served and
+// removed) is a STREAM error of type STREAM_CLOSED — the connection stays up.
+fn test_h2_server_data_on_closed_stream_is_stream_closed() {
+	mut enc := H2HpackEncoder{}
+	block := enc.encode(valid_get_pseudo)
+	mut out := preface_and_settings()
+	// Open and immediately close stream 1 (HEADERS + END_STREAM -> served).
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    block
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// Then DATA on the now-closed stream 1.
+	out << H2Frame(H2DataFrame{
+		stream_id:  1
+		data:       'x'.bytes()
+		end_stream: true
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'DATA on closed stream: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut code := i64(-1)
+	for _ in 0 .. 32 {
+		f := fr.next() or { break }
+		if f is H2RstStreamFrame {
+			if f.stream_id == 1 {
+				code = i64(f.error_code)
+				break
+			}
+		}
+	}
+	assert code == i64(u32(H2ErrorCode.stream_closed)), 'DATA on closed: expected RST_STREAM(STREAM_CLOSED), got ${code}'
+}
+
+// RFC 9113 §5.1.2: a HEADERS frame opening a stream beyond the advertised
+// SETTINGS_MAX_CONCURRENT_STREAMS (1) is refused with RST_STREAM(REFUSED_STREAM).
+// Both streams omit END_STREAM so the first stays parked (open) when the second
+// arrives, exercising the concurrency check rather than serial processing.
+fn test_h2_server_refuses_stream_over_concurrency_limit() {
+	mut enc := H2HpackEncoder{}
+	mut out := preface_and_settings()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   3
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'concurrency limit: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut code := i64(-1)
+	for _ in 0 .. 32 {
+		f := fr.next() or { break }
+		if f is H2RstStreamFrame {
+			if f.stream_id == 3 {
+				code = i64(f.error_code)
+				break
+			}
+		}
+	}
+	assert code == i64(u32(H2ErrorCode.refused_stream)), 'over-limit stream: expected RST_STREAM(REFUSED_STREAM) on stream 3, got ${code}'
+}
+
+// RFC 9113 §5.1: an even (server-initiated) stream id is never opened by this
+// server — it is idle, NOT closed, even after the client has opened a higher odd
+// stream. A DATA frame on it must be a connection error PROTOCOL_ERROR, not a
+// STREAM_CLOSED stream error. Regression for the last_stream_id-parity miss
+// (Codex, #27589 discussion_r3488271404).
+fn test_h2_server_data_on_even_stream_is_connection_error() {
+	mut enc := H2HpackEncoder{}
+	mut out := preface_and_settings()
+	// Client opens odd stream 3 (served, advancing last_stream_id to 3)...
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   3
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// ...then sends DATA on even stream 2, which is below last_stream_id but was
+	// never opened (even ids are server-initiated). It is idle, so -> conn error.
+	out << H2Frame(H2DataFrame{
+		stream_id:  2
+		data:       'x'.bytes()
+		end_stream: true
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_goaway_or_close(mut client_end, out, 'DATA on even idle stream')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'DATA on even idle stream: expected GOAWAY(PROTOCOL_ERROR), got ${code}'
+}
+
+// RFC 9113 §5.1.2: an over-limit stream opened while the server is blocked writing
+// a stalled response (flow control) must still be HPACK-decoded and refused — the
+// stall path (send_body -> pump_for_window) routes frames through the same dispatch
+// as the main loop. Regression for the divergent-reader miss (Codex, #27589
+// discussion_r3488302384): set the initial window to 0 so stream 1's response body
+// stalls, then send HEADERS for stream 3 before the WINDOW_UPDATE that unblocks it.
+fn test_h2_server_refuses_over_limit_stream_during_window_stall() {
+	mut enc := H2HpackEncoder{}
+	mut out := []u8{}
+	out << h2_client_preface.bytes()
+	// Zero initial window -> stream 1's response body cannot be sent until a
+	// WINDOW_UPDATE arrives, parking the server in pump_for_window.
+	out << H2Frame(H2SettingsFrame{
+		settings: [H2Setting{h2_settings_initial_window_size, 0}]
+	}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// Over-limit stream 3 arrives while stream 1's response is stalled.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   3
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// Unblock stream 1 so its response completes after the refusal.
+	out << H2Frame(H2WindowUpdateFrame{
+		stream_id:             1
+		window_size_increment: 1000
+	}).encode()
+
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'window-stall refusal: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut dec := H2HpackDecoder{}
+	mut rst3 := i64(-1)
+	mut s1_status := 0
+	mut s1_ended := false
+	for _ in 0 .. 64 {
+		f := fr.next() or { break }
+		match f {
+			H2RstStreamFrame {
+				if f.stream_id == 3 {
+					rst3 = i64(f.error_code)
+				}
+			}
+			H2HeadersFrame {
+				if f.stream_id == 1 {
+					for hf in dec.decode(f.fragment) or { []H2HeaderField{} } {
+						if hf.name == ':status' {
+							s1_status = hf.value.int()
+						}
+					}
+				}
+			}
+			H2DataFrame {
+				if f.stream_id == 1 && f.end_stream {
+					s1_ended = true
+				}
+			}
+			else {}
+		}
+
+		if rst3 >= 0 && s1_ended {
+			break
+		}
+	}
+	assert rst3 == i64(u32(H2ErrorCode.refused_stream)), 'over-limit stream during stall: expected RST_STREAM(REFUSED_STREAM) on stream 3, got ${rst3}'
+	assert s1_status == 200, 'stalled stream 1 should still complete with 200, got ${s1_status}'
+	assert s1_ended, 'stalled stream 1 response should complete after WINDOW_UPDATE'
+}
+
+// RFC 9113 §6.8 / §5.1.2: GOAWAY's last_stream_id is the highest stream the
+// server "might have taken some action on" — a stream refused purely for
+// exceeding the concurrency limit (REFUSED_STREAM) was, per §5.1.2, refused
+// "prior to any processing" and is already told via its own RST_STREAM that it
+// is safe to retry elsewhere. It should not inflate last_stream_id in a later
+// GOAWAY beyond the highest stream actually processed.
+//
+// Setup: stream 1 stays open (ambiguous outcome). Stream 3 is refused (over
+// the concurrency limit). Stream 2 (an even/server-initiated id) then triggers
+// a hard connection error, forcing a GOAWAY. The reported last_stream_id must
+// be 1 (the highest genuinely-processed/ambiguous stream), not 3 (the refused
+// one, whose fate is already known from its own RST_STREAM).
+fn test_h2_server_goaway_last_stream_id_excludes_refused_stream() {
+	mut enc := H2HpackEncoder{}
+	mut out := preface_and_settings()
+	// Stream 1: left open (no END_STREAM) so its outcome stays ambiguous.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	// Stream 3: refused (over concurrency limit) — never processed.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   3
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// Stream 2 (even, server-initiated) is always invalid — forces a hard
+	// connection error and a best-effort GOAWAY.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   2
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  true
+	}).encode()
+
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'GOAWAY last_stream_id: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut goaway_last_id := u32(0xFFFFFFFF)
+	mut got_goaway := false
+	for _ in 0 .. 32 {
+		f := fr.next() or { break }
+		if f is H2GoawayFrame {
+			goaway_last_id = f.last_stream_id
+			got_goaway = true
+			break
+		}
+	}
+	assert got_goaway, 'GOAWAY last_stream_id: server did not send a GOAWAY'
+	assert goaway_last_id == u32(1), 'GOAWAY last_stream_id: expected 1 (refused stream 3 must not count), got ${goaway_last_id}'
+}
+
+// RFC 9113 §6.8: GOAWAY's last_stream_id must include a stream that is still
+// mid-CONTINUATION (HEADERS not yet fully assembled) when an unrelated
+// connection error forces a GOAWAY — the server has already started "acting
+// on" that stream (accepted its id, is holding its partial HPACK block) even
+// though finalize_headers has not run yet. Bumping last_processed_stream_id
+// only inside finalize_headers misses this window entirely.
+//
+// Setup: stream 1's HEADERS arrives without END_HEADERS (awaiting
+// CONTINUATION). A WINDOW_UPDATE frame then arrives instead of the expected
+// CONTINUATION — a RFC 9113 §6.10 connection error, unrelated to stream 1's
+// own content. The resulting GOAWAY must report last_stream_id 1, not 0.
+fn test_h2_server_goaway_last_stream_id_includes_mid_continuation_stream() {
+	mut enc := H2HpackEncoder{}
+	mut out := preface_and_settings()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: false
+		end_stream:  true
+	}).encode()
+	// Not a CONTINUATION — violates RFC 9113 §6.10 while stream 1 is still being
+	// assembled, forcing a connection error unrelated to stream 1's own bytes.
+	out << H2Frame(H2WindowUpdateFrame{
+		stream_id:             1
+		window_size_increment: 100
+	}).encode()
+
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'GOAWAY mid-continuation: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut goaway_last_id := u32(0xFFFFFFFF)
+	mut got_goaway := false
+	for _ in 0 .. 32 {
+		f := fr.next() or { break }
+		if f is H2GoawayFrame {
+			goaway_last_id = f.last_stream_id
+			got_goaway = true
+			break
+		}
+	}
+	assert got_goaway, 'GOAWAY mid-continuation: server did not send a GOAWAY'
+	assert goaway_last_id == u32(1), 'GOAWAY mid-continuation: expected 1 (stream 1 was being acted on), got ${goaway_last_id}'
+}
+
+// RFC 9113 §6.4 / RFC 7541 §2.2: a HEADERS block arriving on a stream the
+// server has already RST'd itself (locally_reset) must still be HPACK-decoded
+// before being discarded — the dynamic table is connection-wide, so skipping
+// the decode desyncs it for every later stream. Regression for Codex,
+// #27589 discussion_r3493008528 ("Decode reset-stream HEADERS before ignoring
+// them"): before the fix, on_headers took the "invalid client stream id" path
+// for this in-flight second HEADERS block — a hard connection error (GOAWAY)
+// instead of a silent, HPACK-synced drain.
+//
+// Setup: stream 1 is malformed (missing :scheme) so the server RSTs it
+// immediately (protocol_error) and marks it locally_reset. A second HEADERS
+// block then arrives on stream 1 — in-flight, as if sent by the client before
+// it received the RST — carrying a literal-with-incremental-indexing entry
+// ("x-sync: 1" → dynamic index 62). Stream 3 (a valid, complete request) then
+// references that entry via 0xBE. If the block was skipped instead of decoded,
+// 0xBE is unresolvable and the connection closes with GOAWAY instead of
+// serving stream 3.
+fn test_h2_server_hpack_sync_after_locally_reset_stream_headers() {
+	// Malformed: :method + :path only, no :scheme -> h2_validate_request_pseudo
+	// rejects it (RFC 9113 §8.1.2.3) and the server RSTs stream 1 immediately.
+	malformed_block := [u8(0x82), 0x84, 0x01, 0x09, 0x68, 0x2e, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c,
+		0x65]
+	// Literal-with-incremental-indexing: adds "x-sync: 1" to the dynamic table.
+	invalid_block := [u8(0x40), 0x06, 0x78, 0x2d, 0x73, 0x79, 0x6e, 0x63, 0x01, 0x31]
+	// A complete, valid request (has :scheme) plus indexed(62) = "x-sync: 1".
+	s3_block := [u8(0x82), 0x84, 0x87, 0x01, 0x09, 0x68, 0x2e, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c,
+		0x65, 0xBE]
+
+	mut out := preface_and_settings()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    malformed_block
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// In-flight second HEADERS on stream 1, arriving after the server already
+	// sent RST_STREAM(1) but before the client would have received it.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    invalid_block
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   3
+		fragment:    s3_block
+		end_headers: true
+		end_stream:  true
+	}).encode()
+
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'HPACK sync after local RST: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut dec := H2HpackDecoder{}
+	mut rst1 := i64(-1)
+	mut s3_status := 0
+	mut goaway_code := i64(-1)
+	for _ in 0 .. 64 {
+		f := fr.next() or { break }
+		match f {
+			H2GoawayFrame {
+				goaway_code = i64(f.error_code)
+				break
+			}
+			H2RstStreamFrame {
+				if f.stream_id == 1 {
+					rst1 = i64(f.error_code)
+				}
+			}
+			H2HeadersFrame {
+				if f.stream_id == 3 {
+					for hf in dec.decode(f.fragment) or { []H2HeaderField{} } {
+						if hf.name == ':status' {
+							s3_status = hf.value.int()
+						}
+					}
+				}
+			}
+			else {}
+		}
+
+		if s3_status != 0 && rst1 >= 0 {
+			break
+		}
+	}
+	assert goaway_code == -1, 'HPACK sync after local RST: unexpected GOAWAY (code ${goaway_code}) — in-flight block was not decoded'
+	assert rst1 == i64(u32(H2ErrorCode.protocol_error)), 'HPACK sync after local RST: expected RST_STREAM(PROTOCOL_ERROR) on stream 1, got ${rst1}'
+	assert s3_status == 200, 'HPACK sync after local RST: stream 3 should get 200 (dynamic table intact), got ${s3_status}'
+}
+
+// RFC 9113 §5.1 / RFC 7541 §2.2: a HEADERS block arriving on a half-closed
+// (remote) stream must be HPACK-decoded before the server sends
+// RST_STREAM(STREAM_CLOSED). The HPACK dynamic table is connection-wide; skipping
+// the decode desyncs it, so a subsequent request that uses an indexed reference to
+// an entry from the skipped block gets GOAWAY(COMPRESSION_ERROR) instead of a 200.
+//
+// Setup: zero initial window stalls stream 1's response body, keeping stream 1 in
+// c.streams while we inject a post-END_STREAM HEADERS for it. That block carries a
+// literal-with-incremental-indexing entry ("x-sync: 1" → dynamic index 62). Stream
+// 3 then references that entry via 0xBE. If the decode was skipped, 0xBE is
+// unresolvable and the connection closes with COMPRESSION_ERROR.
+//
+// HPACK bytes used (RFC 7541 static table indices):
+//   0x82 = indexed(2)  → :method: GET
+//   0x84 = indexed(4)  → :path: /
+//   0x87 = indexed(7)  → :scheme: https
+//   0x01 0x09 ...      → :authority: h.example (literal-without-indexing, name idx 1)
+//   0x40 0x06 x-sync 0x01 1 → literal-incremental "x-sync: 1" → dynamic index 62
+//   0xBE = indexed(62) → x-sync: 1  (fails with COMPRESSION_ERROR if table desynced)
+fn test_h2_server_hpack_sync_after_post_end_stream_headers() {
+	// All-manual HPACK: no H2HpackEncoder so the dynamic table stays predictable.
+	// Static-table references only for the base pseudo-headers; no new entries.
+	base_block := [u8(0x82), 0x84, 0x87, 0x01, 0x09, 0x68, 0x2e, 0x65, 0x78, 0x61, 0x6d, 0x70,
+		0x6c, 0x65]
+	// Literal-with-incremental-indexing: adds "x-sync: 1" to the dynamic table.
+	invalid_block := [u8(0x40), 0x06, 0x78, 0x2d, 0x73, 0x79, 0x6e, 0x63, 0x01, 0x31]
+	// Same pseudo-headers plus indexed(62) = "x-sync: 1" from the dynamic table.
+	mut s3_block := base_block.clone()
+	s3_block << u8(0xBE)
+
+	mut out := []u8{}
+	out << h2_client_preface.bytes()
+	// Zero initial window → stream 1's response body cannot be sent; the server
+	// parks in pump_for_window with stream 1 still in c.streams.
+	out << H2Frame(H2SettingsFrame{
+		settings: [H2Setting{h2_settings_initial_window_size, 0}]
+	}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    base_block
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// Post-END_STREAM HEADERS on stream 1 containing the HPACK incremental entry.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    invalid_block
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	// Stream 3 references the entry from the invalid block (dynamic index 62).
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   3
+		fragment:    s3_block
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// Unblock stream 3's stalled response body.
+	out << H2Frame(H2WindowUpdateFrame{
+		stream_id:             3
+		window_size_increment: 1000
+	}).encode()
+
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'HPACK sync: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut dec := H2HpackDecoder{}
+	mut rst1 := i64(-1)
+	mut s3_status := 0
+	mut goaway_code := i64(-1)
+	for _ in 0 .. 64 {
+		f := fr.next() or { break }
+		match f {
+			H2GoawayFrame {
+				goaway_code = i64(f.error_code)
+				break
+			}
+			H2RstStreamFrame {
+				if f.stream_id == 1 {
+					rst1 = i64(f.error_code)
+				}
+			}
+			H2HeadersFrame {
+				if f.stream_id == 3 {
+					for hf in dec.decode(f.fragment) or { []H2HeaderField{} } {
+						if hf.name == ':status' {
+							s3_status = hf.value.int()
+						}
+					}
+				}
+			}
+			else {}
+		}
+
+		if s3_status != 0 && rst1 >= 0 {
+			break
+		}
+	}
+	assert goaway_code == -1, 'HPACK sync: unexpected GOAWAY (code ${goaway_code}) — post-END_STREAM block was not decoded'
+	assert rst1 == i64(u32(H2ErrorCode.stream_closed)), 'HPACK sync: expected RST_STREAM(STREAM_CLOSED) on stream 1, got ${rst1}'
+	assert s3_status == 200, 'HPACK sync: stream 3 should get 200 (dynamic table intact), got ${s3_status}'
+}
