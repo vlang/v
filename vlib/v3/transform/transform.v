@@ -461,7 +461,7 @@ fn (mut t Transformer) collect_types() {
 				info := StructInfo{
 					name:      node.value
 					module:    cur_mod
-					is_params: node.typ.contains('params')
+					is_params: 'params' in node.typ.split(',')
 					fields:    fields
 				}
 				t.structs[node.value] = info
