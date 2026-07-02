@@ -3219,7 +3219,7 @@ fn (tc &TypeChecker) match_without_else_exhaustive_enum_returns(node flat.Node) 
 }
 
 fn (tc &TypeChecker) match_without_else_exhaustive_bool_returns(node flat.Node) bool {
-	if node.children_count < 3 {
+	if node.children_count < 2 {
 		return false
 	}
 	subject_type := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
@@ -6388,7 +6388,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				variadic_raw := info.params[info.params.len - 1]
 				if variadic_raw is Array {
 					elem_type := array_elem_type(variadic_raw)
-					if variadic_elem_accepts_any(elem_type) {
+					if variadic_elem_accepts_any(elem_type) && tc.variadic_any_arg_is_scalar(arg_id) {
 						if has_dsl_scope {
 							tc.pop_scope()
 						}
@@ -6417,7 +6417,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		expected_raw := expected
 		if info.is_variadic && param_idx == info.params.len - 1 && expected_raw is Array {
 			elem_type := array_elem_type(expected_raw)
-			if variadic_elem_accepts_any(elem_type) {
+			if variadic_elem_accepts_any(elem_type) && tc.variadic_any_arg_is_scalar(arg_id) {
 				if has_dsl_scope {
 					tc.pop_scope()
 				}
@@ -6425,13 +6425,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			actual := tc.resolve_expr(arg_id, elem_type)
 			actual_name := actual.name()
-			expected_name := elem_type.name()
 			actual_raw := actual
 			if actual is Array {
 				if !tc.receiver_compatible(actual_raw, elem_type)
 					&& !tc.receiver_compatible(actual_raw, expected) {
 					tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual_name}` as argument ${
-						param_idx + 1} to `${tc.call_display_name(node)}`; expected `${expected_name}`',
+						param_idx + 1} to `${tc.call_display_name(node)}`; expected `${expected.name()}`',
 						id)
 				}
 				if has_dsl_scope {
@@ -6470,6 +6469,28 @@ fn variadic_elem_accepts_any(typ Type) bool {
 		return typ.base_type is Void
 	}
 	return false
+}
+
+fn (tc &TypeChecker) arg_is_spread(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .prefix && (node.value == '...' || node.op == .none) && node.children_count > 0 {
+		return true
+	}
+	return false
+}
+
+fn (tc &TypeChecker) variadic_any_arg_is_scalar(id flat.NodeId) bool {
+	if tc.arg_is_spread(id) {
+		return false
+	}
+	actual := tc.resolve_type(id)
+	if _ := array_type_from_receiver(actual) {
+		return false
+	}
+	return true
 }
 
 fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info CallInfo) CallInfo {

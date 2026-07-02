@@ -402,6 +402,23 @@ fn test_multi_return_if_tail_infers_common_type() {
 	assert if_tail == 'voidptr\n1'
 }
 
+fn test_bool_match_single_branch_is_exhaustive() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'good_bool_match_single_branch_exhaustive',
+		'fn f(b bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(true) + f(false)))\n}\n')
+	assert out == '2'
+}
+
+fn test_voidptr_variadic_spread_requires_voidptr_array() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_voidptr_variadic_int_spread',
+		'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\txs := [1, 2]\n\tprintln(int_str(sink(...xs)))\n}\n',
+		'expected `[]&void`')
+	good := run_good(v3_bin, 'good_voidptr_variadic_voidptr_spread',
+		'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tx := 7\n\txs := [voidptr(&x)]\n\tprintln(int_str(sink(...xs)))\n\tprintln(int_str(sink(1)))\n}\n')
+	assert good == '1\n1'
+}
+
 // Regression tests for the post-PR review fixes around generic struct receivers
 // and generic heap struct literals.
 fn test_generic_struct_receiver_and_heap_init() {
