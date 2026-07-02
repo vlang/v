@@ -857,7 +857,6 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 	}
 	ret_node := g.a.nodes[int(ret_id)]
 	if ret_node.kind == .call && g.is_noreturn_call(ret_id) {
-		g.gen_return_cleanup()
 		g.gen_noreturn_return(ret_id)
 		return
 	}

@@ -35,6 +35,18 @@ fn run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
+fn run_runtime_bad(v3_bin string, name string, src string) string {
+	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
+	run := os.execute(bad_bin)
+	assert run.exit_code != 0, '${name}: expected runtime failure, got success\n${run.output}'
+	return run.output.trim_space()
+}
+
 fn test_reject_pointer_expressions_for_value_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_return_pointer_to_value',
@@ -161,6 +173,14 @@ fn test_no_return_calls_satisfy_return_analysis() {
 	out := run_good(v3_bin, 'good_panic_satisfies_return_analysis',
 		"fn choose(ok bool) string {\n\tif ok {\n\t\treturn 'ok'\n\t}\n\tpanic('unreachable')\n}\n\nfn pick(ok bool) int {\n\tif ok {\n\t\treturn 7\n\t}\n\treturn panic('unreachable')\n}\n\nfn main() {\n\tprintln(choose(true))\n\tprintln(int_str(pick(true)))\n}\n")
 	assert out == 'ok\n7'
+}
+
+fn test_return_panic_with_defer_evaluates_call_before_cleanup() {
+	v3_bin := build_v3_review_checker()
+	out := run_runtime_bad(v3_bin, 'bad_return_panic_defer_order',
+		"fn f() int {\n\tdefer {\n\t\tprintln('cleanup-ran')\n\t}\n\treturn panic('boom')\n}\nfn main() {\n\t_ := f()\n}\n")
+	assert out.contains('boom')
+	assert !out.contains('cleanup-ran')
 }
 
 fn test_no_return_analysis_requires_resolved_builtin_target() {
