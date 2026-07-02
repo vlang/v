@@ -3757,7 +3757,9 @@ fn (mut t Transformer) try_expand_multi_return_decl(node flat.Node) ?[]flat.Node
 		return none
 	}
 	if rhs.kind == .if_expr {
-		return t.expand_multi_return_if_decl(rhs_id, rhs, lhs_ids)
+		if expanded := t.expand_multi_return_if_decl(rhs_id, rhs, lhs_ids) {
+			return expanded
+		}
 	}
 	if rhs_types := t.multi_return_types_for_expr(rhs_id, lhs_ids.len) {
 		tmp_name := t.new_temp('multi_ret')
@@ -3797,7 +3799,9 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 		return none
 	}
 	if rhs.kind == .if_expr {
-		return t.expand_multi_return_if_assign(rhs_id, rhs, lhs_ids)
+		if expanded := t.expand_multi_return_if_assign(rhs_id, rhs, lhs_ids) {
+			return expanded
+		}
 	}
 	if rhs_types := t.multi_return_types_for_expr(rhs_id, lhs_ids.len) {
 		tmp_name := t.new_temp('multi_ret')
@@ -4098,6 +4102,9 @@ fn (mut t Transformer) expand_multi_return_if_decl(rhs_id flat.NodeId, rhs flat.
 	if lhs_ids.len == 0 {
 		return none
 	}
+	if !t.if_expr_has_tuple_tail_values(rhs_id, lhs_ids.len) {
+		return none
+	}
 	value_types := t.promoted_multi_if_value_types(rhs_id, rhs, lhs_ids.len)
 	mut result := []flat.NodeId{}
 	for i, lhs_id in lhs_ids {
@@ -4129,11 +4136,57 @@ fn (t &Transformer) promoted_multi_if_value_types(rhs_id flat.NodeId, rhs flat.N
 }
 
 // expand_multi_return_if_assign builds expand multi return if assign data for transform.
-fn (mut t Transformer) expand_multi_return_if_assign(_rhs_id flat.NodeId, rhs flat.Node, lhs_ids []flat.NodeId) ?[]flat.NodeId {
+fn (mut t Transformer) expand_multi_return_if_assign(rhs_id flat.NodeId, rhs flat.Node, lhs_ids []flat.NodeId) ?[]flat.NodeId {
 	if rhs.kind != .if_expr || lhs_ids.len == 0 {
 		return none
 	}
+	if !t.if_expr_has_tuple_tail_values(rhs_id, lhs_ids.len) {
+		return none
+	}
 	return t.lower_multi_if_assign(rhs, lhs_ids)
+}
+
+fn (t &Transformer) if_expr_has_tuple_tail_values(expr_id flat.NodeId, count int) bool {
+	if int(expr_id) < 0 || count <= 0 {
+		return false
+	}
+	node := t.a.nodes[int(expr_id)]
+	if node.kind != .if_expr {
+		return t.branch_has_tuple_tail_values(expr_id, count)
+	}
+	if node.children_count > 1 && t.branch_has_tuple_tail_values(t.a.child(&node, 1), count) {
+		return true
+	}
+	return node.children_count > 2 && t.if_expr_has_tuple_tail_values(t.a.child(&node, 2), count)
+}
+
+fn (t &Transformer) branch_has_tuple_tail_values(branch_id flat.NodeId, count int) bool {
+	if int(branch_id) < 0 || count <= 0 {
+		return false
+	}
+	if parts := t.tuple_block_parts(branch_id, count) {
+		return parts.values.len > 0
+	}
+	branch := t.a.nodes[int(branch_id)]
+	match branch.kind {
+		.if_expr {
+			return t.if_expr_has_tuple_tail_values(branch_id, count)
+		}
+		.expr_stmt {
+			return branch.children_count > 0
+				&& t.branch_has_tuple_tail_values(t.a.child(&branch, 0), count)
+		}
+		.block {
+			if branch.children_count == 0 {
+				return false
+			}
+			return t.branch_has_tuple_tail_values(t.a.child(&branch, branch.children_count - 1),
+				count)
+		}
+		else {
+			return false
+		}
+	}
 }
 
 // lower_multi_if_assign builds lower multi if assign data for transform.

@@ -4410,6 +4410,45 @@ fn (tc &TypeChecker) match_has_tuple_tail_values(expr_id flat.NodeId, count int)
 	return false
 }
 
+fn (tc &TypeChecker) expr_has_tuple_tail_values(expr_id flat.NodeId, count int) bool {
+	if count <= 0 || !tc.valid_node_id(expr_id) {
+		return false
+	}
+	if groups := tc.tuple_tail_value_groups(expr_id, count) {
+		if groups.len > 0 {
+			return true
+		}
+	}
+	node := tc.a.nodes[int(expr_id)]
+	match node.kind {
+		.if_expr {
+			if node.children_count > 1 && tc.expr_has_tuple_tail_values(tc.a.child(&node, 1), count) {
+				return true
+			}
+			return node.children_count > 2
+				&& tc.expr_has_tuple_tail_values(tc.a.child(&node, 2), count)
+		}
+		.block, .match_branch {
+			body_start := if node.kind == .match_branch {
+				if node.value == 'else' { 0 } else { node.value.int() }
+			} else {
+				0
+			}
+			if node.children_count <= body_start {
+				return false
+			}
+			return tc.expr_has_tuple_tail_values(tc.a.child(&node, node.children_count - 1), count)
+		}
+		.expr_stmt {
+			return node.children_count > 0
+				&& tc.expr_has_tuple_tail_values(tc.a.child(&node, 0), count)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 // multi_expr_tail_types_for_transform returns promoted multi-expression tail
 // types for transform lowering without duplicating checker compatibility rules.
 pub fn (tc &TypeChecker) multi_expr_tail_types_for_transform(expr_id flat.NodeId, count int) ?[]Type {

@@ -403,6 +403,15 @@ fn test_multi_return_if_tail_infers_common_type() {
 	numeric_tail := run_good(v3_bin, 'good_multi_return_if_promoted_numeric_tail',
 		'fn main() {\n\tcond := false\n\tx, _ := if cond {\n\t\t1\n\t\t0\n\t} else {\n\t\t1.5\n\t\t0\n\t}\n\tprintln(typeof(x).name)\n\tprintln((x > 1.4).str())\n}\n')
 	assert numeric_tail == 'f64\ntrue'
+	call_decl_assign := run_good(v3_bin, 'good_multi_return_if_call_decl_assign',
+		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\tpair(3)\n\t}\n\tprintln(int_str(a + b))\n}\n')
+	assert call_decl_assign == '7'
+	call_assign := run_good(v3_bin, 'good_multi_return_if_call_assign',
+		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = if flag {\n\t\tpair(1)\n\t} else {\n\t\tpair(3)\n\t}\n\tprintln(int_str(a + b))\n}\n')
+	assert call_assign == '7'
+	run_bad(v3_bin, 'bad_multi_return_if_call_mixed_tuple_tail_decl_assign',
+		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n',
+		'multi-return assignment mismatch')
 }
 
 fn test_multi_return_if_assignment_uses_lhs_context() {

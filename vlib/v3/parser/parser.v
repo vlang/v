@@ -5680,6 +5680,10 @@ fn (mut p Parser) predeclare_local_type_names_in_block(open_brace_pos int) {
 			continue
 		}
 		name_tok := s.scan()
+		if name_tok == .lcbr {
+			depth++
+			continue
+		}
 		if name_tok != .name {
 			continue
 		}
