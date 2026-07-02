@@ -1,8 +1,10 @@
 import os
 import v3.flat
+import v3.markused
 import v3.parser
 import v3.pref
 import v3.ssa
+import v3.transform
 import v3.types
 
 // parse_checked_source reads parse checked source input for v3 tests.
@@ -28,6 +30,18 @@ fn build_source(name string, source string) &ssa.Module {
 fn build_source_with_used(name string, source string, used_fns map[string]bool) &ssa.Module {
 	a, tc := parse_checked_source(name, source)
 	return ssa.build_with_used(a, used_fns, tc)
+}
+
+// build_transformed_source builds source after the normal used-filtered transform path.
+fn build_transformed_source(name string, source string) &ssa.Module {
+	mut a, mut tc := parse_checked_source(name, source)
+	mut used := markused.mark_used(a, tc)
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	assert tc.errors.len == 0, tc.errors.str()
+	return ssa.build_with_used(a, used, tc)
 }
 
 // find_func resolves find func information for v3 tests.
@@ -381,4 +395,48 @@ fn last_value(values []int) int {
 ')
 	assert has_call_to(m, 'first_value', 'array_get')
 	assert has_call_to(m, 'last_value', 'array_get')
+}
+
+// test_used_filter_keeps_main validates this v3 regression case.
+fn test_used_filter_keeps_main() {
+	mut used := map[string]bool{}
+	used['println'] = true
+	m := build_source_with_used('used_filter_main', '
+fn main() {
+	println("hello")
+}
+', used)
+	main_fn := find_func(m, 'main')
+	assert main_fn.blocks.len > 0
+}
+
+// test_map_move_runtime_helper_builds_ssa validates this v3 regression case.
+fn test_map_move_runtime_helper_builds_ssa() {
+	m := build_transformed_source('map_move_runtime', '
+fn main() {
+	mut values := map[string]int{}
+	moved := values.move()
+	moved.clear()
+	moved.reserve(4)
+	moved.delete("x")
+	keys := moved.keys()
+	vals := moved.values()
+	moved.free()
+	_ := keys
+	_ := vals
+}
+')
+	assert has_call_to(m, 'main', 'map__move')
+	assert has_call_to(m, 'main', 'map__clear')
+	assert has_call_to(m, 'main', 'map__reserve')
+	assert has_call_to(m, 'main', 'map__delete')
+	assert has_call_to(m, 'main', 'map__keys')
+	assert has_call_to(m, 'main', 'map__values')
+	assert has_call_to(m, 'main', 'map__free')
+	move_fn := find_func(m, 'map__move')
+	assert move_fn.blocks.len > 0
+	keys_fn := find_func(m, 'map__keys')
+	assert keys_fn.blocks.len > 0
+	values_fn := find_func(m, 'map__values')
+	assert values_fn.blocks.len > 0
 }
