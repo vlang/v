@@ -4302,16 +4302,22 @@ fn (tc &TypeChecker) multi_expr_tail_types(expr_id flat.NodeId, count int) ?[]Ty
 			return none
 		}
 		for j, value_id in group {
-			if !tc.multi_tail_type_compatible(tc.resolve_type(value_id), types[j]) {
-				return none
-			}
+			actual := tc.resolve_type(value_id)
+			promoted := tc.promoted_multi_tail_type(types[j], actual) or { return none }
+			types[j] = promoted
 		}
 	}
 	return types
 }
 
-fn (tc &TypeChecker) multi_tail_type_compatible(actual Type, expected Type) bool {
-	return tc.type_compatible(actual, expected) || tc.type_compatible(expected, actual)
+fn (tc &TypeChecker) promoted_multi_tail_type(current Type, actual Type) ?Type {
+	if tc.type_compatible(actual, current) {
+		return current
+	}
+	if tc.type_compatible(current, actual) {
+		return actual
+	}
+	return none
 }
 
 fn (tc &TypeChecker) multi_expr_tail_value_groups(expr_id flat.NodeId, count int) ?[][]flat.NodeId {

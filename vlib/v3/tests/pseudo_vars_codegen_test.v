@@ -25,6 +25,21 @@ fn test_at_mod_codegen() {
 	assert module_test_result.exit_code == 0, module_test_result.output
 }
 
+fn test_at_file_line_codegen_uses_source_line() {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_file_line_codegen_test')
+	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+
+	main_src := os.join_path(os.temp_dir(), 'v3_file_line_main.v')
+	main_bin := os.join_path(os.temp_dir(), 'v3_file_line_main')
+	os.write_file(main_src,
+		"fn main() {\n\tgot, expected := @FILE_LINE, @FILE + ':' + @LINE.str()\n\tassert got == expected\n\tassert !got.ends_with(':0')\n}\n")!
+	main_result := os.execute('${v3_bin} ${main_src} -o ${main_bin}')
+	assert main_result.exit_code == 0, main_result.output
+	run := os.execute(main_bin)
+	assert run.exit_code == 0, run.output
+}
+
 // test_embed_file_codegen validates that v3 lowers $embed_file to EmbedFileData.
 fn test_embed_file_codegen() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_embed_file_codegen_test')

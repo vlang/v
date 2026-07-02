@@ -395,6 +395,13 @@ fn test_statement_if_branch_tails_are_not_value_checked() {
 		'if-expression branch type mismatch')
 }
 
+fn test_multi_return_if_tail_infers_common_type() {
+	v3_bin := build_v3()
+	if_tail := run_good(v3_bin, 'good_multi_return_if_common_pointer_tail',
+		'fn main() {\n\tx := 7\n\tp, n := if false {\n\t\tnil\n\t\t0\n\t} else {\n\t\t&x\n\t\t1\n\t}\n\tprintln(typeof(p).name)\n\tprintln(int_str(n))\n}\n')
+	assert if_tail == 'voidptr\n1'
+}
+
 // Regression tests for the post-PR review fixes around generic struct receivers
 // and generic heap struct literals.
 fn test_generic_struct_receiver_and_heap_init() {

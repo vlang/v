@@ -251,6 +251,23 @@ fn vmod_root_for_file(path string) string {
 	return dir
 }
 
+fn (p &Parser) source_line_number(pos int) int {
+	mut line := 1
+	end := if pos < 0 {
+		0
+	} else if pos < p.s.src.len {
+		pos
+	} else {
+		p.s.src.len
+	}
+	for i in 0 .. end {
+		if p.s.src[i] == `\n` {
+			line++
+		}
+	}
+	return line
+}
+
 // next supports next handling for Parser.
 @[inline]
 fn (mut p Parser) next() {
@@ -4035,6 +4052,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return p.prefix_expr()
 		}
 		.name, .key_module {
+			name_pos := p.tok_pos
 			mut name := p.lit
 			p.next()
 			if name == 'sql' && p.starts_sql_expr() {
@@ -4053,10 +4071,10 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.a.add_val_id(5, p.prefs.vroot + '/v')
 			}
 			if name == '@LINE' {
-				return p.a.add_val_id(1, '0')
+				return p.a.add_val_id(1, '${p.source_line_number(name_pos)}')
 			}
 			if name == '@FILE_LINE' {
-				return p.a.add_val_id(5, '${p.cur_file}:0')
+				return p.a.add_val_id(5, '${p.cur_file}:${p.source_line_number(name_pos)}')
 			}
 			if name == '@MOD' {
 				if p.cur_module.len == 0 {
