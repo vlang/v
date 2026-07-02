@@ -415,6 +415,16 @@ fn test_nested_if_tuple_tail_multi_return_lowers_each_value() {
 	assert prefixed_block_tail == 'side\n3'
 }
 
+fn test_multi_return_if_returning_branches_do_not_produce_assignment_values() {
+	v3_bin := build_v3()
+	return_values := run_good(v3_bin, 'good_multi_return_if_branch_return_values',
+		"fn choose(cond bool) (string, string) {\n\ta, b := if cond {\n\t\treturn 'x', 'y'\n\t} else {\n\t\t1\n\t\t2\n\t}\n\treturn int_str(a), int_str(b)\n}\n\nfn main() {\n\ta, b := choose(false)\n\tprintln(a + ':' + b)\n\tc, d := choose(true)\n\tprintln(c + ':' + d)\n}\n")
+	assert return_values == '1:2\nx:y'
+	bare_return := run_good(v3_bin, 'good_multi_return_if_branch_bare_return',
+		"fn emit(cond bool) {\n\ta, b := if cond {\n\t\treturn\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n\nfn main() {\n\temit(false)\n\tprintln('done')\n}\n")
+	assert bare_return == '7\ndone'
+}
+
 fn test_multi_rhs_if_expr_is_not_multi_return() {
 	v3_bin := build_v3()
 	decl_out := run_good(v3_bin, 'good_multi_rhs_if_expr_decl_assign',
@@ -467,6 +477,9 @@ fn test_voidptr_variadic_spread_requires_voidptr_array() {
 	run_bad(v3_bin, 'bad_voidptr_variadic_int_spread',
 		'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\txs := [1, 2]\n\tprintln(int_str(sink(...xs)))\n}\n',
 		'expected `[]&void`')
+	run_bad(v3_bin, 'bad_voidptr_variadic_void_arg',
+		'fn side() {}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(side())))\n}\n',
+		'cannot use `void`')
 	good := run_good(v3_bin, 'good_voidptr_variadic_voidptr_spread',
 		'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tx := 7\n\txs := [voidptr(&x)]\n\tprintln(int_str(sink(...xs)))\n\tprintln(int_str(sink(1)))\n}\n')
 	assert good == '1\n1'

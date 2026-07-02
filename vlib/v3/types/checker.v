@@ -4385,14 +4385,8 @@ fn (tc &TypeChecker) tuple_tail_value_groups(body_id flat.NodeId, count int) ?[]
 		if last.kind in [.block, .match_branch, .if_expr] {
 			return tc.multi_expr_tail_value_groups(last_id, count)
 		}
-		if last.kind == .return_stmt && last.children_count == count {
-			mut values := []flat.NodeId{cap: count}
-			for i in 0 .. last.children_count {
-				values << tc.a.child(&last, i)
-			}
-			mut groups := [][]flat.NodeId{}
-			groups << values
-			return groups
+		if last.kind == .return_stmt {
+			return [][]flat.NodeId{}
 		}
 	}
 	mut values := []flat.NodeId{}
@@ -6407,7 +6401,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 						continue
 					}
 					actual := tc.resolve_expr(arg_id, elem_type)
-					if !tc.receiver_compatible(actual, elem_type) {
+					if variadic_elem_accepts_any(elem_type) && !variadic_any_arg_has_value(actual) {
+						tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
+							param_idx + 1} to `${tc.call_display_name(node)}`; expected `${elem_type.name()}`',
+							id)
+					} else if !tc.receiver_compatible(actual, elem_type) {
 						tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
 							param_idx + 1} to `${tc.call_display_name(node)}`; expected `${elem_type.name()}`',
 							id)
@@ -6438,6 +6436,15 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			actual := tc.resolve_expr(arg_id, elem_type)
 			actual_name := actual.name()
 			actual_raw := actual
+			if variadic_elem_accepts_any(elem_type) && !variadic_any_arg_has_value(actual) {
+				tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual_name}` as argument ${
+					param_idx + 1} to `${tc.call_display_name(node)}`; expected `${elem_type.name()}`',
+					id)
+				if has_dsl_scope {
+					tc.pop_scope()
+				}
+				continue
+			}
 			if actual is Array {
 				if !tc.receiver_compatible(actual_raw, elem_type)
 					&& !tc.receiver_compatible(actual_raw, expected) {
@@ -6483,6 +6490,10 @@ fn variadic_elem_accepts_any(typ Type) bool {
 	return false
 }
 
+fn variadic_any_arg_has_value(typ Type) bool {
+	return typ !is Void && typ !is Unknown && !type_contains_unknown(typ)
+}
+
 fn (tc &TypeChecker) arg_is_spread(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
@@ -6499,6 +6510,9 @@ fn (tc &TypeChecker) variadic_any_arg_is_scalar(id flat.NodeId) bool {
 		return false
 	}
 	actual := tc.resolve_type(id)
+	if !variadic_any_arg_has_value(actual) {
+		return false
+	}
 	if _ := array_type_from_receiver(actual) {
 		return false
 	}
