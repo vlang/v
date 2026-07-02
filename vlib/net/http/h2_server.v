@@ -178,11 +178,23 @@ mut:
 	send_window    i64 = i64(h2_server_default_window)
 	streams        map[u32]&H2ServerStream
 	locally_reset  map[u32]bool // stream ids for which we sent RST_STREAM; drain in-flight frames per RFC 9113 §6.4
+	discard_block  []u8         // accumulates a HEADERS/CONTINUATION block for a locally-reset stream, decoded then discarded
 	last_stream_id u32
-	awaiting_cont  u32 // non-zero when mid-CONTINUATION on this stream
-	closing        bool
-	idle_conns     &TlsIdleConnTracker = unsafe { nil }
-	idle_handle    int
+	// last_processed_stream_id is the highest stream id the server has actually
+	// acted on (RFC 9113 §6.8), used for GOAWAY. Bumped in on_headers at stream
+	// creation — the same moment refused is decided — so it correctly includes a
+	// stream that's still mid-CONTINUATION (HPACK block not yet fully assembled)
+	// if some unrelated error forces a GOAWAY before finalize_headers ever runs.
+	// It excludes streams refused purely for exceeding the concurrency limit:
+	// §5.1.2 defines REFUSED_STREAM as refusal "prior to any processing", and that
+	// RST_STREAM already tells the client the stream is safe to retry elsewhere —
+	// counting it here would only inflate last_stream_id past streams whose
+	// outcome is genuinely uncertain.
+	last_processed_stream_id u32
+	awaiting_cont            u32 // non-zero when mid-CONTINUATION on this stream
+	closing                  bool
+	idle_conns               &TlsIdleConnTracker = unsafe { nil }
+	idle_handle              int
 }
 
 // H2StreamState is the server's view of a client-initiated stream for the
@@ -441,6 +453,11 @@ fn (mut c H2ServerConn) on_headers(frame H2HeadersFrame, mut handler Handler) ! 
 	// A HEADERS block for a stream that is already open is a trailer section
 	// (RFC 9113 §8.1), not a new request.
 	if mut existing := c.streams[frame.stream_id] {
+		// A fresh top-level HEADERS frame always starts a brand-new block (RFC
+		// 9113 §8.1); any bytes left in trailer_block are from a PRIOR, already-
+		// decoded trailer section and must not be redecoded — decode() mutates
+		// the dynamic table, so replaying old bytes desyncs it (RFC 7541 §2.2).
+		existing.trailer_block = []
 		if existing.end_stream {
 			// Half-closed (remote): the stream already delivered END_STREAM.
 			// The further HEADERS block is invalid (RFC 9113 §5.1, STREAM_CLOSED),
@@ -457,18 +474,29 @@ fn (mut c H2ServerConn) on_headers(frame H2HeadersFrame, mut handler Handler) ! 
 		c.on_trailers(mut existing, frame, mut handler)!
 		return
 	}
+	// A HEADERS frame for a stream we have already RST'd ourselves is a stray
+	// frame that was in flight before the client received our RST_STREAM (most
+	// likely a trailer block). The decoder is stateful and connection-wide (RFC
+	// 7541 §2.2), so the block must still be decoded to stay in sync — it is
+	// then discarded rather than run as a request (we already reset the stream).
+	if frame.stream_id in c.locally_reset {
+		c.discard_block = frame.fragment.clone()
+		if !frame.end_headers {
+			c.awaiting_cont = frame.stream_id
+			return
+		}
+		c.decoder.decode(c.discard_block) or {
+			c.send_goaway(.compression_error, 'HPACK decode error') or {}
+			return error('h2 server: HPACK decode error (COMPRESSION_ERROR)')
+		}
+		c.discard_block = []
+		return
+	}
 	// Stream ids from the client must be odd and strictly increasing.
 	if frame.stream_id & 1 == 0 || frame.stream_id <= c.last_stream_id {
 		return error('h2 server: invalid client stream id ${frame.stream_id}')
 	}
 	c.last_stream_id = frame.stream_id
-	// Prune locally_reset: TCP ordering guarantees all in-flight frames for
-	// streams below the new stream_id have already been delivered.
-	for id in c.locally_reset.keys() {
-		if id < frame.stream_id {
-			c.locally_reset.delete(id)
-		}
-	}
 	mut s := &H2ServerStream{
 		id:          frame.stream_id
 		hpack_block: frame.fragment.clone()
@@ -483,6 +511,8 @@ fn (mut c H2ServerConn) on_headers(frame H2HeadersFrame, mut handler Handler) ! 
 	// finalize_headers. The just-created stream is not yet counted in c.streams.
 	if u32(c.streams.len) >= h2_server_max_concurrent_streams {
 		s.refused = true
+	} else {
+		c.last_processed_stream_id = frame.stream_id
 	}
 	c.streams[frame.stream_id] = s
 	if !frame.end_headers {
@@ -494,6 +524,22 @@ fn (mut c H2ServerConn) on_headers(frame H2HeadersFrame, mut handler Handler) ! 
 
 fn (mut c H2ServerConn) on_continuation(frame H2ContinuationFrame, mut handler Handler) ! {
 	mut s := c.streams[frame.stream_id] or {
+		// Continuing a discard block for a stream we already RST'd (see on_headers).
+		if frame.stream_id in c.locally_reset {
+			if c.discard_block.len + frame.fragment.len > h2_max_recv_header_block {
+				return error('h2 server: discarded header block exceeds ${h2_max_recv_header_block} bytes')
+			}
+			c.discard_block << frame.fragment
+			if frame.end_headers {
+				c.awaiting_cont = 0
+				c.decoder.decode(c.discard_block) or {
+					c.send_goaway(.compression_error, 'HPACK decode error') or {}
+					return error('h2 server: HPACK decode error (COMPRESSION_ERROR)')
+				}
+				c.discard_block = []
+			}
+			return
+		}
 		return error('h2 server: CONTINUATION for unknown stream ${frame.stream_id}')
 	}
 	if s.in_trailers {
@@ -893,7 +939,7 @@ fn (mut c H2ServerConn) send_rst_stream(stream_id u32, code H2ErrorCode) ! {
 
 fn (mut c H2ServerConn) send_goaway(code H2ErrorCode, msg string) ! {
 	c.send_frame(H2GoawayFrame{
-		last_stream_id: c.last_stream_id
+		last_stream_id: c.last_processed_stream_id
 		error_code:     u32(code)
 		debug_data:     msg.bytes()
 	})!
