@@ -112,6 +112,17 @@ fn test_filelock_helpers_are_inlined_in_generated_c() {
 	assert out == '7'
 }
 
+fn test_imported_module_call_in_struct_default_has_no_receiver_arg() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'module_call_struct_default', {
+		'v.mod':         "Module { name: 'module_call_struct_default' }\n"
+		'myseed/seed.v': 'module myseed\n\npub fn next() int {\n\treturn 42\n}\n'
+		'rng/rng.v':     'module rng\n\nimport myseed\n\npub struct Rng {\n\tvalue int = myseed.next()\n}\n\npub fn value() int {\n\tr := Rng{}\n\treturn r.value\n}\n'
+		'main.v':        'module main\n\nimport rng\n\nfn main() {\n\tprintln(int_str(rng.value()))\n}\n'
+	}, 'main.v')
+	assert out == '42'
+}
+
 fn test_assoc_return_runs_defers() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'assoc_return_runs_defers',

@@ -156,6 +156,13 @@ fn test_generic_functions_report_missing_return() {
 		'missing return at end of function `f`')
 }
 
+fn test_no_return_calls_satisfy_return_analysis() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_panic_satisfies_return_analysis',
+		"fn choose(ok bool) string {\n\tif ok {\n\t\treturn 'ok'\n\t}\n\tpanic('unreachable')\n}\n\nfn pick(ok bool) int {\n\tif ok {\n\t\treturn 7\n\t}\n\treturn panic('unreachable')\n}\n\nfn main() {\n\tprintln(choose(true))\n\tprintln(int_str(pick(true)))\n}\n")
+	assert out == 'ok\n7'
+}
+
 fn test_local_identifiers_shadow_module_consts() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_const_shadowed_by_param_and_local',

@@ -2903,6 +2903,15 @@ fn (tc &TypeChecker) stmt_definitely_returns(id flat.NodeId) bool {
 		.return_stmt {
 			return true
 		}
+		.expr_stmt {
+			if node.children_count == 0 {
+				return false
+			}
+			return tc.stmt_definitely_returns(tc.a.child(&node, 0))
+		}
+		.call {
+			return tc.call_never_returns(node)
+		}
 		.block {
 			for i in 0 .. node.children_count {
 				if tc.stmt_definitely_returns(tc.a.child(&node, i)) {
@@ -2936,6 +2945,32 @@ fn (tc &TypeChecker) stmt_definitely_returns(id flat.NodeId) bool {
 				}
 			}
 			return has_else || tc.match_without_else_exhaustive_enum_returns(node)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (tc &TypeChecker) call_never_returns(node flat.Node) bool {
+	name := tc.call_display_name(node)
+	return name in ['panic', 'exit', 'os.exit', 'C.exit']
+}
+
+fn (tc &TypeChecker) expr_never_returns(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.expr_stmt, .paren {
+			if node.children_count == 0 {
+				return false
+			}
+			return tc.expr_never_returns(tc.a.child(&node, 0))
+		}
+		.call {
+			return tc.call_never_returns(node)
 		}
 		else {
 			return false
@@ -4222,6 +4257,20 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 				id)
 		}
 		return
+	}
+	if node.children_count == 1 {
+		child_id := tc.a.child(&node, 0)
+		if tc.expr_never_returns(child_id) {
+			$if ownership ? {
+				tc.ownership_check_node_with_deferred_aggregate_consumption(child_id)
+			} $else {
+				tc.check_node(child_id)
+			}
+			$if ownership ? {
+				tc.ownership_after_return(id, node)
+			}
+			return
+		}
 	}
 	if multi := multi_return_payload_type(expected) {
 		if node.children_count == 1 {

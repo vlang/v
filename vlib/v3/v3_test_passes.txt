@@ -1,3 +1,4 @@
+.github/show_manual_release_cmd_test.v
 .github/workflows/make_sure_ci_run_with_32bit_compiler_test.v
 .github/workflows/make_sure_ci_run_with_64bit_compiler_test.v
 cmd/tools/modules/vbugreport/c_error_storage_test.v
@@ -84,6 +85,7 @@ vlib/flag/flag_autofree_test.v
 vlib/flag/flag_parse_test.v
 vlib/flag/usage_example_test.v
 vlib/hash/adler32/adler32_test.v
+vlib/hash/crc32/crc32_test.v
 vlib/hash/crc64/crc64_test.v
 vlib/hash/fnv1a/fnv1a_test.v
 vlib/hash/huffman/huffman_test.v
@@ -126,7 +128,11 @@ vlib/os/process_test.v
 vlib/os/xdg_test.v
 vlib/rand/dist_test.v
 vlib/rand/fp_test.v
+vlib/rand/musl/musl_rng_test.v
+vlib/rand/pcg32/pcg32_test.v
 vlib/rand/random_identifiers_test.v
+vlib/rand/splitmix64/splitmix64_test.v
+vlib/rand/wyrand/wyrand_test.v
 vlib/regex/regex_complex_test.v
 vlib/semver/semver_test.v
 vlib/strconv/converter_test.v
@@ -383,6 +389,7 @@ vlib/v/tests/comptime/comptime_if_expr_in_const_decl_test.v
 vlib/v/tests/comptime/comptime_if_expr_with_result_call_test.v
 vlib/v/tests/comptime/comptime_if_generic_shift_test.v
 vlib/v/tests/comptime/comptime_if_glibc_test.v
+vlib/v/tests/comptime/comptime_if_is_interface_test.v
 vlib/v/tests/comptime/comptime_if_pkgconfig_test.v
 vlib/v/tests/comptime/comptime_if_threads_no_test.v
 vlib/v/tests/comptime/comptime_if_top_3_test.v
@@ -589,6 +596,7 @@ vlib/v/tests/generics/generic_arrays_sum_test.v
 vlib/v/tests/generics/generic_call_mixing_args_test.v
 vlib/v/tests/generics/generic_comparison_for_conditional_assign_test.v
 vlib/v/tests/generics/generic_comptime_map_test.v
+vlib/v/tests/generics/generic_empty_interface_to_multi_struct_test.v
 vlib/v/tests/generics/generic_fn_array_infer_var_test.v
 vlib/v/tests/generics/generic_fn_assign_generics_struct_test.v
 vlib/v/tests/generics/generic_fn_infer_fn_type_using_ref_arg_test.v
@@ -876,6 +884,7 @@ vlib/v/tests/skip_unused/generic_fn_instantiation_pruning_test.v
 vlib/v/tests/skip_unused/interface_dispatch_method_dependencies_test.v
 vlib/v/tests/struct_init_field_call_or_block_test.v
 vlib/v/tests/structs/custom_str_on_struct_with_too_many_fields_test.v
+vlib/v/tests/structs/default_expr_array_init_test.v
 vlib/v/tests/structs/differently_named_structs_test.v
 vlib/v/tests/structs/embed_error_in_returning_result_test.v
 vlib/v/tests/structs/embed_method_call_test.v
@@ -953,6 +962,7 @@ vlib/v/token/keywords_matcher_trie_test.v
 vlib/v/transformer/tests/const_infix_expr_test.v
 vlib/v/util/version/version_test.v
 vlib/v/vcache/vcache_test.v
+vlib/v2_toberemoved/pref/module_test.v
 vlib/v3/tests/c_anonymous_param_codegen_test.v
 vlib/v3/tests/c_callback_const_qualifier_codegen_test.v
 vlib/v3/tests/c_flag_target_filter_codegen_test.v

@@ -589,6 +589,11 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					return
 				}
 				ret_node := g.a.nodes[int(ret_id)]
+				if ret_node.kind == .call && g.is_noreturn_call(&ret_node) {
+					g.gen_noreturn_return(ret_id)
+					g.expected_enum = ''
+					return
+				}
 				if ret_node.kind == .call {
 					fn_n := g.a.child_node(&ret_node, 0)
 					if fn_n.value == 'error' || fn_n.value == 'error_with_code' {
@@ -851,6 +856,11 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 		return
 	}
 	ret_node := g.a.nodes[int(ret_id)]
+	if ret_node.kind == .call && g.is_noreturn_call(&ret_node) {
+		g.gen_return_cleanup()
+		g.gen_noreturn_return(ret_id)
+		return
+	}
 	if ret_node.kind == .assoc {
 		tmp := g.tmp_name()
 		g.gen_assoc_return_tmp(ret_node, tmp)
@@ -894,6 +904,12 @@ fn (mut g FlatGen) gen_fixed_array_return_wrap(ret_type types.Type, ret_id flat.
 	g.write('({ ${wrapper} __fa_ret; memcpy(__fa_ret.ret_arr, ')
 	g.gen_fixed_array_copy_source(ret_id, ret_type)
 	g.write(', sizeof(__fa_ret.ret_arr)); __fa_ret; })')
+}
+
+fn (mut g FlatGen) gen_noreturn_return(ret_id flat.NodeId) {
+	g.gen_expr(ret_id)
+	g.writeln(';')
+	g.gen_default_return_stmt()
 }
 
 fn (mut g FlatGen) gen_default_return_stmt() {

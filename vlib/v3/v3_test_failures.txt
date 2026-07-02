@@ -1,4 +1,3 @@
-.github/show_manual_release_cmd_test.v
 cmd/tools/modules/vshare/api_test.v
 cmd/tools/modules/vshare/clipboard_test.v
 cmd/tools/vcomplete_test.v
@@ -239,7 +238,6 @@ vlib/gg/m4/m4_test.v
 vlib/gg/streaming_image_gl_test.v
 vlib/gg/text_rendering_test.v
 vlib/goroutines/goroutines_test.v
-vlib/hash/crc32/crc32_test.v
 vlib/io/buffered_writer_test.v
 vlib/io/custom_string_reading_test.v
 vlib/io/fs/fs_test.v
@@ -437,13 +435,9 @@ vlib/picohttpparser/request_test.v
 vlib/pool/connection_test.v
 vlib/rand/cuid2/cuid2_test.v
 vlib/rand/mt19937/mt19937_test.v
-vlib/rand/musl/musl_rng_test.v
-vlib/rand/pcg32/pcg32_test.v
 vlib/rand/random_bytes_test.v
 vlib/rand/random_numbers_test.v
-vlib/rand/splitmix64/splitmix64_test.v
 vlib/rand/sys/system_rng_test.v
-vlib/rand/wyrand/wyrand_test.v
 vlib/rand/xoroshiro128pp/xoros128pp_test.v
 vlib/readline/readline_test.v
 vlib/regex/pcre/regex_test.v
@@ -892,7 +886,6 @@ vlib/v/tests/comptime/comptime_if_expr_test.v
 vlib/v/tests/comptime/comptime_if_fn_type_signature_test.v
 vlib/v/tests/comptime/comptime_if_generic_struct_init_selector_test.v
 vlib/v/tests/comptime/comptime_if_is_generic_interface_test.v
-vlib/v/tests/comptime/comptime_if_is_interface_test.v
 vlib/v/tests/comptime/comptime_if_is_pointer_test.v
 vlib/v/tests/comptime/comptime_if_is_test.v
 vlib/v/tests/comptime/comptime_if_pointer_binding_test.v
@@ -1263,7 +1256,6 @@ vlib/v/tests/generics/generic_comptime_test.v
 vlib/v/tests/generics/generic_default_expression_in_or_block_test.v
 vlib/v/tests/generics/generic_different_type_test.v
 vlib/v/tests/generics/generic_dump_test.v
-vlib/v/tests/generics/generic_empty_interface_to_multi_struct_test.v
 vlib/v/tests/generics/generic_empty_interface_to_struct_test.v
 vlib/v/tests/generics/generic_fn_call_by_generic_fn_test.v
 vlib/v/tests/generics/generic_fn_call_map_keys_values_test.v
@@ -1846,7 +1838,6 @@ vlib/v/tests/structs/anon_struct_default_value_test.v
 vlib/v/tests/structs/anon_struct_local_init_test.v
 vlib/v/tests/structs/anon_struct_type_test.v
 vlib/v/tests/structs/anon_struct_with_default_expr_test.v
-vlib/v/tests/structs/default_expr_array_init_test.v
 vlib/v/tests/structs/embed_struct_field_default_value_test.v
 vlib/v/tests/structs/embed_struct_name_test.v
 vlib/v/tests/structs/embed_struct_with_sumtype_field_test.v
@@ -2046,7 +2037,6 @@ vlib/v2_toberemoved/markused/markused_test.v
 vlib/v2_toberemoved/markused/minimal_runtime_roots_test.v
 vlib/v2_toberemoved/parser/parser_test.v
 vlib/v2_toberemoved/pref/comptime_test.v
-vlib/v2_toberemoved/pref/module_test.v
 vlib/v2_toberemoved/pref/pref_test.v
 vlib/v2_toberemoved/ssa/array_int_contract_test.v
 vlib/v2_toberemoved/ssa/build_all_from_flat_test.v
