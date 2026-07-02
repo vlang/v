@@ -71,109 +71,87 @@ const bind_symbol_flags_weak_import = 0x01
 // never to local V wrappers. This prevents infinite recursion where
 // V's malloc() wrapper calls C.malloc() which would otherwise resolve
 // back to the V wrapper.
-fn is_force_external_sym(sym_name string) bool {
-	return match sym_name {
-		'_malloc', '_free', '_calloc', '_realloc', '_exit', '_abort', '_memcpy', '_memmove',
-		'_memset', '_memcmp', '___stdoutp', '___stderrp', '_puts', '_printf', '_write', '_read',
-		'_open', '_close', '_fwrite', '_fflush', '_fopen', '_fclose', '_putchar', '_sprintf',
-		'_snprintf', '_fprintf', '_sscanf', '_mmap', '_munmap', '_getcwd', '_access',
-		'_readlink', '_getenv', '_strlen',
+const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit', '_abort', '_memcpy',
+	'_memmove', '_memset', '_memcmp', '___stdoutp', '___stderrp', '_puts', '_printf', '_write',
+	'_read', '_open', '_close', '_fwrite', '_fflush', '_fopen', '_fclose', '_putchar', '_sprintf',
+	'_snprintf', '_fprintf', '_sscanf', '_mmap', '_munmap', '_getcwd', '_access', '_readlink',
+	'_getenv', '_strlen',
 	// Filesystem/directory operations
-		'_opendir', '_readdir', '_closedir', '_mkdir', '_rmdir', '_unlink', '_rename', '_remove',
-		'_stat', '_lstat', '_fstat', '_chmod', '_chdir', '_realpath', '_symlink', '_link',
+	'_opendir', '_readdir', '_closedir', '_mkdir', '_rmdir',
+	'_unlink', '_rename', '_remove', '_stat', '_lstat', '_fstat', '_chmod', '_chdir', '_realpath',
+	'_symlink', '_link',
 	// Process/system
-		'_getpid', '_getuid', '_geteuid', '_fork', '_execve', '_execvp', '_waitpid', '_kill',
-		'_system', '_posix_spawn', '_signal', '_atexit',
+	'_getpid', '_getuid', '_geteuid', '_fork', '_execve', '_execvp', '_waitpid',
+	'_kill', '_system', '_posix_spawn', '_signal', '_atexit',
 	// I/O
-		'_fgets', '_fputs', '_fread', '_fseek', '_ftell', '_rewind', '_fileno', '_popen',
-		'_pclose', '_dup', '_dup2', '_pipe', '_isatty', '_freopen', '_dprintf', '_getc',
+	'_fgets', '_fputs', '_fread', '_fseek', '_ftell', '_rewind', '_fileno', '_popen',
+	'_pclose', '_dup', '_dup2', '_pipe', '_isatty', '_freopen', '_dprintf', '_getc',
 	// String/memory
-		'_strdup', '_strcmp', '_strncmp', '_strchr', '_strrchr', '_strerror', '_strncasecmp',
-		'_strcasecmp', '_atoi', '_atof', '_qsort',
+	'_strdup', '_strcmp', '_strncmp', '_strchr', '_strrchr', '_strerror',
+	'_strncasecmp', '_strcasecmp', '_atoi', '_atof', '_qsort',
 	// Time
-		'_time', '_localtime_r', '_gmtime_r', '_mktime', '_gettimeofday', '_clock',
-		'_clock_gettime_nsec_np', '_mach_absolute_time', '_mach_timebase_info', '_nanosleep',
-		'_sleep', '_usleep', '_strftime', '_task_info', '_mach_task_self_',
+	'_time', '_localtime_r', '_gmtime_r', '_mktime', '_gettimeofday', '_clock',
+	'_clock_gettime_nsec_np', '_mach_absolute_time', '_mach_timebase_info', '_nanosleep', '_sleep',
+	'_usleep', '_strftime',
+	'_task_info', '_mach_task_self_',
 	// Other
-		'_rand', '_srand', '_isdigit', '_isspace', '_tolower', '_toupper', '_setenv', '_unsetenv',
-		'_sysconf', '_uname', '_gethostname', '_pthread_mutex_init', '_pthread_mutex_lock',
-		'_pthread_mutex_unlock', '_pthread_mutex_destroy', '_pthread_self', '_pthread_create',
-		'_pthread_join', '_pthread_attr_init', '_pthread_attr_setstacksize',
-		'_pthread_attr_destroy', '_arc4random_buf', '_proc_pidpath', '_backtrace',
-		'_backtrace_symbols', '_backtrace_symbols_fd',
+	'_rand', '_srand', '_isdigit', '_isspace', '_tolower', '_toupper', '_setenv',
+	'_unsetenv', '_sysconf', '_uname', '_gethostname', '_pthread_mutex_init', '_pthread_mutex_lock',
+	'_pthread_mutex_unlock', '_pthread_mutex_destroy', '_pthread_self', '_pthread_create',
+	'_pthread_join', '_pthread_attr_init', '_pthread_attr_setstacksize', '_pthread_attr_destroy',
+	'_arc4random_buf',
+	'_proc_pidpath', '_backtrace', '_backtrace_symbols', '_backtrace_symbols_fd',
 	// macOS specific
-		'_dispatch_semaphore_create', '_dispatch_semaphore_signal', '_dispatch_semaphore_wait',
-		'_dispatch_time', '_dispatch_release', '_setvbuf', '_setbuf', '_memchr', '_getlogin_r',
-		'_getppid', '_getgid', '_getegid', '_ftruncate', '_mkstemp', '_statvfs', '_chown',
-		'_sigaction', '_sigemptyset', '_sigaddset', '_sigprocmask', '_select', '_kqueue', '_abs',
+	'_dispatch_semaphore_create', '_dispatch_semaphore_signal',
+	'_dispatch_semaphore_wait', '_dispatch_time', '_dispatch_release', '_setvbuf', '_setbuf',
+	'_memchr', '_getlogin_r', '_getppid', '_getgid', '_getegid', '_ftruncate', '_mkstemp', '_statvfs',
+	'_chown', '_sigaction', '_sigemptyset', '_sigaddset', '_sigprocmask', '_select', '_kqueue',
+	'_abs',
 	// Terminal I/O
-		'_tcgetattr', '_tcsetattr', '_ioctl', '_getchar', '_getline',
+	'_tcgetattr', '_tcsetattr', '_ioctl', '_getchar', '_getline',
 	// File I/O
-		'_fdopen', '_feof', '_ferror',
+	'_fdopen', '_feof', '_ferror',
 	// Process
-		'_setpgid', '_ptrace', '_wait',
+	'_setpgid', '_ptrace', '_wait',
 	// Time
-		'_timegm', '_clock_gettime',
+	'_timegm', '_clock_gettime',
 	// Memory
-		'_aligned_alloc',
+	'_aligned_alloc',
 	// System
-		'_utime', '_getlogin', '_environ',
+	'_utime', '_getlogin', '_environ',
 	// macOS errno: __error() returns int*
-		'___error',
+	'___error',
 	// macOS stdin
-		'___stdinp',
+	'___stdinp',
 	// macOS dyld
-		'__dyld_get_image_name', '__dyld_get_image_header',
+	'__dyld_get_image_name', '__dyld_get_image_header',
 	// Math
-		'_cos', '_sin', '_tan', '_acos', '_asin', '_atan', '_atan2', '_cosh', '_sinh', '_tanh',
-		'_acosh', '_asinh', '_atanh', '_exp', '_exp2', '_log', '_log2', '_log10', '_pow',
-		'_sqrt', '_cbrt', '_ceil', '_floor', '_round', '_trunc', '_fmod', '_remainder',
-		'_fabs', '_copysign', '_fmax', '_fmin', '_hypot', '_ldexp', '_frexp', '_modf',
-		'_scalbn', '_ilogb', '_logb', '_erf', '_erfc', '_lgamma', '_tgamma', '_j0', '_j1',
-		'_jn', '_y0', '_y1', '_yn',
+	'_cos', '_sin', '_tan', '_acos', '_asin', '_atan', '_atan2',
+	'_cosh', '_sinh', '_tanh', '_acosh', '_asinh', '_atanh',
+	'_exp', '_exp2', '_log', '_log2', '_log10', '_pow', '_sqrt', '_cbrt',
+	'_ceil', '_floor', '_round', '_trunc', '_fmod', '_remainder',
+	'_fabs', '_copysign', '_fmax', '_fmin', '_hypot',
+	'_ldexp', '_frexp', '_modf', '_scalbn', '_ilogb', '_logb',
+	'_erf', '_erfc', '_lgamma', '_tgamma',
+	'_j0', '_j1', '_jn', '_y0', '_y1', '_yn',
 	// Memory protection and cache (hot code reloading)
-		'_mprotect', '_sys_icache_invalidate',
+	'_mprotect', '_sys_icache_invalidate',
 	// Objective-C runtime (from libobjc.A.dylib)
-		'_objc_msgSend', '_objc_getClass', '_sel_registerName', '_objc_alloc_init',
-		'_objc_autoreleasePoolPush', '_objc_autoreleasePoolPop',
+	'_objc_msgSend', '_objc_getClass', '_sel_registerName', '_objc_alloc_init',
+	'_objc_autoreleasePoolPush', '_objc_autoreleasePoolPop',
 	// Metal framework
-		'_MTLCreateSystemDefaultDevice',
+	'_MTLCreateSystemDefaultDevice',
 	// Dynamic loading
-		'_dlopen', '_dlsym' {
-			true
-		}
-		else {
-			false
-		}
-	}
-}
+	'_dlopen', '_dlsym']
 
 // vfmt on
 
-// is_objc_sym reports whether a symbol lives in libobjc.A.dylib (not libSystem).
-fn is_objc_sym(sym_name string) bool {
-	return match sym_name {
-		'_objc_msgSend', '_objc_getClass', '_sel_registerName', '_objc_alloc_init',
-		'_objc_autoreleasePoolPush', '_objc_autoreleasePoolPop' {
-			true
-		}
-		else {
-			false
-		}
-	}
-}
+// Symbols that live in libobjc.A.dylib (not libSystem).
+const objc_syms = ['_objc_msgSend', '_objc_getClass', '_sel_registerName', '_objc_alloc_init',
+	'_objc_autoreleasePoolPush', '_objc_autoreleasePoolPop']
 
-// is_metal_sym reports whether a symbol lives in Metal.framework.
-fn is_metal_sym(sym_name string) bool {
-	return match sym_name {
-		'_MTLCreateSystemDefaultDevice' {
-			true
-		}
-		else {
-			false
-		}
-	}
-}
+// Symbols that live in Metal.framework.
+const metal_syms = ['_MTLCreateSystemDefaultDevice']
 
 // Linker represents linker data used by arm64.
 pub struct Linker {
@@ -234,7 +212,9 @@ pub fn Linker.new(macho &MachOObject) &Linker {
 
 // link supports link handling for Linker.
 pub fn (mut l Linker) link(output_path string, entry_name string) {
-	l.buf = []u8{}
+	// Pre-allocate buffer with estimated size to avoid reallocations
+	estimated_size := l.macho.text_data.len + l.macho.str_data.len + l.macho.data_data.len + 0x10000
+	l.buf = []u8{cap: estimated_size}
 	mut t := time.now()
 	mut t_total := time.now()
 
@@ -244,7 +224,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 		// N_SECT (0x0E) means symbol is defined in a section
 		if (sym.type_ & 0x0E) == 0x0E {
 			// Don't track external symbols as defined - they should come from libc
-			if !is_force_external_sym(sym.name) {
+			if sym.name !in force_external_syms {
 				defined_syms[sym.name] = true
 			}
 		}
@@ -255,7 +235,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	// All other undefined symbols are internal V functions or V-embedded C functions
 	// (like wyhash) that resolve to local stubs.
 	for sym in l.macho.symbols {
-		if is_force_external_sym(sym.name) && sym.name !in l.extern_syms {
+		if sym.name in force_external_syms && sym.name !in l.extern_syms {
 			l.extern_syms << sym.name
 			l.sym_to_got[sym.name] = l.extern_syms.len - 1
 		}
@@ -273,7 +253,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	// Check if any objc symbols are used → add libobjc
 	mut need_objc := false
 	for sym_name in l.extern_syms {
-		if is_objc_sym(sym_name) {
+		if sym_name in objc_syms {
 			need_objc = true
 			break
 		}
@@ -282,14 +262,14 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 		objc_idx := l.dylibs.len
 		l.dylibs << '/usr/lib/libobjc.A.dylib'
 		for sym_name in l.extern_syms {
-			if is_objc_sym(sym_name) {
+			if sym_name in objc_syms {
 				l.sym_to_dylib[sym_name] = objc_idx
 			}
 		}
 	}
 	// Check if any framework symbols are used → add framework dylibs
 	for sym_name in l.extern_syms {
-		if is_metal_sym(sym_name) {
+		if sym_name in metal_syms {
 			if 'Metal' !in l.frameworks {
 				l.frameworks << 'Metal'
 			}
@@ -301,7 +281,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 		// Map framework symbols to this dylib index
 		if fw == 'Metal' {
 			for sym_name in l.extern_syms {
-				if is_metal_sym(sym_name) {
+				if sym_name in metal_syms {
 					l.sym_to_dylib[sym_name] = fw_idx
 				}
 			}
@@ -418,7 +398,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 		if (sym.type_ & 0x0E) != 0x0E {
 			continue // Skip undefined symbols
 		}
-		if is_force_external_sym(sym.name) {
+		if sym.name in force_external_syms {
 			continue
 		}
 
@@ -1033,7 +1013,7 @@ fn (mut l Linker) generate_bind_info(got_offset int) []u8 {
 		// bootstrap builds. Bind them as weak imports so dyld does not abort load
 		// when they are absent from libSystem; unresolved weak symbols become NULL.
 		mut bind_flags := u8(0)
-		if sym_name.contains('__') && !is_force_external_sym(sym_name) {
+		if sym_name.contains('__') && sym_name !in force_external_syms {
 			bind_flags = bind_symbol_flags_weak_import
 		}
 
@@ -1143,7 +1123,7 @@ fn (mut l Linker) write_text_with_relocations() {
 		// N_SECT (0x0E) means symbol is defined in a section
 		if (sym.type_ & 0x0E) == 0x0E {
 			// Skip external symbols - they should always resolve to libc
-			is_external := is_force_external_sym(sym.name)
+			is_external := sym.name in force_external_syms
 			if sym.sect == 1 {
 				// Text section symbol (code)
 				addr := code_vmaddr + sym.value
@@ -1195,7 +1175,7 @@ fn (mut l Linker) write_text_with_relocations() {
 			eprintln('LINKER: unresolved symbol "${sym_name}" (idx=${r.sym_idx}) at text offset ${r.addr}')
 			exit(1)
 		}
-		if is_force_external_sym(sym_name) {
+		if sym_name in force_external_syms {
 			// Use stub address for external symbols
 			if sym_name in l.sym_to_got {
 				got_idx := l.sym_to_got[sym_name]

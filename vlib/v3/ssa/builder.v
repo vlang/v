@@ -9118,14 +9118,16 @@ fn (mut b Builder) build_const_string_array_arg(id flat.NodeId) ?ValueID {
 	if int(id) < 0 {
 		return none
 	}
-	node := b.a.nodes[int(id)]
-	if node.kind != .ident {
-		return none
-	}
-	expr_id := b.lookup_const_expr(node.value) or { return none }
+	expr_id := b.const_string_array_expr_id(id) or { return none }
 	expr := b.a.nodes[int(expr_id)]
 	if expr.kind != .array_literal || expr.children_count == 0 {
 		return none
+	}
+	for i in 0 .. expr.children_count {
+		child := b.a.nodes[int(b.a.child(&expr, i))]
+		if child.kind != .string_literal {
+			return none
+		}
 	}
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
@@ -9134,16 +9136,32 @@ fn (mut b Builder) build_const_string_array_arg(id flat.NodeId) ?ValueID {
 	stride := 16
 	for i in 0 .. expr.children_count {
 		child_id := b.a.child(&expr, i)
-		child := b.a.nodes[int(child_id)]
-		if child.kind != .string_literal {
-			return none
-		}
 		value := b.build_expr(child_id)
 		off := b.m.get_or_add_const(b.i64_type, '${i * stride}')
 		slot := b.emit2(.get_element_ptr, ptr_string, alloca, off)
 		b.emit2(.store, b.void_type, value, slot)
 	}
 	return b.emit1(.bitcast, ptr_i8, alloca)
+}
+
+fn (b &Builder) const_string_array_expr_id(id flat.NodeId) ?flat.NodeId {
+	if int(id) < 0 {
+		return none
+	}
+	node := b.a.nodes[int(id)]
+	if node.kind == .array_literal {
+		return id
+	}
+	if node.kind == .ident {
+		return b.lookup_const_expr(node.value)
+	}
+	if node.kind == .selector {
+		name := b.selector_qualified_name(node)
+		if name.len > 0 {
+			return b.lookup_const_expr(name)
+		}
+	}
+	return none
 }
 
 fn (mut b Builder) default_system_error_value(typ_id TypeID) ValueID {
@@ -9949,9 +9967,30 @@ fn (b &Builder) selector_qualified_name(node flat.Node) string {
 }
 
 fn (mut b Builder) load_map_len(map_ptr ValueID) ValueID {
+	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
+	ptr_state := b.m.type_store.get_ptr(b.map_state_type)
+	result_slot := b.emit0(.alloca, ptr_i64)
 	state := b.map_state_ptr(b.cur_block, map_ptr)
-	len_ptr := b.map_state_field_ptr(b.cur_block, state, 3)
-	return b.emit1(.load, b.i64_type, len_ptr)
+	zero_state := b.m.get_or_add_const(ptr_state, '0')
+	has_state := b.emit2(.ne, b.i1_type, state, zero_state)
+	blk_load := b.m.add_block(b.cur_func, 'map_len_state')
+	blk_empty := b.m.add_block(b.cur_func, 'map_len_empty')
+	blk_done := b.m.add_block(b.cur_func, 'map_len_done')
+	b.emit3(.br, b.void_type, has_state, ValueID(blk_load), ValueID(blk_empty))
+
+	b.cur_block = blk_load
+	len_ptr := b.map_state_field_ptr(blk_load, state, 3)
+	len := b.emit1(.load, b.i64_type, len_ptr)
+	b.emit2(.store, b.void_type, len, result_slot)
+	b.emit1(.jmp, b.void_type, ValueID(blk_done))
+
+	b.cur_block = blk_empty
+	zero_len := b.m.get_or_add_const(b.i64_type, '0')
+	b.emit2(.store, b.void_type, zero_len, result_slot)
+	b.emit1(.jmp, b.void_type, ValueID(blk_done))
+
+	b.cur_block = blk_done
+	return b.emit1(.load, b.i64_type, result_slot)
 }
 
 fn (mut b Builder) load_selector_field(node flat.Node, struct_typ_id TypeID, field_ptr ValueID) ValueID {

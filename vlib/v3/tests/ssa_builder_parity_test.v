@@ -372,6 +372,23 @@ fn make_array() int {
 	assert has_alloca_len_const(m, 'make_array', '4')
 }
 
+// test_const_string_membership_does_not_heap_build_array validates this v3 regression case.
+fn test_const_string_membership_does_not_heap_build_array() {
+	m := build_transformed_source('const_string_membership', '
+const names = ["malloc", "free", "puts"]
+
+fn has_name(name string) bool {
+	return name in names
+}
+
+fn main() {
+	_ := has_name("malloc")
+}
+')
+	assert has_call_to(m, 'has_name', 'fixed_array_contains_string')
+	assert !has_call_to(m, 'has_name', 'array_new')
+}
+
 // test_string_range_does_not_lower_to_array_slice validates this v3 regression case.
 fn test_string_range_does_not_lower_to_array_slice() {
 	m := build_source('string_range', '
@@ -439,6 +456,20 @@ fn main() {
 	assert keys_fn.blocks.len > 0
 	values_fn := find_func(m, 'map__values')
 	assert values_fn.blocks.len > 0
+}
+
+// test_moved_from_map_len_checks_nil_state validates this v3 regression case.
+fn test_moved_from_map_len_checks_nil_state() {
+	m := build_transformed_source('moved_from_map_len', '
+fn main() {
+	mut values := map[string]int{}
+	moved := values.move()
+	_ := moved
+	_ := values.len
+}
+')
+	assert has_call_to(m, 'main', 'map__move')
+	assert has_instr_op(m, 'main', .br)
 }
 
 // test_array_flags_set_lowers_without_receiver_collision validates this v3 regression case.
