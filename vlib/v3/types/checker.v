@@ -1475,13 +1475,16 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 	node := tc.a.nodes[int(id)]
 	match node.kind {
 		.decl_assign {
-			// children are interleaved pairs [lhs0, rhs0, lhs1, rhs1, ...].
-			// Multi-return (`a, b := f()`) yields an odd count; we only insert
-			// locals for clean pairs and skip MultiReturn rhs values.
-			mut i := 0
-			for i + 1 < node.children_count {
-				lhs_id := tc.a.child(&node, i)
-				rhs_id := tc.a.child(&node, i + 1)
+			lhs_count := tc.multi_assign_lhs_count(node)
+			rhs_count := tc.multi_assign_rhs_count(node)
+			if rhs_count == 1 && lhs_count > 1 {
+				tc.annotate_node(tc.a.child(&node, 1))
+				return
+			}
+			pair_count := if lhs_count < rhs_count { lhs_count } else { rhs_count }
+			for pair_idx in 0 .. pair_count {
+				lhs_id := tc.multi_assign_lhs_id(node, pair_idx)
+				rhs_id := tc.multi_assign_rhs_id(node, pair_idx)
 				tc.annotate_node(rhs_id)
 				lhs := tc.a.nodes[int(lhs_id)]
 				if lhs.kind == .ident && lhs.value.len > 0 {
@@ -1497,7 +1500,6 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 						tc.remember_expr_type(lhs_id, typ)
 					}
 				}
-				i += 2
 			}
 			return
 		}
@@ -4429,14 +4431,41 @@ fn (tc &TypeChecker) tuple_tail_value_groups(body_id flat.NodeId, count int) ?[]
 
 // multi_assign_lhs_ids supports multi assign lhs ids handling for TypeChecker.
 fn (tc &TypeChecker) multi_assign_lhs_ids(node flat.Node) []flat.NodeId {
-	mut lhs_ids := []flat.NodeId{}
-	if node.children_count > 0 {
-		lhs_ids << tc.a.child(&node, 0)
-	}
-	for i in 2 .. node.children_count {
-		lhs_ids << tc.a.child(&node, i)
+	lhs_count := tc.multi_assign_lhs_count(node)
+	mut lhs_ids := []flat.NodeId{cap: lhs_count}
+	for i in 0 .. lhs_count {
+		lhs_ids << tc.multi_assign_lhs_id(node, i)
 	}
 	return lhs_ids
+}
+
+fn (tc &TypeChecker) multi_assign_lhs_count(node flat.Node) int {
+	if node.value.is_int() {
+		count := node.value.int()
+		if count > 0 && count <= int(node.children_count) {
+			return count
+		}
+	}
+	if node.children_count <= 2 {
+		return if node.children_count > 0 { 1 } else { 0 }
+	}
+	return int(node.children_count) - 1
+}
+
+fn (tc &TypeChecker) multi_assign_rhs_count(node flat.Node) int {
+	lhs_count := tc.multi_assign_lhs_count(node)
+	rhs_count := int(node.children_count) - lhs_count
+	return if rhs_count > 0 { rhs_count } else { 0 }
+}
+
+fn (tc &TypeChecker) multi_assign_lhs_id(node flat.Node, index int) flat.NodeId {
+	rhs_count := tc.multi_assign_rhs_count(node)
+	child_index := if index < rhs_count { index * 2 } else { rhs_count + index }
+	return tc.a.child(&node, child_index)
+}
+
+fn (tc &TypeChecker) multi_assign_rhs_id(node flat.Node, index int) flat.NodeId {
+	return tc.a.child(&node, index * 2 + 1)
 }
 
 // insert_decl_lhs updates insert decl lhs state for types.

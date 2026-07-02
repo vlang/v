@@ -2810,6 +2810,7 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 				guard_cond = p.a.add_node(flat.Node{
 					kind:           .decl_assign
 					op:             .assign
+					value:          '${lhs_ids.len}'
 					children_start: istart
 					children_count: flat.child_count(all_ids.len)
 				})
@@ -3325,6 +3326,7 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 					flat.NodeKind.assign
 				}
 				op:             token_id_to_op(op_id)
+				value:          '${lhs_ids.len}'
 				children_start: istart
 				children_count: flat.child_count(all_ids.len)
 			})

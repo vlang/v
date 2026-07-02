@@ -3687,13 +3687,18 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 }
 
 fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeId {
-	if node.kind != .decl_assign || node.children_count < 4 || node.children_count % 2 != 0 {
+	if node.kind != .decl_assign || node.children_count < 4 {
+		return none
+	}
+	lhs_count := t.multi_assign_lhs_count(node)
+	rhs_count := t.multi_assign_rhs_count(node)
+	if lhs_count != rhs_count || rhs_count <= 1 {
 		return none
 	}
 	mut result := []flat.NodeId{}
-	for i := 0; i < node.children_count; i += 2 {
-		lhs_id := t.a.child(&node, i)
-		rhs_id := t.a.child(&node, i + 1)
+	for i in 0 .. lhs_count {
+		lhs_id := t.multi_assign_lhs_id(node, i)
+		rhs_id := t.multi_assign_rhs_id(node, i)
 		lhs := t.a.nodes[int(lhs_id)]
 		rhs_node := t.a.nodes[int(rhs_id)]
 		generic_rhs_typ := if rhs_node.kind == .call {
@@ -3748,6 +3753,9 @@ fn (mut t Transformer) try_expand_multi_return_decl(node flat.Node) ?[]flat.Node
 	rhs_id := t.a.child(&node, 1)
 	rhs := t.a.nodes[int(rhs_id)]
 	lhs_ids := t.multi_assign_lhs_ids(node)
+	if t.multi_assign_rhs_count(node) != 1 {
+		return none
+	}
 	if rhs.kind == .if_expr {
 		return t.expand_multi_return_if_decl(rhs_id, rhs, lhs_ids)
 	}
@@ -3785,6 +3793,9 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 	rhs_id := t.a.child(&node, 1)
 	rhs := t.a.nodes[int(rhs_id)]
 	lhs_ids := t.multi_assign_lhs_ids(node)
+	if t.multi_assign_rhs_count(node) != 1 {
+		return none
+	}
 	if rhs.kind == .if_expr {
 		return t.expand_multi_return_if_assign(rhs_id, rhs, lhs_ids)
 	}
@@ -3815,16 +3826,20 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 
 // try_expand_plain_multi_assign supports try expand plain multi assign handling for Transformer.
 fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.NodeId {
-	if node.kind != .assign || node.op != .assign || node.children_count < 4
-		|| node.children_count % 2 != 0 {
+	if node.kind != .assign || node.op != .assign || node.children_count < 4 {
+		return none
+	}
+	lhs_count := t.multi_assign_lhs_count(node)
+	rhs_count := t.multi_assign_rhs_count(node)
+	if lhs_count != rhs_count || rhs_count <= 1 {
 		return none
 	}
 	mut result := []flat.NodeId{}
 	mut lhs_ids := []flat.NodeId{}
 	mut tmp_names := []string{}
-	for i := 0; i < node.children_count; i += 2 {
-		lhs_id := t.a.child(&node, i)
-		rhs_id := t.a.child(&node, i + 1)
+	for i in 0 .. lhs_count {
+		lhs_id := t.multi_assign_lhs_id(node, i)
+		rhs_id := t.multi_assign_rhs_id(node, i)
 		lhs_ids << lhs_id
 		lhs_type := t.lvalue_type(lhs_id)
 		rhs := if lhs_type.len > 0 {
@@ -3850,14 +3865,41 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 
 // multi_assign_lhs_ids supports multi assign lhs ids handling for Transformer.
 fn (t &Transformer) multi_assign_lhs_ids(node flat.Node) []flat.NodeId {
-	mut lhs_ids := []flat.NodeId{}
-	if node.children_count > 0 {
-		lhs_ids << t.a.child(&node, 0)
-	}
-	for i in 2 .. node.children_count {
-		lhs_ids << t.a.child(&node, i)
+	lhs_count := t.multi_assign_lhs_count(node)
+	mut lhs_ids := []flat.NodeId{cap: lhs_count}
+	for i in 0 .. lhs_count {
+		lhs_ids << t.multi_assign_lhs_id(node, i)
 	}
 	return lhs_ids
+}
+
+fn (t &Transformer) multi_assign_lhs_count(node flat.Node) int {
+	if node.value.is_int() {
+		count := node.value.int()
+		if count > 0 && count <= int(node.children_count) {
+			return count
+		}
+	}
+	if node.children_count <= 2 {
+		return if node.children_count > 0 { 1 } else { 0 }
+	}
+	return int(node.children_count) - 1
+}
+
+fn (t &Transformer) multi_assign_rhs_count(node flat.Node) int {
+	lhs_count := t.multi_assign_lhs_count(node)
+	rhs_count := int(node.children_count) - lhs_count
+	return if rhs_count > 0 { rhs_count } else { 0 }
+}
+
+fn (t &Transformer) multi_assign_lhs_id(node flat.Node, index int) flat.NodeId {
+	rhs_count := t.multi_assign_rhs_count(node)
+	child_index := if index < rhs_count { index * 2 } else { rhs_count + index }
+	return t.a.child(&node, child_index)
+}
+
+fn (t &Transformer) multi_assign_rhs_id(node flat.Node, index int) flat.NodeId {
+	return t.a.child(&node, index * 2 + 1)
 }
 
 // multi_return_types_for_expr supports multi return types for expr handling for Transformer.

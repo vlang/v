@@ -402,6 +402,16 @@ fn test_multi_return_if_tail_infers_common_type() {
 	assert if_tail == 'voidptr\n1'
 }
 
+fn test_multi_rhs_if_expr_is_not_multi_return() {
+	v3_bin := build_v3()
+	decl_out := run_good(v3_bin, 'good_multi_rhs_if_expr_decl_assign',
+		'fn main() {\n\tcond := true\n\ta, b := if cond { 1 } else { 2 }, 3\n\tprintln(int_str(a + b))\n}\n')
+	assert decl_out == '4'
+	assign_out := run_good(v3_bin, 'good_multi_rhs_if_expr_assign',
+		'fn main() {\n\tcond := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = if cond { 1 } else { 2 }, 3\n\tprintln(int_str(a + b))\n}\n')
+	assert assign_out == '5'
+}
+
 fn test_bool_match_single_branch_is_exhaustive() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'good_bool_match_single_branch_exhaustive',
