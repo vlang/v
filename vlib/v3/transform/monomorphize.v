@@ -1375,47 +1375,7 @@ fn (mut t Transformer) rewrite_generic_method_call(id flat.NodeId, node flat.Nod
 	if node.children_count == 0 {
 		return
 	}
-	// Method-level generics (`method[U](...)`) cannot be resolved from the receiver
-	// type alone — the receiver carries no `_U` suffix — so the call must name the
-	// specialized function explicitly, passing the receiver as the first argument
-	// (exactly like a plain generic call). Pure struct-generic methods keep the
-	// selector callee, which cgen resolves via the already-monomorphized receiver.
-	if t.generic_decl_has_method_level_params(decl) {
-		t.rewrite_method_level_generic_call(id, node, decl, args)
-		return
-	}
-	fn_id := t.a.child(&node, 0)
-	if int(fn_id) < 0 {
-		return
-	}
-	fn_node := t.a.nodes[int(fn_id)]
-	if fn_node.kind != .index && fn_node.kind != .selector {
-		return
-	}
-	mut callee_id := fn_id
-	if fn_node.kind == .index && fn_node.children_count > 0 {
-		callee_id = t.a.child(&fn_node, 0)
-	}
-	ret_typ := t.specialized_fn_return_type_text(decl, args)
-	mut children := []flat.NodeId{cap: int(node.children_count)}
-	children << callee_id
-	for i in 1 .. node.children_count {
-		children << t.a.child(&node, i)
-	}
-	start := t.a.children.len
-	for child in children {
-		t.a.children << child
-	}
-	t.a.nodes[int(id)] = flat.Node{
-		kind:           .call
-		op:             node.op
-		children_start: start
-		children_count: flat.child_count(children.len)
-		pos:            node.pos
-		value:          ''
-		typ:            ret_typ
-	}
-	t.clear_resolved_call(id)
+	t.rewrite_method_level_generic_call(id, node, decl, args)
 }
 
 // rewrite_method_level_generic_call rewrites a call to a method-level generic into
@@ -1682,6 +1642,7 @@ fn (t &Transformer) generic_resolved_call_decl_key(resolved string, callee flat.
 fn (t &Transformer) generic_call_arg_count_matches_decl(node flat.Node, decl GenericFnDecl) bool {
 	mut param_count := 0
 	mut is_variadic := false
+	mut has_trailing_params_struct := false
 	for i in 0 .. decl.node.children_count {
 		child := t.a.child_node(&decl.node, i)
 		if child.kind != .param {
@@ -1691,6 +1652,7 @@ fn (t &Transformer) generic_call_arg_count_matches_decl(node flat.Node, decl Gen
 		if child.typ.starts_with('...') {
 			is_variadic = true
 		}
+		has_trailing_params_struct = t.generic_param_is_params_struct(child.typ, decl.module)
 	}
 	// param_count includes the receiver for methods. The call's child count
 	// depends on form: the selector form (`recv.method(args)`) keeps the receiver
@@ -1708,7 +1670,26 @@ fn (t &Transformer) generic_call_arg_count_matches_decl(node flat.Node, decl Gen
 	if is_variadic {
 		return actual >= param_count - 1
 	}
+	if has_trailing_params_struct {
+		return actual >= param_count - 1
+	}
 	return actual == param_count
+}
+
+fn (t &Transformer) generic_param_is_params_struct(param_type string, decl_module string) bool {
+	if param_type.len == 0 {
+		return false
+	}
+	if _ := t.params_struct_type_name(param_type) {
+		return true
+	}
+	if !param_type.contains('.') && decl_module.len > 0 && decl_module != 'main'
+		&& decl_module != 'builtin' {
+		if _ := t.params_struct_type_name('${decl_module}.${param_type}') {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) generic_call_effective_arg_count(node flat.Node) int {
@@ -2434,6 +2415,9 @@ fn (mut t Transformer) copy_cloned_resolution(src_id flat.NodeId, dst_id flat.No
 fn (t &Transformer) resolved_call_is_generic_fn(name string) bool {
 	if name.len == 0 || isnil(t.tc) {
 		return false
+	}
+	if name.contains('[') && name.contains(']') {
+		return true
 	}
 	if name in t.tc.fn_generic_params {
 		return true

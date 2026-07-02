@@ -729,6 +729,10 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 	if typ.starts_with('[]') {
 		return '[]' + t.normalize_type_alias(typ[2..])
 	}
+	if typ.starts_with('[') {
+		bracket_end := typ.index(']') or { return typ }
+		return typ[..bracket_end + 1] + t.normalize_type_alias(typ[bracket_end + 1..])
+	}
 	if typ.starts_with('map[') {
 		bracket_end := generic_matching_bracket(typ, 3)
 		if bracket_end < typ.len {

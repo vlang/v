@@ -1044,8 +1044,36 @@ fn ast_needs_sync_import(a &flat.FlatAst) bool {
 		if node.kind == .field_decl && type_text_is_shared(node.typ) {
 			return true
 		}
+		if node.kind == .struct_init && node.value.starts_with('chan ') {
+			return true
+		}
+		if node.kind == .infix && node.op == .arrow {
+			return true
+		}
+		if node.kind == .prefix && node.op == .arrow {
+			return true
+		}
+		if type_text_is_channel(node.typ) {
+			return true
+		}
 	}
 	return false
+}
+
+fn type_text_is_channel(typ string) bool {
+	mut clean := typ.trim_space()
+	for {
+		if clean.starts_with('&') {
+			clean = clean[1..].trim_space()
+			continue
+		}
+		if clean.starts_with('mut ') {
+			clean = clean[4..].trim_space()
+			continue
+		}
+		break
+	}
+	return clean.starts_with('chan ') || clean == 'chan'
 }
 
 fn ast_needs_embed_file_import(a &flat.FlatAst) bool {

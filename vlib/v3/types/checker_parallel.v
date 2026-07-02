@@ -242,7 +242,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	for pi in 0 .. node.children_count {
 		p := tc.a.child_node(&node, pi)
 		if p.kind == .param && p.value.len > 0 {
-			tc.cur_scope.insert(p.value, tc.parse_type(p.typ))
+			tc.cur_scope.insert(p.value, tc.parse_scope_param_type(p.typ))
 		}
 	}
 	tc.insert_implicit_veb_ctx(node)
