@@ -172,10 +172,12 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 
 // prepare_parallel_items supports prepare parallel items handling for FlatGen.
 fn (mut g FlatGen) prepare_parallel_items(items []FlatFnGenItem) {
+	mut stack := []flat.NodeId{cap: 256}
+	mut type_text_cache := map[string]bool{}
 	for item in items {
 		g.tc.cur_file = item.file
 		g.tc.cur_module = item.module
-		g.prepare_parallel_node(item.node_id)
+		g.prepare_parallel_node(item.node_id, mut stack, mut type_text_cache)
 	}
 	if _ := g.ierror_interface_name() {
 		g.intern_string('')
@@ -184,23 +186,76 @@ fn (mut g FlatGen) prepare_parallel_items(items []FlatFnGenItem) {
 }
 
 // prepare_parallel_node supports prepare parallel node handling for FlatGen.
-fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId) {
-	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return
+fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId, mut stack []flat.NodeId, mut type_text_cache map[string]bool) {
+	stack.clear()
+	stack << id
+	for stack.len > 0 {
+		current_id := stack.pop()
+		idx := int(current_id)
+		if idx < 0 || idx >= g.a.nodes.len {
+			continue
+		}
+		node := g.a.nodes[idx]
+		if node.kind == .string_literal {
+			g.intern_string(node.value)
+		}
+		if g.should_preseed_parallel_type_text_cached(node.typ, mut type_text_cache) {
+			g.preseed_parallel_fn_ptr_type(g.tc.parse_type(node.typ))
+		}
+		if expr_type := g.parallel_cached_expr_type(current_id, node) {
+			g.preseed_parallel_fn_ptr_type(expr_type)
+		}
+		for i := node.children_count - 1; i >= 0; i-- {
+			child_id := g.a.children[node.children_start + i]
+			if int(child_id) >= 0 {
+				stack << child_id
+			}
+		}
 	}
-	node := g.a.nodes[int(id)]
-	if node.kind == .string_literal {
-		g.intern_string(node.value)
+}
+
+fn (g &FlatGen) parallel_cached_expr_type(id flat.NodeId, node flat.Node) ?types.Type {
+	idx := int(id)
+	if idx < 0 {
+		return none
 	}
-	if g.should_preseed_parallel_type_text(node.typ) {
-		g.preseed_parallel_fn_ptr_type(g.tc.parse_type(node.typ))
+	if g.tc.parallel_check_sparse {
+		if t := g.tc.sparse_expr_type_values[idx] {
+			return t
+		}
+		if node.kind == .call {
+			if name := g.tc.sparse_resolved_call_names[idx] {
+				if t := g.tc.fn_ret_types[name] {
+					return t
+				}
+			}
+		}
+		return none
 	}
-	if expr_type := g.tc.expr_type(id) {
-		g.preseed_parallel_fn_ptr_type(expr_type)
+	if idx < g.tc.expr_type_set.len && idx < g.tc.expr_type_values.len && g.tc.expr_type_set[idx] {
+		return g.tc.expr_type_values[idx]
 	}
-	for i in 0 .. node.children_count {
-		g.prepare_parallel_node(g.a.child(&node, i))
+	if node.kind == .call && idx < g.tc.resolved_call_set.len && idx < g.tc.resolved_call_names.len
+		&& g.tc.resolved_call_set[idx] {
+		name := g.tc.resolved_call_names[idx]
+		if t := g.tc.fn_ret_types[name] {
+			return t
+		}
 	}
+	return none
+}
+
+fn (g &FlatGen) should_preseed_parallel_type_text_cached(typ string, mut cache map[string]bool) bool {
+	if typ.len == 0 {
+		return false
+	}
+	key := '${g.tc.cur_file}\n${g.tc.cur_module}\n${typ}'
+	if key in cache {
+		return cache[key]
+	}
+	should_preseed := g.should_preseed_parallel_type_text(typ)
+	cache[key] = should_preseed
+	return should_preseed
 }
 
 // should_preseed_parallel_type_text reports whether should preseed parallel type text applies in c.
@@ -209,7 +264,7 @@ fn (g &FlatGen) should_preseed_parallel_type_text(typ string) bool {
 		return false
 	}
 	clean := g.parallel_base_type_text(typ)
-	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+	if clean.contains('fn(') || clean.contains('fn (') {
 		return true
 	}
 	if clean in g.tc.type_aliases {

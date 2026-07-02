@@ -147,3 +147,58 @@ fn main() {
 	assert !compact.contains('Arrayxs=main__vals;') || generated.contains('Array main__vals'), generated
 	assert compact.contains('constu32main__fixed_only[3]'), generated
 }
+
+fn test_ambiguous_short_const_arrays_resolve_in_module_context() {
+	v3_bin := fixed_array_const_build_v3()
+	root := os.join_path(os.temp_dir(), 'v3_fixed_array_ambiguous_const_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'a')) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'b')) or { panic(err) }
+	os.write_file(os.join_path(root, 'a', 'a.v'), 'module a
+
+const vals = [1, 2, 3]
+
+pub fn pick() int {
+	return vals[1]
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'b', 'b.v'), 'module b
+
+const vals = [4, 5, 6]
+
+pub fn pick() int {
+	return vals[1]
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+
+import a
+import b
+
+fn take(x []int) int {
+	return x[0]
+}
+
+fn main() {
+	vals := [10, 20, 30]
+	println((take(vals) + a.pick() + b.pick()).str())
+}
+') or {
+		panic(err)
+	}
+	bin := os.join_path(root, 'app')
+	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '17', run.output
+
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert compact.contains('constinta__vals[3]'), generated
+	assert compact.contains('constintb__vals[3]'), generated
+}

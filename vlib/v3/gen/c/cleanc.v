@@ -21,6 +21,12 @@ mut:
 	prev_depth int
 }
 
+struct FixedStorageConstRefItem {
+	id     flat.NodeId
+	file   string
+	module string
+}
+
 // FlatGen emits flat gen output used by c.
 pub struct FlatGen {
 mut:
@@ -525,6 +531,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 }
 
 // node_kind_id supports node kind id handling for c.
+@[inline]
 fn node_kind_id(node flat.Node) int {
 	mut kind_id := node.kind_id
 	if kind_id == 0 && int(node.kind) != 0 {
@@ -3529,14 +3536,186 @@ fn (g &FlatGen) const_ref_name_from_node(node flat.Node) string {
 	return ''
 }
 
-fn (mut g FlatGen) const_ref_has_fixed_array_literal_storage(const_name string) bool {
-	val_id := g.const_vals[const_name] or { return false }
-	if _ := g.const_array_literal_storage_type_for_name(const_name, val_id, g.const_value_type(const_name,
-		val_id))
-	{
+fn (g &FlatGen) build_unique_const_ref_names() map[string]string {
+	mut unique_index := map[string]string{}
+	for name, _ in g.const_vals {
+		if !name.contains('.') {
+			continue
+		}
+		short_name := name.all_after_last('.')
+		resolved := g.const_primary_name(name)
+		if short_name in unique_index {
+			if unique_index[short_name] != resolved {
+				unique_index[short_name] = ''
+			}
+		} else {
+			unique_index[short_name] = resolved
+		}
+	}
+	return unique_index
+}
+
+fn (g &FlatGen) const_ref_name_fast_for_collect(name string, unique_index map[string]string) string {
+	if name.contains('.') || name.contains('__') {
+		return g.const_ref_name(name)
+	}
+	cur_qname := g.const_storage_name(g.tc.cur_module, name)
+	if cur_qname in g.const_vals {
+		return cur_qname
+	}
+	if name in g.const_vals {
+		mod := g.const_modules[name] or { '' }
+		if mod.len == 0 || mod == g.tc.cur_module || mod == 'builtin'
+			|| (g.tc.cur_module in ['', 'main', 'builtin'] && mod in ['', 'main', 'builtin']) {
+			return g.const_primary_name(name)
+		}
+	}
+	if name in unique_index {
+		return unique_index[name]
+	}
+	return ''
+}
+
+fn (g &FlatGen) const_ref_name_from_node_cached_for_collect(node flat.Node, unique_index map[string]string, mut cache map[string]string) string {
+	if node.kind == .paren {
+		if node.children_count == 0 {
+			return ''
+		}
+		return g.const_ref_name_from_node_cached_for_collect(g.a.child_node(&node, 0),
+			unique_index, mut cache)
+	}
+	if node.kind == .ident {
+		cache_key := '${g.tc.cur_module}|ident|${node.value}'
+		if cache_key in cache {
+			return cache[cache_key]
+		}
+		const_name := g.const_ref_name_fast_for_collect(node.value, unique_index)
+		cache[cache_key] = const_name
+		return const_name
+	}
+	if node.kind == .selector {
+		if node.children_count == 0 {
+			return ''
+		}
+		base := g.a.child_node(&node, 0)
+		if base.kind != .ident {
+			return ''
+		}
+		cache_key := '${g.tc.cur_module}|selector|${base.value}|${node.value}'
+		if cache_key in cache {
+			return cache[cache_key]
+		}
+		const_name := g.const_ref_name_fast_for_collect('${base.value}.${node.value}', unique_index)
+		cache[cache_key] = const_name
+		return const_name
+	}
+	return ''
+}
+
+fn (g &FlatGen) fixed_storage_candidate_short_name(name string) string {
+	if name.contains('.') {
+		return name.all_after_last('.')
+	}
+	if name.contains('__') {
+		return name.all_after_last('__')
+	}
+	return name
+}
+
+fn (g &FlatGen) add_fixed_storage_candidate_ref(name string, mut refs map[string]bool, mut shorts map[string]bool) {
+	if name.len == 0 {
+		return
+	}
+	refs[name] = true
+	short_name := g.fixed_storage_candidate_short_name(name)
+	if short_name.len > 0 {
+		shorts[short_name] = true
+	}
+}
+
+fn (mut g FlatGen) collect_fixed_storage_const_candidates(mut candidates map[string]bool, mut refs map[string]bool, mut shorts map[string]bool, mut storage_cache map[string]bool, mut primary_cache map[string]string) {
+	for const_name, _ in g.const_vals {
+		if !g.const_ref_has_fixed_array_literal_storage(const_name, mut storage_cache) {
+			continue
+		}
+		primary := g.const_primary_name_cached(const_name, mut primary_cache)
+		candidates[primary] = true
+		g.add_fixed_storage_candidate_ref(const_name, mut refs, mut shorts)
+		g.add_fixed_storage_candidate_ref(primary, mut refs, mut shorts)
+	}
+}
+
+fn (g &FlatGen) const_ref_node_may_match_fixed_candidate(node &flat.Node, ident_refs map[string]bool, shorts map[string]bool) bool {
+	if node.kind == .paren {
+		if node.children_count == 0 {
+			return false
+		}
+		return g.const_ref_node_may_match_fixed_candidate(g.a.child_node(node, 0), ident_refs,
+			shorts)
+	}
+	if node.kind == .ident {
+		if node.value in ident_refs {
+			return true
+		}
+		if node.value.contains('.') {
+			return node.value.all_after_last('.') in shorts
+		}
+		if node.value.contains('__') {
+			return node.value.all_after_last('__') in shorts
+		}
+		return false
+	}
+	if node.kind == .selector {
+		if node.children_count == 0 {
+			return false
+		}
+		if node.value !in shorts {
+			return false
+		}
+		base := g.a.child_node(node, 0)
+		if base.kind != .ident {
+			return false
+		}
 		return true
 	}
 	return false
+}
+
+fn (g &FlatGen) const_primary_name_cached(name string, mut cache map[string]string) string {
+	if name in cache {
+		return cache[name]
+	}
+	primary := g.const_primary_name(name)
+	cache[name] = primary
+	return primary
+}
+
+fn (mut g FlatGen) const_ref_has_fixed_array_literal_storage(const_name string, mut cache map[string]bool) bool {
+	if const_name in cache {
+		return cache[const_name]
+	}
+	mut has_fixed := false
+	if val_id := g.const_vals[const_name] {
+		if _ := g.const_array_literal_storage_type_for_name(const_name, val_id, g.const_value_type(const_name,
+			val_id))
+		{
+			has_fixed = true
+		}
+	}
+	cache[const_name] = has_fixed
+	return has_fixed
+}
+
+fn (g &FlatGen) fixed_storage_candidate_primary_from_matched_node_for_collect(node flat.Node, fixed_storage_candidates map[string]bool, unique_index map[string]string, mut ref_cache map[string]string, mut primary_cache map[string]string) string {
+	const_name := g.const_ref_name_from_node_cached_for_collect(node, unique_index, mut ref_cache)
+	if const_name.len == 0 {
+		return ''
+	}
+	primary := g.const_primary_name_cached(const_name, mut primary_cache)
+	if primary !in fixed_storage_candidates {
+		return ''
+	}
+	return primary
 }
 
 fn (mut g FlatGen) collect_fixed_storage_consts() {
@@ -3544,19 +3723,37 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 	old_file := g.tc.cur_file
 	mut cur_module := 'main'
 	mut cur_file := ''
-	mut fixed_candidates := map[string]bool{}
+	mut fixed_storage_candidates := map[string]bool{}
+	mut fixed_candidate_refs := map[string]bool{}
+	mut fixed_candidate_shorts := map[string]bool{}
 	mut dynamic_uses := map[string]bool{}
+	mut indexed_candidates := map[string]bool{}
 	mut fixed_safe_refs := map[int]bool{}
-	for _, node in g.a.nodes {
-		if node.kind == .index && node.children_count > 0 {
-			g.mark_const_ref_descendants(mut fixed_safe_refs, g.a.child(&node, 0))
-		}
-		if node.kind == .selector && node.value == 'len' && node.children_count > 0 {
-			g.mark_const_ref_descendants(mut fixed_safe_refs, g.a.child(&node, 0))
-		}
+	mut fixed_storage_cache := map[string]bool{}
+	mut primary_name_cache := map[string]string{}
+	g.collect_fixed_storage_const_candidates(mut fixed_storage_candidates, mut
+		fixed_candidate_refs, mut fixed_candidate_shorts, mut fixed_storage_cache, mut
+		primary_name_cache)
+	if fixed_storage_candidates.len == 0 {
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+		return
 	}
-	for idx, node in g.a.nodes {
-		kind_id := node_kind_id(node)
+	unique_const_ref_names := g.build_unique_const_ref_names()
+	mut const_ref_name_cache := map[string]string{}
+	mut ref_items := []FixedStorageConstRefItem{}
+	mut call_base_items := []FixedStorageConstRefItem{}
+	mut index_base_items := []FixedStorageConstRefItem{}
+	mut fixed_candidate_idents := fixed_candidate_refs.clone()
+	for short_name, _ in fixed_candidate_shorts {
+		fixed_candidate_idents[short_name] = true
+	}
+	for idx := 0; idx < g.a.nodes.len; idx++ {
+		node := unsafe { &g.a.nodes[idx] }
+		mut kind_id := node.kind_id
+		if kind_id == 0 && int(node.kind) != 0 {
+			kind_id = int(node.kind)
+		}
 		if kind_id == 77 {
 			cur_file = node.value
 			cur_module = 'main'
@@ -3570,40 +3767,114 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 			g.tc.cur_module = cur_module
 			continue
 		}
-		if node.kind == .call && node.children_count > 0 {
-			fn_node := g.a.child_node(&node, 0)
-			if fn_node.kind == .selector && fn_node.children_count > 0 {
-				base_node := g.a.child_node(fn_node, 0)
-				const_name := g.const_ref_name_from_node(base_node)
-				if const_name.len > 0 && g.const_ref_has_fixed_array_literal_storage(const_name) {
-					dynamic_uses[g.const_primary_name(const_name)] = true
+		match node.kind {
+			.index {
+				if node.children_count == 0 {
+					continue
+				}
+				base_id := g.a.child(node, 0)
+				base_node := g.a.node(base_id)
+				if g.const_ref_node_may_match_fixed_candidate(base_node, fixed_candidate_idents,
+					fixed_candidate_shorts)
+				{
+					g.mark_const_ref_descendants(mut fixed_safe_refs, base_id)
+					index_base_items << FixedStorageConstRefItem{
+						id:     base_id
+						file:   cur_file
+						module: cur_module
+					}
 				}
 			}
-		}
-		if !(fixed_safe_refs[idx] or { false }) {
-			const_name := g.const_ref_name_from_node(node)
-			if const_name.len > 0 && g.const_ref_has_fixed_array_literal_storage(const_name) {
-				dynamic_uses[g.const_primary_name(const_name)] = true
+			.selector {
+				if node.value == 'len' && node.children_count > 0 {
+					base_id := g.a.child(node, 0)
+					base_node := g.a.node(base_id)
+					if g.const_ref_node_may_match_fixed_candidate(base_node,
+						fixed_candidate_idents, fixed_candidate_shorts)
+					{
+						g.mark_const_ref_descendants(mut fixed_safe_refs, base_id)
+					}
+				}
+				if g.const_ref_node_may_match_fixed_candidate(node, fixed_candidate_idents,
+					fixed_candidate_shorts)
+				{
+					ref_items << FixedStorageConstRefItem{
+						id:     flat.NodeId(idx)
+						file:   cur_file
+						module: cur_module
+					}
+				}
 			}
-		}
-		if node.kind != .index || node.children_count == 0 {
-			continue
-		}
-		base_id := g.a.child(&node, 0)
-		base_node := g.a.nodes[int(base_id)]
-		const_name := g.const_ref_name_from_node(base_node)
-		if const_name.len == 0 {
-			continue
-		}
-		val_id := g.const_vals[const_name] or { continue }
-		if fixed := g.const_array_literal_storage_type_for_name(const_name, val_id, g.const_value_type(const_name,
-			val_id))
-		{
-			_ = fixed
-			fixed_candidates[g.const_primary_name(const_name)] = true
+			.call {
+				if node.children_count == 0 {
+					continue
+				}
+				fn_node := g.a.child_node(node, 0)
+				if fn_node.kind == .selector && fn_node.children_count > 0 {
+					base_id := g.a.child(fn_node, 0)
+					base_node := g.a.node(base_id)
+					if g.const_ref_node_may_match_fixed_candidate(base_node,
+						fixed_candidate_idents, fixed_candidate_shorts)
+					{
+						call_base_items << FixedStorageConstRefItem{
+							id:     base_id
+							file:   cur_file
+							module: cur_module
+						}
+					}
+				}
+			}
+			.ident, .paren {
+				if g.const_ref_node_may_match_fixed_candidate(node, fixed_candidate_idents,
+					fixed_candidate_shorts)
+				{
+					ref_items << FixedStorageConstRefItem{
+						id:     flat.NodeId(idx)
+						file:   cur_file
+						module: cur_module
+					}
+				}
+			}
+			else {}
 		}
 	}
-	for const_name, _ in fixed_candidates {
+	for item in call_base_items {
+		g.tc.cur_file = item.file
+		g.tc.cur_module = item.module
+		node := g.a.nodes[int(item.id)]
+		primary := g.fixed_storage_candidate_primary_from_matched_node_for_collect(node,
+			fixed_storage_candidates, unique_const_ref_names, mut const_ref_name_cache, mut
+			primary_name_cache)
+		if primary.len > 0 {
+			dynamic_uses[primary] = true
+		}
+	}
+	for item in ref_items {
+		if fixed_safe_refs[int(item.id)] or { false } {
+			continue
+		}
+		g.tc.cur_file = item.file
+		g.tc.cur_module = item.module
+		node := g.a.nodes[int(item.id)]
+		primary := g.fixed_storage_candidate_primary_from_matched_node_for_collect(node,
+			fixed_storage_candidates, unique_const_ref_names, mut const_ref_name_cache, mut
+			primary_name_cache)
+		if primary.len > 0 {
+			dynamic_uses[primary] = true
+		}
+	}
+	for item in index_base_items {
+		g.tc.cur_file = item.file
+		g.tc.cur_module = item.module
+		node := g.a.nodes[int(item.id)]
+		primary := g.fixed_storage_candidate_primary_from_matched_node_for_collect(node,
+			fixed_storage_candidates, unique_const_ref_names, mut const_ref_name_cache, mut
+			primary_name_cache)
+		if primary.len > 0 {
+			indexed_candidates[primary] = true
+		}
+	}
+	for const_name, _ in indexed_candidates {
 		if dynamic_uses[const_name] {
 			continue
 		}
