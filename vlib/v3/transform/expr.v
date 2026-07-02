@@ -414,7 +414,7 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 	}
 	lhs_is_ptr := t.infix_operand_is_pointer(lhs_id)
 	rhs_is_ptr := t.infix_operand_is_pointer(rhs_id)
-	if lhs_is_ptr == rhs_is_ptr {
+	if !lhs_is_ptr && !rhs_is_ptr {
 		return none
 	}
 	lhs_type := t.node_type(lhs_id)
@@ -428,6 +428,10 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 	}
 	if lhs_struct != rhs_struct && lhs_struct.all_after_last('.') != rhs_struct.all_after_last('.') {
 		return none
+	}
+	if lhs_is_ptr && rhs_is_ptr {
+		return t.transform_struct_pointer_eq(node, lhs_id, rhs_id, lhs_type, rhs_type, lhs_clean,
+			rhs_clean)
 	}
 	lhs := if lhs_is_ptr {
 		t.make_prefix(.mul, t.transform_expr(lhs_id))
@@ -443,6 +447,47 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 		return eq
 	}
 	return none
+}
+
+fn (mut t Transformer) transform_struct_pointer_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type string, rhs_type string, lhs_clean string, rhs_clean string) ?flat.NodeId {
+	pending_base := t.pending_stmts.len
+	lhs_ptr := t.stable_transformed_expr_for_reuse(t.transform_expr(lhs_id), lhs_type, 'ptr_eq_lhs')
+	rhs_ptr := t.stable_transformed_expr_for_reuse(t.transform_expr(rhs_id), rhs_type, 'ptr_eq_rhs')
+	result_name := t.new_temp('ptr_eq')
+	same_ptr := t.make_infix(.eq, lhs_ptr, rhs_ptr)
+	t.pending_stmts << t.make_decl_assign_typed(result_name, same_ptr, 'bool')
+	lhs_not_nil := t.make_infix(.ne, lhs_ptr, t.a.add(.nil_literal))
+	rhs_not_nil := t.make_infix(.ne, rhs_ptr, t.a.add(.nil_literal))
+	both_not_nil := t.make_infix(.logical_and, lhs_not_nil, rhs_not_nil)
+	not_same_ptr := t.make_prefix(.not, t.make_ident(result_name))
+	compare_values := t.make_infix(.logical_and, not_same_ptr, both_not_nil)
+	lhs_value := t.make_prefix(.mul, lhs_ptr)
+	rhs_value := t.make_prefix(.mul, rhs_ptr)
+	t.a.nodes[int(lhs_value)].typ = lhs_clean
+	t.a.nodes[int(rhs_value)].typ = rhs_clean
+	pending_start := t.pending_stmts.len
+	eq_node := flat.Node{
+		kind: .infix
+		op:   .eq
+		typ:  'bool'
+		pos:  node.pos
+	}
+	value_eq := t.transform_transformed_struct_eq(eq_node, lhs_value, rhs_value) or {
+		t.pending_stmts = t.pending_stmts[..pending_base].clone()
+		return none
+	}
+	mut body_stmts := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	body_stmts << t.make_assign(t.make_ident(result_name), value_eq)
+	t.pending_stmts << t.make_if(compare_values, t.make_block(body_stmts), t.make_empty())
+	result := t.make_ident(result_name)
+	t.a.nodes[int(result)].typ = 'bool'
+	if node.op == .ne {
+		not_result := t.make_prefix(.not, result)
+		t.a.nodes[int(not_result)].typ = 'bool'
+		return not_result
+	}
+	return result
 }
 
 fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.NodeId, rhs flat.NodeId) ?flat.NodeId {
@@ -507,6 +552,12 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 	}
 	cmp_lhs := t.stable_transformed_expr_for_reuse(lhs, lhs_type, 'eq_lhs')
 	cmp_rhs := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'eq_rhs')
+	if field_eq := t.make_struct_field_eq_expr(cmp_lhs, cmp_rhs, struct_type) {
+		if node.op == .ne {
+			return t.make_prefix(.not, field_eq)
+		}
+		return field_eq
+	}
 	cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, cmp_lhs), t.make_prefix(.amp,
 		cmp_rhs), t.make_sizeof_type(struct_type)), 'int')
 	return t.make_infix(node.op, cmp, t.make_int_literal(0))

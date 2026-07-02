@@ -2787,12 +2787,21 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				}
 			}
 			num_call_args := node.children_count - arg_start
-			is_variadic_fn := !is_method && !is_c_call && (g.tc.fn_variadic[actual_fn] or { false })
+			is_c_variadic_fn := is_c_call && (g.tc.c_variadic_fns[actual_fn] or { false })
+			is_variadic_fn := !is_method && !is_c_variadic_fn && (g.tc.fn_variadic[actual_fn] or {
+				false
+			})
 			variadic_idx := if is_variadic_fn && param_types.len > 0
 				&& param_types[param_types.len - 1] is types.Array {
 				param_types.len - 1
 			} else {
 				-1
+			}
+			typed_param_count := if is_c_variadic_fn && param_types.len > 0
+				&& param_types[param_types.len - 1] is types.Array {
+				param_types.len - 1
+			} else {
+				param_types.len
 			}
 			// A veb handler whose hidden `Context` parameter (param index 1, right
 			// after the receiver) was omitted by the caller forwards the enclosing
@@ -2815,7 +2824,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					continue
 				}
 				arg_node := g.a.nodes[int(arg_id)]
-				if param_types.len > 0 && variadic_idx < 0 && arg_idx >= param_types.len {
+				if param_types.len > 0 && !is_c_variadic_fn && variadic_idx < 0
+					&& arg_idx >= typed_param_count {
 					continue
 				}
 				if is_method || emitted_arg_count > 0 {
@@ -2836,7 +2846,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				}
 				if arg_node.kind == .field_init {
 					// `@[params]` struct argument: trailing `key: value` args form a struct literal
-					ptyp := if arg_idx < param_types.len {
+					ptyp := if arg_idx < typed_param_count {
 						param_types[arg_idx]
 					} else {
 						types.Type(types.void_)
@@ -2852,17 +2862,17 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					g.gen_fixed_array_data_arg(arg_id, fixed)
 					continue
 				}
-				if !is_c_call && arg_idx < param_types.len {
+				if !is_c_call && arg_idx < typed_param_count {
 					if fixed := array_fixed_type(param_types[arg_idx]) {
 						g.gen_fixed_array_data_arg(arg_id, fixed)
 						continue
 					}
 				}
-				if !is_c_call && arg_idx < param_types.len
+				if !is_c_call && arg_idx < typed_param_count
 					&& g.gen_pointer_arg_from_array_literal(arg_node, param_types[arg_idx]) {
 					continue
 				}
-				cb_param := if arg_idx >= 0 && arg_idx < param_types.len {
+				cb_param := if arg_idx >= 0 && arg_idx < typed_param_count {
 					param_types[arg_idx]
 				} else {
 					types.Type(types.void_)
@@ -2902,26 +2912,27 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					}
 				}
 				mut needs_addr := false
-				if !is_c_call && arg_idx < param_types.len && param_types[arg_idx] is types.Pointer
-					&& !(arg_node.kind == .prefix && arg_node.op == .amp) {
+				if !is_c_call && arg_idx < typed_param_count
+					&& param_types[arg_idx] is types.Pointer && !(arg_node.kind == .prefix
+					&& arg_node.op == .amp) {
 					arg_type := g.tc.resolve_type(arg_id)
 					if arg_type !is types.Pointer
 						&& !c_string_literal_pointer_arg(arg_node, param_types[arg_idx]) {
 						needs_addr = true
 					}
 				}
-				if !is_c_call && arg_idx < param_types.len {
+				if !is_c_call && arg_idx < typed_param_count {
 					pt := param_types[arg_idx]
 					if pt is types.Enum {
 						g.expected_enum = pt.name
 					}
 				}
-				if !is_c_call && arg_idx < param_types.len
+				if !is_c_call && arg_idx < typed_param_count
 					&& g.gen_mut_sum_lvalue_arg(arg_id, param_types[arg_idx]) {
 					g.expected_enum = ''
 					continue
 				}
-				if !is_c_call && arg_idx < param_types.len {
+				if !is_c_call && arg_idx < typed_param_count {
 					if child_id := g.addressed_rvalue_arg(arg_node) {
 						pt := param_types[arg_idx]
 						if g.gen_addressed_rvalue_arg(child_id, pt) {
@@ -2956,15 +2967,15 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					if needs_addr {
 						g.write('&')
 					}
-					emitted_variant := !needs_addr && !is_c_call && arg_idx < param_types.len
+					emitted_variant := !needs_addr && !is_c_call && arg_idx < typed_param_count
 						&& g.gen_sum_variant_arg(arg_id, param_types[arg_idx])
 					if !emitted_variant {
-						concrete_optional_arg := !is_c_call && arg_idx < param_types.len
+						concrete_optional_arg := !is_c_call && arg_idx < typed_param_count
 							&& specialized_generic_fn_name(actual_fn)
-						if !is_c_call && arg_idx < param_types.len
+						if !is_c_call && arg_idx < typed_param_count
 							&& g.gen_optional_arg_with_concrete_mode(arg_id, param_types[arg_idx], concrete_optional_arg) {
 							// handled
-						} else if !is_c_call && arg_idx < param_types.len {
+						} else if !is_c_call && arg_idx < typed_param_count {
 							g.gen_expr_with_expected_type(arg_id, param_types[arg_idx])
 						} else {
 							g.gen_expr(arg_id)
@@ -4340,7 +4351,8 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		arg_idx := i - start
 		arg_id := g.a.child(&node, i)
 		arg_node := g.a.nodes[int(arg_id)]
-		if param_types.len > 0 && variadic_idx < 0 && arg_idx >= typed_param_count {
+		if param_types.len > 0 && !is_c_variadic_fn && variadic_idx < 0
+			&& arg_idx >= typed_param_count {
 			continue
 		}
 		if i > start {
@@ -4389,7 +4401,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		if arg_idx < typed_param_count && g.gen_mut_sum_lvalue_arg(arg_id, param_types[arg_idx]) {
 			continue
 		}
-		cb_param := if arg_idx >= 0 && arg_idx < param_types.len {
+		cb_param := if arg_idx >= 0 && arg_idx < typed_param_count {
 			param_types[arg_idx]
 		} else {
 			types.Type(types.void_)

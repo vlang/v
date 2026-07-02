@@ -3589,10 +3589,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.expected_enum = old_expected_enum
 				return
 			}
-			if g.gen_struct_pointer_infix_eq(node, lhs_id, rhs_id, lhs_type, rhs_type) {
-				g.expected_enum = old_expected_enum
-				return
-			}
 			if lhs_type is types.String || rhs_type is types.String {
 				if g.gen_string_infix_fallback(node, lhs_id, rhs_id) {
 					g.expected_enum = old_expected_enum
@@ -4289,32 +4285,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		}
 		else {}
 	}
-}
-
-fn (mut g FlatGen) gen_struct_pointer_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
-	if node.op !in [.eq, .ne] {
-		return false
-	}
-	if lhs_type !is types.Pointer || rhs_type !is types.Pointer {
-		return false
-	}
-	lbase := types.unwrap_pointer(lhs_type)
-	rbase := types.unwrap_pointer(rhs_type)
-	if lbase !is types.Struct || rbase !is types.Struct || !g.type_names_match(lbase, rbase) {
-		return false
-	}
-	ct := g.tc.c_type(lbase)
-	ltmp := g.tmp_name()
-	rtmp := g.tmp_name()
-	if node.op == .ne {
-		g.write('!')
-	}
-	g.write('({ ${ct}* ${ltmp} = ')
-	g.gen_expr(lhs_id)
-	g.write('; ${ct}* ${rtmp} = ')
-	g.gen_expr(rhs_id)
-	g.write('; (${ltmp} == ${rtmp}) || (${ltmp} != NULL && ${rtmp} != NULL && memcmp(${ltmp}, ${rtmp}, sizeof(${ct})) == 0); })')
-	return true
 }
 
 fn (mut g FlatGen) gen_pointer_cast_fixed_array_literal(arg_id flat.NodeId, target_type types.Pointer, ct string) bool {
