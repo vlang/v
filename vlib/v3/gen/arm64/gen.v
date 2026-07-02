@@ -1690,12 +1690,20 @@ fn (g &Gen) is_string_struct_type(typ_id ssa.TypeID) bool {
 		return false
 	}
 	typ := g.m.type_store.types[typ_id]
-	if typ.kind != .struct_t || typ.fields.len != 2 || g.m.type_size(typ_id) != 16 {
+	if typ.kind != .struct_t || typ.fields.len < 2 || typ.fields.len > 3
+		|| g.m.type_size(typ_id) != 16 {
 		return false
 	}
 	first := g.m.type_store.types[typ.fields[0]]
 	second := g.m.type_store.types[typ.fields[1]]
-	return first.kind == .ptr_t && second.kind == .int_t && second.width == 32
+	if first.kind != .ptr_t || second.kind != .int_t || second.width != 32 {
+		return false
+	}
+	if typ.fields.len == 3 {
+		third := g.m.type_store.types[typ.fields[2]]
+		return third.kind == .int_t && third.width == 32
+	}
+	return true
 }
 
 // emit_load_string_regs_from_ptr converts emit load string regs from ptr data for arm64.

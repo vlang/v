@@ -19,7 +19,11 @@ fn C.close(int) int
 // C.malloc declares the C malloc symbol used by parser.
 fn C.malloc(int) &u8
 
+// C.realloc declares the C realloc symbol used by parser.
+fn C.realloc(voidptr, int) &u8
+
 const max_source_file_size = 8388608
+const read_source_chunk_size = 65536
 
 // Parser represents parser data used by parser.
 pub struct Parser {
@@ -164,16 +168,28 @@ fn read_source_file_raw(path string) string {
 	if fd < 0 {
 		return ''
 	}
-	size := os.file_size(path)
-	if size == 0 {
+	mut cap := read_source_chunk_size
+	mut buf := C.malloc(cap + 1)
+	if isnil(buf) {
 		C.close(fd)
 		return ''
 	}
-	expected := if size > max_source_file_size { max_source_file_size } else { int(size) }
-	buf := C.malloc(expected + 1)
 	mut total := 0
-	for total < expected {
-		nread := C.read(fd, unsafe { buf + total }, expected - total)
+	for total < max_source_file_size {
+		if total == cap {
+			mut new_cap := cap * 2
+			if new_cap > max_source_file_size {
+				new_cap = max_source_file_size
+			}
+			mut new_buf := C.realloc(buf, new_cap + 1)
+			if isnil(new_buf) {
+				break
+			}
+			buf = new_buf
+			cap = new_cap
+		}
+		remaining := cap - total
+		nread := C.read(fd, unsafe { buf + total }, remaining)
 		if nread <= 0 {
 			break
 		}
@@ -184,6 +200,7 @@ fn read_source_file_raw(path string) string {
 		return ''
 	}
 	unsafe {
+		buf[total] = 0
 		return tos(buf, total)
 	}
 }

@@ -8752,13 +8752,20 @@ fn (mut b Builder) coerce_value_for_param(value ValueID, param_type TypeID) Valu
 }
 
 fn (mut b Builder) build_flag_enum_method_call(base_id flat.NodeId, method string, node flat.Node) ?ValueID {
-	if !b.is_flag_enum_expr(base_id) {
+	flag_type_name := b.flag_enum_expr_type_name(base_id)
+	if flag_type_name.len == 0 || !b.is_flag_enum_type_name(flag_type_name) {
 		return none
 	}
 	base_addr := b.build_lvalue_addr(base_id)
 	flag_type := b.deref_type(base_addr)
 	mut flag := if node.children_count > 1 {
-		b.build_expr(b.a.child(&node, 1))
+		arg_id := b.a.child(&node, 1)
+		arg_node := b.a.nodes[int(arg_id)]
+		if value := b.enum_const_value_with_type(arg_node, flag_type_name) {
+			b.m.get_or_add_const(flag_type, value.str())
+		} else {
+			b.build_expr(arg_id)
+		}
 	} else {
 		b.m.get_or_add_const(flag_type, '0')
 	}
@@ -8781,18 +8788,35 @@ fn (mut b Builder) build_flag_enum_method_call(base_id flat.NodeId, method strin
 }
 
 fn (b &Builder) is_flag_enum_expr(id flat.NodeId) bool {
+	return b.is_flag_enum_type_name(b.flag_enum_expr_type_name(id))
+}
+
+fn (b &Builder) flag_enum_expr_type_name(id flat.NodeId) string {
 	name := b.checked_expr_type_name(id)
 	if b.is_flag_enum_type_name(name) {
-		return true
+		return name
 	}
 	if int(id) < 0 {
-		return false
+		return ''
 	}
 	node := b.a.nodes[int(id)]
 	if node.typ.len > 0 && b.is_flag_enum_type_name(node.typ) {
-		return true
+		return node.typ
 	}
-	return false
+	if node.kind == .selector && node.children_count > 0 {
+		base_type := b.receiver_type_name(b.a.child(&node, 0)).trim_left('&')
+		field_type := b.field_type_name(base_type, node.value)
+		if field_type.len > 0 {
+			if b.is_flag_enum_type_name(field_type) {
+				return field_type
+			}
+		}
+		if node.value == 'flags'
+			&& (base_type == 'array' || base_type == 'builtin.array' || base_type.starts_with('[]')) {
+			return 'ArrayFlags'
+		}
+	}
+	return ''
 }
 
 fn (mut b Builder) coerce_int_value(value ValueID, to_type TypeID) ValueID {

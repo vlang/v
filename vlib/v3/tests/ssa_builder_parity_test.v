@@ -440,3 +440,17 @@ fn main() {
 	values_fn := find_func(m, 'map__values')
 	assert values_fn.blocks.len > 0
 }
+
+// test_array_flags_set_lowers_without_receiver_collision validates this v3 regression case.
+fn test_array_flags_set_lowers_without_receiver_collision() {
+	m := build_source('array_flags_set', '
+fn main() {
+	mut values := []string{}
+	unsafe {
+		values.flags.set(.noslices | .noshrink)
+	}
+}
+')
+	assert !has_call_to(m, 'main', 'SortedMap.set')
+	assert has_instr_op(m, 'main', .or_)
+}
