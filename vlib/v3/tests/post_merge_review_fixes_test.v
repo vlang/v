@@ -147,6 +147,15 @@ fn test_context_dependent_if_branches_infer_wrapper_types() {
 	run_bad(v3_bin, 'if_none_branch_without_context_rejected',
 		'fn main() {\n\tx := if true { none } else { 1 }\n\tprintln(x)\n}\n',
 		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'if_option_void_branch_rejected_for_payload',
+		'fn maybe_void() ? {\n\treturn\n}\n\nfn f(ok bool) ?int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n',
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'if_result_void_branch_rejected_for_payload',
+		'fn maybe_void() ! {\n\treturn\n}\n\nfn f(ok bool) !int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n',
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'match_option_void_branch_rejected_for_payload',
+		'fn maybe_void() ? {\n\treturn\n}\n\nfn f(n int) ?int {\n\treturn match n {\n\t\t0 { maybe_void() }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := f(0) or { 0 }\n}\n',
+		'cannot return')
 }
 
 fn test_assoc_return_runs_defers() {
