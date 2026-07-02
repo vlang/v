@@ -159,6 +159,9 @@ pub mut:
 	shutting_down           &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
 	stopped                 &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(true)
 	active_requests         &stdatomic.AtomicVal[int]  = stdatomic.new_atomic(0)
+mut:
+	poll_fds []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size, init: -1}
+	threads  []thread = []thread{len: max_thread_pool_size, cap: max_thread_pool_size}
 }
 
 // new_server creates and initializes a new Server instance.
@@ -174,6 +177,10 @@ pub fn new_server(config ServerConfig) !&Server {
 		shutting_down:           stdatomic.new_atomic(false)
 		stopped:                 stdatomic.new_atomic(true)
 		active_requests:         stdatomic.new_atomic(0)
+	}
+	unsafe {
+		server.poll_fds.flags.set(.noslices | .noshrink | .nogrow)
+		server.threads.flags.set(.noslices | .noshrink | .nogrow)
 	}
 	return server
 }
@@ -578,12 +585,143 @@ fn close_all_conns(server &Server, kq int, mut clients map[int]voidptr) {
 }
 
 fn (mut s Server) stop_accepting() {
-	if s.poll_fd >= 0 && s.socket_fd >= 0 {
-		delete_event(s.poll_fd, u64(s.socket_fd), i16(C.EVFILT_READ), unsafe { nil })
+	for i := 0; i < max_thread_pool_size; i++ {
+		if s.poll_fds[i] >= 0 && s.socket_fd >= 0 {
+			delete_event(s.poll_fds[i], u64(s.socket_fd), i16(C.EVFILT_READ), unsafe { nil })
+		}
 	}
 	if s.socket_fd >= 0 {
 		C.close(s.socket_fd)
 		s.socket_fd = -1
+	}
+}
+
+fn (mut s Server) close_pollers() {
+	for i := 0; i < max_thread_pool_size; i++ {
+		if s.poll_fds[i] >= 0 {
+			C.close(s.poll_fds[i])
+			s.poll_fds[i] = -1
+		}
+	}
+	s.poll_fd = -1
+}
+
+fn create_server_socket(server Server) !int {
+	socket_fd := C.socket(i32(server.family), i32(net.SocketType.tcp), 0)
+	if socket_fd < 0 {
+		C.perror(c'socket')
+		return error('socket creation failed')
+	}
+
+	opt := 1
+	if C.setsockopt(socket_fd, C.SOL_SOCKET, C.SO_REUSEADDR, &opt, sizeof(int)) < 0 {
+		C.perror(c'setsockopt SO_REUSEADDR failed')
+		C.close(socket_fd)
+		return error('setsockopt SO_REUSEADDR failed')
+	}
+	addr := if server.family == .ip6 {
+		net.new_ip6(u16(server.port), [u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]!)
+	} else {
+		net.new_ip(u16(server.port), [u8(0), 0, 0, 0]!)
+	}
+	alen := addr.len()
+
+	if C.bind(socket_fd, voidptr(&addr), alen) < 0 {
+		C.perror(c'bind')
+		C.close(socket_fd)
+		return error('socket bind failed')
+	}
+	if C.listen(socket_fd, backlog) < 0 {
+		C.perror(c'listen')
+		C.close(socket_fd)
+		return error('socket listen failed')
+	}
+	set_nonblocking(socket_fd)
+	return socket_fd
+}
+
+fn process_events(server &Server, kq int, listen_fd int) {
+	mut events := [kqueue_max_events]C.kevent{}
+	mut clients := map[int]voidptr{}
+	for {
+		if server.is_shutting_down() && server.active_request_count() == 0 {
+			close_all_conns(server, kq, mut clients)
+			return
+		}
+		timeout := C.timespec{
+			tv_sec:  0
+			tv_nsec: kqueue_wait_timeout_ms * 1_000_000
+		}
+		nev := C.kevent(kq, unsafe { nil }, 0, &events[0], kqueue_max_events, &timeout)
+		if nev < 0 {
+			if C.errno == C.EINTR {
+				// kevent may return EINTR when the process receives a signal
+				// (e.g. SIGCHLD from an exec'd subprocess). Treat like a timeout.
+				continue
+			}
+			if server.is_shutting_down() {
+				continue
+			}
+			C.perror(c'kevent')
+			return
+		}
+
+		for i := 0; i < nev; i++ {
+			event := events[i]
+			if event.flags & u16(C.EV_ERROR) != 0 {
+				if event.ident == u64(listen_fd) {
+					C.perror(c'listener error')
+					continue
+				}
+				if event.udata != unsafe { nil } {
+					close_conn(server, kq, event.udata, mut clients)
+				}
+				continue
+			}
+
+			if event.ident == u64(listen_fd) {
+				if server.is_shutting_down() {
+					continue
+				}
+				accept_clients(kq, listen_fd, mut clients)
+				continue
+			}
+
+			if event.udata == unsafe { nil } {
+				continue
+			}
+
+			if event.flags & u16(C.EV_EOF) != 0 {
+				close_conn(server, kq, event.udata, mut clients)
+				continue
+			}
+
+			if event.filter == i16(C.EVFILT_READ) {
+				if server.is_shutting_down() {
+					close_conn(server, kq, event.udata, mut clients)
+					continue
+				}
+				handle_read(server, kq, event.udata, mut clients)
+			} else if event.filter == i16(C.EVFILT_WRITE) {
+				handle_write(server, kq, event.udata, mut clients)
+			}
+		}
+		// Sweep for connections waiting for body data that have timed out
+		if server.timeout_in_seconds > 0 {
+			now := time.sys_mono_now()
+			timeout_ns := i64(server.timeout_in_seconds) * 1_000_000_000
+			for client_fd in clients.keys() {
+				c_ptr := clients[client_fd] or { continue }
+				c := unsafe { &Conn(c_ptr) }
+				if c.read_start > 0 && c.read_len > 0 && !c.request_active {
+					elapsed := now - c.read_start
+					if elapsed >= timeout_ns {
+						send_request_timeout(c.fd)
+						close_conn(server, kq, c_ptr, mut clients)
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -597,136 +735,41 @@ pub fn (mut s Server) run() ! {
 	// TcpConn.write).
 	C.signal(C.SIGPIPE, C.SIG_IGN)
 
-	s.socket_fd = C.socket(i32(s.family), i32(net.SocketType.tcp), 0)
-	if s.socket_fd < 0 {
-		C.perror(c'socket')
-		return error('socket creation failed')
+	s.socket_fd = create_server_socket(s)!
+	for i := 0; i < max_thread_pool_size; i++ {
+		s.poll_fds[i] = C.kqueue()
+		if s.poll_fds[i] < 0 {
+			C.perror(c'kqueue')
+			s.stop_accepting()
+			s.close_pollers()
+			return error('kqueue creation failed')
+		}
+		// Register the shared listener with each worker kqueue. Accepted client fds
+		// stay local to the worker that accepted them.
+		if add_event(s.poll_fds[i], u64(s.socket_fd), i16(C.EVFILT_READ),
+			u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR), unsafe { nil }) < 0 {
+			s.stop_accepting()
+			s.close_pollers()
+			return error('failed to register listener with kqueue')
+		}
 	}
 
-	opt := 1
-	C.setsockopt(s.socket_fd, C.SOL_SOCKET, C.SO_REUSEADDR, &opt, sizeof(int))
-
-	addr := if s.family == .ip6 {
-		net.new_ip6(u16(s.port), [u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]!)
-	} else {
-		net.new_ip(u16(s.port), [u8(0), 0, 0, 0]!)
-	}
-	alen := addr.len()
-
-	if C.bind(s.socket_fd, voidptr(&addr), alen) < 0 {
-		C.perror(c'bind')
-		return error('socket bind failed')
-	}
-	if C.listen(s.socket_fd, backlog) < 0 {
-		C.perror(c'listen')
-		return error('socket listen failed')
+	s.poll_fd = s.poll_fds[0]
+	for i := 0; i < max_thread_pool_size; i++ {
+		s.threads[i] = spawn process_events(s, s.poll_fds[i], s.socket_fd)
 	}
 
-	set_nonblocking(s.socket_fd)
-
-	s.poll_fd = C.kqueue()
-	if s.poll_fd < 0 {
-		C.perror(c'kqueue')
-		return error('kqueue creation failed')
-	}
-
-	add_event(s.poll_fd, u64(s.socket_fd), i16(C.EVFILT_READ),
-		u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR), unsafe { nil })
-
-	listen_fd := s.socket_fd
 	s.mark_running()
 	println('listening on http://0.0.0.0:${s.port}/')
 
-	mut events := [kqueue_max_events]C.kevent{}
-	mut clients := map[int]voidptr{}
-	for {
-		if s.is_shutting_down() && s.active_request_count() == 0 {
-			close_all_conns(s, s.poll_fd, mut clients)
-			break
-		}
-		timeout := C.timespec{
-			tv_sec:  0
-			tv_nsec: kqueue_wait_timeout_ms * 1_000_000
-		}
-		nev := C.kevent(s.poll_fd, unsafe { nil }, 0, &events[0], kqueue_max_events, &timeout)
-		if nev < 0 {
-			if C.errno == C.EINTR {
-				// kevent may return EINTR when the process receives a signal
-				// (e.g. SIGCHLD from an exec'd subprocess). Treat like a timeout.
-				continue
-			}
-			if s.is_shutting_down() {
-				continue
-			}
-			C.perror(c'kevent')
-			break
-		}
-
-		for i := 0; i < nev; i++ {
-			event := events[i]
-			if event.flags & u16(C.EV_ERROR) != 0 {
-				if event.ident == u64(listen_fd) {
-					C.perror(c'listener error')
-					continue
-				}
-				if event.udata != unsafe { nil } {
-					close_conn(s, s.poll_fd, event.udata, mut clients)
-				}
-				continue
-			}
-
-			if event.ident == u64(listen_fd) {
-				if s.is_shutting_down() {
-					continue
-				}
-				accept_clients(s.poll_fd, listen_fd, mut clients)
-				continue
-			}
-
-			if event.udata == unsafe { nil } {
-				continue
-			}
-
-			if event.flags & u16(C.EV_EOF) != 0 {
-				close_conn(s, s.poll_fd, event.udata, mut clients)
-				continue
-			}
-
-			if event.filter == i16(C.EVFILT_READ) {
-				if s.is_shutting_down() {
-					close_conn(s, s.poll_fd, event.udata, mut clients)
-					continue
-				}
-				handle_read(s, s.poll_fd, event.udata, mut clients)
-			} else if event.filter == i16(C.EVFILT_WRITE) {
-				handle_write(s, s.poll_fd, event.udata, mut clients)
-			}
-		}
-		// Sweep for connections waiting for body data that have timed out
-		if s.timeout_in_seconds > 0 {
-			now := time.sys_mono_now()
-			timeout_ns := i64(s.timeout_in_seconds) * 1_000_000_000
-			for client_fd in clients.keys() {
-				c_ptr := clients[client_fd] or { continue }
-				c := unsafe { &Conn(c_ptr) }
-				if c.read_start > 0 && c.read_len > 0 && !c.request_active {
-					elapsed := now - c.read_start
-					if elapsed >= timeout_ns {
-						send_request_timeout(c.fd)
-						close_conn(s, s.poll_fd, c_ptr, mut clients)
-					}
-				}
-			}
-		}
+	for i in 0 .. max_thread_pool_size {
+		s.threads[i].wait()
 	}
+	s.close_pollers()
 
 	if s.socket_fd >= 0 {
 		C.close(s.socket_fd)
 		s.socket_fd = -1
-	}
-	if s.poll_fd >= 0 {
-		C.close(s.poll_fd)
-		s.poll_fd = -1
 	}
 	s.mark_stopped()
 }
