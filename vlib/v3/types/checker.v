@@ -5490,7 +5490,7 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				return tc.call_info(map_method, true)
 			}
 		}
-		if clean_array := array_like_type_from_receiver(clean) {
+		if clean_array := array_like_type_for_method(clean, fn_node.value) {
 			match fn_node.value {
 				'first', 'last', 'pop', 'pop_left' {
 					return CallInfo{
@@ -5595,10 +5595,18 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 					}
 				}
 				'filter' {
+					// filtering a fixed array yields a dynamic array
+					filter_ret := if receiver_is_fixed_array(clean) {
+						Type(Array{
+							elem_type: clean_array.elem_type
+						})
+					} else {
+						base_type
+					}
 					return CallInfo{
 						name:         'array.filter'
 						params:       tarr2(base_type, Type(bool_))
-						return_type:  base_type
+						return_type:  filter_ret
 						has_receiver: true
 						params_known: true
 					}
@@ -6347,7 +6355,9 @@ fn (tc &TypeChecker) thread_wait_return_type(t Type) ?Type {
 
 // fixed_array_lowered_methods lists the builtin array methods the transform
 // actually lowers for fixed-array receivers (it copies the fixed array into a
-// dynamic temp and re-dispatches).
+// dynamic temp and re-dispatches). Methods outside this list stay rejected:
+// in-place mutators like `sort` would silently modify the temp copy, and
+// `first`/`last`/`pop` are not fixed-array methods in V.
 const fixed_array_lowered_methods = ['contains', 'index', 'last_index', 'any', 'all', 'count',
 	'map', 'filter', 'str']
 
@@ -6361,6 +6371,9 @@ fn receiver_is_fixed_array(t Type) bool {
 	return false
 }
 
+// array_like_type_for_method returns the receiver's array type for a builtin
+// array method call. Fixed-array receivers are widened to a dynamic array type,
+// but only for the methods the transform can lower for them.
 fn array_like_type_for_method(t Type, method string) ?Array {
 	if t is Array {
 		return t
@@ -12022,6 +12035,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 					}
 					if fn_node.value == 'filter' || fn_node.value == 'sorted' {
 						if receiver_is_fixed_array(clean_type) {
+							// filtering a fixed array yields a dynamic array
 							return Type(Array{
 								elem_type: clean_array.elem_type
 							})

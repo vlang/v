@@ -285,6 +285,21 @@ fn (mut p Parser) next() {
 	p.tok_pos = p.s.pos
 }
 
+// line_nr_for_pos returns the 1-based line number of a byte offset in the
+// current source (the scanner tracks byte positions only, so `@LINE` and
+// `@LOCATION` count newlines on demand).
+@[direct_array_access]
+fn (p &Parser) line_nr_for_pos(pos int) int {
+	end := if pos < p.s.src.len { pos } else { p.s.src.len }
+	mut line := 1
+	for i in 0 .. end {
+		if p.s.src[i] == `\n` {
+			line++
+		}
+	}
+	return line
+}
+
 // peek supports peek handling for Parser.
 @[inline]
 fn (mut p Parser) peek() token.Token {
@@ -4102,13 +4117,11 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.a.add_val_id(5, p.prefs.vroot + '/v')
 			}
 			if name == '@LINE' {
-				return p.a.add_val_id(1, '${p.source_line_number(name_pos)}')
+				// like V1, `@LINE` is a string literal holding the 1-based line number
+				return p.a.add_val_id(5, p.line_nr_for_pos(name_pos).str())
 			}
 			if name == '@FILE_LINE' {
-				return p.a.add_val_id(5, '${p.cur_file}:${p.source_line_number(name_pos)}')
-			}
-			if name == '@FILE_LINE' {
-				return p.a.add_val_id(5, '${p.cur_file}:0')
+				return p.a.add_val_id(5, '${p.cur_file}:${p.line_nr_for_pos(name_pos)}')
 			}
 			if name == '@MOD' {
 				if p.cur_module.len == 0 {
@@ -4120,7 +4133,8 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.a.add_val_id(5, p.cur_fn)
 			}
 			if name == '@LOCATION' {
-				return p.a.add_val_id(5, '${p.cur_file}:0: ${p.cur_fn}')
+				return p.a.add_val_id(5,
+					'${p.cur_file}:${p.line_nr_for_pos(name_pos)}: ${p.cur_fn}')
 			}
 			if name == '@VCURRENTHASH' || name == '@VHASH' {
 				return p.a.add_val_id(5, '')

@@ -1064,6 +1064,15 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 	if param_type.len > 0 && t.type_text_has_generic_placeholder(param_type, t.cur_module) {
 		return t.transform_expr(arg_id)
 	}
+	if param_type.starts_with('&') && t.is_interface_type(param_type) {
+		// A `mut`/reference interface parameter must alias the caller's concrete
+		// value so mutations through the interface are visible to the caller.
+		// The caller's frame outlives the call, so boxing a reference to the
+		// source (instead of a heap copy) is safe here.
+		if boxed := t.transform_interface_value_for_type(arg_id, param_type, true) {
+			return boxed
+		}
+	}
 	return t.transform_expr_for_type(arg_id, param_type)
 }
 

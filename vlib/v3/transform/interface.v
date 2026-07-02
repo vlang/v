@@ -28,7 +28,10 @@ fn (t &Transformer) resolve_interface_type_name(name string) string {
 }
 
 // transform_interface_value_for_type supports transform_interface_value_for_type handling.
-fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target_type string) ?flat.NodeId {
+// `share_source` makes the boxed `_object` point at the source lvalue instead of a
+// heap copy; it is only safe when the source is guaranteed to outlive the box
+// (mut/reference call arguments, global initializers).
+fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target_type string, share_source bool) ?flat.NodeId {
 	if int(id) < 0 || target_type.len == 0 || isnil(t.tc) {
 		return none
 	}
@@ -51,7 +54,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		&& t.resolve_interface_type_name(source_type[1..]) == iface_name {
 		return t.transform_expr(id)
 	}
-	literal := t.make_interface_literal_from_expr(id, iface_name, target_is_ptr) or { return none }
+	literal := t.make_interface_literal_from_expr(id, iface_name, share_source) or { return none }
 	if !target_is_ptr {
 		return literal
 	}
@@ -110,7 +113,7 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 }
 
 // make_interface_literal_from_expr converts make interface literal from expr data for transform.
-fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string, prefer_ref bool) ?flat.NodeId {
+fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string, share_source bool) ?flat.NodeId {
 	fields := t.tc.interface_fields[iface_name] or { []types.StructField{} }
 	source_type := t.node_type(id)
 	if source_type.len == 0 {
@@ -123,11 +126,13 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	// `_object` is a pointer to the boxed concrete value; method dispatch reads it
 	// back and casts it to the concrete type. For pointer sources we store the
 	// pointer directly; for value sources we heap-copy so the box can outlive the
-	// source scope. The pointer is typed (`&Concrete`) so codegen can recover the
-	// concrete type and emit the matching `_typ` dispatch id.
+	// source scope, unless the caller passed `share_source` (mut/reference call
+	// args, global initializers) where the box must alias the original value.
+	// The pointer is typed (`&Concrete`) so codegen can recover the concrete
+	// type and emit the matching `_typ` dispatch id.
 	object_expr := if is_ptr {
 		source
-	} else if prefer_ref && t.expr_can_take_address(source) {
+	} else if share_source && t.expr_can_take_address(source) {
 		addr := t.make_prefix(.amp, source)
 		t.a.nodes[int(addr)].typ = '&${concrete_type}'
 		addr

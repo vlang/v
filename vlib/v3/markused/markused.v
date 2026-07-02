@@ -335,6 +335,13 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					method := iface_callee.all_after_last('.')
 					ensure_iface_impls(recv, fn_info.module, tc, mut iface_impls, mut
 						checked_iface_impls)
+					if iface_name := interface_name_for_receiver(recv, fn_info.module, tc) {
+						// Keep the dispatch stub (`Iface__method`) the transform will
+						// call; the call site may name the interface through an alias
+						// (`Expr.name` for `type Expr = Node`), which cgen's used-fn
+						// filter does not resolve back to the interface key.
+						enqueue('${iface_name}.${method}', mut used, mut queue)
+					}
 					if impls := iface_impls[recv] {
 						for impl in impls {
 							impl_method := '${impl}.${method}'
@@ -398,6 +405,8 @@ fn ensure_iface_impls(recv string, cur_module string, tc &types.TypeChecker, mut
 			impls << struct_name
 		}
 	}
+	// Aliases can implement an interface through methods declared on the alias
+	// itself; keep their methods reachable so dispatch stubs can call them.
 	for alias_name, _ in tc.type_aliases {
 		if alias_name !in impls && tc.named_type_implements_interface(alias_name, iface_name) {
 			impls << alias_name

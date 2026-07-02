@@ -210,6 +210,9 @@ fn (mut g FlatGen) collect_interface_impls() {
 	for name, _ in g.tc.structs {
 		struct_names << name
 	}
+	// Type aliases can implement an interface through methods declared on the
+	// alias itself; register them alongside structs so a boxed alias value gets
+	// a nonzero `_typ` dispatch id.
 	for name, _ in g.tc.type_aliases {
 		if name !in struct_names {
 			struct_names << name
@@ -239,6 +242,38 @@ fn (g &FlatGen) iface_type_id(iface string, concrete string) int {
 	return g.iface_type_ids['${iface}::${concrete}'] or { 0 }
 }
 
+// iface_type_id_for_concrete resolves the dispatch id for a boxed concrete
+// type, including alias implementers. The checker normalizes alias-typed
+// values to their base type (`p := Puppy{}` annotates `p` as `Dog`), so when
+// the direct lookup fails, fall back to the alias's base type, and from a base
+// type to the single alias implementer that resolves to it (if unambiguous).
+fn (g &FlatGen) iface_type_id_for_concrete(iface string, concrete types.Type) int {
+	concrete_name := concrete.name()
+	mut id := g.iface_type_id(iface, concrete_name)
+	if id != 0 {
+		return id
+	}
+	if concrete is types.Alias {
+		id = g.iface_type_id(iface, concrete.base_type.name())
+		if id != 0 {
+			return id
+		}
+	}
+	mut alias_id := 0
+	mut matches := 0
+	for impl in g.iface_impls[iface] or { []string{} } {
+		target := g.tc.type_aliases[impl] or { continue }
+		if target == concrete_name || g.tc.qualify_name(target) == g.tc.qualify_name(concrete_name) {
+			alias_id = g.iface_type_id(iface, impl)
+			matches++
+		}
+	}
+	if matches == 1 {
+		return alias_id
+	}
+	return 0
+}
+
 fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type) bool {
 	iface_type := if expected is types.Alias { expected.base_type } else { expected }
 	if iface_type !is types.Interface {
@@ -261,7 +296,7 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	if concrete_name.len == 0 {
 		return false
 	}
-	type_id := g.iface_type_id(iface.name, concrete_name)
+	type_id := g.iface_type_id_for_concrete(iface.name, actual_clean)
 	ct := g.tc.c_type(iface)
 	fields := g.tc.interface_fields[iface.name] or { []types.StructField{} }
 	concrete_ct := g.tc.c_type(actual_base)
@@ -331,7 +366,7 @@ fn (g &FlatGen) interface_init_typ_id(node flat.Node) ?int {
 		if field.kind == .field_init && field.value == '_object' && field.children_count > 0 {
 			obj_type := g.tc.resolve_type(g.a.child(field, 0))
 			concrete := types.unwrap_pointer(obj_type)
-			id := g.iface_type_id(iface, concrete.name())
+			id := g.iface_type_id_for_concrete(iface, concrete)
 			if id != 0 {
 				return id
 			}
