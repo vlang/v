@@ -1,19 +1,19 @@
-// vtest build: db_mysql?
+// vtest build: db_mssql?
 module db
 
-import db.mysql
+import db.mssql
 
-fn test_mysql_rows_to_rows_copies_column_names() {
-	result := mysql.RowSet{
+fn test_mssql_result_to_rows_copies_column_names() {
+	result := mssql.Result{
 		names: ['name', 'status']
 		rows:  [
-			mysql.Row{
+			mssql.Row{
 				vals: ['alice', 'active']
 			},
 		]
 	}
 
-	normalized := mysql_row_set_to_rows(result)
+	normalized := mssql_result_to_rows(result)
 	assert normalized.len == 1
 	assert normalized[0].names == ['name', 'status']
 	assert normalized[0].val(0) == 'alice'

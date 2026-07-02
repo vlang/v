@@ -10,6 +10,13 @@ pub mut:
 	vals []string
 }
 
+// RowSet contains materialized rows and their column names.
+pub struct RowSet {
+pub:
+	names []string
+	rows  []Row
+}
+
 pub struct Field {
 	name             string
 	org_name         string

@@ -3,6 +3,19 @@ module db
 
 import db.pg
 
+fn test_pg_config_from_driver_config_leaves_host_port_unset() {
+	config := pg_config_from_driver_config(DriverConfig{})!
+	assert config.host == ''
+	assert config.port == 0
+
+	configured := pg_config_from_driver_config(DriverConfig{
+		host: 'db.example.com'
+		port: 15432
+	})!
+	assert configured.host == 'db.example.com'
+	assert configured.port == 15432
+}
+
 fn test_pg_result_to_rows_copies_column_names() {
 	mut vals := []?string{}
 	vals << 'alice'

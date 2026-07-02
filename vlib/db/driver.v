@@ -261,6 +261,10 @@ $if db_mysql ? {
 		return mysql_rows_to_rows(result.rows(), result.field_names())
 	}
 
+	fn mysql_row_set_to_rows(result mysql.RowSet) []DriverRow {
+		return mysql_rows_to_rows(result.rows, result.names)
+	}
+
 	fn (mut driver MysqlDriver) exec(query string) ![]DriverRow {
 		result := driver.conn.query(query)!
 		if result.result == unsafe { nil } {
@@ -281,7 +285,7 @@ $if db_mysql ? {
 	}
 
 	fn (mut driver MysqlDriver) exec_param_many(query string, params []string) ![]DriverRow {
-		return mysql_rows_to_rows(driver.conn.exec_param_many(query, params)!, []string{})
+		return mysql_row_set_to_rows(driver.conn.exec_param_many_result(query, params)!)
 	}
 
 	fn (mut driver MysqlDriver) validate() !bool {
@@ -304,10 +308,10 @@ $if db_pg ? {
 		conn &pg.Conn = unsafe { nil }
 	}
 
-	fn open_pg(config DriverConfig) !&Driver {
-		conn := pg.connect_direct(pg.Config{
-			host:     if config.host != '' { config.host } else { 'localhost' }
-			port:     if config.port > 0 { config.port } else { 5432 }
+	fn pg_config_from_driver_config(config DriverConfig) !pg.Config {
+		return pg.Config{
+			host:     config.host
+			port:     config.port
 			user:     config.user
 			username: config.username
 			password: config.password
@@ -317,7 +321,11 @@ $if db_pg ? {
 			ssl_cert: config.ssl_cert
 			ssl_ca:   config.ssl_ca
 			ssl_crl:  config.ssl_crl
-		})!
+		}
+	}
+
+	fn open_pg(config DriverConfig) !&Driver {
+		conn := pg.connect_direct(pg_config_from_driver_config(config)!)!
 		mut driver := &PgDriver{
 			conn: conn
 		}
@@ -409,23 +417,28 @@ $if db_mssql ? {
 		return driver
 	}
 
-	fn mssql_row_to_row(row mssql.Row) DriverRow {
+	fn mssql_row_to_row(row mssql.Row, names []string) DriverRow {
 		return DriverRow{
-			vals: row.vals.clone()
+			vals:  row.vals.clone()
+			names: names.clone()
 		}
 	}
 
-	fn mssql_rows_to_rows(rows []mssql.Row) []DriverRow {
+	fn mssql_rows_to_rows(rows []mssql.Row, names []string) []DriverRow {
 		mut normalized := []DriverRow{cap: rows.len}
 		for row in rows {
-			normalized << mssql_row_to_row(row)
+			normalized << mssql_row_to_row(row, names)
 		}
 		return normalized
 	}
 
+	fn mssql_result_to_rows(result mssql.Result) []DriverRow {
+		return mssql_rows_to_rows(result.rows, result.names)
+	}
+
 	fn (mut driver MssqlDriver) exec(query string) ![]DriverRow {
 		res := driver.conn.query(query)!
-		return mssql_rows_to_rows(res.rows)
+		return mssql_result_to_rows(res)
 	}
 
 	fn (mut driver MssqlDriver) exec_one(query string) !DriverRow {
