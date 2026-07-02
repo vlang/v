@@ -12,7 +12,7 @@ fn build_parallel_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_cgen_test')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vexe} -d parallel -gc none -path "${parallel_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${parallel_v3_src}')
+		os.execute('${vexe} -gc none -path "${parallel_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${parallel_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -22,7 +22,7 @@ fn build_parallel_prod_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_prod_cgen_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vexe} -d parallel -gc none -prod -path "${parallel_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${parallel_v3_src}')
+		os.execute('${vexe} -gc none -prod -path "${parallel_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${parallel_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -290,13 +290,13 @@ fn test_parallel_transform_selfhost_builds_v3() {
 	assert c_code.contains('transform_chunk_thread'), c_code
 }
 
-fn test_no_parallel_selfhost_omits_parallel_support() {
+fn test_no_parallel_directory_selfhost_omits_parallel_support() {
 	v3_bin := build_parallel_prod_v3()
-	bin_out := os.join_path(os.temp_dir(), 'v3_no_parallel_selfhost_out_${os.getpid()}')
+	bin_out := os.join_path(os.temp_dir(), 'v3_no_parallel_dir_selfhost_out_${os.getpid()}')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	compile :=
-		os.execute('VJOBS=2 ${v3_bin} --no-parallel -building-v -o ${bin_out} ${parallel_v3_src}')
+		os.execute('VJOBS=2 ${v3_bin} --no-parallel -selfhost -o ${bin_out} ${parallel_v3_dir}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('transform (parallel)'), compile.output
 	assert !compile.output.contains('cgen (parallel)'), compile.output
