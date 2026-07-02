@@ -232,6 +232,19 @@ fn test_local_sibling_types_are_predeclared_before_fields() {
 	assert b_fields == ['a:&${local_a}']
 }
 
+fn test_local_type_scope_names_do_not_collapse_punctuation() {
+	a := parse_parser_regression_source('local_scope_punctuation_collision',
+		'module main\n\nstruct Foo {}\n\nfn (f Foo) bar() {\n\tstruct Row {\n\t\tmethod int\n\t}\n\t_ := Row{}\n}\n\nfn Foo_bar() {\n\tstruct Row {\n\t\tfunction int\n\t}\n\t_ := Row{}\n}\n')
+	mut row_names := []string{}
+	for node in a.nodes {
+		if node.kind == .struct_decl && node.value.starts_with('Row__local_') {
+			row_names << node.value
+		}
+	}
+	assert row_names.len == 2
+	assert row_names[0] != row_names[1]
+}
+
 fn test_multiline_keyword_infix_expressions_continue_after_semicolon() {
 	a := parse_parser_regression_source('multiline_keyword_infix',
 		'module main\n\nstruct Foo {}\n\nfn main() {\n\tvalue := Foo{}\n\tif value\n\t\tis Foo {}\n\txs := [1, 2]\n\tok := 1\n\t\tin xs\n\t_ := value\n\t\tas Foo\n\t_ = ok\n}\n')

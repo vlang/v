@@ -5725,10 +5725,13 @@ fn (p &Parser) resolve_local_type_name(name string) string {
 fn local_type_scope_part(name string) string {
 	mut out := strings.new_builder(name.len)
 	for ch in name {
-		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
-			|| (ch >= `0` && ch <= `9`) || ch == `_` {
+		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || (ch >= `0` && ch <= `9`) {
 			out.write_rune(ch)
+		} else if ch == `_` {
+			out.write_string('_u')
 		} else {
+			out.write_string('_x')
+			out.write_string(int(ch).hex())
 			out.write_u8(`_`)
 		}
 	}
