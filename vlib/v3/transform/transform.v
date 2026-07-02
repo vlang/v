@@ -7709,11 +7709,16 @@ fn (mut t Transformer) lower_one_match(node flat.Node) flat.NodeId {
 
 	mut actual_expr_id := match_expr_id
 	mut prefix_id := flat.empty_node
+	mut match_prelude := []flat.NodeId{}
 
 	if needs_temp {
 		tmp_name := '__match_tmp_${int(match_expr_id)}'
 		match_type := t.node_type(match_expr_id)
+		outer_pending := t.pending_stmts.clone()
+		t.pending_stmts.clear()
 		transformed_match_expr := t.transform_expr(match_expr_id)
+		t.drain_pending(mut match_prelude)
+		t.pending_stmts = outer_pending
 		tmp_ident := t.a.add_val(.ident, tmp_name)
 		t.a.nodes[int(tmp_ident)].typ = match_type
 		decl_start := t.a.children.len
@@ -7737,12 +7742,15 @@ fn (mut t Transformer) lower_one_match(node flat.Node) flat.NodeId {
 
 	if needs_temp {
 		block_start := t.a.children.len
+		for id in match_prelude {
+			t.a.children << id
+		}
 		t.a.children << prefix_id
 		t.a.children << if_id
 		block_id := t.a.add_node(flat.Node{
 			kind:           .block
 			children_start: block_start
-			children_count: 2
+			children_count: flat.child_count(match_prelude.len + 2)
 			typ:            result_type
 		})
 		return block_id
