@@ -133,6 +133,7 @@ pub enum TypeErrorKind {
 	return_mismatch
 	call_arg_mismatch
 	condition_mismatch
+	duplicate_decl
 	unhandled_node
 	unsupported_generic
 }
@@ -515,7 +516,8 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 		}
 	}
 	// Pass 1: collect type-level names (aliases, enums, sum types)
-	for node in a.nodes {
+	mut c_struct_decl_sigs := map[string]string{}
+	for node_idx, node in a.nodes {
 		match node.kind {
 			.file {
 				tc.enter_file(node.value)
@@ -545,6 +547,24 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 			}
 			.struct_decl {
 				qname := tc.qualify_name(node.value)
+				if qname.starts_with('C.') {
+					c_struct_key := tc.cur_file + '\n' + qname
+					c_struct_sig := c_struct_decl_signature(a, node)
+					if c_struct_key in c_struct_decl_sigs {
+						existing_sig := c_struct_decl_sigs[c_struct_key]
+						if !c_struct_decl_signatures_compatible(existing_sig, c_struct_sig) {
+							tc.record_error_unfiltered(.duplicate_decl,
+								'cannot redeclare C struct `${qname}`', flat.NodeId(node_idx))
+						}
+						existing_fields := c_struct_decl_signature_field_count(existing_sig)
+						current_fields := c_struct_decl_signature_field_count(c_struct_sig)
+						if current_fields > existing_fields {
+							c_struct_decl_sigs[c_struct_key] = c_struct_sig
+						}
+					} else {
+						c_struct_decl_sigs[c_struct_key] = c_struct_sig
+					}
+				}
 				if qname !in tc.structs {
 					tc.structs[qname] = []StructField{}
 				}
@@ -782,6 +802,62 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	$if ownership ? {
 		tc.ownership_after_collect()
 	}
+}
+
+fn c_struct_decl_signature(a &flat.FlatAst, node flat.Node) string {
+	mut sig := node.typ
+	mut has_fields := false
+	for i in 0 .. node.children_count {
+		f := a.child_node(&node, i)
+		if f.kind != .field_decl {
+			continue
+		}
+		has_fields = true
+		field_name := if f.value.starts_with('@') { f.value[1..] } else { f.value }
+		sig += '|${field_name}:${f.typ}'
+	}
+	if !has_fields {
+		return ''
+	}
+	return sig
+}
+
+fn c_struct_decl_signatures_compatible(a string, b string) bool {
+	if a.len == 0 || b.len == 0 || a == b {
+		return true
+	}
+	a_parts := a.split('|')
+	b_parts := b.split('|')
+	if a_parts.len == 0 || b_parts.len == 0 || a_parts[0] != b_parts[0] {
+		return false
+	}
+	if a_parts[0] != 'union' {
+		return false
+	}
+	a_fields := a_parts[1..]
+	b_fields := b_parts[1..]
+	return c_struct_decl_fields_subset(a_fields, b_fields)
+		|| c_struct_decl_fields_subset(b_fields, a_fields)
+}
+
+fn c_struct_decl_fields_subset(small []string, big []string) bool {
+	for field in small {
+		if field !in big {
+			return false
+		}
+	}
+	return true
+}
+
+fn c_struct_decl_signature_field_count(sig string) int {
+	if sig.len == 0 {
+		return 0
+	}
+	parts := sig.split('|')
+	if parts.len <= 1 {
+		return 0
+	}
+	return parts.len - 1
 }
 
 // build_const_suffixes maps every dot-delimited suffix of each const key to that
