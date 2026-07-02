@@ -3049,6 +3049,7 @@ fn (tc &TypeChecker) stmt_definitely_returns(id flat.NodeId) bool {
 				}
 			}
 			return has_else || tc.match_without_else_exhaustive_enum_returns(node)
+				|| tc.match_without_else_exhaustive_bool_returns(node)
 		}
 		else {
 			return false
@@ -3215,6 +3216,42 @@ fn (tc &TypeChecker) match_without_else_exhaustive_enum_returns(node flat.Node) 
 		return true
 	}
 	return false
+}
+
+fn (tc &TypeChecker) match_without_else_exhaustive_bool_returns(node flat.Node) bool {
+	if node.children_count < 3 {
+		return false
+	}
+	subject_type := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
+	if subject_type !is Primitive {
+		return false
+	}
+	if !subject_type.props.has(.boolean) {
+		return false
+	}
+	mut covered_true := false
+	mut covered_false := false
+	for i in 1 .. node.children_count {
+		branch := tc.a.child_node(&node, i)
+		if branch.kind != .match_branch || branch.value == 'else' {
+			return false
+		}
+		n_conds := branch.value.int()
+		if n_conds <= 0 || n_conds > branch.children_count {
+			return false
+		}
+		for j in 0 .. n_conds {
+			cond := tc.a.child_node(branch, j)
+			if cond.kind == .bool_literal {
+				if cond.value == 'true' {
+					covered_true = true
+				} else if cond.value == 'false' {
+					covered_false = true
+				}
+			}
+		}
+	}
+	return covered_true && covered_false
 }
 
 fn (tc &TypeChecker) match_enum_condition_field(cond &flat.Node, enum_name string) ?string {
@@ -4137,6 +4174,62 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 		return false
 	}
 	rhs_id := tc.a.child(&node, 1)
+	rhs := tc.a.nodes[int(rhs_id)]
+	lhs_ids := tc.multi_assign_lhs_ids(node)
+	if tc.multi_assign_rhs_count(node) != 1 {
+		return false
+	}
+	if rhs.kind == .match_stmt {
+		tc.check_node(rhs_id)
+		if rhs_types := tc.match_multi_return_types(rhs_id, lhs_ids.len) {
+			tc.register_synth_type(rhs_id, MultiReturn{
+				types: rhs_types
+			})
+			for i, lhs_id in lhs_ids {
+				tc.insert_decl_lhs(lhs_id, rhs_types[i])
+			}
+			$if ownership ? {
+				tc.ownership_after_multi_return_decl_assign(lhs_ids, rhs_id, MultiReturn{
+					types: rhs_types
+				}, id)
+			}
+			return true
+		}
+		if tc.should_diagnose(id) {
+			if tc.match_has_tuple_tail_values(rhs_id, lhs_ids.len) {
+				tc.record_error(.assignment_mismatch,
+					'match expression branches cannot produce multiple assignment values', id)
+			} else {
+				tc.record_error(.assignment_mismatch,
+					'multi-return assignment mismatch: expression branches must all produce ${lhs_ids.len} compatible values',
+					id)
+			}
+		}
+		return true
+	}
+	if rhs.kind == .if_expr {
+		tc.check_node(rhs_id)
+		if rhs_types := tc.multi_expr_tail_types(rhs_id, lhs_ids.len) {
+			for i, lhs_id in lhs_ids {
+				tc.insert_decl_lhs(lhs_id, rhs_types[i])
+			}
+			$if ownership ? {
+				tc.ownership_after_multi_return_decl_assign(lhs_ids, rhs_id, MultiReturn{
+					types: rhs_types
+				}, id)
+			}
+			return true
+		}
+		rhs_type := tc.resolve_type(rhs_id)
+		if rhs_type !is MultiReturn || tc.expr_has_tuple_tail_values(rhs_id, lhs_ids.len) {
+			if tc.should_diagnose(id) {
+				tc.record_error(.assignment_mismatch,
+					'multi-return assignment mismatch: expression branches must all produce ${lhs_ids.len} compatible values',
+					id)
+			}
+			return true
+		}
+	}
 	mut rhs_type := tc.resolve_type(rhs_id)
 	mut rhs_checked := false
 	mut rhs_multi := MultiReturn{}
@@ -4175,7 +4268,6 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 		if !rhs_checked {
 			tc.check_node(rhs_id)
 		}
-		lhs_ids := tc.multi_assign_lhs_ids(node)
 		if lhs_ids.len != rhs_multi.types.len {
 			if tc.should_diagnose(id) {
 				tc.record_error(.assignment_mismatch,
@@ -4193,6 +4285,95 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 		return true
 	}
 	return false
+}
+
+fn (tc &TypeChecker) multi_expr_tail_types(expr_id flat.NodeId, count int) ?[]Type {
+	values := tc.multi_expr_tail_value_ids(expr_id, count) or { return none }
+	mut types := []Type{cap: values.len}
+	for value_id in values {
+		types << tc.resolve_type(value_id)
+	}
+	return types
+}
+
+fn (tc &TypeChecker) multi_expr_tail_value_ids(expr_id flat.NodeId, count int) ?[]flat.NodeId {
+	if count <= 0 || !tc.valid_node_id(expr_id) {
+		return none
+	}
+	node := tc.a.nodes[int(expr_id)]
+	match node.kind {
+		.if_expr {
+			if node.children_count < 2 {
+				return none
+			}
+			return tc.tuple_tail_value_ids(tc.a.child(&node, 1), count)
+		}
+		.match_stmt {
+			for i in 1 .. node.children_count {
+				branch_id := tc.a.child(&node, i)
+				if !tc.valid_node_id(branch_id) {
+					continue
+				}
+				branch := tc.a.nodes[int(branch_id)]
+				if branch.kind == .match_branch {
+					return tc.tuple_tail_value_ids(branch_id, count)
+				}
+			}
+		}
+		.block, .match_branch {
+			return tc.tuple_tail_value_ids(expr_id, count)
+		}
+		.expr_stmt {
+			if node.children_count > 0 {
+				return tc.multi_expr_tail_value_ids(tc.a.child(&node, 0), count)
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (tc &TypeChecker) tuple_tail_value_ids(body_id flat.NodeId, count int) ?[]flat.NodeId {
+	if count <= 0 || !tc.valid_node_id(body_id) {
+		return none
+	}
+	body := tc.a.nodes[int(body_id)]
+	body_start := if body.kind == .match_branch {
+		if body.value == 'else' { 0 } else { body.value.int() }
+	} else {
+		0
+	}
+	if body.kind !in [.block, .match_branch] || body.children_count <= body_start {
+		return none
+	}
+	last_id := tc.a.child(&body, body.children_count - 1)
+	if tc.valid_node_id(last_id) {
+		last := tc.a.nodes[int(last_id)]
+		if last.kind in [.block, .match_branch, .if_expr, .match_stmt] {
+			if nested := tc.multi_expr_tail_value_ids(last_id, count) {
+				if nested.len == count {
+					return nested
+				}
+			}
+		}
+	}
+	mut values := []flat.NodeId{}
+	for i := int(body.children_count) - 1; i >= body_start; i-- {
+		child_id := tc.a.child(&body, i)
+		if !tc.valid_node_id(child_id) {
+			break
+		}
+		child := tc.a.nodes[int(child_id)]
+		if child.kind != .expr_stmt || child.children_count == 0 {
+			break
+		}
+		values.prepend(tc.a.child(&child, 0))
+		if values.len == count {
+			return values
+		}
+	}
+	return none
 }
 
 // multi_assign_lhs_ids supports multi assign lhs ids handling for TypeChecker.
@@ -4319,6 +4500,63 @@ fn (mut tc TypeChecker) check_multi_return_assign(id flat.NodeId, node flat.Node
 		return false
 	}
 	rhs_id := tc.a.child(&node, 1)
+	rhs := tc.a.nodes[int(rhs_id)]
+	lhs_ids := tc.multi_assign_lhs_ids(node)
+	if tc.multi_assign_rhs_count(node) != 1 {
+		return false
+	}
+	if rhs.kind == .match_stmt {
+		tc.check_node(rhs_id)
+		if rhs_types := tc.match_multi_return_types(rhs_id, lhs_ids.len) {
+			tc.register_synth_type(rhs_id, MultiReturn{
+				types: rhs_types
+			})
+			for i, lhs_id in lhs_ids {
+				lhs_type := tc.resolve_lvalue_type(lhs_id)
+				if !tc.type_compatible(rhs_types[i], lhs_type) {
+					tc.type_mismatch(.assignment_mismatch,
+						'cannot assign `${rhs_types[i].name()}` to `${lhs_type.name()}`', id)
+				}
+			}
+			$if ownership ? {
+				tc.ownership_after_multi_return_assign(lhs_ids, rhs_id, MultiReturn{
+					types: rhs_types
+				}, id)
+			}
+			return true
+		}
+		if tc.should_diagnose(id) {
+			if tc.match_has_tuple_tail_values(rhs_id, lhs_ids.len) {
+				tc.record_error(.assignment_mismatch,
+					'match expression branches cannot produce multiple assignment values', id)
+			} else {
+				tc.record_error(.assignment_mismatch,
+					'multi-return assignment mismatch: expression branches must all produce ${lhs_ids.len} compatible values',
+					id)
+			}
+		}
+		return true
+	}
+	if rhs.kind == .if_expr {
+		tc.check_node(rhs_id)
+		if rhs_types := tc.multi_expr_tail_assign_types(id, rhs_id, lhs_ids) {
+			$if ownership ? {
+				tc.ownership_after_multi_return_assign(lhs_ids, rhs_id, MultiReturn{
+					types: rhs_types
+				}, id)
+			}
+			return true
+		}
+		rhs_type := tc.resolve_type(rhs_id)
+		if rhs_type !is MultiReturn || tc.expr_has_tuple_tail_values(rhs_id, lhs_ids.len) {
+			if tc.should_diagnose(id) {
+				tc.record_error(.assignment_mismatch,
+					'multi-return assignment mismatch: expression branches must all produce ${lhs_ids.len} compatible values',
+					id)
+			}
+			return true
+		}
+	}
 	mut rhs_type := tc.resolve_type(rhs_id)
 	mut rhs_checked := false
 	mut rhs_multi := MultiReturn{}
@@ -4357,7 +4595,6 @@ fn (mut tc TypeChecker) check_multi_return_assign(id flat.NodeId, node flat.Node
 		if !rhs_checked {
 			tc.check_node(rhs_id)
 		}
-		lhs_ids := tc.multi_assign_lhs_ids(node)
 		if lhs_ids.len != rhs_multi.types.len {
 			if tc.should_diagnose(id) {
 				tc.record_error(.assignment_mismatch,
@@ -4498,6 +4735,26 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 					tc.ownership_after_return(id, node)
 				}
 				return
+			}
+			child := tc.a.nodes[int(child_id)]
+			if child.kind in [.if_expr, .match_stmt] {
+				if item_types := tc.multi_expr_tail_types(child_id, multi.types.len) {
+					mut all_ok := item_types.len == multi.types.len
+					if all_ok {
+						for i, item_type in item_types {
+							if !tc.type_compatible(item_type, multi.types[i]) {
+								all_ok = false
+								break
+							}
+						}
+					}
+					if all_ok {
+						$if ownership ? {
+							tc.ownership_after_return(id, node)
+						}
+						return
+					}
+				}
 			}
 		}
 		if node.children_count != multi.types.len {
@@ -6080,6 +6337,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				variadic_raw := info.params[info.params.len - 1]
 				if variadic_raw is Array {
 					elem_type := array_elem_type(variadic_raw)
+					if variadic_elem_accepts_any(elem_type) {
+						if has_dsl_scope {
+							tc.pop_scope()
+						}
+						continue
+					}
 					actual := tc.resolve_expr(arg_id, elem_type)
 					if !tc.receiver_compatible(actual, elem_type) {
 						tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
@@ -6103,6 +6366,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		expected_raw := expected
 		if info.is_variadic && param_idx == info.params.len - 1 && expected_raw is Array {
 			elem_type := array_elem_type(expected_raw)
+			if variadic_elem_accepts_any(elem_type) {
+				if has_dsl_scope {
+					tc.pop_scope()
+				}
+				continue
+			}
 			actual := tc.resolve_expr(arg_id, elem_type)
 			actual_name := actual.name()
 			expected_name := elem_type.name()
@@ -6143,6 +6412,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				id)
 		}
 	}
+}
+
+fn variadic_elem_accepts_any(typ Type) bool {
+	if typ is Pointer {
+		return typ.base_type is Void
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info CallInfo) CallInfo {

@@ -1213,12 +1213,48 @@ fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_ty
 			t.transform_expr(arg_id)
 		}
 		value_name := t.new_temp('vararg')
-		t.pending_stmts << t.make_decl_assign_typed(value_name, value, expected_enum)
+		if variadic_elem_is_voidptr(elem_type) {
+			storage_type := t.voidptr_variadic_storage_type(arg_id)
+			storage_value := if storage_type != t.node_type(arg_id) {
+				t.make_cast(storage_type, value, storage_type)
+			} else {
+				value
+			}
+			storage_name := t.new_temp('vararg_storage')
+			t.pending_stmts << t.make_decl_assign_typed(storage_name, storage_value, storage_type)
+			ptr_value := t.make_cast('voidptr', t.make_prefix(.amp, t.make_ident(storage_name)),
+				'voidptr')
+			t.pending_stmts << t.make_decl_assign_typed(value_name, ptr_value, expected_enum)
+		} else {
+			t.pending_stmts << t.make_decl_assign_typed(value_name, value, expected_enum)
+		}
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('array_push', arr2(t.make_prefix(.amp,
 			t.make_ident(tmp_name)), t.make_prefix(.amp, t.make_ident(value_name))), 'void'))
 	}
 	t.set_var_type(tmp_name, array_type)
 	return t.make_ident(tmp_name)
+}
+
+fn variadic_elem_is_voidptr(typ types.Type) bool {
+	if typ is types.Pointer {
+		return typ.base_type is types.Void
+	}
+	return false
+}
+
+fn (t &Transformer) voidptr_variadic_storage_type(arg_id flat.NodeId) string {
+	typ := t.node_type(arg_id)
+	match typ {
+		'i8', 'u8', 'i16', 'u16' {
+			return 'int'
+		}
+		'f32' {
+			return 'f64'
+		}
+		else {
+			return typ
+		}
+	}
 }
 
 fn (mut t Transformer) transform_variadic_struct_fields(node flat.Node, field_start int, elem_type types.Type) ?flat.NodeId {

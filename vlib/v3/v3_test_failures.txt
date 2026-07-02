@@ -402,9 +402,6 @@ vlib/runtime/runtime_test.v
 vlib/runtime/used_memory_test.v
 vlib/sokol/gfx/gfx_test.v
 vlib/stbi/stbi_test.v
-vlib/strconv/atoi_test.v
-vlib/strconv/atou_test.v
-vlib/strconv/f32_str_should_be_different_test.v
 vlib/strconv/format_test.v
 vlib/strings/lorem/lorem_test.v
 vlib/strings/strings_test.v
@@ -1117,7 +1114,6 @@ vlib/v/tests/fns/return_multi_fixed_arr_test.v
 vlib/v/tests/fns/sort_fn_def_test.v
 vlib/v/tests/fns/static_method_as_map_arg_test.v
 vlib/v/tests/fns/variadic_interface_array_arg_test.v
-vlib/v/tests/fns/variadic_voidptr_rvalue_test.v
 vlib/v/tests/for_brace_block_tmpl_test.v
 vlib/v/tests/for_in_iterator_next_test.v
 vlib/v/tests/generic_calls/bug_test.v
@@ -1455,7 +1451,6 @@ vlib/v/tests/modules/interface_array_concat_from_another_module/main_test.v
 vlib/v/tests/modules/interface_from_another_module/ifam_test.v
 vlib/v/tests/modules/methods_struct_another_module/import_symbol_static_method_test.v
 vlib/v/tests/modules/methods_struct_another_module/methods_struct_test.v
-vlib/v/tests/multi_line_with_options_test.v
 vlib/v/tests/multi_return_test.v
 vlib/v/tests/multiple_comptime_tmpl_in_one_fn_test.v
 vlib/v/tests/multiret_with_sumtype_test.v
@@ -1531,14 +1526,12 @@ vlib/v/tests/options/option_map_struct_field_init_test.v
 vlib/v/tests/options/option_map_value_test.v
 vlib/v/tests/options/option_match_case_enum_test.v
 vlib/v/tests/options/option_match_case_test.v
-vlib/v/tests/options/option_match_cases_test.v
 vlib/v/tests/options/option_match_expr_test.v
 vlib/v/tests/options/option_match_none_test.v
 vlib/v/tests/options/option_match_test.v
 vlib/v/tests/options/option_method_selector_test.v
 vlib/v/tests/options/option_multi_ret_test.v
 vlib/v/tests/options/option_multi_return_assign_test.v
-vlib/v/tests/options/option_multi_return_if_test.v
 vlib/v/tests/options/option_multi_return_opt_test.v
 vlib/v/tests/options/option_multi_return_test.v
 vlib/v/tests/options/option_mut_generic_array_test.v
@@ -1726,11 +1719,9 @@ vlib/v/tests/structs/struct_field_default_shadowed_global_test.v
 vlib/v/tests/structs/struct_field_default_union_of_structs_marked_with_noinit_test.v
 vlib/v/tests/structs/struct_field_default_value_optional_test.v
 vlib/v/tests/structs/struct_field_fixed_array_init_with_default_value_test.v
-vlib/v/tests/structs/struct_field_init_with_fixed_array_init_test.v
 vlib/v/tests/structs/struct_field_init_with_fixed_array_opt_test.v
 vlib/v/tests/structs/struct_field_init_with_generic_anon_fn_test.v
 vlib/v/tests/structs/struct_field_init_with_generic_fn_test.v
-vlib/v/tests/structs/struct_field_name_using_keyword_test.v
 vlib/v/tests/structs/struct_field_option_type_with_default_value_init_test.v
 vlib/v/tests/structs/struct_field_shared_test.v
 vlib/v/tests/structs/struct_generic_sizeof_test.v
@@ -1745,7 +1736,6 @@ vlib/v/tests/structs/struct_init_with_multi_option_fn_type_test.v
 vlib/v/tests/structs/struct_init_with_update_test.v
 vlib/v/tests/structs/struct_local_test.v
 vlib/v/tests/structs/struct_option_field_comparison_test.v
-vlib/v/tests/structs/struct_scoped_test.v
 vlib/v/tests/structs/struct_selector_or_block_test.v
 vlib/v/tests/structs/struct_test.v
 vlib/v/tests/structs/struct_transmute_test.v

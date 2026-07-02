@@ -1081,24 +1081,29 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	for p.tok != .rcbr && p.tok != .eof {
 		// access modifiers
 		if p.tok == .key_pub {
-			p.next()
-			if p.tok == .key_mut {
+			peek_tok := p.peek()
+			peek_lit := p.peek_lit
+			if peek_tok == .colon || peek_tok == .key_mut
+				|| (peek_tok == .name && peek_lit == 'module_mut') {
 				p.next()
+				if p.tok == .key_mut {
+					p.next()
+				}
+				if p.tok == .name && p.lit == 'module_mut' {
+					p.next()
+				}
+				if p.tok == .colon {
+					p.next()
+				}
+				continue
 			}
-			if p.tok == .name && p.lit == 'module_mut' {
-				p.next()
-			}
-			if p.tok == .colon {
-				p.next()
-			}
-			continue
 		}
 		if p.tok == .key_mut {
-			p.next()
-			if p.tok == .colon {
+			if p.peek() == .colon {
 				p.next()
+				p.next()
+				continue
 			}
-			continue
 		}
 		if p.tok == .semicolon {
 			p.next()
@@ -2574,6 +2579,18 @@ fn (mut p Parser) stmt() flat.NodeId {
 		.key_fn {
 			return p.fn_decl()
 		}
+		.key_struct, .key_union {
+			return p.struct_decl()
+		}
+		.key_enum {
+			return p.enum_decl()
+		}
+		.key_type {
+			return p.type_decl()
+		}
+		.key_interface {
+			return p.interface_decl()
+		}
 		.key_match {
 			return p.match_stmt()
 		}
@@ -2615,6 +2632,18 @@ fn (mut p Parser) stmt() flat.NodeId {
 			p.next()
 			if p.tok == .key_fn {
 				return p.fn_decl()
+			}
+			if p.tok == .key_struct || p.tok == .key_union {
+				return p.struct_decl()
+			}
+			if p.tok == .key_enum {
+				return p.enum_decl()
+			}
+			if p.tok == .key_type {
+				return p.type_decl()
+			}
+			if p.tok == .key_interface {
+				return p.interface_decl()
 			}
 			return p.assign_or_expr_stmt()
 		}
@@ -3132,14 +3161,13 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		mod_name := p.lit
 		p.next()
 		p.next()
-		if p.tok == .name && p.lit.len > 0 && p.lit[0] >= `A` && p.lit[0] <= `Z` {
-			type_name := p.lit
-			p.next()
+		field_name := p.expect_name_or_keyword()
+		if field_name.len > 0 && field_name[0] >= `A` && field_name[0] <= `Z` {
 			mod_id := p.a.add_val(.ident, mod_name)
 			start := p.add_child(mod_id)
 			return p.a.add_node(flat.Node{
 				kind:           .selector
-				value:          type_name
+				value:          field_name
 				children_start: start
 				children_count: 1
 			})
@@ -3148,13 +3176,10 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		start := p.add_child(base_id)
 		sel := p.a.add_node(flat.Node{
 			kind:           .selector
-			value:          p.lit
+			value:          field_name
 			children_start: start
 			children_count: 1
 		})
-		if p.tok == .name {
-			p.next()
-		}
 		if p.tok != .lcbr && p.tok != .comma {
 			return p.expr_with_lhs(sel, .lowest)
 		}
@@ -3740,7 +3765,8 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 		// skip auto-semicolons before infix operators (multi-line expressions)
 		if p.tok == .semicolon {
 			peek_tok := p.peek()
-			if token_is_infix(peek_tok) && int(peek_tok) != 85 && int(peek_tok) != 0 {
+			if token_is_infix(peek_tok) && peek_tok !in [.key_as, .key_in, .key_is]
+				&& int(peek_tok) != 85 && int(peek_tok) != 0 {
 				p.next()
 			}
 		}
@@ -4039,6 +4065,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			}
 			if name == '@LINE' {
 				return p.a.add_val_id(1, '0')
+			}
+			if name == '@FILE_LINE' {
+				return p.a.add_val_id(5, '${p.cur_file}:0')
 			}
 			if name == '@MOD' {
 				if p.cur_module.len == 0 {

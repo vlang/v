@@ -445,7 +445,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 	}
 	g.in_return = false
 	match node.kind {
-		.fn_decl, .c_fn_decl {
+		.fn_decl, .c_fn_decl, .struct_decl, .type_decl, .enum_decl, .interface_decl {
 			return
 		}
 		.expr_stmt {

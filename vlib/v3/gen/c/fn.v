@@ -2891,12 +2891,17 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 							c_elem := g.tc.c_type(variadic_type.elem_type)
 							count := num_call_args - variadic_idx
 							g.write('new_array_from_c_array(${count}, ${count}, sizeof(${c_elem}), (${c_elem}[]){')
+							is_voidptr_variadic := variadic_elem_is_voidptr(variadic_type.elem_type)
 							for j in i .. node.children_count {
 								if j > i {
 									g.write(', ')
 								}
-								g.gen_expr_with_expected_type(g.a.child(&node, j),
-									variadic_type.elem_type)
+								if is_voidptr_variadic {
+									g.gen_voidptr_variadic_arg(g.a.child(&node, j))
+								} else {
+									g.gen_expr_with_expected_type(g.a.child(&node, j),
+										variadic_type.elem_type)
+								}
 							}
 							g.write('})')
 							break
@@ -2905,7 +2910,11 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						if arg_type !is types.Array {
 							c_elem := g.tc.c_type(variadic_type.elem_type)
 							g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), (${c_elem}[]){')
-							g.gen_expr_with_expected_type(arg_id, variadic_type.elem_type)
+							if variadic_elem_is_voidptr(variadic_type.elem_type) {
+								g.gen_voidptr_variadic_arg(arg_id)
+							} else {
+								g.gen_expr_with_expected_type(arg_id, variadic_type.elem_type)
+							}
 							g.write('})')
 							continue
 						}
@@ -4424,11 +4433,16 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				c_elem := g.tc.c_type(variadic_type.elem_type)
 				count := num_args - variadic_idx
 				g.write('new_array_from_c_array(${count}, ${count}, sizeof(${c_elem}), (${c_elem}[]){')
+				is_voidptr_variadic := variadic_elem_is_voidptr(variadic_type.elem_type)
 				for j in i .. node.children_count {
 					if j > i {
 						g.write(', ')
 					}
-					g.gen_expr_with_expected_type(g.a.child(&node, j), variadic_type.elem_type)
+					if is_voidptr_variadic {
+						g.gen_voidptr_variadic_arg(g.a.child(&node, j))
+					} else {
+						g.gen_expr_with_expected_type(g.a.child(&node, j), variadic_type.elem_type)
+					}
 				}
 				g.write('})')
 			}
@@ -4441,7 +4455,11 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				if variadic_type is types.Array {
 					c_elem := g.tc.c_type(variadic_type.elem_type)
 					g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), (${c_elem}[]){')
-					g.gen_expr_with_expected_type(arg_id, variadic_type.elem_type)
+					if variadic_elem_is_voidptr(variadic_type.elem_type) {
+						g.gen_voidptr_variadic_arg(arg_id)
+					} else {
+						g.gen_expr_with_expected_type(arg_id, variadic_type.elem_type)
+					}
 					g.write('})')
 					continue
 				}
@@ -4519,6 +4537,41 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			g.gen_default_value_for_type(param_types[i])
 		}
 	}
+}
+
+fn variadic_elem_is_voidptr(typ types.Type) bool {
+	if typ is types.Pointer {
+		return typ.base_type is types.Void
+	}
+	return false
+}
+
+fn (mut g FlatGen) gen_voidptr_variadic_arg(arg_id flat.NodeId) {
+	actual := g.tc.resolve_type(arg_id)
+	storage_ct := g.voidptr_variadic_storage_c_type(actual)
+	g.write('(voidptr)&((${storage_ct}[]){')
+	g.gen_expr_with_expected_type(arg_id, actual)
+	g.write('}[0])')
+}
+
+fn (g &FlatGen) voidptr_variadic_storage_c_type(actual types.Type) string {
+	mut clean := actual
+	for _ in 0 .. 8 {
+		if clean is types.Alias {
+			clean = clean.base_type
+			continue
+		}
+		break
+	}
+	if clean is types.Primitive {
+		if clean.props.has(.integer) && clean.size < 32 {
+			return 'int'
+		}
+		if clean.props.has(.float) && clean.size == 32 {
+			return 'double'
+		}
+	}
+	return g.tc.c_type(clean)
 }
 
 fn raw_sizeof_arg_value(value string) ?string {
