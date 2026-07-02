@@ -2004,7 +2004,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		}
 		return
 	}
-	if g.is_json_decode_target_name(target_name) {
+	if g.is_json_decode_call(id, target_name) {
 		ret_type := g.json_decode_result_type(g.a.child(&node, 0)) or {
 			g.call_default_return_type(id)
 		}
@@ -3058,8 +3058,17 @@ fn (g &FlatGen) call_has_selector_name(id flat.NodeId, name string) bool {
 }
 
 fn (g &FlatGen) is_json_decode_target_name(target string) bool {
-	return target in ['json.decode', 'json2.decode']
+	return target in ['json.decode', 'json2.decode', 'x.json2.decode']
 		|| (target == 'decode' && g.tc.cur_module in ['json', 'json2'])
+}
+
+fn (g &FlatGen) is_json_decode_call(id flat.NodeId, target string) bool {
+	if resolved := g.tc.resolved_call_name(id) {
+		if g.is_json_decode_target_name(resolved) {
+			return true
+		}
+	}
+	return g.is_json_decode_target_name(target)
 }
 
 fn (g &FlatGen) is_veb_json_result_call(fn_node flat.Node) bool {

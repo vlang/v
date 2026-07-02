@@ -190,6 +190,60 @@ fn main() {
 	assert generated.contains('submodule__sub_xy(10, 7)'), generated
 }
 
+fn test_selective_import_json_decode_uses_stub() {
+	v3_bin := selective_import_build_v3()
+	json_output, json_generated := selective_import_compile_run_with_extra(v3_bin, 'json_decode', 'module main
+
+import json { decode }
+
+struct Config {
+	value int
+}
+
+fn main() {
+	cfg := decode[Config]("{\\"value\\":1}") or { Config{value: 9} }
+	println(int_str(cfg.value))
+}
+', {
+		'json/json.v': 'module json
+
+pub fn decode[T](src string) !T {
+	_ = src
+	return error("real decode should not be emitted")
+}
+'
+	})
+	assert json_output == '9'
+	assert !json_generated.contains('json__decode'), json_generated
+	json2_output, json2_generated := selective_import_compile_run_with_extra(v3_bin,
+		'json2_decode', 'module main
+
+import x.json2 { DecoderOptions, decode }
+
+struct Config {
+	value int
+}
+
+fn main() {
+	cfg := decode[Config]("{\\"value\\":2}", DecoderOptions{}) or { Config{value: 8} }
+	println(int_str(cfg.value))
+}
+', {
+		'x/json2/decode.v': 'module json2
+
+pub struct DecoderOptions {}
+
+pub fn decode[T](val string, params DecoderOptions) !T {
+	_ = val
+	_ = params
+	return error("real decode should not be emitted")
+}
+'
+	})
+	assert json2_output == '8'
+	assert !json2_generated.contains('json2__decode'), json2_generated
+}
+
 fn test_selective_import_inside_generic_clone_keeps_source_file_symbol() {
 	v3_bin := selective_import_build_v3()
 	output, generated := selective_import_compile_run_with_extra(v3_bin,
