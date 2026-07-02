@@ -168,6 +168,16 @@ ifneq ($(CC),tcc)
 endif
 endif
 endif
+ifdef ANDROID
+ifneq ($(BOOTSTRAP_TCC_REQUESTED),)
+ifneq ($(CC),tcc)
+	# There is no Android TCC bundle yet. If `-cc tcc` was requested anyway,
+	# keep both bootstrap stages on the system compiler.
+	BOOTSTRAP_VC_CCOMPILER_VFLAG := -cc "$(CC)"
+	BOOTSTRAP_CCOMPILER_VFLAG := -cc "$(CC)"
+endif
+endif
+endif
 BOOTSTRAP_VC_VFLAGS := $(BOOTSTRAP_VC_CCOMPILER_VFLAG) $(if $(strip $(BOOTSTRAP_VC_CFLAGS)),-cflags "$(BOOTSTRAP_VC_CFLAGS)") $(if $(strip $(BOOTSTRAP_LDFLAGS)),-ldflags "$(BOOTSTRAP_LDFLAGS)")
 BOOTSTRAP_VFLAGS := $(BOOTSTRAP_CCOMPILER_VFLAG) $(if $(strip $(BOOTSTRAP_CFLAGS)),-cflags "$(BOOTSTRAP_CFLAGS)") $(if $(strip $(BOOTSTRAP_LDFLAGS)),-ldflags "$(BOOTSTRAP_LDFLAGS)")
 
