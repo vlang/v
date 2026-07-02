@@ -423,6 +423,9 @@ fn test_multi_return_if_returning_branches_do_not_produce_assignment_values() {
 	bare_return := run_good(v3_bin, 'good_multi_return_if_branch_bare_return',
 		"fn emit(cond bool) {\n\ta, b := if cond {\n\t\treturn\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n\nfn main() {\n\temit(false)\n\tprintln('done')\n}\n")
 	assert bare_return == '7\ndone'
+	panic_branch := run_good(v3_bin, 'good_multi_return_if_branch_panic_tail',
+		"fn main() {\n\tbad := false\n\ta, b := if bad {\n\t\tpanic('x')\n\t} else {\n\t\t5\n\t\t6\n\t}\n\tprintln(int_str(a + b))\n}\n")
+	assert panic_branch == '11'
 }
 
 fn test_multi_rhs_if_expr_is_not_multi_return() {
@@ -480,6 +483,9 @@ fn test_voidptr_variadic_spread_requires_voidptr_array() {
 	run_bad(v3_bin, 'bad_voidptr_variadic_void_arg',
 		'fn side() {}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(side())))\n}\n',
 		'cannot use `void`')
+	run_bad(v3_bin, 'bad_voidptr_variadic_none_arg',
+		'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(none)))\n}\n',
+		'cannot use `?void`')
 	good := run_good(v3_bin, 'good_voidptr_variadic_voidptr_spread',
 		'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tx := 7\n\txs := [voidptr(&x)]\n\tprintln(int_str(sink(...xs)))\n\tprintln(int_str(sink(1)))\n}\n')
 	assert good == '1\n1'

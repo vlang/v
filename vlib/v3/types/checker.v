@@ -4388,6 +4388,9 @@ fn (tc &TypeChecker) tuple_tail_value_groups(body_id flat.NodeId, count int) ?[]
 		if last.kind == .return_stmt {
 			return [][]flat.NodeId{}
 		}
+		if tc.expr_never_returns(last_id) {
+			return [][]flat.NodeId{}
+		}
 	}
 	mut values := []flat.NodeId{}
 	for i := int(body.children_count) - 1; i >= body_start; i-- {
@@ -6491,7 +6494,13 @@ fn variadic_elem_accepts_any(typ Type) bool {
 }
 
 fn variadic_any_arg_has_value(typ Type) bool {
-	return typ !is Void && typ !is Unknown && !type_contains_unknown(typ)
+	if typ is OptionType {
+		return typ.base_type !is Void
+	}
+	if typ is ResultType {
+		return typ.base_type !is Void
+	}
+	return typ !is Void && typ !is None && typ !is Unknown && !type_contains_unknown(typ)
 }
 
 fn (tc &TypeChecker) arg_is_spread(id flat.NodeId) bool {
