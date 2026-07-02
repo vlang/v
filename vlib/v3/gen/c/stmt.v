@@ -912,12 +912,21 @@ fn (mut g FlatGen) gen_noreturn_return(ret_id flat.NodeId) {
 }
 
 fn (mut g FlatGen) gen_noreturn_default_return_stmt() {
-	if g.cur_fn_ret is types.ArrayFixed && g.tc.c_type(g.cur_fn_ret) in g.fixed_array_ret_wrappers {
-		wrapper := fixed_array_ret_wrapper_name(g.tc.c_type(g.cur_fn_ret))
-		g.writeln('return (${wrapper}){0};')
+	if g.cur_fn_ret_is_optional || g.cur_fn_name == 'main' || g.cur_fn_ret is types.Void {
+		g.gen_default_return_stmt()
 		return
 	}
-	g.gen_default_return_stmt()
+	value_ct := g.optional_type_name(g.cur_fn_ret)
+	abi_ct := g.fn_return_type_name(g.cur_fn_ret)
+	if abi_ct == value_ct {
+		g.gen_default_return_stmt()
+		return
+	}
+	if value_ct.starts_with('fn_ptr:') {
+		g.writeln('return (${abi_ct})0;')
+		return
+	}
+	g.writeln('return (${abi_ct}){0};')
 }
 
 fn (mut g FlatGen) gen_default_return_stmt() {

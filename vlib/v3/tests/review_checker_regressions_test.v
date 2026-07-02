@@ -218,6 +218,13 @@ fn test_no_return_fixed_array_return_uses_abi_wrapper() {
 	assert out == ''
 }
 
+fn test_no_return_fn_return_uses_abi_typedef() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_fn_return_panic_abi_typedef',
+		"import os\nfn f() fn () int {\n\treturn panic('x')\n}\nfn main() {\n\tif os.args.len == -1 {\n\t\tcb := f()\n\t\tprintln(int_str(cb()))\n\t}\n}\n")
+	assert out == ''
+}
+
 fn test_local_identifiers_shadow_module_consts() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_const_shadowed_by_param_and_local',
