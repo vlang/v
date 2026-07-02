@@ -6598,6 +6598,9 @@ fn variadic_any_arg_has_value(typ Type) bool {
 	if typ is ResultType {
 		return typ.base_type !is Void
 	}
+	if typ is MultiReturn {
+		return false
+	}
 	return typ !is Void && typ !is None && typ !is Unknown && !type_contains_unknown(typ)
 }
 
