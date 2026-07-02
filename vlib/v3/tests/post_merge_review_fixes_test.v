@@ -339,6 +339,6 @@ fn test_zero_padded_interpolation_preserves_wide_integers() {
 fn test_formatted_interpolation_rune_and_long_float() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'formatted_interpolation_rune_and_long_float',
-		"fn main() {\n\tr := '\${rune(0x20ac):c}'\n\tprintln(int_str(r.len))\n\tprintln(int_str(int(r[0])) + ',' + int_str(int(r[1])) + ',' + int_str(int(r[2])))\n\tlong := '\${1.0:.200f}'\n\tprintln(int_str(long.len))\n\tprintln(int_str(int(long[0])) + ',' + int_str(int(long[1])) + ',' + int_str(int(long[2])) + ',' + int_str(int(long[long.len - 1])))\n}\n")
-	assert out == '3\n226,130,172\n202\n49,46,48,48'
+		"fn main() {\n\tr := '\${rune(0x20ac):c}'\n\tprintln(int_str(r.len))\n\tprintln(int_str(int(r[0])) + ',' + int_str(int(r[1])) + ',' + int_str(int(r[2])))\n\tlong := '\${1.0:.200f}'\n\tprintln(int_str(long.len))\n\tprintln(int_str(int(long[0])) + ',' + int_str(int(long[1])) + ',' + int_str(int(long[2])) + ',' + int_str(int(long[long.len - 1])))\n\tprintln('\${238.5:0.0f}')\n\tprintln('\${239.5555555:0.6f}')\n}\n")
+	assert out == '3\n226,130,172\n202\n49,46,48,48\n239\n239.555556'
 }

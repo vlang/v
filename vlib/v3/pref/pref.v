@@ -14,6 +14,7 @@ pub mut:
 	vroot        string = detect_vroot()
 	selfhost     bool
 	building_v   bool // compiling the V compiler itself: no generics, skip monomorphization
+	is_prod      bool
 }
 
 // new_preferences supports new preferences handling for pref.

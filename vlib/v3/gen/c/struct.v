@@ -40,6 +40,9 @@ fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Ty
 }
 
 fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_name string, field_name string, expected types.Type) {
+	if g.gen_embed_file_uncompressed_field(value_id, struct_name, field_name) {
+		return
+	}
 	if c_abi_fn := g.struct_field_c_abi_fn_ptr_type(struct_name, field_name) {
 		if g.gen_callback_fn_value_for_field_c_abi(value_id, expected, c_abi_fn) {
 			return
@@ -49,6 +52,23 @@ fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_
 		return
 	}
 	g.gen_struct_field_expr(value_id, expected)
+}
+
+fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struct_name string, field_name string) bool {
+	if field_name != 'uncompressed' || struct_name != 'embed_file.EmbedFileData' {
+		return false
+	}
+	mut data_id := value_id
+	value := g.a.node(value_id)
+	if value.kind == .cast_expr && value.value == '&u8' && value.children_count > 0 {
+		data_id = g.a.child(value, 0)
+	}
+	data := g.a.node(data_id)
+	if data.kind != .string_literal {
+		return false
+	}
+	g.write('(u8*)"${c_byte_string_escape(data.value)}"')
+	return true
 }
 
 fn default_init_unalias_type(typ types.Type) types.Type {
@@ -1596,11 +1616,23 @@ fn (g &FlatGen) embedded_field_type_name(field types.StructField) string {
 	short_field := if field.name.contains('.') { field.name.all_after_last('.') } else { field.name }
 	for name in names {
 		short_type := if name.contains('.') { name.all_after_last('.') } else { name }
-		if field.name == name || short_field == short_type || c_name(field.name) == c_name(name) {
+		if field.name == name || short_field == short_type
+			|| embedded_field_c_names_match(field.name, name) {
 			return field_type_name
 		}
 	}
 	return ''
+}
+
+fn embedded_field_c_names_match(field_name string, type_name string) bool {
+	field_plain := c_name_is_plain(field_name)
+	type_plain := c_name_is_plain(type_name)
+	if field_plain && type_plain && field_name !in c_reserved_words
+		&& type_name !in c_reserved_words && field_name !in c_libc_collisions
+		&& type_name !in c_libc_collisions {
+		return false
+	}
+	return c_name(field_name) == c_name(type_name)
 }
 
 fn (g &FlatGen) direct_struct_field_exists(type_name string, field_name string) bool {

@@ -127,6 +127,18 @@ fn c_standard_flag(c99 bool) string {
 	return if c99 { '-std=c99' } else { '-std=gnu11' }
 }
 
+fn run_test_binary(bin_file string) int {
+	return os.system(executable_command_for_path(bin_file))
+}
+
+fn executable_command_for_path(path string) string {
+	mut run_path := path
+	if !os.is_abs_path(path) && !path.contains('/') && !path.contains('\\') {
+		run_path = '.' + os.path_separator + path
+	}
+	return os.quoted_path(run_path)
+}
+
 fn input_implies_building_v(input_file string) bool {
 	normalized := input_file.replace('\\', '/').trim_right('/')
 	return normalized.all_after_last('/') == 'v3.v'
@@ -308,6 +320,7 @@ fn main() {
 	prefs.vroot = resolve_vroot(prefs.vroot)
 	prefs.selfhost = is_selfhost
 	prefs.building_v = building_v
+	prefs.is_prod = is_prod
 	mut p := parser.Parser.new(prefs)
 
 	mut files := []string{}
@@ -338,6 +351,7 @@ fn main() {
 	test_files := test_input_files(user_files, backend)
 
 	seed_implicit_sync_import(mut a)
+	seed_implicit_embed_file_import(mut a)
 
 	// Resolve imports recursively
 	resolve_imports(mut a, mut p, prefs, user_files)
@@ -358,7 +372,7 @@ fn main() {
 	pre_tc.diagnose_unknown_calls = true
 	set_diagnostic_files(mut pre_tc, user_files)
 	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
-	pre_tc.check_semantics()
+	check_was_parallel := pre_tc.check_semantics_opt(parallel_transform)
 	if pre_tc.errors.len > 0 {
 		print_type_errors(pre_tc.errors)
 		exit(1)
@@ -370,7 +384,7 @@ fn main() {
 		}
 		exit(1)
 	}
-	b.step('check')
+	b.step_parallel('check', check_was_parallel)
 
 	if backend == 'eval' {
 		$if !skip_eval ? {
@@ -545,6 +559,13 @@ fn main() {
 		os.rm(cc_src) or {}
 		os.rmdir(cc_dir) or {}
 		b.step('cc')
+		if test_files.len > 0 {
+			test_result := run_test_binary(bin_file)
+			if test_result != 0 {
+				exit(test_result)
+			}
+			b.step('test')
+		}
 	}
 
 	b.print_report()
@@ -972,12 +993,32 @@ fn seed_implicit_sync_import(mut a flat.FlatAst) {
 	})
 }
 
+fn seed_implicit_embed_file_import(mut a flat.FlatAst) {
+	if !ast_needs_embed_file_import(a) || ast_has_import(a, 'v.embed_file') {
+		return
+	}
+	a.add_node(flat.Node{
+		kind:  .import_decl
+		value: 'v.embed_file'
+		typ:   'embed_file'
+	})
+}
+
 fn ast_needs_sync_import(a &flat.FlatAst) bool {
 	for node in a.nodes {
 		if node.kind == .lock_expr {
 			return true
 		}
 		if node.kind == .field_decl && type_text_is_shared(node.typ) {
+			return true
+		}
+	}
+	return false
+}
+
+fn ast_needs_embed_file_import(a &flat.FlatAst) bool {
+	for node in a.nodes {
+		if node.kind == .struct_init && node.value == 'embed_file.EmbedFileData' {
 			return true
 		}
 	}
@@ -1082,6 +1123,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 			}
 			seed_implicit_sync_import(mut a)
+			seed_implicit_embed_file_import(mut a)
 		}
 		node_idx++
 	}

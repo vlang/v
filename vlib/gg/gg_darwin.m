@@ -7,11 +7,21 @@ NSColor* nscolor(gg__Color c) {
 	return [NSColor colorWithDeviceRed:red green:green blue:blue alpha:1.0f];
 }
 
+CFStringRef cfstring(string s) {
+	return CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+	                                     (const UInt8*)s.str,
+	                                     s.len,
+	                                     kCFStringEncodingUTF8,
+	                                     false,
+	                                     kCFAllocatorNull);
+}
+
 NSString* nsstring(string s) {
-	return [[NSString alloc] initWithBytesNoCopy:s.str
-	                                      length:s.len
-	                                    encoding:NSUTF8StringEncoding
-	                                freeWhenDone:false];
+	CFStringRef cf = cfstring(s);
+	if (cf == nil) {
+		return @"";
+	}
+	return CFBridgingRelease(cf);
 }
 
 gg__Size gg_get_screen_size() {
@@ -140,17 +150,28 @@ static NSDictionary* darwin_text_attrs(gg__TextCfg cfg) {
 
 void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
 	NSDictionary* attr = darwin_text_attrs(cfg);
-	[nsstring(s) drawAtPoint:NSMakePoint(x, y - 15) withAttributes:attr];
+	CFStringRef cf = cfstring(s);
+	if (cf == nil) {
+		return;
+	}
+	NSString* n = (__bridge NSString*)cf;
+	[n drawAtPoint:NSMakePoint(x, y - 15) withAttributes:attr];
+	CFRelease(cf);
 }
 
 int darwin_text_width(string s) {
 	// println('text_width "${s}" len=${s.len}')
 	NSString* n = @"";
+	CFStringRef cf = nil;
 	if (s.len == 1) {
 		// println('len=1')
 		n = [NSString stringWithFormat:@"%c", s.str[0]];
 	} else {
-		n = nsstring(s);
+		cf = cfstring(s);
+		if (cf == nil) {
+			return 0;
+		}
+		n = (__bridge NSString*)cf;
 	}
 	/*
 	# if (!defaultFont){
@@ -161,6 +182,9 @@ int darwin_text_width(string s) {
 	# };
 	*/
 	NSSize size = [n sizeWithAttributes:nil];
+	if (cf != nil) {
+		CFRelease(cf);
+	}
 	// # printf("!!!%f\n", ceil(size.width));
 	return (int)(ceil(size.width));
 }
