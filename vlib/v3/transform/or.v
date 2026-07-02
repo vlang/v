@@ -613,7 +613,7 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 		if is_last && child.kind == .expr_stmt && child.children_count > 0 {
 			inner_id := t.a.child(&child, 0)
 			inner := t.a.nodes[int(inner_id)]
-			if inner.kind == .call && t.is_noreturn_call(inner) {
+			if inner.kind == .call && t.is_noreturn_call(inner_id) {
 				expanded := t.transform_stmt(child_id)
 				t.drain_pending(mut result)
 				for eid in expanded {
@@ -669,10 +669,13 @@ fn (t &Transformer) is_error_call(node flat.Node) bool {
 }
 
 // is_noreturn_call reports whether is noreturn call applies in transform.
-fn (t &Transformer) is_noreturn_call(node flat.Node) bool {
+fn (t &Transformer) is_noreturn_call(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
 	if node.kind != .call || node.children_count == 0 {
 		return false
 	}
-	fn_node := t.a.child_node(&node, 0)
-	return fn_node.value in ['panic', 'exit']
+	return t.tc.resolved_call_never_returns(id)
 }
