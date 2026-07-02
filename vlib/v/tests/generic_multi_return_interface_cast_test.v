@@ -67,3 +67,25 @@ fn test_generic_multi_return_mut_param_interface_cast() {
 	assert g.f() == 7
 	assert extra == 42
 }
+
+// Regression test: generic multi-return with mut param whose concrete type
+// is itself a pointer (T = &Impl). The synthetic PrefixExpr should not
+// trigger the extra deref for mut generic pointer params.
+struct Impl {
+	x int
+}
+
+fn (i Impl) f() int {
+	return i.x
+}
+
+fn get_ptr_multi[T](mut x T) (Getter, int) {
+	return x, 0
+}
+
+fn test_generic_multi_return_ptr_param_interface_cast() {
+	mut i := &Impl{42}
+	g, n := get_ptr_multi[&Impl](mut i)
+	assert g.f() == 42
+	assert n == 0
+}
