@@ -2382,7 +2382,7 @@ fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
 		rel_path = strip_quotes(p.lit)
 		p.next()
 	} else if p.tok == .name && p.lit == '@FILE' {
-		rel_path = p.cur_file
+		rel_path = if os.is_abs_path(p.cur_file) { p.cur_file } else { os.real_path(p.cur_file) }
 		p.next()
 	} else {
 		// V3 does not evaluate arbitrary comptime expressions yet. Keep parsing

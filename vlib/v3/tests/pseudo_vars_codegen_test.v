@@ -49,6 +49,34 @@ fn test_embed_file_codegen() {
 	assert run.exit_code == 0, run.output
 }
 
+// test_embed_file_at_file_from_relative_subdir_path validates @FILE source path
+// resolution for $embed_file().
+fn test_embed_file_at_file_from_relative_subdir_path() {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_embed_file_at_file_codegen_test')
+	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+
+	tmp_dir := os.join_path(os.temp_dir(), 'v3_embed_file_at_file_codegen_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(os.join_path(tmp_dir, 'sub'))!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	src := os.join_path(tmp_dir, 'sub', 'main.v')
+	bin := os.join_path(tmp_dir, 'main')
+	os.write_file(src,
+		"fn main() {\n\tdata := \$embed_file(@FILE)\n\tassert data.len > 0\n\tassert data.to_string().contains('relative @FILE embed marker')\n}\n\n// relative @FILE embed marker\n")!
+	old_wd := os.getwd()
+	os.chdir(tmp_dir) or { panic(err) }
+	defer {
+		os.chdir(old_wd) or { panic(err) }
+	}
+	result := os.execute('${v3_bin} sub/main.v -o ${bin}')
+	assert result.exit_code == 0, result.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+}
+
 // test_imported_module_embed_file_codegen validates implicit v.embed_file imports
 // after imported module parsing.
 fn test_imported_module_embed_file_codegen() {
