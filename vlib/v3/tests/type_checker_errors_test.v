@@ -495,6 +495,9 @@ fn test_bool_match_single_branch_is_exhaustive() {
 	out := run_good(v3_bin, 'good_bool_match_single_branch_exhaustive',
 		'fn f(b bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(true) + f(false)))\n}\n')
 	assert out == '2'
+	alias_out := run_good(v3_bin, 'good_bool_alias_match_single_branch_exhaustive',
+		'type Flag = bool\nfn f(b Flag) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(true) + f(false)))\n}\n')
+	assert alias_out == '2'
 }
 
 fn test_voidptr_variadic_spread_requires_voidptr_array() {

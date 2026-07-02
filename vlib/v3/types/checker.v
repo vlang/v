@@ -3224,7 +3224,8 @@ fn (tc &TypeChecker) match_without_else_exhaustive_bool_returns(node flat.Node) 
 	if node.children_count < 2 {
 		return false
 	}
-	subject_type := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
+	raw_subject_type := unalias_type(tc.resolve_type(tc.a.child(&node, 0)))
+	subject_type := unalias_type(unwrap_pointer(raw_subject_type))
 	if subject_type !is Primitive {
 		return false
 	}
@@ -3254,6 +3255,13 @@ fn (tc &TypeChecker) match_without_else_exhaustive_bool_returns(node flat.Node) 
 		}
 	}
 	return covered_true && covered_false
+}
+
+fn unalias_type(t Type) Type {
+	if t is Alias {
+		return unalias_type(t.base_type)
+	}
+	return t
 }
 
 fn (tc &TypeChecker) match_enum_condition_field(cond &flat.Node, enum_name string) ?string {
