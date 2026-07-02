@@ -1448,6 +1448,13 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 }
 
 fn (mut tc TypeChecker) annotate_expected_expr(id flat.NodeId, expected Type) {
+	if int(id) >= 0 && int(id) < tc.a.nodes.len {
+		node := tc.a.nodes[int(id)]
+		if node.kind in [.if_expr, .match_stmt] && expected !is Void && expected !is Unknown {
+			_ = tc.resolve_expr(id, expected)
+			return
+		}
+	}
 	if _ := fn_type_from_type(expected) {
 		_ = tc.resolve_expr(id, expected)
 	}
@@ -2930,6 +2937,17 @@ fn (tc &TypeChecker) stmt_definitely_returns(id flat.NodeId) bool {
 			}
 			return false
 		}
+		.comptime_if {
+			if node.children_count == 0 {
+				return false
+			}
+			if node.children_count == 1 {
+				return comptime_condition_strip_outer_parens(node.value) == 'true'
+					&& tc.stmt_definitely_returns(tc.a.child(&node, 0))
+			}
+			return tc.stmt_definitely_returns(tc.a.child(&node, 0))
+				&& tc.stmt_definitely_returns(tc.a.child(&node, 1))
+		}
 		.if_expr {
 			if node.children_count < 3 {
 				return false
@@ -4043,24 +4061,58 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 		return false
 	}
 	rhs_id := tc.a.child(&node, 1)
-	rhs_type := tc.resolve_type(rhs_id)
-	rhs_type_name := rhs_type.name()
-	if rhs_type is MultiReturn {
+	mut rhs_type := tc.resolve_type(rhs_id)
+	mut rhs_checked := false
+	mut rhs_multi := MultiReturn{}
+	mut found_multi := false
+	mut unhandled_multi := false
+	for _ in 0 .. 2 {
+		if multi := tc.multi_return_assignment_type(rhs_id, rhs_type) {
+			rhs_multi = multi
+			found_multi = true
+			break
+		}
+		if _ := tc.unhandled_wrapped_multi_return_type(rhs_id, rhs_type) {
+			unhandled_multi = true
+			break
+		}
+		if rhs_checked {
+			break
+		}
 		tc.check_node(rhs_id)
+		rhs_checked = true
+		rhs_type = tc.resolve_type(rhs_id)
+	}
+	rhs_type_name := rhs_type.name()
+	if unhandled_multi {
+		if !rhs_checked {
+			tc.check_node(rhs_id)
+		}
+		if tc.should_diagnose(id) {
+			tc.record_error(.assignment_mismatch,
+				'multi-return assignment from `${rhs_type_name}` requires `or {}`, `!`, or `?` handling',
+				id)
+		}
+		return true
+	}
+	if found_multi {
+		if !rhs_checked {
+			tc.check_node(rhs_id)
+		}
 		lhs_ids := tc.multi_assign_lhs_ids(node)
-		if lhs_ids.len != rhs_type.types.len {
+		if lhs_ids.len != rhs_multi.types.len {
 			if tc.should_diagnose(id) {
 				tc.record_error(.assignment_mismatch,
-					'multi-return assignment mismatch: ${lhs_ids.len} variables but `${rhs_type_name}` has ${rhs_type.types.len} values',
+					'multi-return assignment mismatch: ${lhs_ids.len} variables but `${rhs_type_name}` has ${rhs_multi.types.len} values',
 					id)
 			}
 			return true
 		}
 		for i, lhs_id in lhs_ids {
-			tc.insert_decl_lhs(lhs_id, rhs_type.types[i])
+			tc.insert_decl_lhs(lhs_id, rhs_multi.types[i])
 		}
 		$if ownership ? {
-			tc.ownership_after_multi_return_decl_assign(lhs_ids, rhs_id, rhs_type, id)
+			tc.ownership_after_multi_return_decl_assign(lhs_ids, rhs_id, rhs_multi, id)
 		}
 		return true
 	}
@@ -4120,6 +4172,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		lhs_id := tc.a.child(&node, i)
 		rhs_id := tc.a.child(&node, i + 1)
 		lhs_type := tc.resolve_lvalue_type(lhs_id)
+		tc.annotate_expected_expr(rhs_id, lhs_type)
 		$if ownership ? {
 			if tc.ownership_should_defer_aggregate_consumption(lhs_id, node.op) {
 				tc.ownership_begin_defer_aggregate_consumption(rhs_id)
@@ -4190,28 +4243,62 @@ fn (mut tc TypeChecker) check_multi_return_assign(id flat.NodeId, node flat.Node
 		return false
 	}
 	rhs_id := tc.a.child(&node, 1)
-	rhs_type := tc.resolve_type(rhs_id)
-	rhs_type_name := rhs_type.name()
-	if rhs_type is MultiReturn {
+	mut rhs_type := tc.resolve_type(rhs_id)
+	mut rhs_checked := false
+	mut rhs_multi := MultiReturn{}
+	mut found_multi := false
+	mut unhandled_multi := false
+	for _ in 0 .. 2 {
+		if multi := tc.multi_return_assignment_type(rhs_id, rhs_type) {
+			rhs_multi = multi
+			found_multi = true
+			break
+		}
+		if _ := tc.unhandled_wrapped_multi_return_type(rhs_id, rhs_type) {
+			unhandled_multi = true
+			break
+		}
+		if rhs_checked {
+			break
+		}
 		tc.check_node(rhs_id)
+		rhs_checked = true
+		rhs_type = tc.resolve_type(rhs_id)
+	}
+	rhs_type_name := rhs_type.name()
+	if unhandled_multi {
+		if !rhs_checked {
+			tc.check_node(rhs_id)
+		}
+		if tc.should_diagnose(id) {
+			tc.record_error(.assignment_mismatch,
+				'multi-return assignment from `${rhs_type_name}` requires `or {}`, `!`, or `?` handling',
+				id)
+		}
+		return true
+	}
+	if found_multi {
+		if !rhs_checked {
+			tc.check_node(rhs_id)
+		}
 		lhs_ids := tc.multi_assign_lhs_ids(node)
-		if lhs_ids.len != rhs_type.types.len {
+		if lhs_ids.len != rhs_multi.types.len {
 			if tc.should_diagnose(id) {
 				tc.record_error(.assignment_mismatch,
-					'multi-return assignment mismatch: ${lhs_ids.len} variables but `${rhs_type_name}` has ${rhs_type.types.len} values',
+					'multi-return assignment mismatch: ${lhs_ids.len} variables but `${rhs_type_name}` has ${rhs_multi.types.len} values',
 					id)
 			}
 			return true
 		}
 		for i, lhs_id in lhs_ids {
 			lhs_type := tc.resolve_lvalue_type(lhs_id)
-			if !tc.type_compatible(rhs_type.types[i], lhs_type) {
+			if !tc.type_compatible(rhs_multi.types[i], lhs_type) {
 				tc.type_mismatch(.assignment_mismatch,
-					'cannot assign `${rhs_type.types[i].name()}` to `${lhs_type.name()}`', id)
+					'cannot assign `${rhs_multi.types[i].name()}` to `${lhs_type.name()}`', id)
 			}
 		}
 		$if ownership ? {
-			tc.ownership_after_multi_return_assign(lhs_ids, rhs_id, rhs_type, id)
+			tc.ownership_after_multi_return_assign(lhs_ids, rhs_id, rhs_multi, id)
 		}
 		return true
 	}
@@ -4308,6 +4395,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	}
 	if node.children_count == 1 {
 		child_id := tc.a.child(&node, 0)
+		tc.annotate_expected_expr(child_id, expected)
 		if tc.expr_never_returns_resolving(child_id) {
 			$if ownership ? {
 				tc.ownership_check_node_with_deferred_aggregate_consumption(child_id)
@@ -4423,6 +4511,37 @@ fn multi_return_payload_type(typ Type) ?MultiReturn {
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) multi_return_assignment_type(rhs_id flat.NodeId, rhs_type Type) ?MultiReturn {
+	if rhs_type is MultiReturn {
+		return rhs_type
+	}
+	if !tc.expr_has_option_result_handler(rhs_id) {
+		return none
+	}
+	return multi_return_payload_type(rhs_type)
+}
+
+fn (tc &TypeChecker) unhandled_wrapped_multi_return_type(rhs_id flat.NodeId, rhs_type Type) ?MultiReturn {
+	if rhs_type is MultiReturn || tc.expr_has_option_result_handler(rhs_id) {
+		return none
+	}
+	return multi_return_payload_type(rhs_type)
+}
+
+fn (tc &TypeChecker) expr_has_option_result_handler(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .or_expr {
+		return true
+	}
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return tc.expr_has_option_result_handler(tc.a.child(&node, 0))
+	}
+	return false
 }
 
 // check_call validates check call state for types.
@@ -6785,6 +6904,9 @@ fn array_like_elem_type(t Type) ?Type {
 // fixed-array values keep their length (handled by `type_compatible` above), so
 // e.g. `[2]int` vs `[3]int` branches still mismatch.
 fn (tc &TypeChecker) if_branch_types_compatible(a Type, b Type, a_is_array_lit bool, b_is_array_lit bool) bool {
+	if (a is None && b is ResultType) || (b is None && a is ResultType) {
+		return false
+	}
 	if tc.type_compatible(a, b) || tc.type_compatible(b, a) {
 		return true
 	}
@@ -6794,6 +6916,158 @@ fn (tc &TypeChecker) if_branch_types_compatible(a Type, b Type, a_is_array_lit b
 	a_elem := array_like_elem_type(a) or { return false }
 	b_elem := array_like_elem_type(b) or { return false }
 	return tc.type_compatible(a_elem, b_elem) || tc.type_compatible(b_elem, a_elem)
+}
+
+fn (tc &TypeChecker) if_branch_types_compatible_with_expected(a Type, a_tail flat.NodeId, b Type, b_tail flat.NodeId, expected Type) bool {
+	if expected is Void || expected is Unknown {
+		return false
+	}
+	return tc.if_branch_type_compatible_with_context(a, a_tail, expected)
+		&& tc.if_branch_type_compatible_with_context(b, b_tail, expected)
+}
+
+fn (tc &TypeChecker) if_branch_type_compatible_with_context(actual Type, tail_id flat.NodeId, expected Type) bool {
+	if actual is None {
+		return expected is OptionType && tc.branch_tail_is_none_literal(tail_id)
+	}
+	if is_option_void_type(actual) {
+		return expected is OptionType && tc.branch_tail_is_none_literal(tail_id)
+	}
+	if is_result_void_type(actual) {
+		return expected is ResultType && tc.branch_tail_is_error_literal(tail_id)
+	}
+	if is_ierror_type(actual) {
+		return (expected is ResultType || is_ierror_type(expected))
+			&& tc.branch_tail_is_error_literal(tail_id)
+	}
+	return tc.type_compatible(actual, expected)
+}
+
+fn (tc &TypeChecker) branch_tail_is_none_literal(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .none_expr {
+		return true
+	}
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return tc.branch_tail_is_none_literal(tc.a.child(&node, 0))
+	}
+	return false
+}
+
+fn (tc &TypeChecker) branch_tail_is_error_literal(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .call {
+		return tc.call_display_name(node) in ['error', 'error_with_code']
+	}
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return tc.branch_tail_is_error_literal(tc.a.child(&node, 0))
+	}
+	return false
+}
+
+fn (tc &TypeChecker) branch_failure_literal_matches_context(id flat.NodeId, expected Type) bool {
+	if tc.branch_tail_is_none_literal(id) {
+		return expected is OptionType
+	}
+	if tc.branch_tail_is_error_literal(id) {
+		return expected is ResultType || is_ierror_type(expected)
+	}
+	return true
+}
+
+fn if_branch_type_needs_context(typ Type) bool {
+	if typ is None || is_ierror_type(typ) {
+		return true
+	}
+	if typ is OptionType {
+		return typ.base_type is Void
+	}
+	if typ is ResultType {
+		return typ.base_type is Void
+	}
+	return false
+}
+
+fn inferred_contextual_if_type(a Type, b Type) ?Type {
+	if a is None {
+		return optional_if_type_from_value(b)
+	}
+	if b is None {
+		return optional_if_type_from_value(a)
+	}
+	if is_option_void_type(a) {
+		return optional_if_type_from_value(b)
+	}
+	if is_option_void_type(b) {
+		return optional_if_type_from_value(a)
+	}
+	if is_ierror_type(a) {
+		return result_if_type_from_value(b)
+	}
+	if is_ierror_type(b) {
+		return result_if_type_from_value(a)
+	}
+	if is_result_void_type(a) {
+		return result_if_type_from_value(b)
+	}
+	if is_result_void_type(b) {
+		return result_if_type_from_value(a)
+	}
+	return none
+}
+
+fn is_option_void_type(typ Type) bool {
+	if typ is OptionType {
+		return typ.base_type is Void
+	}
+	return false
+}
+
+fn is_result_void_type(typ Type) bool {
+	if typ is ResultType {
+		return typ.base_type is Void
+	}
+	return false
+}
+
+fn optional_if_type_from_value(value Type) ?Type {
+	if value is OptionType {
+		if value.base_type is Void {
+			return none
+		}
+		return value
+	}
+	if value is ResultType {
+		return none
+	}
+	if if_branch_type_needs_context(value) || value is Void || value is Unknown {
+		return none
+	}
+	return Type(OptionType{
+		base_type: value
+	})
+}
+
+fn result_if_type_from_value(value Type) ?Type {
+	if value is ResultType {
+		if value.base_type is Void {
+			return none
+		}
+		return value
+	}
+	if value is OptionType || if_branch_type_needs_context(value) || value is Void
+		|| value is Unknown {
+		return none
+	}
+	return Type(ResultType{
+		base_type: value
+	})
 }
 
 // branch_tail_is_array_literal reports whether a branch's value tail is a bare
@@ -7081,6 +7355,15 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		else_id := tc.a.child(&node, 2)
 		if tc.branch_has_value_tail(then_id) && tc.branch_has_value_tail(else_id)
 			&& !tc.if_branch_types_compatible(then_type, else_type, tc.branch_tail_is_array_literal(then_id), tc.branch_tail_is_array_literal(else_id)) {
+			if expected := tc.expr_type(id) {
+				then_tail := tc.branch_tail_expr_id(then_id)
+				else_tail := tc.branch_tail_expr_id(else_id)
+				branches_match_expected := tc.if_branch_types_compatible_with_expected(then_type,
+					then_tail, else_type, else_tail, expected)
+				if branches_match_expected {
+					return
+				}
+			}
 			if tc.should_diagnose(id) {
 				tc.record_error(.if_branch_mismatch,
 					'if-expression branch type mismatch: then `${then_type.name()}` vs else `${else_type.name()}`',
@@ -7525,6 +7808,9 @@ fn choose_if_tail_type(current Type, next Type) Type {
 	if next is Void {
 		return current
 	}
+	if inferred := inferred_contextual_if_type(current, next) {
+		return inferred
+	}
 	if current !is Primitive {
 		return current
 	}
@@ -7595,8 +7881,11 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 				return false
 			}
 			saw_branch = true
+			if !tc.branch_failure_literal_matches_context(tail, expected) {
+				return false
+			}
 			actual := tc.resolve_expr(tail, expected)
-			if !tc.receiver_compatible(actual, expected) {
+			if !tc.if_branch_type_compatible_with_context(actual, tail, expected) {
 				return false
 			}
 		}
@@ -7612,8 +7901,11 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 		if !tc.valid_node_id(then_tail) {
 			return false
 		}
+		if !tc.branch_failure_literal_matches_context(then_tail, expected) {
+			return false
+		}
 		then_actual := tc.resolve_expr(then_tail, expected)
-		if !tc.receiver_compatible(then_actual, expected) {
+		if !tc.if_branch_type_compatible_with_context(then_actual, then_tail, expected) {
 			return false
 		}
 		else_id := tc.a.child(&node, 2)
@@ -7627,8 +7919,11 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 		if !tc.valid_node_id(else_tail) {
 			return false
 		}
+		if !tc.branch_failure_literal_matches_context(else_tail, expected) {
+			return false
+		}
 		else_actual := tc.resolve_expr(else_tail, expected)
-		return tc.receiver_compatible(else_actual, expected)
+		return tc.if_branch_type_compatible_with_context(else_actual, else_tail, expected)
 	}
 	return false
 }
@@ -11157,6 +11452,9 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 			if inner0 is Alias {
 				inner = inner0.base_type
 			}
+			if inner is Array {
+				return inner
+			}
 			if inner is ArrayFixed {
 				return Type(Array{
 					elem_type: fixed_array_elem_type(inner)
@@ -11437,6 +11735,13 @@ fn subst_generic_text(typ string, args []string, params []string) string {
 	}
 	if clean.starts_with('[]') {
 		return '[]' + subst_generic_text(clean[2..], args, params)
+	}
+	if clean.starts_with('(') && clean.ends_with(')') && clean.contains(',') {
+		mut parts := []string{}
+		for part in split_params(clean[1..clean.len - 1]) {
+			parts << subst_generic_text(part, args, params)
+		}
+		return '(${parts.join(', ')})'
 	}
 	if clean.starts_with('map[') {
 		bracket_end := find_matching_bracket(clean, 3)

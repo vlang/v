@@ -2724,10 +2724,7 @@ fn (g &FlatGen) is_json_decode_call_expr(id flat.NodeId) bool {
 	node := g.a.nodes[int(id)]
 	if node.kind == .call && node.children_count > 0 {
 		target := g.call_target_name(g.a.child(&node, 0))
-		if target in ['decode', 'json.decode', 'json2.decode'] {
-			return true
-		}
-		if g.call_has_selector_name(g.a.child(&node, 0), 'decode') {
+		if g.is_json_decode_call(id, target) {
 			return true
 		}
 	}
@@ -2810,6 +2807,9 @@ fn (mut g FlatGen) gen_or_expr(node flat.Node) {
 }
 
 fn (g &FlatGen) or_expr_source_type(expr_id flat.NodeId, expr_node flat.Node) types.Type {
+	if ret_type := g.json_decode_call_expr_result_type(expr_id) {
+		return ret_type
+	}
 	if expr_node.kind == .call {
 		decl_type := g.declared_call_return_type(expr_id)
 		if decl_type is types.OptionType || decl_type is types.ResultType {
@@ -2821,6 +2821,25 @@ fn (g &FlatGen) or_expr_source_type(expr_id flat.NodeId, expr_node flat.Node) ty
 		}
 	}
 	return g.usable_expr_type(expr_id)
+}
+
+fn (g &FlatGen) json_decode_call_expr_result_type(id flat.NodeId) ?types.Type {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count == 1 {
+		return g.json_decode_call_expr_result_type(g.a.child(&node, 0))
+	}
+	if node.kind != .call || node.children_count == 0 {
+		return none
+	}
+	callee_id := g.a.child(&node, 0)
+	target := g.call_target_name(callee_id)
+	if !g.is_json_decode_call(id, target) {
+		return none
+	}
+	return g.json_decode_result_type(callee_id)
 }
 
 fn (g &FlatGen) or_expr_uses_concrete_optional(expr_id flat.NodeId) bool {

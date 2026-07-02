@@ -319,6 +319,9 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	}
 	if !isnil(t.tc) {
 		if expr_node.kind == .call {
+			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
+				return decode_ret, t.optional_base_type(decode_ret)
+			}
 			concrete_ret := t.concrete_generic_call_return_type(expr_id, expr_node)
 			if t.is_optional_type_name(concrete_ret) {
 				return concrete_ret, t.optional_base_type(concrete_ret)
@@ -363,6 +366,21 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 		value_type = 'int'
 	}
 	return expr_type, value_type
+}
+
+fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat.Node) ?string {
+	if isnil(t.tc) || expr_node.kind != .call {
+		return none
+	}
+	name := t.tc.resolved_call_name(expr_id) or { return none }
+	if name !in ['json.decode', 'json2.decode', 'x.json2.decode'] {
+		return none
+	}
+	args := t.explicit_generic_call_args(expr_node, t.cur_module) or { return none }
+	if args.len != 1 || args[0].len == 0 {
+		return none
+	}
+	return '!${args[0]}'
 }
 
 // value_type_name returns value type name data for Transformer.
