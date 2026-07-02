@@ -172,6 +172,7 @@ mut:
 	in_trailers   bool // set once a trailer section (a 2nd HEADERS block) begins
 	refused       bool // §5.1.2: over the concurrency limit — decode then RST(REFUSED_STREAM)
 	over_end      bool // §5.1: HEADERS after END_STREAM — decoded for HPACK sync, then RST(STREAM_CLOSED)
+	self_dep      bool // RFC 7540 §5.3.1: HEADERS priority depends on itself — decode then RST(PROTOCOL_ERROR)
 }
 
 // H2ServerConn drives one server-side HTTP/2 connection over a transport.
@@ -233,7 +234,11 @@ fn (mut c H2ServerConn) mark_locally_reset(id u32) {
 //   - idle:   never opened — an odd id above any we have accepted, OR any even
 //             (server-initiated) id, since this server never opens push streams
 //   - closed: a client (odd) id at or below the highest we have accepted that is
-//             no longer in the map (already finished or reset)
+//             no longer in the map (already finished or reset), OR any id we
+//             have ourselves RST_STREAM'd (c.locally_reset) regardless of
+//             last_stream_id — a self-dependent PRIORITY (RFC 7540 §5.3.1) is
+//             legal on a stream the client never opened via HEADERS, so an id
+//             can be locally-reset without ever having advanced last_stream_id
 enum H2StreamState {
 	active
 	idle
@@ -250,6 +255,17 @@ enum H2StreamState {
 fn (c &H2ServerConn) classify_stream(stream_id u32) H2StreamState {
 	if stream_id in c.streams {
 		return .active
+	}
+	// An id we have ourselves RST_STREAM'd is closed no matter how it got reset:
+	// checking this before the last_stream_id/parity test covers ids that were
+	// never opened via HEADERS at all (e.g. a self-dependent PRIORITY frame on
+	// an id the client never used) — without this, every caller of
+	// classify_stream (on_data, handle_control_frame's WINDOW_UPDATE arm,
+	// dispatch_frame's RST_STREAM arm) would misclassify a later in-flight frame
+	// for that id as idle and force a connection error instead of draining it
+	// per §6.4.
+	if stream_id in c.locally_reset {
+		return .closed
 	}
 	if stream_id & 1 == 1 && stream_id <= c.last_stream_id {
 		return .closed
@@ -372,7 +388,18 @@ fn (mut c H2ServerConn) dispatch_frame(frame H2Frame, mut handler Handler) ! {
 			c.streams.delete(frame.stream_id)
 		}
 		H2PriorityFrame {
-			// Priority is advisory; ignore.
+			// Priority is advisory and otherwise ignored (deprecated in RFC 9113
+			// §5.3), but RFC 7540 §5.3.1: a stream cannot depend on itself — a
+			// self-dependency is a STREAM error PROTOCOL_ERROR. Skip the RST for
+			// any ALREADY-CLOSED stream (locally reset OR completed normally via
+			// run_request — classify_stream treats both as closed): PRIORITY is
+			// legal on a closed stream, and RST_STREAM is not, so re-RST-ing one
+			// would itself send a frame on a closed stream (§5.1).
+			if frame.stream_dep == frame.stream_id && c.classify_stream(frame.stream_id) != .closed {
+				c.send_rst_stream(frame.stream_id, .protocol_error)!
+				c.mark_locally_reset(frame.stream_id)
+				c.streams.delete(frame.stream_id)
+			}
 		}
 		H2HeadersFrame {
 			c.on_headers(frame, mut handler)!
@@ -417,10 +444,40 @@ fn (mut c H2ServerConn) handle_control_frame(frame H2Frame) ! {
 			}
 		}
 		H2WindowUpdateFrame {
+			inc := frame.window_size_increment
 			if frame.stream_id == 0 {
-				c.send_window += i64(frame.window_size_increment)
+				// RFC 9113 §6.9: a zero increment on the connection is a connection
+				// error PROTOCOL_ERROR. §6.9.1: growing the connection window past
+				// 2^31-1 is a connection error FLOW_CONTROL_ERROR — send the correct
+				// code before unwinding (serve()'s catch defaults to PROTOCOL_ERROR).
+				if inc == 0 {
+					return error('h2 server: connection WINDOW_UPDATE with a zero increment (RFC 9113 §6.9 PROTOCOL_ERROR)')
+				}
+				new_window := c.send_window + i64(inc)
+				if new_window > i64(0x7fff_ffff) {
+					c.send_goaway(.flow_control_error,
+						'connection flow-control window exceeds 2^31-1') or {}
+					return error('h2 server: connection flow-control window exceeded 2^31-1 (RFC 9113 §6.9.1 FLOW_CONTROL_ERROR)')
+				}
+				c.send_window = new_window
 			} else if mut s := c.streams[frame.stream_id] {
-				s.send_window += i64(frame.window_size_increment)
+				// Stream-scoped versions of the same rules are STREAM errors
+				// (RFC 9113 §6.9/§6.9.1): reset the offending stream, keep the
+				// connection alive.
+				if inc == 0 {
+					c.send_rst_stream(s.id, .protocol_error)!
+					c.mark_locally_reset(s.id)
+					c.streams.delete(s.id)
+					return
+				}
+				new_window := s.send_window + i64(inc)
+				if new_window > i64(0x7fff_ffff) {
+					c.send_rst_stream(s.id, .flow_control_error)!
+					c.mark_locally_reset(s.id)
+					c.streams.delete(s.id)
+					return
+				}
+				s.send_window = new_window
 			} else if c.classify_stream(frame.stream_id) == .idle {
 				// RFC 9113 §5.1: a WINDOW_UPDATE on an idle stream is a connection
 				// error PROTOCOL_ERROR. On a closed stream it is ignored.
@@ -442,6 +499,11 @@ fn (mut c H2ServerConn) apply_settings(settings []H2Setting) ! {
 				c.encoder.pending_max_table_size = int(s.value)
 			}
 			h2_settings_enable_push {
+				// RFC 9113 §6.5.2: any value other than 0 or 1 is a connection
+				// error PROTOCOL_ERROR.
+				if s.value > 1 {
+					return error('h2 server: SETTINGS_ENABLE_PUSH ${s.value} is not 0 or 1 (RFC 9113 §6.5.2 PROTOCOL_ERROR)')
+				}
 				c.peer.enable_push = s.value != 0
 			}
 			h2_settings_max_concurrent_streams {
@@ -540,6 +602,7 @@ fn (mut c H2ServerConn) on_headers(frame H2HeadersFrame, mut handler Handler) ! 
 		end_headers: frame.end_headers
 		end_stream:  frame.end_stream
 		send_window: i64(c.peer.initial_window_size)
+		self_dep:    frame.has_priority && frame.stream_dep == frame.stream_id
 	}
 	// RFC 9113 §5.1.2: a stream that would exceed the concurrency limit we
 	// advertised is refused. We still assemble and HPACK-decode its header block
@@ -615,6 +678,19 @@ fn (mut c H2ServerConn) finalize_headers(mut s H2ServerStream, mut handler Handl
 		return error('h2 server: HPACK decode error (COMPRESSION_ERROR)')
 	}
 	s.headers_done = true
+	// RFC 7540 §5.3.1: a stream cannot depend on itself; a HEADERS priority
+	// self-dependency is a STREAM error PROTOCOL_ERROR. Checked BEFORE the
+	// concurrency-limit refusal below: REFUSED_STREAM tells the client the
+	// request is safe to retry unchanged, but a self-dependent request is
+	// malformed regardless of the concurrency limit — retrying it would only
+	// repeat the same error, so a stream that is both over-limit and
+	// self-dependent must be reported as PROTOCOL_ERROR, not REFUSED_STREAM.
+	if s.self_dep {
+		c.send_rst_stream(s.id, .protocol_error)!
+		c.mark_locally_reset(s.id)
+		c.streams.delete(s.id)
+		return
+	}
 	// §5.1.2: an over-limit stream was decoded only to keep HPACK in sync; refuse
 	// it now without validating or running the request.
 	if s.refused {
@@ -645,6 +721,10 @@ fn (mut c H2ServerConn) finalize_headers(mut s H2ServerStream, mut handler Handl
 fn (mut c H2ServerConn) on_trailers(mut s H2ServerStream, frame H2HeadersFrame, mut handler Handler) ! {
 	s.in_trailers = true
 	s.end_stream = frame.end_stream
+	// RFC 7540 §5.3.1 applies to ANY HEADERS carrying priority, trailers included.
+	if frame.has_priority && frame.stream_dep == frame.stream_id {
+		s.self_dep = true
+	}
 	s.trailer_block << frame.fragment
 	if !frame.end_headers {
 		c.awaiting_cont = frame.stream_id
@@ -670,7 +750,10 @@ fn (mut c H2ServerConn) finalize_trailers(mut s H2ServerStream, mut handler Hand
 		return
 	}
 	// A well-decoded but malformed trailer section is a STREAM error (§8.1.1).
-	mut reason := if !s.end_stream {
+	mut reason := if s.self_dep {
+		// RFC 7540 §5.3.1: a stream cannot depend on itself.
+		'trailing HEADERS priority depends on itself'
+	} else if !s.end_stream {
 		// A trailer section MUST terminate the stream (RFC 9113 §8.1).
 		'trailing HEADERS without END_STREAM'
 	} else {
