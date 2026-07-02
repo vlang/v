@@ -1173,10 +1173,11 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			}
 			// embedded struct (type on its own line, followed by semicolon)
 			if p.tok == .semicolon || p.tok == .rcbr {
+				embedded_type := p.resolve_local_type_name(field_name)
 				ids << p.a.add_node(flat.Node{
 					kind:  .field_decl
-					value: field_name
-					typ:   field_name
+					value: embedded_type
+					typ:   embedded_type
 				})
 				if p.tok == .semicolon {
 					p.next()

@@ -4164,13 +4164,17 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.Node
 
 // multi_if_assign_block supports multi if assign block handling for Transformer.
 fn (mut t Transformer) multi_if_assign_block(block_id flat.NodeId, lhs_ids []flat.NodeId) flat.NodeId {
-	block := t.a.nodes[int(block_id)]
 	parts := t.tuple_block_parts(block_id, lhs_ids.len) or {
-		if nested := t.nested_multi_if_assign_block(block_id, lhs_ids) {
+		if nested := t.nested_multi_tail_assign_block(block_id, lhs_ids) {
 			return nested
 		}
 		return t.transform_expr(block_id)
 	}
+	stmts := t.multi_if_assign_stmts(parts, lhs_ids)
+	return t.make_block(stmts)
+}
+
+fn (mut t Transformer) multi_if_assign_stmts(parts TupleBlockParts, lhs_ids []flat.NodeId) []flat.NodeId {
 	mut stmts := t.transform_stmts(parts.prefix)
 	for i, value_id in parts.values {
 		value := t.transform_expr(value_id)
@@ -4187,13 +4191,10 @@ fn (mut t Transformer) multi_if_assign_block(block_id flat.NodeId, lhs_ids []fla
 		}
 		stmts << t.make_assign(t.transform_lvalue(lhs_id), value)
 	}
-	if block.kind == .block {
-		return t.make_block(stmts)
-	}
-	return t.make_block(stmts)
+	return stmts
 }
 
-fn (mut t Transformer) nested_multi_if_assign_block(block_id flat.NodeId, lhs_ids []flat.NodeId) ?flat.NodeId {
+fn (mut t Transformer) nested_multi_tail_assign_block(block_id flat.NodeId, lhs_ids []flat.NodeId) ?flat.NodeId {
 	if int(block_id) < 0 || lhs_ids.len == 0 {
 		return none
 	}
@@ -4207,15 +4208,20 @@ fn (mut t Transformer) nested_multi_if_assign_block(block_id flat.NodeId, lhs_id
 	}
 	last_id := children[children.len - 1]
 	last := t.a.nodes[int(last_id)]
-	if last.kind != .if_expr {
-		return none
-	}
 	mut stmts := t.transform_stmts(children[..children.len - 1])
-	nested_stmts := t.lower_multi_if_assign(last, lhs_ids)
-	for stmt in nested_stmts {
-		stmts << stmt
+	if last.kind == .if_expr {
+		nested_stmts := t.lower_multi_if_assign(last, lhs_ids)
+		for stmt in nested_stmts {
+			stmts << stmt
+		}
+		return t.make_block(stmts)
 	}
-	return t.make_block(stmts)
+	if last.kind == .block {
+		nested_parts := t.tuple_block_parts(last_id, lhs_ids.len) or { return none }
+		stmts << t.make_block(t.multi_if_assign_stmts(nested_parts, lhs_ids))
+		return t.make_block(stmts)
+	}
+	return none
 }
 
 // tuple_block_parts supports tuple block parts handling for Transformer.
