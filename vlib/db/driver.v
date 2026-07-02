@@ -319,30 +319,35 @@ $if db_pg ? {
 		}
 	}
 
-	fn pg_row_to_row(row pg.Row) DriverRow {
+	fn pg_row_to_row(row pg.Row, names []string) DriverRow {
 		return DriverRow{
-			vals: row.values()
+			vals:  row.values()
+			names: names.clone()
 		}
 	}
 
-	fn pg_rows_to_rows(rows []pg.Row) []DriverRow {
-		mut normalized := []DriverRow{cap: rows.len}
-		for row in rows {
-			normalized << pg_row_to_row(row)
+	fn pg_result_to_rows(result pg.Result) []DriverRow {
+		mut normalized := []DriverRow{cap: result.rows.len}
+		for row in result.rows {
+			normalized << pg_row_to_row(row, result.names)
 		}
 		return normalized
 	}
 
 	fn (mut driver PgDriver) exec(query string) ![]DriverRow {
-		return pg_rows_to_rows(driver.conn.exec(query)!)
+		return pg_result_to_rows(driver.conn.exec_result(query)!)
 	}
 
 	fn (mut driver PgDriver) exec_one(query string) !DriverRow {
-		return pg_row_to_row(driver.conn.exec_one(query)!)
+		rows := driver.exec(query)!
+		if rows.len == 0 {
+			return error('no row')
+		}
+		return rows[0]
 	}
 
 	fn (mut driver PgDriver) exec_param_many(query string, params []string) ![]DriverRow {
-		return pg_rows_to_rows(driver.conn.exec_param_many(query, params)!)
+		return pg_result_to_rows(driver.conn.exec_param_many_result(query, params)!)
 	}
 
 	fn (mut driver PgDriver) validate() !bool {
