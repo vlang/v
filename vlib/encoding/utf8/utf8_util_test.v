@@ -46,6 +46,19 @@ fn test_utf8_util() {
 	assert utf8.get_rune(c, 6) == `🚀` // 4 bytes
 }
 
+fn test_get_rune_invalid_utf8() {
+	replacement := rune(0xfffd)
+	invalid := [u8(0xc1), 0xa1, `-`, 0xed, 0xa0, 0x80, `-`, 0xc3].bytestr()
+	assert utf8.get_rune(invalid, 0) == replacement
+	assert utf8.get_rune(invalid, 1) == replacement
+	assert utf8.get_rune(invalid, 2) == `-`
+	assert utf8.get_rune(invalid, 3) == replacement
+	assert utf8.get_rune(invalid, 4) == replacement
+	assert utf8.get_rune(invalid, 5) == replacement
+	assert utf8.get_rune(invalid, 6) == `-`
+	assert utf8.get_rune(invalid, 7) == replacement
+}
+
 fn test_raw_indexing() {
 	a := '我是V Lang!'
 

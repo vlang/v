@@ -7,6 +7,13 @@ module utf8
 
 // Utility functions
 
+const replacement_rune = rune(0xfffd)
+
+@[inline]
+fn is_continuation(b u8) bool {
+	return (b & 0xc0) == 0x80
+}
+
 // len return the length as number of unicode chars from a string
 pub fn len(s string) int {
 	if s.len == 0 {
@@ -29,41 +36,59 @@ pub fn len(s string) int {
 
 // get_rune convert a UTF-8 unicode codepoint in string[index] into a UTF-32 encoded rune
 pub fn get_rune(s string, index int) rune {
-	mut res := 0
-	mut ch_len := 0
-	if s.len > 0 {
-		ch_len = utf8_char_len(s[index])
-
-		if ch_len == 1 {
-			return u16(s[index])
-		}
-		if ch_len > 1 && ch_len < 5 {
-			mut lword := 0
-			for i := 0; i < ch_len; i++ {
-				lword = int(u32(lword) << 8 | u32(s[index + i]))
-			}
-
-			// 2 byte utf-8
-			// byte format: 110xxxxx 10xxxxxx
-			//
-			if ch_len == 2 {
-				res = (lword & 0x1f00) >> 2 | (lword & 0x3f)
-			}
-			// 3 byte utf-8
-			// byte format: 1110xxxx 10xxxxxx 10xxxxxx
-			//
-			else if ch_len == 3 {
-				res = (lword & 0x0f0000) >> 4 | (lword & 0x3f00) >> 2 | (lword & 0x3f)
-			}
-			// 4 byte utf-8
-			// byte format: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-			//
-			else if ch_len == 4 {
-				res = ((lword & 0x07000000) >> 6) | ((lword & 0x003f0000) >> 4) | ((lword & 0x00003F00) >> 2) | (lword & 0x0000003f)
-			}
-		}
+	if s.len == 0 || index < 0 || index >= s.len {
+		return 0
 	}
-	return res
+	b0 := s[index]
+	if b0 < 0x80 {
+		return rune(b0)
+	}
+	if b0 < 0xc2 {
+		return replacement_rune
+	}
+	ch_len := if b0 < 0xe0 {
+		2
+	} else if b0 < 0xf0 {
+		3
+	} else if b0 < 0xf5 {
+		4
+	} else {
+		return replacement_rune
+	}
+	if index + ch_len > s.len {
+		return replacement_rune
+	}
+	b1 := s[index + 1]
+	if !is_continuation(b1) {
+		return replacement_rune
+	}
+	if ch_len == 2 {
+		return ((rune(b0) & 0x1f) << 6) | (rune(b1) & 0x3f)
+	}
+	if b0 == 0xe0 && b1 < 0xa0 {
+		return replacement_rune
+	}
+	if b0 == 0xed && b1 >= 0xa0 {
+		return replacement_rune
+	}
+	b2 := s[index + 2]
+	if !is_continuation(b2) {
+		return replacement_rune
+	}
+	if ch_len == 3 {
+		return ((rune(b0) & 0x0f) << 12) | ((rune(b1) & 0x3f) << 6) | (rune(b2) & 0x3f)
+	}
+	if b0 == 0xf0 && b1 < 0x90 {
+		return replacement_rune
+	}
+	if b0 == 0xf4 && b1 > 0x8f {
+		return replacement_rune
+	}
+	b3 := s[index + 3]
+	if !is_continuation(b3) {
+		return replacement_rune
+	}
+	return ((rune(b0) & 0x07) << 18) | ((rune(b1) & 0x3f) << 12) | ((rune(b2) & 0x3f) << 6) | (rune(b3) & 0x3f)
 }
 
 // raw_index - get the raw unicode character from the UTF-8 string by the given index value as UTF-8 string.
