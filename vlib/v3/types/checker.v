@@ -4288,44 +4288,82 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 }
 
 fn (tc &TypeChecker) multi_expr_tail_types(expr_id flat.NodeId, count int) ?[]Type {
-	values := tc.multi_expr_tail_value_ids(expr_id, count) or { return none }
-	mut types := []Type{cap: values.len}
-	for value_id in values {
+	groups := tc.multi_expr_tail_value_groups(expr_id, count) or { return none }
+	if groups.len == 0 {
+		return none
+	}
+	mut types := []Type{cap: count}
+	for value_id in groups[0] {
 		types << tc.resolve_type(value_id)
+	}
+	for i in 1 .. groups.len {
+		group := groups[i]
+		if group.len != types.len {
+			return none
+		}
+		for j, value_id in group {
+			if !tc.multi_tail_type_compatible(tc.resolve_type(value_id), types[j]) {
+				return none
+			}
+		}
 	}
 	return types
 }
 
-fn (tc &TypeChecker) multi_expr_tail_value_ids(expr_id flat.NodeId, count int) ?[]flat.NodeId {
+fn (tc &TypeChecker) multi_tail_type_compatible(actual Type, expected Type) bool {
+	return tc.type_compatible(actual, expected) || tc.type_compatible(expected, actual)
+}
+
+fn (tc &TypeChecker) multi_expr_tail_value_groups(expr_id flat.NodeId, count int) ?[][]flat.NodeId {
 	if count <= 0 || !tc.valid_node_id(expr_id) {
 		return none
 	}
 	node := tc.a.nodes[int(expr_id)]
 	match node.kind {
 		.if_expr {
-			if node.children_count < 2 {
+			if node.children_count < 3 {
 				return none
 			}
-			return tc.tuple_tail_value_ids(tc.a.child(&node, 1), count)
+			mut groups := [][]flat.NodeId{}
+			then_groups := tc.tuple_tail_value_groups(tc.a.child(&node, 1), count) or {
+				return none
+			}
+			for group in then_groups {
+				groups << group
+			}
+			else_id := tc.a.child(&node, 2)
+			else_groups := tc.multi_expr_tail_value_groups(else_id, count) or { return none }
+			for group in else_groups {
+				groups << group
+			}
+			return groups
 		}
 		.match_stmt {
+			mut groups := [][]flat.NodeId{}
 			for i in 1 .. node.children_count {
 				branch_id := tc.a.child(&node, i)
 				if !tc.valid_node_id(branch_id) {
-					continue
+					return none
 				}
 				branch := tc.a.nodes[int(branch_id)]
 				if branch.kind == .match_branch {
-					return tc.tuple_tail_value_ids(branch_id, count)
+					branch_groups := tc.tuple_tail_value_groups(branch_id, count) or { return none }
+					for group in branch_groups {
+						groups << group
+					}
 				}
 			}
+			if groups.len == 0 {
+				return none
+			}
+			return groups
 		}
 		.block, .match_branch {
-			return tc.tuple_tail_value_ids(expr_id, count)
+			return tc.tuple_tail_value_groups(expr_id, count)
 		}
 		.expr_stmt {
 			if node.children_count > 0 {
-				return tc.multi_expr_tail_value_ids(tc.a.child(&node, 0), count)
+				return tc.multi_expr_tail_value_groups(tc.a.child(&node, 0), count)
 			}
 		}
 		else {}
@@ -4334,7 +4372,7 @@ fn (tc &TypeChecker) multi_expr_tail_value_ids(expr_id flat.NodeId, count int) ?
 	return none
 }
 
-fn (tc &TypeChecker) tuple_tail_value_ids(body_id flat.NodeId, count int) ?[]flat.NodeId {
+fn (tc &TypeChecker) tuple_tail_value_groups(body_id flat.NodeId, count int) ?[][]flat.NodeId {
 	if count <= 0 || !tc.valid_node_id(body_id) {
 		return none
 	}
@@ -4351,11 +4389,16 @@ fn (tc &TypeChecker) tuple_tail_value_ids(body_id flat.NodeId, count int) ?[]fla
 	if tc.valid_node_id(last_id) {
 		last := tc.a.nodes[int(last_id)]
 		if last.kind in [.block, .match_branch, .if_expr, .match_stmt] {
-			if nested := tc.multi_expr_tail_value_ids(last_id, count) {
-				if nested.len == count {
-					return nested
-				}
+			return tc.multi_expr_tail_value_groups(last_id, count)
+		}
+		if last.kind == .return_stmt && last.children_count == count {
+			mut values := []flat.NodeId{cap: count}
+			for i in 0 .. last.children_count {
+				values << tc.a.child(&last, i)
 			}
+			mut groups := [][]flat.NodeId{}
+			groups << values
+			return groups
 		}
 	}
 	mut values := []flat.NodeId{}
@@ -4370,7 +4413,9 @@ fn (tc &TypeChecker) tuple_tail_value_ids(body_id flat.NodeId, count int) ?[]fla
 		}
 		values.prepend(tc.a.child(&child, 0))
 		if values.len == count {
-			return values
+			mut groups := [][]flat.NodeId{}
+			groups << values
+			return groups
 		}
 	}
 	return none

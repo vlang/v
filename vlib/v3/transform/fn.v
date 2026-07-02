@@ -1214,17 +1214,25 @@ fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_ty
 		}
 		value_name := t.new_temp('vararg')
 		if variadic_elem_is_voidptr(elem_type) {
-			storage_type := t.voidptr_variadic_storage_type(arg_id)
-			storage_value := if storage_type != t.node_type(arg_id) {
-				t.make_cast(storage_type, value, storage_type)
+			value_arg := if t.voidptr_variadic_arg_passes_direct(arg_id) {
+				if t.node_type(arg_id) == 'voidptr' {
+					value
+				} else {
+					t.make_cast('voidptr', value, 'voidptr')
+				}
 			} else {
-				value
+				storage_type := t.voidptr_variadic_storage_type(arg_id)
+				storage_value := if storage_type != t.node_type(arg_id) {
+					t.make_cast(storage_type, value, storage_type)
+				} else {
+					value
+				}
+				storage_name := t.new_temp('vararg_storage')
+				t.pending_stmts << t.make_decl_assign_typed(storage_name, storage_value,
+					storage_type)
+				t.make_cast('voidptr', t.make_prefix(.amp, t.make_ident(storage_name)), 'voidptr')
 			}
-			storage_name := t.new_temp('vararg_storage')
-			t.pending_stmts << t.make_decl_assign_typed(storage_name, storage_value, storage_type)
-			ptr_value := t.make_cast('voidptr', t.make_prefix(.amp, t.make_ident(storage_name)),
-				'voidptr')
-			t.pending_stmts << t.make_decl_assign_typed(value_name, ptr_value, expected_enum)
+			t.pending_stmts << t.make_decl_assign_typed(value_name, value_arg, expected_enum)
 		} else {
 			t.pending_stmts << t.make_decl_assign_typed(value_name, value, expected_enum)
 		}
@@ -1240,6 +1248,22 @@ fn variadic_elem_is_voidptr(typ types.Type) bool {
 		return typ.base_type is types.Void
 	}
 	return false
+}
+
+fn (t &Transformer) voidptr_variadic_arg_passes_direct(arg_id flat.NodeId) bool {
+	if !isnil(t.tc) {
+		return voidptr_variadic_type_passes_direct(t.tc.resolve_type(arg_id))
+	}
+	typ := t.node_type(arg_id)
+	return typ == 'voidptr' || typ == 'nil' || typ == 'charptr' || typ == 'byteptr'
+		|| typ.starts_with('&')
+}
+
+fn voidptr_variadic_type_passes_direct(typ types.Type) bool {
+	if typ is types.Alias {
+		return voidptr_variadic_type_passes_direct(typ.base_type)
+	}
+	return typ is types.Pointer || typ is types.Nil
 }
 
 fn (t &Transformer) voidptr_variadic_storage_type(arg_id flat.NodeId) string {

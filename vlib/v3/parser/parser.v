@@ -49,6 +49,7 @@ mut:
 	skip_next_decl   bool
 	disable_fn_body  bool
 	in_for_container bool
+	local_type_names map[string]string
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
 	parsed_v_files int
@@ -57,9 +58,10 @@ pub mut:
 // new creates a Parser value for parser.
 pub fn Parser.new(prefs &pref.Preferences) &Parser {
 	return &Parser{
-		prefs: unsafe { prefs }
-		s:     scanner.new_scanner(prefs, .normal)
-		a:     &flat.FlatAst{
+		prefs:            unsafe { prefs }
+		s:                scanner.new_scanner(prefs, .normal)
+		local_type_names: map[string]string{}
+		a:                &flat.FlatAst{
 			nodes:           []flat.Node{cap: 256}
 			children:        []flat.NodeId{cap: 512}
 			disabled_fns:    map[string]bool{}
@@ -1046,6 +1048,11 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			p.next()
 			name += '.' + p.expect_name_or_keyword()
 		}
+	}
+	if p.cur_fn.len > 0 && !name.contains('.') {
+		local_name := p.local_type_decl_name(name)
+		p.local_type_names[p.local_type_key(name)] = local_name
+		name = local_name
 	}
 	// generic params — skip
 	mut is_generic := false
@@ -2582,15 +2589,6 @@ fn (mut p Parser) stmt() flat.NodeId {
 		.key_struct, .key_union {
 			return p.struct_decl()
 		}
-		.key_enum {
-			return p.enum_decl()
-		}
-		.key_type {
-			return p.type_decl()
-		}
-		.key_interface {
-			return p.interface_decl()
-		}
 		.key_match {
 			return p.match_stmt()
 		}
@@ -2635,15 +2633,6 @@ fn (mut p Parser) stmt() flat.NodeId {
 			}
 			if p.tok == .key_struct || p.tok == .key_union {
 				return p.struct_decl()
-			}
-			if p.tok == .key_enum {
-				return p.enum_decl()
-			}
-			if p.tok == .key_type {
-				return p.type_decl()
-			}
-			if p.tok == .key_interface {
-				return p.interface_decl()
 			}
 			return p.assign_or_expr_stmt()
 		}
@@ -4046,7 +4035,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return p.prefix_expr()
 		}
 		.name, .key_module {
-			name := p.lit
+			mut name := p.lit
 			p.next()
 			if name == 'sql' && p.starts_sql_expr() {
 				return p.sql_expr()
@@ -4129,15 +4118,17 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				}
 				return p.a.add_val(.map_init, map_type)
 			}
+			local_type_name := p.resolve_local_type_name(name)
 			// struct init: Name{...}; vlib/builtin also uses concrete lowercase
 			// runtime structs like array{} and string{}.
-			if !p.in_for_container && p.tok == .lcbr && name.len > 0
-				&& ((name[0] >= `A` && name[0] <= `Z`)
+			if !p.in_for_container && p.tok == .lcbr && local_type_name.len > 0
+				&& ((local_type_name[0] >= `A` && local_type_name[0] <= `Z`)
 				|| name in ['array', 'string', 'map', 'mapnode', '_result', '_option']) {
-				return p.struct_init(name)
+				return p.struct_init(local_type_name)
 			}
 			// type cast: TypeName(expr) or builtin_type(expr)
-			if p.tok == .lpar && name.len > 0 && ((name[0] >= `A` && name[0] <= `Z`)
+			if p.tok == .lpar && local_type_name.len > 0
+				&& ((local_type_name[0] >= `A` && local_type_name[0] <= `Z`)
 				|| is_builtin_type(name)) {
 				p.next() // skip (
 				inner := p.expr(.lowest)
@@ -4145,7 +4136,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				cstart := p.add_child(inner)
 				return p.a.add_node(flat.Node{
 					kind:           .cast_expr
-					value:          name
+					value:          local_type_name
 					children_start: cstart
 					children_count: 1
 				})
@@ -5542,8 +5533,50 @@ fn (mut p Parser) parse_type_name() string {
 		}
 		// generic: Type[T, U]
 		name += p.parse_type_generic_suffix()
+		name = p.resolve_local_type_name(name)
 	}
 	return name
+}
+
+fn (p &Parser) local_type_key(name string) string {
+	if p.cur_fn.len == 0 || name.len == 0 {
+		return ''
+	}
+	return '${p.cur_file}\n${p.cur_module}\n${p.cur_fn}\n${name}'
+}
+
+fn (p &Parser) local_type_decl_name(name string) string {
+	return '${name}__local_${local_type_scope_part(p.cur_fn)}'
+}
+
+fn (p &Parser) resolve_local_type_name(name string) string {
+	if p.cur_fn.len == 0 || name.len == 0 || name.contains('.') {
+		return name
+	}
+	mut suffix := ''
+	mut base := name
+	idx := name.index_u8(`[`)
+	if idx >= 0 {
+		base = name[..idx]
+		suffix = name[idx..]
+	}
+	if mapped := p.local_type_names[p.local_type_key(base)] {
+		return mapped + suffix
+	}
+	return name
+}
+
+fn local_type_scope_part(name string) string {
+	mut out := strings.new_builder(name.len)
+	for ch in name {
+		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
+			|| (ch >= `0` && ch <= `9`) || ch == `_` {
+			out.write_rune(ch)
+		} else {
+			out.write_u8(`_`)
+		}
+	}
+	return out.str()
 }
 
 // ==================== helpers ====================

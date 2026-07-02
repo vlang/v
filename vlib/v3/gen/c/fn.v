@@ -4548,10 +4548,23 @@ fn variadic_elem_is_voidptr(typ types.Type) bool {
 
 fn (mut g FlatGen) gen_voidptr_variadic_arg(arg_id flat.NodeId) {
 	actual := g.tc.resolve_type(arg_id)
+	if voidptr_variadic_type_passes_direct(actual) {
+		g.write('(voidptr)(')
+		g.gen_expr_with_expected_type(arg_id, actual)
+		g.write(')')
+		return
+	}
 	storage_ct := g.voidptr_variadic_storage_c_type(actual)
 	g.write('(voidptr)&((${storage_ct}[]){')
 	g.gen_expr_with_expected_type(arg_id, actual)
 	g.write('}[0])')
+}
+
+fn voidptr_variadic_type_passes_direct(typ types.Type) bool {
+	if typ is types.Alias {
+		return voidptr_variadic_type_passes_direct(typ.base_type)
+	}
+	return typ is types.Pointer || typ is types.Nil
 }
 
 fn (g &FlatGen) voidptr_variadic_storage_c_type(actual types.Type) string {
