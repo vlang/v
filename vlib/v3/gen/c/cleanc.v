@@ -418,6 +418,11 @@ fn (mut g FlatGen) collect_gen_info() {
 	for node_idx in 0 .. g.a.nodes.len {
 		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
+		if node.kind == .string_literal {
+			g.intern_string(node.value)
+		} else if node.kind == .string_interp && node.children_count == 0 {
+			g.intern_string('')
+		}
 		if kind_id == 77 {
 			cur_file = node.value
 			g.note_compiler_source_file(node.value)
@@ -3447,6 +3452,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					g.write(c_name(node.value))
 				}
+			} else if fn_c_name := g.ident_fn_value_c_name(id, node) {
+				g.write(fn_c_name)
 			} else {
 				g.write(c_name(node.value))
 			}
@@ -6480,9 +6487,78 @@ fn fixed_array_typedef_is_early(arr types.ArrayFixed) bool {
 // struct/`string`/nested element wrappers are emitted by fixed_array_typedefs(), after
 // the element type is defined.
 fn (mut g FlatGen) populate_fixed_array_ret_wrappers() {
-	needed := g.collect_fixed_array_typedefs_needed()
-	for name, _ in needed {
-		g.fixed_array_ret_wrappers[name] = true
+	old_module := g.tc.cur_module
+	for name, ret_type in g.tc.fn_ret_types {
+		g.tc.cur_module = module_from_qualified_name(name)
+		g.collect_fixed_array_return_wrapper(ret_type)
+		g.collect_fn_type_fixed_array_return_wrappers(ret_type)
+	}
+	for name, param_types in g.tc.fn_param_types {
+		g.tc.cur_module = module_from_qualified_name(name)
+		for param_type in param_types {
+			g.collect_fn_type_fixed_array_return_wrappers(param_type)
+		}
+	}
+	for name, fields in g.tc.structs {
+		g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
+		for field in fields {
+			g.collect_fn_type_fixed_array_return_wrappers(field.typ)
+		}
+	}
+	for name, fields in g.tc.interface_fields {
+		g.tc.cur_module = module_from_qualified_name(name)
+		for field in fields {
+			g.collect_fn_type_fixed_array_return_wrappers(field.typ)
+		}
+	}
+	for name, typ in g.global_types {
+		g.tc.cur_module = g.global_modules[name] or { old_module }
+		g.collect_fn_type_fixed_array_return_wrappers(typ)
+	}
+	for _, typ in g.tc.c_globals {
+		g.tc.cur_module = old_module
+		g.collect_fn_type_fixed_array_return_wrappers(typ)
+	}
+	for name, typ in g.tc.const_types {
+		g.tc.cur_module = g.const_modules[name] or { old_module }
+		g.collect_fn_type_fixed_array_return_wrappers(typ)
+	}
+	g.tc.cur_module = old_module
+}
+
+fn (mut g FlatGen) collect_fixed_array_return_wrapper(typ types.Type) {
+	if typ is types.ArrayFixed {
+		g.fixed_array_ret_wrappers[g.tc.c_type(typ)] = true
+	} else if typ is types.Alias {
+		g.collect_fixed_array_return_wrapper(typ.base_type)
+	}
+}
+
+fn (mut g FlatGen) collect_fn_type_fixed_array_return_wrappers(typ types.Type) {
+	if typ is types.FnType {
+		g.collect_fixed_array_return_wrapper(typ.return_type)
+		for param in typ.params {
+			g.collect_fn_type_fixed_array_return_wrappers(param)
+		}
+	} else if typ is types.Pointer {
+		g.collect_fn_type_fixed_array_return_wrappers(typ.base_type)
+	} else if typ is types.Alias {
+		g.collect_fn_type_fixed_array_return_wrappers(typ.base_type)
+	} else if typ is types.OptionType {
+		g.collect_fn_type_fixed_array_return_wrappers(typ.base_type)
+	} else if typ is types.ResultType {
+		g.collect_fn_type_fixed_array_return_wrappers(typ.base_type)
+	} else if typ is types.Array {
+		g.collect_fn_type_fixed_array_return_wrappers(typ.elem_type)
+	} else if typ is types.ArrayFixed {
+		g.collect_fn_type_fixed_array_return_wrappers(typ.elem_type)
+	} else if typ is types.Map {
+		g.collect_fn_type_fixed_array_return_wrappers(typ.key_type)
+		g.collect_fn_type_fixed_array_return_wrappers(typ.value_type)
+	} else if typ is types.MultiReturn {
+		for item in typ.types {
+			g.collect_fn_type_fixed_array_return_wrappers(item)
+		}
 	}
 }
 
@@ -6717,7 +6793,7 @@ fn (mut g FlatGen) collect_fixed_array_typedef(typ types.Type, mut needed map[st
 
 fn (mut g FlatGen) collect_fixed_array_typedef_text(type_text string, mut needed map[string]FixedArrayTypedefInfo) {
 	clean := type_text.trim_space()
-	if clean.len == 0 {
+	if clean.len == 0 || !fixed_array_type_text_may_need_typedef(clean) {
 		return
 	}
 	typ := g.tc.parse_type(clean)
@@ -6725,6 +6801,15 @@ fn (mut g FlatGen) collect_fixed_array_typedef_text(type_text string, mut needed
 		return
 	}
 	g.collect_fixed_array_typedef(typ, mut needed)
+}
+
+fn fixed_array_type_text_may_need_typedef(type_text string) bool {
+	for i in 0 .. type_text.len - 1 {
+		if type_text[i] == `[` && type_text[i + 1] >= `0` && type_text[i + 1] <= `9` {
+			return true
+		}
+	}
+	return false
 }
 
 fn fixed_array_typedef_has_non_decimal_len(typ types.Type) bool {

@@ -1051,10 +1051,31 @@ fn (t &Transformer) array_map_call_type_name(node flat.Node) ?string {
 		return none
 	}
 	map_expr_id := t.a.child(&node, 1)
-	mut elem_type := if checker_type := t.checker_expr_type_name(map_expr_id) {
-		checker_type
-	} else {
-		t.node_type(map_expr_id)
+	map_expr := t.a.nodes[int(map_expr_id)]
+	mut elem_type := ''
+	if map_expr.kind == .ident {
+		if fn_name := t.resolve_fn_value_ident(map_expr.value) {
+			if ret := t.fn_ret_types[fn_name] {
+				elem_type = ret
+			} else if !isnil(t.tc) {
+				if ret_type := t.tc.fn_ret_types[fn_name] {
+					elem_type = t.normalize_type_alias(ret_type.name())
+				}
+			}
+		} else if ret_type := t.fn_value_return_type_name(map_expr_id) {
+			elem_type = ret_type
+		}
+	} else if map_expr.kind == .fn_literal || map_expr.kind == .lambda_expr {
+		if ret_type := t.fn_value_return_type_name(map_expr_id) {
+			elem_type = ret_type
+		}
+	}
+	if elem_type.len == 0 {
+		elem_type = if checker_type := t.checker_expr_type_name(map_expr_id) {
+			checker_type
+		} else {
+			t.node_type(map_expr_id)
+		}
 	}
 	if elem_type.len == 0 || elem_type in ['array', 'map', 'unknown'] {
 		elem_type = t.reliable_stringify_type(map_expr_id)

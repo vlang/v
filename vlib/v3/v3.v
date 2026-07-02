@@ -153,7 +153,7 @@ fn main() {
 	mut is_strict := false
 	mut is_selfhost := false
 	mut no_parallel := false
-	mut parallel_transform := false
+	mut parallel_transform := true
 	mut building_v := false
 	mut c99 := false
 	mut all_backends := false
@@ -216,6 +216,9 @@ fn main() {
 			i++
 		}
 	}
+	if no_parallel {
+		parallel_transform = false
+	}
 
 	if input_file == '' {
 		eprintln('no input file')
@@ -228,6 +231,13 @@ fn main() {
 		building_v = true
 	}
 	cmd_v_build := input_is_cmd_v(input_file)
+	if building_v || cmd_v_build {
+		if no_parallel {
+			user_defines = user_defines.filter(it != 'parallel')
+		} else if 'parallel' !in user_defines {
+			user_defines << 'parallel'
+		}
+	}
 
 	mut bin_file := ''
 	mut c_only := false
@@ -384,9 +394,9 @@ fn main() {
 	}
 	b.step('markused')
 
-	// Transform (match lowering, string/in lowering, etc.). Parallel transform is an
-	// explicit opt-in (`-parallel-transform`), independent of `-no-parallel` (which
-	// gates the parallel C codegen): the two phases can be threaded independently.
+	// Transform (match lowering, string/in lowering, etc.). Threaded transform is enabled
+	// by default for compatible builds, and `-no-parallel` disables both threaded transform
+	// and cgen.
 	mut transform_was_parallel := false
 	skip_transform_generics := building_v || cmd_v_build
 	used_fns, transform_was_parallel = transform.transform_with_used_opt_config(mut a, &pre_tc,

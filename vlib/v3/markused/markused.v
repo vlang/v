@@ -1763,16 +1763,18 @@ fn markused_visible_local_idents(a &flat.FlatAst, root &flat.Node, local_values 
 	if local_values.len == 0 {
 		return visible_ids
 	}
-	mut locals := map[string]bool{}
+	mut locals := map[string]int{}
+	mut local_stack := []string{}
 	if root.kind == .fn_decl {
 		for i in 0 .. root.children_count {
 			child := a.child_node(root, i)
 			if child.kind == .param && child.value.len > 0 {
-				locals[child.value] = true
+				markused_push_visible_local(child.value, mut locals, mut local_stack)
 			}
 		}
 	}
-	markused_collect_visible_local_idents(a, root, local_values, mut locals, mut visible_ids)
+	markused_collect_visible_local_idents(a, root, local_values, mut locals, mut local_stack, mut
+		visible_ids)
 	return visible_ids
 }
 
@@ -1780,7 +1782,31 @@ fn markused_ident_is_visible_local(id flat.NodeId, name string, local_values map
 	return name.len > 0 && name in local_values && int(id) in visible_local_idents
 }
 
-fn markused_collect_visible_local_idents(a &flat.FlatAst, node &flat.Node, local_values map[string]bool, mut locals map[string]bool, mut visible_ids map[int]bool) {
+fn markused_push_visible_local(name string, mut locals map[string]int, mut local_stack []string) {
+	if name.len == 0 {
+		return
+	}
+	locals[name] = (locals[name] or { 0 }) + 1
+	local_stack << name
+}
+
+fn markused_restore_visible_local_scope(mark int, mut locals map[string]int, mut local_stack []string) {
+	for local_stack.len > mark {
+		name := local_stack.pop()
+		count := locals[name] or { 0 }
+		if count <= 1 {
+			locals.delete(name)
+		} else {
+			locals[name] = count - 1
+		}
+	}
+}
+
+fn markused_local_visible(name string, local_values map[string]bool, locals map[string]int) bool {
+	return name.len > 0 && name in local_values && (locals[name] or { 0 }) > 0
+}
+
+fn markused_collect_visible_local_idents(a &flat.FlatAst, node &flat.Node, local_values map[string]bool, mut locals map[string]int, mut local_stack []string, mut visible_ids map[int]bool) {
 	for i in 0 .. node.children_count {
 		child_id := a.child(node, i)
 		if int(child_id) < 0 {
@@ -1792,9 +1818,10 @@ fn markused_collect_visible_local_idents(a &flat.FlatAst, node &flat.Node, local
 				continue
 			}
 			.block, .if_expr, .match_stmt, .for_stmt, .for_in_stmt {
-				mut scoped := markused_clone_bool_map(locals)
-				markused_collect_visible_local_idents(a, child, local_values, mut scoped, mut
-					visible_ids)
+				scope_mark := local_stack.len
+				markused_collect_visible_local_idents(a, child, local_values, mut locals, mut
+					local_stack, mut visible_ids)
+				markused_restore_visible_local_scope(scope_mark, mut locals, mut local_stack)
 			}
 			.decl_assign {
 				mut i2 := 1
@@ -1805,7 +1832,7 @@ fn markused_collect_visible_local_idents(a &flat.FlatAst, node &flat.Node, local
 							visible_ids)
 						rhs := a.node(rhs_id)
 						markused_collect_visible_local_idents(a, rhs, local_values, mut locals, mut
-							visible_ids)
+							local_stack, mut visible_ids)
 					}
 					i2 += 2
 				}
@@ -1813,29 +1840,29 @@ fn markused_collect_visible_local_idents(a &flat.FlatAst, node &flat.Node, local
 				for i2 + 1 < child.children_count {
 					lhs_id := a.child(child, i2)
 					lhs := a.node(lhs_id)
-					if lhs.kind == .ident && lhs.value in local_values && lhs.value in locals {
+					if lhs.kind == .ident && markused_local_visible(lhs.value, local_values, locals) {
 						visible_ids[int(lhs_id)] = true
 					}
 					if lhs.kind == .ident && lhs.value.len > 0 {
-						locals[lhs.value] = true
+						markused_push_visible_local(lhs.value, mut locals, mut local_stack)
 					}
 					i2 += 2
 				}
 			}
 			else {
-				if child.kind == .ident && child.value in local_values && child.value in locals {
+				if child.kind == .ident && markused_local_visible(child.value, local_values, locals) {
 					visible_ids[int(child_id)] = true
 				}
 				markused_collect_visible_local_idents(a, child, local_values, mut locals, mut
-					visible_ids)
+					local_stack, mut visible_ids)
 			}
 		}
 	}
 }
 
-fn markused_mark_visible_local_ident(a &flat.FlatAst, id flat.NodeId, local_values map[string]bool, locals map[string]bool, mut visible_ids map[int]bool) {
+fn markused_mark_visible_local_ident(a &flat.FlatAst, id flat.NodeId, local_values map[string]bool, locals map[string]int, mut visible_ids map[int]bool) {
 	node := a.node(id)
-	if node.kind == .ident && node.value in local_values && node.value in locals {
+	if node.kind == .ident && markused_local_visible(node.value, local_values, locals) {
 		visible_ids[int(id)] = true
 	}
 }

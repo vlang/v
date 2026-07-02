@@ -187,34 +187,52 @@ fn (mut g FlatGen) gen_branch_lock_cleanup(label string) {
 
 fn (g &FlatGen) collect_fn_goto_label_lock_scopes(node flat.Node) map[string][]int {
 	mut scopes := map[string][]int{}
-	for i in 0 .. node.children_count {
-		g.collect_goto_label_lock_scopes_from(g.a.child(&node, i), []int{}, mut scopes)
+	mut lock_scopes := []int{}
+	start := node.children_start
+	end := start + int(node.children_count)
+	if start >= 0 && end <= g.a.children.len {
+		for i in start .. end {
+			// The child range is checked above; avoid per-child bounds checks in this hot walk.
+			g.collect_goto_label_lock_scopes_from(unsafe { g.a.children[i] }, mut lock_scopes, mut
+				scopes)
+		}
 	}
 	return scopes
 }
 
 fn (g &FlatGen) collect_top_level_goto_label_lock_scopes(stmts []TopLevelStmt) map[string][]int {
 	mut scopes := map[string][]int{}
+	mut lock_scopes := []int{}
 	for stmt in stmts {
-		g.collect_goto_label_lock_scopes_from(stmt.id, []int{}, mut scopes)
+		g.collect_goto_label_lock_scopes_from(stmt.id, mut lock_scopes, mut scopes)
 	}
 	return scopes
 }
 
-fn (g &FlatGen) collect_goto_label_lock_scopes_from(id flat.NodeId, lock_scopes []int, mut scopes map[string][]int) {
+fn (g &FlatGen) collect_goto_label_lock_scopes_from(id flat.NodeId, mut lock_scopes []int, mut scopes map[string][]int) {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return
 	}
 	node := g.a.nodes[int(id)]
+	mut pushed_lock := false
+	if node.kind == .lock_expr {
+		lock_scopes << int(id)
+		pushed_lock = true
+	}
 	if node.kind == .label_stmt && node.value.len > 0 {
 		scopes[node.value] = lock_scopes.clone()
 	}
-	mut child_lock_scopes := lock_scopes.clone()
-	if node.kind == .lock_expr {
-		child_lock_scopes << int(id)
+	start := node.children_start
+	end := start + int(node.children_count)
+	if start >= 0 && end <= g.a.children.len {
+		for i in start .. end {
+			// The child range is checked above; avoid per-child bounds checks in this hot walk.
+			g.collect_goto_label_lock_scopes_from(unsafe { g.a.children[i] }, mut lock_scopes, mut
+				scopes)
+		}
 	}
-	for i in 0 .. node.children_count {
-		g.collect_goto_label_lock_scopes_from(g.a.child(&node, i), child_lock_scopes, mut scopes)
+	if pushed_lock {
+		lock_scopes.delete_last()
 	}
 }
 

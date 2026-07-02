@@ -124,7 +124,9 @@ mut:
 	generic_fn_decls_cache           map[string]GenericFnDecl
 	generic_receiver_methods_by_name map[string][]string
 	generic_fn_decls_ready           bool
-	node_module_map_cache            map[int]string
+	generic_call_spec_cache          map[int]GenericCallSpec
+	generic_call_spec_misses         map[int]bool
+	node_module_map_cache            []string
 	node_module_map_nodes            int = -1
 }
 
@@ -188,6 +190,11 @@ struct GenericFnDecl {
 	file   string
 	module string
 	key    string
+}
+
+struct GenericCallSpec {
+	decl_key string
+	args     []string
 }
 
 // --- entry point ---
@@ -261,6 +268,8 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		escaping_amp_sources:             map[string]bool{}
 		heaped_amp_locals:                map[string]bool{}
 		generic_receiver_methods_by_name: map[string][]string{}
+		generic_call_spec_cache:          map[int]GenericCallSpec{}
+		generic_call_spec_misses:         map[int]bool{}
 		used_fns:                         used_fns.clone()
 	}
 }
@@ -858,6 +867,7 @@ struct FnWorkItem {
 	file   string
 	module string
 	cost   int
+	rank   i64
 }
 
 // transform_all_dispatch runs the main transform pass either serially (the
@@ -924,6 +934,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(scan_fn_literals bool)
 					file:   t.cur_file
 					module: t.cur_module
 					cost:   cost
+					rank:   i64(cost) * 1_000_000_000 - i64(i)
 				}
 			}
 		} else if kind_id == 65 {
@@ -1012,7 +1023,9 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
-	w.node_module_map_cache = map[int]string{}
+	w.generic_call_spec_cache = map[int]GenericCallSpec{}
+	w.generic_call_spec_misses = map[int]bool{}
+	w.node_module_map_cache = []string{}
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
 	w.mut_param_values = map[string]bool{}
@@ -1092,7 +1105,9 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 fn split_work_items(items []FnWorkItem, n int) [][]FnWorkItem {
 	mut buckets := [][]FnWorkItem{len: n, init: []FnWorkItem{}}
 	mut loads := []i64{len: n}
-	for it in items {
+	mut sorted := items.clone()
+	sorted.sort(a.rank > b.rank)
+	for it in sorted {
 		mut best := 0
 		for b in 1 .. n {
 			if loads[b] < loads[best] {
