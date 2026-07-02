@@ -1,5 +1,6 @@
 import os
 import rand
+import strings
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
@@ -18,6 +19,12 @@ fn build_v3() string {
 
 fn unique_temp_path(name string) string {
 	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}_${rand.ulid()}')
+}
+
+fn error_index(output string, needle string) int {
+	idx := output.index(needle) or { -1 }
+	assert idx >= 0, 'missing `${needle}` in\n${output}'
+	return idx
 }
 
 // run_bad supports run bad handling for v3 tests.
@@ -116,6 +123,27 @@ fn gen_c_project(v3_bin string, name string, files map[string]string, input stri
 	assert compile.exit_code == 0
 	assert os.exists(c_out)
 	return os.read_file(c_out) or { panic(err) }
+}
+
+fn test_parallel_checker_preserves_diagnostic_order() {
+	v3_bin := build_v3()
+	out := unique_temp_path('parallel_checker_error_order')
+	src_path := out + '.v'
+	mut src := strings.new_builder(32_000)
+	for i in 0 .. 270 {
+		src.writeln('fn f_${i}() int {')
+		src.writeln('\treturn missing_${i}')
+		src.writeln('}')
+	}
+	src.writeln('fn main() {}')
+	os.write_file(src_path, src.str()) or { panic(err) }
+	result := os.execute('VJOBS=4 ${v3_bin} ${src_path} -b c -o ${out}')
+	assert result.exit_code != 0, result.output
+	first := error_index(result.output, 'unknown identifier `missing_0`')
+	second := error_index(result.output, 'unknown identifier `missing_1`')
+	third := error_index(result.output, 'unknown identifier `missing_2`')
+	assert first < second
+	assert second < third
 }
 
 // test_type_checker_reports_core_semantic_errors validates this v3 regression case.

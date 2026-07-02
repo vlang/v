@@ -151,8 +151,13 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 			tc.merge_parallel_check_worker(w)
 			w.free_parallel_check_worker_cache()
 		}
+		tc.sort_parallel_check_errors()
 		return true
 	}
+}
+
+fn (mut tc TypeChecker) sort_parallel_check_errors() {
+	tc.errors.sort(a.node < b.node)
 }
 
 fn check_job_count(n_runtime_jobs int, n_items int) int {

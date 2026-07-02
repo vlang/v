@@ -2395,17 +2395,35 @@ fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
 	p.check(.rpar)
 	apath := p.embed_file_abs_path(rel_path)
 	len := if apath.len > 0 && os.is_file(apath) { int(os.file_size(apath)) } else { 0 }
-	field_ids := [
+	mut field_ids := [
 		p.embed_file_field('path', p.a.add_val_id(5, rel_path)),
 		p.embed_file_field('apath', p.a.add_val_id(5, apath)),
 		p.embed_file_field('len', p.a.add_val_id(1, len.str())),
 	]
+	if uncompressed := p.embed_file_uncompressed_data(apath) {
+		field_ids << p.embed_file_field('uncompressed', uncompressed)
+	}
 	return p.a.add_node(flat.Node{
 		kind:           .struct_init
 		value:          'embed_file.EmbedFileData'
 		typ:            'embed_file.EmbedFileData'
 		children_start: p.add_children(field_ids)
 		children_count: flat.child_count(field_ids.len)
+	})
+}
+
+fn (mut p Parser) embed_file_uncompressed_data(apath string) ?flat.NodeId {
+	if !p.prefs.is_prod || apath.len == 0 || !os.is_file(apath) {
+		return none
+	}
+	bytes := os.read_bytes(apath) or { return none }
+	data := p.a.add_val_id(5, bytes.bytestr().clone())
+	return p.a.add_node(flat.Node{
+		kind:           .cast_expr
+		value:          '&u8'
+		typ:            '&u8'
+		children_start: p.add_child(data)
+		children_count: 1
 	})
 }
 

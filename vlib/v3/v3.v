@@ -320,6 +320,7 @@ fn main() {
 	prefs.vroot = resolve_vroot(prefs.vroot)
 	prefs.selfhost = is_selfhost
 	prefs.building_v = building_v
+	prefs.is_prod = is_prod
 	mut p := parser.Parser.new(prefs)
 
 	mut files := []string{}
