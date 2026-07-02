@@ -4806,21 +4806,11 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			}
 			if child.kind == .if_expr {
 				if item_types := tc.multi_expr_tail_types(child_id, multi.types.len) {
-					mut all_ok := item_types.len == multi.types.len
-					if all_ok {
-						for i, item_type in item_types {
-							if !tc.type_compatible(item_type, multi.types[i]) {
-								all_ok = false
-								break
-							}
-						}
+					if item_types.len == multi.types.len && tc.should_diagnose(id) {
+						tc.record_error(.return_mismatch,
+							'if expression branches cannot produce multiple return values', id)
 					}
-					if all_ok {
-						$if ownership ? {
-							tc.ownership_after_return(id, node)
-						}
-						return
-					}
+					return
 				}
 			}
 		}

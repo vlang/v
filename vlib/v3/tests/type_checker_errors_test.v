@@ -422,6 +422,13 @@ fn test_match_tuple_tail_multi_return_is_rejected() {
 		'match expression branches cannot produce multiple return values')
 }
 
+fn test_return_if_tuple_tail_multi_return_is_rejected() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_multi_return_if_tail_return',
+		'fn pair(flag bool) (int, int) {\n\treturn if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\t3\n\t\t4\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n',
+		'if expression branches cannot produce multiple return values')
+}
+
 fn test_bool_match_single_branch_is_exhaustive() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'good_bool_match_single_branch_exhaustive',
