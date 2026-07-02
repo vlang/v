@@ -3241,7 +3241,10 @@ fn (mut p Parser) match_branch() flat.NodeId {
 		}
 	}
 
+	branch_block_start := p.tok_pos
 	p.check(.lcbr)
+	block_scope := p.block_local_type_scope(branch_block_start)
+	p.push_local_type_scope(block_scope)
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.looks_like_match_branch_start() {
 			break
@@ -3252,6 +3255,9 @@ fn (mut p Parser) match_branch() flat.NodeId {
 		}
 	}
 	p.check(.rcbr)
+	if block_scope.len > 0 {
+		p.pop_local_type_scope()
+	}
 
 	bstart := p.add_children(branch_ids)
 	return p.a.add_node(flat.Node{
@@ -3280,7 +3286,10 @@ fn (mut p Parser) block_stmt() flat.NodeId {
 }
 
 fn (mut p Parser) parse_block_body() []flat.NodeId {
+	block_start := p.tok_pos
 	p.check(.lcbr)
+	block_scope := p.block_local_type_scope(block_start)
+	p.push_local_type_scope(block_scope)
 	mut ids := []flat.NodeId{}
 	for p.tok != .rcbr && p.tok != .eof {
 		id := p.stmt()
@@ -3289,6 +3298,9 @@ fn (mut p Parser) parse_block_body() []flat.NodeId {
 		}
 	}
 	p.check(.rcbr)
+	if block_scope.len > 0 {
+		p.pop_local_type_scope()
+	}
 	return ids
 }
 
@@ -5596,6 +5608,14 @@ fn (p &Parser) fn_literal_local_type_scope(fn_start int) string {
 		base = 'fn_literal'
 	}
 	return '${base}__fn_literal_${fn_start}'
+}
+
+fn (p &Parser) block_local_type_scope(block_start int) string {
+	base := p.current_local_type_scope()
+	if base.len == 0 {
+		return ''
+	}
+	return '${base}__block_${block_start}'
 }
 
 fn (p &Parser) local_type_key_for_scope(scope string, name string) string {

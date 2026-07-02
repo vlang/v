@@ -402,6 +402,13 @@ fn test_multi_return_if_tail_infers_common_type() {
 	assert if_tail == 'voidptr\n1'
 }
 
+fn test_nested_if_tuple_tail_multi_return_lowers_each_value() {
+	v3_bin := build_v3()
+	nested_if_tail := run_good(v3_bin, 'good_nested_if_tail_decl_assign',
+		'fn main() {\n\tc := true\n\td := false\n\ta, b := if c {\n\t\tif d {\n\t\t\t1\n\t\t\t2\n\t\t} else {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t} else {\n\t\t5\n\t\t6\n\t}\n\tprintln(int_str(a + b))\n}\n')
+	assert nested_if_tail == '7'
+}
+
 fn test_multi_rhs_if_expr_is_not_multi_return() {
 	v3_bin := build_v3()
 	decl_out := run_good(v3_bin, 'good_multi_rhs_if_expr_decl_assign',
@@ -427,6 +434,13 @@ fn test_return_if_tuple_tail_multi_return_is_rejected() {
 	run_bad(v3_bin, 'bad_multi_return_if_tail_return',
 		'fn pair(flag bool) (int, int) {\n\treturn if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\t3\n\t\t4\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n',
 		'if expression branches cannot produce multiple return values')
+}
+
+fn test_local_type_names_include_nested_block_scope() {
+	v3_bin := build_v3()
+	block_rows := run_good(v3_bin, 'good_local_struct_sibling_block_scope',
+		'fn main() {\n\tmut total := 0\n\tif true {\n\t\tstruct Row {\n\t\t\ta int\n\t\t}\n\t\tr := Row{\n\t\t\ta: 1\n\t\t}\n\t\ttotal += r.a\n\t}\n\tif true {\n\t\tstruct Row {\n\t\t\tb int\n\t\t}\n\t\tr := Row{\n\t\t\tb: 2\n\t\t}\n\t\ttotal += r.b\n\t}\n\tprintln(int_str(total))\n}\n')
+	assert block_rows == '3'
 }
 
 fn test_bool_match_single_branch_is_exhaustive() {

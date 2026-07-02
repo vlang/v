@@ -4152,7 +4152,12 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.Node
 // multi_if_assign_block supports multi if assign block handling for Transformer.
 fn (mut t Transformer) multi_if_assign_block(block_id flat.NodeId, lhs_ids []flat.NodeId) flat.NodeId {
 	block := t.a.nodes[int(block_id)]
-	parts := t.tuple_block_parts(block_id, lhs_ids.len) or { return t.transform_expr(block_id) }
+	parts := t.tuple_block_parts(block_id, lhs_ids.len) or {
+		if nested := t.nested_multi_if_assign_block(block_id, lhs_ids) {
+			return nested
+		}
+		return t.transform_expr(block_id)
+	}
 	mut stmts := t.transform_stmts(parts.prefix)
 	for i, value_id in parts.values {
 		value := t.transform_expr(value_id)
@@ -4171,6 +4176,31 @@ fn (mut t Transformer) multi_if_assign_block(block_id flat.NodeId, lhs_ids []fla
 	}
 	if block.kind == .block {
 		return t.make_block(stmts)
+	}
+	return t.make_block(stmts)
+}
+
+fn (mut t Transformer) nested_multi_if_assign_block(block_id flat.NodeId, lhs_ids []flat.NodeId) ?flat.NodeId {
+	if int(block_id) < 0 || lhs_ids.len == 0 {
+		return none
+	}
+	block := t.a.nodes[int(block_id)]
+	if block.kind != .block || block.children_count == 0 {
+		return none
+	}
+	children := t.a.children_of(&block).clone()
+	if children.len == 0 {
+		return none
+	}
+	last_id := children[children.len - 1]
+	last := t.a.nodes[int(last_id)]
+	if last.kind != .if_expr {
+		return none
+	}
+	mut stmts := t.transform_stmts(children[..children.len - 1])
+	nested_stmts := t.lower_multi_if_assign(last, lhs_ids)
+	for stmt in nested_stmts {
+		stmts << stmt
 	}
 	return t.make_block(stmts)
 }
@@ -4220,6 +4250,29 @@ fn (t &Transformer) tuple_block_parts(block_id flat.NodeId, count int) ?TupleBlo
 	return none
 }
 
+fn (t &Transformer) multi_if_branch_value_ids(block_id flat.NodeId, count int) ?[]flat.NodeId {
+	if parts := t.tuple_block_parts(block_id, count) {
+		return parts.values.clone()
+	}
+	if int(block_id) < 0 || count <= 0 {
+		return none
+	}
+	block := t.a.nodes[int(block_id)]
+	if block.kind != .block || block.children_count == 0 {
+		return none
+	}
+	children := t.a.children_of(&block)
+	if children.len == 0 {
+		return none
+	}
+	last_id := children[children.len - 1]
+	last := t.a.nodes[int(last_id)]
+	if last.kind != .if_expr || last.children_count < 2 {
+		return none
+	}
+	return t.multi_if_branch_value_ids(t.a.child(&last, 1), count)
+}
+
 // infer_multi_if_value_types resolves infer multi if value types information for transform.
 fn (t &Transformer) infer_multi_if_value_types(node flat.Node, count int) []string {
 	mut result := []string{cap: count}
@@ -4227,8 +4280,8 @@ fn (t &Transformer) infer_multi_if_value_types(node flat.Node, count int) []stri
 		return result
 	}
 	then_id := t.a.child(&node, 1)
-	if parts := t.tuple_block_parts(then_id, count) {
-		for value_id in parts.values {
+	if values := t.multi_if_branch_value_ids(then_id, count) {
+		for value_id in values {
 			mut typ := t.tuple_value_type(value_id)
 			if typ.len == 0 {
 				typ = 'int'
