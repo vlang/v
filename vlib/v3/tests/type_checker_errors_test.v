@@ -405,6 +405,13 @@ fn test_multi_return_if_tail_infers_common_type() {
 	assert numeric_tail == 'f64\ntrue'
 }
 
+fn test_multi_return_if_assignment_uses_lhs_context() {
+	v3_bin := build_v3()
+	enum_tail := run_good(v3_bin, 'good_multi_return_if_assign_enum_and_none_tail',
+		"enum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tcond := false\n\tmut c := Color.red\n\tmut n := 0\n\tc, n = if cond {\n\t\t.red\n\t\t1\n\t} else {\n\t\t.blue\n\t\t2\n\t}\n\tmut opt := ?int(0)\n\tmut label := ''\n\topt, label = if cond {\n\t\tnone\n\t\t'none'\n\t} else {\n\t\t?int(7)\n\t\t'some'\n\t}\n\tvalue := opt or { 0 }\n\tif c == .blue && label == 'some' {\n\t\tprintln(int_str(n + value))\n\t}\n}\n")
+	assert enum_tail == '9'
+}
+
 fn test_nested_if_tuple_tail_multi_return_lowers_each_value() {
 	v3_bin := build_v3()
 	nested_if_tail := run_good(v3_bin, 'good_nested_if_tail_decl_assign',
@@ -466,6 +473,9 @@ fn test_local_type_names_include_nested_block_scope() {
 	embedded_local := run_good(v3_bin, 'good_local_embedded_struct_field',
 		'fn main() {\n\tstruct Inner {\n\t\tn int\n\t}\n\tstruct Outer {\n\t\tInner\n\t}\n\touter := Outer{\n\t\tInner{\n\t\t\tn: 12\n\t\t}\n\t}\n\tprintln(int_str(outer.n))\n}\n')
 	assert embedded_local == '12'
+	local_generic_arg := run_good(v3_bin, 'good_local_generic_struct_init_local_arg',
+		"fn main() {\n\tstruct Inner {}\n\tstruct Box[T] {}\n\t_ := Box[Inner]{}\n\tprintln('ok')\n}\n")
+	assert local_generic_arg == 'ok'
 }
 
 fn test_bool_match_single_branch_is_exhaustive() {

@@ -4312,6 +4312,30 @@ fn (tc &TypeChecker) multi_expr_tail_types(expr_id flat.NodeId, count int) ?[]Ty
 	return types
 }
 
+fn (mut tc TypeChecker) multi_expr_tail_assign_types(id flat.NodeId, expr_id flat.NodeId, lhs_ids []flat.NodeId) ?[]Type {
+	groups := tc.multi_expr_tail_value_groups(expr_id, lhs_ids.len) or { return none }
+	if groups.len == 0 {
+		return none
+	}
+	mut lhs_types := []Type{cap: lhs_ids.len}
+	for lhs_id in lhs_ids {
+		lhs_types << tc.resolve_lvalue_type(lhs_id)
+	}
+	for group in groups {
+		if group.len != lhs_types.len {
+			return none
+		}
+		for i, value_id in group {
+			actual := tc.resolve_expr(value_id, lhs_types[i])
+			if !tc.type_compatible(actual, lhs_types[i]) {
+				tc.type_mismatch(.assignment_mismatch,
+					'cannot assign `${actual.name()}` to `${lhs_types[i].name()}`', id)
+			}
+		}
+	}
+	return lhs_types
+}
+
 // multi_expr_tail_types_for_transform returns promoted multi-expression tail
 // types for transform lowering without duplicating checker compatibility rules.
 pub fn (tc &TypeChecker) multi_expr_tail_types_for_transform(expr_id flat.NodeId, count int) ?[]Type {

@@ -4679,7 +4679,7 @@ fn (p &Parser) type_expr_name(id flat.NodeId) string {
 			}
 			mut args := []string{}
 			for i in 1 .. node.children_count {
-				arg := p.type_expr_name(p.a.child(&node, i))
+				arg := p.resolve_local_type_name(p.type_expr_name(p.a.child(&node, i)))
 				if arg.len == 0 {
 					return ''
 				}
@@ -4691,13 +4691,13 @@ fn (p &Parser) type_expr_name(id flat.NodeId) string {
 			if node.value.len == 0 {
 				return ''
 			}
-			return '[]${node.value}'
+			return '[]${p.resolve_local_type_name(node.value)}'
 		}
 		.prefix {
 			if node.children_count == 0 {
 				return ''
 			}
-			child := p.type_expr_name(p.a.child(&node, 0))
+			child := p.resolve_local_type_name(p.type_expr_name(p.a.child(&node, 0)))
 			if child.len == 0 {
 				return ''
 			}
