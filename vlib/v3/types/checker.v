@@ -1709,6 +1709,16 @@ pub fn (tc &TypeChecker) resolved_call_name(id flat.NodeId) ?string {
 	return tc.cached_resolved_call(id)
 }
 
+// resolved_call_never_returns reports whether a call node resolved to a known no-return function.
+pub fn (tc &TypeChecker) resolved_call_never_returns(id flat.NodeId) bool {
+	name := tc.resolved_call_name(id) or { return false }
+	return resolved_name_never_returns(name)
+}
+
+fn resolved_name_never_returns(name string) bool {
+	return name in ['panic', 'exit', 'os.exit', 'C.exit']
+}
+
 // resolved_fn_value_name returns the checker-resolved function name for a function value node.
 pub fn (tc &TypeChecker) resolved_fn_value_name(id flat.NodeId) ?string {
 	idx := int(id)
@@ -2910,7 +2920,7 @@ fn (tc &TypeChecker) stmt_definitely_returns(id flat.NodeId) bool {
 			return tc.stmt_definitely_returns(tc.a.child(&node, 0))
 		}
 		.call {
-			return tc.call_never_returns(node)
+			return tc.call_never_returns(id)
 		}
 		.block {
 			for i in 0 .. node.children_count {
@@ -2952,9 +2962,47 @@ fn (tc &TypeChecker) stmt_definitely_returns(id flat.NodeId) bool {
 	}
 }
 
-fn (tc &TypeChecker) call_never_returns(node flat.Node) bool {
-	name := tc.call_display_name(node)
-	return name in ['panic', 'exit', 'os.exit', 'C.exit']
+fn (tc &TypeChecker) call_never_returns(id flat.NodeId) bool {
+	return tc.resolved_call_never_returns(id)
+}
+
+fn (mut tc TypeChecker) call_never_returns_resolving(id flat.NodeId) bool {
+	if tc.resolved_call_never_returns(id) {
+		return true
+	}
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .call {
+		return false
+	}
+	info := tc.resolve_call_info(id, node) or { return false }
+	if info.name.len > 0 && !is_array_dsl_call_name(info.name) {
+		tc.remember_resolved_call(id, info.name)
+	}
+	return resolved_name_never_returns(info.name)
+}
+
+fn (mut tc TypeChecker) expr_never_returns_resolving(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.expr_stmt, .paren {
+			if node.children_count == 0 {
+				return false
+			}
+			return tc.expr_never_returns_resolving(tc.a.child(&node, 0))
+		}
+		.call {
+			return tc.call_never_returns_resolving(id)
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (tc &TypeChecker) expr_never_returns(id flat.NodeId) bool {
@@ -2970,7 +3018,7 @@ fn (tc &TypeChecker) expr_never_returns(id flat.NodeId) bool {
 			return tc.expr_never_returns(tc.a.child(&node, 0))
 		}
 		.call {
-			return tc.call_never_returns(node)
+			return tc.call_never_returns(id)
 		}
 		else {
 			return false
@@ -4260,7 +4308,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	}
 	if node.children_count == 1 {
 		child_id := tc.a.child(&node, 0)
-		if tc.expr_never_returns(child_id) {
+		if tc.expr_never_returns_resolving(child_id) {
 			$if ownership ? {
 				tc.ownership_check_node_with_deferred_aggregate_consumption(child_id)
 			} $else {

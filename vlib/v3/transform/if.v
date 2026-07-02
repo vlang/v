@@ -935,7 +935,7 @@ fn (mut t Transformer) if_value_branch_block(branch_id flat.NodeId, target_name 
 	if tail.kind == .expr_stmt && tail.children_count > 0 {
 		inner_id := t.a.child(&tail, 0)
 		inner := t.a.nodes[int(inner_id)]
-		if inner.kind == .call && t.is_noreturn_call(inner) {
+		if inner.kind == .call && t.is_noreturn_call(inner_id) {
 			tail_stmts := t.transform_stmt(tail_id)
 			t.drain_pending(mut result)
 			for stmt in tail_stmts {

@@ -589,7 +589,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					return
 				}
 				ret_node := g.a.nodes[int(ret_id)]
-				if ret_node.kind == .call && g.is_noreturn_call(&ret_node) {
+				if ret_node.kind == .call && g.is_noreturn_call(ret_id) {
 					g.gen_noreturn_return(ret_id)
 					g.expected_enum = ''
 					return
@@ -856,7 +856,7 @@ fn (mut g FlatGen) gen_return_with_defers(node flat.Node) {
 		return
 	}
 	ret_node := g.a.nodes[int(ret_id)]
-	if ret_node.kind == .call && g.is_noreturn_call(&ret_node) {
+	if ret_node.kind == .call && g.is_noreturn_call(ret_id) {
 		g.gen_return_cleanup()
 		g.gen_noreturn_return(ret_id)
 		return
@@ -2642,8 +2642,9 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 			child_id := g.a.child(&or_body, i)
 			child := g.a.nodes[int(child_id)]
 			if i == or_body.children_count - 1 && child.kind == .expr_stmt {
-				inner := g.a.child_node(&child, 0)
-				if inner.kind == .call && g.is_noreturn_call(inner) {
+				inner_id := g.a.child(&child, 0)
+				inner := g.a.nodes[int(inner_id)]
+				if inner.kind == .call && g.is_noreturn_call(inner_id) {
 					g.gen_node(child_id)
 				} else {
 					g.write('${c_name(lhs.value)} = ')
@@ -2683,8 +2684,9 @@ fn (mut g FlatGen) gen_decl_or_map_index(lhs flat.Node, expr_node flat.Node, m t
 			child_id := g.a.child(&or_body, i)
 			child := g.a.nodes[int(child_id)]
 			if i == or_body.children_count - 1 && child.kind == .expr_stmt {
-				inner := g.a.child_node(&child, 0)
-				if inner.kind == .call && g.is_noreturn_call(inner) {
+				inner_id := g.a.child(&child, 0)
+				inner := g.a.nodes[int(inner_id)]
+				if inner.kind == .call && g.is_noreturn_call(inner_id) {
 					g.gen_node(child_id)
 				} else {
 					g.write('${c_name(lhs.value)} = ')
@@ -2723,12 +2725,15 @@ fn (g &FlatGen) is_json_decode_call_expr(id flat.NodeId) bool {
 }
 
 // is_noreturn_call reports whether is noreturn call applies in c.
-fn (g &FlatGen) is_noreturn_call(node &flat.Node) bool {
+fn (g &FlatGen) is_noreturn_call(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
 	if node.kind != .call || node.children_count == 0 {
 		return false
 	}
-	fn_node := g.a.child_node(node, 0)
-	return fn_node.value in ['panic', 'exit']
+	return g.tc.resolved_call_never_returns(id)
 }
 
 // tmp_name supports tmp name handling for FlatGen.

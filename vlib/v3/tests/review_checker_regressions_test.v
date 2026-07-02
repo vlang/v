@@ -163,6 +163,20 @@ fn test_no_return_calls_satisfy_return_analysis() {
 	assert out == 'ok\n7'
 }
 
+fn test_no_return_analysis_requires_resolved_builtin_target() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_shadowed_os_exit_missing_return',
+		'struct OsLike {}\nfn (x OsLike) exit() {}\nfn f(os OsLike) int {\n\tos.exit()\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+}
+
+fn test_returning_receiver_method_named_exit_keeps_value() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_receiver_exit_return_value',
+		'struct Plugin {}\nfn (p Plugin) exit() int {\n\treturn 9\n}\nfn f(plugin Plugin) int {\n\treturn plugin.exit()\n}\nfn main() {\n\tprintln(int_str(f(Plugin{})))\n}\n')
+	assert out == '9'
+}
+
 fn test_local_identifiers_shadow_module_consts() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_const_shadowed_by_param_and_local',
