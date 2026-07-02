@@ -4336,6 +4336,72 @@ fn (mut tc TypeChecker) multi_expr_tail_assign_types(id flat.NodeId, expr_id fla
 	return lhs_types
 }
 
+fn (tc &TypeChecker) match_multi_return_types(expr_id flat.NodeId, count int) ?[]Type {
+	if count <= 0 || !tc.valid_node_id(expr_id) {
+		return none
+	}
+	node := tc.a.nodes[int(expr_id)]
+	if node.kind != .match_stmt || node.children_count < 2 {
+		return none
+	}
+	mut types := []Type{}
+	mut saw_value_branch := false
+	for i in 1 .. node.children_count {
+		branch_id := tc.a.child(&node, i)
+		if !tc.valid_node_id(branch_id) {
+			continue
+		}
+		branch := tc.a.nodes[int(branch_id)]
+		if branch.kind != .match_branch {
+			continue
+		}
+		tail_id := tc.branch_tail_expr_id(branch_id)
+		if !tc.valid_node_id(tail_id) {
+			return none
+		}
+		tail := tc.a.nodes[int(tail_id)]
+		if tail.kind == .return_stmt || tc.expr_never_returns(tail_id) {
+			continue
+		}
+		multi := multi_return_payload_type(tc.resolve_type(tail_id)) or { return none }
+		if multi.types.len != count {
+			return none
+		}
+		if !saw_value_branch {
+			types = multi.types.clone()
+			saw_value_branch = true
+			continue
+		}
+		for j, actual in multi.types {
+			promoted := tc.promoted_multi_tail_type(types[j], actual) or { return none }
+			types[j] = promoted
+		}
+	}
+	if !saw_value_branch {
+		return none
+	}
+	return types
+}
+
+fn (tc &TypeChecker) match_has_tuple_tail_values(expr_id flat.NodeId, count int) bool {
+	if count <= 0 || !tc.valid_node_id(expr_id) {
+		return false
+	}
+	node := tc.a.nodes[int(expr_id)]
+	if node.kind != .match_stmt || node.children_count < 2 {
+		return false
+	}
+	for i in 1 .. node.children_count {
+		branch_id := tc.a.child(&node, i)
+		if groups := tc.tuple_tail_value_groups(branch_id, count) {
+			if groups.len > 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // multi_expr_tail_types_for_transform returns promoted multi-expression tail
 // types for transform lowering without duplicating checker compatibility rules.
 pub fn (tc &TypeChecker) multi_expr_tail_types_for_transform(expr_id flat.NodeId, count int) ?[]Type {

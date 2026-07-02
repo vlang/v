@@ -450,8 +450,17 @@ fn test_match_tuple_tail_multi_return_is_rejected() {
 	match_call := run_good(v3_bin, 'good_multi_return_match_call_return',
 		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn pick(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pick(false)\n\tprintln(int_str(a + b))\n}\n')
 	assert match_call == '7'
+	match_decl_assign := run_good(v3_bin, 'good_multi_return_match_call_decl_assign',
+		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n')
+	assert match_decl_assign == '7'
+	match_assign := run_good(v3_bin, 'good_multi_return_match_call_assign',
+		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n')
+	assert match_assign == '7'
 	run_bad(v3_bin, 'bad_multi_return_match_tail_decl_assign',
 		'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n',
+		'match expression branches cannot produce multiple assignment values')
+	run_bad(v3_bin, 'bad_multi_return_match_call_mixed_tuple_tail_decl_assign',
+		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n',
 		'match expression branches cannot produce multiple assignment values')
 	run_bad(v3_bin, 'bad_multi_return_match_tail_return',
 		'fn pair(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n',
