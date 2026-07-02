@@ -4103,6 +4103,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			if name == '@FILE_LINE' {
 				return p.a.add_val_id(5, '${p.cur_file}:${p.source_line_number(name_pos)}')
 			}
+			if name == '@FILE_LINE' {
+				return p.a.add_val_id(5, '${p.cur_file}:0')
+			}
 			if name == '@MOD' {
 				if p.cur_module.len == 0 {
 					return p.a.add_val_id(5, 'main')
