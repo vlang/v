@@ -4630,7 +4630,7 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 }
 
 fn (p &Parser) generic_struct_init_type_name(id flat.NodeId) ?string {
-	type_name := p.type_expr_name(id)
+	type_name := p.resolve_local_type_name(p.type_expr_name(id))
 	if !generic_type_name_can_init(type_name) {
 		return none
 	}
@@ -5610,7 +5610,7 @@ fn local_type_decl_name_for_scope(name string, scope string) string {
 }
 
 fn (p &Parser) resolve_local_type_name(name string) string {
-	if p.local_type_scopes.len == 0 || name.len == 0 || name.contains('.') {
+	if p.local_type_scopes.len == 0 || name.len == 0 {
 		return name
 	}
 	mut suffix := ''
@@ -5619,6 +5619,9 @@ fn (p &Parser) resolve_local_type_name(name string) string {
 	if idx >= 0 {
 		base = name[..idx]
 		suffix = name[idx..]
+	}
+	if base.contains('.') {
+		return name
 	}
 	for i := p.local_type_scopes.len - 1; i >= 0; i-- {
 		scope := p.local_type_scopes[i]

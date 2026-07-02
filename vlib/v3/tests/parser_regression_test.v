@@ -160,3 +160,34 @@ fn test_sql_identifier_calls_are_not_parsed_as_sql_expr() {
 	assert sql_expr_count == 0
 	assert call_count == 1
 }
+
+fn test_local_generic_type_with_qualified_arg_resolves_base_before_qualification() {
+	a := parse_parser_regression_source('local_generic_qualified_arg',
+		'module main\n\nimport other\n\nfn main() {\n\tstruct Box[T] {}\n\tmut boxes := []Box[other.Thing]{}\n\tboxes << Box[other.Thing]{}\n}\n')
+	mut local_decl_name := ''
+	mut array_types := []string{}
+	mut init_types := []string{}
+	for node in a.nodes {
+		match node.kind {
+			.struct_decl {
+				if node.value.starts_with('Box__local_') {
+					local_decl_name = node.value
+				}
+			}
+			.array_init {
+				if node.value.contains('Box') {
+					array_types << node.value
+				}
+			}
+			.struct_init {
+				if node.value.contains('Box') {
+					init_types << node.value
+				}
+			}
+			else {}
+		}
+	}
+	assert local_decl_name.starts_with('Box__local_main')
+	assert array_types == ['${local_decl_name}[other.Thing]']
+	assert init_types == ['${local_decl_name}[other.Thing]']
+}
