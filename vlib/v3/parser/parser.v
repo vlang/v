@@ -22,6 +22,9 @@ fn C.malloc(int) &u8
 // C.realloc declares the C realloc symbol used by parser.
 fn C.realloc(voidptr, int) &u8
 
+// C.free declares the C free symbol used by parser.
+fn C.free(voidptr)
+
 const max_source_file_size = 8388608
 const read_source_chunk_size = 65536
 
@@ -197,9 +200,16 @@ fn read_source_file_raw(path string) string {
 	}
 	C.close(fd)
 	if total <= 0 {
+		unsafe { C.free(buf) }
 		return ''
 	}
 	unsafe {
+		if cap > total {
+			new_buf := C.realloc(buf, total + 1)
+			if !isnil(new_buf) {
+				buf = new_buf
+			}
+		}
 		buf[total] = 0
 		return tos(buf, total)
 	}
