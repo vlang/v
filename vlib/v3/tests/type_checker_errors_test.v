@@ -1084,3 +1084,13 @@ fn test_pr_review_codegen_batch_twentysix() {
 		"fn f() ?[2]int {\n\tdefer {\n\t\t_ := 0\n\t}\n\treturn [1, 2]!\n}\nfn main() {\n\ta := f() or { [0, 0]! }\n\tprintln(int_str(a[0]) + ',' + int_str(a[1]))\n}\n")
 	assert defer_opt_arr == '1,2'
 }
+
+fn test_pr_review_codegen_batch_twentyseven() {
+	v3_bin := build_v3()
+	// Local type names declared inside sibling function literals must include a closure
+	// discriminator. Both closures declare `Row` with different fields; the outer local `Shared`
+	// remains visible from both closure scopes.
+	local_rows := run_good(v3_bin, 'good_fn_literal_local_struct_scope',
+		'fn main() {\n\tstruct Shared {\n\t\tn int\n\t}\n\tfirst := fn () int {\n\t\tstruct Row {\n\t\t\ta int\n\t\t}\n\t\ts := Shared{\n\t\t\tn: 10\n\t\t}\n\t\tr := Row{\n\t\t\ta: 1\n\t\t}\n\t\treturn s.n + r.a\n\t}\n\tsecond := fn () int {\n\t\tstruct Row {\n\t\t\tb int\n\t\t}\n\t\ts := Shared{\n\t\t\tn: 20\n\t\t}\n\t\tr := Row{\n\t\t\tb: 2\n\t\t}\n\t\treturn s.n + r.b\n\t}\n\tprintln(int_str(first() + second()))\n}\n')
+	assert local_rows == '33'
+}

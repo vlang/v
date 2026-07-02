@@ -32,24 +32,25 @@ const read_source_chunk_size = 65536
 pub struct Parser {
 	prefs &pref.Preferences
 mut:
-	s                scanner.Scanner
-	tok              token.Token
-	lit              string
-	tok_pos          int
-	peek_tok         token.Token = .eof
-	peek_lit         string
-	peek_pos         int
-	has_peek         bool
-	cur_file         string
-	cur_module       string
-	cur_fn           string
-	pending_flag     bool
-	pending_params   bool
-	pending_export   string
-	skip_next_decl   bool
-	disable_fn_body  bool
-	in_for_container bool
-	local_type_names map[string]string
+	s                 scanner.Scanner
+	tok               token.Token
+	lit               string
+	tok_pos           int
+	peek_tok          token.Token = .eof
+	peek_lit          string
+	peek_pos          int
+	has_peek          bool
+	cur_file          string
+	cur_module        string
+	cur_fn            string
+	pending_flag      bool
+	pending_params    bool
+	pending_export    string
+	skip_next_decl    bool
+	disable_fn_body   bool
+	in_for_container  bool
+	local_type_names  map[string]string
+	local_type_scopes []string
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
 	parsed_v_files int
@@ -95,6 +96,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.skip_next_decl = false
 	p.disable_fn_body = false
 	p.in_for_container = false
+	p.local_type_scopes = []string{}
 	// File marker before content so import resolver can track source files
 	p.a.add_node(flat.Node{
 		kind:  .file
@@ -803,6 +805,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 	if p.tok == .lcbr {
 		prev_fn := p.cur_fn
 		p.cur_fn = name
+		p.push_local_type_scope(name)
 		if disable_body {
 			p.mark_disabled_fn(name)
 			p.skip_block()
@@ -816,6 +819,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 			}
 			p.check(.rcbr)
 		}
+		p.pop_local_type_scope()
 		p.cur_fn = prev_fn
 	}
 
@@ -897,6 +901,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	mut body_ids := []flat.NodeId{}
 	prev_fn := p.cur_fn
 	p.cur_fn = name
+	p.push_local_type_scope(name)
 	// A disabled `@[if flag ?]` function keeps its signature but gets an empty body
 	// (a no-op stub), so callers still resolve while the body is compiled out.
 	if disable_body {
@@ -912,6 +917,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		}
 		p.check(.rcbr)
 	}
+	p.pop_local_type_scope()
 	p.cur_fn = prev_fn
 
 	mut all_ids := []flat.NodeId{cap: param_ids.len + body_ids.len}
@@ -1066,9 +1072,10 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			name += '.' + p.expect_name_or_keyword()
 		}
 	}
-	if p.cur_fn.len > 0 && !name.contains('.') {
-		local_name := p.local_type_decl_name(name)
-		p.local_type_names[p.local_type_key(name)] = local_name
+	local_scope := p.current_local_type_scope()
+	if local_scope.len > 0 && !name.contains('.') {
+		local_name := local_type_decl_name_for_scope(name, local_scope)
+		p.local_type_names[p.local_type_key_for_scope(local_scope, name)] = local_name
 		name = local_name
 	}
 	// generic params — skip
@@ -5042,6 +5049,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 
 // fn_literal supports fn literal handling for Parser.
 fn (mut p Parser) fn_literal() flat.NodeId {
+	fn_start := p.tok_pos
 	p.next() // skip 'fn'
 	// capture list: fn [a, b] (params) ret { }
 	mut capture_ids := []flat.NodeId{}
@@ -5080,6 +5088,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	// body
 	mut body_ids := []flat.NodeId{}
 	if p.tok == .lcbr {
+		p.push_local_type_scope(p.fn_literal_local_type_scope(fn_start))
 		p.check(.lcbr)
 		for p.tok != .rcbr && p.tok != .eof {
 			id := p.stmt()
@@ -5088,6 +5097,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 			}
 		}
 		p.check(.rcbr)
+		p.pop_local_type_scope()
 	}
 	mut all_ids := []flat.NodeId{cap: capture_ids.len + param_ids.len + body_ids.len}
 	for id in capture_ids {
@@ -5558,19 +5568,49 @@ fn (mut p Parser) parse_type_name() string {
 	return name
 }
 
-fn (p &Parser) local_type_key(name string) string {
-	if p.cur_fn.len == 0 || name.len == 0 {
+fn (p &Parser) current_local_type_scope() string {
+	if p.local_type_scopes.len == 0 {
 		return ''
 	}
-	return '${p.cur_file}\n${p.cur_module}\n${p.cur_fn}\n${name}'
+	return p.local_type_scopes[p.local_type_scopes.len - 1]
 }
 
-fn (p &Parser) local_type_decl_name(name string) string {
-	return '${name}__local_${local_type_scope_part(p.cur_fn)}'
+fn (mut p Parser) push_local_type_scope(scope string) {
+	if scope.len > 0 {
+		p.local_type_scopes << scope
+	}
+}
+
+fn (mut p Parser) pop_local_type_scope() {
+	if p.local_type_scopes.len > 0 {
+		p.local_type_scopes.delete_last()
+	}
+}
+
+fn (p &Parser) fn_literal_local_type_scope(fn_start int) string {
+	mut base := p.current_local_type_scope()
+	if base.len == 0 {
+		base = p.cur_fn
+	}
+	if base.len == 0 {
+		base = 'fn_literal'
+	}
+	return '${base}__fn_literal_${fn_start}'
+}
+
+fn (p &Parser) local_type_key_for_scope(scope string, name string) string {
+	if scope.len == 0 || name.len == 0 {
+		return ''
+	}
+	return '${p.cur_file}\n${p.cur_module}\n${scope}\n${name}'
+}
+
+fn local_type_decl_name_for_scope(name string, scope string) string {
+	return '${name}__local_${local_type_scope_part(scope)}'
 }
 
 fn (p &Parser) resolve_local_type_name(name string) string {
-	if p.cur_fn.len == 0 || name.len == 0 || name.contains('.') {
+	if p.local_type_scopes.len == 0 || name.len == 0 || name.contains('.') {
 		return name
 	}
 	mut suffix := ''
@@ -5580,8 +5620,11 @@ fn (p &Parser) resolve_local_type_name(name string) string {
 		base = name[..idx]
 		suffix = name[idx..]
 	}
-	if mapped := p.local_type_names[p.local_type_key(base)] {
-		return mapped + suffix
+	for i := p.local_type_scopes.len - 1; i >= 0; i-- {
+		scope := p.local_type_scopes[i]
+		if mapped := p.local_type_names[p.local_type_key_for_scope(scope, base)] {
+			return mapped + suffix
+		}
 	}
 	return name
 }
