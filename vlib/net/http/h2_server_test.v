@@ -1346,6 +1346,76 @@ fn test_h2_server_priority_self_dependency_is_stream_error() {
 	assert code == i64(u32(H2ErrorCode.protocol_error)), 'PRIORITY self-dep: expected RST_STREAM(PROTOCOL_ERROR), got ${code}'
 }
 
+// RFC 7540 §5.3.1 / RFC 9113 §5.1: a self-dependent PRIORITY frame for a stream
+// that already completed NORMALLY (full request/response, deleted from
+// c.streams by run_request, never touched locally_reset) must NOT trigger a
+// fresh RST_STREAM — that stream is already closed, and RST_STREAM is not a
+// PRIORITY frame, so sending one on an already-closed stream is itself the
+// §5.1 violation the self-dependency guard exists to police. Regression for
+// Codex P2 on #27627 (pullrequestreview-4620220448).
+fn test_h2_server_priority_self_dep_after_normal_completion_is_ignored() {
+	mut enc := H2HpackEncoder{}
+	mut out := preface_and_settings()
+	// Stream 1: a normal, complete GET request/response -- deleted from
+	// c.streams by run_request, never locally_reset.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// Self-dependent PRIORITY referencing the now normally-closed stream 1.
+	out << H2Frame(H2PriorityFrame{
+		stream_id:  1
+		stream_dep: 1
+		weight:     15
+	}).encode()
+	// A further valid request proves the connection stays usable.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   3
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'PRIORITY self-dep after normal completion: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut rst1_count := 0
+	mut resp1_count := 0
+	mut got_response3 := false
+	for _ in 0 .. 32 {
+		f := fr.next() or { break }
+		match f {
+			H2RstStreamFrame {
+				if f.stream_id == 1 {
+					rst1_count++
+				}
+			}
+			H2HeadersFrame {
+				if f.stream_id == 1 {
+					resp1_count++
+				}
+				if f.stream_id == 3 {
+					got_response3 = true
+				}
+			}
+			else {}
+		}
+
+		if got_response3 {
+			break
+		}
+	}
+	assert resp1_count == 1, 'PRIORITY self-dep after normal completion: expected exactly 1 response on stream 1, got ${resp1_count}'
+	assert rst1_count == 0, 'PRIORITY self-dep after normal completion: expected NO RST_STREAM on the already-closed stream 1, got ${rst1_count}'
+	assert got_response3, 'PRIORITY self-dep after normal completion: connection should stay usable (stream 3 served)'
+}
+
 // RFC 9113 §6.4: a self-dependent PRIORITY on a never-opened (idle) stream is
 // itself legal to RST (§5.3.1) — but the id it resets was never added to
 // last_stream_id (only HEADERS advances that counter), so classify_stream must

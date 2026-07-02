@@ -390,10 +390,12 @@ fn (mut c H2ServerConn) dispatch_frame(frame H2Frame, mut handler Handler) ! {
 		H2PriorityFrame {
 			// Priority is advisory and otherwise ignored (deprecated in RFC 9113
 			// §5.3), but RFC 7540 §5.3.1: a stream cannot depend on itself — a
-			// self-dependency is a STREAM error PROTOCOL_ERROR. Skip the RST when
-			// we already reset this id: PRIORITY is legal on a closed stream, and
-			// re-RST-ing one we reset would send a frame on a closed stream (§5.1).
-			if frame.stream_dep == frame.stream_id && frame.stream_id !in c.locally_reset {
+			// self-dependency is a STREAM error PROTOCOL_ERROR. Skip the RST for
+			// any ALREADY-CLOSED stream (locally reset OR completed normally via
+			// run_request — classify_stream treats both as closed): PRIORITY is
+			// legal on a closed stream, and RST_STREAM is not, so re-RST-ing one
+			// would itself send a frame on a closed stream (§5.1).
+			if frame.stream_dep == frame.stream_id && c.classify_stream(frame.stream_id) != .closed {
 				c.send_rst_stream(frame.stream_id, .protocol_error)!
 				c.mark_locally_reset(frame.stream_id)
 				c.streams.delete(frame.stream_id)
