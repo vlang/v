@@ -13,17 +13,13 @@ fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 		if base_type is types.Map {
 			c_key := g.tc.c_type(base_type.key_type)
 			c_val := g.tc.c_type(base_type.value_type)
-			zero := if base_type.value_type is types.Array {
-				c_elem := g.tc.c_type(base_type.value_type.elem_type)
-				'&(${c_val}[]){array_new(sizeof(${c_elem}), 0, 0)}'
-			} else {
-				'&(${c_val}[]){0}'
-			}
 			g.write('(*(${c_val}*)map__get_or_set(&')
 			g.gen_expr(base_id)
 			g.write(', &(${c_key}[]){')
 			g.gen_expr(g.a.child(&node, 1))
-			g.write('}, ${zero}))')
+			g.write('}, ')
+			g.gen_default_value_addr_for_type(base_type.value_type)
+			g.write('))')
 			return
 		}
 	}
@@ -1914,8 +1910,8 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			}
 			if rhs.children_count > 0 {
 				if v_type is types.Map {
-					c_key := g.tc.c_type(v_type.key_type)
-					c_val := g.tc.c_type(v_type.value_type)
+					c_key := g.value_c_type(v_type.key_type)
+					c_val := g.value_c_type(v_type.value_type)
 					for j := 0; j < rhs.children_count; j += 2 {
 						g.write('map__set(&')
 						g.gen_decl_lhs(lhs_id)

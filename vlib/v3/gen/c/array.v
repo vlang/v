@@ -113,6 +113,21 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 		g.gen_fixed_array_data_arg(g.a.child(&node, 0), arr)
 		return
 	}
+	if node.kind in [.cast_expr, .as_expr] && node.children_count > 0 {
+		child_id := g.a.child(&node, 0)
+		child := g.a.nodes[int(child_id)]
+		if child.kind == .array_literal {
+			g.gen_fixed_array_data_arg(child_id, arr)
+			return
+		}
+		if child.kind == .postfix && child.children_count > 0 {
+			post_child_id := g.a.child(&child, 0)
+			if g.a.nodes[int(post_child_id)].kind == .array_literal {
+				g.gen_fixed_array_data_arg(post_child_id, arr)
+				return
+			}
+		}
+	}
 	if node.kind == .postfix && node.children_count > 0 {
 		child_id := g.a.child(&node, 0)
 		child := g.a.nodes[int(child_id)]

@@ -284,9 +284,9 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 		return arr1(id)
 	}
 	range_type := t.range_loop_var_type_name(low_id)
-	t.set_var_type(key.value, range_type)
-	low := t.transform_expr(low_id)
+	low := t.stable_expr_for_reuse(low_id)
 	high := t.stable_expr_for_reuse(high_id)
+	t.set_var_type(key.value, range_type)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
 	init := t.make_decl_assign_typed(key.value, low, range_type)

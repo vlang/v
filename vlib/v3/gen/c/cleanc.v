@@ -2489,7 +2489,7 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool 
 	idx := g.sum_type_index(sum_name, variant)
 	field := g.sum_field_name(variant)
 	if g.variant_references_sum(variant, sum_name) {
-		inner_ct := g.tc.c_type(g.tc.parse_type(variant))
+		inner_ct := g.value_c_type(g.tc.parse_type(variant))
 		g.write('(${ct}){.typ = ${idx}, .${field} = (${inner_ct}*)memdup((${inner_ct}[]){')
 		g.gen_expr(id)
 		g.write('}, sizeof(${inner_ct}))}')
@@ -2536,7 +2536,7 @@ fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.No
 	variant_is_pointer_arg := actual_type is types.Pointer
 		&& g.type_names_match(actual_type.base_type, variant_type)
 	if g.variant_references_sum(variant_name, target_type.name) {
-		inner_ct := g.tc.c_type(variant_type)
+		inner_ct := g.value_c_type(variant_type)
 		if variant_is_pointer_arg {
 			g.write('(${ct}){.typ = ${idx}, .${field} = ')
 			if g.pointer_variant_arg_needs_heap_copy(inner) {
@@ -2798,7 +2798,11 @@ fn (mut g FlatGen) type_name_c_type(type_name string) string {
 		return g.resolve_fn_ptr_type(type_name)
 	}
 	t := g.tc.parse_type(type_name)
-	return g.tc.c_type(t)
+	ct := g.tc.c_type(t)
+	if ct.starts_with('fn_ptr:') {
+		return g.resolve_fn_ptr_type(ct)
+	}
+	return ct
 }
 
 fn (mut g FlatGen) sizeof_target(value string) string {
@@ -3066,6 +3070,15 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 					return dep_expr
 				}
 			}
+			if node.kind == .selector && node.children_count > 0 {
+				base := g.a.child_node(&node, 0)
+				if base.kind == .ident {
+					fn_name := '${base.value}.${node.value}'
+					if fn_name in g.tc.fn_ret_types || fn_name in g.tc.fn_param_types {
+						return c_name(fn_name)
+					}
+				}
+			}
 			g.expr_to_string(id)
 		}
 		.infix {
@@ -3102,7 +3115,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				idx := g.sum_type_index(target_type.name, variant_name)
 				field := g.sum_field_name(variant_name)
 				inner_val := g.const_expr_to_string(inner_id, seen)
-				inner_ct := g.tc.c_type(g.tc.parse_type(variant_name))
+				inner_ct := g.value_c_type(g.tc.parse_type(variant_name))
 				payload := if inner_val.trim_space().len == 0 { '0' } else { inner_val }
 				return '(${ct}){.typ = ${idx}, .${field} = (${inner_ct}[]){${payload}}}'
 			}
@@ -3159,7 +3172,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 							}
 						}
 						variant = g.resolve_variant(sum_name, variant)
-						inner_ct := g.tc.c_type(g.tc.parse_type(variant))
+						inner_ct := g.value_c_type(g.tc.parse_type(variant))
 						const_val := g.const_expr_to_string(val_id, seen)
 						payload := if const_val.trim_space().len > 0 {
 							const_val
@@ -4003,7 +4016,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.gen_expr(base_id)
 				g.write(', &(${c_key}[]){')
 				g.gen_expr(g.a.child(&node, 1))
-				g.write('}, &(${c_val}[]){0}))')
+				g.write('}, ')
+				g.gen_default_value_addr_for_type(base_type.value_type)
+				g.write('))')
 			} else {
 				mut index_base_type := base_type
 				initial_is_fixed_array_index, _, _ := fixed_array_index_info(index_base_type)
@@ -4315,7 +4330,7 @@ fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id
 	g.write(', ')
 	g.gen_array_value_arg(rhs_id, rhs_type)
 	if elem_type !is types.String {
-		g.write(', sizeof(${g.tc.c_type(elem_type)})')
+		g.write(', sizeof(${g.sizeof_target(g.tc.c_type(elem_type))})')
 	}
 	g.write(')')
 	return true
@@ -6302,9 +6317,10 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('string rune__str(i32 c);')
 	g.writeln('u8* malloc_noscan(ptrdiff_t n);')
 	g.writeln('static inline string v3_c_lit(const char* s, int len) { return (string){.str = (u8*)s, .len = len, .is_lit = 1}; }')
+	g.writeln("static inline string v3_string_pad(string s, int width, int left) { if (width < 0) { left = 1; width = -width; } if (s.len >= width) return s; int pad = width - s.len; u8* out = malloc_noscan((ptrdiff_t)width + 1); if (left) { memcpy(out, s.str, (size_t)s.len); memset(out + s.len, ' ', (size_t)pad); } else { memset(out, ' ', (size_t)pad); memcpy(out + pad, s.str, (size_t)s.len); } out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
 	g.writeln('static inline string v3_char_string(int c) { return rune__str((i32)c); }')
 	g.writeln('static inline double v3_f64_fixed_value(double x, int precision) { if (precision == 0) return x < 0.0 ? ceil(x - 0.5) : floor(x + 0.5); if (precision == 6) { double scale = 1000000.0; double ax = fabs(x) * scale; double base = floor(ax); double frac = ax - base; if (frac == 0.5) { double rounded = floor(ax + 0.5) / scale; return x < 0.0 ? -rounded : rounded; } } return x; }')
-	g.writeln('static inline string v3_f64_fixed(double x, int precision) { double y = v3_f64_fixed_value(x, precision); char tmp[128]; int n = snprintf(tmp, sizeof(tmp), "%.*f", precision, y); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); snprintf((char*)out, (size_t)n + 1, "%.*f", precision, y); return (string){.str = out, .len = n, .is_lit = 0}; }')
+	g.writeln('static inline string v3_f64_fixed(double x, int precision) { if (precision > 16) { char base[128]; int b = snprintf(base, sizeof(base), "%.16g", x); if (b >= 0 && b < (int)sizeof(base)) { int dot = -1; int has_exp = 0; for (int i = 0; i < b; ++i) { if (base[i] == \'.\') dot = i; if (base[i] == \'e\' || base[i] == \'E\') has_exp = 1; } if (!has_exp) { int frac = dot >= 0 ? b - dot - 1 : 0; if (frac <= precision) { int n = b + (dot < 0 ? 1 : 0) + (precision - frac); u8* out = malloc_noscan(n + 1); memcpy(out, base, b); int pos = b; if (dot < 0) out[pos++] = \'.\'; while (frac++ < precision) out[pos++] = \'0\'; out[pos] = 0; return (string){.str = out, .len = n, .is_lit = 0}; } } } } double y = v3_f64_fixed_value(x, precision); char tmp[128]; int n = snprintf(tmp, sizeof(tmp), "%.*f", precision, y); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); snprintf((char*)out, (size_t)n + 1, "%.*f", precision, y); return (string){.str = out, .len = n, .is_lit = 0}; }')
 	g.writeln('static inline string v3_int_zpad(int n, int width) { string s = int__str(n); if (n < 0) return s; while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
 	g.writeln('static inline string v3_i64_zpad(i64 n, int width) { string s = i64__str(n); if (n < 0) return s; while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
 	g.writeln('static inline string v3_u64_zpad(u64 n, int width) { string s = u64__str(n); while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
@@ -7163,8 +7179,8 @@ fn (mut g FlatGen) queue_map_literal_sets(target string, val_id flat.NodeId, map
 	if node.kind != .map_init {
 		return
 	}
-	c_key := g.tc.c_type(map_type.key_type)
-	c_val := g.tc.c_type(map_type.value_type)
+	c_key := g.value_c_type(map_type.key_type)
+	c_val := g.value_c_type(map_type.value_type)
 	for i := 0; i + 1 < node.children_count; i += 2 {
 		key := g.expr_to_string_with_expected_type(g.a.child(&node, i), map_type.key_type)
 		val := g.expr_to_string_with_expected_type(g.a.child(&node, i + 1), map_type.value_type)
@@ -7180,8 +7196,8 @@ fn (mut g FlatGen) queue_const_map_literal_sets(target string, val_id flat.NodeI
 	if node.kind != .map_init {
 		return
 	}
-	c_key := g.tc.c_type(map_type.key_type)
-	c_val := g.tc.c_type(map_type.value_type)
+	c_key := g.value_c_type(map_type.key_type)
+	c_val := g.value_c_type(map_type.value_type)
 	for i := 0; i + 1 < node.children_count; i += 2 {
 		key := g.expr_to_string_with_expected_type(g.a.child(&node, i), map_type.key_type)
 		val := g.expr_to_string_with_expected_type(g.a.child(&node, i + 1), map_type.value_type)

@@ -1520,7 +1520,9 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 			p.next() // skip (
 			mut params := []flat.NodeId{}
 			for p.tok != .rpar && p.tok != .eof {
+				mut is_mut := false
 				if p.tok == .key_mut {
+					is_mut = true
 					p.next()
 				}
 				// Interface method params may be named (e.g. `seed_data []u32`,
@@ -1537,10 +1539,14 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 						p.next()
 					}
 				}
-				ptype := p.parse_type_name()
+				mut ptype := p.parse_type_name()
+				if is_mut && !ptype.starts_with('&') {
+					ptype = '&' + ptype
+				}
 				params << p.a.add_node(flat.Node{
 					kind: .param
 					typ:  ptype
+					op:   if is_mut { .amp } else { .none }
 				})
 				if p.tok == .comma {
 					p.next()
