@@ -803,9 +803,11 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 		}
 		lhs_value := t.stable_expr_for_reuse(lhs_id)
 		rhs_value := t.stable_expr_for_reuse(rhs_id)
-		cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs_value),
-			t.make_prefix(.amp, rhs_value), t.make_sizeof_type(lhs_type)), 'int')
-		return t.make_infix(node.op, cmp, t.make_int_literal(0))
+		eq := t.make_optional_semantic_eq_expr(lhs_value, rhs_value, lhs_type, rhs_type, []string{})
+		if node.op == .ne {
+			return t.make_prefix(.not, t.make_paren(eq))
+		}
+		return eq
 	}
 	opt_type := t.node_type(opt_id)
 	if !t.is_optional_type_name(opt_type) {
@@ -1300,7 +1302,10 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 			rhs_value), t.make_sizeof_type(clean)), 'int')
 		return t.make_infix(.eq, cmp, t.make_int_literal(0))
 	}
-	if t.is_optional_type_name(clean) || t.is_sum_type_name(clean) {
+	if t.is_optional_type_name(clean) {
+		return t.make_optional_semantic_eq_expr(lhs, rhs, clean, clean, seen)
+	}
+	if t.is_sum_type_name(clean) {
 		return t.make_memcmp_eq_expr(lhs, rhs, clean, 'eq')
 	}
 	struct_type := t.struct_lookup_name(clean)
@@ -1331,6 +1336,27 @@ fn (mut t Transformer) make_memcmp_eq_expr(lhs flat.NodeId, rhs flat.NodeId, typ
 	cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs_value), t.make_prefix(.amp,
 		rhs_value), t.make_sizeof_type(typ)), 'int')
 	return t.make_infix(.eq, cmp, t.make_int_literal(0))
+}
+
+fn (mut t Transformer) make_optional_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, lhs_opt_type string, rhs_opt_type string, seen []string) flat.NodeId {
+	lhs_value := t.stable_transformed_expr_for_reuse(lhs, lhs_opt_type, 'opt_eq_lhs')
+	rhs_value := t.stable_transformed_expr_for_reuse(rhs, rhs_opt_type, 'opt_eq_rhs')
+	lhs_ok := t.make_selector(lhs_value, 'ok', 'bool')
+	rhs_ok := t.make_selector(rhs_value, 'ok', 'bool')
+	ok_same := t.make_infix(.eq, lhs_ok, rhs_ok)
+	lhs_value_type := t.optional_base_type(lhs_opt_type)
+	rhs_value_type := t.optional_base_type(rhs_opt_type)
+	if lhs_value_type.len == 0 || lhs_value_type == 'void' {
+		return ok_same
+	}
+	rhs_field_type := if rhs_value_type.len == 0 { lhs_value_type } else { rhs_value_type }
+	lhs_value_field := t.make_selector(lhs_value, 'value', lhs_value_type)
+	rhs_value_field := t.make_selector(rhs_value, 'value', rhs_field_type)
+	value_eq := t.make_membership_eq_expr_with_seen(lhs_value_field, rhs_value_field,
+		lhs_value_type, seen)
+	ok_or_value_eq := t.make_infix(.logical_or, t.make_prefix(.not, t.make_selector(lhs_value,
+		'ok', 'bool')), value_eq)
+	return t.make_infix(.logical_and, ok_same, ok_or_value_eq)
 }
 
 fn (t &Transformer) array_elem_needs_element_eq(elem_type string) bool {
@@ -1369,6 +1395,9 @@ fn (t &Transformer) type_needs_semantic_eq(typ string) bool {
 	if t.is_fixed_array_type(clean) {
 		elem_type := fixed_array_elem_type(clean)
 		return elem_type.len > 0 && t.type_needs_semantic_eq(elem_type)
+	}
+	if t.is_optional_type_name(clean) {
+		return true
 	}
 	return t.struct_lookup_name(clean).len > 0
 }

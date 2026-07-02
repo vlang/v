@@ -162,16 +162,16 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		'[]rune.string', 'map.set', 'map.exists', 'map.get', 'map.get_check', 'map.get_and_set',
 		'map.delete', 'map.clone', 'map.clear', 'map.keys', 'map.values', 'map.reserve', 'map_map_eq',
 		'memdup', 'strings.Builder.write_ptr', 'strings.Builder.write_runes', 'strings.Builder.free',
-		'strconv.format_int', 'strconv.format_uint', 'bool.str', 'int.str', 'u64.str', 'f64.str',
-		'rune.str', 'string.+', 'ptr_str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l',
-		'sync.new_channel_st', 'sync.Channel.push', 'sync.Channel.pop', 'sync.Channel.close',
-		'sync.Channel.len', 'sync.Channel.closed', 'new_channel_st', 'Channel.push', 'Channel.pop',
-		'Channel.close', 'Channel.len', 'Channel.closed', 'os.join_path_single', 'panic',
-		'u8.is_letter', 'u8.is_capital', 'string.is_capital', 'string.to_lower_ascii',
-		'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex', 'data_to_hex_string',
-		'map_hash_string', 'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_4', 'map_hash_int_8',
-		'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8',
-		'map_clone_string', 'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_4',
+		'strconv.format_int', 'strconv.format_uint', 'bool.str', 'int.str', 'u64.str', 'f32.str',
+		'f64.str', 'rune.str', 'string.+', 'ptr_str', 'strconv__f32_to_str_l',
+		'strconv__f64_to_str_l', 'sync.new_channel_st', 'sync.Channel.push', 'sync.Channel.pop',
+		'sync.Channel.close', 'sync.Channel.len', 'sync.Channel.closed', 'new_channel_st',
+		'Channel.push', 'Channel.pop', 'Channel.close', 'Channel.len', 'Channel.closed',
+		'os.join_path_single', 'panic', 'u8.is_letter', 'u8.is_capital', 'string.is_capital',
+		'string.to_lower_ascii', 'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex',
+		'data_to_hex_string', 'map_hash_string', 'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_4',
+		'map_hash_int_8', 'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4',
+		'map_eq_int_8', 'map_clone_string', 'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_4',
 		'map_clone_int_8', 'map_free_string', 'map_free_nop', '[]string.join', 'Array_string__join',
 		'embed_file.Decoder.decompress', 'exit', 'v_exit'] {
 		queue << seed
@@ -1075,6 +1075,8 @@ fn enqueue_stringified_primitive_helpers(type_name string, mut used map[string]b
 			enqueue('strconv__format_uint', mut used, mut queue)
 		}
 		'f32' {
+			enqueue('f32.str', mut used, mut queue)
+			enqueue(markused_c_name('f32.str'), mut used, mut queue)
 			enqueue('strconv__f32_to_str_l', mut used, mut queue)
 		}
 		'f64' {

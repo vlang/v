@@ -336,6 +336,20 @@ fn test_array_last_index_uses_semantic_element_comparison() {
 	assert out == '2\n1'
 }
 
+fn test_generic_string_literal_matching_typeof_marker_is_preserved() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_marker_string_literal',
+		"fn marker_and_type[T](value T) string {\n\tmarker := '__v3_generic_type_name:T'\n\treturn marker + '|' + typeof(value).name\n}\n\nfn main() {\n\tprintln(marker_and_type(7))\n}\n")
+	assert out == '__v3_generic_type_name:T|int'
+}
+
+fn test_optional_string_equality_uses_payload_equality() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_string_semantic_equality',
+		"fn maybe_text(ok bool) ?string {\n\tif !ok {\n\t\treturn none\n\t}\n\tprefix := 'a'.clone()\n\treturn prefix + 'b'\n}\n\nfn main() {\n\tleft := maybe_text(true)\n\tright := maybe_text(true)\n\tmissing_left := maybe_text(false)\n\tmissing_right := maybe_text(false)\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == missing_left)\n\tprintln(missing_left == missing_right)\n\tprintln(missing_left != missing_right)\n}\n")
+	assert out == 'true\nfalse\nfalse\ntrue\nfalse'
+}
+
 fn test_hierarchical_import_runtime_inits_before_importer_init() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'hierarchical_runtime_init_order', {

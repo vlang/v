@@ -2287,7 +2287,7 @@ fn (mut t Transformer) clone_generic_node(id flat.NodeId, args []string) flat.No
 }
 
 fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is_root bool) flat.NodeId {
-	if node.kind == .string_literal {
+	if node.kind == .typeof_expr {
 		if typ := generic_type_name_from_marker(node.value) {
 			idx := t.active_generic_param_index(typ)
 			if idx < args.len {

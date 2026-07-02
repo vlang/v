@@ -5799,7 +5799,12 @@ fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) fla
 		typ = 'unknown'
 	}
 	if t.cur_fn_is_generic && is_generic_fn_placeholder_name(typ) {
-		return t.make_string_literal(generic_type_name_marker(typ))
+		return t.a.add_node(flat.Node{
+			kind:  .typeof_expr
+			value: generic_type_name_marker(typ)
+			typ:   'string'
+			pos:   node.pos
+		})
 	}
 	return t.make_string_literal(typ)
 }
