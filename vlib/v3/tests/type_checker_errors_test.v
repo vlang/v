@@ -399,7 +399,10 @@ fn test_multi_return_if_tail_infers_common_type() {
 	v3_bin := build_v3()
 	if_tail := run_good(v3_bin, 'good_multi_return_if_common_pointer_tail',
 		'fn main() {\n\tx := 7\n\tp, n := if false {\n\t\tnil\n\t\t0\n\t} else {\n\t\t&x\n\t\t1\n\t}\n\tprintln(typeof(p).name)\n\tprintln(int_str(n))\n}\n')
-	assert if_tail == 'voidptr\n1'
+	assert if_tail == '&void\n1'
+	numeric_tail := run_good(v3_bin, 'good_multi_return_if_promoted_numeric_tail',
+		'fn main() {\n\tcond := false\n\tx, _ := if cond {\n\t\t1\n\t\t0\n\t} else {\n\t\t1.5\n\t\t0\n\t}\n\tprintln(typeof(x).name)\n\tprintln((x > 1.4).str())\n}\n')
+	assert numeric_tail == 'f64\ntrue'
 }
 
 fn test_nested_if_tuple_tail_multi_return_lowers_each_value() {

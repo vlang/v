@@ -4312,6 +4312,12 @@ fn (tc &TypeChecker) multi_expr_tail_types(expr_id flat.NodeId, count int) ?[]Ty
 	return types
 }
 
+// multi_expr_tail_types_for_transform returns promoted multi-expression tail
+// types for transform lowering without duplicating checker compatibility rules.
+pub fn (tc &TypeChecker) multi_expr_tail_types_for_transform(expr_id flat.NodeId, count int) ?[]Type {
+	return tc.multi_expr_tail_types(expr_id, count)
+}
+
 fn (tc &TypeChecker) promoted_multi_tail_type(current Type, actual Type) ?Type {
 	if tc.type_compatible(actual, current) {
 		return current

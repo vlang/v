@@ -4094,11 +4094,11 @@ fn (t &Transformer) multi_return_type_name(items []types.Type) string {
 }
 
 // expand_multi_return_if_decl builds expand multi return if decl data for transform.
-fn (mut t Transformer) expand_multi_return_if_decl(_rhs_id flat.NodeId, rhs flat.Node, lhs_ids []flat.NodeId) ?[]flat.NodeId {
+fn (mut t Transformer) expand_multi_return_if_decl(rhs_id flat.NodeId, rhs flat.Node, lhs_ids []flat.NodeId) ?[]flat.NodeId {
 	if lhs_ids.len == 0 {
 		return none
 	}
-	value_types := t.infer_multi_if_value_types(rhs, lhs_ids.len)
+	value_types := t.promoted_multi_if_value_types(rhs_id, rhs, lhs_ids.len)
 	mut result := []flat.NodeId{}
 	for i, lhs_id in lhs_ids {
 		lhs := t.a.nodes[int(lhs_id)]
@@ -4108,11 +4108,24 @@ fn (mut t Transformer) expand_multi_return_if_decl(_rhs_id flat.NodeId, rhs flat
 		typ := if i < value_types.len { value_types[i] } else { 'int' }
 		result << t.make_decl_assign_typed(lhs.value, t.zero_value_for_type(typ), typ)
 	}
-	if_stmts := t.expand_multi_return_if_assign(_rhs_id, rhs, lhs_ids) or { return none }
+	if_stmts := t.expand_multi_return_if_assign(rhs_id, rhs, lhs_ids) or { return none }
 	for stmt in if_stmts {
 		result << stmt
 	}
 	return result
+}
+
+fn (t &Transformer) promoted_multi_if_value_types(rhs_id flat.NodeId, rhs flat.Node, count int) []string {
+	if !isnil(t.tc) {
+		if item_types := t.tc.multi_expr_tail_types_for_transform(rhs_id, count) {
+			mut result := []string{cap: item_types.len}
+			for item_type in item_types {
+				result << item_type.name()
+			}
+			return result
+		}
+	}
+	return t.infer_multi_if_value_types(rhs, count)
 }
 
 // expand_multi_return_if_assign builds expand multi return if assign data for transform.
