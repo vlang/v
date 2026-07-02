@@ -157,11 +157,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		'array.slice', 'array.pop_left', 'array.clone', 'array.delete', 'array.ensure_cap',
 		'string.==', 'string.<', 'string.free', 'string.all_before', 'string.all_before_last',
 		'string.all_after', 'string.all_after_last', 'string.substr', 'string__substr', 'u8.vstring',
-		'u8.vstring_with_len', 'charptr.vstring', 'charptr.vstring_with_len', 'byteptr.vstring',
-		'byteptr.vstring_with_len', 'byteptr.vbytes', 'voidptr.vbytes', '[]rune.string', 'map.set',
-		'map.exists', 'map.get', 'map.get_check', 'map.get_and_set', 'map.delete', 'map.clone',
-		'map.clear', 'map.keys', 'map.values', 'map.reserve', 'map_map_eq', 'memdup',
-		'strings.Builder.write_ptr', 'strings.Builder.write_runes', 'strings.Builder.free',
+		'u8.vstring_with_len', 'u8.vbytes', 'charptr.vstring', 'charptr.vstring_with_len',
+		'byteptr.vstring', 'byteptr.vstring_with_len', 'byteptr.vbytes', 'voidptr.vbytes',
+		'[]rune.string', 'map.set', 'map.exists', 'map.get', 'map.get_check', 'map.get_and_set',
+		'map.delete', 'map.clone', 'map.clear', 'map.keys', 'map.values', 'map.reserve', 'map_map_eq',
+		'memdup', 'strings.Builder.write_ptr', 'strings.Builder.write_runes', 'strings.Builder.free',
 		'strconv.format_int', 'strconv.format_uint', 'bool.str', 'int.str', 'u64.str', 'f64.str',
 		'rune.str', 'string.+', 'ptr_str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l',
 		'sync.new_channel_st', 'sync.Channel.push', 'sync.Channel.pop', 'sync.Channel.close',
@@ -173,7 +173,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8',
 		'map_clone_string', 'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_4',
 		'map_clone_int_8', 'map_free_string', 'map_free_nop', '[]string.join', 'Array_string__join',
-		'exit', 'v_exit'] {
+		'embed_file.Decoder.decompress', 'exit', 'v_exit'] {
 		queue << seed
 		used[seed] = true
 	}
