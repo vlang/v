@@ -86,7 +86,7 @@ fn main() {
 	run('${host_v_cmd(cfg)} -silent test ${q(cfg.script_dir)}')
 
 	section(2, 'Build v3')
-	run('${host_v_cmd(cfg)} -d parallel -o ${q(v3_bin)} ${q(cfg.v3_src)}')
+	run('${host_v_cmd(cfg)} -o ${q(v3_bin)} ${q(cfg.v3_src)}')
 
 	section(3, 'Requested vlib tests')
 	for rel_path in requested_vlib_tests {

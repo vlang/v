@@ -141,7 +141,14 @@ fn executable_command_for_path(path string) string {
 
 fn input_implies_building_v(input_file string) bool {
 	normalized := input_file.replace('\\', '/').trim_right('/')
-	return normalized.all_after_last('/') == 'v3.v'
+	if normalized.all_after_last('/') == 'v3.v' {
+		return true
+	}
+	if os.is_dir(input_file) {
+		normalized_dir := os.real_path(input_file).replace('\\', '/').trim_right('/')
+		return normalized_dir.ends_with('/vlib/v3')
+	}
+	return false
 }
 
 fn input_is_cmd_v(input_file string) bool {
@@ -246,6 +253,9 @@ fn main() {
 	if building_v || cmd_v_build {
 		if no_parallel {
 			user_defines = user_defines.filter(it != 'parallel')
+			if 'v3_no_parallel' !in user_defines {
+				user_defines << 'v3_no_parallel'
+			}
 		} else if 'parallel' !in user_defines {
 			user_defines << 'parallel'
 		}
@@ -317,7 +327,7 @@ fn main() {
 	prefs.backend = backend
 	prefs.c99 = c99
 	prefs.user_defines = user_defines
-	prefs.vroot = resolve_vroot(prefs.vroot)
+	prefs.vroot = resolve_vroot_for_input(prefs.vroot, input_file)
 	prefs.selfhost = is_selfhost
 	prefs.building_v = building_v
 	prefs.is_prod = is_prod
@@ -714,12 +724,34 @@ fn nearest_vmod_root_for_file(path string) string {
 	return ''
 }
 
-// resolve_vroot resolves resolve vroot information for v3 entry point.
-fn resolve_vroot(initial string) string {
+// resolve_vroot_for_input resolves the V repo root for the compiler being built.
+fn resolve_vroot_for_input(initial string, input_file string) string {
+	if root := nearest_vroot_for_path(input_file) {
+		return root
+	}
+	if root := nearest_vroot_for_path(os.getwd()) {
+		return root
+	}
 	if is_valid_vroot(initial) {
 		return initial
 	}
-	mut dir := os.getwd()
+	return initial
+}
+
+fn nearest_vroot_for_path(path string) ?string {
+	if path.len == 0 {
+		return none
+	}
+	mut dir := path
+	if !os.is_abs_path(dir) {
+		cwd := os.getwd()
+		if cwd.len > 0 {
+			dir = os.join_path_single(cwd, dir)
+		}
+	}
+	if !os.is_dir(dir) {
+		dir = os.dir(dir)
+	}
 	for _ in 0 .. 8 {
 		if is_valid_vroot(dir) {
 			return dir
@@ -730,7 +762,7 @@ fn resolve_vroot(initial string) string {
 		}
 		dir = parent
 	}
-	return initial
+	return none
 }
 
 // is_valid_vroot reports whether is valid vroot applies in v3 entry point.

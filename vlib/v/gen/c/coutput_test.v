@@ -658,15 +658,25 @@ fn test_array_sort_expression_key_avoids_sanitized_name_collisions() {
 	assert res.output.trim_space().replace('\r\n', '\n') == 'nested-ok\nflat-ok'
 }
 
-// generated_c_symbol_with_prefix extracts one generated C symbol from compiler output.
-fn generated_c_symbol_with_prefix(output string, prefix string) string {
-	idx := output.index(prefix) or { return '' }
-	rest := output[idx..]
-	mut end := 0
-	for end < rest.len && (rest[end].is_letter() || rest[end].is_digit() || rest[end] == `_`) {
-		end++
+// generated_c_symbols_with_prefix extracts generated C symbols from compiler output.
+fn generated_c_symbols_with_prefix(output string, prefix string) []string {
+	mut symbols := []string{}
+	mut start := 0
+	for start < output.len {
+		idx := output[start..].index(prefix) or { break }
+		rest := output[start + idx..]
+		mut end := 0
+		for end < rest.len && (rest[end].is_letter() || rest[end].is_digit() || rest[end] == `_`) {
+			end++
+		}
+		symbol := rest[..end]
+		if symbol !in symbols {
+			symbols << symbol
+		}
+		start += idx + end
 	}
-	return rest[..end]
+	symbols.sort()
+	return symbols
 }
 
 fn test_auxiliary_c_symbols_use_stable_type_hashes() {
@@ -711,14 +721,14 @@ fn test_auxiliary_c_symbols_use_stable_type_hashes() {
 	compilation_b := os.execute(cmd_b)
 	ensure_compilation_succeeded(compilation_a, cmd_a)
 	ensure_compilation_succeeded(compilation_b, cmd_b)
-	compare_a := generated_c_symbol_with_prefix(compilation_a.output, 'compare_')
-	compare_b := generated_c_symbol_with_prefix(compilation_b.output, 'compare_')
-	keepalive_a := generated_c_symbol_with_prefix(compilation_a.output,
+	compare_a := generated_c_symbols_with_prefix(compilation_a.output, 'compare_')
+	compare_b := generated_c_symbols_with_prefix(compilation_b.output, 'compare_')
+	keepalive_a := generated_c_symbols_with_prefix(compilation_a.output,
 		'__v_boehm_collect_keepalive_')
-	keepalive_b := generated_c_symbol_with_prefix(compilation_b.output,
+	keepalive_b := generated_c_symbols_with_prefix(compilation_b.output,
 		'__v_boehm_collect_keepalive_')
-	assert compare_a != ''
-	assert keepalive_a != ''
+	assert compare_a.len > 0
+	assert keepalive_a.len > 0
 	assert compare_a == compare_b
 	assert keepalive_a == keepalive_b
 }

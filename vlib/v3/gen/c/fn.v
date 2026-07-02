@@ -2186,6 +2186,15 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			panic('channel close should be lowered by v3 transform')
 		}
 	}
+	if resolved := g.tc.resolved_call_name(id) {
+		if g.selector_call_can_emit_direct(resolved, node) {
+			g.write(g.direct_call_name_for_call(id, resolved))
+			g.write('(')
+			g.gen_call_args(resolved, node, 1)
+			g.write(')')
+			return
+		}
+	}
 	match fn_name {
 		'array_new' {
 			g.write('array_new(')
@@ -4496,6 +4505,23 @@ fn fn_type_from(t types.Type) ?types.FnType {
 		return fn_type_from(t.base_type)
 	}
 	return none
+}
+
+fn (g &FlatGen) selector_call_can_emit_direct(resolved string, node flat.Node) bool {
+	if resolved.len == 0 || node.children_count == 0 {
+		return false
+	}
+	fn_node := g.a.child_node(&node, 0)
+	if fn_node.kind != .selector {
+		return false
+	}
+	params := g.tc.fn_param_types[resolved] or {
+		if resolved in g.tc.fn_ret_types {
+			return node.children_count == 1
+		}
+		return false
+	}
+	return params.len == node.children_count - 1
 }
 
 // gen_call_args emits call args output for c.
