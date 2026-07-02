@@ -246,6 +246,9 @@ fn main() {
 	if building_v || cmd_v_build {
 		if no_parallel {
 			user_defines = user_defines.filter(it != 'parallel')
+			if 'v3_no_parallel' !in user_defines {
+				user_defines << 'v3_no_parallel'
+			}
 		} else if 'parallel' !in user_defines {
 			user_defines << 'parallel'
 		}
