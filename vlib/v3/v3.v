@@ -350,6 +350,7 @@ fn main() {
 	test_files := test_input_files(user_files, backend)
 
 	seed_implicit_sync_import(mut a)
+	seed_implicit_embed_file_import(mut a)
 
 	// Resolve imports recursively
 	resolve_imports(mut a, mut p, prefs, user_files)
@@ -991,12 +992,32 @@ fn seed_implicit_sync_import(mut a flat.FlatAst) {
 	})
 }
 
+fn seed_implicit_embed_file_import(mut a flat.FlatAst) {
+	if !ast_needs_embed_file_import(a) || ast_has_import(a, 'v.embed_file') {
+		return
+	}
+	a.add_node(flat.Node{
+		kind:  .import_decl
+		value: 'v.embed_file'
+		typ:   'embed_file'
+	})
+}
+
 fn ast_needs_sync_import(a &flat.FlatAst) bool {
 	for node in a.nodes {
 		if node.kind == .lock_expr {
 			return true
 		}
 		if node.kind == .field_decl && type_text_is_shared(node.typ) {
+			return true
+		}
+	}
+	return false
+}
+
+fn ast_needs_embed_file_import(a &flat.FlatAst) bool {
+	for node in a.nodes {
+		if node.kind == .struct_init && node.value == 'embed_file.EmbedFileData' {
 			return true
 		}
 	}

@@ -2359,6 +2359,9 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		}
 		return p.a.add_val_id(5, env_val)
 	}
+	if p.tok == .name && p.lit == 'embed_file' {
+		return p.parse_embed_file_expr()
+	}
 	for p.tok != .semicolon && p.tok != .eof {
 		p.next()
 	}
@@ -2366,6 +2369,76 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	// `empty_node`, so consumers (e.g. const initializers) never store an
 	// invalid (-1) child node.
 	return p.a.add_val_id(5, '')
+}
+
+fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
+	p.next() // skip embed_file
+	if p.tok != .lpar {
+		return flat.empty_node
+	}
+	p.next()
+	mut rel_path := ''
+	if p.tok == .string {
+		rel_path = strip_quotes(p.lit)
+		p.next()
+	} else if p.tok == .name && p.lit == '@FILE' {
+		rel_path = p.cur_file
+		p.next()
+	} else {
+		// V3 does not evaluate arbitrary comptime expressions yet. Keep parsing
+		// valid and let the runtime helper fail clearly if the path is unknown.
+		p.expr(.lowest)
+	}
+	for p.tok != .rpar && p.tok != .eof {
+		p.next()
+	}
+	p.check(.rpar)
+	apath := p.embed_file_abs_path(rel_path)
+	len := if apath.len > 0 && os.is_file(apath) { int(os.file_size(apath)) } else { 0 }
+	field_ids := [
+		p.embed_file_field('path', p.a.add_val_id(5, rel_path)),
+		p.embed_file_field('apath', p.a.add_val_id(5, apath)),
+		p.embed_file_field('len', p.a.add_val_id(1, len.str())),
+	]
+	return p.a.add_node(flat.Node{
+		kind:           .struct_init
+		value:          'embed_file.EmbedFileData'
+		typ:            'embed_file.EmbedFileData'
+		children_start: p.add_children(field_ids)
+		children_count: flat.child_count(field_ids.len)
+	})
+}
+
+fn (mut p Parser) embed_file_field(name string, val flat.NodeId) flat.NodeId {
+	return p.a.add_node(flat.Node{
+		kind:           .field_init
+		value:          name
+		children_start: p.add_child(val)
+		children_count: 1
+	})
+}
+
+fn (p &Parser) embed_file_abs_path(path string) string {
+	if path.len == 0 {
+		return ''
+	}
+	mut full_path := path
+	if full_path.starts_with('@VEXEROOT/') {
+		full_path = os.join_path_single(p.prefs.vroot, full_path['@VEXEROOT/'.len..])
+	} else if full_path == '@VEXEROOT' {
+		full_path = p.prefs.vroot
+	} else if full_path.starts_with('@VMODROOT/') {
+		full_path = os.join_path_single(vmod_root_for_file(p.cur_file),
+			full_path['@VMODROOT/'.len..])
+	} else if full_path == '@VMODROOT' {
+		full_path = vmod_root_for_file(p.cur_file)
+	} else if !os.is_abs_path(full_path) {
+		full_path = os.join_path_single(os.dir(p.cur_file), full_path)
+	}
+	if os.exists(full_path) {
+		return os.real_path(full_path)
+	}
+	return full_path
 }
 
 fn (mut p Parser) parse_comptime_if_expr() flat.NodeId {

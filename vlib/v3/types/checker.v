@@ -5740,6 +5740,9 @@ fn pointer_builtin_receiver_name(typ Type) string {
 			return 'byteptr'
 		}
 	}
+	if typ is Primitive && prim_name(typ) == 'u8' {
+		return 'byteptr'
+	}
 	return ''
 }
 
