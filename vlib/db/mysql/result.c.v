@@ -139,6 +139,19 @@ pub fn (r Result) fields() []Field {
 	return fields
 }
 
+// field_names returns the column names for this result set.
+pub fn (r Result) field_names() []string {
+	if r.result == unsafe { nil } {
+		return []string{}
+	}
+	fields := r.fields()
+	mut names := []string{cap: fields.len}
+	for field in fields {
+		names << field.name
+	}
+	return names
+}
+
 // str serializes the field.
 pub fn (f Field) str() string {
 	return '

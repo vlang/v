@@ -197,33 +197,33 @@ $if db_mysql ? {
 	}
 
 	fn open_mysql(config DriverConfig) !&Driver {
-		conn := mysql.connect(mysql.Config{
+		mut mysql_config := mysql.Config{
 			host:       if config.host != '' { config.host } else { '127.0.0.1' }
 			port:       if config.port > 0 { u32(config.port) } else { u32(3306) }
 			user:       config.user
 			username:   config.username
 			password:   config.password
 			dbname:     config.dbname
-			flag:       mysql_connection_flag(config)
 			ssl_mode:   mysql_ssl_mode(config.ssl_mode)!
 			ssl_key:    config.ssl_key
 			ssl_cert:   config.ssl_cert
 			ssl_ca:     config.ssl_ca
 			ssl_capath: config.ssl_capath
 			ssl_cipher: config.ssl_cipher
-		})!
+		}
+		if mysql_uses_ssl_files(config) {
+			mysql_config.flag = .client_ssl
+		}
+		conn := mysql.connect(mysql_config)!
 		mut driver := &MysqlDriver{
 			conn: conn
 		}
 		return driver
 	}
 
-	fn mysql_connection_flag(config DriverConfig) mysql.ConnectionFlag {
-		if config.ssl_key != '' || config.ssl_cert != '' || config.ssl_ca != ''
-			|| config.ssl_capath != '' || config.ssl_cipher != '' {
-			return mysql.ConnectionFlag.client_ssl
-		}
-		return mysql.ConnectionFlag(0)
+	fn mysql_uses_ssl_files(config DriverConfig) bool {
+		return config.ssl_key != '' || config.ssl_cert != '' || config.ssl_ca != ''
+			|| config.ssl_capath != '' || config.ssl_cipher != ''
 	}
 
 	fn mysql_ssl_mode(value string) !mysql.SslMode {
@@ -239,30 +239,49 @@ $if db_mysql ? {
 		}
 	}
 
-	fn mysql_row_to_row(row mysql.Row) DriverRow {
+	fn mysql_row_to_row(row mysql.Row, names []string) DriverRow {
 		return DriverRow{
-			vals: row.vals.clone()
+			vals:  row.vals.clone()
+			names: names.clone()
 		}
 	}
 
-	fn mysql_rows_to_rows(rows []mysql.Row) []DriverRow {
+	fn mysql_rows_to_rows(rows []mysql.Row, names []string) []DriverRow {
 		mut normalized := []DriverRow{cap: rows.len}
 		for row in rows {
-			normalized << mysql_row_to_row(row)
+			normalized << mysql_row_to_row(row, names)
 		}
 		return normalized
 	}
 
+	fn mysql_result_to_rows(result mysql.Result) []DriverRow {
+		if result.result == unsafe { nil } {
+			return []DriverRow{}
+		}
+		return mysql_rows_to_rows(result.rows(), result.field_names())
+	}
+
 	fn (mut driver MysqlDriver) exec(query string) ![]DriverRow {
-		return mysql_rows_to_rows(driver.conn.exec(query)!)
+		result := driver.conn.query(query)!
+		if result.result == unsafe { nil } {
+			return []DriverRow{}
+		}
+		defer {
+			unsafe { result.free() }
+		}
+		return mysql_result_to_rows(result)
 	}
 
 	fn (mut driver MysqlDriver) exec_one(query string) !DriverRow {
-		return mysql_row_to_row(driver.conn.exec_one(query)!)
+		rows := driver.exec(query)!
+		if rows.len == 0 {
+			return DriverRow{}
+		}
+		return rows[0]
 	}
 
 	fn (mut driver MysqlDriver) exec_param_many(query string, params []string) ![]DriverRow {
-		return mysql_rows_to_rows(driver.conn.exec_param_many(query, params)!)
+		return mysql_rows_to_rows(driver.conn.exec_param_many(query, params)!, []string{})
 	}
 
 	fn (mut driver MysqlDriver) validate() !bool {
