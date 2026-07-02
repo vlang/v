@@ -190,6 +190,34 @@ fn main() {
 	assert generated.contains('submodule__sub_xy(10, 7)'), generated
 }
 
+fn test_import_alias_variadic_module_call_without_values_skips_module_receiver() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin,
+		'module_alias_variadic_zero_args', 'module main
+
+import logger as log
+
+fn main() {
+	println(int_str(log.sum()))
+	println(int_str(log.sum(4, 5)))
+}
+', {
+		'logger/logger.v': 'module logger
+
+pub fn sum(values ...int) int {
+	mut total := 0
+	for value in values {
+		total += value
+	}
+	return total
+}
+'
+	})
+	assert output == '0\n9'
+	assert generated.contains('logger__sum('), generated
+	assert !generated.contains('logger__sum(log'), generated
+}
+
 fn test_selective_import_json_decode_uses_stub() {
 	v3_bin := selective_import_build_v3()
 	json_output, json_generated := selective_import_compile_run_with_extra(v3_bin, 'json_decode', 'module main

@@ -4068,10 +4068,24 @@ fn (g &FlatGen) selector_module_call_name(fn_node flat.Node, node flat.Node) ?st
 		}
 		return none
 	}
-	if params.len == node.children_count - arg_start {
+	if g.module_call_arg_count_matches(call_name, params, node.children_count - arg_start) {
 		return call_name
 	}
 	return none
+}
+
+fn (g &FlatGen) module_call_arg_count_matches(fn_name string, params []types.Type, supplied int) bool {
+	if params.len == supplied {
+		return true
+	}
+	if !(g.tc.fn_variadic[fn_name] or { false }) && !(g.tc.c_variadic_fns[fn_name] or { false }) {
+		return false
+	}
+	if params.len == 0 {
+		return supplied == 0
+	}
+	min_args := if params[params.len - 1] is types.Array { params.len - 1 } else { params.len }
+	return supplied >= min_args
 }
 
 fn (g &FlatGen) selector_module_call_arg_start(fn_node flat.Node, node flat.Node) int {
@@ -4114,7 +4128,7 @@ fn (g &FlatGen) target_module_call_name(target string, node flat.Node) ?string {
 		}
 		return none
 	}
-	if params.len == node.children_count - arg_start {
+	if g.module_call_arg_count_matches(call_name, params, node.children_count - arg_start) {
 		return call_name
 	}
 	return none
