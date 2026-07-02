@@ -1711,15 +1711,23 @@ fn (mut g Gen) emit_load_string_regs_from_ptr(ptr_reg int, data_reg int, len_reg
 	typ := g.m.type_store.types[typ_id]
 	g.emit_load_typed(data_reg, ptr_reg, typ.fields[0])
 	g.emit32(asm_add_imm(Reg(11), Reg(ptr_reg), 8))
-	g.emit_load_typed(len_reg, 11, typ.fields[1])
+	if typ.fields.len == 3 {
+		g.emit32(asm_ldr(Reg(len_reg), Reg(11)))
+	} else {
+		g.emit_load_typed(len_reg, 11, typ.fields[1])
+	}
 }
 
 // emit_load_string_regs_from_fp converts emit load string regs from fp data for arm64.
 fn (mut g Gen) emit_load_string_regs_from_fp(off int, data_reg int, len_reg int, typ_id ssa.TypeID) {
 	typ := g.m.type_store.types[typ_id]
 	g.emit_load_fp(data_reg, off)
-	g.emit_lea_fp(11, off + 8)
-	g.emit_load_typed(len_reg, 11, typ.fields[1])
+	if typ.fields.len == 3 {
+		g.emit_load_fp(len_reg, off + 8)
+	} else {
+		g.emit_lea_fp(11, off + 8)
+		g.emit_load_typed(len_reg, 11, typ.fields[1])
+	}
 }
 
 // emit_store_typed emits emit store typed output for arm64.

@@ -2565,9 +2565,12 @@ fn (mut b Builder) register_map_runtime_stubs() {
 	b.generate_map_clear_body(clear_id)
 	free_id := b.register_synthetic_function('map__free', b.void_type, p1_ptr)
 	b.generate_map_free_body(free_id)
-	keys_id := b.register_synthetic_function('map__keys', b.array_type, p1_ptr)
+	mut p2_arr := []TypeID{}
+	p2_arr << ptr_map
+	p2_arr << b.i64_type
+	keys_id := b.register_synthetic_function('map__keys', b.array_type, p2_arr)
 	b.generate_map_keys_values_body(keys_id, 0, 4)
-	values_id := b.register_synthetic_function('map__values', b.array_type, p1_ptr)
+	values_id := b.register_synthetic_function('map__values', b.array_type, p2_arr)
 	b.generate_map_keys_values_body(values_id, 1, 5)
 
 	mut p2_reserve := []TypeID{}
@@ -2782,6 +2785,7 @@ fn (mut b Builder) generate_map_keys_values_body(func_id int, data_field int, si
 	ptr_array := b.m.type_store.get_ptr(b.array_type)
 	entry := b.m.add_block(func_id, 'entry')
 	m := b.func_add_argument(func_id, ptr_map, 'm')
+	elem_size_arg := b.func_add_argument(func_id, b.i64_type, 'elem_size')
 	state := b.map_state_ptr(entry, m)
 	zero_state := b.m.get_or_add_const(ptr_state, '0')
 	has_state := b.block_instr2(.ne, entry, b.i1_type, state, zero_state)
@@ -2808,9 +2812,8 @@ fn (mut b Builder) generate_map_keys_values_body(func_id int, data_field int, si
 	b.block_instr1(.ret, blk_copy, b.void_type, result)
 
 	zero := b.m.get_or_add_const(b.i64_type, '0')
-	one := b.m.get_or_add_const(b.i64_type, '1')
 	empty_ref := b.m.add_value(.func_ref, b.void_type, 'array_new', b.fn_ids['array_new'])
-	empty := b.block_instr4(.call, blk_empty, b.array_type, empty_ref, one, zero, zero)
+	empty := b.block_instr4(.call, blk_empty, b.array_type, empty_ref, elem_size_arg, zero, zero)
 	b.block_instr1(.ret, blk_empty, b.void_type, empty)
 }
 
@@ -8694,7 +8697,28 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		}
 		args << b.build_expr(arg_id)
 	}
+	if resolved_name in ['map__keys', 'map__values'] && args.len == 2 && param_types.len == 2 {
+		if elem_size := b.map_array_elem_size_arg(id, node) {
+			args << elem_size
+		} else {
+			args << b.m.get_or_add_const(b.i64_type, '1')
+		}
+	}
 	return b.m.add_instr(.call, b.cur_block, ret_type, args)
+}
+
+fn (mut b Builder) map_array_elem_size_arg(id flat.NodeId, node flat.Node) ?ValueID {
+	mut typ_name := b.checked_expr_type_name(id)
+	if typ_name.len == 0 || typ_name == 'unknown' {
+		typ_name = node.typ
+	}
+	if !typ_name.starts_with('[]') {
+		return none
+	}
+	elem_type := b.resolve_type(typ_name[2..])
+	elem_size := b.m.type_size(elem_type)
+	actual_size := if elem_size > 0 { elem_size } else { 1 }
+	return b.m.get_or_add_const(b.i64_type, actual_size.str())
 }
 
 fn (b &Builder) unqualified_call_candidate(name string, arg_count int) ?string {
