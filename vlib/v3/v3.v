@@ -1122,6 +1122,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 			}
 			seed_implicit_sync_import(mut a)
+			seed_implicit_embed_file_import(mut a)
 		}
 		node_idx++
 	}

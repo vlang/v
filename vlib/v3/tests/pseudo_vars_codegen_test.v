@@ -48,3 +48,29 @@ fn test_embed_file_codegen() {
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
 }
+
+// test_imported_module_embed_file_codegen validates implicit v.embed_file imports
+// after imported module parsing.
+fn test_imported_module_embed_file_codegen() {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_imported_embed_file_codegen_test')
+	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+
+	tmp_dir := os.join_path(os.temp_dir(), 'v3_imported_embed_file_codegen_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(os.join_path(tmp_dir, 'assets'))!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	os.write_file(os.join_path(tmp_dir, 'v.mod'), 'Module { name: "imported_embed" }\n')!
+	os.write_file(os.join_path(tmp_dir, 'assets', 'payload.txt'), 'hello')!
+	os.write_file(os.join_path(tmp_dir, 'assets', 'assets.v'),
+		"module assets\n\npub fn message() string {\n\tdata := \$embed_file('payload.txt')\n\treturn data.to_string()\n}\n")!
+	src := os.join_path(tmp_dir, 'main.v')
+	bin := os.join_path(tmp_dir, 'main')
+	os.write_file(src, "import assets\n\nfn main() {\n\tassert assets.message() == 'hello'\n}\n")!
+	result := os.execute('${v3_bin} ${src} -o ${bin}')
+	assert result.exit_code == 0, result.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+}

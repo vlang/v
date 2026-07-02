@@ -350,6 +350,13 @@ fn test_optional_string_equality_uses_payload_equality() {
 	assert out == 'true\nfalse\nfalse\ntrue\nfalse'
 }
 
+fn test_optional_nested_array_equality_guards_payload_work() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_nested_array_guarded_equality',
+		"fn maybe_nested(ok bool) ?[][]string {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [['a'.clone()], ['b'.clone()]]\n}\n\nfn main() {\n\tleft := maybe_nested(true)\n\tright := maybe_nested(true)\n\tmissing_left := maybe_nested(false)\n\tmissing_right := maybe_nested(false)\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == missing_left)\n\tprintln(missing_left == missing_right)\n\tprintln(missing_left != missing_right)\n}\n")
+	assert out == 'true\nfalse\nfalse\ntrue\nfalse'
+}
+
 fn test_hierarchical_import_runtime_inits_before_importer_init() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'hierarchical_runtime_init_order', {

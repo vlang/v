@@ -1352,11 +1352,27 @@ fn (mut t Transformer) make_optional_semantic_eq_expr(lhs flat.NodeId, rhs flat.
 	rhs_field_type := if rhs_value_type.len == 0 { lhs_value_type } else { rhs_value_type }
 	lhs_value_field := t.make_selector(lhs_value, 'value', lhs_value_type)
 	rhs_value_field := t.make_selector(rhs_value, 'value', rhs_field_type)
+	pending_start := t.pending_stmts.len
 	value_eq := t.make_membership_eq_expr_with_seen(lhs_value_field, rhs_value_field,
 		lhs_value_type, seen)
-	ok_or_value_eq := t.make_infix(.logical_or, t.make_prefix(.not, t.make_selector(lhs_value,
-		'ok', 'bool')), value_eq)
-	return t.make_infix(.logical_and, ok_same, ok_or_value_eq)
+	mut body_stmts := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	if body_stmts.len == 0 {
+		ok_or_value_eq := t.make_infix(.logical_or, t.make_prefix(.not, t.make_selector(lhs_value,
+			'ok', 'bool')), value_eq)
+		return t.make_infix(.logical_and, ok_same, ok_or_value_eq)
+	}
+	result_name := t.new_temp('opt_eq')
+	t.pending_stmts << t.make_decl_assign_typed(result_name, ok_same, 'bool')
+	compare_values := t.make_infix(.logical_and, t.make_ident(result_name), t.make_selector(lhs_value,
+		'ok', 'bool'))
+	set_false := t.make_assign(t.make_ident(result_name), t.make_bool_literal(false))
+	body_stmts << t.make_if(t.make_prefix(.not, t.make_paren(value_eq)),
+		t.make_block(arr1(set_false)), t.make_empty())
+	t.pending_stmts << t.make_if(compare_values, t.make_block(body_stmts), t.make_empty())
+	result := t.make_ident(result_name)
+	t.a.nodes[int(result)].typ = 'bool'
+	return result
 }
 
 fn (t &Transformer) array_elem_needs_element_eq(elem_type string) bool {
