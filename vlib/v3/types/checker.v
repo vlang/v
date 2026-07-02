@@ -6968,6 +6968,16 @@ fn (tc &TypeChecker) branch_tail_is_error_literal(id flat.NodeId) bool {
 	return false
 }
 
+fn (tc &TypeChecker) branch_failure_literal_matches_context(id flat.NodeId, expected Type) bool {
+	if tc.branch_tail_is_none_literal(id) {
+		return expected is OptionType
+	}
+	if tc.branch_tail_is_error_literal(id) {
+		return expected is ResultType || is_ierror_type(expected)
+	}
+	return true
+}
+
 fn if_branch_type_needs_context(typ Type) bool {
 	if typ is None || is_ierror_type(typ) {
 		return true
@@ -7871,6 +7881,9 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 				return false
 			}
 			saw_branch = true
+			if !tc.branch_failure_literal_matches_context(tail, expected) {
+				return false
+			}
 			actual := tc.resolve_expr(tail, expected)
 			if !tc.if_branch_type_compatible_with_context(actual, tail, expected) {
 				return false
@@ -7888,6 +7901,9 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 		if !tc.valid_node_id(then_tail) {
 			return false
 		}
+		if !tc.branch_failure_literal_matches_context(then_tail, expected) {
+			return false
+		}
 		then_actual := tc.resolve_expr(then_tail, expected)
 		if !tc.if_branch_type_compatible_with_context(then_actual, then_tail, expected) {
 			return false
@@ -7901,6 +7917,9 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 		}
 		else_tail := tc.branch_tail_expr_id(else_id)
 		if !tc.valid_node_id(else_tail) {
+			return false
+		}
+		if !tc.branch_failure_literal_matches_context(else_tail, expected) {
 			return false
 		}
 		else_actual := tc.resolve_expr(else_tail, expected)
