@@ -2724,10 +2724,7 @@ fn (g &FlatGen) is_json_decode_call_expr(id flat.NodeId) bool {
 	node := g.a.nodes[int(id)]
 	if node.kind == .call && node.children_count > 0 {
 		target := g.call_target_name(g.a.child(&node, 0))
-		if target in ['decode', 'json.decode', 'json2.decode'] {
-			return true
-		}
-		if g.call_has_selector_name(g.a.child(&node, 0), 'decode') {
+		if g.is_json_decode_target_name(target) {
 			return true
 		}
 	}

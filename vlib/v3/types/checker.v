@@ -2930,6 +2930,17 @@ fn (tc &TypeChecker) stmt_definitely_returns(id flat.NodeId) bool {
 			}
 			return false
 		}
+		.comptime_if {
+			if node.children_count == 0 {
+				return false
+			}
+			if node.children_count == 1 {
+				return comptime_condition_strip_outer_parens(node.value) == 'true'
+					&& tc.stmt_definitely_returns(tc.a.child(&node, 0))
+			}
+			return tc.stmt_definitely_returns(tc.a.child(&node, 0))
+				&& tc.stmt_definitely_returns(tc.a.child(&node, 1))
+		}
 		.if_expr {
 			if node.children_count < 3 {
 				return false
@@ -4043,24 +4054,34 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 		return false
 	}
 	rhs_id := tc.a.child(&node, 1)
-	rhs_type := tc.resolve_type(rhs_id)
-	rhs_type_name := rhs_type.name()
-	if rhs_type is MultiReturn {
+	mut rhs_type := tc.resolve_type(rhs_id)
+	mut rhs_checked := false
+	if _ := multi_return_payload_type(rhs_type) {
+		// Already resolved enough below.
+	} else {
 		tc.check_node(rhs_id)
+		rhs_checked = true
+		rhs_type = tc.resolve_type(rhs_id)
+	}
+	rhs_type_name := rhs_type.name()
+	if rhs_multi := multi_return_payload_type(rhs_type) {
+		if !rhs_checked {
+			tc.check_node(rhs_id)
+		}
 		lhs_ids := tc.multi_assign_lhs_ids(node)
-		if lhs_ids.len != rhs_type.types.len {
+		if lhs_ids.len != rhs_multi.types.len {
 			if tc.should_diagnose(id) {
 				tc.record_error(.assignment_mismatch,
-					'multi-return assignment mismatch: ${lhs_ids.len} variables but `${rhs_type_name}` has ${rhs_type.types.len} values',
+					'multi-return assignment mismatch: ${lhs_ids.len} variables but `${rhs_type_name}` has ${rhs_multi.types.len} values',
 					id)
 			}
 			return true
 		}
 		for i, lhs_id in lhs_ids {
-			tc.insert_decl_lhs(lhs_id, rhs_type.types[i])
+			tc.insert_decl_lhs(lhs_id, rhs_multi.types[i])
 		}
 		$if ownership ? {
-			tc.ownership_after_multi_return_decl_assign(lhs_ids, rhs_id, rhs_type, id)
+			tc.ownership_after_multi_return_decl_assign(lhs_ids, rhs_id, rhs_multi, id)
 		}
 		return true
 	}
@@ -4190,28 +4211,38 @@ fn (mut tc TypeChecker) check_multi_return_assign(id flat.NodeId, node flat.Node
 		return false
 	}
 	rhs_id := tc.a.child(&node, 1)
-	rhs_type := tc.resolve_type(rhs_id)
-	rhs_type_name := rhs_type.name()
-	if rhs_type is MultiReturn {
+	mut rhs_type := tc.resolve_type(rhs_id)
+	mut rhs_checked := false
+	if _ := multi_return_payload_type(rhs_type) {
+		// Already resolved enough below.
+	} else {
 		tc.check_node(rhs_id)
+		rhs_checked = true
+		rhs_type = tc.resolve_type(rhs_id)
+	}
+	rhs_type_name := rhs_type.name()
+	if rhs_multi := multi_return_payload_type(rhs_type) {
+		if !rhs_checked {
+			tc.check_node(rhs_id)
+		}
 		lhs_ids := tc.multi_assign_lhs_ids(node)
-		if lhs_ids.len != rhs_type.types.len {
+		if lhs_ids.len != rhs_multi.types.len {
 			if tc.should_diagnose(id) {
 				tc.record_error(.assignment_mismatch,
-					'multi-return assignment mismatch: ${lhs_ids.len} variables but `${rhs_type_name}` has ${rhs_type.types.len} values',
+					'multi-return assignment mismatch: ${lhs_ids.len} variables but `${rhs_type_name}` has ${rhs_multi.types.len} values',
 					id)
 			}
 			return true
 		}
 		for i, lhs_id in lhs_ids {
 			lhs_type := tc.resolve_lvalue_type(lhs_id)
-			if !tc.type_compatible(rhs_type.types[i], lhs_type) {
+			if !tc.type_compatible(rhs_multi.types[i], lhs_type) {
 				tc.type_mismatch(.assignment_mismatch,
-					'cannot assign `${rhs_type.types[i].name()}` to `${lhs_type.name()}`', id)
+					'cannot assign `${rhs_multi.types[i].name()}` to `${lhs_type.name()}`', id)
 			}
 		}
 		$if ownership ? {
-			tc.ownership_after_multi_return_assign(lhs_ids, rhs_id, rhs_type, id)
+			tc.ownership_after_multi_return_assign(lhs_ids, rhs_id, rhs_multi, id)
 		}
 		return true
 	}
@@ -6788,12 +6819,28 @@ fn (tc &TypeChecker) if_branch_types_compatible(a Type, b Type, a_is_array_lit b
 	if tc.type_compatible(a, b) || tc.type_compatible(b, a) {
 		return true
 	}
+	if if_branch_type_needs_context(a) || if_branch_type_needs_context(b) {
+		return true
+	}
 	if !a_is_array_lit || !b_is_array_lit {
 		return false
 	}
 	a_elem := array_like_elem_type(a) or { return false }
 	b_elem := array_like_elem_type(b) or { return false }
 	return tc.type_compatible(a_elem, b_elem) || tc.type_compatible(b_elem, a_elem)
+}
+
+fn if_branch_type_needs_context(typ Type) bool {
+	if typ is None || is_ierror_type(typ) {
+		return true
+	}
+	if typ is OptionType {
+		return typ.base_type is Void
+	}
+	if typ is ResultType {
+		return typ.base_type is Void
+	}
+	return false
 }
 
 // branch_tail_is_array_literal reports whether a branch's value tail is a bare
@@ -7523,6 +7570,12 @@ fn choose_if_tail_type(current Type, next Type) Type {
 		return next
 	}
 	if next is Void {
+		return current
+	}
+	if if_branch_type_needs_context(current) {
+		return next
+	}
+	if if_branch_type_needs_context(next) {
 		return current
 	}
 	if current !is Primitive {
@@ -11157,6 +11210,9 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 			if inner0 is Alias {
 				inner = inner0.base_type
 			}
+			if inner is Array {
+				return inner
+			}
 			if inner is ArrayFixed {
 				return Type(Array{
 					elem_type: fixed_array_elem_type(inner)
@@ -11437,6 +11493,13 @@ fn subst_generic_text(typ string, args []string, params []string) string {
 	}
 	if clean.starts_with('[]') {
 		return '[]' + subst_generic_text(clean[2..], args, params)
+	}
+	if clean.starts_with('(') && clean.ends_with(')') && clean.contains(',') {
+		mut parts := []string{}
+		for part in split_params(clean[1..clean.len - 1]) {
+			parts << subst_generic_text(part, args, params)
+		}
+		return '(${parts.join(', ')})'
 	}
 	if clean.starts_with('map[') {
 		bracket_end := find_matching_bracket(clean, 3)
