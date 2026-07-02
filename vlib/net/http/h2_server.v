@@ -234,7 +234,11 @@ fn (mut c H2ServerConn) mark_locally_reset(id u32) {
 //   - idle:   never opened — an odd id above any we have accepted, OR any even
 //             (server-initiated) id, since this server never opens push streams
 //   - closed: a client (odd) id at or below the highest we have accepted that is
-//             no longer in the map (already finished or reset)
+//             no longer in the map (already finished or reset), OR any id we
+//             have ourselves RST_STREAM'd (c.locally_reset) regardless of
+//             last_stream_id — a self-dependent PRIORITY (RFC 7540 §5.3.1) is
+//             legal on a stream the client never opened via HEADERS, so an id
+//             can be locally-reset without ever having advanced last_stream_id
 enum H2StreamState {
 	active
 	idle
@@ -251,6 +255,17 @@ enum H2StreamState {
 fn (c &H2ServerConn) classify_stream(stream_id u32) H2StreamState {
 	if stream_id in c.streams {
 		return .active
+	}
+	// An id we have ourselves RST_STREAM'd is closed no matter how it got reset:
+	// checking this before the last_stream_id/parity test covers ids that were
+	// never opened via HEADERS at all (e.g. a self-dependent PRIORITY frame on
+	// an id the client never used) — without this, every caller of
+	// classify_stream (on_data, handle_control_frame's WINDOW_UPDATE arm,
+	// dispatch_frame's RST_STREAM arm) would misclassify a later in-flight frame
+	// for that id as idle and force a connection error instead of draining it
+	// per §6.4.
+	if stream_id in c.locally_reset {
+		return .closed
 	}
 	if stream_id & 1 == 1 && stream_id <= c.last_stream_id {
 		return .closed

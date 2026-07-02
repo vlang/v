@@ -13,7 +13,7 @@ sides that internal round-trip tests cannot.
 |------|---------|
 | `h2spec_server.v` | Minimal HTTP/2 target server (TLS + ALPN `h2`, answers 200). The thing h2spec connects to. |
 | `run_h2spec.sh` | Builds the target, starts it, runs a **pinned** h2spec, diffs failures against the baseline. |
-| `h2spec_expected_failures.txt` | Known-failure baseline (37 cases). CI fails only on a *regression* (a new failure not listed). |
+| `h2spec_expected_failures.txt` | Known-failure baseline — currently EMPTY (146/146 pass as of #27627). CI fails on any h2spec failure (mechanically: a regression against an empty baseline). |
 | `.github/workflows/h2spec.yml` | CI job: fetches a pinned h2spec release (sha256-verified) and runs the gate. |
 
 ## Running locally
@@ -41,11 +41,12 @@ runner never installs anything — it expects `h2spec` to be provided.
 
 - ✅ `h2spec_server.v` builds (gcc), listens, and negotiates ALPN `h2` (the same
   server driver `test_server_tls_h2_negotiation` exercises end-to-end).
-- ✅ **The harness was run end-to-end with a pinned h2spec v2.6.0**: 146 tests,
-  **109 pass / 37 fail** against the server at this branch's base. The 37-failure
-  set was **identical across four runs** (`--timeout 2` and `--timeout 5`, two
-  each) and is recorded in `h2spec_expected_failures.txt` as the gate baseline.
-  The JUnit parser is validated against those real reports.
+- ✅ **The harness was run end-to-end with a pinned h2spec v2.6.0**: originally
+  146 tests, **109 pass / 37 fail**, identical across four runs (`--timeout 2`
+  and `--timeout 5`, two each); the JUnit parser was validated against those real
+  reports. Four follow-up PRs (#27569, #27589, #27627) closed every baselined
+  case; as of #27627 the server passes **all 146 h2spec cases** and
+  `h2spec_expected_failures.txt` is empty.
 - ⚠️ **Timing flakiness — handled.** A *separate* handful of h2spec cases
   (CONTINUATION sequencing, unknown error codes) wait for the server's GOAWAY/close
   and flake at h2spec's 2s default under load. The runner therefore uses

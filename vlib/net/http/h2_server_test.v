@@ -1346,6 +1346,80 @@ fn test_h2_server_priority_self_dependency_is_stream_error() {
 	assert code == i64(u32(H2ErrorCode.protocol_error)), 'PRIORITY self-dep: expected RST_STREAM(PROTOCOL_ERROR), got ${code}'
 }
 
+// RFC 9113 §6.4: a self-dependent PRIORITY on a never-opened (idle) stream is
+// itself legal to RST (§5.3.1) — but the id it resets was never added to
+// last_stream_id (only HEADERS advances that counter), so classify_stream must
+// still recognise it as locally_reset (closed), not idle. Otherwise in-flight
+// DATA for that id — sent by the client before it received our RST — is
+// wrongly treated as a frame on an IDLE stream (a connection PROTOCOL_ERROR)
+// instead of being silently drained per §6.4. Regression for Codex P2 on
+// #27627 (pullrequestreview-4618166175).
+fn test_h2_server_data_after_priority_self_dep_reset_is_drained() {
+	mut enc := H2HpackEncoder{}
+	mut out := preface_and_settings()
+	// Self-dependent PRIORITY on stream 5 -- never opened via HEADERS, so
+	// last_stream_id stays 0. The server should RST(5, PROTOCOL_ERROR).
+	out << H2Frame(H2PriorityFrame{
+		stream_id:  5
+		stream_dep: 5
+		weight:     15
+	}).encode()
+	// DATA in flight for the same id -- must be drained silently (RFC 9113 §6.4),
+	// not treated as DATA-on-idle-stream (a connection error).
+	out << H2Frame(H2DataFrame{
+		stream_id: 5
+		data:      'x'.bytes()
+	}).encode()
+	// A valid request afterwards proves the connection survived (hang-proof: a
+	// buggy server GOAWAYs before this response ever arrives).
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   7
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'DATA after PRIORITY self-dep reset: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut got_goaway := false
+	mut rst5_count := 0
+	mut got_response7 := false
+	for _ in 0 .. 32 {
+		f := fr.next() or { break }
+		match f {
+			H2GoawayFrame {
+				// A buggy server GOAWAYs and then never writes again (the test pipe
+				// has no explicit close signal) -- break immediately or the next
+				// fr.next() blocks forever.
+				got_goaway = true
+			}
+			H2RstStreamFrame {
+				if f.stream_id == 5 {
+					rst5_count++
+				}
+			}
+			H2HeadersFrame {
+				if f.stream_id == 7 {
+					got_response7 = true
+				}
+			}
+			else {}
+		}
+
+		if got_goaway || got_response7 {
+			break
+		}
+	}
+	assert !got_goaway, 'DATA after PRIORITY self-dep reset: connection should NOT GOAWAY (in-flight DATA must be drained, not treated as DATA-on-idle)'
+	assert rst5_count == 1, 'DATA after PRIORITY self-dep reset: expected exactly 1 RST_STREAM on stream 5, got ${rst5_count}'
+	assert got_response7, 'DATA after PRIORITY self-dep reset: connection should stay usable (stream 7 served)'
+}
+
 // A repeated self-dependent PRIORITY on the same id must produce exactly ONE
 // RST_STREAM: after the first reset the stream is closed, and RFC 9113 §5.1
 // forbids sending further non-PRIORITY frames (a second RST) on it.
