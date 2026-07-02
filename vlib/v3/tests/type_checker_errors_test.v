@@ -523,6 +523,9 @@ fn test_voidptr_variadic_spread_requires_voidptr_array() {
 	run_bad(v3_bin, 'bad_voidptr_variadic_multi_return_arg',
 		'fn pair() (int, int) {\n\treturn 1, 2\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(pair())))\n}\n',
 		'cannot use `(int, int)`')
+	run_bad(v3_bin, 'bad_voidptr_variadic_enum_shorthand_arg',
+		'enum Color {\n\tred\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(.red)))\n}\n',
+		'cannot use `int`')
 	good := run_good(v3_bin, 'good_voidptr_variadic_voidptr_spread',
 		'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tx := 7\n\txs := [voidptr(&x)]\n\tprintln(int_str(sink(...xs)))\n\tprintln(int_str(sink(1)))\n}\n')
 	assert good == '1\n1'

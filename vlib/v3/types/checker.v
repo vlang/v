@@ -6658,6 +6658,12 @@ fn (tc &TypeChecker) variadic_any_arg_is_scalar(id flat.NodeId) bool {
 	if tc.arg_is_spread(id) {
 		return false
 	}
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	if tc.a.nodes[int(id)].kind == .enum_val {
+		return false
+	}
 	actual := tc.resolve_type(id)
 	if !variadic_any_arg_has_value(actual) {
 		return false
