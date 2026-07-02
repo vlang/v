@@ -1030,9 +1030,11 @@ fn (mut t Transformer) lower_const_string_array_membership_expr(base_id flat.Nod
 		}
 	}
 	needle := t.transform_expr(needle_id)
-	base := t.transform_expr(base_id)
+	base_value := t.transform_expr(base_id)
+	base_data := t.make_cast('&string', t.make_selector(base_value, 'data', 'voidptr'), '&string')
 	len_expr := t.make_int_literal(expr.children_count)
-	return t.make_call_typed('fixed_array_contains_string', arr3(base, len_expr, needle), 'bool')
+	return t.make_call_typed('fixed_array_contains_string', arr3(base_data, len_expr, needle),
+		'bool')
 }
 
 // lower_type_pattern_membership builds lower type pattern membership data for transform.

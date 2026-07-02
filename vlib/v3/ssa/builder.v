@@ -9176,10 +9176,16 @@ fn (b &Builder) const_string_array_expr_id(id flat.NodeId) ?flat.NodeId {
 	if node.kind == .array_literal {
 		return id
 	}
+	if node.kind == .cast_expr && node.children_count > 0 {
+		return b.const_string_array_expr_id(b.a.child(&node, 0))
+	}
 	if node.kind == .ident {
 		return b.lookup_const_expr(node.value)
 	}
 	if node.kind == .selector {
+		if node.value == 'data' && node.children_count > 0 {
+			return b.const_string_array_expr_id(b.a.child(&node, 0))
+		}
 		name := b.selector_qualified_name(node)
 		if name.len > 0 {
 			return b.lookup_const_expr(name)
