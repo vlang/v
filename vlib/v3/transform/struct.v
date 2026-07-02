@@ -159,7 +159,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 		children_count: flat.child_count(field_ids.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            node.typ
+		typ:            if node.typ.len > 0 { node.typ } else { node.value }
 	})
 	final_id := t.add_missing_struct_defaults(new_id, t.a.nodes[int(new_id)])
 	for stmt in prelude {
@@ -207,7 +207,7 @@ fn (mut t Transformer) transform_struct_children(id flat.NodeId, node flat.Node)
 		children_count: flat.child_count(field_ids.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            node.typ
+		typ:            if node.typ.len > 0 { node.typ } else { node.value }
 	})
 }
 
@@ -283,7 +283,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		children_count: flat.child_count(field_ids.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            node.typ
+		typ:            if node.typ.len > 0 { node.typ } else { node.value }
 	})
 	for stmt in prelude {
 		t.pending_stmts << stmt

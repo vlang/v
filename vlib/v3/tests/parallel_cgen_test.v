@@ -338,7 +338,7 @@ fn test_parallel_transform_lowers_top_level_stmts_without_main_once() {
 	v3_bin := build_parallel_v3()
 	main_path := write_parallel_top_level_no_main_project('parallel_top_level_no_main')
 	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_top_level_no_main_out')
-	compile := os.execute('VJOBS=2 ${v3_bin} --parallel-transform ${main_path} -b c -o ${bin_out}')
+	compile := os.execute('VJOBS=2 ${v3_bin} ${main_path} -b c -o ${bin_out}')
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('transform (parallel)'), compile.output
 	assert compile.output.contains('cgen'), compile.output
@@ -354,8 +354,7 @@ fn test_parallel_transform_selfhost_builds_v3() {
 	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_selfhost_out_${os.getpid()}')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
-	compile :=
-		os.execute('VJOBS=2 ${v3_bin} -building-v -parallel-transform -parallel -o ${bin_out} ${parallel_v3_src}')
+	compile := os.execute('VJOBS=2 ${v3_bin} -building-v -o ${bin_out} ${parallel_v3_src}')
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('transform (parallel)'), compile.output
 	assert compile.output.contains('cgen (parallel)'), compile.output
@@ -365,4 +364,74 @@ fn test_parallel_transform_selfhost_builds_v3() {
 	assert c_code.contains('Array_u8__hex'), c_code
 	assert c_code.contains('typedef void* pthread_t;'), c_code
 	assert !c_code.contains('typedef struct pthread_t pthread_t;'), c_code
+	assert c_code.contains('flat_cgen_chunk_thread'), c_code
+	assert c_code.contains('transform_chunk_thread'), c_code
+}
+
+fn test_no_parallel_selfhost_omits_parallel_support() {
+	v3_bin := build_parallel_prod_v3()
+	bin_out := os.join_path(os.temp_dir(), 'v3_no_parallel_selfhost_out_${os.getpid()}')
+	os.rm(bin_out) or {}
+	os.rm(bin_out + '.c') or {}
+	compile :=
+		os.execute('VJOBS=2 ${v3_bin} --no-parallel -building-v -o ${bin_out} ${parallel_v3_src}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('transform (parallel)'), compile.output
+	assert !compile.output.contains('cgen (parallel)'), compile.output
+	assert os.exists(bin_out), compile.output
+	c_code := os.read_file(bin_out + '.c') or { panic(err) }
+	assert !c_code.contains('flat_cgen_chunk_thread'), c_code
+	assert !c_code.contains('flat_cgen_job_count'), c_code
+	assert !c_code.contains('new_parallel_worker'), c_code
+	assert !c_code.contains('merge_parallel_worker'), c_code
+	assert !c_code.contains('transform_chunk_thread'), c_code
+	assert !c_code.contains('transform_job_count'), c_code
+}
+
+fn write_no_parallel_user_define_project(name string) string {
+	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(project_dir) or { panic(err) }
+
+	os.write_file(os.join_path(project_dir, 'main.v'), "module main
+
+fn parallel_if_value() string {
+\t\$if parallel ? {
+\t\treturn 'if'
+\t} \$else {
+\t\treturn 'no-if'
+\t}
+}
+
+fn main() {
+\tprintln(parallel_file_value() + ':' + parallel_if_value())
+}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(project_dir, 'feature_d_parallel.v'), "module main
+
+fn parallel_file_value() string {
+\treturn 'file'
+}
+") or {
+		panic(err)
+	}
+	return project_dir
+}
+
+fn test_no_parallel_preserves_user_parallel_define_for_project() {
+	v3_bin := build_parallel_prod_v3()
+	project_dir := write_no_parallel_user_define_project('no_parallel_user_define')
+	bin_out := os.join_path(os.temp_dir(), 'v3_no_parallel_user_define_out_${os.getpid()}')
+	os.rm(bin_out) or {}
+	os.rm(bin_out + '.c') or {}
+	compile :=
+		os.execute('VJOBS=2 ${v3_bin} --no-parallel -d parallel -b c -o ${bin_out} ${project_dir}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('transform (parallel)'), compile.output
+	assert !compile.output.contains('cgen (parallel)'), compile.output
+	run := os.execute(bin_out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'file:if'
 }

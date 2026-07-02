@@ -5,7 +5,7 @@ import strings
 import v3.flat
 import v3.types
 
-const max_flat_cgen_jobs = 2
+const max_flat_cgen_jobs = 10
 const min_flat_cgen_parallel_items = 1024
 
 $if !windows {
@@ -134,10 +134,10 @@ fn flat_cgen_job_count(n_runtime_jobs int, n_items int) int {
 
 // split_flat_cgen_items supports split flat cgen items handling for c.
 fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
-	mut chunks := [][]FlatFnGenItem{}
 	if n_jobs <= 0 || items.len == 0 {
-		return chunks
+		return [][]FlatFnGenItem{}
 	}
+	mut chunks := [][]FlatFnGenItem{}
 	mut total_cost := 0
 	for item in items {
 		total_cost += item.cost
@@ -295,72 +295,74 @@ fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
 // worker and, under -gc none, never freed.
 fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 	return &FlatGen{
-		sb:                           strings.new_builder(64_000)
-		a:                            unsafe { g.a }
-		used_fns:                     g.used_fns
-		used_fn_names:                g.used_fn_names
-		test_files:                   g.test_files.clone()
-		str_lits:                     g.str_lits.clone()
-		str_lit_ids:                  g.str_lit_ids.clone()
-		global_types:                 g.global_types
-		enum_vals:                    g.enum_vals
-		interfaces:                   g.interfaces
-		const_vals:                   g.const_vals
-		const_modules:                g.const_modules
-		const_init_order:             g.const_init_order
-		fixed_storage_consts:         g.fixed_storage_consts
-		global_modules:               g.global_modules
-		global_inits:                 g.global_inits
-		global_init_order:            g.global_init_order
-		iface_impls:                  g.iface_impls
-		iface_type_ids:               g.iface_type_ids
-		ierror_method_emit_names:     g.ierror_method_emit_names
-		ierror_stack_pointer_aliases: []map[string]bool{}
-		module_init_fns:              g.module_init_fns
-		module_init_fn_modules:       g.module_init_fn_modules
-		module_imports:               g.module_imports
-		libc_compat_fns:              g.libc_compat_fns.clone()
-		tc:                           g.clone_parallel_type_checker()
-		has_builtins:                 g.has_builtins
-		tmp_count:                    (worker_id + 1) * 100_000
-		line_start:                   true
-		modules:                      g.modules
-		fn_ptr_types:                 g.fn_ptr_types.clone()
-		fixed_array_ret_wrappers:     g.fixed_array_ret_wrappers
-		concrete_optional_abi_fns:    g.concrete_optional_abi_fns
-		fn_decl_param_types:          g.fn_decl_param_types
-		fn_decl_mut_receivers:        g.fn_decl_mut_receivers
-		fn_decl_ret_types:            g.fn_decl_ret_types
-		struct_decl_infos:            g.struct_decl_infos
-		struct_decl_short_infos:      g.struct_decl_short_infos
-		shared_type_names:            g.shared_type_names
-		const_runtime_inits:          g.const_runtime_inits.clone()
-		runtime_inits:                g.runtime_inits.clone()
-		compiler_vroot:               g.compiler_vroot
-		cur_param_names:              g.cur_param_names.clone()
-		cur_param_type_values:        g.cur_param_type_values.clone()
-		cur_param_types:              g.cur_param_types.clone()
-		cur_concrete_optional_params: g.cur_concrete_optional_params.clone()
-		cur_mut_params:               g.cur_mut_params.clone()
-		cur_mut_param_owners:         g.cur_mut_param_owners.clone()
-		cur_fn_ret:                   g.cur_fn_ret
-		cur_fn_ret_is_optional:       g.cur_fn_ret_is_optional
-		cur_fn_ret_base:              g.cur_fn_ret_base
-		loop_label_depths:            map[string]int{}
-		expected_expr_type:           g.expected_expr_type
-		expected_enum:                g.expected_enum
-		needed_optional_types:        g.needed_optional_types.clone()
-		emitted_optional_types:       g.emitted_optional_types.clone()
-		emitted_fns:                  g.emitted_fns.clone()
-		array_method_cache:           g.array_method_cache.clone()
-		param_types_cache:            g.param_types_cache.clone()
-		embedded_fields_by_type:      g.embedded_fields_by_type
-		param_types_by_short:         g.param_types_by_short
-		generic_method_candidates:    g.generic_method_candidates
-		spawn_wrapper_names:          g.spawn_wrapper_names.clone()
-		spawn_wrapper_defs:           g.spawn_wrapper_defs.clone()
-		callback_wrapper_names:       g.callback_wrapper_names.clone()
-		callback_wrapper_defs:        g.callback_wrapper_defs.clone()
+		sb:                             strings.new_builder(64_000)
+		a:                              unsafe { g.a }
+		used_fns:                       g.used_fns
+		used_fn_names:                  g.used_fn_names
+		test_files:                     g.test_files.clone()
+		str_lits:                       g.str_lits.clone()
+		str_lit_ids:                    g.str_lit_ids.clone()
+		global_types:                   g.global_types
+		enum_vals:                      g.enum_vals
+		interfaces:                     g.interfaces
+		const_vals:                     g.const_vals
+		const_modules:                  g.const_modules
+		const_init_order:               g.const_init_order
+		fixed_storage_consts:           g.fixed_storage_consts
+		global_modules:                 g.global_modules
+		global_inits:                   g.global_inits
+		global_init_order:              g.global_init_order
+		iface_impls:                    g.iface_impls
+		iface_type_ids:                 g.iface_type_ids
+		ierror_method_emit_names:       g.ierror_method_emit_names
+		ierror_stack_pointer_aliases:   []map[string]bool{}
+		local_pointer_storage_by_owner: map[string]bool{}
+		sum_name_lookup:                g.sum_name_lookup
+		module_init_fns:                g.module_init_fns
+		module_init_fn_modules:         g.module_init_fn_modules
+		module_imports:                 g.module_imports
+		libc_compat_fns:                g.libc_compat_fns.clone()
+		tc:                             g.clone_parallel_type_checker()
+		has_builtins:                   g.has_builtins
+		tmp_count:                      (worker_id + 1) * 100_000
+		line_start:                     true
+		modules:                        g.modules
+		fn_ptr_types:                   g.fn_ptr_types.clone()
+		fixed_array_ret_wrappers:       g.fixed_array_ret_wrappers
+		concrete_optional_abi_fns:      g.concrete_optional_abi_fns
+		fn_decl_param_types:            g.fn_decl_param_types
+		fn_decl_mut_receivers:          g.fn_decl_mut_receivers
+		fn_decl_ret_types:              g.fn_decl_ret_types
+		struct_decl_infos:              g.struct_decl_infos
+		struct_decl_short_infos:        g.struct_decl_short_infos
+		shared_type_names:              g.shared_type_names
+		const_runtime_inits:            g.const_runtime_inits.clone()
+		runtime_inits:                  g.runtime_inits.clone()
+		compiler_vroot:                 g.compiler_vroot
+		cur_param_names:                g.cur_param_names.clone()
+		cur_param_type_values:          g.cur_param_type_values.clone()
+		cur_param_types:                g.cur_param_types.clone()
+		cur_concrete_optional_params:   g.cur_concrete_optional_params.clone()
+		cur_mut_params:                 g.cur_mut_params.clone()
+		cur_mut_param_owners:           g.cur_mut_param_owners.clone()
+		cur_fn_ret:                     g.cur_fn_ret
+		cur_fn_ret_is_optional:         g.cur_fn_ret_is_optional
+		cur_fn_ret_base:                g.cur_fn_ret_base
+		loop_label_depths:              map[string]int{}
+		expected_expr_type:             g.expected_expr_type
+		expected_enum:                  g.expected_enum
+		needed_optional_types:          g.needed_optional_types.clone()
+		emitted_optional_types:         g.emitted_optional_types.clone()
+		emitted_fns:                    g.emitted_fns.clone()
+		array_method_cache:             g.array_method_cache.clone()
+		param_types_cache:              g.param_types_cache.clone()
+		embedded_fields_by_type:        g.embedded_fields_by_type
+		param_types_by_short:           g.param_types_by_short
+		generic_method_candidates:      g.generic_method_candidates
+		spawn_wrapper_names:            g.spawn_wrapper_names.clone()
+		spawn_wrapper_defs:             g.spawn_wrapper_defs.clone()
+		callback_wrapper_names:         g.callback_wrapper_names.clone()
+		callback_wrapper_defs:          g.callback_wrapper_defs.clone()
 	}
 }
 
@@ -383,6 +385,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 	fs.types = g.tc.file_scope.types.clone()
 	fs.generations = g.tc.file_scope.generations.clone()
 	fs.next_generation = g.tc.file_scope.next_generation
+	fs.lifetime = g.tc.file_scope.lifetime
 	return &types.TypeChecker{
 		a:                                  unsafe { g.tc.a }
 		fn_ret_types:                       g.tc.fn_ret_types

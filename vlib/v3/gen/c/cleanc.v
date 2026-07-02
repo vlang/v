@@ -24,83 +24,85 @@ mut:
 // FlatGen emits flat gen output used by c.
 pub struct FlatGen {
 mut:
-	sb                           strings.Builder
-	indent                       int
-	a                            &flat.FlatAst = unsafe { nil }
-	used_fns                     map[string]bool
-	used_fn_names                []string
-	fn_gen_items                 []FlatFnGenItem
-	test_files                   map[string]bool
-	str_lits                     []string
-	str_lit_ids                  map[string]int
-	global_types                 map[string]types.Type
-	enum_vals                    map[string]int
-	defers                       []flat.NodeId
-	fn_defers                    []flat.NodeId
-	fn_defer_counts              map[int]string
-	defer_capture_names          []string
-	defer_capture_types          map[string]types.Type
-	interfaces                   map[string][]string
-	const_vals                   map[string]flat.NodeId
-	const_modules                map[string]string
-	const_init_order             []string
-	fixed_storage_consts         map[string]bool
-	global_modules               map[string]string
-	global_inits                 map[string]flat.NodeId // qualified global name -> initializer value node
-	global_init_order            []string               // qualified global names, in declaration order
-	iface_impls                  map[string][]string    // interface name -> implementing concrete type names
-	iface_type_ids               map[string]int         // "${iface}::${concrete}" -> 1-based type id
-	ierror_method_emit_names     map[string]bool        // names/lowered names of concrete IError msg/code methods
-	ierror_stack_pointer_aliases []map[string]bool      // scoped local pointer aliases to stack subobjects
-	module_init_fns              []string               // C names of module-level `init()` fns, in source order
-	module_init_fn_modules       map[string]string      // C init fn name -> V module name
-	module_imports               map[string][]string    // module -> imported modules
-	c_directives                 []CDirective
-	inlined_c_structs            map[string]bool
-	inlined_c_fns                map[string]bool
-	inlined_c_declared_fns       map[string]bool
-	c_flags                      []string
-	libc_compat_fns              map[string]bool
-	tc                           &types.TypeChecker = unsafe { nil }
-	has_builtins                 bool
-	tmp_count                    int
-	line_start                   bool
-	field_name_set               map[string]bool   // every struct field's C name (lazy) — for const/field collision checks
-	modules                      map[string]string // alias -> full module name
-	fn_ptr_types                 map[string]string // fn_ptr:ret|params -> typedef name
-	fixed_array_ret_wrappers     map[string]bool   // bare fixed-array c_type name -> has a return wrapper struct
-	emitted_fixed_array_typedefs map[string]bool   // bare fixed-array typedefs already written (shared across passes)
-	concrete_optional_abi_fns    map[string]bool   // emitted fn names whose option/result params use Optional_T ABI
-	fixed_array_typedefs_needed  map[string]FixedArrayTypedefInfo
-	fixed_array_typedefs_ready   bool
-	fn_decl_param_types          map[string][]types.Type
-	fn_decl_mut_receivers        map[string]bool
-	fn_decl_ret_types            map[string]types.Type // fn decl name (and qualified variants) -> return type
-	struct_decl_infos            map[string]StructDeclInfo
-	struct_decl_short_infos      map[string]StructDeclInfo
-	shared_type_names            map[string]SharedTypeInfo // __shared__ wrapper name -> wrapped type metadata
-	needs_shared_runtime         bool
-	const_runtime_inits          []string
-	const_runtime_init_modules   []string
-	runtime_inits                []string
-	runtime_init_modules         []string
-	compiler_vroot               string
-	c99_mode                     bool
-	cur_fn_name                  string
-	cur_param_names              []string
-	cur_param_type_values        []types.Type
-	cur_param_types              map[string]types.Type
-	cur_concrete_optional_params map[string]bool
-	cur_mut_params               map[string]bool
-	cur_mut_param_owners         map[string]types.ScopeBindingOwner
-	cur_fn_ret                   types.Type = types.Type(types.void_)
-	cur_fn_ret_is_optional       bool
-	cur_fn_ret_base              types.Type = types.Type(types.void_)
-	active_locks                 []ActiveLock
-	loop_depth                   int
-	loop_label_depths            map[string]int
-	goto_label_lock_scopes       map[string][]int
-	pending_loop_label           string
+	sb                             strings.Builder
+	indent                         int
+	a                              &flat.FlatAst = unsafe { nil }
+	used_fns                       map[string]bool
+	used_fn_names                  []string
+	fn_gen_items                   []FlatFnGenItem
+	test_files                     map[string]bool
+	str_lits                       []string
+	str_lit_ids                    map[string]int
+	global_types                   map[string]types.Type
+	enum_vals                      map[string]int
+	defers                         []flat.NodeId
+	fn_defers                      []flat.NodeId
+	fn_defer_counts                map[int]string
+	defer_capture_names            []string
+	defer_capture_types            map[string]types.Type
+	interfaces                     map[string][]string
+	const_vals                     map[string]flat.NodeId
+	const_modules                  map[string]string
+	const_init_order               []string
+	fixed_storage_consts           map[string]bool
+	global_modules                 map[string]string
+	global_inits                   map[string]flat.NodeId // qualified global name -> initializer value node
+	global_init_order              []string               // qualified global names, in declaration order
+	iface_impls                    map[string][]string    // interface name -> implementing concrete type names
+	iface_type_ids                 map[string]int         // "${iface}::${concrete}" -> 1-based type id
+	ierror_method_emit_names       map[string]bool        // names/lowered names of concrete IError msg/code methods
+	ierror_stack_pointer_aliases   []map[string]bool      // scoped local pointer aliases to stack subobjects
+	local_pointer_storage_by_owner map[string]bool        // exact scope binding owner -> C storage is already a pointer
+	sum_name_lookup                map[string]string      // full/short sum type name -> canonical sum type name
+	module_init_fns                []string               // C names of module-level `init()` fns, in source order
+	module_init_fn_modules         map[string]string      // C init fn name -> V module name
+	module_imports                 map[string][]string    // module -> imported modules
+	c_directives                   []CDirective
+	inlined_c_structs              map[string]bool
+	inlined_c_fns                  map[string]bool
+	inlined_c_declared_fns         map[string]bool
+	c_flags                        []string
+	libc_compat_fns                map[string]bool
+	tc                             &types.TypeChecker = unsafe { nil }
+	has_builtins                   bool
+	tmp_count                      int
+	line_start                     bool
+	field_name_set                 map[string]bool   // every struct field's C name (lazy) — for const/field collision checks
+	modules                        map[string]string // alias -> full module name
+	fn_ptr_types                   map[string]string // fn_ptr:ret|params -> typedef name
+	fixed_array_ret_wrappers       map[string]bool   // bare fixed-array c_type name -> has a return wrapper struct
+	emitted_fixed_array_typedefs   map[string]bool   // bare fixed-array typedefs already written (shared across passes)
+	concrete_optional_abi_fns      map[string]bool   // emitted fn names whose option/result params use Optional_T ABI
+	fixed_array_typedefs_needed    map[string]FixedArrayTypedefInfo
+	fixed_array_typedefs_ready     bool
+	fn_decl_param_types            map[string][]types.Type
+	fn_decl_mut_receivers          map[string]bool
+	fn_decl_ret_types              map[string]types.Type // fn decl name (and qualified variants) -> return type
+	struct_decl_infos              map[string]StructDeclInfo
+	struct_decl_short_infos        map[string]StructDeclInfo
+	shared_type_names              map[string]SharedTypeInfo // __shared__ wrapper name -> wrapped type metadata
+	needs_shared_runtime           bool
+	const_runtime_inits            []string
+	const_runtime_init_modules     []string
+	runtime_inits                  []string
+	runtime_init_modules           []string
+	compiler_vroot                 string
+	c99_mode                       bool
+	cur_fn_name                    string
+	cur_param_names                []string
+	cur_param_type_values          []types.Type
+	cur_param_types                map[string]types.Type
+	cur_concrete_optional_params   map[string]bool
+	cur_mut_params                 map[string]bool
+	cur_mut_param_owners           map[string]types.ScopeBindingOwner
+	cur_fn_ret                     types.Type = types.Type(types.void_)
+	cur_fn_ret_is_optional         bool
+	cur_fn_ret_base                types.Type = types.Type(types.void_)
+	active_locks                   []ActiveLock
+	loop_depth                     int
+	loop_label_depths              map[string]int
+	goto_label_lock_scopes         map[string][]int
+	pending_loop_label             string
 	// in_return is true only while generating a `return` statement's value, so a bare
 	// generic literal (`return Box{...}`) may adopt `cur_fn_ret`'s concrete instance —
 	// but a literal in a local decl / argument elsewhere in the body does not.
@@ -224,82 +226,110 @@ fn (g &FlatGen) ierror_pointer_alias_needs_copy(name string) bool {
 	return false
 }
 
+fn (mut g FlatGen) declare_local_pointer_storage(owner types.ScopeBindingOwner, is_pointer bool) {
+	key := owner.storage_key()
+	if key.len == 0 {
+		return
+	}
+	if is_pointer {
+		g.local_pointer_storage_by_owner[key] = true
+	} else {
+		g.local_pointer_storage_by_owner.delete(key)
+	}
+}
+
+fn (g &FlatGen) local_storage_is_pointer(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
+		return false
+	}
+	owner := g.tc.cur_scope.lookup_owner(name) or { return false }
+	if !g.tc.cur_scope.nearest_binding_owned_by(name, owner) {
+		return false
+	}
+	return g.local_pointer_storage_by_owner[owner.storage_key()] or { false }
+}
+
 // new creates a FlatGen value for c.
 pub fn FlatGen.new() FlatGen {
 	return FlatGen{
-		sb:                           strings.new_builder(4096)
-		used_fns:                     map[string]bool{}
-		fn_gen_items:                 []FlatFnGenItem{}
-		test_files:                   map[string]bool{}
-		str_lit_ids:                  map[string]int{}
-		global_types:                 map[string]types.Type{}
-		enum_vals:                    map[string]int{}
-		interfaces:                   map[string][]string{}
-		const_vals:                   map[string]flat.NodeId{}
-		const_modules:                map[string]string{}
-		const_init_order:             []string{}
-		fixed_storage_consts:         map[string]bool{}
-		global_modules:               map[string]string{}
-		global_inits:                 map[string]flat.NodeId{}
-		global_init_order:            []string{}
-		iface_impls:                  map[string][]string{}
-		iface_type_ids:               map[string]int{}
-		ierror_method_emit_names:     map[string]bool{}
-		ierror_stack_pointer_aliases: []map[string]bool{}
-		module_init_fns:              []string{}
-		module_init_fn_modules:       map[string]string{}
-		module_imports:               map[string][]string{}
-		c_directives:                 []CDirective{}
-		inlined_c_structs:            map[string]bool{}
-		inlined_c_fns:                map[string]bool{}
-		inlined_c_declared_fns:       map[string]bool{}
-		c_flags:                      []string{}
-		libc_compat_fns:              map[string]bool{}
-		modules:                      map[string]string{}
-		fn_ptr_types:                 map[string]string{}
-		fixed_array_ret_wrappers:     map[string]bool{}
-		emitted_fixed_array_typedefs: map[string]bool{}
-		concrete_optional_abi_fns:    map[string]bool{}
-		fixed_array_typedefs_needed:  map[string]FixedArrayTypedefInfo{}
-		fn_decl_param_types:          map[string][]types.Type{}
-		fn_decl_mut_receivers:        map[string]bool{}
-		fn_decl_ret_types:            map[string]types.Type{}
-		struct_decl_infos:            map[string]StructDeclInfo{}
-		struct_decl_short_infos:      map[string]StructDeclInfo{}
-		shared_type_names:            map[string]SharedTypeInfo{}
-		cur_param_names:              []string{}
-		cur_param_type_values:        []types.Type{}
-		cur_param_types:              map[string]types.Type{}
-		cur_concrete_optional_params: map[string]bool{}
-		cur_mut_params:               map[string]bool{}
-		cur_mut_param_owners:         map[string]types.ScopeBindingOwner{}
-		active_locks:                 []ActiveLock{}
-		loop_label_depths:            map[string]int{}
-		goto_label_lock_scopes:       map[string][]int{}
-		needed_optional_types:        map[string]string{}
-		emitted_optional_types:       map[string]bool{}
-		emitted_fns:                  map[string]bool{}
-		array_method_cache:           map[string]string{}
-		param_types_cache:            map[string][]types.Type{}
-		embedded_fields_by_type:      map[string][]types.StructField{}
-		param_types_by_short:         map[string][]types.Type{}
-		generic_method_candidates:    map[string][]GenericMethodCandidate{}
-		spawn_wrapper_names:          map[string]string{}
-		spawn_wrapper_defs:           []string{}
-		callback_wrapper_names:       map[string]string{}
-		callback_wrapper_defs:        []string{}
-		str_lits:                     []string{}
-		defers:                       []flat.NodeId{}
-		fn_defers:                    []flat.NodeId{}
-		fn_defer_counts:              map[int]string{}
-		defer_capture_names:          []string{}
-		defer_capture_types:          map[string]types.Type{}
-		const_runtime_inits:          []string{}
-		const_runtime_init_modules:   []string{}
-		runtime_inits:                []string{}
-		runtime_init_modules:         []string{}
-		compiler_vroot:               ''
-		line_start:                   true
+		sb:                             strings.new_builder(4096)
+		used_fns:                       map[string]bool{}
+		fn_gen_items:                   []FlatFnGenItem{}
+		test_files:                     map[string]bool{}
+		str_lit_ids:                    map[string]int{}
+		global_types:                   map[string]types.Type{}
+		enum_vals:                      map[string]int{}
+		interfaces:                     map[string][]string{}
+		const_vals:                     map[string]flat.NodeId{}
+		const_modules:                  map[string]string{}
+		const_init_order:               []string{}
+		fixed_storage_consts:           map[string]bool{}
+		global_modules:                 map[string]string{}
+		global_inits:                   map[string]flat.NodeId{}
+		global_init_order:              []string{}
+		iface_impls:                    map[string][]string{}
+		iface_type_ids:                 map[string]int{}
+		ierror_method_emit_names:       map[string]bool{}
+		ierror_stack_pointer_aliases:   []map[string]bool{}
+		local_pointer_storage_by_owner: map[string]bool{}
+		sum_name_lookup:                map[string]string{}
+		module_init_fns:                []string{}
+		module_init_fn_modules:         map[string]string{}
+		module_imports:                 map[string][]string{}
+		c_directives:                   []CDirective{}
+		inlined_c_structs:              map[string]bool{}
+		inlined_c_fns:                  map[string]bool{}
+		inlined_c_declared_fns:         map[string]bool{}
+		c_flags:                        []string{}
+		libc_compat_fns:                map[string]bool{}
+		modules:                        map[string]string{}
+		fn_ptr_types:                   map[string]string{}
+		fixed_array_ret_wrappers:       map[string]bool{}
+		emitted_fixed_array_typedefs:   map[string]bool{}
+		concrete_optional_abi_fns:      map[string]bool{}
+		fixed_array_typedefs_needed:    map[string]FixedArrayTypedefInfo{}
+		fn_decl_param_types:            map[string][]types.Type{}
+		fn_decl_mut_receivers:          map[string]bool{}
+		fn_decl_ret_types:              map[string]types.Type{}
+		struct_decl_infos:              map[string]StructDeclInfo{}
+		struct_decl_short_infos:        map[string]StructDeclInfo{}
+		shared_type_names:              map[string]SharedTypeInfo{}
+		cur_param_names:                []string{}
+		cur_param_type_values:          []types.Type{}
+		cur_param_types:                map[string]types.Type{}
+		cur_concrete_optional_params:   map[string]bool{}
+		cur_mut_params:                 map[string]bool{}
+		cur_mut_param_owners:           map[string]types.ScopeBindingOwner{}
+		active_locks:                   []ActiveLock{}
+		loop_label_depths:              map[string]int{}
+		goto_label_lock_scopes:         map[string][]int{}
+		needed_optional_types:          map[string]string{}
+		emitted_optional_types:         map[string]bool{}
+		emitted_fns:                    map[string]bool{}
+		array_method_cache:             map[string]string{}
+		param_types_cache:              map[string][]types.Type{}
+		embedded_fields_by_type:        map[string][]types.StructField{}
+		param_types_by_short:           map[string][]types.Type{}
+		generic_method_candidates:      map[string][]GenericMethodCandidate{}
+		spawn_wrapper_names:            map[string]string{}
+		spawn_wrapper_defs:             []string{}
+		callback_wrapper_names:         map[string]string{}
+		callback_wrapper_defs:          []string{}
+		str_lits:                       []string{}
+		defers:                         []flat.NodeId{}
+		fn_defers:                      []flat.NodeId{}
+		fn_defer_counts:                map[int]string{}
+		defer_capture_names:            []string{}
+		defer_capture_types:            map[string]types.Type{}
+		const_runtime_inits:            []string{}
+		const_runtime_init_modules:     []string{}
+		runtime_inits:                  []string{}
+		runtime_init_modules:           []string{}
+		compiler_vroot:                 ''
+		line_start:                     true
 	}
 }
 
@@ -354,6 +384,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.iface_type_ids = map[string]int{}
 	g.ierror_method_emit_names = map[string]bool{}
 	g.ierror_stack_pointer_aliases = []map[string]bool{}
+	g.local_pointer_storage_by_owner = map[string]bool{}
+	g.sum_name_lookup = map[string]string{}
 	g.module_init_fns = []string{}
 	g.module_init_fn_modules = map[string]string{}
 	g.module_imports = map[string][]string{}
@@ -413,6 +445,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.precompute_param_type_index()
 	g.precompute_concrete_optional_abi_fns()
 	g.collect_interface_impls()
+	g.precompute_sum_name_lookup()
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
 	g.preseed_c_extern_fn_ptr_types()
@@ -452,6 +485,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.optional_typedefs()
 	g.c_extern_forward_decls()
 	g.builtin_abi_decls()
+	g.test_failure_helpers()
 	g.global_decls()
 	g.forward_decls()
 	g.shared_dup_fns()
@@ -508,6 +542,11 @@ fn (mut g FlatGen) collect_gen_info() {
 	for node_idx in 0 .. g.a.nodes.len {
 		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
+		if node.kind == .string_literal {
+			g.intern_string(node.value)
+		} else if node.kind == .string_interp && node.children_count == 0 {
+			g.intern_string('')
+		}
 		if kind_id == 77 {
 			cur_file = node.value
 			g.note_compiler_source_file(node.value)
@@ -4078,6 +4117,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					g.write(c_name(node.value))
 				}
+			} else if fn_c_name := g.ident_fn_value_c_name(id, node) {
+				g.write(fn_c_name)
 			} else {
 				g.write(c_name(node.value))
 			}
@@ -6995,7 +7036,8 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('u8* malloc_noscan(ptrdiff_t n);')
 	g.writeln('static inline string v3_c_lit(const char* s, int len) { return (string){.str = (u8*)s, .len = len, .is_lit = 1}; }')
 	g.writeln('static inline string v3_char_string(int c) { return rune__str((i32)c); }')
-	g.writeln('static inline string v3_f64_fixed(double x, int precision) { char tmp[128]; int n = snprintf(tmp, sizeof(tmp), "%.*f", precision, x); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); snprintf((char*)out, (size_t)n + 1, "%.*f", precision, x); return (string){.str = out, .len = n, .is_lit = 0}; }')
+	g.writeln('static inline double v3_f64_fixed_value(double x, int precision) { if (precision == 0) return x < 0.0 ? ceil(x - 0.5) : floor(x + 0.5); if (precision == 6) { double scale = 1000000.0; double ax = fabs(x) * scale; double base = floor(ax); double frac = ax - base; if (frac == 0.5) { double rounded = floor(ax + 0.5) / scale; return x < 0.0 ? -rounded : rounded; } } return x; }')
+	g.writeln('static inline string v3_f64_fixed(double x, int precision) { double y = v3_f64_fixed_value(x, precision); char tmp[128]; int n = snprintf(tmp, sizeof(tmp), "%.*f", precision, y); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); snprintf((char*)out, (size_t)n + 1, "%.*f", precision, y); return (string){.str = out, .len = n, .is_lit = 0}; }')
 	g.writeln('static inline string v3_int_zpad(int n, int width) { string s = int__str(n); if (n < 0) return s; while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
 	g.writeln('static inline string v3_i64_zpad(i64 n, int width) { string s = i64__str(n); if (n < 0) return s; while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
 	g.writeln('static inline string v3_u64_zpad(u64 n, int width) { string s = u64__str(n); while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
@@ -7203,9 +7245,78 @@ fn fixed_array_typedef_is_early(arr types.ArrayFixed) bool {
 // struct/`string`/nested element wrappers are emitted by fixed_array_typedefs(), after
 // the element type is defined.
 fn (mut g FlatGen) populate_fixed_array_ret_wrappers() {
-	needed := g.collect_fixed_array_typedefs_needed()
-	for name, _ in needed {
-		g.fixed_array_ret_wrappers[name] = true
+	old_module := g.tc.cur_module
+	for name, ret_type in g.tc.fn_ret_types {
+		g.tc.cur_module = module_from_qualified_name(name)
+		g.collect_fixed_array_return_wrapper(ret_type)
+		g.collect_fn_type_fixed_array_return_wrappers(ret_type)
+	}
+	for name, param_types in g.tc.fn_param_types {
+		g.tc.cur_module = module_from_qualified_name(name)
+		for param_type in param_types {
+			g.collect_fn_type_fixed_array_return_wrappers(param_type)
+		}
+	}
+	for name, fields in g.tc.structs {
+		g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
+		for field in fields {
+			g.collect_fn_type_fixed_array_return_wrappers(field.typ)
+		}
+	}
+	for name, fields in g.tc.interface_fields {
+		g.tc.cur_module = module_from_qualified_name(name)
+		for field in fields {
+			g.collect_fn_type_fixed_array_return_wrappers(field.typ)
+		}
+	}
+	for name, typ in g.global_types {
+		g.tc.cur_module = g.global_modules[name] or { old_module }
+		g.collect_fn_type_fixed_array_return_wrappers(typ)
+	}
+	for _, typ in g.tc.c_globals {
+		g.tc.cur_module = old_module
+		g.collect_fn_type_fixed_array_return_wrappers(typ)
+	}
+	for name, typ in g.tc.const_types {
+		g.tc.cur_module = g.const_modules[name] or { old_module }
+		g.collect_fn_type_fixed_array_return_wrappers(typ)
+	}
+	g.tc.cur_module = old_module
+}
+
+fn (mut g FlatGen) collect_fixed_array_return_wrapper(typ types.Type) {
+	if typ is types.ArrayFixed {
+		g.fixed_array_ret_wrappers[g.tc.c_type(typ)] = true
+	} else if typ is types.Alias {
+		g.collect_fixed_array_return_wrapper(typ.base_type)
+	}
+}
+
+fn (mut g FlatGen) collect_fn_type_fixed_array_return_wrappers(typ types.Type) {
+	if typ is types.FnType {
+		g.collect_fixed_array_return_wrapper(typ.return_type)
+		for param in typ.params {
+			g.collect_fn_type_fixed_array_return_wrappers(param)
+		}
+	} else if typ is types.Pointer {
+		g.collect_fn_type_fixed_array_return_wrappers(typ.base_type)
+	} else if typ is types.Alias {
+		g.collect_fn_type_fixed_array_return_wrappers(typ.base_type)
+	} else if typ is types.OptionType {
+		g.collect_fn_type_fixed_array_return_wrappers(typ.base_type)
+	} else if typ is types.ResultType {
+		g.collect_fn_type_fixed_array_return_wrappers(typ.base_type)
+	} else if typ is types.Array {
+		g.collect_fn_type_fixed_array_return_wrappers(typ.elem_type)
+	} else if typ is types.ArrayFixed {
+		g.collect_fn_type_fixed_array_return_wrappers(typ.elem_type)
+	} else if typ is types.Map {
+		g.collect_fn_type_fixed_array_return_wrappers(typ.key_type)
+		g.collect_fn_type_fixed_array_return_wrappers(typ.value_type)
+	} else if typ is types.MultiReturn {
+		for item in typ.types {
+			g.collect_fn_type_fixed_array_return_wrappers(item)
+		}
 	}
 }
 
@@ -7444,6 +7555,9 @@ fn (mut g FlatGen) collect_fixed_array_typedef(typ types.Type, source_module str
 }
 
 fn (mut g FlatGen) collect_fixed_array_typedef_text(type_text string, source_module string, mut needed map[string]FixedArrayTypedefInfo) {
+	if type_text.len == 0 || !fixed_array_type_text_may_need_typedef(type_text) {
+		return
+	}
 	clean := type_text.trim_space()
 	if clean.len == 0 {
 		return
@@ -7453,6 +7567,15 @@ fn (mut g FlatGen) collect_fixed_array_typedef_text(type_text string, source_mod
 		return
 	}
 	g.collect_fixed_array_typedef(typ, source_module, mut needed)
+}
+
+fn fixed_array_type_text_may_need_typedef(type_text string) bool {
+	for i in 0 .. type_text.len - 1 {
+		if type_text[i] == `[` && type_text[i + 1] >= `0` && type_text[i + 1] <= `9` {
+			return true
+		}
+	}
+	return false
 }
 
 fn fixed_array_typedef_has_non_decimal_len(typ types.Type) bool {
@@ -7551,6 +7674,13 @@ fn (mut g FlatGen) global_decls() {
 		g.writeln('')
 	}
 	g.emit_global_inits()
+}
+
+fn (mut g FlatGen) test_failure_helpers() {
+	g.writeln('static void v3_eprint_lit(const char* s) {')
+	g.writeln('\tfprintf(stderr, "%s", s);')
+	g.writeln('}')
+	g.writeln('')
 }
 
 // emit_global_inits queues assignments for `__global x = expr` declarations into

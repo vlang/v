@@ -167,6 +167,13 @@ mut:
 	ierror_compat_entries map[string]int
 }
 
+@[heap]
+struct FileImportInfo {
+mut:
+	imports           map[string]string
+	selective_imports map[string][]string
+}
+
 // TypeChecker represents type checker data used by types.
 @[heap]
 pub struct TypeChecker {
@@ -217,6 +224,7 @@ pub mut:
 	imports                 map[string]string // alias -> short module name
 	file_imports            map[string]string
 	file_selective_imports  map[string][]string
+	file_imports_by_file    map[string]&FileImportInfo
 	file_modules            map[string]string
 	file_scope              &Scope = unsafe { nil }
 	cur_scope               &Scope = unsafe { nil }
@@ -252,6 +260,12 @@ pub mut:
 	expr_type_values                []Type // node_id -> complex/contextual resolved type
 	expr_type_set                   []bool
 	checking_nodes                  []bool
+	parallel_check_sparse           bool
+	sparse_resolved_call_names      map[int]string
+	sparse_resolved_fn_values       map[int]string
+	sparse_statement_nodes          map[int]bool
+	sparse_expr_type_values         map[int]Type
+	sparse_checking_nodes           map[int]bool
 	diagnose_unknown_calls          bool
 	reject_unlowered_map_mutation   bool
 	reject_unsupported_generics     bool
@@ -259,6 +273,7 @@ pub mut:
 	selected_file_called_fns        map[string]bool
 	cur_fn_ret_type                 Type = Type(void_)
 	smartcasts                      map[string]Type
+	ownership                       &OwnershipState = unsafe { nil }
 	selfhost                        bool
 mut:
 	type_cache &TypeCache = unsafe { nil }
@@ -310,6 +325,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		imports:                            map[string]string{}
 		file_imports:                       map[string]string{}
 		file_selective_imports:             map[string][]string{}
+		file_imports_by_file:               map[string]&FileImportInfo{}
 		file_modules:                       map[string]string{}
 		file_scope:                         fs
 		cur_scope:                          fs
@@ -326,6 +342,11 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		expr_type_values:                   []Type{len: a.nodes.len, init: Type(void_)}
 		expr_type_set:                      []bool{len: a.nodes.len}
 		checking_nodes:                     []bool{len: a.nodes.len}
+		sparse_resolved_call_names:         map[int]string{}
+		sparse_resolved_fn_values:          map[int]string{}
+		sparse_statement_nodes:             map[int]bool{}
+		sparse_expr_type_values:            map[int]Type{}
+		sparse_checking_nodes:              map[int]bool{}
 		diagnostic_files:                   map[string]bool{}
 		selected_file_called_fns:           map[string]bool{}
 		smartcasts:                         map[string]Type{}
@@ -411,9 +432,13 @@ fn (mut tc TypeChecker) reset_node_caches(n int) {
 	tc.expr_type_values = []Type{len: n, init: Type(void_)}
 	tc.expr_type_set = []bool{len: n}
 	tc.checking_nodes = []bool{len: n}
+	tc.parallel_check_sparse = false
 }
 
 fn (mut tc TypeChecker) extend_node_caches(n int) {
+	if tc.parallel_check_sparse {
+		return
+	}
 	if n <= tc.resolved_call_names.len && n <= tc.resolved_fn_value_names.len
 		&& n <= tc.statement_nodes.len && n <= tc.expr_type_values.len && n <= tc.checking_nodes.len {
 		return
@@ -449,6 +474,9 @@ fn extend_type_cache(mut values []Type, n int) {
 // push_scope updates push scope state for TypeChecker.
 pub fn (mut tc TypeChecker) push_scope() {
 	tc.cur_scope = tc.reuse_scope(tc.cur_scope)
+	$if ownership ? {
+		tc.ownership_push_scope()
+	}
 }
 
 // pop_scope updates pop scope state for TypeChecker.
@@ -459,6 +487,10 @@ pub fn (mut tc TypeChecker) pop_scope() {
 	parent := tc.cur_scope.parent
 	if parent == unsafe { nil } {
 		return
+	}
+	$if ownership ? {
+		tc.ownership_run_scope_defers()
+		tc.ownership_pop_scope()
 	}
 	if tc.scope_pool_index > 0 && tc.cur_scope == tc.scope_pool[tc.scope_pool_index - 1] {
 		tc.scope_pool_index--
@@ -518,6 +550,9 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.cur_scope = tc.file_scope
 	tc.scope_pool_index = 0
 	tc.reset_node_caches(a.nodes.len)
+	$if ownership ? {
+		tc.ownership_reset()
+	}
 	tc.type_cache = &TypeCache{
 		parse_entries:         map[string]Type{}
 		c_entries:             map[string]string{}
@@ -542,7 +577,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 			}
 			.import_decl {
 				tc.imports[node.typ] = node.value
-				tc.file_imports[file_import_key(tc.cur_file, node.typ)] = node.value
+				tc.register_file_import(node.typ, node.value)
 				tc.register_selective_imports(node)
 			}
 			.enum_decl {
@@ -573,10 +608,10 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						tc.struct_generic_params[node.value] = node.generic_params.clone()
 					}
 				}
-				if node.typ.contains('union') {
+				if 'union' in node.typ.split(',') {
 					tc.unions[qname] = true
 				}
-				if node.typ.contains('params') {
+				if 'params' in node.typ.split(',') {
 					tc.params_structs[qname] = true
 				}
 			}
@@ -710,10 +745,10 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				for field_name, c_abi_fn in field_c_abi_fns {
 					tc.struct_field_c_abi_fns[struct_field_c_abi_key(qname, field_name)] = c_abi_fn
 				}
-				if node.typ.contains('union') {
+				if 'union' in node.typ.split(',') {
 					tc.unions[qname] = true
 				}
-				if node.typ.contains('params') {
+				if 'params' in node.typ.split(',') {
 					tc.params_structs[qname] = true
 				}
 			}
@@ -823,6 +858,9 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	}
 	tc.resolve_const_types()
 	tc.build_const_suffixes()
+	$if ownership ? {
+		tc.ownership_after_collect()
+	}
 }
 
 // build_const_suffixes maps every dot-delimited suffix of each const key to that
@@ -1182,6 +1220,24 @@ fn file_import_key(file string, alias string) string {
 	return '${file}\n${alias}'
 }
 
+fn (mut tc TypeChecker) file_import_info() &FileImportInfo {
+	if info := tc.file_imports_by_file[tc.cur_file] {
+		return info
+	}
+	info := &FileImportInfo{
+		imports:           map[string]string{}
+		selective_imports: map[string][]string{}
+	}
+	tc.file_imports_by_file[tc.cur_file] = info
+	return info
+}
+
+fn (mut tc TypeChecker) register_file_import(alias string, module_name string) {
+	tc.file_imports[file_import_key(tc.cur_file, alias)] = module_name
+	mut info := tc.file_import_info()
+	info.imports[alias] = module_name
+}
+
 // enter_file supports enter file handling for TypeChecker.
 fn (mut tc TypeChecker) enter_file(file string) {
 	tc.cur_file = file
@@ -1200,6 +1256,7 @@ fn (mut tc TypeChecker) register_selective_imports(node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
+	mut info := tc.file_import_info()
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.nodes[int(child_id)]
@@ -1207,8 +1264,9 @@ fn (mut tc TypeChecker) register_selective_imports(node flat.Node) {
 			continue
 		}
 		key := file_import_key(tc.cur_file, child.value)
-		if key in tc.file_selective_imports {
+		if child.value in info.selective_imports {
 			tc.file_selective_imports[key] = []string{}
+			info.selective_imports[child.value] = []string{}
 			tc.record_error_unfiltered(.unknown_fn, 'ambiguous selective import `${child.value}`',
 				child_id)
 			continue
@@ -1223,19 +1281,21 @@ fn (mut tc TypeChecker) register_selective_imports(node flat.Node) {
 			candidates << alias_name
 		}
 		tc.file_selective_imports[key] = candidates
+		info.selective_imports[child.value] = candidates
 	}
 }
 
 // resolve_import_alias resolves resolve import alias information for types.
 fn (tc &TypeChecker) resolve_import_alias(alias string) ?string {
-	if mod := tc.file_imports[file_import_key(tc.cur_file, alias)] {
+	info := tc.file_imports_by_file[tc.cur_file] or { return none }
+	if mod := info.imports[alias] {
 		return mod
 	}
 	return none
 }
 
 fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
-	candidates := tc.file_selective_imports[file_import_key(tc.cur_file, name)] or { return none }
+	candidates := tc.selective_import_candidates(name) or { return none }
 	for candidate in candidates {
 		if tc.fn_signature_known(candidate) {
 			return candidate
@@ -1245,13 +1305,18 @@ fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
 }
 
 fn (tc &TypeChecker) resolve_selective_import_type_symbol(name string) ?string {
-	candidates := tc.file_selective_imports[file_import_key(tc.cur_file, name)] or { return none }
+	candidates := tc.selective_import_candidates(name) or { return none }
 	for candidate in candidates {
 		if tc.type_symbol_known(candidate) {
 			return candidate
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) selective_import_candidates(name string) ?[]string {
+	info := tc.file_imports_by_file[tc.cur_file] or { return none }
+	return info.selective_imports[name] or { return none }
 }
 
 fn (tc &TypeChecker) type_symbol_known(name string) bool {
@@ -1296,7 +1361,7 @@ fn (tc &TypeChecker) type_from_known_symbol(name string) ?Type {
 }
 
 fn (tc &TypeChecker) selective_import_symbol_is_ambiguous(name string) bool {
-	candidates := tc.file_selective_imports[file_import_key(tc.cur_file, name)] or { return false }
+	candidates := tc.selective_import_candidates(name) or { return false }
 	return candidates.len == 0
 }
 
@@ -1319,7 +1384,8 @@ fn (tc &TypeChecker) resolve_imported_type_text(typ string) string {
 
 // has_active_import reports whether has active import applies in types.
 fn (tc &TypeChecker) has_active_import(alias string) bool {
-	return file_import_key(tc.cur_file, alias) in tc.file_imports
+	info := tc.file_imports_by_file[tc.cur_file] or { return false }
+	return alias in info.imports
 }
 
 const receiver_method_suffix_ambiguous = '__v_receiver_method_suffix_ambiguous__'
@@ -1663,7 +1729,8 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 		tc.insert_loop_var(key_id, tc.range_loop_var_type(container_id))
 		tc.annotate_node(tc.a.child(&node, 3))
 	} else {
-		clean := unwrap_pointer(tc.resolve_type(container_id))
+		clean0 := unwrap_pointer(tc.resolve_type(container_id))
+		clean := if clean0 is Alias { clean0.base_type } else { clean0 }
 		if clean is Array {
 			if has_val {
 				tc.insert_loop_var(key_id, Type(int_))
@@ -1779,6 +1846,9 @@ fn (tc &TypeChecker) resolved_call_type(id flat.NodeId) ?Type {
 // cached_expr_type supports cached expr type handling for TypeChecker.
 fn (tc &TypeChecker) cached_expr_type(id flat.NodeId) ?Type {
 	idx := int(id)
+	if tc.parallel_check_sparse {
+		return tc.sparse_expr_type_values[idx] or { none }
+	}
 	if idx >= 0 && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 		return tc.expr_type_values[idx]
 	}
@@ -1788,6 +1858,9 @@ fn (tc &TypeChecker) cached_expr_type(id flat.NodeId) ?Type {
 // cached_resolved_call supports cached resolved call handling for TypeChecker.
 fn (tc &TypeChecker) cached_resolved_call(id flat.NodeId) ?string {
 	idx := int(id)
+	if tc.parallel_check_sparse {
+		return tc.sparse_resolved_call_names[idx] or { none }
+	}
 	if idx >= 0 && idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
 		return tc.resolved_call_names[idx]
 	}
@@ -1802,6 +1875,9 @@ pub fn (tc &TypeChecker) resolved_call_name(id flat.NodeId) ?string {
 // resolved_fn_value_name returns the checker-resolved function name for a function value node.
 pub fn (tc &TypeChecker) resolved_fn_value_name(id flat.NodeId) ?string {
 	idx := int(id)
+	if tc.parallel_check_sparse {
+		return tc.sparse_resolved_fn_values[idx] or { none }
+	}
 	if idx >= 0 && idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
 		return tc.resolved_fn_value_names[idx]
 	}
@@ -1842,6 +1918,10 @@ fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 	if idx < 0 {
 		return
 	}
+	if tc.parallel_check_sparse {
+		tc.sparse_resolved_call_names[idx] = name
+		return
+	}
 	if idx >= tc.resolved_call_names.len {
 		tc.extend_node_caches(tc.a.nodes.len)
 	}
@@ -1855,6 +1935,10 @@ fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 fn (mut tc TypeChecker) remember_resolved_fn_value(id flat.NodeId, name string) {
 	idx := int(id)
 	if idx < 0 {
+		return
+	}
+	if tc.parallel_check_sparse {
+		tc.sparse_resolved_fn_values[idx] = name
 		return
 	}
 	if idx >= tc.resolved_fn_value_names.len {
@@ -1890,6 +1974,10 @@ fn (mut tc TypeChecker) remember_expr_type(id flat.NodeId, typ Type) {
 	kind := if int(id) < tc.a.nodes.len { tc.a.nodes[int(id)].kind } else { flat.NodeKind.empty }
 	if should_cache_expr_type(kind, typ) {
 		idx := int(id)
+		if tc.parallel_check_sparse {
+			tc.sparse_expr_type_values[idx] = typ
+			return
+		}
 		if idx >= tc.expr_type_values.len {
 			tc.extend_node_caches(tc.a.nodes.len)
 		}
@@ -1948,29 +2036,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				tc.cur_fn_mut_param_base_types = map[string]Type{}
 				tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 				tc.check_decl_type_strings(flat.NodeId(i), node)
-				tc.cur_fn_ret_type = tc.parse_type(node.typ)
-				tc.cur_fn_node_id = i
-				tc.method_value_locals = map[string]bool{}
-				tc.method_value_local_depth = map[string]int{}
-				tc.push_scope()
-				for pi in 0 .. node.children_count {
-					p := tc.a.child_node(&node, pi)
-					tc.insert_fn_param_binding(p)
-				}
-				tc.insert_implicit_veb_ctx(node)
-				tc.check_fn_body(node)
-				tc.cur_fn_node_id = -1
-				is_disabled_stub := node.value in tc.a.disabled_fns
-				if tc.cur_fn_ret_type !is Unknown
-					&& !type_allows_implicit_return(tc.cur_fn_ret_type)
-					&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub
-					&& tc.should_diagnose(flat.NodeId(i)) {
-					tc.record_error(.return_mismatch,
-						'missing return at end of function `${node.value}`; expected `${tc.cur_fn_ret_type.name()}`',
-						flat.NodeId(i))
-				}
-				tc.pop_scope()
-				tc.cur_fn_ret_type = Type(void_)
+				tc.check_fn_decl_semantics(i, node, tc.cur_file, tc.cur_module)
 				tc.cur_fn_mut_param_base_types = saved_mut_params.move()
 				tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
 			}
@@ -2719,7 +2785,7 @@ fn (mut tc TypeChecker) check_fn_body(node flat.Node) {
 fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.Node) {
 	generic_params := tc.infer_decl_generic_params(node)
 	if node.kind == .struct_decl {
-		if node.typ.contains('generic') && tc.reject_unsupported_generics {
+		if 'generic' in node.typ.split(',') && tc.reject_unsupported_generics {
 			tc.record_unsupported_generic('unsupported generic struct `${node.value}`', node_id)
 		}
 	} else {
@@ -3559,16 +3625,26 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	if idx < 0 {
 		return
 	}
-	if idx >= tc.checking_nodes.len {
-		tc.extend_node_caches(tc.a.nodes.len)
-	}
-	if idx < tc.checking_nodes.len {
-		if tc.checking_nodes[idx] {
+	if tc.parallel_check_sparse {
+		if tc.sparse_checking_nodes[idx] {
 			return
 		}
-		tc.checking_nodes[idx] = true
+		tc.sparse_checking_nodes[idx] = true
 		defer {
-			tc.checking_nodes[idx] = false
+			tc.sparse_checking_nodes.delete(idx)
+		}
+	} else {
+		if idx >= tc.checking_nodes.len {
+			tc.extend_node_caches(tc.a.nodes.len)
+		}
+		if idx < tc.checking_nodes.len {
+			if tc.checking_nodes[idx] {
+				return
+			}
+			tc.checking_nodes[idx] = true
+			defer {
+				tc.checking_nodes[idx] = false
+			}
 		}
 	}
 	node := tc.a.nodes[idx]
@@ -3643,10 +3719,16 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	}
 	if kind_id == 13 {
 		tc.check_selector(id, node)
+		$if ownership ? {
+			tc.ownership_check_expr(id)
+		}
 		return
 	}
 	if kind_id == 14 {
 		tc.check_index(id, node)
+		$if ownership ? {
+			tc.ownership_check_expr(id)
+		}
 		return
 	}
 	if kind_id == 7 {
@@ -3655,14 +3737,23 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	}
 	if node.kind == .array_init {
 		tc.check_array_init(node)
+		$if ownership ? {
+			if !tc.ownership_aggregate_consumption_deferred(id) {
+				tc.ownership_consume_array_init_expr(node)
+			}
+		}
 		return
 	}
 	if node.kind == .select_stmt {
 		tc.check_select_stmt(node)
 		return
 	}
-	if node.kind == .infix {
-		tc.check_infix(id, node)
+	if node.kind == .defer_stmt {
+		$if ownership ? {
+			tc.ownership_check_defer_stmt(id, node)
+		} $else {
+			tc.check_defer_stmt(node)
+		}
 		return
 	}
 	// A method value stored in a container escapes the single-use guarantee of its per-site
@@ -3678,10 +3769,55 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			tc.reject_stored_method_value(tc.a.child(&node, j))
 			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, j))
 		}
+	} else if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
+		if unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) is Array {
+			tc.reject_stored_method_value(tc.a.child(&node, 1))
+			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, 1))
+		}
 	}
 
 	for i in 0 .. node.children_count {
-		tc.check_node(tc.a.child(&node, i))
+		child_id := tc.a.child(&node, i)
+		$if ownership ? {
+			defer_append_rhs := node.kind == .infix && node.op == .left_shift
+				&& node.children_count >= 2 && i == 1
+				&& unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) is Array
+			tc.ownership_check_node_with_aggregate_consumption_mode(child_id, defer_append_rhs)
+		} $else {
+			tc.check_node(child_id)
+		}
+	}
+	if node.kind == .infix {
+		tc.check_infix(id, node)
+	}
+	$if ownership ? {
+		if !tc.ownership_aggregate_consumption_deferred(id) {
+			if node.kind == .array_literal {
+				for i in 0 .. node.children_count {
+					elem_id := tc.a.child(&node, i)
+					tc.ownership_consume_expr(elem_id, 'array element', elem_id)
+				}
+			} else if node.kind == .map_init {
+				for j := 0; j < node.children_count; j += 2 {
+					key_id := tc.a.child(&node, j)
+					tc.ownership_consume_expr(key_id, 'map key', key_id)
+					if j + 1 < node.children_count {
+						val_id := tc.a.child(&node, j + 1)
+						tc.ownership_consume_expr(val_id, 'map value', val_id)
+					}
+				}
+			}
+		}
+		if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
+			array_id := tc.a.child(&node, 0)
+			if unwrap_pointer(tc.resolve_type(array_id)) is Array {
+				elem_id := tc.a.child(&node, 1)
+				tc.ownership_mark_array_append_expr(array_id, elem_id, id)
+			}
+		} else if node.kind == .infix && node.op == .arrow && node.children_count >= 2 {
+			value_id := tc.a.child(&node, 1)
+			tc.ownership_consume_expr(value_id, 'channel send', id)
+		}
 	}
 }
 
@@ -3868,15 +4004,6 @@ fn comptime_condition_top_level_index(s string, needle string) int {
 // check_infix validates type-sensitive infix operations that would otherwise reach CGen
 // as raw helper calls with incompatible arguments.
 fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
-	for i in 0 .. node.children_count {
-		tc.check_node(tc.a.child(&node, i))
-	}
-	if node.op == .left_shift && node.children_count >= 2 {
-		if unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) is Array {
-			tc.reject_stored_method_value(tc.a.child(&node, 1))
-			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, 1))
-		}
-	}
 	if node.op != .plus || node.children_count < 2 || !tc.should_diagnose(id) {
 		return
 	}
@@ -3935,6 +4062,9 @@ fn type_is_string_like(typ Type) bool {
 // `val := <-ch` binds `val` (the channel's element type) in the branch body's
 // scope; other branches (sends, bare conditions, `else`) are checked as-is.
 fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
+	$if ownership ? {
+		tc.ownership_begin_branch_group()
+	}
 	for i in 0 .. node.children_count {
 		branch_id := tc.a.child(&node, i)
 		if !tc.valid_node_id(branch_id) {
@@ -3944,6 +4074,12 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 		if branch.kind != .select_branch {
 			tc.check_node(branch_id)
 			continue
+		}
+		$if ownership ? {
+			tc.ownership_begin_branch()
+			if branch.value == 'else' {
+				tc.ownership_note_branch_group_else()
+			}
 		}
 		tc.push_scope()
 		mut body_start := 0
@@ -3957,12 +4093,21 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 				var_node := tc.a.nodes[int(var_id)]
 				if var_node.kind == .ident && var_node.value.len > 0 {
 					tc.cur_scope.insert(var_node.value, elem_type)
+					$if ownership ? {
+						tc.ownership_note_binding(var_node.value, elem_type, var_id)
+					}
 				}
 			}
 			body_start = 2
 		}
 		tc.check_statement_sequence(branch, body_start, false)
 		tc.pop_scope()
+		$if ownership ? {
+			tc.ownership_end_branch(branch_id)
+		}
+	}
+	$if ownership ? {
+		tc.ownership_end_branch_group()
 	}
 }
 
@@ -3998,10 +4143,26 @@ fn (mut tc TypeChecker) check_or_expr(node flat.Node) {
 	if node.children_count < 2 || node.value in ['!', '?'] {
 		return
 	}
+	$if ownership ? {
+		tc.ownership_begin_value_branch_group()
+		tc.ownership_begin_branch()
+	}
+	fallback_id := tc.a.child(&node, 1)
 	tc.push_scope()
 	tc.cur_scope.insert('err', tc.parse_type('IError'))
-	tc.check_branch_node(tc.a.child(&node, 1), true)
+	tc.check_branch_node(fallback_id, true)
 	tc.pop_scope()
+	$if ownership ? {
+		tc.ownership_end_branch(fallback_id)
+		tc.ownership_add_branch_group_base()
+		tc.ownership_end_branch_group()
+	}
+}
+
+fn (mut tc TypeChecker) check_defer_stmt(node flat.Node) {
+	for i in 0 .. node.children_count {
+		tc.check_node(tc.a.child(&node, i))
+	}
 }
 
 // check_fn_literal validates check fn literal state for types.
@@ -4012,6 +4173,9 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	tc.cur_fn_mut_param_base_types = map[string]Type{}
 	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_fn_ret_type = tc.parse_type(node.typ)
+	$if ownership ? {
+		tc.ownership_begin_fn_literal(node)
+	}
 	tc.push_scope()
 	for i in 0 .. node.children_count {
 		child := tc.a.child_node(&node, i)
@@ -4026,6 +4190,9 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 		tc.check_stmt_node(child_id)
 	}
 	tc.pop_scope()
+	$if ownership ? {
+		tc.ownership_end_fn()
+	}
 	tc.cur_fn_ret_type = saved_ret
 	tc.cur_fn_mut_param_base_types = saved_mut_params.move()
 	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
@@ -4036,6 +4203,9 @@ fn (mut tc TypeChecker) check_lambda_expr(node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
+	$if ownership ? {
+		tc.ownership_begin_lambda_expr(node)
+	}
 	tc.push_scope()
 	for i in 0 .. node.children_count - 1 {
 		child := tc.a.child_node(&node, i)
@@ -4045,6 +4215,9 @@ fn (mut tc TypeChecker) check_lambda_expr(node flat.Node) {
 	}
 	tc.check_node(tc.a.child(&node, node.children_count - 1))
 	tc.pop_scope()
+	$if ownership ? {
+		tc.ownership_end_fn()
+	}
 }
 
 // check_block validates check block state for types.
@@ -4069,14 +4242,50 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 			tc.check_bool_condition(cond_id)
 		}
 	}
-	if node.children_count > 2 {
-		post_id := tc.a.child(&node, 2)
-		if int(post_id) >= 0 {
-			tc.check_node(post_id)
+	$if ownership ? {
+		if node.children_count > 2 {
+			post_id := tc.a.child(&node, 2)
+			if int(post_id) >= 0 {
+				tc.ownership_begin_suppressed_checks()
+				tc.check_node(post_id)
+				tc.ownership_end_suppressed_checks()
+			}
+		}
+		tc.ownership_begin_loop_branch_group()
+	} $else {
+		if node.children_count > 2 {
+			post_id := tc.a.child(&node, 2)
+			if int(post_id) >= 0 {
+				tc.check_node(post_id)
+			}
 		}
 	}
 	for i in 3 .. node.children_count {
 		tc.check_stmt_node(tc.a.child(&node, i))
+	}
+	$if ownership ? {
+		loop_may_skip_body := node.children_count > 1 && tc.a.child_node(&node, 1).kind != .empty
+		body_reaches_post := tc.ownership_statement_sequence_can_reach_loop_post(node, 3)
+		if node.children_count > 2 {
+			post_id := tc.a.child(&node, 2)
+			if int(post_id) >= 0 {
+				post_frame := tc.ownership_snapshot_frame()
+				tc.check_node(post_id)
+				if !body_reaches_post {
+					tc.ownership_restore_frame(post_frame)
+				}
+			}
+			tc.ownership_apply_loop_continue_snapshots(post_id)
+		} else {
+			tc.ownership_merge_loop_continue_snapshots()
+		}
+		if body_reaches_post {
+			tc.ownership_end_loop_branch(node, 3)
+		}
+		if loop_may_skip_body {
+			tc.ownership_add_branch_group_base()
+		}
+		tc.ownership_end_branch_group()
 	}
 	tc.pop_scope()
 }
@@ -4097,7 +4306,8 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		tc.insert_loop_var(key_id, tc.range_loop_var_type(container_id))
 		tc.check_node(tc.a.child(&node, 3))
 	} else {
-		clean := unwrap_pointer(tc.resolve_type(container_id))
+		clean0 := unwrap_pointer(tc.resolve_type(container_id))
+		clean := if clean0 is Alias { clean0.base_type } else { clean0 }
 		if clean is Array {
 			if has_val {
 				tc.insert_loop_var(key_id, Type(int_))
@@ -4143,10 +4353,36 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 			}
 		}
 	}
+	$if ownership ? {
+		tc.ownership_begin_loop_branch_group()
+		tc.ownership_bind_for_in_vars(key_id, val_id, container_id, has_val)
+	}
 	for i in header .. node.children_count {
 		tc.check_stmt_node(tc.a.child(&node, i))
 	}
+	$if ownership ? {
+		tc.ownership_merge_loop_continue_snapshots()
+		tc.ownership_end_loop_branch(node, header)
+		tc.ownership_add_branch_group_base()
+		tc.ownership_end_branch_group()
+	}
 	tc.pop_scope()
+}
+
+fn (mut tc TypeChecker) check_storage_path_base_node(id flat.NodeId) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	$if ownership ? {
+		node := tc.a.nodes[int(id)]
+		if node.kind in [.ident, .selector, .index] {
+			tc.ownership_begin_suppressed_checks()
+			tc.check_node(id)
+			tc.ownership_end_suppressed_checks()
+			return
+		}
+	}
+	tc.check_node(id)
 }
 
 // check_decl_assign validates check decl assign state for types.
@@ -4164,7 +4400,17 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 	for i + 1 < node.children_count {
 		lhs_id := tc.a.child(&node, i)
 		rhs_id := tc.a.child(&node, i + 1)
-		tc.check_node(rhs_id)
+		$if ownership ? {
+			if tc.ownership_should_defer_aggregate_consumption(lhs_id, .assign) {
+				tc.ownership_begin_defer_aggregate_consumption(rhs_id)
+				tc.check_node(rhs_id)
+				tc.ownership_end_defer_aggregate_consumption(rhs_id)
+			} else {
+				tc.check_node(rhs_id)
+			}
+		} $else {
+			tc.check_node(rhs_id)
+		}
 		mut rhs_type := tc.decl_assign_inferred_type(rhs_id)
 		mut expected := rhs_type
 		if node.children_count == 2 && node.typ.len > 0 {
@@ -4176,6 +4422,9 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			}
 		}
 		tc.insert_decl_lhs(lhs_id, expected)
+		$if ownership ? {
+			tc.ownership_after_decl_assign(lhs_id, rhs_id, expected, id)
+		}
 		tc.track_method_value_local(lhs_id, rhs_id)
 		tc.reject_stored_capturing_fn_literal(rhs_id)
 		i += 2
@@ -4235,6 +4484,9 @@ fn (mut tc TypeChecker) decl_assign_inferred_type(rhs_id flat.NodeId) Type {
 	}
 	if typ := tc.infer_fn_value_decl_type(rhs_id) {
 		return typ
+	}
+	if rhs.kind == .if_expr {
+		return tc.if_expr_tail_type(rhs_id)
 	}
 	return tc.resolve_type(rhs_id)
 }
@@ -4353,6 +4605,9 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 		for i, lhs_id in lhs_ids {
 			tc.insert_decl_lhs(lhs_id, rhs_type.types[i])
 		}
+		$if ownership ? {
+			tc.ownership_after_multi_return_decl_assign(lhs_ids, rhs_id, rhs_type, id)
+		}
 		return true
 	}
 	return false
@@ -4424,16 +4679,36 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		return
 	}
 	mut i := 0
+	mut ownership_lhs_ids := []flat.NodeId{}
+	mut ownership_rhs_ids := []flat.NodeId{}
+	mut ownership_lhs_types := []Type{}
+	mut ownership_rhs_types := []Type{}
 	for i + 1 < node.children_count {
 		lhs_id := tc.a.child(&node, i)
 		rhs_id := tc.a.child(&node, i + 1)
 		lhs_type := tc.resolve_lvalue_type(lhs_id)
 		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
-		tc.check_node(rhs_id)
+		$if ownership ? {
+			if tc.ownership_should_defer_aggregate_consumption(lhs_id, node.op) {
+				tc.ownership_begin_defer_aggregate_consumption(rhs_id)
+				tc.check_node(rhs_id)
+				tc.ownership_end_defer_aggregate_consumption(rhs_id)
+			} else {
+				tc.check_node(rhs_id)
+			}
+		} $else {
+			tc.check_node(rhs_id)
+		}
 		rhs_type := tc.resolve_expr(rhs_id, expected_type)
 		if !tc.type_compatible(rhs_type, expected_type) {
 			tc.type_mismatch(.assignment_mismatch,
 				'cannot assign `${rhs_type.name()}` to `${expected_type.name()}`', id)
+		}
+		$if ownership ? {
+			ownership_lhs_ids << lhs_id
+			ownership_rhs_ids << rhs_id
+			ownership_lhs_types << lhs_type
+			ownership_rhs_types << rhs_type
 		}
 		if node.kind in [.assign, .selector_assign, .index_assign] {
 			if tc.expr_is_method_value(rhs_id) && !tc.lvalue_is_local_var(lhs_id) {
@@ -4448,6 +4723,15 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			tc.reject_stored_capturing_fn_literal(rhs_id)
 		}
 		i += 2
+	}
+	$if ownership ? {
+		tc.ownership_after_assign_pairs(ownership_lhs_ids, ownership_rhs_ids, ownership_lhs_types,
+			ownership_rhs_types, node.op, id)
+	} $else {
+		_ = ownership_lhs_ids
+		_ = ownership_rhs_ids
+		_ = ownership_lhs_types
+		_ = ownership_rhs_types
 	}
 }
 
@@ -4502,6 +4786,9 @@ fn (mut tc TypeChecker) check_multi_return_assign(id flat.NodeId, node flat.Node
 				tc.type_mismatch(.assignment_mismatch,
 					'cannot assign `${rhs_type.types[i].name()}` to `${expected_type.name()}`', id)
 			}
+		}
+		$if ownership ? {
+			tc.ownership_after_multi_return_assign(lhs_ids, rhs_id, rhs_type, id)
 		}
 		return true
 	}
@@ -4605,12 +4892,23 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			tc.record_error(.return_mismatch, 'void function should not return a value', id)
 		}
 		for i in 0 .. node.children_count {
-			tc.check_node(tc.a.child(&node, i))
+			child_id := tc.a.child(&node, i)
+			$if ownership ? {
+				tc.ownership_check_node_with_deferred_aggregate_consumption(child_id)
+			} $else {
+				tc.check_node(child_id)
+			}
+		}
+		$if ownership ? {
+			tc.ownership_after_return(id, node)
 		}
 		return
 	}
 	if node.children_count == 0 {
 		if type_allows_implicit_return(expected) {
+			$if ownership ? {
+				tc.ownership_after_return(id, node)
+			}
 			return
 		}
 		if tc.should_diagnose(id) {
@@ -4622,9 +4920,16 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	if multi := multi_return_payload_type(expected) {
 		if node.children_count == 1 {
 			child_id := tc.a.child(&node, 0)
-			tc.check_node(child_id)
+			$if ownership ? {
+				tc.ownership_check_node_with_deferred_aggregate_consumption(child_id)
+			} $else {
+				tc.check_node(child_id)
+			}
 			actual := tc.resolve_expr(child_id, expected)
 			if tc.type_compatible(actual, expected) {
+				$if ownership ? {
+					tc.ownership_after_return(id, node)
+				}
 				return
 			}
 		}
@@ -4638,12 +4943,19 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		}
 		for i in 0 .. node.children_count {
 			child_id := tc.a.child(&node, i)
-			tc.check_node(child_id)
+			$if ownership ? {
+				tc.ownership_check_node_with_deferred_aggregate_consumption(child_id)
+			} $else {
+				tc.check_node(child_id)
+			}
 			actual := tc.resolve_expr(child_id, multi.types[i])
 			if !tc.type_compatible(actual, multi.types[i]) {
 				tc.type_mismatch(.return_mismatch,
 					'cannot return `${actual.name()}` as `${multi.types[i].name()}`', id)
 			}
+		}
+		$if ownership ? {
+			tc.ownership_after_return(id, node)
 		}
 		return
 	}
@@ -4655,7 +4967,11 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		return
 	}
 	child_id := tc.a.child(&node, 0)
-	tc.check_node(child_id)
+	$if ownership ? {
+		tc.ownership_check_node_with_deferred_aggregate_consumption(child_id)
+	} $else {
+		tc.check_node(child_id)
+	}
 	if expected is ResultType {
 		if bad_type := tc.invalid_ierror_return_expr_type_name(child_id, expected) {
 			if tc.should_diagnose_invalid_ierror_return(id) {
@@ -4669,6 +4985,10 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	if !tc.return_type_compatible(actual, expected) {
 		tc.type_mismatch(.return_mismatch,
 			'cannot return `${actual.name()}` as `${expected.name()}`', id)
+		return
+	}
+	$if ownership ? {
+		tc.ownership_after_return(id, node)
 	}
 }
 
@@ -4714,7 +5034,7 @@ fn contextual_payload_type(typ Type) ?Type {
 	return none
 }
 
-fn (tc &TypeChecker) invalid_ierror_return_expr_type_name(id flat.NodeId, expected ResultType) ?string {
+fn (mut tc TypeChecker) invalid_ierror_return_expr_type_name(id flat.NodeId, expected ResultType) ?string {
 	if !tc.valid_node_id(id) {
 		return none
 	}
@@ -4726,6 +5046,10 @@ fn (tc &TypeChecker) invalid_ierror_return_expr_type_name(id flat.NodeId, expect
 		return none
 	}
 	node := tc.a.nodes[int(id)]
+	payload_type := tc.resolve_expr(id, expected.base_type)
+	if tc.type_compatible(payload_type, expected.base_type) {
+		return none
+	}
 	match node.kind {
 		.expr_stmt, .paren {
 			if node.children_count > 0 {
@@ -4827,6 +5151,9 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			tc.remember_expr_type(id, info.return_type)
 		}
 		tc.check_call_arg_types(id, node, info)
+		$if ownership ? {
+			tc.ownership_after_call(id, node, info)
+		}
 		return
 	}
 	if tc.is_unsupported_hex_call(node) {
@@ -5431,6 +5758,12 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				else {}
 			}
 		}
+		mut array_pointers_fallback := false
+		if fn_node.value == 'pointers' {
+			if _ := array_type_from_receiver(clean) {
+				array_pointers_fallback = true
+			}
+		}
 		type_name := resolve_type_name_for_method(clean)
 		if type_name.len > 0 {
 			if fn_node.value == 'str' && (clean is Primitive || clean is Char || clean is Rune) {
@@ -5444,6 +5777,9 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 			}
 			for mname in receiver_method_name_candidates(clean, fn_node.value, tc.cur_module) {
 				if mname in tc.fn_ret_types {
+					if array_pointers_fallback && mname == 'array.pointers' {
+						continue
+					}
 					if !tc.method_can_be_called_on_receiver(base_type, fn_node.value, mname) {
 						continue
 					}
@@ -5455,6 +5791,17 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 						}
 					}
 					return tc.call_info(mname, true)
+				}
+			}
+			if array_pointers_fallback {
+				return CallInfo{
+					name:         'array.pointers'
+					params:       tarr1(base_type)
+					return_type:  Type(Array{
+						elem_type: Type(voidptr_)
+					})
+					has_receiver: true
+					params_known: true
 				}
 			}
 			if fixed_array := fixed_array_type_from_receiver(clean) {
@@ -6326,7 +6673,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		// field_init args are fields of the collapsed `@[params]` struct, not positional params
 		if tc.a.child_node(&node, i).kind == .field_init {
-			tc.check_node(arg_id)
+			$if ownership ? {
+				tc.ownership_check_node_with_deferred_aggregate_consumption(arg_id)
+			} $else {
+				tc.check_node(arg_id)
+			}
 			continue
 		}
 		// When the caller omitted the implicit veb `Context` parameter, skip it
@@ -6337,8 +6688,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		has_dsl_scope := tc.call_arg_needs_array_dsl_scope(info.name, param_idx)
 		if has_dsl_scope {
 			tc.push_array_dsl_scope(node, info.name)
-			tc.check_node(arg_id)
-		} else {
+		}
+		$if ownership ? {
+			tc.ownership_check_node_with_aggregate_consumption_mode(arg_id, tc.ownership_should_defer_call_arg_aggregate_consumption(node,
+				info, i))
+		} $else {
 			tc.check_node(arg_id)
 		}
 		if info.is_c_variadic && param_idx >= c_variadic_fixed_param_count(info) {
@@ -6803,6 +7157,9 @@ fn pointer_builtin_receiver_name(typ Type) string {
 			return 'byteptr'
 		}
 	}
+	if typ is Primitive && prim_name(typ) == 'u8' {
+		return 'byteptr'
+	}
 	return ''
 }
 
@@ -7019,7 +7376,8 @@ fn (tc &TypeChecker) call_receiver_array_type(node flat.Node) ?Array {
 	if fn_node.kind != .selector || fn_node.children_count == 0 {
 		return none
 	}
-	base_type := unwrap_pointer(tc.resolve_type(tc.a.child(fn_node, 0)))
+	base_type0 := unwrap_pointer(tc.resolve_type(tc.a.child(fn_node, 0)))
+	base_type := if base_type0 is Alias { base_type0.base_type } else { base_type0 }
 	if base_type is Array {
 		return base_type
 	}
@@ -7728,21 +8086,53 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 			tc.smartcasts[sc.name] = sc.typ
 		}
 	}
+	$if ownership ? {
+		if value_context {
+			tc.ownership_begin_value_branch_group()
+		} else {
+			tc.ownership_begin_branch_group()
+		}
+	}
 	tc.push_scope()
 	for binding in guard_bindings {
+		$if ownership ? {
+			tc.ownership_note_binding(binding.name, binding.typ, cond_id)
+		}
 		tc.cur_scope.insert(binding.name, binding.typ)
 	}
 	tc.check_branch_node(then_id, value_context)
 	tc.pop_scope()
+	$if ownership ? {
+		tc.ownership_end_branch(then_id)
+	}
 	tc.smartcasts = clone_smartcasts(saved_smartcasts)
 	if node.children_count > 2 {
 		else_id := tc.a.child(&node, 2)
+		$if ownership ? {
+			tc.ownership_begin_branch()
+		}
 		tc.check_branch_node(else_id, value_context)
+		$if ownership ? {
+			tc.ownership_end_branch(else_id)
+		}
+	} else {
+		$if ownership ? {
+			tc.ownership_add_branch_group_base()
+		}
+	}
+	$if ownership ? {
+		tc.ownership_end_branch_group()
 	}
 	if !value_context {
 		return
 	}
+	for sc in smartcasts {
+		if valid_string_data(sc.name) {
+			tc.smartcasts[sc.name] = sc.typ
+		}
+	}
 	then_type := tc.branch_tail_type(then_id)
+	tc.smartcasts = clone_smartcasts(saved_smartcasts)
 	mut else_type := Type(void_)
 	if node.children_count > 2 {
 		else_id := tc.a.child(&node, 2)
@@ -7766,6 +8156,11 @@ fn (mut tc TypeChecker) check_stmt_node(id flat.NodeId) {
 		return
 	}
 	idx := int(id)
+	if tc.parallel_check_sparse {
+		tc.sparse_statement_nodes[idx] = true
+		tc.check_node(id)
+		return
+	}
 	if idx >= tc.statement_nodes.len {
 		tc.extend_node_caches(tc.a.nodes.len)
 	}
@@ -7773,10 +8168,16 @@ fn (mut tc TypeChecker) check_stmt_node(id flat.NodeId) {
 		tc.statement_nodes[idx] = true
 	}
 	tc.check_node(id)
+	$if ownership ? {
+		tc.ownership_after_stmt_node(id)
+	}
 }
 
 fn (tc &TypeChecker) is_statement_node(id flat.NodeId) bool {
 	idx := int(id)
+	if tc.parallel_check_sparse {
+		return tc.sparse_statement_nodes[idx]
+	}
 	return idx >= 0 && idx < tc.statement_nodes.len && tc.statement_nodes[idx]
 }
 
@@ -7788,12 +8189,18 @@ fn (mut tc TypeChecker) check_statement_sequence(node flat.Node, body_start int,
 	last_idx := int(node.children_count) - 1
 	for i in body_start .. node.children_count {
 		child_id := tc.a.child(&node, i)
-		if value_tail && i == last_idx {
+		is_value_tail := value_tail && i == last_idx
+		if is_value_tail {
 			tc.check_node(child_id)
 		} else {
 			tc.check_stmt_node(child_id)
 		}
 		tc.apply_post_if_exit_smartcasts(child_id)
+		$if ownership ? {
+			if !is_value_tail {
+				tc.ownership_flush_value_branch_moves()
+			}
+		}
 	}
 }
 
@@ -7996,6 +8403,13 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 	tc.check_node(subject_id)
 	subject_key := tc.expr_key(subject_id)
 	subject_type := unwrap_pointer(tc.resolve_type(subject_id))
+	$if ownership ? {
+		if value_context {
+			tc.ownership_begin_value_branch_group()
+		} else {
+			tc.ownership_begin_branch_group()
+		}
+	}
 	for i in 1 .. node.children_count {
 		branch_id := tc.a.child(&node, i)
 		branch := tc.a.child_node(&node, i)
@@ -8004,6 +8418,11 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			continue
 		}
 		n_conds := if branch.value == 'else' { 0 } else { branch.value.int() }
+		$if ownership ? {
+			if branch.value == 'else' {
+				tc.ownership_note_branch_group_else()
+			}
+		}
 		if subject_type is SumType {
 			for j in 0 .. n_conds {
 				cond := tc.a.node(tc.a.child(branch, j))
@@ -8046,6 +8465,9 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
+		$if ownership ? {
+			tc.ownership_begin_branch()
+		}
 		saved_smartcasts := clone_smartcasts(tc.smartcasts)
 		if subject_key.len > 0 && valid_string_data(subject_key) && n_conds == 1
 			&& branch.children_count > 0 && (subject_type is SumType || is_ierror_type(subject_type)
@@ -8069,6 +8491,15 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 		tc.check_statement_sequence(branch, n_conds, value_context)
 		tc.pop_scope()
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
+		$if ownership ? {
+			tc.ownership_end_branch(branch_id)
+		}
+	}
+	$if ownership ? {
+		if !tc.match_covers_all_variants(node) {
+			tc.ownership_add_branch_group_base_if_no_else()
+		}
+		tc.ownership_end_branch_group()
 	}
 }
 
@@ -8235,6 +8666,20 @@ fn (tc &TypeChecker) branch_tail_type(id flat.NodeId) Type {
 	return tc.resolve_type(id)
 }
 
+fn (tc &TypeChecker) branch_tail_type_with_smartcasts(id flat.NodeId, smartcasts []LocalBinding) Type {
+	if smartcasts.len == 0 {
+		return tc.branch_tail_type(id)
+	}
+	mut scoped := *tc
+	scoped.smartcasts = clone_smartcasts(tc.smartcasts)
+	for sc in smartcasts {
+		if valid_string_data(sc.name) {
+			scoped.smartcasts[sc.name] = sc.typ
+		}
+	}
+	return scoped.branch_tail_type(id)
+}
+
 // if_expr_tail_type supports if expr tail type handling for TypeChecker.
 fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 	mut cur_id := id
@@ -8245,7 +8690,8 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 			return choose_if_tail_type(result, tc.branch_tail_type(cur_id))
 		}
 		if node.children_count > 1 {
-			then_type := tc.branch_tail_type(tc.a.child(&node, 1))
+			smartcasts := tc.extract_smartcasts(tc.a.child(&node, 0))
+			then_type := tc.branch_tail_type_with_smartcasts(tc.a.child(&node, 1), smartcasts)
 			result = choose_if_tail_type(result, then_type)
 		}
 		if node.children_count <= 2 {
@@ -8441,6 +8887,11 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				expected = fields[i].typ
 			}
 			tc.check_node(value_id)
+			$if ownership ? {
+				if !tc.ownership_aggregate_consumption_deferred(id) {
+					tc.ownership_consume_expr(value_id, 'struct field', value_id)
+				}
+			}
 			if expected !is Void {
 				actual := tc.resolve_expr(value_id, expected)
 				if !tc.type_compatible(actual, expected) {
@@ -8563,7 +9014,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		}
 		return
 	}
-	tc.check_node(base_id)
+	tc.check_storage_path_base_node(base_id)
 	base_type := tc.resolve_type(base_id)
 	tc.register_synth_type(base_id, base_type)
 	// A value-context selector whose name is a method (not a field) of a struct
@@ -8797,7 +9248,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 		return
 	}
 	base_id := tc.a.child(&node, 0)
-	tc.check_node(base_id)
+	tc.check_storage_path_base_node(base_id)
 	base_type_raw := tc.resolve_type(base_id)
 	base_type0 := unwrap_pointer(base_type_raw)
 	mut base_type := base_type0
@@ -8868,6 +9319,9 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 	if node.value.len == 0 || node.value == '_' {
 		return
 	}
+	$if ownership ? {
+		tc.ownership_check_ident(id, node)
+	}
 	if is_bare_generic_param(node.value) {
 		tc.register_synth_type(id, unknown_type('generic placeholder `${node.value}`'))
 		return
@@ -8930,11 +9384,9 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 		}
 	}
 	if payload := contextual_payload_type(expected) {
-		if payload is Array || payload is ArrayFixed {
-			actual := tc.resolve_expr(id, payload)
-			if tc.type_compatible(actual, payload) {
-				return actual
-			}
+		actual := tc.resolve_expr(id, payload)
+		if tc.type_compatible(actual, payload) {
+			return actual
 		}
 	}
 	if node.kind == .enum_val && expected is Enum {
@@ -9019,6 +9471,28 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 					if node.children_count != expected_len {
 						all_ok = false
 					}
+				}
+			}
+			if all_ok {
+				tc.register_synth_type(id, expected_raw)
+				return expected_raw
+			}
+		}
+	}
+	if node.kind == .map_init {
+		if expected_map := map_type_from_receiver(expected) {
+			if node.children_count == 0 {
+				tc.register_synth_type(id, expected_raw)
+				return expected_raw
+			}
+			mut all_ok := true
+			for i := 0; i + 1 < node.children_count; i += 2 {
+				key_actual := tc.resolve_expr(tc.a.child(&node, i), expected_map.key_type)
+				value_actual := tc.resolve_expr(tc.a.child(&node, i + 1), expected_map.value_type)
+				if !tc.receiver_compatible(key_actual, expected_map.key_type)
+					|| !tc.receiver_compatible(value_actual, expected_map.value_type) {
+					all_ok = false
+					break
 				}
 			}
 			if all_ok {
@@ -9247,6 +9721,9 @@ pub fn (tc &TypeChecker) struct_field_c_abi_fn_ptr_type(struct_name string, fiel
 
 // enum_value_matches supports enum value matches handling for TypeChecker.
 fn (tc &TypeChecker) enum_value_matches(value string, enum_name string) bool {
+	if value.starts_with('.') {
+		return tc.enum_has_field(enum_name, value[1..])
+	}
 	if value.contains('.') {
 		prefix := value.all_before_last('.')
 		field := value.all_after_last('.')
@@ -11104,6 +11581,9 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.len == 0 {
 		return Type(void_)
 	}
+	if typ.ends_with('.typ') {
+		return tc.parse_type(typ[..typ.len - 4])
+	}
 	if is_generic_placeholder_type(typ) && !tc.is_known_type_text(typ) {
 		return unknown_type('generic placeholder `${typ}`')
 	}
@@ -11245,11 +11725,6 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		return Type(Alias{
 			name:      qtyp
 			base_type: tc.parse_type(tc.type_aliases[qtyp])
-		})
-	}
-	if qtyp in tc.structs {
-		return Type(Struct{
-			name: qtyp
 		})
 	}
 	if typ in tc.type_aliases {
@@ -11828,8 +12303,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	if kind_id == 14 {
 		return tc.resolve_index_type(node)
 	}
-	if kind_id != 7 && kind_id != 8 && kind_id != 13 && !(tc.smartcasts.len > 0
-		&& (kind_id == 7 || kind_id == 13)) {
+	if !(tc.smartcasts.len > 0 && (kind_id == 7 || kind_id == 13)) {
 		if typ := tc.cached_expr_type(id) {
 			return typ
 		}
@@ -12212,9 +12686,11 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
 				return Type(bool_)
 			}
-			lt := tc.resolve_type(tc.a.child(&node, 0))
+			lhs_id := tc.a.child(&node, 0)
+			rhs_id := tc.a.child(&node, 1)
+			lt := tc.resolve_type(lhs_id)
 			lt_raw := lt
-			rt := tc.resolve_type(tc.a.child(&node, 1))
+			rt := tc.resolve_type(rhs_id)
 			rt_raw := rt
 			if operator_ret := tc.infix_operator_return_type(node.op, lt, rt) {
 				return operator_ret
@@ -12225,7 +12701,21 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			if rt is String {
 				return rt_raw
 			}
+			lhs := tc.a.nodes[int(lhs_id)]
+			rhs := tc.a.nodes[int(rhs_id)]
+			if int_promoted := int_literal_promoted_infix_type(lhs, rhs, rt) {
+				return int_promoted
+			}
+			if int_promoted := int_literal_promoted_infix_type(rhs, lhs, lt) {
+				return int_promoted
+			}
 			if lt.is_float() || rt.is_float() {
+				if type_is_f32(lt) && rhs.kind == .float_literal {
+					return Type(f32_)
+				}
+				if type_is_f32(rt) && lhs.kind == .float_literal {
+					return Type(f32_)
+				}
 				return Type(f64_)
 			}
 			return lt
@@ -13223,6 +13713,43 @@ fn (tc &TypeChecker) infix_operator_return_type(op flat.Op, lhs Type, rhs Type) 
 		return ret
 	}
 	return none
+}
+
+fn int_literal_promoted_infix_type(lit flat.Node, other flat.Node, other_type Type) ?Type {
+	if lit.kind != .int_literal || other.kind == .int_literal {
+		return none
+	}
+	value := v_int_literal_value(lit.value) or { return none }
+	if unsigned_type_accepts_int_literal(other_type, value) {
+		return other_type
+	}
+	return none
+}
+
+fn unsigned_type_accepts_int_literal(t Type, value int) bool {
+	if value < 0 {
+		return false
+	}
+	if t is Primitive {
+		if !t.props.has(.integer) || !t.props.has(.unsigned) {
+			return false
+		}
+		max := match t.size {
+			8 { 255 }
+			16 { 65535 }
+			else { return true }
+		}
+
+		return value <= max
+	}
+	return false
+}
+
+fn type_is_f32(t Type) bool {
+	if t is Primitive {
+		return t.props.has(.float) && t.size == 32
+	}
+	return false
 }
 
 fn infix_operator_name(op flat.Op) ?string {

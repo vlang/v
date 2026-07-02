@@ -94,8 +94,12 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	} else {
 		g.a.child_node(&node, 0)
 	}
+	has_index := int(val_id) >= 0
+	idx_binding_name := if has_index { g.a.child_node(&node, 0).value } else { '' }
+	elem_binding_name := var_node.value
 	var_name := g.c_loop_local_name(var_node.value)
-	g.tc.cur_scope.insert(var_node.value, types.Type(types.int_))
+	var_owner := g.tc.cur_scope.insert_with_owner(var_node.value, types.Type(types.int_))
+	g.declare_local_pointer_storage(var_owner, false)
 	body_start := header_count
 
 	if header_count == 4 {
@@ -106,7 +110,6 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			panic('internal error: range for-in reached C backend after transform')
 		} else {
 			container_type := g.usable_expr_type(g.a.child(&node, 2))
-			has_index := int(val_id) >= 0
 			idx_var := if has_index {
 				g.c_loop_local_name(g.a.child_node(&node, 0).value)
 			} else {
@@ -167,9 +170,17 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					g.writeln('${c_val} ${val_var_} = *(${c_val}*)(${val_slot});')
 				}
 				if has_index {
-					g.tc.cur_scope.insert(key_var, clean_container_type.key_type)
+					key_owner := g.tc.cur_scope.insert_with_owner(idx_binding_name,
+						clean_container_type.key_type)
+					g.declare_local_pointer_storage(key_owner,
+						clean_container_type.key_type is types.Pointer
+						|| c_type_is_pointer_storage(c_key))
 				}
-				g.tc.cur_scope.insert(val_var_, clean_container_type.value_type)
+				val_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name,
+					clean_container_type.value_type)
+				g.declare_local_pointer_storage(val_owner,
+					clean_container_type.value_type is types.Pointer
+					|| c_type_is_pointer_storage(c_val))
 			} else if container_type is types.Array {
 				c_elem := g.value_c_type(container_type.elem_type)
 				container_id := g.a.child(&node, 2)
@@ -189,7 +200,11 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.write('${c_elem} ${elem_var} = *(')
 				g.write(c_elem)
 				g.writeln('*)array_get(${container_str}, ${idx_var});')
-				g.tc.cur_scope.insert(elem_var, container_type.elem_type)
+				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name,
+					container_type.elem_type)
+				g.declare_local_pointer_storage(elem_owner,
+
+					container_type.elem_type is types.Pointer || c_type_is_pointer_storage(c_elem))
 				g.declare_ierror_pointer_alias(elem_var,
 					g.for_in_array_literal_element_needs_ierror_copy(container_node))
 			} else if container_type is types.String {
@@ -197,7 +212,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${container_str}.len; ${idx_var}++) {')
 				g.indent++
 				g.writeln('u8 ${elem_var} = ((u8*)${container_str}.str)[${idx_var}];')
-				g.tc.cur_scope.insert(elem_var, types.Type(types.u8_))
+				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name,
+					types.Type(types.u8_))
+				g.declare_local_pointer_storage(elem_owner, false)
 			} else if container_type is types.ArrayFixed {
 				af := container_type
 				c_elem := g.value_c_type(af.elem_type)
@@ -207,15 +224,21 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.write('${c_elem} ${elem_var} = ')
 				g.gen_expr(g.a.child(&node, 2))
 				g.writeln('[${idx_var}];')
-				g.tc.cur_scope.insert(elem_var, af.elem_type)
+				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, af.elem_type)
+				g.declare_local_pointer_storage(elem_owner, af.elem_type is types.Pointer
+					|| c_type_is_pointer_storage(c_elem))
 			} else {
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < 0; ${idx_var}++) {')
 				g.indent++
 				g.writeln('int ${elem_var} = 0;')
-				g.tc.cur_scope.insert(elem_var, types.Type(types.int_))
+				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name,
+					types.Type(types.int_))
+				g.declare_local_pointer_storage(elem_owner, false)
 			}
 			if has_index && container_type !is types.Map {
-				g.tc.cur_scope.insert(idx_var, types.Type(types.int_))
+				idx_owner := g.tc.cur_scope.insert_with_owner(idx_binding_name,
+					types.Type(types.int_))
+				g.declare_local_pointer_storage(idx_owner, false)
 			}
 			g.loop_depth++
 			for i in body_start .. node.children_count {
@@ -333,7 +356,8 @@ fn (mut g FlatGen) gen_node_inline(id flat.NodeId) {
 			g.write(' = ')
 			g.gen_expr(rhs_id)
 			if lhs.kind == .ident {
-				g.tc.cur_scope.insert(lhs.value, v_type)
+				owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
+				g.track_local_pointer_storage_decl(lhs, owner, v_type, typ)
 			}
 		}
 		.assign {

@@ -877,6 +877,27 @@ fn main() {
 	assert c_code.contains('bool__str(')
 }
 
+// test_f32_interpolation_lowers_to_formatter_after_used_filter_transform
+// validates this v3 regression case.
+fn test_f32_interpolation_lowers_to_formatter_after_used_filter_transform() {
+	mut a, mut tc := parse_checked_source('f32_interp_formatter_cgen', '
+fn main() {
+	value := f32(1.25)
+	_ := "\${value}"
+}
+')
+	mut used := markused.mark_used(a, tc)
+	assert used['f32.str']
+	assert used['f32__str']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('f32__str(')
+}
+
 // test_print_bool_lowers_to_formatter_after_used_filter_transform
 // validates this v3 regression case.
 fn test_print_bool_lowers_to_formatter_after_used_filter_transform() {

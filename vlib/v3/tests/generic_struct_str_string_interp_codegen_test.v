@@ -86,6 +86,36 @@ pub fn (mut holder FixedBox[T]) push(item T) {
 pub fn (holder FixedBox[T]) str() string {
 	return holder.items.str()
 }
+
+pub struct LinkList[T] {
+mut:
+	items []T
+}
+
+pub fn (mut list LinkList[T]) push(item T) {
+	list.items << item
+}
+
+pub fn (list LinkList[T]) array() []T {
+	return list.items
+}
+
+pub fn (list LinkList[T]) str() string {
+	return list.array().str()
+}
+
+pub struct WrapperQueue[T] {
+mut:
+	elements LinkList[T]
+}
+
+pub fn (mut queue WrapperQueue[T]) push(item T) {
+	queue.elements.push(item)
+}
+
+pub fn (queue WrapperQueue[T]) str() string {
+	return queue.elements.str()
+}
 ') or {
 		panic(err)
 	}
@@ -305,4 +335,32 @@ fn main() {
 	assert !generated.contains(' = outer;'), generated
 	assert !generated.contains('Outer_T__str'), generated
 	assert !generated.contains('Inner_T__str'), generated
+}
+
+fn test_generic_wrapper_list_str_preserves_nested_array_suffix() {
+	out, generated := generic_struct_str_compile_project('wrapper_nested_array', 'module main
+
+import gr
+
+fn main() {
+	mut queue := gr.WrapperQueue[[]string]{}
+	queue.push([\'A\', \'B\'])
+	queue.push([\'C\'])
+	text := \'\${queue}\'
+	assert text == "[[\'A\', \'B\'], [\'C\']]"
+	println(text)
+}
+')
+	run := os.execute(out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == "[['A', 'B'], ['C']]"
+
+	body := generic_struct_str_c_fn(generated, 'string gr__LinkList_Array_string__str(')
+	assert body.len > 0, generated
+	assert generated.contains('gr__WrapperQueue_Array_string__str'), generated
+	assert body.contains('Array __arr_str_it_'), body
+	assert body.contains('string __arr_str_it_'), body
+	assert !body.contains('int __arr_str_it_'), body
+	assert !generated.contains('WrapperQueue_T__str'), generated
+	assert !generated.contains('LinkList_T__str'), generated
 }

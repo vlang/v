@@ -320,6 +320,39 @@ println(use(actual))
 }
 "
 
+const local_fn_value_ident_shadow_fn_src = 'fn foo(i int) int {
+	return i + 100
+}
+
+fn other_callback(i int) int {
+	return i + 2
+}
+
+fn main() {
+	foo := other_callback
+	f := foo
+	println(int_str(f(5)))
+}
+'
+
+const local_fn_value_expected_shadow_fn_src = 'fn foo(i int) int {
+	return i + 100
+}
+
+fn other_callback(i int) int {
+	return i + 2
+}
+
+fn take(f fn (int) int) int {
+	return f(5)
+}
+
+fn main() {
+	foo := other_callback
+	println(int_str(take(foo)))
+}
+'
+
 fn test_local_fn_literal_decl_types_are_callable() {
 	v3_bin := build_v3()
 	assert run_good(v3_bin, 'fn_value_optional_void_local', optional_fn_src) == 'optional-ok'
@@ -328,6 +361,18 @@ fn test_local_fn_literal_decl_types_are_callable() {
 	assert run_good(v3_bin, 'fn_value_local_call_shadows_global_return',
 		local_fn_call_shadow_global_return_src) == '12'
 	assert run_good(v3_bin, 'fn_value_call_return_shadow', local_fn_value_call_return_shadow_src) == 'ok'
+	assert run_good(v3_bin, 'fn_value_ident_shadowed_by_fn_typed_local',
+		local_fn_value_ident_shadow_fn_src) == '7'
+	assert run_good(v3_bin, 'fn_value_expected_shadowed_by_fn_typed_local',
+		local_fn_value_expected_shadow_fn_src) == '7'
+	assert run_good(v3_bin, 'fn_value_array_map_result_type', 'fn main() {
+	i_to_str := fn (i int) string {
+		return i.str()
+	}
+	a := [1, 2, 3].map(i_to_str)
+	println(a == ["1", "2", "3"])
+}
+') == 'true'
 	assert run_good(v3_bin, 'fn_value_named_local', 'fn add_one(i int) int {
 	return i + 1
 }

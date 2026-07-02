@@ -65,6 +65,7 @@ mut:
 	globals                      map[string]string
 	sum_types                    map[string][]string
 	sum_variant_parents          map[string][]string
+	sum_variant_names            map[string]bool
 	sum_variant_fields           map[string]string
 	qualified_types              map[string]string
 	fn_ret_types                 map[string]string
@@ -126,7 +127,9 @@ mut:
 	generic_fn_decls_cache           map[string]GenericFnDecl
 	generic_receiver_methods_by_name map[string][]string
 	generic_fn_decls_ready           bool
-	node_module_map_cache            map[int]string
+	generic_call_spec_cache          map[int]GenericCallSpec
+	generic_call_spec_misses         map[int]bool
+	node_module_map_cache            []string
 	node_module_map_nodes            int = -1
 }
 
@@ -190,6 +193,11 @@ struct GenericFnDecl {
 	file   string
 	module string
 	key    string
+}
+
+struct GenericCallSpec {
+	decl_key string
+	args     []string
 }
 
 // --- entry point ---
@@ -267,6 +275,9 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		heaped_amp_locals:                map[string]bool{}
 		generic_specialization_args:      map[string][]string{}
 		generic_receiver_methods_by_name: map[string][]string{}
+		generic_call_spec_cache:          map[int]GenericCallSpec{}
+		generic_call_spec_misses:         map[int]bool{}
+		sum_variant_names:                map[string]bool{}
 		used_fns:                         used_fns.clone()
 	}
 }
@@ -458,7 +469,7 @@ fn (mut t Transformer) collect_types() {
 				info := StructInfo{
 					name:      node.value
 					module:    cur_mod
-					is_params: node.typ.contains('params')
+					is_params: 'params' in node.typ.split(',')
 					fields:    fields
 				}
 				t.structs[node.value] = info
@@ -567,6 +578,8 @@ fn (mut t Transformer) add_sum_variant_parent(variant string, sum_name string) {
 	if field_name.contains('__') && field_name !in t.sum_variant_fields {
 		t.sum_variant_fields[field_name] = variant
 	}
+	t.sum_variant_names[variant] = true
+	t.sum_variant_names[t.variant_short_name(variant)] = true
 	t.add_sum_variant_parent_key(variant, sum_name)
 	if variant.contains('.') {
 		t.add_sum_variant_parent_key(variant.all_after_last('.'), sum_name)
@@ -891,6 +904,7 @@ struct FnWorkItem {
 	file   string
 	module string
 	cost   int
+	rank   i64
 }
 
 // transform_all_dispatch runs the main transform pass either serially (the
@@ -960,6 +974,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(scan_fn_literals bool)
 					file:   t.cur_file
 					module: t.cur_module
 					cost:   cost
+					rank:   i64(cost) * 1_000_000_000 - i64(i)
 				}
 			}
 		} else if kind_id == 65 {
@@ -1048,7 +1063,9 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
-	w.node_module_map_cache = map[int]string{}
+	w.generic_call_spec_cache = map[int]GenericCallSpec{}
+	w.generic_call_spec_misses = map[int]bool{}
+	w.node_module_map_cache = []string{}
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
 	w.mut_param_values = map[string]bool{}
@@ -1129,7 +1146,9 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 fn split_work_items(items []FnWorkItem, n int) [][]FnWorkItem {
 	mut buckets := [][]FnWorkItem{len: n, init: []FnWorkItem{}}
 	mut loads := []i64{len: n}
-	for it in items {
+	mut sorted := items.clone()
+	sorted.sort(a.rank > b.rank)
+	for it in sorted {
 		mut best := 0
 		for b in 1 .. n {
 			if loads[b] < loads[best] {
@@ -2630,9 +2649,20 @@ fn (t &Transformer) const_array_literal_storage_elem_excluded(raw_type types.Typ
 }
 
 fn (t &Transformer) const_array_literal_requires_fixed_storage(key string) bool {
+	mut fixed_safe_refs := map[int]bool{}
+	for _, node in t.a.nodes {
+		if node.kind == .index && node.children_count > 0 {
+			t.mark_const_ref_descendants(mut fixed_safe_refs, t.a.child(&node, 0))
+		}
+		if node.kind == .selector && node.value == 'len' && node.children_count > 0 {
+			t.mark_const_ref_descendants(mut fixed_safe_refs, t.a.child(&node, 0))
+		}
+	}
 	mut cur_module := 'main'
 	mut cur_file := ''
-	for node in t.a.nodes {
+	mut fixed_candidate := false
+	mut dynamic_use := false
+	for idx, node in t.a.nodes {
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
 			cur_file = node.value
@@ -2643,20 +2673,53 @@ fn (t &Transformer) const_array_literal_requires_fixed_storage(key string) bool 
 			cur_module = node.value
 			continue
 		}
-		if node.kind != .index || node.children_count == 0 {
-			continue
+		if node.kind == .call && node.children_count > 0 {
+			fn_node := t.a.child_node(&node, 0)
+			if fn_node.kind == .selector && fn_node.children_count > 0 {
+				base_id := t.a.child(fn_node, 0)
+				if base_key := t.const_ref_key_in_context(base_id, cur_module, cur_file) {
+					if base_key == key {
+						dynamic_use = true
+					}
+				}
+			}
 		}
-		base_id := t.a.child(&node, 0)
-		base_name := t.expr_key(base_id)
-		if base_name.len == 0 {
-			continue
+		if !(fixed_safe_refs[idx] or { false }) {
+			if ref_key := t.const_ref_key_in_context(flat.NodeId(idx), cur_module, cur_file) {
+				if ref_key == key {
+					dynamic_use = true
+				}
+			}
 		}
-		base_key := t.const_type_key_in_context(base_name, cur_module, cur_file) or { continue }
-		if base_key == key {
-			return true
+		if node.kind == .index && node.children_count > 0 {
+			base_id := t.a.child(&node, 0)
+			if base_key := t.const_ref_key_in_context(base_id, cur_module, cur_file) {
+				if base_key == key {
+					fixed_candidate = true
+				}
+			}
 		}
 	}
-	return false
+	return fixed_candidate && !dynamic_use
+}
+
+fn (t &Transformer) mark_const_ref_descendants(mut ids map[int]bool, id flat.NodeId) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	ids[int(id)] = true
+	node := t.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		t.mark_const_ref_descendants(mut ids, t.a.child(&node, 0))
+	}
+}
+
+fn (t &Transformer) const_ref_key_in_context(id flat.NodeId, module_name string, file string) ?string {
+	name := t.expr_key(id)
+	if name.len == 0 {
+		return none
+	}
+	return t.const_type_key_in_context(name, module_name, file)
 }
 
 // transform_assign_stmt transforms transform assign stmt data for transform.
@@ -5719,6 +5782,12 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	if node.children_count == 0 {
 		return id
 	}
+	if node.op in [.plus, .minus] && node.children_count == 1 {
+		child_id := t.a.child(&node, 0)
+		if signed_str_call := t.rewrite_signed_literal_str_call(node.op, child_id) {
+			return t.transform_expr(signed_str_call)
+		}
+	}
 	if node.op == .mul && node.children_count == 1 {
 		child_id := t.a.child(&node, 0)
 		child := t.a.nodes[int(child_id)]
@@ -5875,6 +5944,25 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		}
 	}
 	return new_id
+}
+
+fn (mut t Transformer) rewrite_signed_literal_str_call(op flat.Op, child_id flat.NodeId) ?flat.NodeId {
+	child := t.a.nodes[int(child_id)]
+	if child.kind != .call || child.children_count != 1 {
+		return none
+	}
+	callee_id := t.a.child(&child, 0)
+	callee := t.a.nodes[int(callee_id)]
+	if callee.kind != .selector || callee.value != 'str' || callee.children_count != 1 {
+		return none
+	}
+	base_id := t.a.child(&callee, 0)
+	base := t.a.nodes[int(base_id)]
+	if base.kind !in [.int_literal, .float_literal] {
+		return none
+	}
+	signed_base := t.make_prefix(op, base_id)
+	return t.make_method_call(signed_base, 'str', []flat.NodeId{})
 }
 
 // transform_amp_sum_cast_from_as_expr supports transform_amp_sum_cast_from_as_expr handling.
@@ -6203,6 +6291,14 @@ fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) fla
 	}
 	if typ.len == 0 {
 		typ = 'unknown'
+	}
+	if t.cur_fn_is_generic && is_generic_fn_placeholder_name(typ) {
+		return t.a.add_node(flat.Node{
+			kind:  .typeof_expr
+			value: generic_type_name_marker(typ)
+			typ:   'string'
+			pos:   node.pos
+		})
 	}
 	return t.make_string_literal(typ)
 }
@@ -7229,6 +7325,11 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 				if node.op in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor] {
 					if lhs_type.len > 0 && rhs_type.len > 0 && t.is_numeric_stringify_type(lhs_type)
 						&& t.is_numeric_stringify_type(rhs_type) {
+						if promoted := promote_numeric_literal_infix_type(t.a.nodes[int(t.a.child(&node,
+							0))], lhs_type, t.a.nodes[int(t.a.child(&node, 1))], rhs_type)
+						{
+							return promoted
+						}
 						return promote_numeric_stringify_type(lhs_type, rhs_type)
 					}
 					if lhs_type.len > 0 && t.is_numeric_stringify_type(lhs_type) {
@@ -7436,7 +7537,7 @@ fn (t &Transformer) const_type_key_in_context(name string, module_name string, f
 	resolved_base := if mod := t.tc.file_imports[file_import_key(file, base)] {
 		mod
 	} else {
-		t.tc.imports[base] or { base }
+		base
 	}
 	qname := '${resolved_base}.${field}'
 	if qname in t.tc.const_types {
@@ -8271,16 +8372,7 @@ fn (t &Transformer) count_conds(branch flat.Node) int {
 
 // is_sum_variant reports whether is sum variant applies in transform.
 pub fn (t &Transformer) is_sum_variant(name string) bool {
-	short_name := t.variant_short_name(name)
-	for _, variants in t.sum_types {
-		for v in variants {
-			short_v := t.variant_short_name(v)
-			if v == name || short_v == short_name {
-				return true
-			}
-		}
-	}
-	return false
+	return name in t.sum_variant_names || t.variant_short_name(name) in t.sum_variant_names
 }
 
 // --- array append lowering (existing, will move to expr.v later) ---

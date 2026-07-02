@@ -1,5 +1,6 @@
 import os
 import rand
+import strings
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
@@ -18,6 +19,12 @@ fn build_v3() string {
 
 fn unique_temp_path(name string) string {
 	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}_${rand.ulid()}')
+}
+
+fn error_index(output string, needle string) int {
+	idx := output.index(needle) or { -1 }
+	assert idx >= 0, 'missing `${needle}` in\n${output}'
+	return idx
 }
 
 // run_bad supports run bad handling for v3 tests.
@@ -116,6 +123,36 @@ fn gen_c_project(v3_bin string, name string, files map[string]string, input stri
 	assert compile.exit_code == 0
 	assert os.exists(c_out)
 	return os.read_file(c_out) or { panic(err) }
+}
+
+fn test_parallel_checker_preserves_diagnostic_order() {
+	v3_bin := build_v3()
+	out := unique_temp_path('parallel_checker_error_order')
+	src_path := out + '.v'
+	mut src := strings.new_builder(32_000)
+	for i in 0 .. 270 {
+		src.writeln('fn f_${i}() int {')
+		src.writeln('\treturn missing_${i}')
+		src.writeln('}')
+	}
+	src.writeln('fn main() {}')
+	os.write_file(src_path, src.str()) or { panic(err) }
+	old_vjobs := os.getenv_opt('VJOBS')
+	os.setenv('VJOBS', '4', true)
+	defer {
+		if value := old_vjobs {
+			os.setenv('VJOBS', value, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
+	result := os.execute('${v3_bin} ${src_path} -b c -o ${out}')
+	assert result.exit_code != 0, result.output
+	first := error_index(result.output, 'unknown identifier `missing_0`')
+	second := error_index(result.output, 'unknown identifier `missing_1`')
+	third := error_index(result.output, 'unknown identifier `missing_2`')
+	assert first < second
+	assert second < third
 }
 
 // test_type_checker_reports_core_semantic_errors validates this v3 regression case.
@@ -382,32 +419,29 @@ fn test_fixed_array_length_checks() {
 		'fn pick(c bool) []int {\n\treturn if c { [1, 2, 3] } else { [4, 5] }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n')
 	assert good_ret_lit == '5'
 	mixed_const_src := 'const xs = [1, 2, 3]\nfn first() int {\n\treturn xs[0]\n}\nfn length_score() int {\n\treturn xs.len\n}\nfn all() []int {\n\treturn xs\n}\nfn main() {\n\tys := all()\n\tprintln(int_str(first() + length_score() + ys.len + ys[2]))\n}\n'
-	mixed_const := run_good(v3_bin, 'good_indexed_const_returned_dynamic_array',
-		mixed_const_src)
+	mixed_const := run_good(v3_bin, 'good_indexed_const_returned_dynamic_array', mixed_const_src)
 	assert mixed_const == '10'
-	mixed_const_c := gen_c_project(v3_bin, 'good_indexed_const_returned_dynamic_array_c',
-		{
-			'main.v': mixed_const_src
-		}, 'main.v')
-	mixed_const_compact := mixed_const_c.replace('\t', '').replace(' ', '').replace('\n',
-		'')
-	assert mixed_const_compact.contains('intmain__xs[3]'), mixed_const_c
-	assert mixed_const_compact.contains('returnmain__xs[0];'), mixed_const_c
-	assert mixed_const_compact.contains('intlength_score(void){return3;}'), mixed_const_c
-	assert mixed_const_compact.contains('returnnew_array_from_c_array(3,3,sizeof(int),&main__xs);'),
-		mixed_const_c
-	assert !mixed_const_c.contains('main__xs.len'), mixed_const_c
-	shadowed := run_good_project(v3_bin, 'good_shadowed_const_fixed_storage',
-		{
-			'main.v':        'module main\n\nimport fixture\n\nconst xs = [10, 20, 30]\n\nfn all() []int {\n\treturn xs\n}\n\nfn main() {\n\tys := all()\n\tprintln(int_str(fixture.first() + ys.len + ys[2]))\n}\n'
-			'fixture/fi.v': 'module fixture\n\npub const xs = [1, 2, 3]\n\npub fn first() int {\n\treturn xs[0]\n}\n'
-		}, 'main.v')
+	mixed_const_c := gen_c_project(v3_bin, 'good_indexed_const_returned_dynamic_array_c', {
+		'main.v': mixed_const_src
+	}, 'main.v')
+	mixed_const_compact := mixed_const_c.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert mixed_const_compact.contains('Arraymain__xs;'), mixed_const_c
+	assert mixed_const_compact.contains('main__xs=new_array_from_c_array(3,3,sizeof(int),(int[]){1,2,3});'), mixed_const_c
+
+	assert mixed_const_compact.contains('return(*(int*)array_get(main__xs,0));'), mixed_const_c
+	assert mixed_const_compact.contains('intlength_score(void){returnmain__xs.len;}'), mixed_const_c
+	assert mixed_const_compact.contains('Arrayall(void){returnmain__xs;}'), mixed_const_c
+	assert !mixed_const_compact.contains('returnnew_array_from_c_array(3,3,sizeof(int),&main__xs);'), mixed_const_c
+
+	shadowed := run_good_project(v3_bin, 'good_shadowed_const_fixed_storage', {
+		'main.v':       'module main\n\nimport fixture\n\nconst xs = [10, 20, 30]\n\nfn all() []int {\n\treturn xs\n}\n\nfn main() {\n\tys := all()\n\tprintln(int_str(fixture.first() + ys.len + ys[2]))\n}\n'
+		'fixture/fi.v': 'module fixture\n\npub const xs = [1, 2, 3]\n\npub fn first() int {\n\treturn xs[0]\n}\n'
+	}, 'main.v')
 	assert shadowed == '34'
-	shadowed_c := gen_c_project(v3_bin, 'good_shadowed_const_fixed_storage_c',
-		{
-			'main.v':        'module main\n\nimport fixture\n\nconst xs = [10, 20, 30]\n\nfn all() []int {\n\treturn xs\n}\n\nfn main() {\n\tys := all()\n\tprintln(int_str(fixture.first() + ys.len + ys[2]))\n}\n'
-			'fixture/fi.v': 'module fixture\n\npub const xs = [1, 2, 3]\n\npub fn first() int {\n\treturn xs[0]\n}\n'
-		}, 'main.v')
+	shadowed_c := gen_c_project(v3_bin, 'good_shadowed_const_fixed_storage_c', {
+		'main.v':       'module main\n\nimport fixture\n\nconst xs = [10, 20, 30]\n\nfn all() []int {\n\treturn xs\n}\n\nfn main() {\n\tys := all()\n\tprintln(int_str(fixture.first() + ys.len + ys[2]))\n}\n'
+		'fixture/fi.v': 'module fixture\n\npub const xs = [1, 2, 3]\n\npub fn first() int {\n\treturn xs[0]\n}\n'
+	}, 'main.v')
 	shadowed_compact := shadowed_c.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert shadowed_compact.contains('Arraymain__xs;'), shadowed_c
 	assert shadowed_compact.contains('returnmain__xs;'), shadowed_c
