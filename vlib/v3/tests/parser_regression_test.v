@@ -191,3 +191,43 @@ fn test_local_generic_type_with_qualified_arg_resolves_base_before_qualification
 	assert array_types == ['${local_decl_name}[other.Thing]']
 	assert init_types == ['${local_decl_name}[other.Thing]']
 }
+
+fn test_local_sibling_types_are_predeclared_before_fields() {
+	a := parse_parser_regression_source('local_sibling_struct_fields',
+		'module main\n\nfn main() {\n\tstruct A {\n\t\tb &B\n\t}\n\tstruct B {\n\t\ta &A\n\t}\n}\n')
+	mut local_a := ''
+	mut local_b := ''
+	for node in a.nodes {
+		if node.kind == .struct_decl {
+			if node.value.starts_with('A__local_main') {
+				local_a = node.value
+			}
+			if node.value.starts_with('B__local_main') {
+				local_b = node.value
+			}
+		}
+	}
+	mut a_fields := []string{}
+	mut b_fields := []string{}
+	for node in a.nodes {
+		if node.kind != .struct_decl {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := a.child_node(&node, i)
+			if field.kind != .field_decl {
+				continue
+			}
+			if node.value == local_a {
+				a_fields << '${field.value}:${field.typ}'
+			}
+			if node.value == local_b {
+				b_fields << '${field.value}:${field.typ}'
+			}
+		}
+	}
+	assert local_a.len > 0
+	assert local_b.len > 0
+	assert a_fields == ['b:&${local_b}']
+	assert b_fields == ['a:&${local_a}']
+}

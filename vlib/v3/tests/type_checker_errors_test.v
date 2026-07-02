@@ -485,6 +485,9 @@ fn test_local_type_names_include_nested_block_scope() {
 	local_generic_arg := run_good(v3_bin, 'good_local_generic_struct_init_local_arg',
 		"fn main() {\n\tstruct Inner {}\n\tstruct Box[T] {}\n\t_ := Box[Inner]{}\n\tprintln('ok')\n}\n")
 	assert local_generic_arg == 'ok'
+	mutual_local := run_good(v3_bin, 'good_local_mutual_struct_pointer_fields',
+		"fn main() {\n\tstruct A {\n\t\tb &B\n\t}\n\tstruct B {\n\t\ta &A\n\t}\n\ta := A{}\n\t_ := B{\n\t\ta: &a\n\t}\n\tprintln('ok')\n}\n")
+	assert mutual_local == 'ok'
 }
 
 fn test_bool_match_single_branch_is_exhaustive() {
