@@ -2192,8 +2192,8 @@ fn (mut tc TypeChecker) collect_selected_file_for_in_called_fns(node flat.Node) 
 		} else {
 			container := tc.a.nodes[int(container_id)]
 			if container.kind == .range {
-				tc.insert_selected_file_decl_binding_type(key_id,
-					tc.range_loop_var_type(tc.a.child(&container, 0)))
+				tc.insert_selected_file_decl_binding_type(key_id, tc.range_loop_var_type(tc.a.child(&container,
+					0)))
 			}
 		}
 	}
@@ -9974,11 +9974,30 @@ fn (tc &TypeChecker) ierror_compat_cache_key(concrete_name string) string {
 }
 
 fn (tc &TypeChecker) type_compatible_with_ierror_payload(actual Type) bool {
-	concrete_name := method_type_name(unwrap_pointer(actual))
+	clean := tc.ierror_payload_concrete_type(actual)
+	concrete_name := method_type_name(clean)
 	if concrete_name.len == 0 {
 		return false
 	}
 	return tc.named_type_compatible_with_ierror(concrete_name)
+}
+
+fn (tc &TypeChecker) ierror_payload_concrete_type(t Type) Type {
+	mut clean := t
+	mut seen := map[string]bool{}
+	for {
+		clean = unwrap_pointer(clean)
+		if clean is Alias {
+			if seen[clean.name] {
+				return clean
+			}
+			seen[clean.name] = true
+			clean = clean.base_type
+			continue
+		}
+		return clean
+	}
+	return clean
 }
 
 fn (tc &TypeChecker) named_type_compatible_with_ierror_inner(concrete_name string, mut seen map[string]bool) bool {

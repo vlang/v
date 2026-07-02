@@ -39,6 +39,9 @@ struct CustomError {
 	text string
 }
 
+type AliasError = CustomError
+type AliasChainError = AliasError
+
 fn (err CustomError) msg() string {
 	return err.text
 }
@@ -57,6 +60,18 @@ fn custom_error() !int {
 	}
 }
 
+fn alias_error() !int {
+	return AliasError(CustomError{
+		text: 'alias payload'
+	})
+}
+
+fn alias_chain_error() !int {
+	return AliasChainError(AliasError(CustomError{
+		text: 'alias chain payload'
+	}))
+}
+
 fn main() {
 	os_error() or {
 		assert err.msg() == ''
@@ -64,6 +79,14 @@ fn main() {
 	}
 	custom_error() or {
 		assert err.msg() == 'custom payload'
+		assert err.code() == 77
+	}
+	alias_error() or {
+		assert err.msg() == 'alias payload'
+		assert err.code() == 77
+	}
+	alias_chain_error() or {
+		assert err.msg() == 'alias chain payload'
 		assert err.code() == 77
 	}
 	println('ok')
@@ -302,6 +325,28 @@ fn main() {
 }
 ",
 		'cannot assign', 'CustomError')
+}
+
+fn test_alias_of_non_ierror_payload_is_rejected() {
+	v3_bin := build_v3()
+	run_bad_ierror_payload(v3_bin, 'bad_alias_payload', "struct Plain {
+	text string
+}
+
+type AliasPlain = Plain
+type AliasChainPlain = AliasPlain
+
+fn fail() !int {
+	return AliasChainPlain(AliasPlain(Plain{
+		text: 'nope'
+	}))
+}
+
+fn main() {
+	fail() or { return }
+}
+",
+		'cannot return', 'AliasChainPlain')
 }
 
 fn test_result_error_match_rejects_non_ierror_branch() {

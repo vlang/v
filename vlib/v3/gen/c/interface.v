@@ -409,8 +409,7 @@ fn (g &FlatGen) type_can_box_as_ierror(concrete string) bool {
 }
 
 fn (g &FlatGen) ierror_concrete_name(t types.Type) ?string {
-	clean0 := types.unwrap_pointer(t)
-	clean := if clean0 is types.Alias { clean0.base_type } else { clean0 }
+	clean := g.ierror_payload_concrete_type(t)
 	if clean !is types.Struct {
 		return none
 	}
@@ -424,6 +423,24 @@ fn (g &FlatGen) ierror_concrete_name(t types.Type) ?string {
 		return qname
 	}
 	return none
+}
+
+fn (g &FlatGen) ierror_payload_concrete_type(t types.Type) types.Type {
+	mut clean := t
+	mut seen := map[string]bool{}
+	for {
+		clean = types.unwrap_pointer(clean)
+		if clean is types.Alias {
+			if seen[clean.name] {
+				return clean
+			}
+			seen[clean.name] = true
+			clean = clean.base_type
+			continue
+		}
+		return clean
+	}
+	return clean
 }
 
 fn (g &FlatGen) ierror_type_id_for_pattern(pattern string) int {
@@ -468,7 +485,8 @@ fn (mut g FlatGen) ierror_from_expr_string_with_type(id flat.NodeId, actual type
 	expr := g.expr_to_string(id)
 	concrete_ct := g.tc.c_type(g.tc.parse_type(concrete))
 	object := if actual is types.Pointer {
-		if g.ierror_pointer_payload_needs_heap_copy(node) {
+		if g.ierror_pointer_payload_needs_heap_copy(node)
+			|| g.ierror_pointer_payload_alias_needs_heap_copy(node) {
 			'memdup(${expr}, sizeof(${concrete_ct}))'
 		} else {
 			expr
@@ -481,21 +499,107 @@ fn (mut g FlatGen) ierror_from_expr_string_with_type(id flat.NodeId, actual type
 }
 
 fn (g &FlatGen) ierror_pointer_payload_needs_heap_copy(node flat.Node) bool {
-	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
-		return false
+	root := g.ierror_pointer_payload_address_root(node, false) or { return false }
+	return g.ierror_pointer_payload_root_needs_heap_copy(root)
+}
+
+fn (g &FlatGen) ierror_stack_subobject_address_needs_heap_copy(node flat.Node) bool {
+	root := g.ierror_pointer_payload_address_root(node, true) or { return false }
+	return g.ierror_pointer_payload_root_needs_heap_copy(root)
+}
+
+fn (g &FlatGen) ierror_pointer_payload_expr_needs_heap_copy(node flat.Node) bool {
+	clean := g.ierror_pointer_payload_unwrapped_node(node)
+	if g.ierror_pointer_payload_needs_heap_copy(clean) {
+		return true
 	}
-	mut child_id := g.a.child(&node, 0)
+	if g.ierror_array_get_pointer_alias_needs_copy(clean) {
+		return true
+	}
+	if clean.kind == .ident {
+		return g.ierror_pointer_alias_needs_copy(clean.value)
+	}
+	return false
+}
+
+fn (g &FlatGen) ierror_pointer_payload_alias_needs_heap_copy(node flat.Node) bool {
+	clean := g.ierror_pointer_payload_unwrapped_node(node)
+	return clean.kind == .ident && g.cur_scope_has_local_name(clean.value)
+		&& g.ierror_pointer_alias_needs_copy(clean.value)
+}
+
+fn (g &FlatGen) ierror_array_get_pointer_alias_needs_copy(node flat.Node) bool {
+	base_name := g.ierror_array_get_base_name(node) or { return false }
+	return g.ierror_pointer_alias_needs_copy(base_name)
+}
+
+fn (g &FlatGen) ierror_array_get_base_name(node flat.Node) ?string {
+	mut clean := g.ierror_pointer_payload_unwrapped_node(node)
+	if clean.kind == .prefix && clean.op == .mul && clean.children_count > 0 {
+		clean = g.ierror_pointer_payload_unwrapped_node(g.a.nodes[int(g.a.child(&clean, 0))])
+	}
+	if clean.kind != .call || clean.children_count < 2 {
+		return none
+	}
+	target := g.call_target_name(g.a.child(&clean, 0))
+	if target !in ['array_get', 'array__get'] {
+		return none
+	}
+	base := g.ierror_pointer_payload_unwrapped_node(g.a.nodes[int(g.a.child(&clean, 1))])
+	if base.kind == .ident && base.value.len > 0 {
+		return base.value
+	}
+	return none
+}
+
+fn (g &FlatGen) ierror_pointer_alias_name_from_addr(node flat.Node) ?string {
+	clean := g.ierror_pointer_payload_unwrapped_node(node)
+	if clean.kind == .ident && clean.value.len > 0 {
+		return clean.value
+	}
+	if clean.kind == .prefix && clean.op == .amp && clean.children_count > 0 {
+		child := g.ierror_pointer_payload_unwrapped_node(g.a.nodes[int(g.a.child(&clean, 0))])
+		if child.kind == .ident && child.value.len > 0 {
+			return child.value
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) ierror_pointer_payload_address_root(node flat.Node, require_subobject bool) ?flat.Node {
+	clean_node := g.ierror_pointer_payload_unwrapped_node(node)
+	if clean_node.kind != .prefix || clean_node.op != .amp || clean_node.children_count == 0 {
+		return none
+	}
+	mut child_id := g.a.child(&clean_node, 0)
+	mut saw_subobject := false
 	for {
-		child := g.a.nodes[int(child_id)]
+		child := g.ierror_pointer_payload_unwrapped_node(g.a.nodes[int(child_id)])
 		if child.kind !in [.selector, .index] || child.children_count == 0 {
 			break
 		}
+		saw_subobject = true
 		child_id = g.a.child(&child, 0)
 	}
-	root := g.a.nodes[int(child_id)]
-	if root.kind != .ident {
-		return false
+	if require_subobject && !saw_subobject {
+		return none
 	}
+	root := g.ierror_pointer_payload_unwrapped_node(g.a.nodes[int(child_id)])
+	if root.kind != .ident {
+		return none
+	}
+	return root
+}
+
+fn (g &FlatGen) ierror_pointer_payload_unwrapped_node(node flat.Node) flat.Node {
+	mut cur := node
+	for cur.kind in [.paren, .expr_stmt, .cast_expr, .as_expr] && cur.children_count > 0 {
+		cur = g.a.nodes[int(g.a.child(&cur, 0))]
+	}
+	return cur
+}
+
+fn (g &FlatGen) ierror_pointer_payload_root_needs_heap_copy(root flat.Node) bool {
 	if param_type := g.current_param_type(root.value) {
 		return param_type !is types.Pointer
 	}

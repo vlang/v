@@ -315,6 +315,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		iface_impls:                  g.iface_impls
 		iface_type_ids:               g.iface_type_ids
 		ierror_method_emit_names:     g.ierror_method_emit_names
+		ierror_stack_pointer_aliases: []map[string]bool{}
 		module_init_fns:              g.module_init_fns
 		module_init_fn_modules:       g.module_init_fn_modules
 		module_imports:               g.module_imports

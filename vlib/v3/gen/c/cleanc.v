@@ -51,6 +51,7 @@ mut:
 	iface_impls                  map[string][]string    // interface name -> implementing concrete type names
 	iface_type_ids               map[string]int         // "${iface}::${concrete}" -> 1-based type id
 	ierror_method_emit_names     map[string]bool        // names/lowered names of concrete IError msg/code methods
+	ierror_stack_pointer_aliases []map[string]bool      // scoped local pointer aliases to stack subobjects
 	module_init_fns              []string               // C names of module-level `init()` fns, in source order
 	module_init_fn_modules       map[string]string      // C init fn name -> V module name
 	module_imports               map[string][]string    // module -> imported modules
@@ -153,6 +154,76 @@ pub fn (mut g FlatGen) set_c99_mode(enabled bool) {
 	g.c99_mode = enabled
 }
 
+fn (mut g FlatGen) push_scope() {
+	g.tc.push_scope()
+	g.ierror_stack_pointer_aliases << map[string]bool{}
+}
+
+fn (mut g FlatGen) pop_scope() {
+	g.tc.pop_scope()
+	if g.ierror_stack_pointer_aliases.len > 0 {
+		g.ierror_stack_pointer_aliases.delete_last()
+	}
+}
+
+fn (mut g FlatGen) declare_ierror_pointer_alias(name string, needs_copy bool) {
+	if name.len == 0 {
+		return
+	}
+	if g.ierror_stack_pointer_aliases.len == 0 {
+		g.ierror_stack_pointer_aliases << map[string]bool{}
+	}
+	last := g.ierror_stack_pointer_aliases.len - 1
+	g.ierror_stack_pointer_aliases[last][name] = needs_copy
+}
+
+fn (mut g FlatGen) assign_ierror_pointer_alias(name string, needs_copy bool) {
+	if name.len == 0 {
+		return
+	}
+	current_idx := g.ierror_stack_pointer_aliases.len - 1
+	if idx := g.ierror_pointer_alias_scope_index(name) {
+		previous := if name in g.ierror_stack_pointer_aliases[idx] {
+			g.ierror_stack_pointer_aliases[idx][name]
+		} else {
+			false
+		}
+		g.ierror_stack_pointer_aliases[idx][name] = if idx == current_idx {
+			needs_copy
+		} else {
+			previous || needs_copy
+		}
+		return
+	}
+	g.declare_ierror_pointer_alias(name, needs_copy)
+}
+
+fn (g &FlatGen) ierror_pointer_alias_scope_index(name string) ?int {
+	if name.len == 0 {
+		return none
+	}
+	mut scope := g.tc.cur_scope
+	mut idx := g.ierror_stack_pointer_aliases.len - 1
+	for scope != unsafe { nil } && scope != g.tc.file_scope && idx >= 0 {
+		for existing in scope.names {
+			if existing == name {
+				return idx
+			}
+		}
+		scope = scope.parent
+		idx--
+	}
+	return none
+}
+
+fn (g &FlatGen) ierror_pointer_alias_needs_copy(name string) bool {
+	idx := g.ierror_pointer_alias_scope_index(name) or { return false }
+	if name in g.ierror_stack_pointer_aliases[idx] {
+		return g.ierror_stack_pointer_aliases[idx][name]
+	}
+	return false
+}
+
 // new creates a FlatGen value for c.
 pub fn FlatGen.new() FlatGen {
 	return FlatGen{
@@ -174,6 +245,7 @@ pub fn FlatGen.new() FlatGen {
 		iface_impls:                  map[string][]string{}
 		iface_type_ids:               map[string]int{}
 		ierror_method_emit_names:     map[string]bool{}
+		ierror_stack_pointer_aliases: []map[string]bool{}
 		module_init_fns:              []string{}
 		module_init_fn_modules:       map[string]string{}
 		module_imports:               map[string][]string{}
@@ -281,6 +353,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.iface_impls = map[string][]string{}
 	g.iface_type_ids = map[string]int{}
 	g.ierror_method_emit_names = map[string]bool{}
+	g.ierror_stack_pointer_aliases = []map[string]bool{}
 	g.module_init_fns = []string{}
 	g.module_init_fn_modules = map[string]string{}
 	g.module_imports = map[string][]string{}

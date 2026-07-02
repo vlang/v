@@ -38,7 +38,7 @@ fn (mut g FlatGen) pop_loop_label_depth(state LoopLabelState) {
 // gen_for emits for output for c.
 fn (mut g FlatGen) gen_for(node flat.Node) {
 	label_state := g.push_loop_label_depth(g.take_pending_loop_label())
-	g.tc.push_scope()
+	g.push_scope()
 	defer_start := g.defers.len
 	init_node := g.a.child_node(&node, 0)
 	cond_id := g.a.child(&node, 1)
@@ -76,7 +76,7 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.trim_defers(defer_start)
 	g.indent--
 	g.writeln('}')
-	g.tc.pop_scope()
+	g.pop_scope()
 	g.pop_loop_label_depth(label_state)
 }
 
@@ -86,7 +86,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	defer {
 		g.pop_loop_label_depth(label_state)
 	}
-	g.tc.push_scope()
+	g.push_scope()
 	header_count := node.value.int()
 	val_id := g.a.child(&node, 1)
 	var_node := if int(val_id) >= 0 {
@@ -172,11 +172,13 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.tc.cur_scope.insert(val_var_, clean_container_type.value_type)
 			} else if container_type is types.Array {
 				c_elem := g.value_c_type(container_type.elem_type)
-				mut container_str := g.expr_to_string(g.a.child(&node, 2))
+				container_id := g.a.child(&node, 2)
+				container_node := g.a.nodes[int(container_id)]
+				mut container_str := g.expr_to_string(container_id)
 				// A call-valued container (e.g. `threads.wait()`, `xs.map(..)`) is not
 				// idempotent and is referenced multiple times below; bind it to a temp so
 				// it runs exactly once.
-				if g.a.nodes[int(g.a.child(&node, 2))].kind == .call {
+				if container_node.kind == .call {
 					arr_tmp := '__for_arr_${g.tmp_count}'
 					g.tmp_count++
 					g.writeln('Array ${arr_tmp} = ${container_str};')
@@ -188,6 +190,8 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.write(c_elem)
 				g.writeln('*)array_get(${container_str}, ${idx_var});')
 				g.tc.cur_scope.insert(elem_var, container_type.elem_type)
+				g.declare_ierror_pointer_alias(elem_var,
+					g.for_in_array_literal_element_needs_ierror_copy(container_node))
 			} else if container_type is types.String {
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${container_str}.len; ${idx_var}++) {')
@@ -223,11 +227,11 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			if map_snapshot_var.len > 0 {
 				g.writeln('map__free(&${map_snapshot_var});')
 			}
-			g.tc.pop_scope()
+			g.pop_scope()
 			return
 		}
 	} else {
-		g.tc.pop_scope()
+		g.pop_scope()
 		return
 	}
 	g.indent++
@@ -238,7 +242,19 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	g.loop_depth--
 	g.indent--
 	g.writeln('}')
-	g.tc.pop_scope()
+	g.pop_scope()
+}
+
+fn (g &FlatGen) for_in_array_literal_element_needs_ierror_copy(container flat.Node) bool {
+	if container.kind != .array_literal {
+		return false
+	}
+	for i in 0 .. container.children_count {
+		if g.ierror_pointer_payload_expr_needs_heap_copy(g.a.nodes[int(g.a.child(&container, i))]) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (g &FlatGen) for_in_body_contains_delete_call(node flat.Node, body_start int) bool {

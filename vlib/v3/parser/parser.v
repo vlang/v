@@ -2982,6 +2982,7 @@ fn (mut p Parser) for_c_style_multi(lhs_ids []flat.NodeId) flat.NodeId {
 	block_start := p.add_children2(init_id, for_id)
 	return p.a.add_node(flat.Node{
 		kind:           .block
+		value:          'for_c_style_multi'
 		children_start: block_start
 		children_count: 2
 	})

@@ -1440,7 +1440,9 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.loop_label_depths = map[string]int{}
 	g.goto_label_lock_scopes = g.collect_fn_goto_label_lock_scopes(node)
 	g.pending_loop_label = ''
-	g.tc.push_scope()
+	old_ierror_stack_pointer_aliases := g.ierror_stack_pointer_aliases.clone()
+	g.ierror_stack_pointer_aliases = []map[string]bool{}
+	g.push_scope()
 	g.defers = []flat.NodeId{}
 	g.fn_defers = []flat.NodeId{}
 	g.fn_defer_counts = map[int]string{}
@@ -1546,7 +1548,8 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.loop_label_depths = map[string]int{}
 	g.goto_label_lock_scopes = map[string][]int{}
 	g.pending_loop_label = ''
-	g.tc.pop_scope()
+	g.pop_scope()
+	g.ierror_stack_pointer_aliases = old_ierror_stack_pointer_aliases.clone()
 }
 
 fn (mut g FlatGen) gen_export_wrapper_for_fn(node flat.Node, module_name string) {
@@ -1610,7 +1613,9 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.loop_label_depths = map[string]int{}
 	g.goto_label_lock_scopes = g.collect_top_level_goto_label_lock_scopes(stmts)
 	g.pending_loop_label = ''
-	g.tc.push_scope()
+	old_ierror_stack_pointer_aliases := g.ierror_stack_pointer_aliases.clone()
+	g.ierror_stack_pointer_aliases = []map[string]bool{}
+	g.push_scope()
 	g.defers = []flat.NodeId{}
 	g.fn_defers = []flat.NodeId{}
 	g.fn_defer_counts = map[int]string{}
@@ -1669,7 +1674,8 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.pending_loop_label = ''
 	g.tc.cur_file = old_tc_file
 	g.tc.cur_module = old_tc_module
-	g.tc.pop_scope()
+	g.pop_scope()
+	g.ierror_stack_pointer_aliases = old_ierror_stack_pointer_aliases.clone()
 }
 
 fn (mut g FlatGen) gen_top_level_main_stmt(id flat.NodeId) {

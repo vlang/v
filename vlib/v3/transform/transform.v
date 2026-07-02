@@ -1893,6 +1893,15 @@ pub fn (mut t Transformer) transform_stmts(ids []flat.NodeId) []flat.NodeId {
 					i += 2
 					continue
 				}
+				if t.is_multi_init_for_block(next_node) {
+					expanded := t.transform_labeled_multi_init_loop(node.value, next_id, next_node)
+					t.drain_pending(mut result)
+					for eid in expanded {
+						result << eid
+					}
+					i += 2
+					continue
+				}
 			}
 		}
 		expanded := t.transform_stmt(id)
@@ -1931,6 +1940,33 @@ fn (t &Transformer) smartcast_context_invalidated(expr_name string) bool {
 	return false
 }
 
+fn (t &Transformer) is_multi_init_for_block(node flat.Node) bool {
+	if node.kind != .block || node.children_count != 2 {
+		return false
+	}
+	if node.value != 'for_c_style_multi' {
+		return false
+	}
+	init_id := t.a.child(&node, 0)
+	loop_id := t.a.child(&node, 1)
+	if int(init_id) < 0 || int(loop_id) < 0 {
+		return false
+	}
+	init_node := t.a.nodes[int(init_id)]
+	loop_node := t.a.nodes[int(loop_id)]
+	if init_node.kind !in [.assign, .decl_assign] || init_node.children_count < 3 {
+		return false
+	}
+	if loop_node.kind != .for_stmt || loop_node.children_count < 3 {
+		return false
+	}
+	loop_init_id := t.a.child(&loop_node, 0)
+	if int(loop_init_id) < 0 {
+		return false
+	}
+	return t.a.nodes[int(loop_init_id)].kind == .empty
+}
+
 // transform_labeled_loop transforms transform labeled loop data for transform.
 fn (mut t Transformer) transform_labeled_loop(label string, loop_id flat.NodeId, loop_node flat.Node) []flat.NodeId {
 	if label.len == 0 {
@@ -1963,6 +1999,30 @@ fn (mut t Transformer) transform_labeled_loop(label string, loop_id flat.NodeId,
 	result << t.a.add_val(.label_stmt, label)
 	result << t.transform_stmt(new_loop)
 	result << t.a.add_val(.label_stmt, break_label)
+	return result
+}
+
+fn (mut t Transformer) transform_labeled_multi_init_loop(label string, block_id flat.NodeId, block_node flat.Node) []flat.NodeId {
+	if label.len == 0 {
+		return t.transform_stmt(block_id)
+	}
+	init_id := t.a.child(&block_node, 0)
+	loop_id := t.a.child(&block_node, 1)
+	loop_node := t.a.nodes[int(loop_id)]
+	mut block_children := []flat.NodeId{}
+	init_expanded := t.transform_stmt(init_id)
+	t.drain_pending(mut block_children)
+	for eid in init_expanded {
+		block_children << eid
+	}
+	labeled_loop := t.transform_labeled_loop(label, loop_id, loop_node)
+	t.drain_pending(mut block_children)
+	for i in 0 .. labeled_loop.len - 1 {
+		block_children << labeled_loop[i]
+	}
+	mut result := []flat.NodeId{}
+	result << t.make_block(block_children)
+	result << labeled_loop.last()
 	return result
 }
 
