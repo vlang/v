@@ -8,6 +8,11 @@ fn (t &Transformer) is_interface_type(name string) bool {
 	return t.resolve_interface_type_name(name).len > 0
 }
 
+fn (t &Transformer) is_builtin_ierror_interface_name(name string) bool {
+	clean := t.trim_pointer_type(t.normalize_type_alias(name))
+	return clean == 'IError' || clean == 'builtin.IError'
+}
+
 // resolve_interface_type_name resolves resolve interface type name information for transform.
 fn (t &Transformer) resolve_interface_type_name(name string) string {
 	if name.len == 0 || isnil(t.tc) {
@@ -16,6 +21,15 @@ fn (t &Transformer) resolve_interface_type_name(name string) string {
 	clean := t.trim_pointer_type(t.normalize_type_alias(name))
 	if clean in t.tc.interface_names {
 		return clean
+	}
+	if !clean.contains('.') && t.cur_file.len > 0 {
+		for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {
+			[]string{}
+		} {
+			if candidate in t.tc.interface_names {
+				return candidate
+			}
+		}
 	}
 	if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
@@ -42,7 +56,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	}
 	// IError has bespoke handling (built via `error()`, fields accessed directly);
 	// do not route it through the generic interface boxing.
-	if iface_name.all_after_last('.') == 'IError' {
+	if t.is_builtin_ierror_interface_name(iface_name) {
 		return none
 	}
 	node := t.a.nodes[int(id)]
@@ -87,7 +101,7 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 		return none
 	}
 	iface_name := t.resolve_interface_type_name(child.value)
-	if iface_name.len == 0 || iface_name.all_after_last('.') == 'IError' {
+	if iface_name.len == 0 || t.is_builtin_ierror_interface_name(iface_name) {
 		return none
 	}
 	old_pending := t.pending_stmts.clone()

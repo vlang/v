@@ -1004,6 +1004,14 @@ fn (mut e Eval) exec_stmts(stmts []flat.NodeId) !FlowSignal {
 						i += 2
 						continue
 					}
+					if e.is_multi_init_for_block(next_node) {
+						signal := e.exec_labeled_multi_init_for(next_node, node.value)!
+						if signal.kind != .normal {
+							return signal
+						}
+						i += 2
+						continue
+					}
 				}
 			}
 		}
@@ -1014,6 +1022,49 @@ fn (mut e Eval) exec_stmts(stmts []flat.NodeId) !FlowSignal {
 		i++
 	}
 	return normal_flow()
+}
+
+fn (e &Eval) is_multi_init_for_block(node &flat.Node) bool {
+	if node.kind != .block || node.children_count != 2 {
+		return false
+	}
+	if node.value != 'for_c_style_multi' {
+		return false
+	}
+	init_id := e.child(node, 0)
+	loop_id := e.child(node, 1)
+	if int(init_id) < 0 || int(loop_id) < 0 {
+		return false
+	}
+	init_node := e.node(init_id)
+	loop_node := e.node(loop_id)
+	if init_node.kind !in [.assign, .decl_assign] || init_node.children_count < 3 {
+		return false
+	}
+	if loop_node.kind != .for_stmt || loop_node.children_count < 3 {
+		return false
+	}
+	loop_init_id := e.child(loop_node, 0)
+	if int(loop_init_id) < 0 {
+		return false
+	}
+	return e.node(loop_init_id).kind == .empty
+}
+
+fn (mut e Eval) exec_labeled_multi_init_for(node &flat.Node, loop_label string) !FlowSignal {
+	init_id := e.child(node, 0)
+	loop_id := e.child(node, 1)
+	e.open_scope()
+	if int(init_id) >= 0 {
+		init_signal := e.exec_stmt(init_id)!
+		if init_signal.kind != .normal {
+			e.close_scope()!
+			return init_signal
+		}
+	}
+	signal := e.exec_for(e.node(loop_id), loop_label)!
+	e.close_scope()!
+	return signal
 }
 
 fn (mut e Eval) exec_block(node &flat.Node) !FlowSignal {

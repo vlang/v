@@ -1285,7 +1285,7 @@ fn (tc &TypeChecker) ownership_node_param_mut_flags(node flat.Node) []bool {
 	for i in 0 .. node.children_count {
 		child := tc.a.child_node(&node, i)
 		if child.kind == .param {
-			params << child.op == .amp
+			params << (child.op == .amp || child.is_mut)
 		}
 	}
 	return params
@@ -6370,12 +6370,14 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 		return false
 	}
 	source_name := tc.ownership_expr_ident_name(id)
-	if source_name.len > 0 && source_name in tc.ownership_state().owned_vars {
-		tc.ownership_reject_global_move(source_name, pos, target_name, false)
-		if moved := tc.ownership_state().moved_vars[source_name] {
-			tc.ownership_report_moved(source_name, moved, id)
+	if source_name.len > 0 {
+		if moved := tc.ownership_moved_conflict(source_name) {
+			tc.ownership_report_moved(moved.name, moved.info, id)
 			return false
 		}
+	}
+	if source_name.len > 0 && source_name in tc.ownership_state().owned_vars {
+		tc.ownership_reject_global_move(source_name, pos, target_name, false)
 		tc.ownership_move_var(source_name, target_name, pos, false, '', true)
 		tc.ownership_mark_owned(target_name, tc.ownership_type_for_var(source_name, target_type),
 			pos)
@@ -7240,12 +7242,17 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 			}
 			continue
 		}
+		if moved := tc.ownership_moved_conflict(arg_name) {
+			tc.ownership_report_moved(moved.name, moved.info, arg_id)
+			continue
+		}
 		tc.ownership_reject_global_move(arg_name, id, call_name, true)
 		if arg_name in st.owned_vars {
+			type_name := tc.ownership_type_name_for_var(arg_name)
 			tc.ownership_move_var(arg_name, call_name, id, true, call_name, true)
 			if variadic_elem_idx >= 0 {
 				tc.ownership_add_fn_param_descendant(call_name, target_param_idx, target_suffix,
-					tc.ownership_type_name_for_var(arg_name))
+					type_name)
 			} else {
 				key := '${call_name}__param_${param_idx}'
 				st.ownership_fn_params[key] = true
@@ -8713,6 +8720,8 @@ fn (mut tc TypeChecker) ownership_move_var_result(name string, target string, po
 		return false
 	}
 	tname := st.owned_var_types[name] or { 'string' }
+	st.owned_vars.delete(name)
+	st.owned_var_types.delete(name)
 	st.moved_vars[name] = MovedVar{
 		moved_to:      target
 		move_pos:      pos

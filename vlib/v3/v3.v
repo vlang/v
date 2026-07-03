@@ -1237,6 +1237,21 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 		return import_path
 	}
 	short_name := import_path.all_after_last('.')
+	if import_dir.len > 0 {
+		module_root := module_root_for_import_dir(import_path, import_dir)
+		short_sibling_dir := os.join_path_single(module_root, short_name)
+		if os.is_dir(short_sibling_dir)
+			&& os.real_path(short_sibling_dir) != os.real_path(import_dir) {
+			return import_path
+		}
+	}
+	if project_root.len > 0 && import_dir.len > 0 {
+		short_project_dir := os.join_path_single(project_root, short_name)
+		if os.is_dir(short_project_dir)
+			&& os.real_path(short_project_dir) != os.real_path(import_dir) {
+			return import_path
+		}
+	}
 	short_dir := resolve_project_or_pref_module_path_cached(prefs, short_name, importing_file,
 		project_root, mut path_cache)
 	if short_dir.len > 0 && import_dir.len > 0 && os.is_dir(short_dir)
@@ -1244,6 +1259,18 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 		return import_path
 	}
 	return short_name
+}
+
+fn module_root_for_import_dir(import_path string, import_dir string) string {
+	mut root := import_dir
+	for _ in import_path.split('.') {
+		parent := os.dir(root)
+		if parent == root {
+			return root
+		}
+		root = parent
+	}
+	return root
 }
 
 fn resolve_project_or_pref_module_path_cached(prefs &pref.Preferences, mod_name string, importing_file string, project_root string, mut cache map[string]string) string {

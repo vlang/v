@@ -137,7 +137,16 @@ fn test_parallel_checker_preserves_diagnostic_order() {
 	}
 	src.writeln('fn main() {}')
 	os.write_file(src_path, src.str()) or { panic(err) }
-	result := os.execute('VJOBS=4 ${v3_bin} ${src_path} -b c -o ${out}')
+	old_vjobs := os.getenv_opt('VJOBS')
+	os.setenv('VJOBS', '4', true)
+	defer {
+		if value := old_vjobs {
+			os.setenv('VJOBS', value, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
+	result := os.execute('${v3_bin} ${src_path} -b c -o ${out}')
 	assert result.exit_code != 0, result.output
 	first := error_index(result.output, 'unknown identifier `missing_0`')
 	second := error_index(result.output, 'unknown identifier `missing_1`')
@@ -186,6 +195,18 @@ fn test_type_checker_reports_core_semantic_errors() {
 	run_bad(v3_bin, 'bad_interface_field',
 		'interface Named {\n\tname string\n}\nstruct Person {}\nfn takes_named(n Named) {}\nfn main() {\n\ttakes_named(Person{})\n}\n',
 		'cannot use `Person` as argument 1 to `takes_named`; expected `Named`')
+	run_bad(v3_bin, 'bad_interface_match_unrelated_sum_variant',
+		'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nstruct Other {\n\tx int\n}\ntype Unrelated = Other\nfn describe(s Shape) int {\n\treturn match s {\n\t\tOther { 1 }\n\t\telse { s.area() }\n\t}\n}\nfn main() {}\n',
+		'`Other` is not compatible with interface `Shape`')
+	run_bad(v3_bin, 'bad_interface_is_unrelated_sum_variant',
+		'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nstruct Other {\n\tx int\n}\ntype Unrelated = Other\nfn check(s Shape) bool {\n\treturn s is Other\n}\nfn main() {}\n',
+		'`Other` is not compatible with interface `Shape`')
+	run_bad(v3_bin, 'bad_interface_match_unresolved_pattern',
+		'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nfn describe(s Shape) int {\n\treturn match s {\n\t\tMissingType { 1 }\n\t\telse { 0 }\n\t}\n}\nfn main() {}\n',
+		'unknown type `MissingType`')
+	run_bad(v3_bin, 'bad_interface_is_unresolved_pattern',
+		'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nfn check(s Shape) bool {\n\treturn s is MissingType\n}\nfn main() {}\n',
+		'unknown type `MissingType`')
 	alias_interface_out := run_good(v3_bin, 'alias_receiver_implements_interface',
 		"type Text = string\n\nfn (t Text) display() string {\n\treturn t\n}\n\ninterface Displayable {\n\tdisplay() string\n}\n\nfn print_displayable(ds ...Displayable) {\n\tfor d in ds {\n\t\tprintln(d.display())\n\t}\n}\n\nfn main() {\n\tprint_displayable(Text('test'), Text('hehe'))\n}\n")
 	assert alias_interface_out == 'test\nhehe'
@@ -201,6 +222,20 @@ fn test_type_checker_reports_core_semantic_errors() {
 	run_bad(v3_bin, 'bad_sum_match_variant',
 		'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\nstruct Bird {\n\twings int\n}\ntype Animal = Cat | Dog\nfn main() {\n\ta := Animal(Cat{\n\t\tage: 2\n\t})\n\tmatch a {\n\t\tBird {}\n\t\telse {}\n\t}\n}\n',
 		'`Bird` is not a variant of sum type `Animal`')
+	run_bad(v3_bin, 'bad_sum_constructor_extra_arg',
+		'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn main() {\n\t_ := Tree[int](Empty{}, side_effect())\n}\n',
+		'argument count mismatch for `Tree[int]`: expected 1, got 2')
+	run_bad(v3_bin, 'bad_sum_constructor_extra_arg_as_call_arg',
+		'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn use(t Tree[int]) {}\nfn main() {\n\tuse(Tree[int](Empty{}, side_effect()))\n}\n',
+		'argument count mismatch for `Tree[int]`: expected 1, got 2')
+	run_bad_project(v3_bin, 'bad_imported_sum_constructor_extra_arg', {
+		'trees/trees.v': 'module trees\n\npub struct Empty {}\n\npub struct Node[T] {\n\tpub:\n\tvalue T\n}\n\npub type Tree[T] = Empty | Node[T]\n\npub fn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\n'
+		'main.v':        'import trees { Empty, Tree, side_effect }\n\nfn main() {\n\t_ := Tree[int](Empty{}, side_effect())\n}\n'
+	}, 'main.v', 'argument count mismatch for `trees.Tree[int]`: expected 1, got 2')
+	run_bad_project(v3_bin, 'bad_aliased_sum_constructor_extra_arg', {
+		'trees/trees.v': 'module trees\n\npub struct Empty {}\n\npub struct Node[T] {\n\tpub:\n\tvalue T\n}\n\npub type Tree[T] = Empty | Node[T]\n\npub fn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\n'
+		'main.v':        'import trees as tr\n\nfn main() {\n\t_ := tr.Tree[int](tr.Empty{}, tr.side_effect())\n}\n'
+	}, 'main.v', 'argument count mismatch for `trees.Tree[int]`: expected 1, got 2')
 	run_bad(v3_bin, 'bad_unknown_decl_type', 'fn f(x Missing) {}\nfn main() {}\n',
 		'unknown type `Missing`')
 	run_bad(v3_bin, 'bad_unknown_generic_application_base',
@@ -386,6 +421,35 @@ fn test_fixed_array_length_checks() {
 	good_ret_lit := run_good(v3_bin, 'good_return_if_array_literal',
 		'fn pick(c bool) []int {\n\treturn if c { [1, 2, 3] } else { [4, 5] }\n}\nfn main() {\n\tprintln(int_str(pick(true).len + pick(false).len))\n}\n')
 	assert good_ret_lit == '5'
+	mixed_const_src := 'const xs = [1, 2, 3]\nfn first() int {\n\treturn xs[0]\n}\nfn length_score() int {\n\treturn xs.len\n}\nfn all() []int {\n\treturn xs\n}\nfn main() {\n\tys := all()\n\tprintln(int_str(first() + length_score() + ys.len + ys[2]))\n}\n'
+	mixed_const := run_good(v3_bin, 'good_indexed_const_returned_dynamic_array', mixed_const_src)
+	assert mixed_const == '10'
+	mixed_const_c := gen_c_project(v3_bin, 'good_indexed_const_returned_dynamic_array_c', {
+		'main.v': mixed_const_src
+	}, 'main.v')
+	mixed_const_compact := mixed_const_c.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert mixed_const_compact.contains('Arraymain__xs;'), mixed_const_c
+	assert mixed_const_compact.contains('main__xs=new_array_from_c_array(3,3,sizeof(int),(int[]){1,2,3});'), mixed_const_c
+
+	assert mixed_const_compact.contains('return(*(int*)array_get(main__xs,0));'), mixed_const_c
+	assert mixed_const_compact.contains('intlength_score(void){returnmain__xs.len;}'), mixed_const_c
+	assert mixed_const_compact.contains('Arrayall(void){returnmain__xs;}'), mixed_const_c
+	assert !mixed_const_compact.contains('returnnew_array_from_c_array(3,3,sizeof(int),&main__xs);'), mixed_const_c
+
+	shadowed := run_good_project(v3_bin, 'good_shadowed_const_fixed_storage', {
+		'main.v':       'module main\n\nimport fixture\n\nconst xs = [10, 20, 30]\n\nfn all() []int {\n\treturn xs\n}\n\nfn main() {\n\tys := all()\n\tprintln(int_str(fixture.first() + ys.len + ys[2]))\n}\n'
+		'fixture/fi.v': 'module fixture\n\npub const xs = [1, 2, 3]\n\npub fn first() int {\n\treturn xs[0]\n}\n'
+	}, 'main.v')
+	assert shadowed == '34'
+	shadowed_c := gen_c_project(v3_bin, 'good_shadowed_const_fixed_storage_c', {
+		'main.v':       'module main\n\nimport fixture\n\nconst xs = [10, 20, 30]\n\nfn all() []int {\n\treturn xs\n}\n\nfn main() {\n\tys := all()\n\tprintln(int_str(fixture.first() + ys.len + ys[2]))\n}\n'
+		'fixture/fi.v': 'module fixture\n\npub const xs = [1, 2, 3]\n\npub fn first() int {\n\treturn xs[0]\n}\n'
+	}, 'main.v')
+	shadowed_compact := shadowed_c.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert shadowed_compact.contains('Arraymain__xs;'), shadowed_c
+	assert shadowed_compact.contains('returnmain__xs;'), shadowed_c
+	assert shadowed_compact.contains('fixture__xs[3]'), shadowed_c
+	assert shadowed_compact.contains('returnfixture__xs[0];'), shadowed_c
 }
 
 fn test_statement_if_branch_tails_are_not_value_checked() {

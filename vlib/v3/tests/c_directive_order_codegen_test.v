@@ -36,6 +36,7 @@ fn main() {}
 #define SOKOL_GFX_IMPL
 #include "sokol_gfx.h"
 ')
+	directive_order_write_file(root, 'sokol/c/sokol_gfx.h', '')
 	directive_order_write_file(root, 'sokol/f/f.v', 'module f
 
 import sokol.c as _
@@ -47,6 +48,8 @@ import sokol.c as _
 #include "sokol_gfx.h"
 #endif
 ')
+	directive_order_write_file(root, 'sokol/f/util/sokol_fontstash.h', '')
+	directive_order_write_file(root, 'sokol/f/sokol_gfx.h', '')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order.c')
 	os.rm(c_out) or {}
 	result := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${c_out}')
@@ -580,6 +583,26 @@ fn main() {
 	return os.read_file(c_out) or { panic(err) }
 }
 
+fn directive_order_gen_c_unresolved_quoted_include(v3_bin string) string {
+	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_unresolved_quoted_include_project')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	directive_order_write_file(root, 'v.mod',
+		"Module { name: 'directive_order_unresolved_quoted_include' }\n")
+	directive_order_write_file(root, 'main.v', 'module main
+
+#include "external_missing.h"
+#define AFTER_QUOTED_INCLUDE 1
+
+fn main() {}
+')
+	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_unresolved_quoted_include.c')
+	os.rm(c_out) or {}
+	result := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${c_out}')
+	assert result.exit_code == 0, result.output
+	return os.read_file(c_out) or { panic(err) }
+}
+
 fn directive_order_gen_c_nested_preserved_system_include(v3_bin string) string {
 	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_nested_preserved_include_project')
 	os.rmdir_all(root) or {}
@@ -1007,6 +1030,15 @@ fn test_unresolved_system_include_is_preserved() {
 	assert dlfcn_idx < fd_set_idx, c_code
 }
 
+fn test_unresolved_quoted_include_is_preserved() {
+	c_code := directive_order_gen_c_unresolved_quoted_include(directive_order_build_v3())
+	include_idx := directive_order_index(c_code, '#include "external_missing.h"')
+	define_idx := directive_order_index(c_code, '#define AFTER_QUOTED_INCLUDE 1')
+	assert include_idx >= 0, c_code
+	assert define_idx >= 0, c_code
+	assert include_idx < define_idx, c_code
+}
+
 fn test_nested_preserved_system_include_is_lifted_before_preamble() {
 	c_code := directive_order_gen_c_nested_preserved_system_include(directive_order_build_v3())
 	include_idx := directive_order_index(c_code, '#include <nested_platform_header.h>')
@@ -1066,6 +1098,12 @@ fn test_stdarg_in_inlined_header_uses_headerless_va_defs() {
 fn test_rwmutex_keeps_linux_rwlockattr_prototype() {
 	c_code := directive_order_gen_c_rwmutex(directive_order_build_v3())
 	assert c_code.contains('int pthread_rwlockattr_setkind_np('), c_code
+	assert c_code.contains('int pthread_rwlockattr_init('), c_code
+	assert c_code.contains('int pthread_rwlockattr_destroy('), c_code
+	assert c_code.contains('int pthread_rwlock_init('), c_code
+	assert c_code.contains('int pthread_rwlock_wrlock('), c_code
+	assert c_code.contains('int pthread_rwlock_unlock('), c_code
+	assert !c_code.contains('i32 pthread_rwlock'), c_code
 }
 
 fn test_shared_runtime_keeps_rwmutex_init_prototypes() {

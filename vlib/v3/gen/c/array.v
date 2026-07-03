@@ -32,6 +32,14 @@ fn array_fixed_type(t types.Type) ?types.ArrayFixed {
 	return none
 }
 
+fn fixed_array_pointer_type(t types.Type) ?types.ArrayFixed {
+	clean := if t is types.Alias { t.base_type } else { t }
+	if clean is types.Pointer {
+		return array_fixed_type(clean.base_type)
+	}
+	return none
+}
+
 fn fixed_array_index_info(t types.Type) (bool, bool, types.ArrayFixed) {
 	if fixed := array_fixed_type(t) {
 		return true, false, fixed
@@ -157,6 +165,36 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 		return
 	}
 	g.gen_expr(id)
+}
+
+fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected types.Type) bool {
+	if _ := fixed_array_pointer_type(expected) {
+		// handled below
+	} else {
+		return false
+	}
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	mut actual := g.tc.resolve_type(id)
+	if node.kind == .ident {
+		if param_type := g.current_param_type(node.value) {
+			actual = param_type
+		}
+	}
+	if actual is types.Pointer {
+		return false
+	}
+	if _ := array_fixed_type(actual) {
+		if !g.expr_is_addressable(id) {
+			return false
+		}
+		g.write('&')
+		g.gen_expr(id)
+		return true
+	}
+	return false
 }
 
 // gen_array_push_many_stmt emits array push many stmt output for c.

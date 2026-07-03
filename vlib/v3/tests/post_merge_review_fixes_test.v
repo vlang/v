@@ -57,6 +57,24 @@ fn gen_c(v3_bin string, name string, src string) string {
 	return os.read_file(c_path) or { panic(err) }
 }
 
+fn c_fn_body(c_source string, signature string) string {
+	start := c_source.index(signature) or { return '' }
+	open_rel := c_source[start..].index('{') or { return '' }
+	body_start := start + open_rel
+	mut depth := 0
+	for i in body_start .. c_source.len {
+		if c_source[i] == `{` {
+			depth++
+		} else if c_source[i] == `}` {
+			depth--
+			if depth == 0 {
+				return c_source[start..i + 1]
+			}
+		}
+	}
+	return c_source[start..]
+}
+
 fn write_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
 	os.mkdir_all(os.dir(path)) or { panic(err) }
@@ -202,6 +220,85 @@ fn test_array_alias_free_uses_array_builtin_inside_alias_method() {
 	out := run_good(v3_bin, 'array_alias_free_builtin',
 		'import strings\n\nfn main() {\n\tmut b := strings.new_builder(4)\n\tb.write_string("ok")\n\tunsafe { b.free() }\n\tprintln("ok")\n}\n')
 	assert out == 'ok'
+}
+
+fn test_for_mut_pointer_storage_receivers_do_not_get_extra_address() {
+	v3_bin := build_v3()
+	item_src := 'struct Item {
+mut:
+	n int
+}
+
+fn (mut item Item) bump() {
+	item.n++
+}
+
+fn bump_item(mut item Item) {
+	item.bump()
+}
+
+struct Counter {
+mut:
+	n int
+}
+
+fn (mut c Counter) inc() {
+	c.n++
+}
+
+fn inc_counter(mut c Counter) {
+	c.inc()
+}
+
+fn main() {
+	mut items := [Item{n: 1}, Item{n: 2}]
+	for mut item in items {
+		item.bump()
+		bump_item(mut item)
+	}
+	{
+		mut item := Counter{}
+		inc_counter(mut item)
+		item.inc()
+		assert item.n == 2
+	}
+	mut c := Counter{}
+	inc_counter(mut c)
+	c.inc()
+	println(int_str(items[0].n))
+	println(int_str(items[1].n))
+	println(int_str(c.n))
+}
+'
+	out := run_good(v3_bin, 'for_mut_item_receiver_run', item_src)
+	assert out == '3\n4\n2'
+	item_c := gen_c(v3_bin, 'for_mut_item_receiver_c', item_src)
+	item_main := c_fn_body(item_c, 'int main(')
+	assert item_main.len > 0, item_c
+	assert item_main.contains('Item* item ='), item_main
+	assert item_main.contains('__bump(item);'), item_main
+	assert !item_main.contains('__bump(&item);'), item_main
+	assert item_main.contains('bump_item(item);'), item_main
+	assert !item_main.contains('bump_item(&item);'), item_main
+	assert item_main.contains('inc_counter(&item);'), item_main
+	assert !item_main.contains('inc_counter(item);'), item_main
+	assert item_main.contains('inc_counter(&c);'), item_main
+	assert item_main.contains('__inc(&item);'), item_main
+	assert item_main.contains('__inc(&c);'), item_main
+	assert !item_main.contains('__inc(c);'), item_main
+
+	string_c := gen_c(v3_bin, 'for_mut_string_free_receiver', "fn main() {
+	mut values := ['alpha', 'beta']
+	for mut s in values {
+		unsafe { s.free() }
+	}
+}
+")
+	string_main := c_fn_body(string_c, 'int main(')
+	assert string_main.len > 0, string_c
+	assert string_main.contains('string* s ='), string_main
+	assert string_main.contains('string__free(s);'), string_main
+	assert !string_main.contains('string__free(&s);'), string_main
 }
 
 fn test_channel_alias_close_method_wins_over_builtin() {

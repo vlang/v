@@ -246,7 +246,7 @@ fn launch_v3_ownership_compiler(is_verbose bool, args []string) {
 		exit(1)
 	}
 	if util.should_recompile_tool(vexe, v3_src_dir, tool_name, v3_exe) {
-		compilation_command := '${os.quoted_path(vexe)} -d ownership -o ${os.quoted_path(v3_exe)} ${os.quoted_path(v3_main_source)}'
+		compilation_command := '${os.quoted_path(vexe)} -gc none -d ownership -o ${os.quoted_path(v3_exe)} ${os.quoted_path(v3_main_source)}'
 		if is_verbose {
 			println('Compiling ${tool_name} with: "${compilation_command}"')
 		}

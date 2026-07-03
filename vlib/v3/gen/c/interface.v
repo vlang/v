@@ -201,23 +201,58 @@ fn (mut g FlatGen) register_interface_strings() {
 // type id. The id is stored in the boxed interface value's `_typ` field and is
 // what the generated method-dispatch switch matches on.
 fn (mut g FlatGen) collect_interface_impls() {
+	g.ierror_method_emit_names = map[string]bool{}
 	mut iface_names := []string{}
 	for name, _ in g.interfaces {
 		iface_names << name
 	}
 	iface_names.sort()
+	mut struct_names := []string{}
+	for name, _ in g.tc.structs {
+		struct_names << name
+	}
+	struct_names.sort()
 	for iface in iface_names {
-		if c_name(iface) == 'IError' {
-			continue
+		mut impls := []string{}
+		if g.is_ierror_type_name(iface) {
+			for concrete in struct_names {
+				if g.type_can_box_as_ierror(concrete) {
+					impls << concrete
+				}
+			}
+		} else {
+			// Structs plus type aliases with their own implementing methods; ids
+			// must come from tc.interface_impl_names so the transform's `is`
+			// checks agree with the dispatch ids assigned here.
+			impls = g.tc.interface_impl_names(iface)
 		}
-		// Structs plus type aliases with their own implementing methods; ids
-		// must come from tc.interface_impl_names so the transform's `is`
-		// checks agree with the dispatch ids assigned here.
-		impls := g.tc.interface_impl_names(iface)
 		g.iface_impls[iface] = impls
 		for idx, concrete in impls {
 			g.iface_type_ids['${iface}::${concrete}'] = idx + 1
 		}
+		if g.is_ierror_type_name(iface) {
+			g.collect_ierror_method_emit_names(impls)
+		}
+	}
+}
+
+fn (mut g FlatGen) collect_ierror_method_emit_names(impls []string) {
+	for concrete in impls {
+		for method in ['msg', 'code'] {
+			call := g.ierror_method_call(concrete, method) or { continue }
+			g.add_ierror_method_emit_name(call.method_name)
+		}
+	}
+}
+
+fn (mut g FlatGen) add_ierror_method_emit_name(name string) {
+	if name.len == 0 {
+		return
+	}
+	g.ierror_method_emit_names[name] = true
+	lowered := c_name(name)
+	if lowered != name {
+		g.ierror_method_emit_names[lowered] = true
 	}
 }
 
@@ -225,6 +260,365 @@ fn (mut g FlatGen) collect_interface_impls() {
 // interface `iface`, or 0 if `concrete` does not implement `iface`.
 fn (g &FlatGen) iface_type_id(iface string, concrete string) int {
 	return g.iface_type_ids['${iface}::${concrete}'] or { 0 }
+}
+
+fn (g &FlatGen) iface_type_id_for_pattern(iface string, pattern string) int {
+	id := g.iface_type_id(iface, pattern)
+	if id != 0 {
+		return id
+	}
+	qpattern := g.tc.qualify_name(pattern)
+	if qpattern != pattern {
+		qid := g.iface_type_id(iface, qpattern)
+		if qid != 0 {
+			return qid
+		}
+	}
+	if pattern.contains('.') {
+		return 0
+	}
+	mut found := 0
+	for concrete in g.iface_impls[iface] or { []string{} } {
+		if concrete.all_after_last('.') != pattern {
+			continue
+		}
+		cid := g.iface_type_id(iface, concrete)
+		if cid == 0 {
+			continue
+		}
+		if found != 0 {
+			return 0
+		}
+		found = cid
+	}
+	return found
+}
+
+fn (g &FlatGen) ierror_interface_name() ?string {
+	for name, _ in g.interfaces {
+		if g.is_ierror_type_name(name) {
+			return name
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) is_ierror_type_name(name string) bool {
+	_ = g
+	return name == 'IError' || name == 'builtin.IError' || c_name(name) == 'IError'
+}
+
+fn (g &FlatGen) ierror_direct_method_name(concrete string, method string) ?string {
+	direct := '${concrete}.${method}'
+	if g.ierror_method_signature_matches(direct, concrete, method) {
+		return direct
+	}
+	qconcrete := g.tc.qualify_name(concrete)
+	if qconcrete != concrete {
+		qdirect := '${qconcrete}.${method}'
+		if g.ierror_method_signature_matches(qdirect, qconcrete, method) {
+			return qdirect
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) ierror_method_signature_matches(name string, concrete string, method string) bool {
+	params := g.tc.fn_param_types[name] or { return false }
+	if params.len != 1 {
+		return false
+	}
+	ret := g.tc.fn_ret_types[name] or { return false }
+	if !g.ierror_method_return_matches(method, ret) {
+		return false
+	}
+	receiver := g.ierror_clean_type(params[0])
+	expected := g.ierror_clean_type(g.tc.parse_type(concrete))
+	return g.type_names_match(receiver, expected)
+}
+
+fn (g &FlatGen) ierror_method_return_matches(method string, ret types.Type) bool {
+	clean := if ret is types.Alias { ret.base_type } else { ret }
+	return match method {
+		'msg' { clean is types.String }
+		'code' { clean.name() == 'int' }
+		else { false }
+	}
+}
+
+fn (g &FlatGen) ierror_clean_type(typ types.Type) types.Type {
+	clean0 := types.unwrap_pointer(typ)
+	return if clean0 is types.Alias { clean0.base_type } else { clean0 }
+}
+
+struct IErrorMethodCall {
+	method_name string
+	path        []types.StructField
+}
+
+fn (g &FlatGen) ierror_method_call(concrete string, method string) ?IErrorMethodCall {
+	if direct := g.ierror_direct_method_name(concrete, method) {
+		return IErrorMethodCall{
+			method_name: direct
+		}
+	}
+	mut seen := map[string]bool{}
+	return g.ierror_promoted_method_call(concrete, method, mut seen)
+}
+
+fn (g &FlatGen) ierror_promoted_method_call(concrete string, method string, mut seen map[string]bool) ?IErrorMethodCall {
+	if concrete in seen {
+		return none
+	}
+	seen[concrete] = true
+	for field in g.struct_embedded_fields(concrete) {
+		embedded_name := g.embedded_field_type_name(field)
+		if embedded_name.len == 0 {
+			continue
+		}
+		if direct := g.ierror_direct_method_name(embedded_name, method) {
+			return IErrorMethodCall{
+				method_name: direct
+				path:        [field]
+			}
+		}
+		if nested := g.ierror_promoted_method_call(embedded_name, method, mut seen) {
+			mut path := [field]
+			path << nested.path
+			return IErrorMethodCall{
+				method_name: nested.method_name
+				path:        path
+			}
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) ierror_method_receiver_expr(concrete string, path []types.StructField, recv_is_ptr bool) string {
+	concrete_ct := g.tc.c_type(g.tc.parse_type(concrete))
+	object := '(${concrete_ct}*)i->_object'
+	if path.len == 0 {
+		return if recv_is_ptr { object } else { '*${object}' }
+	}
+	mut access := object
+	mut access_is_ptr := true
+	for field in path {
+		op := if access_is_ptr { '->' } else { '.' }
+		access = '(${access})${op}${c_field_name(field.name)}'
+		access_is_ptr = field.typ is types.Pointer
+	}
+	if access_is_ptr == recv_is_ptr {
+		return access
+	}
+	return if recv_is_ptr { '&(${access})' } else { '*(${access})' }
+}
+
+fn (g &FlatGen) type_can_box_as_ierror(concrete string) bool {
+	return g.tc.named_type_compatible_with_ierror(concrete)
+}
+
+fn (g &FlatGen) ierror_concrete_name(t types.Type) ?string {
+	clean := g.ierror_payload_concrete_type(t)
+	if clean !is types.Struct {
+		return none
+	}
+	iface := g.ierror_interface_name() or { return none }
+	name := (clean as types.Struct).name
+	if g.iface_type_id(iface, name) != 0 {
+		return name
+	}
+	qname := g.tc.qualify_name(name)
+	if qname != name && g.iface_type_id(iface, qname) != 0 {
+		return qname
+	}
+	return none
+}
+
+fn (g &FlatGen) ierror_payload_concrete_type(t types.Type) types.Type {
+	mut clean := t
+	mut seen := map[string]bool{}
+	for {
+		clean = types.unwrap_pointer(clean)
+		if clean is types.Alias {
+			if seen[clean.name] {
+				return clean
+			}
+			seen[clean.name] = true
+			clean = clean.base_type
+			continue
+		}
+		return clean
+	}
+	return clean
+}
+
+fn (g &FlatGen) ierror_type_id_for_pattern(pattern string) int {
+	iface := g.ierror_interface_name() or { return 0 }
+	return g.iface_type_id_for_pattern(iface, pattern)
+}
+
+fn (g &FlatGen) should_emit_ierror_method(name string, qname string) bool {
+	if name in g.ierror_method_emit_names || qname in g.ierror_method_emit_names {
+		return true
+	}
+	return c_name(qname) in g.ierror_method_emit_names
+}
+
+fn (mut g FlatGen) gen_ierror_from_expr(id flat.NodeId) bool {
+	s := g.ierror_from_expr_string(id) or { return false }
+	g.write(s)
+	return true
+}
+
+fn (mut g FlatGen) ierror_from_expr_string(id flat.NodeId) ?string {
+	node := g.a.nodes[int(id)]
+	mut actual := g.usable_expr_type(id)
+	if node.kind == .ident {
+		if param_type := g.current_param_type(node.value) {
+			actual = param_type
+		} else if param_type := g.cur_param_types[node.value] {
+			actual = param_type
+		}
+	}
+	return g.ierror_from_expr_string_with_type(id, actual)
+}
+
+fn (mut g FlatGen) ierror_from_expr_string_with_type(id flat.NodeId, actual types.Type) ?string {
+	node := g.a.nodes[int(id)]
+	concrete := g.ierror_concrete_name(actual) or { return none }
+	iface := g.ierror_interface_name() or { return none }
+	type_id := g.iface_type_id(iface, concrete)
+	if type_id == 0 {
+		return none
+	}
+	expr := g.expr_to_string(id)
+	concrete_ct := g.tc.c_type(g.tc.parse_type(concrete))
+	object := if actual is types.Pointer {
+		if g.ierror_pointer_payload_needs_heap_copy(node)
+			|| g.ierror_pointer_payload_alias_needs_heap_copy(node) {
+			'memdup(${expr}, sizeof(${concrete_ct}))'
+		} else {
+			expr
+		}
+	} else {
+		'memdup((${concrete_ct}[]){${expr}}, sizeof(${concrete_ct}))'
+	}
+	empty_sid := g.intern_string('')
+	return '(IError){._typ = ${type_id}, ._object = ${object}, .message = _str_${empty_sid}, .code = 0}'
+}
+
+fn (g &FlatGen) ierror_pointer_payload_needs_heap_copy(node flat.Node) bool {
+	root := g.ierror_pointer_payload_address_root(node, false) or { return false }
+	return g.ierror_pointer_payload_root_needs_heap_copy(root)
+}
+
+fn (g &FlatGen) ierror_stack_subobject_address_needs_heap_copy(node flat.Node) bool {
+	root := g.ierror_pointer_payload_address_root(node, true) or { return false }
+	return g.ierror_pointer_payload_root_needs_heap_copy(root)
+}
+
+fn (g &FlatGen) ierror_pointer_payload_expr_needs_heap_copy(node flat.Node) bool {
+	clean := g.ierror_pointer_payload_unwrapped_node(node)
+	if g.ierror_pointer_payload_needs_heap_copy(clean) {
+		return true
+	}
+	if g.ierror_array_get_pointer_alias_needs_copy(clean) {
+		return true
+	}
+	if clean.kind == .ident {
+		return g.ierror_pointer_alias_needs_copy(clean.value)
+	}
+	return false
+}
+
+fn (g &FlatGen) ierror_pointer_payload_alias_needs_heap_copy(node flat.Node) bool {
+	clean := g.ierror_pointer_payload_unwrapped_node(node)
+	return clean.kind == .ident && g.cur_scope_has_local_name(clean.value)
+		&& g.ierror_pointer_alias_needs_copy(clean.value)
+}
+
+fn (g &FlatGen) ierror_array_get_pointer_alias_needs_copy(node flat.Node) bool {
+	base_name := g.ierror_array_get_base_name(node) or { return false }
+	return g.ierror_pointer_alias_needs_copy(base_name)
+}
+
+fn (g &FlatGen) ierror_array_get_base_name(node flat.Node) ?string {
+	mut clean := g.ierror_pointer_payload_unwrapped_node(node)
+	if clean.kind == .prefix && clean.op == .mul && clean.children_count > 0 {
+		clean = g.ierror_pointer_payload_unwrapped_node(g.a.nodes[int(g.a.child(&clean, 0))])
+	}
+	if clean.kind != .call || clean.children_count < 2 {
+		return none
+	}
+	target := g.call_target_name(g.a.child(&clean, 0))
+	if target !in ['array_get', 'array__get'] {
+		return none
+	}
+	base := g.ierror_pointer_payload_unwrapped_node(g.a.nodes[int(g.a.child(&clean, 1))])
+	if base.kind == .ident && base.value.len > 0 {
+		return base.value
+	}
+	return none
+}
+
+fn (g &FlatGen) ierror_pointer_alias_name_from_addr(node flat.Node) ?string {
+	clean := g.ierror_pointer_payload_unwrapped_node(node)
+	if clean.kind == .ident && clean.value.len > 0 {
+		return clean.value
+	}
+	if clean.kind == .prefix && clean.op == .amp && clean.children_count > 0 {
+		child := g.ierror_pointer_payload_unwrapped_node(g.a.nodes[int(g.a.child(&clean, 0))])
+		if child.kind == .ident && child.value.len > 0 {
+			return child.value
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) ierror_pointer_payload_address_root(node flat.Node, require_subobject bool) ?flat.Node {
+	clean_node := g.ierror_pointer_payload_unwrapped_node(node)
+	if clean_node.kind != .prefix || clean_node.op != .amp || clean_node.children_count == 0 {
+		return none
+	}
+	mut child_id := g.a.child(&clean_node, 0)
+	mut saw_subobject := false
+	for {
+		child := g.ierror_pointer_payload_unwrapped_node(g.a.nodes[int(child_id)])
+		if child.kind !in [.selector, .index] || child.children_count == 0 {
+			break
+		}
+		saw_subobject = true
+		child_id = g.a.child(&child, 0)
+	}
+	if require_subobject && !saw_subobject {
+		return none
+	}
+	root := g.ierror_pointer_payload_unwrapped_node(g.a.nodes[int(child_id)])
+	if root.kind != .ident {
+		return none
+	}
+	return root
+}
+
+fn (g &FlatGen) ierror_pointer_payload_unwrapped_node(node flat.Node) flat.Node {
+	mut cur := node
+	for cur.kind in [.paren, .expr_stmt, .cast_expr, .as_expr] && cur.children_count > 0 {
+		cur = g.a.nodes[int(g.a.child(&cur, 0))]
+	}
+	return cur
+}
+
+fn (g &FlatGen) ierror_pointer_payload_root_needs_heap_copy(root flat.Node) bool {
+	if param_type := g.current_param_type(root.value) {
+		return param_type !is types.Pointer
+	}
+	if param_type := g.cur_param_types[root.value] {
+		return param_type !is types.Pointer
+	}
+	if local_type := g.tc.cur_scope.lookup(root.value) {
+		return local_type !is types.Pointer
+	}
+	return false
 }
 
 // iface_type_id_for_concrete resolves the dispatch id for a boxed concrete
@@ -265,6 +659,12 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 		return false
 	}
 	iface := iface_type as types.Interface
+	if g.is_ierror_type_name(iface.name) {
+		if s := g.ierror_from_expr_string(id) {
+			g.write(s)
+			return true
+		}
+	}
 	node := g.a.nodes[int(id)]
 	mut actual := g.usable_expr_type(id)
 	if node.kind == .ident {
@@ -331,7 +731,7 @@ fn (g &FlatGen) is_interface_type_name(name string) bool {
 // has_ierror_interface reports whether has ierror interface applies in c.
 fn (g &FlatGen) has_ierror_interface() bool {
 	for name, _ in g.interfaces {
-		if c_name(name) == 'IError' {
+		if g.is_ierror_type_name(name) {
 			return true
 		}
 	}
@@ -442,6 +842,17 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 	if cn == 'IError' {
 		ret_ct := if method == 'code' { 'int' } else { 'string' }
 		g.writeln('${ret_ct} ${cn}__${method}(${cn}* i) {')
+		for concrete in impls {
+			id := g.iface_type_id(iface_name, concrete)
+			call := g.ierror_method_call(concrete, method) or { continue }
+			if id == 0 {
+				continue
+			}
+			params := g.tc.fn_param_types[call.method_name] or { []types.Type{} }
+			recv_is_ptr := params.len > 0 && params[0] is types.Pointer
+			recv := g.ierror_method_receiver_expr(concrete, call.path, recv_is_ptr)
+			g.writeln('\tif (i->_typ == ${id}) return ${c_name(call.method_name)}(${recv});')
+		}
 		match method {
 			'msg' {
 				g.writeln('\treturn i->message;')

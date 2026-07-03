@@ -35,7 +35,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 		} else {
 			g.writeln('{')
 		}
-		g.tc.push_scope()
+		g.push_scope()
 		defer_start := g.defers.len
 		g.indent++
 		if cond.kind == .is_expr {
@@ -54,7 +54,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 		g.gen_defers_from(defer_start)
 		g.trim_defers(defer_start)
 		g.indent--
-		g.tc.pop_scope()
+		g.pop_scope()
 		// else handling — continue the loop for a plain `else if`, recurse only for the
 		// rare guard-else (`else if x := ...`).
 		if cur.children_count <= 2 {
@@ -76,11 +76,11 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			}
 			if else_cond_is_guard {
 				g.writeln('} else {')
-				g.tc.push_scope()
+				g.push_scope()
 				g.indent++
 				g.gen_if(else_node)
 				g.indent--
-				g.tc.pop_scope()
+				g.pop_scope()
 				g.writeln('}')
 				return
 			}
@@ -89,7 +89,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			continue
 		} else if else_node.kind == .block {
 			g.writeln('} else {')
-			g.tc.push_scope()
+			g.push_scope()
 			else_defer_start := g.defers.len
 			g.indent++
 			for i in 0 .. else_node.children_count {
@@ -101,7 +101,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			g.gen_defers_from(else_defer_start)
 			g.trim_defers(else_defer_start)
 			g.indent--
-			g.tc.pop_scope()
+			g.pop_scope()
 			g.writeln('}')
 			return
 		} else {
@@ -186,32 +186,32 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 			g.gen_expr(g.a.child(rhs, 1))
 			g.writeln('});')
 			g.writeln('if (${tmp} != NULL) {')
-			g.tc.push_scope()
+			g.push_scope()
 			g.indent++
 			g.writeln('${c_val_type} ${var_name} = *(${c_val_type}*)${tmp};')
 			g.tc.cur_scope.insert(lhs.value, base_type.value_type)
 		} else {
-			rhs_type := g.tc.resolve_type(rhs_id)
-			opt_ct := g.optional_type_name(rhs_type)
+			rhs_type := g.optional_source_type_for_expr(rhs_id, g.tc.resolve_type(rhs_id))
+			opt_ct := g.optional_type_name_for_expr(rhs_id, rhs_type)
 			val_ct, val_type := g.optional_value_ct(rhs_type)
 			g.write('${opt_ct} ${tmp} = ')
 			g.gen_expr(rhs_id)
 			g.writeln(';')
 			g.writeln('if (${tmp}.ok) {')
-			g.tc.push_scope()
+			g.push_scope()
 			g.indent++
 			g.writeln('${val_ct} ${var_name} = ${tmp}.value;')
 			g.tc.cur_scope.insert(lhs.value, val_type)
 		}
 	} else {
-		rhs_type := g.tc.resolve_type(rhs_id)
-		opt_ct := g.optional_type_name(rhs_type)
+		rhs_type := g.optional_source_type_for_expr(rhs_id, g.tc.resolve_type(rhs_id))
+		opt_ct := g.optional_type_name_for_expr(rhs_id, rhs_type)
 		val_ct, val_type := g.optional_value_ct(rhs_type)
 		g.write('${opt_ct} ${tmp} = ')
 		g.gen_expr(rhs_id)
 		g.writeln(';')
 		g.writeln('if (${tmp}.ok) {')
-		g.tc.push_scope()
+		g.push_scope()
 		g.indent++
 		g.writeln('${val_ct} ${var_name} = ${tmp}.value;')
 		g.tc.cur_scope.insert(lhs.value, val_type)
@@ -229,7 +229,7 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 	g.gen_defers_from(defer_start)
 	g.trim_defers(defer_start)
 	g.indent--
-	g.tc.pop_scope()
+	g.pop_scope()
 	g.gen_if_else(node)
 }
 
@@ -251,11 +251,11 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 			}
 			if else_cond_is_guard {
 				g.writeln('} else {')
-				g.tc.push_scope()
+				g.push_scope()
 				g.indent++
 				g.gen_if(else_node)
 				g.indent--
-				g.tc.pop_scope()
+				g.pop_scope()
 				g.writeln('}')
 			} else {
 				g.write('} else ')
@@ -263,7 +263,7 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 			}
 		} else if else_node.kind == .block {
 			g.writeln('} else {')
-			g.tc.push_scope()
+			g.push_scope()
 			defer_start := g.defers.len
 			g.indent++
 			for i in 0 .. else_node.children_count {
@@ -275,7 +275,7 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 			g.gen_defers_from(defer_start)
 			g.trim_defers(defer_start)
 			g.indent--
-			g.tc.pop_scope()
+			g.pop_scope()
 			g.writeln('}')
 		} else {
 			g.writeln('}')
@@ -453,7 +453,7 @@ fn (mut g FlatGen) if_expr_block_tail_type(block &flat.Node) types.Type {
 	if block.children_count == 0 {
 		return types.Type(types.void_)
 	}
-	g.tc.push_scope()
+	g.push_scope()
 	for i in 0 .. block.children_count - 1 {
 		g.seed_scope_from_decl(*g.a.child_node(block, i))
 	}
@@ -463,7 +463,7 @@ fn (mut g FlatGen) if_expr_block_tail_type(block &flat.Node) types.Type {
 	} else {
 		g.tc.resolve_type(g.a.child(block, block.children_count - 1))
 	}
-	g.tc.pop_scope()
+	g.pop_scope()
 	return ret
 }
 
