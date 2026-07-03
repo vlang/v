@@ -89,3 +89,61 @@ fn test_generic_multi_return_ptr_param_interface_cast() {
 	assert g.f() == 42
 	assert n == 0
 }
+
+// Regression test: generic multi-return with `as T` cast then interface cast.
+// Pattern: raw := interface_value as T; return raw, ... (multi-return with interface cast)
+// Both instantiations in the same file triggers the codegen path.
+
+interface IHolder {
+	secret() int
+}
+
+struct MockA {
+	x int
+}
+
+fn (m MockA) f() int {
+	return m.x + 100
+}
+
+fn (m MockA) secret() int {
+	return m.x
+}
+
+struct MockB {
+	x int
+}
+
+fn (m MockB) f() int {
+	return m.x + 200
+}
+
+fn (m MockB) secret() int {
+	return m.x
+}
+
+@[heap]
+struct Pool[T] {
+mut:
+	raw IHolder
+}
+
+fn (mut w Pool[T]) acquire() (Getter, IHolder) {
+	raw := w.raw as T
+	return raw, w.raw
+}
+
+fn test_generic_as_cast_then_multi_return_interface() {
+	mut w1 := Pool[MockA]{
+		raw: MockA{10}
+	}
+	mut w2 := Pool[MockB]{
+		raw: MockB{20}
+	}
+	g1, h1 := w1.acquire()
+	g2, h2 := w2.acquire()
+	assert g1.f() == 110
+	assert g2.f() == 220
+	assert h1.secret() == 10
+	assert h2.secret() == 20
+}
