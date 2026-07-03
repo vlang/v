@@ -7380,6 +7380,10 @@ fn (mut g Gen) char_literal(node ast.CharLiteral) {
 	}
 	if node.val.len == 1 {
 		clit := node.val[0]
+		if clit > 127 {
+			g.write('((rune)${clit})')
+			return
+		}
 		if clit < 32 || clit == 92 || clit > 126 {
 			g.write("'")
 			write_octal_escape(mut g.out, clit)

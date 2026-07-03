@@ -513,3 +513,10 @@ fn test_all_byte_char_literals() {
 	a = `\xff`
 	assert u8(a) == u8(255)
 }
+
+fn test_high_byte_char_literals_preserve_rune_value() {
+	assert int(`\x80`) == 128
+	assert int(`\xff`) == 255
+	assert `\x80` == rune(128)
+	assert `\xff` == rune(255)
+}
