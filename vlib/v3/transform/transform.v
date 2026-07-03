@@ -2778,12 +2778,12 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 
 fn (mut t Transformer) return_values_with_extra(first_id flat.NodeId, extra_ids []flat.NodeId) []flat.NodeId {
 	total := extra_ids.len + 1
-	mut vals := []flat.NodeId{cap: total}
-	vals << t.transform_return_child(first_id, 0, total)
-	for i, extra_id in extra_ids {
-		vals << t.transform_return_child(extra_id, i + 1, total)
+	mut ids := []flat.NodeId{cap: total}
+	ids << first_id
+	for extra_id in extra_ids {
+		ids << extra_id
 	}
-	return vals
+	return t.return_values_from_ids(ids)
 }
 
 fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index int, total_children int) flat.NodeId {

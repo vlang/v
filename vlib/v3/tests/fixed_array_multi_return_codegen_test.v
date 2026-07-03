@@ -30,6 +30,10 @@ fn has_fixed_array_assignment(compact string, typ string, name string) bool {
 	return compact.contains('${typ}${name}=')
 }
 
+fn has_fixed_array_memmove_source(compact string, name string) bool {
+	return compact.contains(',${name},sizeof(')
+}
+
 fn test_fixed_array_multi_return_payloads_use_c_arrays_and_memmove() {
 	v3_bin := fixed_array_multi_build_v3()
 	src := os.join_path(os.temp_dir(), 'v3_fixed_array_multi_return_${os.getpid()}.v')
@@ -61,6 +65,20 @@ fn defer_pair() (int, [2]int) {
 	return 11, ds
 }
 
+fn choose_pair(c bool) (int, [3]int) {
+	mut choice := [3]int{}
+	choice[0] = 10
+	choice[1] = 11
+	choice[2] = 12
+	return if c {
+		13
+		choice
+	} else {
+		17
+		choice
+	}
+}
+
 fn main() {
 	n, xs := pair()
 	assert n == 7
@@ -77,7 +95,11 @@ fn main() {
 	d, ds := defer_pair()
 	assert d == 11
 	assert ds[1] == 9
-	println(int_str(n + xs[1] + m + ys[2] + q + zs[0] + d + ds[1]))
+	choice_n, choice := choose_pair(false)
+	assert choice_n == 17
+	assert choice[0] == 10
+	assert choice[2] == 12
+	println(int_str(n + xs[1] + m + ys[2] + q + zs[0] + d + ds[1] + choice_n + choice[2]))
 }
 ') or {
 		panic(err)
@@ -87,22 +109,26 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '52'
+	assert run.output.trim_space() == '81'
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert generated.contains('int xs[3];'), generated
 	assert generated.contains('int ys[3] = {0};'), generated
 	assert generated.contains('int zs[3];'), generated
 	assert generated.contains('int ds[2];'), generated
+	assert generated.contains('int choice[3];'), generated
 	compact := compact_c_whitespace(generated)
 	assert has_fixed_array_memmove_copy(compact, 'xs'), generated
 	assert has_fixed_array_memmove_copy(compact, 'ys'), generated
 	assert has_fixed_array_memmove_copy(compact, 'zs'), generated
 	assert has_fixed_array_memmove_copy(compact, 'ds'), generated
+	assert has_fixed_array_memmove_copy(compact, 'choice'), generated
+	assert has_fixed_array_memmove_source(compact, 'choice'), generated
 	assert !has_fixed_array_assignment(compact, 'Array_fixed_int_3', 'xs'), generated
 	assert !has_fixed_array_assignment(compact, 'Array_fixed_int_3', 'ys'), generated
 	assert !has_fixed_array_assignment(compact, 'Array_fixed_int_3', 'zs'), generated
 	assert !has_fixed_array_assignment(compact, 'Array_fixed_int_2', 'ds'), generated
 	assert !generated.contains('return (multi_return_int_Array_fixed_int_3){7, xs};'), generated
+	assert !compact.contains('.arg1=choice'), generated
 }
 
 fn test_deferred_multi_return_pointer_value_slot_uses_expected_type() {

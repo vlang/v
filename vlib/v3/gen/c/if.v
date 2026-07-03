@@ -412,7 +412,13 @@ fn (mut g FlatGen) gen_if_expr_multi_return_block(block &flat.Node, ret_type typ
 	for i in 0 .. parts.prefix_count {
 		g.gen_node(g.a.child(block, i))
 	}
-	g.write('_ifexpr = (${g.tc.c_type(types.Type(ret_type))}){')
+	ct := g.tc.c_type(types.Type(ret_type))
+	if g.multi_return_types_have_fixed_array(ret_type.types) {
+		tmp := g.gen_multi_return_tail_temp(ct, ret_type.types, parts.values)
+		g.writeln('_ifexpr = ${tmp};')
+		return true
+	}
+	g.write('_ifexpr = (${ct}){')
 	for i, value_id in parts.values {
 		if i > 0 {
 			g.write(', ')
@@ -427,6 +433,15 @@ fn (mut g FlatGen) gen_if_expr_multi_return_block(block &flat.Node, ret_type typ
 fn (mut g FlatGen) gen_multi_return_block_expr(block &flat.Node, ret_type types.MultiReturn) bool {
 	parts := g.multi_return_tail_parts(block, ret_type.types.len) or { return false }
 	ct := g.tc.c_type(types.Type(ret_type))
+	if g.multi_return_types_have_fixed_array(ret_type.types) {
+		g.write('({')
+		for i in 0 .. parts.prefix_count {
+			g.gen_node(g.a.child(block, i))
+		}
+		tmp := g.gen_multi_return_tail_temp(ct, ret_type.types, parts.values)
+		g.write('${tmp};})')
+		return true
+	}
 	if parts.prefix_count == 0 {
 		g.write('(${ct}){')
 		for i, value_id in parts.values {
@@ -453,6 +468,28 @@ fn (mut g FlatGen) gen_multi_return_block_expr(block &flat.Node, ret_type types.
 	}
 	g.write('}; _multi_ret;})')
 	return true
+}
+
+fn (mut g FlatGen) gen_multi_return_tail_temp(ct string, ret_types []types.Type, values []flat.NodeId) string {
+	tmp := g.tmp_name()
+	g.writeln('${ct} ${tmp};')
+	for i, value_id in values {
+		field := '${tmp}.arg${i}'
+		if i < ret_types.len {
+			if fixed := array_fixed_type(ret_types[i]) {
+				g.gen_fixed_array_copy_from_node(field, value_id, fixed)
+				continue
+			}
+			g.write('${field} = ')
+			g.gen_expr_with_expected_type(value_id, ret_types[i])
+			g.writeln(';')
+			continue
+		}
+		g.write('${field} = ')
+		g.gen_expr(value_id)
+		g.writeln(';')
+	}
+	return tmp
 }
 
 // is_expr_kind reports whether is expr kind applies in c.
