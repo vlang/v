@@ -45,6 +45,10 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	if iface_name.all_after_last('.') == 'IError' {
 		return none
 	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .nil_literal {
+		return none
+	}
 	source_type := t.node_type(id)
 	source_iface := t.resolve_interface_type_name(source_type)
 	if source_iface == iface_name {
@@ -88,7 +92,7 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 	}
 	old_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	literal := t.make_interface_literal_from_expr(t.a.child(&child, 0), iface_name, true) or {
+	literal := t.make_interface_literal_from_expr(t.a.child(&child, 0), iface_name, false) or {
 		t.pending_stmts = old_pending
 		return none
 	}
@@ -127,7 +131,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	// back and casts it to the concrete type. For pointer sources we store the
 	// pointer directly; for value sources we heap-copy so the box can outlive the
 	// source scope, unless the caller passed `share_source` (mut/reference call
-	// args, global initializers) where the box must alias the original value.
+	// args) where the box must alias the original value.
 	// The pointer is typed (`&Concrete`) so codegen can recover the concrete
 	// type and emit the matching `_typ` dispatch id.
 	object_expr := if is_ptr {

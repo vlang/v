@@ -29,10 +29,10 @@ fn run_good_backend(v3_bin string, name string, backend string, src string) stri
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := tmp_test_path(name)
 	compile := os.execute('${v3_bin} ${good_src} -b ${backend} -o ${good_bin}')
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
+	assert compile.exit_code == 0, '${name}: ${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
 	run := os.execute(good_bin)
-	assert run.exit_code == 0, run.output
+	assert run.exit_code == 0, '${name}: ${run.output}'
 	return run.output.trim_space()
 }
 
@@ -41,9 +41,9 @@ fn run_bad(v3_bin string, name string, src string, expected string) {
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := tmp_test_path(name)
 	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
-	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains(expected), compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
+	assert compile.exit_code != 0, '${name}: ${compile.output}'
+	assert compile.output.contains(expected), '${name}: ${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
 }
 
 fn gen_c(v3_bin string, name string, src string) string {
@@ -52,7 +52,7 @@ fn gen_c(v3_bin string, name string, src string) string {
 	c_path := '${tmp_test_path(name)}.c'
 	os.rm(c_path) or {}
 	compile := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
-	assert compile.exit_code == 0, compile.output
+	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert os.exists(c_path)
 	return os.read_file(c_path) or { panic(err) }
 }
@@ -429,4 +429,63 @@ fn test_formatted_interpolation_rune_and_long_float() {
 	out := run_good(v3_bin, 'formatted_interpolation_rune_and_long_float',
 		"fn main() {\n\tr := '\${rune(0x20ac):c}'\n\tprintln(int_str(r.len))\n\tprintln(int_str(int(r[0])) + ',' + int_str(int(r[1])) + ',' + int_str(int(r[2])))\n\tlong := '\${1.0:.200f}'\n\tprintln(int_str(long.len))\n\tprintln(int_str(int(long[0])) + ',' + int_str(int(long[1])) + ',' + int_str(int(long[2])) + ',' + int_str(int(long[long.len - 1])))\n\tprintln('\${238.5:0.0f}')\n\tprintln('\${239.5555555:0.6f}')\n}\n")
 	assert out == '3\n226,130,172\n202\n49,46,48,48\n239\n239.555556'
+}
+
+fn test_alias_interface_str_dispatch_marks_alias_method_used() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'alias_interface_str_dispatch',
+		"interface Printer {\n\tstr() string\n}\n\ntype Label = int\n\nfn (l Label) str() string {\n\treturn 'label:' + int_str(int(l))\n}\n\nfn make() Printer {\n\tl := Label(7)\n\treturn l\n}\n\nfn main() {\n\tp := make()\n\tprintln('\${p}')\n}\n")
+	assert out == 'label:7'
+}
+
+fn test_interface_cast_rejects_pointer_shape_mismatch() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'interface_pointer_shape_mismatch',
+		'interface Sink {\n\tput(x &int)\n}\n\nstruct Bad {}\n\nfn (b Bad) put(x int) {}\n\nfn main() {\n\t_ := Sink(Bad{})\n}\n',
+		'does not implement interface')
+	run_bad(v3_bin, 'interface_alias_cast_non_implementer',
+		'interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nstruct Bad {}\n\nfn main() {\n\t_ := SinkAlias(Bad{})\n}\n',
+		'does not implement interface')
+	nil_out := run_good(v3_bin, 'interface_pointer_nil_cast',
+		"interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nfn main() {\n\t_ := &Sink(nil)\n\t_ := &SinkAlias(nil)\n\tprintln('ok')\n}\n")
+	assert nil_out == 'ok'
+}
+
+fn test_interface_is_unqualified_local_uses_exact_impl_id() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'interface_is_local_exact_impl_id', {
+		'v.mod':           "Module { name: 'interface_is_local_exact_impl_id' }\n"
+		'common/common.v': 'module common\n\npub interface Actor {\n\ttag() int\n}\n'
+		'a/a.v':           'module a\n\npub struct Foo {}\n\npub fn (f Foo) tag() int {\n\treturn 1\n}\n'
+		'b/b.v':           'module b\n\nimport a\nimport common\n\npub struct Foo {}\n\npub fn (f Foo) tag() int {\n\treturn 2\n}\n\npub fn make_local() common.Actor {\n\treturn Foo{}\n}\n\npub fn make_a() common.Actor {\n\treturn a.Foo{}\n}\n\npub fn is_local_actor(actor common.Actor) bool {\n\treturn actor is Foo\n}\n'
+		'main.v':          'module main\n\nimport b\n\nfn main() {\n\tprintln(b.is_local_actor(b.make_local()).str())\n\tprintln(b.is_local_actor(b.make_a()).str())\n}\n'
+	}, 'main.v')
+	assert out == 'true\nfalse'
+}
+
+fn test_callback_lambda_lift_preserves_outer_captures() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'callback_lambda_lift_preserves_capture',
+		'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn main() {\n\toffset := 7\n\tprintln(int_str(apply(|n| n + offset, 5)))\n}\n')
+	assert out == '12'
+	callee_out := run_good(v3_bin, 'callback_lambda_lift_preserves_fn_callee_capture',
+		'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn double(n int) int {\n\treturn n * 2\n}\n\nfn main() {\n\tcb := double\n\tprintln(int_str(apply(|n| cb(n), 6)))\n}\n')
+	assert callee_out == '12'
+}
+
+fn test_amp_interface_cast_heap_copies_concrete_source() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'amp_interface_cast_heap_copy',
+		'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) value() int {\n\treturn b.n\n}\n\nfn make() &Reader {\n\tb := Box{\n\t\tn: 5\n\t}\n\treturn &Reader(b)\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n')
+	assert c_source.contains('._object = (Box*)(memdup(&b, sizeof(Box)))')
+	assert c_source.contains('memdup(&__iface_box_')
+}
+
+fn test_native_arm64_atomic_pointer_fetch_add_sub() {
+	$if macos && arm64 {
+		v3_bin := build_v3()
+		out := run_good_backend(v3_bin, 'native_atomic_pointer_fetch_add_sub', 'arm64',
+			'fn C.atomic_fetch_add_ptr(voidptr, voidptr) voidptr\nfn C.atomic_fetch_sub_ptr(voidptr, voidptr) voidptr\n\nfn main() {\n\tmut vals := [10, 20, 30]!\n\tmut p := voidptr(&vals[0])\n\told := C.atomic_fetch_add_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old == voidptr(&vals[0]))\n\tprintln(p == voidptr(&vals[1]))\n\told2 := C.atomic_fetch_sub_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old2 == voidptr(&vals[1]))\n\tprintln(p == voidptr(&vals[0]))\n}\n')
+		assert out == 'true\ntrue\ntrue\ntrue'
+	}
 }

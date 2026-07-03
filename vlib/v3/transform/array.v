@@ -768,6 +768,10 @@ fn (t &Transformer) push_many_count_is_type_name(id flat.NodeId) bool {
 
 // array_append_rhs_is_push_many supports array append rhs is push many handling for Transformer.
 fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type string, elem_type string) bool {
+	rhs_node := t.a.nodes[int(rhs_id)]
+	if rhs_node.kind == .spawn_expr {
+		return false
+	}
 	clean_rhs_type := rhs_type.trim_space()
 	if clean_rhs_type.starts_with('...') {
 		return t.array_append_elem_types_match(clean_rhs_type[3..], elem_type)

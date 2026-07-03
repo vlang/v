@@ -591,6 +591,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 			else {}
 		}
 	}
+	tc.check_c_struct_redeclarations(a)
 	// Pass 2: collect struct fields, function signatures (type aliases now available)
 	tc.type_cache.parse_enabled = true
 	tc.cur_module = ''
@@ -790,6 +791,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 
 fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
 	mut c_struct_decl_sigs := map[string]string{}
+	mut c_struct_decl_files := map[string]string{}
 	for node_idx, node in a.nodes {
 		match node.kind {
 			.file {
@@ -807,21 +809,49 @@ fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
 				if qname in c_struct_decl_sigs {
 					existing_sig := c_struct_decl_sigs[qname]
 					if !c_struct_decl_signatures_compatible(existing_sig, c_struct_sig) {
-						tc.record_error_unfiltered(.duplicate_decl,
-							'cannot redeclare C struct `${qname}`', flat.NodeId(node_idx))
+						existing_file := c_struct_decl_files[qname] or { '' }
+						if !tc.c_struct_redeclaration_allowed(qname, existing_file, tc.cur_file) {
+							tc.record_error_unfiltered(.duplicate_decl,
+								'cannot redeclare C struct `${qname}`', flat.NodeId(node_idx))
+						}
 					}
 					existing_fields := c_struct_decl_signature_field_count(existing_sig)
 					current_fields := c_struct_decl_signature_field_count(c_struct_sig)
 					if current_fields > existing_fields {
 						c_struct_decl_sigs[qname] = c_struct_sig
+						c_struct_decl_files[qname] = tc.cur_file
 					}
 				} else {
 					c_struct_decl_sigs[qname] = c_struct_sig
+					c_struct_decl_files[qname] = tc.cur_file
 				}
 			}
 			else {}
 		}
 	}
+}
+
+fn (tc &TypeChecker) c_struct_redeclaration_allowed(qname string, first_file string, second_file string) bool {
+	if qname == 'C.termios' && tc.c_struct_decl_is_vlib_termios_shim(first_file)
+		&& tc.c_struct_decl_is_vlib_termios_shim(second_file) {
+		return true
+	}
+	if qname == 'C.cJSON' && tc.c_struct_decl_is_vlib_cjson(first_file)
+		&& tc.c_struct_decl_is_vlib_cjson(second_file) {
+		return true
+	}
+	return false
+}
+
+fn (tc &TypeChecker) c_struct_decl_is_vlib_termios_shim(file string) bool {
+	return file.contains('/vlib/term/') || file.contains('\\vlib\\term\\')
+}
+
+fn (tc &TypeChecker) c_struct_decl_is_vlib_cjson(file string) bool {
+	return file.contains('/vlib/json/json_primitives.c.v')
+		|| file.contains('\\vlib\\json\\json_primitives.c.v')
+		|| file.contains('/vlib/json/cjson/cjson_wrapper.c.v')
+		|| file.contains('\\vlib\\json\\cjson\\cjson_wrapper.c.v')
 }
 
 fn (tc &TypeChecker) c_struct_decl_signature(a &flat.FlatAst, node flat.Node) string {
@@ -3450,6 +3480,10 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		tc.check_ident(id, node)
 		return
 	}
+	if node.kind == .cast_expr {
+		tc.check_cast_expr(id, node)
+		return
+	}
 	if node.kind == .array_init {
 		tc.check_array_init(node)
 		$if ownership ? {
@@ -3531,6 +3565,46 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			tc.ownership_consume_expr(value_id, 'channel send', id)
 		}
 	}
+}
+
+fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
+	if node.children_count == 0 {
+		return
+	}
+	child_id := tc.a.child(&node, 0)
+	tc.check_node(child_id)
+	target := tc.parse_type(node.value)
+	target_iface := cast_target_interface(target) or { return }
+	if tc.expr_tail_is_nil(child_id) {
+		return
+	}
+	actual := tc.resolve_type(child_id)
+	if actual is Unknown || type_contains_unknown(actual) {
+		return
+	}
+	if !tc.type_implements_interface(actual, target_iface) {
+		tc.type_mismatch(.assignment_mismatch,
+			'type `${actual.name()}` does not implement interface `${target_iface.name}`', id)
+	}
+}
+
+fn cast_target_interface(target Type) ?Interface {
+	mut current := target
+	for _ in 0 .. 8 {
+		if current is Interface {
+			return current
+		}
+		if current is Alias {
+			current = current.base_type
+			continue
+		}
+		if current is Pointer {
+			current = current.base_type
+			continue
+		}
+		return none
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) check_comptime_if(_id flat.NodeId, node flat.Node) {
@@ -7458,11 +7532,9 @@ fn (tc &TypeChecker) receiver_compatible(actual Type, expected Type) bool {
 	}
 	if expected is Pointer {
 		return tc.type_compatible(actual, expected.base_type)
-			|| tc.generic_receiver_base_match(actual, expected.base_type)
 	}
 	if actual is Pointer {
 		return tc.type_compatible(actual.base_type, expected)
-			|| tc.generic_receiver_base_match(actual.base_type, expected)
 	}
 	return false
 }

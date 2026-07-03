@@ -243,7 +243,7 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 		return none
 	}
 	concrete := t.interface_concrete_impl_name(concrete_name) or { return none }
-	requested_qualified := concrete_name.contains('.')
+	requested_qualified := concrete_name.contains('.') || concrete != concrete_name
 	// The 1-based position in tc.interface_impl_names is the `_typ` id cgen
 	// assigns when boxing; deriving it from the same list keeps `is` checks
 	// and dispatch in sync (aliases included).

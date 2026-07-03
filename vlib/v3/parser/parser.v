@@ -4101,7 +4101,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.name, .key_module {
 			name_pos := p.tok_pos
-			mut name := p.lit
+			name := p.lit
 			p.next()
 			if name == 'sql' && p.starts_sql_expr() {
 				return p.sql_expr()

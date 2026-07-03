@@ -42,9 +42,9 @@ fn run_bad_with_flags(v3_bin string, name string, src string, expected string, f
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := out
 	result := os.execute('${v3_bin} ${bad_src} ${flags} -b c -o ${bad_bin}')
-	assert result.exit_code != 0
-	assert result.output.contains(expected)
-	assert !result.output.contains('C compilation failed')
+	assert result.exit_code != 0, '${name}: expected compile failure, got success: ${result.output}'
+	assert result.output.contains(expected), '${name}: expected `${expected}` in ${result.output}'
+	assert !result.output.contains('C compilation failed'), '${name}: C compilation failed: ${result.output}'
 }
 
 // run_good supports run good handling for v3 tests.
@@ -534,7 +534,7 @@ fn test_voidptr_variadic_spread_requires_voidptr_array() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'bad_voidptr_variadic_int_spread',
 		'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\txs := [1, 2]\n\tprintln(int_str(sink(...xs)))\n}\n',
-		'expected `[]&void`')
+		'cannot use `[]int` as argument 1 to `sink`')
 	run_bad(v3_bin, 'bad_voidptr_variadic_void_arg',
 		'fn side() {}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(side())))\n}\n',
 		'cannot use `void`')
