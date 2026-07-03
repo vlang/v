@@ -30,6 +30,31 @@ fn run_compile_command(cmd string) os.Result {
 	}
 }
 
+fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
+	target_os := prefs.normalized_target_os()
+	mut link_atomic_s := false
+	match target_os {
+		'macos' {
+			// atomic.S has Mach-O-compatible aarch64 symbols, but its x86_64 Unix
+			// stanza is ELF-only (`.type ... %function`). v3 does not yet track a
+			// separate target architecture, so use the compiler build architecture.
+			$if arm64 {
+				link_atomic_s = true
+			}
+		}
+		'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly' {
+			link_atomic_s = true
+		}
+		else {}
+	}
+
+	if !link_atomic_s {
+		return ''
+	}
+	atomic_s := os.join_path(prefs.vroot, 'thirdparty', 'stdatomic', 'nix', 'atomic.S')
+	return ' ${atomic_s}'
+}
+
 fn prepare_c_flags_for_link(flags []string, c99 bool) ![]string {
 	support_flags := c_object_compile_support_flags(flags)
 	mut prepared := []string{}
@@ -174,6 +199,7 @@ fn main() {
 	mut no_parallel := false
 	mut parallel_transform := true
 	mut building_v := false
+	mut ownership_mode := false
 	mut c99 := false
 	mut all_backends := false
 	mut compile_backends := []string{}
@@ -205,6 +231,13 @@ fn main() {
 			i++
 		} else if args[i] == '-strict' {
 			is_strict = true
+			i++
+		} else if args[i] == '-ownership' || args[i] == '--ownership' {
+			// The ownership checker itself is compiled into v3 via `-d ownership`.
+			// The runtime `-ownership` flag should only load the builtin ownership
+			// overlays; it must not expose `ownership` to target `$if` blocks or target
+			// `_d_ownership.v` files.
+			ownership_mode = true
 			i++
 		} else if args[i] == '-no-parallel' || args[i] == '--no-parallel' {
 			no_parallel = true
@@ -335,7 +368,11 @@ fn main() {
 
 	mut files := []string{}
 	builtin_dir := builtin_dir_for_vroot(prefs.vroot)
-	files << pref.get_v_files_from_dir(builtin_dir, prefs.user_defines, prefs.target_os)
+	mut builtin_defines := prefs.user_defines.clone()
+	if ownership_mode && 'ownership' !in builtin_defines {
+		builtin_defines << 'ownership'
+	}
+	files << pref.get_v_files_from_dir(builtin_dir, builtin_defines, prefs.target_os)
 	p.parse_files(files)
 	mut a := p.a
 	a.user_code_start = a.nodes.len
@@ -538,8 +575,9 @@ fn main() {
 			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
-			cc_cmd = '${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file} ${c_flags} -lm'
-			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o out src.c ${c_flags} -lm'
+			atomic_s_arg := tcc_atomic_s_arg(prefs)
+			cc_cmd = '${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file}${atomic_s_arg} ${c_flags} -lm'
+			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o out src.c${atomic_s_arg} ${c_flags} -lm'
 			println('  > ${cc_cmd}')
 			result = run_compile_command(exec_cmd)
 		}

@@ -1598,6 +1598,13 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 			continue
 		}
 		field_name := p.expect_name_or_keyword()
+		if p.tok == .lsbr && p.peek() == .xor {
+			// Lifetime param list on an interface method: `name[^a](...)`. v3 erases
+			// lifetimes, so consume and drop the `[^a]` list; without this the following
+			// `(` is not seen as the method parameter list and the name is mis-parsed as a
+			// `[^a]`-typed (fixed-array) interface field, which then fails in cgen.
+			p.parse_generic_param_names()
+		}
 		if p.tok == .lpar {
 			// method: name(params) ret_type
 			p.next() // skip (
@@ -5617,27 +5624,57 @@ fn (mut p Parser) parse_fn_type_param() string {
 	return fn_type_param_with_mut(first, is_mut)
 }
 
+fn (mut p Parser) consume_lifetime_type_param() bool {
+	if p.tok != .xor {
+		return false
+	}
+	p.next()
+	if p.tok == .name {
+		p.next()
+	}
+	return true
+}
+
 fn (mut p Parser) parse_type_generic_suffix() string {
 	if p.tok != .lsbr {
 		return ''
 	}
 	pk := p.peek()
-	if pk != .name && pk != .amp && pk != .lsbr && pk != .question && pk != .key_fn {
+	if pk != .name && pk != .amp && pk != .lsbr && pk != .question && pk != .key_fn && pk != .xor {
 		return ''
 	}
 	p.next() // skip [
 	mut params := []string{}
-	params << p.parse_type_name()
-	for p.tok == .comma {
-		p.next()
-		params << p.parse_type_name()
+	for p.tok != .rsbr && p.tok != .eof {
+		if !p.consume_lifetime_type_param() {
+			param := p.parse_type_name()
+			if param.len > 0 {
+				params << param
+			}
+		}
+		if p.tok == .comma {
+			p.next()
+			continue
+		}
+		break
 	}
 	p.check(.rsbr)
+	if params.len == 0 {
+		return ''
+	}
 	return '[' + params.join(', ') + ']'
 }
 
 // parse_type_name reads parse type name input for parser.
 fn (mut p Parser) parse_type_name() string {
+	// Lifetime annotation `^a` (as in `&^a T`, `?&^a T`, `Type[^a]`). v3 erases lifetimes -
+	// they have no runtime representation, so consume the caret and the lifetime name and
+	// continue with the underlying type. Without this, `&^a T` parses as just `&` and the
+	// stray `^` desyncs the enclosing declaration (e.g. a `&^a Recv` method receiver made the
+	// method name get consumed as the return type).
+	if p.consume_lifetime_type_param() {
+		return p.parse_type_name()
+	}
 	if p.tok == .name && p.lit == '&' {
 		p.next()
 		return '&' + p.parse_type_name()

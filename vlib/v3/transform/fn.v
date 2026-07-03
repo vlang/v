@@ -3167,6 +3167,46 @@ fn (mut t Transformer) try_lower_flag_enum_call(node flat.Node) ?flat.NodeId {
 	return t.make_infix(.eq, masked, arg_copy)
 }
 
+// try_lower_struct_clone_method_call lowers `x.clone()` on a struct / sum-type value to a
+// plain copy of the receiver. Rust's `#[derive(Clone)]` maps to `implements IClone` in the
+// ownership translation, whose `clone()` is compiler-provided; V aggregates are value types,
+// so the copy is produced simply by evaluating the receiver (it is copied when assigned or
+// passed by value). Collection/string clones are lowered earlier, and a user-defined clone()
+// method is handled by try_lower_receiver_method_call before this runs.
+fn (mut t Transformer) try_lower_struct_clone_method_call(call_id flat.NodeId, node flat.Node) ?flat.NodeId {
+	if node.children_count == 0 {
+		return none
+	}
+	fn_id := t.a.children[node.children_start]
+	fn_node := t.a.nodes[int(fn_id)]
+	if fn_node.kind != .selector || fn_node.value != 'clone' || fn_node.children_count == 0 {
+		return none
+	}
+	base_id := t.a.children[fn_node.children_start]
+	raw_base_type := t.node_type(base_id)
+	mut base_type := raw_base_type
+	if base_type.starts_with('&') {
+		base_type = base_type[1..]
+	}
+	if base_type.starts_with('[]') || base_type.starts_with('map[') || base_type == 'string'
+		|| t.is_fixed_array_type(base_type) {
+		return none
+	}
+	if isnil(t.tc) || !t.tc.named_type_implements_marker(base_type, 'IClone') {
+		return none
+	}
+	// A user-defined clone() would have been lowered already; only supply the default copy.
+	if t.resolve_receiver_method_name(base_id, 'clone').len > 0 {
+		return none
+	}
+	mut receiver := t.transform_expr(base_id)
+	if raw_base_type.starts_with('&') {
+		receiver = t.make_prefix(.mul, receiver)
+		t.a.nodes[int(receiver)].typ = base_type
+	}
+	return receiver
+}
+
 // try_lower_array_method_call supports try lower array method call handling for Transformer.
 fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.children_count == 0 {
@@ -3923,6 +3963,9 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	}
 	if receiver_call := t.try_lower_receiver_method_call(_id, node) {
 		return receiver_call
+	}
+	if clone_call := t.try_lower_struct_clone_method_call(_id, node) {
+		return clone_call
 	}
 	if string_call := t.try_lower_string_method_call(node) {
 		return string_call

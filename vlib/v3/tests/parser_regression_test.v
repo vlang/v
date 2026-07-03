@@ -77,6 +77,16 @@ fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
 	assert interface_method_param_types(a, 'Sink', 'read') == ['[max_len]u8']
 }
 
+fn test_lifetime_generic_suffixes_are_erased() {
+	a := parse_parser_regression_source('lifetime_generic_suffixes',
+		'struct IgnoreMatch {}\nstruct Match[T] {}\n\ninterface Matcher {\n\tmatched[^a](item Match[IgnoreMatch[^a]]) IgnoreMatch[^a]\n}\n\nfn use(item Match[IgnoreMatch[^a]]) {}\nfn after() int {\n\treturn 1\n}\n')
+	assert interface_method_param_types(a, 'Matcher', 'matched') == [
+		'Match[IgnoreMatch]',
+	]
+	assert fn_decl_param_pairs(a, .fn_decl, 'use') == ['item:Match[IgnoreMatch]']
+	assert fn_decl_param_pairs(a, .fn_decl, 'after') == []
+}
+
 fn test_c_function_anonymous_params_are_parsed_as_types() {
 	a := parse_parser_regression_source('c_anon_params',
 		'struct T {}\nstruct C.FILE {}\nstruct C.Widget {}\nstruct C.Node {}\ntype MyHandle = voidptr\n\nfn C.anon(&C.FILE, voidptr, int, &&T, [4]&C.Widget, ?&C.Node, !&C.Node, fn (&C.Node) int) int\nfn C.custom(MyHandle, int, MyHandle) int\nfn C.lower(size_t, int, pthread_t) int\nfn C.named(stream &C.FILE, a, b int) int\nfn C.named_custom(handle MyHandle, a, b int) int\nfn C.named_arrays(m [16]f32, r []rune) int\nfn C.variadic(...int) int\nfn JS.js_anon(JS.Number) JS.Number\nfn JS.js_named(x JS.Number) JS.Number\nfn JS.setInterval(any, int, ...any) int\nfn JS.console.dir(any, any)\nfn JS.named_any(x any) any\nfn ordinary(int) {}\n')

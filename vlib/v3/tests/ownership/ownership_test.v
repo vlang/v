@@ -22,7 +22,7 @@ fn run_ownership_check(v3_bin string, name string, code string) os.Result {
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -d ownership -b c -o ${out} ${src} 2>&1')
+	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
 }
 
 fn run_ownership_check_c_only(v3_bin string, name string, code string) os.Result {
@@ -32,7 +32,7 @@ fn run_ownership_check_c_only(v3_bin string, name string, code string) os.Result
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out.c')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -d ownership -b c -o ${out} ${src} 2>&1')
+	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
 }
 
 fn run_ownership_check_with_module(v3_bin string, name string, main_code string, module_name string, module_code string) os.Result {
@@ -46,7 +46,7 @@ fn run_ownership_check_with_module(v3_bin string, name string, main_code string,
 	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, main_code) or { panic(err) }
 	os.write_file(mod_src, module_code) or { panic(err) }
-	return os.execute('${v3_bin} -d ownership -b c -o ${out} ${src} 2>&1')
+	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
 }
 
 fn run_ownership_delegate_check(name string, code string) os.Result {
@@ -230,8 +230,31 @@ fn main() {
 	println(g)
 	_ = h
 }
-')
+	')
 	assert ok_plain_to_owned_method.exit_code == 0, ok_plain_to_owned_method.output
+
+	ok_builtin_string_receiver := run_ownership_check(v3_bin, 'builtin_string_receiver_borrows', "
+fn main() {
+	s := 'hello'.to_owned()
+	println(s.contains('h'))
+	println(s.contains('e'))
+}
+	")
+	assert ok_builtin_string_receiver.exit_code == 0, ok_builtin_string_receiver.output
+
+	fail_user_string_receiver := run_ownership_check(v3_bin, 'user_string_receiver_moves', '
+fn (s string) consume() {
+	_ = s
+}
+
+fn main() {
+	s := "hello".to_owned()
+	s.consume()
+	println(s)
+}
+	')
+	assert fail_user_string_receiver.exit_code != 0
+	assert fail_user_string_receiver.output.contains('use of moved value: `s`'), fail_user_string_receiver.output
 
 	ok_non_owned_clone_return := run_ownership_check(v3_bin, 'owned_receiver_clone_returns_int', '
 struct Resource implements Owned {
@@ -251,6 +274,31 @@ fn main() {
 }
 	')
 	assert ok_non_owned_clone_return.exit_code == 0, ok_non_owned_clone_return.output
+
+	fail_plain_struct_clone := run_ownership_check(v3_bin, 'plain_struct_clone_unknown', '
+struct Plain {
+	id int
+}
+
+fn main() {
+	_ := Plain{id: 1}.clone()
+}
+	')
+	assert fail_plain_struct_clone.exit_code != 0
+	assert fail_plain_struct_clone.output.contains('unknown function'), fail_plain_struct_clone.output
+
+	ok_iclone_default_clone := run_ownership_check(v3_bin, 'iclone_default_clone', '
+struct Resource implements IClone {
+	id int
+}
+
+fn main() {
+	r := Resource{id: 7}
+	c := r.clone()
+	println(c.id)
+}
+	')
+	assert ok_iclone_default_clone.exit_code == 0, ok_iclone_default_clone.output
 
 	fail_inferred_owned_global := run_ownership_check(v3_bin, 'inferred_owned_global', '
 struct Resource implements Owned {

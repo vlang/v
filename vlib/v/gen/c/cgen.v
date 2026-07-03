@@ -11326,12 +11326,16 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		}
 	}
-	// When the expression uses `?` or `!` propagation, the evaluated type is
-	// unwrapped (the option/result flag should be stripped).
+	// When the expression uses `?`/`!` propagation or an `or { }` block, the
+	// evaluated value is unwrapped, so the option/result flag should be stripped
+	// from type0. Otherwise a `return opt_var or { ... }` (or `return map[k] or
+	// { ... }` on an option-valued map) is treated as already-optional and the
+	// unwrapped value is returned without being re-wrapped into the option.
 	if exprs_len > 0 {
 		or_kind := match expr0 {
 			ast.SelectorExpr { expr0.or_block.kind }
 			ast.Ident { expr0.or_expr.kind }
+			ast.IndexExpr { expr0.or_expr.kind }
 			else { ast.OrKind.absent }
 		}
 
@@ -11339,6 +11343,8 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			type0 = type0.clear_flag(.option)
 		} else if or_kind == .propagate_result {
 			type0 = type0.clear_flag(.result)
+		} else if or_kind == .block {
+			type0 = type0.clear_flag(.option).clear_flag(.result)
 		}
 	}
 	if exprs_len > 0 && expr0 is ast.Ident && expr0.obj is ast.Var && expr0.obj.typ != 0 {
