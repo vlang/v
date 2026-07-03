@@ -124,6 +124,20 @@ fn test_pointer_array_equality_uses_pointer_identity() {
 	assert out == 'false\ntrue\ntrue\nfalse\n-1'
 }
 
+fn test_struct_pointer_equality_is_semantic() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'struct_pointer_semantic_equality',
+		"struct Person {\n\tname string\n\ttags []string\n}\n\nfn main() {\n\tleft := &Person{\n\t\tname: 'abc'.clone()\n\t\ttags: ['x'.clone()]\n\t}\n\tright := &Person{\n\t\tname: ('a' + 'bc')\n\t\ttags: [('x' + '')]\n\t}\n\tsame := left\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == same)\n}\n")
+	assert out == 'true\nfalse\ntrue'
+}
+
+fn test_struct_equality_with_interface_field_compiles() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'struct_eq_interface_field',
+		"interface Thing {\n\tvalue() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) value() int {\n\treturn i.n\n}\n\nstruct Box {\n\tthing Thing\n\tlabel string\n}\n\nfn main() {\n\titem := Item{\n\t\tn: 7\n\t}\n\tleft := Box{\n\t\tthing: item\n\t\tlabel: 'same'\n\t}\n\tright := left\n\tprintln(left == right)\n}\n")
+	assert out == 'true'
+}
+
 fn test_array_pointer_equality_uses_pointer_identity() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'array_pointer_equality',

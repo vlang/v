@@ -353,6 +353,12 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 		}
 	}
 	mut expr_type := t.node_type(expr_id)
+	if expr_type == 'Optional' {
+		return '?void', 'void'
+	}
+	if fallback_type == 'Optional' {
+		return '?void', 'void'
+	}
 	if expr_type.len == 0 || expr_type == 'Optional' {
 		if fallback_type.len > 0 && !t.is_optional_type_name(fallback_type) {
 			expr_type = '?${fallback_type}'
@@ -362,7 +368,7 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	}
 	base_type := t.optional_base_type(expr_type)
 	mut value_type := if base_type.len > 0 { base_type } else { fallback_type }
-	if value_type.len == 0 || value_type == 'void' || value_type == '!' || value_type == '?' {
+	if value_type.len == 0 || value_type == '!' || value_type == '?' {
 		value_type = 'int'
 	}
 	return expr_type, value_type
