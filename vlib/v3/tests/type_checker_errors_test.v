@@ -474,6 +474,12 @@ fn test_match_tuple_tail_multi_return_is_rejected() {
 	match_assign := run_good(v3_bin, 'good_multi_return_match_call_assign',
 		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n')
 	assert match_assign == '7'
+	run_bad(v3_bin, 'bad_multi_return_match_call_non_exhaustive_decl_assign',
+		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n',
+		'match expression must be exhaustive')
+	run_bad(v3_bin, 'bad_multi_return_match_call_non_exhaustive_assign',
+		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n',
+		'match expression must be exhaustive')
 	run_bad(v3_bin, 'bad_multi_return_match_call_mixed_item_types',
 		'fn pair_int() (int, int) {\n\treturn 1, 2\n}\nfn pair_f64() (f64, int) {\n\treturn 1.5, 2\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair_int()\n\t\t}\n\t\tfalse {\n\t\t\tpair_f64()\n\t\t}\n\t}\n\tprintln(int_str(b))\n\tprintln(a)\n}\n',
 		'multi-return assignment mismatch')
@@ -519,6 +525,9 @@ fn test_bool_match_single_branch_is_exhaustive() {
 	alias_out := run_good(v3_bin, 'good_bool_alias_match_single_branch_exhaustive',
 		'type Flag = bool\nfn f(b Flag) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(true) + f(false)))\n}\n')
 	assert alias_out == '2'
+	run_bad(v3_bin, 'bad_bool_pointer_match_not_exhaustive',
+		'fn f(b &bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tmut b := true\n\tprintln(int_str(f(&b)))\n}\n',
+		'missing return')
 }
 
 fn test_voidptr_variadic_spread_requires_voidptr_array() {

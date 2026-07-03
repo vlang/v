@@ -3039,21 +3039,16 @@ fn (tc &TypeChecker) stmt_definitely_returns(id flat.NodeId) bool {
 			if node.children_count < 2 {
 				return false
 			}
-			mut has_else := false
 			for i in 1 .. node.children_count {
 				branch := tc.a.child_node(&node, i)
 				if branch.kind != .match_branch {
 					return false
 				}
-				if branch.value == 'else' {
-					has_else = true
-				}
 				if !tc.match_branch_definitely_returns(branch) {
 					return false
 				}
 			}
-			return has_else || tc.match_without_else_exhaustive_enum_returns(node)
-				|| tc.match_without_else_exhaustive_bool_returns(node)
+			return tc.match_has_else_or_exhaustive_coverage(node)
 		}
 		else {
 			return false
@@ -3227,7 +3222,10 @@ fn (tc &TypeChecker) match_without_else_exhaustive_bool_returns(node flat.Node) 
 		return false
 	}
 	raw_subject_type := unalias_type(tc.resolve_type(tc.a.child(&node, 0)))
-	subject_type := unalias_type(unwrap_pointer(raw_subject_type))
+	if raw_subject_type is Pointer {
+		return false
+	}
+	subject_type := raw_subject_type
 	if subject_type !is Primitive {
 		return false
 	}
@@ -3257,6 +3255,23 @@ fn (tc &TypeChecker) match_without_else_exhaustive_bool_returns(node flat.Node) 
 		}
 	}
 	return covered_true && covered_false
+}
+
+fn (tc &TypeChecker) match_has_else_or_exhaustive_coverage(node flat.Node) bool {
+	if node.children_count < 2 {
+		return false
+	}
+	for i in 1 .. node.children_count {
+		branch := tc.a.child_node(&node, i)
+		if branch.kind != .match_branch {
+			return false
+		}
+		if branch.value == 'else' {
+			return true
+		}
+	}
+	return tc.match_without_else_exhaustive_enum_returns(node)
+		|| tc.match_without_else_exhaustive_bool_returns(node)
 }
 
 fn unalias_type(t Type) Type {
@@ -4193,6 +4208,13 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 	}
 	if rhs.kind == .match_stmt {
 		tc.check_node(rhs_id)
+		if !tc.match_has_else_or_exhaustive_coverage(rhs) {
+			if tc.should_diagnose(id) {
+				tc.record_error(.assignment_mismatch,
+					'match expression must be exhaustive for multi-return assignment', id)
+			}
+			return true
+		}
 		if rhs_types := tc.match_multi_return_types(rhs_id, lhs_ids.len) {
 			tc.register_synth_type(rhs_id, MultiReturn{
 				types: rhs_types
@@ -4359,6 +4381,9 @@ fn (tc &TypeChecker) match_multi_return_types(expr_id flat.NodeId, count int) ?[
 	}
 	node := tc.a.nodes[int(expr_id)]
 	if node.kind != .match_stmt || node.children_count < 2 {
+		return none
+	}
+	if !tc.match_has_else_or_exhaustive_coverage(node) {
 		return none
 	}
 	mut types := []Type{}
@@ -4722,6 +4747,13 @@ fn (mut tc TypeChecker) check_multi_return_assign(id flat.NodeId, node flat.Node
 	}
 	if rhs.kind == .match_stmt {
 		tc.check_node(rhs_id)
+		if !tc.match_has_else_or_exhaustive_coverage(rhs) {
+			if tc.should_diagnose(id) {
+				tc.record_error(.assignment_mismatch,
+					'match expression must be exhaustive for multi-return assignment', id)
+			}
+			return true
+		}
 		if rhs_types := tc.match_multi_return_types(rhs_id, lhs_ids.len) {
 			tc.register_synth_type(rhs_id, MultiReturn{
 				types: rhs_types
