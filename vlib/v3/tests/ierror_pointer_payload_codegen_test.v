@@ -271,6 +271,19 @@ fn alias_pointer_param_field(holder &Holder) !int {
 	return p
 }
 
+fn alias_after_range_for_in(limit int) !int {
+	holder := Holder{
+		err: PtrErr{
+			text: 'range alias stack field error'
+		}
+	}
+	p := &holder.err
+	for i in 0 .. limit {
+		assert i >= 0
+	}
+	return p
+}
+
 fn main() {
 	local_ptr() or {
 		assert err.msg() == 'stack error'
@@ -331,6 +344,10 @@ fn main() {
 	}
 	alias_pointer_param_field(&stable) or {
 		assert err.msg() == 'pointer field error'
+		assert err.code() == 7
+	}
+	alias_after_range_for_in(2) or {
+		assert err.msg() == 'range alias stack field error'
 		assert err.code() == 7
 	}
 	reassign_stable_to_stack(&stable) or {
@@ -456,6 +473,12 @@ fn main() {
 	alias_pointer_param_field_body := c_fn_body(c_code,
 		'Optional alias_pointer_param_field(Holder* holder) {')
 	assert !alias_pointer_param_field_body.contains('._object = memdup('), alias_pointer_param_field_body
+
+	alias_after_range_body := c_fn_body(c_code, 'Optional alias_after_range_for_in(int limit) {')
+	alias_after_range_body_compact := c_compact(alias_after_range_body)
+	assert alias_after_range_body.contains('._object = memdup('), alias_after_range_body
+	assert alias_after_range_body.contains('sizeof(PtrErr)'), alias_after_range_body
+	assert !alias_after_range_body_compact.contains('._object=p'), alias_after_range_body
 
 	reassign_stable_to_stack_body := c_fn_body(c_code,
 		'Optional reassign_stable_to_stack(Holder* stable) {')
