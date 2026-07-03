@@ -65,6 +65,21 @@ fn test_multi_return_tail_slots_use_return_compatibility() {
 	assert if_out == '5,2'
 }
 
+fn test_none_is_not_ierror_value() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_none_ierror_param',
+		'fn take(e IError) {\n\t_ = e\n}\n\nfn main() {\n\ttake(none)\n}\n',
+		'cannot use `?void` as argument 1 to `take`; expected `IError`')
+	run_bad(v3_bin, 'bad_none_ierror_field',
+		'struct Holder {\n\terr IError\n}\n\nfn main() {\n\t_ := Holder{\n\t\terr: none\n\t}\n}\n',
+		'cannot initialize field `err` with `?void`; expected `IError`')
+	run_bad(v3_bin, 'bad_none_ierror_return',
+		'fn make() IError {\n\treturn none\n}\nfn main() {}\n', 'cannot return `?void` as `IError`')
+	out := run_good(v3_bin, 'good_none_option_context',
+		'fn maybe() ?int {\n\treturn none\n}\n\nfn main() {\n\tif maybe() == none {\n\t\tprintln("option")\n\t}\n}\n')
+	assert out == 'option'
+}
+
 fn test_numeric_alias_returns_preserve_integer_float_direction() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_int_alias_float_return',

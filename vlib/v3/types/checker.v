@@ -11279,7 +11279,7 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 		return tc.resolve_expr(tc.a.child(&node, 0), expected)
 	}
 	if node.kind == .none_expr {
-		if expected is OptionType || expected is ResultType || is_ierror_type(expected) {
+		if expected is OptionType || expected is ResultType {
 			tc.register_synth_type(id, expected)
 			return expected
 		}
@@ -11744,7 +11744,7 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 		return true
 	}
 	if actual is None {
-		return expected is OptionType || expected is ResultType || is_ierror_type(expected)
+		return expected is OptionType || expected is ResultType
 	}
 	if expected is OptionType {
 		if actual is OptionType {
