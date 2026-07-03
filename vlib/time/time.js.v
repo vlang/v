@@ -67,7 +67,9 @@ fn time_with_unix(t Time) Time {
 // that `utc().unix()` would produce, without constructing a `Time`.
 pub fn unix_now() i64 {
 	t := i64(0)
-	#t.val = BigInt(Math.floor(new Date().getTime() / 1000))
+	// same rounding as utc()/now() on this backend (`(ms / 1000).toFixed(0)`),
+	// so unix_now() and utc().unix() never disagree by a second near a boundary
+	#t.val = BigInt((new Date().getTime() / 1000).toFixed(0))
 
 	return t
 }
