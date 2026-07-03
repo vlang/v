@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module http
 
+import net
 import sync
 import time
 
@@ -124,6 +125,7 @@ mut:
 	body_rcvd     u64    // cumulative DATA bytes received
 	ended         bool   // END_STREAM, RST, or connection death
 	err           string // non-empty: the stream failed
+	err_code      int    // set only by fail_with_code (e.g. net.err_timed_out_code); 0 otherwise
 	retryable     bool   // the failure is safe to retry on a fresh connection
 	sent_headers  bool   // the request HEADERS reached the transport
 	cancelled     bool   // requester abandoned the stream; drop+credit late DATA
@@ -149,6 +151,26 @@ fn (mut s H2MuxStream) fail(msg string, retryable bool) {
 	if !s.ended {
 		s.err = msg
 		s.retryable = retryable
+		s.ended = true
+		s.cv.signal()
+	}
+	s.mu.unlock()
+}
+
+// fail_with_code marks the stream failed with a specific error code, so a
+// caller of do() can recognize it (request.v's is_no_need_retry_error checks
+// err.code() to decide whether a failure is worth retrying at all). Not
+// retryable: unlike a GOAWAY-unprocessed or admission-refused stream, a
+// client-side read timeout does not prove the request never reached the
+// server. Used by h2_stream_read_timeout_watchdog; ordinary connection/stream
+// failures keep using plain fail() (err_code stays 0, and wait_response falls
+// back to an uncoded error for them, unchanged).
+fn (mut s H2MuxStream) fail_with_code(msg string, code int) {
+	s.mu.lock()
+	if !s.ended {
+		s.err = msg
+		s.err_code = code
+		s.retryable = false
 		s.ended = true
 		s.cv.signal()
 	}
@@ -326,12 +348,64 @@ pub fn (mut c H2MuxConn) do(req H2ClientRequest) !H2ClientResponse {
 	c.smu.unlock()
 
 	mut s := new_h2_mux_stream()
+	if req.read_timeout > 0 {
+		spawn h2_stream_read_timeout_watchdog(mut c, mut s, req.read_timeout)
+	}
 	resp := c.do_on_stream(mut s, req) or {
 		c.finish_stream(mut s)
 		return err
 	}
 	c.finish_stream(mut s)
 	return resp
+}
+
+// h2_watchdog_poll_interval bounds how long h2_stream_read_timeout_watchdog
+// sleeps per iteration, so a request that completes well before its deadline
+// (the common case: req.read_timeout defaults to 30s, but most responses
+// arrive in milliseconds) does not leave its watchdog thread sleeping for the
+// full deadline — every pooled h2 request spawns one of these, so without
+// this bound a busy connection under sustained throughput would accumulate
+// one lingering thread per recent request for up to the full read_timeout.
+const h2_watchdog_poll_interval = 200 * time.millisecond
+
+// h2_stream_read_timeout_watchdog enforces req.read_timeout on a pooled h2
+// request: H2MuxConn's background reader treats every transport read timeout
+// as a benign wake-up (it must survive one to keep servicing other streams),
+// so nothing else bounds an individual request's wait for its response.
+// Polls in short bounded steps rather than one long sleep, checking s.ended
+// after each one, so it exits promptly once the request actually completes
+// instead of always lingering for the full timeout (see
+// h2_watchdog_poll_interval). Whether it exits early (request already done)
+// or fires (fail_with_code, a no-op if s.ended is already true), it always
+// exits after a bounded number of steps, so it can never leak regardless of
+// how the request actually finishes. wake_send also covers a body upload
+// blocked on flow-control credit (send_body_on_stream waits on c.fcv, a
+// different condition variable than s.cv, so failing the stream alone would
+// not wake it) — safe to call unconditionally, matching every other
+// fail()+wake_send call site in this file.
+fn h2_stream_read_timeout_watchdog(mut c H2MuxConn, mut s H2MuxStream, timeout time.Duration) {
+	deadline := time.now().add(timeout)
+	for {
+		remaining := deadline - time.now()
+		if remaining <= 0 {
+			break
+		}
+		step := if remaining < h2_watchdog_poll_interval {
+			remaining
+		} else {
+			h2_watchdog_poll_interval
+		}
+		time.sleep(step)
+		s.mu.lock()
+		done := s.ended
+		s.mu.unlock()
+		if done {
+			return
+		}
+	}
+	s.fail_with_code('request timed out waiting for a response after ${timeout}',
+		net.err_timed_out_code)
+	c.wake_send(mut s)
 }
 
 // finish_stream removes the stream from the connection and releases the
@@ -594,11 +668,15 @@ fn (mut c H2MuxConn) send_body_on_stream(mut s H2MuxStream, body []u8) ! {
 				//    processed can be replayed on a fresh connection.
 				s.mu.lock()
 				failure := s.err
+				failure_code := s.err_code
 				failure_retryable := s.retryable
 				s.mu.unlock()
 				if failure != '' {
 					if failure_retryable {
 						return h2_retryable_error(failure)
+					}
+					if failure_code != 0 {
+						return error_with_code('h2: ${failure}', failure_code)
 					}
 					return error('h2: ${failure}')
 				}
@@ -758,6 +836,7 @@ fn (mut c H2MuxConn) wait_response(mut s H2MuxStream, req H2ClientRequest) !H2Cl
 		}
 		ended := s.ended
 		serr := s.err
+		serr_code := s.err_code
 		retryable := s.retryable
 		if cancelled {
 			s.mu.unlock()
@@ -794,6 +873,9 @@ fn (mut c H2MuxConn) wait_response(mut s H2MuxStream, req H2ClientRequest) !H2Cl
 			if serr != '' {
 				if retryable {
 					return h2_retryable_error(serr)
+				}
+				if serr_code != 0 {
+					return error_with_code('h2: ${serr}', serr_code)
 				}
 				return error('h2: ${serr}')
 			}

@@ -301,6 +301,48 @@ fn (t &Transport) total_idle_locked() int {
 	return n
 }
 
+// evict_idle_h2_if_over_cap evicts the least-recently-idle h2 connection when
+// registering a new one would push the total pooled-connection count (h1 +
+// h2) over max_idle_conns — the h2 pool's analog of checkin's h1 eviction,
+// since h2_conns has no other reaper (a dead connection is otherwise only
+// reclaimed lazily, on the next dial to the same key, or by close_idle).
+// Only a connection with zero active streams is eligible: a busy connection
+// is never evicted to make room, mirroring how a checked-out h1 connection
+// (not in h1_idle) can't be evicted either. The caller must hold t.mu and
+// release the returned connection (shutdown_when_idle + release) outside it —
+// release() can synchronously drive teardown_transport(), which calls this
+// connection's own close_transport closure, which itself takes t.mu.
+fn (mut t Transport) evict_idle_h2_if_over_cap() &H2MuxConn {
+	if t.max_idle_conns <= 0 {
+		return &H2MuxConn(unsafe { nil })
+	}
+	if t.total_idle_locked() + t.h2_conns.len <= t.max_idle_conns {
+		return &H2MuxConn(unsafe { nil })
+	}
+	mut oldest_key := ''
+	mut oldest_conn := &H2MuxConn(unsafe { nil })
+	mut oldest_since := time.now()
+	for k, mut c in t.h2_conns {
+		c.smu.lock()
+		is_idle := c.active_streams == 0
+		since := c.idle_since
+		c.smu.unlock()
+		if !is_idle {
+			continue
+		}
+		if oldest_conn == unsafe { nil } || since < oldest_since {
+			oldest_key = k
+			oldest_conn = c
+			oldest_since = since
+		}
+	}
+	if oldest_conn != unsafe { nil } {
+		t.h2_conns.delete(oldest_key)
+		t.h2_dial_id.delete(oldest_key)
+	}
+	return oldest_conn
+}
+
 // evict_oldest_locked removes and returns the least-recently-used idle
 // connection across all pool keys (nil if the pool is empty), pruning an
 // emptied key. The caller must hold t.mu and close the returned connection.

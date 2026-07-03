@@ -240,6 +240,120 @@ fn h2t_fetch_worker(port int, path string) int {
 	return resp.status_code
 }
 
+// h2t_h1only_srv_serve is a minimal HTTP/1.1 responder for a listener that
+// offers no ALPN protocols at all, so an h2-enabled client's probe dial
+// deterministically negotiates plain http/1.1.
+fn h2t_h1only_srv_serve(mut conn mbedtls.SSLConn) {
+	defer {
+		conn.shutdown() or {}
+	}
+	conn.set_read_timeout(10 * time.second)
+	for {
+		mut buf := []u8{len: 4096}
+		mut sofar := []u8{}
+		for !sofar.bytestr().contains('\r\n\r\n') {
+			n := conn.read(mut buf) or { return }
+			if n <= 0 {
+				return
+			}
+			sofar << buf[..n]
+		}
+		conn.write_string('HTTP/1.1 200 OK\r\nContent-Length: ${h2t_body.len}\r\n\r\n${h2t_body}') or {
+			return
+		}
+	}
+}
+
+fn h2t_h1only_srv_loop(mut s H2PoolSrv, mut listener mbedtls.SSLListener) {
+	for {
+		mut conn := listener.accept() or { return }
+		s.bump_accepts()
+		spawn h2t_h1only_srv_serve(mut conn)
+	}
+}
+
+// start_h2t_h1only_srv starts a loopback TLS listener with NO ALPN configured
+// (unlike start_h2_pool_srv's `h2`-only listener), so a client's ALPN probe
+// dial always resolves to plain http/1.1.
+fn start_h2t_h1only_srv(mut s H2PoolSrv) !(int, &mbedtls.SSLListener, thread) {
+	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := port_listener.addr()!.port()!
+	port_listener.close() or {}
+	mut listener := mbedtls.new_ssl_listener('127.0.0.1:${port}', mbedtls.SSLConnectConfig{
+		cert:     h2t_cert_path
+		cert_key: h2t_key_path
+		validate: false
+	})!
+	th := spawn h2t_h1only_srv_loop(mut s, mut listener)
+	return port, listener, th
+}
+
+// Concurrent first requests to a fresh h1-only origin: exactly one becomes
+// the ALPN-probing dialer (which completes its own exchange and checks the
+// resulting connection into the h1 pool), and the rest are waiters behind
+// that singleflight. At least one waiter must pick up the pooled connection
+// via the h1 pool rather than every waiter independently re-dialing (and
+// re-probing ALPN) — so the total accept count must be strictly fewer than
+// the number of concurrent requests (Codex P3, vlang/v#27643
+// pullrequestreview-4627654418, discussion 3521494719).
+fn test_h2_pool_waiter_reuses_h1_pool_after_alpn_probe() {
+	$if windows && !no_vschannel ? {
+		eprintln('skipping: SChannel connection pooling is not implemented yet')
+		return
+	}
+	mut srv := &H2PoolSrv{}
+	port, mut listener, th := start_h2t_h1only_srv(mut srv) or {
+		assert false, 'server: ${err}'
+		return
+	}
+	mut workers := []thread int{}
+	for i in 0 .. 4 {
+		workers << spawn h2t_fetch_worker(port, '/w${i}')
+	}
+	for w in workers {
+		status := w.wait()
+		assert status == 200, 'concurrent fetch failed with ${status}'
+	}
+	assert srv.accept_count() < workers.len, 'expected at least one waiter to reuse the pooled h1 connection instead of every one of ${workers.len} concurrent requests dialing its own, got ${srv.accept_count()} accepts'
+	stop_h2_pool_srv(mut listener, th)
+}
+
+// A caller-set req.read_timeout must bound a pooled h2 request's wait for its
+// response. H2MuxConn.read_loop treats every transport read timeout as a
+// benign wake-up (needed so the reader thread doesn't die from an otherwise
+// healthy idle connection), so nothing enforces a per-request deadline unless
+// wait_response itself is bounded — a request against a genuinely stalled
+// server must not hang until the server eventually responds regardless of
+// what read_timeout was configured (Codex P1, vlang/v#27643
+// pullrequestreview-4627654418, discussion 3521494711).
+fn test_h2_pool_respects_request_read_timeout() {
+	$if windows && !no_vschannel ? {
+		eprintln('skipping: SChannel connection pooling is not implemented yet')
+		return
+	}
+	mut srv := &H2PoolSrv{
+		respond_delay: 3 * time.second
+	}
+	port, mut listener, th := start_h2_pool_srv(mut srv) or {
+		assert false, 'server: ${err}'
+		return
+	}
+	sw := time.new_stopwatch()
+	resp := fetch(
+		url:          'https://127.0.0.1:${port}/slow'
+		validate:     false
+		read_timeout: 300 * time.millisecond
+	) or {
+		elapsed := sw.elapsed()
+		assert elapsed < 2 * time.second, 'expected the read_timeout to fire well before the 3s-stalled server responds, took ${elapsed}'
+		stop_h2_pool_srv(mut listener, th)
+		return
+	}
+	elapsed := sw.elapsed()
+	stop_h2_pool_srv(mut listener, th)
+	assert false, 'expected the stalled response to time out around 300ms, got status ${resp.status_code} after ${elapsed}'
+}
+
 // Concurrent first requests to a fresh h2 origin must share one ALPN-probing
 // dial (the H2DialCall singleflight) and then multiplex on the one resulting
 // connection: exactly one server accept for all of them.
@@ -263,6 +377,58 @@ fn test_h2_pool_dial_dedup_race() {
 	}
 	assert srv.accept_count() == 1, 'expected one deduped dial, got ${srv.accept_count()} accepts'
 	stop_h2_pool_srv(mut listener, th)
+}
+
+// The h2 connection pool must respect Transport.max_idle_conns like the h1
+// pool does: dialing an idle-eligible new connection past the cap must evict
+// an existing IDLE h2 connection (never a busy one), not just grow the pool
+// without bound. Without this, a client that touches many distinct h2 origins
+// keeps every pooled TLS socket + reader thread alive until close_idle() or
+// process exit, despite the public Transport limits promising to bound
+// file-descriptor use (Codex P2, vlang/v#27643 pullrequestreview-4627654418,
+// discussion 3521494717).
+fn test_h2_pool_respects_max_idle_conns_cap() {
+	$if windows && !no_vschannel ? {
+		eprintln('skipping: SChannel connection pooling is not implemented yet')
+		return
+	}
+	mut t := new_transport()
+	t.max_idle_conns = 1
+	mut srv1 := &H2PoolSrv{}
+	mut srv2 := &H2PoolSrv{}
+	mut srv3 := &H2PoolSrv{}
+	port1, mut l1, th1 := start_h2_pool_srv(mut srv1) or {
+		assert false, 'server 1: ${err}'
+		return
+	}
+	port2, mut l2, th2 := start_h2_pool_srv(mut srv2) or {
+		assert false, 'server 2: ${err}'
+		return
+	}
+	port3, mut l3, th3 := start_h2_pool_srv(mut srv3) or {
+		assert false, 'server 3: ${err}'
+		return
+	}
+
+	for port in [port1, port2, port3] {
+		req := prepare(url: 'https://127.0.0.1:${port}/x', validate: false) or {
+			assert false, 'prepare: ${err}'
+			return
+		}
+		resp := t.round_trip(req, .get, 'https', '127.0.0.1', port, '/x', '', req.header) or {
+			assert false, 'round_trip ${port}: ${err}'
+			return
+		}
+		assert resp.status_code == 200
+	}
+	t.mu.lock()
+	total := t.h2_conns.len
+	t.mu.unlock()
+	assert total <= t.max_idle_conns, 'expected h2_conns to respect max_idle_conns=${t.max_idle_conns}, got ${total} pooled connections after 3 distinct-origin dials'
+	t.close_idle()
+	stop_h2_pool_srv(mut l1, th1)
+	stop_h2_pool_srv(mut l2, th2)
+	stop_h2_pool_srv(mut l3, th3)
 }
 
 // Sequential requests to the same h2 origin must reuse the pooled multiplexed
@@ -323,6 +489,57 @@ fn test_h2_pool_goaway_redial() {
 	assert r2.body == h2t_body
 	assert srv.accept_count() == 2, 'expected a redial after GOAWAY, got ${srv.accept_count()} accepts'
 	stop_h2_pool_srv(mut listener, th)
+}
+
+// A dial failure on the pooled h2 ALPN-probing path must preserve the
+// underlying error's code, not collapse it to a plain uncoded error. The
+// outer retry loop (request.v's is_no_need_retry_error) decides whether to
+// give up early based on err.code() (net.err_connect_timed_out,
+// net.err_timed_out_code, etc.) — losing the code means a fundamentally
+// hopeless dial failure gets retried up to max_retries times instead of
+// failing fast, a regression from the one-shot h2 path (Codex P2, vlang/v#27643
+// pullrequestreview-4627654418, discussion 3521494715).
+fn test_h2_pool_dial_failure_preserves_error_code() {
+	$if windows && !no_vschannel ? {
+		eprintln('skipping: SChannel connection pooling is not implemented yet')
+		return
+	}
+	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0') or {
+		assert false, 'port: ${err}'
+		return
+	}
+	port := port_listener.addr() or {
+		assert false, 'addr: ${err}'
+		return
+	}.port() or {
+		assert false, 'port: ${err}'
+		return
+	}
+	port_listener.close() or {}
+
+	// Capture the raw dial's own error code against this now-closed port
+	// (nothing listening — a fast, deterministic connection failure).
+	mut raw_conn := ssl.new_ssl_conn(validate: false) or {
+		assert false, 'ssl conn: ${err}'
+		return
+	}
+	raw_conn.dial('127.0.0.1', port) or {
+		raw_code := err.code()
+		assert raw_code != 0, 'expected a coded dial failure to compare against, got: ${err}'
+
+		mut t := new_transport()
+		req := prepare(url: 'https://127.0.0.1:${port}/x', validate: false) or {
+			assert false, 'prepare: ${err}'
+			return
+		}
+		t.round_trip(req, .get, 'https', '127.0.0.1', port, '/x', '', req.header) or {
+			assert err.code() == raw_code, 'h2 dial failure lost its error code: got ${err.code()} (${err}), want ${raw_code}'
+			return
+		}
+		assert false, 'expected the dial to fail (nothing listening on this port)'
+		return
+	}
+	assert false, 'expected the raw dial to fail (nothing listening on this port)'
 }
 
 // close_idle_connections() must not release a pooled h2 connection's pool
