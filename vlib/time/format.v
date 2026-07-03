@@ -736,24 +736,42 @@ pub fn (t Time) http_header_string() string {
 	return buf.bytestr()
 }
 
-// push_to_http_header returns a date string in the format used in HTTP headers, as defined in RFC 2616.
-// e.g. "Sun, 06 Nov 1994 08:49:37 GMT"
-pub fn (t Time) push_to_http_header(mut buffer []u8) {
-	day_str := t.weekday_str()
-	month_str := t.smonth()
+// http_header_len is the byte length of an HTTP-date (RFC 9110 IMF-fixdate).
+pub const http_header_len = 29
 
-	mut buf := [day_str[0], day_str[1], day_str[2], `,`, ` `, `0`, `0`, ` `, month_str[0], month_str[1],
-		month_str[2], ` `, `0`, `0`, `0`, `0`, ` `, `0`, `0`, `:`, `0`, `0`, `:`, `0`, `0`, ` `,
-		`G`, `M`, `T`]!
+// write_http_header writes the 29-byte HTTP-date ("Sun, 06 Nov 1994 08:49:37 GMT",
+// RFC 9110 IMF-fixdate) at dst, which may point into a fixed array or a dynamic
+// array's data, at any offset. dst_len is the number of writable bytes at dst;
+// an error is returned when it is less than http_header_len, so a caller cannot
+// silently overrun its buffer. No allocation on the success path.
+@[unsafe]
+pub fn (t Time) write_http_header(dst &u8, dst_len int) ! {
+	if dst_len < http_header_len {
+		return error('time.write_http_header: dst_len must be >= 29')
+	}
+	day_str := long_days[iclamp(0, t.day_of_week() - 1, 6)] // read in place: no substr
+	mi := iclamp(0, t.month - 1, 11) * 3
+
+	mut buf := [day_str[0], day_str[1], day_str[2], `,`, ` `, `0`, `0`, ` `, months_string[mi],
+		months_string[mi + 1], months_string[mi + 2], ` `, `0`, `0`, `0`, `0`, ` `, `0`, `0`, `:`,
+		`0`, `0`, `:`, `0`, `0`, ` `, `G`, `M`, `T`]!
 	unsafe {
 		int_to_ptr_byte_array_no_pad(t.day, &buf[5], 2)
 		int_to_ptr_byte_array_no_pad(t.year, &buf[12], 4)
 		int_to_ptr_byte_array_no_pad(t.hour, &buf[17], 2)
 		int_to_ptr_byte_array_no_pad(t.minute, &buf[20], 2)
 		int_to_ptr_byte_array_no_pad(t.second, &buf[23], 2)
+		vmemcpy(dst, &buf[0], 29)
 	}
+}
+
+// push_to_http_header appends the 29-byte HTTP-date to buffer, as defined in RFC 2616.
+// e.g. "Sun, 06 Nov 1994 08:49:37 GMT"
+pub fn (t Time) push_to_http_header(mut buffer []u8) {
+	mut buf := [29]u8{}
 	unsafe {
-		buffer.push_many(&buf[0], buf.len)
+		t.write_http_header(&buf[0], 29) or {} // 29 >= http_header_len: cannot fail
+		buffer.push_many(&buf[0], 29)
 	}
 }
 

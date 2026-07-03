@@ -90,6 +90,26 @@ fn test_http_header_string() {
 	assert 'Fri, 11 Jul 1980 21:23:42 GMT' == time_to_test.http_header_string()
 }
 
+fn test_write_http_header() {
+	// fixed array, at an offset (a cached `Date: ...\r\n` line)
+	mut line := [37]u8{}
+	unsafe { time_to_test.write_http_header(&line[6], 31)! }
+	assert line[6..35].bytestr() == 'Fri, 11 Jul 1980 21:23:42 GMT'
+	// dynamic array, at an offset
+	mut buf := []u8{len: 40}
+	unsafe { time_to_test.write_http_header(&buf[5], buf.len - 5)! }
+	assert buf[5..34].bytestr() == 'Fri, 11 Jul 1980 21:23:42 GMT'
+	// a too-small destination is refused and left untouched
+	mut small := [28]u8{}
+	mut refused := false
+	unsafe { time_to_test.write_http_header(&small[0], small.len) or { refused = true } }
+	assert refused
+	for b in small {
+		assert b == 0
+	}
+	assert time.http_header_len == 29
+}
+
 fn test_push_to_http_header() {
 	mut http1_1_buffer := 'HTTP/1.1 200 OK\r\nDate: '.bytes()
 	time_to_test.push_to_http_header(mut http1_1_buffer)
