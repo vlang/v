@@ -53,6 +53,19 @@ fn test_reject_pointer_expressions_for_value_returns() {
 		'fn f() int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n', 'cannot return `&int` as `int`')
 	run_bad(v3_bin, 'bad_result_return_pointer_to_value',
 		'fn f() !int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n', 'cannot return `&int` as `!int`')
+	run_bad(v3_bin, 'bad_field_pointer_to_value',
+		'struct S {\n\tx int\n}\n\nfn main() {\n\tx := 1\n\t_ := S{\n\t\tx: &x\n\t}\n}\n',
+		'cannot initialize field `x` with `&int`; expected `int`')
+}
+
+fn test_numeric_alias_returns_preserve_integer_float_direction() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_int_alias_float_return',
+		'type Id = int\n\nfn f() Id {\n\treturn 1.5\n}\n\nfn main() {}\n',
+		'cannot return `f64` as `Id`')
+	out := run_good(v3_bin, 'good_float_alias_int_return',
+		'type Amount = f64\n\nfn f() Amount {\n\treturn 1\n}\n\nfn main() {\n\tprintln(f().str())\n}\n')
+	assert out == '1.0'
 }
 
 fn test_voidptr_params_reject_non_pointer_values() {

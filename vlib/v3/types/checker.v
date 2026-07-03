@@ -6022,7 +6022,7 @@ fn (tc &TypeChecker) return_type_compatible(expr_id flat.NodeId, actual Type, ex
 	if tc.expr_compatible(expr_id, actual, expected) {
 		return true
 	}
-	if return_numeric_alias_compatible(actual, expected) {
+	if tc.return_numeric_alias_compatible(actual, expected) {
 		return true
 	}
 	if tc.pointer_value_compatible(actual, expected) {
@@ -6049,11 +6049,20 @@ fn (tc &TypeChecker) return_type_compatible(expr_id flat.NodeId, actual Type, ex
 
 fn (tc &TypeChecker) pointer_value_compatible(actual Type, expected Type) bool {
 	if actual is Pointer {
+		if !pointer_value_base_can_match(actual.base_type) {
+			return false
+		}
 		return tc.type_compatible(actual.base_type, expected)
 			|| pointer_value_type_names_match(Type(actual).name(), expected.name())
 			|| bare_type_names_match(actual.base_type.name(), expected.name())
 	}
 	return pointer_value_type_names_match(actual.name(), expected.name())
+}
+
+fn pointer_value_base_can_match(typ Type) bool {
+	clean := if typ is Alias { typ.base_type } else { typ }
+	return clean is Struct || clean is Interface || clean is SumType || clean is Array
+		|| clean is ArrayFixed || clean is Map || clean is Channel
 }
 
 fn pointer_value_type_names_match(actual string, expected string) bool {
@@ -6068,9 +6077,9 @@ fn bare_type_names_match(actual string, expected string) bool {
 	return actual == expected
 }
 
-fn return_numeric_alias_compatible(actual Type, expected Type) bool {
+fn (tc &TypeChecker) return_numeric_alias_compatible(actual Type, expected Type) bool {
 	if expected is Alias {
-		return type_is_numeric(actual) && type_is_numeric(expected.base_type)
+		return type_is_numeric(expected.base_type) && tc.type_compatible(actual, expected.base_type)
 	}
 	return false
 }
