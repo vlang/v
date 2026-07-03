@@ -4437,16 +4437,27 @@ fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id
 }
 
 fn (mut g FlatGen) gen_fixed_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
-	lhs_fixed := array_fixed_type(types.unwrap_pointer(lhs_type)) or { types.ArrayFixed{} }
-	rhs_fixed := array_fixed_type(types.unwrap_pointer(rhs_type)) or { types.ArrayFixed{} }
-	lhs_is_fixed := lhs_fixed.elem_type !is types.Void || lhs_fixed.len > 0
-		|| lhs_fixed.len_expr.len > 0
-	rhs_is_fixed := rhs_fixed.elem_type !is types.Void || rhs_fixed.len > 0
-		|| rhs_fixed.len_expr.len > 0
+	// Detect fixed-array operands by the optional's presence, not by inspecting a
+	// default-constructed `ArrayFixed{}` sentinel. The zero value of the `elem_type`
+	// sum-type field is not reliably `Void` across the self-host bootstrap, so the old
+	// `!is types.Void` check misfired for scalar comparisons (e.g. `(a.flags & 32) != 0`
+	// from `@[flag]` enum `.has()`), emitting a bogus `memcmp(..., sizeof(Array_fixed_int_0))`.
+	mut fixed := types.ArrayFixed{}
+	mut lhs_is_fixed := false
+	mut rhs_is_fixed := false
+	if f := array_fixed_type(types.unwrap_pointer(lhs_type)) {
+		fixed = f
+		lhs_is_fixed = true
+	}
+	if f := array_fixed_type(types.unwrap_pointer(rhs_type)) {
+		if !lhs_is_fixed {
+			fixed = f
+		}
+		rhs_is_fixed = true
+	}
 	if !lhs_is_fixed && !rhs_is_fixed {
 		return false
 	}
-	fixed := if lhs_is_fixed { lhs_fixed } else { rhs_fixed }
 	if !lhs_is_fixed && !g.expr_can_be_fixed_array_literal(lhs_id) {
 		return false
 	}

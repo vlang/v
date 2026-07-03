@@ -138,7 +138,13 @@ fn (mut t Transformer) collect_generic_fn_decls_for_erasure() map[string]Generic
 				cur_module = node.value
 			}
 			.fn_decl {
-				if !generic_fn_decl_needs_erasure_scan(node, t.a) {
+				// Use the same detector as the monomorphize path: a method whose
+				// only generic parameter comes from its receiver struct (e.g.
+				// `fn (t ThreadLocalStorage[T]) set(value T)`) has no method-level
+				// `generic_params` and no `generic` substring in its param types, so
+				// the old literal-substring scan missed it and cgen emitted a raw
+				// `_T_` template body calling erased helpers.
+				if !t.fn_decl_has_unresolved_generics(node, cur_module) {
 					continue
 				}
 				key := t.generic_fn_decl_key(node, cur_module)
@@ -154,19 +160,6 @@ fn (mut t Transformer) collect_generic_fn_decls_for_erasure() map[string]Generic
 		}
 	}
 	return decls
-}
-
-fn generic_fn_decl_needs_erasure_scan(node flat.Node, a &flat.FlatAst) bool {
-	if node.generic_params.len > 0 || node.typ.contains('generic') {
-		return true
-	}
-	for i in 0 .. node.children_count {
-		child := a.child_node(&node, i)
-		if child.kind == .param && child.typ.contains('generic') {
-			return true
-		}
-	}
-	return false
 }
 
 fn building_v_keeps_type_erased_generic_template(key string) bool {
