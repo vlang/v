@@ -549,8 +549,8 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 			.struct_decl {
 				qname := tc.qualify_name(node.value)
 				if qname.starts_with('C.') {
-					c_struct_key := tc.cur_file + '\n' + qname
-					c_struct_sig := c_struct_decl_signature(a, node)
+					c_struct_key := qname
+					c_struct_sig := tc.c_struct_decl_signature(a, node)
 					if c_struct_key in c_struct_decl_sigs {
 						existing_sig := c_struct_decl_sigs[c_struct_key]
 						if !c_struct_decl_signatures_compatible(existing_sig, c_struct_sig) {
@@ -805,7 +805,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	}
 }
 
-fn c_struct_decl_signature(a &flat.FlatAst, node flat.Node) string {
+fn (tc &TypeChecker) c_struct_decl_signature(a &flat.FlatAst, node flat.Node) string {
 	mut sig := node.typ
 	mut has_fields := false
 	for i in 0 .. node.children_count {
@@ -815,7 +815,8 @@ fn c_struct_decl_signature(a &flat.FlatAst, node flat.Node) string {
 		}
 		has_fields = true
 		field_name := if f.value.starts_with('@') { f.value[1..] } else { f.value }
-		sig += '|${field_name}:${f.typ}'
+		field_typ := if f.typ.len > 0 { f.typ } else { f.value }
+		sig += '|${field_name}:${tc.c_type(tc.parse_type(field_typ))}'
 	}
 	if !has_fields {
 		return ''
