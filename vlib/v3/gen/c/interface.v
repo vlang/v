@@ -979,17 +979,19 @@ fn (g &FlatGen) interface_dispatch_receiver_expr(concrete string, concrete_param
 	}
 	concrete_type := g.tc.parse_type(concrete)
 	expected_type := concrete_params[0]
-	if field := g.embedded_receiver_field_for_expected(concrete_type, expected_type) {
-		field_is_ptr := field.typ is types.Pointer
+	if path := g.embedded_receiver_path_for_expected(concrete_type, expected_type) {
 		base := '(${cct}*)i->_object'
-		access := '${base}->${c_name(field.name)}'
-		if wants_ptr && !field_is_ptr {
-			return '&${access}'
+		mut access := base
+		mut access_is_ptr := true
+		for field in path {
+			op := if access_is_ptr { '->' } else { '.' }
+			access = '(${access})${op}${c_field_name(field.name)}'
+			access_is_ptr = field.typ is types.Pointer
 		}
-		if !wants_ptr && field_is_ptr {
-			return '*${access}'
+		if access_is_ptr == wants_ptr {
+			return access
 		}
-		return access
+		return if wants_ptr { '&(${access})' } else { '*(${access})' }
 	}
 	return if wants_ptr { '(${cct}*)i->_object' } else { '*(${cct}*)i->_object' }
 }

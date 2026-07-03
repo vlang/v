@@ -3852,11 +3852,11 @@ fn (g &FlatGen) embedded_method_name_for_struct(type_name string, method string)
 }
 
 fn (mut g FlatGen) gen_embedded_method_receiver(base_id flat.NodeId, base_type types.Type, expected_type types.Type, wants_ptr bool) bool {
-	field := g.embedded_receiver_field_for_expected(base_type, expected_type) or { return false }
-	field_is_ptr := field.typ is types.Pointer
-	if wants_ptr && !field_is_ptr {
+	path := g.embedded_receiver_path_for_expected(base_type, expected_type) or { return false }
+	target_is_ptr := path[path.len - 1].typ is types.Pointer
+	if wants_ptr && !target_is_ptr {
 		g.write('&')
-	} else if !wants_ptr && field_is_ptr {
+	} else if !wants_ptr && target_is_ptr {
 		g.write('*')
 	}
 	needs_paren := g.a.nodes[int(base_id)].kind !in [.ident, .selector]
@@ -3867,21 +3867,47 @@ fn (mut g FlatGen) gen_embedded_method_receiver(base_id flat.NodeId, base_type t
 	if needs_paren {
 		g.write(')')
 	}
-	first_op := if base_type is types.Pointer { '->' } else { '.' }
-	g.write('${first_op}${c_name(field.name)}')
+	mut access_is_ptr := base_type is types.Pointer
+	for field in path {
+		op := if access_is_ptr { '->' } else { '.' }
+		g.write('${op}${c_field_name(field.name)}')
+		access_is_ptr = field.typ is types.Pointer
+	}
 	return true
 }
 
 fn (g &FlatGen) embedded_receiver_field_for_expected(base_type types.Type, expected_type types.Type) ?types.StructField {
+	path := g.embedded_receiver_path_for_expected(base_type, expected_type) or { return none }
+	if path.len == 0 {
+		return none
+	}
+	return path[0]
+}
+
+fn (g &FlatGen) embedded_receiver_path_for_expected(base_type types.Type, expected_type types.Type) ?[]types.StructField {
 	base_name := g.type_lookup_name(base_type)
 	expected_name := g.type_lookup_name(expected_type)
 	if base_name.len == 0 || expected_name.len == 0 {
 		return none
 	}
+	mut seen := map[string]bool{}
+	return g.embedded_receiver_path_for_expected_name(base_name, expected_name, mut seen)
+}
+
+fn (g &FlatGen) embedded_receiver_path_for_expected_name(base_name string, expected_name string, mut seen map[string]bool) ?[]types.StructField {
+	if seen[base_name] {
+		return none
+	}
+	seen[base_name] = true
 	for field in g.struct_embedded_fields(base_name) {
 		embedded_type_name := g.embedded_field_type_name(field)
 		if embedded_type_name == expected_name {
-			return field
+			return [field]
+		}
+		if nested := g.embedded_receiver_path_for_expected_name(embedded_type_name, expected_name, mut seen) {
+			mut path := [field]
+			path << nested
+			return path
 		}
 	}
 	return none

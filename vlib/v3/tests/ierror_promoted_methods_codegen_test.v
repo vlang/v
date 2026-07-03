@@ -165,6 +165,67 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
+fn test_interface_dispatch_uses_nested_promoted_receiver_path() {
+	v3_bin := build_v3()
+
+	root := os.join_path(os.temp_dir(), 'v3_interface_nested_promoted_receiver_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	src := os.join_path(root, 'main.v')
+	os.write_file(src, 'interface HasNumber {
+	m() int
+}
+
+struct Inner {
+	n int
+}
+
+fn (inner Inner) m() int {
+	return inner.n
+}
+
+struct Mid {
+	pad int
+	Inner
+}
+
+struct Outer {
+	tag int
+	Mid
+}
+
+fn use(item HasNumber) int {
+	return item.m()
+}
+
+fn main() {
+	item := Outer{
+		tag: 100
+		Mid: Mid{
+			pad: 200
+			Inner: Inner{
+				n: 42
+			}
+		}
+	}
+	println(int_str(use(item)))
+}
+') or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_interface_nested_promoted_receiver_out_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	c_code := os.read_file('${bin}.c') or { '' }
+	assert c_code.contains('Inner__m((((Outer*)i->_object)->Mid).Inner)'), c_code
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42'
+}
+
 fn test_ierror_embed_compatible_method_dependencies_are_marked_used() {
 	v3_bin := build_v3()
 
