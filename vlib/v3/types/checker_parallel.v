@@ -330,16 +330,17 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.cur_fn_ret_type = Type(void_)
 	w.cur_fn_node_id = -1
 	w.type_cache = &TypeCache{
-		parse_enabled:         if tc.type_cache != unsafe { nil } {
+		parse_enabled:              if tc.type_cache != unsafe { nil } {
 			tc.type_cache.parse_enabled
 		} else {
 			false
 		}
-		parse_entries:         map[string]Type{}
-		c_entries:             map[string]string{}
-		struct_field_entries:  map[string]Type{}
-		struct_field_misses:   map[string]bool{}
-		ierror_compat_entries: map[string]int{}
+		parse_entries:              map[string]Type{}
+		c_entries:                  map[string]string{}
+		struct_field_entries:       map[string]Type{}
+		struct_field_misses:        map[string]bool{}
+		ierror_compat_entries:      map[string]int{}
+		source_error_embed_entries: map[string]int{}
 	}
 	return &w
 }
@@ -385,6 +386,7 @@ fn (mut tc TypeChecker) free_parallel_check_worker_cache() {
 			cache.struct_field_entries.free()
 			cache.struct_field_misses.free()
 			cache.ierror_compat_entries.free()
+			cache.source_error_embed_entries.free()
 		}
 	}
 }

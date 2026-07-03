@@ -161,12 +161,16 @@ struct LocalBinding {
 // TypeCache represents type cache data used by types.
 struct TypeCache {
 mut:
-	parse_enabled         bool
-	parse_entries         map[string]Type
-	c_entries             map[string]string
-	struct_field_entries  map[string]Type
-	struct_field_misses   map[string]bool
-	ierror_compat_entries map[string]int
+	parse_enabled              bool
+	parse_entries              map[string]Type
+	c_entries                  map[string]string
+	struct_field_entries       map[string]Type
+	struct_field_misses        map[string]bool
+	ierror_compat_entries      map[string]int
+	source_error_embed_entries map[string]int
+	source_error_embed_indexed bool
+	ierror_impl_names          []string
+	ierror_impl_names_set      bool
 }
 
 @[heap]
@@ -353,11 +357,12 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		selected_file_called_fns:           map[string]bool{}
 		smartcasts:                         map[string]Type{}
 		type_cache:                         &TypeCache{
-			parse_entries:         map[string]Type{}
-			c_entries:             map[string]string{}
-			struct_field_entries:  map[string]Type{}
-			struct_field_misses:   map[string]bool{}
-			ierror_compat_entries: map[string]int{}
+			parse_entries:              map[string]Type{}
+			c_entries:                  map[string]string{}
+			struct_field_entries:       map[string]Type{}
+			struct_field_misses:        map[string]bool{}
+			ierror_compat_entries:      map[string]int{}
+			source_error_embed_entries: map[string]int{}
 		}
 	}
 }
@@ -374,16 +379,17 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 	mut forked := *tc
 	forked.a = ast
 	forked.type_cache = &TypeCache{
-		parse_enabled:         if tc.type_cache != unsafe { nil } {
+		parse_enabled:              if tc.type_cache != unsafe { nil } {
 			tc.type_cache.parse_enabled
 		} else {
 			false
 		}
-		parse_entries:         map[string]Type{}
-		c_entries:             map[string]string{}
-		struct_field_entries:  map[string]Type{}
-		struct_field_misses:   map[string]bool{}
-		ierror_compat_entries: map[string]int{}
+		parse_entries:              map[string]Type{}
+		c_entries:                  map[string]string{}
+		struct_field_entries:       map[string]Type{}
+		struct_field_misses:        map[string]bool{}
+		ierror_compat_entries:      map[string]int{}
+		source_error_embed_entries: map[string]int{}
 	}
 	return &forked
 }
@@ -412,15 +418,17 @@ pub fn (mut tc TypeChecker) free_parallel_transform_caches() {
 			tc.type_cache.struct_field_entries.free()
 			tc.type_cache.struct_field_misses.free()
 			tc.type_cache.ierror_compat_entries.free()
+			tc.type_cache.source_error_embed_entries.free()
 		}
 	}
 	tc.type_cache = &TypeCache{
-		parse_enabled:         parse_enabled
-		parse_entries:         map[string]Type{}
-		c_entries:             map[string]string{}
-		struct_field_entries:  map[string]Type{}
-		struct_field_misses:   map[string]bool{}
-		ierror_compat_entries: map[string]int{}
+		parse_enabled:              parse_enabled
+		parse_entries:              map[string]Type{}
+		c_entries:                  map[string]string{}
+		struct_field_entries:       map[string]Type{}
+		struct_field_misses:        map[string]bool{}
+		ierror_compat_entries:      map[string]int{}
+		source_error_embed_entries: map[string]int{}
 	}
 }
 
@@ -556,11 +564,12 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 		tc.ownership_reset()
 	}
 	tc.type_cache = &TypeCache{
-		parse_entries:         map[string]Type{}
-		c_entries:             map[string]string{}
-		struct_field_entries:  map[string]Type{}
-		struct_field_misses:   map[string]bool{}
-		ierror_compat_entries: map[string]int{}
+		parse_entries:              map[string]Type{}
+		c_entries:                  map[string]string{}
+		struct_field_entries:       map[string]Type{}
+		struct_field_misses:        map[string]bool{}
+		ierror_compat_entries:      map[string]int{}
+		source_error_embed_entries: map[string]int{}
 	}
 	for node in a.nodes {
 		if node.kind == .struct_decl && node.value == 'string' {
@@ -8053,16 +8062,17 @@ fn (tc &TypeChecker) parse_fn_signature_type(name string, typ string) Type {
 		tc.file_modules[decl_file] or { tc.cur_module }
 	}
 	scoped.type_cache = &TypeCache{
-		parse_enabled:         if tc.type_cache != unsafe { nil } {
+		parse_enabled:              if tc.type_cache != unsafe { nil } {
 			tc.type_cache.parse_enabled
 		} else {
 			false
 		}
-		parse_entries:         map[string]Type{}
-		c_entries:             map[string]string{}
-		struct_field_entries:  map[string]Type{}
-		struct_field_misses:   map[string]bool{}
-		ierror_compat_entries: map[string]int{}
+		parse_entries:              map[string]Type{}
+		c_entries:                  map[string]string{}
+		struct_field_entries:       map[string]Type{}
+		struct_field_misses:        map[string]bool{}
+		ierror_compat_entries:      map[string]int{}
+		source_error_embed_entries: map[string]int{}
 	}
 	return scoped.parse_type(typ)
 }
@@ -11859,6 +11869,33 @@ pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
 	return impls
 }
 
+// ierror_impl_names returns the concrete struct names that can be boxed as `IError`.
+pub fn (tc &TypeChecker) ierror_impl_names() []string {
+	if tc.type_cache != unsafe { nil } {
+		mut cache := unsafe { tc.type_cache }
+		if cache.ierror_impl_names_set {
+			return cache.ierror_impl_names.clone()
+		}
+	}
+	mut struct_names := []string{}
+	for name, _ in tc.structs {
+		struct_names << name
+	}
+	struct_names.sort()
+	mut impls := []string{}
+	for name in struct_names {
+		if tc.named_type_compatible_with_ierror(name) {
+			impls << name
+		}
+	}
+	if tc.type_cache != unsafe { nil } {
+		mut cache := unsafe { tc.type_cache }
+		cache.ierror_impl_names = impls.clone()
+		cache.ierror_impl_names_set = true
+	}
+	return impls
+}
+
 fn (tc &TypeChecker) concrete_method_signature_key(concrete_name string, method string) ?string {
 	key := '${concrete_name}.${method}'
 	if key in tc.fn_param_types || key in tc.fn_ret_types {
@@ -11903,6 +11940,26 @@ fn (tc &TypeChecker) ierror_compat_cache_key(concrete_name string) string {
 	return concrete_name
 }
 
+// resolve_ierror_payload_name resolves scoped `Error`/`MessageError` names before
+// falling back to the builtin error structs.
+pub fn (tc &TypeChecker) resolve_ierror_payload_name(name string) string {
+	if name !in ['Error', 'MessageError'] {
+		return name
+	}
+	if resolved := tc.resolve_selective_import_type_symbol(name) {
+		if resolved in tc.structs {
+			return resolved
+		}
+	}
+	if tc.cur_module.len > 0 && tc.cur_module != 'main' && tc.cur_module != 'builtin' {
+		local := '${tc.cur_module}.${name}'
+		if local in tc.structs {
+			return local
+		}
+	}
+	return name
+}
+
 fn (tc &TypeChecker) type_compatible_with_ierror_payload(actual Type) bool {
 	clean := tc.ierror_payload_concrete_type(actual)
 	concrete_name := method_type_name(clean)
@@ -11931,7 +11988,7 @@ fn (tc &TypeChecker) ierror_payload_concrete_type(t Type) Type {
 }
 
 fn (tc &TypeChecker) named_type_compatible_with_ierror_inner(concrete_name string, mut seen map[string]bool) bool {
-	mut lookup := concrete_name
+	mut lookup := tc.resolve_ierror_payload_name(concrete_name)
 	if lookup !in tc.structs {
 		qname := tc.qualify_name(lookup)
 		if qname in tc.structs {
@@ -12031,11 +12088,23 @@ fn (tc &TypeChecker) source_struct_has_non_builtin_error_embed(concrete_name str
 	if isnil(tc.a) {
 		return false
 	}
-	target := concrete_name.all_after_last('.')
-	target_module := if concrete_name.contains('.') {
-		concrete_name.all_before_last('.')
-	} else {
-		mod_name
+	key := source_error_embed_lookup_key(concrete_name, file, mod_name)
+	if tc.type_cache != unsafe { nil } {
+		mut cache := unsafe { tc.type_cache }
+		if !cache.source_error_embed_indexed {
+			cache.source_error_embed_entries = tc.collect_source_error_embed_entries()
+			cache.source_error_embed_indexed = true
+		}
+		return cache.source_error_embed_entries[key] > 0
+	}
+	entries := tc.collect_source_error_embed_entries()
+	return entries[key] > 0
+}
+
+fn (tc &TypeChecker) collect_source_error_embed_entries() map[string]int {
+	mut entries := map[string]int{}
+	if isnil(tc.a) {
+		return entries
 	}
 	mut cur_file := ''
 	mut cur_module := ''
@@ -12049,41 +12118,61 @@ fn (tc &TypeChecker) source_struct_has_non_builtin_error_embed(concrete_name str
 				cur_module = node.value
 			}
 			.struct_decl {
-				if node.value != target {
+				if !tc.source_struct_decl_has_non_builtin_error_embed(node, cur_file, cur_module) {
 					continue
 				}
-				if target_module.len > 0 {
-					if !module_names_match(cur_module, target_module) {
-						continue
-					}
-				} else if file.len == 0 || cur_file != file
-					|| !module_names_match(cur_module, mod_name) {
-					continue
-				}
-				for i in 0 .. node.children_count {
-					field := tc.a.child_node(&node, i)
-					if field.kind != .field_decl {
-						continue
-					}
-					field_typ := if field.typ.len > 0 { field.typ } else { field.value }
-					if !source_field_decl_is_embed(field, field_typ) {
-						continue
-					}
-					if field_typ in ['Error', 'MessageError']
-						&& tc.unqualified_type_name_shadows_builtin_in_scope(field_typ, cur_file, cur_module) {
-						return true
-					}
-					resolved := tc.resolve_imported_type_text_in_file(field_typ, cur_file)
-					if resolved.all_after_last('.') in ['Error', 'MessageError']
-						&& !tc.is_builtin_error_struct_name_in_scope(resolved, cur_file, cur_module) {
-						return true
-					}
-				}
+				target := node.value.all_after_last('.')
+				module_key := source_error_embed_module_key(cur_module)
+				entries[source_error_embed_entry_key(target, '', module_key)] = 1
+				entries[source_error_embed_entry_key(target, cur_file, module_key)] = 1
 			}
 			else {}
 		}
 	}
+	return entries
+}
+
+fn (tc &TypeChecker) source_struct_decl_has_non_builtin_error_embed(node flat.Node, cur_file string, cur_module string) bool {
+	for i in 0 .. node.children_count {
+		field := tc.a.child_node(&node, i)
+		if field.kind != .field_decl {
+			continue
+		}
+		field_typ := if field.typ.len > 0 { field.typ } else { field.value }
+		if !source_field_decl_is_embed(field, field_typ) {
+			continue
+		}
+		if field_typ in ['Error', 'MessageError']
+			&& tc.unqualified_type_name_shadows_builtin_in_scope(field_typ, cur_file, cur_module) {
+			return true
+		}
+		resolved := tc.resolve_imported_type_text_in_file(field_typ, cur_file)
+		if resolved.all_after_last('.') in ['Error', 'MessageError']
+			&& !tc.is_builtin_error_struct_name_in_scope(resolved, cur_file, cur_module) {
+			return true
+		}
+	}
 	return false
+}
+
+fn source_error_embed_lookup_key(concrete_name string, file string, mod_name string) string {
+	target := concrete_name.all_after_last('.')
+	target_module := if concrete_name.contains('.') {
+		concrete_name.all_before_last('.')
+	} else {
+		mod_name
+	}
+	file_key := if target_module.len > 0 { '' } else { file }
+	return source_error_embed_entry_key(target, file_key,
+		source_error_embed_module_key(target_module))
+}
+
+fn source_error_embed_entry_key(target string, file string, module_key string) string {
+	return '${file}\n${module_key}\n${target}'
+}
+
+fn source_error_embed_module_key(mod_name string) string {
+	return if mod_name == 'main' { '' } else { mod_name }
 }
 
 fn source_field_decl_is_embed(field flat.Node, field_typ string) bool {

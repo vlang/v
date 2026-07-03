@@ -422,12 +422,7 @@ fn ensure_iface_impls(recv string, cur_module string, tc &types.TypeChecker, mut
 	}
 	mut impls := []string{}
 	if markused_is_ierror_interface_name(iface_name) {
-		for struct_name, _ in tc.structs {
-			if tc.named_type_compatible_with_ierror(struct_name) {
-				impls << struct_name
-			}
-		}
-		impls.sort()
+		impls = tc.ierror_impl_names()
 	} else {
 		// Structs plus alias implementers, from the same list cgen assigns
 		// dispatch ids over.

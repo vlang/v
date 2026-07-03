@@ -207,19 +207,10 @@ fn (mut g FlatGen) collect_interface_impls() {
 		iface_names << name
 	}
 	iface_names.sort()
-	mut struct_names := []string{}
-	for name, _ in g.tc.structs {
-		struct_names << name
-	}
-	struct_names.sort()
 	for iface in iface_names {
 		mut impls := []string{}
 		if g.is_ierror_type_name(iface) {
-			for concrete in struct_names {
-				if g.type_can_box_as_ierror(concrete) {
-					impls << concrete
-				}
-			}
+			impls = g.tc.ierror_impl_names()
 		} else {
 			// Structs plus type aliases with their own implementing methods; ids
 			// must come from tc.interface_impl_names so the transform's `is`
@@ -295,6 +286,12 @@ fn (g &FlatGen) iface_type_id_for_pattern(iface string, pattern string) int {
 }
 
 fn (g &FlatGen) ierror_interface_name() ?string {
+	if 'IError' in g.interfaces {
+		return 'IError'
+	}
+	if 'builtin.IError' in g.interfaces {
+		return 'builtin.IError'
+	}
 	for name, _ in g.interfaces {
 		if g.is_ierror_type_name(name) {
 			return name
@@ -424,6 +421,10 @@ fn (g &FlatGen) ierror_concrete_name(t types.Type) ?string {
 	}
 	iface := g.ierror_interface_name() or { return none }
 	name := (clean as types.Struct).name
+	scoped_name := g.tc.resolve_ierror_payload_name(name)
+	if scoped_name != name && g.iface_type_id(iface, scoped_name) != 0 {
+		return scoped_name
+	}
 	if g.iface_type_id(iface, name) != 0 {
 		return name
 	}
