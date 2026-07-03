@@ -10,7 +10,7 @@ fn (mut g FlatGen) emit_sum_type(name string) {
 	g.writeln('\tint typ;')
 	g.writeln('\tunion {')
 	for v in variants {
-		ct := g.tc.c_type(g.tc.parse_type(v))
+		ct := g.value_c_type(g.tc.parse_type(v))
 		field := g.sum_field_name(v)
 		g.writeln('\t\t${ct}* ${field};')
 	}
@@ -116,15 +116,21 @@ fn (g &FlatGen) type_references_sum(typ types.Type, sum_name string, mut visited
 
 // resolve_sum_name resolves resolve sum name information for c.
 fn (g &FlatGen) resolve_sum_name(sum_name string) string {
-	if sum_name in g.tc.sum_types {
-		return sum_name
-	}
-	for name, _ in g.tc.sum_types {
-		if name.all_after_last('.') == sum_name {
-			return name
-		}
+	if resolved := g.sum_name_lookup[sum_name] {
+		return resolved
 	}
 	return sum_name
+}
+
+fn (mut g FlatGen) precompute_sum_name_lookup() {
+	g.sum_name_lookup = map[string]string{}
+	for name, _ in g.tc.sum_types {
+		g.sum_name_lookup[name] = name
+		short := name.all_after_last('.')
+		if short.len > 0 && short !in g.sum_name_lookup {
+			g.sum_name_lookup[short] = name
+		}
+	}
 }
 
 // resolve_variant resolves resolve variant information for c.

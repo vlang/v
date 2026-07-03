@@ -144,6 +144,7 @@ endif
 BOOTSTRAP_TCC_REQUESTED := $(or $(findstring -cc tcc,$(strip $(VFLAGS))),$(findstring -cc=tcc,$(strip $(VFLAGS))))
 BOOTSTRAP_CCOMPILER_VFLAG :=
 BOOTSTRAP_VC_CCOMPILER_VFLAG :=
+POST_BOOTSTRAP_CCOMPILER_VFLAG :=
 BOOTSTRAP_GC_VFLAG :=
 ifeq ($(filter -gc -gc=%,$(VFLAGS)),)
 	BOOTSTRAP_GC_VFLAG := -gc none
@@ -165,6 +166,17 @@ ifneq ($(CC),tcc)
 	# The external vc bootstrap snapshot may still emit Windows-only stdio
 	# declarations for non-Windows TCC. Use the system compiler just for v1 -> v2.
 	BOOTSTRAP_VC_CCOMPILER_VFLAG := -cc "$(CC)"
+endif
+endif
+endif
+ifdef ANDROID
+ifneq ($(BOOTSTRAP_TCC_REQUESTED),)
+ifneq ($(CC),tcc)
+	# There is no Android TCC bundle yet. If `-cc tcc` was requested anyway,
+	# keep both bootstrap stages on the system compiler.
+	BOOTSTRAP_VC_CCOMPILER_VFLAG := -cc "$(CC)"
+	BOOTSTRAP_CCOMPILER_VFLAG := -cc "$(CC)"
+	POST_BOOTSTRAP_CCOMPILER_VFLAG := -cc "$(CC)"
 endif
 endif
 endif
@@ -199,10 +211,10 @@ ifdef NETBSD
 endif
 	rm -rf v1$(EXE_EXT) v2$(EXE_EXT)
 endif
-	@$(VEXE)$(EXE_EXT) run cmd/tools/detect_tcc.v
+	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) run cmd/tools/detect_tcc.v
 	@echo "V has been successfully built"
 	@$(VEXE)$(EXE_EXT) -version
-	@$(VEXE)$(EXE_EXT) run .github/problem-matchers/register_all.vsh
+	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) run .github/problem-matchers/register_all.vsh
 
 clean:
 	rm -rf $(TMPTCC)

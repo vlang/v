@@ -6,12 +6,14 @@ on:
       - master
     paths:
       - 'vlib/**'
+      - '!vlib/v3/**'
       - 'cmd/tools/builders/**.v'
       - '**/time_ci.yml'
       - '!**.md'
   pull_request:
     paths:
       - 'vlib/**'
+      - '!vlib/v3/**'
       - 'cmd/tools/builders/**.v'
       - '**/time_ci.yml'
       - '!**.md'

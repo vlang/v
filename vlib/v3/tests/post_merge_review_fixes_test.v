@@ -21,10 +21,14 @@ fn build_v3() string {
 }
 
 fn run_good(v3_bin string, name string, src string) string {
+	return run_good_backend(v3_bin, name, 'c', src)
+}
+
+fn run_good_backend(v3_bin string, name string, backend string, src string) string {
 	good_src := '${tmp_test_path(name)}.v'
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := tmp_test_path(name)
-	compile := os.execute('${v3_bin} ${good_src} -b c -o ${good_bin}')
+	compile := os.execute('${v3_bin} ${good_src} -b ${backend} -o ${good_bin}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(good_bin)
@@ -110,6 +114,73 @@ fn test_filelock_helpers_are_inlined_in_generated_c() {
 	out := run_good(v3_bin, 'filelock_user_names_not_helpers',
 		'fn v_filelock_lock() int {\n\treturn 3\n}\n\nfn v_filelock_unlock() int {\n\treturn 4\n}\n\nfn main() {\n\tprintln(int_str(v_filelock_lock() + v_filelock_unlock()))\n}\n')
 	assert out == '7'
+}
+
+fn test_imported_module_call_in_struct_default_has_no_receiver_arg() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'module_call_struct_default', {
+		'v.mod':         "Module { name: 'module_call_struct_default' }\n"
+		'myseed/seed.v': 'module myseed\n\npub fn next() int {\n\treturn 42\n}\n'
+		'rng/rng.v':     'module rng\n\nimport myseed\n\npub struct Rng {\n\tvalue int = myseed.next()\n}\n\npub fn value() int {\n\tr := Rng{}\n\treturn r.value\n}\n'
+		'main.v':        'module main\n\nimport rng\n\nfn main() {\n\tprintln(int_str(rng.value()))\n}\n'
+	}, 'main.v')
+	assert out == '42'
+}
+
+fn test_multi_return_assignment_requires_option_result_handling() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'unhandled_result_multi_decl_assign',
+		"fn pair() !(int, string) {\n\treturn 3, 'ok'\n}\n\nfn main() {\n\ta, b := pair()\n\tprintln(int_str(a) + b)\n}\n",
+		'requires `or {}`, `!`, or `?` handling')
+	run_bad(v3_bin, 'unhandled_result_multi_assign',
+		"fn pair() !(int, string) {\n\treturn 4, 'ok'\n}\n\nfn main() {\n\tmut a := 0\n\tmut b := ''\n\ta, b = pair()\n\tprintln(int_str(a) + b)\n}\n",
+		'requires `or {}`, `!`, or `?` handling')
+	out := run_good(v3_bin, 'handled_result_multi_decl_assign',
+		"fn pair() !(int, string) {\n\treturn 5, 'ok'\n}\n\nfn main() {\n\ta, b := pair() or { panic(err) }\n\tprintln(int_str(a) + b)\n}\n")
+	assert out == '5ok'
+}
+
+fn test_context_dependent_if_branches_infer_wrapper_types() {
+	v3_bin := build_v3()
+	opt_out := run_good(v3_bin, 'if_none_branch_infers_option',
+		'fn maybe(flag bool) ?int {\n\treturn if flag { none } else { 3 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n')
+	assert opt_out == '3\n-1'
+	res_out := run_good(v3_bin, 'if_error_branch_infers_result',
+		"fn maybe(flag bool) !int {\n\treturn if flag { error('bad') } else { 4 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n")
+	assert res_out == '4\n-1'
+	code_out := run_good(v3_bin, 'if_error_with_code_branch_infers_result',
+		"fn maybe(flag bool) !int {\n\treturn if flag { error_with_code('bad', 1) } else { 6 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n")
+	assert code_out == '6\n-1'
+	match_code_out := run_good(v3_bin, 'match_error_with_code_branch_infers_result',
+		"fn maybe(n int) !int {\n\treturn match n {\n\t\t0 { error_with_code('bad', 2) }\n\t\telse { 7 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(maybe(1) or { -1 }))\n\tprintln(int_str(maybe(0) or { -1 }))\n}\n")
+	assert match_code_out == '7\n-1'
+	run_bad(v3_bin, 'if_none_branch_without_context_rejected',
+		'fn main() {\n\tx := if true { none } else { 1 }\n\tprintln(x)\n}\n',
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'if_none_branch_rejected_for_result_without_context',
+		'fn fallible() !int {\n\treturn 2\n}\n\nfn main() {\n\tflag := true\n\tx := if flag { none } else { fallible() }\n\tprintln(int_str(x or { -1 }))\n}\n',
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'if_error_branch_rejected_for_option_payload',
+		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := f(false) or { 0 }\n}\n",
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'if_none_branch_rejected_for_result_payload',
+		'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n',
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'match_error_branch_rejected_for_option_payload',
+		"fn f(n int) ?int {\n\treturn match n {\n\t\t0 { error('bad') }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := f(1) or { 0 }\n}\n",
+		'cannot return')
+	run_bad(v3_bin, 'match_none_branch_rejected_for_result_payload',
+		'fn g(n int) !int {\n\treturn match n {\n\t\t0 { none }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := g(1) or { 0 }\n}\n',
+		'cannot return')
+	run_bad(v3_bin, 'if_option_void_branch_rejected_for_payload',
+		'fn maybe_void() ? {\n\treturn\n}\n\nfn f(ok bool) ?int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n',
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'if_result_void_branch_rejected_for_payload',
+		'fn maybe_void() ! {\n\treturn\n}\n\nfn f(ok bool) !int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n',
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'match_option_void_branch_rejected_for_payload',
+		'fn maybe_void() ? {\n\treturn\n}\n\nfn f(n int) ?int {\n\treturn match n {\n\t\t0 { maybe_void() }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := f(0) or { 0 }\n}\n',
+		'cannot return')
 }
 
 fn test_assoc_return_runs_defers() {
@@ -249,6 +320,9 @@ fn test_map_builtin_method_fallback_checks_arguments() {
 	out := run_good(v3_bin, 'map_builtin_method_fallback',
 		'fn main() {\n\tmut m := map[string]int{}\n\tm["abc"] = 42\n\tmut moved := m.move()\n\tprintln(int_str(m.len))\n\tmoved.clear()\n\tmoved.reserve(6)\n\tmoved.delete("x")\n\tkeys := moved.keys()\n\tvalues := moved.values()\n\tcloned := moved.clone()\n\tprintln(int_str(keys.len + values.len + cloned.len))\n}\n')
 	assert out == '0\n0'
+	empty_arrays_out := run_good(v3_bin, 'map_empty_keys_values_keep_elem_size',
+		"struct State {\n\tlabels map[string]string\n}\n\nfn main() {\n\ts := State{}\n\tmut keys := s.labels.keys()\n\tkeys << 'abc'\n\tprintln(keys[0])\n\tmut values := s.labels.values()\n\tvalues << 'def'\n\tprintln(values[0])\n}\n")
+	assert empty_arrays_out == 'abc\ndef'
 	pointer_out := run_good(v3_bin, 'map_move_pointer_receiver_returns_map',
 		'fn take(m map[string]int) int {\n\treturn m.len\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm["abc"] = 42\n\tp := &m\n\tprintln(int_str(take(p.move())))\n\tprintln(int_str(m.len))\n}\n')
 	assert pointer_out == '1\n0'
@@ -283,6 +357,20 @@ fn test_map_builtin_method_fallback_checks_arguments() {
 		'thing/mod.v': 'module thing\n\nstruct Foo {}\nstruct Key {}\n\nfn (m map[string]Foo) keys() int {\n\treturn 31\n}\n\nfn (a []Foo) pointers() int {\n\treturn 42\n}\n\nfn (m map[Key]int) keys() int {\n\treturn 53\n}\n\npub fn run() string {\n\tmut m := map[string]Foo{}\n\tm["x"] = Foo{}\n\titems := [Foo{}]\n\tkeyed := map[Key]int{}\n\treturn int_str(m.keys()) + "\\n" + int_str(items.pointers()) + "\\n" + int_str(keyed.keys())\n}\n'
 	}, 'main.v')
 	assert module_collection_out == '31\n42\n53'
+}
+
+fn test_arm64_string_roundtrip_preserves_literal_flag() {
+	$if macos && arm64 {
+		v3_bin := build_v3()
+		out := run_good_backend(v3_bin, 'arm64_string_roundtrip_preserves_literal_flag', 'arm64',
+			"fn literal_local() string {\n\ts := 'literal-static'\n\treturn s\n}\n\nfn arg_local(s string) string {\n\tlocal := s\n\treturn local\n}\n\nfn main() {\n\ta := literal_local()\n\tb := arg_local('argument-static')\n\tunsafe {\n\t\ta.free()\n\t\tb.free()\n\t}\n\tprintln('ok')\n}\n")
+		assert out == 'ok'
+		map_out := run_good_backend(v3_bin, 'arm64_map_empty_arrays_keep_elem_size', 'arm64',
+			"struct State {\n\tlabels map[string]string\n}\n\nfn main() {\n\ts := State{}\n\tmut keys := s.labels.keys()\n\tkeys << 'abc'\n\tprintln(keys[0])\n\tmut values := s.labels.values()\n\tvalues << 'def'\n\tprintln(values[0])\n}\n")
+		assert map_out == 'abc\ndef'
+	} $else {
+		assert true
+	}
 }
 
 fn test_runtime_inits_run_before_module_init() {
@@ -339,6 +427,6 @@ fn test_zero_padded_interpolation_preserves_wide_integers() {
 fn test_formatted_interpolation_rune_and_long_float() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'formatted_interpolation_rune_and_long_float',
-		"fn main() {\n\tr := '\${rune(0x20ac):c}'\n\tprintln(int_str(r.len))\n\tprintln(int_str(int(r[0])) + ',' + int_str(int(r[1])) + ',' + int_str(int(r[2])))\n\tlong := '\${1.0:.200f}'\n\tprintln(int_str(long.len))\n\tprintln(int_str(int(long[0])) + ',' + int_str(int(long[1])) + ',' + int_str(int(long[2])) + ',' + int_str(int(long[long.len - 1])))\n}\n")
-	assert out == '3\n226,130,172\n202\n49,46,48,48'
+		"fn main() {\n\tr := '\${rune(0x20ac):c}'\n\tprintln(int_str(r.len))\n\tprintln(int_str(int(r[0])) + ',' + int_str(int(r[1])) + ',' + int_str(int(r[2])))\n\tlong := '\${1.0:.200f}'\n\tprintln(int_str(long.len))\n\tprintln(int_str(int(long[0])) + ',' + int_str(int(long[1])) + ',' + int_str(int(long[2])) + ',' + int_str(int(long[long.len - 1])))\n\tprintln('\${238.5:0.0f}')\n\tprintln('\${239.5555555:0.6f}')\n}\n")
+	assert out == '3\n226,130,172\n202\n49,46,48,48\n239\n239.555556'
 }

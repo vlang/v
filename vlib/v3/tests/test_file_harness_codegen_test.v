@@ -222,6 +222,15 @@ fn test_fail() ? {
 ')
 	assert invalid_return.output.contains('invalid test signature'), invalid_return.output
 
+	same_module := compile_and_run(v3_bin, 'harness_same_module', '_test.v', "module sample
+
+fn test_one() {
+	println('sample test')
+}
+")
+	assert same_module.exit_code == 0, same_module.output
+	assert same_module.output.trim_space() == 'sample test', same_module.output
+
 	non_main := compile_expect_failure(v3_bin, 'harness_non_main_module', '_test.c.v', 'module sample
 
 fn test_one() {

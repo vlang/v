@@ -118,9 +118,23 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 	for _, typ in g.tc.const_types {
 		g.collect_optional_typedef_type(typ)
 	}
-	for idx, _ in g.a.nodes {
-		if typ := g.tc.expr_type(flat.NodeId(idx)) {
-			g.collect_optional_typedef_type(typ)
+	for idx, is_set in g.tc.expr_type_set {
+		if !is_set || idx >= g.tc.expr_type_values.len {
+			continue
+		}
+		g.collect_optional_typedef_type(g.tc.expr_type_values[idx])
+	}
+	for idx, node in g.a.nodes {
+		if node.kind != .call || (idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx]) {
+			continue
+		}
+		if node.typ.len > 0 && node.typ !in ['int', 'array', 'map', 'unknown'] {
+			g.collect_optional_typedef_type(g.tc.parse_type(node.typ))
+		} else if idx < g.tc.resolved_call_set.len && g.tc.resolved_call_set[idx] {
+			name := g.tc.resolved_call_names[idx]
+			if typ := g.tc.fn_ret_types[name] {
+				g.collect_optional_typedef_type(typ)
+			}
 		}
 	}
 }
@@ -213,11 +227,12 @@ fn (mut g FlatGen) enum_decls() {
 							val = enum_val
 						}
 					}
+					cfield := c_name(f.value)
 					if is_flag {
-						g.writeln('\t${cn}__${f.value} = ${1 << val},')
+						g.writeln('\t${cn}__${cfield} = ${1 << val},')
 						val++
 					} else {
-						g.writeln('\t${cn}__${f.value} = ${val},')
+						g.writeln('\t${cn}__${cfield} = ${val},')
 						val++
 					}
 				}
@@ -313,7 +328,8 @@ fn (mut g FlatGen) enum_str_defs() {
 						}
 						seen[case_val] = true
 						fname := f.value
-						g.writeln('\t\tcase ${cn}__${fname}: return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
+						cfield := c_name(fname)
+						g.writeln('\t\tcase ${cn}__${cfield}: return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
 					}
 					g.writeln('\t\tdefault: break;')
 					g.writeln('\t}')
@@ -352,7 +368,8 @@ fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, cn string) {
 		}
 		seen[bit] = true
 		fname := f.value
-		g.writeln('\tif (${cn}__${fname} != 0 && (__fe_v & ${cn}__${fname}) == ${cn}__${fname}) {')
+		cfield := c_name(fname)
+		g.writeln('\tif (${cn}__${cfield} != 0 && (__fe_v & ${cn}__${cfield}) == ${cn}__${cfield}) {')
 		g.writeln('\t\tif (!__fe_first) { __fe_res = string__plus(__fe_res, (string){.str = (u8*)" | ", .len = 3, .is_lit = 1}); }')
 		g.writeln('\t\t__fe_res = string__plus(__fe_res, (string){.str = (u8*)".${fname}", .len = ${
 			fname.len + 1}, .is_lit = 1});')

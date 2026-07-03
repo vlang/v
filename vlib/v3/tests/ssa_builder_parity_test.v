@@ -1,8 +1,10 @@
 import os
 import v3.flat
+import v3.markused
 import v3.parser
 import v3.pref
 import v3.ssa
+import v3.transform
 import v3.types
 
 // parse_checked_source reads parse checked source input for v3 tests.
@@ -28,6 +30,18 @@ fn build_source(name string, source string) &ssa.Module {
 fn build_source_with_used(name string, source string, used_fns map[string]bool) &ssa.Module {
 	a, tc := parse_checked_source(name, source)
 	return ssa.build_with_used(a, used_fns, tc)
+}
+
+// build_transformed_source builds source after the normal used-filtered transform path.
+fn build_transformed_source(name string, source string) &ssa.Module {
+	mut a, mut tc := parse_checked_source(name, source)
+	mut used := markused.mark_used(a, tc)
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	assert tc.errors.len == 0, tc.errors.str()
+	return ssa.build_with_used(a, used, tc)
 }
 
 // find_func resolves find func information for v3 tests.
@@ -358,6 +372,23 @@ fn make_array() int {
 	assert has_alloca_len_const(m, 'make_array', '4')
 }
 
+// test_const_string_membership_does_not_heap_build_array validates this v3 regression case.
+fn test_const_string_membership_does_not_heap_build_array() {
+	m := build_transformed_source('const_string_membership', '
+const names = ["malloc", "free", "puts"]
+
+fn has_name(name string) bool {
+	return name in names
+}
+
+fn main() {
+	_ := has_name("malloc")
+}
+')
+	assert has_call_to(m, 'has_name', 'fixed_array_contains_string')
+	assert !has_call_to(m, 'has_name', 'array_new')
+}
+
 // test_string_range_does_not_lower_to_array_slice validates this v3 regression case.
 fn test_string_range_does_not_lower_to_array_slice() {
 	m := build_source('string_range', '
@@ -381,4 +412,76 @@ fn last_value(values []int) int {
 ')
 	assert has_call_to(m, 'first_value', 'array_get')
 	assert has_call_to(m, 'last_value', 'array_get')
+}
+
+// test_used_filter_keeps_main validates this v3 regression case.
+fn test_used_filter_keeps_main() {
+	mut used := map[string]bool{}
+	used['println'] = true
+	m := build_source_with_used('used_filter_main', '
+fn main() {
+	println("hello")
+}
+', used)
+	main_fn := find_func(m, 'main')
+	assert main_fn.blocks.len > 0
+}
+
+// test_map_move_runtime_helper_builds_ssa validates this v3 regression case.
+fn test_map_move_runtime_helper_builds_ssa() {
+	m := build_transformed_source('map_move_runtime', '
+fn main() {
+	mut values := map[string]int{}
+	moved := values.move()
+	moved.clear()
+	moved.reserve(4)
+	moved.delete("x")
+	keys := moved.keys()
+	vals := moved.values()
+	moved.free()
+	_ := keys
+	_ := vals
+}
+')
+	assert has_call_to(m, 'main', 'map__move')
+	assert has_call_to(m, 'main', 'map__clear')
+	assert has_call_to(m, 'main', 'map__reserve')
+	assert has_call_to(m, 'main', 'map__delete')
+	assert has_call_to(m, 'main', 'map__keys')
+	assert has_call_to(m, 'main', 'map__values')
+	assert has_call_to(m, 'main', 'map__free')
+	move_fn := find_func(m, 'map__move')
+	assert move_fn.blocks.len > 0
+	keys_fn := find_func(m, 'map__keys')
+	assert keys_fn.blocks.len > 0
+	values_fn := find_func(m, 'map__values')
+	assert values_fn.blocks.len > 0
+}
+
+// test_moved_from_map_len_checks_nil_state validates this v3 regression case.
+fn test_moved_from_map_len_checks_nil_state() {
+	m := build_transformed_source('moved_from_map_len', '
+fn main() {
+	mut values := map[string]int{}
+	moved := values.move()
+	_ := moved
+	_ := values.len
+}
+')
+	assert has_call_to(m, 'main', 'map__move')
+	assert has_instr_op(m, 'main', .br)
+}
+
+// test_array_flags_set_lowers_without_receiver_collision validates this v3 regression case.
+fn test_array_flags_set_lowers_without_receiver_collision() {
+	m := build_source('array_flags_set', '
+fn main() {
+	mut values := []string{}
+	unsafe {
+		values.flags.set(.noslices | .noshrink)
+	}
+}
+')
+	assert !has_call_to(m, 'main', 'SortedMap.set')
+	assert has_instr_op(m, 'main', .or_)
 }

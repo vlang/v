@@ -161,7 +161,7 @@ fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, else_n
 	} else {
 		children << t.transform_stmt(else_id)
 	}
-	t.var_types = saved_var_types
+	t.restore_var_types(saved_var_types)
 	return t.make_block(children)
 }
 
@@ -272,7 +272,7 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 	} else {
 		then_children << t.transform_stmt(then_id)
 	}
-	t.var_types = saved_var_types
+	t.restore_var_types(saved_var_types)
 	then_block := t.make_block(then_children)
 
 	mut else_block := flat.empty_node
@@ -775,7 +775,7 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	then_children << value_decl
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
 	then_block := t.make_block(then_children)
-	t.var_types = saved_var_types
+	t.restore_var_types(saved_var_types)
 
 	else_id := t.a.child(&if_node, 2)
 	else_node := t.a.nodes[int(else_id)]
@@ -816,7 +816,7 @@ fn (mut t Transformer) build_map_index_if_value_guard_chain(if_node flat.Node, l
 	then_block0 := t.if_value_branch_block(then_id, target_name, target_type)
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
 	then_block := t.make_block(then_children)
-	t.var_types = saved_var_types
+	t.restore_var_types(saved_var_types)
 
 	else_id := t.a.child(&if_node, 2)
 	else_node := t.a.nodes[int(else_id)]
@@ -871,7 +871,7 @@ fn (mut t Transformer) build_array_index_if_value_guard_chain(if_node flat.Node,
 	then_block0 := t.if_value_branch_block(then_id, target_name, target_type)
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
 	then_block := t.make_block(then_children)
-	t.var_types = saved_var_types
+	t.restore_var_types(saved_var_types)
 
 	else_id := t.a.child(&if_node, 2)
 	else_node := t.a.nodes[int(else_id)]
@@ -935,7 +935,7 @@ fn (mut t Transformer) if_value_branch_block(branch_id flat.NodeId, target_name 
 	if tail.kind == .expr_stmt && tail.children_count > 0 {
 		inner_id := t.a.child(&tail, 0)
 		inner := t.a.nodes[int(inner_id)]
-		if inner.kind == .call && t.is_noreturn_call(inner) {
+		if inner.kind == .call && t.is_noreturn_call(inner_id) {
 			tail_stmts := t.transform_stmt(tail_id)
 			t.drain_pending(mut result)
 			for stmt in tail_stmts {
@@ -1118,6 +1118,29 @@ fn (mut t Transformer) transform_if_guard_condition(node flat.Node) flat.NodeId 
 	})
 }
 
+fn (mut t Transformer) transform_if_branch_as_block(branch_id flat.NodeId) flat.NodeId {
+	if int(branch_id) < 0 {
+		return t.make_block([]flat.NodeId{})
+	}
+	branch := t.a.nodes[int(branch_id)]
+	if branch.kind == .block {
+		return t.make_block(t.transform_stmts(t.a.children_of(&branch)))
+	}
+	mut stmts := []flat.NodeId{}
+	if t.is_stmt_kind_id(node_kind_id(branch)) {
+		expanded := t.transform_stmt(branch_id)
+		t.drain_pending(mut stmts)
+		stmts << expanded
+		return t.make_block(stmts)
+	}
+	expr := t.transform_expr(branch_id)
+	t.drain_pending(mut stmts)
+	if int(expr) >= 0 {
+		stmts << t.make_expr_stmt(expr)
+	}
+	return t.make_block(stmts)
+}
+
 // transform_if_branches_with_smartcast is the main if-expr handler that
 // integrates smartcasting. When the condition contains an is_expr, it
 // pushes a smartcast for the then-branch, transforms the body under
@@ -1141,26 +1164,11 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 	for info in all_is {
 		t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
 	}
-	then_node := t.a.nodes[int(then_id)]
-	mut new_then_id := then_id
-	if then_node.kind == .block {
-		child_ids := t.a.children_of(&then_node)
-		new_children := t.transform_stmts(child_ids)
-		block_start := t.a.children.len
-		for c in new_children {
-			t.a.children << c
-		}
-		new_then_id = t.a.add_node(flat.Node{
-			kind:           .block
-			children_start: block_start
-			children_count: flat.child_count(new_children.len)
-		})
-	}
-
+	new_then_id := t.transform_if_branch_as_block(then_id)
 	for _ in all_is {
 		t.pop_smartcast()
 	}
-	t.var_types = saved_var_types
+	t.restore_var_types(saved_var_types)
 
 	// Transform else-block (no smartcast -- the is_expr was false here).
 	mut new_else_id := flat.empty_node
@@ -1169,20 +1177,8 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 		if else_node.kind == .if_expr {
 			// else-if chain: recurse.
 			new_else_id = t.transform_else_if_expr(else_id, else_node)
-		} else if else_node.kind == .block {
-			child_ids := t.a.children_of(&else_node)
-			new_children := t.transform_stmts(child_ids)
-			block_start := t.a.children.len
-			for c in new_children {
-				t.a.children << c
-			}
-			new_else_id = t.a.add_node(flat.Node{
-				kind:           .block
-				children_start: block_start
-				children_count: flat.child_count(new_children.len)
-			})
 		} else {
-			new_else_id = else_id
+			new_else_id = t.transform_if_branch_as_block(else_id)
 		}
 	}
 

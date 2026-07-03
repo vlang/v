@@ -17,59 +17,220 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 			g.write(', ')
 		}
 		child_id := g.a.child(&node, i)
-		child := g.a.nodes[int(child_id)]
+		mut expr_id := child_id
+		mut child := g.a.nodes[int(child_id)]
+		mut format := ''
+		if child.kind == .directive && child.value == 'string_interp_format'
+			&& child.children_count > 0 {
+			expr_id = g.a.child(&child, 0)
+			format = child.typ
+			child = g.a.nodes[int(expr_id)]
+		}
 		if child.kind == .string_literal {
 			sid := g.intern_string(child.value)
 			g.write('_str_${sid}')
-		} else if child.typ == 'string' {
-			g.gen_expr(child_id)
 		} else {
-			mut typ := g.tc.resolve_type(child_id)
-			// For a bare ident, prefer the live cgen scope binding when present: it reflects
-			// locals introduced during generation (e.g. the `err` of an or-body lowered here,
-			// or for-loop vars) that resolve_type may stale-cache as `int`.
-			if child.kind == .ident {
-				if scope_typ := g.tc.cur_scope.lookup(child.value) {
-					if scope_typ !is types.Void {
-						typ = scope_typ
-					}
-				}
-			}
+			typ := g.string_interp_child_type(expr_id, child)
 			typ_name := types.Type(typ).name()
-			if typ is types.String {
-				g.gen_expr(child_id)
-			} else if g.gen_map_str_expr(child_id, typ) {
+			if child.typ == 'string' || typ is types.String {
+				if format.len > 0 {
+					g.gen_formatted_string_interp_child_expr(expr_id, typ, format)
+				} else {
+					g.gen_string_interp_child_expr(expr_id)
+				}
+			} else if format.len > 0
+				&& g.gen_formatted_string_interp_child_expr(expr_id, typ, format) {
+				// emitted by gen_formatted_string_interp_child_expr
+			} else if g.gen_map_str_expr(expr_id, typ) {
 				// emitted by gen_map_str_expr
 			} else if typ_name == 'IError' || typ_name.ends_with('.IError') {
 				// IError may resolve as Interface/Alias/Struct depending on context; match by
 				// name and interpolate its `.message` (mirrors the transformer's IError path).
-				g.gen_expr(child_id)
+				g.gen_string_interp_child_expr(expr_id)
 				g.write('.message')
 			} else if typ is types.Primitive {
 				prim_name := types.Type(typ).name()
 				g.write('${c_name('${prim_name}.str')}(')
-				g.gen_expr(child_id)
+				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.ISize || typ is types.USize {
 				g.write('${c_name('${typ.name()}.str')}(')
-				g.gen_expr(child_id)
+				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.Struct {
 				g.write('${c_name(typ.name)}__str(')
-				g.gen_expr(child_id)
+				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.SumType {
 				g.write('${c_name(typ.name)}__str(')
-				g.gen_expr(child_id)
+				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else {
 				g.write('int__str(')
-				g.gen_expr(child_id)
+				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			}
 		}
 	}
 	g.write('})')
+}
+
+fn (g &FlatGen) string_interp_child_type(child_id flat.NodeId, child flat.Node) types.Type {
+	if child.kind == .ident && g.current_param_is_mut(child.value) {
+		if param_type := g.current_param_type(child.value) {
+			if param_type is types.Pointer {
+				if map_str_clean_type(param_type.base_type) is types.Map {
+					return param_type
+				}
+				return param_type.base_type
+			}
+			return param_type
+		}
+	}
+	mut typ := g.tc.resolve_type(child_id)
+	// For a bare ident, prefer the live cgen scope binding when present: it reflects
+	// locals introduced during generation (e.g. the `err` of an or-body lowered here,
+	// or for-loop vars) that resolve_type may stale-cache as `int`.
+	if child.kind == .ident {
+		if scope_typ := g.tc.cur_scope.lookup(child.value) {
+			if scope_typ !is types.Void {
+				typ = scope_typ
+			}
+		}
+	}
+	return typ
+}
+
+struct StringInterpFormat {
+mut:
+	width         int
+	precision     int
+	has_precision bool
+	verb          u8
+	left          bool
+	zero          bool
+}
+
+fn parse_string_interp_format(format string) StringInterpFormat {
+	mut f := StringInterpFormat{}
+	mut i := 0
+	if i < format.len && format[i] == `-` {
+		f.left = true
+		i++
+	}
+	if i < format.len && format[i] == `0` {
+		f.zero = true
+		i++
+	}
+	for i < format.len && format[i] >= `0` && format[i] <= `9` {
+		f.width = f.width * 10 + int(format[i] - `0`)
+		i++
+	}
+	if i < format.len && format[i] == `.` {
+		i++
+		f.has_precision = true
+		for i < format.len && format[i] >= `0` && format[i] <= `9` {
+			f.precision = f.precision * 10 + int(format[i] - `0`)
+			i++
+		}
+	}
+	if i < format.len {
+		f.verb = format[i]
+	}
+	return f
+}
+
+fn string_interp_type_name(typ types.Type) string {
+	mut name := types.Type(typ).name()
+	if name.starts_with('builtin.') {
+		name = name.all_after_last('.')
+	}
+	return name
+}
+
+fn is_string_interp_float_type(name string) bool {
+	return name in ['f32', 'f64', 'float_literal']
+}
+
+fn is_string_interp_signed_int_type(name string) bool {
+	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'int_literal']
+}
+
+fn is_string_interp_unsigned_int_type(name string) bool {
+	return name in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize']
+}
+
+fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, typ types.Type, format string) bool {
+	f := parse_string_interp_format(format)
+	type_name := string_interp_type_name(typ)
+	left := if f.left { 1 } else { 0 }
+	if is_string_interp_float_type(type_name) && (f.verb == `f` || f.verb == 0) && f.has_precision {
+		precision := if f.verb == `f` {
+			f.precision
+		} else if f.precision > 0 {
+			f.precision - 1
+		} else {
+			0
+		}
+		g.write('v3_string_pad(v3_f64_fixed((double)(')
+		g.gen_string_interp_child_expr(child_id)
+		g.write('), ${precision}), ${f.width}, ${left})')
+		return true
+	}
+	if typ is types.String || type_name == 'string' {
+		if f.width > 0 && (f.verb == `s` || f.verb == 0) {
+			g.write('v3_string_pad(')
+			g.gen_string_interp_child_expr(child_id)
+			g.write(', ${f.width}, ${left})')
+			return true
+		}
+		g.gen_string_interp_child_expr(child_id)
+		return true
+	}
+	if is_string_interp_signed_int_type(type_name) && (f.verb == `d` || f.verb == 0) {
+		if f.zero && f.width > 0 {
+			g.write('v3_i64_zpad((i64)(')
+			g.gen_string_interp_child_expr(child_id)
+			g.write('), ${f.width})')
+			return true
+		}
+		if f.width > 0 {
+			g.write('v3_string_pad(i64__str((i64)(')
+			g.gen_string_interp_child_expr(child_id)
+			g.write(')), ${f.width}, ${left})')
+			return true
+		}
+	}
+	if is_string_interp_unsigned_int_type(type_name) && (f.verb == `d` || f.verb == 0) {
+		if f.zero && f.width > 0 {
+			g.write('v3_u64_zpad((u64)(')
+			g.gen_string_interp_child_expr(child_id)
+			g.write('), ${f.width})')
+			return true
+		}
+		if f.width > 0 {
+			g.write('v3_string_pad(u64__str((u64)(')
+			g.gen_string_interp_child_expr(child_id)
+			g.write(')), ${f.width}, ${left})')
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g FlatGen) gen_string_interp_child_expr(child_id flat.NodeId) {
+	child := g.a.nodes[int(child_id)]
+	if child.kind == .ident && g.current_param_is_mut(child.value) {
+		if param_type := g.current_param_type(child.value) {
+			if param_type is types.Pointer {
+				g.write('(*')
+				g.gen_expr(child_id)
+				g.write(')')
+				return
+			}
+		}
+	}
+	g.gen_expr(child_id)
 }
 
 // is_string_node reports whether is string node applies in c.

@@ -32,6 +32,8 @@ fn (mut t Transformer) propagate_decl_pair_type(node flat.Node, lhs_idx int, rhs
 	rhs_authority := t.decl_rhs_type(rhs_id)
 	if t.is_fn_pointer_type_name(rhs_authority) {
 		typ = rhs_authority
+	} else if decl_type_should_override_fallback(rhs_authority, fallback_type) {
+		typ = rhs_authority
 	} else if decl_type_is_usable(fallback_type) {
 		typ = fallback_type
 	} else {
@@ -42,8 +44,18 @@ fn (mut t Transformer) propagate_decl_pair_type(node flat.Node, lhs_idx int, rhs
 		}
 	}
 	if typ.len > 0 {
-		t.set_var_type(lhs.value, t.normalize_type_alias(typ))
+		t.set_var_type_with_raw(lhs.value, t.normalize_type_alias(typ), typ)
 	}
+}
+
+fn decl_type_should_override_fallback(authority string, fallback string) bool {
+	if !decl_type_is_usable(authority) {
+		return false
+	}
+	if !decl_type_is_usable(fallback) {
+		return true
+	}
+	return authority.starts_with('&') && !fallback.starts_with('&')
 }
 
 fn decl_type_is_usable(typ string) bool {
@@ -74,6 +86,11 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 	}
 	if int(id) >= 0 {
 		node := t.a.nodes[int(id)]
+		if node.kind == .call {
+			if ret := t.checker_resolved_non_builtin_return_type(id, node) {
+				return ret
+			}
+		}
 		if node.kind == .map_init {
 			if node.typ.starts_with('map[') {
 				return node.typ
@@ -428,6 +445,38 @@ fn (t &Transformer) qualified_enum_type_selector_name_from_selector_name(base st
 
 // lookup_struct_field_type resolves lookup struct field type information for transform.
 fn (t &Transformer) lookup_struct_field_type(type_name string, field_name string) ?string {
+	if type_name.len == 0 || field_name.len == 0 {
+		return none
+	}
+	key := t.struct_field_type_cache_key(type_name, field_name)
+	if !isnil(t.struct_field_type_cache) {
+		mut cache := t.struct_field_type_cache
+		if cached := cache.entries[key] {
+			return cached
+		}
+		if cache.misses[key] {
+			return none
+		}
+	}
+	resolved := t.lookup_struct_field_type_uncached(type_name, field_name) or {
+		if !isnil(t.struct_field_type_cache) {
+			mut cache := t.struct_field_type_cache
+			cache.misses[key] = true
+		}
+		return none
+	}
+	if !isnil(t.struct_field_type_cache) {
+		mut cache := t.struct_field_type_cache
+		cache.entries[key] = resolved
+	}
+	return resolved
+}
+
+fn (t &Transformer) struct_field_type_cache_key(type_name string, field_name string) string {
+	return '${t.cur_module}\n${type_name}\n${field_name}'
+}
+
+fn (t &Transformer) lookup_struct_field_type_uncached(type_name string, field_name string) ?string {
 	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
 	for f in lookup.info.fields {
 		if f.name == field_name {
@@ -680,6 +729,10 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 	if typ.starts_with('[]') {
 		return '[]' + t.normalize_type_alias(typ[2..])
 	}
+	if typ.starts_with('[') {
+		bracket_end := typ.index(']') or { return typ }
+		return typ[..bracket_end + 1] + t.normalize_type_alias(typ[bracket_end + 1..])
+	}
 	if typ.starts_with('map[') {
 		bracket_end := generic_matching_bracket(typ, 3)
 		if bracket_end < typ.len {
@@ -896,6 +949,14 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 		return resolved
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind == .dump_expr && node.children_count > 0 {
+		return t.node_type(t.a.child(&node, 0))
+	}
+	if node.kind == .fn_literal || node.kind == .lambda_expr {
+		if fn_type := t.fn_value_type_name(id) {
+			return fn_type
+		}
+	}
 	mut deferred_call_typ := ''
 	if node.typ.len > 0 {
 		node_typ := t.normalize_type_alias(node.typ)
@@ -1002,10 +1063,31 @@ fn (t &Transformer) array_map_call_type_name(node flat.Node) ?string {
 		return none
 	}
 	map_expr_id := t.a.child(&node, 1)
-	mut elem_type := if checker_type := t.checker_expr_type_name(map_expr_id) {
-		checker_type
-	} else {
-		t.node_type(map_expr_id)
+	map_expr := t.a.nodes[int(map_expr_id)]
+	mut elem_type := ''
+	if map_expr.kind == .ident {
+		if fn_name := t.resolve_fn_value_ident(map_expr.value) {
+			if ret := t.fn_ret_types[fn_name] {
+				elem_type = ret
+			} else if !isnil(t.tc) {
+				if ret_type := t.tc.fn_ret_types[fn_name] {
+					elem_type = t.normalize_type_alias(ret_type.name())
+				}
+			}
+		} else if ret_type := t.fn_value_return_type_name(map_expr_id) {
+			elem_type = ret_type
+		}
+	} else if map_expr.kind == .fn_literal || map_expr.kind == .lambda_expr {
+		if ret_type := t.fn_value_return_type_name(map_expr_id) {
+			elem_type = ret_type
+		}
+	}
+	if elem_type.len == 0 {
+		elem_type = if checker_type := t.checker_expr_type_name(map_expr_id) {
+			checker_type
+		} else {
+			t.node_type(map_expr_id)
+		}
 	}
 	if elem_type.len == 0 || elem_type in ['array', 'map', 'unknown'] {
 		elem_type = t.reliable_stringify_type(map_expr_id)

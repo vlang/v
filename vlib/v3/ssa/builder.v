@@ -1384,19 +1384,20 @@ fn (b &Builder) skip_source_fn(name string) bool {
 		'strings.Builder.free', 'strings.Builder.last_n', 'Builder.write_string', 'Builder.writeln',
 		'Builder.str', 'Builder.write_ptr', 'Builder.write_u8', 'Builder.write_runes', 'Builder.free',
 		'Builder.last_n', 'new_map', 'map__set', 'map__get', 'map__exists', 'map__get_check',
-		'map__get_or_set', 'map__delete', 'map__clear', 'map__clone', 'v3_map_find',
-		'v3_map_set_sized', 'u8.is_digit', 'u8.is_letter', 'u8.is_alnum', 'u8.is_capital', 'bytestr',
-		'[]u8.bytestr', 'Array_u8__bytestr', 'Array_u8__hex', 'Array_rune__string',
-		'array.repeat_to_depth', 'string.all_before_last', 'string__all_before_last',
-		'all_before_last', 'string.all_after_last', 'string__all_after_last', 'all_after_last',
-		'_ht_alloc', '_ht_free', 'f32_to_str_l', 'f32_to_str_l_with_dot', 'f64_to_str_l',
-		'f64_to_str_l_with_dot', 'print', 'println', 'eprint', 'eprintln', 'arguments', 'tos2',
-		'tos3', 'tos_clone', 'v_prealloc_atomic_add_i32', 'v_prealloc_atomic_load_i32',
-		'v_prealloc_atomic_store_i32', 'v_prealloc_atomic_cas_i32', 'FD_ZERO', 'FD_SET', 'FD_ISSET',
-		'v_signal_with_handler_cast', 'normalize_path_in_builder', 'check_fwrite', 'check_fread',
-		'os.check_fwrite', 'os.check_fread', 'fxx_to_str_l_parse', 'fxx_to_str_l_parse_with_dot',
-		'u8.vstring', 'u8.vstring_with_len', 'char.vstring', 'char.vstring_with_len',
-		'byteptr.vstring', 'byteptr.vstring_with_len', 'charptr.vstring', 'charptr.vstring_with_len',
+		'map__get_or_set', 'map__delete', 'map__clear', 'map__clone', 'map__move', 'map__free',
+		'map__reserve', 'map__keys', 'map__values', 'v3_map_find', 'v3_map_set_sized', 'u8.is_digit',
+		'u8.is_letter', 'u8.is_alnum', 'u8.is_capital', 'bytestr', '[]u8.bytestr',
+		'Array_u8__bytestr', 'Array_u8__hex', 'Array_rune__string', 'array.repeat_to_depth',
+		'string.all_before_last', 'string__all_before_last', 'all_before_last',
+		'string.all_after_last', 'string__all_after_last', 'all_after_last', '_ht_alloc', '_ht_free',
+		'f32_to_str_l', 'f32_to_str_l_with_dot', 'f64_to_str_l', 'f64_to_str_l_with_dot', 'print',
+		'println', 'eprint', 'eprintln', 'arguments', 'tos2', 'tos3', 'tos_clone',
+		'v_prealloc_atomic_add_i32', 'v_prealloc_atomic_load_i32', 'v_prealloc_atomic_store_i32',
+		'v_prealloc_atomic_cas_i32', 'FD_ZERO', 'FD_SET', 'FD_ISSET', 'v_signal_with_handler_cast',
+		'normalize_path_in_builder', 'check_fwrite', 'check_fread', 'os.check_fwrite',
+		'os.check_fread', 'fxx_to_str_l_parse', 'fxx_to_str_l_parse_with_dot', 'u8.vstring',
+		'u8.vstring_with_len', 'char.vstring', 'char.vstring_with_len', 'byteptr.vstring',
+		'byteptr.vstring_with_len', 'charptr.vstring', 'charptr.vstring_with_len',
 		'u8.vstring_literal', 'u8.vstring_literal_with_len', 'char.vstring_literal',
 		'char.vstring_literal_with_len', 'byteptr.vstring_literal',
 		'byteptr.vstring_literal_with_len', 'charptr.vstring_literal',
@@ -2561,7 +2562,22 @@ fn (mut b Builder) register_map_runtime_stubs() {
 	mut p1_ptr := []TypeID{}
 	p1_ptr << ptr_map
 	clear_id := b.register_synthetic_function('map__clear', b.void_type, p1_ptr)
-	b.generate_map_ptr_noop_body(clear_id)
+	b.generate_map_clear_body(clear_id)
+	free_id := b.register_synthetic_function('map__free', b.void_type, p1_ptr)
+	b.generate_map_free_body(free_id)
+	mut p2_arr := []TypeID{}
+	p2_arr << ptr_map
+	p2_arr << b.i64_type
+	keys_id := b.register_synthetic_function('map__keys', b.array_type, p2_arr)
+	b.generate_map_keys_values_body(keys_id, 0, 4)
+	values_id := b.register_synthetic_function('map__values', b.array_type, p2_arr)
+	b.generate_map_keys_values_body(values_id, 1, 5)
+
+	mut p2_reserve := []TypeID{}
+	p2_reserve << ptr_map
+	p2_reserve << b.u32_type
+	reserve_id := b.register_synthetic_function('map__reserve', b.void_type, p2_reserve)
+	b.generate_map_reserve_body(reserve_id)
 
 	p2 = []TypeID{}
 	p2 << ptr_map
@@ -2573,13 +2589,52 @@ fn (mut b Builder) register_map_runtime_stubs() {
 	p1_map << b.map_type
 	clone_id := b.register_synthetic_function('map__clone', b.map_type, p1_map)
 	b.generate_map_clone_body(clone_id)
+
+	mut p1_ptr_map := []TypeID{}
+	p1_ptr_map << ptr_map
+	move_id := b.register_synthetic_function('map__move', b.map_type, p1_ptr_map)
+	b.generate_map_move_body(move_id)
 }
 
-// generate_map_ptr_noop_body supports generate map ptr noop body handling for Builder.
-fn (mut b Builder) generate_map_ptr_noop_body(func_id int) {
+// generate_map_reserve_body emits a capacity no-op for the simplified SSA map runtime.
+fn (mut b Builder) generate_map_reserve_body(func_id int) {
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
 	entry := b.m.add_block(func_id, 'entry')
 	_ := b.func_add_argument(func_id, ptr_map, 'm')
+	_ := b.func_add_argument(func_id, b.u32_type, 'n')
+	b.block_instr0(.ret, entry, b.void_type)
+}
+
+// generate_map_clear_body clears the simplified SSA map length.
+fn (mut b Builder) generate_map_clear_body(func_id int) {
+	ptr_map := b.m.type_store.get_ptr(b.map_type)
+	ptr_state := b.m.type_store.get_ptr(b.map_state_type)
+	entry := b.m.add_block(func_id, 'entry')
+	m := b.func_add_argument(func_id, ptr_map, 'm')
+	state := b.map_state_ptr(entry, m)
+	zero_state := b.m.get_or_add_const(ptr_state, '0')
+	has_state := b.block_instr2(.ne, entry, b.i1_type, state, zero_state)
+	blk_clear := b.m.add_block(func_id, 'map_clear_state')
+	blk_done := b.m.add_block(func_id, 'map_clear_done')
+	b.block_instr3(.br, entry, b.void_type, has_state, ValueID(blk_clear), ValueID(blk_done))
+
+	len_ptr := b.map_state_field_ptr(blk_clear, state, 3)
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	b.block_instr2(.store, blk_clear, b.void_type, zero, len_ptr)
+	b.block_instr1(.jmp, blk_clear, b.void_type, ValueID(blk_done))
+
+	b.block_instr0(.ret, blk_done, b.void_type)
+}
+
+// generate_map_free_body detaches the simplified SSA map state.
+fn (mut b Builder) generate_map_free_body(func_id int) {
+	ptr_map := b.m.type_store.get_ptr(b.map_type)
+	ptr_state := b.m.type_store.get_ptr(b.map_state_type)
+	entry := b.m.add_block(func_id, 'entry')
+	m := b.func_add_argument(func_id, ptr_map, 'm')
+	state_field := b.block_struct_field_ptr(entry, m, b.map_type, 0)
+	zero_state := b.m.get_or_add_const(ptr_state, '0')
+	b.block_instr2(.store, entry, b.void_type, zero_state, state_field)
 	b.block_instr0(.ret, entry, b.void_type)
 }
 
@@ -2599,12 +2654,40 @@ fn (mut b Builder) generate_map_delete_body(func_id int) {
 	b.block_instr3(.br, entry, b.void_type, found, ValueID(blk_found), ValueID(blk_done))
 
 	state := b.map_state_ptr(blk_found, map_ptr)
+	keys_ptr := b.map_state_field_ptr(blk_found, state, 0)
+	vals_ptr := b.map_state_field_ptr(blk_found, state, 1)
 	len_ptr := b.map_state_field_ptr(blk_found, state, 3)
+	key_size_ptr := b.map_state_field_ptr(blk_found, state, 4)
+	val_size_ptr := b.map_state_field_ptr(blk_found, state, 5)
 	len := b.block_instr1(.load, blk_found, b.i64_type, len_ptr)
 	one := b.m.get_or_add_const(b.i64_type, '1')
 	new_len := b.block_instr2(.sub, blk_found, b.i64_type, len, one)
-	b.block_instr2(.store, blk_found, b.void_type, new_len, len_ptr)
-	b.block_instr1(.jmp, blk_found, b.void_type, ValueID(blk_done))
+	deleting_last := b.block_instr2(.eq, blk_found, b.i1_type, idx, new_len)
+	blk_compact := b.m.add_block(func_id, 'map_delete_compact')
+	blk_store_len := b.m.add_block(func_id, 'map_delete_store_len')
+	b.block_instr3(.br, blk_found, b.void_type, deleting_last, ValueID(blk_store_len),
+		ValueID(blk_compact))
+
+	keys := b.block_instr1(.load, blk_compact, ptr_i8, keys_ptr)
+	vals := b.block_instr1(.load, blk_compact, ptr_i8, vals_ptr)
+	key_size := b.block_instr1(.load, blk_compact, b.i64_type, key_size_ptr)
+	val_size := b.block_instr1(.load, blk_compact, b.i64_type, val_size_ptr)
+	key_dst_off := b.block_instr2(.mul, blk_compact, b.i64_type, idx, key_size)
+	val_dst_off := b.block_instr2(.mul, blk_compact, b.i64_type, idx, val_size)
+	key_src_off := b.block_instr2(.mul, blk_compact, b.i64_type, new_len, key_size)
+	val_src_off := b.block_instr2(.mul, blk_compact, b.i64_type, new_len, val_size)
+	key_dst := b.block_instr2(.add, blk_compact, ptr_i8, keys, key_dst_off)
+	val_dst := b.block_instr2(.add, blk_compact, ptr_i8, vals, val_dst_off)
+	key_src := b.block_instr2(.add, blk_compact, ptr_i8, keys, key_src_off)
+	val_src := b.block_instr2(.add, blk_compact, ptr_i8, vals, val_src_off)
+	memcpy_ref_key := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.fn_ids['memcpy'])
+	memcpy_ref_val := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.fn_ids['memcpy'])
+	b.block_instr4(.call, blk_compact, ptr_i8, memcpy_ref_key, key_dst, key_src, key_size)
+	b.block_instr4(.call, blk_compact, ptr_i8, memcpy_ref_val, val_dst, val_src, val_size)
+	b.block_instr1(.jmp, blk_compact, b.void_type, ValueID(blk_store_len))
+
+	b.block_instr2(.store, blk_store_len, b.void_type, new_len, len_ptr)
+	b.block_instr1(.jmp, blk_store_len, b.void_type, ValueID(blk_done))
 
 	b.block_instr0(.ret, blk_done, b.void_type)
 }
@@ -2673,6 +2756,65 @@ fn (mut b Builder) generate_map_clone_body(func_id int) {
 	b.block_instr1(.ret, blk_clone, b.void_type, result)
 
 	b.block_instr1(.ret, blk_empty, b.void_type, m)
+}
+
+// generate_map_move_body moves the simplified SSA map header out of `m` and zeroes `m`.
+fn (mut b Builder) generate_map_move_body(func_id int) {
+	ptr_map := b.m.type_store.get_ptr(b.map_type)
+	ptr_state := b.m.type_store.get_ptr(b.map_state_type)
+	entry := b.m.add_block(func_id, 'entry')
+	m := b.func_add_argument(func_id, ptr_map, 'm')
+	state_field := b.block_struct_field_ptr(entry, m, b.map_type, 0)
+	state := b.block_instr1(.load, entry, ptr_state, state_field)
+
+	result_slot := b.block_instr0(.alloca, entry, ptr_map)
+	result_state_field := b.block_struct_field_ptr(entry, result_slot, b.map_type, 0)
+	b.block_instr2(.store, entry, b.void_type, state, result_state_field)
+
+	zero_state := b.m.get_or_add_const(ptr_state, '0')
+	b.block_instr2(.store, entry, b.void_type, zero_state, state_field)
+	result := b.block_instr1(.load, entry, b.map_type, result_slot)
+	b.block_instr1(.ret, entry, b.void_type, result)
+}
+
+// generate_map_keys_values_body copies one map state storage vector into an array.
+fn (mut b Builder) generate_map_keys_values_body(func_id int, data_field int, size_field int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	ptr_map := b.m.type_store.get_ptr(b.map_type)
+	ptr_state := b.m.type_store.get_ptr(b.map_state_type)
+	ptr_array := b.m.type_store.get_ptr(b.array_type)
+	entry := b.m.add_block(func_id, 'entry')
+	m := b.func_add_argument(func_id, ptr_map, 'm')
+	elem_size_arg := b.func_add_argument(func_id, b.i64_type, 'elem_size')
+	state := b.map_state_ptr(entry, m)
+	zero_state := b.m.get_or_add_const(ptr_state, '0')
+	has_state := b.block_instr2(.ne, entry, b.i1_type, state, zero_state)
+	blk_copy := b.m.add_block(func_id, 'map_array_copy')
+	blk_empty := b.m.add_block(func_id, 'map_array_empty')
+	b.block_instr3(.br, entry, b.void_type, has_state, ValueID(blk_copy), ValueID(blk_empty))
+
+	src_ptr := b.map_state_field_ptr(blk_copy, state, data_field)
+	len_ptr := b.map_state_field_ptr(blk_copy, state, 3)
+	elem_size_ptr := b.map_state_field_ptr(blk_copy, state, size_field)
+	src := b.block_instr1(.load, blk_copy, ptr_i8, src_ptr)
+	len := b.block_instr1(.load, blk_copy, b.i64_type, len_ptr)
+	elem_size := b.block_instr1(.load, blk_copy, b.i64_type, elem_size_ptr)
+	array_new_ref := b.m.add_value(.func_ref, b.void_type, 'array_new', b.fn_ids['array_new'])
+	arr := b.block_instr4(.call, blk_copy, b.array_type, array_new_ref, elem_size, len, len)
+	arr_slot := b.block_instr0(.alloca, blk_copy, ptr_array)
+	b.block_instr2(.store, blk_copy, b.void_type, arr, arr_slot)
+	data_ptr := b.block_struct_field_ptr(blk_copy, arr_slot, b.array_type, 0)
+	data := b.block_instr1(.load, blk_copy, ptr_i8, data_ptr)
+	byte_len := b.block_instr2(.mul, blk_copy, b.i64_type, len, elem_size)
+	memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.fn_ids['memcpy'])
+	b.block_instr4(.call, blk_copy, ptr_i8, memcpy_ref, data, src, byte_len)
+	result := b.block_instr1(.load, blk_copy, b.array_type, arr_slot)
+	b.block_instr1(.ret, blk_copy, b.void_type, result)
+
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	empty_ref := b.m.add_value(.func_ref, b.void_type, 'array_new', b.fn_ids['array_new'])
+	empty := b.block_instr4(.call, blk_empty, b.array_type, empty_ref, elem_size_arg, zero, zero)
+	b.block_instr1(.ret, blk_empty, b.void_type, empty)
 }
 
 // register_u8_runtime_stubs updates register u8 runtime stubs state for ssa.
@@ -4873,6 +5015,9 @@ fn (mut b Builder) checker_return_type(fn_name string, module_name string) ?Type
 
 // fn_is_used supports fn is used handling for Builder.
 fn (b &Builder) fn_is_used(name string) bool {
+	if name == 'main' {
+		return true
+	}
 	if name in b.used_fns {
 		return true
 	}
@@ -8552,7 +8697,28 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		}
 		args << b.build_expr(arg_id)
 	}
+	if resolved_name in ['map__keys', 'map__values'] && args.len == 2 && param_types.len == 2 {
+		if elem_size := b.map_array_elem_size_arg(id, node) {
+			args << elem_size
+		} else {
+			args << b.m.get_or_add_const(b.i64_type, '1')
+		}
+	}
 	return b.m.add_instr(.call, b.cur_block, ret_type, args)
+}
+
+fn (mut b Builder) map_array_elem_size_arg(id flat.NodeId, node flat.Node) ?ValueID {
+	mut typ_name := b.checked_expr_type_name(id)
+	if typ_name.len == 0 || typ_name == 'unknown' {
+		typ_name = node.typ
+	}
+	if !typ_name.starts_with('[]') {
+		return none
+	}
+	elem_type := b.resolve_type(typ_name[2..])
+	elem_size := b.m.type_size(elem_type)
+	actual_size := if elem_size > 0 { elem_size } else { 1 }
+	return b.m.get_or_add_const(b.i64_type, actual_size.str())
 }
 
 fn (b &Builder) unqualified_call_candidate(name string, arg_count int) ?string {
@@ -8610,13 +8776,20 @@ fn (mut b Builder) coerce_value_for_param(value ValueID, param_type TypeID) Valu
 }
 
 fn (mut b Builder) build_flag_enum_method_call(base_id flat.NodeId, method string, node flat.Node) ?ValueID {
-	if !b.is_flag_enum_expr(base_id) {
+	flag_type_name := b.flag_enum_expr_type_name(base_id)
+	if flag_type_name.len == 0 || !b.is_flag_enum_type_name(flag_type_name) {
 		return none
 	}
 	base_addr := b.build_lvalue_addr(base_id)
 	flag_type := b.deref_type(base_addr)
 	mut flag := if node.children_count > 1 {
-		b.build_expr(b.a.child(&node, 1))
+		arg_id := b.a.child(&node, 1)
+		arg_node := b.a.nodes[int(arg_id)]
+		if value := b.enum_const_value_with_type(arg_node, flag_type_name) {
+			b.m.get_or_add_const(flag_type, value.str())
+		} else {
+			b.build_expr(arg_id)
+		}
 	} else {
 		b.m.get_or_add_const(flag_type, '0')
 	}
@@ -8639,18 +8812,35 @@ fn (mut b Builder) build_flag_enum_method_call(base_id flat.NodeId, method strin
 }
 
 fn (b &Builder) is_flag_enum_expr(id flat.NodeId) bool {
+	return b.is_flag_enum_type_name(b.flag_enum_expr_type_name(id))
+}
+
+fn (b &Builder) flag_enum_expr_type_name(id flat.NodeId) string {
 	name := b.checked_expr_type_name(id)
 	if b.is_flag_enum_type_name(name) {
-		return true
+		return name
 	}
 	if int(id) < 0 {
-		return false
+		return ''
 	}
 	node := b.a.nodes[int(id)]
 	if node.typ.len > 0 && b.is_flag_enum_type_name(node.typ) {
-		return true
+		return node.typ
 	}
-	return false
+	if node.kind == .selector && node.children_count > 0 {
+		base_type := b.receiver_type_name(b.a.child(&node, 0)).trim_left('&')
+		field_type := b.field_type_name(base_type, node.value)
+		if field_type.len > 0 {
+			if b.is_flag_enum_type_name(field_type) {
+				return field_type
+			}
+		}
+		if node.value == 'flags'
+			&& (base_type == 'array' || base_type == 'builtin.array' || base_type.starts_with('[]')) {
+			return 'ArrayFlags'
+		}
+	}
+	return ''
 }
 
 fn (mut b Builder) coerce_int_value(value ValueID, to_type TypeID) ValueID {
@@ -8952,14 +9142,16 @@ fn (mut b Builder) build_const_string_array_arg(id flat.NodeId) ?ValueID {
 	if int(id) < 0 {
 		return none
 	}
-	node := b.a.nodes[int(id)]
-	if node.kind != .ident {
-		return none
-	}
-	expr_id := b.lookup_const_expr(node.value) or { return none }
+	expr_id := b.const_string_array_expr_id(id) or { return none }
 	expr := b.a.nodes[int(expr_id)]
 	if expr.kind != .array_literal || expr.children_count == 0 {
 		return none
+	}
+	for i in 0 .. expr.children_count {
+		child := b.a.nodes[int(b.a.child(&expr, i))]
+		if child.kind != .string_literal {
+			return none
+		}
 	}
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
@@ -8968,16 +9160,38 @@ fn (mut b Builder) build_const_string_array_arg(id flat.NodeId) ?ValueID {
 	stride := 16
 	for i in 0 .. expr.children_count {
 		child_id := b.a.child(&expr, i)
-		child := b.a.nodes[int(child_id)]
-		if child.kind != .string_literal {
-			return none
-		}
 		value := b.build_expr(child_id)
 		off := b.m.get_or_add_const(b.i64_type, '${i * stride}')
 		slot := b.emit2(.get_element_ptr, ptr_string, alloca, off)
 		b.emit2(.store, b.void_type, value, slot)
 	}
 	return b.emit1(.bitcast, ptr_i8, alloca)
+}
+
+fn (b &Builder) const_string_array_expr_id(id flat.NodeId) ?flat.NodeId {
+	if int(id) < 0 {
+		return none
+	}
+	node := b.a.nodes[int(id)]
+	if node.kind == .array_literal {
+		return id
+	}
+	if node.kind == .cast_expr && node.children_count > 0 {
+		return b.const_string_array_expr_id(b.a.child(&node, 0))
+	}
+	if node.kind == .ident {
+		return b.lookup_const_expr(node.value)
+	}
+	if node.kind == .selector {
+		if node.value == 'data' && node.children_count > 0 {
+			return b.const_string_array_expr_id(b.a.child(&node, 0))
+		}
+		name := b.selector_qualified_name(node)
+		if name.len > 0 {
+			return b.lookup_const_expr(name)
+		}
+	}
+	return none
 }
 
 fn (mut b Builder) default_system_error_value(typ_id TypeID) ValueID {
@@ -9783,9 +9997,30 @@ fn (b &Builder) selector_qualified_name(node flat.Node) string {
 }
 
 fn (mut b Builder) load_map_len(map_ptr ValueID) ValueID {
+	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
+	ptr_state := b.m.type_store.get_ptr(b.map_state_type)
+	result_slot := b.emit0(.alloca, ptr_i64)
 	state := b.map_state_ptr(b.cur_block, map_ptr)
-	len_ptr := b.map_state_field_ptr(b.cur_block, state, 3)
-	return b.emit1(.load, b.i64_type, len_ptr)
+	zero_state := b.m.get_or_add_const(ptr_state, '0')
+	has_state := b.emit2(.ne, b.i1_type, state, zero_state)
+	blk_load := b.m.add_block(b.cur_func, 'map_len_state')
+	blk_empty := b.m.add_block(b.cur_func, 'map_len_empty')
+	blk_done := b.m.add_block(b.cur_func, 'map_len_done')
+	b.emit3(.br, b.void_type, has_state, ValueID(blk_load), ValueID(blk_empty))
+
+	b.cur_block = blk_load
+	len_ptr := b.map_state_field_ptr(blk_load, state, 3)
+	len := b.emit1(.load, b.i64_type, len_ptr)
+	b.emit2(.store, b.void_type, len, result_slot)
+	b.emit1(.jmp, b.void_type, ValueID(blk_done))
+
+	b.cur_block = blk_empty
+	zero_len := b.m.get_or_add_const(b.i64_type, '0')
+	b.emit2(.store, b.void_type, zero_len, result_slot)
+	b.emit1(.jmp, b.void_type, ValueID(blk_done))
+
+	b.cur_block = blk_done
+	return b.emit1(.load, b.i64_type, result_slot)
 }
 
 fn (mut b Builder) load_selector_field(node flat.Node, struct_typ_id TypeID, field_ptr ValueID) ValueID {

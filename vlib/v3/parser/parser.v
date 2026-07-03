@@ -19,7 +19,14 @@ fn C.close(int) int
 // C.malloc declares the C malloc symbol used by parser.
 fn C.malloc(int) &u8
 
+// C.realloc declares the C realloc symbol used by parser.
+fn C.realloc(voidptr, int) &u8
+
+// C.free declares the C free symbol used by parser.
+fn C.free(voidptr)
+
 const max_source_file_size = 8388608
+const read_source_chunk_size = 65536
 
 // Parser represents parser data used by parser.
 pub struct Parser {
@@ -164,16 +171,30 @@ fn read_source_file_raw(path string) string {
 	if fd < 0 {
 		return ''
 	}
-	size := os.file_size(path)
-	if size == 0 {
+	mut cap := read_source_chunk_size
+	mut buf := C.malloc(cap + 1)
+	if isnil(buf) {
 		C.close(fd)
 		return ''
 	}
-	expected := if size > max_source_file_size { max_source_file_size } else { int(size) }
-	buf := C.malloc(expected + 1)
 	mut total := 0
-	for total < expected {
-		nread := C.read(fd, unsafe { buf + total }, expected - total)
+	for total < max_source_file_size {
+		if total == cap {
+			mut new_cap := cap * 2
+			if new_cap > max_source_file_size {
+				new_cap = max_source_file_size
+			}
+			mut new_buf := C.realloc(buf, new_cap + 1)
+			if isnil(new_buf) {
+				C.close(fd)
+				unsafe { C.free(buf) }
+				return ''
+			}
+			buf = new_buf
+			cap = new_cap
+		}
+		remaining := cap - total
+		nread := C.read(fd, unsafe { buf + total }, remaining)
 		if nread <= 0 {
 			break
 		}
@@ -181,9 +202,17 @@ fn read_source_file_raw(path string) string {
 	}
 	C.close(fd)
 	if total <= 0 {
+		unsafe { C.free(buf) }
 		return ''
 	}
 	unsafe {
+		if cap > total {
+			new_buf := C.realloc(buf, total + 1)
+			if !isnil(new_buf) {
+				buf = new_buf
+			}
+		}
+		buf[total] = 0
 		return tos(buf, total)
 	}
 }
@@ -1026,12 +1055,13 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		generic_params = p.parse_generic_param_names()
 	}
 	// implements clause
+	mut implements_types := []string{}
 	if p.tok == .name && p.lit == 'implements' {
 		p.next()
-		p.parse_type_name()
+		implements_types << p.parse_type_name()
 		for p.tok == .comma {
 			p.next()
-			p.parse_type_name()
+			implements_types << p.parse_type_name()
 		}
 	}
 	// no body (C struct forward decl)
@@ -1042,7 +1072,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		return p.a.add_node(flat.Node{
 			kind:           .struct_decl
 			value:          name
-			typ:            struct_decl_typ(is_union, is_generic, is_params)
+			typ:            struct_decl_typ(is_union, is_generic, is_params, implements_types)
 			generic_params: generic_params
 		})
 	}
@@ -1177,14 +1207,14 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	return p.a.add_node(flat.Node{
 		kind:           .struct_decl
 		value:          name
-		typ:            struct_decl_typ(is_union, is_generic, is_params)
+		typ:            struct_decl_typ(is_union, is_generic, is_params, implements_types)
 		generic_params: generic_params
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
 }
 
-fn struct_decl_typ(is_union bool, is_generic bool, is_params bool) string {
+fn struct_decl_typ(is_union bool, is_generic bool, is_params bool, implements_types []string) string {
 	mut parts := []string{}
 	if is_union {
 		parts << 'union'
@@ -1194,6 +1224,11 @@ fn struct_decl_typ(is_union bool, is_generic bool, is_params bool) string {
 	}
 	if is_params {
 		parts << 'params'
+	}
+	$if ownership ? {
+		if implements_types.len > 0 {
+			parts << 'implements=' + implements_types.join('|')
+		}
 	}
 	return parts.join(',')
 }
@@ -1514,7 +1549,9 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 			p.next() // skip (
 			mut params := []flat.NodeId{}
 			for p.tok != .rpar && p.tok != .eof {
+				mut is_mut := false
 				if p.tok == .key_mut {
+					is_mut = true
 					p.next()
 				}
 				// Interface method params may be named (e.g. `seed_data []u32`,
@@ -1531,10 +1568,14 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 						p.next()
 					}
 				}
-				ptype := p.parse_type_name()
+				mut ptype := p.parse_type_name()
+				if is_mut && !ptype.starts_with('&') {
+					ptype = '&' + ptype
+				}
 				params << p.a.add_node(flat.Node{
 					kind: .param
 					typ:  ptype
+					op:   if is_mut { .amp } else { .none }
 				})
 				if p.tok == .comma {
 					p.next()
@@ -2359,6 +2400,9 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		}
 		return p.a.add_val_id(5, env_val)
 	}
+	if p.tok == .name && p.lit == 'embed_file' {
+		return p.parse_embed_file_expr()
+	}
 	for p.tok != .semicolon && p.tok != .eof {
 		p.next()
 	}
@@ -2366,6 +2410,94 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	// `empty_node`, so consumers (e.g. const initializers) never store an
 	// invalid (-1) child node.
 	return p.a.add_val_id(5, '')
+}
+
+fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
+	p.next() // skip embed_file
+	if p.tok != .lpar {
+		return flat.empty_node
+	}
+	p.next()
+	mut rel_path := ''
+	if p.tok == .string {
+		rel_path = strip_quotes(p.lit)
+		p.next()
+	} else if p.tok == .name && p.lit == '@FILE' {
+		rel_path = if os.is_abs_path(p.cur_file) { p.cur_file } else { os.real_path(p.cur_file) }
+		p.next()
+	} else {
+		// V3 does not evaluate arbitrary comptime expressions yet. Keep parsing
+		// valid and let the runtime helper fail clearly if the path is unknown.
+		p.expr(.lowest)
+	}
+	for p.tok != .rpar && p.tok != .eof {
+		p.next()
+	}
+	p.check(.rpar)
+	apath := p.embed_file_abs_path(rel_path)
+	len := if apath.len > 0 && os.is_file(apath) { int(os.file_size(apath)) } else { 0 }
+	mut field_ids := [
+		p.embed_file_field('path', p.a.add_val_id(5, rel_path)),
+		p.embed_file_field('apath', p.a.add_val_id(5, apath)),
+		p.embed_file_field('len', p.a.add_val_id(1, len.str())),
+	]
+	if uncompressed := p.embed_file_uncompressed_data(apath) {
+		field_ids << p.embed_file_field('uncompressed', uncompressed)
+	}
+	return p.a.add_node(flat.Node{
+		kind:           .struct_init
+		value:          'embed_file.EmbedFileData'
+		typ:            'embed_file.EmbedFileData'
+		children_start: p.add_children(field_ids)
+		children_count: flat.child_count(field_ids.len)
+	})
+}
+
+fn (mut p Parser) embed_file_uncompressed_data(apath string) ?flat.NodeId {
+	if !p.prefs.is_prod || apath.len == 0 || !os.is_file(apath) {
+		return none
+	}
+	bytes := os.read_bytes(apath) or { return none }
+	data := p.a.add_val_id(5, bytes.bytestr().clone())
+	return p.a.add_node(flat.Node{
+		kind:           .cast_expr
+		value:          '&u8'
+		typ:            '&u8'
+		children_start: p.add_child(data)
+		children_count: 1
+	})
+}
+
+fn (mut p Parser) embed_file_field(name string, val flat.NodeId) flat.NodeId {
+	return p.a.add_node(flat.Node{
+		kind:           .field_init
+		value:          name
+		children_start: p.add_child(val)
+		children_count: 1
+	})
+}
+
+fn (p &Parser) embed_file_abs_path(path string) string {
+	if path.len == 0 {
+		return ''
+	}
+	mut full_path := path
+	if full_path.starts_with('@VEXEROOT/') {
+		full_path = os.join_path_single(p.prefs.vroot, full_path['@VEXEROOT/'.len..])
+	} else if full_path == '@VEXEROOT' {
+		full_path = p.prefs.vroot
+	} else if full_path.starts_with('@VMODROOT/') {
+		full_path = os.join_path_single(vmod_root_for_file(p.cur_file),
+			full_path['@VMODROOT/'.len..])
+	} else if full_path == '@VMODROOT' {
+		full_path = vmod_root_for_file(p.cur_file)
+	} else if !os.is_abs_path(full_path) {
+		full_path = os.join_path_single(os.dir(p.cur_file), full_path)
+	}
+	if os.exists(full_path) {
+		return os.real_path(full_path)
+	}
+	return full_path
 }
 
 fn (mut p Parser) parse_comptime_if_expr() flat.NodeId {
@@ -3908,6 +4040,12 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			if name == '@LINE' {
 				return p.a.add_val_id(1, '0')
 			}
+			if name == '@MOD' {
+				if p.cur_module.len == 0 {
+					return p.a.add_val_id(5, 'main')
+				}
+				return p.a.add_val_id(5, p.cur_module)
+			}
 			if name == '@FN' || name == '@METHOD' {
 				return p.a.add_val_id(5, p.cur_fn)
 			}
@@ -5367,7 +5505,9 @@ fn (mut p Parser) parse_type_name() string {
 		if p.tok == .dot {
 			p.next()
 			if p.tok == .name {
-				name += '.' + p.lit
+				if p.lit != 'typ' {
+					name += '.' + p.lit
+				}
 				p.next()
 			}
 		}

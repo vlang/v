@@ -159,7 +159,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 		children_count: flat.child_count(field_ids.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            node.typ
+		typ:            if node.typ.len > 0 { node.typ } else { node.value }
 	})
 	final_id := t.add_missing_struct_defaults(new_id, t.a.nodes[int(new_id)])
 	for stmt in prelude {
@@ -207,7 +207,7 @@ fn (mut t Transformer) transform_struct_children(id flat.NodeId, node flat.Node)
 		children_count: flat.child_count(field_ids.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            node.typ
+		typ:            if node.typ.len > 0 { node.typ } else { node.value }
 	})
 }
 
@@ -283,7 +283,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		children_count: flat.child_count(field_ids.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            node.typ
+		typ:            if node.typ.len > 0 { node.typ } else { node.value }
 	})
 	for stmt in prelude {
 		t.pending_stmts << stmt
@@ -296,9 +296,36 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 	if info := t.lookup_struct_info_preferred(name) {
 		return info
 	}
+	if imported := t.resolve_imported_type_name(name) {
+		if info := t.lookup_struct_info_direct(imported) {
+			return info
+		}
+	}
 	normalized := t.normalize_type_alias(name)
 	if normalized != name {
 		return t.lookup_struct_info_direct(normalized)
+	}
+	return none
+}
+
+fn (t &Transformer) resolve_imported_type_name(name string) ?string {
+	if isnil(t.tc) || !name.contains('.') || name.starts_with('C.') {
+		return none
+	}
+	dot := name.index_u8(`.`)
+	if dot <= 0 {
+		return none
+	}
+	alias := name[..dot]
+	if mod := t.tc.file_imports[file_import_key(t.cur_file, alias)] {
+		if mod != alias {
+			return mod + name[dot..]
+		}
+	}
+	if mod := t.tc.imports[alias] {
+		if mod != alias {
+			return mod + name[dot..]
+		}
 	}
 	return none
 }
@@ -369,11 +396,15 @@ fn (t &Transformer) embedded_field_for_promoted_field(info StructInfo, field_nam
 
 // is_embedded_field reports whether is embedded field applies in transform.
 fn (t &Transformer) is_embedded_field(field FieldInfo) bool {
-	if field.name.len == 0 || field.typ.len == 0 {
+	return field.is_embedded
+}
+
+fn field_decl_is_embedded(name string, typ string) bool {
+	if name.len == 0 || typ.len == 0 {
 		return false
 	}
-	short_typ := if field.typ.contains('.') { field.typ.all_after_last('.') } else { field.typ }
-	short_name := if field.name.contains('.') { field.name.all_after_last('.') } else { field.name }
+	short_typ := if typ.contains('.') { typ.all_after_last('.') } else { typ }
+	short_name := if name.contains('.') { name.all_after_last('.') } else { name }
 	return short_name == short_typ
 }
 
@@ -428,12 +459,13 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		}
 		value_type := t.node_type(value_id)
 		enum_field_type := t.enum_type_name_for_expected(field_type, assoc_module)
+		sum_field_type := t.struct_field_sum_type(field_type, assoc_module)
 		value := if value_node.kind == .enum_val && enum_field_type.len > 0 {
 			t.transform_enum_shorthand(value_id, value_node, enum_field_type)
 		} else if field_type.starts_with('[]') && t.is_fixed_array_type(value_type) {
 			t.fixed_array_value_to_array(value_id, value_type, field_type)
-		} else if t.is_sum_type_name(field_type) {
-			t.wrap_sum_value(value_id, field_type)
+		} else if sum_field_type.len > 0 {
+			t.wrap_sum_value(value_id, sum_field_type)
 		} else if field_type.len > 0 {
 			t.transform_expr_for_type(value_id, field_type)
 		} else {
@@ -491,6 +523,10 @@ fn (mut t Transformer) transform_amp_assoc_expr_for_type(_id flat.NodeId, node f
 
 // struct_field_sum_type supports struct field sum type handling for Transformer.
 fn (t &Transformer) struct_field_sum_type(field_type string, owner_module string) string {
+	if field_type.starts_with('[]') || field_type.starts_with('map[')
+		|| t.is_fixed_array_type(field_type) {
+		return ''
+	}
 	if t.is_sum_type_name(field_type) {
 		return field_type
 	}

@@ -1,5 +1,6 @@
 module http
 
+import compress.brotli
 import compress.gzip
 import compress.zlib
 
@@ -98,6 +99,20 @@ fn test_parse_response_with_deflate_content_encoding() {
 	compressed_body := zlib.compress(expected_body.bytes())!
 	content :=
 		'HTTP/1.1 200 OK\r\nContent-Encoding: deflate\r\nContent-Length: ${compressed_body.len}\r\n\r\n' +
+		compressed_body.bytestr()
+	resp := parse_response(content)!
+	assert resp.body == expected_body
+}
+
+fn test_parse_response_with_brotli_content_encoding() {
+	if !brotli.is_available() {
+		eprintln('skipping Brotli HTTP response test; libbrotli is not available')
+		return
+	}
+	expected_body := '{"a": 1}'
+	compressed_body := brotli.compress(expected_body.bytes(), mode: .text)!
+	content :=
+		'HTTP/1.1 200 OK\r\nContent-Encoding: br\r\nContent-Length: ${compressed_body.len}\r\n\r\n' +
 		compressed_body.bytestr()
 	resp := parse_response(content)!
 	assert resp.body == expected_body

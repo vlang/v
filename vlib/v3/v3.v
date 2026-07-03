@@ -127,10 +127,34 @@ fn c_standard_flag(c99 bool) string {
 	return if c99 { '-std=c99' } else { '-std=gnu11' }
 }
 
+fn run_test_binary(bin_file string) int {
+	return os.system(executable_command_for_path(bin_file))
+}
+
+fn executable_command_for_path(path string) string {
+	mut run_path := path
+	if !os.is_abs_path(path) && !path.contains('/') && !path.contains('\\') {
+		run_path = '.' + os.path_separator + path
+	}
+	return os.quoted_path(run_path)
+}
+
 fn input_implies_building_v(input_file string) bool {
 	normalized := input_file.replace('\\', '/').trim_right('/')
-	return normalized.all_after_last('/') == 'v3.v' || normalized == 'cmd/v'
-		|| normalized.ends_with('/cmd/v') || normalized.ends_with('/cmd/v/v.v')
+	if normalized.all_after_last('/') == 'v3.v' {
+		return true
+	}
+	if os.is_dir(input_file) {
+		normalized_dir := os.real_path(input_file).replace('\\', '/').trim_right('/')
+		return normalized_dir.ends_with('/vlib/v3')
+	}
+	return false
+}
+
+fn input_is_cmd_v(input_file string) bool {
+	normalized := input_file.replace('\\', '/').trim_right('/')
+	return normalized == 'cmd/v' || normalized.ends_with('/cmd/v')
+		|| normalized.ends_with('/cmd/v/v.v')
 }
 
 // main runs the v3 entry point.
@@ -148,7 +172,7 @@ fn main() {
 	mut is_strict := false
 	mut is_selfhost := false
 	mut no_parallel := false
-	mut parallel_transform := false
+	mut parallel_transform := true
 	mut building_v := false
 	mut c99 := false
 	mut all_backends := false
@@ -211,16 +235,30 @@ fn main() {
 			i++
 		}
 	}
+	if no_parallel {
+		parallel_transform = false
+	}
 
 	if input_file == '' {
 		eprintln('no input file')
 		exit(1)
 	}
 
-	// Compiling the V compiler itself implies building_v: it uses no generics, so the
-	// monomorphization pass is pure overhead. -building-v can force this for any input.
+	// Compiling v3 itself implies building_v: it uses no generics, so the monomorphization
+	// pass is pure overhead. -building-v can force this for any input.
 	if input_implies_building_v(input_file) {
 		building_v = true
+	}
+	cmd_v_build := input_is_cmd_v(input_file)
+	if building_v || cmd_v_build {
+		if no_parallel {
+			user_defines = user_defines.filter(it != 'parallel')
+			if 'v3_no_parallel' !in user_defines {
+				user_defines << 'v3_no_parallel'
+			}
+		} else if 'parallel' !in user_defines {
+			user_defines << 'parallel'
+		}
 	}
 
 	mut bin_file := ''
@@ -289,9 +327,10 @@ fn main() {
 	prefs.backend = backend
 	prefs.c99 = c99
 	prefs.user_defines = user_defines
-	prefs.vroot = resolve_vroot(prefs.vroot)
+	prefs.vroot = resolve_vroot_for_input(prefs.vroot, input_file)
 	prefs.selfhost = is_selfhost
 	prefs.building_v = building_v
+	prefs.is_prod = is_prod
 	mut p := parser.Parser.new(prefs)
 
 	mut files := []string{}
@@ -321,6 +360,9 @@ fn main() {
 	}
 	test_files := test_input_files(user_files, backend)
 
+	seed_implicit_sync_import(mut a)
+	seed_implicit_embed_file_import(mut a)
+
 	// Resolve imports recursively
 	resolve_imports(mut a, mut p, prefs, user_files)
 	diagnostic_root := if is_selfhost {
@@ -340,7 +382,7 @@ fn main() {
 	pre_tc.diagnose_unknown_calls = true
 	set_diagnostic_files(mut pre_tc, user_files)
 	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
-	pre_tc.check_semantics()
+	check_was_parallel := pre_tc.check_semantics_opt(parallel_transform)
 	if pre_tc.errors.len > 0 {
 		print_type_errors(pre_tc.errors)
 		exit(1)
@@ -352,7 +394,7 @@ fn main() {
 		}
 		exit(1)
 	}
-	b.step('check')
+	b.step_parallel('check', check_was_parallel)
 
 	if backend == 'eval' {
 		$if !skip_eval ? {
@@ -376,12 +418,13 @@ fn main() {
 	}
 	b.step('markused')
 
-	// Transform (match lowering, string/in lowering, etc.). Parallel transform is an
-	// explicit opt-in (`-parallel-transform`), independent of `-no-parallel` (which
-	// gates the parallel C codegen): the two phases can be threaded independently.
+	// Transform (match lowering, string/in lowering, etc.). Threaded transform is enabled
+	// by default for compatible builds, and `-no-parallel` disables both threaded transform
+	// and cgen.
 	mut transform_was_parallel := false
-	used_fns, transform_was_parallel = transform.transform_with_used_opt(mut a, &pre_tc, used_fns,
-		parallel_transform)
+	skip_transform_generics := building_v || cmd_v_build
+	used_fns, transform_was_parallel = transform.transform_with_used_opt_config(mut a, &pre_tc,
+		used_fns, parallel_transform, skip_transform_generics)
 	b.step_parallel('transform', transform_was_parallel)
 
 	// Reuse the pre-transform checker for metadata only. Transform does not add
@@ -390,7 +433,9 @@ fn main() {
 	pre_tc.reject_unlowered_map_mutation = true
 	set_diagnostic_files(mut pre_tc, user_files)
 	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
-	pre_tc.annotate_types_with_used(used_fns)
+	if !building_v && !cmd_v_build {
+		pre_tc.annotate_types_with_used(used_fns)
+	}
 	b.step('annotate types')
 
 	if backend == 'wasm' {
@@ -414,9 +459,11 @@ fn main() {
 	}
 
 	// Monomorphization only adds specialized generic instantiations to `used_fns`. The V
-	// compiler sources use no generics, so when building V we skip the pass entirely
-	// (`used_fns` passes through unchanged) instead of scanning the whole AST for nothing.
-	if !building_v {
+	// compiler sources use no generics, so when building V we skip specialization and
+	// only erase generic templates that otherwise generate invalid raw C declarations.
+	if building_v {
+		used_fns = transform.erase_generic_templates(mut a, &pre_tc, used_fns)
+	} else {
 		used_fns = transform.monomorphize_with_used(mut a, &pre_tc, used_fns)
 	}
 	b.step('monomorphize')
@@ -522,6 +569,13 @@ fn main() {
 		os.rm(cc_src) or {}
 		os.rmdir(cc_dir) or {}
 		b.step('cc')
+		if test_files.len > 0 {
+			test_result := run_test_binary(bin_file)
+			if test_result != 0 {
+				exit(test_result)
+			}
+			b.step('test')
+		}
 	}
 
 	b.print_report()
@@ -670,12 +724,34 @@ fn nearest_vmod_root_for_file(path string) string {
 	return ''
 }
 
-// resolve_vroot resolves resolve vroot information for v3 entry point.
-fn resolve_vroot(initial string) string {
+// resolve_vroot_for_input resolves the V repo root for the compiler being built.
+fn resolve_vroot_for_input(initial string, input_file string) string {
+	if root := nearest_vroot_for_path(input_file) {
+		return root
+	}
+	if root := nearest_vroot_for_path(os.getwd()) {
+		return root
+	}
 	if is_valid_vroot(initial) {
 		return initial
 	}
-	mut dir := os.getwd()
+	return initial
+}
+
+fn nearest_vroot_for_path(path string) ?string {
+	if path.len == 0 {
+		return none
+	}
+	mut dir := path
+	if !os.is_abs_path(dir) {
+		cwd := os.getwd()
+		if cwd.len > 0 {
+			dir = os.join_path_single(cwd, dir)
+		}
+	}
+	if !os.is_dir(dir) {
+		dir = os.dir(dir)
+	}
 	for _ in 0 .. 8 {
 		if is_valid_vroot(dir) {
 			return dir
@@ -686,7 +762,7 @@ fn resolve_vroot(initial string) string {
 		}
 		dir = parent
 	}
-	return initial
+	return none
 }
 
 // is_valid_vroot reports whether is valid vroot applies in v3 entry point.
@@ -750,6 +826,11 @@ fn validate_test_file_harness_inputs(a &flat.FlatAst, tc &types.TypeChecker, tes
 	mut errors := []string{}
 	for file_idx, file_node in a.nodes {
 		if !is_user_test_file_node(a, file_idx, file_node, selected_files) {
+			continue
+		}
+		module_name := test_file_module_name(a, file_node)
+		if module_name.len > 0 && module_name != 'main' && !file_node.value.ends_with('_test.v') {
+			errors << 'no runnable tests in ${file_node.value}'
 			continue
 		}
 		if test_file_has_executable_top_level_stmt(a, file_node) {
@@ -933,6 +1014,90 @@ fn skipped_backend_modules(prefs &pref.Preferences) []string {
 	return skipped
 }
 
+fn seed_implicit_sync_import(mut a flat.FlatAst) {
+	if !ast_needs_sync_import(a) || ast_has_import(a, 'sync') {
+		return
+	}
+	a.add_node(flat.Node{
+		kind:  .import_decl
+		value: 'sync'
+		typ:   'sync'
+	})
+}
+
+fn seed_implicit_embed_file_import(mut a flat.FlatAst) {
+	if !ast_needs_embed_file_import(a) || ast_has_import(a, 'v.embed_file') {
+		return
+	}
+	a.add_node(flat.Node{
+		kind:  .import_decl
+		value: 'v.embed_file'
+		typ:   'embed_file'
+	})
+}
+
+fn ast_needs_sync_import(a &flat.FlatAst) bool {
+	for node in a.nodes {
+		if node.kind == .lock_expr {
+			return true
+		}
+		if node.kind == .field_decl && type_text_is_shared(node.typ) {
+			return true
+		}
+		if node.kind == .struct_init && node.value.starts_with('chan ') {
+			return true
+		}
+		if node.kind == .infix && node.op == .arrow {
+			return true
+		}
+		if node.kind == .prefix && node.op == .arrow {
+			return true
+		}
+		if type_text_is_channel(node.typ) {
+			return true
+		}
+	}
+	return false
+}
+
+fn type_text_is_channel(typ string) bool {
+	mut clean := typ.trim_space()
+	for {
+		if clean.starts_with('&') {
+			clean = clean[1..].trim_space()
+			continue
+		}
+		if clean.starts_with('mut ') {
+			clean = clean[4..].trim_space()
+			continue
+		}
+		break
+	}
+	return clean.starts_with('chan ') || clean == 'chan'
+}
+
+fn ast_needs_embed_file_import(a &flat.FlatAst) bool {
+	for node in a.nodes {
+		if node.kind == .struct_init && node.value == 'embed_file.EmbedFileData' {
+			return true
+		}
+	}
+	return false
+}
+
+fn ast_has_import(a &flat.FlatAst, name string) bool {
+	for node in a.nodes {
+		if node.kind == .import_decl && node.value == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn type_text_is_shared(raw string) bool {
+	return raw.trim_space().starts_with('shared ')
+}
+
 // resolve_imports resolves resolve imports information for v3 entry point.
 fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string) {
 	mut parsed_modules := map[string]bool{}
@@ -1017,6 +1182,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					canonicalize_imported_module_name(mut a, first_node, mod_name)
 				}
 			}
+			seed_implicit_sync_import(mut a)
+			seed_implicit_embed_file_import(mut a)
 		}
 		node_idx++
 	}

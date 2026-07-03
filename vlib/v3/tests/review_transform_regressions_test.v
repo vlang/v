@@ -60,6 +60,30 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	return run.output.trim_space()
 }
 
+fn test_lifted_fn_literal_mut_param_interpolation_derefs_value() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'lifted_literal_mut_param_interpolation',
+		'fn main() {\n\tmut n := 7\n\tf := fn (mut x int) {\n\t\tprintln("\${x}")\n\t}\n\tf(mut n)\n}\n')
+	assert out == '7'
+}
+
+fn test_shared_field_without_sync_import_compiles_and_locks() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'shared_field_without_sync_import',
+		'struct S {\nmut:\n\ta shared int\n}\n\nfn main() {\n\tmut s := S{}\n\tlock s.a {\n\t\ts.a = 7\n\t\tprintln(int_str(s.a))\n\t}\n}\n')
+	assert out == '7'
+}
+
+fn test_imported_shared_field_without_sync_import_compiles_and_locks() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'imported_shared_field_without_sync_import', {
+		'v.mod':     'Module { name: "imported_shared_field_without_sync_import" }\n'
+		'main.v':    'module main\n\nimport bag\n\nfn main() {\n\tprintln(int_str(bag.value()))\n}\n'
+		'bag/bag.v': 'module bag\n\nstruct S {\nmut:\n\ta shared int\n}\n\npub fn value() int {\n\tmut s := S{}\n\tmut out := 0\n\tlock s.a {\n\t\ts.a = 9\n\t\tout = s.a\n\t}\n\treturn out\n}\n'
+	}, 'main.v')
+	assert out == '9'
+}
+
 fn test_reject_dynamic_arrays_for_fixed_array_expectations() {
 	v3_bin := build_v3_review_transform()
 	run_bad(v3_bin, 'bad_fixed_array_literal_len',
@@ -100,11 +124,32 @@ fn test_pointer_array_equality_uses_pointer_identity() {
 	assert out == 'false\ntrue\ntrue\nfalse\n-1'
 }
 
+fn test_struct_pointer_equality_is_semantic() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'struct_pointer_semantic_equality',
+		"struct Person {\n\tname string\n\ttags []string\n}\n\nfn main() {\n\tleft := &Person{\n\t\tname: 'abc'.clone()\n\t\ttags: ['x'.clone()]\n\t}\n\tright := &Person{\n\t\tname: ('a' + 'bc')\n\t\ttags: [('x' + '')]\n\t}\n\tsame := left\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == same)\n}\n")
+	assert out == 'true\nfalse\ntrue'
+}
+
+fn test_struct_equality_with_interface_field_compiles() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'struct_eq_interface_field',
+		"interface Thing {\n\tvalue() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) value() int {\n\treturn i.n\n}\n\nstruct Box {\n\tthing Thing\n\tlabel string\n}\n\nfn main() {\n\titem := Item{\n\t\tn: 7\n\t}\n\tleft := Box{\n\t\tthing: item\n\t\tlabel: 'same'\n\t}\n\tright := left\n\tprintln(left == right)\n}\n")
+	assert out == 'true'
+}
+
 fn test_array_pointer_equality_uses_pointer_identity() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'array_pointer_equality',
 		'fn main() {\n\tleft := [1, 2]\n\tright := [1, 2]\n\tleft_ptr := &left\n\tright_ptr := &right\n\tsame_ptr := left_ptr\n\tprintln(left_ptr == right_ptr)\n\tprintln(left_ptr != right_ptr)\n\tprintln(left_ptr == same_ptr)\n\tprintln(*left_ptr == *right_ptr)\n}\n')
 	assert out == 'false\ntrue\ntrue\ntrue'
+}
+
+fn test_pointer_u8_array_bytestr_stays_in_cgen() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'pointer_u8_array_bytestr',
+		'fn show(data &[]u8) string {\n\treturn data.bytestr()\n}\n\nfn main() {\n\tbytes := [u8(104), u8(105)]\n\tprintln(show(&bytes))\n}\n')
+	assert out == 'hi'
 }
 
 fn test_map_pointer_equality_uses_pointer_identity() {
@@ -142,6 +187,13 @@ fn test_negative_is_return_smartcasts_following_statements() {
 	out := run_good(v3_bin, 'negative_is_return_smartcast',
 		'struct MapKind {\n\tkey_type int\n\tvalue_type int\n}\nstruct OtherKind {}\ntype Kind = MapKind | OtherKind\n\nfn passthrough(k Kind) Kind {\n\treturn k\n}\n\nfn score(k Kind) int {\n\tclean := passthrough(k)\n\tif clean !is MapKind {\n\t\treturn 0\n\t}\n\treturn clean.key_type + clean.value_type\n}\n\nfn main() {\n\tprintln(int_str(score(Kind(MapKind{\n\t\tkey_type: 2\n\t\tvalue_type: 5\n\t}))))\n\tprintln(int_str(score(Kind(OtherKind{}))))\n}\n')
 	assert out == '7\n0'
+}
+
+fn test_if_expr_smartcast_selector_decl_does_not_smartcast_local() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'if_expr_selector_decl_smartcast_local',
+		'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\ntype Animal = Cat | Dog\n\nstruct Ident {\n\tobj Animal\n}\n\nfn has_age(cat Cat) bool {\n\treturn cat.age == 3\n}\n\nfn main() {\n\tleft := Ident{\n\t\tobj: Animal(Cat{\n\t\t\tage: 2\n\t\t})\n\t}\n\tmut obj := if left.obj is Cat {\n\t\tleft.obj\n\t} else {\n\t\tCat{}\n\t}\n\tif true {\n\t\tobj = Cat{\n\t\t\tage: 3\n\t\t}\n\t}\n\tprintln(has_age(obj))\n}\n')
+	assert out == 'true'
 }
 
 fn test_comptime_type_conditions_handle_logical_ops() {
@@ -236,8 +288,8 @@ fn test_string_pointer_comparisons_keep_pointer_semantics() {
 fn test_map_keys_and_values_lower_to_runtime_methods() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'map_keys_values_lowering',
-		"fn make_lookup() map[string]int {\n\treturn {\n\t\t'one': 1\n\t\t'two': 2\n\t}\n}\n\nfn main() {\n\tlookup := make_lookup()\n\tkeys := lookup.keys()\n\tvalues := make_lookup().values()\n\tmut total := 0\n\tfor value in values {\n\t\ttotal += value\n\t}\n\tprintln(int_str(keys.len))\n\tprintln(int_str(values.len))\n\tprintln(int_str(total))\n}\n")
-	assert out == '2\n2\n3'
+		"fn make_lookup() map[string]int {\n\treturn {\n\t\t'one': 1\n\t\t'two': 2\n\t}\n}\n\nfn main() {\n\tlookup := make_lookup()\n\tkeys := lookup.keys()\n\tvalues := make_lookup().values()\n\tmut total := 0\n\tfor value in values {\n\t\ttotal += value\n\t}\n\tsingle := {\n\t\t'only': 9\n\t}\n\tprintln(int_str(keys.len))\n\tprintln(int_str(values.len))\n\tprintln(int_str(total))\n\tprintln(int_str(single.keys().len))\n\tprintln(single.keys()[0])\n\tprintln(int_str(single.values().len))\n\tprintln(int_str(single.values()[0]))\n}\n")
+	assert out == '2\n2\n3\n1\nonly\n1\n9'
 }
 
 fn test_map_str_preserves_signed_wide_entries() {
@@ -254,11 +306,25 @@ fn test_map_str_normalizes_alias_key_and_value_types() {
 	assert out == "{23: 'id'}\n{'price': 1.25}"
 }
 
+fn test_mut_map_param_interpolation_preserves_pointer() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'mut_map_param_interpolation',
+		"type Scores = map[string]int\n\nfn show(mut m map[string]int) {\n\tprintln('\${m}')\n}\n\nfn show_alias(mut m Scores) {\n\tprintln('\${m}')\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm['x'] = 3\n\tshow(mut m)\n\tmut scores := Scores(map[string]int{})\n\tscores['y'] = 4\n\tshow_alias(mut scores)\n}\n")
+	assert out == "{'x': 3}\n{'y': 4}"
+}
+
 fn test_map_literal_stringification_evaluates_entries_once() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'map_literal_str_side_effects',
 		"__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'k' + int_str(key_calls)\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tprintln({\n\t\tnext_key(): next_val()\n\t})\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n")
 	assert out == "{'k1': 10}\n1,1"
+}
+
+fn test_fn_literal_preserves_mut_param_string_interpolation() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'fn_literal_mut_param_interp',
+		"fn show(mut x int) {\n\t_ := fn () {}\n\tprintln('\${x}')\n}\n\nfn main() {\n\tmut n := 42\n\tshow(mut n)\n}\n")
+	assert out == '42'
 }
 
 fn test_shadowed_minmaxof_calls_are_not_rewritten() {
@@ -289,6 +355,27 @@ fn test_array_last_index_uses_semantic_element_comparison() {
 	out := run_good(v3_bin, 'array_last_index_semantic_equality',
 		"struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tnested := [['ab'.clone()], [join('x', 'y')], [join('a', 'b')]]\n\tnested_needle := ['ab'.clone()]\n\titems := [Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}, Item{\n\t\tname: join('a', 'b')\n\t\tparts: [join('x', 'y')]\n\t}]\n\tneedle := Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}\n\tprintln(int_str(nested.last_index(nested_needle)))\n\tprintln(int_str(items.last_index(needle)))\n}\n")
 	assert out == '2\n1'
+}
+
+fn test_generic_string_literal_matching_typeof_marker_is_preserved() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_marker_string_literal',
+		"fn marker_and_type[T](value T) string {\n\tmarker := '__v3_generic_type_name:T'\n\treturn marker + '|' + typeof(value).name\n}\n\nfn main() {\n\tprintln(marker_and_type(7))\n}\n")
+	assert out == '__v3_generic_type_name:T|int'
+}
+
+fn test_optional_string_equality_uses_payload_equality() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_string_semantic_equality',
+		"fn maybe_text(ok bool) ?string {\n\tif !ok {\n\t\treturn none\n\t}\n\tprefix := 'a'.clone()\n\treturn prefix + 'b'\n}\n\nfn main() {\n\tleft := maybe_text(true)\n\tright := maybe_text(true)\n\tmissing_left := maybe_text(false)\n\tmissing_right := maybe_text(false)\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == missing_left)\n\tprintln(missing_left == missing_right)\n\tprintln(missing_left != missing_right)\n}\n")
+	assert out == 'true\nfalse\nfalse\ntrue\nfalse'
+}
+
+fn test_optional_nested_array_equality_guards_payload_work() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_nested_array_guarded_equality',
+		"fn maybe_nested(ok bool) ?[][]string {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [['a'.clone()], ['b'.clone()]]\n}\n\nfn main() {\n\tleft := maybe_nested(true)\n\tright := maybe_nested(true)\n\tmissing_left := maybe_nested(false)\n\tmissing_right := maybe_nested(false)\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == missing_left)\n\tprintln(missing_left == missing_right)\n\tprintln(missing_left != missing_right)\n}\n")
+	assert out == 'true\nfalse\nfalse\ntrue\nfalse'
 }
 
 fn test_hierarchical_import_runtime_inits_before_importer_init() {

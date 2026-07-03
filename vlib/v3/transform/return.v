@@ -231,6 +231,8 @@ fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string, 
 	cond_id := t.a.child(&if_node, 0)
 	cond_smartcasts := t.extract_all_is_exprs(cond_id)
 	new_cond := t.transform_and_chain_smartcasts(cond_id)
+	mut cond_prelude := []flat.NodeId{}
+	t.drain_pending(mut cond_prelude)
 	then_id := t.a.child(&if_node, 1)
 	for info in cond_smartcasts {
 		t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
@@ -251,7 +253,12 @@ fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string, 
 			else_block = t.return_block_from_branch(else_id, ret_typ, extra_return_vals)
 		}
 	}
-	return t.make_if(new_cond, then_block, else_block)
+	new_if := t.make_if(new_cond, then_block, else_block)
+	if cond_prelude.len == 0 {
+		return new_if
+	}
+	cond_prelude << new_if
+	return t.make_block(cond_prelude)
 }
 
 // try_expand_return_if detects a `return if cond { a } else { b }` pattern

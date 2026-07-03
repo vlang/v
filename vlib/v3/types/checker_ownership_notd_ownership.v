@@ -1,0 +1,3 @@
+module types
+
+struct OwnershipState {}

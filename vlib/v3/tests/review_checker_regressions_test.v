@@ -35,6 +35,18 @@ fn run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
+fn run_runtime_bad(v3_bin string, name string, src string) string {
+	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(bad_src, src) or { panic(err) }
+	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
+	run := os.execute(bad_bin)
+	assert run.exit_code != 0, '${name}: expected runtime failure, got success\n${run.output}'
+	return run.output.trim_space()
+}
+
 fn test_reject_pointer_expressions_for_value_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_return_pointer_to_value',
@@ -154,6 +166,77 @@ fn test_generic_functions_report_missing_return() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_generic_missing_return', 'fn f[T]() int {\n}\nfn main() {}\n',
 		'missing return at end of function `f`')
+}
+
+fn test_no_return_calls_satisfy_return_analysis() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_panic_satisfies_return_analysis',
+		"fn choose(ok bool) string {\n\tif ok {\n\t\treturn 'ok'\n\t}\n\tpanic('unreachable')\n}\n\nfn pick(ok bool) int {\n\tif ok {\n\t\treturn 7\n\t}\n\treturn panic('unreachable')\n}\n\nfn main() {\n\tprintln(choose(true))\n\tprintln(int_str(pick(true)))\n}\n")
+	assert out == 'ok\n7'
+}
+
+fn test_parenthesized_no_return_return_uses_cgen_fallback() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_parenthesized_panic_satisfies_return_codegen',
+		"fn f(ok bool) int {\n\tif ok {\n\t\treturn 9\n\t}\n\treturn (panic('x'))\n}\nfn main() {\n\tprintln(int_str(f(true)))\n}\n")
+	assert out == '9'
+}
+
+fn test_return_panic_with_defer_evaluates_call_before_cleanup() {
+	v3_bin := build_v3_review_checker()
+	out := run_runtime_bad(v3_bin, 'bad_return_panic_defer_order',
+		"fn f() int {\n\tdefer {\n\t\tprintln('cleanup-ran')\n\t}\n\treturn panic('boom')\n}\nfn main() {\n\t_ := f()\n}\n")
+	assert out.contains('boom')
+	assert !out.contains('cleanup-ran')
+}
+
+fn test_declared_c_exit_satisfies_return_analysis() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_declared_c_exit_satisfies_return_analysis',
+		'fn C.exit(code int)\nfn f(ok bool) int {\n\tif ok {\n\t\treturn 7\n\t}\n\treturn C.exit(1)\n}\nfn main() {\n\tprintln(int_str(f(true)))\n}\n')
+	assert out == '7'
+}
+
+fn test_no_return_analysis_requires_resolved_builtin_target() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_shadowed_os_exit_missing_return',
+		'struct OsLike {}\nfn (x OsLike) exit() {}\nfn f(os OsLike) int {\n\tos.exit()\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+}
+
+fn test_returning_receiver_method_named_exit_keeps_value() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_receiver_exit_return_value',
+		'struct Plugin {}\nfn (p Plugin) exit() int {\n\treturn 9\n}\nfn f(plugin Plugin) int {\n\treturn plugin.exit()\n}\nfn main() {\n\tprintln(int_str(f(Plugin{})))\n}\n')
+	assert out == '9'
+}
+
+fn test_imported_module_name_shadowed_by_receiver_for_no_return_analysis() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_shadowed_import_os_exit_missing_return',
+		'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) {}\nfn f(os OsLike) int {\n\tos.exit(0)\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+}
+
+fn test_returning_shadowed_os_exit_receiver_keeps_value() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_shadowed_os_exit_return_value',
+		'import os\nstruct OsLike {}\nfn (x OsLike) exit(code int) int {\n\treturn code + 1\n}\nfn f(os OsLike) int {\n\treturn os.exit(4)\n}\nfn main() {\n\tprintln(int_str(f(OsLike{})))\n}\n')
+	assert out == '5'
+}
+
+fn test_no_return_fixed_array_return_uses_abi_wrapper() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_fixed_array_return_panic_abi_wrapper',
+		"import os\nfn f() [3]int {\n\treturn panic('x')\n}\nfn main() {\n\tif os.args.len == -1 {\n\t\tarr := f()\n\t\tprintln(int_str(arr[0]))\n\t}\n}\n")
+	assert out == ''
+}
+
+fn test_no_return_fn_return_uses_abi_typedef() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_fn_return_panic_abi_typedef',
+		"import os\nfn f() fn () int {\n\treturn panic('x')\n}\nfn main() {\n\tif os.args.len == -1 {\n\t\tcb := f()\n\t\tprintln(int_str(cb()))\n\t}\n}\n")
+	assert out == ''
 }
 
 fn test_local_identifiers_shadow_module_consts() {

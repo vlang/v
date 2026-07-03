@@ -765,6 +765,28 @@ fn main() {
 	return os.read_file(c_out) or { panic(err) }
 }
 
+fn directive_order_gen_c_shared_runtime(v3_bin string) string {
+	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_shared_runtime_project')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_shared_runtime' }\n")
+	directive_order_write_file(root, 'main.v', 'module main
+
+struct SharedOnly {
+	a shared int
+}
+
+fn main() {
+	_ := SharedOnly{}
+}
+')
+	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_shared_runtime.c')
+	os.rm(c_out) or {}
+	result := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${c_out}')
+	assert result.exit_code == 0, result.output
+	return os.read_file(c_out) or { panic(err) }
+}
+
 fn directive_order_gen_c_request_extern(v3_bin string) string {
 	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_request_extern_project')
 	os.rmdir_all(root) or {}
@@ -1044,6 +1066,15 @@ fn test_stdarg_in_inlined_header_uses_headerless_va_defs() {
 fn test_rwmutex_keeps_linux_rwlockattr_prototype() {
 	c_code := directive_order_gen_c_rwmutex(directive_order_build_v3())
 	assert c_code.contains('int pthread_rwlockattr_setkind_np('), c_code
+}
+
+fn test_shared_runtime_keeps_rwmutex_init_prototypes() {
+	c_code := directive_order_gen_c_shared_runtime(directive_order_build_v3())
+	$if !windows {
+		assert c_code.contains('pthread_rwlockattr_init(void*)'), c_code
+		assert c_code.contains('pthread_rwlockattr_setkind_np(void*, i32)'), c_code
+		assert c_code.contains('pthread_rwlock_init(void*, void*)'), c_code
+	}
 }
 
 fn test_request_named_c_function_keeps_extern_prototype() {

@@ -3,8 +3,41 @@ module c
 import v3.flat
 import v3.types
 
+fn (mut g FlatGen) take_pending_loop_label() string {
+	label := g.pending_loop_label
+	g.pending_loop_label = ''
+	return label
+}
+
+fn (mut g FlatGen) push_loop_label_depth(label string) LoopLabelState {
+	if label.len == 0 {
+		return LoopLabelState{}
+	}
+	mut state := LoopLabelState{
+		label: label
+	}
+	if prev_depth := g.loop_label_depths[label] {
+		state.had_prev = true
+		state.prev_depth = prev_depth
+	}
+	g.loop_label_depths[label] = g.loop_depth + 1
+	return state
+}
+
+fn (mut g FlatGen) pop_loop_label_depth(state LoopLabelState) {
+	if state.label.len == 0 {
+		return
+	}
+	if state.had_prev {
+		g.loop_label_depths[state.label] = state.prev_depth
+	} else {
+		g.loop_label_depths.delete(state.label)
+	}
+}
+
 // gen_for emits for output for c.
 fn (mut g FlatGen) gen_for(node flat.Node) {
+	label_state := g.push_loop_label_depth(g.take_pending_loop_label())
 	g.tc.push_scope()
 	defer_start := g.defers.len
 	init_node := g.a.child_node(&node, 0)
@@ -34,18 +67,25 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 		g.writeln(') {')
 	}
 	g.indent++
+	g.loop_depth++
 	for i in 3 .. node.children_count {
 		g.gen_node(g.a.child(&node, i))
 	}
+	g.loop_depth--
 	g.gen_defers_from(defer_start)
 	g.trim_defers(defer_start)
 	g.indent--
 	g.writeln('}')
 	g.tc.pop_scope()
+	g.pop_loop_label_depth(label_state)
 }
 
 // gen_for_in emits for in output for c.
 fn (mut g FlatGen) gen_for_in(node flat.Node) {
+	label_state := g.push_loop_label_depth(g.take_pending_loop_label())
+	defer {
+		g.pop_loop_label_depth(label_state)
+	}
 	g.tc.push_scope()
 	header_count := node.value.int()
 	val_id := g.a.child(&node, 1)
@@ -59,11 +99,18 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	body_start := header_count
 
 	if header_count == 4 {
-		panic('internal error: range for-in reached C backend after transform')
+		low_id := g.a.child(&node, 2)
+		high_id := g.a.child(&node, 3)
+		g.gen_range_for_in(node, g.a.child(&node, 0), low_id, high_id, body_start)
+		return
 	} else if header_count == 3 {
 		container := g.a.child_node(&node, 2)
 		if container.kind == .range {
-			panic('internal error: range for-in reached C backend after transform')
+			if container.children_count >= 2 {
+				g.gen_range_for_in(node, g.a.child(&node, 0), g.a.child(container, 0), g.a.child(container,
+					1), body_start)
+				return
+			}
 		} else {
 			container_type := g.usable_expr_type(g.a.child(&node, 2))
 			has_index := int(val_id) >= 0
@@ -114,6 +161,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					g.writeln('memmove(${key_var}, ${key_slot}, sizeof(${key_var}));')
 				} else {
 					g.writeln('${c_key} ${key_var} = *(${c_key}*)(${key_slot});')
+					if clean_container_type.key_type is types.String {
+						g.writeln('${key_var} = string__clone(${key_var});')
+					}
 				}
 				val_slot := '${key_values}.values + ${iter_var} * ${key_values}.value_bytes'
 				if val_fixed := array_fixed_type(clean_container_type.value_type) {
@@ -144,7 +194,14 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.write('${c_elem} ${elem_var} = *(')
 				g.write(c_elem)
 				g.writeln('*)array_get(${container_str}, ${idx_var});')
-				g.tc.cur_scope.insert(elem_var, container_type.elem_type)
+				elem_scope_type := if node.op == .amp {
+					types.Type(types.Pointer{
+						base_type: container_type.elem_type
+					})
+				} else {
+					container_type.elem_type
+				}
+				g.tc.cur_scope.insert(elem_var, elem_scope_type)
 			} else if container_type is types.String {
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${container_str}.len; ${idx_var}++) {')
@@ -170,9 +227,11 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			if has_index && container_type !is types.Map {
 				g.tc.cur_scope.insert(idx_var, types.Type(types.int_))
 			}
+			g.loop_depth++
 			for i in body_start .. node.children_count {
 				g.gen_node(g.a.child(&node, i))
 			}
+			g.loop_depth--
 			g.indent--
 			g.writeln('}')
 			if map_snapshot_var.len > 0 {
@@ -186,9 +245,49 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 		return
 	}
 	g.indent++
+	g.loop_depth++
 	for i in body_start .. node.children_count {
 		g.gen_node(g.a.child(&node, i))
 	}
+	g.loop_depth--
+	g.indent--
+	g.writeln('}')
+	g.tc.pop_scope()
+}
+
+fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id flat.NodeId, high_id flat.NodeId, body_start int) {
+	key := g.a.node(key_id)
+	if key.kind != .ident || key.value.len == 0 {
+		g.tc.pop_scope()
+		return
+	}
+	key_name := g.c_loop_local_name(key.value)
+	low_type := g.usable_expr_type(low_id)
+	range_type := if low_type is types.Primitive || low_type is types.ISize
+		|| low_type is types.USize {
+		low_type
+	} else {
+		types.Type(types.int_)
+	}
+	ct := g.value_c_type(range_type)
+	low_name := '__range_low_${g.tmp_count}'
+	g.tmp_count++
+	g.write('${ct} ${low_name} = ')
+	g.gen_expr(low_id)
+	g.writeln(';')
+	high_name := '__range_high_${g.tmp_count}'
+	g.tmp_count++
+	g.write('${ct} ${high_name} = ')
+	g.gen_expr(high_id)
+	g.writeln(';')
+	g.tc.cur_scope.insert(key.value, range_type)
+	g.writeln('for (${ct} ${key_name} = ${low_name}; ${key_name} < ${high_name}; ${key_name}++) {')
+	g.indent++
+	g.loop_depth++
+	for i in body_start .. node.children_count {
+		g.gen_node(g.a.child(&node, i))
+	}
+	g.loop_depth--
 	g.indent--
 	g.writeln('}')
 	g.tc.pop_scope()

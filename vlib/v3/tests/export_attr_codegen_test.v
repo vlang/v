@@ -253,7 +253,7 @@ fn test_ok() {}
 	assert !compile.output.contains('redefinition'), compile.output
 }
 
-fn test_export_main_in_non_main_test_module_does_not_report_synthetic_collision() {
+fn test_export_main_in_non_main_test_module_reports_synthetic_collision() {
 	v3_bin := export_attr_build_v3()
 	root := export_attr_project('test_harness_non_main_module_export_main', {
 		'foo_test.v': "module foo
@@ -267,8 +267,8 @@ fn test_ok() {}
 	compile := export_attr_compile(v3_bin, os.join_path(root, 'foo_test.v'), os.join_path(root,
 		'app'))
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('only module main test files are supported'), compile.output
-	assert !compile.output.contains('synthetic entry point `main`'), compile.output
+	assert compile.output.contains('export name `main` for `foo.exported_entry`'), compile.output
+	assert compile.output.contains('synthetic entry point `main`'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	assert !compile.output.contains('redefinition'), compile.output
 }

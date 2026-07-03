@@ -84,8 +84,8 @@ fn main() {
 	if cfg.c99 {
 		println('  Skipping ARM64 self-host in C99 mode (-c99 applies to the C backend)')
 	} else if cfg.host_backend == 'arm64' && cfg.host_os == 'macos' {
-		run('${q(v3_bin)} --no-parallel -selfhost -b arm64 -o ${q(v4_arm_bin)} ${q(cfg.v3_src)}')
-		run('${q(v4_arm_bin)} --no-parallel -b arm64 -o ${q(hello_arm_bin)} ${q(hello_v)}')
+		run('${q(v3_bin)} -selfhost -b arm64 -o ${q(v4_arm_bin)} ${q(cfg.v3_src)}')
+		run('${q(v4_arm_bin)} -b arm64 -o ${q(hello_arm_bin)} ${q(hello_v)}')
 		run(q(hello_arm_bin))
 		cleanup_files([v4_arm_bin, hello_arm_bin])
 	} else {
@@ -94,11 +94,11 @@ fn main() {
 
 	section(6, 'Self-host chain (v3->v4->v5->v6)')
 	println('  Building v4 from v3...')
-	run('${q(v3_bin)} ${cfg.c99_flag} --no-parallel -selfhost -o ${q(v4_bin)} ${q(cfg.v3_src)}')
+	run('${q(v3_bin)} ${cfg.c99_flag} -selfhost -o ${q(v4_bin)} ${q(cfg.v3_src)}')
 	println('  Building v5 from v4...')
-	run('${q(v4_bin)} ${cfg.c99_flag} --no-parallel -selfhost -o ${q(v5_bin)} ${q(cfg.v3_src)}')
+	run('${q(v4_bin)} ${cfg.c99_flag} -selfhost -o ${q(v5_bin)} ${q(cfg.v3_src)}')
 	println('  Building v6 from v5...')
-	run('${q(v5_bin)} ${cfg.c99_flag} --no-parallel -selfhost -o ${q(v6_bin)} ${q(cfg.v3_src)}')
+	run('${q(v5_bin)} ${cfg.c99_flag} -selfhost -o ${q(v6_bin)} ${q(cfg.v3_src)}')
 	converged_size := assert_same_file_bytes('v5/v6 generated C output', v5_bin + '.c', v6_bin +
 		'.c')
 	println('  v5.c=v6.c (${converged_size} bytes) - chain converged')

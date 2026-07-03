@@ -2,19 +2,10 @@ module c
 
 import runtime
 import strings
-import v3.flat
 import v3.types
 
-const max_flat_cgen_jobs = 2
+const max_flat_cgen_jobs = 10
 const min_flat_cgen_parallel_items = 1024
-
-// FlatFnGenItem represents flat fn gen item data used by c.
-struct FlatFnGenItem {
-	node_id flat.NodeId
-	file    string
-	module  string
-	cost    int
-}
 
 $if !windows {
 	// FlatCgenChunkArgs represents flat cgen chunk args data used by c.
@@ -59,7 +50,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		g.gen_synthetic_main_after_fns()
 		return
 	}
-	items := g.collect_fn_gen_items()
+	items := g.ensure_fn_gen_items()
 	n_items := items.len
 	n_jobs := flat_cgen_job_count(runtime.nr_jobs(), n_items)
 	$if windows {
@@ -73,7 +64,6 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			return
 		}
 		g.parallel_used = true
-		g.prepare_parallel_items(items)
 		mut chunk_items := split_flat_cgen_items(items, n_jobs)
 		chunk_count := chunk_items.len
 		// chunk[0] is emitted by the master (this thread) directly into its own builder
@@ -142,10 +132,10 @@ fn flat_cgen_job_count(n_runtime_jobs int, n_items int) int {
 
 // split_flat_cgen_items supports split flat cgen items handling for c.
 fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
-	mut chunks := [][]FlatFnGenItem{}
 	if n_jobs <= 0 || items.len == 0 {
-		return chunks
+		return [][]FlatFnGenItem{}
 	}
+	mut chunks := [][]FlatFnGenItem{}
 	mut total_cost := 0
 	for item in items {
 		total_cost += item.cost
@@ -176,176 +166,6 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 		chunks << current
 	}
 	return chunks
-}
-
-// collect_fn_gen_items updates collect fn gen items state for c.
-fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
-	mut items := []FlatFnGenItem{}
-	preferred_fns := g.preferred_c_backend_fn_nodes()
-	mut cur_module := ''
-	mut cur_file := ''
-	for i in 0 .. g.a.nodes.len {
-		node := g.a.nodes[i]
-		kind_id := node_kind_id(node)
-		if kind_id == 77 {
-			cur_file = node.value
-			g.tc.cur_file = cur_file
-			cur_module = ''
-			g.tc.cur_module = cur_module
-			continue
-		}
-		if kind_id == 73 {
-			cur_module = node.value
-			g.tc.cur_file = cur_file
-			g.tc.cur_module = cur_module
-			continue
-		}
-
-		if kind_id != 61 {
-			continue
-		}
-		if !g.should_emit_fn_node_in_module(node, i, cur_module, cur_file) {
-			continue
-		}
-		qfn := qualified_fn_name_in_module(cur_module, node.value)
-		if preferred_idx := preferred_fns[qfn] {
-			if preferred_idx != i {
-				continue
-			}
-		}
-		if g.emitted_fn_contains(qfn) {
-			continue
-		}
-		g.emitted_fns[qfn] = true
-		items << FlatFnGenItem{
-			node_id: flat.NodeId(i)
-			file:    cur_file
-			module:  cur_module
-			cost:    node.children_count + 1
-		}
-	}
-	return items
-}
-
-// gen_fn_items emits fn items output for c.
-fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
-	for item in items {
-		if int(item.node_id) < 0 || int(item.node_id) >= g.a.nodes.len {
-			continue
-		}
-		g.tc.cur_file = item.file
-		g.tc.cur_module = item.module
-		node := g.a.nodes[int(item.node_id)]
-		g.gen_fn_in_module(node, item.module)
-	}
-}
-
-// prepare_parallel_items supports prepare parallel items handling for FlatGen.
-fn (mut g FlatGen) prepare_parallel_items(items []FlatFnGenItem) {
-	for item in items {
-		g.tc.cur_file = item.file
-		g.tc.cur_module = item.module
-		g.prepare_parallel_node(item.node_id)
-	}
-	g.register_interface_strings()
-}
-
-// prepare_parallel_node supports prepare parallel node handling for FlatGen.
-fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId) {
-	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return
-	}
-	node := g.a.nodes[int(id)]
-	if node.kind == .string_literal {
-		g.intern_string(node.value)
-	}
-	if g.should_preseed_parallel_type_text(node.typ) {
-		g.preseed_parallel_fn_ptr_type(g.tc.parse_type(node.typ))
-	}
-	if expr_type := g.tc.expr_type(id) {
-		g.preseed_parallel_fn_ptr_type(expr_type)
-	}
-	for i in 0 .. node.children_count {
-		g.prepare_parallel_node(g.a.child(&node, i))
-	}
-}
-
-// should_preseed_parallel_type_text reports whether should preseed parallel type text applies in c.
-fn (g &FlatGen) should_preseed_parallel_type_text(typ string) bool {
-	if typ.len == 0 {
-		return false
-	}
-	clean := g.parallel_base_type_text(typ)
-	if clean.starts_with('fn(') || clean.starts_with('fn (') {
-		return true
-	}
-	if clean in g.tc.type_aliases {
-		return true
-	}
-	qtyp := g.tc.qualify_name(clean)
-	return qtyp in g.tc.type_aliases
-}
-
-// parallel_base_type_text supports parallel base type text handling for FlatGen.
-fn (g &FlatGen) parallel_base_type_text(typ string) string {
-	mut clean := typ.trim_space()
-	for clean.len > 0 {
-		if clean.starts_with('shared ') {
-			clean = clean[7..].trim_space()
-		} else if clean[0] == `&` || clean[0] == `?` || clean[0] == `!` {
-			clean = clean[1..].trim_space()
-		} else if clean.starts_with('...') {
-			clean = clean[3..].trim_space()
-		} else if clean.starts_with('[]') {
-			clean = clean[2..].trim_space()
-		} else {
-			break
-		}
-	}
-	return clean
-}
-
-// preseed_parallel_fn_ptr_type supports preseed parallel fn ptr type handling for FlatGen.
-fn (mut g FlatGen) preseed_parallel_fn_ptr_type(typ types.Type) {
-	if typ is types.FnType {
-		g.resolve_fn_ptr_type(g.fn_ptr_type_key(typ))
-		for param in typ.params {
-			g.preseed_parallel_fn_ptr_type(param)
-		}
-		g.preseed_parallel_fn_ptr_type(typ.return_type)
-	} else if typ is types.Pointer {
-		g.preseed_parallel_fn_ptr_type(typ.base_type)
-	} else if typ is types.Array {
-		g.preseed_parallel_fn_ptr_type(typ.elem_type)
-	} else if typ is types.ArrayFixed {
-		g.preseed_parallel_fn_ptr_type(typ.elem_type)
-	} else if typ is types.Map {
-		g.preseed_parallel_fn_ptr_type(typ.key_type)
-		g.preseed_parallel_fn_ptr_type(typ.value_type)
-	} else if typ is types.OptionType {
-		g.preseed_parallel_fn_ptr_type(typ.base_type)
-	} else if typ is types.ResultType {
-		g.preseed_parallel_fn_ptr_type(typ.base_type)
-	} else if typ is types.Alias {
-		g.preseed_parallel_fn_ptr_type(typ.base_type)
-	} else if typ is types.MultiReturn {
-		for item in typ.types {
-			g.preseed_parallel_fn_ptr_type(item)
-		}
-	}
-}
-
-// fn_ptr_type_key supports fn ptr type key handling for FlatGen.
-fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
-	ret := if typ.return_type is types.Void { 'void' } else { g.tc.c_type(typ.return_type) }
-	if typ.params.len == 0 {
-		return 'fn_ptr:${ret}|void'
-	}
-	mut params := []string{}
-	for param in typ.params {
-		params << g.tc.c_type(param)
-	}
-	return 'fn_ptr:${ret}|${params.join(', ')}'
 }
 
 // new_parallel_worker builds a per-worker FlatGen for parallel codegen.
@@ -380,6 +200,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		global_init_order:            g.global_init_order
 		iface_impls:                  g.iface_impls
 		iface_type_ids:               g.iface_type_ids
+		sum_name_lookup:              g.sum_name_lookup
 		module_init_fns:              g.module_init_fns
 		module_init_fn_modules:       g.module_init_fn_modules
 		module_imports:               g.module_imports
@@ -395,6 +216,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		fn_decl_ret_types:            g.fn_decl_ret_types
 		struct_decl_infos:            g.struct_decl_infos
 		struct_decl_short_infos:      g.struct_decl_short_infos
+		shared_type_names:            g.shared_type_names
 		const_runtime_inits:          g.const_runtime_inits.clone()
 		runtime_inits:                g.runtime_inits.clone()
 		compiler_vroot:               g.compiler_vroot
@@ -406,6 +228,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		cur_fn_ret:                   g.cur_fn_ret
 		cur_fn_ret_is_optional:       g.cur_fn_ret_is_optional
 		cur_fn_ret_base:              g.cur_fn_ret_base
+		loop_label_depths:            map[string]int{}
 		expected_expr_type:           g.expected_expr_type
 		expected_enum:                g.expected_enum
 		needed_optional_types:        g.needed_optional_types.clone()

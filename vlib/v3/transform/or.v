@@ -319,6 +319,9 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	}
 	if !isnil(t.tc) {
 		if expr_node.kind == .call {
+			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
+				return decode_ret, t.optional_base_type(decode_ret)
+			}
 			concrete_ret := t.concrete_generic_call_return_type(expr_id, expr_node)
 			if t.is_optional_type_name(concrete_ret) {
 				return concrete_ret, t.optional_base_type(concrete_ret)
@@ -350,6 +353,12 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 		}
 	}
 	mut expr_type := t.node_type(expr_id)
+	if expr_type == 'Optional' {
+		return '?void', 'void'
+	}
+	if fallback_type == 'Optional' {
+		return '?void', 'void'
+	}
 	if expr_type.len == 0 || expr_type == 'Optional' {
 		if fallback_type.len > 0 && !t.is_optional_type_name(fallback_type) {
 			expr_type = '?${fallback_type}'
@@ -359,10 +368,25 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	}
 	base_type := t.optional_base_type(expr_type)
 	mut value_type := if base_type.len > 0 { base_type } else { fallback_type }
-	if value_type.len == 0 || value_type == 'void' || value_type == '!' || value_type == '?' {
+	if value_type.len == 0 || value_type == '!' || value_type == '?' {
 		value_type = 'int'
 	}
 	return expr_type, value_type
+}
+
+fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat.Node) ?string {
+	if isnil(t.tc) || expr_node.kind != .call {
+		return none
+	}
+	name := t.tc.resolved_call_name(expr_id) or { return none }
+	if name !in ['json.decode', 'json2.decode', 'x.json2.decode'] {
+		return none
+	}
+	args := t.explicit_generic_call_args(expr_node, t.cur_module) or { return none }
+	if args.len != 1 || args[0].len == 0 {
+		return none
+	}
+	return '!${args[0]}'
 }
 
 // value_type_name returns value type name data for Transformer.
@@ -613,7 +637,7 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 		if is_last && child.kind == .expr_stmt && child.children_count > 0 {
 			inner_id := t.a.child(&child, 0)
 			inner := t.a.nodes[int(inner_id)]
-			if inner.kind == .call && t.is_noreturn_call(inner) {
+			if inner.kind == .call && t.is_noreturn_call(inner_id) {
 				expanded := t.transform_stmt(child_id)
 				t.drain_pending(mut result)
 				for eid in expanded {
@@ -655,7 +679,7 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 		}
 	}
 	_ = target_type
-	t.var_types = saved_var_types
+	t.restore_var_types(saved_var_types)
 	return result
 }
 
@@ -664,14 +688,18 @@ fn (t &Transformer) is_error_call(node flat.Node) bool {
 		return false
 	}
 	fn_node := t.a.child_node(&node, 0)
-	return fn_node.value == 'error' || fn_node.value == 'error_with_code'
+	return fn_node.kind == .ident
+		&& (fn_node.value == 'error' || fn_node.value == 'error_with_code')
 }
 
 // is_noreturn_call reports whether is noreturn call applies in transform.
-fn (t &Transformer) is_noreturn_call(node flat.Node) bool {
+fn (t &Transformer) is_noreturn_call(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
 	if node.kind != .call || node.children_count == 0 {
 		return false
 	}
-	fn_node := t.a.child_node(&node, 0)
-	return fn_node.value in ['panic', 'exit']
+	return t.tc.resolved_call_never_returns(id)
 }

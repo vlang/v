@@ -1,6 +1,7 @@
 module c
 
 import v3.flat
+import v3.gen.c.naming
 import v3.types
 
 // array_like_type supports array like type handling for c.
@@ -82,6 +83,17 @@ fn (mut g FlatGen) gen_array_literal_ptr_arg(node flat.Node, elem_type types.Typ
 	g.write('}')
 }
 
+fn (mut g FlatGen) gen_fixed_array_literal_value(node flat.Node, fixed types.ArrayFixed) {
+	g.write('(${g.tc.c_type(types.Type(fixed))}){')
+	for i in 0 .. node.children_count {
+		if i > 0 {
+			g.write(', ')
+		}
+		g.gen_expr_with_expected_type(g.a.child(&node, i), fixed.elem_type)
+	}
+	g.write('}')
+}
+
 fn (mut g FlatGen) gen_pointer_arg_from_array_literal(node flat.Node, expected types.Type) bool {
 	if node.kind != .array_literal {
 		return false
@@ -111,6 +123,21 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 	if node.kind == .paren && node.children_count > 0 {
 		g.gen_fixed_array_data_arg(g.a.child(&node, 0), arr)
 		return
+	}
+	if node.kind in [.cast_expr, .as_expr] && node.children_count > 0 {
+		child_id := g.a.child(&node, 0)
+		child := g.a.nodes[int(child_id)]
+		if child.kind == .array_literal {
+			g.gen_fixed_array_data_arg(child_id, arr)
+			return
+		}
+		if child.kind == .postfix && child.children_count > 0 {
+			post_child_id := g.a.child(&child, 0)
+			if g.a.nodes[int(post_child_id)].kind == .array_literal {
+				g.gen_fixed_array_data_arg(post_child_id, arr)
+				return
+			}
+		}
 	}
 	if node.kind == .postfix && node.children_count > 0 {
 		child_id := g.a.child(&node, 0)
@@ -177,12 +204,16 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 		g.write('string__substr(${base_str}, ${start_str}, ${end_str})')
 	} else if is_fixed_array {
 		c_elem := g.tc.c_type(fixed.elem_type)
-		data_str := if fixed_is_ptr { '(*${base_str})' } else { base_str }
+		mut data_str := if fixed_is_ptr { '(*${base_str})' } else { base_str }
+		literal := g.fixed_array_compound_literal_expr(base_id, fixed)
+		if literal.trim_space().len > 0 {
+			data_str = literal
+		}
 		// Evaluate the slice bounds once so side-effecting expressions such as
 		// `arr[i++..limit()]` are not run multiple times in the generated C.
 		start_tmp := g.tmp_name()
 		count_tmp := g.tmp_name()
-		g.write('({ int ${start_tmp} = (${start_str}); int ${count_tmp} = (${end_str}) - ${start_tmp}; new_array_from_c_array(${count_tmp}, ${count_tmp}, sizeof(${c_elem}), &${data_str}[${start_tmp}]); })')
+		g.write('({ int ${start_tmp} = (${start_str}); int ${count_tmp} = (${end_str}) - ${start_tmp}; new_array_from_c_array(${count_tmp}, ${count_tmp}, sizeof(${c_elem}), &(${data_str})[${start_tmp}]); })')
 	} else if is_array {
 		arr_str := if is_ptr { '*${base_str}' } else { base_str }
 		g.write('array_slice(${arr_str}, ${start_str}, ${end_str})')
@@ -343,6 +374,17 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.gen_expr(base_id)
 			g.write('${dot}len)')
 		}
+		'to_fixed_size' {
+			if base_node.kind == .array_literal {
+				g.gen_array_literal_ptr_arg(base_node, elem_type)
+			} else {
+				if is_ptr {
+					g.write('(${c_elem}*)')
+				}
+				g.gen_expr(base_id)
+				g.write('${dot}data')
+			}
+		}
 		'contains' {
 			contains_fn := 'array_contains_${array_lookup_suffix(arr.elem_type)}'
 			g.write('${contains_fn}(')
@@ -407,6 +449,42 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 		else {
 			g.gen_array_method_call_fallback(node, fn_node.value, base_id, is_ptr, arr)
 		}
+	}
+}
+
+fn (mut g FlatGen) to_fixed_size_call_fixed_type(id flat.NodeId) ?types.ArrayFixed {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind != .call || node.children_count == 0 {
+		return none
+	}
+	fn_node := g.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.value != 'to_fixed_size' || fn_node.children_count == 0 {
+		return none
+	}
+	if node.typ.len > 0 {
+		if fixed := array_fixed_type(g.tc.parse_type(node.typ)) {
+			return fixed
+		}
+	}
+	base_id := g.a.child(fn_node, 0)
+	base := g.a.nodes[int(base_id)]
+	base_type := types.unwrap_pointer(g.usable_expr_type(base_id))
+	arr := array_like_type(base_type) or { return none }
+	len := if base.kind == .array_literal {
+		int(base.children_count)
+	} else {
+		0
+	}
+	if len <= 0 {
+		return none
+	}
+	return types.ArrayFixed{
+		elem_type: arr.elem_type
+		len:       len
+		len_expr:  '${len}'
 	}
 }
 
@@ -528,7 +606,7 @@ fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
 	// Sanitize the payload C type (`Foo*`, `void*`, ...) into an identifier fragment
 	// — `c_name` does not strip `*`, so a raw pointer return type would otherwise put
 	// an asterisk in the helper symbol.
-	name := c_name('__v_thread_arr_wait_${types.c_type_name_part(ret_ct)}')
+	name := c_name('__v_thread_arr_wait_${naming.type_name_part(ret_ct)}')
 	g.spawn_wrapper_names[key] = name
 	if is_void {
 		g.spawn_wrapper_defs << 'static void ${name}(Array a) { for (int __i = 0; __i < a.len; __i++) { void* __r = NULL; pthread_join((pthread_t)(((void**)a.data)[__i]), &__r); if (__r) free(__r); } }'
