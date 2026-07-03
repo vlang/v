@@ -1347,7 +1347,7 @@ fn voidptr_variadic_type_passes_direct(typ types.Type) bool {
 }
 
 fn (t &Transformer) voidptr_variadic_storage_type(arg_id flat.NodeId) string {
-	typ := t.node_type(arg_id)
+	typ := t.normalize_type_alias(t.node_type(arg_id))
 	match typ {
 		'char', 'i8', 'u8', 'i16', 'u16' {
 			return 'int'

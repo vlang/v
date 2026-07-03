@@ -84,3 +84,35 @@ fn main() {
 	assert generated.contains('sscanf("12 34", "%d %d", &a, &b);'), generated
 	assert generated.contains('__varargs_'), generated
 }
+
+fn test_voidptr_variadic_alias_scalars_promote_before_boxing() {
+	v3_bin := c_variadic_build_v3()
+	src := os.join_path(os.temp_dir(), 'v3_c_variadic_alias_${os.getpid()}.v')
+	os.write_file(src, 'module main
+
+type Small = u8
+type Floaty = f32
+
+fn sink(args ...voidptr) int {
+	return args.len
+}
+
+fn main() {
+	println(int_str(sink(Small(7), Floaty(1.5))))
+}
+') or {
+		panic(err)
+	}
+	bin := os.join_path(os.temp_dir(), 'v3_c_variadic_alias_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '2', run.output
+
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert generated.contains('int __vararg_storage_'), generated
+	assert generated.contains('double __vararg_storage_'), generated
+	assert !generated.contains('Small __vararg_storage_'), generated
+	assert !generated.contains('Floaty __vararg_storage_'), generated
+}
