@@ -246,20 +246,90 @@ pub fn transform_with_used_opt_config(mut a flat.FlatAst, tc &types.TypeChecker,
 			unsafe { a.children.grow_cap(reserve_children) }
 		}
 	}
+	base_node_count := t.a.nodes.len
 	was_parallel := t.transform_all_dispatch(want_parallel)
+	mut late_names := t.new_call_names_from_used_fn_bodies(used_fns, base_node_count)
+	late_names << newly_used_fn_names(used_fns, t.used_fns)
+	t.transform_late_used_fn_bodies(late_names, base_node_count)
 	return t.used_fns, was_parallel
+}
+
+fn (mut t Transformer) new_call_names_from_used_fn_bodies(used map[string]bool, node_limit int) []string {
+	if used.len == 0 || node_limit <= 0 {
+		return []string{}
+	}
+	mut names := []string{}
+	mut seen := map[string]bool{}
+	mut cur_module := ''
+	limit := if node_limit < t.a.nodes.len { node_limit } else { t.a.nodes.len }
+	for i in 0 .. limit {
+		node := t.a.nodes[i]
+		kind_id := node_kind_id(node)
+		if kind_id == 77 {
+			cur_module = ''
+			continue
+		}
+		if kind_id == 73 {
+			cur_module = node.value
+			continue
+		}
+		if kind_id != 61 || t.fn_decl_has_unresolved_generics(node, cur_module) {
+			continue
+		}
+		if !node.value.starts_with('__anon_fn_') && !late_used_fn_matches(used, node, cur_module) {
+			continue
+		}
+		for call_name in t.generated_fn_body_call_names(flat.NodeId(i)) {
+			if call_name.len == 0 || seen[call_name] {
+				continue
+			}
+			if used[call_name] || used[c_name(call_name)]
+				|| late_used_fn_contains_in_module(used, call_name, cur_module) {
+				continue
+			}
+			seen[call_name] = true
+			names << call_name
+		}
+	}
+	return names
+}
+
+fn newly_used_fn_names(before map[string]bool, after map[string]bool) []string {
+	mut names := []string{}
+	for name, used in after {
+		if !used || name.len == 0 || name.contains('__') {
+			continue
+		}
+		if before[name] || before[c_name(name)] {
+			continue
+		}
+		if name.contains('.') && before[name.all_after_last('.')] {
+			continue
+		}
+		names << name
+	}
+	return names
 }
 
 pub fn monomorphize_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) map[string]bool {
 	mut augmented_used_fns := used_fns.clone()
 	mut t := new_transformer(mut a, tc, augmented_used_fns)
 	t.prepare()
-	for name in t.monomorphize_pass() {
+	base_node_count := t.a.nodes.len
+	generated_names := t.monomorphize_pass()
+	mut late_names := []string{}
+	for name in generated_names {
+		was_used := used_fns[name] || used_fns[c_name(name)]
 		augmented_used_fns[name] = true
 		augmented_used_fns[c_name(name)] = true
 		t.used_fns[name] = true
 		t.used_fns[c_name(name)] = true
+		if !was_used {
+			late_names << name
+		}
 	}
+	late_names << t.new_call_names_from_used_fn_bodies(used_fns, t.a.nodes.len)
+	t.transform_late_used_fn_bodies(late_names, base_node_count)
 	t.materialize_generic_structs()
 	return t.used_fns
 }
@@ -1192,7 +1262,124 @@ fn (t &Transformer) should_transform_fn(node flat.Node) bool {
 	if t.cur_module == 'builtin' && node.value == 'exit' {
 		return true
 	}
+	if node.value.contains('[') {
+		base_value := generic_fn_decl_base_value(node.value)
+		if base_value != node.value && t.used_fn_contains_in_module(base_value, t.cur_module) {
+			return true
+		}
+	}
 	return t.used_fn_contains_in_module(node.value, t.cur_module)
+}
+
+fn (mut t Transformer) transform_late_used_fn_bodies(names []string, node_limit int) {
+	if names.len == 0 || node_limit <= 0 {
+		return
+	}
+	mut late := map[string]bool{}
+	mut queued := map[string]bool{}
+	mut pending := []string{}
+	for name in names {
+		add_late_used_fn_name(name, mut late, mut pending, mut queued)
+	}
+	mut processed := map[int]bool{}
+	limit := if node_limit < t.a.nodes.len { node_limit } else { t.a.nodes.len }
+	for pending.len > 0 {
+		_ := pending.pop()
+		t.transform_pending_late_used_fn_bodies(limit, mut late, mut pending, mut queued, mut
+			processed)
+	}
+}
+
+fn (mut t Transformer) transform_pending_late_used_fn_bodies(limit int, mut late map[string]bool, mut pending []string, mut queued map[string]bool, mut processed map[int]bool) {
+	mut cur_file := ''
+	mut cur_module := ''
+	for i in 0 .. limit {
+		if processed[i] {
+			continue
+		}
+		node := t.a.nodes[i]
+		kind_id := node_kind_id(node)
+		if kind_id == 77 {
+			cur_file = node.value
+			cur_module = ''
+			continue
+		}
+		if kind_id == 73 {
+			cur_module = node.value
+			continue
+		}
+		if kind_id != 61 || t.fn_decl_has_unresolved_generics(node, cur_module) {
+			continue
+		}
+		if !late_used_fn_matches(late, node, cur_module) {
+			continue
+		}
+		processed[i] = true
+		t.cur_file = cur_file
+		t.cur_module = cur_module
+		used_before := t.used_fns.clone()
+		t.transform_fn_body(i)
+		for call_name in t.generated_fn_body_call_names(flat.NodeId(i)) {
+			t.enqueue_late_used_call_name(call_name, used_before, mut late, mut pending, mut queued)
+		}
+	}
+}
+
+fn (mut t Transformer) enqueue_late_used_call_name(name string, used_before map[string]bool, mut late map[string]bool, mut pending []string, mut queued map[string]bool) {
+	if name.len == 0 {
+		return
+	}
+	was_used := used_before[name] || used_before[c_name(name)]
+		|| late_used_fn_contains_in_module(used_before, name, t.cur_module)
+	t.mark_fn_used_name(name)
+	if was_used {
+		return
+	}
+	add_late_used_fn_name(name, mut late, mut pending, mut queued)
+}
+
+fn add_late_used_fn_name(name string, mut late map[string]bool, mut pending []string, mut queued map[string]bool) {
+	if name.len == 0 {
+		return
+	}
+	late[name] = true
+	late[c_name(name)] = true
+	if !queued[name] {
+		queued[name] = true
+		pending << name
+	}
+}
+
+fn late_used_fn_matches(used map[string]bool, node flat.Node, module_name string) bool {
+	if late_used_fn_contains_in_module(used, node.value, module_name) {
+		return true
+	}
+	if node.value.contains('[') {
+		base_value := generic_fn_decl_base_value(node.value)
+		return base_value != node.value
+			&& late_used_fn_contains_in_module(used, base_value, module_name)
+	}
+	return false
+}
+
+fn late_used_fn_contains_in_module(used map[string]bool, name string, module_name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin'
+		&& name.starts_with('${module_name}.') {
+		return used[name] || used[c_name(name)]
+	}
+	dfn := transform_dotted_fn_name(module_name, name)
+	qfn := c_name(dfn)
+	if used[dfn] || used[qfn] {
+		return true
+	}
+	if module_name.len == 0 || module_name == 'main' || module_name == 'builtin' {
+		cfn := c_name(name)
+		return used[name] || used[cfn]
+	}
+	return false
 }
 
 fn (t &Transformer) has_used_fn_filter() bool {
@@ -1468,6 +1655,7 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 		expr_id = t.a.child(&child, 0)
 		format = child.typ
 	}
+	t.mark_string_interp_call_part_used(expr_id)
 	mut transformed := t.transform_expr(expr_id)
 	mut typ := t.raw_alias_type_for_expr(expr_id)
 	if typ.len == 0 {
@@ -1492,6 +1680,40 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 	}
 	t.ensure_stringify_generic_instances_for_type(typ)
 	return t.wrap_formatted_string_conversion(transformed, typ, format)
+}
+
+fn (mut t Transformer) mark_string_interp_call_part_used(expr_id flat.NodeId) {
+	if int(expr_id) < 0 || int(expr_id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(expr_id)]
+	if node.kind != .call {
+		return
+	}
+	call_name := t.call_name_for_node(expr_id, node)
+	if call_name.len > 0 {
+		t.mark_fn_used_name(call_name)
+		return
+	}
+	if node.children_count == 0 {
+		return
+	}
+	fn_id := t.a.child(&node, 0)
+	if int(fn_id) < 0 || int(fn_id) >= t.a.nodes.len {
+		return
+	}
+	fn_node := t.a.nodes[int(fn_id)]
+	if fn_node.kind == .ident && fn_node.value.len > 0 {
+		t.mark_fn_used_name(fn_node.value)
+		return
+	}
+	if fn_node.kind == .selector && fn_node.value.len > 0 && fn_node.children_count > 0 {
+		base_id := t.a.child(&fn_node, 0)
+		method_name := t.resolve_receiver_method_name(base_id, fn_node.value)
+		if method_name.len > 0 {
+			t.mark_fn_used_name(method_name)
+		}
+	}
 }
 
 fn (t &Transformer) string_interp_needs_value_read(name string, typ string) bool {
@@ -6186,6 +6408,11 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 				return t.make_cast('&${info.value_type}', ptr, '&${info.value_type}')
 			}
 		}
+		if child.kind == .or_expr && child.children_count >= 2 {
+			if addr := t.transform_amp_optional_unwrap(node, child) {
+				return addr
+			}
+		}
 		if child.kind == .call && child.children_count == 2 {
 			callee := t.a.child_node(&child, 0)
 			arg_id := t.a.child(&child, 1)
@@ -6292,6 +6519,37 @@ fn (mut t Transformer) rewrite_signed_literal_str_call(op flat.Op, child_id flat
 	}
 	signed_base := t.make_prefix(op, base_id)
 	return t.make_method_call(signed_base, 'str', []flat.NodeId{})
+}
+
+fn (mut t Transformer) transform_amp_optional_unwrap(node flat.Node, child flat.Node) ?flat.NodeId {
+	source_id := t.a.child(&child, 0)
+	body_id := t.a.child(&child, 1)
+	source_type := t.optional_result_expr_type_name(source_id)
+	if !t.is_optional_type_name(source_type) || !t.expr_can_take_address(source_id) {
+		return none
+	}
+	value_type := t.optional_base_type(t.qualify_optional_type(source_type))
+	if value_type.len == 0 || value_type == 'void' {
+		return none
+	}
+	target_type := if node.typ.len > 0 {
+		node.typ
+	} else {
+		'&${value_type}'
+	}
+	if !target_type.starts_with('&') {
+		return none
+	}
+	source := t.transform_expr(source_id)
+	not_ok := t.make_prefix(.not, t.make_selector(source, 'ok', 'bool'))
+	err_expr := t.make_selector(source, 'err', 'IError')
+	else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, '', '', child.value,
+		err_expr))
+	t.pending_stmts << t.make_if(not_ok, else_block, t.make_empty())
+	value := t.make_selector(source, 'value', value_type)
+	addr := t.make_prefix(.amp, value)
+	t.a.nodes[int(addr)].typ = target_type
+	return addr
 }
 
 // transform_amp_sum_cast_from_as_expr supports transform_amp_sum_cast_from_as_expr handling.

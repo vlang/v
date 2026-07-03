@@ -12290,13 +12290,28 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, i
 	// Methods defined directly on the interface (default implementations) are
 	// inherited and need not be reimplemented.
 	for method in tc.interface_abstract_method_names(iface_name) {
-		concrete_key := tc.concrete_method_signature_key(concrete_name, method) or { return false }
 		expected_key := tc.interface_method_signature_key(iface_name, method) or {
 			'${iface_name}.${method}'
 		}
-		if !tc.method_signature_compatible(concrete_key, expected_key) {
-			return false
+		if concrete_key := tc.concrete_method_signature_key(concrete_name, method) {
+			if !tc.method_signature_compatible(concrete_key, expected_key) {
+				return false
+			}
+			continue
 		}
+		if info := tc.resolve_generic_struct_method(concrete_name, method) {
+			if !tc.method_call_info_signature_compatible(info, expected_key) {
+				return false
+			}
+			continue
+		}
+		if info := tc.resolve_generic_sum_method(concrete_name, method) {
+			if !tc.method_call_info_signature_compatible(info, expected_key) {
+				return false
+			}
+			continue
+		}
+		return false
 	}
 	for field in tc.interface_field_list(iface_name) {
 		actual_field := tc.struct_field_type(concrete_name, field.name) or { return false }
@@ -12448,6 +12463,16 @@ pub fn (tc &TypeChecker) concrete_method_signature_key(concrete_name string, met
 	if key in tc.fn_param_types || key in tc.fn_ret_types {
 		return key
 	}
+	for candidate in tc.concrete_generic_method_signature_candidates(concrete_name, method) {
+		if candidate in tc.fn_param_types || candidate in tc.fn_ret_types {
+			return candidate
+		}
+		if indexed := tc.receiver_method_suffix_index[candidate] {
+			if indexed != receiver_method_suffix_ambiguous {
+				return indexed
+			}
+		}
+	}
 	if indexed := tc.receiver_method_suffix_index[key] {
 		if indexed != receiver_method_suffix_ambiguous {
 			return indexed
@@ -12459,6 +12484,54 @@ pub fn (tc &TypeChecker) concrete_method_signature_key(concrete_name string, met
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) concrete_generic_method_signature_candidates(concrete_name string, method string) []string {
+	base, args, ok := generic_type_application_parts(concrete_name)
+	if !ok || args.len == 0 || method.len == 0 {
+		return []string{}
+	}
+	short_args := generic_type_args_short_for_signature(args)
+	suffix := generic_type_suffix_for_signature(args)
+	short_base := base.all_after_last('.')
+	mut candidates := []string{}
+	for receiver in [base, short_base] {
+		candidates << '${receiver}[${short_args}].${method}'
+		candidates << '${receiver}_${suffix}.${method}'
+		candidates << naming.c_name('${receiver}[${short_args}].${method}')
+		candidates << naming.c_name('${receiver}_${suffix}.${method}')
+		candidates << '${naming.c_name(receiver)}_${suffix}__${naming.c_name(method)}'
+	}
+	return candidates
+}
+
+fn generic_type_args_short_for_signature(args []string) string {
+	mut parts := []string{cap: args.len}
+	for arg in args {
+		parts << generic_type_arg_short_for_signature(arg)
+	}
+	return parts.join(', ')
+}
+
+fn generic_type_suffix_for_signature(args []string) string {
+	mut parts := []string{cap: args.len}
+	for arg in args {
+		parts << naming.c_name(generic_type_arg_short_for_signature(arg).replace('[]', 'Array_').replace('&',
+			'ptr_'))
+	}
+	return parts.join('_')
+}
+
+fn generic_type_arg_short_for_signature(type_arg string) string {
+	clean := type_arg.trim_space()
+	if clean.contains('.') {
+		short := clean.all_after_last('.')
+		if short.starts_with('Array_') {
+			return clean
+		}
+		return short
+	}
+	return clean
 }
 
 pub fn (tc &TypeChecker) named_type_compatible_with_ierror(concrete_name string) bool {
@@ -13327,6 +13400,20 @@ fn (tc &TypeChecker) method_signature_compatible(actual_key string, expected_key
 	actual_ret := tc.fn_ret_types[actual_key] or { Type(void_) }
 	expected_ret := tc.fn_ret_types[expected_key] or { Type(void_) }
 	return tc.type_compatible(actual_ret, expected_ret)
+}
+
+fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expected_key string) bool {
+	expected_params := tc.fn_param_types[expected_key] or { return false }
+	if actual.params.len != expected_params.len {
+		return false
+	}
+	for i in 1 .. actual.params.len {
+		if !tc.method_param_signature_compatible(actual.params[i], expected_params[i]) {
+			return false
+		}
+	}
+	expected_ret := tc.fn_ret_types[expected_key] or { Type(void_) }
+	return tc.type_compatible(actual.return_type, expected_ret)
 }
 
 fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Type) bool {

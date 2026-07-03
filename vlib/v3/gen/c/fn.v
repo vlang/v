@@ -654,10 +654,62 @@ fn (g &FlatGen) concrete_generic_method_name_from_call_receiver(node flat.Node, 
 	}
 	receiver_type := types.unwrap_pointer(g.usable_expr_type(g.a.child(fn_node, 0)))
 	receiver_name := receiver_type.name()
-	if !receiver_name.contains('[') || !receiver_name.contains(']') {
+	if receiver_name.contains('[') && receiver_name.contains(']') {
+		if resolved := g.resolve_concrete_generic_method_name(receiver_name, method) {
+			return resolved
+		}
+	}
+	if receiver_name.contains('_') {
+		return g.method_name_by_receiver_param_type(receiver_type, method)
+	}
+	return none
+}
+
+fn (g &FlatGen) method_name_by_receiver_param_type(receiver_type types.Type, method string) ?string {
+	clean_receiver := concrete_receiver_type(receiver_type)
+	receiver_ct := g.tc.c_type(clean_receiver)
+	mut candidates := []string{}
+	for name, params in g.fn_decl_param_types {
+		if !name.contains('.') || name.contains('__') || name.all_after_last('.') != method
+			|| params.len == 0 {
+			continue
+		}
+		param_receiver := concrete_receiver_type(params[0])
+		if g.tc.c_type(param_receiver) != receiver_ct
+			&& !g.type_names_match(param_receiver, clean_receiver) {
+			continue
+		}
+		candidates << name
+	}
+	if candidates.len == 0 {
 		return none
 	}
-	return g.resolve_concrete_generic_method_name(receiver_name, method)
+	candidates.sort()
+	mut best := candidates[0]
+	mut best_score := g.receiver_param_method_candidate_score(best)
+	for candidate in candidates[1..] {
+		score := g.receiver_param_method_candidate_score(candidate)
+		if score > best_score {
+			best = candidate
+			best_score = score
+		}
+	}
+	return best
+}
+
+fn (g &FlatGen) receiver_param_method_candidate_score(name string) int {
+	mut score := 0
+	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin'
+		&& name.starts_with('${g.tc.cur_module}.') {
+		score += 100
+	}
+	if name.contains('_') {
+		score += 10
+	}
+	if !name.contains('[') {
+		score += 5
+	}
+	return score
 }
 
 fn (g &FlatGen) specialized_generic_method_name_for_call_with_arg_count(id flat.NodeId, method_name string, arg_count int) ?string {
@@ -3039,6 +3091,11 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				} else {
 					mut is_ptr_base := base_type is types.Pointer
 						|| g.receiver_ident_storage_is_pointer(base_id)
+					base_node := g.a.nodes[int(base_id)]
+					if receiver_wants_ptr && base_node.kind == .ident
+						&& !g.receiver_ident_storage_is_pointer(base_id) {
+						is_ptr_base = false
+					}
 					// A `string.*` method always takes its receiver by value. If the
 					// receiver mis-resolves to a char pointer (e.g. a `const x =
 					// os.getenv(..)` whose type was inferred as `&char`), the actual
@@ -3199,7 +3256,14 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					&& param_types[arg_idx] is types.Pointer && !(arg_node.kind == .prefix
 					&& arg_node.op == .amp) && !g.arg_is_null_pointer_literal(arg_id, arg_node) {
 					arg_type := g.tc.resolve_type(arg_id)
-					if arg_type !is types.Pointer
+					arg_is_pointer_param := arg_node.kind == .ident && (g.current_param_type(arg_node.value) or {
+						types.Type(types.void_)
+					}) is types.Pointer
+					value_local_mut_receiver := arg_idx == 0 && (g.method_receiver_is_mut(fn_name)
+						|| g.method_receiver_is_mut(g.direct_call_name(fn_name)))
+						&& arg_node.kind == .ident && !g.local_storage_is_pointer(arg_node.value)
+						&& !arg_is_pointer_param
+					if (arg_type !is types.Pointer || value_local_mut_receiver)
 						&& !g.c_string_pointer_arg(arg_node, param_types[arg_idx]) {
 						needs_addr = !(arg_node.kind == .ident
 							&& g.local_storage_is_pointer(arg_node.value))
@@ -3904,7 +3968,9 @@ fn (g &FlatGen) embedded_receiver_path_for_expected_name(base_name string, expec
 		if embedded_type_name == expected_name {
 			return [field]
 		}
-		if nested := g.embedded_receiver_path_for_expected_name(embedded_type_name, expected_name, mut seen) {
+		if nested := g.embedded_receiver_path_for_expected_name(embedded_type_name, expected_name, mut
+			seen)
+		{
 			mut path := [field]
 			path << nested
 			return path
@@ -5577,8 +5643,15 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			&& !(arg_node.kind == .prefix && arg_node.op == .amp)
 			&& !g.arg_is_null_pointer_literal(arg_id, arg_node) {
 			arg_type := g.tc.resolve_type(arg_id)
-			if arg_type !is types.Pointer && !g.c_string_pointer_arg(arg_node, param_types[arg_idx]) {
-				needs_addr = true
+			arg_is_pointer_param := arg_node.kind == .ident && (g.current_param_type(arg_node.value) or {
+				types.Type(types.void_)
+			}) is types.Pointer
+			value_local_mut_receiver := arg_idx == 0 && (g.method_receiver_is_mut(fn_name)
+				|| g.method_receiver_is_mut(g.direct_call_name(fn_name))) && arg_node.kind == .ident
+				&& !g.local_storage_is_pointer(arg_node.value) && !arg_is_pointer_param
+			if (arg_type !is types.Pointer || value_local_mut_receiver)
+				&& !g.c_string_pointer_arg(arg_node, param_types[arg_idx]) {
+				needs_addr = !(arg_node.kind == .ident && g.local_storage_is_pointer(arg_node.value))
 			}
 		}
 		is_rvalue := arg_node.kind == .call

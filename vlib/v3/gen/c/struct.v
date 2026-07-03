@@ -44,6 +44,9 @@ fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Ty
 	if g.gen_pointer_value_struct_field(value_id, expected) {
 		return
 	}
+	if g.gen_optional_arg(value_id, expected) {
+		return
+	}
 	g.gen_expr_with_expected_type(value_id, expected)
 }
 

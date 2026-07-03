@@ -868,9 +868,12 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 	}
 	method_name := t.resolve_receiver_method_name(base_id, fn_node.value)
 	if method_name.len == 0 {
+		if t.receiver_method_param_offset(base_id, node, params, '') == 1 {
+			return 1
+		}
 		return 0
 	}
-	if t.receiver_method_param_offset(base_id, node, params) == 1 {
+	if t.receiver_method_param_offset(base_id, node, params, method_name) == 1 {
 		return 1
 	}
 	if call_name.len == 0 || call_name == method_name || call_name == c_name(method_name) {
@@ -5307,7 +5310,7 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 	mut args := []flat.NodeId{cap: int(node.children_count)}
 	args << base
 	params := t.call_param_types(method_name)
-	param_offset := t.receiver_method_param_offset(base, node, params)
+	param_offset := t.receiver_method_param_offset(base, node, params, method_name)
 	explicit_args := int(node.children_count) - 1
 	expected_explicit := params.len - param_offset
 	is_variadic := t.call_is_variadic(method_name) || (params.len > 0
@@ -5368,7 +5371,7 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 }
 
 // receiver_method_param_offset supports receiver method param offset handling for Transformer.
-fn (t &Transformer) receiver_method_param_offset(base_id flat.NodeId, node flat.Node, params []types.Type) int {
+fn (t &Transformer) receiver_method_param_offset(base_id flat.NodeId, node flat.Node, params []types.Type, method_name string) int {
 	if params.len == 0 {
 		return 0
 	}
@@ -5376,7 +5379,8 @@ fn (t &Transformer) receiver_method_param_offset(base_id flat.NodeId, node flat.
 	first_type := t.normalize_type_alias(params[0].name())
 	clean_first := if first_type.starts_with('&') { first_type[1..] } else { first_type }
 	clean_base := if base_type.starts_with('&') { base_type[1..] } else { base_type }
-	if clean_first == clean_base
+	if receiver_param_types_match(clean_first, clean_base)
+		|| receiver_param_matches_method_name(clean_first, method_name)
 		|| t.normalize_type_alias(clean_first) == t.normalize_type_alias(clean_base)
 		|| clean_first.all_after_last('.') == clean_base.all_after_last('.') {
 		return 1
@@ -5385,6 +5389,62 @@ fn (t &Transformer) receiver_method_param_offset(base_id flat.NodeId, node flat.
 		return 1
 	}
 	return 0
+}
+
+fn receiver_param_matches_method_name(first string, method_name string) bool {
+	if first.len == 0 || method_name.len == 0 || !method_name.contains('.') {
+		return false
+	}
+	mut receiver := method_name.all_before_last('.')
+	if receiver.len == 0 {
+		return false
+	}
+	if receiver.starts_with('&') {
+		receiver = receiver[1..]
+	}
+	mut first_base := first
+	first_generic_base, _, first_is_generic := generic_app_parts(first)
+	if first_is_generic {
+		first_base = first_generic_base
+	}
+	mut receiver_base := receiver
+	receiver_generic_base, _, receiver_is_generic := generic_app_parts(receiver)
+	if receiver_is_generic {
+		receiver_base = receiver_generic_base
+	}
+	first_short := first_base.all_after_last('.')
+	receiver_short := receiver_base.all_after_last('.')
+	return first_base == receiver_base || first_short == receiver_short
+		|| receiver_short.starts_with('${first_short}_')
+		|| c_name(receiver_base).starts_with('${c_name(first_base)}_')
+}
+
+fn receiver_param_types_match(first string, base string) bool {
+	if first == base {
+		return true
+	}
+	first_base, first_args, first_ok := generic_app_parts(first)
+	base_base, base_args, base_ok := generic_app_parts(base)
+	if !first_ok || !base_ok || first_args.len != base_args.len {
+		return false
+	}
+	if first_base != base_base && first_base.all_after_last('.') != base_base.all_after_last('.') {
+		return false
+	}
+	for i, first_arg in first_args {
+		base_arg := base_args[i]
+		if first_arg == base_arg {
+			continue
+		}
+		if generic_type_arg_short(first_arg) == generic_type_arg_short(base_arg) {
+			continue
+		}
+		if c_name(first_arg) == c_name(base_arg) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // try_lower_string_method_call supports try lower string method call handling for Transformer.

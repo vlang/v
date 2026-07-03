@@ -654,7 +654,12 @@ fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 	owner_base, owner_args, owner_is_generic_app := generic_app_parts(owner_type)
 	if owner_is_generic_app {
 		if owner_base.len > 0 {
-			substituted := substitute_generic_type_text(typ, owner_args)
+			params := t.generic_struct_param_names_for_base(owner_base)
+			substituted := if params.len > 0 {
+				substitute_generic_type_text_with_params(typ, owner_args, params)
+			} else {
+				substitute_generic_type_text(typ, owner_args)
+			}
 			if substituted != typ {
 				return t.normalize_field_type(substituted, owner_type)
 			}
@@ -697,6 +702,26 @@ fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 		}
 	}
 	return t.normalize_type_alias(typ)
+}
+
+fn (t &Transformer) generic_struct_param_names_for_base(base string) []string {
+	if isnil(t.tc) {
+		return []string{}
+	}
+	if params := t.tc.struct_generic_params[base] {
+		return params.clone()
+	}
+	short := base.all_after_last('.')
+	if params := t.tc.struct_generic_params[short] {
+		return params.clone()
+	}
+	if !base.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		if params := t.tc.struct_generic_params['${t.cur_module}.${base}'] {
+			return params.clone()
+		}
+	}
+	return []string{}
 }
 
 fn (t &Transformer) type_authority_has(name string) bool {

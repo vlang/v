@@ -73,6 +73,68 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
+fn test_string_interpolation_method_call_marks_callee_used() {
+	v3_bin := string_interp_build_v3()
+	src := 'struct Begin {
+	value int
+}
+
+fn (b Begin) to_json() string {
+	return \'\${b.value}\'
+}
+
+struct Message {
+	begin Begin
+}
+
+fn (m Message) to_json() string {
+	return \'{"begin":\${m.begin.to_json()}}\'
+}
+
+fn main() {
+	msg := Message{
+		begin: Begin{
+			value: 7
+		}
+	}
+	println(msg.to_json())
+}
+'
+	bin := os.join_path(os.temp_dir(), 'v3_string_interp_method_markused_${os.getpid()}')
+	compile := compile_v3_input(v3_bin, 'v3_string_interp_method_markused', src, bin)
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '{"begin":7}'
+}
+
+fn test_string_interpolation_discovered_str_method_emits_helpers() {
+	v3_bin := string_interp_build_v3()
+	src := "struct Wrap {}
+
+fn str_helper() string {
+	return 'wrapped'
+}
+
+fn (w Wrap) str() string {
+	_ = w
+	return str_helper()
+}
+
+fn main() {
+	println('\${Wrap{}}')
+}
+"
+	bin := os.join_path(os.temp_dir(), 'v3_string_interp_str_helper_${os.getpid()}')
+	compile := compile_v3_input(v3_bin, 'v3_string_interp_str_helper', src, bin)
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'wrapped'
+}
+
 fn test_defer_string_interpolation_with_generic_type_arguments() {
 	v3_bin := string_interp_build_v3()
 	src := "struct Box[T] {
