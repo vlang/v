@@ -566,11 +566,16 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 	}
 	concrete := t.interface_concrete_impl_name(concrete_name) or { return none }
 	requested_qualified := concrete_name.contains('.') || concrete != concrete_name
-	// The 1-based position in tc.interface_impl_names is the `_typ` id cgen
-	// assigns when boxing; deriving it from the same list keeps `is` checks
-	// and dispatch in sync (aliases included).
+	// The 1-based position in the same implementation list cgen uses is the
+	// `_typ` id assigned when boxing; deriving it here keeps `is` checks and
+	// dispatch in sync (aliases included).
 	mut idx := 0
-	for impl_name in t.tc.interface_impl_names(iface) {
+	impl_names := if t.is_builtin_ierror_interface_name(iface) {
+		t.tc.ierror_impl_names()
+	} else {
+		t.tc.interface_impl_names(iface)
+	}
+	for impl_name in impl_names {
 		idx++
 		if impl_name == concrete || (!requested_qualified
 			&& impl_name.all_after_last('.') == concrete.all_after_last('.')) {
@@ -581,15 +586,25 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 }
 
 fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
+	if !name.contains('.') {
+		if t.cur_file.len > 0 {
+			for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
+				[]string{}
+			} {
+				if candidate in t.tc.structs || candidate in t.tc.type_aliases {
+					return candidate
+				}
+			}
+		}
+		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+			qname := '${t.cur_module}.${name}'
+			if qname in t.tc.structs || qname in t.tc.type_aliases {
+				return qname
+			}
+		}
+	}
 	if name in t.tc.structs || name in t.tc.type_aliases {
 		return name
-	}
-	if !name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
-		&& t.cur_module != 'builtin' {
-		qname := '${t.cur_module}.${name}'
-		if qname in t.tc.structs || qname in t.tc.type_aliases {
-			return qname
-		}
 	}
 	for struct_name, _ in t.tc.structs {
 		if struct_name.all_after_last('.') == name {
