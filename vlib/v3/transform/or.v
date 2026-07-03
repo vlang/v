@@ -382,11 +382,20 @@ fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat
 	if name !in ['json.decode', 'json2.decode', 'x.json2.decode'] {
 		return none
 	}
-	args := t.explicit_generic_call_args(expr_node, t.cur_module) or { return none }
-	if args.len != 1 || args[0].len == 0 {
+	if args := t.explicit_generic_call_args(expr_node, t.cur_module) {
+		if args.len == 1 && args[0].len > 0 {
+			return '!${args[0]}'
+		}
 		return none
 	}
-	return '!${args[0]}'
+	if expr_node.children_count < 2 {
+		return none
+	}
+	type_arg := t.generic_call_type_arg_name(t.a.child(&expr_node, 1))
+	if type_arg.len == 0 {
+		return none
+	}
+	return '!${type_arg}'
 }
 
 // value_type_name returns value type name data for Transformer.

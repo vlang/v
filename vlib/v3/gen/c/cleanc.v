@@ -606,7 +606,8 @@ fn (mut g FlatGen) collect_gen_info() {
 			g.register_fn_decl_ret_type(node.value, full_name, node.typ)
 			// Module-level `init()` functions run once at startup. Collect their C
 			// names so _vinit can invoke them (V semantics).
-			if node.value == 'init' && ptypes.len == 0 {
+			if node.value == 'init' && ptypes.len == 0
+				&& (!g.has_used_fn_filter() || g.used_fn_contains_in_module(node.value, cur_module)) {
 				init_cname := qualified_fn_name_in_module(cur_module, 'init')
 				if init_cname !in g.module_init_fns {
 					g.module_init_fns << init_cname
@@ -917,6 +918,10 @@ fn c_preprocessor_directive_scan_line(line string, in_block_comment bool) (strin
 }
 
 fn c_update_nested_include_context(clean string, line string, mut context []string) {
+	if context.len > 0 && c_line_has_continuation(context[context.len - 1]) {
+		context[context.len - 1] += '\n${line}'
+		return
+	}
 	match c_directive_name(clean) {
 		'if', 'ifdef', 'ifndef', 'elif', 'else' {
 			context << line
@@ -935,6 +940,10 @@ fn c_update_nested_include_context(clean string, line string, mut context []stri
 }
 
 fn c_update_nested_include_prefix(clean string, line string, mut prefix []string) {
+	if prefix.len > 0 && c_line_has_continuation(prefix[prefix.len - 1]) {
+		prefix[prefix.len - 1] += '\n${line}'
+		return
+	}
 	match c_directive_name(clean) {
 		'define', 'undef' {
 			prefix << line
@@ -956,6 +965,10 @@ fn c_wrap_preserved_nested_directive(directive string, context []string, prefix 
 		lines << '#endif'
 	}
 	return lines.join('\n')
+}
+
+fn c_line_has_continuation(line string) bool {
+	return line.trim_right(' \t\r').ends_with('\\')
 }
 
 fn c_preserved_nested_include_directive(include_arg string, context []string, prefix []string) string {
@@ -2997,9 +3010,9 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool 
 	field := g.sum_field_name(variant)
 	if g.variant_references_sum(variant, sum_name) {
 		inner_ct := g.value_c_type(g.tc.parse_type(variant))
-		g.write('(${ct}){.typ = ${idx}, .${field} = (${inner_ct}*)memdup((${inner_ct}[]){')
-		g.gen_expr(id)
-		g.write('}, sizeof(${inner_ct}))}')
+		g.write('(${ct}){.typ = ${idx}, .${field} = (${inner_ct}*)memdup(')
+		g.gen_sum_variant_memdup_source(id, actual_type)
+		g.write(', sizeof(${inner_ct}))}')
 		return true
 	}
 	g.write('(${ct}){.typ = ${idx}, .${field} = ')
@@ -3078,9 +3091,9 @@ fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.No
 			}
 			g.write('}, sizeof(${inner_ct}))}')
 		} else {
-			g.write('(${ct}){.typ = ${idx}, .${field} = (${inner_ct}*)memdup((${inner_ct}[]){')
-			g.gen_expr(inner_id)
-			g.write('}, sizeof(${inner_ct}))}')
+			g.write('(${ct}){.typ = ${idx}, .${field} = (${inner_ct}*)memdup(')
+			g.gen_sum_variant_memdup_source(inner_id, variant_type)
+			g.write(', sizeof(${inner_ct}))}')
 		}
 	} else {
 		g.write('(${ct}){.typ = ${idx}, .${field} = ')
@@ -3090,6 +3103,20 @@ fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.No
 		g.gen_expr(inner_id)
 		g.write('}')
 	}
+}
+
+fn (mut g FlatGen) gen_sum_variant_memdup_source(value_id flat.NodeId, inner_type types.Type) {
+	if fixed := array_fixed_type(inner_type) {
+		source := g.fixed_array_runtime_copy_source_expr(value_id, fixed)
+		if source.trim_space().len > 0 {
+			g.write(source)
+			return
+		}
+	}
+	inner_ct := g.tc.c_type(inner_type)
+	g.write('(${inner_ct}[]){')
+	g.gen_expr_with_expected_type(value_id, inner_type)
+	g.write('}')
 }
 
 // pointer_variant_arg_needs_heap_copy supports pointer_variant_arg_needs_heap_copy handling in c.
@@ -3305,7 +3332,11 @@ fn (mut g FlatGen) type_name_c_type(type_name string) string {
 		return g.resolve_fn_ptr_type(type_name)
 	}
 	t := g.tc.parse_type(type_name)
-	ct := g.tc.c_type(t)
+	ct := if t is types.OptionType || t is types.ResultType {
+		g.optional_type_name(t)
+	} else {
+		g.tc.c_type(t)
+	}
 	if ct.starts_with('fn_ptr:') {
 		return g.resolve_fn_ptr_type(ct)
 	}
@@ -5105,6 +5136,15 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else if target_type is types.Pointer
 				&& g.gen_cast_from_mut_param_address(g.a.child(&node, 0), ct) {
 				return
+			} else if fixed := array_fixed_type(target_type) {
+				literal := g.fixed_array_compound_literal_expr(g.a.child(&node, 0), fixed)
+				if literal.trim_space().len > 0 {
+					g.write(literal)
+				} else {
+					g.write('(${ct})(')
+					g.gen_expr(g.a.child(&node, 0))
+					g.write(')')
+				}
 			} else {
 				g.write('(${ct})(')
 				g.gen_expr(g.a.child(&node, 0))
@@ -8489,6 +8529,9 @@ fn (mut g FlatGen) fixed_array_initializer_string(val_id flat.NodeId, fixed type
 	}
 	node := g.a.nodes[int(val_id)]
 	if node.kind == .postfix && node.children_count > 0 {
+		return g.fixed_array_initializer_string(g.a.child(&node, 0), fixed)
+	}
+	if node.kind == .cast_expr && node.children_count > 0 {
 		return g.fixed_array_initializer_string(g.a.child(&node, 0), fixed)
 	}
 	if node.kind == .array_init && node.children_count == 0 {

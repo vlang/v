@@ -1271,10 +1271,10 @@ fn (mut t Transformer) transform_const_decl(node flat.Node) {
 				t.a.children[cf.children_start] = new_val
 			} else if val.kind in [.struct_init, .cast_expr, .call, .array_literal, .fn_literal,
 				.lambda_expr] {
-				new_val := t.transform_expr(val_id)
+				new_val := t.transform_const_expr_no_pending(val_id)
 				t.a.children[cf.children_start] = new_val
 			} else if val.kind == .infix && val.children_count >= 2 {
-				new_val := t.transform_expr(val_id)
+				new_val := t.transform_const_expr_no_pending(val_id)
 				// Overwrite the field's value slot in place (each const_field owns
 				// its own single-element child range, so this is safe).
 				t.a.children[cf.children_start] = new_val
@@ -1299,6 +1299,16 @@ fn (t &Transformer) const_field_type_name(field flat.Node) string {
 	return field.typ
 }
 
+fn (mut t Transformer) transform_const_expr_no_pending(id flat.NodeId) flat.NodeId {
+	old_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	transformed := t.transform_expr(id)
+	has_pending := t.pending_stmts.len > 0
+	t.pending_stmts.clear()
+	t.pending_stmts = old_pending
+	return if has_pending { id } else { transformed }
+}
+
 // transform_const_or_expr transforms transform const or expr data for transform.
 fn (mut t Transformer) transform_const_or_expr(_id flat.NodeId, node flat.Node, const_typ string) flat.NodeId {
 	if node.children_count < 2 {
@@ -1308,7 +1318,7 @@ fn (mut t Transformer) transform_const_or_expr(_id flat.NodeId, node flat.Node, 
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		if i == 0 {
-			children << t.transform_expr(child_id)
+			children << t.transform_const_expr_no_pending(child_id)
 		} else {
 			children << child_id
 		}
@@ -1733,16 +1743,22 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			continue
 		}
 		child := t.a.nodes[int(child_id)]
-		if node_kind_id(child) == 75 && child.value.len > 0 && child.typ.len > 0 {
-			raw_typ := if child.typ.starts_with('...') {
-				'[]' + t.normalize_type_alias(child.typ[3..])
+		if node_kind_id(child) == 75 && child.value.len > 0 {
+			raw_typ := if child.typ.len > 0 {
+				if child.typ.starts_with('...') {
+					'[]' + t.normalize_type_alias(child.typ[3..])
+				} else {
+					t.normalize_type_alias(child.typ)
+				}
 			} else {
-				t.normalize_type_alias(child.typ)
+				''
 			}
 			mut typ := if raw_typ.len > 0 {
 				raw_typ
 			} else if param_idx < param_types.len {
 				t.normalize_type_alias(param_types[param_idx].name())
+			} else if param_idx == 0 {
+				t.fn_body_receiver_type(fn_node.value)
 			} else {
 				''
 			}
@@ -1750,7 +1766,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 				&& t.normalize_type_alias(typ[1..]) == raw_typ {
 				typ = raw_typ
 			}
-			t.set_var_type(child.value, typ)
+			if typ.len > 0 {
+				t.set_var_type(child.value, typ)
+			}
 			if child.is_mut || child.op == .amp || child.typ.starts_with('mut ') {
 				t.mut_param_values[child.value] = true
 				source_mut_params << child.value
@@ -1837,6 +1855,21 @@ fn (t &Transformer) fn_body_param_types(fn_node flat.Node, expected int) []types
 		}
 	}
 	return []types.Type{}
+}
+
+fn (t &Transformer) fn_body_receiver_type(fn_name string) string {
+	if !fn_name.contains('.') {
+		return ''
+	}
+	receiver := fn_name.all_before_last('.')
+	if receiver.len == 0 {
+		return ''
+	}
+	typ := t.normalize_type_in_module(receiver, t.cur_module)
+	if typ.len == 0 || typ == fn_name {
+		return ''
+	}
+	return typ
 }
 
 // fn_param_types_for_name supports fn param types for name handling for Transformer.
@@ -3261,7 +3294,7 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 				return expr
 			}
 		}
-		if expr := t.transform_interface_value_for_type(id, target_type) {
+		if expr := t.transform_interface_value_for_type(id, target_type, false) {
 			return expr
 		}
 		if node.kind == .block {
@@ -3319,20 +3352,27 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 		}
 		if target_type in ['f32', 'f64'] && node.kind == .infix
 			&& node.op in [.plus, .minus, .mul, .div] && node.children_count >= 2 {
-			lhs := t.transform_expr_for_type(t.a.child(&node, 0), target_type)
-			rhs := t.transform_expr_for_type(t.a.child(&node, 1), target_type)
-			start := t.a.children.len
-			t.a.children << lhs
-			t.a.children << rhs
-			return t.a.add_node(flat.Node{
-				kind:           .infix
-				op:             node.op
-				children_start: start
-				children_count: 2
-				pos:            node.pos
-				value:          node.value
-				typ:            target_type
-			})
+			lhs_id := t.a.child(&node, 0)
+			mut lhs_type := t.node_type(lhs_id)
+			if lhs_type.len == 0 {
+				lhs_type = t.resolve_expr_type(lhs_id)
+			}
+			if t.infix_struct_operator_result_type(node, lhs_type).len == 0 {
+				lhs := t.transform_expr_for_type(lhs_id, target_type)
+				rhs := t.transform_expr_for_type(t.a.child(&node, 1), target_type)
+				start := t.a.children.len
+				t.a.children << lhs
+				t.a.children << rhs
+				return t.a.add_node(flat.Node{
+					kind:           .infix
+					op:             node.op
+					children_start: start
+					children_count: 2
+					pos:            node.pos
+					value:          node.value
+					typ:            target_type
+				})
+			}
 		}
 	}
 	expr := t.transform_expr(id)
@@ -3952,13 +3992,18 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 }
 
 fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeId {
-	if node.kind != .decl_assign || node.children_count < 4 || node.children_count % 2 != 0 {
+	if node.kind != .decl_assign || node.children_count < 4 {
+		return none
+	}
+	lhs_count := t.multi_assign_lhs_count(node)
+	rhs_count := t.multi_assign_rhs_count(node)
+	if lhs_count != rhs_count || rhs_count <= 1 {
 		return none
 	}
 	mut result := []flat.NodeId{}
-	for i := 0; i < node.children_count; i += 2 {
-		lhs_id := t.a.child(&node, i)
-		rhs_id := t.a.child(&node, i + 1)
+	for i in 0 .. lhs_count {
+		lhs_id := t.multi_assign_lhs_id(node, i)
+		rhs_id := t.multi_assign_rhs_id(node, i)
 		lhs := t.a.nodes[int(lhs_id)]
 		rhs_node := t.a.nodes[int(rhs_id)]
 		generic_rhs_typ := if rhs_node.kind == .call {
@@ -4013,8 +4058,13 @@ fn (mut t Transformer) try_expand_multi_return_decl(node flat.Node) ?[]flat.Node
 	rhs_id := t.a.child(&node, 1)
 	rhs := t.a.nodes[int(rhs_id)]
 	lhs_ids := t.multi_assign_lhs_ids(node)
+	if t.multi_assign_rhs_count(node) != 1 {
+		return none
+	}
 	if rhs.kind == .if_expr {
-		return t.expand_multi_return_if_decl(rhs_id, rhs, lhs_ids)
+		if expanded := t.expand_multi_return_if_decl(rhs_id, rhs, lhs_ids) {
+			return expanded
+		}
 	}
 	if rhs_types := t.multi_return_types_for_expr(rhs_id, lhs_ids.len) {
 		tmp_name := t.new_temp('multi_ret')
@@ -4050,8 +4100,13 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 	rhs_id := t.a.child(&node, 1)
 	rhs := t.a.nodes[int(rhs_id)]
 	lhs_ids := t.multi_assign_lhs_ids(node)
+	if t.multi_assign_rhs_count(node) != 1 {
+		return none
+	}
 	if rhs.kind == .if_expr {
-		return t.expand_multi_return_if_assign(rhs_id, rhs, lhs_ids)
+		if expanded := t.expand_multi_return_if_assign(rhs_id, rhs, lhs_ids) {
+			return expanded
+		}
 	}
 	if rhs_types := t.multi_return_types_for_expr(rhs_id, lhs_ids.len) {
 		tmp_name := t.new_temp('multi_ret')
@@ -4080,16 +4135,20 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 
 // try_expand_plain_multi_assign supports try expand plain multi assign handling for Transformer.
 fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.NodeId {
-	if node.kind != .assign || node.op != .assign || node.children_count < 4
-		|| node.children_count % 2 != 0 {
+	if node.kind != .assign || node.op != .assign || node.children_count < 4 {
+		return none
+	}
+	lhs_count := t.multi_assign_lhs_count(node)
+	rhs_count := t.multi_assign_rhs_count(node)
+	if lhs_count != rhs_count || rhs_count <= 1 {
 		return none
 	}
 	mut result := []flat.NodeId{}
 	mut lhs_ids := []flat.NodeId{}
 	mut tmp_names := []string{}
-	for i := 0; i < node.children_count; i += 2 {
-		lhs_id := t.a.child(&node, i)
-		rhs_id := t.a.child(&node, i + 1)
+	for i in 0 .. lhs_count {
+		lhs_id := t.multi_assign_lhs_id(node, i)
+		rhs_id := t.multi_assign_rhs_id(node, i)
 		lhs_ids << lhs_id
 		lhs_type := t.lvalue_type(lhs_id)
 		rhs := if lhs_type.len > 0 {
@@ -4115,14 +4174,41 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 
 // multi_assign_lhs_ids supports multi assign lhs ids handling for Transformer.
 fn (t &Transformer) multi_assign_lhs_ids(node flat.Node) []flat.NodeId {
-	mut lhs_ids := []flat.NodeId{}
-	if node.children_count > 0 {
-		lhs_ids << t.a.child(&node, 0)
-	}
-	for i in 2 .. node.children_count {
-		lhs_ids << t.a.child(&node, i)
+	lhs_count := t.multi_assign_lhs_count(node)
+	mut lhs_ids := []flat.NodeId{cap: lhs_count}
+	for i in 0 .. lhs_count {
+		lhs_ids << t.multi_assign_lhs_id(node, i)
 	}
 	return lhs_ids
+}
+
+fn (t &Transformer) multi_assign_lhs_count(node flat.Node) int {
+	if node.value.is_int() {
+		count := node.value.int()
+		if count > 0 && count <= int(node.children_count) {
+			return count
+		}
+	}
+	if node.children_count <= 2 {
+		return if node.children_count > 0 { 1 } else { 0 }
+	}
+	return int(node.children_count) - 1
+}
+
+fn (t &Transformer) multi_assign_rhs_count(node flat.Node) int {
+	lhs_count := t.multi_assign_lhs_count(node)
+	rhs_count := int(node.children_count) - lhs_count
+	return if rhs_count > 0 { rhs_count } else { 0 }
+}
+
+fn (t &Transformer) multi_assign_lhs_id(node flat.Node, index int) flat.NodeId {
+	rhs_count := t.multi_assign_rhs_count(node)
+	child_index := if index < rhs_count { index * 2 } else { rhs_count + index }
+	return t.a.child(&node, child_index)
+}
+
+fn (t &Transformer) multi_assign_rhs_id(node flat.Node, index int) flat.NodeId {
+	return t.a.child(&node, index * 2 + 1)
 }
 
 // multi_return_types_for_expr supports multi return types for expr handling for Transformer.
@@ -4317,11 +4403,14 @@ fn (t &Transformer) multi_return_type_name(items []types.Type) string {
 }
 
 // expand_multi_return_if_decl builds expand multi return if decl data for transform.
-fn (mut t Transformer) expand_multi_return_if_decl(_rhs_id flat.NodeId, rhs flat.Node, lhs_ids []flat.NodeId) ?[]flat.NodeId {
+fn (mut t Transformer) expand_multi_return_if_decl(rhs_id flat.NodeId, rhs flat.Node, lhs_ids []flat.NodeId) ?[]flat.NodeId {
 	if lhs_ids.len == 0 {
 		return none
 	}
-	value_types := t.infer_multi_if_value_types(rhs, lhs_ids.len)
+	if !t.if_expr_has_tuple_tail_values(rhs_id, lhs_ids.len) {
+		return none
+	}
+	value_types := t.promoted_multi_if_value_types(rhs_id, rhs, lhs_ids.len)
 	mut result := []flat.NodeId{}
 	for i, lhs_id in lhs_ids {
 		lhs := t.a.nodes[int(lhs_id)]
@@ -4331,19 +4420,78 @@ fn (mut t Transformer) expand_multi_return_if_decl(_rhs_id flat.NodeId, rhs flat
 		typ := if i < value_types.len { value_types[i] } else { 'int' }
 		result << t.make_decl_assign_typed(lhs.value, t.zero_value_for_type(typ), typ)
 	}
-	if_stmts := t.expand_multi_return_if_assign(_rhs_id, rhs, lhs_ids) or { return none }
+	if_stmts := t.expand_multi_return_if_assign(rhs_id, rhs, lhs_ids) or { return none }
 	for stmt in if_stmts {
 		result << stmt
 	}
 	return result
 }
 
+fn (t &Transformer) promoted_multi_if_value_types(rhs_id flat.NodeId, rhs flat.Node, count int) []string {
+	if !isnil(t.tc) {
+		if item_types := t.tc.multi_expr_tail_types_for_transform(rhs_id, count) {
+			mut result := []string{cap: item_types.len}
+			for item_type in item_types {
+				result << item_type.name()
+			}
+			return result
+		}
+	}
+	return t.infer_multi_if_value_types(rhs, count)
+}
+
 // expand_multi_return_if_assign builds expand multi return if assign data for transform.
-fn (mut t Transformer) expand_multi_return_if_assign(_rhs_id flat.NodeId, rhs flat.Node, lhs_ids []flat.NodeId) ?[]flat.NodeId {
+fn (mut t Transformer) expand_multi_return_if_assign(rhs_id flat.NodeId, rhs flat.Node, lhs_ids []flat.NodeId) ?[]flat.NodeId {
 	if rhs.kind != .if_expr || lhs_ids.len == 0 {
 		return none
 	}
+	if !t.if_expr_has_tuple_tail_values(rhs_id, lhs_ids.len) {
+		return none
+	}
 	return t.lower_multi_if_assign(rhs, lhs_ids)
+}
+
+fn (t &Transformer) if_expr_has_tuple_tail_values(expr_id flat.NodeId, count int) bool {
+	if int(expr_id) < 0 || count <= 0 {
+		return false
+	}
+	node := t.a.nodes[int(expr_id)]
+	if node.kind != .if_expr {
+		return t.branch_has_tuple_tail_values(expr_id, count)
+	}
+	if node.children_count > 1 && t.branch_has_tuple_tail_values(t.a.child(&node, 1), count) {
+		return true
+	}
+	return node.children_count > 2 && t.if_expr_has_tuple_tail_values(t.a.child(&node, 2), count)
+}
+
+fn (t &Transformer) branch_has_tuple_tail_values(branch_id flat.NodeId, count int) bool {
+	if int(branch_id) < 0 || count <= 0 {
+		return false
+	}
+	if parts := t.tuple_block_parts(branch_id, count) {
+		return parts.values.len > 0
+	}
+	branch := t.a.nodes[int(branch_id)]
+	match branch.kind {
+		.if_expr {
+			return t.if_expr_has_tuple_tail_values(branch_id, count)
+		}
+		.expr_stmt {
+			return branch.children_count > 0
+				&& t.branch_has_tuple_tail_values(t.a.child(&branch, 0), count)
+		}
+		.block {
+			if branch.children_count == 0 {
+				return false
+			}
+			return t.branch_has_tuple_tail_values(t.a.child(&branch, branch.children_count - 1),
+				count)
+		}
+		else {
+			return false
+		}
+	}
 }
 
 // lower_multi_if_assign builds lower multi if assign data for transform.
@@ -4374,28 +4522,74 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.Node
 
 // multi_if_assign_block supports multi if assign block handling for Transformer.
 fn (mut t Transformer) multi_if_assign_block(block_id flat.NodeId, lhs_ids []flat.NodeId) flat.NodeId {
-	block := t.a.nodes[int(block_id)]
-	parts := t.tuple_block_parts(block_id, lhs_ids.len) or { return t.transform_expr(block_id) }
+	parts := t.tuple_block_parts(block_id, lhs_ids.len) or {
+		if nested := t.nested_multi_tail_assign_block(block_id, lhs_ids) {
+			return nested
+		}
+		return t.transform_expr(block_id)
+	}
+	stmts := t.multi_if_assign_stmts(parts, lhs_ids)
+	return t.make_block(stmts)
+}
+
+fn (mut t Transformer) multi_if_assign_stmts(parts TupleBlockParts, lhs_ids []flat.NodeId) []flat.NodeId {
 	mut stmts := t.transform_stmts(parts.prefix)
+	mut tmp_names := []string{cap: parts.values.len}
 	for i, value_id in parts.values {
-		value := t.transform_expr(value_id)
+		target_type := if i < lhs_ids.len { t.lvalue_type(lhs_ids[i]) } else { '' }
+		value := if target_type.len > 0 {
+			t.transform_expr_for_type(value_id, target_type)
+		} else {
+			t.transform_expr(value_id)
+		}
 		t.drain_pending(mut stmts)
+		tmp_name := t.new_temp('multi_if')
+		tmp_type := if target_type.len > 0 { target_type } else { t.node_type(value_id) }
+		stmts << t.make_decl_assign_typed(tmp_name, value, tmp_type)
+		tmp_names << tmp_name
+	}
+	for i, tmp_name in tmp_names {
 		if i >= lhs_ids.len {
-			stmts << t.make_expr_stmt(value)
 			continue
 		}
 		lhs_id := lhs_ids[i]
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind == .ident && lhs.value == '_' {
-			stmts << t.make_expr_stmt(value)
 			continue
 		}
-		stmts << t.make_assign(t.transform_lvalue(lhs_id), value)
+		stmts << t.make_assign(t.transform_lvalue(lhs_id), t.make_ident(tmp_name))
 	}
-	if block.kind == .block {
+	return stmts
+}
+
+fn (mut t Transformer) nested_multi_tail_assign_block(block_id flat.NodeId, lhs_ids []flat.NodeId) ?flat.NodeId {
+	if int(block_id) < 0 || lhs_ids.len == 0 {
+		return none
+	}
+	block := t.a.nodes[int(block_id)]
+	if block.kind != .block || block.children_count == 0 {
+		return none
+	}
+	children := t.a.children_of(&block).clone()
+	if children.len == 0 {
+		return none
+	}
+	last_id := children[children.len - 1]
+	last := t.a.nodes[int(last_id)]
+	mut stmts := t.transform_stmts(children[..children.len - 1])
+	if last.kind == .if_expr {
+		nested_stmts := t.lower_multi_if_assign(last, lhs_ids)
+		for stmt in nested_stmts {
+			stmts << stmt
+		}
 		return t.make_block(stmts)
 	}
-	return t.make_block(stmts)
+	if last.kind == .block {
+		nested_parts := t.tuple_block_parts(last_id, lhs_ids.len) or { return none }
+		stmts << t.make_block(t.multi_if_assign_stmts(nested_parts, lhs_ids))
+		return t.make_block(stmts)
+	}
+	return none
 }
 
 // tuple_block_parts supports tuple block parts handling for Transformer.
@@ -4443,6 +4637,29 @@ fn (t &Transformer) tuple_block_parts(block_id flat.NodeId, count int) ?TupleBlo
 	return none
 }
 
+fn (t &Transformer) multi_if_branch_value_ids(block_id flat.NodeId, count int) ?[]flat.NodeId {
+	if parts := t.tuple_block_parts(block_id, count) {
+		return parts.values.clone()
+	}
+	if int(block_id) < 0 || count <= 0 {
+		return none
+	}
+	block := t.a.nodes[int(block_id)]
+	if block.kind != .block || block.children_count == 0 {
+		return none
+	}
+	children := t.a.children_of(&block)
+	if children.len == 0 {
+		return none
+	}
+	last_id := children[children.len - 1]
+	last := t.a.nodes[int(last_id)]
+	if last.kind != .if_expr || last.children_count < 2 {
+		return none
+	}
+	return t.multi_if_branch_value_ids(t.a.child(&last, 1), count)
+}
+
 // infer_multi_if_value_types resolves infer multi if value types information for transform.
 fn (t &Transformer) infer_multi_if_value_types(node flat.Node, count int) []string {
 	mut result := []string{cap: count}
@@ -4450,8 +4667,8 @@ fn (t &Transformer) infer_multi_if_value_types(node flat.Node, count int) []stri
 		return result
 	}
 	then_id := t.a.child(&node, 1)
-	if parts := t.tuple_block_parts(then_id, count) {
-		for value_id in parts.values {
+	if values := t.multi_if_branch_value_ids(then_id, count) {
+		for value_id in values {
 			mut typ := t.tuple_value_type(value_id)
 			if typ.len == 0 {
 				typ = 'int'
@@ -5939,7 +6156,9 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 			// than emitting a plain `(Interface*)x` reinterpret cast.
 			iface := t.resolve_interface_type_name(child.value)
 			if iface.len > 0 && !t.is_builtin_ierror_interface_name(iface) {
-				if boxed := t.transform_interface_value_for_type(cast_arg_id, '&${child.value}') {
+				if boxed := t.transform_interface_value_for_type(cast_arg_id, '&${child.value}',
+					false)
+				{
 					return boxed
 				}
 			}
@@ -6312,7 +6531,7 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 	// concrete value into the interface representation, just like an implicit
 	// conversion does.
 	if t.is_interface_type(target_type) {
-		if boxed := t.transform_interface_value_for_type(t.a.child(&node, 0), node.value) {
+		if boxed := t.transform_interface_value_for_type(t.a.child(&node, 0), node.value, false) {
 			return boxed
 		}
 	}

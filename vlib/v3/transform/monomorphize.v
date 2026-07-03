@@ -1653,7 +1653,11 @@ fn (mut t Transformer) retype_generic_call_literal_arg(arg_id flat.NodeId, param
 	node := t.a.nodes[int(arg_id)]
 	if node.kind == .array_literal
 		&& t.generic_call_array_literal_can_retype_inline(node, param_type) {
-		return t.transform_expr_for_type(arg_id, param_type)
+		mut values := []flat.NodeId{cap: int(node.children_count)}
+		for i in 0 .. node.children_count {
+			values << t.a.child(&node, i)
+		}
+		return t.make_array_literal_typed(values, param_type)
 	}
 	if node.kind == .ident && node.value.contains('arr_lit') && node.typ.starts_with('[]')
 		&& param_type.starts_with('[]') && node.typ != param_type {
@@ -1947,6 +1951,7 @@ fn (t &Transformer) call_has_source_generic_args(node flat.Node) bool {
 	}
 	fn_node := t.a.child_node(&node, 0)
 	return fn_node.kind == .index && fn_node.children_count >= 2 && fn_node.value != 'range'
+		&& !t.index_callee_is_value_index(fn_node)
 }
 
 fn (t &Transformer) should_skip_generic_call_specialization(decl_key string) bool {
@@ -1961,6 +1966,9 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 	mut callee_id := t.a.child(&node, 0)
 	mut callee := t.a.nodes[int(callee_id)]
 	if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
+		if t.index_callee_is_value_index(callee) {
+			return none
+		}
 		callee_id = t.a.child(&callee, 0)
 		callee = t.a.nodes[int(callee_id)]
 	}

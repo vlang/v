@@ -214,14 +214,17 @@ fn (mut g FlatGen) collect_interface_impls() {
 	struct_names.sort()
 	for iface in iface_names {
 		mut impls := []string{}
-		for concrete in struct_names {
-			if g.is_ierror_type_name(iface) {
+		if g.is_ierror_type_name(iface) {
+			for concrete in struct_names {
 				if g.type_can_box_as_ierror(concrete) {
 					impls << concrete
 				}
-			} else if g.tc.named_type_implements_interface(concrete, iface) {
-				impls << concrete
 			}
+		} else {
+			// Structs plus type aliases with their own implementing methods; ids
+			// must come from tc.interface_impl_names so the transform's `is`
+			// checks agree with the dispatch ids assigned here.
+			impls = g.tc.interface_impl_names(iface)
 		}
 		g.iface_impls[iface] = impls
 		for idx, concrete in impls {
@@ -618,6 +621,38 @@ fn (g &FlatGen) ierror_pointer_payload_root_needs_heap_copy(root flat.Node) bool
 	return false
 }
 
+// iface_type_id_for_concrete resolves the dispatch id for a boxed concrete
+// type, including alias implementers. The checker normalizes alias-typed
+// values to their base type (`p := Puppy{}` annotates `p` as `Dog`), so when
+// the direct lookup fails, fall back to the alias's base type, and from a base
+// type to the single alias implementer that resolves to it (if unambiguous).
+fn (g &FlatGen) iface_type_id_for_concrete(iface string, concrete types.Type) int {
+	concrete_name := concrete.name()
+	mut id := g.iface_type_id(iface, concrete_name)
+	if id != 0 {
+		return id
+	}
+	if concrete is types.Alias {
+		id = g.iface_type_id(iface, concrete.base_type.name())
+		if id != 0 {
+			return id
+		}
+	}
+	mut alias_id := 0
+	mut matches := 0
+	for impl in g.iface_impls[iface] or { []string{} } {
+		target := g.tc.type_aliases[impl] or { continue }
+		if target == concrete_name || g.tc.qualify_name(target) == g.tc.qualify_name(concrete_name) {
+			alias_id = g.iface_type_id(iface, impl)
+			matches++
+		}
+	}
+	if matches == 1 {
+		return alias_id
+	}
+	return 0
+}
+
 fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type) bool {
 	iface_type := if expected is types.Alias { expected.base_type } else { expected }
 	if iface_type !is types.Interface {
@@ -638,7 +673,7 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 		}
 	}
 	actual_clean := if actual is types.Pointer { actual.base_type } else { actual }
-	actual_base := if actual_clean is types.Alias { actual_clean.base_type } else { actual_clean }
+	actual_base := actual_clean
 	if actual_base is types.Interface {
 		return false
 	}
@@ -646,7 +681,7 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	if concrete_name.len == 0 {
 		return false
 	}
-	type_id := g.iface_type_id(iface.name, concrete_name)
+	type_id := g.iface_type_id_for_concrete(iface.name, actual_clean)
 	ct := g.tc.c_type(iface)
 	fields := g.tc.interface_fields[iface.name] or { []types.StructField{} }
 	concrete_ct := g.tc.c_type(actual_base)
@@ -716,7 +751,7 @@ fn (g &FlatGen) interface_init_typ_id(node flat.Node) ?int {
 		if field.kind == .field_init && field.value == '_object' && field.children_count > 0 {
 			obj_type := g.tc.resolve_type(g.a.child(field, 0))
 			concrete := types.unwrap_pointer(obj_type)
-			id := g.iface_type_id(iface, concrete.name())
+			id := g.iface_type_id_for_concrete(iface, concrete)
 			if id != 0 {
 				return id
 			}
@@ -763,9 +798,31 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name string, method string)
 			return true
 		}
 	}
+	for alias in g.interface_alias_names(iface_name) {
+		alias_name := '${alias}.${method}'
+		if g.used_interface_dispatch_key(alias_name) {
+			return true
+		}
+		short_alias_name := '${alias.all_after_last('.')}.${method}'
+		if short_alias_name != alias_name && g.interface_dispatch_short_name_allowed(alias)
+			&& g.used_interface_dispatch_key(short_alias_name) {
+			return true
+		}
+	}
 	short_name := '${iface_name.all_after_last('.')}.${method}'
 	return short_name != name && g.interface_dispatch_short_name_allowed(iface_name)
 		&& g.used_interface_dispatch_key(short_name)
+}
+
+fn (g &FlatGen) interface_alias_names(iface_name string) []string {
+	mut aliases := []string{}
+	for alias, target in g.tc.type_aliases {
+		qtarget := g.tc.qualify_name(target)
+		if target == iface_name || qtarget == iface_name {
+			aliases << alias
+		}
+	}
+	return aliases
 }
 
 fn (g &FlatGen) used_interface_dispatch_key(name string) bool {
@@ -836,10 +893,17 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 	// wrapper struct (a C function cannot return an array by value), matching what the concrete
 	// implementer's method returns and what the call site unwraps.
 	ret_ct := g.fn_return_type_name(ret_type)
-	mut sig_params := if sig_key.len > 0 {
+	decl_params := g.tc.fn_param_types[decl_key] or { []types.Type{} }
+	concrete_sig_params := if sig_key.len > 0 {
 		g.tc.fn_param_types[sig_key] or { []types.Type{} }
 	} else {
-		g.tc.fn_param_types[decl_key] or { []types.Type{} }
+		[]types.Type{}
+	}
+	mut sig_params := if decl_params.len > 0
+		&& (concrete_sig_params.len == 0 || decl_params.len == concrete_sig_params.len) {
+		decl_params.clone()
+	} else {
+		concrete_sig_params.clone()
 	}
 	mut arg_names := []string{}
 	g.write('${ret_ct} ${cn}__${method}(${cn}* i')
@@ -874,8 +938,25 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 			}
 			g.write('\t\tcase ${id}: ')
 			mut call := '${c_name(concrete_key)}(${recv}'
-			for an in arg_names {
-				call += ', ${an}'
+			for ai, an in arg_names {
+				arg_idx := ai + 1
+				concrete_param := if arg_idx < concrete_params.len {
+					concrete_params[arg_idx]
+				} else {
+					types.Type(types.void_)
+				}
+				dispatch_param := if arg_idx < sig_params.len {
+					sig_params[arg_idx]
+				} else {
+					concrete_param
+				}
+				if concrete_param is types.Pointer && dispatch_param !is types.Pointer {
+					call += ', &${an}'
+				} else if concrete_param !is types.Pointer && dispatch_param is types.Pointer {
+					call += ', *${an}'
+				} else {
+					call += ', ${an}'
+				}
 			}
 			call += ')'
 			if ret_ct == 'void' {

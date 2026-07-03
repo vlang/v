@@ -160,3 +160,147 @@ fn test_sql_identifier_calls_are_not_parsed_as_sql_expr() {
 	assert sql_expr_count == 0
 	assert call_count == 1
 }
+
+fn test_local_generic_type_with_qualified_arg_resolves_base_before_qualification() {
+	a := parse_parser_regression_source('local_generic_qualified_arg',
+		'module main\n\nimport other\n\nfn main() {\n\tstruct Box[T] {}\n\tmut boxes := []Box[other.Thing]{}\n\tboxes << Box[other.Thing]{}\n}\n')
+	mut local_decl_name := ''
+	mut array_types := []string{}
+	mut init_types := []string{}
+	for node in a.nodes {
+		match node.kind {
+			.struct_decl {
+				if node.value.starts_with('Box@local@') {
+					local_decl_name = node.value
+				}
+			}
+			.array_init {
+				if node.value.contains('Box') {
+					array_types << node.value
+				}
+			}
+			.struct_init {
+				if node.value.contains('Box') {
+					init_types << node.value
+				}
+			}
+			else {}
+		}
+	}
+	assert local_decl_name.starts_with('Box@local@main')
+	assert array_types == ['${local_decl_name}[other.Thing]']
+	assert init_types == ['${local_decl_name}[other.Thing]']
+}
+
+fn test_local_type_generic_call_type_arg_is_resolved() {
+	a := parse_parser_regression_source('local_generic_call_type_arg',
+		'module main\n\nfn id[T](x T) T {\n\treturn x\n}\n\nfn main() {\n\tstruct Row {\n\t\tn int\n\t}\n\t_ := id[Row](Row{\n\t\tn: 1\n\t})\n}\n')
+	mut local_row := ''
+	mut call_type_args := []string{}
+	mut init_types := []string{}
+	for node in a.nodes {
+		match node.kind {
+			.struct_decl {
+				if node.value.starts_with('Row@local@') {
+					local_row = node.value
+				}
+			}
+			.index {
+				if node.children_count == 2 {
+					base := a.child_node(&node, 0)
+					arg := a.child_node(&node, 1)
+					if base.kind == .ident && base.value == 'id' {
+						call_type_args << arg.value
+					}
+				}
+			}
+			.struct_init {
+				if node.value.contains('Row') {
+					init_types << node.value
+				}
+			}
+			else {}
+		}
+	}
+	assert local_row.starts_with('Row@local@main')
+	assert call_type_args == [local_row]
+	assert init_types == [local_row]
+}
+
+fn test_local_sibling_types_are_predeclared_before_fields() {
+	a := parse_parser_regression_source('local_sibling_struct_fields',
+		'module main\n\nfn main() {\n\t_ := []struct {\n\t\tn int\n\t}{}\n\tstruct A {\n\t\tb &B\n\t}\n\tstruct B {\n\t\ta &A\n\t}\n}\n')
+	mut local_a := ''
+	mut local_b := ''
+	for node in a.nodes {
+		if node.kind == .struct_decl {
+			if node.value.starts_with('A@local@main') {
+				local_a = node.value
+			}
+			if node.value.starts_with('B@local@main') {
+				local_b = node.value
+			}
+		}
+	}
+	mut a_fields := []string{}
+	mut b_fields := []string{}
+	for node in a.nodes {
+		if node.kind != .struct_decl {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := a.child_node(&node, i)
+			if field.kind != .field_decl {
+				continue
+			}
+			if node.value == local_a {
+				a_fields << '${field.value}:${field.typ}'
+			}
+			if node.value == local_b {
+				b_fields << '${field.value}:${field.typ}'
+			}
+		}
+	}
+	assert local_a.len > 0
+	assert local_b.len > 0
+	assert a_fields == ['b:&${local_b}']
+	assert b_fields == ['a:&${local_a}']
+}
+
+fn test_local_type_scope_names_do_not_collapse_punctuation() {
+	a := parse_parser_regression_source('local_scope_punctuation_collision',
+		'module main\n\nstruct Foo {}\n\nfn (f Foo) bar() {\n\tstruct Row {\n\t\tmethod int\n\t}\n\t_ := Row{}\n}\n\nfn Foo_bar() {\n\tstruct Row {\n\t\tfunction int\n\t}\n\t_ := Row{}\n}\n')
+	mut row_names := []string{}
+	for node in a.nodes {
+		if node.kind == .struct_decl && node.value.starts_with('Row@local@') {
+			row_names << node.value
+		}
+	}
+	assert row_names.len == 2
+	assert row_names[0] != row_names[1]
+}
+
+fn test_multiline_keyword_infix_expressions_continue_after_semicolon() {
+	a := parse_parser_regression_source('multiline_keyword_infix',
+		'module main\n\nstruct Foo {}\n\nfn main() {\n\tvalue := Foo{}\n\tif value\n\t\tis Foo {}\n\txs := [1, 2]\n\tok := 1\n\t\tin xs\n\t_ := value\n\t\tas Foo\n\t_ = ok\n}\n')
+	mut is_count := 0
+	mut in_count := 0
+	mut as_count := 0
+	for node in a.nodes {
+		match node.kind {
+			.is_expr {
+				is_count++
+			}
+			.in_expr {
+				in_count++
+			}
+			.as_expr {
+				as_count++
+			}
+			else {}
+		}
+	}
+	assert is_count == 1
+	assert in_count == 1
+	assert as_count == 1
+}
