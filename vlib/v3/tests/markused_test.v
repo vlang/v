@@ -919,6 +919,24 @@ fn main() {
 	assert used['cb']
 }
 
+fn test_fn_value_call_callee_call_roots_inner_factory() {
+	used := mark_used_source('fn_value_call_callee_call', '
+fn cb() int {
+	return 7
+}
+
+fn make_cb() fn () int {
+	return cb
+}
+
+fn main() {
+	_ := make_cb()()
+}
+')
+	assert used['make_cb']
+	assert used['cb']
+}
+
 fn test_local_ident_reference_does_not_root_dead_function() {
 	mut a, mut tc := parse_checked_source('local_ident_shadow_dead_fn_cgen', '
 fn C.v3_dead_local_shadow_should_not_link() int

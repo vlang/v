@@ -2117,8 +2117,8 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 			mut j := int(child.children_count) - 1
 			for j >= 0 {
 				if child.kind == .call && j == 0 {
-					if receiver_id := c.call_callee_receiver_expr(child) {
-						stack << receiver_id
+					if callee_expr_id := c.call_callee_expr_to_collect(child) {
+						stack << callee_expr_id
 					}
 					j--
 					continue
@@ -2137,7 +2137,7 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 	}
 }
 
-fn (c &CallCollector) call_callee_receiver_expr(node &flat.Node) ?flat.NodeId {
+fn (c &CallCollector) call_callee_expr_to_collect(node &flat.Node) ?flat.NodeId {
 	if node.kind != .call || node.children_count == 0 {
 		return none
 	}
@@ -2146,14 +2146,23 @@ fn (c &CallCollector) call_callee_receiver_expr(node &flat.Node) ?flat.NodeId {
 		return none
 	}
 	callee := c.a.node(callee_id)
-	if callee.kind != .selector || callee.children_count == 0 {
+	if callee.kind == .selector {
+		if callee.children_count == 0 {
+			return none
+		}
+		base_id := c.a.child(callee, 0)
+		if int(base_id) >= 0 && c.expr_contains_call(base_id) {
+			return base_id
+		}
 		return none
 	}
-	base_id := c.a.child(callee, 0)
-	if int(base_id) < 0 || !c.expr_contains_call(base_id) {
+	if callee.kind == .ident {
 		return none
 	}
-	return base_id
+	if c.expr_contains_call(callee_id) {
+		return callee_id
+	}
+	return none
 }
 
 fn (c &CallCollector) expr_contains_call(id flat.NodeId) bool {

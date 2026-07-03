@@ -55,6 +55,15 @@ fn test_reject_pointer_expressions_for_value_returns() {
 		'fn f() !int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n', 'cannot return `&int` as `!int`')
 }
 
+fn test_voidptr_params_reject_non_pointer_values() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_voidptr_scalar_arg', 'fn f(p voidptr) {}\n\nfn main() {\n\tf(1)\n}\n',
+		'cannot use `int` as argument 1 to `f`; expected `&void`')
+	out := run_good(v3_bin, 'good_voidptr_pointer_arg',
+		'fn f(p voidptr) int {\n\t_ = p\n\treturn 7\n}\n\nfn main() {\n\tx := 1\n\tprintln(int_str(f(&x)))\n}\n')
+	assert out == '7'
+}
+
 fn test_restrict_synthetic_hex_fallback_receivers() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_struct_hex_method', 'struct S {}\nfn main() {\n\t_ := S{}.hex()\n}\n',

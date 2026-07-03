@@ -8274,7 +8274,12 @@ fn voidptr_arg_compatible(expected Type, actual Type) bool {
 	if !fn_param_is_voidptr_type(expected) {
 		return false
 	}
-	return type_has_runtime_value(actual)
+	return voidptr_arg_type_passes_direct(actual)
+}
+
+fn voidptr_arg_type_passes_direct(typ Type) bool {
+	clean := fn_param_unalias_type(typ)
+	return clean is Pointer || clean is Nil
 }
 
 fn variadic_elem_accepts_any(typ Type) bool {

@@ -3207,7 +3207,7 @@ fn (mut t Transformer) try_lower_flag_enum_call(node flat.Node) ?flat.NodeId {
 // so the copy is produced simply by evaluating the receiver (it is copied when assigned or
 // passed by value). Collection/string clones are lowered earlier, and a user-defined clone()
 // method is handled by try_lower_receiver_method_call before this runs.
-fn (mut t Transformer) try_lower_struct_clone_method_call(call_id flat.NodeId, node flat.Node) ?flat.NodeId {
+fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.children_count == 0 {
 		return none
 	}
