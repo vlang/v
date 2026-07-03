@@ -147,3 +147,60 @@ fn test_generic_as_cast_then_multi_return_interface() {
 	assert h1.secret() == 10
 	assert h2.secret() == 20
 }
+
+// Regression test: generic method with `&Interface -> as T` cast and
+// multi-return interface conversion. Two concrete types with DIFFERENT
+// struct layouts ensure the C compiler catches any stale-type codegen.
+
+interface Gettable {
+	get() int
+}
+
+struct TypeA {
+	x int
+	y int
+}
+
+fn (a TypeA) get() int {
+	return a.x + a.y
+}
+
+struct TypeB {
+	msg string
+}
+
+fn (b TypeB) get() int {
+	return b.msg.len
+}
+
+struct Holder {
+	ptr &Gettable
+}
+
+fn (h Holder) inner_ptr() &Gettable {
+	return h.ptr
+}
+
+struct Wrapper[T] {
+	src Holder
+}
+
+fn (w Wrapper[T]) extract() (Gettable, &Gettable) {
+	raw_conn := w.src.inner_ptr()
+	raw := raw_conn as T
+	return raw, raw_conn
+}
+
+fn test_ptr_interface_as_cast_multi_return_interface() {
+	w1 := Wrapper[TypeA]{
+		src: Holder{&TypeA{10, 20}}
+	}
+	v1, _ := w1.extract()
+	assert v1.get() == 30
+
+	w2 := Wrapper[TypeB]{
+		src: Holder{&TypeB{'hi'}}
+	}
+	v2, _ := w2.extract()
+	assert v2.get() == 2
+}
