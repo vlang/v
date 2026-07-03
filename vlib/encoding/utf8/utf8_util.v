@@ -14,37 +14,17 @@ fn is_continuation(b u8) bool {
 	return (b & 0xc0) == 0x80
 }
 
-// len return the length as number of unicode chars from a string
-pub fn len(s string) int {
-	if s.len == 0 {
-		return 0
-	}
-
-	mut count := 0
-	mut index := 0
-
-	for {
-		ch_len := utf8_char_len(s[index])
-		index += ch_len
-		count++
-		if index >= s.len {
-			break
-		}
-	}
-	return count
-}
-
-// get_rune convert a UTF-8 unicode codepoint in string[index] into a UTF-32 encoded rune
-pub fn get_rune(s string, index int) rune {
+@[direct_array_access]
+fn decode_rune_at(s string, index int) (rune, int) {
 	if s.len == 0 || index < 0 || index >= s.len {
-		return 0
+		return 0, 0
 	}
 	b0 := s[index]
 	if b0 < 0x80 {
-		return rune(b0)
+		return rune(b0), 1
 	}
 	if b0 < 0xc2 {
-		return replacement_rune
+		return replacement_rune, 1
 	}
 	ch_len := if b0 < 0xe0 {
 		2
@@ -53,42 +33,64 @@ pub fn get_rune(s string, index int) rune {
 	} else if b0 < 0xf5 {
 		4
 	} else {
-		return replacement_rune
+		return replacement_rune, 1
 	}
 	if index + ch_len > s.len {
-		return replacement_rune
+		return replacement_rune, 1
 	}
 	b1 := s[index + 1]
 	if !is_continuation(b1) {
-		return replacement_rune
+		return replacement_rune, 1
 	}
 	if ch_len == 2 {
-		return ((rune(b0) & 0x1f) << 6) | (rune(b1) & 0x3f)
+		return ((rune(b0) & 0x1f) << 6) | (rune(b1) & 0x3f), 2
 	}
 	if b0 == 0xe0 && b1 < 0xa0 {
-		return replacement_rune
+		return replacement_rune, 1
 	}
 	if b0 == 0xed && b1 >= 0xa0 {
-		return replacement_rune
+		return replacement_rune, 1
 	}
 	b2 := s[index + 2]
 	if !is_continuation(b2) {
-		return replacement_rune
+		return replacement_rune, 1
 	}
 	if ch_len == 3 {
-		return ((rune(b0) & 0x0f) << 12) | ((rune(b1) & 0x3f) << 6) | (rune(b2) & 0x3f)
+		return ((rune(b0) & 0x0f) << 12) | ((rune(b1) & 0x3f) << 6) | (rune(b2) & 0x3f), 3
 	}
 	if b0 == 0xf0 && b1 < 0x90 {
-		return replacement_rune
+		return replacement_rune, 1
 	}
 	if b0 == 0xf4 && b1 > 0x8f {
-		return replacement_rune
+		return replacement_rune, 1
 	}
 	b3 := s[index + 3]
 	if !is_continuation(b3) {
-		return replacement_rune
+		return replacement_rune, 1
 	}
-	return ((rune(b0) & 0x07) << 18) | ((rune(b1) & 0x3f) << 12) | ((rune(b2) & 0x3f) << 6) | (rune(b3) & 0x3f)
+	return ((rune(b0) & 0x07) << 18) | ((rune(b1) & 0x3f) << 12) | ((rune(b2) & 0x3f) << 6) | (rune(b3) & 0x3f), 4
+}
+
+// len return the length as number of unicode chars from a string
+pub fn len(s string) int {
+	mut count := 0
+	mut index := 0
+
+	for index < s.len {
+		_, ch_len := decode_rune_at(s, index)
+		if ch_len == 0 {
+			break
+		}
+		index += ch_len
+		count++
+	}
+	return count
+}
+
+// get_rune convert a UTF-8 unicode codepoint in string[index] into a UTF-32 encoded rune
+pub fn get_rune(s string, index int) rune {
+	r, _ := decode_rune_at(s, index)
+	return r
 }
 
 // raw_index - get the raw unicode character from the UTF-8 string by the given index value as UTF-8 string.
@@ -96,20 +98,17 @@ pub fn get_rune(s string, index int) rune {
 pub fn raw_index(s string, index int) string {
 	mut r := []rune{}
 
-	for i := 0; i < s.len; i++ {
+	mut i := 0
+	for i < s.len {
+		decoded, ch_len := decode_rune_at(s, i)
+		if ch_len == 0 {
+			break
+		}
+		r << decoded
 		if r.len - 1 == index {
 			break
 		}
-
-		b := s[i]
-		ch_len := int((u32(0xe5000000) >> ((b >> 3) & 0x1e)) & 3)
-
-		r << if ch_len > 0 {
-			i += ch_len
-			rune(get_rune(s, i - ch_len))
-		} else {
-			rune(b)
-		}
+		i += ch_len
 	}
 
 	return r[index].str()
@@ -433,7 +432,7 @@ fn convert_case(s string, upper_flag bool) string {
 	mut str_res := unsafe { malloc_noscan(s.len + 1) }
 
 	for {
-		ch_len := utf8_char_len(s[index])
+		_, ch_len := decode_rune_at(s, index)
 
 		if ch_len == 1 {
 			if upper_flag == true {
