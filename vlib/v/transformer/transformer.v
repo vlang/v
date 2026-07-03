@@ -1127,8 +1127,8 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 			ast.CharLiteral {
 				match mut node.right {
 					ast.CharLiteral {
-						left_val := node.left.val.runes()[0]
-						right_val := node.right.val.runes()[0]
+						left_val := ast.char_literal_rune_value(node.left.val) or { return node }
+						right_val := ast.char_literal_rune_value(node.right.val) or { return node }
 
 						match node.op {
 							.eq {

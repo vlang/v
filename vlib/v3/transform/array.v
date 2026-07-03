@@ -161,10 +161,18 @@ fn (mut t Transformer) make_array_clone_value(receiver flat.NodeId, base_type st
 
 // lower_array_init_to_runtime converts lower array init to runtime data for transform.
 fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Node) flat.NodeId {
-	if node.value.len == 0 || t.is_fixed_array_type(node.value) {
+	if node.value.len == 0 {
 		return id
 	}
-	elem_type := node.value
+	clean_value := t.normalize_type_alias(node.value)
+	if t.is_fixed_array_type(clean_value) {
+		return id
+	}
+	elem_type := if !node.value.starts_with('[]') && clean_value.starts_with('[]') {
+		clean_value[2..]
+	} else {
+		node.value
+	}
 	mut len_expr := t.make_int_literal(0)
 	mut cap_expr := t.make_int_literal(0)
 	mut init_expr := flat.empty_node
@@ -403,6 +411,9 @@ fn (t &Transformer) array_literal_alias_type(node flat.Node) ?string {
 
 // transform_array_literal_for_type transforms transform array literal for type data for transform.
 fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node flat.Node, target_type string) ?flat.NodeId {
+	if t.in_const_init {
+		return none
+	}
 	target_array_type := t.normalize_type_alias(target_type)
 	array_type := if target_array_type.starts_with('[]')
 		&& t.is_sum_type_name(target_array_type[2..]) {
@@ -870,7 +881,8 @@ fn (t &Transformer) array_append_elem_c_type(typ string) string {
 
 // array_get_value supports array get value handling for Transformer.
 fn (mut t Transformer) array_get_value(base flat.NodeId, index flat.NodeId, elem_type string) flat.NodeId {
-	get_call := t.make_call_typed('array_get', arr2(base, index), 'voidptr')
+	get_call := t.make_call_typed('array_get', arr2(t.array_get_runtime_base(base), index),
+		'voidptr')
 	ptr := t.make_cast('&${elem_type}', get_call, '&${elem_type}')
 	value := t.make_prefix(.mul, ptr)
 	t.a.nodes[int(value)].typ = elem_type
@@ -879,8 +891,19 @@ fn (mut t Transformer) array_get_value(base flat.NodeId, index flat.NodeId, elem
 
 // array_get_ptr supports array get ptr handling for Transformer.
 fn (mut t Transformer) array_get_ptr(base flat.NodeId, index flat.NodeId, elem_type string) flat.NodeId {
-	get_call := t.make_call_typed('array_get', arr2(base, index), 'voidptr')
+	get_call := t.make_call_typed('array_get', arr2(t.array_get_runtime_base(base), index),
+		'voidptr')
 	return t.make_cast('&${elem_type}', get_call, '&${elem_type}')
+}
+
+fn (mut t Transformer) array_get_runtime_base(base flat.NodeId) flat.NodeId {
+	base_type := t.node_type(base).trim_space()
+	if base_type.starts_with('&') {
+		value := t.make_prefix(.mul, base)
+		t.a.nodes[int(value)].typ = base_type[1..]
+		return value
+	}
+	return base
 }
 
 // lower_array_filter_call builds lower array filter call data for transform.
@@ -1432,6 +1455,9 @@ fn (mut t Transformer) lower_array_sorted_with_compare_call(node flat.Node, fn_n
 
 // stable_array_compare_fn supports stable array compare fn handling for Transformer.
 fn (mut t Transformer) stable_array_compare_fn(cmp_id flat.NodeId, elem_type string) flat.NodeId {
+	if int(cmp_id) >= 0 && t.a.nodes[int(cmp_id)].kind == .lambda_expr {
+		return cmp_id
+	}
 	cmp := t.transform_expr(cmp_id)
 	cmp_type := 'fn (&${elem_type}, &${elem_type}) int'
 	return t.stable_transformed_expr_for_reuse(cmp, cmp_type, 'sort_cmp')
@@ -1499,6 +1525,15 @@ fn (mut t Transformer) array_sort_less_expr(base flat.NodeId, elem_type string, 
 	prev := t.make_index(base, t.make_infix(.minus, t.make_ident(idx_name), t.make_int_literal(1)),
 		elem_type)
 	if int(cmp_id) >= 0 {
+		cmp_node := t.a.nodes[int(cmp_id)]
+		if cmp_node.kind == .lambda_expr && cmp_node.children_count >= 3 {
+			if cmp := t.array_sort_lambda_expr(cmp_node, cur, prev, elem_type) {
+				return cmp
+			}
+		}
+		if cmp := t.array_sort_simple_operator_expr(cmp_node, cur, prev, elem_type) {
+			return cmp
+		}
 		old_a := t.var_type('a')
 		old_b := t.var_type('b')
 		t.set_var_type('a', elem_type)
@@ -1523,27 +1558,100 @@ fn (mut t Transformer) array_sort_less_expr(base flat.NodeId, elem_type string, 
 	return t.make_infix(.lt, cur, prev)
 }
 
+fn (mut t Transformer) array_sort_simple_operator_expr(node flat.Node, cur flat.NodeId, prev flat.NodeId, elem_type string) ?flat.NodeId {
+	if node.kind != .infix || node.children_count < 2 {
+		return none
+	}
+	lhs_node := t.a.child_node(&node, 0)
+	rhs_node := t.a.child_node(&node, 1)
+	if lhs_node.kind != .ident || rhs_node.kind != .ident {
+		return none
+	}
+	if lhs_node.value !in ['a', 'b'] || rhs_node.value !in ['a', 'b'] {
+		return none
+	}
+	struct_type := t.struct_lookup_name(elem_type)
+	if struct_type.len == 0 {
+		return none
+	}
+	call_info := t.struct_operator_call_info(struct_type, node.op) or { return none }
+	lhs := if lhs_node.value == 'a' { cur } else { prev }
+	rhs := if rhs_node.value == 'a' { cur } else { prev }
+	args := if call_info.reverse { arr2(rhs, lhs) } else { arr2(lhs, rhs) }
+	t.mark_fn_used_name(call_info.name)
+	call := t.make_call_typed(call_info.name, args, node.typ)
+	if call_info.negate {
+		return t.make_prefix(.not, call)
+	}
+	return call
+}
+
 // array_sort_compare_less_expr supports array sort compare less expr handling for Transformer.
 fn (mut t Transformer) array_sort_compare_less_expr(base flat.NodeId, elem_type string, idx_name string, cmp flat.NodeId) flat.NodeId {
 	cur := t.make_index(base, t.make_ident(idx_name), elem_type)
 	prev := t.make_index(base, t.make_infix(.minus, t.make_ident(idx_name), t.make_int_literal(1)),
 		elem_type)
+	if int(cmp) >= 0 {
+		cmp_node := t.a.nodes[int(cmp)]
+		if cmp_node.kind == .lambda_expr && cmp_node.children_count >= 3 {
+			cur_ptr := t.make_prefix(.amp, cur)
+			prev_ptr := t.make_prefix(.amp, prev)
+			if call_value := t.array_sort_lambda_expr(cmp_node, cur_ptr, prev_ptr, '&${elem_type}') {
+				return t.make_infix(.lt, call_value, t.make_int_literal(0))
+			}
+		}
+	}
 	call := t.make_call_expr_typed(cmp, arr2(t.make_prefix(.amp, cur), t.make_prefix(.amp, prev)),
 		'int')
 	return t.make_infix(.lt, call, t.make_int_literal(0))
 }
 
+fn (mut t Transformer) array_sort_lambda_expr(node flat.Node, a_expr flat.NodeId, b_expr flat.NodeId, elem_type string) ?flat.NodeId {
+	if node.kind != .lambda_expr || node.children_count < 3 {
+		return none
+	}
+	first := t.a.child_node(&node, 0)
+	second := t.a.child_node(&node, 1)
+	if first.kind != .ident || second.kind != .ident || first.value.len == 0
+		|| second.value.len == 0 {
+		return none
+	}
+	body_id := t.a.child(&node, node.children_count - 1)
+	old_a := t.var_type(first.value)
+	old_b := t.var_type(second.value)
+	t.set_var_type(first.value, elem_type)
+	t.set_var_type(second.value, elem_type)
+	raw_cmp := t.substitute_array_sort_vars_named(body_id, first.value, second.value, a_expr,
+		b_expr)
+	cmp := t.transform_expr(raw_cmp)
+	if old_a.len > 0 {
+		t.set_var_type(first.value, old_a)
+	} else {
+		t.unset_var_type(first.value)
+	}
+	if old_b.len > 0 {
+		t.set_var_type(second.value, old_b)
+	} else {
+		t.unset_var_type(second.value)
+	}
+	return cmp
+}
+
 // substitute_array_sort_vars supports substitute array sort vars handling for Transformer.
 fn (mut t Transformer) substitute_array_sort_vars(id flat.NodeId, a_expr flat.NodeId, b_expr flat.NodeId) flat.NodeId {
+	return t.substitute_array_sort_vars_named(id, 'a', 'b', a_expr, b_expr)
+}
+
+fn (mut t Transformer) substitute_array_sort_vars_named(id flat.NodeId, a_name string, b_name string, a_expr flat.NodeId, b_expr flat.NodeId) flat.NodeId {
 	if int(id) < 0 {
 		return id
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .ident {
-		if node.value == 'a' {
+		if node.value == a_name {
 			return a_expr
 		}
-		if node.value == 'b' {
+		if node.value == b_name {
 			return b_expr
 		}
 		return id
@@ -1553,7 +1661,8 @@ fn (mut t Transformer) substitute_array_sort_vars(id flat.NodeId, a_expr flat.No
 	}
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
-		children << t.substitute_array_sort_vars(t.a.child(&node, i), a_expr, b_expr)
+		children << t.substitute_array_sort_vars_named(t.a.child(&node, i), a_name, b_name, a_expr,
+			b_expr)
 	}
 	start := t.a.children.len
 	for child in children {

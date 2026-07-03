@@ -3211,7 +3211,8 @@ fn (mut t Transformer) try_lower_pointer_value_assign(node flat.Node) ?[]flat.No
 	}
 	rhs_id := t.a.child(&node, 1)
 	rhs_type := t.node_type(rhs_id)
-	lhs_value_type := t.normalize_type_alias(lhs_type[1..])
+	lhs_value_type_raw := lhs_type[1..]
+	lhs_value_type := t.normalize_type_alias(lhs_value_type_raw)
 	if node.op != .assign {
 		if !t.pointer_value_lvalues[lhs.value] {
 			return none
@@ -3219,12 +3220,25 @@ fn (mut t Transformer) try_lower_pointer_value_assign(node flat.Node) ?[]flat.No
 		new_lhs := t.make_prefix(.mul, t.make_ident(lhs.value))
 		return arr1(t.make_assign_op(new_lhs, t.transform_expr(rhs_id), node.op))
 	}
-	if rhs_type.len == 0
-		|| (rhs_type != lhs_value_type && !t.type_alias_targets_type(lhs_type[1..], rhs_type)) {
+	if !t.pointer_value_assign_rhs_matches(lhs_value_type_raw, lhs_value_type, rhs_type) {
 		return none
 	}
 	new_lhs := t.make_prefix(.mul, t.make_ident(lhs.value))
-	return arr1(t.make_assign(new_lhs, t.transform_expr(rhs_id)))
+	return arr1(t.make_assign(new_lhs, t.transform_expr_for_type(rhs_id, lhs_value_type_raw)))
+}
+
+fn (t &Transformer) pointer_value_assign_rhs_matches(lhs_value_type_raw string, lhs_value_type string, rhs_type string) bool {
+	if rhs_type.len == 0 {
+		return false
+	}
+	if rhs_type == lhs_value_type || t.type_alias_targets_type(lhs_value_type_raw, rhs_type) {
+		return true
+	}
+	if t.is_optional_type_name(lhs_value_type) {
+		base := t.optional_base_type(t.qualify_optional_type(lhs_value_type))
+		return rhs_type == base || t.type_alias_targets_type(base, rhs_type)
+	}
+	return false
 }
 
 // transform_expr_for_type transforms transform expr for type data for transform.
@@ -3239,6 +3253,11 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 		}
 		if target_type.starts_with('&') {
 			if expr := t.transform_amp_struct_init_for_type(id, node, target_type) {
+				return expr
+			}
+		}
+		if node.kind == .field_init {
+			if expr := t.transform_field_init_for_struct_type(id, target_type) {
 				return expr
 			}
 		}
@@ -3318,6 +3337,27 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 	}
 	expr := t.transform_expr(id)
 	return t.coerce_transformed_expr_to_type(expr, id, target_type)
+}
+
+fn (mut t Transformer) transform_field_init_for_struct_type(id flat.NodeId, target_type string) ?flat.NodeId {
+	clean_target := t.normalize_type_alias(target_type)
+	if clean_target.len == 0 || clean_target.starts_with('&') || clean_target.starts_with('[]')
+		|| clean_target.starts_with('map[') || t.is_optional_type_name(clean_target) {
+		return none
+	}
+	if _ := t.lookup_struct_info(clean_target) {
+		start := t.a.children.len
+		t.a.children << id
+		struct_id := t.a.add_node(flat.Node{
+			kind:           .struct_init
+			children_start: start
+			children_count: 1
+			value:          clean_target
+			typ:            clean_target
+		})
+		return t.transform_struct_init(struct_id, t.a.nodes[int(struct_id)])
+	}
+	return none
 }
 
 // transform_block_expr_for_type transforms transform block expr for type data for transform.
@@ -5119,6 +5159,24 @@ fn (mut t Transformer) transform_if_expr(id flat.NodeId, node flat.Node) flat.No
 
 // transform_struct_init transforms transform struct init data for transform.
 fn (mut t Transformer) transform_struct_init(id flat.NodeId, node flat.Node) flat.NodeId {
+	if node.value.len > 0 {
+		clean_value := t.normalize_type_alias(node.value)
+		if clean_value.starts_with('[]') {
+			array_node := flat.Node{
+				kind:           .array_init
+				op:             node.op
+				children_start: node.children_start
+				children_count: node.children_count
+				pos:            node.pos
+				value:          clean_value[2..]
+				typ:            clean_value
+			}
+			lowered := t.lower_array_init_to_runtime(id, array_node)
+			if lowered != id {
+				return lowered
+			}
+		}
+	}
 	return t.transform_struct_fields(id, node)
 }
 
@@ -5798,6 +5856,15 @@ fn (mut t Transformer) build_sum_shared_field_chain(base flat.NodeId, sum_type s
 // transform_or_expr transforms transform or expr data for transform.
 fn (mut t Transformer) transform_or_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
+		return id
+	}
+	if t.in_const_init {
+		return id
+	}
+	expr_type, value_type := t.or_expr_types(t.a.child(&node, 0), node.typ)
+	if expr_type.contains('unknown') || value_type.contains('unknown')
+		|| t.type_text_has_generic_placeholder(expr_type, t.cur_module)
+		|| t.type_text_has_generic_placeholder(value_type, t.cur_module) {
 		return id
 	}
 	if t.is_map_index_or_expr(node) {

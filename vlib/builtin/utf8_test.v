@@ -163,6 +163,43 @@ fn test_utf8_to_utf32_invalid_length() {
 	assert impl_utf8_to_utf32(&u8(invalid.data), invalid.len) == 0
 }
 
+fn test_utf8_to_utf32_invalid_sequences() {
+	replacement := rune(0xfffd)
+	overlong := [u8(0xc1), 0xa1]
+	surrogate := [u8(0xed), 0xa0, 0x80]
+	above_max := [u8(0xf4), 0x90, 0x80, 0x80]
+	incomplete := [u8(0xc3)]
+	lone_continuation := [u8(0x80)]
+
+	assert impl_utf8_to_utf32(&u8(overlong.data), overlong.len) == replacement
+	assert impl_utf8_to_utf32(&u8(surrogate.data), surrogate.len) == replacement
+	assert impl_utf8_to_utf32(&u8(above_max.data), above_max.len) == replacement
+	assert impl_utf8_to_utf32(&u8(incomplete.data), incomplete.len) == replacement
+	assert impl_utf8_to_utf32(&u8(lone_continuation.data), lone_continuation.len) == replacement
+}
+
+fn test_invalid_utf8_string_runes_use_replacement_character() {
+	replacement := rune(0xfffd)
+	invalid := [u8(0xc1), 0xa1, `-`, 0xed, 0xa0, 0x80, `-`, 0xc3].bytestr()
+	expected := [
+		replacement,
+		replacement,
+		rune(`-`),
+		replacement,
+		replacement,
+		replacement,
+		rune(`-`),
+		replacement,
+	]
+
+	assert invalid.runes() == expected
+	mut iterated := []rune{}
+	for r in invalid.runes_iterator() {
+		iterated << r
+	}
+	assert iterated == expected
+}
+
 fn test_utf8_to_utf32_empty() {
 	assert impl_utf8_to_utf32(&u8([]u8{}.data), 0) == 0
 }

@@ -310,6 +310,13 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 							eprintln('main: resolved hit: "${callee}"')
 						}
 					}
+				} else if markused_is_interface_dispatch_call(callee, fn_info.module, tc) {
+					found_direct = true
+					enqueue(callee, mut used, mut queue)
+					lowered := markused_c_name(callee)
+					if lowered != callee {
+						enqueue(lowered, mut used, mut queue)
+					}
 				}
 				if !found_direct || !callee.contains('.') {
 					short := callee.all_after_last('.')
@@ -360,6 +367,16 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		eprintln('markused: total used: ${used.len}')
 	}
 	return used
+}
+
+fn markused_is_interface_dispatch_call(name string, cur_module string, tc &types.TypeChecker) bool {
+	if !name.contains('.') {
+		return false
+	}
+	recv := name.all_before_last('.')
+	method := name.all_after_last('.')
+	iface_name := interface_name_for_receiver(recv, cur_module, tc) or { return false }
+	return tc.interface_method_signature_key(iface_name, method) != none
 }
 
 // ensure_iface_impls supports ensure iface impls handling for markused.

@@ -207,11 +207,16 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.write('${c_elem} ${elem_var} = *(')
 				g.write(c_elem)
 				g.writeln('*)array_get(${container_str}, ${idx_var});')
-				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name,
-					container_type.elem_type)
-				g.declare_local_pointer_storage(elem_owner,
-
-					container_type.elem_type is types.Pointer || c_type_is_pointer_storage(c_elem))
+				elem_scope_type := if node.op == .amp {
+					types.Type(types.Pointer{
+						base_type: container_type.elem_type
+					})
+				} else {
+					container_type.elem_type
+				}
+				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
+				g.declare_local_pointer_storage(elem_owner, elem_scope_type is types.Pointer
+					|| c_type_is_pointer_storage(c_elem))
 				g.declare_ierror_pointer_alias(elem_var,
 					g.for_in_array_literal_element_needs_ierror_copy(container_node))
 			} else if container_type is types.String {

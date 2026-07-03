@@ -142,9 +142,10 @@ pub fn erase_generic_templates(mut a flat.FlatAst, tc &types.TypeChecker, used_f
 	mut t := new_transformer(mut a, tc, used_fns)
 	decls := t.collect_generic_fn_decls_for_erasure()
 	if decls.len != 0 {
+		keep := t.building_v_type_erased_generic_keep_set(decls)
 		mut erased := map[string]GenericFnDecl{}
 		for key, decl in decls {
-			if building_v_keeps_type_erased_generic_template(key) {
+			if keep[key] {
 				continue
 			}
 			erased[key] = decl
@@ -167,7 +168,7 @@ fn (mut t Transformer) collect_generic_fn_decls_for_erasure() map[string]Generic
 				cur_module = node.value
 			}
 			.fn_decl {
-				if !generic_fn_decl_needs_erasure_scan(node, t.a) {
+				if !t.generic_fn_decl_needs_erasure_scan(node, cur_module) {
 					continue
 				}
 				key := t.generic_fn_decl_key(node, cur_module)
@@ -185,20 +186,108 @@ fn (mut t Transformer) collect_generic_fn_decls_for_erasure() map[string]Generic
 	return decls
 }
 
-fn generic_fn_decl_needs_erasure_scan(node flat.Node, a &flat.FlatAst) bool {
-	if node.generic_params.len > 0 || node.typ.contains('generic') {
+fn (mut t Transformer) building_v_type_erased_generic_keep_set(decls map[string]GenericFnDecl) map[string]bool {
+	mut keep := map[string]bool{}
+	mut queue := []string{}
+	for key, _ in decls {
+		if building_v_type_erased_generic_keep_root(key) {
+			keep[key] = true
+			queue << key
+		}
+	}
+	if queue.len == 0 {
+		return keep
+	}
+	t.generic_fn_decls_cache = decls.clone()
+	t.build_generic_receiver_method_index()
+	mut cursor := 0
+	for cursor < queue.len {
+		key := queue[cursor]
+		cursor++
+		decl := decls[key] or { continue }
+		mut called := map[string]bool{}
+		t.collect_type_erased_generic_template_calls(decl.id, decl.module, decls, mut called)
+		for called_key, _ in called {
+			if called_key !in keep {
+				keep[called_key] = true
+				queue << called_key
+			}
+		}
+	}
+	return keep
+}
+
+fn (mut t Transformer) collect_type_erased_generic_template_calls(id flat.NodeId, module_name string, decls map[string]GenericFnDecl, mut called map[string]bool) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .call {
+		if key := t.type_erased_generic_template_call_decl_key(id, node, module_name, decls) {
+			called[key] = true
+		}
+	}
+	for i in 0 .. node.children_count {
+		t.collect_type_erased_generic_template_calls(t.a.child(&node, i), module_name, decls, mut
+			called)
+	}
+}
+
+fn (mut t Transformer) type_erased_generic_template_call_decl_key(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?string {
+	if key := t.generic_call_decl_key(id, node, module_name, decls) {
+		return key
+	}
+	if node.children_count == 0 {
+		return none
+	}
+	mut callee := t.a.child_node(&node, 0)
+	if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
+		callee = t.a.child_node(callee, 0)
+	}
+	if callee.kind == .ident {
+		for candidate in t.generic_plain_call_candidates(callee.value, module_name) {
+			if key := t.type_erased_generic_template_candidate_key(candidate, node, decls) {
+				return key
+			}
+		}
+	} else if callee.kind == .selector && callee.children_count > 0 {
+		base := t.a.child_node(callee, 0)
+		if base.kind == .ident {
+			for candidate in ['${base.value}.${callee.value}',
+				'${t.import_alias_module(base.value)}.${callee.value}'] {
+				if key := t.type_erased_generic_template_candidate_key(candidate, node, decls) {
+					return key
+				}
+			}
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) type_erased_generic_template_candidate_key(candidate string, node flat.Node, decls map[string]GenericFnDecl) ?string {
+	key := generic_fn_decl_base_value(candidate)
+	decl := decls[key] or { return none }
+	if !t.generic_call_arg_count_matches_decl(node, decl) {
+		return none
+	}
+	return key
+}
+
+fn (mut t Transformer) generic_fn_decl_needs_erasure_scan(node flat.Node, module_name string) bool {
+	if node.generic_params.len > 0 || t.type_text_has_generic_placeholder(node.typ, module_name)
+		|| t.type_text_has_generic_placeholder(node.value, module_name) {
 		return true
 	}
 	for i in 0 .. node.children_count {
-		child := a.child_node(&node, i)
-		if child.kind == .param && child.typ.contains('generic') {
+		child := t.a.child_node(&node, i)
+		if child.kind == .param && t.type_text_has_generic_placeholder(child.typ, module_name) {
 			return true
 		}
 	}
 	return false
 }
 
-fn building_v_keeps_type_erased_generic_template(key string) bool {
+fn building_v_type_erased_generic_keep_root(key string) bool {
 	return key in ['token.new_keywords_matcher_trie', 'sync.pool.PoolProcessor.work_on_items']
 }
 
@@ -1710,47 +1799,7 @@ fn (mut t Transformer) rewrite_generic_method_call(id flat.NodeId, node flat.Nod
 	if node.children_count == 0 {
 		return
 	}
-	// Method-level generics (`method[U](...)`) cannot be resolved from the receiver
-	// type alone — the receiver carries no `_U` suffix — so the call must name the
-	// specialized function explicitly, passing the receiver as the first argument
-	// (exactly like a plain generic call). Pure struct-generic methods keep the
-	// selector callee, which cgen resolves via the already-monomorphized receiver.
-	if t.generic_decl_has_method_level_params(decl) {
-		t.rewrite_method_level_generic_call(id, node, decl, args)
-		return
-	}
-	fn_id := t.a.child(&node, 0)
-	if int(fn_id) < 0 {
-		return
-	}
-	fn_node := t.a.nodes[int(fn_id)]
-	if fn_node.kind != .index && fn_node.kind != .selector {
-		return
-	}
-	mut callee_id := fn_id
-	if fn_node.kind == .index && fn_node.children_count > 0 {
-		callee_id = t.a.child(&fn_node, 0)
-	}
-	ret_typ := t.specialized_fn_return_type_text(decl, args)
-	mut children := []flat.NodeId{cap: int(node.children_count)}
-	children << callee_id
-	for i in 1 .. node.children_count {
-		children << t.a.child(&node, i)
-	}
-	start := t.a.children.len
-	for child in children {
-		t.a.children << child
-	}
-	t.a.nodes[int(id)] = flat.Node{
-		kind:           .call
-		op:             node.op
-		children_start: start
-		children_count: flat.child_count(children.len)
-		pos:            node.pos
-		value:          ''
-		typ:            ret_typ
-	}
-	t.clear_resolved_call(id)
+	t.rewrite_method_level_generic_call(id, node, decl, args)
 }
 
 // rewrite_method_level_generic_call rewrites a call to a method-level generic into
@@ -2017,6 +2066,7 @@ fn (t &Transformer) generic_resolved_call_decl_key(resolved string, callee flat.
 fn (t &Transformer) generic_call_arg_count_matches_decl(node flat.Node, decl GenericFnDecl) bool {
 	mut param_count := 0
 	mut is_variadic := false
+	mut has_trailing_params_struct := false
 	for i in 0 .. decl.node.children_count {
 		child := t.a.child_node(&decl.node, i)
 		if child.kind != .param {
@@ -2026,6 +2076,7 @@ fn (t &Transformer) generic_call_arg_count_matches_decl(node flat.Node, decl Gen
 		if child.typ.starts_with('...') {
 			is_variadic = true
 		}
+		has_trailing_params_struct = t.generic_param_is_params_struct(child.typ, decl.module)
 	}
 	// param_count includes the receiver for methods. The call's child count
 	// depends on form: the selector form (`recv.method(args)`) keeps the receiver
@@ -2043,7 +2094,26 @@ fn (t &Transformer) generic_call_arg_count_matches_decl(node flat.Node, decl Gen
 	if is_variadic {
 		return actual >= param_count - 1
 	}
+	if has_trailing_params_struct {
+		return actual >= param_count - 1
+	}
 	return actual == param_count
+}
+
+fn (t &Transformer) generic_param_is_params_struct(param_type string, decl_module string) bool {
+	if param_type.len == 0 {
+		return false
+	}
+	if _ := t.params_struct_type_name(param_type) {
+		return true
+	}
+	if !param_type.contains('.') && decl_module.len > 0 && decl_module != 'main'
+		&& decl_module != 'builtin' {
+		if _ := t.params_struct_type_name('${decl_module}.${param_type}') {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) generic_call_effective_arg_count(node flat.Node) int {
@@ -2861,6 +2931,9 @@ fn (mut t Transformer) copy_cloned_resolution(src_id flat.NodeId, dst_id flat.No
 fn (t &Transformer) resolved_call_is_generic_fn(name string) bool {
 	if name.len == 0 || isnil(t.tc) {
 		return false
+	}
+	if name.contains('[') && name.contains(']') {
+		return true
 	}
 	if name in t.tc.fn_generic_params {
 		return true

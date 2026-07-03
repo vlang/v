@@ -1041,6 +1041,11 @@ fn (mut t Transformer) transform_pointer_rvalue_arg(arg_id flat.NodeId, arg_node
 	if value_type.len == 0 || value_type == 'void' || value_type == 'unknown' {
 		return none
 	}
+	if t.c_type_nil_call_for_type(value_node, value_type) {
+		nil_id := t.a.add(.nil_literal)
+		t.a.nodes[int(nil_id)].typ = param_type
+		return nil_id
+	}
 	arg_type := t.node_type(value_id)
 	if arg_type.len == 0 || arg_type == 'void' || arg_type == 'unknown'
 		|| is_pointer_like_type_name(arg_type) {
@@ -1052,6 +1057,28 @@ fn (mut t Transformer) transform_pointer_rvalue_arg(arg_id flat.NodeId, arg_node
 	addr := t.make_prefix(.amp, t.make_ident(tmp_name))
 	t.a.nodes[int(addr)].typ = param_type
 	return addr
+}
+
+fn (t &Transformer) c_type_nil_call_for_type(node flat.Node, value_type string) bool {
+	if node.kind != .call || node.children_count != 2 {
+		return false
+	}
+	callee := t.a.child_node(&node, 0)
+	arg := t.a.child_node(&node, 1)
+	if arg.kind != .nil_literal {
+		return false
+	}
+	short_type := value_type.all_after_last('.')
+	if callee.kind == .ident {
+		return callee.value == value_type || callee.value == short_type
+	}
+	if callee.kind == .selector && callee.children_count > 0 {
+		base := t.a.child_node(callee, 0)
+		return base.kind == .ident && callee.value.len > 0
+			&& ((base.value == 'C' && (value_type.starts_with('C.') || callee.value == short_type))
+			|| '${base.value}.${callee.value}' == value_type)
+	}
+	return false
 }
 
 fn is_pointer_arg_temp_rvalue(node flat.Node) bool {
@@ -2535,7 +2562,7 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 	base_id := t.a.children[fn_node.children_start]
 	array_builtin_method := t.array_builtin_method_name(fn_node.value) or { '' }
 	if fn_node.value !in ['clone', 'reverse', 'contains', 'index', 'last_index', 'join', 'any',
-		'all', 'count', 'equals', 'prepend', 'insert', 'push_many', 'str'] {
+		'all', 'count', 'equals', 'prepend', 'insert', 'push_many', 'str', 'to_fixed_size'] {
 		if fn_node.value !in ['filter', 'map', 'sort', 'sorted', 'sort_with_compare', 'sorted_with_compare']
 			&& array_builtin_method.len == 0 {
 			mut early_base_type := t.node_type(base_id)
@@ -2728,6 +2755,17 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		}
 		'str' {
 			return t.wrap_string_conversion(t.transform_expr(base_id), clean_base_type)
+		}
+		'to_fixed_size' {
+			if base_node.kind != .array_literal {
+				return none
+			}
+			fixed_type := if t.is_fixed_array_type(node.typ) {
+				node.typ
+			} else {
+				'[${base_node.children_count}]${elem_type}'
+			}
+			return t.transform_fixed_array_literal_for_type(base_id, base_node, fixed_type)
 		}
 		'equals' {
 			if node.children_count < 2 {
@@ -3646,6 +3684,10 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	if base_type.len == 0 {
 		return none
 	}
+	if t.cur_fn_is_generic && base_type.contains('[')
+		&& t.type_text_has_generic_placeholder(base_type, t.cur_module) {
+		return none
+	}
 	mut builtin_base_type := t.normalize_type_alias(base_type)
 	if builtin_base_type == 'byte' {
 		builtin_base_type = 'u8'
@@ -4273,6 +4315,17 @@ fn (t &Transformer) receiver_method_candidates(receiver_type string, method stri
 	}
 	mut candidates := []string{}
 	candidates << '${clean_type}.${method}'
+	base, args, ok := generic_app_parts(clean_type)
+	if ok {
+		suffix := generic_type_suffixes(args)
+		candidates << '${base}_${suffix}.${method}'
+		if base.contains('.') {
+			base_mod := base.all_before_last('.')
+			base_short := base.all_after_last('.')
+			candidates << '${base_short}_${suffix}.${method}'
+			candidates << '${base_mod}.${base_short}_${suffix}.${method}'
+		}
+	}
 	if clean_type.starts_with('[]') {
 		elem_type := clean_type[2..]
 		short_elem := if elem_type.contains('.') { elem_type.all_after_last('.') } else { elem_type }

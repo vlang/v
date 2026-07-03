@@ -1228,6 +1228,407 @@ fn test_h2_server_hpack_sync_after_locally_reset_stream_headers() {
 	assert s3_status == 200, 'HPACK sync after local RST: stream 3 should get 200 (dynamic table intact), got ${s3_status}'
 }
 
+// RFC 9113 §6.9: a WINDOW_UPDATE with a zero increment on the connection
+// (stream 0) is a connection error of type PROTOCOL_ERROR.
+fn test_h2_server_zero_window_increment_on_connection_is_connection_error() {
+	mut out := preface_and_settings()
+	out << H2Frame(H2WindowUpdateFrame{
+		stream_id:             0
+		window_size_increment: 0
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_goaway_or_close(mut client_end, out, 'zero WINDOW_UPDATE on connection')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'zero conn WINDOW_UPDATE: expected GOAWAY(PROTOCOL_ERROR), got ${code}'
+}
+
+// RFC 9113 §6.9: a WINDOW_UPDATE with a zero increment on a stream is a STREAM
+// error of type PROTOCOL_ERROR — the stream is reset, the connection stays up.
+fn test_h2_server_zero_window_increment_on_stream_is_stream_error() {
+	mut enc := H2HpackEncoder{}
+	mut out := preface_and_settings()
+	// Open stream 1 without END_STREAM so it stays open when the frame arrives.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	out << H2Frame(H2WindowUpdateFrame{
+		stream_id:             1
+		window_size_increment: 0
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_rst_or_response(mut client_end, out, 'zero WINDOW_UPDATE on stream')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'zero stream WINDOW_UPDATE: expected RST_STREAM(PROTOCOL_ERROR), got ${code}'
+}
+
+// RFC 9113 §6.9.1: WINDOW_UPDATE growing the connection flow-control window
+// past 2^31-1 is a connection error of type FLOW_CONTROL_ERROR.
+fn test_h2_server_connection_window_overflow_is_flow_control_error() {
+	mut out := preface_and_settings()
+	// The connection send window starts at 65535, so one maximum increment
+	// (2^31-1) pushes it past 2^31-1.
+	out << H2Frame(H2WindowUpdateFrame{
+		stream_id:             0
+		window_size_increment: u32(0x7fff_ffff)
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_goaway_or_close(mut client_end, out, 'connection window overflow')
+	assert code == i64(u32(H2ErrorCode.flow_control_error)), 'conn window overflow: expected GOAWAY(FLOW_CONTROL_ERROR), got ${code}'
+}
+
+// RFC 9113 §6.9.1: WINDOW_UPDATE growing a stream's flow-control window past
+// 2^31-1 is a STREAM error of type FLOW_CONTROL_ERROR.
+fn test_h2_server_stream_window_overflow_is_stream_error() {
+	mut enc := H2HpackEncoder{}
+	mut out := preface_and_settings()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	out << H2Frame(H2WindowUpdateFrame{
+		stream_id:             1
+		window_size_increment: u32(0x7fff_ffff)
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_rst_or_response(mut client_end, out, 'stream window overflow')
+	assert code == i64(u32(H2ErrorCode.flow_control_error)), 'stream window overflow: expected RST_STREAM(FLOW_CONTROL_ERROR), got ${code}'
+}
+
+// RFC 9113 §6.5.2: SETTINGS_ENABLE_PUSH accepts only 0 or 1; any other value is
+// a connection error of type PROTOCOL_ERROR.
+fn test_h2_server_enable_push_out_of_range_is_connection_error() {
+	mut out := []u8{}
+	out << h2_client_preface.bytes()
+	out << H2Frame(H2SettingsFrame{
+		settings: [
+			H2Setting{h2_settings_enable_push, 2},
+		]
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_goaway_or_close(mut client_end, out, 'ENABLE_PUSH=2')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'ENABLE_PUSH=2: expected GOAWAY(PROTOCOL_ERROR), got ${code}'
+}
+
+// RFC 7540 §5.3.1: a HEADERS frame whose priority section depends on its own
+// stream is a STREAM error of type PROTOCOL_ERROR. The header block must still
+// be HPACK-decoded before the RST (RFC 7541 §2.2).
+fn test_h2_server_headers_self_dependency_is_stream_error() {
+	mut enc := H2HpackEncoder{}
+	mut out := preface_and_settings()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:    1
+		fragment:     enc.encode(valid_get_pseudo)
+		end_headers:  true
+		end_stream:   true
+		has_priority: true
+		stream_dep:   1
+		weight:       15
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_rst_or_response(mut client_end, out, 'HEADERS self-dependency')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'HEADERS self-dep: expected RST_STREAM(PROTOCOL_ERROR), got ${code}'
+}
+
+// RFC 7540 §5.3.1: a PRIORITY frame that depends on its own stream is a STREAM
+// error of type PROTOCOL_ERROR.
+fn test_h2_server_priority_self_dependency_is_stream_error() {
+	mut out := preface_and_settings()
+	out << H2Frame(H2PriorityFrame{
+		stream_id:  1
+		stream_dep: 1
+		weight:     15
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_rst_or_response(mut client_end, out, 'PRIORITY self-dependency')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'PRIORITY self-dep: expected RST_STREAM(PROTOCOL_ERROR), got ${code}'
+}
+
+// RFC 7540 §5.3.1 / RFC 9113 §5.1: a self-dependent PRIORITY frame for a stream
+// that already completed NORMALLY (full request/response, deleted from
+// c.streams by run_request, never touched locally_reset) must NOT trigger a
+// fresh RST_STREAM — that stream is already closed, and RST_STREAM is not a
+// PRIORITY frame, so sending one on an already-closed stream is itself the
+// §5.1 violation the self-dependency guard exists to police. Regression for
+// Codex P2 on #27627 (pullrequestreview-4620220448).
+fn test_h2_server_priority_self_dep_after_normal_completion_is_ignored() {
+	mut enc := H2HpackEncoder{}
+	mut out := preface_and_settings()
+	// Stream 1: a normal, complete GET request/response -- deleted from
+	// c.streams by run_request, never locally_reset.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// Self-dependent PRIORITY referencing the now normally-closed stream 1.
+	out << H2Frame(H2PriorityFrame{
+		stream_id:  1
+		stream_dep: 1
+		weight:     15
+	}).encode()
+	// A further valid request proves the connection stays usable.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   3
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'PRIORITY self-dep after normal completion: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut rst1_count := 0
+	mut resp1_count := 0
+	mut got_response3 := false
+	for _ in 0 .. 32 {
+		f := fr.next() or { break }
+		match f {
+			H2RstStreamFrame {
+				if f.stream_id == 1 {
+					rst1_count++
+				}
+			}
+			H2HeadersFrame {
+				if f.stream_id == 1 {
+					resp1_count++
+				}
+				if f.stream_id == 3 {
+					got_response3 = true
+				}
+			}
+			else {}
+		}
+
+		if got_response3 {
+			break
+		}
+	}
+	assert resp1_count == 1, 'PRIORITY self-dep after normal completion: expected exactly 1 response on stream 1, got ${resp1_count}'
+	assert rst1_count == 0, 'PRIORITY self-dep after normal completion: expected NO RST_STREAM on the already-closed stream 1, got ${rst1_count}'
+	assert got_response3, 'PRIORITY self-dep after normal completion: connection should stay usable (stream 3 served)'
+}
+
+// RFC 9113 §6.4: a self-dependent PRIORITY on a never-opened (idle) stream is
+// itself legal to RST (§5.3.1) — but the id it resets was never added to
+// last_stream_id (only HEADERS advances that counter), so classify_stream must
+// still recognise it as locally_reset (closed), not idle. Otherwise in-flight
+// DATA for that id — sent by the client before it received our RST — is
+// wrongly treated as a frame on an IDLE stream (a connection PROTOCOL_ERROR)
+// instead of being silently drained per §6.4. Regression for Codex P2 on
+// #27627 (pullrequestreview-4618166175).
+fn test_h2_server_data_after_priority_self_dep_reset_is_drained() {
+	mut enc := H2HpackEncoder{}
+	mut out := preface_and_settings()
+	// Self-dependent PRIORITY on stream 5 -- never opened via HEADERS, so
+	// last_stream_id stays 0. The server should RST(5, PROTOCOL_ERROR).
+	out << H2Frame(H2PriorityFrame{
+		stream_id:  5
+		stream_dep: 5
+		weight:     15
+	}).encode()
+	// DATA in flight for the same id -- must be drained silently (RFC 9113 §6.4),
+	// not treated as DATA-on-idle-stream (a connection error).
+	out << H2Frame(H2DataFrame{
+		stream_id: 5
+		data:      'x'.bytes()
+	}).encode()
+	// A valid request afterwards proves the connection survived (hang-proof: a
+	// buggy server GOAWAYs before this response ever arrives).
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   7
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'DATA after PRIORITY self-dep reset: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut got_goaway := false
+	mut rst5_count := 0
+	mut got_response7 := false
+	for _ in 0 .. 32 {
+		f := fr.next() or { break }
+		match f {
+			H2GoawayFrame {
+				// A buggy server GOAWAYs and then never writes again (the test pipe
+				// has no explicit close signal) -- break immediately or the next
+				// fr.next() blocks forever.
+				got_goaway = true
+			}
+			H2RstStreamFrame {
+				if f.stream_id == 5 {
+					rst5_count++
+				}
+			}
+			H2HeadersFrame {
+				if f.stream_id == 7 {
+					got_response7 = true
+				}
+			}
+			else {}
+		}
+
+		if got_goaway || got_response7 {
+			break
+		}
+	}
+	assert !got_goaway, 'DATA after PRIORITY self-dep reset: connection should NOT GOAWAY (in-flight DATA must be drained, not treated as DATA-on-idle)'
+	assert rst5_count == 1, 'DATA after PRIORITY self-dep reset: expected exactly 1 RST_STREAM on stream 5, got ${rst5_count}'
+	assert got_response7, 'DATA after PRIORITY self-dep reset: connection should stay usable (stream 7 served)'
+}
+
+// RFC 7540 §5.3.1 / RFC 9113 §5.1.2: a HEADERS frame that is BOTH over the
+// concurrency limit AND self-dependent must be reported as a malformed request
+// (PROTOCOL_ERROR), not REFUSED_STREAM — REFUSED_STREAM tells the client the
+// request is safe to retry as-is, but a self-dependent request will always be
+// malformed, retry or not. Regression for Codex P2 on #27627
+// (pullrequestreview-4620412384).
+fn test_h2_server_self_dep_headers_over_concurrency_limit_is_protocol_error() {
+	mut enc := H2HpackEncoder{}
+	mut out := preface_and_settings()
+	// Stream 1 stays open (no END_STREAM) so it occupies the single concurrency
+	// slot (h2_server_max_concurrent_streams == 1) when stream 3 arrives.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	// Stream 3: over the concurrency limit AND self-dependent.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:    3
+		fragment:     enc.encode(valid_get_pseudo)
+		end_headers:  true
+		end_stream:   true
+		has_priority: true
+		stream_dep:   3
+		weight:       15
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'self-dep + over-limit HEADERS: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut code := i64(-1)
+	for _ in 0 .. 32 {
+		f := fr.next() or { break }
+		if f is H2RstStreamFrame {
+			if f.stream_id == 3 {
+				code = i64(f.error_code)
+				break
+			}
+		}
+	}
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'self-dep + over-limit: expected RST_STREAM(PROTOCOL_ERROR), got ${code}'
+}
+
+// A repeated self-dependent PRIORITY on the same id must produce exactly ONE
+// RST_STREAM: after the first reset the stream is closed, and RFC 9113 §5.1
+// forbids sending further non-PRIORITY frames (a second RST) on it.
+fn test_h2_server_priority_self_dependency_rst_sent_once() {
+	mut out := preface_and_settings()
+	for _ in 0 .. 3 {
+		out << H2Frame(H2PriorityFrame{
+			stream_id:  1
+			stream_dep: 1
+			weight:     15
+		}).encode()
+	}
+	// A valid request on stream 3 afterwards proves the connection survived and
+	// bounds the read loop with a response.
+	mut enc := H2HpackEncoder{}
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   3
+		fragment:    enc.encode(valid_get_pseudo)
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	client_end.write(out) or {
+		assert false, 'repeated PRIORITY self-dep: client write failed: ${err}'
+		return
+	}
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut rst_count := 0
+	mut got_response := false
+	for _ in 0 .. 32 {
+		f := fr.next() or { break }
+		match f {
+			H2RstStreamFrame {
+				if f.stream_id == 1 {
+					rst_count++
+				}
+			}
+			H2HeadersFrame {
+				if f.stream_id == 3 {
+					got_response = true
+					break
+				}
+			}
+			else {}
+		}
+	}
+	assert rst_count == 1, 'repeated PRIORITY self-dep: expected exactly 1 RST_STREAM, got ${rst_count}'
+	assert got_response, 'repeated PRIORITY self-dep: connection should stay usable (stream 3 served)'
+}
+
+// RFC 7540 §5.3.1 applies to any HEADERS carrying a priority section — a
+// trailing HEADERS (trailer section) with a self-dependency is also a STREAM
+// error PROTOCOL_ERROR, and its block is still HPACK-decoded before the RST.
+fn test_h2_server_trailer_self_dependency_is_stream_error() {
+	mut enc := H2HpackEncoder{}
+	req_block := enc.encode([
+		H2HeaderField{':method', 'POST'},
+		H2HeaderField{':scheme', 'https'},
+		H2HeaderField{':path', '/'},
+		H2HeaderField{':authority', 'h.example'},
+	])
+	trailer_block := enc.encode([
+		H2HeaderField{'x-checksum', 'abc'},
+	])
+	mut out := preface_and_settings()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    req_block
+		end_headers: true
+		end_stream:  false
+	}).encode()
+	out << H2Frame(H2DataFrame{
+		stream_id: 1
+		data:      'hi'.bytes()
+	}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:    1
+		fragment:     trailer_block
+		end_headers:  true
+		end_stream:   true
+		has_priority: true
+		stream_dep:   1
+		weight:       15
+	}).encode()
+	mut client_end := spawn_h2_echo_server()
+	code := drive_until_rst_or_response(mut client_end, out, 'trailer self-dependency')
+	assert code == i64(u32(H2ErrorCode.protocol_error)), 'trailer self-dep: expected RST_STREAM(PROTOCOL_ERROR), got ${code}'
+}
+
 // RFC 9113 §5.1 / RFC 7541 §2.2: a HEADERS block arriving on a half-closed
 // (remote) stream must be HPACK-decoded before the server sends
 // RST_STREAM(STREAM_CLOSED). The HPACK dynamic table is connection-wide; skipping
