@@ -750,11 +750,15 @@ pub fn (t Time) write_http_header(dst &u8, dst_len int) ! {
 		return error('time.write_http_header: dst_len must be >= 29')
 	}
 	day_str := long_days[iclamp(0, t.day_of_week() - 1, 6)] // read in place: no substr
-	mi := iclamp(0, t.month - 1, 11) * 3
+	month_str := if t.month >= 1 && t.month <= 12 {
+		unsafe { tos(months_string.str + (t.month - 1) * 3, 3) } // in-place view: no substr
+	} else {
+		'---' // historical out-of-range fallback, same as smonth()
+	}
 
-	mut buf := [day_str[0], day_str[1], day_str[2], `,`, ` `, `0`, `0`, ` `, months_string[mi],
-		months_string[mi + 1], months_string[mi + 2], ` `, `0`, `0`, `0`, `0`, ` `, `0`, `0`, `:`,
-		`0`, `0`, `:`, `0`, `0`, ` `, `G`, `M`, `T`]!
+	mut buf := [day_str[0], day_str[1], day_str[2], `,`, ` `, `0`, `0`, ` `, month_str[0], month_str[1],
+		month_str[2], ` `, `0`, `0`, `0`, `0`, ` `, `0`, `0`, `:`, `0`, `0`, `:`, `0`, `0`, ` `,
+		`G`, `M`, `T`]!
 	unsafe {
 		int_to_ptr_byte_array_no_pad(t.day, &buf[5], 2)
 		int_to_ptr_byte_array_no_pad(t.year, &buf[12], 4)

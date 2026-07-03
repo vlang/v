@@ -108,6 +108,10 @@ fn test_write_http_header() {
 		assert b == 0
 	}
 	assert time.http_header_len == 29
+	// a degenerate Time (zero month) keeps smonth()'s historical '---' fallback
+	mut zero_buf := []u8{}
+	time.Time{}.push_to_http_header(mut zero_buf)
+	assert zero_buf.bytestr().contains('---')
 }
 
 fn test_push_to_http_header() {
