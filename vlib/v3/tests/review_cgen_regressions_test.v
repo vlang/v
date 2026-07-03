@@ -114,6 +114,30 @@ pub fn free(values []int) int {
 	assert out == '5'
 }
 
+fn test_pointer_receiver_on_pointer_parameter_passes_parameter_directly() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'pointer_receiver_on_pointer_param', 'struct S {
+	n int
+}
+
+fn (s &S) value_plus(delta int) int {
+	return s.n + delta
+}
+
+fn use_pointer_param(s &S) int {
+	return s.value_plus(5)
+}
+
+fn main() {
+	s := S{
+		n: 37
+	}
+	println(int_str(use_pointer_param(&s)))
+}
+')
+	assert out == '42'
+}
+
 fn test_pointer_value_compatibility_keeps_qualified_struct_names() {
 	v3_bin := build_v3_review_cgen()
 	files := {

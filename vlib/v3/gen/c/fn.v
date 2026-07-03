@@ -3092,7 +3092,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					mut is_ptr_base := base_type is types.Pointer
 						|| g.receiver_ident_storage_is_pointer(base_id)
 					base_node := g.a.nodes[int(base_id)]
-					if receiver_wants_ptr && base_node.kind == .ident
+					if receiver_wants_ptr && base_node.kind == .ident && base_type !is types.Pointer
 						&& !g.receiver_ident_storage_is_pointer(base_id) {
 						is_ptr_base = false
 					}
