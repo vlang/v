@@ -520,3 +520,11 @@ fn test_high_byte_char_literals_preserve_rune_value() {
 	assert `\x80` == rune(128)
 	assert `\xff` == rune(255)
 }
+
+const high_byte_char_literal = `\xff`
+const high_byte_char_literal_int = int(`\xff`)
+
+fn test_high_byte_char_literals_preserve_comptime_value() {
+	assert high_byte_char_literal == rune(255)
+	assert high_byte_char_literal_int == 255
+}

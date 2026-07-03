@@ -1173,9 +1173,8 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 			}
 		}
 		ast.CharLiteral {
-			runes := expr.val.runes()
-			if runes.len > 0 {
-				return runes[0]
+			if value := char_literal_rune_value(expr.val) {
+				return ast.ComptTimeConstValue(value)
 			}
 			return none
 		}
