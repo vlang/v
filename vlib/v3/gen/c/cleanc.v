@@ -465,7 +465,8 @@ fn (mut g FlatGen) collect_gen_info() {
 			g.register_fn_decl_ret_type(node.value, full_name, node.typ)
 			// Module-level `init()` functions run once at startup. Collect their C
 			// names so _vinit can invoke them (V semantics).
-			if node.value == 'init' && ptypes.len == 0 {
+			if node.value == 'init' && ptypes.len == 0
+				&& (!g.has_used_fn_filter() || g.used_fn_contains_in_module(node.value, cur_module)) {
 				init_cname := qualified_fn_name_in_module(cur_module, 'init')
 				if init_cname !in g.module_init_fns {
 					g.module_init_fns << init_cname
@@ -4194,6 +4195,15 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else if target_type is types.Pointer
 				&& g.gen_cast_from_mut_param_address(g.a.child(&node, 0), ct) {
 				return
+			} else if fixed := array_fixed_type(target_type) {
+				literal := g.fixed_array_compound_literal_expr(g.a.child(&node, 0), fixed)
+				if literal.trim_space().len > 0 {
+					g.write(literal)
+				} else {
+					g.write('(${ct})(')
+					g.gen_expr(g.a.child(&node, 0))
+					g.write(')')
+				}
 			} else {
 				g.write('(${ct})(')
 				g.gen_expr(g.a.child(&node, 0))

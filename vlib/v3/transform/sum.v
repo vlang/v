@@ -213,11 +213,15 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	}
 	if t.is_interface_type_name(clean_type0) {
 		new_expr := t.transform_expr(expr_id)
-		object := t.make_selector_op(new_expr, '_object', 'voidptr', if expr_type.starts_with('&') {
-			.arrow
-		} else {
-			.dot
-		})
+		mut op := flat.Op.dot
+		if expr_type.starts_with('&') {
+			op = .arrow
+		}
+		if type_id := t.interface_impl_type_id(clean_type0, node.value) {
+			typ := t.make_selector_op(new_expr, '_typ', 'int', op)
+			return t.make_infix(.eq, typ, t.make_int_literal(type_id))
+		}
+		object := t.make_selector_op(new_expr, '_object', 'voidptr', op)
 		return t.make_infix(.ne, object, t.a.add(.nil_literal))
 	}
 	if clean_type.len == 0 || clean_type !in t.sum_types {
@@ -228,6 +232,54 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 		return check
 	}
 	return t.make_bool_literal(true)
+}
+
+fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name string) ?int {
+	if iface_name.len == 0 || concrete_name.len == 0 || isnil(t.tc) {
+		return none
+	}
+	iface := t.resolve_interface_type_name(iface_name)
+	if iface.len == 0 {
+		return none
+	}
+	concrete := t.interface_concrete_impl_name(concrete_name) or { return none }
+	requested_qualified := concrete_name.contains('.') || concrete != concrete_name
+	// The 1-based position in tc.interface_impl_names is the `_typ` id cgen
+	// assigns when boxing; deriving it from the same list keeps `is` checks
+	// and dispatch in sync (aliases included).
+	mut idx := 0
+	for impl_name in t.tc.interface_impl_names(iface) {
+		idx++
+		if impl_name == concrete || (!requested_qualified
+			&& impl_name.all_after_last('.') == concrete.all_after_last('.')) {
+			return idx
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
+	if name in t.tc.structs || name in t.tc.type_aliases {
+		return name
+	}
+	if !name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		qname := '${t.cur_module}.${name}'
+		if qname in t.tc.structs || qname in t.tc.type_aliases {
+			return qname
+		}
+	}
+	for struct_name, _ in t.tc.structs {
+		if struct_name.all_after_last('.') == name {
+			return struct_name
+		}
+	}
+	for alias_name, _ in t.tc.type_aliases {
+		if alias_name.all_after_last('.') == name {
+			return alias_name
+		}
+	}
+	return none
 }
 
 // make_sum_is_check builds make sum is check data for transform.

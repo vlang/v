@@ -3034,7 +3034,7 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 				return expr
 			}
 		}
-		if expr := t.transform_interface_value_for_type(id, target_type) {
+		if expr := t.transform_interface_value_for_type(id, target_type, false) {
 			return expr
 		}
 		if node.kind == .block {
@@ -5662,7 +5662,9 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 			// than emitting a plain `(Interface*)x` reinterpret cast.
 			iface := t.resolve_interface_type_name(child.value)
 			if iface.len > 0 && iface.all_after_last('.') != 'IError' {
-				if boxed := t.transform_interface_value_for_type(cast_arg_id, '&${child.value}') {
+				if boxed := t.transform_interface_value_for_type(cast_arg_id, '&${child.value}',
+					false)
+				{
 					return boxed
 				}
 			}
@@ -6035,7 +6037,7 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 	// concrete value into the interface representation, just like an implicit
 	// conversion does.
 	if t.is_interface_type(target_type) {
-		if boxed := t.transform_interface_value_for_type(t.a.child(&node, 0), node.value) {
+		if boxed := t.transform_interface_value_for_type(t.a.child(&node, 0), node.value, false) {
 			return boxed
 		}
 	}

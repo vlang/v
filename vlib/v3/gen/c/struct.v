@@ -254,14 +254,14 @@ fn (mut g FlatGen) struct_init_has_fixed_array_field(node flat.Node, type_name s
 		field := g.a.child_node(&node, i)
 		if field.value.len == 0 {
 			if sf := g.struct_field_at(type_name, i) {
-				if sf.typ is types.ArrayFixed {
+				if _ := array_fixed_type(sf.typ) {
 					return true
 				}
 			}
 			continue
 		}
 		if ftyp := g.struct_field_type(type_name, field.value) {
-			if ftyp is types.ArrayFixed {
+			if _ := array_fixed_type(ftyp) {
 				return true
 			}
 		}
@@ -306,7 +306,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 		value_id := g.a.child(field, 0)
 		if field.value.len == 0 {
 			if sf := g.struct_field_at(lookup_name, i) {
-				if sf.typ is types.ArrayFixed {
+				if _ := array_fixed_type(sf.typ) {
 					fixed_fields << sf.name
 					fixed_values << value_id
 					fixed_field_types << sf.typ
@@ -329,7 +329,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 			}
 		} else {
 			ftyp := g.struct_field_type(lookup_name, field.value) or { types.Type(types.void_) }
-			if ftyp is types.ArrayFixed {
+			if _ := array_fixed_type(ftyp) {
 				fixed_fields << field.value
 				fixed_values << value_id
 				fixed_field_types << ftyp
@@ -397,6 +397,11 @@ fn (mut g FlatGen) gen_fixed_array_copy_source(value_id flat.NodeId, field_type 
 	val_node := g.a.node(value_id)
 	if val_node.kind == .array_literal {
 		if fixed := array_fixed_type(field_type) {
+			literal := g.fixed_array_compound_literal_expr(value_id, fixed)
+			if literal.trim_space().len > 0 {
+				g.write(literal)
+				return
+			}
 			c_elem, dims := g.fixed_array_decl_parts(fixed)
 			g.write('(${c_elem}${dims})')
 		} else {

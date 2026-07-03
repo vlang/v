@@ -60,7 +60,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			}
 			continue
 		}
-		if node.kind == .const_decl {
+		if node.kind == .const_decl || node.kind == .global_decl {
 			for i in 0 .. node.children_count {
 				field_id := a.child(&node, i)
 				field := a.node(field_id)
@@ -83,6 +83,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		}
 		if node.kind == .fn_decl {
 			has_dot := node.value.contains('.')
+			can_suffix_match := !markused_fn_decl_is_generic_template(node, a)
 			if trace_markused {
 				fn_count++
 				if has_dot {
@@ -97,24 +98,32 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				module:  cur_module
 			}
 			add_fn_decl_info(mut fn_decls, mut fn_decl_lists, node.value, info)
-			add_candidate_suffix(mut fn_name_suffixes, node.value)
+			if can_suffix_match {
+				add_candidate_suffix(mut fn_name_suffixes, node.value)
+			}
 			lowered_name := markused_c_name(node.value)
 			if lowered_name != node.value {
 				add_fn_decl_info(mut fn_decls, mut fn_decl_lists, lowered_name, info)
-				add_candidate_suffix(mut fn_name_suffixes, lowered_name)
+				if can_suffix_match {
+					add_candidate_suffix(mut fn_name_suffixes, lowered_name)
+				}
 			}
 			qname := qualify_fn(cur_module, node.value)
 			if qname != node.value {
 				add_fn_decl_info(mut fn_decls, mut fn_decl_lists, qname, info)
-				add_candidate_suffix(mut fn_name_suffixes, qname)
+				if can_suffix_match {
+					add_candidate_suffix(mut fn_name_suffixes, qname)
+				}
 				lowered_qname := markused_c_name(qname)
 				if lowered_qname != qname {
 					add_fn_decl_info(mut fn_decls, mut fn_decl_lists, lowered_qname, info)
-					add_candidate_suffix(mut fn_name_suffixes, lowered_qname)
+					if can_suffix_match {
+						add_candidate_suffix(mut fn_name_suffixes, lowered_qname)
+					}
 				}
 			}
 			// Build suffix_map entries
-			if has_dot {
+			if has_dot && can_suffix_match {
 				if trace_markused {
 					contains2_total++
 				}
@@ -124,7 +133,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					add_suffix_candidate(mut suffix_map, short, qname)
 				}
 			}
-			if qname != node.value && qname.contains('.') {
+			if qname != node.value && qname.contains('.') && can_suffix_match {
 				short := qname.all_after_last('.')
 				add_suffix_candidate(mut suffix_map, short, qname)
 			}
@@ -134,10 +143,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// BFS from main
 	mut used := map[string]bool{}
 	mut queue := []string{}
+	reachable_modules := markused_reachable_modules(a)
 	queue << 'main'
 	used['main'] = true
 	enqueue_main_module_roots(fn_decls, mut used, mut queue)
-	enqueue_auto_roots(fn_decls, mut used, mut queue)
+	enqueue_auto_roots(fn_decls, reachable_modules, mut used, mut queue)
 	enqueue_export_roots(a, mut used, mut queue)
 	enqueue_veb_handler_roots(a, tc, mut used, mut queue)
 	enqueue_test_file_roots(a, test_files, mut used, mut queue)
@@ -164,16 +174,13 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		'memdup', 'strings.Builder.write_ptr', 'strings.Builder.write_runes', 'strings.Builder.free',
 		'strconv.format_int', 'strconv.format_uint', 'bool.str', 'int.str', 'u64.str', 'f32.str',
 		'f64.str', 'rune.str', 'string.+', 'ptr_str', 'strconv__f32_to_str_l',
-		'strconv__f64_to_str_l', 'sync.new_channel_st', 'sync.Channel.push', 'sync.Channel.pop',
-		'sync.Channel.close', 'sync.Channel.len', 'sync.Channel.closed', 'new_channel_st',
-		'Channel.push', 'Channel.pop', 'Channel.close', 'Channel.len', 'Channel.closed',
-		'os.join_path_single', 'panic', 'u8.is_letter', 'u8.is_capital', 'string.is_capital',
-		'string.to_lower_ascii', 'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex',
-		'data_to_hex_string', 'map_hash_string', 'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_4',
-		'map_hash_int_8', 'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4',
-		'map_eq_int_8', 'map_clone_string', 'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_4',
-		'map_clone_int_8', 'map_free_string', 'map_free_nop', '[]string.join', 'Array_string__join',
-		'embed_file.Decoder.decompress', 'exit', 'v_exit'] {
+		'strconv__f64_to_str_l', 'os.join_path_single', 'panic', 'u8.is_letter', 'u8.is_capital',
+		'string.is_capital', 'string.to_lower_ascii', 'rune.to_lower', 'Array_u8__bytestr',
+		'Array_u8__hex', 'data_to_hex_string', 'map_hash_string', 'map_hash_int_1', 'map_hash_int_2',
+		'map_hash_int_4', 'map_hash_int_8', 'map_eq_string', 'map_eq_int_1', 'map_eq_int_2',
+		'map_eq_int_4', 'map_eq_int_8', 'map_clone_string', 'map_clone_int_1', 'map_clone_int_2',
+		'map_clone_int_4', 'map_clone_int_8', 'map_free_string', 'map_free_nop', '[]string.join',
+		'Array_string__join', 'embed_file.Decoder.decompress', 'exit', 'v_exit'] {
 		queue << seed
 		used[seed] = true
 	}
@@ -224,7 +231,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// function in `method_values_by_fn`; they are seeded inside the BFS below (only when
 	// that function is reached), so an unreachable function's method value never forces an
 	// otherwise-unused specialization to be transformed/emitted.
-	enqueue_initializer_calls(a, collector, imports, fn_decls, mut used, mut queue)
+	enqueue_initializer_calls(a, collector, imports, fn_decls, reachable_modules, mut used, mut
+		queue)
 	enqueue_top_level_calls(a, collector, fn_decls, has_entry_main, mut used, mut queue)
 	// Interface dispatch reachability: calling an interface method `Foo.m` may
 	// dispatch to any concrete `T.m` for a type `T` that implements `Foo`. Those
@@ -233,7 +241,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut iface_impls := map[string][]string{}
 	mut checked_iface_impls := map[string]bool{}
 	mut processed_nodes := []bool{len: a.nodes.len}
+	mut processed_initializer_refs := map[string]bool{}
 	mut calls := []string{cap: 128}
+	mut initializer_calls := []string{cap: 32}
+	mut initializer_refs := []string{cap: 32}
 	mut qi := 0
 	for qi < queue.len {
 		name := queue[qi]
@@ -285,6 +296,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			receiver_name, receiver_struct := receiver_info(a, node)
 			collector.collect_calls(node, fn_info.module, imports, receiver_name, receiver_struct, mut
 				calls)
+			initializer_refs.clear()
+			collector.collect_initializer_refs(node, fn_info.module, imports, mut initializer_refs)
+			for initializer_ref in initializer_refs {
+				enqueue_initializer_ref_calls(a, collector, imports, fn_decls, initializer_ref, mut
+					processed_initializer_refs, mut initializer_calls, mut used, mut queue)
+			}
 			total_callees += calls.len
 			for callee in calls {
 				if !valid_symbol_name(callee) {
@@ -314,7 +331,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 						enqueue(lowered, mut used, mut queue)
 					}
 				}
-				if !found_direct || !callee.contains('.') {
+				if !found_direct {
 					short := callee.all_after_last('.')
 					if suffix_candidates := suffix_map[short] {
 						for candidate in suffix_candidates {
@@ -326,11 +343,22 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 						}
 					}
 				}
-				if callee.contains('.') {
-					recv := callee.all_before_last('.')
-					method := callee.all_after_last('.')
+				mut iface_callee := callee
+				if normalized := interface_dispatch_dotted_name(callee, tc) {
+					iface_callee = normalized
+				}
+				if iface_callee.contains('.') {
+					recv := iface_callee.all_before_last('.')
+					method := iface_callee.all_after_last('.')
 					ensure_iface_impls(recv, fn_info.module, tc, mut iface_impls, mut
 						checked_iface_impls)
+					if iface_name := interface_name_for_receiver(recv, fn_info.module, tc) {
+						// Keep the dispatch stub (`Iface__method`) the transform will
+						// call; the call site may name the interface through an alias
+						// (`Expr.name` for `type Expr = Node`), which cgen's used-fn
+						// filter does not resolve back to the interface key.
+						enqueue('${iface_name}.${method}', mut used, mut queue)
+					}
 					if impls := iface_impls[recv] {
 						for impl in impls {
 							impl_method := '${impl}.${method}'
@@ -388,17 +416,9 @@ fn ensure_iface_impls(recv string, cur_module string, tc &types.TypeChecker, mut
 	if recv != iface_name {
 		checked[recv] = true
 	}
-	mut impls := []string{}
-	for struct_name, _ in tc.structs {
-		if tc.named_type_implements_interface(struct_name, iface_name) {
-			impls << struct_name
-		}
-	}
-	for alias_name, _ in tc.type_aliases {
-		if alias_name !in impls && tc.named_type_implements_interface(alias_name, iface_name) {
-			impls << alias_name
-		}
-	}
+	// Structs plus alias implementers, from the same list cgen assigns
+	// dispatch ids over.
+	impls := tc.interface_impl_names(iface_name)
 	iface_impls[recv] = impls
 	if iface_name != recv {
 		iface_impls[iface_name] = impls
@@ -410,6 +430,15 @@ fn interface_name_for_receiver(recv string, cur_module string, tc &types.TypeChe
 	if recv in tc.interface_names {
 		return recv
 	}
+	if target := tc.type_aliases[recv] {
+		if target in tc.interface_names {
+			return target
+		}
+		qtarget := tc.qualify_name(target)
+		if qtarget in tc.interface_names {
+			return qtarget
+		}
+	}
 	if recv.contains('.') {
 		return none
 	}
@@ -417,6 +446,43 @@ fn interface_name_for_receiver(recv string, cur_module string, tc &types.TypeChe
 		qname := '${cur_module}.${recv}'
 		if qname in tc.interface_names {
 			return qname
+		}
+		if target := tc.type_aliases[qname] {
+			if target in tc.interface_names {
+				return target
+			}
+			qtarget := tc.qualify_name(target)
+			if qtarget in tc.interface_names {
+				return qtarget
+			}
+		}
+	}
+	return none
+}
+
+fn interface_dispatch_dotted_name(name string, tc &types.TypeChecker) ?string {
+	if name.contains('.') {
+		return name
+	}
+	if !name.contains('__') {
+		return none
+	}
+	recv_c := name.all_before_last('__')
+	method := name.all_after_last('__')
+	if recv_c.len == 0 || method.len == 0 {
+		return none
+	}
+	recv := recv_c.replace('__', '.')
+	if recv in tc.interface_names {
+		return '${recv}.${method}'
+	}
+	if target := tc.type_aliases[recv] {
+		if target in tc.interface_names {
+			return '${target}.${method}'
+		}
+		qtarget := tc.qualify_name(target)
+		if qtarget in tc.interface_names {
+			return '${qtarget}.${method}'
 		}
 	}
 	return none
@@ -437,6 +503,19 @@ fn add_candidate_suffix(mut suffixes map[string]bool, name string) {
 		return
 	}
 	suffixes[name.all_after_last('.')] = true
+}
+
+fn markused_fn_decl_is_generic_template(node flat.Node, a &flat.FlatAst) bool {
+	if node.generic_params.len > 0 || node.value.contains('[') || node.typ.contains('generic') {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		child := a.child_node(&node, i)
+		if child.kind == .param && child.typ.contains('generic') {
+			return true
+		}
+	}
+	return false
 }
 
 fn add_fn_decl_info(mut fn_decls map[string]FnDeclInfo, mut fn_decl_lists map[string][]FnDeclInfo, name string, info FnDeclInfo) {
@@ -472,13 +551,24 @@ fn fn_decl_key_is_exact_for_info(name string, decl_name string, module_name stri
 
 fn add_safe_decl_alias(callee string, callee_info FnDeclInfo, a &flat.FlatAst, mut used map[string]bool) {
 	alias := a.node(callee_info.node_id).value
-	if alias == callee || alias in used {
-		return
-	}
 	if fn_decl_key_is_exact_for_info(callee, alias, callee_info.module) {
 		return
 	}
-	used[alias] = true
+	mut aliases := []string{cap: 3}
+	aliases << alias
+	qalias := qualify_fn(callee_info.module, alias)
+	if qalias != alias {
+		aliases << qalias
+	}
+	lowered := markused_c_name(qalias)
+	if lowered != qalias {
+		aliases << lowered
+	}
+	for candidate in aliases {
+		if candidate != callee && candidate !in used {
+			used[candidate] = true
+		}
+	}
 }
 
 // valid_symbol_name supports valid symbol name handling for markused.
@@ -498,15 +588,21 @@ fn markused_clone_string_map(src map[string]string) map[string]string {
 }
 
 // enqueue_initializer_calls supports enqueue initializer calls handling for markused.
-fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, imports map[string]string, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
+fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, imports map[string]string, fn_decls map[string]FnDeclInfo, reachable_modules map[string]bool, mut used map[string]bool, mut queue []string) {
 	mut cur_module := ''
 	mut calls := []string{cap: 32}
 	for node in a.nodes {
 		match node.kind {
+			.file {
+				cur_module = ''
+			}
 			.module_decl {
 				cur_module = node.value
 			}
 			.const_decl, .global_decl {
+				if !markused_module_has_reachable_initializer(cur_module, reachable_modules) {
+					continue
+				}
 				for i in 0 .. node.children_count {
 					field := a.child_node(&node, i)
 					if field.children_count == 0 {
@@ -515,18 +611,107 @@ fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, imports m
 					calls.clear()
 					collector.collect_calls(field, cur_module, imports, '', '', mut calls)
 					for callee in calls {
-						if callee_info := fn_decls[callee] {
-							enqueue(callee, mut used, mut queue)
-							add_safe_decl_alias(callee, callee_info, a, mut used)
-						} else {
-							enqueue(callee, mut used, mut queue)
-						}
+						enqueue_initializer_callee(callee, fn_decls, a, mut used, mut queue)
 					}
 				}
 			}
 			else {}
 		}
 	}
+}
+
+fn enqueue_initializer_ref_calls(a &flat.FlatAst, collector CallCollector, imports map[string]string, fn_decls map[string]FnDeclInfo, initializer_ref string, mut processed map[string]bool, mut calls []string, mut used map[string]bool, mut queue []string) {
+	if initializer_ref in processed {
+		return
+	}
+	info := collector.const_decls[initializer_ref] or { return }
+	processed[initializer_ref] = true
+	calls.clear()
+	collector.collect_calls(a.node(info.expr_id), info.module, imports, '', '', mut calls)
+	for callee in calls {
+		enqueue_initializer_callee(callee, fn_decls, a, mut used, mut queue)
+	}
+}
+
+fn enqueue_initializer_callee(callee string, fn_decls map[string]FnDeclInfo, a &flat.FlatAst, mut used map[string]bool, mut queue []string) {
+	if !valid_symbol_name(callee) {
+		return
+	}
+	if callee_info := fn_decls[callee] {
+		enqueue(callee, mut used, mut queue)
+		add_safe_decl_alias(callee, callee_info, a, mut used)
+	} else {
+		enqueue(callee, mut used, mut queue)
+	}
+}
+
+fn markused_module_has_reachable_initializer(module_name string, reachable_modules map[string]bool) bool {
+	if module_name.len == 0 {
+		return '' in reachable_modules || 'main' in reachable_modules
+	}
+	return module_name in reachable_modules
+}
+
+fn markused_reachable_modules(a &flat.FlatAst) map[string]bool {
+	mut module_imports := map[string][]string{}
+	mut roots := []string{}
+	mut has_user_root := false
+	for file_idx, file_node in a.nodes {
+		if file_node.kind != .file {
+			continue
+		}
+		module_name := markused_top_level_file_module_name(a, file_node)
+		if file_idx >= a.user_code_start
+			&& (!markused_file_is_vlib(file_node.value) || !has_user_root) {
+			has_user_root = true
+			roots << module_name
+			if module_name.len == 0 {
+				roots << 'main'
+			}
+		}
+		mut imports := module_imports[module_name] or { []string{} }
+		if file_idx >= a.user_code_start || !markused_file_is_test(file_node.value) {
+			for i in 0 .. file_node.children_count {
+				child := a.child_node(&file_node, i)
+				if child.kind == .import_decl && child.value.len > 0 {
+					imports << child.value
+				}
+			}
+		}
+		module_imports[module_name] = imports
+	}
+	roots << ''
+	roots << 'main'
+	roots << 'builtin'
+	mut reachable := map[string]bool{}
+	mut queue := []string{}
+	for root in roots {
+		if root in reachable {
+			continue
+		}
+		reachable[root] = true
+		queue << root
+	}
+	for qi := 0; qi < queue.len; qi++ {
+		module_name := queue[qi]
+		for imported in module_imports[module_name] or { []string{} } {
+			if imported in reachable {
+				continue
+			}
+			reachable[imported] = true
+			queue << imported
+		}
+	}
+	return reachable
+}
+
+fn markused_file_is_vlib(file string) bool {
+	return file.contains('/vlib/') || file.starts_with('vlib/') || file.contains('\\vlib\\')
+		|| file.starts_with('vlib\\')
+}
+
+fn markused_file_is_test(file string) bool {
+	return file.ends_with('_test.v') || file.ends_with('_test.c.v') || file.ends_with('_test.js.v')
 }
 
 fn enqueue_top_level_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, has_entry_main bool, mut used map[string]bool, mut queue []string) {
@@ -671,9 +856,12 @@ struct CallCollector {
 }
 
 // enqueue_auto_roots supports enqueue auto roots handling for markused.
-fn enqueue_auto_roots(fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
+fn enqueue_auto_roots(fn_decls map[string]FnDeclInfo, reachable_modules map[string]bool, mut used map[string]bool, mut queue []string) {
 	for name, info in fn_decls {
 		if !is_auto_root_fn(name) {
+			continue
+		}
+		if !markused_module_has_reachable_initializer(info.module, reachable_modules) {
 			continue
 		}
 		enqueue(name, mut used, mut queue)
@@ -867,9 +1055,13 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	mut needs_string_membership_helpers := false
 	mut needs_new_map := false
 	mut needs_map_iteration_snapshot := false
+	mut needs_channel_helpers := false
 	mut cur_module := ''
 	mut imports := map[string]string{}
 	for node in a.nodes {
+		if markused_type_text_is_channel(node.typ) {
+			needs_channel_helpers = true
+		}
 		match node.kind {
 			.file {
 				cur_module = ''
@@ -931,6 +1123,21 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 						enqueue_stringified_custom_str_method(a.child(&node, 1), cur_module, tc, mut
 							used, mut queue)
 					}
+				}
+			}
+			.struct_init {
+				if node.value.starts_with('chan ') {
+					needs_channel_helpers = true
+				}
+			}
+			.infix {
+				if node.op == .arrow {
+					needs_channel_helpers = true
+				}
+			}
+			.prefix {
+				if node.op == .arrow {
+					needs_channel_helpers = true
 				}
 			}
 			.string_interp {
@@ -1016,6 +1223,29 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			enqueue(helper, mut used, mut queue)
 		}
 	}
+	if needs_channel_helpers {
+		for helper in ['sync.new_channel_st', 'sync.Channel.push', 'sync.Channel.pop',
+			'sync.Channel.close', 'sync.Channel.len', 'sync.Channel.closed', 'new_channel_st',
+			'Channel.push', 'Channel.pop', 'Channel.close', 'Channel.len', 'Channel.closed'] {
+			enqueue(helper, mut used, mut queue)
+		}
+	}
+}
+
+fn markused_type_text_is_channel(raw string) bool {
+	mut clean := raw.trim_space()
+	for {
+		if clean.starts_with('&') {
+			clean = clean[1..].trim_space()
+			continue
+		}
+		if clean.starts_with('mut ') {
+			clean = clean[4..].trim_space()
+			continue
+		}
+		break
+	}
+	return clean.starts_with('chan ') || clean == 'chan'
 }
 
 fn markused_call_lowers_to_join_path_single(a &flat.FlatAst, fn_node flat.Node, imports map[string]string) bool {
@@ -1068,7 +1298,26 @@ fn enqueue_stringified_custom_str_method(expr_id flat.NodeId, cur_module string,
 		types.SumType {
 			enqueue_structlike_str_method(typ.name, cur_module, tc, mut used, mut queue)
 		}
+		types.Interface {
+			enqueue_interface_str_methods(typ.name, tc, mut used, mut queue)
+		}
 		else {}
+	}
+}
+
+fn enqueue_interface_str_methods(iface_name string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+	enqueue('${iface_name}.str', mut used, mut queue)
+	for impl in tc.interface_impl_names(iface_name) {
+		method := '${impl}.str'
+		enqueue(method, mut used, mut queue)
+		lowered := markused_c_name(method)
+		if lowered != method {
+			enqueue(lowered, mut used, mut queue)
+		}
+		short := '${impl.all_after_last('.')}.str'
+		if short != method {
+			enqueue(short, mut used, mut queue)
+		}
 	}
 }
 
@@ -1715,6 +1964,70 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 				}
 				j--
 			}
+		}
+	}
+}
+
+fn (c &CallCollector) collect_initializer_refs(node &flat.Node, cur_module string, imports map[string]string, mut refs []string) {
+	local_values, _ := c.local_value_info(node, imports)
+	visible_local_idents := if c.local_values_need_visibility(local_values, cur_module, imports) {
+		markused_visible_local_idents(c.a, node, local_values)
+	} else {
+		map[int]bool{}
+	}
+	mut stack := []flat.NodeId{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		child_id := c.a.child(node, i)
+		if int(child_id) >= 0 {
+			stack << child_id
+		}
+	}
+	for stack.len > 0 {
+		child_id := stack.pop()
+		child := &c.a.nodes[int(child_id)]
+		match child.kind {
+			.ident {
+				if !markused_ident_is_visible_local(child_id, child.value, local_values,
+					visible_local_idents) {
+					c.add_initializer_ref_candidates(child.value, cur_module, imports, mut refs)
+				}
+			}
+			.selector {
+				if !c.selector_base_is_local(child, local_values) && child.children_count > 0 {
+					base := c.a.child_node(child, 0)
+					if base.kind == .ident && base.value.len > 0 && child.value.len > 0 {
+						c.add_initializer_ref_candidates('${base.value}.${child.value}',
+							cur_module, imports, mut refs)
+					}
+				}
+			}
+			else {}
+		}
+
+		if child.children_count > 0 {
+			mut j := int(child.children_count) - 1
+			for j >= 0 {
+				if child.kind == .decl_assign && j % 2 == 0 {
+					j--
+					continue
+				}
+				next_id := c.a.child(child, j)
+				if int(next_id) >= 0 {
+					stack << next_id
+				}
+				j--
+			}
+		}
+	}
+}
+
+fn (c &CallCollector) add_initializer_ref_candidates(name string, cur_module string, imports map[string]string, mut refs []string) {
+	if name.len == 0 {
+		return
+	}
+	for candidate in c.value_name_candidates(name, cur_module, imports) {
+		if candidate in c.const_decls {
+			markused_push_receiver_candidate(mut refs, candidate)
 		}
 	}
 }

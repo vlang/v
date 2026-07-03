@@ -984,6 +984,11 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		return arg_id
 	}
 	mut arg_node := &t.a.nodes[int(arg_id)]
+	if arg_node.kind == .lambda_expr {
+		if lifted := t.lift_lambda_expr_for_fn_param(arg_id, *arg_node, param_type) {
+			return lifted
+		}
+	}
 	if arg_node.kind == .array_literal && arg_node.typ.len == 0 && param_type.starts_with('[]') {
 		arg_node.typ = param_type
 	}
@@ -1059,7 +1064,341 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 	if param_type.len > 0 && t.type_text_has_generic_placeholder(param_type, t.cur_module) {
 		return t.transform_expr(arg_id)
 	}
+	if param_type.starts_with('&') && t.is_interface_type(param_type) {
+		// A `mut`/reference interface parameter must alias the caller's concrete
+		// value so mutations through the interface are visible to the caller.
+		// The caller's frame outlives the call, so boxing a reference to the
+		// source (instead of a heap copy) is safe here.
+		if boxed := t.transform_interface_value_for_type(arg_id, param_type, true) {
+			return boxed
+		}
+	}
 	return t.transform_expr_for_type(arg_id, param_type)
+}
+
+fn (mut t Transformer) lift_lambda_expr_for_fn_param(_id flat.NodeId, node flat.Node, param_type string) ?flat.NodeId {
+	if node.kind != .lambda_expr || node.children_count == 0 || param_type.len == 0 || isnil(t.tc) {
+		return none
+	}
+	fn_type := t.fn_type_from_type_text(param_type) or { return none }
+	body_id := t.a.child(&node, node.children_count - 1)
+	lambda_param_count := int(node.children_count) - 1
+	if lambda_param_count != fn_type.params.len {
+		return none
+	}
+	mut lambda_params := map[string]bool{}
+	for i in 0 .. lambda_param_count {
+		param_id := t.a.child(&node, i)
+		param_node := t.a.nodes[int(param_id)]
+		if param_node.value.len > 0 {
+			lambda_params[param_node.value] = true
+		}
+	}
+	capture_ids := t.lambda_capture_ids(body_id, lambda_params)
+	mut children := []flat.NodeId{cap: capture_ids.len + fn_type.params.len + 1}
+	for capture_id in capture_ids {
+		children << capture_id
+	}
+	for i in 0 .. lambda_param_count {
+		param_id := t.a.child(&node, i)
+		param_node := t.a.nodes[int(param_id)]
+		param_type_name := fn_type.params[i].name()
+		children << t.a.add_node(flat.Node{
+			kind:  .param
+			value: param_node.value
+			typ:   param_type_name
+			op:    if param_type_name.starts_with('&') { .amp } else { .none }
+		})
+	}
+	ret_type := fn_type.return_type.name()
+	if ret_type.len > 0 && ret_type != 'void' {
+		children << t.make_return(body_id, ret_type)
+	} else {
+		children << t.make_expr_stmt(body_id)
+	}
+	start := t.a.children.len
+	for child in children {
+		t.a.children << child
+	}
+	fn_id := t.a.add_node(flat.Node{
+		kind:           .fn_literal
+		typ:            ret_type
+		children_start: start
+		children_count: flat.child_count(children.len)
+		pos:            node.pos
+	})
+	return t.lift_fn_literal(fn_id, t.a.nodes[int(fn_id)])
+}
+
+fn (mut t Transformer) lambda_capture_ids(body_id flat.NodeId, params map[string]bool) []flat.NodeId {
+	mut names := map[string]flat.NodeId{}
+	t.collect_lambda_capture_names(body_id, params, mut names)
+	mut sorted_names := names.keys()
+	sorted_names.sort()
+	mut ids := []flat.NodeId{cap: sorted_names.len}
+	for name in sorted_names {
+		ids << names[name]
+	}
+	return ids
+}
+
+fn (mut t Transformer) collect_lambda_capture_names(id flat.NodeId, locals map[string]bool, mut names map[string]flat.NodeId) {
+	if !t.valid_node_id(id) {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			if node.value.len > 0 && node.value !in locals && t.var_type(node.value).len > 0 {
+				names[node.value] = id
+			}
+			return
+		}
+		.block {
+			t.collect_lambda_capture_sequence(node, 0, locals, mut names)
+			return
+		}
+		.decl_assign {
+			mut local_scope := locals.clone()
+			t.collect_lambda_decl_assign_captures(node, mut local_scope, mut names)
+			return
+		}
+		.for_in_stmt {
+			t.collect_lambda_for_in_captures(node, locals, mut names)
+			return
+		}
+		.for_stmt {
+			t.collect_lambda_for_captures(node, locals, mut names)
+			return
+		}
+		.if_expr {
+			t.collect_lambda_if_captures(node, locals, mut names)
+			return
+		}
+		.match_stmt {
+			t.collect_lambda_match_captures(node, locals, mut names)
+			return
+		}
+		.fn_literal, .lambda_expr {
+			return
+		}
+		.call {
+			if node.children_count > 0 {
+				callee_id := t.a.child(&node, 0)
+				t.collect_lambda_capture_names(callee_id, locals, mut names)
+			}
+			for i in 1 .. node.children_count {
+				t.collect_lambda_capture_names(t.a.child(&node, i), locals, mut names)
+			}
+			return
+		}
+		.selector {
+			if node.children_count > 0 {
+				t.collect_lambda_capture_names(t.a.child(&node, 0), locals, mut names)
+			}
+			return
+		}
+		else {}
+	}
+
+	for i in 0 .. node.children_count {
+		t.collect_lambda_capture_names(t.a.child(&node, i), locals, mut names)
+	}
+}
+
+fn (mut t Transformer) collect_lambda_capture_sequence(node flat.Node, start int, locals map[string]bool, mut names map[string]flat.NodeId) {
+	mut local_scope := locals.clone()
+	for i in start .. node.children_count {
+		t.collect_lambda_capture_stmt(t.a.child(&node, i), mut local_scope, mut names)
+	}
+}
+
+fn (mut t Transformer) collect_lambda_capture_stmt(id flat.NodeId, mut locals map[string]bool, mut names map[string]flat.NodeId) {
+	if !t.valid_node_id(id) {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.decl_assign {
+			t.collect_lambda_decl_assign_captures(node, mut locals, mut names)
+		}
+		.for_in_stmt {
+			t.collect_lambda_for_in_captures(node, locals, mut names)
+		}
+		.for_stmt {
+			t.collect_lambda_for_captures(node, locals, mut names)
+		}
+		else {
+			t.collect_lambda_capture_names(id, locals, mut names)
+		}
+	}
+}
+
+fn (mut t Transformer) collect_lambda_decl_assign_captures(node flat.Node, mut locals map[string]bool, mut names map[string]flat.NodeId) {
+	if node.children_count == 0 {
+		return
+	}
+	if node.children_count >= 3 && !isnil(t.tc) {
+		rhs_id := t.a.child(&node, 1)
+		if _ := t.multi_return_types_for_expr(rhs_id, node.children_count - 1) {
+			t.collect_lambda_capture_names(rhs_id, locals, mut names)
+			t.note_lambda_local_binding(t.a.child(&node, 0), mut locals)
+			for i in 2 .. node.children_count {
+				t.note_lambda_local_binding(t.a.child(&node, i), mut locals)
+			}
+			return
+		}
+	}
+	mut i := 0
+	for i + 1 < node.children_count {
+		lhs_id := t.a.child(&node, i)
+		rhs_id := t.a.child(&node, i + 1)
+		t.collect_lambda_capture_names(rhs_id, locals, mut names)
+		t.note_lambda_local_binding(lhs_id, mut locals)
+		i += 2
+	}
+}
+
+fn (mut t Transformer) collect_lambda_for_in_captures(node flat.Node, locals map[string]bool, mut names map[string]flat.NodeId) {
+	if node.children_count < 3 {
+		return
+	}
+	header := node.value.int()
+	container_id := t.a.child(&node, 2)
+	t.collect_lambda_capture_names(container_id, locals, mut names)
+	if header > 3 && node.children_count > 3 {
+		t.collect_lambda_capture_names(t.a.child(&node, 3), locals, mut names)
+	}
+	mut loop_scope := locals.clone()
+	t.note_lambda_local_binding(t.a.child(&node, 0), mut loop_scope)
+	t.note_lambda_local_binding(t.a.child(&node, 1), mut loop_scope)
+	for i in header .. node.children_count {
+		t.collect_lambda_capture_stmt(t.a.child(&node, i), mut loop_scope, mut names)
+	}
+}
+
+fn (mut t Transformer) collect_lambda_for_captures(node flat.Node, locals map[string]bool, mut names map[string]flat.NodeId) {
+	mut loop_scope := locals.clone()
+	if node.children_count > 0 {
+		init_id := t.a.child(&node, 0)
+		if t.valid_node_id(init_id) {
+			init := t.a.nodes[int(init_id)]
+			if init.kind == .decl_assign {
+				t.collect_lambda_decl_assign_captures(init, mut loop_scope, mut names)
+			} else {
+				t.collect_lambda_capture_names(init_id, loop_scope, mut names)
+			}
+		}
+	}
+	if node.children_count > 1 {
+		t.collect_lambda_capture_names(t.a.child(&node, 1), loop_scope, mut names)
+	}
+	if node.children_count > 2 {
+		t.collect_lambda_capture_names(t.a.child(&node, 2), loop_scope, mut names)
+	}
+	for i in 3 .. node.children_count {
+		t.collect_lambda_capture_stmt(t.a.child(&node, i), mut loop_scope, mut names)
+	}
+}
+
+fn (mut t Transformer) collect_lambda_if_captures(node flat.Node, locals map[string]bool, mut names map[string]flat.NodeId) {
+	if node.children_count == 0 {
+		return
+	}
+	cond_id := t.a.child(&node, 0)
+	mut then_scope := locals.clone()
+	t.collect_lambda_condition_captures(cond_id, locals, mut then_scope, mut names)
+	if node.children_count > 1 {
+		t.collect_lambda_capture_names(t.a.child(&node, 1), then_scope, mut names)
+	}
+	if node.children_count > 2 {
+		t.collect_lambda_capture_names(t.a.child(&node, 2), locals, mut names)
+	}
+}
+
+fn (mut t Transformer) collect_lambda_condition_captures(id flat.NodeId, locals map[string]bool, mut then_scope map[string]bool, mut names map[string]flat.NodeId) {
+	if !t.valid_node_id(id) {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .decl_assign {
+		mut cond_scope := locals.clone()
+		t.collect_lambda_decl_assign_captures(node, mut cond_scope, mut names)
+		for name, _ in cond_scope {
+			if name !in locals {
+				then_scope[name] = true
+			}
+		}
+		return
+	}
+	if node.kind == .infix && node.op == .logical_and && node.children_count >= 2 {
+		mut lhs_scope := locals.clone()
+		t.collect_lambda_condition_captures(t.a.child(&node, 0), locals, mut lhs_scope, mut names)
+		for name, _ in lhs_scope {
+			if name !in locals {
+				then_scope[name] = true
+			}
+		}
+		t.collect_lambda_condition_captures(t.a.child(&node, 1), lhs_scope, mut then_scope, mut
+			names)
+		return
+	}
+	t.collect_lambda_capture_names(id, locals, mut names)
+}
+
+fn (mut t Transformer) collect_lambda_match_captures(node flat.Node, locals map[string]bool, mut names map[string]flat.NodeId) {
+	if node.children_count == 0 {
+		return
+	}
+	t.collect_lambda_capture_names(t.a.child(&node, 0), locals, mut names)
+	for i in 1 .. node.children_count {
+		branch_id := t.a.child(&node, i)
+		if !t.valid_node_id(branch_id) {
+			continue
+		}
+		branch := t.a.nodes[int(branch_id)]
+		if branch.kind != .match_branch {
+			t.collect_lambda_capture_names(branch_id, locals, mut names)
+			continue
+		}
+		body_start := if branch.value == 'else' { 0 } else { branch.value.int() }
+		for j in 0 .. body_start {
+			t.collect_lambda_capture_names(t.a.child(&branch, j), locals, mut names)
+		}
+		mut branch_scope := locals.clone()
+		for j in body_start .. branch.children_count {
+			t.collect_lambda_capture_stmt(t.a.child(&branch, j), mut branch_scope, mut names)
+		}
+	}
+}
+
+fn (mut t Transformer) note_lambda_local_binding(id flat.NodeId, mut locals map[string]bool) {
+	if !t.valid_node_id(id) {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident && node.value.len > 0 && node.value != '_' {
+		locals[node.value] = true
+	}
+}
+
+fn (t &Transformer) valid_node_id(id flat.NodeId) bool {
+	return int(id) >= 0 && int(id) < t.a.nodes.len
+}
+
+fn (t &Transformer) fn_type_from_type_text(type_text string) ?types.FnType {
+	typ := t.tc.parse_type(type_text)
+	return fn_type_from_type(typ)
+}
+
+fn fn_type_from_type(typ types.Type) ?types.FnType {
+	if typ is types.FnType {
+		return typ
+	}
+	if typ is types.Alias {
+		return fn_type_from_type(typ.base_type)
+	}
+	return none
 }
 
 fn (mut t Transformer) transform_pointer_rvalue_arg(arg_id flat.NodeId, arg_node flat.Node, param_type string) ?flat.NodeId {
@@ -1793,6 +2132,14 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	if clean_typ == 'IError' || clean_typ == 'builtin.IError' {
 		return t.make_call_typed('IError.str', arr1(expr), 'string')
 	}
+	if iface_name.len > 0 {
+		str_key := '${iface_name}.str'
+		known_str := str_key in t.fn_ret_types || (!isnil(t.tc) && str_key in t.tc.fn_ret_types)
+		if known_str {
+			return t.make_call_typed(str_key, arr1(expr), 'string')
+		}
+		return t.make_string_literal('${iface_name.all_after_last('.')}{}')
+	}
 	match clean_typ {
 		'bool' {
 			return t.make_call_typed('bool.str', arr1(expr), 'string')
@@ -1888,6 +2235,11 @@ fn (mut t Transformer) mark_interface_method_implementers_used(iface_name string
 		return
 	}
 	for concrete, _ in t.tc.structs {
+		if t.tc.named_type_implements_interface(concrete, iface_name) {
+			t.mark_fn_used_name('${concrete}.${method}')
+		}
+	}
+	for concrete, _ in t.tc.type_aliases {
 		if t.tc.named_type_implements_interface(concrete, iface_name) {
 			t.mark_fn_used_name('${concrete}.${method}')
 		}
@@ -2029,6 +2381,23 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 			return t.make_call_typed('v3_int_zpad', arr2(expr, t.make_int_literal(width)), 'string')
 		}
 	}
+	if width := static_format_width(format) {
+		mut converted := if base := integer_format_base_suffix(format) {
+			if clean_typ in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
+				t.make_call_typed('strconv__format_uint', arr2(expr, t.make_int_literal(base)),
+					'string')
+			} else if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize'] {
+				t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(base)),
+					'string')
+			} else {
+				t.wrap_string_conversion(expr, typ)
+			}
+		} else {
+			t.wrap_string_conversion(expr, typ)
+		}
+		return t.make_call_typed('v3_string_pad', arr3(converted, t.make_int_literal(width),
+			t.make_int_literal(0)), 'string')
+	}
 	return t.wrap_string_conversion(expr, typ)
 }
 
@@ -2099,6 +2468,49 @@ fn integer_format_base(format string) ?int {
 		else {}
 	}
 
+	return none
+}
+
+fn integer_format_base_suffix(format string) ?int {
+	if format.len == 0 {
+		return none
+	}
+	match format[format.len - 1] {
+		`x` { return 16 }
+		`o` { return 8 }
+		else {}
+	}
+
+	return none
+}
+
+fn static_format_width(format string) ?int {
+	if format.len == 0 || format[0] == `0` {
+		return none
+	}
+	mut i := 0
+	mut sign := 1
+	if format[i] == `-` {
+		sign = -1
+		i++
+	}
+	if i >= format.len || format[i] < `0` || format[i] > `9` {
+		return none
+	}
+	mut width := 0
+	for i < format.len && format[i] >= `0` && format[i] <= `9` {
+		width = width * 10 + int(format[i] - `0`)
+		i++
+	}
+	if width <= 0 {
+		return none
+	}
+	if i == format.len {
+		return sign * width
+	}
+	if i == format.len - 1 && format[i] in [`s`, `d`, `x`, `o`, `p`] {
+		return sign * width
+	}
 	return none
 }
 
@@ -3219,7 +3631,14 @@ fn (mut t Transformer) try_lower_copy_call(node flat.Node) ?flat.NodeId {
 		return t.make_call_typed('copy', arr2(t.make_prefix(.amp, t.make_ident(tmp_name)), src),
 			'int')
 	}
-	dst := t.make_prefix(.amp, t.transform_expr(dst_id))
+	dst_expr := t.transform_expr(dst_id)
+	// a `mut` param destination is already a pointer; taking its address again
+	// would hand v_copy an Array** and corrupt the caller's frame
+	dst := if t.node_type(dst_id).starts_with('&') {
+		dst_expr
+	} else {
+		t.make_prefix(.amp, dst_expr)
+	}
 	return t.make_call_typed('copy', arr2(dst, src), 'int')
 }
 

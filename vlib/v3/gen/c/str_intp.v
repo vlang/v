@@ -57,6 +57,16 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				g.write('${c_name('${typ.name()}.str')}(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
+			} else if typ is types.Interface {
+				str_key := '${typ.name}.str'
+				if str_key in g.tc.fn_ret_types {
+					g.write('${c_name(str_key)}(')
+					g.gen_string_interp_child_expr(child_id)
+					g.write(')')
+				} else {
+					sid := g.intern_string('${typ.name.all_after_last('.')}{}')
+					g.write('_str_${sid}')
+				}
 			} else if typ is types.Struct {
 				g.write('${c_name(typ.name)}__str(')
 				g.gen_string_interp_child_expr(expr_id)

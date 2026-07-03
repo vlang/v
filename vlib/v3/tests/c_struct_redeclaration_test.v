@@ -25,6 +25,13 @@ fn run_v3_source(v3_bin string, name string, src string) os.Result {
 	return os.execute('${v3_bin} ${src_path} -b c -o ${out}')
 }
 
+fn run_v3_source_cgen(v3_bin string, name string, src string) os.Result {
+	out := unique_temp_path(name) + '.c'
+	src_path := unique_temp_path(name) + '.v'
+	os.write_file(src_path, src) or { panic(err) }
+	return os.execute('${v3_bin} ${src_path} -b c -o ${out}')
+}
+
 fn run_v3_project(v3_bin string, name string, files map[string]string) os.Result {
 	root := unique_temp_path('${name}_project')
 	os.mkdir_all(root) or { panic(err) }
@@ -72,4 +79,21 @@ fn test_c_struct_redeclaration_checks_field_signature() {
 	assert cross_file_bad.exit_code != 0, cross_file_bad.output
 	assert cross_file_bad.output.contains('cannot redeclare C struct `C.Split`'), cross_file_bad.output
 	assert !cross_file_bad.output.contains('C compilation failed'), cross_file_bad.output
+
+	cross_module_bad := run_v3_project(v3_bin, 'bad_c_struct_cross_module_redeclaration', {
+		'v.mod':  'Module { name: "shared_header_modules" }\n'
+		'a/a.v':  'module a\n\npub struct C.SharedHeader {\n\tx int\n}\n\npub fn touch_a() int {\n\treturn 1\n}\n'
+		'b/b.v':  'module b\n\npub struct C.SharedHeader {\n\ty byteptr\n}\n\npub fn touch_b() int {\n\treturn 2\n}\n'
+		'main.v': 'module main\n\nimport a\nimport b\n\nfn main() {\n\tprintln(int_str(a.touch_a() + b.touch_b()))\n}\n'
+	})
+	assert cross_module_bad.exit_code != 0, cross_module_bad.output
+	assert cross_module_bad.output.contains('cannot redeclare C struct `C.SharedHeader`'), cross_module_bad.output
+	assert !cross_module_bad.output.contains('C compilation failed'), cross_module_bad.output
+
+	shared_header_good := run_v3_source_cgen(v3_bin, 'good_cjson_shared_header_redeclaration',
+		'import json\nimport json.cjson\n\nfn main() {\n\t_ := json.encode(unsafe { nil })\n\t_ := cjson.version()\n}\n')
+	assert shared_header_good.exit_code == 0, shared_header_good.output
+	assert !shared_header_good.output.contains('cannot redeclare C struct `C.cJSON`'), shared_header_good.output
+
+	assert !shared_header_good.output.contains('C compilation failed'), shared_header_good.output
 }
