@@ -104,3 +104,41 @@ fn main() {
 	assert !has_fixed_array_assignment(compact, 'Array_fixed_int_2', 'ds'), generated
 	assert !generated.contains('return (multi_return_int_Array_fixed_int_3){7, xs};'), generated
 }
+
+fn test_deferred_multi_return_pointer_value_slot_uses_expected_type() {
+	v3_bin := fixed_array_multi_build_v3()
+	src := os.join_path(os.temp_dir(), 'v3_deferred_multi_return_pointer_value_${os.getpid()}.v')
+	os.write_file(src, 'module main
+
+struct S {
+	value int
+}
+
+fn f() (S, int) {
+	defer {
+		_ := 0
+	}
+	s := S{
+		value: 41
+	}
+	return &s, 1
+}
+
+fn main() {
+	s, n := f()
+	println(int_str(s.value + n))
+}
+') or {
+		panic(err)
+	}
+	bin := os.join_path(os.temp_dir(), 'v3_deferred_multi_return_pointer_value_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42'
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	compact := compact_c_whitespace(generated)
+	assert compact.contains('{*&s,1}'), generated
+	assert !compact.contains('{&s,1}'), generated
+}

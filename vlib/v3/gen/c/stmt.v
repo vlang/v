@@ -867,6 +867,26 @@ fn (g &FlatGen) has_pending_defers() bool {
 }
 
 fn (mut g FlatGen) gen_pointer_value_return_expr(ret_id flat.NodeId, expected types.Type) bool {
+	return g.write_pointer_value_return_expr(ret_id, expected)
+}
+
+fn (mut g FlatGen) pointer_value_return_expr_string(ret_id flat.NodeId, expected types.Type) ?string {
+	orig := g.sb
+	orig_line_start := g.line_start
+	g.sb = strings.new_builder(64)
+	g.line_start = false
+	if !g.write_pointer_value_return_expr(ret_id, expected) {
+		g.sb = orig
+		g.line_start = orig_line_start
+		return none
+	}
+	result := g.sb.str()
+	g.sb = orig
+	g.line_start = orig_line_start
+	return result
+}
+
+fn (mut g FlatGen) write_pointer_value_return_expr(ret_id flat.NodeId, expected types.Type) bool {
 	actual := g.usable_expr_type(ret_id)
 	expected0 := if expected is types.Alias { expected.base_type } else { expected }
 	if expected0 is types.Pointer {
@@ -1167,9 +1187,19 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 	}
 	if g.cur_fn_ret is types.MultiReturn {
 		if node.children_count > 1 {
+			ret_types := g.cur_fn_ret.types
 			mut parts := []string{cap: int(node.children_count)}
 			for i in 0 .. node.children_count {
-				parts << g.expr_to_string(g.a.child(&node, i))
+				child_id := g.a.child(&node, i)
+				if i < ret_types.len {
+					if expr := g.pointer_value_return_expr_string(child_id, ret_types[i]) {
+						parts << expr
+					} else {
+						parts << g.expr_to_string_with_expected_type(child_id, ret_types[i])
+					}
+				} else {
+					parts << g.expr_to_string(child_id)
+				}
 			}
 			return '(${ct}){${parts.join(', ')}}'
 		}
