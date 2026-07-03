@@ -4210,9 +4210,10 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 				}
 			}
 			g.stmt(stmt)
-			if stmt is ast.ExprStmt && (g.inside_if_option || g.inside_if_result
-				|| g.inside_match_option || g.inside_match_result
-				|| (stmt.expr is ast.IndexExpr && stmt.expr.or_expr.kind != .absent)) {
+			if g.inside_ternary == 0 && stmt is ast.ExprStmt && (g.inside_if_option
+				|| g.inside_if_result || g.inside_match_option
+				|| g.inside_match_result || (stmt.expr is ast.IndexExpr
+				&& stmt.expr.or_expr.kind != .absent)) {
 				g.writeln(';')
 			}
 		}
@@ -7377,19 +7378,23 @@ fn (mut g Gen) char_literal(node ast.CharLiteral) {
 		g.write("'`'")
 		return
 	}
-	// TODO: optimize use L-char instead of u32 when possible
-	if !node.val.is_pure_ascii() {
-		g.write('((rune)0x${node.val.utf32_code().hex()} /* `${node.val}` */)')
-		return
-	}
 	if node.val.len == 1 {
 		clit := node.val[0]
+		if clit > 127 {
+			g.write('((rune)${clit})')
+			return
+		}
 		if clit < 32 || clit == 92 || clit > 126 {
 			g.write("'")
 			write_octal_escape(mut g.out, clit)
 			g.write("'")
 			return
 		}
+	}
+	// TODO: optimize use L-char instead of u32 when possible
+	if !node.val.is_pure_ascii() {
+		g.write('((rune)0x${node.val.utf32_code().hex()} /* `${node.val}` */)')
+		return
 	}
 	g.write("'${node.val}'")
 }
