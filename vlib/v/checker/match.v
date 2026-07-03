@@ -602,41 +602,8 @@ fn (mut c Checker) check_match_branch_last_stmt(mut last_stmt ast.ExprStmt, ret_
 	}
 }
 
-fn char_literal_rune_value(value string) ?rune {
-	if value.len == 1 {
-		return rune(value[0])
-	}
-	if value.len == 2 && value[0] == `\\` {
-		return match value[1] {
-			`a` { 7 }
-			`b` { 8 }
-			`t` { 9 }
-			`n` { 10 }
-			`v` { 11 }
-			`f` { 12 }
-			`r` { 13 }
-			`e` { 27 }
-			`$` { 36 }
-			`"` { 34 }
-			`'` { 39 }
-			`?` { 63 }
-			`@` { 64 }
-			`\\` { 92 }
-			`\`` { 96 }
-			`{` { 123 }
-			`}` { 125 }
-			else { none }
-		}
-	}
-	runes := value.runes()
-	if runes.len == 1 {
-		return runes[0]
-	}
-	return none
-}
-
 fn char_literal_number_value(value string) ?i64 {
-	return i64(char_literal_rune_value(value)?)
+	return i64(ast.char_literal_rune_value(value)?)
 }
 
 fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
