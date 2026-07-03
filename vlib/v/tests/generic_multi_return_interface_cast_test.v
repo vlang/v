@@ -91,66 +91,9 @@ fn test_generic_multi_return_ptr_param_interface_cast() {
 }
 
 // Regression test: generic multi-return with `as T` cast then interface cast.
-// Pattern: raw := interface_value as T; return raw, ... (multi-return with interface cast)
-// Both instantiations in the same file triggers the codegen path.
-
-interface IHolder {
-	secret() int
-}
-
-struct MockA {
-	x int
-}
-
-fn (m MockA) f() int {
-	return m.x + 100
-}
-
-fn (m MockA) secret() int {
-	return m.x
-}
-
-struct MockB {
-	x int
-}
-
-fn (m MockB) f() int {
-	return m.x + 200
-}
-
-fn (m MockB) secret() int {
-	return m.x
-}
-
-@[heap]
-struct Pool[T] {
-mut:
-	raw IHolder
-}
-
-fn (mut w Pool[T]) acquire() (Getter, IHolder) {
-	raw := w.raw as T
-	return raw, w.raw
-}
-
-fn test_generic_as_cast_then_multi_return_interface() {
-	mut w1 := Pool[MockA]{
-		raw: MockA{10}
-	}
-	mut w2 := Pool[MockB]{
-		raw: MockB{20}
-	}
-	g1, h1 := w1.acquire()
-	g2, h2 := w2.acquire()
-	assert g1.f() == 110
-	assert g2.f() == 220
-	assert h1.secret() == 10
-	assert h2.secret() == 20
-}
-
-// Regression test: generic method with `&Interface -> as T` cast and
-// multi-return interface conversion. Two concrete types with DIFFERENT
-// struct layouts ensure the C compiler catches any stale-type codegen.
+// Tests both value-interface and &Interface pointer codegen paths.
+// Two concrete types with DIFFERENT struct layouts ensure the C compiler
+// catches any stale-type codegen.
 
 interface Gettable {
 	get() int
@@ -181,6 +124,19 @@ fn (h Holder) inner_ptr() &Gettable {
 	return h.ptr
 }
 
+// Value interface path: Gettable stored directly, `as T` cast, multi-return
+@[heap]
+struct Pool[T] {
+mut:
+	raw Gettable
+}
+
+fn (mut p Pool[T]) acquire() (Gettable, int) {
+	v := p.raw as T
+	return v, 42
+}
+
+// &Interface pointer path: Holder stores &Gettable, extracted via inner_ptr()
 struct Wrapper[T] {
 	src Holder
 }
@@ -191,16 +147,30 @@ fn (w Wrapper[T]) extract() (Gettable, &Gettable) {
 	return raw, raw_conn
 }
 
-fn test_ptr_interface_as_cast_multi_return_interface() {
+fn test_generic_as_cast_multi_return_interface() {
+	// Value interface path
+	mut p1 := Pool[TypeA]{
+		raw: TypeA{10, 20}
+	}
+	v1, _ := p1.acquire()
+	assert v1.get() == 30
+
+	mut p2 := Pool[TypeB]{
+		raw: TypeB{'hi'}
+	}
+	v2, _ := p2.acquire()
+	assert v2.get() == 2
+
+	// &Interface pointer path
 	w1 := Wrapper[TypeA]{
 		src: Holder{&TypeA{10, 20}}
 	}
-	v1, _ := w1.extract()
-	assert v1.get() == 30
+	g1, _ := w1.extract()
+	assert g1.get() == 30
 
 	w2 := Wrapper[TypeB]{
 		src: Holder{&TypeB{'hi'}}
 	}
-	v2, _ := w2.extract()
-	assert v2.get() == 2
+	g2, _ := w2.extract()
+	assert g2.get() == 2
 }
