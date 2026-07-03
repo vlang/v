@@ -40,6 +40,7 @@ vlib/builtin/byte_test.v
 vlib/builtin/character_inout_test.v
 vlib/builtin/float_test.v
 vlib/builtin/hex_test.v
+vlib/builtin/input_rune_iterator_test.v
 vlib/builtin/int_test.v
 vlib/builtin/isnil_test.v
 vlib/builtin/lambda_expr_array_test.v
@@ -83,6 +84,7 @@ vlib/crypto/des/des_test.v
 vlib/crypto/hmac/hmac_test.v
 vlib/crypto/internal/subtle/comparison_test.v
 vlib/crypto/md5/md5_test.v
+vlib/crypto/pbkdf2/pbkdf2_test.v
 vlib/crypto/rand/crypto_rand_bytes_test.v
 vlib/crypto/rand/utils_test.v
 vlib/crypto/rc4/rc4_test.v
@@ -107,6 +109,7 @@ vlib/crypto/sha512/sha512_256_shavs_test.v
 vlib/crypto/sha512/sha512_shavs_monte_test.v
 vlib/crypto/sha512/sha512_shavs_test.v
 vlib/crypto/sha512/sha512_test.v
+vlib/datatypes/ringbuffer_test.v
 vlib/dl/dl_test.v
 vlib/dl/loader/loader_test.v
 vlib/dl/rtld_next_test.v
@@ -147,6 +150,7 @@ vlib/io/custom_string_reading_test.v
 vlib/io/io_cp_test.v
 vlib/io/io_test.v
 vlib/io/os_file_reader_test.v
+vlib/io/reader_test.v
 vlib/io/util/util_test.v
 vlib/json/tests/json_decode_embed_test.v
 vlib/json/tests/json_decode_with_option_arg_test.v
@@ -181,6 +185,7 @@ vlib/os/command_test.v
 vlib/os/dir_expansions_test.v
 vlib/os/environment_test.v
 vlib/os/file_buffering_test.v
+vlib/os/file_test.v
 vlib/os/filelock/filelock_test.v
 vlib/os/find_abs_path_of_executable_test.v
 vlib/os/glob_test.v
@@ -253,6 +258,7 @@ vlib/v/gen/c/noreturn_attr_test.v
 vlib/v/gen/c/or_block_line_info_test.v
 vlib/v/gen/c/sql_assert_temp_var_test.v
 vlib/v/gen/c/thread_bool_wait_codegen_test.v
+vlib/v/gen/js/global_export_test.v
 vlib/v/gen/js/jsgen_test.v
 vlib/v/gen/js/sourcemap/vlq/vlq_decode_test.v
 vlib/v/gen/js/sourcemap/vlq/vlq_encode_test.v
@@ -296,6 +302,7 @@ vlib/v/tests/aliases/alias_array_no_cast_init_test.v
 vlib/v/tests/aliases/alias_array_operator_overloading_test.v
 vlib/v/tests/aliases/alias_array_push_test.v
 vlib/v/tests/aliases/alias_assigned_in_increment_part_of_for_c_loop_test.v
+vlib/v/tests/aliases/alias_basic_types_test.v
 vlib/v/tests/aliases/alias_bool_not_op_test.v
 vlib/v/tests/aliases/alias_char_type_reference_test.v
 vlib/v/tests/aliases/alias_compare_non_alias_test.v
@@ -303,6 +310,9 @@ vlib/v/tests/aliases/alias_eq_op_test.v
 vlib/v/tests/aliases/alias_fixed_arr_test.v
 vlib/v/tests/aliases/alias_fixed_array_append_to_array_test.v
 vlib/v/tests/aliases/alias_fixed_array_compare_test.v
+vlib/v/tests/aliases/alias_fixed_array_infix_expr_test.v
+vlib/v/tests/aliases/alias_fixed_array_operator_overloading_cmp_test.v
+vlib/v/tests/aliases/alias_generic_mut_method_reference_issue_24012_test.v
 vlib/v/tests/aliases/alias_generic_mut_reference_issue_24011_test.v
 vlib/v/tests/aliases/alias_generic_parent_operator_overloading_test.v
 vlib/v/tests/aliases/alias_interface_test.v
@@ -439,6 +449,7 @@ vlib/v/tests/builtin_maps/map_fixed_array_keys_test.v
 vlib/v/tests/builtin_maps/map_generic_keys_with_in_op_test.v
 vlib/v/tests/builtin_maps/map_get_anon_fn_value_with_mut_arg_test.v
 vlib/v/tests/builtin_maps/map_get_assign_blank_test.v
+vlib/v/tests/builtin_maps/map_init_with_enum_keys_test.v
 vlib/v/tests/builtin_maps/map_key_expr_test.v
 vlib/v/tests/builtin_maps/map_literals_method_call_test.v
 vlib/v/tests/builtin_maps/map_mut_fn_test.v
@@ -501,6 +512,7 @@ vlib/v/tests/comptime/comptime_enum_test.v
 vlib/v/tests/comptime/comptime_for_break_test.v
 vlib/v/tests/comptime/comptime_for_empty_loop_eval_stmts_test.v
 vlib/v/tests/comptime/comptime_for_in_fields_FieldData_test.v
+vlib/v/tests/comptime/comptime_for_map_arg_test.v
 vlib/v/tests/comptime/comptime_for_method_call_with_args_test.v
 vlib/v/tests/comptime/comptime_for_over_struct_with_C_reserved_word_fields_test.v
 vlib/v/tests/comptime/comptime_generic_map_test.v
@@ -515,9 +527,11 @@ vlib/v/tests/comptime/comptime_if_is_interface_test.v
 vlib/v/tests/comptime/comptime_if_pkgconfig_test.v
 vlib/v/tests/comptime/comptime_if_threads_no_test.v
 vlib/v/tests/comptime/comptime_if_top_3_test.v
+vlib/v/tests/comptime/comptime_infer_generic_map_test.v
 vlib/v/tests/comptime/comptime_infix_test.v
 vlib/v/tests/comptime/comptime_is_check_test.v
 vlib/v/tests/comptime/comptime_is_interface_check_test.v
+vlib/v/tests/comptime/comptime_map_part_generic_test.v
 vlib/v/tests/comptime/comptime_match_type_2_test.v
 vlib/v/tests/comptime/comptime_match_type_test.v
 vlib/v/tests/comptime/comptime_multiline_attr_test.v
@@ -547,6 +561,7 @@ vlib/v/tests/concurrency/shared_nested_lock_runtime_test.v
 vlib/v/tests/concurrency/shared_struct_field_test.v
 vlib/v/tests/concurrency/spawn_array_mut_test.v
 vlib/v/tests/concurrency/spawn_with_cond_fncall_test.v
+vlib/v/tests/concurrency/spawn_with_different_method_receivers_test.v
 vlib/v/tests/concurrency/thread_array_test.v
 vlib/v/tests/concurrency/thread_ptr_ret_test.v
 vlib/v/tests/concurrency/thread_type_test.v
@@ -601,6 +616,7 @@ vlib/v/tests/conditions/matches/match_in_fn_call_test.v
 vlib/v/tests/conditions/matches/match_in_if_expression_test.v
 vlib/v/tests/conditions/matches/match_in_map_init_test.v
 vlib/v/tests/conditions/matches/match_in_map_or_expr_test.v
+vlib/v/tests/conditions/matches/match_interface_test.v
 vlib/v/tests/conditions/matches/match_reference_sumtype_var_test.v
 vlib/v/tests/conditions/matches/match_return_fn_test.v
 vlib/v/tests/conditions/matches/match_return_reference_test.v
@@ -645,6 +661,7 @@ vlib/v/tests/defer/defer_static_test.v
 vlib/v/tests/defer/defer_test.v
 vlib/v/tests/defer/defer_with_fn_var_test.v
 vlib/v/tests/division_by_zero_runtime_test.v
+vlib/v/tests/enum_packed_test.v
 vlib/v/tests/enums/enum_allow_multiple_values_match_test.v
 vlib/v/tests/enums/enum_array_field_test.v
 vlib/v/tests/enums/enum_array_init_test.v
@@ -657,11 +674,13 @@ vlib/v/tests/enums/enum_field_name_same_as_keyword_test.v
 vlib/v/tests/enums/enum_flag_test.v
 vlib/v/tests/enums/enum_hex_test.v
 vlib/v/tests/enums/enum_short_infix_commutative_test.v
+vlib/v/tests/enums/enum_val_test.v
 vlib/v/tests/enums/enum_with_comptime_const_test.v
 vlib/v/tests/enums/enum_with_comptime_if_expr_test.v
 vlib/v/tests/enums/enum_with_const_test.v
 vlib/v/tests/enums/fullname_enumval_as_arg_test.v
 vlib/v/tests/enums/map_with_enum_keys_test.v
+vlib/v/tests/enums/vargs_with_enum_value_test.v
 vlib/v/tests/eval_shared_library_tcc_test.v
 vlib/v/tests/failing_tests_test.v
 vlib/v/tests/filtering_tests/filtering_macos_test.v
@@ -711,6 +730,7 @@ vlib/v/tests/fns/fn_return_alias_of_ptr_test.v
 vlib/v/tests/fns/fn_return_fn_test.v
 vlib/v/tests/fns/fn_return_opt_or_res_of_array_test.v
 vlib/v/tests/fns/fn_return_result_fixed_array_return_fn_propagate_result_test.v
+vlib/v/tests/fns/fn_return_typeof_test.v
 vlib/v/tests/fns/fn_type_aliases_test.v
 vlib/v/tests/fns/fn_type_call_of_match_expr_test.v
 vlib/v/tests/fns/fn_type_only_argument_test.v
@@ -718,6 +738,7 @@ vlib/v/tests/fns/fn_var_name_using_reserved_test.v
 vlib/v/tests/fns/fn_with_array_of_aliases_argument_test.v
 vlib/v/tests/fns/fn_with_fixed_array_args_test.v
 vlib/v/tests/fns/generic_fn_return_later_declared_generic_struct_test.v
+vlib/v/tests/fns/go_anon_fn_call_with_ref_arg_test.v
 vlib/v/tests/fns/go_array_wait_without_go_test.v
 vlib/v/tests/fns/go_call_fn_return_test.v
 vlib/v/tests/fns/go_call_interface_method_test.v
@@ -727,6 +748,7 @@ vlib/v/tests/fns/go_wait_3_test.v
 vlib/v/tests/fns/go_wait_with_fn_of_interface_parameter_test.v
 vlib/v/tests/fns/iface_method_fixed_arr_test.v
 vlib/v/tests/fns/interface_methods_fixed_arr_test.v
+vlib/v/tests/fns/lambda_generic_test.v
 vlib/v/tests/fns/method_call_chained_multiline_test.v
 vlib/v/tests/fns/method_call_chained_test.v
 vlib/v/tests/fns/method_call_none_check_test.v
@@ -749,8 +771,10 @@ vlib/v/tests/gc_free_space_divisor_test.v
 vlib/v/tests/generic_fn_dedup_collision_issue_27398_test.v
 vlib/v/tests/generics/generic_alias_fn_op_call_test.v
 vlib/v/tests/generics/generic_array_init_test.v
+vlib/v/tests/generics/generic_array_pass_test.v
 vlib/v/tests/generics/generic_array_test.v
 vlib/v/tests/generics/generic_arrays_sum_test.v
+vlib/v/tests/generics/generic_as_cast_on_map_test.v
 vlib/v/tests/generics/generic_call_mixing_args_test.v
 vlib/v/tests/generics/generic_comparison_for_conditional_assign_test.v
 vlib/v/tests/generics/generic_comptime_map_test.v
@@ -768,6 +792,7 @@ vlib/v/tests/generics/generic_fn_multi_return_test.v
 vlib/v/tests/generics/generic_fn_upper_name_type_test.v
 vlib/v/tests/generics/generic_fn_with_anon_fn_test.v
 vlib/v/tests/generics/generic_fn_with_comptime_for_test.v
+vlib/v/tests/generics/generic_fn_with_nested_generic_fn_call_test.v
 vlib/v/tests/generics/generic_for_mut_val_test.v
 vlib/v/tests/generics/generic_function_argument_inference_test.v
 vlib/v/tests/generics/generic_functions_with_normal_function_test.v
@@ -782,12 +807,14 @@ vlib/v/tests/generics/generic_pointer_indirect_test.v
 vlib/v/tests/generics/generic_recursive_fn_test.v
 vlib/v/tests/generics/generic_return_test.v
 vlib/v/tests/generics/generic_selector_infix_test.v
+vlib/v/tests/generics/generic_selector_len_test.v
 vlib/v/tests/generics/generic_sort_multi_instantiation_test.v
 vlib/v/tests/generics/generic_struct_cstruct_test.v
 vlib/v/tests/generics/generic_struct_field_fn_with_multiple_instantiations_test.v
 vlib/v/tests/generics/generic_struct_return_test.v
 vlib/v/tests/generics/generic_struct_test.v
 vlib/v/tests/generics/generic_struct_with_linked_list_of_refs_field_test.v
+vlib/v/tests/generics/generic_typeof_test.v
 vlib/v/tests/generics/generic_var_loop_test.v
 vlib/v/tests/generics/generic_with_ptr_as_param_test.v
 vlib/v/tests/generics/generics_anon_fn_decl_with_type_only_arg_test.v
@@ -800,10 +827,14 @@ vlib/v/tests/generics/generics_fixed_array_assign_test.v
 vlib/v/tests/generics/generics_fn_return_result_test.v
 vlib/v/tests/generics/generics_from_modules/inference_test.v
 vlib/v/tests/generics/generics_in_big_struct_method_test.v
+vlib/v/tests/generics/generics_in_generics_test.v
+vlib/v/tests/generics/generics_indirect_test.v
 vlib/v/tests/generics/generics_map_with_generic_type_key_test.v
 vlib/v/tests/generics/generics_method_on_receiver_types_test.v
 vlib/v/tests/generics/generics_method_ordering_test.v
+vlib/v/tests/generics/generics_method_str_overload_test.v
 vlib/v/tests/generics/generics_method_with_generic_anon_fn_argument_test.v
+vlib/v/tests/generics/generics_method_with_nested_generic_method_test.v
 vlib/v/tests/generics/generics_multi_array_in_test.v
 vlib/v/tests/generics/generics_return_multi_array_test.v
 vlib/v/tests/generics/generics_return_multiple_generics_struct_test.v
@@ -818,11 +849,13 @@ vlib/v/tests/generics/generics_struct_inst_method_call_test.v
 vlib/v/tests/generics/generics_struct_method_params_is_generics_struct_and_not_called_test.v
 vlib/v/tests/generics/generics_struct_no_key_init_test.v
 vlib/v/tests/generics/generics_struct_parent_has_str_to_string_test.v
+vlib/v/tests/generics/generics_struct_with_array_test.v
 vlib/v/tests/generics/generics_struct_with_inconsistent_generic_types_1_test.v
 vlib/v/tests/generics/generics_struct_with_option_fn_test.v
 vlib/v/tests/generics/generics_union_dump_test.v
 vlib/v/tests/generics/generics_with_cascaded_multiple_nested_generics_fn_test.v
 vlib/v/tests/generics/generics_with_empty_array_arg_test.v
+vlib/v/tests/generics/generics_with_fixed_array_type_test.v
 vlib/v/tests/generics/generics_with_generics_struct_init_test.v
 vlib/v/tests/generics/generics_with_generics_struct_receiver_test.v
 vlib/v/tests/generics/generics_with_multi_generics_struct_types_test.v
@@ -940,12 +973,14 @@ vlib/v/tests/nested_map_index_test.v
 vlib/v/tests/nested_or_in_assign_decl_test.v
 vlib/v/tests/old_generic_scanner_test.v
 vlib/v/tests/option_result_alias_fn_ret_test.v
+vlib/v/tests/options/check_init_value_for_arrays_of_option_test.v
 vlib/v/tests/options/nested_option_call_test.v
 vlib/v/tests/options/nested_or_block_with_void_result_test.v
 vlib/v/tests/options/nested_or_expr_call_test.v
 vlib/v/tests/options/none_checking_test.v
 vlib/v/tests/options/option_alias_fn_ret_test.v
 vlib/v/tests/options/option_array_compare_test.v
+vlib/v/tests/options/option_array_dump_in_generic_fn_test.v
 vlib/v/tests/options/option_array_fixed_struct_test.v
 vlib/v/tests/options/option_array_init_test.v
 vlib/v/tests/options/option_array_test.v
@@ -959,12 +994,16 @@ vlib/v/tests/options/option_cast_primitive_test.v
 vlib/v/tests/options/option_compvar_types_test.v
 vlib/v/tests/options/option_default_values_test.v
 vlib/v/tests/options/option_dump_test.v
+vlib/v/tests/options/option_empty_map_test.v
+vlib/v/tests/options/option_enum_compare_none_test.v
 vlib/v/tests/options/option_expr_with_array_value_test.v
 vlib/v/tests/options/option_fixed_arr_const_test.v
 vlib/v/tests/options/option_fn_guard_test.v
 vlib/v/tests/options/option_fn_struct_init_test.v
 vlib/v/tests/options/option_fn_var_test.v
 vlib/v/tests/options/option_for_or_block_test.v
+vlib/v/tests/options/option_generic_alias_test.v
+vlib/v/tests/options/option_generic_inferred_call_test.v
 vlib/v/tests/options/option_ierror_field_test.v
 vlib/v/tests/options/option_if_assign_and_fallthrough_test.v
 vlib/v/tests/options/option_if_expr_test.v
@@ -978,6 +1017,7 @@ vlib/v/tests/options/option_last_call_test.v
 vlib/v/tests/options/option_map_fn_type_value_test.v
 vlib/v/tests/options/option_map_val_test.v
 vlib/v/tests/options/option_match_case_cast_test.v
+vlib/v/tests/options/option_match_case_enum_test.v
 vlib/v/tests/options/option_match_cases_test.v
 vlib/v/tests/options/option_match_eq_test.v
 vlib/v/tests/options/option_multi_return_if_test.v
@@ -1039,6 +1079,7 @@ vlib/v/tests/printing/dump_on_generic_func_test.v
 vlib/v/tests/printing/print_address_of_reference_struct_test.v
 vlib/v/tests/printing/print_charptr_test.v
 vlib/v/tests/printing/print_test.v
+vlib/v/tests/printing/print_void_ret_test.v
 vlib/v/tests/project_importing_v_keywords/importing_keywords_works_test.v
 vlib/v/tests/project_issue_15724/project_compiles_test.v
 vlib/v/tests/project_issue_15811_check_test.v
@@ -1056,6 +1097,7 @@ vlib/v/tests/repeated_multiret_values_test.v
 vlib/v/tests/reserved_keyword_asm_test.v
 vlib/v/tests/reserved_keywords_can_be_escaped_with_at_test.v
 vlib/v/tests/reserved_keywords_if_guard_test.v
+vlib/v/tests/resolve_generic_2_test.v
 vlib/v/tests/results_test.v
 vlib/v/tests/return_aliases_of_fixed_array_test.v
 vlib/v/tests/return_fixed_array_test.v
@@ -1246,3 +1288,4 @@ vlib/x/crypto/ascon/hash_test.v
 vlib/x/crypto/ascon/xof_test.v
 vlib/x/crypto/sm4/sm4_test.v
 vlib/x/dataframe/dataframe_test.v
+vlib/x/json2/tests/scanner_test.v
