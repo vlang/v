@@ -224,6 +224,12 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type string, metho
 		if t.is_known_fn_name(direct) {
 			return direct
 		}
+		for receiver in generic_receiver_flat_type_variants(clean_type) {
+			flat_method := '${receiver}.${method}'
+			if t.is_known_fn_name(flat_method) {
+				return flat_method
+			}
+		}
 	}
 	if clean_type.starts_with('[]') {
 		elem_type := clean_type[2..]
@@ -433,6 +439,9 @@ fn (mut t Transformer) normalize_generic_call_expr(id flat.NodeId, node flat.Nod
 	if fn_node.kind != .index || fn_node.children_count < 2 || fn_node.value == 'range' {
 		return id
 	}
+	if t.index_callee_is_value_index(fn_node) {
+		return id
+	}
 	base_id := t.a.child(&fn_node, 0)
 	base := t.a.nodes[int(base_id)]
 	if base.kind !in [.ident, .selector] {
@@ -509,6 +518,9 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 		.map_init {
 			return node.value
 		}
+		.struct_decl {
+			return node.value
+		}
 		.prefix {
 			if node.children_count == 0 {
 				return ''
@@ -532,6 +544,9 @@ fn (t &Transformer) generic_call_type_args_name(index_node flat.Node) string {
 	if index_node.kind != .index || index_node.children_count < 2 || index_node.value == 'range' {
 		return ''
 	}
+	if t.index_callee_is_value_index(index_node) {
+		return ''
+	}
 	mut args := []string{}
 	for i in 1 .. index_node.children_count {
 		arg := t.generic_call_type_arg_name(t.a.child(&index_node, i))
@@ -541,6 +556,66 @@ fn (t &Transformer) generic_call_type_args_name(index_node flat.Node) string {
 		args << arg
 	}
 	return args.join(', ')
+}
+
+fn (t &Transformer) index_callee_is_value_index(index_node flat.Node) bool {
+	if index_node.kind != .index || index_node.children_count == 0 || index_node.value == 'range' {
+		return false
+	}
+	base_id := t.a.child(&index_node, 0)
+	if int(base_id) < 0 {
+		return false
+	}
+	base := t.a.nodes[int(base_id)]
+	if base.kind == .ident && t.type_name_is_indexable(t.var_type(base.value)) {
+		return true
+	}
+	if base.kind == .ident || base.kind == .selector {
+		base_type := t.resolve_expr_type(base_id)
+		if t.type_name_is_indexable(base_type) {
+			return true
+		}
+	}
+	if !isnil(t.tc) {
+		if typ := t.tc.expr_type(base_id) {
+			if transform_type_is_indexable(typ) {
+				return true
+			}
+		}
+		if transform_type_is_indexable(t.tc.resolve_type(base_id)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) type_name_is_indexable(name string) bool {
+	mut clean := t.normalize_type_alias(name)
+	if clean.len == 0 {
+		return false
+	}
+	if clean.starts_with('&') {
+		clean = t.normalize_type_alias(clean[1..])
+	}
+	return clean == 'string' || clean.starts_with('[]') || clean.starts_with('map[')
+		|| t.is_fixed_array_type(clean)
+}
+
+fn transform_type_is_indexable(typ types.Type) bool {
+	match typ {
+		types.Array, types.ArrayFixed, types.Map, types.String {
+			return true
+		}
+		types.Alias {
+			return transform_type_is_indexable(typ.base_type)
+		}
+		types.Pointer {
+			return transform_type_is_indexable(typ.base_type)
+		}
+		else {
+			return false
+		}
+	}
 }
 
 // transform_call_args transforms all children of a call expression.
@@ -1105,6 +1180,11 @@ fn (t &Transformer) is_named_fn_value_arg(arg_id flat.NodeId) bool {
 
 // transform_const_array_arg_for_param supports transform_const_array_arg_for_param handling.
 fn (mut t Transformer) transform_const_array_arg_for_param(arg_id flat.NodeId, param_type string) ?flat.NodeId {
+	if raw_const_type := t.raw_const_type_name_for_expr(arg_id) {
+		if t.normalize_type_alias(raw_const_type) == t.normalize_type_alias(param_type) {
+			return t.transform_expr(arg_id)
+		}
+	}
 	expr_id := t.const_expr_for_arg(arg_id) or { return none }
 	expr := t.a.nodes[int(expr_id)]
 	elem_type := param_type[2..]
@@ -1269,7 +1349,7 @@ fn voidptr_variadic_type_passes_direct(typ types.Type) bool {
 fn (t &Transformer) voidptr_variadic_storage_type(arg_id flat.NodeId) string {
 	typ := t.node_type(arg_id)
 	match typ {
-		'i8', 'u8', 'i16', 'u16' {
+		'char', 'i8', 'u8', 'i16', 'u16' {
 			return 'int'
 		}
 		'f32' {
@@ -1782,6 +1862,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 				if known_str {
 					return t.make_call_typed(str_fn, arr1(expr), 'string')
 				}
+				if qualified in t.sum_types {
+					return t.lower_sum_str(expr, qualified)
+				}
 				return t.make_string_literal('${qualified}{}')
 			} else if t.is_fixed_array_type(clean_typ) {
 				elem_type := fixed_array_elem_type(clean_typ)
@@ -1809,6 +1892,69 @@ fn (mut t Transformer) mark_interface_method_implementers_used(iface_name string
 			t.mark_fn_used_name('${concrete}.${method}')
 		}
 	}
+}
+
+fn (mut t Transformer) lower_sum_str(expr flat.NodeId, sum_name string) flat.NodeId {
+	resolved_sum := t.resolve_sum_name(sum_name)
+	variants := t.sum_types[resolved_sum] or { return t.make_string_literal('${sum_name}{}') }
+	base := t.stable_transformed_expr_for_reuse(expr, resolved_sum, 'sum_str')
+	tag := t.make_selector_op(base, 'typ', 'int', if sum_name.starts_with('&') {
+		.arrow
+	} else {
+		.dot
+	})
+	sum_display := if resolved_sum.contains('.') {
+		resolved_sum.all_after_last('.')
+	} else {
+		resolved_sum
+	}
+	return t.build_sum_str_chain(base, tag, resolved_sum, sum_display, variants, 0)
+}
+
+fn (mut t Transformer) build_sum_str_chain(base flat.NodeId, tag flat.NodeId, sum_name string, sum_display string, variants []string, idx int) flat.NodeId {
+	if idx >= variants.len {
+		return t.make_string_literal('${sum_name}{}')
+	}
+	variant := variants[idx]
+	field := t.sum_field_name(variant)
+	field_sel := t.make_selector_op(base, field, '&${variant}', .dot)
+	variant_base := t.normalize_type_alias(variant)
+	mut value_text := if t.is_fixed_array_type(variant_base) {
+		elem_type := fixed_array_elem_type(variant_base)
+		arr := t.make_call_typed('new_array_from_c_array', [
+			t.make_fixed_array_len_expr(variant_base),
+			t.make_fixed_array_len_expr(variant_base),
+			t.make_sizeof_type(elem_type),
+			field_sel,
+		], '[]${elem_type}')
+		t.wrap_string_conversion(arr, '[]${elem_type}')
+	} else {
+		value := t.make_prefix(.mul, field_sel)
+		t.a.nodes[int(value)].typ = variant
+		t.wrap_string_conversion(value, variant)
+	}
+	display := if variant.contains('.') { variant.all_after_last('.') } else { variant }
+	value_text = t.string_plus(t.string_plus(t.make_string_literal('${display}('), value_text),
+		t.make_string_literal(')'))
+	value_text = t.string_plus(t.string_plus(t.make_string_literal('${sum_display}('), value_text),
+		t.make_string_literal(')'))
+	mut then_stmts := []flat.NodeId{}
+	t.drain_pending(mut then_stmts)
+	then_stmts << t.make_expr_stmt(value_text)
+	cond := t.make_infix(.eq, tag, t.make_int_literal(t.sum_type_index(sum_name, variant)))
+	then_block := t.make_block(then_stmts)
+	else_expr := t.build_sum_str_chain(base, tag, sum_name, sum_display, variants, idx + 1)
+	else_block := t.make_block(arr1(t.make_expr_stmt(else_expr)))
+	start := t.a.children.len
+	t.a.children << cond
+	t.a.children << then_block
+	t.a.children << else_block
+	return t.a.add_node(flat.Node{
+		kind:           .if_expr
+		children_start: start
+		children_count: 3
+		typ:            'string'
+	})
 }
 
 fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ string, format string) flat.NodeId {
@@ -3408,7 +3554,8 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	}
 	if !isnil(t.tc) {
 		if resolved_method := t.tc.resolved_call_name(id) {
-			if t.is_known_fn_name(resolved_method) {
+			if !receiver_method_name_has_generic_placeholder(resolved_method)
+				&& t.is_known_fn_name(resolved_method) {
 				params := t.call_param_types(resolved_method)
 				if t.resolved_call_uses_receiver_type(base_id, base_type, params) {
 					args := t.transform_receiver_method_args_with_base(node, t.receiver_base_for_resolved_method(base_id,
@@ -3427,7 +3574,8 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	}
 	if !isnil(t.tc) {
 		if resolved_method := t.tc.resolved_call_name(id) {
-			if t.is_known_fn_name(resolved_method) {
+			if !receiver_method_name_has_generic_placeholder(resolved_method)
+				&& t.is_known_fn_name(resolved_method) {
 				params := t.call_param_types(resolved_method)
 				if !t.resolved_call_uses_receiver_type(base_id, base_type, params) {
 					return none
@@ -3694,6 +3842,27 @@ fn is_builtin_collection_resolved_call(name string) bool {
 		|| is_runtime_collection_helper_name(name) || is_raw_collection_method_name(name, 'map.')
 }
 
+fn receiver_method_name_has_generic_placeholder(name string) bool {
+	if !name.contains('.') {
+		return false
+	}
+	receiver := name.all_before_last('.')
+	if receiver.contains('[') {
+		for marker in ['T', 'U', 'K', 'V', 'A', 'B', 'C', 'X', 'Y', 'Z'] {
+			if receiver.contains('[${marker}]') || receiver.contains('[${marker},')
+				|| receiver.contains(', ${marker}]') || receiver.contains(',${marker}]') {
+				return true
+			}
+		}
+	}
+	for part in receiver.split('_') {
+		if part in ['T', 'U', 'K', 'V', 'A', 'B', 'C', 'X', 'Y', 'Z'] {
+			return true
+		}
+	}
+	return false
+}
+
 fn is_raw_collection_method_name(name string, prefix string) bool {
 	if !name.starts_with(prefix) {
 		return false
@@ -3854,16 +4023,8 @@ fn (t &Transformer) receiver_method_candidates(receiver_type string, method stri
 	}
 	mut candidates := []string{}
 	candidates << '${clean_type}.${method}'
-	base, args, ok := generic_app_parts(clean_type)
-	if ok {
-		suffix := generic_type_suffixes(args)
-		candidates << '${base}_${suffix}.${method}'
-		if base.contains('.') {
-			base_mod := base.all_before_last('.')
-			base_short := base.all_after_last('.')
-			candidates << '${base_short}_${suffix}.${method}'
-			candidates << '${base_mod}.${base_short}_${suffix}.${method}'
-		}
+	for receiver in generic_receiver_flat_type_variants(clean_type) {
+		candidates << '${receiver}.${method}'
 	}
 	if clean_type.starts_with('[]') {
 		elem_type := clean_type[2..]
@@ -3881,6 +4042,26 @@ fn (t &Transformer) receiver_method_candidates(receiver_type string, method stri
 		candidates << '${t.cur_module}.${clean_type}.${method}'
 	}
 	return candidates
+}
+
+fn generic_receiver_flat_type_variants(receiver_type string) []string {
+	base, args, ok := generic_app_parts(receiver_type)
+	if !ok || args.len == 0 {
+		return []string{}
+	}
+	suffix := generic_type_suffixes(args)
+	if suffix.len == 0 {
+		return []string{}
+	}
+	mut receivers := []string{}
+	transform_push_receiver_candidate(mut receivers, '${base}_${suffix}')
+	if base.contains('.') {
+		short_base := base.all_after_last('.')
+		transform_push_receiver_candidate(mut receivers, '${short_base}_${suffix}')
+		transform_push_receiver_candidate(mut receivers,
+			'${base.all_before_last('.')}.${short_base}_${suffix}')
+	}
+	return receivers
 }
 
 fn (t &Transformer) resolve_fixed_array_dynamic_receiver_method(fixed_type string, method string) ?string {
@@ -4337,6 +4518,12 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) string 
 				if elem_type.starts_with('thread ') {
 					return '[]${elem_type[7..]}'
 				}
+			}
+			if clean_type == 'thread' {
+				return 'void'
+			}
+			if clean_type.starts_with('thread ') {
+				return clean_type[7..]
 			}
 		}
 		if fn_node.kind == .selector && fn_node.value in ['keys', 'values']

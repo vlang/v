@@ -5650,7 +5650,7 @@ fn (mut p Parser) declare_local_type_name(name string, scope string) string {
 }
 
 fn local_type_decl_name_for_scope(name string, scope string) string {
-	return '${name}__local_${local_type_scope_part(scope)}'
+	return '${name}@local@${local_type_scope_part(scope)}'
 }
 
 fn (mut p Parser) predeclare_local_type_names_in_block(open_brace_pos int) {

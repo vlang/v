@@ -210,6 +210,11 @@ fn (mut g FlatGen) collect_interface_impls() {
 	for name, _ in g.tc.structs {
 		struct_names << name
 	}
+	for name, _ in g.tc.type_aliases {
+		if name !in struct_names {
+			struct_names << name
+		}
+	}
 	struct_names.sort()
 	for iface in iface_names {
 		if c_name(iface) == 'IError' {
@@ -248,7 +253,7 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 		}
 	}
 	actual_clean := if actual is types.Pointer { actual.base_type } else { actual }
-	actual_base := if actual_clean is types.Alias { actual_clean.base_type } else { actual_clean }
+	actual_base := actual_clean
 	if actual_base is types.Interface {
 		return false
 	}

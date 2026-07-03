@@ -186,6 +186,9 @@ fn test_type_checker_reports_core_semantic_errors() {
 	run_bad(v3_bin, 'bad_interface_field',
 		'interface Named {\n\tname string\n}\nstruct Person {}\nfn takes_named(n Named) {}\nfn main() {\n\ttakes_named(Person{})\n}\n',
 		'cannot use `Person` as argument 1 to `takes_named`; expected `Named`')
+	alias_interface_out := run_good(v3_bin, 'alias_receiver_implements_interface',
+		"type Text = string\n\nfn (t Text) display() string {\n\treturn t\n}\n\ninterface Displayable {\n\tdisplay() string\n}\n\nfn print_displayable(ds ...Displayable) {\n\tfor d in ds {\n\t\tprintln(d.display())\n\t}\n}\n\nfn main() {\n\tprint_displayable(Text('test'), Text('hehe'))\n}\n")
+	assert alias_interface_out == 'test\nhehe'
 	run_bad(v3_bin, 'bad_sum_missing_shared_field',
 		'struct A {\n\tid int\n}\nstruct B {\n\tname string\n}\ntype Node = A | B\nfn main() {\n\tn := Node(A{\n\t\tid: 1\n\t})\n\t_ := n.id\n}\n',
 		'unknown field `id` on `Node`')
@@ -1187,4 +1190,18 @@ fn test_pr_review_codegen_batch_twentyseven() {
 	local_rows := run_good(v3_bin, 'good_fn_literal_local_struct_scope',
 		'fn main() {\n\tstruct Shared {\n\t\tn int\n\t}\n\tfirst := fn () int {\n\t\tstruct Row {\n\t\t\ta int\n\t\t}\n\t\ts := Shared{\n\t\t\tn: 10\n\t\t}\n\t\tr := Row{\n\t\t\ta: 1\n\t\t}\n\t\treturn s.n + r.a\n\t}\n\tsecond := fn () int {\n\t\tstruct Row {\n\t\t\tb int\n\t\t}\n\t\ts := Shared{\n\t\t\tn: 20\n\t\t}\n\t\tr := Row{\n\t\t\tb: 2\n\t\t}\n\t\treturn s.n + r.b\n\t}\n\tprintln(int_str(first() + second()))\n}\n')
 	assert local_rows == '33'
+}
+
+fn test_pr_review_codegen_batch_twentyeight() {
+	v3_bin := build_v3()
+	// `char` values passed through `...voidptr` use the same int-width storage as other small
+	// integer varargs, so callees that read `%c`/small-integer slots do not read past the value.
+	char_vararg := run_good(v3_bin, 'good_voidptr_variadic_char_promotes_to_int',
+		'fn sink(args ...voidptr) int {\n\treturn unsafe { *(&int(args[0])) }\n}\nfn main() {\n\tch := char(66)\n\tprintln(int_str(sink(ch)))\n}\n')
+	assert char_vararg == '66'
+	// A local type's synthesized name uses an internal marker, so a user-written top-level type
+	// that matched the old underscore-only spelling cannot overwrite the local declaration.
+	local_collision := run_good(v3_bin, 'good_local_type_name_avoids_user_collision',
+		'struct Row__local_make {\n\tglobal int\n}\nfn make() int {\n\tstruct Row {\n\t\tlocal int\n\t}\n\tlocal := Row{\n\t\tlocal: 3\n\t}\n\tglobal := Row__local_make{\n\t\tglobal: 4\n\t}\n\treturn local.local + global.global\n}\nfn main() {\n\tprintln(int_str(make()))\n}\n')
+	assert local_collision == '7'
 }

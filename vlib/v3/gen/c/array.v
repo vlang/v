@@ -149,7 +149,7 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 	}
 	// A fixed-array value (e.g. `[4]u8` color) is sometimes represented as a dynamic
 	// `Array`; a C fixed-array parameter decays to `elem*`, so pass the data pointer.
-	if g.tc.resolve_type(id) is types.Array {
+	if types.unwrap_pointer(g.usable_expr_type(id)) is types.Array {
 		elem_ct := g.tc.c_type(arr.elem_type)
 		g.write('(${elem_ct}*)(')
 		g.gen_expr(id)
