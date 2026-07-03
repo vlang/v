@@ -1798,6 +1798,12 @@ fn (mut t Transformer) make_struct_field_eq_expr(lhs flat.NodeId, rhs flat.NodeI
 
 fn (mut t Transformer) make_struct_field_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, struct_type string, seen []string) ?flat.NodeId {
 	info := t.lookup_struct_info(struct_type) or { return none }
+	for field in info.fields {
+		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
+		if t.struct_field_eq_type_has_interface_value(field_type) {
+			return none
+		}
+	}
 	mut next_seen := seen.clone()
 	next_seen << struct_type
 	mut eq := flat.empty_node
@@ -1816,6 +1822,17 @@ fn (mut t Transformer) make_struct_field_eq_expr_with_seen(lhs flat.NodeId, rhs 
 		return t.make_bool_literal(true)
 	}
 	return eq
+}
+
+fn (t &Transformer) struct_field_eq_type_has_interface_value(typ string) bool {
+	mut clean := t.normalize_type_alias(typ).trim_space()
+	if clean.len == 0 || clean.starts_with('&') {
+		return false
+	}
+	if clean.len > 1 && (clean[0] == `?` || clean[0] == `!`) {
+		return t.struct_field_eq_type_has_interface_value(clean[1..])
+	}
+	return t.resolve_interface_type_name(clean).len > 0
 }
 
 // selector_field_type supports selector field type handling for Transformer.
