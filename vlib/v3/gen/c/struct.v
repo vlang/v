@@ -41,7 +41,33 @@ fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Ty
 	if g.gen_callback_fn_value_for_expected_type(value_id, expected) {
 		return
 	}
+	if g.gen_pointer_value_struct_field(value_id, expected) {
+		return
+	}
 	g.gen_expr_with_expected_type(value_id, expected)
+}
+
+fn (mut g FlatGen) gen_pointer_value_struct_field(value_id flat.NodeId, expected types.Type) bool {
+	actual := g.tc.resolve_type(value_id)
+	expected0 := if expected is types.Alias { expected.base_type } else { expected }
+	if expected0 is types.Pointer {
+		return false
+	}
+	if actual is types.Pointer {
+		if g.type_names_match(actual.base_type, expected0) {
+			g.write('*(')
+			g.gen_expr(value_id)
+			g.write(')')
+			return true
+		}
+	}
+	if pointer_value_type_names_match(actual.name(), expected0.name()) {
+		g.write('*(')
+		g.gen_expr(value_id)
+		g.write(')')
+		return true
+	}
+	return false
 }
 
 fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_name string, field_name string, expected types.Type) {

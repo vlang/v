@@ -296,6 +296,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			receiver_name, receiver_struct := receiver_info(a, node)
 			collector.collect_calls(node, fn_info.module, imports, receiver_name, receiver_struct, mut
 				calls)
+			mut call_set := map[string]bool{}
+			for call in calls {
+				call_set[call] = true
+			}
 			initializer_refs.clear()
 			collector.collect_initializer_refs(node, fn_info.module, imports, mut initializer_refs)
 			for initializer_ref in initializer_refs {
@@ -319,7 +323,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 							eprintln('main: all_fns hit: "${callee}"')
 						}
 					}
-					add_safe_decl_alias(callee, callee_info, a, mut used)
+					add_safe_decl_alias(callee, callee_info, a, mut used, mut queue)
 				} else if callee in tc.fn_ret_types {
 					found_direct = true
 					if enqueue(callee, mut used, mut queue) {
@@ -337,11 +341,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 				if !found_direct {
 					short := callee.all_after_last('.')
-					if suffix_candidates := suffix_map[short] {
-						for candidate in suffix_candidates {
-							if candidate in fn_decls || candidate in tc.fn_ret_types {
-								if enqueue(candidate, mut used, mut queue) {
-									suffix_hits++
+					qcallee := qualify_fn(fn_info.module, callee)
+					if qcallee == callee || !call_set[qcallee] {
+						if suffix_candidates := suffix_map[short] {
+							for candidate in suffix_candidates {
+								if candidate in fn_decls || candidate in tc.fn_ret_types {
+									if enqueue(candidate, mut used, mut queue) {
+										suffix_hits++
+									}
 								}
 							}
 						}
@@ -365,9 +372,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					}
 					if impls := iface_impls[recv] {
 						for impl in impls {
-							impl_method := '${impl}.${method}'
+							impl_method := tc.concrete_method_signature_key(impl, method) or {
+								'${impl}.${method}'
+							}
 							enqueue(impl_method, mut used, mut queue)
-							short_impl := '${impl.all_after_last('.')}.${method}'
+							short_impl := '${impl_method.all_before_last('.').all_after_last('.')}.${method}'
 							if short_impl != impl_method {
 								enqueue(short_impl, mut used, mut queue)
 							}
@@ -562,7 +571,7 @@ fn fn_decl_key_is_exact_for_info(name string, decl_name string, module_name stri
 	return lowered != qname && name == lowered
 }
 
-fn add_safe_decl_alias(callee string, callee_info FnDeclInfo, a &flat.FlatAst, mut used map[string]bool) {
+fn add_safe_decl_alias(callee string, callee_info FnDeclInfo, a &flat.FlatAst, mut used map[string]bool, mut queue []string) {
 	alias := a.node(callee_info.node_id).value
 	if fn_decl_key_is_exact_for_info(callee, alias, callee_info.module) {
 		return
@@ -578,8 +587,8 @@ fn add_safe_decl_alias(callee string, callee_info FnDeclInfo, a &flat.FlatAst, m
 		aliases << lowered
 	}
 	for candidate in aliases {
-		if candidate != callee && candidate !in used {
-			used[candidate] = true
+		if candidate != callee {
+			enqueue(candidate, mut used, mut queue)
 		}
 	}
 }
@@ -652,7 +661,7 @@ fn enqueue_initializer_callee(callee string, fn_decls map[string]FnDeclInfo, a &
 	}
 	if callee_info := fn_decls[callee] {
 		enqueue(callee, mut used, mut queue)
-		add_safe_decl_alias(callee, callee_info, a, mut used)
+		add_safe_decl_alias(callee, callee_info, a, mut used, mut queue)
 	} else {
 		enqueue(callee, mut used, mut queue)
 	}
@@ -755,7 +764,7 @@ fn enqueue_top_level_calls(a &flat.FlatAst, collector CallCollector, fn_decls ma
 			for callee in calls {
 				if callee_info := fn_decls[callee] {
 					enqueue(callee, mut used, mut queue)
-					add_safe_decl_alias(callee, callee_info, a, mut used)
+					add_safe_decl_alias(callee, callee_info, a, mut used, mut queue)
 				} else {
 					enqueue(callee, mut used, mut queue)
 				}
@@ -1933,10 +1942,14 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 								}
 							}
 							if callee.value !in local_values {
-								calls << callee.value
 								qcallee := qualify_fn(cur_module, callee.value)
-								if qcallee != callee.value {
+								if qcallee != callee.value && c.is_known_fn_name(qcallee) {
 									calls << qcallee
+								} else {
+									calls << callee.value
+									if qcallee != callee.value {
+										calls << qcallee
+									}
 								}
 							}
 						} else if callee.kind == .selector && callee.value.len > 0 {
@@ -2103,6 +2116,13 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 		if child.children_count > 0 {
 			mut j := int(child.children_count) - 1
 			for j >= 0 {
+				if child.kind == .call && j == 0 {
+					if receiver_id := c.call_callee_receiver_expr(child) {
+						stack << receiver_id
+					}
+					j--
+					continue
+				}
 				if child.kind == .decl_assign && j % 2 == 0 {
 					j--
 					continue
@@ -2115,6 +2135,46 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 			}
 		}
 	}
+}
+
+fn (c &CallCollector) call_callee_receiver_expr(node &flat.Node) ?flat.NodeId {
+	if node.kind != .call || node.children_count == 0 {
+		return none
+	}
+	callee_id := c.a.child(node, 0)
+	if int(callee_id) < 0 {
+		return none
+	}
+	callee := c.a.node(callee_id)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return none
+	}
+	base_id := c.a.child(callee, 0)
+	if int(base_id) < 0 || !c.expr_contains_call(base_id) {
+		return none
+	}
+	return base_id
+}
+
+fn (c &CallCollector) expr_contains_call(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	mut stack := [id]
+	for stack.len > 0 {
+		cur_id := stack.pop()
+		node := c.a.node(cur_id)
+		if node.kind == .call {
+			return true
+		}
+		for i in 0 .. node.children_count {
+			child_id := c.a.child(node, i)
+			if int(child_id) >= 0 {
+				stack << child_id
+			}
+		}
+	}
+	return false
 }
 
 fn (c &CallCollector) collect_initializer_refs(node &flat.Node, cur_module string, imports map[string]string, mut refs []string) {
@@ -2156,6 +2216,10 @@ fn (c &CallCollector) collect_initializer_refs(node &flat.Node, cur_module strin
 		if child.children_count > 0 {
 			mut j := int(child.children_count) - 1
 			for j >= 0 {
+				if child.kind == .call && j == 0 {
+					j--
+					continue
+				}
 				if child.kind == .decl_assign && j % 2 == 0 {
 					j--
 					continue
@@ -3066,8 +3130,11 @@ fn markused_infer_alias_generic_type(param_text string, actual types.Type, gener
 		}
 		return
 	}
-	if clean in generic_params && actual is types.Alias {
-		inferred[clean] = actual.name
+	if clean in generic_params {
+		type_name := resolve_type_name(actual)
+		if type_name.len > 0 {
+			inferred[clean] = type_name
+		}
 	}
 }
 
@@ -3902,6 +3969,13 @@ fn (c &CallCollector) receiver_type_name(base_id flat.NodeId, cur_module string,
 	type_name := resolve_type_name(base_type)
 	if type_name.len > 0 {
 		return type_name
+	}
+	if base.kind == .index {
+		if elem_type := c.top_level_index_elem_type_name(base_id, cur_module, imports,
+			local_values, local_types)
+		{
+			return elem_type
+		}
 	}
 	if base.kind == .ident && base.value.len > 0 {
 		if local_type := local_types[base.value] {

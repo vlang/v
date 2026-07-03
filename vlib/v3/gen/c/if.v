@@ -288,7 +288,8 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 // gen_if_expr emits if expr output for c.
 fn (mut g FlatGen) gen_if_expr(node flat.Node) {
 	then_block := g.a.child_node(&node, 1)
-	mut needs_stmt_expr := then_block.children_count > 1
+	mut needs_stmt_expr := g.expected_expr_type is types.MultiReturn
+		|| then_block.children_count > 1
 	if !needs_stmt_expr && node.children_count > 2 {
 		else_node := g.a.child_node(&node, 2)
 		if else_node.kind == .block && else_node.children_count > 1 {
@@ -387,10 +388,15 @@ fn (g &FlatGen) multi_return_tail_parts(block &flat.Node, count int) ?MultiRetur
 	for i := int(block.children_count) - 1; i >= 0; i-- {
 		child_id := g.a.child(block, i)
 		child := g.a.nodes[int(child_id)]
-		if child.kind != .expr_stmt || child.children_count != 1 {
+		if child.kind != .expr_stmt || child.children_count == 0 {
 			break
 		}
-		values.prepend(g.a.child(&child, 0))
+		for j := int(child.children_count) - 1; j >= 0; j-- {
+			values.prepend(g.a.child(&child, j))
+			if values.len == count {
+				break
+			}
+		}
 		if values.len == count {
 			return MultiReturnTailParts{
 				prefix_count: i
@@ -412,9 +418,40 @@ fn (mut g FlatGen) gen_if_expr_multi_return_block(block &flat.Node, ret_type typ
 			g.write(', ')
 		}
 		g.write('.arg${i} = ')
-		g.gen_expr(value_id)
+		g.gen_expr_with_expected_type(value_id, ret_type.types[i])
 	}
 	g.writeln('};')
+	return true
+}
+
+fn (mut g FlatGen) gen_multi_return_block_expr(block &flat.Node, ret_type types.MultiReturn) bool {
+	parts := g.multi_return_tail_parts(block, ret_type.types.len) or { return false }
+	ct := g.tc.c_type(types.Type(ret_type))
+	if parts.prefix_count == 0 {
+		g.write('(${ct}){')
+		for i, value_id in parts.values {
+			if i > 0 {
+				g.write(', ')
+			}
+			g.write('.arg${i} = ')
+			g.gen_expr_with_expected_type(value_id, ret_type.types[i])
+		}
+		g.write('}')
+		return true
+	}
+	g.write('({')
+	for i in 0 .. parts.prefix_count {
+		g.gen_node(g.a.child(block, i))
+	}
+	g.write('${ct} _multi_ret = (${ct}){')
+	for i, value_id in parts.values {
+		if i > 0 {
+			g.write(', ')
+		}
+		g.write('.arg${i} = ')
+		g.gen_expr_with_expected_type(value_id, ret_type.types[i])
+	}
+	g.write('}; _multi_ret;})')
 	return true
 }
 

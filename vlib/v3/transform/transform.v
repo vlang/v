@@ -4625,7 +4625,12 @@ fn (t &Transformer) tuple_block_parts(block_id flat.NodeId, count int) ?TupleBlo
 		if child.kind != .expr_stmt || child.children_count == 0 {
 			break
 		}
-		values.prepend(t.a.child(&child, 0))
+		for j := int(child.children_count) - 1; j >= 0; j-- {
+			values.prepend(t.a.child(&child, j))
+			if values.len == count {
+				break
+			}
+		}
 		prefix_end = i
 		if values.len == count {
 			return TupleBlockParts{

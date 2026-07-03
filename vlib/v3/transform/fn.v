@@ -2141,6 +2141,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			}
 		}
 		parsed := t.tc.parse_type(clean_typ)
+		if parsed is types.MultiReturn {
+			return t.lower_multi_return_str(expr, parsed, clean_typ)
+		}
 		if parsed is types.Enum {
 			if method := t.enum_str_method_name(clean_typ) {
 				return t.make_call_typed(method, arr1(expr), 'string')
@@ -2276,13 +2279,33 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	}
 }
 
+// lower_multi_return_str formats a multi-return value as `(a, b, ...)`.
+fn (mut t Transformer) lower_multi_return_str(expr flat.NodeId, multi types.MultiReturn, typ string) flat.NodeId {
+	base := t.stable_transformed_expr_for_reuse(expr, typ, 'multi_ret_str')
+	mut result := t.make_string_literal('(')
+	for i, item in multi.types {
+		if i > 0 {
+			result = t.string_plus(result, t.make_string_literal(', '))
+		}
+		item_type := item.name()
+		mut item_str := t.wrap_string_conversion(t.make_selector(base, 'arg${i}', item_type),
+			item_type)
+		if item is types.String {
+			item_str = t.string_plus(t.string_plus(t.make_string_literal("'"), item_str),
+				t.make_string_literal("'"))
+		} else if item is types.Rune {
+			item_str = t.string_plus(t.string_plus(t.make_string_literal('`'), item_str),
+				t.make_string_literal('`'))
+		}
+		result = t.string_plus(result, item_str)
+	}
+	return t.string_plus(result, t.make_string_literal(')'))
+}
+
 fn (t &Transformer) stringify_aggregate_type_name(typ string) ?string {
 	clean := typ.trim_space()
 	if clean.len == 0 {
 		return none
-	}
-	if clean in t.structs || clean in t.sum_types {
-		return clean
 	}
 	if clean.contains('.') {
 		if !isnil(t.tc) && (clean in t.tc.structs || clean in t.tc.sum_types) {
@@ -2298,6 +2321,17 @@ fn (t &Transformer) stringify_aggregate_type_name(typ string) ?string {
 		if !isnil(t.tc) && (qname in t.tc.structs || qname in t.tc.sum_types) {
 			return qname
 		}
+	}
+	if qualified := t.qualified_types[clean] {
+		if qualified in t.structs || qualified in t.sum_types {
+			return qualified
+		}
+		if !isnil(t.tc) && (qualified in t.tc.structs || qualified in t.tc.sum_types) {
+			return qualified
+		}
+	}
+	if clean in t.structs || clean in t.sum_types {
+		return clean
 	}
 	if !isnil(t.tc) && (clean in t.tc.structs || clean in t.tc.sum_types) {
 		return clean

@@ -1049,9 +1049,11 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 	if clean[0] == `"` {
 		return true
 	}
-	return clean in ['<assert.h>', '<stdlib.h>', '<stdio.h>', '<math.h>', '<string.h>', '<limits.h>',
-		'<poll.h>', '<EGL/egl.h>', '<GL/gl.h>', '<GLES3/gl3.h>', '<GLES3/gl3ext.h>', '<X11/Xmd.h>',
-		'<X11/cursorfont.h>']
+	if c_headerless_system_include_is_handled(clean) {
+		return false
+	}
+	return clean in ['<assert.h>', '<EGL/egl.h>', '<GL/gl.h>', '<GLES3/gl3.h>', '<GLES3/gl3ext.h>',
+		'<X11/Xmd.h>', '<X11/cursorfont.h>']
 }
 
 fn c_preserved_system_include_declared_fns(include_arg string) []string {
@@ -2747,6 +2749,24 @@ fn (mut g FlatGen) gen_cast_from_mut_param_address(id flat.NodeId, ct string) bo
 	return true
 }
 
+fn (mut g FlatGen) gen_current_mut_param_address(id flat.NodeId) bool {
+	node := g.a.nodes[int(id)]
+	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+		return false
+	}
+	child_id := g.a.child(&node, 0)
+	child := g.a.nodes[int(child_id)]
+	if child.kind != .ident || !g.current_param_is_mut(child.value) {
+		return false
+	}
+	param_type := g.current_param_type(child.value) or { return false }
+	if param_type !is types.Pointer {
+		return false
+	}
+	g.write(c_name(child.value))
+	return true
+}
+
 fn (mut g FlatGen) gen_current_mut_param_value_read(id flat.NodeId, expected types.Type) bool {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
@@ -2780,6 +2800,12 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		g.expected_enum = expected.name
 	}
 	node := g.a.nodes[int(id)]
+	if g.is_ierror_type_name(expected.name()) && g.expr_is_error_call(id) {
+		g.gen_ierror_from_error_call(node)
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
 	if node.kind == .dump_expr {
 		if node.children_count > 0 {
 			g.gen_expr_with_expected_type(g.a.child(&node, 0), expected)
@@ -2789,6 +2815,19 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
+	}
+	if expected is types.MultiReturn && node.kind == .if_expr {
+		g.gen_if_expr_stmt(node)
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
+	if expected is types.MultiReturn && node.kind == .block {
+		if g.gen_multi_return_block_expr(&node, expected) {
+			g.expected_expr_type = old_expected
+			g.expected_enum = old_expected_enum
+			return
+		}
 	}
 	mut actual := g.usable_expr_type(id)
 	if node.kind == .ident {
@@ -4634,6 +4673,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 			if node.op == .amp && g.gen_amp_c_string_literal(child_id, child) {
 				return
+			} else if node.op == .amp && g.gen_current_mut_param_address(id) {
+				return
 			} else if node.op == .amp && node.typ.len > 0
 				&& g.gen_sum_pointer_value_expr(id, g.tc.parse_type(node.typ)) {
 				return
@@ -4860,12 +4901,25 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.gen_expr(cast_arg_id)
 				g.write(')->${c_name(node.value)}')
 			} else if base.kind == .cast_expr && base.children_count > 0
-				&& (base.value.starts_with('C.') || base.value.contains('__')) {
+				&& (base.value.starts_with('C.') || base.value.starts_with('&C.')
+				|| (base.value.contains('__') && !base.value.starts_with('&'))) {
 				cast_child_id := g.a.child(&base, 0)
-				cast_name := if base.value.starts_with('C.') { base.value[2..] } else { base.value }
-				g.write('((${c_name(cast_name)}*)')
-				g.gen_expr(cast_child_id)
-				g.write(')->${c_name(node.value)}')
+				cast_type := g.tc.parse_type(base.value)
+				if cast_type is types.Pointer {
+					ct := g.cast_c_type(cast_type)
+					g.write('((${ct})')
+					g.gen_expr(cast_child_id)
+					g.write(')->${c_name(node.value)}')
+				} else {
+					cast_name := if base.value.starts_with('C.') {
+						base.value[2..]
+					} else {
+						base.value
+					}
+					g.write('((${c_name(cast_name)}*)')
+					g.gen_expr(cast_child_id)
+					g.write(')->${c_name(node.value)}')
+				}
 			} else if base.kind == .cast_expr && base.children_count > 0 {
 				needs_paren := base.kind !in [.ident, .selector]
 				if needs_paren {
@@ -5280,6 +5334,25 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					} else {
 						g.gen_expr(expr_id)
 						g.write('.${field}')
+					}
+				}
+			} else if clean is types.Interface || g.is_ierror_type_name(types.Type(clean).name()) {
+				target := g.tc.parse_type(node.value)
+				if target is types.Pointer {
+					g.write('(${g.tc.c_type(target)})')
+					g.gen_expr(expr_id)
+					if expr_type.is_pointer() {
+						g.write('->_object')
+					} else {
+						g.write('._object')
+					}
+				} else {
+					g.write('(*(${g.tc.c_type(target)}*)')
+					g.gen_expr(expr_id)
+					if expr_type.is_pointer() {
+						g.write('->_object)')
+					} else {
+						g.write('._object)')
 					}
 				}
 			} else {

@@ -633,6 +633,15 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 						g.writeln('}};')
 						return
 					}
+					if base is types.MultiReturn {
+						expr_type := g.usable_expr_type(ret_id)
+						if ret_node.kind in [.block, .if_expr] || expr_type is types.MultiReturn {
+							g.write('return (${ct}){.ok = true, .value = ')
+							g.gen_expr_with_expected_type(ret_id, base)
+							g.writeln('};')
+							return
+						}
+					}
 					if ret_node.kind == .none_expr {
 						g.writeln('return (${ct}){.ok = false};')
 						return
@@ -715,22 +724,21 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 								if i > 0 {
 									g.write(', ')
 								}
-								g.gen_expr(g.a.child(&node, i))
+								child_id := g.a.child(&node, i)
+								if i < ret_types.len
+									&& g.gen_pointer_value_return_expr(child_id, ret_types[i]) {
+								} else if i < ret_types.len {
+									g.gen_expr_with_expected_type(child_id, ret_types[i])
+								} else {
+									g.gen_expr(child_id)
+								}
 							}
 							g.writeln('};')
 						}
 					} else {
-						expr_type := g.usable_expr_type(ret_id)
-						if expr_type is types.MultiReturn {
-							g.write('return ')
-							g.gen_expr(ret_id)
-							g.writeln(';')
-						} else {
-							ct := g.tc.c_type(g.cur_fn_ret)
-							g.write('return (${ct}){')
-							g.gen_expr(ret_id)
-							g.writeln('};')
-						}
+						g.write('return ')
+						g.gen_expr_with_expected_type(ret_id, g.cur_fn_ret)
+						g.writeln(';')
 					}
 				} else if ret_node.kind == .assoc {
 					g.gen_return_assoc(ret_node)
@@ -757,6 +765,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 						if !g.gen_interface_value_expr(ret_id, g.cur_fn_ret) {
 							g.gen_expr(ret_id)
 						}
+					} else if g.gen_pointer_value_return_expr(ret_id, g.cur_fn_ret) {
 					} else if !g.gen_heap_local_address_expr(ret_id, g.cur_fn_ret)
 						&& !g.gen_sum_constructor_call_with_expected_type(ret_id, ret_node, g.cur_fn_ret) {
 						g.gen_expr_with_expected_type(ret_id, g.cur_fn_ret)
@@ -855,6 +864,40 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 // has_pending_defers reports whether has pending defers applies in c.
 fn (g &FlatGen) has_pending_defers() bool {
 	return g.defers.len > 0 || g.fn_defers.len > 0
+}
+
+fn (mut g FlatGen) gen_pointer_value_return_expr(ret_id flat.NodeId, expected types.Type) bool {
+	actual := g.usable_expr_type(ret_id)
+	expected0 := if expected is types.Alias { expected.base_type } else { expected }
+	if expected0 is types.Pointer {
+		return false
+	}
+	if actual is types.Pointer {
+		if g.type_names_match(actual.base_type, expected0) {
+			g.write('*(')
+			g.gen_expr(ret_id)
+			g.write(')')
+			return true
+		}
+	}
+	if pointer_value_type_names_match(actual.name(), expected0.name()) {
+		g.write('*(')
+		g.gen_expr(ret_id)
+		g.write(')')
+		return true
+	}
+	return false
+}
+
+fn pointer_value_type_names_match(actual string, expected string) bool {
+	if !actual.starts_with('&') {
+		return false
+	}
+	clean_actual := actual[1..]
+	if clean_actual == expected {
+		return true
+	}
+	return clean_actual.all_after_last('.') == expected.all_after_last('.')
 }
 
 // gen_return_with_defers emits return with defers output for c.
@@ -1054,6 +1097,13 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 			}
 			return '(${ct}){.ok = true, .value = (${base_ct}){${parts.join(', ')}}}'
 		}
+		if base is types.MultiReturn {
+			expr_type := g.usable_expr_type(ret_id)
+			if ret_node.kind in [.block, .if_expr] || expr_type is types.MultiReturn {
+				return '(${ct}){.ok = true, .value = ${g.expr_to_string_with_expected_type(ret_id,
+					base)}}'
+			}
+		}
 		if ret_node.kind == .none_expr {
 			return '(${ct}){.ok = false}'
 		}
@@ -1123,11 +1173,7 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 			}
 			return '(${ct}){${parts.join(', ')}}'
 		}
-		expr_type := g.usable_expr_type(ret_id)
-		if expr_type is types.MultiReturn {
-			return g.expr_to_string(ret_id)
-		}
-		return '(${ct}){${g.expr_to_string(ret_id)}}'
+		return g.expr_to_string_with_expected_type(ret_id, g.cur_fn_ret)
 	}
 	if g.cur_fn_ret is types.Interface {
 		// Box the concrete value the same way the direct return path does, so a deferred return

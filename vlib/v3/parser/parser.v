@@ -1099,8 +1099,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	mut is_generic := false
 	mut generic_params := []string{}
 	if p.tok == .lsbr {
-		is_generic = true
 		generic_params = p.parse_generic_param_names()
+		is_generic = generic_params.len > 0
 	}
 	// implements clause
 	mut implements_types := []string{}
@@ -3342,6 +3342,10 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 			typ:   typ
 		})
 	}
+	if p.tok == .name && p.lit == 'map' && p.peek() == .lsbr {
+		typ := p.parse_type_name()
+		return p.a.add_val(.ident, typ)
+	}
 	if p.tok == .name && p.peek() == .dot {
 		mod_name := p.lit
 		p.next()
@@ -3800,6 +3804,12 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 		}
 		// index / generic
 		if p.tok == .lsbr {
+			base_type_name := p.resolve_local_type_name(p.type_expr_name(lhs))
+			if type_name_can_init(base_type_name) && p.current_generic_suffix_followed_by_lcbr() {
+				suffix := p.parse_type_generic_suffix()
+				lhs = p.struct_init(p.resolve_local_type_name(base_type_name + suffix))
+				continue
+			}
 			lhs = p.index_expr(lhs)
 			continue
 		}
@@ -4501,6 +4511,10 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					children_start: p.add_child(id)
 					children_count: 1
 				})
+			} else if p.tok == .name && p.lit == 'C' && p.peek() == .dot {
+				if cast := p.pointer_cast_expr_from_current_amp() {
+					return cast
+				}
 			} else if p.tok == .lsbr && p.peek() == .rsbr {
 				type_name := '&' + p.parse_type_name()
 				if p.tok == .lpar {
@@ -4664,6 +4678,39 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return p.a.add(flat.NodeKind.empty)
 		}
 	}
+}
+
+fn (mut p Parser) pointer_cast_expr_from_current_amp() ?flat.NodeId {
+	saved_s := p.s
+	saved_tok := p.tok
+	saved_lit := p.lit
+	saved_tok_pos := p.tok_pos
+	saved_peek_tok := p.peek_tok
+	saved_peek_lit := p.peek_lit
+	saved_peek_pos := p.peek_pos
+	saved_has_peek := p.has_peek
+	type_name := '&' + p.parse_type_name()
+	if type_name.len > 1 && p.tok == .lpar {
+		p.next()
+		inner := p.expr(.lowest)
+		p.check(.rpar)
+		cstart := p.add_child(inner)
+		return p.a.add_node(flat.Node{
+			kind:           .cast_expr
+			value:          type_name
+			children_start: cstart
+			children_count: 1
+		})
+	}
+	p.s = saved_s
+	p.tok = saved_tok
+	p.lit = saved_lit
+	p.tok_pos = saved_tok_pos
+	p.peek_tok = saved_peek_tok
+	p.peek_lit = saved_peek_lit
+	p.peek_pos = saved_peek_pos
+	p.has_peek = saved_has_peek
+	return none
 }
 
 fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
@@ -4880,9 +4927,42 @@ fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
 fn (p &Parser) generic_struct_init_type_name(id flat.NodeId) ?string {
 	type_name := p.resolve_local_type_name(p.type_expr_name(id))
 	if !generic_type_name_can_init(type_name) {
+		if p.index_expr_is_lifetime_erased_type_name(id) && type_name_can_init(type_name) {
+			return type_name
+		}
 		return none
 	}
 	return type_name
+}
+
+fn (p &Parser) index_expr_is_lifetime_erased_type_name(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := p.a.nodes[int(id)]
+	if node.kind != .index || node.children_count < 2 || node.value == 'range' {
+		return false
+	}
+	mut saw_lifetime_arg := false
+	for i in 1 .. node.children_count {
+		child := p.a.child(&node, i)
+		if p.type_expr_is_lifetime_arg(child) {
+			saw_lifetime_arg = true
+			continue
+		}
+		if p.type_expr_name(child).len > 0 {
+			return false
+		}
+	}
+	return saw_lifetime_arg
+}
+
+fn (p &Parser) type_expr_is_lifetime_arg(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := p.a.nodes[int(id)]
+	return node.kind == .prefix && node.op == .xor && node.children_count == 1
 }
 
 fn (p &Parser) type_expr_name(id flat.NodeId) string {
@@ -4914,11 +4994,18 @@ fn (p &Parser) type_expr_name(id flat.NodeId) string {
 			}
 			mut args := []string{}
 			for i in 1 .. node.children_count {
-				arg := p.resolve_local_type_name(p.type_expr_name(p.a.child(&node, i)))
+				child_id := p.a.child(&node, i)
+				if p.type_expr_is_lifetime_arg(child_id) {
+					continue
+				}
+				arg := p.resolve_local_type_name(p.type_expr_name(child_id))
 				if arg.len == 0 {
 					return ''
 				}
 				args << arg
+			}
+			if args.len == 0 {
+				return base
 			}
 			return '${base}[${args.join(', ')}]'
 		}
@@ -4949,6 +5036,14 @@ fn (p &Parser) type_expr_name(id flat.NodeId) string {
 
 fn generic_type_name_can_init(type_name string) bool {
 	if !type_name.contains('[') {
+		return false
+	}
+	base := type_name.all_before('[')
+	return type_name_can_init(base)
+}
+
+fn type_name_can_init(type_name string) bool {
+	if type_name.len == 0 {
 		return false
 	}
 	base := type_name.all_before('[')
@@ -5552,6 +5647,32 @@ fn (mut p Parser) current_lbr_starts_array_type() bool {
 		return false
 	}
 	return p.lbr_starts_array_type_from_offset(p.s.offset)
+}
+
+fn (mut p Parser) current_generic_suffix_followed_by_lcbr() bool {
+	if p.tok != .lsbr {
+		return false
+	}
+	mut idx := p.s.offset
+	mut depth := 1
+	for idx < p.s.src.len {
+		c := p.s.src[idx]
+		if c == `[` {
+			depth++
+		} else if c == `]` {
+			depth--
+			if depth == 0 {
+				idx++
+				for idx < p.s.src.len && (p.s.src[idx] == ` ` || p.s.src[idx] == `\t`
+					|| p.s.src[idx] == `\n` || p.s.src[idx] == `\r`) {
+					idx++
+				}
+				return idx < p.s.src.len && p.s.src[idx] == `{`
+			}
+		}
+		idx++
+	}
+	return false
 }
 
 fn (mut p Parser) lbr_starts_array_type_from_offset(offset int) bool {
