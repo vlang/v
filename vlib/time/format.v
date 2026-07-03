@@ -736,17 +736,18 @@ pub fn (t Time) http_header_string() string {
 	return buf.bytestr()
 }
 
-// http_header_len is the byte length of an HTTP-date (RFC 9110 IMF-fixdate).
+// http_date_len is the byte length of an HTTP-date value (RFC 9110 IMF-fixdate),
+// e.g. "Sun, 06 Nov 1994 08:49:37 GMT".
 pub const http_date_len = 29
 
 // write_http_header writes the 29-byte HTTP-date ("Sun, 06 Nov 1994 08:49:37 GMT",
 // RFC 9110 IMF-fixdate) at dst, which may point into a fixed array or a dynamic
 // array's data, at any offset. dst_len is the number of writable bytes at dst;
-// an error is returned when it is less than http_header_len, so a caller cannot
+// an error is returned when it is less than http_date_len, so a caller cannot
 // silently overrun its buffer. No allocation on the success path.
 @[unsafe]
 pub fn (t Time) write_http_header(dst &u8, dst_len int) ! {
-	if dst_len < http_header_len {
+	if dst_len < http_date_len {
 		return error('time.write_http_header: dst_len must be >= 29')
 	}
 	day_str := long_days[iclamp(0, t.day_of_week() - 1, 6)] // read in place: no substr
@@ -783,7 +784,7 @@ pub fn (t Time) write_http_header(dst &u8, dst_len int) ! {
 // the next call. No allocation on the success path.
 @[unsafe]
 pub fn update_http_header(dst &u8, dst_len int, last_unix i64, now_unix i64) ! {
-	if dst_len < http_header_len {
+	if dst_len < http_date_len {
 		return error('time.update_http_header: dst_len must be >= 29')
 	}
 	if now_unix == last_unix {
@@ -818,7 +819,7 @@ fn write_2_digits(dst &u8, v int) {
 pub fn (t Time) push_to_http_header(mut buffer []u8) {
 	mut buf := [29]u8{}
 	unsafe {
-		t.write_http_header(&buf[0], 29) or {} // 29 >= http_header_len: cannot fail
+		t.write_http_header(&buf[0], 29) or {} // 29 >= http_date_len: cannot fail
 		buffer.push_many(&buf[0], 29)
 	}
 }
