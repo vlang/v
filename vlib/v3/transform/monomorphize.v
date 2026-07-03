@@ -442,7 +442,7 @@ fn (t &Transformer) needs_generic_struct_method_specialization(decls map[string]
 	return false
 }
 
-fn (t &Transformer) generic_struct_method_needed_for_interface(spec string, method string) bool {
+fn (mut t Transformer) generic_struct_method_needed_for_interface(spec string, method string) bool {
 	if isnil(t.tc) || spec.len == 0 || method.len == 0 {
 		return false
 	}
@@ -450,11 +450,116 @@ fn (t &Transformer) generic_struct_method_needed_for_interface(spec string, meth
 		if method !in t.tc.interface_abstract_method_names(iface_name) {
 			continue
 		}
-		if t.tc.named_type_implements_interface(spec, iface_name) {
+		if !t.tc.named_type_implements_interface(spec, iface_name) {
+			continue
+		}
+		if !t.has_used_fn_filter()
+			|| (t.interface_dispatch_method_used(iface_name, method)
+			&& t.interface_boxed_type_used(iface_name, spec)) {
 			return true
 		}
 	}
 	return false
+}
+
+fn (t &Transformer) interface_dispatch_method_used(iface_name string, method string) bool {
+	name := '${iface_name}.${method}'
+	if t.used_interface_dispatch_key(name) {
+		return true
+	}
+	if decl_key := t.tc.interface_method_signature_key(iface_name, method) {
+		if decl_key != name && t.used_interface_dispatch_key(decl_key) {
+			return true
+		}
+		decl_short_name := '${decl_key.all_before_last('.').all_after_last('.')}.${method}'
+		if decl_short_name != decl_key && t.interface_dispatch_short_name_allowed(iface_name)
+			&& t.used_interface_dispatch_key(decl_short_name) {
+			return true
+		}
+	}
+	for alias in t.interface_alias_names(iface_name) {
+		alias_name := '${alias}.${method}'
+		if t.used_interface_dispatch_key(alias_name) {
+			return true
+		}
+		short_alias_name := '${alias.all_after_last('.')}.${method}'
+		if short_alias_name != alias_name && t.interface_dispatch_short_name_allowed(alias)
+			&& t.used_interface_dispatch_key(short_alias_name) {
+			return true
+		}
+	}
+	short_name := '${iface_name.all_after_last('.')}.${method}'
+	return short_name != name && t.interface_dispatch_short_name_allowed(iface_name)
+		&& t.used_interface_dispatch_key(short_name)
+}
+
+fn (t &Transformer) interface_alias_names(iface_name string) []string {
+	mut aliases := []string{}
+	for alias, target in t.tc.type_aliases {
+		qtarget := t.tc.qualify_name(target)
+		if target == iface_name || qtarget == iface_name {
+			aliases << alias
+		}
+	}
+	return aliases
+}
+
+fn (t &Transformer) used_interface_dispatch_key(name string) bool {
+	return t.used_fn_contains_name(name) || t.used_fn_contains_name(c_name(name))
+}
+
+fn (t &Transformer) interface_dispatch_short_name_allowed(iface_name string) bool {
+	return !iface_name.contains('.')
+}
+
+fn (mut t Transformer) interface_boxed_type_used(iface_name string, concrete_type string) bool {
+	t.collect_interface_boxed_types()
+	return t.interface_boxed_types[interface_boxed_type_key(iface_name, concrete_type)]
+		|| t.interface_boxed_types[interface_boxed_type_key(iface_name, c_name(concrete_type))]
+}
+
+fn (mut t Transformer) collect_interface_boxed_types() {
+	if t.interface_boxed_types_done || isnil(t.tc) {
+		return
+	}
+	t.interface_boxed_types_done = true
+	for node in t.a.nodes {
+		if node.kind != .struct_init || node.children_count == 0 {
+			continue
+		}
+		iface_name := t.interface_literal_name(node.value) or { continue }
+		for i in 0 .. node.children_count {
+			field := t.a.child_node(&node, i)
+			if field.kind != .field_init || field.value != '_object' {
+				continue
+			}
+			concrete_type := if field.typ.starts_with('&') { field.typ[1..] } else { field.typ }
+			t.mark_interface_boxed_type(iface_name, concrete_type)
+		}
+	}
+}
+
+fn (t &Transformer) interface_literal_name(name string) ?string {
+	if name in t.tc.interface_names {
+		return name
+	}
+	qname := t.tc.qualify_name(name)
+	if qname in t.tc.interface_names {
+		return qname
+	}
+	return none
+}
+
+fn (mut t Transformer) mark_interface_boxed_type(iface_name string, concrete_type string) {
+	if iface_name.len == 0 || concrete_type.len == 0 {
+		return
+	}
+	t.interface_boxed_types[interface_boxed_type_key(iface_name, concrete_type)] = true
+	t.interface_boxed_types[interface_boxed_type_key(iface_name, c_name(concrete_type))] = true
+}
+
+fn interface_boxed_type_key(iface_name string, concrete_type string) string {
+	return '${iface_name}\n${concrete_type}'
 }
 
 fn (mut t Transformer) materialize_generic_structs() {

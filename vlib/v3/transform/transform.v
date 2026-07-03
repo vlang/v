@@ -94,6 +94,8 @@ mut:
 	struct_field_type_cache      &LookupCache = unsafe { nil }
 	variant_short_name_cache     &LookupCache = unsafe { nil }
 	used_fns                     map[string]bool
+	interface_boxed_types        map[string]bool
+	interface_boxed_types_done   bool
 	// used_struct_operator_fns holds the callee names of direct calls seen during
 	// monomorphize. Infix operators on generic instances are lowered to direct calls
 	// (`Vec_int__plus(a, b)`) before this pass, so an operator overload is specialized for
@@ -350,6 +352,7 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		generic_call_spec_misses:         map[int]bool{}
 		sum_variant_names:                map[string]bool{}
 		used_fns:                         used_fns.clone()
+		interface_boxed_types:            map[string]bool{}
 	}
 }
 

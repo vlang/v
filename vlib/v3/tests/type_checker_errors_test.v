@@ -1154,6 +1154,12 @@ fn test_pr_review_codegen_batch_twentytwo() {
 	dead := run_good(v3_bin, 'good_dead_generic_method_value_not_specialized',
 		'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) doubled() T {\n\treturn b.v + b.v\n}\nstruct Pair {\n\ta int\n}\nfn run_int(cb fn () int) int {\n\treturn cb()\n}\nfn run_pair(cb fn () Pair) Pair {\n\treturn cb()\n}\nfn dead_fn() {\n\tp := Box[Pair]{\n\t\tv: Pair{\n\t\t\ta: 1\n\t\t}\n\t}\n\t_ := run_pair(p.doubled)\n}\nfn main() {\n\tb := Box[int]{\n\t\tv: 5\n\t}\n\tprintln(int_str(run_int(b.doubled)))\n}\n')
 	assert dead == '10'
+	// An unused interface must not force every structurally matching generic receiver method to
+	// specialize: `Box[NoPlus].run` satisfies `Runner.run`, but no value is boxed as `Runner` and
+	// the method body is invalid for `NoPlus`.
+	unused_iface := run_good(v3_bin, 'good_unused_interface_no_generic_method_specialization',
+		"interface Runner {\n\trun() int\n}\nstruct Box[T] {\n\tv T\n}\nfn (b Box[T]) run() int {\n\treturn b.v + b.v\n}\nstruct NoPlus {\n\tvalue int\n}\nfn main() {\n\tb := Box[NoPlus]{\n\t\tv: NoPlus{\n\t\t\tvalue: 1\n\t\t}\n\t}\n\t_ = b\n\tprintln('ok')\n}\n")
+	assert unused_iface == 'ok'
 	// A reachable generic method value of any instance still specializes correctly.
 	live := run_good(v3_bin, 'good_reachable_generic_method_value_specialized',
 		'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) first() T {\n\treturn b.v\n}\nstruct Pair {\n\ta int\n}\nfn run_pair(cb fn () Pair) Pair {\n\treturn cb()\n}\nfn main() {\n\tp := Box[Pair]{\n\t\tv: Pair{\n\t\t\ta: 7\n\t\t}\n\t}\n\tr := run_pair(p.first)\n\tprintln(int_str(r.a))\n}\n')
