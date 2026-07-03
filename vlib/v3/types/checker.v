@@ -517,8 +517,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 		}
 	}
 	// Pass 1: collect type-level names (aliases, enums, sum types)
-	mut c_struct_decl_sigs := map[string]string{}
-	for node_idx, node in a.nodes {
+	for node in a.nodes {
 		match node.kind {
 			.file {
 				tc.enter_file(node.value)
@@ -548,24 +547,6 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 			}
 			.struct_decl {
 				qname := tc.qualify_name(node.value)
-				if qname.starts_with('C.') {
-					c_struct_key := qname
-					c_struct_sig := tc.c_struct_decl_signature(a, node)
-					if c_struct_key in c_struct_decl_sigs {
-						existing_sig := c_struct_decl_sigs[c_struct_key]
-						if !c_struct_decl_signatures_compatible(existing_sig, c_struct_sig) {
-							tc.record_error_unfiltered(.duplicate_decl,
-								'cannot redeclare C struct `${qname}`', flat.NodeId(node_idx))
-						}
-						existing_fields := c_struct_decl_signature_field_count(existing_sig)
-						current_fields := c_struct_decl_signature_field_count(c_struct_sig)
-						if current_fields > existing_fields {
-							c_struct_decl_sigs[c_struct_key] = c_struct_sig
-						}
-					} else {
-						c_struct_decl_sigs[c_struct_key] = c_struct_sig
-					}
-				}
 				if qname !in tc.structs {
 					tc.structs[qname] = []StructField{}
 				}
@@ -612,6 +593,8 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	}
 	// Pass 2: collect struct fields, function signatures (type aliases now available)
 	tc.type_cache.parse_enabled = true
+	tc.cur_module = ''
+	tc.check_c_struct_redeclarations(a)
 	tc.cur_module = ''
 	for node in a.nodes {
 		match node.kind {
@@ -802,6 +785,42 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.build_const_suffixes()
 	$if ownership ? {
 		tc.ownership_after_collect()
+	}
+}
+
+fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
+	mut c_struct_decl_sigs := map[string]string{}
+	for node_idx, node in a.nodes {
+		match node.kind {
+			.file {
+				tc.enter_file(node.value)
+			}
+			.module_decl {
+				tc.enter_module(node.value)
+			}
+			.struct_decl {
+				qname := tc.qualify_name(node.value)
+				if !qname.starts_with('C.') {
+					continue
+				}
+				c_struct_sig := tc.c_struct_decl_signature(a, node)
+				if qname in c_struct_decl_sigs {
+					existing_sig := c_struct_decl_sigs[qname]
+					if !c_struct_decl_signatures_compatible(existing_sig, c_struct_sig) {
+						tc.record_error_unfiltered(.duplicate_decl,
+							'cannot redeclare C struct `${qname}`', flat.NodeId(node_idx))
+					}
+					existing_fields := c_struct_decl_signature_field_count(existing_sig)
+					current_fields := c_struct_decl_signature_field_count(c_struct_sig)
+					if current_fields > existing_fields {
+						c_struct_decl_sigs[qname] = c_struct_sig
+					}
+				} else {
+					c_struct_decl_sigs[qname] = c_struct_sig
+				}
+			}
+			else {}
+		}
 	}
 }
 

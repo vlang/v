@@ -60,6 +60,11 @@ fn test_c_struct_redeclaration_checks_field_signature() {
 	assert alias_good.exit_code == 0, alias_good.output
 	assert !alias_good.output.contains('C compilation failed'), alias_good.output
 
+	late_alias_good := run_v3_source(v3_bin, 'good_c_struct_late_alias_field_redeclaration',
+		'struct C.LateAlias {\n\tx MyInt\n}\n\ntype MyInt = int\n\nstruct C.LateAlias {\n\tx int\n}\n\nfn main() {}\n')
+	assert late_alias_good.exit_code == 0, late_alias_good.output
+	assert !late_alias_good.output.contains('C compilation failed'), late_alias_good.output
+
 	cross_file_bad := run_v3_project(v3_bin, 'bad_c_struct_cross_file_redeclaration', {
 		'a.v': 'module main\n\nstruct C.Split {\n\tx int\n}\n\nfn main() {}\n'
 		'b.v': 'module main\n\nstruct C.Split {\n\tx string\n}\n'
