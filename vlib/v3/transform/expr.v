@@ -22,6 +22,9 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 	rhs_raw_type := t.node_type(rhs_id)
 	lhs_clean_type := t.normalize_type_alias(lhs_raw_type)
 	rhs_clean_type := t.normalize_type_alias(rhs_raw_type)
+	if _ := t.operator_alias_type_for_operand(lhs_id, node.op) {
+		return none
+	}
 	lhs_is_string_ptr := t.equality_expr_is_string_pointer(lhs_id, lhs_clean_type)
 	rhs_is_string_ptr := t.equality_expr_is_string_pointer(rhs_id, rhs_clean_type)
 	if node.op in [.plus, .eq, .ne] && (lhs_is_string_ptr || rhs_is_string_ptr) {
@@ -116,6 +119,9 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	lhs_is_array_ptr := t.equality_type_is_array_pointer(lhs_raw_type)
 	rhs_is_array_ptr := t.equality_type_is_array_pointer(rhs_raw_type)
 	if lhs_is_array_ptr && rhs_is_array_ptr {
+		return none
+	}
+	if _ := t.operator_alias_type_for_operand(lhs_id, node.op) {
 		return none
 	}
 	mut lhs_type := t.membership_container_type(lhs_raw_type)
@@ -297,8 +303,8 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	}
 	mut is_alias_operator := false
 	if struct_type.len == 0 {
-		if _ := t.struct_operator_call_info(lhs_type, node.op) {
-			struct_type = lhs_type
+		if alias_type := t.operator_alias_type_for_operand(lhs_id, node.op) {
+			struct_type = alias_type
 			is_alias_operator = true
 		}
 	}
@@ -474,12 +480,85 @@ fn (t &Transformer) checker_node_type(id flat.NodeId) string {
 	if isnil(t.tc) || int(id) < 0 {
 		return ''
 	}
+	name := t.raw_checker_node_type(id)
+	if name.len == 0 || name == 'void' {
+		return ''
+	}
+	return t.normalize_type_alias(name)
+}
+
+fn (t &Transformer) raw_checker_node_type(id flat.NodeId) string {
+	if isnil(t.tc) || int(id) < 0 {
+		return ''
+	}
 	typ := t.tc.expr_type(id) or { t.tc.resolve_type(id) }
 	name := typ.name()
 	if name.len == 0 || name == 'void' {
 		return ''
 	}
-	return t.normalize_type_alias(name)
+	return name
+}
+
+fn (t &Transformer) raw_alias_type_for_expr(id flat.NodeId) string {
+	raw_type := t.raw_checker_node_type(id)
+	if raw_type.len == 0 {
+		return ''
+	}
+	is_ptr := raw_type.starts_with('&')
+	clean := t.trim_pointer_type(raw_type)
+	if t.is_type_alias_name(clean) {
+		return raw_type
+	}
+	if is_ptr {
+		return ''
+	}
+	return ''
+}
+
+fn (t &Transformer) is_type_alias_name(name string) bool {
+	if isnil(t.tc) || name.len == 0 {
+		return false
+	}
+	if name in t.tc.type_aliases {
+		return true
+	}
+	if !name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		return '${t.cur_module}.${name}' in t.tc.type_aliases
+	}
+	if !name.contains('.') {
+		for aname, _ in t.tc.type_aliases {
+			if aname.all_after_last('.') == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) operator_alias_type_for_operand(id flat.NodeId, op flat.Op) ?string {
+	if int(id) < 0 {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	mut candidates := []string{cap: 3}
+	raw_type := t.raw_checker_node_type(id)
+	if raw_type.len > 0 {
+		candidates << raw_type
+	}
+	if node.typ.len > 0 {
+		candidates << node.typ
+	}
+	for candidate in candidates {
+		clean := t.trim_pointer_type(candidate)
+		if clean.len == 0 || !t.is_type_alias_name(clean) {
+			continue
+		}
+		if _ := t.struct_operator_call_info(clean, op) {
+			return clean
+		}
+	}
+	return none
 }
 
 // StructOperatorCallInfo stores struct operator call info metadata used by transform.
@@ -926,7 +1005,11 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 		clean_rhs_type := t.membership_container_type(rhs_type)
 		rhs_is_ptr_array := t.membership_container_is_pointer_array(rhs_type)
 		if clean_rhs_type.starts_with('[]') || clean_rhs_type == 'array' {
-			if lowered := t.lower_array_membership_expr(rhs_id, lhs_id, rhs_type, false, node) {
+			if lowered_const := t.lower_const_string_array_membership_expr(rhs_id, lhs_id) {
+				result = lowered_const
+			} else if lowered := t.lower_array_membership_expr(rhs_id, lhs_id, rhs_type, false,
+				node)
+			{
 				result = lowered
 			} else {
 				// dynamic array membership -> array_contains_int/string(arr, val)
@@ -1009,6 +1092,28 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 		})
 	}
 	return result
+}
+
+// lower_const_string_array_membership_expr lowers `needle in const_string_array` without
+// materializing the const array as a dynamic heap array for each membership test.
+fn (mut t Transformer) lower_const_string_array_membership_expr(base_id flat.NodeId, needle_id flat.NodeId) ?flat.NodeId {
+	expr_id := t.const_expr_for_arg(base_id) or { return none }
+	expr := t.a.nodes[int(expr_id)]
+	if expr.kind != .array_literal || expr.children_count == 0 {
+		return none
+	}
+	for i in 0 .. expr.children_count {
+		child := t.a.nodes[int(t.a.child(&expr, i))]
+		if child.kind != .string_literal {
+			return none
+		}
+	}
+	needle := t.transform_expr(needle_id)
+	base_value := t.transform_expr(base_id)
+	base_data := t.make_cast('&string', t.make_selector(base_value, 'data', 'voidptr'), '&string')
+	len_expr := t.make_int_literal(expr.children_count)
+	return t.make_call_typed('fixed_array_contains_string', arr3(base_data, len_expr, needle),
+		'bool')
 }
 
 // lower_type_pattern_membership builds lower type pattern membership data for transform.

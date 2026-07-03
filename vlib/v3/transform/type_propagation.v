@@ -44,7 +44,7 @@ fn (mut t Transformer) propagate_decl_pair_type(node flat.Node, lhs_idx int, rhs
 		}
 	}
 	if typ.len > 0 {
-		t.set_var_type(lhs.value, t.normalize_type_alias(typ))
+		t.set_var_type_with_raw(lhs.value, t.normalize_type_alias(typ), typ)
 	}
 }
 
@@ -969,6 +969,14 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 			}
 		}
 		return resolved
+	}
+	if node.kind == .dump_expr && node.children_count > 0 {
+		return t.node_type(t.a.child(&node, 0))
+	}
+	if node.kind == .fn_literal || node.kind == .lambda_expr {
+		if fn_type := t.fn_value_type_name(id) {
+			return fn_type
+		}
 	}
 	mut deferred_call_typ := ''
 	if node.typ.len > 0 {

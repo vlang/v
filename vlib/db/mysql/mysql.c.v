@@ -777,12 +777,18 @@ pub fn (db &DB) exec_none(query string) int {
 // exec_param_many executes the `query` with parameters provided as `?`'s in the query
 // It returns either the full result set, or an error on failure
 pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
+	result := db.exec_param_many_result(query, params)!
+	return result.rows
+}
+
+// exec_param_many_result executes the `query` with parameters provided as `?`'s,
+// returning rows and their column names.
+pub fn (db &DB) exec_param_many_result(query string, params []string) !RowSet {
 	stmt := db.prepare(query)!
 	defer {
 		stmt.close()
 	}
-	rows := stmt.execute(params)!
-	return rows
+	return stmt.execute_result(params)!
 }
 
 // exec_param executes the `query` with one parameter provided as an `?` in the query
@@ -837,6 +843,12 @@ pub fn (db &DB) prepare(query string) !StmtHandle {
 // Returns an array of Rows, which will be empty if nothing is returned
 // from the query, or possibly an error value
 pub fn (stmt &StmtHandle) execute(params []string) ![]Row {
+	result := stmt.execute_result(params)!
+	return result.rows
+}
+
+// execute_result executes the statement and returns rows with column names.
+pub fn (stmt &StmtHandle) execute_result(params []string) !RowSet {
 	mut guard := stmt.db.acquire_connection_guard()!
 	defer {
 		guard.release()
@@ -867,7 +879,12 @@ pub fn (stmt &StmtHandle) execute(params []string) ![]Row {
 	// If the query returns no metadata we have no data to return
 	// This happens in insert queries
 	if query_metadata == unsafe { nil } {
-		return []Row{}
+		return RowSet{}
+	}
+	metadata := Result{query_metadata}
+	names := metadata.field_names()
+	defer {
+		unsafe { metadata.free() }
 	}
 	num_cols := C.mysql_num_fields(query_metadata)
 	mut length := []u32{len: num_cols}
@@ -908,7 +925,10 @@ pub fn (stmt &StmtHandle) execute(params []string) ![]Row {
 		}
 		rows << row
 	}
-	return rows
+	return RowSet{
+		names: names
+		rows:  rows
+	}
 }
 
 // close acts on a StmtHandle to close the mysql Stmt

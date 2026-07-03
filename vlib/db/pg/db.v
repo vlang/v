@@ -31,6 +31,24 @@ pub fn connect_with_conninfo(conninfo string, pcfg PoolConfig) !&DB {
 	return db
 }
 
+// connect_direct opens a single physical PostgreSQL connection without
+// creating an internal connection pool. The returned `&Conn` is not safe for
+// concurrent use by multiple V threads; callers are responsible for calling
+// `conn.close()` when done.
+pub fn connect_direct(config Config) !&Conn {
+	return connect_direct_with_conninfo(config.conninfo()!)!
+}
+
+// connect_direct_with_conninfo is the conninfo-string variant of `connect_direct`.
+pub fn connect_direct_with_conninfo(conninfo string) !&Conn {
+	slot := connect_slot(conninfo)!
+	return &Conn{
+		conn:       slot.handle
+		created_at: slot.created_at
+		bad:        slot.bad
+	}
+}
+
 // close shuts down the pool and tears down all idle connections.
 // In-flight conns will be closed when released.
 pub fn (mut db DB) close() ! {

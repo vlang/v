@@ -281,6 +281,9 @@ fn (mut t Transformer) make_struct_runtime_default_value(struct_type string) ?fl
 
 // lower_array_literal_to_runtime converts lower array literal to runtime data for transform.
 fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.Node) flat.NodeId {
+	if t.in_const_init {
+		return id
+	}
 	array_type := if checker_alias_type := t.array_literal_checker_alias_type(id) {
 		checker_alias_type
 	} else if alias_type := t.array_literal_alias_type(node) {
@@ -400,12 +403,16 @@ fn (t &Transformer) array_literal_alias_type(node flat.Node) ?string {
 
 // transform_array_literal_for_type transforms transform array literal for type data for transform.
 fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node flat.Node, target_type string) ?flat.NodeId {
-	array_type := if checker_alias_type := t.array_literal_checker_alias_type(id) {
+	target_array_type := t.normalize_type_alias(target_type)
+	array_type := if target_array_type.starts_with('[]')
+		&& t.is_sum_type_name(target_array_type[2..]) {
+		target_array_type
+	} else if checker_alias_type := t.array_literal_checker_alias_type(id) {
 		checker_alias_type
 	} else if alias_type := t.array_literal_alias_type(node) {
 		alias_type
 	} else {
-		t.normalize_type_alias(target_type)
+		target_array_type
 	}
 	if !array_type.starts_with('[]') {
 		return none

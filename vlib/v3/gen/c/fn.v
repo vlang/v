@@ -2191,6 +2191,18 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			panic('channel close should be lowered by v3 transform')
 		}
 	}
+	if target_name.starts_with('C.') {
+		g.write(g.direct_call_name_for_call(id, target_name))
+		g.write('(')
+		start := if fn_node.kind == .selector {
+			g.selector_module_call_arg_start(fn_node, node)
+		} else {
+			1
+		}
+		g.gen_call_args(target_name, node, start)
+		g.write(')')
+		return
+	}
 	if resolved_module_call := g.selector_module_call_name(fn_node, node) {
 		g.write(g.direct_call_name_for_call(id, resolved_module_call))
 		g.write('(')
@@ -2757,7 +2769,14 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						g.write(emitted_callee_name)
 					}
 				} else {
+					needs_callee_parens := fn_ident.kind !in [.ident, .selector]
+					if needs_callee_parens {
+						g.write('(')
+					}
 					g.gen_expr(fn_id)
+					if needs_callee_parens {
+						g.write(')')
+					}
 				}
 			}
 			g.write('(')
@@ -2881,6 +2900,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					}
 					g.gen_params_struct_arg(ptyp, node, i)
 					break
+				}
+				if arg_node.kind == .sizeof_expr {
+					g.write('sizeof(${g.sizeof_target(arg_node.value)})')
+					continue
 				}
 				if !is_c_call && arg_idx < param_types.len
 					&& g.gen_fixed_array_pointer_lvalue_arg(arg_id, param_types[arg_idx]) {
@@ -4125,6 +4148,23 @@ fn (g &FlatGen) direct_callback_ident_name(id flat.NodeId) ?string {
 	if node.kind in [.cast_expr, .paren, .expr_stmt] && node.children_count > 0 {
 		return g.direct_callback_ident_name(g.a.child(&node, 0))
 	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := g.a.child_node(&node, 0)
+		if base.kind == .ident {
+			looked_up := g.tc.cur_scope.lookup(base.value) or { types.Type(types.void_) }
+			if looked_up !is types.Void {
+				return none
+			}
+			name := '${base.value}.${node.value}'
+			if name in g.tc.fn_param_types && name in g.tc.fn_ret_types {
+				return name
+			}
+			qname := '${g.tc.cur_module}.${name}'
+			if qname in g.tc.fn_param_types && qname in g.tc.fn_ret_types {
+				return qname
+			}
+		}
+	}
 	if node.kind != .ident || node.value.len == 0 {
 		return none
 	}
@@ -4735,6 +4775,10 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			}
 			g.gen_params_struct_arg(ptyp, node, i)
 			break
+		}
+		if arg_node.kind == .sizeof_expr {
+			g.write('sizeof(${g.sizeof_target(arg_node.value)})')
+			continue
 		}
 		if arg_idx < typed_param_count
 			&& g.gen_fixed_array_pointer_lvalue_arg(arg_id, param_types[arg_idx]) {

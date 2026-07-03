@@ -34,6 +34,10 @@ fn (g &FlatGen) struct_init_fields_key(type_name string, fallback string) string
 }
 
 fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Type) {
+	if call_name := g.callback_direct_fn_value_name(value_id, expected) {
+		g.write(g.callback_c_fn_name(call_name))
+		return
+	}
 	if g.gen_callback_fn_value_for_expected_type(value_id, expected) {
 		return
 	}
@@ -106,6 +110,22 @@ fn (mut g FlatGen) gen_unset_struct_field_default(struct_name string, field_name
 		g.write('.${field_c_name} = array_new(sizeof(${c_elem}), 0, 0)')
 		return true
 	}
+	if clean_type is types.String {
+		if has {
+			g.write(', ')
+		}
+		g.write('.${field_c_name} = ')
+		g.gen_default_value_for_type(clean_type)
+		return true
+	}
+	if clean_type is types.Enum {
+		if has {
+			g.write(', ')
+		}
+		g.write('.${field_c_name} = ')
+		g.gen_default_value_for_type(clean_type)
+		return true
+	}
 	if g.field_needs_default_init(clean_type) {
 		if has {
 			g.write(', ')
@@ -176,7 +196,7 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 				if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(lookup_name, sf.name,
 					value_id)
 				{
-					inner_ct := g.tc.c_type(heap_copy_type)
+					inner_ct := g.value_c_type(heap_copy_type)
 					g.write('(${inner_ct}*)memdup(')
 					g.gen_expr(value_id)
 					g.write(', sizeof(${inner_ct}))')
@@ -192,7 +212,7 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 			if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(lookup_name, field.value,
 				value_id)
 			{
-				inner_ct := g.tc.c_type(heap_copy_type)
+				inner_ct := g.value_c_type(heap_copy_type)
 				g.write('(${inner_ct}*)memdup(')
 				g.gen_expr(value_id)
 				g.write(', sizeof(${inner_ct}))')
@@ -323,7 +343,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 			if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(lookup_name, field.value,
 				value_id)
 			{
-				inner_ct := g.tc.c_type(heap_copy_type)
+				inner_ct := g.value_c_type(heap_copy_type)
 				g.write('(${inner_ct}*)memdup(')
 				g.gen_expr(value_id)
 				g.write(', sizeof(${inner_ct}))')
@@ -376,9 +396,29 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 fn (mut g FlatGen) gen_fixed_array_copy_source(value_id flat.NodeId, field_type types.Type) {
 	val_node := g.a.node(value_id)
 	if val_node.kind == .array_literal {
-		g.write('(${g.tc.c_type(field_type)})')
+		if fixed := array_fixed_type(field_type) {
+			c_elem, dims := g.fixed_array_decl_parts(fixed)
+			g.write('(${c_elem}${dims})')
+		} else {
+			g.write('(${g.tc.c_type(field_type)})')
+		}
 		g.gen_expr(value_id)
 		return
+	}
+	if val_node.kind in [.cast_expr, .as_expr] && val_node.children_count > 0 {
+		child_id := g.a.child(val_node, 0)
+		child := g.a.node(child_id)
+		if child.kind == .array_literal {
+			g.gen_fixed_array_copy_source(child_id, field_type)
+			return
+		}
+		if child.kind == .postfix && child.children_count > 0 {
+			post_child_id := g.a.child(child, 0)
+			if g.a.node(post_child_id).kind == .array_literal {
+				g.gen_fixed_array_copy_source(post_child_id, field_type)
+				return
+			}
+		}
 	}
 	if val_node.kind == .paren && val_node.children_count > 0 {
 		g.gen_fixed_array_copy_source(g.a.child(val_node, 0), field_type)
@@ -434,7 +474,7 @@ fn (mut g FlatGen) gen_lowered_sum_field_value(sum_name string, field &flat.Node
 		if variant.len > 0 {
 			variant = g.resolve_variant(sum_name, variant)
 			inner_type := g.tc.parse_type(variant)
-			inner_ct := g.tc.c_type(inner_type)
+			inner_ct := g.value_c_type(inner_type)
 			child_type := g.tc.resolve_type(child_id)
 			g.write('(${inner_ct}*)memdup(')
 			if child_type is types.Pointer && g.type_names_match(child_type.base_type, inner_type) {
@@ -534,7 +574,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 				if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(lookup_name, sf.name,
 					value_id)
 				{
-					inner_ct := g.tc.c_type(heap_copy_type)
+					inner_ct := g.value_c_type(heap_copy_type)
 					g.write('(${inner_ct}*)memdup(')
 					g.gen_expr(value_id)
 					g.write(', sizeof(${inner_ct}))')
@@ -554,7 +594,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		} else if heap_copy_type := g.heap_copy_type_for_sum_pointer_field(lookup_name,
 			field.value, value_id)
 		{
-			inner_ct := g.tc.c_type(heap_copy_type)
+			inner_ct := g.value_c_type(heap_copy_type)
 			g.write('(${inner_ct}*)memdup(')
 			g.gen_expr(value_id)
 			g.write(', sizeof(${inner_ct}))')
@@ -655,8 +695,21 @@ fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 		return
 	}
 	if clean_typ is types.Array {
-		c_elem := g.tc.c_type(clean_typ.elem_type)
+		c_elem := g.value_c_type(clean_typ.elem_type)
 		g.write('array_new(sizeof(${c_elem}), 0, 0)')
+		return
+	}
+	if clean_typ is types.String {
+		sid := g.intern_string('')
+		g.write('_str_${sid}')
+		return
+	}
+	if clean_typ is types.Enum {
+		if val := g.enum_default_value_for_type(clean_typ.name) {
+			g.write('${val}')
+		} else {
+			g.write('0')
+		}
 		return
 	}
 	raw_typ := clean_typ
@@ -686,12 +739,61 @@ fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 		g.write('}')
 		return
 	}
-	ct := g.tc.c_type(clean_typ)
+	ct := g.value_c_type(clean_typ)
 	if g.is_scalar_c_type(ct) {
 		g.write(g.scalar_zero_init(ct))
 		return
 	}
 	g.write('(${ct}){0}')
+}
+
+fn (g &FlatGen) enum_default_value_for_type(type_name string) ?int {
+	fields := g.enum_fields_for_type(type_name) or { return none }
+	if fields.len == 0 {
+		return none
+	}
+	if val := g.enum_value_for_type(type_name, fields[0]) {
+		return val
+	}
+	return 0
+}
+
+fn (g &FlatGen) enum_fields_for_type(type_name string) ?[]string {
+	if fields := g.tc.enum_fields[type_name] {
+		return fields
+	}
+	if !type_name.contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module != 'main'
+		&& g.tc.cur_module != 'builtin' {
+		qname := '${g.tc.cur_module}.${type_name}'
+		if fields := g.tc.enum_fields[qname] {
+			return fields
+		}
+	}
+	if !type_name.contains('.') {
+		mut found := []string{}
+		mut ok := false
+		for ename, fields in g.tc.enum_fields {
+			if ename.all_after_last('.') != type_name {
+				continue
+			}
+			if ok {
+				return none
+			}
+			found = fields.clone()
+			ok = true
+		}
+		if ok {
+			return found
+		}
+	}
+	return none
+}
+
+fn (mut g FlatGen) gen_default_value_addr_for_type(typ types.Type) {
+	ct := g.value_c_type(typ)
+	g.write('&(${ct}[]){')
+	g.gen_default_value_for_type(typ)
+	g.write('}')
 }
 
 fn (g &FlatGen) struct_field_value_is_plainly_incompatible(value_id flat.NodeId, field_type types.Type) bool {
@@ -760,6 +862,10 @@ fn (mut g FlatGen) struct_needs_default_init_inner(type_name string, mut visited
 	for field in fields {
 		clean_ftyp := default_init_unalias_type(field.typ)
 		if clean_ftyp is types.Array || clean_ftyp is types.Map {
+			found = true
+			continue
+		}
+		if clean_ftyp is types.String || clean_ftyp is types.Enum {
 			found = true
 			continue
 		}

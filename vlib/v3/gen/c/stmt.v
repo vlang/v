@@ -13,17 +13,13 @@ fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 		if base_type is types.Map {
 			c_key := g.tc.c_type(base_type.key_type)
 			c_val := g.tc.c_type(base_type.value_type)
-			zero := if base_type.value_type is types.Array {
-				c_elem := g.tc.c_type(base_type.value_type.elem_type)
-				'&(${c_val}[]){array_new(sizeof(${c_elem}), 0, 0)}'
-			} else {
-				'&(${c_val}[]){0}'
-			}
 			g.write('(*(${c_val}*)map__get_or_set(&')
 			g.gen_expr(base_id)
 			g.write(', &(${c_key}[]){')
 			g.gen_expr(g.a.child(&node, 1))
-			g.write('}, ${zero}))')
+			g.write('}, ')
+			g.gen_default_value_addr_for_type(base_type.value_type)
+			g.write('))')
 			return
 		}
 	}
@@ -1995,8 +1991,8 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			}
 			if rhs.children_count > 0 {
 				if v_type is types.Map {
-					c_key := g.tc.c_type(v_type.key_type)
-					c_val := g.tc.c_type(v_type.value_type)
+					c_key := g.value_c_type(v_type.key_type)
+					c_val := g.value_c_type(v_type.value_type)
 					for j := 0; j < rhs.children_count; j += 2 {
 						g.write('map__set(&')
 						g.gen_decl_lhs(lhs_id)
@@ -2060,7 +2056,14 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				i += 2
 				continue
 			}
-			ct0 := g.tc.c_type(v_type)
+			ct0 := if rhs.kind == .struct_init
+				&& g.struct_init_decl_type_is_bare_generic_instance(rhs, v_type) {
+				g.tc.c_type(v_type)
+			} else if rhs.kind == .struct_init {
+				g.struct_init_c_type_name(rhs.value)
+			} else {
+				g.tc.c_type(v_type)
+			}
 			ct := if v_type is types.OptionType || v_type is types.ResultType {
 				g.optional_type_name_for_expr(rhs_id, v_type)
 			} else {
@@ -2217,6 +2220,17 @@ fn (g &FlatGen) preserve_specialized_alias_decl_type(rhs_id flat.NodeId, rhs fla
 		return rhs_type
 	}
 	return v_type
+}
+
+fn (g &FlatGen) struct_init_decl_type_is_bare_generic_instance(rhs flat.Node, v_type types.Type) bool {
+	if rhs.kind != .struct_init || rhs.value.contains('[') {
+		return false
+	}
+	type_name := v_type.name()
+	if !type_name.contains('[') {
+		return false
+	}
+	return rhs.value.all_after_last('.') == type_name.all_before('[').all_after_last('.')
 }
 
 fn (g &FlatGen) alias_base_matches_type(alias_type types.Alias, typ types.Type) bool {

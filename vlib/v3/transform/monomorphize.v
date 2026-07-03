@@ -1185,6 +1185,12 @@ fn (mut t Transformer) specialized_fn_return_type_text(decl GenericFnDecl, args 
 		decl.module))
 }
 
+fn (mut t Transformer) specialized_fn_return_display_type_text(decl GenericFnDecl, args []string) string {
+	substituted := substitute_generic_type_text_with_params(decl.node.typ, args, t.generic_fn_param_names(decl.node,
+		decl.module))
+	return t.qualify_specialized_signature_type_text(substituted, decl)
+}
+
 fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ string, args []string, params []string) string {
 	substituted := substitute_generic_type_text_with_params(typ, args, params)
 	qualified := t.qualify_specialized_signature_type_text(substituted, decl)
@@ -1369,6 +1375,33 @@ fn (mut t Transformer) concrete_generic_call_return_type(id flat.NodeId, node fl
 		return ''
 	}
 	return t.normalize_type_alias(ret)
+}
+
+fn (mut t Transformer) raw_generic_call_return_type(id flat.NodeId, node flat.Node) string {
+	if t.skip_generics {
+		return ''
+	}
+	if node.kind != .call || node.children_count == 0 {
+		return ''
+	}
+	decls := t.cached_generic_fn_decls()
+	if decls.len == 0 {
+		return ''
+	}
+	decl_key := t.generic_call_decl_key(id, node, t.cur_module, decls) or { return '' }
+	decl := decls[decl_key] or { return '' }
+	if t.should_skip_generic_call_specialization(decl_key) {
+		return ''
+	}
+	args := t.explicit_generic_call_args(node, t.cur_module) or { return '' }
+	if args.len == 0 || t.generic_args_have_placeholders(args) {
+		return ''
+	}
+	ret := t.specialized_fn_return_display_type_text(decl, args)
+	if ret.len == 0 || t.generic_arg_is_unresolved(ret) {
+		return ''
+	}
+	return ret
 }
 
 fn (mut t Transformer) concrete_generic_call_param_types(id flat.NodeId, node flat.Node) ?[]types.Type {
