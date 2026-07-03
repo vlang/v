@@ -262,8 +262,10 @@ fn (mut tc TypeChecker) check_fn_items_serial(items []CheckWorkItem) {
 fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file string, module_name string) {
 	mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
 	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
+	mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
 	tc.cur_fn_mut_param_base_types = map[string]Type{}
 	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
+	tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_file = file
 	tc.cur_module = module_name
 	tc.cur_scope = tc.file_scope
@@ -297,6 +299,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_fn_ret_type = Type(void_)
 	tc.cur_fn_mut_param_base_types = saved_mut_params.move()
 	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
+	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
 }
 
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
@@ -325,6 +328,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.method_value_local_depth = map[string]int{}
 	w.cur_fn_mut_param_base_types = map[string]Type{}
 	w.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
+	w.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
 	w.generic_method_value_info = map[string]CallInfo{}
 	w.smartcasts = map[string]Type{}
 	w.cur_fn_ret_type = Type(void_)

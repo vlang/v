@@ -2678,7 +2678,9 @@ fn (mut p Parser) stmt() flat.NodeId {
 			if p.tok == .key_static {
 				return p.static_decl_stmt()
 			}
-			return p.assign_or_expr_stmt()
+			stmt_id := p.assign_or_expr_stmt()
+			p.mark_node_mut(stmt_id)
+			return stmt_id
 		}
 		.key_static {
 			return p.static_decl_stmt()
@@ -2762,9 +2764,15 @@ fn (mut p Parser) stmt() flat.NodeId {
 	}
 }
 
+fn (mut p Parser) mark_node_mut(id flat.NodeId) {
+	p.a.set_node_is_mut(id, true)
+}
+
 fn (mut p Parser) static_decl_stmt() flat.NodeId {
 	p.next() // skip `static`
+	mut is_mut := false
 	if p.tok == .key_mut {
+		is_mut = true
 		p.next()
 	}
 	lhs := p.expr(.lowest)
@@ -2779,6 +2787,7 @@ fn (mut p Parser) static_decl_stmt() flat.NodeId {
 			kind:           .decl_assign
 			op:             .assign
 			value:          'static'
+			is_mut:         is_mut
 			children_start: istart
 			children_count: 2
 		})
@@ -3538,10 +3547,16 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 		lhs_ids << lhs
 		for p.tok == .comma {
 			p.next()
+			mut lhs_is_mut := false
 			if p.tok == .key_mut {
+				lhs_is_mut = true
 				p.next()
 			}
-			lhs_ids << p.expr(.lowest)
+			lhs_id := p.expr(.lowest)
+			if lhs_is_mut {
+				p.mark_node_mut(lhs_id)
+			}
+			lhs_ids << lhs_id
 		}
 		if p.tok == .decl_assign || token_is_assignment(p.tok) {
 			op_id := int(p.tok)

@@ -268,6 +268,7 @@ pub mut:
 	cur_fn_node_id                  int = -1
 	cur_fn_mut_param_base_types     map[string]Type
 	cur_fn_mut_param_binding_owners map[string]ScopeBindingOwner
+	cur_fn_mut_local_binding_owners map[string]ScopeBindingOwner
 	expr_type_values                []Type // node_id -> complex/contextual resolved type
 	expr_type_set                   []bool
 	checking_nodes                  []bool
@@ -351,6 +352,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		method_value_local_depth:           map[string]int{}
 		cur_fn_mut_param_base_types:        map[string]Type{}
 		cur_fn_mut_param_binding_owners:    map[string]ScopeBindingOwner{}
+		cur_fn_mut_local_binding_owners:    map[string]ScopeBindingOwner{}
 		expr_type_values:                   []Type{len: a.nodes.len, init: Type(void_)}
 		expr_type_set:                      []bool{len: a.nodes.len}
 		checking_nodes:                     []bool{len: a.nodes.len}
@@ -1742,8 +1744,10 @@ pub fn (mut tc TypeChecker) annotate_types_with_used(used_fns map[string]bool) {
 			}
 			mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
 			mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
+			mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
 			tc.cur_fn_mut_param_base_types = map[string]Type{}
 			tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
+			tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
 			tc.cur_scope = tc.file_scope
 			tc.push_scope()
 			for pi in 0 .. node.children_count {
@@ -1760,6 +1764,7 @@ pub fn (mut tc TypeChecker) annotate_types_with_used(used_fns map[string]bool) {
 			tc.pop_scope()
 			tc.cur_fn_mut_param_base_types = saved_mut_params.move()
 			tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
+			tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
 		}
 	}
 }
@@ -2292,12 +2297,15 @@ pub fn (mut tc TypeChecker) check_semantics() {
 			.fn_decl {
 				mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
 				mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
+				mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
 				tc.cur_fn_mut_param_base_types = map[string]Type{}
 				tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
+				tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 				tc.check_fn_decl_semantics(i, node, tc.cur_file, tc.cur_module)
 				tc.cur_fn_mut_param_base_types = saved_mut_params.move()
 				tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
+				tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
 			}
 			.c_fn_decl {
 				if tc.reject_unsupported_generics {
@@ -4622,8 +4630,10 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	saved_ret := tc.cur_fn_ret_type
 	mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
 	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
+	mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
 	tc.cur_fn_mut_param_base_types = map[string]Type{}
 	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
+	tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_fn_ret_type = tc.parse_type(node.typ)
 	$if ownership ? {
 		tc.ownership_begin_fn_literal(node)
@@ -4648,6 +4658,7 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	tc.cur_fn_ret_type = saved_ret
 	tc.cur_fn_mut_param_base_types = saved_mut_params.move()
 	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
+	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
 }
 
 // check_lambda_expr validates check lambda expr state for types.
@@ -4873,7 +4884,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 					'cannot assign `${rhs_type.name()}` to `${expected.name()}`', id)
 			}
 		}
-		tc.insert_decl_lhs(lhs_id, expected)
+		tc.insert_decl_lhs(lhs_id, expected, tc.decl_lhs_is_mut(node, lhs_id))
 		$if ownership ? {
 			tc.ownership_after_decl_assign(lhs_id, rhs_id, expected, id)
 		}
@@ -5060,7 +5071,7 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 				types: rhs_types
 			})
 			for i, lhs_id in lhs_ids {
-				tc.insert_decl_lhs(lhs_id, rhs_types[i])
+				tc.insert_decl_lhs(lhs_id, rhs_types[i], tc.decl_lhs_is_mut(node, lhs_id))
 			}
 			$if ownership ? {
 				tc.ownership_after_multi_return_decl_assign(lhs_ids, rhs_id, MultiReturn{
@@ -5085,7 +5096,7 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 		tc.check_node(rhs_id)
 		if rhs_types := tc.multi_expr_tail_types(rhs_id, lhs_ids.len) {
 			for i, lhs_id in lhs_ids {
-				tc.insert_decl_lhs(lhs_id, rhs_types[i])
+				tc.insert_decl_lhs(lhs_id, rhs_types[i], tc.decl_lhs_is_mut(node, lhs_id))
 			}
 			$if ownership ? {
 				tc.ownership_after_multi_return_decl_assign(lhs_ids, rhs_id, MultiReturn{
@@ -5151,7 +5162,7 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 			return true
 		}
 		for i, lhs_id in lhs_ids {
-			tc.insert_decl_lhs(lhs_id, rhs_multi.types[i])
+			tc.insert_decl_lhs(lhs_id, rhs_multi.types[i], tc.decl_lhs_is_mut(node, lhs_id))
 		}
 		$if ownership ? {
 			tc.ownership_after_multi_return_decl_assign(lhs_ids, rhs_id, rhs_multi, id)
@@ -5488,7 +5499,17 @@ fn (tc &TypeChecker) multi_assign_rhs_id(node flat.Node, index int) flat.NodeId 
 }
 
 // insert_decl_lhs updates insert decl lhs state for types.
-fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type) {
+fn (tc &TypeChecker) decl_lhs_is_mut(node flat.Node, lhs_id flat.NodeId) bool {
+	if node.is_mut {
+		return true
+	}
+	if int(lhs_id) < 0 || int(lhs_id) >= tc.a.nodes.len {
+		return false
+	}
+	return tc.a.nodes[int(lhs_id)].is_mut
+}
+
+fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut bool) {
 	if int(lhs_id) < 0 || typ is Void {
 		return
 	}
@@ -5499,7 +5520,10 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type) {
 			tc.record_error(.assignment_mismatch, 'redefinition of ${lhs.value}', lhs_id)
 			return
 		}
-		tc.cur_scope.insert(lhs.value, typ)
+		owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
+		if is_mut && lhs.value != '_' {
+			tc.cur_fn_mut_local_binding_owners[lhs.value] = owner
+		}
 		tc.register_synth_type(lhs_id, typ)
 	}
 }
@@ -7884,6 +7908,59 @@ fn (tc &TypeChecker) expr_can_take_address(id flat.NodeId) bool {
 	}
 }
 
+fn (tc &TypeChecker) flag_enum_mutating_receiver_method(fn_node flat.Node, recv_type Type, info CallInfo) ?string {
+	if !info.has_receiver || fn_node.kind != .selector || fn_node.value !in ['set', 'clear'] {
+		return none
+	}
+	clean := unwrap_pointer(recv_type)
+	if clean is Enum && (clean.is_flag || clean.name in tc.flag_enums) {
+		return fn_node.value
+	}
+	return none
+}
+
+fn (tc &TypeChecker) flag_enum_receiver_is_mutable_lvalue(recv_id flat.NodeId) bool {
+	if !tc.expr_can_take_address(recv_id) {
+		return false
+	}
+	return tc.expr_root_is_mutable_lvalue(recv_id)
+}
+
+fn (tc &TypeChecker) expr_root_is_mutable_lvalue(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return tc.ident_is_mutable_lvalue(node.value)
+		}
+		.index, .selector, .paren {
+			return node.children_count > 0 && tc.expr_root_is_mutable_lvalue(tc.a.child(&node, 0))
+		}
+		.prefix {
+			return node.op == .mul
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (tc &TypeChecker) ident_is_mutable_lvalue(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	if tc.mut_param_binding_matches_lvalue(name) {
+		return true
+	}
+	owner := tc.cur_fn_mut_local_binding_owners[name] or { return false }
+	if tc.cur_scope == unsafe { nil } {
+		return false
+	}
+	return tc.cur_scope.nearest_binding_owned_by(name, owner)
+}
+
 fn (tc &TypeChecker) map_builtin_call_info(base_type Type, m Map, method string, mname string) ?CallInfo {
 	if !checker_is_raw_collection_method_name(mname, 'map.') {
 		return none
@@ -8115,6 +8192,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& !tc.receiver_embeds(recv_type, info.params[0]) {
 			tc.type_mismatch(.call_arg_mismatch,
 				'cannot use receiver `${recv_type.name()}` as `${info.params[0].name()}`', id)
+		}
+		if method := tc.flag_enum_mutating_receiver_method(fn_node, recv_type, info) {
+			if !tc.flag_enum_receiver_is_mutable_lvalue(recv_id) && tc.should_diagnose(id) {
+				tc.record_error(.call_arg_mismatch,
+					'flag enum method `${method}` requires a mutable receiver', id)
+			}
 		}
 	}
 	for i in 1 + info.arg_offset .. node.children_count {
