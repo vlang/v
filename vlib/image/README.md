@@ -12,6 +12,8 @@ The module currently includes:
 - `Uniform` images for a single color.
 - `image.color`, with standard color types, color model conversion, palettes,
   Y'CbCr conversion, and CMYK conversion.
+- Format registration hooks with `register_format`, `decode`, and
+  `decode_config`.
 
 ```v
 import image
@@ -30,4 +32,5 @@ assert img.rgba_at(0, 0).r == 255
 ```
 
 The codec packages from Go's image tree, such as PNG, JPEG, and GIF, are not
-part of this module yet.
+part of this module yet. They can be added later by registering decode
+callbacks with this module.

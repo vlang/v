@@ -66,6 +66,11 @@ pub fn (u Uniform) color_model() color.Model {
 	return color.constant_model(u.c)
 }
 
+// convert converts any color to the uniform color.
+pub fn (u Uniform) convert(c color.Color) color.Color {
+	return u.c
+}
+
 // bounds returns a large rectangle for the infinite uniform image.
 pub fn (u Uniform) bounds() Rectangle {
 	return Rectangle{
