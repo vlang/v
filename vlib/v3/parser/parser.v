@@ -3826,7 +3826,8 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 		// index / generic
 		if p.tok == .lsbr {
 			base_type_name := p.resolve_local_type_name(p.type_expr_name(lhs))
-			if type_name_can_init(base_type_name) && p.current_generic_suffix_followed_by_lcbr() {
+			if type_name_can_init(base_type_name)
+				&& p.current_generic_struct_init_suffix_followed_by_lcbr() {
 				before_suffix_offset := p.s.offset
 				suffix := p.parse_type_generic_suffix()
 				if p.s.offset != before_suffix_offset && p.tok == .lcbr {
@@ -5673,30 +5674,99 @@ fn (mut p Parser) current_lbr_starts_array_type() bool {
 	return p.lbr_starts_array_type_from_offset(p.s.offset)
 }
 
-fn (mut p Parser) current_generic_suffix_followed_by_lcbr() bool {
-	if p.tok != .lsbr {
+fn (mut p Parser) current_generic_struct_init_suffix_followed_by_lcbr() bool {
+	args := p.current_generic_suffix_args_followed_by_lcbr() or { return false }
+	if args.len == 0 {
 		return false
 	}
+	for arg in args {
+		if !generic_struct_init_suffix_arg_can_be_type(arg) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut p Parser) current_generic_suffix_args_followed_by_lcbr() ?[]string {
+	if p.tok != .lsbr {
+		return none
+	}
 	mut idx := p.s.offset
-	mut depth := 1
+	mut arg_start := idx
+	mut bracket_depth := 1
+	mut paren_depth := 0
+	mut args := []string{}
 	for idx < p.s.src.len {
 		c := p.s.src[idx]
 		if c == `[` {
-			depth++
+			bracket_depth++
 		} else if c == `]` {
-			depth--
-			if depth == 0 {
+			bracket_depth--
+			if bracket_depth == 0 {
+				args << p.s.src[arg_start..idx].trim_space()
 				idx++
 				for idx < p.s.src.len && (p.s.src[idx] == ` ` || p.s.src[idx] == `\t`
 					|| p.s.src[idx] == `\n` || p.s.src[idx] == `\r`) {
 					idx++
 				}
-				return idx < p.s.src.len && p.s.src[idx] == `{`
+				if idx < p.s.src.len && p.s.src[idx] == `{` {
+					return args
+				}
+				return none
 			}
+		} else if c == `(` {
+			paren_depth++
+		} else if c == `)` {
+			if paren_depth > 0 {
+				paren_depth--
+			}
+		} else if c == `,` && bracket_depth == 1 && paren_depth == 0 {
+			args << p.s.src[arg_start..idx].trim_space()
+			arg_start = idx + 1
 		}
 		idx++
 	}
+	return none
+}
+
+fn generic_struct_init_suffix_arg_can_be_type(arg string) bool {
+	clean := arg.trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	first := clean[0]
+	if (first >= `A` && first <= `Z`) || first == `&` || first == `?` || first == `!`
+		|| first == `[` || first == `(` || first == `^` {
+		return true
+	}
+	if clean == 'fn' || clean.starts_with('fn ') || clean.starts_with('fn(') {
+		return true
+	}
+	first_ident := generic_suffix_first_ident(clean)
+	if first_ident in ['map', 'chan', 'thread', 'shared', 'atomic', 'mut', 'struct', 'none', 'nil'] {
+		return true
+	}
+	if is_builtin_type(first_ident) {
+		return true
+	}
+	dot_idx := clean.last_index_u8(`.`)
+	if dot_idx >= 0 {
+		after_dot := clean[dot_idx + 1..]
+		return after_dot.len > 0 && after_dot[0] >= `A` && after_dot[0] <= `Z`
+	}
 	return false
+}
+
+fn generic_suffix_first_ident(s string) string {
+	mut idx := 0
+	for idx < s.len {
+		c := s[idx]
+		if !((c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_`) {
+			break
+		}
+		idx++
+	}
+	return s[..idx]
 }
 
 fn (mut p Parser) lbr_starts_array_type_from_offset(offset int) bool {
