@@ -737,7 +737,7 @@ pub fn (t Time) http_header_string() string {
 }
 
 // http_header_len is the byte length of an HTTP-date (RFC 9110 IMF-fixdate).
-pub const http_header_len = 29
+pub const http_date_len = 29
 
 // write_http_header writes the 29-byte HTTP-date ("Sun, 06 Nov 1994 08:49:37 GMT",
 // RFC 9110 IMF-fixdate) at dst, which may point into a fixed array or a dynamic
