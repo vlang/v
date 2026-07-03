@@ -394,6 +394,11 @@ fn ensure_iface_impls(recv string, cur_module string, tc &types.TypeChecker, mut
 			impls << struct_name
 		}
 	}
+	for alias_name, _ in tc.type_aliases {
+		if alias_name !in impls && tc.named_type_implements_interface(alias_name, iface_name) {
+			impls << alias_name
+		}
+	}
 	iface_impls[recv] = impls
 	if iface_name != recv {
 		iface_impls[iface_name] = impls

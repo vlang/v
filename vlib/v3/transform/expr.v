@@ -1522,6 +1522,20 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 		return t.make_infix(.eq, lhs, rhs)
 	}
 	mut clean := t.membership_container_type(elem_type)
+	if clean.len > 0 {
+		lhs_type := t.node_type(lhs)
+		if lhs_type == '&${clean}' {
+			lhs_value := t.make_prefix(.mul, lhs)
+			t.a.nodes[int(lhs_value)].typ = clean
+			return t.make_membership_eq_expr_with_seen(lhs_value, rhs, elem_type, seen)
+		}
+		rhs_type := t.node_type(rhs)
+		if rhs_type == '&${clean}' {
+			rhs_value := t.make_prefix(.mul, rhs)
+			t.a.nodes[int(rhs_value)].typ = clean
+			return t.make_membership_eq_expr_with_seen(lhs, rhs_value, elem_type, seen)
+		}
+	}
 	if clean == 'string' {
 		return t.make_call_typed('string__eq', arr2(lhs, rhs), 'bool')
 	}
@@ -1576,6 +1590,9 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 	}
 	if t.is_sum_type_name(clean) {
 		return t.make_memcmp_eq_expr(lhs, rhs, clean, 'eq')
+	}
+	if t.is_interface_type(clean) {
+		return t.make_memcmp_eq_expr(lhs, rhs, clean, 'iface_eq')
 	}
 	struct_type := t.struct_lookup_name(clean)
 	if struct_type.len > 0 {

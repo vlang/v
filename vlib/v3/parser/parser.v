@@ -32,23 +32,25 @@ const read_source_chunk_size = 65536
 pub struct Parser {
 	prefs &pref.Preferences
 mut:
-	s                scanner.Scanner
-	tok              token.Token
-	lit              string
-	tok_pos          int
-	peek_tok         token.Token = .eof
-	peek_lit         string
-	peek_pos         int
-	has_peek         bool
-	cur_file         string
-	cur_module       string
-	cur_fn           string
-	pending_flag     bool
-	pending_params   bool
-	pending_export   string
-	skip_next_decl   bool
-	disable_fn_body  bool
-	in_for_container bool
+	s                 scanner.Scanner
+	tok               token.Token
+	lit               string
+	tok_pos           int
+	peek_tok          token.Token = .eof
+	peek_lit          string
+	peek_pos          int
+	has_peek          bool
+	cur_file          string
+	cur_module        string
+	cur_fn            string
+	pending_flag      bool
+	pending_params    bool
+	pending_export    string
+	skip_next_decl    bool
+	disable_fn_body   bool
+	in_for_container  bool
+	local_type_names  map[string]string
+	local_type_scopes []string
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
 	parsed_v_files int
@@ -57,9 +59,10 @@ pub mut:
 // new creates a Parser value for parser.
 pub fn Parser.new(prefs &pref.Preferences) &Parser {
 	return &Parser{
-		prefs: unsafe { prefs }
-		s:     scanner.new_scanner(prefs, .normal)
-		a:     &flat.FlatAst{
+		prefs:            unsafe { prefs }
+		s:                scanner.new_scanner(prefs, .normal)
+		local_type_names: map[string]string{}
+		a:                &flat.FlatAst{
 			nodes:           []flat.Node{cap: 256}
 			children:        []flat.NodeId{cap: 512}
 			disabled_fns:    map[string]bool{}
@@ -93,6 +96,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.skip_next_decl = false
 	p.disable_fn_body = false
 	p.in_for_container = false
+	p.local_type_scopes = []string{}
 	// File marker before content so import resolver can track source files
 	p.a.add_node(flat.Node{
 		kind:  .file
@@ -247,6 +251,23 @@ fn vmod_root_for_file(path string) string {
 		dir = parent
 	}
 	return dir
+}
+
+fn (p &Parser) source_line_number(pos int) int {
+	mut line := 1
+	end := if pos < 0 {
+		0
+	} else if pos < p.s.src.len {
+		pos
+	} else {
+		p.s.src.len
+	}
+	for i in 0 .. end {
+		if p.s.src[i] == `\n` {
+			line++
+		}
+	}
+	return line
 }
 
 // next supports next handling for Parser.
@@ -784,11 +805,14 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 	if p.tok == .lcbr {
 		prev_fn := p.cur_fn
 		p.cur_fn = name
+		p.push_local_type_scope(name)
 		if disable_body {
 			p.mark_disabled_fn(name)
 			p.skip_block()
 		} else {
+			body_start := p.tok_pos
 			p.check(.lcbr)
+			p.predeclare_local_type_names_in_block(body_start)
 			for p.tok != .rcbr && p.tok != .eof {
 				id := p.stmt()
 				if int(id) >= 0 {
@@ -797,6 +821,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 			}
 			p.check(.rcbr)
 		}
+		p.pop_local_type_scope()
 		p.cur_fn = prev_fn
 	}
 
@@ -878,13 +903,16 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	mut body_ids := []flat.NodeId{}
 	prev_fn := p.cur_fn
 	p.cur_fn = name
+	p.push_local_type_scope(name)
 	// A disabled `@[if flag ?]` function keeps its signature but gets an empty body
 	// (a no-op stub), so callers still resolve while the body is compiled out.
 	if disable_body {
 		p.mark_disabled_fn(name)
 		p.skip_block()
 	} else {
+		body_start := p.tok_pos
 		p.check(.lcbr)
+		p.predeclare_local_type_names_in_block(body_start)
 		for p.tok != .rcbr && p.tok != .eof {
 			id := p.stmt()
 			if int(id) >= 0 {
@@ -893,6 +921,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		}
 		p.check(.rcbr)
 	}
+	p.pop_local_type_scope()
 	p.cur_fn = prev_fn
 
 	mut all_ids := []flat.NodeId{cap: param_ids.len + body_ids.len}
@@ -1047,6 +1076,10 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			name += '.' + p.expect_name_or_keyword()
 		}
 	}
+	local_scope := p.current_local_type_scope()
+	if local_scope.len > 0 && !name.contains('.') {
+		name = p.declare_local_type_name(name, local_scope)
+	}
 	// generic params — skip
 	mut is_generic := false
 	mut generic_params := []string{}
@@ -1081,24 +1114,29 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	for p.tok != .rcbr && p.tok != .eof {
 		// access modifiers
 		if p.tok == .key_pub {
-			p.next()
-			if p.tok == .key_mut {
+			peek_tok := p.peek()
+			peek_lit := p.peek_lit
+			if peek_tok == .colon || peek_tok == .key_mut
+				|| (peek_tok == .name && peek_lit == 'module_mut') {
 				p.next()
+				if p.tok == .key_mut {
+					p.next()
+				}
+				if p.tok == .name && p.lit == 'module_mut' {
+					p.next()
+				}
+				if p.tok == .colon {
+					p.next()
+				}
+				continue
 			}
-			if p.tok == .name && p.lit == 'module_mut' {
-				p.next()
-			}
-			if p.tok == .colon {
-				p.next()
-			}
-			continue
 		}
 		if p.tok == .key_mut {
-			p.next()
-			if p.tok == .colon {
+			if p.peek() == .colon {
 				p.next()
+				p.next()
+				continue
 			}
-			continue
 		}
 		if p.tok == .semicolon {
 			p.next()
@@ -1137,10 +1175,11 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			}
 			// embedded struct (type on its own line, followed by semicolon)
 			if p.tok == .semicolon || p.tok == .rcbr {
+				embedded_type := p.resolve_local_type_name(field_name)
 				ids << p.a.add_node(flat.Node{
 					kind:  .field_decl
-					value: field_name
-					typ:   field_name
+					value: embedded_type
+					typ:   embedded_type
 				})
 				if p.tok == .semicolon {
 					p.next()
@@ -2574,6 +2613,9 @@ fn (mut p Parser) stmt() flat.NodeId {
 		.key_fn {
 			return p.fn_decl()
 		}
+		.key_struct, .key_union {
+			return p.struct_decl()
+		}
 		.key_match {
 			return p.match_stmt()
 		}
@@ -2615,6 +2657,9 @@ fn (mut p Parser) stmt() flat.NodeId {
 			p.next()
 			if p.tok == .key_fn {
 				return p.fn_decl()
+			}
+			if p.tok == .key_struct || p.tok == .key_union {
+				return p.struct_decl()
 			}
 			return p.assign_or_expr_stmt()
 		}
@@ -2775,6 +2820,7 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 				guard_cond = p.a.add_node(flat.Node{
 					kind:           .decl_assign
 					op:             .assign
+					value:          '${lhs_ids.len}'
 					children_start: istart
 					children_count: flat.child_count(all_ids.len)
 				})
@@ -3132,14 +3178,13 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		mod_name := p.lit
 		p.next()
 		p.next()
-		if p.tok == .name && p.lit.len > 0 && p.lit[0] >= `A` && p.lit[0] <= `Z` {
-			type_name := p.lit
-			p.next()
+		field_name := p.expect_name_or_keyword()
+		if field_name.len > 0 && field_name[0] >= `A` && field_name[0] <= `Z` {
 			mod_id := p.a.add_val(.ident, mod_name)
 			start := p.add_child(mod_id)
 			return p.a.add_node(flat.Node{
 				kind:           .selector
-				value:          type_name
+				value:          field_name
 				children_start: start
 				children_count: 1
 			})
@@ -3148,13 +3193,10 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		start := p.add_child(base_id)
 		sel := p.a.add_node(flat.Node{
 			kind:           .selector
-			value:          p.lit
+			value:          field_name
 			children_start: start
 			children_count: 1
 		})
-		if p.tok == .name {
-			p.next()
-		}
 		if p.tok != .lcbr && p.tok != .comma {
 			return p.expr_with_lhs(sel, .lowest)
 		}
@@ -3202,7 +3244,11 @@ fn (mut p Parser) match_branch() flat.NodeId {
 		}
 	}
 
+	branch_block_start := p.tok_pos
 	p.check(.lcbr)
+	block_scope := p.block_local_type_scope(branch_block_start)
+	p.push_local_type_scope(block_scope)
+	p.predeclare_local_type_names_in_block(branch_block_start)
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.looks_like_match_branch_start() {
 			break
@@ -3213,6 +3259,9 @@ fn (mut p Parser) match_branch() flat.NodeId {
 		}
 	}
 	p.check(.rcbr)
+	if block_scope.len > 0 {
+		p.pop_local_type_scope()
+	}
 
 	bstart := p.add_children(branch_ids)
 	return p.a.add_node(flat.Node{
@@ -3241,7 +3290,11 @@ fn (mut p Parser) block_stmt() flat.NodeId {
 }
 
 fn (mut p Parser) parse_block_body() []flat.NodeId {
+	block_start := p.tok_pos
 	p.check(.lcbr)
+	block_scope := p.block_local_type_scope(block_start)
+	p.push_local_type_scope(block_scope)
+	p.predeclare_local_type_names_in_block(block_start)
 	mut ids := []flat.NodeId{}
 	for p.tok != .rcbr && p.tok != .eof {
 		id := p.stmt()
@@ -3250,6 +3303,9 @@ fn (mut p Parser) parse_block_body() []flat.NodeId {
 		}
 	}
 	p.check(.rcbr)
+	if block_scope.len > 0 {
+		p.pop_local_type_scope()
+	}
 	return ids
 }
 
@@ -3294,6 +3350,7 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 					flat.NodeKind.assign
 				}
 				op:             token_id_to_op(op_id)
+				value:          '${lhs_ids.len}'
 				children_start: istart
 				children_count: flat.child_count(all_ids.len)
 			})
@@ -3740,8 +3797,10 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 		// skip auto-semicolons before infix operators (multi-line expressions)
 		if p.tok == .semicolon {
 			peek_tok := p.peek()
-			if token_is_infix(peek_tok) && int(peek_tok) != 85 && int(peek_tok) != 0 {
+			if (token_is_infix(peek_tok) || peek_tok == .key_as) && int(peek_tok) != 85
+				&& int(peek_tok) != 0 {
 				p.next()
+				continue
 			}
 		}
 		if token_is_assignment(p.tok) {
@@ -4020,7 +4079,8 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return p.prefix_expr()
 		}
 		.name, .key_module {
-			name := p.lit
+			name_pos := p.tok_pos
+			mut name := p.lit
 			p.next()
 			if name == 'sql' && p.starts_sql_expr() {
 				return p.sql_expr()
@@ -4038,7 +4098,13 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.a.add_val_id(5, p.prefs.vroot + '/v')
 			}
 			if name == '@LINE' {
-				return p.a.add_val_id(1, '0')
+				return p.a.add_val_id(1, '${p.source_line_number(name_pos)}')
+			}
+			if name == '@FILE_LINE' {
+				return p.a.add_val_id(5, '${p.cur_file}:${p.source_line_number(name_pos)}')
+			}
+			if name == '@FILE_LINE' {
+				return p.a.add_val_id(5, '${p.cur_file}:0')
 			}
 			if name == '@MOD' {
 				if p.cur_module.len == 0 {
@@ -4100,15 +4166,17 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				}
 				return p.a.add_val(.map_init, map_type)
 			}
+			local_type_name := p.resolve_local_type_name(name)
 			// struct init: Name{...}; vlib/builtin also uses concrete lowercase
 			// runtime structs like array{} and string{}.
-			if !p.in_for_container && p.tok == .lcbr && name.len > 0
-				&& ((name[0] >= `A` && name[0] <= `Z`)
+			if !p.in_for_container && p.tok == .lcbr && local_type_name.len > 0
+				&& ((local_type_name[0] >= `A` && local_type_name[0] <= `Z`)
 				|| name in ['array', 'string', 'map', 'mapnode', '_result', '_option']) {
-				return p.struct_init(name)
+				return p.struct_init(local_type_name)
 			}
 			// type cast: TypeName(expr) or builtin_type(expr)
-			if p.tok == .lpar && name.len > 0 && ((name[0] >= `A` && name[0] <= `Z`)
+			if p.tok == .lpar && local_type_name.len > 0
+				&& ((local_type_name[0] >= `A` && local_type_name[0] <= `Z`)
 				|| is_builtin_type(name)) {
 				p.next() // skip (
 				inner := p.expr(.lowest)
@@ -4116,7 +4184,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				cstart := p.add_child(inner)
 				return p.a.add_node(flat.Node{
 					kind:           .cast_expr
-					value:          name
+					value:          local_type_name
 					children_start: cstart
 					children_count: 1
 				})
@@ -4537,7 +4605,8 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 	// fast path for the common simple index `arr[i]`: avoid the children array
 	if p.tok == .rsbr {
 		p.next()
-		istart := p.add_children2(lhs, idx)
+		type_arg := if p.tok == .lpar { p.generic_call_type_arg_id(idx) } else { idx }
+		istart := p.add_children2(lhs, type_arg)
 		return p.a.add_node(flat.Node{
 			kind:           .index
 			children_start: istart
@@ -4574,6 +4643,11 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 		})
 	}
 	p.check(.rsbr)
+	if p.tok == .lpar {
+		for i in 1 .. ids.len {
+			ids[i] = p.generic_call_type_arg_id(ids[i])
+		}
+	}
 	istart := p.add_children(ids)
 	return p.a.add_node(flat.Node{
 		kind:           .index
@@ -4582,8 +4656,20 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 	})
 }
 
+fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
+	name := p.type_expr_name(id)
+	resolved := p.resolve_local_type_name(name)
+	if name.len == 0 || resolved == name {
+		return id
+	}
+	return p.a.add_node(flat.Node{
+		kind:  .ident
+		value: resolved
+	})
+}
+
 fn (p &Parser) generic_struct_init_type_name(id flat.NodeId) ?string {
-	type_name := p.type_expr_name(id)
+	type_name := p.resolve_local_type_name(p.type_expr_name(id))
 	if !generic_type_name_can_init(type_name) {
 		return none
 	}
@@ -4619,7 +4705,7 @@ fn (p &Parser) type_expr_name(id flat.NodeId) string {
 			}
 			mut args := []string{}
 			for i in 1 .. node.children_count {
-				arg := p.type_expr_name(p.a.child(&node, i))
+				arg := p.resolve_local_type_name(p.type_expr_name(p.a.child(&node, i)))
 				if arg.len == 0 {
 					return ''
 				}
@@ -4631,13 +4717,13 @@ fn (p &Parser) type_expr_name(id flat.NodeId) string {
 			if node.value.len == 0 {
 				return ''
 			}
-			return '[]${node.value}'
+			return '[]${p.resolve_local_type_name(node.value)}'
 		}
 		.prefix {
 			if node.children_count == 0 {
 				return ''
 			}
-			child := p.type_expr_name(p.a.child(&node, 0))
+			child := p.resolve_local_type_name(p.type_expr_name(p.a.child(&node, 0)))
 			if child.len == 0 {
 				return ''
 			}
@@ -5002,6 +5088,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 
 // fn_literal supports fn literal handling for Parser.
 fn (mut p Parser) fn_literal() flat.NodeId {
+	fn_start := p.tok_pos
 	p.next() // skip 'fn'
 	// capture list: fn [a, b] (params) ret { }
 	mut capture_ids := []flat.NodeId{}
@@ -5040,7 +5127,10 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	// body
 	mut body_ids := []flat.NodeId{}
 	if p.tok == .lcbr {
+		body_start := p.tok_pos
+		p.push_local_type_scope(p.fn_literal_local_type_scope(fn_start))
 		p.check(.lcbr)
+		p.predeclare_local_type_names_in_block(body_start)
 		for p.tok != .rcbr && p.tok != .eof {
 			id := p.stmt()
 			if int(id) >= 0 {
@@ -5048,6 +5138,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 			}
 		}
 		p.check(.rcbr)
+		p.pop_local_type_scope()
 	}
 	mut all_ids := []flat.NodeId{cap: capture_ids.len + param_ids.len + body_ids.len}
 	for id in capture_ids {
@@ -5513,8 +5604,159 @@ fn (mut p Parser) parse_type_name() string {
 		}
 		// generic: Type[T, U]
 		name += p.parse_type_generic_suffix()
+		name = p.resolve_local_type_name(name)
 	}
 	return name
+}
+
+fn (p &Parser) current_local_type_scope() string {
+	if p.local_type_scopes.len == 0 {
+		return ''
+	}
+	return p.local_type_scopes[p.local_type_scopes.len - 1]
+}
+
+fn (mut p Parser) push_local_type_scope(scope string) {
+	if scope.len > 0 {
+		p.local_type_scopes << scope
+	}
+}
+
+fn (mut p Parser) pop_local_type_scope() {
+	if p.local_type_scopes.len > 0 {
+		p.local_type_scopes.delete_last()
+	}
+}
+
+fn (p &Parser) fn_literal_local_type_scope(fn_start int) string {
+	mut base := p.current_local_type_scope()
+	if base.len == 0 {
+		base = p.cur_fn
+	}
+	if base.len == 0 {
+		base = 'fn_literal'
+	}
+	return '${base}__fn_literal_${fn_start}'
+}
+
+fn (p &Parser) block_local_type_scope(block_start int) string {
+	base := p.current_local_type_scope()
+	if base.len == 0 {
+		return ''
+	}
+	return '${base}__block_${block_start}'
+}
+
+fn (p &Parser) local_type_key_for_scope(scope string, name string) string {
+	if scope.len == 0 || name.len == 0 {
+		return ''
+	}
+	return '${p.cur_file}\n${p.cur_module}\n${scope}\n${name}'
+}
+
+fn (mut p Parser) declare_local_type_name(name string, scope string) string {
+	if scope.len == 0 || name.len == 0 || name.contains('.') {
+		return name
+	}
+	key := p.local_type_key_for_scope(scope, name)
+	if mapped := p.local_type_names[key] {
+		return mapped
+	}
+	local_name := local_type_decl_name_for_scope(name, scope)
+	p.local_type_names[key] = local_name
+	return local_name
+}
+
+fn local_type_decl_name_for_scope(name string, scope string) string {
+	return '${name}@local@${local_type_scope_part(scope)}'
+}
+
+fn (mut p Parser) predeclare_local_type_names_in_block(open_brace_pos int) {
+	scope := p.current_local_type_scope()
+	if scope.len == 0 || open_brace_pos < 0 || open_brace_pos >= p.s.src.len {
+		return
+	}
+	mut s := scanner.new_scanner(p.prefs, .normal)
+	s.init(p.s.current_file(), p.s.src)
+	s.offset = open_brace_pos + 1
+	s.pos = s.offset
+	mut depth := 0
+	for {
+		tok := s.scan()
+		if tok == .eof {
+			return
+		}
+		if tok == .lcbr {
+			depth++
+			continue
+		}
+		if tok == .rcbr {
+			if depth == 0 {
+				return
+			}
+			depth--
+			continue
+		}
+		if depth != 0 || (tok != .key_struct && tok != .key_union) {
+			continue
+		}
+		name_tok := s.scan()
+		if name_tok == .lcbr {
+			depth++
+			continue
+		}
+		if name_tok != .name {
+			continue
+		}
+		name := s.lit
+		after_name_tok := s.scan()
+		if after_name_tok != .dot {
+			p.declare_local_type_name(name, scope)
+		}
+		if after_name_tok == .lcbr {
+			depth++
+			continue
+		}
+	}
+}
+
+fn (p &Parser) resolve_local_type_name(name string) string {
+	if p.local_type_scopes.len == 0 || name.len == 0 {
+		return name
+	}
+	mut suffix := ''
+	mut base := name
+	idx := name.index_u8(`[`)
+	if idx >= 0 {
+		base = name[..idx]
+		suffix = name[idx..]
+	}
+	if base.contains('.') {
+		return name
+	}
+	for i := p.local_type_scopes.len - 1; i >= 0; i-- {
+		scope := p.local_type_scopes[i]
+		if mapped := p.local_type_names[p.local_type_key_for_scope(scope, base)] {
+			return mapped + suffix
+		}
+	}
+	return name
+}
+
+fn local_type_scope_part(name string) string {
+	mut out := strings.new_builder(name.len)
+	for ch in name {
+		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || (ch >= `0` && ch <= `9`) {
+			out.write_rune(ch)
+		} else if ch == `_` {
+			out.write_string('_u')
+		} else {
+			out.write_string('_x')
+			out.write_string(int(ch).hex())
+			out.write_u8(`_`)
+		}
+	}
+	return out.str()
 }
 
 // ==================== helpers ====================

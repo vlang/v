@@ -445,7 +445,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 	}
 	g.in_return = false
 	match node.kind {
-		.fn_decl, .c_fn_decl {
+		.fn_decl, .c_fn_decl, .struct_decl, .type_decl, .enum_decl, .interface_decl {
 			return
 		}
 		.expr_stmt {
@@ -2863,7 +2863,7 @@ fn (g &FlatGen) json_decode_call_expr_result_type(id flat.NodeId) ?types.Type {
 	if !g.is_json_decode_call(id, target) {
 		return none
 	}
-	return g.json_decode_result_type(callee_id)
+	return g.json_decode_result_type_for_call(node)
 }
 
 fn (g &FlatGen) or_expr_uses_concrete_optional(expr_id flat.NodeId) bool {

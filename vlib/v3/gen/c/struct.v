@@ -480,9 +480,7 @@ fn (mut g FlatGen) gen_lowered_sum_field_value(sum_name string, field &flat.Node
 			if child_type is types.Pointer && g.type_names_match(child_type.base_type, inner_type) {
 				g.gen_expr(child_id)
 			} else {
-				g.write('(${inner_ct}[]){')
-				g.gen_expr_with_expected_type(child_id, inner_type)
-				g.write('}')
+				g.gen_sum_variant_memdup_source(child_id, inner_type)
 			}
 			g.write(', sizeof(${inner_ct}))')
 			return

@@ -846,13 +846,33 @@ fn sanitize_generic_receiver_type_fragment(typ string) string {
 	return s
 }
 
-fn c_string_literal_pointer_arg(arg_node flat.Node, expected types.Type) bool {
-	if arg_node.kind != .char_literal || !arg_node.value.starts_with('c:') {
+fn c_string_pointer_base_arg(base types.Type) bool {
+	clean := if base is types.Alias { base.base_type } else { base }
+	if clean is types.Char {
+		return true
+	}
+	return clean is types.Primitive && clean.name() == 'u8'
+}
+
+fn (g &FlatGen) c_string_pointer_arg(arg_node flat.Node, expected types.Type) bool {
+	if expected !is types.Pointer {
 		return false
 	}
-	if expected is types.Pointer {
-		base := types.unwrap_pointer(expected)
-		return base is types.Char
+	if !c_string_pointer_base_arg(types.unwrap_pointer(expected)) {
+		return false
+	}
+	if arg_node.kind == .char_literal {
+		return arg_node.value.starts_with('c:')
+	}
+	if arg_node.kind == .ident {
+		const_name := g.const_ref_name(arg_node.value)
+		if const_name.len == 0 {
+			return false
+		}
+		if const_id := g.const_vals[const_name] {
+			const_node := g.a.nodes[int(const_id)]
+			return const_node.kind == .char_literal && const_node.value.starts_with('c:')
+		}
 	}
 	return false
 }
@@ -1422,6 +1442,47 @@ fn (mut g FlatGen) emit_args_spawn_expr(cfn string, param_cts []string, arg_expr
 	g.write('pthread_attr_setstacksize(&_at${tmp}, 8388608); ')
 	g.write('int _r${tmp} = pthread_create(&_t${tmp}, &_at${tmp}, ${wrapper}, (void*)_sa${tmp}); ')
 	g.write('pthread_attr_destroy(&_at${tmp}); (void)_r${tmp}; (void*)_t${tmp}; })')
+}
+
+fn (mut g FlatGen) gen_thread_wait_call(fn_node &flat.Node) bool {
+	if fn_node.value != 'wait' || fn_node.children_count == 0 {
+		return false
+	}
+	base_id := g.a.child(fn_node, 0)
+	base_type0 := g.usable_expr_type(base_id)
+	base_type := if base_type0 is types.Unknown || base_type0 is types.Void {
+		g.tc.resolve_type(base_id)
+	} else {
+		base_type0
+	}
+	clean_type := types.unwrap_pointer(base_type)
+	if clean_type !is types.Struct {
+		return false
+	}
+	thread_struct := clean_type as types.Struct
+	thread_name := thread_struct.name.trim_space()
+	mut ret_name := ''
+	if thread_name == 'thread' || thread_name.ends_with('.thread') {
+		ret_name = ''
+	} else if thread_name.starts_with('thread ') {
+		ret_name = thread_name[7..].trim_space()
+	} else {
+		return false
+	}
+	tmp := g.tmp_count
+	g.tmp_count++
+	res_name := '__twres${tmp}'
+	g.write('({ void* ${res_name} = NULL; pthread_join((pthread_t)(')
+	g.gen_expr(base_id)
+	g.write('), &${res_name}); ')
+	if ret_name.len == 0 {
+		g.write('if (${res_name}) free(${res_name}); })')
+		return true
+	}
+	ret_ct := g.fn_return_type_name(g.tc.parse_type(ret_name))
+	val_name := '__twval${tmp}'
+	g.write('${ret_ct} ${val_name}; if (${res_name}) { ${val_name} = *((${ret_ct}*)${res_name}); free(${res_name}); } else { memset(&${val_name}, 0, sizeof(${val_name})); } ${val_name}; })')
+	return true
 }
 
 fn (g &FlatGen) resolved_method_name_for_spawn(clean_type types.Type, method string) string {
@@ -2123,9 +2184,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if g.is_json_decode_call(id, target_name) {
-		ret_type := g.json_decode_result_type(g.a.child(&node, 0)) or {
-			g.call_default_return_type(id)
-		}
+		ret_type := g.json_decode_result_type_for_call(node) or { g.call_default_return_type(id) }
 		g.gen_default_value_for_type(ret_type)
 		return
 	}
@@ -2349,6 +2408,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					{
 						base_type := g.usable_expr_type(g.a.child(fn_node, 0))
 						clean_type := concrete_receiver_type(base_type)
+						if g.gen_thread_wait_call(fn_node) {
+							return
+						}
 						if g.gen_interface_method_call(node, fn_node, base_type) {
 							return
 						}
@@ -2495,6 +2557,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				} else {
 					base_type := g.usable_expr_type(g.a.child(fn_node, 0))
 					clean_type := concrete_receiver_type(base_type)
+					if g.gen_thread_wait_call(fn_node) {
+						return
+					}
 					if g.gen_interface_method_call(node, fn_node, base_type) {
 						return
 					}
@@ -2891,12 +2956,17 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 							c_elem := g.tc.c_type(variadic_type.elem_type)
 							count := num_call_args - variadic_idx
 							g.write('new_array_from_c_array(${count}, ${count}, sizeof(${c_elem}), (${c_elem}[]){')
+							is_voidptr_variadic := variadic_elem_is_voidptr(variadic_type.elem_type)
 							for j in i .. node.children_count {
 								if j > i {
 									g.write(', ')
 								}
-								g.gen_expr_with_expected_type(g.a.child(&node, j),
-									variadic_type.elem_type)
+								if is_voidptr_variadic {
+									g.gen_voidptr_variadic_arg(g.a.child(&node, j))
+								} else {
+									g.gen_expr_with_expected_type(g.a.child(&node, j),
+										variadic_type.elem_type)
+								}
 							}
 							g.write('})')
 							break
@@ -2905,7 +2975,11 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						if arg_type !is types.Array {
 							c_elem := g.tc.c_type(variadic_type.elem_type)
 							g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), (${c_elem}[]){')
-							g.gen_expr_with_expected_type(arg_id, variadic_type.elem_type)
+							if variadic_elem_is_voidptr(variadic_type.elem_type) {
+								g.gen_voidptr_variadic_arg(arg_id)
+							} else {
+								g.gen_expr_with_expected_type(arg_id, variadic_type.elem_type)
+							}
 							g.write('})')
 							continue
 						}
@@ -2917,7 +2991,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					&& arg_node.op == .amp) {
 					arg_type := g.tc.resolve_type(arg_id)
 					if arg_type !is types.Pointer
-						&& !c_string_literal_pointer_arg(arg_node, param_types[arg_idx]) {
+						&& !g.c_string_pointer_arg(arg_node, param_types[arg_idx]) {
 						needs_addr = true
 					}
 				}
@@ -3363,6 +3437,25 @@ fn (g &FlatGen) call_default_return_type(id flat.NodeId) types.Type {
 	return g.tc.resolve_type(id)
 }
 
+fn (g &FlatGen) json_decode_result_type_for_call(node flat.Node) ?types.Type {
+	if node.children_count == 0 {
+		return none
+	}
+	if ret_type := g.json_decode_result_type(g.a.child(&node, 0)) {
+		return ret_type
+	}
+	if node.children_count < 2 {
+		return none
+	}
+	type_name := g.json_decode_type_arg_name(g.a.child(&node, 1))
+	if type_name.len == 0 {
+		return none
+	}
+	return types.Type(types.ResultType{
+		base_type: g.tc.parse_type(type_name)
+	})
+}
+
 fn (g &FlatGen) json_decode_result_type(callee_id flat.NodeId) ?types.Type {
 	if int(callee_id) < 0 || int(callee_id) >= g.a.nodes.len {
 		return none
@@ -3386,6 +3479,74 @@ fn (g &FlatGen) json_decode_result_type(callee_id flat.NodeId) ?types.Type {
 	return types.Type(types.ResultType{
 		base_type: g.tc.parse_type(type_name)
 	})
+}
+
+fn (g &FlatGen) json_decode_type_arg_name(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return ''
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value
+		}
+		.selector {
+			if node.children_count == 0 {
+				return node.value
+			}
+			base := g.json_decode_type_arg_name(g.a.child(&node, 0))
+			if base.len == 0 {
+				return node.value
+			}
+			return '${base}.${node.value}'
+		}
+		.index {
+			if node.children_count < 2 || node.value == 'range' {
+				return ''
+			}
+			base := g.json_decode_type_arg_name(g.a.child(&node, 0))
+			if base.len == 0 {
+				return ''
+			}
+			mut args := []string{}
+			for i in 1 .. node.children_count {
+				arg := g.json_decode_type_arg_name(g.a.child(&node, i))
+				if arg.len == 0 {
+					return ''
+				}
+				args << arg
+			}
+			return '${base}[${args.join(', ')}]'
+		}
+		.array_init {
+			if node.value.len > 0 {
+				return '[]${node.value}'
+			}
+			return ''
+		}
+		.map_init {
+			return node.value
+		}
+		.struct_decl {
+			return node.value
+		}
+		.prefix {
+			if node.children_count == 0 {
+				return ''
+			}
+			child := g.json_decode_type_arg_name(g.a.child(&node, 0))
+			if child.len == 0 {
+				return ''
+			}
+			if node.op == .amp {
+				return '&${child}'
+			}
+			return child
+		}
+		else {
+			return ''
+		}
+	}
 }
 
 fn (g &FlatGen) embedded_method_name_for_type(base_type types.Type, method string) ?string {
@@ -3565,6 +3726,9 @@ fn (g &FlatGen) normalize_call_key(name string) string {
 	if name in g.tc.fn_param_types || name in g.tc.fn_ret_types {
 		return name
 	}
+	if imported := g.selective_import_call_key(name) {
+		return imported
+	}
 	qname := g.tc.qualify_fn_name(name)
 	if qname in g.tc.fn_param_types || qname in g.tc.fn_ret_types {
 		return qname
@@ -3576,6 +3740,41 @@ fn (g &FlatGen) normalize_call_key(name string) string {
 		}
 	}
 	return qname
+}
+
+fn (g &FlatGen) selective_import_call_key(name string) ?string {
+	if name.contains('.') {
+		return none
+	}
+	mut resolved := []string{}
+	if g.tc.cur_file.len > 0 {
+		if candidates := g.tc.file_selective_imports['${g.tc.cur_file}\n${name}'] {
+			for candidate in candidates {
+				if (candidate in g.tc.fn_param_types || candidate in g.tc.fn_ret_types)
+					&& candidate !in resolved {
+					resolved << candidate
+				}
+			}
+		}
+	}
+	if resolved.len == 0 {
+		suffix := '\n${name}'
+		for key, candidates in g.tc.file_selective_imports {
+			if !key.ends_with(suffix) {
+				continue
+			}
+			for candidate in candidates {
+				if (candidate in g.tc.fn_param_types || candidate in g.tc.fn_ret_types)
+					&& candidate !in resolved {
+					resolved << candidate
+				}
+			}
+		}
+	}
+	if resolved.len == 1 {
+		return resolved[0]
+	}
+	return none
 }
 
 // param_types_for supports param types for handling for FlatGen.
@@ -4424,11 +4623,16 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				c_elem := g.tc.c_type(variadic_type.elem_type)
 				count := num_args - variadic_idx
 				g.write('new_array_from_c_array(${count}, ${count}, sizeof(${c_elem}), (${c_elem}[]){')
+				is_voidptr_variadic := variadic_elem_is_voidptr(variadic_type.elem_type)
 				for j in i .. node.children_count {
 					if j > i {
 						g.write(', ')
 					}
-					g.gen_expr_with_expected_type(g.a.child(&node, j), variadic_type.elem_type)
+					if is_voidptr_variadic {
+						g.gen_voidptr_variadic_arg(g.a.child(&node, j))
+					} else {
+						g.gen_expr_with_expected_type(g.a.child(&node, j), variadic_type.elem_type)
+					}
 				}
 				g.write('})')
 			}
@@ -4441,7 +4645,11 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				if variadic_type is types.Array {
 					c_elem := g.tc.c_type(variadic_type.elem_type)
 					g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), (${c_elem}[]){')
-					g.gen_expr_with_expected_type(arg_id, variadic_type.elem_type)
+					if variadic_elem_is_voidptr(variadic_type.elem_type) {
+						g.gen_voidptr_variadic_arg(arg_id)
+					} else {
+						g.gen_expr_with_expected_type(arg_id, variadic_type.elem_type)
+					}
 					g.write('})')
 					continue
 				}
@@ -4452,8 +4660,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			&& !(arg_node.kind == .prefix && arg_node.op == .amp)
 			&& !g.arg_is_null_pointer_literal(arg_id, arg_node) {
 			arg_type := g.tc.resolve_type(arg_id)
-			if arg_type !is types.Pointer
-				&& !c_string_literal_pointer_arg(arg_node, param_types[arg_idx]) {
+			if arg_type !is types.Pointer && !g.c_string_pointer_arg(arg_node, param_types[arg_idx]) {
 				needs_addr = true
 			}
 		}
@@ -4519,6 +4726,57 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			g.gen_default_value_for_type(param_types[i])
 		}
 	}
+}
+
+fn variadic_elem_is_voidptr(typ types.Type) bool {
+	if typ is types.Pointer {
+		return typ.base_type is types.Void
+	}
+	return false
+}
+
+fn (mut g FlatGen) gen_voidptr_variadic_arg(arg_id flat.NodeId) {
+	actual := g.tc.resolve_type(arg_id)
+	if voidptr_variadic_type_passes_direct(actual) {
+		g.write('(voidptr)(')
+		g.gen_expr_with_expected_type(arg_id, actual)
+		g.write(')')
+		return
+	}
+	storage_ct := g.voidptr_variadic_storage_c_type(actual)
+	g.write('(voidptr)&((${storage_ct}[]){')
+	g.gen_expr_with_expected_type(arg_id, actual)
+	g.write('}[0])')
+}
+
+fn voidptr_variadic_type_passes_direct(typ types.Type) bool {
+	if typ is types.Alias {
+		return voidptr_variadic_type_passes_direct(typ.base_type)
+	}
+	return typ is types.Pointer || typ is types.Nil
+}
+
+fn (g &FlatGen) voidptr_variadic_storage_c_type(actual types.Type) string {
+	mut clean := actual
+	for _ in 0 .. 8 {
+		if clean is types.Alias {
+			clean = clean.base_type
+			continue
+		}
+		break
+	}
+	if clean is types.Char {
+		return 'int'
+	}
+	if clean is types.Primitive {
+		if clean.props.has(.integer) && clean.size < 32 {
+			return 'int'
+		}
+		if clean.props.has(.float) && clean.size == 32 {
+			return 'double'
+		}
+	}
+	return g.tc.c_type(clean)
 }
 
 fn raw_sizeof_arg_value(value string) ?string {
