@@ -170,7 +170,7 @@ fn test_local_generic_type_with_qualified_arg_resolves_base_before_qualification
 	for node in a.nodes {
 		match node.kind {
 			.struct_decl {
-				if node.value.starts_with('Box__local_') {
+				if node.value.starts_with('Box@local@') {
 					local_decl_name = node.value
 				}
 			}
@@ -187,7 +187,7 @@ fn test_local_generic_type_with_qualified_arg_resolves_base_before_qualification
 			else {}
 		}
 	}
-	assert local_decl_name.starts_with('Box__local_main')
+	assert local_decl_name.starts_with('Box@local@main')
 	assert array_types == ['${local_decl_name}[other.Thing]']
 	assert init_types == ['${local_decl_name}[other.Thing]']
 }
@@ -199,10 +199,10 @@ fn test_local_sibling_types_are_predeclared_before_fields() {
 	mut local_b := ''
 	for node in a.nodes {
 		if node.kind == .struct_decl {
-			if node.value.starts_with('A__local_main') {
+			if node.value.starts_with('A@local@main') {
 				local_a = node.value
 			}
-			if node.value.starts_with('B__local_main') {
+			if node.value.starts_with('B@local@main') {
 				local_b = node.value
 			}
 		}
@@ -237,7 +237,7 @@ fn test_local_type_scope_names_do_not_collapse_punctuation() {
 		'module main\n\nstruct Foo {}\n\nfn (f Foo) bar() {\n\tstruct Row {\n\t\tmethod int\n\t}\n\t_ := Row{}\n}\n\nfn Foo_bar() {\n\tstruct Row {\n\t\tfunction int\n\t}\n\t_ := Row{}\n}\n')
 	mut row_names := []string{}
 	for node in a.nodes {
-		if node.kind == .struct_decl && node.value.starts_with('Row__local_') {
+		if node.kind == .struct_decl && node.value.starts_with('Row@local@') {
 			row_names << node.value
 		}
 	}
