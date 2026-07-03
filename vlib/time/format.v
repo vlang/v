@@ -773,6 +773,46 @@ pub fn (t Time) write_http_header(dst &u8, dst_len int) ! {
 	}
 }
 
+// update_http_header refreshes an HTTP-date previously written at dst (by
+// write_http_header) from last_unix to now_unix, rewriting ONLY the digits
+// whose value changed: within the same minute that is the 2 seconds digits;
+// minute and hour rollovers add 2 digits each; a day rollover (or
+// last_unix <= 0 / now_unix <= 0) falls back to a full write_http_header,
+// which is the only path that pays calendar math — at a 1 Hz refresh cadence,
+// once per day. The caller passes the same UTC unix seconds it will keep for
+// the next call. No allocation on the success path.
+@[unsafe]
+pub fn update_http_header(dst &u8, dst_len int, last_unix i64, now_unix i64) ! {
+	if dst_len < http_header_len {
+		return error('time.update_http_header: dst_len must be >= 29')
+	}
+	if now_unix == last_unix {
+		return
+	}
+	if last_unix <= 0 || now_unix <= 0 || now_unix / 86400 != last_unix / 86400 {
+		unsafe { unix(now_unix).write_http_header(dst, dst_len)! }
+		return
+	}
+	tod := int(now_unix % 86400)
+	unsafe {
+		write_2_digits(dst + 23, tod % 60)
+		if now_unix / 60 != last_unix / 60 {
+			write_2_digits(dst + 20, (tod / 60) % 60)
+			if now_unix / 3600 != last_unix / 3600 {
+				write_2_digits(dst + 17, tod / 3600)
+			}
+		}
+	}
+}
+
+@[inline]
+fn write_2_digits(dst &u8, v int) {
+	unsafe {
+		dst[0] = u8(`0` + v / 10)
+		dst[1] = u8(`0` + v % 10)
+	}
+}
+
 // push_to_http_header appends the 29-byte HTTP-date to buffer, as defined in RFC 2616.
 // e.g. "Sun, 06 Nov 1994 08:49:37 GMT"
 pub fn (t Time) push_to_http_header(mut buffer []u8) {
