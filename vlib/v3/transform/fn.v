@@ -1864,7 +1864,6 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	if clean_typ == 'IError' || clean_typ == 'builtin.IError' {
 		return t.make_call_typed('IError.str', arr1(expr), 'string')
 	}
-	iface_name := t.resolve_interface_type_name(clean_typ)
 	if iface_name.len > 0 {
 		str_key := '${iface_name}.str'
 		known_str := str_key in t.fn_ret_types || (!isnil(t.tc) && str_key in t.tc.fn_ret_types)

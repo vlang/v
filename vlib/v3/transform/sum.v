@@ -243,13 +243,15 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 		return none
 	}
 	concrete := t.interface_concrete_impl_name(concrete_name) or { return none }
+	requested_qualified := concrete_name.contains('.')
 	// The 1-based position in tc.interface_impl_names is the `_typ` id cgen
 	// assigns when boxing; deriving it from the same list keeps `is` checks
 	// and dispatch in sync (aliases included).
 	mut idx := 0
 	for impl_name in t.tc.interface_impl_names(iface) {
 		idx++
-		if impl_name == concrete || impl_name.all_after_last('.') == concrete.all_after_last('.') {
+		if impl_name == concrete || (!requested_qualified
+			&& impl_name.all_after_last('.') == concrete.all_after_last('.')) {
 			return idx
 		}
 	}
