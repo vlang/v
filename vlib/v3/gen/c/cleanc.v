@@ -7477,7 +7477,14 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	g.writeln('static inline bool atomic_compare_exchange_weak_u64(void* ptr, u64* expected, u64 desired) { return __atomic_compare_exchange_n((u64*)ptr, expected, desired, 1, 5, 5); }')
 	g.writeln('#endif')
 	g.writeln('static inline bool atomic_compare_exchange_weak_ptr(void* ptr, void* expected, ptrdiff_t desired) { return atomic_compare_exchange_strong_ptr(ptr, expected, desired); }')
+	// tcc's arm64 backend rejects inline asm ("ARM asm not implemented"), even the
+	// empty compiler-barrier form. cpu_relax is only a spin-loop hint; the real memory
+	// ordering in those loops comes from the atomic ops, so a no-op is safe under tcc.
+	g.writeln('#ifdef __TINYC__')
+	g.writeln('static inline void cpu_relax(void) { }')
+	g.writeln('#else')
 	g.writeln('static inline void cpu_relax(void) { __asm__ __volatile__("" ::: "memory"); }')
+	g.writeln('#endif')
 }
 
 fn (mut g FlatGen) builtin_abi_decls() {
@@ -7510,7 +7517,17 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#define memory_order_acq_rel 4')
 	g.writeln('#define memory_order_seq_cst 5')
 	g.writeln('#endif')
+	// tcc has no `__atomic_thread_fence` builtin. On the architectures where
+	// thirdparty/stdatomic/nix/atomic.S provides `_V_atomic_thread_fence`, route to
+	// that shim; on x86_64 Unix the assembly file provides `__atomic_thread_fence`
+	// directly, so keep the normal name there. clang/gcc keep the builtin.
+	g.writeln('#if defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv) || (defined(__x86_64__) && defined(_WIN32)))')
+	g.writeln('extern void _V_atomic_thread_fence(int order);')
+	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
+	g.writeln('#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)')
+	g.writeln('#else')
 	g.writeln('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
+	g.writeln('#endif')
 	// Weak fallbacks for the heap-tracking hooks. A program that provides real
 	// implementations (e.g. a `vheap_alloc`/`vheap_free` from a linked C file, as
 	// some projects do) overrides these without a redefinition/static-vs-non-static

@@ -202,6 +202,7 @@ pub mut:
 	struct_files                       map[string]string
 	struct_error_embeds_shadow_builtin map[string]bool
 	struct_generic_params              map[string][]string // generic struct base name -> type-param names (e.g. Vec4 -> [T])
+	struct_implements                  map[string][]string
 	struct_field_c_abi_fns             map[string]string
 	// concrete `Box[int].method` -> substituted CallInfo for a method *value* on a
 	// generic receiver. The open `Box[T].method` registration is gone by cgen time, so
@@ -307,6 +308,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		struct_files:                       map[string]string{}
 		struct_error_embeds_shadow_builtin: map[string]bool{}
 		struct_generic_params:              map[string][]string{}
+		struct_implements:                  map[string][]string{}
 		struct_field_c_abi_fns:             map[string]string{}
 		generic_method_value_info:          map[string]CallInfo{}
 		params_structs:                     map[string]bool{}
@@ -619,6 +621,10 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						tc.struct_generic_params[node.value] = node.generic_params.clone()
 					}
 				}
+				implements_types := struct_decl_implements_from_typ(node.typ)
+				if implements_types.len > 0 {
+					tc.struct_implements[qname] = implements_types
+				}
 				if 'union' in node.typ.split(',') {
 					tc.unions[qname] = true
 				}
@@ -750,6 +756,19 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 					}
 				}
 				qname := tc.qualify_name(node.value)
+				// A `C.` struct denotes a single external C type, but several modules may
+				// mirror it with partial or imprecise field views (e.g. `C.termios` in both
+				// `term` and `term.termios`). codegen emits one C struct, so the field table
+				// must be a single canonical view. Keep the most complete (superset) view so
+				// it is deterministic regardless of module collection order, instead of
+				// letting whichever declaration is collected last silently win.
+				if qname.starts_with('C.') {
+					if existing := tc.structs[qname] {
+						if fields.len <= existing.len {
+							continue
+						}
+					}
+				}
 				tc.structs[qname] = fields
 				tc.struct_modules[qname] = tc.cur_module
 				tc.struct_files[qname] = tc.cur_file
@@ -1546,6 +1565,10 @@ fn (mut tc TypeChecker) register_fn_signature(name string, ret_type Type, params
 fn (mut tc TypeChecker) register_fn_name_alias(name string, ret_type Type, params []Type, is_variadic bool, implicit_veb_ctx bool) {
 	tc.fn_ret_types[name] = ret_type
 	tc.fn_param_types[name] = params.clone()
+	if tc.cur_file.len > 0 {
+		tc.fn_type_files[name] = tc.cur_file
+		tc.fn_type_modules[name] = tc.cur_module
+	}
 	tc.fn_variadic[name] = is_variadic
 	tc.fn_implicit_veb_ctx[name] = implicit_veb_ctx
 	tc.add_receiver_method_suffix_index(name)
@@ -6875,6 +6898,20 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				return tc.call_info(mname, true)
 			}
 		}
+		if fn_node.value == 'clone' && tc.type_has_compiler_default_clone(clean) {
+			// `#[derive(Clone)]` in Rust maps to `implements IClone` in the ownership
+			// translation, whose `clone()` is compiler-provided. V structs are value types,
+			// so `.clone()` yields a copy of the receiver: resolve it to the (unwrapped)
+			// receiver type. A user-defined `clone()` method is matched earlier via
+			// `receiver_method_name_candidates`, so this only supplies the default.
+			return CallInfo{
+				name:         ''
+				params:       tarr1(base_type)
+				return_type:  clean
+				has_receiver: true
+				params_known: true
+			}
+		}
 		if fn_node.value == 'str' {
 			return CallInfo{
 				name:         ''
@@ -7786,7 +7823,14 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		return
 	}
 	if info.has_receiver && info.params.len > 0 {
-		fn_node := tc.a.child_node(&node, 0)
+		mut fn_node := tc.a.child_node(&node, 0)
+		// For an explicit generic method call `recv.method[T](...)`, the call's fn is an
+		// `.index` node (`recv.method` indexed by the type args), so its child 0 is the
+		// `recv.method` selector — a method value — not the receiver. Descend through the
+		// index to the underlying selector so the receiver resolves to `recv`.
+		if fn_node.kind == .index && fn_node.children_count > 0 {
+			fn_node = tc.a.child_node(fn_node, 0)
+		}
 		recv_id := tc.a.child(fn_node, 0)
 		tc.check_node(recv_id)
 		recv_type := tc.cached_expr_type(recv_id) or { tc.resolve_type(recv_id) }
@@ -10797,14 +10841,27 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			return actual
 		}
 	}
-	if node.kind == .enum_val && expected is Enum {
-		if tc.enum_value_matches(node.value, expected.name) {
-			tc.register_synth_type(id, expected_raw)
-			return expected_raw
+	if node.kind == .enum_val {
+		// The expected type may be the enum directly, or an option/result wrapper around
+		// it (`?Enum` / `!Enum`), e.g. `mut field ?LoggingMode` assigned `field = .debug`.
+		// Unwrap the option/result payload so the shorthand resolves against the inner
+		// enum. On success the node is typed as the *inner* enum (not the wrapper): a bare
+		// enum value assigned into an option is auto-wrapped by the assignment/return
+		// machinery, exactly like any other bare value assigned into an option, so the
+		// node itself must stay unwrapped for codegen to emit the wrap.
+		mut enum_expected := expected
+		if payload := contextual_payload_type(expected) {
+			enum_expected = payload
 		}
-		tc.type_mismatch(.assignment_mismatch,
-			'unknown enum field `${node.value}` for `${expected.name}`', id)
-		return Type(int_)
+		if enum_expected is Enum {
+			if tc.enum_value_matches(node.value, enum_expected.name) {
+				tc.register_synth_type(id, enum_expected)
+				return enum_expected
+			}
+			tc.type_mismatch(.assignment_mismatch,
+				'unknown enum field `${node.value}` for `${enum_expected.name}`', id)
+			return Type(int_)
+		}
 	}
 	// A bare generic struct literal (`Box{...}` / `&Box{...}`) adopts a matching concrete
 	// expected instance (`Box[int]` / `&Box[int]`), so `fn make() Box[int] { return
@@ -11844,6 +11901,91 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, i
 		}
 	}
 	return true
+}
+
+fn struct_decl_implements_from_typ(typ string) []string {
+	mut out := []string{}
+	for part in struct_decl_typ_parts(typ) {
+		if !part.starts_with('implements=') {
+			continue
+		}
+		for iface in part['implements='.len..].split('|') {
+			clean := iface.trim_space()
+			if clean.len > 0 {
+				out << clean
+			}
+		}
+	}
+	return out
+}
+
+fn struct_decl_typ_parts(typ string) []string {
+	mut parts := []string{}
+	mut start := 0
+	mut depth := 0
+	for i, ch in typ {
+		if ch == `[` {
+			depth++
+		} else if ch == `]` {
+			if depth > 0 {
+				depth--
+			}
+		} else if ch == `,` && depth == 0 {
+			parts << typ[start..i]
+			start = i + 1
+		}
+	}
+	parts << typ[start..]
+	return parts
+}
+
+fn marker_type_name(name string) string {
+	mut clean := name.trim_space()
+	base, _, ok := generic_type_application_parts(clean)
+	if ok {
+		clean = base
+	}
+	return clean
+}
+
+fn interface_marker_matches(name string, target string) bool {
+	clean := marker_type_name(name)
+	target_clean := marker_type_name(target)
+	return clean == target_clean || clean.all_after_last('.') == target_clean
+		|| clean == target_clean.all_after_last('.')
+}
+
+pub fn (tc &TypeChecker) named_type_implements_marker(concrete_name string, target string) bool {
+	mut name := concrete_name.trim_space()
+	if name.starts_with('&') {
+		name = name[1..].trim_space()
+	}
+	name = marker_type_name(name)
+	mut candidates := [name]
+	if !name.contains('.') {
+		qname := tc.qualify_name(name)
+		if qname != name {
+			candidates << qname
+		}
+	} else if name.starts_with('main.') {
+		candidates << name['main.'.len..]
+	}
+	for candidate in candidates {
+		impls := tc.struct_implements[candidate] or { continue }
+		for impl_name in impls {
+			if interface_marker_matches(impl_name, target) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) type_has_compiler_default_clone(t Type) bool {
+	if t is Struct {
+		return tc.named_type_implements_marker(t.name, 'IClone')
+	}
+	return false
 }
 
 // interface_impl_names returns the concrete type names (structs and type

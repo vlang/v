@@ -3253,7 +3253,8 @@ fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, n
 				returns_owned = true
 			}
 			if recv_owned && info.params[0] !is Pointer
-				&& !tc.ownership_method_keeps_receiver(fn_node.value) {
+				&& !tc.ownership_method_keeps_receiver(fn_node.value)
+				&& !tc.ownership_string_builtin_keeps_receiver(recv_id, fn_node.value) {
 				if info.name.len > 0 {
 					tc.ownership_state().ownership_fn_params['${info.name}__param_0'] = true
 				}
@@ -3261,7 +3262,8 @@ fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, n
 			}
 			recv_name := tc.ownership_expr_ident_name(recv_id)
 			if recv_name.len > 0 && info.params[0] !is Pointer
-				&& !tc.ownership_method_keeps_receiver(fn_node.value) {
+				&& !tc.ownership_method_keeps_receiver(fn_node.value)
+				&& !tc.ownership_string_builtin_keeps_receiver(recv_id, fn_node.value) {
 				tc.ownership_prescan_transfer_owned_descendants_to_param(recv_name, info.name, 0, mut
 					owned_locals, local_types)
 			}
@@ -7155,7 +7157,8 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 			recv_id := tc.a.child(fn_node, 0)
 			recv_name := tc.ownership_expr_ident_name(recv_id)
 			if !tc.ownership_method_keeps_receiver(fn_node.value)
-				&& !tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value) {
+				&& !tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value)
+				&& !tc.ownership_string_builtin_keeps_receiver(recv_id, fn_node.value) {
 				if info.params[0] is Pointer {
 					if recv_name.len > 0 && tc.ownership_storage_participates(recv_name) {
 						tc.ownership_add_borrow(recv_name, call_name, id, tc.ownership_call_param_is_mut(call_name,
@@ -8707,6 +8710,14 @@ fn (mut tc TypeChecker) ownership_move_var(name string, target string, pos flat.
 fn (mut tc TypeChecker) ownership_move_var_result(name string, target string, pos flat.NodeId, is_fn_call bool, fn_name string, suggest_clone bool) bool {
 	mut st := tc.ownership_state()
 	if moved := tc.ownership_moved_conflict(name) {
+		// Re-moving the exact same value to the same target at the same node is one logical
+		// move recorded twice, not a use-after-move. This happens when a returned struct's
+		// owned descendant (e.g. `args.positional[*]`) is both marked as a return descendant
+		// and swept again as overlapping dynamic storage in the same `return`. Treat it as a
+		// no-op instead of reporting a spurious `use of moved value`.
+		if moved.name == name && moved.info.moved_to == target && moved.info.move_pos == pos {
+			return false
+		}
 		tc.ownership_report_moved(moved.name, moved.info, pos)
 		return false
 	}
@@ -9188,4 +9199,22 @@ fn (mut tc TypeChecker) ownership_array_builtin_keeps_receiver(recv_id flat.Node
 		return false
 	}
 	return unwrap_pointer(tc.resolve_type(recv_id)) is Array
+}
+
+// ownership_string_builtin_keeps_receiver reports whether a method call whose receiver is a
+// builtin `string` should borrow rather than move the receiver. Builtin string methods
+// (`contains`, `starts_with`, `split`, `to_upper`, ...) only read the receiver; none consume
+// the string's heap buffer, so a `string` receiver passed by value borrows just like Rust's
+// `&self` string methods. User-defined by-value string methods still move the receiver.
+fn (mut tc TypeChecker) ownership_string_builtin_keeps_receiver(recv_id flat.NodeId, method_name string) bool {
+	if unwrap_pointer(tc.resolve_type(recv_id)) !is String {
+		return false
+	}
+	return tc.ownership_fn_declared_in_builtin('string.${method_name}')
+}
+
+fn (tc &TypeChecker) ownership_fn_declared_in_builtin(fn_name string) bool {
+	file := tc.fn_type_files[fn_name] or { return false }
+	normalized := file.replace('\\', '/')
+	return normalized.starts_with('vlib/builtin/') || normalized.contains('/vlib/builtin/')
 }
