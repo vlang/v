@@ -4605,7 +4605,8 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 	// fast path for the common simple index `arr[i]`: avoid the children array
 	if p.tok == .rsbr {
 		p.next()
-		istart := p.add_children2(lhs, idx)
+		type_arg := if p.tok == .lpar { p.generic_call_type_arg_id(idx) } else { idx }
+		istart := p.add_children2(lhs, type_arg)
 		return p.a.add_node(flat.Node{
 			kind:           .index
 			children_start: istart
@@ -4642,11 +4643,28 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 		})
 	}
 	p.check(.rsbr)
+	if p.tok == .lpar {
+		for i in 1 .. ids.len {
+			ids[i] = p.generic_call_type_arg_id(ids[i])
+		}
+	}
 	istart := p.add_children(ids)
 	return p.a.add_node(flat.Node{
 		kind:           .index
 		children_start: istart
 		children_count: flat.child_count(ids.len)
+	})
+}
+
+fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
+	name := p.type_expr_name(id)
+	resolved := p.resolve_local_type_name(name)
+	if name.len == 0 || resolved == name {
+		return id
+	}
+	return p.a.add_node(flat.Node{
+		kind:  .ident
+		value: resolved
 	})
 }
 

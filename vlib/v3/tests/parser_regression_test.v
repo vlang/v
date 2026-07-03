@@ -192,6 +192,41 @@ fn test_local_generic_type_with_qualified_arg_resolves_base_before_qualification
 	assert init_types == ['${local_decl_name}[other.Thing]']
 }
 
+fn test_local_type_generic_call_type_arg_is_resolved() {
+	a := parse_parser_regression_source('local_generic_call_type_arg',
+		'module main\n\nfn id[T](x T) T {\n\treturn x\n}\n\nfn main() {\n\tstruct Row {\n\t\tn int\n\t}\n\t_ := id[Row](Row{\n\t\tn: 1\n\t})\n}\n')
+	mut local_row := ''
+	mut call_type_args := []string{}
+	mut init_types := []string{}
+	for node in a.nodes {
+		match node.kind {
+			.struct_decl {
+				if node.value.starts_with('Row@local@') {
+					local_row = node.value
+				}
+			}
+			.index {
+				if node.children_count == 2 {
+					base := a.child_node(&node, 0)
+					arg := a.child_node(&node, 1)
+					if base.kind == .ident && base.value == 'id' {
+						call_type_args << arg.value
+					}
+				}
+			}
+			.struct_init {
+				if node.value.contains('Row') {
+					init_types << node.value
+				}
+			}
+			else {}
+		}
+	}
+	assert local_row.starts_with('Row@local@main')
+	assert call_type_args == [local_row]
+	assert init_types == [local_row]
+}
+
 fn test_local_sibling_types_are_predeclared_before_fields() {
 	a := parse_parser_regression_source('local_sibling_struct_fields',
 		'module main\n\nfn main() {\n\t_ := []struct {\n\t\tn int\n\t}{}\n\tstruct A {\n\t\tb &B\n\t}\n\tstruct B {\n\t\ta &A\n\t}\n}\n')
