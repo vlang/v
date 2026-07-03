@@ -5957,6 +5957,14 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 				}
 				return
 			}
+			if ok := tc.multi_expr_tail_return_compatible(id, child_id, multi.types) {
+				if ok {
+					$if ownership ? {
+						tc.ownership_after_return(id, node)
+					}
+				}
+				return
+			}
 			if item_types := tc.multi_expr_tail_types(child_id, multi.types.len) {
 				if item_types.len == multi.types.len {
 					mut ok := true
@@ -6036,6 +6044,49 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	$if ownership ? {
 		tc.ownership_after_return(id, node)
 	}
+}
+
+fn (mut tc TypeChecker) multi_expr_tail_return_compatible(return_id flat.NodeId, expr_id flat.NodeId, expected []Type) ?bool {
+	if !tc.multi_expr_tail_return_compat_supported(expr_id) {
+		return none
+	}
+	groups := tc.multi_expr_tail_value_groups(expr_id, expected.len) or { return none }
+	if groups.len == 0 {
+		return none
+	}
+	mut ok := true
+	for group in groups {
+		if group.len != expected.len {
+			return none
+		}
+		for i, value_id in group {
+			actual := tc.resolve_expr(value_id, expected[i])
+			if !type_has_runtime_value(actual) {
+				return none
+			}
+			if !tc.return_type_compatible(value_id, actual, expected[i]) {
+				ok = false
+				tc.type_mismatch(.return_mismatch,
+					'cannot return `${actual.name()}` as `${expected[i].name()}`', return_id)
+			}
+		}
+	}
+	return ok
+}
+
+fn (tc &TypeChecker) multi_expr_tail_return_compat_supported(expr_id flat.NodeId) bool {
+	if !tc.valid_node_id(expr_id) {
+		return false
+	}
+	node := tc.a.nodes[int(expr_id)]
+	// Raw tuple-tail return lowering is currently only implemented for if-expressions.
+	if node.kind == .if_expr {
+		return true
+	}
+	if node.kind == .expr_stmt && node.children_count > 0 {
+		return tc.multi_expr_tail_return_compat_supported(tc.a.child(&node, 0))
+	}
+	return false
 }
 
 fn (tc &TypeChecker) result_return_uses_multi_tail(expr_id flat.NodeId, expected Type) bool {

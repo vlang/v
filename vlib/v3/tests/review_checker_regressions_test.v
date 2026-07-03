@@ -58,6 +58,13 @@ fn test_reject_pointer_expressions_for_value_returns() {
 		'cannot initialize field `x` with `&int`; expected `int`')
 }
 
+fn test_multi_return_tail_slots_use_return_compatibility() {
+	v3_bin := build_v3_review_checker()
+	if_out := run_good(v3_bin, 'good_multi_return_if_pointer_value_tail',
+		'struct S {\n\tn int\n}\nfn pick(ok bool) (S, int) {\n\ts := S{\n\t\tn: 5\n\t}\n\treturn if ok {\n\t\t&s\n\t\t1\n\t} else {\n\t\t&s\n\t\t2\n\t}\n}\nfn main() {\n\ta, b := pick(false)\n\tprintln(int_str(a.n) + "," + int_str(b))\n}\n')
+	assert if_out == '5,2'
+}
+
 fn test_numeric_alias_returns_preserve_integer_float_direction() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_int_alias_float_return',
