@@ -181,6 +181,24 @@ pub fn file_has_incompatible_os_suffix(file string, current_os string) bool {
 	if os_name != 'solaris' && file.contains('_solaris.') {
 		return true
 	}
+	if os_name != 'qnx' && file.contains('_qnx.') {
+		return true
+	}
+	if os_name != 'serenity' && file.contains('_serenity.') {
+		return true
+	}
+	if os_name != 'plan9' && file.contains('_plan9.') {
+		return true
+	}
+	if os_name != 'vinix' && file.contains('_vinix.') {
+		return true
+	}
+	if os_name != 'haiku' && file.contains('_haiku.') {
+		return true
+	}
+	if os_name != 'android' && os_name != 'termux' && file.contains('_termux.') {
+		return true
+	}
 	if file.contains('.amd64.') || file.contains('_amd64.') || file.contains('.arm64.')
 		|| file.contains('_arm64.') {
 		return true

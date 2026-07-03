@@ -243,6 +243,66 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			g.expr(ast.Expr(node.right))
 			g.write(')')
 		}
+	} else if has_defined_eq_operator && left_is_option && right_is_option {
+		// `?T == ?T` where the base type `T` has a defined `==` (e.g. string, or a
+		// struct with an operator overload). Compare option-awarely: both none -> equal;
+		// differing none-ness -> not equal; otherwise compare the unwrapped values using
+		// the base type's `==`. (Without this, the eq function name was derived from the
+		// option-wrapped type, producing an undefined `_option_T__eq`.)
+		old_inside_opt_or_res := g.inside_opt_or_res
+		g.inside_opt_or_res = true
+		inside_and_rhs := g.infix_left_var_name.len > 0
+		mut lv := ''
+		mut rv := ''
+		if inside_and_rhs {
+			lv = g.expr_string(node.left)
+			rv = g.expr_string(node.right)
+		} else {
+			left_tmp := g.expr_to_ctemp_before_stmt(node.left, left_type)
+			right_tmp := g.expr_to_ctemp_before_stmt(node.right, right_type)
+			lv = left_tmp.name
+			rv = right_tmp.name
+		}
+		mut method_name := ''
+		if left.sym.kind == .struct && (left.sym.info as ast.Struct).generic_types.len > 0 {
+			concrete_types := (left.sym.info as ast.Struct).concrete_types
+			method_name = '${left.sym.cname}__eq'
+			if left.unaliased_sym.is_builtin() {
+				method_name = 'builtin__${method_name}'
+			}
+			method_name = g.generic_fn_name(concrete_types, method_name)
+		} else {
+			mut mn := if has_alias_eq_op_overload {
+				g.styp(left.typ.clear_flag(.option).set_nr_muls(0))
+			} else {
+				g.styp(left.unaliased.clear_flag(.option).set_nr_muls(0))
+			}
+			mut is_builtin_or_alias_to_builtin := left.sym.is_builtin()
+			if !has_alias_eq_op_overload && !is_builtin_or_alias_to_builtin
+				&& left.sym.info is ast.Alias {
+				parent_sym := g.table.sym((left.sym.info as ast.Alias).parent_type)
+				is_builtin_or_alias_to_builtin = parent_sym.is_builtin()
+			}
+			if is_builtin_or_alias_to_builtin {
+				mn = 'builtin__${mn}'
+			}
+			method_name = '${mn}__eq'
+		}
+		base_styp := g.base_type(left_type)
+		if node.op == .eq {
+			g.write('(')
+		} else {
+			g.write('!(')
+		}
+		g.write('(${lv}.state == 2 && ${rv}.state == 2) || ')
+		g.write('(${lv}.state == ${rv}.state && ${lv}.state != 2 && ')
+		if eq_operator_expects_ptr {
+			g.write('${method_name}((${base_styp}*)&${lv}.data, (${base_styp}*)&${rv}.data)')
+		} else {
+			g.write('${method_name}(*(${base_styp}*)&${lv}.data, *(${base_styp}*)&${rv}.data)')
+		}
+		g.write('))')
+		g.inside_opt_or_res = old_inside_opt_or_res
 	} else if has_defined_eq_operator {
 		if node.op == .ne {
 			g.write('!')

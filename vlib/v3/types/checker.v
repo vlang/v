@@ -803,9 +803,15 @@ fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
 				if !qname.starts_with('C.') {
 					continue
 				}
+				// Scope the check per module: a C struct name refers to a single
+				// external C type, but different modules may each mirror it with
+				// their own field view (e.g. `C.termios` in both `term` and
+				// `term.termios`). Only redeclarations within the same module are
+				// a genuine conflict.
+				key := '${tc.cur_module}|${qname}'
 				c_struct_sig := tc.c_struct_decl_signature(a, node)
-				if qname in c_struct_decl_sigs {
-					existing_sig := c_struct_decl_sigs[qname]
+				if key in c_struct_decl_sigs {
+					existing_sig := c_struct_decl_sigs[key]
 					if !c_struct_decl_signatures_compatible(existing_sig, c_struct_sig) {
 						tc.record_error_unfiltered(.duplicate_decl,
 							'cannot redeclare C struct `${qname}`', flat.NodeId(node_idx))
@@ -813,10 +819,10 @@ fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
 					existing_fields := c_struct_decl_signature_field_count(existing_sig)
 					current_fields := c_struct_decl_signature_field_count(c_struct_sig)
 					if current_fields > existing_fields {
-						c_struct_decl_sigs[qname] = c_struct_sig
+						c_struct_decl_sigs[key] = c_struct_sig
 					}
 				} else {
-					c_struct_decl_sigs[qname] = c_struct_sig
+					c_struct_decl_sigs[key] = c_struct_sig
 				}
 			}
 			else {}
