@@ -68,6 +68,13 @@ fn test_numeric_alias_returns_preserve_integer_float_direction() {
 	assert out == '1.0'
 }
 
+fn test_alias_with_nested_type_separator_stays_alias() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_alias_nested_type_separator',
+		'type Bits = [1 | 2]int\n\nfn values() Bits {\n\treturn [1, 2, 3]!\n}\n\nfn main() {\n\tbits := values()\n\tprintln(int_str(bits[0] + bits[1] + bits[2]))\n}\n')
+	assert out == '6'
+}
+
 fn test_voidptr_params_reject_non_pointer_values() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_voidptr_scalar_arg', 'fn f(p voidptr) {}\n\nfn main() {\n\tf(1)\n}\n',

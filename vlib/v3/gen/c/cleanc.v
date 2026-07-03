@@ -1050,7 +1050,7 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 		return true
 	}
 	if c_headerless_system_include_is_handled(clean) {
-		return false
+		return c_preserved_system_include_struct_names(clean).len > 0
 	}
 	return clean in ['<assert.h>', '<EGL/egl.h>', '<GL/gl.h>', '<GLES3/gl3.h>', '<GLES3/gl3ext.h>',
 		'<X11/Xmd.h>', '<X11/cursorfont.h>']

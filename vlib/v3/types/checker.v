@@ -711,9 +711,10 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						}
 					}
 				} else if node.typ.len > 0 {
-					if node.typ.contains('|') {
+					sum_variant_texts := split_sum_variant_texts(node.typ)
+					if sum_variant_texts.len > 1 {
 						mut variants := []string{}
-						for part in split_sum_variant_texts(node.typ) {
+						for part in sum_variant_texts {
 							variants << tc.qualify_sum_variant_name(part, node.generic_params)
 						}
 						qname := tc.qualify_name(node.value)

@@ -766,6 +766,38 @@ static inline int stdarg_sum(int count, ...) {
 	return os.read_file(bin_out + '.c') or { panic(err) }
 }
 
+fn directive_order_gen_c_nested_poll_header(v3_bin string) string {
+	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_poll_project')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_poll' }\n")
+	directive_order_write_file(root, 'main.v', 'module main
+
+#insert "poll_user.h"
+
+struct C.pollfd {
+	fd int
+	events i16
+	revents i16
+}
+
+fn C.poll_user_fd(item &C.pollfd) int
+
+fn main() {}
+')
+	directive_order_write_file(root, 'poll_user.h', '#include <poll.h>
+
+static inline int poll_user_fd(struct pollfd* item) {
+	return item->fd;
+}
+')
+	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_poll.c')
+	os.rm(c_out) or {}
+	result := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${c_out}')
+	assert result.exit_code == 0, result.output
+	return os.read_file(c_out) or { panic(err) }
+}
+
 fn directive_order_gen_c_rwmutex(v3_bin string) string {
 	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_rwmutex_project')
 	os.rmdir_all(root) or {}
@@ -1093,6 +1125,14 @@ fn test_stdarg_in_inlined_header_uses_headerless_va_defs() {
 	assert c_code.contains('#define offsetof(type, member) __builtin_offsetof(type, member)'), c_code
 	assert c_code.contains('offsetof(struct StdargThing, value)'), c_code
 	assert c_code.contains('static inline int stdarg_sum(int count, ...)'), c_code
+}
+
+fn test_poll_in_inlined_header_preserves_system_struct() {
+	c_code := directive_order_gen_c_nested_poll_header(directive_order_build_v3())
+	assert c_code.contains('#include <poll.h>'), c_code
+	assert c_code.contains('static inline int poll_user_fd(struct pollfd* item)'), c_code
+	assert !c_code.contains('typedef struct pollfd pollfd;'), c_code
+	assert !c_code.contains('struct pollfd {\n'), c_code
 }
 
 fn test_rwmutex_keeps_linux_rwlockattr_prototype() {
