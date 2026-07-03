@@ -1,0 +1,264 @@
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+module http
+
+import net.ssl
+import sync
+
+// This file wires H2MuxConn (h2_mux_conn.v) into Transport (transport.v) as a
+// pooled, multiplexed alternative to the one-shot HTTP/2 client (h2_conn.v):
+// all concurrent requests to an h2-capable origin share one H2MuxConn instead
+// of each dialing (and ALPN-negotiating) their own connection.
+
+// h2_round_trip_attempts bounds how many times h2_round_trip may retry: once
+// against the pooled connection (if usable), once against a freshly (re)dialed
+// one. Unlike the h1 pool's per-key list, there is at most one h2_conns entry
+// per key, so no larger bound is needed.
+const h2_round_trip_attempts = 2
+
+// H2DialCall singleflights the ALPN-probing dial for one pool key: concurrent
+// requests to a not-yet-dialed (or not-yet-known-to-be-h2) origin share one
+// dial and TLS handshake instead of each racing their own. This codebase has
+// no channel-based singleflight pattern to reuse, so this follows the same
+// mutex+condition-variable style already used for H2MuxStream (h2_mux_conn.v).
+@[heap]
+struct H2DialCall {
+mut:
+	mu    &sync.Mutex = sync.new_mutex()
+	cv    &sync.Cond  = unsafe { nil }
+	done  bool
+	is_h2 bool
+	conn  &H2MuxConn = unsafe { nil }
+	err   string
+}
+
+fn new_h2_dial_call() &H2DialCall {
+	mu := sync.new_mutex()
+	return &H2DialCall{
+		mu: mu
+		cv: sync.new_cond(mu)
+	}
+}
+
+// h2_round_trip performs one HTTP/2 request for an h2-enabled https request.
+// It is called from round_trip only when the pool key is not already known to
+// be http/1.1-only (key_proto[key] != 1). It prefers an existing pooled,
+// multiplexed H2MuxConn; when none is usable it falls to a singleflight
+// ALPN-probing dial (h2_dial_and_do), which itself falls back to the ordinary
+// pooled http/1.1 path when the origin turns out not to speak h2 — so this
+// always returns a complete result, never a "not handled, try h1" signal.
+fn (mut t Transport) h2_round_trip(req &Request, key string, raw string, method Method, host string, port int, path string, data string, header Header) !Response {
+	for _ in 0 .. h2_round_trip_attempts {
+		t.mu.lock()
+		mut conn := t.h2_conns[key] or { &H2MuxConn(unsafe { nil }) }
+		t.mu.unlock()
+		if conn != unsafe { nil } && conn.can_take_new_request() {
+			// Fast path only: do()/do_on_stream re-check closed/goaway/
+			// shutting_down/the stream limit under their own smu right before
+			// registering the stream, closing the TOCTOU window between this
+			// check and the actual send. A stale check here (e.g. GOAWAY lands in
+			// the instant after can_take_new_request() returns) is caught there
+			// and surfaces as h2_err_retryable_code below — nothing to fix here.
+			resp := do_h2(req, mut conn, method, host, port, path, data, header) or {
+				if err.code() == h2_err_retryable_code {
+					// The request provably never reached the server on this
+					// connection (h2_err_retryable_code's contract). Loop back:
+					// the next iteration will find the connection no longer
+					// usable (closed/goaway) and fall into the dial path below.
+					continue
+				}
+				return err
+			}
+			return resp
+		}
+		return t.h2_dial_and_do(req, key, raw, method, host, port, path, data, header)!
+	}
+	return error('http.transport: h2 request failed after retrying on a fresh connection')
+}
+
+// h2_dial_and_do performs (or awaits) the singleflight ALPN-probing dial for
+// `key`, then completes the original request:
+//   - ALPN negotiates h2: registers a pooled H2MuxConn — releasing any
+//     orphaned prior entry under the same key first — and runs the request
+//     over it.
+//   - ALPN negotiates http/1.1 (or the peer doesn't support ALPN): memoizes
+//     key_proto[key] = 1, and completes the request over the just-dialed
+//     connection directly (as an ordinary pooled H1PooledConn) rather than
+//     discarding it and dialing again — a second dial would double every
+//     origin's first handshake and break the existing accept-count contract
+//     h1 pooling tests rely on. A waiter that arrived during this dial has no
+//     connection of its own to reuse, so it falls back to its own independent
+//     call to the existing pooled http/1.1 path.
+//   - the dial itself fails outright: every waiter (this caller included)
+//     observes that same failure.
+fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method Method, host string, port int, path string, data string, header Header) !Response {
+	t.mu.lock()
+	if mut existing := t.dialing[key] {
+		t.mu.unlock()
+		return t.h2_await_dial(mut existing, req, key, raw, method, host, port, path, data, header)
+	}
+	mut call := new_h2_dial_call()
+	t.dialing[key] = call
+	t.mu.unlock()
+
+	mut ssl_conn := ssl.new_ssl_conn(
+		verify:                 req.verify
+		cert:                   req.cert
+		cert_key:               req.cert_key
+		validate:               req.validate
+		in_memory_verification: req.in_memory_verification
+		alpn_protocols:         ['h2', 'http/1.1']
+	) or { return t.h2_dial_failed(key, mut call, err.msg()) }
+	ssl_conn.dial(host, port) or { return t.h2_dial_failed(key, mut call, err.msg()) }
+	if req.read_timeout > 0 {
+		ssl_conn.set_read_timeout(req.read_timeout)
+	}
+
+	if ssl_conn.negotiated_alpn() != 'h2' {
+		t.mu.lock()
+		t.key_proto[key] = 1
+		t.dialing.delete(key)
+		t.mu.unlock()
+		call.mu.lock()
+		call.done = true
+		call.mu.unlock()
+		call.cv.broadcast()
+		mut conn := &H1PooledConn{
+			key: key
+			ssl: ssl_conn
+		}
+		resp, reusable := conn.exchange(req, raw) or {
+			conn.close_conn()
+			// Past the TLS handshake the request bytes may have been (partially)
+			// written; a non-idempotent method must not be replayed by the outer
+			// retry loop, mirroring tls_fresh_round_trip's own error handling.
+			if !transport_is_idempotent(method) {
+				return error_with_code(err.msg(), transport_err_unsafe_retry)
+			}
+			return err
+		}
+		t.maybe_checkin(mut conn, header, reusable, resp)
+		return resp
+	}
+
+	mut pt := new_h2_pooled_transport(mut ssl_conn)
+	t.mu.lock()
+	t.h2_dial_seq++
+	dial_id := t.h2_dial_seq
+	// A connection may already be registered under this key — e.g. it was
+	// GOAWAY'd while it had zero in-flight streams, so its refcount never
+	// dropped to trigger teardown on its own. Grab it here (under t.mu, where
+	// h2_conns is read/written) but release it only after t.mu is released
+	// below: release() can synchronously drive teardown_transport(), which
+	// calls this closure's own close_transport, which itself takes t.mu —
+	// calling it here would self-deadlock.
+	mut orphan := t.h2_conns[key] or { &H2MuxConn(unsafe { nil }) }
+	close_transport := fn [mut t, key, dial_id, mut pt] () {
+		t.mu.lock()
+		if t.h2_dial_id[key] or { 0 } == dial_id {
+			t.h2_conns.delete(key)
+			t.h2_dial_id.delete(key)
+		}
+		t.mu.unlock()
+		pt.close()
+	}
+	mut mux := new_h2_mux_conn(pt, close_transport)
+	t.h2_conns[key] = mux
+	t.h2_dial_id[key] = dial_id
+	t.key_proto[key] = 2
+	t.dialing.delete(key)
+	t.mu.unlock()
+
+	call.mu.lock()
+	call.done = true
+	call.is_h2 = true
+	call.conn = mux
+	call.mu.unlock()
+	call.cv.broadcast()
+	if orphan != unsafe { nil } {
+		orphan.release()
+	}
+
+	resp := do_h2(req, mut mux, method, host, port, path, data, header)!
+	return resp
+}
+
+// h2_dial_failed untracks the in-flight singleflight dial and publishes the
+// failure to any waiters, then returns it as the error for the dialer itself
+// to propagate. Mirrors h2_retryable_error's pattern (h2_mux_conn.v) of
+// returning a plain IError from within a `!`-returning call site.
+fn (mut t Transport) h2_dial_failed(key string, mut call H2DialCall, msg string) IError {
+	t.mu.lock()
+	t.dialing.delete(key)
+	t.mu.unlock()
+	call.mu.lock()
+	call.done = true
+	call.err = msg
+	call.mu.unlock()
+	call.cv.broadcast()
+	return error(msg)
+}
+
+// h2_await_dial waits for an in-flight singleflight dial for `key` to finish,
+// then completes the original request the same way the dialer itself would
+// have: over the freshly pooled H2MuxConn, or via the existing pooled
+// http/1.1 path when the dial turned out not to negotiate h2 (this caller has
+// no connection of its own to reuse — the dialer already consumed its probe
+// connection directly — so it dials its own).
+fn (mut t Transport) h2_await_dial(mut call H2DialCall, req &Request, key string, raw string, method Method, host string, port int, path string, data string, header Header) !Response {
+	call.mu.lock()
+	for !call.done {
+		call.cv.wait()
+	}
+	is_h2 := call.is_h2
+	mut conn := call.conn
+	msg := call.err
+	call.mu.unlock()
+	if msg != '' {
+		return error(msg)
+	}
+	if !is_h2 {
+		return t.tls_fresh_round_trip(req, key, raw, method, host, port, path, data, header)
+	}
+	return do_h2(req, mut conn, method, host, port, path, data, header)
+}
+
+// do_h2 runs one request over an established, pooled H2MuxConn and converts
+// the result to a net.http Response — the pooled counterpart of h2_exchange
+// (backend.c.v), which does the same for the one-shot H2Conn. Must mirror
+// h2_exchange's streaming-callback wiring and its req.on_finish call on
+// success; this is duplicated rather than shared because h2_exchange's
+// signature is tied to the concrete H2Conn type.
+fn do_h2(req &Request, mut conn H2MuxConn, method Method, host string, port int, path string, data string, header Header) !Response {
+	base := req.to_h2_request(method, h2_authority(host, port), path, data, header)
+	on_progress := req.on_progress
+	on_progress_body := req.on_progress_body
+	mut on_data := H2DataFn(unsafe { nil })
+	if on_progress != unsafe { nil } || on_progress_body != unsafe { nil } {
+		on_data = fn [req, on_progress, on_progress_body] (chunk []u8, body_so_far u64, body_expected u64, status int) ! {
+			if on_progress != unsafe { nil } {
+				on_progress(req, chunk, body_so_far)!
+			}
+			if on_progress_body != unsafe { nil } {
+				on_progress_body(req, chunk, body_so_far, body_expected, status)!
+			}
+		}
+	}
+	h2req := H2ClientRequest{
+		method:               base.method
+		scheme:               base.scheme
+		authority:            base.authority
+		path:                 base.path
+		headers:              base.headers
+		body:                 base.body
+		on_data:              on_data
+		stop_copying_limit:   req.stop_copying_limit
+		stop_receiving_limit: req.stop_receiving_limit
+	}
+	h2resp := conn.do(h2req)!
+	if req.on_finish != unsafe { nil } {
+		req.on_finish(req, u64(h2resp.body.len))!
+	}
+	return h2_response_to_http(h2resp)
+}

@@ -94,6 +94,21 @@ pub mut:
 mut:
 	mu      &sync.Mutex = sync.new_mutex()
 	h1_idle map[string][]&H1PooledConn
+	// h2_conns holds the one pooled, multiplexed H2MuxConn per pool key (an h2
+	// connection multiplexes all concurrent requests to an origin, unlike the
+	// h1 pool's per-connection list). h2_dial_id tags which dial "owns" the
+	// current h2_conns[key] entry, so a superseded connection's own teardown
+	// closure can never evict a newer connection registered under the same
+	// key (see h2_dial_and_do in transport_h2.v). dialing singleflights the
+	// ALPN-probing dial itself: concurrent first requests to a fresh h2-enabled
+	// origin share one dial rather than each racing their own. key_proto
+	// memoizes the ALPN result (1 = http/1.1-only, 2 = h2) once known, so a
+	// key already proven http/1.1-only skips the h2 path entirely.
+	h2_conns    map[string]&H2MuxConn
+	h2_dial_seq u64
+	h2_dial_id  map[string]u64
+	dialing     map[string]&H2DialCall
+	key_proto   map[string]u8
 }
 
 // new_transport creates an empty Transport with default limits.
@@ -121,10 +136,20 @@ pub fn close_idle_connections() {
 	t.close_idle()
 }
 
-// close_idle closes every idle pooled connection held by this Transport.
-// In-flight requests are unaffected.
+// close_idle closes every idle pooled connection held by this Transport,
+// unconditionally — including a pooled h2 connection that is currently
+// serving requests, mirroring how it already treats h1: this is the pool-wide
+// flush used before fork()-style process handoffs and, in tests, to unblock a
+// server thread reading a kept-alive connection at teardown (neither can wait
+// out idle_timeout). In-flight requests are unaffected: shutdown_when_idle()+
+// release() only stop new admissions and drop the pool's own reference;
+// drop_ref defers the actual teardown — and the connection's removal from
+// h2_conns, done by its own close_transport closure — until any remaining
+// in-flight streams finish (the same refcount mechanism H2MuxConn already
+// relies on internally).
 pub fn (mut t Transport) close_idle() {
 	mut all := []&H1PooledConn{}
+	mut h2_all := []&H2MuxConn{}
 	t.mu.lock()
 	for _, list in t.h1_idle {
 		for c in list {
@@ -132,9 +157,20 @@ pub fn (mut t Transport) close_idle() {
 		}
 	}
 	t.h1_idle.clear()
+	for _, conn in t.h2_conns {
+		h2_all << conn
+	}
 	t.mu.unlock()
 	for mut c in all {
 		c.close_conn()
+	}
+	for mut c in h2_all {
+		// shutdown_when_idle()/release() must run outside t.mu: release() can
+		// synchronously drive teardown_transport(), which calls this
+		// connection's own close_transport closure, which itself takes t.mu —
+		// calling it while still holding t.mu here would self-deadlock.
+		c.shutdown_when_idle()
+		c.release()
 	}
 }
 
@@ -312,6 +348,20 @@ fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host
 		eprintln('')
 	}
 	key := transport_pool_key(req, scheme, host, port)
+	if scheme == 'https' && req.enable_http2 {
+		t.mu.lock()
+		proto := t.key_proto[key] or { 0 }
+		t.mu.unlock()
+		if proto != 1 {
+			// Unknown or known-h2: try the pooled, multiplexed h2 path. It falls
+			// back to the ordinary h1 path itself (and memoizes key_proto[key] = 1)
+			// the first time ALPN turns out not to be h2 for this key — see
+			// transport_h2.v.
+			return t.h2_round_trip(req, key, raw, method, host, port, path, data, header)
+		}
+		// key_proto[key] == 1: this origin is already known http/1.1-only; fall
+		// through to the ordinary pooled path below unchanged.
+	}
 	// A stale pooled connection (closed by the server while idle) fails the
 	// exchange; drain through the pool, then dial fresh.
 	for _ in 0 .. t.max_idle_conns_per_host + 1 {
