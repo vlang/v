@@ -3812,9 +3812,12 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 		if p.tok == .lsbr {
 			base_type_name := p.resolve_local_type_name(p.type_expr_name(lhs))
 			if type_name_can_init(base_type_name) && p.current_generic_suffix_followed_by_lcbr() {
+				before_suffix_offset := p.s.offset
 				suffix := p.parse_type_generic_suffix()
-				lhs = p.struct_init(p.resolve_local_type_name(base_type_name + suffix))
-				continue
+				if p.s.offset != before_suffix_offset && p.tok == .lcbr {
+					lhs = p.struct_init(p.resolve_local_type_name(base_type_name + suffix))
+					continue
+				}
 			}
 			lhs = p.index_expr(lhs)
 			continue

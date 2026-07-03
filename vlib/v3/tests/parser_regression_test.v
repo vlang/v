@@ -279,6 +279,33 @@ fn test_local_type_generic_call_type_arg_is_resolved() {
 	assert init_types == [local_row]
 }
 
+fn test_uppercase_index_condition_before_block_is_not_struct_init() {
+	a := parse_parser_regression_source('uppercase_index_condition_block',
+		'const Foo = [true]\n\nfn main() {\n\tif Foo[0] {\n\t\tprintln("ok")\n\t}\n}\n')
+	mut foo_struct_inits := []string{}
+	mut foo_index_count := 0
+	for node in a.nodes {
+		match node.kind {
+			.struct_init {
+				if node.value == 'Foo' {
+					foo_struct_inits << node.value
+				}
+			}
+			.index {
+				if node.children_count == 2 {
+					base := a.child_node(&node, 0)
+					if base.kind == .ident && base.value == 'Foo' {
+						foo_index_count++
+					}
+				}
+			}
+			else {}
+		}
+	}
+	assert foo_struct_inits == []
+	assert foo_index_count == 1
+}
+
 fn test_local_sibling_types_are_predeclared_before_fields() {
 	a := parse_parser_regression_source('local_sibling_struct_fields',
 		'module main\n\nfn main() {\n\t_ := []struct {\n\t\tn int\n\t}{}\n\tstruct A {\n\t\tb &B\n\t}\n\tstruct B {\n\t\ta &A\n\t}\n}\n')
