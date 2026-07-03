@@ -14025,6 +14025,11 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		generic_suffix := typ[bracket..]
 		_, generic_args, _ := generic_type_application_parts(typ)
 		is_concrete_generic := tc.generic_args_are_concrete(generic_args)
+		struct_generic_suffix := if is_concrete_generic {
+			tc.qualified_generic_suffix(generic_args)
+		} else {
+			generic_suffix
+		}
 		sum_generic_suffix := if is_concrete_generic {
 			tc.qualified_generic_suffix(generic_args)
 		} else {
@@ -14039,7 +14044,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		}
 		if qbase in tc.structs {
 			return Type(Struct{
-				name: if is_concrete_generic { qbase + generic_suffix } else { qbase }
+				name: qbase + struct_generic_suffix
 			})
 		}
 		if qbase in tc.interface_names {
@@ -14062,7 +14067,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 				}
 				if resolved in tc.structs {
 					return Type(Struct{
-						name: if is_concrete_generic { resolved + generic_suffix } else { resolved }
+						name: resolved + struct_generic_suffix
 					})
 				}
 				if resolved in tc.interface_names {
@@ -14085,7 +14090,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		}
 		if base in tc.structs {
 			return Type(Struct{
-				name: if is_concrete_generic { typ } else { base }
+				name: base + struct_generic_suffix
 			})
 		}
 		if base in tc.interface_names {

@@ -5582,7 +5582,21 @@ fn (mut tc TypeChecker) ownership_owned_descendant_names(prefix string) []string
 		}
 	}
 	names.sort()
-	return names
+	mut deduped := []string{cap: names.len}
+	for name in names {
+		mut covered_by_dynamic := false
+		for existing in deduped {
+			if ownership_storage_key_has_dynamic_index(existing)
+				&& ownership_storage_keys_overlap(name, existing) {
+				covered_by_dynamic = true
+				break
+			}
+		}
+		if !covered_by_dynamic {
+			deduped << name
+		}
+	}
+	return deduped
 }
 
 fn (mut tc TypeChecker) ownership_mark_array_literal_elements(lhs_name string, rhs_id flat.NodeId, pos flat.NodeId) bool {

@@ -130,10 +130,43 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 	})
 }
 
+fn (t &Transformer) mut_param_address_source_type(id flat.NodeId) ?string {
+	if int(id) < 0 {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+		return none
+	}
+	child := t.a.nodes[int(t.a.child(&node, 0))]
+	if child.kind != .ident || child.value.len == 0 || !t.mut_param_values[child.value] {
+		return none
+	}
+	mut base_type := t.var_type(child.value)
+	if base_type.len == 0 {
+		base_type = t.raw_var_type(child.value)
+	}
+	base_type = base_type.trim_space()
+	if base_type.starts_with('mut ') {
+		base_type = base_type[4..].trim_space()
+	}
+	if base_type.len == 0 {
+		return none
+	}
+	clean := t.normalize_type_alias(base_type)
+	if clean.starts_with('&') {
+		return clean
+	}
+	return '&${clean}'
+}
+
 // make_interface_literal_from_expr converts make interface literal from expr data for transform.
 fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string, share_source bool) ?flat.NodeId {
 	fields := t.tc.interface_fields[iface_name] or { []types.StructField{} }
-	source_type := t.node_type(id)
+	mut source_type := t.node_type(id)
+	if adjusted := t.mut_param_address_source_type(id) {
+		source_type = adjusted
+	}
 	if source_type.len == 0 {
 		return none
 	}

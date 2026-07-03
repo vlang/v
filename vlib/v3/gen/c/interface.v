@@ -925,20 +925,16 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 		for concrete in impls {
 			id := g.iface_type_id(iface_name, concrete)
 			concrete_key := '${concrete}.${method}'
-			if id == 0 || concrete_key !in g.tc.fn_param_types
-				|| !g.interface_dispatch_target_is_emitted(concrete_key) {
+			method_key := g.tc.concrete_method_signature_key(concrete, method) or { concrete_key }
+			if id == 0 || method_key !in g.tc.fn_param_types
+				|| !g.interface_dispatch_target_is_emitted(method_key) {
 				continue
 			}
-			concrete_params := g.tc.fn_param_types[concrete_key] or { []types.Type{} }
+			concrete_params := g.tc.fn_param_types[method_key] or { []types.Type{} }
 			recv_is_ptr := concrete_params.len > 0 && concrete_params[0] is types.Pointer
-			cct := g.tc.c_type(g.tc.parse_type(concrete))
-			recv := if recv_is_ptr {
-				'(${cct}*)i->_object'
-			} else {
-				'*(${cct}*)i->_object'
-			}
+			recv := g.interface_dispatch_receiver_expr(concrete, concrete_params, recv_is_ptr)
 			g.write('\t\tcase ${id}: ')
-			mut call := '${c_name(concrete_key)}(${recv}'
+			mut call := '${c_name(method_key)}(${recv}'
 			for ai, an in arg_names {
 				arg_idx := ai + 1
 				concrete_param := if arg_idx < concrete_params.len {
@@ -974,6 +970,28 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 		g.writeln('\treturn (${ret_ct}){0};')
 	}
 	g.writeln('}')
+}
+
+fn (g &FlatGen) interface_dispatch_receiver_expr(concrete string, concrete_params []types.Type, wants_ptr bool) string {
+	cct := g.tc.c_type(g.tc.parse_type(concrete))
+	if concrete_params.len == 0 {
+		return if wants_ptr { '(${cct}*)i->_object' } else { '*(${cct}*)i->_object' }
+	}
+	concrete_type := g.tc.parse_type(concrete)
+	expected_type := concrete_params[0]
+	if field := g.embedded_receiver_field_for_expected(concrete_type, expected_type) {
+		field_is_ptr := field.typ is types.Pointer
+		base := '(${cct}*)i->_object'
+		access := '${base}->${c_name(field.name)}'
+		if wants_ptr && !field_is_ptr {
+			return '&${access}'
+		}
+		if !wants_ptr && field_is_ptr {
+			return '*${access}'
+		}
+		return access
+	}
+	return if wants_ptr { '(${cct}*)i->_object' } else { '*(${cct}*)i->_object' }
 }
 
 fn (g &FlatGen) interface_method_signature_key(iface_name string, method string) ?string {

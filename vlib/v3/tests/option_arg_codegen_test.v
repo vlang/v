@@ -47,6 +47,33 @@ fn test_optional_argument_codegen_wraps_values_and_none() {
 	assert out == 'ok'
 }
 
+fn test_error_call_argument_expected_ierror_not_result_wrapper() {
+	v3_bin := build_v3()
+	source := "fn wrap(err IError) string {\n\treturn err.msg()\n}\n\nfn f() !string {\n\treturn wrap(error('x'))\n}\n\nfn main() {\n\ts := f() or { '' }\n\tassert s == 'x'\n\tprintln('ok')\n}\n"
+	out := run_good(v3_bin, 'error_call_argument_expected_ierror', source)
+	assert out == 'ok'
+	c_code := generated_c(v3_bin, 'error_call_argument_expected_ierror_c', source)
+	assert c_code.contains('wrap((IError){._typ = 0'), c_code
+	assert !c_code.contains('wrap((Optional_string)'), c_code
+}
+
+fn test_ierror_parameter_method_call_inside_static_method_uses_interface_method() {
+	v3_bin := build_v3()
+	source := "struct CommandError {\n\tmessage string\n}\n\nfn CommandError.io(ioerr IError) CommandError {\n\treturn CommandError{\n\t\tmessage: ioerr.msg()\n\t}\n}\n\nfn (err CommandError) msg() string {\n\treturn err.message\n}\n\nfn (err CommandError) code() int {\n\treturn 0\n}\n\nfn main() {\n\terr := CommandError.io(error('ok'))\n\tassert err.msg() == 'ok'\n\tprintln('ok')\n}\n"
+	out := run_good(v3_bin, 'ierror_static_method_param_msg', source)
+	assert out == 'ok'
+}
+
+fn test_ierror_as_expr_unboxes_concrete_payload() {
+	v3_bin := build_v3()
+	source := "struct InvalidPatternError {\n\tvalid_up_to int\n}\n\nfn (err InvalidPatternError) msg() string {\n\treturn 'invalid'\n}\n\nfn (err InvalidPatternError) code() int {\n\treturn 0\n}\n\nfn fail() !string {\n\treturn InvalidPatternError{\n\t\tvalid_up_to: 3\n\t}\n}\n\nfn main() {\n\tfail() or {\n\t\tperr := err as InvalidPatternError\n\t\tassert perr.valid_up_to == 3\n\t\tprintln('ok')\n\t\treturn\n\t}\n\tpanic('expected error')\n}\n"
+	out := run_good(v3_bin, 'ierror_as_expr_unbox_payload', source)
+	assert out == 'ok'
+	c_code := generated_c(v3_bin, 'ierror_as_expr_unbox_payload_c', source)
+	assert c_code.contains('._object'), c_code
+	assert !c_code.contains('InvalidPatternError perr = err;'), c_code
+}
+
 fn test_optional_abi_distinguishes_plain_t_name_from_specialized_generic() {
 	v3_bin := build_v3()
 	c_code := generated_c(v3_bin, 'optional_plain_t_name_abi',

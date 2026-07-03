@@ -2399,6 +2399,26 @@ fn main() {
 	assert fail_array_append_unknown_len_read.exit_code != 0
 	assert fail_array_append_unknown_len_read.output.contains('use of moved value: `arr[*]`'), fail_array_append_unknown_len_read.output
 
+	ok_array_loop_dynamic_append_return := run_ownership_check(v3_bin,
+		'array_loop_dynamic_append_return', '
+fn split_parts(glob string) []string {
+	mut parts := []string{}
+	for i := 0; i < glob.len; i++ {
+		if glob[i] == `,` {
+			parts << glob[0..i].to_owned()
+		}
+	}
+	parts << glob[0..].to_owned()
+	return parts
+}
+
+fn main() {
+	parts := split_parts("a,b")
+	println(int_str(parts.len))
+}
+')
+	assert ok_array_loop_dynamic_append_return.exit_code == 0, ok_array_loop_dynamic_append_return.output
+
 	fail_array_pop_return := run_ownership_check(v3_bin, 'array_pop_returns_owned', '
 fn main() {
 	mut arr := ["item".to_owned()]

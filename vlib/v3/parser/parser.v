@@ -1323,20 +1323,26 @@ fn (mut p Parser) global_decl() flat.NodeId {
 				p.next()
 				full_name += '.' + p.expect_name_or_keyword()
 			}
+			mut gtype := ''
+			mut val_id := flat.empty_node
+			if p.tok != .assign {
+				gtype = p.parse_type_name()
+			}
 			if p.tok == .assign {
-				// global with initializer: __global name = expr
+				// global with initializer: __global name = expr, or __global name Type = expr
 				p.next()
-				val_id := p.expr(.lowest)
+				val_id = p.expr(.lowest)
+			}
+			if int(val_id) >= 0 {
 				vstart := p.add_child(val_id)
 				ids << p.a.add_node(flat.Node{
 					kind:           .field_decl
 					value:          full_name
-					typ:            ''
+					typ:            gtype
 					children_start: vstart
 					children_count: 1
 				})
 			} else {
-				gtype := p.parse_type_name()
 				ids << p.a.add_node(flat.Node{
 					kind:  .field_decl
 					value: full_name

@@ -724,7 +724,17 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 	}
 	resolved_clean_type := t.resolve_sum_name(clean_type)
 	if clean_type.len == 0 || resolved_clean_type !in t.sum_types {
-		return t.transform_expr(expr_id)
+		child := t.transform_expr(expr_id)
+		start := t.a.children.len
+		t.a.children << child
+		return t.a.add_node(flat.Node{
+			kind:           .as_expr
+			value:          node.value
+			typ:            node.typ
+			children_start: start
+			children_count: 1
+			pos:            node.pos
+		})
 	}
 	qv := t.resolve_variant(clean_type, node.value)
 	if qv.len > 0 && t.normalize_type_alias(clean_type0) == t.normalize_type_alias(qv) {

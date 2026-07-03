@@ -5313,7 +5313,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		}
 		.as_expr {
 			expr_id := g.a.child(&node, 0)
-			expr_type := g.tc.resolve_type(expr_id)
+			expr_type0 := g.usable_expr_type(expr_id)
+			expr_type := if expr_type0 is types.Unknown || expr_type0 is types.Void {
+				g.tc.resolve_type(expr_id)
+			} else {
+				expr_type0
+			}
 			clean := types.unwrap_pointer(expr_type)
 			if clean is types.SumType {
 				qv := g.resolve_variant(clean.name, node.value)
