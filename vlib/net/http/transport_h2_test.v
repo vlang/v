@@ -39,6 +39,11 @@ mut:
 	// connection right before responding to its first request, so the pooled
 	// client connection is retired while otherwise fully healthy.
 	goaway_after_first bool
+	// respond_delay: sleep this long after receiving a request's HEADERS
+	// before sending the response, so a test can observe the client-side
+	// stream while it is still in flight (refs held above the pool's own
+	// baseline reference).
+	respond_delay time.Duration
 }
 
 fn (mut s H2PoolSrv) bump_accepts() {
@@ -165,6 +170,9 @@ fn h2_pool_srv_serve(mut s H2PoolSrv, mut conn mbedtls.SSLConn) {
 					// Declined by the GOAWAY above; the client fails it as
 					// retryable and replays it on a fresh connection.
 					continue
+				}
+				if s.respond_delay > 0 {
+					time.sleep(s.respond_delay)
 				}
 				block := enc.encode([
 					H2HeaderField{':status', '200'},
@@ -314,6 +322,69 @@ fn test_h2_pool_goaway_redial() {
 	assert r2.status_code == 200
 	assert r2.body == h2t_body
 	assert srv.accept_count() == 2, 'expected a redial after GOAWAY, got ${srv.accept_count()} accepts'
+	stop_h2_pool_srv(mut listener, th)
+}
+
+// close_idle_connections() must not release a pooled h2 connection's pool
+// reference more than once. A connection with an in-flight stream survives
+// one close_idle() call (its refcount drops but doesn't reach zero, so
+// nothing removes it from the pool), so a second close_idle() call — a
+// concurrent caller, or simply calling it twice — must not find the same
+// connection again and re-release it: that would over-decrement the
+// refcount below the number of genuinely live references (Codex P2,
+// vlang/v#27643 pullrequestreview-4626225521, discussion 3520259791).
+// Asserted directly on the refcount invariant (refs must stay >= 1 while a
+// stream is still active) rather than inferred indirectly through the
+// in-flight fetch's eventual outcome, which depends on unrelated timing
+// between the teardown and the reader thread noticing it.
+fn test_h2_pool_close_idle_release_is_idempotent() {
+	$if windows && !no_vschannel ? {
+		eprintln('skipping: SChannel connection pooling is not implemented yet')
+		return
+	}
+	mut srv := &H2PoolSrv{
+		respond_delay: 800 * time.millisecond
+	}
+	port, mut listener, th := start_h2_pool_srv(mut srv) or {
+		assert false, 'server: ${err}'
+		return
+	}
+	mut t := default_transport()
+	status := spawn h2t_fetch_worker(port, '/slow')
+	// Wait until the pooled h2 connection is actually registered (dial +
+	// ALPN negotiation + stream admission all complete) before racing
+	// close_idle against the in-flight stream — a blind sleep is fragile
+	// under scheduling jitter, and racing too early would just find nothing
+	// to release on either call.
+	mut conn := &H2MuxConn(unsafe { nil })
+	for _ in 0 .. 500 {
+		t.mu.lock()
+		for _, mut c in t.h2_conns {
+			conn = c
+		}
+		t.mu.unlock()
+		if conn != unsafe { nil } {
+			break
+		}
+		time.sleep(5 * time.millisecond)
+	}
+	assert conn != unsafe { nil }, 'pooled h2 connection was never registered before the delayed response arrived'
+	conn.smu.lock()
+	active := conn.active_streams
+	conn.smu.unlock()
+	assert active > 0, 'stream was not yet admitted — test raced ahead of do()'
+	// Two close_idle calls while the stream is still in flight: on buggy code
+	// the second one finds the connection still registered and re-releases
+	// it, over-decrementing refs below the number of genuinely live
+	// references (the pool's own + the active stream's).
+	close_idle_connections()
+	close_idle_connections()
+	conn.smu.lock()
+	refs_after := conn.refs
+	active_after := conn.active_streams
+	conn.smu.unlock()
+	assert refs_after >= active_after, 'close_idle_connections() released the pool reference ${refs_after - active_after} time(s) too many while ${active_after} stream(s) were still active (refs=${refs_after})'
+	status.wait()
 	stop_h2_pool_srv(mut listener, th)
 }
 

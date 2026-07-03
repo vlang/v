@@ -143,10 +143,9 @@ pub fn close_idle_connections() {
 // server thread reading a kept-alive connection at teardown (neither can wait
 // out idle_timeout). In-flight requests are unaffected: shutdown_when_idle()+
 // release() only stop new admissions and drop the pool's own reference;
-// drop_ref defers the actual teardown — and the connection's removal from
-// h2_conns, done by its own close_transport closure — until any remaining
-// in-flight streams finish (the same refcount mechanism H2MuxConn already
-// relies on internally).
+// drop_ref defers the actual teardown until any remaining in-flight streams
+// finish (the same refcount mechanism H2MuxConn already relies on
+// internally).
 pub fn (mut t Transport) close_idle() {
 	mut all := []&H1PooledConn{}
 	mut h2_all := []&H2MuxConn{}
@@ -160,6 +159,19 @@ pub fn (mut t Transport) close_idle() {
 	for _, conn in t.h2_conns {
 		h2_all << conn
 	}
+	// Untrack every h2 entry now, atomically with collecting it: a connection
+	// with an in-flight stream survives one release() call below (its
+	// refcount drops but doesn't reach zero, since drop_ref only tears down
+	// on the last reference), so if it stayed in h2_conns, a second
+	// close_idle() call — a concurrent caller, or simply calling it twice —
+	// would find the same connection again and release() it a second time,
+	// over-decrementing the refcount below the number of genuinely live
+	// references (Codex P2, vlang/v#27643 pullrequestreview-4626225521,
+	// discussion 3520259791). Clearing the map here, under the same lock as
+	// the collection above, means no caller can ever observe — and therefore
+	// never re-release — a connection this call has already claimed.
+	t.h2_conns.clear()
+	t.h2_dial_id.clear()
 	t.mu.unlock()
 	for mut c in all {
 		c.close_conn()

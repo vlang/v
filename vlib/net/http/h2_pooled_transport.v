@@ -8,15 +8,14 @@ import net.ssl
 import sync
 import time
 
-// h2_pooled_io_timeout bounds how long a single locked call into the wrapped
-// SSLConn's read() may internally retry (the backend's own WANT_READ loop on a
-// partial TLS record) before giving up with the backend's timeout error. This
-// is what bounds worst-case io_mu hold time on the read side: the outer
-// unlocked poll below only avoids taking the lock when nothing is pending; a
-// locked read can still internally retry for up to this long once entered,
-// since SSLConn.read() loops on its configured read_timeout (set to this value
-// by new_h2_pooled_transport).
-const h2_pooled_io_timeout = 200 * time.millisecond
+// h2_pooled_io_timeout bounds how long read() may hold io_mu: it is the
+// backend's configured read_timeout (set by new_h2_pooled_transport), so
+// SSLConn.read()'s own internal WANT_READ retry loop gives up and returns a
+// timeout error after at most this long. read() has no outer readiness poll
+// (see its doc comment for why), so this is the ONLY bound on how long an
+// idle reader can hold io_mu and make a writer wait — kept short for exactly
+// that reason, not because a longer internal retry would be incorrect.
+const h2_pooled_io_timeout = 50 * time.millisecond
 
 // h2_pooled_poll_interval is the outer unlocked poll granularity: how long one
 // wait_for_read/wait_for_write call blocks before reporting a timeout. Read
@@ -49,10 +48,13 @@ const h2_pooled_write_stall_limit = 30 * time.second
 // is dominated by network RTT/HPACK/app processing, not TLS-call overhead).
 //
 // All actual TLS-library calls (read()/write() on the wrapped conn) are
-// serialized behind io_mu. Waiting for socket readiness
-// (wait_for_read/wait_for_write — a raw select() on the socket handle that
-// never touches the TLS context) stays OUTSIDE the lock, so an idle reader
-// polling for data never blocks a writer, and vice versa.
+// serialized behind io_mu. On the write side, waiting for socket readiness
+// (wait_for_write — a raw select() on the socket handle that never touches
+// the TLS context) stays OUTSIDE the lock, so a writer blocked on backpressure
+// never holds up the reader. The read side has no equivalent outer wait (see
+// read()'s doc comment: a socket-level poll cannot see TLS-buffered data), so
+// an idle reader instead holds io_mu for up to h2_pooled_io_timeout per call —
+// kept short precisely so a writer's wait for io_mu stays bounded and small.
 //
 // Error contract: timeout errors are part of the H2Transport read contract,
 // not swallowed here. H2MuxConn.read_loop recognizes them
@@ -89,13 +91,28 @@ fn new_h2_pooled_transport(mut conn ssl.SSLConn) &H2PooledTransport {
 }
 
 // read implements H2Transport. Called only by H2MuxConn's single background
-// reader thread (see read_loop in h2_mux_conn.v). Both the unlocked
-// readiness-wait timeout and the locked read's internal timeout (e.g. a
-// partial TLS record stalling past read_timeout) are propagated — the mux
-// reader classifies them as benign and re-polls (see the error contract on
-// H2PooledTransport).
+// reader thread (see read_loop in h2_mux_conn.v).
+//
+// Deliberately has NO outer readiness poll before calling the wrapped
+// conn.read() (unlike write() below): a TLS library can already hold
+// decrypted-but-unconsumed application data internally — mbedtls_ssl_read()/
+// SSL_read() return at most the caller's buffer size per call, and any
+// remainder from an already-received/decrypted TLS record (e.g. one
+// underlying socket read pulled in several records at once) stays buffered
+// for the NEXT call, needing no new socket bytes at all. A raw select()-based
+// outer poll cannot see that buffered data; if it ran first and this method
+// propagated its timeout, a poll that (correctly, from the socket's point of
+// view) reports "nothing new" would mask data conn.read() would have
+// returned immediately — and since H2MuxConn.read_loop treats a read()
+// timeout as a benign wake-up and just retries, the buffered bytes would
+// never be drained until unrelated new socket data arrived, or never (Codex
+// P1, vlang/v#27643 pullrequestreview-4626225521, discussion 3520259789).
+// conn.read() itself always tries a non-blocking-in-effect decode of
+// buffered data FIRST, so this is not just correct but also the fast path in
+// the common case; it only falls back to its own internal, bounded
+// WANT_READ wait (h2_pooled_io_timeout) when there is genuinely nothing
+// buffered.
 fn (mut t H2PooledTransport) read(mut buf []u8) !int {
-	t.conn.wait_for_read(h2_pooled_poll_interval)!
 	t.io_mu.lock()
 	if t.closed {
 		t.io_mu.unlock()
