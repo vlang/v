@@ -3752,7 +3752,8 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	}
 	cloned_typ := t.resolve_substituted_type_text(t.subst_type(node.typ, args))
 	t.retarget_cloned_new_map_call(node, mut children, cloned_typ)
-	t.retarget_cloned_generic_call(node, mut children, args)
+	retargeted_typ := t.retarget_cloned_generic_call(node, mut children, args)
+	final_typ := if retargeted_typ.len > 0 { retargeted_typ } else { cloned_typ }
 	start := t.a.children.len
 	for child in children {
 		t.a.children << child
@@ -3781,7 +3782,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		pos:            node.pos
 		children_start: start
 		children_count: flat.child_count(children.len)
-		typ:            cloned_typ
+		typ:            final_typ
 		value:          cloned_value
 		is_mut:         node.is_mut
 	})
