@@ -233,6 +233,12 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type string, metho
 				return flat_method
 			}
 		}
+		for receiver in flattened_generic_receiver_short_variants(clean_type) {
+			flat_method := '${receiver}.${method}'
+			if t.is_known_fn_name(flat_method) {
+				return flat_method
+			}
+		}
 	}
 	if clean_type.starts_with('[]') {
 		elem_type := clean_type[2..]
@@ -433,7 +439,7 @@ fn (t &Transformer) raw_const_type_name_for_expr(id flat.NodeId) ?string {
 	if name.len == 0 {
 		return none
 	}
-	key := t.const_type_key(name) or { return none }
+	key := t.const_type_key_in_context(name, t.cur_module, t.cur_file) or { return none }
 	typ := t.tc.const_types[key] or { return none }
 	return typ.name()
 }
@@ -675,7 +681,8 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	saved_in_call_callee := t.in_call_callee
 	t.in_call_callee = true
-	new_children << t.transform_expr(t.a.children[node.children_start])
+	callee_id := t.a.children[node.children_start]
+	new_children << (t.const_fn_call_target(callee_id) or { t.transform_expr(callee_id) })
 	t.in_call_callee = saved_in_call_callee
 	mut i := 1
 	for i < node.children_count {
@@ -736,7 +743,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	if concrete_ret.len > 0 {
 		typ = concrete_ret
 	}
-	return t.a.add_node(flat.Node{
+	new_id := t.a.add_node(flat.Node{
 		kind:           .call
 		op:             node.op
 		children_start: start
@@ -745,6 +752,24 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		value:          node.value
 		typ:            typ
 	})
+	t.copy_cloned_resolution(id, new_id)
+	return new_id
+}
+
+fn (mut t Transformer) const_fn_call_target(callee_id flat.NodeId) ?flat.NodeId {
+	if int(callee_id) < 0 || isnil(t.tc) {
+		return none
+	}
+	raw_type := t.raw_const_type_name_for_expr(callee_id) or { return none }
+	if !raw_type.starts_with('fn ') {
+		return none
+	}
+	expr_id := t.const_expr_for_arg(callee_id) or { return none }
+	expr := t.a.nodes[int(expr_id)]
+	if expr.kind !in [.ident, .selector] {
+		return none
+	}
+	return t.transform_expr(expr_id)
 }
 
 // try_lower_join_path_call supports try lower join path call handling for Transformer.
@@ -1603,7 +1628,8 @@ fn (t &Transformer) const_expr_for_arg(arg_id flat.NodeId) ?flat.NodeId {
 	if node.kind == .selector && node.children_count > 0 {
 		base := t.a.child_node(&node, 0)
 		if base.kind == .ident {
-			return t.const_expr_for_name('${base.value}.${node.value}')
+			return t.const_expr_for_name_in_context('${base.value}.${node.value}', t.cur_module,
+				t.cur_file)
 		}
 	}
 	return none
@@ -1611,13 +1637,17 @@ fn (t &Transformer) const_expr_for_arg(arg_id flat.NodeId) ?flat.NodeId {
 
 // const_expr_for_name supports const expr for name handling for Transformer.
 fn (t &Transformer) const_expr_for_name(name string) ?flat.NodeId {
+	return t.const_expr_for_name_in_context(name, t.cur_module, t.cur_file)
+}
+
+fn (t &Transformer) const_expr_for_name_in_context(name string, module_name string, file string) ?flat.NodeId {
 	if isnil(t.tc) || name.len == 0 {
 		return none
 	}
 	if expr_id := t.tc.const_exprs[name] {
 		return expr_id
 	}
-	key := t.const_type_key(name) or { return none }
+	key := t.const_type_key_in_context(name, module_name, file) or { return none }
 	if expr_id := t.tc.const_exprs[key] {
 		return expr_id
 	}
@@ -5051,6 +5081,9 @@ fn (t &Transformer) receiver_method_candidates(receiver_type string, method stri
 	for receiver in generic_receiver_flat_type_variants(clean_type) {
 		candidates << '${receiver}.${method}'
 	}
+	for receiver in flattened_generic_receiver_short_variants(clean_type) {
+		candidates << '${receiver}.${method}'
+	}
 	if clean_type.starts_with('[]') {
 		elem_type := clean_type[2..]
 		short_elem := if elem_type.contains('.') { elem_type.all_after_last('.') } else { elem_type }
@@ -5087,6 +5120,35 @@ fn generic_receiver_flat_type_variants(receiver_type string) []string {
 			'${base.all_before_last('.')}.${short_base}_${suffix}')
 	}
 	return receivers
+}
+
+fn flattened_generic_receiver_short_variants(receiver_type string) []string {
+	clean := receiver_type.trim_space()
+	if clean.len == 0 || !clean.contains('__') || !clean.contains('_') {
+		return []string{}
+	}
+	module_name := if clean.contains('.') { clean.all_before_last('.') } else { '' }
+	leaf := if clean.contains('.') { clean.all_after_last('.') } else { clean }
+	parts := leaf.split('_')
+	mut changed := false
+	mut short_parts := []string{cap: parts.len}
+	for part in parts {
+		if part.contains('__') {
+			short_parts << part.all_after_last('__')
+			changed = true
+		} else {
+			short_parts << part
+		}
+	}
+	if !changed {
+		return []string{}
+	}
+	short_leaf := short_parts.join('_')
+	mut variants := [short_leaf]
+	if module_name.len > 0 {
+		variants << '${module_name}.${short_leaf}'
+	}
+	return variants
 }
 
 fn (t &Transformer) resolve_fixed_array_dynamic_receiver_method(fixed_type string, method string) ?string {
@@ -5584,6 +5646,9 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) string 
 			base_id := t.a.child(fn_node, 0)
 			base_type := t.node_type(base_id)
 			clean_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+			if fn_node.value == 'clone' && clean_type.len > 0 {
+				return clean_type
+			}
 			if clean_type.starts_with('[]') {
 				return clean_type
 			}

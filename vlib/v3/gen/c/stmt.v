@@ -618,6 +618,12 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					}
 					if base is types.MultiReturn && node.children_count > 1 {
 						base_ct := g.tc.c_type(base)
+						if g.multi_return_types_have_fixed_array(base.types) {
+							g.write('return ({ ${ct} __opt = {.ok = true}; ')
+							tmp := g.gen_multi_return_temp(base_ct, base.types, node)
+							g.writeln('__opt.value = ${tmp}; __opt; });')
+							return
+						}
 						g.write('return (${ct}){.ok = true, .value = (${base_ct}){')
 						for i in 0 .. node.children_count {
 							if i > 0 {
@@ -654,11 +660,11 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 							}
 						}
 						g.writeln('return (${ct}){.ok = false};')
-					} else if base is types.ArrayFixed {
+					} else if fixed := array_fixed_type(base) {
 						// The optional's `.value` is a fixed-array member, which can't be set
 						// in the compound literal; build via a temp + memcpy.
 						g.write('return ({ ${ct} __opt = {.ok = true}; memcpy(__opt.value, ')
-						g.gen_fixed_array_copy_source(ret_id, base)
+						g.gen_fixed_array_copy_source(ret_id, fixed)
 						g.writeln(', sizeof(__opt.value)); __opt; });')
 					} else {
 						raw_expr_type := g.tc.resolve_type(ret_id)
@@ -686,7 +692,11 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 							} else {
 								''
 							}
+							pointer_value_expr := g.pointer_value_return_expr_string(ret_id, base) or {
+								''
+							}
 							if expr_ct != base_ct && struct_init_ct != base_ct
+								&& pointer_value_expr.len == 0
 								&& !g.type_names_match(expr_value_type, base)
 								&& !g.expr_is_nil_pointer_payload(ret_id, base)
 								&& !g.type_can_wrap_as_sum(expr_value_type, base)
@@ -697,15 +707,17 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 								&& expr_value_type !is types.Primitive
 								&& expr_value_type !is types.Unknown {
 								if g.cur_fn_ret is types.ResultType {
-									if err := g.result_error_from_expr_string(ret_id) {
-										g.writeln('return (${ct}){.ok = false, .err = ${err}};')
+									if result_err := g.result_error_from_expr_string(ret_id) {
+										g.writeln('return (${ct}){.ok = false, .err = ${result_err}};')
 										return
 									}
 								}
 								g.writeln('return (${ct}){.ok = false};')
 							} else {
 								g.write('return (${ct}){.ok = true, .value = ')
-								if !g.gen_heap_local_address_expr(ret_id, base) {
+								if pointer_value_expr.len > 0 {
+									g.write(pointer_value_expr)
+								} else if !g.gen_heap_local_address_expr(ret_id, base) {
 									g.gen_expr_with_expected_type(ret_id, base)
 								}
 								g.writeln('};')
@@ -1135,11 +1147,11 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 			}
 			return '(${ct}){.ok = false}'
 		}
-		if base is types.ArrayFixed {
+		if fixed := array_fixed_type(base) {
 			// The optional's `.value` is a fixed-array member, which can't be set in a compound
 			// literal; build via a temp + memcpy (mirrors the direct return path) so a deferred
 			// return saves the array value instead of dropping it to `{.ok = false}`.
-			src := g.fixed_array_copy_source_string(ret_id, base)
+			src := g.fixed_array_copy_source_string(ret_id, fixed)
 			return '({ ${ct} __opt = {.ok = true}; memcpy(__opt.value, ${src}, sizeof(__opt.value)); __opt; })'
 		}
 		raw_expr_type := g.tc.resolve_type(ret_id)
@@ -1165,7 +1177,8 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		} else {
 			''
 		}
-		if expr_ct != base_ct && struct_init_ct != base_ct
+		pointer_value_expr := g.pointer_value_return_expr_string(ret_id, base) or { '' }
+		if expr_ct != base_ct && struct_init_ct != base_ct && pointer_value_expr.len == 0
 			&& !g.type_names_match(expr_value_type, base)
 			&& !g.expr_is_nil_pointer_payload(ret_id, base)
 			&& !g.type_can_wrap_as_sum(expr_value_type, base)
@@ -1179,6 +1192,9 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 				}
 			}
 			return '(${ct}){.ok = false}'
+		}
+		if pointer_value_expr.len > 0 {
+			return '(${ct}){.ok = true, .value = ${pointer_value_expr}}'
 		}
 		value := g.heap_local_address_expr(ret_id, base) or {
 			g.expr_to_string_with_expected_type(ret_id, base)
@@ -1976,6 +1992,30 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					rhs_v_type = annotated_type
 				}
 			}
+			if node.typ.len > 0 {
+				decl_type := g.tc.parse_type(node.typ)
+				if _ := array_like_type(decl_type) {
+					rhs_v_type = decl_type
+				} else if _ := array_fixed_type(decl_type) {
+					rhs_v_type = decl_type
+				}
+			}
+			if lhs.typ.len > 0 {
+				lhs_decl_type := g.tc.parse_type(lhs.typ)
+				if _ := array_like_type(lhs_decl_type) {
+					rhs_v_type = lhs_decl_type
+				} else if _ := array_fixed_type(lhs_decl_type) {
+					rhs_v_type = lhs_decl_type
+				}
+			}
+			if lhs.kind == .ident {
+				lhs_type := g.usable_expr_type(lhs_id)
+				if _ := array_like_type(lhs_type) {
+					rhs_v_type = lhs_type
+				} else if _ := array_fixed_type(lhs_type) {
+					rhs_v_type = lhs_type
+				}
+			}
 			if fixed := array_fixed_type(rhs_v_type) {
 				lhs_str := g.decl_lhs_str(lhs_id)
 				if !lhs_is_defer_capture {
@@ -1990,7 +2030,9 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				i += 2
 				continue
 			}
-			elem_type := if rhs.children_count > 0 {
+			elem_type := if arr := array_like_type(rhs_v_type) {
+				arr.elem_type
+			} else if rhs.children_count > 0 {
 				g.tc.resolve_type(g.a.child(&rhs, 0))
 			} else {
 				types.Type(types.int_)
@@ -2013,10 +2055,24 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			g.gen_decl_or_expr(lhs, rhs)
 		} else if rhs.kind == .array_init {
 			raw_init_type := g.tc.parse_type(rhs.value)
-			init_type := raw_init_type
-			resolved_init_type := g.tc.resolve_type(rhs_id)
+			mut init_type := raw_init_type
+			mut resolved_init_type := g.tc.resolve_type(rhs_id)
+			if node.typ.len > 0 {
+				decl_type := g.tc.parse_type(node.typ)
+				if arr := array_like_type(decl_type) {
+					resolved_init_type = decl_type
+					init_type = arr.elem_type
+				}
+			}
+			if lhs.typ.len > 0 {
+				lhs_decl_type := g.tc.parse_type(lhs.typ)
+				if arr := array_like_type(lhs_decl_type) {
+					resolved_init_type = lhs_decl_type
+					init_type = arr.elem_type
+				}
+			}
 			is_dynamic_array_init := resolved_init_type is types.Array || rhs.typ.starts_with('[]')
-				|| node.typ.starts_with('[]')
+				|| node.typ.starts_with('[]') || lhs.typ.starts_with('[]')
 			if init_type is types.ArrayFixed && !is_dynamic_array_init {
 				g.gen_fixed_array_zero_init_decl(lhs_id, init_type, decl_prefix,
 					lhs_is_defer_capture)
@@ -2025,7 +2081,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					g.track_local_pointer_storage_decl(lhs, owner, raw_init_type, '')
 				}
 			} else {
-				c_elem := g.sizeof_target(rhs.value)
+				c_elem := g.value_sizeof_target(init_type)
 				mut init_len := '0'
 				mut init_cap := '0'
 				mut init_val := ''

@@ -1,6 +1,7 @@
 module transform
 
 import v3.flat
+import v3.types
 
 // transform_for_body transforms transform for body data for transform.
 fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat.NodeId {
@@ -120,10 +121,10 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 		return t.lower_indexed_for_in(id, node, key_id, val_id, container_id, pool_iter, has_index,
 			body_ids)
 	}
-	if iter_elem_type := t.iterator_for_in_elem_type(iter_type) {
+	if iter_info := t.iterator_for_in_info(iter_type) {
 		body_ids := t.a.children_of(&node)[header_count..].clone()
 		return t.lower_iterator_for_in(id, node, key_id, val_id, container_id, iter_type,
-			iter_elem_type, has_index, body_ids)
+			iter_info.elem_type, iter_info.next_method, has_index, body_ids)
 	}
 	effective_iter := if iter_type.starts_with('...') {
 		'[]' + iter_type[3..]
@@ -263,13 +264,37 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	}))
 }
 
-fn (t &Transformer) iterator_for_in_elem_type(iter_type string) ?string {
+struct IteratorForInInfo {
+	elem_type   string
+	next_method string
+}
+
+fn (t &Transformer) iterator_for_in_info(iter_type string) ?IteratorForInInfo {
 	mut clean := iter_type.trim_space()
 	if clean.starts_with('&') {
 		clean = clean[1..]
 	}
 	if clean == 'RunesIterator' || clean == 'builtin.RunesIterator' {
-		return 'rune'
+		return IteratorForInInfo{
+			elem_type:   'rune'
+			next_method: 'RunesIterator.next'
+		}
+	}
+	if isnil(t.tc) || clean.len == 0 {
+		return none
+	}
+	iter_type_value := t.tc.parse_type(clean)
+	info := t.tc.iterator_for_in_next_call_info(iter_type_value) or { return none }
+	elem_type := t.iterator_for_in_elem_type_from_next_return(info.return_type) or { return none }
+	return IteratorForInInfo{
+		elem_type:   elem_type
+		next_method: info.name
+	}
+}
+
+fn (t &Transformer) iterator_for_in_elem_type_from_next_return(ret types.Type) ?string {
+	if ret is types.OptionType {
+		return ret.base_type.name()
 	}
 	return none
 }
@@ -309,7 +334,7 @@ fn (t &Transformer) range_loop_var_type_name(low_id flat.NodeId) string {
 	return 'int'
 }
 
-fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, iter_type string, elem_type string, has_index bool, body_ids []flat.NodeId) []flat.NodeId {
+fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, iter_type string, elem_type string, next_method string, has_index bool, body_ids []flat.NodeId) []flat.NodeId {
 	if int(key_id) < 0 {
 		return arr1(id)
 	}
@@ -341,8 +366,8 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 		t.make_empty()
 	}
 	t.set_var_type(elem_name, elem_type)
-	next_call := t.make_call_typed('RunesIterator.next', arr1(t.make_prefix(.amp,
-		t.make_ident(iter_name))), '?${elem_type}')
+	next_call := t.make_call_typed(next_method, arr1(t.make_prefix(.amp, t.make_ident(iter_name))),
+		'?${elem_type}')
 	next_decl := t.make_decl_assign_typed(next_name, next_call, '?${elem_type}')
 	no_value := t.make_prefix(.not, t.make_selector(t.make_ident(next_name), 'ok', 'bool'))
 	break_if_done := t.make_if(no_value, t.make_block(arr1(t.a.add(.break_stmt))), t.make_empty())

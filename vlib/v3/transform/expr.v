@@ -1062,6 +1062,12 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 		|| type_name.starts_with('map[') {
 		return ''
 	}
+	base, _, has_generic_args := generic_app_parts(type_name)
+	if has_generic_args {
+		if t.struct_lookup_name(base).len > 0 {
+			return type_name
+		}
+	}
 	if type_name.contains('.') {
 		if type_name in t.structs {
 			return type_name
@@ -1633,10 +1639,9 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 	}
 	struct_type := t.struct_lookup_name(clean)
 	if struct_type.len > 0 {
-		method_name := '${struct_type}.=='
-		if t.is_known_fn_name(method_name) {
+		if method_name := t.struct_operator_fn_name(struct_type, '==') {
 			t.mark_fn_used_name(method_name)
-			return t.make_call(method_name, arr2(lhs, rhs))
+			return t.make_call_typed(method_name, arr2(lhs, rhs), 'bool')
 		}
 		if struct_type in seen {
 			cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs),

@@ -81,7 +81,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			}
 			continue
 		}
-		if node.kind == .fn_decl {
+		if node.kind == .fn_decl || node.kind == .c_fn_decl {
 			has_dot := node.value.contains('.')
 			can_suffix_match := !markused_fn_decl_is_generic_template(node, a)
 			if trace_markused {
@@ -231,8 +231,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// function in `method_values_by_fn`; they are seeded inside the BFS below (only when
 	// that function is reached), so an unreachable function's method value never forces an
 	// otherwise-unused specialization to be transformed/emitted.
-	enqueue_initializer_calls(a, collector, imports, fn_decls, reachable_modules, mut used, mut
-		queue)
+	enqueue_initializer_calls(a, collector, imports, fn_decls, mut used, mut queue)
 	enqueue_top_level_calls(a, collector, fn_decls, has_entry_main, mut used, mut queue)
 	// Interface dispatch reachability: calling an interface method `Foo.m` may
 	// dispatch to any concrete `T.m` for a type `T` that implements `Foo`. Those
@@ -610,7 +609,7 @@ fn markused_clone_string_map(src map[string]string) map[string]string {
 }
 
 // enqueue_initializer_calls supports enqueue initializer calls handling for markused.
-fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, imports map[string]string, fn_decls map[string]FnDeclInfo, reachable_modules map[string]bool, mut used map[string]bool, mut queue []string) {
+fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, imports map[string]string, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
 	mut cur_module := ''
 	mut calls := []string{cap: 32}
 	for node in a.nodes {
@@ -622,9 +621,6 @@ fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, imports m
 				cur_module = node.value
 			}
 			.const_decl, .global_decl {
-				if !markused_module_has_reachable_initializer(cur_module, reachable_modules) {
-					continue
-				}
 				for i in 0 .. node.children_count {
 					field := a.child_node(&node, i)
 					if field.children_count == 0 {
@@ -1201,6 +1197,10 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 					container_type := tc.resolve_type(container_id)
 					if types.unwrap_pointer(container_type) is types.Map {
 						needs_map_iteration_snapshot = true
+					}
+					if info := tc.iterator_for_in_next_call_info(container_type) {
+						enqueue(info.name, mut used, mut queue)
+						needs_optional_helpers = true
 					}
 				}
 			}

@@ -147,3 +147,12 @@ fn test_lifetime_receiver_method_body_specializes_nested_methods() {
 	})
 	assert out == '53'
 }
+
+fn test_lifetime_only_method_body_specializes_generic_receiver_methods() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_lifetime_only_method_body', {
+		'ignore/ignore.v': 'module ignore\n\npub struct Ref[^a] {\n\tn int\n}\n\npub struct Match[T] {\n\tvalue T\n\thas_value bool\n}\n\npub fn (m Match[T]) is_none() bool {\n\treturn !m.has_value\n}\n\npub fn (m Match[T]) inner() ?T {\n\tif !m.has_value {\n\t\treturn none\n\t}\n\treturn m.value\n}\n\nstruct Matcher {}\n\nfn (matcher &^a Matcher) matched[^a](n int) Match[Ref[^a]] {\n\t_ = matcher\n\tif n == 0 {\n\t\treturn Match[Ref[^a]]{}\n\t}\n\treturn Match[Ref[^a]]{\n\t\tvalue: Ref[^a]{\n\t\t\tn: n\n\t\t}\n\t\thas_value: true\n\t}\n}\n\nstruct Override {\n\tmatcher Matcher\n}\n\nfn (o &^a Override) matched[^a](n int) int {\n\tmat := o.matcher.matched(n)\n\tif mat.is_none() {\n\t\treturn 1\n\t}\n\tif value := mat.inner() {\n\t\treturn value.n\n\t}\n\treturn 0\n}\n\npub fn run() int {\n\toverride := Override{\n\t\tmatcher: Matcher{}\n\t}\n\treturn override.matched(59)\n}\n'
+		'main.v':          'module main\n\nimport ignore\n\nfn main() {\n\tprintln(int_str(ignore.run()))\n}\n'
+	})
+	assert out == '59'
+}

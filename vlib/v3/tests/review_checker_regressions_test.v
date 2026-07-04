@@ -65,16 +65,11 @@ fn test_multi_return_tail_slots_use_return_compatibility() {
 	assert if_out == '5,2'
 }
 
-fn test_none_is_not_ierror_value() {
+fn test_none_ierror_values_lower_to_builtin_none() {
 	v3_bin := build_v3_review_checker()
-	run_bad(v3_bin, 'bad_none_ierror_param',
-		'fn take(e IError) {\n\t_ = e\n}\n\nfn main() {\n\ttake(none)\n}\n',
-		'cannot use `?void` as argument 1 to `take`; expected `IError`')
-	run_bad(v3_bin, 'bad_none_ierror_field',
-		'struct Holder {\n\terr IError\n}\n\nfn main() {\n\t_ := Holder{\n\t\terr: none\n\t}\n}\n',
-		'cannot initialize field `err` with `?void`; expected `IError`')
-	run_bad(v3_bin, 'bad_none_ierror_return',
-		'fn make() IError {\n\treturn none\n}\nfn main() {}\n', 'cannot return `?void` as `IError`')
+	ierror_out := run_good(v3_bin, 'good_none_ierror_contexts',
+		'struct Holder {\n\terr IError = none\n}\n\nfn take(e IError) int {\n\tif e is none {\n\t\treturn 1\n\t}\n\treturn 0\n}\n\nfn make() IError {\n\treturn none\n}\n\nfn main() {\n\tdefault := Holder{}\n\texplicit := Holder{\n\t\terr: none\n\t}\n\tprintln(int_str(take(none) + take(default.err) + take(explicit.err) + take(make())))\n}\n')
+	assert ierror_out == '4'
 	out := run_good(v3_bin, 'good_none_option_context',
 		'fn maybe() ?int {\n\treturn none\n}\n\nfn main() {\n\tif maybe() == none {\n\t\tprintln("option")\n\t}\n}\n')
 	assert out == 'option'

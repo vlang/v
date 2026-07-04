@@ -1568,11 +1568,146 @@ fn (mut g FlatGen) struct_init_c_type_name(type_name string) string {
 	if typ is types.OptionType || typ is types.ResultType {
 		return g.optional_type_name(typ)
 	}
+	if ct := g.generic_struct_init_app_ct_from_context(type_name) {
+		return ct
+	}
+	if type_name.contains('[') {
+		return g.tc.c_type(typ)
+	}
+	if ct := g.flattened_generic_struct_init_ct_from_context(type_name) {
+		return ct
+	}
+	if ct := g.flattened_generic_struct_init_ct(type_name) {
+		return ct
+	}
 	info := g.find_struct_decl(type_name) or { return g.tc.c_type(g.tc.parse_type(type_name)) }
 	if info.full_name.starts_with('C.') {
 		return g.tc.c_type(g.tc.parse_type(info.full_name))
 	}
 	return c_name(info.full_name)
+}
+
+fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name string) ?string {
+	clean := type_name.trim_space()
+	base, args, ok := shared_generic_app_parts(clean)
+	if !ok || args.len == 0 {
+		return none
+	}
+	base_short := base.all_after_last('.')
+	arg_suffix := generic_receiver_type_suffixes(args)
+	for candidate in [g.expected_expr_type, g.cur_fn_ret] {
+		candidate_type := types.unwrap_pointer(candidate)
+		if candidate_type is types.Void || candidate_type is types.Unknown {
+			continue
+		}
+		candidate_name := candidate_type.name()
+		candidate_base, candidate_args, candidate_ok := shared_generic_app_parts(candidate_name)
+		if !candidate_ok || candidate_args.len != args.len {
+			continue
+		}
+		if candidate_base.all_after_last('.') != base_short {
+			continue
+		}
+		if generic_receiver_type_suffixes(candidate_args) == arg_suffix {
+			return g.tc.c_type(candidate_type)
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) flattened_generic_struct_init_ct_from_context(type_name string) ?string {
+	clean := type_name.trim_space()
+	if clean.len == 0 || clean.contains('[') || !clean.contains('_') {
+		return none
+	}
+	for candidate in [g.expected_expr_type, g.cur_fn_ret] {
+		base := types.unwrap_pointer(candidate)
+		if base is types.Void || base is types.Unknown {
+			continue
+		}
+		candidate_name := base.name()
+		if !candidate_name.contains('[') {
+			continue
+		}
+		ct := g.tc.c_type(base)
+		if flattened_generic_struct_c_type_short_name(ct) == clean {
+			return ct
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) flattened_generic_struct_init_ct(type_name string) ?string {
+	clean := type_name.trim_space()
+	if clean.len == 0 || clean.contains('[') || !clean.contains('_') {
+		return none
+	}
+	mut matches := []string{}
+	for struct_name, _ in g.tc.structs {
+		base, args, ok := shared_generic_app_parts(struct_name)
+		if !ok || args.len == 0 {
+			continue
+		}
+		short_base := base.all_after_last('.')
+		ct := g.tc.c_type(g.tc.parse_type(struct_name))
+		candidates := [
+			'${short_base}_${generic_receiver_type_suffixes(args)}',
+			flattened_generic_struct_c_type_short_name(ct),
+		]
+		if clean !in candidates {
+			continue
+		}
+		if ct !in matches {
+			matches << ct
+		}
+	}
+	if matches.len == 1 {
+		return matches[0]
+	}
+	if ct := g.same_module_flattened_generic_struct_ct(clean) {
+		return ct
+	}
+	return none
+}
+
+fn (g &FlatGen) same_module_flattened_generic_struct_ct(clean string) ?string {
+	if g.tc.cur_module.len == 0 || g.tc.cur_module == 'main' || g.tc.cur_module == 'builtin'
+		|| !clean.contains('_') {
+		return none
+	}
+	base := clean.all_before('_')
+	suffix := clean.all_after('_')
+	if base.len == 0 || suffix.len == 0 {
+		return none
+	}
+	info := g.find_struct_decl(base) or { return none }
+	if info.module != g.tc.cur_module || info.node.generic_params.len == 0 {
+		return none
+	}
+	return '${c_name(g.tc.cur_module)}__${c_name(base)}_${c_name(g.tc.cur_module)}__${suffix}'
+}
+
+fn flattened_generic_struct_c_type_short_name(ct string) string {
+	clean := ct.trim_space()
+	if clean.len == 0 {
+		return clean
+	}
+	mut out := []u8{}
+	mut i := 0
+	for i < clean.len {
+		mut j := i
+		for j < clean.len && ((clean[j] >= `a` && clean[j] <= `z`)
+			|| (clean[j] >= `0` && clean[j] <= `9`)) {
+			j++
+		}
+		if j > i && j + 1 < clean.len && clean[j] == `_` && clean[j + 1] == `_` {
+			i = j + 2
+			continue
+		}
+		out << clean[i]
+		i++
+	}
+	return out.bytestr()
 }
 
 // find_struct_decl resolves find struct decl information for c.

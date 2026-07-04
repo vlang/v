@@ -250,7 +250,7 @@ pub fn transform_with_used_opt_config(mut a flat.FlatAst, tc &types.TypeChecker,
 	}
 	base_node_count := t.a.nodes.len
 	was_parallel := t.transform_all_dispatch(want_parallel)
-	mut late_names := t.new_call_names_from_used_fn_bodies(used_fns, base_node_count)
+	mut late_names := t.new_call_names_from_used_fn_bodies(used_fns, t.a.nodes.len)
 	late_names << newly_used_fn_names(used_fns, t.used_fns)
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
 	return t.used_fns, was_parallel
@@ -1282,6 +1282,7 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, node_limit 
 	mut queued := map[string]bool{}
 	mut pending := []string{}
 	for name in names {
+		t.mark_fn_used_name(name)
 		add_late_used_fn_name(name, mut late, mut pending, mut queued)
 	}
 	mut processed := map[int]bool{}
@@ -3507,7 +3508,7 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 			return t.make_optional_none(t.qualify_optional_type(target_type))
 		}
 		if node.kind == .none_expr && t.is_ierror_type(target_type) {
-			return t.make_struct_init('IError')
+			return t.make_ierror_none()
 		}
 		if target_type.starts_with('&') {
 			if expr := t.transform_amp_struct_init_for_type(id, node, target_type) {
@@ -3911,6 +3912,30 @@ fn (mut t Transformer) make_optional_none(optional_type string) flat.NodeId {
 		children_count: 1
 		value:          optional_type
 		typ:            optional_type
+	})
+}
+
+fn (mut t Transformer) make_ierror_none() flat.NodeId {
+	none_value := t.make_struct_init('None__')
+	addr := t.make_prefix(.amp, none_value)
+	size := t.make_sizeof_type('None__')
+	dup := t.make_call_typed('memdup', arr2(addr, size), 'voidptr')
+	object := t.make_cast('&None__', dup, '&None__')
+	type_id := t.interface_impl_type_id('IError', 'None__') or { 0 }
+	fields := [
+		t.make_sum_literal_field('_typ', t.make_int_literal(type_id), 'int'),
+		t.make_sum_literal_field('_object', object, '&None__'),
+	]
+	start := t.a.children.len
+	for field in fields {
+		t.a.children << field
+	}
+	return t.a.add_node(flat.Node{
+		kind:           .struct_init
+		children_start: start
+		children_count: flat.child_count(fields.len)
+		value:          'IError'
+		typ:            'IError'
 	})
 }
 

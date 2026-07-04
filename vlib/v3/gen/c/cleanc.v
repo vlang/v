@@ -2800,6 +2800,12 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		g.expected_enum = expected.name
 	}
 	node := g.a.nodes[int(id)]
+	if g.is_ierror_type_name(expected.name()) && node.kind == .none_expr {
+		g.write(g.ierror_none_literal_string())
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
 	if g.is_ierror_type_name(expected.name()) && g.expr_is_error_call(id) {
 		g.gen_ierror_from_error_call(node)
 		g.expected_expr_type = old_expected
@@ -5225,8 +5231,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			g.write('NULL')
 		}
 		.none_expr {
-			ct := g.optional_type_name(g.optional_none_type(id))
-			g.write('(${ct}){.ok = false}')
+			if g.is_ierror_type_name(g.expected_expr_type.name()) {
+				g.write(g.ierror_none_literal_string())
+			} else {
+				ct := g.optional_type_name(g.optional_none_type(id))
+				g.write('(${ct}){.ok = false}')
+			}
 		}
 		.or_expr {
 			g.gen_or_expr(node)

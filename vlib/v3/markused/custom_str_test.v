@@ -38,6 +38,32 @@ fn parse_checked_two_file_source(name string, main_source string, module_rel str
 	return a, &tc
 }
 
+fn parse_checked_prelude_user_source(name string, prelude_rel string, prelude_source string, main_source string) (&flat.FlatAst, &types.TypeChecker) {
+	root := os.join_path(os.temp_dir(), 'v3_markused_${name}_project')
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	prelude_src := os.join_path(root, prelude_rel)
+	main_src := os.join_path(root, 'main.v')
+	os.mkdir_all(os.dir(prelude_src)) or { panic(err) }
+	os.write_file(prelude_src, prelude_source) or { panic(err) }
+	os.write_file(main_src, main_source) or { panic(err) }
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	p.parse_file(prelude_src)
+	p.a.user_code_start = p.a.nodes.len
+	mut a := p.parse_files([main_src])
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.diagnose_unknown_calls = true
+	tc.diagnostic_files[prelude_src] = true
+	tc.diagnostic_files[main_src] = true
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	return a, &tc
+}
+
 // build_v3_bin builds v3 bin data for v3 tests.
 fn build_v3_bin(name string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_${name}')
@@ -240,6 +266,34 @@ fn test_optional_struct_zero_seeds_imported_default_helper() {
 		'defaults/defaults.v', imported_struct_default_module_source())
 	mut used := mark_used(a, tc)
 	assert used['defaults.default_value']
+}
+
+fn test_prelude_global_initializer_seeds_calls_and_c_externs() {
+	mut a, mut tc := parse_checked_prelude_user_source('prelude_global_initializer',
+		'hidden/hidden.c.v', 'module hidden
+
+fn C.hidden_external() int
+
+pub const hidden_value = helper() + C.hidden_external()
+
+fn helper() int {
+	return 7
+}
+', 'module main
+
+fn main() {}
+')
+	mut used := mark_used(a, tc)
+	assert used['hidden.helper']
+	assert used['C.hidden_external'] || used['hidden_external']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('hidden__helper(')
+	assert c_code.contains('hidden_external(void);')
 }
 
 // test_string_interpolation_lowers_to_imported_enum_str_after_used_filter_transform

@@ -300,6 +300,29 @@ fn main() {
 	')
 	assert ok_iclone_default_clone.exit_code == 0, ok_iclone_default_clone.output
 
+	ok_iclone_if_expr_clone := run_ownership_check(v3_bin, 'iclone_if_expr_clone', '
+struct Resource implements IClone {
+	id int
+}
+
+fn pick(cond bool, left Resource, right Resource) Resource {
+	res := if cond {
+		left.clone()
+	} else {
+		right.clone()
+	}
+	return res
+}
+
+fn main() {
+	left := Resource{id: 7}
+	right := Resource{id: 9}
+	res := pick(true, left, right)
+	println(res.id)
+}
+	')
+	assert ok_iclone_if_expr_clone.exit_code == 0, ok_iclone_if_expr_clone.output
+
 	fail_inferred_owned_global := run_ownership_check(v3_bin, 'inferred_owned_global', '
 struct Resource implements Owned {
 	id int

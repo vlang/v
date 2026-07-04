@@ -805,6 +805,23 @@ fn test_reachable_main_fn_literal_is_emitted_after_used_filter_transform() {
 	assert c_code.contains('callback_value(__anon_fn_')
 }
 
+fn test_reachable_imported_fn_literal_roots_private_callback_helpers() {
+	mut a, mut tc := parse_checked_project('reachable_imported_fn_literal_helpers', {
+		'printer/printer.v': 'module printer\n\nfn helper() int {\n\treturn 41\n}\n\nfn named(name string) int {\n\treturn name.len\n}\n\nfn consume(cb fn () int, name_to_index fn (string) int) int {\n\treturn cb() + name_to_index("x")\n}\n\npub fn run() int {\n\treturn consume(fn () int {\n\t\treturn helper()\n\t}, named)\n}\n'
+		'main.v':            'module main\n\nimport printer\n\nfn main() {\n\t_ := printer.run()\n}\n'
+	}, 'main.v')
+	mut used := markused.mark_used(a, tc)
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('printer__helper('), c_code
+	assert c_code.contains('printer__named('), c_code
+	assert c_code.contains('printer__consume(printer____anon_fn_'), c_code
+}
+
 fn test_top_level_fn_value_roots_helper() {
 	mut a, mut tc := parse_checked_source('top_level_fn_value_helper_cgen',
 		'module main\n\nfn helper() int {\n\treturn 41\n}\n\nf := helper\nprintln(int_str(f() + 1))\n')
