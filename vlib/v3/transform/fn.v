@@ -5253,7 +5253,7 @@ fn flattened_generic_receiver_short_variants(receiver_type string) []string {
 	}
 	module_name := if clean.contains('.') { clean.all_before_last('.') } else { '' }
 	leaf := if clean.contains('.') { clean.all_after_last('.') } else { clean }
-	parts := leaf.split('_')
+	parts := flattened_generic_receiver_leaf_parts(leaf)
 	mut changed := false
 	mut short_parts := []string{cap: parts.len}
 	for part in parts {
@@ -5273,6 +5273,27 @@ fn flattened_generic_receiver_short_variants(receiver_type string) []string {
 		variants << '${module_name}.${short_leaf}'
 	}
 	return variants
+}
+
+fn flattened_generic_receiver_leaf_parts(leaf string) []string {
+	mut parts := []string{}
+	mut start := 0
+	mut i := 0
+	for i < leaf.len {
+		if leaf[i] == `_` {
+			if i + 1 < leaf.len && leaf[i + 1] == `_` {
+				i += 2
+				continue
+			}
+			parts << leaf[start..i]
+			i++
+			start = i
+			continue
+		}
+		i++
+	}
+	parts << leaf[start..]
+	return parts
 }
 
 fn (t &Transformer) resolve_fixed_array_dynamic_receiver_method(fixed_type string, method string) ?string {

@@ -996,7 +996,7 @@ fn cgen_flattened_generic_receiver_short_variants(receiver_type string) []string
 	}
 	module_name := if clean.contains('.') { clean.all_before_last('.') } else { '' }
 	leaf := if clean.contains('.') { clean.all_after_last('.') } else { clean }
-	parts := leaf.split('_')
+	parts := cgen_flattened_generic_receiver_leaf_parts(leaf)
 	mut changed := false
 	mut short_parts := []string{cap: parts.len}
 	for part in parts {
@@ -1016,6 +1016,27 @@ fn cgen_flattened_generic_receiver_short_variants(receiver_type string) []string
 		variants << '${module_name}.${short_leaf}'
 	}
 	return variants
+}
+
+fn cgen_flattened_generic_receiver_leaf_parts(leaf string) []string {
+	mut parts := []string{}
+	mut start := 0
+	mut i := 0
+	for i < leaf.len {
+		if leaf[i] == `_` {
+			if i + 1 < leaf.len && leaf[i + 1] == `_` {
+				i += 2
+				continue
+			}
+			parts << leaf[start..i]
+			i++
+			start = i
+			continue
+		}
+		i++
+	}
+	parts << leaf[start..]
+	return parts
 }
 
 fn c_string_pointer_base_arg(base types.Type) bool {
@@ -6298,7 +6319,8 @@ fn (mut g FlatGen) gen_flag_enum_from_call(fn_node flat.Node, node flat.Node) bo
 	value_ct := g.tc.c_type(enum_type)
 	mask := g.flag_enum_mask(enum_name)
 	arg := g.expr_to_string(g.a.child(&node, 1))
-	g.write('(${ct}){.ok = (((int)(${arg}) & ~(${mask})) == 0), .value = (${value_ct})(${arg})}')
+	tmp := g.tmp_name()
+	g.write('({ ${value_ct} ${tmp} = (${value_ct})(${arg}); (${ct}){.ok = (((int)${tmp} & ~(${mask})) == 0), .value = ${tmp}}; })')
 	return true
 }
 
@@ -7074,9 +7096,11 @@ fn (mut g FlatGen) c_extern_param_c_type(pt types.Type) string {
 	}
 	if pt is types.Pointer {
 		base := pt.base_type
-		if base is types.Struct && base.name.starts_with('C.')
-			&& base.name !in c_preamble_defined_structs {
-			return 'struct ${base.name[2..]}*'
+		if base is types.Struct && base.name.starts_with('C.') {
+			base_ct := g.tc.c_type(base)
+			if base_ct.starts_with('struct ') {
+				return '${base_ct}*'
+			}
 		}
 	}
 	return g.tc.c_type(pt)
