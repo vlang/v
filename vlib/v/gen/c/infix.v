@@ -2016,8 +2016,8 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 				}
 			}
 		}
-		if node.left is ast.Ident && node.left.obj is ast.Var
-			&& (node.left.obj.is_unwrapped || node.left.obj.is_assignment_smartcast
+		if node.left is ast.Ident && node.left.obj is ast.Var && (node.left.obj.is_unwrapped
+			|| node.left.obj.is_assignment_smartcast
 			|| ident_is_assignment_smartcast) {
 			name := c_name(node.left.name)
 			if node.left.is_auto_heap() {
