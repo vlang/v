@@ -53,14 +53,34 @@ fn test_screenshot_stdout_payload_contains_expected_marker() {
 }
 
 fn test_gg_record_captures_after_frame_fn_to_keep_d3d11_readback_pre_present() {
-	source := os.read_file(os.join_path(@VEXEROOT, 'vlib', 'gg', 'gg.c.v')) or { panic(err) }
+	source := os.read_file(os.join_path(@DIR, 'gg.c.v')) or { panic(err) }
 	frame_fn_source :=
 		source.all_after('fn gg_frame_fn').all_before('fn swap_interval_frame_budget')
-	draw_index := frame_fn_source.index('ctx.config.frame_fn(ctx.user_data)') or {
+	draw_call := 'ctx.config.frame_fn(ctx.user_data)'
+	draw_index := frame_fn_source.index(draw_call) or {
 		panic('gg_frame_fn must call the user frame function')
 	}
-	record_index := frame_fn_source.index('ctx.record_frame()') or {
+	record_index_after_draw := frame_fn_source[draw_index + draw_call.len..].index('ctx.record_frame()') or {
 		panic('gg_record must capture inside gg_frame_fn')
 	}
+	record_index := draw_index + draw_call.len + record_index_after_draw
 	assert draw_index < record_index, 'gg_record must capture after frame_fn so D3D11 readback happens before Present'
+}
+
+fn test_gg_record_stop_only_helper_runs_before_ui_idle_return() {
+	source := os.read_file(os.join_path(@DIR, 'gg.c.v')) or { panic(err) }
+	frame_fn_source :=
+		source.all_after('fn gg_frame_fn').all_before('fn swap_interval_frame_budget')
+	ticks_branch_start := frame_fn_source.index('if ctx.ticks > 3 {') or {
+		panic('gg_frame_fn must keep the ui idle return branch')
+	}
+	ticks_branch_source := frame_fn_source[ticks_branch_start..].all_before('}')
+	stop_index := ticks_branch_source.index('ctx.stop_recording_if_needed()') or {
+		panic('ui idle return branch must stop recording when the stop frame is reached')
+	}
+	return_index := ticks_branch_source.index('return') or {
+		panic('ui idle return branch must return')
+	}
+	assert stop_index < return_index
+	assert !ticks_branch_source.contains('ctx.record_frame()'), 'ui idle return branch must not capture screenshots'
 }

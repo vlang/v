@@ -381,6 +381,7 @@ fn gg_frame_fn(mut ctx Context) {
 		// Draw 3 more frames after the "stop refresh" command
 		ctx.ticks++
 		if ctx.ticks > 3 {
+			ctx.stop_recording_if_needed()
 			return
 		}
 	}
