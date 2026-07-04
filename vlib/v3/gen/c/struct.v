@@ -33,6 +33,14 @@ fn (g &FlatGen) struct_init_fields_key(type_name string, fallback string) string
 	return fallback
 }
 
+fn (g &FlatGen) struct_init_lookup_type_name(type_name string) string {
+	typ := g.tc.parse_type(type_name)
+	if typ is types.Struct {
+		return typ.name
+	}
+	return type_name
+}
+
 fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Type) {
 	if call_name := g.callback_direct_fn_value_name(value_id, expected) {
 		g.write(g.callback_c_fn_name(call_name))
@@ -186,8 +194,9 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	// A bare generic literal stores its fields under the concrete instance key (`Box[int]`);
 	// the bare `node.value` (`Box`) entry is removed by monomorphization, so resolve the
 	// instance for the fixed-array-field test, field-type lookups, and omitted-default emission.
-	lookup_name := g.struct_init_fields_key(node.value, node.value)
-	if node.children_count == 0 && g.is_scalar_zero_init_type(node.value, name) {
+	lookup_source_name := g.struct_init_lookup_type_name(node.value)
+	lookup_name := g.struct_init_fields_key(lookup_source_name, lookup_source_name)
+	if node.children_count == 0 && g.is_scalar_zero_init_type(lookup_source_name, name) {
 		g.write(g.scalar_zero_init(name))
 		return
 	}
@@ -262,7 +271,7 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	}
 	after_fields_module := g.tc.cur_module
 	g.tc.cur_module = init_module
-	sname := g.struct_init_resolved_decl_name(node.value)
+	sname := g.struct_init_resolved_decl_name(lookup_source_name)
 	g.tc.cur_module = after_fields_module
 	has_field = g.gen_struct_default_fields(sname, mut set_fields, has_field)
 	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { sname }
@@ -2271,6 +2280,7 @@ fn (mut g FlatGen) struct_decls() {
 	g.shared_type_forward_decls()
 	if g.has_builtins {
 		g.writeln('typedef array Array;')
+		g.flattened_map_type_alias_decls()
 	}
 	mut emitted := map[string]bool{}
 	mut remaining := map[string]bool{}
@@ -2455,6 +2465,43 @@ fn (mut g FlatGen) struct_decls() {
 		g.emit_struct(name)
 	}
 	g.shared_struct_decls()
+}
+
+fn (mut g FlatGen) flattened_map_type_alias_decls() {
+	mut names := map[string]bool{}
+	for node in g.a.nodes {
+		if node.kind in [.fn_decl, .c_fn_decl, .fn_literal, .param] {
+			g.collect_flattened_map_type_alias(node.typ, mut names)
+		}
+	}
+	for _, ret in g.tc.fn_ret_types {
+		if ret is types.Struct {
+			g.collect_flattened_map_type_alias(ret.name, mut names)
+		}
+	}
+	for _, params in g.tc.fn_param_types {
+		for param in params {
+			if param is types.Struct {
+				g.collect_flattened_map_type_alias(param.name, mut names)
+			}
+		}
+	}
+	mut sorted_names := names.keys()
+	sorted_names.sort()
+	for name in sorted_names {
+		g.writeln('typedef map ${name};')
+	}
+	if sorted_names.len > 0 {
+		g.writeln('')
+	}
+}
+
+fn (g &FlatGen) collect_flattened_map_type_alias(typ string, mut names map[string]bool) {
+	clean := typ.trim_space().trim_left('&')
+	if clean.starts_with('map_') && !clean.starts_with('map__') && clean !in g.tc.structs
+		&& clean !in g.tc.type_aliases {
+		names[c_name(clean)] = true
+	}
 }
 
 // type_forward_decls returns type forward decls data for FlatGen.

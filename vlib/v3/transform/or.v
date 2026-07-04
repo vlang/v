@@ -466,9 +466,11 @@ fn (mut t Transformer) make_decl_assign_typed(name string, rhs flat.NodeId, typ 
 	if typ.len > 0 {
 		t.a.nodes[int(decl)].typ = typ
 		decl_node := t.a.nodes[int(decl)]
-		lhs_id := t.a.child(&decl_node, 0)
-		if int(lhs_id) >= 0 {
-			t.a.nodes[int(lhs_id)].typ = typ
+		if decl_node.children_count > 0 {
+			lhs_id := t.a.child(&decl_node, 0)
+			if int(lhs_id) >= 0 {
+				t.a.nodes[int(lhs_id)].typ = typ
+			}
 		}
 		t.set_var_type(name, typ)
 	}

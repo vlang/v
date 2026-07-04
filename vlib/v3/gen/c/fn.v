@@ -3422,7 +3422,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					value_local_mut_receiver := arg_idx == 0 && (g.method_receiver_is_mut(fn_name)
 						|| g.method_receiver_is_mut(g.direct_call_name(fn_name)))
 						&& arg_node.kind == .ident && !g.local_storage_is_pointer(arg_node.value)
-						&& !arg_is_pointer_param && !arg_is_pointer_global && arg_type !is types.Pointer
+						&& !arg_is_pointer_param && !arg_is_pointer_global
+						&& arg_type !is types.Pointer
 					if (arg_type !is types.Pointer || value_local_mut_receiver)
 						&& !g.c_string_pointer_arg(arg_node, param_types[arg_idx]) {
 						needs_addr = !(arg_node.kind == .ident
@@ -7773,7 +7774,34 @@ fn (mut g FlatGen) multi_return_typedefs() {
 // set in the same (deterministic) order.
 fn (mut g FlatGen) walk_multi_return_typedefs(mut emitted map[string]bool, forward_only bool) {
 	for _, ret in g.tc.fn_ret_types {
-		g.emit_multi_return_typedef(ret, mut emitted, forward_only)
+		g.emit_concrete_multi_return_typedef(ret, mut emitted, forward_only)
+	}
+	for _, params in g.tc.fn_param_types {
+		for param in params {
+			g.emit_concrete_multi_return_typedef(param, mut emitted, forward_only)
+		}
+	}
+	for _, fields in g.tc.structs {
+		for field in fields {
+			g.emit_concrete_multi_return_typedef(field.typ, mut emitted, forward_only)
+		}
+	}
+	for _, fields in g.tc.interface_fields {
+		for field in fields {
+			g.emit_concrete_multi_return_typedef(field.typ, mut emitted, forward_only)
+		}
+	}
+	for _, typ in g.tc.c_globals {
+		g.emit_concrete_multi_return_typedef(typ, mut emitted, forward_only)
+	}
+	for _, typ in g.tc.const_types {
+		g.emit_concrete_multi_return_typedef(typ, mut emitted, forward_only)
+	}
+	for idx, is_set in g.tc.expr_type_set {
+		if !is_set || idx >= g.tc.expr_type_values.len {
+			continue
+		}
+		g.emit_concrete_multi_return_typedef(g.tc.expr_type_values[idx], mut emitted, forward_only)
 	}
 	mut cur_module := ''
 	mut cur_file := ''
@@ -7800,9 +7828,16 @@ fn (mut g FlatGen) walk_multi_return_typedefs(mut emitted map[string]bool, forwa
 		typ := node.typ
 		if typ.len > 0 && (typ[0] == `(` || ((typ[0] == `?` || typ[0] == `!`) && typ.len > 1
 			&& typ[1] == `(`)) {
-			g.emit_multi_return_typedef(g.tc.parse_type(typ), mut emitted, forward_only)
+			g.emit_concrete_multi_return_typedef(g.tc.parse_type(typ), mut emitted, forward_only)
 		}
 	}
+}
+
+fn (mut g FlatGen) emit_concrete_multi_return_typedef(ret types.Type, mut emitted map[string]bool, forward_only bool) {
+	if g.type_contains_generic_placeholder(ret) {
+		return
+	}
+	g.emit_multi_return_typedef(ret, mut emitted, forward_only)
 }
 
 // emit_multi_return_typedef emits one multi-return type: a forward declaration

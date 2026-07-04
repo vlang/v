@@ -3392,7 +3392,7 @@ fn (mut t Transformer) try_lower_flag_enum_stmt(call_id flat.NodeId) ?flat.NodeI
 	if !t.is_flag_enum_type(base_type) {
 		return none
 	}
-	base := t.transform_expr(base_id)
+	base := t.stable_expr_for_reuse(base_id)
 	arg := t.transform_expr(t.a.children[call.children_start + 1])
 	if fn_node.value == 'set' {
 		return t.make_assign_op(base, arg, .pipe_assign)
@@ -3434,7 +3434,7 @@ fn (mut t Transformer) try_lower_flag_enum_call(node flat.Node) ?flat.NodeId {
 	if !t.is_flag_enum_type(base_type) {
 		return none
 	}
-	base := t.transform_expr(base_id)
+	base := t.stable_expr_for_reuse(base_id)
 	arg_id := t.a.children[node.children_start + 1]
 	arg := t.transform_expr(arg_id)
 	masked := t.make_infix(.amp, base, arg)
@@ -3899,11 +3899,6 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		return none
 	}
 	builtin_method := 'map.${fn_node.value}'
-	if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id,
-		builtin_method)
-	{
-		return exact_call
-	}
 	method_name := t.resolve_receiver_method_name(base_id, fn_node.value)
 	if method_name.len > 0 && method_name != builtin_method
 		&& t.call_resolved_to_method(call_id, method_name)
@@ -3913,7 +3908,7 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		t.mark_fn_used(method_name)
 		return t.make_call_typed(method_name, args, ret_type)
 	}
-	base := t.transform_expr(base_id)
+	base := t.stable_expr_for_reuse(base_id)
 	if map_method_needs_runtime_addr_only(fn_node.value) {
 		t.mark_fn_used('map__${fn_node.value}')
 		return t.make_call_typed('map__${fn_node.value}', arr1(t.runtime_addr(base, base_type)),

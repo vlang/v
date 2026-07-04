@@ -96,6 +96,7 @@ mut:
 	used_fns                     map[string]bool
 	interface_boxed_types        map[string]bool
 	interface_boxed_types_done   bool
+	interface_var_concrete_types map[string]string
 	// used_struct_operator_fns holds the callee names of direct calls seen during
 	// monomorphize. Infix operators on generic instances are lowered to direct calls
 	// (`Vec_int__plus(a, b)`) before this pass, so an operator overload is specialized for
@@ -363,6 +364,7 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		sum_variant_names:                map[string]bool{}
 		used_fns:                         used_fns.clone()
 		interface_boxed_types:            map[string]bool{}
+		interface_var_concrete_types:     map[string]string{}
 	}
 }
 
@@ -468,6 +470,7 @@ fn (mut t Transformer) set_receiver_method_suffix_index(key string, name string)
 fn (mut t Transformer) reset_var_types() {
 	t.var_types.clear()
 	t.mut_param_values.clear()
+	t.interface_var_concrete_types.clear()
 }
 
 // set_var_type updates set var type state for transform.
@@ -502,6 +505,7 @@ fn (mut t Transformer) unset_var_type(name string) {
 	for i, binding in t.var_types {
 		if binding.name == name {
 			t.var_types.delete(i)
+			t.interface_var_concrete_types.delete(name)
 			return
 		}
 	}
@@ -3094,6 +3098,12 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	if lowered := t.try_lower_pointer_value_assign(node) {
 		return lowered
 	}
+	if lowered := t.try_lower_nested_map_index_assign(node) {
+		return lowered
+	}
+	if lowered := t.try_lower_map_index_selector_assign(node) {
+		return lowered
+	}
 	if lowered := t.try_lower_map_index_assign(node) {
 		return lowered
 	}
@@ -3817,6 +3827,24 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 	if expr_type.len == 0 || expr_type == target {
 		return expr
 	}
+	if target == 'map*' {
+		clean_expr_type := t.clean_map_type(expr_type)
+		if clean_expr_type.starts_with('map[') {
+			if expr_type.starts_with('&') {
+				return expr
+			}
+			if t.expr_can_take_address(expr) {
+				addr := t.make_prefix(.amp, expr)
+				t.a.nodes[int(addr)].typ = target
+				return addr
+			}
+			tmp_name := t.new_temp('addr')
+			t.pending_stmts << t.make_decl_assign_typed(tmp_name, expr, clean_expr_type)
+			addr := t.make_prefix(.amp, t.make_ident(tmp_name))
+			t.a.nodes[int(addr)].typ = target
+			return addr
+		}
+	}
 	if target in ['f32', 'f64'] && t.is_integer_type_name(expr_type) {
 		return t.make_cast(target, expr, target)
 	}
@@ -4297,6 +4325,20 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				t.set_var_type(lhs.value, rhs_typ)
 				inferred_typ = rhs_typ
 			}
+		}
+	}
+	if node.children_count == 2 && new_children.len == 2 {
+		lhs := t.a.nodes[int(new_children[0])]
+		if lhs.kind == .ident && lhs.value.len > 0 {
+			if concrete := t.interface_box_concrete_type(new_children[1]) {
+				t.interface_var_concrete_types[lhs.value] = concrete
+			}
+		}
+	}
+	if inferred_typ.len > 0 && new_children.len > 0 {
+		lhs := t.a.nodes[int(new_children[0])]
+		if lhs.kind == .ident && (lhs.typ.len == 0 || t.generic_arg_is_unresolved(lhs.typ)) {
+			t.a.nodes[int(new_children[0])].typ = inferred_typ
 		}
 	}
 	start := t.a.children.len
@@ -5582,6 +5624,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 	if optional_result := t.transform_infix_optional_none_ops(id, node) {
 		return optional_result
 	}
+	if interface_result := t.transform_infix_interface_ops(id, node) {
+		return interface_result
+	}
 	if sum_result := t.transform_infix_sum_ops(id, node) {
 		return sum_result
 	}
@@ -5733,6 +5778,24 @@ fn (mut t Transformer) transform_struct_init(id flat.NodeId, node flat.Node) fla
 			}
 			lowered := t.lower_array_init_to_runtime(id, array_node)
 			if lowered != id {
+				return lowered
+			}
+		}
+		if clean_value.starts_with('map[') {
+			map_node := flat.Node{
+				kind:           .map_init
+				op:             node.op
+				children_start: node.children_start
+				children_count: node.children_count
+				pos:            node.pos
+				value:          clean_value
+				typ:            clean_value
+			}
+			lowered := t.lower_map_init_to_runtime(id, map_node)
+			if lowered != id {
+				if node.value != clean_value {
+					t.a.nodes[int(lowered)].typ = node.value
+				}
 				return lowered
 			}
 		}
@@ -8106,7 +8169,12 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 				return node.value
 			}
 			if node.children_count >= 2 {
-				key_type := t.node_type(t.a.child(&node, 0))
+				first_id := t.a.child(&node, 0)
+				first := t.a.nodes[int(first_id)]
+				if first.kind == .prefix && first.value == '...' && first.children_count > 0 {
+					return t.node_type(t.a.child(&first, 0))
+				}
+				key_type := t.node_type(first_id)
 				value_type := t.node_type(t.a.child(&node, 1))
 				if key_type.len > 0 && value_type.len > 0 {
 					return 'map[${key_type}]${value_type}'

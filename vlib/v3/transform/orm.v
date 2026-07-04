@@ -7,7 +7,14 @@ import v3.flat
 // v3 fallback behavior by replacing SQL expressions with a successful typed
 // default value.
 fn (mut t Transformer) transform_sql_expr(_id flat.NodeId, node flat.Node) flat.NodeId {
-	typ := if node.typ.len > 0 { node.typ } else { '!void' }
+	checker_typ := t.raw_checker_node_type(_id)
+	typ := if checker_typ.len > 0 {
+		checker_typ
+	} else if node.typ.len > 0 {
+		node.typ
+	} else {
+		'!void'
+	}
 	if t.is_optional_type_name(typ) {
 		opt_type := t.qualify_optional_type(typ)
 		value_type := t.optional_base_type(opt_type)

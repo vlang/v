@@ -249,9 +249,14 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		return none
 	}
 	source_expr := t.transform_expr(id)
-	source := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_src')
+	mut source := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_src')
 	is_ptr := source_type.starts_with('&')
 	concrete_type := if is_ptr { source_type[1..] } else { source_type }
+	if !is_ptr && !t.expr_can_take_address(source) {
+		tmp_name := t.new_temp('iface_src')
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, source_type)
+		source = t.make_ident(tmp_name)
+	}
 	// `_object` is a pointer to the boxed concrete value; method dispatch reads it
 	// back and casts it to the concrete type. For pointer sources we store the
 	// pointer directly; for value sources we heap-copy so the box can outlive the

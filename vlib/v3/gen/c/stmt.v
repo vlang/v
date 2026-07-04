@@ -1809,22 +1809,6 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 	return g.tc.resolve_type(id)
 }
 
-fn (g &FlatGen) global_type_for_ident(name string) ?types.Type {
-	if name.len == 0 {
-		return none
-	}
-	if typ := g.global_types[name] {
-		return typ
-	}
-	if mod := g.global_modules[name] {
-		qname := qualify_name_in_module(mod, name)
-		if typ := g.global_types[qname] {
-			return typ
-		}
-	}
-	return none
-}
-
 fn (g &FlatGen) array_method_call_return_type(fn_node &flat.Node) ?types.Type {
 	if fn_node.kind != .selector || fn_node.children_count == 0 {
 		return none

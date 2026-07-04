@@ -341,7 +341,7 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 			|| t.resolve_sum_name(info.value_type) in t.sum_types {
 			t.wrap_sum_value(rhs_id, info.value_type)
 		} else {
-			t.transform_expr(rhs_id)
+			t.transform_expr_for_type(rhs_id, info.value_type)
 		}
 		result << t.make_decl_assign_typed(value_name, value, info.value_type)
 		result << t.make_map_set_stmt(map_expr, info.base_type, key_name, value_name)
@@ -353,6 +353,88 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 	}
 	op := map_compound_to_infix_op(node.op) or { return none }
 	t.lower_map_index_compound_with_info(info, map_expr, key_name, op, rhs_id, mut result)
+	return result
+}
+
+// try_lower_nested_map_index_assign lowers `m[k1][k2] = value` by updating the
+// inner map value and storing it back into the outer map.
+fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat.NodeId {
+	if node.kind !in [.assign, .index_assign] || node.children_count < 2 || node.op != .assign {
+		return none
+	}
+	lhs_id := t.a.child(&node, 0)
+	lhs := t.a.nodes[int(lhs_id)]
+	if lhs.kind != .index || lhs.children_count < 2 {
+		return none
+	}
+	outer_index_id := t.a.child(&lhs, 0)
+	outer_index := t.a.nodes[int(outer_index_id)]
+	if outer_index.kind != .index {
+		return none
+	}
+	outer_info := t.map_index_info(outer_index_id) or { return none }
+	inner_map_type := t.clean_map_type(outer_info.value_type)
+	if !inner_map_type.starts_with('map[') {
+		return none
+	}
+	inner_key_type, inner_value_type := t.map_type_parts(inner_map_type)
+	if inner_key_type.len == 0 || inner_value_type.len == 0 {
+		return none
+	}
+	map_expr := t.stable_expr_for_reuse(outer_info.base_id)
+	outer_key_name := t.new_temp('map_key')
+	mut result := []flat.NodeId{}
+	t.drain_pending(mut result)
+	result << t.make_decl_assign_typed(outer_key_name, t.transform_expr(outer_info.key_id),
+		outer_info.key_type)
+	inner_name := t.load_map_index_current(outer_info, map_expr, outer_key_name, mut result)
+	inner_key_name := t.new_temp('map_key')
+	inner_value_name := t.new_temp('map_val')
+	result << t.make_decl_assign_typed(inner_key_name, t.transform_expr_for_type(t.a.child(&lhs, 1),
+		inner_key_type), inner_key_type)
+	rhs_id := t.a.child(&node, 1)
+	inner_value := if inner_value_type.starts_with('&') && t.is_sum_type_name(inner_value_type[1..]) {
+		t.transform_expr_for_type(rhs_id, inner_value_type)
+	} else if inner_value_type in t.sum_types || t.resolve_sum_name(inner_value_type) in t.sum_types {
+		t.wrap_sum_value(rhs_id, inner_value_type)
+	} else {
+		t.transform_expr_for_type(rhs_id, inner_value_type)
+	}
+	result << t.make_decl_assign_typed(inner_value_name, inner_value, inner_value_type)
+	result << t.make_map_set_stmt(t.make_ident(inner_name), inner_map_type, inner_key_name,
+		inner_value_name)
+	result << t.make_map_set_stmt(map_expr, outer_info.base_type, outer_key_name, inner_name)
+	return result
+}
+
+// try_lower_map_index_selector_assign lowers `m[k].field = value` by updating a
+// temporary map value and writing it back to the map.
+fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]flat.NodeId {
+	if node.kind !in [.assign, .selector_assign, .index_assign] || node.children_count < 2
+		|| node.op != .assign {
+		return none
+	}
+	lhs_id := t.a.child(&node, 0)
+	lhs := t.a.nodes[int(lhs_id)]
+	if lhs.kind != .selector || lhs.children_count == 0 || lhs.value.len == 0 {
+		return none
+	}
+	base_id := t.a.child(&lhs, 0)
+	info := t.map_index_info(base_id) or { return none }
+	field_type := t.lvalue_type(lhs_id)
+	if field_type.len == 0 {
+		return none
+	}
+	map_expr := t.stable_expr_for_reuse(info.base_id)
+	key_name := t.new_temp('map_key')
+	mut result := []flat.NodeId{}
+	t.drain_pending(mut result)
+	result << t.make_decl_assign_typed(key_name, t.transform_expr(info.key_id), info.key_type)
+	current_name := t.load_map_index_current(info, map_expr, key_name, mut result)
+	field := t.make_selector(t.make_ident(current_name), lhs.value, field_type)
+	rhs_id := t.a.child(&node, 1)
+	result << t.make_assign(field, t.transform_expr_for_type(rhs_id, field_type))
+	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
 	return result
 }
 
@@ -460,24 +542,37 @@ fn (mut t Transformer) try_lower_map_index_append_stmt(id flat.NodeId) ?[]flat.N
 
 // lower_map_init_to_runtime converts lower map init to runtime data for transform.
 fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node) flat.NodeId {
-	map_type := if node.value.len > 0 {
+	mut map_type := if node.value.len > 0 {
 		node.value
 	} else if node.typ.len > 0 {
 		node.typ
 	} else {
 		t.node_type(id)
 	}
+	map_type = t.normalize_type_alias(map_type)
 	if !map_type.starts_with('map[') {
 		return id
 	}
-	init_call := t.make_new_map_call(map_type)
+	mut init_call := t.make_new_map_call(map_type)
 	if node.children_count == 0 {
 		return init_call
+	}
+	mut start_i := 0
+	first_id := t.a.child(&node, 0)
+	first := t.a.nodes[int(first_id)]
+	if first.kind == .prefix && first.value == '...' && first.children_count > 0 {
+		source_id := t.a.child(&first, 0)
+		source_type := if t.node_type(source_id).len > 0 { t.node_type(source_id) } else { map_type }
+		source_expr := t.stable_expr_for_reuse(source_id)
+		t.mark_fn_used('map__clone')
+		init_call = t.make_call_typed('map__clone', arr1(t.runtime_addr(source_expr, source_type)),
+			map_type)
+		start_i = 2
 	}
 	tmp_name := t.new_temp('map_lit')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, init_call, map_type)
 	key_type, value_type := t.map_type_parts(map_type)
-	for i := 0; i + 1 < node.children_count; i += 2 {
+	for i := start_i; i + 1 < node.children_count; i += 2 {
 		key_name := t.new_temp('map_key')
 		value_name := t.new_temp('map_val')
 		t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(t.a.child(&node, i),

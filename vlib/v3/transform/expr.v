@@ -322,6 +322,78 @@ fn (t &Transformer) is_empty_map_init(id flat.NodeId) bool {
 	return node.kind == .map_init && node.children_count == 0
 }
 
+fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.Node) ?flat.NodeId {
+	if node.children_count < 2 || node.op !in [.eq, .ne] {
+		return none
+	}
+	lhs_id := t.a.children[node.children_start]
+	rhs_id := t.a.children[node.children_start + 1]
+	mut lhs_type := t.node_type(lhs_id)
+	mut rhs_type := t.node_type(rhs_id)
+	if lhs_type.len == 0 {
+		lhs_type = t.checker_node_type(lhs_id)
+	}
+	if rhs_type.len == 0 {
+		rhs_type = t.checker_node_type(rhs_id)
+	}
+	lhs_iface := t.resolve_interface_type_name(lhs_type)
+	rhs_iface := t.resolve_interface_type_name(rhs_type)
+	if lhs_iface.len == 0 && rhs_iface.len == 0 {
+		return none
+	}
+	iface := if lhs_iface.len > 0 { lhs_iface } else { rhs_iface }
+	lhs := t.transform_expr_for_type(lhs_id, iface)
+	rhs := t.transform_expr_for_type(rhs_id, iface)
+	concrete_type := t.interface_box_concrete_type(lhs) or {
+		t.interface_box_concrete_type(rhs) or { return none }
+	}
+	lhs_value := t.stable_transformed_expr_for_reuse(lhs, iface, 'iface_eq_lhs')
+	rhs_value := t.stable_transformed_expr_for_reuse(rhs, iface, 'iface_eq_rhs')
+	lhs_typ := t.make_selector(lhs_value, '_typ', 'int')
+	rhs_typ := t.make_selector(rhs_value, '_typ', 'int')
+	type_eq := t.make_infix(.eq, lhs_typ, rhs_typ)
+	lhs_object := t.make_cast('&${concrete_type}',
+		t.make_selector(lhs_value, '_object', 'voidptr'), '&${concrete_type}')
+	rhs_object := t.make_cast('&${concrete_type}',
+		t.make_selector(rhs_value, '_object', 'voidptr'), '&${concrete_type}')
+	lhs_concrete := t.make_prefix(.mul, lhs_object)
+	t.a.nodes[int(lhs_concrete)].typ = concrete_type
+	rhs_concrete := t.make_prefix(.mul, rhs_object)
+	t.a.nodes[int(rhs_concrete)].typ = concrete_type
+	value_eq := t.make_membership_eq_expr(lhs_concrete, rhs_concrete, concrete_type)
+	eq := t.make_infix(.logical_and, type_eq, value_eq)
+	if node.op == .ne {
+		return t.make_prefix(.not, eq)
+	}
+	return eq
+}
+
+fn (t &Transformer) interface_box_concrete_type(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident {
+		if concrete := t.interface_var_concrete_types[node.value] {
+			return concrete
+		}
+	}
+	if node.kind != .struct_init || !t.is_interface_type(node.value) {
+		return none
+	}
+	for i in 0 .. node.children_count {
+		field := t.a.child_node(&node, i)
+		if field.value != '_object' || field.children_count == 0 {
+			continue
+		}
+		typ := t.node_type(t.a.child(field, 0))
+		if typ.starts_with('&') && typ.len > 1 {
+			return typ[1..]
+		}
+	}
+	return none
+}
+
 // transform_infix_struct_ops transforms transform infix struct ops data for transform.
 fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.children_count < 2 {

@@ -628,8 +628,19 @@ fn (mut t Transformer) transform_array_init_expr(id flat.NodeId, node flat.Node)
 // transform_map_init_expr transforms .map_init nodes.
 // Recursively transforms all child key/value expressions.
 fn (mut t Transformer) transform_map_init_expr(id flat.NodeId, node flat.Node) flat.NodeId {
-	if node.value.starts_with('map[') || node.typ.starts_with('map[') {
-		return t.lower_map_init_to_runtime(id, node)
+	raw_type := if node.value.len > 0 {
+		node.value
+	} else if node.typ.len > 0 {
+		node.typ
+	} else {
+		t.node_type(id)
+	}
+	map_type := t.normalize_type_alias(raw_type)
+	if map_type.starts_with('map[') {
+		mut map_node := node
+		map_node.value = map_type
+		map_node.typ = map_type
+		return t.lower_map_init_to_runtime(id, map_node)
 	}
 	if node.children_count == 0 {
 		return id
