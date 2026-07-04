@@ -66,6 +66,26 @@ fn fn_decl_param_pairs(a &flat.FlatAst, kind flat.NodeKind, name string) []strin
 	return []string{}
 }
 
+fn struct_init_values(a &flat.FlatAst) []string {
+	mut values := []string{}
+	for node in a.nodes {
+		if node.kind == .struct_init {
+			values << node.value
+		}
+	}
+	return values
+}
+
+fn cast_expr_values(a &flat.FlatAst) []string {
+	mut values := []string{}
+	for node in a.nodes {
+		if node.kind == .cast_expr {
+			values << node.value
+		}
+	}
+	return values
+}
+
 // test_interface_method_generic_type_only_param_is_not_parsed_as_name
 // validates this v3 regression case.
 fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
@@ -85,6 +105,28 @@ fn test_lifetime_generic_suffixes_are_erased() {
 	]
 	assert fn_decl_param_pairs(a, .fn_decl, 'use') == ['item:Match[IgnoreMatch]']
 	assert fn_decl_param_pairs(a, .fn_decl, 'after') == []
+}
+
+fn test_lifetime_generic_struct_init_suffixes_are_erased() {
+	a := parse_parser_regression_source('lifetime_generic_struct_init_suffixes',
+		'struct Candidate {}\nstruct Slot[T] {}\n\nfn make[^a]() {\n\t_ := Candidate[^a]{}\n\t_ := Slot[int, ^a]{}\n}\n')
+	assert struct_init_values(a) == ['Candidate', 'Slot[int]']
+}
+
+fn test_c_pointer_cast_selector_parses_cast_before_selector() {
+	a := parse_parser_regression_source('c_pointer_cast_selector', 'module main
+
+@[typedef]
+struct C.log__Logger {
+mut:
+	_object voidptr
+}
+
+fn object(logger &C.log__Logger) voidptr {
+	return &C.log__Logger(logger)._object
+}
+')
+	assert '&C.log__Logger' in cast_expr_values(a)
 }
 
 fn test_c_function_anonymous_params_are_parsed_as_types() {
@@ -235,6 +277,60 @@ fn test_local_type_generic_call_type_arg_is_resolved() {
 	assert local_row.starts_with('Row@local@main')
 	assert call_type_args == [local_row]
 	assert init_types == [local_row]
+}
+
+fn test_uppercase_index_condition_before_block_is_not_struct_init() {
+	a := parse_parser_regression_source('uppercase_index_condition_block',
+		'const Foo = [true]\n\nfn main() {\n\tif Foo[0] {\n\t\tprintln("ok")\n\t}\n}\n')
+	mut foo_struct_inits := []string{}
+	mut foo_index_count := 0
+	for node in a.nodes {
+		match node.kind {
+			.struct_init {
+				if node.value == 'Foo' {
+					foo_struct_inits << node.value
+				}
+			}
+			.index {
+				if node.children_count == 2 {
+					base := a.child_node(&node, 0)
+					if base.kind == .ident && base.value == 'Foo' {
+						foo_index_count++
+					}
+				}
+			}
+			else {}
+		}
+	}
+	assert foo_struct_inits == []
+	assert foo_index_count == 1
+}
+
+fn test_uppercase_identifier_index_condition_before_block_is_not_struct_init() {
+	a := parse_parser_regression_source('uppercase_identifier_index_condition_block',
+		'const Foo = [true, false]\n\nfn main() {\n\tidx := 0\n\tif Foo[idx] {\n\t\tprintln("ok")\n\t}\n}\n')
+	mut foo_struct_inits := []string{}
+	mut foo_index_count := 0
+	for node in a.nodes {
+		match node.kind {
+			.struct_init {
+				if node.value == 'Foo' {
+					foo_struct_inits << node.value
+				}
+			}
+			.index {
+				if node.children_count == 2 {
+					base := a.child_node(&node, 0)
+					if base.kind == .ident && base.value == 'Foo' {
+						foo_index_count++
+					}
+				}
+			}
+			else {}
+		}
+	}
+	assert foo_struct_inits == []
+	assert foo_index_count == 1
 }
 
 fn test_local_sibling_types_are_predeclared_before_fields() {

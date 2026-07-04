@@ -1034,7 +1034,10 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 		}
 		return eq
 	}
-	opt_type := t.node_type(opt_id)
+	mut opt_type := t.optional_result_expr_type_name(opt_id)
+	if opt_type.len == 0 {
+		opt_type = t.node_type(opt_id)
+	}
 	if !t.is_optional_type_name(opt_type) {
 		return none
 	}

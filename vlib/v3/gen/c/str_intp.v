@@ -251,8 +251,7 @@ fn (g &FlatGen) is_string_node(id flat.NodeId) bool {
 // string_literals supports string literals handling for FlatGen.
 fn (mut g FlatGen) string_literals() {
 	for i, s in g.str_lits {
-		escaped := s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\t',
-			'\\t').replace('\r', '\\r')
+		escaped := c_escape(s)
 		g.writeln('string _str_${i} = {"${escaped}", ${s.len}, 1};')
 	}
 	if g.str_lits.len > 0 {

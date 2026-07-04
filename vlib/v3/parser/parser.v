@@ -1099,8 +1099,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	mut is_generic := false
 	mut generic_params := []string{}
 	if p.tok == .lsbr {
-		is_generic = true
 		generic_params = p.parse_generic_param_names()
+		is_generic = generic_params.len > 0
 	}
 	// implements clause
 	mut implements_types := []string{}
@@ -1323,20 +1323,26 @@ fn (mut p Parser) global_decl() flat.NodeId {
 				p.next()
 				full_name += '.' + p.expect_name_or_keyword()
 			}
+			mut gtype := ''
+			mut val_id := flat.empty_node
+			if p.tok != .assign {
+				gtype = p.parse_type_name()
+			}
 			if p.tok == .assign {
-				// global with initializer: __global name = expr
+				// global with initializer: __global name = expr, or __global name Type = expr
 				p.next()
-				val_id := p.expr(.lowest)
+				val_id = p.expr(.lowest)
+			}
+			if int(val_id) >= 0 {
 				vstart := p.add_child(val_id)
 				ids << p.a.add_node(flat.Node{
 					kind:           .field_decl
 					value:          full_name
-					typ:            ''
+					typ:            gtype
 					children_start: vstart
 					children_count: 1
 				})
 			} else {
-				gtype := p.parse_type_name()
 				ids << p.a.add_node(flat.Node{
 					kind:  .field_decl
 					value: full_name
@@ -2672,7 +2678,9 @@ fn (mut p Parser) stmt() flat.NodeId {
 			if p.tok == .key_static {
 				return p.static_decl_stmt()
 			}
-			return p.assign_or_expr_stmt()
+			stmt_id := p.assign_or_expr_stmt()
+			p.mark_node_mut(stmt_id)
+			return stmt_id
 		}
 		.key_static {
 			return p.static_decl_stmt()
@@ -2756,9 +2764,15 @@ fn (mut p Parser) stmt() flat.NodeId {
 	}
 }
 
+fn (mut p Parser) mark_node_mut(id flat.NodeId) {
+	p.a.set_node_is_mut(id, true)
+}
+
 fn (mut p Parser) static_decl_stmt() flat.NodeId {
 	p.next() // skip `static`
+	mut is_mut := false
 	if p.tok == .key_mut {
+		is_mut = true
 		p.next()
 	}
 	lhs := p.expr(.lowest)
@@ -2773,6 +2787,7 @@ fn (mut p Parser) static_decl_stmt() flat.NodeId {
 			kind:           .decl_assign
 			op:             .assign
 			value:          'static'
+			is_mut:         is_mut
 			children_start: istart
 			children_count: 2
 		})
@@ -3342,6 +3357,10 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 			typ:   typ
 		})
 	}
+	if p.tok == .name && p.lit == 'map' && p.peek() == .lsbr {
+		typ := p.parse_type_name()
+		return p.a.add_val(.ident, typ)
+	}
 	if p.tok == .name && p.peek() == .dot {
 		mod_name := p.lit
 		p.next()
@@ -3528,10 +3547,16 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 		lhs_ids << lhs
 		for p.tok == .comma {
 			p.next()
+			mut lhs_is_mut := false
 			if p.tok == .key_mut {
+				lhs_is_mut = true
 				p.next()
 			}
-			lhs_ids << p.expr(.lowest)
+			lhs_id := p.expr(.lowest)
+			if lhs_is_mut {
+				p.mark_node_mut(lhs_id)
+			}
+			lhs_ids << lhs_id
 		}
 		if p.tok == .decl_assign || token_is_assignment(p.tok) {
 			op_id := int(p.tok)
@@ -3800,6 +3825,16 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 		}
 		// index / generic
 		if p.tok == .lsbr {
+			base_type_name := p.resolve_local_type_name(p.type_expr_name(lhs))
+			if type_name_can_init(base_type_name)
+				&& p.current_generic_struct_init_suffix_followed_by_lcbr() {
+				before_suffix_offset := p.s.offset
+				suffix := p.parse_type_generic_suffix()
+				if p.s.offset != before_suffix_offset && p.tok == .lcbr {
+					lhs = p.struct_init(p.resolve_local_type_name(base_type_name + suffix))
+					continue
+				}
+			}
 			lhs = p.index_expr(lhs)
 			continue
 		}
@@ -4501,6 +4536,10 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					children_start: p.add_child(id)
 					children_count: 1
 				})
+			} else if p.tok == .name && p.lit == 'C' && p.peek() == .dot {
+				if cast := p.pointer_cast_expr_from_current_amp() {
+					return cast
+				}
 			} else if p.tok == .lsbr && p.peek() == .rsbr {
 				type_name := '&' + p.parse_type_name()
 				if p.tok == .lpar {
@@ -4664,6 +4703,39 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return p.a.add(flat.NodeKind.empty)
 		}
 	}
+}
+
+fn (mut p Parser) pointer_cast_expr_from_current_amp() ?flat.NodeId {
+	saved_s := p.s
+	saved_tok := p.tok
+	saved_lit := p.lit
+	saved_tok_pos := p.tok_pos
+	saved_peek_tok := p.peek_tok
+	saved_peek_lit := p.peek_lit
+	saved_peek_pos := p.peek_pos
+	saved_has_peek := p.has_peek
+	type_name := '&' + p.parse_type_name()
+	if type_name.len > 1 && p.tok == .lpar {
+		p.next()
+		inner := p.expr(.lowest)
+		p.check(.rpar)
+		cstart := p.add_child(inner)
+		return p.a.add_node(flat.Node{
+			kind:           .cast_expr
+			value:          type_name
+			children_start: cstart
+			children_count: 1
+		})
+	}
+	p.s = saved_s
+	p.tok = saved_tok
+	p.lit = saved_lit
+	p.tok_pos = saved_tok_pos
+	p.peek_tok = saved_peek_tok
+	p.peek_lit = saved_peek_lit
+	p.peek_pos = saved_peek_pos
+	p.has_peek = saved_has_peek
+	return none
 }
 
 fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
@@ -4880,9 +4952,42 @@ fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
 fn (p &Parser) generic_struct_init_type_name(id flat.NodeId) ?string {
 	type_name := p.resolve_local_type_name(p.type_expr_name(id))
 	if !generic_type_name_can_init(type_name) {
+		if p.index_expr_is_lifetime_erased_type_name(id) && type_name_can_init(type_name) {
+			return type_name
+		}
 		return none
 	}
 	return type_name
+}
+
+fn (p &Parser) index_expr_is_lifetime_erased_type_name(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := p.a.nodes[int(id)]
+	if node.kind != .index || node.children_count < 2 || node.value == 'range' {
+		return false
+	}
+	mut saw_lifetime_arg := false
+	for i in 1 .. node.children_count {
+		child := p.a.child(&node, i)
+		if p.type_expr_is_lifetime_arg(child) {
+			saw_lifetime_arg = true
+			continue
+		}
+		if p.type_expr_name(child).len > 0 {
+			return false
+		}
+	}
+	return saw_lifetime_arg
+}
+
+fn (p &Parser) type_expr_is_lifetime_arg(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := p.a.nodes[int(id)]
+	return node.kind == .prefix && node.op == .xor && node.children_count == 1
 }
 
 fn (p &Parser) type_expr_name(id flat.NodeId) string {
@@ -4914,11 +5019,18 @@ fn (p &Parser) type_expr_name(id flat.NodeId) string {
 			}
 			mut args := []string{}
 			for i in 1 .. node.children_count {
-				arg := p.resolve_local_type_name(p.type_expr_name(p.a.child(&node, i)))
+				child_id := p.a.child(&node, i)
+				if p.type_expr_is_lifetime_arg(child_id) {
+					continue
+				}
+				arg := p.resolve_local_type_name(p.type_expr_name(child_id))
 				if arg.len == 0 {
 					return ''
 				}
 				args << arg
+			}
+			if args.len == 0 {
+				return base
 			}
 			return '${base}[${args.join(', ')}]'
 		}
@@ -4949,6 +5061,14 @@ fn (p &Parser) type_expr_name(id flat.NodeId) string {
 
 fn generic_type_name_can_init(type_name string) bool {
 	if !type_name.contains('[') {
+		return false
+	}
+	base := type_name.all_before('[')
+	return type_name_can_init(base)
+}
+
+fn type_name_can_init(type_name string) bool {
+	if type_name.len == 0 {
 		return false
 	}
 	base := type_name.all_before('[')
@@ -5552,6 +5672,101 @@ fn (mut p Parser) current_lbr_starts_array_type() bool {
 		return false
 	}
 	return p.lbr_starts_array_type_from_offset(p.s.offset)
+}
+
+fn (mut p Parser) current_generic_struct_init_suffix_followed_by_lcbr() bool {
+	args := p.current_generic_suffix_args_followed_by_lcbr() or { return false }
+	if args.len == 0 {
+		return false
+	}
+	for arg in args {
+		if !generic_struct_init_suffix_arg_can_be_type(arg) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut p Parser) current_generic_suffix_args_followed_by_lcbr() ?[]string {
+	if p.tok != .lsbr {
+		return none
+	}
+	mut idx := p.s.offset
+	mut arg_start := idx
+	mut bracket_depth := 1
+	mut paren_depth := 0
+	mut args := []string{}
+	for idx < p.s.src.len {
+		c := p.s.src[idx]
+		if c == `[` {
+			bracket_depth++
+		} else if c == `]` {
+			bracket_depth--
+			if bracket_depth == 0 {
+				args << p.s.src[arg_start..idx].trim_space()
+				idx++
+				for idx < p.s.src.len && (p.s.src[idx] == ` ` || p.s.src[idx] == `\t`
+					|| p.s.src[idx] == `\n` || p.s.src[idx] == `\r`) {
+					idx++
+				}
+				if idx < p.s.src.len && p.s.src[idx] == `{` {
+					return args
+				}
+				return none
+			}
+		} else if c == `(` {
+			paren_depth++
+		} else if c == `)` {
+			if paren_depth > 0 {
+				paren_depth--
+			}
+		} else if c == `,` && bracket_depth == 1 && paren_depth == 0 {
+			args << p.s.src[arg_start..idx].trim_space()
+			arg_start = idx + 1
+		}
+		idx++
+	}
+	return none
+}
+
+fn generic_struct_init_suffix_arg_can_be_type(arg string) bool {
+	clean := arg.trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	first := clean[0]
+	if (first >= `A` && first <= `Z`) || first == `&` || first == `?` || first == `!`
+		|| first == `[` || first == `(` || first == `^` {
+		return true
+	}
+	if clean == 'fn' || clean.starts_with('fn ') || clean.starts_with('fn(') {
+		return true
+	}
+	first_ident := generic_suffix_first_ident(clean)
+	if first_ident in ['map', 'chan', 'thread', 'shared', 'atomic', 'mut', 'struct', 'none', 'nil'] {
+		return true
+	}
+	if is_builtin_type(first_ident) {
+		return true
+	}
+	dot_idx := clean.last_index_u8(`.`)
+	if dot_idx >= 0 {
+		after_dot := clean[dot_idx + 1..]
+		return after_dot.len > 0 && after_dot[0] >= `A` && after_dot[0] <= `Z`
+	}
+	return false
+}
+
+fn generic_suffix_first_ident(s string) string {
+	mut idx := 0
+	for idx < s.len {
+		c := s[idx]
+		if !((c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_`) {
+			break
+		}
+		idx++
+	}
+	return s[..idx]
 }
 
 fn (mut p Parser) lbr_starts_array_type_from_offset(offset int) bool {

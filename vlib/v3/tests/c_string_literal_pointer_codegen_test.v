@@ -28,3 +28,24 @@ fn test_c_string_literal_address_codegen_preserves_regular_addresses() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'canary\n73'
 }
+
+fn test_embedded_nul_string_literal_codegen_escapes_c_source() {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_c_string_literal_nul_test')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+
+	src := os.join_path(os.temp_dir(), 'v3_c_string_literal_nul_input.v')
+	os.write_file(src,
+		"fn main() {\n\ttext := 'ab\\x00cd'\n\tbytes := text.bytes()\n\tassert text.len == 5\n\tassert bytes.len == 5\n\tassert bytes[0] == `a`\n\tassert bytes[1] == `b`\n\tassert bytes[2] == u8(0)\n\tassert bytes[3] == `c`\n\tassert bytes[4] == `d`\n\tprintln('ok')\n}\n") or {
+		panic(err)
+	}
+	bin := os.join_path(os.temp_dir(), 'v3_c_string_literal_nul_input')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	c_code := os.read_file(bin + '.c') or { panic(err) }
+	assert c_code.contains('ab\\000cd'), c_code
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}

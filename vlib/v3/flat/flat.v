@@ -145,13 +145,13 @@ pub mut:
 	typ            string
 	generic_params []string
 	kind_id        int
+	is_mut         bool
 pub:
 	pos            token.Pos
 	children_start i32
 	children_count i16
 	kind           NodeKind
 	op             Op
-	is_mut         bool
 }
 
 // FlatAst represents flat ast data used by flat.
@@ -163,6 +163,18 @@ pub mut:
 	user_code_start int
 	disabled_fns    map[string]bool
 	export_fn_names map[string]string
+}
+
+// set_node_is_mut updates a node's mut declaration marker in place.
+pub fn (mut a FlatAst) set_node_is_mut(id NodeId, is_mut bool) {
+	if int(id) < 0 || int(id) >= a.nodes.len {
+		return
+	}
+	// Mutate the array slot in place; copying flat.Node would duplicate managed fields.
+	unsafe {
+		mut node := &a.nodes[int(id)]
+		node.is_mut = is_mut
+	}
 }
 
 // new creates a FlatAst value for flat.

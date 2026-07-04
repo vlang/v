@@ -42,6 +42,7 @@ fn main() {
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert generated.contains('string__trim_space'), generated
 	assert generated.contains('string__to_upper'), generated
+	assert generated.contains('rune__to_upper'), generated
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output

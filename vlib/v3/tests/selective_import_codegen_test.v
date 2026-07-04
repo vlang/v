@@ -623,6 +623,45 @@ pub fn value() string {
 	assert !generated.contains('int foo__value(void);'), generated
 }
 
+fn test_module_local_error_method_signature_uses_module_key() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin,
+		'module_local_error_method_signature', 'module main
+
+import foo
+
+fn main() {
+	err := foo.make_error()
+	println(err.str())
+}
+', {
+		'foo/foo.v': 'module foo
+
+pub struct Error {
+	message string
+}
+
+pub fn make_error() Error {
+	return Error{
+		message: "local"
+	}
+}
+
+pub fn (err Error) msg() string {
+	return err.message
+}
+
+pub fn (err Error) str() string {
+	return err.msg()
+}
+'
+	})
+	assert output == 'local'
+	assert generated.contains('string foo__Error__msg(foo__Error err)'), generated
+	assert generated.contains('return foo__Error__msg(err);'), generated
+	assert !generated.contains('string foo__Error__msg(Error err)'), generated
+}
+
 fn test_selective_import_with_module_alias_keeps_symbol_authority() {
 	v3_bin := selective_import_build_v3()
 	output, generated := selective_import_compile_run(v3_bin, 'alias', 'module main

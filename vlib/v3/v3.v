@@ -650,7 +650,7 @@ fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) 
 	for file in user_files {
 		if pref.is_test_file_for_backend(file, prefs.backend) {
 			module_name := declared_module_in_file(file)
-			if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
+			if module_name.len > 0 && module_name != 'builtin' {
 				for module_file in same_dir_module_source_files(file, module_name, prefs) {
 					append_unique_file(mut expanded, mut seen, module_file)
 				}
@@ -826,7 +826,8 @@ fn print_type_errors(errors []types.TypeError) {
 	eprintln('type checker found ${errors.len} error(s):')
 	max_errors := if errors.len < 20 { errors.len } else { 20 }
 	for ei in 0 .. max_errors {
-		eprintln('  ${errors[ei].msg}')
+		err := errors[ei]
+		eprintln('  [${err.file}] ${err.node_pos} node=${err.node} ${err.node_kind} `${err.node_value}`: ${err.msg}')
 	}
 	if errors.len > 20 {
 		eprintln('  ... and ${errors.len - 20} more')

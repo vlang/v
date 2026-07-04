@@ -17,6 +17,9 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	if base_type is types.Void {
 		return 'Optional'
 	}
+	if g.type_contains_generic_placeholder(base_type) {
+		return 'Optional'
+	}
 	mut inner_ct := g.tc.c_type(base_type)
 	if inner_ct.starts_with('fn_ptr:') {
 		inner_ct = g.resolve_fn_ptr_type(inner_ct)
@@ -140,6 +143,9 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 }
 
 fn (mut g FlatGen) collect_optional_typedef_type(t types.Type) {
+	if g.type_contains_generic_placeholder(t) {
+		return
+	}
 	match t {
 		types.OptionType {
 			g.optional_type_name(t)
@@ -181,6 +187,131 @@ fn (mut g FlatGen) collect_optional_typedef_type(t types.Type) {
 		}
 		else {}
 	}
+}
+
+fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
+	match t {
+		types.Unknown {
+			return true
+		}
+		types.Array {
+			return g.type_contains_generic_placeholder(t.elem_type)
+		}
+		types.ArrayFixed {
+			return g.type_contains_generic_placeholder(t.elem_type)
+		}
+		types.Channel {
+			return g.type_contains_generic_placeholder(t.elem_type)
+		}
+		types.Map {
+			return g.type_contains_generic_placeholder(t.key_type)
+				|| g.type_contains_generic_placeholder(t.value_type)
+		}
+		types.Pointer {
+			return g.type_contains_generic_placeholder(t.base_type)
+		}
+		types.FnType {
+			for param in t.params {
+				if g.type_contains_generic_placeholder(param) {
+					return true
+				}
+			}
+			return g.type_contains_generic_placeholder(t.return_type)
+		}
+		types.OptionType {
+			return g.type_contains_generic_placeholder(t.base_type)
+		}
+		types.ResultType {
+			return g.type_contains_generic_placeholder(t.base_type)
+		}
+		types.Struct {
+			return g.type_name_contains_generic_placeholder(t.name)
+		}
+		types.Interface {
+			return g.type_name_contains_generic_placeholder(t.name)
+		}
+		types.Enum {
+			return g.type_name_contains_generic_placeholder(t.name)
+		}
+		types.SumType {
+			return g.type_name_contains_generic_placeholder(t.name)
+		}
+		types.Alias {
+			return g.type_name_contains_generic_placeholder(t.name)
+				|| g.type_contains_generic_placeholder(t.base_type)
+		}
+		types.MultiReturn {
+			for typ in t.types {
+				if g.type_contains_generic_placeholder(typ) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (g &FlatGen) type_name_contains_generic_placeholder(name string) bool {
+	clean := name.trim_space()
+	if clean.len == 0 {
+		return false
+	}
+	if !clean.contains('[') {
+		return g.is_bare_generic_placeholder_name(clean)
+	}
+	mut depth := 0
+	mut start := 0
+	for i in 0 .. clean.len {
+		ch := clean[i]
+		if ch == `[` {
+			if depth == 0 {
+				start = i + 1
+			}
+			depth++
+		} else if ch == `]` {
+			depth--
+			if depth == 0 {
+				if g.generic_args_contain_placeholder(clean[start..i]) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (g &FlatGen) generic_args_contain_placeholder(args string) bool {
+	mut depth := 0
+	mut start := 0
+	for i in 0 .. args.len {
+		ch := args[i]
+		if ch == `[` || ch == `(` {
+			depth++
+		} else if ch == `]` || ch == `)` {
+			if depth > 0 {
+				depth--
+			}
+		} else if ch == `,` && depth == 0 {
+			if g.type_name_contains_generic_placeholder(args[start..i].trim_space()) {
+				return true
+			}
+			start = i + 1
+		}
+	}
+	return g.type_name_contains_generic_placeholder(args[start..].trim_space())
+}
+
+fn (g &FlatGen) is_bare_generic_placeholder_name(name string) bool {
+	if name.len != 1 || name[0] < `A` || name[0] > `Z` {
+		return false
+	}
+	if types.is_builtin_type_name(name) || name in ['C', 'JS'] {
+		return false
+	}
+	return !g.type_name_known(name)
 }
 
 // emit_optional_typedef emits emit optional typedef output for c.

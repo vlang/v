@@ -53,6 +53,57 @@ fn test_reject_pointer_expressions_for_value_returns() {
 		'fn f() int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n', 'cannot return `&int` as `int`')
 	run_bad(v3_bin, 'bad_result_return_pointer_to_value',
 		'fn f() !int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n', 'cannot return `&int` as `!int`')
+	run_bad(v3_bin, 'bad_field_pointer_to_value',
+		'struct S {\n\tx int\n}\n\nfn main() {\n\tx := 1\n\t_ := S{\n\t\tx: &x\n\t}\n}\n',
+		'cannot initialize field `x` with `&int`; expected `int`')
+}
+
+fn test_multi_return_tail_slots_use_return_compatibility() {
+	v3_bin := build_v3_review_checker()
+	if_out := run_good(v3_bin, 'good_multi_return_if_pointer_value_tail',
+		'struct S {\n\tn int\n}\nfn pick(ok bool) (S, int) {\n\ts := S{\n\t\tn: 5\n\t}\n\treturn if ok {\n\t\t&s\n\t\t1\n\t} else {\n\t\t&s\n\t\t2\n\t}\n}\nfn main() {\n\ta, b := pick(false)\n\tprintln(int_str(a.n) + "," + int_str(b))\n}\n')
+	assert if_out == '5,2'
+}
+
+fn test_none_is_not_ierror_value() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_none_ierror_param',
+		'fn take(e IError) {\n\t_ = e\n}\n\nfn main() {\n\ttake(none)\n}\n',
+		'cannot use `?void` as argument 1 to `take`; expected `IError`')
+	run_bad(v3_bin, 'bad_none_ierror_field',
+		'struct Holder {\n\terr IError\n}\n\nfn main() {\n\t_ := Holder{\n\t\terr: none\n\t}\n}\n',
+		'cannot initialize field `err` with `?void`; expected `IError`')
+	run_bad(v3_bin, 'bad_none_ierror_return',
+		'fn make() IError {\n\treturn none\n}\nfn main() {}\n', 'cannot return `?void` as `IError`')
+	out := run_good(v3_bin, 'good_none_option_context',
+		'fn maybe() ?int {\n\treturn none\n}\n\nfn main() {\n\tif maybe() == none {\n\t\tprintln("option")\n\t}\n}\n')
+	assert out == 'option'
+}
+
+fn test_numeric_alias_returns_preserve_integer_float_direction() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_int_alias_float_return',
+		'type Id = int\n\nfn f() Id {\n\treturn 1.5\n}\n\nfn main() {}\n',
+		'cannot return `f64` as `Id`')
+	out := run_good(v3_bin, 'good_float_alias_int_return',
+		'type Amount = f64\n\nfn f() Amount {\n\treturn 1\n}\n\nfn main() {\n\tprintln(f().str())\n}\n')
+	assert out == '1.0'
+}
+
+fn test_alias_with_nested_type_separator_stays_alias() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_alias_nested_type_separator',
+		'type Bits = [1 | 2]int\n\nfn values() Bits {\n\treturn [1, 2, 3]!\n}\n\nfn main() {\n\tbits := values()\n\tprintln(int_str(bits[0] + bits[1] + bits[2]))\n}\n')
+	assert out == '6'
+}
+
+fn test_voidptr_params_reject_non_pointer_values() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_voidptr_scalar_arg', 'fn f(p voidptr) {}\n\nfn main() {\n\tf(1)\n}\n',
+		'cannot use `int` as argument 1 to `f`; expected `&void`')
+	out := run_good(v3_bin, 'good_voidptr_pointer_arg',
+		'fn f(p voidptr) int {\n\t_ = p\n\treturn 7\n}\n\nfn main() {\n\tx := 1\n\tprintln(int_str(f(&x)))\n}\n')
+	assert out == '7'
 }
 
 fn test_restrict_synthetic_hex_fallback_receivers() {

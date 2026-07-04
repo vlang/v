@@ -464,6 +464,9 @@ fn test_statement_if_branch_tails_are_not_value_checked() {
 
 fn test_multi_return_if_tail_infers_common_type() {
 	v3_bin := build_v3()
+	result_error := run_good(v3_bin, 'good_result_multi_return_error_return',
+		"fn pair(fail bool) !(int, int) {\n\tif fail {\n\t\treturn error('x')\n\t}\n\treturn 1, 2\n}\nfn main() {\n\ta, b := pair(false) or { panic(err.msg()) }\n\tprintln(int_str(a + b))\n\t_, _ := pair(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
+	assert result_error == '3\nx'
 	if_tail := run_good(v3_bin, 'good_multi_return_if_common_pointer_tail',
 		'fn main() {\n\tx := 7\n\tp, n := if false {\n\t\tnil\n\t\t0\n\t} else {\n\t\t&x\n\t\t1\n\t}\n\tprintln(typeof(p).name)\n\tprintln(int_str(n))\n}\n')
 	assert if_tail == '&void\n1'
@@ -581,6 +584,15 @@ fn test_local_type_names_include_nested_block_scope() {
 	assert mutual_local == 'ok'
 }
 
+fn test_module_local_error_type_shadows_builtin_error() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'good_module_local_error_type', {
+		'main.v':       'module main\n\nimport fixture\n\nfn main() {\n\terr := fixture.make_error()\n\tprintln(err.msg())\n}\n'
+		'fixture/fi.v': "module fixture\n\npub struct Error {\n\tmessage string\n}\n\npub fn make_error() Error {\n\treturn Error{\n\t\tmessage: 'local'\n\t}\n}\n\npub fn (err Error) msg() string {\n\treturn err.message\n}\n"
+	}, 'main.v')
+	assert out == 'local'
+}
+
 fn test_bool_match_single_branch_is_exhaustive() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'good_bool_match_single_branch_exhaustive',
@@ -632,6 +644,9 @@ fn test_generic_struct_receiver_and_heap_init() {
 	good_method := run_good(v3_bin, 'good_generic_method_instances',
 		"struct Box[T] {\n\tval T\n}\nfn (b Box[T]) get() T {\n\treturn b.val\n}\nfn main() {\n\tbi := Box[int]{\n\t\tval: 42\n\t}\n\tbs := Box[string]{\n\t\tval: 'hi'\n\t}\n\tprintln(int_str(bi.get()))\n\tprintln(bs.get())\n}\n")
 	assert good_method == '42\nhi'
+	generic_return := run_good(v3_bin, 'good_generic_return_open_struct_param',
+		'struct Match[T] {\n\tvalue T\n\thas   bool\n}\nfn choose[T](use_second bool, first Match[T], second Match[T]) Match[T] {\n\tif use_second {\n\t\treturn second\n\t}\n\treturn first\n}\nfn (m Match[T]) or[T](other Match[T]) Match[T] {\n\tif m.has {\n\t\treturn m\n\t}\n\treturn other\n}\nfn main() {\n\ta := Match[int]{\n\t\tvalue: 1\n\t\thas: true\n\t}\n\tb := Match[int]{\n\t\tvalue: 2\n\t}\n\tprintln(int_str(choose(true, a, b).value))\n\tprintln(int_str(b.or(a).value))\n}\n')
+	assert generic_return == '2\n1'
 	// A bare generic literal (`Box{..}` / `&Box{..}`) specializes to the expected
 	// concrete instance — and the heap literal must materialize the same concrete
 	// C type (`Box_int`) as the value literal, not the bare template.
@@ -1139,6 +1154,12 @@ fn test_pr_review_codegen_batch_twentytwo() {
 	dead := run_good(v3_bin, 'good_dead_generic_method_value_not_specialized',
 		'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) doubled() T {\n\treturn b.v + b.v\n}\nstruct Pair {\n\ta int\n}\nfn run_int(cb fn () int) int {\n\treturn cb()\n}\nfn run_pair(cb fn () Pair) Pair {\n\treturn cb()\n}\nfn dead_fn() {\n\tp := Box[Pair]{\n\t\tv: Pair{\n\t\t\ta: 1\n\t\t}\n\t}\n\t_ := run_pair(p.doubled)\n}\nfn main() {\n\tb := Box[int]{\n\t\tv: 5\n\t}\n\tprintln(int_str(run_int(b.doubled)))\n}\n')
 	assert dead == '10'
+	// An unused interface must not force every structurally matching generic receiver method to
+	// specialize: `Box[NoPlus].run` satisfies `Runner.run`, but no value is boxed as `Runner` and
+	// the method body is invalid for `NoPlus`.
+	unused_iface := run_good(v3_bin, 'good_unused_interface_no_generic_method_specialization',
+		"interface Runner {\n\trun() int\n}\nstruct Box[T] {\n\tv T\n}\nfn (b Box[T]) run() int {\n\treturn b.v + b.v\n}\nstruct NoPlus {\n\tvalue int\n}\nfn main() {\n\tb := Box[NoPlus]{\n\t\tv: NoPlus{\n\t\t\tvalue: 1\n\t\t}\n\t}\n\t_ = b\n\tprintln('ok')\n}\n")
+	assert unused_iface == 'ok'
 	// A reachable generic method value of any instance still specializes correctly.
 	live := run_good(v3_bin, 'good_reachable_generic_method_value_specialized',
 		'struct Box[T] {\n\tv T\n}\nfn (b Box[T]) first() T {\n\treturn b.v\n}\nstruct Pair {\n\ta int\n}\nfn run_pair(cb fn () Pair) Pair {\n\treturn cb()\n}\nfn main() {\n\tp := Box[Pair]{\n\t\tv: Pair{\n\t\t\ta: 7\n\t\t}\n\t}\n\tr := run_pair(p.first)\n\tprintln(int_str(r.a))\n}\n')
