@@ -30,6 +30,31 @@ fn run_compile_command(cmd string) os.Result {
 	}
 }
 
+fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
+	target_os := prefs.normalized_target_os()
+	mut link_atomic_s := false
+	match target_os {
+		'macos' {
+			// atomic.S has Mach-O-compatible aarch64 symbols, but its x86_64 Unix
+			// stanza is ELF-only (`.type ... %function`). v3 does not yet track a
+			// separate target architecture, so use the compiler build architecture.
+			$if arm64 {
+				link_atomic_s = true
+			}
+		}
+		'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly' {
+			link_atomic_s = true
+		}
+		else {}
+	}
+
+	if !link_atomic_s {
+		return ''
+	}
+	atomic_s := os.join_path(prefs.vroot, 'thirdparty', 'stdatomic', 'nix', 'atomic.S')
+	return ' ${atomic_s}'
+}
+
 fn prepare_c_flags_for_link(flags []string, c99 bool) ![]string {
 	support_flags := c_object_compile_support_flags(flags)
 	mut prepared := []string{}
@@ -174,6 +199,7 @@ fn main() {
 	mut no_parallel := false
 	mut parallel_transform := true
 	mut building_v := false
+	mut ownership_mode := false
 	mut c99 := false
 	mut all_backends := false
 	mut compile_backends := []string{}
@@ -205,6 +231,13 @@ fn main() {
 			i++
 		} else if args[i] == '-strict' {
 			is_strict = true
+			i++
+		} else if args[i] == '-ownership' || args[i] == '--ownership' {
+			// The ownership checker itself is compiled into v3 via `-d ownership`.
+			// The runtime `-ownership` flag should only load the builtin ownership
+			// overlays; it must not expose `ownership` to target `$if` blocks or target
+			// `_d_ownership.v` files.
+			ownership_mode = true
 			i++
 		} else if args[i] == '-no-parallel' || args[i] == '--no-parallel' {
 			no_parallel = true
@@ -335,7 +368,11 @@ fn main() {
 
 	mut files := []string{}
 	builtin_dir := builtin_dir_for_vroot(prefs.vroot)
-	files << pref.get_v_files_from_dir(builtin_dir, prefs.user_defines, prefs.target_os)
+	mut builtin_defines := prefs.user_defines.clone()
+	if ownership_mode && 'ownership' !in builtin_defines {
+		builtin_defines << 'ownership'
+	}
+	files << pref.get_v_files_from_dir(builtin_dir, builtin_defines, prefs.target_os)
 	p.parse_files(files)
 	mut a := p.a
 	a.user_code_start = a.nodes.len
@@ -538,8 +575,9 @@ fn main() {
 			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
-			cc_cmd = '${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file} ${c_flags} -lm'
-			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o out src.c ${c_flags} -lm'
+			atomic_s_arg := tcc_atomic_s_arg(prefs)
+			cc_cmd = '${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file}${atomic_s_arg} ${c_flags} -lm'
+			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o out src.c${atomic_s_arg} ${c_flags} -lm'
 			println('  > ${cc_cmd}')
 			result = run_compile_command(exec_cmd)
 		}
@@ -612,7 +650,7 @@ fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) 
 	for file in user_files {
 		if pref.is_test_file_for_backend(file, prefs.backend) {
 			module_name := declared_module_in_file(file)
-			if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
+			if module_name.len > 0 && module_name != 'builtin' {
 				for module_file in same_dir_module_source_files(file, module_name, prefs) {
 					append_unique_file(mut expanded, mut seen, module_file)
 				}
@@ -788,7 +826,8 @@ fn print_type_errors(errors []types.TypeError) {
 	eprintln('type checker found ${errors.len} error(s):')
 	max_errors := if errors.len < 20 { errors.len } else { 20 }
 	for ei in 0 .. max_errors {
-		eprintln('  ${errors[ei].msg}')
+		err := errors[ei]
+		eprintln('  [${err.file}] ${err.node_pos} node=${err.node} ${err.node_kind} `${err.node_value}`: ${err.msg}')
 	}
 	if errors.len > 20 {
 		eprintln('  ... and ${errors.len - 20} more')
@@ -1237,6 +1276,21 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 		return import_path
 	}
 	short_name := import_path.all_after_last('.')
+	if import_dir.len > 0 {
+		module_root := module_root_for_import_dir(import_path, import_dir)
+		short_sibling_dir := os.join_path_single(module_root, short_name)
+		if os.is_dir(short_sibling_dir)
+			&& os.real_path(short_sibling_dir) != os.real_path(import_dir) {
+			return import_path
+		}
+	}
+	if project_root.len > 0 && import_dir.len > 0 {
+		short_project_dir := os.join_path_single(project_root, short_name)
+		if os.is_dir(short_project_dir)
+			&& os.real_path(short_project_dir) != os.real_path(import_dir) {
+			return import_path
+		}
+	}
 	short_dir := resolve_project_or_pref_module_path_cached(prefs, short_name, importing_file,
 		project_root, mut path_cache)
 	if short_dir.len > 0 && import_dir.len > 0 && os.is_dir(short_dir)
@@ -1244,6 +1298,18 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 		return import_path
 	}
 	return short_name
+}
+
+fn module_root_for_import_dir(import_path string, import_dir string) string {
+	mut root := import_dir
+	for _ in import_path.split('.') {
+		parent := os.dir(root)
+		if parent == root {
+			return root
+		}
+		root = parent
+	}
+	return root
 }
 
 fn resolve_project_or_pref_module_path_cached(prefs &pref.Preferences, mod_name string, importing_file string, project_root string, mut cache map[string]string) string {

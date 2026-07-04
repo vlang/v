@@ -575,13 +575,17 @@ fn (t &Transformer) sum_type_for_field_variant(field_name string, val_id flat.No
 
 // fixed_array_value_to_array converts fixed array value to array data for transform.
 fn (mut t Transformer) fixed_array_value_to_array(value_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
+	return t.fixed_array_data_to_array(t.transform_expr(value_id), fixed_type, array_type)
+}
+
+fn (mut t Transformer) fixed_array_data_to_array(data_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
 	elem_type := fixed_array_elem_type(fixed_type)
 	len_expr := t.make_fixed_array_len_expr(fixed_type)
 	return t.make_call_typed('new_array_from_c_array', [
 		len_expr,
 		len_expr,
 		t.make_sizeof_type(elem_type),
-		t.transform_expr(value_id),
+		data_id,
 	], array_type)
 }
 

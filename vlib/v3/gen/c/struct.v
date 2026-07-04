@@ -41,7 +41,36 @@ fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Ty
 	if g.gen_callback_fn_value_for_expected_type(value_id, expected) {
 		return
 	}
+	if g.gen_pointer_value_struct_field(value_id, expected) {
+		return
+	}
+	if g.gen_optional_arg(value_id, expected) {
+		return
+	}
 	g.gen_expr_with_expected_type(value_id, expected)
+}
+
+fn (mut g FlatGen) gen_pointer_value_struct_field(value_id flat.NodeId, expected types.Type) bool {
+	actual := g.tc.resolve_type(value_id)
+	expected0 := if expected is types.Alias { expected.base_type } else { expected }
+	if expected0 is types.Pointer {
+		return false
+	}
+	if actual is types.Pointer {
+		if g.type_names_match(actual.base_type, expected0) {
+			g.write('*(')
+			g.gen_expr(value_id)
+			g.write(')')
+			return true
+		}
+	}
+	if pointer_value_type_names_match(actual.name(), expected0.name()) {
+		g.write('*(')
+		g.gen_expr(value_id)
+		g.write(')')
+		return true
+	}
+	return false
 }
 
 fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_name string, field_name string, expected types.Type) {
@@ -254,14 +283,14 @@ fn (mut g FlatGen) struct_init_has_fixed_array_field(node flat.Node, type_name s
 		field := g.a.child_node(&node, i)
 		if field.value.len == 0 {
 			if sf := g.struct_field_at(type_name, i) {
-				if sf.typ is types.ArrayFixed {
+				if _ := array_fixed_type(sf.typ) {
 					return true
 				}
 			}
 			continue
 		}
 		if ftyp := g.struct_field_type(type_name, field.value) {
-			if ftyp is types.ArrayFixed {
+			if _ := array_fixed_type(ftyp) {
 				return true
 			}
 		}
@@ -306,7 +335,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 		value_id := g.a.child(field, 0)
 		if field.value.len == 0 {
 			if sf := g.struct_field_at(lookup_name, i) {
-				if sf.typ is types.ArrayFixed {
+				if _ := array_fixed_type(sf.typ) {
 					fixed_fields << sf.name
 					fixed_values << value_id
 					fixed_field_types << sf.typ
@@ -329,7 +358,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 			}
 		} else {
 			ftyp := g.struct_field_type(lookup_name, field.value) or { types.Type(types.void_) }
-			if ftyp is types.ArrayFixed {
+			if _ := array_fixed_type(ftyp) {
 				fixed_fields << field.value
 				fixed_values << value_id
 				fixed_field_types << ftyp
@@ -397,6 +426,11 @@ fn (mut g FlatGen) gen_fixed_array_copy_source(value_id flat.NodeId, field_type 
 	val_node := g.a.node(value_id)
 	if val_node.kind == .array_literal {
 		if fixed := array_fixed_type(field_type) {
+			literal := g.fixed_array_compound_literal_expr(value_id, fixed)
+			if literal.trim_space().len > 0 {
+				g.write(literal)
+				return
+			}
 			c_elem, dims := g.fixed_array_decl_parts(fixed)
 			g.write('(${c_elem}${dims})')
 		} else {
@@ -480,9 +514,7 @@ fn (mut g FlatGen) gen_lowered_sum_field_value(sum_name string, field &flat.Node
 			if child_type is types.Pointer && g.type_names_match(child_type.base_type, inner_type) {
 				g.gen_expr(child_id)
 			} else {
-				g.write('(${inner_ct}[]){')
-				g.gen_expr_with_expected_type(child_id, inner_type)
-				g.write('}')
+				g.gen_sum_variant_memdup_source(child_id, inner_type)
 			}
 			g.write(', sizeof(${inner_ct}))')
 			return
@@ -808,67 +840,70 @@ fn (g &FlatGen) struct_field_value_is_plainly_incompatible(value_id flat.NodeId,
 }
 
 // field_needs_default_init reports whether an unset field of type `typ` must be
-// explicitly default-initialized in a struct literal — i.e. it is a by-value
-// struct whose type carries field defaults that C's `{0}` would not apply
-// (e.g. `min_len int = 999999`).
+// explicitly default-initialized in a struct literal: either because the by-value
+// struct has source defaults, or because its own omitted fields need runtime
+// metadata defaults such as dynamic arrays/maps.
 fn (mut g FlatGen) field_needs_default_init(typ types.Type) bool {
 	clean_type := default_init_unalias_type(typ)
 	if clean_type is types.Struct && !clean_type.name.starts_with('C.') {
-		return g.struct_has_field_defaults(clean_type.name)
+		return g.struct_needs_default_init(clean_type.name)
 	}
 	return false
 }
 
-// struct_has_field_defaults reports whether building `type_name` as a struct
-// literal would set any non-zero field: a field with an explicit default
-// (`x int = 5`), or a by-value struct field whose own type has such defaults.
+// struct_needs_default_init reports whether building `type_name` as a struct
+// literal would set any field that C's `{0}` would not: a field with an explicit
+// default (`x int = 5`), an omitted dynamic array/map, or a by-value struct field
+// whose own type needs those defaults.
 // Returns false for structs with interface/sum-typed field defaults, since the
 // codegen default path cannot box those values.
-fn (mut g FlatGen) struct_has_field_defaults(type_name string) bool {
+fn (mut g FlatGen) struct_needs_default_init(type_name string) bool {
 	mut visited := map[string]bool{}
-	return g.struct_has_field_defaults_inner(type_name, mut visited)
+	return g.struct_needs_default_init_inner(type_name, mut visited)
 }
 
-// struct_has_field_defaults_inner converts struct has field defaults inner data for c.
-fn (mut g FlatGen) struct_has_field_defaults_inner(type_name string, mut visited map[string]bool) bool {
+fn (mut g FlatGen) struct_needs_default_init_inner(type_name string, mut visited map[string]bool) bool {
 	if type_name in visited {
 		return false
 	}
 	visited[type_name] = true
-	info := g.find_struct_decl(type_name) or { return false }
-	old_module := g.tc.cur_module
-	g.tc.cur_module = info.module
-	defer {
-		g.tc.cur_module = old_module
-	}
 	mut found := false
-	for i in 0 .. info.node.children_count {
-		field := g.a.child_node(&info.node, i)
-		if field.kind != .field_decl {
-			continue
-		}
-		ftyp := g.tc.parse_type(field.typ)
-		clean_ftyp := default_init_unalias_type(ftyp)
-		if field.children_count > 0 {
+	if info := g.find_struct_decl(type_name) {
+		old_module := g.tc.cur_module
+		g.tc.cur_module = info.module
+		for i in 0 .. info.node.children_count {
+			field := g.a.child_node(&info.node, i)
+			if field.kind != .field_decl || field.children_count == 0 {
+				continue
+			}
+			ftyp := g.struct_default_field_type(info, field)
+			clean_ftyp := default_init_unalias_type(ftyp)
 			// Defaults for interface/sum-typed fields require boxing the value into
 			// the interface/sum representation, which the codegen default path cannot
 			// do. Treat the whole struct as unsafe to default-emit (leave it
 			// zero-initialized, as before) rather than emit an unboxed value.
 			if clean_ftyp is types.SumType || clean_ftyp is types.Interface {
+				g.tc.cur_module = old_module
 				return false
 			}
 			found = true
 		}
-		if clean_ftyp is types.String {
+		g.tc.cur_module = old_module
+	}
+	fields := g.struct_fields_for_type(type_name) or { return found }
+	for field in fields {
+		clean_ftyp := default_init_unalias_type(field.typ)
+		if clean_ftyp is types.Array || clean_ftyp is types.Map {
 			found = true
+			continue
 		}
-		if clean_ftyp is types.Enum {
+		if clean_ftyp is types.String || clean_ftyp is types.Enum {
 			found = true
+			continue
 		}
-		if clean_ftyp is types.Struct && !clean_ftyp.name.starts_with('C.') {
-			if g.struct_has_field_defaults_inner(clean_ftyp.name, mut visited) {
-				found = true
-			}
+		if clean_ftyp is types.Struct && !clean_ftyp.name.starts_with('C.')
+			&& g.struct_needs_default_init_inner(clean_ftyp.name, mut visited) {
+			found = true
 		}
 	}
 	return found

@@ -8,6 +8,11 @@ fn (t &Transformer) is_interface_type(name string) bool {
 	return t.resolve_interface_type_name(name).len > 0
 }
 
+fn (t &Transformer) is_builtin_ierror_interface_name(name string) bool {
+	clean := t.trim_pointer_type(t.normalize_type_alias(name))
+	return clean == 'IError' || clean == 'builtin.IError'
+}
+
 // resolve_interface_type_name resolves resolve interface type name information for transform.
 fn (t &Transformer) resolve_interface_type_name(name string) string {
 	if name.len == 0 || isnil(t.tc) {
@@ -16,6 +21,15 @@ fn (t &Transformer) resolve_interface_type_name(name string) string {
 	clean := t.trim_pointer_type(t.normalize_type_alias(name))
 	if clean in t.tc.interface_names {
 		return clean
+	}
+	if !clean.contains('.') && t.cur_file.len > 0 {
+		for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {
+			[]string{}
+		} {
+			if candidate in t.tc.interface_names {
+				return candidate
+			}
+		}
 	}
 	if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
@@ -28,7 +42,10 @@ fn (t &Transformer) resolve_interface_type_name(name string) string {
 }
 
 // transform_interface_value_for_type supports transform_interface_value_for_type handling.
-fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target_type string) ?flat.NodeId {
+// `share_source` makes the boxed `_object` point at the source lvalue instead of a
+// heap copy; it is only safe when the source is guaranteed to outlive the box
+// (mut/reference call arguments, global initializers).
+fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target_type string, share_source bool) ?flat.NodeId {
 	if int(id) < 0 || target_type.len == 0 || isnil(t.tc) {
 		return none
 	}
@@ -39,7 +56,11 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	}
 	// IError has bespoke handling (built via `error()`, fields accessed directly);
 	// do not route it through the generic interface boxing.
-	if iface_name.all_after_last('.') == 'IError' {
+	if t.is_builtin_ierror_interface_name(iface_name) {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .nil_literal {
 		return none
 	}
 	source_type := t.node_type(id)
@@ -51,7 +72,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		&& t.resolve_interface_type_name(source_type[1..]) == iface_name {
 		return t.transform_expr(id)
 	}
-	literal := t.make_interface_literal_from_expr(id, iface_name) or { return none }
+	literal := t.make_interface_literal_from_expr(id, iface_name, share_source) or { return none }
 	if !target_is_ptr {
 		return literal
 	}
@@ -80,12 +101,12 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 		return none
 	}
 	iface_name := t.resolve_interface_type_name(child.value)
-	if iface_name.len == 0 || iface_name.all_after_last('.') == 'IError' {
+	if iface_name.len == 0 || t.is_builtin_ierror_interface_name(iface_name) {
 		return none
 	}
 	old_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	literal := t.make_interface_literal_from_expr(t.a.child(&child, 0), iface_name) or {
+	literal := t.make_interface_literal_from_expr(t.a.child(&child, 0), iface_name, false) or {
 		t.pending_stmts = old_pending
 		return none
 	}
@@ -109,10 +130,43 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 	})
 }
 
+fn (t &Transformer) mut_param_address_source_type(id flat.NodeId) ?string {
+	if int(id) < 0 {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+		return none
+	}
+	child := t.a.nodes[int(t.a.child(&node, 0))]
+	if child.kind != .ident || child.value.len == 0 || !t.mut_param_values[child.value] {
+		return none
+	}
+	mut base_type := t.var_type(child.value)
+	if base_type.len == 0 {
+		base_type = t.raw_var_type(child.value)
+	}
+	base_type = base_type.trim_space()
+	if base_type.starts_with('mut ') {
+		base_type = base_type[4..].trim_space()
+	}
+	if base_type.len == 0 {
+		return none
+	}
+	clean := t.normalize_type_alias(base_type)
+	if clean.starts_with('&') {
+		return clean
+	}
+	return '&${clean}'
+}
+
 // make_interface_literal_from_expr converts make interface literal from expr data for transform.
-fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string) ?flat.NodeId {
+fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string, share_source bool) ?flat.NodeId {
 	fields := t.tc.interface_fields[iface_name] or { []types.StructField{} }
-	source_type := t.node_type(id)
+	mut source_type := t.node_type(id)
+	if adjusted := t.mut_param_address_source_type(id) {
+		source_type = adjusted
+	}
 	if source_type.len == 0 {
 		return none
 	}
@@ -123,10 +177,16 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	// `_object` is a pointer to the boxed concrete value; method dispatch reads it
 	// back and casts it to the concrete type. For pointer sources we store the
 	// pointer directly; for value sources we heap-copy so the box can outlive the
-	// source scope. The pointer is typed (`&Concrete`) so codegen can recover the
-	// concrete type and emit the matching `_typ` dispatch id.
+	// source scope, unless the caller passed `share_source` (mut/reference call
+	// args) where the box must alias the original value.
+	// The pointer is typed (`&Concrete`) so codegen can recover the concrete
+	// type and emit the matching `_typ` dispatch id.
 	object_expr := if is_ptr {
 		source
+	} else if share_source && t.expr_can_take_address(source) {
+		addr := t.make_prefix(.amp, source)
+		t.a.nodes[int(addr)].typ = '&${concrete_type}'
+		addr
 	} else {
 		addr := t.make_prefix(.amp, source)
 		size := t.make_sizeof_type(concrete_type)

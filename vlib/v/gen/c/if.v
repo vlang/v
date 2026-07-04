@@ -5,6 +5,39 @@ module c
 
 import v.ast
 
+// write_option_wrapper_if_assignment_smartcast handles an option variable that
+// carries an assignment smartcast (recorded when a non-option value was assigned
+// to it earlier in its scope). In that state g.expr() would emit the unwrapped
+// `.data` access, but contexts that need the option wrapper itself (e.g. an
+// `if x := opt { }` guard) must use the variable name directly. Returns true if
+// it wrote the wrapper name; false means the caller should fall back to g.expr().
+fn (mut g Gen) write_option_wrapper_if_assignment_smartcast(expr ast.Expr) bool {
+	if expr is ast.Ident {
+		mut is_assignment_smartcast := false
+		if expr.obj is ast.Var && expr.obj.is_assignment_smartcast {
+			is_assignment_smartcast = true
+		} else if g.file != unsafe { nil } {
+			scope := g.file.scope.innermost(expr.pos.pos)
+			if scope != unsafe { nil } {
+				if v := scope.find_var(expr.name) {
+					is_assignment_smartcast = v.is_assignment_smartcast
+				}
+			}
+		}
+		if !is_assignment_smartcast {
+			return false
+		}
+		name := c_name(expr.name)
+		if expr.is_auto_heap() {
+			g.write('(*${name})')
+		} else {
+			g.write(name)
+		}
+		return true
+	}
+	return false
+}
+
 fn (mut g Gen) resolved_if_guard_expr_type(expr ast.Expr, default_type ast.Type) ast.Type {
 	if expr is ast.IndexExpr {
 		left_type := g.resolved_map_type_from_expr(expr.left, expr.left_type)
@@ -571,7 +604,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				}
 			} else {
 				g.write('if (${var_name} = ')
-				g.expr(branch.cond.expr)
+				if !(guard_expr_type.has_flag(.option)
+					&& g.write_option_wrapper_if_assignment_smartcast(branch.cond.expr)) {
+					g.expr(branch.cond.expr)
+				}
 				if guard_expr_type.has_flag(.option) {
 					dot_or_ptr := if !guard_expr_type.has_flag(.option_mut_param_t) {
 						'.'

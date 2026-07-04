@@ -248,8 +248,7 @@ pub fn sanitize(name string) string {
 		} else if c == `&` {
 			b.write_string('ptr')
 		} else if c == `@` {
-			i++
-			continue
+			b.write_string('__at_')
 		} else if c == `,` || c == ` ` {
 			b.write_u8(`_`)
 		} else {
