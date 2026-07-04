@@ -3827,44 +3827,23 @@ fn (mut t Transformer) retarget_cloned_new_map_call(node flat.Node, mut children
 	children[6] = t.make_ident(free_fn)
 }
 
-fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children []flat.NodeId, args []string) {
+fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children []flat.NodeId, args []string) string {
 	if node.kind != .call || children.len == 0 || t.skip_generics {
-		return
-	}
-	if node.children_count > 0 {
-		c0 := t.a.child_node(&node, 0)
-		if c0.kind == .ident && c0.value.contains('captures_iter_at') {
-			eprintln('DBG retarget start node=${c0.value} typ=${node.typ} value=${node.value} active=${t.active_generic_params} args=${args}')
-		}
+		return ''
 	}
 	decls := t.cached_generic_fn_decls()
 	if decls.len == 0 {
-		return
+		return ''
 	}
-	decl_key := t.generic_call_decl_key(flat.empty_node, node, t.cur_module, decls) or {
-		if node.children_count > 0 {
-			c0 := t.a.child_node(&node, 0)
-			if c0.kind == .ident && c0.value.contains('captures_iter_at') {
-				eprintln('DBG retarget no decl')
-			}
-		}
-		return
-	}
-	decl := decls[decl_key] or { return }
-	if node.children_count > 0 {
-		c0 := t.a.child_node(&node, 0)
-		if c0.kind == .ident && c0.value.contains('captures_iter_at') {
-			eprintln('DBG retarget decl=${decl_key} params=${t.generic_fn_param_names(decl.node,
-				decl.module)}')
-		}
-	}
+	decl_key := t.generic_call_decl_key(flat.empty_node, node, t.cur_module, decls) or { return '' }
+	decl := decls[decl_key] or { return '' }
 	if t.should_skip_generic_call_specialization(decl_key)
 		|| t.generic_decl_is_receiver_method(decl.node) {
-		return
+		return ''
 	}
 	param_names := t.generic_fn_param_names(decl.node, decl.module)
 	if param_names.len == 0 {
-		return
+		return ''
 	}
 	mut call_args := []string{}
 	if explicit := t.explicit_generic_call_args(node, t.cur_module) {
@@ -3874,11 +3853,11 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 	} else {
 		callee_id := children[0]
 		if int(callee_id) < 0 || int(callee_id) >= t.a.nodes.len {
-			return
+			return ''
 		}
 		callee := t.a.nodes[int(callee_id)]
 		if callee.kind != .ident || callee.value.contains('[') {
-			return
+			return ''
 		}
 		mut inferred := map[string]string{}
 		mut param_idx := 0
@@ -3902,13 +3881,7 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			arg := inferred[name] or {
 				idx := t.active_generic_param_index(name)
 				if idx < 0 || idx >= args.len {
-					if node.children_count > 0 {
-						c0 := t.a.child_node(&node, 0)
-						if c0.kind == .ident && c0.value.contains('captures_iter_at') {
-							eprintln('DBG retarget missing ${name} idx=${idx}')
-						}
-					}
-					return
+					return ''
 				}
 				args[idx]
 			}
@@ -3916,16 +3889,11 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 		}
 	}
 	if call_args.len == 0 || t.generic_args_have_placeholders(call_args) {
-		return
+		return ''
 	}
 	spec_value := specialized_generic_fn_value(decl.node.value, call_args)
-	if node.children_count > 0 {
-		c0 := t.a.child_node(&node, 0)
-		if c0.kind == .ident && c0.value.contains('captures_iter_at') {
-			eprintln('DBG retarget spec ${c0.value} -> ${spec_value} call_args=${call_args}')
-		}
-	}
 	children[0] = t.make_ident(transform_qualified_fn_name(decl.module, spec_value))
+	return t.specialized_fn_return_type_text(decl, call_args)
 }
 
 fn (mut t Transformer) copy_cloned_resolution(src_id flat.NodeId, dst_id flat.NodeId) {
@@ -3936,12 +3904,6 @@ fn (mut t Transformer) copy_cloned_resolution(src_id flat.NodeId, dst_id flat.No
 	dst_idx := int(dst_id)
 	if src_idx < 0 || dst_idx < 0 {
 		return
-	}
-	if src_idx < t.tc.resolved_call_set.len && t.tc.resolved_call_set[src_idx] {
-		src_name := t.tc.resolved_call_names[src_idx]
-		if src_name.contains('captures_iter_at') {
-			eprintln('DBG copy resolution src=${src_name} is_gen=${t.resolved_call_is_generic_fn(src_name)}')
-		}
 	}
 	if src_idx < t.tc.resolved_call_set.len && t.tc.resolved_call_set[src_idx]
 		&& !t.resolved_call_is_generic_fn(t.tc.resolved_call_names[src_idx]) {

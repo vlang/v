@@ -5650,9 +5650,6 @@ fn (t &Transformer) is_disabled_fn_name(name string) bool {
 // is_disabled_fn_call reports whether is disabled fn call applies in transform.
 fn (t &Transformer) is_disabled_fn_call(id flat.NodeId, node flat.Node) bool {
 	name := t.call_name_for_node(id, node)
-	if name.contains('captures_iter_at') {
-		eprintln('DBG disabled call id=${id} name=${name} disabled=${t.is_disabled_fn_name(name)} node_value=${node.value}')
-	}
 	return t.is_disabled_fn_name(name)
 }
 
