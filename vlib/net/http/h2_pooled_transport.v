@@ -15,6 +15,15 @@ import time
 // (see its doc comment for why), so this is the ONLY bound on how long an
 // idle reader can hold io_mu and make a writer wait — kept short for exactly
 // that reason, not because a longer internal retry would be incorrect.
+//
+// Both mbedTLS and OpenSSL's write_ptr (vlib/net/mbedtls/ssl_connection.c.v,
+// vlib/net/openssl/ssl_connection.c.v) reuse this SAME configured duration for
+// their OWN internal WANT_READ/WANT_WRITE retry loop during conn.write() — it
+// is not read-specific at the backend level. write() below widens it to
+// h2_pooled_write_stall_limit for the duration of each conn.write() call and
+// restores it immediately after, so a write in progress gets the intended
+// budget instead of this short read-poll interval (Codex P2, vlang/v#27643
+// pullrequestreview-4628439062, discussion 3522170277).
 const h2_pooled_io_timeout = 50 * time.millisecond
 
 // h2_pooled_poll_interval is the outer unlocked poll granularity: how long one
@@ -26,10 +35,12 @@ const h2_pooled_io_timeout = 50 * time.millisecond
 const h2_pooled_poll_interval = 500 * time.millisecond
 
 // h2_pooled_write_stall_limit caps how long write() keeps waiting for the
-// socket to become writable before failing the connection. Mirrors the
-// backends' own overall write deadline (SSLConn duration, 30s default): a peer
-// that stops draining its receive buffer for this long is wedged, and the
-// writer (which holds H2MuxConn's wmu) must not be parked forever.
+// socket to become writable before failing the connection. It is ALSO the
+// duration write() installs on the wrapped conn for the span of each
+// conn.write() call (see h2_pooled_io_timeout's doc comment): a peer that
+// stops draining its receive buffer for this long is wedged, and the writer
+// (which holds H2MuxConn's wmu) must not be parked forever, but must get this
+// full budget rather than the much shorter read-poll interval.
 const h2_pooled_write_stall_limit = 30 * time.second
 
 // H2PooledTransport adapts a pooled ssl.SSLConn into the H2Transport interface
@@ -137,6 +148,19 @@ fn (mut t H2PooledTransport) read(mut buf []u8) !int {
 // conn.write() has been called, any error (including its internal timeout) is
 // propagated: the sent count is indeterminate by then, and retrying could
 // duplicate bytes already on the wire (see the error contract above).
+//
+// conn.write() (write_ptr in both TLS backends) reuses the SAME `duration`
+// field that set_read_timeout() configures for its own internal
+// WANT_READ/WANT_WRITE retry loop during the call — it is not read-specific
+// at the backend level. new_h2_pooled_transport leaves that field at the
+// short h2_pooled_io_timeout (needed to bound how long read() holds io_mu), so
+// without widening it here, a peer that goes quiet mid-write (backpressure
+// stops draining after this call has already entered the TLS stack) would
+// have its write fail after ~h2_pooled_io_timeout instead of the intended
+// write stall budget — killing an otherwise-healthy, merely-slow connection.
+// Widen it to h2_pooled_write_stall_limit for the span of this one call and
+// restore it immediately after, on every exit path, so read() keeps its short
+// budget the rest of the time.
 fn (mut t H2PooledTransport) write(buf []u8) !int {
 	deadline := time.now().add(h2_pooled_write_stall_limit)
 	for {
@@ -163,10 +187,13 @@ fn (mut t H2PooledTransport) write(buf []u8) !int {
 			t.io_mu.unlock()
 			return error('h2 pooled transport: closed')
 		}
+		t.conn.set_read_timeout(h2_pooled_write_stall_limit)
 		n := t.conn.write(buf) or {
+			t.conn.set_read_timeout(h2_pooled_io_timeout)
 			t.io_mu.unlock()
 			return err
 		}
+		t.conn.set_read_timeout(h2_pooled_io_timeout)
 		t.io_mu.unlock()
 		return n
 	}

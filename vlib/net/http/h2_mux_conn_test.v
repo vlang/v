@@ -2121,3 +2121,186 @@ fn test_mux_request_respects_peer_max_header_list_size() {
 	assert peer.failure_msg() == ''
 	assert got.contains('MAX_HEADER_LIST_SIZE'), 'over-limit request not rejected: ${got}'
 }
+
+// req.read_timeout documents itself as the timeout for reading the response;
+// it must not start counting down until the request is fully sent and only
+// the response wait remains. A request whose body upload is blocked on
+// flow-control credit for longer than read_timeout, but whose peer responds
+// promptly once the upload actually completes, must still succeed — the
+// upload-blocked phase is not "waiting for a response" (Codex P1, vlang/v#27643
+// pullrequestreview-4628439062).
+fn test_mux_read_timeout_excludes_upload_blocked_phase() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_test_mux_conn(mut cend)
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	body_len := int(h2_default_initial_window) + 1
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{
+		method:       'POST'
+		authority:    't'
+		path:         '/up'
+		body:         []u8{len: body_len, init: `B`}
+		read_timeout: 150 * time.millisecond
+	}, mut out)
+	peer_thread := spawn fn [body_len] (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		id := ids[0]
+		// Drain until the client blocks at exactly the initial window.
+		for {
+			peer.mu.lock()
+			got := peer.data_total[id] or { u64(0) }
+			peer.mu.unlock()
+			if got >= u64(h2_default_initial_window) {
+				break
+			}
+			peer.pump() or {
+				peer.fail('pump: ${err.msg()}')
+				return
+			}
+		}
+		// Withhold credit well past read_timeout (150ms) to simulate a slow
+		// but healthy peer; the upload-blocked wait must not be charged
+		// against the response-read deadline.
+		time.sleep(400 * time.millisecond)
+		peer.write_frame(H2WindowUpdateFrame{
+			stream_id:             0
+			window_size_increment: u32(body_len)
+		}) or {
+			peer.fail('wu0: ${err.msg()}')
+			return
+		}
+		peer.write_frame(H2WindowUpdateFrame{
+			stream_id:             id
+			window_size_increment: u32(body_len)
+		}) or {
+			peer.fail('wu: ${err.msg()}')
+			return
+		}
+		for {
+			peer.mu.lock()
+			got := peer.data_total[id] or { u64(0) }
+			peer.mu.unlock()
+			if got >= u64(body_len) {
+				break
+			}
+			peer.pump() or {
+				peer.fail('pump2: ${err.msg()}')
+				return
+			}
+		}
+		// Respond immediately once the body is fully received — well within
+		// a fresh 150ms window, but well past 150ms since the request began.
+		peer.respond_headers(id, true) or {
+			peer.fail('respond: ${err.msg()}')
+			return
+		}
+	}(mut peer)
+	workers.wait()
+	// If the client already gave up on this stream (the bug under test:
+	// read_timeout firing during the upload-blocked wait), the peer's drain
+	// loop above is polling for bytes that will now never arrive — closing
+	// the pipe here unblocks its pending pump() with an EOF error instead of
+	// leaving it parked forever (a stream failing must not close a real h2
+	// connection, so nothing on the client side does this for us). Safe in
+	// the success path too: do() only returns once the client has read the
+	// peer's full response, which the peer only sends after this drain loop
+	// already finished — so the peer thread has nothing left to block on.
+	cend.close_both()
+	peer_thread.wait()
+	// Checked before peer.failure_msg(): on a premature client abort, closing
+	// the pipe above makes the peer's own pending pump() fail too (expected
+	// noise from the interrupt, not a distinct bug), which would otherwise
+	// obscure this assertion's clearer message.
+	assert out.errs.len == 0, 'expected the upload-blocked phase to be excluded from read_timeout, got: ${out.errs}'
+	assert out.statuses['/up'] == 200
+}
+
+// The upload phase must not be UNBOUNDED either: a peer that drains to the
+// initial window and then never grants another byte of credit (never RSTs,
+// never GOAWAYs, just goes quiet) must eventually fail the stream via
+// h2_stream_upload_stall_limit, not hang forever — the regression this test
+// guards against (found reviewing the fix above, before either landed:
+// excluding uploads from read_timeout by moving the ONLY watchdog to after
+// the upload phase left the upload phase with no bound at all). A large
+// req.read_timeout (10s) is used deliberately so a pass could only come from
+// the separate, decoupled upload-stall watchdog, never from read_timeout.
+//
+// h2_stream_upload_stall_limit is a 5-minute production constant, not
+// practical to wait out here; run with `-d
+// h2_stream_upload_stall_limit_ms=<n>` to shrink it for this test (see
+// h2_mux_conn.v). Without the override this test only confirms the override
+// plumbing compiles and skips, so the default suite stays fast:
+// `./vnew -d h2_stream_upload_stall_limit_ms=900 test vlib/net/http/h2_mux_conn_test.v`.
+fn test_mux_upload_permanently_stalled_eventually_times_out() {
+	if h2_stream_upload_stall_limit_ms == 5 * 60_000 {
+		eprintln('skipping: run with -d h2_stream_upload_stall_limit_ms=900 to exercise this test')
+		return
+	}
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_test_mux_conn(mut cend)
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	body_len := int(h2_default_initial_window) + 1
+	done := chan bool{cap: 1}
+	spawn fn [mut conn, body_len, mut out, done] () {
+		mux_worker(mut conn, H2ClientRequest{
+			method:       'POST'
+			authority:    't'
+			path:         '/stuck'
+			body:         []u8{len: body_len, init: `B`}
+			read_timeout: 10 * time.second
+		}, mut out)
+		done <- true
+	}()
+	peer_thread := spawn fn [body_len] (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		id := ids[0]
+		// Drain exactly to the initial window, then stop -- permanently.
+		for {
+			peer.mu.lock()
+			got := peer.data_total[id] or { u64(0) }
+			peer.mu.unlock()
+			if got >= u64(h2_default_initial_window) {
+				break
+			}
+			peer.pump() or {
+				peer.fail('pump: ${err.msg()}')
+				return
+			}
+		}
+	}(mut peer)
+	// Bounded wait, not workers.wait(): on a regression (upload-stall
+	// watchdog not firing) the worker would never return, and an unbounded
+	// wait would hang this test binary instead of failing it cleanly.
+	select {
+		_ := <-done {}
+		2 * time.second {
+			cend.close_both()
+			peer_thread.wait()
+			assert false, 'upload-stall watchdog did not fire within 2s of the shrunk h2_stream_upload_stall_limit_ms override -- the upload phase hung'
+			return
+		}
+	}
+	cend.close_both()
+	peer_thread.wait()
+	assert out.errs['/stuck'].contains('uploading the request body'), 'expected the upload-stall watchdog to fail the stuck upload, got: ${out.errs}'
+}

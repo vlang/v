@@ -183,9 +183,11 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 	t.dialing.delete(key)
 	// Evicting for the cap happens in the same locked section as the
 	// registration above, so the count it sees already includes this new
-	// entry — the new connection itself is never a candidate (idle_since is
-	// "now", the largest timestamp, so it can never be picked as oldest).
-	mut evicted := t.evict_idle_h2_if_over_cap()
+	// entry. `key` is passed so the scan excludes it explicitly: it would
+	// otherwise look idle (active_streams is still 0 — do_h2 hasn't run yet)
+	// and, if it is the only idle candidate found, get evicted as its own
+	// registration's victim.
+	mut evicted := t.evict_idle_h2_if_over_cap(key)
 	t.mu.unlock()
 
 	call.mu.lock()

@@ -312,7 +312,19 @@ fn (t &Transport) total_idle_locked() int {
 // release the returned connection (shutdown_when_idle + release) outside it —
 // release() can synchronously drive teardown_transport(), which calls this
 // connection's own close_transport closure, which itself takes t.mu.
-fn (mut t Transport) evict_idle_h2_if_over_cap() &H2MuxConn {
+//
+// `just_registered_key` is excluded from the candidate scan: the caller always
+// invokes this in the same locked section that just registered a brand-new
+// h2_conns entry under that key, and that connection's active_streams is still
+// 0 (do_h2 hasn't run yet on it), making it look idle. It is NOT, in the sense
+// that matters here — it is this very dial's own result — but if it happens to
+// be the ONLY idle candidate in the whole map (e.g. every other pooled
+// connection is a busy h2 conn, or the shared budget is entirely consumed by
+// h1 idle entries this function never looks at), it would otherwise be picked
+// as "oldest" by default (the loop's first candidate always wins ties), tearing
+// down the connection this very call just dialed before its own request ever
+// runs on it (Codex P1, vlang/v#27643 pullrequestreview-4628439062).
+fn (mut t Transport) evict_idle_h2_if_over_cap(just_registered_key string) &H2MuxConn {
 	if t.max_idle_conns <= 0 {
 		return &H2MuxConn(unsafe { nil })
 	}
@@ -323,6 +335,9 @@ fn (mut t Transport) evict_idle_h2_if_over_cap() &H2MuxConn {
 	mut oldest_conn := &H2MuxConn(unsafe { nil })
 	mut oldest_since := time.now()
 	for k, mut c in t.h2_conns {
+		if k == just_registered_key {
+			continue
+		}
 		c.smu.lock()
 		is_idle := c.active_streams == 0
 		since := c.idle_since

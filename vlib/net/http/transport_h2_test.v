@@ -431,6 +431,63 @@ fn test_h2_pool_respects_max_idle_conns_cap() {
 	stop_h2_pool_srv(mut l3, th3)
 }
 
+// A dial that registers a brand-new h2 connection must never pick that SAME
+// connection as its own eviction victim: with max_idle_conns already consumed
+// by an unrelated idle h1 connection, evict_idle_h2_if_over_cap's scan of
+// h2_conns finds the connection this very call just registered as the ONLY
+// idle h2 candidate (active_streams is still 0 — do_h2 hasn't run yet) and
+// evicts it, dropping the pool's sole reference to zero and tearing the
+// connection down before its own request ever executes on it (Codex P1,
+// vlang/v#27643 pullrequestreview-4628439062).
+fn test_h2_pool_does_not_evict_its_own_new_connection() {
+	$if windows && !no_vschannel ? {
+		eprintln('skipping: SChannel connection pooling is not implemented yet')
+		return
+	}
+	mut t := new_transport()
+	t.max_idle_conns = 1
+
+	mut h1_srv := &H2PoolSrv{}
+	h1_port, mut h1_listener, h1_th := start_h2t_h1only_srv(mut h1_srv) or {
+		assert false, 'h1 server: ${err}'
+		return
+	}
+	// Consume the whole max_idle_conns=1 budget with one h1 idle connection
+	// before the h2 dial below ever runs.
+	h1_req := prepare(url: 'https://127.0.0.1:${h1_port}/warm', validate: false, enable_http2: true) or {
+		assert false, 'prepare h1: ${err}'
+		return
+	}
+	h1_resp := t.round_trip(h1_req, .get, 'https', '127.0.0.1', h1_port, '/warm', '', h1_req.header) or {
+		assert false, 'round_trip h1: ${err}'
+		return
+	}
+	assert h1_resp.status_code == 200
+
+	mut h2_srv := &H2PoolSrv{}
+	h2_port, mut h2_listener, h2_th := start_h2_pool_srv(mut h2_srv) or {
+		assert false, 'h2 server: ${err}'
+		return
+	}
+	h2_req := prepare(url: 'https://127.0.0.1:${h2_port}/fresh', validate: false, enable_http2: true) or {
+		assert false, 'prepare h2: ${err}'
+		return
+	}
+	h2_resp := t.round_trip(h2_req, .get, 'https', '127.0.0.1', h2_port, '/fresh', '',
+		h2_req.header) or {
+		stop_h2_pool_srv(mut h1_listener, h1_th)
+		stop_h2_pool_srv(mut h2_listener, h2_th)
+		assert false, 'fresh h2 dial was torn down by its own registration-time cap eviction: ${err}'
+		return
+	}
+	assert h2_resp.status_code == 200
+	assert h2_resp.body == h2t_body
+
+	t.close_idle()
+	stop_h2_pool_srv(mut h1_listener, h1_th)
+	stop_h2_pool_srv(mut h2_listener, h2_th)
+}
+
 // Sequential requests to the same h2 origin must reuse the pooled multiplexed
 // connection (fast path), not redial.
 fn test_h2_pool_sequential_reuse() {
@@ -776,4 +833,96 @@ fn test_h2_pooled_transport_concurrent_read_write_close() {
 		listener.shutdown() or {}
 		th.wait()
 	}
+}
+
+// write() must not fail a stalled write against h2_pooled_io_timeout (50ms):
+// conn.write() (write_ptr in both TLS backends) reuses the SAME `duration`
+// field that set_read_timeout() configures for its own internal
+// WANT_READ/WANT_WRITE retry loop, so without widening it for the span of the
+// call, a peer that merely stops draining mid-write — still connected, not
+// closed — would fail almost immediately instead of getting the intended
+// h2_pooled_write_stall_limit (30s) budget (Codex P2, vlang/v#27643
+// pullrequestreview-4628439062, discussion 3522170277).
+//
+// The client socket is forced non-blocking and its send buffer shrunk so the
+// local kernel buffer (and the peer's un-drained TCP receive window) fill in
+// a few KB, deterministically, instead of the ~200KB+ a default-size, still
+// blocking socket needs (client sockets in this codebase are never switched
+// to non-blocking mode outside this test — see dial()/connect() in
+// vlib/net/mbedtls and vlib/net/openssl — so on a real pooled connection
+// mbedtls_ssl_write's own WANT_WRITE branch never fires in the first place;
+// forcing it here isolates the reused-duration defect on its own terms).
+fn test_h2_pooled_transport_write_survives_stall_past_io_timeout() {
+	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0') or {
+		assert false, 'port: ${err}'
+		return
+	}
+	port := port_listener.addr() or {
+		assert false, 'addr: ${err}'
+		return
+	}.port() or {
+		assert false, 'addr.port: ${err}'
+		return
+	}
+	port_listener.close() or {}
+	mut listener := mbedtls.new_ssl_listener('127.0.0.1:${port}', mbedtls.SSLConnectConfig{
+		cert:     h2t_cert_path
+		cert_key: h2t_key_path
+		validate: false
+	}) or {
+		assert false, 'listener: ${err}'
+		return
+	}
+	// Server: complete the handshake, then go captive -- never read again,
+	// simulating a healthy-but-slow peer that has stopped draining its
+	// receive buffer (not a dead or closed one).
+	th := spawn fn (mut l mbedtls.SSLListener) {
+		mut sconn := l.accept() or { return }
+		time.sleep(2 * time.second)
+		sconn.shutdown() or {}
+	}(mut listener)
+
+	mut sconn := ssl.new_ssl_conn(validate: false) or {
+		assert false, 'ssl conn: ${err}'
+		return
+	}
+	sconn.dial('127.0.0.1', port) or {
+		assert false, 'dial: ${err}'
+		return
+	}
+	net.set_blocking(sconn.handle, false) or {
+		assert false, 'set_blocking: ${err}'
+		return
+	}
+	mut raw_sock := net.tcp_socket_from_handle_raw(sconn.handle)
+	raw_sock.set_option_int(.send_buf_size, 2048) or {}
+
+	mut pt := new_h2_pooled_transport(mut sconn)
+	payload := []u8{len: 512 * 1024, init: u8(0xab)}
+
+	write_done := chan bool{cap: 1}
+	spawn fn [mut pt, payload, write_done] () {
+		pt.write(payload) or {}
+		write_done <- true
+	}()
+
+	// On buggy code (write() reusing h2_pooled_io_timeout for its own
+	// internal retry budget) the write has always already failed by ~65ms —
+	// see the standalone repro this test is derived from — even though the
+	// connection is perfectly healthy and has not been closed. A comfortable
+	// multiple of that interval must still find the write in flight: that is
+	// only possible if it is retrying against something much longer than
+	// 50ms.
+	select {
+		_ := <-write_done {
+			assert false, 'write() returned within 250ms even though the peer never disconnected -- it must be retrying against the write stall budget, not the short read-poll interval'
+		}
+		250 * time.millisecond {
+			// still in flight, as expected on fixed code
+		}
+	}
+
+	pt.close()
+	_ := <-write_done
+	th.wait()
 }

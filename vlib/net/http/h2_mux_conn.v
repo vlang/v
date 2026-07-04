@@ -162,7 +162,7 @@ fn (mut s H2MuxStream) fail(msg string, retryable bool) {
 // err.code() to decide whether a failure is worth retrying at all). Not
 // retryable: unlike a GOAWAY-unprocessed or admission-refused stream, a
 // client-side read timeout does not prove the request never reached the
-// server. Used by h2_stream_read_timeout_watchdog; ordinary connection/stream
+// server. Used by h2_stream_timeout_watchdog; ordinary connection/stream
 // failures keep using plain fail() (err_code stays 0, and wait_response falls
 // back to an uncoded error for them, unchanged).
 fn (mut s H2MuxStream) fail_with_code(msg string, code int) {
@@ -348,9 +348,6 @@ pub fn (mut c H2MuxConn) do(req H2ClientRequest) !H2ClientResponse {
 	c.smu.unlock()
 
 	mut s := new_h2_mux_stream()
-	if req.read_timeout > 0 {
-		spawn h2_stream_read_timeout_watchdog(mut c, mut s, req.read_timeout)
-	}
 	resp := c.do_on_stream(mut s, req) or {
 		c.finish_stream(mut s)
 		return err
@@ -359,31 +356,61 @@ pub fn (mut c H2MuxConn) do(req H2ClientRequest) !H2ClientResponse {
 	return resp
 }
 
-// h2_watchdog_poll_interval bounds how long h2_stream_read_timeout_watchdog
-// sleeps per iteration, so a request that completes well before its deadline
-// (the common case: req.read_timeout defaults to 30s, but most responses
-// arrive in milliseconds) does not leave its watchdog thread sleeping for the
-// full deadline — every pooled h2 request spawns one of these, so without
-// this bound a busy connection under sustained throughput would accumulate
-// one lingering thread per recent request for up to the full read_timeout.
+// h2_watchdog_poll_interval bounds how long h2_stream_timeout_watchdog sleeps
+// per iteration, so a phase that completes well before its deadline (the
+// common case: req.read_timeout defaults to 30s, but most uploads/responses
+// complete in milliseconds) does not leave its watchdog thread sleeping for
+// the full deadline — every pooled h2 request with a body spawns two of
+// these in sequence (upload, then response), so without this bound a busy
+// connection under sustained throughput would accumulate lingering threads
+// for up to each phase's own timeout.
 const h2_watchdog_poll_interval = 200 * time.millisecond
 
-// h2_stream_read_timeout_watchdog enforces req.read_timeout on a pooled h2
-// request: H2MuxConn's background reader treats every transport read timeout
-// as a benign wake-up (it must survive one to keep servicing other streams),
-// so nothing else bounds an individual request's wait for its response.
-// Polls in short bounded steps rather than one long sleep, checking s.ended
-// after each one, so it exits promptly once the request actually completes
-// instead of always lingering for the full timeout (see
-// h2_watchdog_poll_interval). Whether it exits early (request already done)
-// or fires (fail_with_code, a no-op if s.ended is already true), it always
-// exits after a bounded number of steps, so it can never leak regardless of
-// how the request actually finishes. wake_send also covers a body upload
-// blocked on flow-control credit (send_body_on_stream waits on c.fcv, a
-// different condition variable than s.cv, so failing the stream alone would
-// not wake it) — safe to call unconditionally, matching every other
-// fail()+wake_send call site in this file.
-fn h2_stream_read_timeout_watchdog(mut c H2MuxConn, mut s H2MuxStream, timeout time.Duration) {
+// h2_stream_upload_stall_limit bounds the upload phase, deliberately
+// DECOUPLED from req.read_timeout (see h2_stream_timeout_watchdog's doc
+// comment): read_timeout is documented as the response-read deadline, so a
+// slow-but-healthy upload — potentially far longer than a caller's short
+// read_timeout, over a constrained link or with a server that is merely slow
+// to drain — must still succeed (Codex P1, vlang/v#27643
+// pullrequestreview-4628439062; test_mux_read_timeout_excludes_upload_blocked_phase
+// asserts exactly this: upload blocked well past read_timeout, then
+// succeeds). Not user-configurable — there is no separate upload-timeout
+// field — and deliberately generous so it only catches a peer that will
+// simply never grant flow-control credit at all (never RSTs, never GOAWAYs,
+// just goes quiet), which would otherwise pin the stream, the pooled
+// connection (active_streams never reaches 0, so it is never idle-evicted
+// either), and the caller's thread forever. Overridable via `-d
+// h2_stream_upload_stall_limit_ms=<n>` (mirrors
+// vlib/net/mbedtls/ssl_connection.c.v's mbedtls_client_read_timeout_ms) so a
+// test can observe the watchdog actually firing without a real 5-minute wait.
+const h2_stream_upload_stall_limit_ms = $d('h2_stream_upload_stall_limit_ms', 300_000)
+const h2_stream_upload_stall_limit = h2_stream_upload_stall_limit_ms * time.millisecond
+
+// h2_stream_timeout_watchdog enforces a timeout on ONE phase of a pooled h2
+// request — uploading the body (h2_stream_upload_stall_limit), or waiting
+// for the response (req.read_timeout) — rather than the request as a whole:
+// H2MuxConn's background reader treats every transport read timeout as a
+// benign wake-up (it must survive one to keep servicing other streams), so
+// nothing else bounds either phase's wait. Splitting it into two calls (see
+// do_on_stream) instead of one watchdog spanning the entire call, each with
+// its own budget, is what keeps the two phases' timeouts independent.
+//
+// `done` reports whether the phase this call covers has already finished,
+// checked under s.mu by the caller-supplied closure. Polls in short bounded
+// steps rather than one long sleep, so it exits promptly once the phase
+// actually completes instead of always lingering for the full timeout (see
+// h2_watchdog_poll_interval). Whether it exits early or fires
+// (fail_with_code, a no-op if the stream already ended for any other reason
+// — e.g. a RST_STREAM/GOAWAY mid-upload, which the upload watchdog's `done`
+// closure also treats as "phase over" so it does not linger for the rest of
+// its own timeout in that case), it always exits after a bounded number of
+// steps, so it can never leak regardless of how the request actually
+// finishes. wake_send covers both phases: a body upload blocked on
+// flow-control credit (send_body_on_stream waits on c.fcv, a different
+// condition variable than s.cv, so failing the stream alone would not wake
+// it) and a response wait blocked on s.cv — safe to call unconditionally,
+// matching every other fail()+wake_send call site in this file.
+fn h2_stream_timeout_watchdog(mut c H2MuxConn, mut s H2MuxStream, timeout time.Duration, phase string, done fn () bool) {
 	deadline := time.now().add(timeout)
 	for {
 		remaining := deadline - time.now()
@@ -396,15 +423,11 @@ fn h2_stream_read_timeout_watchdog(mut c H2MuxConn, mut s H2MuxStream, timeout t
 			h2_watchdog_poll_interval
 		}
 		time.sleep(step)
-		s.mu.lock()
-		done := s.ended
-		s.mu.unlock()
-		if done {
+		if done() {
 			return
 		}
 	}
-	s.fail_with_code('request timed out waiting for a response after ${timeout}',
-		net.err_timed_out_code)
+	s.fail_with_code('request timed out ${phase} after ${timeout}', net.err_timed_out_code)
 	c.wake_send(mut s)
 }
 
@@ -543,12 +566,45 @@ fn (mut c H2MuxConn) do_on_stream(mut s H2MuxStream, req H2ClientRequest) !H2Cli
 	c.wmu.unlock()
 
 	if has_body {
+		// Bounds the upload phase on h2_stream_upload_stall_limit, NOT
+		// req.read_timeout (see that constant's doc comment) and NOT gated
+		// on req.read_timeout > 0 — this is a robustness backstop against a
+		// permanently wedged peer, independent of the caller's response-read
+		// timeout config. `done` also treats the stream ending for any OTHER
+		// reason (RST_STREAM, GOAWAY, an early final response) as "phase
+		// over", so this watchdog does not linger for the rest of its own
+		// timeout when one of those already resolved the upload.
+		spawn h2_stream_timeout_watchdog(mut c, mut s, h2_stream_upload_stall_limit,
+			'uploading the request body', fn [s] () bool {
+			s.mu.lock()
+			defer {
+				s.mu.unlock()
+			}
+			return s.send_closed || s.ended
+		})
 		c.send_body_on_stream(mut s, req.body)!
 	} else {
 		// The HEADERS carried END_STREAM, so our send side is now closed.
 		s.mu.lock()
 		s.send_closed = true
 		s.mu.unlock()
+	}
+	// req.read_timeout documents itself as the timeout for reading the
+	// response, so this watchdog is armed here — once the request is fully
+	// sent and only the response wait remains — not any earlier. Arming it
+	// before the request is fully sent (e.g. in do(), before HEADERS/body
+	// ever reach the wire) let it fire while still waiting on wmu behind
+	// another writer, or mid-upload on a large POST, aborting a request that
+	// had not even started waiting for a response yet (Codex P1, vlang/v#27643
+	// pullrequestreview-4628439062).
+	if req.read_timeout > 0 {
+		spawn h2_stream_timeout_watchdog(mut c, mut s, req.read_timeout, 'waiting for a response', fn [s] () bool {
+			s.mu.lock()
+			defer {
+				s.mu.unlock()
+			}
+			return s.ended
+		})
 	}
 	return c.wait_response(mut s, req)
 }
