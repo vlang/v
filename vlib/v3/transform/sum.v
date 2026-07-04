@@ -527,11 +527,16 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 		if expr_type.starts_with('&') {
 			op = .arrow
 		}
-		if type_id := t.interface_impl_type_id(clean_type0, node.value) {
+		pattern_name := if t.is_builtin_ierror_interface_name(clean_type0) && node.value == 'none' {
+			'None__'
+		} else {
+			node.value
+		}
+		if type_id := t.interface_impl_type_id(clean_type0, pattern_name) {
 			typ := t.make_selector_op(new_expr, '_typ', 'int', op)
 			return t.make_infix(.eq, typ, t.make_int_literal(type_id))
 		}
-		if pattern := t.resolve_interface_pattern(node.value, clean_type0) {
+		if pattern := t.resolve_interface_pattern(pattern_name, clean_type0) {
 			is_start := t.a.children.len
 			t.a.children << new_expr
 			return t.a.add_node(flat.Node{

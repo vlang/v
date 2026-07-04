@@ -572,10 +572,12 @@ fn test_callback_lambda_lift_preserves_outer_captures() {
 
 fn test_amp_interface_cast_heap_copies_concrete_source() {
 	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'amp_interface_cast_heap_copy',
-		'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) value() int {\n\treturn b.n\n}\n\nfn make() &Reader {\n\tb := Box{\n\t\tn: 5\n\t}\n\treturn &Reader(b)\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n')
+	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) value() int {\n\treturn b.n\n}\n\nfn make() &Reader {\n\tb := Box{\n\t\tn: 5\n\t}\n\treturn &Reader(b)\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n'
+	c_source := gen_c(v3_bin, 'amp_interface_cast_heap_copy', source)
 	assert c_source.contains('._object = (Box*)(memdup(&b, sizeof(Box)))')
 	assert c_source.contains('memdup(&__iface_box_')
+	out := run_good(v3_bin, 'amp_interface_cast_heap_copy_run', source)
+	assert out == '5'
 }
 
 fn test_native_arm64_atomic_pointer_fetch_add_sub() {

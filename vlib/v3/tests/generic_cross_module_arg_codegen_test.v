@@ -108,6 +108,16 @@ fn test_generic_struct_interface_dispatch_emits_required_methods() {
 	assert out == '29'
 }
 
+fn test_generic_comptime_if_uses_interface_implementation() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_comptime_interface_impl', {
+		'sink/sink.v': 'module sink\n\npub interface Writer {\nmut:\n\twrite(n int) int\n}\n\npub struct Counter[W] {\nmut:\n\twriter W\n}\n\npub fn Counter.new[W](writer W) Counter[W] {\n\treturn Counter[W]{\n\t\twriter: writer\n\t}\n}\n\npub fn (mut counter Counter[W]) write(n int) int {\n\t$if W is Writer {\n\t\treturn counter.writer.write(n)\n\t} $else {\n\t\treturn -1\n\t}\n}\n'
+		'user/user.v': 'module user\n\nimport sink\n\nstruct LocalWriter implements sink.Writer {\nmut:\n\ttotal int\n}\n\nfn (mut w LocalWriter) write(n int) int {\n\tw.total += n\n\treturn w.total\n}\n\npub fn run() int {\n\tmut counter := sink.Counter.new(LocalWriter{})\n\treturn counter.write(41)\n}\n'
+		'main.v':      'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
+	})
+	assert out == '41'
+}
+
 fn test_interface_generated_generic_method_body_preserves_cross_module_arg_type() {
 	v3_bin := generic_cross_build_v3()
 	out := generic_cross_run_project(v3_bin, 'generic_interface_nested_cross_module_arg', {
@@ -146,4 +156,13 @@ fn test_lifetime_receiver_method_body_specializes_nested_methods() {
 		'main.v':            'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
 	})
 	assert out == '53'
+}
+
+fn test_lifetime_only_method_body_specializes_generic_receiver_methods() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_lifetime_only_method_body', {
+		'ignore/ignore.v': 'module ignore\n\npub struct Ref[^a] {\n\tn int\n}\n\npub struct Match[T] {\n\tvalue T\n\thas_value bool\n}\n\npub fn (m Match[T]) is_none() bool {\n\treturn !m.has_value\n}\n\npub fn (m Match[T]) inner() ?T {\n\tif !m.has_value {\n\t\treturn none\n\t}\n\treturn m.value\n}\n\nstruct Matcher {}\n\nfn (matcher &^a Matcher) matched[^a](n int) Match[Ref[^a]] {\n\t_ = matcher\n\tif n == 0 {\n\t\treturn Match[Ref[^a]]{}\n\t}\n\treturn Match[Ref[^a]]{\n\t\tvalue: Ref[^a]{\n\t\t\tn: n\n\t\t}\n\t\thas_value: true\n\t}\n}\n\nstruct Override {\n\tmatcher Matcher\n}\n\nfn (o &^a Override) matched[^a](n int) int {\n\tmat := o.matcher.matched(n)\n\tif mat.is_none() {\n\t\treturn 1\n\t}\n\tif value := mat.inner() {\n\t\treturn value.n\n\t}\n\treturn 0\n}\n\npub fn run() int {\n\toverride := Override{\n\t\tmatcher: Matcher{}\n\t}\n\treturn override.matched(59)\n}\n'
+		'main.v':          'module main\n\nimport ignore\n\nfn main() {\n\tprintln(int_str(ignore.run()))\n}\n'
+	})
+	assert out == '59'
 }

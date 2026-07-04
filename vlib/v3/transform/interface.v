@@ -54,23 +54,54 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	if iface_name.len == 0 {
 		return none
 	}
+	node := t.a.nodes[int(id)]
+	if target_is_ptr && node.kind == .cast_expr
+		&& t.resolve_interface_type_name(node.value) == iface_name {
+		if node.children_count == 1 {
+			child := t.a.nodes[int(t.a.child(&node, 0))]
+			if child.kind == .call && child.children_count > 0 {
+				callee := t.a.child_node(&child, 0)
+				if callee.kind == .ident && callee.value == 'memdup' {
+					return id
+				}
+			}
+		}
+		return t.transform_expr(id)
+	}
+	if target_is_ptr && node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+		child := t.a.nodes[int(t.a.child(&node, 0))]
+		if child.kind == .cast_expr && t.resolve_interface_type_name(child.value) == iface_name {
+			return t.transform_expr(id)
+		}
+	}
 	// IError has bespoke handling (built via `error()`, fields accessed directly);
 	// do not route it through the generic interface boxing.
 	if t.is_builtin_ierror_interface_name(iface_name) {
 		return none
 	}
-	node := t.a.nodes[int(id)]
 	if node.kind == .nil_literal {
 		return none
+	}
+	if target_is_ptr && node.kind == .ident
+		&& t.ident_is_global_pointer_to_interface(node.value, iface_name) {
+		return t.transform_expr(id)
 	}
 	source_type := t.node_type(id)
 	source_iface := t.resolve_interface_type_name(source_type)
 	if source_iface == iface_name {
-		return t.transform_expr(id)
+		expr := t.transform_expr(id)
+		if source_type.len > 0 && int(expr) >= 0 {
+			t.a.nodes[int(expr)].typ = source_type
+		}
+		return expr
 	}
 	if target_is_ptr && source_type.starts_with('&')
 		&& t.resolve_interface_type_name(source_type[1..]) == iface_name {
-		return t.transform_expr(id)
+		expr := t.transform_expr(id)
+		if source_type.len > 0 && int(expr) >= 0 {
+			t.a.nodes[int(expr)].typ = source_type
+		}
+		return expr
 	}
 	literal := t.make_interface_literal_from_expr(id, iface_name, share_source) or { return none }
 	if !target_is_ptr {
@@ -218,6 +249,58 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		value:          iface_name
 		typ:            iface_name
 	})
+}
+
+fn (t &Transformer) ident_is_global_pointer_to_interface(name string, iface_name string) bool {
+	if name.len == 0 || iface_name.len == 0 || isnil(t.tc) || t.var_type(name).len > 0 {
+		return false
+	}
+	if typ := t.tc.file_scope.lookup(name) {
+		if t.type_is_pointer_to_interface(typ, iface_name) {
+			return true
+		}
+	}
+	if t.cur_module.len > 0 {
+		qname := '${t.cur_module}.${name}'
+		if qname != name {
+			if typ := t.tc.file_scope.lookup(qname) {
+				if t.type_is_pointer_to_interface(typ, iface_name) {
+					return true
+				}
+			}
+		}
+	}
+	if typ := t.globals[name] {
+		return t.type_text_is_pointer_to_interface(typ, iface_name)
+	}
+	if t.cur_module.len > 0 {
+		qname := '${t.cur_module}.${name}'
+		if typ := t.globals[qname] {
+			return t.type_text_is_pointer_to_interface(typ, iface_name)
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) type_is_pointer_to_interface(typ types.Type, iface_name string) bool {
+	if typ is types.Pointer {
+		return t.resolve_interface_type_name(typ.base_type.name()) == iface_name
+	}
+	if typ is types.Alias {
+		return t.type_is_pointer_to_interface(typ.base_type, iface_name)
+	}
+	return false
+}
+
+fn (t &Transformer) type_text_is_pointer_to_interface(typ string, iface_name string) bool {
+	clean := typ.trim_space()
+	if clean.starts_with('&') {
+		return t.resolve_interface_type_name(clean[1..]) == iface_name
+	}
+	if clean.starts_with('mut ') {
+		return t.resolve_interface_type_name(clean[4..]) == iface_name
+	}
+	return false
 }
 
 // transform_interface_cast transforms interface-to-concrete type casts.
