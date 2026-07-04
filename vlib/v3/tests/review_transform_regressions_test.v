@@ -118,6 +118,13 @@ fn test_array_map_fn_value_uses_callback_return_type() {
 	assert out == '123'
 }
 
+fn test_const_array_allows_newline_separators_with_line_comments() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'const_array_line_comments',
+		'const xs = [\n\t1\n\t// one\n\t2\n\t// two\n\t3\n]\n\nfn main() {\n\tprintln(int_str(xs.len))\n\tprintln(int_str(xs[1]))\n}\n')
+	assert out == '3\n2'
+}
+
 fn test_nested_map_equality_uses_declared_value_type() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'nested_map_semantic_equality',

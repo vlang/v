@@ -5382,11 +5382,11 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			children_count: flat.child_count(ids.len)
 		})
 	}
-	// multi-element array: [a, b, c]
-	for p.tok == .comma {
-		p.next()
-		if p.tok == .rsbr {
-			break
+	// multi-element array: [a, b, c] or newline-separated const tables.
+	for p.tok != .rsbr && p.tok != .eof {
+		if p.tok == .comma || p.tok == .semicolon {
+			p.next()
+			continue
 		}
 		ids << p.expr(.lowest)
 	}
@@ -5424,10 +5424,16 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	if p.tok == .lsbr {
 		p.next()
 		for p.tok != .rsbr && p.tok != .eof {
+			mut is_mut_capture := false
 			if p.tok == .key_mut {
+				is_mut_capture = true
 				p.next()
 			}
-			capture_ids << p.a.add_val(.ident, p.expect_name())
+			capture_id := p.a.add_val(.ident, p.expect_name())
+			if is_mut_capture {
+				p.a.set_node_is_mut(capture_id, true)
+			}
+			capture_ids << capture_id
 			if p.tok == .comma {
 				p.next()
 			}

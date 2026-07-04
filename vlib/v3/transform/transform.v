@@ -81,6 +81,7 @@ mut:
 	var_types                    []VarTypeBinding
 	mut_param_values             map[string]bool
 	pointer_value_lvalues        map[string]bool
+	pointer_value_rvalues        map[string]bool
 	temp_counter                 int
 	pending_stmts                []flat.NodeId
 	smartcast_stack              []SmartcastContext
@@ -89,6 +90,7 @@ mut:
 	in_spawn_expr                bool
 	in_const_init                bool
 	in_return_expr               bool
+	in_selector_base             bool
 	alias_cache                  &AliasCache  = unsafe { nil }
 	sum_cache                    &AliasCache  = unsafe { nil }
 	struct_field_type_cache      &LookupCache = unsafe { nil }
@@ -351,6 +353,7 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		tc:                               unsafe { tc }
 		mut_param_values:                 map[string]bool{}
 		pointer_value_lvalues:            map[string]bool{}
+		pointer_value_rvalues:            map[string]bool{}
 		invalidated_smartcasts:           map[string]bool{}
 		escaping_amp_ptrs:                map[string]bool{}
 		escaping_amp_sources:             map[string]bool{}
@@ -1175,6 +1178,7 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.invalidated_smartcasts = map[string]bool{}
 	w.pending_stmts = []flat.NodeId{}
 	w.pointer_value_lvalues = map[string]bool{}
+	w.pointer_value_rvalues = map[string]bool{}
 	w.escaping_amp_ptrs = map[string]bool{}
 	w.escaping_amp_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
@@ -1873,6 +1877,7 @@ fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string
 	// The local is now a `&T`, so its compound/postfix mutations (`v += 1`, `v++`) must store
 	// through the pointer (`*v += 1`); mark it as a pointer-value lvalue so that lowering fires.
 	t.pointer_value_lvalues[var_name] = true
+	t.pointer_value_rvalues[var_name] = true
 	stmts << t.make_decl_assign_typed(var_name, heap_rhs, ptr_typ)
 	return stmts
 }
@@ -1924,6 +1929,7 @@ fn (mut t Transformer) reset_escaping_amp_state() {
 	// Cleared per function: heaped locals add their names below (in heap_escaping_source_decl);
 	// for-loop element vars set and restore their own entries within the loop body.
 	t.pointer_value_lvalues.clear()
+	t.pointer_value_rvalues.clear()
 }
 
 // scan_escape_pass recursively collects, in a function-body subtree, (a) the LHS
@@ -6060,6 +6066,14 @@ fn stringify_type_has_generic_placeholder(typ string) bool {
 	return false
 }
 
+fn (mut t Transformer) transform_selector_base_expr(id flat.NodeId) flat.NodeId {
+	old_in_selector_base := t.in_selector_base
+	t.in_selector_base = true
+	transformed := t.transform_expr(id)
+	t.in_selector_base = old_in_selector_base
+	return transformed
+}
+
 // transform_selector_expr transforms transform selector expr data for transform.
 fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count == 0 {
@@ -6070,7 +6084,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	}
 	base_id0 := t.a.child(&node, 0)
 	if variant_type := t.generated_variant_access_type(base_id0) {
-		new_base := t.transform_expr(base_id0)
+		new_base := t.transform_selector_base_expr(base_id0)
 		clean_variant_type := t.trim_pointer_type(variant_type)
 		sel_typ := if node.typ.len > 0 {
 			node.typ
@@ -6142,7 +6156,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		has_direct_field := (t.struct_field_type(info, node.value) or { '' }).len > 0
 		if !has_direct_field {
 			if embedded := t.embedded_field_for_promoted_field(info, node.value) {
-				new_base := t.transform_expr(base_id)
+				new_base := t.transform_selector_base_expr(base_id)
 				embedded_op := if base_type0.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
 				embedded_sel := t.make_selector_op(new_base, embedded.name, embedded.typ,
 					embedded_op)
@@ -6153,7 +6167,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		}
 	}
 	if shared_typ := t.sum_shared_field_type_name(base_type0, node.value) {
-		transformed_base := t.transform_expr(base_id)
+		transformed_base := t.transform_selector_base_expr(base_id)
 		transformed_base_type := t.node_type(transformed_base)
 		clean_transformed_base_type := if transformed_base_type.starts_with('&') {
 			transformed_base_type[1..]
@@ -6183,7 +6197,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		new_base := t.selector_base_for_field(transformed_base, base_type0)
 		return t.lower_sum_shared_field_selector(new_base, base_type0, node.value, shared_typ)
 	}
-	new_base := t.transform_expr(base_id)
+	new_base := t.transform_selector_base_expr(base_id)
 	mut changed := new_base != base_id
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	new_children << new_base
@@ -6224,7 +6238,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 fn (mut t Transformer) make_plain_selector_expr(_id flat.NodeId, node flat.Node) flat.NodeId {
 	base_id := t.a.child(&node, 0)
 	base_type := t.node_type(base_id)
-	new_base := t.selector_base_for_field(t.transform_expr(base_id), base_type)
+	new_base := t.selector_base_for_field(t.transform_selector_base_expr(base_id), base_type)
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	new_children << new_base
 	for i in 1 .. node.children_count {
@@ -7076,6 +7090,11 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 			typ := t.var_type(node.value)
 			if typ.len > 0 && typ != node.typ {
 				t.a.nodes[int(id)].typ = typ
+			}
+			if !t.in_selector_base && t.pointer_value_rvalues[node.value] && typ.starts_with('&') {
+				deref := t.make_prefix(.mul, id)
+				t.a.nodes[int(deref)].typ = typ[1..]
+				return deref
 			}
 			return id
 		}

@@ -3950,6 +3950,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	}
 	mut lifted_body := []flat.NodeId{cap: capture_names.len + body_ids.len}
 	mut saved_capture_pointer_flags := map[string]bool{}
+	mut saved_capture_pointer_rvalue_flags := map[string]bool{}
 	for capture_name in capture_names {
 		if capture_name in param_names {
 			continue
@@ -3968,7 +3969,11 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			saved_capture_pointer_flags[capture_name] = t.pointer_value_lvalues[capture_name] or {
 				false
 			}
+			saved_capture_pointer_rvalue_flags[capture_name] = t.pointer_value_rvalues[capture_name] or {
+				false
+			}
 			t.pointer_value_lvalues[capture_name] = true
+			t.pointer_value_rvalues[capture_name] = true
 		}
 		lifted_body << t.make_decl_assign_typed(capture_name, t.make_ident(capture_global),
 			capture_type)
@@ -3986,6 +3991,11 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				t.pointer_value_lvalues[capture_name] = true
 			} else {
 				t.pointer_value_lvalues.delete(capture_name)
+			}
+			if saved_capture_pointer_rvalue_flags[capture_name] or { false } {
+				t.pointer_value_rvalues[capture_name] = true
+			} else {
+				t.pointer_value_rvalues.delete(capture_name)
 			}
 		}
 	}
