@@ -531,6 +531,10 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		return none
 	}
 	lhs_id := t.a.child(&node, 0)
+	rhs_id := t.a.child(&node, 1)
+	if lowered := t.try_lower_optional_array_append_stmt(node, lhs_id, rhs_id) {
+		return lowered
+	}
 	mut lhs_type := t.lvalue_type(lhs_id)
 	if !array_type_has_generic_placeholder(lhs_type) {
 		lhs_type = t.normalize_type_alias(lhs_type)
@@ -540,7 +544,6 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		return none
 	}
 	elem_type := array_type[2..]
-	rhs_id := t.a.child(&node, 1)
 	mut rhs_type := t.normalize_type_alias(t.node_type(rhs_id))
 	rhs_node := t.a.nodes[int(rhs_id)]
 	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
@@ -581,6 +584,85 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	}
 
 	lhs_addr := t.runtime_addr(lhs, lhs_type)
+	if push_many {
+		call := if t.is_fixed_array_type(rhs_type) {
+			t.make_call_typed('array_push_many_ptr', arr3(lhs_addr, rhs,
+				t.make_fixed_array_len_expr(rhs_type)), 'void')
+		} else {
+			t.make_array_push_many_call(lhs_addr, rhs, rhs_type)
+		}
+		t.drain_pending(mut result)
+		result << t.make_expr_stmt(call)
+		return result
+	}
+	value_name := t.new_temp('arr_val')
+	result << t.make_decl_assign_typed(value_name, rhs, elem_type)
+	result << t.make_expr_stmt(t.make_call_typed('array_push', arr2(lhs_addr, t.make_prefix(.amp,
+		t.make_ident(value_name))), 'void'))
+	return result
+}
+
+fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId) ?[]flat.NodeId {
+	if int(lhs_id) < 0 || int(rhs_id) < 0 {
+		return none
+	}
+	lhs_node := t.a.nodes[int(lhs_id)]
+	if lhs_node.kind != .or_expr || lhs_node.children_count < 2 {
+		return none
+	}
+	source_id := t.a.child(&lhs_node, 0)
+	if !t.optional_selector_lvalue_source(source_id) {
+		return none
+	}
+	expr_type, value_type := t.or_expr_types(source_id, lhs_node.typ)
+	if !t.is_optional_type_name(expr_type) {
+		return none
+	}
+	array_type := t.clean_array_append_lhs_type(value_type)
+	if !array_type.starts_with('[]') {
+		return none
+	}
+	elem_type := array_type[2..]
+	mut rhs_type := t.normalize_type_alias(t.node_type(rhs_id))
+	rhs_node := t.a.nodes[int(rhs_id)]
+	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
+	if rhs_node.kind == .array_literal && !elem_type.starts_with('[]')
+		&& !t.is_fixed_array_type(elem_type) {
+		push_many = true
+		t.a.nodes[int(rhs_id)].typ = array_type
+		rhs_type = array_type
+	} else if push_many && rhs_node.kind == .array_literal && !rhs_type.starts_with('[]') {
+		t.a.nodes[int(rhs_id)].typ = array_type
+		rhs_type = array_type
+	}
+
+	mut result := []flat.NodeId{}
+	source := t.transform_lvalue(source_id)
+	t.drain_pending(mut result)
+	not_ok := t.make_prefix(.not, t.make_selector(source, 'ok', 'bool'))
+	guard_stmts := t.optional_selector_lvalue_guard_stmts(t.a.child(&lhs_node, 1), lhs_node.value,
+		source)
+	result << t.make_if(not_ok, t.make_block(guard_stmts), t.make_empty())
+
+	mut rhs := if !push_many {
+		if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
+			t.wrap_sum_value(rhs_id, elem_type)
+		} else {
+			t.transform_expr_for_type(rhs_id, elem_type)
+		}
+	} else {
+		t.transform_expr(rhs_id)
+	}
+	if !push_many {
+		rhs = t.coerce_transformed_expr_to_type(rhs, rhs_id, elem_type)
+	}
+	t.drain_pending(mut result)
+	if rhs_type.len == 0 {
+		rhs_type = t.node_type(rhs)
+		push_many = t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
+	}
+
+	lhs_addr := t.runtime_addr(t.make_selector(source, 'value', array_type), array_type)
 	if push_many {
 		call := if t.is_fixed_array_type(rhs_type) {
 			t.make_call_typed('array_push_many_ptr', arr3(lhs_addr, rhs,

@@ -521,6 +521,20 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	} else {
 		t.find_sum_type_for_variant(node.value)
 	}
+	if t.is_builtin_ierror_interface_name(clean_type0) && node.value == 'none' {
+		new_expr0 := t.transform_expr(expr_id)
+		new_expr := t.stable_transformed_expr_for_reuse(new_expr0, expr_type, 'ierror_is')
+		op := if expr_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
+		typ := t.make_selector_op(new_expr, '_typ', 'int', op)
+		object := t.make_selector_op(new_expr, '_object', 'voidptr', op)
+		message := t.make_selector_op(new_expr, 'message', 'string', op)
+		message_str := t.make_selector(message, 'str', 'byteptr')
+		is_zero_type := t.make_infix(.eq, typ, t.make_int_literal(0))
+		object_is_nil := t.make_infix(.eq, object, t.a.add(.nil_literal))
+		message_is_nil := t.make_infix(.eq, message_str, t.a.add(.nil_literal))
+		return t.make_infix(.logical_and, is_zero_type, t.make_infix(.logical_and, object_is_nil,
+			message_is_nil))
+	}
 	if t.is_interface_type_name(clean_type0) {
 		new_expr := t.transform_expr(expr_id)
 		mut op := flat.Op.dot

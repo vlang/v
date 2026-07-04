@@ -3340,11 +3340,22 @@ fn (mut p Parser) match_stmt() flat.NodeId {
 	p.check(.rcbr)
 
 	start := p.add_children(ids)
-	return p.a.add_node(flat.Node{
+	match_id := p.a.add_node(flat.Node{
 		kind:           .match_stmt
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
+	if p.tok == .key_or {
+		p.next()
+		or_body := p.block_stmt()
+		ostart := p.add_children2(match_id, or_body)
+		return p.a.add_node(flat.Node{
+			kind:           .or_expr
+			children_start: ostart
+			children_count: 2
+		})
+	}
+	return match_id
 }
 
 fn (mut p Parser) match_branch_cond() flat.NodeId {

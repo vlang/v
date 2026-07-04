@@ -3624,6 +3624,18 @@ fn is_bare_generic_param(typ string) bool {
 	return typ.len == 1 && typ[0] >= `A` && typ[0] <= `Z`
 }
 
+fn unresolved_generic_receiver_type(typ Type) bool {
+	if typ is Unknown {
+		if _ := generic_placeholder_from_unknown(typ) {
+			return true
+		}
+	}
+	if typ is Struct {
+		return is_bare_generic_param(typ.name)
+	}
+	return false
+}
+
 fn generic_param_index(name string) int {
 	return match name {
 		'T', 'A', 'K', 'X' { 0 }
@@ -4460,8 +4472,11 @@ fn (mut tc TypeChecker) comptime_type_matches(actual string, expected string) ?b
 		'$float' {
 			return actual_type.is_float()
 		}
+		'$string' {
+			return actual_type is String
+		}
 		'$struct' {
-			return normalized in tc.structs
+			return actual_type is Struct && normalized in tc.structs
 		}
 		'$enum' {
 			return normalized in tc.enum_names
@@ -6785,6 +6800,28 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 	if info := tc.resolve_generic_call_info(id, fn_node) {
 		return info
 	}
+	if fn_node.kind == .index && fn_node.children_count > 0 {
+		base_id := tc.a.child(fn_node, 0)
+		fn_type := tc.resolve_type(base_id)
+		if fn_typ := fn_type_from_type(fn_type) {
+			return CallInfo{
+				name:         ''
+				params:       fn_typ.params.clone()
+				return_type:  fn_typ.return_type
+				params_known: true
+			}
+		}
+		if unresolved_generic_receiver_type(fn_type) {
+			return CallInfo{
+				name:         ''
+				params:       []Type{}
+				return_type:  Type(Unknown{
+					reason: 'generic callable'
+				})
+				params_known: false
+			}
+		}
+	}
 	if fn_node.kind == .ident {
 		fn_id := tc.a.child(&node, 0)
 		mut fn_type := Type(void_)
@@ -6801,6 +6838,16 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				params:       fn_typ.params.clone()
 				return_type:  fn_typ.return_type
 				params_known: true
+			}
+		}
+		if fn_type is Unknown || unresolved_generic_receiver_type(fn_type) {
+			return CallInfo{
+				name:         ''
+				params:       []Type{}
+				return_type:  Type(Unknown{
+					reason: 'generic callable'
+				})
+				params_known: false
 			}
 		}
 	}
@@ -6902,6 +6949,15 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		}
 		base_type := tc.resolve_type(base_id)
 		clean := unwrap_pointer(base_type)
+		if fn_node.value == 'clone' && unresolved_generic_receiver_type(clean) {
+			return CallInfo{
+				name:         ''
+				params:       tarr1(base_type)
+				return_type:  base_type
+				has_receiver: true
+				params_known: true
+			}
+		}
 		if fn_node.value == 'wait' {
 			if ret_type := tc.thread_wait_return_type(base_type) {
 				return CallInfo{
@@ -11446,6 +11502,10 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			tc.register_synth_type(id, expected)
 			return expected
 		}
+		if is_ierror_type(expected) {
+			tc.register_synth_type(id, expected)
+			return expected
+		}
 	}
 	if payload := contextual_payload_type(expected) {
 		actual := tc.resolve_expr(id, payload)
@@ -11908,6 +11968,9 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	}
 	if actual is None {
 		return expected is OptionType || expected is ResultType || is_ierror_type(expected)
+	}
+	if is_option_void_type(actual) && is_ierror_type(expected) {
+		return true
 	}
 	if expected is OptionType {
 		if actual is OptionType {
@@ -14607,7 +14670,7 @@ fn (tc &TypeChecker) array_literal_elem_type(node flat.Node) Type {
 		}
 		if child_type.name() == 'f64' {
 			has_f64 = true
-			if child.kind != .float_literal {
+			if !tc.is_untyped_float_literal_expr(child) {
 				has_explicit_f64 = true
 			}
 		}
@@ -14622,6 +14685,29 @@ fn (tc &TypeChecker) array_literal_elem_type(node flat.Node) Type {
 		return Type(f64_)
 	}
 	return elem_type
+}
+
+fn (tc &TypeChecker) is_untyped_float_literal_expr(node flat.Node) bool {
+	match node.kind {
+		.float_literal {
+			return true
+		}
+		.prefix {
+			if node.op !in [.plus, .minus] || node.children_count == 0 {
+				return false
+			}
+			return tc.is_untyped_float_literal_expr(tc.a.child_node(&node, 0))
+		}
+		.paren, .expr_stmt {
+			if node.children_count == 0 {
+				return false
+			}
+			return tc.is_untyped_float_literal_expr(tc.a.child_node(&node, 0))
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (tc &TypeChecker) is_known_type_text(typ string) bool {
@@ -14883,7 +14969,10 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 		return Type(bool_)
 	}
 	if kind_id == 4 {
-		return Type(u8_)
+		if node.value.starts_with('c:') {
+			return Type(u8_)
+		}
+		return Type(rune_)
 	}
 	if kind_id == 5 || kind_id == 6 {
 		return Type(string_)
@@ -16210,6 +16299,18 @@ fn resolve_type_name_for_method(t Type) string {
 	}
 	if t is String {
 		return 'string'
+	}
+	if t is Char {
+		return 'char'
+	}
+	if t is Rune {
+		return 'rune'
+	}
+	if t is ISize {
+		return 'isize'
+	}
+	if t is USize {
+		return 'usize'
 	}
 	if t is Array {
 		return '[]${nested_type_name(t.elem_type)}'

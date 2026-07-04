@@ -2854,6 +2854,17 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		g.expected_enum = old_expected_enum
 		return
 	}
+	if expected is types.OptionType || expected is types.ResultType {
+		if node.kind == .none_expr || g.expr_is_optional_literal(id, expected)
+			|| actual is types.OptionType || actual is types.ResultType {
+			g.gen_expr(id)
+		} else {
+			g.gen_optional_arg(id, expected)
+		}
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
 	if _ := fn_type_from(expected) {
 		if g.gen_callback_fn_value_for_expected_type(id, expected) {
 			g.expected_expr_type = old_expected

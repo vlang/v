@@ -3416,14 +3416,17 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					arg_is_pointer_param := arg_node.kind == .ident && (g.current_param_type(arg_node.value) or {
 						types.Type(types.void_)
 					}) is types.Pointer
+					arg_is_pointer_global := arg_node.kind == .ident && (g.global_type_for_ident(arg_node.value) or {
+						types.Type(types.void_)
+					}) is types.Pointer
 					value_local_mut_receiver := arg_idx == 0 && (g.method_receiver_is_mut(fn_name)
 						|| g.method_receiver_is_mut(g.direct_call_name(fn_name)))
 						&& arg_node.kind == .ident && !g.local_storage_is_pointer(arg_node.value)
-						&& !arg_is_pointer_param && arg_type !is types.Pointer
+						&& !arg_is_pointer_param && !arg_is_pointer_global && arg_type !is types.Pointer
 					if (arg_type !is types.Pointer || value_local_mut_receiver)
 						&& !g.c_string_pointer_arg(arg_node, param_types[arg_idx]) {
 						needs_addr = !(arg_node.kind == .ident
-							&& g.local_storage_is_pointer(arg_node.value))
+							&& (g.local_storage_is_pointer(arg_node.value) || arg_is_pointer_global))
 					}
 				}
 				if !is_c_call && !needs_addr && arg_idx == 0
@@ -3545,8 +3548,30 @@ fn (g &FlatGen) receiver_base_type(base_id flat.NodeId) types.Type {
 		if typ := g.current_param_map_type(base.value) {
 			return typ
 		}
+		if typ := g.global_type_for_ident(base.value) {
+			return typ
+		}
 	}
 	return g.tc.resolve_type(base_id)
+}
+
+fn (g &FlatGen) global_type_for_ident(name string) ?types.Type {
+	if typ := g.global_types[name] {
+		return typ
+	}
+	if mod := g.global_modules[name] {
+		qname := qualify_name_in_module(mod, name)
+		if typ := g.global_types[qname] {
+			return typ
+		}
+	}
+	qname := qualify_name_in_module(g.tc.cur_module, name)
+	if qname != name {
+		if typ := g.global_types[qname] {
+			return typ
+		}
+	}
+	return none
 }
 
 fn (mut g FlatGen) gen_current_mut_param_method_receiver(base_id flat.NodeId, wants_ptr bool) bool {
@@ -6020,13 +6045,17 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			arg_is_pointer_param := arg_node.kind == .ident && (g.current_param_type(arg_node.value) or {
 				types.Type(types.void_)
 			}) is types.Pointer
+			arg_is_pointer_global := arg_node.kind == .ident && (g.global_type_for_ident(arg_node.value) or {
+				types.Type(types.void_)
+			}) is types.Pointer
 			value_local_mut_receiver := arg_idx == 0 && (g.method_receiver_is_mut(fn_name)
 				|| g.method_receiver_is_mut(g.direct_call_name(fn_name))) && arg_node.kind == .ident
 				&& !g.local_storage_is_pointer(arg_node.value) && !arg_is_pointer_param
-				&& arg_type !is types.Pointer
+				&& !arg_is_pointer_global && arg_type !is types.Pointer
 			if (arg_type !is types.Pointer || value_local_mut_receiver)
 				&& !g.c_string_pointer_arg(arg_node, param_types[arg_idx]) {
-				needs_addr = !(arg_node.kind == .ident && g.local_storage_is_pointer(arg_node.value))
+				needs_addr = !(arg_node.kind == .ident
+					&& (g.local_storage_is_pointer(arg_node.value) || arg_is_pointer_global))
 			}
 		}
 		is_rvalue := arg_node.kind == .call

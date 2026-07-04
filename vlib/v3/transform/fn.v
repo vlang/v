@@ -1127,6 +1127,10 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, wrapped, target_sum)
 		return t.make_prefix(.amp, t.make_ident(tmp_name))
 	}
+	if param_type.starts_with('&') && arg_node.kind == .ident
+		&& t.pointer_global_arg_matches_param(arg_node.value, param_type) {
+		return t.transform_expr(arg_id)
+	}
 	if !t.in_spawn_expr {
 		if ptr_arg := t.transform_pointer_rvalue_arg(arg_id, *arg_node, param_type) {
 			return ptr_arg
@@ -1157,6 +1161,29 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		}
 	}
 	return t.transform_expr_for_type(arg_id, param_type)
+}
+
+fn (t &Transformer) pointer_global_arg_matches_param(name string, param_type string) bool {
+	arg_type := t.global_ident_type(name) or { return false }
+	if !arg_type.starts_with('&') {
+		return false
+	}
+	param_base := t.normalize_type_alias(param_type[1..])
+	arg_base := t.normalize_type_alias(arg_type[1..])
+	return param_base == arg_base || param_base.all_after_last('.') == arg_base.all_after_last('.')
+}
+
+fn (t &Transformer) global_ident_type(name string) ?string {
+	if typ := t.globals[name] {
+		return t.normalize_type_alias(typ)
+	}
+	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		qname := '${t.cur_module}.${name}'
+		if typ := t.globals[qname] {
+			return t.normalize_type_alias(typ)
+		}
+	}
+	return none
 }
 
 fn (mut t Transformer) lift_lambda_expr_for_fn_param(_id flat.NodeId, node flat.Node, param_type string) ?flat.NodeId {
@@ -2183,6 +2210,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	if source_typ := t.source_type_name_from_c_name(clean_typ) {
 		return t.wrap_string_conversion(expr, source_typ)
 	}
+	if source_typ := t.generic_specialized_source_type_name(clean_typ) {
+		return t.wrap_string_conversion(expr, source_typ)
+	}
 	normalized_stringify_type := t.normalize_runtime_array_stringify_type(clean_typ)
 	if normalized_stringify_type != clean_typ {
 		return t.wrap_string_conversion(expr, normalized_stringify_type)
@@ -2336,6 +2366,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 				if qualified in t.sum_types {
 					return t.lower_sum_str(expr, qualified)
 				}
+				if struct_str := t.lower_struct_str(expr, qualified) {
+					return struct_str
+				}
 				return t.make_string_literal('${qualified}{}')
 			} else if t.is_fixed_array_type(clean_typ) {
 				elem_type := fixed_array_elem_type(clean_typ)
@@ -2352,6 +2385,51 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			}
 		}
 	}
+}
+
+fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?flat.NodeId {
+	info := t.lookup_struct_info(struct_type) or {
+		t.generic_struct_info_for_stringify(struct_type) or { return none }
+	}
+	if struct_type in t.stringify_stack {
+		return t.make_string_literal('${struct_string_display_name(struct_type)}{}')
+	}
+	t.stringify_stack << struct_type
+	defer {
+		t.stringify_stack.delete_last()
+	}
+	if info.fields.len == 0 {
+		return t.make_string_literal('${struct_string_display_name(struct_type)}{}')
+	}
+	base := t.stable_transformed_expr_for_reuse(expr, struct_type, 'struct_str')
+	display := struct_string_display_name(struct_type)
+	mut result := t.make_string_literal('${display}{\n')
+	for field in info.fields {
+		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
+		if field_type.len == 0 {
+			continue
+		}
+		mut field_str := if field_type == struct_type {
+			t.make_string_literal('${struct_string_display_name(field_type)}{}')
+		} else {
+			t.wrap_string_conversion(t.make_selector(base, field.name, field_type), field_type)
+		}
+		if t.normalize_type_alias(field_type) == 'string' {
+			field_str = t.string_plus(t.string_plus(t.make_string_literal("'"), field_str),
+				t.make_string_literal("'"))
+		}
+		result = t.string_plus(result, t.make_string_literal('    ${field.name}: '))
+		result = t.string_plus(result, field_str)
+		result = t.string_plus(result, t.make_string_literal('\n'))
+	}
+	return t.string_plus(result, t.make_string_literal('}'))
+}
+
+fn struct_string_display_name(typ string) string {
+	if typ.starts_with('main.') {
+		return typ.all_after_last('.')
+	}
+	return typ
 }
 
 // lower_multi_return_str formats a multi-return value as `(a, b, ...)`.
@@ -2381,6 +2459,10 @@ fn (t &Transformer) stringify_aggregate_type_name(typ string) ?string {
 	clean := typ.trim_space()
 	if clean.len == 0 {
 		return none
+	}
+	base, args, is_generic := generic_app_parts(clean)
+	if is_generic && args.len > 0 && t.generic_aggregate_base_exists(base, args.len) {
+		return clean
 	}
 	if clean.contains('.') {
 		if !isnil(t.tc) && (clean in t.tc.structs || clean in t.tc.sum_types) {
@@ -2412,6 +2494,86 @@ fn (t &Transformer) stringify_aggregate_type_name(typ string) ?string {
 		return clean
 	}
 	return none
+}
+
+fn (t &Transformer) generic_specialized_source_type_name(typ string) ?string {
+	clean := typ.trim_space().trim_left('&')
+	args := t.recorded_generic_specialization_args(clean) or { return none }
+	if args.len == 0 {
+		return none
+	}
+	suffix := generic_type_suffixes(args)
+	if !isnil(t.tc) {
+		for base, params in t.tc.struct_generic_params {
+			if params.len == args.len
+				&& generic_specialized_type_matches_flat_name(clean, base, suffix) {
+				return generic_specialized_source_type_name_for_base(base, args)
+			}
+		}
+		for base, params in t.tc.sum_generic_params {
+			if params.len == args.len
+				&& generic_specialized_type_matches_flat_name(clean, base, suffix) {
+				return generic_specialized_source_type_name_for_base(base, args)
+			}
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) generic_aggregate_base_exists(base string, arg_count int) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	if params := t.tc.struct_generic_params[base] {
+		return params.len == arg_count
+	}
+	if params := t.tc.sum_generic_params[base] {
+		return params.len == arg_count
+	}
+	if !base.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		qname := '${t.cur_module}.${base}'
+		if params := t.tc.struct_generic_params[qname] {
+			return params.len == arg_count
+		}
+		if params := t.tc.sum_generic_params[qname] {
+			return params.len == arg_count
+		}
+	}
+	return false
+}
+
+fn generic_specialized_type_matches_flat_name(flat_name string, base string, suffix string) bool {
+	if flat_name.len == 0 || base.len == 0 || suffix.len == 0 {
+		return false
+	}
+	mut candidates := []string{}
+	add_generic_specialized_type_candidate(mut candidates, '${base}_${suffix}')
+	add_generic_specialized_type_candidate(mut candidates, c_name('${base}_${suffix}'))
+	if base.contains('.') {
+		module_name := base.all_before_last('.')
+		short_base := base.all_after_last('.')
+		if module_name == 'main' {
+			add_generic_specialized_type_candidate(mut candidates, '${short_base}_${suffix}')
+		}
+		add_generic_specialized_type_candidate(mut candidates,
+			'${module_name}.${short_base}_${suffix}')
+		add_generic_specialized_type_candidate(mut candidates,
+			c_name('${module_name}.${short_base}_${suffix}'))
+	}
+	return flat_name in candidates
+}
+
+fn add_generic_specialized_type_candidate(mut candidates []string, candidate string) {
+	clean := candidate.trim_space()
+	if clean.len > 0 && clean !in candidates {
+		candidates << clean
+	}
+}
+
+fn generic_specialized_source_type_name_for_base(base string, args []string) string {
+	display_base := if base.starts_with('main.') { base.all_after_last('.') } else { base }
+	return '${display_base}[${args.join(', ')}]'
 }
 
 fn (t &Transformer) source_type_name_from_c_name(typ string) ?string {
@@ -2500,17 +2662,24 @@ fn (mut t Transformer) mark_interface_method_implementers_used(iface_name string
 fn (mut t Transformer) lower_sum_str(expr flat.NodeId, sum_name string) flat.NodeId {
 	resolved_sum := t.resolve_sum_name(sum_name)
 	variants := t.sum_types[resolved_sum] or { return t.make_string_literal('${sum_name}{}') }
+	sum_display := if resolved_sum.contains('.') {
+		resolved_sum.all_after_last('.')
+	} else {
+		resolved_sum
+	}
+	if resolved_sum in t.stringify_stack {
+		return t.make_string_literal('${sum_display}{}')
+	}
+	t.stringify_stack << resolved_sum
+	defer {
+		t.stringify_stack.delete_last()
+	}
 	base := t.stable_transformed_expr_for_reuse(expr, resolved_sum, 'sum_str')
 	tag := t.make_selector_op(base, 'typ', 'int', if sum_name.starts_with('&') {
 		.arrow
 	} else {
 		.dot
 	})
-	sum_display := if resolved_sum.contains('.') {
-		resolved_sum.all_after_last('.')
-	} else {
-		resolved_sum
-	}
 	return t.build_sum_str_chain(base, tag, resolved_sum, sum_display, variants, 0)
 }
 

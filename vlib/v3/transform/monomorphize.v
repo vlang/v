@@ -1150,6 +1150,14 @@ fn (mut t Transformer) materialize_generic_sum_spec(spec_name string, decl Gener
 	if !ok || args.len == 0 {
 		return
 	}
+	if variants := t.tc.sum_types[spec_name] {
+		t.sum_types[spec_name] = variants
+		return
+	}
+	if variants := t.sum_types[spec_name] {
+		t.tc.sum_types[spec_name] = variants
+		return
+	}
 	old_module := t.cur_module
 	old_file := t.cur_file
 	old_tc_module := t.tc.cur_module
@@ -3581,7 +3589,8 @@ fn infer_generic_type_args(param_type string, arg_type string, mut inferred map[
 		// A `&T` / `mut T` parameter binds to a by-value argument too (the arg type
 		// carries no `&`), so strip the reference from the parameter regardless of
 		// whether the argument is itself a reference.
-		infer_generic_type_args(param[1..], arg.trim_left('&'), mut inferred)
+		arg_inner := if arg.starts_with('&') { arg[1..] } else { arg }
+		infer_generic_type_args(param[1..], arg_inner, mut inferred)
 		return
 	}
 	if param.starts_with('mut ') {
@@ -3594,6 +3603,23 @@ fn infer_generic_type_args(param_type string, arg_type string, mut inferred map[
 	}
 	if param.starts_with('[]') && arg.starts_with('[]') {
 		infer_generic_type_args(param[2..], arg[2..], mut inferred)
+		return
+	}
+	if param.starts_with('[') && arg.starts_with('[') {
+		p_end := generic_matching_bracket(param, 0)
+		a_end := generic_matching_bracket(arg, 0)
+		if p_end < param.len && a_end < arg.len {
+			infer_generic_type_args(param[p_end + 1..], arg[a_end + 1..], mut inferred)
+		}
+		return
+	}
+	if param.starts_with('[') && arg.ends_with(']') && arg.contains('[') {
+		p_len := fixed_array_len_text(param)
+		a_len := fixed_array_len_text(arg)
+		if p_len == a_len {
+			infer_generic_type_args(fixed_array_elem_type(param), fixed_array_elem_type(arg), mut
+				inferred)
+		}
 		return
 	}
 	if param.starts_with('?') && arg.starts_with('?') {
@@ -3802,10 +3828,74 @@ fn generic_type_name_from_marker(value string) ?string {
 }
 
 fn generic_type_name_display(typ string) string {
-	if typ.starts_with('fn(') {
-		return 'fn ' + typ[2..]
+	if !typ.starts_with('fn(') {
+		return typ
 	}
-	return typ
+	close := generic_fn_type_params_close(typ) or { return 'fn ' + typ[2..] }
+	params := split_type_display_params(typ[3..close])
+	mut displayed_params := []string{cap: params.len}
+	for param in params {
+		displayed_params << generic_fn_param_type_display(param)
+	}
+	return 'fn (' + displayed_params.join(', ') + ')' + typ[close + 1..]
+}
+
+fn generic_fn_param_type_display(typ string) string {
+	clean := typ.trim_space()
+	if clean.starts_with('&') {
+		return 'mut ' + generic_type_name_display(clean[1..])
+	}
+	return generic_type_name_display(clean)
+}
+
+fn generic_fn_type_params_close(typ string) ?int {
+	mut depth := 0
+	for i in 2 .. typ.len {
+		if typ[i] == `(` {
+			depth++
+		} else if typ[i] == `)` {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return none
+}
+
+fn split_type_display_params(s string) []string {
+	mut parts := []string{}
+	mut paren_depth := 0
+	mut bracket_depth := 0
+	mut start := 0
+	for i in 0 .. s.len {
+		match s[i] {
+			`(` {
+				paren_depth++
+			}
+			`)` {
+				paren_depth--
+			}
+			`[` {
+				bracket_depth++
+			}
+			`]` {
+				bracket_depth--
+			}
+			`,` {
+				if paren_depth == 0 && bracket_depth == 0 {
+					parts << s[start..i].trim_space()
+					start = i + 1
+				}
+			}
+			else {}
+		}
+	}
+	tail := s[start..].trim_space()
+	if tail.len > 0 {
+		parts << tail
+	}
+	return parts
 }
 
 fn (mut t Transformer) retarget_cloned_new_map_call(node flat.Node, mut children []flat.NodeId, map_type string) {
