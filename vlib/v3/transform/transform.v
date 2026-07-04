@@ -263,11 +263,15 @@ fn (mut t Transformer) new_call_names_from_used_fn_bodies(used map[string]bool, 
 	mut names := []string{}
 	mut seen := map[string]bool{}
 	mut cur_module := ''
+	mut cur_file := ''
 	limit := if node_limit < t.a.nodes.len { node_limit } else { t.a.nodes.len }
+	old_module := t.cur_module
+	old_file := t.cur_file
 	for i in 0 .. limit {
 		node := t.a.nodes[i]
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
+			cur_file = node.value
 			cur_module = ''
 			continue
 		}
@@ -278,9 +282,12 @@ fn (mut t Transformer) new_call_names_from_used_fn_bodies(used map[string]bool, 
 		if kind_id != 61 || t.fn_decl_has_unresolved_generics(node, cur_module) {
 			continue
 		}
-		if !node.value.starts_with('__anon_fn_') && !late_used_fn_matches(used, node, cur_module) {
+		if !transform_is_generated_fn_after_markused(node.value)
+			&& !late_used_fn_matches(used, node, cur_module) {
 			continue
 		}
+		t.cur_file = cur_file
+		t.cur_module = cur_module
 		for call_name in t.generated_fn_body_call_names(flat.NodeId(i)) {
 			if call_name.len == 0 || seen[call_name] {
 				continue
@@ -293,6 +300,8 @@ fn (mut t Transformer) new_call_names_from_used_fn_bodies(used map[string]bool, 
 			names << call_name
 		}
 	}
+	t.cur_module = old_module
+	t.cur_file = old_file
 	return names
 }
 
@@ -1211,6 +1220,7 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 	// New nodes: relocate children_start that points into the new children block.
 	for k in base_nodes .. w.a.nodes.len {
 		n := w.a.nodes[k]
+		t.clear_typechecker_node_cache(int(k) + int(node_shift))
 		if n.children_start >= base_children {
 			t.a.nodes << n.with_shifted_children(child_shift)
 		} else {
@@ -1231,6 +1241,30 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			t.used_fns[name] = true
 		}
 	}
+}
+
+fn (mut t Transformer) clear_typechecker_node_cache(idx int) {
+	if isnil(t.tc) || idx < 0 {
+		return
+	}
+	if idx < t.tc.resolved_call_set.len {
+		t.tc.resolved_call_names[idx] = ''
+		t.tc.resolved_call_set[idx] = false
+	}
+	if idx < t.tc.resolved_fn_value_set.len {
+		t.tc.resolved_fn_value_names[idx] = ''
+		t.tc.resolved_fn_value_set[idx] = false
+	}
+	if idx < t.tc.expr_type_set.len {
+		t.tc.expr_type_set[idx] = false
+	}
+	if idx < t.tc.statement_nodes.len {
+		t.tc.statement_nodes[idx] = false
+	}
+	t.tc.sparse_resolved_call_names.delete(idx)
+	t.tc.sparse_resolved_fn_values.delete(idx)
+	t.tc.sparse_expr_type_values.delete(idx)
+	t.tc.sparse_statement_nodes.delete(idx)
 }
 
 // split_work_items distributes items across `n` buckets using greedy
@@ -1259,7 +1293,7 @@ fn (t &Transformer) should_transform_fn(node flat.Node) bool {
 	if !t.has_used_fn_filter() {
 		return true
 	}
-	if node.value.starts_with('__anon_fn_') {
+	if transform_is_generated_fn_after_markused(node.value) {
 		return true
 	}
 	if t.cur_module == 'builtin' && node.value == 'exit' {
@@ -1274,6 +1308,10 @@ fn (t &Transformer) should_transform_fn(node flat.Node) bool {
 	return t.used_fn_contains_in_module(node.value, t.cur_module)
 }
 
+fn transform_is_generated_fn_after_markused(name string) bool {
+	return name.starts_with('__anon_fn_') || name.contains('.__anon_fn_')
+}
+
 fn (mut t Transformer) transform_late_used_fn_bodies(names []string, node_limit int) {
 	if names.len == 0 || node_limit <= 0 {
 		return
@@ -1281,10 +1319,16 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, node_limit 
 	mut late := map[string]bool{}
 	mut queued := map[string]bool{}
 	mut pending := []string{}
+	old_module := t.cur_module
+	old_file := t.cur_file
+	t.cur_module = ''
+	t.cur_file = ''
 	for name in names {
 		t.mark_fn_used_name(name)
 		add_late_used_fn_name(name, mut late, mut pending, mut queued)
 	}
+	t.cur_module = old_module
+	t.cur_file = old_file
 	mut processed := map[int]bool{}
 	limit := if node_limit < t.a.nodes.len { node_limit } else { t.a.nodes.len }
 	for pending.len > 0 {
@@ -1322,9 +1366,21 @@ fn (mut t Transformer) transform_pending_late_used_fn_bodies(limit int, mut late
 		t.cur_file = cur_file
 		t.cur_module = cur_module
 		used_before := t.used_fns.clone()
+		node_count_before := t.a.nodes.len
 		t.transform_fn_body(i)
 		for call_name in t.generated_fn_body_call_names(flat.NodeId(i)) {
 			t.enqueue_late_used_call_name(call_name, used_before, mut late, mut pending, mut queued)
+		}
+		for j in node_count_before .. t.a.nodes.len {
+			generated := t.a.nodes[j]
+			if generated.kind != .fn_decl
+				|| !transform_is_generated_fn_after_markused(generated.value) {
+				continue
+			}
+			for call_name in t.generated_fn_body_call_names(flat.NodeId(j)) {
+				t.enqueue_late_used_call_name(call_name, used_before, mut late, mut pending, mut
+					queued)
+			}
 		}
 	}
 }
@@ -5234,7 +5290,12 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 		else {}
 	}
 
-	return normalized == t.normalize_type_alias(clean_expected)
+	expected_normalized := t.normalize_type_alias(clean_expected)
+	if !isnil(t.tc) && expected_normalized in t.tc.interface_names
+		&& t.tc.type_text_implements_interface(normalized, expected_normalized) {
+		return true
+	}
+	return normalized == expected_normalized
 }
 
 fn transform_type_text_is_fixed_array(typ string) bool {
@@ -5589,6 +5650,9 @@ fn (t &Transformer) is_disabled_fn_name(name string) bool {
 // is_disabled_fn_call reports whether is disabled fn call applies in transform.
 fn (t &Transformer) is_disabled_fn_call(id flat.NodeId, node flat.Node) bool {
 	name := t.call_name_for_node(id, node)
+	if name.contains('captures_iter_at') {
+		eprintln('DBG disabled call id=${id} name=${name} disabled=${t.is_disabled_fn_name(name)} node_value=${node.value}')
+	}
 	return t.is_disabled_fn_name(name)
 }
 

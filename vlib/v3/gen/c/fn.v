@@ -612,6 +612,52 @@ fn (g &FlatGen) import_alias_module(alias string) ?string {
 	return none
 }
 
+fn (g &FlatGen) selector_base_module(name string) ?string {
+	if name.len == 0 {
+		return none
+	}
+	if g.tc != unsafe { nil } && g.tc.cur_file.len > 0 {
+		key := g.tc.cur_file + '\n' + name
+		if mod := g.tc.file_imports[key] {
+			return mod
+		}
+	}
+	if mod := g.modules[name] {
+		return mod
+	}
+	if mod := g.tc.imports[name] {
+		return mod
+	}
+	return none
+}
+
+fn (g &FlatGen) selector_base_is_module(name string) bool {
+	if _ := g.selector_base_module(name) {
+		return true
+	}
+	return false
+}
+
+fn (g &FlatGen) selector_base_is_value(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	if g.tc != unsafe { nil } && g.tc.cur_scope != unsafe { nil } {
+		if typ := g.tc.cur_scope.lookup(name) {
+			if typ !is types.Void {
+				return true
+			}
+		}
+	}
+	if _ := g.current_param_type(name) {
+		return true
+	}
+	if _ := g.global_type_for_ident(name) {
+		return true
+	}
+	return false
+}
+
 fn (g &FlatGen) has_import_alias(alias string) bool {
 	if _ := g.import_alias_module(alias) {
 		return true
@@ -2650,7 +2696,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			if fn_node.kind == .selector {
 				base := g.a.child_node(fn_node, 0)
 				base_is_local := if base.kind == .ident {
-					(g.tc.cur_scope.lookup(base.value) or { types.Type(types.void_) }) !is types.Void
+					g.selector_base_is_value(base.value)
 				} else {
 					false
 				}
@@ -3345,14 +3391,14 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				if !is_c_call && arg_idx < typed_param_count
 					&& param_types[arg_idx] is types.Pointer && !(arg_node.kind == .prefix
 					&& arg_node.op == .amp) && !g.arg_is_null_pointer_literal(arg_id, arg_node) {
-					arg_type := g.tc.resolve_type(arg_id)
+					arg_type := g.usable_expr_type(arg_id)
 					arg_is_pointer_param := arg_node.kind == .ident && (g.current_param_type(arg_node.value) or {
 						types.Type(types.void_)
 					}) is types.Pointer
 					value_local_mut_receiver := arg_idx == 0 && (g.method_receiver_is_mut(fn_name)
 						|| g.method_receiver_is_mut(g.direct_call_name(fn_name)))
 						&& arg_node.kind == .ident && !g.local_storage_is_pointer(arg_node.value)
-						&& !arg_is_pointer_param
+						&& !arg_is_pointer_param && arg_type !is types.Pointer
 					if (arg_type !is types.Pointer || value_local_mut_receiver)
 						&& !g.c_string_pointer_arg(arg_node, param_types[arg_idx]) {
 						needs_addr = !(arg_node.kind == .ident
@@ -3546,7 +3592,7 @@ fn (mut g FlatGen) mut_receiver_arg_wants_addr(fn_name string, arg_id flat.NodeI
 	if arg_is_pointer_param {
 		return false
 	}
-	arg_type := g.tc.resolve_type(arg_id)
+	arg_type := g.usable_expr_type(arg_id)
 	if arg_type is types.Pointer {
 		return false
 	}
@@ -3587,7 +3633,7 @@ fn (g &FlatGen) c_style_mut_receiver_arg_wants_addr(fn_name string, arg_id flat.
 	if arg_is_pointer_param {
 		return false
 	}
-	arg_type := g.tc.resolve_type(arg_id)
+	arg_type := g.usable_expr_type(arg_id)
 	if arg_type is types.Pointer {
 		return false
 	}
@@ -4562,9 +4608,24 @@ fn (g &FlatGen) call_key(id flat.NodeId, name string) string {
 		}
 	}
 	if resolved := g.tc.resolved_call_name(id) {
-		return g.normalize_call_key(resolved)
+		if resolved_call_matches_target(resolved, name) {
+			return g.normalize_call_key(resolved)
+		}
 	}
 	return g.normalize_call_key(name)
+}
+
+fn resolved_call_matches_target(resolved string, target string) bool {
+	if resolved.len == 0 || target.len == 0 {
+		return false
+	}
+	if resolved == target || c_name(resolved) == target || resolved == c_name(target) {
+		return true
+	}
+	resolved_short := resolved.all_after_last('.')
+	target_short := target.all_after_last('.')
+	return resolved_short == target_short || c_name(resolved_short) == target_short
+		|| resolved_short == c_name(target_short)
 }
 
 // normalize_call_key transforms normalize call key data for c.
@@ -4802,7 +4863,7 @@ fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.
 	mut needs_addr := false
 	if expected is types.Pointer && !(arg_node.kind == .prefix && arg_node.op == .amp)
 		&& !g.arg_is_null_pointer_literal(arg_id, arg_node) {
-		arg_type := g.tc.resolve_type(arg_id)
+		arg_type := g.usable_expr_type(arg_id)
 		if arg_type !is types.Pointer {
 			needs_addr = true
 		}
@@ -5375,7 +5436,9 @@ fn (mut g FlatGen) specialized_generic_plain_fn_name_for_call(id flat.NodeId, no
 fn (g &FlatGen) generic_plain_fn_base_for_call(id flat.NodeId, name string) ?string {
 	mut candidates := []string{}
 	if resolved := g.tc.resolved_call_name(id) {
-		candidates << resolved
+		if resolved_call_matches_target(resolved, name) {
+			candidates << resolved
+		}
 	}
 	if !name.contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module !in ['', 'main', 'builtin'] {
 		candidates << '${g.tc.cur_module}.${name}'
@@ -5661,16 +5724,14 @@ fn (g &FlatGen) selector_module_call_name(fn_node flat.Node, node flat.Node) ?st
 	if base.kind != .ident {
 		return none
 	}
-	mod_name := g.import_alias_module(base.value) or {
+	if g.selector_base_is_value(base.value) {
+		return none
+	}
+	mod_name := g.selector_base_module(base.value) or {
 		if base.value == g.tc.cur_module {
 			base.value
 		} else {
 			''
-		}
-	}
-	if typ := g.tc.cur_scope.lookup(base.value) {
-		if typ !is types.Void && mod_name.len == 0 {
-			return none
 		}
 	}
 	if mod_name.len == 0 {
@@ -5724,7 +5785,7 @@ fn (g &FlatGen) target_module_call_name(target string, node flat.Node) ?string {
 	if base.len == 0 || method.len == 0 {
 		return none
 	}
-	mod_name := g.import_alias_module(base) or {
+	mod_name := g.selector_base_module(base) or {
 		if base == g.tc.cur_module {
 			base
 		} else {
@@ -5934,13 +5995,14 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		if arg_idx < typed_param_count && param_types[arg_idx] is types.Pointer
 			&& !(arg_node.kind == .prefix && arg_node.op == .amp)
 			&& !g.arg_is_null_pointer_literal(arg_id, arg_node) {
-			arg_type := g.tc.resolve_type(arg_id)
+			arg_type := g.usable_expr_type(arg_id)
 			arg_is_pointer_param := arg_node.kind == .ident && (g.current_param_type(arg_node.value) or {
 				types.Type(types.void_)
 			}) is types.Pointer
 			value_local_mut_receiver := arg_idx == 0 && (g.method_receiver_is_mut(fn_name)
 				|| g.method_receiver_is_mut(g.direct_call_name(fn_name))) && arg_node.kind == .ident
 				&& !g.local_storage_is_pointer(arg_node.value) && !arg_is_pointer_param
+				&& arg_type !is types.Pointer
 			if (arg_type !is types.Pointer || value_local_mut_receiver)
 				&& !g.c_string_pointer_arg(arg_node, param_types[arg_idx]) {
 				needs_addr = !(arg_node.kind == .ident && g.local_storage_is_pointer(arg_node.value))
@@ -6986,11 +7048,7 @@ fn (mut g FlatGen) c_extern_decl_params(node flat.Node) string {
 			continue
 		}
 		pt := g.tc.parse_type(raw_typ)
-		mut ct := if pt is types.OptionType || pt is types.ResultType {
-			g.optional_type_name(pt)
-		} else {
-			g.tc.c_type(pt)
-		}
+		mut ct := g.c_extern_param_c_type(pt)
 		if ct.starts_with('fn_ptr:') {
 			ct = g.resolve_fn_ptr_type(ct)
 		}
@@ -7008,6 +7066,20 @@ fn (mut g FlatGen) c_extern_decl_params(node flat.Node) string {
 		return 'void'
 	}
 	return parts.join(', ')
+}
+
+fn (mut g FlatGen) c_extern_param_c_type(pt types.Type) string {
+	if pt is types.OptionType || pt is types.ResultType {
+		return g.optional_type_name(pt)
+	}
+	if pt is types.Pointer {
+		base := pt.base_type
+		if base is types.Struct && base.name.starts_with('C.')
+			&& base.name !in c_preamble_defined_structs {
+			return 'struct ${base.name[2..]}*'
+		}
+	}
+	return g.tc.c_type(pt)
 }
 
 fn c_extern_param_needs_const_prefix(param_name string, raw_typ string, pt types.Type) bool {

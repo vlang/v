@@ -143,10 +143,14 @@ fn (t &Transformer) resolve_receiver_method_name(base_id flat.NodeId, method str
 		raw_var_clean = raw_clean
 		if raw_clean.len > 0 && raw_clean != base_type {
 			if alias_method := t.resolve_alias_receiver_method(raw_clean, method) {
-				return alias_method
+				if t.receiver_method_matches_base_type(alias_method, base_id) {
+					return alias_method
+				}
 			}
 			if method_name := t.resolve_receiver_method_for_type(raw_clean, method) {
-				return method_name
+				if t.receiver_method_matches_base_type(method_name, base_id) {
+					return method_name
+				}
 			}
 		}
 	}
@@ -158,21 +162,31 @@ fn (t &Transformer) resolve_receiver_method_name(base_id flat.NodeId, method str
 		}
 		if raw_clean.len > 0 && raw_clean != base_type && raw_clean != raw_var_clean {
 			if alias_method := t.resolve_alias_receiver_method(raw_clean, method) {
-				return alias_method
+				if t.receiver_method_matches_base_type(alias_method, base_id) {
+					return alias_method
+				}
 			}
 			if method_name := t.resolve_receiver_method_for_type(raw_clean, method) {
-				return method_name
+				if t.receiver_method_matches_base_type(method_name, base_id) {
+					return method_name
+				}
 			}
 		}
 	}
 	if alias_method := t.resolve_alias_receiver_method(base_type, method) {
-		return alias_method
+		if t.receiver_method_matches_base_type(alias_method, base_id) {
+			return alias_method
+		}
 	}
 	if method_name := t.resolve_receiver_method_for_type(base_type, method) {
-		return method_name
+		if t.receiver_method_matches_base_type(method_name, base_id) {
+			return method_name
+		}
 	}
 	if embedded_method := t.resolve_embedded_receiver_method(base_type, method) {
-		return embedded_method
+		if t.receiver_method_matches_base_type(embedded_method, base_id) {
+			return embedded_method
+		}
 	}
 	return ''
 }
@@ -433,6 +447,10 @@ fn (t &Transformer) raw_var_type_for_expr(id flat.NodeId) ?string {
 // raw_const_type_name_for_expr supports raw const type name for expr handling for Transformer.
 fn (t &Transformer) raw_const_type_name_for_expr(id flat.NodeId) ?string {
 	if int(id) < 0 || isnil(t.tc) {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if t.selector_const_base_is_value(node) {
 		return none
 	}
 	name := t.expr_key(id)
@@ -1626,13 +1644,37 @@ fn (t &Transformer) const_expr_for_arg(arg_id flat.NodeId) ?flat.NodeId {
 		return t.const_expr_for_name(node.value)
 	}
 	if node.kind == .selector && node.children_count > 0 {
-		base := t.a.child_node(&node, 0)
-		if base.kind == .ident {
+		if !t.selector_const_base_is_value(node) {
+			base := t.a.child_node(&node, 0)
 			return t.const_expr_for_name_in_context('${base.value}.${node.value}', t.cur_module,
 				t.cur_file)
 		}
 	}
 	return none
+}
+
+fn (t &Transformer) selector_const_base_is_value(node flat.Node) bool {
+	if node.kind != .selector || node.children_count == 0 || isnil(t.tc) {
+		return false
+	}
+	base_id := t.a.child(&node, 0)
+	if int(base_id) < 0 {
+		return false
+	}
+	base := t.a.nodes[int(base_id)]
+	if base.kind != .ident {
+		return false
+	}
+	if t.var_type(base.value).len > 0 {
+		return true
+	}
+	if typ := t.tc.expr_type(base_id) {
+		name := typ.name()
+		return name.len > 0 && name !in ['void', 'unknown']
+	}
+	resolved := t.tc.resolve_type(base_id)
+	name := resolved.name()
+	return name.len > 0 && name !in ['void', 'unknown']
 }
 
 // const_expr_for_name supports const expr for name handling for Transformer.
@@ -3838,13 +3880,15 @@ fn (mut t Transformer) try_lower_move_method_call(call_id flat.NodeId, node flat
 
 // lift_fn_literal supports lift fn literal handling for Transformer.
 fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.NodeId {
-	name := t.new_temp('anon_fn')
+	name := t.new_fn_literal_name()
 	mut param_types := []types.Type{}
 	mut param_ids := []flat.NodeId{}
 	mut param_names := []string{}
 	mut capture_names := []string{}
 	mut capture_types := map[string]string{}
 	mut capture_globals := map[string]string{}
+	mut capture_mut := map[string]bool{}
+	mut capture_by_ref := map[string]bool{}
 	mut body_ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
@@ -3872,8 +3916,16 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 					capture_type = 'int'
 				}
 				capture_names << child.value
-				capture_types[child.value] = capture_type
+				is_mut_capture := child.is_mut
+				is_ref_capture := is_mut_capture && !capture_type.starts_with('&')
+				capture_types[child.value] = if is_ref_capture {
+					'&${capture_type}'
+				} else {
+					capture_type
+				}
 				capture_globals[child.value] = '${name}_${child.value}'
+				capture_mut[child.value] = is_mut_capture
+				capture_by_ref[child.value] = is_ref_capture
 			}
 		} else {
 			body_ids << child_id
@@ -3897,6 +3949,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		}
 	}
 	mut lifted_body := []flat.NodeId{cap: capture_names.len + body_ids.len}
+	mut saved_capture_pointer_flags := map[string]bool{}
 	for capture_name in capture_names {
 		if capture_name in param_names {
 			continue
@@ -3904,8 +3957,19 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		capture_type := capture_types[capture_name] or { continue }
 		capture_global := capture_globals[capture_name] or { continue }
 		t.add_fn_literal_capture_global(capture_global, capture_type)
-		t.pending_stmts << t.make_assign(t.make_ident(capture_global), t.make_ident(capture_name))
+		capture_rhs := if capture_by_ref[capture_name] or { false } {
+			t.make_prefix(.amp, t.make_ident(capture_name))
+		} else {
+			t.make_ident(capture_name)
+		}
+		t.pending_stmts << t.make_assign(t.make_ident(capture_global), capture_rhs)
 		t.set_var_type(capture_name, capture_type)
+		if capture_mut[capture_name] or { false } {
+			saved_capture_pointer_flags[capture_name] = t.pointer_value_lvalues[capture_name] or {
+				false
+			}
+			t.pointer_value_lvalues[capture_name] = true
+		}
 		lifted_body << t.make_decl_assign_typed(capture_name, t.make_ident(capture_global),
 			capture_type)
 	}
@@ -3916,6 +3980,15 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	t.pending_stmts.clear()
 	new_body := t.transform_stmts(lifted_body)
 	t.pending_stmts = outer_pending
+	for capture_name in capture_names {
+		if capture_mut[capture_name] or { false } {
+			if saved_capture_pointer_flags[capture_name] or { false } {
+				t.pointer_value_lvalues[capture_name] = true
+			} else {
+				t.pointer_value_lvalues.delete(capture_name)
+			}
+		}
+	}
 	t.restore_var_types(saved_vars)
 	t.mut_param_values = saved_mut_param_values.clone()
 	t.cur_fn_name = saved_fn_name
@@ -3962,6 +4035,25 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		return t.make_ident('${t.cur_module}.${name}')
 	}
 	return t.make_ident(name)
+}
+
+fn (mut t Transformer) new_fn_literal_name() string {
+	for {
+		name := t.new_temp('anon_fn')
+		if !t.fn_literal_name_exists(name) {
+			return name
+		}
+	}
+	return t.new_temp('anon_fn')
+}
+
+fn (t &Transformer) fn_literal_name_exists(name string) bool {
+	for node in t.a.nodes {
+		if node.kind == .fn_decl && (node.value == name || node.value.all_after_last('.') == name) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) add_fn_literal_capture_global(name string, typ string) {
@@ -4841,10 +4933,42 @@ fn (t &Transformer) call_resolved_to_method(call_id flat.NodeId, method_name str
 
 fn (mut t Transformer) lower_checker_selected_receiver_method(call_id flat.NodeId, node flat.Node, base_id flat.NodeId, builtin_name string) ?flat.NodeId {
 	resolved := t.checker_selected_receiver_method_name(call_id, builtin_name) or { return none }
+	if !t.receiver_method_matches_base_type(resolved, base_id) {
+		return none
+	}
 	args := t.transform_receiver_method_args(node, base_id, resolved)
 	ret_type := t.receiver_method_return_type(resolved, node.typ)
 	t.mark_fn_used_name(resolved)
 	return t.make_call_typed(resolved, args, ret_type)
+}
+
+fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_id flat.NodeId) bool {
+	receiver_name := method_name.all_before_last('.')
+	if receiver_name.len == 0 {
+		return true
+	}
+	mut base_type := t.node_type(base_id)
+	if base_type.len == 0 && !isnil(t.tc) {
+		base_type = t.tc.resolve_type(base_id).name()
+	}
+	for base_type.starts_with('&') {
+		base_type = base_type[1..]
+	}
+	base_type = t.normalize_type_alias(base_type)
+	if base_type.len == 0 {
+		return true
+	}
+	if receiver_name == base_type {
+		return true
+	}
+	if !base_type.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' && receiver_name == '${t.cur_module}.${base_type}' {
+		return true
+	}
+	if receiver_name.all_after_last('.') != base_type.all_after_last('.') {
+		return true
+	}
+	return false
 }
 
 fn (t &Transformer) checker_selected_receiver_method_name(call_id flat.NodeId, builtin_name string) ?string {

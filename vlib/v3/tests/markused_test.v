@@ -294,6 +294,146 @@ fn main() {
 	assert used['ErrorKind.unopened_alternates']
 }
 
+fn test_nested_fn_literal_roots_callback_helper_dependencies() {
+	used := mark_used_source('nested_fn_literal_callback_helpers', '
+struct Match {}
+
+fn Match.new() Match {
+	return Match{}
+}
+
+struct Caps {}
+
+fn Caps.overall(m Match) Caps {
+	_ := m
+	return Caps{}
+}
+
+fn (c Caps) get(i int) ?Match {
+	_ := c
+	_ := i
+	return Match{}
+}
+
+fn no_index(name string) ?int {
+	_ := name
+	return none
+}
+
+fn append_match(mut dst []u8, m Match) {
+	_ := m
+	dst << u8(1)
+}
+
+fn interpolate(append fn (int, mut []u8), name_to_index fn (string) ?int, mut dst []u8) {
+	_ := name_to_index
+	append(0, mut dst)
+}
+
+fn find_iter(matched fn (Match) bool) {
+	_ := matched(Match.new())
+}
+
+fn replace(mut dst []u8) {
+	find_iter(fn [mut dst] (m Match) bool {
+		caps := Caps.overall(m)
+		interpolate(fn [caps] (i int, mut out []u8) {
+			cap_match := caps.get(i) or {
+				return
+			}
+			append_match(mut out, cap_match)
+		}, no_index, mut dst)
+		return true
+	})
+}
+
+fn main() {
+	mut dst := []u8{}
+	replace(mut dst)
+}
+')
+	assert used['Caps.overall']
+	assert used['Caps.get']
+	assert used['append_match']
+	assert used['interpolate']
+	assert used['no_index']
+	assert used['Match.new']
+}
+
+fn test_imported_nested_fn_literal_roots_private_callback_helpers() {
+	a, tc := parse_checked_project('imported_nested_fn_literal_callback_helpers', {
+		'main.v':     'module main
+
+import worker
+
+fn main() {
+	mut dst := []u8{}
+	worker.replace(mut dst)
+}
+'
+		'worker/w.v': 'module worker
+
+struct Match {}
+
+fn Match.new() Match {
+	return Match{}
+}
+
+struct Caps {}
+
+fn Caps.overall(m Match) Caps {
+	_ := m
+	return Caps{}
+}
+
+fn (c Caps) get(i int) ?Match {
+	_ := c
+	_ := i
+	return Match{}
+}
+
+fn no_index(name string) ?int {
+	_ := name
+	return none
+}
+
+fn append_match(mut dst []u8, m Match) {
+	_ := m
+	dst << u8(1)
+}
+
+fn interpolate(append fn (int, mut []u8), name_to_index fn (string) ?int, mut dst []u8) {
+	_ := name_to_index
+	append(0, mut dst)
+}
+
+fn find_iter(matched fn (Match) bool) {
+	_ := matched(Match.new())
+}
+
+pub fn replace(mut dst []u8) {
+	find_iter(fn [mut dst] (m Match) bool {
+		caps := Caps.overall(m)
+		interpolate(fn [caps] (i int, mut out []u8) {
+			cap_match := caps.get(i) or {
+				return
+			}
+			append_match(mut out, cap_match)
+		}, no_index, mut dst)
+		return true
+	})
+}
+'
+	}, 'main.v')
+	used := markused.mark_used(a, tc)
+	assert used['worker.Caps.overall']
+	assert used['worker.Caps.get']
+	assert used['worker.append_match']
+	assert used['worker.interpolate']
+	assert used['worker.no_index']
+	assert used['worker.Match.new']
+}
+
 fn test_map_str_seeds_string_plus_runtime_helper() {
 	used := mark_used_source('map_str_string_plus', '
 fn render(m map[string]int) string {

@@ -108,6 +108,16 @@ fn test_generic_struct_interface_dispatch_emits_required_methods() {
 	assert out == '29'
 }
 
+fn test_generic_comptime_if_uses_interface_implementation() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_comptime_interface_impl', {
+		'sink/sink.v': 'module sink\n\npub interface Writer {\nmut:\n\twrite(n int) int\n}\n\npub struct Counter[W] {\nmut:\n\twriter W\n}\n\npub fn Counter.new[W](writer W) Counter[W] {\n\treturn Counter[W]{\n\t\twriter: writer\n\t}\n}\n\npub fn (mut counter Counter[W]) write(n int) int {\n\t$if W is Writer {\n\t\treturn counter.writer.write(n)\n\t} $else {\n\t\treturn -1\n\t}\n}\n'
+		'user/user.v': 'module user\n\nimport sink\n\nstruct LocalWriter implements sink.Writer {\nmut:\n\ttotal int\n}\n\nfn (mut w LocalWriter) write(n int) int {\n\tw.total += n\n\treturn w.total\n}\n\npub fn run() int {\n\tmut counter := sink.Counter.new(LocalWriter{})\n\treturn counter.write(41)\n}\n'
+		'main.v':      'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
+	})
+	assert out == '41'
+}
+
 fn test_interface_generated_generic_method_body_preserves_cross_module_arg_type() {
 	v3_bin := generic_cross_build_v3()
 	out := generic_cross_run_project(v3_bin, 'generic_interface_nested_cross_module_arg', {

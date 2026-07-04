@@ -25,6 +25,7 @@ cmd/tools/vpm/link_test.v
 cmd/tools/vpm/remove_test.v
 cmd/tools/vpm/update_test.v
 cmd/tools/vtimeout_test.v
+cmd/tools/vvet/vet_test.v
 cmd/tools/vwatch_test.v
 cmd/v/v2_test.v
 cmd/v2/a_test.v
@@ -65,6 +66,7 @@ vlib/builtin/string_strip_margin_test.v
 vlib/builtin/string_test.v
 vlib/builtin/string_trim_indent_test.v
 vlib/builtin/utf8_test.v
+vlib/cli/cli_test.v
 vlib/compress/deflate/deflate_test.v
 vlib/compress/lz/lz_test.v
 vlib/compress/snappy/snappy_block_test.v
@@ -320,6 +322,7 @@ vlib/v/slow_tests/map_issue_22139_clear_test.v
 vlib/v/slow_tests/map_issue_22143_clear_test.v
 vlib/v/slow_tests/map_issue_22145_clear_test.v
 vlib/v/slow_tests/map_issue_22148_clear_test.v
+vlib/v/slow_tests/prod_test.v
 vlib/v/slow_tests/profile/profile_test.v
 vlib/v/slow_tests/repl/import_vmodules_submodule_test.v
 vlib/v/slow_tests/repl/repl_time_state_test.v
@@ -498,6 +501,7 @@ vlib/v/tests/builtin_maps/map_sumtype_values_test.v
 vlib/v/tests/builtin_maps/map_value_init_test.v
 vlib/v/tests/builtin_maps/maps_equal_test.v
 vlib/v/tests/builtin_maps/unsafe_pointers_to_map_values_test.v
+vlib/v/tests/builtin_overflow_test.v
 vlib/v/tests/builtin_strings_and_interpolation/high_ascii_const_rune_test.v
 vlib/v/tests/builtin_strings_and_interpolation/num_lit_call_method_test.v
 vlib/v/tests/builtin_strings_and_interpolation/raw_string_test.v

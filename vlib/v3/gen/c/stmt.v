@@ -1701,6 +1701,9 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 					return typ
 				}
 			}
+			if typ := g.global_type_for_ident(node.value) {
+				return typ
+			}
 		}
 		if node.kind == .selector && node.children_count > 0 {
 			base_type0 := g.usable_expr_type(g.a.child(&node, 0))
@@ -1800,6 +1803,22 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 		}
 	}
 	return g.tc.resolve_type(id)
+}
+
+fn (g &FlatGen) global_type_for_ident(name string) ?types.Type {
+	if name.len == 0 {
+		return none
+	}
+	if typ := g.global_types[name] {
+		return typ
+	}
+	if mod := g.global_modules[name] {
+		qname := qualify_name_in_module(mod, name)
+		if typ := g.global_types[qname] {
+			return typ
+		}
+	}
+	return none
 }
 
 fn (g &FlatGen) array_method_call_return_type(fn_node &flat.Node) ?types.Type {
@@ -3167,7 +3186,37 @@ fn (mut g FlatGen) gen_or_expr(node flat.Node) {
 	tmp := g.tmp_name()
 	expr_type := g.optional_source_type_for_expr(expr_id, g.or_expr_source_type(expr_id, expr_node))
 	opt_ct := g.optional_type_name_for_expr(expr_id, expr_type)
+	no_value := if expr_type is types.OptionType {
+		expr_type.base_type is types.Void
+	} else if expr_type is types.ResultType {
+		expr_type.base_type is types.Void
+	} else {
+		false
+	}
 	val_ct, val_type := g.optional_value_ct(expr_type)
+	if no_value {
+		g.write('({${opt_ct} ${tmp} = ')
+		g.gen_expr_with_expected_type(expr_id, expr_type)
+		g.write('; if (!${tmp}.ok) { IError err = ${tmp}.err; (void)err; ')
+		g.push_scope()
+		g.tc.cur_scope.insert('err', g.tc.parse_type('IError'))
+		if node.value == '!' || node.value == '?' {
+			if g.cur_fn_ret_is_optional {
+				fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
+				g.gen_return_cleanup()
+				g.write('return (${fn_opt_ct}){.ok = false, .err = err};')
+			} else {
+				g.write('panic(IError__str(err));')
+			}
+		} else {
+			for i in 0 .. or_body.children_count {
+				g.gen_node(g.a.child(&or_body, i))
+			}
+		}
+		g.pop_scope()
+		g.write(' } 0;})')
+		return
+	}
 	val := g.tmp_name()
 	g.write('({${opt_ct} ${tmp} = ')
 	g.gen_expr_with_expected_type(expr_id, expr_type)

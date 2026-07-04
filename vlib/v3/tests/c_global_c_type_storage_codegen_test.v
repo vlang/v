@@ -150,6 +150,37 @@ fn main() {
 	assert !c_code.contains('FileReader** __iface_src_'), c_code
 }
 
+fn test_global_pointer_interface_arg_does_not_take_global_address() {
+	c_code := gen_c_for_c_global_source('global_pointer_interface_arg', 'module main
+
+interface Logger {
+mut:
+	free()
+}
+
+struct Log {}
+
+fn (mut l Log) free() {}
+
+__global default_logger &Logger = &Logger(Log{})
+
+fn deinit() {
+	free_logger(default_logger)
+}
+
+fn free_logger(logger &Logger) {
+	logger.free()
+}
+
+fn main() {
+	deinit()
+}
+')
+	assert c_code.contains('Logger* default_logger;'), c_code
+	assert c_code.contains('free_logger(default_logger);'), c_code
+	assert !c_code.contains('free_logger(&default_logger);'), c_code
+}
+
 fn test_mut_parameter_pointer_return_stays_pointer() {
 	c_code := gen_c_for_c_global_source('mut_parameter_pointer_return', 'module main
 

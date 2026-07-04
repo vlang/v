@@ -1463,8 +1463,68 @@ fn (mut t Transformer) generated_fn_used_names(decl GenericFnDecl, clone_id flat
 fn (mut t Transformer) generated_fn_body_call_names(root flat.NodeId) []string {
 	mut names := []string{}
 	mut seen := map[string]bool{}
+	saved_fn_name := t.cur_fn_name
+	saved_ret_type := t.cur_fn_ret_type
+	saved_vars := t.var_types.clone()
+	saved_mut_param_values := t.mut_param_values.clone()
+	t.seed_generated_fn_body_context(root)
 	t.collect_generated_fn_body_call_names(root, mut names, mut seen)
+	t.cur_fn_name = saved_fn_name
+	t.cur_fn_ret_type = saved_ret_type
+	t.restore_var_types(saved_vars)
+	t.mut_param_values = saved_mut_param_values.clone()
 	return names
+}
+
+fn (mut t Transformer) seed_generated_fn_body_context(root flat.NodeId) {
+	if int(root) < 0 || int(root) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(root)]
+	if node.kind != .fn_decl {
+		return
+	}
+	t.cur_fn_name = node.value
+	t.cur_fn_ret_type = if node.typ.len > 0 { node.typ } else { t.fn_body_return_type(node) }
+	t.reset_var_types()
+	param_count := t.fn_body_param_count(node)
+	param_types := t.fn_body_param_types(node, param_count)
+	mut param_idx := 0
+	for i in 0 .. node.children_count {
+		child_id := t.a.children[node.children_start + i]
+		if int(child_id) < 0 {
+			continue
+		}
+		child := t.a.nodes[int(child_id)]
+		if node_kind_id(child) != 75 || child.value.len == 0 {
+			continue
+		}
+		raw_typ := if child.typ.len > 0 {
+			if child.typ.starts_with('...') {
+				'[]' + t.normalize_type_alias(child.typ[3..])
+			} else {
+				t.normalize_type_alias(child.typ)
+			}
+		} else {
+			''
+		}
+		typ := if raw_typ.len > 0 {
+			raw_typ
+		} else if param_idx < param_types.len {
+			t.normalize_type_alias(param_types[param_idx].name())
+		} else if param_idx == 0 {
+			t.fn_body_receiver_type(node.value)
+		} else {
+			''
+		}
+		if typ.len > 0 {
+			t.set_var_type_with_raw(child.value, typ, raw_typ)
+		}
+		if child.is_mut || child.op == .amp || child.typ.starts_with('mut ') {
+			t.mut_param_values[child.value] = true
+		}
+		param_idx++
+	}
 }
 
 fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, mut names []string, mut seen map[string]bool) {
@@ -1472,6 +1532,9 @@ fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, mut 
 		return
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind == .decl_assign {
+		t.seed_generated_decl_assign_binding(node)
+	}
 	if node.kind == .call {
 		call_name := t.generated_call_name_for_used(id, node)
 		if call_name.len > 0 {
@@ -1485,6 +1548,44 @@ fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, mut 
 	}
 }
 
+fn (mut t Transformer) seed_generated_decl_assign_binding(node flat.Node) {
+	if node.children_count < 2 {
+		return
+	}
+	lhs_id := t.a.child(&node, 0)
+	rhs_id := t.a.child(&node, 1)
+	if int(lhs_id) < 0 || int(lhs_id) >= t.a.nodes.len {
+		return
+	}
+	lhs := t.a.nodes[int(lhs_id)]
+	if lhs.kind != .ident || lhs.value.len == 0 {
+		return
+	}
+	typ := t.generated_decl_assign_binding_type(node, lhs, rhs_id)
+	if typ.len > 0 {
+		t.set_var_type_with_raw(lhs.value, typ, typ)
+	}
+}
+
+fn (mut t Transformer) generated_decl_assign_binding_type(node flat.Node, lhs flat.Node, rhs_id flat.NodeId) string {
+	for candidate in [lhs.typ, node.typ] {
+		if candidate.len > 0 {
+			return t.normalize_type_alias(candidate)
+		}
+	}
+	if int(rhs_id) >= 0 && int(rhs_id) < t.a.nodes.len {
+		rhs := t.a.nodes[int(rhs_id)]
+		if rhs.typ.len > 0 {
+			return t.normalize_type_alias(rhs.typ)
+		}
+		rhs_type := t.node_type(rhs_id)
+		if rhs_type.len > 0 {
+			return t.normalize_type_alias(rhs_type)
+		}
+	}
+	return ''
+}
+
 fn (mut t Transformer) generated_fn_value_name_for_used(id flat.NodeId, node flat.Node) ?string {
 	if !isnil(t.tc) {
 		if name := t.tc.resolved_fn_value_name(id) {
@@ -1492,6 +1593,9 @@ fn (mut t Transformer) generated_fn_value_name_for_used(id flat.NodeId, node fla
 		}
 	}
 	if node.kind == .ident && node.value.len > 0 {
+		if t.var_type(node.value).len > 0 {
+			return none
+		}
 		if t.generated_used_name_is_known_fn(node.value) {
 			return node.value
 		}
@@ -1554,10 +1658,19 @@ fn (mut t Transformer) generated_call_name_for_used(id flat.NodeId, node flat.No
 				return '${base_type}.${fn_node.value}'
 			}
 		}
+		if fn_node.kind == .ident && fn_node.value.len > 0 && t.var_type(fn_node.value).len > 0 {
+			return ''
+		}
 	}
 	call_name := t.call_name_for_node(id, node)
 	if call_name.len > 0 {
-		return call_name
+		if !t.generated_call_matches_selector_receiver(call_name, node) {
+			if receiver_call := t.generated_selector_receiver_call_name(node) {
+				return receiver_call
+			}
+			return ''
+		}
+		return t.generated_known_call_name(call_name) or { call_name }
 	}
 	if node.children_count == 0 {
 		return ''
@@ -1565,6 +1678,9 @@ fn (mut t Transformer) generated_call_name_for_used(id flat.NodeId, node flat.No
 	fn_id := t.a.child(&node, 0)
 	fn_node := t.a.nodes[int(fn_id)]
 	if fn_node.kind == .ident && fn_node.value.len > 0 {
+		if t.var_type(fn_node.value).len > 0 {
+			return ''
+		}
 		return fn_node.value
 	}
 	if fn_node.kind == .selector && fn_node.value.len > 0 && fn_node.children_count > 0 {
@@ -1580,6 +1696,90 @@ fn (mut t Transformer) generated_call_name_for_used(id flat.NodeId, node flat.No
 		}
 	}
 	return ''
+}
+
+fn (t &Transformer) generated_call_matches_selector_receiver(call_name string, node flat.Node) bool {
+	if call_name.len == 0 || node.children_count == 0 {
+		return true
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.children_count == 0 {
+		return true
+	}
+	receiver_name := call_name.all_before_last('.')
+	if receiver_name.len == 0 {
+		return true
+	}
+	base_type := t.generated_selector_receiver_type(fn_node)
+	if base_type.len == 0 {
+		return true
+	}
+	if receiver_name == base_type {
+		return true
+	}
+	if !base_type.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' && receiver_name == '${t.cur_module}.${base_type}' {
+		return true
+	}
+	if receiver_name.all_after_last('.') != base_type.all_after_last('.') {
+		return true
+	}
+	return false
+}
+
+fn (t &Transformer) generated_selector_receiver_call_name(node flat.Node) ?string {
+	if node.children_count == 0 {
+		return none
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.children_count == 0 || fn_node.value.len == 0 {
+		return none
+	}
+	base_type := t.generated_selector_receiver_type(fn_node)
+	if base_type.len == 0 {
+		return none
+	}
+	return '${base_type}.${fn_node.value}'
+}
+
+fn (t &Transformer) generated_selector_receiver_type(fn_node flat.Node) string {
+	if fn_node.kind != .selector || fn_node.children_count == 0 {
+		return ''
+	}
+	base_id := t.a.child(&fn_node, 0)
+	base_node := t.a.nodes[int(base_id)]
+	mut base_type := ''
+	if base_node.kind == .ident {
+		base_type = t.var_type(base_node.value)
+	}
+	if base_type.len == 0 {
+		base_type = t.node_type(base_id)
+	}
+	if base_type.len == 0 && !isnil(t.tc) {
+		base_type = t.tc.resolve_type(base_id).name()
+	}
+	for base_type.starts_with('&') {
+		base_type = base_type[1..]
+	}
+	return t.normalize_type_alias(base_type)
+}
+
+fn (t &Transformer) generated_known_call_name(name string) ?string {
+	if name.len == 0 {
+		return none
+	}
+	if t.generated_used_name_is_known_fn(name) {
+		return name
+	}
+	if !name.contains('.') || t.cur_module.len == 0 || t.cur_module == 'main'
+		|| t.cur_module == 'builtin' || name.starts_with('${t.cur_module}.') {
+		return none
+	}
+	qname := '${t.cur_module}.${name}'
+	if t.generated_used_name_is_known_fn(qname) {
+		return qname
+	}
+	return none
 }
 
 fn (mut t Transformer) push_generated_used_name(name string, mut names []string, mut seen map[string]bool) {
@@ -3630,12 +3830,33 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 	if node.kind != .call || children.len == 0 || t.skip_generics {
 		return
 	}
+	if node.children_count > 0 {
+		c0 := t.a.child_node(&node, 0)
+		if c0.kind == .ident && c0.value.contains('captures_iter_at') {
+			eprintln('DBG retarget start node=${c0.value} typ=${node.typ} value=${node.value} active=${t.active_generic_params} args=${args}')
+		}
+	}
 	decls := t.cached_generic_fn_decls()
 	if decls.len == 0 {
 		return
 	}
-	decl_key := t.generic_call_decl_key(flat.empty_node, node, t.cur_module, decls) or { return }
+	decl_key := t.generic_call_decl_key(flat.empty_node, node, t.cur_module, decls) or {
+		if node.children_count > 0 {
+			c0 := t.a.child_node(&node, 0)
+			if c0.kind == .ident && c0.value.contains('captures_iter_at') {
+				eprintln('DBG retarget no decl')
+			}
+		}
+		return
+	}
 	decl := decls[decl_key] or { return }
+	if node.children_count > 0 {
+		c0 := t.a.child_node(&node, 0)
+		if c0.kind == .ident && c0.value.contains('captures_iter_at') {
+			eprintln('DBG retarget decl=${decl_key} params=${t.generic_fn_param_names(decl.node,
+				decl.module)}')
+		}
+	}
 	if t.should_skip_generic_call_specialization(decl_key)
 		|| t.generic_decl_is_receiver_method(decl.node) {
 		return
@@ -3677,7 +3898,19 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			param_idx++
 		}
 		for name in param_names {
-			arg := inferred[name] or { return }
+			arg := inferred[name] or {
+				idx := t.active_generic_param_index(name)
+				if idx < 0 || idx >= args.len {
+					if node.children_count > 0 {
+						c0 := t.a.child_node(&node, 0)
+						if c0.kind == .ident && c0.value.contains('captures_iter_at') {
+							eprintln('DBG retarget missing ${name} idx=${idx}')
+						}
+					}
+					return
+				}
+				args[idx]
+			}
 			call_args << t.generic_arg_for_decl_module(arg, decl.module)
 		}
 	}
@@ -3685,6 +3918,12 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 		return
 	}
 	spec_value := specialized_generic_fn_value(decl.node.value, call_args)
+	if node.children_count > 0 {
+		c0 := t.a.child_node(&node, 0)
+		if c0.kind == .ident && c0.value.contains('captures_iter_at') {
+			eprintln('DBG retarget spec ${c0.value} -> ${spec_value} call_args=${call_args}')
+		}
+	}
 	children[0] = t.make_ident(transform_qualified_fn_name(decl.module, spec_value))
 }
 
@@ -3696,6 +3935,12 @@ fn (mut t Transformer) copy_cloned_resolution(src_id flat.NodeId, dst_id flat.No
 	dst_idx := int(dst_id)
 	if src_idx < 0 || dst_idx < 0 {
 		return
+	}
+	if src_idx < t.tc.resolved_call_set.len && t.tc.resolved_call_set[src_idx] {
+		src_name := t.tc.resolved_call_names[src_idx]
+		if src_name.contains('captures_iter_at') {
+			eprintln('DBG copy resolution src=${src_name} is_gen=${t.resolved_call_is_generic_fn(src_name)}')
+		}
 	}
 	if src_idx < t.tc.resolved_call_set.len && t.tc.resolved_call_set[src_idx]
 		&& !t.resolved_call_is_generic_fn(t.tc.resolved_call_names[src_idx]) {

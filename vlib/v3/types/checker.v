@@ -4480,6 +4480,14 @@ fn (mut tc TypeChecker) comptime_type_matches(actual string, expected string) ?b
 	}
 
 	expected_type := tc.comptime_type_match_type(clean_expected)
+	if expected_type is Interface {
+		return tc.type_implements_interface(actual_type, expected_type)
+	}
+	if expected_type.name() in tc.interface_names {
+		return tc.type_implements_interface(actual_type, Interface{
+			name: expected_type.name()
+		})
+	}
 	return normalized == expected_type.name()
 }
 
@@ -4489,6 +4497,23 @@ fn (mut tc TypeChecker) comptime_type_match_type(type_text string) Type {
 		return typ.base_type
 	}
 	return typ
+}
+
+// type_text_implements_interface reports whether a concrete type expression
+// satisfies an interface type expression in the current checker module context.
+pub fn (mut tc TypeChecker) type_text_implements_interface(actual_text string, iface_text string) bool {
+	actual := tc.comptime_type_match_type(actual_text)
+	expected := tc.comptime_type_match_type(iface_text)
+	if expected is Interface {
+		return tc.type_implements_interface(actual, expected)
+	}
+	expected_name := expected.name()
+	if expected_name in tc.interface_names {
+		return tc.type_implements_interface(actual, Interface{
+			name: expected_name
+		})
+	}
+	return false
 }
 
 fn comptime_condition_matching_paren(s string, start int) int {

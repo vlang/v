@@ -575,6 +575,11 @@ fn add_safe_decl_alias(callee string, callee_info FnDeclInfo, a &flat.FlatAst, m
 	if fn_decl_key_is_exact_for_info(callee, alias, callee_info.module) {
 		return
 	}
+	alias_lowered := markused_c_name(alias)
+	if (callee == alias || callee == alias_lowered)
+		&& markused_is_unqualified_receiver_method_name(alias) {
+		return
+	}
 	mut aliases := []string{cap: 3}
 	aliases << alias
 	qalias := qualify_fn(callee_info.module, alias)
@@ -590,6 +595,14 @@ fn add_safe_decl_alias(callee string, callee_info FnDeclInfo, a &flat.FlatAst, m
 			enqueue(candidate, mut used, mut queue)
 		}
 	}
+}
+
+fn markused_is_unqualified_receiver_method_name(name string) bool {
+	if !name.contains('.') || name.all_before('.').contains('.') {
+		return false
+	}
+	receiver := name.all_before('.')
+	return receiver.len > 0 && receiver[0] >= `A` && receiver[0] <= `Z`
 }
 
 // valid_symbol_name supports valid symbol name handling for markused.
@@ -1958,11 +1971,20 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 								base_id := c.a.child(&callee, 0)
 								if int(base_id) >= 0 {
 									base := c.a.nodes[int(base_id)]
-									has_exact_selector_call = c.collect_checker_selected_call(resolved_call, mut
-										calls)
+									base_is_local_value := base.kind == .ident
+										&& base.value in local_values
 									if callee.value == 'str'
 										&& c.expr_lowers_to_map_str(base_id, local_values, local_types) {
 										calls << 'string__plus'
+									}
+									if base_is_local_value {
+										has_exact_selector_call = c.collect_typed_receiver_method(base_id,
+											callee.value, cur_module, imports, local_values,
+											local_types, mut calls)
+									}
+									if !has_exact_selector_call && !base_is_local_value {
+										has_exact_selector_call = c.collect_checker_selected_call(resolved_call, mut
+											calls)
 									}
 									if !has_exact_selector_call {
 										has_exact_selector_call = c.collect_typed_receiver_method(base_id,
@@ -3276,10 +3298,17 @@ fn (c &CallCollector) collect_top_level_selector_call(callee &flat.Node, method 
 		base_id := c.a.child(callee, 0)
 		if int(base_id) >= 0 {
 			base := c.a.node(base_id)
-			has_exact_selector_call = c.collect_checker_selected_call(resolved_call, mut calls)
+			base_is_local_value := base.kind == .ident && base.value in local_values
 			if method == 'str'
 				&& c.top_level_expr_lowers_to_map_str(base_id, cur_module, imports, local_values, local_types) {
 				calls << 'string__plus'
+			}
+			if base_is_local_value {
+				has_exact_selector_call = c.collect_top_level_typed_receiver_method(base_id,
+					method, cur_module, imports, local_values, local_types, mut calls)
+			}
+			if !has_exact_selector_call && !base_is_local_value {
+				has_exact_selector_call = c.collect_checker_selected_call(resolved_call, mut calls)
 			}
 			if !has_exact_selector_call {
 				has_exact_selector_call = c.collect_top_level_typed_receiver_method(base_id,

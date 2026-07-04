@@ -627,7 +627,9 @@ fn (mut g FlatGen) collect_gen_info() {
 		}
 		if kind_id == 62 {
 			full_name := qualify_name_in_module(cur_module, node.value)
-			g.register_struct_decl_info(node.value, full_name, cur_module, node)
+			g.tc.cur_file = cur_file
+			g.tc.cur_module = cur_module
+			g.register_struct_decl_info(node.value, full_name, cur_module, cur_file, node)
 			continue
 		}
 		if kind_id == 64 {
@@ -2466,10 +2468,11 @@ fn (mut g FlatGen) register_fn_decl_ret_type(name string, full_name string, ret_
 }
 
 // register_struct_decl_info updates register struct decl info state for c.
-fn (mut g FlatGen) register_struct_decl_info(name string, full_name string, module_name string, node flat.Node) {
+fn (mut g FlatGen) register_struct_decl_info(name string, full_name string, module_name string, source_file string, node flat.Node) {
 	info := StructDeclInfo{
 		node:      node
 		module:    module_name
+		file:      source_file
 		full_name: full_name
 	}
 	g.struct_decl_infos[full_name] = info
@@ -4850,7 +4853,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				return
 			}
 			base_is_local := if base.kind == .ident {
-				(g.tc.cur_scope.lookup(base.value) or { types.Type(types.void_) }) !is types.Void
+				g.selector_base_is_value(base.value)
 			} else {
 				false
 			}
@@ -4954,8 +4957,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						g.write('.len')
 					}
 				}
-			} else if base.kind == .ident && !base_is_local && g.has_import_alias(base.value) {
-				mod := g.import_alias_module(base.value) or { '' }
+			} else if base.kind == .ident && !base_is_local && g.selector_base_is_module(base.value) {
+				mod := g.selector_base_module(base.value) or { '' }
 				short_mod := if mod.contains('.') {
 					mod.all_after_last('.')
 				} else {
@@ -5485,8 +5488,19 @@ fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id
 	if g.gen_fixed_array_infix_eq(node, lhs_id, rhs_id, lhs_type, rhs_type) {
 		return true
 	}
-	lhs_arr := array_like_type(types.unwrap_pointer(lhs_type)) or { return false }
-	rhs_arr := array_like_type(types.unwrap_pointer(rhs_type)) or { return false }
+	mut lhs_arr := array_like_type(types.unwrap_pointer(lhs_type)) or { types.Array{} }
+	mut rhs_arr := array_like_type(types.unwrap_pointer(rhs_type)) or { types.Array{} }
+	lhs_is_arr := lhs_arr.elem_type !is types.Void
+	rhs_is_arr := rhs_arr.elem_type !is types.Void
+	if !lhs_is_arr && !rhs_is_arr {
+		return false
+	}
+	if !lhs_is_arr {
+		lhs_arr = rhs_arr
+	}
+	if !rhs_is_arr {
+		rhs_arr = lhs_arr
+	}
 	elem_type := if lhs_arr.elem_type.name() != 'unknown' {
 		lhs_arr.elem_type
 	} else {

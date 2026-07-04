@@ -2182,6 +2182,9 @@ fn (t &Transformer) clean_map_type(typ string) string {
 // runtime_addr supports runtime addr handling for Transformer.
 fn (mut t Transformer) runtime_addr(expr flat.NodeId, typ string) flat.NodeId {
 	if typ.starts_with('&') {
+		if addr := t.redundant_deref_addr(expr) {
+			return addr
+		}
 		return expr
 	}
 	if !t.expr_can_take_address(expr) {
@@ -2189,6 +2192,25 @@ fn (mut t Transformer) runtime_addr(expr flat.NodeId, typ string) flat.NodeId {
 		return t.make_prefix(.amp, stable)
 	}
 	return t.make_prefix(.amp, expr)
+}
+
+fn (t &Transformer) redundant_deref_addr(expr flat.NodeId) ?flat.NodeId {
+	if int(expr) < 0 || int(expr) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(expr)]
+	if node.kind != .prefix || node.op != .mul || node.children_count == 0 {
+		return none
+	}
+	child_id := t.a.child(&node, 0)
+	if int(child_id) < 0 || int(child_id) >= t.a.nodes.len {
+		return none
+	}
+	child := t.a.nodes[int(child_id)]
+	if child.kind == .prefix && child.op == .amp {
+		return child_id
+	}
+	return none
 }
 
 // transform_enum_shorthand transforms transform enum shorthand data for transform.

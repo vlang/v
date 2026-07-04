@@ -688,7 +688,9 @@ fn (mut g FlatGen) gen_struct_default_fields(type_name string, mut set_fields ma
 	mut has := has_field
 	info := g.find_struct_decl(type_name) or { return has }
 	old_module := g.tc.cur_module
+	old_file := g.tc.cur_file
 	g.tc.cur_module = info.module
+	g.tc.cur_file = info.file
 	for i in 0 .. info.node.children_count {
 		field := g.a.child_node(&info.node, i)
 		if field.kind != .field_decl || field.children_count == 0 || field.value in set_fields {
@@ -704,6 +706,7 @@ fn (mut g FlatGen) gen_struct_default_fields(type_name string, mut set_fields ma
 		has = true
 	}
 	g.tc.cur_module = old_module
+	g.tc.cur_file = old_file
 	return has
 }
 
@@ -1063,6 +1066,7 @@ fn (g &FlatGen) scalar_zero_init(c_type string) string {
 struct StructDeclInfo {
 	node      flat.Node
 	module    string
+	file      string
 	full_name string
 }
 
