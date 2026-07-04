@@ -24,11 +24,16 @@ $if sokol_wayland ? {
 #flag freebsd -L/usr/local/lib -lX11 -lGL -lXcursor -lXi
 #flag openbsd -DSOKOL_GLCORE
 #flag openbsd -I/usr/X11R6/include -L/usr/X11R6/lib -lX11 -lGL -lXcursor -lXi
-#flag windows -DSOKOL_GLCORE
 #flag windows -lgdi32
 
 $if windows {
-	#flag windows -lopengl32
+	$if sokol_d3d11 ? {
+		#flag windows -DSOKOL_D3D11
+		#flag windows -ld3d11 -ldxgi
+	} $else {
+		#flag windows -DSOKOL_GLCORE
+		#flag windows -lopengl32
+	}
 	$if msvc {
 		$if livemain ? {
 			#define SOKOL_DLL
@@ -78,10 +83,6 @@ $if emscripten ? {
 	// https://github.com/emscripten-core/emscripten/issues/7950
 	//	#flag -s MODULARIZE
 }
-
-// D3D
-//#flag windows -DSOKOL_D3D11
-#flag windows -DSOKOL_GLCORE
 
 // for simplicity, all header includes are here because import order matters and we dont have any way
 // to ensure import order with V yet

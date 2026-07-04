@@ -2,6 +2,7 @@
 module gg
 
 import encoding.base64
+import os
 import time
 
 fn test_swap_interval_frame_budget() {
@@ -49,4 +50,17 @@ fn test_screenshot_stdout_payload_contains_expected_marker() {
 	encoded := base64.encode(png)
 	payload := screenshot_stdout_payload(7, png)
 	assert payload == '${gg_record_stdout_prefix} frame=7 format=png encoding=base64 data=${encoded}'
+}
+
+fn test_gg_record_captures_after_frame_fn_to_keep_d3d11_readback_pre_present() {
+	source := os.read_file(os.join_path(@VEXEROOT, 'vlib', 'gg', 'gg.c.v')) or { panic(err) }
+	frame_fn_source :=
+		source.all_after('fn gg_frame_fn').all_before('fn swap_interval_frame_budget')
+	draw_index := frame_fn_source.index('ctx.config.frame_fn(ctx.user_data)') or {
+		panic('gg_frame_fn must call the user frame function')
+	}
+	record_index := frame_fn_source.index('ctx.record_frame()') or {
+		panic('gg_record must capture inside gg_frame_fn')
+	}
+	assert draw_index < record_index, 'gg_record must capture after frame_fn so D3D11 readback happens before Present'
 }

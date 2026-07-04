@@ -51,6 +51,9 @@ pub fn glue_environment() gfx.Environment {
 	env.defaults.sample_count = sapp_env.defaults.sample_count
 	$if macos && !darwin_sokol_glcore33 ? {
 		env.metal.device = sapp_env.metal.device
+	} $else $if windows && sokol_d3d11 ? {
+		env.d3d11.device = sapp_env.d3d11.device
+		env.d3d11.device_context = sapp_env.d3d11.device_context
 	}
 	return env
 }
@@ -71,6 +74,10 @@ pub fn glue_swapchain() gfx.Swapchain {
 		swapchain.metal.current_drawable = sapp_sc.metal.current_drawable
 		swapchain.metal.depth_stencil_texture = sapp_sc.metal.depth_stencil_texture
 		swapchain.metal.msaa_color_texture = sapp_sc.metal.msaa_color_texture
+	} $else $if windows && sokol_d3d11 ? {
+		swapchain.d3d11.render_view = sapp_sc.d3d11.render_view
+		swapchain.d3d11.resolve_view = sapp_sc.d3d11.resolve_view
+		swapchain.d3d11.depth_stencil_view = sapp_sc.d3d11.depth_stencil_view
 	} $else {
 		swapchain.gl.framebuffer = sapp_sc.gl.framebuffer
 	}

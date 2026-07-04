@@ -374,7 +374,6 @@ fn gg_frame_fn(mut ctx Context) {
 		ctx.scroll_y = 0
 	}
 
-	ctx.record_frame()
 	ctx.memory_trace_frame()
 
 	if ctx.ui_mode && !ctx.needs_refresh {
@@ -391,6 +390,7 @@ fn gg_frame_fn(mut ctx Context) {
 		ctx.config.update_fn(f32(dt), ctx.user_data)
 	}
 	ctx.config.frame_fn(ctx.user_data)
+	ctx.record_frame()
 	ctx.needs_refresh = false
 }
 
