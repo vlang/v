@@ -7865,6 +7865,8 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			} else if expr.expr is ast.StructInit {
 				c.error('should not create object instance on the heap to simply access a member',
 					node.pos.extend(expr.pos))
+			} else if expr.has_hidden_receiver {
+				c.error('cannot take the address of ${ast.Expr(expr)}', node.pos)
 			}
 			right_sym := c.table.sym(right_type)
 			expr_sym := c.table.sym(expr.expr_type)
