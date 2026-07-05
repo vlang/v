@@ -1258,10 +1258,10 @@ fn (g &FlatGen) type_can_return_as_ierror(typ types.Type) bool {
 		return g.type_can_return_as_ierror(clean.base_type)
 	}
 	if clean is types.Interface {
-		return clean.name == 'IError' || clean.name.ends_with('.IError')
+		return g.is_ierror_type_name(clean.name)
 	}
 	if clean is types.Struct {
-		if clean.name == 'IError' || clean.name.ends_with('.IError') {
+		if g.is_ierror_type_name(clean.name) {
 			return true
 		}
 		if g.tc.named_type_implements_interface(clean.name, 'IError') {
@@ -1706,6 +1706,9 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 				}
 			}
 			if typ := g.global_type_for_ident(node.value) {
+				return typ
+			}
+			if typ := g.const_ident_type(node.value) {
 				return typ
 			}
 		}

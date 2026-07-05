@@ -7,7 +7,8 @@ const generic_cross_vlib_dir = os.dir(generic_cross_v3_dir)
 const generic_cross_v3_src = os.join_path(generic_cross_v3_dir, 'v3.v')
 
 fn generic_cross_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_cross_module_arg_test')
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_cross_module_arg_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
 		os.execute('${generic_cross_vexe} -gc none -path "${generic_cross_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${generic_cross_v3_src}')
@@ -22,14 +23,15 @@ fn generic_cross_write_file(root string, rel string, source string) {
 }
 
 fn generic_cross_run_project(v3_bin string, name string, files map[string]string) string {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+	pid := os.getpid()
+	root := os.join_path(os.temp_dir(), 'v3_${name}_${pid}_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: '${name}' }\n") or { panic(err) }
 	for rel, source in files {
 		generic_cross_write_file(root, rel, source)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	bin := os.join_path(os.temp_dir(), 'v3_${name}_${pid}')
 	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output

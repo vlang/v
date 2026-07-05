@@ -93,6 +93,7 @@ mut:
 	runtime_inits                  []string
 	runtime_init_modules           []string
 	compiler_vroot                 string
+	compiler_vexe                  string
 	c99_mode                       bool
 	cur_fn_name                    string
 	cur_param_names                []string
@@ -335,8 +336,14 @@ pub fn FlatGen.new() FlatGen {
 		runtime_inits:                  []string{}
 		runtime_init_modules:           []string{}
 		compiler_vroot:                 ''
+		compiler_vexe:                  ''
 		line_start:                     true
 	}
+}
+
+// set_compiler_vexe sets the V executable path baked into generated test/runtime helpers.
+pub fn (mut g FlatGen) set_compiler_vexe(path string) {
+	g.compiler_vexe = path
 }
 
 // gen supports gen handling for FlatGen.
@@ -1986,17 +1993,29 @@ fn (mut g FlatGen) emit_c_directives() {
 
 fn (mut g FlatGen) emit_preserved_c_directives() {
 	mut emitted := false
+	mut emitted_includes := map[string]bool{}
 	directives := g.ordered_c_directives()
 	for i, directive in directives {
 		if !c_contains_preserved_system_include_directive(directive) {
 			continue
+		}
+		clean := directive.trim_space()
+		if c_is_preserved_system_include_directive(clean) {
+			if emitted_includes[clean] {
+				continue
+			}
+			emitted_includes[clean] = true
 		}
 		if directive.contains('\n') {
 			g.emit_preserved_c_directive(directive)
 			emitted = true
 			continue
 		}
-		prefix := c_lifted_include_context_prefix(directives, i)
+		prefix := if c_lifted_include_skips_context(directive) {
+			[]string{}
+		} else {
+			c_lifted_include_context_prefix(directives, i)
+		}
 		for line in prefix {
 			g.writeln(line)
 			emitted = true
@@ -2010,6 +2029,10 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 	if emitted {
 		g.writeln('')
 	}
+}
+
+fn c_lifted_include_skips_context(directive string) bool {
+	return directive.trim_space() == '#include <mach/mach_time.h>'
 }
 
 fn (mut g FlatGen) emit_preserved_c_directive(directive string) {
@@ -5316,7 +5339,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				child_node := g.a.nodes[int(child_id)]
 				if child_node.kind == .call && child_node.children_count > 0 {
 					callee := g.a.child_node(&child_node, 0)
-					if callee.kind == .ident && callee.value in ['map__get', 'map__get_check'] {
+					if callee.kind == .ident
+						&& callee.value in ['array_get', 'array__get', 'map__get', 'map__get_check'] {
 						g.write('(${ct})')
 						g.gen_expr(child_id)
 						return
@@ -5694,10 +5718,22 @@ fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id
 	if g.gen_fixed_array_infix_eq(node, lhs_id, rhs_id, lhs_type, rhs_type) {
 		return true
 	}
-	mut lhs_arr := array_like_type(types.unwrap_pointer(lhs_type)) or { types.Array{} }
-	mut rhs_arr := array_like_type(types.unwrap_pointer(rhs_type)) or { types.Array{} }
-	lhs_is_arr := lhs_arr.elem_type !is types.Void
-	rhs_is_arr := rhs_arr.elem_type !is types.Void
+	mut lhs_arr := types.Array{
+		elem_type: types.Type(types.void_)
+	}
+	mut rhs_arr := types.Array{
+		elem_type: types.Type(types.void_)
+	}
+	mut lhs_is_arr := false
+	mut rhs_is_arr := false
+	if arr := array_like_type(types.unwrap_pointer(lhs_type)) {
+		lhs_arr = arr
+		lhs_is_arr = true
+	}
+	if arr := array_like_type(types.unwrap_pointer(rhs_type)) {
+		rhs_arr = arr
+		rhs_is_arr = true
+	}
 	if !lhs_is_arr && !rhs_is_arr {
 		return false
 	}
@@ -5731,12 +5767,22 @@ fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id
 }
 
 fn (mut g FlatGen) gen_fixed_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
-	lhs_fixed := array_fixed_type(types.unwrap_pointer(lhs_type)) or { types.ArrayFixed{} }
-	rhs_fixed := array_fixed_type(types.unwrap_pointer(rhs_type)) or { types.ArrayFixed{} }
-	lhs_is_fixed := lhs_fixed.elem_type !is types.Void || lhs_fixed.len > 0
-		|| lhs_fixed.len_expr.len > 0
-	rhs_is_fixed := rhs_fixed.elem_type !is types.Void || rhs_fixed.len > 0
-		|| rhs_fixed.len_expr.len > 0
+	mut lhs_fixed := types.ArrayFixed{
+		elem_type: types.Type(types.void_)
+	}
+	mut rhs_fixed := types.ArrayFixed{
+		elem_type: types.Type(types.void_)
+	}
+	mut lhs_is_fixed := false
+	mut rhs_is_fixed := false
+	if fixed := array_fixed_type(types.unwrap_pointer(lhs_type)) {
+		lhs_fixed = fixed
+		lhs_is_fixed = true
+	}
+	if fixed := array_fixed_type(types.unwrap_pointer(rhs_type)) {
+		rhs_fixed = fixed
+		rhs_is_fixed = true
+	}
 	if !lhs_is_fixed && !rhs_is_fixed {
 		return false
 	}
@@ -7729,11 +7775,7 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	g.writeln('static inline u32 atomic_load_u32(void* ptr) { return __atomic_fetch_add((u32*)ptr, 0, 5); }')
 	g.writeln('static inline u64 atomic_load_u64(void* ptr) { return __atomic_fetch_add((u64*)ptr, 0, 5); }')
 	g.writeln('#ifdef __TINYC__')
-	g.writeln('#if UINTPTR_MAX == 0xFFFFFFFF')
-	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return (void*)(size_t)__atomic_load_4((u32*)ptr, 5); }')
-	g.writeln('#else')
-	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return (void*)(size_t)__atomic_load_8((u64*)ptr, 5); }')
-	g.writeln('#endif')
+	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return (void*)(uintptr_t)__atomic_fetch_add((uintptr_t*)ptr, (uintptr_t)0, 5); }')
 	g.writeln('static inline byte atomic_exchange_byte(void* ptr, byte val) { return __atomic_exchange_1((byte*)ptr, val, 5); }')
 	g.writeln('static inline u16 atomic_exchange_u16(void* ptr, u16 val) { return __atomic_exchange_2((u16*)ptr, val, 5); }')
 	g.writeln('static inline u32 atomic_exchange_u32(void* ptr, u32 val) { return __atomic_exchange_4((u32*)ptr, val, 5); }')

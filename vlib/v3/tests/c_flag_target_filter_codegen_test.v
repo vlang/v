@@ -47,3 +47,32 @@ fn test_c_flag_target_filter_keeps_host_linux_and_drops_wasm() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'flag-filter-ok'
 }
+
+fn test_objective_c_flags_skip_tcc_and_select_objective_c_language() {
+	$if !macos {
+		return
+	}
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_objective_c_flag_test_${pid}')
+	os.rm(v3_bin) or {}
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+
+	src := os.join_path(os.temp_dir(), 'v3_objective_c_flag_input_${pid}.v')
+	os.write_file(src, "#flag darwin -fobjc-arc\nfn main() {\n\tprintln('objc-flag-ok')\n}\n") or {
+		panic(err)
+	}
+	bin := os.join_path(os.temp_dir(), 'v3_objective_c_flag_input_${pid}')
+	os.rm(bin) or {}
+	os.rmdir_all(bin) or {}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('tcc.exe'), compile.output
+	assert compile.output.contains('-x objective-c'), compile.output
+	assert compile.output.contains('-x none'), compile.output
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'objc-flag-ok'
+}

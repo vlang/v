@@ -185,6 +185,13 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	val_id := t.a.child(&node, 1)
 	container_id := t.a.child(&node, 2)
 	new_container := t.transform_expr(container_id)
+	mut new_range_end := flat.NodeId(-1)
+	if header_count == 4 {
+		range_end_id := t.a.child(&node, 3)
+		new_range_end = t.transform_expr(range_end_id)
+	}
+	mut prefix := []flat.NodeId{}
+	t.drain_pending(mut prefix)
 	iter_type := t.detect_for_in_type(node)
 	has_index := int(val_id) >= 0
 	container_is_range := if int(container_id) >= 0 {
@@ -246,8 +253,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	ids << val_id
 	ids << new_container
 	if header_count == 4 {
-		range_end_id := t.a.child(&node, 3)
-		ids << t.transform_expr(range_end_id)
+		ids << new_range_end
 	}
 	body_ids := t.a.children_of(&node)[header_count..].clone()
 	new_body := t.transform_stmts(body_ids)
@@ -258,7 +264,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	for cid in ids {
 		t.a.children << cid
 	}
-	return arr1(t.a.add_node(flat.Node{
+	prefix << t.a.add_node(flat.Node{
 		kind:           .for_in_stmt
 		op:             node.op
 		children_start: start
@@ -266,7 +272,8 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		pos:            node.pos
 		value:          node.value
 		typ:            node.typ
-	}))
+	})
+	return prefix
 }
 
 fn (t &Transformer) iterator_for_in_info(iter_type string) ?IteratorForInInfo {

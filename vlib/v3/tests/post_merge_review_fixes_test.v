@@ -110,9 +110,10 @@ fn test_compiler_vexe_env_uses_running_executable() {
 	c_source := os.read_file(c_out) or { panic(err) }
 	assert !c_source.contains('v3_vexe_target')
 	assert !c_source.contains('fopen(v3_src')
-	assert c_source.contains('snprintf(v3_checkout_vexe, sizeof(v3_checkout_vexe),')
-	assert c_source.contains('if (access(v3_checkout_vexe, F_OK) == 0) v3_vexe = v3_checkout_vexe;')
-	assert c_source.contains('const char* v3_vexe = v3_src_real_result != NULL ? v3_src_real : v3_arg0;')
+	assert !c_source.contains('v3_checkout_vexe')
+	assert !c_source.contains('v3_arg0')
+	assert !c_source.contains('v3_src_real_result')
+	assert c_source.contains('const char* v3_vexe = "')
 	assert c_source.contains('_putenv_s("VEXE", v3_vexe);')
 	assert c_source.contains('setenv("VEXE", v3_vexe, 1);')
 }
@@ -578,6 +579,13 @@ fn test_amp_interface_cast_heap_copies_concrete_source() {
 	assert c_source.contains('memdup(&__iface_box_')
 	out := run_good(v3_bin, 'amp_interface_cast_heap_copy_run', source)
 	assert out == '5'
+}
+
+fn test_c_atomic_pointer_load_store_preserves_pointer_width() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'c_atomic_pointer_load_store',
+		'fn C.atomic_load_ptr(voidptr) voidptr\nfn C.atomic_store_ptr(voidptr, voidptr)\n\nfn main() {\n\tvalue := 9\n\tmut slot := unsafe { nil }\n\tC.atomic_store_ptr(voidptr(&slot), voidptr(&value))\n\tprintln((C.atomic_load_ptr(voidptr(&slot)) == voidptr(&value)).str())\n}\n')
+	assert out == 'true'
 }
 
 fn test_native_arm64_atomic_pointer_fetch_add_sub() {

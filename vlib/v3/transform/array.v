@@ -394,13 +394,11 @@ fn (t &Transformer) array_literal_alias_type(node flat.Node) ?string {
 	if node.kind != .array_literal || node.children_count == 0 {
 		return none
 	}
-	first_id := t.a.child(&node, 0)
+	first_id := t.array_literal_alias_expr_id(t.a.child(&node, 0))
 	first := t.a.nodes[int(first_id)]
-	mut alias_name := ''
-	if first.kind in [.cast_expr, .as_expr] && first.value.len > 0 {
-		alias_name = first.value
-	} else if first.kind == .call && first.children_count > 0 {
-		alias_name = t.generic_call_type_arg_name(t.a.child(&first, 0))
+	mut alias_name := t.raw_alias_type_for_expr(first_id)
+	if alias_name.len == 0 {
+		alias_name = t.array_literal_alias_expr_name(first)
 	}
 	if alias_name.len == 0 {
 		return none
@@ -409,6 +407,35 @@ fn (t &Transformer) array_literal_alias_type(node flat.Node) ?string {
 		return none
 	}
 	return '[]${t.array_literal_qualified_alias_name(alias_name)}'
+}
+
+fn (t &Transformer) array_literal_alias_expr_id(id flat.NodeId) flat.NodeId {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return id
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return t.array_literal_alias_expr_id(t.a.child(&node, 0))
+	}
+	return id
+}
+
+fn (t &Transformer) array_literal_alias_expr_name(node flat.Node) string {
+	if node.kind in [.cast_expr, .as_expr] && node.value.len > 0 {
+		return node.value
+	}
+	if node.kind == .call && node.children_count > 0 {
+		name := t.generic_call_type_arg_name(t.a.child(&node, 0))
+		if name.len > 0 {
+			return name
+		}
+	}
+	for candidate in [node.typ, node.value] {
+		if candidate.len > 0 && t.generic_arg_is_alias_name(candidate, t.cur_module) {
+			return candidate
+		}
+	}
+	return ''
 }
 
 // transform_array_literal_for_type transforms transform array literal for type data for transform.
@@ -547,8 +574,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	mut rhs_type := t.normalize_type_alias(t.node_type(rhs_id))
 	rhs_node := t.a.nodes[int(rhs_id)]
 	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
-	if rhs_node.kind == .array_literal && !elem_type.starts_with('[]')
-		&& !t.is_fixed_array_type(elem_type) {
+	if rhs_node.kind == .array_literal && t.array_append_literal_should_push_many(rhs_id, elem_type) {
 		// `[]scalar << [a, b, c]` always appends the literal's elements. Retype the
 		// literal from the destination so a mis-inferred element type (e.g. `[]int`
 		// for `[f32_expr, ..]`) is corrected and the append stays a clean push_many,
@@ -626,8 +652,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	mut rhs_type := t.normalize_type_alias(t.node_type(rhs_id))
 	rhs_node := t.a.nodes[int(rhs_id)]
 	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
-	if rhs_node.kind == .array_literal && !elem_type.starts_with('[]')
-		&& !t.is_fixed_array_type(elem_type) {
+	if rhs_node.kind == .array_literal && t.array_append_literal_should_push_many(rhs_id, elem_type) {
 		push_many = true
 		t.a.nodes[int(rhs_id)].typ = array_type
 		rhs_type = array_type
@@ -742,8 +767,8 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	mut rhs_type := t.normalize_type_alias(t.node_type(value_id))
 	value_node := t.a.nodes[int(value_id)]
 	mut prepend_many := t.array_append_rhs_is_push_many(base_id, value_id, rhs_type, elem_type)
-	if value_node.kind == .array_literal && !elem_type.starts_with('[]')
-		&& !t.is_fixed_array_type(elem_type) {
+	if value_node.kind == .array_literal
+		&& t.array_append_literal_should_push_many(value_id, elem_type) {
 		prepend_many = true
 		t.a.nodes[int(value_id)].typ = base_type
 		rhs_type = base_type
@@ -782,8 +807,8 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	mut rhs_type := t.normalize_type_alias(t.node_type(value_id))
 	value_node := t.a.nodes[int(value_id)]
 	mut insert_many := t.array_append_rhs_is_push_many(base_id, value_id, rhs_type, elem_type)
-	if value_node.kind == .array_literal && !elem_type.starts_with('[]')
-		&& !t.is_fixed_array_type(elem_type) {
+	if value_node.kind == .array_literal
+		&& t.array_append_literal_should_push_many(value_id, elem_type) {
 		insert_many = true
 		t.a.nodes[int(value_id)].typ = base_type
 		rhs_type = base_type
@@ -893,6 +918,55 @@ fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id fla
 		return t.array_append_elem_c_type(elem_type) !in ['array', 'Array']
 	}
 	return false
+}
+
+fn (t &Transformer) array_append_literal_should_push_many(rhs_id flat.NodeId, elem_type string) bool {
+	if int(rhs_id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(rhs_id)]
+	if node.kind != .array_literal {
+		return false
+	}
+	if !elem_type.starts_with('[]') && !t.is_fixed_array_type(elem_type) {
+		return true
+	}
+	return t.array_append_literal_children_match_elem(rhs_id, elem_type)
+}
+
+fn (t &Transformer) array_append_literal_children_match_elem(rhs_id flat.NodeId, elem_type string) bool {
+	node := t.a.nodes[int(rhs_id)]
+	clean_elem := t.normalize_type_alias(elem_type)
+	if clean_elem.len == 0 {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		child_id := t.a.child(&node, i)
+		child := t.a.nodes[int(child_id)]
+		if child.kind == .prefix && child.value == '...' && child.children_count > 0 {
+			spread_id := t.a.child(&child, 0)
+			spread_type := t.normalize_type_alias(t.node_type(spread_id))
+			if spread_type.starts_with('[]')
+				&& t.array_append_elem_types_match(spread_type[2..], clean_elem) {
+				continue
+			}
+			return false
+		}
+		child_type := t.normalize_type_alias(t.node_type(child_id))
+		if t.array_append_elem_types_match(child_type, clean_elem) {
+			continue
+		}
+		if child_type.starts_with('&')
+			&& t.array_append_elem_types_match(child_type[1..], clean_elem) {
+			continue
+		}
+		if child_type.len == 0 && child.kind == .array_literal
+			&& (clean_elem.starts_with('[]') || t.is_fixed_array_type(clean_elem)) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // array_append_elem_types_match supports array append elem types match handling for Transformer.
@@ -1236,8 +1310,24 @@ fn (t &Transformer) fn_value_return_type_name(id flat.NodeId) ?string {
 		return none
 	}
 	node := t.a.nodes[int(id)]
-	mut typ := node.typ
-	if node.kind == .ident {
+	if !isnil(t.tc) {
+		if typ := t.tc.expr_type(id) {
+			if ret := fn_value_return_type_from_type(typ) {
+				return t.normalize_type_alias(ret)
+			}
+		}
+		if node.kind == .fn_literal || node.kind == .lambda_expr {
+			typ := t.tc.resolve_type(id)
+			if ret := fn_value_return_type_from_type(typ) {
+				return t.normalize_type_alias(ret)
+			}
+		}
+	}
+	mut typ := t.checker_expr_type_name(id) or { '' }
+	if typ.len == 0 {
+		typ = node.typ
+	}
+	if typ.len == 0 && node.kind == .ident {
 		typ = t.var_type(node.value)
 	}
 	if typ.len == 0 || isnil(t.tc) {
@@ -1248,6 +1338,18 @@ fn (t &Transformer) fn_value_return_type_name(id flat.NodeId) ?string {
 		name := parsed.return_type.name()
 		if name.len > 0 {
 			return t.normalize_type_alias(name)
+		}
+	}
+	return none
+}
+
+fn fn_value_return_type_from_type(typ types.Type) ?string {
+	if typ is types.FnType {
+		return typ.return_type.name()
+	}
+	if typ is types.Alias {
+		if typ.base_type is types.FnType {
+			return typ.base_type.return_type.name()
 		}
 	}
 	return none

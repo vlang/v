@@ -715,6 +715,11 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 				i = t.next_non_field_init_arg(node, i)
 				continue
 			}
+			if packed_arg := t.transform_struct_call_arg(node, i, param_type) {
+				new_children << packed_arg
+				i = t.next_non_field_init_arg(node, i)
+				continue
+			}
 		}
 		if variadic_idx >= 0 && param_idx == variadic_idx {
 			variadic_type := params[variadic_idx]
@@ -820,6 +825,15 @@ fn (mut t Transformer) try_lower_join_path_call(id flat.NodeId, node flat.Node) 
 // transform_params_struct_call_arg transforms transform params struct call arg data for transform.
 fn (mut t Transformer) transform_params_struct_call_arg(node flat.Node, field_start int, param_type string) ?flat.NodeId {
 	struct_type := t.params_struct_type_name(param_type) or { return none }
+	return t.transform_trailing_field_init_struct_arg(node, field_start, struct_type)
+}
+
+fn (mut t Transformer) transform_struct_call_arg(node flat.Node, field_start int, param_type string) ?flat.NodeId {
+	struct_type := t.struct_arg_type_name(param_type) or { return none }
+	return t.transform_trailing_field_init_struct_arg(node, field_start, struct_type)
+}
+
+fn (mut t Transformer) transform_trailing_field_init_struct_arg(node flat.Node, field_start int, struct_type string) ?flat.NodeId {
 	mut field_ids := []flat.NodeId{}
 	for i in field_start .. node.children_count {
 		field_id := t.a.child(&node, i)
@@ -844,6 +858,21 @@ fn (mut t Transformer) transform_params_struct_call_arg(node flat.Node, field_st
 		typ:            struct_type
 	})
 	return t.transform_struct_fields(struct_id, t.a.nodes[int(struct_id)])
+}
+
+fn (t &Transformer) struct_arg_type_name(param_type string) ?string {
+	if param_type.len == 0 {
+		return none
+	}
+	mut typ := param_type
+	if typ.starts_with('&') {
+		return none
+	}
+	typ = t.normalize_type_alias(typ)
+	if _ := t.lookup_struct_info(typ) {
+		return typ
+	}
+	return none
 }
 
 // next_non_field_init_arg returns next non field init arg data for Transformer.
@@ -904,6 +933,10 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 		return 0
 	}
 	base_id := t.a.child(fn_node, 0)
+	base_node := t.a.nodes[int(base_id)]
+	if base_node.kind == .ident && (base_node.value == 'C' || t.is_import_alias_ident(base_id)) {
+		return 0
+	}
 	// `module.Type.fn(...)` / `Type.fn(...)` is a static associated function call, not a
 	// method: the base names a type, not a value, so no receiver must be prepended.
 	if _ := t.static_assoc_fn_name(base_id, fn_node.value) {
@@ -2391,6 +2424,9 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 	info := t.lookup_struct_info(struct_type) or {
 		t.generic_struct_info_for_stringify(struct_type) or { return none }
 	}
+	if struct_type.contains('.') && struct_type.all_after_last('.') == 'Array_string' {
+		return t.make_string_literal('${struct_string_display_name(struct_type)}{}')
+	}
 	if struct_type in t.stringify_stack {
 		return t.make_string_literal('${struct_string_display_name(struct_type)}{}')
 	}
@@ -3107,7 +3143,7 @@ fn (t &Transformer) current_specialized_receiver_args(receiver_type string) ?[]s
 	}
 	_, current_args, current_ok := generic_app_parts(current_receiver)
 	if current_ok && current_args.len == args.len {
-		canonical_args := canonical_generic_specialization_args(current_args)
+		canonical_args := t.canonical_generic_specialization_args(current_args)
 		if t.generic_args_have_placeholders(canonical_args) {
 			return none
 		}
@@ -3244,6 +3280,9 @@ fn (t &Transformer) map_str_type_has_transform_conversion(typ string) bool {
 		return true
 	}
 	if clean in t.enum_types || clean in t.structs || clean in t.sum_types {
+		return true
+	}
+	if _ := t.generic_struct_info_for_stringify(clean) {
 		return true
 	}
 	if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
@@ -5699,6 +5738,11 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 		param_type := if param_idx < params.len { params[param_idx].name() } else { '' }
 		if arg_node.kind == .field_init {
 			if packed_arg := t.transform_params_struct_call_arg(node, i, param_type) {
+				args << packed_arg
+				i = t.next_non_field_init_arg(node, i)
+				continue
+			}
+			if packed_arg := t.transform_struct_call_arg(node, i, param_type) {
 				args << packed_arg
 				i = t.next_non_field_init_arg(node, i)
 				continue

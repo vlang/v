@@ -394,6 +394,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		const_runtime_inits:            g.const_runtime_inits.clone()
 		runtime_inits:                  g.runtime_inits.clone()
 		compiler_vroot:                 g.compiler_vroot
+		compiler_vexe:                  g.compiler_vexe
 		cur_param_names:                g.cur_param_names.clone()
 		cur_param_type_values:          g.cur_param_type_values.clone()
 		cur_param_types:                g.cur_param_types.clone()

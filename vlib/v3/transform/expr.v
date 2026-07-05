@@ -857,6 +857,14 @@ fn struct_operator_symbol(op flat.Op) ?string {
 // struct_operator_fn_name supports struct operator fn name handling for Transformer.
 fn (t &Transformer) struct_operator_fn_name(struct_type string, op_name string) ?string {
 	require_used := op_name in ['==', '!=']
+	return t.struct_operator_fn_name_with_usage(struct_type, op_name, require_used)
+}
+
+fn (t &Transformer) struct_operator_fn_name_any(struct_type string, op_name string) ?string {
+	return t.struct_operator_fn_name_with_usage(struct_type, op_name, false)
+}
+
+fn (t &Transformer) struct_operator_fn_name_with_usage(struct_type string, op_name string, require_used bool) ?string {
 	for receiver in t.operator_receiver_candidates(struct_type) {
 		method_name := '${receiver}.${op_name}'
 		if t.is_known_operator_fn_name(method_name, require_used) {
@@ -1711,7 +1719,7 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 	}
 	struct_type := t.struct_lookup_name(clean)
 	if struct_type.len > 0 {
-		if method_name := t.struct_operator_fn_name(struct_type, '==') {
+		if method_name := t.struct_operator_fn_name_any(struct_type, '==') {
 			t.mark_fn_used_name(method_name)
 			return t.make_call_typed(method_name, arr2(lhs, rhs), 'bool')
 		}

@@ -127,6 +127,7 @@ mut:
 	// the `p := &v` alias emits `p = v` (the heap pointer) instead of a fresh memdup copy.
 	heaped_amp_locals                map[string]bool
 	generic_specialization_args      map[string][]string
+	generic_fn_specs_in_progress     map[string]bool
 	generic_fn_decls_cache           map[string]GenericFnDecl
 	generic_receiver_methods_by_name map[string][]string
 	generic_fn_decls_ready           bool
@@ -358,6 +359,7 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		escaping_amp_sources:             map[string]bool{}
 		heaped_amp_locals:                map[string]bool{}
 		generic_specialization_args:      map[string][]string{}
+		generic_fn_specs_in_progress:     map[string]bool{}
 		generic_receiver_methods_by_name: map[string][]string{}
 		generic_call_spec_cache:          map[int]GenericCallSpec{}
 		generic_call_spec_misses:         map[int]bool{}
@@ -1184,6 +1186,7 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.escaping_amp_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
 	w.generic_specialization_args = t.generic_specialization_args.clone()
+	w.generic_fn_specs_in_progress = map[string]bool{}
 	w.used_fns = t.used_fns.clone()
 	w.temp_counter = 0
 	w.cur_file = ''
@@ -8327,6 +8330,9 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 fn (t &Transformer) array_literal_elem_type(node flat.Node) string {
 	if node.children_count == 0 {
 		return 'int'
+	}
+	if alias_type := t.array_literal_alias_type(node) {
+		return alias_type[2..]
 	}
 	elem_type := t.node_type(t.a.child(&node, 0))
 	if !is_numeric_type_name(elem_type) {

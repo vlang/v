@@ -1144,6 +1144,51 @@ fn (mut t Transformer) transform_if_branch_as_block(branch_id flat.NodeId) flat.
 	return t.make_block(stmts)
 }
 
+fn (mut t Transformer) transform_plain_if_branches(id flat.NodeId, node flat.Node) flat.NodeId {
+	if node.kind != .if_expr || node.children_count < 2 {
+		return id
+	}
+	cond_id := t.a.child(&node, 0)
+	then_id := t.a.child(&node, 1)
+	has_else := node.children_count >= 3
+	else_id := if has_else { t.a.child(&node, 2) } else { flat.empty_node }
+
+	new_cond_id := t.transform_expr(cond_id)
+	cond_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	new_then_id := t.transform_if_branch_as_block(then_id)
+
+	mut new_else_id := flat.empty_node
+	if has_else {
+		else_node := t.a.nodes[int(else_id)]
+		if else_node.kind == .if_expr {
+			new_else_id = t.transform_else_if_expr(else_id, else_node)
+		} else {
+			new_else_id = t.transform_if_branch_as_block(else_id)
+		}
+	}
+
+	if_start := t.a.children.len
+	t.a.children << new_cond_id
+	t.a.children << new_then_id
+	mut child_count := 2
+	if has_else {
+		t.a.children << new_else_id
+		child_count = 3
+	}
+	new_if := t.a.add_node(flat.Node{
+		kind:           .if_expr
+		children_start: if_start
+		children_count: flat.child_count(child_count)
+		typ:            node.typ
+		pos:            node.pos
+	})
+	for pending in cond_pending {
+		t.pending_stmts << pending
+	}
+	return new_if
+}
+
 // transform_if_branches_with_smartcast is the main if-expr handler that
 // integrates smartcasting. When the condition contains an is_expr, it
 // pushes a smartcast for the then-branch, transforms the body under
@@ -1158,6 +1203,10 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 	else_id := if has_else { t.a.child(&node, 2) } else { flat.empty_node }
 
 	all_is := t.extract_all_is_exprs(cond_id)
+	cond_node := t.a.nodes[int(cond_id)]
+	if all_is.len == 0 && cond_node.kind != .decl_assign {
+		return t.transform_plain_if_branches(id, node)
+	}
 	new_cond_id := t.transform_and_chain_smartcasts(cond_id)
 	cond_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()

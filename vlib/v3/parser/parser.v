@@ -4351,6 +4351,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.a.add_val_id(5, p.prefs.vroot)
 			}
 			if name == '@VEXE' {
+				if p.prefs.vexe.len > 0 {
+					return p.a.add_val_id(5, p.prefs.vexe)
+				}
 				return p.a.add_val_id(5, p.prefs.vroot + '/v')
 			}
 			if name == '@LINE' {
