@@ -511,11 +511,19 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	// "Undefined symbols" failure). Every other module either owns a cached object
 	// (defined there, `extern` here) or is bundled (already excluded below).
 	is_program_module_global := g.pref.build_mode != .build_module && node.mod == 'main'
+	// A bundled module (builtin.closure, builtin.overflow, ...) is compiled into
+	// the program TU only, never as its own cached object — so the program TU owns
+	// its globals and every build_module compile must reference them `extern`. The
+	// historic tentative definition per TU relied on the linker merging common
+	// symbols, which current Apple ld and lld no longer do (duplicate-symbol error).
+	is_bundled_mod := util.should_bundle_module(node.mod)
 	visibility_kw := if g.should_use_object_local_linkage(node.mod) {
 		'static '
+	} else if g.pref.build_mode == .build_module && is_bundled_mod {
+		'extern '
 	} else if
 		(g.pref.use_cache || (g.pref.build_mode == .build_module && g.module_built != node.mod))
-		&& !util.should_bundle_module(node.mod) && !is_program_module_global {
+		&& !is_bundled_mod && !is_program_module_global {
 		'extern '
 	} else {
 		''
@@ -532,6 +540,9 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	should_init := (!g.pref.use_cache && g.pref.build_mode != .build_module)
 		|| (g.pref.build_mode == .build_module && g.module_built == node.mod)
 		|| is_program_module_global
+	// bundled-module globals: the program TU is their single definition site
+	// (cached objects reference them `extern` — see visibility_kw above)
+	|| (g.pref.use_cache && g.pref.build_mode != .build_module && is_bundled_mod)
 	mut attributes := ''
 	first_field := node.fields[0]
 	if first_field.is_weak {
@@ -569,12 +580,17 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		// Define them in the program TU (build_mode != build_module): emit '' visibility
 		// → a tentative definition that `main()` then fills, mirroring the non-cache
 		// build. Cached modules keep referencing them `extern`.
-		program_owned_argv_global := g.pref.build_mode != .build_module
-			&& field.name in ['g_main_argc', 'g_main_argv']
+		is_argv_global := field.name in ['g_main_argc', 'g_main_argv']
+		program_owned_argv_global := g.pref.build_mode != .build_module && is_argv_global
 		field_visibility_kw := if field.is_extern {
 			''
 		} else if program_owned_argv_global {
 			''
+		} else if g.pref.build_mode == .build_module && is_argv_global {
+			// builtin declares these, but the program TU owns them (its `main()`
+			// assigns them) — builtin's own cached object must not emit the
+			// historic tentative definition (no longer merged at link, see above).
+			'extern '
 		} else {
 			visibility_kw
 		}
@@ -588,7 +604,11 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		// fixed-array globals, whose init is forced inline below, e.g. vgc_*/autostr
 		// globals defined into every cached module that touches builtin), and a
 		// `_vinit` initializer would redundantly re-init the cached definition.
-		global_defined_elsewhere := field_visibility_kw == 'extern ' && !should_init
+		// The argv globals are declared by builtin but owned by the program TU even
+		// in builtin's own build_module compile (should_init is true there, which
+		// would otherwise turn the `extern` into `extern ... = 0;` — a definition).
+		global_defined_elsewhere := (field_visibility_kw == 'extern ' && !should_init)
+			|| (g.pref.build_mode == .build_module && is_argv_global)
 		mut qualifiers := ''
 		if field.is_const {
 			qualifiers += 'const '

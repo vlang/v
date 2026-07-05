@@ -14237,16 +14237,25 @@ fn (mut g Gen) interface_table() string {
 		// Exclude interface types from the table length — an interface can't
 		// be its own concrete implementor (happens with nested generic interfaces).
 		iname_table_length := impl_types.filter(g.table.sym(it).kind !in [.interface, .aggregate]).len
+		// A cached module object must only *declare* the name table — the program
+		// TU owns the single initialized definition. The historic form (a tentative
+		// `struct x name_table[N];` in every TU, merged as a common symbol at link)
+		// no longer links: current Apple ld and lld reject cross-TU tentative
+		// definitions as duplicate symbols instead of merging them.
 		if iname_table_length == 0 {
 			// msvc can not process `static struct x[0] = {};`
-			methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[1];')
+			if g.pref.build_mode == .build_module {
+				methods_struct.writeln('extern ${methods_struct_name} ${interface_name}_name_table[1];')
+			} else {
+				methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[1];')
+			}
 		} else {
 			name_table_len := iname_table_length + 1
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[${name_table_len}] = {')
 				methods_struct.writeln('\t{0},')
 			} else {
-				methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[${name_table_len}];')
+				methods_struct.writeln('extern ${methods_struct_name} ${interface_name}_name_table[${name_table_len}];')
 			}
 		}
 		mut cast_functions := strings.new_builder(100)
