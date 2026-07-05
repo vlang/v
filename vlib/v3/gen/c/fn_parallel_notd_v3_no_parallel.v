@@ -388,6 +388,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		fn_decl_param_types:            g.fn_decl_param_types
 		fn_decl_mut_receivers:          g.fn_decl_mut_receivers
 		fn_decl_ret_types:              g.fn_decl_ret_types
+		non_generic_fn_names_by_module: g.non_generic_fn_names_by_module
 		struct_decl_infos:              g.struct_decl_infos
 		struct_decl_short_infos:        g.struct_decl_short_infos
 		shared_type_names:              g.shared_type_names

@@ -204,6 +204,11 @@ pub mut:
 	structs                            map[string][]StructField
 	struct_modules                     map[string]string
 	struct_files                       map[string]string
+	// set of `${file}\x01${module}\x01${name}` keys for every source-level
+	// struct/type/interface/enum declaration, built once in `collect`. Replaces
+	// the former full-node scan in `source_declares_type_in_scope`, which was
+	// O(nodes) per call and dominated check/transform/cgen (called via qualify_name).
+	declared_type_scope_keys           map[string]bool
 	struct_error_embeds_shadow_builtin map[string]bool
 	struct_generic_params              map[string][]string // generic struct base name -> type-param names (e.g. Vec4 -> [T])
 	struct_implements                  map[string][]string
@@ -311,6 +316,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		structs:                            map[string][]StructField{}
 		struct_modules:                     map[string]string{}
 		struct_files:                       map[string]string{}
+		declared_type_scope_keys:           map[string]bool{}
 		struct_error_embeds_shadow_builtin: map[string]bool{}
 		struct_generic_params:              map[string][]string{}
 		struct_implements:                  map[string][]string{}
@@ -642,6 +648,29 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 		if node.kind == .struct_decl && node.value == 'string' {
 			tc.has_builtins = true
 			break
+		}
+	}
+	// Index every source-level type declaration by (file, module, name) so
+	// `source_declares_type_in_scope` is an O(1) map lookup instead of a full
+	// node scan. Built before pass 1 because pass 1 already calls qualify_name,
+	// which depends on this index. No later phase adds struct/type/interface/enum
+	// decl nodes, so the index stays complete for the whole compile.
+	tc.declared_type_scope_keys = map[string]bool{}
+	mut idx_file := ''
+	mut idx_module := ''
+	for node in a.nodes {
+		match node.kind {
+			.file {
+				idx_file = node.value
+				idx_module = ''
+			}
+			.module_decl {
+				idx_module = node.value
+			}
+			.struct_decl, .type_decl, .interface_decl, .enum_decl {
+				tc.declared_type_scope_keys[scope_type_key(idx_file, idx_module, node.value)] = true
+			}
+			else {}
 		}
 	}
 	// Pass 1: collect type-level names (aliases, enums, sum types)
@@ -13495,31 +13524,15 @@ fn (tc &TypeChecker) source_declares_type_in_scope(name string, file string, mod
 	if file.len == 0 || isnil(tc.a) {
 		return false
 	}
-	mut cur_file := ''
-	mut cur_module := ''
-	for node in tc.a.nodes {
-		match node.kind {
-			.file {
-				cur_file = node.value
-				cur_module = ''
-			}
-			.module_decl {
-				cur_module = node.value
-			}
-			.struct_decl, .type_decl, .interface_decl, .enum_decl {
-				if cur_file == file && module_names_match(cur_module, mod_name)
-					&& node.value == name {
-					return true
-				}
-			}
-			else {}
-		}
-	}
-	return false
+	return scope_type_key(file, mod_name, name) in tc.declared_type_scope_keys
 }
 
-fn module_names_match(a string, b string) bool {
-	return a == b || (a in ['', 'main'] && b in ['', 'main'])
+// scope_type_key builds the lookup key used by `declared_type_scope_keys`.
+// The module is normalized so that '' and 'main' collapse to the same bucket,
+// matching the old `module_names_match` semantics.
+fn scope_type_key(file string, mod_name string, name string) string {
+	norm_mod := if mod_name == '' || mod_name == 'main' { 'main' } else { mod_name }
+	return '${file}\x01${norm_mod}\x01${name}'
 }
 
 fn (tc &TypeChecker) resolve_selective_import_type_symbol_in_file(name string, file string) ?string {

@@ -5860,10 +5860,11 @@ fn (g &FlatGen) plain_concrete_fn_name_shadows_generic(name string) bool {
 	return qname != name && g.concrete_fn_return_known(qname)
 }
 
-fn (g &FlatGen) non_generic_fn_decl_exists_in_module(name string, module_name string) bool {
-	if name.len == 0 || name.contains('.') {
-		return false
-	}
+// precompute_non_generic_fn_index builds the lookup consumed by
+// non_generic_fn_decl_exists_in_module. It mirrors that scan exactly: module
+// starts at 'main' and is only advanced by `.module_decl` nodes (not reset per
+// file), so the attribution matches the previous per-call behavior byte for byte.
+fn (mut g FlatGen) precompute_non_generic_fn_index() {
 	mut cur_module := 'main'
 	for node in g.a.nodes {
 		match node.kind {
@@ -5871,15 +5872,20 @@ fn (g &FlatGen) non_generic_fn_decl_exists_in_module(name string, module_name st
 				cur_module = node.value
 			}
 			.fn_decl {
-				if cur_module == module_name && node.value == name && node.generic_params.len == 0
-					&& !node.typ.contains('generic') {
-					return true
+				if node.generic_params.len == 0 && !node.typ.contains('generic') {
+					g.non_generic_fn_names_by_module['${cur_module}\x01${node.value}'] = true
 				}
 			}
 			else {}
 		}
 	}
-	return false
+}
+
+fn (g &FlatGen) non_generic_fn_decl_exists_in_module(name string, module_name string) bool {
+	if name.len == 0 || name.contains('.') {
+		return false
+	}
+	return '${module_name}\x01${name}' in g.non_generic_fn_names_by_module
 }
 
 fn (g &FlatGen) concrete_fn_return_known(name string) bool {

@@ -84,6 +84,10 @@ mut:
 	fn_decl_param_types            map[string][]types.Type
 	fn_decl_mut_receivers          map[string]bool
 	fn_decl_ret_types              map[string]types.Type // fn decl name (and qualified variants) -> return type
+	// set of `${module}\x01${name}` for every non-generic fn decl, built once in
+	// precompute_non_generic_fn_index. Replaces the former full-node scan in
+	// non_generic_fn_decl_exists_in_module (O(nodes) per call, hot in cgen).
+	non_generic_fn_names_by_module map[string]bool
 	struct_decl_infos              map[string]StructDeclInfo
 	struct_decl_short_infos        map[string]StructDeclInfo
 	shared_type_names              map[string]SharedTypeInfo // __shared__ wrapper name -> wrapped type metadata
@@ -301,6 +305,7 @@ pub fn FlatGen.new() FlatGen {
 		fn_decl_param_types:            map[string][]types.Type{}
 		fn_decl_mut_receivers:          map[string]bool{}
 		fn_decl_ret_types:              map[string]types.Type{}
+		non_generic_fn_names_by_module: map[string]bool{}
 		struct_decl_infos:              map[string]StructDeclInfo{}
 		struct_decl_short_infos:        map[string]StructDeclInfo{}
 		shared_type_names:              map[string]SharedTypeInfo{}
@@ -418,6 +423,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fn_decl_param_types = map[string][]types.Type{}
 	g.fn_decl_mut_receivers = map[string]bool{}
 	g.fn_decl_ret_types = map[string]types.Type{}
+	g.non_generic_fn_names_by_module = map[string]bool{}
 	g.struct_decl_infos = map[string]StructDeclInfo{}
 	g.struct_decl_short_infos = map[string]StructDeclInfo{}
 	g.shared_type_names = map[string]SharedTypeInfo{}
@@ -452,6 +458,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	g.has_builtins = g.tc.has_builtins
 	g.collect_gen_info()
+	g.precompute_non_generic_fn_index()
 	g.collect_fixed_storage_consts()
 	g.collect_shared_type_names()
 	g.precompute_embedded_fields()
