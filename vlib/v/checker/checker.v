@@ -7757,7 +7757,13 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 				// underlying fixed array: fixed arrays live on the stack, so they
 				// cannot be referenced/heap-promoted. Without this, the alias slips
 				// past the guard below and cgen emits invalid `HEAP(Arr, ({0}))`.
-				final_kind := c.table.final_sym(obj.typ.set_nr_muls(0)).kind
+				// Use `fully_unaliased_type` (not `final_sym`, which discards
+				// `nr_muls`/flags) and require no pointer indirection, so a
+				// pointer alias like `type Ptr = &Arr` is not misread as a bare
+				// fixed array value.
+				unaliased_typ := c.table.fully_unaliased_type(obj.typ.set_nr_muls(0))
+				is_fixed_array := unaliased_typ.nr_muls() == 0
+					&& c.table.sym(unaliased_typ).kind == .array_fixed
 				if obj.is_stack_obj && !type_sym.is_heap() && !type_sym.is_int()
 					&& !c.pref.translated && !c.file.is_translated {
 					suggestion := if type_sym.kind == .struct {
@@ -7768,7 +7774,7 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 					mischief := if as_interface { 'used as interface object' } else { 'referenced' }
 					c.error('`${node.name}` cannot be ${mischief} outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
 						node.pos)
-				} else if type_sym.kind == .array_fixed || final_kind == .array_fixed {
+				} else if is_fixed_array {
 					c.error('cannot reference fixed array `${node.name}` outside `unsafe` blocks as it is supposed to be stored on stack',
 						node.pos)
 				} else {
