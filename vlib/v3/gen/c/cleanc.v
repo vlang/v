@@ -2000,12 +2000,6 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 			continue
 		}
 		clean := directive.trim_space()
-		if c_is_preserved_system_include_directive(clean) {
-			if emitted_includes[clean] {
-				continue
-			}
-			emitted_includes[clean] = true
-		}
 		if directive.contains('\n') {
 			g.emit_preserved_c_directive(directive)
 			emitted = true
@@ -2015,6 +2009,18 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 			[]string{}
 		} else {
 			c_lifted_include_context_prefix(directives, i)
+		}
+		if c_is_preserved_system_include_directive(clean) {
+			// Dedupe on the include *together with* its lifted guard context: the
+			// same header may legitimately appear under different guards (e.g. one
+			// `#ifdef __linux__` block and one `#ifdef __APPLE__` block), and each
+			// occurrence needs its own context emitted. Keying on the raw include
+			// line alone would drop the second, differently-guarded include.
+			key := prefix.join('\n') + '\x00' + clean
+			if emitted_includes[key] {
+				continue
+			}
+			emitted_includes[key] = true
 		}
 		for line in prefix {
 			g.writeln(line)

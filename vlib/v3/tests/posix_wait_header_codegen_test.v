@@ -795,3 +795,31 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true\ntrue\ntrue', run.output
 }
+
+// The same system header may legitimately appear under different guards. The
+// preserved-include dedupe must key on the lifted guard context, not just the
+// raw `#include` line, or the second, differently-guarded include is dropped
+// (and its guard left dangling).
+fn test_same_system_include_under_different_guards_is_kept() {
+	$if windows {
+		return
+	}
+	v3_bin := wait_header_build_v3()
+	c_code := wait_header_gen_c(v3_bin, 'dup_guarded_include', "module main
+
+#ifdef __linux__
+#include <sys/v3dup_guard.h>
+#endif
+#ifdef __APPLE__
+#include <sys/v3dup_guard.h>
+#endif
+
+fn main() {
+	println('ok')
+}
+")
+	// Both guarded copies survive.
+	assert c_code.count('#include <sys/v3dup_guard.h>') == 2, c_code
+	assert c_code.contains('#ifdef __linux__\n#include <sys/v3dup_guard.h>\n#endif'), c_code
+	assert c_code.contains('#ifdef __APPLE__\n#include <sys/v3dup_guard.h>\n#endif'), c_code
+}

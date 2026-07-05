@@ -239,6 +239,15 @@ fn main() {
 	mut run_args := []string{}
 	mut i := 0
 	for i < args.len {
+		// Once `run <file>` has captured its input file, every remaining argument
+		// belongs to the program being run — including `-`-prefixed flags such as
+		// `--help`. Forward them verbatim instead of interpreting them as compiler
+		// flags (which would otherwise be silently dropped).
+		if should_run && input_file.len > 0 {
+			run_args << args[i]
+			i++
+			continue
+		}
 		if args[i] == 'run' && input_file.len == 0 && !should_run {
 			should_run = true
 			i++
@@ -301,11 +310,7 @@ fn main() {
 		} else if args[i].starts_with('-') {
 			i++
 		} else {
-			if should_run && input_file.len > 0 {
-				run_args << args[i]
-			} else {
-				input_file = args[i]
-			}
+			input_file = args[i]
 			i++
 		}
 	}
