@@ -186,8 +186,10 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 	// entry. `key` is passed so the scan excludes it explicitly: it would
 	// otherwise look idle (active_streams is still 0 — do_h2 hasn't run yet)
 	// and, if it is the only idle candidate found, get evicted as its own
-	// registration's victim.
-	mut evicted := t.evict_idle_h2_if_over_cap(key)
+	// registration's victim. The victim may come from either pool: a budget
+	// already filled entirely by idle h1 connections must still be freeable
+	// here, not just when h2_conns itself has another idle entry.
+	mut evicted := t.evict_oldest_idle_locked(key)
 	t.mu.unlock()
 
 	call.mu.lock()
@@ -199,9 +201,12 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 	if orphan != unsafe { nil } {
 		orphan.release()
 	}
-	if evicted != unsafe { nil } {
-		evicted.shutdown_when_idle()
-		evicted.release()
+	if evicted.h1 != unsafe { nil } {
+		evicted.h1.close_conn()
+	}
+	if evicted.h2 != unsafe { nil } {
+		evicted.h2.shutdown_when_idle()
+		evicted.h2.release()
 	}
 
 	resp := do_h2(req, mut mux, method, host, port, path, data, header)!

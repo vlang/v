@@ -2304,3 +2304,176 @@ fn test_mux_upload_permanently_stalled_eventually_times_out() {
 	peer_thread.wait()
 	assert out.errs['/stuck'].contains('uploading the request body'), 'expected the upload-stall watchdog to fail the stuck upload, got: ${out.errs}'
 }
+
+// req.read_timeout must behave like an idle timeout on the response-wait
+// phase, matching HTTP/1.1 and the one-shot H2Conn path (both apply it as a
+// per-read socket timeout, which effectively restarts on every read that
+// returns data) -- not a single absolute deadline for the entire response. A
+// response that keeps delivering DATA, with gaps between chunks each shorter
+// than read_timeout, must succeed even though the WHOLE response takes longer
+// than read_timeout to complete (Codex P1, vlang/v#27643
+// pullrequestreview-4630174759).
+fn test_mux_read_timeout_resets_on_response_progress() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_test_mux_conn(mut cend)
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{
+		authority:    't'
+		path:         '/slow-trickle'
+		read_timeout: 150 * time.millisecond
+	}, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		id := ids[0]
+		peer.respond_headers(id, false) or {
+			peer.fail('respond: ${err.msg()}')
+			return
+		}
+		// Four chunks, each gap (75ms) well under read_timeout (150ms), but the
+		// total elapsed time (~300ms) comfortably exceeds it -- only a
+		// progress-reset watchdog can survive this.
+		for i in 0 .. 4 {
+			time.sleep(75 * time.millisecond)
+			peer.write_frame(H2DataFrame{
+				stream_id:  id
+				data:       'chunk${i};'.bytes()
+				end_stream: i == 3
+			}) or {
+				peer.fail('data${i}: ${err.msg()}')
+				return
+			}
+		}
+	}(mut peer)
+	workers.wait()
+	// Checked before peer.failure_msg(): on a premature client abort (the bug
+	// under test), closing the pipe below races the peer's still-sending loop,
+	// which fails its own in-flight write with an incidental "pipe closed"
+	// error -- expected noise from the interrupt, not a distinct bug, and it
+	// would otherwise obscure this assertion's clearer message.
+	cend.close_both()
+	peer_thread.wait()
+	assert out.errs.len == 0, 'expected steady DATA progress to reset the idle timeout, got: ${out.errs}'
+	assert out.statuses['/slow-trickle'] == 200
+	assert out.bodies['/slow-trickle'] == 'chunk0;chunk1;chunk2;chunk3;'
+}
+
+// A watchdog-timed-out stream (read_timeout exceeded with no response ever
+// arriving) must tell the peer via RST_STREAM, not just fail locally:
+// otherwise the peer keeps the stream open -- and counted against
+// SETTINGS_MAX_CONCURRENT_STREAMS -- indefinitely after the client has
+// already given up and returned the connection to the pool (Codex P2,
+// vlang/v#27643 pullrequestreview-4630174759).
+fn test_mux_watchdog_timeout_sends_rst_stream() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_test_mux_conn(mut cend)
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{
+		authority:    't'
+		path:         '/never-responds'
+		read_timeout: 100 * time.millisecond
+	}, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		// Never respond; keep pumping so a client-sent RST_STREAM after
+		// read_timeout is actually consumed off the pipe and recorded.
+		for {
+			peer.pump() or { return }
+		}
+	}(mut peer)
+	workers.wait()
+	cend.close_both()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	assert out.errs['/never-responds'] != '', 'expected the request to fail after read_timeout, got success'
+	peer.mu.lock()
+	ids := peer.stream_ids.clone()
+	rst := peer.rst_streams.clone()
+	peer.mu.unlock()
+	assert ids.len == 1
+	assert ids[0] in rst, 'expected client to send RST_STREAM for the timed-out stream ${ids[0]}, got RSTs: ${rst}'
+}
+
+// cancel_stream (triggered by stop_receiving_limit or an aborting on_data
+// callback) must mark the stream's phase done, or a still-sleeping response
+// watchdog -- unaware the requester already gave up cleanly -- fires after the
+// full read_timeout and sends a SECOND, bogus RST_STREAM for a stream that was
+// already cleanly cancelled and deregistered (Codex P2, vlang/v#27643
+// pullrequestreview-4630174759).
+fn test_mux_cancel_stream_stops_pending_watchdog() {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_test_mux_conn(mut cend)
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	mut out := &MuxResults{}
+	read_timeout := 300 * time.millisecond
+	mut workers := []thread{}
+	workers << spawn mux_worker(mut conn, H2ClientRequest{
+		authority:            't'
+		path:                 '/partial'
+		read_timeout:         read_timeout
+		stop_receiving_limit: 4
+	}, mut out)
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		id := ids[0]
+		peer.respond_headers(id, false) or {
+			peer.fail('respond: ${err.msg()}')
+			return
+		}
+		peer.write_frame(H2DataFrame{
+			stream_id: id
+			data:      'abcdefgh'.bytes()
+		}) or {
+			peer.fail('data: ${err.msg()}')
+			return
+		}
+		// Keep consuming frames (a lingering watchdog's bogus second
+		// RST_STREAM, if the bug is present) until the main goroutine closes
+		// the pipe.
+		for {
+			peer.pump() or { return }
+		}
+	}(mut peer)
+	workers.wait()
+	assert out.errs.len == 0, 'expected the stop_receiving_limit to cleanly stop the response, got: ${out.errs}'
+	// Outlive read_timeout so a still-alive watchdog (the bug) has time to
+	// fire and send its bogus second RST_STREAM before the pipe closes.
+	time.sleep(read_timeout + 400 * time.millisecond)
+	cend.close_both()
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	peer.mu.lock()
+	rst := peer.rst_streams.clone()
+	peer.mu.unlock()
+	assert rst.len == 1, 'expected exactly one RST_STREAM (from cancel_stream itself); a lingering watchdog sent a second one: ${rst}'
+}

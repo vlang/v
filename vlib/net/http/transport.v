@@ -269,10 +269,9 @@ fn (mut t Transport) checkout(key string) &H1PooledConn {
 // checkin returns a healthy connection to the idle pool, or closes it when the
 // per-host pool is already at capacity. Adding it may push the total idle count
 // over max_idle_conns, in which case the least-recently-used idle connection
-// across all pools is evicted and closed.
+// across all pools (h1 and h2) is evicted and closed.
 fn (mut t Transport) checkin(mut conn H1PooledConn) {
 	conn.idle_since = time.now()
-	mut evicted := &H1PooledConn(unsafe { nil })
 	t.mu.lock()
 	mut list := t.h1_idle[conn.key] or { []&H1PooledConn{} }
 	if list.len >= t.max_idle_conns_per_host {
@@ -282,17 +281,19 @@ fn (mut t Transport) checkin(mut conn H1PooledConn) {
 	}
 	list << conn
 	t.h1_idle[conn.key] = list
-	if t.max_idle_conns > 0 && t.total_idle_locked() > t.max_idle_conns {
-		evicted = t.evict_oldest_locked()
-	}
+	mut evicted := t.evict_oldest_idle_locked('')
 	t.mu.unlock()
-	if evicted != unsafe { nil } {
-		evicted.close_conn()
+	if evicted.h1 != unsafe { nil } {
+		evicted.h1.close_conn()
+	}
+	if evicted.h2 != unsafe { nil } {
+		evicted.h2.shutdown_when_idle()
+		evicted.h2.release()
 	}
 }
 
-// total_idle_locked sums the idle connections across all pool keys. The caller
-// must hold t.mu.
+// total_idle_locked sums the idle h1 connections across all pool keys. The
+// caller must hold t.mu.
 fn (t &Transport) total_idle_locked() int {
 	mut n := 0
 	for _, list in t.h1_idle {
@@ -301,41 +302,67 @@ fn (t &Transport) total_idle_locked() int {
 	return n
 }
 
-// evict_idle_h2_if_over_cap evicts the least-recently-idle h2 connection when
-// registering a new one would push the total pooled-connection count (h1 +
-// h2) over max_idle_conns — the h2 pool's analog of checkin's h1 eviction,
-// since h2_conns has no other reaper (a dead connection is otherwise only
-// reclaimed lazily, on the next dial to the same key, or by close_idle).
-// Only a connection with zero active streams is eligible: a busy connection
-// is never evicted to make room, mirroring how a checked-out h1 connection
-// (not in h1_idle) can't be evicted either. The caller must hold t.mu and
-// release the returned connection (shutdown_when_idle + release) outside it —
-// release() can synchronously drive teardown_transport(), which calls this
-// connection's own close_transport closure, which itself takes t.mu.
+// EvictedIdleConn carries the result of evict_oldest_idle_locked: at most one
+// of h1/h2 is non-nil.
+struct EvictedIdleConn {
+mut:
+	h1 &H1PooledConn = unsafe { nil }
+	h2 &H2MuxConn    = unsafe { nil }
+}
+
+// evict_oldest_idle_locked evicts the single least-recently-idle connection
+// across BOTH the h1 and h2 pools when the combined idle count exceeds
+// max_idle_conns — a shared cap enforced from only one side lets the other
+// protocol exceed it silently: checkin()'s own cap check used to count only
+// h1_idle, and the h2 dial path's own eviction scan used to consider only
+// h2_conns, so a budget already filled entirely by ONE protocol was never
+// freed for the OTHER (Codex P2, vlang/v#27643 pullrequestreview-4630174759:
+// with max_idle_conns filled by one idle h1 connection, a fresh h2 dial had
+// no eligible h2 candidate to evict — its own new entry is excluded, and
+// there was no other h2 connection — so neither it nor the h1 entry was ever
+// freed, and the pool grew past the documented cap). The caller must hold
+// t.mu; the returned connection's teardown (close_conn for h1,
+// shutdown_when_idle+release for h2) must happen OUTSIDE t.mu — h2's
+// release() can synchronously call this connection's own close_transport
+// closure, which itself takes t.mu.
 //
-// `just_registered_key` is excluded from the candidate scan: the caller always
-// invokes this in the same locked section that just registered a brand-new
-// h2_conns entry under that key, and that connection's active_streams is still
-// 0 (do_h2 hasn't run yet on it), making it look idle. It is NOT, in the sense
-// that matters here — it is this very dial's own result — but if it happens to
-// be the ONLY idle candidate in the whole map (e.g. every other pooled
-// connection is a busy h2 conn, or the shared budget is entirely consumed by
-// h1 idle entries this function never looks at), it would otherwise be picked
-// as "oldest" by default (the loop's first candidate always wins ties), tearing
-// down the connection this very call just dialed before its own request ever
-// runs on it (Codex P1, vlang/v#27643 pullrequestreview-4628439062).
-fn (mut t Transport) evict_idle_h2_if_over_cap(just_registered_key string) &H2MuxConn {
+// `just_registered_h2_key`, when non-empty, excludes that h2 key from
+// candidacy: the h2 dial path calls this in the same locked section that just
+// registered a brand-new h2_conns entry under that key, whose active_streams
+// is still 0 (do_h2 hasn't run yet), making it look idle when it is this very
+// dial's own result (Codex P1, pullrequestreview-4628439062) — otherwise, if
+// it were the only idle h2 candidate, it would be evicted before its own
+// request ever runs on it. Only a connection with zero active streams (h2) or
+// one already sitting in h1_idle (h1, always idle by construction) is
+// eligible — a busy h2 connection is never evicted to make room, mirroring
+// how a checked-out h1 connection (not in h1_idle) can't be evicted either.
+fn (mut t Transport) evict_oldest_idle_locked(just_registered_h2_key string) EvictedIdleConn {
 	if t.max_idle_conns <= 0 {
-		return &H2MuxConn(unsafe { nil })
+		return EvictedIdleConn{}
 	}
 	if t.total_idle_locked() + t.h2_conns.len <= t.max_idle_conns {
-		return &H2MuxConn(unsafe { nil })
+		return EvictedIdleConn{}
 	}
-	mut oldest_key := ''
-	mut oldest_conn := &H2MuxConn(unsafe { nil })
+	mut found := false
+	mut from_h2 := false
 	mut oldest_since := time.now()
+	mut h1_key := ''
+	mut h1_idx := -1
+	mut h2_key := ''
+	mut h2_conn := &H2MuxConn(unsafe { nil })
+	for k, list in t.h1_idle {
+		for i, c in list {
+			if !found || c.idle_since < oldest_since {
+				found = true
+				from_h2 = false
+				h1_key = k
+				h1_idx = i
+				oldest_since = c.idle_since
+			}
+		}
+	}
 	for k, mut c in t.h2_conns {
-		if k == just_registered_key {
+		if k == just_registered_h2_key {
 			continue
 		}
 		c.smu.lock()
@@ -345,47 +372,35 @@ fn (mut t Transport) evict_idle_h2_if_over_cap(just_registered_key string) &H2Mu
 		if !is_idle {
 			continue
 		}
-		if oldest_conn == unsafe { nil } || since < oldest_since {
-			oldest_key = k
-			oldest_conn = c
+		if !found || since < oldest_since {
+			found = true
+			from_h2 = true
+			h2_key = k
+			h2_conn = c
 			oldest_since = since
 		}
 	}
-	if oldest_conn != unsafe { nil } {
-		t.h2_conns.delete(oldest_key)
-		t.h2_dial_id.delete(oldest_key)
+	if !found {
+		return EvictedIdleConn{}
 	}
-	return oldest_conn
-}
-
-// evict_oldest_locked removes and returns the least-recently-used idle
-// connection across all pool keys (nil if the pool is empty), pruning an
-// emptied key. The caller must hold t.mu and close the returned connection.
-fn (mut t Transport) evict_oldest_locked() &H1PooledConn {
-	mut oldest_key := ''
-	mut oldest_idx := -1
-	mut oldest_since := time.now()
-	for k, list in t.h1_idle {
-		for i, c in list {
-			if oldest_idx == -1 || c.idle_since < oldest_since {
-				oldest_key = k
-				oldest_idx = i
-				oldest_since = c.idle_since
-			}
+	if from_h2 {
+		t.h2_conns.delete(h2_key)
+		t.h2_dial_id.delete(h2_key)
+		return EvictedIdleConn{
+			h2: h2_conn
 		}
 	}
-	if oldest_idx == -1 {
-		return &H1PooledConn(unsafe { nil })
-	}
-	mut list := t.h1_idle[oldest_key] or { return &H1PooledConn(unsafe { nil }) }
-	victim := list[oldest_idx]
-	list.delete(oldest_idx)
+	mut list := t.h1_idle[h1_key] or { return EvictedIdleConn{} }
+	victim := list[h1_idx]
+	list.delete(h1_idx)
 	if list.len == 0 {
-		t.h1_idle.delete(oldest_key)
+		t.h1_idle.delete(h1_key)
 	} else {
-		t.h1_idle[oldest_key] = list
+		t.h1_idle[h1_key] = list
 	}
-	return victim
+	return EvictedIdleConn{
+		h1: victim
+	}
 }
 
 // maybe_checkin pools the connection when both the read framing and the

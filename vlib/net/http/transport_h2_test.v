@@ -433,7 +433,7 @@ fn test_h2_pool_respects_max_idle_conns_cap() {
 
 // A dial that registers a brand-new h2 connection must never pick that SAME
 // connection as its own eviction victim: with max_idle_conns already consumed
-// by an unrelated idle h1 connection, evict_idle_h2_if_over_cap's scan of
+// by an unrelated idle h1 connection, evict_oldest_idle_locked's scan of
 // h2_conns finds the connection this very call just registered as the ONLY
 // idle h2 candidate (active_streams is still 0 — do_h2 hasn't run yet) and
 // evicts it, dropping the pool's sole reference to zero and tearing the
@@ -486,6 +486,66 @@ fn test_h2_pool_does_not_evict_its_own_new_connection() {
 	t.close_idle()
 	stop_h2_pool_srv(mut h1_listener, h1_th)
 	stop_h2_pool_srv(mut h2_listener, h2_th)
+}
+
+// The idle cap is a single shared budget across h1 AND h2: with
+// max_idle_conns already consumed entirely by an idle h1 connection, a fresh
+// h2 dial's own registration-time eviction must be able to free room by
+// evicting that h1 entry (not just scan h2_conns, which has no other eligible
+// candidate here — the only h2 entry is this very dial's own result, excluded
+// from candidacy). Without this, both the h1 idle connection and the new h2
+// connection stay pooled, exceeding the documented global cap indefinitely
+// (Codex P2, vlang/v#27643 pullrequestreview-4630174759).
+fn test_h2_pool_evicts_h1_idle_to_make_room_for_h2() {
+	$if windows && !no_vschannel ? {
+		eprintln('skipping: SChannel connection pooling is not implemented yet')
+		return
+	}
+	mut t := new_transport()
+	t.max_idle_conns = 1
+
+	mut h1_srv := &H2PoolSrv{}
+	h1_port, mut h1_listener, h1_th := start_h2t_h1only_srv(mut h1_srv) or {
+		assert false, 'h1 server: ${err}'
+		return
+	}
+	h1_req := prepare(url: 'https://127.0.0.1:${h1_port}/warm', validate: false, enable_http2: true) or {
+		assert false, 'prepare h1: ${err}'
+		return
+	}
+	h1_resp := t.round_trip(h1_req, .get, 'https', '127.0.0.1', h1_port, '/warm', '', h1_req.header) or {
+		assert false, 'round_trip h1: ${err}'
+		return
+	}
+	assert h1_resp.status_code == 200
+
+	mut h2_srv := &H2PoolSrv{}
+	h2_port, mut h2_listener, h2_th := start_h2_pool_srv(mut h2_srv) or {
+		assert false, 'h2 server: ${err}'
+		return
+	}
+	h2_req := prepare(url: 'https://127.0.0.1:${h2_port}/fresh', validate: false, enable_http2: true) or {
+		assert false, 'prepare h2: ${err}'
+		return
+	}
+	h2_resp := t.round_trip(h2_req, .get, 'https', '127.0.0.1', h2_port, '/fresh', '',
+		h2_req.header) or {
+		stop_h2_pool_srv(mut h1_listener, h1_th)
+		stop_h2_pool_srv(mut h2_listener, h2_th)
+		assert false, 'h2 dial: ${err}'
+		return
+	}
+	assert h2_resp.status_code == 200
+
+	t.mu.lock()
+	h1_idle_count := t.total_idle_locked()
+	h2_count := t.h2_conns.len
+	t.mu.unlock()
+	total := h1_idle_count + h2_count
+	t.close_idle()
+	stop_h2_pool_srv(mut h1_listener, h1_th)
+	stop_h2_pool_srv(mut h2_listener, h2_th)
+	assert total <= t.max_idle_conns, 'expected the combined h1+h2 idle pool to respect max_idle_conns=${t.max_idle_conns}, got ${h1_idle_count} h1 + ${h2_count} h2 = ${total}'
 }
 
 // Sequential requests to the same h2 origin must reuse the pooled multiplexed
