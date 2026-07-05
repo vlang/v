@@ -49,7 +49,8 @@ fn test_run_forwards_all_args_after_input_file() {
 
 	app_src := os.join_path(tmp_dir, 'app.v')
 	os.write_file(app_src, "import os\nfn main() {\n\tprintln(os.args[1..].join('|'))\n}\n")!
-	res := os.execute('cd ${os.quoted_path(tmp_dir)} && ${os.quoted_path(v3_bin)} run app.v --help pos --flag=1')
+	res :=
+		os.execute('cd ${os.quoted_path(tmp_dir)} && ${os.quoted_path(v3_bin)} run app.v --help pos --flag=1')
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('--help|pos|--flag=1'), res.output
 }

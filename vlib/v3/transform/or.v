@@ -366,7 +366,13 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 			expr_type = fallback_type
 		}
 	}
+	if expr_type == '!' || expr_type == '?' {
+		return '${expr_type}void', 'void'
+	}
 	base_type := t.optional_base_type(expr_type)
+	if base_type == 'Optional' {
+		return expr_type, 'void'
+	}
 	mut value_type := if base_type.len > 0 { base_type } else { fallback_type }
 	if value_type.len == 0 || value_type == '!' || value_type == '?' {
 		value_type = 'int'
@@ -567,7 +573,8 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 		return t.transform_expr(expr_id)
 	}
 	is_void := value_type.len == 0 || value_type == 'void'
-
+		|| value_type == 'Optional' || value_type == '!' || value_type == '?'
+		|| (t.is_optional_type_name(value_type) && t.optional_base_type(value_type) == 'void')
 	opt_tmp := t.new_temp('or_opt')
 	val_tmp := t.new_temp('or_val')
 

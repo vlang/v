@@ -3091,6 +3091,12 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 							}
 						}
 						if clean_type is types.String {
+							if fn_node.value == 'to_owned' {
+								g.write('string__clone(')
+								g.gen_expr(g.a.child(fn_node, 0))
+								g.write(')')
+								return
+							}
 							method_name = 'string.${fn_node.value}'
 							if method_name in g.tc.fn_param_types {
 								is_method = true
@@ -3241,6 +3247,12 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						}
 					}
 					if clean_type is types.String {
+						if fn_node.value == 'to_owned' {
+							g.write('string__clone(')
+							g.gen_expr(g.a.child(fn_node, 0))
+							g.write(')')
+							return
+						}
 						method_name = 'string.${fn_node.value}'
 						if method_name in g.tc.fn_param_types {
 							is_method = true

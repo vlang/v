@@ -1358,6 +1358,10 @@ fn (tc &TypeChecker) local_fn_decl_exists(name string) bool {
 
 // qualify_name supports qualify name handling for TypeChecker.
 pub fn (tc &TypeChecker) qualify_name(name string) string {
+	// Qualify container / wrapper types by recursing into the element type first,
+	// so imported dotted names inside `[]T`, `[N]T`, `map[K]V`, `&T`, `?T`, `!T`
+	// still get resolved. The `.contains('.')` fast path below only understands the
+	// bare `alias.Type` form, so it must not short-circuit these wrappers.
 	if name.starts_with('[]') {
 		return '[]' + tc.qualify_name(name[2..])
 	}

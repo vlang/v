@@ -193,7 +193,12 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 		} else {
 			rhs_type := g.optional_source_type_for_expr(rhs_id, g.tc.resolve_type(rhs_id))
 			opt_ct := g.optional_type_name_for_expr(rhs_id, rhs_type)
-			val_ct, val_type := g.optional_value_ct(rhs_type)
+			val_ct0, val_type := g.optional_value_ct(rhs_type)
+			val_ct := if val_type is types.MultiReturn {
+				g.optional_payload_c_type(val_type)
+			} else {
+				val_ct0
+			}
 			g.write('${opt_ct} ${tmp} = ')
 			g.gen_expr(rhs_id)
 			g.writeln(';')
@@ -206,7 +211,12 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 	} else {
 		rhs_type := g.optional_source_type_for_expr(rhs_id, g.tc.resolve_type(rhs_id))
 		opt_ct := g.optional_type_name_for_expr(rhs_id, rhs_type)
-		val_ct, val_type := g.optional_value_ct(rhs_type)
+		val_ct0, val_type := g.optional_value_ct(rhs_type)
+		val_ct := if val_type is types.MultiReturn {
+			g.optional_payload_c_type(val_type)
+		} else {
+			val_ct0
+		}
 		g.write('${opt_ct} ${tmp} = ')
 		g.gen_expr(rhs_id)
 		g.writeln(';')

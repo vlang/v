@@ -1,6 +1,7 @@
 module c
 
 import v3.flat
+import v3.gen.c.naming
 import v3.types
 
 // optional_type_name supports optional type name handling for FlatGen.
@@ -72,14 +73,25 @@ fn (mut g FlatGen) optional_value_ct(t types.Type) (string, types.Type) {
 		if t.base_type is types.Void {
 			return 'int', types.Type(types.int_)
 		}
-		return g.tc.c_type(t.base_type), t.base_type
+		return g.optional_payload_c_type(t.base_type), t.base_type
 	} else if t is types.ResultType {
 		if t.base_type is types.Void {
 			return 'int', types.Type(types.int_)
 		}
-		return g.tc.c_type(t.base_type), t.base_type
+		return g.optional_payload_c_type(t.base_type), t.base_type
 	}
 	return 'int', types.Type(types.int_)
+}
+
+fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
+	if t is types.MultiReturn {
+		mut parts := []string{cap: t.types.len}
+		for item in t.types {
+			parts << naming.type_name_part(g.tc.c_type(item))
+		}
+		return 'multi_return_${parts.join('_')}'
+	}
+	return g.tc.c_type(t)
 }
 
 // optional_typedefs supports optional typedefs handling for FlatGen.

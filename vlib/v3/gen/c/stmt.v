@@ -1091,6 +1091,9 @@ fn (mut g FlatGen) heap_local_address_expr(ret_id flat.NodeId, expected types.Ty
 		return none
 	}
 	local_expr := g.expr_to_string(child_id)
+	if g.current_param_is_mut(child.value) {
+		return local_expr
+	}
 	return '(${base_ct}*)memdup(&${local_expr}, sizeof(${base_ct}))'
 }
 
@@ -2249,7 +2252,9 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				i += 2
 				continue
 			}
-			ct0 := if rhs.kind == .struct_init
+			ct0 := if v_type is types.MultiReturn {
+				g.tc.c_type(v_type)
+			} else if rhs.kind == .struct_init
 				&& g.struct_init_decl_type_is_bare_generic_instance(rhs, v_type) {
 				g.tc.c_type(v_type)
 			} else if rhs.kind == .struct_init {
@@ -3038,7 +3043,12 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 	tmp := g.tmp_name()
 	expr_type := g.optional_source_type_for_expr(expr_id, g.or_expr_source_type(expr_id, expr_node))
 	opt_ct := g.optional_type_name_for_expr(expr_id, expr_type)
-	val_ct, val_type := g.optional_value_ct(expr_type)
+	val_ct0, val_type := g.optional_value_ct(expr_type)
+	val_ct := if val_type is types.MultiReturn {
+		g.optional_payload_c_type(val_type)
+	} else {
+		val_ct0
+	}
 	owner := g.tc.cur_scope.insert_with_owner(lhs.value, val_type)
 	g.track_local_pointer_storage_decl(lhs, owner, val_type, val_ct)
 	g.write('${opt_ct} ${tmp} = ')
@@ -3211,7 +3221,12 @@ fn (mut g FlatGen) gen_or_expr(node flat.Node) {
 	} else {
 		false
 	}
-	val_ct, val_type := g.optional_value_ct(expr_type)
+	val_ct0, val_type := g.optional_value_ct(expr_type)
+	val_ct := if val_type is types.MultiReturn {
+		g.optional_payload_c_type(val_type)
+	} else {
+		val_ct0
+	}
 	if no_value {
 		g.write('({${opt_ct} ${tmp} = ')
 		g.gen_expr_with_expected_type(expr_id, expr_type)
