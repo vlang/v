@@ -300,7 +300,7 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == "[['A', 'B'], ['C', 'D']]"
 
-	body := generic_struct_str_c_fn(generated, 'string gr__FixedBox_Pair__str(')
+	body := generic_struct_str_c_fn(generated, 'string gr__FixedBox_string_2__str(')
 	assert body.len > 0, generated
 	assert body.contains('Array_fixed_string_2'), body
 	assert body.contains('string __arr_str_it_'), body

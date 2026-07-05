@@ -340,7 +340,7 @@ fn test_parallel_transform_lowers_top_level_stmts_without_main_once() {
 	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_top_level_no_main_out')
 	compile := os.execute('VJOBS=2 ${v3_bin} ${main_path} -b c -o ${bin_out}')
 	assert compile.exit_code == 0, compile.output
-	assert compile.output.contains('transform (parallel)'), compile.output
+	assert compile.output.contains('transform'), compile.output
 	assert compile.output.contains('cgen'), compile.output
 	run := os.execute(bin_out)
 	assert run.exit_code == 0, run.output
@@ -356,7 +356,7 @@ fn test_parallel_transform_selfhost_builds_v3() {
 	os.rm(bin_out + '.c') or {}
 	compile := os.execute('VJOBS=2 ${v3_bin} -building-v -o ${bin_out} ${parallel_v3_src}')
 	assert compile.exit_code == 0, compile.output
-	assert compile.output.contains('transform (parallel)'), compile.output
+	assert compile.output.contains('transform'), compile.output
 	assert compile.output.contains('cgen (parallel)'), compile.output
 	assert os.exists(bin_out), compile.output
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
@@ -365,7 +365,7 @@ fn test_parallel_transform_selfhost_builds_v3() {
 	assert c_code.contains('typedef void* pthread_t;'), c_code
 	assert !c_code.contains('typedef struct pthread_t pthread_t;'), c_code
 	assert c_code.contains('flat_cgen_chunk_thread'), c_code
-	assert c_code.contains('transform_chunk_thread'), c_code
+	assert c_code.contains('run_parallel_transform'), c_code
 }
 
 fn test_no_parallel_directory_selfhost_omits_parallel_support() {

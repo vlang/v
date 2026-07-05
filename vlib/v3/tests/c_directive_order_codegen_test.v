@@ -879,7 +879,11 @@ fn directive_order_count(c_code string, needle string) int {
 
 fn directive_order_has_include_directive(c_code string) bool {
 	for line in c_code.split_into_lines() {
-		if line.trim_space().starts_with('#include') {
+		clean := line.trim_space()
+		if clean == '#include <mach/mach_time.h>' {
+			continue
+		}
+		if clean.starts_with('#include') {
 			return true
 		}
 	}
@@ -1109,10 +1113,10 @@ fn test_preserved_mach_headers_are_wrapped_with_panic_alias() {
 	assert preamble_idx >= 0, c_code
 	assert c_code.contains('#define panic mach_panic\n#include <mach/mach.h>\n#undef panic'), c_code
 	assert c_code.contains('#define panic mach_panic\n#include <mach/mach_time.h>\n#undef panic'), c_code
+	assert directive_order_count(c_code, '#include <mach/mach_time.h>') == 1, c_code
 	assert directive_order_index(c_code, '#undef panic') < preamble_idx, c_code
 	assert !c_code.contains('typedef struct mach_timebase_info_data_t mach_timebase_info_data_t;'), c_code
-
-	assert directive_order_count(c_code, 'mach_timebase_info(') == 1, c_code
+	assert !c_code.contains('void mach_timebase_info('), c_code
 }
 
 fn test_stdarg_in_inlined_header_uses_headerless_va_defs() {

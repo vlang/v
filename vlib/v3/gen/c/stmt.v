@@ -702,6 +702,8 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 								&& !g.type_can_wrap_as_sum(expr_value_type, base)
 								&& !g.type_can_wrap_as_ierror_payload(expr_value_type, base)
 								&& !g.types_numeric_compatible(expr_value_type, base)
+								&& !g.array_abi_types_match(expr_value_type, base)
+								&& !g.or_value_temp_matches_array_return(ret_node, base)
 								&& !g.call_constructs_type(ret_id, base)
 								&& !g.clone_call_matches_base(ret_node, base)
 								&& expr_value_type !is types.Primitive
@@ -1184,6 +1186,8 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 			&& !g.type_can_wrap_as_sum(expr_value_type, base)
 			&& !g.type_can_wrap_as_ierror_payload(expr_value_type, base)
 			&& !g.types_numeric_compatible(expr_value_type, base)
+			&& !g.array_abi_types_match(expr_value_type, base)
+			&& !g.or_value_temp_matches_array_return(ret_node, base)
 			&& !g.call_constructs_type(ret_id, base) && !g.clone_call_matches_base(ret_node, base)
 			&& expr_value_type !is types.Primitive && expr_value_type !is types.Unknown {
 			if g.cur_fn_ret is types.ResultType {
@@ -1254,10 +1258,10 @@ fn (g &FlatGen) type_can_return_as_ierror(typ types.Type) bool {
 		return g.type_can_return_as_ierror(clean.base_type)
 	}
 	if clean is types.Interface {
-		return clean.name == 'IError' || clean.name.ends_with('.IError')
+		return g.is_ierror_type_name(clean.name)
 	}
 	if clean is types.Struct {
-		if clean.name == 'IError' || clean.name.ends_with('.IError') {
+		if g.is_ierror_type_name(clean.name) {
 			return true
 		}
 		if g.tc.named_type_implements_interface(clean.name, 'IError') {
@@ -1704,6 +1708,9 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 			if typ := g.global_type_for_ident(node.value) {
 				return typ
 			}
+			if typ := g.const_ident_type(node.value) {
+				return typ
+			}
 		}
 		if node.kind == .selector && node.children_count > 0 {
 			base_type0 := g.usable_expr_type(g.a.child(&node, 0))
@@ -1805,22 +1812,6 @@ fn (g &FlatGen) usable_expr_type(id flat.NodeId) types.Type {
 	return g.tc.resolve_type(id)
 }
 
-fn (g &FlatGen) global_type_for_ident(name string) ?types.Type {
-	if name.len == 0 {
-		return none
-	}
-	if typ := g.global_types[name] {
-		return typ
-	}
-	if mod := g.global_modules[name] {
-		qname := qualify_name_in_module(mod, name)
-		if typ := g.global_types[qname] {
-			return typ
-		}
-	}
-	return none
-}
-
 fn (g &FlatGen) array_method_call_return_type(fn_node &flat.Node) ?types.Type {
 	if fn_node.kind != .selector || fn_node.children_count == 0 {
 		return none
@@ -1869,6 +1860,31 @@ fn (g &FlatGen) type_names_match(a types.Type, b types.Type) bool {
 		return true
 	}
 	return a_name.all_after_last('.') == b_name.all_after_last('.')
+}
+
+fn (g &FlatGen) array_abi_types_match(a types.Type, b types.Type) bool {
+	a0 := if a is types.Alias { a.base_type } else { a }
+	b0 := if b is types.Alias { b.base_type } else { b }
+	if a0 is types.Array && b0 is types.Array {
+		return true
+	}
+	if a0 is types.Array {
+		return generated_array_type_name(b0.name())
+	}
+	if b0 is types.Array {
+		return generated_array_type_name(a0.name())
+	}
+	return false
+}
+
+fn generated_array_type_name(name string) bool {
+	clean := name.all_after_last('.')
+	return clean.starts_with('Array_') && !clean.starts_with('Array_fixed_')
+}
+
+fn (g &FlatGen) or_value_temp_matches_array_return(node flat.Node, expected types.Type) bool {
+	expected0 := if expected is types.Alias { expected.base_type } else { expected }
+	return expected0 is types.Array && node.kind == .ident && node.value.starts_with('__or_val_')
 }
 
 // type_can_wrap_as_sum returns type can wrap as sum data for FlatGen.
@@ -2049,8 +2065,8 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				i += 2
 				continue
 			}
-			elem_type := if arr := array_like_type(rhs_v_type) {
-				arr.elem_type
+			elem_type := if rhs_arr := array_like_type(rhs_v_type) {
+				rhs_arr.elem_type
 			} else if rhs.children_count > 0 {
 				g.tc.resolve_type(g.a.child(&rhs, 0))
 			} else {
@@ -2726,10 +2742,12 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					i += 2
 					continue
 				}
-				elem_type := if rhs_node.children_count > 0 {
-					g.tc.resolve_type(g.a.child(&rhs_node, 0))
-				} else if lhs_arr := array_like_type(lhs_type) {
+				elem_type := if lhs_arr := array_like_type(lhs_type) {
 					lhs_arr.elem_type
+				} else if rhs_arr := array_like_type(g.usable_expr_type(rhs_id)) {
+					rhs_arr.elem_type
+				} else if rhs_node.children_count > 0 {
+					g.tc.resolve_type(g.a.child(&rhs_node, 0))
 				} else {
 					types.Type(types.int_)
 				}

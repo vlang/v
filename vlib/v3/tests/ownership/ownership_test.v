@@ -4,14 +4,24 @@ import os
 
 const ownership_tests_dir = os.dir(@FILE)
 const ownership_v3_dir = os.dir(os.dir(ownership_tests_dir))
+const ownership_vlib_dir = os.dir(ownership_v3_dir)
 const ownership_v3_src = os.join_path(ownership_v3_dir, 'v3.v')
 const ownership_vexe = @VEXE
 
 fn ownership_build_v3() string {
+	cache_path := os.join_path(os.temp_dir(), 'v3_ownership_test_${os.getpid()}.path')
+	if cached := os.read_file(cache_path) {
+		cached_bin := cached.trim_space()
+		if cached_bin.len > 0 && os.exists(cached_bin) {
+			return cached_bin
+		}
+	}
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ownership_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${ownership_vexe} -gc none -d ownership -o ${v3_bin} ${ownership_v3_src}')
+	build :=
+		os.execute('${ownership_vexe} -gc none -d ownership -path "${ownership_vlib_dir}" -o ${v3_bin} ${ownership_v3_src}')
 	assert build.exit_code == 0, build.output
+	os.write_file(cache_path, v3_bin) or {}
 	return v3_bin
 }
 
@@ -49,18 +59,9 @@ fn run_ownership_check_with_module(v3_bin string, name string, main_code string,
 	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
 }
 
-fn run_ownership_delegate_check(name string, code string) os.Result {
-	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_delegate_${name}_${os.getpid()}')
-	os.rmdir_all(tmp_dir) or {}
-	os.mkdir_all(tmp_dir) or { panic(err) }
-	src := os.join_path(tmp_dir, 'main.v')
-	out := os.join_path(tmp_dir, 'out')
-	os.write_file(src, code) or { panic(err) }
-	return os.execute('${ownership_vexe} -ownership -b c -o ${out} ${src} 2>&1')
-}
-
-fn test_ownership_delegate_does_not_define_target_ownership() {
-	ok := run_ownership_delegate_check('target_define_not_forwarded', r'
+fn test_ownership_flag_does_not_define_target_ownership() {
+	v3_bin := ownership_build_v3()
+	ok := run_ownership_check(v3_bin, 'target_define_not_forwarded', r'
 $if ownership ? {
 	$compile_error("ownership define leaked into target")
 }

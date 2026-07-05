@@ -320,35 +320,35 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	if !isnil(t.tc) {
 		if expr_node.kind == .call {
 			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
-				return decode_ret, t.optional_base_type(decode_ret)
+				return t.canonical_or_expr_types(decode_ret)
 			}
 			concrete_ret := t.concrete_generic_call_return_type(expr_id, expr_node)
 			if t.is_optional_type_name(concrete_ret) {
-				return concrete_ret, t.optional_base_type(concrete_ret)
+				return t.canonical_or_expr_types(concrete_ret)
 			}
 			call_ret := t.get_call_return_type(expr_id, expr_node)
 			if t.is_optional_type_name(call_ret) {
-				return call_ret, t.optional_base_type(call_ret)
+				return t.canonical_or_expr_types(call_ret)
 			}
 		}
 		if typ := t.tc.expr_type(expr_id) {
 			if typ is types.OptionType {
 				base_name := t.value_type_name(typ.base_type)
-				source_name := if base_name == 'int' && typ.base_type is types.Void {
+				source_name := if typ.base_type is types.Void || base_name == 'Optional' {
 					'?void'
 				} else {
 					'?${base_name}'
 				}
-				return source_name, base_name
+				return t.canonical_or_expr_types(source_name)
 			}
 			if typ is types.ResultType {
 				base_name := t.value_type_name(typ.base_type)
-				source_name := if base_name == 'int' && typ.base_type is types.Void {
+				source_name := if typ.base_type is types.Void || base_name == 'Optional' {
 					'!void'
 				} else {
 					'!${base_name}'
 				}
-				return source_name, base_name
+				return t.canonical_or_expr_types(source_name)
 			}
 		}
 	}
@@ -371,7 +371,23 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	if value_type.len == 0 || value_type == '!' || value_type == '?' {
 		value_type = 'int'
 	}
+	canon_expr_type, canon_value_type := t.canonical_or_expr_types(expr_type)
+	if t.is_optional_type_name(canon_expr_type) {
+		return canon_expr_type, canon_value_type
+	}
 	return expr_type, value_type
+}
+
+fn (t &Transformer) canonical_or_expr_types(expr_type string) (string, string) {
+	if !t.is_optional_type_name(expr_type) {
+		return expr_type, t.optional_base_type(expr_type)
+	}
+	prefix := expr_type[..1]
+	base := t.optional_base_type(expr_type)
+	if base.len == 0 || base == 'void' || base == 'Optional' {
+		return '${prefix}void', 'void'
+	}
+	return expr_type, base
 }
 
 fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat.Node) ?string {
@@ -450,9 +466,11 @@ fn (mut t Transformer) make_decl_assign_typed(name string, rhs flat.NodeId, typ 
 	if typ.len > 0 {
 		t.a.nodes[int(decl)].typ = typ
 		decl_node := t.a.nodes[int(decl)]
-		lhs_id := t.a.child(&decl_node, 0)
-		if int(lhs_id) >= 0 {
-			t.a.nodes[int(lhs_id)].typ = typ
+		if decl_node.children_count > 0 {
+			lhs_id := t.a.child(&decl_node, 0)
+			if int(lhs_id) >= 0 {
+				t.a.nodes[int(lhs_id)].typ = typ
+			}
 		}
 		t.set_var_type(name, typ)
 	}
@@ -590,6 +608,38 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	}
 	t.pending_stmts << if_stmt
 	return t.make_ident(val_tmp)
+}
+
+fn (mut t Transformer) lower_or_expr_to_stmt(node flat.Node) {
+	if node.children_count < 2 {
+		return
+	}
+	expr_id := t.a.child(&node, 0)
+	body_id := t.a.child(&node, 1)
+	expr_type, _ := t.or_expr_types(expr_id, node.typ)
+	if !t.is_optional_type_name(expr_type) {
+		t.pending_stmts << t.make_expr_stmt(t.transform_expr(expr_id))
+		return
+	}
+
+	opt_tmp := t.new_temp('or_opt')
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	new_expr := t.transform_expr(expr_id)
+	mut prelude := []flat.NodeId{}
+	t.drain_pending(mut prelude)
+	prelude << t.make_decl_assign_typed(opt_tmp, new_expr, expr_type)
+
+	opt_ident := t.make_ident(opt_tmp)
+	not_ok := t.make_prefix(.not, t.make_selector(opt_ident, 'ok', 'bool'))
+	else_block := t.make_block(t.lower_or_body_to_stmts(body_id, '', '', node.value, opt_tmp))
+	if_stmt := t.make_if(not_ok, else_block, t.make_empty())
+
+	t.pending_stmts = outer_pending
+	for stmt in prelude {
+		t.pending_stmts << stmt
+	}
+	t.pending_stmts << if_stmt
 }
 
 // lower_or_body_to_stmts converts lower or body to stmts data for transform.
