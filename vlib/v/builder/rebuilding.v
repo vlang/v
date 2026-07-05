@@ -237,9 +237,25 @@ fn (mut b Builder) v_build_module(vexe string, imp_path string) int {
 	$if trace_v_build_module ? {
 		eprintln('> Builder.v_build_module: ${rebuild_cmd}')
 	}
+	// The child must reconstruct EXACTLY the parent's build configuration from
+	// the relayed b.pref.build_options — the parent already folded VFLAGS into
+	// those while parsing its own args. Letting the child re-apply VFLAGS on
+	// top duplicates its values (e.g. `-cflags x` becomes `x x`), so the child
+	// derives a DIFFERENT vcache key than the one the parent looks up, and the
+	// freshly built module object is never found ('could not rebuild cache
+	// module ... does not exist yet' — hit by any -usecache build running
+	// under a VFLAGS environment, e.g. the sanitized CI jobs).
+	old_vflags := os.getenv('VFLAGS')
+	if old_vflags != '' {
+		os.setenv('VFLAGS', '', true)
+	}
 	// The exit status is the caller's problem now: ignoring it while
 	// the hashes were saved eagerly permanently poisoned the module cache.
-	return os.system(rebuild_cmd)
+	rc := os.system(rebuild_cmd)
+	if old_vflags != '' {
+		os.setenv('VFLAGS', old_vflags, true)
+	}
+	return rc
 }
 
 // embed_file_content_hash returns the invalidation hash for one embedded-asset

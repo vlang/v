@@ -537,12 +537,13 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		g.inside_cinit = false
 		g.inside_global_decl = false
 	}
+	// The last clause: bundled-module globals under -usecache — the program TU is
+	// their single definition site (cached objects reference them `extern`, see
+	// visibility_kw above), so it must also emit their initialized definition.
 	should_init := (!g.pref.use_cache && g.pref.build_mode != .build_module)
 		|| (g.pref.build_mode == .build_module && g.module_built == node.mod)
 		|| is_program_module_global
-	// bundled-module globals: the program TU is their single definition site
-	// (cached objects reference them `extern` — see visibility_kw above)
-	|| (g.pref.use_cache && g.pref.build_mode != .build_module && is_bundled_mod)
+		|| (g.pref.use_cache && g.pref.build_mode != .build_module && is_bundled_mod)
 	mut attributes := ''
 	first_field := node.fields[0]
 	if first_field.is_weak {
@@ -580,8 +581,13 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		// Define them in the program TU (build_mode != build_module): emit '' visibility
 		// → a tentative definition that `main()` then fills, mirroring the non-cache
 		// build. Cached modules keep referencing them `extern`.
+		// -is_o is excluded: each -is_o output is a standalone hostable TU and keeps
+		// the object-local (static) linkage for these — several such TUs are expected
+		// to be linked together (see link_generated_c_files_test.v), so a non-static
+		// definition in each would collide.
 		is_argv_global := field.name in ['g_main_argc', 'g_main_argv']
 		program_owned_argv_global := g.pref.build_mode != .build_module && is_argv_global
+			&& !g.should_use_object_local_linkage(node.mod)
 		field_visibility_kw := if field.is_extern {
 			''
 		} else if program_owned_argv_global {
