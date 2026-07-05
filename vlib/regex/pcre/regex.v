@@ -637,20 +637,36 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 				if pos < pattern.len && pattern[pos] == `?` {
 					pos++
 					if pos < pattern.len && pattern[pos] in [`i`, `m`, `s`] {
-						for pos < pattern.len && pattern[pos] != `)` {
+						mut scoped_flags := current_flags
+						for pos < pattern.len && pattern[pos] in [`i`, `m`, `s`] {
 							match pattern[pos] {
-								`i` { current_flags.ignore_case = true }
-								`m` { current_flags.multiline = true }
-								`s` { current_flags.dot_all = true }
+								`i` { scoped_flags.ignore_case = true }
+								`m` { scoped_flags.multiline = true }
+								`s` { scoped_flags.dot_all = true }
 								else {}
 							}
 
 							pos++
 						}
-						if pos < pattern.len {
+						if pos < pattern.len && pattern[pos] == `:` {
+							cap = false
 							pos++
+							sub, new_p, new_c := parse_nodes(pattern, pos, `)`, group_counter,
+								scoped_flags, mut group_map)!
+							pos = new_p
+							group_counter = new_c
+							parsed_nodes << Node{
+								typ:                 .group
+								nodes:               sub
+								group_capture_index: -1
+							}
+						} else {
+							current_flags = scoped_flags
+							if pos < pattern.len && pattern[pos] == `)` {
+								pos++
+							}
+							continue
 						}
-						continue
 					} else if pos < pattern.len && pattern[pos] == `:` {
 						cap = false
 						pos++
@@ -673,20 +689,22 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 						pos = end + 1
 					}
 				}
-				if cap {
-					if idx == -1 {
-						idx = group_counter
+				if parsed_nodes.len == 0 {
+					if cap {
+						if idx == -1 {
+							idx = group_counter
+						}
+						group_counter++
 					}
-					group_counter++
-				}
-				sub, new_p, new_c := parse_nodes(pattern, pos, `)`, group_counter, current_flags, mut
-					group_map)!
-				pos = new_p
-				group_counter = new_c
-				parsed_nodes << Node{
-					typ:                 .group
-					nodes:               sub
-					group_capture_index: idx
+					sub, new_p, new_c := parse_nodes(pattern, pos, `)`, group_counter,
+						current_flags, mut group_map)!
+					pos = new_p
+					group_counter = new_c
+					parsed_nodes << Node{
+						typ:                 .group
+						nodes:               sub
+						group_capture_index: idx
+					}
 				}
 			}
 			`[` {
@@ -756,6 +774,27 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 					`S` {
 						parsed_nodes << Node{
 							typ: .non_whitespace
+						}
+					}
+					`n` {
+						parsed_nodes << Node{
+							typ:         .chr
+							chr:         `\n`
+							ignore_case: current_flags.ignore_case
+						}
+					}
+					`r` {
+						parsed_nodes << Node{
+							typ:         .chr
+							chr:         `\r`
+							ignore_case: current_flags.ignore_case
+						}
+					}
+					`t` {
+						parsed_nodes << Node{
+							typ:         .chr
+							chr:         `\t`
+							ignore_case: current_flags.ignore_case
 						}
 					}
 					`b` {

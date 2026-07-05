@@ -138,6 +138,30 @@ fn main() {
 	assert out == '42'
 }
 
+fn test_mut_receiver_return_self_pointer_uses_receiver_pointer() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'mut_receiver_return_self_pointer', 'struct Command {
+mut:
+	args []string
+}
+
+fn (mut cmd Command) arg(arg string) &Command {
+	cmd.args << arg
+	return &cmd
+}
+
+fn (mut cmd Command) count() int {
+	return cmd.args.len
+}
+
+fn main() {
+	mut cmd := Command{}
+	println(int_str(cmd.arg("a").arg("b").count()))
+}
+')
+	assert out == '2'
+}
+
 fn test_pointer_value_compatibility_keeps_qualified_struct_names() {
 	v3_bin := build_v3_review_cgen()
 	files := {

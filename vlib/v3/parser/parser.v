@@ -5382,10 +5382,23 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			children_count: flat.child_count(ids.len)
 		})
 	}
-	// multi-element array: [a, b, c]
-	for p.tok == .comma {
-		p.next()
-		if p.tok == .rsbr {
+	// multi-element array: `[a, b, c]` or newline-separated const tables.
+	// Each subsequent element must be preceded by a separator: a single comma,
+	// or a run of `;` that the scanner emits for newlines/blank lines. A missing
+	// separator (`[1 2]`) or a repeated comma (`[1,,2]`) ends the element list
+	// instead of merging operands; the stray tokens are then left to the
+	// (permissive) `p.check(.rsbr)` below, matching how this parser recovers
+	// from other malformed input.
+	for p.tok == .comma || p.tok == .semicolon {
+		if p.tok == .comma {
+			p.next()
+		}
+		// newlines/blank lines after a separator are just whitespace
+		for p.tok == .semicolon {
+			p.next()
+		}
+		// a second comma with no element in between is not a separator
+		if p.tok == .rsbr || p.tok == .eof || p.tok == .comma {
 			break
 		}
 		ids << p.expr(.lowest)
@@ -5424,10 +5437,16 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	if p.tok == .lsbr {
 		p.next()
 		for p.tok != .rsbr && p.tok != .eof {
+			mut is_mut_capture := false
 			if p.tok == .key_mut {
+				is_mut_capture = true
 				p.next()
 			}
-			capture_ids << p.a.add_val(.ident, p.expect_name())
+			capture_id := p.a.add_val(.ident, p.expect_name())
+			if is_mut_capture {
+				p.a.set_node_is_mut(capture_id, true)
+			}
+			capture_ids << capture_id
 			if p.tok == .comma {
 				p.next()
 			}

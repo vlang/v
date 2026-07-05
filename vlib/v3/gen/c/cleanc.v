@@ -1259,65 +1259,67 @@ fn c_headerless_system_include_is_handled(include_arg string) bool {
 }
 
 const c_headerless_handled_system_headers = {
-	'arpa/inet.h':     true
-	'conio.h':         true
-	'dirent.h':        true
-	'errno.h':         true
-	'execinfo.h':      true
-	'fcntl.h':         true
-	'float.h':         true
-	'io.h':            true
-	'mach-o/dyld.h':   true
-	'math.h':          true
-	'netdb.h':         true
-	'netinet/in.h':    true
-	'netinet/tcp.h':   true
-	'poll.h':          true
-	'process.h':       true
-	'pthread.h':       true
-	'pthread_np.h':    true
-	'semaphore.h':     true
-	'signal.h':        true
-	'stdarg.h':        true
-	'stdatomic.h':     true
-	'stdbool.h':       true
-	'stddef.h':        true
-	'stdint.h':        true
-	'stdio.h':         true
-	'stdlib.h':        true
-	'string.h':        true
-	'synchapi.h':      true
-	'sys/epoll.h':     true
-	'sys/event.h':     true
-	'sys/file.h':      true
-	'sys/ioctl.h':     true
-	'sys/mman.h':      true
-	'sys/ptrace.h':    true
-	'sys/random.h':    true
-	'sys/resource.h':  true
-	'sys/select.h':    true
-	'sys/sendfile.h':  true
-	'sys/socket.h':    true
-	'sys/stat.h':      true
-	'sys/statvfs.h':   true
-	'sys/syscall.h':   true
-	'sys/sysctl.h':    true
-	'sys/syslimits.h': true
-	'sys/time.h':      true
-	'sys/types.h':     true
-	'sys/uio.h':       true
-	'sys/un.h':        true
-	'sys/utime.h':     true
-	'sys/utsname.h':   true
-	'sys/wait.h':      true
-	'termios.h':       true
-	'time.h':          true
-	'unistd.h':        true
-	'utime.h':         true
-	'wchar.h':         true
-	'windows.h':       true
-	'winsock2.h':      true
-	'ws2tcpip.h':      true
+	'arpa/inet.h':      true
+	'conio.h':          true
+	'dirent.h':         true
+	'errno.h':          true
+	'execinfo.h':       true
+	'fcntl.h':          true
+	'float.h':          true
+	'iconv.h':          true
+	'io.h':             true
+	'mach/mach_time.h': true
+	'mach-o/dyld.h':    true
+	'math.h':           true
+	'netdb.h':          true
+	'netinet/in.h':     true
+	'netinet/tcp.h':    true
+	'poll.h':           true
+	'process.h':        true
+	'pthread.h':        true
+	'pthread_np.h':     true
+	'semaphore.h':      true
+	'signal.h':         true
+	'stdarg.h':         true
+	'stdatomic.h':      true
+	'stdbool.h':        true
+	'stddef.h':         true
+	'stdint.h':         true
+	'stdio.h':          true
+	'stdlib.h':         true
+	'string.h':         true
+	'synchapi.h':       true
+	'sys/epoll.h':      true
+	'sys/event.h':      true
+	'sys/file.h':       true
+	'sys/ioctl.h':      true
+	'sys/mman.h':       true
+	'sys/ptrace.h':     true
+	'sys/random.h':     true
+	'sys/resource.h':   true
+	'sys/select.h':     true
+	'sys/sendfile.h':   true
+	'sys/socket.h':     true
+	'sys/stat.h':       true
+	'sys/statvfs.h':    true
+	'sys/syscall.h':    true
+	'sys/sysctl.h':     true
+	'sys/syslimits.h':  true
+	'sys/time.h':       true
+	'sys/types.h':      true
+	'sys/uio.h':        true
+	'sys/un.h':         true
+	'sys/utime.h':      true
+	'sys/utsname.h':    true
+	'sys/wait.h':       true
+	'termios.h':        true
+	'time.h':           true
+	'unistd.h':         true
+	'utime.h':          true
+	'wchar.h':          true
+	'windows.h':        true
+	'winsock2.h':       true
+	'ws2tcpip.h':       true
 }
 
 fn c_stdint_header_text() string {
@@ -2342,7 +2344,7 @@ fn c_pkgconfig_arg_is_safe(raw string) bool {
 
 fn c_flag_has_target_prefix(target string) bool {
 	return target in ['darwin', 'macos', 'linux', 'windows', 'freebsd', 'openbsd', 'netbsd',
-		'solaris', 'wasm32_emscripten']
+		'solaris', 'termux', 'wasm32_emscripten']
 }
 
 fn c_flag_target_enabled(target string) bool {
@@ -2385,6 +2387,12 @@ fn c_flag_target_enabled(target string) bool {
 		}
 		'solaris' {
 			$if solaris {
+				return true
+			}
+			return false
+		}
+		'termux' {
+			$if termux {
 				return true
 			}
 			return false

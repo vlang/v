@@ -1568,27 +1568,45 @@ fn (g &FlatGen) generic_struct_init_instance_type(type_name string) ?types.Type 
 }
 
 fn (mut g FlatGen) struct_init_c_type_name(type_name string) string {
-	typ := g.tc.parse_type(type_name)
+	init_type_name := g.struct_init_import_alias_type_name(type_name)
+	typ := g.tc.parse_type(init_type_name)
 	if typ is types.OptionType || typ is types.ResultType {
 		return g.optional_type_name(typ)
 	}
-	if ct := g.generic_struct_init_app_ct_from_context(type_name) {
+	if ct := g.generic_struct_init_app_ct_from_context(init_type_name) {
 		return ct
 	}
-	if type_name.contains('[') {
+	if init_type_name.contains('[') {
 		return g.tc.c_type(typ)
 	}
-	if ct := g.flattened_generic_struct_init_ct_from_context(type_name) {
+	if ct := g.flattened_generic_struct_init_ct_from_context(init_type_name) {
 		return ct
 	}
-	if ct := g.flattened_generic_struct_init_ct(type_name) {
+	if ct := g.flattened_generic_struct_init_ct(init_type_name) {
 		return ct
 	}
-	info := g.find_struct_decl(type_name) or { return g.tc.c_type(g.tc.parse_type(type_name)) }
+	info := g.find_struct_decl(init_type_name) or {
+		return g.tc.c_type(g.tc.parse_type(init_type_name))
+	}
 	if info.full_name.starts_with('C.') {
 		return g.tc.c_type(g.tc.parse_type(info.full_name))
 	}
 	return c_name(info.full_name)
+}
+
+fn (g &FlatGen) struct_init_import_alias_type_name(type_name string) string {
+	if !type_name.contains('.') {
+		return type_name
+	}
+	alias := type_name.all_before('.')
+	suffix := type_name.all_after('.')
+	if alias.len == 0 || suffix.len == 0 {
+		return type_name
+	}
+	if mod := g.import_alias_module(alias) {
+		return '${mod}.${suffix}'
+	}
+	return type_name
 }
 
 fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name string) ?string {
@@ -1997,9 +2015,9 @@ fn (g &FlatGen) embedded_field_for_promoted_selector(base_type types.Type, field
 fn (g &FlatGen) type_lookup_name(typ types.Type) string {
 	clean_type := types.unwrap_pointer(typ)
 	if clean_type is types.Alias {
-		return clean_type.base_type.name()
+		return g.struct_init_import_alias_type_name(clean_type.base_type.name())
 	}
-	return clean_type.name()
+	return g.struct_init_import_alias_type_name(clean_type.name())
 }
 
 // struct_field_at supports struct field at handling for FlatGen.

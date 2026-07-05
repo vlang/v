@@ -2854,6 +2854,12 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 		return copied
 	}
 	target_type := t.return_child_target_type(child_index, total_children)
+	if target_type.len > 0 && t.is_optional_type_name(target_type) {
+		child := t.a.nodes[int(child_id)]
+		if child.kind == .or_expr {
+			return t.transform_expr_for_type(child_id, target_type)
+		}
+	}
 	if target_type.len > 0 && target_type !in t.sum_types && !t.is_optional_type_name(target_type) {
 		return t.transform_expr_for_type(child_id, target_type)
 	}
