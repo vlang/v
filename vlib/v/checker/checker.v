@@ -7753,6 +7753,11 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 					return
 				}
 				type_sym := c.table.sym(obj.typ.set_nr_muls(0))
+				// Resolve aliases so that a `type Arr = [N]T` is treated like its
+				// underlying fixed array: fixed arrays live on the stack, so they
+				// cannot be referenced/heap-promoted. Without this, the alias slips
+				// past the guard below and cgen emits invalid `HEAP(Arr, ({0}))`.
+				final_kind := c.table.final_sym(obj.typ.set_nr_muls(0)).kind
 				if obj.is_stack_obj && !type_sym.is_heap() && !type_sym.is_int()
 					&& !c.pref.translated && !c.file.is_translated {
 					suggestion := if type_sym.kind == .struct {
@@ -7763,7 +7768,7 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 					mischief := if as_interface { 'used as interface object' } else { 'referenced' }
 					c.error('`${node.name}` cannot be ${mischief} outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
 						node.pos)
-				} else if type_sym.kind == .array_fixed {
+				} else if type_sym.kind == .array_fixed || final_kind == .array_fixed {
 					c.error('cannot reference fixed array `${node.name}` outside `unsafe` blocks as it is supposed to be stored on stack',
 						node.pos)
 				} else {
