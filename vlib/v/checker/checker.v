@@ -7756,17 +7756,19 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 				// Resolve aliases so that a `type Arr = [N]T` is treated like its
 				// underlying fixed array: fixed arrays live on the stack, so they
 				// cannot be referenced/heap-promoted. Without this, the alias slips
-				// past the guard below and cgen emits invalid `HEAP(Arr, ({0}))`.
-				// Use `fully_unaliased_type` (not `final_sym`, which discards
-				// `nr_muls`/flags) and require no pointer indirection, so a
-				// genuine pointer alias like `type Ptr = &Arr` (the pointer level
-				// lives on the alias parent, which `fully_unaliased_type`
-				// preserves) is not misread as a bare fixed array value.
-				// `set_nr_muls(0)` intentionally strips a *top-level* pointer
-				// first: for a fixed array the only way a local ends up with a
-				// top-level `&Arr` type is the auto-deref form `p := &arr`, where
-				// that pointer is transparent and `p` behaves as the array value,
-				// so it must still be rejected.
+				// past the guard below and cgen emits invalid `HEAP(Arr, ({0}))`
+				// (#27646). Use `fully_unaliased_type` (not `final_sym`, which
+				// discards `nr_muls`/flags).
+				//
+				// The only usable pointer to a fixed array is a *named* pointer
+				// alias (`type Ptr = &Arr`): V represents it as a real pointer, so
+				// `&p` is valid there. A raw top-level `&Arr` (from `&arr`, or a
+				// `fn () &Arr` return) is not a usable pointer - cgen decays it to
+				// the fixed array value - so it must be rejected like the array
+				// itself. `set_nr_muls(0)` strips the raw top-level pointer (so a
+				// raw `&Arr` is treated as `Arr` and rejected), while a pointer
+				// carried on the alias parent survives `fully_unaliased_type` and
+				// keeps `nr_muls() > 0` (so a named `Ptr` is accepted).
 				unaliased_typ := c.table.fully_unaliased_type(obj.typ.set_nr_muls(0))
 				is_fixed_array := unaliased_typ.nr_muls() == 0
 					&& c.table.sym(unaliased_typ).kind == .array_fixed

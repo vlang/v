@@ -1,7 +1,0 @@
-vlib/v/checker/tests/reference_fixed_array_alias_autoderef_err.vv:6:8: error: cannot reference fixed array `p` outside `unsafe` blocks as it is supposed to be stored on stack
-    4 |     mut arr := FA{}
-    5 |     p := unsafe { &arr } // auto-deref var: `p` behaves as the fixed array value
-    6 |     q := &p
-      |           ^
-    7 |     _ = q
-    8 | }
