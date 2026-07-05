@@ -1321,6 +1321,11 @@ fn (mut v Builder) setup_output_name() {
 			get_dsc_content('PREF.PATH: ${v.pref.path}\nVOPTS: ${v.pref.cache_manager.vopts}\n')) or {
 			panic(err)
 		}
+		// Record the content hashes of every $embed_file target that went into this
+		// cached object, so rebuild_cached_module can invalidate it when an embedded
+		// asset changes (embedded assets are invisible to the .v source hashes).
+		v.pref.cache_manager.mod_save(v.pref.path, '.embeds.txt', v.pref.path,
+			embeds_manifest(v.parsed_files)) or { panic(err) }
 	}
 	if os.is_dir(v.pref.out_name) {
 		verror('${os.quoted_path(v.pref.out_name)} is a directory')

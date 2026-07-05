@@ -242,18 +242,82 @@ fn (mut b Builder) v_build_module(vexe string, imp_path string) int {
 	return os.system(rebuild_cmd)
 }
 
-fn (mut b Builder) rebuild_cached_module(vexe string, imp_path string) string {
-	res := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
-		if b.pref.is_verbose {
-			println('Cached ${imp_path} .o file not found... Building .o file for ${imp_path}')
+// embed_file_content_hash returns the invalidation hash for one embedded-asset
+// path; an unreadable file hashes to a constant that can never match a real
+// content hash, so it always invalidates.
+fn embed_file_content_hash(apath string) string {
+	econtent := util.read_file(apath) or { return 'unreadable' }
+	return hash.sum64_string(econtent, 7).hex_full()
+}
+
+// embeds_manifest serialises every checker-resolved $embed_file target of
+// `parsed_files` as `<content-hash> <absolute-path>` lines. Saved next to a
+// cached module object (see setup_output_name); verified by
+// cached_module_embeds_fresh before a cached object is served.
+fn embeds_manifest(parsed_files []&ast.File) string {
+	mut seen := map[string]bool{}
+	mut lines := []string{}
+	for pf in parsed_files {
+		for ea in pf.embedded_apaths {
+			if seen[ea] {
+				continue
+			}
+			seen[ea] = true
+			lines << '${embed_file_content_hash(ea)} ${ea}'
 		}
-		b.v_build_module(vexe, imp_path)
-		rebuilt_o := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
-			panic('could not rebuild cache module for ${imp_path}, error: ${err.msg()}')
-		}
-		return rebuilt_o
 	}
-	return res
+	lines.sort()
+	return lines.join('\n')
+}
+
+// cached_module_embeds_fresh reports whether every embedded asset recorded in
+// the module's .embeds.txt manifest still has the content it was built with.
+// The .v source hashes cannot see $embed_file targets, so without this check a
+// cached object silently keeps serving stale embedded data after the asset
+// changes. A missing manifest means the object was built by this compiler
+// build with no embeds recorded (the compiler-identity salt namespaces away
+// pre-manifest objects), so it is trivially fresh.
+fn (mut b Builder) cached_module_embeds_fresh(imp_path string) bool {
+	manifest := b.pref.cache_manager.mod_load(imp_path, '.embeds.txt', imp_path) or { return true }
+	for line in manifest.split_into_lines() {
+		if line == '' {
+			continue
+		}
+		recorded := line.all_before(' ')
+		apath := line.all_after(' ')
+		if embed_file_content_hash(apath) != recorded {
+			vcache.dlog('| Builder.' + @FN, 'stale embedded asset: ${apath} (module ${imp_path})')
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut b Builder) rebuild_cached_module(vexe string, imp_path string) string {
+	mut existing := ''
+	if res := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) {
+		existing = res
+	}
+	if existing != '' && b.cached_module_embeds_fresh(imp_path) {
+		return existing
+	}
+	if b.pref.is_verbose {
+		if existing == '' {
+			println('Cached ${imp_path} .o file not found... Building .o file for ${imp_path}')
+		} else {
+			println('Cached ${imp_path} .o file has stale embedded assets... Rebuilding .o file for ${imp_path}')
+		}
+	}
+	rc := b.v_build_module(vexe, imp_path)
+	if rc != 0 && existing != '' {
+		// A failed rebuild must not keep serving the stale object (the same
+		// poisoning class as the eager-hash-save bug, cx #151).
+		os.rm(existing) or {}
+	}
+	rebuilt_o := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
+		panic('could not rebuild cache module for ${imp_path}, error: ${err.msg()}')
+	}
+	return rebuilt_o
 }
 
 fn (mut b Builder) handle_usecache(vexe string) {

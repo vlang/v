@@ -476,11 +476,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			escaped_path = c.resolve_pseudo_variables(escaped_path, node.pos) or {
 				return ast.string_type
 			}
-			abs_path := os.real_path(escaped_path)
-			// check absolute path first
-			if !os.exists(abs_path) {
-				// ... look relative to the source file:
-				escaped_path = os.real_path(os.join_path_single(os.dir(c.file.path), escaped_path))
+			if os.is_abs_path(escaped_path) {
 				if !os.exists(escaped_path) {
 					c.error('"${escaped_path}" does not exist so it cannot be embedded', node.pos)
 					return ast.string_type
@@ -489,11 +485,50 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 					c.error('"${escaped_path}" is not a file so it cannot be embedded', node.pos)
 					return ast.string_type
 				}
+				escaped_path = os.real_path(escaped_path)
 			} else {
-				escaped_path = abs_path
+				// Per the documented semantics ("Paths can be absolute or relative to the
+				// source file"), a relative path binds to the file next to the SOURCE first.
+				// Probing the process CWD first made the embedded content depend on where
+				// the compiler happened to run: the -usecache `v build-module` child runs
+				// chdir-ed to VROOT, so a CWD-relative twin of the file there silently
+				// replaced the intended source-relative one in the cached module object,
+				// while the main program TU embedded the right one. CWD-relative resolution
+				// stays as a fallback for backwards compatibility.
+				// The anchor is the file DECLARING the call (recorded by the parser): a
+				// module's const initializer can be checked from an importing file's
+				// context, so c.file would be the wrong anchor there.
+				anchor := if node.embed_file.source_file != '' {
+					node.embed_file.source_file
+				} else {
+					c.file.path
+				}
+				src_relative := os.real_path(os.join_path_single(os.dir(anchor), escaped_path))
+				if os.exists(src_relative) && os.is_file(src_relative) {
+					escaped_path = src_relative
+				} else {
+					cwd_relative := os.real_path(escaped_path)
+					if !os.exists(cwd_relative) {
+						c.error('"${src_relative}" does not exist so it cannot be embedded',
+							node.pos)
+						return ast.string_type
+					}
+					if !os.is_file(cwd_relative) {
+						c.error('"${cwd_relative}" is not a file so it cannot be embedded',
+							node.pos)
+						return ast.string_type
+					}
+					escaped_path = cwd_relative
+				}
 			}
 			node.embed_file.rpath = raw_path
 			node.embed_file.apath = escaped_path
+			// Record the resolved target on the file, so the module cache can detect a
+			// changed embedded asset (invisible to the .v source hashes) — consumed by
+			// Builder.rebuild_cached_module via the .embeds.txt manifest.
+			if escaped_path !in c.file.embedded_apaths {
+				c.file.embedded_apaths << escaped_path
+			}
 		}
 		// c.file.embedded_files << node.embed_file
 		if node.embed_file.compression_type !in ast.valid_comptime_compression_types {

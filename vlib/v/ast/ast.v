@@ -1123,6 +1123,7 @@ pub mut:
 pub struct EmbeddedFile {
 pub:
 	compression_type string
+	source_file      string // path of the .v file containing the $embed_file call; the anchor for relative-path resolution (a const may be checked from an importing file's context, so Checker.file is not reliable here)
 pub mut:
 	rpath string // used in the source code, as an ID/key to the embed
 	apath string // absolute path during compilation to the resource
@@ -1165,6 +1166,7 @@ pub mut:
 	used_imports          []string
 	implied_imports       []string                  // ​imports that the user's code uses but omitted to import explicitly, used by `vfmt`
 	embedded_files        []EmbeddedFile            // list of files to embed in the binary
+	embedded_apaths       []string                  // absolute paths of $embed_file targets (deduped, checker-resolved); drives -usecache invalidation of embedded assets
 	imported_symbols      map[string]string         // used for `import {symbol}`, it maps symbol => module.symbol
 	imported_symbols_trie token.KeywordsMatcherTrie // constructed from imported_symbols, to accelerate presense checks
 	imported_symbols_used map[string]bool
