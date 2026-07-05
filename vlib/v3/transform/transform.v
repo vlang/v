@@ -1331,12 +1331,14 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, node_limit 
 	t.cur_file = old_file
 	limit := if node_limit < t.a.nodes.len { node_limit } else { t.a.nodes.len }
 	// Build the fn_decl candidate list once. The scan range [0, limit) is fixed:
-	// transform_fn_body only appends nodes beyond `limit` (those generated nodes
-	// are handled inline below), so the set of candidate fn_decls, their
-	// (file, module) context, and their generic-ness never change across rounds.
-	// Re-deriving all of this every round previously made this pass O(pending *
-	// nodes): a full node walk (millions of node_kind_id calls) plus a repeated
-	// fn_decl_has_unresolved_generics check on every non-matching fn_decl.
+	// transform_fn_body rewrites the current fn_decl in place and appends new
+	// nodes beyond `limit` (those generated nodes are handled inline below); it
+	// never inserts or moves existing top-level nodes below `limit`. So the set
+	// of candidate fn_decls, their (file, module) context, and their generic-ness
+	// never change across rounds. Re-deriving all of this every round previously
+	// made this pass O(pending * nodes): a full node walk (millions of
+	// node_kind_id calls) plus a repeated fn_decl_has_unresolved_generics check
+	// on every non-matching fn_decl.
 	mut candidates := []LateFnCandidate{}
 	mut scan_file := ''
 	mut scan_module := ''
