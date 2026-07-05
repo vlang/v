@@ -1862,7 +1862,20 @@ fn (mut t Transformer) heap_escaping_amp_rhs(rhs_id flat.NodeId) flat.NodeId {
 	amp_child := t.a.child(&rhs, 0)
 	amp_node := t.a.nodes[int(amp_child)]
 	if amp_node.kind == .ident && amp_node.value in t.heaped_amp_locals {
-		return t.transform_expr(amp_child)
+		// The source local was itself moved to the heap at its declaration, so it *is* the
+		// `&T` heap pointer; the alias is simply that pointer. Suppress the pointer-value
+		// rvalue auto-deref while lowering it, otherwise `transform_ident_expr` would turn
+		// `v` into `*v` (a stale stack value) and initialize `p`'s `&T` decl from a `T`,
+		// reviving the very stale-mutation bug the heap move exists to avoid.
+		had_rvalue := amp_node.value in t.pointer_value_rvalues
+		if had_rvalue {
+			t.pointer_value_rvalues.delete(amp_node.value)
+		}
+		transformed := t.transform_expr(amp_child)
+		if had_rvalue {
+			t.pointer_value_rvalues[amp_node.value] = true
+		}
+		return transformed
 	}
 	local_type := t.node_type(amp_child)
 	addr := t.make_prefix(.amp, t.transform_expr(amp_child))
