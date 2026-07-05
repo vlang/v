@@ -217,7 +217,17 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, cname string, fie
 				if rune_code in [`"`, `\\`, `'`] {
 					return false
 				}
-				escval := util.smart_quote(u8(rune_code).ascii_str(), false)
+				escval := if rune_code < 32 || rune_code == 127 {
+					// Control characters cannot appear verbatim inside a C char
+					// literal: a raw `\r` would even split the `#define` line and
+					// break compilation. Emit a portable octal escape instead,
+					// mirroring char_literal().
+					mut sb := strings.new_builder(4)
+					write_octal_escape(mut sb, u8(rune_code))
+					sb.str()
+				} else {
+					util.smart_quote(u8(rune_code).ascii_str(), false)
+				}
 
 				g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
 					mod:   mod
