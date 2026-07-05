@@ -58,9 +58,28 @@ pub fn (mut g Gen) write_and_link(output string) {
 // reset_value_slots updates reset value slots state for arm64.
 fn (mut g Gen) reset_value_slots() {
 	n := g.m.values.len
-	g.stack_offsets = []int{len: n}
-	g.alloca_offsets = []int{len: n}
-	g.alloca_sizes = []int{len: n}
+	if g.stack_offsets.len != n {
+		g.stack_offsets = []int{len: n}
+		g.alloca_offsets = []int{len: n}
+		g.alloca_sizes = []int{len: n}
+		return
+	}
+	for i in 0 .. n {
+		g.stack_offsets[i] = 0
+		g.alloca_offsets[i] = 0
+		g.alloca_sizes[i] = 0
+	}
+}
+
+fn (mut g Gen) reset_block_offsets() {
+	n := g.m.blocks.len
+	if g.block_offsets.len != n {
+		g.block_offsets = []int{len: n, init: -1}
+		return
+	}
+	for i in 0 .. n {
+		g.block_offsets[i] = -1
+	}
 }
 
 // set_stack_slot updates set stack slot state for arm64.
@@ -164,8 +183,7 @@ fn (mut g Gen) gen_func(func_idx int) {
 	g.reset_value_slots()
 	g.pending_jmps.clear()
 
-	n_blks := g.m.blocks.len
-	g.block_offsets = []int{len: n_blks, init: -1}
+	g.reset_block_offsets()
 
 	// Frame layout (all at negative offsets from fp):
 	// fp + 0: saved fp

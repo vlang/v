@@ -30,7 +30,29 @@ fn (g &FlatGen) struct_init_fields_key(type_name string, fallback string) string
 			return inst
 		}
 	}
+	if fallback in g.tc.structs {
+		return fallback
+	}
+	if type_name.contains('[') {
+		ct := g.tc.c_type(g.tc.parse_type(type_name))
+		for candidate, _ in g.tc.structs {
+			if !candidate.contains('[') {
+				continue
+			}
+			if g.tc.c_type(g.tc.parse_type(candidate)) == ct {
+				return candidate
+			}
+		}
+	}
 	return fallback
+}
+
+fn (g &FlatGen) struct_init_lookup_type_name(type_name string) string {
+	typ := g.tc.parse_type(type_name)
+	if typ is types.Struct {
+		return typ.name
+	}
+	return type_name
 }
 
 fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Type) {
@@ -186,8 +208,9 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	// A bare generic literal stores its fields under the concrete instance key (`Box[int]`);
 	// the bare `node.value` (`Box`) entry is removed by monomorphization, so resolve the
 	// instance for the fixed-array-field test, field-type lookups, and omitted-default emission.
-	lookup_name := g.struct_init_fields_key(node.value, node.value)
-	if node.children_count == 0 && g.is_scalar_zero_init_type(node.value, name) {
+	lookup_source_name := g.struct_init_lookup_type_name(node.value)
+	lookup_name := g.struct_init_fields_key(lookup_source_name, lookup_source_name)
+	if node.children_count == 0 && g.is_scalar_zero_init_type(lookup_source_name, name) {
 		g.write(g.scalar_zero_init(name))
 		return
 	}
@@ -262,7 +285,7 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	}
 	after_fields_module := g.tc.cur_module
 	g.tc.cur_module = init_module
-	sname := g.struct_init_resolved_decl_name(node.value)
+	sname := g.struct_init_resolved_decl_name(lookup_source_name)
 	g.tc.cur_module = after_fields_module
 	has_field = g.gen_struct_default_fields(sname, mut set_fields, has_field)
 	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { sname }
@@ -1218,6 +1241,72 @@ fn substitute_shared_generic_type_text(typ string, params []string, args []strin
 	return clean
 }
 
+fn (g &FlatGen) shared_qualify_type_text(typ string, module_name string) string {
+	clean := typ.trim_space()
+	if clean.len == 0 {
+		return typ
+	}
+	if clean.starts_with('&') {
+		return '&' + g.shared_qualify_type_text(clean[1..], module_name)
+	}
+	if clean.starts_with('mut ') {
+		return 'mut ' + g.shared_qualify_type_text(clean[4..], module_name)
+	}
+	if clean.starts_with('?') {
+		return '?' + g.shared_qualify_type_text(clean[1..], module_name)
+	}
+	if clean.starts_with('!') {
+		return '!' + g.shared_qualify_type_text(clean[1..], module_name)
+	}
+	if clean.starts_with('...') {
+		return '...' + g.shared_qualify_type_text(clean[3..], module_name)
+	}
+	if clean.starts_with('shared ') {
+		return 'shared ' + g.shared_qualify_type_text(clean[7..], module_name)
+	}
+	if clean.starts_with('[]') {
+		return '[]' + g.shared_qualify_type_text(clean[2..], module_name)
+	}
+	if clean.starts_with('map[') {
+		bracket_end := shared_generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			key := g.shared_qualify_type_text(clean[4..bracket_end], module_name)
+			val := g.shared_qualify_type_text(clean[bracket_end + 1..], module_name)
+			return 'map[${key}]${val}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := shared_generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return clean[..bracket_end + 1] + g.shared_qualify_type_text(clean[bracket_end +
+				1..], module_name)
+		}
+	}
+	base, args, ok := shared_generic_app_parts(clean)
+	if ok {
+		mut qualified_args := []string{}
+		for arg in args {
+			qualified_args << g.shared_qualify_type_text(arg, module_name)
+		}
+		return '${g.shared_qualify_leaf_type_text(base, module_name)}[${qualified_args.join(', ')}]'
+	}
+	return g.shared_qualify_leaf_type_text(clean, module_name)
+}
+
+fn (g &FlatGen) shared_qualify_leaf_type_text(name string, module_name string) string {
+	if module_name.len == 0 || module_name == 'main' || module_name == 'builtin'
+		|| name.contains('.') {
+		return name
+	}
+	candidate := '${module_name}.${name}'
+	if candidate in g.tc.structs || candidate in g.tc.type_aliases
+		|| candidate in g.tc.interface_names || candidate in g.tc.sum_types
+		|| candidate in g.tc.enum_names || candidate in g.tc.flag_enums {
+		return candidate
+	}
+	return name
+}
+
 fn shared_generic_base_matches_decl(base string, info StructDeclInfo) bool {
 	if base == info.full_name {
 		return true
@@ -1258,9 +1347,10 @@ fn (mut g FlatGen) collect_shared_type_names_from_info(info StructDeclInfo, args
 		}
 		inner := shared_inner_type_text(field.typ) or { continue }
 		concrete_inner := substitute_shared_generic_type_text(inner, info.node.generic_params, args)
-		wrapper := g.shared_wrapper_c_name(concrete_inner)
+		qualified_inner := g.shared_qualify_type_text(concrete_inner, info.module)
+		wrapper := g.shared_wrapper_c_name(qualified_inner)
 		g.shared_type_names[wrapper] = SharedTypeInfo{
-			inner:  concrete_inner
+			inner:  qualified_inner
 			module: info.module
 		}
 		g.needs_shared_runtime = true
@@ -1337,9 +1427,10 @@ fn (mut g FlatGen) generic_shared_field_info(type_name string, field_name string
 		}
 		inner := shared_inner_type_text(field.typ) or { return none }
 		concrete_inner := substitute_shared_generic_type_text(inner, info.node.generic_params, args)
+		qualified_inner := g.shared_qualify_type_text(concrete_inner, info.module)
 		return SharedFieldInfo{
-			inner:   concrete_inner
-			wrapper: g.shared_wrapper_c_name(concrete_inner)
+			inner:   qualified_inner
+			wrapper: g.shared_wrapper_c_name(qualified_inner)
 			module:  info.module
 		}
 	}
@@ -1361,9 +1452,10 @@ fn (mut g FlatGen) shared_field_info(type_name string, field_name string) ?Share
 			continue
 		}
 		inner := shared_inner_type_text(field.typ) or { return none }
+		qualified_inner := g.shared_qualify_type_text(inner, info.module)
 		return SharedFieldInfo{
-			inner:   inner
-			wrapper: g.shared_wrapper_c_name(inner)
+			inner:   qualified_inner
+			wrapper: g.shared_wrapper_c_name(qualified_inner)
 			module:  info.module
 		}
 	}
@@ -2247,7 +2339,7 @@ fn (mut g FlatGen) emit_interface_struct(name string) {
 	cn := c_name(name)
 	g.writeln('struct ${cn} {')
 	g.writeln('\tint _typ;')
-	if cn == 'IError' {
+	if g.is_ierror_type_name(name) {
 		g.writeln('\tvoid* _object;')
 		g.writeln('\tstring message;')
 		g.writeln('\tint code;')
@@ -2289,6 +2381,7 @@ fn (mut g FlatGen) struct_decls() {
 	g.shared_type_forward_decls()
 	if g.has_builtins {
 		g.writeln('typedef array Array;')
+		g.flattened_map_type_alias_decls()
 	}
 	mut emitted := map[string]bool{}
 	mut remaining := map[string]bool{}
@@ -2318,7 +2411,7 @@ fn (mut g FlatGen) struct_decls() {
 	}
 	mut has_ierror := false
 	for name, _ in iface_remaining {
-		if c_name(name) == 'IError' {
+		if g.is_ierror_type_name(name) {
 			g.emit_interface_struct(name)
 			emitted['IError'] = true
 			iface_remaining.delete(name)
@@ -2346,7 +2439,7 @@ fn (mut g FlatGen) struct_decls() {
 		for name, _ in iface_remaining {
 			cn := c_name(name)
 			mut can_emit := true
-			if cn == 'IError' {
+			if g.is_ierror_type_name(name) {
 				if 'string' !in emitted && 'string' in remaining_cnames {
 					can_emit = false
 				}
@@ -2473,6 +2566,43 @@ fn (mut g FlatGen) struct_decls() {
 		g.emit_struct(name)
 	}
 	g.shared_struct_decls()
+}
+
+fn (mut g FlatGen) flattened_map_type_alias_decls() {
+	mut names := map[string]bool{}
+	for node in g.a.nodes {
+		if node.kind in [.fn_decl, .c_fn_decl, .fn_literal, .param] {
+			g.collect_flattened_map_type_alias(node.typ, mut names)
+		}
+	}
+	for _, ret in g.tc.fn_ret_types {
+		if ret is types.Struct {
+			g.collect_flattened_map_type_alias(ret.name, mut names)
+		}
+	}
+	for _, params in g.tc.fn_param_types {
+		for param in params {
+			if param is types.Struct {
+				g.collect_flattened_map_type_alias(param.name, mut names)
+			}
+		}
+	}
+	mut sorted_names := names.keys()
+	sorted_names.sort()
+	for name in sorted_names {
+		g.writeln('typedef map ${name};')
+	}
+	if sorted_names.len > 0 {
+		g.writeln('')
+	}
+}
+
+fn (g &FlatGen) collect_flattened_map_type_alias(typ string, mut names map[string]bool) {
+	clean := typ.trim_space().trim_left('&')
+	if clean.starts_with('map_') && !clean.starts_with('map__') && clean !in g.tc.structs
+		&& clean !in g.tc.type_aliases {
+		names[c_name(clean)] = true
+	}
 }
 
 // type_forward_decls returns type forward decls data for FlatGen.

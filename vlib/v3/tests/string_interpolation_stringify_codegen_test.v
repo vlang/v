@@ -193,7 +193,23 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == "body-box\nbox box:7\nbody-plain\nplain PlainBox[int]{} [PlainBox[int]{}] {'one': PlainBox[int]{}} {`x`: PlainBox[int]{}} {PlainBox[int]{}: `y`}\nbody-d\nvalue 9"
+	expected := "body-box
+box box:7
+body-plain
+plain PlainBox[int]{
+    value: 8
+} [PlainBox[int]{
+    value: 8
+}] {'one': PlainBox[int]{
+    value: 8
+}} {`x`: PlainBox[int]{
+    value: 8
+}} {PlainBox[int]{
+    value: 8
+}: `y`}
+body-d
+value 9"
+	assert run.output.trim_space() == expected
 }
 
 fn test_string_plus_accepts_string_aliases() {

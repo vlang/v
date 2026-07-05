@@ -1201,6 +1201,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	mut needs_new_map := false
 	mut needs_map_iteration_snapshot := false
 	mut needs_channel_helpers := false
+	mut needs_f32_eq_epsilon := false
 	mut cur_module := ''
 	mut imports := map[string]string{}
 	for node in a.nodes {
@@ -1278,6 +1279,9 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			.infix {
 				if node.op == .arrow {
 					needs_channel_helpers = true
+				}
+				if node.op in [.eq, .ne] && markused_infix_needs_f32_eq_epsilon(a, tc, node) {
+					needs_f32_eq_epsilon = true
 				}
 			}
 			.prefix {
@@ -1379,6 +1383,25 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			enqueue(helper, mut used, mut queue)
 		}
 	}
+	if needs_f32_eq_epsilon {
+		enqueue('f32.eq_epsilon', mut used, mut queue)
+		enqueue('f32__eq_epsilon', mut used, mut queue)
+	}
+}
+
+fn markused_infix_needs_f32_eq_epsilon(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node) bool {
+	if node.children_count < 2 {
+		return false
+	}
+	return markused_type_is_f32(tc.resolve_type(a.child(&node, 0)))
+		|| markused_type_is_f32(tc.resolve_type(a.child(&node, 1)))
+}
+
+fn markused_type_is_f32(typ types.Type) bool {
+	if typ is types.Alias {
+		return markused_type_is_f32(typ.base_type)
+	}
+	return typ.name() == 'f32'
 }
 
 fn markused_type_text_is_channel(raw string) bool {

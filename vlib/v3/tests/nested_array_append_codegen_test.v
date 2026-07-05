@@ -18,7 +18,11 @@ fn nested_array_append_build_v3() string {
 fn test_nested_array_append_keeps_push_and_push_many_semantics() {
 	v3_bin := nested_array_append_build_v3()
 	src := os.join_path(os.temp_dir(), 'v3_nested_array_append_input_${os.getpid()}.v')
-	os.write_file(src, "fn main() {
+	os.write_file(src, "fn push_path(mut pattern [][]string, mut path []string) {
+	pattern << [path]
+}
+
+fn main() {
 	mut scalars := []int{}
 	scalars << [1, 2]
 	assert scalars.len == 2
@@ -56,6 +60,12 @@ fn test_nested_array_append_keeps_push_and_push_many_semantics() {
 	assert queue[0].len == 2
 	assert queue[0][0][0] == 'A'
 	assert queue[0][1].len == 0
+
+	mut pattern := [][]string{}
+	mut dfs_path := ['A', 'B']
+	push_path(mut pattern, mut dfs_path)
+	assert pattern.len == 1
+	assert pattern[0][1] == 'B'
 	println('ok')
 }
 ") or {
@@ -80,4 +90,5 @@ fn test_nested_array_append_keeps_push_and_push_many_semantics() {
 	assert c_code.contains('array_push(&cube'), c_code
 	assert c_code.contains('array__push_many(&cube_many'), c_code
 	assert c_code.contains('array_push(&queue'), c_code
+	assert c_code.contains('array__push_many(pattern'), c_code
 }

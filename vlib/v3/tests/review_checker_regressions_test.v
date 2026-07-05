@@ -75,6 +75,13 @@ fn test_none_ierror_values_lower_to_builtin_none() {
 	assert out == 'option'
 }
 
+fn test_rune_receiver_methods_resolve() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_rune_receiver_methods',
+		'fn main() {\n\tr := `★`\n\tprintln(int_str(`A`.length_in_bytes()))\n\tprintln(int_str(r.bytes().len))\n\tprintln(`c`.to_upper().str())\n}\n')
+	assert out == '1\n3\nC'
+}
+
 fn test_numeric_alias_returns_preserve_integer_float_direction() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_int_alias_float_return',

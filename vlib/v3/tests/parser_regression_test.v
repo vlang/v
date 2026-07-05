@@ -213,6 +213,21 @@ fn test_sql_identifier_calls_are_not_parsed_as_sql_expr() {
 	assert call_count == 1
 }
 
+fn test_statement_match_trailing_or_is_preserved() {
+	a := parse_parser_regression_source('match_trailing_or_stmt',
+		'fn f() !int {\n\treturn 1\n}\n\nfn main() {\n\tmatch f() {\n\t\t0, 1 {}\n\t\telse {}\n\t} or { 0 }\n}\n')
+	mut found := false
+	for node in a.nodes {
+		if node.kind == .or_expr && node.children_count >= 1 {
+			child := a.child_node(&node, 0)
+			if child.kind == .match_stmt {
+				found = true
+			}
+		}
+	}
+	assert found
+}
+
 fn test_local_generic_type_with_qualified_arg_resolves_base_before_qualification() {
 	a := parse_parser_regression_source('local_generic_qualified_arg',
 		'module main\n\nimport other\n\nfn main() {\n\tstruct Box[T] {}\n\tmut boxes := []Box[other.Thing]{}\n\tboxes << Box[other.Thing]{}\n}\n')
