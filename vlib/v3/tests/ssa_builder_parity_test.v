@@ -182,6 +182,107 @@ fn same(a string, b string) bool {
 	assert has_call_to(m, 'same', 'string__eq')
 }
 
+// test_formatted_interpolation_helpers_build_for_ssa validates this v3 regression case.
+fn test_formatted_interpolation_helpers_build_for_ssa() {
+	m := build_transformed_source('formatted_interpolation_helpers', '
+fn main() {
+	label := "x"
+	value := 1.25
+	n := 7
+	_ := "\${label:-4s}\${value:6.2f}\${n:04d}\${65:c}"
+}
+')
+	assert has_call_to(m, 'main', 'v3_string_pad')
+	assert has_call_to(m, 'main', 'v3_f64_fixed')
+	assert has_call_to(m, 'main', 'v3_int_zpad')
+	assert has_call_to(m, 'main', 'v3_char_string')
+	for name in ['v3_string_pad', 'v3_f64_fixed', 'v3_int_zpad', 'v3_i64_zpad', 'v3_u64_zpad',
+		'v3_char_string'] {
+		f := find_func(m, name)
+		assert f.blocks.len > 0
+	}
+}
+
+// test_array_string_equality_helper_builds_for_ssa validates this v3 regression case.
+fn test_array_string_equality_helper_builds_for_ssa() {
+	m := build_transformed_source('array_string_equality_helper', '
+fn same(left []string, right []string) bool {
+	return left == right
+}
+
+fn main() {
+	_ := same(["x"], ["x"])
+}
+')
+	assert has_call_to(m, 'same', 'array_eq_string')
+	f := find_func(m, 'array_eq_string')
+	assert f.blocks.len > 0
+}
+
+// test_u8_array_bytestr_alias_builds_for_ssa validates this v3 regression case.
+fn test_u8_array_bytestr_alias_builds_for_ssa() {
+	m := build_source('u8_array_bytestr_alias', '
+fn show(data []u8) string {
+	return data.bytestr()
+}
+')
+	assert has_call_to(m, 'show', '[]u8.bytestr')
+	f := find_func(m, '[]u8.bytestr')
+	assert f.blocks.len > 0
+}
+
+// test_enum_str_resolves_to_autostr_for_ssa validates this v3 regression case.
+fn test_enum_str_resolves_to_autostr_for_ssa() {
+	m := build_source('enum_str_autostr', '
+enum Color {
+	red
+	blue
+}
+
+fn show(color Color) string {
+	return color.str()
+}
+')
+	assert has_call_to(m, 'show', 'Color__autostr')
+	f := find_func(m, 'Color__autostr')
+	assert f.blocks.len > 0
+}
+
+// test_rand_prng_interface_stubs_are_registered_for_ssa validates this v3 regression case.
+fn test_rand_prng_interface_stubs_are_registered_for_ssa() {
+	m := build_source('rand_prng_interface_stubs', '
+fn main() {}
+')
+	for name in ['rand.new_default', 'rand.PRNG.seed', 'rand.PRNG.u8', 'rand.PRNG.u16',
+		'rand.PRNG.u32', 'rand.PRNG.u64', 'rand.PRNG.block_size', 'rand.PRNG.free'] {
+		f := find_func(m, name)
+		assert f.blocks.len > 0
+	}
+}
+
+// test_at_exit_stub_is_registered_for_ssa validates this v3 regression case.
+fn test_at_exit_stub_is_registered_for_ssa() {
+	m := build_source('at_exit_stub', '
+fn main() {}
+')
+	f := find_func(m, 'at_exit')
+	assert f.blocks.len > 0
+}
+
+// test_pthread_setkind_np_uses_local_stub_for_ssa validates this v3 regression case.
+fn test_pthread_setkind_np_uses_local_stub_for_ssa() {
+	m := build_source('pthread_setkind_np_stub', '
+fn C.pthread_rwlockattr_setkind_np(voidptr, i32) i32
+
+fn set_kind(attr voidptr) {
+	_ := C.pthread_rwlockattr_setkind_np(attr, 0)
+}
+')
+	assert has_call_to(m, 'set_kind', 'pthread_rwlockattr_setkind_np')
+	f := find_func(m, 'pthread_rwlockattr_setkind_np')
+	assert f.blocks.len > 0
+}
+
 // test_c_fn_decl_registers_extern_signature validates this v3 regression case.
 fn test_c_fn_decl_registers_extern_signature() {
 	m := build_source('c_fn_decl', '

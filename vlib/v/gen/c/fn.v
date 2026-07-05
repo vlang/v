@@ -1116,6 +1116,7 @@ fn (mut g Gen) post_process_generic_fns_for_files(files []&ast.File) {
 						}
 						emitted_generic_specializations[specialization_key] = true
 						g.cur_concrete_types = concrete_specialization.clone()
+						g.clear_type_resolution_caches()
 						g.fn_decl(*generic_fn)
 						emitted_this_round = true
 					}

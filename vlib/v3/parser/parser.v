@@ -3340,11 +3340,22 @@ fn (mut p Parser) match_stmt() flat.NodeId {
 	p.check(.rcbr)
 
 	start := p.add_children(ids)
-	return p.a.add_node(flat.Node{
+	match_id := p.a.add_node(flat.Node{
 		kind:           .match_stmt
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
+	if p.tok == .key_or {
+		p.next()
+		or_body := p.block_stmt()
+		ostart := p.add_children2(match_id, or_body)
+		return p.a.add_node(flat.Node{
+			kind:           .or_expr
+			children_start: ostart
+			children_count: 2
+		})
+	}
+	return match_id
 }
 
 fn (mut p Parser) match_branch_cond() flat.NodeId {
@@ -4340,6 +4351,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.a.add_val_id(5, p.prefs.vroot)
 			}
 			if name == '@VEXE' {
+				if p.prefs.vexe.len > 0 {
+					return p.a.add_val_id(5, p.prefs.vexe)
+				}
 				return p.a.add_val_id(5, p.prefs.vroot + '/v')
 			}
 			if name == '@LINE' {
@@ -5384,16 +5398,16 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	}
 	// multi-element array: `[a, b, c]` or newline-separated const tables.
 	// Each subsequent element must be preceded by a separator: a single comma,
-	// or a run of `;` that the scanner emits for newlines/blank/comment lines. A
-	// missing separator (`[1 2]`) or a repeated comma (`[1,,2]`) ends the element
-	// list instead of silently merging adjacent operands; the stray tokens are
-	// then left to the (permissive) `p.check(.rsbr)` below, matching how this
-	// parser recovers from other malformed input.
+	// or a run of `;` that the scanner emits for newlines/blank lines. A missing
+	// separator (`[1 2]`) or a repeated comma (`[1,,2]`) ends the element list
+	// instead of merging operands; the stray tokens are then left to the
+	// (permissive) `p.check(.rsbr)` below, matching how this parser recovers
+	// from other malformed input.
 	for p.tok == .comma || p.tok == .semicolon {
 		if p.tok == .comma {
 			p.next()
 		}
-		// newlines/blank/comment lines after a separator are just whitespace
+		// newlines/blank lines after a separator are just whitespace
 		for p.tok == .semicolon {
 			p.next()
 		}

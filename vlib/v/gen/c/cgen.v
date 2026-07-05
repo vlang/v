@@ -121,6 +121,7 @@ mut:
 	is_fn_index_call                     bool
 	is_cc_msvc                           bool // g.pref.ccompiler == 'msvc'
 	is_option_auto_heap                  bool
+	is_auto_deref_synthetic              bool
 	vlines_path                          string            // set to the proper path for generating #line directives
 	options_pos_forward                  int               // insertion point to forward
 	options_forward                      []string          // to forward
@@ -7267,7 +7268,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				// For `*val` where val is a mut generic param with pointer type
 				// (e.g. `mut val T` where T=&int -> C: `int** val`), auto-deref needs
 				// an extra `*` so `*val` in V becomes `**val` in C.
-				if node.op == .mul && node.right is ast.Ident {
+				if node.op == .mul && node.right is ast.Ident && !g.is_auto_deref_synthetic {
 					ident_right := node.right as ast.Ident
 					if ident_right.obj is ast.Var && ident_right.obj.is_auto_deref
 						&& ident_right.obj.is_arg && ident_right.obj.generic_typ != 0 {
@@ -11656,14 +11657,42 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				final_assignments += g.go_before_last_stmt() + '\t'
 				g.write2(line, '{0}')
 			} else {
-				if expr.is_auto_deref_var() {
-					g.write('*')
+				is_auto_deref := expr.is_auto_deref_var()
+				mut resolved_ret_type := ret_expr_types[i]
+				if g.cur_concrete_types.len > 0 {
+					if expr is ast.Ident {
+						resolved_type := g.resolved_scope_var_type_uncached(expr)
+						if resolved_type != 0 {
+							resolved_ret_type = resolved_type
+							if is_auto_deref {
+								resolved_ret_type = resolved_ret_type.deref()
+							}
+						}
+					} else {
+						resolved_type := g.resolved_expr_type(expr, resolved_ret_type)
+						if resolved_type != 0 && !g.type_has_unresolved_generic_parts(resolved_type) {
+							resolved_ret_type = resolved_type
+						}
+					}
 				}
 				if mr_info.types[i].has_flag(.option) {
-					g.expr_with_opt(expr, ret_expr_types[i], mr_info.types[i])
+					if is_auto_deref {
+						g.write('*')
+					}
+					g.expr_with_opt(expr, resolved_ret_type, mr_info.types[i])
 				} else if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface] {
-					g.expr_with_cast(expr, ret_expr_types[i], mr_info.types[i])
+					if is_auto_deref {
+						g.is_auto_deref_synthetic = true
+						g.expr_with_cast(ast.PrefixExpr{ op: .mul, right: expr },
+							resolved_ret_type, mr_info.types[i])
+						g.is_auto_deref_synthetic = false
+					} else {
+						g.expr_with_cast(expr, resolved_ret_type, mr_info.types[i])
+					}
 				} else {
+					if is_auto_deref {
+						g.write('*')
+					}
 					g.expr(expr)
 				}
 			}

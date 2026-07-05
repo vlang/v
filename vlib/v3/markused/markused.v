@@ -405,6 +405,49 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	return used
 }
 
+fn enqueue_used_interface_dispatch_implementers(tc &types.TypeChecker, mut used map[string]bool, mut queue []string) bool {
+	mut added := false
+	for iface_name in tc.interface_names.keys() {
+		methods := tc.interface_abstract_method_names(iface_name)
+		if methods.len == 0 {
+			continue
+		}
+		impls := if markused_is_ierror_interface_name(iface_name) {
+			tc.ierror_impl_names()
+		} else {
+			tc.interface_impl_names(iface_name)
+		}
+		if impls.len == 0 {
+			continue
+		}
+		for method in methods {
+			dispatch_key := '${iface_name}.${method}'
+			dispatch_c_key := markused_c_name(dispatch_key)
+			short_dispatch_key := '${iface_name.all_after_last('.')}.${method}'
+			if dispatch_key !in used && dispatch_c_key !in used && short_dispatch_key !in used {
+				continue
+			}
+			for impl in impls {
+				impl_method := tc.concrete_method_signature_key(impl, method) or {
+					'${impl}.${method}'
+				}
+				if enqueue(impl_method, mut used, mut queue) {
+					added = true
+				}
+				lowered := markused_c_name(impl_method)
+				if lowered != impl_method && enqueue(lowered, mut used, mut queue) {
+					added = true
+				}
+				short_impl := '${impl_method.all_before_last('.').all_after_last('.')}.${method}'
+				if short_impl != impl_method && enqueue(short_impl, mut used, mut queue) {
+					added = true
+				}
+			}
+		}
+	}
+	return added
+}
+
 fn markused_is_interface_dispatch_call(name string, cur_module string, tc &types.TypeChecker) bool {
 	if !name.contains('.') {
 		return false
@@ -547,7 +590,9 @@ fn add_fn_decl_info(mut fn_decls map[string]FnDeclInfo, mut fn_decl_lists map[st
 }
 
 fn fn_decl_infos_for_queue_name(name string, fn_decl_lists map[string][]FnDeclInfo, a &flat.FlatAst) []FnDeclInfo {
-	infos := fn_decl_lists[name] or { return []FnDeclInfo{} }
+	infos := fn_decl_lists[name] or {
+		return fn_decl_infos_for_generic_specialization_name(name, fn_decl_lists, a)
+	}
 	if infos.len <= 1 {
 		return infos
 	}
@@ -559,6 +604,75 @@ fn fn_decl_infos_for_queue_name(name string, fn_decl_lists map[string][]FnDeclIn
 		}
 	}
 	return exact_infos
+}
+
+fn fn_decl_infos_for_generic_specialization_name(name string, fn_decl_lists map[string][]FnDeclInfo, a &flat.FlatAst) []FnDeclInfo {
+	for candidate in markused_generic_specialization_decl_keys(name) {
+		infos := fn_decl_lists[candidate] or { continue }
+		mut generic_infos := []FnDeclInfo{}
+		for info in infos {
+			node := a.node(info.node_id)
+			if markused_fn_decl_is_generic_template(node, a) {
+				generic_infos << info
+			}
+		}
+		if generic_infos.len > 0 {
+			return generic_infos
+		}
+		return infos
+	}
+	return []FnDeclInfo{}
+}
+
+fn markused_generic_specialization_decl_keys(name string) []string {
+	mut keys := []string{}
+	if name.contains('__') {
+		parts := name.split('__')
+		for i in 0 .. parts.len - 1 {
+			markused_add_generic_specialization_keys(parts, i, mut keys)
+		}
+		return keys
+	}
+	markused_add_generic_specialization_key(name, mut keys)
+	return keys
+}
+
+fn markused_add_generic_specialization_keys(parts []string, index int, mut keys []string) {
+	segment := parts[index]
+	if !segment.contains('_') {
+		return
+	}
+	mut base := segment
+	for base.contains('_') {
+		base = base.all_before_last('_')
+		if base.len == 0 {
+			return
+		}
+		mut candidate_parts := parts.clone()
+		candidate_parts[index] = base
+		markused_push_unique_key(candidate_parts.join('__'), mut keys)
+	}
+}
+
+fn markused_add_generic_specialization_key(name string, mut keys []string) {
+	if !name.contains('_') {
+		return
+	}
+	mut base := name
+	for base.contains('_') {
+		base = base.all_before_last('_')
+		if base.len == 0 {
+			return
+		}
+		markused_push_unique_key(base, mut keys)
+	}
+}
+
+fn markused_push_unique_key(key string, mut keys []string) {
+	if key.len == 0 || key in keys {
+		return
+	}
+	keys << key
 }
 
 fn fn_decl_key_is_exact_for_info(name string, decl_name string, module_name string) bool {
@@ -1087,6 +1201,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	mut needs_new_map := false
 	mut needs_map_iteration_snapshot := false
 	mut needs_channel_helpers := false
+	mut needs_f32_eq_epsilon := false
 	mut cur_module := ''
 	mut imports := map[string]string{}
 	for node in a.nodes {
@@ -1164,6 +1279,9 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			.infix {
 				if node.op == .arrow {
 					needs_channel_helpers = true
+				}
+				if node.op in [.eq, .ne] && markused_infix_needs_f32_eq_epsilon(a, tc, node) {
+					needs_f32_eq_epsilon = true
 				}
 			}
 			.prefix {
@@ -1265,6 +1383,25 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			enqueue(helper, mut used, mut queue)
 		}
 	}
+	if needs_f32_eq_epsilon {
+		enqueue('f32.eq_epsilon', mut used, mut queue)
+		enqueue('f32__eq_epsilon', mut used, mut queue)
+	}
+}
+
+fn markused_infix_needs_f32_eq_epsilon(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node) bool {
+	if node.children_count < 2 {
+		return false
+	}
+	return markused_type_is_f32(tc.resolve_type(a.child(&node, 0)))
+		|| markused_type_is_f32(tc.resolve_type(a.child(&node, 1)))
+}
+
+fn markused_type_is_f32(typ types.Type) bool {
+	if typ is types.Alias {
+		return markused_type_is_f32(typ.base_type)
+	}
+	return typ.name() == 'f32'
 }
 
 fn markused_type_text_is_channel(raw string) bool {
@@ -1898,6 +2035,116 @@ fn receiver_info(a &flat.FlatAst, node &flat.Node) (string, string) {
 	return '', receiver_struct
 }
 
+fn (c &CallCollector) collect_interface_boxed_generic_methods(call &flat.Node, resolved_call string, cur_module string, imports map[string]string, local_values map[string]bool, mut calls []string) {
+	if call.children_count < 2 {
+		return
+	}
+	signatures := c.call_signature_candidates(call, resolved_call, cur_module, imports,
+		local_values)
+	if signatures.len == 0 {
+		return
+	}
+	callee := c.a.child_node(call, 0)
+	param_offset := c.call_receiver_param_offset(callee, imports, local_values)
+	for signature in signatures {
+		params := c.tc.fn_param_types[signature] or { continue }
+		for arg_i := 1; arg_i < call.children_count; arg_i++ {
+			param_i := arg_i - 1 + param_offset
+			if param_i < 0 || param_i >= params.len {
+				continue
+			}
+			expected := types.unwrap_pointer(params[param_i])
+			if expected !is types.Interface {
+				continue
+			}
+			arg_id := markused_generic_call_arg_value(c.a, c.a.child(call, arg_i))
+			actual := types.unwrap_pointer(c.tc.resolve_type(arg_id))
+			actual_name := resolve_type_name(actual)
+			c.add_interface_boxed_generic_methods(expected.name(), actual_name, mut calls)
+		}
+	}
+}
+
+fn (c &CallCollector) call_signature_candidates(call &flat.Node, resolved_call string, cur_module string, imports map[string]string, local_values map[string]bool) []string {
+	mut names := []string{}
+	markused_add_call_signature_candidate(resolved_call, cur_module, mut names)
+	if call.children_count == 0 {
+		return names
+	}
+	callee := c.a.child_node(call, 0)
+	if callee.kind == .ident && callee.value.len > 0 && callee.value !in local_values {
+		markused_add_call_signature_candidate(callee.value, cur_module, mut names)
+		return names
+	}
+	if callee.kind == .selector && callee.value.len > 0 && callee.children_count > 0 {
+		base := c.a.child_node(callee, 0)
+		if base.kind == .ident && base.value.len > 0 {
+			if imported := imports[base.value] {
+				markused_add_call_signature_candidate('${imported}.${callee.value}', cur_module, mut
+					names)
+			}
+		}
+	}
+	return names
+}
+
+fn markused_add_call_signature_candidate(name string, cur_module string, mut names []string) {
+	if name.len == 0 {
+		return
+	}
+	markused_push_unique_key(name, mut names)
+	lowered := markused_c_name(name)
+	if lowered != name {
+		markused_push_unique_key(lowered, mut names)
+	}
+	qname := qualify_fn(cur_module, name)
+	if qname != name {
+		markused_push_unique_key(qname, mut names)
+		lowered_qname := markused_c_name(qname)
+		if lowered_qname != qname {
+			markused_push_unique_key(lowered_qname, mut names)
+		}
+	}
+}
+
+fn (c &CallCollector) call_receiver_param_offset(callee &flat.Node, imports map[string]string, local_values map[string]bool) int {
+	if callee.kind != .selector || callee.children_count == 0 {
+		return 0
+	}
+	base := c.a.child_node(callee, 0)
+	if base.kind != .ident || base.value.len == 0 {
+		return 1
+	}
+	if base.value in imports && base.value !in local_values {
+		return 0
+	}
+	if base.value in local_values {
+		return 1
+	}
+	if base.value[0] >= `A` && base.value[0] <= `Z` {
+		return 0
+	}
+	return 0
+}
+
+fn (c &CallCollector) add_interface_boxed_generic_methods(iface_name string, actual_name string, mut calls []string) {
+	if iface_name.len == 0 || actual_name.len == 0 {
+		return
+	}
+	_, _, is_generic := markused_generic_app_parts(actual_name)
+	if !is_generic {
+		return
+	}
+	if !c.tc.named_type_implements_interface(actual_name, iface_name) {
+		return
+	}
+	for method in c.tc.interface_abstract_method_names(iface_name) {
+		info := c.tc.resolve_generic_struct_method(actual_name, method) or { continue }
+		c.add_typed_receiver_method_name(info.name, mut calls)
+		c.add_typed_receiver_method_name('${actual_name}.${method}', mut calls)
+	}
+}
+
 // collect_calls updates collect calls state for markused.
 fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports map[string]string, receiver_name string, receiver_struct string, mut calls []string) {
 	if cur_module == 'ast' && node.value == 'TypeSymbol.find_method_with_generic_parent' {
@@ -1938,6 +2185,8 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 				if resolved := c.tc.resolved_call_name(child_id) {
 					resolved_call = resolved
 				}
+				c.collect_interface_boxed_generic_methods(child, resolved_call, cur_module,
+					imports, local_values, mut calls)
 				c.collect_lowered_join_path_single(child, resolved_call, mut calls)
 				if child.children_count > 0 {
 					callee_id := c.a.child(child, 0)

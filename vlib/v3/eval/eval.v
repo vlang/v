@@ -680,9 +680,6 @@ fn (mut e Eval) evaluate_global_inits() ! {
 	mut visited := map[string]bool{}
 	mut visiting := map[string]bool{}
 	e.evaluate_module_global_inits('main', entries_by_module, mut visited, mut visiting)!
-	for module_name in e.module_order {
-		e.evaluate_module_global_inits(module_name, entries_by_module, mut visited, mut visiting)!
-	}
 }
 
 fn (mut e Eval) evaluate_module_global_inits(module_name string, entries_by_module map[string][]GlobalEntry, mut visited map[string]bool, mut visiting map[string]bool) ! {
@@ -758,9 +755,6 @@ fn (mut e Eval) run_inits() ! {
 	mut visited := map[string]bool{}
 	mut visiting := map[string]bool{}
 	e.run_module_init('main', mut visited, mut visiting)!
-	for module_name in e.module_order {
-		e.run_module_init(module_name, mut visited, mut visiting)!
-	}
 }
 
 fn (mut e Eval) run_module_init(module_name string, mut visited map[string]bool, mut visiting map[string]bool) ! {

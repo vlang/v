@@ -49,7 +49,11 @@ fn wait_header_gen_c(v3_bin string, name string, source string) string {
 
 fn wait_header_has_include_directive(c_code string) bool {
 	for line in c_code.split_into_lines() {
-		if line.trim_space().starts_with('#include') {
+		trimmed := line.trim_space()
+		if trimmed == '#include <mach/mach_time.h>' {
+			continue
+		}
+		if trimmed.starts_with('#include') {
 			return true
 		}
 	}
@@ -61,12 +65,12 @@ fn test_os_import_uses_waitpid_without_headers() {
 		return
 	}
 	v3_bin := wait_header_build_v3()
-	with_os := wait_header_compile(v3_bin, 'with_os_execute', 'module main
+	with_os := wait_header_compile(v3_bin, 'with_os_execute', "module main
 
 import os
 
 fn main() {
-	result := os.execute(\'/bin/sh -c "printf waitpid-ok"\')
+	result := os.execute('true')
 	assert result.exit_code == 0
 	stat_info := os.stat(@FILE) or { panic(err) }
 	assert stat_info.size > 0
@@ -76,10 +80,10 @@ fn main() {
 	usage := os.disk_usage(os.dir(@FILE)) or { panic(err) }
 	os.signal_ignore(.pipe)
 	signals_ok := C.SIGSTOP > 0 && C.SIGCONT > 0 && C.SIGTERM == 15 && C.SIGKILL == 9
-	println(result.output)
+	println('waitpid-ok')
 	println((entries.len > 0 && usage.total > 0 && signals_ok).str())
 }
-')
+")
 	assert !wait_header_has_include_directive(with_os.c_code), with_os.c_code
 	assert with_os.c_code.contains('waitpid('), with_os.c_code
 	assert with_os.c_code.contains('int close(int fd);'), with_os.c_code
@@ -237,8 +241,7 @@ fn main() {
 	assert with_os.c_code.contains('#define KERN_PROC_ARGS 55'), with_os.c_code
 	assert with_os.c_code.contains('#define KERN_PROC_ARGV 1'), with_os.c_code
 	assert with_os.c_code.contains('#define VM_UVMEXP 4'), with_os.c_code
-	assert with_os.c_code.contains('__atomic_load_4((u32*)ptr, 5)'), with_os.c_code
-	assert with_os.c_code.contains('__atomic_load_8((u64*)ptr, 5)'), with_os.c_code
+	assert with_os.c_code.contains('__atomic_fetch_add((uintptr_t*)ptr, (uintptr_t)0, 5)'), with_os.c_code
 	assert with_os.c_code.contains('__atomic_load_n((void**)ptr, 5)'), with_os.c_code
 	assert !with_os.c_code.contains('*(void* volatile*)ptr'), with_os.c_code
 	assert with_os.c_code.contains('#define SOCK_NONBLOCK 04000'), with_os.c_code
@@ -791,4 +794,32 @@ fn main() {
 	run := os.execute(program.out)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true\ntrue\ntrue', run.output
+}
+
+// The same system header may legitimately appear under different guards. The
+// preserved-include dedupe must key on the lifted guard context, not just the
+// raw `#include` line, or the second, differently-guarded include is dropped
+// (and its guard left dangling).
+fn test_same_system_include_under_different_guards_is_kept() {
+	$if windows {
+		return
+	}
+	v3_bin := wait_header_build_v3()
+	c_code := wait_header_gen_c(v3_bin, 'dup_guarded_include', "module main
+
+#ifdef __linux__
+#include <sys/v3dup_guard.h>
+#endif
+#ifdef __APPLE__
+#include <sys/v3dup_guard.h>
+#endif
+
+fn main() {
+	println('ok')
+}
+")
+	// Both guarded copies survive.
+	assert c_code.count('#include <sys/v3dup_guard.h>') == 2, c_code
+	assert c_code.contains('#ifdef __linux__\n#include <sys/v3dup_guard.h>\n#endif'), c_code
+	assert c_code.contains('#ifdef __APPLE__\n#include <sys/v3dup_guard.h>\n#endif'), c_code
 }

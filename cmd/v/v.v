@@ -259,7 +259,7 @@ fn launch_v3_ownership_compiler(is_verbose bool, args []string) {
 			exit(1)
 		}
 	}
-	mut forwarded_args := []string{}
+	mut forwarded_args := ['-ownership']
 	for arg in args {
 		forwarded_args << arg
 	}

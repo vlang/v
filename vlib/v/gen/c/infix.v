@@ -2016,8 +2016,8 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 				}
 			}
 		}
-		if node.left is ast.Ident && node.left.obj is ast.Var
-			&& (node.left.obj.is_unwrapped || node.left.obj.is_assignment_smartcast
+		if node.left is ast.Ident && node.left.obj is ast.Var && (node.left.obj.is_unwrapped
+			|| node.left.obj.is_assignment_smartcast
 			|| ident_is_assignment_smartcast) {
 			name := c_name(node.left.name)
 			if node.left.is_auto_heap() {
@@ -2212,7 +2212,11 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	is_safe_div := node.op == .div && is_integer_div_mod
 	is_safe_mod := node.op == .mod && is_integer_div_mod
 	if resolved_left_type.is_ptr() && node.left.is_auto_deref_var()
-		&& !resolved_right_type.is_any_kind_of_pointer() {
+		&& (!resolved_right_type.is_any_kind_of_pointer() || node.right.is_auto_deref_var()) {
+		// An auto-deref var is logically a value, so it must be dereferenced even
+		// when the other operand is also a pointer - but only when that operand is
+		// itself an auto-deref var (e.g. `a.sorted(|x, y| x < y)`), not a genuine
+		// pointer/nil comparison.
 		g.write('*')
 	} else if !g.inside_interface_deref && node.left is ast.Ident
 		&& g.table.is_interface_var(node.left.obj) {
@@ -2265,7 +2269,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		g.write('(${g.styp(resolved_right_type)})')
 	}
 	if resolved_right_type.is_ptr() && node.right.is_auto_deref_var()
-		&& !resolved_left_type.is_any_kind_of_pointer() {
+		&& (!resolved_left_type.is_any_kind_of_pointer() || node.left.is_auto_deref_var()) {
 		g.write('*')
 		g.expr(node.right)
 	} else {

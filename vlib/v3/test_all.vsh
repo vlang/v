@@ -337,6 +337,10 @@ fn run_unlocked_example(cfg Config, v3_bin string, example_case ExampleCase, ind
 	bin := temp_path(cfg, 'example_${index}')
 	stdin_path := temp_path(cfg, 'example_${index}_stdin')
 	cleanup_files([bin, bin + '.c', stdin_path])
+	if example_case.mode == .gui_smoke && !gui_smoke_environment_available() {
+		println('  SKIP ${example_case.path} (requires `xvfb-run` or an active display)')
+		return false
+	}
 	mut compile_cmd := q(v3_bin)
 	if cfg.c99_flag.len > 0 {
 		compile_cmd += ' ' + cfg.c99_flag
@@ -377,6 +381,11 @@ fn run_unlocked_example(cfg Config, v3_bin string, example_case ExampleCase, ind
 	cleanup_files([bin, bin + '.c', stdin_path])
 	println('  OK ${example_case.path}')
 	return true
+}
+
+fn gui_smoke_environment_available() bool {
+	return os.getenv('DISPLAY').len > 0 || os.getenv('WAYLAND_DISPLAY').len > 0
+		|| shell_command_exists('xvfb-run')
 }
 
 fn run_gui_smoke_example(example_case ExampleCase, bin string, stdin_path string) bool {

@@ -3,6 +3,11 @@ module transform
 import v3.flat
 import v3.types
 
+struct IteratorForInInfo {
+	elem_type   string
+	next_method string
+}
+
 // transform_for_body transforms transform for body data for transform.
 fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count < 3 {
@@ -124,7 +129,7 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 	if iter_info := t.iterator_for_in_info(iter_type) {
 		body_ids := t.a.children_of(&node)[header_count..].clone()
 		return t.lower_iterator_for_in(id, node, key_id, val_id, container_id, iter_type,
-			iter_info.elem_type, iter_info.next_method, has_index, body_ids)
+			iter_info, has_index, body_ids)
 	}
 	effective_iter := if iter_type.starts_with('...') {
 		'[]' + iter_type[3..]
@@ -180,6 +185,13 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	val_id := t.a.child(&node, 1)
 	container_id := t.a.child(&node, 2)
 	new_container := t.transform_expr(container_id)
+	mut new_range_end := flat.NodeId(-1)
+	if header_count == 4 {
+		range_end_id := t.a.child(&node, 3)
+		new_range_end = t.transform_expr(range_end_id)
+	}
+	mut prefix := []flat.NodeId{}
+	t.drain_pending(mut prefix)
 	iter_type := t.detect_for_in_type(node)
 	has_index := int(val_id) >= 0
 	container_is_range := if int(container_id) >= 0 {
@@ -241,8 +253,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	ids << val_id
 	ids << new_container
 	if header_count == 4 {
-		range_end_id := t.a.child(&node, 3)
-		ids << t.transform_expr(range_end_id)
+		ids << new_range_end
 	}
 	body_ids := t.a.children_of(&node)[header_count..].clone()
 	new_body := t.transform_stmts(body_ids)
@@ -253,7 +264,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	for cid in ids {
 		t.a.children << cid
 	}
-	return arr1(t.a.add_node(flat.Node{
+	prefix << t.a.add_node(flat.Node{
 		kind:           .for_in_stmt
 		op:             node.op
 		children_start: start
@@ -261,12 +272,8 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		pos:            node.pos
 		value:          node.value
 		typ:            node.typ
-	}))
-}
-
-struct IteratorForInInfo {
-	elem_type   string
-	next_method string
+	})
+	return prefix
 }
 
 fn (t &Transformer) iterator_for_in_info(iter_type string) ?IteratorForInInfo {
@@ -334,7 +341,7 @@ fn (t &Transformer) range_loop_var_type_name(low_id flat.NodeId) string {
 	return 'int'
 }
 
-fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, iter_type string, elem_type string, next_method string, has_index bool, body_ids []flat.NodeId) []flat.NodeId {
+fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, iter_type string, info IteratorForInInfo, has_index bool, body_ids []flat.NodeId) []flat.NodeId {
 	if int(key_id) < 0 {
 		return arr1(id)
 	}
@@ -365,9 +372,10 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	} else {
 		t.make_empty()
 	}
+	elem_type := info.elem_type
 	t.set_var_type(elem_name, elem_type)
-	next_call := t.make_call_typed(next_method, arr1(t.make_prefix(.amp, t.make_ident(iter_name))),
-		'?${elem_type}')
+	next_call := t.make_call_typed(info.next_method, arr1(t.make_prefix(.amp,
+		t.make_ident(iter_name))), '?${elem_type}')
 	next_decl := t.make_decl_assign_typed(next_name, next_call, '?${elem_type}')
 	no_value := t.make_prefix(.not, t.make_selector(t.make_ident(next_name), 'ok', 'bool'))
 	break_if_done := t.make_if(no_value, t.make_block(arr1(t.a.add(.break_stmt))), t.make_empty())

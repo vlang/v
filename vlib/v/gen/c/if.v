@@ -107,7 +107,7 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 			if branch.stmts.len > 1 {
 				return true
 			}
-			if g.need_tmp_var_in_expr(branch.cond) {
+			if g.if_expr_part_needs_tmp(branch.cond) {
 				return true
 			}
 			if branch.stmts.len == 1 {
@@ -116,12 +116,395 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 					if stmt.expr is ast.ArrayInit && stmt.expr.is_fixed {
 						return true
 					}
-					if g.need_tmp_var_in_expr(stmt.expr) {
+					if g.if_expr_part_needs_tmp(stmt.expr) {
 						return true
 					}
 				} else if branch.stmts[0] is ast.Return {
 					return true
 				} else if branch.stmts[0] is ast.BranchStmt {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// &Struct{...} can lower to local pre-statements, so it cannot stay inside C's `?:` operands.
+fn (mut g Gen) if_expr_part_needs_tmp(expr ast.Expr) bool {
+	return g.need_tmp_var_in_expr(expr) || expr_contains_addr_of_struct_init(expr)
+}
+
+fn expr_is_struct_init(expr ast.Expr) bool {
+	match expr {
+		ast.StructInit {
+			return true
+		}
+		ast.ParExpr {
+			return expr_is_struct_init(expr.expr)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn exprs_contain_addr_of_struct_init(exprs []ast.Expr) bool {
+	for expr in exprs {
+		if expr_contains_addr_of_struct_init(expr) {
+			return true
+		}
+	}
+	return false
+}
+
+fn call_args_contain_addr_of_struct_init(args []ast.CallArg) bool {
+	for arg in args {
+		if expr_contains_addr_of_struct_init(arg.expr) {
+			return true
+		}
+	}
+	return false
+}
+
+fn stmts_contain_addr_of_struct_init(stmts []ast.Stmt) bool {
+	for stmt in stmts {
+		if stmt_contains_addr_of_struct_init(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+fn if_branches_contain_addr_of_struct_init(branches []ast.IfBranch) bool {
+	for branch in branches {
+		if expr_contains_addr_of_struct_init(branch.cond)
+			|| stmts_contain_addr_of_struct_init(branch.stmts) {
+			return true
+		}
+	}
+	return false
+}
+
+fn match_branches_contain_addr_of_struct_init(branches []ast.MatchBranch) bool {
+	for branch in branches {
+		if exprs_contain_addr_of_struct_init(branch.exprs)
+			|| stmts_contain_addr_of_struct_init(branch.stmts) {
+			return true
+		}
+	}
+	return false
+}
+
+fn select_branches_contain_addr_of_struct_init(branches []ast.SelectBranch) bool {
+	for branch in branches {
+		if stmt_contains_addr_of_struct_init(branch.stmt)
+			|| stmts_contain_addr_of_struct_init(branch.stmts) {
+			return true
+		}
+	}
+	return false
+}
+
+fn or_expr_contains_addr_of_struct_init(expr ast.OrExpr) bool {
+	return stmts_contain_addr_of_struct_init(expr.stmts)
+}
+
+fn stmt_contains_addr_of_struct_init(stmt ast.Stmt) bool {
+	match stmt {
+		ast.AssertStmt {
+			return expr_contains_addr_of_struct_init(stmt.expr)
+				|| expr_contains_addr_of_struct_init(stmt.extra)
+		}
+		ast.AssignStmt {
+			return exprs_contain_addr_of_struct_init(stmt.left)
+				|| exprs_contain_addr_of_struct_init(stmt.right)
+		}
+		ast.Block {
+			return stmts_contain_addr_of_struct_init(stmt.stmts)
+		}
+		ast.ComptimeFor {
+			return expr_contains_addr_of_struct_init(stmt.expr)
+				|| stmts_contain_addr_of_struct_init(stmt.stmts)
+		}
+		ast.ConstDecl {
+			for field in stmt.fields {
+				if expr_contains_addr_of_struct_init(field.expr) {
+					return true
+				}
+			}
+		}
+		ast.DeferStmt {
+			return stmts_contain_addr_of_struct_init(stmt.stmts)
+		}
+		ast.EnumDecl {
+			for field in stmt.fields {
+				if expr_contains_addr_of_struct_init(field.expr) {
+					return true
+				}
+			}
+		}
+		ast.ExprStmt {
+			return expr_contains_addr_of_struct_init(stmt.expr)
+		}
+		ast.ForCStmt {
+			return stmt_contains_addr_of_struct_init(stmt.init)
+				|| expr_contains_addr_of_struct_init(stmt.cond)
+				|| stmt_contains_addr_of_struct_init(stmt.inc)
+				|| stmts_contain_addr_of_struct_init(stmt.stmts)
+		}
+		ast.ForInStmt {
+			return expr_contains_addr_of_struct_init(stmt.cond)
+				|| expr_contains_addr_of_struct_init(stmt.high)
+				|| stmts_contain_addr_of_struct_init(stmt.stmts)
+		}
+		ast.ForStmt {
+			return expr_contains_addr_of_struct_init(stmt.cond)
+				|| stmts_contain_addr_of_struct_init(stmt.stmts)
+		}
+		ast.GlobalDecl {
+			for field in stmt.fields {
+				if expr_contains_addr_of_struct_init(field.expr) {
+					return true
+				}
+			}
+		}
+		ast.Return {
+			return exprs_contain_addr_of_struct_init(stmt.exprs)
+		}
+		ast.SqlStmt {
+			if expr_contains_addr_of_struct_init(stmt.db_expr)
+				|| or_expr_contains_addr_of_struct_init(stmt.or_expr) {
+				return true
+			}
+			for line in stmt.lines {
+				if expr_contains_addr_of_struct_init(line.where_expr)
+					|| expr_contains_addr_of_struct_init(line.update_data_expr)
+					|| exprs_contain_addr_of_struct_init(line.update_exprs) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn expr_contains_addr_of_struct_init(expr ast.Expr) bool {
+	match expr {
+		ast.ArrayDecompose {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.ArrayInit {
+			if expr_contains_addr_of_struct_init(expr.len_expr) {
+				return true
+			}
+			if expr_contains_addr_of_struct_init(expr.cap_expr) {
+				return true
+			}
+			if expr_contains_addr_of_struct_init(expr.init_expr) {
+				return true
+			}
+			if expr_contains_addr_of_struct_init(expr.elem_type_expr) {
+				return true
+			}
+			if expr_contains_addr_of_struct_init(expr.update_expr) {
+				return true
+			}
+			return exprs_contain_addr_of_struct_init(expr.exprs)
+		}
+		ast.AsCast {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.Assoc {
+			return exprs_contain_addr_of_struct_init(expr.exprs)
+		}
+		ast.CallExpr {
+			if expr_contains_addr_of_struct_init(expr.left) {
+				return true
+			}
+			if call_args_contain_addr_of_struct_init(expr.args) {
+				return true
+			}
+			return or_expr_contains_addr_of_struct_init(expr.or_block)
+		}
+		ast.CastExpr {
+			return expr_contains_addr_of_struct_init(expr.expr)
+				|| expr_contains_addr_of_struct_init(expr.arg)
+		}
+		ast.ChanInit {
+			return expr_contains_addr_of_struct_init(expr.cap_expr)
+		}
+		ast.ComptimeCall {
+			if expr_contains_addr_of_struct_init(expr.left)
+				|| call_args_contain_addr_of_struct_init(expr.args) {
+				return true
+			}
+			return or_expr_contains_addr_of_struct_init(expr.or_block)
+		}
+		ast.ComptimeSelector {
+			return expr_contains_addr_of_struct_init(expr.left)
+				|| expr_contains_addr_of_struct_init(expr.field_expr)
+				|| or_expr_contains_addr_of_struct_init(expr.or_block)
+		}
+		ast.ConcatExpr {
+			return exprs_contain_addr_of_struct_init(expr.vals)
+		}
+		ast.DumpExpr {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.GoExpr {
+			return expr_contains_addr_of_struct_init(ast.Expr(expr.call_expr))
+		}
+		ast.IfExpr {
+			return expr_contains_addr_of_struct_init(expr.left)
+				|| if_branches_contain_addr_of_struct_init(expr.branches)
+		}
+		ast.IfGuardExpr {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.IndexExpr {
+			if expr_contains_addr_of_struct_init(expr.left) {
+				return true
+			}
+			if expr_contains_addr_of_struct_init(expr.index) {
+				return true
+			}
+			if exprs_contain_addr_of_struct_init(expr.indices) {
+				return true
+			}
+			return or_expr_contains_addr_of_struct_init(expr.or_expr)
+		}
+		ast.InfixExpr {
+			if expr_contains_addr_of_struct_init(expr.left) {
+				return true
+			}
+			return expr_contains_addr_of_struct_init(expr.right)
+				|| or_expr_contains_addr_of_struct_init(expr.or_block)
+		}
+		ast.IsRefType {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.Likely {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.LockExpr {
+			return exprs_contain_addr_of_struct_init(expr.lockeds)
+				|| stmts_contain_addr_of_struct_init(expr.stmts)
+		}
+		ast.MapInit {
+			if exprs_contain_addr_of_struct_init(expr.keys) {
+				return true
+			}
+			if exprs_contain_addr_of_struct_init(expr.vals) {
+				return true
+			}
+			return expr_contains_addr_of_struct_init(expr.update_expr)
+		}
+		ast.MatchExpr {
+			return expr_contains_addr_of_struct_init(expr.cond)
+				|| match_branches_contain_addr_of_struct_init(expr.branches)
+		}
+		ast.OrExpr {
+			return or_expr_contains_addr_of_struct_init(expr)
+		}
+		ast.ParExpr {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.PostfixExpr {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.PrefixExpr {
+			if expr.op == .amp && expr_is_struct_init(expr.right) {
+				return true
+			}
+			return expr_contains_addr_of_struct_init(expr.right)
+		}
+		ast.RangeExpr {
+			return expr_contains_addr_of_struct_init(expr.low)
+				|| expr_contains_addr_of_struct_init(expr.high)
+		}
+		ast.SelectExpr {
+			return select_branches_contain_addr_of_struct_init(expr.branches)
+		}
+		ast.SelectorExpr {
+			return expr_contains_addr_of_struct_init(expr.expr)
+				|| or_expr_contains_addr_of_struct_init(expr.or_block)
+		}
+		ast.SizeOf {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		ast.SpawnExpr {
+			return expr_contains_addr_of_struct_init(ast.Expr(expr.call_expr))
+		}
+		ast.SqlExpr {
+			if expr_contains_addr_of_struct_init(expr.db_expr)
+				|| expr_contains_addr_of_struct_init(expr.where_expr)
+				|| expr_contains_addr_of_struct_init(expr.order_expr)
+				|| expr_contains_addr_of_struct_init(expr.limit_expr)
+				|| expr_contains_addr_of_struct_init(expr.offset_expr)
+				|| or_expr_contains_addr_of_struct_init(expr.or_expr) {
+				return true
+			}
+			for _, sub_expr in expr.sub_structs {
+				if expr_contains_addr_of_struct_init(ast.Expr(sub_expr)) {
+					return true
+				}
+			}
+			for join in expr.joins {
+				if expr_contains_addr_of_struct_init(join.on_expr) {
+					return true
+				}
+			}
+		}
+		ast.SqlQueryDataExpr {
+			return sql_query_data_items_contain_addr_of_struct_init(expr.items)
+		}
+		ast.StringInterLiteral {
+			if exprs_contain_addr_of_struct_init(expr.exprs) {
+				return true
+			}
+			if exprs_contain_addr_of_struct_init(expr.fwidth_exprs) {
+				return true
+			}
+			return exprs_contain_addr_of_struct_init(expr.precision_exprs)
+		}
+		ast.StructInit {
+			if expr_contains_addr_of_struct_init(expr.typ_expr) {
+				return true
+			}
+			if expr_contains_addr_of_struct_init(expr.update_expr) {
+				return true
+			}
+			for init_field in expr.init_fields {
+				if expr_contains_addr_of_struct_init(init_field.expr) {
+					return true
+				}
+			}
+		}
+		ast.UnsafeExpr {
+			return expr_contains_addr_of_struct_init(expr.expr)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn sql_query_data_items_contain_addr_of_struct_init(items []ast.SqlQueryDataItem) bool {
+	for item in items {
+		match item {
+			ast.SqlQueryDataIf {
+				for branch in item.branches {
+					if expr_contains_addr_of_struct_init(branch.cond)
+						|| sql_query_data_items_contain_addr_of_struct_init(branch.items) {
+						return true
+					}
+				}
+			}
+			ast.SqlQueryDataLeaf {
+				if expr_contains_addr_of_struct_init(item.expr) {
 					return true
 				}
 			}
@@ -310,7 +693,7 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 fn (mut g Gen) needs_conds_order(node ast.IfExpr) bool {
 	if node.branches.len > 1 {
 		for branch in node.branches {
-			if g.need_tmp_var_in_expr(branch.cond) {
+			if g.if_expr_part_needs_tmp(branch.cond) {
 				return true
 			}
 		}
