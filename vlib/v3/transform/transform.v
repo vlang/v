@@ -1329,46 +1329,67 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, node_limit 
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file
-	mut processed := map[int]bool{}
 	limit := if node_limit < t.a.nodes.len { node_limit } else { t.a.nodes.len }
-	for pending.len > 0 {
-		_ := pending.pop()
-		t.transform_pending_late_used_fn_bodies(limit, mut late, mut pending, mut queued, mut
-			processed)
-	}
-}
-
-fn (mut t Transformer) transform_pending_late_used_fn_bodies(limit int, mut late map[string]bool, mut pending []string, mut queued map[string]bool, mut processed map[int]bool) {
-	mut cur_file := ''
-	mut cur_module := ''
+	// Build the fn_decl candidate list once. The scan range [0, limit) is fixed:
+	// transform_fn_body only appends nodes beyond `limit` (those generated nodes
+	// are handled inline below), so the set of candidate fn_decls, their
+	// (file, module) context, and their generic-ness never change across rounds.
+	// Re-deriving all of this every round previously made this pass O(pending *
+	// nodes): a full node walk (millions of node_kind_id calls) plus a repeated
+	// fn_decl_has_unresolved_generics check on every non-matching fn_decl.
+	mut candidates := []LateFnCandidate{}
+	mut scan_file := ''
+	mut scan_module := ''
 	for i in 0 .. limit {
-		if processed[i] {
-			continue
-		}
 		node := t.a.nodes[i]
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
-			cur_file = node.value
-			cur_module = ''
+			scan_file = node.value
+			scan_module = ''
+		} else if kind_id == 73 {
+			scan_module = node.value
+		} else if kind_id == 61 && !t.fn_decl_has_unresolved_generics(node, scan_module) {
+			candidates << LateFnCandidate{
+				idx:    i
+				file:   scan_file
+				module: scan_module
+			}
+		}
+	}
+	for pending.len > 0 {
+		_ := pending.pop()
+		t.transform_pending_late_used_fn_bodies(mut candidates, mut late, mut pending, mut queued)
+	}
+}
+
+// LateFnCandidate is a non-generic fn_decl reachable by the late-used-fn-bodies
+// pass, together with the file/module context resolved for it during the single
+// structural scan in transform_late_used_fn_bodies.
+struct LateFnCandidate {
+	idx    int
+	file   string
+	module string
+mut:
+	processed bool
+}
+
+fn (mut t Transformer) transform_pending_late_used_fn_bodies(mut candidates []LateFnCandidate, mut late map[string]bool, mut pending []string, mut queued map[string]bool) {
+	for ci in 0 .. candidates.len {
+		if candidates[ci].processed {
 			continue
 		}
-		if kind_id == 73 {
-			cur_module = node.value
+		idx := candidates[ci].idx
+		node := t.a.nodes[idx]
+		if !late_used_fn_matches(late, node, candidates[ci].module) {
 			continue
 		}
-		if kind_id != 61 || t.fn_decl_has_unresolved_generics(node, cur_module) {
-			continue
-		}
-		if !late_used_fn_matches(late, node, cur_module) {
-			continue
-		}
-		processed[i] = true
-		t.cur_file = cur_file
-		t.cur_module = cur_module
+		candidates[ci].processed = true
+		t.cur_file = candidates[ci].file
+		t.cur_module = candidates[ci].module
 		used_before := t.used_fns.clone()
 		node_count_before := t.a.nodes.len
-		t.transform_fn_body(i)
-		for call_name in t.generated_fn_body_call_names(flat.NodeId(i)) {
+		t.transform_fn_body(idx)
+		for call_name in t.generated_fn_body_call_names(flat.NodeId(idx)) {
 			t.enqueue_late_used_call_name(call_name, used_before, mut late, mut pending, mut queued)
 		}
 		for j in node_count_before .. t.a.nodes.len {
