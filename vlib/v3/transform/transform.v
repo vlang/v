@@ -6301,8 +6301,10 @@ fn (mut t Transformer) transform_selector_base_expr(id flat.NodeId) flat.NodeId 
 	// a selector (`x.field`, where `x` stays `&T` so the selector emits arrow access).
 	// A compound base such as a call (`wrap(x).field`) or index expr may contain nested
 	// idents (e.g. the call argument `x`) that still need their rvalue deref, so only
-	// engage the flag when the base itself is a plain ident.
-	if t.a.nodes[int(id)].kind != .ident {
+	// engage the flag when the base is a plain ident — including one wrapped in
+	// transparent parentheses (`(x).field`, `((x)).field`), where `x` is still the
+	// direct receiver.
+	if !t.selector_base_is_ident_receiver(id) {
 		return t.transform_expr(id)
 	}
 	old_in_selector_base := t.in_selector_base
@@ -6310,6 +6312,17 @@ fn (mut t Transformer) transform_selector_base_expr(id flat.NodeId) flat.NodeId 
 	transformed := t.transform_expr(id)
 	t.in_selector_base = old_in_selector_base
 	return transformed
+}
+
+// selector_base_is_ident_receiver reports whether a selector base is a plain ident
+// receiver, seeing through transparent parenthesis chains (`(x)`, `((x))`). Compound
+// bases like `wrap(x)` or `a[i]` are not idents and stay on the normal transform path.
+fn (t &Transformer) selector_base_is_ident_receiver(id flat.NodeId) bool {
+	mut node := t.a.nodes[int(id)]
+	for node.kind == .paren && node.children_count > 0 {
+		node = t.a.nodes[int(t.a.child(&node, 0))]
+	}
+	return node.kind == .ident
 }
 
 // transform_selector_expr transforms transform selector expr data for transform.

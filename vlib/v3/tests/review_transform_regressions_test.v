@@ -164,6 +164,17 @@ fn test_mut_value_capture_in_call_under_selector_base() {
 	assert out == '7'
 }
 
+fn test_mut_value_capture_parenthesized_selector_receiver() {
+	v3_bin := build_v3_review_transform()
+	// A `[mut s]` value capture is a `&S` local; a parenthesized direct receiver
+	// (`(s).n`) is still the direct selector receiver and must keep the suppression so
+	// the selector emits arrow access. Otherwise the inner `s` is auto-dereferenced to
+	// `*s` while the selector still emits `->`, producing an invalid `(*s)->n`.
+	out := run_good(v3_bin, 'mut_capture_paren_selector_base',
+		'struct S {\n\tn int\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut s := S{\n\t\tn: 7\n\t}\n\tcall(fn [mut s] () {\n\t\tprintln(int_str((s).n))\n\t})\n}\n')
+	assert out == '7'
+}
+
 fn test_heap_escaping_amp_alias_keeps_heap_pointer() {
 	v3_bin := build_v3_review_transform()
 	// When a local `s` whose address escapes is moved to the heap, `s` becomes the `&S`
