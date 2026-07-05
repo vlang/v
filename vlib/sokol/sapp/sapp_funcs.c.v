@@ -160,5 +160,5 @@ fn C.sapp_x11_get_display() voidptr
 // Android: get native activity handle
 fn C.sapp_android_get_native_activity() voidptr
 
-// V-specific: read RGBA pixels from the OpenGL framebuffer
-fn C.v_sapp_gl_read_rgba_pixels(x i32, y i32, width i32, height i32, pixels charptr)
+// V-specific: read RGBA pixels from the active backend framebuffer
+fn C.v_sapp_read_rgba_pixels(x int, y int, width int, height int, pixels charptr) int
