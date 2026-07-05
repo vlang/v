@@ -125,6 +125,38 @@ fn test_const_array_allows_newline_separators_with_line_comments() {
 	assert out == '3\n2'
 }
 
+fn test_const_array_missing_separator_does_not_merge_elements() {
+	v3_bin := build_v3_review_transform()
+	// A missing separator must not silently merge two adjacent operands into two
+	// elements: `[1 2]` used to parse as `[1, 2]` (len 2). It now ends the element list
+	// at the first element and the stray token is dropped by the permissive `]`
+	// recovery, so the literal stays single-element. A doubled comma behaves the same.
+	out := run_good(v3_bin, 'const_array_missing_separator',
+		'const xs = [1 2]\nconst ys = [1,,2]\n\nfn main() {\n\tprintln(int_str(xs.len))\n\tprintln(int_str(ys.len))\n}\n')
+	assert out == '1\n1'
+}
+
+fn test_mut_pointer_capture_is_not_over_dereferenced() {
+	v3_bin := build_v3_review_transform()
+	// A `[mut p]` capture whose original type is already a pointer (`&S`) must stay a
+	// genuine `&S` local: its rvalue uses must not be over-dereferenced, so a call that
+	// expects the pointer still receives it (regression for gating the pointer-value
+	// rvalue/lvalue flags on `capture_by_ref` instead of every `capture_mut`).
+	out := run_good(v3_bin, 'mut_pointer_capture',
+		'struct S {\n\tn int\n}\n\nfn takes_ptr(p &S) int {\n\treturn p.n\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut p := &S{\n\t\tn: 5\n\t}\n\tcall(fn [mut p] () {\n\t\tprintln(int_str(takes_ptr(p)))\n\t})\n}\n')
+	assert out == '5'
+}
+
+fn test_mut_value_capture_in_call_under_selector_base() {
+	v3_bin := build_v3_review_transform()
+	// A `[mut s]` value capture used as a call argument nested inside a selector base
+	// (`wrap(s).s.n`) must still be lowered to its value; the selector-base deref
+	// suppression applies only to the direct receiver ident, not to nested expressions.
+	out := run_good(v3_bin, 'mut_capture_selector_base',
+		'struct S {\n\tn int\n}\n\nstruct Box {\n\ts S\n}\n\nfn wrap(s S) Box {\n\treturn Box{\n\t\ts: s\n\t}\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut s := S{\n\t\tn: 7\n\t}\n\tcall(fn [mut s] () {\n\t\tprintln(int_str(wrap(s).s.n))\n\t})\n}\n')
+	assert out == '7'
+}
+
 fn test_nested_map_equality_uses_declared_value_type() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'nested_map_semantic_equality',

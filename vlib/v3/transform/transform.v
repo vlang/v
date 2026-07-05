@@ -6067,6 +6067,15 @@ fn stringify_type_has_generic_placeholder(typ string) bool {
 }
 
 fn (mut t Transformer) transform_selector_base_expr(id flat.NodeId) flat.NodeId {
+	// `in_selector_base` suppresses the pointer-value rvalue deref in
+	// transform_ident_expr, but that must apply only to the *direct* receiver ident of
+	// a selector (`x.field`, where `x` stays `&T` so the selector emits arrow access).
+	// A compound base such as a call (`wrap(x).field`) or index expr may contain nested
+	// idents (e.g. the call argument `x`) that still need their rvalue deref, so only
+	// engage the flag when the base itself is a plain ident.
+	if t.a.nodes[int(id)].kind != .ident {
+		return t.transform_expr(id)
+	}
 	old_in_selector_base := t.in_selector_base
 	t.in_selector_base = true
 	transformed := t.transform_expr(id)

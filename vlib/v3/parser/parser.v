@@ -5382,11 +5382,24 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			children_count: flat.child_count(ids.len)
 		})
 	}
-	// multi-element array: [a, b, c] or newline-separated const tables.
-	for p.tok != .rsbr && p.tok != .eof {
-		if p.tok == .comma || p.tok == .semicolon {
+	// multi-element array: `[a, b, c]` or newline-separated const tables.
+	// Each subsequent element must be preceded by a separator: a single comma,
+	// or a run of `;` that the scanner emits for newlines/blank/comment lines. A
+	// missing separator (`[1 2]`) or a repeated comma (`[1,,2]`) ends the element
+	// list instead of silently merging adjacent operands; the stray tokens are
+	// then left to the (permissive) `p.check(.rsbr)` below, matching how this
+	// parser recovers from other malformed input.
+	for p.tok == .comma || p.tok == .semicolon {
+		if p.tok == .comma {
 			p.next()
-			continue
+		}
+		// newlines/blank/comment lines after a separator are just whitespace
+		for p.tok == .semicolon {
+			p.next()
+		}
+		// a second comma with no element in between is not a separator
+		if p.tok == .rsbr || p.tok == .eof || p.tok == .comma {
+			break
 		}
 		ids << p.expr(.lowest)
 	}

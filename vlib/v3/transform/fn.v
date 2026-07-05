@@ -3965,7 +3965,13 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		}
 		t.pending_stmts << t.make_assign(t.make_ident(capture_global), capture_rhs)
 		t.set_var_type(capture_name, capture_type)
-		if capture_mut[capture_name] or { false } {
+		// Only captures that were rewritten into a synthetic `&T` pointer-value local
+		// (`capture_by_ref`) need pointer-value lvalue/rvalue lowering. A mut capture
+		// whose original type is already a pointer (`&S`) stays a genuine `&S` local:
+		// dereferencing its rvalue uses would corrupt `&S` -> `S` and break calls that
+		// expect the pointer (e.g. `takes_ptr(p)`), and its assignments must not become
+		// `*p = ...`.
+		if capture_by_ref[capture_name] or { false } {
 			saved_capture_pointer_flags[capture_name] = t.pointer_value_lvalues[capture_name] or {
 				false
 			}
@@ -3986,7 +3992,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	new_body := t.transform_stmts(lifted_body)
 	t.pending_stmts = outer_pending
 	for capture_name in capture_names {
-		if capture_mut[capture_name] or { false } {
+		if capture_by_ref[capture_name] or { false } {
 			if saved_capture_pointer_flags[capture_name] or { false } {
 				t.pointer_value_lvalues[capture_name] = true
 			} else {
