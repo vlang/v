@@ -136,6 +136,57 @@ fn test_array_map_fn_value_uses_callback_return_type() {
 	assert out == '123'
 }
 
+fn test_const_array_allows_newline_separators_with_line_comments() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'const_array_line_comments',
+		'const xs = [\n\t1\n\t// one\n\t2\n\t// two\n\t3\n]\n\nfn main() {\n\tprintln(int_str(xs.len))\n\tprintln(int_str(xs[1]))\n}\n')
+	assert out == '3\n2'
+}
+
+fn test_mut_pointer_capture_is_not_over_dereferenced() {
+	v3_bin := build_v3_review_transform()
+	// A `[mut p]` capture whose original type is already a pointer (`&S`) must stay a
+	// genuine `&S` local: its rvalue uses must not be over-dereferenced, so a call that
+	// expects the pointer still receives it (regression for gating the pointer-value
+	// rvalue/lvalue flags on `capture_by_ref` instead of every `capture_mut`).
+	out := run_good(v3_bin, 'mut_pointer_capture',
+		'struct S {\n\tn int\n}\n\nfn takes_ptr(p &S) int {\n\treturn p.n\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut p := &S{\n\t\tn: 5\n\t}\n\tcall(fn [mut p] () {\n\t\tprintln(int_str(takes_ptr(p)))\n\t})\n}\n')
+	assert out == '5'
+}
+
+fn test_mut_value_capture_in_call_under_selector_base() {
+	v3_bin := build_v3_review_transform()
+	// A `[mut s]` value capture used as a call argument nested inside a selector base
+	// (`wrap(s).s.n`) must still be lowered to its value; the selector-base deref
+	// suppression applies only to the direct receiver ident, not to nested expressions.
+	out := run_good(v3_bin, 'mut_capture_selector_base',
+		'struct S {\n\tn int\n}\n\nstruct Box {\n\ts S\n}\n\nfn wrap(s S) Box {\n\treturn Box{\n\t\ts: s\n\t}\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut s := S{\n\t\tn: 7\n\t}\n\tcall(fn [mut s] () {\n\t\tprintln(int_str(wrap(s).s.n))\n\t})\n}\n')
+	assert out == '7'
+}
+
+fn test_mut_value_capture_parenthesized_selector_receiver() {
+	v3_bin := build_v3_review_transform()
+	// A `[mut s]` value capture is a `&S` local; a parenthesized direct receiver
+	// (`(s).n`) is still the direct selector receiver and must keep the suppression so
+	// the selector emits arrow access. Otherwise the inner `s` is auto-dereferenced to
+	// `*s` while the selector still emits `->`, producing an invalid `(*s)->n`.
+	out := run_good(v3_bin, 'mut_capture_paren_selector_base',
+		'struct S {\n\tn int\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut s := S{\n\t\tn: 7\n\t}\n\tcall(fn [mut s] () {\n\t\tprintln(int_str((s).n))\n\t})\n}\n')
+	assert out == '7'
+}
+
+fn test_heap_escaping_amp_alias_keeps_heap_pointer() {
+	v3_bin := build_v3_review_transform()
+	// When a local `s` whose address escapes is moved to the heap, `s` becomes the `&S`
+	// heap pointer and the alias `p := &s` must stay that pointer (`p := s`), NOT be
+	// auto-dereferenced to `*s`. Over-dereferencing here initializes `p`'s `&S` decl from
+	// an `S` value (a stale stack copy), reviving the escape/stale-mutation bug the heap
+	// move avoids. A later `s = S{n: 2}` must be observable through the returned pointer.
+	out := run_good(v3_bin, 'heap_escaping_amp_alias',
+		'struct S {\n\tn int\n}\n\nfn leak() &S {\n\tmut s := S{\n\t\tn: 1\n\t}\n\tp := &s\n\ts = S{\n\t\tn: 2\n\t}\n\treturn p\n}\n\nfn main() {\n\tp := leak()\n\tprintln(int_str(p.n))\n}\n')
+	assert out == '2'
+}
+
 fn test_imported_result_array_return_or_preserves_success_value() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'imported_result_array_return_or', {
