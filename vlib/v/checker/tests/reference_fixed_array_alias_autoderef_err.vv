@@ -1,0 +1,8 @@
+type FA = [8]int
+
+fn main() {
+	mut arr := FA{}
+	p := unsafe { &arr } // auto-deref var: `p` behaves as the fixed array value
+	q := &p
+	_ = q
+}
