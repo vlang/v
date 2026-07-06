@@ -626,6 +626,7 @@ fn (mut t Transformer) materialize_generic_structs() {
 		t.tc.unions.delete(decl.key)
 		t.tc.params_structs.delete(decl.key)
 	}
+	t.tc.invalidate_short_type_name_index()
 }
 
 fn (mut t Transformer) materialize_generic_sum_types(erase_templates bool) {
@@ -656,6 +657,7 @@ fn (mut t Transformer) erase_generic_sum_templates(sum_decls map[string]GenericS
 			t.tc.sum_generic_params.delete(decl.node.value)
 		}
 	}
+	t.tc.invalidate_short_type_name_index()
 }
 
 fn (mut t Transformer) collect_generic_materialization_specs(decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl) (map[string]string, map[string]GenericSpecContext) {
@@ -1129,6 +1131,7 @@ fn (mut t Transformer) materialize_generic_sum_spec(spec_name string, decl Gener
 	}
 	if variants := t.sum_types[spec_name] {
 		t.tc.sum_types[spec_name] = variants
+		t.tc.invalidate_short_type_name_index()
 		return
 	}
 	old_module := t.cur_module
@@ -1150,6 +1153,7 @@ fn (mut t Transformer) materialize_generic_sum_spec(spec_name string, decl Gener
 	}
 	t.tc.sum_types[spec_name] = variants
 	t.sum_types[spec_name] = variants
+	t.tc.invalidate_short_type_name_index()
 	if !isnil(t.sum_cache) {
 		t.sum_cache.entries.clear()
 	}
@@ -1193,6 +1197,7 @@ fn (mut t Transformer) materialize_generic_struct_spec(spec_name string, decl Ge
 	if decl.key in t.tc.params_structs {
 		t.tc.params_structs[spec_name] = true
 	}
+	t.tc.invalidate_short_type_name_index()
 	t.cur_module = old_module
 	t.cur_file = old_file
 	t.tc.cur_module = old_tc_module
@@ -4484,6 +4489,14 @@ fn (mut t Transformer) copy_cloned_resolution(src_id flat.NodeId, dst_id flat.No
 	if src_idx < 0 || dst_idx < 0 {
 		return
 	}
+	if !isnil(t.tc.fork_overlay) {
+		// Parallel-transform worker: never write the shared node-indexed arrays
+		// (other threads read them, and appending would realloc them). Record the
+		// resolution in the fork's private overlay; reads check it first and
+		// merge_worker replays it into the master under the shifted ids.
+		t.copy_cloned_resolution_forked(src_idx, dst_idx)
+		return
+	}
 	if src_idx < t.tc.resolved_call_set.len && t.tc.resolved_call_set[src_idx]
 		&& !t.resolved_call_is_generic_fn(t.tc.resolved_call_names[src_idx]) {
 		for t.tc.resolved_call_names.len <= dst_idx {
@@ -4500,6 +4513,26 @@ fn (mut t Transformer) copy_cloned_resolution(src_id flat.NodeId, dst_id flat.No
 		}
 		t.tc.resolved_fn_value_names[dst_idx] = t.tc.resolved_fn_value_names[src_idx]
 		t.tc.resolved_fn_value_set[dst_idx] = true
+	}
+}
+
+fn (mut t Transformer) copy_cloned_resolution_forked(src_idx int, dst_idx int) {
+	mut overlay := t.tc.fork_overlay
+	mut call_name := overlay.resolved_call_names[src_idx] or { '' }
+	if call_name.len == 0 && src_idx < t.tc.resolved_call_set.len
+		&& t.tc.resolved_call_set[src_idx] {
+		call_name = t.tc.resolved_call_names[src_idx]
+	}
+	if call_name.len > 0 && !t.resolved_call_is_generic_fn(call_name) {
+		overlay.resolved_call_names[dst_idx] = call_name
+	}
+	mut fn_value := overlay.resolved_fn_values[src_idx] or { '' }
+	if fn_value.len == 0 && src_idx < t.tc.resolved_fn_value_set.len
+		&& t.tc.resolved_fn_value_set[src_idx] {
+		fn_value = t.tc.resolved_fn_value_names[src_idx]
+	}
+	if fn_value.len > 0 {
+		overlay.resolved_fn_values[dst_idx] = fn_value
 	}
 }
 

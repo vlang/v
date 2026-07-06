@@ -389,6 +389,9 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		fn_decl_mut_receivers:          g.fn_decl_mut_receivers
 		fn_decl_ret_types:              g.fn_decl_ret_types
 		non_generic_fn_names_by_module: g.non_generic_fn_names_by_module
+		generic_fn_keys_by_short:       g.generic_fn_keys_by_short
+		generic_fn_keys_by_cname:       g.generic_fn_keys_by_cname
+		generic_fn_key_ordinal:         g.generic_fn_key_ordinal
 		struct_decl_infos:              g.struct_decl_infos
 		struct_decl_short_infos:        g.struct_decl_short_infos
 		shared_type_names:              g.shared_type_names
@@ -443,7 +446,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 	fs.generations = g.tc.file_scope.generations.clone()
 	fs.next_generation = g.tc.file_scope.next_generation
 	fs.lifetime = g.tc.file_scope.lifetime
-	return &types.TypeChecker{
+	mut wtc := &types.TypeChecker{
 		a:                                  unsafe { g.tc.a }
 		fn_ret_types:                       g.tc.fn_ret_types
 		fn_param_types:                     g.tc.fn_param_types
@@ -511,6 +514,12 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		generic_method_value_info: g.tc.generic_method_value_info
 		params_structs:            g.tc.params_structs
 	}
+	// A private empty TypeCache lets the worker use the lazily-built lookup
+	// indexes (short type names, local fn decls) and the field/IError
+	// memoizations instead of their uncached full-scan fallbacks. It shares no
+	// state with other threads.
+	wtc.set_fresh_type_cache(g.tc.type_cache_parse_enabled())
+	return wtc
 }
 
 // merge_parallel_worker supports merge parallel worker handling for FlatGen.

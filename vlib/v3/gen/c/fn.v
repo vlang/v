@@ -5888,6 +5888,64 @@ fn (g &FlatGen) non_generic_fn_decl_exists_in_module(name string, module_name st
 	return '${module_name}\x01${name}' in g.non_generic_fn_names_by_module
 }
 
+// precompute_generic_fn_key_index builds the lookups consumed by
+// generic_plain_fn_base_for_call: every tc.fn_generic_params key indexed by its
+// short (post-dot) name and by its c_name spelling, plus its position in the
+// map's iteration order so multi-match resolution below replays the original
+// full-map scan byte for byte.
+fn (mut g FlatGen) precompute_generic_fn_key_index() {
+	mut ordinal := 0
+	for key, _ in g.tc.fn_generic_params {
+		g.generic_fn_keys_by_short[key.all_after_last('.')] << key
+		g.generic_fn_keys_by_cname[c_name(key)] << key
+		g.generic_fn_key_ordinal[key] = ordinal
+		ordinal++
+	}
+}
+
+// generic_fn_keys_matching returns the fn_generic_params keys whose short name
+// is `short` or whose c_name is `name`, in the params map's iteration order.
+fn (g &FlatGen) generic_fn_keys_matching(short string, name string) []string {
+	by_short := g.generic_fn_keys_by_short[short] or { []string{} }
+	by_cname := g.generic_fn_keys_by_cname[name] or { []string{} }
+	if by_cname.len == 0 {
+		return by_short
+	}
+	if by_short.len == 0 {
+		return by_cname
+	}
+	// Merge the two ordinal-sorted bucket lists, dropping keys present in both.
+	mut merged := []string{cap: by_short.len + by_cname.len}
+	mut i := 0
+	mut j := 0
+	for i < by_short.len || j < by_cname.len {
+		if i >= by_short.len {
+			merged << by_cname[j]
+			j++
+			continue
+		}
+		if j >= by_cname.len {
+			merged << by_short[i]
+			i++
+			continue
+		}
+		oi := g.generic_fn_key_ordinal[by_short[i]]
+		oj := g.generic_fn_key_ordinal[by_cname[j]]
+		if oi == oj {
+			merged << by_short[i]
+			i++
+			j++
+		} else if oi < oj {
+			merged << by_short[i]
+			i++
+		} else {
+			merged << by_cname[j]
+			j++
+		}
+	}
+	return merged
+}
+
 fn (g &FlatGen) concrete_fn_return_known(name string) bool {
 	if name in g.tc.fn_generic_params {
 		return false
@@ -5933,16 +5991,18 @@ fn (g &FlatGen) generic_plain_fn_base_for_call(id flat.NodeId, name string) ?str
 			return base
 		}
 	}
-	for key, _ in g.tc.fn_generic_params {
-		if key == short || key.ends_with('.${short}') || c_name(key) == name {
-			if key.starts_with('${g.tc.cur_module}.') {
-				return key
-			}
-			if found.len > 0 && found != key {
-				return none
-			}
-			found = key
+	// `key == short || key.ends_with('.${short}')` is exactly "key's post-dot
+	// short name equals short", so the precomputed buckets cover the old
+	// full-map scan (see precompute_generic_fn_key_index).
+	cur_module_prefix := '${g.tc.cur_module}.'
+	for key in g.generic_fn_keys_matching(short, name) {
+		if key.starts_with(cur_module_prefix) {
+			return key
 		}
+		if found.len > 0 && found != key {
+			return none
+		}
+		found = key
 	}
 	if found.len > 0 {
 		return found

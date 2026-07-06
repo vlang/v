@@ -175,6 +175,16 @@ mut:
 	source_error_embed_indexed bool
 	ierror_impl_names          []string
 	ierror_impl_names_set      bool
+	// short type name -> unique qualified name ('' = ambiguous); built lazily
+	// by unique_qualified_type_name from the five type-name maps.
+	short_type_name_index       map[string]string
+	short_type_name_index_built bool
+	// `${module}\x01${name}` for every fn_decl node, built lazily (and extended
+	// incrementally as transform appends declarations) by local_fn_decl_exists,
+	// which previously walked every AST node per query.
+	local_fn_decl_index       map[string]bool
+	local_fn_decl_indexed_len int
+	local_fn_decl_last_module string
 }
 
 @[heap]
@@ -182,6 +192,19 @@ struct FileImportInfo {
 mut:
 	imports           map[string]string
 	selective_imports map[string][]string
+}
+
+// TransformForkOverlay holds the call/fn-value resolutions a parallel-transform
+// worker records for its transform-created (cloned) nodes. It lives on the heap
+// (like TypeCache) so a worker's `&TypeChecker` fork can write through the
+// pointer without mutating the shared node-indexed arrays; reads consult the
+// overlay before those arrays, and merge_worker replays the entries into the
+// master under the shifted node ids.
+@[heap]
+pub struct TransformForkOverlay {
+pub mut:
+	resolved_call_names map[int]string
+	resolved_fn_values  map[int]string
 }
 
 // TypeChecker represents type checker data used by types.
@@ -292,6 +315,9 @@ pub mut:
 	smartcasts                      map[string]Type
 	ownership                       &OwnershipState = unsafe { nil }
 	selfhost                        bool
+	// fork_overlay is non-nil only on parallel-transform worker forks; see
+	// TransformForkOverlay and fork_for_parallel_transform.
+	fork_overlay &TransformForkOverlay = unsafe { nil }
 mut:
 	type_cache &TypeCache = unsafe { nil }
 }
@@ -392,6 +418,13 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChecker {
 	mut forked := *tc
 	forked.a = ast
+	// The transformer propagates call/fn-value resolution metadata onto the call
+	// nodes it clones (Transformer.copy_cloned_resolution). In a worker those
+	// writes must not touch (or grow/realloc) the shared node-indexed arrays
+	// while other threads read them, so each fork gets a private sparse overlay:
+	// writes go only to the overlay, reads check it before the shared arrays,
+	// and merge_worker replays the entries into the master under shifted ids.
+	forked.fork_overlay = &TransformForkOverlay{}
 	forked.type_cache = &TypeCache{
 		parse_enabled:              if tc.type_cache != unsafe { nil } {
 			tc.type_cache.parse_enabled
@@ -406,6 +439,21 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 		source_error_embed_entries: map[string]int{}
 	}
 	return &forked
+}
+
+// set_fresh_type_cache attaches a new empty TypeCache. Parallel-cgen worker
+// checkers use this so the lazily-built lookup indexes and memoizations work
+// per worker instead of falling back to their uncached full scans.
+pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
+	tc.type_cache = &TypeCache{
+		parse_enabled: parse_enabled
+	}
+}
+
+// type_cache_parse_enabled reports whether parse_type memoization is enabled
+// on this checker's type cache.
+pub fn (tc &TypeChecker) type_cache_parse_enabled() bool {
+	return !isnil(tc.type_cache) && tc.type_cache.parse_enabled
 }
 
 pub fn (tc &TypeChecker) clear_field_lookup_cache() {
@@ -1368,6 +1416,38 @@ fn (tc &TypeChecker) local_fn_decl_exists(name string) bool {
 	if name.len == 0 || name.contains('.') {
 		return false
 	}
+	if isnil(tc.type_cache) {
+		return tc.local_fn_decl_exists_scan(name)
+	}
+	// Walking every AST node per query is far too slow for a helper on the
+	// expression-typing path. Memoize a (module, fn name) set in the private
+	// type_cache and extend it incrementally when the AST has grown (transform
+	// appends fn_decls), resuming the module tracking where the last build
+	// stopped.
+	mut cache := tc.type_cache
+	if cache.local_fn_decl_indexed_len < tc.a.nodes.len {
+		mut cur_module := cache.local_fn_decl_last_module
+		for i in cache.local_fn_decl_indexed_len .. tc.a.nodes.len {
+			node := tc.a.nodes[i]
+			match node.kind {
+				.module_decl {
+					cur_module = node.value
+				}
+				.fn_decl {
+					cache.local_fn_decl_index['${cur_module}\x01${node.value}'] = true
+				}
+				else {}
+			}
+		}
+		cache.local_fn_decl_last_module = cur_module
+		cache.local_fn_decl_indexed_len = tc.a.nodes.len
+	}
+	return '${tc.cur_module}\x01${name}' in cache.local_fn_decl_index
+}
+
+// local_fn_decl_exists_scan is the uncached fallback used when no type_cache is
+// attached to the checker.
+fn (tc &TypeChecker) local_fn_decl_exists_scan(name string) bool {
 	mut cur_module := ''
 	for node in tc.a.nodes {
 		match node.kind {
@@ -2336,6 +2416,11 @@ fn (tc &TypeChecker) cached_expr_type(id flat.NodeId) ?Type {
 // cached_resolved_call supports cached resolved call handling for TypeChecker.
 fn (tc &TypeChecker) cached_resolved_call(id flat.NodeId) ?string {
 	idx := int(id)
+	if !isnil(tc.fork_overlay) {
+		if name := tc.fork_overlay.resolved_call_names[idx] {
+			return name
+		}
+	}
 	if tc.parallel_check_sparse {
 		return tc.sparse_resolved_call_names[idx] or { none }
 	}
@@ -2363,6 +2448,11 @@ fn resolved_name_never_returns(name string) bool {
 // resolved_fn_value_name returns the checker-resolved function name for a function value node.
 pub fn (tc &TypeChecker) resolved_fn_value_name(id flat.NodeId) ?string {
 	idx := int(id)
+	if !isnil(tc.fork_overlay) {
+		if name := tc.fork_overlay.resolved_fn_values[idx] {
+			return name
+		}
+	}
 	if tc.parallel_check_sparse {
 		return tc.sparse_resolved_fn_values[idx] or { none }
 	}
@@ -15188,6 +15278,66 @@ fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
 	if short_name.len == 0 {
 		return none
 	}
+	// A full scan of the five type-name maps (with an all_after_last allocation
+	// per entry) is far too expensive for a per-expression helper — this is
+	// called from qualify_name and sum-variant pattern checks. Build the
+	// short-name index once per checker (memoized in the heap-allocated
+	// type_cache, so forked parallel workers each build their own).
+	if isnil(tc.type_cache) {
+		return tc.unique_qualified_type_name_scan(short_name)
+	}
+	mut cache := tc.type_cache
+	if !cache.short_type_name_index_built {
+		cache.short_type_name_index_built = true
+		tc.build_short_type_name_index(mut cache.short_type_name_index)
+	}
+	found := cache.short_type_name_index[short_name] or { return none }
+	// An empty entry marks an ambiguous short name (several qualified types).
+	if found.len == 0 {
+		return none
+	}
+	return found
+}
+
+// invalidate_short_type_name_index drops the memoized short-name index; callers
+// that add or remove entries in the type-name maps after the checker ran (the
+// monomorphizer specializing generic structs/sum types) must invalidate it so
+// the next unique_qualified_type_name query rebuilds it.
+pub fn (tc &TypeChecker) invalidate_short_type_name_index() {
+	if isnil(tc.type_cache) {
+		return
+	}
+	mut cache := tc.type_cache
+	if cache.short_type_name_index_built {
+		cache.short_type_name_index_built = false
+		cache.short_type_name_index.clear()
+	}
+}
+
+fn (tc &TypeChecker) build_short_type_name_index(mut index map[string]string) {
+	tc.index_short_type_names(tc.type_aliases.keys(), mut index)
+	tc.index_short_type_names(tc.structs.keys(), mut index)
+	tc.index_short_type_names(tc.interface_names.keys(), mut index)
+	tc.index_short_type_names(tc.enum_names.keys(), mut index)
+	tc.index_short_type_names(tc.sum_types.keys(), mut index)
+}
+
+fn (tc &TypeChecker) index_short_type_names(names []string, mut index map[string]string) {
+	for name in names {
+		short := name.all_after_last('.')
+		if prev := index[short] {
+			if prev != name {
+				index[short] = ''
+			}
+		} else {
+			index[short] = name
+		}
+	}
+}
+
+// unique_qualified_type_name_scan is the uncached fallback used when no
+// type_cache is attached to the checker.
+fn (tc &TypeChecker) unique_qualified_type_name_scan(short_name string) ?string {
 	mut found := ''
 	for name, _ in tc.type_aliases {
 		if name.all_after_last('.') == short_name {

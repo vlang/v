@@ -88,6 +88,14 @@ mut:
 	// precompute_non_generic_fn_index. Replaces the former full-node scan in
 	// non_generic_fn_decl_exists_in_module (O(nodes) per call, hot in cgen).
 	non_generic_fn_names_by_module map[string]bool
+	// indexes over tc.fn_generic_params keys, built once in
+	// precompute_generic_fn_key_index. They replace the former full-map scan in
+	// generic_plain_fn_base_for_call (O(generic fns) with two string allocations
+	// per key, run for nearly every emitted call). The ordinal preserves the
+	// map's iteration order so multi-match resolution stays byte-identical.
+	generic_fn_keys_by_short map[string][]string
+	generic_fn_keys_by_cname map[string][]string
+	generic_fn_key_ordinal   map[string]int
 	struct_decl_infos              map[string]StructDeclInfo
 	struct_decl_short_infos        map[string]StructDeclInfo
 	shared_type_names              map[string]SharedTypeInfo // __shared__ wrapper name -> wrapped type metadata
@@ -306,6 +314,9 @@ pub fn FlatGen.new() FlatGen {
 		fn_decl_mut_receivers:          map[string]bool{}
 		fn_decl_ret_types:              map[string]types.Type{}
 		non_generic_fn_names_by_module: map[string]bool{}
+		generic_fn_keys_by_short:       map[string][]string{}
+		generic_fn_keys_by_cname:       map[string][]string{}
+		generic_fn_key_ordinal:         map[string]int{}
 		struct_decl_infos:              map[string]StructDeclInfo{}
 		struct_decl_short_infos:        map[string]StructDeclInfo{}
 		shared_type_names:              map[string]SharedTypeInfo{}
@@ -424,6 +435,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fn_decl_mut_receivers = map[string]bool{}
 	g.fn_decl_ret_types = map[string]types.Type{}
 	g.non_generic_fn_names_by_module = map[string]bool{}
+	g.generic_fn_keys_by_short = map[string][]string{}
+	g.generic_fn_keys_by_cname = map[string][]string{}
+	g.generic_fn_key_ordinal = map[string]int{}
 	g.struct_decl_infos = map[string]StructDeclInfo{}
 	g.struct_decl_short_infos = map[string]StructDeclInfo{}
 	g.shared_type_names = map[string]SharedTypeInfo{}
@@ -459,6 +473,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.has_builtins = g.tc.has_builtins
 	g.collect_gen_info()
 	g.precompute_non_generic_fn_index()
+	g.precompute_generic_fn_key_index()
 	g.collect_fixed_storage_consts()
 	g.collect_shared_type_names()
 	g.precompute_embedded_fields()

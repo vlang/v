@@ -138,6 +138,13 @@ mut:
 	stringify_stack                  []string
 	node_module_map_cache            []string
 	node_module_map_nodes            int = -1
+	// used_fns_log records names newly inserted into used_fns while the
+	// late-used-fn-bodies pass runs, so that pass can tell "was this name
+	// already used before the current body's transform" without cloning the
+	// whole used_fns map per function (those clones dominated the pass's time
+	// and, under -gc none, were never freed).
+	used_fns_log        []string
+	used_fns_log_active bool
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -377,16 +384,25 @@ fn (mut t Transformer) mark_fn_used_name(name string) {
 	if name.len == 0 {
 		return
 	}
-	t.used_fns[name] = true
-	t.used_fns[c_name(name)] = true
+	t.mark_used_fn_key(name)
+	t.mark_used_fn_key(c_name(name))
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		needs_module_prefix := !name.contains('.') || local_method_fn_name_needs_module_prefix(name)
 		if needs_module_prefix && !name.starts_with('${t.cur_module}.') {
 			qname := '${t.cur_module}.${name}'
-			t.used_fns[qname] = true
-			t.used_fns[c_name(qname)] = true
+			t.mark_used_fn_key(qname)
+			t.mark_used_fn_key(c_name(qname))
 		}
 	}
+}
+
+// mark_used_fn_key inserts one spelling into used_fns, recording first-time
+// insertions in used_fns_log while the late-used-fn-bodies pass is running.
+fn (mut t Transformer) mark_used_fn_key(key string) {
+	if t.used_fns_log_active && !t.used_fns[key] {
+		t.used_fns_log << key
+	}
+	t.used_fns[key] = true
 }
 
 fn local_method_fn_name_needs_module_prefix(name string) bool {
@@ -1143,11 +1159,19 @@ fn (mut t Transformer) transform_pure_items_serial(items []FnWorkItem) {
 // clone_ast_base produces a private FlatAst holding an independent copy of the
 // first base_nodes nodes / base_children children, so a worker can append its own
 // transformed nodes without racing the master or other workers. Read-only metadata
-// (disabled_fns) is shared.
+// (disabled_fns) is shared. The copies carry headroom for the worker's own appends:
+// an exact-size clone (cap == len) would double on the first push, transiently
+// copying the whole array again and keeping the doubled capacity resident for the
+// rest of the build (worker memory is never freed under -gc none). Transform grows
+// the AST by well under 25% per worker, so a fixed base/4 margin avoids the cliff.
 fn (t &Transformer) clone_ast_base(base_nodes int, base_children int) &flat.FlatAst {
+	mut nodes := []flat.Node{cap: base_nodes + base_nodes / 4}
+	nodes << t.a.nodes[0..base_nodes]
+	mut children := []flat.NodeId{cap: base_children + base_children / 4}
+	children << t.a.children[0..base_children]
 	return &flat.FlatAst{
-		nodes:           t.a.nodes[0..base_nodes].clone()
-		children:        t.a.children[0..base_children].clone()
+		nodes:           nodes
+		children:        children
 		user_code_start: t.a.user_code_start
 		disabled_fns:    t.a.disabled_fns
 	}
@@ -1192,6 +1216,16 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.generic_specialization_args = t.generic_specialization_args.clone()
 	w.generic_fn_specs_in_progress = map[string]bool{}
 	w.used_fns = t.used_fns.clone()
+	// Fields added after the fork/merge machinery was first written. They are
+	// mutated during body transforms (or lazily built), so each worker needs
+	// private backing storage — a plain struct copy would share the master's.
+	w.stringify_stack = []string{}
+	w.interface_var_concrete_types = t.interface_var_concrete_types.clone()
+	w.interface_boxed_types = map[string]bool{}
+	w.interface_boxed_types_done = false
+	w.generic_receiver_methods_by_name = map[string][]string{}
+	w.used_fns_log = []string{}
+	w.used_fns_log_active = false
 	w.temp_counter = 0
 	w.cur_file = ''
 	w.cur_module = ''
@@ -1248,11 +1282,44 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			t.a.nodes[it.fn_idx] = n
 		}
 	}
+	// Replay the call/fn-value resolutions the worker recorded for its
+	// transform-created nodes (Transformer.copy_cloned_resolution writes into the
+	// fork's private overlay; see fork_for_parallel_transform) into the master
+	// under the shifted node ids, so or/return lowering in the late pass and
+	// cgen see them exactly as after a serial transform.
+	if !isnil(w.tc.fork_overlay) {
+		for idx, name in w.tc.fork_overlay.resolved_call_names {
+			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
+			t.set_resolved_call_entry(shifted, name)
+		}
+		for idx, name in w.tc.fork_overlay.resolved_fn_values {
+			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
+			t.set_resolved_fn_value_entry(shifted, name)
+		}
+	}
 	for name, used in w.used_fns {
 		if used {
 			t.used_fns[name] = true
 		}
 	}
+}
+
+fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
+	for t.tc.resolved_call_names.len <= idx {
+		t.tc.resolved_call_names << ''
+		t.tc.resolved_call_set << false
+	}
+	t.tc.resolved_call_names[idx] = name
+	t.tc.resolved_call_set[idx] = true
+}
+
+fn (mut t Transformer) set_resolved_fn_value_entry(idx int, name string) {
+	for t.tc.resolved_fn_value_names.len <= idx {
+		t.tc.resolved_fn_value_names << ''
+		t.tc.resolved_fn_value_set << false
+	}
+	t.tc.resolved_fn_value_names[idx] = name
+	t.tc.resolved_fn_value_set[idx] = true
 }
 
 fn (mut t Transformer) clear_typechecker_node_cache(idx int) {
@@ -1370,9 +1437,98 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, node_limit 
 			}
 		}
 	}
+	// Index the candidates by every used-set spelling under which
+	// late_used_fn_matches can match them, so each pending name maps straight to
+	// its fn_decls. Rescanning the whole candidate list per pending name (as this
+	// pass used to) is O(pending * candidates), with two c_name allocations per
+	// probe — the dominant transform cost on compiler-sized inputs.
+	mut candidate_index := map[string][]int{}
+	for ci, cand in candidates {
+		for key in late_candidate_match_keys(t.a.nodes[cand.idx].value, cand.module) {
+			candidate_index[key] << ci
+		}
+	}
+	was_log_active := t.used_fns_log_active
+	t.used_fns_log_active = true
 	for pending.len > 0 {
-		_ := pending.pop()
-		t.transform_pending_late_used_fn_bodies(mut candidates, mut late, mut pending, mut queued)
+		name := pending.pop()
+		t.transform_late_candidates_for(name, candidate_index, mut candidates, mut late, mut
+			pending, mut queued)
+	}
+	t.used_fns_log_active = was_log_active
+}
+
+// late_candidate_match_keys returns every used-set spelling under which the
+// fn_decl `value` declared in `module_name` is matched by late_used_fn_matches,
+// including the generic base-value spellings.
+fn late_candidate_match_keys(value string, module_name string) []string {
+	mut keys := late_name_spellings(value, module_name)
+	if value.contains('[') {
+		base_value := generic_fn_decl_base_value(value)
+		if base_value != value {
+			keys << late_name_spellings(base_value, module_name)
+		}
+	}
+	return keys
+}
+
+// late_name_spellings returns the used-set keys probed by
+// late_used_fn_contains_in_module(used, name, module_name).
+fn late_name_spellings(name string, module_name string) []string {
+	if name.len == 0 {
+		return []string{}
+	}
+	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
+		if name.starts_with('${module_name}.') {
+			return [name, c_name(name)]
+		}
+		dfn := '${module_name}.${name}'
+		return [dfn, c_name(dfn)]
+	}
+	return [name, c_name(name)]
+}
+
+// transform_late_candidates_for transforms the bodies of the not-yet-processed
+// candidates matched by the late name `name`. add_late_used_fn_name records both
+// the plain and the c_name spelling in `late`, so both are looked up here.
+fn (mut t Transformer) transform_late_candidates_for(name string, candidate_index map[string][]int, mut candidates []LateFnCandidate, mut late map[string]bool, mut pending []string, mut queued map[string]bool) {
+	spellings := [name, c_name(name)]
+	for key in spellings {
+		for ci in candidate_index[key] {
+			if candidates[ci].processed {
+				continue
+			}
+			node := t.a.nodes[candidates[ci].idx]
+			if !late_used_fn_matches(late, node, candidates[ci].module) {
+				continue
+			}
+			t.transform_late_candidate(ci, mut candidates, mut late, mut pending, mut queued)
+		}
+	}
+}
+
+// transform_late_candidate transforms one matched candidate's body and enqueues
+// the call names that became used during that transform.
+fn (mut t Transformer) transform_late_candidate(ci int, mut candidates []LateFnCandidate, mut late map[string]bool, mut pending []string, mut queued map[string]bool) {
+	candidates[ci].processed = true
+	idx := candidates[ci].idx
+	t.cur_file = candidates[ci].file
+	t.cur_module = candidates[ci].module
+	log_start := t.used_fns_log.len
+	node_count_before := t.a.nodes.len
+	t.transform_fn_body(idx)
+	for call_name in t.generated_fn_body_call_names(flat.NodeId(idx)) {
+		t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut queued)
+	}
+	for j in node_count_before .. t.a.nodes.len {
+		generated := t.a.nodes[j]
+		if generated.kind != .fn_decl || !transform_is_generated_fn_after_markused(generated.value) {
+			continue
+		}
+		for call_name in t.generated_fn_body_call_names(flat.NodeId(j)) {
+			t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut
+				queued)
+		}
 	}
 }
 
@@ -1387,50 +1543,48 @@ mut:
 	processed bool
 }
 
-fn (mut t Transformer) transform_pending_late_used_fn_bodies(mut candidates []LateFnCandidate, mut late map[string]bool, mut pending []string, mut queued map[string]bool) {
-	for ci in 0 .. candidates.len {
-		if candidates[ci].processed {
-			continue
-		}
-		idx := candidates[ci].idx
-		node := t.a.nodes[idx]
-		if !late_used_fn_matches(late, node, candidates[ci].module) {
-			continue
-		}
-		candidates[ci].processed = true
-		t.cur_file = candidates[ci].file
-		t.cur_module = candidates[ci].module
-		used_before := t.used_fns.clone()
-		node_count_before := t.a.nodes.len
-		t.transform_fn_body(idx)
-		for call_name in t.generated_fn_body_call_names(flat.NodeId(idx)) {
-			t.enqueue_late_used_call_name(call_name, used_before, mut late, mut pending, mut queued)
-		}
-		for j in node_count_before .. t.a.nodes.len {
-			generated := t.a.nodes[j]
-			if generated.kind != .fn_decl
-				|| !transform_is_generated_fn_after_markused(generated.value) {
-				continue
-			}
-			for call_name in t.generated_fn_body_call_names(flat.NodeId(j)) {
-				t.enqueue_late_used_call_name(call_name, used_before, mut late, mut pending, mut
-					queued)
-			}
-		}
-	}
-}
-
-fn (mut t Transformer) enqueue_late_used_call_name(name string, used_before map[string]bool, mut late map[string]bool, mut pending []string, mut queued map[string]bool) {
+fn (mut t Transformer) enqueue_late_used_call_name(name string, log_start int, mut late map[string]bool, mut pending []string, mut queued map[string]bool) {
 	if name.len == 0 {
 		return
 	}
-	was_used := used_before[name] || used_before[c_name(name)]
-		|| late_used_fn_contains_in_module(used_before, name, t.cur_module)
+	was_used := t.late_name_was_used_before(name, log_start)
 	t.mark_fn_used_name(name)
 	if was_used {
 		return
 	}
 	add_late_used_fn_name(name, mut late, mut pending, mut queued)
+}
+
+// late_name_was_used_before reports whether `name` (under the current module)
+// was already in used_fns before position `log_start` of the insertion log —
+// i.e. before the current candidate body's transform started. It probes the
+// same spellings the old used_fns-snapshot check did.
+fn (t &Transformer) late_name_was_used_before(name string, log_start int) bool {
+	if t.late_spelling_was_used_before(name, log_start) {
+		return true
+	}
+	if t.late_spelling_was_used_before(c_name(name), log_start) {
+		return true
+	}
+	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin'
+		&& !name.starts_with('${t.cur_module}.') {
+		dfn := '${t.cur_module}.${name}'
+		return t.late_spelling_was_used_before(dfn, log_start)
+			|| t.late_spelling_was_used_before(c_name(dfn), log_start)
+	}
+	return false
+}
+
+fn (t &Transformer) late_spelling_was_used_before(spelling string, log_start int) bool {
+	if !t.used_fns[spelling] {
+		return false
+	}
+	for i in log_start .. t.used_fns_log.len {
+		if t.used_fns_log[i] == spelling {
+			return false
+		}
+	}
+	return true
 }
 
 fn add_late_used_fn_name(name string, mut late map[string]bool, mut pending []string, mut queued map[string]bool) {

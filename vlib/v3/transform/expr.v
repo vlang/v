@@ -2366,8 +2366,8 @@ fn (mut t Transformer) mark_fn_used(fn_name string) {
 	if fn_name.len == 0 || t.used_fns.len == 0 {
 		return
 	}
-	t.used_fns[fn_name] = true
-	t.used_fns[c_name(fn_name)] = true
+	t.mark_used_fn_key(fn_name)
+	t.mark_used_fn_key(c_name(fn_name))
 }
 
 // make_call_expr_typed builds make call expr typed data for transform.
