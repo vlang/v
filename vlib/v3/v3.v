@@ -228,6 +228,7 @@ fn main() {
 	mut is_strict := false
 	mut is_selfhost := false
 	mut no_parallel := false
+	mut no_prealloc := false
 	mut parallel_transform := true
 	mut building_v := false
 	mut ownership_mode := false
@@ -305,6 +306,9 @@ fn main() {
 			i++
 		} else if args[i] in ['-gc', '-cc'] && i + 1 < args.len {
 			i += 2
+		} else if args[i] == '-no-prealloc' || args[i] == '--no-prealloc' {
+			no_prealloc = true
+			i++
 		} else if args[i] == '-prealloc' {
 			// Same effect as `v -prealloc`: activate the `$if prealloc {` arena
 			// allocator branches in vlib/builtin (allocation.c.v, prealloc.c.v).
@@ -345,6 +349,17 @@ fn main() {
 		} else if 'parallel' !in user_defines {
 			user_defines << 'parallel'
 		}
+		// The compiler is a single-shot batch program — exactly what the
+		// -prealloc bump arena is for (~18% less CPU across its
+		// allocation-heavy phases) — so compiler builds default to it.
+		// -no-prealloc opts out (also restores tcc linking: tcc has no
+		// thread-local storage support, so prealloc builds link with cc).
+		if !no_prealloc && 'prealloc' !in user_defines {
+			user_defines << 'prealloc'
+		}
+	}
+	if no_prealloc {
+		user_defines = user_defines.filter(it != 'prealloc')
 	}
 
 	mut bin_file := ''
