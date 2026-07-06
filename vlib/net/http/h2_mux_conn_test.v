@@ -2429,6 +2429,27 @@ fn test_mux_watchdog_timeout_sends_rst_stream() {
 		}
 	}(mut peer)
 	workers.wait()
+	// mux_worker only waits for wait_response to return, which happens as soon
+	// as the watchdog's fail_with_code() signals the stream's cv -- BEFORE the
+	// watchdog goroutine (a separate thread) goes on to actually call
+	// wake_send()/rst_abandoned_stream() and put RST_STREAM on the wire. Closing
+	// the pipe immediately here races that send: on a slower-scheduled watchdog
+	// thread, close_both() can win, and the peer's pump() loop never gets to
+	// see the frame before EOF -- a CI flake (tcc-linux/clang-linux/clang-macos
+	// failed with `rst: []` while gcc-linux passed, on the identical commit).
+	// Poll (bounded, not a fixed sleep) until the peer has actually recorded
+	// the RST -- or the deadline elapses, in which case the assertion below
+	// still fails with a clear message instead of this becoming a silent flake.
+	deadline := time.now().add(2 * time.second)
+	for time.now() < deadline {
+		peer.mu.lock()
+		seen := peer.rst_streams.len > 0
+		peer.mu.unlock()
+		if seen {
+			break
+		}
+		time.sleep(5 * time.millisecond)
+	}
 	cend.close_both()
 	peer_thread.wait()
 	assert peer.failure_msg() == ''
