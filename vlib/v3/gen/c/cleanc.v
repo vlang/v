@@ -8768,9 +8768,44 @@ fn (mut g FlatGen) global_decls() {
 		init := if g.can_use_global_brace_zero_init(decl_typ, ct) { ' = {0}' } else { '' }
 		// With -prealloc the arena base block is per-thread (lazily initialized
 		// on first allocation in each thread); a shared pointer would make all
-		// threads bump the same block without synchronization.
-		tls_kw := if g.prealloc && name == 'g_memory_block' { '_Thread_local ' } else { '' }
-		g.writeln('${tls_kw}${ct} ${g.cname(name)}${init};')
+		// threads bump the same block without synchronization. cc gets real
+		// TLS; tcc implements no _Thread_local, so it gets a pthread-key
+		// emulation behind an lvalue macro. The key setup needs no
+		// synchronization: the first allocation always happens on the main
+		// thread, long before any `spawn`. The key APIs are declared manually
+		// (V's generated C declares its own `pthread_t`, so <pthread.h> would
+		// conflict); the key out-param is stored in an 8-byte zeroed slot,
+		// which stays correct where pthread_key_t is 4 bytes (little-endian).
+		if g.prealloc && name == 'g_memory_block' {
+			g.writeln('#if defined(__TINYC__)')
+			// Shapes must match vlib's own C.pthread_* extern declarations
+			// exactly (u64/i32), or tcc rejects the redefinition when a module
+			// also declares them.
+			g.writeln('i32 pthread_key_create(u64* key, void (*dtor)(void*));')
+			g.writeln('void* pthread_getspecific(u64 key);')
+			g.writeln('i32 pthread_setspecific(u64 key, const void* const_ptr);')
+			g.writeln('static u64 g_memory_block_key = 0;')
+			g.writeln('static int g_memory_block_key_ready = 0;')
+			g.writeln('static ${ct}* g_memory_block_slot(void) {')
+			g.writeln('	void* p;')
+			g.writeln('	if (!g_memory_block_key_ready) {')
+			g.writeln('		pthread_key_create(&g_memory_block_key, 0);')
+			g.writeln('		g_memory_block_key_ready = 1;')
+			g.writeln('	}')
+			g.writeln('	p = pthread_getspecific(g_memory_block_key);')
+			g.writeln('	if (p == 0) {')
+			g.writeln('		p = calloc(1, sizeof(${ct}));')
+			g.writeln('		pthread_setspecific(g_memory_block_key, p);')
+			g.writeln('	}')
+			g.writeln('	return (${ct}*)p;')
+			g.writeln('}')
+			g.writeln('#define g_memory_block (*g_memory_block_slot())')
+			g.writeln('#else')
+			g.writeln('_Thread_local ${ct} ${g.cname(name)}${init};')
+			g.writeln('#endif')
+			continue
+		}
+		g.writeln('${ct} ${g.cname(name)}${init};')
 	}
 	g.tc.cur_module = old_module
 	if g.global_types.len > 0 {

@@ -642,10 +642,7 @@ fn main() {
 		mut exec_cmd := ''
 		mut result := os.Result{}
 		mut tried_tcc := false
-		// tcc implements neither _Thread_local nor __thread; the -prealloc
-		// arena needs a thread-local base block pointer, so go straight to cc.
-		prealloc_mode := 'prealloc' in prefs.user_defines
-		if !is_prod && !needs_objective_c && !prealloc_mode {
+		if !is_prod && !needs_objective_c {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
