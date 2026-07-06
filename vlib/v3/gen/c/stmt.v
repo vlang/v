@@ -2308,7 +2308,7 @@ fn (mut g FlatGen) track_local_pointer_storage_decl(lhs flat.Node, owner types.S
 }
 
 fn c_type_is_pointer_storage(c_type string) bool {
-	clean := c_type.trim_space()
+	clean := trimmed_space(c_type)
 	return clean.len > 0 && !clean.starts_with('fn_ptr:') && clean.ends_with('*')
 }
 

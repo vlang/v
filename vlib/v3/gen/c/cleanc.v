@@ -145,12 +145,15 @@ mut:
 	// Body-independent postamble segments emitted on helper threads while the
 	// fn-body workers run; spliced into the final output in the exact order
 	// the serial postamble produces them.
-	post_segs                []string
-	emitted_fn_ptr_typedefs  map[string]bool
-	c_extern_refs            map[string]bool
-	c_extern_refs_ready      bool
-	parallel_prepared        bool
-	post_str_lits_snapshot   int
+	post_segs               []string
+	emitted_fn_ptr_typedefs map[string]bool
+	c_extern_refs           map[string]bool
+	c_extern_refs_ready     bool
+	parallel_prepared       bool
+	post_str_lits_snapshot  int
+	const_short_index       &ConstShortIndex = unsafe { nil }
+	mut_recv_facts          &FnNameFactCache = unsafe { nil }
+	want_parallel_prep      bool
 }
 
 struct FixedArrayTypedefInfo {
@@ -269,6 +272,12 @@ fn (mut g FlatGen) declare_local_pointer_storage(owner types.ScopeBindingOwner, 
 
 fn (g &FlatGen) local_storage_is_pointer(name string) bool {
 	if name.len == 0 {
+		return false
+	}
+	// Pointer-storage locals are rare; when none are registered the two scope
+	// chain walks below cannot change the answer (asked once per ident on the
+	// call-emission path).
+	if g.local_pointer_storage_by_owner.len == 0 {
 		return false
 	}
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
@@ -483,6 +492,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.c_extern_refs_ready = false
 	g.parallel_prepared = false
 	g.post_str_lits_snapshot = 0
+	g.const_short_index = &ConstShortIndex{}
+	g.mut_recv_facts = &FnNameFactCache{}
+	g.want_parallel_prep = false
 	g.tc = unsafe { tc }
 	if g.tc.a == unsafe { nil } {
 		g.tc.collect(a)
@@ -753,7 +765,7 @@ fn (mut g FlatGen) collect_gen_info() {
 			// names so _vinit can invoke them (V semantics).
 			if node.value == 'init' && ptypes.len == 0
 				&& (!g.has_used_fn_filter() || g.used_fn_contains_in_module(node.value, cur_module)) {
-				init_cname := qualified_fn_name_in_module(cur_module, 'init')
+				init_cname := g.qualified_fn_name_in_module_c(cur_module, 'init')
 				if init_cname !in g.module_init_fns {
 					g.module_init_fns << init_cname
 				}
@@ -1057,7 +1069,7 @@ fn c_preprocessor_directive_scan_line(line string, in_block_comment bool) (strin
 			continue
 		}
 		if line[i] == `#` {
-			return line[i..].trim_space(), in_comment
+			return trimmed_space(line[i..]), in_comment
 		}
 		return '', in_comment
 	}
@@ -1167,7 +1179,7 @@ fn c_flag_include_dirs(flags []string) []string {
 }
 
 fn c_system_include_replacement(include_arg string) ?string {
-	match include_arg.trim_space() {
+	match trimmed_space(include_arg) {
 		'<stdint.h>' {
 			return c_stdint_header_text()
 		}
@@ -1178,7 +1190,7 @@ fn c_system_include_replacement(include_arg string) ?string {
 }
 
 fn c_should_preserve_uninlined_include(include_arg string) bool {
-	clean := include_arg.trim_space()
+	clean := trimmed_space(include_arg)
 	if clean.len == 0 {
 		return false
 	}
@@ -1189,7 +1201,7 @@ fn c_should_preserve_uninlined_include(include_arg string) bool {
 }
 
 fn c_include_should_remain_in_inlined_text(include_arg string) bool {
-	clean := include_arg.trim_space()
+	clean := trimmed_space(include_arg)
 	if clean.len == 0 {
 		return false
 	}
@@ -1204,7 +1216,7 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 }
 
 fn c_preserved_system_include_declared_fns(include_arg string) []string {
-	match include_arg.trim_space() {
+	match trimmed_space(include_arg) {
 		'<stdio.h>' {
 			return ['fclose', 'fflush', 'fopen', 'fprintf', 'fread', 'fseek', 'ftell', 'fwrite',
 				'printf', 'putchar', 'puts', 'remove', 'rename', 'rewind', 'snprintf', 'vfprintf',
@@ -1255,7 +1267,7 @@ fn c_preserved_system_include_declared_fns(include_arg string) []string {
 }
 
 fn c_preserved_system_include_struct_names(include_arg string) []string {
-	match include_arg.trim_space() {
+	match trimmed_space(include_arg) {
 		'<mach/mach_time.h>' {
 			return ['mach_timebase_info_data_t']
 		}
@@ -1531,7 +1543,7 @@ typedef unsigned long long uint64_t;
 
 fn (mut g FlatGen) collect_inlined_c_structs(text string) {
 	for line in text.split_into_lines() {
-		clean := line.trim_space()
+		clean := trimmed_space(line)
 		mut rest := ''
 		if clean.starts_with('typedef struct ') {
 			rest = clean['typedef struct '.len..]
@@ -1561,7 +1573,7 @@ fn (mut g FlatGen) collect_inlined_c_fns(text string) {
 	mut pending_static := false
 	mut pending_definition := ''
 	for line in text.split_into_lines() {
-		clean := line.trim_space()
+		clean := trimmed_space(line)
 		if clean.len == 0 {
 			continue
 		}
@@ -1816,7 +1828,7 @@ fn c_ident_char(ch u8) bool {
 }
 
 fn c_include_file_path(include_arg string, vroot string, source_file string) string {
-	clean := include_arg.trim_space()
+	clean := trimmed_space(include_arg)
 	if clean.len < 2 {
 		return ''
 	}
@@ -1840,7 +1852,7 @@ fn c_include_file_path(include_arg string, vroot string, source_file string) str
 }
 
 fn c_include_file_paths(include_arg string, vroot string, source_file string, include_dirs []string) []string {
-	clean := include_arg.trim_space()
+	clean := trimmed_space(include_arg)
 	if clean.len < 2 {
 		return []string{}
 	}
@@ -1890,7 +1902,7 @@ fn (mut g FlatGen) add_c_directive(module_name string, text string, before_impor
 }
 
 fn c_preprocessor_directive_line(name string, raw string) string {
-	clean := raw.trim_space()
+	clean := trimmed_space(raw)
 	if clean.len == 0 {
 		return '#${name}'
 	}
@@ -2139,7 +2151,7 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 		if !c_contains_preserved_system_include_directive(directive) {
 			continue
 		}
-		clean := directive.trim_space()
+		clean := trimmed_space(directive)
 		if directive.contains('\n') {
 			g.emit_preserved_c_directive(directive)
 			emitted = true
@@ -2178,7 +2190,7 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 }
 
 fn c_lifted_include_skips_context(directive string) bool {
-	return directive.trim_space() == '#include <mach/mach_time.h>'
+	return trimmed_space(directive) == '#include <mach/mach_time.h>'
 }
 
 fn (mut g FlatGen) emit_preserved_c_directive(directive string) {
@@ -2193,7 +2205,7 @@ fn (mut g FlatGen) emit_preserved_c_directive(directive string) {
 
 fn c_preserved_directive_needs_mach_panic_alias(directive string) bool {
 	for line in directive.split_into_lines() {
-		clean := line.trim_space()
+		clean := trimmed_space(line)
 		if clean == '#include <mach/mach.h>' || clean == '#include <mach/mach_time.h>' {
 			return true
 		}
@@ -2204,7 +2216,7 @@ fn c_preserved_directive_needs_mach_panic_alias(directive string) bool {
 fn c_lifted_include_context_prefix(directives []string, include_index int) []string {
 	mut prefix := []string{}
 	for i := include_index - 1; i >= 0; i-- {
-		clean := directives[i].trim_space()
+		clean := trimmed_space(directives[i])
 		if c_is_preserved_system_include_directive(clean) {
 			continue
 		}
@@ -2220,7 +2232,7 @@ fn c_lifted_include_context_prefix(directives []string, include_index int) []str
 fn c_lifted_include_context_depth(prefix []string) int {
 	mut depth := 0
 	for directive in prefix {
-		clean := directive.trim_space()
+		clean := trimmed_space(directive)
 		if clean.starts_with('#ifdef') || clean.starts_with('#ifndef') || clean.starts_with('#if ') {
 			depth++
 		}
@@ -2229,7 +2241,7 @@ fn c_lifted_include_context_depth(prefix []string) int {
 }
 
 fn c_is_liftable_include_context_directive(directive string) bool {
-	clean := directive.trim_space()
+	clean := trimmed_space(directive)
 	if clean.len == 0 || clean.contains('\n') || clean.starts_with('#endif') {
 		return false
 	}
@@ -2239,7 +2251,7 @@ fn c_is_liftable_include_context_directive(directive string) bool {
 }
 
 fn c_is_preserved_system_include_directive(directive string) bool {
-	clean := directive.trim_space()
+	clean := trimmed_space(directive)
 	return clean.starts_with('#include <') && clean.ends_with('>') && !clean.contains('\n')
 }
 
@@ -2252,7 +2264,7 @@ fn c_contains_preserved_system_include_directive(directive string) bool {
 	}
 	mut has_include := false
 	for line in directive.split_into_lines() {
-		clean := line.trim_space()
+		clean := trimmed_space(line)
 		if clean.len == 0 {
 			continue
 		}
@@ -2299,7 +2311,7 @@ fn dedupe_top_level_c_includes(directives []string) []string {
 	mut seen_includes := map[string]bool{}
 	mut depth := 0
 	for directive in directives {
-		clean := directive.trim_space()
+		clean := trimmed_space(directive)
 		if depth == 0 && c_directive_name(clean) == 'include' {
 			if clean in seen_includes {
 				continue
@@ -2321,7 +2333,7 @@ fn c_directive_name(text string) string {
 	if text.len == 0 || text[0] != `#` {
 		return ''
 	}
-	body := text[1..].trim_space()
+	body := trimmed_space(text[1..])
 	if body.len == 0 {
 		return ''
 	}
@@ -2336,7 +2348,7 @@ fn c_directive_arg(text string) string {
 	if text.len == 0 || text[0] != `#` {
 		return ''
 	}
-	body := text[1..].trim_space()
+	body := trimmed_space(text[1..])
 	mut idx := 0
 	for idx < body.len && !body[idx].is_space() {
 		idx++
@@ -2344,7 +2356,7 @@ fn c_directive_arg(text string) string {
 	if idx >= body.len {
 		return ''
 	}
-	return body[idx..].trim_space()
+	return trimmed_space(body[idx..])
 }
 
 fn c_include_arg(raw string, vroot string, source_file string) string {
@@ -2371,7 +2383,7 @@ fn c_include_arg(raw string, vroot string, source_file string) string {
 	}
 	hash := clean.index_u8(`#`)
 	if hash > 0 {
-		return clean[..hash].trim_space()
+		return trimmed_space(clean[..hash])
 	}
 	return clean
 }
@@ -2479,7 +2491,7 @@ fn c_vmod_root_for_file(source_file string) string {
 }
 
 fn c_pkgconfig_flags(raw string) []string {
-	name := raw.trim_space()
+	name := trimmed_space(raw)
 	if name.len == 0 {
 		return []string{}
 	}
@@ -2493,7 +2505,7 @@ fn c_pkgconfig_flags(raw string) []string {
 	if result.exit_code != 0 {
 		return []string{}
 	}
-	return result.output.trim_space().fields()
+	return trimmed_space(result.output).fields()
 }
 
 fn c_pkgconfig_arg_is_safe(raw string) bool {
@@ -2991,7 +3003,7 @@ fn (mut g FlatGen) map_pointer_cast_from_value_address_string(id flat.NodeId, se
 		return none
 	}
 	child0 := g.const_expr_to_string(id, seen)
-	child := if child0.trim_space().len == 0 { '0' } else { child0 }
+	child := if trimmed_space(child0).len == 0 { '0' } else { child0 }
 	if g.expr_is_addressable(id) {
 		return '&(${child})'
 	}
@@ -3416,7 +3428,7 @@ fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.No
 fn (mut g FlatGen) gen_sum_variant_memdup_source(value_id flat.NodeId, inner_type types.Type) {
 	if fixed := array_fixed_type(inner_type) {
 		source := g.fixed_array_runtime_copy_source_expr(value_id, fixed)
-		if source.trim_space().len > 0 {
+		if trimmed_space(source).len > 0 {
 			g.write(source)
 			return
 		}
@@ -3866,6 +3878,38 @@ fn (g &FlatGen) const_ref_name(name string) string {
 }
 
 fn (g &FlatGen) unique_const_ref_name(short_name string) ?string {
+	// Iterating every const per query cost ~70us a call; the short-name index
+	// is built once (const_vals is complete after collect_gen_info) and maps a
+	// short name to its unique primary const ('' = ambiguous).
+	if isnil(g.const_short_index) {
+		return g.unique_const_ref_name_scan(short_name)
+	}
+	mut idx := g.const_short_index
+	if !idx.built {
+		idx.built = true
+		for name, _ in g.const_vals {
+			if !name.contains('.') {
+				continue
+			}
+			short := name.all_after_last('.')
+			resolved := g.const_primary_name(name)
+			if existing := idx.entries[short] {
+				if existing != resolved {
+					idx.entries[short] = ''
+				}
+				continue
+			}
+			idx.entries[short] = resolved
+		}
+	}
+	found := idx.entries[short_name] or { return none }
+	if found.len == 0 {
+		return none
+	}
+	return found
+}
+
+fn (g &FlatGen) unique_const_ref_name_scan(short_name string) ?string {
 	mut found := ''
 	for name, _ in g.const_vals {
 		if !name.contains('.') || name.all_after_last('.') != short_name {
@@ -4357,7 +4401,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				}
 				dep_expr := g.const_expr_to_string(g.const_vals[const_name], next_seen)
 				g.tc.cur_module = old_module
-				if dep_expr.trim_space().len > 0 {
+				if trimmed_space(dep_expr).len > 0 {
 					return dep_expr
 				}
 			}
@@ -4407,7 +4451,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				field := g.sum_field_name(variant_name)
 				inner_val := g.const_expr_to_string(inner_id, seen)
 				inner_ct := g.value_c_type(g.tc.parse_type(variant_name))
-				payload := if inner_val.trim_space().len == 0 { '0' } else { inner_val }
+				payload := if trimmed_space(inner_val).len == 0 { '0' } else { inner_val }
 				return '(${ct}){.typ = ${idx}, .${field} = (${inner_ct}[]){${payload}}}'
 			}
 			if ct == 'map*' {
@@ -4417,7 +4461,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				}
 				child_node := g.a.nodes[int(child_id)]
 				child0 := g.const_expr_to_string(child_id, seen)
-				child := if child0.trim_space().len == 0 { '0' } else { child0 }
+				child := if trimmed_space(child0).len == 0 { '0' } else { child0 }
 				if child_node.kind == .prefix && child_node.op == .amp {
 					return '(${ct})(${child})'
 				}
@@ -4430,7 +4474,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				return g.expr_to_string(id)
 			}
 			child0 := g.const_expr_to_string(g.a.child(&node, 0), seen)
-			child := if child0.trim_space().len == 0 { '0' } else { child0 }
+			child := if trimmed_space(child0).len == 0 { '0' } else { child0 }
 			'(${ct})(${child})'
 		}
 		.array_literal {
@@ -4452,7 +4496,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 					val_node := g.a.nodes[int(val_id)]
 					val := if field.value.len == 0 {
 						const_val := g.const_expr_to_string(val_id, seen)
-						if const_val.trim_space().len > 0 {
+						if trimmed_space(const_val).len > 0 {
 							const_val
 						} else {
 							if ftyp := g.struct_field_type_at(node.value, i) {
@@ -4478,7 +4522,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 						variant = g.resolve_variant(sum_name, variant)
 						inner_ct := g.value_c_type(g.tc.parse_type(variant))
 						const_val := g.const_expr_to_string(val_id, seen)
-						payload := if const_val.trim_space().len > 0 {
+						payload := if trimmed_space(const_val).len > 0 {
 							const_val
 						} else {
 							g.expr_to_string_with_expected_type(val_id, g.tc.parse_type(variant))
@@ -4489,7 +4533,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 							g.expr_to_string_with_expected_type(val_id, ftyp)
 						} else {
 							const_val := g.const_expr_to_string(val_id, seen)
-							if const_val.trim_space().len > 0 {
+							if trimmed_space(const_val).len > 0 {
 								const_val
 							} else {
 								g.expr_to_string_with_expected_type(val_id, ftyp)
@@ -4497,7 +4541,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 						}
 					} else {
 						const_val := g.const_expr_to_string(val_id, seen)
-						if const_val.trim_space().len > 0 {
+						if trimmed_space(const_val).len > 0 {
 							const_val
 						} else {
 							g.expr_to_string(val_id)
@@ -4587,7 +4631,7 @@ fn (mut g FlatGen) fixed_array_len_is_zero(arr types.ArrayFixed) bool {
 	if value := g.tc.fixed_array_len_value(arr) {
 		return value == 0
 	}
-	return g.fixed_array_len_value(arr).trim_space() == '0'
+	return trimmed_space(g.fixed_array_len_value(arr)) == '0'
 }
 
 // fixed_array_len_raw supports fixed array len raw handling for FlatGen.
@@ -4609,7 +4653,7 @@ fn (mut g FlatGen) fixed_array_len_raw(raw_len string, fallback int) string {
 	const_name := g.const_ref_name(raw_len)
 	if const_name.len > 0 {
 		expr := g.const_expr_to_string(g.const_vals[const_name], []string{})
-		if expr.trim_space().len > 0 {
+		if trimmed_space(expr).len > 0 {
 			return expr
 		}
 		return g.const_ident_c_name(const_name)
@@ -5516,7 +5560,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				return
 			} else if fixed := array_fixed_type(target_type) {
 				literal := g.fixed_array_compound_literal_expr(g.a.child(&node, 0), fixed)
-				if literal.trim_space().len > 0 {
+				if trimmed_space(literal).len > 0 {
 					g.write(literal)
 				} else {
 					g.write('(${ct})(')
@@ -8579,7 +8623,7 @@ fn (mut g FlatGen) collect_fixed_array_typedef_text(type_text string, source_mod
 	if type_text.len == 0 || !fixed_array_type_text_may_need_typedef(type_text) {
 		return
 	}
-	clean := type_text.trim_space()
+	clean := trimmed_space(type_text)
 	if clean.len == 0 {
 		return
 	}
@@ -8793,7 +8837,7 @@ fn (mut g FlatGen) emit_global_inits() {
 		expr_str := g.sb.str()
 		g.sb = tmp_sb
 		g.line_start = tmp_line_start
-		if expr_str.trim_space().len == 0 {
+		if trimmed_space(expr_str).len == 0 {
 			continue
 		}
 		target := g.cname(qname)
@@ -8900,7 +8944,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	} else {
 		g.expr_to_string(val_id)
 	}
-	if expr_str.trim_space().len == 0 {
+	if trimmed_space(expr_str).len == 0 {
 		g.tc.cur_module = old_module
 		return
 	}
@@ -9009,7 +9053,7 @@ fn (mut g FlatGen) queue_const_map_literal_sets(target string, val_id flat.NodeI
 
 fn (mut g FlatGen) queue_fixed_array_runtime_init(target string, val_id flat.NodeId, fixed types.ArrayFixed) bool {
 	expr := g.fixed_array_runtime_copy_source_expr(val_id, fixed)
-	if expr.trim_space().len == 0 {
+	if trimmed_space(expr).len == 0 {
 		return false
 	}
 	g.queue_runtime_init('\tmemmove(${target}, ${expr}, sizeof(${target}));')
@@ -9018,7 +9062,7 @@ fn (mut g FlatGen) queue_fixed_array_runtime_init(target string, val_id flat.Nod
 
 fn (mut g FlatGen) queue_const_fixed_array_runtime_init(target string, val_id flat.NodeId, fixed types.ArrayFixed) bool {
 	expr := g.fixed_array_runtime_copy_source_expr(val_id, fixed)
-	if expr.trim_space().len == 0 {
+	if trimmed_space(expr).len == 0 {
 		return false
 	}
 	g.queue_const_runtime_init('\tmemmove(${target}, ${expr}, sizeof(${target}));')
@@ -9027,7 +9071,7 @@ fn (mut g FlatGen) queue_const_fixed_array_runtime_init(target string, val_id fl
 
 fn (mut g FlatGen) fixed_array_runtime_copy_source_expr(val_id flat.NodeId, fixed types.ArrayFixed) string {
 	literal := g.fixed_array_compound_literal_expr(val_id, fixed)
-	if literal.trim_space().len > 0 {
+	if trimmed_space(literal).len > 0 {
 		return literal
 	}
 	return g.fixed_array_copy_source_string(val_id, fixed)
@@ -9035,7 +9079,7 @@ fn (mut g FlatGen) fixed_array_runtime_copy_source_expr(val_id flat.NodeId, fixe
 
 fn (mut g FlatGen) fixed_array_compound_literal_expr(val_id flat.NodeId, fixed types.ArrayFixed) string {
 	init := g.fixed_array_initializer_string(val_id, fixed)
-	if init.trim_space().len == 0 {
+	if trimmed_space(init).len == 0 {
 		return ''
 	}
 	c_elem, dims := g.fixed_array_decl_parts(fixed)
@@ -9078,12 +9122,12 @@ fn (mut g FlatGen) fixed_array_elem_initializer_string(val_id flat.NodeId, elem_
 	node := g.a.nodes[int(val_id)]
 	if g.is_const_expr(val_id) && !(node.kind == .prefix && node.op == .amp) {
 		const_val := g.const_expr_to_string(val_id, []string{})
-		if const_val.trim_space().len > 0 {
+		if trimmed_space(const_val).len > 0 {
 			return const_val
 		}
 	}
 	expr := g.expr_to_string_with_expected_type(val_id, elem_type)
-	if expr.trim_space().len > 0 {
+	if trimmed_space(expr).len > 0 {
 		return expr
 	}
 	return '0'

@@ -18,6 +18,24 @@ mut:
 	entries map[string]string
 }
 
+// ConstShortIndex maps a const short name to its unique primary const name
+// ('' marks an ambiguous short name); built lazily on first query.
+@[heap]
+struct ConstShortIndex {
+mut:
+	built   bool
+	entries map[string]string
+}
+
+// FnNameFactCache memoizes per-fn-name conclusions (1 = yes, -1 = no) that
+// are pure functions of a name plus the fixed signature tables — e.g. whether
+// a call target's first parameter is a mut receiver.
+@[heap]
+struct FnNameFactCache {
+mut:
+	entries map[string]i8
+}
+
 // cname is the memoizing wrapper for naming.c_name used on FlatGen hot paths.
 @[inline]
 fn (g &FlatGen) cname(name string) string {
@@ -36,6 +54,23 @@ fn (g &FlatGen) cname(name string) string {
 fn c_local_name(name string) string {
 	local_name := if name.contains('.') { name.all_after_last('.') } else { name }
 	return c_name(local_name)
+}
+
+// trimmed_space is an allocation-free fast path for trim_space: type texts on
+// the cgen hot paths are almost always already clean, and builtin trim clones
+// even when there is nothing to trim.
+@[inline]
+fn trimmed_space(s string) string {
+	if s.len == 0 {
+		return s
+	}
+	c0 := s[0]
+	cl := s[s.len - 1]
+	if c0 != ` ` && c0 != `\n` && c0 != `\t` && c0 != `\v` && c0 != `\f` && c0 != `\r` && cl != ` `
+		&& cl != `\n` && cl != `\t` && cl != `\v` && cl != `\f` && cl != `\r` {
+		return s
+	}
+	return s.trim_space()
 }
 
 // c_escape supports c escape handling for c.

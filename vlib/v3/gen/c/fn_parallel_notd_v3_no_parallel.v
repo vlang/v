@@ -131,8 +131,8 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		}
 		C.pthread_create(unsafe { &thread_ids[thread_count] }, attr, postamble_segments_thread_a,
 			voidptr(post_worker_a))
-		C.pthread_create(unsafe { &thread_ids[thread_count + 1] }, attr, postamble_segments_thread_b,
-			voidptr(post_worker_b))
+		C.pthread_create(unsafe { &thread_ids[thread_count + 1] }, attr,
+			postamble_segments_thread_b, voidptr(post_worker_b))
 		C.pthread_attr_destroy(attr)
 		// Master emits chunk[0] into g.sb while the helper threads run, using
 		// worker 0's temp base so its temps stay in their own range.
@@ -212,6 +212,40 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 		chunks << current
 	}
 	return chunks
+}
+
+// fn_item_cost_and_prep is flat_fn_gen_item_cost fused with
+// prepare_parallel_node: one subtree traversal returns the cost AND does the
+// parallel pre-seeding (string interning, fn-ptr type registration).
+fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.NodeId, mut type_text_cache map[string]bool) int {
+	mut cost := 0
+	stack.clear()
+	stack << node_id
+	for stack.len > 0 {
+		current_id := stack.pop()
+		idx := int(current_id)
+		if idx < 0 || idx >= g.a.nodes.len {
+			continue
+		}
+		cost++
+		node := g.a.nodes[idx]
+		if node.kind == .string_literal {
+			g.intern_string(node.value)
+		}
+		if g.should_preseed_parallel_type_text_cached(node.typ, mut type_text_cache) {
+			g.preseed_parallel_fn_ptr_type(g.tc.parse_type(node.typ))
+		}
+		if expr_type := g.parallel_cached_expr_type(current_id, node) {
+			g.preseed_parallel_fn_ptr_type(expr_type)
+		}
+		for i := node.children_count - 1; i >= 0; i-- {
+			child_id := g.a.children[node.children_start + i]
+			if int(child_id) >= 0 {
+				stack << child_id
+			}
+		}
+	}
+	return cost
 }
 
 // prepare_parallel_items supports prepare parallel items handling for FlatGen.
@@ -326,16 +360,16 @@ fn (g &FlatGen) should_preseed_parallel_type_text(typ string) bool {
 
 // parallel_base_type_text supports parallel base type text handling for FlatGen.
 fn (g &FlatGen) parallel_base_type_text(typ string) string {
-	mut clean := typ.trim_space()
+	mut clean := trimmed_space(typ)
 	for clean.len > 0 {
 		if clean.starts_with('shared ') {
-			clean = clean[7..].trim_space()
+			clean = trimmed_space(clean[7..])
 		} else if clean[0] == `&` || clean[0] == `?` || clean[0] == `!` {
-			clean = clean[1..].trim_space()
+			clean = trimmed_space(clean[1..])
 		} else if clean.starts_with('...') {
-			clean = clean[3..].trim_space()
+			clean = trimmed_space(clean[3..])
 		} else if clean.starts_with('[]') {
-			clean = clean[2..].trim_space()
+			clean = trimmed_space(clean[2..])
 		} else {
 			break
 		}
@@ -474,6 +508,11 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		callback_wrapper_names:         g.callback_wrapper_names.clone()
 		callback_wrapper_defs:          g.callback_wrapper_defs.clone()
 		c_name_cache:                   &CNameCache{}
+		// The const short-name index is read-only after its first build (the
+		// master queries it during the const precompute, before the forks);
+		// sharing it avoids a rebuild per worker.
+		const_short_index: g.const_short_index
+		mut_recv_facts:    &FnNameFactCache{}
 	}
 }
 
@@ -641,6 +680,7 @@ fn (g &FlatGen) postamble_fork(worker_id int) &FlatGen {
 	w.line_start = true
 	w.tc = g.clone_parallel_type_checker()
 	w.c_name_cache = &CNameCache{}
+	w.mut_recv_facts = &FnNameFactCache{}
 	w.tmp_count = (worker_id + 1) * 100_000
 	w.post_segs = []string{}
 	w.emitted_optional_types = g.emitted_optional_types.clone()
@@ -710,11 +750,21 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
 		C.pthread_create(unsafe { &tid[0] }, attr, fixed_storage_scan_thread, voidptr(fs_worker))
 		C.pthread_attr_destroy(attr)
+		g.want_parallel_prep = true
 		items := g.ensure_fn_gen_items()
+		g.want_parallel_prep = false
 		if items.len >= min_flat_cgen_parallel_items {
-			g.prepare_parallel_items(items)
+			// The fused item walk already interned and pre-seeded; only the
+			// epilogue remains.
+			if _ := g.ierror_interface_name() {
+				g.intern_string('')
+			}
+			g.register_interface_strings()
 			g.parallel_prepared = true
 		}
+		// Force the lazily-built const short-name index now: workers share it
+		// read-only, so it must be complete before any fork starts.
+		_ = g.unique_const_ref_name('__v3_prewarm__') or { '' }
 		C.pthread_join(tid[0], unsafe { nil })
 		g.fixed_storage_consts = fs_worker.fixed_storage_consts.clone()
 		return true

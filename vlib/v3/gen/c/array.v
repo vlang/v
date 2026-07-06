@@ -244,7 +244,7 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 		c_elem := g.tc.c_type(fixed.elem_type)
 		mut data_str := if fixed_is_ptr { '(*${base_str})' } else { base_str }
 		literal := g.fixed_array_compound_literal_expr(base_id, fixed)
-		if literal.trim_space().len > 0 {
+		if trimmed_space(literal).len > 0 {
 			data_str = literal
 		}
 		// Evaluate the slice bounds once so side-effecting expressions such as
@@ -475,7 +475,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			mut is_thread := false
 			elem := arr.elem_type
 			if elem is types.Struct {
-				tn := elem.name.trim_space()
+				tn := trimmed_space(elem.name)
 				is_thread = tn == 'thread' || tn.starts_with('thread ')
 			}
 			if is_thread {
@@ -614,9 +614,9 @@ fn (mut g FlatGen) gen_fixed_array_pointers_expr(base_id flat.NodeId, is_ptr boo
 fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_type types.Type) {
 	mut ret_name := ''
 	if elem_type is types.Struct {
-		trimmed := elem_type.name.trim_space()
+		trimmed := trimmed_space(elem_type.name)
 		if trimmed != 'thread' && trimmed.starts_with('thread ') {
-			ret_name = trimmed[7..].trim_space()
+			ret_name = trimmed_space(trimmed[7..])
 		}
 	}
 	fn_name := g.ensure_thread_arr_wait_fn(ret_name)

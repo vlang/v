@@ -450,7 +450,7 @@ fn (mut g FlatGen) gen_fixed_array_copy_source(value_id flat.NodeId, field_type 
 	if val_node.kind == .array_literal {
 		if fixed := array_fixed_type(field_type) {
 			literal := g.fixed_array_compound_literal_expr(value_id, fixed)
-			if literal.trim_space().len > 0 {
+			if trimmed_space(literal).len > 0 {
 				g.write(literal)
 				return
 			}
@@ -1105,9 +1105,9 @@ struct SharedTypeInfo {
 }
 
 fn shared_inner_type_text(raw string) ?string {
-	clean := raw.trim_space()
+	clean := trimmed_space(raw)
 	if clean.starts_with('shared ') {
-		return clean[7..].trim_space()
+		return trimmed_space(clean[7..])
 	}
 	return none
 }
@@ -1163,19 +1163,19 @@ fn shared_split_generic_args(s string) []string {
 			}
 			`,` {
 				if bracket_depth == 0 && paren_depth == 0 {
-					parts << s[start..i].trim_space()
+					parts << trimmed_space(s[start..i])
 					start = i + 1
 				}
 			}
 			else {}
 		}
 	}
-	parts << s[start..].trim_space()
+	parts << trimmed_space(s[start..])
 	return parts
 }
 
 fn substitute_shared_generic_type_text(typ string, params []string, args []string) string {
-	clean := typ.trim_space()
+	clean := trimmed_space(typ)
 	if clean.len == 0 || args.len == 0 {
 		return typ
 	}
@@ -1242,7 +1242,7 @@ fn substitute_shared_generic_type_text(typ string, params []string, args []strin
 }
 
 fn (g &FlatGen) shared_qualify_type_text(typ string, module_name string) string {
-	clean := typ.trim_space()
+	clean := trimmed_space(typ)
 	if clean.len == 0 {
 		return typ
 	}
@@ -1702,7 +1702,7 @@ fn (g &FlatGen) struct_init_import_alias_type_name(type_name string) string {
 }
 
 fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name string) ?string {
-	clean := type_name.trim_space()
+	clean := trimmed_space(type_name)
 	base, args, ok := shared_generic_app_parts(clean)
 	if !ok || args.len == 0 {
 		return none
@@ -1730,7 +1730,7 @@ fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name string) ?strin
 }
 
 fn (g &FlatGen) flattened_generic_struct_init_ct_from_context(type_name string) ?string {
-	clean := type_name.trim_space()
+	clean := trimmed_space(type_name)
 	if clean.len == 0 || clean.contains('[') || !clean.contains('_') {
 		return none
 	}
@@ -1752,7 +1752,7 @@ fn (g &FlatGen) flattened_generic_struct_init_ct_from_context(type_name string) 
 }
 
 fn (g &FlatGen) flattened_generic_struct_init_ct(type_name string) ?string {
-	clean := type_name.trim_space()
+	clean := trimmed_space(type_name)
 	if clean.len == 0 || clean.contains('[') || !clean.contains('_') {
 		return none
 	}
@@ -1802,7 +1802,7 @@ fn (g &FlatGen) same_module_flattened_generic_struct_ct(clean string) ?string {
 }
 
 fn flattened_generic_struct_c_type_short_name(ct string) string {
-	clean := ct.trim_space()
+	clean := trimmed_space(ct)
 	if clean.len == 0 {
 		return clean
 	}
@@ -2598,7 +2598,7 @@ fn (mut g FlatGen) flattened_map_type_alias_decls() {
 }
 
 fn (g &FlatGen) collect_flattened_map_type_alias(typ string, mut names map[string]bool) {
-	clean := typ.trim_space().trim_left('&')
+	clean := trimmed_space(typ).trim_left('&')
 	if clean.starts_with('map_') && !clean.starts_with('map__') && clean !in g.tc.structs
 		&& clean !in g.tc.type_aliases {
 		names[g.cname(clean)] = true

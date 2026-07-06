@@ -267,7 +267,7 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 }
 
 fn (g &FlatGen) type_name_contains_generic_placeholder(name string) bool {
-	clean := name.trim_space()
+	clean := trimmed_space(name)
 	if clean.len == 0 {
 		return false
 	}
