@@ -471,6 +471,14 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 	// and merge_worker replays the entries into the master under shifted ids.
 	forked.fork_overlay = &TransformForkOverlay{}
 	forked.type_cache = &TypeCache{
+		// When the master froze its warm cache behind an overlay (see
+		// freeze_type_cache_for_forks), every fork shares that frozen cache as
+		// its read-only base instead of re-deriving each memoized type.
+		base:                       if tc.type_cache != unsafe { nil } {
+			tc.type_cache.base
+		} else {
+			&TypeCache(unsafe { nil })
+		}
 		parse_enabled:              if tc.type_cache != unsafe { nil } {
 			tc.type_cache.parse_enabled
 		} else {
@@ -484,6 +492,24 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 		source_error_embed_entries: map[string]int{}
 	}
 	return &forked
+}
+
+// freeze_type_cache_for_forks freezes this checker's warm type cache as the
+// shared read-only base for parallel forks (fork_for_parallel_transform picks
+// it up) and switches the checker itself to a private overlay so its own
+// memoization writes cannot race fork reads. Callable on a shared reference:
+// the transformer holds the checker as `&TypeChecker`.
+pub fn (tc &TypeChecker) freeze_type_cache_for_forks() {
+	mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
+	mtc.install_type_cache_overlay()
+}
+
+// unfreeze_type_cache_after_forks folds the private overlay back into the
+// frozen base once every fork has been joined, and reattaches the base as the
+// live cache.
+pub fn (tc &TypeChecker) unfreeze_type_cache_after_forks() {
+	mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
+	mtc.restore_type_cache_base()
 }
 
 // set_fresh_type_cache attaches a new empty TypeCache. Parallel-cgen worker

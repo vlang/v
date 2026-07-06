@@ -357,9 +357,9 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 	rhs_object := t.make_cast('&${concrete_type}',
 		t.make_selector(rhs_value, '_object', 'voidptr'), '&${concrete_type}')
 	lhs_concrete := t.make_prefix(.mul, lhs_object)
-	t.a.nodes[int(lhs_concrete)].typ = concrete_type
+	t.set_node_typ(int(lhs_concrete), concrete_type)
 	rhs_concrete := t.make_prefix(.mul, rhs_object)
-	t.a.nodes[int(rhs_concrete)].typ = concrete_type
+	t.set_node_typ(int(rhs_concrete), concrete_type)
 	value_eq := t.make_membership_eq_expr(lhs_concrete, rhs_concrete, concrete_type)
 	eq := t.make_infix(.logical_and, type_eq, value_eq)
 	if node.op == .ne {
@@ -569,8 +569,8 @@ fn (mut t Transformer) transform_struct_pointer_eq(node flat.Node, lhs_id flat.N
 	compare_values := t.make_infix(.logical_and, not_same_ptr, both_not_nil)
 	lhs_value := t.make_prefix(.mul, lhs_ptr)
 	rhs_value := t.make_prefix(.mul, rhs_ptr)
-	t.a.nodes[int(lhs_value)].typ = lhs_clean
-	t.a.nodes[int(rhs_value)].typ = rhs_clean
+	t.set_node_typ(int(lhs_value), lhs_clean)
+	t.set_node_typ(int(rhs_value), rhs_clean)
 	pending_start := t.pending_stmts.len
 	eq_node := flat.Node{
 		kind: .infix
@@ -587,10 +587,10 @@ fn (mut t Transformer) transform_struct_pointer_eq(node flat.Node, lhs_id flat.N
 	body_stmts << t.make_assign(t.make_ident(result_name), value_eq)
 	t.pending_stmts << t.make_if(compare_values, t.make_block(body_stmts), t.make_empty())
 	result := t.make_ident(result_name)
-	t.a.nodes[int(result)].typ = 'bool'
+	t.set_node_typ(int(result), 'bool')
 	if node.op == .ne {
 		not_result := t.make_prefix(.not, result)
-		t.a.nodes[int(not_result)].typ = 'bool'
+		t.set_node_typ(int(not_result), 'bool')
 		return not_result
 	}
 	return result
@@ -1068,11 +1068,11 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 	mut rhs := t.stable_expr_for_reuse(rhs_id)
 	if lhs_is_ptr {
 		lhs = t.make_prefix(.mul, lhs)
-		t.a.nodes[int(lhs)].typ = lhs_type
+		t.set_node_typ(int(lhs), lhs_type)
 	}
 	if rhs_is_ptr {
 		rhs = t.make_prefix(.mul, rhs)
-		t.a.nodes[int(rhs)].typ = rhs_type
+		t.set_node_typ(int(rhs), rhs_type)
 	}
 	tag_eq := t.make_infix(.eq, t.make_sum_tag_selector(lhs, .dot),
 		t.make_sum_tag_selector(rhs, .dot))
@@ -1649,13 +1649,13 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 		lhs_type := t.node_type(lhs)
 		if lhs_type == '&${clean}' {
 			lhs_value := t.make_prefix(.mul, lhs)
-			t.a.nodes[int(lhs_value)].typ = clean
+			t.set_node_typ(int(lhs_value), clean)
 			return t.make_membership_eq_expr_with_seen(lhs_value, rhs, elem_type, seen)
 		}
 		rhs_type := t.node_type(rhs)
 		if rhs_type == '&${clean}' {
 			rhs_value := t.make_prefix(.mul, rhs)
-			t.a.nodes[int(rhs_value)].typ = clean
+			t.set_node_typ(int(rhs_value), clean)
 			return t.make_membership_eq_expr_with_seen(lhs, rhs_value, elem_type, seen)
 		}
 	}
@@ -1779,7 +1779,7 @@ fn (mut t Transformer) make_optional_semantic_eq_expr(lhs flat.NodeId, rhs flat.
 		t.make_block(arr1(set_false)), t.make_empty())
 	t.pending_stmts << t.make_if(compare_values, t.make_block(body_stmts), t.make_empty())
 	result := t.make_ident(result_name)
-	t.a.nodes[int(result)].typ = 'bool'
+	t.set_node_typ(int(result), 'bool')
 	return result
 }
 
@@ -1858,7 +1858,7 @@ fn (mut t Transformer) make_array_elementwise_eq_call_with_seen(lhs flat.NodeId,
 		t.make_block(arr1(set_false)), t.make_empty())
 	t.pending_stmts << t.make_for_stmt(init, cond, post, body_stmts, src)
 	result := t.make_ident(result_name)
-	t.a.nodes[int(result)].typ = 'bool'
+	t.set_node_typ(int(result), 'bool')
 	return result
 }
 
@@ -1892,7 +1892,7 @@ fn (mut t Transformer) make_fixed_array_elementwise_eq_expr_with_seen(lhs flat.N
 	t.pending_stmts << t.make_for_stmt(init,
 		t.make_infix(.logical_and, t.make_ident(result_name), cond), post, body_stmts, flat.Node{})
 	result := t.make_ident(result_name)
-	t.a.nodes[int(result)].typ = 'bool'
+	t.set_node_typ(int(result), 'bool')
 	return result
 }
 
@@ -1953,7 +1953,7 @@ fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, r
 		value:          '3'
 	})
 	result := t.make_ident(result_name)
-	t.a.nodes[int(result)].typ = 'bool'
+	t.set_node_typ(int(result), 'bool')
 	return result
 }
 
@@ -2168,7 +2168,7 @@ fn (mut t Transformer) stable_expr_for_reuse(id flat.NodeId) flat.NodeId {
 	}
 	decl := t.make_decl_assign(tmp_name, expr)
 	if tmp_typ.len > 0 {
-		t.a.nodes[int(decl)].typ = tmp_typ
+		t.set_node_typ(int(decl), tmp_typ)
 		t.set_var_type(tmp_name, tmp_typ)
 	}
 	t.pending_stmts << decl

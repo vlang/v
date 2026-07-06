@@ -855,7 +855,7 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 	if expr_type.starts_with('&') && t.resolve_sum_name(expr_type[1..]) == resolved_sum {
 		inner := t.transform_expr(expr_id)
 		deref := t.make_prefix(.mul, inner)
-		t.a.nodes[int(deref)].typ = resolved_sum
+		t.set_node_typ(int(deref), resolved_sum)
 		return deref
 	}
 	if variant.len == 0 {
@@ -925,13 +925,13 @@ fn (mut t Transformer) ensure_sum_variant_ref(value flat.NodeId, variant string)
 	}
 	if t.expr_can_take_address(value) || t.a.nodes[int(value)].kind == .struct_init {
 		ref := t.make_prefix(.amp, value)
-		t.a.nodes[int(ref)].typ = '&${clean_variant}'
+		t.set_node_typ(int(ref), '&${clean_variant}')
 		return ref
 	}
 	tmp_name := t.new_temp('sum_val')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, value_type)
 	ref := t.make_prefix(.amp, t.make_ident(tmp_name))
-	t.a.nodes[int(ref)].typ = '&${clean_variant}'
+	t.set_node_typ(int(ref), '&${clean_variant}')
 	return ref
 }
 

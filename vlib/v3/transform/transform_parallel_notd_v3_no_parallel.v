@@ -10,6 +10,10 @@ import v3.flat
 
 const min_parallel_transform_items = 256
 const max_parallel_transform_jobs = 6
+// Shared-base (clone-free) transform: workers share the master arrays and
+// append into pre-partitioned capacity regions, so extra threads cost no
+// clone memory; cap by core count only.
+const max_shared_transform_jobs = 10
 
 $if !windows {
 	// TransformChunkArgs is the payload handed to each worker thread. The chain
@@ -88,6 +92,22 @@ $if !windows {
 		w.transform_pure_items_serial(*items)
 		return unsafe { nil }
 	}
+
+	// shared_chunk_thread runs one shared-base worker's chunk. No clone, no
+	// chain: every worker was fully built by the master before spawning.
+	fn shared_chunk_thread(arg voidptr) voidptr {
+		a := unsafe { &SharedChunkArgs(arg) }
+		mut w := unsafe { &Transformer(a.worker) }
+		items := unsafe { &[]FnWorkItem(a.items_ptr) }
+		w.transform_pure_items_serial(*items)
+		return unsafe { nil }
+	}
+}
+
+// SharedChunkArgs is the payload handed to each shared-base worker thread.
+struct SharedChunkArgs {
+	worker    voidptr // &Transformer
+	items_ptr voidptr // &[]FnWorkItem
 }
 
 // run_parallel_transform transforms the closure-free function bodies across
@@ -103,6 +123,21 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 			t.transform_pure_items_serial(items)
 			return false
 		}
+		// Clone-free shared-base path: needs the checker's top-level index for
+		// exact per-item subtree ranges, and skip_generics (the generic passes
+		// scan and mutate arbitrary AST regions, which the shared design forbids).
+		if t.skip_generics && !isnil(t.tc) && t.tc.top_level_idx.len > 0 {
+			shared_jobs := shared_transform_job_count(runtime.nr_jobs(), items.len)
+			if shared_jobs > 1 {
+				return t.run_parallel_transform_shared(items, base_nodes, base_children,
+					shared_jobs)
+			}
+		}
+		// Freeze the checker's warm type cache (fully populated by the check
+		// phase) as the shared read-only base for every worker fork, so workers
+		// do not re-parse every type text from a cold cache; the master itself
+		// writes through a private overlay for the duration of the region.
+		t.tc.freeze_type_cache_for_forks()
 		mut chunks := split_work_items(items, n_jobs)
 		chunk_count := chunks.len
 
@@ -165,6 +200,157 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 			t.merge_worker_used_fns(ww)
 			t.merge_worker(ww, chunks[ci + 1], base_nodes, base_children)
 		}
+		t.tc.unfreeze_type_cache_after_forks()
+		return true
+	}
+}
+
+
+// shared_transform_job_count caps the shared-base worker count: no clones, so
+// only core count and item count matter.
+fn shared_transform_job_count(n_runtime_jobs int, n_items int) int {
+	if n_runtime_jobs <= 0 || n_items <= 0 {
+		return 0
+	}
+	mut n := n_runtime_jobs
+	if n > max_shared_transform_jobs {
+		n = max_shared_transform_jobs
+	}
+	if n > n_items {
+		n = n_items
+	}
+	return n
+}
+
+// shared_region_view builds a FlatAst whose arrays alias the master's data but
+// whose len/cap bound this worker's private append region [nstart, nend) /
+// [cstart, cend). Base reads (ids below nstart) see the shared immutable base;
+// appends land in the region, so the new node ids are already master-global.
+// .nogrow turns a region overflow into a loud panic instead of a realloc that
+// would free the master's live block.
+fn shared_region_view(a &flat.FlatAst, nstart int, nend int, cstart int, cend int) &flat.FlatAst {
+	mut nodes := []flat.Node{}
+	mut children := []flat.NodeId{}
+	unsafe {
+		nodes.data = a.nodes.data
+		nodes.len = nstart
+		nodes.cap = nend
+		nodes.flags.set(.nogrow)
+		children.data = a.children.data
+		children.len = cstart
+		children.cap = cend
+		children.flags.set(.nogrow)
+	}
+	return &flat.FlatAst{
+		nodes:           nodes
+		children:        children
+		user_code_start: a.user_code_start
+		disabled_fns:    a.disabled_fns
+	}
+}
+
+// run_parallel_transform_shared is the clone-free variant of the parallel
+// transform: all threads (master included) work directly on the master arrays.
+// Fn subtrees are disjoint node ranges, transform only rewrites nodes inside
+// the fn currently being lowered (plus appends), and stray out-of-range writes
+// are intercepted (see base_write_allowed), so threads never touch each
+// other's slots. Each thread appends into its own pre-partitioned capacity
+// region; the master then compacts the regions into the final sequential
+// layout with the same shift arithmetic merge_worker always used (a region
+// start plays the role the clone base played).
+fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_nodes int, base_children int, n_jobs int) bool {
+	$if windows {
+		t.transform_pure_items_serial(items)
+		return false
+	} $else {
+		t.tc.freeze_type_cache_for_forks()
+		mut chunks := split_work_items_ex(items, n_jobs, false)
+		chunk_count := chunks.len
+		thread_count := chunk_count - 1
+		// Partition the reserved capacity into per-chunk append regions,
+		// proportional to chunk cost (the caller reserved ~2x the expected
+		// total growth for this pool).
+		node_pool := t.a.nodes.cap - base_nodes
+		child_pool := t.a.children.cap - base_children
+		mut costs := []i64{len: chunk_count}
+		mut total := i64(0)
+		for ci in 0 .. chunk_count {
+			for it in chunks[ci] {
+				costs[ci] += i64(it.cost) + 1
+			}
+			total += costs[ci]
+		}
+		if total <= 0 {
+			total = 1
+		}
+		mut node_starts := []int{len: chunk_count + 1}
+		mut child_starts := []int{len: chunk_count + 1}
+		node_starts[0] = base_nodes
+		child_starts[0] = base_children
+		mut acc := i64(0)
+		for ci in 0 .. chunk_count {
+			acc += costs[ci]
+			node_starts[ci + 1] = base_nodes + int(i64(node_pool) * acc / total)
+			child_starts[ci + 1] = base_children + int(i64(child_pool) * acc / total)
+		}
+		t.base_write_intercept = true
+		t.defer_oor_writes = true
+		t.shared_base_nodes = base_nodes
+		mut args := []SharedChunkArgs{len: thread_count}
+		mut thread_ids := []C.pthread_t{len: thread_count}
+		attr_buf := [64]u8{}
+		attr := unsafe { voidptr(&attr_buf[0]) }
+		C.pthread_attr_init(attr)
+		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+		for ci in 0 .. thread_count {
+			view := shared_region_view(t.a, node_starts[ci + 1], node_starts[ci + 2],
+				child_starts[ci + 1], child_starts[ci + 2])
+			wtc := t.tc.fork_for_parallel_transform(view)
+			mut ww := t.fork_worker(view, wtc)
+			ww.defer_oor_writes = false
+			args[ci] = SharedChunkArgs{
+				worker:    voidptr(ww)
+				items_ptr: unsafe { voidptr(&chunks[ci + 1]) }
+			}
+			C.pthread_create(unsafe { &thread_ids[ci] }, attr, shared_chunk_thread, unsafe { voidptr(&args[ci]) })
+		}
+		C.pthread_attr_destroy(attr)
+		// The master takes region 0, which is [base, node_starts[1]) — exactly
+		// where compaction wants its output, so its appends need no shifting
+		// and its checker-cache writes use final node ids. Bound its arrays so
+		// an overflow panics instead of reallocating the shared block away
+		// from under the workers.
+		orig_nodes_cap := t.a.nodes.cap
+		orig_children_cap := t.a.children.cap
+		unsafe {
+			t.a.nodes.cap = node_starts[1]
+			t.a.nodes.flags.set(.nogrow)
+			t.a.children.cap = child_starts[1]
+			t.a.children.flags.set(.nogrow)
+		}
+		t.temp_counter = 0
+		t.transform_pure_items_serial(chunks[0])
+		unsafe {
+			t.a.nodes.cap = orig_nodes_cap
+			t.a.nodes.flags.clear(.nogrow)
+			t.a.children.cap = orig_children_cap
+			t.a.children.flags.clear(.nogrow)
+		}
+		// Join and compact each worker region in fixed order (deterministic
+		// node numbering). merge_worker treats the region start exactly like a
+		// clone's base offset; compaction always moves content left, so the
+		// copies never collide with unmerged regions.
+		for ci in 0 .. thread_count {
+			C.pthread_join(thread_ids[ci], unsafe { nil })
+			ww := unsafe { &Transformer(args[ci].worker) }
+			t.merge_worker_used_fns(ww)
+			t.merge_worker(ww, chunks[ci + 1], node_starts[ci + 1], child_starts[ci + 1])
+		}
+		t.base_write_intercept = false
+		t.defer_oor_writes = false
+		t.shared_base_nodes = -1
+		t.flush_deferred_base_writes()
+		t.tc.unfreeze_type_cache_after_forks()
 		return true
 	}
 }
@@ -216,6 +402,7 @@ fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, us
 		if cands.len < 256 || n_jobs <= 1 {
 			return t.scan_late_call_names_range(cands, used, 0, cands.len)
 		}
+		t.tc.freeze_type_cache_for_forks()
 		bounds := late_scan_chunk_bounds(t.a, cands, n_jobs)
 		thread_count := n_jobs - 1
 		mut results := [][]string{len: n_jobs, init: []string{}}
@@ -250,6 +437,7 @@ fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, us
 		for ci in 0 .. thread_count {
 			C.pthread_join(thread_ids[ci], unsafe { nil })
 		}
+		t.tc.unfreeze_type_cache_after_forks()
 		mut names := []string{}
 		mut seen := map[string]bool{}
 		for res in results {

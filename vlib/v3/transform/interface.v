@@ -33,7 +33,7 @@ fn (mut t Transformer) heap_copy_interface_expr(expr flat.NodeId, iface_name str
 	size := t.make_sizeof_type(iface_name)
 	dup := t.make_call_typed('memdup', arr2(addr, size), 'voidptr')
 	cast := t.make_cast(target_type, dup, target_type)
-	t.a.nodes[int(cast)].typ = target_type
+	t.set_node_typ(int(cast), target_type)
 	return cast
 }
 
@@ -142,7 +142,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		}
 		expr := t.transform_expr(id)
 		if source_type.len > 0 && int(expr) >= 0 {
-			t.a.nodes[int(expr)].typ = source_type
+			t.set_node_typ(int(expr), source_type)
 		}
 		return expr
 	}
@@ -150,7 +150,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	if source_iface == iface_name {
 		expr := t.transform_expr(id)
 		if source_type.len > 0 && int(expr) >= 0 {
-			t.a.nodes[int(expr)].typ = source_type
+			t.set_node_typ(int(expr), source_type)
 		}
 		if !target_is_ptr || source_type.starts_with('&') {
 			return expr
@@ -268,7 +268,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		source
 	} else if share_source && t.expr_can_take_address(source) {
 		addr := t.make_prefix(.amp, source)
-		t.a.nodes[int(addr)].typ = '&${concrete_type}'
+		t.set_node_typ(int(addr), '&${concrete_type}')
 		addr
 	} else {
 		addr := t.make_prefix(.amp, source)
@@ -278,7 +278,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	}
 	field_base := if is_ptr {
 		base := t.make_prefix(.mul, source)
-		t.a.nodes[int(base)].typ = concrete_type
+		t.set_node_typ(int(base), concrete_type)
 		base
 	} else {
 		source

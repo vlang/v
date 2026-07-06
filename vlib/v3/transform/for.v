@@ -417,7 +417,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	}
 	if actual_iter_type.starts_with('&[]') {
 		container = t.make_prefix(.mul, container)
-		t.a.nodes[int(container)].typ = actual_iter_type[1..]
+		t.set_node_typ(int(container), actual_iter_type[1..])
 		actual_iter_type = actual_iter_type[1..]
 	}
 	elem_type := t.infer_for_in_elem_type(actual_iter_type, node)

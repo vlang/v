@@ -1118,7 +1118,7 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		}
 		stable := t.stable_transformed_expr_for_reuse(value, value_type, 'addr')
 		addr := t.make_prefix(.amp, stable)
-		t.a.nodes[int(addr)].typ = param_type
+		t.set_node_typ(int(addr), param_type)
 		return addr
 	}
 	if param_type.starts_with('&') && t.is_sum_type_name(param_type[1..]) {
@@ -1146,7 +1146,7 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 				if t.resolve_sum_name(t.trim_pointer_type(raw_inner_type)) == resolved_target_sum {
 					inner := t.make_plain_expr_for_smartcast(inner_id)
 					addr := t.make_prefix(.amp, inner)
-					t.a.nodes[int(addr)].typ = param_type
+					t.set_node_typ(int(addr), param_type)
 					return addr
 				}
 			}
@@ -1563,7 +1563,7 @@ fn (mut t Transformer) transform_pointer_rvalue_arg(arg_id flat.NodeId, arg_node
 	}
 	if t.c_type_nil_call_for_type(value_node, value_type) {
 		nil_id := t.a.add(.nil_literal)
-		t.a.nodes[int(nil_id)].typ = param_type
+		t.set_node_typ(int(nil_id), param_type)
 		return nil_id
 	}
 	arg_type := t.node_type(value_id)
@@ -1575,7 +1575,7 @@ fn (mut t Transformer) transform_pointer_rvalue_arg(arg_id flat.NodeId, arg_node
 	tmp_name := t.new_temp('ptr_arg')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, value_type)
 	addr := t.make_prefix(.amp, t.make_ident(tmp_name))
-	t.a.nodes[int(addr)].typ = param_type
+	t.set_node_typ(int(addr), param_type)
 	return addr
 }
 
@@ -2738,7 +2738,7 @@ fn (mut t Transformer) build_sum_str_chain(base flat.NodeId, tag flat.NodeId, su
 		t.wrap_string_conversion(arr, '[]${elem_type}')
 	} else {
 		value := t.make_prefix(.mul, field_sel)
-		t.a.nodes[int(value)].typ = variant
+		t.set_node_typ(int(value), variant)
 		t.wrap_string_conversion(value, variant)
 	}
 	display := if variant.contains('.') { variant.all_after_last('.') } else { variant }
@@ -3519,7 +3519,7 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 	mut receiver := t.transform_expr(base_id)
 	if raw_base_type.starts_with('&') {
 		receiver = t.make_prefix(.mul, receiver)
-		t.a.nodes[int(receiver)].typ = base_type
+		t.set_node_typ(int(receiver), base_type)
 	}
 	return receiver
 }
@@ -3606,7 +3606,7 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		mut new_base_type := t.node_type(new_base)
 		if recorded_elem_type := t.recorded_array_call_elem_type(base_id) {
 			new_base_type = '[]${recorded_elem_type}'
-			t.a.nodes[int(new_base)].typ = new_base_type
+			t.set_node_typ(int(new_base), new_base_type)
 		}
 		if new_base_type.starts_with('[]') {
 			if stringify_type_has_generic_placeholder(new_base_type) {
@@ -3789,7 +3789,7 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			mut receiver := t.transform_expr(base_id)
 			if base_type.starts_with('&') {
 				receiver = t.make_prefix(.mul, receiver)
-				t.a.nodes[int(receiver)].typ = clean_base_type
+				t.set_node_typ(int(receiver), clean_base_type)
 			}
 			return t.make_call_typed('array__reverse', arr1(receiver), clean_base_type)
 		}
@@ -4050,7 +4050,7 @@ fn (mut t Transformer) try_lower_channel_method_call(call_id flat.NodeId, node f
 	if ptr_depth == 0 {
 		receiver = t.make_cast('&sync.Channel', receiver, '&sync.Channel')
 	} else {
-		t.a.nodes[int(receiver)].typ = '&sync.Channel'
+		t.set_node_typ(int(receiver), '&sync.Channel')
 	}
 	return t.make_call_expr_typed(fn_expr, arr2(receiver, errs), 'void')
 }
@@ -4642,7 +4642,7 @@ fn (mut t Transformer) try_lower_pool_generic_method_call(node flat.Node) ?flat.
 		item := t.make_index(items, idx, 'voidptr')
 		cast := t.make_cast('&${elem_type}', item, '&${elem_type}')
 		value := t.make_prefix(.mul, cast)
-		t.a.nodes[int(value)].typ = elem_type
+		t.set_node_typ(int(value), elem_type)
 		for stmt in prefix {
 			t.pending_stmts << stmt
 		}
@@ -4668,7 +4668,7 @@ fn (mut t Transformer) try_lower_pool_generic_method_call(node flat.Node) ?flat.
 	} else {
 		t.make_prefix(.mul, t.make_cast('&${elem_type}', item, '&${elem_type}'))
 	}
-	t.a.nodes[int(value)].typ = out_elem_type
+	t.set_node_typ(int(value), out_elem_type)
 	value_name := t.new_temp('pool_result')
 	value_decl := t.make_decl_assign_typed(value_name, value, out_elem_type)
 	push_call := t.make_call_typed('array_push', arr2(t.make_prefix(.amp, t.make_ident(result_name)), t.make_prefix(.amp,

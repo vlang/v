@@ -78,7 +78,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				}
 			}
 			if val_node.kind == .array_literal && t.is_fixed_array_type(field_type) {
-				t.a.nodes[int(val_id)].typ = field_type
+				t.set_node_typ(int(val_id), field_type)
 			}
 			value_type := t.node_type(val_id)
 			sum_field_type := t.struct_field_sum_type(field_type, info.module)
@@ -458,7 +458,7 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		value_node := t.a.nodes[int(value_id)]
 		field_type := field_types[field.value] or { '' }
 		if value_node.kind == .array_literal && t.is_fixed_array_type(field_type) {
-			t.a.nodes[int(value_id)].typ = field_type
+			t.set_node_typ(int(value_id), field_type)
 		}
 		value_type := t.node_type(value_id)
 		enum_field_type := t.enum_type_name_for_expected(field_type, assoc_module)
@@ -484,7 +484,7 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		t.pending_stmts << stmt
 	}
 	result := t.make_ident(tmp_name)
-	t.a.nodes[int(result)].typ = assoc_type
+	t.set_node_typ(int(result), assoc_type)
 	return result
 }
 
@@ -520,7 +520,7 @@ fn (mut t Transformer) transform_amp_assoc_expr_for_type(_id flat.NodeId, node f
 		ptr_type = '&${value_type}'
 	}
 	cast := t.make_cast(ptr_type, dup, ptr_type)
-	t.a.nodes[int(cast)].typ = ptr_type
+	t.set_node_typ(int(cast), ptr_type)
 	return cast
 }
 

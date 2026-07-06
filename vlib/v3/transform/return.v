@@ -527,7 +527,7 @@ fn (mut t Transformer) try_expand_return_match(_id flat.NodeId, node flat.Node) 
 		t.drain_pending(mut result)
 		result << t.make_decl_assign_typed(tmp_name, new_expr, match_type)
 		actual_expr_id = t.make_ident(tmp_name)
-		t.a.nodes[int(actual_expr_id)].typ = match_type
+		t.set_node_typ(int(actual_expr_id), match_type)
 		t.set_var_type(tmp_name, match_type)
 	} else {
 		actual_expr_id = t.transform_expr(match_expr_id)
