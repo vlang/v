@@ -211,22 +211,22 @@ pub mut:
 @[heap]
 pub struct TypeChecker {
 pub mut:
-	a                            &flat.FlatAst = unsafe { nil }
-	fn_ret_types                 map[string]Type
-	fn_param_types               map[string][]Type
-	fn_ret_type_texts            map[string]string   // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
-	fn_param_type_texts          map[string][]string // generic struct method key -> original param type texts (receiver first)
-	fn_type_files                map[string]string
-	fn_type_modules              map[string]string
-	fn_generic_params            map[string][]string
-	specialized_generic_fns      map[string]bool
-	fn_variadic                  map[string]bool
-	c_variadic_fns               map[string]bool
-	fn_implicit_veb_ctx          map[string]bool
-	receiver_method_suffix_index map[string]string
-	structs                      map[string][]StructField
-	struct_modules               map[string]string
-	struct_files                 map[string]string
+	a                                  &flat.FlatAst = unsafe { nil }
+	fn_ret_types                       map[string]Type
+	fn_param_types                     map[string][]Type
+	fn_ret_type_texts                  map[string]string   // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
+	fn_param_type_texts                map[string][]string // generic struct method key -> original param type texts (receiver first)
+	fn_type_files                      map[string]string
+	fn_type_modules                    map[string]string
+	fn_generic_params                  map[string][]string
+	specialized_generic_fns            map[string]bool
+	fn_variadic                        map[string]bool
+	c_variadic_fns                     map[string]bool
+	fn_implicit_veb_ctx                map[string]bool
+	receiver_method_suffix_index       map[string]string
+	structs                            map[string][]StructField
+	struct_modules                     map[string]string
+	struct_files                       map[string]string
 	// set of `${file}\x01${module}\x01${name}` keys for every source-level
 	// struct/type/interface/enum declaration, built once in `collect`. Replaces
 	// the former full-node scan in `source_declares_type_in_scope`, which was

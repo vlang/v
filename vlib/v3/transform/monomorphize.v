@@ -4519,7 +4519,8 @@ fn (mut t Transformer) copy_cloned_resolution(src_id flat.NodeId, dst_id flat.No
 fn (mut t Transformer) copy_cloned_resolution_forked(src_idx int, dst_idx int) {
 	mut overlay := t.tc.fork_overlay
 	mut call_name := overlay.resolved_call_names[src_idx] or { '' }
-	if call_name.len == 0 && src_idx < t.tc.resolved_call_set.len && t.tc.resolved_call_set[src_idx] {
+	if call_name.len == 0 && src_idx < t.tc.resolved_call_set.len
+		&& t.tc.resolved_call_set[src_idx] {
 		call_name = t.tc.resolved_call_names[src_idx]
 	}
 	if call_name.len > 0 && !t.resolved_call_is_generic_fn(call_name) {
