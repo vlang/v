@@ -115,6 +115,10 @@ fn C.sapp_get_environment() Environment
 // get current frame's swapchain information (call once per frame!)
 fn C.sapp_get_swapchain() Swapchain
 
+// V-private wrappers around sapp_get_environment/sapp_get_swapchain for sharedlive DLL boundaries
+fn C.v_sapp_get_environment(out_env &Environment)
+fn C.v_sapp_get_swapchain(out_swapchain &Swapchain)
+
 // EGL: get EGLDisplay object
 fn C.sapp_egl_get_display() voidptr
 
