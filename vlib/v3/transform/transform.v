@@ -145,6 +145,13 @@ mut:
 	// and, under -gc none, were never freed).
 	used_fns_log        []string
 	used_fns_log_active bool
+	// transformed_fns[i] is set when the fn_decl at node id i has had its body
+	// transformed (main pass, any thread — worker chunks are marked at merge).
+	// The late-used-fn-bodies pass excludes these candidates: lowered bodies
+	// surface sanitized call spellings (`seed__time_seed_array`) that the
+	// used-set (holding `seed.time_seed_array`) cannot filter, which used to
+	// re-transform hundreds of already-transformed bodies every build.
+	transformed_fns []bool
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -261,8 +268,18 @@ pub fn transform_with_used_opt_config(mut a flat.FlatAst, tc &types.TypeChecker,
 		}
 	}
 	base_node_count := t.a.nodes.len
+	t.transformed_fns = []bool{len: t.a.nodes.len}
 	was_parallel := t.transform_all_dispatch(want_parallel)
-	mut late_names := t.new_call_names_from_used_fn_bodies(used_fns, t.a.nodes.len)
+	// The late-name scan backfills call names that markused's raw-AST resolution
+	// missed and generic-specialization names. When building the V compiler
+	// itself (skip_generics: no generics, fully resolvable calls) it provably
+	// contributes nothing — the emitted function set is identical with and
+	// without it — so skip the full-AST rescan there. A genuine future gap would
+	// fail loudly (missing C symbol), not silently.
+	mut late_names := []string{}
+	if !skip_generics {
+		late_names = t.new_call_names_from_used_fn_bodies(used_fns, t.a.nodes.len)
+	}
 	late_names << newly_used_fn_names(used_fns, t.used_fns)
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
 	return t.used_fns, was_parallel
@@ -272,40 +289,67 @@ fn (mut t Transformer) new_call_names_from_used_fn_bodies(used map[string]bool, 
 	if used.len == 0 || node_limit <= 0 {
 		return []string{}
 	}
-	mut names := []string{}
-	mut seen := map[string]bool{}
+	limit := if node_limit < t.a.nodes.len { node_limit } else { t.a.nodes.len }
+	cands := t.collect_late_scan_candidates(limit)
+	return t.scan_late_call_names_dispatch(cands, used)
+}
+
+// collect_late_scan_candidates lists every fn_decl below `limit` with its
+// file/module context. The per-candidate filtering (generic templates,
+// late-used matching) runs in scan_late_call_names_range, so it can be spread
+// across worker threads.
+fn (t &Transformer) collect_late_scan_candidates(limit int) []LateFnCandidate {
+	mut cands := []LateFnCandidate{cap: 8192}
 	mut cur_module := ''
 	mut cur_file := ''
-	limit := if node_limit < t.a.nodes.len { node_limit } else { t.a.nodes.len }
-	old_module := t.cur_module
-	old_file := t.cur_file
 	for i in 0 .. limit {
 		node := t.a.nodes[i]
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
 			cur_file = node.value
 			cur_module = ''
-			continue
-		}
-		if kind_id == 73 {
+		} else if kind_id == 73 {
 			cur_module = node.value
-			continue
+		} else if kind_id == 61 {
+			cands << LateFnCandidate{
+				idx:    i
+				file:   cur_file
+				module: cur_module
+			}
 		}
-		if kind_id != 61 || t.fn_decl_has_unresolved_generics(node, cur_module) {
+	}
+	return cands
+}
+
+// scan_late_call_names_range performs the late-name scan for a contiguous
+// candidate range: the used/generated fn bodies are walked for call names that
+// are not in the used set yet. Reads shared state only (plus this
+// transformer's private per-function context and checker caches), so disjoint
+// ranges can run on worker threads; concatenating the per-range results in
+// range order and deduplicating reproduces the serial scan exactly.
+fn (mut t Transformer) scan_late_call_names_range(cands []LateFnCandidate, used map[string]bool, start int, end int) []string {
+	mut names := []string{}
+	mut seen := map[string]bool{}
+	old_module := t.cur_module
+	old_file := t.cur_file
+	for ci in start .. end {
+		cand := cands[ci]
+		node := t.a.nodes[cand.idx]
+		if t.fn_decl_has_unresolved_generics(node, cand.module) {
 			continue
 		}
 		if !transform_is_generated_fn_after_markused(node.value)
-			&& !late_used_fn_matches(used, node, cur_module) {
+			&& !late_used_fn_matches(used, node, cand.module) {
 			continue
 		}
-		t.cur_file = cur_file
-		t.cur_module = cur_module
-		for call_name in t.generated_fn_body_call_names(flat.NodeId(i)) {
+		t.cur_file = cand.file
+		t.cur_module = cand.module
+		for call_name in t.generated_fn_body_call_names(flat.NodeId(cand.idx)) {
 			if call_name.len == 0 || seen[call_name] {
 				continue
 			}
 			if used[call_name] || used[c_name(call_name)]
-				|| late_used_fn_contains_in_module(used, call_name, cur_module) {
+				|| late_used_fn_contains_in_module(used, call_name, cand.module) {
 				continue
 			}
 			seen[call_name] = true
@@ -1075,6 +1119,12 @@ fn (t &Transformer) has_fn_literal_nodes() bool {
 fn (mut t Transformer) transform_serial_then_collect_pure(scan_fn_literals bool) []FnWorkItem {
 	mut pure := []FnWorkItem{}
 	original_len := t.a.nodes.len
+	literal_decls := if scan_fn_literals {
+		t.collect_literal_fn_decls(original_len)
+	} else {
+		[]bool{}
+	}
+	mut prev_decl_end := 0
 	for i in 0 .. original_len {
 		node := t.a.nodes[i]
 		kind_id := node_kind_id(node)
@@ -1083,6 +1133,11 @@ fn (mut t Transformer) transform_serial_then_collect_pure(scan_fn_literals bool)
 		} else if kind_id == 73 {
 			t.cur_module = node.value
 		} else if kind_id == 61 {
+			// The parser builds nodes bottom-up, so a declaration's subtree
+			// precedes its node: the span since the previous top-level
+			// declaration approximates this function's subtree size.
+			span_cost := i - prev_decl_end
+			prev_decl_end = i
 			if t.fn_decl_has_unresolved_generics(node, t.cur_module) {
 				continue
 			}
@@ -1092,7 +1147,8 @@ fn (mut t Transformer) transform_serial_then_collect_pure(scan_fn_literals bool)
 			mut has_literal := false
 			mut cost := int(node.children_count) + 1
 			if scan_fn_literals {
-				has_literal, cost = t.fn_subtree_scan(i)
+				has_literal = literal_decls[i]
+				cost = if span_cost > 0 { span_cost } else { 1 }
 			}
 			if has_literal {
 				t.transform_fn_body(i)
@@ -1106,43 +1162,41 @@ fn (mut t Transformer) transform_serial_then_collect_pure(scan_fn_literals bool)
 				}
 			}
 		} else if kind_id == 65 {
+			prev_decl_end = i
 			t.transform_const_decl(node)
 		} else if kind_id == 64 {
+			prev_decl_end = i
 			t.transform_global_decl(node)
 		}
 	}
 	return pure
 }
 
-// fn_subtree_scan walks the subtree rooted at the function declaration `fn_idx`
-// and reports (whether it contains a function literal, total node count). The
-// function-literal flag routes closure-bearing functions to the serial path; the
-// count is a cheap per-function cost used to balance parallel workers.
-fn (t &Transformer) fn_subtree_scan(fn_idx int) (bool, int) {
-	mut has_literal := false
-	mut count := 0
-	mut stack := [flat.NodeId(fn_idx)]
-	for stack.len > 0 {
-		id := stack.pop()
-		idx := int(id)
-		if idx < 0 || idx >= t.a.nodes.len {
-			continue
-		}
-		node := t.a.nodes[idx]
-		count++
-		// 21 = fn_literal, 32 = lambda_expr: both can lower to a lifted closure.
+// collect_literal_fn_decls returns, per node id below `limit`, whether that
+// fn_decl's subtree contains a function literal or lambda. The parser builds
+// nodes bottom-up, so a literal always precedes its enclosing fn_decl node:
+// one linear pass attributing "a literal appeared since the last consumed
+// declaration" to the next fn_decl replaces the old per-function subtree
+// walks. Literals inside const/global initializers reset at their decl; any
+// other stray attribution can only route an extra function to the serial
+// transform path, which is always safe.
+fn (t &Transformer) collect_literal_fn_decls(limit int) []bool {
+	mut result := []bool{len: limit}
+	mut literal_pending := false
+	for i in 0 .. limit {
+		node := t.a.nodes[i]
 		kid := node_kind_id(node)
+		// 21 = fn_literal, 32 = lambda_expr (see fn_subtree_scan's old check).
 		if kid == 21 || kid == 32 {
-			has_literal = true
-		}
-		for ci in 0 .. node.children_count {
-			child_id := t.a.children[node.children_start + ci]
-			if int(child_id) >= 0 {
-				stack << child_id
-			}
+			literal_pending = true
+		} else if kid == 61 {
+			result[i] = literal_pending
+			literal_pending = false
+		} else if kid == 64 || kid == 65 {
+			literal_pending = false
 		}
 	}
-	return has_literal, count
+	return result
 }
 
 // transform_pure_items_serial transforms a list of closure-free function bodies
@@ -1226,6 +1280,64 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.generic_receiver_methods_by_name = map[string][]string{}
 	w.used_fns_log = []string{}
 	w.used_fns_log_active = false
+	// Workers do not record transformed fns (that would write the master's
+	// shared backing array); the master marks each worker's chunk items when it
+	// merges the worker.
+	w.transformed_fns = []bool{}
+	w.temp_counter = 0
+	w.cur_file = ''
+	w.cur_module = ''
+	w.cur_fn_name = ''
+	w.cur_fn_ret_type = ''
+	w.in_call_callee = false
+	w.in_const_init = false
+	w.in_return_expr = false
+	return &w
+}
+
+// fork_scan_worker builds a read-only worker for the parallel late-name scan.
+// Unlike fork_worker it shares the big lookup maps by reference (the scan never
+// writes them) and does not clone used_fns — the scan filters against the
+// caller's `used` snapshot and never marks names — so forking costs almost
+// nothing even with one fork per scan thread.
+fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
+	mut w := *t
+	w.tc = wtc
+	w.used_fns = map[string]bool{}
+	w.alias_cache = &AliasCache{}
+	w.sum_cache = &AliasCache{}
+	w.struct_field_type_cache = &LookupCache{
+		entries: map[string]string{}
+		misses:  map[string]bool{}
+	}
+	w.variant_short_name_cache = &LookupCache{
+		entries: map[string]string{}
+		misses:  map[string]bool{}
+	}
+	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
+	w.generic_fn_decls_ready = false
+	w.generic_call_spec_cache = map[int]GenericCallSpec{}
+	w.generic_call_spec_misses = map[int]bool{}
+	w.node_module_map_cache = []string{}
+	w.node_module_map_nodes = -1
+	w.var_types = []VarTypeBinding{}
+	w.mut_param_values = map[string]bool{}
+	w.smartcast_stack = []SmartcastContext{}
+	w.invalidated_smartcasts = map[string]bool{}
+	w.pending_stmts = []flat.NodeId{}
+	w.pointer_value_lvalues = map[string]bool{}
+	w.pointer_value_rvalues = map[string]bool{}
+	w.escaping_amp_ptrs = map[string]bool{}
+	w.escaping_amp_sources = map[string]bool{}
+	w.heaped_amp_locals = map[string]bool{}
+	w.generic_fn_specs_in_progress = map[string]bool{}
+	w.stringify_stack = []string{}
+	w.interface_boxed_types = map[string]bool{}
+	w.interface_boxed_types_done = false
+	w.generic_receiver_methods_by_name = map[string][]string{}
+	w.used_fns_log = []string{}
+	w.used_fns_log_active = false
+	w.transformed_fns = []bool{}
 	w.temp_counter = 0
 	w.cur_file = ''
 	w.cur_module = ''
@@ -1254,13 +1366,22 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nodes int, base_children int) {
 	node_shift := i32(t.a.nodes.len - base_nodes)
 	child_shift := i32(t.a.children.len - base_children)
-	// New children: relocate references to worker-local new nodes.
-	for k in base_children .. w.a.children.len {
-		cid := w.a.children[k]
-		if int(cid) >= base_nodes {
-			t.a.children << flat.NodeId(int(cid) + int(node_shift))
-		} else {
-			t.a.children << cid
+	// New children: bulk-copy the worker block, then relocate references to
+	// worker-local new nodes in place (a per-element push paid a capacity check
+	// and branch per child id).
+	new_children := w.a.children.len - base_children
+	if new_children > 0 {
+		old_len := t.a.children.len
+		unsafe {
+			t.a.children.grow_len(new_children)
+			vmemcpy(&t.a.children[old_len], &w.a.children[base_children],
+				new_children * int(sizeof(flat.NodeId)))
+		}
+		for k in old_len .. t.a.children.len {
+			cid := t.a.children[k]
+			if int(cid) >= base_nodes {
+				t.a.children[k] = flat.NodeId(int(cid) + int(node_shift))
+			}
 		}
 	}
 	// New nodes: relocate children_start that points into the new children block.
@@ -1280,6 +1401,9 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			t.a.nodes[it.fn_idx] = n.with_shifted_children(child_shift)
 		} else {
 			t.a.nodes[it.fn_idx] = n
+		}
+		if it.fn_idx >= 0 && it.fn_idx < t.transformed_fns.len {
+			t.transformed_fns[it.fn_idx] = true
 		}
 	}
 	// Replay the call/fn-value resolutions the worker recorded for its
@@ -1340,18 +1464,53 @@ fn (mut t Transformer) clear_typechecker_node_cache(idx int) {
 	if idx < t.tc.statement_nodes.len {
 		t.tc.statement_nodes[idx] = false
 	}
-	t.tc.sparse_resolved_call_names.delete(idx)
-	t.tc.sparse_resolved_fn_values.delete(idx)
-	t.tc.sparse_expr_type_values.delete(idx)
-	t.tc.sparse_statement_nodes.delete(idx)
+	// The sparse maps are only populated while the checker itself runs in
+	// sparse mode; after the parallel-check merge they are empty on the master.
+	// Deleting from an empty map still hashes the key — and this runs once per
+	// merged node — so guard on emptiness.
+	if t.tc.sparse_resolved_call_names.len > 0 {
+		t.tc.sparse_resolved_call_names.delete(idx)
+	}
+	if t.tc.sparse_resolved_fn_values.len > 0 {
+		t.tc.sparse_resolved_fn_values.delete(idx)
+	}
+	if t.tc.sparse_expr_type_values.len > 0 {
+		t.tc.sparse_expr_type_values.delete(idx)
+	}
+	if t.tc.sparse_statement_nodes.len > 0 {
+		t.tc.sparse_statement_nodes.delete(idx)
+	}
 }
 
 // split_work_items distributes items across `n` buckets using greedy
 // least-loaded-by-cost assignment, so heavy functions are spread evenly. The
 // assignment is deterministic for a given input (required for reproducible builds).
+// Buckets are seeded with a virtual load matching their thread's start delay in
+// the spawn chain (see run_parallel_transform): bucket 0 (the master) starts
+// after one AST clone, worker k starts after k+1 clones plus its own
+// clone-for-successor, and the last worker clones nothing. One `unit`
+// approximates one clone-time in cost terms, so all threads finish together.
 fn split_work_items(items []FnWorkItem, n int) [][]FnWorkItem {
 	mut buckets := [][]FnWorkItem{len: n, init: []FnWorkItem{}}
 	mut loads := []i64{len: n}
+	if n > 1 {
+		mut total := i64(0)
+		for it in items {
+			total += i64(it.cost) + 1
+		}
+		unit := total / i64(n * 16)
+		// The master (bucket 0) also pays for the serial pre-phase warmup, the
+		// first worker clone, and the interleaved merges, and measures slower
+		// per cost unit than the helpers; give it a markedly lighter share.
+		loads[0] = unit * 5
+		for b in 1 .. n {
+			if b == n - 1 {
+				loads[b] = unit * i64(b)
+			} else {
+				loads[b] = unit * i64(b + 1)
+			}
+		}
+	}
 	mut sorted := items.clone()
 	sorted.sort(a.rank > b.rank)
 	for it in sorted {
@@ -1363,6 +1522,14 @@ fn split_work_items(items []FnWorkItem, n int) [][]FnWorkItem {
 		}
 		buckets[best] << it
 		loads[best] += i64(it.cost) + 1
+	}
+	// Each bucket is processed sequentially by one thread: order its items by
+	// AST position, which groups functions of the same module together (the
+	// per-module alias/type-normalization caches are cleared on every module
+	// switch, and rank order interleaves modules almost per item) and walks the
+	// node arrays roughly sequentially.
+	for bi in 0 .. n {
+		buckets[bi].sort(a.fn_idx < b.fn_idx)
 	}
 	return buckets
 }
@@ -1429,7 +1596,8 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, node_limit 
 			scan_module = ''
 		} else if kind_id == 73 {
 			scan_module = node.value
-		} else if kind_id == 61 && !t.fn_decl_has_unresolved_generics(node, scan_module) {
+		} else if kind_id == 61 && !(i < t.transformed_fns.len && t.transformed_fns[i])
+			&& !t.fn_decl_has_unresolved_generics(node, scan_module) {
 			candidates << LateFnCandidate{
 				idx:    i
 				file:   scan_file
@@ -1526,8 +1694,7 @@ fn (mut t Transformer) transform_late_candidate(ci int, mut candidates []LateFnC
 			continue
 		}
 		for call_name in t.generated_fn_body_call_names(flat.NodeId(j)) {
-			t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut
-				queued)
+			t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut queued)
 		}
 	}
 }
@@ -2205,6 +2372,9 @@ fn (mut t Transformer) collect_return_escape_idents(id flat.NodeId, mut names ma
 }
 
 fn (mut t Transformer) transform_fn_body(fn_idx int) {
+	if fn_idx >= 0 && fn_idx < t.transformed_fns.len {
+		t.transformed_fns[fn_idx] = true
+	}
 	fn_node := t.a.nodes[fn_idx]
 	t.cur_fn_name = fn_node.value
 	old_is_generic := t.cur_fn_is_generic

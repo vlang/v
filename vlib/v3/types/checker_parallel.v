@@ -4,14 +4,18 @@ import runtime
 import v3.flat
 
 const min_parallel_check_items = 256
-const max_parallel_check_jobs = 8
+const max_parallel_check_jobs = 10
+// Extra share of the total work (in percent of an even bucket) pre-assigned to
+// the master's bucket; see split_check_items.
+const check_master_bias_pct = i64(60)
 
 struct CheckWorkItem {
-	fn_idx int
-	file   string
-	module string
-	cost   int
-	rank   i64
+	fn_idx   int
+	range_lo int // first node id owned by this fn (fn subtree = [range_lo, fn_idx])
+	file     string
+	module   string
+	cost     int
+	rank     i64
 }
 
 $if !windows {
@@ -36,6 +40,12 @@ $if !windows {
 		w.check_fn_items_serial(*items)
 		return unsafe { nil }
 	}
+
+	fn called_fns_thread(arg voidptr) voidptr {
+		mut w := unsafe { &TypeChecker(arg) }
+		w.collect_selected_file_called_fns()
+		return unsafe { nil }
+	}
 }
 
 // check_semantics_opt runs semantic checks, using worker threads for independent
@@ -58,17 +68,108 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 }
 
 fn (mut tc TypeChecker) check_semantics_parallel() bool {
-	tc.collect_selected_file_called_fns()
-	tc.check_export_attrs()
-	items := tc.collect_parallel_check_items()
-	return tc.run_parallel_check(items)
+	$if windows {
+		tc.check_semantics()
+		return false
+	} $else {
+		// Freeze the warm post-collect type cache as the shared read-only base
+		// for every thread in the region (workers, called-fns collector, and
+		// the master itself via a private overlay).
+		tc.install_type_cache_overlay()
+		// The called-fns closure (ierror-return diagnostic gate) walks thousands
+		// of reachable fn bodies; run it on its own thread across the whole
+		// parallel region. Sites that need the set park pending candidates
+		// (defer_ierror_gating) and the master filters them after joining.
+		mut cf_worker := &TypeChecker(unsafe { nil })
+		mut cf_tid := []C.pthread_t{len: 1}
+		cf_spawned := tc.diagnostic_files.len > 0
+		if cf_spawned {
+			tc.defer_ierror_gating = true
+			cf_worker = tc.fork_for_parallel_check()
+			cf_worker.selected_file_called_fns = map[string]bool{}
+			cf_worker.selected_file_worklist = []string{}
+			// The walk calls enter_file/enter_module, which write file_modules;
+			// the master keeps writing the shared map (export attrs, item
+			// collection) while this thread runs, so the fork gets its own copy.
+			cf_worker.file_modules = tc.file_modules.clone()
+			attr_buf := [64]u8{}
+			attr := unsafe { voidptr(&attr_buf[0]) }
+			C.pthread_attr_init(attr)
+			C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+			C.pthread_create(unsafe { &cf_tid[0] }, attr, called_fns_thread, voidptr(cf_worker))
+			C.pthread_attr_destroy(attr)
+		} else {
+			tc.selected_file_called_fns = map[string]bool{}
+			tc.selected_file_worklist = []string{}
+		}
+		tc.check_export_attrs()
+		items := tc.collect_parallel_check_items()
+		was_parallel := tc.run_parallel_check(items)
+		if cf_spawned {
+			C.pthread_join(cf_tid[0], unsafe { nil })
+			tc.selected_file_called_fns = cf_worker.selected_file_called_fns.move()
+			tc.merge_called_fns_worker(cf_worker)
+			cf_worker.free_parallel_check_worker_cache()
+			tc.filter_pending_ierror_errors()
+			tc.defer_ierror_gating = false
+			tc.sort_parallel_check_errors()
+		}
+		tc.restore_type_cache_base()
+		return was_parallel
+	}
+}
+
+// merge_called_fns_worker replays the collector thread's sparse cache entries
+// into the master with first-writer-loses semantics: the collector ran
+// logically FIRST (before const/decl pre-checks and the fn body checks), so
+// any slot already filled by those later phases keeps its value, exactly as
+// their direct writes would have overwritten the collector's in the old
+// serial order. Slots only the collector touched (e.g. top-level script
+// statements) take its value.
+fn (mut tc TypeChecker) merge_called_fns_worker(w &TypeChecker) {
+	tc.errors << w.errors
+	for idx, name in w.sparse_resolved_call_names {
+		if !tc.resolved_call_set[idx] {
+			tc.resolved_call_names[idx] = name
+			tc.resolved_call_set[idx] = true
+		}
+	}
+	for idx, name in w.sparse_resolved_fn_values {
+		if !tc.resolved_fn_value_set[idx] {
+			tc.resolved_fn_value_names[idx] = name
+			tc.resolved_fn_value_set[idx] = true
+		}
+	}
+	for idx, _ in w.sparse_statement_nodes {
+		tc.statement_nodes[idx] = true
+	}
+	for idx, typ in w.sparse_expr_type_values {
+		if !tc.expr_type_set[idx] {
+			tc.expr_type_values[idx] = typ
+			tc.expr_type_set[idx] = true
+		}
+	}
+}
+
+fn (mut tc TypeChecker) filter_pending_ierror_errors() {
+	for p in tc.pending_ierror_errors {
+		if p.fn_qname in tc.selected_file_called_fns {
+			tc.errors << p.err
+		}
+	}
+	tc.pending_ierror_errors = []PendingIerrorError{}
 }
 
 fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 	tc.cur_module = ''
 	tc.cur_file = ''
 	mut items := []CheckWorkItem{}
-	for i, node in tc.a.nodes {
+	// Fn subtrees are contiguous: the fn_decl at index i owns exactly the node
+	// range (previous top-level node, i], so the span doubles as the cost
+	// estimate (replacing a full subtree walk per fn).
+	mut prev_tl := -1
+	for i in tc.top_level_idx {
+		node := tc.a.nodes[i]
 		match node.kind {
 			.file {
 				tc.enter_file(node.value)
@@ -91,13 +192,14 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 			}
 			.fn_decl {
 				tc.check_decl_type_strings(flat.NodeId(i), node)
-				cost := tc.check_fn_subtree_cost(i)
+				cost := i - prev_tl
 				items << CheckWorkItem{
-					fn_idx: i
-					file:   tc.cur_file
-					module: tc.cur_module
-					cost:   cost
-					rank:   i64(cost) * 1_000_000_000 - i64(i)
+					fn_idx:   i
+					range_lo: prev_tl + 1
+					file:     tc.cur_file
+					module:   tc.cur_module
+					cost:     cost
+					rank:     i64(cost) * 1_000_000_000 - i64(i)
 				}
 			}
 			.c_fn_decl {
@@ -107,6 +209,7 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 			}
 			else {}
 		}
+		prev_tl = i
 	}
 	return items
 }
@@ -147,10 +250,18 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 				unsafe { voidptr(&args[ci]) })
 		}
 		C.pthread_attr_destroy(attr)
+		// The master checks its own chunk under the same range discipline as the
+		// workers: in-range cache writes go straight into the shared arrays (the
+		// master owns those slots), out-of-range ones into its sparse maps, which
+		// are replayed first after join so that worker merges overwrite them in
+		// the same order the old serial flow did.
+		tc.parallel_check_sparse = true
 		tc.check_fn_items_serial(chunks[0])
 		for ci in 0 .. thread_count {
 			C.pthread_join(thread_ids[ci], unsafe { nil })
 		}
+		tc.merge_own_sparse_caches()
+		tc.parallel_check_sparse = false
 		for ci in 0 .. thread_count {
 			mut w := unsafe { &TypeChecker(workers[ci]) }
 			tc.merge_parallel_check_worker(w)
@@ -213,6 +324,18 @@ fn check_job_count(n_runtime_jobs int, n_items int) int {
 fn split_check_items(items []CheckWorkItem, n int) [][]CheckWorkItem {
 	mut buckets := [][]CheckWorkItem{len: n, init: []CheckWorkItem{}}
 	mut loads := []i64{len: n}
+	if n > 1 {
+		// The master (bucket 0) runs on a busy performance core while several
+		// workers inevitably land on efficiency cores (plus the called-fns
+		// collector occupying another); measured per-unit it finishes its even
+		// share early and idles in pthread_join. Give it a proportionally
+		// heavier share by starting it with negative load.
+		mut total := i64(0)
+		for it in items {
+			total += i64(it.cost) + 1
+		}
+		loads[0] = -total * check_master_bias_pct / i64(100 * n)
+	}
 	mut sorted := items.clone()
 	sorted.sort(a.rank > b.rank)
 	for it in sorted {
@@ -231,32 +354,42 @@ fn split_check_items(items []CheckWorkItem, n int) [][]CheckWorkItem {
 	return buckets
 }
 
-fn (tc &TypeChecker) check_fn_subtree_cost(fn_idx int) int {
-	mut count := 0
-	mut stack := [flat.NodeId(fn_idx)]
-	for stack.len > 0 {
-		id := stack.pop()
-		idx := int(id)
-		if idx < 0 || idx >= tc.a.nodes.len {
-			continue
-		}
-		node := tc.a.nodes[idx]
-		count++
-		for ci in 0 .. node.children_count {
-			child_id := tc.a.children[node.children_start + ci]
-			if int(child_id) >= 0 {
-				stack << child_id
-			}
-		}
+// merge_own_sparse_caches replays the master's out-of-range cache writes
+// (parked in its sparse maps while it checked its own chunk under the range
+// discipline) into the shared node-indexed arrays, restoring the state the old
+// serial flow produced with direct writes.
+fn (mut tc TypeChecker) merge_own_sparse_caches() {
+	for idx, name in tc.sparse_resolved_call_names {
+		tc.resolved_call_names[idx] = name
+		tc.resolved_call_set[idx] = true
 	}
-	return count
+	for idx, name in tc.sparse_resolved_fn_values {
+		tc.resolved_fn_value_names[idx] = name
+		tc.resolved_fn_value_set[idx] = true
+	}
+	for idx, _ in tc.sparse_statement_nodes {
+		tc.statement_nodes[idx] = true
+	}
+	for idx, typ in tc.sparse_expr_type_values {
+		tc.expr_type_values[idx] = typ
+		tc.expr_type_set[idx] = true
+	}
+	tc.sparse_resolved_call_names.clear()
+	tc.sparse_resolved_fn_values.clear()
+	tc.sparse_statement_nodes.clear()
+	tc.sparse_expr_type_values.clear()
+	tc.sparse_checking_nodes.clear()
 }
 
 fn (mut tc TypeChecker) check_fn_items_serial(items []CheckWorkItem) {
 	for it in items {
 		node := tc.a.nodes[it.fn_idx]
+		tc.check_range_lo = it.range_lo
+		tc.check_range_hi = it.fn_idx
 		tc.check_fn_decl_semantics(it.fn_idx, node, it.file, it.module)
 	}
+	tc.check_range_lo = -1
+	tc.check_range_hi = -1
 }
 
 fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file string, module_name string) {
@@ -302,6 +435,79 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
 }
 
+// prewarm_shared_type_cache forces the lazily-built type_cache indexes that
+// fn-body checking commonly needs, so freezing the cache as the shared base
+// hands every fork a complete index instead of each rebuilding its own.
+fn (mut tc TypeChecker) prewarm_shared_type_cache() {
+	if isnil(tc.type_cache) {
+		return
+	}
+	_ = tc.local_fn_decl_exists('__v3_prewarm__')
+	_ = tc.unique_qualified_type_name('__V3Prewarm__') or { '' }
+	_ = tc.source_struct_has_non_builtin_error_embed('__V3Prewarm__', '', '')
+}
+
+// install_type_cache_overlay freezes the master's warm type cache as the
+// shared read-only base for the parallel-check region and gives the master a
+// private overlay, so its own writes cannot race worker reads of the base.
+fn (mut tc TypeChecker) install_type_cache_overlay() {
+	if isnil(tc.type_cache) {
+		return
+	}
+	tc.prewarm_shared_type_cache()
+	tc.type_cache = &TypeCache{
+		base:          tc.type_cache
+		parse_enabled: tc.type_cache.parse_enabled
+	}
+}
+
+// restore_type_cache_base folds the master's private overlay back into the
+// frozen base once every thread has joined, and reattaches the base as the
+// live cache (post-check phases mutate and invalidate it in place).
+fn (mut tc TypeChecker) restore_type_cache_base() {
+	if isnil(tc.type_cache) {
+		return
+	}
+	mut overlay := tc.type_cache
+	if isnil(overlay.base) {
+		return
+	}
+	mut base := overlay.base
+	for k, v in overlay.parse_entries {
+		base.parse_entries[k] = v
+	}
+	for k, v in overlay.c_entries {
+		base.c_entries[k] = v
+	}
+	for k, v in overlay.struct_field_entries {
+		base.struct_field_entries[k] = v
+	}
+	for k, v in overlay.struct_field_misses {
+		base.struct_field_misses[k] = v
+	}
+	for k, v in overlay.ierror_compat_entries {
+		base.ierror_compat_entries[k] = v
+	}
+	if overlay.source_error_embed_indexed && !base.source_error_embed_indexed {
+		base.source_error_embed_entries = overlay.source_error_embed_entries.move()
+		base.source_error_embed_indexed = true
+	}
+	if overlay.ierror_impl_names_set && !base.ierror_impl_names_set {
+		base.ierror_impl_names = overlay.ierror_impl_names
+		base.ierror_impl_names_set = true
+	}
+	if overlay.short_type_name_index_built && !base.short_type_name_index_built {
+		base.short_type_name_index = overlay.short_type_name_index.move()
+		base.short_type_name_index_built = true
+	}
+	if overlay.local_fn_decl_indexed_len > base.local_fn_decl_indexed_len {
+		base.local_fn_decl_index = overlay.local_fn_decl_index.move()
+		base.local_fn_decl_indexed_len = overlay.local_fn_decl_indexed_len
+		base.local_fn_decl_last_module = overlay.local_fn_decl_last_module
+	}
+	tc.type_cache = base
+}
+
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	mut w := *tc
 	w.file_scope = new_scope(tc.file_scope)
@@ -309,15 +515,17 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.scope_pool = []&Scope{}
 	w.scope_pool_index = 0
 	w.errors = []TypeError{}
-	w.resolved_call_names = []string{}
-	w.resolved_call_set = []bool{}
-	w.resolved_fn_value_names = []string{}
-	w.resolved_fn_value_set = []bool{}
-	w.statement_nodes = []bool{}
-	w.expr_type_values = []Type{}
-	w.expr_type_set = []bool{}
-	w.checking_nodes = []bool{}
+	w.pending_ierror_errors = []PendingIerrorError{}
+	// The node-indexed cache arrays are intentionally SHARED with the master
+	// (the fork copies the slice headers): each work item owns the disjoint
+	// node id range [range_lo, fn_idx], and while parallel_check_sparse is set
+	// a checker touches the shared arrays only for ids inside its current
+	// item's range — no other thread reads or writes those slots. Everything
+	// out of range goes through the private sparse maps below and is merged
+	// after join.
 	w.parallel_check_sparse = true
+	w.check_range_lo = -1
+	w.check_range_hi = -1
 	w.sparse_resolved_call_names = map[int]string{}
 	w.sparse_resolved_fn_values = map[int]string{}
 	w.sparse_statement_nodes = map[int]bool{}
@@ -334,6 +542,13 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.cur_fn_ret_type = Type(void_)
 	w.cur_fn_node_id = -1
 	w.type_cache = &TypeCache{
+		// The master's frozen pre-region cache (the overlay's base) is shared
+		// read-only across all forks; each fork writes to its own maps.
+		base:                       if tc.type_cache != unsafe { nil } {
+			tc.type_cache.base
+		} else {
+			&TypeCache(unsafe { nil })
+		}
 		parse_enabled:              if tc.type_cache != unsafe { nil } {
 			tc.type_cache.parse_enabled
 		} else {
@@ -351,6 +566,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 
 fn (mut tc TypeChecker) merge_parallel_check_worker(w &TypeChecker) {
 	tc.errors << w.errors
+	tc.pending_ierror_errors << w.pending_ierror_errors
 	for idx, name in w.sparse_resolved_call_names {
 		tc.resolved_call_names[idx] = name
 		tc.resolved_call_set[idx] = true

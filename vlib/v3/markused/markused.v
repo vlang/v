@@ -32,6 +32,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// Reverse index: short name (after last '.') -> list of full qualified names
 	mut suffix_map := map[string][]string{}
 
+	// Every fn_decl/c_fn_decl node (and its module), in AST order: the worklist
+	// for the parallel body-call precollection below.
+	mut body_ids := []int{cap: 8192}
+	mut body_modules := []string{cap: 8192}
+
 	mut fn_count := 0
 	mut fn_with_dot := 0
 	mut contains2_total := 0
@@ -82,6 +87,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			continue
 		}
 		if node.kind == .fn_decl || node.kind == .c_fn_decl {
+			body_ids << node_idx
+			body_modules << cur_module
 			has_dot := node.value.contains('.')
 			can_suffix_match := !markused_fn_decl_is_generic_template(node, a)
 			if trace_markused {
@@ -215,14 +222,24 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut not_in_cg := 0
 	mut total_callees := 0
 	collector := CallCollector{
-		a:              a
-		tc:             tc
-		fn_decls:       fn_decls
-		fn_suffixes:    fn_name_suffixes
-		struct_decls:   struct_decls
-		const_decls:    const_decls
-		const_suffixes: const_name_suffixes
+		a:                a
+		tc:               tc
+		fn_decls:         fn_decls
+		fn_suffixes:      fn_name_suffixes
+		struct_decls:     struct_decls
+		const_decls:      const_decls
+		const_suffixes:   const_name_suffixes
+		iface_param_gate: markused_interface_param_gate(tc)
 	}
+	// Precollect every body's call/initializer-ref lists up front (across
+	// threads when available): the BFS below then only does the cheap
+	// name-resolution work. Collecting inline used to serialize ~80% of
+	// markused's time inside the BFS loop.
+	mut body_index := map[int]int{}
+	for i, id in body_ids {
+		body_index[id] = i
+	}
+	body_results := precollect_body_calls(collector, body_ids, body_modules, imports)
 	has_entry_main := markused_has_entry_main(a)
 	enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
 	enqueue_function_value_selectors(a, collector, fn_decls, has_entry_main, mut used, mut queue)
@@ -244,6 +261,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut calls := []string{cap: 128}
 	mut initializer_calls := []string{cap: 32}
 	mut initializer_refs := []string{cap: 32}
+	// Global per-callee dedup for the body-independent parts of callee
+	// processing. The same callee name (`println`, `array.get`, ...) appears in
+	// thousands of bodies; its decl-alias expansion depends only on `fn_decls`
+	// (fixed during the BFS) and the interface-dispatch tail only on
+	// (module, callee), so each needs to run once. enqueue() is idempotent, so
+	// skipping a repeat performs no fewer markings.
+	mut safe_alias_done := map[string]bool{}
+	mut iface_tail_done := map[string]bool{}
 	mut qi := 0
 	for qi < queue.len {
 		name := queue[qi]
@@ -291,16 +316,24 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 			}
 			calls.clear()
-			node := a.node(fn_info.node_id)
-			receiver_name, receiver_struct := receiver_info(a, node)
-			collector.collect_calls(node, fn_info.module, imports, receiver_name, receiver_struct, mut
-				calls)
+			initializer_refs.clear()
+			if body_i := body_index[node_key] {
+				calls << body_results[body_i].calls
+				initializer_refs << body_results[body_i].refs
+			} else {
+				// Not part of the precollected decl set (should not happen; the BFS
+				// resolves names through the same decl scan) — collect inline.
+				node := a.node(fn_info.node_id)
+				receiver_name, receiver_struct := receiver_info(a, node)
+				collector.collect_calls(node, fn_info.module, imports, receiver_name,
+					receiver_struct, mut calls)
+				collector.collect_initializer_refs(node, fn_info.module, imports, mut
+					initializer_refs)
+			}
 			mut call_set := map[string]bool{}
 			for call in calls {
 				call_set[call] = true
 			}
-			initializer_refs.clear()
-			collector.collect_initializer_refs(node, fn_info.module, imports, mut initializer_refs)
 			for initializer_ref in initializer_refs {
 				enqueue_initializer_ref_calls(a, collector, imports, fn_decls, initializer_ref, mut
 					processed_initializer_refs, mut initializer_calls, mut used, mut queue)
@@ -322,7 +355,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 							eprintln('main: all_fns hit: "${callee}"')
 						}
 					}
-					add_safe_decl_alias(callee, callee_info, a, mut used, mut queue)
+					if !safe_alias_done[callee] {
+						safe_alias_done[callee] = true
+						add_safe_decl_alias(callee, callee_info, a, mut used, mut queue)
+					}
 				} else if callee in tc.fn_ret_types {
 					found_direct = true
 					if enqueue(callee, mut used, mut queue) {
@@ -353,31 +389,35 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 						}
 					}
 				}
-				mut iface_callee := callee
-				if normalized := interface_dispatch_dotted_name(callee, tc) {
-					iface_callee = normalized
-				}
-				if iface_callee.contains('.') {
-					recv := iface_callee.all_before_last('.')
-					method := iface_callee.all_after_last('.')
-					ensure_iface_impls(recv, fn_info.module, tc, mut iface_impls, mut
-						checked_iface_impls)
-					if iface_name := interface_name_for_receiver(recv, fn_info.module, tc) {
-						// Keep the dispatch stub (`Iface__method`) the transform will
-						// call; the call site may name the interface through an alias
-						// (`Expr.name` for `type Expr = Node`), which cgen's used-fn
-						// filter does not resolve back to the interface key.
-						enqueue('${iface_name}.${method}', mut used, mut queue)
+				iface_tail_key := '${fn_info.module}\x01${callee}'
+				if !iface_tail_done[iface_tail_key] {
+					iface_tail_done[iface_tail_key] = true
+					mut iface_callee := callee
+					if normalized := interface_dispatch_dotted_name(callee, tc) {
+						iface_callee = normalized
 					}
-					if impls := iface_impls[recv] {
-						for impl in impls {
-							impl_method := tc.concrete_method_signature_key(impl, method) or {
-								'${impl}.${method}'
-							}
-							enqueue(impl_method, mut used, mut queue)
-							short_impl := '${impl_method.all_before_last('.').all_after_last('.')}.${method}'
-							if short_impl != impl_method {
-								enqueue(short_impl, mut used, mut queue)
+					if iface_callee.contains('.') {
+						recv := iface_callee.all_before_last('.')
+						method := iface_callee.all_after_last('.')
+						ensure_iface_impls(recv, fn_info.module, tc, mut iface_impls, mut
+							checked_iface_impls)
+						if iface_name := interface_name_for_receiver(recv, fn_info.module, tc) {
+							// Keep the dispatch stub (`Iface__method`) the transform will
+							// call; the call site may name the interface through an alias
+							// (`Expr.name` for `type Expr = Node`), which cgen's used-fn
+							// filter does not resolve back to the interface key.
+							enqueue('${iface_name}.${method}', mut used, mut queue)
+						}
+						if impls := iface_impls[recv] {
+							for impl in impls {
+								impl_method := tc.concrete_method_signature_key(impl, method) or {
+									'${impl}.${method}'
+								}
+								enqueue(impl_method, mut used, mut queue)
+								short_impl := '${impl_method.all_before_last('.').all_after_last('.')}.${method}'
+								if short_impl != impl_method {
+									enqueue(short_impl, mut used, mut queue)
+								}
 							}
 						}
 					}
@@ -998,6 +1038,58 @@ struct CallCollector {
 	struct_decls   map[string]StructDeclInfo
 	const_decls    map[string]ConstDeclInfo
 	const_suffixes map[string]bool
+	// Gate set for collect_interface_boxed_generic_methods: every fn_param_types
+	// key with at least one interface-typed parameter, plus its post-'.' and
+	// post-'__' short spellings (see markused_interface_param_gate). Lets the
+	// per-call-node scan bail out with a couple of map probes instead of building
+	// signature-candidate spellings (c_name/qualify allocations) for every call.
+	iface_param_gate map[string]bool
+}
+
+// markused_interface_param_gate builds CallCollector.iface_param_gate. Any raw
+// callee spelling whose expanded signature candidates could hit an
+// interface-param signature is covered by the key itself, its post-dot short
+// name, or its post-'__' short name (candidate expansion only prepends module
+// qualifiers or applies c_name, both of which preserve the final segment).
+fn markused_interface_param_gate(tc &types.TypeChecker) map[string]bool {
+	mut gate := map[string]bool{}
+	for name, params in tc.fn_param_types {
+		mut has_iface := false
+		for p in params {
+			if types.unwrap_pointer(p) is types.Interface {
+				has_iface = true
+				break
+			}
+		}
+		if !has_iface {
+			continue
+		}
+		gate[name] = true
+		short_dot := name.all_after_last('.')
+		if short_dot != name {
+			gate[short_dot] = true
+		}
+		if name.contains('__') {
+			short_us := name.all_after_last('__')
+			if short_us != name {
+				gate[short_us] = true
+			}
+		}
+	}
+	return gate
+}
+
+// may_target_interface_params reports whether `name` (a raw callee spelling)
+// could expand to a signature in iface_param_gate.
+fn (c &CallCollector) may_target_interface_params(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	if name in c.iface_param_gate {
+		return true
+	}
+	short := name.all_after_last('.')
+	return short != name && short in c.iface_param_gate
 }
 
 // enqueue_auto_roots supports enqueue auto roots handling for markused.
@@ -2039,6 +2131,12 @@ fn (c &CallCollector) collect_interface_boxed_generic_methods(call &flat.Node, r
 	if call.children_count < 2 {
 		return
 	}
+	// Cheap pre-check on the raw callee spellings before building the full
+	// candidate list: this pass only matters for the few signatures that take
+	// an interface-typed parameter.
+	if !c.call_may_target_interface_params(call, resolved_call) {
+		return
+	}
 	signatures := c.call_signature_candidates(call, resolved_call, cur_module, imports,
 		local_values)
 	if signatures.len == 0 {
@@ -2063,6 +2161,23 @@ fn (c &CallCollector) collect_interface_boxed_generic_methods(call &flat.Node, r
 			c.add_interface_boxed_generic_methods(expected.name(), actual_name, mut calls)
 		}
 	}
+}
+
+// call_may_target_interface_params mirrors call_signature_candidates' raw name
+// extraction (resolved call name, ident callee, selector method name) against
+// the precomputed interface-param gate.
+fn (c &CallCollector) call_may_target_interface_params(call &flat.Node, resolved_call string) bool {
+	if c.may_target_interface_params(resolved_call) {
+		return true
+	}
+	if call.children_count == 0 {
+		return false
+	}
+	callee := c.a.child_node(call, 0)
+	if callee.kind in [.ident, .selector] {
+		return c.may_target_interface_params(callee.value)
+	}
+	return false
 }
 
 fn (c &CallCollector) call_signature_candidates(call &flat.Node, resolved_call string, cur_module string, imports map[string]string, local_values map[string]bool) []string {
@@ -2145,16 +2260,81 @@ fn (c &CallCollector) add_interface_boxed_generic_methods(iface_name string, act
 	}
 }
 
+// BodyCalls holds the precollected call and initializer-ref names of one
+// fn_decl body (see precollect_body_calls).
+struct BodyCalls {
+mut:
+	calls []string
+	refs  []string
+}
+
+// collect_body runs the full per-body analysis (local values, calls,
+// initializer refs) for one fn_decl node. It only reads shared state — the
+// checker memoizes exclusively into its private type_cache — so it can run on
+// worker threads against a forked TypeChecker.
+fn (c &CallCollector) collect_body(node &flat.Node, cur_module string, imports map[string]string) BodyCalls {
+	receiver_name, receiver_struct := receiver_info(c.a, node)
+	local_values, local_types := c.local_value_info(node, cur_module, imports)
+	needs_visibility := c.local_values_need_visibility(local_values, cur_module, imports)
+	visible_local_idents := if needs_visibility {
+		markused_visible_local_idents(c.a, node, local_values)
+	} else {
+		map[int]bool{}
+	}
+	mut result := BodyCalls{
+		calls: []string{cap: 32}
+		refs:  []string{cap: 8}
+	}
+	c.collect_calls_with_locals(node, cur_module, imports, receiver_name, receiver_struct,
+		local_values, local_types, visible_local_idents, mut result.calls)
+	c.collect_initializer_refs_with_locals(node, cur_module, imports, local_values,
+		visible_local_idents, mut result.refs)
+	return result
+}
+
+// collect_bodies_range fills results[start..end] for the given body list; the
+// per-worker unit of the parallel precollection (also the serial fallback).
+fn (c &CallCollector) collect_bodies_range(body_ids []int, body_modules []string, imports map[string]string, start int, end int, mut results []BodyCalls) {
+	for i in start .. end {
+		node := c.a.node(flat.NodeId(body_ids[i]))
+		results[i] = c.collect_body(node, body_modules[i], imports)
+	}
+}
+
+// fork_with_tc returns a copy of this collector bound to a worker's forked
+// TypeChecker. The lookup maps are shared read-only.
+fn (c &CallCollector) fork_with_tc(wtc &types.TypeChecker) CallCollector {
+	return CallCollector{
+		a:                c.a
+		tc:               wtc
+		fn_decls:         c.fn_decls
+		fn_suffixes:      c.fn_suffixes
+		struct_decls:     c.struct_decls
+		const_decls:      c.const_decls
+		const_suffixes:   c.const_suffixes
+		iface_param_gate: c.iface_param_gate
+	}
+}
+
 // collect_calls updates collect calls state for markused.
 fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports map[string]string, receiver_name string, receiver_struct string, mut calls []string) {
-	if cur_module == 'ast' && node.value == 'TypeSymbol.find_method_with_generic_parent' {
-		c.add_typed_receiver_method_name('ast.Table.find_structured_receiver_method', mut calls)
-	}
 	local_values, local_types := c.local_value_info(node, cur_module, imports)
 	visible_local_idents := if c.local_values_need_visibility(local_values, cur_module, imports) {
 		markused_visible_local_idents(c.a, node, local_values)
 	} else {
 		map[int]bool{}
+	}
+	c.collect_calls_with_locals(node, cur_module, imports, receiver_name, receiver_struct,
+		local_values, local_types, visible_local_idents, mut calls)
+}
+
+// collect_calls_with_locals is collect_calls with the per-body local-value
+// analysis precomputed by the caller, so the BFS can share one analysis between
+// collect_calls and collect_initializer_refs instead of walking each function
+// subtree twice more.
+fn (c &CallCollector) collect_calls_with_locals(node &flat.Node, cur_module string, imports map[string]string, receiver_name string, receiver_struct string, local_values map[string]bool, local_types map[string]string, visible_local_idents map[int]bool, mut calls []string) {
+	if cur_module == 'ast' && node.value == 'TypeSymbol.find_method_with_generic_parent' {
+		c.add_typed_receiver_method_name('ast.Table.find_structured_receiver_method', mut calls)
 	}
 	mut stack := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
@@ -2464,6 +2644,14 @@ fn (c &CallCollector) collect_initializer_refs(node &flat.Node, cur_module strin
 	} else {
 		map[int]bool{}
 	}
+	c.collect_initializer_refs_with_locals(node, cur_module, imports, local_values,
+		visible_local_idents, mut refs)
+}
+
+// collect_initializer_refs_with_locals is collect_initializer_refs with the
+// per-body local-value analysis precomputed by the caller (see
+// collect_calls_with_locals).
+fn (c &CallCollector) collect_initializer_refs_with_locals(node &flat.Node, cur_module string, imports map[string]string, local_values map[string]bool, visible_local_idents map[int]bool, mut refs []string) {
 	mut stack := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_id := c.a.child(node, i)
