@@ -91,11 +91,11 @@ mut:
 	in_const_init                bool
 	in_return_expr               bool
 	in_selector_base             bool
-	alias_cache                  &AliasCache              = unsafe { nil }
-	sum_cache                    &AliasCache              = unsafe { nil }
-	generic_unresolved_cache     &GenericUnresolvedCache  = unsafe { nil }
-	struct_field_type_cache      &LookupCache             = unsafe { nil }
-	variant_short_name_cache     &LookupCache = unsafe { nil }
+	alias_cache                  &AliasCache             = unsafe { nil }
+	sum_cache                    &AliasCache             = unsafe { nil }
+	generic_unresolved_cache     &GenericUnresolvedCache = unsafe { nil }
+	struct_field_type_cache      &LookupCache            = unsafe { nil }
+	variant_short_name_cache     &LookupCache            = unsafe { nil }
 	used_fns                     map[string]bool
 	interface_boxed_types        map[string]bool
 	interface_boxed_types_done   bool
@@ -7283,7 +7283,8 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 				}
 				wrapped := t.wrap_sum_value(cast_arg_id, target_sum)
 				addr := t.make_prefix(.amp, wrapped)
-				t.set_node_typ(int(addr), if node.typ.len > 0 { node.typ } else { '&${target_sum}' })
+				t.set_node_typ(int(addr),
+					if node.typ.len > 0 { node.typ } else { '&${target_sum}' })
 				return addr
 			}
 			// `&InterfaceType(x)` (e.g. `&PRNG(rng)`): box the concrete into a

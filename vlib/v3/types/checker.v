@@ -321,18 +321,18 @@ pub mut:
 	// node-indexed arrays (this checker is the range's only writer) and only
 	// out-of-range ids (consts, other decls' nodes) go through the private
 	// sparse maps that are merged after join.
-	check_range_lo                  int = -1
-	check_range_hi                  int = -1
-	sparse_resolved_call_names      map[int]string
-	sparse_resolved_fn_values       map[int]string
-	sparse_statement_nodes          map[int]bool
-	sparse_expr_type_values         map[int]Type
-	sparse_checking_nodes           map[int]bool
-	diagnose_unknown_calls          bool
-	reject_unlowered_map_mutation   bool
-	reject_unsupported_generics     bool
-	diagnostic_files                map[string]bool
-	selected_file_called_fns        map[string]bool
+	check_range_lo                int = -1
+	check_range_hi                int = -1
+	sparse_resolved_call_names    map[int]string
+	sparse_resolved_fn_values     map[int]string
+	sparse_statement_nodes        map[int]bool
+	sparse_expr_type_values       map[int]Type
+	sparse_checking_nodes         map[int]bool
+	diagnose_unknown_calls        bool
+	reject_unlowered_map_mutation bool
+	reject_unsupported_generics   bool
+	diagnostic_files              map[string]bool
+	selected_file_called_fns      map[string]bool
 	// Names newly inserted into selected_file_called_fns and not yet chased by
 	// the transitive closure in collect_selected_file_called_fns_transitively.
 	selected_file_worklist []string
@@ -352,10 +352,10 @@ pub mut:
 	// records the node count the index covers.
 	top_level_idx           []int
 	top_level_idx_nodes_len int
-	cur_fn_ret_type                 Type = Type(void_)
-	smartcasts                      map[string]Type
-	ownership                       &OwnershipState = unsafe { nil }
-	selfhost                        bool
+	cur_fn_ret_type         Type = Type(void_)
+	smartcasts              map[string]Type
+	ownership               &OwnershipState = unsafe { nil }
+	selfhost                bool
 	// fork_overlay is non-nil only on parallel-transform worker forks; see
 	// TransformForkOverlay and fork_for_parallel_transform.
 	fork_overlay &TransformForkOverlay = unsafe { nil }
@@ -419,29 +419,29 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		// reset_node_caches (allocating them here too paid for everything
 		// twice), and extend_node_caches grows them on demand for any checker
 		// used without a collect() call.
-		resolved_call_names:                []string{}
-		resolved_call_set:                  []bool{}
-		resolved_fn_value_names:            []string{}
-		resolved_fn_value_set:              []bool{}
-		statement_nodes:                    []bool{}
-		method_values_by_fn:                map[int][]string{}
-		method_value_locals:                map[string]bool{}
-		method_value_local_depth:           map[string]int{}
-		cur_fn_mut_param_base_types:        map[string]Type{}
-		cur_fn_mut_param_binding_owners:    map[string]ScopeBindingOwner{}
-		cur_fn_mut_local_binding_owners:    map[string]ScopeBindingOwner{}
-		expr_type_values:                   []Type{}
-		expr_type_set:                      []bool{}
-		checking_nodes:                     []bool{}
-		sparse_resolved_call_names:         map[int]string{}
-		sparse_resolved_fn_values:          map[int]string{}
-		sparse_statement_nodes:             map[int]bool{}
-		sparse_expr_type_values:            map[int]Type{}
-		sparse_checking_nodes:              map[int]bool{}
-		diagnostic_files:                   map[string]bool{}
-		selected_file_called_fns:           map[string]bool{}
-		smartcasts:                         map[string]Type{}
-		type_cache:                         &TypeCache{
+		resolved_call_names:             []string{}
+		resolved_call_set:               []bool{}
+		resolved_fn_value_names:         []string{}
+		resolved_fn_value_set:           []bool{}
+		statement_nodes:                 []bool{}
+		method_values_by_fn:             map[int][]string{}
+		method_value_locals:             map[string]bool{}
+		method_value_local_depth:        map[string]int{}
+		cur_fn_mut_param_base_types:     map[string]Type{}
+		cur_fn_mut_param_binding_owners: map[string]ScopeBindingOwner{}
+		cur_fn_mut_local_binding_owners: map[string]ScopeBindingOwner{}
+		expr_type_values:                []Type{}
+		expr_type_set:                   []bool{}
+		checking_nodes:                  []bool{}
+		sparse_resolved_call_names:      map[int]string{}
+		sparse_resolved_fn_values:       map[int]string{}
+		sparse_statement_nodes:          map[int]bool{}
+		sparse_expr_type_values:         map[int]Type{}
+		sparse_checking_nodes:           map[int]bool{}
+		diagnostic_files:                map[string]bool{}
+		selected_file_called_fns:        map[string]bool{}
+		smartcasts:                      map[string]Type{}
+		type_cache:                      &TypeCache{
 			parse_entries:              map[string]Type{}
 			c_entries:                  map[string]string{}
 			struct_field_entries:       map[string]Type{}
@@ -6492,7 +6492,8 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			tc.check_node(child_id)
 		}
 		if bad_type := tc.invalid_ierror_return_expr_type_name(child_id, expected) {
-			tc.record_invalid_ierror_return_error(id, 'cannot return `${bad_type}` as `${Type(expected).name()}`')
+			tc.record_invalid_ierror_return_error(id,
+				'cannot return `${bad_type}` as `${Type(expected).name()}`')
 			return
 		}
 		actual := tc.resolve_expr(child_id, expected)
@@ -6595,7 +6596,8 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	}
 	if expected is ResultType {
 		if bad_type := tc.invalid_ierror_return_expr_type_name(child_id, expected) {
-			tc.record_invalid_ierror_return_error(id, 'cannot return `${bad_type}` as `${Type(expected).name()}`')
+			tc.record_invalid_ierror_return_error(id,
+				'cannot return `${bad_type}` as `${Type(expected).name()}`')
 			return
 		}
 	}

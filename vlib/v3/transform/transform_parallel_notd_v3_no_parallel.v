@@ -205,7 +205,6 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 	}
 }
 
-
 // shared_transform_job_count caps the shared-base worker count: no clones, so
 // only core count and item count matter.
 fn shared_transform_job_count(n_runtime_jobs int, n_items int) int {
@@ -303,8 +302,8 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		C.pthread_attr_init(attr)
 		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
 		for ci in 0 .. thread_count {
-			view := shared_region_view(t.a, node_starts[ci + 1], node_starts[ci + 2],
-				child_starts[ci + 1], child_starts[ci + 2])
+			view := shared_region_view(t.a, node_starts[ci + 1], node_starts[ci + 2], child_starts[
+				ci + 1], child_starts[ci + 2])
 			wtc := t.tc.fork_for_parallel_transform(view)
 			mut ww := t.fork_worker(view, wtc)
 			ww.defer_oor_writes = false
@@ -312,7 +311,8 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 				worker:    voidptr(ww)
 				items_ptr: unsafe { voidptr(&chunks[ci + 1]) }
 			}
-			C.pthread_create(unsafe { &thread_ids[ci] }, attr, shared_chunk_thread, unsafe { voidptr(&args[ci]) })
+			C.pthread_create(unsafe { &thread_ids[ci] }, attr, shared_chunk_thread,
+				unsafe { voidptr(&args[ci]) })
 		}
 		C.pthread_attr_destroy(attr)
 		// The master takes region 0, which is [base, node_starts[1]) — exactly

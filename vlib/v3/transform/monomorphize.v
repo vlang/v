@@ -1810,8 +1810,8 @@ fn (mut t Transformer) specialize_cloned_fn_signature(clone_id flat.NodeId, decl
 		return
 	}
 	params := t.generic_fn_param_names(decl.node, decl.module)
-	t.set_node_typ(int(clone_id), t.specialized_signature_type_text(decl, decl.node.typ,
-		args, params))
+	t.set_node_typ(int(clone_id), t.specialized_signature_type_text(decl, decl.node.typ, args,
+		params))
 	t.set_node_generic_params(int(clone_id), []string{})
 	mut dst_params := []flat.NodeId{}
 	clone := t.a.nodes[int(clone_id)]

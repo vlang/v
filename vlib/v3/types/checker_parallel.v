@@ -209,6 +209,7 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 			}
 			else {}
 		}
+
 		prev_tl = i
 	}
 	return items
