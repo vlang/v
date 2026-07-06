@@ -1074,12 +1074,7 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 		rhs = t.make_prefix(.mul, rhs)
 		t.set_node_typ(int(rhs), rhs_type)
 	}
-	tag_eq := t.make_infix(.eq, t.make_sum_tag_selector(lhs, .dot),
-		t.make_sum_tag_selector(rhs, .dot))
-	cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
-		t.make_sizeof_type(sum_type)), 'int')
-	value_eq := t.make_infix(.eq, cmp, t.make_int_literal(0))
-	eq := t.make_infix(.logical_and, tag_eq, value_eq)
+	eq := t.make_sum_semantic_eq_expr(lhs, rhs, sum_type, []string{})
 	if node.op == .ne {
 		return t.make_prefix(.not, t.make_paren(eq))
 	}
@@ -1099,6 +1094,11 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 	if lhs.kind == .none_expr {
 		opt_id = rhs_id
 	} else if rhs.kind == .none_expr {
+		opt_id = lhs_id
+	} else if lhs.kind == .nil_literal && t.is_optional_type_name(t.node_type(rhs_id)) {
+		// `nil == x` on a `?&T` behaves like `none == x`
+		opt_id = rhs_id
+	} else if rhs.kind == .nil_literal && t.is_optional_type_name(t.node_type(lhs_id)) {
 		opt_id = lhs_id
 	} else {
 		lhs_type := t.node_type(lhs_id)
@@ -1712,7 +1712,7 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 		return t.make_optional_semantic_eq_expr(lhs, rhs, clean, clean, seen)
 	}
 	if t.is_sum_type_name(clean) {
-		return t.make_memcmp_eq_expr(lhs, rhs, clean, 'eq')
+		return t.make_sum_semantic_eq_expr(lhs, rhs, clean, seen)
 	}
 	if t.is_interface_type(clean) {
 		return t.make_memcmp_eq_expr(lhs, rhs, clean, 'iface_eq')
@@ -1736,6 +1736,205 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 		return t.make_infix(.eq, cmp, t.make_int_literal(0))
 	}
 	return t.make_infix(.eq, lhs, rhs)
+}
+
+// make_sum_semantic_eq_expr compares two sum-type values by tag, then by the
+// boxed payload of the active variant (deep equality, like V1). Raw memcmp on
+// the sum struct compares payload POINTERS and is always false for distinct
+// allocations. The comparison is delegated to a synthesized helper fn
+// (__v3_sum_eq_<name>) so recursive types (an XML node tree, an AST) compare
+// correctly at any depth — the helper is generated after the transform pass.
+fn (mut t Transformer) make_sum_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, sum_type string, seen []string) flat.NodeId {
+	_ = seen
+	clean_sum := t.resolve_sum_name(t.trim_pointer_type(sum_type))
+	variants := t.sum_types[clean_sum] or { return t.make_memcmp_eq_expr(lhs, rhs, sum_type, 'eq') }
+	if variants.len == 0 {
+		return t.make_memcmp_eq_expr(lhs, rhs, sum_type, 'eq')
+	}
+	helper := sum_eq_helper_name(clean_sum)
+	if clean_sum !in t.sum_eq_types {
+		t.sum_eq_types[clean_sum] = SumEqRequest{
+			module: t.cur_module
+			file:   t.cur_file
+		}
+	}
+	t.mark_fn_used_name(helper)
+	return t.make_call_typed(helper, arr2(lhs, rhs), 'bool')
+}
+
+// sum_eq_helper_name is the global C-level name of the synthesized deep-equality
+// helper for a sum type.
+pub fn sum_eq_helper_name(sum_name string) string {
+	return '__v3_sum_eq_${c_name(sum_name)}'
+}
+
+// synthesize_sum_eq_helpers generates the fn_decl for every sum type whose
+// equality helper was requested during the transform. Building one helper body
+// can request helpers for nested sum types, so this drains a worklist. Runs
+// serially on the merged AST (workers only record names). Returns the names
+// newly marked used while building the helper bodies (e.g. a payload struct's
+// overloaded `==`), so the caller can run them through the late-used-fn pass —
+// synthesis happens after that pass, so such functions would otherwise miss
+// body transformation.
+pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
+	old_module := t.cur_module
+	old_file := t.cur_file
+	old_tc_module := if isnil(t.tc) { '' } else { t.tc.cur_module }
+	old_tc_file := if isnil(t.tc) { '' } else { t.tc.cur_file }
+	was_log_active := t.used_fns_log_active
+	log_start := t.used_fns_log.len
+	t.used_fns_log_active = true
+	for {
+		mut pending := []string{}
+		for name, _ in t.sum_eq_types {
+			if name in t.sum_eq_synthesized {
+				continue
+			}
+			if sum_eq_helper_name(name) in t.fn_ret_types {
+				// already synthesized by an earlier Transformer over this AST
+				t.sum_eq_synthesized[name] = true
+				continue
+			}
+			pending << name
+		}
+		if pending.len == 0 {
+			break
+		}
+		pending.sort()
+		for name in pending {
+			t.sum_eq_synthesized[name] = true
+			req := t.sum_eq_types[name] or { SumEqRequest{} }
+			t.cur_module = req.module
+			t.cur_file = req.file
+			if !isnil(t.tc) {
+				t.tc.cur_module = req.module
+				t.tc.cur_file = req.file
+			}
+			t.build_sum_eq_helper_fn(name)
+		}
+	}
+	mut new_names := []string{}
+	mut seen := map[string]bool{}
+	for i in log_start .. t.used_fns_log.len {
+		name := t.used_fns_log[i]
+		if name.len > 0 && !seen[name] {
+			seen[name] = true
+			new_names << name
+		}
+	}
+	if !was_log_active {
+		t.used_fns_log_active = false
+		t.used_fns_log = t.used_fns_log[..log_start].clone()
+	}
+	t.cur_module = old_module
+	t.cur_file = old_file
+	if !isnil(t.tc) {
+		t.tc.cur_module = old_tc_module
+		t.tc.cur_file = old_tc_file
+	}
+	return new_names
+}
+
+// build_sum_eq_helper_fn appends `fn __v3_sum_eq_<Sum>(a Sum, b Sum) bool` to the
+// AST: tags must match, then the active variant's payload is unboxed and compared
+// by value (recursing through the usual membership-eq machinery, which routes
+// nested sum types back through their own helpers).
+fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string) {
+	variants := t.sum_types[clean_sum] or { return }
+	if variants.len == 0 {
+		return
+	}
+	helper := sum_eq_helper_name(clean_sum)
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []flat.NodeId{}
+	param_a := t.a.add_node(flat.Node{
+		kind:  .param
+		value: '__sum_eq_a'
+		typ:   clean_sum
+	})
+	param_b := t.a.add_node(flat.Node{
+		kind:  .param
+		value: '__sum_eq_b'
+		typ:   clean_sum
+	})
+	mut stmts := []flat.NodeId{}
+	lhs_value := t.make_ident('__sum_eq_a')
+	t.a.nodes[int(lhs_value)].typ = clean_sum
+	rhs_value := t.make_ident('__sum_eq_b')
+	t.a.nodes[int(rhs_value)].typ = clean_sum
+	tag_ne := t.make_infix(.ne, t.make_sum_tag_selector(lhs_value, .dot),
+		t.make_sum_tag_selector(rhs_value, .dot))
+	ret_false := t.make_return(t.make_bool_literal(false), 'bool')
+	stmts << t.make_if(tag_ne, t.make_block(arr1(ret_false)), t.make_empty())
+	result_name := t.new_temp('sum_eq_res')
+	stmts << t.make_decl_assign_typed(result_name, t.make_bool_literal(true), 'bool')
+	for variant in variants {
+		qv := t.resolve_variant(clean_sum, variant)
+		if qv.len == 0 {
+			continue
+		}
+		field := t.sum_field_name(qv)
+		use_ptr := t.variant_references_sum(qv, clean_sum)
+		field_typ := if use_ptr { '&${qv}' } else { qv }
+		mut lhs_payload := t.make_selector_op(lhs_value, field, field_typ, .dot)
+		mut rhs_payload := t.make_selector_op(rhs_value, field, field_typ, .dot)
+		if use_ptr {
+			lhs_payload = t.make_prefix(.mul, lhs_payload)
+			t.a.nodes[int(lhs_payload)].typ = qv
+			rhs_payload = t.make_prefix(.mul, rhs_payload)
+			t.a.nodes[int(rhs_payload)].typ = qv
+		}
+		pending_start := t.pending_stmts.len
+		payload_eq := if t.is_sum_type_name(qv) && t.resolve_sum_name(qv) == clean_sum {
+			// a variant that aliases back to this same sum: recurse via the helper
+			t.make_call_typed(helper, arr2(lhs_payload, rhs_payload), 'bool')
+		} else {
+			t.make_membership_eq_expr_with_seen(lhs_payload, rhs_payload, qv, []string{})
+		}
+		mut body_stmts := t.pending_stmts[pending_start..].clone()
+		t.pending_stmts = t.pending_stmts[..pending_start].clone()
+		set_false := t.make_assign(t.make_ident(result_name), t.make_bool_literal(false))
+		body_stmts << t.make_if(t.make_prefix(.not, t.make_paren(payload_eq)),
+			t.make_block(arr1(set_false)), t.make_empty())
+		guard := t.make_infix(.logical_and, t.make_ident(result_name), t.make_sum_is_check(lhs_value,
+			clean_sum, clean_sum, variant))
+		stmts << t.make_if(guard, t.make_block(body_stmts), t.make_empty())
+	}
+	ret_result := t.make_ident(result_name)
+	t.a.nodes[int(ret_result)].typ = 'bool'
+	stmts << t.make_return(ret_result, 'bool')
+	t.pending_stmts = saved_pending
+	// place the helper in the main module so its C name is the plain helper name
+	t.a.add_node(flat.Node{
+		kind:  .module_decl
+		value: 'main'
+	})
+	start := t.a.children.len
+	t.a.children << param_a
+	t.a.children << param_b
+	for stmt in stmts {
+		t.a.children << stmt
+	}
+	t.a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          helper
+		typ:            'bool'
+		children_start: i32(start)
+		children_count: flat.child_count(2 + stmts.len)
+	})
+	t.register_sum_eq_helper_signature(helper, clean_sum)
+}
+
+fn (mut t Transformer) register_sum_eq_helper_signature(helper string, clean_sum string) {
+	t.fn_ret_types[helper] = 'bool'
+	t.mark_fn_used_name(helper)
+	if !isnil(t.tc) {
+		ret := t.tc.parse_type('bool')
+		params := [t.tc.parse_type(clean_sum), t.tc.parse_type(clean_sum)]
+		t.tc.fn_ret_types[helper] = ret
+		t.tc.fn_param_types[helper] = params.clone()
+		t.tc.fn_variadic[helper] = false
+	}
 }
 
 fn (mut t Transformer) make_memcmp_eq_expr(lhs flat.NodeId, rhs flat.NodeId, typ string, prefix string) flat.NodeId {
@@ -1823,7 +2022,10 @@ fn (t &Transformer) type_needs_semantic_eq(typ string) bool {
 	if t.is_optional_type_name(clean) {
 		return true
 	}
-	return t.struct_lookup_name(clean).len > 0
+	if t.struct_lookup_name(clean).len > 0 {
+		return true
+	}
+	return t.is_sum_type_name(clean)
 }
 
 fn (mut t Transformer) make_array_elementwise_eq_call(lhs flat.NodeId, rhs flat.NodeId, elem_type string, lhs_type string, rhs_type string, src flat.Node) flat.NodeId {

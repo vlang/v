@@ -410,6 +410,9 @@ fn (t &Transformer) interface_variant_type(variant string) string {
 
 // smartcast_target_type supports smartcast target type handling for Transformer.
 fn (t &Transformer) smartcast_target_type(sc SmartcastContext) string {
+	if sc.sum_type_name == option_unwrap_marker {
+		return sc.variant_name
+	}
 	if t.is_interface_type_name(sc.sum_type_name) {
 		return t.interface_variant_type(sc.variant_name)
 	}

@@ -2336,6 +2336,8 @@ fn c_struct_needs_typedef(name string) bool {
 
 // emit_interface_struct emits emit interface struct output for c.
 fn (mut g FlatGen) emit_interface_struct(name string) {
+	iface_fields := g.tc.interface_fields[name] or { []types.StructField{} }
+	g.emit_struct_option_typedefs(iface_fields)
 	cn := g.cname(name)
 	g.writeln('struct ${cn} {')
 	g.writeln('\tint _typ;')
@@ -2347,8 +2349,15 @@ fn (mut g FlatGen) emit_interface_struct(name string) {
 		// pointer to the boxed concrete value, used by method dispatch
 		g.writeln('\tvoid* _object;')
 	}
-	for field in g.tc.interface_fields[name] or { []types.StructField{} } {
-		ct := g.tc.c_type(field.typ)
+	for field in iface_fields {
+		mut ct := if field.typ is types.OptionType || field.typ is types.ResultType {
+			g.optional_type_name(field.typ)
+		} else {
+			g.tc.c_type(field.typ)
+		}
+		if ct.starts_with('fn_ptr:') {
+			ct = g.resolve_fn_ptr_type(ct)
+		}
 		g.writeln('\t${ct} ${g.cname(field.name)};')
 	}
 	g.writeln('};')
@@ -2446,11 +2455,22 @@ fn (mut g FlatGen) struct_decls() {
 			}
 			// An interface struct embeds its declared data fields by value, so the
 			// field types must be fully defined first (same constraint as structs).
+			// Option/result fields embed their payload by value in the Optional_T
+			// typedef, so the dependency is the payload type, not the wrapper.
 			for field in g.tc.interface_fields[name] or { []types.StructField{} } {
 				if field.typ is types.Pointer {
 					continue
 				}
-				fct := g.tc.c_type(field.typ)
+				mut fct := ''
+				if field.typ is types.ArrayFixed {
+					fct = g.tc.c_type(field.typ.elem_type)
+				} else if field.typ is types.OptionType {
+					fct = g.tc.c_type(field.typ.base_type)
+				} else if field.typ is types.ResultType {
+					fct = g.tc.c_type(field.typ.base_type)
+				} else {
+					fct = g.tc.c_type(field.typ)
+				}
 				if fct !in emitted && fct != cn && fct in remaining_cnames {
 					can_emit = false
 					break

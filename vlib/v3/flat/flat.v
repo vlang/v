@@ -163,6 +163,7 @@ pub mut:
 	user_code_start int
 	disabled_fns    map[string]bool
 	export_fn_names map[string]string
+	noreturn_fns    map[string]bool
 }
 
 // set_node_is_mut updates a node's mut declaration marker in place.
@@ -184,6 +185,7 @@ pub fn FlatAst.new() FlatAst {
 		children:        []NodeId{cap: 512}
 		disabled_fns:    map[string]bool{}
 		export_fn_names: map[string]string{}
+		noreturn_fns:    map[string]bool{}
 	}
 }
 

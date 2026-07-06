@@ -2584,11 +2584,20 @@ pub fn (tc &TypeChecker) resolved_call_name(id flat.NodeId) ?string {
 // resolved_call_never_returns reports whether a call node resolved to a known no-return function.
 pub fn (tc &TypeChecker) resolved_call_never_returns(id flat.NodeId) bool {
 	name := tc.resolved_call_name(id) or { return false }
-	return resolved_name_never_returns(name)
+	return tc.name_never_returns(name)
 }
 
 fn resolved_name_never_returns(name string) bool {
 	return name in ['panic', 'exit', 'os.exit', 'C.exit']
+}
+
+// name_never_returns reports whether a resolved call name is a builtin no-return
+// function or one declared with the `@[noreturn]` attribute.
+fn (tc &TypeChecker) name_never_returns(name string) bool {
+	if resolved_name_never_returns(name) {
+		return true
+	}
+	return name in tc.a.noreturn_fns
 }
 
 // resolved_fn_value_name returns the checker-resolved function name for a function value node.
@@ -4288,10 +4297,57 @@ fn (tc &TypeChecker) stmt_definitely_returns(id flat.NodeId) bool {
 			}
 			return tc.match_has_else_or_exhaustive_coverage(node)
 		}
+		.lock_expr {
+			// lock/rlock: objects first, body block last; the statement returns
+			// when its body always returns.
+			if node.children_count == 0 {
+				return false
+			}
+			body := tc.a.child_node(&node, node.children_count - 1)
+			if body.kind != .block {
+				return false
+			}
+			return tc.stmt_definitely_returns(tc.a.child(&node, node.children_count - 1))
+		}
+		.for_stmt {
+			// `for { ... }` with no condition and no break never falls through.
+			if node.children_count < 3 {
+				return false
+			}
+			cond := tc.a.child_node(&node, 1)
+			if cond.kind != .empty {
+				return false
+			}
+			for i in 3 .. node.children_count {
+				if tc.subtree_contains_break(tc.a.child(&node, i)) {
+					return false
+				}
+			}
+			return true
+		}
 		else {
 			return false
 		}
 	}
+}
+
+// subtree_contains_break reports whether any node under id is a `break`.
+// Conservative: a break in a nested inner loop also counts, so an infinite
+// outer loop is only treated as no-fallthrough when its body has no break at all.
+fn (tc &TypeChecker) subtree_contains_break(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .break_stmt {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if tc.subtree_contains_break(tc.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) call_never_returns(id flat.NodeId) bool {
@@ -4313,7 +4369,7 @@ fn (mut tc TypeChecker) call_never_returns_resolving(id flat.NodeId) bool {
 	if info.name.len > 0 && !is_array_dsl_call_name(info.name) {
 		tc.remember_resolved_call(id, info.name)
 	}
-	return resolved_name_never_returns(info.name)
+	return tc.name_never_returns(info.name)
 }
 
 fn (mut tc TypeChecker) expr_never_returns_resolving(id flat.NodeId) bool {
@@ -4510,6 +4566,74 @@ fn (tc &TypeChecker) match_has_else_or_exhaustive_coverage(node flat.Node) bool 
 	}
 	return tc.match_without_else_exhaustive_enum_returns(node)
 		|| tc.match_without_else_exhaustive_bool_returns(node)
+		|| tc.match_without_else_exhaustive_sumtype_returns(node)
+}
+
+// match_without_else_exhaustive_sumtype_returns reports whether a `match` over a
+// sum-type subject lists every variant (so it is exhaustive without an `else`).
+fn (tc &TypeChecker) match_without_else_exhaustive_sumtype_returns(node flat.Node) bool {
+	subject_type := unalias_type(unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))))
+	mut sum_name := ''
+	if subject_type is SumType {
+		sum_name = subject_type.name
+	} else {
+		return false
+	}
+	base := tc.sum_base_name(sum_name)
+	variants := tc.sum_types[base] or { return false }
+	if variants.len == 0 {
+		return false
+	}
+	mut covered := map[string]bool{}
+	for i in 1 .. node.children_count {
+		branch := tc.a.child_node(&node, i)
+		if branch.kind != .match_branch {
+			return false
+		}
+		if branch.value == 'else' {
+			return true
+		}
+		n_conds := branch.value.int()
+		if n_conds <= 0 || n_conds > branch.children_count {
+			return false
+		}
+		for j in 0 .. n_conds {
+			cond := tc.a.child_node(branch, j)
+			pattern := tc.match_type_pattern(cond) or { return false }
+			qpattern := tc.qualify_name(pattern)
+			mut matched := false
+			for variant in variants {
+				if variant == pattern || variant == qpattern {
+					covered[variant] = true
+					matched = true
+				}
+			}
+			if matched {
+				continue
+			}
+			// Short-name fallback: only sound when exactly one variant carries
+			// this short name — for `type S = a.Foo | b.Foo`, a branch matching
+			// one `Foo` must not mark the other as covered.
+			pattern_short := short_type_name(pattern)
+			mut short_match := ''
+			mut short_count := 0
+			for variant in variants {
+				if short_type_name(variant) == pattern_short {
+					short_count++
+					short_match = variant
+				}
+			}
+			if short_count == 1 {
+				covered[short_match] = true
+			}
+		}
+	}
+	for variant in variants {
+		if variant !in covered {
+			return false
+		}
+	}
+	return true
 }
 
 fn unalias_type(t Type) Type {
@@ -10816,12 +10940,21 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	tc.smartcasts = clone_smartcasts(saved_smartcasts)
 	if node.children_count > 2 {
 		else_id := tc.a.child(&node, 2)
+		else_smartcasts := tc.extract_else_branch_smartcasts(cond_id)
+		for sc in else_smartcasts {
+			if valid_string_data(sc.name) {
+				tc.smartcasts[sc.name] = sc.typ
+			}
+		}
 		$if ownership ? {
 			tc.ownership_begin_branch()
 		}
 		tc.check_branch_node(else_id, value_context)
 		$if ownership ? {
 			tc.ownership_end_branch(else_id)
+		}
+		if else_smartcasts.len > 0 {
+			tc.smartcasts = clone_smartcasts(saved_smartcasts)
 		}
 	} else {
 		$if ownership ? {
@@ -11598,10 +11731,64 @@ fn (tc &TypeChecker) extract_smartcasts(cond_id flat.NodeId) []LocalBinding {
 			return result
 		}
 	}
+	// `x != none` (or `!= nil` for `?&T`) unwraps the option expr inside the then-branch.
+	if cond.kind == .infix && cond.op == .ne && cond.children_count >= 2 {
+		if binding := tc.option_none_cmp_binding(cond) {
+			return [binding]
+		}
+	}
 	if cond.kind == .infix && cond.op == .logical_and && cond.children_count >= 2 {
 		mut result := tc.extract_smartcasts(tc.a.child(&cond, 0))
 		result << tc.extract_smartcasts(tc.a.child(&cond, 1))
 		return result
+	}
+	return []LocalBinding{}
+}
+
+// option_none_cmp_binding matches a `x != none` / `x == none` (also `nil`)
+// comparison where x is an option and returns the unwrapped binding for x.
+fn (tc &TypeChecker) option_none_cmp_binding(cond flat.Node) ?LocalBinding {
+	lhs_id := tc.a.child(&cond, 0)
+	rhs_id := tc.a.child(&cond, 1)
+	lhs := tc.a.nodes[int(lhs_id)]
+	rhs := tc.a.nodes[int(rhs_id)]
+	mut opt_id := flat.NodeId(-1)
+	if rhs.kind == .none_expr || rhs.kind == .nil_literal {
+		opt_id = lhs_id
+	} else if lhs.kind == .none_expr || lhs.kind == .nil_literal {
+		opt_id = rhs_id
+	}
+	if int(opt_id) < 0 {
+		return none
+	}
+	key := tc.expr_key(opt_id)
+	if key.len == 0 || !valid_string_data(key) {
+		return none
+	}
+	opt_type := tc.expr_type(opt_id) or { return none }
+	if opt_type is OptionType {
+		base := opt_type.base_type
+		if base !is Void && base !is Unknown {
+			return LocalBinding{
+				name: key
+				typ:  base
+			}
+		}
+	}
+	return none
+}
+
+// extract_else_branch_smartcasts returns bindings that apply to the ELSE branch:
+// `if x == none { ... } else { <x unwrapped here> }`.
+fn (tc &TypeChecker) extract_else_branch_smartcasts(cond_id flat.NodeId) []LocalBinding {
+	if int(cond_id) < 0 {
+		return []LocalBinding{}
+	}
+	cond := tc.a.nodes[int(cond_id)]
+	if cond.kind == .infix && cond.op == .eq && cond.children_count >= 2 {
+		if binding := tc.option_none_cmp_binding(cond) {
+			return [binding]
+		}
 	}
 	return []LocalBinding{}
 }
@@ -11877,6 +12064,9 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 	}
 	if clean is Channel && node.value == 'closed' {
 		return Type(bool_)
+	}
+	if clean is Channel && node.value in ['len', 'cap'] {
+		return Type(int_)
 	}
 	if clean is Struct {
 		if typ := tc.struct_field_type(clean_name, node.value) {
