@@ -404,6 +404,6 @@ fn test_bitfield_to_bytes() {
 	str := 'Hello, world!'
 	b_from_str := str.bytes()
 	bf := bitfield.from_bytes(b_from_str)
-	b_from_bf  := bf.bytes()
+	b_from_bf := bf.bytes()
 	assert b_from_bf == b_from_str
 }
