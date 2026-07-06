@@ -399,3 +399,11 @@ fn test_zero_length_slice_and_pos() {
 	empty_bf := bitfield.new(0)
 	assert empty_bf.pos(needle) == 0
 }
+
+fn test_bitfield_to_bytes() {
+	str := 'Hello, world!'
+	b_from_str := str.bytes()
+	bf := bitfield.from_bytes(b_from_str)
+	b_from_bf  := bf.bytes()
+	assert b_from_bf == b_from_str
+}

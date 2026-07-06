@@ -53,6 +53,21 @@ pub fn (bf BitField) str() string {
 	return output.bytestr()
 }
 
+// bytes converts the bit array into an array of bytes.
+pub fn (bf BitField) bytes() []u8 {
+	mut output := []u8{}
+	mut i := 0
+	for f in bf.field {
+		for j in 1..5 {
+			s := bits.reverse_32(f) // un-reverse the action of from_bytes, if slot_size changes this may break
+			b := u8((s >> (slot_size - (j * 8))) & 255)
+			if i * 8 >= bf.size { break } else { i += 1 } // exclude unused bytes
+			output << b
+		}
+	}
+	return output
+}
+
 // new creates an empty bit array capable of storing `size` bits.
 pub fn new(size int) BitField {
 	output := BitField{
