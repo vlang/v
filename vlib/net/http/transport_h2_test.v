@@ -755,6 +755,65 @@ fn test_h2_pool_respects_idle_timeout() {
 	assert srv.accept_count() == 2, 'expected the expired idle connection to be retired and a fresh one dialed, got ${srv.accept_count()} accepts'
 }
 
+fn h2t_race_idle_evict(mut t Transport, port int, path string) {
+	req := prepare(url: 'https://127.0.0.1:${port}${path}', validate: false, enable_http2: true) or {
+		return
+	}
+	t.round_trip(req, .get, 'https', '127.0.0.1', port, path, '', req.header) or {}
+}
+
+// Two concurrent requests racing an idle-expired pooled h2 connection must
+// each retire it AT MOST ONCE: only the caller that actually removes the
+// h2_conns[key] entry may call conn.release() (H2MuxConn.refs is not
+// idempotent like shutdown_when_idle() -- a second, unconditional release()
+// over-decrements it). Self-caught in review, vlang/v#27643
+// pullrequestreview-4636271901.
+fn test_h2_pool_idle_evict_race_does_not_double_release() {
+	$if windows && !no_vschannel ? {
+		eprintln('skipping: SChannel connection pooling is not implemented yet')
+		return
+	}
+	mut srv := &H2PoolSrv{}
+	port, mut listener, th := start_h2_pool_srv(mut srv) or {
+		assert false, 'server: ${err}'
+		return
+	}
+	mut t := new_transport()
+	t.idle_timeout = 100 * time.millisecond
+
+	req1 := prepare(url: 'https://127.0.0.1:${port}/first', validate: false, enable_http2: true) or {
+		assert false, 'prepare 1: ${err}'
+		return
+	}
+	resp1 := t.round_trip(req1, .get, 'https', '127.0.0.1', port, '/first', '', req1.header) or {
+		assert false, 'round_trip 1: ${err}'
+		return
+	}
+	assert resp1.status_code == 200
+
+	key := transport_pool_key(req1, 'https', '127.0.0.1', port)
+	t.mu.lock()
+	pooled := t.h2_conns[key] or {
+		t.mu.unlock()
+		assert false, 'expected a pooled h2 connection to be registered'
+		return
+	}
+	t.mu.unlock()
+
+	// Let the connection sit idle well past idle_timeout, then have two
+	// requests race its eviction.
+	time.sleep(250 * time.millisecond)
+
+	th1 := spawn h2t_race_idle_evict(mut t, port, '/second')
+	th2 := spawn h2t_race_idle_evict(mut t, port, '/third')
+	th1.wait()
+	th2.wait()
+
+	t.close_idle()
+	stop_h2_pool_srv(mut listener, th)
+	assert pooled.refs == 0, 'expected refs to be retired exactly once (== 0), got ${pooled.refs}: double-release detected'
+}
+
 // Sequential requests to the same h2 origin must reuse the pooled multiplexed
 // connection (fast path), not redial.
 fn test_h2_pool_sequential_reuse() {

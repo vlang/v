@@ -62,13 +62,24 @@ fn (mut t Transport) h2_round_trip(req &Request, key string, raw string, method 
 			// pullrequestreview-4631763931, discussion 3525390896).
 			t.mu.lock()
 			existing := t.h2_conns[key] or { &H2MuxConn(unsafe { nil }) }
-			if voidptr(existing) == voidptr(conn) {
+			won_removal := voidptr(existing) == voidptr(conn)
+			if won_removal {
 				t.h2_conns.delete(key)
 				t.h2_dial_id.delete(key)
 			}
 			t.mu.unlock()
-			conn.shutdown_when_idle()
-			conn.release()
+			if won_removal {
+				// Only the caller that actually removed the entry owns retiring
+				// it: a concurrent racer (another h2_round_trip call on the same
+				// key, or Transport.close_idle()) that already claimed this
+				// connection also calls shutdown_when_idle()+release() itself.
+				// shutdown_when_idle() is idempotent, but release() is not --
+				// calling it again here would over-decrement H2MuxConn.refs
+				// (self-caught in review, vlang/v#27643
+				// pullrequestreview-4636271901).
+				conn.shutdown_when_idle()
+				conn.release()
+			}
 			return t.h2_dial_and_do(req, key, raw, method, host, port, path, data, header)!
 		}
 		if conn != unsafe { nil } && conn.can_take_new_request() {
