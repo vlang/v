@@ -26,6 +26,18 @@ fn sokol_screenshot_source() string {
 	}
 }
 
+fn sokol_sapp_source() string {
+	return os.read_file(os.join_path(@VEXEROOT, 'vlib', 'sokol', 'sapp', 'sapp.c.v')) or {
+		panic(err)
+	}
+}
+
+fn sokol_sapp_funcs_source() string {
+	return os.read_file(os.join_path(@VEXEROOT, 'vlib', 'sokol', 'sapp', 'sapp_funcs.c.v')) or {
+		panic(err)
+	}
+}
+
 fn sokol_sapp_v_source() string {
 	return os.read_file(os.join_path(@VEXEROOT, 'vlib', 'sokol', 'sapp', 'sapp_v.c.v')) or {
 		panic(err)
@@ -65,17 +77,27 @@ fn assert_contains_readback_token(source string, token string) {
 	assert source.contains(token), 'missing D3D11 screenshot/readback token `${token}`'
 }
 
+fn d3d11_readback_source(source string) string {
+	d3d_start := source.index('#elif defined(SOKOL_D3D11)') or { return source }
+	d3d_source := source[d3d_start..]
+	return d3d_source.all_before('\n\t#else\n\t\tint v_sapp_read_rgba_pixels')
+}
+
 fn assert_d3d11_readback_helper_tokens(source string) {
 	for token in [
 		'SOKOL_D3D11',
+		'sapp_d3d11_get_swap_chain',
 		'GetBuffer',
+		'GetDevice',
+		'GetImmediateContext',
 		'D3D11_USAGE_STAGING',
 		'D3D11_CPU_ACCESS_READ',
 		'CreateTexture2D',
 		'CopyResource',
 		'Map',
+		'staging_mapped = true',
 		'RowPitch',
-		'Unmap',
+		'v_sapp_d3d11_unmap',
 		'Release',
 	] {
 		assert_contains_readback_token(source, token)
@@ -84,6 +106,30 @@ fn assert_d3d11_readback_helper_tokens(source string) {
 	assert lower_source.contains('bgra') && lower_source.contains('rgba'), 'D3D11 screenshot/readback helper must distinguish BGRA and RGBA sources'
 	compact_source := source.replace(' ', '').replace('\t', '').replace('\n', '').replace('\r', '')
 	assert compact_source.contains('dst[0]=src[2]') && compact_source.contains('dst[2]=src[0]'), 'D3D11 screenshot/readback helper must convert BGRA pixels to RGBA'
+	assert compact_source.contains('hr=v_sapp_d3d11_map(ctx,(ID3D11Resource*)staging,&mapped);if(FAILED(hr)){status=V_SAPP_READBACK_MAP_FAILED;gotov_sapp_d3d11_readback_cleanup;}staging_mapped=true;'), 'D3D11 screenshot/readback helper must mark staging as mapped after successful Map()'
+	assert compact_source.contains('if(staging_mapped){v_sapp_d3d11_unmap(ctx,(ID3D11Resource*)staging);}'), 'D3D11 screenshot/readback helper must Unmap() when staging was mapped'
+}
+
+fn assert_sapp_wrapper_plumbing() {
+	post_header_source := sokol_v_post_header_source()
+	sapp_source := sokol_sapp_source()
+	sapp_funcs_source := sokol_sapp_funcs_source()
+	for token in [
+		'SOKOL_APP_API_DECL void v_sapp_get_environment(sapp_environment* out_env) {',
+		'*out_env = sapp_get_environment();',
+		'SOKOL_APP_API_DECL void v_sapp_get_swapchain(sapp_swapchain* out_swapchain) {',
+		'*out_swapchain = sapp_get_swapchain();',
+		'SOKOL_APP_API_DECL void v_sapp_get_environment(sapp_environment* out_env);',
+		'SOKOL_APP_API_DECL void v_sapp_get_swapchain(sapp_swapchain* out_swapchain);',
+	] {
+		assert post_header_source.contains(token), 'missing V-private sapp wrapper token `${token}`'
+	}
+	assert sapp_funcs_source.contains('fn C.v_sapp_get_environment(out_env &Environment)'), sapp_funcs_source
+	assert sapp_funcs_source.contains('fn C.v_sapp_get_swapchain(out_swapchain &Swapchain)'), sapp_funcs_source
+	assert sapp_source.contains('C.v_sapp_get_environment(&sapp_env)'), sapp_source
+	assert sapp_source.contains('C.v_sapp_get_swapchain(&sapp_sc)'), sapp_source
+	assert !sapp_source.contains('C.sapp_get_environment()'), sapp_source
+	assert !sapp_source.contains('C.sapp_get_swapchain()'), sapp_source
 }
 
 fn normalized_cflags(output string) string {
@@ -199,13 +245,21 @@ fn test_sokol_screenshot_public_api_signatures_are_preserved() {
 	assert sapp_v_source.contains('pub fn screenshot_png(path string) ! {'), sapp_v_source
 }
 
+fn test_sokol_sapp_glue_uses_v_private_sharedlive_wrappers() {
+	assert_sapp_wrapper_plumbing()
+}
+
 fn test_sokol_d3d11_screenshot_readback_is_implemented_not_guarded_as_unsupported() {
 	sapp_v_source := sokol_sapp_v_source()
 	post_header_source := sokol_v_post_header_source()
+	d3d_readback_source := d3d11_readback_source(post_header_source)
 	combined_source := sapp_v_source + '\n' + post_header_source
 	assert !combined_source.contains('sokol.sapp screenshots are not supported with -d sokol_d3d11'), combined_source
 	assert !combined_source.contains('D3D11 readback is not implemented'), combined_source
-	assert_d3d11_readback_helper_tokens(post_header_source)
+	assert_d3d11_readback_helper_tokens(d3d_readback_source)
+	assert !d3d_readback_source.contains('sapp_get_environment'), d3d_readback_source
+	assert !d3d_readback_source.contains('sapp_get_swapchain'), d3d_readback_source
+	assert !post_header_source.contains('defined(_SAPP_WIN32)'), post_header_source
 	lower_post_header_source := post_header_source.to_lower()
 	assert !lower_post_header_source.contains('todo'), post_header_source
 	assert !lower_post_header_source.contains('no-op'), post_header_source
@@ -248,9 +302,13 @@ fn main() {
 	_ = sapp.create_desc()
 	_ = sapp.create_default_pass(gfx.PassAction{})
 }
-') or {
+	') or {
 		return
 	}
+	assert c_source.contains('v_sapp_get_environment(&sapp_env);'), c_source
+	assert c_source.contains('v_sapp_get_swapchain(&sapp_sc);'), c_source
+	assert !c_source.contains('sapp_get_environment();'), c_source
+	assert !c_source.contains('sapp_get_swapchain();'), c_source
 	assert c_source.contains('env.d3d11.device = sapp_env.d3d11.device;'), c_source
 	assert c_source.contains('env.d3d11.device_context = sapp_env.d3d11.device_context;'), c_source
 	assert c_source.contains('swapchain.d3d11.render_view = sapp_sc.d3d11.render_view;'), c_source
@@ -279,4 +337,50 @@ fn main() {
 	assert !c_source.contains('sokol.sapp screenshots are not supported with -d sokol_d3d11'), c_source
 	assert !c_source.contains('D3D11 readback is not implemented'), c_source
 	assert !c_source.contains('v_sapp_gl_read_rgba_pixels'), c_source
+}
+
+fn test_windows_sharedlive_sokol_d3d11_glue_codegen_uses_v_private_host_wrappers() {
+	if !windows_target_tests_available() {
+		return
+	}
+	c_source := generated_windows_c(['-sharedlive', '-d', 'sokol_d3d11'], 'import sokol.gfx
+import sokol.sapp
+
+fn main() {
+	_ = sapp.create_desc()
+	_ = sapp.create_default_pass(gfx.PassAction{})
+}
+') or {
+		return
+	}
+	assert !c_source.contains('#define SOKOL_APP_IMPL'), c_source
+	assert !c_source.contains('#define SOKOL_GFX_IMPL'), c_source
+	assert !c_source.contains('#define SOKOL_IMPL'), c_source
+	assert c_source.contains('v_sapp_get_environment(&sapp_env);'), c_source
+	assert c_source.contains('v_sapp_get_swapchain(&sapp_sc);'), c_source
+	assert !c_source.contains('sapp_get_environment();'), c_source
+	assert !c_source.contains('sapp_get_swapchain();'), c_source
+}
+
+fn test_windows_sharedlive_sokol_d3d11_screenshot_codegen_uses_host_backend_readback_call() {
+	if !windows_target_tests_available() {
+		return
+	}
+	c_source := generated_windows_c(['-sharedlive', '-d', 'sokol_d3d11'], 'import sokol.sapp
+
+fn main() {
+	mut ss := sapp.screenshot_window()
+	unsafe { ss.destroy() }
+}
+') or {
+		return
+	}
+	assert !c_source.contains('#define SOKOL_APP_IMPL'), c_source
+	assert !c_source.contains('#define SOKOL_GFX_IMPL'), c_source
+	assert !c_source.contains('#define SOKOL_IMPL'), c_source
+	assert c_source.contains('#include "sokol_v.post.h"'), c_source
+	assert c_source.contains('v_sapp_read_rgba_pixels'), c_source
+	assert !c_source.contains('defined(_SAPP_WIN32)'), c_source
+	assert !c_source.contains('sokol.sapp screenshots are not supported with -d sokol_d3d11'), c_source
+	assert !c_source.contains('D3D11 readback is not implemented'), c_source
 }

@@ -15,6 +15,47 @@ fn live_runtime_quoted_path_for_c_string(target_os pref.OS, path string) string 
 	return live_runtime_quoted_path(target_os, path).replace('\\', '\\\\').replace('"', '\\"')
 }
 
+fn live_reload_should_forward_define(define string) bool {
+	name := if define.contains('=') { define.all_before('=') } else { define }
+	return name.starts_with('sokol_') || name == 'darwin_sokol_glcore33' || name == 'no_sokol_app'
+}
+
+fn live_reload_define_needs_quoting(define string) bool {
+	return define.contains(' ') || define.contains('\t') || define.contains('"')
+		|| define.contains("'") || define.contains('\\')
+}
+
+fn live_reload_define_for_c_string(target_os pref.OS, define string) string {
+	if live_reload_define_needs_quoting(define) {
+		return live_runtime_quoted_path_for_c_string(target_os, define)
+	}
+	return define
+}
+
+fn live_reload_resolved_define(define string, compile_values map[string]string) string {
+	if define in compile_values {
+		value := compile_values[define]
+		if value != 'true' {
+			return '${define}=${value}'
+		}
+	}
+	return define
+}
+
+fn live_reload_forwarded_define_vopts(target_os pref.OS, compile_defines []string, compile_values map[string]string) string {
+	mut forwarded := []string{}
+	mut seen := map[string]bool{}
+	for define_name in compile_defines {
+		define := live_reload_resolved_define(define_name, compile_values)
+		if !live_reload_should_forward_define(define) || seen[define] {
+			continue
+		}
+		seen[define] = true
+		forwarded << '-d ${live_reload_define_for_c_string(target_os, define)}'
+	}
+	return forwarded.join(' ')
+}
+
 fn (mut g Gen) generate_hotcode_reloading_declarations() {
 	if g.pref.os == .windows {
 		g.hotcode_definitions.writeln('HANDLE live_fn_mutex = 0;')
@@ -132,7 +173,18 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	ccpath := live_runtime_quoted_path_for_c_string(g.pref.os, g.pref.ccompiler)
 	ccompiler := '-cc ${ccpath}'
 	so_debug_flag := if g.pref.is_debug { '-cg' } else { '' }
-	mut vopts := '${ccompiler} ${so_debug_flag} -sharedlive -shared'
+	forwarded_define_vopts := live_reload_forwarded_define_vopts(g.pref.os, g.pref.compile_defines,
+		g.pref.compile_values)
+	mut vopts_parts := [ccompiler]
+	if so_debug_flag != '' {
+		vopts_parts << so_debug_flag
+	}
+	if forwarded_define_vopts != '' {
+		vopts_parts << forwarded_define_vopts
+	}
+	vopts_parts << '-sharedlive'
+	vopts_parts << '-shared'
+	mut vopts := vopts_parts.join(' ')
 	if g.pref.os == .windows && g.is_cc_msvc && 'sokol' in g.table.imports {
 		mut import_lib_path := g.pref.out_name
 		ext := os.file_ext(import_lib_path)

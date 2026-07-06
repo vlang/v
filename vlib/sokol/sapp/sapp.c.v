@@ -43,7 +43,8 @@ fn sapp_to_gfx_pixelformat(sapp_fmt int) gfx.PixelFormat {
 // The retuned `gfx.Environment` can be used when rendering via `sapp`.
 // See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 pub fn glue_environment() gfx.Environment {
-	sapp_env := C.sapp_get_environment()
+	mut sapp_env := Environment{}
+	C.v_sapp_get_environment(&sapp_env)
 	mut env := gfx.Environment{}
 	unsafe { vmemset(&env, 0, int(sizeof(env))) }
 	env.defaults.color_format = sapp_to_gfx_pixelformat(sapp_env.defaults.color_format)
@@ -62,7 +63,8 @@ pub fn glue_environment() gfx.Environment {
 // The retuned `gfx.Swapchain` can be used when rendering via `sapp`.
 // See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 pub fn glue_swapchain() gfx.Swapchain {
-	sapp_sc := C.sapp_get_swapchain()
+	mut sapp_sc := Swapchain{}
+	C.v_sapp_get_swapchain(&sapp_sc)
 	mut swapchain := gfx.Swapchain{}
 	unsafe { vmemset(&swapchain, 0, int(sizeof(swapchain))) }
 	swapchain.width = sapp_sc.width
