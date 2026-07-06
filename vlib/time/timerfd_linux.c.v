@@ -21,7 +21,11 @@ module time
 // C.read(tfd, &expirations, 8) // re-levels the fd; > 1 reports missed ticks
 // ```
 
-#include <sys/timerfd.h>
+// Emit the include as OS-guarded (`#if defined(__linux__)`) so it stays inert
+// in the cross-platform bootstrap `vc/v.c`: that file is generated on Linux
+// (where this `_linux.c.v` file is compiled) but then compiled on macOS,
+// Windows and the BSDs, where <sys/timerfd.h> does not exist.
+#include linux <sys/timerfd.h>
 
 pub struct C.itimerspec {
 pub mut:
