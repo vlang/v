@@ -1526,8 +1526,7 @@ fn (mut t Transformer) transform_late_candidate(ci int, mut candidates []LateFnC
 			continue
 		}
 		for call_name in t.generated_fn_body_call_names(flat.NodeId(j)) {
-			t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut
-				queued)
+			t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut queued)
 		}
 	}
 }
