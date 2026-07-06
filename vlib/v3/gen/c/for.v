@@ -363,25 +363,25 @@ fn (g &FlatGen) node_contains_delete_call(id flat.NodeId) bool {
 
 fn (g &FlatGen) c_loop_local_name(name string) string {
 	if name.contains('.') {
-		return c_name(name.all_after_last('.'))
+		return g.cname(name.all_after_last('.'))
 	}
 	if name.contains('__') {
 		prefix := name.all_before_last('__')
 		suffix := name.all_after_last('__')
 		if suffix == 'index' {
-			return c_name(suffix)
+			return g.cname(suffix)
 		}
 		if g.has_import_alias(prefix) {
-			return c_name(suffix)
+			return g.cname(suffix)
 		}
 		for _, mod_name in g.modules {
 			short_mod := if mod_name.contains('.') { mod_name.all_after_last('.') } else { mod_name }
 			if prefix == short_mod {
-				return c_name(suffix)
+				return g.cname(suffix)
 			}
 		}
 	}
-	return c_name(name)
+	return g.cname(name)
 }
 
 // gen_node_inline emits node inline output for c.

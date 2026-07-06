@@ -534,7 +534,7 @@ fn (mut g FlatGen) to_fixed_size_call_fixed_type(id flat.NodeId) ?types.ArrayFix
 fn (mut g FlatGen) gen_array_method_call_fallback(node flat.Node, mname string, base_id flat.NodeId, is_ptr bool, arr types.Array) {
 	best_mname := g.array_method_fallback_for_receiver(mname, arr)
 	if best_mname.len > 0 {
-		g.write(c_name(best_mname))
+		g.write(g.cname(best_mname))
 		g.write('(')
 		ptypes := g.tc.fn_param_types[best_mname]
 		wants_ptr := ptypes.len > 0 && ptypes[0] is types.Pointer
@@ -644,7 +644,7 @@ fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
 	// Sanitize the payload C type (`Foo*`, `void*`, ...) into an identifier fragment
 	// — `c_name` does not strip `*`, so a raw pointer return type would otherwise put
 	// an asterisk in the helper symbol.
-	name := c_name('__v_thread_arr_wait_${naming.type_name_part(ret_ct)}')
+	name := g.cname('__v_thread_arr_wait_${naming.type_name_part(ret_ct)}')
 	g.spawn_wrapper_names[key] = name
 	if is_void {
 		g.spawn_wrapper_defs << 'static void ${name}(Array a) { for (int __i = 0; __i < a.len; __i++) { void* __r = NULL; pthread_join((pthread_t)(((void**)a.data)[__i]), &__r); if (__r) free(__r); } }'

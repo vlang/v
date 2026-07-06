@@ -50,17 +50,17 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				g.write('.message')
 			} else if typ is types.Primitive {
 				prim_name := types.Type(typ).name()
-				g.write('${c_name('${prim_name}.str')}(')
+				g.write('${g.cname('${prim_name}.str')}(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.ISize || typ is types.USize {
-				g.write('${c_name('${typ.name()}.str')}(')
+				g.write('${g.cname('${typ.name()}.str')}(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.Interface {
 				str_key := '${typ.name}.str'
 				if str_key in g.tc.fn_ret_types {
-					g.write('${c_name(str_key)}(')
+					g.write('${g.cname(str_key)}(')
 					g.gen_string_interp_child_expr(child_id)
 					g.write(')')
 				} else {
@@ -68,11 +68,11 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 					g.write('_str_${sid}')
 				}
 			} else if typ is types.Struct {
-				g.write('${c_name(typ.name)}__str(')
+				g.write('${g.cname(typ.name)}__str(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.SumType {
-				g.write('${c_name(typ.name)}__str(')
+				g.write('${g.cname(typ.name)}__str(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else {
@@ -250,11 +250,20 @@ fn (g &FlatGen) is_string_node(id flat.NodeId) bool {
 
 // string_literals supports string literals handling for FlatGen.
 fn (mut g FlatGen) string_literals() {
-	for i, s in g.str_lits {
+	g.string_literals_from(0)
+}
+
+// string_literals_from emits the interned literal table starting at index
+// `start`. The postamble fork emits [0, snapshot) during the parallel region;
+// anything interned later (worker novelties, the synthetic main) is emitted
+// as a supplement after the joins — per-id definitions are order-independent.
+fn (mut g FlatGen) string_literals_from(start int) {
+	for i := start; i < g.str_lits.len; i++ {
+		s := g.str_lits[i]
 		escaped := c_escape(s)
 		g.writeln('string _str_${i} = {"${escaped}", ${s.len}, 1};')
 	}
-	if g.str_lits.len > 0 {
+	if g.str_lits.len > start {
 		g.writeln('')
 	}
 }

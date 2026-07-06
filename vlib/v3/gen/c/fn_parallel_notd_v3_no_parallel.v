@@ -34,6 +34,29 @@ $if !windows {
 	// C.pthread_attr_destroy declares the C pthread_attr_destroy symbol used by c.
 	fn C.pthread_attr_destroy(attr voidptr) int
 
+	// fixed_storage_scan_thread runs the fixed-storage-const use scan (a full
+	// post-transform AST pass) on a private fork while the master collects the
+	// fn work items and pre-seeds the parallel tables.
+	fn fixed_storage_scan_thread(arg voidptr) voidptr {
+		mut w := unsafe { &FlatGen(arg) }
+		w.collect_fixed_storage_consts()
+		return unsafe { nil }
+	}
+
+	// postamble_segments_thread_a / _b emit the body-independent postamble
+	// groups on private FlatGen forks while the body workers run.
+	fn postamble_segments_thread_a(arg voidptr) voidptr {
+		mut w := unsafe { &FlatGen(arg) }
+		w.emit_postamble_segments_a()
+		return unsafe { nil }
+	}
+
+	fn postamble_segments_thread_b(arg voidptr) voidptr {
+		mut w := unsafe { &FlatGen(arg) }
+		w.emit_postamble_segments_b()
+		return unsafe { nil }
+	}
+
 	// flat_cgen_chunk_thread supports flat cgen chunk thread handling for c.
 	fn flat_cgen_chunk_thread(arg voidptr) voidptr {
 		a := unsafe { &FlatCgenChunkArgs(arg) }
@@ -65,26 +88,32 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			return
 		}
 		g.parallel_used = true
-		g.prepare_parallel_items(items)
+		// Freeze the checker's warm type cache (fully populated by the check and
+		// transform phases) as the shared read-only base for every worker's
+		// fresh cache; the master's own memoization writes go to a private
+		// overlay for the duration of the region.
+		g.tc.freeze_type_cache_for_forks()
+		if !g.parallel_prepared {
+			g.prepare_parallel_items(items)
+		}
 		mut chunk_items := split_flat_cgen_items(items, n_jobs)
 		chunk_count := chunk_items.len
-		// chunk[0] is emitted by the master (this thread) directly into its own builder
-		// — no worker clone. Only chunks[1..] get helper threads with a cloned FlatGen.
-		// This drops one full FlatGen clone from the peak and uses the master thread that
-		// would otherwise just block in join.
+		// chunk[0] is emitted by the master directly into its own builder; the
+		// other chunks get helper threads, plus ONE extra helper that emits the
+		// body-independent postamble groups (previously a serial tail after the
+		// region) on a private fork. Worker chunk ci keeps the temp-name base
+		// (ci+1)*100_000, so each chunk stays in its own disjoint _tN range and
+		// the numbering is deterministic.
 		thread_count := chunk_count - 1
-		mut thread_ids := []C.pthread_t{len: thread_count}
+		mut thread_ids := []C.pthread_t{len: thread_count + 2}
 		mut args := []FlatCgenChunkArgs{cap: thread_count}
 		mut workers := []voidptr{cap: thread_count}
-
-		// Helper workers keep the same temp-name base they had when every chunk was a
-		// worker (worker_id ci+1 -> base (ci+2)*100_000), and the master adopts what was
-		// worker 0's base. This keeps each chunk in its own disjoint _tN range AND makes
-		// the output byte-identical to the all-workers version.
 		for ci := 0; ci < thread_count; ci++ {
 			w := g.new_parallel_worker(ci + 1)
 			workers << voidptr(w)
 		}
+		mut post_worker_a := g.postamble_fork(thread_count + 1)
+		mut post_worker_b := g.postamble_fork(thread_count + 2)
 		for ci := 0; ci < thread_count; ci++ {
 			args << FlatCgenChunkArgs{
 				worker:         workers[ci]
@@ -100,19 +129,30 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			C.pthread_create(unsafe { &thread_ids[ci] }, attr, flat_cgen_chunk_thread,
 				unsafe { voidptr(&args[ci]) })
 		}
+		C.pthread_create(unsafe { &thread_ids[thread_count] }, attr, postamble_segments_thread_a,
+			voidptr(post_worker_a))
+		C.pthread_create(unsafe { &thread_ids[thread_count + 1] }, attr, postamble_segments_thread_b,
+			voidptr(post_worker_b))
 		C.pthread_attr_destroy(attr)
-		// Master emits chunk[0] into g.sb while the helper threads run, using worker 0's
-		// old temp base so its emitted temps match the all-workers numbering.
+		// Master emits chunk[0] into g.sb while the helper threads run, using
+		// worker 0's temp base so its temps stay in their own range.
 		g.tmp_count = 100_000
 		g.gen_fn_items(chunk_items[0])
-		for ci := 0; ci < thread_count; ci++ {
+		for ci := 0; ci < thread_count + 2; ci++ {
 			C.pthread_join(thread_ids[ci], unsafe { nil })
 		}
-		// Merge helper output after the master's chunk[0], in fixed order.
+		// Adopt the postamble fork's segments and emission-dedup state FIRST
+		// (it ran logically at the start of the postamble), then merge helper
+		// output in fixed chunk order — body-registered additions (fn-ptr
+		// types, optional/fixed-array needs) then land on top, exactly like
+		// the old serial order.
+		g.adopt_postamble_worker(post_worker_a, post_worker_b)
 		for ci := 0; ci < thread_count; ci++ {
 			w := unsafe { &FlatGen(workers[ci]) }
 			g.merge_parallel_worker(w)
 		}
+		g.tc.unfreeze_type_cache_after_forks()
+		// Synthetic main temps continue after the master's chunk[0] range.
 		g.gen_synthetic_main_after_fns()
 	}
 }
@@ -152,14 +192,18 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 	mut current := []FlatFnGenItem{}
 	mut current_cost := 0
 	mut chunks_left := n_jobs
+	// The master emits chunk[0] while also paying for the serial prep before
+	// and the merges after the region; give it a lighter share.
+	mut chunk_target := target_cost * 11 / 16
 	for idx, item in items {
 		remaining_items := items.len - idx
-		if current.len > 0 && current_cost >= target_cost && chunks_left > 1
+		if current.len > 0 && current_cost >= chunk_target && chunks_left > 1
 			&& remaining_items >= chunks_left {
 			chunks << current
 			current = []FlatFnGenItem{}
 			current_cost = 0
 			chunks_left--
+			chunk_target = target_cost
 		}
 		current << item
 		current_cost += item.cost
@@ -173,8 +217,15 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 // prepare_parallel_items supports prepare parallel items handling for FlatGen.
 fn (mut g FlatGen) prepare_parallel_items(items []FlatFnGenItem) {
 	mut stack := []flat.NodeId{cap: 256}
+	// The cache is keyed by the bare type text and reset whenever the
+	// file/module context changes (items are grouped by file, so resets are
+	// rare); the old composite '${file}\n${module}\n${typ}' key allocated a
+	// string per visited node.
 	mut type_text_cache := map[string]bool{}
 	for item in items {
+		if item.file != g.tc.cur_file || item.module != g.tc.cur_module {
+			type_text_cache.clear()
+		}
 		g.tc.cur_file = item.file
 		g.tc.cur_module = item.module
 		g.prepare_parallel_node(item.node_id, mut stack, mut type_text_cache)
@@ -249,12 +300,11 @@ fn (g &FlatGen) should_preseed_parallel_type_text_cached(typ string, mut cache m
 	if typ.len == 0 {
 		return false
 	}
-	key := '${g.tc.cur_file}\n${g.tc.cur_module}\n${typ}'
-	if key in cache {
-		return cache[key]
+	if cached := cache[typ] {
+		return cached
 	}
 	should_preseed := g.should_preseed_parallel_type_text(typ)
-	cache[key] = should_preseed
+	cache[typ] = should_preseed
 	return should_preseed
 }
 
@@ -423,6 +473,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		spawn_wrapper_defs:             g.spawn_wrapper_defs.clone()
 		callback_wrapper_names:         g.callback_wrapper_names.clone()
 		callback_wrapper_defs:          g.callback_wrapper_defs.clone()
+		c_name_cache:                   &CNameCache{}
 	}
 }
 
@@ -518,7 +569,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 	// indexes (short type names, local fn decls) and the field/IError
 	// memoizations instead of their uncached full-scan fallbacks. It shares no
 	// state with other threads.
-	wtc.set_fresh_type_cache(g.tc.type_cache_parse_enabled())
+	wtc.set_fresh_type_cache_based_on(g.tc, g.tc.type_cache_parse_enabled())
 	return wtc
 }
 
@@ -569,5 +620,103 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 		if def !in g.callback_wrapper_defs {
 			g.callback_wrapper_defs << def
 		}
+	}
+}
+
+// adopt_postamble_worker takes over the postamble fork's emitted segments and
+// its emission-dedup state, so the body-dependent postamble pieces that run
+// after the region skip everything the fork already emitted and add only what
+// the body workers registered on top (same net content as the old serial
+// order).
+// postamble_fork builds a FULL copy of the master FlatGen for a postamble
+// helper thread: unlike new_parallel_worker (which lists only the fields body
+// generation touches), the struct copy carries every collected table the
+// postamble pieces read (C directives, flags, module tables, ...). Only the
+// state the postamble WRITES is re-privatized: the builder, the checker (its
+// cur_file/cur_module scratch and caches), the c_name cache, and the
+// emission-dedup maps that are adopted back after the join.
+fn (g &FlatGen) postamble_fork(worker_id int) &FlatGen {
+	mut w := *g
+	w.sb = strings.new_builder(65536)
+	w.line_start = true
+	w.tc = g.clone_parallel_type_checker()
+	w.c_name_cache = &CNameCache{}
+	w.tmp_count = (worker_id + 1) * 100_000
+	w.post_segs = []string{}
+	w.emitted_optional_types = g.emitted_optional_types.clone()
+	w.needed_optional_types = g.needed_optional_types.clone()
+	w.emitted_fixed_array_typedefs = g.emitted_fixed_array_typedefs.clone()
+	w.fixed_array_typedefs_needed = g.fixed_array_typedefs_needed.clone()
+	w.emitted_fn_ptr_typedefs = g.emitted_fn_ptr_typedefs.clone()
+	w.fn_ptr_types = g.fn_ptr_types.clone()
+	w.libc_compat_fns = g.libc_compat_fns.clone()
+	w.c_extern_refs = map[string]bool{}
+	w.c_extern_refs_ready = false
+	// Snapshot of the interned-string table for the string_literals segment;
+	// the master's later interning appends beyond it (see
+	// string_literals_from).
+	w.str_lits = g.str_lits.clone()
+	w.str_lit_ids = g.str_lit_ids.clone()
+	return &w
+}
+
+fn (mut g FlatGen) adopt_postamble_worker(wa &FlatGen, wb &FlatGen) {
+	mut segs := []string{cap: 4}
+	segs << wa.post_segs[0]
+	segs << wb.post_segs[0]
+	segs << wb.post_segs[1]
+	segs << wb.post_segs[2]
+	g.post_segs = segs
+	// Fork A ran the typedef/struct pieces: adopt its emission-dedup state so
+	// the post-region pieces only add what the body workers registered on top.
+	g.emitted_optional_types = wa.emitted_optional_types.clone()
+	g.needed_optional_types = wa.needed_optional_types.clone()
+	g.emitted_fixed_array_typedefs = wa.emitted_fixed_array_typedefs.clone()
+	g.fixed_array_typedefs_needed = wa.fixed_array_typedefs_needed.clone()
+	g.fixed_array_typedefs_ready = wa.fixed_array_typedefs_ready
+	g.emitted_fn_ptr_typedefs = wa.emitted_fn_ptr_typedefs.clone()
+	g.fn_ptr_types = wa.fn_ptr_types.clone()
+	mut libc := wa.libc_compat_fns.clone()
+	for name, enabled in wb.libc_compat_fns {
+		if enabled {
+			libc[name] = true
+		}
+	}
+	g.libc_compat_fns = libc.move()
+	// Fork B precomputed the C-extern reference walk and emitted the string
+	// table up to its snapshot; the post-region supplement starts there.
+	g.c_extern_refs = wb.c_extern_refs.clone()
+	g.c_extern_refs_ready = wb.c_extern_refs_ready
+	g.post_str_lits_snapshot = wb.str_lits.len
+}
+
+// run_pre_dispatch_parallel overlaps the serial pre-dispatch work: the
+// fixed-storage-const scan runs on a helper thread while the master collects
+// the fn work items and pre-seeds the string/fn-ptr tables the workers need.
+// Returns false when the parallel path is not applicable (the caller then
+// runs the serial order).
+fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
+	$if windows {
+		return false
+	} $else {
+		if no_parallel {
+			return false
+		}
+		mut fs_worker := g.new_parallel_worker(0)
+		mut tid := []C.pthread_t{len: 1}
+		attr_buf := [64]u8{}
+		attr := unsafe { voidptr(&attr_buf[0]) }
+		C.pthread_attr_init(attr)
+		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+		C.pthread_create(unsafe { &tid[0] }, attr, fixed_storage_scan_thread, voidptr(fs_worker))
+		C.pthread_attr_destroy(attr)
+		items := g.ensure_fn_gen_items()
+		if items.len >= min_flat_cgen_parallel_items {
+			g.prepare_parallel_items(items)
+			g.parallel_prepared = true
+		}
+		C.pthread_join(tid[0], unsafe { nil })
+		g.fixed_storage_consts = fs_worker.fixed_storage_consts.clone()
+		return true
 	}
 }
