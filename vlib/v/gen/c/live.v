@@ -20,16 +20,9 @@ fn live_reload_should_forward_define(define string) bool {
 	return name.starts_with('sokol_') || name == 'darwin_sokol_glcore33' || name == 'no_sokol_app'
 }
 
-fn live_reload_define_needs_quoting(define string) bool {
-	return define.contains(' ') || define.contains('\t') || define.contains('"')
-		|| define.contains("'") || define.contains('\\')
-}
-
 fn live_reload_define_for_c_string(target_os pref.OS, define string) string {
-	if live_reload_define_needs_quoting(define) {
-		return live_runtime_quoted_path_for_c_string(target_os, define)
-	}
-	return define
+	escaped_define := if target_os == .windows { define.replace('%', '^%') } else { define }
+	return live_runtime_quoted_path_for_c_string(target_os, escaped_define)
 }
 
 fn live_reload_resolved_define(define string, compile_values map[string]string) string {
