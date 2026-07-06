@@ -3890,7 +3890,7 @@ fn (mut g Gen) update_generic_call_concrete_types_from_fn_types(generic_names []
 	}
 	if param_fn.func.return_type.has_flag(.generic) {
 		gt_name := g.table.sym(param_fn.func.return_type).name
-		mut return_type := arg_fn.func.return_type
+		mut return_type := arg_fn.func.return_type.clear_option_and_result()
 		if arg.expr is ast.LambdaExpr && return_type.has_flag(.generic) {
 			return_type = g.type_resolver.unwrap_generic_expr(arg.expr.expr, return_type)
 			if return_type.has_flag(.generic) {
