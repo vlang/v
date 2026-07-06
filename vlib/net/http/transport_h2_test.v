@@ -240,10 +240,21 @@ fn h2t_fetch_worker(port int, path string) int {
 	return resp.status_code
 }
 
+// h2t_slow_round_trip runs one request through a specific (non-default)
+// Transport instance, so a test can hold an h2 connection busy
+// (active_streams > 0) on that transport's own pool for the duration of a
+// spawned thread.
+fn h2t_slow_round_trip(mut t Transport, port int, path string) {
+	req := prepare(url: 'https://127.0.0.1:${port}${path}', validate: false, enable_http2: true) or {
+		return
+	}
+	t.round_trip(req, .get, 'https', '127.0.0.1', port, path, '', req.header) or {}
+}
+
 // h2t_h1only_srv_serve is a minimal HTTP/1.1 responder for a listener that
 // offers no ALPN protocols at all, so an h2-enabled client's probe dial
 // deterministically negotiates plain http/1.1.
-fn h2t_h1only_srv_serve(mut conn mbedtls.SSLConn) {
+fn h2t_h1only_srv_serve(mut s H2PoolSrv, mut conn mbedtls.SSLConn) {
 	defer {
 		conn.shutdown() or {}
 	}
@@ -258,6 +269,9 @@ fn h2t_h1only_srv_serve(mut conn mbedtls.SSLConn) {
 			}
 			sofar << buf[..n]
 		}
+		if s.respond_delay > 0 {
+			time.sleep(s.respond_delay)
+		}
 		conn.write_string('HTTP/1.1 200 OK\r\nContent-Length: ${h2t_body.len}\r\n\r\n${h2t_body}') or {
 			return
 		}
@@ -268,7 +282,7 @@ fn h2t_h1only_srv_loop(mut s H2PoolSrv, mut listener mbedtls.SSLListener) {
 	for {
 		mut conn := listener.accept() or { return }
 		s.bump_accepts()
-		spawn h2t_h1only_srv_serve(mut conn)
+		spawn h2t_h1only_srv_serve(mut s, mut conn)
 	}
 }
 
@@ -288,24 +302,33 @@ fn start_h2t_h1only_srv(mut s H2PoolSrv) !(int, &mbedtls.SSLListener, thread) {
 	return port, listener, th
 }
 
-// Concurrent first requests to a fresh h1-only origin: exactly one becomes
-// the ALPN-probing dialer (which completes its own exchange and checks the
-// resulting connection into the h1 pool), and the rest are waiters behind
-// that singleflight. At least one waiter must pick up the pooled connection
-// via the h1 pool rather than every waiter independently re-dialing (and
-// re-probing ALPN) — so the total accept count must be strictly fewer than
-// the number of concurrent requests (Codex P3, vlang/v#27643
-// pullrequestreview-4627654418, discussion 3521494719).
-fn test_h2_pool_waiter_reuses_h1_pool_after_alpn_probe() {
+// Concurrent first requests to a fresh h1-only origin must not be
+// head-of-line-blocked behind whichever one becomes the ALPN-probing
+// dialer's own response. The dialer's connection cannot be shared by
+// concurrent requests (HTTP/1.1 has no safe way to interleave two responses
+// on one connection), so making every waiter wait for the dialer's full
+// exchange to finish before even trying the h1 pool stalls unrelated
+// requests for however long that one response takes — precisely what RFC
+// 9112 §9.4 says multiple connections exist to avoid. Waiters must
+// independently race for the h1 pool (or dial their own) the moment the
+// origin's protocol is known, not after the dialer's response arrives
+// (Codex P2, vlang/v#27643 pullrequestreview-4631763931, discussion
+// 3525390892). Verified by timing: with every response artificially
+// delayed, N concurrent requests running in parallel finish in roughly one
+// delay; serialized behind one response they would take roughly two.
+fn test_h2_pool_alpn_fallback_avoids_hol_blocking() {
 	$if windows && !no_vschannel ? {
 		eprintln('skipping: SChannel connection pooling is not implemented yet')
 		return
 	}
-	mut srv := &H2PoolSrv{}
+	mut srv := &H2PoolSrv{
+		respond_delay: 400 * time.millisecond
+	}
 	port, mut listener, th := start_h2t_h1only_srv(mut srv) or {
 		assert false, 'server: ${err}'
 		return
 	}
+	sw := time.new_stopwatch()
 	mut workers := []thread int{}
 	for i in 0 .. 4 {
 		workers << spawn h2t_fetch_worker(port, '/w${i}')
@@ -314,8 +337,9 @@ fn test_h2_pool_waiter_reuses_h1_pool_after_alpn_probe() {
 		status := w.wait()
 		assert status == 200, 'concurrent fetch failed with ${status}'
 	}
-	assert srv.accept_count() < workers.len, 'expected at least one waiter to reuse the pooled h1 connection instead of every one of ${workers.len} concurrent requests dialing its own, got ${srv.accept_count()} accepts'
+	elapsed := sw.elapsed()
 	stop_h2_pool_srv(mut listener, th)
+	assert elapsed < 700 * time.millisecond, 'expected concurrent requests to a fresh h1-only origin to run in parallel (~1 respond_delay), not serialize behind one dialer response; took ${elapsed}'
 }
 
 // A caller-set req.read_timeout must bound a pooled h2 request's wait for its
@@ -377,6 +401,52 @@ fn test_h2_pool_dial_dedup_race() {
 	}
 	assert srv.accept_count() == 1, 'expected one deduped dial, got ${srv.accept_count()} accepts'
 	stop_h2_pool_srv(mut listener, th)
+}
+
+// h2_dial_and_do must recheck pooled state before committing to a new dial:
+// h2_round_trip's own check runs under a separate, already-released lock
+// acquisition, so a concurrent dial can finish and populate h2_conns[key] in
+// the window between that check and h2_dial_and_do's entry. Simulated
+// directly by calling h2_dial_and_do a second time after the pool is
+// already warm for this key -- exactly the state h2_round_trip would hand
+// off in that race window (Codex P2, vlang/v#27643
+// pullrequestreview-4631763931, discussion 3525390895).
+fn test_h2_dial_and_do_reuses_pooled_conn_instead_of_redialing() {
+	$if windows && !no_vschannel ? {
+		eprintln('skipping: SChannel connection pooling is not implemented yet')
+		return
+	}
+	mut t := new_transport()
+	mut srv := &H2PoolSrv{}
+	port, mut listener, th := start_h2_pool_srv(mut srv) or {
+		assert false, 'server: ${err}'
+		return
+	}
+
+	req1 := prepare(url: 'https://127.0.0.1:${port}/first', validate: false, enable_http2: true) or {
+		assert false, 'prepare 1: ${err}'
+		return
+	}
+	resp1 := t.round_trip(req1, .get, 'https', '127.0.0.1', port, '/first', '', req1.header) or {
+		assert false, 'round_trip 1: ${err}'
+		return
+	}
+	assert resp1.status_code == 200
+
+	req2 := prepare(url: 'https://127.0.0.1:${port}/second', validate: false, enable_http2: true) or {
+		assert false, 'prepare 2: ${err}'
+		return
+	}
+	key := transport_pool_key(req2, 'https', '127.0.0.1', port)
+	resp2 := t.h2_dial_and_do(req2, key, '', .get, '127.0.0.1', port, '/second', '', req2.header) or {
+		assert false, 'h2_dial_and_do 2: ${err}'
+		return
+	}
+	assert resp2.status_code == 200
+
+	t.close_idle()
+	stop_h2_pool_srv(mut listener, th)
+	assert srv.accept_count() == 1, 'expected h2_dial_and_do to reuse the already-pooled connection instead of redialing, got ${srv.accept_count()} accepts'
 }
 
 // The h2 connection pool must respect Transport.max_idle_conns like the h1
@@ -546,6 +616,143 @@ fn test_h2_pool_evicts_h1_idle_to_make_room_for_h2() {
 	stop_h2_pool_srv(mut h1_listener, h1_th)
 	stop_h2_pool_srv(mut h2_listener, h2_th)
 	assert total <= t.max_idle_conns, 'expected the combined h1+h2 idle pool to respect max_idle_conns=${t.max_idle_conns}, got ${h1_idle_count} h1 + ${h2_count} h2 = ${total}'
+}
+
+// The idle cap check must count only h2 connections that are ACTUALLY idle
+// (active_streams == 0), matching the eviction scan's own eligibility below
+// it. An h2 connection currently serving a request is not idle and must not
+// inflate the combined count -- otherwise a genuinely idle h1 connection
+// looks like it is pushing the pool over budget purely because of an
+// unrelated BUSY h2 connection, and gets evicted even though the real idle
+// count is within max_idle_conns (Codex P3, vlang/v#27643
+// pullrequestreview-4631763931, discussion 3525390899).
+fn test_h2_pool_idle_cap_excludes_busy_h2_conn() {
+	$if windows && !no_vschannel ? {
+		eprintln('skipping: SChannel connection pooling is not implemented yet')
+		return
+	}
+	mut t := new_transport()
+	t.max_idle_conns = 2
+
+	mut h1_srv := &H2PoolSrv{}
+	h1_port, mut h1_listener, h1_th := start_h2t_h1only_srv(mut h1_srv) or {
+		assert false, 'h1 server: ${err}'
+		return
+	}
+	h1_req := prepare(url: 'https://127.0.0.1:${h1_port}/warm', validate: false, enable_http2: true) or {
+		assert false, 'prepare h1: ${err}'
+		return
+	}
+	h1_resp := t.round_trip(h1_req, .get, 'https', '127.0.0.1', h1_port, '/warm', '', h1_req.header) or {
+		assert false, 'round_trip h1: ${err}'
+		return
+	}
+	assert h1_resp.status_code == 200
+
+	mut h2_srv := &H2PoolSrv{
+		respond_delay: 500 * time.millisecond
+	}
+	h2_port, mut h2_listener, h2_th := start_h2_pool_srv(mut h2_srv) or {
+		assert false, 'h2 server: ${err}'
+		return
+	}
+	// Warm up the h2 connection so it is registered and idle before the busy
+	// phase below.
+	warm_req := prepare(
+		url:          'https://127.0.0.1:${h2_port}/warm'
+		validate:     false
+		enable_http2: true
+	) or {
+		assert false, 'prepare h2 warm: ${err}'
+		return
+	}
+	warm_resp := t.round_trip(warm_req, .get, 'https', '127.0.0.1', h2_port, '/warm', '',
+		warm_req.header) or {
+		assert false, 'round_trip h2 warm: ${err}'
+		return
+	}
+	assert warm_resp.status_code == 200
+
+	// Make the h2 connection BUSY (active_streams > 0) for respond_delay, then
+	// dial a third, fresh h2 origin while it is still in flight -- that
+	// dial's own registration-time eviction check is where the miscount
+	// would fire.
+	slow_th := spawn h2t_slow_round_trip(mut t, h2_port, '/slow')
+	time.sleep(150 * time.millisecond)
+
+	mut c_srv := &H2PoolSrv{}
+	c_port, mut c_listener, c_th := start_h2_pool_srv(mut c_srv) or {
+		assert false, 'c server: ${err}'
+		return
+	}
+	c_req := prepare(url: 'https://127.0.0.1:${c_port}/fresh', validate: false, enable_http2: true) or {
+		assert false, 'prepare c: ${err}'
+		return
+	}
+	c_resp := t.round_trip(c_req, .get, 'https', '127.0.0.1', c_port, '/fresh', '', c_req.header) or {
+		assert false, 'round_trip c: ${err}'
+		return
+	}
+	assert c_resp.status_code == 200
+
+	t.mu.lock()
+	h1_idle_count := t.total_idle_locked()
+	t.mu.unlock()
+
+	slow_th.wait()
+	t.close_idle()
+	stop_h2_pool_srv(mut h1_listener, h1_th)
+	stop_h2_pool_srv(mut h2_listener, h2_th)
+	stop_h2_pool_srv(mut c_listener, c_th)
+	assert h1_idle_count == 1, 'expected the idle h1 connection to survive (a busy h2 connection must not count toward the idle cap), got ${h1_idle_count} idle h1 connections'
+}
+
+// A pooled h2 connection that has sat idle past idle_timeout must not be
+// reused just because it still has stream capacity -- h2_round_trip's fast
+// path only checked can_take_new_request() (stream capacity), never how long
+// the connection had been idle, unlike Transport.checkout's h1_idle expiry
+// check (Codex P2, vlang/v#27643 pullrequestreview-4631763931, discussion
+// 3525390896).
+fn test_h2_pool_respects_idle_timeout() {
+	$if windows && !no_vschannel ? {
+		eprintln('skipping: SChannel connection pooling is not implemented yet')
+		return
+	}
+	mut t := new_transport()
+	t.idle_timeout = 100 * time.millisecond
+
+	mut srv := &H2PoolSrv{}
+	port, mut listener, th := start_h2_pool_srv(mut srv) or {
+		assert false, 'server: ${err}'
+		return
+	}
+	req1 := prepare(url: 'https://127.0.0.1:${port}/first', validate: false, enable_http2: true) or {
+		assert false, 'prepare 1: ${err}'
+		return
+	}
+	resp1 := t.round_trip(req1, .get, 'https', '127.0.0.1', port, '/first', '', req1.header) or {
+		assert false, 'round_trip 1: ${err}'
+		return
+	}
+	assert resp1.status_code == 200
+
+	// Let the connection sit idle well past idle_timeout before the next
+	// request.
+	time.sleep(250 * time.millisecond)
+
+	req2 := prepare(url: 'https://127.0.0.1:${port}/second', validate: false, enable_http2: true) or {
+		assert false, 'prepare 2: ${err}'
+		return
+	}
+	resp2 := t.round_trip(req2, .get, 'https', '127.0.0.1', port, '/second', '', req2.header) or {
+		assert false, 'round_trip 2: ${err}'
+		return
+	}
+	assert resp2.status_code == 200
+
+	t.close_idle()
+	stop_h2_pool_srv(mut listener, th)
+	assert srv.accept_count() == 2, 'expected the expired idle connection to be retired and a fresh one dialed, got ${srv.accept_count()} accepts'
 }
 
 // Sequential requests to the same h2 origin must reuse the pooled multiplexed
@@ -842,6 +1049,23 @@ fn h2t_hammer_writer(mut pt H2PooledTransport) int {
 		writes++
 	}
 	return writes
+}
+
+// H2PooledTransport must wrap the SAME SSLConn object the caller dialed, not
+// a copy: SSLConn.dial() wires its internal TLS context to a pointer into the
+// struct's own address, so a value copy would silently detach the adapter's
+// reads/writes/close() from the live connection (Codex P1, vlang/v#27643
+// pullrequestreview-4631763931, discussion 3525390891). On the pre-fix code
+// (conn stored as a bare `ssl.SSLConn` value field) this test does not even
+// compile, since `pt.conn` cannot be compared as a pointer — that hard
+// failure is itself the Phase-R signal for this class of defect.
+fn test_h2_pooled_transport_stores_conn_by_pointer() {
+	mut sconn := ssl.new_ssl_conn(validate: false) or {
+		assert false, 'ssl conn: ${err}'
+		return
+	}
+	mut pt := new_h2_pooled_transport(mut sconn)
+	assert voidptr(pt.conn) == voidptr(sconn), 'H2PooledTransport must wrap the same SSLConn object, not a copy of it'
 }
 
 // One thread reads, one writes, and a third closes mid-flight: the adapter

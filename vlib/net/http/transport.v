@@ -340,7 +340,31 @@ fn (mut t Transport) evict_oldest_idle_locked(just_registered_h2_key string) Evi
 	if t.max_idle_conns <= 0 {
 		return EvictedIdleConn{}
 	}
-	if t.total_idle_locked() + t.h2_conns.len <= t.max_idle_conns {
+	// Count only h2 entries with active_streams == 0, matching the eviction
+	// scan below's own eligibility. Counting every h2_conns entry regardless
+	// of activity made a pool with busy h2 connections and a single genuinely
+	// idle h1 connection look over budget on its own, evicting that h1
+	// connection even though the actual idle count was within the cap (Codex
+	// P3, vlang/v#27643 pullrequestreview-4631763931, discussion 3525390899).
+	//
+	// just_registered_h2_key is deliberately NOT excluded here (unlike the
+	// candidacy scan below): it still occupies a real pool slot the instant
+	// it is registered, so it must count toward the cap even though it can
+	// never be picked as its own eviction victim. Excluding it from this
+	// count too under-counted the pool during sequential single-connection
+	// dials (each new h2 registration's own active_streams is still 0 before
+	// do_h2 runs), letting the combined count sit AT the cap instead of over
+	// it and skipping an eviction that should have happened.
+	mut idle_h2_count := 0
+	for _, mut c in t.h2_conns {
+		c.smu.lock()
+		is_idle := c.active_streams == 0
+		c.smu.unlock()
+		if is_idle {
+			idle_h2_count++
+		}
+	}
+	if t.total_idle_locked() + idle_h2_count <= t.max_idle_conns {
 		return EvictedIdleConn{}
 	}
 	mut found := false

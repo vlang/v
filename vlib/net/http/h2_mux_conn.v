@@ -136,6 +136,18 @@ mut:
 	// the whole response -- see h2_stream_timeout_watchdog.
 	last_activity  time.Time
 	upload_started time.Time // fixed baseline for the upload watchdog; deliberately never reset
+	// in_callback is true while wait_response is inside a caller-supplied
+	// on_data/progress callback (run outside mu so it can block without
+	// stalling the reader). read_timeout documents itself as bounding how
+	// long a request waits for a response over the WIRE, not how long the
+	// caller's own callback takes to process a delivered chunk; without this,
+	// a callback that applies backpressure or does slow work for longer than
+	// read_timeout gets its stream reset even though nothing is actually
+	// stalled on I/O (Codex P2, vlang/v#27643 pullrequestreview-4631763931,
+	// discussion 3525390898). h2_response_phase_since treats this as "the
+	// clock is paused" so the watchdog never counts callback time against the
+	// budget, however long the callback runs.
+	in_callback bool
 	// --- send state, guarded by the connection's fmu ---
 	send_window i64
 	send_dead   bool // RST/GOAWAY: wake a body sender blocked on flow-control credit
@@ -291,6 +303,21 @@ pub fn (mut c H2MuxConn) can_take_new_request() bool {
 	}
 	limit := if c.peer_max_streams < c.max_streams { c.peer_max_streams } else { c.max_streams }
 	return !c.closed && !c.goaway && !c.shutting_down && u32(c.active_streams) < limit
+}
+
+// is_idle_expired reports whether this connection has had zero in-flight
+// streams for longer than `idle_timeout` -- the h2 pool's counterpart to
+// Transport.checkout's h1_idle expiry check (transport.v). Without this,
+// h2_round_trip's fast path only checked can_take_new_request() (stream
+// capacity), so a pooled h2 connection could sit idle indefinitely past the
+// documented idle_timeout and still be reused, unlike h1 (Codex P2,
+// vlang/v#27643 pullrequestreview-4631763931, discussion 3525390896).
+pub fn (mut c H2MuxConn) is_idle_expired(idle_timeout time.Duration) bool {
+	c.smu.lock()
+	defer {
+		c.smu.unlock()
+	}
+	return c.active_streams == 0 && time.now() - c.idle_since > idle_timeout
 }
 
 // shutdown_when_idle asks the connection to retire: no new requests are
@@ -499,6 +526,15 @@ fn h2_response_phase_since(s &H2MuxStream) time.Time {
 	s.mu.lock()
 	defer {
 		s.mu.unlock()
+	}
+	if s.in_callback {
+		// A caller callback is running right now, outside mu — report "now"
+		// so the watchdog's elapsed-time computation is always ~0 for as long
+		// as the callback keeps the stream in this state, regardless of how
+		// long it takes. wait_response bumps last_activity for real the
+		// moment the callback returns, so a genuine post-callback network
+		// stall is still caught normally.
+		return time.now()
 	}
 	return s.last_activity
 }
@@ -965,13 +1001,21 @@ fn (mut c H2MuxConn) wait_response(mut s H2MuxStream, req H2ClientRequest) !H2Cl
 			}
 			if req.on_data != unsafe { nil } {
 				// Run the user callback outside the stream lock so it can
-				// block without stalling the reader's delivery.
+				// block without stalling the reader's delivery. in_callback
+				// tells the response watchdog to treat this stretch as active
+				// (not an idle/stalled read) no matter how long the callback
+				// takes — see H2MuxStream.in_callback's doc comment.
+				s.in_callback = true
 				s.mu.unlock()
 				req.on_data(chunk, body_so_far, body_expected, resp.status) or {
 					// The callback aborted the request: credit the connection
 					// window for what we consumed this round and RST the stream,
 					// just like the stop_receiving_limit path, so the connection
-					// window does not leak and the peer stops sending.
+					// window does not leak and the peer stops sending. Left
+					// unlocked and in_callback still true here is harmless:
+					// cancel_stream sets s.ended, which h2_response_phase_done
+					// already makes the watchdog's own done() check exit on
+					// (within one poll interval) regardless of in_callback.
 					if drained > 0 {
 						c.send_conn_window_update(u32(drained)) or {}
 					}
@@ -979,6 +1023,8 @@ fn (mut c H2MuxConn) wait_response(mut s H2MuxStream, req H2ClientRequest) !H2Cl
 					return err
 				}
 				s.mu.lock()
+				s.in_callback = false
+				s.last_activity = time.now()
 			}
 			if req.stop_receiving_limit >= 0 && i64(body_so_far) >= req.stop_receiving_limit {
 				cancelled = true

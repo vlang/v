@@ -84,8 +84,8 @@ const h2_pooled_write_stall_limit = 30 * time.second
 @[heap]
 struct H2PooledTransport {
 mut:
-	conn   ssl.SSLConn
-	io_mu  &sync.Mutex = sync.new_mutex()
+	conn   &ssl.SSLConn = unsafe { nil }
+	io_mu  &sync.Mutex  = sync.new_mutex()
 	closed bool
 }
 
@@ -94,6 +94,16 @@ mut:
 // timeout on the connection so a locked read() call cannot block the writer
 // for long. The caller must not use `conn` directly afterwards — the returned
 // adapter owns it exclusively.
+//
+// `conn` is stored BY POINTER, never by value: SSLConn.dial() wires
+// mbedtls_ssl_set_bio (and OpenSSL's equivalent SSL_set_bio) to a pointer
+// into the struct's OWN address (e.g. mbedtls's `&s.server_fd`). A value copy
+// here would leave the copy's internal TLS context pointing at the original
+// object's fields — not its own — so later reads/writes and close() would
+// operate on stale/orphaned state instead of the live connection (Codex P1,
+// vlang/v#27643 pullrequestreview-4631763931, discussion 3525390891). This
+// matches the established idiom for a pooled SSLConn elsewhere in this
+// module: H1PooledConn.ssl (transport.v) is also `&ssl.SSLConn`.
 fn new_h2_pooled_transport(mut conn ssl.SSLConn) &H2PooledTransport {
 	conn.set_read_timeout(h2_pooled_io_timeout)
 	return &H2PooledTransport{

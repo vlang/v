@@ -54,6 +54,23 @@ fn (mut t Transport) h2_round_trip(req &Request, key string, raw string, method 
 		t.mu.lock()
 		mut conn := t.h2_conns[key] or { &H2MuxConn(unsafe { nil }) }
 		t.mu.unlock()
+		if conn != unsafe { nil } && conn.is_idle_expired(t.idle_timeout) {
+			// Mirrors Transport.checkout's h1_idle expiry check: a pooled h2
+			// connection that has sat idle past idle_timeout must be retired
+			// even though it still has stream capacity, matching h1's own
+			// documented idle_timeout contract (Codex P2, vlang/v#27643
+			// pullrequestreview-4631763931, discussion 3525390896).
+			t.mu.lock()
+			existing := t.h2_conns[key] or { &H2MuxConn(unsafe { nil }) }
+			if voidptr(existing) == voidptr(conn) {
+				t.h2_conns.delete(key)
+				t.h2_dial_id.delete(key)
+			}
+			t.mu.unlock()
+			conn.shutdown_when_idle()
+			conn.release()
+			return t.h2_dial_and_do(req, key, raw, method, host, port, path, data, header)!
+		}
 		if conn != unsafe { nil } && conn.can_take_new_request() {
 			// Fast path only: do()/do_on_stream re-check closed/goaway/
 			// shutting_down/the stream limit under their own smu right before
@@ -99,6 +116,45 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 		t.mu.unlock()
 		return t.h2_await_dial(mut existing, req, key, raw, method, host, port, path, data, header)
 	}
+	// Recheck pooled state before committing to a new dial: h2_round_trip's
+	// own check ran under a separate, already-released lock acquisition, so
+	// a concurrent dial can have finished and populated h2_conns[key] (or
+	// determined key_proto[key] == 1) in the window between that check and
+	// this one. Racing straight into a new H2DialCall here would perform a
+	// redundant TLS/ALPN handshake and orphan the connection that just won
+	// (Codex P2, vlang/v#27643 pullrequestreview-4631763931, discussion
+	// 3525390895).
+	mut pooled := t.h2_conns[key] or { &H2MuxConn(unsafe { nil }) }
+	proto := t.key_proto[key] or { 0 }
+	t.mu.unlock()
+	if pooled != unsafe { nil } && pooled.can_take_new_request() {
+		mut pooled_retryable := false
+		resp := do_h2(req, mut pooled, method, host, port, path, data, header) or {
+			if err.code() != h2_err_retryable_code {
+				return err
+			}
+			// The connection raced GOAWAY/closed between the check above and
+			// do_on_stream's own registration -- mirrors h2_round_trip's own
+			// identical retry for this exact TOCTOU (see its comment): fall
+			// through to the dialing-state checks below instead of
+			// propagating a spurious failure for a connection that never
+			// actually took the request.
+			pooled_retryable = true
+			Response{}
+		}
+		if !pooled_retryable {
+			return resp
+		}
+	}
+	if proto == 1 {
+		return t.h2_use_h1_pool_or_dial(req, key, raw, method, host, port, path, data, header)
+	}
+
+	t.mu.lock()
+	if mut existing := t.dialing[key] {
+		t.mu.unlock()
+		return t.h2_await_dial(mut existing, req, key, raw, method, host, port, path, data, header)
+	}
 	mut call := new_h2_dial_call()
 	t.dialing[key] = call
 	t.mu.unlock()
@@ -121,20 +177,27 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 		t.key_proto[key] = 1
 		t.dialing.delete(key)
 		t.mu.unlock()
+		// Wake waiters as soon as the protocol is known, BEFORE running this
+		// caller's own exchange below. HTTP/1.1 has no safe way to share one
+		// connection across two concurrent requests, so waiting for this
+		// exchange to fully finish (as before) head-of-line-blocks every
+		// other concurrent first-time caller to this origin behind however
+		// long THIS one's response takes — exactly what RFC 9112 §9.4 says
+		// multiple connections exist to avoid. Waiters now independently
+		// race for the h1 pool via h2_use_h1_pool_or_dial, the same helper
+		// h2_dial_and_do's own registration-time recheck uses below (Codex
+		// P2, vlang/v#27643 pullrequestreview-4631763931, discussion
+		// 3525390892).
+		call.mu.lock()
+		call.done = true
+		call.mu.unlock()
+		call.cv.broadcast()
 		mut conn := &H1PooledConn{
 			key: key
 			ssl: ssl_conn
 		}
 		resp, reusable := conn.exchange(req, raw) or {
 			conn.close_conn()
-			// Wake waiters before propagating: they have no connection of
-			// their own to reuse here (the exchange never completed), so they
-			// must fall back to their own independent dial rather than wait
-			// forever on a call that will never mark itself done otherwise.
-			call.mu.lock()
-			call.done = true
-			call.mu.unlock()
-			call.cv.broadcast()
 			// Past the TLS handshake the request bytes may have been (partially)
 			// written; a non-idempotent method must not be replayed by the outer
 			// retry loop, mirroring tls_fresh_round_trip's own error handling.
@@ -144,14 +207,6 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 			return err
 		}
 		t.maybe_checkin(mut conn, header, reusable, resp)
-		// Wake waiters only now that the connection (if reusable) is already
-		// checked into the h1 pool — h2_await_dial's checkout(key) then has a
-		// real chance of finding it, instead of racing the checkin and always
-		// losing.
-		call.mu.lock()
-		call.done = true
-		call.mu.unlock()
-		call.cv.broadcast()
 		return resp
 	}
 
@@ -270,25 +325,36 @@ fn (mut t Transport) h2_await_dial(mut call H2DialCall, req &Request, key string
 		return error(msg)
 	}
 	if !is_h2 {
-		mut h1conn := t.checkout(key)
-		if h1conn == unsafe { nil } {
-			return t.tls_fresh_round_trip(req, key, raw, method, host, port, path, data, header)
-		}
-		h1conn.refresh_timeouts(req)
-		resp, reusable := h1conn.exchange(req, raw) or {
-			h1conn.close_conn()
-			// Mirrors round_trip's own stale-pooled-connection handling: a
-			// reused connection that fails is drained by falling through to a
-			// fresh dial, except a non-idempotent method must not be replayed.
-			if !transport_is_idempotent(method) {
-				return error_with_code(err.msg(), transport_err_unsafe_retry)
-			}
-			return t.tls_fresh_round_trip(req, key, raw, method, host, port, path, data, header)
-		}
-		t.maybe_checkin(mut h1conn, header, reusable, resp)
-		return resp
+		return t.h2_use_h1_pool_or_dial(req, key, raw, method, host, port, path, data, header)
 	}
 	return do_h2(req, mut conn, method, host, port, path, data, header)
+}
+
+// h2_use_h1_pool_or_dial completes a request already known to be against an
+// h1-only origin (key_proto[key] == 1): reuses a pooled H1PooledConn when one
+// is checked in, or falls back to an independent dial otherwise. Shared by
+// h2_await_dial (a waiter behind a completed singleflight dial) and
+// h2_dial_and_do's own registration-time recheck, so both paths treat a
+// known-h1 origin identically (Codex P2, vlang/v#27643
+// pullrequestreview-4631763931, discussion 3525390892).
+fn (mut t Transport) h2_use_h1_pool_or_dial(req &Request, key string, raw string, method Method, host string, port int, path string, data string, header Header) !Response {
+	mut h1conn := t.checkout(key)
+	if h1conn == unsafe { nil } {
+		return t.tls_fresh_round_trip(req, key, raw, method, host, port, path, data, header)
+	}
+	h1conn.refresh_timeouts(req)
+	resp, reusable := h1conn.exchange(req, raw) or {
+		h1conn.close_conn()
+		// Mirrors round_trip's own stale-pooled-connection handling: a
+		// reused connection that fails is drained by falling through to a
+		// fresh dial, except a non-idempotent method must not be replayed.
+		if !transport_is_idempotent(method) {
+			return error_with_code(err.msg(), transport_err_unsafe_retry)
+		}
+		return t.tls_fresh_round_trip(req, key, raw, method, host, port, path, data, header)
+	}
+	t.maybe_checkin(mut h1conn, header, reusable, resp)
+	return resp
 }
 
 // do_h2 runs one request over an established, pooled H2MuxConn and converts

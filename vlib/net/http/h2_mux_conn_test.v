@@ -2368,6 +2368,32 @@ fn test_mux_read_timeout_resets_on_response_progress() {
 	assert out.bodies['/slow-trickle'] == 'chunk0;chunk1;chunk2;chunk3;'
 }
 
+// h2_response_phase_since must not report a stale last_activity while a
+// caller's on_data callback is running: read_timeout bounds how long a
+// request waits for the response over the WIRE, not how long the caller's
+// own callback takes to process a delivered chunk (Codex P2, vlang/v#27643
+// pullrequestreview-4631763931, discussion 3525390898).
+//
+// Not tested end-to-end through a full peer/watchdog round trip: the reader
+// thread deliberately updates s.ended/last_activity independent of the
+// requester's callback progress (wait_response unlocks s.mu specifically so
+// a slow callback never stalls the reader — see its own doc comment), so a
+// peer that delivers its frames promptly always sets s.ended before the
+// watchdog's poll-after-sleep done() check can observe an expired deadline,
+// regardless of callback duration. The bug is only reachable in practice
+// when flow control genuinely blocks the peer from sending more until the
+// client's callback finishes and credits the window back — this unit test
+// exercises the exact mechanism the fix changes instead.
+fn test_h2_response_phase_since_pauses_during_callback() {
+	mut s := new_h2_mux_stream()
+	s.mu.lock()
+	s.last_activity = time.now().add(-1 * time.second)
+	s.in_callback = true
+	s.mu.unlock()
+	elapsed := time.now() - h2_response_phase_since(s)
+	assert elapsed < 100 * time.millisecond, 'expected in_callback to report a fresh timestamp instead of the 1s-stale last_activity, got staleness of ${elapsed}'
+}
+
 // A watchdog-timed-out stream (read_timeout exceeded with no response ever
 // arriving) must tell the peer via RST_STREAM, not just fail locally:
 // otherwise the peer keeps the stream open -- and counted against
