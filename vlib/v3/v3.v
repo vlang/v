@@ -305,7 +305,14 @@ fn main() {
 			i++
 		} else if args[i] in ['-gc', '-cc'] && i + 1 < args.len {
 			i += 2
-		} else if args[i] in ['-prealloc', '-enable-globals'] {
+		} else if args[i] == '-prealloc' {
+			// Same effect as `v -prealloc`: activate the `$if prealloc {` arena
+			// allocator branches in vlib/builtin (allocation.c.v, prealloc.c.v).
+			if 'prealloc' !in user_defines {
+				user_defines << 'prealloc'
+			}
+			i++
+		} else if args[i] == '-enable-globals' {
 			i++
 		} else if args[i].starts_with('-') {
 			i++
@@ -574,6 +581,7 @@ fn main() {
 		c_standard := c_standard_flag(prefs.c99)
 		mut g := cgen.FlatGen.new()
 		g.set_c99_mode(prefs.c99)
+		g.set_prealloc('prealloc' in prefs.user_defines)
 		g.set_compiler_vexe(prefs.vexe)
 		c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, no_parallel, test_files)
 		if !write_text_file_raw(output_file, c_code) {
@@ -619,7 +627,10 @@ fn main() {
 		mut exec_cmd := ''
 		mut result := os.Result{}
 		mut tried_tcc := false
-		if !is_prod && !needs_objective_c {
+		// tcc implements neither _Thread_local nor __thread; the -prealloc
+		// arena needs a thread-local base block pointer, so go straight to cc.
+		prealloc_mode := 'prealloc' in prefs.user_defines
+		if !is_prod && !needs_objective_c && !prealloc_mode {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')

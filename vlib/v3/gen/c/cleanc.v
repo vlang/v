@@ -154,6 +154,10 @@ mut:
 	const_short_index       &ConstShortIndex = unsafe { nil }
 	mut_recv_facts          &FnNameFactCache = unsafe { nil }
 	want_parallel_prep      bool
+	// Set when the target is built with -prealloc / -d prealloc: the bump
+	// arena's base block pointer must be thread-local (matching V1's cgen),
+	// or every spawned thread would race on the same arena.
+	prealloc bool
 }
 
 struct FixedArrayTypedefInfo {
@@ -186,6 +190,11 @@ pub fn (g &FlatGen) c_flags() []string {
 // set_c99_mode configures whether generated C should support strict C99 builds.
 pub fn (mut g FlatGen) set_c99_mode(enabled bool) {
 	g.c99_mode = enabled
+}
+
+// set_prealloc marks the build as using the -prealloc bump arena.
+pub fn (mut g FlatGen) set_prealloc(on bool) {
+	g.prealloc = on
 }
 
 fn (mut g FlatGen) push_scope() {
@@ -8738,7 +8747,11 @@ fn (mut g FlatGen) global_decls() {
 			continue
 		}
 		init := if g.can_use_global_brace_zero_init(decl_typ, ct) { ' = {0}' } else { '' }
-		g.writeln('${ct} ${g.cname(name)}${init};')
+		// With -prealloc the arena base block is per-thread (lazily initialized
+		// on first allocation in each thread); a shared pointer would make all
+		// threads bump the same block without synchronization.
+		tls_kw := if g.prealloc && name == 'g_memory_block' { '_Thread_local ' } else { '' }
+		g.writeln('${tls_kw}${ct} ${g.cname(name)}${init};')
 	}
 	g.tc.cur_module = old_module
 	if g.global_types.len > 0 {
