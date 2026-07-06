@@ -93,35 +93,35 @@ mut:
 	// generic_plain_fn_base_for_call (O(generic fns) with two string allocations
 	// per key, run for nearly every emitted call). The ordinal preserves the
 	// map's iteration order so multi-match resolution stays byte-identical.
-	generic_fn_keys_by_short map[string][]string
-	generic_fn_keys_by_cname map[string][]string
-	generic_fn_key_ordinal   map[string]int
-	struct_decl_infos              map[string]StructDeclInfo
-	struct_decl_short_infos        map[string]StructDeclInfo
-	shared_type_names              map[string]SharedTypeInfo // __shared__ wrapper name -> wrapped type metadata
-	needs_shared_runtime           bool
-	const_runtime_inits            []string
-	const_runtime_init_modules     []string
-	runtime_inits                  []string
-	runtime_init_modules           []string
-	compiler_vroot                 string
-	compiler_vexe                  string
-	c99_mode                       bool
-	cur_fn_name                    string
-	cur_param_names                []string
-	cur_param_type_values          []types.Type
-	cur_param_types                map[string]types.Type
-	cur_concrete_optional_params   map[string]bool
-	cur_mut_params                 map[string]bool
-	cur_mut_param_owners           map[string]types.ScopeBindingOwner
-	cur_fn_ret                     types.Type = types.Type(types.void_)
-	cur_fn_ret_is_optional         bool
-	cur_fn_ret_base                types.Type = types.Type(types.void_)
-	active_locks                   []ActiveLock
-	loop_depth                     int
-	loop_label_depths              map[string]int
-	goto_label_lock_scopes         map[string][]int
-	pending_loop_label             string
+	generic_fn_keys_by_short     map[string][]string
+	generic_fn_keys_by_cname     map[string][]string
+	generic_fn_key_ordinal       map[string]int
+	struct_decl_infos            map[string]StructDeclInfo
+	struct_decl_short_infos      map[string]StructDeclInfo
+	shared_type_names            map[string]SharedTypeInfo // __shared__ wrapper name -> wrapped type metadata
+	needs_shared_runtime         bool
+	const_runtime_inits          []string
+	const_runtime_init_modules   []string
+	runtime_inits                []string
+	runtime_init_modules         []string
+	compiler_vroot               string
+	compiler_vexe                string
+	c99_mode                     bool
+	cur_fn_name                  string
+	cur_param_names              []string
+	cur_param_type_values        []types.Type
+	cur_param_types              map[string]types.Type
+	cur_concrete_optional_params map[string]bool
+	cur_mut_params               map[string]bool
+	cur_mut_param_owners         map[string]types.ScopeBindingOwner
+	cur_fn_ret                   types.Type = types.Type(types.void_)
+	cur_fn_ret_is_optional       bool
+	cur_fn_ret_base              types.Type = types.Type(types.void_)
+	active_locks                 []ActiveLock
+	loop_depth                   int
+	loop_label_depths            map[string]int
+	goto_label_lock_scopes       map[string][]int
+	pending_loop_label           string
 	// in_return is true only while generating a `return` statement's value, so a bare
 	// generic literal (`return Box{...}`) may adopt `cur_fn_ret`'s concrete instance —
 	// but a literal in a local decl / argument elsewhere in the body does not.

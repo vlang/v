@@ -1374,7 +1374,8 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 		old_len := t.a.children.len
 		unsafe {
 			t.a.children.grow_len(new_children)
-			vmemcpy(&t.a.children[old_len], &w.a.children[base_children], new_children * int(sizeof(flat.NodeId)))
+			vmemcpy(&t.a.children[old_len], &w.a.children[base_children],
+				new_children * int(sizeof(flat.NodeId)))
 		}
 		for k in old_len .. t.a.children.len {
 			cid := t.a.children[k]
@@ -1693,8 +1694,7 @@ fn (mut t Transformer) transform_late_candidate(ci int, mut candidates []LateFnC
 			continue
 		}
 		for call_name in t.generated_fn_body_call_names(flat.NodeId(j)) {
-			t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut
-				queued)
+			t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut queued)
 		}
 	}
 }

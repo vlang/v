@@ -2287,8 +2287,8 @@ fn (c &CallCollector) collect_body(node &flat.Node, cur_module string, imports m
 	}
 	c.collect_calls_with_locals(node, cur_module, imports, receiver_name, receiver_struct,
 		local_values, local_types, visible_local_idents, mut result.calls)
-	c.collect_initializer_refs_with_locals(node, cur_module, imports, local_values, visible_local_idents, mut
-		result.refs)
+	c.collect_initializer_refs_with_locals(node, cur_module, imports, local_values,
+		visible_local_idents, mut result.refs)
 	return result
 }
 
@@ -2644,8 +2644,8 @@ fn (c &CallCollector) collect_initializer_refs(node &flat.Node, cur_module strin
 	} else {
 		map[int]bool{}
 	}
-	c.collect_initializer_refs_with_locals(node, cur_module, imports, local_values, visible_local_idents, mut
-		refs)
+	c.collect_initializer_refs_with_locals(node, cur_module, imports, local_values,
+		visible_local_idents, mut refs)
 }
 
 // collect_initializer_refs_with_locals is collect_initializer_refs with the

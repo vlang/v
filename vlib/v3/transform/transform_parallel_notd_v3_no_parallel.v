@@ -143,7 +143,8 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 			args_ptr:       unsafe { voidptr(&args) }
 			thread_ids_ptr: unsafe { voidptr(&thread_ids) }
 		}
-		C.pthread_create(unsafe { &thread_ids[0] }, attr, transform_chunk_thread, unsafe { voidptr(&args[0]) })
+		C.pthread_create(unsafe { &thread_ids[0] }, attr, transform_chunk_thread,
+			unsafe { voidptr(&args[0]) })
 		C.pthread_attr_destroy(attr)
 		// Master transforms chunk[0] in place while the helper threads run. It only
 		// touches its own functions' nodes and the master AST/TypeChecker, all disjoint

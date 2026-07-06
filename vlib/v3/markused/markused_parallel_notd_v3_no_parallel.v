@@ -6,7 +6,6 @@ module markused
 // slots of a preallocated results array. The result content per body is a pure
 // function of the (read-only) AST and checker tables, so the outcome is
 // identical to the serial fallback.
-
 import runtime
 import v3.flat
 import v3.types
