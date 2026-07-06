@@ -174,3 +174,19 @@ fn test_generic_as_cast_multi_return_interface() {
 	g2, _ := w2.extract()
 	assert g2.get() == 2
 }
+
+// Regression test: passing &Interface from generic multi-return
+// to a generic method that expects &Interface.
+// ref_or_deref_arg_ex must NOT add extra & to an already-&Interface arg.
+fn (w Wrapper[T]) verify(src &Gettable) int {
+	return src.get()
+}
+
+fn test_generic_method_ref_interface_param() {
+	w1 := Wrapper[TypeA]{
+		src: Holder{&TypeA{10, 20}}
+	}
+	_, ref := w1.extract()
+	result := w1.verify(ref)
+	assert result == 30
+}

@@ -7235,6 +7235,16 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 				}
 			} else if effective_arg_sym.kind == expected_ref_inner_sym.kind
 				&& effective_arg_typ.idx() == expected_ref_inner_type.idx() {
+				// Fix: when a &Interface variable is auto-dereferenced by the checker to its
+				// value type, arg_typ loses the pointer flag. Check the actual variable type
+				// to avoid adding an extra & on an already-pointer variable.
+				if effective_arg_expr is ast.Ident && effective_arg_expr.obj is ast.Var {
+					var_typ := (effective_arg_expr.obj as ast.Var).typ
+					if var_typ.clear_flag(.generic) == expected_type.clear_flag(.generic) {
+						g.expr(effective_arg_expr)
+						return
+					}
+				}
 				g.prevent_sum_type_unwrapping_once = g.is_expr_smartcast_to_sumtype(effective_arg_expr,
 					expected_ref_inner_type)
 				if effective_arg_expr in [ast.Ident, ast.SelectorExpr] {
