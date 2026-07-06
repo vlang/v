@@ -46,6 +46,19 @@ fn node_kind_id(node flat.Node) int {
 	return kind_id
 }
 
+// option_unwrap_marker tags a SmartcastContext produced by an `x != none`
+// condition: variant_name holds the option's base type and the access is
+// lowered to the option's `.value` field instead of a sum union field.
+pub const option_unwrap_marker = '?opt'
+
+// SumEqRequest records where a sum type's equality helper was first requested,
+// so the helper body is built under that module/file resolution context.
+pub struct SumEqRequest {
+pub:
+	module string
+	file   string
+}
+
 // SmartcastContext stores smartcast context state used by transform.
 pub struct SmartcastContext {
 pub:
@@ -97,6 +110,13 @@ mut:
 	struct_field_type_cache      &LookupCache            = unsafe { nil }
 	variant_short_name_cache     &LookupCache            = unsafe { nil }
 	used_fns                     map[string]bool
+	// sum_eq_types records sum types whose deep-equality helper fn
+	// (__v3_sum_eq_<name>) is called somewhere, keyed by sum name with the
+	// module/file context of the requesting call site (type resolution inside
+	// the helper body needs that context). The helpers are synthesized
+	// serially after the (possibly parallel) transform completes.
+	sum_eq_types                 map[string]SumEqRequest
+	sum_eq_synthesized           map[string]bool
 	interface_boxed_types        map[string]bool
 	interface_boxed_types_done   bool
 	interface_var_concrete_types map[string]string
@@ -312,6 +332,7 @@ pub fn transform_with_used_opt_config(mut a flat.FlatAst, tc &types.TypeChecker,
 	}
 	late_names << newly_used_fn_names(used_fns, t.used_fns)
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
+	t.synthesize_sum_eq_helpers()
 	return t.used_fns, was_parallel
 }
 
@@ -428,6 +449,7 @@ pub fn monomorphize_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fn
 	late_names << t.new_call_names_from_used_fn_bodies(used_fns, t.a.nodes.len)
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
 	t.materialize_generic_structs()
+	t.synthesize_sum_eq_helpers()
 	return t.used_fns
 }
 
@@ -1427,6 +1449,8 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.interface_var_concrete_types = t.interface_var_concrete_types.clone()
 	w.interface_boxed_types = map[string]bool{}
 	w.interface_boxed_types_done = false
+	w.sum_eq_types = t.sum_eq_types.clone()
+	w.sum_eq_synthesized = t.sum_eq_synthesized.clone()
 	w.generic_receiver_methods_by_name = map[string][]string{}
 	w.used_fns_log = []string{}
 	w.used_fns_log_active = false
@@ -1505,6 +1529,11 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 	for name, used in w.used_fns {
 		if used {
 			t.used_fns[name] = true
+		}
+	}
+	for name, req in w.sum_eq_types {
+		if name !in t.sum_eq_types {
+			t.sum_eq_types[name] = req
 		}
 	}
 }
@@ -7933,6 +7962,19 @@ fn (mut t Transformer) apply_smartcast_contexts(base flat.NodeId, typ string, co
 	mut current := base
 	mut current_type := typ
 	for i, sc in contexts {
+		if sc.sum_type_name == option_unwrap_marker {
+			// current is the Optional_T struct value itself. Type annotations on
+			// the rebuilt expr may already report the smartcast base type (which
+			// can be a pointer and would make cgen emit `->`), so pin the node's
+			// type back to the option before selecting `.value` from it.
+			if int(current) >= 0 && t.a.nodes[int(current)].kind in [.ident, .selector] {
+				t.a.nodes[int(current)].typ = '?${sc.variant_name}'
+			}
+			field_op := if current_type.starts_with('&?') { flat.Op.arrow } else { flat.Op.dot }
+			current = t.make_selector_op(current, 'value', sc.variant_name, field_op)
+			current_type = sc.variant_name
+			continue
+		}
 		if t.is_interface_type_name(sc.sum_type_name) {
 			qv := t.interface_variant_type(sc.variant_name)
 			field_op := if current_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }

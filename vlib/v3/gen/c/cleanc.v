@@ -5171,11 +5171,15 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 			}
 			base_type0 := g.usable_expr_type(base_id)
-			if base_type0 is types.Channel && node.value in ['closed', 'len'] {
+			if base_type0 is types.Channel && node.value in ['closed', 'len', 'cap'] {
 				if node.value == 'closed' {
 					g.write('(atomic_load_u16(&')
 					g.gen_expr(base_id)
 					g.write('->closed) != 0)')
+				} else if node.value == 'cap' {
+					g.write('((int)(')
+					g.gen_expr(base_id)
+					g.write('->cap))')
 				} else {
 					g.write('sync__Channel__len(')
 					g.gen_expr(base_id)
@@ -5193,10 +5197,25 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			if g.gen_method_value_closure(base_id, base_type0, node.value) {
 				return
 			}
-			enum_selector_qbase := if base.kind == .ident && base.value != 'C' && !base_is_local {
+			mut enum_selector_qbase := if base.kind == .ident && base.value != 'C' && !base_is_local {
 				g.enum_selector_base_name(base.value) or { '' }
 			} else {
 				''
+			}
+			// Fully qualified enum value: `mod.Enum.field` — the base is itself a
+			// selector over a module ident, not a plain ident. Enum type names are
+			// capitalized and module names are not, which filters out ordinary
+			// `a.b.c` field chains before any lookup.
+			if enum_selector_qbase.len == 0 && base.kind == .selector && base.children_count > 0
+				&& base.value.len > 0 && base.value[0] >= `A` && base.value[0] <= `Z` {
+				base_base := g.a.child_node(&base, 0)
+				if base_base.kind == .ident && base_base.value != 'C' && base_base.value.len > 0
+					&& base_base.value[0] >= `a` && base_base.value[0] <= `z`
+					&& !g.selector_base_is_value(base_base.value) {
+					enum_selector_qbase = g.enum_selector_base_name('${base_base.value}.${base.value}') or {
+						''
+					}
+				}
 			}
 			if base.kind == .ident && base.value == 'C' {
 				g.write(c_winapi_wide_export_name(node.value))

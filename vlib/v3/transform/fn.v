@@ -2727,6 +2727,10 @@ fn (mut t Transformer) build_sum_str_chain(base flat.NodeId, tag flat.NodeId, su
 	field := t.sum_field_name(variant)
 	field_sel := t.make_selector_op(base, field, '&${variant}', .dot)
 	variant_base := t.normalize_type_alias(variant)
+	// Only statements created for THIS branch's payload conversion belong inside
+	// the branch; earlier pending statements (e.g. the base temp decl from
+	// lower_sum_str) must stay with the caller so they precede the whole if-chain.
+	pending_start := t.pending_stmts.len
 	mut value_text := if t.is_fixed_array_type(variant_base) {
 		elem_type := fixed_array_elem_type(variant_base)
 		arr := t.make_call_typed('new_array_from_c_array', [
@@ -2741,13 +2745,24 @@ fn (mut t Transformer) build_sum_str_chain(base flat.NodeId, tag flat.NodeId, su
 		t.set_node_typ(int(value), variant)
 		t.wrap_string_conversion(value, variant)
 	}
-	display := if variant.contains('.') { variant.all_after_last('.') } else { variant }
-	value_text = t.string_plus(t.string_plus(t.make_string_literal('${display}('), value_text),
-		t.make_string_literal(')'))
+	// V prints a sum value as `SumName(payload_str)` — the payload's own str
+	// already carries its type name for structs; string/rune payloads are quoted.
+	// An alias variant keeps its alias-name wrapper (`Res(Ints([1, 2]))`).
+	if variant_base == 'string' {
+		value_text = t.string_plus(t.string_plus(t.make_string_literal("'"), value_text),
+			t.make_string_literal("'"))
+	} else if variant_base == 'rune' {
+		value_text = t.string_plus(t.string_plus(t.make_string_literal('`'), value_text),
+			t.make_string_literal('`'))
+	} else if variant_base != variant {
+		display := if variant.contains('.') { variant.all_after_last('.') } else { variant }
+		value_text = t.string_plus(t.string_plus(t.make_string_literal('${display}('), value_text),
+			t.make_string_literal(')'))
+	}
 	value_text = t.string_plus(t.string_plus(t.make_string_literal('${sum_display}('), value_text),
 		t.make_string_literal(')'))
-	mut then_stmts := []flat.NodeId{}
-	t.drain_pending(mut then_stmts)
+	mut then_stmts := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	then_stmts << t.make_expr_stmt(value_text)
 	cond := t.make_infix(.eq, tag, t.make_int_literal(t.sum_type_index(sum_name, variant)))
 	then_block := t.make_block(then_stmts)

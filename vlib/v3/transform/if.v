@@ -1203,8 +1203,9 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 	else_id := if has_else { t.a.child(&node, 2) } else { flat.empty_node }
 
 	all_is := t.extract_all_is_exprs(cond_id)
+	all_none_eq := t.extract_none_eq_exprs(cond_id)
 	cond_node := t.a.nodes[int(cond_id)]
-	if all_is.len == 0 && cond_node.kind != .decl_assign {
+	if all_is.len == 0 && all_none_eq.len == 0 && cond_node.kind != .decl_assign {
 		return t.transform_plain_if_branches(id, node)
 	}
 	new_cond_id := t.transform_and_chain_smartcasts(cond_id)
@@ -1222,9 +1223,13 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 	}
 	t.restore_var_types(saved_var_types)
 
-	// Transform else-block (no smartcast -- the is_expr was false here).
+	// Transform else-block (no is-smartcast -- the is_expr was false here; a
+	// `x == none` condition unwraps x in the else branch instead).
 	mut new_else_id := flat.empty_node
 	if has_else {
+		for info in all_none_eq {
+			t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
+		}
 		else_node := t.a.nodes[int(else_id)]
 		if else_node.kind == .if_expr {
 			// else-if chain: recurse.
@@ -1232,6 +1237,10 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 		} else {
 			new_else_id = t.transform_if_branch_as_block(else_id)
 		}
+		for _ in all_none_eq {
+			t.pop_smartcast()
+		}
+		t.restore_var_types(saved_var_types)
 	}
 
 	// Rebuild the if_expr with (possibly) new children.
@@ -1405,10 +1414,67 @@ fn (t &Transformer) collect_is_exprs(cond_id flat.NodeId, mut result []IsExprInf
 			}
 		}
 	}
+	// `x != none` (or `x != nil` for `?&T`) unwraps the option expr inside the
+	// then-branch: record an option-unwrap context resolving x to its base type.
+	if cond.kind == .infix && cond.op == .ne && cond.children_count >= 2 {
+		if info := t.option_none_cmp_info(cond) {
+			result << info
+		}
+	}
 	if cond.kind == .infix && cond.op == .logical_and && cond.children_count >= 2 {
 		t.collect_is_exprs(t.a.child(&cond, 0), mut result)
 		t.collect_is_exprs(t.a.child(&cond, 1), mut result)
 	}
+}
+
+// option_none_cmp_info matches a `x != none` / `x == none` (also `nil`)
+// comparison where x is an option and returns the option-unwrap context.
+fn (t &Transformer) option_none_cmp_info(cond flat.Node) ?IsExprInfo {
+	lhs_id := t.a.child(&cond, 0)
+	rhs_id := t.a.child(&cond, 1)
+	lhs := t.a.nodes[int(lhs_id)]
+	rhs := t.a.nodes[int(rhs_id)]
+	mut opt_id := flat.empty_node
+	if rhs.kind == .none_expr || rhs.kind == .nil_literal {
+		opt_id = lhs_id
+	} else if lhs.kind == .none_expr || lhs.kind == .nil_literal {
+		opt_id = rhs_id
+	}
+	if int(opt_id) < 0 {
+		return none
+	}
+	ek := t.expr_key(opt_id)
+	if ek.len == 0 {
+		return none
+	}
+	expr_type := t.original_expr_type(opt_id)
+	if !t.is_optional_type_name(expr_type) {
+		return none
+	}
+	base := t.optional_base_type(expr_type)
+	if base.len == 0 || base == 'void' {
+		return none
+	}
+	return IsExprInfo{
+		expr_name:     ek
+		variant_name:  base
+		sum_type_name: option_unwrap_marker
+	}
+}
+
+// extract_none_eq_exprs returns option-unwrap contexts that apply to the ELSE
+// branch of an if: `if x == none { ... } else { <x unwrapped here> }`.
+fn (t &Transformer) extract_none_eq_exprs(cond_id flat.NodeId) []IsExprInfo {
+	if int(cond_id) < 0 {
+		return []IsExprInfo{}
+	}
+	cond := t.a.nodes[int(cond_id)]
+	if cond.kind == .infix && cond.op == .eq && cond.children_count >= 2 {
+		if info := t.option_none_cmp_info(cond) {
+			return [info]
+		}
+	}
+	return []IsExprInfo{}
 }
 
 // extract_is_expr supports extract is expr handling for Transformer.

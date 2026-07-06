@@ -46,6 +46,7 @@ mut:
 	pending_flag      bool
 	pending_params    bool
 	pending_export    string
+	pending_noreturn  bool
 	skip_next_decl    bool
 	disable_fn_body   bool
 	in_for_container  bool
@@ -93,6 +94,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.pending_flag = false
 	p.pending_params = false
 	p.pending_export = ''
+	p.pending_noreturn = false
 	p.skip_next_decl = false
 	p.disable_fn_body = false
 	p.in_for_container = false
@@ -680,11 +682,13 @@ fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
 		p.skip_top_level_stmt()
 		p.skip_next_decl = false
 		p.pending_export = ''
+		p.pending_noreturn = false
 		return flat.empty_node
 	}
 	res := p.top_level_stmt()
 	p.pending_params = false
 	p.pending_export = ''
+	p.pending_noreturn = false
 	return res
 }
 
@@ -911,6 +915,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			children_count: flat.child_count(param_ids.len)
 		})
 		p.pending_export = ''
+		p.register_pending_noreturn(name)
 		return id
 	}
 
@@ -956,6 +961,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		children_count: flat.child_count(all_ids.len)
 	})
 	p.register_pending_export(name)
+	p.register_pending_noreturn(name)
 	return id
 }
 
@@ -968,6 +974,21 @@ fn (mut p Parser) mark_disabled_fn(name string) {
 		p.a.disabled_fns[qname] = true
 	}
 	p.a.disabled_fns[name] = true
+}
+
+// register_pending_noreturn records a `@[noreturn]` function so the checker's
+// missing-return analysis treats calls to it as terminating.
+fn (mut p Parser) register_pending_noreturn(name string) {
+	if !p.pending_noreturn || name.len == 0 {
+		p.pending_noreturn = false
+		return
+	}
+	if p.cur_module.len > 0 && p.cur_module != 'main' && p.cur_module != 'builtin'
+		&& !name.starts_with('${p.cur_module}.') {
+		p.a.noreturn_fns['${p.cur_module}.${name}'] = true
+	}
+	p.a.noreturn_fns[name] = true
+	p.pending_noreturn = false
 }
 
 fn (mut p Parser) register_pending_export(name string) {
@@ -1794,6 +1815,8 @@ fn (mut p Parser) skip_attrs() {
 					p.pending_flag = true
 				} else if p.lit == 'params' {
 					p.pending_params = true
+				} else if p.lit == 'noreturn' {
+					p.pending_noreturn = true
 				} else if p.lit == 'export' {
 					p.try_parse_export_attr()
 					continue
@@ -1813,6 +1836,8 @@ fn (mut p Parser) skip_attrs() {
 					p.pending_flag = true
 				} else if p.lit == 'params' {
 					p.pending_params = true
+				} else if p.lit == 'noreturn' {
+					p.pending_noreturn = true
 				} else if p.lit == 'export' {
 					p.try_parse_export_attr()
 					continue
