@@ -1,0 +1,7 @@
+module main
+    This is the overview comment of the module. It is placed in the first comment right after the module name.
+
+const color01 = 'red'
+    color01 is the documentation for color01
+const color02 = 'blue'
+    color02 is the documentation for color02

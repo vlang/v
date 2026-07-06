@@ -386,9 +386,25 @@ pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 			if post_module_comments.len > 0 {
 				last_post_module_comment := post_module_comments[post_module_comments.len - 1]
 				if stmt is ast.Import || last_post_module_comment.pos.line_nr + 1 < stmt.pos.line_nr {
+					// None of the comments are directly above the following statement,
+					// so treat all of them as the module's overview comment.
 					d.head.comments << post_module_comments
 				} else {
-					preceding_comments << post_module_comments
+					// The comments directly above the following statement (with no
+					// blank line separating them) document that statement, while an
+					// earlier block, separated by a blank line, is the module overview.
+					mut split_idx := post_module_comments.len
+					mut next_line := stmt.pos.line_nr
+					for split_idx > 0 {
+						cmt := post_module_comments[split_idx - 1]
+						if cmt.pos.last_line + 1 < next_line {
+							break
+						}
+						next_line = cmt.pos.line_nr
+						split_idx--
+					}
+					d.head.comments << post_module_comments[..split_idx]
+					preceding_comments << post_module_comments[split_idx..]
 				}
 				post_module_comments = []
 			}
