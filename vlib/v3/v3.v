@@ -441,7 +441,9 @@ fn main() {
 		builtin_defines << 'ownership'
 	}
 	files << pref.get_v_files_from_dir(builtin_dir, builtin_defines, prefs.target_os)
-	p.parse_files(files)
+	mut parse_was_parallel := false
+	_, builtin_parse_parallel := p.parse_files_dispatch(files, !no_parallel)
+	parse_was_parallel = parse_was_parallel || builtin_parse_parallel
 	mut a := p.a
 	a.user_code_start = a.nodes.len
 
@@ -460,23 +462,23 @@ fn main() {
 	} else {
 		user_files << input_file
 	}
-	for uf in user_files {
-		p.parse_into(uf)
-	}
+	_, user_parse_parallel := p.parse_files_dispatch(user_files, !no_parallel)
+	parse_was_parallel = parse_was_parallel || user_parse_parallel
 	test_files := test_input_files(user_files, backend)
 
 	seed_implicit_sync_import(mut a)
 	seed_implicit_embed_file_import(mut a)
 
 	// Resolve imports recursively
-	resolve_imports(mut a, mut p, prefs, user_files)
+	import_parse_parallel := resolve_imports(mut a, mut p, prefs, user_files, !no_parallel)
+	parse_was_parallel = parse_was_parallel || import_parse_parallel
 	diagnostic_root := if is_selfhost {
 		diagnostic_root_for_input(input_file, user_files)
 	} else {
 		''
 	}
 
-	b.step('parse')
+	b.step_parallel('parse', parse_was_parallel)
 
 	// Type-collect + check BEFORE transform, so the transformer is type-aware
 	// (like v2: check runs before transform). The transformer reads cached
@@ -1223,7 +1225,7 @@ fn type_text_is_shared(raw string) bool {
 }
 
 // resolve_imports resolves resolve imports information for v3 entry point.
-fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string) {
+fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool) bool {
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
@@ -1248,69 +1250,91 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut module_path_cache := map[string]string{}
 	mut module_identity_cache := map[string]string{}
 
+	mut was_parallel := false
 	mut cur_file := first_file
 	mut node_idx := 0
-	for node_idx < a.nodes.len {
-		node := a.nodes[node_idx]
-		if node.kind == .file && node.value.len > 0 {
-			cur_file = node.value
-			node_idx++
-			continue
-		}
-		if node.kind != .import_decl {
-			node_idx++
-			continue
-		}
-		mod_name := node.value
-		if module_identity := parsed_module_identities[mod_name] {
+	for {
+		// Collect one wave: every not-yet-parsed module imported by the nodes
+		// scanned so far. Parsing appends at the end of the node array and the
+		// scan proceeds in node order, so batching a wave and appending its
+		// modules in discovery order reproduces the breadth-first module layout
+		// the previous parse-one-module-inline loop produced — while giving the
+		// parallel parser whole waves of files to split across threads.
+		mut wave_files := []string{}
+		mut wave_canon := []string{}
+		for node_idx < a.nodes.len {
+			node := a.nodes[node_idx]
+			if node.kind == .file && node.value.len > 0 {
+				cur_file = node.value
+				node_idx++
+				continue
+			}
+			if node.kind != .import_decl {
+				node_idx++
+				continue
+			}
+			mod_name := node.value
+			if module_identity := parsed_module_identities[mod_name] {
+				if module_identity.len > 0 {
+					a.nodes[node_idx].value = module_identity
+				}
+				node_idx++
+				continue
+			}
+			if mod_name in parsed_modules {
+				node_idx++
+				continue
+			}
+
+			importing_file := if cur_file.len > 0 { cur_file } else { first_file }
+			mod_dir := resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file,
+				project_root, mut module_path_cache)
+			module_identity := import_module_identity_cached(prefs, mod_name, importing_file,
+				project_root, mod_dir, mut module_path_cache, mut module_identity_cache)
 			if module_identity.len > 0 {
 				a.nodes[node_idx].value = module_identity
 			}
-			node_idx++
-			continue
-		}
-		if mod_name in parsed_modules {
-			node_idx++
-			continue
-		}
+			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
+			if mod_name in parsed_modules || (mod_dir_exists && module_identity in parsed_modules) {
+				node_idx++
+				continue
+			}
+			parsed_modules[mod_name] = true
+			if mod_dir_exists && module_identity.len > 0 {
+				parsed_modules[module_identity] = true
+			}
+			parsed_module_identities[mod_name] = if module_identity.len > 0 {
+				module_identity
+			} else {
+				mod_name
+			}
 
-		importing_file := if cur_file.len > 0 { cur_file } else { first_file }
-		mod_dir := resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file,
-			project_root, mut module_path_cache)
-		module_identity := import_module_identity_cached(prefs, mod_name, importing_file,
-			project_root, mod_dir, mut module_path_cache, mut module_identity_cache)
-		if module_identity.len > 0 {
-			a.nodes[node_idx].value = module_identity
-		}
-		mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
-		if mod_name in parsed_modules || (mod_dir_exists && module_identity in parsed_modules) {
-			node_idx++
-			continue
-		}
-		parsed_modules[mod_name] = true
-		if mod_dir_exists && module_identity.len > 0 {
-			parsed_modules[module_identity] = true
-		}
-		parsed_module_identities[mod_name] = if module_identity.len > 0 {
-			module_identity
-		} else {
-			mod_name
-		}
-
-		if mod_dir_exists {
-			mod_files := pref.get_v_files_from_dir(mod_dir, prefs.user_defines, prefs.target_os)
-			for mf in mod_files {
-				first_node := a.nodes.len
-				p.parse_into(mf)
-				if module_identity == mod_name {
-					canonicalize_imported_module_name(mut a, first_node, mod_name)
+			if mod_dir_exists {
+				mod_files := pref.get_v_files_from_dir(mod_dir, prefs.user_defines, prefs.target_os)
+				canon := if module_identity == mod_name { mod_name } else { '' }
+				for mf in mod_files {
+					wave_files << mf
+					wave_canon << canon
 				}
 			}
-			seed_implicit_sync_import(mut a)
-			seed_implicit_embed_file_import(mut a)
+			node_idx++
 		}
-		node_idx++
+		if wave_files.len == 0 {
+			break
+		}
+		starts, wave_parallel := p.parse_files_dispatch(wave_files, allow_parallel)
+		was_parallel = was_parallel || wave_parallel
+		for i, canon in wave_canon {
+			if canon.len == 0 {
+				continue
+			}
+			end_node := if i + 1 < starts.len { starts[i + 1] } else { a.nodes.len }
+			canonicalize_imported_module_name(mut a, starts[i], end_node, canon)
+		}
+		seed_implicit_sync_import(mut a)
+		seed_implicit_embed_file_import(mut a)
 	}
+	return was_parallel
 }
 
 fn seed_initial_modules(a &flat.FlatAst, initial_files []string, mut parsed_modules map[string]bool) {
@@ -1333,12 +1357,12 @@ fn seed_initial_modules(a &flat.FlatAst, initial_files []string, mut parsed_modu
 	}
 }
 
-fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, import_path string) {
+fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, end_node int, import_path string) {
 	if import_path.len == 0 {
 		return
 	}
 	short_name := import_path.all_after_last('.')
-	for i in first_node .. a.nodes.len {
+	for i in first_node .. end_node {
 		if a.nodes[i].kind == .module_decl && a.nodes[i].value == short_name {
 			a.nodes[i].value = import_path
 		}
