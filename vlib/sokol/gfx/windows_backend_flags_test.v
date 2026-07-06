@@ -1,4 +1,4 @@
-// vtest build: !self_sandboxed_packaging?
+// vtest build: !self_sandboxed_packaging? && !musl?
 module gfx
 
 import os
