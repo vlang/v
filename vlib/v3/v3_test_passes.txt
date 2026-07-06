@@ -107,6 +107,7 @@ vlib/cli/man_test.v
 vlib/compress/deflate/deflate_test.v
 vlib/compress/lz/lz_test.v
 vlib/compress/snappy/snappy_block_test.v
+vlib/compress/snappy/snappy_samples_test.v
 vlib/crypto/aes/aes_test.v
 vlib/crypto/aes/block_generic_test.v
 vlib/crypto/argon2/argon2_test.v
@@ -137,6 +138,7 @@ vlib/crypto/pbkdf2/pbkdf2_test.v
 vlib/crypto/rand/crypto_rand_bytes_test.v
 vlib/crypto/rand/utils_test.v
 vlib/crypto/rc4/rc4_test.v
+vlib/crypto/scrypt/scrypt_test.v
 vlib/crypto/sha1/sha1_shavs_monte_test.v
 vlib/crypto/sha1/sha1_shavs_test.v
 vlib/crypto/sha1/sha1_test.v
@@ -189,6 +191,7 @@ vlib/encoding/leb128/leb128_test.v
 vlib/encoding/txtar/txtar_test.v
 vlib/encoding/utf8/east_asian/east_asian_width_test.v
 vlib/encoding/utf8/utf8_is_punct_test.v
+vlib/encoding/utf8/utf8_util_test.v
 vlib/encoding/utf8/validate/encoding_utf8_test.v
 vlib/encoding/vorbis/vorbis_test.v
 vlib/encoding/xml/encoding_test.v
@@ -632,6 +635,7 @@ vlib/v/tests/comptime/comptime_for_over_struct_with_C_reserved_word_fields_test.
 vlib/v/tests/comptime/comptime_generic_container_test.v
 vlib/v/tests/comptime/comptime_generic_map_test.v
 vlib/v/tests/comptime/comptime_generic_test.v
+vlib/v/tests/comptime/comptime_generic_unaliased_typ_test.v
 vlib/v/tests/comptime/comptime_if_assign_test.v
 vlib/v/tests/comptime/comptime_if_bsd_family_test.v
 vlib/v/tests/comptime/comptime_if_expr_in_const_decl_test.v
@@ -740,6 +744,7 @@ vlib/v/tests/conditions/matches/match_return_fn_test.v
 vlib/v/tests/conditions/matches/match_return_reference_test.v
 vlib/v/tests/conditions/matches/match_sumtype_var_aggregate_var_str_test.v
 vlib/v/tests/conditions/matches/match_sumtype_var_shadow_and_as_test.v
+vlib/v/tests/conditions/matches/match_with_complex_exprs_in_branches_test.v
 vlib/v/tests/conditions/matches/match_with_complex_sumtype_exprs_add_print_test.v
 vlib/v/tests/conditions/matches/match_with_complex_sumtype_exprs_test.v
 vlib/v/tests/conditions/matches/match_with_comptime_if_expr_in_branch_test.v
@@ -910,6 +915,7 @@ vlib/v/tests/generics/generic_arrays_sum_test.v
 vlib/v/tests/generics/generic_as_cast_on_map_test.v
 vlib/v/tests/generics/generic_call_mixing_args_test.v
 vlib/v/tests/generics/generic_comparison_for_conditional_assign_test.v
+vlib/v/tests/generics/generic_complex_sumtype_test.v
 vlib/v/tests/generics/generic_comptime_map_test.v
 vlib/v/tests/generics/generic_default_expression_in_or_block_test.v
 vlib/v/tests/generics/generic_empty_interface_to_multi_struct_test.v
@@ -953,9 +959,11 @@ vlib/v/tests/generics/generic_pointer_indirect_test.v
 vlib/v/tests/generics/generic_recursive_fn_test.v
 vlib/v/tests/generics/generic_return_test.v
 vlib/v/tests/generics/generic_selector_field_test.v
+vlib/v/tests/generics/generic_selector_indexexpr_test.v
 vlib/v/tests/generics/generic_selector_infix_test.v
 vlib/v/tests/generics/generic_selector_len_test.v
 vlib/v/tests/generics/generic_sort_multi_instantiation_test.v
+vlib/v/tests/generics/generic_static_method_test.v
 vlib/v/tests/generics/generic_struct_cstruct_test.v
 vlib/v/tests/generics/generic_struct_field_fn_with_multiple_instantiations_test.v
 vlib/v/tests/generics/generic_struct_field_unwrap_test.v
@@ -1140,6 +1148,7 @@ vlib/v/tests/loops/for_in_option_test.v
 vlib/v/tests/loops/for_label_continue_break_test.v
 vlib/v/tests/loops/for_loops_test.v
 vlib/v/tests/loops/for_mut_var_argument_op_test.v
+vlib/v/tests/map_cast_test.v
 vlib/v/tests/match_array_fixed_test.v
 vlib/v/tests/match_branch_par_expr_test.v
 vlib/v/tests/match_expr_array_literal_with_g_test.v
@@ -1147,6 +1156,7 @@ vlib/v/tests/module_type_cast_test.v
 vlib/v/tests/modules/amodule/another_internal_module_test.v
 vlib/v/tests/modules/amodule/internal_module_test.v
 vlib/v/tests/modules/callback_consumer_module/callback_consumer_test.v
+vlib/v/tests/modules/chained_alias_reexport_test.v
 vlib/v/tests/modules/consts_with_complex_init/consts_should_not_conflict_test.v
 vlib/v/tests/modules/consts_with_or_blocks_in_different_files/consts_should_not_conflict_test.v
 vlib/v/tests/modules/imported_static_method_fn_ref_test.v
@@ -1167,6 +1177,8 @@ vlib/v/tests/nest_defer_fn_test.v
 vlib/v/tests/nested_anonfunc_and_for_break_test.v
 vlib/v/tests/nested_fors_with_labels_test.v
 vlib/v/tests/nested_map_index_test.v
+vlib/v/tests/nested_map_of_fn_call_test.v
+vlib/v/tests/nested_map_test.v
 vlib/v/tests/nested_or_in_assign_decl_test.v
 vlib/v/tests/old_generic_scanner_test.v
 vlib/v/tests/option_result_alias_fn_ret_test.v
@@ -1523,6 +1535,7 @@ vlib/v3/tests/type_checker_errors_test.v
 vlib/v3/tests/union_byte_contains_codegen_test.v
 vlib/v3/tests/unknown_fn_error_test.v
 vlib/v3/tests/veb_implicit_ctx_test.v
+vlib/v3/tests/wasm_codegen_test.v
 vlib/v3/tests/x11_source_abi_alias_codegen_test.v
 vlib/veb/tests/use_openssl_no_mbedtls_test.v
 vlib/wasm/tests/arith_test.v
