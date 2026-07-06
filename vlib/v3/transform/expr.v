@@ -1771,12 +1771,19 @@ pub fn sum_eq_helper_name(sum_name string) string {
 // synthesize_sum_eq_helpers generates the fn_decl for every sum type whose
 // equality helper was requested during the transform. Building one helper body
 // can request helpers for nested sum types, so this drains a worklist. Runs
-// serially on the merged AST (workers only record names).
-pub fn (mut t Transformer) synthesize_sum_eq_helpers() {
+// serially on the merged AST (workers only record names). Returns the names
+// newly marked used while building the helper bodies (e.g. a payload struct's
+// overloaded `==`), so the caller can run them through the late-used-fn pass —
+// synthesis happens after that pass, so such functions would otherwise miss
+// body transformation.
+pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 	old_module := t.cur_module
 	old_file := t.cur_file
 	old_tc_module := if isnil(t.tc) { '' } else { t.tc.cur_module }
 	old_tc_file := if isnil(t.tc) { '' } else { t.tc.cur_file }
+	was_log_active := t.used_fns_log_active
+	log_start := t.used_fns_log.len
+	t.used_fns_log_active = true
 	for {
 		mut pending := []string{}
 		for name, _ in t.sum_eq_types {
@@ -1806,12 +1813,26 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() {
 			t.build_sum_eq_helper_fn(name)
 		}
 	}
+	mut new_names := []string{}
+	mut seen := map[string]bool{}
+	for i in log_start .. t.used_fns_log.len {
+		name := t.used_fns_log[i]
+		if name.len > 0 && !seen[name] {
+			seen[name] = true
+			new_names << name
+		}
+	}
+	if !was_log_active {
+		t.used_fns_log_active = false
+		t.used_fns_log = t.used_fns_log[..log_start].clone()
+	}
 	t.cur_module = old_module
 	t.cur_file = old_file
 	if !isnil(t.tc) {
 		t.tc.cur_module = old_tc_module
 		t.tc.cur_file = old_tc_file
 	}
+	return new_names
 }
 
 // build_sum_eq_helper_fn appends `fn __v3_sum_eq_<Sum>(a Sum, b Sum) bool` to the

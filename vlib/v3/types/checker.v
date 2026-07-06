@@ -4600,13 +4600,31 @@ fn (tc &TypeChecker) match_without_else_exhaustive_sumtype_returns(node flat.Nod
 		for j in 0 .. n_conds {
 			cond := tc.a.child_node(branch, j)
 			pattern := tc.match_type_pattern(cond) or { return false }
-			pattern_short := short_type_name(pattern)
 			qpattern := tc.qualify_name(pattern)
+			mut matched := false
 			for variant in variants {
-				if variant == pattern || variant == qpattern
-					|| short_type_name(variant) == pattern_short {
+				if variant == pattern || variant == qpattern {
 					covered[variant] = true
+					matched = true
 				}
+			}
+			if matched {
+				continue
+			}
+			// Short-name fallback: only sound when exactly one variant carries
+			// this short name — for `type S = a.Foo | b.Foo`, a branch matching
+			// one `Foo` must not mark the other as covered.
+			pattern_short := short_type_name(pattern)
+			mut short_match := ''
+			mut short_count := 0
+			for variant in variants {
+				if short_type_name(variant) == pattern_short {
+					short_count++
+					short_match = variant
+				}
+			}
+			if short_count == 1 {
+				covered[short_match] = true
 			}
 		}
 	}

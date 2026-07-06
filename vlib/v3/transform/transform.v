@@ -332,8 +332,23 @@ pub fn transform_with_used_opt_config(mut a flat.FlatAst, tc &types.TypeChecker,
 	}
 	late_names << newly_used_fn_names(used_fns, t.used_fns)
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
-	t.synthesize_sum_eq_helpers()
+	t.run_sum_eq_synthesis_rounds(base_node_count)
 	return t.used_fns, was_parallel
+}
+
+// run_sum_eq_synthesis_rounds alternates sum-eq helper synthesis with the
+// late-used-fn transform until neither produces new work: building a helper
+// body can mark a payload struct's overloaded `==` as used (which then needs
+// its body transformed), and transforming that body can request equality
+// helpers for further sum types.
+fn (mut t Transformer) run_sum_eq_synthesis_rounds(node_limit int) {
+	for _ in 0 .. 16 {
+		new_names := t.synthesize_sum_eq_helpers()
+		if new_names.len == 0 {
+			return
+		}
+		t.transform_late_used_fn_bodies(new_names, node_limit)
+	}
 }
 
 fn (mut t Transformer) new_call_names_from_used_fn_bodies(used map[string]bool, node_limit int) []string {
@@ -449,7 +464,7 @@ pub fn monomorphize_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fn
 	late_names << t.new_call_names_from_used_fn_bodies(used_fns, t.a.nodes.len)
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
 	t.materialize_generic_structs()
-	t.synthesize_sum_eq_helpers()
+	t.run_sum_eq_synthesis_rounds(base_node_count)
 	return t.used_fns
 }
 
