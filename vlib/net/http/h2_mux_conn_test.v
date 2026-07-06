@@ -2324,7 +2324,7 @@ fn test_mux_read_timeout_resets_on_response_progress() {
 	workers << spawn mux_worker(mut conn, H2ClientRequest{
 		authority:    't'
 		path:         '/slow-trickle'
-		read_timeout: 150 * time.millisecond
+		read_timeout: 200 * time.millisecond
 	}, mut out)
 	peer_thread := spawn fn (mut peer MuxTestPeer) {
 		peer.read_preface() or {
@@ -2340,11 +2340,21 @@ fn test_mux_read_timeout_resets_on_response_progress() {
 			peer.fail('respond: ${err.msg()}')
 			return
 		}
-		// Four chunks, each gap (75ms) well under read_timeout (150ms), but the
-		// total elapsed time (~300ms) comfortably exceeds it -- only a
-		// progress-reset watchdog can survive this.
+		// Four chunks, each gap (135ms) under read_timeout (200ms), but the
+		// total elapsed time (~540ms) comfortably exceeds it -- only a
+		// progress-reset watchdog can survive this. The watchdog's own poll
+		// cadence (h2_watchdog_poll_interval, 200ms, fixed in production) wakes
+		// roughly every 200ms after each progress reset; with these values every
+		// wake lands ~65ms away from the nearest chunk arrival on either side
+		// (verified by simulating the watchdog's recompute loop against this
+		// timeline), instead of coinciding almost exactly with one -- the
+		// previous 75ms-gap/150ms-timeout pair put the FIRST wake (at exactly
+		// 150ms, since nothing resets the clock before it) right on top of the
+		// second chunk's nominal 150ms arrival, an exact tie that a slower
+		// CI runner could lose (observed: tcc-windows failed with a spurious
+		// 150ms timeout on a commit where every other backend passed).
 		for i in 0 .. 4 {
-			time.sleep(75 * time.millisecond)
+			time.sleep(135 * time.millisecond)
 			peer.write_frame(H2DataFrame{
 				stream_id:  id
 				data:       'chunk${i};'.bytes()
