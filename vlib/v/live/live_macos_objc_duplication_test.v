@@ -59,7 +59,7 @@ fn test_livemain_windows_forwards_d3d11_define_to_sharedlive_rebuild_vopts() {
 	}
 	c_source := os.read_file(c_path)!
 	live_info_call := live_reload_info_call_source(c_source)
-	assert live_info_call.contains('-d sokol_d3d11'), live_info_call
+	assert live_info_call.contains(r'-d \"sokol_d3d11\"'), live_info_call
 	assert live_info_call.contains('-sharedlive -shared'), live_info_call
 	assert !live_info_call.contains('-d livemain'), live_info_call
 	assert !live_info_call.contains('-d sharedlive'), live_info_call
