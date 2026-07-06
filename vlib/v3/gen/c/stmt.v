@@ -813,7 +813,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		.break_stmt {
 			g.gen_branch_lock_cleanup(node.value)
 			if node.value.len > 0 {
-				g.writeln('goto ${c_name(node.value)}_break;')
+				g.writeln('goto ${g.cname(node.value)}_break;')
 			} else {
 				g.writeln('break;')
 			}
@@ -821,7 +821,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		.continue_stmt {
 			g.gen_branch_lock_cleanup(node.value)
 			if node.value.len > 0 {
-				g.writeln('goto ${c_name(node.value)}_continue;')
+				g.writeln('goto ${g.cname(node.value)}_continue;')
 			} else {
 				g.writeln('continue;')
 			}
@@ -855,13 +855,13 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		}
 		.goto_stmt {
 			if g.gen_goto_lock_leaves(node.value) {
-				g.writeln('goto ${c_name(node.value)};')
+				g.writeln('goto ${g.cname(node.value)};')
 			}
 		}
 		.label_stmt {
 			old_indent := g.indent
 			g.indent = 0
-			g.writeln('${c_name(node.value)}: ;')
+			g.writeln('${g.cname(node.value)}: ;')
 			g.indent = old_indent
 			g.pending_loop_label = node.value
 		}
@@ -1343,7 +1343,7 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 	if ret := g.tc.fn_ret_types[fn_node.value] {
 		return ret
 	}
-	cfn := c_name(fn_node.value)
+	cfn := g.cname(fn_node.value)
 	if cfn != fn_node.value {
 		if ret := g.tc.fn_ret_types[cfn] {
 			return ret
@@ -1387,7 +1387,7 @@ fn (g &FlatGen) declared_call_return_type(call_id flat.NodeId) types.Type {
 		if ret := g.tc.fn_ret_types[fn_node.value] {
 			return ret
 		}
-		cfn := c_name(fn_node.value)
+		cfn := g.cname(fn_node.value)
 		if cfn != fn_node.value {
 			if ret := g.tc.fn_ret_types[cfn] {
 				return ret
@@ -1486,7 +1486,7 @@ fn (g &FlatGen) fn_decl_return_type_for_call_name(name string) ?types.Type {
 	if rt := g.fn_decl_ret_types[name] {
 		return rt
 	}
-	cname := c_name(name)
+	cname := g.cname(name)
 	if cname != name {
 		if rt := g.fn_decl_ret_types[cname] {
 			return rt
@@ -2308,7 +2308,7 @@ fn (mut g FlatGen) track_local_pointer_storage_decl(lhs flat.Node, owner types.S
 }
 
 fn c_type_is_pointer_storage(c_type string) bool {
-	clean := c_type.trim_space()
+	clean := trimmed_space(c_type)
 	return clean.len > 0 && !clean.starts_with('fn_ptr:') && clean.ends_with('*')
 }
 
@@ -2632,7 +2632,7 @@ fn (mut g FlatGen) gen_multi_return_decl(node flat.Node) {
 		} else {
 			'int'
 		}
-		lhs_name := c_name(lhs.value)
+		lhs_name := g.cname(lhs.value)
 		if j < multi_types.len {
 			if fixed := array_fixed_type(multi_types[j]) {
 				c_elem, dims := g.fixed_array_decl_parts(fixed)
@@ -2706,7 +2706,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					lhs_is_ptr := g.tc.resolve_type(g.a.child(&node, i)) is types.Pointer
 					amp := if lhs_is_ptr { '' } else { '&' }
 					c_elem := g.tc.c_type(lhs_arr.elem_type)
-					g.write('array_push(${amp}${c_name(lhs.value)}, &(${c_elem}[]){')
+					g.write('array_push(${amp}${g.cname(lhs.value)}, &(${c_elem}[]){')
 					g.gen_expr_with_expected_type(g.a.child(&node, i + 1), lhs_arr.elem_type)
 					g.writeln('});')
 				} else {
@@ -2793,7 +2793,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 				}
 				if method_name := g.assign_struct_operator_method(lhs_type, node.op) {
 					g.gen_expr(lhs_id)
-					g.write(' = ${c_name(method_name)}(')
+					g.write(' = ${g.cname(method_name)}(')
 					g.gen_expr(lhs_id)
 					g.write(', ')
 					g.gen_expr(rhs_id)
@@ -2864,7 +2864,7 @@ fn (g &FlatGen) assign_struct_operator_method(lhs_type types.Type, op flat.Op) ?
 		if method_name in g.tc.fn_param_types || method_name in g.tc.fn_ret_types {
 			return method_name
 		}
-		cmethod_name := c_name(method_name)
+		cmethod_name := g.cname(method_name)
 		if cmethod_name in g.tc.fn_param_types || cmethod_name in g.tc.fn_ret_types {
 			return cmethod_name
 		}
@@ -2965,7 +2965,7 @@ fn (mut g FlatGen) gen_decl_lhs(id flat.NodeId) {
 			g.write('__discard_${int(id)}')
 			return
 		}
-		g.write(c_name(node.value))
+		g.write(g.cname(node.value))
 	} else {
 		g.gen_expr(id)
 	}
@@ -2978,7 +2978,7 @@ fn (mut g FlatGen) decl_lhs_str(id flat.NodeId) string {
 		if node.value == '_' {
 			return '__discard_${int(id)}'
 		}
-		return c_name(node.value)
+		return g.cname(node.value)
 	}
 	return g.expr_to_string(id)
 }
@@ -3058,10 +3058,10 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 		g.gen_expr_with_expected_type(expr_id, expr_type)
 	}
 	g.writeln(';')
-	g.writeln('${val_ct} ${c_name(lhs.value)};')
+	g.writeln('${val_ct} ${g.cname(lhs.value)};')
 	g.writeln('if (${tmp}.ok) {')
 	g.indent++
-	g.writeln('${c_name(lhs.value)} = ${tmp}.value;')
+	g.writeln('${g.cname(lhs.value)} = ${tmp}.value;')
 	g.indent--
 	g.writeln('} else {')
 	g.push_scope()
@@ -3087,7 +3087,7 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 				if g.is_noreturn_call(inner_id) {
 					g.gen_node(child_id)
 				} else {
-					g.write('${c_name(lhs.value)} = ')
+					g.write('${g.cname(lhs.value)} = ')
 					g.gen_expr(g.a.child(&child, 0))
 					g.writeln(';')
 				}
@@ -3113,10 +3113,10 @@ fn (mut g FlatGen) gen_decl_or_map_index(lhs flat.Node, expr_node flat.Node, m t
 	g.write(', &(${c_key}[]){')
 	g.gen_expr(g.a.child(&expr_node, 1))
 	g.writeln('});')
-	g.writeln('${c_val} ${c_name(lhs.value)};')
+	g.writeln('${c_val} ${g.cname(lhs.value)};')
 	g.writeln('if (${tmp}) {')
 	g.indent++
-	g.writeln('${c_name(lhs.value)} = *(${c_val}*)${tmp};')
+	g.writeln('${g.cname(lhs.value)} = *(${c_val}*)${tmp};')
 	g.indent--
 	g.writeln('} else {')
 	g.indent++
@@ -3129,7 +3129,7 @@ fn (mut g FlatGen) gen_decl_or_map_index(lhs flat.Node, expr_node flat.Node, m t
 				if g.is_noreturn_call(inner_id) {
 					g.gen_node(child_id)
 				} else {
-					g.write('${c_name(lhs.value)} = ')
+					g.write('${g.cname(lhs.value)} = ')
 					g.gen_expr(g.a.child(&child, 0))
 					g.writeln(';')
 				}

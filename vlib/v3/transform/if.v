@@ -360,7 +360,7 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 		t.pending_stmts << stmt
 	}
 	tmp := t.make_ident(tmp_name)
-	t.a.nodes[int(tmp)].typ = actual_result_type
+	t.set_node_typ(int(tmp), actual_result_type)
 	return tmp
 }
 
@@ -1084,7 +1084,7 @@ fn (mut t Transformer) transform_and_chain_smartcasts(cond_id flat.NodeId) flat.
 		mut block_stmts := rhs_pending.clone()
 		block_stmts << t.make_expr_stmt(new_rhs)
 		new_rhs = t.make_block(block_stmts)
-		t.a.nodes[int(new_rhs)].typ = 'bool'
+		t.set_node_typ(int(new_rhs), 'bool')
 	}
 	if lhs.kind == .is_expr && new_lhs == lhs_id && new_rhs == rhs_id {
 		return cond_id

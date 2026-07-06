@@ -131,7 +131,7 @@ fn (mut g FlatGen) smartcast_is_expr(cond &flat.Node) {
 			variant_ct := g.tc.c_type(variant_type)
 			field_name := g.sum_field_name(variant_name)
 			is_ptr_variant := g.variant_references_sum(variant_name, clean_sum.name)
-			var_name := c_name(expr_node.value)
+			var_name := g.cname(expr_node.value)
 			tmp := g.tmp_name()
 			if is_ptr_variant {
 				g.writeln('${variant_ct} ${tmp} = *${var_name}.${field_name};')
@@ -171,7 +171,7 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 	}
 	lhs := g.a.nodes[int(lhs_id)]
 	rhs := g.a.nodes[int(rhs_id)]
-	var_name := c_name(lhs.value)
+	var_name := g.cname(lhs.value)
 	tmp := g.tmp_name()
 	defer_start := g.defers.len
 	if rhs.kind == .index {

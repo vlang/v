@@ -174,6 +174,7 @@ mut:
 	parse_enabled              bool
 	parse_entries              map[string]Type
 	c_entries                  map[string]string
+	c_name_entries             map[string]string
 	struct_field_entries       map[string]Type
 	struct_field_misses        map[string]bool
 	ierror_compat_entries      map[string]int
@@ -321,18 +322,18 @@ pub mut:
 	// node-indexed arrays (this checker is the range's only writer) and only
 	// out-of-range ids (consts, other decls' nodes) go through the private
 	// sparse maps that are merged after join.
-	check_range_lo                  int = -1
-	check_range_hi                  int = -1
-	sparse_resolved_call_names      map[int]string
-	sparse_resolved_fn_values       map[int]string
-	sparse_statement_nodes          map[int]bool
-	sparse_expr_type_values         map[int]Type
-	sparse_checking_nodes           map[int]bool
-	diagnose_unknown_calls          bool
-	reject_unlowered_map_mutation   bool
-	reject_unsupported_generics     bool
-	diagnostic_files                map[string]bool
-	selected_file_called_fns        map[string]bool
+	check_range_lo                int = -1
+	check_range_hi                int = -1
+	sparse_resolved_call_names    map[int]string
+	sparse_resolved_fn_values     map[int]string
+	sparse_statement_nodes        map[int]bool
+	sparse_expr_type_values       map[int]Type
+	sparse_checking_nodes         map[int]bool
+	diagnose_unknown_calls        bool
+	reject_unlowered_map_mutation bool
+	reject_unsupported_generics   bool
+	diagnostic_files              map[string]bool
+	selected_file_called_fns      map[string]bool
 	// Names newly inserted into selected_file_called_fns and not yet chased by
 	// the transitive closure in collect_selected_file_called_fns_transitively.
 	selected_file_worklist []string
@@ -352,10 +353,10 @@ pub mut:
 	// records the node count the index covers.
 	top_level_idx           []int
 	top_level_idx_nodes_len int
-	cur_fn_ret_type                 Type = Type(void_)
-	smartcasts                      map[string]Type
-	ownership                       &OwnershipState = unsafe { nil }
-	selfhost                        bool
+	cur_fn_ret_type         Type = Type(void_)
+	smartcasts              map[string]Type
+	ownership               &OwnershipState = unsafe { nil }
+	selfhost                bool
 	// fork_overlay is non-nil only on parallel-transform worker forks; see
 	// TransformForkOverlay and fork_for_parallel_transform.
 	fork_overlay &TransformForkOverlay = unsafe { nil }
@@ -419,29 +420,29 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		// reset_node_caches (allocating them here too paid for everything
 		// twice), and extend_node_caches grows them on demand for any checker
 		// used without a collect() call.
-		resolved_call_names:                []string{}
-		resolved_call_set:                  []bool{}
-		resolved_fn_value_names:            []string{}
-		resolved_fn_value_set:              []bool{}
-		statement_nodes:                    []bool{}
-		method_values_by_fn:                map[int][]string{}
-		method_value_locals:                map[string]bool{}
-		method_value_local_depth:           map[string]int{}
-		cur_fn_mut_param_base_types:        map[string]Type{}
-		cur_fn_mut_param_binding_owners:    map[string]ScopeBindingOwner{}
-		cur_fn_mut_local_binding_owners:    map[string]ScopeBindingOwner{}
-		expr_type_values:                   []Type{}
-		expr_type_set:                      []bool{}
-		checking_nodes:                     []bool{}
-		sparse_resolved_call_names:         map[int]string{}
-		sparse_resolved_fn_values:          map[int]string{}
-		sparse_statement_nodes:             map[int]bool{}
-		sparse_expr_type_values:            map[int]Type{}
-		sparse_checking_nodes:              map[int]bool{}
-		diagnostic_files:                   map[string]bool{}
-		selected_file_called_fns:           map[string]bool{}
-		smartcasts:                         map[string]Type{}
-		type_cache:                         &TypeCache{
+		resolved_call_names:             []string{}
+		resolved_call_set:               []bool{}
+		resolved_fn_value_names:         []string{}
+		resolved_fn_value_set:           []bool{}
+		statement_nodes:                 []bool{}
+		method_values_by_fn:             map[int][]string{}
+		method_value_locals:             map[string]bool{}
+		method_value_local_depth:        map[string]int{}
+		cur_fn_mut_param_base_types:     map[string]Type{}
+		cur_fn_mut_param_binding_owners: map[string]ScopeBindingOwner{}
+		cur_fn_mut_local_binding_owners: map[string]ScopeBindingOwner{}
+		expr_type_values:                []Type{}
+		expr_type_set:                   []bool{}
+		checking_nodes:                  []bool{}
+		sparse_resolved_call_names:      map[int]string{}
+		sparse_resolved_fn_values:       map[int]string{}
+		sparse_statement_nodes:          map[int]bool{}
+		sparse_expr_type_values:         map[int]Type{}
+		sparse_checking_nodes:           map[int]bool{}
+		diagnostic_files:                map[string]bool{}
+		selected_file_called_fns:        map[string]bool{}
+		smartcasts:                      map[string]Type{}
+		type_cache:                      &TypeCache{
 			parse_entries:              map[string]Type{}
 			c_entries:                  map[string]string{}
 			struct_field_entries:       map[string]Type{}
@@ -471,6 +472,14 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 	// and merge_worker replays the entries into the master under shifted ids.
 	forked.fork_overlay = &TransformForkOverlay{}
 	forked.type_cache = &TypeCache{
+		// When the master froze its warm cache behind an overlay (see
+		// freeze_type_cache_for_forks), every fork shares that frozen cache as
+		// its read-only base instead of re-deriving each memoized type.
+		base:                       if tc.type_cache != unsafe { nil } {
+			tc.type_cache.base
+		} else {
+			&TypeCache(unsafe { nil })
+		}
 		parse_enabled:              if tc.type_cache != unsafe { nil } {
 			tc.type_cache.parse_enabled
 		} else {
@@ -486,12 +495,42 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 	return &forked
 }
 
+// freeze_type_cache_for_forks freezes this checker's warm type cache as the
+// shared read-only base for parallel forks (fork_for_parallel_transform picks
+// it up) and switches the checker itself to a private overlay so its own
+// memoization writes cannot race fork reads. Callable on a shared reference:
+// the transformer holds the checker as `&TypeChecker`.
+pub fn (tc &TypeChecker) freeze_type_cache_for_forks() {
+	mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
+	mtc.install_type_cache_overlay()
+}
+
+// unfreeze_type_cache_after_forks folds the private overlay back into the
+// frozen base once every fork has been joined, and reattaches the base as the
+// live cache.
+pub fn (tc &TypeChecker) unfreeze_type_cache_after_forks() {
+	mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
+	mtc.restore_type_cache_base()
+}
+
 // set_fresh_type_cache attaches a new empty TypeCache. Parallel-cgen worker
 // checkers use this so the lazily-built lookup indexes and memoizations work
 // per worker instead of falling back to their uncached full scans.
 pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 	tc.type_cache = &TypeCache{
 		parse_enabled: parse_enabled
+	}
+}
+
+// set_fresh_type_cache_based_on attaches a new empty TypeCache that falls back
+// read-only to `src`'s frozen base cache (see freeze_type_cache_for_forks), so
+// parallel-cgen workers start with every type memoized by the check/transform
+// phases instead of re-deriving them from a cold cache.
+pub fn (mut tc TypeChecker) set_fresh_type_cache_based_on(src &TypeChecker, parse_enabled bool) {
+	base := if !isnil(src.type_cache) { src.type_cache.base } else { &TypeCache(unsafe { nil }) }
+	tc.type_cache = &TypeCache{
+		parse_enabled: parse_enabled
+		base:          base
 	}
 }
 
@@ -1368,7 +1407,7 @@ fn (tc &TypeChecker) const_type_from_initializer(name string, typ Type) Type {
 		candidates << '${mod_name}.${fn_node.value}'
 	}
 	candidates << fn_node.value
-	candidates << naming.c_name(fn_node.value)
+	candidates << tc.cached_c_name(fn_node.value)
 	for candidate in candidates {
 		if ret := tc.fn_ret_types[candidate] {
 			return ret
@@ -1980,7 +2019,7 @@ const receiver_method_suffix_ambiguous = '__v_receiver_method_suffix_ambiguous__
 // register_fn_signature updates register fn signature state for types.
 fn (mut tc TypeChecker) register_fn_signature(name string, ret_type Type, params []Type, is_variadic bool, implicit_veb_ctx bool) {
 	tc.register_fn_name_alias(name, ret_type, params, is_variadic, implicit_veb_ctx)
-	lowered_name := naming.c_name(name)
+	lowered_name := tc.cached_c_name(name)
 	if lowered_name != name {
 		tc.register_fn_name_alias(lowered_name, ret_type, params, is_variadic, implicit_veb_ctx)
 	}
@@ -2036,7 +2075,7 @@ fn (mut tc TypeChecker) register_c_variadic_fn(name string) {
 		return
 	}
 	tc.c_variadic_fns[name] = true
-	lowered_name := naming.c_name(name)
+	lowered_name := tc.cached_c_name(name)
 	if lowered_name != name {
 		tc.c_variadic_fns[lowered_name] = true
 	}
@@ -2134,7 +2173,7 @@ fn (tc &TypeChecker) should_annotate_fn(node flat.Node, used_fns map[string]bool
 	if qname in used_fns {
 		return true
 	}
-	cname := naming.c_name(qname)
+	cname := tc.cached_c_name(qname)
 	if cname != qname && cname in used_fns {
 		return true
 	}
@@ -6466,7 +6505,8 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			tc.check_node(child_id)
 		}
 		if bad_type := tc.invalid_ierror_return_expr_type_name(child_id, expected) {
-			tc.record_invalid_ierror_return_error(id, 'cannot return `${bad_type}` as `${Type(expected).name()}`')
+			tc.record_invalid_ierror_return_error(id,
+				'cannot return `${bad_type}` as `${Type(expected).name()}`')
 			return
 		}
 		actual := tc.resolve_expr(child_id, expected)
@@ -6569,7 +6609,8 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	}
 	if expected is ResultType {
 		if bad_type := tc.invalid_ierror_return_expr_type_name(child_id, expected) {
-			tc.record_invalid_ierror_return_error(id, 'cannot return `${bad_type}` as `${Type(expected).name()}`')
+			tc.record_invalid_ierror_return_error(id,
+				'cannot return `${bad_type}` as `${Type(expected).name()}`')
 			return
 		}
 	}
@@ -11919,7 +11960,7 @@ fn (tc &TypeChecker) lowered_sum_selector_type(sum SumType, field string) ?Type 
 	variants := tc.sum_types[sum.name] or { return none }
 	for variant in variants {
 		short := if variant.contains('.') { variant.all_after_last('.') } else { variant }
-		if field == variant || field == short || field == naming.c_name(variant) {
+		if field == variant || field == short || field == tc.cached_c_name(variant) {
 			return tc.parse_type(variant)
 		}
 	}
@@ -13431,9 +13472,9 @@ fn (tc &TypeChecker) concrete_generic_method_signature_candidates(concrete_name 
 	for receiver in [base, short_base] {
 		candidates << '${receiver}[${short_args}].${method}'
 		candidates << '${receiver}_${suffix}.${method}'
-		candidates << naming.c_name('${receiver}[${short_args}].${method}')
-		candidates << naming.c_name('${receiver}_${suffix}.${method}')
-		candidates << '${naming.c_name(receiver)}_${suffix}__${naming.c_name(method)}'
+		candidates << tc.cached_c_name('${receiver}[${short_args}].${method}')
+		candidates << tc.cached_c_name('${receiver}_${suffix}.${method}')
+		candidates << '${tc.cached_c_name(receiver)}_${suffix}__${tc.cached_c_name(method)}'
 	}
 	return candidates
 }
@@ -14868,6 +14909,27 @@ fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
 		return typ
 	}
 	return none
+}
+
+// cached_c_name memoizes naming.c_name results in the type cache (falling
+// back to the frozen base cache read-only, like every other entry kind).
+// c_name is pure and called on hot resolution paths in every phase.
+pub fn (tc &TypeChecker) cached_c_name(name string) string {
+	if isnil(tc.type_cache) {
+		return naming.c_name(name)
+	}
+	mut cache := unsafe { tc.type_cache }
+	if !isnil(cache.base) {
+		if cached := cache.base.c_name_entries[name] {
+			return cached
+		}
+	}
+	if cached := cache.c_name_entries[name] {
+		return cached
+	}
+	result := naming.c_name(name)
+	cache.c_name_entries[name] = result
+	return result
 }
 
 // parse_type converts a V type string (from parser) to a structured Type.
@@ -17487,7 +17549,7 @@ fn (tc &TypeChecker) infix_operator_return_type(op flat.Op, lhs Type, rhs Type) 
 		return none
 	}
 	method_name := '${lhs_name}.${op_name}'
-	for candidate in [method_name, naming.c_name(method_name)] {
+	for candidate in [method_name, tc.cached_c_name(method_name)] {
 		ret := tc.fn_ret_types[candidate] or { continue }
 		params := tc.fn_param_types[candidate] or { continue }
 		if params.len < 2 {

@@ -244,7 +244,7 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 	loop_body << assign
 	t.pending_stmts << t.make_for_stmt(init_idx, cond, post, loop_body, node)
 	result := t.make_ident(tmp_name)
-	t.a.nodes[int(result)].typ = '[]${elem_type}'
+	t.set_node_typ(int(result), '[]${elem_type}')
 	return result
 }
 
@@ -336,7 +336,7 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 		t.pending_stmts << t.make_expr_stmt(call)
 	}
 	result := t.make_ident(tmp_name)
-	t.a.nodes[int(result)].typ = array_type
+	t.set_node_typ(int(result), array_type)
 	return result
 }
 
@@ -483,7 +483,7 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 		t.pending_stmts << t.make_expr_stmt(call)
 	}
 	result := t.make_ident(tmp_name)
-	t.a.nodes[int(result)].typ = array_type
+	t.set_node_typ(int(result), array_type)
 	return result
 }
 
@@ -581,10 +581,10 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		// instead of degrading to a single push of the whole array. (An array-typed
 		// element is genuinely ambiguous, so leave that to the inferred decision.)
 		push_many = true
-		t.a.nodes[int(rhs_id)].typ = array_type
+		t.set_node_typ(int(rhs_id), array_type)
 		rhs_type = array_type
 	} else if push_many && rhs_node.kind == .array_literal && !rhs_type.starts_with('[]') {
-		t.a.nodes[int(rhs_id)].typ = array_type
+		t.set_node_typ(int(rhs_id), array_type)
 		rhs_type = array_type
 	}
 
@@ -654,10 +654,10 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
 	if rhs_node.kind == .array_literal && t.array_append_literal_should_push_many(rhs_id, elem_type) {
 		push_many = true
-		t.a.nodes[int(rhs_id)].typ = array_type
+		t.set_node_typ(int(rhs_id), array_type)
 		rhs_type = array_type
 	} else if push_many && rhs_node.kind == .array_literal && !rhs_type.starts_with('[]') {
-		t.a.nodes[int(rhs_id)].typ = array_type
+		t.set_node_typ(int(rhs_id), array_type)
 		rhs_type = array_type
 	}
 
@@ -770,10 +770,10 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	if value_node.kind == .array_literal
 		&& t.array_append_literal_should_push_many(value_id, elem_type) {
 		prepend_many = true
-		t.a.nodes[int(value_id)].typ = base_type
+		t.set_node_typ(int(value_id), base_type)
 		rhs_type = base_type
 	} else if prepend_many && value_node.kind == .array_literal && !rhs_type.starts_with('[]') {
-		t.a.nodes[int(value_id)].typ = base_type
+		t.set_node_typ(int(value_id), base_type)
 		rhs_type = base_type
 	}
 	base := t.transform_lvalue(base_id)
@@ -810,10 +810,10 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	if value_node.kind == .array_literal
 		&& t.array_append_literal_should_push_many(value_id, elem_type) {
 		insert_many = true
-		t.a.nodes[int(value_id)].typ = base_type
+		t.set_node_typ(int(value_id), base_type)
 		rhs_type = base_type
 	} else if insert_many && value_node.kind == .array_literal && !rhs_type.starts_with('[]') {
-		t.a.nodes[int(value_id)].typ = base_type
+		t.set_node_typ(int(value_id), base_type)
 		rhs_type = base_type
 	}
 	base := t.transform_lvalue(base_id)
@@ -1050,7 +1050,7 @@ fn (mut t Transformer) array_get_value(base flat.NodeId, index flat.NodeId, elem
 		'voidptr')
 	ptr := t.make_cast('&${elem_type}', get_call, '&${elem_type}')
 	value := t.make_prefix(.mul, ptr)
-	t.a.nodes[int(value)].typ = elem_type
+	t.set_node_typ(int(value), elem_type)
 	return value
 }
 
@@ -1065,7 +1065,7 @@ fn (mut t Transformer) array_get_runtime_base(base flat.NodeId) flat.NodeId {
 	base_type := t.node_type(base).trim_space()
 	if base_type.starts_with('&') {
 		value := t.make_prefix(.mul, base)
-		t.a.nodes[int(value)].typ = base_type[1..]
+		t.set_node_typ(int(value), base_type[1..])
 		return value
 	}
 	return base
@@ -1199,8 +1199,8 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		inferred_map_type := t.infer_map_init_entry_type(mapped_source_node)
 		if inferred_map_type.len > 0 {
 			result_elem_type = inferred_map_type
-			t.a.nodes[int(mapped_source)].value = inferred_map_type
-			t.a.nodes[int(mapped_source)].typ = inferred_map_type
+			t.set_node_value(int(mapped_source), inferred_map_type)
+			t.set_node_typ(int(mapped_source), inferred_map_type)
 			mapped_source_node = t.a.nodes[int(mapped_source)]
 		}
 	}
@@ -1301,7 +1301,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		t.pending_stmts << stmt
 	}
 	result := t.make_ident(out_name)
-	t.a.nodes[int(result)].typ = out_type
+	t.set_node_typ(int(result), out_type)
 	return result
 }
 
@@ -1376,7 +1376,7 @@ fn (mut t Transformer) substitute_ident(id flat.NodeId, name string, replacement
 	if node.kind == .ident && node.value == name {
 		new_id := t.make_ident(replacement)
 		if t.a.nodes[int(new_id)].typ.len == 0 {
-			t.a.nodes[int(new_id)].typ = node.typ
+			t.set_node_typ(int(new_id), node.typ)
 		}
 		return new_id
 	}

@@ -244,7 +244,7 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 		c_elem := g.tc.c_type(fixed.elem_type)
 		mut data_str := if fixed_is_ptr { '(*${base_str})' } else { base_str }
 		literal := g.fixed_array_compound_literal_expr(base_id, fixed)
-		if literal.trim_space().len > 0 {
+		if trimmed_space(literal).len > 0 {
 			data_str = literal
 		}
 		// Evaluate the slice bounds once so side-effecting expressions such as
@@ -475,7 +475,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			mut is_thread := false
 			elem := arr.elem_type
 			if elem is types.Struct {
-				tn := elem.name.trim_space()
+				tn := trimmed_space(elem.name)
 				is_thread = tn == 'thread' || tn.starts_with('thread ')
 			}
 			if is_thread {
@@ -534,7 +534,7 @@ fn (mut g FlatGen) to_fixed_size_call_fixed_type(id flat.NodeId) ?types.ArrayFix
 fn (mut g FlatGen) gen_array_method_call_fallback(node flat.Node, mname string, base_id flat.NodeId, is_ptr bool, arr types.Array) {
 	best_mname := g.array_method_fallback_for_receiver(mname, arr)
 	if best_mname.len > 0 {
-		g.write(c_name(best_mname))
+		g.write(g.cname(best_mname))
 		g.write('(')
 		ptypes := g.tc.fn_param_types[best_mname]
 		wants_ptr := ptypes.len > 0 && ptypes[0] is types.Pointer
@@ -614,9 +614,9 @@ fn (mut g FlatGen) gen_fixed_array_pointers_expr(base_id flat.NodeId, is_ptr boo
 fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_type types.Type) {
 	mut ret_name := ''
 	if elem_type is types.Struct {
-		trimmed := elem_type.name.trim_space()
+		trimmed := trimmed_space(elem_type.name)
 		if trimmed != 'thread' && trimmed.starts_with('thread ') {
-			ret_name = trimmed[7..].trim_space()
+			ret_name = trimmed_space(trimmed[7..])
 		}
 	}
 	fn_name := g.ensure_thread_arr_wait_fn(ret_name)
@@ -644,7 +644,7 @@ fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
 	// Sanitize the payload C type (`Foo*`, `void*`, ...) into an identifier fragment
 	// — `c_name` does not strip `*`, so a raw pointer return type would otherwise put
 	// an asterisk in the helper symbol.
-	name := c_name('__v_thread_arr_wait_${naming.type_name_part(ret_ct)}')
+	name := g.cname('__v_thread_arr_wait_${naming.type_name_part(ret_ct)}')
 	g.spawn_wrapper_names[key] = name
 	if is_void {
 		g.spawn_wrapper_defs << 'static void ${name}(Array a) { for (int __i = 0; __i < a.len; __i++) { void* __r = NULL; pthread_join((pthread_t)(((void**)a.data)[__i]), &__r); if (__r) free(__r); } }'

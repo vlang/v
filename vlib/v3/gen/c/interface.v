@@ -6,7 +6,7 @@ import v3.flat
 // emit_sum_type emits emit sum type output for c.
 fn (mut g FlatGen) emit_sum_type(name string) {
 	variants := g.tc.sum_types[name]
-	g.writeln('struct ${c_name(name)} {')
+	g.writeln('struct ${g.cname(name)} {')
 	g.writeln('\tint typ;')
 	g.writeln('\tunion {')
 	for v in variants {
@@ -164,10 +164,10 @@ fn (g &FlatGen) sum_field_name(variant string) string {
 		return g.sum_field_name(variant[3..].replace('__', '.'))
 	}
 	if variant.starts_with('[]') {
-		return '_Array_${c_name(variant[2..])}'
+		return '_Array_${g.cname(variant[2..])}'
 	}
 	if variant.starts_with('map[') {
-		return '_Map_${c_name(variant[4..].replace(']', '_'))}'
+		return '_Map_${g.cname(variant[4..].replace(']', '_'))}'
 	}
 	return match variant {
 		'int' { '_int' }
@@ -182,14 +182,14 @@ fn (g &FlatGen) sum_field_name(variant string) string {
 		'f64' { '_f64' }
 		'bool' { '_bool' }
 		'string' { '_string' }
-		else { c_name(variant) }
+		else { g.cname(variant) }
 	}
 }
 
 // register_interface_strings updates register interface strings state for c.
 fn (mut g FlatGen) register_interface_strings() {
 	for iface_name, methods in g.interfaces {
-		cn := c_name(iface_name)
+		cn := g.cname(iface_name)
 		for method in methods {
 			g.intern_string('interface method ${cn}.${method} not implemented')
 		}
@@ -241,7 +241,7 @@ fn (mut g FlatGen) add_ierror_method_emit_name(name string) {
 		return
 	}
 	g.ierror_method_emit_names[name] = true
-	lowered := c_name(name)
+	lowered := g.cname(name)
 	if lowered != name {
 		g.ierror_method_emit_names[lowered] = true
 	}
@@ -462,7 +462,7 @@ fn (g &FlatGen) should_emit_ierror_method(name string, qname string) bool {
 	if name in g.ierror_method_emit_names || qname in g.ierror_method_emit_names {
 		return true
 	}
-	return c_name(qname) in g.ierror_method_emit_names
+	return g.cname(qname) in g.ierror_method_emit_names
 }
 
 fn (mut g FlatGen) gen_ierror_from_expr(id flat.NodeId) bool {
@@ -700,7 +700,7 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 			g.gen_expr(id)
 			g.write('; (${ct}){._typ = ${type_id}, ._object = _iface${tmp}')
 			for field in fields {
-				g.write(', .${c_name(field.name)} = _iface${tmp}->${c_name(field.name)}')
+				g.write(', .${g.cname(field.name)} = _iface${tmp}->${g.cname(field.name)}')
 			}
 			g.write('}; })')
 		} else {
@@ -708,7 +708,7 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 			g.gen_expr(id)
 			g.write('; (${ct}){._typ = ${type_id}, ._object = memdup(&_iface${tmp}, sizeof(${concrete_ct}))')
 			for field in fields {
-				g.write(', .${c_name(field.name)} = _iface${tmp}.${c_name(field.name)}')
+				g.write(', .${g.cname(field.name)} = _iface${tmp}.${g.cname(field.name)}')
 			}
 			g.write('}; })')
 		}
@@ -774,7 +774,7 @@ fn (g &FlatGen) interface_init_typ_id(node flat.Node) ?int {
 // implementers (and the special builtin `IError`) fall back to a panic stub.
 fn (mut g FlatGen) interface_method_stubs() {
 	for iface_name, methods in g.interfaces {
-		cn := c_name(iface_name)
+		cn := g.cname(iface_name)
 		for method in methods {
 			if !g.should_emit_interface_dispatch(iface_name, method) {
 				continue
@@ -833,7 +833,7 @@ fn (g &FlatGen) interface_alias_names(iface_name string) []string {
 }
 
 fn (g &FlatGen) used_interface_dispatch_key(name string) bool {
-	return g.used_fn_contains(name) || g.used_fn_contains(c_name(name))
+	return g.used_fn_contains(name) || g.used_fn_contains(g.cname(name))
 }
 
 fn (g &FlatGen) interface_dispatch_short_name_allowed(iface_name string) bool {
@@ -858,7 +858,7 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 			params := g.tc.fn_param_types[call.method_name] or { []types.Type{} }
 			recv_is_ptr := params.len > 0 && params[0] is types.Pointer
 			recv := g.ierror_method_receiver_expr(concrete, call.path, recv_is_ptr)
-			g.writeln('\tif (i->_typ == ${id}) return ${c_name(call.method_name)}(${recv});')
+			g.writeln('\tif (i->_typ == ${id}) return ${g.cname(call.method_name)}(${recv});')
 		}
 		match method {
 			'msg' {
@@ -940,7 +940,7 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 			recv_is_ptr := concrete_params.len > 0 && concrete_params[0] is types.Pointer
 			recv := g.interface_dispatch_receiver_expr(concrete, concrete_params, recv_is_ptr)
 			g.write('\t\tcase ${id}: ')
-			mut call := '${c_name(method_key)}(${recv}'
+			mut call := '${g.cname(method_key)}(${recv}'
 			for ai, an in arg_names {
 				arg_idx := ai + 1
 				concrete_param := if arg_idx < concrete_params.len {

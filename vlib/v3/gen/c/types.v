@@ -267,7 +267,7 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 }
 
 fn (g &FlatGen) type_name_contains_generic_placeholder(name string) bool {
-	clean := name.trim_space()
+	clean := trimmed_space(name)
 	if clean.len == 0 {
 		return false
 	}
@@ -355,7 +355,7 @@ fn (mut g FlatGen) enum_decls() {
 				} else {
 					node.value
 				}
-				cn := c_name(name)
+				cn := g.cname(name)
 				if emitted[cn] {
 					continue
 				}
@@ -370,7 +370,7 @@ fn (mut g FlatGen) enum_decls() {
 							val = enum_val
 						}
 					}
-					cfield := c_name(f.value)
+					cfield := g.cname(f.value)
 					if is_flag {
 						g.writeln('\t${cn}__${cfield} = ${1 << val},')
 						val++
@@ -407,7 +407,7 @@ fn (mut g FlatGen) enum_str_forward_decls() {
 				} else {
 					node.value
 				}
-				cn := c_name(name)
+				cn := g.cname(name)
 				if emitted[cn] {
 					continue
 				}
@@ -441,7 +441,7 @@ fn (mut g FlatGen) enum_str_defs() {
 				} else {
 					node.value
 				}
-				cn := c_name(name)
+				cn := g.cname(name)
 				if emitted[cn] {
 					continue
 				}
@@ -471,7 +471,7 @@ fn (mut g FlatGen) enum_str_defs() {
 						}
 						seen[case_val] = true
 						fname := f.value
-						cfield := c_name(fname)
+						cfield := g.cname(fname)
 						g.writeln('\t\tcase ${cn}__${cfield}: return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
 					}
 					g.writeln('\t\tdefault: break;')
@@ -511,7 +511,7 @@ fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, cn string) {
 		}
 		seen[bit] = true
 		fname := f.value
-		cfield := c_name(fname)
+		cfield := g.cname(fname)
 		g.writeln('\tif (${cn}__${cfield} != 0 && (__fe_v & ${cn}__${cfield}) == ${cn}__${cfield}) {')
 		g.writeln('\t\tif (!__fe_first) { __fe_res = string__plus(__fe_res, (string){.str = (u8*)" | ", .len = 3, .is_lit = 1}); }')
 		g.writeln('\t\t__fe_res = string__plus(__fe_res, (string){.str = (u8*)".${fname}", .len = ${
@@ -623,7 +623,7 @@ fn (mut g FlatGen) type_alias_decls() {
 		if ct == 'void' || ct == name {
 			continue
 		}
-		g.writeln('typedef ${ct} ${c_name(name)};')
+		g.writeln('typedef ${ct} ${g.cname(name)};')
 		emitted = true
 	}
 	if emitted {
