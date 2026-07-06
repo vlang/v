@@ -70,6 +70,22 @@ fn (mut t Transformer) make_return_values(vals []flat.NodeId, ret_typ string) fl
 	})
 }
 
+fn (t &Transformer) current_return_multi_count() int {
+	if isnil(t.tc) || t.cur_fn_ret_type.len == 0 {
+		return 0
+	}
+	items := multi_return_types_from_type(t.tc.parse_type(t.cur_fn_ret_type), 0) or { return 0 }
+	return items.len
+}
+
+fn (mut t Transformer) return_values_from_ids(ids []flat.NodeId) []flat.NodeId {
+	mut vals := []flat.NodeId{cap: ids.len}
+	for i, id in ids {
+		vals << t.transform_return_child(id, i, ids.len)
+	}
+	return vals
+}
+
 // return_expr_is_err supports return expr is err handling for Transformer.
 fn (t &Transformer) return_expr_is_err(id flat.NodeId) bool {
 	if int(id) < 0 {
@@ -198,6 +214,20 @@ fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ s
 	}
 	if stmt_ids.len == 0 {
 		return t.make_block([]flat.NodeId{})
+	}
+	tuple_count := t.current_return_multi_count() - extra_return_vals.len
+	if tuple_count > 1 {
+		if parts := t.tuple_block_parts(branch_id, tuple_count) {
+			mut all := t.transform_stmts(parts.prefix)
+			mut ret_ids := parts.values.clone()
+			for extra in extra_return_vals {
+				ret_ids << extra
+			}
+			ret_vals := t.return_values_from_ids(ret_ids)
+			t.drain_pending(mut all)
+			all << t.make_return_values(ret_vals, ret_typ)
+			return t.make_block(all)
+		}
 	}
 	// all but the last are kept as statements (transformed); the last becomes a return
 	lead := stmt_ids[..stmt_ids.len - 1].clone()
@@ -354,7 +384,8 @@ fn (mut t Transformer) build_return_match_chain(match_expr_id flat.NodeId, orig_
 	branch := t.a.nodes[int(branches[idx])]
 	is_else := branch.value == 'else'
 	body_start_idx := if is_else { 0 } else { t.count_conds(branch) }
-	if !is_else && t.match_branch_all_type_patterns(branch) && t.count_conds(branch) > 1 {
+	if !is_else && t.match_branch_all_type_patterns(match_expr_id, branch)
+		&& t.count_conds(branch) > 1 {
 		return t.build_return_match_type_branch_chain(match_expr_id, orig_expr_id, branch,
 			branches, idx, 0, ret_typ)
 	}
@@ -364,16 +395,15 @@ fn (mut t Transformer) build_return_match_chain(match_expr_id flat.NodeId, orig_
 		n_conds := t.count_conds(branch)
 		if n_conds == 1 {
 			cond_val_id := t.a.child(&branch, 0)
-			if variant_name := t.match_type_pattern(cond_val_id) {
+			if sc := t.match_type_smartcast_context(match_expr_id, cond_val_id) {
 				subj := t.expr_key(match_expr_id)
-				sum_name := t.find_sum_type_for_variant(variant_name)
-				if subj.len > 0 && sum_name.len > 0 {
-					t.push_smartcast(subj, variant_name, sum_name)
+				if subj.len > 0 {
+					t.push_smartcast(subj, sc.variant_name, sc.sum_type_name)
 					sc_pushed++
 				}
 				orig_subj := t.expr_key(orig_expr_id)
-				if orig_subj.len > 0 && orig_subj != subj && sum_name.len > 0 {
-					t.push_smartcast(orig_subj, variant_name, sum_name)
+				if orig_subj.len > 0 && orig_subj != subj {
+					t.push_smartcast(orig_subj, sc.variant_name, sc.sum_type_name)
 					sc_pushed++
 				}
 			}
@@ -418,7 +448,7 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 		}
 	}
 	cond_val_id := t.a.child(&branch, cond_idx)
-	variant_name := t.match_type_pattern(cond_val_id) or {
+	variant_name := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) or {
 		return t.build_return_match_chain(match_expr_id, orig_expr_id, branches, idx + 1, ret_typ)
 	}
 	is_start := t.a.children.len
@@ -432,15 +462,20 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 	cond_id := t.transform_is_expr(is_id, t.a.nodes[int(is_id)])
 
 	mut sc_pushed := 0
+	sc := t.match_type_smartcast_context(match_expr_id, cond_val_id) or {
+		SmartcastContext{
+			variant_name:  variant_name
+			sum_type_name: ''
+		}
+	}
 	subj := t.expr_key(match_expr_id)
-	sum_name := t.find_sum_type_for_variant(variant_name)
-	if subj.len > 0 && sum_name.len > 0 {
-		t.push_smartcast(subj, variant_name, sum_name)
+	if subj.len > 0 && sc.sum_type_name.len > 0 {
+		t.push_smartcast(subj, sc.variant_name, sc.sum_type_name)
 		sc_pushed++
 	}
 	orig_subj := t.expr_key(orig_expr_id)
-	if orig_subj.len > 0 && orig_subj != subj && sum_name.len > 0 {
-		t.push_smartcast(orig_subj, variant_name, sum_name)
+	if orig_subj.len > 0 && orig_subj != subj && sc.sum_type_name.len > 0 {
+		t.push_smartcast(orig_subj, sc.variant_name, sc.sum_type_name)
 		sc_pushed++
 	}
 	body_block := t.match_branch_return_block(branch, n_conds, ret_typ)

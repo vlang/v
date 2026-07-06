@@ -58,6 +58,7 @@ const reserved_words = {
 // calls are unaffected (the `C.` prefix is stripped before this check).
 const libc_collisions = {
 	'abort':    true
+	'abs':      true
 	'access':   true
 	'acos':     true
 	'atexit':   true
@@ -248,8 +249,7 @@ pub fn sanitize(name string) string {
 		} else if c == `&` {
 			b.write_string('ptr')
 		} else if c == `@` {
-			i++
-			continue
+			b.write_string('_v_')
 		} else if c == `,` || c == ` ` {
 			b.write_u8(`_`)
 		} else {

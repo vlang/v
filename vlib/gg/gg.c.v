@@ -374,7 +374,19 @@ fn gg_frame_fn(mut ctx Context) {
 		ctx.scroll_y = 0
 	}
 
-	ctx.record_frame()
+	$if sokol_d3d11 ? {
+		// D3D11 uses the DXGI flip present model, which invalidates the
+		// backbuffer contents after Present. Its readback must therefore run
+		// after frame_fn has drawn but before the implicit Present at the end
+		// of this frame callback, so it is done further below instead of here.
+	} $else {
+		// GL and the other backends can read the presented framebuffer at any
+		// time, so capture here, before this frame's frame_fn draws the next
+		// one. This capture point matches the committed gg regression reference
+		// images; capturing after frame_fn would shift the recorded frame by
+		// one and break the comparison.
+		ctx.record_frame()
+	}
 	ctx.memory_trace_frame()
 
 	if ctx.ui_mode && !ctx.needs_refresh {
@@ -382,6 +394,7 @@ fn gg_frame_fn(mut ctx Context) {
 		// Draw 3 more frames after the "stop refresh" command
 		ctx.ticks++
 		if ctx.ticks > 3 {
+			ctx.stop_recording_if_needed()
 			return
 		}
 	}
@@ -391,6 +404,10 @@ fn gg_frame_fn(mut ctx Context) {
 		ctx.config.update_fn(f32(dt), ctx.user_data)
 	}
 	ctx.config.frame_fn(ctx.user_data)
+	$if sokol_d3d11 ? {
+		// See the note above: capture the freshly drawn frame before Present.
+		ctx.record_frame()
+	}
 	ctx.needs_refresh = false
 }
 

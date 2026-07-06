@@ -43,7 +43,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				// emitted by gen_formatted_string_interp_child_expr
 			} else if g.gen_map_str_expr(expr_id, typ) {
 				// emitted by gen_map_str_expr
-			} else if typ_name == 'IError' || typ_name.ends_with('.IError') {
+			} else if g.is_ierror_type_name(typ_name) {
 				// IError may resolve as Interface/Alias/Struct depending on context; match by
 				// name and interpolate its `.message` (mirrors the transformer's IError path).
 				g.gen_string_interp_child_expr(expr_id)
@@ -57,6 +57,16 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				g.write('${c_name('${typ.name()}.str')}(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
+			} else if typ is types.Interface {
+				str_key := '${typ.name}.str'
+				if str_key in g.tc.fn_ret_types {
+					g.write('${c_name(str_key)}(')
+					g.gen_string_interp_child_expr(child_id)
+					g.write(')')
+				} else {
+					sid := g.intern_string('${typ.name.all_after_last('.')}{}')
+					g.write('_str_${sid}')
+				}
 			} else if typ is types.Struct {
 				g.write('${c_name(typ.name)}__str(')
 				g.gen_string_interp_child_expr(expr_id)
@@ -241,8 +251,7 @@ fn (g &FlatGen) is_string_node(id flat.NodeId) bool {
 // string_literals supports string literals handling for FlatGen.
 fn (mut g FlatGen) string_literals() {
 	for i, s in g.str_lits {
-		escaped := s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\t',
-			'\\t').replace('\r', '\\r')
+		escaped := c_escape(s)
 		g.writeln('string _str_${i} = {"${escaped}", ${s.len}, 1};')
 	}
 	if g.str_lits.len > 0 {

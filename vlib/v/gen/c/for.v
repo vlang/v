@@ -925,7 +925,22 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 					g.write(' = ${addr}')
 					g.expr(node.cond)
 					if info.is_fn_ret {
-						g.write('.ret_arr')
+						// g.expr(node.cond) already appends `.ret_arr` when the cond
+						// is itself a fixed-array-returning call or a fixed-ret temp
+						// (see fn.v / cgen.v). Only add it here for other exprs (e.g. a
+						// plain variable holding a fn-ret fixed array) to avoid a
+						// doubled `.ret_arr` (which is not a struct member).
+						mut cond_expr := node.cond
+						if cond_expr is ast.ParExpr {
+							cond_expr = cond_expr.expr
+						}
+						cond_emits_ret_arr := (cond_expr is ast.CallExpr
+							&& !cond_expr.return_type.has_option_or_result()
+							&& g.table.final_sym(cond_expr.return_type).kind == .array_fixed)
+							|| (cond_expr is ast.CTempVar && cond_expr.is_fixed_ret)
+						if !cond_emits_ret_arr {
+							g.write('.ret_arr')
+						}
 					}
 					g.writeln('[${idx}];')
 				}

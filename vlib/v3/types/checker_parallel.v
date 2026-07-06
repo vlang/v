@@ -58,6 +58,7 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 }
 
 fn (mut tc TypeChecker) check_semantics_parallel() bool {
+	tc.collect_selected_file_called_fns()
 	tc.check_export_attrs()
 	items := tc.collect_parallel_check_items()
 	return tc.run_parallel_check(items)
@@ -161,7 +162,38 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 }
 
 fn (mut tc TypeChecker) sort_parallel_check_errors() {
-	tc.errors.sort(a.node < b.node)
+	tc.errors.sort_with_compare(compare_type_errors)
+	if tc.errors.len < 2 {
+		return
+	}
+	mut deduped := []TypeError{cap: tc.errors.len}
+	for err in tc.errors {
+		if deduped.len > 0 && type_errors_equal(deduped[deduped.len - 1], err) {
+			continue
+		}
+		deduped << err
+	}
+	tc.errors = deduped
+}
+
+fn compare_type_errors(a &TypeError, b &TypeError) int {
+	if a.node != b.node {
+		return int(a.node) - int(b.node)
+	}
+	if a.kind != b.kind {
+		return int(a.kind) - int(b.kind)
+	}
+	if a.msg < b.msg {
+		return -1
+	}
+	if a.msg > b.msg {
+		return 1
+	}
+	return 0
+}
+
+fn type_errors_equal(a TypeError, b TypeError) bool {
+	return a.node == b.node && a.kind == b.kind && a.msg == b.msg
 }
 
 fn check_job_count(n_runtime_jobs int, n_items int) int {
@@ -228,6 +260,12 @@ fn (mut tc TypeChecker) check_fn_items_serial(items []CheckWorkItem) {
 }
 
 fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file string, module_name string) {
+	mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
+	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
+	mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
+	tc.cur_fn_mut_param_base_types = map[string]Type{}
+	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
+	tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_file = file
 	tc.cur_module = module_name
 	tc.cur_scope = tc.file_scope
@@ -241,9 +279,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.push_scope()
 	for pi in 0 .. node.children_count {
 		p := tc.a.child_node(&node, pi)
-		if p.kind == .param && p.value.len > 0 {
-			tc.cur_scope.insert(p.value, tc.parse_scope_param_type(p.typ))
-		}
+		tc.insert_fn_param_binding(p)
 	}
 	tc.insert_implicit_veb_ctx(node)
 	tc.check_fn_body(node)
@@ -261,6 +297,9 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 		tc.ownership_end_fn()
 	}
 	tc.cur_fn_ret_type = Type(void_)
+	tc.cur_fn_mut_param_base_types = saved_mut_params.move()
+	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
+	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
 }
 
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
@@ -287,20 +326,25 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.method_values_by_fn = map[int][]string{}
 	w.method_value_locals = map[string]bool{}
 	w.method_value_local_depth = map[string]int{}
+	w.cur_fn_mut_param_base_types = map[string]Type{}
+	w.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
+	w.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
 	w.generic_method_value_info = map[string]CallInfo{}
 	w.smartcasts = map[string]Type{}
 	w.cur_fn_ret_type = Type(void_)
 	w.cur_fn_node_id = -1
 	w.type_cache = &TypeCache{
-		parse_enabled:        if tc.type_cache != unsafe { nil } {
+		parse_enabled:              if tc.type_cache != unsafe { nil } {
 			tc.type_cache.parse_enabled
 		} else {
 			false
 		}
-		parse_entries:        map[string]Type{}
-		c_entries:            map[string]string{}
-		struct_field_entries: map[string]Type{}
-		struct_field_misses:  map[string]bool{}
+		parse_entries:              map[string]Type{}
+		c_entries:                  map[string]string{}
+		struct_field_entries:       map[string]Type{}
+		struct_field_misses:        map[string]bool{}
+		ierror_compat_entries:      map[string]int{}
+		source_error_embed_entries: map[string]int{}
 	}
 	return &w
 }
@@ -345,6 +389,8 @@ fn (mut tc TypeChecker) free_parallel_check_worker_cache() {
 			cache.c_entries.free()
 			cache.struct_field_entries.free()
 			cache.struct_field_misses.free()
+			cache.ierror_compat_entries.free()
+			cache.source_error_embed_entries.free()
 		}
 	}
 }

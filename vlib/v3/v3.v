@@ -30,6 +30,31 @@ fn run_compile_command(cmd string) os.Result {
 	}
 }
 
+fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
+	target_os := prefs.normalized_target_os()
+	mut link_atomic_s := false
+	match target_os {
+		'macos' {
+			// atomic.S has Mach-O-compatible aarch64 symbols, but its x86_64 Unix
+			// stanza is ELF-only (`.type ... %function`). v3 does not yet track a
+			// separate target architecture, so use the compiler build architecture.
+			$if arm64 {
+				link_atomic_s = true
+			}
+		}
+		'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly' {
+			link_atomic_s = true
+		}
+		else {}
+	}
+
+	if !link_atomic_s {
+		return ''
+	}
+	atomic_s := os.join_path(prefs.vroot, 'thirdparty', 'stdatomic', 'nix', 'atomic.S')
+	return ' ${atomic_s}'
+}
+
 fn prepare_c_flags_for_link(flags []string, c99 bool) ![]string {
 	support_flags := c_object_compile_support_flags(flags)
 	mut prepared := []string{}
@@ -59,6 +84,17 @@ fn c_object_compile_support_flags(flags []string) []string {
 		}
 	}
 	return support
+}
+
+fn c_flags_need_objective_c(flags []string) bool {
+	for flag in flags {
+		clean := flag.trim_space()
+		if clean in ['-fobjc-arc', '-fobjc-gc', '-ObjC'] || clean.starts_with('-fobjc-')
+			|| clean == '-x objective-c' {
+			return true
+		}
+	}
+	return false
 }
 
 fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool) !string {
@@ -128,7 +164,26 @@ fn c_standard_flag(c99 bool) string {
 }
 
 fn run_test_binary(bin_file string) int {
-	return os.system(executable_command_for_path(bin_file))
+	return run_binary(bin_file, []string{})
+}
+
+fn run_binary(bin_file string, args []string) int {
+	return run_binary_impl(bin_file, args, false)
+}
+
+fn run_binary_with_stderr_to_stdout(bin_file string, args []string) int {
+	return run_binary_impl(bin_file, args, true)
+}
+
+fn run_binary_impl(bin_file string, args []string, stderr_to_stdout bool) int {
+	mut cmd := executable_command_for_path(bin_file)
+	for arg in args {
+		cmd += ' ' + os.quoted_path(arg)
+	}
+	if stderr_to_stdout {
+		cmd += ' 2>&1'
+	}
+	return os.system(cmd)
 }
 
 fn executable_command_for_path(path string) string {
@@ -161,12 +216,13 @@ fn input_is_cmd_v(input_file string) bool {
 fn main() {
 	args := os.args[1..]
 	if args.len == 0 {
-		eprintln('usage: v3 <file.v> [-o output|file.c] [-b c|arm64|eval] [-c99] [-d flag]')
+		eprintln('usage: v3 [run] <file.v> [-o output|file.c] [-b c|arm64|eval] [-c99] [-d flag]')
 		exit(1)
 	}
 
 	mut input_file := ''
 	mut output_file := ''
+	mut explicit_output := false
 	mut backend := 'c'
 	mut is_prod := false
 	mut is_strict := false
@@ -174,14 +230,30 @@ fn main() {
 	mut no_parallel := false
 	mut parallel_transform := true
 	mut building_v := false
+	mut ownership_mode := false
 	mut c99 := false
 	mut all_backends := false
 	mut compile_backends := []string{}
 	mut user_defines := []string{}
+	mut should_run := false
+	mut run_args := []string{}
 	mut i := 0
 	for i < args.len {
-		if args[i] == '-o' && i + 1 < args.len {
+		// Once `run <file>` has captured its input file, every remaining argument
+		// belongs to the program being run — including `-`-prefixed flags such as
+		// `--help`. Forward them verbatim instead of interpreting them as compiler
+		// flags (which would otherwise be silently dropped).
+		if should_run && input_file.len > 0 {
+			run_args << args[i]
+			i++
+			continue
+		}
+		if args[i] == 'run' && input_file.len == 0 && !should_run {
+			should_run = true
+			i++
+		} else if args[i] == '-o' && i + 1 < args.len {
 			output_file = args[i + 1]
+			explicit_output = true
 			i += 2
 		} else if args[i] == '-b' && i + 1 < args.len {
 			backend = args[i + 1]
@@ -205,6 +277,13 @@ fn main() {
 			i++
 		} else if args[i] == '-strict' {
 			is_strict = true
+			i++
+		} else if args[i] == '-ownership' || args[i] == '--ownership' {
+			// The ownership checker itself is compiled into v3 via `-d ownership`.
+			// The runtime `-ownership` flag should only load the builtin ownership
+			// overlays; it must not expose `ownership` to target `$if` blocks or target
+			// `_d_ownership.v` files.
+			ownership_mode = true
 			i++
 		} else if args[i] == '-no-parallel' || args[i] == '--no-parallel' {
 			no_parallel = true
@@ -335,7 +414,11 @@ fn main() {
 
 	mut files := []string{}
 	builtin_dir := builtin_dir_for_vroot(prefs.vroot)
-	files << pref.get_v_files_from_dir(builtin_dir, prefs.user_defines, prefs.target_os)
+	mut builtin_defines := prefs.user_defines.clone()
+	if ownership_mode && 'ownership' !in builtin_defines {
+		builtin_defines << 'ownership'
+	}
+	files << pref.get_v_files_from_dir(builtin_dir, builtin_defines, prefs.target_os)
 	p.parse_files(files)
 	mut a := p.a
 	a.user_code_start = a.nodes.len
@@ -491,6 +574,7 @@ fn main() {
 		c_standard := c_standard_flag(prefs.c99)
 		mut g := cgen.FlatGen.new()
 		g.set_c99_mode(prefs.c99)
+		g.set_compiler_vexe(prefs.vexe)
 		c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, no_parallel, test_files)
 		if !write_text_file_raw(output_file, c_code) {
 			eprintln('error writing ${output_file}')
@@ -513,6 +597,8 @@ fn main() {
 			exit(1)
 		}
 		c_flags := resolved_c_flags.join(' ')
+		needs_objective_c := c_flags_need_objective_c(resolved_c_flags)
+		cc_lang_flag := if needs_objective_c { '-x objective-c ' } else { '' }
 		// Compile inside a per-output build dir, using constant relative source/output basenames,
 		// then move the result to bin_file. On macOS arm64 tcc bakes the -o basename into the
 		// ad-hoc code-signature identifier and the input .c path into the symbol table, so building
@@ -532,18 +618,21 @@ fn main() {
 		mut cc_cmd := ''
 		mut exec_cmd := ''
 		mut result := os.Result{}
-		if !is_prod {
+		mut tried_tcc := false
+		if !is_prod && !needs_objective_c {
+			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
 			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
-			cc_cmd = '${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file} ${c_flags} -lm'
-			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o out src.c ${c_flags} -lm'
+			atomic_s_arg := tcc_atomic_s_arg(prefs)
+			cc_cmd = '${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file}${atomic_s_arg} ${c_flags} -lm'
+			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o out src.c${atomic_s_arg} ${c_flags} -lm'
 			println('  > ${cc_cmd}')
 			result = run_compile_command(exec_cmd)
 		}
-		if is_prod || result.exit_code != 0 {
+		if is_prod || !tried_tcc || result.exit_code != 0 {
 			if result.exit_code != 0 && result.output.len > 0 {
 				eprintln('  tcc error: ${result.output.trim_space()}')
 			}
@@ -552,8 +641,13 @@ fn main() {
 			} else {
 				''
 			}
-			cc_cmd = 'cc ${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o ${bin_file} ${output_file} ${c_flags} -lm'
-			exec_cmd = 'cd ${cc_dir} && cc ${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o out src.c ${c_flags} -lm'
+			if needs_objective_c {
+				cc_cmd = 'cc ${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o ${bin_file} -x objective-c ${output_file} -x none ${c_flags} -lm'
+				exec_cmd = 'cd ${cc_dir} && cc ${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o out -x objective-c src.c -x none ${c_flags} -lm'
+			} else {
+				cc_cmd = 'cc ${cc_lang_flag}${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o ${bin_file} ${output_file} ${c_flags} -lm'
+				exec_cmd = 'cd ${cc_dir} && cc ${cc_lang_flag}${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o out src.c ${c_flags} -lm'
+			}
 			println('  > ${cc_cmd}')
 			result = run_compile_command(exec_cmd)
 			if result.exit_code != 0 {
@@ -569,7 +663,13 @@ fn main() {
 		os.rm(cc_src) or {}
 		os.rmdir(cc_dir) or {}
 		b.step('cc')
-		if test_files.len > 0 {
+		if should_run {
+			run_result := run_binary_with_stderr_to_stdout(bin_file, run_args)
+			if run_result != 0 {
+				exit(run_result)
+			}
+			b.step('run')
+		} else if test_files.len > 0 && !explicit_output {
 			test_result := run_test_binary(bin_file)
 			if test_result != 0 {
 				exit(test_result)
@@ -612,7 +712,7 @@ fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) 
 	for file in user_files {
 		if pref.is_test_file_for_backend(file, prefs.backend) {
 			module_name := declared_module_in_file(file)
-			if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
+			if module_name.len > 0 && module_name != 'builtin' {
 				for module_file in same_dir_module_source_files(file, module_name, prefs) {
 					append_unique_file(mut expanded, mut seen, module_file)
 				}
@@ -788,7 +888,8 @@ fn print_type_errors(errors []types.TypeError) {
 	eprintln('type checker found ${errors.len} error(s):')
 	max_errors := if errors.len < 20 { errors.len } else { 20 }
 	for ei in 0 .. max_errors {
-		eprintln('  ${errors[ei].msg}')
+		err := errors[ei]
+		eprintln('  [${err.file}] ${err.node_pos} node=${err.node} ${err.node_kind} `${err.node_value}`: ${err.msg}')
 	}
 	if errors.len > 20 {
 		eprintln('  ... and ${errors.len - 20} more')
@@ -1237,6 +1338,21 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 		return import_path
 	}
 	short_name := import_path.all_after_last('.')
+	if import_dir.len > 0 {
+		module_root := module_root_for_import_dir(import_path, import_dir)
+		short_sibling_dir := os.join_path_single(module_root, short_name)
+		if os.is_dir(short_sibling_dir)
+			&& os.real_path(short_sibling_dir) != os.real_path(import_dir) {
+			return import_path
+		}
+	}
+	if project_root.len > 0 && import_dir.len > 0 {
+		short_project_dir := os.join_path_single(project_root, short_name)
+		if os.is_dir(short_project_dir)
+			&& os.real_path(short_project_dir) != os.real_path(import_dir) {
+			return import_path
+		}
+	}
 	short_dir := resolve_project_or_pref_module_path_cached(prefs, short_name, importing_file,
 		project_root, mut path_cache)
 	if short_dir.len > 0 && import_dir.len > 0 && os.is_dir(short_dir)
@@ -1244,6 +1360,18 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 		return import_path
 	}
 	return short_name
+}
+
+fn module_root_for_import_dir(import_path string, import_dir string) string {
+	mut root := import_dir
+	for _ in import_path.split('.') {
+		parent := os.dir(root)
+		if parent == root {
+			return root
+		}
+		root = parent
+	}
+	return root
 }
 
 fn resolve_project_or_pref_module_path_cached(prefs &pref.Preferences, mod_name string, importing_file string, project_root string, mut cache map[string]string) string {

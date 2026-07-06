@@ -53,6 +53,59 @@ fn test_reject_pointer_expressions_for_value_returns() {
 		'fn f() int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n', 'cannot return `&int` as `int`')
 	run_bad(v3_bin, 'bad_result_return_pointer_to_value',
 		'fn f() !int {\n\tx := 1\n\treturn &x\n}\nfn main() {}\n', 'cannot return `&int` as `!int`')
+	run_bad(v3_bin, 'bad_field_pointer_to_value',
+		'struct S {\n\tx int\n}\n\nfn main() {\n\tx := 1\n\t_ := S{\n\t\tx: &x\n\t}\n}\n',
+		'cannot initialize field `x` with `&int`; expected `int`')
+}
+
+fn test_multi_return_tail_slots_use_return_compatibility() {
+	v3_bin := build_v3_review_checker()
+	if_out := run_good(v3_bin, 'good_multi_return_if_pointer_value_tail',
+		'struct S {\n\tn int\n}\nfn pick(ok bool) (S, int) {\n\ts := S{\n\t\tn: 5\n\t}\n\treturn if ok {\n\t\t&s\n\t\t1\n\t} else {\n\t\t&s\n\t\t2\n\t}\n}\nfn main() {\n\ta, b := pick(false)\n\tprintln(int_str(a.n) + "," + int_str(b))\n}\n')
+	assert if_out == '5,2'
+}
+
+fn test_none_ierror_values_lower_to_builtin_none() {
+	v3_bin := build_v3_review_checker()
+	ierror_out := run_good(v3_bin, 'good_none_ierror_contexts',
+		'struct Holder {\n\terr IError = none\n}\n\nfn take(e IError) int {\n\tif e is none {\n\t\treturn 1\n\t}\n\treturn 0\n}\n\nfn make() IError {\n\treturn none\n}\n\nfn main() {\n\tdefault := Holder{}\n\texplicit := Holder{\n\t\terr: none\n\t}\n\tprintln(int_str(take(none) + take(default.err) + take(explicit.err) + take(make())))\n}\n')
+	assert ierror_out == '4'
+	out := run_good(v3_bin, 'good_none_option_context',
+		'fn maybe() ?int {\n\treturn none\n}\n\nfn main() {\n\tif maybe() == none {\n\t\tprintln("option")\n\t}\n}\n')
+	assert out == 'option'
+}
+
+fn test_rune_receiver_methods_resolve() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_rune_receiver_methods',
+		'fn main() {\n\tr := `★`\n\tprintln(int_str(`A`.length_in_bytes()))\n\tprintln(int_str(r.bytes().len))\n\tprintln(`c`.to_upper().str())\n}\n')
+	assert out == '1\n3\nC'
+}
+
+fn test_numeric_alias_returns_preserve_integer_float_direction() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_int_alias_float_return',
+		'type Id = int\n\nfn f() Id {\n\treturn 1.5\n}\n\nfn main() {}\n',
+		'cannot return `f64` as `Id`')
+	out := run_good(v3_bin, 'good_float_alias_int_return',
+		'type Amount = f64\n\nfn f() Amount {\n\treturn 1\n}\n\nfn main() {\n\tprintln(f().str())\n}\n')
+	assert out == '1.0'
+}
+
+fn test_alias_with_nested_type_separator_stays_alias() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_alias_nested_type_separator',
+		'type Bits = [1 | 2]int\n\nfn values() Bits {\n\treturn [1, 2, 3]!\n}\n\nfn main() {\n\tbits := values()\n\tprintln(int_str(bits[0] + bits[1] + bits[2]))\n}\n')
+	assert out == '6'
+}
+
+fn test_voidptr_params_reject_non_pointer_values() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_voidptr_scalar_arg', 'fn f(p voidptr) {}\n\nfn main() {\n\tf(1)\n}\n',
+		'cannot use `int` as argument 1 to `f`; expected `&void`')
+	out := run_good(v3_bin, 'good_voidptr_pointer_arg',
+		'fn f(p voidptr) int {\n\t_ = p\n\treturn 7\n}\n\nfn main() {\n\tx := 1\n\tprintln(int_str(f(&x)))\n}\n')
+	assert out == '7'
 }
 
 fn test_restrict_synthetic_hex_fallback_receivers() {
@@ -96,6 +149,19 @@ fn test_map_keys_and_values_reject_arguments() {
 	run_bad(v3_bin, 'bad_map_values_arg',
 		"fn main() {\n\tm := map[string]int{}\n\t_ := m.values('x')\n}\n",
 		'argument count mismatch')
+}
+
+fn test_array_to_void_array_is_not_implicitly_compatible() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_array_to_void_array_param',
+		'fn take(xs []void) {\n\t_ = xs\n}\n\nfn main() {\n\ttake([1, 2, 3])\n}\n',
+		'cannot use `[]int` as argument 1 to `take`; expected `[]void`')
+	run_bad(v3_bin, 'bad_array_to_void_array_user_receiver',
+		'fn (xs []void) touch() int {\n\treturn xs.len\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tprintln(nums.touch().str())\n}\n',
+		'unknown function `nums.touch`')
+	out := run_good(v3_bin, 'good_array_clone_ignores_void_array_receiver',
+		'fn (xs []void) clone() int {\n\treturn 7\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tcloned := nums.clone()\n\tprintln(int_str(cloned.len + cloned[2]))\n}\n')
+	assert out == '6'
 }
 
 fn test_array_insert_and_prepend_reject_wrong_arity() {
@@ -244,4 +310,11 @@ fn test_local_identifiers_shadow_module_consts() {
 	out := run_good(v3_bin, 'good_const_shadowed_by_param_and_local',
 		"const shadowed_value = 'const'\n\nfn param_shadow(shadowed_value int) int {\n\treturn shadowed_value + 1\n}\n\nfn local_shadow() int {\n\tshadowed_value := 2\n\treturn shadowed_value + 1\n}\n\nfn main() {\n\tprintln(int_str(param_shadow(1)))\n\tprintln(int_str(local_shadow()))\n\tprintln(shadowed_value)\n}\n")
 	assert out == '2\n3\nconst'
+}
+
+fn test_match_const_int_does_not_narrow_subject_type() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'match_const_int_no_subject_narrow',
+		'const size_224 = 28\n\nstruct E {\n\tsize int\n}\n\nfn check(hash_size int) !E {\n\tmatch hash_size {\n\t\tsize_224 {\n\t\t\treturn E{\n\t\t\t\tsize: hash_size\n\t\t\t}\n\t\t}\n\t\telse {}\n\t}\n\treturn E{\n\t\tsize: 0\n\t}\n}\n\nfn main() {\n\tprintln(int_str(check(28)!.size))\n}\n')
+	assert out == '28'
 }

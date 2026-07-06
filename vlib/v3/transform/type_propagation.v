@@ -84,6 +84,9 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 	if fn_type := t.fn_value_type_name(id) {
 		return fn_type
 	}
+	if map_type := t.map_expr_decl_type(id) {
+		return map_type
+	}
 	if int(id) >= 0 {
 		node := t.a.nodes[int(id)]
 		if node.kind == .call {
@@ -91,16 +94,32 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 				return ret
 			}
 		}
-		if node.kind == .map_init {
-			if node.typ.starts_with('map[') {
-				return node.typ
-			}
-			if node.value.starts_with('map[') {
-				return node.value
+	}
+	return t.node_type(id)
+}
+
+fn (t &Transformer) map_expr_decl_type(id flat.NodeId) ?string {
+	if int(id) < 0 {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .map_init {
+		for candidate in [node.value, node.typ] {
+			if candidate.starts_with('map[') {
+				return candidate
 			}
 		}
 	}
-	return t.node_type(id)
+	if node.kind == .call {
+		map_type := t.new_map_call_type(node)
+		if map_type.len > 0 {
+			return map_type
+		}
+		if node.typ.starts_with('map[') {
+			return node.typ
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) fn_value_type_name(id flat.NodeId) ?string {
@@ -635,7 +654,12 @@ fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 	owner_base, owner_args, owner_is_generic_app := generic_app_parts(owner_type)
 	if owner_is_generic_app {
 		if owner_base.len > 0 {
-			substituted := substitute_generic_type_text(typ, owner_args)
+			params := t.generic_struct_param_names_for_base(owner_base)
+			substituted := if params.len > 0 {
+				substitute_generic_type_text_with_params(typ, owner_args, params)
+			} else {
+				substitute_generic_type_text(typ, owner_args)
+			}
 			if substituted != typ {
 				return t.normalize_field_type(substituted, owner_type)
 			}
@@ -678,6 +702,26 @@ fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 		}
 	}
 	return t.normalize_type_alias(typ)
+}
+
+fn (t &Transformer) generic_struct_param_names_for_base(base string) []string {
+	if isnil(t.tc) {
+		return []string{}
+	}
+	if params := t.tc.struct_generic_params[base] {
+		return params.clone()
+	}
+	short := base.all_after_last('.')
+	if params := t.tc.struct_generic_params[short] {
+		return params.clone()
+	}
+	if !base.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		if params := t.tc.struct_generic_params['${t.cur_module}.${base}'] {
+			return params.clone()
+		}
+	}
+	return []string{}
 }
 
 fn (t &Transformer) type_authority_has(name string) bool {
@@ -944,11 +988,17 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 	if int(id) < 0 {
 		return ''
 	}
+	node := t.a.nodes[int(id)]
 	resolved := t.resolve_expr_type(id)
 	if resolved.len > 0 {
+		if t.generic_arg_is_unresolved(resolved) && node.typ.len > 0 {
+			node_typ := t.normalize_type_alias(node.typ)
+			if node_typ.len > 0 && !t.generic_arg_is_unresolved(node_typ) {
+				return node_typ
+			}
+		}
 		return resolved
 	}
-	node := t.a.nodes[int(id)]
 	if node.kind == .dump_expr && node.children_count > 0 {
 		return t.node_type(t.a.child(&node, 0))
 	}
@@ -1063,31 +1113,12 @@ fn (t &Transformer) array_map_call_type_name(node flat.Node) ?string {
 		return none
 	}
 	map_expr_id := t.a.child(&node, 1)
-	map_expr := t.a.nodes[int(map_expr_id)]
-	mut elem_type := ''
-	if map_expr.kind == .ident {
-		if fn_name := t.resolve_fn_value_ident(map_expr.value) {
-			if ret := t.fn_ret_types[fn_name] {
-				elem_type = ret
-			} else if !isnil(t.tc) {
-				if ret_type := t.tc.fn_ret_types[fn_name] {
-					elem_type = t.normalize_type_alias(ret_type.name())
-				}
-			}
-		} else if ret_type := t.fn_value_return_type_name(map_expr_id) {
-			elem_type = ret_type
-		}
-	} else if map_expr.kind == .fn_literal || map_expr.kind == .lambda_expr {
-		if ret_type := t.fn_value_return_type_name(map_expr_id) {
-			elem_type = ret_type
-		}
-	}
-	if elem_type.len == 0 {
-		elem_type = if checker_type := t.checker_expr_type_name(map_expr_id) {
-			checker_type
-		} else {
-			t.node_type(map_expr_id)
-		}
+	mut elem_type := if callback_ret := t.array_map_callback_return_type_name(map_expr_id) {
+		callback_ret
+	} else if checker_type := t.checker_expr_type_name(map_expr_id) {
+		checker_type
+	} else {
+		t.node_type(map_expr_id)
 	}
 	if elem_type.len == 0 || elem_type in ['array', 'map', 'unknown'] {
 		elem_type = t.reliable_stringify_type(map_expr_id)
@@ -1096,6 +1127,32 @@ fn (t &Transformer) array_map_call_type_name(node flat.Node) ?string {
 		return none
 	}
 	return '[]${elem_type}'
+}
+
+fn (t &Transformer) array_map_callback_return_type_name(map_expr_id flat.NodeId) ?string {
+	if int(map_expr_id) < 0 {
+		return none
+	}
+	map_expr := t.a.nodes[int(map_expr_id)]
+	if map_expr.kind == .ident {
+		if fn_name := t.resolve_fn_value_ident(map_expr.value) {
+			if ret := t.fn_ret_types[fn_name] {
+				return t.normalize_type_alias(ret)
+			}
+			if !isnil(t.tc) {
+				if ret_type := t.tc.fn_ret_types[fn_name] {
+					return t.normalize_type_alias(ret_type.name())
+				}
+			}
+		} else if ret_type := t.fn_value_return_type_name(map_expr_id) {
+			return ret_type
+		}
+	} else if map_expr.kind == .fn_literal || map_expr.kind == .lambda_expr {
+		if ret_type := t.fn_value_return_type_name(map_expr_id) {
+			return ret_type
+		}
+	}
+	return none
 }
 
 // lvalue_type returns the v-type string for an assignable expression, handling

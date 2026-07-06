@@ -349,7 +349,7 @@ fn take(f fn (int) int) int {
 
 fn main() {
 	foo := other_callback
-	println(int_str(take(foo)))
+println(int_str(take(foo)))
 }
 '
 

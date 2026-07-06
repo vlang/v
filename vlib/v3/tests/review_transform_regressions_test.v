@@ -6,9 +6,24 @@ const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
+fn review_v3_bin_path() string {
+	return os.join_path(os.temp_dir(), 'v3_review_transform_regressions_test')
+}
+
+fn testsuite_begin() {
+	v3_bin := review_v3_bin_path()
+	if os.exists(v3_bin) {
+		os.rm(v3_bin) or {}
+	}
+}
+
 fn build_v3_review_transform() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_review_transform_regressions_test')
-	build := os.execute('${vexe} -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	v3_bin := review_v3_bin_path()
+	if os.exists(v3_bin) {
+		return v3_bin
+	}
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -24,10 +39,14 @@ fn run_bad(v3_bin string, name string, src string, expected string) {
 }
 
 fn run_good(v3_bin string, name string, src string) string {
+	return run_good_with_flags(v3_bin, name, '', src)
+}
+
+fn run_good_with_flags(v3_bin string, name string, flags string, src string) string {
 	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${good_src} -b c -o ${good_bin}')
+	compile := os.execute('${v3_bin} ${flags} ${good_src} -b c -o ${good_bin}')
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	run := os.execute(good_bin)
@@ -108,6 +127,128 @@ fn test_array_equality_uses_semantic_element_comparison() {
 	out := run_good(v3_bin, 'semantic_array_equality',
 		"struct Child {\n\tlabel string\n}\n\nstruct Item {\n\tname string\n\tparts []string\n\tnested [][]string\n\tchildren []Child\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := [Item{\n\t\tname: 'hi'.clone()\n\t\tparts: ['ab'.clone()]\n\t\tnested: [[join('n', 'est')]]\n\t\tchildren: [Child{\n\t\t\tlabel: 'kid'.clone()\n\t\t}]\n\t}]\n\tright := [Item{\n\t\tname: join('h', 'i')\n\t\tparts: [join('a', 'b')]\n\t\tnested: [['nest'.clone()]]\n\t\tchildren: [Child{\n\t\t\tlabel: join('k', 'id')\n\t\t}]\n\t}]\n\tmaps_left := [{\n\t\t'k': 'value'.clone()\n\t}]\n\tmaps_right := [{\n\t\t'k': join('val', 'ue')\n\t}]\n\tnested_left := [[join('y', 'o')]]\n\tnested_right := [['yo'.clone()]]\n\tchild_map_left := {\n\t\t'items': [Child{\n\t\t\tlabel: 'mapkid'.clone()\n\t\t}]\n\t}\n\tchild_map_right := {\n\t\t'items': [Child{\n\t\t\tlabel: join('map', 'kid')\n\t\t}]\n\t}\n\tneedle := Item{\n\t\tname: join('h', 'i')\n\t\tparts: [join('a', 'b')]\n\t\tnested: [['nest'.clone()]]\n\t\tchildren: [Child{\n\t\t\tlabel: join('k', 'id')\n\t\t}]\n\t}\n\tprintln(left == right)\n\tprintln(left.equals(right))\n\tprintln(maps_left == maps_right)\n\tprintln(nested_left == nested_right)\n\tprintln(child_map_left == child_map_right)\n\tprintln(needle in left)\n\tprintln(int_str(left.index(needle)))\n}\n")
 	assert out == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\n0'
+}
+
+fn test_array_map_fn_value_uses_callback_return_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_map_fn_value_return_type',
+		"fn main() {\n\ti_to_str := fn (i int) string {\n\t\treturn int_str(i)\n\t}\n\ta := [1, 2, 3].map(i_to_str)\n\tassert a == ['1', '2', '3']\n\tprintln(a[0] + a[1] + a[2])\n}\n")
+	assert out == '123'
+}
+
+fn test_const_array_allows_newline_separators_with_line_comments() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'const_array_line_comments',
+		'const xs = [\n\t1\n\t// one\n\t2\n\t// two\n\t3\n]\n\nfn main() {\n\tprintln(int_str(xs.len))\n\tprintln(int_str(xs[1]))\n}\n')
+	assert out == '3\n2'
+}
+
+fn test_mut_pointer_capture_is_not_over_dereferenced() {
+	v3_bin := build_v3_review_transform()
+	// A `[mut p]` capture whose original type is already a pointer (`&S`) must stay a
+	// genuine `&S` local: its rvalue uses must not be over-dereferenced, so a call that
+	// expects the pointer still receives it (regression for gating the pointer-value
+	// rvalue/lvalue flags on `capture_by_ref` instead of every `capture_mut`).
+	out := run_good(v3_bin, 'mut_pointer_capture',
+		'struct S {\n\tn int\n}\n\nfn takes_ptr(p &S) int {\n\treturn p.n\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut p := &S{\n\t\tn: 5\n\t}\n\tcall(fn [mut p] () {\n\t\tprintln(int_str(takes_ptr(p)))\n\t})\n}\n')
+	assert out == '5'
+}
+
+fn test_mut_value_capture_in_call_under_selector_base() {
+	v3_bin := build_v3_review_transform()
+	// A `[mut s]` value capture used as a call argument nested inside a selector base
+	// (`wrap(s).s.n`) must still be lowered to its value; the selector-base deref
+	// suppression applies only to the direct receiver ident, not to nested expressions.
+	out := run_good(v3_bin, 'mut_capture_selector_base',
+		'struct S {\n\tn int\n}\n\nstruct Box {\n\ts S\n}\n\nfn wrap(s S) Box {\n\treturn Box{\n\t\ts: s\n\t}\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut s := S{\n\t\tn: 7\n\t}\n\tcall(fn [mut s] () {\n\t\tprintln(int_str(wrap(s).s.n))\n\t})\n}\n')
+	assert out == '7'
+}
+
+fn test_mut_value_capture_parenthesized_selector_receiver() {
+	v3_bin := build_v3_review_transform()
+	// A `[mut s]` value capture is a `&S` local; a parenthesized direct receiver
+	// (`(s).n`) is still the direct selector receiver and must keep the suppression so
+	// the selector emits arrow access. Otherwise the inner `s` is auto-dereferenced to
+	// `*s` while the selector still emits `->`, producing an invalid `(*s)->n`.
+	out := run_good(v3_bin, 'mut_capture_paren_selector_base',
+		'struct S {\n\tn int\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut s := S{\n\t\tn: 7\n\t}\n\tcall(fn [mut s] () {\n\t\tprintln(int_str((s).n))\n\t})\n}\n')
+	assert out == '7'
+}
+
+fn test_heap_escaping_amp_alias_keeps_heap_pointer() {
+	v3_bin := build_v3_review_transform()
+	// When a local `s` whose address escapes is moved to the heap, `s` becomes the `&S`
+	// heap pointer and the alias `p := &s` must stay that pointer (`p := s`), NOT be
+	// auto-dereferenced to `*s`. Over-dereferencing here initializes `p`'s `&S` decl from
+	// an `S` value (a stale stack copy), reviving the escape/stale-mutation bug the heap
+	// move avoids. A later `s = S{n: 2}` must be observable through the returned pointer.
+	out := run_good(v3_bin, 'heap_escaping_amp_alias',
+		'struct S {\n\tn int\n}\n\nfn leak() &S {\n\tmut s := S{\n\t\tn: 1\n\t}\n\tp := &s\n\ts = S{\n\t\tn: 2\n\t}\n\treturn p\n}\n\nfn main() {\n\tp := leak()\n\tprintln(int_str(p.n))\n}\n')
+	assert out == '2'
+}
+
+fn test_imported_result_array_return_or_preserves_success_value() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'imported_result_array_return_or', {
+		'v.mod':     "Module { name: 'imported_result_array_return_or' }\n"
+		'main.v':    "module main\n\nimport pat\n\nfn main() {\n\tlines := pat.from_path()!\n\tassert lines == ['ok']\n\tprintln(lines[0])\n}\n"
+		'pat/pat.v': "module pat\n\nfn source() ![]string {\n\treturn ['ok']\n}\n\npub fn from_path() ![]string {\n\treturn source() or {\n\t\treturn error(err.msg())\n\t}\n}\n"
+	}, 'main.v')
+	assert out == 'ok'
+}
+
+fn test_result_multi_return_match_branch_unwraps_payload_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'result_multi_return_match_branch_unwrap',
+		"enum Kind {\n\tleft\n\tright\n}\n\nfn left_pair() !(int, string) {\n\treturn 1, 'left'\n}\n\nfn right_pair() !(int, string) {\n\treturn 2, 'right'\n}\n\nfn choose(kind Kind) !(int, string) {\n\treturn match kind {\n\t\t.left {\n\t\t\tleft_pair()!\n\t\t}\n\t\t.right {\n\t\t\tright_pair()!\n\t\t}\n\t}\n}\n\nfn main() {\n\tn, label := choose(.right)!\n\tprintln(int_str(n) + ':' + label)\n}\n")
+	assert out == '2:right'
+}
+
+fn test_result_multi_return_match_branch_unwraps_imported_payload_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'result_multi_return_match_imported_payload', {
+		'v.mod':  "Module { name: 'result_multi_return_match_imported_payload' }\n"
+		'main.v': "module main\n\nimport m\n\nenum Kind {\n\tleft\n\tright\n}\n\nstruct Wrap {\n\tkind  Kind\n\tinner m.Inner\n}\n\nfn (wrap Wrap) choose() !(m.Match, []string) {\n\treturn match wrap.kind {\n\t\t.left {\n\t\t\twrap.inner.pair('left')!\n\t\t}\n\t\t.right {\n\t\t\twrap.inner.pair('right')!\n\t\t}\n\t}\n}\n\nfn main() {\n\twrap := Wrap{\n\t\tkind:  .right\n\t\tinner: m.Inner{\n\t\t\tn: 2\n\t\t}\n\t}\n\tmat, groups := wrap.choose()!\n\tprintln(int_str(mat.n) + ':' + groups[0])\n}\n"
+		'm/m.v':  'module m\n\npub struct Match {\npub:\n\tn int\n}\n\npub struct Inner {\npub:\n\tn int\n}\n\npub fn (inner Inner) pair(label string) !(Match, []string) {\n\treturn Match{\n\t\tn: inner.n\n\t}, [label]\n}\n'
+	}, 'main.v')
+	assert out == '2:right'
+}
+
+fn test_string_to_owned_compiles_under_ownership_cgen() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_with_flags(v3_bin, 'string_to_owned_ownership_cgen', '-ownership',
+		"fn main() {\n\tname := 'owned'.to_owned()\n\tcopy := name.to_owned()\n\tprintln(copy)\n}\n")
+	assert out == 'owned'
+}
+
+fn test_generic_interface_method_body_marks_log_debug_dispatch() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_with_flags(v3_bin, 'generic_interface_log_debug_dispatch', '-ownership',
+		"import log\n\ninterface Sink {\n\tbinary_data()\n}\n\nstruct Box[T] {}\n\nfn (mut b Box[T]) binary_data() {\n\t_ = b\n\tlog.debug('hidden')\n}\n\nstruct Runner {}\n\nfn (mut r Runner) run(mut s Sink) {\n\t_ = r\n\ts.binary_data()\n}\n\nstruct Worker {\nmut:\n\trunner Runner\n}\n\nfn main() {\n\tmut worker := Worker{\n\t\trunner: Runner{}\n\t}\n\tmut b := Box[int]{}\n\tworker.runner.run(mut b)\n\tprintln('ok')\n}\n")
+	assert out == 'ok'
+}
+
+fn test_array_literal_separator_handling() {
+	v3_bin := build_v3_review_transform()
+	// Comma-, newline-, and blank-line-separated element lists parse with the
+	// expected length. This parser is permissive (it never hard-errors on
+	// malformed input), so the guarantee here is that a missing separator
+	// (`[9 10]`) or a repeated comma (`[11,,12]`) is *not* merged/collapsed into
+	// extra elements: only the leading element is kept, never `len == 2`.
+	out := run_good(v3_bin, 'array_literal_separators',
+		'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tmissing := [9 10]\n\tdoubled := [11,,12]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len) + ":" + int_str(missing.len) + ":" + int_str(doubled.len))\n}\n')
+	assert out == '3:2:3:1:1'
+}
+
+fn test_container_wrapped_import_alias_type_resolves() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'container_import_alias_types', {
+		'v.mod':     "Module { name: 'container_import_alias_types' }\n"
+		'bar/bar.v': 'module bar\n\npub struct Baz {\npub:\n\tn int\n}\n'
+		'foo/foo.v': 'module foo\n\nimport bar as b\n\npub struct Holder {\npub:\n\titems []b.Baz\n\tone   ?b.Baz\n}\n\npub fn make() Holder {\n\treturn Holder{\n\t\titems: [b.Baz{\n\t\t\tn: 1\n\t\t}, b.Baz{\n\t\t\tn: 2\n\t\t}]\n\t\tone: b.Baz{\n\t\t\tn: 7\n\t\t}\n\t}\n}\n'
+		'main.v':    'module main\n\nimport foo\n\nfn main() {\n\th := foo.make()\n\tmut out := int_str(h.items[0].n) + int_str(h.items[1].n)\n\tif v := h.one {\n\t\tout += int_str(v.n)\n\t}\n\tprintln(out)\n}\n'
+	}, 'main.v')
+	assert out == '127'
 }
 
 fn test_nested_map_equality_uses_declared_value_type() {

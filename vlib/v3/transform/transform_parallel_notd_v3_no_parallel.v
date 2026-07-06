@@ -1,7 +1,6 @@
 module transform
 
 import runtime
-import v3.flat
 
 // Parallel function-body transform. Each worker transforms a disjoint set of
 // closure-free functions on its own cloned AST + forked TypeChecker, and the
@@ -71,10 +70,8 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		// which would otherwise block in join, doing useful work.
 		thread_count := chunk_count - 1
 		mut workers := []voidptr{cap: thread_count}
-		mut worker_asts := []voidptr{cap: thread_count}
 		for _ in 0 .. thread_count {
 			wast := t.clone_ast_base(base_nodes, base_children)
-			worker_asts << voidptr(wast)
 			wtc := t.tc.fork_for_parallel_transform(wast)
 			ww := t.fork_worker(wast, wtc)
 			workers << voidptr(ww)
@@ -114,12 +111,6 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 			ww := unsafe { &Transformer(workers[ci]) }
 			t.merge_worker_used_fns(ww)
 			t.merge_worker(ww, chunks[ci + 1], base_nodes, base_children)
-			// The worker's cloned base AST is no longer needed after merge.
-			unsafe {
-				mut wast := &flat.FlatAst(worker_asts[ci])
-				wast.nodes.free()
-				wast.children.free()
-			}
 		}
 		return true
 	}

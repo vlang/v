@@ -12,6 +12,7 @@ pub mut:
 	backend      string = 'c'
 	c99          bool
 	vroot        string = detect_vroot()
+	vexe         string = detect_vexe()
 	selfhost     bool
 	building_v   bool // compiling the V compiler itself: no generics, skip monomorphization
 	is_prod      bool
@@ -35,6 +36,25 @@ fn detect_vroot() string {
 		}
 	}
 	return detect_vroot_from(os.getwd())
+}
+
+fn detect_vexe() string {
+	env_vexe := os.getenv('VEXE')
+	if env_vexe.len > 0 {
+		return os.real_path(env_vexe)
+	}
+	exe := os.executable()
+	if exe.len > 0 {
+		return os.real_path(exe)
+	}
+	if os.args.len > 0 && os.args[0].len > 0 {
+		return os.real_path(os.args[0])
+	}
+	vroot := detect_vroot()
+	if vroot.len > 0 {
+		return os.join_path_single(vroot, 'v')
+	}
+	return ''
 }
 
 // detect_vroot_from resolves detect vroot from information for pref.
