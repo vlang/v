@@ -7551,7 +7551,6 @@ const c_preamble_declared_extern_symbols = {
 	'ceil':                          true
 	'ceilf':                         true
 	'close':                         true
-	'clock_gettime':                 true
 	'cos':                           true
 	'dup2':                          true
 	'execlp':                        true

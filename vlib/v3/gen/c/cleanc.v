@@ -1265,14 +1265,6 @@ fn c_preserved_system_include_declared_fns(include_arg string) []string {
 		'<mach/mach_time.h>' {
 			return ['mach_absolute_time', 'mach_timebase_info']
 		}
-		'<time.h>' {
-			return ['clock_gettime', 'gmtime', 'gmtime_r', 'localtime', 'localtime_r', 'nanosleep',
-				'strftime', 'time', 'timegm']
-		}
-		'<sys/timerfd.h>' {
-			return ['clock_gettime', 'gmtime', 'gmtime_r', 'localtime', 'localtime_r', 'nanosleep',
-				'strftime', 'time', 'timegm', 'timerfd_create', 'timerfd_gettime', 'timerfd_settime']
-		}
 		'<X11/Xlib.h>', '<X11/Xutil.h>', '<X11/Xresource.h>', '<X11/XKBlib.h>',
 		'<X11/extensions/XInput2.h>', '<X11/extensions/Xrandr.h>', '<X11/Xcursor/Xcursor.h>' {
 			return c_x11_preserved_declared_fns.clone()
@@ -1290,12 +1282,6 @@ fn c_preserved_system_include_struct_names(include_arg string) []string {
 		}
 		'<poll.h>' {
 			return ['pollfd']
-		}
-		'<time.h>' {
-			return ['timespec', 'tm']
-		}
-		'<sys/timerfd.h>' {
-			return ['itimerspec', 'timespec', 'tm']
 		}
 		'<X11/Xlib.h>', '<X11/Xutil.h>', '<X11/Xresource.h>', '<X11/XKBlib.h>',
 		'<X11/extensions/XInput2.h>', '<X11/Xcursor/Xcursor.h>' {
@@ -1486,6 +1472,7 @@ const c_headerless_handled_system_headers = {
 	'sys/sysctl.h':     true
 	'sys/syslimits.h':  true
 	'sys/time.h':       true
+	'sys/timerfd.h':    true
 	'sys/types.h':      true
 	'sys/uio.h':        true
 	'sys/un.h':         true
@@ -6480,9 +6467,6 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_timeval_struct()
 	g.headerless_rusage_struct()
 	g.headerless_timespec_struct()
-	if !g.inlined_c_declared_fns['clock_gettime'] {
-		g.writeln('int clock_gettime(int clock_id, struct timespec* ts);')
-	}
 	g.headerless_utsname_struct()
 	g.headerless_stat_struct()
 	g.headerless_tm_struct()
@@ -7504,6 +7488,8 @@ fn (mut g FlatGen) headerless_linux_constants() {
 	g.writeln('#define O_NONBLOCK 04000')
 	g.writeln('#define O_SYNC 04010000')
 	g.writeln('#define O_CLOEXEC 02000000')
+	g.writeln('#define TFD_NONBLOCK O_NONBLOCK')
+	g.writeln('#define TFD_CLOEXEC O_CLOEXEC')
 	g.writeln('#define F_GETFD 1')
 	g.writeln('#define F_SETFD 2')
 	g.writeln('#define F_GETFL 3')
