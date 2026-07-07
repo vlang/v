@@ -5014,6 +5014,12 @@ fn (mut tc TypeChecker) comptime_type_matches(actual string, expected string) ?b
 		'$array' {
 			return actual_type is Array || actual_type is ArrayFixed
 		}
+		'$array_dynamic' {
+			return actual_type is Array
+		}
+		'$array_fixed' {
+			return actual_type is ArrayFixed
+		}
 		'$map' {
 			return actual_type is Map
 		}

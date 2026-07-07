@@ -5905,6 +5905,12 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 		'$array' {
 			return normalized.starts_with('[]') || transform_type_text_is_fixed_array(normalized)
 		}
+		'$array_dynamic' {
+			return normalized.starts_with('[]')
+		}
+		'$array_fixed' {
+			return transform_type_text_is_fixed_array(normalized)
+		}
 		'$map' {
 			return normalized.starts_with('map[')
 		}

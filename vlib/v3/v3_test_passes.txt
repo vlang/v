@@ -324,6 +324,8 @@ vlib/time/time_addition_test.v
 vlib/time/time_format_test.v
 vlib/time/time_test.v
 vlib/time/utc_vs_local_time_test.v
+vlib/toml/scanner/scanner_test.v
+vlib/toml/tests/inline_test.v
 vlib/v/ast/cflags_test.v
 vlib/v/ast/table_test.v
 vlib/v/ast/types_test.v
@@ -413,12 +415,16 @@ vlib/v/tests/aliases/alias_fixed_arr_test.v
 vlib/v/tests/aliases/alias_fixed_array_append_to_array_test.v
 vlib/v/tests/aliases/alias_fixed_array_compare_test.v
 vlib/v/tests/aliases/alias_fixed_array_infix_expr_test.v
+vlib/v/tests/aliases/alias_fixed_array_init_test.v
+vlib/v/tests/aliases/alias_fixed_array_of_struct_test.v
 vlib/v/tests/aliases/alias_fixed_array_operator_overloading_cmp_test.v
+vlib/v/tests/aliases/alias_fixed_array_test.v
 vlib/v/tests/aliases/alias_generic_mut_method_reference_issue_24012_test.v
 vlib/v/tests/aliases/alias_generic_mut_reference_issue_24011_test.v
 vlib/v/tests/aliases/alias_generic_parent_operator_overloading_test.v
 vlib/v/tests/aliases/alias_interface_test.v
 vlib/v/tests/aliases/alias_map_clone_test.v
+vlib/v/tests/aliases/alias_map_test.v
 vlib/v/tests/aliases/alias_operator_overloading_test.v
 vlib/v/tests/aliases/alias_option_test.v
 vlib/v/tests/aliases/alias_parent_operator_overloading_issue_26416_test.v
@@ -501,6 +507,7 @@ vlib/v/tests/builtin_arrays/array_init_with_fields_test.v
 vlib/v/tests/builtin_arrays/array_insert_as_mut_receiver_test.v
 vlib/v/tests/builtin_arrays/array_insert_variadic_arg_variable_test.v
 vlib/v/tests/builtin_arrays/array_map_or_test.v
+vlib/v/tests/builtin_arrays/array_map_ref_it_test.v
 vlib/v/tests/builtin_arrays/array_map_to_fixed_array_test.v
 vlib/v/tests/builtin_arrays/array_method_using_it_in_defer_test.v
 vlib/v/tests/builtin_arrays/array_nested_call_test.v
@@ -516,6 +523,7 @@ vlib/v/tests/builtin_arrays/array_of_functions_direct_call_test.v
 vlib/v/tests/builtin_arrays/array_of_interface_init_test.v
 vlib/v/tests/builtin_arrays/array_of_map_with_default_test.v
 vlib/v/tests/builtin_arrays/array_of_option_array_test.v
+vlib/v/tests/builtin_arrays/array_of_ptrs_test.v
 vlib/v/tests/builtin_arrays/array_of_sumtype_append_aggregate_type_test.v
 vlib/v/tests/builtin_arrays/array_of_sumtype_append_array_of_sumtype_test.v
 vlib/v/tests/builtin_arrays/array_of_sumtype_append_literal_type_test.v
@@ -585,10 +593,14 @@ vlib/v/tests/builtin_maps/unsafe_pointers_to_map_values_test.v
 vlib/v/tests/builtin_overflow_test.v
 vlib/v/tests/builtin_strings_and_interpolation/high_ascii_const_rune_test.v
 vlib/v/tests/builtin_strings_and_interpolation/num_lit_call_method_test.v
+vlib/v/tests/builtin_strings_and_interpolation/ptr_str_method_test.v
 vlib/v/tests/builtin_strings_and_interpolation/raw_string_test.v
 vlib/v/tests/builtin_strings_and_interpolation/str_circular_test.v
+vlib/v/tests/builtin_strings_and_interpolation/str_reference_struct_test.v
+vlib/v/tests/builtin_strings_and_interpolation/string_alias_of_struct_test.v
 vlib/v/tests/builtin_strings_and_interpolation/string_alias_test.v
 vlib/v/tests/builtin_strings_and_interpolation/string_escape_backslash_test.v
+vlib/v/tests/builtin_strings_and_interpolation/string_interpolation_alias_test.v
 vlib/v/tests/builtin_strings_and_interpolation/string_interpolation_array_test.v
 vlib/v/tests/builtin_strings_and_interpolation/string_interpolation_float_fmt_test.v
 vlib/v/tests/builtin_strings_and_interpolation/string_interpolation_floats_test.v
@@ -605,6 +617,8 @@ vlib/v/tests/builtin_strings_and_interpolation/string_interpolation_variadic_tes
 vlib/v/tests/builtin_strings_and_interpolation/string_interpolation_with_escape_test.v
 vlib/v/tests/builtin_strings_and_interpolation/string_map_with_generic_struct_value_test.v
 vlib/v/tests/builtin_strings_and_interpolation/string_option_none_test.v
+vlib/v/tests/builtin_strings_and_interpolation/string_ref_struct_test.v
+vlib/v/tests/builtin_strings_and_interpolation/string_struct_interpolation_test.v
 vlib/v/tests/builtin_strings_and_interpolation/strings_builder_issue_13613_cg_test.v
 vlib/v/tests/builtin_strings_and_interpolation/strings_builder_shift_array_reverse_test.v
 vlib/v/tests/builtin_strings_and_interpolation/strings_unicode_test.v
@@ -820,6 +834,7 @@ vlib/v/tests/enums/enum_attr_2_test.v
 vlib/v/tests/enums/enum_bitfield_works_with_comptime_conditional_in_the_same_scope_test.v
 vlib/v/tests/enums/enum_custom_static_from_string_test.v
 vlib/v/tests/enums/enum_default_test.v
+vlib/v/tests/enums/enum_default_value_in_struct_test.v
 vlib/v/tests/enums/enum_field_name_same_as_cpp_keywords_test.v
 vlib/v/tests/enums/enum_field_name_same_as_keyword_test.v
 vlib/v/tests/enums/enum_flag_alias_op_test.v
@@ -1075,6 +1090,8 @@ vlib/v/tests/generics/generics_with_generics_struct_receiver_test.v
 vlib/v/tests/generics/generics_with_multi_generics_fn_name_test.v
 vlib/v/tests/generics/generics_with_multi_generics_struct_types_test.v
 vlib/v/tests/generics/generics_with_multiple_generics_struct_receiver_test.v
+vlib/v/tests/generics/generics_with_nested_generic_struct_init_test.v
+vlib/v/tests/generics/generics_with_nested_generic_type_parameter_test.v
 vlib/v/tests/generics/generics_with_nested_generics_fn_infer_call_test.v
 vlib/v/tests/generics/generics_with_nested_generics_fn_inst_call_test.v
 vlib/v/tests/generics/generics_with_pointer_index_test.v
@@ -1162,6 +1179,7 @@ vlib/v/tests/local_module_submodules_test.v
 vlib/v/tests/local_test.v
 vlib/v/tests/loops/for_c_init_with_var_assign_test.v
 vlib/v/tests/loops/for_c_init_with_var_inc_test.v
+vlib/v/tests/loops/for_in_alias_test.v
 vlib/v/tests/loops/for_in_array_with_struct_init_test.v
 vlib/v/tests/loops/for_in_iterator_of_generic_struct_1_test.v
 vlib/v/tests/loops/for_in_iterator_of_generic_struct_2_test.v
@@ -1180,6 +1198,7 @@ vlib/v/tests/map_cast_test.v
 vlib/v/tests/match_array_fixed_test.v
 vlib/v/tests/match_branch_par_expr_test.v
 vlib/v/tests/match_expr_array_literal_with_g_test.v
+vlib/v/tests/match_on_return_test.v
 vlib/v/tests/module_type_cast_test.v
 vlib/v/tests/modules/amodule/another_internal_module_test.v
 vlib/v/tests/modules/amodule/internal_module_test.v
@@ -1480,7 +1499,9 @@ vlib/v/tests/sumtypes/sumtype_as_cast_1_test.v
 vlib/v/tests/sumtypes/sumtype_as_cast_2_test.v
 vlib/v/tests/sumtypes/sumtype_as_cast_fn_call_test.v
 vlib/v/tests/sumtypes/sumtype_calls_test.v
+vlib/v/tests/sumtypes/sumtype_cast_alias_test.v
 vlib/v/tests/sumtypes/sumtype_equality_test.v
+vlib/v/tests/sumtypes/sumtype_init_literal_test.v
 vlib/v/tests/sumtypes/sumtype_literal_test.v
 vlib/v/tests/sumtypes/sumtype_map_set_test.v
 vlib/v/tests/sumtypes/sumtype_on_match_test.v

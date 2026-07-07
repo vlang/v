@@ -43,6 +43,7 @@ mut:
 	cur_file          string
 	cur_module        string
 	cur_fn            string
+	cur_struct        string // receiver type name of the current method, for `@STRUCT`
 	pending_flag      bool
 	pending_params    bool
 	pending_export    string
@@ -922,7 +923,10 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	// body
 	mut body_ids := []flat.NodeId{}
 	prev_fn := p.cur_fn
+	prev_struct := p.cur_struct
 	p.cur_fn = name
+	// `@STRUCT` inside a method expands to the receiver's (dereferenced) type name.
+	p.cur_struct = if is_method { receiver_type.trim_left('&').all_after_last('.') } else { '' }
 	p.push_local_type_scope(name)
 	// A disabled `@[if flag ?]` function keeps its signature but gets an empty body
 	// (a no-op stub), so callers still resolve while the body is compiled out.
@@ -943,6 +947,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	}
 	p.pop_local_type_scope()
 	p.cur_fn = prev_fn
+	p.cur_struct = prev_struct
 
 	mut all_ids := []flat.NodeId{cap: param_ids.len + body_ids.len}
 	for id in param_ids {
@@ -4396,6 +4401,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			}
 			if name == '@FN' || name == '@METHOD' {
 				return p.a.add_val_id(5, p.cur_fn)
+			}
+			if name == '@STRUCT' {
+				return p.a.add_val_id(5, p.cur_struct)
 			}
 			if name == '@LOCATION' {
 				return p.a.add_val_id(5,
