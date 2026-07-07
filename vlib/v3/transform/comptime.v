@@ -475,14 +475,16 @@ fn (t &Transformer) comptime_field_metas(base_type string) []FieldMeta {
 	mut metas := []FieldMeta{cap: info.fields.len}
 	for f in info.fields {
 		// V's `field.typ` is the type as written (`MyInt`, `?[]int`); `raw_typ` preserves that,
-		// while `typ` has already been alias-resolved.
+		// while `f.typ` was already alias-resolved in the struct's declaring module during
+		// collect_types. Classify using `f.typ` (and `info.module` for the alias check) so a
+		// field type declared in another module is not mis-resolved against the caller's module.
 		ftyp := if f.raw_typ.len > 0 { f.raw_typ } else { f.typ }
-		metas << t.field_meta_for(f.name, ftyp, f.is_embedded)
+		metas << t.field_meta_for(f.name, ftyp, f.typ, info.module, f.is_embedded)
 	}
 	return metas
 }
 
-fn (t &Transformer) field_meta_for(name string, ftyp string, is_embed bool) FieldMeta {
+fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string, decl_module string, is_embed bool) FieldMeta {
 	is_option := ftyp.starts_with('?')
 	mut core := if is_option { ftyp[1..].trim_space() } else { ftyp }
 	mut indir := 0
@@ -501,9 +503,14 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, is_embed bool) Fiel
 		indir++
 		core = core[1..]
 	}
-	unaliased := t.normalize_type_alias(core)
-	is_alias := !isnil(t.tc)
-		&& (core in t.tc.type_aliases || t.qualified_alias_name(core) in t.tc.type_aliases)
+	// `resolved_typ` is already alias-resolved in the declaring module; strip the same wrappers
+	// to get the unaliased core. Fall back to resolving `core` only when it is unavailable.
+	unaliased := if resolved_typ.len > 0 {
+		comptime_strip_field_wrappers(resolved_typ)
+	} else {
+		t.normalize_type_alias(core)
+	}
+	is_alias := t.field_type_is_alias(core, decl_module)
 	return FieldMeta{
 		name:          name
 		typ:           ftyp
@@ -528,6 +535,42 @@ fn comptime_is_primitive_type(typ string) bool {
 		'voidptr', 'byteptr', 'charptr', 'nil', 'void']
 }
 
+// comptime_strip_field_wrappers removes the `?` option, `shared`/`atomic`, and `&` reference
+// decorations from an (already alias-resolved) field type, yielding the core type used for
+// classification and `unaliased_typ`.
+fn comptime_strip_field_wrappers(typ string) string {
+	mut core := typ.trim_space()
+	if core.starts_with('?') {
+		core = core[1..].trim_space()
+	}
+	if core.starts_with('shared ') {
+		core = core[7..].trim_space()
+	} else if core.starts_with('atomic ') {
+		core = core[7..].trim_space()
+	}
+	for core.starts_with('&') {
+		core = core[1..]
+	}
+	return core
+}
+
+// field_type_is_alias reports whether `core` names a `type X = Y` alias. An unqualified name is
+// resolved in the struct's declaring module (`decl_module`) rather than the caller's cur_module,
+// so cross-module reflection reports `is_alias` correctly.
+fn (t &Transformer) field_type_is_alias(core string, decl_module string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	if core in t.tc.type_aliases {
+		return true
+	}
+	if !core.contains('.') && decl_module.len > 0 && decl_module != 'main'
+		&& decl_module != 'builtin' {
+		return '${decl_module}.${core}' in t.tc.type_aliases
+	}
+	return false
+}
+
 fn (t &Transformer) qualified_alias_name(name string) string {
 	if name.contains('.') || t.cur_module.len == 0 || t.cur_module in ['main', 'builtin'] {
 		return name
@@ -548,8 +591,11 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 		if base.kind == .ident && base.value == var_name {
 			return t.field_member_value(node.value, fm)
 		}
-		// `receiver.$(<var>.name)` compile-time field selector.
-		if node.value == '$' && node.children_count >= 2 {
+		// `receiver.$(<var>.name)` compile-time field selector — only fold when the name
+		// expression is *this* loop variable's `.name`. A nested loop's `$(inner.name)` is left
+		// untouched so its own unroll pass resolves it against the right field.
+		if node.value == '$' && node.children_count >= 2
+			&& t.dollar_selector_names_var(t.a.child(&node, 1), var_name) {
 			receiver := t.clone_field_subst(t.a.child(&node, 0), var_name, fm) or { return none }
 			return t.make_selector(receiver, fm.name, fm.typ)
 		}
@@ -566,6 +612,21 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 		}
 	}
 	return t.clone_field_subst_children(node, var_name, fm)
+}
+
+// dollar_selector_names_var reports whether a `$(...)` selector's name expression is the current
+// field loop's `<var>.name`, so only the matching loop rewrites the selector and a nested loop's
+// `$(inner.name)` is deferred to its own unroll.
+fn (t &Transformer) dollar_selector_names_var(name_id flat.NodeId, var_name string) bool {
+	if int(name_id) < 0 {
+		return false
+	}
+	name_expr := t.a.nodes[int(name_id)]
+	if name_expr.kind != .selector || name_expr.value != 'name' || name_expr.children_count == 0 {
+		return false
+	}
+	base := t.a.child_node(&name_expr, 0)
+	return base.kind == .ident && base.value == var_name
 }
 
 fn (mut t Transformer) clone_field_subst_children(node flat.Node, var_name string, fm FieldMeta) ?flat.NodeId {
