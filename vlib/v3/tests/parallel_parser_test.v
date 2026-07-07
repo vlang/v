@@ -229,6 +229,114 @@ fn test_parallel_parser_seeds_implicit_sync_import_mid_wave() {
 	assert c_code.contains('sync__Channel__close'), 'implicit sync import was not seeded/parsed'
 }
 
+// write_parallel_parser_implicit_before_explicit_sync_project writes a project
+// where a module needing the implicit `sync` import (shared field + lock, no
+// explicit import) is imported *before* another module that imports `sync`
+// explicitly, so both land in the same import wave with the implicit one earlier
+// in parse order. This is the edge case the per-module seed guards: the wave has
+// already parsed the later module (and its explicit `import sync`) by the time
+// the earlier module's boundary is reached, so a whole-array duplicate check
+// would let that later explicit import suppress the earlier module's synthetic
+// import — one serial resolution would have added first, before the later module
+// existed. The seed's already-imported scan is bounded to the module's serial
+// boundary to keep the earlier module resolving its own `sync` usage.
+fn write_parallel_parser_implicit_before_explicit_sync_project(name string) string {
+	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(os.join_path(project_dir, 'implock')) or { panic(err) }
+	os.mkdir_all(os.join_path(project_dir, 'explsync')) or { panic(err) }
+	// Padding modules keep the import wave above the parallel-parse thresholds.
+	for m in 0 .. 3 {
+		os.mkdir_all(os.join_path(project_dir, 'pad${m}')) or { panic(err) }
+		mut pad_src := strings.new_builder(64_000)
+		pad_src.writeln('module pad${m}')
+		pad_src.writeln('')
+		for i in 0 .. 1200 {
+			pad_src.writeln('pub fn pad_value_${i}() int {')
+			pad_src.writeln('\treturn ${i + m}')
+			pad_src.writeln('}')
+			pad_src.writeln('')
+		}
+		os.write_file(os.join_path(project_dir, 'pad${m}', 'pad${m}.v'), pad_src.str()) or {
+			panic(err)
+		}
+	}
+	os.write_file(os.join_path(project_dir, 'implock', 'implock.v'), 'module implock
+
+pub struct Counter {
+pub mut:
+	value shared int
+}
+
+pub fn bump(mut c Counter) int {
+	mut total := 0
+	lock c.value {
+		c.value += 3
+		total = c.value
+	}
+	return total
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(project_dir, 'explsync', 'explsync.v'), 'module explsync
+
+import sync
+
+pub fn make_wg() &sync.WaitGroup {
+	return sync.new_waitgroup()
+}
+') or {
+		panic(err)
+	}
+	mut main_src := strings.new_builder(4_000)
+	main_src.writeln('module main')
+	main_src.writeln('')
+	// implock (implicit sync) is imported before explsync (explicit sync), so it
+	// is the earlier module in the shared wave.
+	main_src.writeln('import implock')
+	main_src.writeln('import explsync')
+	for m in 0 .. 3 {
+		main_src.writeln('import pad${m}')
+	}
+	main_src.writeln('')
+	main_src.writeln('fn main() {')
+	main_src.writeln('\tmut c := implock.Counter{}')
+	main_src.writeln('\tmut total := implock.bump(mut c)')
+	main_src.writeln('\twg := explsync.make_wg()')
+	main_src.writeln('\t_ = wg')
+	for m in 0 .. 3 {
+		main_src.writeln('\ttotal += pad${m}.pad_value_1199()')
+	}
+	main_src.writeln('\tprintln(int_str(total))')
+	main_src.writeln('}')
+	os.write_file(os.join_path(project_dir, 'main.v'), main_src.str()) or { panic(err) }
+	return os.join_path(project_dir, 'main.v')
+}
+
+// test_parallel_parser_seeds_implicit_sync_before_explicit_import validates that
+// a module needing the implicit sync import still resolves it when a later module
+// in the same parallel wave imports sync explicitly. The build must succeed (the
+// earlier module's shared/lock lowers against sync) rather than dropping the seed
+// because the later module's already-parsed explicit import was visible in the
+// post-wave array. As with the mid-wave test, only the generated C is checked:
+// linking a shared+lock project fails on master too (markused prunes the RwMutex
+// methods that only cgen-synthesized code calls), which is unrelated here.
+fn test_parallel_parser_seeds_implicit_sync_before_explicit_import() {
+	v3_bin := build_parallel_parser_v3()
+	main_path :=
+		write_parallel_parser_implicit_before_explicit_sync_project('parallel_parser_implicit_before_explicit_sync')
+	c_out := os.join_path(os.temp_dir(),
+		'v3_parallel_parser_implicit_before_explicit_sync_${os.getpid()}.c')
+	compile := os.execute('VJOBS=4 ${v3_bin} ${main_path} -o ${c_out}')
+	assert compile.exit_code == 0, compile.output
+	c_code := os.read_file(c_out) or { panic(err) }
+	// The earlier module's `lock` lowered against sync, and the later module's
+	// explicit sync usage is present too: both coexist after the per-module seed.
+	assert c_code.contains('sync__RwMutex__lock'), 'implicit sync import did not resolve for the earlier module'
+	assert c_code.contains('sync__new_waitgroup'), 'explicit sync import did not resolve for the later module'
+}
+
 // test_no_parallel_parser_keeps_parse_serial validates the runtime opt-out:
 // `--no-parallel` must keep the parse phase off the worker threads.
 fn test_no_parallel_parser_keeps_parse_serial() {
