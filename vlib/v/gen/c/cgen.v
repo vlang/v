@@ -7786,11 +7786,18 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		}
 	}
 
+	mut selector_expr_expr := node.expr
 	mut selector_scope := node.scope
-	if g.file.scope != unsafe { nil } {
+	if selector_expr_expr is ast.Ident {
+		selector_ident := selector_expr_expr as ast.Ident
+		if (selector_scope == unsafe { nil }
+			|| selector_scope.find_var(selector_ident.name) == none)
+			&& g.file.scope != unsafe { nil } {
+			selector_scope = g.file.scope.innermost(node.pos.pos)
+		}
+	} else if selector_scope == unsafe { nil } && g.file.scope != unsafe { nil } {
 		selector_scope = g.file.scope.innermost(node.pos.pos)
 	}
-	mut selector_expr_expr := node.expr
 	// Sumtype smartcast idents dereference the variant pointer eagerly, so the
 	// selector receiver is already a value. Interface smartcasts are more
 	// context-sensitive and may still emit a pointer while inside selector codegen.
