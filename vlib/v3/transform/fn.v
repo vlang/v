@@ -1232,6 +1232,12 @@ fn (t &Transformer) decl_param_type_in_module(typ string, module_name string) st
 				1..], module_name)
 		}
 	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		if scoped_fn_type := t.decl_fn_type_in_module(clean, module_name) {
+			return scoped_fn_type
+		}
+		return clean
+	}
 	base, args, ok := generic_app_parts(clean)
 	if ok {
 		mut scoped_args := []string{}
@@ -1241,9 +1247,9 @@ fn (t &Transformer) decl_param_type_in_module(typ string, module_name string) st
 		scoped_base := t.decl_param_type_in_module(base, module_name)
 		return scoped_base + '[' + scoped_args.join(', ') + ']'
 	}
-	if clean.starts_with('fn(') || clean.starts_with('fn (') || clean.contains('.')
-		|| module_name.len == 0 || module_name == 'main' || module_name == 'builtin'
-		|| types.is_builtin_type_name(clean) || is_generic_placeholder_type_name(clean) {
+	if clean.contains('.') || module_name.len == 0 || module_name == 'main'
+		|| module_name == 'builtin' || types.is_builtin_type_name(clean)
+		|| is_generic_placeholder_type_name(clean) {
 		return clean
 	}
 	qualified := '${module_name}.${clean}'
@@ -1256,6 +1262,52 @@ fn (t &Transformer) decl_param_type_in_module(typ string, module_name string) st
 		return qualified
 	}
 	return clean
+}
+
+fn (t &Transformer) decl_fn_type_in_module(typ string, module_name string) ?string {
+	params, ret := fn_type_text_parts(typ) or { return none }
+	mut scoped_params := []string{cap: params.len}
+	for param in params {
+		scoped_params << t.decl_fn_type_param_in_module(param, module_name)
+	}
+	if ret.len > 0 {
+		return 'fn(${scoped_params.join(', ')}) ${t.decl_param_type_in_module(ret, module_name)}'
+	}
+	return 'fn(${scoped_params.join(', ')})'
+}
+
+fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name string) string {
+	mut text := param.trim_space()
+	mut is_mut := false
+	if text.starts_with('mut ') {
+		is_mut = true
+		text = text[4..].trim_space()
+	}
+	space := generic_top_level_space_index(text)
+	if space > 0 {
+		head := text[..space].trim_space()
+		tail := text[space + 1..].trim_space()
+		if generic_fn_type_param_head_is_name(head, tail) {
+			text = tail
+		}
+	}
+	for marker in ['[]', '&', 'map[', 'fn(', 'fn ('] {
+		marker_idx := text.index(marker) or { continue }
+		if marker_idx <= 0 {
+			continue
+		}
+		head := text[..marker_idx].trim_space()
+		tail := text[marker_idx..].trim_space()
+		if generic_fn_type_param_head_is_name(head, tail) {
+			text = tail
+		}
+		break
+	}
+	scoped := t.decl_param_type_in_module(text, module_name)
+	if is_mut && scoped.len > 0 && !scoped.starts_with('&') {
+		return '&' + scoped
+	}
+	return scoped
 }
 
 fn fn_decl_name_matches_call(name string, module_name string, call_name string) bool {
