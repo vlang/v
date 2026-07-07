@@ -43,8 +43,8 @@ mut:
 	cur_file           string
 	cur_module         string
 	cur_fn             string
-	cur_struct         string // receiver type name of the current method, for `@STRUCT`
-	comptime_for_depth int    // >0 while inside a `$for` body: defer all `$if` to unroll time
+	cur_struct         string   // receiver type name of the current method, for `@STRUCT`
+	comptime_for_vars  []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
 	pending_flag       bool
 	pending_params     bool
 	pending_export     string
@@ -1967,9 +1967,12 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 	}
 	p.next() // skip 'if'
 	cond := p.parse_comptime_cond()
-	// Inside a `$for` body the condition may reference the loop var (`field.typ`,
-	// `field.indirections`), only known once the loop is unrolled, so defer evaluation.
-	if p.comptime_for_depth > 0 || comptime_cond_has_type_test(cond) {
+	// Only defer conditions that need information unavailable at parse time: a `$for` loop var
+	// (`field.typ`, `field.indirections`, `value.value`), known once the loop is unrolled, or a
+	// type test (`T is int`), known after monomorphization. Ordinary platform/custom flags
+	// (`$if linux`) must still be evaluated here — the transformer only folds loop-var/type
+	// conditions and the C backend drops any `.comptime_if` that survives.
+	if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond) {
 		then_block := p.block_stmt()
 		else_block := p.parse_comptime_else()
 		return p.comptime_if_node(cond, then_block, else_block)
@@ -2004,9 +2007,9 @@ fn (mut p Parser) parse_comptime_for() flat.NodeId {
 	}
 	kind := if segs.len > 1 { segs.last() } else { 'fields' }
 	base := if segs.len > 1 { segs[..segs.len - 1].join('.') } else { segs.last() }
-	p.comptime_for_depth++
+	p.comptime_for_vars << val_var
 	body := p.block_stmt()
-	p.comptime_for_depth--
+	p.comptime_for_vars.pop()
 	start := p.add_children([body])
 	return p.a.add_node(flat.Node{
 		kind:           .comptime_for
@@ -2244,6 +2247,42 @@ fn comptime_cond_needs_space(prev string, cur string) bool {
 
 fn comptime_cond_has_type_test(cond string) bool {
 	return cond.contains(' is ') || cond.contains(' !is ')
+}
+
+// comptime_cond_needs_loop_var reports whether a `$if` condition reads any currently active
+// `$for` loop variable, meaning it can only be evaluated once the loop is unrolled.
+fn (p &Parser) comptime_cond_needs_loop_var(cond string) bool {
+	for var_name in p.comptime_for_vars {
+		if comptime_cond_references_var(cond, var_name) {
+			return true
+		}
+	}
+	return false
+}
+
+// comptime_cond_references_var reports whether `cond` reads `var_name` as a whole identifier
+// (bare `var_name` or the base of a `var_name.member` selector), so `field` is not matched
+// inside `fields_enabled` or `myfield`.
+fn comptime_cond_references_var(cond string, var_name string) bool {
+	if var_name.len == 0 {
+		return false
+	}
+	mut i := 0
+	for i < cond.len {
+		c := cond[i]
+		if c.is_letter() || c == `_` {
+			start := i
+			for i < cond.len && (cond[i].is_letter() || cond[i].is_digit() || cond[i] == `_`) {
+				i++
+			}
+			if cond[start..i] == var_name {
+				return true
+			}
+		} else {
+			i++
+		}
+	}
+	return false
 }
 
 fn (mut p Parser) skip_comptime_else() {

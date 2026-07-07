@@ -145,19 +145,36 @@ fn (t &Transformer) comptime_enum_members(base_type string) ([]string, []int) {
 	if names.len == 0 {
 		return []string{}, []int{}
 	}
-	return names, t.enum_decl_int_values(resolved.all_after_last('.'))
+	return names, t.enum_decl_int_values(resolved)
 }
 
-// enum_decl_int_values locates the `enum_decl` node named `bare_name` and evaluates each
-// member's declared int value (explicit `= N`, otherwise incrementing from the previous,
-// starting at 0), matching V's enum numbering. Returns an empty list if not found, in which
+// enum_decl_int_values locates the enum declaration matching `enum_name` (either a bare `Enum`
+// or a `module.Enum` qualified name) and evaluates each member's declared int value (explicit
+// `= N`, otherwise incrementing from the previous, starting at 0), matching V's enum numbering.
+// Module attribution mirrors `collect_types` (the current module is set by the last `module_decl`
+// seen in declaration order), so a qualified name selects the right declaration even when two
+// modules declare an enum with the same short name. Returns an empty list if not found, in which
 // case callers fall back to the sequential loop index.
-fn (t &Transformer) enum_decl_int_values(bare_name string) []int {
+fn (t &Transformer) enum_decl_int_values(enum_name string) []int {
+	mut cur_mod := ''
 	for idx in 0 .. t.a.nodes.len {
-		if t.a.nodes[idx].kind != .enum_decl || t.a.nodes[idx].value != bare_name {
+		kind := t.a.nodes[idx].kind
+		if kind == .module_decl {
+			cur_mod = t.a.nodes[idx].value
+			continue
+		}
+		if kind != .enum_decl {
 			continue
 		}
 		node := t.a.nodes[idx]
+		qualified := if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
+			'${cur_mod}.${node.value}'
+		} else {
+			node.value
+		}
+		if enum_name != node.value && enum_name != qualified {
+			continue
+		}
 		mut values := []int{}
 		mut next_val := 0
 		for i in 0 .. node.children_count {
