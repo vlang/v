@@ -339,7 +339,16 @@ fn test_h2_pool_alpn_fallback_avoids_hol_blocking() {
 	}
 	elapsed := sw.elapsed()
 	stop_h2_pool_srv(mut listener, th)
-	assert elapsed < 700 * time.millisecond, 'expected concurrent requests to a fresh h1-only origin to run in parallel (~1 respond_delay), not serialize behind one dialer response; took ${elapsed}'
+	// This spawns 4 REAL concurrent TLS dials/handshakes over real sockets
+	// (unlike the in-memory-pipe tests in h2_mux_conn_test.v), so it is even
+	// more exposed to CI scheduling variance. A 700ms threshold (300ms over
+	// the nominal 400ms respond_delay) failed in CI at 781ms on a commit with
+	// no relevant code changes -- the same "assumed jitter is small" mistake
+	// fixed in h2_mux_conn_test.v's timing tests. 1200ms keeps a comfortable
+	// margin below full serialization (4 x 400ms = 1600ms, what a HOL-blocked
+	// regression would actually produce) while tolerating a much larger
+	// absolute stall than 300ms.
+	assert elapsed < 1200 * time.millisecond, 'expected concurrent requests to a fresh h1-only origin to run in parallel (~1 respond_delay), not serialize behind one dialer response; took ${elapsed}'
 }
 
 // A caller-set req.read_timeout must bound a pooled h2 request's wait for its
