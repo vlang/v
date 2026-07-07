@@ -965,7 +965,14 @@ fn test_h2_pool_close_idle_release_is_idempotent() {
 	// close_idle against the in-flight stream — a blind sleep is fragile
 	// under scheduling jitter, and racing too early would just find nothing
 	// to release on either call.
+	// Registration into t.h2_conns (transport_h2.v) happens before the
+	// dialer calls conn.do() (h2_mux_conn.v), which is what actually
+	// increments active_streams — orphan release, cap eviction, and do_h2's
+	// own dispatch all run in between. Waiting only for registration and
+	// then checking active_streams once let the test race ahead of
+	// admission; wait for both conditions in the same poll loop instead.
 	mut conn := &H2MuxConn(unsafe { nil })
+	mut active := 0
 	for _ in 0 .. 500 {
 		t.mu.lock()
 		for _, mut c in t.h2_conns {
@@ -973,14 +980,16 @@ fn test_h2_pool_close_idle_release_is_idempotent() {
 		}
 		t.mu.unlock()
 		if conn != unsafe { nil } {
-			break
+			conn.smu.lock()
+			active = conn.active_streams
+			conn.smu.unlock()
+			if active > 0 {
+				break
+			}
 		}
 		time.sleep(5 * time.millisecond)
 	}
 	assert conn != unsafe { nil }, 'pooled h2 connection was never registered before the delayed response arrived'
-	conn.smu.lock()
-	active := conn.active_streams
-	conn.smu.unlock()
 	assert active > 0, 'stream was not yet admitted — test raced ahead of do()'
 	// Two close_idle calls while the stream is still in flight: on buggy code
 	// the second one finds the connection still registered and re-releases
