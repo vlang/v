@@ -1141,7 +1141,17 @@ fn skipped_backend_modules(prefs &pref.Preferences) []string {
 }
 
 fn seed_implicit_sync_import(mut a flat.FlatAst) {
-	if !ast_needs_sync_import(a) || ast_has_import(a, 'sync') {
+	seed_implicit_sync_import_upto(mut a, a.nodes.len)
+}
+
+// seed_implicit_sync_import_upto is seed_implicit_sync_import with the need
+// scan bounded to the first end_node nodes. The import-resolution wave loop
+// re-checks after each module's parsed region, in parse order, so the seed
+// fires at the same module boundary as the serial one-module-at-a-time loop
+// did. The already-imported check deliberately scans the whole array, so a
+// synthetic import appended for an earlier module is seen and never duplicated.
+fn seed_implicit_sync_import_upto(mut a flat.FlatAst, end_node int) {
+	if !ast_needs_sync_import(a, end_node) || ast_has_import(a, 'sync') {
 		return
 	}
 	a.add_node(flat.Node{
@@ -1152,7 +1162,13 @@ fn seed_implicit_sync_import(mut a flat.FlatAst) {
 }
 
 fn seed_implicit_embed_file_import(mut a flat.FlatAst) {
-	if !ast_needs_embed_file_import(a) || ast_has_import(a, 'v.embed_file') {
+	seed_implicit_embed_file_import_upto(mut a, a.nodes.len)
+}
+
+// seed_implicit_embed_file_import_upto bounds the need scan like
+// seed_implicit_sync_import_upto.
+fn seed_implicit_embed_file_import_upto(mut a flat.FlatAst, end_node int) {
+	if !ast_needs_embed_file_import(a, end_node) || ast_has_import(a, 'v.embed_file') {
 		return
 	}
 	a.add_node(flat.Node{
@@ -1162,8 +1178,9 @@ fn seed_implicit_embed_file_import(mut a flat.FlatAst) {
 	})
 }
 
-fn ast_needs_sync_import(a &flat.FlatAst) bool {
-	for node in a.nodes {
+fn ast_needs_sync_import(a &flat.FlatAst, end_node int) bool {
+	for i in 0 .. end_node {
+		node := a.nodes[i]
 		if node.kind == .lock_expr {
 			return true
 		}
@@ -1202,8 +1219,9 @@ fn type_text_is_channel(typ string) bool {
 	return clean.starts_with('chan ') || clean == 'chan'
 }
 
-fn ast_needs_embed_file_import(a &flat.FlatAst) bool {
-	for node in a.nodes {
+fn ast_needs_embed_file_import(a &flat.FlatAst, end_node int) bool {
+	for i in 0 .. end_node {
+		node := a.nodes[i]
 		if node.kind == .struct_init && node.value == 'embed_file.EmbedFileData' {
 			return true
 		}
@@ -1253,6 +1271,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut was_parallel := false
 	mut cur_file := first_file
 	mut node_idx := 0
+	// Synthetic imports appended by the per-module seeding below land after the
+	// whole wave, so the `.file` marker preceding them belongs to the last wave
+	// file, not to the module whose code triggered the seed. This map carries
+	// the triggering module's file explicitly, so module-path resolution uses
+	// the same importing-file context as the serial one-module-at-a-time loop.
+	mut synthetic_import_ctx := map[int]string{}
 	for {
 		// Collect one wave: every not-yet-parsed module imported by the nodes
 		// scanned so far. Parsing appends at the end of the node array and the
@@ -1262,6 +1286,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		// parallel parser whole waves of files to split across threads.
 		mut wave_files := []string{}
 		mut wave_canon := []string{}
+		mut wave_module_file_ends := []int{}
 		for node_idx < a.nodes.len {
 			node := a.nodes[node_idx]
 			if node.kind == .file && node.value.len > 0 {
@@ -1286,7 +1311,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				continue
 			}
 
-			importing_file := if cur_file.len > 0 { cur_file } else { first_file }
+			mut importing_file := if cur_file.len > 0 { cur_file } else { first_file }
+			if ctx_file := synthetic_import_ctx[node_idx] {
+				if ctx_file.len > 0 {
+					importing_file = ctx_file
+				}
+			}
 			mod_dir := resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file,
 				project_root, mut module_path_cache)
 			module_identity := import_module_identity_cached(prefs, mod_name, importing_file,
@@ -1316,6 +1346,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					wave_files << mf
 					wave_canon << canon
 				}
+				wave_module_file_ends << wave_files.len
 			}
 			node_idx++
 		}
@@ -1324,15 +1355,38 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		}
 		starts, wave_parallel := p.parse_files_dispatch(wave_files, allow_parallel)
 		was_parallel = was_parallel || wave_parallel
+		wave_end_nodes := a.nodes.len
 		for i, canon in wave_canon {
 			if canon.len == 0 {
 				continue
 			}
-			end_node := if i + 1 < starts.len { starts[i + 1] } else { a.nodes.len }
+			end_node := if i + 1 < starts.len { starts[i + 1] } else { wave_end_nodes }
 			canonicalize_imported_module_name(mut a, starts[i], end_node, canon)
 		}
-		seed_implicit_sync_import(mut a)
-		seed_implicit_embed_file_import(mut a)
+		// Re-check the implicit imports at each module boundary, in parse order,
+		// with the need scan bounded to the nodes that existed at that boundary.
+		// This fires the seeds for exactly the module the serial loop's
+		// after-every-module check would have fired them for, and records that
+		// module's last file as the synthetic import's resolution context.
+		mut module_start := 0
+		for module_file_end in wave_module_file_ends {
+			if module_file_end == module_start {
+				continue
+			}
+			region_end := if module_file_end < starts.len {
+				starts[module_file_end]
+			} else {
+				wave_end_nodes
+			}
+			ctx_file := wave_files[module_file_end - 1]
+			seed_start := a.nodes.len
+			seed_implicit_sync_import_upto(mut a, region_end)
+			seed_implicit_embed_file_import_upto(mut a, region_end)
+			for idx in seed_start .. a.nodes.len {
+				synthetic_import_ctx[idx] = ctx_file
+			}
+			module_start = module_file_end
+		}
 	}
 	return was_parallel
 }
