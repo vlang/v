@@ -330,11 +330,17 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, item E
 	if node.kind == .selector && node.children_count > 0 {
 		base := t.a.child_node(&node, 0)
 		if base.kind == .ident && base.value == var_name {
-			return match node.value {
-				'name' { t.make_string_literal(item.name) }
-				'value' { t.make_int_literal(item.value) }
-				'attrs' { t.make_string_array_literal(item.attrs) }
-				else { t.make_string_literal(item.name) }
+			match node.value {
+				'name' {
+					return t.make_string_literal(item.name)
+				}
+				'value' {
+					return t.make_int_literal(item.value)
+				}
+				'attrs' {
+					return t.make_string_array_literal(item.attrs)
+				}
+				else {}
 			}
 		}
 	}

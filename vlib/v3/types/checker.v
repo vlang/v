@@ -24,6 +24,12 @@ const comptime_field_members = [
 	'unaliased_typ',
 ]
 
+const comptime_enum_value_members = [
+	'name',
+	'value',
+	'attrs',
+]
+
 const export_c_reserved_words = {
 	'auto':     true
 	'break':    true
@@ -4723,13 +4729,23 @@ fn node_kind_id(node flat.Node) int {
 
 fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.Node) {
 	parts := node.value.split('|')
-	if parts.len != 2 || parts[0].len == 0 || parts[1] != 'fields' || node.children_count == 0 {
+	if parts.len != 2 || parts[0].len == 0 || node.children_count == 0 {
 		return
 	}
-	tc.check_comptime_field_members(tc.a.child(&node, 0), parts[0])
+	match parts[1] {
+		'fields' {
+			tc.check_comptime_members(tc.a.child(&node, 0), parts[0], comptime_field_members,
+				'FieldData')
+		}
+		'values' {
+			tc.check_comptime_members(tc.a.child(&node, 0), parts[0], comptime_enum_value_members,
+				'EnumData')
+		}
+		else {}
+	}
 }
 
-fn (mut tc TypeChecker) check_comptime_field_members(id flat.NodeId, var_name string) {
+fn (mut tc TypeChecker) check_comptime_members(id flat.NodeId, var_name string, members []string, meta_name string) {
 	if !tc.valid_node_id(id) {
 		return
 	}
@@ -4738,14 +4754,13 @@ fn (mut tc TypeChecker) check_comptime_field_members(id flat.NodeId, var_name st
 		base_id := tc.a.child(&node, 0)
 		if tc.valid_node_id(base_id) {
 			base := tc.a.nodes[int(base_id)]
-			if base.kind == .ident && base.value == var_name
-				&& node.value !in comptime_field_members {
-				tc.record_error(.unknown_field, 'unknown FieldData member `${node.value}`', id)
+			if base.kind == .ident && base.value == var_name && node.value !in members {
+				tc.record_error(.unknown_field, 'unknown ${meta_name} member `${node.value}`', id)
 			}
 		}
 	}
 	for i in 0 .. node.children_count {
-		tc.check_comptime_field_members(tc.a.child(&node, i), var_name)
+		tc.check_comptime_members(tc.a.child(&node, i), var_name, members, meta_name)
 	}
 }
 
@@ -5094,6 +5109,9 @@ fn (mut tc TypeChecker) comptime_type_matches(actual string, expected string) ?b
 		'$option' {
 			return actual_type is OptionType
 		}
+		'$shared' {
+			return tc.comptime_type_text_is_shared(clean_actual)
+		}
 		'$pointer' {
 			return actual_type is Pointer
 		}
@@ -5135,6 +5153,21 @@ fn (mut tc TypeChecker) comptime_type_matches(actual string, expected string) ?b
 		})
 	}
 	return normalized == expected_type.name()
+}
+
+fn (tc &TypeChecker) comptime_type_text_is_shared(type_text string) bool {
+	mut cur := type_text.trim_space()
+	for _ in 0 .. 16 {
+		if cur.starts_with('shared ') {
+			return true
+		}
+		target := tc.alias_target_type_text(cur) or { return false }
+		if target == cur {
+			return false
+		}
+		cur = target.trim_space()
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) comptime_type_match_type(type_text string) Type {
@@ -12834,26 +12867,31 @@ fn (tc &TypeChecker) resolve_enum_name(name string) ?string {
 			if resolved in tc.enum_names || resolved in tc.flag_enums {
 				return resolved
 			}
-			// A selectively-imported alias of an enum (`import colors { Shade }` where
-			// `type Shade = Color`) resolves through to the underlying enum too.
-			if target := tc.type_aliases[resolved] {
-				if target != resolved && target in tc.enum_names {
-					return target
-				}
+			if target := tc.resolve_enum_alias_target(resolved) {
+				return target
 			}
 		}
 	}
-	// An alias of an enum (`type Col = Color`) resolves through to the underlying enum, so
-	// `Col.member` works like `Color.member`.
-	if target := tc.type_aliases[name] {
-		if target != name && target in tc.enum_names {
-			return target
-		}
+	if target := tc.resolve_enum_alias_target(name) {
+		return target
 	}
-	if target := tc.type_aliases[qname] {
-		if target != qname && target in tc.enum_names {
+	if target := tc.resolve_enum_alias_target(qname) {
+		return target
+	}
+	return none
+}
+
+fn (tc &TypeChecker) resolve_enum_alias_target(name string) ?string {
+	mut cur := name
+	for _ in 0 .. 16 {
+		target := tc.alias_target_type_text(cur) or { return none }
+		if target == cur {
+			return none
+		}
+		if target in tc.enum_names || target in tc.flag_enums {
 			return target
 		}
+		cur = target
 	}
 	return none
 }

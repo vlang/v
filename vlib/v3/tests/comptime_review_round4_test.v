@@ -119,6 +119,21 @@ fn main() {
 		'unknown FieldData member `nmae`')
 }
 
+fn test_unknown_comptime_enum_value_member_is_rejected() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'bad_enum_value_member', 'enum Color {
+	red
+}
+
+fn main() {
+	$for item in Color.values {
+		println(item.nmae)
+	}
+}
+	',
+		'unknown EnumData member `nmae`')
+}
+
 fn test_unsupported_comptime_field_members_are_rejected() {
 	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_field_is_interface', 'struct S {
@@ -213,15 +228,31 @@ pub enum Color {
 }
 
 pub type Shade = Color
+pub type Tint = Shade
 '
 		'main.v':          'module main
 
-import colors { Shade }
+import colors { Tint }
 
 fn main() {
-	println(Shade.red.str())
+	println(Tint.red.str())
 }
 '
 	}, 'main.v')
 	assert out == 'red'
+}
+
+fn test_comptime_shared_type_group_is_checked_like_transformer() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'shared_type_group', "struct Counter {}
+
+fn main() {
+	$if shared Counter is $shared {
+		println('shared')
+	} $else {
+		println(unknown_symbol)
+	}
+}
+")
+	assert out == 'shared'
 }
