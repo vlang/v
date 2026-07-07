@@ -68,7 +68,7 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 		return []flat.NodeId{}
 	}
 	var_name, kind := comptime_for_parts(node.value)
-	if kind != 'fields' {
+	if kind !in ['fields', 'values'] {
 		return []flat.NodeId{}
 	}
 	base_type := t.comptime_for_base_type(node.typ)
@@ -81,6 +81,9 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 	// unroll-introduced calls. Fall back to the pre-existing skip behavior for such loops.
 	if t.comptime_body_calls_generic_fn(body_stmts) {
 		return []flat.NodeId{}
+	}
+	if kind == 'values' {
+		return t.expand_comptime_for_values(var_name, base_type, body_stmts)
 	}
 	// Comptime `match field.typ { int {} ... }` (type match) and `typeof(field.$(field.name))`
 	// reflection are not modelled yet; skip such loops rather than mis-lower them.
@@ -102,6 +105,111 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 		}
 	}
 	return out
+}
+
+// expand_comptime_for_values unrolls `$for value in Enum.values { ... }`. The loop variable
+// exposes `value.name` / `value.value` and, used bare, materializes as `EnumData`.
+fn (mut t Transformer) expand_comptime_for_values(var_name string, base_type string, body_stmts []flat.NodeId) []flat.NodeId {
+	names := t.comptime_enum_value_names(base_type)
+	mut out := []flat.NodeId{}
+	for idx, name in names {
+		mut cloned := []flat.NodeId{cap: body_stmts.len}
+		for sid in body_stmts {
+			if cid := t.clone_value_subst(sid, var_name, name, idx) {
+				cloned << cid
+			}
+		}
+		block := t.make_block(cloned)
+		for s in t.transform_stmt(block) {
+			out << s
+		}
+	}
+	return out
+}
+
+fn (t &Transformer) comptime_enum_value_names(base_type string) []string {
+	if names := t.enum_types[base_type] {
+		return names
+	}
+	qname := t.qualified_alias_name(base_type)
+	if names := t.enum_types[qname] {
+		return names
+	}
+	return []string{}
+}
+
+// clone_value_subst clones a `$for value in Enum.values` body, substituting `value.name`,
+// `value.value`, `value.attrs`, and a bare `value` (an `EnumData` literal).
+fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, name string, value int) ?flat.NodeId {
+	if int(id) < 0 {
+		return id
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident && node.value == var_name {
+		return t.make_enum_data_literal(name, value)
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := t.a.child_node(&node, 0)
+		if base.kind == .ident && base.value == var_name {
+			return match node.value {
+				'name' { t.make_string_literal(name) }
+				'value' { t.make_int_literal(value) }
+				'attrs' { t.zero_value_for_type('[]string') }
+				else { t.make_string_literal(name) }
+			}
+		}
+	}
+	mut children := []flat.NodeId{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		if c := t.clone_value_subst(t.a.child(&node, i), var_name, name, value) {
+			children << c
+		}
+	}
+	start := t.a.children.len
+	for c in children {
+		t.a.children << c
+	}
+	return t.a.add_node(flat.Node{
+		kind:           node.kind
+		kind_id:        node.kind_id
+		op:             node.op
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+		is_mut:         node.is_mut
+		children_start: start
+		children_count: flat.child_count(children.len)
+	})
+}
+
+// make_enum_data_literal builds `EnumData{name: '<name>', value: <value>, attrs: []string{}}`.
+fn (mut t Transformer) make_enum_data_literal(name string, value int) flat.NodeId {
+	name_field := t.make_named_field_init('name', t.make_string_literal(name), 'string')
+	value_field := t.make_named_field_init('value', t.make_int_literal(value), 'i64')
+	attrs_field := t.make_named_field_init('attrs', t.zero_value_for_type('[]string'), '[]string')
+	start := t.a.children.len
+	t.a.children << name_field
+	t.a.children << value_field
+	t.a.children << attrs_field
+	return t.a.add_node(flat.Node{
+		kind:           .struct_init
+		value:          'EnumData'
+		typ:            'EnumData'
+		children_start: start
+		children_count: 3
+	})
+}
+
+fn (mut t Transformer) make_named_field_init(field string, value flat.NodeId, typ string) flat.NodeId {
+	start := t.a.children.len
+	t.a.children << value
+	return t.a.add_node(flat.Node{
+		kind:           .field_init
+		value:          field
+		typ:            typ
+		children_start: start
+		children_count: 1
+	})
 }
 
 // comptime_body_calls_generic_fn reports whether any statement subtree calls a generic function

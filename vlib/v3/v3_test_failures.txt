@@ -564,7 +564,6 @@ vlib/v/tests/comptime/comptime_default_value_test.v
 vlib/v/tests/comptime/comptime_deref_or_ref_test.v
 vlib/v/tests/comptime/comptime_dump_test.v
 vlib/v/tests/comptime/comptime_else_map_init_markused_test.v
-vlib/v/tests/comptime/comptime_enum_values_test.v
 vlib/v/tests/comptime/comptime_field_attrs_quotes_test.v
 vlib/v/tests/comptime/comptime_field_indirections_test.v
 vlib/v/tests/comptime/comptime_for_alias_methods_test.v

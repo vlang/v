@@ -660,6 +660,7 @@ vlib/v/tests/comptime/comptime_call_void_test.v
 vlib/v/tests/comptime/comptime_concrete_type_register_test.v
 vlib/v/tests/comptime/comptime_const_def_test.v
 vlib/v/tests/comptime/comptime_enum_test.v
+vlib/v/tests/comptime/comptime_enum_values_test.v
 vlib/v/tests/comptime/comptime_eq_test.v
 vlib/v/tests/comptime/comptime_field_name_check_test.v
 vlib/v/tests/comptime/comptime_field_selector_test.v

@@ -2721,6 +2721,17 @@ fn (g &FlatGen) enum_selector_base_name(name string) ?string {
 	if qname in g.tc.enum_names || qname in g.tc.flag_enums {
 		return qname
 	}
+	// An alias of an enum (`type Col = Color`) resolves to the underlying enum for `Col.member`.
+	if target := g.tc.type_aliases[name] {
+		if target != name && (target in g.tc.enum_names || target in g.tc.flag_enums) {
+			return target
+		}
+	}
+	if target := g.tc.type_aliases[qname] {
+		if target != qname && (target in g.tc.enum_names || target in g.tc.flag_enums) {
+			return target
+		}
+	}
 	if name.contains('.') || g.tc.cur_file.len == 0 {
 		return none
 	}

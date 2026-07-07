@@ -12042,6 +12042,10 @@ fn (tc &TypeChecker) is_namespace_selector(node flat.Node, base flat.Node) bool 
 		|| qbase in tc.interface_names {
 		return true
 	}
+	// An alias of an enum (`type Col = Color`) is a namespace for its members: `Col.member`.
+	if _ := tc.resolve_enum_name(base.value) {
+		return true
+	}
 	qname := '${qbase}.${node.value}'
 	return qname in tc.const_types || qname in tc.fn_ret_types || qname in tc.enum_names
 }
@@ -12779,6 +12783,18 @@ fn (tc &TypeChecker) resolve_enum_name(name string) ?string {
 			if resolved in tc.enum_names || resolved in tc.flag_enums {
 				return resolved
 			}
+		}
+	}
+	// An alias of an enum (`type Col = Color`) resolves through to the underlying enum, so
+	// `Col.member` works like `Color.member`.
+	if target := tc.type_aliases[name] {
+		if target != name && target in tc.enum_names {
+			return target
+		}
+	}
+	if target := tc.type_aliases[qname] {
+		if target != qname && target in tc.enum_names {
+			return target
 		}
 	}
 	return none
