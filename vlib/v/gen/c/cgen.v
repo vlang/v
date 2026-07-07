@@ -1323,6 +1323,7 @@ pub fn (mut g Gen) init() {
 	}
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		g.comptime_definitions.writeln('#define _VGCBOEHM (1)')
+		g.includes.writeln(get_boehm_early_include_text())
 	}
 	if g.pref.is_debug {
 		g.comptime_definitions.writeln('#define _VDEBUG (1)')
@@ -14695,6 +14696,25 @@ fn (mut g Gen) panic_debug_info(pos token.Pos) (int, string, string, string) {
 	pafn := g.fn_decl.name.after('.')
 	pamod := g.fn_decl.modname()
 	return paline, pafile, pamod, pafn
+}
+
+fn get_boehm_early_include_text() string {
+	res := '
+	|#ifdef __TINYC__
+	|#include <gc/gc.h>
+	|#else
+	|#if defined(__has_include)
+	|#if __has_include(<gc/gc.h>)
+	|#include <gc/gc.h>
+	|#elif __has_include(<gc.h>)
+	|#include <gc.h>
+	|#endif
+	|#else
+	|#include <gc/gc.h>
+	|#endif
+	|#endif
+	'.strip_margin()
+	return res
 }
 
 // get_guarded_include_text returns C preprocessor code that includes `iname`
