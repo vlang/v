@@ -114,6 +114,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/net/ssl/ssl_read_all_test.v',
 	'vlib/net/udp_test.v',
 	'vlib/net/tcp_test.v',
+	'vlib/context/onecontext/onecontext_test.v', // spawn + channels + IError default field; tripped by MSan padding tracking
 	'vlib/orm/orm_test.v',
 	'vlib/orm/orm_sql_or_blocks_test.v',
 	'vlib/orm/orm_create_and_drop_test.v',
@@ -140,6 +141,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/orm/orm_save_test.v',
 	'vlib/orm/orm_upsert_test.v',
 	'vlib/orm/orm_func_test.v',
+	'vlib/db/driver_test.v', // MSan flags uninstrumented sqlite3BtreeOpen in libsqlite3.so
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
 	'vlib/db/sqlite/sqlite_comptime_field_test.v',

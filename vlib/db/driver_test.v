@@ -1,4 +1,4 @@
-// vtest build: !musl?
+// vtest build: !musl? && !sanitize-memory-clang && !self_msan_compiler
 module main
 
 import db

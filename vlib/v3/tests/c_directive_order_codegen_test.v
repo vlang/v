@@ -720,6 +720,40 @@ fn main() {
 	return os.read_file(c_out) or { panic(err) }
 }
 
+fn directive_order_gen_c_preserved_timerfd_header(v3_bin string) string {
+	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_timerfd_project')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_timerfd' }\n")
+	directive_order_write_file(root, 'main.v', 'module main
+
+#include <sys/timerfd.h>
+
+pub struct C.timespec {
+	tv_sec  i64
+	tv_nsec i64
+}
+
+pub struct C.itimerspec {
+	it_interval C.timespec
+	it_value    C.timespec
+}
+
+fn C.nanosleep(req &C.timespec, rem &C.timespec) int
+
+fn main() {
+	req := C.timespec{}
+	C.nanosleep(&req, unsafe { nil })
+	_ := C.itimerspec{}
+}
+')
+	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_timerfd.c')
+	os.rm(c_out) or {}
+	result := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${c_out}')
+	assert result.exit_code == 0, result.output
+	return os.read_file(c_out) or { panic(err) }
+}
+
 fn directive_order_gen_and_run_stdarg_header(v3_bin string) string {
 	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_stdarg_project')
 	os.rmdir_all(root) or {}
@@ -1117,6 +1151,15 @@ fn test_preserved_mach_headers_are_wrapped_with_panic_alias() {
 	assert directive_order_index(c_code, '#undef panic') < preamble_idx, c_code
 	assert !c_code.contains('typedef struct mach_timebase_info_data_t mach_timebase_info_data_t;'), c_code
 	assert !c_code.contains('void mach_timebase_info('), c_code
+}
+
+fn test_preserved_timerfd_header_time_decls_are_not_redeclared() {
+	c_code := directive_order_gen_c_preserved_timerfd_header(directive_order_build_v3())
+	assert c_code.contains('#include <sys/timerfd.h>'), c_code
+	assert !c_code.contains('struct itimerspec {'), c_code
+	assert !c_code.contains('struct tm {'), c_code
+	assert !c_code.contains('clock_gettime(int clock_id'), c_code
+	assert !c_code.contains('nanosleep(struct timespec'), c_code
 }
 
 fn test_stdarg_in_inlined_header_uses_headerless_va_defs() {

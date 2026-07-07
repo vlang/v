@@ -1265,6 +1265,14 @@ fn c_preserved_system_include_declared_fns(include_arg string) []string {
 		'<mach/mach_time.h>' {
 			return ['mach_absolute_time', 'mach_timebase_info']
 		}
+		'<time.h>' {
+			return ['clock_gettime', 'gmtime', 'gmtime_r', 'localtime', 'localtime_r', 'nanosleep',
+				'strftime', 'time', 'timegm']
+		}
+		'<sys/timerfd.h>' {
+			return ['clock_gettime', 'gmtime', 'gmtime_r', 'localtime', 'localtime_r', 'nanosleep',
+				'strftime', 'time', 'timegm', 'timerfd_create', 'timerfd_gettime', 'timerfd_settime']
+		}
 		'<X11/Xlib.h>', '<X11/Xutil.h>', '<X11/Xresource.h>', '<X11/XKBlib.h>',
 		'<X11/extensions/XInput2.h>', '<X11/extensions/Xrandr.h>', '<X11/Xcursor/Xcursor.h>' {
 			return c_x11_preserved_declared_fns.clone()
@@ -1282,6 +1290,12 @@ fn c_preserved_system_include_struct_names(include_arg string) []string {
 		}
 		'<poll.h>' {
 			return ['pollfd']
+		}
+		'<time.h>' {
+			return ['timespec', 'tm']
+		}
+		'<sys/timerfd.h>' {
+			return ['itimerspec', 'timespec', 'tm']
 		}
 		'<X11/Xlib.h>', '<X11/Xutil.h>', '<X11/Xresource.h>', '<X11/XKBlib.h>',
 		'<X11/extensions/XInput2.h>', '<X11/Xcursor/Xcursor.h>' {
@@ -6466,7 +6480,9 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_timeval_struct()
 	g.headerless_rusage_struct()
 	g.headerless_timespec_struct()
-	g.writeln('int clock_gettime(int clock_id, struct timespec* ts);')
+	if !g.inlined_c_declared_fns['clock_gettime'] {
+		g.writeln('int clock_gettime(int clock_id, struct timespec* ts);')
+	}
 	g.headerless_utsname_struct()
 	g.headerless_stat_struct()
 	g.headerless_tm_struct()
@@ -6717,22 +6733,28 @@ fn (mut g FlatGen) headerless_rusage_struct() {
 }
 
 fn (mut g FlatGen) headerless_timespec_struct() {
-	g.writeln('#if !defined(_STRUCT_TIMESPEC) && !defined(_TIMESPEC_DEFINED) && !defined(_TIMESPEC_DECLARED) && !defined(__timespec_defined)')
-	g.writeln('#ifdef _WIN32')
-	g.writeln('struct timespec { i64 tv_sec; long tv_nsec; };')
-	g.writeln('#else')
-	g.writeln('struct timespec { long tv_sec; long tv_nsec; };')
-	g.writeln('#endif')
-	g.writeln('#endif')
+	if !g.inlined_c_structs['timespec'] {
+		g.writeln('#if !defined(_STRUCT_TIMESPEC) && !defined(_TIMESPEC_DEFINED) && !defined(_TIMESPEC_DECLARED) && !defined(__timespec_defined)')
+		g.writeln('#ifdef _WIN32')
+		g.writeln('struct timespec { i64 tv_sec; long tv_nsec; };')
+		g.writeln('#else')
+		g.writeln('struct timespec { long tv_sec; long tv_nsec; };')
+		g.writeln('#endif')
+		g.writeln('#endif')
+	}
 	g.writeln('typedef struct timespec timespec;')
 }
 
 fn (mut g FlatGen) headerless_tm_struct() {
-	g.writeln('#ifdef _WIN32')
-	g.writeln('struct tm { int tm_sec; int tm_min; int tm_hour; int tm_mday; int tm_mon; int tm_year; int tm_wday; int tm_yday; int tm_isdst; };')
-	g.writeln('#else')
-	g.writeln('struct tm { int tm_sec; int tm_min; int tm_hour; int tm_mday; int tm_mon; int tm_year; int tm_wday; int tm_yday; int tm_isdst; long tm_gmtoff; const char* tm_zone; };')
-	g.writeln('#endif')
+	if !g.inlined_c_structs['tm'] {
+		g.writeln('#if !defined(_STRUCT_TM) && !defined(_TM_DEFINED) && !defined(_TM_DECLARED) && !defined(__tm_defined)')
+		g.writeln('#ifdef _WIN32')
+		g.writeln('struct tm { int tm_sec; int tm_min; int tm_hour; int tm_mday; int tm_mon; int tm_year; int tm_wday; int tm_yday; int tm_isdst; };')
+		g.writeln('#else')
+		g.writeln('struct tm { int tm_sec; int tm_min; int tm_hour; int tm_mday; int tm_mon; int tm_year; int tm_wday; int tm_yday; int tm_isdst; long tm_gmtoff; const char* tm_zone; };')
+		g.writeln('#endif')
+		g.writeln('#endif')
+	}
 	g.writeln('typedef struct tm tm;')
 }
 
