@@ -52,9 +52,20 @@ mut:
 	in_for_container  bool
 	local_type_names  map[string]string
 	local_type_scopes []string
+	export_records    []ExportRecord
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
 	parsed_v_files int
+}
+
+// ExportRecord captures one accepted `@[export: name]` registration in file
+// order. The parallel-parse merge replays worker exports through these records
+// so they can be revalidated against disabled fns from earlier chunks (see
+// merge_parsed_worker), reproducing the serial parse's order-dependent check.
+struct ExportRecord {
+	name  string
+	qname string
+	value string
 }
 
 // new creates a Parser value for parser.
@@ -86,11 +97,25 @@ pub fn (mut p Parser) parse_files(paths []string) &flat.FlatAst {
 	return p.a
 }
 
+// parse_files_with_starts parses paths in order like parse_files, recording the
+// first node id of each file's region. Import resolution uses the starts to
+// bound per-file post-processing (module-name canonicalization) when files are
+// parsed in batches instead of one at a time.
+pub fn (mut p Parser) parse_files_with_starts(paths []string) []int {
+	mut starts := []int{cap: paths.len}
+	for path in paths {
+		starts << p.a.nodes.len
+		p.parse_into(path)
+	}
+	return starts
+}
+
 // parse_into reads parse into input for parser.
 pub fn (mut p Parser) parse_into(path string) {
 	p.cur_file = path
 	p.cur_module = ''
 	p.cur_fn = ''
+	p.has_peek = false
 	p.pending_flag = false
 	p.pending_params = false
 	p.pending_export = ''
@@ -1007,6 +1032,11 @@ fn (mut p Parser) register_pending_export(name string) {
 		return
 	}
 	p.a.export_fn_names[qname] = p.pending_export
+	p.export_records << ExportRecord{
+		name:  name
+		qname: qname
+		value: p.pending_export
+	}
 	p.pending_export = ''
 }
 
