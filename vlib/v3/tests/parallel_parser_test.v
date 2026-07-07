@@ -337,6 +337,98 @@ fn test_parallel_parser_seeds_implicit_sync_before_explicit_import() {
 	assert c_code.contains('sync__new_waitgroup'), 'explicit sync import did not resolve for the later module'
 }
 
+// write_parallel_parser_splice_project writes a project where an early module
+// needs an implicit import that a later same-wave module does not: `aembed` uses
+// `$embed_file` (implicit `v.embed_file`) and is imported before `zsync`, which
+// imports `sync` explicitly. The synthetic import is spliced in right after
+// aembed's parsed region rather than at the wave tail, so the next resolver pass
+// scans it before zsync's imports — the order serial resolution produced. That
+// splice shifts every node after aembed's region and remaps the children table,
+// so a working run of the program is what proves the remap kept the AST intact.
+fn write_parallel_parser_splice_project(name string) (string, string) {
+	project_dir := os.join_path(os.temp_dir(), 'v3_${name}')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(os.join_path(project_dir, 'aembed')) or { panic(err) }
+	os.mkdir_all(os.join_path(project_dir, 'zsync')) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'aembed', 'payload.txt'), 'embedded-payload') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(project_dir, 'aembed', 'aembed.v'), "module aembed
+
+pub fn contents() string {
+	f := \$embed_file('payload.txt')
+	return f.to_string().trim_space()
+}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(project_dir, 'zsync', 'zsync.v'), 'module zsync
+
+import sync
+
+pub fn wg_count() int {
+	mut wg := sync.new_waitgroup()
+	wg.add(7)
+	return 7
+}
+') or {
+		panic(err)
+	}
+	// Padding modules keep the import wave above the parallel-parse thresholds.
+	for m in 0 .. 3 {
+		os.mkdir_all(os.join_path(project_dir, 'pad${m}')) or { panic(err) }
+		mut pad_src := strings.new_builder(64_000)
+		pad_src.writeln('module pad${m}')
+		pad_src.writeln('')
+		for i in 0 .. 1200 {
+			pad_src.writeln('pub fn pad_value_${i}() int {')
+			pad_src.writeln('\treturn ${i + m}')
+			pad_src.writeln('}')
+			pad_src.writeln('')
+		}
+		os.write_file(os.join_path(project_dir, 'pad${m}', 'pad${m}.v'), pad_src.str()) or {
+			panic(err)
+		}
+	}
+	mut main_src := strings.new_builder(4_000)
+	main_src.writeln('module main')
+	main_src.writeln('')
+	// aembed (implicit v.embed_file) is imported before zsync (explicit sync).
+	main_src.writeln('import aembed')
+	main_src.writeln('import zsync')
+	for m in 0 .. 3 {
+		main_src.writeln('import pad${m}')
+	}
+	main_src.writeln('')
+	main_src.writeln('fn main() {')
+	main_src.writeln('\tmut total := zsync.wg_count()')
+	for m in 0 .. 3 {
+		main_src.writeln('\ttotal += pad${m}.pad_value_5()')
+	}
+	main_src.writeln("\tprintln(aembed.contents() + ' ' + int_str(total))")
+	main_src.writeln('}')
+	os.write_file(os.join_path(project_dir, 'main.v'), main_src.str()) or { panic(err) }
+	// 7 (wg) + (5+0) + (5+1) + (5+2) = 7 + 18 = 25.
+	expected := 'embedded-payload 25'
+	return os.join_path(project_dir, 'main.v'), expected
+}
+
+// test_parallel_parser_splices_synthetic_import_in_serial_order validates that a
+// synthetic import seeded for an early wave module is spliced into the AST before
+// the later wave modules — not appended at the tail — and that the resulting
+// node/children shift leaves a runnable program. Unlike the shared+lock cases,
+// an `$embed_file` project links, so the program is built and run end to end.
+fn test_parallel_parser_splices_synthetic_import_in_serial_order() {
+	v3_bin := build_parallel_parser_v3()
+	main_path, expected := write_parallel_parser_splice_project('parallel_parser_splice')
+	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_parser_splice_out_${os.getpid()}')
+	compile := os.execute('VJOBS=4 ${v3_bin} ${main_path} -b c -o ${bin_out}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin_out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == expected, run.output
+}
+
 // test_no_parallel_parser_keeps_parse_serial validates the runtime opt-out:
 // `--no-parallel` must keep the parse phase off the worker threads.
 fn test_no_parallel_parser_keeps_parse_serial() {

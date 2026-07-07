@@ -1141,51 +1141,52 @@ fn skipped_backend_modules(prefs &pref.Preferences) []string {
 }
 
 fn seed_implicit_sync_import(mut a flat.FlatAst) {
-	seed_implicit_sync_import_upto(mut a, a.nodes.len, false)
-}
-
-// seed_implicit_sync_import_upto is seed_implicit_sync_import with the need and
-// already-imported scans both bounded to the first end_node nodes. The import-
-// resolution wave loop re-checks after each module's parsed region, in parse
-// order, so the seed fires at the same module boundary as the serial
-// one-module-at-a-time loop did. Bounding the already-imported scan to end_node
-// (the serial boundary for this module) is what keeps an explicit import in a
-// *later* module of the same wave — already parsed into the array, but not yet
-// reached in serial order — from suppressing a synthetic import that serial
-// resolution would have added first. already_added carries the "a synthetic
-// import was seeded on an earlier boundary" state the bounded scan cannot see,
-// since those synthetic nodes land past end_node at the tail of the array; it
-// keeps the seed global-once across the wave. Returns whether a node was added.
-fn seed_implicit_sync_import_upto(mut a flat.FlatAst, end_node int, already_added bool) bool {
-	if already_added || !ast_needs_sync_import(a, end_node)
-		|| ast_has_import_upto(a, 'sync', end_node) {
-		return false
+	if ast_should_seed_sync_import(a, a.nodes.len, false) {
+		a.add_node(sync_import_node())
 	}
-	a.add_node(flat.Node{
-		kind:  .import_decl
-		value: 'sync'
-		typ:   'sync'
-	})
-	return true
 }
 
 fn seed_implicit_embed_file_import(mut a flat.FlatAst) {
-	seed_implicit_embed_file_import_upto(mut a, a.nodes.len, false)
+	if ast_should_seed_embed_file_import(a, a.nodes.len, false) {
+		a.add_node(embed_file_import_node())
+	}
 }
 
-// seed_implicit_embed_file_import_upto bounds the need and already-imported
-// scans like seed_implicit_sync_import_upto.
-fn seed_implicit_embed_file_import_upto(mut a flat.FlatAst, end_node int, already_added bool) bool {
-	if already_added || !ast_needs_embed_file_import(a, end_node)
-		|| ast_has_import_upto(a, 'v.embed_file', end_node) {
-		return false
+// ast_should_seed_sync_import reports whether a synthetic `import sync` should be
+// seeded for the module whose parsed region ends at end_node. The need and
+// already-imported scans are both bounded to end_node — the module's serial
+// boundary — so an explicit import in a *later* module of the same wave (already
+// parsed into the array, but not yet reached in serial order) can neither suppress
+// nor be conflated with this module's seed. already_added carries the "a synthetic
+// import was already seeded for an earlier module in this wave" state the bounded
+// scan cannot see, because the wave's synthetic nodes are spliced in only after
+// every boundary has been checked; it keeps the seed global-once.
+fn ast_should_seed_sync_import(a &flat.FlatAst, end_node int, already_added bool) bool {
+	return !already_added && ast_needs_sync_import(a, end_node)
+		&& !ast_has_import_upto(a, 'sync', end_node)
+}
+
+// ast_should_seed_embed_file_import bounds its scans like
+// ast_should_seed_sync_import.
+fn ast_should_seed_embed_file_import(a &flat.FlatAst, end_node int, already_added bool) bool {
+	return !already_added && ast_needs_embed_file_import(a, end_node)
+		&& !ast_has_import_upto(a, 'v.embed_file', end_node)
+}
+
+fn sync_import_node() flat.Node {
+	return flat.Node{
+		kind:  .import_decl
+		value: 'sync'
+		typ:   'sync'
 	}
-	a.add_node(flat.Node{
+}
+
+fn embed_file_import_node() flat.Node {
+	return flat.Node{
 		kind:  .import_decl
 		value: 'v.embed_file'
 		typ:   'embed_file'
-	})
-	return true
+	}
 }
 
 fn ast_needs_sync_import(a &flat.FlatAst, end_node int) bool {
@@ -1258,6 +1259,67 @@ fn type_text_is_shared(raw string) bool {
 	return raw.trim_space().starts_with('shared ')
 }
 
+// SyntheticInsertion records a childless synthetic import node to splice into the
+// flat AST before an original-array node index.
+struct SyntheticInsertion {
+	pos  int // original (pre-insertion) node index to insert before
+	node flat.Node
+}
+
+// insert_synthetic_imports rebuilds a.nodes with each synthetic import spliced in
+// before its recorded original-array position, so the next resolver pass scans a
+// module's synthetic import right after that module's own region — in the same
+// order serial one-module-at-a-time resolution appended and scanned it, before
+// the later wave modules were parsed. Every absolute node index is remapped to
+// the shifted layout: an original index j moves right by the number of insertions
+// at positions <= j. The synthetic nodes are childless, so a.children keeps its
+// length and only its stored NodeIds shift. insertions must be sorted ascending
+// by pos (equal positions keep insertion order); the boundary loop produces them
+// in strictly increasing region order.
+fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion) {
+	if insertions.len == 0 {
+		return
+	}
+	old_len := a.nodes.len
+	mut new_nodes := []flat.Node{cap: old_len + insertions.len}
+	mut ins_idx := 0
+	for i in 0 .. old_len {
+		for ins_idx < insertions.len && insertions[ins_idx].pos == i {
+			new_nodes << insertions[ins_idx].node
+			ins_idx++
+		}
+		new_nodes << a.nodes[i]
+	}
+	// Insertions at pos == old_len append at the very end (the last wave module's
+	// region ends at the array tail).
+	for ins_idx < insertions.len {
+		new_nodes << insertions[ins_idx].node
+		ins_idx++
+	}
+	a.nodes = new_nodes
+	for k in 0 .. a.children.len {
+		cid := int(a.children[k])
+		if cid >= 0 {
+			a.children[k] = flat.NodeId(cid + synthetic_index_shift(insertions, cid))
+		}
+	}
+	a.user_code_start += synthetic_index_shift(insertions, a.user_code_start)
+}
+
+// synthetic_index_shift returns how far an original node index moves after the
+// insertions: the count of insertions whose position is at or before it.
+fn synthetic_index_shift(insertions []SyntheticInsertion, idx int) int {
+	mut shift := 0
+	for ins in insertions {
+		if ins.pos <= idx {
+			shift++
+		} else {
+			break
+		}
+	}
+	return shift
+}
+
 // resolve_imports resolves resolve imports information for v3 entry point.
 fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool) bool {
 	mut parsed_modules := map[string]bool{}
@@ -1287,17 +1349,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut was_parallel := false
 	mut cur_file := first_file
 	mut node_idx := 0
-	// Synthetic imports appended by the per-module seeding below land after the
-	// whole wave, so the `.file` marker preceding them belongs to the last wave
-	// file, not to the module whose code triggered the seed. This map carries
-	// the triggering module's file explicitly, so module-path resolution uses
-	// the same importing-file context as the serial one-module-at-a-time loop.
-	mut synthetic_import_ctx := map[int]string{}
 	// The implicit sync/embed_file seeds are global-once: the serial loop added
 	// each at the first module that needed it and never again. These flags carry
-	// that "already seeded" state across module boundaries and waves, since a
-	// synthetic import appended for an earlier module lands past the next
-	// module's bounded already-imported scan and would otherwise be re-added.
+	// that "already seeded" state across module boundaries and waves. Within a
+	// wave the synthetic nodes are only spliced in after every boundary has been
+	// checked, so a later module's bounded already-imported scan cannot yet see an
+	// earlier module's pending seed; the flags stand in for it.
 	mut synthetic_sync_added := false
 	mut synthetic_embed_file_added := false
 	for {
@@ -1334,12 +1391,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				continue
 			}
 
-			mut importing_file := if cur_file.len > 0 { cur_file } else { first_file }
-			if ctx_file := synthetic_import_ctx[node_idx] {
-				if ctx_file.len > 0 {
-					importing_file = ctx_file
-				}
-			}
+			importing_file := if cur_file.len > 0 { cur_file } else { first_file }
 			mod_dir := resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file,
 				project_root, mut module_path_cache)
 			module_identity := import_module_identity_cached(prefs, mod_name, importing_file,
@@ -1387,10 +1439,15 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			canonicalize_imported_module_name(mut a, starts[i], end_node, canon)
 		}
 		// Re-check the implicit imports at each module boundary, in parse order,
-		// with the need scan bounded to the nodes that existed at that boundary.
-		// This fires the seeds for exactly the module the serial loop's
-		// after-every-module check would have fired them for, and records that
-		// module's last file as the synthetic import's resolution context.
+		// with each scan bounded to the nodes that existed at that boundary. This
+		// fires the seeds for exactly the module the serial loop's after-every-
+		// module check would have fired them for. The synthetic nodes are then
+		// spliced in right after their triggering module's region (region_end),
+		// not at the wave tail, so the next pass scans an earlier module's
+		// synthetic import before the later wave modules' imports — matching serial
+		// order — and the `.file` marker preceding each synthetic is its own
+		// module's last file, so module-path resolution uses the right context.
+		mut insertions := []SyntheticInsertion{}
 		mut module_start := 0
 		for module_file_end in wave_module_file_ends {
 			if module_file_end == module_start {
@@ -1401,19 +1458,23 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			} else {
 				wave_end_nodes
 			}
-			ctx_file := wave_files[module_file_end - 1]
-			seed_start := a.nodes.len
-			if seed_implicit_sync_import_upto(mut a, region_end, synthetic_sync_added) {
+			if ast_should_seed_sync_import(a, region_end, synthetic_sync_added) {
+				insertions << SyntheticInsertion{
+					pos:  region_end
+					node: sync_import_node()
+				}
 				synthetic_sync_added = true
 			}
-			if seed_implicit_embed_file_import_upto(mut a, region_end, synthetic_embed_file_added) {
+			if ast_should_seed_embed_file_import(a, region_end, synthetic_embed_file_added) {
+				insertions << SyntheticInsertion{
+					pos:  region_end
+					node: embed_file_import_node()
+				}
 				synthetic_embed_file_added = true
-			}
-			for idx in seed_start .. a.nodes.len {
-				synthetic_import_ctx[idx] = ctx_file
 			}
 			module_start = module_file_end
 		}
+		insert_synthetic_imports(mut a, insertions)
 	}
 	return was_parallel
 }
