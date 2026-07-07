@@ -591,6 +591,37 @@ fn test_user_defined_windows_dllmain_disables_generated_entrypoint() {
 	assert !compilation.output.contains('case DLL_PROCESS_ATTACH')
 }
 
+fn test_boehm_gc_header_precedes_imported_module_spawn_wrappers() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_boehm_gc_spawn_include_order.vv')
+	source_lines := [
+		'module main',
+		'',
+		'import fasthttp',
+		'',
+		'fn handler(_ fasthttp.HttpRequest) !fasthttp.HttpResponse {',
+		"\treturn fasthttp.HttpResponse{content: 'HTTP/1.1 200 OK\\r\\nContent-Length: 0\\r\\n\\r\\n'.bytes()}",
+		'}',
+		'',
+		'fn main() {',
+		'\tmut server := fasthttp.new_server(handler: handler)!',
+		'\tserver.run()!',
+		'}',
+	]
+	os.write_file(test_source, source_lines.join('\n') + '\n')!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -os linux -gc boehm -o - ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	gc_include_pos := compilation.output.index('#include <gc/gc.h>') or { -1 }
+	pthread_create_pos := compilation.output.index('pthread_create(&thread_') or { -1 }
+	assert gc_include_pos >= 0
+	assert pthread_create_pos >= 0
+	assert gc_include_pos < pthread_create_pos
+}
+
 fn test_array_sort_with_compare_uses_stable_sort_adapters() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_array_sort_with_compare_stable_sort.vv')
