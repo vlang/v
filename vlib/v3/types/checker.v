@@ -5043,6 +5043,9 @@ fn (mut tc TypeChecker) comptime_type_matches(actual string, expected string) ?b
 		'$option' {
 			return actual_type is OptionType
 		}
+		'$pointer' {
+			return actual_type is Pointer
+		}
 		'$int' {
 			return actual_type.is_integer()
 		}

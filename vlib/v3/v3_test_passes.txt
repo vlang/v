@@ -661,6 +661,7 @@ vlib/v/tests/comptime/comptime_concrete_type_register_test.v
 vlib/v/tests/comptime/comptime_const_def_test.v
 vlib/v/tests/comptime/comptime_enum_test.v
 vlib/v/tests/comptime/comptime_eq_test.v
+vlib/v/tests/comptime/comptime_field_name_check_test.v
 vlib/v/tests/comptime/comptime_field_selector_test.v
 vlib/v/tests/comptime/comptime_for_break_test.v
 vlib/v/tests/comptime/comptime_for_empty_loop_eval_stmts_test.v
@@ -698,12 +699,14 @@ vlib/v/tests/comptime/comptime_on_method_arg_test.v
 vlib/v/tests/comptime/comptime_option_field_test.v
 vlib/v/tests/comptime/comptime_ppc_closure_codegen_test.v
 vlib/v/tests/comptime/comptime_propagate_test.v
+vlib/v/tests/comptime/comptime_ptr_field_test.v
 vlib/v/tests/comptime/comptime_ref_arg_test.v
 vlib/v/tests/comptime/comptime_selector_assign_test.v
 vlib/v/tests/comptime/comptime_selector_generic_arg_test.v
 vlib/v/tests/comptime/comptime_selector_map_move_test.v
 vlib/v/tests/comptime/comptime_selector_postfix_unwrap_test.v
 vlib/v/tests/comptime/comptime_selector_ptr_test.v
+vlib/v/tests/comptime/comptime_shared_field_test.v
 vlib/v/tests/comptime/comptime_smart_receiver_test.v
 vlib/v/tests/comptime/comptime_smartcast_assert_test.v
 vlib/v/tests/comptime/comptime_smartcast_var_test.v

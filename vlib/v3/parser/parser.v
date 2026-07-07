@@ -2124,6 +2124,30 @@ fn (p &Parser) comptime_cond_token_text() string {
 	if tok == .not_is {
 		return '!is'
 	}
+	if tok == .eq {
+		return '=='
+	}
+	if tok == .ne {
+		return '!='
+	}
+	if tok == .lt {
+		return '<'
+	}
+	if tok == .gt {
+		return '>'
+	}
+	if tok == .le {
+		return '<='
+	}
+	if tok == .ge {
+		return '>='
+	}
+	if tok == .key_in {
+		return 'in'
+	}
+	if tok == .not_in {
+		return '!in'
+	}
 	if tok == .dollar {
 		return '$'
 	}

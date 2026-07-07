@@ -567,7 +567,6 @@ vlib/v/tests/comptime/comptime_else_map_init_markused_test.v
 vlib/v/tests/comptime/comptime_enum_values_test.v
 vlib/v/tests/comptime/comptime_field_attrs_quotes_test.v
 vlib/v/tests/comptime/comptime_field_indirections_test.v
-vlib/v/tests/comptime/comptime_field_name_check_test.v
 vlib/v/tests/comptime/comptime_for_alias_methods_test.v
 vlib/v/tests/comptime/comptime_for_alias_type_test.v
 vlib/v/tests/comptime/comptime_for_field_methods_test.v
@@ -632,10 +631,8 @@ vlib/v/tests/comptime/comptime_methods_generic_struct_test.v
 vlib/v/tests/comptime/comptime_name_check_test.v
 vlib/v/tests/comptime/comptime_params_test.v
 vlib/v/tests/comptime/comptime_println_test.v
-vlib/v/tests/comptime/comptime_ptr_field_test.v
 vlib/v/tests/comptime/comptime_selector_member_test.v
 vlib/v/tests/comptime/comptime_selector_mut_test.v
-vlib/v/tests/comptime/comptime_shared_field_test.v
 vlib/v/tests/comptime/comptime_smartcast_test.v
 vlib/v/tests/comptime/comptime_sumtype_cast_2_test.v
 vlib/v/tests/comptime/comptime_sumtype_cast_3_test.v

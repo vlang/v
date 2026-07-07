@@ -5926,6 +5926,15 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 		'$option' {
 			return normalized.starts_with('?')
 		}
+		'$shared' {
+			return normalized.starts_with('shared ')
+		}
+		'$pointer' {
+			return normalized.starts_with('&')
+		}
+		'$voidptr' {
+			return normalized == 'voidptr'
+		}
 		'$int' {
 			if typ := types.builtin_type(normalized) {
 				return typ.is_integer()
@@ -7520,7 +7529,8 @@ fn (mut t Transformer) transform_amp_optional_unwrap(node flat.Node, child flat.
 	if !target_type.starts_with('&') {
 		return none
 	}
-	source := t.transform_expr(source_id)
+	source := t.make_plain_expr_for_smartcast(source_id)
+	t.set_node_typ(int(source), source_type)
 	not_ok := t.make_prefix(.not, t.make_selector(source, 'ok', 'bool'))
 	err_expr := t.make_selector(source, 'err', 'IError')
 	else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, '', '', child.value,

@@ -428,8 +428,10 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 	}
 	for op in [' != ', ' == '] {
 		if op_idx := comptime_top_index(clean, op) {
-			left := clean[..op_idx].trim_space()
-			right := clean[op_idx + op.len..].trim_space()
+			// String operands may be quoted on one side (`'txt'` from a substituted `field.name`)
+			// and bare on the other (`txt` as captured in the condition); compare unquoted.
+			left := comptime_unquote(clean[..op_idx].trim_space())
+			right := comptime_unquote(clean[op_idx + op.len..].trim_space())
 			eq := left == right
 			return if op == ' == ' { eq } else { !eq }
 		}
@@ -439,6 +441,13 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 		return !inner
 	}
 	return none
+}
+
+fn comptime_unquote(s string) string {
+	if s.len >= 2 && (s[0] == `'` || s[0] == `"`) && s[s.len - 1] == s[0] {
+		return s[1..s.len - 1]
+	}
+	return s
 }
 
 fn comptime_top_index(s string, op string) ?int {
