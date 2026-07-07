@@ -603,12 +603,12 @@ fn main() {}
 	return os.read_file(c_out) or { panic(err) }
 }
 
-fn directive_order_gen_c_nested_preserved_system_include(v3_bin string) string {
-	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_nested_preserved_include_project')
+fn directive_order_gen_c_nested_system_include(v3_bin string) string {
+	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_nested_system_include_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod',
-		"Module { name: 'directive_order_nested_preserved_include' }\n")
+		"Module { name: 'directive_order_nested_system_include' }\n")
 	directive_order_write_file(root, 'main.v', 'module main
 
 #insert "nested_preserved.h"
@@ -624,14 +624,14 @@ fn main() {}
 
 typedef uint64_t NestedWord;
 ')
-	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_nested_preserved_include.c')
+	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_nested_system_include.c')
 	os.rm(c_out) or {}
 	result := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${c_out}')
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_out) or { panic(err) }
 }
 
-fn directive_order_gen_c_preserved_x11_aggregates(v3_bin string) string {
+fn directive_order_gen_c_headerless_x11_aggregates(v3_bin string) string {
 	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_x11_aggregates_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -668,7 +668,7 @@ fn main() {
 	return os.read_file(c_out) or { panic(err) }
 }
 
-fn directive_order_gen_c_preserved_bcrypt_fn(v3_bin string) string {
+fn directive_order_gen_c_headerless_bcrypt_fn(v3_bin string) string {
 	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_bcrypt_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -690,7 +690,7 @@ fn main() {
 	return os.read_file(c_out) or { panic(err) }
 }
 
-fn directive_order_gen_c_preserved_mach_headers(v3_bin string) string {
+fn directive_order_gen_c_headerless_mach_headers(v3_bin string) string {
 	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_mach_project')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -922,9 +922,6 @@ fn directive_order_count(c_code string, needle string) int {
 fn directive_order_has_include_directive(c_code string) bool {
 	for line in c_code.split_into_lines() {
 		clean := line.trim_space()
-		if clean == '#include <mach/mach_time.h>' {
-			continue
-		}
 		if clean.starts_with('#include') {
 			return true
 		}
@@ -1077,35 +1074,28 @@ fn test_nested_local_header_includes_are_inlined_recursively() {
 	assert !directive_order_has_include_directive(c_code), c_code
 }
 
-fn test_unresolved_system_include_is_preserved() {
+fn test_unresolved_system_include_is_dropped() {
 	c_code := directive_order_gen_c_unresolved_system_include(directive_order_build_v3())
-	assert c_code.contains('#include <platform_user_header.h>'), c_code
-	assert c_code.contains('#include <dlfcn.h>'), c_code
+	assert !directive_order_has_include_directive(c_code), c_code
+	assert !c_code.contains('#include <platform_user_header.h>'), c_code
+	assert !c_code.contains('#include <dlfcn.h>'), c_code
 	assert !c_code.contains('#include <stdint.h>'), c_code
 	assert c_code.contains('typedef unsigned int uint32_t;'), c_code
-	assert !c_code.contains('void* dlopen(char* filename, int flags);'), c_code
+	assert c_code.contains('void* dlopen('), c_code
 	api_compat_idx := directive_order_index(c_code, '#define PLATFORM_API_COMPAT 7')
 	guard_idx := directive_order_index(c_code, '#ifdef USE_DLFCN')
-	dlfcn_idx := directive_order_index(c_code, '#include <dlfcn.h>')
 	time_t_idx := directive_order_index(c_code, 'typedef long long time_t;')
 	off_t_idx := directive_order_index(c_code, 'typedef long long off_t;')
 	wchar_idx := directive_order_index(c_code, 'typedef unsigned int wchar_t;')
 	fd_set_idx := directive_order_index(c_code, '#ifndef FD_SET')
 	assert api_compat_idx >= 0, c_code
 	assert guard_idx >= 0, c_code
-	assert dlfcn_idx >= 0, c_code
 	assert time_t_idx >= 0, c_code
 	assert off_t_idx >= 0, c_code
 	assert wchar_idx >= 0, c_code
 	assert fd_set_idx >= 0, c_code
 	assert c_code.contains('#if !defined(_TIME_T) && !defined(_TIME_T_DEFINED) && !defined(__time_t_defined)'), c_code
 	assert c_code.contains('#if !defined(_OFF_T) && !defined(_OFF_T_DEFINED) && !defined(__off_t_defined)'), c_code
-	assert api_compat_idx < dlfcn_idx, c_code
-	assert guard_idx < dlfcn_idx, c_code
-	assert dlfcn_idx < time_t_idx, c_code
-	assert dlfcn_idx < off_t_idx, c_code
-	assert dlfcn_idx < wchar_idx, c_code
-	assert dlfcn_idx < fd_set_idx, c_code
 }
 
 fn test_unresolved_quoted_include_is_preserved() {
@@ -1117,48 +1107,53 @@ fn test_unresolved_quoted_include_is_preserved() {
 	assert include_idx < define_idx, c_code
 }
 
-fn test_nested_preserved_system_include_is_lifted_before_preamble() {
-	c_code := directive_order_gen_c_nested_preserved_system_include(directive_order_build_v3())
+fn test_nested_system_include_is_dropped_from_inlined_header() {
+	c_code := directive_order_gen_c_nested_system_include(directive_order_build_v3())
 	include_idx := directive_order_index(c_code, '#include <nested_platform_header.h>')
 	preamble_idx := directive_order_index(c_code, 'typedef signed char i8;')
 	stdint_guard_idx := directive_order_index(c_code,
 		'#if !defined(__V_HEADERLESS_STDINT_H) && !defined(_STDINT_H)')
+	nested_define_idx := directive_order_index(c_code, '#define NESTED_PLATFORM_HEADER 1')
 	nested_word_idx := directive_order_index(c_code, 'typedef uint64_t NestedWord;')
-	assert include_idx >= 0, c_code
+	assert include_idx == -1, c_code
+	assert !directive_order_has_include_directive(c_code), c_code
 	assert preamble_idx >= 0, c_code
 	assert stdint_guard_idx >= 0, c_code
+	assert nested_define_idx >= 0, c_code
 	assert nested_word_idx >= 0, c_code
-	assert include_idx < preamble_idx, c_code
 	assert preamble_idx < stdint_guard_idx, c_code
 	assert stdint_guard_idx < nested_word_idx, c_code
-	assert c_code.contains('#if defined(__linux__)\n#define NESTED_PLATFORM_HEADER 1\n#include <nested_platform_header.h>\n#endif'), c_code
+	assert nested_define_idx < stdint_guard_idx, c_code
 }
 
-fn test_preserved_system_header_aggregates_are_not_redeclared() {
-	c_code := directive_order_gen_c_preserved_x11_aggregates(directive_order_build_v3())
-	assert c_code.contains('#include <X11/Xlib.h>'), c_code
-	assert !c_code.contains('typedef union XEvent XEvent;'), c_code
-	assert !c_code.contains('union XEvent {\n'), c_code
-	assert !c_code.contains('typedef union XClientMessageData XClientMessageData;'), c_code
-	assert !c_code.contains('union XClientMessageData {\n'), c_code
+fn test_system_header_aggregates_are_emitted_headerlessly() {
+	c_code := directive_order_gen_c_headerless_x11_aggregates(directive_order_build_v3())
+	assert !directive_order_has_include_directive(c_code), c_code
+	assert !c_code.contains('#include <X11/Xlib.h>'), c_code
+	assert c_code.contains('typedef union XEvent XEvent;'), c_code
+	assert c_code.contains('union XEvent {\n'), c_code
+	assert c_code.contains('typedef union XClientMessageData XClientMessageData;'), c_code
+	assert c_code.contains('union XClientMessageData {\n'), c_code
 }
 
-fn test_preserved_system_header_functions_are_not_redeclared() {
-	c_code := directive_order_gen_c_preserved_bcrypt_fn(directive_order_build_v3())
-	assert c_code.contains('#include <bcrypt.h>'), c_code
-	assert directive_order_count(c_code, 'BCryptGenRandom(') == 1, c_code
+fn test_system_header_functions_are_emitted_headerlessly() {
+	c_code := directive_order_gen_c_headerless_bcrypt_fn(directive_order_build_v3())
+	assert !directive_order_has_include_directive(c_code), c_code
+	assert !c_code.contains('#include <bcrypt.h>'), c_code
+	assert directive_order_count(c_code, 'BCryptGenRandom(') == 2, c_code
 }
 
-fn test_preserved_mach_headers_are_wrapped_with_panic_alias() {
-	c_code := directive_order_gen_c_preserved_mach_headers(directive_order_build_v3())
+fn test_mach_headers_are_emitted_headerlessly() {
+	c_code := directive_order_gen_c_headerless_mach_headers(directive_order_build_v3())
 	preamble_idx := directive_order_index(c_code, 'typedef signed char i8;')
 	assert preamble_idx >= 0, c_code
-	assert c_code.contains('#define panic mach_panic\n#include <mach/mach.h>\n#undef panic'), c_code
-	assert c_code.contains('#define panic mach_panic\n#include <mach/mach_time.h>\n#undef panic'), c_code
-	assert directive_order_count(c_code, '#include <mach/mach_time.h>') == 1, c_code
-	assert directive_order_index(c_code, '#undef panic') < preamble_idx, c_code
-	assert !c_code.contains('typedef struct mach_timebase_info_data_t mach_timebase_info_data_t;'), c_code
-	assert !c_code.contains('void mach_timebase_info('), c_code
+	assert !directive_order_has_include_directive(c_code), c_code
+	assert !c_code.contains('#include <mach/mach.h>'), c_code
+	assert !c_code.contains('#include <mach/mach_time.h>'), c_code
+	assert !c_code.contains('#define panic mach_panic'), c_code
+	assert c_code.contains('typedef struct mach_timebase_info_data_t mach_timebase_info_data_t;'), c_code
+	assert c_code.contains('struct mach_timebase_info_data_t {'), c_code
+	assert c_code.contains('void mach_timebase_info('), c_code
 }
 
 fn test_timerfd_header_uses_headerless_decls() {
@@ -1185,12 +1180,12 @@ fn test_stdarg_in_inlined_header_uses_headerless_va_defs() {
 	assert c_code.contains('static inline int stdarg_sum(int count, ...)'), c_code
 }
 
-fn test_poll_in_inlined_header_preserves_system_struct() {
+fn test_poll_in_inlined_header_uses_headerless_struct() {
 	c_code := directive_order_gen_c_nested_poll_header(directive_order_build_v3())
-	assert c_code.contains('#include <poll.h>'), c_code
+	assert !directive_order_has_include_directive(c_code), c_code
+	assert !c_code.contains('#include <poll.h>'), c_code
 	assert c_code.contains('static inline int poll_user_fd(struct pollfd* item)'), c_code
-	assert !c_code.contains('typedef struct pollfd pollfd;'), c_code
-	assert !c_code.contains('struct pollfd {\n'), c_code
+	assert c_code.contains('struct pollfd {\n'), c_code
 }
 
 fn test_rwmutex_keeps_linux_rwlockattr_prototype() {
