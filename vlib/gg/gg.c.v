@@ -257,6 +257,7 @@ pub mut:
 
 fn gg_init_sokol_window(user_data voidptr) {
 	mut ctx := unsafe { &Context(user_data) }
+	gg_claim_gfx_render_owner(.legacy_context, user_data) or { panic(err.msg()) }
 	desc := sapp.create_desc()
 	/*
 	desc := gfx.Desc{
@@ -585,6 +586,7 @@ fn gg_cleanup_fn(user_data voidptr) {
 		ctx.config.cleanup_fn(ctx.user_data)
 	}
 	gfx.shutdown()
+	gg_release_gfx_render_owner(.legacy_context, user_data)
 }
 
 fn gg_fail_fn(msg &char, user_data voidptr) {

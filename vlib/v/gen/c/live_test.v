@@ -41,12 +41,14 @@ fn test_live_reload_forwarded_define_vopts_omits_unrelated_defines() {
 		'windows',
 		'livemain',
 		'sharedlive',
+		'gg_record',
 		'custom',
 	], {
 		'sokol_d3d11': 'true'
 		'windows':     'true'
 		'livemain':    'true'
 		'sharedlive':  'true'
+		'gg_record':   'true'
 		'custom':      'true'
 	})
 	assert vopts == "-d 'sokol_d3d11'"
@@ -56,11 +58,29 @@ fn test_live_reload_forwarded_define_vopts_keeps_allowed_non_sokol_defines() {
 	vopts := live_reload_forwarded_define_vopts(pref.OS.linux, [
 		'darwin_sokol_glcore33',
 		'no_sokol_app',
+		'gg_multiwindow',
 	], {
 		'darwin_sokol_glcore33': 'true'
 		'no_sokol_app':          'true'
+		'gg_multiwindow':        'true'
 	})
-	assert vopts == "-d 'darwin_sokol_glcore33' -d 'no_sokol_app'"
+	assert vopts == "-d 'darwin_sokol_glcore33' -d 'no_sokol_app' -d 'gg_multiwindow'"
+}
+
+fn test_live_reload_forwarded_define_vopts_forwards_gg_multiwindow_once_without_live_mode_flags() {
+	vopts := live_reload_forwarded_define_vopts(pref.OS.linux, [
+		'gg_multiwindow',
+		'gg_multiwindow',
+		'livemain',
+		'sharedlive',
+	], {
+		'gg_multiwindow': 'true'
+		'livemain':       'true'
+		'sharedlive':     'true'
+	})
+	assert vopts == "-d 'gg_multiwindow'"
+	assert !vopts.contains('livemain')
+	assert !vopts.contains('sharedlive')
 }
 
 fn test_live_reload_forwarded_define_vopts_collapses_duplicates() {

@@ -18,6 +18,7 @@ fn live_runtime_quoted_path_for_c_string(target_os pref.OS, path string) string 
 fn live_reload_should_forward_define(define string) bool {
 	name := if define.contains('=') { define.all_before('=') } else { define }
 	return name.starts_with('sokol_') || name == 'darwin_sokol_glcore33' || name == 'no_sokol_app'
+		|| name == 'gg_multiwindow'
 }
 
 fn live_reload_define_for_c_string(target_os pref.OS, define string) string {
