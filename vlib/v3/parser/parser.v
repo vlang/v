@@ -2082,6 +2082,16 @@ fn (mut p Parser) parse_comptime_cond() string {
 	return cond.str()
 }
 
+// comptime_char_is_name_cont reports whether the byte at `pos` continues an identifier. Used
+// to keep the word operators `!is`/`!in` from matching identifiers such as `!isset`/`!inner`.
+fn comptime_char_is_name_cont(src string, pos int) bool {
+	if pos < 0 || pos >= src.len {
+		return false
+	}
+	c := src[pos]
+	return c.is_letter() || c.is_digit() || c == `_`
+}
+
 fn (p &Parser) comptime_cond_token_text() string {
 	if p.s.pos >= 0 && p.s.pos < p.s.src.len {
 		c := p.s.src[p.s.pos]
@@ -2092,8 +2102,15 @@ fn (p &Parser) comptime_cond_token_text() string {
 			return '||'
 		}
 		if c == `!` && p.s.pos + 2 < p.s.src.len && p.s.src[p.s.pos + 1] == `i`
-			&& p.s.src[p.s.pos + 2] == `s` {
+			&& p.s.src[p.s.pos + 2] == `s` && !comptime_char_is_name_cont(p.s.src, p.s.pos + 3) {
 			return '!is'
+		}
+		if c == `!` && p.s.pos + 2 < p.s.src.len && p.s.src[p.s.pos + 1] == `i`
+			&& p.s.src[p.s.pos + 2] == `n` && !comptime_char_is_name_cont(p.s.src, p.s.pos + 3) {
+			return '!in'
+		}
+		if c == `!` && p.s.pos + 1 < p.s.src.len && p.s.src[p.s.pos + 1] == `=` {
+			return '!='
 		}
 		if c == `!` {
 			return '!'

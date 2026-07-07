@@ -110,12 +110,13 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 // expand_comptime_for_values unrolls `$for value in Enum.values { ... }`. The loop variable
 // exposes `value.name` / `value.value` and, used bare, materializes as `EnumData`.
 fn (mut t Transformer) expand_comptime_for_values(var_name string, base_type string, body_stmts []flat.NodeId) []flat.NodeId {
-	names := t.comptime_enum_value_names(base_type)
+	names, values := t.comptime_enum_members(base_type)
 	mut out := []flat.NodeId{}
 	for idx, name in names {
+		value := if idx < values.len { values[idx] } else { idx }
 		mut cloned := []flat.NodeId{cap: body_stmts.len}
 		for sid in body_stmts {
-			if cid := t.clone_value_subst(sid, var_name, name, idx) {
+			if cid := t.clone_value_subst(sid, var_name, name, value) {
 				cloned << cid
 			}
 		}
@@ -127,15 +128,116 @@ fn (mut t Transformer) expand_comptime_for_values(var_name string, base_type str
 	return out
 }
 
-fn (t &Transformer) comptime_enum_value_names(base_type string) []string {
-	if names := t.enum_types[base_type] {
-		return names
+// comptime_enum_members returns the member names and their declared int values for an enum
+// (resolving an enum alias to its underlying enum).
+fn (t &Transformer) comptime_enum_members(base_type string) ([]string, []int) {
+	mut names := []string{}
+	mut resolved := base_type
+	if got := t.enum_types[base_type] {
+		names = got.clone()
+	} else {
+		qname := t.qualified_alias_name(base_type)
+		if got := t.enum_types[qname] {
+			names = got.clone()
+			resolved = qname
+		}
 	}
-	qname := t.qualified_alias_name(base_type)
-	if names := t.enum_types[qname] {
-		return names
+	if names.len == 0 {
+		return []string{}, []int{}
 	}
-	return []string{}
+	return names, t.enum_decl_int_values(resolved.all_after_last('.'))
+}
+
+// enum_decl_int_values locates the `enum_decl` node named `bare_name` and evaluates each
+// member's declared int value (explicit `= N`, otherwise incrementing from the previous,
+// starting at 0), matching V's enum numbering. Returns an empty list if not found, in which
+// case callers fall back to the sequential loop index.
+fn (t &Transformer) enum_decl_int_values(bare_name string) []int {
+	for idx in 0 .. t.a.nodes.len {
+		if t.a.nodes[idx].kind != .enum_decl || t.a.nodes[idx].value != bare_name {
+			continue
+		}
+		node := t.a.nodes[idx]
+		mut values := []int{}
+		mut next_val := 0
+		for i in 0 .. node.children_count {
+			f := t.a.child_node(&node, i)
+			if f.kind != .enum_field {
+				continue
+			}
+			mut val := next_val
+			if f.children_count > 0 {
+				if ev := t.enum_field_int_value(t.a.child(f, 0)) {
+					val = ev
+				}
+			}
+			values << val
+			next_val = val + 1
+		}
+		return values
+	}
+	return []int{}
+}
+
+// enum_field_int_value evaluates an enum member's value expression (`x = 1`, `x = 1 << 2`,
+// `x = SomeConst`) to an int, following the same forms as the C backend.
+fn (t &Transformer) enum_field_int_value(id flat.NodeId) ?int {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.int_literal {
+			return node.value.int()
+		}
+		.paren {
+			if node.children_count == 0 {
+				return none
+			}
+			return t.enum_field_int_value(t.a.child(&node, 0))
+		}
+		.prefix {
+			if node.children_count == 0 {
+				return none
+			}
+			v := t.enum_field_int_value(t.a.child(&node, 0))?
+			return match node.op {
+				.plus { v }
+				.minus { -v }
+				.bit_not { ~v }
+				else { none }
+			}
+		}
+		.infix {
+			if node.children_count < 2 {
+				return none
+			}
+			l := t.enum_field_int_value(t.a.child(&node, 0))?
+			r := t.enum_field_int_value(t.a.child(&node, 1))?
+			return match node.op {
+				.plus { l + r }
+				.minus { l - r }
+				.mul { l * r }
+				.div { if r == 0 { none } else { l / r } }
+				.mod { if r == 0 { none } else { l % r } }
+				.left_shift { l << r }
+				.right_shift { l >> r }
+				.amp { l & r }
+				.pipe { l | r }
+				.xor { l ^ r }
+				else { none }
+			}
+		}
+		.ident {
+			if !isnil(t.tc) {
+				return t.tc.const_int_value_in_module(node.value, t.cur_module, []string{})
+			}
+			return none
+		}
+		else {
+			return none
+		}
+	}
 }
 
 // clone_value_subst clones a `$for value in Enum.values` body, substituting `value.name`,
@@ -473,7 +575,8 @@ fn (mut t Transformer) field_member_value(member string, fm FieldMeta) flat.Node
 		'is_pub' { t.make_bool_literal(true) }
 		'indirections' { t.make_int_literal(fm.indirections) }
 		'attrs' { t.zero_value_for_type('[]string') }
-		'typ', 'unaliased_typ' { t.make_string_literal(fm.typ) }
+		'typ' { t.make_string_literal(fm.typ) }
+		'unaliased_typ' { t.make_string_literal(fm.unaliased_typ) }
 		else { t.make_string_literal(fm.name) }
 	}
 }
@@ -544,11 +647,74 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 			return if op == ' == ' { eq } else { !eq }
 		}
 	}
+	// `field.name in ['id', 'name']` membership. The serialized condition drops the space
+	// between `in` and the list literal (`in[...]`), so match the operator token and accept a
+	// following space, `[`, or `(`.
+	for op in [' !in', ' in'] {
+		if op_idx := comptime_top_index(clean, op) {
+			after := op_idx + op.len
+			if after < clean.len && clean[after] != ` ` && clean[after] != `[`
+				&& clean[after] != `(` {
+				continue
+			}
+			needle := comptime_unquote(clean[..op_idx].trim_space())
+			found := comptime_list_contains(clean[after..].trim_space(), needle)
+			return if op == ' in' { found } else { !found }
+		}
+	}
+	// Integer ordering (e.g. `field.indirections < 2`); longer operators first.
+	for op in [' <= ', ' >= ', ' < ', ' > '] {
+		if op_idx := comptime_top_index(clean, op) {
+			left := clean[..op_idx].trim_space()
+			right := clean[op_idx + op.len..].trim_space()
+			if !comptime_is_int(left) || !comptime_is_int(right) {
+				return none
+			}
+			l := left.int()
+			r := right.int()
+			return match op {
+				' <= ' { l <= r }
+				' >= ' { l >= r }
+				' < ' { l < r }
+				else { l > r }
+			}
+		}
+	}
 	if clean.starts_with('!') {
 		inner := t.eval_field_cond(clean[1..]) or { return none }
 		return !inner
 	}
 	return none
+}
+
+fn comptime_list_contains(list_text string, needle string) bool {
+	clean := list_text.trim_space()
+	if !clean.starts_with('[') || !clean.ends_with(']') {
+		return false
+	}
+	inner := clean[1..clean.len - 1]
+	for part in inner.split(',') {
+		if comptime_unquote(part.trim_space()) == needle {
+			return true
+		}
+	}
+	return false
+}
+
+fn comptime_is_int(s string) bool {
+	if s.len == 0 {
+		return false
+	}
+	start := if s[0] == `-` || s[0] == `+` { 1 } else { 0 }
+	if start >= s.len {
+		return false
+	}
+	for i in start .. s.len {
+		if !s[i].is_digit() {
+			return false
+		}
+	}
+	return true
 }
 
 fn comptime_unquote(s string) string {
