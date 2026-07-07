@@ -54,3 +54,11 @@ fn test_value_new_chain_uses_checked_return_type_for_generic_receiver() {
 	})
 	assert out == '23'
 }
+
+fn test_fn_ptr_typedef_keeps_concrete_upper_suffix_type() {
+	v3_bin := review_pr_build_v3()
+	out := review_pr_run_project(v3_bin, 'fn_ptr_concrete_upper_suffix_type', {
+		'main.v': 'module main\n\nstruct Foo_T {\n\tn int\n}\n\nfn apply(cb fn (Foo_T) int) int {\n\treturn cb(Foo_T{\n\t\tn: 8\n\t})\n}\n\nfn take(foo Foo_T) int {\n\treturn foo.n + 2\n}\n\nfn main() {\n\tprintln(int_str(apply(take)))\n}\n'
+	})
+	assert out == '10'
+}

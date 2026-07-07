@@ -8535,7 +8535,7 @@ fn (mut g FlatGen) fn_ptr_typedef_type(typ string, mut emitted map[string]bool) 
 	if tagged := fn_ptr_typedef_generic_placeholder_struct_tag(clean) {
 		return tagged
 	}
-	if fn_ptr_typedef_is_generic_placeholder(clean) {
+	if g.fn_ptr_typedef_is_generic_placeholder(clean) {
 		return 'int'
 	}
 	return clean
@@ -8553,13 +8553,17 @@ fn fn_ptr_typedef_normalized(typ string) string {
 	return 'fn_ptr:${payload}|void'
 }
 
-fn fn_ptr_typedef_is_generic_placeholder(typ string) bool {
+fn (g &FlatGen) fn_ptr_typedef_is_generic_placeholder(typ string) bool {
 	mut clean := trimmed_space(typ)
 	for clean.ends_with('*') {
 		clean = clean[..clean.len - 1].trim_space()
 	}
 	if clean.starts_with('struct ') {
 		clean = clean['struct '.len..].trim_space()
+	}
+	if g.type_name_known(clean)
+		|| (clean.contains('__') && g.type_name_known(clean.replace('__', '.'))) {
+		return false
 	}
 	short := if clean.contains('__') {
 		clean.all_after_last('__')
@@ -8568,15 +8572,13 @@ fn fn_ptr_typedef_is_generic_placeholder(typ string) bool {
 	} else {
 		clean
 	}
-	for part in short.split('_') {
-		if part in ['T', 'U', 'V', 'K', 'R'] {
-			return true
-		}
-		if part.len == 1 && part[0] >= `A` && part[0] <= `Z` {
-			return true
-		}
+	if !codegen_generic_placeholder_name(short) {
+		return false
 	}
-	return false
+	if g.type_name_known(short) {
+		return false
+	}
+	return true
 }
 
 fn fn_ptr_typedef_generic_placeholder_struct_tag(typ string) ?string {
