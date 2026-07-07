@@ -1258,6 +1258,9 @@ fn (mut t Transformer) unused_fn_subtree_nodes() []bool {
 				t.cur_module = node.value
 			}
 			.fn_decl {
+				if node.value.starts_with('test_') {
+					continue
+				}
 				if !t.should_transform_fn(node) {
 					t.collect_node_subtree_flags(flat.NodeId(i), mut nodes)
 				}
@@ -2700,12 +2703,9 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 		callee_id = t.a.child(&callee, 0)
 		callee = t.a.nodes[int(callee_id)]
 	}
-	if callee.kind == .ident && t.plain_concrete_fn_known(callee.value, module_name, decls) {
-		return none
-	}
 	if !isnil(t.tc) {
 		if resolved := t.tc.resolved_call_name(id) {
-			key := t.generic_resolved_call_decl_key(resolved, callee, module_name, decls) or {
+			key := t.generic_resolved_call_decl_key(resolved, callee, node, module_name, decls) or {
 				return none
 			}
 			if decl := decls[key] {
@@ -2718,9 +2718,6 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 		}
 	}
 	if callee.kind == .ident {
-		if t.local_concrete_fn_shadows_generic(callee.value, module_name, decls) {
-			return none
-		}
 		if key := t.generic_flat_receiver_call_decl_key(callee.value, module_name, decls) {
 			if decl := decls[key] {
 				if t.generic_call_arg_count_matches_decl(node, decl) {
@@ -2734,6 +2731,10 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 					return key
 				}
 			}
+		}
+		if t.local_concrete_fn_shadows_generic(callee.value, module_name, decls)
+			|| t.plain_concrete_fn_known(callee.value, module_name, decls) {
+			return none
 		}
 		for candidate in t.generic_plain_call_candidates(callee.value, module_name) {
 			key := generic_fn_decl_base_value(candidate)
@@ -2767,7 +2768,10 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 			}
 		}
 		method_keys := t.generic_receiver_methods_by_name[callee.value] or { return none }
-		mut base_type := t.node_type(base_id)
+		mut base_type := t.syntactic_static_call_return_type(base_id)
+		if base_type.len == 0 {
+			base_type = t.node_type(base_id)
+		}
 		if base_type.starts_with('&') {
 			base_type = base_type[1..]
 		}
@@ -2783,6 +2787,9 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 		}
 		for key in method_keys {
 			if decl := decls[key] {
+				if !t.generic_receiver_decl_matches_type(base_type, decl, module_name) {
+					continue
+				}
 				if !t.generic_call_arg_count_matches_decl(node, decl) {
 					continue
 				}
@@ -2791,6 +2798,61 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 		}
 	}
 	return none
+}
+
+fn (t &Transformer) generic_receiver_decl_matches_type(base_type string, decl GenericFnDecl, module_name string) bool {
+	decl_receiver := generic_fn_decl_base_value(decl.node.value).all_before_last('.')
+	if decl_receiver.len == 0 {
+		return false
+	}
+	mut clean_base := base_type.trim_space()
+	if clean_base.starts_with('&') {
+		clean_base = clean_base[1..]
+	}
+	if clean_base.len == 0 {
+		return false
+	}
+	base, _, ok := generic_app_parts(clean_base)
+	if ok {
+		clean_base = base
+	}
+	mut call_receivers := []string{}
+	for candidate in [clean_base, t.normalize_type_alias(clean_base),
+		t.normalize_type_in_module(clean_base, module_name)] {
+		if candidate.len > 0 && candidate !in call_receivers {
+			call_receivers << candidate
+		}
+		if candidate.contains('.') {
+			short := candidate.all_after_last('.')
+			if short.len > 0 && short !in call_receivers {
+				call_receivers << short
+			}
+		}
+	}
+	mut decl_receivers := []string{}
+	for candidate in [decl_receiver, t.normalize_type_alias(decl_receiver),
+		t.normalize_type_in_module(decl_receiver, decl.module)] {
+		if candidate.len > 0 && candidate !in decl_receivers {
+			decl_receivers << candidate
+		}
+		if candidate.contains('.') {
+			short := candidate.all_after_last('.')
+			if short.len > 0 && short !in decl_receivers {
+				decl_receivers << short
+			}
+		} else if decl.module.len > 0 && decl.module !in ['main', 'builtin'] {
+			qualified := '${decl.module}.${candidate}'
+			if qualified !in decl_receivers {
+				decl_receivers << qualified
+			}
+		}
+	}
+	for call_receiver in call_receivers {
+		if call_receiver in decl_receivers {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) generic_static_assoc_call_decl_key(base_id flat.NodeId, method string, decls map[string]GenericFnDecl) ?string {
@@ -2998,23 +3060,24 @@ fn generic_flat_receiver_matches(receiver string, decl_receiver string, module_n
 	return false
 }
 
-fn (t &Transformer) generic_resolved_call_decl_key(resolved string, callee flat.Node, module_name string, decls map[string]GenericFnDecl) ?string {
-	if callee.kind == .ident
-		&& t.local_concrete_fn_shadows_generic(callee.value, module_name, decls) {
-		return none
-	}
+fn (t &Transformer) generic_resolved_call_decl_key(resolved string, callee flat.Node, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?string {
 	key := generic_fn_decl_base_value(resolved)
-	if key in decls {
+	if decl := decls[key] {
+		if !t.resolved_generic_decl_matches_callee_receiver(callee, node, decl, module_name) {
+			return none
+		}
 		return key
-	}
-	if callee.kind == .ident && t.resolved_call_is_concrete_fn(resolved, key) {
-		return none
 	}
 	if flat_key := t.generic_flat_receiver_call_decl_key(key, module_name, decls) {
 		return flat_key
 	}
 	if flat_key := t.generic_flat_receiver_call_decl_key(resolved, module_name, decls) {
 		return flat_key
+	}
+	if callee.kind == .ident
+		&& (t.local_concrete_fn_shadows_generic(callee.value, module_name, decls)
+		|| t.resolved_call_is_concrete_fn(resolved, key)) {
+		return none
 	}
 	resolved_mod := if key.contains('.') { key.all_before_last('.') } else { module_name }
 	short := key.all_after_last('.')
@@ -3039,6 +3102,73 @@ fn (t &Transformer) generic_resolved_call_decl_key(resolved string, callee flat.
 		}
 	}
 	return none
+}
+
+fn (t &Transformer) resolved_generic_decl_matches_callee_receiver(callee flat.Node, node flat.Node, decl GenericFnDecl, module_name string) bool {
+	if !decl.node.value.contains('.') {
+		return true
+	}
+	mut base_id := flat.empty_node
+	if callee.kind == .selector && callee.children_count > 0 {
+		base_id = t.a.child(&callee, 0)
+	} else if callee.kind == .ident && node.children_count > 1 {
+		base_id = t.a.child(&node, 1)
+	} else {
+		return true
+	}
+	mut base_type := t.syntactic_static_call_return_type(base_id)
+	if base_type.len == 0 {
+		base_type = t.node_type(base_id)
+	}
+	if base_type.len == 0 {
+		return true
+	}
+	return t.generic_receiver_decl_matches_type(base_type, decl, module_name)
+}
+
+fn (t &Transformer) syntactic_static_call_return_type(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return ''
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .call || node.children_count == 0 {
+		return ''
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return ''
+	}
+	base := t.a.child_node(callee, 0)
+	mut owner := ''
+	if base.kind == .ident {
+		owner = base.value
+	} else if base.kind == .selector && base.children_count > 0 {
+		inner := t.a.child_node(base, 0)
+		if inner.kind == .ident {
+			owner = '${inner.value}.${base.value}'
+		}
+	}
+	if owner.len == 0 {
+		return ''
+	}
+	name := '${owner}.${callee.value}'
+	for candidate in [name, transform_qualified_fn_name(t.cur_module, name)] {
+		if ret := t.fn_ret_types[candidate] {
+			return ret
+		}
+		if !isnil(t.tc) {
+			if typ := t.tc.fn_ret_types[candidate] {
+				ret_name := typ.name()
+				if ret_name.len > 0 && ret_name != 'unknown' && ret_name != 'void' {
+					return ret_name
+				}
+			}
+		}
+	}
+	if callee.value == 'new' {
+		return owner
+	}
+	return ''
 }
 
 fn (t &Transformer) resolved_call_is_concrete_fn(resolved string, key string) bool {
@@ -4167,6 +4297,12 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	} else {
 		t.subst_node_value(node, args)
 	}
+	if is_root && t.cur_module.len > 0 {
+		t.a.add_node(flat.Node{
+			kind:  .module_decl
+			value: t.cur_module
+		})
+	}
 	clone_id := t.a.add_node(flat.Node{
 		kind:           node.kind
 		kind_id:        node.kind_id
@@ -4381,9 +4517,6 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 	is_receiver := t.generic_decl_is_receiver_method(decl.node)
 		&& !t.generic_call_is_static_assoc_selector(source, decl)
 	if t.should_skip_generic_call_specialization(decl_key) || t.call_has_source_generic_args(source) {
-		return
-	}
-	if is_receiver && !t.generic_decl_has_method_level_params(decl) {
 		return
 	}
 	callee_id := t.a.child(&clone, 0)
@@ -5229,7 +5362,8 @@ fn (t &Transformer) resolve_substituted_type_text(typ string) string {
 	if parsed is types.Unknown {
 		return typ
 	}
-	return parsed.name()
+	resolved := parsed.name()
+	return resolved
 }
 
 fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) string {
@@ -5315,6 +5449,14 @@ fn generic_type_arg_short(type_arg string) string {
 	// deterministic sanitized fragment instead.
 	if clean.contains('(') || clean.contains(' ') {
 		return sanitize_type_name_fragment(clean)
+	}
+	base, args, ok := generic_app_parts(clean)
+	if ok {
+		mut parts := [generic_type_arg_short(base)]
+		for arg in args {
+			parts << generic_type_arg_short(arg)
+		}
+		return parts.join('_')
 	}
 	if clean.contains('.') {
 		short := clean.all_after_last('.')

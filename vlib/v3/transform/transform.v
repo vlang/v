@@ -4570,6 +4570,11 @@ fn (t &Transformer) infer_typed_optional_target(optional_target string, expr_typ
 		if value_type.contains('.') && base == value_type.all_after_last('.') {
 			return '?${value_type}'
 		}
+		if value_type.contains('.') && base.contains('.')
+			&& base.all_after_last('.') == value_type.all_after_last('.')
+			&& !t.is_known_type_name(base) && t.is_known_type_name(value_type) {
+			return '?${value_type}'
+		}
 		return optional_target
 	}
 	if optional_target != 'Optional' || isnil(t.tc) {
@@ -9314,9 +9319,12 @@ fn (t &Transformer) stmt_value_type(id flat.NodeId) string {
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
+		.return_stmt {
+			return ''
+		}
 		.expr_stmt {
 			if node.children_count > 0 {
-				return t.node_type(t.a.child(&node, node.children_count - 1))
+				return t.expr_value_type(t.a.child(&node, node.children_count - 1))
 			}
 			return ''
 		}
@@ -9330,7 +9338,50 @@ fn (t &Transformer) stmt_value_type(id flat.NodeId) string {
 			return ''
 		}
 		else {
-			return t.node_type(id)
+			return t.expr_value_type(id)
+		}
+	}
+}
+
+fn (t &Transformer) expr_value_type(id flat.NodeId) string {
+	if int(id) < 0 {
+		return ''
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .call {
+		if ret := t.ierror_call_return_type(node) {
+			return ret
+		}
+		call_ret := t.get_call_return_type(id, node)
+		if call_ret.len > 0 && call_ret !in ['unknown', 'void'] {
+			return call_ret
+		}
+	}
+	return t.node_type(id)
+}
+
+fn (t &Transformer) ierror_call_return_type(node flat.Node) ?string {
+	if node.kind != .call || node.children_count == 0 {
+		return none
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.children_count == 0 {
+		return none
+	}
+	base_type := t.node_type(t.a.child(fn_node, 0))
+	clean_base := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+	if clean_base !in ['IError', 'builtin.IError'] {
+		return none
+	}
+	match fn_node.value {
+		'msg', 'str' {
+			return 'string'
+		}
+		'code' {
+			return 'int'
+		}
+		else {
+			return none
 		}
 	}
 }

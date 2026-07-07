@@ -685,7 +685,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		})
 	}
 	call_name := t.call_name_for_node(id, node)
-	mut params := t.call_param_types(call_name)
+	mut params := t.call_param_types_for_node(call_name, node)
 	if concrete_params := t.concrete_generic_call_param_types(id, node) {
 		params = concrete_params.clone()
 	}
@@ -929,7 +929,13 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 		return 0
 	}
 	fn_node := t.a.child_node(&node, 0)
-	if fn_node.kind != .selector || fn_node.children_count == 0 {
+	if fn_node.kind != .selector {
+		return 0
+	}
+	if fn_node.children_count == 0 {
+		if t.selector_call_name_has_receiver_param(call_name, fn_node.value, params) {
+			return 1
+		}
 		return 0
 	}
 	base_id := t.a.child(fn_node, 0)
@@ -958,6 +964,26 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 	return 0
 }
 
+fn (t &Transformer) selector_call_name_has_receiver_param(call_name string, method string, params []types.Type) bool {
+	if params.len == 0 || method.len == 0 || call_name.len == 0
+		|| !call_name.ends_with('.${method}') {
+		return false
+	}
+	first_type := t.normalize_type_alias(params[0].name())
+	clean_first := if first_type.starts_with('&') { first_type[1..] } else { first_type }
+	if receiver_param_matches_method_name(clean_first, call_name) {
+		return true
+	}
+	receiver := call_name.all_before_last('.')
+	clean_receiver := if receiver.starts_with('&') { receiver[1..] } else { receiver }
+	if receiver_param_types_match(clean_first, clean_receiver)
+		|| t.normalize_type_alias(clean_first) == t.normalize_type_alias(clean_receiver)
+		|| clean_first.all_after_last('.') == clean_receiver.all_after_last('.') {
+		return true
+	}
+	return false
+}
+
 // static_assoc_fn_name returns the name of the static associated function a selector
 // call resolves to, if the base names a type (`Type.fn` or `module.Type.fn`) and that
 // function exists. Such calls take no receiver, so the base must not be prepended as an
@@ -969,6 +995,15 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 	base := t.a.nodes[int(base_id)]
 	if base.kind == .ident {
 		if base.value == 'C' || t.is_import_alias_ident(base_id) {
+			return none
+		}
+		if t.var_type(base.value).len > 0 {
+			return none
+		}
+		base_type := t.node_type(base_id)
+		clean_base_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+		if clean_base_type.len > 0 && clean_base_type != 'unknown' && clean_base_type != 'void'
+			&& base.value != clean_base_type && base.value != clean_base_type.all_after_last('.') {
 			return none
 		}
 		for type_name in t.static_assoc_type_candidates(base.value) {
@@ -997,7 +1032,19 @@ fn (t &Transformer) is_import_alias_ident(id flat.NodeId) bool {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	return node.kind == .ident && node.value in t.tc.imports
+	if node.kind != .ident || node.value !in t.tc.imports {
+		return false
+	}
+	if t.var_type(node.value).len > 0 {
+		return false
+	}
+	if typ := t.tc.expr_type(id) {
+		name := typ.name()
+		if name.len > 0 && name != 'unknown' && name != 'void' {
+			return false
+		}
+	}
+	return true
 }
 
 fn (t &Transformer) static_assoc_type_candidates(type_ident string) []string {
@@ -1065,8 +1112,84 @@ fn (t &Transformer) call_param_types(call_name string) []types.Type {
 	if call_name.len == 0 || isnil(t.tc) {
 		return []types.Type{}
 	}
+	if params := t.call_param_types_from_decl(call_name) {
+		return params
+	}
 	params := t.tc.fn_param_types[call_name] or { return []types.Type{} }
 	return params
+}
+
+fn (t &Transformer) call_param_types_for_node(call_name string, node flat.Node) []types.Type {
+	if node.children_count > 0 {
+		fn_node := t.a.child_node(&node, 0)
+		if fn_node.kind == .selector && fn_node.children_count > 0 {
+			base_id := t.a.child(fn_node, 0)
+			method_name := t.resolve_receiver_method_name(base_id, fn_node.value)
+			if method_name.len > 0 {
+				if params := t.call_param_types_from_decl(method_name) {
+					return params
+				}
+			}
+			mut base_type := t.lvalue_type(base_id)
+			if base_type.starts_with('&') {
+				base_type = base_type[1..]
+			}
+			for candidate in ['${base_type}.${fn_node.value}',
+				'${t.normalize_type_in_module(base_type, t.cur_module)}.${fn_node.value}'] {
+				if params := t.call_param_types_from_decl(candidate) {
+					return params
+				}
+			}
+		}
+	}
+	return t.call_param_types(call_name)
+}
+
+fn (t &Transformer) call_param_types_from_decl(call_name string) ?[]types.Type {
+	if call_name.len == 0 || isnil(t.tc) {
+		return none
+	}
+	mut module_name := ''
+	for node in t.a.nodes {
+		if node.kind == .module_decl {
+			module_name = node.value
+			continue
+		}
+		if node.kind != .fn_decl {
+			continue
+		}
+		if !fn_decl_name_matches_call(node.value, module_name, call_name) {
+			continue
+		}
+		mut params := []types.Type{}
+		for i in 0 .. node.children_count {
+			child := t.a.child_node(&node, i)
+			if child.kind != .param {
+				continue
+			}
+			mut param_type := t.tc.parse_type(child.typ)
+			if param_type is types.Unknown || (param_type is types.Void && child.typ != 'void') {
+				return none
+			}
+			if (child.is_mut || child.typ.starts_with('mut ')
+				|| child.typ.starts_with('&')) && param_type !is types.Pointer {
+				param_type = types.Type(types.Pointer{
+					base_type: param_type
+				})
+			}
+			params << param_type
+		}
+		return params
+	}
+	return none
+}
+
+fn fn_decl_name_matches_call(name string, module_name string, call_name string) bool {
+	if name == call_name || c_name(name) == call_name {
+		return true
+	}
+	qname := transform_qualified_fn_name(module_name, name)
+	return qname == call_name || c_name(qname) == call_name
 }
 
 // call_is_variadic updates call is variadic state for Transformer.

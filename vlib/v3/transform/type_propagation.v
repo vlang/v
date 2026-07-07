@@ -680,9 +680,7 @@ fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 			mut normalized_arg := t.normalize_field_type(arg, owner_type)
 			if field_base.contains('.') {
 				field_mod := field_base.all_before_last('.')
-				if normalized_arg.starts_with('${field_mod}.') {
-					normalized_arg = normalized_arg.all_after_last('.')
-				}
+				normalized_arg = strip_field_module_prefix_from_type(normalized_arg, field_mod)
 			}
 			normalized_args << normalized_arg
 		}
@@ -815,6 +813,65 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 		}
 	}
 	return typ
+}
+
+fn strip_field_module_prefix_from_type(typ string, module_name string) string {
+	clean := typ.trim_space()
+	if clean.len == 0 || module_name.len == 0 {
+		return clean
+	}
+	if clean.starts_with('&') {
+		return '&' + strip_field_module_prefix_from_type(clean[1..], module_name)
+	}
+	if clean.starts_with('mut ') {
+		return 'mut ' + strip_field_module_prefix_from_type(clean[4..], module_name)
+	}
+	if clean.starts_with('?') || clean.starts_with('!') {
+		return clean[..1] + strip_field_module_prefix_from_type(clean[1..], module_name)
+	}
+	if clean.starts_with('...') {
+		return '...' + strip_field_module_prefix_from_type(clean[3..], module_name)
+	}
+	if clean.starts_with('[]') {
+		return '[]' + strip_field_module_prefix_from_type(clean[2..], module_name)
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			key := strip_field_module_prefix_from_type(clean[4..bracket_end], module_name)
+			value := strip_field_module_prefix_from_type(clean[bracket_end + 1..], module_name)
+			return 'map[${key}]${value}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return clean[..bracket_end + 1] +
+				strip_field_module_prefix_from_type(clean[bracket_end + 1..], module_name)
+		}
+	}
+	base, args, ok := generic_app_parts(clean)
+	if ok {
+		stripped_base := strip_field_module_prefix_from_base(base, module_name)
+		mut stripped_args := []string{cap: args.len}
+		for arg in args {
+			stripped_args << strip_field_module_prefix_from_type(arg, module_name)
+		}
+		return '${stripped_base}[${stripped_args.join(', ')}]'
+	}
+	return strip_field_module_prefix_from_base(clean, module_name)
+}
+
+fn strip_field_module_prefix_from_base(name string, module_name string) string {
+	prefix := '${module_name}.'
+	if !name.starts_with(prefix) {
+		return name
+	}
+	short := name[prefix.len..]
+	if short.starts_with('Array_') {
+		return name
+	}
+	return short
 }
 
 fn (t &Transformer) is_known_type_name(typ string) bool {

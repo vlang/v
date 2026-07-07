@@ -268,7 +268,7 @@ fn launch_v3_ownership_compiler(is_verbose bool, args []string) {
 		println('Launching ${tool_name}: ${os.quoted_path(v3_exe)} ${quoted_args}')
 	}
 	os.setenv('VCHILD', 'true', true)
-	os.setenv('VEXE', os.real_path(v3_exe), true)
+	os.setenv('VEXE', os.real_path(vexe), true)
 	res := os.system('${os.quoted_path(v3_exe)} ${quoted_args}')
 	exit(res)
 }
