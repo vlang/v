@@ -326,10 +326,68 @@ fn (mut t Transformer) try_expand_if_expr_value(id flat.NodeId, node flat.Node) 
 		return none
 	}
 	mut result_type := t.if_expr_result_type(id, node)
+	if guard_result_type := t.if_expr_guard_result_type(node) {
+		result_type = guard_result_type
+	}
 	if result_type.len == 0 || result_type == 'void' {
 		return none
 	}
 	return t.try_expand_if_expr_value_for_type(id, node, result_type)
+}
+
+fn (mut t Transformer) if_expr_guard_result_type(node flat.Node) ?string {
+	if node.kind != .if_expr || node.children_count < 3 {
+		return none
+	}
+	cond_id := t.a.child(&node, 0)
+	cond := t.a.nodes[int(cond_id)]
+	if cond.kind != .decl_assign || cond.children_count < 2 {
+		return none
+	}
+	lhs_id := t.a.child(&cond, 0)
+	rhs_id := t.a.child(&cond, 1)
+	lhs := t.a.nodes[int(lhs_id)]
+	if lhs.kind != .ident || lhs.value.len == 0 {
+		return none
+	}
+	mut rhs_type := t.optional_result_expr_type_name(rhs_id)
+	if !t.is_optional_type_name(rhs_type) {
+		return none
+	}
+	rhs_type = t.qualify_optional_type(rhs_type)
+	value_type := t.optional_base_type(rhs_type)
+	saved_var_types := t.var_types.clone()
+	if lhs.value != '_' && value_type != 'void' {
+		t.set_var_type(lhs.value, value_type)
+	}
+	then_type := t.stmt_value_type(t.a.child(&node, 1))
+	t.restore_var_types(saved_var_types)
+
+	t.set_var_type('err', 'IError')
+	else_id := t.a.child(&node, 2)
+	else_node := t.a.nodes[int(else_id)]
+	else_type := if else_node.kind == .if_expr {
+		if nested := t.if_expr_guard_result_type(else_node) {
+			nested
+		} else {
+			t.if_expr_result_type(else_id, else_node)
+		}
+	} else {
+		t.stmt_value_type(else_id)
+	}
+	t.restore_var_types(saved_var_types)
+
+	mut result := ''
+	if then_type.len > 0 {
+		result = t.merge_if_expr_types(result, t.normalize_type_alias(then_type))
+	}
+	if else_type.len > 0 {
+		result = t.merge_if_expr_types(result, t.normalize_type_alias(else_type))
+	}
+	if result.len == 0 || result == 'void' || result == 'unknown' {
+		return none
+	}
+	return result
 }
 
 // try_expand_if_expr_value_for_type
@@ -520,6 +578,9 @@ fn (t &Transformer) stmt_value_type_with_smartcasts(id flat.NodeId, contexts []S
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
+		.return_stmt {
+			return ''
+		}
 		.expr_stmt {
 			if node.children_count > 0 {
 				return t.node_type_with_smartcasts(t.a.child(&node, node.children_count - 1),
@@ -782,11 +843,20 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 
 	else_id := t.a.child(&if_node, 2)
 	else_node := t.a.nodes[int(else_id)]
-	else_block := if else_node.kind == .if_expr {
+	err_value := t.make_selector(t.make_ident(tmp_name), 'err', 'IError')
+	err_decl := t.make_decl_assign_typed('err', err_value, 'IError')
+	saved_else_var_types := t.var_types.clone()
+	t.set_var_type('err', 'IError')
+	else_block0 := if else_node.kind == .if_expr {
 		t.make_block(t.build_if_value_chain(else_id, target_name, target_type))
 	} else {
 		t.if_value_branch_block(else_id, target_name, target_type)
 	}
+	t.restore_var_types(saved_else_var_types)
+	mut else_children := []flat.NodeId{cap: int(t.a.nodes[int(else_block0)].children_count) + 1}
+	else_children << err_decl
+	else_children << t.a.children_of(&t.a.nodes[int(else_block0)])
+	else_block := t.make_block(else_children)
 	result << t.make_if(ok_cond, then_block, else_block)
 	return result
 }

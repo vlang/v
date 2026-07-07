@@ -685,7 +685,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		})
 	}
 	call_name := t.call_name_for_node(id, node)
-	mut params := t.call_param_types(call_name)
+	mut params := t.call_param_types_for_node(call_name, node)
 	if concrete_params := t.concrete_generic_call_param_types(id, node) {
 		params = concrete_params.clone()
 	}
@@ -929,7 +929,13 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 		return 0
 	}
 	fn_node := t.a.child_node(&node, 0)
-	if fn_node.kind != .selector || fn_node.children_count == 0 {
+	if fn_node.kind != .selector {
+		return 0
+	}
+	if fn_node.children_count == 0 {
+		if t.selector_call_name_has_receiver_param(call_name, fn_node.value, params) {
+			return 1
+		}
 		return 0
 	}
 	base_id := t.a.child(fn_node, 0)
@@ -958,6 +964,26 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 	return 0
 }
 
+fn (t &Transformer) selector_call_name_has_receiver_param(call_name string, method string, params []types.Type) bool {
+	if params.len == 0 || method.len == 0 || call_name.len == 0
+		|| !call_name.ends_with('.${method}') {
+		return false
+	}
+	first_type := t.normalize_type_alias(params[0].name())
+	clean_first := if first_type.starts_with('&') { first_type[1..] } else { first_type }
+	if receiver_param_matches_method_name(clean_first, call_name) {
+		return true
+	}
+	receiver := call_name.all_before_last('.')
+	clean_receiver := if receiver.starts_with('&') { receiver[1..] } else { receiver }
+	if receiver_param_types_match(clean_first, clean_receiver)
+		|| t.normalize_type_alias(clean_first) == t.normalize_type_alias(clean_receiver)
+		|| clean_first.all_after_last('.') == clean_receiver.all_after_last('.') {
+		return true
+	}
+	return false
+}
+
 // static_assoc_fn_name returns the name of the static associated function a selector
 // call resolves to, if the base names a type (`Type.fn` or `module.Type.fn`) and that
 // function exists. Such calls take no receiver, so the base must not be prepended as an
@@ -969,6 +995,15 @@ fn (t &Transformer) static_assoc_fn_name(base_id flat.NodeId, method string) ?st
 	base := t.a.nodes[int(base_id)]
 	if base.kind == .ident {
 		if base.value == 'C' || t.is_import_alias_ident(base_id) {
+			return none
+		}
+		if t.var_type(base.value).len > 0 {
+			return none
+		}
+		base_type := t.node_type(base_id)
+		clean_base_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+		if clean_base_type.len > 0 && clean_base_type != 'unknown' && clean_base_type != 'void'
+			&& base.value != clean_base_type && base.value != clean_base_type.all_after_last('.') {
 			return none
 		}
 		for type_name in t.static_assoc_type_candidates(base.value) {
@@ -997,7 +1032,19 @@ fn (t &Transformer) is_import_alias_ident(id flat.NodeId) bool {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	return node.kind == .ident && node.value in t.tc.imports
+	if node.kind != .ident || node.value !in t.tc.imports {
+		return false
+	}
+	if t.var_type(node.value).len > 0 {
+		return false
+	}
+	if typ := t.tc.expr_type(id) {
+		name := typ.name()
+		if name.len > 0 && name != 'unknown' && name != 'void' {
+			return false
+		}
+	}
+	return true
 }
 
 fn (t &Transformer) static_assoc_type_candidates(type_ident string) []string {
@@ -1061,12 +1108,228 @@ fn (mut t Transformer) try_lower_static_assoc_call(id flat.NodeId, node flat.Nod
 }
 
 // call_param_types updates call param types state for Transformer.
-fn (t &Transformer) call_param_types(call_name string) []types.Type {
+fn (mut t Transformer) call_param_types(call_name string) []types.Type {
 	if call_name.len == 0 || isnil(t.tc) {
 		return []types.Type{}
 	}
+	if params := t.call_param_types_from_decl(call_name) {
+		return params
+	}
 	params := t.tc.fn_param_types[call_name] or { return []types.Type{} }
 	return params
+}
+
+fn (mut t Transformer) call_param_types_for_node(call_name string, node flat.Node) []types.Type {
+	if node.children_count > 0 {
+		fn_node := t.a.child_node(&node, 0)
+		if fn_node.kind == .selector && fn_node.children_count > 0 {
+			base_id := t.a.child(fn_node, 0)
+			method_name := t.resolve_receiver_method_name(base_id, fn_node.value)
+			if method_name.len > 0 {
+				if params := t.call_param_types_from_decl(method_name) {
+					return params
+				}
+			}
+			mut base_type := t.lvalue_type(base_id)
+			if base_type.starts_with('&') {
+				base_type = base_type[1..]
+			}
+			for candidate in ['${base_type}.${fn_node.value}',
+				'${t.normalize_type_in_module(base_type, t.cur_module)}.${fn_node.value}'] {
+				if params := t.call_param_types_from_decl(candidate) {
+					return params
+				}
+			}
+		}
+	}
+	return t.call_param_types(call_name)
+}
+
+fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Type {
+	if call_name.len == 0 || isnil(t.tc) {
+		return none
+	}
+	mut file_name := ''
+	mut module_name := ''
+	for node in t.a.nodes {
+		if node.kind == .file {
+			file_name = node.value
+			module_name = t.tc.file_modules[file_name] or { '' }
+			continue
+		}
+		if node.kind == .module_decl {
+			module_name = node.value
+			continue
+		}
+		if node.kind != .fn_decl {
+			continue
+		}
+		if !fn_decl_name_matches_call(node.value, module_name, call_name) {
+			continue
+		}
+		mut params := []types.Type{}
+		for i in 0 .. node.children_count {
+			child := t.a.child_node(&node, i)
+			if child.kind != .param {
+				continue
+			}
+			mut param_type := t.parse_decl_param_type(child.typ, module_name, file_name)
+			if param_type is types.Unknown || (param_type is types.Void && child.typ != 'void') {
+				return none
+			}
+			if (child.is_mut || child.typ.starts_with('mut ')
+				|| child.typ.starts_with('&')) && param_type !is types.Pointer {
+				param_type = types.Type(types.Pointer{
+					base_type: param_type
+				})
+			}
+			params << param_type
+		}
+		return params
+	}
+	return none
+}
+
+fn (mut t Transformer) parse_decl_param_type(typ string, module_name string, file_name string) types.Type {
+	scoped := t.decl_param_type_in_module(typ, module_name)
+	old_file := t.tc.cur_file
+	old_module := t.tc.cur_module
+	t.tc.cur_file = file_name
+	t.tc.cur_module = module_name
+	parsed := t.tc.parse_type(scoped)
+	t.tc.cur_file = old_file
+	t.tc.cur_module = old_module
+	return parsed
+}
+
+fn (t &Transformer) decl_param_type_in_module(typ string, module_name string) string {
+	clean := typ.trim_space()
+	if clean.len == 0 {
+		return clean
+	}
+	if clean.starts_with('&') {
+		return '&' + t.decl_param_type_in_module(clean[1..], module_name)
+	}
+	if clean.starts_with('mut ') {
+		return 'mut ' + t.decl_param_type_in_module(clean[4..], module_name)
+	}
+	if clean.starts_with('shared ') {
+		return 'shared ' + t.decl_param_type_in_module(clean[7..], module_name)
+	}
+	if clean.starts_with('atomic ') {
+		return 'atomic ' + t.decl_param_type_in_module(clean[7..], module_name)
+	}
+	if clean.starts_with('?') {
+		return '?' + t.decl_param_type_in_module(clean[1..], module_name)
+	}
+	if clean.starts_with('!') {
+		return '!' + t.decl_param_type_in_module(clean[1..], module_name)
+	}
+	if clean.starts_with('...') {
+		return '...' + t.decl_param_type_in_module(clean[3..], module_name)
+	}
+	if clean.starts_with('[]') {
+		return '[]' + t.decl_param_type_in_module(clean[2..], module_name)
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			key := t.decl_param_type_in_module(clean[4..bracket_end], module_name)
+			value := t.decl_param_type_in_module(clean[bracket_end + 1..], module_name)
+			return 'map[${key}]${value}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return clean[..bracket_end + 1] + t.decl_param_type_in_module(clean[bracket_end +
+				1..], module_name)
+		}
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		if scoped_fn_type := t.decl_fn_type_in_module(clean, module_name) {
+			return scoped_fn_type
+		}
+		return clean
+	}
+	base, args, ok := generic_app_parts(clean)
+	if ok {
+		mut scoped_args := []string{}
+		for arg in args {
+			scoped_args << t.decl_param_type_in_module(arg, module_name)
+		}
+		scoped_base := t.decl_param_type_in_module(base, module_name)
+		return scoped_base + '[' + scoped_args.join(', ') + ']'
+	}
+	if clean.contains('.') || module_name.len == 0 || module_name == 'main'
+		|| module_name == 'builtin' || types.is_builtin_type_name(clean)
+		|| is_generic_placeholder_type_name(clean) {
+		return clean
+	}
+	qualified := '${module_name}.${clean}'
+	if t.type_authority_has(qualified) {
+		return qualified
+	}
+	if !isnil(t.tc) && (qualified in t.tc.type_aliases || qualified in t.tc.structs
+		|| qualified in t.tc.enum_names || qualified in t.tc.sum_types
+		|| qualified in t.tc.interface_names) {
+		return qualified
+	}
+	return clean
+}
+
+fn (t &Transformer) decl_fn_type_in_module(typ string, module_name string) ?string {
+	params, ret := fn_type_text_parts(typ) or { return none }
+	mut scoped_params := []string{cap: params.len}
+	for param in params {
+		scoped_params << t.decl_fn_type_param_in_module(param, module_name)
+	}
+	if ret.len > 0 {
+		return 'fn(${scoped_params.join(', ')}) ${t.decl_param_type_in_module(ret, module_name)}'
+	}
+	return 'fn(${scoped_params.join(', ')})'
+}
+
+fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name string) string {
+	mut text := param.trim_space()
+	mut is_mut := false
+	if text.starts_with('mut ') {
+		is_mut = true
+		text = text[4..].trim_space()
+	}
+	space := generic_top_level_space_index(text)
+	if space > 0 {
+		head := text[..space].trim_space()
+		tail := text[space + 1..].trim_space()
+		if generic_fn_type_param_head_is_name(head, tail) {
+			text = tail
+		}
+	}
+	for marker in ['[]', '&', 'map[', 'fn(', 'fn ('] {
+		marker_idx := text.index(marker) or { continue }
+		if marker_idx <= 0 {
+			continue
+		}
+		head := text[..marker_idx].trim_space()
+		tail := text[marker_idx..].trim_space()
+		if generic_fn_type_param_head_is_name(head, tail) {
+			text = tail
+		}
+		break
+	}
+	scoped := t.decl_param_type_in_module(text, module_name)
+	if is_mut && scoped.len > 0 && !scoped.starts_with('&') {
+		return '&' + scoped
+	}
+	return scoped
+}
+
+fn fn_decl_name_matches_call(name string, module_name string, call_name string) bool {
+	if name == call_name || c_name(name) == call_name {
+		return true
+	}
+	qname := transform_qualified_fn_name(module_name, name)
+	return qname == call_name || c_name(qname) == call_name
 }
 
 // call_is_variadic updates call is variadic state for Transformer.

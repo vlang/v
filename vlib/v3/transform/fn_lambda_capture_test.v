@@ -66,3 +66,14 @@ fn test_lambda_capture_collector_scans_callee_and_range_bound() {
 	assert 'i' !in capture_names
 	assert 'n' !in capture_names
 }
+
+fn test_decl_param_type_in_module_qualifies_fn_type_params() {
+	t := Transformer{
+		structs: {
+			'callee.S':      StructInfo{}
+			'callee.Result': StructInfo{}
+		}
+	}
+	assert t.decl_param_type_in_module('fn(S) int', 'callee') == 'fn(callee.S) int'
+	assert t.decl_param_type_in_module('fn(cb fn(S) Result) Result', 'callee') == 'fn(fn(callee.S) callee.Result) callee.Result'
+}

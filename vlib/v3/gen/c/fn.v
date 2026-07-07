@@ -1192,6 +1192,14 @@ fn generic_receiver_type_arg_short(type_arg string) string {
 	if clean.contains('(') || clean.contains(' ') {
 		return sanitize_generic_receiver_type_fragment(clean)
 	}
+	base, args, ok := shared_generic_app_parts(clean)
+	if ok {
+		mut parts := [generic_receiver_type_arg_short(base)]
+		for arg in args {
+			parts << generic_receiver_type_arg_short(arg)
+		}
+		return parts.join('_')
+	}
 	if clean.contains('.') {
 		return clean.all_after_last('.')
 	}
@@ -5161,6 +5169,18 @@ fn (mut g FlatGen) param_types_for(name string, fallback string) []types.Type {
 }
 
 fn (mut g FlatGen) param_types_for_uncached(name string, fallback string) []types.Type {
+	if name.contains('__') {
+		dotted_name := name.replace('__', '.')
+		dotted_decl_types := g.param_types_from_decl(dotted_name, dotted_name)
+		for candidate in [dotted_name, dotted_name.all_after_last('.')] {
+			if params := g.tc.fn_param_types[candidate] {
+				return merge_decl_pointer_param_abi(params, dotted_decl_types)
+			}
+		}
+		if dotted_decl_types.len > 0 {
+			return dotted_decl_types
+		}
+	}
 	decl_types := g.param_types_from_decl(name, fallback)
 	for candidate in [name, fallback] {
 		if params := g.tc.fn_param_types[candidate] {
@@ -5173,6 +5193,9 @@ fn (mut g FlatGen) param_types_for_uncached(name string, fallback string) []type
 			}
 		}
 	}
+	if decl_types.len > 0 {
+		return decl_types
+	}
 	if name.contains('__') {
 		short_name := name.all_after_last('__')
 		if params := g.param_types_by_short[short_name] {
@@ -5184,9 +5207,6 @@ fn (mut g FlatGen) param_types_for_uncached(name string, fallback string) []type
 	}
 	if interface_types := g.interface_method_param_types(name) {
 		return interface_types
-	}
-	if decl_types.len > 0 {
-		return decl_types
 	}
 	if name.contains('.') {
 		// O(1) lookup via the precomputed short-name index instead of scanning the whole
@@ -5210,7 +5230,10 @@ fn merge_decl_pointer_param_abi(params []types.Type, decl_types []types.Type) []
 	mut merged := params.clone()
 	mut changed := false
 	for i, decl_type in decl_types {
-		if decl_type is types.Pointer && merged[i] !is types.Pointer {
+		if decl_type is types.Unknown || decl_type is types.Void {
+			continue
+		}
+		if decl_type.name() != merged[i].name() {
 			merged[i] = decl_type
 			changed = true
 		}
@@ -7177,7 +7200,8 @@ fn (g &FlatGen) addressed_byvalue_arg(arg_node flat.Node) ?flat.NodeId {
 	}
 	child_id := g.a.child(&arg_node, 0)
 	child := g.a.nodes[int(child_id)]
-	if child.kind in [.struct_init, .cast_expr] {
+	if child.kind in [.struct_init, .cast_expr, .call]
+		|| (child.kind == .index && child.value == 'range') {
 		return child_id
 	}
 	return none
@@ -8511,7 +8535,7 @@ fn (mut g FlatGen) fn_ptr_typedef_type(typ string, mut emitted map[string]bool) 
 	if tagged := fn_ptr_typedef_generic_placeholder_struct_tag(clean) {
 		return tagged
 	}
-	if fn_ptr_typedef_is_generic_placeholder(clean) {
+	if g.fn_ptr_typedef_is_generic_placeholder(clean) {
 		return 'int'
 	}
 	return clean
@@ -8529,13 +8553,17 @@ fn fn_ptr_typedef_normalized(typ string) string {
 	return 'fn_ptr:${payload}|void'
 }
 
-fn fn_ptr_typedef_is_generic_placeholder(typ string) bool {
+fn (g &FlatGen) fn_ptr_typedef_is_generic_placeholder(typ string) bool {
 	mut clean := trimmed_space(typ)
 	for clean.ends_with('*') {
 		clean = clean[..clean.len - 1].trim_space()
 	}
 	if clean.starts_with('struct ') {
 		clean = clean['struct '.len..].trim_space()
+	}
+	if g.type_name_known(clean)
+		|| (clean.contains('__') && g.type_name_known(clean.replace('__', '.'))) {
+		return false
 	}
 	short := if clean.contains('__') {
 		clean.all_after_last('__')
@@ -8544,10 +8572,13 @@ fn fn_ptr_typedef_is_generic_placeholder(typ string) bool {
 	} else {
 		clean
 	}
-	if short in ['T', 'U', 'V', 'K', 'R'] {
-		return true
+	if !codegen_generic_placeholder_name(short) {
+		return false
 	}
-	return short.len == 1 && short[0] >= `A` && short[0] <= `Z`
+	if g.type_name_known(short) {
+		return false
+	}
+	return true
 }
 
 fn fn_ptr_typedef_generic_placeholder_struct_tag(typ string) ?string {

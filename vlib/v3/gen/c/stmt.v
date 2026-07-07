@@ -901,7 +901,8 @@ fn (mut g FlatGen) pointer_value_return_expr_string(ret_id flat.NodeId, expected
 }
 
 fn (mut g FlatGen) write_pointer_value_return_expr(ret_id flat.NodeId, expected types.Type) bool {
-	actual := g.usable_expr_type(ret_id)
+	source_id := g.pointer_value_return_source_id(ret_id)
+	actual := g.usable_expr_type(source_id)
 	expected0 := if expected is types.Alias { expected.base_type } else { expected }
 	if expected0 is types.Pointer {
 		return false
@@ -909,18 +910,40 @@ fn (mut g FlatGen) write_pointer_value_return_expr(ret_id flat.NodeId, expected 
 	if actual is types.Pointer {
 		if g.type_names_match(actual.base_type, expected0) {
 			g.write('*(')
-			g.gen_expr(ret_id)
+			g.gen_expr(source_id)
 			g.write(')')
 			return true
 		}
 	}
 	if pointer_value_type_names_match(actual.name(), expected0.name()) {
 		g.write('*(')
-		g.gen_expr(ret_id)
+		g.gen_expr(source_id)
 		g.write(')')
 		return true
 	}
 	return false
+}
+
+fn (g &FlatGen) pointer_value_return_source_id(id flat.NodeId) flat.NodeId {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return id
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.expr_stmt, .paren {
+			if node.children_count > 0 {
+				return g.pointer_value_return_source_id(g.a.child(&node, 0))
+			}
+		}
+		.block {
+			if node.children_count == 1 {
+				return g.pointer_value_return_source_id(g.a.child(&node, 0))
+			}
+		}
+		else {}
+	}
+
+	return id
 }
 
 fn pointer_value_type_names_match(actual string, expected string) bool {
