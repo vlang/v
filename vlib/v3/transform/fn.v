@@ -1167,7 +1167,7 @@ fn (t &Transformer) call_param_types_from_decl(call_name string) ?[]types.Type {
 			if child.kind != .param {
 				continue
 			}
-			mut param_type := t.tc.parse_type(child.typ)
+			mut param_type := t.parse_decl_param_type(child.typ, module_name)
 			if param_type is types.Unknown || (param_type is types.Void && child.typ != 'void') {
 				return none
 			}
@@ -1182,6 +1182,80 @@ fn (t &Transformer) call_param_types_from_decl(call_name string) ?[]types.Type {
 		return params
 	}
 	return none
+}
+
+fn (t &Transformer) parse_decl_param_type(typ string, module_name string) types.Type {
+	return t.tc.parse_type(t.decl_param_type_in_module(typ, module_name))
+}
+
+fn (t &Transformer) decl_param_type_in_module(typ string, module_name string) string {
+	clean := typ.trim_space()
+	if clean.len == 0 {
+		return clean
+	}
+	if clean.starts_with('&') {
+		return '&' + t.decl_param_type_in_module(clean[1..], module_name)
+	}
+	if clean.starts_with('mut ') {
+		return 'mut ' + t.decl_param_type_in_module(clean[4..], module_name)
+	}
+	if clean.starts_with('shared ') {
+		return 'shared ' + t.decl_param_type_in_module(clean[7..], module_name)
+	}
+	if clean.starts_with('atomic ') {
+		return 'atomic ' + t.decl_param_type_in_module(clean[7..], module_name)
+	}
+	if clean.starts_with('?') {
+		return '?' + t.decl_param_type_in_module(clean[1..], module_name)
+	}
+	if clean.starts_with('!') {
+		return '!' + t.decl_param_type_in_module(clean[1..], module_name)
+	}
+	if clean.starts_with('...') {
+		return '...' + t.decl_param_type_in_module(clean[3..], module_name)
+	}
+	if clean.starts_with('[]') {
+		return '[]' + t.decl_param_type_in_module(clean[2..], module_name)
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			key := t.decl_param_type_in_module(clean[4..bracket_end], module_name)
+			value := t.decl_param_type_in_module(clean[bracket_end + 1..], module_name)
+			return 'map[${key}]${value}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return clean[..bracket_end + 1] + t.decl_param_type_in_module(clean[bracket_end +
+				1..], module_name)
+		}
+	}
+	base, args, ok := generic_app_parts(clean)
+	if ok {
+		mut scoped_args := []string{}
+		for arg in args {
+			scoped_args << t.decl_param_type_in_module(arg, module_name)
+		}
+		scoped_base := t.decl_param_type_in_module(base, module_name)
+		return scoped_base + '[' + scoped_args.join(', ') + ']'
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') || clean.contains('.')
+		|| module_name.len == 0 || module_name == 'main' || module_name == 'builtin'
+		|| types.is_builtin_type_name(clean) || is_generic_placeholder_type_name(clean) {
+		return clean
+	}
+	qualified := '${module_name}.${clean}'
+	if t.type_authority_has(qualified) {
+		return qualified
+	}
+	if !isnil(t.tc) && (qualified in t.tc.type_aliases || qualified in t.tc.structs
+		|| qualified in t.tc.enum_names || qualified in t.tc.sum_types
+		|| qualified in t.tc.interface_names) {
+		return qualified
+	}
+	return clean
 }
 
 fn fn_decl_name_matches_call(name string, module_name string, call_name string) bool {

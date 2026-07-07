@@ -3166,9 +3166,39 @@ fn (t &Transformer) syntactic_static_call_return_type(id flat.NodeId) string {
 		}
 	}
 	if callee.value == 'new' {
-		return owner
+		for type_name in t.static_assoc_type_candidates(owner) {
+			return type_name
+		}
+		if t.syntactic_new_owner_is_type_like(base, owner) {
+			return owner
+		}
 	}
 	return ''
+}
+
+fn (t &Transformer) syntactic_new_owner_is_type_like(base flat.Node, owner string) bool {
+	short_owner := owner.all_after_last('.')
+	if short_owner.len == 0 || !v3_type_name_starts_upper(short_owner) {
+		return false
+	}
+	if base.kind == .ident {
+		return t.var_type(base.value).len == 0 && !t.ident_is_import_alias(base.value)
+	}
+	if base.kind == .selector && base.children_count > 0 {
+		inner := t.a.child_node(&base, 0)
+		if inner.kind != .ident || t.var_type(inner.value).len > 0 {
+			return false
+		}
+		return t.ident_is_import_alias(inner.value) || v3_type_name_starts_upper(inner.value)
+	}
+	return false
+}
+
+fn v3_type_name_starts_upper(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	return name[0] >= `A` && name[0] <= `Z`
 }
 
 fn (t &Transformer) resolved_call_is_concrete_fn(resolved string, key string) bool {
