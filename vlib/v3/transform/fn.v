@@ -1108,7 +1108,7 @@ fn (mut t Transformer) try_lower_static_assoc_call(id flat.NodeId, node flat.Nod
 }
 
 // call_param_types updates call param types state for Transformer.
-fn (t &Transformer) call_param_types(call_name string) []types.Type {
+fn (mut t Transformer) call_param_types(call_name string) []types.Type {
 	if call_name.len == 0 || isnil(t.tc) {
 		return []types.Type{}
 	}
@@ -1119,7 +1119,7 @@ fn (t &Transformer) call_param_types(call_name string) []types.Type {
 	return params
 }
 
-fn (t &Transformer) call_param_types_for_node(call_name string, node flat.Node) []types.Type {
+fn (mut t Transformer) call_param_types_for_node(call_name string, node flat.Node) []types.Type {
 	if node.children_count > 0 {
 		fn_node := t.a.child_node(&node, 0)
 		if fn_node.kind == .selector && fn_node.children_count > 0 {
@@ -1145,12 +1145,18 @@ fn (t &Transformer) call_param_types_for_node(call_name string, node flat.Node) 
 	return t.call_param_types(call_name)
 }
 
-fn (t &Transformer) call_param_types_from_decl(call_name string) ?[]types.Type {
+fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Type {
 	if call_name.len == 0 || isnil(t.tc) {
 		return none
 	}
+	mut file_name := ''
 	mut module_name := ''
 	for node in t.a.nodes {
+		if node.kind == .file {
+			file_name = node.value
+			module_name = t.tc.file_modules[file_name] or { '' }
+			continue
+		}
 		if node.kind == .module_decl {
 			module_name = node.value
 			continue
@@ -1167,7 +1173,7 @@ fn (t &Transformer) call_param_types_from_decl(call_name string) ?[]types.Type {
 			if child.kind != .param {
 				continue
 			}
-			mut param_type := t.parse_decl_param_type(child.typ, module_name)
+			mut param_type := t.parse_decl_param_type(child.typ, module_name, file_name)
 			if param_type is types.Unknown || (param_type is types.Void && child.typ != 'void') {
 				return none
 			}
@@ -1184,8 +1190,16 @@ fn (t &Transformer) call_param_types_from_decl(call_name string) ?[]types.Type {
 	return none
 }
 
-fn (t &Transformer) parse_decl_param_type(typ string, module_name string) types.Type {
-	return t.tc.parse_type(t.decl_param_type_in_module(typ, module_name))
+fn (mut t Transformer) parse_decl_param_type(typ string, module_name string, file_name string) types.Type {
+	scoped := t.decl_param_type_in_module(typ, module_name)
+	old_file := t.tc.cur_file
+	old_module := t.tc.cur_module
+	t.tc.cur_file = file_name
+	t.tc.cur_module = module_name
+	parsed := t.tc.parse_type(scoped)
+	t.tc.cur_file = old_file
+	t.tc.cur_module = old_module
+	return parsed
 }
 
 fn (t &Transformer) decl_param_type_in_module(typ string, module_name string) string {

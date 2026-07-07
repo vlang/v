@@ -46,6 +46,16 @@ fn test_imported_decl_param_uses_callee_module_for_unqualified_type() {
 	assert out == '5'
 }
 
+fn test_imported_decl_param_uses_callee_file_selective_import() {
+	v3_bin := review_pr_build_v3()
+	out := review_pr_run_project(v3_bin, 'imported_decl_param_selective_import', {
+		'other/other.v':   'module other\n\npub struct S {\npub:\n\tn int\n}\n'
+		'callee/callee.v': 'module callee\n\nimport other { S }\n\npub fn take(s S) int {\n\treturn s.n + 3\n}\n'
+		'main.v':          'module main\n\nimport callee\nimport other\n\nstruct S {\n\ttext string\n}\n\nfn main() {\n\tprintln(int_str(callee.take(other.S{\n\t\tn: 4\n\t})))\n}\n'
+	})
+	assert out == '7'
+}
+
 fn test_value_new_chain_uses_checked_return_type_for_generic_receiver() {
 	v3_bin := review_pr_build_v3()
 	out := review_pr_run_project(v3_bin, 'generic_value_new_chain', {
