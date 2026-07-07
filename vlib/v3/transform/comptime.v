@@ -362,12 +362,14 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, item E
 	// unsupported `comptime_if` for the C backend.
 	if node.kind == .comptime_if {
 		cond := t.subst_value_cond(node.value, var_name, item.name, item.value)
-		if taken := t.eval_field_cond(cond) {
-			branch_idx := if taken { 0 } else { 1 }
-			if branch_idx >= int(node.children_count) {
-				return none
+		if !comptime_cond_has_loop_member_ref(cond, var_name) {
+			if taken := t.eval_field_cond(cond) {
+				branch_idx := if taken { 0 } else { 1 }
+				if branch_idx >= int(node.children_count) {
+					return none
+				}
+				return t.clone_value_subst(t.a.child(&node, branch_idx), var_name, item)
 			}
-			return t.clone_value_subst(t.a.child(&node, branch_idx), var_name, item)
 		}
 	}
 	mut children := []flat.NodeId{cap: int(node.children_count)}
@@ -867,12 +869,14 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 	// `$if`/`$else $if` referencing the loop variable: evaluate now, keep the taken branch.
 	if node.kind == .comptime_if {
 		cond := t.subst_field_cond(node.value, var_name, fm)
-		if taken := t.eval_field_cond(cond) {
-			branch_idx := if taken { 0 } else { 1 }
-			if branch_idx >= int(node.children_count) {
-				return none
+		if !comptime_cond_has_loop_member_ref(cond, var_name) {
+			if taken := t.eval_field_cond(cond) {
+				branch_idx := if taken { 0 } else { 1 }
+				if branch_idx >= int(node.children_count) {
+					return none
+				}
+				return t.clone_field_subst(t.a.child(&node, branch_idx), var_name, fm)
 			}
-			return t.clone_field_subst(t.a.child(&node, branch_idx), var_name, fm)
 		}
 	}
 	return t.clone_field_subst_children(node, var_name, fm)
@@ -987,6 +991,51 @@ fn (t &Transformer) subst_field_cond(cond string, var_name string, fm FieldMeta)
 	c = c.replace('${var_name}.typ', fm.typ)
 	c = c.replace('${var_name}.name', "'${fm.name}'")
 	return c
+}
+
+fn comptime_cond_has_loop_member_ref(cond string, var_name string) bool {
+	prefix := '${var_name}.'
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			offset = comptime_cond_skip_string(cond, offset)
+			continue
+		}
+		if offset + prefix.len > cond.len || cond[offset..offset + prefix.len] != prefix {
+			offset++
+			continue
+		}
+		if offset > 0 && comptime_cond_name_char(cond[offset - 1]) {
+			offset++
+			continue
+		}
+		member_start := offset + prefix.len
+		if member_start < cond.len && comptime_cond_name_char(cond[member_start]) {
+			return true
+		}
+		offset = member_start
+	}
+	return false
+}
+
+fn comptime_cond_skip_string(cond string, start int) int {
+	quote := cond[start]
+	mut i := start + 1
+	for i < cond.len {
+		if cond[i] == `\\` {
+			i += 2
+			continue
+		}
+		if cond[i] == quote {
+			return i + 1
+		}
+		i++
+	}
+	return cond.len
+}
+
+fn comptime_cond_name_char(ch u8) bool {
+	return ch.is_letter() || ch.is_digit() || ch == `_`
 }
 
 // eval_field_cond evaluates a fully-substituted comptime condition (`is`/`!is`, `==`/`!=`,

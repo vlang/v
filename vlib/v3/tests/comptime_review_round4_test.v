@@ -161,6 +161,9 @@ fn main() {
 		$for field in B.fields {
 			rows << 'inner-field:' + field.name
 		}
+		$for field in Inner.values {
+			rows << 'mixed-value:' + int_str(field.value)
+		}
 	}
 	$for value in Outer.values {
 		rows << 'outer-value:' + value.name
@@ -171,7 +174,7 @@ fn main() {
 	println(rows.join('|'))
 }
 	")
-	assert out == 'outer-field:a|inner-field:b|inner-field:c|outer-value:one|inner-value:red|inner-value:blue'
+	assert out == 'outer-field:a|inner-field:b|inner-field:c|mixed-value:0|mixed-value:1|outer-value:one|inner-value:red|inner-value:blue'
 }
 
 fn test_unknown_comptime_field_member_is_rejected() {
@@ -202,6 +205,68 @@ fn main() {
 }
 	',
 		'unknown EnumData member `nmae`')
+}
+
+fn test_unknown_comptime_member_in_if_guard_is_rejected() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'bad_field_guard_member', "struct S {
+	id int
+}
+
+fn main() {
+	$for field in S.fields {
+		$if field.nmae == 'id' {
+			println(field.name)
+		}
+	}
+}
+	",
+		'unknown FieldData member `nmae`')
+	round4_run_bad(v3_bin, 'bad_enum_guard_member', "enum Color {
+	red
+}
+
+fn main() {
+	$for item in Color.values {
+		$if item.nmae == 'red' {
+			println(item.name)
+		}
+	}
+}
+	",
+		'unknown EnumData member `nmae`')
+}
+
+fn test_comptime_member_lookalikes_in_guard_strings_are_ignored() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'guard_member_text_literal', "struct S {
+	id int
+}
+
+enum Color {
+	red
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field.name == 'field.nmae' {
+			rows << 'bad'
+		} $else {
+			rows << field.name
+		}
+	}
+	$for item in Color.values {
+		$if item.name == 'item.nmae' {
+			rows << 'bad'
+		} $else {
+			rows << item.name
+		}
+	}
+	println(rows.join('|'))
+}
+	")
+	assert out == 'id|red'
 }
 
 fn test_unsupported_comptime_field_members_are_rejected() {

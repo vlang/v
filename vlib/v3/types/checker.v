@@ -4750,6 +4750,15 @@ fn (mut tc TypeChecker) check_comptime_members(id flat.NodeId, var_name string, 
 		return
 	}
 	node := tc.a.nodes[int(id)]
+	if node.kind == .comptime_for && comptime_for_declares_var_in_value(node.value, var_name) {
+		tc.check_comptime_for_members(id, node)
+		return
+	}
+	if node.kind == .comptime_if {
+		if member := comptime_cond_unknown_member(node.value, var_name, members) {
+			tc.record_error(.unknown_field, 'unknown ${meta_name} member `${member}`', id)
+		}
+	}
 	if node.kind == .selector && node.children_count > 0 {
 		base_id := tc.a.child(&node, 0)
 		if tc.valid_node_id(base_id) {
@@ -4762,6 +4771,67 @@ fn (mut tc TypeChecker) check_comptime_members(id flat.NodeId, var_name string, 
 	for i in 0 .. node.children_count {
 		tc.check_comptime_members(tc.a.child(&node, i), var_name, members, meta_name)
 	}
+}
+
+fn comptime_for_declares_var_in_value(value string, var_name string) bool {
+	if idx := value.index('|') {
+		return value[..idx] == var_name
+	}
+	return value == var_name
+}
+
+fn comptime_cond_unknown_member(cond string, var_name string, members []string) ?string {
+	prefix := '${var_name}.'
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			offset = comptime_cond_skip_string(cond, offset)
+			continue
+		}
+		if offset + prefix.len > cond.len || cond[offset..offset + prefix.len] != prefix {
+			offset++
+			continue
+		}
+		if offset > 0 && comptime_cond_name_char(cond[offset - 1]) {
+			offset++
+			continue
+		}
+		member_start := offset + prefix.len
+		mut member_end := member_start
+		for member_end < cond.len && comptime_cond_name_char(cond[member_end]) {
+			member_end++
+		}
+		if member_end == member_start {
+			offset = member_start
+			continue
+		}
+		member := cond[member_start..member_end]
+		if member !in members {
+			return member
+		}
+		offset = member_end
+	}
+	return none
+}
+
+fn comptime_cond_skip_string(cond string, start int) int {
+	quote := cond[start]
+	mut i := start + 1
+	for i < cond.len {
+		if cond[i] == `\\` {
+			i += 2
+			continue
+		}
+		if cond[i] == quote {
+			return i + 1
+		}
+		i++
+	}
+	return cond.len
+}
+
+fn comptime_cond_name_char(ch u8) bool {
+	return ch.is_letter() || ch.is_digit() || ch == `_`
 }
 
 // check_node validates check node state for types.
