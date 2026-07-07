@@ -238,6 +238,14 @@ fn C.mbedtls_x509_crt_free(&C.mbedtls_x509_crt)
 fn C.mbedtls_x509_crt_parse(&C.mbedtls_x509_crt, &u8, usize) i32
 fn C.mbedtls_x509_crt_parse_file(&C.mbedtls_x509_crt, &char) i32
 
+// mbedtls_x509_crt_verify validates a certificate chain against a trust anchor,
+// without requiring an mbedtls_ssl_context. f_vrfy/p_vrfy are an optional extra
+// verification callback; pass `unsafe { nil }` for both to use the library's
+// default checks only.
+fn C.mbedtls_x509_crt_verify(&C.mbedtls_x509_crt, &C.mbedtls_x509_crt, &C.mbedtls_x509_crl, &char, &u32, fn (voidptr, &C.mbedtls_x509_crt, i32, &u32) i32, voidptr) i32
+
+fn C.mbedtls_pk_verify(&C.mbedtls_pk_context, i32, &u8, usize, &u8, usize) i32
+
 fn C.mbedtls_high_level_strerr(i32) &char
 
 fn C.mbedtls_debug_set_threshold(level i32)
