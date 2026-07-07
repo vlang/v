@@ -278,6 +278,19 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, name s
 			}
 		}
 	}
+	// `$if`/`$else $if` referencing the loop variable (`value.name`, `value.value`): evaluate now
+	// and keep the taken branch, mirroring the field-loop path so the guard is not left as an
+	// unsupported `comptime_if` for the C backend.
+	if node.kind == .comptime_if {
+		cond := t.subst_value_cond(node.value, var_name, name, value)
+		if taken := t.eval_field_cond(cond) {
+			branch_idx := if taken { 0 } else { 1 }
+			if branch_idx >= int(node.children_count) {
+				return none
+			}
+			return t.clone_value_subst(t.a.child(&node, branch_idx), var_name, name, value)
+		}
+	}
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		if c := t.clone_value_subst(t.a.child(&node, i), var_name, name, value) {
@@ -453,7 +466,12 @@ fn (t &Transformer) subtree_calls_generic(id flat.NodeId, generic_names map[stri
 
 // comptime_field_metas derives FieldData for every field of the concrete struct type.
 fn (t &Transformer) comptime_field_metas(base_type string) []FieldMeta {
-	info := t.lookup_struct_info(base_type) or { return []FieldMeta{} }
+	// A monomorphized generic struct instance (`Box[int]`) is stored in the struct table under
+	// its generic declaration name (`Box`), so a direct lookup misses; resolve it through the
+	// generic-struct field substitution path before giving up.
+	info := t.lookup_struct_info(base_type) or {
+		t.generic_struct_info_for_stringify(base_type) or { return []FieldMeta{} }
+	}
 	mut metas := []FieldMeta{cap: info.fields.len}
 	for f in info.fields {
 		// V's `field.typ` is the type as written (`MyInt`, `?[]int`); `raw_typ` preserves that,
@@ -596,6 +614,15 @@ fn (mut t Transformer) field_member_value(member string, fm FieldMeta) flat.Node
 		'unaliased_typ' { t.make_string_literal(fm.unaliased_typ) }
 		else { t.make_string_literal(fm.name) }
 	}
+}
+
+// subst_value_cond textually substitutes `<var>.name`/`<var>.value` inside a comptime condition
+// string for a `$for value in Enum.values` iteration, so `eval_field_cond` can fold it.
+fn (t &Transformer) subst_value_cond(cond string, var_name string, name string, value int) string {
+	mut c := cond
+	c = c.replace('${var_name}.value', value.str())
+	c = c.replace('${var_name}.name', "'${name}'")
+	return c
 }
 
 // subst_field_cond textually substitutes `<var>.member` inside a comptime condition string.
