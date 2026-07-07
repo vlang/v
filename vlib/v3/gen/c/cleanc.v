@@ -1204,7 +1204,7 @@ fn c_should_preserve_uninlined_include(include_arg string) bool {
 		return false
 	}
 	if clean[0] == `<` {
-		return !c_headerless_system_include_is_handled(clean)
+		return false
 	}
 	return true
 }
@@ -1217,275 +1217,15 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 	if clean[0] == `"` {
 		return true
 	}
-	if c_headerless_system_include_is_handled(clean) {
-		return c_preserved_system_include_struct_names(clean).len > 0
-	}
-	return clean in ['<assert.h>', '<EGL/egl.h>', '<GL/gl.h>', '<GLES3/gl3.h>', '<GLES3/gl3ext.h>',
-		'<X11/Xmd.h>', '<X11/cursorfont.h>']
+	return false
 }
 
-fn c_preserved_system_include_declared_fns(include_arg string) []string {
-	match trimmed_space(include_arg) {
-		'<stdio.h>' {
-			return ['fclose', 'fflush', 'fopen', 'fprintf', 'fread', 'fseek', 'ftell', 'fwrite',
-				'printf', 'putchar', 'puts', 'remove', 'rename', 'rewind', 'snprintf', 'vfprintf',
-				'vsnprintf']
-		}
-		'<stdlib.h>' {
-			return ['abort', 'abs', 'atof', 'atoi', 'calloc', 'exit', 'free', 'getenv', 'malloc',
-				'qsort', 'realloc', 'strtod', 'strtol', 'strtoll']
-		}
-		'<math.h>' {
-			return ['acos', 'acosf', 'ceil', 'ceilf', 'cos', 'cosf', 'exp', 'expf', 'fabs', 'fabsf',
-				'floor', 'floorf', 'fmod', 'fmodf', 'ldexp', 'ldexpf', 'pow', 'powf', 'sin', 'sinf',
-				'sqrt', 'sqrtf']
-		}
-		'<string.h>' {
-			return ['memcmp', 'memcpy', 'memmove', 'memset', 'strcmp', 'strlen', 'strncmp', 'strncpy',
-				'strrchr', 'strstr']
-		}
-		'<poll.h>' {
-			return ['poll']
-		}
-		'<EGL/egl.h>' {
-			return ['eglBindAPI', 'eglChooseConfig', 'eglCreateContext', 'eglCreateWindowSurface',
-				'eglDestroyContext', 'eglDestroySurface', 'eglGetConfigAttrib', 'eglGetDisplay',
-				'eglGetError', 'eglInitialize', 'eglMakeCurrent', 'eglSwapBuffers', 'eglSwapInterval',
-				'eglTerminate']
-		}
-		'<GL/gl.h>', '<GLES3/gl3.h>', '<GLES3/gl3ext.h>' {
-			return ['glGetIntegerv']
-		}
-		'<bcrypt.h>' {
-			return ['BCryptGenRandom']
-		}
-		'<dlfcn.h>' {
-			return ['dlopen', 'dlsym', 'dlclose', 'dlerror']
-		}
-		'<mach/mach_time.h>' {
-			return ['mach_absolute_time', 'mach_timebase_info']
-		}
-		'<X11/Xlib.h>', '<X11/Xutil.h>', '<X11/Xresource.h>', '<X11/XKBlib.h>',
-		'<X11/extensions/XInput2.h>', '<X11/extensions/Xrandr.h>', '<X11/Xcursor/Xcursor.h>' {
-			return c_x11_preserved_declared_fns.clone()
-		}
-		else {
-			return []string{}
-		}
-	}
+fn c_preserved_system_include_declared_fns(_include_arg string) []string {
+	return []string{}
 }
 
-fn c_preserved_system_include_struct_names(include_arg string) []string {
-	match trimmed_space(include_arg) {
-		'<mach/mach_time.h>' {
-			return ['mach_timebase_info_data_t']
-		}
-		'<poll.h>' {
-			return ['pollfd']
-		}
-		'<X11/Xlib.h>', '<X11/Xutil.h>', '<X11/Xresource.h>', '<X11/XKBlib.h>',
-		'<X11/extensions/XInput2.h>', '<X11/Xcursor/Xcursor.h>' {
-			return c_x11_preserved_struct_names.clone()
-		}
-		'<X11/extensions/Xrandr.h>' {
-			return c_xrandr_preserved_struct_names.clone()
-		}
-		else {
-			return []string{}
-		}
-	}
-}
-
-const c_x11_preserved_declared_fns = [
-	'ConnectionNumber',
-	'DefaultRootWindow',
-	'DefaultScreen',
-	'XAllocSizeHints',
-	'XChangeProperty',
-	'XCheckTypedWindowEvent',
-	'XCloseDisplay',
-	'XConvertSelection',
-	'XCreateColormap',
-	'XCreateFontCursor',
-	'XCreateWindow',
-	'XDefaultDepth',
-	'XDefaultRootWindow',
-	'XDefaultScreen',
-	'XDefaultVisual',
-	'XDefineCursor',
-	'XDestroyWindow',
-	'XDisplayHeight',
-	'XDisplayWidth',
-	'XDisplayWidthMM',
-	'XFilterEvent',
-	'XFlush',
-	'XFree',
-	'XFreeColormap',
-	'XFreeCursor',
-	'XFreeEventData',
-	'XGetEventData',
-	'XGetKeyboardMapping',
-	'XGetSelectionOwner',
-	'XGetVisualInfo',
-	'XGetWindowAttributes',
-	'XGetWindowProperty',
-	'XGrabPointer',
-	'XInitThreads',
-	'XInternAtom',
-	'XLookupString',
-	'XMapWindow',
-	'XNextEvent',
-	'XOpenDisplay',
-	'XPending',
-	'XQueryExtension',
-	'XRRFreeCrtcInfo',
-	'XRRFreeOutputInfo',
-	'XRRFreeScreenResources',
-	'XRRGetCrtcInfo',
-	'XRRGetOutputInfo',
-	'XRRGetOutputPrimary',
-	'XRRGetScreenResources',
-	'XRaiseWindow',
-	'XResizeWindow',
-	'XResourceManagerString',
-	'XSendEvent',
-	'XSetErrorHandler',
-	'XSetSelectionOwner',
-	'XSetWMNormalHints',
-	'XSetWMProtocols',
-	'XSync',
-	'XUndefineCursor',
-	'XUngrabPointer',
-	'XWarpPointer',
-	'XcursorGetDefaultSize',
-	'XcursorGetTheme',
-	'XcursorImageCreate',
-	'XcursorImageDestroy',
-	'XcursorImageLoadCursor',
-	'XcursorLibraryLoadImage',
-	'XIQueryVersion',
-	'XISelectEvents',
-	'XkbFreeKeyboard',
-	'XkbFreeNames',
-	'XkbGetMap',
-	'XkbGetNames',
-	'XkbSetDetectableAutoRepeat',
-	'XrmDestroyDatabase',
-	'XrmGetResource',
-	'XrmGetStringDatabase',
-	'XrmInitialize',
-	'Xutf8SetWMProperties',
-]
-
-const c_x11_preserved_struct_names = [
-	'Display',
-	'Screen',
-	'Visual',
-	'XButtonEvent',
-	'XClientMessageData',
-	'XClientMessageEvent',
-	'XCrossingEvent',
-	'XcursorImage',
-	'XDestroyWindowEvent',
-	'XEvent',
-	'XFocusChangeEvent',
-	'XGenericEventCookie',
-	'XIEventMask',
-	'XIRawEvent',
-	'XIValuatorState',
-	'XkbDescRec',
-	'XkbKeyAliasRec',
-	'XkbKeyNameRec',
-	'XkbNamesRec',
-	'XKeyEvent',
-	'XMotionEvent',
-	'XPropertyEvent',
-	'XrmValue',
-	'XSelectionClearEvent',
-	'XSelectionEvent',
-	'XSelectionRequestEvent',
-	'XSetWindowAttributes',
-	'XSizeHints',
-	'XVisualInfo',
-	'XWindowAttributes',
-]
-
-const c_xrandr_preserved_struct_names = [
-	'XRRCrtcInfo',
-	'XRROutputInfo',
-	'XRRScreenResources',
-]
-
-fn c_headerless_system_include_is_handled(include_arg string) bool {
-	if include_arg.len < 3 || include_arg[0] != `<` || include_arg[include_arg.len - 1] != `>` {
-		return false
-	}
-	name := include_arg[1..include_arg.len - 1]
-	return name in c_headerless_handled_system_headers
-}
-
-const c_headerless_handled_system_headers = {
-	'arpa/inet.h':      true
-	'conio.h':          true
-	'dirent.h':         true
-	'errno.h':          true
-	'execinfo.h':       true
-	'fcntl.h':          true
-	'float.h':          true
-	'iconv.h':          true
-	'io.h':             true
-	'mach/mach_time.h': true
-	'mach-o/dyld.h':    true
-	'math.h':           true
-	'netdb.h':          true
-	'netinet/in.h':     true
-	'netinet/tcp.h':    true
-	'poll.h':           true
-	'process.h':        true
-	'pthread.h':        true
-	'pthread_np.h':     true
-	'semaphore.h':      true
-	'signal.h':         true
-	'stdarg.h':         true
-	'stdatomic.h':      true
-	'stdbool.h':        true
-	'stddef.h':         true
-	'stdint.h':         true
-	'stdio.h':          true
-	'stdlib.h':         true
-	'string.h':         true
-	'synchapi.h':       true
-	'sys/epoll.h':      true
-	'sys/event.h':      true
-	'sys/file.h':       true
-	'sys/ioctl.h':      true
-	'sys/mman.h':       true
-	'sys/ptrace.h':     true
-	'sys/random.h':     true
-	'sys/resource.h':   true
-	'sys/select.h':     true
-	'sys/sendfile.h':   true
-	'sys/socket.h':     true
-	'sys/stat.h':       true
-	'sys/statvfs.h':    true
-	'sys/syscall.h':    true
-	'sys/sysctl.h':     true
-	'sys/syslimits.h':  true
-	'sys/time.h':       true
-	'sys/types.h':      true
-	'sys/uio.h':        true
-	'sys/un.h':         true
-	'sys/utime.h':      true
-	'sys/utsname.h':    true
-	'sys/wait.h':       true
-	'termios.h':        true
-	'time.h':           true
-	'unistd.h':         true
-	'utime.h':          true
-	'wchar.h':          true
-	'windows.h':        true
-	'winsock2.h':       true
-	'ws2tcpip.h':       true
+fn c_preserved_system_include_struct_names(_include_arg string) []string {
+	return []string{}
 }
 
 fn c_stdint_header_text() string {
@@ -6477,7 +6217,6 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_timeval_struct()
 	g.headerless_rusage_struct()
 	g.headerless_timespec_struct()
-	g.writeln('int clock_gettime(int clock_id, struct timespec* ts);')
 	g.headerless_utsname_struct()
 	g.headerless_stat_struct()
 	g.headerless_tm_struct()
@@ -6728,22 +6467,28 @@ fn (mut g FlatGen) headerless_rusage_struct() {
 }
 
 fn (mut g FlatGen) headerless_timespec_struct() {
-	g.writeln('#if !defined(_STRUCT_TIMESPEC) && !defined(_TIMESPEC_DEFINED) && !defined(_TIMESPEC_DECLARED) && !defined(__timespec_defined)')
-	g.writeln('#ifdef _WIN32')
-	g.writeln('struct timespec { i64 tv_sec; long tv_nsec; };')
-	g.writeln('#else')
-	g.writeln('struct timespec { long tv_sec; long tv_nsec; };')
-	g.writeln('#endif')
-	g.writeln('#endif')
+	if !g.inlined_c_structs['timespec'] {
+		g.writeln('#if !defined(_STRUCT_TIMESPEC) && !defined(_TIMESPEC_DEFINED) && !defined(_TIMESPEC_DECLARED) && !defined(__timespec_defined)')
+		g.writeln('#ifdef _WIN32')
+		g.writeln('struct timespec { i64 tv_sec; long tv_nsec; };')
+		g.writeln('#else')
+		g.writeln('struct timespec { long tv_sec; long tv_nsec; };')
+		g.writeln('#endif')
+		g.writeln('#endif')
+	}
 	g.writeln('typedef struct timespec timespec;')
 }
 
 fn (mut g FlatGen) headerless_tm_struct() {
-	g.writeln('#ifdef _WIN32')
-	g.writeln('struct tm { int tm_sec; int tm_min; int tm_hour; int tm_mday; int tm_mon; int tm_year; int tm_wday; int tm_yday; int tm_isdst; };')
-	g.writeln('#else')
-	g.writeln('struct tm { int tm_sec; int tm_min; int tm_hour; int tm_mday; int tm_mon; int tm_year; int tm_wday; int tm_yday; int tm_isdst; long tm_gmtoff; const char* tm_zone; };')
-	g.writeln('#endif')
+	if !g.inlined_c_structs['tm'] {
+		g.writeln('#if !defined(_STRUCT_TM) && !defined(_TM_DEFINED) && !defined(_TM_DECLARED) && !defined(__tm_defined)')
+		g.writeln('#ifdef _WIN32')
+		g.writeln('struct tm { int tm_sec; int tm_min; int tm_hour; int tm_mday; int tm_mon; int tm_year; int tm_wday; int tm_yday; int tm_isdst; };')
+		g.writeln('#else')
+		g.writeln('struct tm { int tm_sec; int tm_min; int tm_hour; int tm_mday; int tm_mon; int tm_year; int tm_wday; int tm_yday; int tm_isdst; long tm_gmtoff; const char* tm_zone; };')
+		g.writeln('#endif')
+		g.writeln('#endif')
+	}
 	g.writeln('typedef struct tm tm;')
 }
 
@@ -7493,6 +7238,8 @@ fn (mut g FlatGen) headerless_linux_constants() {
 	g.writeln('#define O_NONBLOCK 04000')
 	g.writeln('#define O_SYNC 04010000')
 	g.writeln('#define O_CLOEXEC 02000000')
+	g.writeln('#define TFD_NONBLOCK O_NONBLOCK')
+	g.writeln('#define TFD_CLOEXEC O_CLOEXEC')
 	g.writeln('#define F_GETFD 1')
 	g.writeln('#define F_SETFD 2')
 	g.writeln('#define F_GETFL 3')
@@ -8779,9 +8526,44 @@ fn (mut g FlatGen) global_decls() {
 		init := if g.can_use_global_brace_zero_init(decl_typ, ct) { ' = {0}' } else { '' }
 		// With -prealloc the arena base block is per-thread (lazily initialized
 		// on first allocation in each thread); a shared pointer would make all
-		// threads bump the same block without synchronization.
-		tls_kw := if g.prealloc && name == 'g_memory_block' { '_Thread_local ' } else { '' }
-		g.writeln('${tls_kw}${ct} ${g.cname(name)}${init};')
+		// threads bump the same block without synchronization. cc gets real
+		// TLS; tcc implements no _Thread_local, so it gets a pthread-key
+		// emulation behind an lvalue macro. The key setup needs no
+		// synchronization: the first allocation always happens on the main
+		// thread, long before any `spawn`. The key APIs are declared manually
+		// (V's generated C declares its own `pthread_t`, so <pthread.h> would
+		// conflict); the key out-param is stored in an 8-byte zeroed slot,
+		// which stays correct where pthread_key_t is 4 bytes (little-endian).
+		if g.prealloc && name == 'g_memory_block' {
+			g.writeln('#if defined(__TINYC__)')
+			// Shapes must match vlib's own C.pthread_* extern declarations
+			// exactly (u64/i32), or tcc rejects the redefinition when a module
+			// also declares them.
+			g.writeln('i32 pthread_key_create(u64* key, void (*dtor)(void*));')
+			g.writeln('void* pthread_getspecific(u64 key);')
+			g.writeln('i32 pthread_setspecific(u64 key, const void* const_ptr);')
+			g.writeln('static u64 g_memory_block_key = 0;')
+			g.writeln('static int g_memory_block_key_ready = 0;')
+			g.writeln('static ${ct}* g_memory_block_slot(void) {')
+			g.writeln('	void* p;')
+			g.writeln('	if (!g_memory_block_key_ready) {')
+			g.writeln('		pthread_key_create(&g_memory_block_key, 0);')
+			g.writeln('		g_memory_block_key_ready = 1;')
+			g.writeln('	}')
+			g.writeln('	p = pthread_getspecific(g_memory_block_key);')
+			g.writeln('	if (p == 0) {')
+			g.writeln('		p = calloc(1, sizeof(${ct}));')
+			g.writeln('		pthread_setspecific(g_memory_block_key, p);')
+			g.writeln('	}')
+			g.writeln('	return (${ct}*)p;')
+			g.writeln('}')
+			g.writeln('#define g_memory_block (*g_memory_block_slot())')
+			g.writeln('#else')
+			g.writeln('_Thread_local ${ct} ${g.cname(name)}${init};')
+			g.writeln('#endif')
+			continue
+		}
+		g.writeln('${ct} ${g.cname(name)}${init};')
 	}
 	g.tc.cur_module = old_module
 	if g.global_types.len > 0 {

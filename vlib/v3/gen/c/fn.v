@@ -7551,7 +7551,6 @@ const c_preamble_declared_extern_symbols = {
 	'ceil':                          true
 	'ceilf':                         true
 	'close':                         true
-	'clock_gettime':                 true
 	'cos':                           true
 	'dup2':                          true
 	'execlp':                        true
@@ -8498,6 +8497,9 @@ fn (mut g FlatGen) fn_ptr_typedef_type(typ string, mut emitted map[string]bool) 
 	if clean.starts_with('Optional_') {
 		return 'struct ${clean}'
 	}
+	if tagged := fn_ptr_typedef_generic_placeholder_struct_tag(clean) {
+		return tagged
+	}
 	if fn_ptr_typedef_is_generic_placeholder(clean) {
 		return 'int'
 	}
@@ -8535,6 +8537,30 @@ fn fn_ptr_typedef_is_generic_placeholder(typ string) bool {
 		return true
 	}
 	return short.len == 1 && short[0] >= `A` && short[0] <= `Z`
+}
+
+fn fn_ptr_typedef_generic_placeholder_struct_tag(typ string) ?string {
+	mut clean := trimmed_space(typ)
+	mut ptr_suffix := ''
+	for clean.ends_with('*') {
+		clean = clean[..clean.len - 1].trim_space()
+		ptr_suffix += '*'
+	}
+	if clean.starts_with('struct ') {
+		clean = clean['struct '.len..].trim_space()
+	}
+	if !clean.contains('__') {
+		return none
+	}
+	short := clean.all_after_last('__')
+	if !short.contains('_') {
+		return none
+	}
+	suffix := short.all_after_last('_')
+	if suffix.len == 1 && suffix[0] >= `A` && suffix[0] <= `Z` {
+		return 'struct ${clean}${ptr_suffix}'
+	}
+	return none
 }
 
 // multi_return_forward_decls forward-declares every multi-return struct that the

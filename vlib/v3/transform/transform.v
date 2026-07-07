@@ -7984,6 +7984,11 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 				t.set_node_typ(int(deref), typ[1..])
 				return deref
 			}
+			if !t.in_selector_base && t.pointer_value_rvalues[node.value] && typ.starts_with('&') {
+				deref := t.make_prefix(.mul, id)
+				t.a.nodes[int(deref)].typ = typ[1..]
+				return deref
+			}
 			return id
 		}
 	}
