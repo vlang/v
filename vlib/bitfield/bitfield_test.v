@@ -400,10 +400,50 @@ fn test_zero_length_slice_and_pos() {
 	assert empty_bf.pos(needle) == 0
 }
 
-fn test_bitfield_to_bytes() {
+fn test_string_bitfield_to_bytes() {
 	str := 'Hello, world!'
 	b_from_str := str.bytes()
 	bf := bitfield.from_bytes(b_from_str)
 	b_from_bf := bf.bytes()
 	assert b_from_bf == b_from_str
+}
+
+fn test_bytes_bitfield_to_bytes() {
+	mut expected := []u8{}
+	mut bf := bitfield.from_bytes(expected)
+	mut b_from_bf := bf.bytes()
+	assert b_from_bf == expected
+
+	expected << 0x01
+	bf = bitfield.from_bytes(expected)
+	b_from_bf = bf.bytes()
+	assert b_from_bf == expected
+
+	expected = [u8(0xff)]
+	bf = bitfield.from_bytes(expected)
+	b_from_bf = bf.bytes()
+	assert b_from_bf == expected
+
+	expected = [u8(0x80)]
+	bf = bitfield.from_bytes(expected)
+	b_from_bf = bf.bytes()
+	assert b_from_bf == expected
+
+	expected = [u8(0x0f)]
+	bf = bitfield.from_bytes(expected)
+	b_from_bf = bf.bytes()
+	assert b_from_bf == expected
+
+	expected = [u8(0xf0)]
+	bf = bitfield.from_bytes(expected)
+	b_from_bf = bf.bytes()
+	assert b_from_bf == expected
+}
+
+fn test_unaligned_bitfield_to_bytes() {
+	expected := [u8(0x00), 0x00, 0x00, 0x00, 0b10000000]
+	mut bf := bitfield.new(33)
+	bf.set_bit(32)
+	b_from_bf := bf.bytes()
+	assert b_from_bf == expected
 }

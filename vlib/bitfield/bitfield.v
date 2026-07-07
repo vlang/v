@@ -58,9 +58,10 @@ pub fn (bf BitField) bytes() []u8 {
 	mut output := []u8{}
 	mut i := 0
 	for f in bf.field {
+		// un-reverse the action of from_bytes, if slot_size changes this may break
+		// reversing all at once is more efficient and simpler than doing it bytewise or bitwise
+		s := bits.reverse_32(f)
 		for j in 1 .. 5 {
-			// un-reverse the action of from_bytes, if slot_size changes this may break
-			s := bits.reverse_32(f)
 			b := u8((s >> (slot_size - (j * 8))) & 255)
 			// exclude unused bytes
 			if i * 8 >= bf.size {
