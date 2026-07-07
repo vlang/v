@@ -135,6 +135,9 @@ mut:
 	// sequences to index 0). Empty for struct-generic specialization, which keeps
 	// the legacy positional behaviour.
 	active_generic_params []string
+	// cloning_comptime_for_depth > 0 while a generic clone descends into a `$for` body: nested
+	// generic calls there must not be specialized (the loop var members are not resolved yet).
+	cloning_comptime_for_depth int
 	// escaping_amp_ptrs holds the names of pointer locals `p` declared as `p := &v`
 	// (v a value local) whose pointer escapes the function (is returned). V semantics
 	// auto-heap such a `v`; v3 otherwise takes the address of a stack local that dies
@@ -3054,6 +3057,9 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 		}
 		.comptime_if {
 			return t.transform_comptime_if_stmt(id, node)
+		}
+		.comptime_for {
+			return t.expand_comptime_for(id, node)
 		}
 		.if_expr {
 			return t.transform_if_stmt(id, node)
@@ -7492,7 +7498,13 @@ fn (mut t Transformer) rewrite_signed_literal_str_call(op flat.Op, child_id flat
 fn (mut t Transformer) transform_amp_optional_unwrap(node flat.Node, child flat.Node) ?flat.NodeId {
 	source_id := t.a.child(&child, 0)
 	body_id := t.a.child(&child, 1)
-	source_type := t.optional_result_expr_type_name(source_id)
+	mut source_type := t.optional_result_expr_type_name(source_id)
+	if !t.is_optional_type_name(source_type) {
+		source_type = t.original_expr_type(source_id)
+	}
+	if !t.is_optional_type_name(source_type) {
+		source_type = t.raw_expr_type_without_smartcast(source_id)
+	}
 	if !t.is_optional_type_name(source_type) || !t.expr_can_take_address(source_id) {
 		return none
 	}
@@ -7613,7 +7625,8 @@ fn (t &Transformer) raw_selector_type_without_smartcast(id flat.NodeId) string {
 	if base_type.len == 0 {
 		base_type = t.original_expr_type(base_id)
 	}
-	if ftyp := t.lookup_struct_field_type(base_type, node.value) {
+	clean_base_type := t.trim_pointer_type(base_type)
+	if ftyp := t.lookup_struct_field_type(clean_base_type, node.value) {
 		return ftyp
 	}
 	return t.normalize_type_alias(node.typ)

@@ -32,27 +32,28 @@ const read_source_chunk_size = 65536
 pub struct Parser {
 	prefs &pref.Preferences
 mut:
-	s                 scanner.Scanner
-	tok               token.Token
-	lit               string
-	tok_pos           int
-	peek_tok          token.Token = .eof
-	peek_lit          string
-	peek_pos          int
-	has_peek          bool
-	cur_file          string
-	cur_module        string
-	cur_fn            string
-	cur_struct        string // receiver type name of the current method, for `@STRUCT`
-	pending_flag      bool
-	pending_params    bool
-	pending_export    string
-	pending_noreturn  bool
-	skip_next_decl    bool
-	disable_fn_body   bool
-	in_for_container  bool
-	local_type_names  map[string]string
-	local_type_scopes []string
+	s                  scanner.Scanner
+	tok                token.Token
+	lit                string
+	tok_pos            int
+	peek_tok           token.Token = .eof
+	peek_lit           string
+	peek_pos           int
+	has_peek           bool
+	cur_file           string
+	cur_module         string
+	cur_fn             string
+	cur_struct         string // receiver type name of the current method, for `@STRUCT`
+	comptime_for_depth int    // >0 while inside a `$for` body: defer all `$if` to unroll time
+	pending_flag       bool
+	pending_params     bool
+	pending_export     string
+	pending_noreturn   bool
+	skip_next_decl     bool
+	disable_fn_body    bool
+	in_for_container   bool
+	local_type_names   map[string]string
+	local_type_scopes  []string
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
 	parsed_v_files int
@@ -1921,26 +1922,23 @@ fn (mut p Parser) skip_top_level_stmt() {
 fn (mut p Parser) parse_comptime_if() flat.NodeId {
 	p.next() // skip $
 	if p.tok != .key_if {
-		// $for or other comptime — skip
 		if p.tok == .key_for {
+			return p.parse_comptime_for()
+		}
+		// other comptime — skip
+		for p.tok != .semicolon && p.tok != .eof {
 			p.next()
-			for p.tok != .lcbr && p.tok != .eof {
-				p.next()
-			}
-			p.skip_block()
-		} else {
-			for p.tok != .semicolon && p.tok != .eof {
-				p.next()
-			}
-			if p.tok == .semicolon {
-				p.next()
-			}
+		}
+		if p.tok == .semicolon {
+			p.next()
 		}
 		return flat.empty_node
 	}
 	p.next() // skip 'if'
 	cond := p.parse_comptime_cond()
-	if comptime_cond_has_type_test(cond) {
+	// Inside a `$for` body the condition may reference the loop var (`field.typ`,
+	// `field.indirections`), only known once the loop is unrolled, so defer evaluation.
+	if p.comptime_for_depth > 0 || comptime_cond_has_type_test(cond) {
 		then_block := p.block_stmt()
 		else_block := p.parse_comptime_else()
 		return p.comptime_if_node(cond, then_block, else_block)
@@ -1954,6 +1952,38 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 		p.skip_block()
 		return p.parse_comptime_else()
 	}
+}
+
+// parse_comptime_for parses `$for <var> in <Type>.<kind> { body }` into a comptime_for node.
+// The loop is unrolled later (once <Type> is concrete) by the transformer. `value` holds
+// `<var>|<kind>` (e.g. `field|fields`); `typ` holds the base type so generic substitution can
+// turn `T` into the concrete type during monomorphization.
+fn (mut p Parser) parse_comptime_for() flat.NodeId {
+	p.next() // skip 'for'
+	val_var := p.expect_name()
+	if p.tok == .key_in {
+		p.next()
+	} else if p.tok == .name && p.lit == 'in' {
+		p.next()
+	}
+	mut segs := [p.expect_name()]
+	for p.tok == .dot {
+		p.next()
+		segs << p.expect_name()
+	}
+	kind := if segs.len > 1 { segs.last() } else { 'fields' }
+	base := if segs.len > 1 { segs[..segs.len - 1].join('.') } else { segs.last() }
+	p.comptime_for_depth++
+	body := p.block_stmt()
+	p.comptime_for_depth--
+	start := p.add_children([body])
+	return p.a.add_node(flat.Node{
+		kind:           .comptime_for
+		value:          '${val_var}|${kind}'
+		typ:            base
+		children_start: start
+		children_count: 1
+	})
 }
 
 fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
@@ -4787,6 +4817,21 @@ fn (mut p Parser) pointer_cast_expr_from_current_amp() ?flat.NodeId {
 
 fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 	p.next() // skip '.'
+	if p.tok == .dollar && p.peek() == .lpar {
+		// Compile-time field selector `receiver.$(field.name)`: the field name is resolved when
+		// the enclosing `$for` loop is unrolled. Marker value `$`; child 1 is the name expr.
+		p.next() // skip $
+		p.next() // skip (
+		inner := p.expr(.lowest)
+		p.check(.rpar)
+		sel_start := p.add_children2(lhs, inner)
+		return p.a.add_node(flat.Node{
+			kind:           .selector
+			value:          '$'
+			children_start: sel_start
+			children_count: 2
+		})
+	}
 	field_name := p.expect_name_or_keyword()
 	sel_start := p.add_child(lhs)
 	sel := p.a.add_node(flat.Node{

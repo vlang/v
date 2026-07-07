@@ -4138,11 +4138,40 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			}
 		}
 	}
+	// Calls nested inside a `$for` body must not be specialized during the clone: the loop
+	// variable's members are not resolved yet, so mono would infer a garbage type argument and
+	// emit an uncalled, uncompilable specialization. The comptime unroll (or its skip) handles
+	// them later against the concrete field types.
+	is_comptime_for := node.kind == .comptime_for
+	if is_comptime_for {
+		t.cloning_comptime_for_depth++
+	}
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		children << t.clone_generic_node(t.a.child(&node, i), args)
 	}
+	if is_comptime_for {
+		t.cloning_comptime_for_depth--
+	}
 	cloned_typ := t.resolve_substituted_type_text(t.subst_type(node.typ, args))
+	if t.cloning_comptime_for_depth > 0 {
+		// Inside a `$for` body: clone verbatim, no generic-call retargeting.
+		start2 := t.a.children.len
+		for child in children {
+			t.a.children << child
+		}
+		return t.a.add_node(flat.Node{
+			kind:           node.kind
+			kind_id:        node.kind_id
+			op:             node.op
+			pos:            node.pos
+			children_start: start2
+			children_count: flat.child_count(children.len)
+			typ:            cloned_typ
+			value:          t.subst_node_value(node, args)
+			is_mut:         node.is_mut
+		})
+	}
 	t.retarget_cloned_new_map_call(node, mut children, cloned_typ)
 	retargeted_typ := t.retarget_cloned_generic_call(node, mut children, args)
 	final_typ := if retargeted_typ.len > 0 { retargeted_typ } else { cloned_typ }

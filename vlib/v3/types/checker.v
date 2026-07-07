@@ -3586,6 +3586,11 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 			continue
 		}
 		child := tc.a.nodes[int(child_id)]
+		// A `comptime_for` node stores its loop source (`val`, `T`) in `typ`, which is a value
+		// or generic placeholder rather than a declared type; it is validated at unroll time.
+		if child.kind == .comptime_for {
+			continue
+		}
 		tc.check_type_string_for_unsupported_generics(child.typ, child_id, generic_params)
 		if node.kind == .type_decl && child.value.len > 0 {
 			tc.check_type_string_for_unsupported_generics(child.value, child_id, generic_params)
@@ -3596,6 +3601,9 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 				continue
 			}
 			grandchild := tc.a.nodes[int(grandchild_id)]
+			if grandchild.kind == .comptime_for {
+				continue
+			}
 			tc.check_type_string_for_unsupported_generics(grandchild.typ, grandchild_id,
 				generic_params)
 		}
@@ -4742,6 +4750,12 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	}
 	if node.kind == .comptime_if {
 		tc.check_comptime_if(id, node)
+		return
+	}
+	if node.kind == .comptime_for {
+		// The body references the loop variable (`field.name`, `field.typ`, ...) which only
+		// exists once the transformer unrolls the loop against a concrete type, so it cannot
+		// be type-checked here. Skip it; the unrolled statements are concrete.
 		return
 	}
 	if kind_id == 46 {
@@ -6788,8 +6802,8 @@ fn (tc &TypeChecker) multi_expr_tail_return_compat_supported(expr_id flat.NodeId
 		return false
 	}
 	node := tc.a.nodes[int(expr_id)]
-	// Raw tuple-tail return lowering is currently only implemented for if-expressions.
-	if node.kind == .if_expr {
+	// Raw tuple-tail return lowering is currently implemented for if- and match-expressions.
+	if node.kind in [.if_expr, .match_stmt] {
 		return true
 	}
 	if node.kind == .expr_stmt && node.children_count > 0 {
@@ -6835,11 +6849,6 @@ fn (tc &TypeChecker) tuple_tail_return_error(expr_id flat.NodeId, expected []Typ
 		.expr_stmt, .paren {
 			if node.children_count > 0 {
 				return tc.tuple_tail_return_error(tc.a.child(&node, 0), expected)
-			}
-		}
-		.match_stmt {
-			if tc.match_has_tuple_tail_values(expr_id, count) {
-				return 'match expression branches cannot produce multiple return values'
 			}
 		}
 		.if_expr {
