@@ -5115,6 +5115,9 @@ fn (mut tc TypeChecker) comptime_type_matches(actual string, expected string) ?b
 		'$pointer' {
 			return actual_type is Pointer
 		}
+		'$voidptr' {
+			return fn_param_is_voidptr_type(actual_type)
+		}
 		'$int' {
 			return actual_type.is_integer()
 		}

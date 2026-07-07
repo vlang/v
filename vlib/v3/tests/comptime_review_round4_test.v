@@ -104,6 +104,34 @@ fn main() {
 	assert out == "private:false:false:|public:false:true:|mutable:true:false:|pub_mut:true:true:|attr:true:true:json: 'wire'"
 }
 
+fn test_bare_comptime_field_materializes_fielddata() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'bare_fielddata', "struct S {
+pub:
+	id int
+mut:
+	@[json: 'wire']
+	name string
+}
+
+fn describe(field FieldData) string {
+	return field.name + ':' + field.is_pub.str() + ':' + field.is_mut.str() + ':' + field.attrs.join(',')
+}
+
+fn main() {
+	mut items := []FieldData{}
+	mut rows := []string{}
+	$for field in S.fields {
+		items << field
+		rows << describe(field)
+	}
+	rows << 'count:' + int_str(items.len)
+	println(rows.join('|'))
+}
+")
+	assert out == "id:true:false:|name:false:true:json: 'wire'|count:2"
+}
+
 fn test_unknown_comptime_field_member_is_rejected() {
 	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_field_member', 'struct S {
@@ -255,4 +283,17 @@ fn main() {
 }
 ")
 	assert out == 'shared'
+}
+
+fn test_comptime_voidptr_type_group_is_checked_like_transformer() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'voidptr_type_group', "fn main() {
+	$if voidptr is $voidptr {
+		println('voidptr')
+	} $else {
+		println(unknown_symbol)
+	}
+}
+")
+	assert out == 'voidptr'
 }

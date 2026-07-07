@@ -399,6 +399,40 @@ fn (mut t Transformer) make_enum_data_literal(item EnumValueMeta) flat.NodeId {
 	})
 }
 
+// make_field_data_literal builds a runtime `FieldData` value for a bare `$for field` variable.
+fn (mut t Transformer) make_field_data_literal(fm FieldMeta) flat.NodeId {
+	fields := [
+		t.make_named_field_init('name', t.make_string_literal(fm.name), 'string'),
+		t.make_named_field_init('typ', t.make_int_literal(0), 'int'),
+		t.make_named_field_init('unaliased_typ', t.make_int_literal(0), 'int'),
+		t.make_named_field_init('attrs', t.make_string_array_literal(fm.attrs), '[]string'),
+		t.make_named_field_init('is_pub', t.make_bool_literal(fm.is_pub), 'bool'),
+		t.make_named_field_init('is_mut', t.make_bool_literal(fm.is_mut), 'bool'),
+		t.make_named_field_init('is_embed', t.make_bool_literal(fm.is_embed), 'bool'),
+		t.make_named_field_init('is_shared', t.make_bool_literal(fm.is_shared), 'bool'),
+		t.make_named_field_init('is_atomic', t.make_bool_literal(fm.is_atomic), 'bool'),
+		t.make_named_field_init('is_option', t.make_bool_literal(fm.is_option), 'bool'),
+		t.make_named_field_init('is_array', t.make_bool_literal(fm.is_array), 'bool'),
+		t.make_named_field_init('is_map', t.make_bool_literal(fm.is_map), 'bool'),
+		t.make_named_field_init('is_chan', t.make_bool_literal(fm.is_chan), 'bool'),
+		t.make_named_field_init('is_enum', t.make_bool_literal(fm.is_enum), 'bool'),
+		t.make_named_field_init('is_struct', t.make_bool_literal(fm.is_struct), 'bool'),
+		t.make_named_field_init('is_alias', t.make_bool_literal(fm.is_alias), 'bool'),
+		t.make_named_field_init('indirections', t.make_int_literal(fm.indirections), 'u8'),
+	]
+	start := t.a.children.len
+	for field in fields {
+		t.a.children << field
+	}
+	return t.a.add_node(flat.Node{
+		kind:           .struct_init
+		value:          'FieldData'
+		typ:            'FieldData'
+		children_start: start
+		children_count: flat.child_count(fields.len)
+	})
+}
+
 fn (mut t Transformer) make_named_field_init(field string, value flat.NodeId, typ string) flat.NodeId {
 	start := t.a.children.len
 	t.a.children << value
@@ -444,11 +478,6 @@ fn (t &Transformer) subtree_has_unsupported_comptime(id flat.NodeId, var_name st
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	// The loop variable used bare (not `field.member`/`field.$(...)`) means it is passed as a
-	// `FieldData` value, which is not materialized yet.
-	if node.kind == .ident && node.value == var_name {
-		return true
-	}
 	// ORM (`sql db { select ... }`) mixes comptime field names with a query DSL.
 	if node.kind in [.sql_expr, .select_stmt] {
 		return true
@@ -727,6 +756,9 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 		return id
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind == .ident && node.value == var_name {
+		return t.make_field_data_literal(fm)
+	}
 	// `<var>.member` compile-time member access.
 	if node.kind == .selector && node.children_count > 0 {
 		base := t.a.child_node(&node, 0)
