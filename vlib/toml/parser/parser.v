@@ -1234,6 +1234,11 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]a
 						' could not parse "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 				}
 			}
+			.hash {
+				c := p.comment()
+				p.ast_root.comments << c
+				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping comment "${c.text}"')
+			}
 			else {
 				break
 			}

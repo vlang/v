@@ -30,3 +30,19 @@ fn test_nested_array_of_tables() {
 
 	assert toml_json == os.read_file(fprefix + '.out')!
 }
+
+fn test_nested_array_of_tables_with_comment_before_key() {
+	toml_doc := toml.parse_text('[[a]]
+n = "x"
+[[a.b]]
+p = "1"  # comment
+q = "2"
+[[a.b]]
+p = "3"
+# comment
+q = "4"
+')!
+
+	toml_json := to.json(toml_doc)
+	assert toml_json == '{ "a": [ { "n": "x", "b": [ { "p": "1", "q": "2" }, { "p": "3", "q": "4" } ] } ] }'
+}
