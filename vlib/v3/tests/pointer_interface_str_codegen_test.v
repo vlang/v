@@ -34,3 +34,34 @@ fn test_pointer_to_interface_stringification_uses_pointer_path() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true'
 }
+
+fn test_explicit_pointer_str_keeps_reference_prefix() {
+	v3_bin := build_v3_pointer_interface_str()
+	src_path := '${tmp_pointer_interface_str_path('explicit_source')}.v'
+	bin_path := tmp_pointer_interface_str_path('explicit_bin')
+	os.write_file(src_path, "struct Item {
+	value int
+}
+
+fn (i Item) str() string {
+	return 'item:' + int_str(i.value)
+}
+
+fn main() {
+	item := Item{
+		value: 7
+	}
+	ptr := &item
+	println(ptr.str())
+}
+") or {
+		panic(err)
+	}
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(src_path)} -b c -o ${os.quoted_path(bin_path)}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '&item:7'
+}

@@ -65,6 +65,14 @@ fn comptime_for_parts(value string) (string, string) {
 	return value, 'fields'
 }
 
+fn comptime_for_declares_var(node flat.Node, var_name string) bool {
+	if node.kind != .comptime_for {
+		return false
+	}
+	loop_var, _ := comptime_for_parts(node.value)
+	return loop_var == var_name
+}
+
 // comptime_for_base_type resolves the loop source type to a concrete name. Generic `T` was already
 // substituted to the concrete type in `node.typ` during monomorphization.
 fn (t &Transformer) comptime_for_base_type(raw string) string {
@@ -326,6 +334,9 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, item E
 		return id
 	}
 	node := t.a.nodes[int(id)]
+	if comptime_for_declares_var(node, var_name) {
+		return t.clone_node_preserving_children(node)
+	}
 	if node.kind == .ident && node.value == var_name {
 		return t.make_enum_data_literal(item)
 	}
@@ -444,6 +455,24 @@ fn (mut t Transformer) make_named_field_init(field string, value flat.NodeId, ty
 		typ:            typ
 		children_start: start
 		children_count: 1
+	})
+}
+
+fn (mut t Transformer) clone_node_preserving_children(node flat.Node) flat.NodeId {
+	start := t.a.children.len
+	for i in 0 .. node.children_count {
+		t.a.children << t.a.child(&node, i)
+	}
+	return t.a.add_node(flat.Node{
+		kind:           node.kind
+		kind_id:        node.kind_id
+		op:             node.op
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+		is_mut:         node.is_mut
+		children_start: start
+		children_count: node.children_count
 	})
 }
 
@@ -809,6 +838,9 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 		return id
 	}
 	node := t.a.nodes[int(id)]
+	if comptime_for_declares_var(node, var_name) {
+		return t.clone_node_preserving_children(node)
+	}
 	if node.kind == .ident && node.value == var_name {
 		return t.make_field_data_literal(fm)
 	}

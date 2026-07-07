@@ -2702,6 +2702,10 @@ fn (mut t Transformer) lower_ref_str(expr flat.NodeId, aggregate string) flat.No
 		// pointer receiver collapses back to the original pointer, so the method sees `&T`.
 		return t.wrap_string_conversion(t.make_prefix(.mul, expr), aggregate)
 	}
+	return t.lower_ref_str_prefixed(expr, aggregate)
+}
+
+fn (mut t Transformer) lower_ref_str_prefixed(expr flat.NodeId, aggregate string) flat.NodeId {
 	ptr_type := '&${aggregate}'
 	ptr_name := t.new_temp('ref_str_ptr')
 	res_name := t.new_temp('ref_str_text')
@@ -5120,8 +5124,8 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		// `(&Struct).str()` keeps the reference so the pointee is stringified with V's `&`
 		// prefix (or `&nil`); primitive/alias pointers keep their existing ptr_str behavior.
 		if base_is_pointer {
-			if _ := t.stringify_aggregate_type_name(base_type) {
-				return t.wrap_string_conversion(t.transform_expr(base_id), '&${base_type}')
+			if aggregate := t.stringify_aggregate_type_name(base_type) {
+				return t.lower_ref_str_prefixed(t.transform_expr(base_id), aggregate)
 			}
 		}
 		return t.wrap_string_conversion(t.transform_expr(base_id), base_type)

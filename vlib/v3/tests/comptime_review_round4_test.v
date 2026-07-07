@@ -134,6 +134,46 @@ fn main() {
 	assert out == "id:true:true:true:true:false:|name:true:true:false:false:true:json: 'wire'|count:2"
 }
 
+fn test_nested_comptime_for_shadowed_loop_variables() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'shadowed_comptime_for', "struct A {
+	a int
+}
+
+struct B {
+	b int
+	c string
+}
+
+enum Outer {
+	one
+}
+
+enum Inner {
+	red
+	blue
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in A.fields {
+		rows << 'outer-field:' + field.name
+		$for field in B.fields {
+			rows << 'inner-field:' + field.name
+		}
+	}
+	$for value in Outer.values {
+		rows << 'outer-value:' + value.name
+		$for value in Inner.values {
+			rows << 'inner-value:' + value.name
+		}
+	}
+	println(rows.join('|'))
+}
+	")
+	assert out == 'outer-field:a|inner-field:b|inner-field:c|outer-value:one|inner-value:red|inner-value:blue'
+}
+
 fn test_unknown_comptime_field_member_is_rejected() {
 	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_field_member', 'struct S {
