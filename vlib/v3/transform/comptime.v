@@ -34,6 +34,8 @@ struct FieldMeta {
 	name          string
 	typ           string
 	unaliased_typ string
+	typ_id        int
+	unaliased_id  int
 	is_option     bool
 	is_embed      bool
 	is_array      bool
@@ -403,8 +405,8 @@ fn (mut t Transformer) make_enum_data_literal(item EnumValueMeta) flat.NodeId {
 fn (mut t Transformer) make_field_data_literal(fm FieldMeta) flat.NodeId {
 	fields := [
 		t.make_named_field_init('name', t.make_string_literal(fm.name), 'string'),
-		t.make_named_field_init('typ', t.make_int_literal(0), 'int'),
-		t.make_named_field_init('unaliased_typ', t.make_int_literal(0), 'int'),
+		t.make_named_field_init('typ', t.make_int_literal(fm.typ_id), 'int'),
+		t.make_named_field_init('unaliased_typ', t.make_int_literal(fm.unaliased_id), 'int'),
 		t.make_named_field_init('attrs', t.make_string_array_literal(fm.attrs), '[]string'),
 		t.make_named_field_init('is_pub', t.make_bool_literal(fm.is_pub), 'bool'),
 		t.make_named_field_init('is_mut', t.make_bool_literal(fm.is_mut), 'bool'),
@@ -683,6 +685,8 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 		name:          name
 		typ:           ftyp
 		unaliased_typ: unaliased
+		typ_id:        t.comptime_field_type_id(ftyp, decl_module)
+		unaliased_id:  t.comptime_field_type_id(unaliased, decl_module)
 		is_option:     is_option
 		is_embed:      is_embed
 		is_array:      unaliased.starts_with('[]') || t.is_fixed_array_type(unaliased)
@@ -698,6 +702,55 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 		attrs:         extra.attrs
 		indirections:  indir
 	}
+}
+
+fn (t &Transformer) comptime_field_type_id(typ string, decl_module string) int {
+	key := t.comptime_field_type_id_key(typ, decl_module)
+	if key.len == 0 {
+		return 0
+	}
+	return comptime_type_id_hash(key)
+}
+
+fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) string {
+	mut core := typ.trim_space()
+	if core.len == 0 {
+		return ''
+	}
+	if core.starts_with('?') {
+		return '?' + t.comptime_field_type_id_key(core[1..], decl_module)
+	}
+	if core.starts_with('shared ') {
+		return 'shared ' + t.comptime_field_type_id_key(core[7..], decl_module)
+	}
+	if core.starts_with('atomic ') {
+		return 'atomic ' + t.comptime_field_type_id_key(core[7..], decl_module)
+	}
+	mut refs := ''
+	for core.starts_with('&') {
+		refs += '&'
+		core = core[1..].trim_space()
+	}
+	if refs.len > 0 {
+		return refs + t.comptime_field_type_id_key(core, decl_module)
+	}
+	if core.starts_with('[]') {
+		return '[]' + t.comptime_field_type_id_key(core[2..], decl_module)
+	}
+	if comptime_is_primitive_type(core) || core.contains('.') || core.contains('[')
+		|| core.contains(' ') || decl_module.len == 0 || decl_module in ['main', 'builtin'] {
+		return core
+	}
+	return '${decl_module}.${core}'
+}
+
+// V3 does not have a runtime TypeInfo table yet; keep FieldData TypeIDs stable and nonzero.
+fn comptime_type_id_hash(key string) int {
+	mut h := u64(1469598103934665603)
+	for i in 0 .. key.len {
+		h = ((h ^ u64(key[i])) * 1099511628211) % 2147483647
+	}
+	return int(h) + 1
 }
 
 fn comptime_is_primitive_type(typ string) bool {

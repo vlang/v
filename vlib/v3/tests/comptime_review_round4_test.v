@@ -106,16 +106,18 @@ fn main() {
 
 fn test_bare_comptime_field_materializes_fielddata() {
 	v3_bin := round4_build_v3()
-	out := round4_run_good(v3_bin, 'bare_fielddata', "struct S {
+	out := round4_run_good(v3_bin, 'bare_fielddata', "type WireName = string
+
+struct S {
 pub:
 	id int
 mut:
 	@[json: 'wire']
-	name string
+	name WireName
 }
 
 fn describe(field FieldData) string {
-	return field.name + ':' + field.is_pub.str() + ':' + field.is_mut.str() + ':' + field.attrs.join(',')
+	return field.name + ':' + (field.typ > 0).str() + ':' + (field.unaliased_typ > 0).str() + ':' + (field.typ == field.unaliased_typ).str() + ':' + field.is_pub.str() + ':' + field.is_mut.str() + ':' + field.attrs.join(',')
 }
 
 fn main() {
@@ -129,7 +131,7 @@ fn main() {
 	println(rows.join('|'))
 }
 ")
-	assert out == "id:true:false:|name:false:true:json: 'wire'|count:2"
+	assert out == "id:true:true:true:true:false:|name:true:true:false:false:true:json: 'wire'|count:2"
 }
 
 fn test_unknown_comptime_field_member_is_rejected() {
