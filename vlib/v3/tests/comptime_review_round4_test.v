@@ -99,9 +99,9 @@ fn main() {
 		rows << field.name + ':' + field.is_mut.str() + ':' + field.is_pub.str() + ':' + field.attrs.join(',')
 	}
 	println(rows.join('|'))
-}
-")
-	assert out == 'private:false:false:|public:false:true:|mutable:true:false:|pub_mut:true:true:|attr:true:true:json: wire'
+	}
+	")
+	assert out == "private:false:false:|public:false:true:|mutable:true:false:|pub_mut:true:true:|attr:true:true:json: 'wire'"
 }
 
 fn test_unknown_comptime_field_member_is_rejected() {
@@ -115,8 +115,34 @@ fn main() {
 		println(field.nmae)
 	}
 }
-',
+	',
 		'unknown FieldData member `nmae`')
+}
+
+fn test_unsupported_comptime_field_members_are_rejected() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'bad_field_is_interface', 'struct S {
+		name int
+	}
+
+fn main() {
+	$for field in S.fields {
+		println(field.is_interface)
+	}
+}
+',
+		'unknown FieldData member `is_interface`')
+	round4_run_bad(v3_bin, 'bad_field_is_function', 'struct S {
+		name int
+	}
+
+fn main() {
+	$for field in S.fields {
+		println(field.is_function)
+	}
+}
+',
+		'unknown FieldData member `is_function`')
 }
 
 fn test_enum_values_use_const_from_declaring_module() {
@@ -150,6 +176,29 @@ fn main() {
 '
 	}, 'main.v')
 	assert out == 'dark:6|light:7'
+}
+
+fn test_enum_values_preserve_flag_values_and_attrs() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'enum_flag_attrs', "@[flag]
+enum Perm {
+	read  @[json: 'r'; primary]
+	write
+	execute = 3
+}
+
+fn main() {
+	mut rows := []string{}
+	mut bare := []EnumData{}
+	$for item in Perm.values {
+		rows << item.name + ':' + int_str(item.value) + ':' + item.attrs.join(',')
+		bare << item
+	}
+	rows << bare[0].name + ':' + int_str(bare[0].value) + ':' + bare[0].attrs.join(',')
+	println(rows.join('|'))
+}
+")
+	assert out == "read:1:json: 'r',primary|write:2:|execute:8:|read:1:json: 'r',primary"
 }
 
 fn test_selective_imported_enum_alias_resolves_underlying_enum() {

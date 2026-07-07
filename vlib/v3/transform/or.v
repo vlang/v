@@ -583,6 +583,14 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	new_expr := t.transform_expr(expr_id)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
+	new_expr_type := t.node_type(new_expr)
+	if !t.is_optional_type_name(new_expr_type) {
+		t.pending_stmts = outer_pending
+		for stmt in prelude {
+			t.pending_stmts << stmt
+		}
+		return new_expr
+	}
 
 	if is_void {
 		prelude << t.make_decl_assign_typed(opt_tmp, new_expr, expr_type)

@@ -1294,11 +1294,15 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	mut needs_map_iteration_snapshot := false
 	mut needs_channel_helpers := false
 	mut needs_f32_eq_epsilon := false
+	mut needs_shared_runtime := false
 	mut cur_module := ''
 	mut imports := map[string]string{}
 	for node in a.nodes {
 		if markused_type_text_is_channel(node.typ) {
 			needs_channel_helpers = true
+		}
+		if markused_type_text_needs_shared_runtime(node.typ) {
+			needs_shared_runtime = true
 		}
 		match node.kind {
 			.file {
@@ -1367,6 +1371,9 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 				if node.value.starts_with('chan ') {
 					needs_channel_helpers = true
 				}
+			}
+			.lock_expr {
+				needs_shared_runtime = true
 			}
 			.infix {
 				if node.op == .arrow {
@@ -1479,6 +1486,20 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 		enqueue('f32.eq_epsilon', mut used, mut queue)
 		enqueue('f32__eq_epsilon', mut used, mut queue)
 	}
+	if needs_shared_runtime {
+		for helper in ['sync.cpanic', 'sync.cpanic_errno', 'sync.should_be_zero', 'sync.RwMutex.init',
+			'sync.RwMutex.lazy_init', 'sync.RwMutex.lock', 'sync.RwMutex.unlock',
+			'sync.RwMutex.rlock', 'sync.RwMutex.runlock', 'cpanic', 'cpanic_errno', 'should_be_zero',
+			'RwMutex.init', 'RwMutex.lazy_init', 'RwMutex.lock', 'RwMutex.unlock', 'RwMutex.rlock',
+			'RwMutex.runlock'] {
+			enqueue(helper, mut used, mut queue)
+		}
+	}
+}
+
+fn markused_type_text_needs_shared_runtime(typ string) bool {
+	clean := typ.trim_space()
+	return clean.starts_with('shared ') || clean.contains(' shared ')
 }
 
 fn markused_infix_needs_f32_eq_epsilon(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node) bool {

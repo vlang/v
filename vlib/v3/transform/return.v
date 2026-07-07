@@ -321,6 +321,48 @@ fn (mut t Transformer) try_expand_return_if(_id flat.NodeId, node flat.Node) ?[]
 	return arr1(t.build_return_if_chain(val_id, node.typ, extra_return_vals))
 }
 
+fn (t &Transformer) match_branch_tuple_parts(branch flat.Node, body_start_idx int, count int) ?TupleBlockParts {
+	if count <= 1 || branch.children_count <= body_start_idx {
+		return none
+	}
+	children := t.a.children_of(&branch).clone()
+	mut values := []flat.NodeId{}
+	mut prefix_end := children.len
+	for i := children.len - 1; i >= body_start_idx; i-- {
+		child_id := children[i]
+		child := t.a.nodes[int(child_id)]
+		if values.len == 0 && child.kind == .block {
+			if nested := t.tuple_block_parts(child_id, count) {
+				mut prefix := children[body_start_idx..i].clone()
+				for prefix_id in nested.prefix {
+					prefix << prefix_id
+				}
+				return TupleBlockParts{
+					prefix: prefix
+					values: nested.values.clone()
+				}
+			}
+		}
+		if child.kind != .expr_stmt || child.children_count == 0 {
+			break
+		}
+		for j := int(child.children_count) - 1; j >= 0; j-- {
+			values.prepend(t.a.child(&child, j))
+			if values.len == count {
+				break
+			}
+		}
+		prefix_end = i
+		if values.len == count {
+			return TupleBlockParts{
+				prefix: children[body_start_idx..prefix_end].clone()
+				values: values.clone()
+			}
+		}
+	}
+	return none
+}
+
 // match_branch_return_block supports match branch return block handling for Transformer.
 fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_idx int, ret_typ string) flat.NodeId {
 	mut body_ids := []flat.NodeId{}
@@ -329,6 +371,16 @@ fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_id
 	}
 	if body_ids.len == 0 {
 		return t.make_block([]flat.NodeId{})
+	}
+	tuple_count := t.current_return_multi_count()
+	if tuple_count > 1 {
+		if parts := t.match_branch_tuple_parts(branch, body_start_idx, tuple_count) {
+			mut all := t.transform_stmts(parts.prefix)
+			ret_vals := t.return_values_from_ids(parts.values)
+			t.drain_pending(mut all)
+			all << t.make_return_values(ret_vals, ret_typ)
+			return t.make_block(all)
+		}
 	}
 	mut all := []flat.NodeId{}
 	if body_ids.len > 1 {
@@ -351,7 +403,7 @@ fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_id
 		tail_id
 	}
 	tail_expr_node := t.a.nodes[int(tail_expr)]
-	if tail_expr_node.kind == .match_stmt {
+	if tail_expr_node.kind in [.if_expr, .match_stmt] {
 		nested_return := t.make_return(tail_expr, ret_typ)
 		for stmt in t.transform_stmt(nested_return) {
 			all << stmt

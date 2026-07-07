@@ -526,6 +526,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
 	g.preseed_c_extern_fn_ptr_types()
+	g.preseed_libc_compat_fns()
 	g.precompute_generic_method_candidate_index()
 	// Decide fixed-array return wrappers before generating function bodies, so
 	// signatures, returns and call sites all agree on the wrapped types.

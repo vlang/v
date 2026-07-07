@@ -1571,33 +1571,41 @@ fn (mut p Parser) enum_decl() flat.NodeId {
 	}
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
+	mut pending_attrs := []string{}
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon {
 			p.next()
 			continue
 		}
-		// attributes on enum fields — skip
+		// Leading attributes apply to the next enum field.
 		if p.tok == .attribute || p.tok == .lsbr {
-			p.skip_attrs()
+			pending_attrs << p.parse_field_attrs()
 			continue
 		}
 		field_name := p.expect_name_or_keyword()
+		mut attrs := pending_attrs.clone()
+		pending_attrs = []string{}
+		mut children_start := 0
+		mut children_count := flat.child_count(0)
 		if p.tok == .assign {
 			p.next()
 			val_id := p.expr(.lowest)
-			vstart := p.add_child(val_id)
-			ids << p.a.add_node(flat.Node{
-				kind:           .enum_field
-				value:          field_name
-				children_start: vstart
-				children_count: 1
-			})
-		} else {
-			ids << p.a.add_node(flat.Node{
-				kind:  .enum_field
-				value: field_name
-			})
+			children_start = p.add_child(val_id)
+			children_count = 1
 		}
+		if p.tok == .attribute || p.tok == .lsbr {
+			attrs << p.parse_field_attrs()
+		}
+		mut field := flat.Node{
+			kind:           .enum_field
+			value:          field_name
+			children_start: children_start
+			children_count: children_count
+		}
+		if attrs.len > 0 {
+			field.generic_params = attrs
+		}
+		ids << p.a.add_node(field)
 		if p.tok == .semicolon {
 			p.next()
 		}
@@ -1954,7 +1962,7 @@ fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, att
 	p.a.nodes[int(id)].generic_params = gp
 }
 
-// attr_unquote strips a single pair of surrounding quotes from an attribute piece (unlike
+// attr_unquote strips a single pair of surrounding quotes from an attribute key (unlike
 // strip_quotes, it does not treat a leading `r` as a raw-string prefix).
 fn attr_unquote(s string) string {
 	if s.len >= 2 && (s[0] == `'` || s[0] == `"`) && s[s.len - 1] == s[0] {
@@ -1998,7 +2006,7 @@ fn (mut p Parser) parse_field_attrs() []string {
 			p.next()
 			if p.tok == .colon {
 				p.next()
-				piece += ': ' + attr_unquote(p.lit)
+				piece += ': ' + p.lit.trim_space()
 				p.next()
 			}
 			piece = piece.trim_space()

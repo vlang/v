@@ -50,6 +50,12 @@ struct FieldMeta {
 	indirections  int
 }
 
+struct EnumValueMeta {
+	name  string
+	value int
+	attrs []string
+}
+
 fn comptime_for_parts(value string) (string, string) {
 	if idx := value.index('|') {
 		return value[..idx], value[idx + 1..]
@@ -113,13 +119,12 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 // expand_comptime_for_values unrolls `$for value in Enum.values { ... }`. The loop variable
 // exposes `value.name` / `value.value` and, used bare, materializes as `EnumData`.
 fn (mut t Transformer) expand_comptime_for_values(var_name string, base_type string, body_stmts []flat.NodeId) []flat.NodeId {
-	names, values := t.comptime_enum_members(base_type)
+	values := t.comptime_enum_members(base_type)
 	mut out := []flat.NodeId{}
-	for idx, name in names {
-		value := if idx < values.len { values[idx] } else { idx }
+	for item in values {
 		mut cloned := []flat.NodeId{cap: body_stmts.len}
 		for sid in body_stmts {
-			if cid := t.clone_value_subst(sid, var_name, name, value) {
+			if cid := t.clone_value_subst(sid, var_name, item) {
 				cloned << cid
 			}
 		}
@@ -131,9 +136,9 @@ fn (mut t Transformer) expand_comptime_for_values(var_name string, base_type str
 	return out
 }
 
-// comptime_enum_members returns the member names and their declared int values for an enum
-// (resolving an enum alias to its underlying enum).
-fn (t &Transformer) comptime_enum_members(base_type string) ([]string, []int) {
+// comptime_enum_members returns the member metadata for an enum (resolving an enum alias to its
+// underlying enum).
+fn (t &Transformer) comptime_enum_members(base_type string) []EnumValueMeta {
 	mut names := []string{}
 	mut resolved := base_type
 	if got := t.enum_types[base_type] {
@@ -146,19 +151,27 @@ fn (t &Transformer) comptime_enum_members(base_type string) ([]string, []int) {
 		}
 	}
 	if names.len == 0 {
-		return []string{}, []int{}
+		return []EnumValueMeta{}
 	}
-	return names, t.enum_decl_int_values(resolved)
+	metas := t.enum_decl_value_metas(resolved)
+	if metas.len > 0 {
+		return metas
+	}
+	mut fallback := []EnumValueMeta{cap: names.len}
+	for idx, name in names {
+		fallback << EnumValueMeta{
+			name:  name
+			value: idx
+		}
+	}
+	return fallback
 }
 
-// enum_decl_int_values locates the enum declaration matching `enum_name` (either a bare `Enum`
-// or a `module.Enum` qualified name) and evaluates each member's declared int value (explicit
-// `= N`, otherwise incrementing from the previous, starting at 0), matching V's enum numbering.
-// Module attribution mirrors `collect_types` (the current module is set by the last `module_decl`
-// seen in declaration order), so a qualified name selects the right declaration even when two
-// modules declare an enum with the same short name. Returns an empty list if not found, in which
-// case callers fall back to the sequential loop index.
-fn (t &Transformer) enum_decl_int_values(enum_name string) []int {
+// enum_decl_value_metas locates the enum declaration matching `enum_name` (either a bare `Enum`
+// or a `module.Enum` qualified name) and evaluates each member's metadata. Explicit values are
+// treated like the C backend: normal enums use the integer directly; `[flag]` enums use it as the
+// bit index and materialize `1 << index`.
+fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 	mut cur_mod := ''
 	for idx in 0 .. t.a.nodes.len {
 		kind := t.a.nodes[idx].kind
@@ -178,7 +191,8 @@ fn (t &Transformer) enum_decl_int_values(enum_name string) []int {
 		if enum_name != node.value && enum_name != qualified {
 			continue
 		}
-		mut values := []int{}
+		is_flag := node.typ == 'flag'
+		mut values := []EnumValueMeta{}
 		mut next_val := 0
 		for i in 0 .. node.children_count {
 			f := t.a.child_node(&node, i)
@@ -191,12 +205,16 @@ fn (t &Transformer) enum_decl_int_values(enum_name string) []int {
 					val = ev
 				}
 			}
-			values << val
+			values << EnumValueMeta{
+				name:  f.value
+				value: if is_flag { 1 << val } else { val }
+				attrs: f.generic_params.clone()
+			}
 			next_val = val + 1
 		}
 		return values
 	}
-	return []int{}
+	return []EnumValueMeta{}
 }
 
 // enum_field_int_value evaluates an enum member's value expression using the transformer's
@@ -301,22 +319,22 @@ fn (t &Transformer) enum_field_int_value_in_module(id flat.NodeId, enum_module s
 
 // clone_value_subst clones a `$for value in Enum.values` body, substituting `value.name`,
 // `value.value`, `value.attrs`, and a bare `value` (an `EnumData` literal).
-fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, name string, value int) ?flat.NodeId {
+fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, item EnumValueMeta) ?flat.NodeId {
 	if int(id) < 0 {
 		return id
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .ident && node.value == var_name {
-		return t.make_enum_data_literal(name, value)
+		return t.make_enum_data_literal(item)
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := t.a.child_node(&node, 0)
 		if base.kind == .ident && base.value == var_name {
 			return match node.value {
-				'name' { t.make_string_literal(name) }
-				'value' { t.make_int_literal(value) }
-				'attrs' { t.zero_value_for_type('[]string') }
-				else { t.make_string_literal(name) }
+				'name' { t.make_string_literal(item.name) }
+				'value' { t.make_int_literal(item.value) }
+				'attrs' { t.make_string_array_literal(item.attrs) }
+				else { t.make_string_literal(item.name) }
 			}
 		}
 	}
@@ -324,18 +342,18 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, name s
 	// and keep the taken branch, mirroring the field-loop path so the guard is not left as an
 	// unsupported `comptime_if` for the C backend.
 	if node.kind == .comptime_if {
-		cond := t.subst_value_cond(node.value, var_name, name, value)
+		cond := t.subst_value_cond(node.value, var_name, item.name, item.value)
 		if taken := t.eval_field_cond(cond) {
 			branch_idx := if taken { 0 } else { 1 }
 			if branch_idx >= int(node.children_count) {
 				return none
 			}
-			return t.clone_value_subst(t.a.child(&node, branch_idx), var_name, name, value)
+			return t.clone_value_subst(t.a.child(&node, branch_idx), var_name, item)
 		}
 	}
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
-		if c := t.clone_value_subst(t.a.child(&node, i), var_name, name, value) {
+		if c := t.clone_value_subst(t.a.child(&node, i), var_name, item) {
 			children << c
 		}
 	}
@@ -356,11 +374,12 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, name s
 	})
 }
 
-// make_enum_data_literal builds `EnumData{name: '<name>', value: <value>, attrs: []string{}}`.
-fn (mut t Transformer) make_enum_data_literal(name string, value int) flat.NodeId {
-	name_field := t.make_named_field_init('name', t.make_string_literal(name), 'string')
-	value_field := t.make_named_field_init('value', t.make_int_literal(value), 'i64')
-	attrs_field := t.make_named_field_init('attrs', t.zero_value_for_type('[]string'), '[]string')
+// make_enum_data_literal builds `EnumData{name: '<name>', value: <value>, attrs: [...]}`.
+fn (mut t Transformer) make_enum_data_literal(item EnumValueMeta) flat.NodeId {
+	name_field := t.make_named_field_init('name', t.make_string_literal(item.name), 'string')
+	value_field := t.make_named_field_init('value', t.make_int_literal(item.value), 'i64')
+	attrs_field := t.make_named_field_init('attrs', t.make_string_array_literal(item.attrs),
+		'[]string')
 	start := t.a.children.len
 	t.a.children << name_field
 	t.a.children << value_field

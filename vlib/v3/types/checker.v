@@ -13,8 +13,6 @@ const comptime_field_members = [
 	'is_chan',
 	'is_struct',
 	'is_enum',
-	'is_interface',
-	'is_function',
 	'is_alias',
 	'is_shared',
 	'is_atomic',
