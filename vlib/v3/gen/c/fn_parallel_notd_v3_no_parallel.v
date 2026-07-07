@@ -672,8 +672,8 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 // generation touches), the struct copy carries every collected table the
 // postamble pieces read (C directives, flags, module tables, ...). Only the
 // state the postamble WRITES is re-privatized: the builder, the checker (its
-// cur_file/cur_module scratch and caches), the c_name cache, and the
-// emission-dedup maps that are adopted back after the join.
+// cur_file/cur_module scratch and caches), cgen memoization caches, the c_name
+// cache, and the emission-dedup maps that are adopted back after the join.
 fn (g &FlatGen) postamble_fork(worker_id int) &FlatGen {
 	mut w := *g
 	w.sb = strings.new_builder(65536)
@@ -690,6 +690,13 @@ fn (g &FlatGen) postamble_fork(worker_id int) &FlatGen {
 	w.emitted_fn_ptr_typedefs = g.emitted_fn_ptr_typedefs.clone()
 	w.fn_ptr_types = g.fn_ptr_types.clone()
 	w.libc_compat_fns = g.libc_compat_fns.clone()
+	w.array_method_cache = g.array_method_cache.clone()
+	w.param_types_cache = g.param_types_cache.clone()
+	w.embedded_fields_by_type = g.embedded_fields_by_type.clone()
+	w.spawn_wrapper_names = g.spawn_wrapper_names.clone()
+	w.spawn_wrapper_defs = g.spawn_wrapper_defs.clone()
+	w.callback_wrapper_names = g.callback_wrapper_names.clone()
+	w.callback_wrapper_defs = g.callback_wrapper_defs.clone()
 	w.c_extern_refs = map[string]bool{}
 	w.c_extern_refs_ready = false
 	// Snapshot of the interned-string table for the string_literals segment;
