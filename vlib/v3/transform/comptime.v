@@ -44,6 +44,9 @@ struct FieldMeta {
 	is_alias      bool
 	is_shared     bool
 	is_atomic     bool
+	is_mut        bool
+	is_pub        bool
+	attrs         []string
 	indirections  int
 }
 
@@ -184,7 +187,7 @@ fn (t &Transformer) enum_decl_int_values(enum_name string) []int {
 			}
 			mut val := next_val
 			if f.children_count > 0 {
-				if ev := t.enum_field_int_value(t.a.child(f, 0)) {
+				if ev := t.enum_field_int_value_in_module(t.a.child(f, 0), cur_mod) {
 					val = ev
 				}
 			}
@@ -196,9 +199,17 @@ fn (t &Transformer) enum_decl_int_values(enum_name string) []int {
 	return []int{}
 }
 
-// enum_field_int_value evaluates an enum member's value expression (`x = 1`, `x = 1 << 2`,
-// `x = SomeConst`) to an int, following the same forms as the C backend.
+// enum_field_int_value evaluates an enum member's value expression using the transformer's
+// current module for any const reference.
 fn (t &Transformer) enum_field_int_value(id flat.NodeId) ?int {
+	return t.enum_field_int_value_in_module(id, t.cur_module)
+}
+
+// enum_field_int_value_in_module evaluates an enum member's value expression (`x = 1`,
+// `x = 1 << 2`, `x = SomeConst`) to an int, following the same forms as the C backend.
+// `enum_module` is the enum's declaring module, so a const referenced by a member (`a = base`)
+// resolves in that module rather than the caller's.
+fn (t &Transformer) enum_field_int_value_in_module(id flat.NodeId, enum_module string) ?int {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
@@ -211,13 +222,13 @@ fn (t &Transformer) enum_field_int_value(id flat.NodeId) ?int {
 			if node.children_count == 0 {
 				return none
 			}
-			return t.enum_field_int_value(t.a.child(&node, 0))
+			return t.enum_field_int_value_in_module(t.a.child(&node, 0), enum_module)
 		}
 		.prefix {
 			if node.children_count == 0 {
 				return none
 			}
-			v := t.enum_field_int_value(t.a.child(&node, 0))?
+			v := t.enum_field_int_value_in_module(t.a.child(&node, 0), enum_module)?
 			return match node.op {
 				.plus { v }
 				.minus { -v }
@@ -229,25 +240,56 @@ fn (t &Transformer) enum_field_int_value(id flat.NodeId) ?int {
 			if node.children_count < 2 {
 				return none
 			}
-			l := t.enum_field_int_value(t.a.child(&node, 0))?
-			r := t.enum_field_int_value(t.a.child(&node, 1))?
+			l := t.enum_field_int_value_in_module(t.a.child(&node, 0), enum_module)?
+			r := t.enum_field_int_value_in_module(t.a.child(&node, 1), enum_module)?
 			return match node.op {
-				.plus { l + r }
-				.minus { l - r }
-				.mul { l * r }
-				.div { if r == 0 { none } else { l / r } }
-				.mod { if r == 0 { none } else { l % r } }
-				.left_shift { l << r }
-				.right_shift { l >> r }
-				.amp { l & r }
-				.pipe { l | r }
-				.xor { l ^ r }
-				else { none }
+				.plus {
+					l + r
+				}
+				.minus {
+					l - r
+				}
+				.mul {
+					l * r
+				}
+				.div {
+					if r == 0 {
+						none
+					} else {
+						l / r
+					}
+				}
+				.mod {
+					if r == 0 {
+						none
+					} else {
+						l % r
+					}
+				}
+				.left_shift {
+					l << r
+				}
+				.right_shift {
+					l >> r
+				}
+				.amp {
+					l & r
+				}
+				.pipe {
+					l | r
+				}
+				.xor {
+					l ^ r
+				}
+				else {
+					none
+				}
 			}
 		}
 		.ident {
 			if !isnil(t.tc) {
-				return t.tc.const_int_value_in_module(node.value, t.cur_module, []string{})
+				lookup_module := if enum_module.len > 0 { enum_module } else { t.cur_module }
+				return t.tc.const_int_value_in_module(node.value, lookup_module, []string{})
 			}
 			return none
 		}
@@ -464,6 +506,14 @@ fn (t &Transformer) subtree_calls_generic(id flat.NodeId, generic_names map[stri
 	return false
 }
 
+// FieldDeclMeta holds the per-field mutability/visibility/attributes recorded by the parser on a
+// `field_decl` node, keyed by field name (see struct_field_decl_metas).
+struct FieldDeclMeta {
+	is_mut bool
+	is_pub bool
+	attrs  []string
+}
+
 // comptime_field_metas derives FieldData for every field of the concrete struct type.
 fn (t &Transformer) comptime_field_metas(base_type string) []FieldMeta {
 	// A monomorphized generic struct instance (`Box[int]`) is stored in the struct table under
@@ -472,6 +522,7 @@ fn (t &Transformer) comptime_field_metas(base_type string) []FieldMeta {
 	info := t.lookup_struct_info(base_type) or {
 		t.generic_struct_info_for_stringify(base_type) or { return []FieldMeta{} }
 	}
+	decl_metas := t.struct_field_decl_metas(base_type)
 	mut metas := []FieldMeta{cap: info.fields.len}
 	for f in info.fields {
 		// V's `field.typ` is the type as written (`MyInt`, `?[]int`); `raw_typ` preserves that,
@@ -479,12 +530,75 @@ fn (t &Transformer) comptime_field_metas(base_type string) []FieldMeta {
 		// collect_types. Classify using `f.typ` (and `info.module` for the alias check) so a
 		// field type declared in another module is not mis-resolved against the caller's module.
 		ftyp := if f.raw_typ.len > 0 { f.raw_typ } else { f.typ }
-		metas << t.field_meta_for(f.name, ftyp, f.typ, info.module, f.is_embedded)
+		// Fields whose declaration node we could not introspect default to the previous
+		// public/immutable behaviour; found fields carry their real modifiers/attrs.
+		extra := decl_metas[f.name] or {
+			FieldDeclMeta{
+				is_pub: true
+			}
+		}
+		metas << t.field_meta_for(f.name, ftyp, f.typ, info.module, f.is_embedded, extra)
 	}
 	return metas
 }
 
-fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string, decl_module string, is_embed bool) FieldMeta {
+// struct_field_decl_metas scans the declaration of `base_type` (resolving a generic instance such
+// as `Box[int]` to its base `Box`, module-aware like enum lookup) and returns each field's real
+// `is_mut`/`is_pub`/attrs, which the parser recorded on the `field_decl` node.
+fn (t &Transformer) struct_field_decl_metas(base_type string) map[string]FieldDeclMeta {
+	mut out := map[string]FieldDeclMeta{}
+	mut decl_name := base_type.trim_space()
+	if idx := decl_name.index('[') {
+		decl_name = decl_name[..idx]
+	}
+	mut cur_mod := ''
+	for idx in 0 .. t.a.nodes.len {
+		kind := t.a.nodes[idx].kind
+		if kind == .module_decl {
+			cur_mod = t.a.nodes[idx].value
+			continue
+		}
+		if kind != .struct_decl {
+			continue
+		}
+		node := t.a.nodes[idx]
+		qualified := if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
+			'${cur_mod}.${node.value}'
+		} else {
+			node.value
+		}
+		if decl_name != node.value && decl_name != qualified {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			f := t.a.child_node(&node, i)
+			if f.kind != .field_decl {
+				continue
+			}
+			// The parser packs field metadata into generic_params: element 0 is a flag string
+			// (`m` = mut, `p` = pub), the rest are attributes. An empty list is the default
+			// (private, immutable, no attrs).
+			mut is_mut := false
+			mut is_pub := false
+			mut attrs := []string{}
+			if f.generic_params.len > 0 {
+				flags := f.generic_params[0]
+				is_mut = flags.contains('m')
+				is_pub = flags.contains('p')
+				attrs = f.generic_params[1..].clone()
+			}
+			out[f.value] = FieldDeclMeta{
+				is_mut: is_mut
+				is_pub: is_pub
+				attrs:  attrs
+			}
+		}
+		return out
+	}
+	return out
+}
+
+fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string, decl_module string, is_embed bool, extra FieldDeclMeta) FieldMeta {
 	is_option := ftyp.starts_with('?')
 	mut core := if is_option { ftyp[1..].trim_space() } else { ftyp }
 	mut indir := 0
@@ -525,6 +639,9 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 		is_alias:      is_alias
 		is_shared:     is_shared
 		is_atomic:     is_atomic
+		is_mut:        extra.is_mut
+		is_pub:        extra.is_pub
+		attrs:         extra.attrs
 		indirections:  indir
 	}
 }
@@ -589,9 +706,14 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 	if node.kind == .selector && node.children_count > 0 {
 		base := t.a.child_node(&node, 0)
 		if base.kind == .ident && base.value == var_name {
-			return t.field_member_value(node.value, fm)
+			if v := t.field_member_value(node.value, fm) {
+				return v
+			}
+			// Unknown FieldData member (e.g. a typo): leave the selector unresolved so it
+			// surfaces as an error instead of silently becoming the field name.
+			return t.clone_field_subst_children(node, var_name, fm)
 		}
-		// `receiver.$(<var>.name)` compile-time field selector — only fold when the name
+		// `receiver.$(<var>.name)` compile-time field selector - only fold when the name
 		// expression is *this* loop variable's `.name`. A nested loop's `$(inner.name)` is left
 		// untouched so its own unroll pass resolves it against the right field.
 		if node.value == '$' && node.children_count >= 2
@@ -653,8 +775,10 @@ fn (mut t Transformer) clone_field_subst_children(node flat.Node, var_name strin
 	})
 }
 
-// field_member_value replaces `<var>.member` with its concrete compile-time value.
-fn (mut t Transformer) field_member_value(member string, fm FieldMeta) flat.NodeId {
+// field_member_value replaces `<var>.member` with its concrete compile-time value. Returns none
+// for an unknown member (e.g. a typo `field.nmae`) so the caller leaves it unresolved rather than
+// silently substituting the field name.
+fn (mut t Transformer) field_member_value(member string, fm FieldMeta) ?flat.NodeId {
 	return match member {
 		'name' { t.make_string_literal(fm.name) }
 		'is_option', 'is_opt' { t.make_bool_literal(fm.is_option) }
@@ -667,14 +791,27 @@ fn (mut t Transformer) field_member_value(member string, fm FieldMeta) flat.Node
 		'is_alias' { t.make_bool_literal(fm.is_alias) }
 		'is_shared' { t.make_bool_literal(fm.is_shared) }
 		'is_atomic' { t.make_bool_literal(fm.is_atomic) }
-		'is_mut' { t.make_bool_literal(false) }
-		'is_pub' { t.make_bool_literal(true) }
+		'is_mut' { t.make_bool_literal(fm.is_mut) }
+		'is_pub' { t.make_bool_literal(fm.is_pub) }
 		'indirections' { t.make_int_literal(fm.indirections) }
-		'attrs' { t.zero_value_for_type('[]string') }
+		'attrs' { t.make_string_array_literal(fm.attrs) }
 		'typ' { t.make_string_literal(fm.typ) }
 		'unaliased_typ' { t.make_string_literal(fm.unaliased_typ) }
-		else { t.make_string_literal(fm.name) }
+		else { return none }
 	}
+}
+
+// make_string_array_literal builds a `[]string` literal (empty when `values` is empty) for
+// materializing `field.attrs`.
+fn (mut t Transformer) make_string_array_literal(values []string) flat.NodeId {
+	if values.len == 0 {
+		return t.zero_value_for_type('[]string')
+	}
+	mut ids := []flat.NodeId{cap: values.len}
+	for v in values {
+		ids << t.make_string_literal(v)
+	}
+	return t.make_array_literal_typed(ids, '[]string')
 }
 
 // subst_value_cond textually substitutes `<var>.name`/`<var>.value` inside a comptime condition
@@ -703,8 +840,8 @@ fn (t &Transformer) subst_field_cond(cond string, var_name string, fm FieldMeta)
 	c = c.replace('${var_name}.is_alias', fm.is_alias.str())
 	c = c.replace('${var_name}.is_shared', fm.is_shared.str())
 	c = c.replace('${var_name}.is_atomic', fm.is_atomic.str())
-	c = c.replace('${var_name}.is_mut', 'false')
-	c = c.replace('${var_name}.is_pub', 'true')
+	c = c.replace('${var_name}.is_mut', fm.is_mut.str())
+	c = c.replace('${var_name}.is_pub', fm.is_pub.str())
 	c = c.replace('${var_name}.typ', fm.typ)
 	c = c.replace('${var_name}.name', "'${fm.name}'")
 	return c

@@ -3,6 +3,29 @@ module types
 import v3.flat
 import v3.gen.c.naming
 
+const comptime_field_members = [
+	'name',
+	'is_option',
+	'is_opt',
+	'is_embed',
+	'is_array',
+	'is_map',
+	'is_chan',
+	'is_struct',
+	'is_enum',
+	'is_interface',
+	'is_function',
+	'is_alias',
+	'is_shared',
+	'is_atomic',
+	'is_mut',
+	'is_pub',
+	'indirections',
+	'attrs',
+	'typ',
+	'unaliased_typ',
+]
+
 const export_c_reserved_words = {
 	'auto':     true
 	'break':    true
@@ -4700,6 +4723,34 @@ fn node_kind_id(node flat.Node) int {
 	return kind_id
 }
 
+fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.Node) {
+	parts := node.value.split('|')
+	if parts.len != 2 || parts[0].len == 0 || parts[1] != 'fields' || node.children_count == 0 {
+		return
+	}
+	tc.check_comptime_field_members(tc.a.child(&node, 0), parts[0])
+}
+
+fn (mut tc TypeChecker) check_comptime_field_members(id flat.NodeId, var_name string) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .selector && node.children_count > 0 {
+		base_id := tc.a.child(&node, 0)
+		if tc.valid_node_id(base_id) {
+			base := tc.a.nodes[int(base_id)]
+			if base.kind == .ident && base.value == var_name
+				&& node.value !in comptime_field_members {
+				tc.record_error(.unknown_field, 'unknown FieldData member `${node.value}`', id)
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		tc.check_comptime_field_members(tc.a.child(&node, i), var_name)
+	}
+}
+
 // check_node validates check node state for types.
 fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	idx := int(id)
@@ -4755,7 +4806,9 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	if node.kind == .comptime_for {
 		// The body references the loop variable (`field.name`, `field.typ`, ...) which only
 		// exists once the transformer unrolls the loop against a concrete type, so it cannot
-		// be type-checked here. Skip it; the unrolled statements are concrete.
+		// be type-checked here. Validate the known compile-time member surface, then skip it;
+		// the unrolled statements are concrete.
+		tc.check_comptime_for_members(id, node)
 		return
 	}
 	if kind_id == 46 {
@@ -12782,6 +12835,13 @@ fn (tc &TypeChecker) resolve_enum_name(name string) ?string {
 		if resolved := tc.resolve_selective_import_type_symbol(name) {
 			if resolved in tc.enum_names || resolved in tc.flag_enums {
 				return resolved
+			}
+			// A selectively-imported alias of an enum (`import colors { Shade }` where
+			// `type Shade = Color`) resolves through to the underlying enum too.
+			if target := tc.type_aliases[resolved] {
+				if target != resolved && target in tc.enum_names {
+					return target
+				}
 			}
 		}
 	}

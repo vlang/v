@@ -2480,6 +2480,11 @@ fn (g &FlatGen) enum_selector_base_name(name string) ?string {
 		if candidate in g.tc.enum_names || candidate in g.tc.flag_enums {
 			return candidate
 		}
+		if target := g.tc.type_aliases[candidate] {
+			if target != candidate && (target in g.tc.enum_names || target in g.tc.flag_enums) {
+				return target
+			}
+		}
 	}
 	return none
 }

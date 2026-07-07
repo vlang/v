@@ -32,30 +32,29 @@ const read_source_chunk_size = 65536
 pub struct Parser {
 	prefs &pref.Preferences
 mut:
-	s                  scanner.Scanner
-	tok                token.Token
-	lit                string
-	tok_pos            int
-	peek_tok           token.Token = .eof
-	peek_lit           string
-	peek_pos           int
-	has_peek           bool
-	cur_file           string
-	cur_module         string
-	cur_fn             string
-	cur_struct         string   // receiver type name of the current method, for `@STRUCT`
-	comptime_for_vars  []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
-	pending_flag       bool
-	pending_params     bool
-	pending_export     string
-	pending_noreturn   bool
-	skip_next_decl     bool
-	disable_fn_body    bool
-	in_for_container   bool
-	local_type_names   map[string]string
-	local_type_scopes  []string
-	export_records     []ExportRecord
-
+	s                 scanner.Scanner
+	tok               token.Token
+	lit               string
+	tok_pos           int
+	peek_tok          token.Token = .eof
+	peek_lit          string
+	peek_pos          int
+	has_peek          bool
+	cur_file          string
+	cur_module        string
+	cur_fn            string
+	cur_struct        string   // receiver type name of the current method, for `@STRUCT`
+	comptime_for_vars []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
+	pending_flag      bool
+	pending_params    bool
+	pending_export    string
+	pending_noreturn  bool
+	skip_next_decl    bool
+	disable_fn_body   bool
+	in_for_container  bool
+	local_type_names  map[string]string
+	local_type_scopes []string
+	export_records    []ExportRecord
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
 	parsed_v_files int
@@ -1184,6 +1183,11 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	}
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
+	// Track the current `pub:`/`mut:` section and any leading attributes so each field's real
+	// mutability/visibility/attrs are recorded on its `field_decl` node for `$for` reflection.
+	mut sect_is_pub := false
+	mut sect_is_mut := false
+	mut pending_attrs := []string{}
 	for p.tok != .rcbr && p.tok != .eof {
 		// access modifiers
 		if p.tok == .key_pub {
@@ -1192,15 +1196,20 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			if peek_tok == .colon || peek_tok == .key_mut
 				|| (peek_tok == .name && peek_lit == 'module_mut') {
 				p.next()
+				mut section_mut := false
 				if p.tok == .key_mut {
+					section_mut = true
 					p.next()
 				}
 				if p.tok == .name && p.lit == 'module_mut' {
+					section_mut = true
 					p.next()
 				}
 				if p.tok == .colon {
 					p.next()
 				}
+				sect_is_pub = true
+				sect_is_mut = section_mut
 				continue
 			}
 		}
@@ -1208,6 +1217,17 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			if p.peek() == .colon {
 				p.next()
 				p.next()
+				sect_is_pub = false
+				sect_is_mut = true
+				continue
+			}
+		}
+		if p.tok == .key_global {
+			if p.peek() == .colon {
+				p.next()
+				p.next()
+				sect_is_pub = true
+				sect_is_mut = true
 				continue
 			}
 		}
@@ -1223,9 +1243,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			}
 			continue
 		}
-		// attributes — skip
+		// leading attributes apply to the next field
 		if p.tok == .attribute {
-			p.skip_attrs()
+			pending_attrs << p.parse_field_attrs()
 			continue
 		}
 		// field: name type [= default] [@[attrs]]
@@ -1236,11 +1256,14 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				second := p.expect_name_or_keyword()
 				full_type := '${field_name}.${second}'
 				field_type := full_type + p.parse_type_generic_suffix()
-				ids << p.a.add_node(flat.Node{
+				fid := p.a.add_node(flat.Node{
 					kind:  .field_decl
 					value: full_type
 					typ:   field_type
 				})
+				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, pending_attrs)
+				pending_attrs = []string{}
+				ids << fid
 				if p.tok == .semicolon {
 					p.next()
 				}
@@ -1249,11 +1272,14 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			// embedded struct (type on its own line, followed by semicolon)
 			if p.tok == .semicolon || p.tok == .rcbr {
 				embedded_type := p.resolve_local_type_name(field_name)
-				ids << p.a.add_node(flat.Node{
+				fid := p.a.add_node(flat.Node{
 					kind:  .field_decl
 					value: embedded_type
 					typ:   embedded_type
 				})
+				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, pending_attrs)
+				pending_attrs = []string{}
+				ids << fid
 				if p.tok == .semicolon {
 					p.next()
 				}
@@ -1268,12 +1294,19 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					names << p.expect_name_or_keyword()
 				}
 				field_type := p.parse_type_name()
+				mut group_attrs := pending_attrs.clone()
+				pending_attrs = []string{}
+				if p.tok == .attribute || p.tok == .lsbr {
+					group_attrs << p.parse_field_attrs()
+				}
 				for n in names {
-					ids << p.a.add_node(flat.Node{
+					fid := p.a.add_node(flat.Node{
 						kind:  .field_decl
 						value: n
 						typ:   field_type
 					})
+					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, group_attrs)
+					ids << fid
 				}
 				if p.tok == .semicolon {
 					p.next()
@@ -1295,17 +1328,21 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				children_start = p.add_child(default_id)
 				children_count = 1
 			}
-			// trailing field attributes — skip
+			// trailing field attributes
+			mut fattrs := pending_attrs.clone()
+			pending_attrs = []string{}
 			if p.tok == .attribute || p.tok == .lsbr {
-				p.skip_attrs()
+				fattrs << p.parse_field_attrs()
 			}
-			ids << p.a.add_node(flat.Node{
+			fid := p.a.add_node(flat.Node{
 				kind:           .field_decl
 				value:          field_name
 				typ:            field_type
 				children_start: children_start
 				children_count: flat.child_count(children_count)
 			})
+			p.apply_field_meta(fid, sect_is_mut, sect_is_pub, fattrs)
+			ids << fid
 			if p.tok == .semicolon {
 				p.next()
 			}
@@ -1888,6 +1925,90 @@ fn (mut p Parser) skip_attrs() {
 			p.next()
 		}
 	}
+}
+
+// apply_field_meta records a struct field's mutability, visibility, and attributes on its
+// `field_decl` node so `$for field in T.fields` reflection can expose `field.is_mut`,
+// `field.is_pub`, and `field.attrs`. Everything is packed into the otherwise-unused
+// `generic_params` (element 0 is a flag string: `m` = mut, `p` = pub; the rest are the
+// attributes) - the node's own `kind_id`/`is_mut` are load-bearing (kind dispatch) and must not
+// be repurposed. A default field (private, immutable, no attrs) is left untouched so it costs no
+// allocation and reads back as the default.
+fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, attrs []string) {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return
+	}
+	if !is_mut && !is_pub && attrs.len == 0 {
+		return
+	}
+	mut flags := ''
+	if is_mut {
+		flags += 'm'
+	}
+	if is_pub {
+		flags += 'p'
+	}
+	mut gp := []string{cap: attrs.len + 1}
+	gp << flags
+	gp << attrs
+	p.a.nodes[int(id)].generic_params = gp
+}
+
+// attr_unquote strips a single pair of surrounding quotes from an attribute piece (unlike
+// strip_quotes, it does not treat a leading `r` as a raw-string prefix).
+fn attr_unquote(s string) string {
+	if s.len >= 2 && (s[0] == `'` || s[0] == `"`) && s[s.len - 1] == s[0] {
+		return s[1..s.len - 1]
+	}
+	return s
+}
+
+// parse_field_attrs captures the attributes on a struct field (`@[json: 'x']`, `@[required]`,
+// `@[sql: serial]`) as their `key` / `key: value` string forms, mirroring V's `FieldData.attrs`.
+// A comptime `@[if cond]` guard keeps its existing evaluation semantics and is not exposed as an
+// attribute. Regardless of how the content splits, the loop always consumes through the closing
+// `]`, so parsing stays correct even for attribute forms it does not fully model.
+fn (mut p Parser) parse_field_attrs() []string {
+	mut attrs := []string{}
+	for p.tok == .attribute || p.tok == .lsbr {
+		p.next() // consume `@[` / `[`
+		if p.tok == .key_if {
+			p.next()
+			mut cond := strings.new_builder(16)
+			for p.tok != .rsbr && p.tok != .eof {
+				tok_str := p.comptime_cond_token_text()
+				if cond.len > 0 && tok_str != '?' {
+					cond.write_string(' ')
+				}
+				cond.write_string(tok_str)
+				p.next()
+			}
+			if !eval_comptime_cond(p.prefs, cond.str()) {
+				p.skip_next_decl = true
+			}
+			p.check(.rsbr)
+			continue
+		}
+		for p.tok != .rsbr && p.tok != .eof {
+			if p.tok == .comma || p.tok == .semicolon {
+				p.next()
+				continue
+			}
+			mut piece := attr_unquote(p.lit)
+			p.next()
+			if p.tok == .colon {
+				p.next()
+				piece += ': ' + attr_unquote(p.lit)
+				p.next()
+			}
+			piece = piece.trim_space()
+			if piece.len > 0 {
+				attrs << piece
+			}
+		}
+		p.check(.rsbr)
+	}
+	return attrs
 }
 
 fn (mut p Parser) try_parse_export_attr() {
