@@ -1566,37 +1566,21 @@ fn (mut g Gen) gen_enum_static_from_string(fn_name string, mod_enum_name string,
 	enum_styp := g.styp(enum_typ)
 	option_enum_typ := enum_typ.set_flag(.option)
 	option_enum_styp := g.styp(option_enum_typ)
-	enum_field_names := g.table.get_enum_field_names(mod_enum_name)
-	enum_field_vals := g.table.get_enum_field_vals(mod_enum_name)
+	enum_decl := g.table.enum_decls[mod_enum_name]
+	enum_prefix := g.gen_enum_prefix(enum_typ)
 
 	mut fn_builder := strings.new_builder(512)
 	g.definitions.writeln('${g.static_non_parallel}${option_enum_styp} ${fn_name}(string name);')
 
 	fn_builder.writeln('${g.static_non_parallel}${option_enum_styp} ${fn_name}(string name) {')
 	fn_builder.writeln('\t${option_enum_styp} t1;')
-	fn_builder.writeln('\tbool exists = false;')
-	fn_builder.writeln('\tint inx = 0;')
-	fn_builder.writeln('\tarray field_names = ((array){.data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(string)});')
-	for field_name in enum_field_names {
-		fn_builder.writeln('\tbuiltin__array_push((array*)&field_names, _MOV((string[]){ _S("${field_name}") }));')
+	for field in enum_decl.fields {
+		fn_builder.writeln('\tif (builtin__fast_string_eq(name, _S("${field.name}"))) {')
+		fn_builder.writeln('\t\tbuiltin___option_ok(&(${enum_styp}[]){ ${enum_prefix}${field.name} }, (_option*)&t1, sizeof(${enum_styp}));')
+		fn_builder.writeln('\t\treturn t1;')
+		fn_builder.writeln('\t}')
 	}
-	fn_builder.writeln('\tarray field_vals = ((array){.data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(i64)});')
-	for field_val in enum_field_vals {
-		fn_builder.writeln('\tbuiltin__array_push((array*)&field_vals, _MOV((i64[]){ ${field_val} }));')
-	}
-	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${enum_field_names.len}; ++i) {')
-	fn_builder.writeln('\t\tif (builtin__fast_string_eq(name, (*(string*)builtin__array_get(field_names, i)))) {')
-	fn_builder.writeln('\t\t\texists = true;')
-	fn_builder.writeln('\t\t\tinx = i;')
-	fn_builder.writeln('\t\t\tbreak;')
-	fn_builder.writeln('\t\t}')
-	fn_builder.writeln('\t}')
-	fn_builder.writeln('\tif (exists) {')
-	fn_builder.writeln('\t\tbuiltin___option_ok(&(${enum_styp}[]){ (*(i64*)builtin__array_get(field_vals, inx)) }, (_option*)&t1, sizeof(${enum_styp}));')
-	fn_builder.writeln('\t\treturn t1;')
-	fn_builder.writeln('\t} else {')
-	fn_builder.writeln('\t\treturn (${option_enum_styp}){ .state=2, .err=_const_none__, .data={E_STRUCT} };')
-	fn_builder.writeln('\t}')
+	fn_builder.writeln('\treturn (${option_enum_styp}){ .state=2, .err=_const_none__, .data={E_STRUCT} };')
 	fn_builder.writeln('}')
 	g.auto_fn_definitions << fn_builder.str()
 }
