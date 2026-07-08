@@ -44,6 +44,16 @@ fn setup_sock(fd int) ! {
 	if C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_NODELAY, &flag, sizeof(int)) < 0 {
 		return error('setup_sock.setup_sock failed')
 	}
+	$if freebsd || macos {
+		// Accepted sockets do not inherit SO_NOSIGPIPE from the listener on the
+		// BSDs; without it a write() after a peer RST raises SIGPIPE instead of
+		// returning EPIPE. Belt to the process-wide signal_ignore braces in new()
+		// — either alone suffices, together they survive callers that re-arm
+		// SIGPIPE handlers.
+		if C.setsockopt(fd, C.SOL_SOCKET, C.SO_NOSIGPIPE, &flag, sizeof(int)) < 0 {
+			return error('setup_sock: SO_NOSIGPIPE failed')
+		}
+	}
 	$if freebsd {
 		if C.fcntl(fd, C.F_SETFL, C.SOCK_NONBLOCK) != 0 {
 			return error('fcntl failed')
