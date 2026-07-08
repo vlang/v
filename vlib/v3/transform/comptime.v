@@ -58,6 +58,12 @@ struct EnumValueMeta {
 	attrs []string
 }
 
+struct EnumDeclFieldValue {
+	name    string
+	expr_id flat.NodeId
+	attrs   []string
+}
+
 fn comptime_for_parts(value string) (string, string) {
 	if idx := value.index('|') {
 		return value[..idx], value[idx + 1..]
@@ -297,23 +303,41 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 			continue
 		}
 		is_flag := node.typ == 'flag'
-		mut values := []EnumValueMeta{}
-		mut next_val := 0
+		mut fields := []EnumDeclFieldValue{}
+		mut field_exprs := map[string]flat.NodeId{}
 		for i in 0 .. node.children_count {
 			f := t.a.child_node(&node, i)
 			if f.kind != .enum_field {
 				continue
 			}
+			expr_id := if f.children_count > 0 { t.a.child(f, 0) } else { flat.NodeId(-1) }
+			fields << EnumDeclFieldValue{
+				name:    f.value
+				expr_id: expr_id
+				attrs:   f.generic_params.clone()
+			}
+			if int(expr_id) >= 0 {
+				field_exprs[f.value] = expr_id
+			}
+		}
+		mut values := []EnumValueMeta{}
+		mut field_values := map[string]int{}
+		mut resolving := map[string]bool{}
+		mut next_val := 0
+		for f in fields {
 			mut val := next_val
-			if f.children_count > 0 {
-				if ev := t.enum_field_int_value_in_module(t.a.child(f, 0), cur_mod) {
+			if int(f.expr_id) >= 0 {
+				if ev := t.enum_field_int_value_with_enum(f.expr_id, cur_mod, qualified, mut
+					field_values, field_exprs, mut resolving)
+				{
 					val = ev
 				}
 			}
+			field_values[f.name] = val
 			values << EnumValueMeta{
-				name:  f.value
+				name:  f.name
 				value: if is_flag { 1 << val } else { val }
-				attrs: f.generic_params.clone()
+				attrs: f.attrs.clone()
 			}
 			next_val = val + 1
 		}
@@ -333,6 +357,14 @@ fn (t &Transformer) enum_field_int_value(id flat.NodeId) ?int {
 // `enum_module` is the enum's declaring module, so a const referenced by a member (`a = base`)
 // resolves in that module rather than the caller's.
 fn (t &Transformer) enum_field_int_value_in_module(id flat.NodeId, enum_module string) ?int {
+	mut field_values := map[string]int{}
+	field_exprs := map[string]flat.NodeId{}
+	mut resolving := map[string]bool{}
+	return t.enum_field_int_value_with_enum(id, enum_module, '', mut field_values, field_exprs, mut
+		resolving)
+}
+
+fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
@@ -345,13 +377,15 @@ fn (t &Transformer) enum_field_int_value_in_module(id flat.NodeId, enum_module s
 			if node.children_count == 0 {
 				return none
 			}
-			return t.enum_field_int_value_in_module(t.a.child(&node, 0), enum_module)
+			return t.enum_field_int_value_with_enum(t.a.child(&node, 0), enum_module, enum_name, mut
+				field_values, field_exprs, mut resolving)
 		}
 		.prefix {
 			if node.children_count == 0 {
 				return none
 			}
-			v := t.enum_field_int_value_in_module(t.a.child(&node, 0), enum_module)?
+			v := t.enum_field_int_value_with_enum(t.a.child(&node, 0), enum_module, enum_name, mut
+				field_values, field_exprs, mut resolving)?
 			return match node.op {
 				.plus { v }
 				.minus { -v }
@@ -363,8 +397,10 @@ fn (t &Transformer) enum_field_int_value_in_module(id flat.NodeId, enum_module s
 			if node.children_count < 2 {
 				return none
 			}
-			l := t.enum_field_int_value_in_module(t.a.child(&node, 0), enum_module)?
-			r := t.enum_field_int_value_in_module(t.a.child(&node, 1), enum_module)?
+			l := t.enum_field_int_value_with_enum(t.a.child(&node, 0), enum_module, enum_name, mut
+				field_values, field_exprs, mut resolving)?
+			r := t.enum_field_int_value_with_enum(t.a.child(&node, 1), enum_module, enum_name, mut
+				field_values, field_exprs, mut resolving)?
 			return match node.op {
 				.plus {
 					l + r
@@ -409,7 +445,23 @@ fn (t &Transformer) enum_field_int_value_in_module(id flat.NodeId, enum_module s
 				}
 			}
 		}
+		.enum_val {
+			return t.enum_decl_field_ref_value(node.value, enum_module, enum_name, mut
+				field_values, field_exprs, mut resolving)
+		}
+		.selector {
+			if field := t.enum_decl_selector_ref_field(id, enum_module, enum_name) {
+				return t.enum_decl_field_ref_value(field, enum_module, enum_name, mut field_values,
+					field_exprs, mut resolving)
+			}
+			return none
+		}
 		.ident {
+			if ev := t.enum_decl_field_ref_value(node.value, enum_module, enum_name, mut
+				field_values, field_exprs, mut resolving)
+			{
+				return ev
+			}
 			if !isnil(t.tc) {
 				lookup_module := if enum_module.len > 0 { enum_module } else { t.cur_module }
 				return t.tc.const_int_value_in_module(node.value, lookup_module, []string{})
@@ -420,6 +472,77 @@ fn (t &Transformer) enum_field_int_value_in_module(id flat.NodeId, enum_module s
 			return none
 		}
 	}
+}
+
+fn (t &Transformer) enum_decl_field_ref_value(field_name string, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
+	if val := field_values[field_name] {
+		return val
+	}
+	expr_id := field_exprs[field_name] or { return none }
+	if resolving[field_name] {
+		return none
+	}
+	resolving[field_name] = true
+	maybe_val := t.enum_field_int_value_with_enum(expr_id, enum_module, enum_name, mut
+		field_values, field_exprs, mut resolving)
+	resolving.delete(field_name)
+	val := maybe_val?
+	field_values[field_name] = val
+	return val
+}
+
+fn (t &Transformer) enum_decl_selector_ref_field(id flat.NodeId, enum_module string, enum_name string) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .selector || node.children_count == 0 {
+		return none
+	}
+	prefix := t.enum_decl_selector_base_text(t.a.child(&node, 0))
+	if !enum_ref_prefix_matches(prefix, enum_module, enum_name) {
+		return none
+	}
+	return node.value
+}
+
+fn (t &Transformer) enum_decl_selector_base_text(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return ''
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value
+		}
+		.selector {
+			if node.children_count == 0 {
+				return node.value
+			}
+			base := t.enum_decl_selector_base_text(t.a.child(&node, 0))
+			if base.len == 0 {
+				return node.value
+			}
+			return '${base}.${node.value}'
+		}
+		else {
+			return ''
+		}
+	}
+}
+
+fn enum_ref_prefix_matches(prefix string, enum_module string, enum_name string) bool {
+	if prefix.len == 0 || enum_name.len == 0 {
+		return false
+	}
+	short := enum_name.all_after_last('.')
+	if prefix == enum_name || prefix == short {
+		return true
+	}
+	if enum_module.len > 0 && prefix == '${enum_module}.${short}' {
+		return true
+	}
+	return false
 }
 
 // clone_value_subst clones a `$for value in Enum.values` body, substituting `value.name`,

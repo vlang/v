@@ -694,6 +694,27 @@ fn main() {
 	assert out == 'dark:6|light:7'
 }
 
+fn test_enum_values_resolve_enum_member_references() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'enum_member_ref_values', '@[_allow_multiple_values]
+enum Multi {
+	base = 100
+	same = .base
+	plus = .base + 2
+	next
+}
+
+fn main() {
+	mut rows := []string{}
+	$for item in Multi.values {
+		rows << item.name + ":" + int_str(item.value)
+	}
+	println(rows.join("|"))
+}
+')
+	assert out == 'base:100|same:100|plus:102|next:103'
+}
+
 fn test_enum_values_preserve_flag_values_and_attrs() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_flag_attrs', "@[flag]
