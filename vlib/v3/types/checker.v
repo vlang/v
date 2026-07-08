@@ -4752,6 +4752,17 @@ struct ComptimeStaticFieldCases {
 	cases []ComptimeStaticFieldCase
 }
 
+struct ComptimeStaticValueCase {
+	name      string
+	value     int
+	has_value bool
+}
+
+struct ComptimeStaticValueCases {
+	known bool
+	cases []ComptimeStaticValueCase
+}
+
 struct ComptimeStaticFieldDeclMeta {
 	is_mut   bool
 	is_pub   bool
@@ -4787,10 +4798,18 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	} else {
 		ComptimeStaticFieldCases{}
 	}
+	value_cases := if parts[1] == 'values' {
+		tc.comptime_static_enum_value_cases(node.typ)
+	} else {
+		ComptimeStaticValueCases{}
+	}
 	if field_cases.known && field_cases.cases.len == 0 {
 		return
 	}
-	tc.check_comptime_static_body(body_id, parts[0], parts[1], field_cases)
+	if value_cases.known && value_cases.cases.len == 0 {
+		return
+	}
+	tc.check_comptime_static_body(body_id, parts[0], parts[1], field_cases, value_cases)
 }
 
 fn (mut tc TypeChecker) check_comptime_members(id flat.NodeId, var_name string, members []string, meta_name string) {
@@ -4884,14 +4903,15 @@ fn comptime_cond_name_char(ch u8) bool {
 	return ch.is_letter() || ch.is_digit() || ch == `_`
 }
 
-fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases) {
+fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
 	if !tc.valid_node_id(id) {
 		return
 	}
 	node := tc.a.nodes[int(id)]
 	if node.kind == .block {
 		for i in 0 .. node.children_count {
-			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases)
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases,
+				value_cases)
 		}
 		return
 	}
@@ -4900,18 +4920,20 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	}
 	if node.kind == .if_expr {
 		for i in 0 .. node.children_count {
-			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases)
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases,
+				value_cases)
 		}
 		return
 	}
 	if node.kind in [.expr_stmt, .return_stmt] {
 		for i in 0 .. node.children_count {
-			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases)
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases,
+				value_cases)
 		}
 		return
 	}
 	if node.kind == .comptime_if && comptime_text_references_var(node.value, var_name) {
-		tc.check_comptime_static_metadata_if(node, var_name, loop_kind, field_cases)
+		tc.check_comptime_static_metadata_if(node, var_name, loop_kind, field_cases, value_cases)
 		return
 	}
 	if !tc.comptime_subtree_references_var(id, var_name) {
@@ -4919,15 +4941,21 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		return
 	}
 	if node.kind == .call {
-		tc.check_comptime_static_call(id, node, var_name, loop_kind, field_cases)
+		tc.check_comptime_static_call(id, node, var_name, loop_kind, field_cases, value_cases)
 		return
 	}
 }
 
-fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases) {
+fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
+	if loop_kind == 'values' {
+		tc.check_comptime_static_value_metadata_if(node, var_name, loop_kind, field_cases,
+			value_cases)
+		return
+	}
 	if !field_cases.known {
 		for i in 0 .. node.children_count {
-			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases)
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases,
+				value_cases)
 		}
 		return
 	}
@@ -4952,10 +4980,50 @@ fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_na
 		}
 	}
 	if check_then && node.children_count > 0 {
-		tc.check_comptime_static_body(tc.a.child(&node, 0), var_name, loop_kind, field_cases)
+		tc.check_comptime_static_body(tc.a.child(&node, 0), var_name, loop_kind, field_cases,
+			value_cases)
 	}
 	if check_else && node.children_count > 1 {
-		tc.check_comptime_static_body(tc.a.child(&node, 1), var_name, loop_kind, field_cases)
+		tc.check_comptime_static_body(tc.a.child(&node, 1), var_name, loop_kind, field_cases,
+			value_cases)
+	}
+}
+
+fn (mut tc TypeChecker) check_comptime_static_value_metadata_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
+	if !value_cases.known {
+		for i in 0 .. node.children_count {
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases,
+				value_cases)
+		}
+		return
+	}
+	mut check_then := false
+	mut check_else := false
+	for item in value_cases.cases {
+		cond := comptime_static_subst_value_cond(node.value, var_name, item)
+		if comptime_text_references_var(cond, var_name) {
+			check_then = true
+			check_else = true
+			continue
+		}
+		taken := tc.comptime_static_eval_field_cond(cond) or {
+			check_then = true
+			check_else = true
+			continue
+		}
+		if taken {
+			check_then = true
+		} else {
+			check_else = true
+		}
+	}
+	if check_then && node.children_count > 0 {
+		tc.check_comptime_static_body(tc.a.child(&node, 0), var_name, loop_kind, field_cases,
+			value_cases)
+	}
+	if check_else && node.children_count > 1 {
+		tc.check_comptime_static_body(tc.a.child(&node, 1), var_name, loop_kind, field_cases,
+			value_cases)
 	}
 }
 
@@ -4981,17 +5049,17 @@ fn (tc &TypeChecker) comptime_subtree_references_var(id flat.NodeId, var_name st
 	return false
 }
 
-fn (mut tc TypeChecker) check_comptime_static_call(id flat.NodeId, node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases) {
+fn (mut tc TypeChecker) check_comptime_static_call(id flat.NodeId, node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
 	if node.children_count == 0 {
 		return
 	}
 	callee_id := tc.a.child(&node, 0)
 	if tc.comptime_subtree_references_var(callee_id, var_name) {
-		tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases)
+		tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases, value_cases)
 		return
 	}
 	if _ := tc.sum_constructor_call_name(node) {
-		tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases)
+		tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases, value_cases)
 		return
 	}
 	if info0 := tc.resolve_call_info(id, node) {
@@ -5003,7 +5071,7 @@ fn (mut tc TypeChecker) check_comptime_static_call(id flat.NodeId, node flat.Nod
 			tc.remember_expr_type(id, info.return_type)
 		}
 		tc.check_comptime_static_call_metadata_arg_types(id, node, info, var_name, loop_kind)
-		tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases)
+		tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases, value_cases)
 		return
 	}
 	if tc.is_unsupported_hex_call(node) {
@@ -5020,7 +5088,7 @@ fn (mut tc TypeChecker) check_comptime_static_call(id flat.NodeId, node flat.Nod
 	if tc.should_diagnose(id) && !tc.is_known_call(node) {
 		tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
 	}
-	tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases)
+	tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases, value_cases)
 }
 
 fn (mut tc TypeChecker) check_comptime_static_call_metadata_arg_types(id flat.NodeId, node flat.Node, info CallInfo, var_name string, loop_kind string) {
@@ -5123,11 +5191,56 @@ fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_ki
 	}
 }
 
-fn (mut tc TypeChecker) check_comptime_static_call_args(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases) {
+fn (mut tc TypeChecker) check_comptime_static_call_args(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
 	for i in 1 .. node.children_count {
 		tc.check_comptime_static_body(tc.call_arg_value(tc.a.child(&node, i)), var_name, loop_kind,
-			field_cases)
+			field_cases, value_cases)
 	}
+}
+
+fn (tc &TypeChecker) comptime_static_enum_value_cases(base_type string) ComptimeStaticValueCases {
+	enum_name := tc.comptime_static_enum_name(base_type) or { return ComptimeStaticValueCases{} }
+	names := tc.enum_fields[enum_name] or { return ComptimeStaticValueCases{
+		known: true
+	} }
+	mut cases := []ComptimeStaticValueCase{cap: names.len}
+	for name in names {
+		cases << ComptimeStaticValueCase{
+			name: name
+		}
+	}
+	return ComptimeStaticValueCases{
+		known: true
+		cases: cases
+	}
+}
+
+fn (tc &TypeChecker) comptime_static_enum_name(raw string) ?string {
+	mut cur := raw.trim_space()
+	mut seen := map[string]bool{}
+	for cur.len > 0 && cur !in seen {
+		seen[cur] = true
+		for candidate in [cur, tc.qualify_name(cur)] {
+			if candidate in tc.enum_names {
+				return candidate
+			}
+		}
+		next := tc.alias_target_type_text(cur) or { break }
+		if next == cur {
+			break
+		}
+		cur = next.trim_space()
+	}
+	return none
+}
+
+fn comptime_static_subst_value_cond(cond string, var_name string, item ComptimeStaticValueCase) string {
+	mut c := cond
+	if item.has_value {
+		c = c.replace('${var_name}.value', item.value.str())
+	}
+	c = c.replace('${var_name}.name', "'${item.name}'")
+	return c
 }
 
 fn comptime_text_references_member(cond string, var_name string) bool {
@@ -5222,6 +5335,37 @@ fn (mut tc TypeChecker) comptime_static_field_cases(base_type string) ComptimeSt
 	}
 }
 
+fn (mut tc TypeChecker) comptime_static_enum_value_cases(base_type string) ComptimeStaticValueCases {
+	source_type := tc.comptime_static_for_base_type(base_type)
+	enum_name := tc.comptime_static_enum_name(source_type) or {
+		return ComptimeStaticValueCases{}
+	}
+	fields := tc.enum_fields[enum_name] or { return ComptimeStaticValueCases{
+		known: true
+	} }
+	metas := tc.comptime_static_enum_decl_value_cases(enum_name)
+	if metas.len > 0 {
+		return ComptimeStaticValueCases{
+			known: true
+			cases: metas
+		}
+	}
+	mut cases := []ComptimeStaticValueCase{cap: fields.len}
+	is_flag := enum_name in tc.flag_enums
+	for idx, name in fields {
+		value := if is_flag { 1 << idx } else { idx }
+		cases << ComptimeStaticValueCase{
+			name:      name
+			value:     value
+			has_value: true
+		}
+	}
+	return ComptimeStaticValueCases{
+		known: true
+		cases: cases
+	}
+}
+
 fn (tc &TypeChecker) comptime_static_for_base_type(raw string) string {
 	if source := tc.comptime_static_for_value_source_type(raw) {
 		return source
@@ -5261,6 +5405,144 @@ fn (tc &TypeChecker) comptime_static_for_var_source_type(name string) ?string {
 				return comptime_static_source_type_name(typ)
 			}
 		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) comptime_static_enum_name(raw string) ?string {
+	mut cur := raw.trim_space()
+	mut seen := map[string]bool{}
+	for cur.len > 0 && cur !in seen {
+		seen[cur] = true
+		for candidate in [cur, tc.qualify_name(cur)] {
+			if candidate in tc.enum_names {
+				return candidate
+			}
+		}
+		next := tc.alias_target_type_text(cur) or { break }
+		if next == cur {
+			break
+		}
+		cur = next.trim_space()
+	}
+	return none
+}
+
+fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name string) []ComptimeStaticValueCase {
+	mut cur_mod := ''
+	for idx in 0 .. tc.a.nodes.len {
+		kind := tc.a.nodes[idx].kind
+		if kind == .module_decl {
+			cur_mod = tc.a.nodes[idx].value
+			continue
+		}
+		if kind != .enum_decl {
+			continue
+		}
+		node := tc.a.nodes[idx]
+		qualified := if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
+			'${cur_mod}.${node.value}'
+		} else {
+			node.value
+		}
+		if enum_name != node.value && enum_name != qualified {
+			continue
+		}
+		is_flag := node.typ == 'flag'
+		mut out := []ComptimeStaticValueCase{}
+		mut previous := map[string]int{}
+		mut next_val := 0
+		for i in 0 .. node.children_count {
+			f := tc.a.child_node(&node, i)
+			if f.kind != .enum_field {
+				continue
+			}
+			mut val := next_val
+			if f.children_count > 0 {
+				if ev := tc.comptime_static_enum_field_value(tc.a.child(&f, 0), cur_mod, previous) {
+					val = ev
+				}
+			}
+			previous[f.value] = val
+			out << ComptimeStaticValueCase{
+				name:      f.value
+				value:     if is_flag { 1 << val } else { val }
+				has_value: true
+			}
+			next_val = val + 1
+		}
+		return out
+	}
+	return []ComptimeStaticValueCase{}
+}
+
+fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_module string, previous map[string]int) ?int {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.int_literal {
+			if v := v_int_literal_value(node.value) {
+				return v
+			}
+		}
+		.ident, .enum_val {
+			if v := previous[node.value] {
+				return v
+			}
+			return tc.const_int_value_in_module(node.value, enum_module, []string{})
+		}
+		.paren {
+			if node.children_count > 0 {
+				return tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module,
+					previous)
+			}
+		}
+		.prefix {
+			if node.children_count == 0 {
+				return none
+			}
+			value := tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module,
+				previous) or { return none }
+			return match node.op {
+				.minus { -value }
+				.plus { value }
+				.bit_not { ~value }
+				else { none }
+			}
+		}
+		.infix {
+			if node.children_count < 2 {
+				return none
+			}
+			left := tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module,
+				previous) or { return none }
+			right := tc.comptime_static_enum_field_value(tc.a.child(&node, 1), enum_module,
+				previous) or { return none }
+			if (node.op == .div || node.op == .mod) && right == 0 {
+				return none
+			}
+			if (node.op == .left_shift || node.op == .right_shift || node.op == .right_shift_unsigned)
+				&& (right < 0 || right >= 64) {
+				return none
+			}
+			return match node.op {
+				.plus { left + right }
+				.minus { left - right }
+				.mul { left * right }
+				.div { left / right }
+				.mod { left % right }
+				.left_shift { int(u64(left) << right) }
+				.right_shift { left >> right }
+				.right_shift_unsigned { int(u64(left) >> right) }
+				.amp { left & right }
+				.pipe { left | right }
+				.xor { left ^ right }
+				else { none }
+			}
+		}
+		else {}
 	}
 	return none
 }

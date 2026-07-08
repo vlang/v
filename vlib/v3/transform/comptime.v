@@ -439,6 +439,13 @@ fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module s
 				.right_shift {
 					l >> r
 				}
+				.right_shift_unsigned {
+					if r < 0 || r >= 64 {
+						none
+					} else {
+						int(u64(l) >> r)
+					}
+				}
 				.amp {
 					l & r
 				}

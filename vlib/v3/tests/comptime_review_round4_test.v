@@ -607,6 +607,44 @@ fn main() {
 		'cannot use `i64` as argument 1 to `takes_string`; expected `string`')
 }
 
+fn test_enum_value_metadata_if_prunes_untaken_branches() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'enum_value_metadata_if_prunes_else', "enum Color {
+	only
+}
+
+fn main() {
+	mut rows := []string{}
+	$for item in Color.values {
+		$if item.name == 'only' {
+			rows << item.name
+		} $else {
+			missing_fn()
+		}
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'only'
+}
+
+fn test_enum_value_metadata_handles_unsigned_shift() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'enum_value_metadata_unsigned_shift', "enum Shifted {
+	a = 8 >>> 1
+}
+
+fn main() {
+	mut rows := []string{}
+	$for item in Shifted.values {
+		rows << item.value.str()
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == '4'
+}
+
 fn test_cross_module_dynamic_field_selector_uses_qualified_type() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'cross_module_dynamic_field_selector_type', {
