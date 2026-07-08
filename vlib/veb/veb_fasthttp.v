@@ -248,9 +248,7 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 			url, host)
 		{
 			// Preserve the handled context on the heap before the stack-local user context goes away.
-			unsafe {
-				*ctx = user_context.Context
-			}
+			ctx.preserve_for_response_writer(user_context.Context)
 			return ctx
 		}
 	}
@@ -269,9 +267,7 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 		unsafe { prealloc_scope_checkpoint(c'veb route returned') }
 	}
 	// Preserve the handled context on the heap before the stack-local user context goes away.
-	unsafe {
-		*ctx = user_context.Context
-	}
+	ctx.preserve_for_response_writer(user_context.Context)
 	return ctx
 }
 
