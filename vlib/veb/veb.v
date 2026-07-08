@@ -220,9 +220,7 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 			user_context, url, host)
 		{
 			// Preserve the handled context on the heap before the stack-local user context goes away.
-			unsafe {
-				*ctx = user_context.Context
-			}
+			ctx.preserve_for_response_writer(user_context.Context)
 			return ctx
 		}
 	}
@@ -233,9 +231,7 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 	}
 	handle_route[A, X](mut global_app, mut user_context, url, host, params.routes)
 	// Preserve the handled context on the heap before the stack-local user context goes away.
-	unsafe {
-		*ctx = user_context.Context
-	}
+	ctx.preserve_for_response_writer(user_context.Context)
 	return ctx
 }
 
