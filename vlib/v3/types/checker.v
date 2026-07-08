@@ -5455,6 +5455,24 @@ fn (tc &TypeChecker) comptime_static_for_var_source_type(name string) ?string {
 
 fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name string) []ComptimeStaticValueCase {
 	mut cur_mod := ''
+	if tc.top_level_idx.len > 0 {
+		for idx in tc.top_level_idx {
+			kind := tc.a.nodes[idx].kind
+			if kind == .module_decl {
+				cur_mod = tc.a.nodes[idx].value
+				continue
+			}
+			if kind != .enum_decl {
+				continue
+			}
+			if cases := tc.comptime_static_enum_decl_value_cases_for_node(enum_name, cur_mod,
+				tc.a.nodes[idx])
+			{
+				return cases
+			}
+		}
+		return []ComptimeStaticValueCase{}
+	}
 	for idx in 0 .. tc.a.nodes.len {
 		kind := tc.a.nodes[idx].kind
 		if kind == .module_decl {
@@ -5464,52 +5482,59 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name string) []C
 		if kind != .enum_decl {
 			continue
 		}
-		node := tc.a.nodes[idx]
-		qualified := if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
-			'${cur_mod}.${node.value}'
-		} else {
-			node.value
+		if cases := tc.comptime_static_enum_decl_value_cases_for_node(enum_name, cur_mod,
+			tc.a.nodes[idx])
+		{
+			return cases
 		}
-		if enum_name != node.value && enum_name != qualified {
-			continue
-		}
-		is_flag := node.typ == 'flag'
-		mut field_order := []string{}
-		mut field_exprs := map[string]flat.NodeId{}
-		for i in 0 .. node.children_count {
-			f := tc.a.child_node(&node, i)
-			if f.kind != .enum_field {
-				continue
-			}
-			field_order << f.value
-			if f.children_count > 0 {
-				field_exprs[f.value] = tc.a.child(f, 0)
-			}
-		}
-		mut out := []ComptimeStaticValueCase{}
-		mut field_values := map[string]int{}
-		mut next_val := 0
-		for field_name in field_order {
-			mut val := next_val
-			if expr_id := field_exprs[field_name] {
-				mut resolving := map[string]bool{}
-				if ev := tc.comptime_static_enum_field_value(expr_id, cur_mod, enum_name, mut
-					field_values, field_exprs, mut resolving)
-				{
-					val = ev
-				}
-			}
-			field_values[field_name] = val
-			out << ComptimeStaticValueCase{
-				name:      field_name
-				value:     if is_flag { 1 << val } else { val }
-				has_value: true
-			}
-			next_val = val + 1
-		}
-		return out
 	}
 	return []ComptimeStaticValueCase{}
+}
+
+fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name string, cur_mod string, node flat.Node) ?[]ComptimeStaticValueCase {
+	qualified := if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
+		'${cur_mod}.${node.value}'
+	} else {
+		node.value
+	}
+	if enum_name != node.value && enum_name != qualified {
+		return none
+	}
+	is_flag := node.typ == 'flag'
+	mut field_order := []string{}
+	mut field_exprs := map[string]flat.NodeId{}
+	for i in 0 .. node.children_count {
+		f := tc.a.child_node(&node, i)
+		if f.kind != .enum_field {
+			continue
+		}
+		field_order << f.value
+		if f.children_count > 0 {
+			field_exprs[f.value] = tc.a.child(f, 0)
+		}
+	}
+	mut out := []ComptimeStaticValueCase{}
+	mut field_values := map[string]int{}
+	mut next_val := 0
+	for field_name in field_order {
+		mut val := next_val
+		if expr_id := field_exprs[field_name] {
+			mut resolving := map[string]bool{}
+			if ev := tc.comptime_static_enum_field_value(expr_id, cur_mod, enum_name, mut
+				field_values, field_exprs, mut resolving)
+			{
+				val = ev
+			}
+		}
+		field_values[field_name] = val
+		out << ComptimeStaticValueCase{
+			name:      field_name
+			value:     if is_flag { 1 << val } else { val }
+			has_value: true
+		}
+		next_val = val + 1
+	}
+	return out
 }
 
 fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
@@ -5720,6 +5745,24 @@ fn (tc &TypeChecker) comptime_static_field_decl_metas(base_type string) map[stri
 		decl_name = decl_name[..idx]
 	}
 	mut cur_mod := ''
+	if tc.top_level_idx.len > 0 {
+		for idx in tc.top_level_idx {
+			kind := tc.a.nodes[idx].kind
+			if kind == .module_decl {
+				cur_mod = tc.a.nodes[idx].value
+				continue
+			}
+			if kind != .struct_decl {
+				continue
+			}
+			if metas := tc.comptime_static_field_decl_metas_for_node(decl_name, cur_mod,
+				tc.a.nodes[idx])
+			{
+				return metas
+			}
+		}
+		return out
+	}
 	for idx in 0 .. tc.a.nodes.len {
 		kind := tc.a.nodes[idx].kind
 		if kind == .module_decl {
@@ -5729,36 +5772,44 @@ fn (tc &TypeChecker) comptime_static_field_decl_metas(base_type string) map[stri
 		if kind != .struct_decl {
 			continue
 		}
-		node := tc.a.nodes[idx]
-		qualified := if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
-			'${cur_mod}.${node.value}'
-		} else {
-			node.value
+		if metas := tc.comptime_static_field_decl_metas_for_node(decl_name, cur_mod,
+			tc.a.nodes[idx])
+		{
+			return metas
 		}
-		if decl_name != node.value && decl_name != qualified {
+	}
+	return out
+}
+
+fn (tc &TypeChecker) comptime_static_field_decl_metas_for_node(decl_name string, cur_mod string, node flat.Node) ?map[string]ComptimeStaticFieldDeclMeta {
+	qualified := if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
+		'${cur_mod}.${node.value}'
+	} else {
+		node.value
+	}
+	if decl_name != node.value && decl_name != qualified {
+		return none
+	}
+	mut out := map[string]ComptimeStaticFieldDeclMeta{}
+	for i in 0 .. node.children_count {
+		f := tc.a.child_node(&node, i)
+		if f.kind != .field_decl {
 			continue
 		}
-		for i in 0 .. node.children_count {
-			f := tc.a.child_node(&node, i)
-			if f.kind != .field_decl {
-				continue
-			}
-			raw_typ := if f.typ.len > 0 { f.typ } else { f.value }
-			mut is_mut := false
-			mut is_pub := false
-			if f.generic_params.len > 0 {
-				flags := f.generic_params[0]
-				is_mut = flags.contains('m')
-				is_pub = flags.contains('p')
-			}
-			out[f.value] = ComptimeStaticFieldDeclMeta{
-				is_mut:   is_mut
-				is_pub:   is_pub
-				is_embed: source_field_decl_is_embed(f, raw_typ)
-				raw_typ:  raw_typ
-			}
+		raw_typ := if f.typ.len > 0 { f.typ } else { f.value }
+		mut is_mut := false
+		mut is_pub := false
+		if f.generic_params.len > 0 {
+			flags := f.generic_params[0]
+			is_mut = flags.contains('m')
+			is_pub = flags.contains('p')
 		}
-		return out
+		out[f.value] = ComptimeStaticFieldDeclMeta{
+			is_mut:   is_mut
+			is_pub:   is_pub
+			is_embed: source_field_decl_is_embed(f, raw_typ)
+			raw_typ:  raw_typ
+		}
 	}
 	return out
 }
@@ -12330,6 +12381,9 @@ fn (mut tc TypeChecker) check_stmt_node(id flat.NodeId) {
 			tc.sparse_statement_nodes[idx] = true
 		}
 		tc.check_node(id)
+		$if ownership ? {
+			tc.ownership_after_stmt_node(id)
+		}
 		return
 	}
 	if idx >= tc.statement_nodes.len {
