@@ -119,7 +119,7 @@ fn (t &Transformer) comptime_for_field_source_type(owner_type string, field_name
 	}
 	for field in info.fields {
 		if field.name == field_name {
-			ftyp := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
+			ftyp := if field.typ.len > 0 { field.typ } else { field.raw_typ }
 			return t.comptime_for_value_type_base(ftyp)
 		}
 	}
@@ -139,7 +139,13 @@ fn (t &Transformer) comptime_for_value_type_base(raw string) string {
 
 fn (t &Transformer) comptime_resolve_selective_import_type(raw string) string {
 	clean := raw.trim_space()
-	if clean.len == 0 || clean.contains('.') || isnil(t.tc) || t.cur_file.len == 0 {
+	if clean.len == 0 || isnil(t.tc) || t.cur_file.len == 0 {
+		return clean
+	}
+	if clean.contains('.') {
+		if imported := t.resolve_imported_type_name(clean) {
+			return imported
+		}
 		return clean
 	}
 	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {

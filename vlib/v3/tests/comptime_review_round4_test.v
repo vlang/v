@@ -176,6 +176,73 @@ fn main() {
 	assert out == 'id|name|nested|id,name,nested|count'
 }
 
+fn test_comptime_for_import_alias_source_values() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'import_alias_values', {
+		'v.mod':           "Module { name: 'import_alias_values' }\n"
+		'colors/colors.v': 'module colors
+
+pub enum Shade {
+	red
+	blue
+}
+'
+		'main.v':          'module main
+
+import colors as palette
+
+fn main() {
+	mut rows := []string{}
+	$for item in palette.Shade.values {
+		rows << item.name
+	}
+	println(rows.join("|"))
+}
+'
+	}, 'main.v')
+	assert out == 'red|blue'
+}
+
+fn test_comptime_for_nested_value_source_uses_resolved_field_type() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'nested_value_resolved_field_type', {
+		'v.mod':     "Module { name: 'nested_value_resolved_field_type' }\n"
+		'pkg/pkg.v': 'module pkg
+
+pub struct Inner {
+pub:
+	count int
+}
+
+pub struct Outer {
+pub:
+	nested Inner
+}
+
+pub fn make_outer() Outer {
+	return Outer{}
+}
+'
+		'main.v':    'module main
+
+import pkg
+
+fn nested_names(value pkg.Outer) string {
+	mut rows := []string{}
+	$for field in value.nested.fields {
+		rows << field.name
+	}
+	return rows.join("|")
+}
+
+fn main() {
+	println(nested_names(pkg.make_outer()))
+}
+'
+	}, 'main.v')
+	assert out == 'count'
+}
+
 fn test_comptime_field_unaliased_typ_preserves_option_wrapper() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'field_unaliased_option', "type Alias = string
