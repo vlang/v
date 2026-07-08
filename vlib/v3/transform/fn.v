@@ -4430,12 +4430,20 @@ fn (mut t Transformer) try_lower_channel_method_call(call_id flat.NodeId, node f
 		return none
 	}
 	base_id := t.a.child(&fn_node, 0)
-	if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id, 'chan.close') {
-		return exact_call
-	}
 	mut base_type := t.node_type(base_id)
 	if base_type.len == 0 {
 		base_type = t.lvalue_type(base_id)
+	}
+	if !isnil(t.tc) {
+		if resolved_method := t.tc.resolved_call_name(call_id) {
+			if resolved_method != 'chan.close' && resolved_method != 'sync__Channel__close' {
+				if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id,
+					'chan.close')
+				{
+					return exact_call
+				}
+			}
+		}
 	}
 	mut clean_type := base_type
 	mut ptr_depth := 0
@@ -4444,8 +4452,17 @@ fn (mut t Transformer) try_lower_channel_method_call(call_id flat.NodeId, node f
 		clean_type = clean_type[1..].trim_space()
 	}
 	if clean_type != 'chan' && !clean_type.starts_with('chan ') {
+		if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id,
+			'chan.close')
+		{
+			return exact_call
+		}
 		return none
 	}
+	return t.lower_runtime_channel_close(base_id, ptr_depth)
+}
+
+fn (mut t Transformer) lower_runtime_channel_close(base_id flat.NodeId, ptr_depth int) flat.NodeId {
 	t.mark_fn_used('sync__Channel__close')
 	errs := t.make_array_new_call('IError', t.make_int_literal(0), t.make_int_literal(0))
 	fn_expr := t.make_selector(t.make_ident('C'), 'sync__Channel__close', '')
@@ -5140,6 +5157,27 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	}
 	if base_type.len == 0 {
 		return none
+	}
+	if method == 'close' && !isnil(t.tc) {
+		if resolved_method := t.tc.resolved_call_name(id) {
+			if resolved_method != 'chan.close' && resolved_method != 'sync__Channel__close' {
+				if exact_call := t.lower_checker_selected_receiver_method(id, node, base_id,
+					'chan.close')
+				{
+					return exact_call
+				}
+			}
+		}
+	}
+	if method == 'close' && (base_type == 'chan' || base_type.starts_with('chan ')) {
+		return t.lower_runtime_channel_close(base_id, if base_is_pointer { 1 } else { 0 })
+	}
+	if method == 'close' && !isnil(t.tc) {
+		if resolved_method := t.tc.resolved_call_name(id) {
+			if resolved_method == 'chan.close' || resolved_method == 'sync__Channel__close' {
+				return t.lower_runtime_channel_close(base_id, if base_is_pointer { 1 } else { 0 })
+			}
+		}
 	}
 	if t.cur_fn_is_generic && base_type.contains('[')
 		&& t.type_text_has_generic_placeholder(base_type, t.cur_module) {
