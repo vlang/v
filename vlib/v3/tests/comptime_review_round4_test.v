@@ -134,6 +134,109 @@ fn main() {
 	assert out == "id:true:true:true:true:false:|name:true:true:false:false:true:json: 'wire'|count:2"
 }
 
+fn test_comptime_field_unaliased_typ_preserves_option_wrapper() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'field_unaliased_option', "type Alias = string
+
+struct S {
+	opt_alias ?Alias
+	opt_string ?string
+}
+
+fn same_type_ids(field FieldData) string {
+	return (field.typ == field.unaliased_typ).str()
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field.unaliased_typ is ?string {
+			rows << field.name + ':option:' + same_type_ids(field)
+		} $else $if field.unaliased_typ is string {
+			rows << field.name + ':payload:' + same_type_ids(field)
+		} $else {
+			rows << field.name + ':other:' + same_type_ids(field)
+		}
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'opt_alias:option:false|opt_string:option:true'
+}
+
+fn test_comptime_for_source_alias_chains_unroll() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'comptime_for_alias_chain', "enum Color {
+	red
+	blue
+}
+
+type Shade = Color
+type Tint = Shade
+
+struct S {
+	id int
+}
+
+type StructAlias = S
+type StructTint = StructAlias
+
+fn main() {
+	mut rows := []string{}
+	$for item in Tint.values {
+		rows << 'value:' + item.name
+	}
+	$for field in StructTint.fields {
+		rows << 'field:' + field.name
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'value:red|value:blue|field:id'
+}
+
+fn test_non_generic_call_matching_generic_short_name_does_not_skip_comptime_for() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'generic_short_name_false_positive', {
+		'v.mod':             "Module { name: 'generic_short_name_false_positive' }\n"
+		'helpers/helpers.v': "module helpers
+
+pub fn encode[T](value T) string {
+	return 'generic'
+}
+"
+		'main.v':            "module main
+
+import helpers
+
+struct S {
+	id int
+}
+
+fn encode() string {
+	return 'ok'
+}
+
+fn main() {
+	warm := encode()
+	generic_warm := helpers.encode(1)
+	mut rows := []string{}
+	if warm.len == 0 {
+		rows << warm
+	}
+	if generic_warm.len == 0 {
+		rows << generic_warm
+	}
+	$for field in S.fields {
+		rows << field.name + ':' + encode()
+	}
+	println(rows.join('|'))
+}
+"
+	}, 'main.v')
+	assert out == 'id:ok'
+}
+
 fn test_nested_comptime_for_shadowed_loop_variables() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'shadowed_comptime_for', "struct A {

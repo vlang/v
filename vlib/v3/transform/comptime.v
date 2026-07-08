@@ -76,7 +76,21 @@ fn comptime_for_declares_var(node flat.Node, var_name string) bool {
 // comptime_for_base_type resolves the loop source type to a concrete name. Generic `T` was already
 // substituted to the concrete type in `node.typ` during monomorphization.
 fn (t &Transformer) comptime_for_base_type(raw string) string {
-	return t.normalize_type_alias(raw.trim_space())
+	return t.comptime_normalize_type_alias_chain(raw.trim_space())
+}
+
+fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {
+	mut typ := raw.trim_space()
+	mut seen := map[string]bool{}
+	for typ.len > 0 && typ !in seen {
+		seen[typ] = true
+		next := t.normalize_type_alias(typ).trim_space()
+		if next == typ {
+			break
+		}
+		typ = next
+	}
+	return typ
 }
 
 // expand_comptime_for unrolls a `$for` loop into concrete per-field statements. Kinds other than
@@ -478,16 +492,17 @@ fn (mut t Transformer) clone_node_preserving_children(node flat.Node) flat.NodeI
 	})
 }
 
-// comptime_body_calls_generic_fn reports whether any statement subtree calls a generic function
-// (matched by the callee's short name against the collected generic declarations).
+// comptime_body_calls_generic_fn reports whether any statement subtree calls a resolved generic
+// function. A plain short-name match is not enough: a non-generic method can share a name with an
+// unrelated generic helper.
 fn (mut t Transformer) comptime_body_calls_generic_fn(stmts []flat.NodeId) bool {
 	decls := t.cached_generic_fn_decls()
-	mut generic_names := map[string]bool{}
-	for key, _ in decls {
-		generic_names[key.all_after_last('.')] = true
+	if decls.len == 0 {
+		return false
 	}
+	t.ensure_node_module_map()
 	for sid in stmts {
-		if t.subtree_calls_generic(sid, generic_names) {
+		if t.subtree_calls_generic(sid, decls) {
 			return true
 		}
 	}
@@ -565,28 +580,19 @@ fn (t &Transformer) subtree_references_var(id flat.NodeId, var_name string) bool
 	return false
 }
 
-fn (t &Transformer) subtree_calls_generic(id flat.NodeId, generic_names map[string]bool) bool {
+fn (mut t Transformer) subtree_calls_generic(id flat.NodeId, decls map[string]GenericFnDecl) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind == .call && node.children_count > 0 {
-		callee := t.a.child_node(&node, 0)
-		mut name := ''
-		if callee.kind == .ident {
-			name = callee.value.all_after_last('.')
-		} else if callee.kind == .selector {
-			name = callee.value
-		}
-		// A nested generic call inside the body was already mangled to `<name>_T_<suffix>`
-		// against the outer type args by the generic clone; match its demangled base too.
-		gname := if name.contains('_T_') { name.all_before('_T_') } else { name }
-		if name.len > 0 && (generic_names[name] || generic_names[gname]) {
+	if node.kind == .call {
+		module_name := t.node_module_or(int(id), t.cur_module)
+		if _ := t.generic_call_decl_key(id, node, module_name, decls) {
 			return true
 		}
 	}
 	for i in 0 .. node.children_count {
-		if t.subtree_calls_generic(t.a.child(&node, i), generic_names) {
+		if t.subtree_calls_generic(t.a.child(&node, i), decls) {
 			return true
 		}
 	}
@@ -704,13 +710,14 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 		indir++
 		core = core[1..]
 	}
-	// `resolved_typ` is already alias-resolved in the declaring module; strip the same wrappers
-	// to get the unaliased core. Fall back to resolving `core` only when it is unavailable.
+	// `resolved_typ` is already alias-resolved in the declaring module and still carries wrappers
+	// like `?`, `shared`, and `&`; preserve them for `FieldData.unaliased_typ`.
 	unaliased := if resolved_typ.len > 0 {
-		comptime_strip_field_wrappers(resolved_typ)
+		resolved_typ.trim_space()
 	} else {
-		t.normalize_type_alias(core)
+		t.comptime_normalize_type_alias_chain(ftyp)
 	}
+	unaliased_core := comptime_strip_field_wrappers(unaliased)
 	is_alias := t.field_type_is_alias(core, decl_module)
 	return FieldMeta{
 		name:          name
@@ -720,11 +727,11 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 		unaliased_id:  t.comptime_field_type_id(unaliased, decl_module)
 		is_option:     is_option
 		is_embed:      is_embed
-		is_array:      unaliased.starts_with('[]') || t.is_fixed_array_type(unaliased)
-		is_map:        unaliased.starts_with('map[')
-		is_chan:       unaliased.starts_with('chan ')
-		is_struct:     unaliased in t.structs && !comptime_is_primitive_type(unaliased)
-		is_enum:       unaliased in t.enum_types
+		is_array:      unaliased_core.starts_with('[]') || t.is_fixed_array_type(unaliased_core)
+		is_map:        unaliased_core.starts_with('map[')
+		is_chan:       unaliased_core.starts_with('chan ')
+		is_struct:     unaliased_core in t.structs && !comptime_is_primitive_type(unaliased_core)
+		is_enum:       unaliased_core in t.enum_types
 		is_alias:      is_alias
 		is_shared:     is_shared
 		is_atomic:     is_atomic
@@ -792,7 +799,7 @@ fn comptime_is_primitive_type(typ string) bool {
 
 // comptime_strip_field_wrappers removes the `?` option, `shared`/`atomic`, and `&` reference
 // decorations from an (already alias-resolved) field type, yielding the core type used for
-// classification and `unaliased_typ`.
+// metadata classification.
 fn comptime_strip_field_wrappers(typ string) string {
 	mut core := typ.trim_space()
 	if core.starts_with('?') {
