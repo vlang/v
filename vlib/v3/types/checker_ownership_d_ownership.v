@@ -156,36 +156,38 @@ mut:
 
 struct OwnershipState {
 mut:
-	owned_vars                      map[string]flat.NodeId
-	owned_var_types                 map[string]string
-	moved_vars                      map[string]MovedVar
-	borrowed_vars                   map[string][]BorrowInfo
-	ownership_fns                   map[string]bool
-	ownership_fn_params             map[string]bool
-	ownership_fn_returns_param      map[string][]int
-	ownership_fn_return_params      map[string][]OwnershipReturnParamSlot
-	ownership_fn_return_slots       map[string][]int
-	ownership_fn_return_descs       map[string][]OwnershipReturnDescendant
-	ownership_fn_return_param_descs map[string][]OwnershipReturnParamDescendant
-	ownership_fn_return_fn_values   map[string]string
-	ownership_fn_param_mut          map[string][]bool
-	ownership_fn_param_descs        map[string][]OwnershipParamDescendant
-	ownership_fn_param_desc_count   int
-	owned_structs                   map[string]bool
-	copy_structs                    map[string]bool
-	value_receiver_methods          map[string]bool
-	owned_globals                   map[string]string
-	array_lengths                   map[string]int
-	ownership_fn_value_vars         map[string]string
-	cur_fn                          string
-	frames                          []OwnershipFrame
-	branch_groups                   []OwnershipBranchGroup
-	pending_value_branch_groups     []OwnershipBranchGroup
-	pending_loop_label              string
-	deferred_aggregate_consumption  map[int]int
-	scope_frames                    []OwnershipScopeFrame
-	suppressed_checks               int
-	path_active                     bool
+	owned_vars                       map[string]flat.NodeId
+	owned_var_types                  map[string]string
+	moved_vars                       map[string]MovedVar
+	borrowed_vars                    map[string][]BorrowInfo
+	ownership_fns                    map[string]bool
+	ownership_fn_params              map[string]bool
+	ownership_fn_returns_param       map[string][]int
+	ownership_fn_return_params       map[string][]OwnershipReturnParamSlot
+	ownership_fn_return_slots        map[string][]int
+	ownership_fn_return_descs        map[string][]OwnershipReturnDescendant
+	ownership_fn_return_param_descs  map[string][]OwnershipReturnParamDescendant
+	ownership_fn_return_fn_values    map[string]string
+	ownership_fn_literal_ret_types   map[string]Type
+	ownership_fn_literal_param_types map[string][]Type
+	ownership_fn_param_mut           map[string][]bool
+	ownership_fn_param_descs         map[string][]OwnershipParamDescendant
+	ownership_fn_param_desc_count    int
+	owned_structs                    map[string]bool
+	copy_structs                     map[string]bool
+	value_receiver_methods           map[string]bool
+	owned_globals                    map[string]string
+	array_lengths                    map[string]int
+	ownership_fn_value_vars          map[string]string
+	cur_fn                           string
+	frames                           []OwnershipFrame
+	branch_groups                    []OwnershipBranchGroup
+	pending_value_branch_groups      []OwnershipBranchGroup
+	pending_loop_label               string
+	deferred_aggregate_consumption   map[int]int
+	scope_frames                     []OwnershipScopeFrame
+	suppressed_checks                int
+	path_active                      bool
 }
 
 fn ownership_clone_name_snapshots(names map[string]OwnershipNameSnapshot) map[string]OwnershipNameSnapshot {
@@ -221,35 +223,37 @@ fn ownership_clone_scope_frames(frames []OwnershipScopeFrame) []OwnershipScopeFr
 
 fn new_ownership_state() &OwnershipState {
 	return &OwnershipState{
-		owned_vars:                      map[string]flat.NodeId{}
-		owned_var_types:                 map[string]string{}
-		moved_vars:                      map[string]MovedVar{}
-		borrowed_vars:                   map[string][]BorrowInfo{}
-		ownership_fns:                   map[string]bool{}
-		ownership_fn_params:             map[string]bool{}
-		ownership_fn_returns_param:      map[string][]int{}
-		ownership_fn_return_params:      map[string][]OwnershipReturnParamSlot{}
-		ownership_fn_return_slots:       map[string][]int{}
-		ownership_fn_return_descs:       map[string][]OwnershipReturnDescendant{}
-		ownership_fn_return_param_descs: map[string][]OwnershipReturnParamDescendant{}
-		ownership_fn_return_fn_values:   map[string]string{}
-		ownership_fn_param_mut:          map[string][]bool{}
-		ownership_fn_param_descs:        map[string][]OwnershipParamDescendant{}
-		ownership_fn_param_desc_count:   0
-		owned_structs:                   map[string]bool{}
-		copy_structs:                    map[string]bool{}
-		value_receiver_methods:          map[string]bool{}
-		owned_globals:                   map[string]string{}
-		array_lengths:                   map[string]int{}
-		ownership_fn_value_vars:         map[string]string{}
-		frames:                          []OwnershipFrame{}
-		branch_groups:                   []OwnershipBranchGroup{}
-		pending_value_branch_groups:     []OwnershipBranchGroup{}
-		pending_loop_label:              ''
-		deferred_aggregate_consumption:  map[int]int{}
-		scope_frames:                    []OwnershipScopeFrame{}
-		suppressed_checks:               0
-		path_active:                     true
+		owned_vars:                       map[string]flat.NodeId{}
+		owned_var_types:                  map[string]string{}
+		moved_vars:                       map[string]MovedVar{}
+		borrowed_vars:                    map[string][]BorrowInfo{}
+		ownership_fns:                    map[string]bool{}
+		ownership_fn_params:              map[string]bool{}
+		ownership_fn_returns_param:       map[string][]int{}
+		ownership_fn_return_params:       map[string][]OwnershipReturnParamSlot{}
+		ownership_fn_return_slots:        map[string][]int{}
+		ownership_fn_return_descs:        map[string][]OwnershipReturnDescendant{}
+		ownership_fn_return_param_descs:  map[string][]OwnershipReturnParamDescendant{}
+		ownership_fn_return_fn_values:    map[string]string{}
+		ownership_fn_literal_ret_types:   map[string]Type{}
+		ownership_fn_literal_param_types: map[string][]Type{}
+		ownership_fn_param_mut:           map[string][]bool{}
+		ownership_fn_param_descs:         map[string][]OwnershipParamDescendant{}
+		ownership_fn_param_desc_count:    0
+		owned_structs:                    map[string]bool{}
+		copy_structs:                     map[string]bool{}
+		value_receiver_methods:           map[string]bool{}
+		owned_globals:                    map[string]string{}
+		array_lengths:                    map[string]int{}
+		ownership_fn_value_vars:          map[string]string{}
+		frames:                           []OwnershipFrame{}
+		branch_groups:                    []OwnershipBranchGroup{}
+		pending_value_branch_groups:      []OwnershipBranchGroup{}
+		pending_loop_label:               ''
+		deferred_aggregate_consumption:   map[int]int{}
+		scope_frames:                     []OwnershipScopeFrame{}
+		suppressed_checks:                0
+		path_active:                      true
 	}
 }
 
@@ -310,35 +314,37 @@ fn ownership_clone_bool_lists(src map[string][]bool) map[string][]bool {
 
 fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
 	return &OwnershipState{
-		owned_vars:                      map[string]flat.NodeId{}
-		owned_var_types:                 map[string]string{}
-		moved_vars:                      map[string]MovedVar{}
-		borrowed_vars:                   map[string][]BorrowInfo{}
-		ownership_fns:                   src.ownership_fns.clone()
-		ownership_fn_params:             src.ownership_fn_params.clone()
-		ownership_fn_returns_param:      ownership_clone_int_lists(src.ownership_fn_returns_param)
-		ownership_fn_return_params:      ownership_clone_return_param_slots(src.ownership_fn_return_params)
-		ownership_fn_return_slots:       ownership_clone_int_lists(src.ownership_fn_return_slots)
-		ownership_fn_return_descs:       ownership_clone_return_descs(src.ownership_fn_return_descs)
-		ownership_fn_return_param_descs: ownership_clone_return_param_descs(src.ownership_fn_return_param_descs)
-		ownership_fn_return_fn_values:   src.ownership_fn_return_fn_values.clone()
-		ownership_fn_param_mut:          ownership_clone_bool_lists(src.ownership_fn_param_mut)
-		ownership_fn_param_descs:        ownership_clone_param_descs(src.ownership_fn_param_descs)
-		ownership_fn_param_desc_count:   src.ownership_fn_param_desc_count
-		owned_structs:                   src.owned_structs.clone()
-		copy_structs:                    src.copy_structs.clone()
-		value_receiver_methods:          src.value_receiver_methods.clone()
-		owned_globals:                   src.owned_globals.clone()
-		array_lengths:                   map[string]int{}
-		ownership_fn_value_vars:         map[string]string{}
-		frames:                          []OwnershipFrame{}
-		branch_groups:                   []OwnershipBranchGroup{}
-		pending_value_branch_groups:     []OwnershipBranchGroup{}
-		pending_loop_label:              ''
-		deferred_aggregate_consumption:  map[int]int{}
-		scope_frames:                    []OwnershipScopeFrame{}
-		suppressed_checks:               0
-		path_active:                     true
+		owned_vars:                       map[string]flat.NodeId{}
+		owned_var_types:                  map[string]string{}
+		moved_vars:                       map[string]MovedVar{}
+		borrowed_vars:                    map[string][]BorrowInfo{}
+		ownership_fns:                    src.ownership_fns.clone()
+		ownership_fn_params:              src.ownership_fn_params.clone()
+		ownership_fn_returns_param:       ownership_clone_int_lists(src.ownership_fn_returns_param)
+		ownership_fn_return_params:       ownership_clone_return_param_slots(src.ownership_fn_return_params)
+		ownership_fn_return_slots:        ownership_clone_int_lists(src.ownership_fn_return_slots)
+		ownership_fn_return_descs:        ownership_clone_return_descs(src.ownership_fn_return_descs)
+		ownership_fn_return_param_descs:  ownership_clone_return_param_descs(src.ownership_fn_return_param_descs)
+		ownership_fn_return_fn_values:    src.ownership_fn_return_fn_values.clone()
+		ownership_fn_literal_ret_types:   map[string]Type{}
+		ownership_fn_literal_param_types: map[string][]Type{}
+		ownership_fn_param_mut:           ownership_clone_bool_lists(src.ownership_fn_param_mut)
+		ownership_fn_param_descs:         ownership_clone_param_descs(src.ownership_fn_param_descs)
+		ownership_fn_param_desc_count:    src.ownership_fn_param_desc_count
+		owned_structs:                    src.owned_structs.clone()
+		copy_structs:                     src.copy_structs.clone()
+		value_receiver_methods:           src.value_receiver_methods.clone()
+		owned_globals:                    src.owned_globals.clone()
+		array_lengths:                    map[string]int{}
+		ownership_fn_value_vars:          map[string]string{}
+		frames:                           []OwnershipFrame{}
+		branch_groups:                    []OwnershipBranchGroup{}
+		pending_value_branch_groups:      []OwnershipBranchGroup{}
+		pending_loop_label:               ''
+		deferred_aggregate_consumption:   map[int]int{}
+		scope_frames:                     []OwnershipScopeFrame{}
+		suppressed_checks:                0
+		path_active:                      true
 	}
 }
 
@@ -475,6 +481,22 @@ fn ownership_merge_bool_lists(mut dst map[string][]bool, src map[string][]bool) 
 	}
 }
 
+fn ownership_merge_type_map(mut dst map[string]Type, src map[string]Type) {
+	for key, value in src {
+		if key !in dst {
+			dst[key] = value
+		}
+	}
+}
+
+fn ownership_merge_type_lists(mut dst map[string][]Type, src map[string][]Type) {
+	for key, values in src {
+		if key !in dst {
+			dst[key] = values.clone()
+		}
+	}
+}
+
 fn ownership_merge_fn_value_returns(mut dst map[string]string, src map[string]string) {
 	for key, value in src {
 		if existing := dst[key] {
@@ -504,6 +526,10 @@ fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 		src.ownership_fn_return_param_descs)
 	ownership_merge_fn_value_returns(mut dst.ownership_fn_return_fn_values,
 		src.ownership_fn_return_fn_values)
+	ownership_merge_type_map(mut dst.ownership_fn_literal_ret_types,
+		src.ownership_fn_literal_ret_types)
+	ownership_merge_type_lists(mut dst.ownership_fn_literal_param_types,
+		src.ownership_fn_literal_param_types)
 	ownership_merge_bool_lists(mut dst.ownership_fn_param_mut, src.ownership_fn_param_mut)
 	dst.ownership_fn_param_desc_count += ownership_merge_param_descs(mut dst.ownership_fn_param_descs,
 		src.ownership_fn_param_descs)
@@ -3664,6 +3690,9 @@ fn (mut tc TypeChecker) ownership_prescan_call_info(node flat.Node, local_types 
 	match fn_node.kind {
 		.ident {
 			if mapped := tc.ownership_state().ownership_fn_value_vars[fn_node.value] {
+				if info := tc.ownership_fn_literal_call_info(mapped) {
+					return info
+				}
 				if mapped in tc.fn_ret_types {
 					return tc.call_info(mapped, false)
 				}
@@ -5701,6 +5730,20 @@ fn (mut tc TypeChecker) ownership_fn_value_name_from_expr(id flat.NodeId) ?strin
 	return tc.fn_value_key(node)
 }
 
+fn (mut tc TypeChecker) ownership_fn_literal_call_info(fn_name string) ?CallInfo {
+	if tc.ownership == unsafe { nil } {
+		return none
+	}
+	ret_type := tc.ownership.ownership_fn_literal_ret_types[fn_name] or { return none }
+	params := tc.ownership.ownership_fn_literal_param_types[fn_name] or { []Type{} }
+	return CallInfo{
+		name:         fn_name
+		params:       params.clone()
+		return_type:  ret_type
+		params_known: true
+	}
+}
+
 fn (mut tc TypeChecker) ownership_register_fn_literal_signature(fn_name string, node flat.Node) {
 	if fn_name.len == 0 || fn_name in tc.fn_ret_types {
 		return
@@ -5712,7 +5755,17 @@ fn (mut tc TypeChecker) ownership_register_fn_literal_signature(fn_name string, 
 			params << tc.parse_type(child.typ)
 		}
 	}
-	tc.register_fn_signature(fn_name, tc.parse_type(node.typ), params, false, false)
+	ret_type := tc.parse_type(node.typ)
+	if !tc.parallel_check_sparse {
+		tc.register_fn_signature(fn_name, ret_type, params, false, false)
+	} else {
+		mut st := tc.ownership_state()
+		if fn_name in st.ownership_fn_literal_ret_types {
+			return
+		}
+		st.ownership_fn_literal_ret_types[fn_name] = ret_type
+		st.ownership_fn_literal_param_types[fn_name] = params.clone()
+	}
 	tc.ownership_register_fn_param_mut(fn_name, tc.ownership_node_param_mut_flags(node))
 }
 
