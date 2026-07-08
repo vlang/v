@@ -648,6 +648,28 @@ fn main() {
 	assert out == 'child:9'
 }
 
+fn test_comptime_for_typeof_dynamic_field_selector_is_preserved() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'typeof_dynamic_field_selector_in_comptime_for', "struct Foo {
+	id int
+	name string
+}
+
+fn main() {
+	foo := Foo{
+		id: 1
+		name: 'Ada'
+	}
+	mut rows := []string{}
+	$for field in Foo.fields {
+		rows << typeof(foo.$(field.name)).name
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'int|string'
+}
+
 fn test_comptime_for_body_checks_static_code() {
 	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_static_code_in_comptime_for', 'struct S {

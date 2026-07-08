@@ -200,9 +200,10 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 	if kind == 'values' {
 		return t.expand_comptime_for_values(var_name, base_type, body_stmts)
 	}
-	// Comptime `match field.typ { int {} ... }` (type match) and `typeof(field.$(field.name))`
-	// reflection are not modelled yet; skip such loops rather than mis-lower them.
-	if t.comptime_body_has_unsupported(body_stmts, var_name) {
+	// Comptime `match field.typ { int {} ... }` (type match) is not modelled yet; skip such
+	// loops rather than mis-lower them. `typeof(receiver.$(field.name))` is checked after
+	// substitution, when the dynamic selector has become a concrete field selector.
+	if t.comptime_body_has_unsupported(body_stmts, var_name, false) {
 		return []flat.NodeId{}
 	}
 	mut out := []flat.NodeId{}
@@ -212,6 +213,9 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 			if cid := t.clone_field_subst(sid, var_name, fm) {
 				cloned << cid
 			}
+		}
+		if t.comptime_body_has_unsupported(cloned, var_name, true) {
+			return []flat.NodeId{}
 		}
 		// A folded body that still calls a generic function would introduce new
 		// instantiations after monomorphization. Keep the pre-existing skip behavior, but
@@ -721,19 +725,19 @@ fn (mut t Transformer) comptime_body_calls_generic_fn(stmts []flat.NodeId) bool 
 	return false
 }
 
-// comptime_body_has_unsupported reports whether any statement uses a comptime construct the
-// unroll cannot yet model: a `match <var>.typ` type match, or `typeof(...)` on a member of the
-// loop variable.
-fn (t &Transformer) comptime_body_has_unsupported(stmts []flat.NodeId, var_name string) bool {
+// comptime_body_has_unsupported reports whether any statement uses a comptime construct the unroll
+// cannot yet model: a `match <var>.typ` type match, or (after substitution) `typeof(...)` that
+// still references the loop variable.
+fn (t &Transformer) comptime_body_has_unsupported(stmts []flat.NodeId, var_name string, reject_typeof bool) bool {
 	for sid in stmts {
-		if t.subtree_has_unsupported_comptime(sid, var_name) {
+		if t.subtree_has_unsupported_comptime(sid, var_name, reject_typeof) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (t &Transformer) subtree_has_unsupported_comptime(id flat.NodeId, var_name string) bool {
+fn (t &Transformer) subtree_has_unsupported_comptime(id flat.NodeId, var_name string, reject_typeof bool) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
@@ -752,7 +756,7 @@ fn (t &Transformer) subtree_has_unsupported_comptime(id flat.NodeId, var_name st
 			}
 		}
 	}
-	if node.kind == .typeof_expr && t.subtree_references_var(id, var_name) {
+	if reject_typeof && node.kind == .typeof_expr && t.subtree_references_var(id, var_name) {
 		return true
 	}
 	// A `field.member` / `field.$(...)` selector is a supported comptime access: check its other
@@ -761,7 +765,7 @@ fn (t &Transformer) subtree_has_unsupported_comptime(id flat.NodeId, var_name st
 		base := t.a.child_node(&node, 0)
 		if base.kind == .ident && base.value == var_name {
 			for i in 1 .. node.children_count {
-				if t.subtree_has_unsupported_comptime(t.a.child(&node, i), var_name) {
+				if t.subtree_has_unsupported_comptime(t.a.child(&node, i), var_name, reject_typeof) {
 					return true
 				}
 			}
@@ -769,7 +773,7 @@ fn (t &Transformer) subtree_has_unsupported_comptime(id flat.NodeId, var_name st
 		}
 	}
 	for i in 0 .. node.children_count {
-		if t.subtree_has_unsupported_comptime(t.a.child(&node, i), var_name) {
+		if t.subtree_has_unsupported_comptime(t.a.child(&node, i), var_name, reject_typeof) {
 			return true
 		}
 	}
