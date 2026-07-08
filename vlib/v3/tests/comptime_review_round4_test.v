@@ -458,6 +458,60 @@ fn main() {
 	assert out == 'id|red'
 }
 
+fn test_value_source_comptime_for_static_pruning_resolves_field_path() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'value_source_comptime_for_static_pruning', "struct Inner {
+	id int
+}
+
+struct Outer {
+	nested Inner
+}
+
+fn collect(param Outer) []string {
+	mut rows := []string{}
+	$for field in param.nested.fields {
+		$if field is string {
+			missing_fn()
+		} $else {
+			rows << field.name
+		}
+	}
+	return rows
+}
+
+fn main() {
+	println(collect(Outer{}).join('|'))
+}
+")
+	assert out == 'id'
+}
+
+fn test_shadowed_comptime_for_substitutes_nested_source_type() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'shadowed_comptime_for_nested_source', "struct Inner {
+	name string
+}
+
+struct Outer {
+	nested Inner
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in Outer.fields {
+		$if field is $struct {
+			$for field in field.typ.fields {
+				rows << field.name
+			}
+		}
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'name'
+}
+
 fn test_comptime_for_body_checks_static_code() {
 	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_static_code_in_comptime_for', 'struct S {

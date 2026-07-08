@@ -5078,7 +5078,8 @@ fn comptime_text_references_var(cond string, var_name string) bool {
 }
 
 fn (mut tc TypeChecker) comptime_static_field_cases(base_type string) ComptimeStaticFieldCases {
-	struct_name := tc.comptime_static_struct_name(base_type) or {
+	source_type := tc.comptime_static_for_base_type(base_type)
+	struct_name := tc.comptime_static_struct_name(source_type) or {
 		return ComptimeStaticFieldCases{}
 	}
 	fields := tc.structs[struct_name] or { return ComptimeStaticFieldCases{
@@ -5118,6 +5119,75 @@ fn (mut tc TypeChecker) comptime_static_field_cases(base_type string) ComptimeSt
 		known: true
 		cases: cases
 	}
+}
+
+fn (tc &TypeChecker) comptime_static_for_base_type(raw string) string {
+	if source := tc.comptime_static_for_value_source_type(raw) {
+		return source
+	}
+	return raw
+}
+
+fn (tc &TypeChecker) comptime_static_for_value_source_type(raw string) ?string {
+	clean := raw.trim_space()
+	if clean.len == 0 {
+		return none
+	}
+	parts := clean.split('.')
+	if parts.len == 0 {
+		return none
+	}
+	mut typ := tc.comptime_static_for_var_source_type(parts[0]) or { return none }
+	for field in parts[1..] {
+		typ = tc.comptime_static_for_field_source_type(typ, field) or { return none }
+	}
+	return typ
+}
+
+fn (tc &TypeChecker) comptime_static_for_var_source_type(name string) ?string {
+	if tc.cur_scope != unsafe { nil } {
+		if typ := tc.cur_scope.lookup(name) {
+			return comptime_static_source_type_name(typ)
+		}
+	}
+	if tc.file_scope != unsafe { nil } {
+		if typ := tc.file_scope.lookup(name) {
+			return comptime_static_source_type_name(typ)
+		}
+		qname := tc.qualify_name(name)
+		if qname != name {
+			if typ := tc.file_scope.lookup(qname) {
+				return comptime_static_source_type_name(typ)
+			}
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) comptime_static_for_field_source_type(owner_type string, field_name string) ?string {
+	struct_name := tc.comptime_static_struct_name(owner_type) or { return none }
+	typ := tc.struct_field_type(struct_name, field_name) or { return none }
+	return comptime_static_source_type_name(typ)
+}
+
+fn comptime_static_source_type_name(typ Type) string {
+	mut cur := typ
+	for _ in 0 .. 16 {
+		if cur is Pointer {
+			cur = cur.base_type
+			continue
+		}
+		if cur is OptionType {
+			cur = cur.base_type
+			continue
+		}
+		if cur is ResultType {
+			cur = cur.base_type
+			continue
+		}
+		return cur.name()
+	}
+	return cur.name()
 }
 
 fn (tc &TypeChecker) comptime_static_struct_name(raw string) ?string {

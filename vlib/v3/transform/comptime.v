@@ -683,6 +683,10 @@ fn (mut t Transformer) make_named_field_init(field string, value flat.NodeId, ty
 }
 
 fn (mut t Transformer) clone_node_preserving_children(node flat.Node) flat.NodeId {
+	return t.clone_node_preserving_children_with_type(node, node.typ)
+}
+
+fn (mut t Transformer) clone_node_preserving_children_with_type(node flat.Node, typ string) flat.NodeId {
 	start := t.a.children.len
 	for i in 0 .. node.children_count {
 		t.a.children << t.a.child(&node, i)
@@ -693,7 +697,7 @@ fn (mut t Transformer) clone_node_preserving_children(node flat.Node) flat.NodeI
 		op:             node.op
 		pos:            node.pos
 		value:          node.value
-		typ:            node.typ
+		typ:            typ
 		is_mut:         node.is_mut
 		children_start: start
 		children_count: node.children_count
@@ -1060,7 +1064,8 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 	}
 	node := t.a.nodes[int(id)]
 	if comptime_for_declares_var(node, var_name) {
-		return t.clone_node_preserving_children(node)
+		return t.clone_node_preserving_children_with_type(node, t.clone_field_subst_type_text(node,
+			var_name, fm))
 	}
 	if node.kind == .ident && node.value == var_name {
 		return t.make_field_data_literal(fm)
