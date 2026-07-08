@@ -2177,7 +2177,7 @@ fn (mut c Checker) type_implements_with_mut_receiver(typ ast.Type, interface_typ
 	utyp := c.unwrap_generic(typ)
 	styp := c.table.type_to_str(utyp)
 	typ_sym := c.table.sym(utyp)
-	if typ_sym.kind == .placeholder {
+	if typ_sym.kind == .placeholder && typ_sym.language != .c {
 		// `typ` is unresolved (undeclared), so never implements anything.
 		// Callers report the error themselves to avoid duplicate messages.
 		return false
