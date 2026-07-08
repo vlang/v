@@ -92,7 +92,7 @@ fn main() {
 	assert_legacy_import_has_no_multiwindow_markers(vlib_dir, source_path, '${unique}_darwin',
 		'-os macos -cc clang')
 
-	compile_cmd := '${os.quoted_path(@VEXE)} ${legacy_child_host_v_flags()} -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin_path)} ${os.quoted_path(source_path)}'
+	compile_cmd := '${os.quoted_path(@VEXE)} ${legacy_child_host_v_flags()} -subsystem console -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin_path)} ${os.quoted_path(source_path)}'
 	compile_result := os.execute(compile_cmd)
 	assert compile_result.exit_code == 0, 'missing gg_multiwindow flag smoke compile failed
 command: ${compile_cmd}
@@ -107,7 +107,12 @@ exit_code: ${run_result.exit_code}
 output:
 ${run_result.output}'
 
-	assert run_result.output.contains('compile with `-d gg_multiwindow`')
+	assert run_result.output.contains('compile with `-d gg_multiwindow`'), 'missing gg_multiwindow flag smoke run did not report the expected opt-in hint
+command: ${bin_path}
+exit_code: ${run_result.exit_code}
+expected output to contain: compile with `-d gg_multiwindow`
+output:
+${run_result.output}'
 }
 
 fn test_multiwindow_api_without_define_reports_opt_in_error() {
