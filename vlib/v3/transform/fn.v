@@ -2698,11 +2698,7 @@ fn (mut t Transformer) lower_ref_str(expr flat.NodeId, aggregate string) flat.No
 	str_fn := '${c_name(aggregate)}__str'
 	has_custom := str_fn in t.fn_ret_types || (!isnil(t.tc) && str_fn in t.tc.fn_ret_types)
 	if has_custom {
-		if t.str_method_has_pointer_receiver(str_fn) {
-			return t.make_call_typed(str_fn, arr1(expr), 'string')
-		}
-		// Value-receiver str methods still use the existing value stringify path.
-		return t.wrap_string_conversion(t.make_prefix(.mul, expr), aggregate)
+		return t.lower_ref_str_guarded(expr, aggregate, false)
 	}
 	return t.lower_ref_str_prefixed(expr, aggregate)
 }
@@ -2720,6 +2716,10 @@ fn (t &Transformer) str_method_has_pointer_receiver(str_fn string) bool {
 }
 
 fn (mut t Transformer) lower_ref_str_prefixed(expr flat.NodeId, aggregate string) flat.NodeId {
+	return t.lower_ref_str_guarded(expr, aggregate, true)
+}
+
+fn (mut t Transformer) lower_ref_str_guarded(expr flat.NodeId, aggregate string, prefix_non_nil bool) flat.NodeId {
 	ptr_type := '&${aggregate}'
 	ptr_name := t.new_temp('ref_str_ptr')
 	res_name := t.new_temp('ref_str_text')
@@ -2741,7 +2741,11 @@ fn (mut t Transformer) lower_ref_str_prefixed(expr flat.NodeId, aggregate string
 	t.drain_pending(mut then_body)
 	t.pending_stmts = saved
 	t.unset_var_type(ptr_name)
-	non_nil := t.string_plus(t.make_string_literal('&'), value_str)
+	non_nil := if prefix_non_nil {
+		t.string_plus(t.make_string_literal('&'), value_str)
+	} else {
+		value_str
+	}
 	then_body << t.make_assign(t.make_ident(res_name), non_nil)
 	cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
 	t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_empty())
