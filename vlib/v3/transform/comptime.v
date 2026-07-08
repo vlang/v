@@ -1186,8 +1186,9 @@ fn (t &Transformer) subst_value_cond(cond string, var_name string, name string, 
 	return c
 }
 
-// subst_field_cond textually substitutes `<var>.member` inside a comptime condition string.
-// Longer members are replaced first so `.typ` does not clobber `.unaliased_typ`.
+// subst_field_cond textually substitutes `<var>.member` and bare `<var>` type-guard shorthand
+// inside a comptime condition string. Longer members are replaced first so `.typ` does not
+// clobber `.unaliased_typ`.
 fn (t &Transformer) subst_field_cond(cond string, var_name string, fm FieldMeta) string {
 	mut c := cond
 	c = c.replace('${var_name}.unaliased_typ', fm.comptime_unaliased)
@@ -1207,7 +1208,38 @@ fn (t &Transformer) subst_field_cond(cond string, var_name string, fm FieldMeta)
 	c = c.replace('${var_name}.is_pub', fm.is_pub.str())
 	c = c.replace('${var_name}.typ', fm.comptime_typ)
 	c = c.replace('${var_name}.name', "'${fm.name}'")
+	c = comptime_cond_replace_bare_ident(c, var_name, fm.comptime_typ)
 	return c
+}
+
+fn comptime_cond_replace_bare_ident(cond string, ident string, replacement string) string {
+	if ident.len == 0 {
+		return cond
+	}
+	mut out := ''
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			end := comptime_cond_skip_string(cond, offset)
+			out += cond[offset..end]
+			offset = end
+			continue
+		}
+		if offset + ident.len <= cond.len && cond[offset..offset + ident.len] == ident {
+			before_ok := offset == 0 || !comptime_cond_name_char(cond[offset - 1])
+			after := offset + ident.len
+			after_ok := after >= cond.len
+				|| (!comptime_cond_name_char(cond[after]) && cond[after] != `.`)
+			if before_ok && after_ok {
+				out += replacement
+				offset = after
+				continue
+			}
+		}
+		out += cond[offset..offset + 1]
+		offset++
+	}
+	return out
 }
 
 fn comptime_cond_has_loop_member_ref(cond string, var_name string) bool {

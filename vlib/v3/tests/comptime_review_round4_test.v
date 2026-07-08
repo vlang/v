@@ -516,6 +516,63 @@ fn main() {
 	assert out == 'typ-if-id|unaliased-if-alias'
 }
 
+fn test_comptime_bare_field_type_guards_are_folded() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'bare_field_type_guards', 'struct S {
+	id int
+	name string
+	maybe ?string
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field is int {
+			rows << "int:" + field.name
+		}
+		$if field is string {
+			rows << "string:" + field.name
+		}
+		$if field is $option {
+			rows << "option:" + field.name
+		}
+	}
+	println(rows.join("|"))
+}
+')
+	assert out == 'int:id|string:name|option:maybe'
+}
+
+fn test_comptime_for_body_checks_static_code_in_metadata_if_branch() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'bad_static_call_in_comptime_for_metadata_if', 'struct S {
+	id int
+}
+
+fn main() {
+	$for field in S.fields {
+		$if field.name == "id" {
+			missing_metadata_guard_fn()
+		}
+	}
+}
+',
+		'unknown function `missing_metadata_guard_fn`')
+	round4_run_bad(v3_bin, 'bad_static_call_in_comptime_for_type_if', 'struct S {
+	id int
+}
+
+fn main() {
+	$for field in S.fields {
+		$if field is int {
+			missing_type_guard_fn()
+		}
+	}
+}
+',
+		'unknown function `missing_type_guard_fn`')
+}
+
 fn test_nested_comptime_for_shadowed_loop_variables() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'shadowed_comptime_for', "struct A {

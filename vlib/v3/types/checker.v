@@ -4863,7 +4863,10 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		}
 		return
 	}
-	if node.kind == .comptime_if && comptime_text_references_member(node.value, var_name) {
+	if node.kind == .comptime_if && comptime_text_references_var(node.value, var_name) {
+		for i in 0 .. node.children_count {
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name)
+		}
 		return
 	}
 	if !tc.comptime_subtree_references_var(id, var_name) {
@@ -4887,7 +4890,7 @@ fn (tc &TypeChecker) comptime_subtree_references_var(id flat.NodeId, var_name st
 	if node.kind == .ident && node.value == var_name {
 		return true
 	}
-	if node.kind == .comptime_if && comptime_text_references_member(node.value, var_name) {
+	if node.kind == .comptime_if && comptime_text_references_var(node.value, var_name) {
 		return true
 	}
 	for i in 0 .. node.children_count {
@@ -4966,6 +4969,29 @@ fn comptime_text_references_member(cond string, var_name string) bool {
 			return true
 		}
 		offset = member_start
+	}
+	return false
+}
+
+fn comptime_text_references_var(cond string, var_name string) bool {
+	if var_name.len == 0 {
+		return false
+	}
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			offset = comptime_cond_skip_string(cond, offset)
+			continue
+		}
+		if offset + var_name.len <= cond.len && cond[offset..offset + var_name.len] == var_name {
+			before_ok := offset == 0 || !comptime_cond_name_char(cond[offset - 1])
+			after := offset + var_name.len
+			after_ok := after >= cond.len || !comptime_cond_name_char(cond[after])
+			if before_ok && after_ok {
+				return true
+			}
+		}
+		offset++
 	}
 	return false
 }
