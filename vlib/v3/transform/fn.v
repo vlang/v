@@ -2757,7 +2757,11 @@ fn (mut t Transformer) lower_ref_str_guarded(expr flat.NodeId, aggregate string,
 // `Block([1, 2])` or `AEnum(red)`, but stringifies primitive aliases (int, string, bool, ...)
 // as the bare value.
 fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_type string) flat.NodeId {
-	inner := t.wrap_string_conversion(expr, base_type)
+	resolved_base := t.alias_str_resolved_base_type(base_type)
+	inner := t.wrap_string_conversion(expr, resolved_base)
+	if t.alias_str_suppress_wrapper_for_mut_param_deref(expr) {
+		return inner
+	}
 	if !t.alias_str_needs_name_wrapper(base_type) {
 		return inner
 	}
@@ -2766,7 +2770,19 @@ fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_
 		t.make_string_literal(')'))
 }
 
-fn (t &Transformer) alias_str_needs_name_wrapper(base_type string) bool {
+fn (t &Transformer) alias_str_suppress_wrapper_for_mut_param_deref(expr flat.NodeId) bool {
+	if int(expr) < 0 || int(expr) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(expr)]
+	if node.kind != .prefix || node.op != .mul || node.children_count == 0 {
+		return false
+	}
+	base := t.a.child_node(&node, 0)
+	return base.kind == .ident && t.mut_param_values[base.value]
+}
+
+fn (t &Transformer) alias_str_resolved_base_type(base_type string) string {
 	mut clean := base_type.trim_space()
 	mut seen := []string{}
 	for clean.len > 0 && clean !in seen {
@@ -2777,6 +2793,11 @@ fn (t &Transformer) alias_str_needs_name_wrapper(base_type string) bool {
 		}
 		clean = next
 	}
+	return clean
+}
+
+fn (t &Transformer) alias_str_needs_name_wrapper(base_type string) bool {
+	mut clean := t.alias_str_resolved_base_type(base_type)
 	if clean.starts_with('&') {
 		return false
 	}

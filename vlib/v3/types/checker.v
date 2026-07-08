@@ -4732,17 +4732,38 @@ struct ComptimeStaticFieldCase {
 	typ           string
 	unaliased_typ string
 	is_option     bool
+	is_embed      bool
 	is_array      bool
 	is_map        bool
 	is_chan       bool
 	is_struct     bool
 	is_enum       bool
 	is_alias      bool
+	is_shared     bool
+	is_atomic     bool
+	is_mut        bool
+	is_pub        bool
+	has_decl_meta bool
+	indirections  int
 }
 
 struct ComptimeStaticFieldCases {
 	known bool
 	cases []ComptimeStaticFieldCase
+}
+
+struct ComptimeStaticFieldDeclMeta {
+	is_mut   bool
+	is_pub   bool
+	is_embed bool
+	raw_typ  string
+}
+
+struct ComptimeStaticFieldTypeFlags {
+mut:
+	is_shared    bool
+	is_atomic    bool
+	indirections int
 }
 
 fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.Node) {
@@ -5063,16 +5084,21 @@ fn (mut tc TypeChecker) comptime_static_field_cases(base_type string) ComptimeSt
 	fields := tc.structs[struct_name] or { return ComptimeStaticFieldCases{
 		known: true
 	} }
+	decl_metas := tc.comptime_static_field_decl_metas(struct_name)
 	mut cases := []ComptimeStaticFieldCase{cap: fields.len}
 	for field in fields {
 		typ := field.typ.name()
 		unaliased_typ := tc.comptime_type_match_type(typ).name()
 		core_type := comptime_static_unwrap_field_type(field.typ)
+		decl_meta := decl_metas[field.name] or { ComptimeStaticFieldDeclMeta{} }
+		raw_typ := if decl_meta.raw_typ.len > 0 { decl_meta.raw_typ } else { typ }
+		type_flags := comptime_static_field_type_flags(raw_typ)
 		cases << ComptimeStaticFieldCase{
 			name:          field.name
 			typ:           typ
 			unaliased_typ: unaliased_typ
 			is_option:     field.typ is OptionType || tc.comptime_type_match_type(typ) is OptionType
+			is_embed:      decl_meta.is_embed
 			is_array:      core_type is Array || core_type is ArrayFixed
 			is_map:        core_type is Map
 			is_chan:       core_type is Channel
@@ -5080,6 +5106,12 @@ fn (mut tc TypeChecker) comptime_static_field_cases(base_type string) ComptimeSt
 			is_enum:       core_type is Enum && core_type.name() in tc.enum_names
 			is_alias:      field.typ is Alias || typ in tc.type_aliases
 				|| tc.qualify_name(typ) in tc.type_aliases
+			is_shared:     type_flags.is_shared
+			is_atomic:     type_flags.is_atomic
+			is_mut:        decl_meta.is_mut
+			is_pub:        decl_meta.is_pub
+			has_decl_meta: field.name in decl_metas
+			indirections:  type_flags.indirections
 		}
 	}
 	return ComptimeStaticFieldCases{
@@ -5107,6 +5139,56 @@ fn (tc &TypeChecker) comptime_static_struct_name(raw string) ?string {
 	return none
 }
 
+fn (tc &TypeChecker) comptime_static_field_decl_metas(base_type string) map[string]ComptimeStaticFieldDeclMeta {
+	mut out := map[string]ComptimeStaticFieldDeclMeta{}
+	mut decl_name := base_type.trim_space()
+	if idx := decl_name.index('[') {
+		decl_name = decl_name[..idx]
+	}
+	mut cur_mod := ''
+	for idx in 0 .. tc.a.nodes.len {
+		kind := tc.a.nodes[idx].kind
+		if kind == .module_decl {
+			cur_mod = tc.a.nodes[idx].value
+			continue
+		}
+		if kind != .struct_decl {
+			continue
+		}
+		node := tc.a.nodes[idx]
+		qualified := if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
+			'${cur_mod}.${node.value}'
+		} else {
+			node.value
+		}
+		if decl_name != node.value && decl_name != qualified {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			f := tc.a.child_node(&node, i)
+			if f.kind != .field_decl {
+				continue
+			}
+			raw_typ := if f.typ.len > 0 { f.typ } else { f.value }
+			mut is_mut := false
+			mut is_pub := false
+			if f.generic_params.len > 0 {
+				flags := f.generic_params[0]
+				is_mut = flags.contains('m')
+				is_pub = flags.contains('p')
+			}
+			out[f.value] = ComptimeStaticFieldDeclMeta{
+				is_mut:   is_mut
+				is_pub:   is_pub
+				is_embed: source_field_decl_is_embed(f, raw_typ)
+				raw_typ:  raw_typ
+			}
+		}
+		return out
+	}
+	return out
+}
+
 fn comptime_static_unwrap_field_type(typ Type) Type {
 	mut cur := typ
 	for _ in 0 .. 16 {
@@ -5127,17 +5209,46 @@ fn comptime_static_unwrap_field_type(typ Type) Type {
 	return cur
 }
 
+fn comptime_static_field_type_flags(raw string) ComptimeStaticFieldTypeFlags {
+	mut core := raw.trim_space()
+	mut flags := ComptimeStaticFieldTypeFlags{}
+	if core.starts_with('?') {
+		core = core[1..].trim_space()
+	}
+	if core.starts_with('shared ') {
+		flags.is_shared = true
+		flags.indirections++
+		core = core[7..].trim_space()
+	} else if core.starts_with('atomic ') {
+		flags.is_atomic = true
+		core = core[7..].trim_space()
+	}
+	for core.starts_with('&') {
+		flags.indirections++
+		core = core[1..].trim_space()
+	}
+	return flags
+}
+
 fn (mut tc TypeChecker) comptime_static_subst_field_cond(cond string, var_name string, field ComptimeStaticFieldCase) string {
 	mut c := cond
 	c = c.replace('${var_name}.unaliased_typ', field.unaliased_typ)
 	c = c.replace('${var_name}.is_option', field.is_option.str())
 	c = c.replace('${var_name}.is_opt', field.is_option.str())
+	if field.has_decl_meta {
+		c = c.replace('${var_name}.is_embed', field.is_embed.str())
+		c = c.replace('${var_name}.is_mut', field.is_mut.str())
+		c = c.replace('${var_name}.is_pub', field.is_pub.str())
+	}
 	c = c.replace('${var_name}.is_array', field.is_array.str())
 	c = c.replace('${var_name}.is_map', field.is_map.str())
 	c = c.replace('${var_name}.is_chan', field.is_chan.str())
 	c = c.replace('${var_name}.is_struct', field.is_struct.str())
 	c = c.replace('${var_name}.is_enum', field.is_enum.str())
 	c = c.replace('${var_name}.is_alias', field.is_alias.str())
+	c = c.replace('${var_name}.is_shared', field.is_shared.str())
+	c = c.replace('${var_name}.is_atomic', field.is_atomic.str())
+	c = c.replace('${var_name}.indirections', field.indirections.str())
 	c = c.replace('${var_name}.typ', field.typ)
 	c = c.replace('${var_name}.name', "'${field.name}'")
 	c = comptime_static_replace_bare_ident(c, var_name, field.typ)

@@ -597,6 +597,28 @@ fn main() {
 	assert out == 'id'
 }
 
+fn test_comptime_for_static_check_folds_fielddata_flags() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'fielddata_flag_static_guards', 'struct S {
+pub mut:
+	ptr &int
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field.is_pub && field.is_mut && field.indirections == 1 {
+			rows << field.name
+		} $else {
+			missing_fielddata_flag_branch_fn()
+		}
+	}
+	println(rows.join("|"))
+}
+')
+	assert out == 'ptr'
+}
+
 fn test_nested_comptime_for_uses_substituted_field_type_source() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_comptime_for_field_type_source', 'struct Inner {
