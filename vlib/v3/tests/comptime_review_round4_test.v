@@ -512,6 +512,59 @@ fn main() {
 	assert out == 'name'
 }
 
+fn test_metadata_call_arguments_are_checked_against_callee_types() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'bad_metadata_call_arg_type', 'struct S {
+	id int
+}
+
+fn takes_int(x int) {}
+
+fn main() {
+	$for field in S.fields {
+		takes_int(field.name)
+	}
+}
+',
+		'cannot use `string` as argument 1 to `takes_int`; expected `int`')
+}
+
+fn test_cross_module_composite_field_typ_guard_uses_qualified_type() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'cross_module_composite_field_typ_guard', {
+		'v.mod':     "Module { name: 'cross_module_composite_field_typ_guard' }\n"
+		'pkg/pkg.v': 'module pkg
+
+pub struct Inner {
+pub:
+	id int
+}
+
+pub struct Outer {
+pub:
+	items map[string]Inner
+}
+'
+		'main.v':    'module main
+
+import pkg
+
+fn main() {
+	mut rows := []string{}
+	$for field in pkg.Outer.fields {
+		$if field.typ is map[string]pkg.Inner {
+			rows << field.name
+		} $else {
+			missing_fn()
+		}
+	}
+	println(rows.join("|"))
+}
+'
+	}, 'main.v')
+	assert out == 'items'
+}
+
 fn test_comptime_for_body_checks_static_code() {
 	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_static_code_in_comptime_for', 'struct S {

@@ -991,6 +991,31 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 	if core.starts_with('[]') {
 		return '[]' + t.comptime_field_type_id_key(core[2..], decl_module)
 	}
+	if core.starts_with('map[') {
+		bracket_end := generic_matching_bracket(core, 3)
+		if bracket_end > 3 && bracket_end + 1 < core.len {
+			key := t.comptime_field_type_id_key(core[4..bracket_end], decl_module)
+			val := t.comptime_field_type_id_key(core[bracket_end + 1..], decl_module)
+			return 'map[${key}]${val}'
+		}
+	}
+	if core.starts_with('[') {
+		bracket_end := generic_matching_bracket(core, 0)
+		if bracket_end > 0 && bracket_end + 1 < core.len {
+			elem := t.comptime_field_type_id_key(core[bracket_end + 1..], decl_module)
+			return core[..bracket_end + 1] + elem
+		}
+	}
+	if t.is_fixed_array_type(core) {
+		elem, dims := transform_postfix_fixed_array_parts(core)
+		if elem.len > 0 && dims.len > 0 {
+			mut out := t.comptime_field_type_id_key(elem, decl_module)
+			for dim in dims {
+				out += '[${dim}]'
+			}
+			return out
+		}
+	}
 	if comptime_is_primitive_type(core) || core.contains('.') || core.contains('[')
 		|| core.contains(' ') || decl_module.len == 0 || decl_module in ['main', 'builtin'] {
 		return core

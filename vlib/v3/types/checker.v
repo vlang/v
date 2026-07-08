@@ -5002,6 +5002,7 @@ fn (mut tc TypeChecker) check_comptime_static_call(id flat.NodeId, node flat.Nod
 		if info.return_type !is Void && info.return_type !is Unknown {
 			tc.remember_expr_type(id, info.return_type)
 		}
+		tc.check_comptime_static_call_metadata_arg_types(id, node, info, var_name)
 		tc.check_comptime_static_call_args(node, var_name, field_cases)
 		return
 	}
@@ -5020,6 +5021,90 @@ fn (mut tc TypeChecker) check_comptime_static_call(id flat.NodeId, node flat.Nod
 		tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
 	}
 	tc.check_comptime_static_call_args(node, var_name, field_cases)
+}
+
+fn (mut tc TypeChecker) check_comptime_static_call_metadata_arg_types(id flat.NodeId, node flat.Node, info CallInfo, var_name string) {
+	if !info.params_known {
+		return
+	}
+	mut field_init_args := 0
+	for i in 1 .. node.children_count {
+		if tc.a.child_node(&node, i).kind == .field_init {
+			field_init_args++
+		}
+	}
+	collapsed := if field_init_args > 0 { 1 } else { 0 }
+	recv_extra := if info.has_receiver { 1 } else { 0 }
+	actual_count := node.children_count - 1 - info.arg_offset - field_init_args + collapsed +
+		recv_extra
+	ctx_count := if info.has_implicit_veb_ctx { 1 } else { 0 }
+	ctx_omitted := ctx_count > 0 && actual_count < info.params.len
+	for i in 1 + info.arg_offset .. node.children_count {
+		raw_arg := tc.a.child_node(&node, i)
+		if raw_arg.kind == .field_init {
+			continue
+		}
+		arg_shift := if ctx_omitted { ctx_count } else { 0 }
+		param_idx := i - 1 - info.arg_offset + (if info.has_receiver { 1 } else { 0 }) + arg_shift
+		if info.is_c_variadic && param_idx >= c_variadic_fixed_param_count(info) {
+			continue
+		}
+		if param_idx >= info.params.len {
+			continue
+		}
+		arg_id := tc.call_arg_value(tc.a.child(&node, i))
+		actual := tc.comptime_static_metadata_expr_type(arg_id, var_name) or { continue }
+		expected := tc.call_arg_expected_type(info, param_idx)
+		if !tc.receiver_compatible(actual, expected) && !tc.type_compatible(actual, expected) {
+			tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
+				param_idx + 1} to `${tc.call_display_name(node)}`; expected `${expected.name()}`',
+				id)
+		}
+	}
+}
+
+fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name string) ?Type {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return tc.comptime_static_metadata_expr_type(tc.a.child(&node, 0), var_name)
+	}
+	if node.kind == .ident && node.value == var_name {
+		return tc.parse_type('FieldData')
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := tc.a.child_node(&node, 0)
+		if base.kind == .ident && base.value == var_name {
+			return tc.comptime_static_metadata_member_type(node.value)
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) comptime_static_metadata_member_type(member string) ?Type {
+	return match member {
+		'name' {
+			tc.parse_type('string')
+		}
+		'typ', 'unaliased_typ' {
+			tc.parse_type('int')
+		}
+		'attrs' {
+			tc.parse_type('[]string')
+		}
+		'indirections' {
+			tc.parse_type('u8')
+		}
+		'is_option', 'is_opt', 'is_embed', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_enum',
+		'is_alias', 'is_shared', 'is_atomic', 'is_mut', 'is_pub' {
+			tc.parse_type('bool')
+		}
+		else {
+			none
+		}
+	}
 }
 
 fn (mut tc TypeChecker) check_comptime_static_call_args(node flat.Node, var_name string, field_cases ComptimeStaticFieldCases) {
