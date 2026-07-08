@@ -197,13 +197,6 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 	body_id := t.a.child(&node, 0)
 	body := t.a.nodes[int(body_id)]
 	body_stmts := t.a.children_of(&body).clone()
-	// A body that calls a generic function would introduce new instantiations for the concrete
-	// field types (e.g. recursive `encode(field_value)`); those must be discovered by the
-	// monomorphizer before calls are resolved, which the current pipeline does not do for
-	// unroll-introduced calls. Fall back to the pre-existing skip behavior for such loops.
-	if t.comptime_body_calls_generic_fn(body_stmts) {
-		return []flat.NodeId{}
-	}
 	if kind == 'values' {
 		return t.expand_comptime_for_values(var_name, base_type, body_stmts)
 	}
@@ -219,6 +212,12 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 			if cid := t.clone_field_subst(sid, var_name, fm) {
 				cloned << cid
 			}
+		}
+		// A folded body that still calls a generic function would introduce new
+		// instantiations after monomorphization. Keep the pre-existing skip behavior, but
+		// only after metadata `$if` guards have removed unreachable branches.
+		if t.comptime_body_calls_generic_fn(cloned) {
+			return []flat.NodeId{}
 		}
 		// One block per iteration so per-field temps get their own scope.
 		block := t.make_block(cloned)
@@ -240,6 +239,9 @@ fn (mut t Transformer) expand_comptime_for_values(var_name string, base_type str
 			if cid := t.clone_value_subst(sid, var_name, item) {
 				cloned << cid
 			}
+		}
+		if t.comptime_body_calls_generic_fn(cloned) {
+			return []flat.NodeId{}
 		}
 		block := t.make_block(cloned)
 		for s in t.transform_stmt(block) {

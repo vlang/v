@@ -424,6 +424,40 @@ fn main() {
 	assert out == 'id:ok'
 }
 
+fn test_unreachable_generic_call_in_metadata_if_does_not_skip_comptime_for() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'unreachable_generic_call_in_comptime_for', "struct S {
+	id int
+}
+
+enum Color {
+	red
+}
+
+fn generic_fn[T]() string {
+	return 'bad'
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field.name == 'missing' {
+			rows << generic_fn[int]()
+		}
+		rows << field.name
+	}
+	$for item in Color.values {
+		$if item.name == 'missing' {
+			rows << generic_fn[int]()
+		}
+		rows << item.name
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'id|red'
+}
+
 fn test_comptime_for_body_checks_static_code() {
 	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_static_code_in_comptime_for', 'struct S {
