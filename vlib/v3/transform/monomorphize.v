@@ -3105,7 +3105,7 @@ fn (t &Transformer) generic_resolved_call_decl_key(resolved string, callee flat.
 }
 
 fn (t &Transformer) resolved_generic_decl_matches_callee_receiver(callee flat.Node, node flat.Node, decl GenericFnDecl, module_name string) bool {
-	if !decl.node.value.contains('.') {
+	if !t.generic_decl_is_receiver_method(decl.node) {
 		return true
 	}
 	mut base_id := flat.empty_node
@@ -3237,7 +3237,7 @@ fn (t &Transformer) generic_call_arg_count_matches_decl(node flat.Node, decl Gen
 	// offsets the receiver param (actual == children_count). The ident-lowered form
 	// (`Type.method(recv, args)`) carries the receiver as a real child, so
 	// children = [callee, recv, args...] and actual == children_count - 1.
-	is_receiver := decl.node.value.contains('.')
+	is_receiver := t.generic_decl_is_receiver_method(decl.node)
 		&& !t.generic_call_is_static_assoc_selector(node, decl)
 	actual_args := t.generic_call_effective_arg_count(node)
 	actual := if is_receiver && t.call_is_selector_form(node) {
@@ -4900,7 +4900,24 @@ fn generic_fn_decl_base_value(value string) string {
 }
 
 fn (t &Transformer) generic_decl_is_receiver_method(node flat.Node) bool {
-	return node.value.contains('.')
+	if !node.value.contains('.') || node.children_count == 0 {
+		return false
+	}
+	first := t.a.child_node(&node, 0)
+	if first.kind != .param || first.typ.len == 0 {
+		return false
+	}
+	mut first_type := first.typ.trim_space()
+	if first_type.starts_with('mut ') {
+		first_type = first_type[4..].trim_space()
+	}
+	if first_type.starts_with('&') {
+		first_type = first_type[1..].trim_space()
+	}
+	method_name := generic_fn_decl_base_value(node.value)
+	clean_first := t.normalize_type_alias(first_type)
+	return receiver_param_matches_method_name(clean_first, method_name)
+		|| receiver_param_matches_method_name(first_type, method_name)
 }
 
 fn (mut t Transformer) generic_decl_has_method_level_params(decl GenericFnDecl) bool {
