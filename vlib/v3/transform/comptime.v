@@ -965,8 +965,8 @@ fn (mut t Transformer) field_member_value(member string, fm FieldMeta) ?flat.Nod
 		'is_pub' { t.make_bool_literal(fm.is_pub) }
 		'indirections' { t.make_int_literal(fm.indirections) }
 		'attrs' { t.make_string_array_literal(fm.attrs) }
-		'typ' { t.make_string_literal(fm.typ) }
-		'unaliased_typ' { t.make_string_literal(fm.unaliased_typ) }
+		'typ' { t.make_int_literal(fm.typ_id) }
+		'unaliased_typ' { t.make_int_literal(fm.unaliased_id) }
 		else { return none }
 	}
 }

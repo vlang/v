@@ -325,6 +325,51 @@ fn main() {
 		'unknown function `missing_fn`')
 }
 
+fn test_comptime_field_type_selectors_are_type_ids() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'field_type_selectors_are_type_ids', 'type MyInt = int
+
+struct S {
+	id int
+	alias MyInt
+}
+
+fn main() {
+	mut rows := []string{}
+	mut int_typ := 0
+	mut alias_typ := 0
+	mut alias_unaliased := 0
+	$for field in S.fields {
+		if field.name == "id" {
+			int_typ = field.typ
+			assert field.typ == field.unaliased_typ
+			assert field.typ != 0
+		}
+		if field.name == "alias" {
+			alias_typ = field.typ
+			alias_unaliased = field.unaliased_typ
+			assert field.typ != 0
+			assert field.unaliased_typ != 0
+		}
+		$if field.typ is int {
+			if field.name == "id" {
+				rows << "typ-if-id"
+			}
+		}
+		$if field.unaliased_typ is int {
+			if field.name == "alias" {
+				rows << "unaliased-if-alias"
+			}
+		}
+	}
+	assert alias_unaliased == int_typ
+	assert alias_typ != alias_unaliased
+	println(rows.join("|"))
+}
+')
+	assert out == 'typ-if-id|unaliased-if-alias'
+}
+
 fn test_nested_comptime_for_shadowed_loop_variables() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'shadowed_comptime_for', "struct A {
