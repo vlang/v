@@ -31,25 +31,27 @@ fn (t &Transformer) vmod_root() string {
 
 // FieldMeta is the compile-time metadata exposed by the `$for field in T.fields` loop variable.
 struct FieldMeta {
-	name          string
-	typ           string
-	unaliased_typ string
-	typ_id        int
-	unaliased_id  int
-	is_option     bool
-	is_embed      bool
-	is_array      bool
-	is_map        bool
-	is_chan       bool
-	is_struct     bool
-	is_enum       bool
-	is_alias      bool
-	is_shared     bool
-	is_atomic     bool
-	is_mut        bool
-	is_pub        bool
-	attrs         []string
-	indirections  int
+	name               string
+	typ                string
+	unaliased_typ      string
+	comptime_typ       string
+	comptime_unaliased string
+	typ_id             int
+	unaliased_id       int
+	is_option          bool
+	is_embed           bool
+	is_array           bool
+	is_map             bool
+	is_chan            bool
+	is_struct          bool
+	is_enum            bool
+	is_alias           bool
+	is_shared          bool
+	is_atomic          bool
+	is_mut             bool
+	is_pub             bool
+	attrs              []string
+	indirections       int
 }
 
 struct EnumValueMeta {
@@ -924,25 +926,29 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 	unaliased_core := comptime_strip_field_wrappers(unaliased)
 	is_alias := t.field_type_is_alias(core, decl_module)
 	return FieldMeta{
-		name:          name
-		typ:           ftyp
-		unaliased_typ: unaliased
-		typ_id:        t.comptime_field_type_id(ftyp, decl_module)
-		unaliased_id:  t.comptime_field_type_id(unaliased, decl_module)
-		is_option:     is_option
-		is_embed:      is_embed
-		is_array:      unaliased_core.starts_with('[]') || t.is_fixed_array_type(unaliased_core)
-		is_map:        unaliased_core.starts_with('map[')
-		is_chan:       unaliased_core.starts_with('chan ')
-		is_struct:     unaliased_core in t.structs && !comptime_is_primitive_type(unaliased_core)
-		is_enum:       unaliased_core in t.enum_types
-		is_alias:      is_alias
-		is_shared:     is_shared
-		is_atomic:     is_atomic
-		is_mut:        extra.is_mut
-		is_pub:        extra.is_pub
-		attrs:         extra.attrs
-		indirections:  indir
+		name:               name
+		typ:                ftyp
+		unaliased_typ:      unaliased
+		comptime_typ:       t.comptime_field_type_id_key(ftyp, decl_module)
+		comptime_unaliased: t.comptime_field_type_id_key(unaliased, decl_module)
+		typ_id:             t.comptime_field_type_id(ftyp, decl_module)
+		unaliased_id:       t.comptime_field_type_id(unaliased, decl_module)
+		is_option:          is_option
+		is_embed:           is_embed
+		is_array:           unaliased_core.starts_with('[]')
+			|| t.is_fixed_array_type(unaliased_core)
+		is_map:             unaliased_core.starts_with('map[')
+		is_chan:            unaliased_core.starts_with('chan ')
+		is_struct:          unaliased_core in t.structs
+			&& !comptime_is_primitive_type(unaliased_core)
+		is_enum:            unaliased_core in t.enum_types
+		is_alias:           is_alias
+		is_shared:          is_shared
+		is_atomic:          is_atomic
+		is_mut:             extra.is_mut
+		is_pub:             extra.is_pub
+		attrs:              extra.attrs
+		indirections:       indir
 	}
 }
 
@@ -1184,7 +1190,7 @@ fn (t &Transformer) subst_value_cond(cond string, var_name string, name string, 
 // Longer members are replaced first so `.typ` does not clobber `.unaliased_typ`.
 fn (t &Transformer) subst_field_cond(cond string, var_name string, fm FieldMeta) string {
 	mut c := cond
-	c = c.replace('${var_name}.unaliased_typ', fm.unaliased_typ)
+	c = c.replace('${var_name}.unaliased_typ', fm.comptime_unaliased)
 	c = c.replace('${var_name}.indirections', fm.indirections.str())
 	c = c.replace('${var_name}.is_option', fm.is_option.str())
 	c = c.replace('${var_name}.is_opt', fm.is_option.str())
@@ -1199,7 +1205,7 @@ fn (t &Transformer) subst_field_cond(cond string, var_name string, fm FieldMeta)
 	c = c.replace('${var_name}.is_atomic', fm.is_atomic.str())
 	c = c.replace('${var_name}.is_mut', fm.is_mut.str())
 	c = c.replace('${var_name}.is_pub', fm.is_pub.str())
-	c = c.replace('${var_name}.typ', fm.typ)
+	c = c.replace('${var_name}.typ', fm.comptime_typ)
 	c = c.replace('${var_name}.name', "'${fm.name}'")
 	return c
 }

@@ -243,6 +243,43 @@ fn main() {
 	assert out == 'count'
 }
 
+fn test_comptime_field_typ_guards_use_declaring_module_type() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'field_typ_guard_decl_module', {
+		'v.mod':     "Module { name: 'field_typ_guard_decl_module' }\n"
+		'pkg/pkg.v': 'module pkg
+
+pub struct Inner {
+pub:
+	id int
+}
+
+pub struct Outer {
+pub:
+	nested Inner
+}
+'
+		'main.v':    'module main
+
+import pkg
+
+fn main() {
+	mut rows := []string{}
+	$for field in pkg.Outer.fields {
+		$if field.typ is pkg.Inner {
+			rows << "qualified:" + field.name
+		}
+		$if field.typ is $struct {
+			rows << "struct:" + field.name
+		}
+	}
+	println(rows.join("|"))
+}
+'
+	}, 'main.v')
+	assert out == 'qualified:nested|struct:nested'
+}
+
 fn test_comptime_field_unaliased_typ_preserves_option_wrapper() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'field_unaliased_option', "type Alias = string
