@@ -265,22 +265,53 @@ fn (mut p Parser) peek_token_at(offset int) !token.Token {
 	return p.peek(offset)!
 }
 
-fn unquoted_key_lit(lit string) string {
-	if lit.len < 2 {
-		return lit
+fn quoted_from_token(tok token.Token) ast.Quoted {
+	if tok.lit.len < 2 {
+		return ast.Quoted{
+			text: tok.lit
+			pos:  tok.pos()
+		}
 	}
-	quote := lit[0]
-	if lit.len >= 6 && lit[1] == quote && lit[2] == quote {
-		return lit[3..lit.len - 3]
+	quote := tok.lit[0]
+	is_multiline := tok.lit.len >= 6 && tok.lit[1] == quote && tok.lit[2] == quote
+	mut lit := tok.lit[1..tok.lit.len - 1]
+	if is_multiline {
+		lit = tok.lit[3..tok.lit.len - 3]
+		if lit.len > 0 && lit[0] == `\n` {
+			lit = lit[1..]
+		}
 	}
-	return lit[1..lit.len - 1]
+	return ast.Quoted{
+		text:         lit
+		pos:          tok.pos()
+		quote:        quote
+		is_multiline: is_multiline
+	}
+}
+
+fn (mut p Parser) decoded_quoted_key_lit(tok token.Token) !string {
+	mut quoted := quoted_from_token(tok)
+	if p.config.run_checks {
+		if quoted.is_multiline {
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' multiline string as key is not allowed. (excerpt): "...${p.scanner.excerpt(tok.pos, 10)}..."')
+		}
+		chckr := checker.Checker{
+			scanner: p.scanner
+		}
+		chckr.check_quoted(quoted)!
+	}
+	if p.config.decode_values {
+		decoder.decode_quoted_escapes(mut quoted)!
+	}
+	return quoted.text
 }
 
 fn (mut p Parser) peek_key_at(offset int) !(string, int, bool) {
 	tok := p.peek_token_at(offset)!
 	match tok.kind {
 		.quoted {
-			return unquoted_key_lit(tok.lit), offset + 1, true
+			return p.decoded_quoted_key_lit(tok)!, offset + 1, true
 		}
 		.bare, .boolean, .number, .minus, .underscore {
 			mut lit := tok.lit
@@ -1660,25 +1691,7 @@ pub fn (mut p Parser) bare() !ast.Bare {
 pub fn (mut p Parser) quoted() ast.Quoted {
 	// To get more info about the quote type and enable better checking,
 	// the scanner is returning the literal *with* single- or double-quotes.
-	mut quote := p.tok.lit[0]
-	is_multiline := p.tok.lit.len >= 6 && p.tok.lit[1] == quote && p.tok.lit[2] == quote
-	mut lit := p.tok.lit[1..p.tok.lit.len - 1]
-	if is_multiline {
-		lit = p.tok.lit[3..p.tok.lit.len - 3]
-		// From https://toml.io/en/v1.0.0#string
-		// "Multi-line literal strings [...] A newline immediately following the opening
-		// delimiter will be trimmed. All other content between the delimiters
-		// is interpreted as-is without modification."
-		if lit.len > 0 && lit[0] == `\n` {
-			lit = lit[1..]
-		}
-	}
-	return ast.Quoted{
-		text:         lit
-		pos:          p.tok.pos()
-		quote:        quote
-		is_multiline: is_multiline
-	}
+	return quoted_from_token(p.tok)
 }
 
 // boolean parse and returns an `ast.Bool` type.
