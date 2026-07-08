@@ -79,7 +79,9 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 			if tc.pending_ierror_errors.len > 0 {
 				tc.collect_selected_file_called_fns()
 			}
-			tc.filter_pending_ierror_errors()
+			if tc.filter_pending_ierror_errors() {
+				tc.sort_parallel_check_errors()
+			}
 			tc.defer_ierror_gating = false
 		}
 		tc.restore_type_cache_base()
@@ -87,13 +89,16 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	}
 }
 
-fn (mut tc TypeChecker) filter_pending_ierror_errors() {
+fn (mut tc TypeChecker) filter_pending_ierror_errors() bool {
+	mut added := false
 	for p in tc.pending_ierror_errors {
 		if p.fn_qname in tc.selected_file_called_fns {
 			tc.errors << p.err
+			added = true
 		}
 	}
 	tc.pending_ierror_errors = []PendingIerrorError{}
+	return added
 }
 
 fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
