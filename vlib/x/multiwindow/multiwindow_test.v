@@ -1618,6 +1618,13 @@ fn test_sokol_wayland_build_links_wayland_when_flag_is_active() {
 	}
 }
 
+fn test_gg_import_only_windows_build_keeps_win32_callback_record_declaration() {
+	c_source := multiwindow_emit_windows_gg_import_c()
+	assert c_source.contains('struct x__multiwindow__Win32WindowRecord {')
+	assert_source_order(c_source, 'struct x__multiwindow__Win32WindowRecord {',
+		'VV_LOC void x__multiwindow__win32_window_close_requested(voidptr data)')
+}
+
 fn test_wayland_render_smoke_when_display_is_available() {
 	$if gg_multiwindow ? || x_multiwindow_render ? {
 		$if linux {
@@ -1852,6 +1859,34 @@ output:
 ${result.output}'
 
 	return result.output
+}
+
+fn multiwindow_emit_windows_gg_import_c() string {
+	vlib_dir := os.dir(os.dir(@DIR))
+	unique := 'x_multiwindow_win32_record_${os.getpid()}_${time.now().unix_nano()}'
+	source_path := os.join_path(os.temp_dir(), '${unique}.v')
+	c_path := os.join_path(os.temp_dir(), '${unique}.c')
+	source := 'import gg
+
+fn main() {
+	_ = gg.Color{}
+}
+'
+	os.write_file(source_path, source) or { panic(err) }
+	defer {
+		os.rm(source_path) or {}
+		os.rm(c_path) or {}
+	}
+
+	cmd := '${os.quoted_path(@VEXE)} -os windows -d gg_multiwindow -d sokol_d3d11 -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}'
+	result := os.execute(cmd)
+	assert result.exit_code == 0, 'emit Windows gg import C failed
+command: ${cmd}
+exit_code: ${result.exit_code}
+output:
+${result.output}'
+
+	return os.read_file(c_path) or { panic(err) }
 }
 
 fn multiwindow_source_file(name string) string {

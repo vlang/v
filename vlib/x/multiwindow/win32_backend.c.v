@@ -13,7 +13,7 @@ $if windows {
 	#insert "@VMODROOT/vlib/x/multiwindow/win32_backend_helpers.h"
 }
 
-@[heap]
+@[heap; markused]
 struct Win32WindowRecord {
 	id WindowId
 mut:
