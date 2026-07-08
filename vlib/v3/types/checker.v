@@ -5198,15 +5198,26 @@ fn (mut tc TypeChecker) check_comptime_static_call_args(node flat.Node, var_name
 	}
 }
 
-fn (tc &TypeChecker) comptime_static_enum_value_cases(base_type string) ComptimeStaticValueCases {
-	enum_name := tc.comptime_static_enum_name(base_type) or { return ComptimeStaticValueCases{} }
+fn (mut tc TypeChecker) comptime_static_enum_value_cases(base_type string) ComptimeStaticValueCases {
+	source_type := tc.comptime_static_for_base_type(base_type)
+	enum_name := tc.comptime_static_enum_name(source_type) or { return ComptimeStaticValueCases{} }
 	names := tc.enum_fields[enum_name] or { return ComptimeStaticValueCases{
 		known: true
 	} }
+	metas := tc.comptime_static_enum_decl_value_cases(enum_name)
+	if metas.len > 0 {
+		return ComptimeStaticValueCases{
+			known: true
+			cases: metas
+		}
+	}
 	mut cases := []ComptimeStaticValueCase{cap: names.len}
-	for name in names {
+	is_flag := enum_name in tc.flag_enums
+	for idx, name in names {
 		cases << ComptimeStaticValueCase{
-			name: name
+			name:      name
+			value:     if is_flag { 1 << idx } else { idx }
+			has_value: true
 		}
 	}
 	return ComptimeStaticValueCases{
@@ -5240,6 +5251,7 @@ fn comptime_static_subst_value_cond(cond string, var_name string, item ComptimeS
 		c = c.replace('${var_name}.value', item.value.str())
 	}
 	c = c.replace('${var_name}.name', "'${item.name}'")
+	c = comptime_static_replace_bare_ident(c, var_name, 'EnumData')
 	return c
 }
 
@@ -5335,37 +5347,6 @@ fn (mut tc TypeChecker) comptime_static_field_cases(base_type string) ComptimeSt
 	}
 }
 
-fn (mut tc TypeChecker) comptime_static_enum_value_cases(base_type string) ComptimeStaticValueCases {
-	source_type := tc.comptime_static_for_base_type(base_type)
-	enum_name := tc.comptime_static_enum_name(source_type) or {
-		return ComptimeStaticValueCases{}
-	}
-	fields := tc.enum_fields[enum_name] or { return ComptimeStaticValueCases{
-		known: true
-	} }
-	metas := tc.comptime_static_enum_decl_value_cases(enum_name)
-	if metas.len > 0 {
-		return ComptimeStaticValueCases{
-			known: true
-			cases: metas
-		}
-	}
-	mut cases := []ComptimeStaticValueCase{cap: fields.len}
-	is_flag := enum_name in tc.flag_enums
-	for idx, name in fields {
-		value := if is_flag { 1 << idx } else { idx }
-		cases << ComptimeStaticValueCase{
-			name:      name
-			value:     value
-			has_value: true
-		}
-	}
-	return ComptimeStaticValueCases{
-		known: true
-		cases: cases
-	}
-}
-
 fn (tc &TypeChecker) comptime_static_for_base_type(raw string) string {
 	if source := tc.comptime_static_for_value_source_type(raw) {
 		return source
@@ -5409,25 +5390,6 @@ fn (tc &TypeChecker) comptime_static_for_var_source_type(name string) ?string {
 	return none
 }
 
-fn (tc &TypeChecker) comptime_static_enum_name(raw string) ?string {
-	mut cur := raw.trim_space()
-	mut seen := map[string]bool{}
-	for cur.len > 0 && cur !in seen {
-		seen[cur] = true
-		for candidate in [cur, tc.qualify_name(cur)] {
-			if candidate in tc.enum_names {
-				return candidate
-			}
-		}
-		next := tc.alias_target_type_text(cur) or { break }
-		if next == cur {
-			break
-		}
-		cur = next.trim_space()
-	}
-	return none
-}
-
 fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name string) []ComptimeStaticValueCase {
 	mut cur_mod := ''
 	for idx in 0 .. tc.a.nodes.len {
@@ -5459,7 +5421,7 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name string) []C
 			}
 			mut val := next_val
 			if f.children_count > 0 {
-				if ev := tc.comptime_static_enum_field_value(tc.a.child(&f, 0), cur_mod, previous) {
+				if ev := tc.comptime_static_enum_field_value(tc.a.child(f, 0), cur_mod, previous) {
 					val = ev
 				}
 			}
@@ -5516,15 +5478,16 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 			if node.children_count < 2 {
 				return none
 			}
-			left := tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module,
-				previous) or { return none }
+			left := tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module, previous) or {
+				return none
+			}
 			right := tc.comptime_static_enum_field_value(tc.a.child(&node, 1), enum_module,
 				previous) or { return none }
 			if (node.op == .div || node.op == .mod) && right == 0 {
 				return none
 			}
-			if (node.op == .left_shift || node.op == .right_shift || node.op == .right_shift_unsigned)
-				&& (right < 0 || right >= 64) {
+			if (node.op == .left_shift || node.op == .right_shift
+				|| node.op == .right_shift_unsigned) && (right < 0 || right >= 64) {
 				return none
 			}
 			return match node.op {
@@ -5544,6 +5507,7 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 		}
 		else {}
 	}
+
 	return none
 }
 
