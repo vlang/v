@@ -109,6 +109,10 @@ mut:
 	generic_unresolved_cache     &GenericUnresolvedCache = unsafe { nil }
 	struct_field_type_cache      &LookupCache            = unsafe { nil }
 	variant_short_name_cache     &LookupCache            = unsafe { nil }
+	call_param_types_decl_cache  map[string][]types.Type
+	call_param_types_decl_misses map[string]bool
+	call_param_types_decl_index  map[string]FnParamDeclRef
+	call_param_types_index_ready bool
 	used_fns                     map[string]bool
 	// sum_eq_types records sum types whose deep-equality helper fn
 	// (__v3_sum_eq_<name>) is called somewhere, keyed by sum name with the
@@ -267,6 +271,12 @@ struct GenericFnDecl {
 struct GenericCallSpec {
 	decl_key string
 	args     []string
+}
+
+struct FnParamDeclRef {
+	idx    int
+	file   string
+	module string
 }
 
 // --- entry point ---
@@ -487,6 +497,9 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		generic_receiver_methods_by_name: map[string][]string{}
 		generic_call_spec_cache:          map[int]GenericCallSpec{}
 		generic_call_spec_misses:         map[int]bool{}
+		call_param_types_decl_cache:      map[string][]types.Type{}
+		call_param_types_decl_misses:     map[string]bool{}
+		call_param_types_decl_index:      map[string]FnParamDeclRef{}
 		sum_variant_names:                map[string]bool{}
 		used_fns:                         used_fns.clone()
 		interface_boxed_types:            map[string]bool{}
@@ -1445,6 +1458,10 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
 	w.generic_call_spec_misses = map[int]bool{}
+	w.call_param_types_decl_cache = map[string][]types.Type{}
+	w.call_param_types_decl_misses = map[string]bool{}
+	w.call_param_types_decl_index = map[string]FnParamDeclRef{}
+	w.call_param_types_index_ready = false
 	w.node_module_map_cache = []string{}
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}

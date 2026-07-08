@@ -1149,9 +1149,49 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 	if call_name.len == 0 || isnil(t.tc) {
 		return none
 	}
+	if params := t.call_param_types_decl_cache[call_name] {
+		return params
+	}
+	if t.call_param_types_decl_misses[call_name] {
+		return none
+	}
+	t.ensure_call_param_types_decl_index()
+	decl := t.call_param_types_decl_index[call_name] or {
+		t.call_param_types_decl_misses[call_name] = true
+		return none
+	}
+	node := t.a.nodes[decl.idx]
+	mut params := []types.Type{}
+	for i in 0 .. node.children_count {
+		child := t.a.child_node(&node, i)
+		if child.kind != .param {
+			continue
+		}
+		mut param_type := t.parse_decl_param_type(child.typ, decl.module, decl.file)
+		if param_type is types.Unknown || (param_type is types.Void && child.typ != 'void') {
+			t.call_param_types_decl_misses[call_name] = true
+			return none
+		}
+		if (child.is_mut || child.typ.starts_with('mut ')
+			|| child.typ.starts_with('&')) && param_type !is types.Pointer {
+			param_type = types.Type(types.Pointer{
+				base_type: param_type
+			})
+		}
+		params << param_type
+	}
+	t.call_param_types_decl_cache[call_name] = params.clone()
+	return params
+}
+
+fn (mut t Transformer) ensure_call_param_types_decl_index() {
+	if t.call_param_types_index_ready {
+		return
+	}
+	t.call_param_types_decl_index.clear()
 	mut file_name := ''
 	mut module_name := ''
-	for node in t.a.nodes {
+	for i, node in t.a.nodes {
 		if node.kind == .file {
 			file_name = node.value
 			module_name = t.tc.file_modules[file_name] or { '' }
@@ -1164,30 +1204,36 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 		if node.kind != .fn_decl {
 			continue
 		}
-		if !fn_decl_name_matches_call(node.value, module_name, call_name) {
-			continue
+		t.add_call_param_types_decl_key(node.value, i, file_name, module_name)
+		qname := transform_qualified_fn_name(module_name, node.value)
+		if qname != node.value {
+			t.add_call_param_types_decl_key(qname, i, file_name, module_name)
 		}
-		mut params := []types.Type{}
-		for i in 0 .. node.children_count {
-			child := t.a.child_node(&node, i)
-			if child.kind != .param {
-				continue
-			}
-			mut param_type := t.parse_decl_param_type(child.typ, module_name, file_name)
-			if param_type is types.Unknown || (param_type is types.Void && child.typ != 'void') {
-				return none
-			}
-			if (child.is_mut || child.typ.starts_with('mut ')
-				|| child.typ.starts_with('&')) && param_type !is types.Pointer {
-				param_type = types.Type(types.Pointer{
-					base_type: param_type
-				})
-			}
-			params << param_type
-		}
-		return params
 	}
-	return none
+	t.call_param_types_index_ready = true
+}
+
+fn (mut t Transformer) add_call_param_types_decl_key(key string, idx int, file string, module_name string) {
+	if key.len == 0 {
+		return
+	}
+	if key !in t.call_param_types_decl_index {
+		t.call_param_types_decl_index[key] = FnParamDeclRef{
+			idx:    idx
+			file:   file
+			module: module_name
+		}
+	}
+	t.call_param_types_decl_misses.delete(key)
+	cname := c_name(key)
+	if cname != key && cname !in t.call_param_types_decl_index {
+		t.call_param_types_decl_index[cname] = FnParamDeclRef{
+			idx:    idx
+			file:   file
+			module: module_name
+		}
+	}
+	t.call_param_types_decl_misses.delete(cname)
 }
 
 fn (mut t Transformer) parse_decl_param_type(typ string, module_name string, file_name string) types.Type {
@@ -1322,14 +1368,6 @@ fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name strin
 		return '&' + scoped
 	}
 	return scoped
-}
-
-fn fn_decl_name_matches_call(name string, module_name string, call_name string) bool {
-	if name == call_name || c_name(name) == call_name {
-		return true
-	}
-	qname := transform_qualified_fn_name(module_name, name)
-	return qname == call_name || c_name(qname) == call_name
 }
 
 // call_is_variadic updates call is variadic state for Transformer.
