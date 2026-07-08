@@ -134,6 +134,48 @@ fn main() {
 	assert out == "id:true:true:true:true:false:|name:true:true:false:false:true:json: 'wire'|count:2"
 }
 
+fn test_comptime_for_value_field_sources_use_value_type() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'value_field_source', "struct Inner {
+	count int
+}
+
+struct S {
+	id int
+	name string
+	nested Inner
+}
+
+fn names_from_param(param S) string {
+	mut rows := []string{}
+	$for field in param.fields {
+		rows << field.name
+	}
+	return rows.join(',')
+}
+
+fn nested_names(param S) string {
+	mut rows := []string{}
+	$for field in param.nested.fields {
+		rows << field.name
+	}
+	return rows.join(',')
+}
+
+fn main() {
+	value := S{}
+	mut rows := []string{}
+	$for field in value.fields {
+		rows << field.name
+	}
+	rows << names_from_param(value)
+	rows << nested_names(value)
+	println(rows.join('|'))
+}
+")
+	assert out == 'id|name|nested|id,name,nested|count'
+}
+
 fn test_comptime_field_unaliased_typ_preserves_option_wrapper() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'field_unaliased_option', "type Alias = string
@@ -437,6 +479,27 @@ fn test_unknown_comptime_enum_value_member_is_rejected() {
 fn main() {
 	$for item in Color.values {
 		println(item.nmae)
+	}
+}
+	',
+		'unknown EnumData member `nmae`')
+}
+
+fn test_nested_comptime_for_validates_inner_members() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'bad_nested_enum_value_member', 'struct S {
+	id int
+}
+
+enum Color {
+	red
+}
+
+fn main() {
+	$for field in S.fields {
+		$for item in Color.values {
+			println(item.nmae)
+		}
 	}
 }
 	',

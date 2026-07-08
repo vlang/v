@@ -76,7 +76,65 @@ fn comptime_for_declares_var(node flat.Node, var_name string) bool {
 // comptime_for_base_type resolves the loop source type to a concrete name. Generic `T` was already
 // substituted to the concrete type in `node.typ` during monomorphization.
 fn (t &Transformer) comptime_for_base_type(raw string) string {
-	return t.comptime_normalize_type_alias_chain(t.comptime_resolve_selective_import_type(raw))
+	source := if value_type := t.comptime_for_value_source_type(raw) {
+		value_type
+	} else {
+		raw
+	}
+	return t.comptime_normalize_type_alias_chain(t.comptime_resolve_selective_import_type(source))
+}
+
+fn (t &Transformer) comptime_for_value_source_type(raw string) ?string {
+	clean := raw.trim_space()
+	if clean.len == 0 {
+		return none
+	}
+	parts := clean.split('.')
+	if parts.len == 0 {
+		return none
+	}
+	mut typ := t.comptime_for_var_source_type(parts[0]) or { return none }
+	for field in parts[1..] {
+		typ = t.comptime_for_field_source_type(typ, field) or { return none }
+	}
+	return typ
+}
+
+fn (t &Transformer) comptime_for_var_source_type(name string) ?string {
+	raw_typ := t.raw_var_type(name).trim_space()
+	if raw_typ.len > 0 {
+		return t.comptime_for_value_type_base(raw_typ)
+	}
+	typ := t.var_type(name).trim_space()
+	if typ.len > 0 {
+		return t.comptime_for_value_type_base(typ)
+	}
+	return none
+}
+
+fn (t &Transformer) comptime_for_field_source_type(owner_type string, field_name string) ?string {
+	base := t.comptime_normalize_type_alias_chain(t.comptime_for_value_type_base(owner_type))
+	info := t.lookup_struct_info(base) or {
+		t.generic_struct_info_for_stringify(base) or { return none }
+	}
+	for field in info.fields {
+		if field.name == field_name {
+			ftyp := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
+			return t.comptime_for_value_type_base(ftyp)
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) comptime_for_value_type_base(raw string) string {
+	mut typ := raw.trim_space()
+	if typ.starts_with('mut ') {
+		typ = typ[4..].trim_space()
+	}
+	for typ.starts_with('&') {
+		typ = typ[1..].trim_space()
+	}
+	return typ
 }
 
 fn (t &Transformer) comptime_resolve_selective_import_type(raw string) string {
